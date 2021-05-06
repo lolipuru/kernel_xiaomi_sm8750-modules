@@ -41,6 +41,7 @@ enum dp_pll_revision {
 	DP_PLL_5NM_V2,
 	DP_PLL_4NM_V1,
 	DP_PLL_4NM_V1_1,
+	EDP_PLL_5NM,
 };
 
 enum hsclk_rate {
@@ -59,6 +60,7 @@ static inline const char *dp_pll_get_revision(enum dp_pll_revision rev)
 	case DP_PLL_5NM_V2:	return "DP_PLL_5NM_V2";
 	case DP_PLL_4NM_V1:	return "DP_PLL_4NM_V1";
 	case DP_PLL_4NM_V1_1:	return "DP_PLL_4NM_V1_1";
+	case EDP_PLL_5NM:	return "EDP_PLL_5NM";
 	default:		return "???";
 	}
 }

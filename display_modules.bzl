@@ -29,6 +29,7 @@ module_entry(
             "msm/dp/dp_catalog.c",
             "msm/dp/dp_catalog_v420.c",
             "msm/dp/dp_catalog_v200.c",
+            "msm/dp/dp_catalog_v500.c",
             "msm/dp/dp_aux.c",
             "msm/dp/dp_panel.c",
             "msm/dp/dp_link.c",
