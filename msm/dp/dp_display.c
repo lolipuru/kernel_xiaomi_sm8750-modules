@@ -4034,11 +4034,12 @@ static struct platform_driver dp_display_driver = {
 
 void __init dp_display_register(void)
 {
-
+	dp_pll_drv_register();
 	platform_driver_register(&dp_display_driver);
 }
 
 void __exit dp_display_unregister(void)
 {
 	platform_driver_unregister(&dp_display_driver);
+	dp_pll_drv_unregister();
 }

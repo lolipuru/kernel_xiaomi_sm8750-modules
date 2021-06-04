@@ -173,4 +173,7 @@ struct dp_pll_in {
 int dp_pll_clock_register_helper(struct dp_pll *pll, struct dp_pll_vco_clk *clks, int num_clks);
 struct dp_pll *dp_pll_get(struct dp_pll_in *in);
 void dp_pll_put(struct dp_pll *pll);
+void dp_pll_drv_register(void);
+void dp_pll_drv_unregister(void);
+
 #endif /* __DP_PLL_H */
