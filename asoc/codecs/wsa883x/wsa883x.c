@@ -1217,9 +1217,11 @@ static int wsa883x_spkr_event(struct snd_soc_dapm_widget *w,
 				WSA883X_PA_FSM_CTL, 0x01, 0x01);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
-		if (!test_bit(SPKR_ADIE_LB, &wsa883x->status_mask))
+		if (!test_bit(SPKR_ADIE_LB, &wsa883x->status_mask) && wsa883x->pdm_wd_enabled) {
 			wcd_disable_irq(&wsa883x->irq_info,
 					WSA883X_IRQ_INT_PDM_WD);
+			wsa883x->pdm_wd_enabled = false;
+		}
 		snd_soc_component_update_bits(component,
 				WSA883X_VBAT_ADC_FLT_CTL,
 				0x01, 0x00);
@@ -1617,8 +1619,11 @@ static int wsa883x_event_notify(struct notifier_block *nb,
 			snd_soc_component_update_bits(wsa883x->component,
 						WSA883X_PA_FSM_CTL,
 						0x01, 0x01);
-			wcd_enable_irq(&wsa883x->irq_info,
-					WSA883X_IRQ_INT_PDM_WD);
+			if (!wsa883x->pdm_wd_enabled) {
+				wcd_enable_irq(&wsa883x->irq_info,
+						WSA883X_IRQ_INT_PDM_WD);
+				wsa883x->pdm_wd_enabled = true;
+			}
 			/* Added delay as per HW sequence */
 			usleep_range(3000, 3100);
 			if (wsa883x->comp_enable &&
@@ -1899,6 +1904,7 @@ static int wsa883x_swr_probe(struct swr_device *pdev)
 			"WSA PDM WD", wsa883x_pdm_wd_handle_irq, wsa883x);
 
 	wcd_disable_irq(&wsa883x->irq_info, WSA883X_IRQ_INT_PDM_WD);
+	wsa883x->pdm_wd_enabled = false;
 
 	wcd_request_irq(&wsa883x->irq_info, WSA883X_IRQ_INT_CLK_WD,
 			"WSA CLK WD", wsa883x_clk_wd_handle_irq, wsa883x);
