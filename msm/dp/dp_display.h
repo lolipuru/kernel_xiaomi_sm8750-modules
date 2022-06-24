@@ -12,7 +12,6 @@
 
 #include "dp_panel.h"
 
-
 enum dp_drv_state {
 	PM_DEFAULT,
 	PM_SUSPEND,
@@ -114,20 +113,20 @@ struct dp_display {
 void *get_ipc_log_context(void);
 
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
-int dp_display_get_num_of_displays(void);
-int dp_display_get_displays(void **displays, int count);
-int dp_display_get_num_of_streams(void);
+int dp_display_get_num_of_displays(struct drm_device *dev);
+int dp_display_get_displays(struct drm_device *dev, void **displays, int count);
+int dp_display_get_num_of_streams(struct drm_device *dev);
 int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data);
 #else
-static inline int dp_display_get_num_of_displays(void)
+static inline int dp_display_get_num_of_displays(struct drm_device *dev)
 {
 	return 0;
 }
-static inline int dp_display_get_displays(void **displays, int count)
+static inline int dp_display_get_displays(struct drm_device *dev, void **displays, int count)
 {
 	return 0;
 }
-static inline int dp_display_get_num_of_streams(void)
+static inline int dp_display_get_num_of_streams(struct drm_device *dev)
 {
 	return 0;
 }

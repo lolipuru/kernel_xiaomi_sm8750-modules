@@ -313,18 +313,19 @@ int dsi_display_dev_remove(struct platform_device *pdev);
 /**
  * dsi_display_get_num_of_displays() - returns number of display devices
  *				       supported.
- *
+ * @dev: Pointer to DRM device
  * Return: number of displays.
  */
-int dsi_display_get_num_of_displays(void);
+int dsi_display_get_num_of_displays(struct drm_device *dev);
 
 /**
  * dsi_display_get_active_displays - returns pointers for active display devices
+ * @dev: Pointer to DRM device
  * @display_array: Pointer to display array to be filled
  * @max_display_count: Size of display_array
  * @Returns: Number of display entries filled
  */
-int dsi_display_get_active_displays(void **display_array,
+int dsi_display_get_active_displays(struct drm_device *dev, void **display_array,
 		u32 max_display_count);
 
 /**

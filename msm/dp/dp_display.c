@@ -3767,7 +3767,7 @@ bail:
 	return rc;
 }
 
-int dp_display_get_displays(void **displays, int count)
+int dp_display_get_displays(struct drm_device *dev, void **displays, int count)
 {
 	if (!displays) {
 		DP_ERR("invalid data\n");
@@ -3783,7 +3783,7 @@ int dp_display_get_displays(void **displays, int count)
 	return count;
 }
 
-int dp_display_get_num_of_displays(void)
+int dp_display_get_num_of_displays(struct drm_device *dev)
 {
 	if (!g_dp_display)
 		return 0;
@@ -3791,7 +3791,7 @@ int dp_display_get_num_of_displays(void)
 	return 1;
 }
 
-int dp_display_get_num_of_streams(void)
+int dp_display_get_num_of_streams(struct drm_device *dev)
 {
 	return DP_STREAM_MAX;
 }

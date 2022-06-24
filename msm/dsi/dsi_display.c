@@ -6137,12 +6137,15 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	return rc;
 }
 
-int dsi_display_get_num_of_displays(void)
+int dsi_display_get_num_of_displays(struct drm_device *dev)
 {
 	int i, count = 0;
 
 	for (i = 0; i < MAX_DSI_ACTIVE_DISPLAY; i++) {
 		struct dsi_display *display = boot_displays[i].disp;
+
+		if (display->drm_dev != dev)
+			continue;
 
 		if ((display && display->panel_node) ||
 					(display && display->fw))
@@ -6152,7 +6155,8 @@ int dsi_display_get_num_of_displays(void)
 	return count;
 }
 
-int dsi_display_get_active_displays(void **display_array, u32 max_display_count)
+int dsi_display_get_active_displays(struct drm_device *dev,
+		void **display_array, u32 max_display_count)
 {
 	int index = 0, count = 0;
 
@@ -6163,6 +6167,9 @@ int dsi_display_get_active_displays(void **display_array, u32 max_display_count)
 
 	for (index = 0; index < MAX_DSI_ACTIVE_DISPLAY; index++) {
 		struct dsi_display *display = boot_displays[index].disp;
+
+		if (display->drm_dev != dev)
+			continue;
 
 		if ((display && display->panel_node) ||
 					(display && display->fw))

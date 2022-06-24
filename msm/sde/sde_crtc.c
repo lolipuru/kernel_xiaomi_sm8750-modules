@@ -8300,7 +8300,7 @@ int sde_crtc_post_init(struct drm_device *dev, struct drm_crtc *crtc)
 	sde_crtc = to_sde_crtc(crtc);
 	sde_crtc->sysfs_dev = device_create_with_groups(
 		dev->primary->kdev->class, dev->primary->kdev, 0, crtc,
-		sde_crtc_attr_groups, "sde-crtc-%d", crtc->index);
+		sde_crtc_attr_groups, "card%d-sde-crtc-%d", DPUID(dev), crtc->index);
 	if (IS_ERR_OR_NULL(sde_crtc->sysfs_dev)) {
 		SDE_ERROR("crtc:%d sysfs create failed rc:%ld\n", crtc->index,
 			PTR_ERR(sde_crtc->sysfs_dev));
