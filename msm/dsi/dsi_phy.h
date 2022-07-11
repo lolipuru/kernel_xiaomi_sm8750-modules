@@ -61,6 +61,7 @@ enum phy_ulps_return_type {
  * @index:             Instance id.
  * @name:              Name of the PHY instance.
  * @refcount:          Reference count.
+ * @sync_en_refcount:  Reference count for each phy in sync mode.
  * @phy_lock:          Mutex for hardware and object access.
  * @ver_info:          Version specific phy parameters.
  * @hw:                DSI PHY hardware object.
@@ -84,6 +85,7 @@ struct msm_dsi_phy {
 	int index;
 	const char *name;
 	u32 refcount;
+	u32 sync_en_refcount;
 	struct mutex phy_lock;
 
 	const struct dsi_ver_spec_info *ver_info;

@@ -23,6 +23,7 @@
 #include "dsi_pwr.h"
 #include "sde_dbg.h"
 #include "dsi_parser.h"
+#include "dsi_display_manager.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -2368,8 +2369,6 @@ static int dsi_display_ctrl_setup(struct dsi_display *display)
 	return 0;
 }
 
-static int dsi_display_phy_enable(struct dsi_display *display);
-
 /**
  * dsi_display_phy_idle_on() - enable DSI PHY while coming out of idle screen.
  * @dsi_display:         DSI display handle.
@@ -2377,8 +2376,8 @@ static int dsi_display_phy_enable(struct dsi_display *display);
  *
  * Return: error code.
  */
-static int dsi_display_phy_idle_on(struct dsi_display *display,
-		bool mmss_clamp)
+int dsi_display_phy_idle_on(struct dsi_display *display,
+		bool mmss_clamp, enum dsi_phy_pll_source m_src)
 {
 	int rc = 0;
 	int i = 0;
@@ -2391,7 +2390,7 @@ static int dsi_display_phy_idle_on(struct dsi_display *display,
 	}
 
 	if (mmss_clamp && !display->phy_idle_power_off) {
-		dsi_display_phy_enable(display);
+		dsi_display_phy_enable(display, m_src);
 		return 0;
 	}
 
@@ -2423,7 +2422,7 @@ static int dsi_display_phy_idle_on(struct dsi_display *display,
  *
  * Return: error code.
  */
-static int dsi_display_phy_idle_off(struct dsi_display *display)
+int dsi_display_phy_idle_off(struct dsi_display *display)
 {
 	int rc = 0;
 	int i = 0;
@@ -3185,12 +3184,11 @@ static int dsi_display_vid_engine_disable(struct dsi_display *display)
 	return rc;
 }
 
-static int dsi_display_phy_enable(struct dsi_display *display)
+int dsi_display_phy_enable(struct dsi_display *display, enum dsi_phy_pll_source m_src)
 {
 	int rc = 0;
 	int i;
 	struct dsi_display_ctrl *m_ctrl, *ctrl;
-	enum dsi_phy_pll_source m_src = DSI_PLL_SOURCE_STANDALONE;
 	bool skip_op = is_skip_op_required(display);
 
 	m_ctrl = &display->ctrl[display->clk_master_idx];
@@ -3228,7 +3226,7 @@ error:
 	return rc;
 }
 
-static int dsi_display_phy_disable(struct dsi_display *display)
+int dsi_display_phy_disable(struct dsi_display *display)
 {
 	int rc = 0;
 	int i;
@@ -3342,7 +3340,7 @@ error:
 	return rc;
 }
 
-static int dsi_display_phy_sw_reset(struct dsi_display *display)
+int dsi_display_phy_sw_reset(struct dsi_display *display)
 {
 	int rc = 0;
 	int i;
@@ -3743,7 +3741,7 @@ int dsi_pre_clkoff_cb(void *priv,
 		 */
 		if (dsi_panel_initialized(display->panel) ||
 			display->panel->ulps_suspend_enabled) {
-			dsi_display_phy_idle_off(display);
+			dsi_display_mgr_phy_idle_off(display);
 			rc = dsi_display_set_clamp(display, true);
 			if (rc)
 				DSI_ERR("%s: Failed to enable dsi clamps. rc=%d\n",
@@ -3801,7 +3799,7 @@ int dsi_post_clkon_cb(void *priv,
 		 * power collapse with clamps enabled.
 		 */
 		if (display->phy_idle_power_off || mmss_clamp)
-			dsi_display_phy_idle_on(display, mmss_clamp);
+			dsi_display_mgr_phy_idle_on(display);
 
 		if (display->ulps_enabled && mmss_clamp) {
 			/*
@@ -4344,6 +4342,8 @@ static int dsi_display_res_init(struct dsi_display *display)
 		display->is_active = true;
 		display->hw_ownership = true;
 	}
+
+	INIT_LIST_HEAD(&display->list);
 
 	return 0;
 error_panel_put:
@@ -5858,6 +5858,9 @@ static int dsi_display_bind(struct device *dev,
 
 	msm_register_vm_event(master, dev, &vm_event_ops, (void *)display);
 
+	if (!rc)
+		dsi_display_manager_register(display);
+
 	goto error;
 
 error_host_deinit:
@@ -5906,6 +5909,9 @@ static void dsi_display_unbind(struct device *dev,
 	}
 
 	mutex_lock(&display->display_lock);
+
+	/* remove the display from the manager list */
+	dsi_display_manager_unregister(display);
 
 	rc = dsi_display_mipi_host_deinit(display);
 	if (rc)
@@ -8361,14 +8367,7 @@ int dsi_display_prepare(struct dsi_display *display)
 	 * is powered on, phy init needs to be done unconditionally.
 	 */
 	if (!display->panel->ulps_suspend_enabled || !display->ulps_enabled) {
-		rc = dsi_display_phy_sw_reset(display);
-		if (rc) {
-			DSI_ERR("[%s] failed to reset phy, rc=%d\n",
-				display->name, rc);
-			goto error_ctrl_clk_off;
-		}
-
-		rc = dsi_display_phy_enable(display);
+		rc = dsi_display_mgr_phy_enable(display);
 		if (rc) {
 			DSI_ERR("[%s] failed to enable DSI PHY, rc=%d\n",
 			       display->name, rc);
@@ -8432,7 +8431,7 @@ error_host_engine_off:
 error_ctrl_deinit:
 	(void)dsi_display_ctrl_deinit(display);
 error_phy_disable:
-	(void)dsi_display_phy_disable(display);
+	(void)dsi_display_mgr_phy_disable(display);
 error_ctrl_clk_off:
 	(void)dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK, DSI_CLK_OFF);
@@ -9133,7 +9132,7 @@ int dsi_display_unprepare(struct dsi_display *display)
 		       display->name, rc);
 
 	if (!display->panel->ulps_suspend_enabled) {
-		rc = dsi_display_phy_disable(display);
+		rc = dsi_display_mgr_phy_disable(display);
 		if (rc)
 			DSI_ERR("[%s] failed to disable DSI PHY, rc=%d\n",
 			       display->name, rc);

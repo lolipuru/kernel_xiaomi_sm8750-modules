@@ -632,6 +632,9 @@ struct msm_dsi_phy *dsi_phy_get(struct device_node *of_node)
 	} else {
 		phy->refcount++;
 	}
+
+	phy->sync_en_refcount = 0;
+
 	mutex_unlock(&phy->phy_lock);
 	return phy;
 }
