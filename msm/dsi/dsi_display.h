@@ -894,4 +894,31 @@ int dsi_display_phy_idle_off(struct dsi_display *display);
  */
 int dsi_display_phy_idle_on(struct dsi_display *display, bool mmss_clamp,
 		enum dsi_phy_pll_source m_src);
+
+/**
+ * dsi_display_set_clk_src() - set parent of RCG branch clock
+ * @display: Handle to display
+ * @set_xo: bool to indicate whether to set parent of RCG to xo clock or PLL
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_set_clk_src(struct dsi_display *display, bool set_xo);
+
+/**
+ * dsi_display_phy_configure() - configure DSI PHY PLL
+ * @priv: Handle to display
+ * @commit: bool to indicate suspend resume use case
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_phy_configure(void *priv, bool commit);
+
+/**
+ * dsi_display_phy_pll_toggle() - toggle DSI PHY PLL
+ * @priv: Handle to display
+ * @enable: bool to enable / disable DSI PHY PLL
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_phy_pll_toggle(void *priv, bool enable);
 #endif /* _DSI_DISPLAY_H_ */

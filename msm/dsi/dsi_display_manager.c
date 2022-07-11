@@ -432,3 +432,133 @@ int dsi_display_mgr_phy_idle_on(struct dsi_display *display)
 
 	return ret;
 }
+
+int dsi_display_mgr_phy_configure(void *priv, bool commit)
+{
+	int rc = 0;
+	struct dsi_display *display = priv;
+	struct dsi_display *m_display;
+	struct dsi_display_ctrl *m_ctrl;
+	struct dsi_display_ctrl *c_ctrl;
+	struct dsi_pll_resource *pll_res;
+
+	if (!display) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	if (!display->panel->ctl_op_sync)
+		return dsi_display_phy_configure(priv, commit);
+
+	mutex_lock(&disp_mgr.disp_mgr_mutex);
+
+	m_display = display_manager_get_master();
+
+	/* Get master ctrl and current ctrl */
+	m_ctrl = &m_display->ctrl[display->clk_master_idx];
+	c_ctrl = &display->ctrl[display->clk_master_idx];
+
+	/*
+	 * In sync mode, PLL0 is configured as master and other
+	 * PLLs (PLL1, PLL2, PLL3) are sourced from PLL0 and are configured
+	 * as slave. So, in this case always configure PLL0.
+	 */
+	pll_res = m_ctrl->phy->pll;
+	if (!pll_res) {
+		DSI_ERR("[%s] PLL res not found\n", display->name);
+		mutex_unlock(&disp_mgr.disp_mgr_mutex);
+		return -EINVAL;
+	}
+	if (pll_res->refcount > 0)
+		goto not_first_configure;
+
+	/*
+	 * If current display is slave, byte and pclk may not be updated in master ctrl.
+	 * So, update byte and pclk from current ctrl.
+	 */
+	m_ctrl->ctrl->clk_freq.byte_clk_rate = c_ctrl->ctrl->clk_freq.byte_clk_rate;
+	m_ctrl->ctrl->clk_freq.pix_clk_rate = c_ctrl->ctrl->clk_freq.pix_clk_rate;
+
+	rc = dsi_display_phy_configure(m_display, commit);
+
+not_first_configure:
+	mutex_unlock(&disp_mgr.disp_mgr_mutex);
+	return rc;
+}
+
+int dsi_display_mgr_phy_pll_toggle(void *priv, bool enable)
+{
+	int rc = 0;
+	struct dsi_display *display = priv;
+	struct dsi_display *m_display;
+	struct dsi_display_ctrl *m_ctrl;
+	struct dsi_pll_resource *pll_res;
+
+	if (!display) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * It is recommended to turn on the PLL before switching parent
+	 * of RCG to PLL because when RCG is on, both the old and new
+	 * sources should be on while switching the RCG parent.
+	 *
+	 * Note: Branch clocks and in turn RCG might not get turned off
+	 * during clock disable sequence if there is a vote from dispcc
+	 * or any of its other consumers.
+	 *
+	 * It is recommended to turn off the PLL after switching parent
+	 * of RCG to PLL because when RCG is on, both the old and new
+	 * sources should be on while switching the RCG parent.
+	 */
+
+	if (!display->panel->ctl_op_sync) {
+		if (enable) {
+			dsi_display_phy_pll_toggle(priv, enable);
+			rc = dsi_display_set_clk_src(display, false);
+		} else {
+			dsi_display_set_clk_src(display, true);
+			rc = dsi_display_phy_pll_toggle(priv, enable);
+		}
+		return rc;
+	}
+
+	mutex_lock(&disp_mgr.disp_mgr_mutex);
+
+	m_display = display_manager_get_master();
+
+	/* Get master ctrl */
+	m_ctrl = &m_display->ctrl[display->clk_master_idx];
+
+	/*
+	 * In sync mode, PLL0 is configured as master and other
+	 * PLLs (PLL1, PLL2, PLL3) are sourced from PLL0 and are configured
+	 * as slave. So, in this case always toggle PLL0.
+	 */
+	pll_res = m_ctrl->phy->pll;
+	if (!pll_res) {
+		DSI_ERR("[%s] PLL res not found\n", display->name);
+		mutex_unlock(&disp_mgr.disp_mgr_mutex);
+		return -EINVAL;
+	}
+
+	if (enable) {
+		if (pll_res->refcount == 0)
+			dsi_display_phy_pll_toggle(m_display, enable);
+		dsi_display_set_clk_src(display, false);
+		pll_res->refcount++;
+	} else {
+		if (pll_res->refcount == 0) {
+			DSI_ERR("unbalanced pll refcount\n");
+		} else {
+			pll_res->refcount--;
+			dsi_display_set_clk_src(display, true);
+			if (pll_res->refcount == 0)
+				dsi_display_phy_pll_toggle(m_display, enable);
+		}
+	}
+
+	mutex_unlock(&disp_mgr.disp_mgr_mutex);
+	return rc;
+}

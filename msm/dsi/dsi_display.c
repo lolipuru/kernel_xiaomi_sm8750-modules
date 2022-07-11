@@ -2717,7 +2717,7 @@ error:
 	return rc;
 }
 
-static int dsi_display_set_clk_src(struct dsi_display *display, bool set_xo)
+int dsi_display_set_clk_src(struct dsi_display *display, bool set_xo)
 {
 	int rc = 0;
 	int i;
@@ -2763,61 +2763,10 @@ static int dsi_display_set_clk_src(struct dsi_display *display, bool set_xo)
 	return 0;
 }
 
-static int dsi_display_phy_pll_enable(struct dsi_display *display)
-{
-	int rc = 0;
-	struct dsi_display_ctrl *m_ctrl;
-
-	m_ctrl = &display->ctrl[display->clk_master_idx];
-	if (!m_ctrl->phy) {
-		DSI_ERR("[%s] PHY not found\n", display->name);
-		return -EINVAL;
-	}
-
-	/*
-	 * It is recommended to turn on the PLL before switching parent
-	 * of RCG to PLL because when RCG is on, both the old and new
-	 * sources should be on while switching the RCG parent.
-	 *
-	 * Note: Branch clocks and in turn RCG might not get turned off
-	 * during clock disable sequence if there is a vote from dispcc
-	 * or any of its other consumers.
-	 */
-
-	rc = dsi_phy_pll_toggle(m_ctrl->phy, true);
-	if (rc)
-		return rc;
-
-	return dsi_display_set_clk_src(display, false);
-}
-
-static int dsi_display_phy_pll_disable(struct dsi_display *display)
-{
-	int rc = 0;
-	struct dsi_display_ctrl *m_ctrl;
-
-	/*
-	 * It is recommended to turn off the PLL after switching parent
-	 * of RCG to PLL because when RCG is on, both the old and new
-	 * sources should be on while switching the RCG parent.
-	 */
-
-	rc = dsi_display_set_clk_src(display, true);
-	if (rc)
-		return rc;
-
-	m_ctrl = &display->ctrl[display->clk_master_idx];
-	if (!m_ctrl->phy) {
-		DSI_ERR("[%s] PHY not found\n", display->name);
-		return -EINVAL;
-	}
-
-	return dsi_phy_pll_toggle(m_ctrl->phy, false);
-}
-
-int dsi_display_phy_pll_toggle(void *priv, bool prepare)
+int dsi_display_phy_pll_toggle(void *priv, bool enable)
 {
 	struct dsi_display *display = priv;
+	struct dsi_display_ctrl *m_ctrl;
 
 	if (!display) {
 		DSI_ERR("invalid arguments\n");
@@ -2827,10 +2776,16 @@ int dsi_display_phy_pll_toggle(void *priv, bool prepare)
 	if (is_skip_op_required(display) || phy_pll_bypass(display))
 		return 0;
 
-	if (prepare)
-		return dsi_display_phy_pll_enable(display);
+	m_ctrl = &display->ctrl[display->clk_master_idx];
+	if (!m_ctrl->phy) {
+		DSI_ERR("[%s] PHY not found\n", display->name);
+		return -EINVAL;
+	}
+
+	if (enable)
+		return dsi_phy_pll_toggle(m_ctrl->phy, true);
 	else
-		return dsi_display_phy_pll_disable(display);
+		return dsi_phy_pll_toggle(m_ctrl->phy, false);
 }
 
 int dsi_display_phy_configure(void *priv, bool commit)
@@ -5783,8 +5738,8 @@ static int dsi_display_bind(struct device *dev,
 	info.pre_clkon_cb = dsi_pre_clkon_cb;
 	info.post_clkoff_cb = dsi_post_clkoff_cb;
 	info.post_clkon_cb = dsi_post_clkon_cb;
-	info.phy_config_cb = dsi_display_phy_configure;
-	info.phy_pll_toggle_cb = dsi_display_phy_pll_toggle;
+	info.phy_config_cb = dsi_display_mgr_phy_configure;
+	info.phy_pll_toggle_cb = dsi_display_mgr_phy_pll_toggle;
 	info.priv_data = display;
 	info.master_ndx = display->clk_master_idx;
 	info.dsi_ctrl_count = display->ctrl_count;

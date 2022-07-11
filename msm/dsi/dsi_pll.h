@@ -173,6 +173,13 @@ struct dsi_pll_resource {
 	 */
 	enum dsi_phy_type type;
 	bool in_trusted_vm;
+
+	/*
+	 * PLL enable refcount used in case of sync panels to make sure:
+	 * 1. master PLL does not turn off while slave PLL is on.
+	 * 2. master PLL does not turn on if it is already on.
+	 */
+	u32 refcount;
 };
 
 struct dsi_pll_clk {
