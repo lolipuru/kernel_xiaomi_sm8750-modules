@@ -1568,3 +1568,43 @@ int dsi_pll_4nm_toggle(void *pll, bool prepare)
 
 	return rc;
 }
+
+int dsi_pll_4nm_program_slave(struct dsi_pll_resource *pll)
+{
+	struct dsi_pll_resource *m_pll = pll_rsc_db[DSI_PLL_0];
+	u32 pll_post_div;
+	u32 phy_post_div;
+	u32 dsiclk_sel;
+	u32 pclk_div;
+
+	if (pll->index == DSI_PLL_0) {
+		pr_err("invalid pll index\n");
+		return 0;
+	}
+
+	m_pll->slave = pll;
+
+	dsi_pll_enable_pll_bias(pll);
+
+	/* get master pll dividers */
+	pll_post_div = dsi_pll_get_pll_post_div(m_pll);
+	phy_post_div = 0x1;
+	pclk_div = dsi_pll_get_pclk_div(m_pll);
+	dsiclk_sel = dsi_pll_get_dsiclk_sel(m_pll);
+
+	/* set slave pll dividers */
+	dsi_pll_set_pll_post_div(pll, pll_post_div);
+	dsi_pll_set_phy_post_div(pll, phy_post_div);
+	dsi_pll_set_dsiclk_sel(pll, dsiclk_sel);
+	dsi_pll_set_pclk_div(pll, pclk_div);
+
+	DSI_PLL_REG_W(pll->pll_base, PLL_PERF_OPTIMIZE, 0x22);
+
+	/* flush, ensure all register writes are done */
+	wmb();
+
+	dsi_pll_phy_analog_reset(pll);
+	dsi_pll_enable_global_clk(pll);
+
+	return 0;
+}
