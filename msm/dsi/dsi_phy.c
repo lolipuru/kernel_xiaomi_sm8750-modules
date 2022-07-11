@@ -1059,9 +1059,8 @@ error:
 	return rc;
 }
 
-/* update dsi phy timings for dynamic clk switch use case */
 int dsi_phy_update_phy_timings(struct msm_dsi_phy *phy,
-			       struct dsi_host_config *config)
+		struct dsi_host_config *config, bool use_mode_bit_clk)
 {
 	int rc = 0;
 
@@ -1073,7 +1072,7 @@ int dsi_phy_update_phy_timings(struct msm_dsi_phy *phy,
 	memcpy(&phy->mode, &config->video_timing, sizeof(phy->mode));
 	rc = phy->hw.ops.calculate_timing_params(&phy->hw, &phy->mode,
 						 &config->common_config,
-						 &phy->cfg.timing, true);
+						 &phy->cfg.timing, use_mode_bit_clk);
 	if (rc)
 		DSI_PHY_ERR(phy, "failed to calculate phy timings %d\n", rc);
 

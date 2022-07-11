@@ -326,11 +326,13 @@ void dsi_phy_drv_unregister(void);
  * dsi_phy_update_phy_timings() - Update dsi phy timings
  * @phy:	DSI PHY handle
  * @config:	DSI Host config parameters
+ * @use_mode_bit_clk:	Boolean to indicate whether reacalculate dsi
+ *			bitclk or use the existing bitclk(for dynamic clk case).
  *
  * Return: error code.
  */
 int dsi_phy_update_phy_timings(struct msm_dsi_phy *phy,
-			       struct dsi_host_config *config);
+		struct dsi_host_config *config, bool use_mode_bit_clk);
 
 /**
  * dsi_phy_config_dynamic_refresh() - Configure dynamic refresh registers

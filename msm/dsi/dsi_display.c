@@ -4767,7 +4767,7 @@ static int dsi_display_dynamic_clk_switch_vid(struct dsi_display *display,
 	/* update the phy timings based on new mode */
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
-		dsi_phy_update_phy_timings(ctrl->phy, &display->config);
+		dsi_phy_update_phy_timings(ctrl->phy, &display->config, true);
 	}
 
 	/* back up existing rates to handle failure case */
