@@ -6756,8 +6756,16 @@ int dsi_display_get_info(struct drm_connector *connector,
 	memset(info, 0, sizeof(struct msm_display_info));
 	info->intf_type = DRM_MODE_CONNECTOR_DSI;
 	info->num_of_h_tiles = display->ctrl_count;
-	for (i = 0; i < info->num_of_h_tiles; i++)
-		info->h_tile_instance[i] = display->ctrl[i].ctrl->cell_index;
+	for (i = 0; i < info->num_of_h_tiles; i++) {
+		/**
+		 * In a dual DPU configuration, the ctrl cell_index for the second DPU
+		 * can be 2 and 3.
+		 */
+		if (display->ctrl[i].ctrl->cell_index > 1)
+			info->h_tile_instance[i] = display->ctrl[i].ctrl->cell_index - 2;
+		else
+			info->h_tile_instance[i] = display->ctrl[i].ctrl->cell_index;
+	}
 
 	info->is_connected = display->is_active;
 
