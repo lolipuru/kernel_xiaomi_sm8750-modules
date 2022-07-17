@@ -270,6 +270,8 @@ struct dsi_panel {
 	u32 dsc_count;
 	u32 lm_count;
 
+	bool ctl_op_sync;
+
 	int panel_test_gpio;
 	int power_mode;
 	enum dsi_panel_physical_type panel_type;

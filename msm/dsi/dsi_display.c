@@ -4219,6 +4219,38 @@ static bool dsi_display_validate_panel_resources(struct dsi_display *display)
 	return true;
 }
 
+static void dsi_display_check_sync_mode(struct dsi_display *display)
+{
+	char *dsi_pri_clock_name = "qcom,dsi-select-clocks";
+	char *dsi_sec_clock_name = "qcom,dsi-select-sec-clocks";
+	int num_pri_clk;
+	int num_sec_clk;
+	const char *pri_clk;
+	const char *sec_clk;
+	int i;
+
+	num_pri_clk = dsi_display_get_clocks_count(display, dsi_pri_clock_name);
+	num_sec_clk = dsi_display_get_clocks_count(display, dsi_sec_clock_name);
+
+	if (num_pri_clk != num_sec_clk) {
+		display->panel->ctl_op_sync = false;
+		return;
+	}
+
+	for (i = 0; i < num_pri_clk; i++) {
+		dsi_display_get_clock_name(display, dsi_pri_clock_name, i, &pri_clk);
+		dsi_display_get_clock_name(display, dsi_sec_clock_name, i, &sec_clk);
+		/* Assuming clocks in same order in dtsi for primary and secondary display */
+		if (strcmp(pri_clk, sec_clk)) {
+			display->panel->ctl_op_sync = false;
+			return;
+		}
+	}
+
+	display->panel->ctl_op_sync = true;
+	DSI_INFO("sync mode detected\n");
+}
+
 static int dsi_display_res_init(struct dsi_display *display)
 {
 	int rc = 0;
@@ -4298,6 +4330,8 @@ static int dsi_display_res_init(struct dsi_display *display)
 		DSI_ERR("Failed to parse clock data, rc=%d\n", rc);
 		goto error_panel_put;
 	}
+
+	dsi_display_check_sync_mode(display);
 
 	/**
 	 * In trusted vm, the connectors will not be enabled
