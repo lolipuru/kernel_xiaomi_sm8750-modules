@@ -66,8 +66,8 @@ void dsi_display_manager_register(struct dsi_display *display)
 {
 	struct dsi_ctrl *ctrl;
 
-	if (display->ctrl_count > 1) {
-		DSI_DEBUG("split display case, no need of a mgr\n");
+	if (!display->panel->ctl_op_sync) {
+		DSI_DEBUG("no need of a mgr\n");
 		return;
 	}
 
@@ -79,10 +79,8 @@ void dsi_display_manager_register(struct dsi_display *display)
 	DSI_DEBUG("cell_index = %d\n", ctrl->cell_index);
 
 	/* mark the ctrl0 as master */
-	if (display->panel->ctl_op_sync) {
-		if (ctrl->cell_index == 0)
-			display->is_master = true;
-	}
+	if (ctrl->cell_index == 0)
+		display->is_master = true;
 
 	dsi_display_manager_view();
 }
@@ -91,8 +89,8 @@ void dsi_display_manager_unregister(struct dsi_display *display)
 {
 	struct dsi_ctrl *ctrl;
 
-	if (display->ctrl_count > 1) {
-		DSI_DEBUG("split display case, no need of a mgr\n");
+	if (!display->panel->ctl_op_sync) {
+		DSI_DEBUG("no need of a mgr\n");
 		return;
 	}
 
@@ -109,7 +107,8 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 	struct msm_dsi_phy *phy;
 	struct msm_dsi_phy *m_phy;
 	struct dsi_display *m_display;
-	int ret = 0;
+	struct dsi_display_ctrl *display_ctrl;
+	int ret = 0, i;
 
 	mutex_lock(&disp_mgr.disp_mgr_mutex);
 	phy = display->ctrl[0].phy;
@@ -196,7 +195,13 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 				 * the devicetree as these are calculated within the driver, but
 				 * as the display is not yet on it shouldn't cause any issues.
 				 */
-				dsi_phy_update_phy_timings(m_phy, &display->config, false);
+				display_for_each_ctrl(i, m_display) {
+					display_ctrl = &m_display->ctrl[i];
+					if (!display_ctrl)
+						continue;
+					dsi_phy_update_phy_timings(display_ctrl->phy,
+							&display->config, false);
+				}
 
 				ret = dsi_display_phy_enable(m_display, DSI_PLL_SOURCE_NATIVE);
 				if (ret) {
@@ -247,10 +252,15 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 			}
 		}
 		/* Program the slave pll when powering up or coming out of idle. */
-		ret = dsi_pll_program_slave(phy->pll);
-		if (ret) {
-			DSI_ERR("failed to program slave, rc %d\n", ret);
-			goto error;
+		display_for_each_ctrl(i, display) {
+			display_ctrl = &display->ctrl[i];
+			if (!display_ctrl)
+				continue;
+			ret = dsi_pll_program_slave(display_ctrl->phy->pll);
+			if (ret) {
+				DSI_ERR("failed to program slave %d\n", ret);
+				goto error;
+			}
 		}
 	}
 

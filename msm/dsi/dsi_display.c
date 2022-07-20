@@ -3147,8 +3147,6 @@ int dsi_display_phy_enable(struct dsi_display *display, enum dsi_phy_pll_source 
 	bool skip_op = is_skip_op_required(display);
 
 	m_ctrl = &display->ctrl[display->clk_master_idx];
-	if (display->ctrl_count > 1)
-		m_src = DSI_PLL_SOURCE_NATIVE;
 
 	rc = dsi_phy_enable(m_ctrl->phy, &display->config,
 			m_src, true, skip_op);
