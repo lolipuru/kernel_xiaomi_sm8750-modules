@@ -104,6 +104,9 @@ struct intf_wd_jitter_params {
  * @get_wd_ltj_status: Read WD long term jitter status.
  * @bind_pingpong_blk: enable/disable the connection with pingpong which will
  *                     feed pixels to this interface
+ * @setup_dpu_sync_prog_intf_offset : offset of slave DPU vsync from master DPU vsync
+ * @enable_dpu_sync_ctrl : setup timing engine enablement for slave DPU
+ *				when enabled in sync mode
  */
 struct sde_hw_intf_ops {
 	void (*setup_timing_gen)(struct sde_hw_intf *intf,
@@ -277,6 +280,18 @@ struct sde_hw_intf_ops {
 	 * Check if intf supports 32-bit registers for TE
 	 */
 	bool (*is_te_32bit_supported)(struct sde_hw_intf *intf);
+
+	/**
+	 * Setup the Sync programmable INTF offset between two DPU's
+	 */
+	void (*setup_dpu_sync_prog_intf_offset)(struct sde_hw_intf *intf,
+			const struct intf_prog_fetch *fetch);
+
+	/**
+	 * Setup timing engine enablement for slave DPU when enabled in sync mode
+	 */
+	void (*enable_dpu_sync_ctrl)(struct sde_hw_intf *intf,
+			u32 timing_en_mux_sel);
 };
 
 struct sde_hw_intf {

@@ -58,6 +58,7 @@
 #define DP_DHDR_MEM_POOL_1_DATA         0x470
 #define DP_DHDR_MEM_POOL_0_NUM_BYTES    0x47c
 #define DP_DHDR_MEM_POOL_1_NUM_BYTES    0x480
+#define MDP_DPU_SYNC_INTF_MUX           0x420
 
 #define DP_DHDR_MEM_POOL_0_DATA_4K      0x1004
 #define DP_DHDR_MEM_POOL_1_DATA_4K      0x2004

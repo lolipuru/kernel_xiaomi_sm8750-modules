@@ -67,6 +67,10 @@
 
 #define INTF_WD_TIMER_0_LTJ_CTL         0x200
 #define INTF_WD_TIMER_0_LTJ_CTL1        0x204
+
+#define INTF_DPU_SYNC_CTRL              0x190
+#define INTF_DPU_SYNC_PROG_INTF_OFFSET_EN   0x194
+
 #define INTF_VSYNC_TIMESTAMP_CTRL       0x210
 #define INTF_VSYNC_TIMESTAMP0           0x214
 #define INTF_VSYNC_TIMESTAMP1           0x218
@@ -556,6 +560,26 @@ static void sde_hw_intf_read_wd_ltj_ctl(struct sde_hw_intf *intf,
 	}
 }
 
+static void sde_hw_intf_setup_dpu_sync_prog_intf_offset(
+		struct sde_hw_intf *intf,
+		const struct intf_prog_fetch *fetch)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+	u32 fetch_start = fetch->enable ? fetch->fetch_start : 0;
+
+	SDE_REG_WRITE(c, INTF_DPU_SYNC_PROG_INTF_OFFSET_EN, fetch_start);
+}
+
+static void sde_hw_intf_enable_dpu_sync_ctrl(struct sde_hw_intf *intf,
+		u32 timing_en_mux_sel)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+	u32 dpu_sync_ctrl;
+
+	dpu_sync_ctrl = SDE_REG_READ(c, INTF_DPU_SYNC_CTRL);
+	dpu_sync_ctrl |= timing_en_mux_sel;
+	SDE_REG_WRITE(c, INTF_DPU_SYNC_CTRL, dpu_sync_ctrl);
+}
 static void sde_hw_intf_setup_vsync_source(struct sde_hw_intf *intf, u32 frame_rate)
 {
 	struct sde_hw_blk_reg_map *c;
@@ -1056,7 +1080,7 @@ static bool sde_hw_intf_is_te_32bit_supported(struct sde_hw_intf *intf)
 }
 
 static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
-		unsigned long cap)
+		unsigned long cap, unsigned long mdss_cap)
 {
 	ops->setup_timing_gen = sde_hw_intf_setup_timing_engine;
 	ops->setup_prg_fetch  = sde_hw_intf_setup_prg_fetch;
@@ -1110,6 +1134,12 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 	if (cap & (BIT(SDE_INTF_PANEL_VSYNC_TS) | BIT(SDE_INTF_MDP_VSYNC_TS)))
 		ops->get_vsync_timestamp = sde_hw_intf_get_vsync_timestamp;
 
+	if (mdss_cap & BIT(SDE_MDP_DUAL_DPU_SYNC)) {
+		ops->setup_dpu_sync_prog_intf_offset =
+			sde_hw_intf_setup_dpu_sync_prog_intf_offset;
+		ops->enable_dpu_sync_ctrl = sde_hw_intf_enable_dpu_sync_ctrl;
+	}
+
 	if (cap & BIT(SDE_INTF_WD_JITTER))
 		ops->configure_wd_jitter = sde_hw_intf_configure_wd_timer_jitter;
 
@@ -1141,7 +1171,7 @@ struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,
 	c->idx = idx;
 	c->cap = cfg;
 	c->mdss = m;
-	_setup_intf_ops(&c->ops, c->cap->features);
+	_setup_intf_ops(&c->ops, c->cap->features, m->mdp[0].features);
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);

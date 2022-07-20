@@ -271,6 +271,7 @@ struct sde_intr_irq_offsets {
  * @SDE_MDP_PERIPH_TOP_REMOVED Indicates if periph top0 block is removed
  * @SDE_MDP_TOP_PPB_SET_SIZE   Indicates if top block supports ppb size setting
  * @SDE_MDP_HW_FENCE_DIR_WRITE Indicates if hw supports hw-fence dir write
+ * @SDE_MDP_DUAL_DPU_SYNC  Indicates if Dpu Sync feature is supported
  * @SDE_MDP_MAX            Maximum value
  */
 enum {
@@ -286,6 +287,7 @@ enum {
 	SDE_MDP_PERIPH_TOP_0_REMOVED,
 	SDE_MDP_TOP_PPB_SET_SIZE,
 	SDE_MDP_HW_FENCE_DIR_WRITE,
+	SDE_MDP_DUAL_DPU_SYNC,
 	SDE_MDP_MAX
 };
 

@@ -923,6 +923,8 @@ struct msm_resource_caps_info {
  *			for dsi display)
  * @lm_count:		max layer mixer blocks used by display (only available
  *			for dsi display)
+ * @ctl_op_sync:        Indicates dual display panels are operating in sync mode
+ * @is_master:          Flag indicating the Master display which drives the displays in sync mode
  */
 struct msm_display_info {
 	int intf_type;
@@ -953,6 +955,8 @@ struct msm_display_info {
 
 	uint32_t dsc_count;
 	uint32_t lm_count;
+	bool ctl_op_sync;
+	bool is_master;
 };
 
 #define MSM_MAX_ROI	4
