@@ -132,6 +132,8 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 	if (phy->sync_en_refcount > 0)
 		goto not_first_enable;
 
+	SDE_EVT32(display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
+
 	if (display->is_master) {
 		if (type == DSI_DISPLAY_MGR_PHY_PWR) {
 			ret = dsi_display_phy_sw_reset(display);
@@ -264,8 +266,6 @@ error:
 	DSI_DEBUG("master: %d phy ref_cnt = %d m_phy ref_cnt = %d\n",
 			display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
 
-	SDE_EVT32(display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
-
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, type);
 
 	mutex_unlock(&disp_mgr.disp_mgr_mutex);
@@ -298,6 +298,7 @@ static int dsi_display_mgr_phy_control_disable(struct dsi_display *display,
 	if (!display->is_master)
 		m_phy->sync_en_refcount--;
 
+	SDE_EVT32(display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
 	/*
 	 * If the refcount is 0 and it is not master, disable current phy and
 	 * also check if it is safe to disable master since it was left enabled
@@ -313,8 +314,13 @@ static int dsi_display_mgr_phy_control_disable(struct dsi_display *display,
 			ret = dsi_display_phy_disable(display);
 			if (ret)
 				DSI_ERR("failed to disable slave, rc %d\n", ret);
-			/* Disable master phy if it was not being used */
-			if (m_phy->sync_en_refcount == 0) {
+			/*
+			 * Disable master phy if it was not being used. Rather than
+			 * checking the refcount as it can go to zero in case of idle,
+			 * it is more accurate to check status of the display with the
+			 * panel initialized flag.
+			 */
+			if (!m_display->panel->panel_initialized) {
 				ret = dsi_display_phy_disable(m_display);
 				if (ret)
 					DSI_ERR("failed to disable master, rc %d\n", ret);
@@ -350,8 +356,6 @@ static int dsi_display_mgr_phy_control_disable(struct dsi_display *display,
 not_last_disable:
 	DSI_DEBUG("master: %d phy ref_cnt = %d m_phy ref_cnt = %d\n",
 			display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
-
-	SDE_EVT32(display->is_master,  phy->sync_en_refcount, m_phy->sync_en_refcount);
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, type);
 
