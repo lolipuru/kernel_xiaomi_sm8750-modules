@@ -182,6 +182,20 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 					goto error;
 				}
 
+				/*
+				 * PHY timings are updated usually as part of display_set_mode.
+				 * In a use case when the slave PHY is turning on before the
+				 * master, display_set_mode wouldn't have been called for the
+				 * slave display. Therefore it is required to explicitly
+				 * call the update_phy_timings op on master controller before
+				 * enabling the master PHY.
+				 *
+				 * NOTE: These updated PHY timings may be slightly different from
+				 * the devicetree as these are calculated within the driver, but
+				 * as the display is not yet on it shouldn't cause any issues.
+				 */
+				dsi_phy_update_phy_timings(m_phy, &display->config, false);
+
 				ret = dsi_display_phy_enable(m_display, DSI_PLL_SOURCE_NATIVE);
 				if (ret) {
 					DSI_ERR("failed to enable master, rc %d\n", ret);

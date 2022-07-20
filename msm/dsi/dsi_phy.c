@@ -1037,8 +1037,9 @@ int dsi_phy_enable(struct msm_dsi_phy *phy,
 	phy->cfg.bit_clk_rate_hz = config->bit_clk_rate_hz;
 
 	/**
-	 * If PHY timing parameters are not present in panel dtsi file,
-	 * then calculate them in the driver
+	 * If PHY timing parameters have not yet been updated either through the panel
+	 * dtsi or through a previous call to calculate_timing_params, they need to be
+	 * updated before enabling PHY.
 	 */
 	if (!phy->cfg.is_phy_timing_present)
 		rc = phy->hw.ops.calculate_timing_params(&phy->hw,
@@ -1078,6 +1079,8 @@ int dsi_phy_update_phy_timings(struct msm_dsi_phy *phy,
 						 &phy->cfg.timing, use_mode_bit_clk);
 	if (rc)
 		DSI_PHY_ERR(phy, "failed to calculate phy timings %d\n", rc);
+	else
+		phy->cfg.is_phy_timing_present = true;
 
 	return rc;
 }
