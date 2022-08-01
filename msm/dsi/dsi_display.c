@@ -4159,6 +4159,9 @@ error:
 
 static bool dsi_display_validate_panel_resources(struct dsi_display *display)
 {
+	if (display->panel->ctl_op_sync && !display->is_master)
+		return true;
+
 	if (!is_sim_panel(display)) {
 		if (!display->panel->host_config.ext_bridge_mode &&
 				!gpio_is_valid(display->panel->reset_config.reset_gpio)) {
@@ -4243,6 +4246,8 @@ static int dsi_display_res_init(struct dsi_display *display)
 
 	display->panel->te_using_watchdog_timer |= display->sw_te_using_wd;
 
+	dsi_display_check_sync_mode(display);
+
 	if (!dsi_display_validate_panel_resources(display)) {
 		rc = -EINVAL;
 		goto error_panel_put;
@@ -4281,8 +4286,6 @@ static int dsi_display_res_init(struct dsi_display *display)
 		DSI_ERR("Failed to parse clock data, rc=%d\n", rc);
 		goto error_panel_put;
 	}
-
-	dsi_display_check_sync_mode(display);
 
 	/**
 	 * In trusted vm, the connectors will not be enabled
@@ -8304,7 +8307,7 @@ int dsi_display_prepare(struct dsi_display *display)
 		 * pre prepare since the regulator vote is already
 		 * taken care in splash resource init
 		 */
-		rc = dsi_panel_pre_prepare(display->panel);
+		rc = dsi_display_mgr_panel_pre_prepare(display);
 		if (rc) {
 			DSI_ERR("[%s] panel pre-prepare failed, rc=%d\n",
 					display->name, rc);
@@ -8397,7 +8400,7 @@ error_ctrl_clk_off:
 	(void)dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK, DSI_CLK_OFF);
 error_panel_post_unprep:
-	(void)dsi_panel_post_unprepare(display->panel);
+	(void)dsi_display_mgr_panel_post_unprepare(display);
 error:
 	mutex_unlock(&display->display_lock);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
@@ -9109,7 +9112,7 @@ int dsi_display_unprepare(struct dsi_display *display)
 	dsi_display_ctrl_isr_configure(display, false);
 
 	if (!display->poms_pending && !is_skip_op_required(display)) {
-		rc = dsi_panel_post_unprepare(display->panel);
+		rc = dsi_display_mgr_panel_post_unprepare(display);
 		if (rc)
 			DSI_ERR("[%s] panel post-unprepare failed, rc=%d\n",
 			       display->name, rc);

@@ -572,3 +572,69 @@ int dsi_display_mgr_phy_pll_toggle(void *priv, bool enable)
 	mutex_unlock(&disp_mgr.disp_mgr_mutex);
 	return rc;
 }
+
+int dsi_display_mgr_panel_pre_prepare(struct dsi_display *display)
+{
+	int rc = 0;
+	struct dsi_display *m_display;
+	struct dsi_display *s_display;
+
+	if (!display) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	if (!display->panel->ctl_op_sync)
+		return dsi_panel_pre_prepare(display->panel);
+
+	mutex_lock(&disp_mgr.disp_mgr_mutex);
+
+	if (display->panel->powered)
+		goto done;
+
+	m_display = display_manager_get_master();
+	s_display = display_manager_get_slave();
+
+	rc = dsi_panel_pre_prepare(m_display->panel);
+	if (rc) {
+		mutex_unlock(&disp_mgr.disp_mgr_mutex);
+		return rc;
+	}
+
+	m_display->panel->powered = true;
+	s_display->panel->powered = true;
+
+done:
+	mutex_unlock(&disp_mgr.disp_mgr_mutex);
+
+	return rc;
+}
+
+int dsi_display_mgr_panel_post_unprepare(struct dsi_display *display)
+{
+	int rc = 0;
+	struct dsi_display *m_display;
+	struct dsi_display *s_display;
+
+	if (!display) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	if (!display->panel->ctl_op_sync)
+		return dsi_panel_post_unprepare(display->panel);
+
+	mutex_lock(&disp_mgr.disp_mgr_mutex);
+
+	m_display = display_manager_get_master();
+	s_display = display_manager_get_slave();
+
+	display->panel->powered = false;
+
+	if (!m_display->panel->powered && !s_display->panel->powered)
+		rc = dsi_panel_post_unprepare(m_display->panel);
+
+	mutex_unlock(&disp_mgr.disp_mgr_mutex);
+
+	return rc;
+}

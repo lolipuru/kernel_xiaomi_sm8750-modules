@@ -33,4 +33,6 @@ int dsi_display_mgr_phy_idle_on(struct dsi_display *display);
 int dsi_display_mgr_phy_idle_off(struct dsi_display *display);
 int dsi_display_mgr_phy_configure(void *priv, bool commit);
 int dsi_display_mgr_phy_pll_toggle(void *priv, bool enable);
+int dsi_display_mgr_panel_pre_prepare(struct dsi_display *display);
+int dsi_display_mgr_panel_post_unprepare(struct dsi_display *display);
 #endif /* _DSI_DISPLAY_MANAGER_H_ */

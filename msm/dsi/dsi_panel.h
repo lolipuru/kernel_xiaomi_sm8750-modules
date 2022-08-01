@@ -274,6 +274,7 @@ struct dsi_panel {
 
 	int panel_test_gpio;
 	int power_mode;
+	bool powered;
 	enum dsi_panel_physical_type panel_type;
 
 	struct dsi_panel_ops panel_ops;

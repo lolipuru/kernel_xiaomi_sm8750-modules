@@ -334,7 +334,7 @@ static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
 	if (panel->host_config.ext_bridge_mode)
 		return 0;
 
-	if (!panel->pinctrl.pinctrl)
+	if (IS_ERR_OR_NULL(panel->pinctrl.pinctrl))
 		return 0;
 
 	if (enable)
@@ -493,6 +493,9 @@ static int dsi_panel_pinctrl_init(struct dsi_panel *panel)
 	int rc = 0;
 
 	if (panel->host_config.ext_bridge_mode)
+		return 0;
+
+	if (panel->ctl_op_sync && !strcmp(panel->type, "secondary"))
 		return 0;
 
 	/* TODO:  pinctrl is defined in dsi dt node */
