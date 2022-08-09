@@ -828,9 +828,7 @@ static int dp_ctrl_enable_stream_clocks(struct dp_ctrl_private *ctrl,
 		return -EINVAL;
 	}
 
-	pclk = dp_panel->pinfo.widebus_en ?
-		(dp_panel->pinfo.pixel_clk_khz >> 1) :
-		(dp_panel->pinfo.pixel_clk_khz);
+	pclk = dp_panel->pinfo.pixel_clk_khz / (dp_panel->pclk_factor);
 
 	dp_ctrl_set_clock_rate(ctrl, clk_name, clk_type, pclk);
 

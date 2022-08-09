@@ -33,6 +33,7 @@ struct intf_timing_params {
 	u32 underflow_clr;
 	u32 hsync_skew;
 	u32 v_front_porch_fixed;
+	u32 pclk_factor;
 	bool wide_bus_en;
 	bool compression_en;
 	u32 extra_dto_cycles;	/* for DP only */

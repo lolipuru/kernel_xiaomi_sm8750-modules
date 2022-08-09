@@ -157,6 +157,7 @@ struct dp_panel {
 	bool dsc_continuous_pps;
 	bool mst_state;
 	bool pclk_on;
+	u32 pclk_factor;
 
 	/* override debug option */
 	bool mst_hide;

@@ -260,8 +260,7 @@ static void dp_catalog_panel_config_msa_v500(struct dp_catalog_panel *panel,
 
 	DP_DEBUG("rate = %d\n", rate);
 
-	if (panel->widebus_en)
-		mvid <<= 1;
+	mvid = mvid * (panel->pclk_factor);
 
 	if (link_rate_hbr2 == rate)
 		nvid *= 2;

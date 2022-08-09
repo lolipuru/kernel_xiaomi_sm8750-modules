@@ -118,6 +118,7 @@ static void drm_mode_to_intf_timing_params(
 	}
 
 	timing->wide_bus_en = sde_encoder_is_widebus_enabled(phys_enc->parent);
+	timing->pclk_factor = sde_encoder_get_pclk_factor(phys_enc->parent);
 
 	/*
 	 * for DP, divide the horizonal parameters by 2 when
@@ -127,11 +128,11 @@ static void drm_mode_to_intf_timing_params(
 	if (phys_enc->hw_intf->cap->type == INTF_DP &&
 			(timing->wide_bus_en ||
 			(vid_enc->base.comp_ratio > MSM_DISPLAY_COMPRESSION_RATIO_NONE))) {
-		timing->width = timing->width >> 1;
-		timing->xres = timing->xres >> 1;
-		timing->h_back_porch = timing->h_back_porch >> 1;
-		timing->h_front_porch = timing->h_front_porch >> 1;
-		timing->hsync_pulse_width = timing->hsync_pulse_width >> 1;
+		timing->width = timing->width / (timing->pclk_factor);
+		timing->xres = timing->xres / (timing->pclk_factor);
+		timing->h_back_porch = timing->h_back_porch / (timing->pclk_factor);
+		timing->h_front_porch = timing->h_front_porch / (timing->pclk_factor);
+		timing->hsync_pulse_width = timing->hsync_pulse_width / (timing->pclk_factor);
 
 		if (vid_enc->base.comp_type == MSM_DISPLAY_COMPRESSION_DSC &&
 				(vid_enc->base.comp_ratio > MSM_DISPLAY_COMPRESSION_RATIO_NONE)) {

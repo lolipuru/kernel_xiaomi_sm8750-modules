@@ -239,6 +239,7 @@ struct dp_catalog_panel {
 
 	bool widebus_en;
 	struct dp_dsc_cfg_data dsc;
+	u32 pclk_factor;
 
 	int (*timing_cfg)(struct dp_catalog_panel *panel);
 	void (*config_hdr)(struct dp_catalog_panel *panel, bool en,

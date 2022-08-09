@@ -861,6 +861,7 @@ struct msm_mode_info {
 	struct msm_compression_info comp_info;
 	struct msm_roi_caps roi_caps;
 	bool wide_bus_en;
+	u32 pclk_factor;
 	u32 panel_mode_caps;
 	u32 pixel_format_caps;
 	u32 bpp;

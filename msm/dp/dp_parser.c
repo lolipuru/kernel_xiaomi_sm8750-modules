@@ -798,8 +798,12 @@ static void dp_parser_widebus(struct dp_parser *parser)
 	parser->has_widebus = of_property_read_bool(dev->of_node,
 			"qcom,widebus-enable");
 
+	parser->has_4ppc_enabled = of_property_read_bool(dev->of_node, "qcom,4ppc-enable");
+
 	DP_DEBUG("widebus parsing successful. widebus:%d\n",
 			parser->has_widebus);
+
+	DP_DEBUG("4ppc enablement : %d\n", parser->has_4ppc_enabled);
 }
 
 static int parse_lt_param(struct device *dev, u8 **ptr, char *property) {

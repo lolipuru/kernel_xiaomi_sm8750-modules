@@ -271,6 +271,7 @@ struct dp_parser {
 	bool fec_feature_enable;
 	bool dsc_continuous_pps;
 	bool has_widebus;
+	bool has_4ppc_enabled;
 	bool gpio_aux_switch;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;

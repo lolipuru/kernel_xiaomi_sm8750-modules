@@ -477,6 +477,7 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 	mode_info->vtotal = drm_mode->vtotal;
 
 	mode_info->wide_bus_en = dp_panel->widebus_en;
+	mode_info->pclk_factor = dp_panel->pclk_factor;
 
 	dp_disp->convert_to_dp_mode(dp_disp, dp_panel, drm_mode, &dp_mode);
 
