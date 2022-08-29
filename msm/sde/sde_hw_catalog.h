@@ -1056,6 +1056,7 @@ enum sde_danger_safe_lut_types {
  * @format_list: Pointer to list of supported formats
  * @virt_format_list: Pointer to list of supported formats for virtual planes
  * @in_rot_format_list: Pointer to list of supported formats for inline rotation
+ * @cac_format_list : Pointer to list of supported formats for CAC
  * @in_rot_maxdwnscale_rt_num: max downscale ratio for inline rotation
  *                                 rt clients - numerator
  * @in_rot_maxdwnscale_rt_denom: max downscale ratio for inline rotation
@@ -1122,6 +1123,7 @@ struct sde_sspp_sub_blks {
 	const struct sde_format_extended *format_list;
 	const struct sde_format_extended *virt_format_list;
 	const struct sde_format_extended *in_rot_format_list;
+	const struct sde_format_extended *cac_format_list;
 	u32 in_rot_maxdwnscale_rt_num;
 	u32 in_rot_maxdwnscale_rt_denom;
 	u32 in_rot_maxdwnscale_nrt;
@@ -1981,6 +1983,7 @@ struct sde_perf_cfg {
  * @inline_rot_restricted_formats       restricted formats for inline rotation
  * @dnsc_blur_filters        supported filters for downscale blur
  * @dnsc_blur_filter_count   supported filter count for downscale blur
+ * @cac_formats         supported formats for CAC
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
@@ -2104,6 +2107,7 @@ struct sde_mdss_cfg {
 	struct sde_format_extended *inline_rot_restricted_formats;
 	struct sde_dnsc_blur_filter_info *dnsc_blur_filters;
 	u32 dnsc_blur_filter_count;
+	struct sde_format_extended *cac_formats;
 
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;

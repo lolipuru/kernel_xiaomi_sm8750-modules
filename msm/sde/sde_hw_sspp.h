@@ -114,6 +114,12 @@ enum sde_sspp_ucsc_igc {
 	UCSC_IGC_MODE_PQ,
 };
 
+enum {
+	SDE_CAC_NONE = 0,
+	SDE_CAC_UNPACK,
+	SDE_CAC_FETCH
+};
+
 struct sde_hw_sharp_cfg {
 	u32 strength;
 	u32 edge_thr;

@@ -1824,6 +1824,9 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 			set_bit(SDE_PERF_SSPP_QOS_8LVL, &sspp->perf_features);
 		dma_count++;
 
+		if (sblk->cac_mode == SDE_CAC_UNPACK)
+			sblk->cac_format_list = sde_cfg->cac_formats;
+
 		/* Obtain sub block top, or maintain backwards compatibility */
 		if (props[0] && props[0]->exists[DMA_TOP_OFF])
 			sblk->top_off = PROP_VALUE_ACCESS(props[0]->values, DMA_TOP_OFF, 0);
@@ -4999,7 +5002,23 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 			in_rot_restricted_list_size);
 	}
 
+	if (sde_cfg->cac_version == SDE_SSPP_CAC_V2) {
+		sde_cfg->cac_formats = kcalloc(ARRAY_SIZE(cac_formats),
+			sizeof(struct sde_format_extended), GFP_KERNEL);
+		if (!sde_cfg->cac_formats) {
+			SDE_ERROR("failed to alloc cac format list\n");
+			rc = -ENOMEM;
+			goto free_in_rot_res;
+		}
+
+		index = sde_copy_formats(sde_cfg->cac_formats, ARRAY_SIZE(cac_formats),
+				0, cac_formats, ARRAY_SIZE(cac_formats));
+	}
+
 	return 0;
+
+free_in_rot_res:
+	kfree(sde_cfg->inline_rot_restricted_formats);
 free_in_rot:
 	kfree(sde_cfg->inline_rot_formats);
 free_wb_rot:
@@ -5664,6 +5683,7 @@ void sde_hw_catalog_deinit(struct sde_mdss_cfg *sde_cfg)
 	kfree(sde_cfg->wb_rot_formats);
 	kfree(sde_cfg->virt_vig_formats);
 	kfree(sde_cfg->inline_rot_formats);
+	kfree(sde_cfg->cac_formats);
 
 	kfree(sde_cfg->dnsc_blur_filters);
 

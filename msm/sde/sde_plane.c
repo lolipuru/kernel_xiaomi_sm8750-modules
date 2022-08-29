@@ -3982,6 +3982,18 @@ static void _sde_plane_setup_capabilities_blob(struct sde_plane *psde,
 	if (psde->pipe_hw && catalog->qseed_hw_rev)
 		sde_kms_info_add_keyint(info, "scaler_step_ver", catalog->qseed_hw_rev);
 
+	format_list = psde->pipe_sblk->cac_format_list;
+
+	if (psde->pipe_sblk->cac_mode == SDE_CAC_UNPACK && format_list) {
+		sde_kms_info_start(info, "cac_pixel_formats");
+		while (format_list->fourcc_format) {
+			sde_kms_info_append_format(info, format_list->fourcc_format,
+				format_list->modifier);
+			++format_list;
+		}
+		sde_kms_info_stop(info);
+	}
+
 	sde_kms_info_add_keyint(info, "max_linewidth",
 			psde->pipe_sblk->maxlinewidth);
 	sde_kms_info_add_keyint(info, "max_upscale",
