@@ -150,6 +150,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_FP16_UNMULT,
 	PLANE_PROP_UCSC_UNMULT,
 	PLANE_PROP_UCSC_ALPHA_DITHER,
+	PLANE_PROP_BG_ALPHA,
 
 	/* enum/bitmask properties */
 	PLANE_PROP_BLEND_OP,

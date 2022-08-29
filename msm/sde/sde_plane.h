@@ -439,4 +439,13 @@ void sde_plane_dump_input_fence(struct drm_plane *plane);
  * Returns: true if the input sw fence is signaled, otherwise false.
  */
 bool sde_plane_is_sw_fence_signaled(struct drm_plane *plane);
+
+/**
+ * sde_plane_property_is_dirty - check if property is dirty
+ * @plane_state: Pointer to drm plane state structure
+ * @property_idx: property index
+ */
+bool sde_plane_property_is_dirty(struct drm_plane_state *plane_state,
+		 uint32_t property_idx);
+
 #endif /* _SDE_PLANE_H_ */

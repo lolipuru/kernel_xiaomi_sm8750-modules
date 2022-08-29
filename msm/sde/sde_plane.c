@@ -3033,7 +3033,8 @@ static void _sde_plane_map_prop_to_dirty_bits(void)
 	plane_prop_array[PLANE_PROP_INFO] =
 	plane_prop_array[PLANE_PROP_ALPHA] =
 	plane_prop_array[PLANE_PROP_INPUT_FENCE] =
-	plane_prop_array[PLANE_PROP_BLEND_OP] = 0;
+	plane_prop_array[PLANE_PROP_BLEND_OP] =
+	plane_prop_array[PLANE_PROP_BG_ALPHA] = 0;
 
 	plane_prop_array[PLANE_PROP_FB_TRANSLATION_MODE] =
 		SDE_PLANE_DIRTY_FB_TRANSLATION_MODE;
@@ -4149,6 +4150,9 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		e_src_config, ARRAY_SIZE(e_src_config), 0,
 		PLANE_PROP_SRC_CONFIG);
 
+	msm_property_install_volatile_range(&psde->property_info, "bg_alpha",
+		0x0, 0, 255, 255, PLANE_PROP_BG_ALPHA);
+
 	if (psde->pipe_hw->ops.setup_solidfill)
 		msm_property_install_range(&psde->property_info, "color_fill",
 				0, 0, 0xFFFFFFFF, 0, PLANE_PROP_COLOR_FILL);
@@ -5193,4 +5197,14 @@ void sde_plane_add_data_to_minidump_va(struct drm_plane *plane)
 	pstate = to_sde_plane_state(plane->state);
 	sde_mini_dump_add_va_region("sde_plane", sizeof(*sde_plane), sde_plane);
 	sde_mini_dump_add_va_region("plane_state", sizeof(*pstate), pstate);
+}
+
+bool sde_plane_property_is_dirty(struct drm_plane_state *plane_state,
+		uint32_t property_idx)
+{
+	struct sde_plane_state *pstate = to_sde_plane_state(plane_state);
+	struct sde_plane *psde = to_sde_plane(plane_state->plane);
+
+	return msm_property_is_dirty(&psde->property_info,
+			&pstate->property_state, property_idx);
 }

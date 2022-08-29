@@ -746,14 +746,18 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 	uint32_t blend_op, fg_alpha, bg_alpha;
 	uint32_t blend_type;
 	struct sde_hw_mixer *lm = mixer->hw_lm;
+	struct drm_plane_state *plane_state = &pstate->base;
 
 	/* default to opaque blending */
 	fg_alpha = sde_plane_get_property(pstate, PLANE_PROP_ALPHA);
 	bg_alpha = 0xFF - fg_alpha;
+	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA))
+		bg_alpha = sde_plane_get_property(pstate, PLANE_PROP_BG_ALPHA);
 	blend_op = SDE_BLEND_FG_ALPHA_FG_CONST | SDE_BLEND_BG_ALPHA_BG_CONST;
 	blend_type = sde_plane_get_property(pstate, PLANE_PROP_BLEND_OP);
 
-	SDE_DEBUG("blend type:0x%x blend alpha:0x%x\n", blend_type, fg_alpha);
+	SDE_DEBUG("blend type:0x%x blend alpha:0x%x bg_alpha:0x%x\n",
+			blend_type, fg_alpha, bg_alpha);
 
 	switch (blend_type) {
 
