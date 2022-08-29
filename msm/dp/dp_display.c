@@ -3834,32 +3834,39 @@ bail:
 
 int dp_display_get_displays(struct drm_device *dev, void **displays, int count)
 {
-	int i;
+	int i, j;
 
 	if (!displays) {
 		DP_ERR("invalid data\n");
 		return -EINVAL;
 	}
 
-	for (i = 0; i < MAX_DP_ACTIVE_DISPLAY && i < count; i++) {
+	for (i = 0, j = 0; i < MAX_DP_ACTIVE_DISPLAY && j < count; i++) {
 		if (!g_dp_display[i])
 			break;
 
-		displays[i] = g_dp_display[i];
+		if (g_dp_display[i]->drm_dev == dev) {
+			displays[j] = g_dp_display[i];
+			j++;
+		}
 	}
 
-	return i;
+	return j;
 }
 
 int dp_display_get_num_of_displays(struct drm_device *dev)
 {
-	int i;
+	int i, j;
 
-	for (i = 0; i < MAX_DP_ACTIVE_DISPLAY; i++)
+	for (i = 0, j = 0; i < MAX_DP_ACTIVE_DISPLAY; i++) {
 		if (!g_dp_display[i])
 			break;
 
-	return i;
+		if (!dev || g_dp_display[i]->drm_dev == dev)
+			j++;
+	}
+
+	return j;
 }
 
 int dp_display_get_num_of_streams(struct drm_device *dev)
@@ -3870,6 +3877,9 @@ int dp_display_get_num_of_streams(struct drm_device *dev)
 	for (i = 0; i < MAX_DP_ACTIVE_DISPLAY; i++) {
 		if (!g_dp_display[i])
 			break;
+
+		if (g_dp_display[i]->drm_dev != dev)
+			continue;
 
 		dp = container_of(g_dp_display[i], struct dp_display_private, dp_display);
 
