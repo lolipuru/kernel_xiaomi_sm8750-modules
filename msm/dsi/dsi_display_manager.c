@@ -128,6 +128,7 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 	 * display from the list and enable it first.
 	 */
 
+	pm_runtime_get_sync(m_display->ctrl[0].ctrl->drm_dev->dev);
 	if (phy->sync_en_refcount > 0)
 		goto not_first_enable;
 
@@ -374,6 +375,8 @@ static int dsi_display_mgr_phy_control_disable(struct dsi_display *display,
 	}
 
 not_last_disable:
+	pm_runtime_put_sync(m_display->ctrl[0].ctrl->drm_dev->dev);
+
 	DSI_DEBUG("master: %d phy ref_cnt = %d m_phy ref_cnt = %d\n",
 			display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
 
