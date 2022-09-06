@@ -282,6 +282,9 @@ enum {
 	SSPP_SMART_DMA,
 	SSPP_MAX_PER_PIPE_BW,
 	SSPP_MAX_PER_PIPE_BW_HIGH,
+	SSPP_CAC_MODE,
+	SSPP_CAC_PARENT_REC,
+	SSPP_CAC_LM_PREF,
 	SSPP_PROP_MAX,
 };
 
@@ -713,6 +716,11 @@ static struct sde_prop_type sspp_prop[] = {
 		PROP_TYPE_U32_ARRAY},
 	{SSPP_MAX_PER_PIPE_BW_HIGH, "qcom,sde-max-per-pipe-bw-high-kbps", false,
 		PROP_TYPE_U32_ARRAY},
+	{SSPP_CAC_MODE, "qcom,sde-sspp-cac-mode", false, PROP_TYPE_U32_ARRAY},
+	{SSPP_CAC_PARENT_REC, "qcom,sde-sspp-parent-rec", false,
+		PROP_TYPE_BIT_OFFSET_ARRAY},
+	{SSPP_CAC_LM_PREF, "qcom,sde-sspp-cac-lm-pref", false,
+		PROP_TYPE_BIT_OFFSET_ARRAY},
 };
 
 static struct sde_prop_type vig_prop[] = {
@@ -2080,6 +2088,19 @@ static int _sde_sspp_setup_cmn(struct device_node *np,
 					sspp->xin_id, sblk->pixel_ram_size, sspp->clk_ctrl,
 					sde_cfg->mdp[0].clk_ctrls[sspp->clk_ctrl].reg_off,
 					sde_cfg->mdp[0].clk_ctrls[sspp->clk_ctrl].bit_off);
+		}
+
+		if (sde_cfg->cac_version == SDE_SSPP_CAC_V2 &&
+				props->exists[SSPP_CAC_MODE] &&
+				props->exists[SSPP_CAC_PARENT_REC]) {
+			sblk->cac_mode = PROP_VALUE_ACCESS(props->values, SSPP_CAC_MODE, i);
+			for (j = 0; j < SSPP_SUBBLK_COUNT_MAX; j++) {
+				sblk->cac_parent_rec[j] = PROP_BITVALUE_ACCESS(props->values,
+							SSPP_CAC_PARENT_REC, i, j);
+				sblk->cac_lm_pref[j] = PROP_BITVALUE_ACCESS(props->values,
+							SSPP_CAC_LM_PREF, i, j);
+			}
+			set_bit(SDE_SSPP_CAC_V2, &sspp->features);
 		}
 	}
 

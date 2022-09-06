@@ -330,6 +330,7 @@ enum {
  * @SDE_SSPP_UCSC_CSC        UCSC CSC color processing block support
  * @SDE_SSPP_UCSC_UNMULT     UCSC alpha unmult color processing block support
  * @SDE_SSPP_UCSC_ALPHA_DITHER UCSC alpha dither color processing block support
+ * @SDE_SSPP_CAC_V2          CAC v2 support
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -372,6 +373,7 @@ enum {
 	SDE_SSPP_UCSC_CSC,
 	SDE_SSPP_UCSC_UNMULT,
 	SDE_SSPP_UCSC_ALPHA_DITHER,
+	SDE_SSPP_CAC_V2,
 	SDE_SSPP_MAX
 };
 
@@ -1066,6 +1068,9 @@ enum sde_danger_safe_lut_types {
  * @in_rot_maxheight: max pre rotated height for inline rotation
  * @llcc_scid: scid for the system cache
  * @llcc_slice size: slice size of the system cache
+ * @cac_mode: supported cac mode for each sspp
+ * @cac_parent_rec: parent rec id for each sspp
+ * @cac_lm_pref: preferred lm for each sspp rec
  */
 struct sde_sspp_sub_blks {
 	u32 maxlinewidth;
@@ -1125,6 +1130,9 @@ struct sde_sspp_sub_blks {
 	u32 in_rot_maxheight;
 	int llcc_scid;
 	size_t llcc_slice_size;
+	int cac_mode;
+	u32 cac_parent_rec[SSPP_SUBBLK_COUNT_MAX];
+	u32 cac_lm_pref[SSPP_SUBBLK_COUNT_MAX];
 };
 
 /**
@@ -1881,6 +1889,7 @@ struct sde_perf_cfg {
  * @true_inline_rot_rev inline rotator feature revision
  * @dnsc_blur_rev       downscale blur HW block version
  * @hw_fence_rev        hw fence feature revision
+ * @cac_version        CAC version supported by the target
  * @mdss_count          number of valid MDSS HW blocks
  * @mdss                array of pointers to MDSS HW blocks
  * @mdss_hw_block_size  max offset of MDSS_HW block (0 offset), used for debug
@@ -1992,6 +2001,7 @@ struct sde_mdss_cfg {
 	u32 true_inline_rot_rev;
 	u32 dnsc_blur_rev;
 	u32 hw_fence_rev;
+	u32 cac_version;
 
 	/* HW Blocks */
 	u32 mdss_count;
