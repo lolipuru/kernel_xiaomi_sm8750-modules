@@ -5973,7 +5973,9 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	SDE_DEBUG("dsi_info->num_of_h_tiles %d\n", disp_info->num_of_h_tiles);
 
 	sde_enc->idle_pc_enabled = test_bit(SDE_FEATURE_IDLE_PC, sde_kms->catalog->features);
-	sde_enc->dpu_ctl_op_sync = disp_info->ctl_op_sync;
+
+	if (test_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_kms->catalog->mdp[0].features))
+		sde_enc->dpu_ctl_op_sync = disp_info->ctl_op_sync;
 
 	sde_enc->input_event_enabled = test_bit(SDE_FEATURE_TOUCH_WAKEUP,
 						sde_kms->catalog->features);
@@ -5993,13 +5995,13 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		u32 controller_id = disp_info->h_tile_instance[i];
 
 		if (disp_info->num_of_h_tiles > 1) {
-			if (i == 0 && disp_info->ctl_op_sync && !disp_info->is_master)
+			if (i == 0 && sde_enc->dpu_ctl_op_sync && !disp_info->is_master)
 				phys_params.split_role = DPU_SLAVE_ENC_ROLE_MASTER;
 			else if (i == 0)
 				phys_params.split_role = DPU_MASTER_ENC_ROLE_MASTER;
 			else
 				phys_params.split_role = ENC_ROLE_SLAVE;
-		} else if (disp_info->ctl_op_sync) {
+		} else if (sde_enc->dpu_ctl_op_sync) {
 			phys_params.split_role = disp_info->is_master ? DPU_MASTER_ENC_ROLE_MASTER
 					: DPU_SLAVE_ENC_ROLE_MASTER;
 		} else {
