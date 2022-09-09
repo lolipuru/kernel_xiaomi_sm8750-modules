@@ -4175,27 +4175,23 @@ static bool dsi_display_validate_panel_resources(struct dsi_display *display)
 
 static void dsi_display_check_sync_mode(struct dsi_display *display)
 {
-	char *dsi_pri_clock_name = "qcom,dsi-select-clocks";
 	char *dsi_sec_clock_name = "qcom,dsi-select-sec-clocks";
-	int num_pri_clk;
 	int num_sec_clk;
-	const char *pri_clk;
-	const char *sec_clk;
+	const char *m_clk[2] = {"pll_byte_mclk", "pll_dsi_mclk"};
+	const char *sec_clk[2];
 	int i;
 
-	num_pri_clk = dsi_display_get_clocks_count(display, dsi_pri_clock_name);
 	num_sec_clk = dsi_display_get_clocks_count(display, dsi_sec_clock_name);
 
-	if (num_pri_clk != num_sec_clk) {
+	if (num_sec_clk <= 0) {
 		display->panel->ctl_op_sync = false;
 		return;
 	}
 
-	for (i = 0; i < num_pri_clk; i++) {
-		dsi_display_get_clock_name(display, dsi_pri_clock_name, i, &pri_clk);
-		dsi_display_get_clock_name(display, dsi_sec_clock_name, i, &sec_clk);
-		/* Assuming clocks in same order in dtsi for primary and secondary display */
-		if (strcmp(pri_clk, sec_clk)) {
+	for (i = 0; i < num_sec_clk; i++) {
+		dsi_display_get_clock_name(display, dsi_sec_clock_name, i, &sec_clk[i]);
+		/* Assuming clocks are present in same order in dtsi */
+		if (strcmp(m_clk[i], sec_clk[i])) {
 			display->panel->ctl_op_sync = false;
 			return;
 		}

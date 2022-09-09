@@ -849,6 +849,13 @@ static struct dsi_pll_clk dsi1_phy_pll_out_byteclk = {
 	},
 };
 
+static struct dsi_pll_clk dsi_m_phy_pll_out_byteclk = {
+	.hw.init = &(struct clk_init_data){
+			.name = "dsi_m_phy_pll_out_byteclk",
+			.ops = &pll_byteclk_ops,
+	},
+};
+
 static struct dsi_pll_clk dsi0_phy_pll_out_dsiclk = {
 	.hw.init = &(struct clk_init_data){
 			.name = "dsi0_phy_pll_out_dsiclk",
@@ -859,6 +866,13 @@ static struct dsi_pll_clk dsi0_phy_pll_out_dsiclk = {
 static struct dsi_pll_clk dsi1_phy_pll_out_dsiclk = {
 	.hw.init = &(struct clk_init_data){
 			.name = "dsi1_phy_pll_out_dsiclk",
+			.ops = &pll_pclk_ops,
+	},
+};
+
+static struct dsi_pll_clk dsi_m_phy_pll_out_dsiclk = {
+	.hw.init = &(struct clk_init_data){
+			.name = "dsi_m_phy_pll_out_dsiclk",
 			.ops = &pll_pclk_ops,
 	},
 };
@@ -900,6 +914,8 @@ static struct dsi_pll_clk *dsi_pllcc_4nm[] = {
 	[MDSS_1_DSI0_PLL_DSICLK] = &mdss_1_dsi0_phy_pll_out_dsiclk,
 	[MDSS_1_DSI1_PLL_BYTECLK] = &mdss_1_dsi1_phy_pll_out_byteclk,
 	[MDSS_1_DSI1_PLL_DSICLK] = &mdss_1_dsi1_phy_pll_out_dsiclk,
+	[MDSS_0_DSIM_PLL_BYTECLK] = &dsi_m_phy_pll_out_byteclk,
+	[MDSS_0_DSIM_PLL_DSICLK] = &dsi_m_phy_pll_out_dsiclk,
 };
 
 int dsi_pll_clock_register_4nm(struct platform_device *pdev, struct dsi_pll_resource *pll_res)
@@ -907,7 +923,7 @@ int dsi_pll_clock_register_4nm(struct platform_device *pdev, struct dsi_pll_reso
 	int rc = 0, ndx;
 	struct clk *clk;
 	struct clk_onecell_data *clk_data;
-	int num_clks = 2, byteclk_idx, dsiclk_idx;
+	int num_clks = 4, byteclk_idx, dsiclk_idx;
 
 	if (!pdev || !pdev->dev.of_node || !pll_res || !pll_res->pll_base || !pll_res->phy_base) {
 		DSI_PLL_ERR(pll_res, "Invalid params\n");
@@ -968,6 +984,27 @@ int dsi_pll_clock_register_4nm(struct platform_device *pdev, struct dsi_pll_reso
 		goto clk_register_fail;
 	}
 	clk_data->clks[1] = clk;
+
+	if (ndx == 0) {
+		dsi_pllcc_4nm[MDSS_0_DSIM_PLL_BYTECLK]->priv = pll_res;
+		dsi_pllcc_4nm[MDSS_0_DSIM_PLL_DSICLK]->priv = pll_res;
+
+		clk = devm_clk_register(&pdev->dev, &dsi_pllcc_4nm[MDSS_0_DSIM_PLL_BYTECLK]->hw);
+		if (IS_ERR(clk)) {
+			DSI_PLL_ERR(pll_res, "mbyte clk registration failed\n");
+			rc = -EINVAL;
+			goto clk_register_fail;
+		}
+		clk_data->clks[2] = clk;
+
+		clk = devm_clk_register(&pdev->dev, &dsi_pllcc_4nm[MDSS_0_DSIM_PLL_DSICLK]->hw);
+		if (IS_ERR(clk)) {
+			DSI_PLL_ERR(pll_res, "mdsi clk registration failed\n");
+			rc = -EINVAL;
+			goto clk_register_fail;
+		}
+		clk_data->clks[3] = clk;
+	}
 
 	rc = of_clk_add_provider(pdev->dev.of_node,
 			of_clk_src_onecell_get, clk_data);
