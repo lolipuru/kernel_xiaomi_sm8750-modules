@@ -577,7 +577,12 @@ static void sde_hw_intf_enable_dpu_sync_ctrl(struct sde_hw_intf *intf,
 	u32 dpu_sync_ctrl;
 
 	dpu_sync_ctrl = SDE_REG_READ(c, INTF_DPU_SYNC_CTRL);
-	dpu_sync_ctrl |= timing_en_mux_sel;
+
+	if (timing_en_mux_sel)
+		dpu_sync_ctrl |= BIT(0);
+	else
+		dpu_sync_ctrl &= ~BIT(0);
+
 	SDE_REG_WRITE(c, INTF_DPU_SYNC_CTRL, dpu_sync_ctrl);
 }
 static void sde_hw_intf_setup_vsync_source(struct sde_hw_intf *intf, u32 frame_rate)

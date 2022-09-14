@@ -1128,6 +1128,7 @@ static void sde_encoder_phys_vid_single_vblank_wait(
 		struct sde_encoder_phys *phys_enc)
 {
 	int ret;
+	struct intf_status intf_status = {0};
 	struct sde_encoder_phys_vid *vid_enc
 					= to_sde_encoder_phys_vid(phys_enc);
 
@@ -1152,13 +1153,18 @@ static void sde_encoder_phys_vid_single_vblank_wait(
 		ret = _sde_encoder_phys_vid_wait_for_vblank(phys_enc, false);
 		if (ret) {
 			atomic_set(&phys_enc->pending_kickoff_cnt, 0);
-			SDE_ERROR_VIDENC(vid_enc,
-					"failure waiting for disable: %d\n",
-					ret);
-			SDE_EVT32(DRMID(phys_enc->parent),
+			if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_status) {
+				phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &intf_status);
+				ret = intf_status.is_en ? ret : 0;
+			}
+			if (ret) {
+				SDE_ERROR_VIDENC(vid_enc,
+					"failure waiting for disable: %d\n", ret);
+				SDE_EVT32(DRMID(phys_enc->parent),
 					phys_enc->hw_intf->idx - INTF_0, ret,
-					SDE_EVTLOG_FUNC_CASE2,
+					SDE_EVTLOG_FUNC_CASE2, intf_status.is_en,
 					SDE_EVTLOG_ERROR);
+			}
 		}
 		sde_encoder_phys_vid_control_vblank_irq(phys_enc, false);
 	}
@@ -1189,10 +1195,7 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 
 	if (WARN_ON(!phys_enc->hw_intf->ops.enable_timing))
 		return;
-	/* Master DPU takes care of disabling Slave DPU's timing engine in Interface sync mode */
-	else if (!sde_encoder_phys_vid_is_master(phys_enc) ||
-		(sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
-		sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)))
+	else if (!sde_encoder_phys_vid_is_master(phys_enc))
 		goto exit;
 
 	if (phys_enc->enable_state == SDE_ENC_DISABLED) {
@@ -1204,8 +1207,17 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 		goto exit;
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
+
+	/* Disconnect the sync mux, when suspend is requested on slave dpu */
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
+			sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc) &&
+			phys_enc->hw_intf->ops.enable_dpu_sync_ctrl)
+		phys_enc->hw_intf->ops.enable_dpu_sync_ctrl(phys_enc->hw_intf, 0);
+
+	/* Slave DPU timing engine is disabled */
 	phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 0);
 	sde_encoder_phys_inc_pending(phys_enc);
+
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
 	if (phys_enc->hw_intf->ops.reset_counter)
