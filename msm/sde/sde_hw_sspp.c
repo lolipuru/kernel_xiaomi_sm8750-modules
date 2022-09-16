@@ -1593,6 +1593,11 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 	if (sde_hw_sspp_multirect_enabled(c->cap))
 		c->ops.update_multirect = sde_hw_sspp_update_multirect;
 
+	if (test_bit(SDE_SSPP_CAC_V2, &features)) {
+		c->ops.setup_cac_ctrl = sde_hw_sspp_setup_cac;
+		c->ops.setup_img_size = sde_hw_sspp_setup_img_size;
+	}
+
 	if (test_bit(SDE_SSPP_SCALER_QSEED3, &features) ||
 			test_bit(SDE_SSPP_SCALER_QSEED3LITE, &features)) {
 		c->ops.setup_scaler = _sde_hw_sspp_setup_scaler3;
@@ -1604,6 +1609,10 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 					: SDE_SSPP_SCALER_QSEED3, c);
 		if (!ret)
 			c->ops.setup_scaler = reg_dmav1_setup_vig_qseed3;
+		else
+			c->ops.setup_scaler_cac =
+				test_bit(SDE_SSPP_CAC_V2, &features) ?
+				sde_hw_sspp_setup_scaler_cac : NULL;
 	}
 
 	if (test_bit(SDE_SSPP_MULTIRECT_ERROR, &features)) {
@@ -1645,14 +1654,6 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 	}
 	if (test_bit(SDE_SSPP_LINE_INSERTION, &features))
 		c->ops.setup_line_insertion = sde_hw_sspp_setup_line_insertion;
-
-	if (test_bit(SDE_SSPP_CAC_V2, &features)) {
-		c->ops.setup_cac_ctrl = sde_hw_sspp_setup_cac;
-		if (test_bit(SDE_SSPP_SCALER_QSEED3, &features) ||
-			test_bit(SDE_SSPP_SCALER_QSEED3LITE, &features))
-			c->ops.setup_scaler_cac = sde_hw_sspp_setup_scaler_cac;
-		c->ops.setup_img_size = sde_hw_sspp_setup_img_size;
-	}
 }
 
 static struct sde_sspp_cfg *_sspp_offset(enum sde_sspp sspp,

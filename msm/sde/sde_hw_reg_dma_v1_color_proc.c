@@ -3751,6 +3751,138 @@ void reg_dmav1_setup_scaler3lite_lut(
 	}
 }
 
+static int reg_dmav1_setup_cac(struct sde_hw_pipe *ctx,
+	struct sde_reg_dma_setup_ops_cfg *dma_write_cfg,
+	struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset, u32 op_mode)
+{
+	struct sde_hw_reg_dma_ops *dma_ops;
+	u32 preload_re, thresh_le_y, thresh_le_uv;
+	u32 phase_step_y_h, phase_step_y_v, phase_step_uv_h, phase_step_uv_v;
+	u32 dst_uv, dst_le_off, cache[4];
+	struct sde_hw_cac_cfg *cac_cfg = &scaler3_cfg->cac_cfg;
+	int rc = 0;
+
+	if (!ctx || !cac_cfg) {
+		DRM_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (!dma_ops) {
+		DRM_ERROR("invalid dma ops\n");
+		return -EINVAL;
+	}
+
+	phase_step_y_h = scaler3_cfg->phase_step_x[0] & 0xFFFFFF;
+	phase_step_y_v = scaler3_cfg->phase_step_y[0] & 0xFFFFFF;
+	phase_step_uv_h = scaler3_cfg->phase_step_x[1] & 0xFFFFFF;
+	phase_step_uv_v = scaler3_cfg->phase_step_y[1] & 0xFFFFFF;
+
+	if (cac_cfg->cac_mode == 0)
+		goto skip_cac;
+
+	phase_step_y_h |= (cac_cfg->cac_le_inc_skip_x[0] << 29) |
+				(cac_cfg->cac_phase_inc_first_x[0] << 28);
+	phase_step_y_v |= (cac_cfg->cac_le_inc_skip_y[0] << 29) |
+				(cac_cfg->cac_phase_inc_first_y[0] << 28) |
+				(cac_cfg->cac_re_inc_skip_y[0] << 30);
+	phase_step_uv_h |= (cac_cfg->cac_le_inc_skip_x[1] << 29) |
+				(cac_cfg->cac_phase_inc_first_x[1] << 28);
+	phase_step_uv_v |= (cac_cfg->cac_le_inc_skip_y[1] << 29) |
+				(cac_cfg->cac_phase_inc_first_y[1] << 28) |
+				(cac_cfg->cac_re_inc_skip_y[1] << 30);
+
+	op_mode |= (cac_cfg->cac_mode << 1);
+	op_mode |= (cac_cfg->uv_filter_cfg & 0x3) << 24;
+
+	preload_re = ((cac_cfg->cac_re_preload_y[1] & 0x7F) << 24) |
+			((cac_cfg->cac_re_preload_y[0] & 0x7F) << 8);
+
+	thresh_le_y = ((cac_cfg->cac_le_thr_y[0] & 0xFFFF) << 16) |
+			(cac_cfg->cac_le_thr_x[0] & 0xFFFF);
+
+	thresh_le_uv = ((cac_cfg->cac_le_thr_y[1] & 0xFFFF) << 16) |
+			(cac_cfg->cac_le_thr_x[1] & 0xFFFF);
+
+	dst_uv = ((cac_cfg->cac_dst_uv_h & 0xFFFF) << 16) |
+			(cac_cfg->cac_dst_uv_w & 0xFFFF);
+
+	dst_le_off = ((cac_cfg->cac_le_dst_v_offset & 0xFFFF) << 16) |
+			(cac_cfg->cac_le_dst_h_offset & 0xFFFF);
+
+	cache[0] = preload_re;
+	cache[1] = cac_cfg->cac_re_phase_init_y[0] & 0x1FFFFF;
+	cache[2] = cac_cfg->cac_re_phase_init_y[1] & 0x1FFFFF;
+	cache[3] = cac_cfg->cac_le_phase_init2_x[0];
+	REG_DMA_SETUP_OPS(*dma_write_cfg,
+		offset + 0xA0, cache, sizeof(cache), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting re phase failed ret %d\n", rc);
+		return rc;
+	}
+
+	cache[0] = cac_cfg->cac_le_phase_init2_y[0];
+	cache[1] = cac_cfg->cac_le_phase_init2_x[1];
+	cache[2] = cac_cfg->cac_le_phase_init2_y[1];
+	cache[3] = cac_cfg->cac_re_phase_init2_y[0];
+	REG_DMA_SETUP_OPS(*dma_write_cfg,
+		offset + 0xB0, cache, sizeof(cache), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting le phase failed ret %d\n", rc);
+		return rc;
+	}
+
+	cache[0] = cac_cfg->cac_re_phase_init2_y[1];
+	cache[1] = thresh_le_y;
+	cache[2] = thresh_le_uv;
+	cache[3] = (cac_cfg->cac_re_thr_y[0] & 0xFFFF) << 16;
+	REG_DMA_SETUP_OPS(*dma_write_cfg,
+		offset + 0xC0, cache, sizeof(cache), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting cac threshold failed ret %d\n", rc);
+		return rc;
+	}
+
+	cache[0] = (cac_cfg->cac_re_thr_y[1] & 0xFFFF) << 16;
+	cache[1] = dst_uv;
+	cache[2] = dst_le_off;
+	cache[3] = (cac_cfg->cac_re_dst_v_offset & 0xFFFF) << 16;
+	REG_DMA_SETUP_OPS(*dma_write_cfg,
+		offset + 0xD0, cache, sizeof(cache), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting dst size failed ret %d\n", rc);
+		return rc;
+	}
+
+skip_cac:
+	cache[0] = phase_step_y_h;
+	cache[1] = phase_step_y_v;
+	cache[2] = phase_step_uv_h;
+	cache[3] = phase_step_uv_v;
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg,
+		offset + 0x10, cache, sizeof(cache), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting phase failed ret %d\n", rc);
+		return rc;
+	}
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg,
+		offset + 0x4, &op_mode, sizeof(op_mode), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting opmode failed ret %d\n", rc);
+		return rc;
+	}
+
+	return 0;
+}
+
 static int reg_dmav1_setup_scaler3_de(struct sde_reg_dma_setup_ops_cfg *buf,
 	struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset, bool de_lpf,
 	u32 dpu_idx)
@@ -3927,19 +4059,6 @@ void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 		return;
 	}
 
-	cache[0] = scaler3_cfg->phase_step_x[0] & 0xFFFFFF;
-	cache[1] = scaler3_cfg->phase_step_y[0] & 0xFFFFFF;
-	cache[2] = scaler3_cfg->phase_step_x[1] & 0xFFFFFF;
-	cache[3] = scaler3_cfg->phase_step_y[1] & 0xFFFFFF;
-	REG_DMA_SETUP_OPS(dma_write_cfg,
-		offset + 0x10, cache, sizeof(cache),
-		REG_BLK_WRITE_SINGLE, 0, 0, 0);
-	rc = dma_ops->setup_payload(&dma_write_cfg);
-	if (rc) {
-		DRM_ERROR("setting phase failed ret %d\n", rc);
-		return;
-	}
-
 	REG_DMA_SETUP_OPS(dma_write_cfg,
 		offset + 0x20, &preload, sizeof(u32),
 		REG_SINGLE_WRITE, 0, 0, 0);
@@ -3985,12 +4104,9 @@ end:
 		}
 	}
 
-	REG_DMA_SETUP_OPS(dma_write_cfg,
-		offset + 0x4,
-		&op_mode, sizeof(op_mode), REG_SINGLE_WRITE, 0, 0, 0);
-	rc = dma_ops->setup_payload(&dma_write_cfg);
+	rc = reg_dmav1_setup_cac(ctx, &dma_write_cfg, scaler3_cfg, offset, op_mode);
 	if (rc) {
-		DRM_ERROR("setting opmode failed ret %d\n", rc);
+		DRM_ERROR("setting cac params failed ret %d\n", rc);
 		return;
 	}
 
