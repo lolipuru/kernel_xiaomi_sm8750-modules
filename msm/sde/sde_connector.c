@@ -1101,7 +1101,7 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
 
 	SDE_EVT32(connector->base.id, params.qsync_mode,
-		  params.qsync_update, rc);
+		  params.qsync_update, rc, DPUID(connector->dev));
 
 	return rc;
 }

@@ -3988,7 +3988,7 @@ static void sde_encoder_underrun_callback(struct drm_encoder *drm_enc,
 
 	SDE_ATRACE_BEGIN("encoder_underrun_callback");
 	atomic_inc(&phy_enc->underrun_cnt);
-	SDE_EVT32(DRMID(drm_enc), atomic_read(&phy_enc->underrun_cnt));
+	SDE_EVT32(DRMID(drm_enc), atomic_read(&phy_enc->underrun_cnt), DPUID(drm_enc->dev));
 	if (sde_enc->cur_master &&
 			sde_enc->cur_master->ops.get_underrun_line_count)
 		sde_enc->cur_master->ops.get_underrun_line_count(
@@ -4270,11 +4270,11 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0,
 				ctl->idx - CTL_0,
 				pending_flush.pending_flush_mask,
-				pend_ret_fence_cnt);
+				pend_ret_fence_cnt, DPUID(drm_enc->dev));
 	} else {
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0,
 				ctl->idx - CTL_0,
-				pend_ret_fence_cnt);
+				pend_ret_fence_cnt, DPUID(drm_enc->dev));
 	}
 }
 
@@ -4346,7 +4346,7 @@ void sde_encoder_helper_trigger_start(struct sde_encoder_phys *phys_enc)
 	ctl = phys_enc->hw_ctl;
 	if (ctl && ctl->ops.trigger_start) {
 		ctl->ops.trigger_start(ctl);
-		SDE_EVT32(DRMID(phys_enc->parent), ctl->idx - CTL_0);
+		SDE_EVT32(DRMID(phys_enc->parent), ctl->idx - CTL_0, DPUID(phys_enc->parent->dev));
 	}
 }
 
@@ -5161,7 +5161,7 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 	sde_crtc = to_sde_crtc(sde_enc->crtc);
 
 	SDE_DEBUG_ENC(sde_enc, "\n");
-	SDE_EVT32(DRMID(drm_enc));
+	SDE_EVT32(DRMID(drm_enc), DPUID(drm_enc->dev));
 
 	cur_master = sde_enc->cur_master;
 	is_cmd_mode = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE);
