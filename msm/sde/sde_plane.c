@@ -2865,8 +2865,10 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 
 	cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
 
-	if (cac_mode == SDE_CAC_NONE)
+	if (cac_mode == SDE_CAC_NONE) {
+		pstate->layout = SDE_LAYOUT_NONE;
 		return 0;
+	}
 
 	if (cac_mode != psde->pipe_sblk->cac_mode) {
 		SDE_ERROR_PLANE(psde, "invalid cac mode\n");
