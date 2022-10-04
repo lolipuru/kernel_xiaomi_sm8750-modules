@@ -3902,6 +3902,8 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	struct sde_connector *sde_conn;
 	struct sde_kms *sde_kms;
 	enum sde_intf_mode intf_mode;
+	struct drm_crtc *drm_crtc;
+	struct msm_drm_private *priv;
 	int ret, i = 0;
 
 	if (!drm_enc) {
@@ -3933,6 +3935,9 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		return;
 
 	intf_mode = sde_encoder_get_intf_mode(drm_enc);
+
+	drm_crtc = drm_enc->crtc;
+	priv = drm_crtc->dev->dev_private;
 
 	SDE_EVT32(DRMID(drm_enc));
 
@@ -3982,6 +3987,15 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		}
 		sde_encoder_resource_control(drm_enc,
 				SDE_ENC_RC_EVENT_PRE_STOP);
+	}
+
+	/*
+	 * wait for any pending vsync timestamp event to sf
+	 * to ensure vblank irq is disabled.
+	 */
+	if (drm_crtc && sde_enc->vblank_enabled) {
+		drm_crtc_vblank_off(drm_crtc);
+		kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
 	}
 
 	/*
