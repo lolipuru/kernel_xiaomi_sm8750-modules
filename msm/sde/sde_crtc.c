@@ -4295,6 +4295,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	struct drm_device *dev;
 	struct sde_kms *sde_kms;
 	struct sde_splash_display *splash_display;
+	struct sde_crtc_state *cstate;
 	bool cont_splash_enabled = false;
 	size_t i;
 
@@ -4317,6 +4318,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	SDE_DEBUG("crtc%d\n", crtc->base.id);
 
 	sde_crtc = to_sde_crtc(crtc);
+	cstate = to_sde_crtc_state(crtc->state);
 	dev = crtc->dev;
 
 	if (!sde_crtc->num_mixers) {
@@ -4335,6 +4337,12 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 
 		/* encoder will trigger pending mask now */
 		sde_encoder_trigger_kickoff_pending(encoder);
+	}
+
+	if (!cstate->rsc_update) {
+		drm_for_each_encoder_mask(encoder, dev, crtc->state->encoder_mask)
+			cstate->rsc_client = sde_encoder_get_rsc_client(encoder);
+		cstate->rsc_update = true;
 	}
 
 	/* update performance setting */
@@ -4417,7 +4425,6 @@ static void sde_crtc_atomic_begin(struct drm_crtc *crtc,
 static void sde_crtc_atomic_flush_common(struct drm_crtc *crtc,
 		struct drm_atomic_state *state)
 {
-	struct drm_encoder *encoder;
 	struct sde_crtc *sde_crtc;
 	struct drm_device *dev;
 	struct drm_plane *plane;
@@ -4511,15 +4518,6 @@ static void sde_crtc_atomic_flush_common(struct drm_crtc *crtc,
 
 	/* wait for acquire fences before anything else is done */
 	cstate->hwfence_in_fences_set = _sde_crtc_wait_for_fences(crtc);
-
-	if (!cstate->rsc_update) {
-		drm_for_each_encoder_mask(encoder, dev,
-				crtc->state->encoder_mask) {
-			cstate->rsc_client =
-				sde_encoder_get_rsc_client(encoder);
-		}
-		cstate->rsc_update = true;
-	}
 
 	/*
 	 * Final plane updates: Give each plane a chance to complete all
