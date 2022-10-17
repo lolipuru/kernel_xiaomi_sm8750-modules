@@ -3297,7 +3297,7 @@ static int dp_display_setup_colospace(struct dp_display *dp_display,
 	struct dp_display_private *dp;
 
 	if (!dp_display || !panel) {
-		pr_err("invalid input\n");
+		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
 
@@ -3351,7 +3351,7 @@ static int dp_display_init_aux_bridge(struct dp_display_private *dp)
 	struct device_node *bridge_node;
 
 	if (!dp->pdev->dev.of_node) {
-		pr_err("cannot find dev.of_node\n");
+		DP_ERR("cannot find dev.of_node\n");
 		rc = -ENODEV;
 		goto end;
 	}
@@ -3363,7 +3363,7 @@ static int dp_display_init_aux_bridge(struct dp_display_private *dp)
 
 	dp->aux_bridge = of_dp_aux_find_bridge(bridge_node);
 	if (!dp->aux_bridge) {
-		pr_err("failed to find dp aux bridge\n");
+		DP_ERR("failed to find dp aux bridge\n");
 		rc = -EPROBE_DEFER;
 		goto end;
 	}
@@ -3721,6 +3721,46 @@ static void dp_display_wakeup_phy_layer(struct dp_display *dp_display,
 		hpd->wakeup_phy(hpd, wakeup);
 }
 
+static int dp_display_get_display_type(struct dp_display *dp_display,
+		const char **display_type)
+{
+	struct dp_display_private *dp;
+
+	if (!dp_display || !display_type) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	*display_type = dp->parser->display_type;
+
+	return 0;
+}
+
+static int dp_display_mst_get_fixed_topology_display_type(
+		struct dp_display *dp_display, u32 strm_id,
+		const char **display_type)
+{
+	struct dp_display_private *dp;
+
+	if (!dp_display || !display_type) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	if (strm_id >= DP_STREAM_MAX) {
+		DP_ERR("invalid stream id:%d\n", strm_id);
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	*display_type = dp->parser->mst_fixed_display_type[strm_id];
+
+	return 0;
+}
+
 static int dp_display_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -3736,7 +3776,7 @@ static int dp_display_probe(struct platform_device *pdev)
 
 	index = dp_display_get_num_of_displays(NULL);
 	if (index >= MAX_DP_ACTIVE_DISPLAY) {
-		pr_err("exceeds max dp count\n");
+		DP_ERR("exceeds max dp count\n");
 		rc = -EINVAL;
 		goto bail;
 	}
@@ -3818,6 +3858,9 @@ static int dp_display_probe(struct platform_device *pdev)
 					dp_display_get_available_dp_resources;
 	dp_display->clear_reservation = dp_display_clear_reservation;
 	dp_display->get_mst_pbn_div = dp_display_get_mst_pbn_div;
+	dp_display->get_display_type = dp_display_get_display_type;
+	dp_display->mst_get_fixed_topology_display_type =
+				dp_display_mst_get_fixed_topology_display_type;
 
 	rc = component_add(&pdev->dev, &dp_display_comp_ops);
 	if (rc) {
