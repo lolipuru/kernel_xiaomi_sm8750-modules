@@ -583,7 +583,16 @@ static void sde_hw_intf_enable_dpu_sync_ctrl(struct sde_hw_intf *intf,
 	else
 		dpu_sync_ctrl &= ~BIT(0);
 
-	SDE_REG_WRITE(c, INTF_DPU_SYNC_CTRL, dpu_sync_ctrl);
+	if (timing_en_mux_sel) {
+		SDE_REG_WRITE(c, INTF_DPU_SYNC_CTRL, dpu_sync_ctrl);
+	} else {
+		SDE_REG_WRITE(c, INTF_TIMING_ENGINE_EN, 0x1);
+		/* make sure Slave DPU timing engine is enabled */
+		wmb();
+		SDE_REG_WRITE(c, INTF_DPU_SYNC_CTRL, dpu_sync_ctrl);
+		/* make sure Slave DPU timing engine is unlinked from Master DPU */
+		wmb();
+	}
 }
 static void sde_hw_intf_setup_vsync_source(struct sde_hw_intf *intf, u32 frame_rate)
 {
