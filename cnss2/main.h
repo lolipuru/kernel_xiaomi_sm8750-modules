@@ -592,6 +592,8 @@ struct cnss_plat_data {
 	char firmware_name[MAX_FIRMWARE_NAME_LEN];
 	char fw_fallback_name[MAX_FIRMWARE_NAME_LEN];
 #ifndef CONFIG_DISABLE_CNSS_SRAM_DUMP
+	u32 sram_dump_start_addr;
+	u32 sram_dump_size;
 	u8 *sram_dump;
 #endif
 	struct completion rddm_complete;

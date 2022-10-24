@@ -4880,8 +4880,19 @@ static void cnss_sram_dump_init(struct cnss_plat_data *plat_priv)
 static void cnss_sram_dump_init(struct cnss_plat_data *plat_priv)
 {
 	if (plat_priv->device_id == QCA6490_DEVICE_ID &&
-	    cnss_get_host_build_type() == QMI_HOST_BUILD_TYPE_PRIMARY_V01)
-		plat_priv->sram_dump = kcalloc(SRAM_DUMP_SIZE, 1, GFP_KERNEL);
+	    cnss_get_host_build_type() == QMI_HOST_BUILD_TYPE_PRIMARY_V01) {
+		plat_priv->sram_dump_start_addr = SRAM_START;
+		plat_priv->sram_dump_size = SRAM_DUMP_SIZE;
+	} else if (plat_priv->device_id == PEACH_DEVICE_ID) {
+		plat_priv->sram_dump_start_addr = SRAM_START;
+		plat_priv->sram_dump_size = PEACH_SRAM_SIZE;
+	}
+
+	/* Postpone sram_dump allocation to when it is required.
+	 *
+	 * Now it is allocated in cnss_pci_dump_sram() for PCI, and only freed
+	 * in cnss_sram_dump_deinit().
+	 */
 }
 #endif
 
@@ -4996,9 +5007,11 @@ static void cnss_sram_dump_deinit(struct cnss_plat_data *plat_priv)
 #else
 static void cnss_sram_dump_deinit(struct cnss_plat_data *plat_priv)
 {
-	if (plat_priv->device_id == QCA6490_DEVICE_ID &&
-	    cnss_get_host_build_type() == QMI_HOST_BUILD_TYPE_PRIMARY_V01)
-		kfree(plat_priv->sram_dump);
+	/* Free sram_dump, if it was allocated */
+	if (plat_priv->sram_dump) {
+		vfree(plat_priv->sram_dump);
+		plat_priv->sram_dump = NULL;
+	}
 }
 #endif
 
