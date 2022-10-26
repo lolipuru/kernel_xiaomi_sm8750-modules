@@ -118,6 +118,10 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 	 * to master.
 	 */
 	m_display = display_manager_get_master();
+	if (!m_display) {
+		ret = -EINVAL;
+		goto error_display_get;
+	}
 	m_phy = m_display->ctrl[0].phy;
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, type);
@@ -282,6 +286,7 @@ error:
 	DSI_DEBUG("master: %d phy ref_cnt = %d m_phy ref_cnt = %d\n",
 			display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
 
+error_display_get:
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, type);
 
 	mutex_unlock(&disp_mgr.disp_mgr_mutex);
@@ -302,9 +307,16 @@ static int dsi_display_mgr_phy_control_disable(struct dsi_display *display,
 
 	mutex_lock(&disp_mgr.disp_mgr_mutex);
 
-	phy = display->ctrl[0].phy;
 	m_display = display_manager_get_master();
+	s_display = display_manager_get_slave();
+	if (!m_display || !s_display) {
+		ret = -EINVAL;
+		goto error_display_get;
+	}
+
+	phy = display->ctrl[0].phy;
 	m_phy = m_display->ctrl[0].phy;
+	s_phy = s_display->ctrl[0].phy;
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, type);
 
@@ -360,8 +372,6 @@ static int dsi_display_mgr_phy_control_disable(struct dsi_display *display,
 		}
 	} else {
 		/* Disable for the master only if the slave is already disabled. */
-		s_display = display_manager_get_slave();
-		s_phy = s_display->ctrl[0].phy;
 		if (s_phy->sync_en_refcount == 0) {
 			if (type == DSI_DISPLAY_MGR_PHY_PWR) {
 				ret = dsi_display_phy_disable(display);
@@ -379,6 +389,7 @@ not_last_disable:
 	DSI_DEBUG("master: %d phy ref_cnt = %d m_phy ref_cnt = %d\n",
 			display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
 
+error_display_get:
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, type);
 
 	mutex_unlock(&disp_mgr.disp_mgr_mutex);
@@ -475,6 +486,10 @@ int dsi_display_mgr_phy_configure(void *priv, bool commit)
 	mutex_lock(&disp_mgr.disp_mgr_mutex);
 
 	m_display = display_manager_get_master();
+	if (!m_display) {
+		mutex_unlock(&disp_mgr.disp_mgr_mutex);
+		return -EINVAL;
+	}
 
 	/* Get master ctrl and current ctrl */
 	m_ctrl = &m_display->ctrl[display->clk_master_idx];
@@ -549,6 +564,10 @@ int dsi_display_mgr_phy_pll_toggle(void *priv, bool enable)
 	mutex_lock(&disp_mgr.disp_mgr_mutex);
 
 	m_display = display_manager_get_master();
+	if (!m_display) {
+		rc = -EINVAL;
+		goto error_display_get;
+	}
 
 	/* Get master ctrl */
 	m_ctrl = &m_display->ctrl[display->clk_master_idx];
@@ -581,6 +600,7 @@ int dsi_display_mgr_phy_pll_toggle(void *priv, bool enable)
 		}
 	}
 
+error_display_get:
 	mutex_unlock(&disp_mgr.disp_mgr_mutex);
 	return rc;
 }
@@ -606,6 +626,10 @@ int dsi_display_mgr_panel_pre_prepare(struct dsi_display *display)
 
 	m_display = display_manager_get_master();
 	s_display = display_manager_get_slave();
+	if (!m_display || !s_display) {
+		mutex_unlock(&disp_mgr.disp_mgr_mutex);
+		return -EINVAL;
+	}
 
 	rc = dsi_panel_pre_prepare(m_display->panel);
 	if (rc) {
@@ -640,12 +664,17 @@ int dsi_display_mgr_panel_post_unprepare(struct dsi_display *display)
 
 	m_display = display_manager_get_master();
 	s_display = display_manager_get_slave();
+	if (!m_display || !s_display) {
+		rc = -EINVAL;
+		goto error_display_get;
+	}
 
 	display->panel->powered = false;
 
 	if (!m_display->panel->powered && !s_display->panel->powered)
 		rc = dsi_panel_post_unprepare(m_display->panel);
 
+error_display_get:
 	mutex_unlock(&disp_mgr.disp_mgr_mutex);
 
 	return rc;
