@@ -216,7 +216,8 @@ void sde_plane_setup_src_split_order(struct drm_plane *plane,
 	psde = to_sde_plane(plane);
 	pstate = to_sde_plane_state(plane->state);
 
-	if (sde_plane_in_cac_fetch_mode(pstate)) {
+	if (sde_plane_in_cac_fetch_mode(pstate) &&
+		((rect_mode == SDE_SSPP_RECT_0) || (rect_mode == SDE_SSPP_RECT_1))) {
 		/*
 		 * pipe to lm configuration is currently fixed during cac
 		 * usecases. cac_lm_pref can be used to set the preferred
