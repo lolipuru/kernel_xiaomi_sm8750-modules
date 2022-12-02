@@ -256,15 +256,19 @@ enum synx_client_id {
 	SYNX_CLIENT_MAX = SYNX_HW_FENCE_CLIENT_END,
 };
 
+struct synx_ops;
+
 /**
  * struct synx_session - Client session identifier
  *
  * @type   : Session type
  * @client : Pointer to client session
+ * @ops    : Pointer to synx operations
  */
 struct synx_session {
 	u32 type;
 	void *client;
+	const struct synx_ops *ops;
 };
 
 /**
@@ -409,6 +413,35 @@ struct synx_callback_params {
 	void *userdata;
 	synx_user_callback_t cancel_cb_func;
 	u64 timeout_ms;
+};
+
+/**
+ * struct synx_ops - Synx operations
+ *
+ * @uninitialize        : destroys the client session
+ * @create              : creates synx object
+ * @async_wait          : registers a callback with synx object
+ * @cancel_async_wait   : de-registers a callback with synx oject
+ * @signal              : signals synx object
+ * @merge               : merges multiple synx objects
+ * @wait                : waits for a synx object synchronously
+ * @get_status          : returns status of synx object
+ * @import              : imports (looks up) synx object from given handle/fence
+ * @get_fence           : gets native fence backing synx object
+ * @release             : releases synx object
+ */
+struct synx_ops {
+	int (*uninitialize)(struct synx_session *session);
+	int (*create)(struct synx_session *session, struct synx_create_params *params);
+	int (*async_wait)(struct synx_session *session, struct synx_callback_params *params);
+	int (*cancel_async_wait)(struct synx_session *session, struct synx_callback_params *params);
+	int (*signal)(struct synx_session *session, u32 h_synx, enum synx_signal_status status);
+	int (*merge)(struct synx_session *session, struct synx_merge_params *params);
+	int (*wait)(struct synx_session *session, u32 h_synx, u64 timeout_ms);
+	int (*get_status)(struct synx_session *session, u32 h_synx);
+	int (*import)(struct synx_session *session, struct synx_import_params *params);
+	void *(*get_fence)(struct synx_session *session, u32 h_synx);
+	int (*release)(struct synx_session *session, u32 h_synx);
 };
 
 /* Kernel APIs */
