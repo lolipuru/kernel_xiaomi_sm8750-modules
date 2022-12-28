@@ -3924,7 +3924,11 @@ static void _sde_encoder_setup_dither(struct sde_encoder_phys *phys)
 
 	/* disable dither for 10 bpp or 10bpc dsc config or 30bpp without dsc */
 	if (bpp == 10 || bpc == 10 || sde_enc->mode_info.bpp == 30) {
-		phys->hw_pp->ops.setup_dither(phys->hw_pp, NULL, 0);
+		num_lm = sde_rm_topology_get_num_lm(&sde_kms->rm, topology);
+		for (i = 0; i < num_lm; i++) {
+			hw_pp = sde_enc->hw_pp[i];
+			phys->hw_pp->ops.setup_dither(hw_pp, NULL, 0);
+		}
 		return;
 	}
 
