@@ -6031,7 +6031,7 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 	node = pdev->dev.of_node;
 	if (boot_disp->boot_disp_en) {
 		/* The panel name should be same as UEFI name index */
-		panel_node = of_find_node_by_name(mdp_node, boot_disp->name);
+		panel_node = of_find_node_by_name(NULL, boot_disp->name);
 		if (!panel_node)
 			DSI_WARN("%s panel_node %s not found\n", display->display_type,
 					boot_disp->name);
