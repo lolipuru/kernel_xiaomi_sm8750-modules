@@ -51,6 +51,18 @@ static inline bool sde_encoder_phys_shd_is_master(struct sde_encoder_phys *phys_
 	return true;
 }
 
+static void sde_encoder_phys_shd_underrun_irq(void *arg, int irq_idx)
+{
+	struct sde_encoder_phys *phys_enc = arg;
+
+	if (!phys_enc)
+		return;
+
+	if (phys_enc->parent_ops.handle_underrun_virt)
+		phys_enc->parent_ops.handle_underrun_virt(phys_enc->parent,
+			phys_enc);
+}
+
 static void sde_encoder_phys_shd_vblank_irq(void *arg, int irq_idx)
 {
 	struct sde_encoder_phys *phys_enc = arg;
@@ -133,6 +145,10 @@ static inline void _sde_encoder_phys_shd_setup_irq_hw_idx(struct sde_encoder_phy
 
 	irq = &phys_enc->irq[INTR_IDX_VSYNC];
 
+	if (irq->irq_idx < 0)
+		irq->hw_idx = phys_enc->intf_idx;
+
+	irq = &phys_enc->irq[INTR_IDX_UNDERRUN];
 	if (irq->irq_idx < 0)
 		irq->hw_idx = phys_enc->intf_idx;
 }
@@ -586,6 +602,11 @@ static inline void sde_encoder_phys_shd_destroy(struct sde_encoder_phys *phys_en
 static inline void sde_encoder_phys_shd_irq_ctrl(struct sde_encoder_phys *phys_enc, bool enable)
 {
 	sde_encoder_phys_shd_control_vblank_irq(phys_enc, enable);
+
+	if (enable)
+		sde_encoder_helper_register_irq(phys_enc, INTR_IDX_UNDERRUN);
+	else
+		sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_UNDERRUN);
 }
 
 static inline int sde_encoder_phys_shd_get_line_count(struct sde_encoder_phys *phys)
@@ -668,6 +689,12 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id, void
 	irq->intr_type = SDE_IRQ_TYPE_INTF_VSYNC;
 	irq->intr_idx = INTR_IDX_VSYNC;
 	irq->cb.func = sde_encoder_phys_shd_vblank_irq;
+
+	irq = &phys_enc->irq[INTR_IDX_UNDERRUN];
+	irq->name = "underrun";
+	irq->intr_type = SDE_IRQ_TYPE_INTF_UNDER_RUN;
+	irq->intr_idx = INTR_IDX_UNDERRUN;
+	irq->cb.func = sde_encoder_phys_shd_underrun_irq;
 
 	for (i = 0; i < INTR_IDX_MAX; i++) {
 		irq = &phys_enc->irq[i];
