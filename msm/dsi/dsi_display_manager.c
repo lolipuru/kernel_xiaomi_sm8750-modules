@@ -679,3 +679,42 @@ error_display_get:
 
 	return rc;
 }
+
+int dsi_display_config_mgr_for_cont_splash(struct dsi_display *display)
+{
+	int rc = 0;
+	struct dsi_display *m_display;
+	struct dsi_display_ctrl *m_ctrl;
+	struct dsi_pll_resource *pll_res;
+
+	if (!display) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	if (!display->panel->ctl_op_sync)
+		return 0;
+
+	mutex_lock(&disp_mgr.disp_mgr_mutex);
+
+	m_display = display_manager_get_master();
+	if (!m_display) {
+		rc = -EINVAL;
+		goto error;
+	}
+
+	m_ctrl = &m_display->ctrl[m_display->clk_master_idx];
+	pll_res = m_ctrl->phy->pll;
+	if (!pll_res) {
+		DSI_ERR("[%s] PLL res not found\n", display->name);
+		rc = -EINVAL;
+		goto error;
+	}
+
+	pll_res->refcount++;
+
+	display->panel->powered = true;
+error:
+	mutex_unlock(&disp_mgr.disp_mgr_mutex);
+	return rc;
+}

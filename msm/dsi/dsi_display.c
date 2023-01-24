@@ -8705,6 +8705,8 @@ int dsi_display_enable(struct dsi_display *display)
 
 		dsi_display_config_ctrl_for_cont_splash(display);
 
+		dsi_display_config_mgr_for_cont_splash(display);
+
 		rc = dsi_display_splash_res_cleanup(display);
 		if (rc) {
 			DSI_ERR("Continuous splash res cleanup failed, rc=%d\n",
