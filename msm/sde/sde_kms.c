@@ -70,7 +70,7 @@
 /* defines for secure channel call */
 #define MEM_PROTECT_SD_CTRL_SWITCH 0x18
 #define MDP_DEVICE_ID            0x1A
-
+#define MDP_MASTER_CORE          0
 #define DEMURA_REGION_NAME_MAX      32
 
 EXPORT_TRACEPOINT_SYMBOL(tracing_mark_write);
@@ -894,7 +894,8 @@ static int _sde_kms_splash_mem_put(struct sde_kms *sde_kms,
 	struct msm_mmu *mmu = NULL;
 	int rc = 0;
 
-	if (!sde_kms || !sde_kms->aspace[0] || !sde_kms->aspace[0]->mmu) {
+	if (!sde_kms || !sde_kms->aspace[0] || !sde_kms->aspace[0]->mmu ||
+		!sde_kms->dev || !sde_kms->dev->primary) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -913,11 +914,13 @@ static int _sde_kms_splash_mem_put(struct sde_kms *sde_kms,
 	if (!splash->ref_cnt) {
 		mmu->funcs->one_to_one_unmap(mmu, splash->splash_buf_base,
 				splash->splash_buf_size);
-		rc = _sde_kms_release_shared_buffer(splash->splash_buf_base,
+		if (sde_kms->dev->primary->index == MDP_MASTER_CORE) {
+			rc = _sde_kms_release_shared_buffer(splash->splash_buf_base,
 				splash->splash_buf_size, splash->ramdump_base,
 				splash->ramdump_size);
-		splash->splash_buf_base = 0;
-		splash->splash_buf_size = 0;
+			splash->splash_buf_base = 0;
+			splash->splash_buf_size = 0;
+		}
 	}
 
 	return rc;
