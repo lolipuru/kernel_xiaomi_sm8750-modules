@@ -1922,13 +1922,6 @@ skip_edid:
 	dp_panel->dsc_feature_enable = panel->parser->dsc_feature_enable;
 	dp_panel->fec_feature_enable = panel->parser->fec_feature_enable;
 
-	if ((dp_panel->widebus_en) && (panel->parser->has_4ppc_enabled))
-		dp_panel->pclk_factor = 4;
-	else if (dp_panel->widebus_en)
-		dp_panel->pclk_factor = 2;
-	else
-		dp_panel->pclk_factor = 1;
-
 	dp_panel->fec_en = false;
 	dp_panel->dsc_en = false;
 
@@ -1939,6 +1932,14 @@ skip_edid:
 		if (dp_panel->dsc_feature_enable && dp_panel->fec_en)
 			dp_panel_read_sink_dsc_caps(dp_panel);
 	}
+
+	if ((dp_panel->dsc_en) && (dp_panel->widebus_en)
+				&& (panel->parser->has_4ppc_enabled))
+		dp_panel->pclk_factor = 4;
+	else if (dp_panel->widebus_en)
+		dp_panel->pclk_factor = 2;
+	else
+		dp_panel->pclk_factor = 1;
 
 	DP_INFO("fec_en=%d, dsc_en=%d, widebus_en=%d\n", dp_panel->fec_en,
 			dp_panel->dsc_en, dp_panel->widebus_en);
