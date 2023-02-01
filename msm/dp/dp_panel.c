@@ -1642,6 +1642,14 @@ static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 				panel->vscext_chaining_supported);
 	}
 
+	/*
+	 * Set eDP link rate to 5.4 Gbps if the dpcd[MAX_LINK_RATE] is 0
+	 * TODO: Get eDP link rates from DPCD 0x10h - 0x1Fh
+	 */
+	if (!dpcd[DP_MAX_LINK_RATE])
+		dpcd[DP_MAX_LINK_RATE] = 20;
+
+
 	link_info->revision = dpcd[DP_DPCD_REV];
 	panel->major = (link_info->revision >> 4) & 0x0f;
 	panel->minor = link_info->revision & 0x0f;
