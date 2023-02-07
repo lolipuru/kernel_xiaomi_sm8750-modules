@@ -423,8 +423,10 @@ struct synx_callback_params {
  * @async_wait          : registers a callback with synx object
  * @cancel_async_wait   : de-registers a callback with synx oject
  * @signal              : signals synx object
+ * @signal_n            : signals n synx objects
  * @merge               : merges multiple synx objects
  * @wait                : waits for a synx object synchronously
+ * @read_n              : reads n synx objects
  * @get_status          : returns status of synx object
  * @import              : imports (looks up) synx object from given handle/fence
  * @get_fence           : gets native fence backing synx object
@@ -436,8 +438,12 @@ struct synx_ops {
 	int (*async_wait)(struct synx_session *session, struct synx_callback_params *params);
 	int (*cancel_async_wait)(struct synx_session *session, struct synx_callback_params *params);
 	int (*signal)(struct synx_session *session, u32 h_synx, enum synx_signal_status status);
+	int (*signal_n)(struct synx_session *session, u32 *h_synx, u32 h_synx_count,
+			enum synx_signal_status *status, int *h_synx_error);
 	int (*merge)(struct synx_session *session, struct synx_merge_params *params);
 	int (*wait)(struct synx_session *session, u32 h_synx, u64 timeout_ms);
+	int (*read_n)(struct synx_session *session, u32 *h_synx, u32 h_synx_count,
+			enum synx_signal_status *status, int *h_synx_error, u64 timeout_ms);
 	int (*get_status)(struct synx_session *session, u32 h_synx);
 	int (*import)(struct synx_session *session, struct synx_import_params *params);
 	void *(*get_fence)(struct synx_session *session, u32 h_synx);
@@ -548,6 +554,34 @@ int synx_cancel_async_wait(struct synx_session *session,
 int synx_signal(struct synx_session *session, u32 h_synx,
 	enum synx_signal_status status);
 
+/*
+ * synx_signal_n – Signals n synx objects
+ *
+ * Function signals 'h_synx_count' number of synx objects identified by
+ * 'h_synx' array parameter. The 'status' array parameter corresponding to
+ * 'h_synx' array indicates if the entity performing the signaling wants to
+ * convey an error or a success case. 'h_synx_error' array holds per-synx-
+ * object error status of signal operation and has -SYNX_ENODATA if the
+ * signal operation was not attempted.
+ *
+ * @param session      : Session ptr (returned from synx_initialize)
+ * @param h_synx       : Synx object handle array.
+ * @param h_synx_count : Number "n" of synx objects to signal in h_synx
+ *                            array.
+ * @param status       : Status-of-signaling array for h_synx array.
+ *                            - Use NULL if not used.
+ * @param h_synx_error : Synx object signal error states for h_synx array.
+ *                            - Use NULL if per-synx-object status of operation
+ *                              is not needed.
+ *                            - A count of error states other than -SYNX_ENODATA
+ *                              gives the number of synx objects on which
+ *                              signal was attempted.
+ *
+ * @return Status of operation. Negative in case of error. SYNX_SUCCESS otherwise.
+ */
+int synx_signal_n(struct synx_session *session, u32 *h_synx, u32 h_synx_count,
+	enum synx_signal_status *status, int *h_synx_error);
+
 /**
  * synx_merge - Merges multiple synx objects
  *
@@ -577,6 +611,38 @@ int synx_merge(struct synx_session *session, struct synx_merge_params *params);
  * are invalid, -SYNX_TIMEOUT if wait times out.
  */
 int synx_wait(struct synx_session *session, u32 h_synx, u64 timeout_ms);
+
+/*
+ * synx_read_n - Reads n synx objects
+ *
+ * Function reads 'h_synx_count' number of synx objects identified by
+ * 'h_synx' array parameter with a maximum per-read timeout of 'timeout_ms'
+ * milliseconds. The 'status' array parameter corresponding to 'h_synx' array
+ * returns statuses if handles were signaled. Status can be from pre-defined
+ * states (enum synx_signal_status) or custom status sent by producer.
+ * 'h_synx_error' array holds per-synx-object error status of read operation
+ * and has -SYNX_ENODATA if the read operation was not attempted.
+ *
+ * @param session      : Session ptr (returned from synx_initialize)
+ * @param h_synx       : Synx object handle array to be read.
+ * @param h_synx_count : Number "n" of synx objects to read in h_synx array.
+ * @param status       : Signal status of handles in h_synx array.
+ *                            - Use NULL if not used.
+ * @param h_synx_error : Synx object read error states for h_synx array.
+ *                            - Use NULL if per-synx-object status of operation
+ *                              is not needed.
+ *                            - A count of error states other than -SYNX_ENODATA
+ *                              gives the number of synx objects on which read
+ *                              was attempted.
+ * @param timeout_ms   : Timeout for each object read in ms.
+ *                            - Use timeout_ms = 0 for non-blocking read.
+ *                            - Use timeout_ms = UINT64_MAX to block and read
+ *                              without timeout.
+ *
+ * @return Status of operation. Negative in case of error. SYNX_SUCCESS otherwise.
+ */
+int synx_read_n(struct synx_session *session, u32 *h_synx, u32 h_synx_count,
+	enum synx_signal_status *status, int *h_synx_error, u64 timeout_ms);
 
 /**
  * synx_get_status - Returns the status of the synx object
