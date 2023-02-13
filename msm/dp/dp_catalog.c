@@ -2103,7 +2103,7 @@ static void dp_catalog_ctrl_fec_config(struct dp_catalog_ctrl *ctrl,
 	if (enable)
 		reg |= BIT(12) | BIT(22) | BIT(23) | BIT(24) | BIT(25);
 	else
-		reg &= ~BIT(12);
+		reg &= ~(BIT(12) | BIT(23) | BIT(24));
 
 	dp_write(DP_MAINLINK_CTRL, reg);
 	/* make sure mainlink configuration is updated with fec sequence */
