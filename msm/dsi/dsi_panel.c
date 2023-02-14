@@ -3666,7 +3666,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	struct dsi_panel *panel;
 	struct dsi_parser_utils *utils;
 	const char *panel_physical_type;
-	int rc = 0;
+	int rc = 0, size;
+	char *new_panel_name = NULL, *panel_eye_type;
+	bool is_panel_xr;
 
 	panel = kzalloc(sizeof(*panel), GFP_KERNEL);
 	if (!panel)
@@ -3681,8 +3683,26 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	dsi_panel_update_util(panel, parser_node);
 	utils = &panel->utils;
 
-	panel->name = utils->get_property(utils->data,
-				"qcom,mdss-dsi-panel-name", NULL);
+	panel->name = utils->get_property(utils->data, "qcom,mdss-dsi-panel-name", &size);
+
+	is_panel_xr = utils->read_bool(utils->data, "qcom,mdss-dsi-panel-xr");
+
+	if (is_panel_xr) {
+		panel_eye_type = (!strcmp(panel->type, "primary") ? " left" : " right");
+
+		size += strlen(panel_eye_type);
+
+		new_panel_name = kzalloc(size, GFP_KERNEL);
+		if (!new_panel_name) {
+			rc = -ENOMEM;
+			goto error;
+		}
+
+		strscpy(new_panel_name, panel->name, size);
+		strlcat(new_panel_name, panel_eye_type, size);
+		panel->name = new_panel_name;
+	}
+
 	if (!panel->name)
 		panel->name = DSI_PANEL_DEFAULT_LABEL;
 
@@ -3788,6 +3808,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 
 	return panel;
 error:
+	kfree(new_panel_name);
 	kfree(panel);
 	return ERR_PTR(rc);
 }
