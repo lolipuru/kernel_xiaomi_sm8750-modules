@@ -5329,11 +5329,12 @@ int dsi_display_cont_splash_res_disable(void *dsi_display)
 	int rc = 0;
 
 	/* Remove the panel vote that was added during dsi display probe */
-	rc = dsi_pwr_enable_regulator(&display->panel->power_info, false);
-	if (rc)
-		DSI_ERR("[%s] failed to disable vregs, rc=%d\n",
+	if (!(display->panel->ctl_op_sync && !strcmp(display->panel->type, "secondary"))) {
+		rc = dsi_pwr_enable_regulator(&display->panel->power_info, false);
+		if (rc)
+			DSI_ERR("[%s] failed to disable vregs, rc=%d\n",
 				display->panel->name, rc);
-
+	}
 	return rc;
 }
 
@@ -5930,9 +5931,10 @@ static int dsi_display_init(struct dsi_display *display)
 	 * kernel driver doesn't disable the panel regulators after
 	 * dsi probe is complete.
 	 */
-	if (display->panel) {
-		rc = dsi_pwr_enable_regulator(&display->panel->power_info,
-								true);
+	if (display->panel &&
+		!(display->panel->ctl_op_sync && !strcmp(display->panel->type, "secondary"))) {
+
+		rc = dsi_pwr_enable_regulator(&display->panel->power_info, true);
 		if (rc) {
 			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
 					display->panel->name, rc);
