@@ -2563,7 +2563,13 @@ static int dp_display_prepare(struct dp_display *dp_display, void *panel)
 	 * case, link training is bound to fail on system resume.
 	 * So, we execute in shallow mode here to do only minimal
 	 * and required things.
+	 * Only in case of edp , we will do complete link training
+	 * and hence we set the shallow_mode to false here.
 	 */
+
+	if (dp_display->is_edp)
+		shallow_mode = false;
+
 	rc = dp->ctrl->on(dp->ctrl, dp->mst.mst_active, dp_panel->fec_en,
 			dp_panel->dsc_en, shallow_mode);
 	if (rc)
