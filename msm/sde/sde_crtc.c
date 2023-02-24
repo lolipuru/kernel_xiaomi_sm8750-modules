@@ -1892,7 +1892,8 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	bool bg_alpha_enable = false;
 	u32 blend_type, cac_mode;
 	struct sde_cp_crtc_skip_blend_plane skip_blend_plane;
-	DECLARE_BITMAP(fetch_active, SSPP_MAX);
+	DECLARE_BITMAP(active_fetch_pipes, SSPP_MAX);
+	DECLARE_BITMAP(active_pipes, SSPP_MAX);
 
 	if (!sde_crtc || !crtc->state || !mixer) {
 		SDE_ERROR("invalid sde_crtc or mixer\n");
@@ -1907,7 +1908,8 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	if (!pstates)
 		return;
 
-	memset(fetch_active, 0, sizeof(fetch_active));
+	memset(active_fetch_pipes, 0, sizeof(active_fetch_pipes));
+	memset(active_pipes, 0, sizeof(active_pipes));
 	memset(zpos_cnt, 0, sizeof(zpos_cnt));
 
 	drm_atomic_crtc_for_each_plane(plane, crtc) {
@@ -1926,7 +1928,8 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 		mode = sde_plane_get_property(pstate,
 				PLANE_PROP_FB_TRANSLATION_MODE);
 
-		set_bit(sde_plane_pipe(plane), fetch_active);
+		set_bit(sde_plane_pipe(plane), active_fetch_pipes);
+		set_bit(sde_plane_pipe(plane), active_pipes);
 		sde_plane_ctl_flush(plane, ctl, true);
 
 		SDE_DEBUG("crtc %d stage:%d - plane %d sspp %d fb %d\n",
@@ -2023,8 +2026,11 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	_sde_crtc_setup_blend_cfg_by_stage(mixer, sde_crtc->num_mixers,
 			pstates, cnt);
 
+	if (ctl->ops.set_active_fetch_pipes)
+		ctl->ops.set_active_fetch_pipes(ctl, active_fetch_pipes);
+
 	if (ctl->ops.set_active_pipes)
-		ctl->ops.set_active_pipes(ctl, fetch_active);
+		ctl->ops.set_active_pipes(ctl, active_pipes);
 
 	sort(pstates, cnt, sizeof(pstates[0]), pstate_cmp, NULL);
 	_sde_crtc_set_src_split_order(crtc, pstates, cnt);
@@ -2127,6 +2133,7 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 	struct sde_hw_ctl *ctl;
 	struct sde_hw_mixer *lm;
 	struct sde_ctl_flush_cfg cfg = {0,};
+	DECLARE_BITMAP(active_lms, LM_MAX);
 
 	int i;
 
@@ -2136,6 +2143,7 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 	sde_crtc = to_sde_crtc(crtc);
 	sde_crtc_state = to_sde_crtc_state(crtc->state);
 	mixer = sde_crtc->mixers;
+	memset(active_lms, 0, sizeof(active_lms));
 
 	SDE_DEBUG("%s\n", sde_crtc->name);
 
@@ -2189,6 +2197,10 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 		/* stage config flush mask */
 		ctl->ops.update_bitmask_mixer(ctl, mixer[i].hw_lm->idx, 1);
 		ctl->ops.get_pending_flush(ctl, &cfg);
+
+		set_bit(lm->idx, active_lms);
+		if (ctl->ops.set_active_lms)
+			ctl->ops.set_active_lms(ctl, active_lms);
 
 		SDE_DEBUG("lm %d, op_mode 0x%X, ctl %d, flush mask 0x%x\n",
 			mixer[i].hw_lm->idx - LM_0,
@@ -4314,6 +4326,8 @@ static void _sde_crtc_clear_all_blend_stages(struct sde_crtc *sde_crtc)
 		mixer = sde_crtc->mixers[0];
 		if (mixer.hw_ctl && mixer.hw_ctl->ops.clear_all_blendstages)
 			mixer.hw_ctl->ops.clear_all_blendstages(mixer.hw_ctl);
+		if (mixer.hw_ctl && mixer.hw_ctl->ops.set_active_fetch_pipes)
+			mixer.hw_ctl->ops.set_active_fetch_pipes(mixer.hw_ctl, NULL);
 		if (mixer.hw_ctl && mixer.hw_ctl->ops.set_active_pipes)
 			mixer.hw_ctl->ops.set_active_pipes(mixer.hw_ctl, NULL);
 	}

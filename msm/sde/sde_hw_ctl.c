@@ -50,6 +50,8 @@
 #define CTL_INTF_FLUSH               0x110
 #define CTL_CDM_FLUSH                0x114
 #define CTL_PERIPH_FLUSH             0x128
+#define CTL_PIPE_ACTIVE              0x12C
+#define CTL_LAYER_ACTIVE             0x130
 #define CTL_DSPP_0_FLUSH             0x13c
 
 #define CTL_INTF_MASTER               0x134
@@ -144,7 +146,17 @@ static const u32 intf_tbl[INTF_MAX] = {SDE_NONE, 31, 30, 29, 28};
 /**
  * List of SSPP bits in CTL_FETCH_PIPE_ACTIVE
  */
-static const u32 fetch_tbl[SSPP_MAX] = {CTL_INVALID_BIT, 16, 17, 18, 19, 0, 1, 2, 3, 4, 5};
+static const u32 fetch_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT, 16, 17, 18, 19, 0, 1, 2, 3, 4, 5};
+
+/**
+ * List of SSPP bits in CTL_PIPE_ACTIVE
+ */
+static const u32 pipe_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT, 16, 17, 18, 19, 0, 1, 2, 3, 4, 5};
+
+/**
+ * List of LM bits in CTL_LM_ACTIVE
+ */
+static const u32 lm_active_tbl[LM_MAX] = {SDE_NONE, 0, 1, 2, 3, 4, 5, SDE_NONE};
 
 /**
  * list of WB bits in CTL_WB_FLUSH
@@ -773,20 +785,21 @@ static inline int sde_hw_ctl_update_bitmask_dspp_subblk(struct sde_hw_ctl *ctx,
 	return 0;
 }
 
-static void sde_hw_ctl_set_fetch_pipe_active(struct sde_hw_ctl *ctx,
-		unsigned long *fetch_active)
+static void sde_hw_ctl_set_active_fetch_pipes(struct sde_hw_ctl *ctx,
+		unsigned long *active_fetch_pipes)
 {
 	int i;
 	u32 val = 0;
 
-	if (fetch_active) {
-		for (i = 0; i < SSPP_MAX; i++) {
-			if (test_bit(i, fetch_active) &&
-					fetch_tbl[i] != CTL_INVALID_BIT)
-				val |= BIT(fetch_tbl[i]);
-		}
+	if (!active_fetch_pipes)
+		goto end;
+
+	for (i = 0; i < SSPP_MAX; i++) {
+		if (test_bit(i, active_fetch_pipes) && fetch_active_tbl[i] != CTL_INVALID_BIT)
+			val |= BIT(fetch_active_tbl[i]);
 	}
 
+end:
 	SDE_REG_WRITE(&ctx->hw, CTL_FETCH_PIPE_ACTIVE, val);
 }
 
@@ -803,13 +816,85 @@ static u32 sde_hw_ctl_get_active_fetch_pipes(struct sde_hw_ctl *ctx)
 	fetch_info = SDE_REG_READ(&ctx->hw, CTL_FETCH_PIPE_ACTIVE);
 
 	for (i = SSPP_VIG0; i < SSPP_MAX; i++) {
-		if (fetch_tbl[i] != CTL_INVALID_BIT &&
-				fetch_info & BIT(fetch_tbl[i])) {
+		if (fetch_info & BIT(fetch_active_tbl[i]) && fetch_active_tbl[i] != CTL_INVALID_BIT)
 			fetch_active |= BIT(i);
-		}
 	}
 
 	return fetch_active;
+}
+
+static void sde_hw_ctl_set_active_pipes(struct sde_hw_ctl *ctx, unsigned long *active_pipes)
+{
+	int i;
+	u32 val = 0;
+
+	if (!active_pipes)
+		goto end;
+
+	for (i = 0; i < SSPP_MAX; i++) {
+		if (test_bit(i, active_pipes) && pipe_active_tbl[i] != CTL_INVALID_BIT)
+			val |= BIT(pipe_active_tbl[i]);
+	}
+
+end:
+	SDE_REG_WRITE(&ctx->hw, CTL_PIPE_ACTIVE, val);
+}
+
+static u32 sde_hw_ctl_get_active_pipes(struct sde_hw_ctl *ctx)
+{
+	int i;
+	u32 pipe_info, pipe_active = 0;
+
+	if (!ctx)  {
+		DRM_ERROR("invalid args - ctx invalid\n");
+		return 0;
+	}
+
+	pipe_info = SDE_REG_READ(&ctx->hw, CTL_PIPE_ACTIVE);
+
+	for (i = SSPP_VIG0; i < SSPP_MAX; i++) {
+		if (pipe_info & BIT(pipe_active_tbl[i]) && pipe_active_tbl[i] != CTL_INVALID_BIT)
+			pipe_active |= BIT(i);
+	}
+
+	return pipe_active;
+}
+
+static void sde_hw_ctl_set_active_lms(struct sde_hw_ctl *ctx, unsigned long *active_lms)
+{
+	int i;
+	u32 val = 0;
+
+	if (!active_lms)
+		goto end;
+
+	for (i = 0; i < LM_MAX; i++) {
+		if (lm_active_tbl[i] != CTL_INVALID_BIT && test_bit(i, active_lms))
+			val |= BIT(lm_active_tbl[i]);
+	}
+
+end:
+	SDE_REG_WRITE(&ctx->hw, CTL_LAYER_ACTIVE, val);
+}
+
+static u32 sde_hw_ctl_get_active_lms(struct sde_hw_ctl *ctx)
+{
+	int i;
+	u32 lm_info, lm_active = 0;
+
+	if (!ctx)  {
+		DRM_ERROR("invalid args - ctx invalid\n");
+		return 0;
+	}
+
+	lm_info = SDE_REG_READ(&ctx->hw, CTL_LAYER_ACTIVE);
+
+	for (i = LM_0; i < LM_MAX; i++) {
+		if (lm_active_tbl[i] != CTL_INVALID_BIT && lm_info & BIT(lm_active_tbl[i]))
+			lm_active |= BIT(i);
+	}
+
+	return lm_active;
 }
 
 static inline void _sde_hw_ctl_write_dspp_flushes(struct sde_hw_ctl *ctx) {
@@ -1237,7 +1322,8 @@ static int sde_hw_ctl_reset_post_disable(struct sde_hw_ctl *ctx,
 		SDE_REG_WRITE(c, CTL_MERGE_3D_ACTIVE, merge_3d_active);
 	}
 
-	sde_hw_ctl_clear_all_blendstages(ctx);
+	if (ctx->ops.clear_all_blendstages)
+		ctx->ops.clear_all_blendstages(ctx);
 
 	if (cfg->intf_count) {
 		ctx->flush.pending_hw_flush_mask[SDE_HW_FLUSH_INTF] =
@@ -1481,8 +1567,8 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		ops->reset_post_disable = sde_hw_ctl_reset_post_disable;
 		ops->get_scheduler_status = sde_hw_ctl_get_scheduler_status;
 		ops->read_active_status = sde_hw_ctl_read_active_status;
-		ops->set_active_pipes = sde_hw_ctl_set_fetch_pipe_active;
-		ops->get_active_pipes = sde_hw_ctl_get_active_fetch_pipes;
+		ops->set_active_fetch_pipes = sde_hw_ctl_set_active_fetch_pipes;
+		ops->get_active_fetch_pipes = sde_hw_ctl_get_active_fetch_pipes;
 	} else {
 		ops->update_pending_flush = sde_hw_ctl_update_pending_flush;
 		ops->trigger_flush = sde_hw_ctl_trigger_flush;
@@ -1504,9 +1590,16 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	ops->get_reset = sde_hw_ctl_get_reset_status;
 	ops->hard_reset = sde_hw_ctl_hard_reset;
 	ops->wait_reset_status = sde_hw_ctl_wait_reset_status;
-	ops->clear_all_blendstages = sde_hw_ctl_clear_all_blendstages;
-	ops->setup_blendstage = sde_hw_ctl_setup_blendstage;
-	ops->get_staged_sspp = sde_hw_ctl_get_staged_sspp;
+	if (cap & BIT(SDE_CTL_NO_LAYER_EXT)) {
+		ops->set_active_pipes = sde_hw_ctl_set_active_pipes;
+		ops->get_active_pipes = sde_hw_ctl_get_active_pipes;
+		ops->set_active_lms = sde_hw_ctl_set_active_lms;
+		ops->get_active_lms = sde_hw_ctl_get_active_lms;
+	} else {
+		ops->clear_all_blendstages = sde_hw_ctl_clear_all_blendstages;
+		ops->setup_blendstage = sde_hw_ctl_setup_blendstage;
+		ops->get_staged_sspp = sde_hw_ctl_get_staged_sspp;
+	}
 	ops->update_bitmask_sspp = sde_hw_ctl_update_bitmask_sspp;
 	ops->update_bitmask_mixer = sde_hw_ctl_update_bitmask_mixer;
 	ops->reg_dma_flush = sde_hw_reg_dma_flush;
