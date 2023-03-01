@@ -755,6 +755,35 @@ struct sde_sspp_index_info {
 };
 
 /**
+ * SDE_SSPP_RECT_SOLO - multirect disabled
+ * SDE_SSPP_RECT_0 - rect0 of a multirect pipe
+ * SDE_SSPP_RECT_1 - rect1 of a multirect pipe
+ * SDE_SSPP_RECT_MAX - max enum of multirect pipe
+ *
+ * Note: HW supports multirect with either RECT0 or
+ * RECT1. Considering no benefit of such configs over
+ * SOLO mode and to keep the plane management simple,
+ * we dont support single rect multirect configs.
+ */
+enum sde_sspp_multirect_index {
+	SDE_SSPP_RECT_SOLO = 0,
+	SDE_SSPP_RECT_0,
+	SDE_SSPP_RECT_1,
+	SDE_SSPP_RECT_MAX,
+};
+
+/**
+ * struct sde_hw_stage_cfg - blending stage cfg
+ * @stage : SSPP_ID at each stage
+ * @multirect_index: index of the rectangle of SSPP.
+ */
+struct sde_hw_stage_cfg {
+	enum sde_sspp stage[SDE_STAGE_MAX][PIPES_PER_STAGE];
+	enum sde_sspp_multirect_index multirect_index
+					[SDE_STAGE_MAX][PIPES_PER_STAGE];
+};
+
+/**
  * struct sde_splash_data - Struct contains details of resources and hw blocks
  * used in continuous splash on a specific display.
  * @cont_splash_enabled:  Stores the cont_splash status (enabled/disabled)

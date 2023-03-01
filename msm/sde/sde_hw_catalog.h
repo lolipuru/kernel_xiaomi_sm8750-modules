@@ -417,6 +417,7 @@ enum {
  * @SDE_DISP_SECONDARY_PREF   Layer mixer preferred for secondary display
  * @SDE_MIXER_COMBINED_ALPHA  Layer mixer bg and fg alpha in single register
  * @SDE_MIXER_NOISE_LAYER     Layer mixer supports noise layer
+ * @SDE_MIXER_X_SRC_SEL       Layer mixer supports source selection programming model
  * @SDE_MIXER_MAX             maximum value
  */
 enum {
@@ -430,6 +431,7 @@ enum {
 	SDE_DISP_DCWB_PREF,
 	SDE_MIXER_COMBINED_ALPHA,
 	SDE_MIXER_NOISE_LAYER,
+	SDE_MIXER_X_SRC_SEL,
 	SDE_MIXER_MAX
 };
 

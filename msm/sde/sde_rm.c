@@ -2247,6 +2247,7 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 	u32 active_pipes_mask = 0;
 	struct sde_rm_hw_iter iter_lm, iter_dsc;
 	struct sde_kms *sde_kms;
+	struct sde_hw_mixer *mixer;
 	size_t pipes_per_lm;
 
 	if (!rm || !ctl || !splash_display) {
@@ -2262,16 +2263,20 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 		if (splash_display->lm_cnt >= MAX_DATA_PATH_PER_DSIPLAY)
 			break;
 
-		if (ctl->ops.get_staged_sspp) {
+		mixer = to_sde_hw_mixer(iter_lm.blk->hw);
+		if (ctl->ops.get_staged_sspp || mixer->ops.get_staged_sspp) {
 			// reset bordercolor from previous LM
 			splash_display->pipe_info.bordercolor = false;
-			pipes_per_lm = ctl->ops.get_staged_sspp(
-					ctl, iter_lm.blk->id,
+
+			if (ctl->ops.get_staged_sspp)
+				pipes_per_lm = ctl->ops.get_staged_sspp(ctl, iter_lm.blk->id,
 					&splash_display->pipe_info);
-			if (pipes_per_lm ||
-					splash_display->pipe_info.bordercolor) {
-				splash_display->lm_ids[splash_display->lm_cnt++] =
-					iter_lm.blk->id;
+			if (mixer->ops.get_staged_sspp)
+				pipes_per_lm = mixer->ops.get_staged_sspp(mixer, iter_lm.blk->id,
+						&splash_display->pipe_info);
+
+			if (pipes_per_lm || splash_display->pipe_info.bordercolor) {
+				splash_display->lm_ids[splash_display->lm_cnt++] = iter_lm.blk->id;
 				SDE_DEBUG("lm_cnt=%d lm_id %d pipe_cnt%ld\n",
 						splash_display->lm_cnt,
 						iter_lm.blk->id - LM_0,

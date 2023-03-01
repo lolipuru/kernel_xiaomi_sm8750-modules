@@ -5451,6 +5451,18 @@ int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 		if (phys_enc->hw_ctl->ops.setup_blendstage)
 			phys_enc->hw_ctl->ops.setup_blendstage(
 				phys_enc->hw_ctl, hw_lm->idx, NULL, false);
+
+		if (hw_lm->ops.clear_all_blendstages)
+			hw_lm->ops.clear_all_blendstages(hw_lm);
+
+		if (phys_enc->hw_ctl->ops.set_active_lms)
+			phys_enc->hw_ctl->ops.set_active_lms(phys_enc->hw_ctl, NULL);
+
+		if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.set_active_fetch_pipes)
+			phys_enc->hw_ctl->ops.set_active_fetch_pipes(phys_enc->hw_ctl, NULL);
+
+		if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.set_active_pipes)
+			phys_enc->hw_ctl->ops.set_active_pipes(phys_enc->hw_ctl, NULL);
 	}
 
 	if (!lm_valid) {

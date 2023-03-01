@@ -2213,12 +2213,20 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 				"%s: lm%d leave ctl%d mask 0 since null roi\n",
 					sde_crtc->name, lm->idx - LM_0,
 					ctl->idx - CTL_0);
-			ctl->ops.setup_blendstage(ctl, mixer[i].hw_lm->idx,
-					NULL, true);
+
+			if (ctl->ops.setup_blendstage)
+				ctl->ops.setup_blendstage(ctl, mixer[i].hw_lm->idx, NULL, true);
+
+			if (lm->ops.setup_blendstage)
+				lm->ops.setup_blendstage(lm, mixer[i].hw_lm->idx, NULL, true);
 		} else {
-			ctl->ops.setup_blendstage(ctl, mixer[i].hw_lm->idx,
-					&sde_crtc->stage_cfg[lm_layout],
-					false);
+			if (ctl->ops.setup_blendstage)
+				ctl->ops.setup_blendstage(ctl, mixer[i].hw_lm->idx,
+						&sde_crtc->stage_cfg[lm_layout], false);
+
+			if (lm->ops.setup_blendstage)
+				lm->ops.setup_blendstage(lm, mixer[i].hw_lm->idx,
+						&sde_crtc->stage_cfg[lm_layout], false);
 		}
 	}
 
@@ -4316,6 +4324,8 @@ static void _sde_crtc_setup_lm_bounds(struct drm_crtc *crtc, struct drm_crtc_sta
 static void _sde_crtc_clear_all_blend_stages(struct sde_crtc *sde_crtc)
 {
 	struct sde_crtc_mixer mixer;
+	struct sde_hw_mixer *hw_lm;
+	int i;
 
 	/*
 	 * Use mixer[0] to get hw_ctl which will use ops to clear
@@ -4330,6 +4340,13 @@ static void _sde_crtc_clear_all_blend_stages(struct sde_crtc *sde_crtc)
 			mixer.hw_ctl->ops.set_active_fetch_pipes(mixer.hw_ctl, NULL);
 		if (mixer.hw_ctl && mixer.hw_ctl->ops.set_active_pipes)
 			mixer.hw_ctl->ops.set_active_pipes(mixer.hw_ctl, NULL);
+	}
+
+	/* After cross bar changes, clearing of blendstage has to be done per mixers */
+	for (i = 0; i < sde_crtc->num_mixers; i++) {
+		hw_lm = sde_crtc->mixers[i].hw_lm;
+		if (hw_lm && hw_lm->ops.clear_all_blendstages)
+			hw_lm->ops.clear_all_blendstages(hw_lm);
 	}
 }
 

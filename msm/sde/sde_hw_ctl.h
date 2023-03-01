@@ -64,16 +64,6 @@ enum ctl_hw_flush_type {
 };
 
 struct sde_hw_ctl;
-/**
- * struct sde_hw_stage_cfg - blending stage cfg
- * @stage : SSPP_ID at each stage
- * @multirect_index: index of the rectangle of SSPP.
- */
-struct sde_hw_stage_cfg {
-	enum sde_sspp stage[SDE_STAGE_MAX][PIPES_PER_STAGE];
-	enum sde_sspp_multirect_index multirect_index
-					[SDE_STAGE_MAX][PIPES_PER_STAGE];
-};
 
 /**
  * struct sde_hw_intf_cfg :Describes how the SDE writes data to output interface

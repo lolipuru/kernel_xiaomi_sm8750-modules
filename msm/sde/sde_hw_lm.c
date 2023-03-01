@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -16,25 +16,38 @@
 #include "sde_kms.h"
 #include "sde_hw_util.h"
 
-#define LM_OP_MODE                        0x00
-#define LM_OUT_SIZE                       0x04
-#define LM_BORDER_COLOR_0                 0x08
-#define LM_BORDER_COLOR_1                 0x010
+#define LM_OP_MODE                              0x00
+#define LM_OUT_SIZE                             0x04
+#define LM_BORDER_COLOR_0                       0x08
+#define LM_BORDER_COLOR_1                       0x10
 
 /* These register are offset to mixer base + stage base */
-#define LM_BLEND0_OP                     0x00
-#define LM_BLEND0_CONST_ALPHA            0x04
-#define LM_FG_COLOR_FILL_COLOR_0         0x08
-#define LM_FG_COLOR_FILL_COLOR_1         0x0C
-#define LM_FG_COLOR_FILL_SIZE            0x10
-#define LM_FG_COLOR_FILL_XY              0x14
+#define LM_BLEND0_OP                            0x00
+#define LM_BLEND0_CONST_ALPHA                   0x04
+#define LM_BLEND0_FG_COLOR_FILL_COLOR_0         0x08
+#define LM_BLEND0_FG_COLOR_FILL_COLOR_1         0x0C
+#define LM_BLEND0_FG_COLOR_FILL_SIZE            0x10
+#define LM_BLEND0_FG_COLOR_FILL_XY              0x14
 
-#define LM_BLEND0_FG_ALPHA               0x04
-#define LM_BLEND0_BG_ALPHA               0x08
+#define LM_BLEND0_FG_ALPHA                      0x04
+#define LM_BLEND0_BG_ALPHA                      0x08
 
-#define LM_MISR_CTRL			0x310
-#define LM_MISR_SIGNATURE		0x314
-#define LM_NOISE_LAYER			0x320
+#define LM_MISR_CTRL                            0x310
+#define LM_MISR_SIGNATURE                       0x314
+#define LM_NOISE_LAYER                          0x320
+
+/* V1 Register Set */
+#define LM_BORDER_COLOR_0_V1                    0x1C
+#define LM_BORDER_COLOR_1_V1                    0x20
+#define LM_BLEND0_CONST_ALPHA_V1                0x08
+#define LM_BG_SRC_SEL_V1                        0x14
+#define LM_BLEND0_FG_COLOR_FILL_COLOR_0_V1      0x0C
+#define LM_BLEND0_FG_COLOR_FILL_COLOR_1_V1      0x10
+#define LM_BLEND0_FG_COLOR_FILL_SIZE_V1         0x14
+#define LM_BLEND0_FG_COLOR_FILL_XY_V1           0x18
+#define LM_BLEND0_FG_SRC_SEL_V1                 0x04
+
+#define LM_SRC_SEL_RESET_VALUE 0x0000C0C0
 
 static struct sde_lm_cfg *_lm_offset(enum sde_lm mixer,
 		struct sde_mdss_cfg *m,
@@ -166,6 +179,36 @@ static void sde_hw_lm_setup_color3(struct sde_hw_mixer *ctx,
 	SDE_REG_WRITE(c, LM_OP_MODE, op_mode);
 }
 
+static void sde_hw_lm_setup_color3_v1(struct sde_hw_mixer *ctx, uint32_t mixer_op_mode)
+{
+	struct sde_hw_blk_reg_map *c;
+	int stages, stage_off, i;
+	int val;
+
+	if (!ctx)
+		return;
+
+	c = &ctx->hw;
+	stages = ctx->cap->sblk->maxblendstages;
+	if (stages < 0)
+		return;
+
+	for (i = SDE_STAGE_0; i <= stages; i++) {
+		stage_off = _stage_offset(ctx, i);
+		if (WARN_ON(stage_off < 0))
+			return;
+
+		/* set color_out3 bit in blend0_op when enabled in mixer_op_mode */
+		val = SDE_REG_READ(c, LM_BLEND0_OP + stage_off);
+		if (mixer_op_mode & BIT(i))
+			val |= BIT(30);
+		else
+			val &= ~BIT(30);
+
+		SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+	}
+}
+
 static void sde_hw_lm_gc(struct sde_hw_mixer *mixer,
 			void *cfg)
 {
@@ -213,17 +256,17 @@ static void sde_hw_lm_setup_dim_layer(struct sde_hw_mixer *ctx,
 	alpha = dim_layer->color_fill.color_3 & 0xFF;
 	val = ((dim_layer->color_fill.color_1 << 2) & 0xFFF) << 16 |
 			((dim_layer->color_fill.color_0 << 2) & 0xFFF);
-	SDE_REG_WRITE(c, LM_FG_COLOR_FILL_COLOR_0 + stage_off, val);
+	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_COLOR_0 + stage_off, val);
 
 	val = (alpha << 4) << 16 |
 			((dim_layer->color_fill.color_2 << 2) & 0xFFF);
-	SDE_REG_WRITE(c, LM_FG_COLOR_FILL_COLOR_1 + stage_off, val);
+	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_COLOR_1 + stage_off, val);
 
 	val = dim_layer->rect.h << 16 | dim_layer->rect.w;
-	SDE_REG_WRITE(c, LM_FG_COLOR_FILL_SIZE + stage_off, val);
+	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_SIZE + stage_off, val);
 
 	val = dim_layer->rect.y << 16 | dim_layer->rect.x;
-	SDE_REG_WRITE(c, LM_FG_COLOR_FILL_XY + stage_off, val);
+	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_XY + stage_off, val);
 
 	val = BIT(16); /* enable dim layer */
 	val |= SDE_BLEND_FG_ALPHA_FG_CONST | SDE_BLEND_BG_ALPHA_BG_CONST;
@@ -336,9 +379,9 @@ static int sde_hw_lm_setup_noise_layer(struct sde_hw_mixer *ctx,
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA + stage_off, alpha);
 	val = ctx->cfg.out_width | (ctx->cfg.out_height << 16);
-	SDE_REG_WRITE(c, LM_FG_COLOR_FILL_SIZE + stage_off, val);
+	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_SIZE + stage_off, val);
 	/* partial update is not supported in noise layer */
-	SDE_REG_WRITE(c, LM_FG_COLOR_FILL_XY + stage_off, 0);
+	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_XY + stage_off, 0);
 	val = SDE_REG_READ(c, LM_OP_MODE);
 	val = (1 << cfg->noise_blend_stage) | val;
 	SDE_REG_WRITE(c, LM_OP_MODE, val);
@@ -360,9 +403,9 @@ static int sde_hw_lm_setup_noise_layer(struct sde_hw_mixer *ctx,
 	val = (1 << cfg->attn_blend_stage) | val;
 	SDE_REG_WRITE(c, LM_OP_MODE, val);
 	val = ctx->cfg.out_width | (ctx->cfg.out_height << 16);
-	SDE_REG_WRITE(c, LM_FG_COLOR_FILL_SIZE + stage_off, val);
+	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_SIZE + stage_off, val);
 	/* partial update is not supported in noise layer */
-	SDE_REG_WRITE(c, LM_FG_COLOR_FILL_XY + stage_off, 0);
+	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_XY + stage_off, 0);
 
 	val = 1;
 	if (mixer->right_mixer)
@@ -372,6 +415,192 @@ static int sde_hw_lm_setup_noise_layer(struct sde_hw_mixer *ctx,
 		val |= BIT(1);
 	val |= ((cfg->strength & 0x7) << 8);
 	SDE_REG_WRITE(c, LM_NOISE_LAYER, val);
+	return 0;
+}
+
+static int _set_staged_sspp(u32 stage,
+		struct sde_hw_stage_cfg *stage_cfg, int pipes_per_stage, u32 *value)
+{
+	int i;
+	u32 pipe_type = 0, pipe_id = 0, rec_id = 0;
+	u32 src_sel[PIPES_PER_STAGE];
+
+	/* reset mask is 0xc0c0 */
+	*value = LM_SRC_SEL_RESET_VALUE;
+	if (!stage_cfg || !pipes_per_stage)
+		return 0;
+
+	for (i = 0; i < pipes_per_stage; i++) {
+		enum sde_sspp pipe = stage_cfg->stage[stage][i];
+		enum sde_sspp_multirect_index rect_index = stage_cfg->multirect_index[stage][i];
+
+		src_sel[i] = LM_SRC_SEL_RESET_VALUE >> 8;
+
+		if (!pipe || pipe >= SSPP_MAX || rect_index >= SDE_SSPP_RECT_MAX)
+			continue;
+
+		/* translate pipe data to SWI pipe_type, pipe_id */
+		if (SDE_SSPP_VALID_DMA(pipe)) {
+			pipe_type = 0;
+			pipe_id = pipe - SSPP_DMA0;
+		} else if (SDE_SSPP_VALID_VIG(pipe)) {
+			pipe_type = 1;
+			pipe_id = pipe - SSPP_VIG0;
+		} else {
+			SDE_ERROR("invalid rec-%d pipe:%d\n", i, pipe);
+			return -EINVAL;
+		}
+
+		/* translate rec data to SWI rec_id */
+		if (rect_index == SDE_SSPP_RECT_SOLO || rect_index == SDE_SSPP_RECT_0) {
+			rec_id = 0;
+		} else if (rect_index == SDE_SSPP_RECT_1) {
+			rec_id = 1;
+		} else {
+			SDE_ERROR("invalid rec-%d rect_index:%d\n", i, rect_index);
+			rec_id = 0;
+		}
+
+		/* calculate SWI value for rec-0 and rec-1 and store it temporary buffer */
+		src_sel[i] = (((pipe_type & 0x3) << 6) | ((rec_id & 0x3) << 4) | (pipe_id & 0xf));
+	}
+
+	/* calculate final SWI register value for rec-0 and rec-1 */
+	*value = 0;
+	for (i = 0; i < pipes_per_stage; i++)
+		*value |= (src_sel[i] << (i * 8));
+
+	return 0;
+}
+
+static int sde_hw_lm_setup_blendstage(struct sde_hw_mixer *ctx,
+		enum sde_lm lm, struct sde_hw_stage_cfg *stage_cfg, bool disable_border)
+{
+	struct sde_hw_blk_reg_map *c;
+	int i, ret, stages, stage_off, pipes_per_stage;
+	u32 value;
+
+	if (!ctx)
+		return -EINVAL;
+
+	if (lm < LM_0 || lm >= LM_MAX)
+		return -EINVAL;
+
+	c = &ctx->hw;
+	stages = ctx->cap->sblk->maxblendstages;
+	if (stages <= SDE_STAGE_BASE)
+		return -EINVAL;
+
+	if (test_bit(SDE_MIXER_SOURCESPLIT, &ctx->cap->features))
+		pipes_per_stage = PIPES_PER_STAGE;
+	else
+		pipes_per_stage = 1;
+
+	/*
+	 * When stage configuration is empty, we can enable the
+	 * border color by setting the corresponding LAYER_ACTIVE bit
+	 * and un-staging all the pipes from the layer mixer.
+	 */
+	if (!stage_cfg)
+		SDE_REG_WRITE(c, LM_BG_SRC_SEL_V1, LM_SRC_SEL_RESET_VALUE);
+
+	for (i = SDE_STAGE_0; i <= stages; i++) {
+		stage_off = _stage_offset(ctx, i);
+		if (stage_off < 0)
+			return stage_off;
+
+		ret = _set_staged_sspp(i, stage_cfg, pipes_per_stage, &value);
+		if (ret)
+			return ret;
+
+		SDE_REG_WRITE(c, LM_BLEND0_FG_SRC_SEL_V1 + stage_off, value);
+	}
+
+	return ret;
+}
+
+static int _get_staged_sspp(u32 value, int pipes_per_stage, struct sde_sspp_index_info *info)
+{
+	u32 i, b;
+	u32 pipe_type = 0, rec_id = 0, pipe_count = 0;
+	unsigned long pipe_id = 0;
+
+	for (i = 0; i < pipes_per_stage; i++) {
+		pipe_type = (value >> (i * 8 + 6)) & 0x3;
+		rec_id = (value >> (i * 8 + 4)) & 0x3;
+		pipe_id = (value >> (i * 8)) & 0xf;
+
+		if (rec_id < 0x2) {
+			if (pipe_type == 0x0) {
+				for_each_set_bit(b, &pipe_id, SSPP_MAX) {
+					set_bit(b - SSPP_DMA0, info->pipes);
+					pipe_count++;
+				}
+			} else if (pipe_type == 0x1) {
+				for_each_set_bit(b, &pipe_id, SSPP_MAX) {
+					set_bit(b - SSPP_VIG0, info->pipes);
+					pipe_count++;
+				}
+			} else {
+				SDE_ERROR("invalid rec-%d pipe_type %d\n", i, pipe_type);
+				return 0;
+			}
+		}
+	}
+
+	return pipe_count;
+}
+
+static int sde_hw_lm_get_staged_sspp(struct sde_hw_mixer *ctx,
+		u32 stage, struct sde_sspp_index_info *info)
+{
+	struct sde_hw_blk_reg_map *c;
+	int stage_off, pipes_per_stage;
+	u32 value, pipe_count;
+
+	if (!ctx || !info)
+		return -EINVAL;
+
+	c = &ctx->hw;
+	stage_off = _stage_offset(ctx, stage);
+	if (stage_off < 0)
+		return stage_off;
+
+	if (test_bit(SDE_MIXER_SOURCESPLIT, &ctx->cap->features))
+		pipes_per_stage = PIPES_PER_STAGE;
+	else
+		pipes_per_stage = 1;
+
+	value = SDE_REG_READ(c, LM_BLEND0_FG_SRC_SEL_V1 + stage_off);
+	pipe_count = _get_staged_sspp(value, pipes_per_stage, info);
+
+	return pipe_count;
+}
+
+static int sde_hw_lm_clear_all_blendstages(struct sde_hw_mixer *ctx)
+{
+	struct sde_hw_blk_reg_map *c;
+	int i, stages, stage_off;
+
+	if (!ctx)
+		return -EINVAL;
+
+	c = &ctx->hw;
+	stages = ctx->cap->sblk->maxblendstages;
+	if (stages < 0)
+		return -EINVAL;
+
+	SDE_REG_WRITE(c, LM_BG_SRC_SEL_V1, LM_SRC_SEL_RESET_VALUE);
+
+	for (i = SDE_STAGE_0; i <= stages; i++) {
+		stage_off = _stage_offset(ctx, i);
+		if (stage_off < 0)
+			return stage_off;
+
+		SDE_REG_WRITE(c, LM_BLEND0_FG_SRC_SEL_V1 + stage_off,
+				LM_SRC_SEL_RESET_VALUE);
+	}
+
 	return 0;
 }
 
@@ -385,7 +614,16 @@ static void _setup_mixer_ops(struct sde_mdss_cfg *m,
 				sde_hw_lm_setup_blend_config_combined_alpha;
 	else
 		ops->setup_blend_config = sde_hw_lm_setup_blend_config;
-	ops->setup_alpha_out = sde_hw_lm_setup_color3;
+
+	if (test_bit(SDE_MIXER_X_SRC_SEL, &features)) {
+		ops->setup_blendstage = sde_hw_lm_setup_blendstage;
+		ops->get_staged_sspp = sde_hw_lm_get_staged_sspp;
+		ops->clear_all_blendstages = sde_hw_lm_clear_all_blendstages;
+		ops->setup_alpha_out = sde_hw_lm_setup_color3_v1;
+	} else {
+		ops->setup_alpha_out = sde_hw_lm_setup_color3;
+	}
+
 	ops->setup_border_color = sde_hw_lm_setup_border_color;
 	ops->setup_gc = sde_hw_lm_gc;
 	ops->setup_misr = sde_hw_lm_setup_misr;

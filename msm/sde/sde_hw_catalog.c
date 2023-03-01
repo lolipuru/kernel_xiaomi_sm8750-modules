@@ -2350,6 +2350,8 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 			set_bit(SDE_DIM_LAYER, &mixer->features);
 		if (test_bit(SDE_FEATURE_COMBINED_ALPHA, sde_cfg->features))
 			set_bit(SDE_MIXER_COMBINED_ALPHA, &mixer->features);
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+			set_bit(SDE_MIXER_X_SRC_SEL, &mixer->features);
 
 		of_property_read_string_index(np,
 			mixer_prop[MIXER_DISP].prop_name, i, &disp_pref);
