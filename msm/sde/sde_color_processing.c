@@ -3340,8 +3340,23 @@ static void _dspp_dither_install_property(struct drm_crtc *crtc)
 	}
 }
 
-static  void _dspp_demura_install_property(struct drm_crtc *crtc)
+static void _dspp_demura_install_v1_property(struct drm_crtc *crtc)
 {
+	_sde_cp_crtc_install_range_property(crtc, "SDE_DEMURA_BACKLIGHT_V1",
+		SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT,
+		0, 1024, 0);
+	_sde_cp_crtc_install_bitmask_property(crtc, "SDE_DEMURA_BOOT_PLANE_V1",
+		SDE_CP_CRTC_DSPP_DEMURA_BOOT_PLANE, true,
+		sde_demura_fetch_planes,
+		ARRAY_SIZE(sde_demura_fetch_planes), 0xf);
+	_sde_cp_crtc_install_blob_property(crtc, "SDE_DEMURA_CFG0_PARAM2",
+		SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2,
+		sizeof(struct drm_msm_dem_cfg0_param2));
+}
+
+static void _dspp_demura_install_property(struct drm_crtc *crtc)
+{
+	char demura_init_cfg[256];
 	struct sde_kms *kms = NULL;
 	struct sde_mdss_cfg *catalog = NULL;
 	u32 version;
@@ -3350,22 +3365,21 @@ static  void _dspp_demura_install_property(struct drm_crtc *crtc)
 	catalog = kms->catalog;
 
 	version = catalog->dspp[0].sblk->demura.version >> 16;
+	snprintf(demura_init_cfg, ARRAY_SIZE(demura_init_cfg), "%s%d",
+		"SDE_DEMURA_INIT_CFG_V", version);
 	switch (version) {
 	case 1:
 	case 2:
 		_sde_cp_crtc_install_blob_property(crtc, "SDE_DEMURA_INIT_CFG_V1",
 			SDE_CP_CRTC_DSPP_DEMURA_INIT,
 			sizeof(struct drm_msm_dem_cfg));
-		_sde_cp_crtc_install_range_property(crtc, "SDE_DEMURA_BACKLIGHT_V1",
-				SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT,
-				0, 1024, 0);
-		_sde_cp_crtc_install_bitmask_property(crtc, "SDE_DEMURA_BOOT_PLANE_V1",
-				SDE_CP_CRTC_DSPP_DEMURA_BOOT_PLANE, true,
-				sde_demura_fetch_planes,
-				ARRAY_SIZE(sde_demura_fetch_planes), 0xf);
-		_sde_cp_crtc_install_blob_property(crtc, "SDE_DEMURA_CFG0_PARAM2",
-			SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2,
-			sizeof(struct drm_msm_dem_cfg0_param2));
+		_dspp_demura_install_v1_property(crtc);
+		break;
+	case 3:
+		_sde_cp_crtc_install_blob_property(crtc, demura_init_cfg,
+			SDE_CP_CRTC_DSPP_DEMURA_INIT,
+			sizeof(struct drm_msm_dem_cfg));
+		_dspp_demura_install_v1_property(crtc);
 		break;
 	default:
 		DRM_ERROR("version %d not supported\n", version);

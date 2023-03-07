@@ -96,7 +96,6 @@ void sde_ltm_clear_merge_mode(struct sde_hw_dspp *dspp);
  */
 void sde_ltm_clear_merge_modev1_2(struct sde_hw_dspp *dspp);
 
-
 /**
  * sde_demura_backlight_cfg - api to set backlight for demura
  * @ctx: pointer to dspp object
@@ -104,6 +103,14 @@ void sde_ltm_clear_merge_modev1_2(struct sde_hw_dspp *dspp);
  * @cfg: pointer to sde_hw_cp_cfg
  */
 void sde_demura_backlight_cfg(struct sde_hw_dspp *ctx, u64 val, struct sde_hw_cp_cfg *cfg);
+
+/**
+ * sde_demura_backlight_cfgv3 - api to set backlight for demura v3
+ * @ctx: pointer to dspp object
+ * @val: value of backlight
+ * @cfg: pointer to sde_hw_cp_cfg
+ */
+void sde_demura_backlight_cfgv3(struct sde_hw_dspp *ctx, u64 val, struct sde_hw_cp_cfg *cfg);
 
 /**
  * sde_demura_read_plane_status - api to read demura plane fetch setup.
