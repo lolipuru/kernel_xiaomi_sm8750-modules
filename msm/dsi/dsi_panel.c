@@ -237,7 +237,9 @@ static int dsi_panel_vm_trigger_esd_attack(struct dsi_panel *panel)
 
 static int dsi_panel_trigger_esd_attack(struct dsi_panel *panel)
 {
+	struct dsi_parser_utils *utils = &panel->utils;
 	struct dsi_panel_reset_config *r_config;
+	int reset_gpio;
 
 	if (!panel) {
 		DSI_ERR("Invalid panel param\n");
@@ -250,7 +252,13 @@ static int dsi_panel_trigger_esd_attack(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
-	return dsi_panel_trigger_esd_attack_sub(r_config->reset_gpio);
+	reset_gpio = r_config->reset_gpio;
+	if ((!strcmp(panel->type, "secondary")) &&
+			(!gpio_is_valid(reset_gpio)))
+		reset_gpio = utils->get_named_gpio(utils->data,
+				"qcom,platform-reset-gpio", 0);
+
+	return dsi_panel_trigger_esd_attack_sub(reset_gpio);
 }
 
 static int dsi_panel_reset(struct dsi_panel *panel)
