@@ -2352,6 +2352,10 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 			set_bit(SDE_MIXER_COMBINED_ALPHA, &mixer->features);
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
 			set_bit(SDE_MIXER_X_SRC_SEL, &mixer->features);
+		if (test_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features)) {
+			set_bit(SDE_MIXER_10_BITS_ALPHA, &mixer->features);
+			set_bit(SDE_MIXER_10_BITS_COLOR, &mixer->features);
+		}
 
 		of_property_read_string_index(np,
 			mixer_prop[MIXER_DISP].prop_name, i, &disp_pref);
@@ -5530,6 +5534,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_cfg->features);
 		set_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features);
 		set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
+		set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
 		sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
 		sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
 		sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;

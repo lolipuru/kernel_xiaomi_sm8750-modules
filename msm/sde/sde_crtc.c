@@ -751,17 +751,28 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 	uint32_t blend_type;
 	struct sde_hw_mixer *lm = mixer->hw_lm;
 	struct drm_plane_state *plane_state = &pstate->base;
+	uint32_t max_alpha;
 
 	/* default to opaque blending */
 	fg_alpha = sde_plane_get_property(pstate, PLANE_PROP_ALPHA);
-	bg_alpha = 0xFF - fg_alpha;
+
+	/* scale down the plane alpha to match hardware capability */
+	if (test_bit(SDE_MIXER_10_BITS_ALPHA, &lm->cap->features)) {
+		fg_alpha = fg_alpha >> 6;
+		max_alpha = 0x3FF;
+	} else {
+		max_alpha = 0xFF;
+	}
+
+	bg_alpha = max_alpha - fg_alpha;
+
 	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA))
 		bg_alpha = sde_plane_get_property(pstate, PLANE_PROP_BG_ALPHA);
 	blend_op = SDE_BLEND_FG_ALPHA_FG_CONST | SDE_BLEND_BG_ALPHA_BG_CONST;
 	blend_type = sde_plane_get_property(pstate, PLANE_PROP_BLEND_OP);
 
-	SDE_DEBUG("blend type:0x%x blend alpha:0x%x bg_alpha:0x%x\n",
-			blend_type, fg_alpha, bg_alpha);
+	SDE_DEBUG("blend_type:0x%x fg_alpha:0x%x bg_alpha:0x%x blend_op:0x%x max_alpha:0x%x\n",
+			blend_type, fg_alpha, bg_alpha, blend_op, max_alpha);
 
 	switch (blend_type) {
 
@@ -774,7 +785,7 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 		if (format->alpha_enable) {
 			blend_op = SDE_BLEND_FG_ALPHA_FG_CONST |
 				SDE_BLEND_BG_ALPHA_FG_PIXEL;
-			if (fg_alpha != 0xff) {
+			if (fg_alpha != max_alpha) {
 				bg_alpha = fg_alpha;
 				blend_op |= SDE_BLEND_BG_MOD_ALPHA |
 					SDE_BLEND_BG_INV_MOD_ALPHA;
@@ -788,7 +799,7 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 		if (format->alpha_enable) {
 			blend_op = SDE_BLEND_FG_ALPHA_FG_PIXEL |
 				SDE_BLEND_BG_ALPHA_FG_PIXEL;
-			if (fg_alpha != 0xff) {
+			if (fg_alpha != max_alpha) {
 				bg_alpha = fg_alpha;
 				blend_op |= SDE_BLEND_FG_MOD_ALPHA |
 					SDE_BLEND_BG_MOD_ALPHA |
@@ -808,9 +819,9 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 		lm->ops.setup_blend_config(lm, pstate->stage, fg_alpha, bg_alpha, blend_op);
 
 	SDE_DEBUG(
-		"format: %4.4s, alpha_enable %u fg alpha:0x%x bg alpha:0x%x blend_op:0x%x\n",
-		(char *) &format->base.pixel_format,
-		format->alpha_enable, fg_alpha, bg_alpha, blend_op);
+		"format:%4.4s, alpha_enable:%u fg_alpha:0x%x bg_alpha:0x%x blend_op:0x%x\n",
+		(char *) &format->base.pixel_format, format->alpha_enable, fg_alpha, bg_alpha,
+		blend_op);
 }
 
 static void _sde_crtc_calc_split_dim_layer_yh_param(struct drm_crtc *crtc, u16 *y, u16 *h)
@@ -912,6 +923,11 @@ static void _sde_crtc_setup_dim_layer_cfg(struct drm_crtc *crtc,
 
 		lm = mixer[i].hw_lm;
 		mixer[i].mixer_op_mode |= 1 << split_dim_layer.stage;
+
+		if (test_bit(SDE_MIXER_10_BITS_COLOR, &lm->cap->features))
+			split_dim_layer.color_fill.color_3 =
+				split_dim_layer.color_fill.color_3 >> 6;
+
 		lm->ops.setup_dim_layer(lm, &split_dim_layer);
 	}
 }
@@ -8756,6 +8772,12 @@ static void sde_cp_crtc_apply_noise(struct drm_crtc *crtc,
 		lm = scrtc->mixers[i].hw_lm;
 		if (!lm->ops.setup_noise_layer)
 			break;
+
+		if (test_bit(SDE_MIXER_10_BITS_COLOR, &lm->cap->features)) {
+			cfg.alpha_noise = cfg.alpha_noise >> 6;
+			cfg.attn_factor = cfg.attn_factor >> 6;
+		}
+
 		if (!cstate->noise_layer_en)
 			lm->ops.setup_noise_layer(lm, NULL);
 		else

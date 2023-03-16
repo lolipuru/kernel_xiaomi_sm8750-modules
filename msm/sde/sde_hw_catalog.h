@@ -418,6 +418,8 @@ enum {
  * @SDE_MIXER_COMBINED_ALPHA  Layer mixer bg and fg alpha in single register
  * @SDE_MIXER_NOISE_LAYER     Layer mixer supports noise layer
  * @SDE_MIXER_X_SRC_SEL       Layer mixer supports source selection programming model
+ * @SDE_MIXER_10_BITS_ALPHA   Layer mixer supports 10 bits constant alpha
+ * @SDE_MIXER_10_BITS_COLOR   Layer mixer supports 10 bits color border and color fill
  * @SDE_MIXER_MAX             maximum value
  */
 enum {
@@ -432,6 +434,8 @@ enum {
 	SDE_MIXER_COMBINED_ALPHA,
 	SDE_MIXER_NOISE_LAYER,
 	SDE_MIXER_X_SRC_SEL,
+	SDE_MIXER_10_BITS_ALPHA,
+	SDE_MIXER_10_BITS_COLOR,
 	SDE_MIXER_MAX
 };
 
@@ -819,6 +823,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_HW_FENCE_IPCC  HW fence supports ipcc signaling in dpu
  * @SDE_FEATURE_EMULATED_ENV   Emulated environment supported
  * @SDE_FEATURE_UCSC_SUPPORTED  UCSC pipe format supported
+ * @SDE_FEATURE_10_BITS_COMPONENTS Support for 10 bits components
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -867,6 +872,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_HW_FENCE_IPCC,
 	SDE_FEATURE_EMULATED_ENV,
 	SDE_FEATURE_UCSC_SUPPORTED,
+	SDE_FEATURE_10_BITS_COMPONENTS,
 	SDE_FEATURE_MAX
 };
 
