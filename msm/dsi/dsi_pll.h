@@ -39,6 +39,7 @@
 
 #define DFPS_MAX_NUM_OF_FRAME_RATES 16
 #define MAX_DSI_PLL_EN_SEQS	10
+#define MAX_DSI_PLL_SLAVE_NUM	3
 
 /* Register offsets for 5nm PHY PLL */
 #define MMSS_DSI_PHY_PLL_PLL_CNTRL		(0x0014)
@@ -151,7 +152,7 @@ struct dsi_pll_resource {
 	u32 ssc_freq;
 	u32 ssc_ppm;
 
-	struct dsi_pll_resource *slave;
+	struct dsi_pll_resource *slave[MAX_DSI_PLL_SLAVE_NUM];
 
 	void *priv;
 

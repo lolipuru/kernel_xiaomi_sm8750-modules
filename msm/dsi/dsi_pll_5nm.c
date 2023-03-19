@@ -73,6 +73,7 @@ static inline bool dsi_pll_5nm_is_hw_revision(
 static inline void dsi_pll_set_pll_post_div(struct dsi_pll_resource *pll, u32
 		pll_post_div)
 {
+	int i;
 	u32 pll_post_div_val = 0;
 
 	if (pll_post_div == 1)
@@ -85,9 +86,12 @@ static inline void dsi_pll_set_pll_post_div(struct dsi_pll_resource *pll, u32
 		pll_post_div_val = 3;
 
 	DSI_PLL_REG_W(pll->pll_base, PLL_PLL_OUTDIV_RATE, pll_post_div_val);
-	if (pll->slave)
-		DSI_PLL_REG_W(pll->slave->pll_base, PLL_PLL_OUTDIV_RATE,
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!pll->slave[i])
+			continue;
+		DSI_PLL_REG_W(pll->slave[i]->pll_base, PLL_PLL_OUTDIV_RATE,
 				pll_post_div_val);
+	}
 }
 
 static inline int dsi_pll_get_pll_post_div(struct dsi_pll_resource *pll)
@@ -103,17 +107,20 @@ static inline void dsi_pll_set_phy_post_div(struct dsi_pll_resource *pll, u32
 		phy_post_div)
 {
 	u32 reg_val = 0;
+	int i;
 
 	reg_val = DSI_PLL_REG_R(pll->phy_base, PHY_CMN_CLK_CFG0);
 	reg_val &= ~0x0F;
 	reg_val |= phy_post_div;
 	DSI_PLL_REG_W(pll->phy_base, PHY_CMN_CLK_CFG0, reg_val);
 	/* For slave PLL, this divider always should be set to 1 */
-	if (pll->slave) {
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!pll->slave[i])
+			continue;
 		reg_val = DSI_PLL_REG_R(pll->phy_base, PHY_CMN_CLK_CFG0);
 		reg_val &= ~0x0F;
 		reg_val |= 0x1;
-		DSI_PLL_REG_W(pll->slave->phy_base, PHY_CMN_CLK_CFG0, reg_val);
+		DSI_PLL_REG_W(pll->slave[i]->phy_base, PHY_CMN_CLK_CFG0, reg_val);
 	}
 }
 
@@ -132,16 +139,19 @@ static inline void dsi_pll_set_dsiclk_sel(struct dsi_pll_resource *pll, u32
 		dsiclk_sel)
 {
 	u32 reg_val = 0;
+	int i;
 
 	reg_val = DSI_PLL_REG_R(pll->phy_base, PHY_CMN_CLK_CFG1);
 	reg_val &= ~0x3;
 	reg_val |= dsiclk_sel;
 	DSI_PLL_REG_W(pll->phy_base, PHY_CMN_CLK_CFG1, reg_val);
-	if (pll->slave) {
-		reg_val = DSI_PLL_REG_R(pll->slave->phy_base, PHY_CMN_CLK_CFG1);
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!pll->slave[i])
+			continue;
+		reg_val = DSI_PLL_REG_R(pll->slave[i]->phy_base, PHY_CMN_CLK_CFG1);
 		reg_val &= ~0x3;
 		reg_val |= dsiclk_sel;
-		DSI_PLL_REG_W(pll->slave->phy_base, PHY_CMN_CLK_CFG1, reg_val);
+		DSI_PLL_REG_W(pll->slave[i]->phy_base, PHY_CMN_CLK_CFG1, reg_val);
 	}
 }
 
@@ -158,16 +168,19 @@ static inline void dsi_pll_set_pclk_div(struct dsi_pll_resource *pll, u32
 		pclk_div)
 {
 	u32 reg_val = 0;
+	int i;
 
 	reg_val = DSI_PLL_REG_R(pll->phy_base, PHY_CMN_CLK_CFG0);
 	reg_val &= ~0xF0;
 	reg_val |= (pclk_div << 4);
 	DSI_PLL_REG_W(pll->phy_base, PHY_CMN_CLK_CFG0, reg_val);
-	if (pll->slave) {
-		reg_val = DSI_PLL_REG_R(pll->slave->phy_base, PHY_CMN_CLK_CFG0);
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!pll->slave[i])
+			continue;
+		reg_val = DSI_PLL_REG_R(pll->slave[i]->phy_base, PHY_CMN_CLK_CFG0);
 		reg_val &= ~0xF0;
 		reg_val |= (pclk_div << 4);
-		DSI_PLL_REG_W(pll->slave->phy_base, PHY_CMN_CLK_CFG0, reg_val);
+		DSI_PLL_REG_W(pll->slave[i]->phy_base, PHY_CMN_CLK_CFG0, reg_val);
 	}
 }
 
@@ -186,17 +199,24 @@ static struct dsi_pll_5nm plls[DSI_PLL_MAX];
 static void dsi_pll_config_slave(struct dsi_pll_resource *rsc)
 {
 	u32 reg;
-	struct dsi_pll_resource *orsc = pll_rsc_db[DSI_PLL_1];
+	struct dsi_pll_resource *orsc;
+	int slave_idx;
 
 	if (!rsc)
 		return;
 
-	/* Only DSI PLL0 can act as a master */
-	if (rsc->index != DSI_PLL_0)
+	/* Only DSI PLL0 and PLL2 can act as a master */
+	if ((rsc->index != DSI_PLL_0) && (rsc->index != DSI_PLL_2))
 		return;
 
-	/* default configuration: source is either internal or ref clock */
-	rsc->slave = NULL;
+	/*
+	 * In async mode, PLL1 can be slave of PLL0 in DPU0 and
+	 * PLL3 can be slave of PLL2 in DPU1. So, slave index
+	 * will be current PLL index + 1.
+	 */
+	rsc->slave[0] = NULL;
+	slave_idx = rsc->index + 1;
+	orsc = pll_rsc_db[slave_idx];
 
 	if (!orsc) {
 		DSI_PLL_WARN(rsc,
@@ -204,14 +224,14 @@ static void dsi_pll_config_slave(struct dsi_pll_resource *rsc)
 		return;
 	}
 
-	/* check to see if the source of DSI1 PLL bitclk is set to external */
+	/* check to see if the source of slave PLL bitclk is set to external */
 	reg = DSI_PLL_REG_R(orsc->phy_base, PHY_CMN_CLK_CFG1);
 	reg &= (BIT(2) | BIT(3));
 	if (reg == 0x04)
-		rsc->slave = pll_rsc_db[DSI_PLL_1]; /* external source */
+		rsc->slave[0] = orsc; /* external source */
 
 	DSI_PLL_DBG(rsc, "Slave PLL %s\n",
-			rsc->slave ? "configured" : "absent");
+			rsc->slave[0] ? "configured" : "absent");
 }
 
 static void dsi_pll_setup_config(struct dsi_pll_5nm *pll,
@@ -367,6 +387,7 @@ static void dsi_pll_config_hzindep_reg(struct dsi_pll_5nm *pll,
 {
 	void __iomem *pll_base = rsc->pll_base;
 	u64 vco_rate = rsc->vco_current_rate;
+	int i;
 
 	switch (rsc->pll_revision) {
 	case DSI_PLL_5NM:
@@ -417,8 +438,11 @@ static void dsi_pll_config_hzindep_reg(struct dsi_pll_5nm *pll,
 	}
 
 	DSI_PLL_REG_W(pll_base, PLL_PERF_OPTIMIZE, 0x22);
-	if (rsc->slave)
-		DSI_PLL_REG_W(rsc->slave->pll_base, PLL_PERF_OPTIMIZE, 0x22);
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!rsc->slave[i])
+			continue;
+		DSI_PLL_REG_W(rsc->slave[i]->pll_base, PLL_PERF_OPTIMIZE, 0x22);
+	}
 }
 
 static void dsi_pll_init_val(struct dsi_pll_resource *rsc)
@@ -890,13 +914,52 @@ static struct dsi_pll_clk dsi1_phy_pll_out_dsiclk = {
 	},
 };
 
+static struct dsi_pll_clk mdss_1_dsi0_phy_pll_out_byteclk = {
+	.hw.init = &(struct clk_init_data){
+			.name = "mdss_1_dsi0_phy_pll_out_byteclk",
+			.ops = &pll_byteclk_ops,
+	},
+};
+
+static struct dsi_pll_clk mdss_1_dsi1_phy_pll_out_byteclk = {
+	.hw.init = &(struct clk_init_data){
+			.name = "mdss_1_dsi1_phy_pll_out_byteclk",
+			.ops = &pll_byteclk_ops,
+	},
+};
+
+static struct dsi_pll_clk mdss_1_dsi0_phy_pll_out_dsiclk = {
+	.hw.init = &(struct clk_init_data){
+			.name = "mdss_1_dsi0_phy_pll_out_dsiclk",
+			.ops = &pll_pclk_ops,
+	},
+};
+
+static struct dsi_pll_clk mdss_1_dsi1_phy_pll_out_dsiclk = {
+	.hw.init = &(struct clk_init_data){
+			.name = "mdss_1_dsi1_phy_pll_out_dsiclk",
+			.ops = &pll_pclk_ops,
+	},
+};
+
+static struct dsi_pll_clk *dsi_pllcc_5nm[] = {
+	[MDSS_0_DSI0_PLL_BYTECLK] = &dsi0_phy_pll_out_byteclk,
+	[MDSS_0_DSI0_PLL_DSICLK] = &dsi0_phy_pll_out_dsiclk,
+	[MDSS_0_DSI1_PLL_BYTECLK] = &dsi1_phy_pll_out_byteclk,
+	[MDSS_0_DSI1_PLL_DSICLK] = &dsi1_phy_pll_out_dsiclk,
+	[MDSS_1_DSI0_PLL_BYTECLK] = &mdss_1_dsi0_phy_pll_out_byteclk,
+	[MDSS_1_DSI0_PLL_DSICLK] = &mdss_1_dsi0_phy_pll_out_dsiclk,
+	[MDSS_1_DSI1_PLL_BYTECLK] = &mdss_1_dsi1_phy_pll_out_byteclk,
+	[MDSS_1_DSI1_PLL_DSICLK] = &mdss_1_dsi1_phy_pll_out_dsiclk,
+};
+
 int dsi_pll_clock_register_5nm(struct platform_device *pdev,
 				  struct dsi_pll_resource *pll_res)
 {
 	int rc = 0, ndx;
 	struct clk *clk;
 	struct clk_onecell_data *clk_data;
-	int num_clks = 4;
+	int num_clks = 2, byteclk_idx, dsiclk_idx;
 
 	if (!pdev || !pdev->dev.of_node ||
 			!pll_res || !pll_res->pll_base || !pll_res->phy_base) {
@@ -933,61 +996,37 @@ int dsi_pll_clock_register_5nm(struct platform_device *pdev,
 	clk_data->clk_num = num_clks;
 
 	/* Establish client data */
-	if (ndx == 0) {
-		dsi0_phy_pll_out_byteclk.priv = pll_res;
-		dsi0_phy_pll_out_dsiclk.priv = pll_res;
 
-		clk = devm_clk_register(&pdev->dev,
-				&dsi0_phy_pll_out_byteclk.hw);
-		if (IS_ERR(clk)) {
-			DSI_PLL_ERR(pll_res,
-				"clk registration failed for DSI clock\n");
-			rc = -EINVAL;
-			goto clk_register_fail;
-		}
-		clk_data->clks[0] = clk;
+	byteclk_idx = 2 * ndx;
+	dsiclk_idx = 2 * ndx + 1;
+	dsi_pllcc_5nm[byteclk_idx]->priv = pll_res;
+	dsi_pllcc_5nm[dsiclk_idx]->priv = pll_res;
 
-		clk = devm_clk_register(&pdev->dev,
-				&dsi0_phy_pll_out_dsiclk.hw);
-		if (IS_ERR(clk)) {
-			DSI_PLL_ERR(pll_res,
-				"clk registration failed for DSI clock\n");
-			rc = -EINVAL;
-			goto clk_register_fail;
-		}
-		clk_data->clks[1] = clk;
-
-
-		rc = of_clk_add_provider(pdev->dev.of_node,
-				of_clk_src_onecell_get, clk_data);
-	} else {
-		dsi1_phy_pll_out_byteclk.priv = pll_res;
-		dsi1_phy_pll_out_dsiclk.priv = pll_res;
-
-
-		clk = devm_clk_register(&pdev->dev,
-				&dsi1_phy_pll_out_byteclk.hw);
-		if (IS_ERR(clk)) {
-			DSI_PLL_ERR(pll_res,
-				"clk registration failed for DSI clock\n");
-			rc = -EINVAL;
-			goto clk_register_fail;
-		}
-		clk_data->clks[2] = clk;
-
-		clk = devm_clk_register(&pdev->dev,
-				&dsi1_phy_pll_out_dsiclk.hw);
-		if (IS_ERR(clk)) {
-			DSI_PLL_ERR(pll_res,
-				"clk registration failed for DSI clock\n");
-			rc = -EINVAL;
-			goto clk_register_fail;
-		}
-		clk_data->clks[3] = clk;
-
-		rc = of_clk_add_provider(pdev->dev.of_node,
-				of_clk_src_onecell_get, clk_data);
+	/* byte clk registration */
+	clk = devm_clk_register(&pdev->dev,
+			&dsi_pllcc_5nm[byteclk_idx]->hw);
+	if (IS_ERR(clk)) {
+		DSI_PLL_ERR(pll_res,
+			"byte clk registration failed\n");
+		rc = -EINVAL;
+		goto clk_register_fail;
 	}
+	clk_data->clks[0] = clk;
+
+	/* dsi clk registration */
+	clk = devm_clk_register(&pdev->dev,
+			&dsi_pllcc_5nm[dsiclk_idx]->hw);
+	if (IS_ERR(clk)) {
+		DSI_PLL_ERR(pll_res,
+			"dsi clk registration failed\n");
+		rc = -EINVAL;
+		goto clk_register_fail;
+	}
+	clk_data->clks[1] = clk;
+
+	rc = of_clk_add_provider(pdev->dev.of_node,
+			of_clk_src_onecell_get, clk_data);
+
 	if (!rc) {
 		DSI_PLL_INFO(pll_res, "Registered clocks successfully\n");
 
@@ -1269,6 +1308,7 @@ static void dsi_pll_5nm_dynamic_refresh(struct dsi_pll_5nm *pll,
 	u32 upper_addr = 0;
 	u32 upper_addr2 = 0;
 	struct dsi_pll_regs *reg = &pll->reg_setup;
+	int i;
 
 	data = DSI_PLL_REG_R(rsc->phy_base, PHY_CMN_CLK_CFG1);
 	data &= ~BIT(5);
@@ -1404,11 +1444,14 @@ static void dsi_pll_5nm_dynamic_refresh(struct dsi_pll_5nm *pll,
 	DSI_DYN_PLL_REG_W(rsc->dyn_pll_base, DSI_DYNAMIC_REFRESH_PLL_CTRL18,
 			   PHY_CMN_CTRL_2, PHY_CMN_CLK_CFG0, 0x40, data);
 
-	if (rsc->slave)
-		DSI_DYN_PLL_REG_W(rsc->slave->dyn_pll_base,
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!rsc->slave[i])
+			continue;
+		DSI_DYN_PLL_REG_W(rsc->slave[i]->dyn_pll_base,
 				   DSI_DYNAMIC_REFRESH_PLL_CTRL10,
 				   PHY_CMN_CLK_CFG0, PHY_CMN_CTRL_0,
 				   data, 0x7f);
+	}
 
 	DSI_DYN_PLL_REG_W(rsc->dyn_pll_base, DSI_DYNAMIC_REFRESH_PLL_CTRL27,
 			   PHY_CMN_PLL_CNTRL, PHY_CMN_PLL_CNTRL, 0x01, 0x01);
@@ -1423,15 +1466,17 @@ static void dsi_pll_5nm_dynamic_refresh(struct dsi_pll_5nm *pll,
 	DSI_DYN_PLL_REG_W(rsc->dyn_pll_base, DSI_DYNAMIC_REFRESH_PLL_CTRL31,
 			   PHY_CMN_CLK_CFG1, PHY_CMN_CLK_CFG1, data, data);
 
-	if (rsc->slave) {
-		data = DSI_PLL_REG_R(rsc->slave->phy_base, PHY_CMN_CLK_CFG1) |
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!rsc->slave[i])
+			continue;
+		data = DSI_PLL_REG_R(rsc->slave[i]->phy_base, PHY_CMN_CLK_CFG1) |
 			BIT(5);
 
-		DSI_DYN_PLL_REG_W(rsc->slave->dyn_pll_base,
+		DSI_DYN_PLL_REG_W(rsc->slave[i]->dyn_pll_base,
 				   DSI_DYNAMIC_REFRESH_PLL_CTRL30,
 				   PHY_CMN_CLK_CFG1, PHY_CMN_RBUF_CTRL,
 				   data, 0x01);
-		DSI_DYN_PLL_REG_W(rsc->slave->dyn_pll_base,
+		DSI_DYN_PLL_REG_W(rsc->slave[i]->dyn_pll_base,
 				   DSI_DYNAMIC_REFRESH_PLL_CTRL31,
 				   PHY_CMN_CLK_CFG1, PHY_CMN_CLK_CFG1,
 				   data, data);
@@ -1481,7 +1526,7 @@ static int dsi_pll_5nm_dynamic_clk_vco_set_rate(struct dsi_pll_resource *rsc)
 
 static int dsi_pll_5nm_enable(struct dsi_pll_resource *rsc)
 {
-	int rc = 0;
+	int rc = 0, i;
 
 	/* Start PLL */
 	DSI_PLL_REG_W(rsc->phy_base, PHY_CMN_PLL_CNTRL, 0x01);
@@ -1505,13 +1550,18 @@ static int dsi_pll_5nm_enable(struct dsi_pll_resource *rsc)
 	 * to be done before enabling the global clk.
 	 */
 	dsi_pll_phy_dig_reset(rsc);
-	if (rsc->slave)
-		dsi_pll_phy_dig_reset(rsc->slave);
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!rsc->slave[i])
+			continue;
+		dsi_pll_phy_dig_reset(rsc->slave[i]);
+	}
 
 	dsi_pll_enable_global_clk(rsc);
-	if (rsc->slave)
-		dsi_pll_enable_global_clk(rsc->slave);
-
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!rsc->slave[i])
+			continue;
+		dsi_pll_enable_global_clk(rsc->slave[i]);
+	}
 	/* flush, ensure all register writes are done*/
 	wmb();
 error:
@@ -1520,7 +1570,7 @@ error:
 
 static int dsi_pll_5nm_disable(struct dsi_pll_resource *rsc)
 {
-	int rc = 0;
+	int i;
 
 	DSI_PLL_DBG(rsc, "stop PLL\n");
 
@@ -1534,28 +1584,34 @@ static int dsi_pll_5nm_disable(struct dsi_pll_resource *rsc)
 	dsi_pll_disable_global_clk(rsc);
 	DSI_PLL_REG_W(rsc->phy_base, PHY_CMN_PLL_CNTRL, 0);
 	dsi_pll_disable_sub(rsc);
-	if (rsc->slave) {
-		dsi_pll_disable_global_clk(rsc->slave);
-		dsi_pll_disable_sub(rsc->slave);
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!rsc->slave[i])
+			continue;
+		dsi_pll_disable_global_clk(rsc->slave[i]);
+		dsi_pll_disable_sub(rsc->slave[i]);
 	}
+
 	/* flush, ensure all register writes are done*/
 	wmb();
 
-	return rc;
+	return 0;
 }
 
 int dsi_pll_5nm_configure(void *pll, bool commit)
 {
 
-	int rc = 0;
+	int rc = 0, i;
 	struct dsi_pll_resource *rsc = (struct dsi_pll_resource *)pll;
 
 	dsi_pll_config_slave(rsc);
 
 	/* PLL power needs to be enabled before accessing PLL registers */
 	dsi_pll_enable_pll_bias(rsc);
-	if (rsc->slave)
-		dsi_pll_enable_pll_bias(rsc->slave);
+	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
+		if (!rsc->slave[i])
+			continue;
+		dsi_pll_enable_pll_bias(rsc->slave[i]);
+	}
 
 	if (commit)
 		dsi_pll_init_val(rsc);
@@ -1608,7 +1664,16 @@ int dsi_pll_5nm_program_slave(struct dsi_pll_resource *pll)
 		return 0;
 	}
 
-	m_pll->slave = pll;
+	/*
+	 * In sync mode, pll1, pll2, pll3 can be slave of pll0.
+	 * m_pll->slave[0] = pll1
+	 * m_pll->slave[1] = pll2
+	 * m_pll->slave[2] = pll3
+	 *
+	 * pll1 is already updated in dsi_pll_config_slave().
+	 * Update remaining two plls here.
+	 */
+	m_pll->slave[pll->index - 1] = pll;
 
 	dsi_pll_enable_pll_bias(pll);
 
