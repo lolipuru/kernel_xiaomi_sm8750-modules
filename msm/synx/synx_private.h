@@ -246,4 +246,32 @@ int synx_bind(struct synx_session *session,
 	u32 h_synx,
 	struct synx_external_desc_v2 external_sync);
 
+struct synx_session *synx_internal_initialize(struct synx_initialization_params *params);
+
+int synx_internal_uninitialize(struct synx_session *session);
+
+int synx_internal_create(struct synx_session *session, struct synx_create_params *params);
+
+int synx_internal_async_wait(struct synx_session *session, struct synx_callback_params *params);
+
+int synx_internal_cancel_async_wait(struct synx_session *session,
+	struct synx_callback_params *params);
+
+int synx_internal_signal(struct synx_session *session, u32 h_synx,
+	enum synx_signal_status status);
+
+int synx_internal_merge(struct synx_session *session, struct synx_merge_params *params);
+
+int synx_internal_wait(struct synx_session *session, u32 h_synx, u64 timeout_ms);
+
+int synx_internal_get_status(struct synx_session *session, u32 h_synx);
+
+int synx_internal_import(struct synx_session *session, struct synx_import_params *params);
+
+void *synx_internal_get_fence(struct synx_session *session, u32 h_synx);
+
+int synx_internal_release(struct synx_session *session, u32 h_synx);
+
+int synx_internal_recover(enum synx_client_id id);
+
 #endif /* __SYNX_PRIVATE_H__ */

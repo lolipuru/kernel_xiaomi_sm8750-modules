@@ -104,7 +104,7 @@ err:
 	return -SYNX_INVALID;
 }
 
-void *synx_get_fence(struct synx_session *session,
+void *synx_internal_get_fence(struct synx_session *session,
 	u32 h_synx)
 {
 	struct synx_client *client;
@@ -137,7 +137,6 @@ fail:
 	synx_put_client(client);
 	return fence;
 }
-EXPORT_SYMBOL(synx_get_fence);
 
 static int synx_native_check_bind(struct synx_client *client,
 	struct synx_create_params *params)
@@ -239,7 +238,7 @@ fail:
 	return rc;
 }
 
-int synx_create(struct synx_session *session,
+int synx_internal_create(struct synx_session *session,
 	struct synx_create_params *params)
 {
 	int rc = -SYNX_NOENT;
@@ -320,7 +319,6 @@ fail:
 	synx_put_client(client);
 	return rc;
 }
-EXPORT_SYMBOL(synx_create);
 
 int synx_native_signal_core(struct synx_coredata *synx_obj,
 	u32 status,
@@ -788,7 +786,7 @@ fail:
 	return rc;
 }
 
-int synx_signal(struct synx_session *session, u32 h_synx, u32 status)
+int synx_internal_signal(struct synx_session *session, u32 h_synx, enum synx_signal_status status)
 {
 	int rc = SYNX_SUCCESS;
 	struct synx_client *client;
@@ -856,7 +854,6 @@ fail:
 	synx_put_client(client);
 	return rc;
 }
-EXPORT_SYMBOL(synx_signal);
 
 static int synx_match_payload(struct synx_kernel_payload *cb_payload,
 	struct synx_kernel_payload *payload)
@@ -927,8 +924,7 @@ static int synx_start_timer(struct synx_cb_data *synx_cb)
 	return rc;
 }
 
-
-int synx_async_wait(struct synx_session *session,
+int synx_internal_async_wait(struct synx_session *session,
 	struct synx_callback_params *params)
 {
 	int rc = 0;
@@ -1032,9 +1028,8 @@ fail:
 	synx_put_client(client);
 	return rc;
 }
-EXPORT_SYMBOL(synx_async_wait);
 
-int synx_cancel_async_wait(
+int synx_internal_cancel_async_wait(
 	struct synx_session *session,
 	struct synx_callback_params *params)
 {
@@ -1148,9 +1143,8 @@ fail:
 	synx_put_client(client);
 	return rc;
 }
-EXPORT_SYMBOL(synx_cancel_async_wait);
 
-int synx_merge(struct synx_session *session,
+int synx_internal_merge(struct synx_session *session,
 	struct synx_merge_params *params)
 {
 	int rc = SYNX_SUCCESS, i, num_signaled = 0;
@@ -1298,7 +1292,6 @@ fail:
 	synx_put_client(client);
 	return rc;
 }
-EXPORT_SYMBOL(synx_merge);
 
 int synx_native_release_core(struct synx_client *client,
 	u32 h_synx)
@@ -1325,7 +1318,7 @@ int synx_native_release_core(struct synx_client *client,
 	return rc;
 }
 
-int synx_release(struct synx_session *session, u32 h_synx)
+int synx_internal_release(struct synx_session *session, u32 h_synx)
 {
 	int rc = 0;
 	struct synx_client *client;
@@ -1339,9 +1332,8 @@ int synx_release(struct synx_session *session, u32 h_synx)
 	synx_put_client(client);
 	return rc;
 }
-EXPORT_SYMBOL(synx_release);
 
-int synx_wait(struct synx_session *session,
+int synx_internal_wait(struct synx_session *session,
 	u32 h_synx, u64 timeout_ms)
 {
 	int rc = 0;
@@ -1398,7 +1390,6 @@ fail:
 	synx_put_client(client);
 	return rc;
 }
-EXPORT_SYMBOL(synx_wait);
 
 int synx_bind(struct synx_session *session,
 	u32 h_synx,
@@ -1519,7 +1510,7 @@ fail:
 }
 EXPORT_SYMBOL(synx_bind);
 
-int synx_get_status(struct synx_session *session,
+int synx_internal_get_status(struct synx_session *session,
 	u32 h_synx)
 {
 	int rc = 0, status = 0;
@@ -1555,7 +1546,6 @@ fail:
 	synx_put_client(client);
 	return rc;
 }
-EXPORT_SYMBOL(synx_get_status);
 
 static struct synx_map_entry *synx_handle_conversion(
 	struct synx_client *client,
@@ -1921,7 +1911,7 @@ static int synx_native_import_arr(struct synx_client *client,
 	return rc;
 }
 
-int synx_import(struct synx_session *session,
+int synx_internal_import(struct synx_session *session,
 	struct synx_import_params *params)
 {
 	int rc = 0;
@@ -1945,7 +1935,6 @@ int synx_import(struct synx_session *session,
 	synx_put_client(client);
 	return rc;
 }
-EXPORT_SYMBOL(synx_import);
 
 static int synx_handle_create(struct synx_private_ioctl_arg *k_ioctl,
 	struct synx_session *session)
@@ -2496,7 +2485,7 @@ static unsigned int synx_poll(struct file *filep,
 	return rc;
 }
 
-struct synx_session *synx_initialize(
+struct synx_session *synx_internal_initialize(
 	struct synx_initialization_params *params)
 {
 	struct synx_client *client;
@@ -2532,9 +2521,8 @@ struct synx_session *synx_initialize(
 
 	return (struct synx_session *)client;
 }
-EXPORT_SYMBOL(synx_initialize);
 
-int synx_uninitialize(struct synx_session *session)
+int synx_internal_uninitialize(struct synx_session *session)
 {
 	struct synx_client *client = NULL, *curr;
 
@@ -2555,7 +2543,6 @@ int synx_uninitialize(struct synx_session *session)
 	synx_put_client(client);
 	return SYNX_SUCCESS;
 }
-EXPORT_SYMBOL(synx_uninitialize);
 
 static int synx_open(struct inode *inode, struct file *filep)
 {
@@ -2711,7 +2698,7 @@ int synx_ipc_callback(u32 client_id,
 }
 EXPORT_SYMBOL(synx_ipc_callback);
 
-int synx_recover(enum synx_client_id id)
+int synx_internal_recover(enum synx_client_id id)
 {
 	u32 core_id;
 
@@ -2733,7 +2720,6 @@ int synx_recover(enum synx_client_id id)
 
 	return synx_global_recover(core_id);
 }
-EXPORT_SYMBOL(synx_recover);
 
 static int synx_local_mem_init(void)
 {
