@@ -7,9 +7,3 @@ KBUILD_CPPFLAGS += -DCONFIG_DSP_PINEAPPLE=1
 ccflags-y += -DCONFIG_DSP_PINEAPPLE=1
 ccflags-y += -DCONFIG_MSM_ADSPRPC_TRUSTED=1
 endif
-
-frpc-trusted-adsprpc-y := dsp/adsprpc.o	\
-                          dsp/adsprpc_compat.o \
-                          dsp/adsprpc_socket.o \
-
-obj-m := frpc-trusted-adsprpc.o

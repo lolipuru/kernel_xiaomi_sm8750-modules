@@ -34,18 +34,11 @@ endif
 LINUXINCLUDE += -I$(DSP_ROOT)/include/linux
 LINUXINCLUDE += -I$(DSP_ROOT)/include/uapi
 
-frpc-adsprpc-y := dsp/adsprpc.o	\
-                  dsp/adsprpc_rpmsg.o \
-
-frpc-adsprpc-$(CONFIG_COMPAT) += dsp/adsprpc_compat.o \
-
-frpc_trusted-adsprpc-y := dsp/adsprpc.o	\
-                          dsp/adsprpc_compat.o \
-                          dsp/adsprpc_socket.o \
+fastrpc-y := dsp/fastrpc.o	\
 
 cdsp-loader-y := dsp/cdsp-loader.o
 
-obj-m := frpc-adsprpc.o cdsp-loader.o
+obj-m := fastrpc.o cdsp-loader.o
 
-BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/frpc-adsprpc.ko
+BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/fastrpc.ko
 #BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/cdsp-loader.ko

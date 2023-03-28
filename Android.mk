@@ -27,9 +27,9 @@ include $(DLKM_DIR)/Build_external_kernelmodule.mk
 include $(CLEAR_VARS)
 $(info DLKM_DIR = $(DLKM_DIR))
 LOCAL_SRC_FILES   := $(wildcard $(LOCAL_PATH)/**/*) $(wildcard $(LOCAL_PATH)/*)
-LOCAL_MODULE      := frpc-adsprpc.ko
-LOCAL_EXPORT_KO_INCLUDE_DIRS    := $(LOCAL_PATH)/include/linux
-LOCAL_MODULE_KBUILD_NAME := frpc-adsprpc.ko
+LOCAL_MODULE      := fastrpc.ko
+LOCAL_EXPORT_KO_INCLUDE_DIRS    := $(LOCAL_PATH)/include/
+LOCAL_MODULE_KBUILD_NAME := fastrpc.ko
 LOCAL_MODULE_PATH := $(KERNEL_MODULES_OUT)
 KBUILD_OPTIONS += DSP_ROOT=$(DSP_BLD_DIR)
 KBUILD_OPTIONS += BOARD_PLATFORM=$(TARGET_BOARD_PLATFORM)
