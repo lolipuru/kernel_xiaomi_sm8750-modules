@@ -578,6 +578,7 @@ struct sde_hw_ctl_ops {
  * @mixer_hw_caps: mixer hardware capabilities
  * @flush: storage for pending ctl_flush managed via ops
  * @ops: operation list
+ * @dpu_idx: dpu index
  */
 struct sde_hw_ctl {
 	struct sde_hw_blk_reg_map hw;
@@ -594,6 +595,8 @@ struct sde_hw_ctl {
 
 	/* ops */
 	struct sde_hw_ctl_ops ops;
+
+	u32 dpu_idx;
 };
 
 /**
@@ -612,10 +615,12 @@ static inline struct sde_hw_ctl *to_sde_hw_ctl(struct sde_hw_blk_reg_map *hw)
  * @idx:  ctl_path index for which driver object is required
  * @addr: mapped register io address of MDP
  * @m :   pointer to mdss catalog data
+ * @dpu_idx: dpu index
  */
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m);
+		struct sde_mdss_cfg *m,
+		u32 dpu_idx);
 
 /**
  * sde_hw_ctl_destroy(): Destroys ctl driver context

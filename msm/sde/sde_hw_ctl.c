@@ -1444,7 +1444,12 @@ static inline bool sde_hw_ctl_read_active_status(struct sde_hw_ctl *ctx,
 
 static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 {
-	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops();
+	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+
+	if (!ops) {
+		SDE_ERROR("dma ops is NULL\n");
+		return -EINVAL;
+	}
 
 	if (!ctx)
 		return -EINVAL;
@@ -1539,7 +1544,8 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m)
+		struct sde_mdss_cfg *m,
+		u32 dpu_idx)
 {
 	struct sde_hw_ctl *c;
 	struct sde_ctl_cfg *cfg;
@@ -1560,6 +1566,7 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 	c->idx = idx;
 	c->mixer_count = m->mixer_count;
 	c->mixer_hw_caps = m->mixer;
+	c->dpu_idx = dpu_idx;
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);
