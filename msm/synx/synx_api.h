@@ -11,6 +11,7 @@
 #include <synx_header.h>
 
 #include "synx_err.h"
+#include "synx_extension_api.h"
 
 #define SYNX_NO_TIMEOUT        ((u64)-1)
 
