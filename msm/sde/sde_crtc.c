@@ -6150,6 +6150,7 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	struct drm_display_mode *mode;
 	int layout_split;
 	u32 crtc_width, crtc_height;
+	enum sde_layout layout;
 
 	kms = _sde_crtc_get_kms(crtc);
 
@@ -6174,16 +6175,24 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 		pstate = to_sde_plane_state(plane_state);
 		layout_split = crtc_width >> 1;
 
-		if (sde_plane_is_cac_enabled(pstate)) {
-			pstate->layout_offset = -1;
-		} else if (plane_state->crtc_x >= layout_split) {
+		if (plane_state->crtc_x >= layout_split) {
 			plane_state->crtc_x -= layout_split;
 			pstate->layout_offset = layout_split;
-			pstate->layout = SDE_LAYOUT_RIGHT;
+			layout = SDE_LAYOUT_RIGHT;
 		} else {
 			pstate->layout_offset = -1;
-			pstate->layout = SDE_LAYOUT_LEFT;
+			layout = SDE_LAYOUT_LEFT;
 		}
+
+		/*
+		 * When CAC is enabled, the plane coordinates can change based
+		 * on whether single eye or dual eye is used in quad lm usecases,
+		 * but plane layout is fixed as sspp to mixer configuration
+		 * is also fixed for cac usecases.
+		 */
+		if (!sde_plane_is_cac_enabled(pstate))
+			pstate->layout = layout;
+
 		SDE_DEBUG("plane%d updated: crtc_x=%d layout=%d\n",
 				DRMID(plane), plane_state->crtc_x,
 				pstate->layout);
