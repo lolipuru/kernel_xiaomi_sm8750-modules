@@ -4858,6 +4858,7 @@ static inline int rmnet_ipa3_get_max_wigig_clnt(void)
 	case IPA_HW_v5_5:
 		return MAX_WIGIG_CLIENTS_IPA_5_5;
 	case IPA_HW_v4_11:
+	case IPA_HW_v5_2:
 		return MAX_WIGIG_CLIENTS_IPA_4_11;
 	default:
 		return MAX_WIGIG_CLIENTS;
