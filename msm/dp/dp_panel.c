@@ -3215,6 +3215,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->dsc_feature_enable = panel->parser->dsc_feature_enable;
 	dp_panel->fec_feature_enable = panel->parser->fec_feature_enable;
 	dp_panel->dsc_continuous_pps = panel->parser->dsc_continuous_pps;
+	dp_panel->pclk_factor = 1;
 
 	if (in->base_panel) {
 		panel->base = in->base_panel;
@@ -3230,6 +3231,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 		dp_panel->dsc_en = in->base_panel->dsc_en;
 		dp_panel->fec_overhead_fp = in->base_panel->fec_overhead_fp;
 		dp_panel->sink_dsc_caps = in->base_panel->sink_dsc_caps;
+		dp_panel->pclk_factor = in->base_panel->pclk_factor;
 	}
 
 	dp_panel->init = dp_panel_init_panel_info;
