@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1533,6 +1533,23 @@ static void dp_display_clear_dsc_resources(struct dp_display_private *dp,
 	panel->dsc_blks_in_use = 0;
 }
 
+static int dp_display_get_mst_pbn_div(struct dp_display *dp_display)
+{
+	struct dp_display_private *dp;
+	u32 link_rate, lane_count;
+
+	if (!dp_display) {
+		DP_ERR("invalid params\n");
+		return 0;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	link_rate = drm_dp_bw_code_to_link_rate(dp->link->link_params.bw_code);
+	lane_count = dp->link->link_params.lane_count;
+
+	return link_rate * lane_count / 54000;
+}
+
 static int dp_display_stream_pre_disable(struct dp_display_private *dp,
 			struct dp_panel *dp_panel)
 {
@@ -1965,7 +1982,7 @@ static int dp_display_usb_notifier(struct notifier_block *nb,
 		dp_display_state_add(DP_STATE_ABORTED);
 		dp->ctrl->abort(dp->ctrl, true);
 		dp->aux->abort(dp->aux, true);
-		dp_display_handle_disconnect(dp, true);
+		dp_display_handle_disconnect(dp, false);
 		dp->debug->abort(dp->debug);
 	}
 
@@ -2089,7 +2106,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	}
 
 	dp->aux = dp_aux_get(dev, &dp->catalog->aux, dp->parser,
-			dp->aux_switch_node, dp->aux_bridge);
+			dp->aux_switch_node, dp->aux_bridge, g_dp_display->dp_aux_ipc_log);
 	if (IS_ERR(dp->aux)) {
 		rc = PTR_ERR(dp->aux);
 		DP_ERR("failed to initialize aux, rc = %d\n", rc);
@@ -2926,8 +2943,10 @@ static int dp_display_validate_topology(struct dp_display_private *dp,
 		num_3dmux = 1;
 	}
 
-	avail_lm = avail_res->num_lm + avail_res->num_lm_in_use - dp->tot_lm_blks_in_use;
-	if ((num_lm > dp_panel->max_lm) && (num_lm > avail_lm)) {
+	avail_lm = avail_res->num_lm + avail_res->num_lm_in_use - dp->tot_lm_blks_in_use
+			+ dp_panel->max_lm;
+
+	if (num_lm > avail_lm) {
 		DP_DEBUG("mode %sx%d is invalid, not enough lm %d %d\n",
 				mode->name, fps, num_lm, avail_res->num_lm);
 		rc = -EPERM;
@@ -2947,10 +2966,7 @@ static int dp_display_validate_topology(struct dp_display_private *dp,
 	DP_DEBUG_V("mode %sx%d is valid, supported DP topology lm:%d dsc:%d 3dmux:%d\n",
 				mode->name, fps, num_lm, num_dsc, num_3dmux);
 
-	dp->tot_lm_blks_in_use -= dp_panel->max_lm;
-	dp_panel->max_lm = num_lm > avail_res->num_lm_in_use ? max(dp_panel->max_lm, num_lm) : 0;
-	dp->tot_lm_blks_in_use += dp_panel->max_lm;
-
+	dp_mode->lm_count = num_lm;
 	rc = 0;
 
 end:
@@ -3010,9 +3026,12 @@ static enum drm_mode_status dp_display_validate_mode(
 		goto end;
 
 	mode_status = MODE_OK;
+
+	dp->tot_lm_blks_in_use -= dp_panel->max_lm;
+	dp_panel->max_lm = max(dp_panel->max_lm, dp_mode.lm_count);
+	dp->tot_lm_blks_in_use += dp_panel->max_lm;
+
 end:
-	if (mode_status != MODE_OK)
-		dp_display_clear_reservation(dp_display, dp_panel);
 	mutex_unlock(&dp->session_lock);
 
 	DP_DEBUG_V("[%s] mode is %s\n", mode->name,
@@ -3649,7 +3668,11 @@ static int dp_display_probe(struct platform_device *pdev)
 
 	g_dp_display->dp_ipc_log = ipc_log_context_create(DRM_DP_IPC_NUM_PAGES, "drm_dp", 0);
 	if (!g_dp_display->dp_ipc_log)
-		DP_WARN("Error in creating ipc_log_context\n");
+		DP_WARN("Error in creating ipc_log_context for drm_dp\n");
+	g_dp_display->dp_aux_ipc_log = ipc_log_context_create(DRM_DP_IPC_NUM_PAGES, "drm_dp_aux",
+			0);
+	if (!g_dp_display->dp_aux_ipc_log)
+		DP_WARN("Error in creating ipc_log_context for drm_dp_aux\n");
 
 	g_dp_display->enable        = dp_display_enable;
 	g_dp_display->post_enable   = dp_display_post_enable;
@@ -3686,6 +3709,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	g_dp_display->get_available_dp_resources =
 					dp_display_get_available_dp_resources;
 	g_dp_display->clear_reservation = dp_display_clear_reservation;
+	g_dp_display->get_mst_pbn_div = dp_display_get_mst_pbn_div;
 
 	rc = component_add(&pdev->dev, &dp_display_comp_ops);
 	if (rc) {
@@ -3766,6 +3790,11 @@ static int dp_display_remove(struct platform_device *pdev)
 	if (g_dp_display->dp_ipc_log) {
 		ipc_log_context_destroy(g_dp_display->dp_ipc_log);
 		g_dp_display->dp_ipc_log = NULL;
+	}
+
+	if (g_dp_display->dp_aux_ipc_log) {
+		ipc_log_context_destroy(g_dp_display->dp_aux_ipc_log);
+		g_dp_display->dp_aux_ipc_log = NULL;
 	}
 
 	return 0;

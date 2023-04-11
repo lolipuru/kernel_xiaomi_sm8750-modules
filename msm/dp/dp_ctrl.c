@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -391,7 +391,7 @@ static int dp_ctrl_link_training_1(struct dp_ctrl_private *ctrl)
 			break;
 
 		if (ctrl->link->phy_params.v_level == ctrl->link->phy_params.max_v_level) {
-			pr_err_ratelimited("max v_level reached\n");
+			DP_ERR_RATELIMITED_V("max v_level reached\n");
 			break;
 		}
 
@@ -1286,6 +1286,7 @@ static int dp_ctrl_stream_on(struct dp_ctrl *dp_ctrl, struct dp_panel *panel)
 		return rc;
 	}
 
+	panel->pclk_on = true;
 	rc = panel->hw_cfg(panel, true);
 	if (rc)
 		return rc;
@@ -1376,6 +1377,7 @@ static void dp_ctrl_stream_off(struct dp_ctrl *dp_ctrl, struct dp_panel *panel)
 
 	panel->hw_cfg(panel, false);
 
+	panel->pclk_on = false;
 	dp_ctrl_disable_stream_clocks(ctrl, panel);
 	ctrl->stream_count--;
 }
@@ -1484,14 +1486,14 @@ static void dp_ctrl_isr(struct dp_ctrl *dp_ctrl)
 {
 	struct dp_ctrl_private *ctrl;
 
-	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 	if (!dp_ctrl)
 		return;
 
 	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
 
 	ctrl->catalog->get_interrupt(ctrl->catalog);
-	SDE_EVT32_EXTERNAL(ctrl->catalog->isr);
+	SDE_EVT32_EXTERNAL(ctrl->catalog->isr, ctrl->catalog->isr3, ctrl->catalog->isr5,
+			ctrl->catalog->isr6);
 
 	if (ctrl->catalog->isr & DP_CTRL_INTR_READY_FOR_VIDEO)
 		dp_ctrl_video_ready(ctrl);
@@ -1504,7 +1506,6 @@ static void dp_ctrl_isr(struct dp_ctrl *dp_ctrl)
 
 	if (ctrl->catalog->isr5 & DP_CTRL_INTR_MST_DP1_VCPF_SENT)
 		dp_ctrl_idle_patterns_sent(ctrl);
-	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT);
 }
 
 void dp_ctrl_set_sim_mode(struct dp_ctrl *dp_ctrl, bool en)

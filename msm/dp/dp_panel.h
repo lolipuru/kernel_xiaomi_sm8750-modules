@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -78,6 +78,7 @@ struct dp_display_mode {
 	 * The output format can be read from drm_mode.
 	 */
 	enum dp_output_format output_format;
+	u32 lm_count;
 };
 
 struct dp_panel;
@@ -125,6 +126,7 @@ struct dp_panel {
 	u32 max_bw_code;
 	u32 lane_count;
 	u32 link_bw_code;
+	u32 max_supported_bpp;
 
 	/* By default, stream_id is assigned to DP_INVALID_STREAM.
 	 * Client sets the stream id value using set_stream_id interface.
@@ -152,6 +154,7 @@ struct dp_panel {
 	bool widebus_en;
 	bool dsc_continuous_pps;
 	bool mst_state;
+	bool pclk_on;
 
 	/* override debug option */
 	bool mst_hide;
@@ -196,6 +199,7 @@ struct dp_panel {
 	int (*sink_crc_enable)(struct dp_panel *dp_panel, bool enable);
 	int (*get_src_crc)(struct dp_panel *dp_panel, u16 *crc);
 	int (*get_sink_crc)(struct dp_panel *dp_panel, u16 *crc);
+	bool (*get_panel_on)(struct dp_panel *dp_panel);
 };
 
 struct dp_tu_calc_input {

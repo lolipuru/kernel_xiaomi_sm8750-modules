@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -910,6 +910,15 @@ struct dsi_ctrl_hw_ops {
 			struct dsi_host_common_cfg *cfg);
 
 	/**
+	 * hw.ops.init_cmddma_trig_ctrl() - Initialize the default trigger used
+	 *                             for command mode DMA path.
+	 * @ctrl:	Pointer to the controller host hardware.
+	 * @cfg:	Common configuration parameters.
+	 */
+	void (*init_cmddma_trig_ctrl)(struct dsi_ctrl_hw *ctrl,
+			struct dsi_host_common_cfg *cfg);
+
+	/**
 	 * hw.ops.log_line_count() - reads the MDP interface line count
 	 *			     registers.
 	 * @ctrl:	Pointer to the controller host hardware.
@@ -946,8 +955,6 @@ struct dsi_ctrl_hw_ops {
  *                          controller.
  * @supported_interrupts:   Number of supported interrupts.
  * @supported_errors:       Number of supported errors.
- * @phy_isolation_enabled:    A boolean property allows to isolate the phy from
- *                          dsi controller and run only dsi controller.
  * @phy_pll_bypass:         A boolean property that enables skipping HW access in
  *                          PHY/PLL drivers for running on emulation platforms.
  * @null_insertion_enabled:  A boolean property to allow dsi controller to
@@ -974,7 +981,6 @@ struct dsi_ctrl_hw {
 	u32 supported_interrupts;
 	u64 supported_errors;
 
-	bool phy_isolation_enabled;
 	bool phy_pll_bypass;
 	bool null_insertion_enabled;
 	bool widebus_support;

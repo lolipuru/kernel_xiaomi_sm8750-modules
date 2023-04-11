@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -28,7 +28,11 @@
 #include <linux/qcom-dma-mapping.h>
 #include <linux/dma-buf.h>
 #include <linux/version.h>
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
+#include <linux/mem-buf.h>
+#include <soc/qcom/secure_buffer.h>
+#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+#include <linux/qti-smmu-proxy-callbacks.h>
+#elif (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 #include <linux/ion.h>
 #include <linux/msm_ion.h>
 #endif
@@ -113,9 +117,11 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 	struct device *attach_dev = NULL;
 	struct msm_drm_private *priv;
 	struct msm_kms *kms;
-	int ret;
 	bool lazy_unmap = true;
-	u32 domain;
+	bool is_vmid_tvm = false, is_vmid_cp_pixel = false, is_vmid_cam_preview = false;
+	int *vmid_list, *perms_list;
+	int nelems = 0, i, ret;
+	unsigned long dma_map_attrs = 0;
 
 	if (!dma_buf || !dev->dev_private)
 		return ERR_PTR(-EINVAL);
@@ -148,18 +154,47 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 		goto fail_put;
 	}
 
+	ret = mem_buf_dma_buf_copy_vmperm(dma_buf, &vmid_list, &perms_list, &nelems);
+	if (ret) {
+		DRM_ERROR("get vmid list failure, ret:%d", ret);
+		goto fail_put;
+	}
+
+	for (i = 0; i < nelems; i++) {
+#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+		/* avoid VMID checks in trusted-vm, set flag in HLOS when only VMID_TVM is set */
+		if ((vmid_list[i] == VMID_TVM) &&
+				(!kms->funcs->in_trusted_vm || !kms->funcs->in_trusted_vm(kms))) {
+			is_vmid_tvm = true;
+			dma_map_attrs = DMA_ATTR_QTI_SMMU_PROXY_MAP;
+		}
+#endif
+		if (vmid_list[i] == VMID_CP_PIXEL) {
+			is_vmid_cp_pixel = true;
+			is_vmid_tvm = false;
+			dma_map_attrs = 0;
+			break;
+		} else if (vmid_list[i] == VMID_CP_CAMERA_PREVIEW) {
+			is_vmid_cam_preview = true;
+			break;
+		}
+	}
+
+	/* mem_buf_dma_buf_copy_vmperm uses kmemdup, do kfree to free up the memory */
+	kfree(vmid_list);
+	kfree(perms_list);
+
 	/*
-	 * - attach default drm device for all S2 only buffers or
-	 *   when IOMMU is not available
-	 * - avoid using lazying unmap feature as it doesn't add
-	 * any value without nested translations
+	 * - attach default drm device for VMID_TVM-only or when IOMMU is not available
+	 * - avoid using lazy unmap feature as it doesn't add value without nested translations
 	 */
-	if (!iommu_present(&platform_bus_type)) {
+	if (is_vmid_cp_pixel) {
+		attach_dev = kms->funcs->get_address_space_device(kms, MSM_SMMU_DOMAIN_SECURE);
+	} else if (!iommu_present(&platform_bus_type) || is_vmid_tvm || is_vmid_cam_preview) {
 		attach_dev = dev->dev;
 		lazy_unmap = false;
 	} else {
-		domain = MSM_SMMU_DOMAIN_UNSECURE;
-		attach_dev = kms->funcs->get_address_space_device(kms, domain);
+		attach_dev = kms->funcs->get_address_space_device(kms, MSM_SMMU_DOMAIN_UNSECURE);
 	}
 
 	/*
@@ -187,6 +222,9 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 	 */
 	if (lazy_unmap)
 		attach->dma_map_attrs |= DMA_ATTR_DELAYED_UNMAP;
+
+	attach->dma_map_attrs |= dma_map_attrs;
+
 	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(sgt)) {
 		ret = PTR_ERR(sgt);

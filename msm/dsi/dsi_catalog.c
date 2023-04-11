@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/errno.h>
@@ -66,6 +66,7 @@ static void dsi_catalog_cmn_init(struct dsi_ctrl_hw *ctrl,
 		dsi_ctrl_hw_cmn_wait4dynamic_refresh_done;
 	ctrl->ops.hs_req_sel = dsi_ctrl_hw_cmn_hs_req_sel;
 	ctrl->ops.vid_engine_busy = dsi_ctrl_hw_cmn_vid_engine_busy;
+	ctrl->ops.init_cmddma_trig_ctrl = dsi_ctrl_hw_cmn_init_cmddma_trig_ctrl;
 
 	switch (version) {
 	case DSI_CTRL_VERSION_2_2:
@@ -110,7 +111,6 @@ static void dsi_catalog_cmn_init(struct dsi_ctrl_hw *ctrl,
  * @ctrl:        Pointer to DSI controller hw object.
  * @version:     DSI controller version.
  * @index:       DSI controller instance ID.
- * @phy_isolation_enabled:       DSI controller works isolated from phy.
  * @phy_pll_bypass:              DSI PHY/PLL drivers bypass HW access.
  * @null_insertion_enabled:      DSI controller inserts null packet.
  *
@@ -120,8 +120,7 @@ static void dsi_catalog_cmn_init(struct dsi_ctrl_hw *ctrl,
  */
 int dsi_catalog_ctrl_setup(struct dsi_ctrl_hw *ctrl,
 		   enum dsi_ctrl_version version, u32 index,
-		   bool phy_isolation_enabled, bool phy_pll_bypass,
-		   bool null_insertion_enabled)
+		   bool phy_pll_bypass, bool null_insertion_enabled)
 {
 	int rc = 0;
 
@@ -144,7 +143,6 @@ int dsi_catalog_ctrl_setup(struct dsi_ctrl_hw *ctrl,
 	case DSI_CTRL_VERSION_2_2:
 	case DSI_CTRL_VERSION_2_3:
 	case DSI_CTRL_VERSION_2_4:
-		ctrl->phy_isolation_enabled = phy_isolation_enabled;
 		ctrl->phy_pll_bypass = phy_pll_bypass;
 		dsi_catalog_cmn_init(ctrl, version);
 		break;
@@ -153,7 +151,6 @@ int dsi_catalog_ctrl_setup(struct dsi_ctrl_hw *ctrl,
 	case DSI_CTRL_VERSION_2_7:
 	case DSI_CTRL_VERSION_2_8:
 		ctrl->widebus_support = true;
-		ctrl->phy_isolation_enabled = phy_isolation_enabled;
 		ctrl->phy_pll_bypass = phy_pll_bypass;
 		dsi_catalog_cmn_init(ctrl, version);
 		break;

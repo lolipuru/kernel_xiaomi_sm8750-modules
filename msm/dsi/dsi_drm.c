@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -641,6 +641,7 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 	mode_info->mdp_transfer_time_us_max = dsi_mode->priv_info->mdp_transfer_time_us_max;
 	mode_info->disable_rsc_solver = dsi_mode->priv_info->disable_rsc_solver;
 	mode_info->qsync_min_fps = dsi_mode->timing.qsync_min_fps;
+	mode_info->avr_step_fps = dsi_mode->timing.avr_step_fps;
 	mode_info->wd_jitter = dsi_mode->priv_info->wd_jitter;
 
 	mode_info->vpadding = dsi_display->panel->host_config.vpadding;
@@ -711,28 +712,6 @@ static const struct drm_bridge_funcs dsi_bridge_ops = {
 	.mode_set     = dsi_bridge_mode_set,
 };
 
-int dsi_conn_set_avr_step_info(struct dsi_panel *panel, void *info)
-{
-	u32 i;
-	int idx = 0;
-	size_t buff_sz = PAGE_SIZE;
-	char *buff;
-
-	buff = kzalloc(buff_sz, GFP_KERNEL);
-	if (!buff)
-		return -ENOMEM;
-
-	for (i = 0; i < panel->avr_caps.avr_step_fps_list_len && (idx < (buff_sz - 1)); i++)
-		idx += scnprintf(&buff[idx], buff_sz - idx, "%u@%u ",
-				 panel->avr_caps.avr_step_fps_list[i],
-				 panel->dfps_caps.dfps_list[i]);
-
-	sde_kms_info_add_keystr(info, "avr step requirement", buff);
-	kfree(buff);
-
-	return 0;
-}
-
 int dsi_conn_get_qsync_min_fps(struct drm_connector_state *conn_state)
 {
 	struct sde_connector_state *sde_conn_state = to_sde_connector_state(conn_state);
@@ -748,6 +727,23 @@ int dsi_conn_get_qsync_min_fps(struct drm_connector_state *conn_state)
 
 	priv_info = (struct dsi_display_mode_priv_info *)(msm_mode->private);
 	return priv_info->qsync_min_fps;
+}
+
+int dsi_conn_get_avr_step_fps(struct drm_connector_state *conn_state)
+{
+	struct sde_connector_state *sde_conn_state = to_sde_connector_state(conn_state);
+	struct msm_display_mode *msm_mode;
+	struct dsi_display_mode_priv_info *priv_info;
+
+	if (!sde_conn_state)
+		return -EINVAL;
+
+	msm_mode = &sde_conn_state->msm_mode;
+	if (!msm_mode || !msm_mode->private)
+		return -EINVAL;
+
+	priv_info = (struct dsi_display_mode_priv_info *)(msm_mode->private);
+	return priv_info->avr_step_fps;
 }
 
 int dsi_conn_set_info_blob(struct drm_connector *connector,
@@ -798,8 +794,6 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 	switch (panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:
 		sde_kms_info_add_keystr(info, "panel mode", "video");
-		if (panel->avr_caps.avr_step_fps_list_len)
-			dsi_conn_set_avr_step_info(panel, info);
 		break;
 	case DSI_OP_CMD_MODE:
 		sde_kms_info_add_keystr(info, "panel mode", "command");
@@ -1292,6 +1286,7 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 	struct dsi_display *display;
 	struct dsi_display_ctrl *m_ctrl, *ctrl;
 	int i, rc = 0, ctrl_version;
+	u32 pf_time_in_us = 0;
 	bool enable;
 	struct dsi_dyn_clk_caps *dyn_clk_caps;
 
@@ -1316,10 +1311,12 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 	display = c_bridge->display;
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 
+	pf_time_in_us = sde_encoder_get_programmed_fetch_time(encoder);
+
 	if (adj_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) {
 		m_ctrl = &display->ctrl[display->clk_master_idx];
 		ctrl_version = m_ctrl->ctrl->version;
-		rc = dsi_ctrl_timing_db_update(m_ctrl->ctrl, false);
+		rc = dsi_ctrl_timing_db_update(m_ctrl->ctrl, false, pf_time_in_us);
 		if (rc) {
 			DSI_ERR("[%s] failed to dfps update  rc=%d\n",
 				display->name, rc);
@@ -1354,7 +1351,7 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 			if (!ctrl->ctrl || (ctrl == m_ctrl))
 				continue;
 
-			rc = dsi_ctrl_timing_db_update(ctrl->ctrl, false);
+			rc = dsi_ctrl_timing_db_update(ctrl->ctrl, false, pf_time_in_us);
 			if (rc) {
 				DSI_ERR("[%s] failed to dfps update rc=%d\n",
 					display->name,  rc);

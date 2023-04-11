@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -709,6 +709,13 @@ static int write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg)
 		SDE_EVT32(val);
 	}
 
+	if (cfg->last_command) {
+		/* ensure all packets are queued in packet queue before
+		 * queuing last command descriptor (last command)
+		 */
+		wmb();
+	}
+
 	if (cfg->dma_type == REG_DMA_TYPE_DB) {
 		SDE_REG_WRITE(&hw, reg_dma_ctl_queue_off[cfg->ctl->idx],
 				cfg->dma_buf->iova);
@@ -722,6 +729,9 @@ static int write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg)
 	}
 
 	if (cfg->last_command) {
+		/* ensure last command is queued before lut dma trigger */
+		wmb();
+
 		mask = ctl_trigger_done_mask[cfg->ctl->idx][cfg->queue_select];
 		SDE_REG_WRITE(&hw, reg_dma_intr_0_clear_offset[cfg->ctl->idx][cfg->queue_select],
 				mask);
@@ -927,6 +937,7 @@ int init_v12(struct sde_hw_reg_dma *cfg)
 	v1_supported[SPR_PU_CFG] = (GRP_DSPP_HW_BLK_SELECT |
 			GRP_MDSS_HW_BLK_SELECT);
 	v1_supported[DEMURA_CFG] = MDSS | DSPP0 | DSPP1;
+	v1_supported[DEMURA_CFG0_PARAM2] = MDSS | DSPP0 | DSPP1;
 
 	return 0;
 }
@@ -1073,6 +1084,7 @@ int init_v3(struct sde_hw_reg_dma *cfg)
 	}
 
 	v1_supported[DEMURA_CFG] = v1_supported[DEMURA_CFG] | DSPP2 | DSPP3;
+	v1_supported[DEMURA_CFG0_PARAM2] = v1_supported[DEMURA_CFG0_PARAM2] | DSPP2 | DSPP3;
 	return 0;
 }
 

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -151,6 +151,8 @@
 
 #define DNSC_BLUR_MAX_RATIO_COUNT	7
 
+#define MDP_PPB_FIFO_ENTRY_SIZE                4
+
 /*
  * UIDLE supported versions
  */
@@ -267,8 +269,9 @@ struct sde_intr_irq_offsets {
  * @SDE_MDP_DHDR_MEMPOOL   Dynamic HDR Metadata mempool present
  * @SDE_MDP_DHDR_MEMPOOL_4K Dynamic HDR mempool is 4k aligned
  * @SDE_MDP_PERIPH_TOP_REMOVED Indicates if periph top0 block is removed
+ * @SDE_MDP_TOP_PPB_SET_SIZE   Indicates if top block supports ppb size setting
+ * @SDE_MDP_HW_FENCE_DIR_WRITE Indicates if hw supports hw-fence dir write
  * @SDE_MDP_MAX            Maximum value
-
  */
 enum {
 	SDE_MDP_PANIC_PER_PIPE = 0x1,
@@ -281,6 +284,8 @@ enum {
 	SDE_MDP_DHDR_MEMPOOL,
 	SDE_MDP_DHDR_MEMPOOL_4K,
 	SDE_MDP_PERIPH_TOP_0_REMOVED,
+	SDE_MDP_TOP_PPB_SET_SIZE,
+	SDE_MDP_HW_FENCE_DIR_WRITE,
 	SDE_MDP_MAX
 };
 
@@ -452,6 +457,7 @@ enum {
  * @SDE_DSPP_DEMURA          Demura block
  * @SDE_DSPP_RC              RC block
  * @SDE_DSPP_SB              SB LUT DMA
+ * @SDE_DSPP_DEMURA_CFG0_PARAM2 Demura block
  * @SDE_DSPP_MAX             maximum value
  */
 enum {
@@ -471,6 +477,7 @@ enum {
 	SDE_DSPP_DEMURA,
 	SDE_DSPP_RC,
 	SDE_DSPP_SB,
+	SDE_DSPP_DEMURA_CFG0_PARAM2,
 	SDE_DSPP_MAX
 };
 
@@ -512,6 +519,7 @@ enum {
  * @SDE_PINGPONG_MERGE_3D,  Separate MERGE_3D block exists
  * @SDE_PINGPONG_CWB,           PP block supports CWB
  * @SDE_PINGPONG_CWB_DITHER,    PP block supports CWB dither
+ * @SDE_PINGPONG_SET_SIZE,      PP block supports setting latency buffer size
  * @SDE_PINGPONG_MAX
  */
 enum {
@@ -525,6 +533,7 @@ enum {
 	SDE_PINGPONG_MERGE_3D,
 	SDE_PINGPONG_CWB,
 	SDE_PINGPONG_CWB_DITHER,
+	SDE_PINGPONG_SET_SIZE,
 	SDE_PINGPONG_MAX
 };
 
@@ -589,6 +598,8 @@ enum {
  * @SDE_CTL_UIDLE               CTL supports uidle
  * @SDE_CTL_UNIFIED_DSPP_FLUSH  CTL supports only one flush bit for DSPP
  * @SDE_CTL_HW_FENCE            CTL supports hw fencing
+ * @SDE_CTL_HW_FENCE_TRIGGER_SEL CTL supports SW selection of cmd/vid modes for trigger sel
+ * @SDE_CTL_HW_FENCE_DIR_WRITE  CTL support hw fencing dir writes
  * @SDE_CTL_MAX
  */
 enum {
@@ -599,6 +610,8 @@ enum {
 	SDE_CTL_UIDLE,
 	SDE_CTL_UNIFIED_DSPP_FLUSH,
 	SDE_CTL_HW_FENCE,
+	SDE_CTL_HW_FENCE_TRIGGER_SEL,
+	SDE_CTL_HW_FENCE_DIR_WRITE,
 	SDE_CTL_MAX
 };
 
@@ -619,6 +632,7 @@ enum {
  * @SDE_INTF_AVR_STATUS         INTF block has AVR_STATUS field in AVR_CONTROL register
  * @SDE_INTF_WD_JITTER          INTF block has WD timer jitter support
  * @SDE_INTF_WD_LTJ_CTL         INTF block has WD long term jitter control support
+ * @SDE_INTF_TE_DEASSERT_DETECT INTF block has TE Deassert detect support
  * @SDE_INTF_MAX
  */
 enum {
@@ -636,6 +650,7 @@ enum {
 	SDE_INTF_AVR_STATUS,
 	SDE_INTF_WD_JITTER,
 	SDE_INTF_WD_LTJ_CTL,
+	SDE_INTF_TE_DEASSERT_DETECT,
 	SDE_INTF_MAX
 };
 
@@ -730,6 +745,18 @@ enum {
 };
 
 /**
+ * sde_ppb_size_option           PPB size limit programming choice
+ * @SDE_PPB_SIZE_THRU_NONE       ppb size programming not available
+ * @SDE_PPB_SIZE_THRU_TOP        ppb size programming supported in top block
+ * @SDE_PPB_SIZE_THRU_PINGPONG   ppb size programming supported in pingpong block
+ */
+enum sde_ppb_size_option {
+	SDE_PPB_SIZE_THRU_NONE,
+	SDE_PPB_SIZE_THRU_TOP,
+	SDE_PPB_SIZE_THRU_PINGPONG,
+};
+
+/**
  * MDSS features - For enabling target specific functionality in @sde_mdss_cfg "features" bitmap
  * @SDE_FEATURE_CDP            Client driven prefetch supported
  * @SDE_FEATURE_DIM_LAYER      Dim Layer supported
@@ -765,6 +792,8 @@ enum {
  * @SDE_FEATURE_SUI_BLENDSTAGE SecureUI Blendstage supported
  * @SDE_FEATURE_SUI_NS_ALLOWED SecureUI allowed to access non-secure context banks
  * @SDE_FEATURE_TRUSTED_VM     Trusted VM supported
+ * @SDE_FEATURE_EPT            Expected present time supported
+ * @SDE_FEATURE_EPT_FPS        Expected fps supported for cmd mode
  * @SDE_FEATURE_UBWC_STATS     UBWC statistics supported
  * @SDE_FEATURE_VBIF_CLK_SPLIT VBIF clock split supported
  * @SDE_FEATURE_CTL_DONE       Support for CTL DONE irq
@@ -811,6 +840,8 @@ enum sde_mdss_features {
 	SDE_FEATURE_SUI_BLENDSTAGE,
 	SDE_FEATURE_SUI_NS_ALLOWED,
 	SDE_FEATURE_TRUSTED_VM,
+	SDE_FEATURE_EPT,
+	SDE_FEATURE_EPT_FPS,
 	SDE_FEATURE_UBWC_STATS,
 	SDE_FEATURE_VBIF_CLK_SPLIT,
 	SDE_FEATURE_CTL_DONE,
@@ -1935,6 +1966,8 @@ struct sde_perf_cfg {
  * @dnsc_blur_filter_count   supported filter count for downscale blur
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
+ * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
+ * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -2056,6 +2089,9 @@ struct sde_mdss_cfg {
 
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;
+
+	enum sde_ppb_size_option ppb_sz_program;
+	u32 ppb_buf_max_lines;
 };
 
 struct sde_mdss_hw_cfg_handler {

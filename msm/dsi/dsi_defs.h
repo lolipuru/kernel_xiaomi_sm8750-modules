@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -366,6 +366,7 @@ enum dsi_video_traffic_mode {
  * @post_wait_ms:        post wait duration
  * @ctrl:                index of DSI controller
  * @ctrl_flags:          controller flags
+ * @ts:                  dsi command time stamp in nano-seconds.
  */
 struct dsi_cmd_desc {
 	struct mipi_dsi_msg msg;
@@ -373,6 +374,7 @@ struct dsi_cmd_desc {
 	u32  post_wait_ms;
 	u32 ctrl;
 	u32 ctrl_flags;
+	ktime_t ts;
 };
 
 /**
@@ -416,7 +418,8 @@ struct dsi_panel_cmd_set {
  * @vdc:              VDC compression configuration.
  * @pclk_scale:       pclk scale factor, target bpp to source bpp
  * @roi_caps:         Panel ROI capabilities.
- * @qsync_min_fps:        Qsync min fps rate
+ * @qsync_min_fps:    Qsync min fps rate
+ * @avr_step_fps:     AVR step fps rate
  */
 struct dsi_mode_info {
 	u32 h_active;
@@ -444,6 +447,7 @@ struct dsi_mode_info {
 	struct msm_ratio pclk_scale;
 	struct msm_roi_caps roi_caps;
 	u32 qsync_min_fps;
+	u32 avr_step_fps;
 };
 
 /**
@@ -623,6 +627,7 @@ struct dsi_host_config {
  *                              for command mode panels in microseconds.
  * @dsi_transfer_time_us: Specifies the dsi transfer time for cmd panels.
  * @qsync_min_fps:        Qsync min fps value for the mode
+ * @avr_step_fps:         AVR step fps value for the mode
  * @clk_rate_hz:          DSI bit clock per lane in hz.
  * @min_dsi_clk_hz:       Min dsi clk per lane to transfer frame in vsync time.
  * @bit_clk_list:         List of dynamic bit clock rates supported.
@@ -652,6 +657,7 @@ struct dsi_display_mode_priv_info {
 	u32 mdp_transfer_time_us_max;
 	u32 dsi_transfer_time_us;
 	u32 qsync_min_fps;
+	u32 avr_step_fps;
 	u64 clk_rate_hz;
 	u64 min_dsi_clk_hz;
 	struct msm_dyn_clk_list bit_clk_list;

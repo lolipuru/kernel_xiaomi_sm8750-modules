@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -232,8 +232,6 @@ struct dsi_ctrl_interrupts {
  * @frame_threshold_time_us: Frame threshold time in microseconds, where
  *		 	  dsi data lane will be idle i.e from pingpong done to
  *			  next TE for command mode.
- * @phy_isolation_enabled:    A boolean property allows to isolate the phy from
- *                          dsi controller and run only dsi controller.
  * @phy_pll_bypass:      A boolean property that enables skipping HW access in
  *                       DSI PHY/PLL drivers for running on emulation platforms.
  * @null_insertion_enabled:  A boolean property to allow dsi controller to
@@ -255,6 +253,7 @@ struct dsi_ctrl_interrupts {
  *				which command transfer is successful.
  * @cmd_engine_refcount: Reference count enforcing single instance of cmd engine
  * @pending_cmd_flags: Flags associated with command that is currently being txed or pending.
+ * @cmd_success_ts:             Time stamp of when command transfer is successful in nano-seconds.
  */
 struct dsi_ctrl {
 	struct platform_device *pdev;
@@ -311,7 +310,6 @@ struct dsi_ctrl {
 	unsigned long jiffies_start;
 	unsigned int error_interrupt_count;
 
-	bool phy_isolation_enabled;
 	bool phy_pll_bypass;
 	bool null_insertion_enabled;
 	bool modeupdated;
@@ -324,6 +322,7 @@ struct dsi_ctrl {
 	u32 cmd_success_frame;
 	u32 cmd_engine_refcount;
 	u32 pending_cmd_flags;
+	ktime_t cmd_success_ts;
 };
 
 /**
@@ -415,13 +414,14 @@ int dsi_ctrl_update_host_config(struct dsi_ctrl *dsi_ctrl,
  * dsi_ctrl_timing_db_update() - update only controller Timing DB
  * @dsi_ctrl:          DSI controller handle.
  * @enable:            Enable/disable Timing DB register
+ * @pf_time_in_us:           Programmable fetch time in micro-seconds
  *
  * Update timing db register value during dfps usecases
  *
  * Return: error code.
  */
 int dsi_ctrl_timing_db_update(struct dsi_ctrl *dsi_ctrl,
-		bool enable);
+		bool enable, u32 pf_time_in_us);
 
 /**
  * dsi_ctrl_async_timing_update() - update only controller timing
