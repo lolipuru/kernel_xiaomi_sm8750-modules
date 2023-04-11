@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/io.h>
@@ -15,7 +15,7 @@
 #include "hw_fence_drv_ipc.h"
 
 struct hw_fence_driver_data *hw_fence_drv_data;
-static bool hw_fence_driver_enable;
+bool hw_fence_driver_enable;
 
 void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	struct msm_hw_fence_mem_addr *mem_descriptor)
@@ -23,6 +23,9 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	struct msm_hw_fence_client *hw_fence_client;
 	enum hw_fence_client_id client_id;
 	int ret;
+
+	if (!hw_fence_driver_enable)
+		return ERR_PTR(-ENODEV);
 
 	HWFNC_DBG_H("++ client_id_ext:%d\n", client_id_ext);
 
@@ -84,17 +87,17 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	}
 
 	hw_fence_client->update_rxq = hw_fence_ipcc_needs_rxq_update(hw_fence_drv_data, client_id);
-	if (hw_fence_client->update_rxq &&
-			hw_fence_drv_data->hw_fence_client_queue_size[client_id].queues_num <
-			HW_FENCE_CLIENT_QUEUES) {
-		HWFNC_ERR("Cannot update rx queue for tx queue-only client:%d\n", client_id);
+	hw_fence_client->send_ipc = hw_fence_ipcc_needs_ipc_irq(hw_fence_drv_data, client_id);
+
+	hw_fence_client->queues_num = hw_fence_utils_get_queues_num(hw_fence_drv_data, client_id);
+	if (!hw_fence_client->queues_num || (hw_fence_client->update_rxq &&
+			hw_fence_client->queues_num < HW_FENCE_CLIENT_QUEUES)) {
+		HWFNC_ERR("client:%d invalid q_num:%lu for updates_rxq:%s\n", client_id,
+			hw_fence_client->queues_num,
+			hw_fence_client->update_rxq ? "true" : "false");
 		ret = -EINVAL;
 		goto error;
 	}
-
-	hw_fence_client->send_ipc = hw_fence_ipcc_needs_ipc_irq(hw_fence_drv_data, client_id);
-	hw_fence_client->skip_txq_wr_idx = hw_fence_utils_skips_txq_wr_idx(hw_fence_drv_data,
-		client_id);
 
 	/* Alloc Client HFI Headers and Queues */
 	ret = hw_fence_alloc_client_resources(hw_fence_drv_data,
@@ -102,7 +105,7 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	if (ret)
 		goto error;
 
-	/* Initialize signal for communication withe FenceCTL */
+	/* Initialize signal for communication with FenceCTL */
 	ret = hw_fence_init_controller_signal(hw_fence_drv_data, hw_fence_client);
 	if (ret)
 		goto error;
@@ -115,9 +118,10 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	if (ret)
 		goto error;
 
-	HWFNC_DBG_INIT("-- Initialized ptr:0x%p client_id:%d ipc_signal_id:%d ipc vid:%d pid:%d\n",
-		hw_fence_client, hw_fence_client->client_id, hw_fence_client->ipc_signal_id,
-		hw_fence_client->ipc_client_vid, hw_fence_client->ipc_client_pid);
+	HWFNC_DBG_INIT("Initialized ptr:0x%p client_id:%d q_num:%d ipc signal:%d vid:%d pid:%d\n",
+		hw_fence_client, hw_fence_client->client_id, hw_fence_client->queues_num,
+		hw_fence_client->ipc_signal_id, hw_fence_client->ipc_client_vid,
+		hw_fence_client->ipc_client_pid);
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	init_waitqueue_head(&hw_fence_client->wait_queue);
@@ -310,10 +314,10 @@ int msm_hw_fence_wait_update_v2(void *client_handle,
 	}
 
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
-	data_id = hw_fence_get_client_data_id(hw_fence_client->client_id);
+	data_id = hw_fence_get_client_data_id(hw_fence_client->client_id_ext);
 	if (client_data_list && data_id >= HW_FENCE_MAX_CLIENTS_WITH_DATA) {
-		HWFNC_ERR("Populating non-NULL client_data_list with unsupported client id:%d\n",
-			hw_fence_client->client_id);
+		HWFNC_ERR("Populating non-NULL client_data_list with invalid client_id_ext:%d\n",
+			hw_fence_client->client_id_ext);
 		return -EINVAL;
 	}
 
@@ -389,10 +393,12 @@ int msm_hw_fence_reset_client(void *client_handle, u32 reset_flags)
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 	hw_fences_tbl = hw_fence_drv_data->hw_fences_tbl;
 
-	HWFNC_DBG_L("reset fences for client:%d\n", hw_fence_client->client_id);
+	HWFNC_DBG_L("reset fences and queues for client:%d\n", hw_fence_client->client_id);
 	for (i = 0; i < hw_fence_drv_data->hw_fences_tbl_cnt; i++)
 		hw_fence_utils_cleanup_fence(hw_fence_drv_data, hw_fence_client,
 			&hw_fences_tbl[i], i, reset_flags);
+
+	hw_fence_utils_reset_queues(hw_fence_drv_data, hw_fence_client);
 
 	return 0;
 }
@@ -500,15 +506,26 @@ static int msm_hw_fence_probe_init(struct platform_device *pdev)
 	dev_set_drvdata(&pdev->dev, hw_fence_drv_data);
 	hw_fence_drv_data->dev = &pdev->dev;
 
-	/* Initialize HW Fence Driver resources */
-	rc = hw_fence_init(hw_fence_drv_data);
-	if (rc)
-		goto error;
+	if (hw_fence_driver_enable) {
+		/* Initialize HW Fence Driver resources */
+		rc = hw_fence_init(hw_fence_drv_data);
+		if (rc)
+			goto error;
 
-	mutex_init(&hw_fence_drv_data->clients_register_lock);
+		mutex_init(&hw_fence_drv_data->clients_register_lock);
 
-	/* set ready ealue so clients can register */
-	hw_fence_drv_data->resources_ready = true;
+		/* set ready value so clients can register */
+		hw_fence_drv_data->resources_ready = true;
+	} else {
+		/* Allocate hw fence driver mem pool and share it with HYP */
+		rc = hw_fence_utils_alloc_mem(hw_fence_drv_data);
+		if (rc) {
+			HWFNC_ERR("failed to alloc base memory\n");
+			goto error;
+		}
+
+		HWFNC_DBG_INFO("hw fence driver not enabled\n");
+	}
 
 	HWFNC_DBG_H("-\n");
 
@@ -532,11 +549,6 @@ static int msm_hw_fence_probe(struct platform_device *pdev)
 	if (!pdev) {
 		HWFNC_ERR("null platform dev\n");
 		return -EINVAL;
-	}
-
-	if (!hw_fence_driver_enable) {
-		HWFNC_DBG_INFO("hw fence driver not enabled\n");
-		return -EOPNOTSUPP;
 	}
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,msm-hw-fence"))

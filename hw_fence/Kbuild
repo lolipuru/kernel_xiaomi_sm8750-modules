@@ -14,6 +14,12 @@ msm_hw_fence-y := src/msm_hw_fence.o \
 		src/hw_fence_drv_debug.o \
 		src/hw_fence_drv_ipc.o
 
+ifneq ($(CONFIG_ARCH_KALAMA), y)
+LINUXINCLUDE += -I$(MSM_HW_FENCE_ROOT)/../synx-kernel/msm/synx/ \
+		-I$(MSM_HW_FENCE_ROOT)/../synx-kernel/include/uapi/synx/media/
+msm_hw_fence-y += src/msm_hw_fence_synx_translation.o
+endif
+
 msm_hw_fence-$(CONFIG_DEBUG_FS) += src/hw_fence_ioctl.o
 
 CDEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"

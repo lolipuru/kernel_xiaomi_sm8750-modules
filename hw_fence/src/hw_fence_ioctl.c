@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/ioctl.h>
+#include <linux/ktime.h>
 #include <linux/types.h>
 #include <linux/sync_file.h>
 
@@ -21,11 +22,7 @@
 #define HW_SYNC_IOC_UNREG_CLIENT	_IOWR(HW_SYNC_IOC_MAGIC, 11, unsigned long)
 #define HW_SYNC_IOC_CREATE_FENCE	_IOWR(HW_SYNC_IOC_MAGIC, 12,\
 						struct hw_fence_sync_create_data)
-#define HW_SYNC_IOC_DESTROY_FENCE	_IOWR(HW_SYNC_IOC_MAGIC, 13,\
-						struct hw_fence_sync_create_data)
 #define HW_SYNC_IOC_CREATE_FENCE_ARRAY	_IOWR(HW_SYNC_IOC_MAGIC, 14,\
-						struct hw_fence_array_sync_create_data)
-#define HW_SYNC_IOC_DESTROY_FENCE_ARRAY	_IOWR(HW_SYNC_IOC_MAGIC, 15,\
 						struct hw_fence_array_sync_create_data)
 #define HW_SYNC_IOC_REG_FOR_WAIT	_IOWR(HW_SYNC_IOC_MAGIC, 16, int)
 #define HW_SYNC_IOC_FENCE_SIGNAL	_IOWR(HW_SYNC_IOC_MAGIC, 17, unsigned long)
@@ -38,6 +35,8 @@
 		.func = _func,			\
 		.name = #ioctl			\
 	}
+
+#define ktime_compare_safe(A, B) ktime_compare(ktime_sub((A), (B)), ktime_set(0, 0))
 
 /**
  * struct hw_sync_obj - per client hw sync object.
@@ -71,16 +70,16 @@ struct hw_fence_sync_create_data {
 
 /**
  * struct hw_fence_array_sync_create_data - data used in creating multiple fences.
- * @seqno: array of sequence numbers used to create fences.
- * @num_fences: number of fences to be created.
- * @fence: return the fd of the new sync_file with the created fence.
- * @hash: array of fence hash
+ * @seqno: sequence number used to create fence array.
+ * @num_fences: number of fence fds received.
+ * @fences: array of fence fds.
+ * @fence_array_fd: fd of fence array.
  */
 struct hw_fence_array_sync_create_data {
-	u64 seqno[HW_FENCE_ARRAY_SIZE];
+	u64 seqno;
 	int num_fences;
-	__s32 fence;
-	u64 hash[HW_FENCE_ARRAY_SIZE];
+	u64 fences[HW_FENCE_ARRAY_SIZE];
+	__s32 fence_array_fd;
 };
 
 /**
@@ -314,33 +313,12 @@ exit:
 	return ret;
 }
 
-static long hw_sync_ioctl_destroy_fence(struct hw_sync_obj *obj, unsigned long arg)
+static void _put_child_fences(int i, struct dma_fence **fences)
 {
-	int fd;
-	struct hw_dma_fence *fence;
-	struct hw_fence_sync_create_data data;
+	int fence_idx;
 
-	if (!_is_valid_client(obj))
-		return -EINVAL;
-
-	if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
-		return -EFAULT;
-
-	fd = data.fence;
-	fence = (struct hw_dma_fence *)_hw_sync_get_fence(fd);
-
-	if (!fence) {
-		HWFNC_ERR("fence for fd:%d not found\n", fd);
-		return -EINVAL;
-	}
-
-	/* Decrement the refcount that hw_sync_get_fence increments */
-	dma_fence_put(&fence->base);
-
-	/* To destroy fence */
-	dma_fence_put(&fence->base);
-
-	return 0;
+	for (fence_idx = i; fence_idx >= 0 ; fence_idx--)
+		dma_fence_put(fences[i]);
 }
 
 static long hw_sync_ioctl_create_fence_array(struct hw_sync_obj *obj, unsigned long arg)
@@ -348,11 +326,9 @@ static long hw_sync_ioctl_create_fence_array(struct hw_sync_obj *obj, unsigned l
 	struct dma_fence_array *fence_array;
 	struct hw_fence_array_sync_create_data data;
 	struct dma_fence **fences = NULL;
-	struct msm_hw_fence_create_params params;
 	struct sync_file *sync_file;
-	spinlock_t **fence_lock = NULL;
 	int num_fences, i, fd, ret;
-	u64 hash;
+	struct hw_dma_fence *fence;
 
 	if (!_is_valid_client(obj)) {
 		return -EINVAL;
@@ -365,85 +341,48 @@ static long hw_sync_ioctl_create_fence_array(struct hw_sync_obj *obj, unsigned l
 		return -EFAULT;
 
 	num_fences = data.num_fences;
-	if (num_fences >= HW_FENCE_ARRAY_SIZE) {
+	if (num_fences > HW_FENCE_ARRAY_SIZE) {
 		HWFNC_ERR("Number of fences: %d is greater than allowed size: %d\n",
 					num_fences, HW_FENCE_ARRAY_SIZE);
 		return -EINVAL;
 	}
-	fence_lock = kcalloc(num_fences, sizeof(*fence_lock), GFP_KERNEL);
-	if (!fence_lock)
-		return -ENOMEM;
 
 	fences = kcalloc(num_fences, sizeof(*fences), GFP_KERNEL);
 	if (!fences) {
-		kfree(fence_lock);
 		return -ENOMEM;
 	}
 
-	/*
-	 * Create the array of dma fences
-	 * This API takes seqno[num_fences] as the seqno for the fence-array
-	 * and from 0 to (num_fences - 1) for the fences in the array.
-	 */
 	for (i = 0; i < num_fences; i++) {
-		struct hw_dma_fence *dma_fence;
-
-		fence_lock[i] = kzalloc(sizeof(spinlock_t), GFP_KERNEL);
-		if (!fence_lock[i]) {
-			_cleanup_fences(i, fences, fence_lock);
-			return -ENOMEM;
+		fd = data.fences[i];
+		if (fd <= 0) {
+			kfree(fences);
+			return -EINVAL;
 		}
-
-		dma_fence = kzalloc(sizeof(*dma_fence), GFP_KERNEL);
-		if (!dma_fence) {
-			_cleanup_fences(i, fences, fence_lock);
-			return -ENOMEM;
+		fence = (struct hw_dma_fence *)_hw_sync_get_fence(fd);
+		if (!fence) {
+			_put_child_fences(i-1, fences);
+			kfree(fences);
+			return -EINVAL;
 		}
-		fences[i] = &dma_fence->base;
-
-		spin_lock_init(fence_lock[i]);
-		dma_fence_init(fences[i], &hw_fence_dbg_ops, fence_lock[i],
-			obj->context, data.seqno[i]);
+		fences[i] = &fence->base;
 	}
 
 	/* create the fence array from array of dma fences */
-	fence_array = dma_fence_array_create(num_fences, fences, obj->context, data.seqno[i], 0);
+	fence_array = dma_fence_array_create(num_fences, fences, obj->context, data.seqno, 0);
 	if (!fence_array) {
 		HWFNC_ERR("Error creating fence_array\n");
-		_cleanup_fences(num_fences - 1, fences, fence_lock);
+		/* decrease the refcount incremented for each child fences */
+		for (i = 0; i < num_fences; i++)
+			dma_fence_put(fences[i]);
+		kfree(fences);
 		return -EINVAL;
-	}
-
-	/* create hw fences */
-	for (i = 0; i < num_fences; i++) {
-		params.fence = fences[i];
-		params.handle = &hash;
-
-		ret = msm_hw_fence_create(obj->client_handle, &params);
-		if (ret) {
-			HWFNC_ERR("Error creating HW fence\n");
-			dma_fence_put(&fence_array->base);
-			/*
-			 * free array of pointers, no need to call kfree in 'fences',
-			 * since that is released from the fence-array release api
-			 */
-			kfree(fence_lock);
-			kfree(fence_array);
-			return -EINVAL;
-		}
-
-		/* keep handle in dma_fence, to destroy hw-fence during release */
-		to_hw_dma_fence(fences[i])->client_handle = obj->client_handle;
-		data.hash[i] = hash;
 	}
 
 	/* create fd */
 	fd = get_unused_fd_flags(0);
-	if (fd < 0) {
+	if (fd <= 0) {
 		HWFNC_ERR("failed to get fd for client:%d\n", obj->client_id);
 		dma_fence_put(&fence_array->base);
-		kfree(fence_lock);
-		kfree(fence_array);
 		return fd;
 	}
 
@@ -451,7 +390,6 @@ static long hw_sync_ioctl_create_fence_array(struct hw_sync_obj *obj, unsigned l
 	if (sync_file == NULL) {
 		HWFNC_ERR("couldn't create fence fd, %d\n", fd);
 		dma_fence_put(&fence_array->base);
-		kfree(fence_lock);
 		kfree(fence_array);
 		ret = -EINVAL;
 		goto exit;
@@ -460,12 +398,10 @@ static long hw_sync_ioctl_create_fence_array(struct hw_sync_obj *obj, unsigned l
 	/* Decrement the refcount that sync_file_create increments */
 	dma_fence_put(&fence_array->base);
 
-	data.fence = fd;
+	data.fence_array_fd = fd;
 	if (copy_to_user((void __user *)arg, &data, sizeof(data))) {
 		fput(sync_file->file);
 		dma_fence_put(&fence_array->base);
-		kfree(fence_lock);
-		kfree(fence_array);
 		ret = -EFAULT;
 		goto exit;
 	}
@@ -477,41 +413,6 @@ static long hw_sync_ioctl_create_fence_array(struct hw_sync_obj *obj, unsigned l
 exit:
 	put_unused_fd(fd);
 	return ret;
-}
-
-static long hw_sync_ioctl_destroy_fence_array(struct hw_sync_obj *obj, unsigned long arg)
-{
-	struct dma_fence_array *fence_array;
-	struct dma_fence *fence;
-	struct hw_fence_array_sync_create_data data;
-	int fd;
-
-	if (!_is_valid_client(obj))
-		return -EINVAL;
-
-	if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
-		return -EFAULT;
-
-	fd = data.fence;
-	fence = (struct dma_fence *)_hw_sync_get_fence(fd);
-	if (!fence) {
-		HWFNC_ERR("Invalid fence fd: %d\n", fd);
-		return -EINVAL;
-	}
-
-	/* Decrement the refcount that hw_sync_get_fence increments */
-	dma_fence_put(fence);
-
-	fence_array = to_dma_fence_array(fence);
-	if (!fence_array) {
-		HWFNC_ERR("Invalid fence array fd: %d\n", fd);
-		return -EINVAL;
-	}
-
-	/* Destroy fence array */
-	dma_fence_put(&fence_array->base);
-
-	return 0;
 }
 
 /*
@@ -576,8 +477,8 @@ static long hw_sync_ioctl_fence_signal(struct hw_sync_obj *obj, unsigned long ar
 	if (signal_id < 0)
 		return -EINVAL;
 
-	tx_client = hw_fence_client->ipc_client_vid;
-	rx_client = hw_fence_client->ipc_client_pid;
+	tx_client = hw_fence_client->ipc_client_pid;
+	rx_client = hw_fence_client->ipc_client_vid;
 	ret = msm_hw_fence_trigger_signal(obj->client_handle, tx_client, rx_client, signal_id);
 	if (ret) {
 		HWFNC_ERR("hw fence trigger signal has failed\n");
@@ -593,6 +494,7 @@ static long hw_sync_ioctl_fence_wait(struct hw_sync_obj *obj, unsigned long arg)
 	struct msm_hw_fence_queue_payload payload;
 	struct hw_fence_sync_wait_data data;
 	struct dma_fence *fence;
+	ktime_t cur_ktime, exp_ktime;
 	int fd, ret, read = 1, queue_type = HW_FENCE_RX_QUEUE - 1;  /* rx queue index */
 
 	if (!_is_valid_client(obj))
@@ -616,9 +518,15 @@ static long hw_sync_ioctl_fence_wait(struct hw_sync_obj *obj, unsigned long arg)
 		return -EINVAL;
 	}
 
-	ret = wait_event_timeout(hw_fence_client->wait_queue,
-			atomic_read(&hw_fence_client->val_signal) > 0,
-			msecs_to_jiffies(data.timeout_ms));
+	exp_ktime = ktime_add_ms(ktime_get(), data.timeout_ms);
+	do {
+		ret = wait_event_timeout(hw_fence_client->wait_queue,
+				atomic_read(&hw_fence_client->val_signal) > 0,
+				msecs_to_jiffies(data.timeout_ms));
+		cur_ktime = ktime_get();
+	} while ((atomic_read(&hw_fence_client->val_signal) <= 0) && (ret == 0) &&
+		ktime_compare_safe(exp_ktime, cur_ktime) > 0);
+
 	if (!ret) {
 		HWFNC_ERR("timed out waiting for the client signal %d\n", data.timeout_ms);
 		/* Decrement the refcount that hw_sync_get_fence increments */
@@ -682,9 +590,7 @@ static const struct hw_sync_ioctl_def hw_sync_debugfs_ioctls[] = {
 	HW_IOCTL_DEF(HW_SYNC_IOC_REG_CLIENT, hw_sync_ioctl_reg_client),
 	HW_IOCTL_DEF(HW_SYNC_IOC_UNREG_CLIENT, hw_sync_ioctl_unreg_client),
 	HW_IOCTL_DEF(HW_SYNC_IOC_CREATE_FENCE, hw_sync_ioctl_create_fence),
-	HW_IOCTL_DEF(HW_SYNC_IOC_DESTROY_FENCE, hw_sync_ioctl_destroy_fence),
 	HW_IOCTL_DEF(HW_SYNC_IOC_CREATE_FENCE_ARRAY, hw_sync_ioctl_create_fence_array),
-	HW_IOCTL_DEF(HW_SYNC_IOC_DESTROY_FENCE_ARRAY, hw_sync_ioctl_destroy_fence_array),
 	HW_IOCTL_DEF(HW_SYNC_IOC_REG_FOR_WAIT, hw_sync_ioctl_reg_for_wait),
 	HW_IOCTL_DEF(HW_SYNC_IOC_FENCE_SIGNAL, hw_sync_ioctl_fence_signal),
 	HW_IOCTL_DEF(HW_SYNC_IOC_FENCE_WAIT, hw_sync_ioctl_fence_wait),
