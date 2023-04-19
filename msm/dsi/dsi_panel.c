@@ -2216,6 +2216,7 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-sticky_still_disable-command",
 	"qcom,mdss-dsi-sticky_on_fly-command",
 	"qcom,mdss-dsi-trigger_self_refresh-command",
+	"qcom,mdss-dsi-fps-switch-command",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -2256,6 +2257,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-sticky_still_disable-command-state",
 	"qcom,mdss-dsi-sticky_on_fly-command-state",
 	"qcom,mdss-dsi-trigger_self_refresh-command-state",
+	"qcom,mdss-dsi-fps-switch-command-state",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -4764,6 +4766,84 @@ parse_fail:
 	utils->data = utils_data;
 	mutex_unlock(&panel->panel_lock);
 	return rc;
+}
+
+void dsi_panel_get_fps_switch_cmd(struct dsi_panel *panel,
+		struct dsi_display_mode *mode, u32 refresh_rate)
+{
+	struct device_node *fps_np, *timing_np, *child_np, *sub_child_np;
+	struct dsi_parser_utils *utils;
+	u32 fps = 0;
+	int rc = 0;
+	void *utils_data = NULL;
+	struct dsi_panel_cmd_set *set;
+	struct dsi_display_mode_priv_info *prv_info;
+
+	if (!panel || !mode) {
+		DSI_ERR("invalid params\n");
+		return;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	utils = &panel->utils;
+	prv_info = mode->priv_info;
+	utils_data = utils->data;
+
+	timing_np = utils->get_child_by_name(utils->data,
+			 "qcom,mdss-dsi-display-timings");
+
+	if (!timing_np) {
+		DSI_ERR("no display timing_np nodes defined\n");
+		goto error;
+	}
+
+	dsi_for_each_child_node(timing_np, child_np) {
+		utils->data = child_np;
+		fps_np = utils->get_child_by_name(utils->data,
+				"qcom,mdss-dsi-dfps-commands");
+
+		if (!fps_np) {
+			DSI_ERR("no display fps nodes defined\n");
+			goto error;
+		}
+
+		dsi_for_each_child_node(fps_np, sub_child_np) {
+			utils->data = sub_child_np;
+			rc = utils->read_u32(utils->data, "qcom,dsi-fps-value", &fps);
+
+			if (rc) {
+				DSI_ERR("failed to read qcom,dsi-fps-value, rc=%d\n",
+						rc);
+				goto error;
+			}
+
+			if (fps != refresh_rate)
+				continue;
+
+			set = &prv_info->cmd_sets[DSI_CMD_SET_FPS_SWITCH];
+			rc = dsi_panel_parse_cmd_sets_sub(set,
+					DSI_CMD_SET_FPS_SWITCH, utils);
+
+			if (rc)
+				DSI_DEBUG("failed to parse fps switch command %d\n",
+					     rc);
+			/*
+			 * If suspend / resume happens after fps switch, on command of
+			 * default fps is sent which leads to flicker as fps switch command
+			 * is not part of on command. To avoid this, fps switch command is
+			 * sent as part of post panel on command.
+			 */
+			set = &prv_info->cmd_sets[DSI_CMD_SET_POST_ON];
+			rc = dsi_panel_parse_cmd_sets_sub(set, DSI_CMD_SET_POST_ON, utils);
+
+			if (rc)
+				DSI_DEBUG("failed to parse post panel on command %d\n", rc);
+		}
+	}
+
+error:
+	   utils->data = utils_data;
+	   mutex_unlock(&panel->panel_lock);
 }
 
 int dsi_panel_get_host_cfg_for_mode(struct dsi_panel *panel,

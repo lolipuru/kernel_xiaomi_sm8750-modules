@@ -7515,6 +7515,8 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 
 			dsi_display_get_dfps_timing(display, sub_mode,
 					curr_refresh_rate);
+			dsi_panel_get_fps_switch_cmd(display->panel, sub_mode,
+					sub_mode->timing.refresh_rate);
 			sub_mode->panel_mode_caps = DSI_OP_VIDEO_MODE;
 		}
 		end = array_idx;
