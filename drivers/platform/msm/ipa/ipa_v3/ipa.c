@@ -9087,21 +9087,17 @@ static struct notifier_block qcom_va_md_ipa_notif_blk = {
 
 static u32 get_ipa_gen_rx_cmn_page_pool_size(u32 rx_cmn_page_pool_size)
 {
-        if (!rx_cmn_page_pool_size)
-                return IPA_GENERIC_RX_CMN_PAGE_POOL_SZ_FACTOR;
-        if (rx_cmn_page_pool_size <= IPA_GENERIC_RX_CMN_PAGE_POOL_SZ_FACTOR)
-                return rx_cmn_page_pool_size;
-        return IPA_GENERIC_RX_CMN_PAGE_POOL_SZ_FACTOR;
+	if (!rx_cmn_page_pool_size)
+		return IPA_GENERIC_RX_CMN_PAGE_POOL_SZ_FACTOR;
+	return rx_cmn_page_pool_size;
 }
 
 
 static u32 get_ipa_gen_rx_cmn_temp_pool_size(u32 rx_cmn_temp_pool_size)
 {
-        if (!rx_cmn_temp_pool_size)
-                return IPA_GENERIC_RX_CMN_TEMP_POOL_SZ_FACTOR;
-        if (rx_cmn_temp_pool_size <= IPA_GENERIC_RX_CMN_TEMP_POOL_SZ_FACTOR)
-                return rx_cmn_temp_pool_size;
-        return IPA_GENERIC_RX_CMN_TEMP_POOL_SZ_FACTOR;
+	if (!rx_cmn_temp_pool_size)
+		return IPA_GENERIC_RX_CMN_TEMP_POOL_SZ_FACTOR;
+	return rx_cmn_temp_pool_size;
 }
 
 static u32 get_ipa_gen_rx_ll_pool_size(u32 rx_ll_pool_sz_factor)
