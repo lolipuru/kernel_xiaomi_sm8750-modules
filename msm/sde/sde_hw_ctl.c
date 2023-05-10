@@ -103,8 +103,7 @@ static const u32 sspp_tbl[SSPP_MAX] = { SDE_NONE, 0, 1, 2, 18, 11, 12, 24, 25, 1
 /**
  * List of layer mixer bits in CTL_FLUSH
  */
-static const u32 mixer_tbl[LM_MAX] = {SDE_NONE, 6, 7, 8, 9, 10, 20,
-	SDE_NONE};
+static const u32 mixer_tbl[LM_MAX] = {SDE_NONE, 6, 7, 8, 9, 10, 20, 21, 27};
 
 /**
  * List of DSPP bits in CTL_FLUSH
@@ -156,7 +155,7 @@ static const u32 pipe_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT, 16, 17, 18, 19, 0
 /**
  * List of LM bits in CTL_LM_ACTIVE
  */
-static const u32 lm_active_tbl[LM_MAX] = {SDE_NONE, 0, 1, 2, 3, 4, 5, SDE_NONE};
+static const u32 lm_active_tbl[LM_MAX] = {SDE_NONE, 0, 1, 2, 3, 4, 5, 6, 7};
 
 /**
  * list of WB bits in CTL_WB_FLUSH
@@ -181,7 +180,7 @@ static const u32 vdc_flush_tbl[DSC_MAX] = {SDE_NONE, 16, 17};
 /**
  * list of MERGE_3D bits in CTL_MERGE_3D_FLUSH
  */
-static const u32 merge_3d_tbl[MERGE_3D_MAX] = {SDE_NONE, 0, 1, 2};
+static const u32 merge_3d_tbl[MERGE_3D_MAX] = {SDE_NONE, 0, 1, 2, 3};
 
 /**
  * list of CDM bits in CTL_CDM_FLUSH
@@ -191,8 +190,7 @@ static const u32 cdm_flush_tbl[CDM_MAX] = {SDE_NONE, 0};
 /**
  * list of CWB bits in CTL_CWB_FLUSH
  */
-static const u32 cwb_flush_tbl[CWB_MAX] = {SDE_NONE, SDE_NONE, 1, 2, 3,
-	4, 5};
+static const u32 cwb_flush_tbl[CWB_MAX] = {SDE_NONE, SDE_NONE, 1, 2, 3, 4, 5};
 
 /**
  * list of CWB bits in CTL_CWB_FLUSH for dedicated cwb

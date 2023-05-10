@@ -190,11 +190,12 @@ enum sde_lm {
 	LM_3,
 	LM_4,
 	LM_5,
+	LM_6,
+	LM_7,
 	LM_DCWB_DUMMY_0,
 	LM_DCWB_DUMMY_1,
 	LM_DCWB_DUMMY_2,
 	LM_DCWB_DUMMY_3,
-	LM_6,
 	LM_MAX
 };
 
@@ -283,6 +284,8 @@ enum sde_pingpong {
 	PINGPONG_3,
 	PINGPONG_4,
 	PINGPONG_5,
+	PINGPONG_6,
+	PINGPONG_7,
 	PINGPONG_CWB_0,
 	PINGPONG_CWB_1,
 	PINGPONG_CWB_2,
@@ -409,6 +412,7 @@ enum sde_merge_3d {
 	MERGE_3D_0 = 1,
 	MERGE_3D_1,
 	MERGE_3D_2,
+	MERGE_3D_3,
 	MERGE_3D_CWB_0,
 	MERGE_3D_CWB_1,
 	MERGE_3D_MAX
