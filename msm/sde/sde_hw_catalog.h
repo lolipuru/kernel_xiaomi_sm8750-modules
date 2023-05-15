@@ -455,7 +455,8 @@ enum {
  * @SDE_DSPP_LTM             LTM block
  * @SDE_DSPP_SPR             SPR block
  * @SDE_DSPP_DEMURA          Demura block
- * @SDE_DSPP_RC              RC block
+ * @SDE_DSPP_RC              RC block (mask)
+ * @SDE_DSPP_RC_PU           RC block (pu)
  * @SDE_DSPP_SB              SB LUT DMA
  * @SDE_DSPP_DEMURA_CFG0_PARAM2 Demura block
  * @SDE_DSPP_MAX             maximum value
@@ -476,6 +477,7 @@ enum {
 	SDE_DSPP_SPR,
 	SDE_DSPP_DEMURA,
 	SDE_DSPP_RC,
+	SDE_DSPP_RC_PU,
 	SDE_DSPP_SB,
 	SDE_DSPP_DEMURA_CFG0_PARAM2,
 	SDE_DSPP_MAX
@@ -633,6 +635,7 @@ enum {
  * @SDE_INTF_WD_JITTER          INTF block has WD timer jitter support
  * @SDE_INTF_WD_LTJ_CTL         INTF block has WD long term jitter control support
  * @SDE_INTF_TE_DEASSERT_DETECT INTF block has TE Deassert detect support
+ * @SDE_INTF_VSYNC_TS_SRC_EN    INTF block has VSYNC timestamp source selection support
  * @SDE_INTF_MAX
  */
 enum {
@@ -651,6 +654,7 @@ enum {
 	SDE_INTF_WD_JITTER,
 	SDE_INTF_WD_LTJ_CTL,
 	SDE_INTF_TE_DEASSERT_DETECT,
+	SDE_INTF_VSYNC_TS_SRC_EN,
 	SDE_INTF_MAX
 };
 
@@ -1762,11 +1766,13 @@ struct sde_perf_cdp_cfg {
 
 /**
  * struct sde_sc_cfg - define system cache configuration
+ * @slice:     llcc slice descriptor
  * @llcc_uuid: llcc use case id for the system cache
  * @llcc_scid: scid for the system cache
  * @llcc_slice_size: slice size of the system cache
  */
 struct sde_sc_cfg {
+	struct llcc_slice_desc *slice;
 	int llcc_uid;
 	int llcc_scid;
 	size_t llcc_slice_size;

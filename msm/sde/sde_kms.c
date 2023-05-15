@@ -1457,6 +1457,8 @@ int sde_kms_vm_pre_release(struct sde_kms *sde_kms,
 	sde_kms_cancel_delayed_work(crtc);
 
 	kthread_flush_worker(&priv->event_thread[crtc->index].worker);
+	/* Flush pp_event thread queue for any pending events */
+	kthread_flush_worker(&priv->pp_event_worker);
 
 	/* disable SDE encoder irq's */
 	drm_for_each_encoder_mask(encoder, crtc->dev,
@@ -1712,6 +1714,10 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 			SDE_EVT32(DRMID(crtc), DRMID(encoder), cwb_disabling,
 					ret, SDE_EVTLOG_ERROR);
 			sde_crtc_request_frame_reset(crtc, encoder);
+
+			/* call ensure virt_reset for cwb encoder before exiting the loop */
+			if (cwb_disabling)
+				sde_encoder_virt_reset(encoder);
 			break;
 		}
 
@@ -5336,6 +5342,7 @@ int sde_kms_vm_trusted_resource_init(struct sde_kms *sde_kms,
 	if (sde_kms->splash_data.num_splash_displays != 1) {
 		SDE_ERROR("no. of displays not supported:%d\n",
 				sde_kms->splash_data.num_splash_displays);
+		ret = -EINVAL;
 		goto error;
 	}
 

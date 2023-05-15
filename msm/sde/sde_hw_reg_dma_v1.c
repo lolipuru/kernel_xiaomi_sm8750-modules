@@ -928,7 +928,9 @@ int init_v12(struct sde_hw_reg_dma *cfg)
 	v1_supported[LTM_INIT] = GRP_LTM_HW_BLK_SELECT;
 	v1_supported[LTM_ROI] = GRP_LTM_HW_BLK_SELECT;
 	v1_supported[LTM_VLUT] = GRP_LTM_HW_BLK_SELECT;
-	v1_supported[RC_DATA] = (GRP_DSPP_HW_BLK_SELECT |
+	v1_supported[RC_MASK_CFG] = (GRP_DSPP_HW_BLK_SELECT |
+			GRP_MDSS_HW_BLK_SELECT);
+	v1_supported[RC_PU_CFG] = (GRP_DSPP_HW_BLK_SELECT |
 			GRP_MDSS_HW_BLK_SELECT);
 	v1_supported[SPR_INIT] = (GRP_DSPP_HW_BLK_SELECT |
 			GRP_MDSS_HW_BLK_SELECT);
@@ -1140,7 +1142,7 @@ int reset_v1(struct sde_hw_ctl *ctl)
 	struct sde_hw_blk_reg_map hw;
 	u32 val, i = 0, k = 0;
 
-	if (!ctl || ctl->idx > CTL_MAX) {
+	if (!ctl || ctl->idx >= CTL_MAX) {
 		DRM_ERROR("invalid ctl %pK ctl idx %d\n",
 			ctl, ((ctl) ? ctl->idx : 0));
 		return -EINVAL;

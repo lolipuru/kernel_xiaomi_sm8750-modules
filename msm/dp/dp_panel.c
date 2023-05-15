@@ -1930,8 +1930,8 @@ static u32 dp_panel_get_supported_bpp(struct dp_panel *dp_panel,
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 
-	if (dp_panel->mst_state)
-		max_supported_bpp = 24;
+	if (dp_panel->mst_state && panel->base)
+		max_supported_bpp = panel->base->max_supported_bpp;
 
 	if (dsc_en)
 		min_supported_bpp = 24;
@@ -3091,8 +3091,10 @@ int dp_panel_get_sink_crc(struct dp_panel *dp_panel, u16 *crc)
 	 * per component (RGB or CrYCb).
 	 */
 	rc = drm_dp_dpcd_read(drm_aux, DP_TEST_CRC_R_CR, crc_bytes, 6);
-	if (rc < 0)
-		return rc;
+	if (rc != 6) {
+		DP_ERR("failed to read sink CRC, ret:%d\n", rc);
+		return -EIO;
+	}
 
 	rc = 0;
 	crc[0] = crc_bytes[0] | crc_bytes[1] << 8;
@@ -3115,12 +3117,16 @@ int dp_panel_sink_crc_enable(struct dp_panel *dp_panel, bool enable)
 
 	if (dp_panel->link_info.capabilities & DP_LINK_CAP_CRC) {
 		ret = drm_dp_dpcd_readb(drm_aux, DP_TEST_SINK, &buf);
-		if (ret < 0)
-			return ret;
+		if (ret != 1) {
+			DP_ERR("failed to read CRC cap, ret:%d\n", ret);
+			return -EIO;
+		}
 
 		ret = drm_dp_dpcd_writeb(drm_aux, DP_TEST_SINK, buf | DP_TEST_SINK_START);
-		if (ret < 0)
-			return ret;
+		if (ret != 1) {
+			DP_ERR("failed to enable Sink CRC, ret:%d\n", ret);
+			return -EIO;
+		}
 
 		drm_dp_dpcd_readb(drm_aux, DP_TEST_SINK, &buf);
 	}
