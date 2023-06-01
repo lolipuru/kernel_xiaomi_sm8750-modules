@@ -1684,7 +1684,7 @@ int dsi_pll_4nm_toggle(void *pll, bool prepare)
 	return rc;
 }
 
-int dsi_pll_4nm_program_slave(struct dsi_pll_resource *pll)
+int dsi_pll_4nm_program_slave(struct dsi_pll_resource *pll, bool skip_op)
 {
 	struct dsi_pll_resource *m_pll = pll_rsc_db[DSI_PLL_0];
 	u32 pll_post_div;
@@ -1707,6 +1707,9 @@ int dsi_pll_4nm_program_slave(struct dsi_pll_resource *pll)
 	 * Update remaining two plls here.
 	 */
 	m_pll->slave[pll->index - 1] = pll;
+
+	if (skip_op)
+		return 0;
 
 	dsi_pll_enable_pll_bias(pll);
 
