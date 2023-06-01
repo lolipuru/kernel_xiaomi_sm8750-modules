@@ -4072,9 +4072,6 @@ static int _sde_crtc_check_dest_scaler_validate_ds(struct drm_crtc *crtc,
 			max_in_width = hw_ds->scl->top->maxinputwidth;
 			max_out_width = hw_ds->scl->top->maxoutputwidth;
 
-			if (cstate->num_ds == CRTC_DUAL_MIXERS_ONLY)
-				max_in_width -= SDE_DS_OVERFETCH_SIZE;
-
 			SDE_DEBUG("max DS width [%d,%d] for num_ds = %d\n",
 				max_in_width, max_out_width, cstate->num_ds);
 		}
