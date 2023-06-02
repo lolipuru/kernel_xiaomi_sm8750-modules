@@ -189,6 +189,7 @@ int synx_hwfence_create(struct synx_session *session, struct synx_create_params 
 	if (handle > U32_MAX) {
 		HWFNC_ERR("synx_id:%d fence handle:%llu would overflow h_synx\n", session->type,
 			handle);
+		hw_fence_destroy_refcount(hw_fence_drv_data, handle, HW_FENCE_FCTL_REFCOUNT);
 		msm_hw_fence_destroy_with_handle(session->client, handle);
 		return -SYNX_INVALID;
 	}

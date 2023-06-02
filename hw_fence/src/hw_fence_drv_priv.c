@@ -951,7 +951,7 @@ static void _cleanup_hw_fence(struct msm_hw_fence *hw_fence)
 	hw_fence->fence_create_time = 0;
 	hw_fence->fence_trigger_time = 0;
 	hw_fence->fence_wait_time = 0;
-	hw_fence->debug_refcount = 0;
+	hw_fence->refcount = 0;
 	hw_fence->parents_cnt = 0;
 	hw_fence->pending_child_cnt = 0;
 
@@ -962,7 +962,7 @@ static void _cleanup_hw_fence(struct msm_hw_fence *hw_fence)
 }
 
 /* This function must be called with the hw fence lock */
-static void  _reserve_hw_fence(struct hw_fence_driver_data *drv_data,
+static int  _reserve_hw_fence(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence *hw_fence, u32 client_id,
 	u64 context, u64 seqno, u32 hash, u32 pending_child_cnt)
 {
@@ -976,28 +976,77 @@ static void  _reserve_hw_fence(struct hw_fence_driver_data *drv_data,
 	hw_fence->flags = 0; /* fence just reserved, there shouldn't be any flags set */
 	hw_fence->fence_allocator = client_id;
 	hw_fence->fence_create_time = hw_fence_get_qtime(drv_data);
-	hw_fence->debug_refcount++;
+	/* one released by creating client; one released by FCTL */
+	hw_fence->refcount = HW_FENCE_FCTL_REFCOUNT + 1;
 
 	HWFNC_DBG_LUT("Reserved fence client:%d ctx:%llu seq:%llu hash:%u\n",
 		client_id, context, seqno, hash);
+
+	return 0;
 }
 
 /* This function must be called with the hw fence lock */
-static void  _unreserve_hw_fence(struct hw_fence_driver_data *drv_data,
+static int  _unreserve_hw_fence(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence *hw_fence, u32 client_id,
 	u64 context, u64 seqno, u32 hash, u32 pending_child_cnt)
 {
-	_cleanup_hw_fence(hw_fence);
+	if (hw_fence->refcount & HW_FENCE_HLOS_REFCOUNT_MASK)
+		hw_fence->refcount--;
+	else
+		return -EINVAL; /* keep hw-fence in table for debugging purposes */
 
-	/* unreserve this HW fence */
-	hw_fence->valid = 0;
+	/* if both hlos and fctl refcounts are cleared, then delete the fence */
+	if (!hw_fence->refcount) {
+		_cleanup_hw_fence(hw_fence);
 
-	HWFNC_DBG_LUT("Unreserved fence client:%d ctx:%llu seq:%llu hash:%u\n",
-		client_id, context, seqno, hash);
+		/* unreserve this HW fence */
+		hw_fence->valid = 0;
+	}
+
+	HWFNC_DBG_LUT("Unreserved fence client:%d ctx:%llu seq:%llu hash:%u refcount:%llx\n",
+		client_id, context, seqno, hash, hw_fence->refcount);
+
+	return 0;
+}
+
+int hw_fence_destroy_refcount(struct hw_fence_driver_data *drv_data, u64 hash, u32 ref)
+{
+	struct msm_hw_fence *hw_fences_tbl = drv_data->hw_fences_tbl;
+	struct msm_hw_fence *hw_fence = NULL;
+	int ret = 0;
+
+	hw_fence = _get_hw_fence(drv_data->hw_fence_table_entries, hw_fences_tbl, hash);
+	if (!hw_fence) {
+		HWFNC_ERR("bad hw fence hash:%llu\n", hash);
+		return -EINVAL;
+	}
+
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 1); /* lock */
+	if (hw_fence->refcount & ref) {
+		hw_fence->refcount &= ~ref;
+	} else {
+		GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
+		HWFNC_ERR("fence ctx:%llu seq:%llu hash:%llu ref:0x%llx before destroy ref:0x%x\n",
+			hw_fence->ctx_id, hw_fence->seq_id, hash, hw_fence->refcount, ref);
+		/* keep hw-fence in table for debugging purposes */
+		return -EINVAL;
+	}
+	if (!hw_fence->refcount) {
+		_cleanup_hw_fence(hw_fence);
+
+		/* unreserve this HW fence */
+		hw_fence->valid = 0;
+	}
+
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
+	HWFNC_DBG_H("Removed 0x%x refcount on fence hash:%llu ref:0x%llx\n", ref, hash,
+		hw_fence->refcount);
+
+	return ret;
 }
 
 /* This function must be called with the hw fence lock */
-static void  _reserve_join_fence(struct hw_fence_driver_data *drv_data,
+static int  _reserve_join_fence(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence *hw_fence, u32 client_id, u64 context,
 	u64 seqno, u32 hash, u32 pending_child_cnt)
 {
@@ -1010,16 +1059,18 @@ static void  _reserve_join_fence(struct hw_fence_driver_data *drv_data,
 	hw_fence->seq_id = seqno;
 	hw_fence->fence_allocator = client_id;
 	hw_fence->fence_create_time = hw_fence_get_qtime(drv_data);
-	hw_fence->debug_refcount++;
+	hw_fence->refcount = HW_FENCE_FCTL_REFCOUNT; /* refcount released by FCTL */
 
 	hw_fence->pending_child_cnt = pending_child_cnt;
 
 	HWFNC_DBG_LUT("Reserved join fence client:%d ctx:%llu seq:%llu hash:%u\n",
 		client_id, context, seqno, hash);
+
+	return 0;
 }
 
 /* This function must be called with the hw fence lock */
-static void  _fence_found(struct hw_fence_driver_data *drv_data,
+static int  _fence_found(struct hw_fence_driver_data *drv_data,
 	 struct msm_hw_fence *hw_fence, u32 client_id,
 	u64 context, u64 seqno, u32 hash, u32 pending_child_cnt)
 {
@@ -1030,6 +1081,8 @@ static void  _fence_found(struct hw_fence_driver_data *drv_data,
 	 */
 	HWFNC_DBG_LUT("Found fence client:%d ctx:%llu seq:%llu hash:%u\n",
 		client_id, context, seqno, hash);
+
+	return 0;
 }
 
 char *_get_op_mode(enum hw_fence_lookup_ops op_code)
@@ -1055,7 +1108,7 @@ struct msm_hw_fence *_hw_fence_lookup_and_process(struct hw_fence_driver_data *d
 	u32 pending_child_cnt, enum hw_fence_lookup_ops op_code, u64 *hash)
 {
 	bool (*compare_fnc)(struct msm_hw_fence *hfence, u64 context, u64 seqno);
-	void (*process_fnc)(struct hw_fence_driver_data *drv_data, struct msm_hw_fence *hfence,
+	int (*process_fnc)(struct hw_fence_driver_data *drv_data, struct msm_hw_fence *hfence,
 			u32 client_id, u64 context, u64 seqno, u32 hash, u32 pending);
 	struct msm_hw_fence *hw_fence = NULL;
 	u64 step = 0;
@@ -1122,8 +1175,8 @@ struct msm_hw_fence *_hw_fence_lookup_and_process(struct hw_fence_driver_data *d
 
 			/* Process the hw fence found by the algorithm */
 			if (process_fnc) {
-				process_fnc(drv_data, hw_fence, client_id, context, seqno, *hash,
-					pending_child_cnt);
+				ret = process_fnc(drv_data, hw_fence, client_id, context, seqno,
+					*hash, pending_child_cnt);
 
 				/* update memory table with processing */
 				wmb();
@@ -1138,9 +1191,9 @@ struct msm_hw_fence *_hw_fence_lookup_and_process(struct hw_fence_driver_data *d
 				op_code == HW_FENCE_LOOKUP_OP_CREATE_JOIN) &&
 				seqno == hw_fence->seq_id && context == hw_fence->ctx_id) {
 				/* ctx & seqno must be unique creating a hw-fence */
+				GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0);
 				HWFNC_ERR("cannot create hw fence with same ctx:%llu seqno:%llu\n",
 					context, seqno);
-				GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0);
 				break;
 			}
 			/* compare can fail if we have a collision, we will linearly resolve it */
@@ -1149,6 +1202,10 @@ struct msm_hw_fence *_hw_fence_lookup_and_process(struct hw_fence_driver_data *d
 		}
 
 		GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0);
+
+		if (hw_fence_found && ret)
+			HWFNC_ERR("failed process_func client:%u op:%s ctx:%llu seq:%llu h:%llu\n",
+				client_id, _get_op_mode(op_code), context, seqno, *hash);
 
 		/* Increment step for the next loop */
 		step++;
@@ -1186,17 +1243,6 @@ int hw_fence_create(struct hw_fence_driver_data *drv_data,
 	return ret;
 }
 
-static  inline int _hw_fence_cleanup(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence *hw_fences_tbl, u32 client_id, u64 context, u64 seqno) {
-	u64 hash;
-
-	if (!_hw_fence_lookup_and_process(drv_data, hw_fences_tbl,
-			context, seqno, client_id, 0, HW_FENCE_LOOKUP_OP_DESTROY, &hash))
-		return -EINVAL;
-
-	return 0;
-}
-
 int hw_fence_destroy(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client,
 	u64 context, u64 seqno)
@@ -1204,9 +1250,11 @@ int hw_fence_destroy(struct hw_fence_driver_data *drv_data,
 	u32 client_id = hw_fence_client->client_id;
 	struct msm_hw_fence *hw_fences_tbl = drv_data->hw_fences_tbl;
 	int ret = 0;
+	u64 hash;
 
-	/* remove hw fence from table*/
-	if (_hw_fence_cleanup(drv_data, hw_fences_tbl, client_id, context, seqno)) {
+	/* decrement refcount on hw-fence */
+	if (!_hw_fence_lookup_and_process(drv_data, hw_fences_tbl,
+			context, seqno, client_id, 0, HW_FENCE_LOOKUP_OP_DESTROY, &hash)) {
 		HWFNC_ERR("Fail destroying fence client:%u ctx:%llu seqno:%llu\n",
 			client_id, context, seqno);
 		ret = -EINVAL;
@@ -1218,7 +1266,7 @@ int hw_fence_destroy(struct hw_fence_driver_data *drv_data,
 int hw_fence_destroy_with_hash(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, u64 hash)
 {
-	u32 client_id = hw_fence_client->client_id;
+	u32 client_id = hw_fence_client ? hw_fence_client->client_id : ~0;
 	struct msm_hw_fence *hw_fences_tbl = drv_data->hw_fences_tbl;
 	struct msm_hw_fence *hw_fence = NULL;
 	int ret = 0;
@@ -1235,13 +1283,17 @@ int hw_fence_destroy_with_hash(struct hw_fence_driver_data *drv_data,
 		return -EINVAL;
 	}
 
-	/* remove hw fence from table*/
-	if (_hw_fence_cleanup(drv_data, hw_fences_tbl, client_id, hw_fence->ctx_id,
-			hw_fence->seq_id)) {
-		HWFNC_ERR("Fail destroying fence client:%u ctx:%llu seqno:%llu hash:%llu\n",
-			client_id, hw_fence->ctx_id, hw_fence->seq_id, hash);
+	/* decrement refcount on hw-fence */
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 1); /* lock */
+	if (hw_fence->valid)
+		_unreserve_hw_fence(drv_data, hw_fence, client_id, hw_fence->ctx_id,
+			hw_fence->seq_id, hash, 0);
+	else
 		ret = -EINVAL;
-	}
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
+
+	if (ret)
+		HWFNC_ERR("unreserve of invalid fence hash:%llu client:%u\n", hash, client_id);
 
 	return ret;
 }
@@ -1279,11 +1331,9 @@ static struct msm_hw_fence *_hw_fence_process_join_fence(struct hw_fence_driver_
 		if (!join_fence)
 			HWFNC_ERR("Fail to create join fence client:%u ctx:%llu seqno:%llu\n",
 				client_id, context, seqno);
-	} else {
-		/* destroy the fence */
-		if (_hw_fence_cleanup(drv_data, hw_fences_tbl, client_id, context, seqno))
-			HWFNC_ERR("Fail destroying join fence client:%u ctx:%llu seqno:%llu\n",
-				client_id, context, seqno);
+	} else if (hw_fence_destroy_refcount(drv_data, *hash, HW_FENCE_FCTL_REFCOUNT)) {
+		HWFNC_ERR("Fail destroy join fence client:%u ctx:%llu seq:%llu hash:%llu\n",
+			client_id, context, seqno, *hash);
 	}
 
 	return join_fence;
@@ -1295,7 +1345,7 @@ struct msm_hw_fence *msm_hw_fence_find(struct hw_fence_driver_data *drv_data,
 {
 	struct msm_hw_fence *hw_fences_tbl = drv_data->hw_fences_tbl;
 	struct msm_hw_fence *hw_fence;
-	u32 client_id = hw_fence_client ? hw_fence_client->client_id : 0xff;
+	u32 client_id = hw_fence_client ? hw_fence_client->client_id : ~0;
 
 	/* find the hw fence */
 	hw_fence = _hw_fence_lookup_and_process(drv_data, hw_fences_tbl, context,
@@ -1600,7 +1650,6 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 	is_signaled = hw_fence->flags & MSM_HW_FENCE_FLAG_SIGNAL;
 	hw_fence->wait_client_mask |= BIT(hw_fence_client->client_id);
 	hw_fence->fence_wait_time = hw_fence_get_qtime(drv_data);
-	hw_fence->debug_refcount++;
 	if (client_data)
 		hw_fence->client_data[data_id] = client_data;
 
@@ -1697,10 +1746,14 @@ static void _signal_parent_fences(struct hw_fence_driver_data *drv_data,
 			continue;
 		}
 
-		if (_update_and_get_join_fence_signal_status(drv_data, join_fence, error))
+		if (_update_and_get_join_fence_signal_status(drv_data, join_fence, error)) {
 			/* no need to lock access to wait client mask for join fences */
 			_signal_all_wait_clients(drv_data, join_fence, join_fence->wait_client_mask,
 				parent_hash, join_fence->error);
+
+			/* decrement refcount for signal on behalf of fence controller */
+			hw_fence_destroy_refcount(drv_data, parent_hash, HW_FENCE_FCTL_REFCOUNT);
+		}
 	}
 }
 
@@ -1708,6 +1761,7 @@ static void _signal_parent_fences(struct hw_fence_driver_data *drv_data,
  * Check fence signaling status. If unsignaled,
  * 1. signal waiting clients,
  * 2. signal parent fences (and waiting clients on parent fences)
+ * 3. decrement refcount for signal on behalf of fence controller
  */
 static void _signal_fence_if_unsignaled(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence *hw_fence, u64 hash, int error)
@@ -1732,6 +1786,9 @@ static void _signal_fence_if_unsignaled(struct hw_fence_driver_data *drv_data,
 	/* fields used by the following are not modified for signaled fences */
 	_signal_parent_fences(drv_data, hw_fence, parents_cnt, hash, error);
 	_signal_all_wait_clients(drv_data, hw_fence, wait_client_mask, hash, error);
+
+	/* remove ref held by fence controller to signal hw-fence */
+	hw_fence_destroy_refcount(drv_data, hash, HW_FENCE_FCTL_REFCOUNT);
 }
 
 void hw_fence_utils_reset_queues(struct hw_fence_driver_data *drv_data,

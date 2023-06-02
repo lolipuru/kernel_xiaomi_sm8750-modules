@@ -78,6 +78,22 @@
  */
 #define HW_FENCE_EVENT_MAX_DATA 12
 
+/**
+ * HW_FENCE_FCTL_REFCOUNT:
+ * Refcount held by Fence Controller for signaling.
+ * This bit in hw_fence->refcount is set during creation of a hw-fence and released when the
+ * hw-fence is signaled by Fence Controller.
+ */
+#define HW_FENCE_FCTL_REFCOUNT BIT(31)
+
+/**
+ * HW_FENCE_HLOS_REFCOUNT_MASK:
+ * Mask for refcounts acquired and released from HLOS.
+ * The field "hw_fence->refcount & HW_FENCE_HLOS_REFCOUNT_MASK" stores the number of refcounts held
+ * by HW Fence clients or HW Fence Driver.
+ */
+#define HW_FENCE_HLOS_REFCOUNT_MASK GENMASK(30, 0)
+
 enum hw_fence_lookup_ops {
 	HW_FENCE_LOOKUP_OP_CREATE = 0x1,
 	HW_FENCE_LOOKUP_OP_DESTROY,
@@ -463,7 +479,8 @@ struct msm_hw_fence_event {
  * @fence_create_time: debug info with the create time timestamp
  * @fence_trigger_time: debug info with the trigger time timestamp
  * @fence_wait_time: debug info with the register-for-wait timestamp
- * @debug_refcount: refcount used for debugging
+ * @refcount: refcount on the hw-fence. This is split into multiple fields, see
+ *            HW_FENCE_HLOS_REFCOUNT_MASK and HW_FENCE_FCTL_REFCOUNT for more detail
  * @client_data: array of data optionally passed from and returned to clients waiting on the fence
  *               during fence signaling
  */
@@ -483,7 +500,7 @@ struct msm_hw_fence {
 	u64 fence_create_time;
 	u64 fence_trigger_time;
 	u64 fence_wait_time;
-	u64 debug_refcount;
+	u64 refcount;
 	u64 client_data[HW_FENCE_MAX_CLIENTS_WITH_DATA];
 };
 
@@ -506,6 +523,7 @@ int hw_fence_destroy(struct hw_fence_driver_data *drv_data,
 	u64 context, u64 seqno);
 int hw_fence_destroy_with_hash(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, u64 hash);
+int hw_fence_destroy_refcount(struct hw_fence_driver_data *drv_data, u64 hash, u32 ref);
 int hw_fence_process_fence_array(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client,
 	struct dma_fence_array *array, u64 *hash_join_fence, u64 client_data);
