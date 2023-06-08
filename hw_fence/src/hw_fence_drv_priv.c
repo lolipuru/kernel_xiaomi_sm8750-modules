@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/uaccess.h>
@@ -2385,4 +2385,25 @@ int hw_fence_add_callback(struct hw_fence_driver_data *drv_data, struct dma_fenc
 	}
 
 	return ret;
+}
+
+int hw_fence_get_flags_error(struct hw_fence_driver_data *drv_data, u64 hash, u64 *flags,
+	u32 *error)
+{
+	struct msm_hw_fence *hw_fence;
+
+	if (!drv_data) {
+		HWFNC_ERR("invalid drv_data\n");
+		return -EINVAL;
+	}
+
+	hw_fence = _get_hw_fence(drv_data->hw_fence_table_entries, drv_data->hw_fences_tbl, hash);
+	if (!hw_fence) {
+		HWFNC_ERR("Failed to get hw-fence for hash:%llu\n", hash);
+		return -EINVAL;
+	}
+	*flags = hw_fence->flags;
+	*error = hw_fence->error;
+
+	return 0;
 }

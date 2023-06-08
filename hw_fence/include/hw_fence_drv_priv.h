@@ -602,6 +602,8 @@ struct msm_hw_fence *hw_fence_find_with_dma_fence(struct hw_fence_driver_data *d
 enum hw_fence_client_data_id hw_fence_get_client_data_id(enum hw_fence_client_id client_id);
 int hw_fence_signal_fence(struct hw_fence_driver_data *drv_data, struct dma_fence *fence, u64 hash,
 	u32 error, bool release_ref);
+int hw_fence_get_flags_error(struct hw_fence_driver_data *drv_data, u64 hash, u64 *flags,
+	u32 *error);
 
 /* apis for internally managed dma-fence */
 struct dma_fence *hw_dma_fence_init(struct msm_hw_fence_client *hw_fence_client, u64 context,
