@@ -282,6 +282,19 @@ struct hw_fence_client_queue_desc {
 };
 
 /**
+ * struct hw_fence_signal_cb - Structure holding hw-fence callback data for dma-fence callback
+ *
+ * @fence_cb: fence callback data structure used to add dma_fence_callback
+ * @drv_data: structure holding internal hw-fence driver data
+ * @hash: hash of hw-fence to decrement refcount in dma-fence callback
+ */
+struct hw_fence_signal_cb {
+	struct dma_fence_cb fence_cb;
+	struct hw_fence_driver_data *drv_data;
+	u64 hash;
+};
+
+/**
  * struct hw_fence_driver_data - Structure holding internal hw-fence driver data
  *
  * @dev: device driver pointer
@@ -518,6 +531,7 @@ void hw_fence_utils_reset_queues(struct hw_fence_driver_data *drv_data,
 int hw_fence_create(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client,
 	u64 context, u64 seqno, u64 *hash);
+int hw_fence_add_callback(struct hw_fence_driver_data *drv_data, struct dma_fence *fence, u64 hash);
 int hw_fence_destroy(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client,
 	u64 context, u64 seqno);

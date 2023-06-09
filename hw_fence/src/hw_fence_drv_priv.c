@@ -1761,10 +1761,10 @@ static void _signal_parent_fences(struct hw_fence_driver_data *drv_data,
  * Check fence signaling status. If unsignaled,
  * 1. signal waiting clients,
  * 2. signal parent fences (and waiting clients on parent fences)
- * 3. decrement refcount for signal on behalf of fence controller
+ * 3. decrement refcount for signal on behalf of fence controller (if release_ref is true)
  */
 static void _signal_fence_if_unsignaled(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence *hw_fence, u64 hash, int error)
+	struct msm_hw_fence *hw_fence, u64 hash, int error, bool release_ref)
 {
 	u64 wait_client_mask;
 	u32 parents_cnt;
@@ -1788,7 +1788,8 @@ static void _signal_fence_if_unsignaled(struct hw_fence_driver_data *drv_data,
 	_signal_all_wait_clients(drv_data, hw_fence, wait_client_mask, hash, error);
 
 	/* remove ref held by fence controller to signal hw-fence */
-	hw_fence_destroy_refcount(drv_data, hash, HW_FENCE_FCTL_REFCOUNT);
+	if (release_ref)
+		hw_fence_destroy_refcount(drv_data, hash, HW_FENCE_FCTL_REFCOUNT);
 }
 
 void hw_fence_utils_reset_queues(struct hw_fence_driver_data *drv_data,
@@ -1861,7 +1862,7 @@ int hw_fence_utils_cleanup_fence(struct hw_fence_driver_data *drv_data,
 	if (hw_fence->fence_allocator == hw_fence_client->client_id) {
 
 		/* if fence is not signaled, signal with error all the waiting clients */
-		_signal_fence_if_unsignaled(drv_data, hw_fence, hash, error);
+		_signal_fence_if_unsignaled(drv_data, hw_fence, hash, error, true);
 
 		if (reset_flags & MSM_HW_FENCE_RESET_WITHOUT_DESTROY)
 			goto skip_destroy;
@@ -1904,4 +1905,87 @@ enum hw_fence_client_data_id hw_fence_get_client_data_id(enum hw_fence_client_id
 	}
 
 	return data_id;
+}
+
+static void msm_hw_fence_signal_callback(struct dma_fence *fence, struct dma_fence_cb *cb)
+{
+	struct hw_fence_driver_data *drv_data;
+	struct hw_fence_signal_cb *signal_cb;
+	struct msm_hw_fence *hw_fence;
+	u64 hash;
+
+	if (!fence || !cb) {
+		HWFNC_ERR("Invalid params fence:0x%pK cb:0x%pK\n", fence, cb);
+		return;
+	}
+
+	signal_cb = (struct hw_fence_signal_cb *)cb;
+	drv_data = signal_cb->drv_data;
+	hash = signal_cb->hash;
+	if (!drv_data) {
+		HWFNC_ERR("invalid signal_cb params\n");
+		return;
+	}
+	HWFNC_DBG_IRQ("dma-fence signal callback ctx:%llu seqno:%llu flags:%lx err:%d\n",
+		fence->context, fence->seqno, fence->flags, fence->error);
+
+	hw_fence = _get_hw_fence(drv_data->hw_fence_table_entries, drv_data->hw_fences_tbl, hash);
+	if (!hw_fence) {
+		HWFNC_ERR("bad hw fence hash:%llu\n", hash);
+		goto error;
+	}
+
+	if (hw_fence->ctx_id != fence->context || hw_fence->seq_id != fence->seqno) {
+		HWFNC_ERR("invalid hfence hash:%llu ctx:%llu seq:%llu expected ctx:%llu seq:%llu\n",
+			hash, hw_fence->ctx_id, hw_fence->seq_id, fence->context, fence->seqno);
+		goto error;
+	}
+
+	/* if unsignaled, signal but do not release ref held by FCTL */
+	_signal_fence_if_unsignaled(drv_data, hw_fence, hash, fence->error, false);
+	hw_fence_destroy_with_hash(drv_data, NULL, hash); /* release ref held by dma-fence signal */
+error:
+	kfree(signal_cb);
+}
+
+int hw_fence_add_callback(struct hw_fence_driver_data *drv_data, struct dma_fence *fence, u64 hash)
+{
+	struct hw_fence_signal_cb *signal_cb;
+	struct msm_hw_fence *hw_fence;
+	int ret;
+
+	hw_fence = _get_hw_fence(drv_data->hw_fence_table_entries, drv_data->hw_fences_tbl, hash);
+	if (!hw_fence) {
+		HWFNC_ERR("Failed to find hw-fence for hash:%llu\n", hash);
+		return -EINVAL;
+	}
+
+	signal_cb = kzalloc(sizeof(*signal_cb), GFP_KERNEL);
+	if (!signal_cb)
+		return -ENOMEM;
+
+	signal_cb->drv_data = drv_data;
+	signal_cb->hash = hash;
+
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 1);
+	hw_fence->refcount++;
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0);
+
+	ret = dma_fence_add_callback(fence, &signal_cb->fence_cb, msm_hw_fence_signal_callback);
+	if (ret) {
+		if (dma_fence_is_signaled(fence)) {
+			HWFNC_DBG_IRQ("dma_fence is signaled ctx:%llu seq:%llu flags:%lx err:%d\n",
+				fence->context, fence->seqno, fence->flags, fence->error);
+			msm_hw_fence_signal_callback(fence, &signal_cb->fence_cb);
+			ret = 0;
+		} else {
+			HWFNC_ERR("failed to add signal_cb ctx:%llu seq:%llu f:%lx err:%d ret:%d\n",
+				fence->context, fence->seqno, fence->flags, fence->error, ret);
+			/* release ref held by dma-fence signal */
+			hw_fence_destroy_with_hash(drv_data, NULL, hash);
+			kfree(signal_cb);
+		}
+	}
+
+	return ret;
 }

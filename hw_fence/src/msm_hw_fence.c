@@ -210,12 +210,24 @@ int msm_hw_fence_create(void *client_handle,
 		return ret;
 	}
 
+	ret = hw_fence_add_callback(hw_fence_drv_data, fence, *params->handle);
+	if (ret) {
+		HWFNC_ERR("Fail to add dma-fence signal cb client:%d ctx:%llu seq:%llu ret:%d\n",
+			hw_fence_client->client_id, fence->context, fence->seqno, ret);
+		/* release both refs, one held by fctl and one held by creating client */
+		hw_fence_destroy_refcount(hw_fence_drv_data, *params->handle,
+			HW_FENCE_FCTL_REFCOUNT);
+		hw_fence_destroy_with_hash(hw_fence_drv_data, hw_fence_client, *params->handle);
+
+		return ret;
+	}
+
 	/* If no error, set the HW Fence Flag in the dma-fence */
 	set_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags);
 
 	HWFNC_DBG_H("-\n");
 
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(msm_hw_fence_create);
 
