@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1544,6 +1544,18 @@ static inline void __init sde_rsc_rpmh_register(void)
 {
 }
 #endif /* CONFIG_DRM_SDE_RSC */
+
+#if IS_ENABLED(CONFIG_DRM_SDE_CESTA)
+void __init sde_cesta_register(void);
+void __exit sde_cesta_unregister(void);
+#else
+static inline void __init sde_cesta_register(void)
+{
+}
+static inline void __exit sde_cesta_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_SDE_CESTA */
 
 #if IS_ENABLED(CONFIG_DRM_SDE_WB)
 void __init sde_wb_register(void);
