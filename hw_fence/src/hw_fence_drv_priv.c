@@ -1403,6 +1403,32 @@ destroy_fence:
 		false);
 }
 
+/* update join fence for signaled child_fence and return if the join fence should be signaled */
+bool _update_and_get_join_fence_signal_status(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence *join_fence, u32 child_fence_error)
+{
+	bool signal_join_fence, error = false;
+
+	/* child fence is already signaled */
+	GLOBAL_ATOMIC_STORE(drv_data, &join_fence->lock, 1); /* lock */
+	join_fence->error |= child_fence_error;
+	if (join_fence->pending_child_cnt)
+		join_fence->pending_child_cnt--;
+	else
+		error = true;
+	signal_join_fence = !join_fence->pending_child_cnt;
+	GLOBAL_ATOMIC_STORE(drv_data, &join_fence->lock, 0); /* unlock */
+
+	/* update memory for the table update */
+	wmb();
+
+	if (error)
+		HWFNC_ERR("join fence ctx:%llu seq:%llu pending_child_cnt==0 before decrement\n",
+			join_fence->ctx_id, join_fence->seq_id);
+
+	return signal_join_fence;
+}
+
 int hw_fence_process_fence_array(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, struct dma_fence_array *array,
 	u64 *hash_join_fence, u64 client_data)
@@ -1473,15 +1499,8 @@ int hw_fence_process_fence_array(struct hw_fence_driver_data *drv_data,
 		if (hw_fence_child->flags & MSM_HW_FENCE_FLAG_SIGNAL) {
 
 			/* child fence is already signaled */
-			GLOBAL_ATOMIC_STORE(drv_data, &join_fence->lock, 1); /* lock */
-			join_fence->error |= hw_fence_child->error;
-			if (--join_fence->pending_child_cnt == 0)
-				signal_join_fence = true;
-
-			/* update memory for the table update */
-			wmb();
-
-			GLOBAL_ATOMIC_STORE(drv_data, &join_fence->lock, 0); /* unlock */
+			signal_join_fence = _update_and_get_join_fence_signal_status(drv_data,
+				join_fence, hw_fence_child->error);
 		} else {
 
 			/* child fence is not signaled */
@@ -1557,6 +1576,7 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 {
 	struct msm_hw_fence *hw_fence;
 	enum hw_fence_client_data_id data_id;
+	bool is_signaled;
 
 	if (client_data) {
 		data_id = hw_fence_get_client_data_id(hw_fence_client->client_id_ext);
@@ -1577,6 +1597,7 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 1); /* lock */
 
 	/* register client in the hw fence */
+	is_signaled = hw_fence->flags & MSM_HW_FENCE_FLAG_SIGNAL;
 	hw_fence->wait_client_mask |= BIT(hw_fence_client->client_id);
 	hw_fence->fence_wait_time = hw_fence_get_qtime(drv_data);
 	hw_fence->debug_refcount++;
@@ -1589,10 +1610,11 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
 
 	/* if hw fence already signaled, signal the client */
-	if (hw_fence->flags & MSM_HW_FENCE_FLAG_SIGNAL) {
+	if (is_signaled) {
 		if (fence != NULL)
 			set_bit(MSM_HW_FENCE_FLAG_SIGNALED_BIT, &fence->flags);
-		_fence_ctl_signal(drv_data, hw_fence_client, hw_fence, *hash, 0, client_data, 0);
+		_fence_ctl_signal(drv_data, hw_fence_client, hw_fence, *hash, 0, client_data,
+			hw_fence->error);
 	}
 
 	return 0;
@@ -1623,7 +1645,7 @@ int hw_fence_process_fence(struct hw_fence_driver_data *drv_data,
 }
 
 static void _signal_all_wait_clients(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence *hw_fence, u64 hash, int error)
+	struct msm_hw_fence *hw_fence, u64 wait_client_mask, u64 hash, int error)
 {
 	enum hw_fence_client_id wait_client_id;
 	enum hw_fence_client_data_id data_id;
@@ -1632,7 +1654,7 @@ static void _signal_all_wait_clients(struct hw_fence_driver_data *drv_data,
 
 	/* signal with an error all the waiting clients for this fence */
 	for (wait_client_id = 0; wait_client_id <= drv_data->rxq_clients_num; wait_client_id++) {
-		if (hw_fence->wait_client_mask & BIT(wait_client_id)) {
+		if (wait_client_mask & BIT(wait_client_id)) {
 			hw_fence_wait_client = drv_data->clients[wait_client_id];
 
 			if (!hw_fence_wait_client)
@@ -1647,6 +1669,69 @@ static void _signal_all_wait_clients(struct hw_fence_driver_data *drv_data,
 				hash, 0, client_data, error);
 		}
 	}
+}
+
+/*
+ * This function must be called with a signaled hw-fence; hw_fence->parents_cnt and
+ * hw_fence->parent_list fields are only modified for unsignaled fences
+ */
+static void _signal_parent_fences(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence *hw_fence, u32 parents_cnt, u64 hash, int error)
+{
+	struct msm_hw_fence *join_fence;
+	u64 parent_hash;
+	int i;
+
+	if (parents_cnt > MSM_HW_FENCE_MAX_JOIN_PARENTS) {
+		HWFNC_ERR("hw_fence hash:%llu has invalid parents_cnt:%u max:%u\n", hash,
+			parents_cnt, MSM_HW_FENCE_MAX_JOIN_PARENTS);
+		parents_cnt = MSM_HW_FENCE_MAX_JOIN_PARENTS;
+	}
+
+	for (i = 0; i < parents_cnt; i++) {
+		parent_hash = hw_fence->parent_list[i];
+		join_fence = _get_hw_fence(drv_data->hw_fence_table_entries,
+			drv_data->hw_fences_tbl, parent_hash);
+		if (!join_fence) {
+			HWFNC_ERR("bad parent hash:%llu of child hash:%llu\n", parent_hash, hash);
+			continue;
+		}
+
+		if (_update_and_get_join_fence_signal_status(drv_data, join_fence, error))
+			/* no need to lock access to wait client mask for join fences */
+			_signal_all_wait_clients(drv_data, join_fence, join_fence->wait_client_mask,
+				parent_hash, join_fence->error);
+	}
+}
+
+/*
+ * Check fence signaling status. If unsignaled,
+ * 1. signal waiting clients,
+ * 2. signal parent fences (and waiting clients on parent fences)
+ */
+static void _signal_fence_if_unsignaled(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence *hw_fence, u64 hash, int error)
+{
+	u64 wait_client_mask;
+	u32 parents_cnt;
+
+	/* check flags and error for signaling */
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 1); /* lock */
+	if (hw_fence->flags & MSM_HW_FENCE_FLAG_SIGNAL) {
+		/* fence is already signaled so do nothing */
+		GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0);
+		return;
+	}
+	hw_fence->flags |= MSM_HW_FENCE_FLAG_SIGNAL;
+	hw_fence->error = error;
+	wait_client_mask = hw_fence->wait_client_mask;
+	parents_cnt = hw_fence->parents_cnt;
+	hw_fence->parents_cnt = 0;
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
+
+	/* fields used by the following are not modified for signaled fences */
+	_signal_parent_fences(drv_data, hw_fence, parents_cnt, hash, error);
+	_signal_all_wait_clients(drv_data, hw_fence, wait_client_mask, hash, error);
 }
 
 void hw_fence_utils_reset_queues(struct hw_fence_driver_data *drv_data,
@@ -1719,8 +1804,7 @@ int hw_fence_utils_cleanup_fence(struct hw_fence_driver_data *drv_data,
 	if (hw_fence->fence_allocator == hw_fence_client->client_id) {
 
 		/* if fence is not signaled, signal with error all the waiting clients */
-		if (!(hw_fence->flags & MSM_HW_FENCE_FLAG_SIGNAL))
-			_signal_all_wait_clients(drv_data, hw_fence, hash, error);
+		_signal_fence_if_unsignaled(drv_data, hw_fence, hash, error);
 
 		if (reset_flags & MSM_HW_FENCE_RESET_WITHOUT_DESTROY)
 			goto skip_destroy;
