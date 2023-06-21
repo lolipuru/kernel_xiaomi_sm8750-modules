@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/module.h>
 #include <linux/rpmsg.h>
@@ -232,6 +233,8 @@ static int delete_dsp_session(struct msm_cvp_inst *inst,
 	mutex_lock(&buf_list->lock);
 	ptr_dsp_buf = &buf_list->list;
 	list_for_each_safe(ptr_dsp_buf, next_dsp_buf, &buf_list->list) {
+		if (!ptr_dsp_buf)
+			break;
 		buf = list_entry(ptr_dsp_buf, struct cvp_internal_buf, list);
 		if (buf) {
 			dprintk(CVP_DSP, "fd in list 0x%x\n", buf->fd);
@@ -378,6 +381,8 @@ search_again:
 
 	mutex_lock(&me->fastrpc_driver_list.lock);
 	list_for_each_safe(ptr, next, &me->fastrpc_driver_list.list) {
+		if (!ptr)
+			break;
 		frpc_node = list_entry(ptr,
 			struct cvp_dsp_fastrpc_driver_entry, list);
 
@@ -494,7 +499,7 @@ static bool dsp_session_exist(void)
 	struct msm_cvp_core *core;
 	struct msm_cvp_inst *inst = NULL;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core) {
 		mutex_lock(&core->lock);
 		list_for_each_entry(inst, &core->instances, list) {
@@ -896,7 +901,7 @@ static int __reinit_dsp(void)
 	struct msm_cvp_core *core;
 	struct iris_hfi_device *device;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core && core->device)
 		device = core->device->hfi_device_data;
 	else
@@ -990,6 +995,8 @@ static struct cvp_dsp_fastrpc_driver_entry *cvp_get_fastrpc_node_with_handle(
 
 	mutex_lock(&me->fastrpc_driver_list.lock);
 	list_for_each_safe(ptr, next, &me->fastrpc_driver_list.list) {
+		if (!ptr)
+			break;
 		tmp_node = list_entry(ptr,
 				struct cvp_dsp_fastrpc_driver_entry, list);
 		if (handle == tmp_node->handle) {
@@ -1100,7 +1107,7 @@ static int eva_fastrpc_dev_unmap_dma(struct fastrpc_device *frpc_device,
 		rc = __fastrpc_driver_invoke(frpc_device, FASTRPC_DEV_UNMAP_DMA,
 				(unsigned long)(&frpc_unmap_buf));
 		if (rc) {
-			dprintk(CVP_ERR, "%s Failed to unmap buffer 0x%x\n",
+			dprintk_rl(CVP_ERR, "%s Failed to unmap buffer %d\n",
 				__func__, rc);
 			return rc;
 		}
@@ -1188,6 +1195,8 @@ int cvp_dsp_del_sess(uint32_t handle, struct msm_cvp_inst *inst)
 	}
 	mutex_lock(&frpc_node->dsp_sessions.lock);
 	list_for_each_safe(ptr, next, &frpc_node->dsp_sessions.list) {
+		if (!ptr)
+			break;
 		sess = list_entry(ptr, struct msm_cvp_inst, dsp_list);
 		if (sess == inst) {
 			dprintk(CVP_DSP, "%s Find sess %pK to be deleted\n",
@@ -1365,7 +1374,7 @@ void cvp_dsp_send_hfi_queue(void)
 	uint32_t size;
 	int rc;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core && core->device)
 		device = core->device->hfi_device_data;
 	else
@@ -1469,7 +1478,7 @@ static void *get_inst_from_dsp(uint32_t session_cpu_high, uint32_t session_cpu_l
 		return inst;
 	}
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core) {
 		mutex_lock(&core->lock);
 		list_for_each_entry(sess_inst, &core->instances, list) {
@@ -1565,7 +1574,7 @@ static void __dsp_cvp_sess_create(struct cvp_dsp_cmd_msg *cmd)
 		goto fail_lookup;
 	}
 
-	inst = msm_cvp_open(MSM_CORE_CVP, MSM_CVP_DSP, task);
+	inst = msm_cvp_open(MSM_CVP_DSP, task);
 	if (!inst) {
 		dprintk(CVP_ERR, "%s Failed create instance\n", __func__);
 		goto fail_msm_cvp_open;
@@ -1988,6 +1997,8 @@ static void __dsp_cvp_mem_free(struct cvp_dsp_cmd_msg *cmd)
 	buf_list = &inst->cvpdspbufs;
 	mutex_lock(&buf_list->lock);
 	list_for_each_safe(ptr, next, &buf_list->list) {
+		if (!ptr)
+			break;
 		buf = list_entry(ptr, struct cvp_internal_buf, list);
 
 		if (!buf->smem) {
@@ -2004,9 +2015,6 @@ static void __dsp_cvp_mem_free(struct cvp_dsp_cmd_msg *cmd)
 
 			rc = eva_fastrpc_dev_unmap_dma(frpc_device, buf);
 			if (rc) {
-				dprintk_rl(CVP_ERR,
-					"%s Failed to unmap buffer 0x%x\n",
-					__func__, rc);
 				cmd->ret = -1;
 				goto fail_fastrpc_dev_unmap_dma;
 			}
@@ -2099,7 +2107,7 @@ static int cvp_dsp_thread(void *data)
 	struct cvp_hfi_device *hdev;
 	struct msm_cvp_core *core;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (!core) {
 		dprintk(CVP_ERR, "%s: Failed to find core\n", __func__);
 		rc = -EINVAL;
