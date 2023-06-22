@@ -241,7 +241,7 @@ struct fastrpc_invoke_ctx {
 	struct kref refcount;
 	struct list_head node; /* list of ctxs */
 	struct completion work;
-	// struct work_struct put_work;
+	struct work_struct put_work;
 	struct fastrpc_msg msg;
 	struct fastrpc_user *fl;
 	union fastrpc_remote_arg *rpra;
@@ -504,23 +504,23 @@ static void fastrpc_context_free(struct kref *ref)
 	fastrpc_channel_ctx_put(cctx);
 }
 
-// static void fastrpc_context_get(struct fastrpc_invoke_ctx *ctx)
-// {
-	// kref_get(&ctx->refcount);
-// }
+static void fastrpc_context_get(struct fastrpc_invoke_ctx *ctx)
+{
+	kref_get(&ctx->refcount);
+}
 
 static void fastrpc_context_put(struct fastrpc_invoke_ctx *ctx)
 {
 	kref_put(&ctx->refcount, fastrpc_context_free);
 }
 
-// static void fastrpc_context_put_wq(struct work_struct *work)
-// {
-	// struct fastrpc_invoke_ctx *ctx =
-			// container_of(work, struct fastrpc_invoke_ctx, put_work);
+static void fastrpc_context_put_wq(struct work_struct *work)
+{
+	struct fastrpc_invoke_ctx *ctx =
+			container_of(work, struct fastrpc_invoke_ctx, put_work);
 
-	// fastrpc_context_put(ctx);
-// }
+	fastrpc_context_put(ctx);
+}
 
 #define CMP(aa, bb) ((aa) == (bb) ? 0 : (aa) < (bb) ? -1 : 1)
 static int olaps_cmp(const void *a, const void *b)
@@ -585,7 +585,6 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 		return ERR_PTR(-ENOMEM);
 
 	INIT_LIST_HEAD(&ctx->node);
-	kref_init(&ctx->refcount);
 	ctx->fl = user;
 	ctx->nscalars = REMOTE_SCALARS_LENGTH(sc);
 	ctx->nbufs = REMOTE_SCALARS_INBUFS(sc) +
@@ -618,7 +617,7 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 	ctx->tgid = user->tgid;
 	ctx->cctx = cctx;
 	init_completion(&ctx->work);
-	// INIT_WORK(&ctx->put_work, fastrpc_context_put_wq);
+	INIT_WORK(&ctx->put_work, fastrpc_context_put_wq);
 
 	spin_lock(&user->lock);
 	list_add_tail(&ctx->node, &user->pending);
@@ -633,6 +632,8 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 	}
 	ctx->ctxid = ret << 4;
 	spin_unlock_irqrestore(&cctx->lock, flags);
+
+	kref_init(&ctx->refcount);
 
 	return ctx;
 err_idr:
@@ -1116,12 +1117,12 @@ static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 	msg->sc = ctx->sc;
 	msg->addr = ctx->buf ? ctx->buf->phys : 0;
 	msg->size = roundup(ctx->msg_sz, PAGE_SIZE);
-	// fastrpc_context_get(ctx);
+	fastrpc_context_get(ctx);
 
 	ret = rpmsg_send(cctx->rpdev->ept, (void *)msg, sizeof(*msg));
 
-	// if (ret)
-		// fastrpc_context_put(ctx);
+	if (ret)
+		fastrpc_context_put(ctx);
 
 	return ret;
 
@@ -1435,7 +1436,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 
 	sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_CREATE, 4, 0);
 	if (init.attrs)
-		sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_CREATE_ATTR, 6, 0);
+		sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_CREATE_ATTR, 4, 0);
 
 	err = fastrpc_internal_invoke(fl, true, FASTRPC_INIT_HANDLE,
 				      sc, args);
@@ -1902,7 +1903,7 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 	req.vaddrout = rsp_msg.vaddr;
 
 	/* Add memory to static PD pool, protection thru hypervisor */
-	if (req.flags != ADSP_MMAP_REMOTE_HEAP_ADDR && fl->cctx->vmcount) {
+	if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR && fl->cctx->vmcount) {
 		struct qcom_scm_vmperm perm;
 
 		perm.vmid = QCOM_SCM_VMID_HLOS;
@@ -2223,6 +2224,9 @@ static int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ct
 	fdev->miscdev.fops = &fastrpc_fops;
 	fdev->miscdev.name = devm_kasprintf(dev, GFP_KERNEL, "fastrpc-%s%s",
 					    domain, is_secured ? "-secure" : "");
+	if (!fdev->miscdev.name)
+		return -ENOMEM;
+
 	err = misc_register(&fdev->miscdev);
 	if (!err) {
 		if (is_secured)
@@ -2347,8 +2351,10 @@ static void fastrpc_notify_users(struct fastrpc_user *user)
 	struct fastrpc_invoke_ctx *ctx;
 
 	spin_lock(&user->lock);
-	list_for_each_entry(ctx, &user->pending, node)
+	list_for_each_entry(ctx, &user->pending, node) {
+		ctx->retval = -EPIPE;
 		complete(&ctx->work);
+	}
 	spin_unlock(&user->lock);
 }
 
@@ -2359,7 +2365,9 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 	struct fastrpc_user *user;
 	unsigned long flags;
 
+	/* No invocations past this point */
 	spin_lock_irqsave(&cctx->lock, flags);
+	cctx->rpdev = NULL;
 	list_for_each_entry(user, &cctx->users, user)
 		fastrpc_notify_users(user);
 	spin_unlock_irqrestore(&cctx->lock, flags);
@@ -2378,7 +2386,6 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 
 	of_platform_depopulate(&rpdev->dev);
 
-	cctx->rpdev = NULL;
 	fastrpc_channel_ctx_put(cctx);
 }
 
@@ -2413,7 +2420,7 @@ static int fastrpc_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
 	 * interrupt context so schedule it through a worker thread to
 	 * avoid a kernel BUG.
 	 */
-	// schedule_work(&ctx->put_work);
+	schedule_work(&ctx->put_work);
 
 	return 0;
 }

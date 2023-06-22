@@ -16,7 +16,6 @@
 #define FASTRPC_IOCTL_INIT_CREATE_STATIC _IOWR('R', 9, struct fastrpc_init_create_static)
 #define FASTRPC_IOCTL_MEM_MAP		_IOWR('R', 10, struct fastrpc_mem_map)
 #define FASTRPC_IOCTL_MEM_UNMAP		_IOWR('R', 11, struct fastrpc_mem_unmap)
-#define FASTRPC_IOCTL_CONTROL		_IOWR('R', 12, struct fastrpc_ioctl_control)
 #define FASTRPC_IOCTL_GET_DSP_INFO	_IOWR('R', 13, struct fastrpc_ioctl_capability)
 
 /**
@@ -132,53 +131,6 @@ struct fastrpc_mem_unmap {
 	__u64 vaddr;		/* remote process (dsp) virtual address */
 	__u64 length;		/* buffer size */
 	__s32 reserved[5];
-};
-
-enum fastrpc_control_type {
-	FASTRPC_CONTROL_LATENCY		=	1,
-	/* Share SMMU context bank */
-	FASTRPC_CONTROL_SMMU		=	2,
-	FASTRPC_CONTROL_KALLOC		=	3,
-	FASTRPC_CONTROL_WAKELOCK	=	4,
-	FASTRPC_CONTROL_PM		=	5,
-	/* Clean process on DSP */
-	FASTRPC_CONTROL_DSPPROCESS_CLEAN	=	6,
-	FASTRPC_CONTROL_RPC_POLL	=	7,
-	FASTRPC_CONTROL_ASYNC_WAKE	=	8,
-	FASTRPC_CONTROL_NOTIF_WAKE	=	9,
-};
-
-struct fastrpc_ctrl_latency {
-	uint32_t enable;	/* latency control enable */
-	uint32_t latency;	/* latency request in us */
-};
-
-struct fastrpc_ctrl_kalloc {
-	uint32_t kalloc_support;  /* Remote memory allocation from kernel */
-};
-
-struct fastrpc_ctrl_wakelock {
-	uint32_t enable;	/* wakelock control enable */
-};
-
-struct fastrpc_ctrl_pm {
-	uint32_t timeout;	/* timeout(in ms) for PM to keep system awake */
-};
-
-struct fastrpc_ctrl_smmu {
-	uint32_t sharedcb;  /* Set to SMMU share context bank */
-};
-
-struct fastrpc_ioctl_control {
-	uint32_t req;
-	union {
-		struct fastrpc_ctrl_latency lp;
-		struct fastrpc_ctrl_kalloc kalloc;
-		struct fastrpc_ctrl_wakelock wp;
-		struct fastrpc_ctrl_pm pm;
-		struct fastrpc_ctrl_smmu smmu;
-	};
-	__u32 reserved[4];
 };
 
 struct fastrpc_ioctl_capability {
