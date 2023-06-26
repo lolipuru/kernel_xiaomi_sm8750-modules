@@ -60,6 +60,7 @@ static inline bool synx_util_is_external_object(
 	struct synx_coredata *synx_obj)
 {
 	if (synx_obj &&
+		!(synx_obj->type & SYNX_CREATE_MERGED_FENCE) &&
 		(synx_obj->type & SYNX_CREATE_DMA_FENCE))
 		return true;
 
@@ -177,5 +178,7 @@ void synx_util_map_import_params_to_create(
 
 struct bind_operations *synx_util_get_bind_ops(u32 type);
 u32 synx_util_map_client_id_to_core(enum synx_client_id id);
+
+int synx_get_child_coredata(struct synx_coredata *synx_obj, struct synx_coredata ***child_synx_obj, int *num_fences);
 
 #endif /* __SYNX_UTIL_H__ */

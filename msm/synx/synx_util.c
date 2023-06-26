@@ -12,6 +12,7 @@
 #include "synx_util.h"
 
 extern void synx_external_callback(s32 sync_obj, int status, void *data);
+static u32 __fence_state(struct dma_fence *fence, bool locked);
 
 int synx_util_init_coredata(struct synx_coredata *synx_obj,
 	struct synx_create_params *params,
@@ -107,6 +108,7 @@ int synx_util_init_coredata(struct synx_coredata *synx_obj,
 	if (rc != SYNX_SUCCESS)
 		goto clean;
 
+	synx_obj->status = synx_util_get_object_status(synx_obj);
 	return SYNX_SUCCESS;
 
 clean:
@@ -216,6 +218,7 @@ int synx_util_init_group_coredata(struct synx_coredata *synx_obj,
 	kref_init(&synx_obj->refcount);
 	mutex_init(&synx_obj->obj_lock);
 	INIT_LIST_HEAD(&synx_obj->reg_cbs_list);
+	synx_obj->status = synx_util_get_object_status(synx_obj);
 
 	synx_util_activate(synx_obj);
 	return rc;
@@ -247,6 +250,38 @@ void synx_util_put_object(struct synx_coredata *synx_obj)
 	kref_put(&synx_obj->refcount, synx_util_destroy_coredata);
 }
 
+int synx_util_cleanup_merged_fence(struct synx_coredata *synx_obj, int status)
+{
+	struct dma_fence_array *array = NULL;
+	u32 i;
+	int rc = 0;
+
+	if (IS_ERR_OR_NULL(synx_obj) || IS_ERR_OR_NULL(synx_obj->fence))
+		return -SYNX_INVALID;
+
+	if (dma_fence_is_array(synx_obj->fence)) {
+		array = to_dma_fence_array(synx_obj->fence);
+		if (IS_ERR_OR_NULL(array))
+			return -SYNX_INVALID;
+
+		for (i = 0; i < array->num_fences; i++) {
+			if (kref_read(&array->fences[i]->refcount) == 1 &&
+				__fence_state(array->fences[i], false) == SYNX_STATE_ACTIVE) {
+				dma_fence_set_error(array->fences[i],
+					-SYNX_STATE_SIGNALED_CANCEL);
+
+				rc = dma_fence_signal(array->fences[i]);
+				if (rc)
+					dprintk(SYNX_ERR,
+						"signaling child fence %pK failed=%d\n",
+						array->fences[i], rc);
+			}
+			dma_fence_put(array->fences[i]);
+		}
+	}
+	return rc;
+}
+
 void synx_util_object_destroy(struct synx_coredata *synx_obj)
 {
 	int rc;
@@ -263,10 +298,13 @@ void synx_util_object_destroy(struct synx_coredata *synx_obj)
 	list_for_each_entry_safe(synx_cb,
 		synx_cb_temp, &synx_obj->reg_cbs_list, node) {
 		dprintk(SYNX_ERR,
-			"cleaning up callback of session %pK\n",
+			"dipatching un-released callbacks of session %pK\n",
 			synx_cb->session);
+		synx_cb->status = SYNX_STATE_SIGNALED_CANCEL;
 		list_del_init(&synx_cb->node);
-		kfree(synx_cb);
+		queue_work(synx_dev->wq_cb,
+			&synx_cb->cb_dispatch);
+		dprintk(SYNX_VERB, "dispatched callback for fence %pKn", synx_obj->fence);
 	}
 
 	for (i = 0; i < synx_obj->num_bound_synxs; i++) {
@@ -311,7 +349,10 @@ void synx_util_object_destroy(struct synx_coredata *synx_obj)
 	 */
 	if (!IS_ERR_OR_NULL(synx_obj->fence)) {
 		spin_lock_irqsave(synx_obj->fence->lock, flags);
-		if (kref_read(&synx_obj->fence->refcount) == 1 &&
+		if (synx_util_is_merged_object(synx_obj) &&
+			synx_util_get_object_status_locked(synx_obj) == SYNX_STATE_ACTIVE)
+			rc = synx_util_cleanup_merged_fence(synx_obj, -SYNX_STATE_SIGNALED_CANCEL);
+		else if (kref_read(&synx_obj->fence->refcount) == 1 &&
 				(synx_util_get_object_status_locked(synx_obj) ==
 				SYNX_STATE_ACTIVE)) {
 			// set fence error to cancel
@@ -319,12 +360,12 @@ void synx_util_object_destroy(struct synx_coredata *synx_obj)
 				-SYNX_STATE_SIGNALED_CANCEL);
 
 			rc = dma_fence_signal_locked(synx_obj->fence);
-			if (rc)
-				dprintk(SYNX_ERR,
-					"signaling fence %pK failed=%d\n",
-					synx_obj->fence, rc);
 		}
 		spin_unlock_irqrestore(synx_obj->fence->lock, flags);
+		if (rc)
+			dprintk(SYNX_ERR,
+				"signaling fence %pK failed=%d\n",
+				synx_obj->fence, rc);
 	}
 
 	dma_fence_put(synx_obj->fence);
@@ -692,7 +733,7 @@ static u32 __fence_state(struct dma_fence *fence, bool locked)
 static u32 __fence_group_state(struct dma_fence *fence, bool locked)
 {
 	u32 i = 0;
-	u32 state = SYNX_STATE_INVALID;
+	u32 state = SYNX_STATE_INVALID, parent_state = SYNX_STATE_INVALID;
 	struct dma_fence_array *array = NULL;
 	u32 intr, actv_cnt, sig_cnt, err_cnt;
 
@@ -708,6 +749,8 @@ static u32 __fence_group_state(struct dma_fence *fence, bool locked)
 
 	for (i = 0; i < array->num_fences; i++) {
 		intr = __fence_state(array->fences[i], locked);
+		if (err_cnt == 0)
+			parent_state = intr;
 		switch (intr) {
 		case SYNX_STATE_ACTIVE:
 			actv_cnt++;
@@ -716,7 +759,7 @@ static u32 __fence_group_state(struct dma_fence *fence, bool locked)
 			sig_cnt++;
 			break;
 		default:
-			err_cnt++;
+			intr > SYNX_STATE_SIGNALED_MAX ? sig_cnt++ : err_cnt++;
 		}
 	}
 
@@ -724,12 +767,10 @@ static u32 __fence_group_state(struct dma_fence *fence, bool locked)
 		"group cnt stats act:%u, sig: %u, err: %u\n",
 		actv_cnt, sig_cnt, err_cnt);
 
-	if (err_cnt)
-		state = SYNX_STATE_SIGNALED_ERROR;
-	else if (actv_cnt)
+	if (actv_cnt)
 		state = SYNX_STATE_ACTIVE;
-	else if (sig_cnt == array->num_fences)
-		state = SYNX_STATE_SIGNALED_SUCCESS;
+	else
+		state = parent_state;
 
 	return state;
 }
@@ -873,6 +914,7 @@ static void synx_util_cleanup_fence(
 	unsigned long flags;
 	u32 g_status;
 	u32 f_status;
+	u32 h_synx = 0;
 
 	mutex_lock(&synx_obj->obj_lock);
 	synx_obj->map_count--;
@@ -903,6 +945,8 @@ static void synx_util_cleanup_fence(
 			if (synx_util_get_object_status_locked(synx_obj) ==
 				SYNX_STATE_ACTIVE) {
 				signal_cb->synx_obj = NULL;
+				synx_global_fetch_handle_details(synx_obj->global_idx, &h_synx);
+				signal_cb->handle = h_synx;
 				synx_obj->signal_cb =  NULL;
 				/*
 				 * release reference held by signal cb and
@@ -1205,6 +1249,48 @@ free:
 	kfree(synx_cb);
 }
 
+int synx_get_child_coredata(struct synx_coredata *synx_obj, struct synx_coredata ***child_synx_obj, int *num_fences)
+{
+	int rc = SYNX_SUCCESS;
+	int i = 0, handle_count = 0;
+	u32 h_child = 0;
+	struct dma_fence_array *array = NULL;
+	struct synx_coredata **synx_datas = NULL;
+	struct synx_map_entry *fence_entry = NULL;
+
+	if (IS_ERR_OR_NULL(synx_obj) || IS_ERR_OR_NULL(num_fences))
+		return -SYNX_INVALID;
+	if (dma_fence_is_array(synx_obj->fence)) {
+		array = to_dma_fence_array(synx_obj->fence);
+		if (IS_ERR_OR_NULL(array))
+			return -SYNX_INVALID;
+		synx_datas = kcalloc(array->num_fences, sizeof(*synx_datas), GFP_KERNEL);
+		if (IS_ERR_OR_NULL(synx_datas))
+			return -SYNX_NOMEM;
+
+		for (i = 0; i < array->num_fences; i++) {
+			h_child = synx_util_get_fence_entry((u64)array->fences[i], 1);
+			fence_entry = synx_util_get_map_entry(h_child);
+			if (IS_ERR_OR_NULL(fence_entry) || IS_ERR_OR_NULL(fence_entry->synx_obj))
+			{
+				dprintk(SYNX_ERR, "Invalid handle access %u", h_child);
+				rc = -SYNX_NOENT;
+				goto fail;
+			}
+
+			synx_datas[handle_count++] = fence_entry->synx_obj;
+			synx_util_release_map_entry(fence_entry);
+		}
+	}
+
+	*child_synx_obj = synx_datas;
+	*num_fences = handle_count;
+	return rc;
+fail:
+	kfree(synx_datas);
+	return rc;
+}
+
 u32 synx_util_get_fence_entry(u64 key, u32 global)
 {
 	u32 h_synx = 0;
@@ -1321,6 +1407,8 @@ static void synx_client_cleanup(struct work_struct *dispatch)
 	struct synx_handle_coredata *curr;
 	struct hlist_node *tmp;
 
+	dprintk(SYNX_INFO, "[sess :%llu] session removed %s\n",
+		client->id, client->name);
 	/*
 	 * go over all the remaining synx obj handles
 	 * un-released from this session and remove them.
@@ -1348,8 +1436,6 @@ static void synx_client_destroy(struct kref *kref)
 		container_of(kref, struct synx_client, refcount);
 
 	hash_del(&client->node);
-	dprintk(SYNX_INFO, "[sess :%llu] session removed %s\n",
-		client->id, client->name);
 
 	INIT_WORK(&client->dispatch, synx_client_cleanup);
 	queue_work(synx_dev->wq_cleanup, &client->dispatch);
