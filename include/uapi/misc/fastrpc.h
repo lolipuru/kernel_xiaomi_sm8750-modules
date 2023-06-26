@@ -64,6 +64,14 @@ enum fastrpc_proc_attr {
 	FASTRPC_MODE_PRIVILEGED		= (1 << 6),
 };
 
+ /* Types of fastrpc DMA bufs sent to DSP */
+ enum fastrpc_buf_type {
+	METADATA_BUF,
+	COPYDATA_BUF,
+	INITMEM_BUF,
+	USER_BUF,
+};
+
 /* Fastrpc attribute for memory protection of buffers */
 #define FASTRPC_ATTR_SECUREMAP	(1)
 

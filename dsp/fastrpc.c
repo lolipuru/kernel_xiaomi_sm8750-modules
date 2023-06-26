@@ -43,6 +43,11 @@
 #define INIT_FILE_NAMELEN_MAX (128)
 #define FASTRPC_DEVICE_NAME	"fastrpc"
 
+/* Maximum buffers cached in cached buffer list */
+#define FASTRPC_MAX_CACHED_BUFS (32)
+#define FASTRPC_MAX_CACHE_BUF_SIZE (8*1024*1024)
+/* Max no. of persistent headers pre-allocated per user process */
+#define FASTRPC_MAX_PERSISTENT_HEADERS    (25)
 /* Add memory to static PD pool, protection thru XPU */
 #define ADSP_MMAP_HEAP_ADDR  4
 /* MAP static DMA buffer on DSP User PD */
@@ -52,7 +57,9 @@
 /* Add memory to userPD pool, for user heap */
 #define ADSP_MMAP_ADD_PAGES 0x1000
 /* Add memory to userPD pool, for LLC heap */
-#define ADSP_MMAP_ADD_PAGES_LLC 0x3000,
+#define ADSP_MMAP_ADD_PAGES_LLC 0x3000
+/* Map persistent header buffer on DSP */
+#define ADSP_MMAP_PERSIST_HDR  0x4000
 
 #define DSP_UNSUPPORTED_API (0x80000414)
 /* MAX NUMBER of DSP ATTRIBUTES SUPPORTED */
@@ -222,6 +229,7 @@ struct fastrpc_buf {
 	struct dma_buf *dmabuf;
 	struct device *dev;
 	void *virt;
+	u32 type;
 	u64 phys;
 	u64 size;
 	/* Lock for dma buf attachments */
@@ -230,6 +238,7 @@ struct fastrpc_buf {
 	/* mmap support */
 	struct list_head node; /* list of user requested mmaps */
 	uintptr_t raddr;
+	bool in_use;
 };
 
 struct fastrpc_dma_buf_attachment {
@@ -322,13 +331,22 @@ struct fastrpc_user {
 	struct list_head maps;
 	struct list_head pending;
 	struct list_head mmaps;
+	struct list_head cached_bufs;
 
 	struct fastrpc_channel_ctx *cctx;
 	struct fastrpc_session_ctx *sctx;
 	struct fastrpc_buf *init_mem;
+	/* Pre-allocated header buffer */
+	struct fastrpc_buf *pers_hdr_buf;
+	/* Pre-allocated buffer divided into N chunks */
+	struct fastrpc_buf *hdr_bufs;
 
 	int tgid;
 	int pd;
+	/* total cached buffers */
+	u32 num_cached_buf
+	/* total persistent headers */
+	u32 num_pers_hdrs;
 	bool is_secure_dev;
 	bool is_unsigned_pd;
 	/* Lock for lists */
@@ -422,11 +440,129 @@ static int fastrpc_map_lookup(struct fastrpc_user *fl, int fd,
 	return ret;
 }
 
-static void fastrpc_buf_free(struct fastrpc_buf *buf)
+static bool fastrpc_get_persistent_buf(struct fastrpc_user *fl,
+		size_t size, int buf_type, struct fastrpc_buf **obuf)
+{
+	u32 i = 0;
+	bool found = false;
+	struct fastrpc_buf *buf = NULL;
+
+	spin_lock(&fl->lock);
+	/*
+	 * Persistent header buffer can be used only if
+	 * metadata length is less than 1 page size.
+	 */
+	if (!fl->num_pers_hdrs || buf_type != METADATA_BUF || size > PAGE_SIZE) {
+		spin_unlock(&fl->lock);
+		return found;
+	}
+
+	for (i = 0; i < fl->num_pers_hdrs; i++) {
+		buf = &fl->hdr_bufs[i];
+		/* If buffer not in use, then assign it for requested alloc */
+		if (!buf->in_use) {
+			buf->in_use = true;
+			*obuf = buf;
+			found = true;
+			break;
+		}
+	}
+	spin_unlock(&fl->lock);
+	return found;
+}
+
+static void __fastrpc_buf_free(struct fastrpc_buf *buf)
 {
 	dma_free_coherent(buf->dev, buf->size, buf->virt,
 			  FASTRPC_PHYS(buf->phys));
 	kfree(buf);
+}
+
+static void fastrpc_cached_buf_list_add(struct fastrpc_buf *buf)
+{
+	struct fastrpc_user *fl = buf->fl;
+
+	if (buf->size < FASTRPC_MAX_CACHE_BUF_SIZE) {
+		spin_lock(&fl->lock);
+		if (fl->num_cached_buf > FASTRPC_MAX_CACHED_BUFS) {
+			spin_unlock(&fl->lock);
+			goto skip_buf_cache;
+		}
+
+		list_add_tail(&buf->node, &fl->cached_bufs);
+		fl->num_cached_buf++;
+		buf->type = -1;
+		spin_unlock(&fl->lock);
+	}
+	return;
+
+skip_buf_cache:
+	__fastrpc_buf_free(buf);
+}
+
+static void fastrpc_buf_free(struct fastrpc_buf *buf, bool cache)
+{
+	struct fastrpc_user *fl = buf->fl;
+
+	if (buf->in_use) {
+		/* Don't free persistent header buf. Just mark as available */
+		spin_lock(&fl->lock);
+		buf->in_use = false;
+		spin_unlock(&fl->lock);
+		return;
+	}
+	if (cache)
+		fastrpc_cached_buf_list_add(buf);
+	else
+		__fastrpc_buf_free(buf);
+}
+
+static inline bool fastrpc_get_cached_buf(struct fastrpc_user *fl,
+		size_t size, int buf_type, struct fastrpc_buf **obuf)
+{
+	bool found = false;
+	struct fastrpc_buf *buf, *n, *cbuf = NULL;
+
+	if (buf_type == USER_BUF)
+		return found;
+
+	/* find the smallest buffer that fits in the cache */
+	spin_lock(&fl->lock);
+	list_for_each_entry_safe(buf, n, &fl->cached_bufs, node) {
+		if (buf->size >= size && (!cbuf || cbuf->size > buf->size))
+			cbuf = buf;
+	}
+	if (cbuf) {
+		list_del_init(&cbuf->node);
+		fl->num_cached_buf--;
+	}
+	spin_unlock(&fl->lock);
+	if (cbuf) {
+		cbuf->type = buf_type;
+		*obuf = cbuf;
+		found = true;
+	}
+
+	return found;
+}
+
+static void fastrpc_cached_buf_list_free(struct fastrpc_user *fl)
+{
+	struct fastrpc_buf *buf, *n, *free;
+
+	do {
+		free = NULL;
+		spin_lock(&fl->lock);
+		list_for_each_entry_safe(buf, n, &fl->cached_bufs, node) {
+			list_del(&buf->node);
+			fl->num_cached_buf--;
+			free = buf;
+			break;
+		}
+		spin_unlock(&fl->lock);
+		if (free)
+			fastrpc_buf_free(free, false);
+	} while (free);
 }
 
 static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
@@ -463,16 +599,24 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 }
 
 static int fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
-			     u64 size, struct fastrpc_buf **obuf)
+			     u64 size, u32 buf_type, struct fastrpc_buf **obuf)
 {
 	int ret;
 	struct fastrpc_buf *buf;
 
+	if (fastrpc_get_persistent_buf(fl, size, buf_type, obuf))
+		return 0;
+	if (fastrpc_get_cached_buf(fl, size, buf_type, obuf))
+		return 0;
 	ret = __fastrpc_buf_alloc(fl, dev, size, obuf);
-	if (ret)
-		return ret;
-
+	if (ret == -ENOMEM) {
+		fastrpc_cached_buf_list_free(fl);
+		ret = __fastrpc_buf_alloc(fl, dev, size, obuf);
+		if (ret)
+			return ret;
+	}
 	buf = *obuf;
+	buf->type = buf_type;
 
 	if (fl->sctx && fl->sctx->sid)
 		buf->phys += ((u64)fl->sctx->sid << 32);
@@ -521,7 +665,7 @@ static void fastrpc_context_free(struct kref *ref)
 		fastrpc_map_put(ctx->maps[i]);
 
 	if (ctx->buf)
-		fastrpc_buf_free(ctx->buf);
+		fastrpc_buf_free(ctx->buf, true);
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	idr_remove(&cctx->ctx_idr, ctx->ctxid >> 4);
@@ -730,7 +874,7 @@ static void fastrpc_release(struct dma_buf *dmabuf)
 {
 	struct fastrpc_buf *buffer = dmabuf->priv;
 
-	fastrpc_buf_free(buffer);
+	fastrpc_buf_free(buffer, false);
 }
 
 static int fastrpc_dma_buf_attach(struct dma_buf *dmabuf,
@@ -1005,7 +1149,7 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 
 	ctx->msg_sz = pkt_size;
 
-	err = fastrpc_buf_alloc(ctx->fl, dev, pkt_size, &ctx->buf);
+	err = fastrpc_buf_alloc(ctx->fl, dev, pkt_size, METADATA_BUF, &ctx->buf);
 	if (err)
 		return err;
 
@@ -1325,6 +1469,107 @@ bail:
 	return err;
 }
 
+static int fastrpc_mem_map_to_dsp(struct fastrpc_user *fl, int fd, int offset,
+				u32 flags, u32 va, u64 phys,
+				size_t size, uintptr_t *raddr)
+{
+	struct fastrpc_invoke_args args[4] = { [0 ... 3] = { 0 } };
+	struct fastrpc_mem_map_req_msg req_msg = { 0 };
+	struct fastrpc_mmap_rsp_msg rsp_msg = { 0 };
+	struct fastrpc_phy_page pages = { 0 };
+	struct device *dev = fl->sctx->dev;
+	int err = 0;
+	u32 sc;
+
+	req_msg.pgid = fl->tgid;
+	req_msg.fd = fd;
+	req_msg.offset = offset;
+	req_msg.vaddrin = va;
+	req_msg.flags = flags;
+	req_msg.num = sizeof(pages);
+	req_msg.data_len = 0;
+
+	args[0].ptr = (u64) (uintptr_t) &req_msg;
+	args[0].length = sizeof(req_msg);
+
+	pages.addr = phys;
+	pages.size = size;
+
+	args[1].ptr = (u64) (uintptr_t) &pages;
+	args[1].length = sizeof(pages);
+
+	args[2].ptr = (u64) (uintptr_t) &pages;
+	args[2].length = 0;
+
+	args[3].ptr = (u64) (uintptr_t) &rsp_msg;
+	args[3].length = sizeof(rsp_msg);
+
+	sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_MEM_MAP, 3, 1);
+	err = fastrpc_internal_invoke(fl, true, FASTRPC_INIT_HANDLE, sc, &args[0]);
+	if (err) {
+		dev_err(dev, "mem mmap error, fd %d, vaddr %llx, size %lld\n",
+			fd, va, size);
+		return err;
+	}
+	*raddr = rsp_msg.vaddr;
+
+	return 0;
+}
+
+static int fastrpc_create_persistent_headers(struct fastrpc_user *fl)
+{
+	int err = 0;
+	int i = 0;
+	u64 virtb = 0;
+	struct device *dev = fl->sctx->dev;
+	struct fastrpc_buf *hdr_bufs, *buf, *pers_hdr_buf = NULL;
+	u32 num_pers_hdrs = 0;
+	size_t hdr_buf_alloc_len = 0;
+
+	/*
+	 * Pre-allocate memory for persistent header buffers based
+	 * on concurrency info passed by user. Upper limit enforced.
+	 */
+	num_pers_hdrs = FASTRPC_MAX_PERSISTENT_HEADERS;
+	hdr_buf_alloc_len = num_pers_hdrs * PAGE_SIZE;
+	err = fastrpc_buf_alloc(fl, dev, hdr_buf_alloc_len,
+			METADATA_BUF, &pers_hdr_buf);
+	if (err)
+		return err;
+
+	virtb = (u64) (uintptr_t)(pers_hdr_buf->virt);
+	err = fastrpc_mem_map_to_dsp(fl, -1, 0,
+				ADSP_MMAP_PERSIST_HDR, 0, (u64) (uintptr_t)(pers_hdr_buf->phys),
+				pers_hdr_buf->size, &pers_hdr_buf->raddr);
+	if (err)
+		goto err_dsp_map;
+
+	hdr_bufs = kcalloc(num_pers_hdrs, sizeof(struct fastrpc_buf),
+				GFP_KERNEL);
+	if (!hdr_bufs)
+		return -ENOMEM;
+
+	spin_lock(&fl->lock);
+	fl->pers_hdr_buf = pers_hdr_buf;
+	fl->num_pers_hdrs = num_pers_hdrs;
+	fl->hdr_bufs = hdr_bufs;
+	for (i = 0; i < num_pers_hdrs; i++) {
+		buf = &fl->hdr_bufs[i];
+		buf->fl = fl;
+		buf->virt = (void *)(virtb + (i * PAGE_SIZE));
+		buf->phys = pers_hdr_buf->phys + (i * PAGE_SIZE);
+		buf->size = PAGE_SIZE;
+		buf->type = pers_hdr_buf->type;
+		buf->in_use = false;
+	}
+	spin_unlock(&fl->lock);
+
+	return 0;
+err_dsp_map:
+	fastrpc_buf_free(pers_hdr_buf, 0);
+	return err;
+}
+
 static bool is_session_rejected(struct fastrpc_user *fl, bool unsigned_pd_request)
 {
 	/* Check if the device node is non-secure and channel is secure*/
@@ -1491,7 +1736,7 @@ err_invoke:
 				fl->cctx->remote_heap->phys, fl->cctx->remote_heap->size, err);
 	}
 err_map:
-	fastrpc_buf_free(fl->cctx->remote_heap);
+	fastrpc_buf_free(fl->cctx->remote_heap, false);
 err_name:
 	kfree(name);
 err:
@@ -1565,7 +1810,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 
 	memlen = ALIGN(max(dsp_userpd_memlen, (int)init.filelen * 4), one_mb);
 	err = fastrpc_buf_alloc(fl, fl->sctx->dev, memlen,
-				&imem);
+				INITMEM_BUF, &imem);
 	if (err)
 		goto err_alloc;
 
@@ -1606,13 +1851,19 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	if (err)
 		goto err_invoke;
 
+	if (fl->cctx->domain_id == CDSP_DOMAIN_ID) {
+		err = fastrpc_create_persistent_headers(fl);
+		if (err)
+			goto err_invoke;
+	}
+
 	kfree(args);
 
 	return 0;
 
 err_invoke:
 	fl->init_mem = NULL;
-	fastrpc_buf_free(imem);
+	fastrpc_buf_free(imem, false);
 err_alloc:
 	fastrpc_map_put(map);
 err:
@@ -1684,7 +1935,7 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	kfree(fl->gidlist.gids);
 
 	if (fl->init_mem)
-		fastrpc_buf_free(fl->init_mem);
+		fastrpc_buf_free(fl->init_mem, false);
 
 	list_for_each_entry_safe(ctx, n, &fl->pending, node) {
 		list_del(&ctx->node);
@@ -1696,9 +1947,14 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 
 	list_for_each_entry_safe(buf, b, &fl->mmaps, node) {
 		list_del(&buf->node);
-		fastrpc_buf_free(buf);
+		fastrpc_buf_free(buf, false);
 	}
 
+	if (fl->pers_hdr_buf)
+		fastrpc_buf_free(fl->pers_hdr_buf, false);
+	kfree(fl->hdr_bufs);
+
+	fastrpc_cached_buf_list_free(fl);
 	fastrpc_session_free(cctx, fl->sctx);
 	fastrpc_channel_ctx_put(cctx);
 
@@ -1733,6 +1989,7 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	INIT_LIST_HEAD(&fl->maps);
 	INIT_LIST_HEAD(&fl->mmaps);
 	INIT_LIST_HEAD(&fl->user);
+	INIT_LIST_HEAD(&fl->cached_bufs);
 	fl->tgid = current->tgid;
 	fl->cctx = cctx;
 	fl->is_secure_dev = fdevice->secure;
@@ -1763,7 +2020,7 @@ static int fastrpc_dmabuf_alloc(struct fastrpc_user *fl, char __user *argp)
 	if (copy_from_user(&bp, argp, sizeof(bp)))
 		return -EFAULT;
 
-	err = fastrpc_buf_alloc(fl, fl->sctx->dev, bp.size, &buf);
+	err = fastrpc_buf_alloc(fl, fl->sctx->dev, bp.size, USER_BUF, &buf);
 	if (err)
 		return err;
 	exp_info.ops = &fastrpc_dma_buf_ops;
@@ -1773,7 +2030,7 @@ static int fastrpc_dmabuf_alloc(struct fastrpc_user *fl, char __user *argp)
 	buf->dmabuf = dma_buf_export(&exp_info);
 	if (IS_ERR(buf->dmabuf)) {
 		err = PTR_ERR(buf->dmabuf);
-		fastrpc_buf_free(buf);
+		fastrpc_buf_free(buf, false);
 		return err;
 	}
 
@@ -1968,7 +2225,7 @@ static int fastrpc_req_munmap_impl(struct fastrpc_user *fl, struct fastrpc_buf *
 		spin_lock(&fl->lock);
 		list_del(&buf->node);
 		spin_unlock(&fl->lock);
-		fastrpc_buf_free(buf);
+		fastrpc_buf_free(buf, false);
 	} else {
 		dev_err(dev, "unmmap\tpt 0x%09lx ERROR\n", buf->raddr);
 	}
@@ -2029,7 +2286,7 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 			return -EINVAL;
 		}
 
-		err = fastrpc_buf_alloc(fl, fl->sctx->dev, req.size, &buf);
+		err = fastrpc_buf_alloc(fl, fl->sctx->dev, req.size, USER_BUF, &buf);
 		if (err) {
 			dev_err(dev, "failed to allocate buffer\n");
 			return err;
@@ -2149,7 +2406,7 @@ err_assign:
 		fastrpc_req_munmap_impl(fl, buf);
 
 err_invoke:
-	fastrpc_buf_free(buf);
+	fastrpc_buf_free(buf, false);
 
 	return err;
 }
@@ -2208,16 +2465,11 @@ static int fastrpc_req_mem_unmap(struct fastrpc_user *fl, char __user *argp)
 
 static int fastrpc_req_mem_map(struct fastrpc_user *fl, char __user *argp)
 {
-	struct fastrpc_invoke_args args[4] = { [0 ... 3] = { 0 } };
-	struct fastrpc_mem_map_req_msg req_msg = { 0 };
-	struct fastrpc_mmap_rsp_msg rsp_msg = { 0 };
 	struct fastrpc_mem_unmap req_unmap = { 0 };
-	struct fastrpc_phy_page pages = { 0 };
-	struct fastrpc_mem_map req;
+	struct fastrpc_mem_map req = {0};
 	struct device *dev = fl->sctx->dev;
 	struct fastrpc_map *map = NULL;
 	int err;
-	u32 sc;
 
 	if (copy_from_user(&req, argp, sizeof(req)))
 		return -EFAULT;
@@ -2229,54 +2481,28 @@ static int fastrpc_req_mem_map(struct fastrpc_user *fl, char __user *argp)
 		return err;
 	}
 
-	req_msg.pgid = fl->tgid;
-	req_msg.fd = req.fd;
-	req_msg.offset = req.offset;
-	req_msg.vaddrin = req.vaddrin;
 	map->va = (void *) (uintptr_t) req.vaddrin;
-	req_msg.flags = req.flags;
-	req_msg.num = sizeof(pages);
-	req_msg.data_len = 0;
-
-	args[0].ptr = (u64) (uintptr_t) &req_msg;
-	args[0].length = sizeof(req_msg);
-
-	pages.addr = map->phys;
-	pages.size = map->size;
-
-	args[1].ptr = (u64) (uintptr_t) &pages;
-	args[1].length = sizeof(pages);
-
-	args[2].ptr = (u64) (uintptr_t) &pages;
-	args[2].length = 0;
-
-	args[3].ptr = (u64) (uintptr_t) &rsp_msg;
-	args[3].length = sizeof(rsp_msg);
-
-	sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_MEM_MAP, 3, 1);
-	err = fastrpc_internal_invoke(fl, true, FASTRPC_INIT_HANDLE, sc, &args[0]);
+	/* map to dsp, get virtual adrress for the user*/
+	err = fastrpc_mem_map_to_dsp(fl, map->fd, req.offset,
+					req.flags, req.vaddrin, map->phys,
+					map->size, (uintptr_t *)&req.vaddrout);
 	if (err) {
-		dev_err(dev, "mem mmap error, fd %d, vaddr %llx, size %lld\n",
-			req.fd, req.vaddrin, map->size);
+		dev_err(dev, "failed to map buffer on dsp, fd = %d\n", map->fd);
 		goto err_invoke;
 	}
 
 	/* update the buffer to be able to deallocate the memory on the DSP */
-	map->raddr = rsp_msg.vaddr;
-
-	/* let the client know the address to use */
-	req.vaddrout = rsp_msg.vaddr;
+	map->raddr = req.vaddrout;
 
 	if (copy_to_user((void __user *)argp, &req, sizeof(req))) {
 		/* unmap the memory and release the buffer */
-		req_unmap.vaddr = (uintptr_t) rsp_msg.vaddr;
+		req_unmap.vaddr = (uintptr_t)req.vaddrout;
 		req_unmap.length = map->size;
 		fastrpc_req_mem_unmap_impl(fl, &req_unmap);
 		return -EFAULT;
 	}
 
 	return 0;
-
 err_invoke:
 	fastrpc_map_put(map);
 
@@ -2640,7 +2866,7 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 		list_del(&buf->node);
 
 	if (cctx->remote_heap)
-		fastrpc_buf_free(cctx->remote_heap);
+		fastrpc_buf_free(cctx->remote_heap, false);
 
 	kfree(cctx->gidlist.gids);
 	of_platform_depopulate(&rpdev->dev);
