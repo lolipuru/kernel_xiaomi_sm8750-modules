@@ -16,6 +16,7 @@
 #define FASTRPC_IOCTL_INIT_CREATE_STATIC _IOWR('R', 9, struct fastrpc_init_create_static)
 #define FASTRPC_IOCTL_MEM_MAP		_IOWR('R', 10, struct fastrpc_mem_map)
 #define FASTRPC_IOCTL_MEM_UNMAP		_IOWR('R', 11, struct fastrpc_mem_unmap)
+#define FASTRPC_IOCTL_MULTIMODE_INVOKE	_IOWR('R', 12, struct fastrpc_ioctl_multimode_invoke)
 #define FASTRPC_IOCTL_GET_DSP_INFO	_IOWR('R', 13, struct fastrpc_ioctl_capability)
 
 /**
@@ -88,6 +89,38 @@ struct fastrpc_invoke {
 	__u64 args;
 };
 
+struct fastrpc_enhanced_invoke {
+	struct fastrpc_invoke inv;
+	__u64 crc;
+	__u64 perf_kernel;
+	__u64 perf_dsp;
+	__u32 reserved[20];
+};
+
+struct fastrpc_ioctl_multimode_invoke {
+	__u32 req;
+	__u64 invparam;
+	__u64 size;
+	__u32 reserved[8];
+};
+
+enum fastrpc_multimode_invoke_type {
+	FASTRPC_INVOKE			= 1,
+	FASTRPC_INVOKE_ENHANCED	= 2,
+	FASTRPC_INVOKE_CONTROL = 3,
+	FASTRPC_INVOKE_DSPSIGNAL = 4,
+	FASTRPC_INVOKE_NOTIF = 5,
+};
+
+enum fastrpc_response_flags {
+	NORMAL_RESPONSE = 0,
+	EARLY_RESPONSE = 1,
+	USER_EARLY_SIGNAL = 2,
+	COMPLETE_SIGNAL = 3,
+	STATUS_RESPONSE = 4,
+	POLL_MODE = 5,
+};
+
 struct fastrpc_init_create {
 	__u32 filelen;	/* elf file length */
 	__s32 filefd;	/* fd for the file */
@@ -141,11 +174,54 @@ struct fastrpc_mem_unmap {
 	__s32 reserved[5];
 };
 
+enum fastrpc_control_type {
+	FASTRPC_CONTROL_LATENCY		=	1,
+	FASTRPC_CONTROL_SMMU		=	2,
+	FASTRPC_CONTROL_KALLOC		=	3,
+	FASTRPC_CONTROL_WAKELOCK	=	4,
+	FASTRPC_CONTROL_PM		=	5,
+	/* Clean process on DSP */
+	FASTRPC_CONTROL_DSPPROCESS_CLEAN	=	6,
+	FASTRPC_CONTROL_RPC_POLL	=	7,
+	FASTRPC_CONTROL_ASYNC_WAKE	=	8,
+	FASTRPC_CONTROL_NOTIF_WAKE	=	9,
+};
+
+enum fastrpc_dspsignal_type {
+	FASTRPC_DSPSIGNAL_SIGNAL = 1,
+	FASTRPC_DSPSIGNAL_WAIT = 2,
+	FASTRPC_DSPSIGNAL_CREATE = 3,
+	FASTRPC_DSPSIGNAL_DESTROY = 4,
+	FASTRPC_DSPSIGNAL_CANCEL_WAIT = 5,
+};
+
+enum fastrpc_status_flags {
+	FASTRPC_USERPD_UP			= 1,
+	FASTRPC_USERPD_EXIT 		= 2,
+	FASTRPC_USERPD_FORCE_KILL		= 3,
+	FASTRPC_USERPD_EXCEPTION = 4,
+	FASTRPC_DSP_SSR = 5,
+};
+
 struct fastrpc_ioctl_capability {
 	__u32 domain;
 	__u32 attribute_id;
 	__u32 capability;   /* dsp capability */
 	__u32 reserved[4];
+};
+
+enum fastrpc_perfkeys {
+	PERF_COUNT = 0,
+	PERF_RESERVED1 = 1,
+	PERF_MAP = 2,
+	PERF_COPY = 3,
+	PERF_LINK = 4,
+	PERF_GETARGS = 5,
+	PERF_PUTARGS = 6,
+	PERF_RESERVED2 = 7,
+	PERF_INVOKE = 8,
+	PERF_RESERVED3 = 9,
+	PERF_KEY_MAX = 10,
 };
 
 #endif /* __QCOM_FASTRPC_H__ */
