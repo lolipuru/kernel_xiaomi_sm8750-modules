@@ -105,6 +105,9 @@
 
 #define miscdev_to_fdevice(d) container_of(d, struct fastrpc_device, miscdev)
 
+/* Length of glink transaction history to store */
+#define GLINK_MSG_HISTORY_LEN	(128)
+
 static const char *domains[FASTRPC_DEV_MAX] = { "adsp", "mdsp",
 						"sdsp", "cdsp"};
 struct fastrpc_phy_page {
@@ -180,6 +183,23 @@ struct fastrpc_msg {
 struct fastrpc_invoke_rsp {
 	u64 ctx;		/* invoke caller context */
 	int retval;		/* invoke return value */
+};
+
+struct fastrpc_tx_msg {
+	struct fastrpc_msg msg;	/* Msg sent to remote subsystem */
+	int rpmsg_send_err;	/* rpmsg error */
+	s64 ns;			/* Timestamp (in ns) of msg */
+};
+
+struct fastrpc_rx_msg {
+	u32 tx_index;	/* Current index of 'tx_msgs' array */
+	u32 rx_index;	/* Current index of 'rx_msgs' array */
+	/* Rolling history of messages sent to remote subsystem */
+	struct fastrpc_tx_msg tx_msgs[GLINK_MSG_HISTORY_LEN];
+	/* Rolling history of responses from remote subsystem */
+	struct fastrpc_rx_msg rx_msgs[GLINK_MSG_HISTORY_LEN];
+	spinlock_t tx_lock;
+	spinlock_t rx_lock;
 };
 
 struct fastrpc_buf_overlap {
@@ -278,6 +298,7 @@ struct fastrpc_channel_ctx {
 	struct fastrpc_device *fdevice;
 	struct fastrpc_buf *remote_heap;
 	struct list_head invoke_interrupted_mmaps;
+	struct fastrpc_rpmsg_log gmsg_log[FASTRPC_DEV_MAX];
 	bool secure;
 	bool unsigned_support;
 	u64 dma_mask;
@@ -1097,6 +1118,64 @@ static int fastrpc_put_args(struct fastrpc_invoke_ctx *ctx,
 	return 0;
 }
 
+static s64 get_timestamp_in_ns(void)
+{
+	s64 ns = 0;
+	struct timespec64 ts;
+
+	ktime_get_real_ts64(&ts);
+	ns = timespec64_to_ns(&ts);
+	return ns;
+}
+
+static void fastrpc_update_txmsg_buf(struct fastrpc_channel_ctx *chan,
+				struct fastrpc_msg *msg, int rpmsg_send_err, s64 ns)
+{
+	unsigned long flags = 0;
+	u32 tx_index = 0;
+	struct fastrpc_tx_msg *tx_msg = NULL;
+
+	spin_lock_irqsave(&(chan->gmsg_log[chan->domain_id].tx_lock), flags);
+
+	tx_index = chan->gmsg_log[chan->domain_id].tx_index;
+	tx_msg = &(chan->gmsg_log[chan->domain_id].tx_msgs[tx_index]);
+
+	memcpy(&tx_msg->msg, msg, sizeof(struct fastrpc_msg));
+	tx_msg->rpmsg_send_err = rpmsg_send_err;
+	tx_msg->ns = ns;
+
+	tx_index++;
+	chan->gmsg_log[chan->domain_id].tx_index =
+		(tx_index > (GLINK_MSG_HISTORY_LEN - 1)) ? 0 : tx_index;
+
+	spin_unlock_irqrestore(&(chan->gmsg_log[chan->domain_id].tx_lock), flags);
+}
+
+static void fastrpc_update_rxmsg_buf(struct fastrpc_channel_ctx *chan,
+							u64 ctx, int retval, s64 ns)
+{
+	unsigned long flags = 0;
+	u32 rx_index = 0;
+	struct fastrpc_rx_msg *rx_msg = NULL;
+	struct fastrpc_invoke_rsp *rsp = NULL;
+
+	spin_lock_irqsave(&(chan->gmsg_log[chan->domain_id].rx_lock), flags);
+
+	rx_index = chan->gmsg_log[chan->domain_id].rx_index;
+	rx_msg = &(chan->gmsg_log[chan->domain_id].rx_msgs[rx_index]);
+	rsp = &rx_msg->rsp;
+
+	rsp->ctx = ctx;
+	rsp->retval = retval;
+	rx_msg->ns = ns;
+
+	rx_index++;
+	chan->gmsg_log[chan->domain_id].rx_index =
+		(rx_index > (GLINK_MSG_HISTORY_LEN - 1)) ? 0 : rx_index;
+
+	spin_unlock_irqrestore(&(chan->gmsg_log[chan->domain_id].rx_lock), flags);
+}
+
 static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 			       struct fastrpc_invoke_ctx *ctx,
 			       u32 kernel, uint32_t handle)
@@ -1124,6 +1203,7 @@ static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 
 	if (ret)
 		fastrpc_context_put(ctx);
+	fastrpc_update_txmsg_buf(cctx, msg, ret, get_timestamp_in_ns());
 
 	return ret;
 
@@ -2378,6 +2458,8 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	INIT_LIST_HEAD(&data->users);
 	INIT_LIST_HEAD(&data->invoke_interrupted_mmaps);
 	spin_lock_init(&data->lock);
+	spin_lock_init(&(data->gmsg_log[data->domain_id].tx_lock));
+	spin_lock_init(&(data->gmsg_log[data->domain_id].rx_lock));
 	idr_init(&data->ctx_idr);
 	data->domain_id = domain_id;
 	data->rpdev = rpdev;
@@ -2453,6 +2535,7 @@ static int fastrpc_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
 
 	if (len < sizeof(*rsp))
 		return -EINVAL;
+	fastrpc_update_rxmsg_buf(cctx, rsp->ctx, rsp->retval, get_timestamp_in_ns());
 
 	ctxid = ((rsp->ctx & FASTRPC_CTXID_MASK) >> 4);
 
