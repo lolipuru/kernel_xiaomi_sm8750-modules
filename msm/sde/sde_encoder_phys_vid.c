@@ -11,6 +11,7 @@
 #include "sde_formats.h"
 #include "dsi_display.h"
 #include "sde_trace.h"
+#include <drm/drm_fixed.h>
 
 #define SDE_DEBUG_VIDENC(e, fmt, ...) SDE_DEBUG("enc%d intf%d " fmt, \
 		(e) && (e)->base.parent ? \
@@ -48,6 +49,7 @@ static void drm_mode_to_intf_timing_params(
 		struct intf_timing_params *timing)
 {
 	const struct sde_encoder_phys *phys_enc = &vid_enc->base;
+	s64 comp_ratio, width;
 
 	memset(timing, 0, sizeof(*timing));
 
@@ -124,7 +126,7 @@ static void drm_mode_to_intf_timing_params(
 	 */
 	if (phys_enc->hw_intf->cap->type == INTF_DP &&
 			(timing->wide_bus_en ||
-			(vid_enc->base.comp_ratio > 1))) {
+			(vid_enc->base.comp_ratio > MSM_DISPLAY_COMPRESSION_RATIO_NONE))) {
 		timing->width = timing->width >> 1;
 		timing->xres = timing->xres >> 1;
 		timing->h_back_porch = timing->h_back_porch >> 1;
@@ -132,7 +134,7 @@ static void drm_mode_to_intf_timing_params(
 		timing->hsync_pulse_width = timing->hsync_pulse_width >> 1;
 
 		if (vid_enc->base.comp_type == MSM_DISPLAY_COMPRESSION_DSC &&
-				(vid_enc->base.comp_ratio > 1)) {
+				(vid_enc->base.comp_ratio > MSM_DISPLAY_COMPRESSION_RATIO_NONE)) {
 			timing->extra_dto_cycles =
 				vid_enc->base.dsc_extra_pclk_cycle_cnt;
 			timing->width += vid_enc->base.dsc_extra_disp_width;
@@ -151,10 +153,11 @@ static void drm_mode_to_intf_timing_params(
 			(vid_enc->base.comp_type ==
 			MSM_DISPLAY_COMPRESSION_VDC))) {
 		// adjust active dimensions
-		timing->width = DIV_ROUND_UP(timing->width,
-			vid_enc->base.comp_ratio);
-		timing->xres = DIV_ROUND_UP(timing->xres,
-			vid_enc->base.comp_ratio);
+		width = drm_fixp_from_fraction(timing->width, 1);
+		comp_ratio = drm_fixp_from_fraction(vid_enc->base.comp_ratio, 100);
+		width = drm_fixp_div(width, comp_ratio);
+		timing->width = drm_fixp2int_ceil(width);
+		timing->xres = timing->width;
 	}
 
 	/*
@@ -393,8 +396,14 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	if (vid_enc->base.hw_intf->ops.avr_ctrl)
 		vid_enc->base.hw_intf->ops.avr_ctrl(vid_enc->base.hw_intf, &avr_params);
 
+	if (vid_enc->base.hw_intf->ops.enable_te_level_trigger &&
+			!sde_enc->disp_info.is_te_using_watchdog_timer)
+		vid_enc->base.hw_intf->ops.enable_te_level_trigger(vid_enc->base.hw_intf,
+				(avr_step_state == AVR_STEP_ENABLE));
+
 	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_intf->idx - INTF_0, avr_params.avr_mode,
-			avr_params.avr_step_lines, info->avr_step_fps, avr_step_state);
+			avr_params.avr_step_lines, info->avr_step_fps, avr_step_state,
+			sde_enc->disp_info.is_te_using_watchdog_timer);
 }
 
 static void sde_encoder_phys_vid_setup_timing_engine(
@@ -967,6 +976,9 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 
 	SDE_EVT32(DRMID(phys_enc->parent), event, notify, timeout, ret,
 			ret ? SDE_EVTLOG_FATAL : 0, SDE_EVTLOG_FUNC_EXIT);
+
+	if (!ret)
+		sde_encoder_clear_fence_error_in_progress(phys_enc);
 
 	return ret;
 }

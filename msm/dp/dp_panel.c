@@ -84,23 +84,6 @@ struct dp_panel_private {
 	u8 minor;
 };
 
-static const struct dp_panel_info fail_safe = {
-	.h_active = 640,
-	.v_active = 480,
-	.h_back_porch = 48,
-	.h_front_porch = 16,
-	.h_sync_width = 96,
-	.h_active_low = 0,
-	.v_back_porch = 33,
-	.v_front_porch = 10,
-	.v_sync_width = 2,
-	.v_active_low = 0,
-	.h_skew = 0,
-	.refresh_rate = 60,
-	.pixel_clk_khz = 25200,
-	.bpp = 24,
-};
-
 /* OEM NAME */
 static const u8 vendor_name[8] = {81, 117, 97, 108, 99, 111, 109, 109};
 
@@ -1540,7 +1523,7 @@ static int dp_panel_dsc_prepare_basic_params(
 	 * 2. The ppr per slice cannot exceed the maximum.
 	 * 3. The number of slices must be explicitly supported.
 	 */
-	while (slice_width >= max_slice_width ||
+	while (slice_width > max_slice_width ||
 			ppr_per_slice > peak_throughput ||
 			!dp_panel_check_slice_support(
 			comp_info->dsc_info.slice_per_pkt, slice_caps_1,
@@ -1581,7 +1564,7 @@ static int dp_panel_dsc_prepare_basic_params(
 	comp_info->comp_type = MSM_DISPLAY_COMPRESSION_DSC;
 	comp_info->tgt_bpp = DSC_TGT_BPP;
 	comp_info->src_bpp = dp_mode->timing.bpp;
-	comp_info->comp_ratio = dp_mode->timing.bpp / DSC_TGT_BPP;
+	comp_info->comp_ratio = mult_frac(100, dp_mode->timing.bpp, DSC_TGT_BPP);
 	comp_info->enabled = true;
 
 	return 0;
@@ -2060,10 +2043,7 @@ static int dp_panel_get_modes(struct dp_panel *dp_panel,
 		return _sde_edid_update_modes(connector, dp_panel->edid_ctrl);
 	}
 
-	/* fail-safe mode */
-	memcpy(&mode->timing, &fail_safe,
-		sizeof(fail_safe));
-	return 1;
+	return 0;
 }
 
 static void dp_panel_handle_sink_request(struct dp_panel *dp_panel)
@@ -3007,7 +2987,7 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 	comp_info->src_bpp = default_bpp;
 	comp_info->tgt_bpp = default_bpp;
 	comp_info->comp_type = MSM_DISPLAY_COMPRESSION_NONE;
-	comp_info->comp_ratio = 1;
+	comp_info->comp_ratio = MSM_DISPLAY_COMPRESSION_RATIO_NONE;
 	comp_info->enabled = false;
 
 	/* As YUV was not supported now, so set the default format to RGB */
@@ -3042,7 +3022,7 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 		}
 
 		rc = sde_dsc_populate_dsc_private_params(&comp_info->dsc_info,
-				dp_mode->timing.h_active);
+				dp_mode->timing.h_active, dp_mode->timing.widebus_en);
 		if (rc) {
 			DP_DEBUG("failed populating other dsc params\n");
 			return;

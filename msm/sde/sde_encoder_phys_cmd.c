@@ -36,6 +36,7 @@
 #define AUTOREFRESH_SEQ1_POLL_TIME	2000
 #define AUTOREFRESH_SEQ2_POLL_TIME	25000
 #define AUTOREFRESH_SEQ2_POLL_TIMEOUT	1000000
+#define TEAR_DETECT_CTRL	0x14
 
 static inline int _sde_encoder_phys_cmd_get_idle_timeout(
 		struct sde_encoder_phys *phys_enc)
@@ -1308,7 +1309,7 @@ static void _get_tearcheck_cfg(struct sde_encoder_phys *phys_enc,
 	struct msm_mode_info *info = &sde_enc->mode_info;
 	struct drm_display_mode *mode = &phys_enc->cached_mode;
 	enum sde_rm_qsync_modes qsync_mode;
-	ktime_t qsync_time_ns, default_time_ns, default_line_time_ns, ept_time_ns;
+	ktime_t qsync_time_ns, default_time_ns, default_line_time_ns, ept_time_ns = 0;
 	ktime_t extra_time_ns = 0, ept_extra_time_ns = 0, qsync_l_bound_ns, qsync_u_bound_ns;
 	u32 threshold_lines, ept_threshold_lines = 0, yres;
 	u32 default_fps, qsync_min_fps = 0, ept_fps = 0;
@@ -1498,6 +1499,7 @@ static void sde_encoder_phys_cmd_tearcheck_config(
 	tc_cfg.sync_threshold_continue = DEFAULT_TEARCHECK_SYNC_THRESH_CONTINUE;
 	tc_cfg.rd_ptr_irq = mode->vdisplay + 1;
 	tc_cfg.wr_ptr_irq = 1;
+	tc_cfg.detect_ctrl = tc_cfg.vsync_init_val + TEAR_DETECT_CTRL;
 	cmd_enc->qsync_threshold_lines = tc_cfg.sync_threshold_start;
 
 	SDE_DEBUG_CMDENC(cmd_enc,
@@ -1599,7 +1601,8 @@ static void sde_encoder_phys_cmd_enable_helper(
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	if (sde_enc->idle_pc_restore) {
 		qsync_mode = sde_connector_get_qsync_mode(phys_enc->connector);
-		if (qsync_mode)
+		if (qsync_mode && !test_bit(SDE_INTF_TE_LEVEL_TRIGGER,
+				&phys_enc->hw_intf->cap->features))
 			sde_enc->restore_te_rd_ptr = true;
 	}
 
@@ -1804,6 +1807,8 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 	struct sde_encoder_virt *sde_enc;
 	int ret = 0;
 	bool recovery_events;
+	u32 qsync_mode = 0;
+	bool panel_dead = false;
 
 	if (!phys_enc || !phys_enc->hw_pp) {
 		SDE_ERROR("invalid encoder\n");
@@ -1811,6 +1816,7 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 	}
 	SDE_DEBUG_CMDENC(cmd_enc, "pp %d\n", phys_enc->hw_pp->idx - PINGPONG_0);
 
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	phys_enc->frame_trigger_mode = params->frame_trigger_mode;
 	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_pp->idx - PINGPONG_0,
 			atomic_read(&phys_enc->pending_kickoff_cnt),
@@ -1859,11 +1865,20 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 		else if (phys_enc->hw_pp->ops.update_tearcheck)
 			phys_enc->hw_pp->ops.update_tearcheck(
 					phys_enc->hw_pp, &tc_cfg);
+
+		qsync_mode = sde_connector_get_qsync_mode(phys_enc->connector);
+		panel_dead = sde_connector_panel_dead(phys_enc->connector);
+
+		if (cmd_enc->base.hw_intf->ops.enable_te_level_trigger &&
+				!sde_enc->disp_info.is_te_using_watchdog_timer)
+			cmd_enc->base.hw_intf->ops.enable_te_level_trigger(cmd_enc->base.hw_intf,
+					qsync_mode && !panel_dead);
+
 		SDE_EVT32(DRMID(phys_enc->parent), tc_cfg.sync_threshold_start, tc_cfg.start_pos,
-				SDE_EVTLOG_FUNC_CASE3);
+				qsync_mode, sde_enc->disp_info.is_te_using_watchdog_timer,
+				panel_dead, SDE_EVTLOG_FUNC_CASE3);
 	}
 
-	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	if (sde_enc->restore_te_rd_ptr) {
 		sde_encoder_restore_tearcheck_rd_ptr(phys_enc);
 		sde_enc->restore_te_rd_ptr = false;
@@ -2051,13 +2066,20 @@ static int _sde_encoder_phys_cmd_handle_wr_ptr_timeout(
 	bool switch_te;
 	int ret = -ETIMEDOUT;
 	unsigned long lock_flags;
+	struct sde_encoder_virt *sde_enc;
 
 	switch_te = _sde_encoder_phys_cmd_needs_vsync_change(
 				phys_enc, profile_timestamp);
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	SDE_EVT32(DRMID(phys_enc->parent), switch_te, SDE_EVTLOG_FUNC_ENTRY);
 
 	if (sde_connector_panel_dead(phys_enc->connector)) {
+		if (cmd_enc->base.hw_intf->ops.enable_te_level_trigger &&
+				!sde_enc->disp_info.is_te_using_watchdog_timer)
+			cmd_enc->base.hw_intf->ops.enable_te_level_trigger(cmd_enc->base.hw_intf,
+					false);
+
 		ret = _sde_encoder_phys_cmd_wait_for_wr_ptr(phys_enc);
 	} else if (switch_te) {
 		SDE_DEBUG_CMDENC(cmd_enc,
