@@ -7,52 +7,17 @@
 #include <linux/slab.h>
 #include <synx_api.h>
 #include <synx_hwfence.h>
+#include <synx_interop.h>
 #include "msm_hw_fence.h"
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_debug.h"
+#include "hw_fence_drv_interop.h"
 
 /**
  * MAX_SUPPORTED_DPU0:
  * Maximum number of dpu clients supported
  */
 #define MAX_SUPPORTED_DPU0 (HW_FENCE_CLIENT_ID_CTL5 - HW_FENCE_CLIENT_ID_CTL0)
-
-static int to_synx_status(int hw_fence_status_code)
-{
-	int synx_status_code;
-
-	switch (hw_fence_status_code) {
-	case 0:
-		synx_status_code = SYNX_SUCCESS;
-		break;
-	case -ENOMEM:
-		synx_status_code = -SYNX_NOMEM;
-		break;
-	case -EPERM:
-		synx_status_code = -SYNX_NOPERM;
-		break;
-	case -ETIMEDOUT:
-		synx_status_code = -SYNX_TIMEOUT;
-		break;
-	case -EALREADY:
-		synx_status_code = -SYNX_ALREADY;
-		break;
-	case -ENOENT:
-		synx_status_code = -SYNX_NOENT;
-		break;
-	case -EINVAL:
-		synx_status_code = -SYNX_INVALID;
-		break;
-	case -EBUSY:
-		synx_status_code = -SYNX_BUSY;
-		break;
-	default:
-		synx_status_code = hw_fence_status_code;
-		break;
-	}
-
-	return synx_status_code;
-}
 
 static enum hw_fence_client_id _get_hw_fence_client_id(enum synx_client_id synx_client_id)
 {
@@ -96,61 +61,6 @@ static bool is_hw_fence_client(enum synx_client_id synx_client_id)
 		&& synx_client_id < SYNX_HW_FENCE_CLIENT_END;
 }
 
-static u32 _to_synx_signal_status(u32 flags, u32 error)
-{
-	u32 status;
-
-	if (!(flags & MSM_HW_FENCE_FLAG_SIGNAL)) {
-		status = SYNX_STATE_ACTIVE;
-		goto end;
-	}
-
-	switch (error) {
-	case 0:
-		status = SYNX_STATE_SIGNALED_SUCCESS;
-		break;
-	case MSM_HW_FENCE_ERROR_RESET:
-		status = SYNX_STATE_SIGNALED_SSR;
-		break;
-	default:
-		status = error;
-		break;
-	}
-
-end:
-	HWFNC_DBG_L("fence flags:%u err:%u status:%u\n", flags, error, status);
-
-	return status;
-}
-
-static u32 _to_hwfence_fence_error(u32 status)
-{
-	u32 error;
-
-	switch (status) {
-	case SYNX_STATE_INVALID:
-		HWFNC_ERR("converting error status for invalid fence\n");
-		error = SYNX_INVALID;
-		break;
-	case SYNX_STATE_ACTIVE:
-		HWFNC_ERR("converting error status for unsignaled fence\n");
-		error = 0;
-		break;
-	case SYNX_STATE_SIGNALED_SUCCESS:
-		error = 0;
-		break;
-	case SYNX_STATE_SIGNALED_SSR:
-		error = MSM_HW_FENCE_ERROR_RESET;
-		break;
-	default:
-		error = status;
-		break;
-	}
-	HWFNC_DBG_L("fence status:%u err:%u\n", status, error);
-
-	return error;
-}
-
 struct synx_session *synx_hwfence_initialize(struct synx_initialization_params *params)
 {
 	struct synx_session *session = NULL;
@@ -181,7 +91,7 @@ struct synx_session *synx_hwfence_initialize(struct synx_initialization_params *
 		kfree(session);
 		HWFNC_ERR("failed to initialize synx_id:%d ret:%ld\n", params->id,
 			PTR_ERR(client_handle));
-		return ERR_PTR(to_synx_status(PTR_ERR(client_handle)));
+		return ERR_PTR(hw_fence_interop_to_synx_status(PTR_ERR(client_handle)));
 	}
 	session->client = client_handle;
 	session->type = params->id;
@@ -207,7 +117,7 @@ static int synx_hwfence_uninitialize(struct synx_session *session)
 	else
 		kfree(session);
 
-	return to_synx_status(ret);
+	return hw_fence_interop_to_synx_status(ret);
 }
 
 static int synx_hwfence_create(struct synx_session *session, struct synx_create_params *params)
@@ -243,7 +153,7 @@ static int synx_hwfence_create(struct synx_session *session, struct synx_create_
 	if (ret) {
 		HWFNC_ERR("synx_id:%d failed create fence:0x%pK flags:0x%x ret:%d\n", session->type,
 			params->fence, params->flags, ret);
-		return to_synx_status(ret);
+		return hw_fence_interop_to_synx_status(ret);
 	}
 	if (handle > U32_MAX) {
 		HWFNC_ERR("synx_id:%d fence handle:%llu would overflow h_synx\n", session->type,
@@ -272,7 +182,7 @@ static int synx_hwfence_release(struct synx_session *session, u32 h_synx)
 		HWFNC_ERR("synx_id:%d failed to destroy fence h_synx:%u ret:%d\n", session->type,
 			h_synx, ret);
 
-	return to_synx_status(ret);
+	return hw_fence_interop_to_synx_status(ret);
 }
 
 static int synx_hwfence_signal(struct synx_session *session, u32 h_synx,
@@ -290,13 +200,13 @@ static int synx_hwfence_signal(struct synx_session *session, u32 h_synx,
 		return -SYNX_INVALID;
 	}
 
-	error = _to_hwfence_fence_error(status);
+	error = hw_fence_interop_to_hw_fence_error(status);
 	ret = msm_hw_fence_update_txq(session->client, h_synx, 0, error);
 	if (ret)
 		HWFNC_ERR("synx_id:%d failed to signal fence h_synx:%u status:%d ret:%d\n",
 			session->type, h_synx, status, ret);
 
-	return to_synx_status(ret);
+	return hw_fence_interop_to_synx_status(ret);
 }
 
 int synx_hwfence_recover(enum synx_client_id id)
@@ -313,7 +223,7 @@ int synx_hwfence_recover(enum synx_client_id id)
 	if (ret)
 		HWFNC_ERR("synx_id:%d failed to recover ret:%d\n", id, ret);
 
-	return to_synx_status(ret);
+	return hw_fence_interop_to_synx_status(ret);
 }
 EXPORT_SYMBOL_GPL(synx_hwfence_recover);
 
@@ -355,13 +265,15 @@ static int synx_hwfence_get_status(struct synx_session *session, u32 h_synx)
 		return SYNX_STATE_INVALID;
 	}
 
-	return _to_synx_signal_status(flags, error);
+	return hw_fence_interop_to_synx_signal_status(flags, error);
 }
 
 static int synx_hwfence_import_indv(void *client, struct synx_import_indv_params *params)
 {
+	struct dma_fence_array *array;
+	struct dma_fence *fence;
 	u64 handle;
-	int ret;
+	int ret, i;
 
 	if (IS_ERR_OR_NULL(client) || IS_ERR_OR_NULL(params) ||
 			IS_ERR_OR_NULL(params->new_h_synx) ||
@@ -374,12 +286,43 @@ static int synx_hwfence_import_indv(void *client, struct synx_import_indv_params
 		return -SYNX_INVALID;
 	}
 
+	fence = (struct dma_fence *)params->fence;
+	array = to_dma_fence_array(fence);
+	if (array) {
+		for (i = 0; i < array->num_fences; i++) {
+			if (dma_fence_is_array(array->fences[i])) {
+				HWFNC_ERR("nested fence arrays not supported idx:%d fence:0x%pK\n",
+					i, array->fences[i]);
+				ret = -SYNX_INVALID;
+				break;
+			}
+
+			params->fence = array->fences[i];
+			ret = hw_fence_interop_create_fence_from_import(params);
+			if (ret) {
+				HWFNC_ERR("failed to back dma_fence_array idx:%d fence:0x%pK\n",
+					i, array->fences[i]);
+				params->fence = fence;
+				break;
+			}
+		}
+		params->fence = fence;
+	} else {
+		ret = hw_fence_interop_create_fence_from_import(params);
+	}
+
+	if (ret) {
+		HWFNC_ERR("failed to back dma-fence:0x%pK with hw-fence(s) ret:%d\n",
+			params->fence, ret);
+		return ret;
+	}
+
 	ret = msm_hw_fence_wait_update_v2(client, (struct dma_fence **)&params->fence, &handle,
 		NULL, 1, true);
 	if (ret) {
 		HWFNC_ERR("failed to import fence:0x%pK flags:0x%x ret:%d\n", params->fence,
 			params->flags, ret);
-		return to_synx_status(ret);
+		goto error;
 	}
 	if (handle > U32_MAX) {
 		HWFNC_ERR("fence handle:%llu would overflow new_h_synx\n", handle);
@@ -389,7 +332,8 @@ static int synx_hwfence_import_indv(void *client, struct synx_import_indv_params
 	}
 	*params->new_h_synx = handle;
 
-	return SYNX_SUCCESS;
+error:
+	return hw_fence_interop_to_synx_status(ret);
 }
 
 static int synx_hwfence_import_arr(void *client, struct synx_import_arr_params *params)

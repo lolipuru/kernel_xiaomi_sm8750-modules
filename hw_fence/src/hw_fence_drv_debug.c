@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -17,7 +17,7 @@
 
 #define HFENCE_TBL_MSG \
 	"[%d]hfence[%u] v:%d err:%u ctx:%llu seq:%llu wait:0x%llx alloc:%d f:0x%llx child_cnt:%d"\
-	"%s ct:%llu tt:%llu wt:%llu ref:0x%llx\n"
+	"%s ct:%llu tt:%llu wt:%llu ref:0x%x h_synx:%u\n"
 
 /* each hwfence parent includes one "32-bit" element + "," separator */
 #define HW_FENCE_MAX_PARENTS_SUBLIST_DUMP (MSM_HW_FENCE_MAX_JOIN_PARENTS * 9)
@@ -504,7 +504,8 @@ static void _dump_fence_helper(enum hw_fence_drv_prio prio, struct msm_hw_fence 
 		count, index, hw_fence->valid, hw_fence->error, hw_fence->ctx_id, hw_fence->seq_id,
 		hw_fence->wait_client_mask, hw_fence->fence_allocator, hw_fence->flags,
 		hw_fence->pending_child_cnt, parents_dump, hw_fence->fence_create_time,
-		hw_fence->fence_trigger_time, hw_fence->fence_wait_time, hw_fence->refcount);
+		hw_fence->fence_trigger_time, hw_fence->fence_wait_time, hw_fence->refcount,
+		hw_fence->h_synx);
 }
 
 void hw_fence_debug_dump_fence(enum hw_fence_drv_prio prio, struct msm_hw_fence *hw_fence, u64 hash,
@@ -527,7 +528,8 @@ static inline int _dump_fence(struct msm_hw_fence *hw_fence, char *buf, int len,
 		cnt, index, hw_fence->valid, hw_fence->error, hw_fence->ctx_id, hw_fence->seq_id,
 		hw_fence->wait_client_mask, hw_fence->fence_allocator, hw_fence->flags,
 		hw_fence->pending_child_cnt, parents_dump, hw_fence->fence_create_time,
-		hw_fence->fence_trigger_time, hw_fence->fence_wait_time, hw_fence->refcount);
+		hw_fence->fence_trigger_time, hw_fence->fence_wait_time, hw_fence->refcount,
+		hw_fence->h_synx);
 
 	return ret;
 }

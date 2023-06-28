@@ -516,7 +516,7 @@ struct msm_hw_fence_event {
  * @seq_id: sequence id
  * @wait_client_mask: bitmask holding the waiting-clients of the fence
  * @fence_allocator: field to indicate the client_id that reserved the fence
- * @fence_signal-client:
+ * @fence_signal_client: client that signaled the fence
  * @lock: this field is required to share information between the Driver & Driver ||
  *        Driver & FenceCTL. Needs to be 64-bit atomic inter-processor lock.
  * @flags: field to indicate the state of the fence
@@ -530,6 +530,7 @@ struct msm_hw_fence_event {
  * @refcount: refcount on the hw-fence. This is split into multiple fields, see
  *            HW_FENCE_HLOS_REFCOUNT_MASK and HW_FENCE_FCTL_REFCOUNT and HW_FENCE_DMA_FENCE_REFCOUNT
  *            for more detail
+ * @h_synx: synx handle, nonzero if hw-fence is also backed by synx fence
  * @client_data: array of data optionally passed from and returned to clients waiting on the fence
  *               during fence signaling
  */
@@ -549,7 +550,8 @@ struct msm_hw_fence {
 	u64 fence_create_time;
 	u64 fence_trigger_time;
 	u64 fence_wait_time;
-	u64 refcount;
+	u32 refcount;
+	u32 h_synx;
 	u64 client_data[HW_FENCE_MAX_CLIENTS_WITH_DATA];
 };
 
@@ -604,6 +606,8 @@ int hw_fence_signal_fence(struct hw_fence_driver_data *drv_data, struct dma_fenc
 	u32 error, bool release_ref);
 int hw_fence_get_flags_error(struct hw_fence_driver_data *drv_data, u64 hash, u64 *flags,
 	u32 *error);
+int hw_fence_update_hsynx(struct hw_fence_driver_data *drv_data, u64 hash, u32 h_synx,
+	bool wait_for);
 
 /* apis for internally managed dma-fence */
 struct dma_fence *hw_dma_fence_init(struct msm_hw_fence_client *hw_fence_client, u64 context,
