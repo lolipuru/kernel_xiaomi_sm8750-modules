@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/err.h>
@@ -154,6 +154,10 @@ struct dp_pll *dp_pll_get(struct dp_pll_in *in)
 		rc = -EINVAL;
 		goto error;
 	}
+
+	pll->name = of_get_property(pdev->dev.of_node, "label", NULL);
+	if (!pll->name)
+		pll->name = "dp0";
 
 	pll->ssc_en = of_property_read_bool(pdev->dev.of_node,
 						"qcom,ssc-feature-enable");
