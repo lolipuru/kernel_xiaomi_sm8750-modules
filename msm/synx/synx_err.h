@@ -23,5 +23,6 @@
 #define SYNX_NOENT     ENOENT
 #define SYNX_INVALID   EINVAL
 #define SYNX_BUSY      EBUSY
+#define SYNX_ENODATA   ENODATA
 
 #endif /* __SYNX_ERR_H__ */
