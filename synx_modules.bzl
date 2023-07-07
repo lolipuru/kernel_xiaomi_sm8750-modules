@@ -13,7 +13,13 @@ register_synx_module(
         "synx/synx_global.c",
         "synx/synx_util.c",
         "synx/synx_debugfs.c",
+        "synx/synx_compat.c",
     ],
+
+    deps = [
+        "//vendor/qcom/opensource/mm-drivers/hw_fence:%b_msm_hw_fence",
+        "//vendor/qcom/opensource/mm-drivers/hw_fence:hw_fence_headers",
+    ]
 )
 
 register_synx_module(
