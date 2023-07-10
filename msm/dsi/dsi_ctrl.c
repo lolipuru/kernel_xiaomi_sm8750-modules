@@ -57,6 +57,7 @@ static const enum dsi_ctrl_version dsi_ctrl_v2_5 = DSI_CTRL_VERSION_2_5;
 static const enum dsi_ctrl_version dsi_ctrl_v2_6 = DSI_CTRL_VERSION_2_6;
 static const enum dsi_ctrl_version dsi_ctrl_v2_7 = DSI_CTRL_VERSION_2_7;
 static const enum dsi_ctrl_version dsi_ctrl_v2_8 = DSI_CTRL_VERSION_2_8;
+static const enum dsi_ctrl_version dsi_ctrl_v2_9 = DSI_CTRL_VERSION_2_9;
 
 static const struct of_device_id msm_dsi_of_match[] = {
 	{
@@ -86,6 +87,10 @@ static const struct of_device_id msm_dsi_of_match[] = {
 	{
 		.compatible = "qcom,dsi-ctrl-hw-v2.8",
 		.data = &dsi_ctrl_v2_8,
+	},
+	{
+		.compatible = "qcom,dsi-ctrl-hw-v2.9",
+		.data = &dsi_ctrl_v2_9,
 	},
 	{}
 };
@@ -694,6 +699,7 @@ static int dsi_ctrl_init_regmap(struct platform_device *pdev,
 	case DSI_CTRL_VERSION_2_6:
 	case DSI_CTRL_VERSION_2_7:
 	case DSI_CTRL_VERSION_2_8:
+	case DSI_CTRL_VERSION_2_9:
 		ptr = msm_ioremap(pdev, "disp_cc_base", ctrl->name);
 		if (IS_ERR(ptr)) {
 			DSI_CTRL_ERR(ctrl, "disp_cc base address not found for\n");

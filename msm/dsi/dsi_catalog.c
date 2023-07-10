@@ -76,6 +76,7 @@ static void dsi_catalog_cmn_init(struct dsi_ctrl_hw *ctrl,
 	case DSI_CTRL_VERSION_2_6:
 	case DSI_CTRL_VERSION_2_7:
 	case DSI_CTRL_VERSION_2_8:
+	case DSI_CTRL_VERSION_2_9:
 		ctrl->ops.phy_reset_config = dsi_ctrl_hw_22_phy_reset_config;
 		ctrl->ops.config_clk_gating = dsi_ctrl_hw_22_config_clk_gating;
 		ctrl->ops.setup_lane_map = dsi_ctrl_hw_22_setup_lane_map;
@@ -150,6 +151,7 @@ int dsi_catalog_ctrl_setup(struct dsi_ctrl_hw *ctrl,
 	case DSI_CTRL_VERSION_2_6:
 	case DSI_CTRL_VERSION_2_7:
 	case DSI_CTRL_VERSION_2_8:
+	case DSI_CTRL_VERSION_2_9:
 		ctrl->widebus_support = true;
 		ctrl->phy_pll_bypass = phy_pll_bypass;
 		dsi_catalog_cmn_init(ctrl, version);
