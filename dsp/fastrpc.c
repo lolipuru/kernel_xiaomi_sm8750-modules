@@ -678,11 +678,12 @@ static void fastrpc_cached_buf_list_add(struct fastrpc_buf *buf)
 		fl->num_cached_buf++;
 		buf->type = -1;
 		spin_unlock(&fl->lock);
+		return;
 	}
-	return;
 
 skip_buf_cache:
 	__fastrpc_buf_free(buf);
+	return;
 }
 
 static void fastrpc_buf_free(struct fastrpc_buf *buf, bool cache)
