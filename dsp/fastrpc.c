@@ -547,7 +547,7 @@ static void fastrpc_free_map(struct kref *ref)
 
 	map = container_of(ref, struct fastrpc_map, refcount);
 
-	if (map->table) {
+	if (map->table && !IS_ERR(map->table)) {
 		if (map->attr & FASTRPC_ATTR_SECUREMAP) {
 			struct qcom_scm_vmperm perm;
 			int vmid = map->fl->cctx->vmperms[0].vmid;
