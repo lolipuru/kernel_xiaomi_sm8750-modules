@@ -847,6 +847,22 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc);
 int sde_encoder_handle_dma_fence_out_of_order(struct drm_encoder *drm_enc);
 
 /**
+ * sde_encoder_get_cesta_client - return the SDE CESTA client
+ * @drm_enc: pointer to drm encoder
+ */
+static inline struct sde_cesta_client *sde_encoder_get_cesta_client(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = NULL;
+
+	if (!drm_enc || sde_encoder_in_clone_mode(drm_enc))
+		return NULL;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc->cesta_client;
+}
+
+/**
  * sde_encoder_register_misr_event - register or deregister MISR event
  * @drm_enc: pointer to drm encoder
  * @val: indicates register or deregister

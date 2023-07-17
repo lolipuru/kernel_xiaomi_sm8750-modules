@@ -385,6 +385,7 @@ enum sde_crtc_hw_fence_flags {
  * @aiqe_top_level: aiqe top level mutex and mask
  * @ai_scaler_res: struct stores ai scaler enable flag and resolution
  * @skip_blend_planes: array holding skip blend plane list
+ * @sde_cesta_client: Pointer to sde_cesta client for the encoder.
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -509,6 +510,8 @@ struct sde_crtc {
 	struct sde_aiqe_top_level aiqe_top_level;
 	struct sde_io_res ai_scaler_res;
 	struct sde_cp_skip_blend_plane skip_blend_planes[SB_PLANE_MAX];
+
+	struct sde_cesta_client *cesta_client;
 };
 
 enum sde_crtc_dirty_flags {
