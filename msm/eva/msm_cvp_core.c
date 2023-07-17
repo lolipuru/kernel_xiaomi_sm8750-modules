@@ -139,7 +139,7 @@ static void __deinit_session_queue(struct msm_cvp_inst *inst)
 	wake_up_all(&inst->session_queue.wq);
 }
 
-struct msm_cvp_inst *msm_cvp_open(int session_type, struct task_struct *task)
+void *msm_cvp_open(int core_id, int session_type, struct task_struct *task)
 {
 	struct msm_cvp_inst *inst = NULL;
 	struct msm_cvp_core *core = NULL;
@@ -147,9 +147,16 @@ struct msm_cvp_inst *msm_cvp_open(int session_type, struct task_struct *task)
 	int i = 0;
 	u32 instance_count;
 
-	core = cvp_driver->cvp_core;
+	if (core_id >= MSM_CVP_CORES_MAX ||
+			session_type >= MSM_CVP_MAX_DEVICES) {
+		dprintk(CVP_ERR, "Invalid input, core_id = %d, session = %d\n",
+			core_id, session_type);
+		goto err_invalid_core;
+	}
+	core = get_cvp_core(core_id);
 	if (!core) {
-		dprintk(CVP_ERR, "%s CVP core not initialized\n", __func__);
+		dprintk(CVP_ERR,
+			"Failed to find core for core_id = %d\n", core_id);
 		goto err_invalid_core;
 	}
 
@@ -204,6 +211,7 @@ struct msm_cvp_inst *msm_cvp_open(int session_type, struct task_struct *task)
 	inst->clk_data.ddr_bw = 0;
 	inst->clk_data.sys_cache_bw = 0;
 	inst->clk_data.bitrate = 0;
+	inst->clk_data.core_id = 0;
 
 	for (i = SESSION_MSG_INDEX(SESSION_MSG_START);
 		i <= SESSION_MSG_INDEX(SESSION_MSG_END); i++) {
@@ -428,11 +436,8 @@ int msm_cvp_destroy(struct msm_cvp_inst *inst)
 
 static void close_helper(struct kref *kref)
 {
-	struct msm_cvp_inst *inst;
-
-	if (!kref)
-		return;
-	inst = container_of(kref, struct msm_cvp_inst, kref);
+	struct msm_cvp_inst *inst = container_of(kref,
+			struct msm_cvp_inst, kref);
 
 	msm_cvp_destroy(inst);
 }
@@ -462,15 +467,15 @@ int msm_cvp_close(void *instance)
 	msm_cvp_comm_session_clean(inst);
 
 	if (inst->session_type == MSM_CVP_DSP)
-		cvp_dsp_del_sess(inst->dsp_handle, inst);
+		cvp_dsp_del_sess(inst->process_id, inst);
 
 	kref_put(&inst->kref, close_helper);
 	return 0;
 }
 EXPORT_SYMBOL(msm_cvp_close);
 
-int msm_cvp_suspend(void)
+int msm_cvp_suspend(int core_id)
 {
-	return msm_cvp_comm_suspend();
+	return msm_cvp_comm_suspend(core_id);
 }
 EXPORT_SYMBOL(msm_cvp_suspend);

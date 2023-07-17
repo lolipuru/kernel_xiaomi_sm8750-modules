@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/*
+/* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __H_CVP_HFI_H__
@@ -253,11 +252,11 @@
 #define  HFI_MSG_SESSION_CVP_WARP_DS_PARAMS\
 	(HFI_MSG_SESSION_CVP_START + 0x041)
 #define  HFI_MSG_SESSION_CVP_SET_SNAPSHOT_BUFFERS\
-	(HFI_MSG_SESSION_CVP_START + 0x045)
+	(HFI_MSG_SESSION_CVP_START + 0x042)
 #define  HFI_MSG_SESSION_CVP_RELEASE_SNAPSHOT_BUFFERS\
-	(HFI_MSG_SESSION_CVP_START + 0x046)
+	(HFI_MSG_SESSION_CVP_START + 0x043)
 #define  HFI_MSG_EVENT_NOTIFY_SNAPSHOT_READY\
-	(HFI_MSG_SESSION_CVP_START + 0x047)
+	(HFI_MSG_SESSION_CVP_START + 0x044)
 
 #define HFI_MSG_SESSION_CVP_FLUSH\
 	(HFI_MSG_SESSION_CVP_START + 0x004A)

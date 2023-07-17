@@ -91,7 +91,7 @@ static ssize_t core_info_read(struct file *file, char __user *buf,
 	hdev = core->device;
 
 	cur += write_str(cur, end - cur, "===============================\n");
-	cur += write_str(cur, end - cur, "CORE %d: %pK\n", 0, core);
+	cur += write_str(cur, end - cur, "CORE %d: %pK\n", core->id, core);
 	cur += write_str(cur, end - cur, "===============================\n");
 	cur += write_str(cur, end - cur, "Core state: %d\n", core->state);
 	rc = call_hfi_op(hdev, get_fw_info, hdev->hfi_device_data, &fw_info);
@@ -182,7 +182,7 @@ static int cvp_power_get(void *data, u64 *val)
 	struct msm_cvp_core *core;
 	struct iris_hfi_device *hfi_device;
 
-	core = cvp_driver->cvp_core;
+	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
 	if (!core)
 		return 0;
 	hfi_ops = core->device;
@@ -207,7 +207,7 @@ static int cvp_power_set(void *data, u64 val)
 	struct iris_hfi_device *hfi_device;
 	int rc = 0;
 
-	core = cvp_driver->cvp_core;
+	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
 	if (!core)
 		return -EINVAL;
 
@@ -289,7 +289,7 @@ static int _clk_rate_set(void *data, u64 val)
 	struct allowed_clock_rates_table *tbl = NULL;
 	unsigned int tbl_size, i;
 
-	core = cvp_driver->cvp_core;
+	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
 	dev = core->device;
 	tbl = core->resources.allowed_clks_tbl;
 	tbl_size = core->resources.allowed_clks_tbl_size;
@@ -325,7 +325,7 @@ static int _clk_rate_get(void *data, u64 *val)
 	struct msm_cvp_core *core;
 	struct iris_hfi_device *hdev;
 
-	core = cvp_driver->cvp_core;
+	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
 	hdev = core->device->hfi_device_data;
 	if (msm_cvp_clock_voting)
 		*val = msm_cvp_clock_voting;
@@ -358,7 +358,7 @@ DEFINE_DEBUGFS_ATTRIBUTE(dsp_debug_fops, _dsp_dbg_get, _dsp_dbg_set, "%llu\n");
 static int _max_ssr_set(void *data, u64 val)
 {
 	struct msm_cvp_core *core;
-	core = cvp_driver->cvp_core;
+	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
 	if (core) {
 		if (val < 1) {
 			dprintk(CVP_WARN,
@@ -374,7 +374,7 @@ static int _max_ssr_set(void *data, u64 val)
 static int _max_ssr_get(void *data, u64 *val)
 {
 	struct msm_cvp_core *core;
-	core = cvp_driver->cvp_core;
+	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
 	if (core)
 		*val = core->resources.max_ssr_allowed;
 
@@ -386,7 +386,7 @@ DEFINE_DEBUGFS_ATTRIBUTE(max_ssr_fops, _max_ssr_get, _max_ssr_set, "%llu\n");
 static int _ssr_stall_set(void *data, u64 val)
 {
 	struct msm_cvp_core *core;
-	core = cvp_driver->cvp_core;
+	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
 	if (core)
 		core->resources.fatal_ssr = (val >= 1) ? true : false;
 
@@ -396,7 +396,7 @@ static int _ssr_stall_set(void *data, u64 val)
 static int _ssr_stall_get(void *data, u64 *val)
 {
 	struct msm_cvp_core *core;
-	core = cvp_driver->cvp_core;
+	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
 	if (core)
 		*val = core->resources.fatal_ssr ? 1 : 0;
 
@@ -417,7 +417,7 @@ struct dentry *msm_cvp_debugfs_init_core(struct msm_cvp_core *core,
 		goto failed_create_dir;
 	}
 
-	snprintf(debugfs_name, MAX_DEBUGFS_NAME, "core%d", 0);
+	snprintf(debugfs_name, MAX_DEBUGFS_NAME, "core%d", core->id);
 	dir = debugfs_create_dir(debugfs_name, parent);
 	if (IS_ERR_OR_NULL(dir)) {
 		dir = NULL;
@@ -477,11 +477,8 @@ static int publish_unreleased_reference(struct msm_cvp_inst *inst,
 
 static void put_inst_helper(struct kref *kref)
 {
-	struct msm_cvp_inst *inst;
-
-	if (!kref)
-		return;
-	inst = container_of(kref, struct msm_cvp_inst, kref);
+	struct msm_cvp_inst *inst = container_of(kref,
+			struct msm_cvp_inst, kref);
 
 	msm_cvp_destroy(inst);
 }
