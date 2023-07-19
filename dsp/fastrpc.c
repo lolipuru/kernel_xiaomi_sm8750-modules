@@ -47,12 +47,14 @@
 #define INIT_FILELEN_MAX (2 * 1024 * 1024)
 #define INIT_FILE_NAMELEN_MAX (128)
 #define FASTRPC_DEVICE_NAME	"fastrpc"
+#define SESSION_ID_INDEX (30)
+#define SESSION_ID_MASK (1 << SESSION_ID_INDEX)
 
 /* Maximum buffers cached in cached buffer list */
 #define FASTRPC_MAX_CACHED_BUFS (32)
 #define FASTRPC_MAX_CACHE_BUF_SIZE (8*1024*1024)
 /* Max no. of persistent headers pre-allocated per user process */
-#define FASTRPC_MAX_PERSISTENT_HEADERS    (25)
+#define FASTRPC_MAX_PERSISTENT_HEADERS    (8)
 /* Process status notifications from DSP will be sent with this unique context */
 #define FASTRPC_NOTIF_CTX_RESERVED 0xABCDABCD
 
@@ -1588,6 +1590,8 @@ static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 	cctx = fl->cctx;
 	msg->pid = fl->tgid;
 	msg->tid = current->pid;
+	if (fl->sessionid)
+		msg->tid |= SESSION_ID_MASK;
 
 	if (kernel)
 		msg->pid = 0;
@@ -2403,6 +2407,7 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	fl->tgid = current->tgid;
 	fl->cctx = cctx;
 	fl->is_secure_dev = fdevice->secure;
+	fl->sessionid = 0;
 
 	fl->sctx = fastrpc_session_alloc(cctx);
 	if (!fl->sctx) {
@@ -2974,8 +2979,9 @@ static int fastrpc_multimode_invoke(struct fastrpc_user *fl, char __user *argp)
 	struct fastrpc_internal_dspsignal *fsig = NULL;
 	struct fastrpc_internal_notif_rsp notif;
 	u32 nscalars;
+	u32 multisession;
 	u64 *perf_kernel;
-	int err;
+	int err = 0;
 
 	if (copy_from_user(&invoke, argp, sizeof(invoke)))
 		return -EFAULT;
@@ -3022,10 +3028,17 @@ static int fastrpc_multimode_invoke(struct fastrpc_user *fl, char __user *argp)
 			return -EFAULT;
 		}
 		err = fastrpc_invoke_dspsignal(fl, fsig);
+		kfree(fsig);
 		break;
 	case FASTRPC_INVOKE_NOTIF:
 		err = fastrpc_get_notif_response(&notif,
 						(void *)invoke.invparam, fl);
+		break;
+	case FASTRPC_INVOKE_MULTISESSION:
+		if (copy_from_user(&multisession, (void __user *)(uintptr_t)invoke.invparam, sizeof(multisession)))
+			return  -EFAULT;
+		fl->sessionid = 1;
+		fl->tgid |= SESSION_ID_MASK;
 		break;
 	default:
 		err = -ENOTTY;
@@ -3079,7 +3092,7 @@ static int fastrpc_get_info_from_kernel(struct fastrpc_ioctl_capability *cap,
 	if (!dsp_attributes)
 		return -ENOMEM;
 
-	err = fastrpc_get_info_from_dsp(fl, dsp_attributes, FASTRPC_MAX_DSP_ATTRIBUTES_LEN);
+	err = fastrpc_get_info_from_dsp(fl, dsp_attributes, FASTRPC_MAX_DSP_ATTRIBUTES);
 	if (err == DSP_UNSUPPORTED_API) {
 		dev_info(&cctx->rpdev->dev,
 			 "Warning: DSP capabilities not supported on domain: %d\n", domain);
@@ -3771,8 +3784,8 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	INIT_LIST_HEAD(&data->users);
 	INIT_LIST_HEAD(&data->invoke_interrupted_mmaps);
 	spin_lock_init(&data->lock);
-	spin_lock_init(&(data->gmsg_log[data->domain_id].tx_lock));
-	spin_lock_init(&(data->gmsg_log[data->domain_id].rx_lock));
+	spin_lock_init(&(data->gmsg_log[domain_id].tx_lock));
+	spin_lock_init(&(data->gmsg_log[domain_id].rx_lock));
 	idr_init(&data->ctx_idr);
 	data->domain_id = domain_id;
 	data->rpdev = rpdev;
