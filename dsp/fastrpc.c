@@ -402,14 +402,14 @@ struct fastrpc_channel_ctx {
 	/* Flag if dsp attributes are cached */
 	bool valid_attributes;
 	bool cpuinfo_status;
+	bool staticpd_status;
 	u32 dsp_attributes[FASTRPC_MAX_DSP_ATTRIBUTES];
 	u32 lowest_capacity_core_count;
 	u32 qos_latency;
 	struct fastrpc_device *secure_fdevice;
 	struct fastrpc_device *fdevice;
-	struct fastrpc_buf *remote_heap;
 	struct gid_list gidlist;
-	struct list_head invoke_interrupted_mmaps;
+	struct list_head gmaps;
 	struct fastrpc_rpmsg_log gmsg_log[FASTRPC_DEV_MAX];
 	bool secure;
 	bool unsigned_support;
@@ -1509,7 +1509,7 @@ static int fastrpc_put_args(struct fastrpc_invoke_ctx *ctx,
 			fastrpc_map_put(mmap);
 	}
 	if (ctx->crc && crclist && rpra) {
-		if (copy_to_user((void __user *)ctx->crc, crclist, FASTRPC_MAX_CRCLIST * sizeof(u32))
+		if (copy_to_user((void __user *)ctx->crc, crclist, FASTRPC_MAX_CRCLIST * sizeof(u32)))
 			return -EFAULT;
 	}
 	if (ctx->perf_dsp && perf_dsp_list) {
@@ -1827,17 +1827,12 @@ bail:
 		fastrpc_context_put(ctx);
 	}
 
-	if (err == -ERESTARTSYS) {
-		list_for_each_entry_safe(buf, b, &fl->mmaps, node) {
-			list_del(&buf->node);
-			list_add_tail(&buf->node, &fl->cctx->invoke_interrupted_mmaps);
-		}
-	} else if (ctx) {
+	if (ctx) {
 		if (fl->profile)
 			fastrpc_update_invoke_count(handle, perf_counter, &invoket);
 		if (fl->profile && ctx->perf && ctx->perf_kernel) {
 			if (0 != (perferr = copy_to_user((void __user *)ctx->perf_kernel, ctx->perf, FASTRPC_KERNEL_PERF_LIST * sizeof(u64)))) {
-				pr_err("failed to copy perf data err\n", perferr);
+				pr_warn("failed to copy perf data err 0x%x\n", perferr);
 			}
 		}
 	}
@@ -2020,6 +2015,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	struct fastrpc_invoke_args *args;
 	struct fastrpc_enhanced_invoke ioctl;
 	struct fastrpc_phy_page pages[1];
+	struct fastrpc_buf *buf;
 	char *name;
 	int err;
 	struct {
@@ -2053,9 +2049,8 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		goto err_name;
 	}
 
-	if (!fl->cctx->remote_heap) {
-		err = fastrpc_remote_heap_alloc(fl, fl->sctx->dev, init.memlen,
-						&fl->cctx->remote_heap);
+	if (!fl->cctx->staticpd_status) {
+		err = fastrpc_remote_heap_alloc(fl, fl->sctx->dev, init.memlen, &buf);
 		if (err)
 			goto err_name;
 
@@ -2063,16 +2058,19 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		if (fl->cctx->vmcount) {
 			u64 src_perms = BIT(QCOM_SCM_VMID_HLOS);
 
-			err = qcom_scm_assign_mem(fl->cctx->remote_heap->phys,
-							(u64)fl->cctx->remote_heap->size,
+			err = qcom_scm_assign_mem(buf->phys, (u64)buf->size,
 							&src_perms, fl->cctx->vmperms, fl->cctx->vmcount);
 			if (err) {
-				dev_err(fl->sctx->dev, "Failed to assign memory with phys 0x%llx size 0x%llx err %d",
-					fl->cctx->remote_heap->phys, fl->cctx->remote_heap->size, err);
+				dev_err(fl->sctx->dev, "%s: Failed to assign memory with phys 0x%llx size 0x%llx err %d",
+					__func__, buf->phys, buf->size, err);
 				goto err_map;
 			}
 		}
+		fl->cctx->staticpd_status = true;
 	}
+	spin_lock(&fl->lock);
+	list_add_tail(&buf->node, &fl->cctx->gmaps);
+	spin_unlock(&fl->lock);
 
 	inbuf.pgid = fl->tgid;
 	inbuf.namelen = init.namelen;
@@ -2087,8 +2085,8 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	args[1].length = inbuf.namelen;
 	args[1].fd = -1;
 
-	pages[0].addr = fl->cctx->remote_heap->phys;
-	pages[0].size = fl->cctx->remote_heap->size;
+	pages[0].addr = buf->phys;
+	pages[0].size = buf->size;
 
 	args[2].ptr = (u64)(uintptr_t) pages;
 	args[2].length = sizeof(*pages);
@@ -2116,15 +2114,18 @@ err_invoke:
 
 		dst_perms.vmid = QCOM_SCM_VMID_HLOS;
 		dst_perms.perm = QCOM_SCM_PERM_RWX;
-		err = qcom_scm_assign_mem(fl->cctx->remote_heap->phys,
-						(u64)fl->cctx->remote_heap->size,
+		err = qcom_scm_assign_mem(buf->phys, (u64)buf->size,
 						&src_perms, &dst_perms, 1);
 		if (err)
-			dev_err(fl->sctx->dev, "Failed to assign memory phys 0x%llx size 0x%llx err %d",
-				fl->cctx->remote_heap->phys, fl->cctx->remote_heap->size, err);
+			dev_err(fl->sctx->dev, "%s: Failed to assign memory phys 0x%llx size 0x%llx err %d",
+				__func__, buf->phys, buf->size, err);
 	}
 err_map:
-	fastrpc_buf_free(fl->cctx->remote_heap, false);
+	fl->cctx->staticpd_status = false;
+	spin_lock(&fl->lock);
+	list_del(&buf->node);
+	spin_unlock(&fl->lock);
+	fastrpc_buf_free(buf, false);
 err_name:
 	kfree(name);
 err:
@@ -3223,7 +3224,6 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 	struct fastrpc_map *map = NULL;
 	struct device *dev = fl->sctx->dev;
 	int err;
-	u32 sc;
 
 	if (copy_from_user(&req, argp, sizeof(req)))
 		return -EFAULT;
@@ -3238,7 +3238,12 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 			return -EINVAL;
 		}
 
-		err = fastrpc_buf_alloc(fl, fl->sctx->dev, req.size, USER_BUF, &buf);
+		if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
+			err = fastrpc_remote_heap_alloc(fl, dev, req.size, &buf);
+		} else {
+			err = fastrpc_buf_alloc(fl, fl->sctx->dev, req.size, USER_BUF, &buf);
+		}
+
 		if (err) {
 			dev_err(dev, "failed to allocate buffer\n");
 			return err;
@@ -3291,7 +3296,10 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 		}
 
 		spin_lock(&fl->lock);
-		list_add_tail(&buf->node, &fl->mmaps);
+		if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR)
+			list_add_tail(&buf->node, &fl->cctx->gmaps);
+		else
+			list_add_tail(&buf->node, &fl->mmaps);
 		spin_unlock(&fl->lock);
 
 		if (copy_to_user((void __user *)argp, &req, sizeof(req))) {
@@ -3342,9 +3350,6 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 			err = -EFAULT;
 			goto err_assign;
 		}
-
-		dev_err(dev, "mmap\t\tpt 0x%09lx OK [len 0x%08llx]\n",
-			map->raddr, map->size);
 	}
 	return 0;
 
@@ -3855,6 +3860,7 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 	/* No invocations past this point */
 	spin_lock_irqsave(&cctx->lock, flags);
 	cctx->rpdev = NULL;
+	cctx->staticpd_status = false;
 	list_for_each_entry(user, &cctx->users, user)
 		fastrpc_notify_users(user);
 	spin_unlock_irqrestore(&cctx->lock, flags);
@@ -3865,12 +3871,10 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 	if (cctx->secure_fdevice)
 		misc_deregister(&cctx->secure_fdevice->miscdev);
 
-	list_for_each_entry_safe(buf, b, &cctx->invoke_interrupted_mmaps, node)
+	list_for_each_entry_safe(buf, b, &cctx->gmaps, node) {
 		list_del(&buf->node);
-
-	if (cctx->remote_heap)
-		fastrpc_buf_free(cctx->remote_heap, false);
-
+		fastrpc_buf_free(buf, false);
+	}
 	kfree(cctx->gidlist.gids);
 	of_platform_depopulate(&rpdev->dev);
 
