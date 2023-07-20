@@ -1735,6 +1735,201 @@ static int fastrpc_mmap_remove_pdr(struct fastrpc_user *fl)
 	return err;
 }
 
+#ifdef CONFIG_DEBUG_FS
+void print_buf_info(struct seq_file *s_file, struct fastrpc_buf *buf)
+{
+    seq_printf(s_file,"\n %s %2s 0x%lx", "virt", ":", buf->virt);
+	seq_printf(s_file,"\n %s %2s 0x%lx", "phys", ":", buf->phys);
+	seq_printf(s_file,"\n %s %2s 0x%lx", "raddr", ":", buf->raddr);
+	seq_printf(s_file,"\n %s %2s 0x%x", "type", ":", buf->type);
+	seq_printf(s_file,"\n %s %2s 0x%x", "size", ":", buf->size);
+	seq_printf(s_file,"\n %s %s %d", "in_use", ":", buf->in_use);
+}
+
+void print_ictx_info(struct seq_file *s_file, struct fastrpc_invoke_ctx *ictx)
+{
+	seq_printf(s_file,"\n %s %7s %d", "nscalars", ":", ictx->nscalars);
+	seq_printf(s_file,"\n %s %10s %d", "nbufs", ":", ictx->nbufs);
+	seq_printf(s_file,"\n %s %10s %d", "retval", ":", ictx->retval);
+	seq_printf(s_file,"\n %s %12s %d", "crc", ":", ictx->crc);
+	seq_printf(s_file,"\n %s %1s %d", "early_wake_time", ":", ictx->early_wake_time);
+	seq_printf(s_file,"\n %s %5s %d", "perf_kernel", ":", ictx->perf_kernel);
+	seq_printf(s_file,"\n %s %7s %d", "perf_dsp", ":", ictx->perf_dsp);
+	seq_printf(s_file,"\n %s %12s %d", "pid", ":", ictx->pid);
+	seq_printf(s_file,"\n %s %11s %d", "tgid", ":", ictx->tgid);
+	seq_printf(s_file,"\n %s %13s 0x%x", "sc", ":", ictx->sc);
+	seq_printf(s_file,"\n %s %10s %d", "ctxid", ":", ictx->ctxid);
+	seq_printf(s_file,"\n %s %3s %d", "is_work_done", ":", ictx->is_work_done);
+	seq_printf(s_file,"\n %s %9s %d", "msg_sz", ":", ictx->msg_sz);
+}
+
+void print_sctx_info(struct seq_file *s_file, struct fastrpc_session_ctx *sctx)
+{
+	seq_printf(s_file,"%s %13s %d\n", "sid", ":", sctx->sid);
+	seq_printf(s_file,"%s %12s %d\n", "used", ":", sctx->used);
+	seq_printf(s_file,"%s %11s %d\n", "valid", ":", sctx->valid);
+	seq_printf(s_file,"%s %10s %d\n", "secure", ":", sctx->secure);
+	seq_printf(s_file,"%s %8s %d\n", "sharedcb", ":", sctx->sharedcb);
+	seq_printf(s_file,"%s %4s %d\n", "genpool_iova", ":", sctx->genpool_iova);
+	seq_printf(s_file,"%s %4s %d\n", "genpool_size", ":", sctx->genpool_size);
+}
+
+void print_ctx_info(struct seq_file *s_file, struct fastrpc_channel_ctx *ctx)
+{
+	seq_printf(s_file,"%s %8s %d\n", "domain_id", ":", ctx->domain_id);
+	seq_printf(s_file,"%s %8s %d\n", "sesscount", ":", ctx->sesscount);
+	seq_printf(s_file,"%s %10s %d\n", "vmcount", ":", ctx->vmcount);
+	seq_printf(s_file,"%s %12s %d\n", "perms", ":", ctx->perms);
+	seq_printf(s_file,"%s %s %d\n", "valid_attributes", ":", ctx->valid_attributes);
+	seq_printf(s_file,"%s %3s %d\n", "cpuinfo_status", ":", ctx->cpuinfo_status);
+	seq_printf(s_file,"%s %2s %d\n", "staticpd_status", ":", ctx->staticpd_status);
+	seq_printf(s_file,"%s %11s %d\n", "secure", ":", ctx->secure);
+	seq_printf(s_file,"%s %s %d\n", "unsigned_support", ":", ctx->unsigned_support);
+}
+
+void print_map_info(struct seq_file *s_file, struct fastrpc_map *map)
+{
+	seq_printf(s_file,"%s %4s %d\n", "fd", ":", map->fd);
+	seq_printf(s_file,"%s %s 0x%lx\n", "phys", ":", map->phys);
+	seq_printf(s_file,"%s %s 0x%x\n", "size", ":", map->size);
+	seq_printf(s_file,"%s %4s 0x%lx\n", "va", ":", map->va);
+	seq_printf(s_file,"%s %3s 0x%x\n", "len", ":", map->len);
+	seq_printf(s_file,"%s %2s 0x%x\n", "raddr", ":", map->raddr);
+	seq_printf(s_file,"%s %2s 0x%x\n", "attr", ":", map->attr);
+	seq_printf(s_file,"%s %2s 0x%x\n", "flags", ":", map->flags);
+}
+
+static int fastrpc_debugfs_show(struct seq_file *s_file, void *data)
+{
+	struct fastrpc_user *fl = s_file->private;
+	struct fastrpc_map *map;
+	struct fastrpc_channel_ctx *ctx;
+	struct fastrpc_session_ctx *sctx;
+	struct fastrpc_invoke_ctx *ictx, *m;
+	struct fastrpc_buf *buf, *n;
+	int i;
+
+	if (fl != NULL) {
+		seq_printf(s_file,"%s %12s %d\n", "tgid", ":", fl->tgid);
+		seq_printf(s_file,"%s %7s %d\n", "tgid_frpc", ":", fl->tgid_frpc);
+		seq_printf(s_file,"%s %3s %d\n", "is_secure_dev", ":", fl->is_secure_dev);
+		seq_printf(s_file,"%s %3s %d\n", "num_pers_hdrs", ":", fl->num_pers_hdrs);
+		seq_printf(s_file,"%s %2s %d\n", "num_cached_buf", ":", fl->num_cached_buf);
+		seq_printf(s_file,"%s %5s %d\n", "wake_enable", ":", fl->wake_enable);
+		seq_printf(s_file,"%s %2s %d\n",  "is_unsigned_pd", ":", fl->is_unsigned_pd);
+		seq_printf(s_file,"%s %7s %d\n",  "sessionid", ":", fl->sessionid);
+		seq_printf(s_file,"%s %14s %d\n", "pd", ":", fl->pd);
+		seq_printf(s_file,"%s %9s %d\n",  "profile", ":", fl->profile);
+
+		if(fl->cctx) {
+			seq_printf(s_file,"\n=============== Channel Context ===============\n");
+			ctx = fl->cctx;
+			print_ctx_info(s_file, ctx);
+		}
+		if(fl->sctx) {
+			seq_printf(s_file,"\n=============== Session Context ===============\n");
+			sctx = fl->sctx;
+			print_sctx_info(s_file, sctx);
+		}
+		if(fl->secsctx) {
+			seq_printf(s_file,"\n=============== Secure Session Context ===============\n");
+			sctx = fl->secsctx;
+			print_sctx_info(s_file, sctx);
+		}
+
+		if (fl->init_mem) {
+			seq_printf(s_file,"\n=============== Init Mem ===============\n");
+			buf = fl->init_mem;
+			print_buf_info(s_file, buf);
+		}
+		if (fl->pers_hdr_buf) {
+			seq_printf(s_file,"\n=============== Persistent Header Buf ===============\n");
+			buf = fl->pers_hdr_buf;
+			print_buf_info(s_file, buf);
+		}
+		if (fl->hdr_bufs) {
+			seq_printf(s_file,"\n=============== Pre-allocated Header Buf ===============\n");
+			buf = fl->hdr_bufs;
+			print_buf_info(s_file, buf);
+		}
+		seq_printf(s_file,"\n=============== Global Maps ===============\n");
+		list_for_each_entry_safe(buf, n, &fl->cctx->gmaps, node) {
+			print_buf_info(s_file, buf);
+		}
+		seq_printf(s_file,"\n=============== DSP Signal Status ===============\n");
+		for (i = 0; i < FASTRPC_DSPSIGNAL_NUM_SIGNALS/FASTRPC_DSPSIGNAL_GROUP_SIZE; i++) {
+			if (fl->signal_groups[i] != NULL)
+				seq_printf(s_file,"%d : %d ",i, fl->signal_groups[i]->state);
+		}
+		seq_printf(s_file,"\n=============== User space maps ===============\n");
+		spin_lock(&fl->lock);
+		list_for_each_entry(map, &fl->maps, node) {
+			if (map)
+				print_map_info(s_file, map);
+		}
+		seq_printf(s_file,"\n=============== Kernel maps ===============\n");
+		list_for_each_entry(map, &fl->mmaps, node) {
+			if (map)
+				print_map_info(s_file, map);
+		}
+		seq_printf(s_file,"\n=============== Cached Bufs ===============\n");
+		list_for_each_entry_safe(buf, n, &fl->cached_bufs, node) {
+			if(buf)
+				print_buf_info(s_file, buf);
+		}
+		spin_unlock(&fl->lock);
+		seq_printf(s_file,"\n=============== Pending contexts ===============\n");
+		list_for_each_entry_safe(ictx, m, &fl->pending, node) {
+			if (ictx)
+				print_ictx_info(s_file, ictx);
+		}
+		seq_printf(s_file,"\n=============== Interrupted contexts ===============\n");
+		list_for_each_entry_safe(ictx, m, &fl->interrupted, node) {
+			if (ictx)
+				print_ictx_info(s_file, ictx);
+		}
+	}
+	return 0;
+}
+
+DEFINE_SHOW_ATTRIBUTE(fastrpc_debugfs);
+
+static int fastrpc_create_session_debugfs(struct fastrpc_user *fl)
+{
+	char cur_comm[TASK_COMM_LEN];
+	int domain_id = -1, size = 0;
+
+	memcpy(cur_comm, current->comm, TASK_COMM_LEN);
+	cur_comm[TASK_COMM_LEN-1] = '\0';
+	if (debugfs_root != NULL) {
+		domain_id = fl->cctx->domain_id;
+		if (!(fl->debugfs_file_create)) {
+			size = strlen(cur_comm) + strlen("_")
+				+ COUNT_OF(current->pid) + strlen("_")
+				+ COUNT_OF(FASTRPC_DEV_MAX)
+				+ 1;
+
+			fl->debugfs_buf = kzalloc(size, GFP_KERNEL);
+			if (fl->debugfs_buf == NULL) {
+				return -ENOMEM;
+			}
+			snprintf(fl->debugfs_buf, size, "%.10s%s%d%s%d",
+				cur_comm, "_", current->pid, "_", domain_id);
+			fl->debugfs_file = debugfs_create_file(fl->debugfs_buf, 0644,
+					debugfs_root, fl, &fastrpc_debugfs_fops);
+			if (IS_ERR_OR_NULL(fl->debugfs_file)) {
+				pr_warn("Error: %s: %s: failed to create debugfs file %s\n",
+						cur_comm, __func__, fl->debugfs_buf);
+				fl->debugfs_file = NULL;
+			}
+			kfree(fl->debugfs_buf);
+			fl->debugfs_file_create = true;
+		}
+	}
+return 0;
+}
+#endif
+
 static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 					      char __user *argp)
 {
@@ -1851,6 +2046,10 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	if (err)
 		goto err_invoke;
 
+#ifdef CONFIG_DEBUG_FS
+	if (fl != NULL)
+		fastrpc_create_session_debugfs(fl);
+#endif
 	kfree(args);
 
 	return 0;
@@ -2003,6 +2202,10 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	kfree(args);
 	fastrpc_map_put(map);
 
+#ifdef CONFIG_DEBUG_FS
+	if (fl != NULL)
+		fastrpc_create_session_debugfs(fl);
+#endif
 	return 0;
 
 err_invoke:
@@ -2114,6 +2317,9 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 
 	mutex_destroy(&fl->signal_create_mutex);
 	mutex_destroy(&fl->mutex);
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove(fl->debugfs_file);
+#endif
 	kfree(fl);
 	file->private_data = NULL;
 
@@ -2276,6 +2482,10 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 	if (err)
 		return err;
 
+#ifdef CONFIG_DEBUG_FS
+	if (fl != NULL)
+		fastrpc_create_session_debugfs(fl);
+#endif
 	return 0;
 }
 
@@ -3611,6 +3821,17 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 		dev_err(dev, "32-bit DMA enable failed\n");
 		return rc;
 	}
+#ifdef CONFIG_DEBUG_FS
+	if (debugfs_root && !debugfs_global_file) {
+		debugfs_global_file = debugfs_create_file("global", 0644,
+			debugfs_root, NULL, &fastrpc_debugfs_fops);
+		if (IS_ERR_OR_NULL(debugfs_global_file)) {
+			pr_warn("Error: %s: %s: failed to create debugfs global file\n",
+				current->comm, __func__);
+			debugfs_global_file = NULL;
+		}
+	}
+#endif
 
 bail:
 	return err;
@@ -3902,7 +4123,15 @@ static int fastrpc_init(void)
 		platform_driver_unregister(&fastrpc_cb_driver);
 		return ret;
 	}
-
+#ifdef CONFIG_DEBUG_FS
+	debugfs_root = debugfs_create_dir("fastrpc", NULL);
+	if (IS_ERR_OR_NULL(debugfs_root)) {
+		pr_warn("Error: %s: %s: failed to create debugfs root dir\n",
+			current->comm, __func__);
+		debugfs_remove_recursive(debugfs_root);
+		debugfs_root = NULL;
+	}
+#endif		
 	return 0;
 }
 module_init(fastrpc_init);
@@ -3911,6 +4140,9 @@ static void fastrpc_exit(void)
 {
 	platform_driver_unregister(&fastrpc_cb_driver);
 	fastrpc_transport_deinit();
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove_recursive(debugfs_root);
+#endif
 }
 module_exit(fastrpc_exit);
 

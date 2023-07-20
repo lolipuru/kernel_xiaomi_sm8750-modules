@@ -14,6 +14,8 @@
 #include <linux/workqueue.h>
 #include <linux/qcom_scm.h>
 #include <linux/miscdevice.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
 
 #define ADSP_DOMAIN_ID (0)
 #define MDSP_DOMAIN_ID (1)
@@ -196,6 +198,15 @@
 #define FASTRPC_SOCKET_RECV_SIZE sizeof(union rsp)
 /* DMA handle reverse RPC support */
 #define DMA_HANDLE_REVERSE_RPC_CAP (128)
+#define FIND_DIGITS(number) ({ \
+		unsigned int count = 0, i= number; \
+		while(i != 0) { \
+			i /= 10; \
+			count++; \
+		} \
+	count; \
+	})
+#define COUNT_OF(number) (number == 0 ? 1 : FIND_DIGITS(number))
 
 enum fastrpc_remote_domains_id {
 	SECURE_PD = 0,
@@ -221,6 +232,12 @@ struct frpc_transport_session_control {
 
 static const char *domains[FASTRPC_DEV_MAX] = { "adsp", "mdsp",
 						"sdsp", "cdsp"};
+
+#ifdef CONFIG_DEBUG_FS
+static struct dentry *debugfs_root;
+static struct dentry *debugfs_global_file;
+#endif
+
 struct fastrpc_phy_page {
 	u64 addr;		/* physical address */
 	u64 size;		/* size of contiguous region */
@@ -549,7 +566,11 @@ struct fastrpc_user {
 	struct fastrpc_buf *pers_hdr_buf;
 	/* Pre-allocated buffer divided into N chunks */
 	struct fastrpc_buf *hdr_bufs;
-
+#ifdef CONFIG_DEBUG_FS
+	bool debugfs_file_create;
+	struct dentry *debugfs_file;
+	char *debugfs_buf;
+#endif
 	int tgid;
 	int pd;
 	/* total cached buffers */
