@@ -17,6 +17,12 @@
  */
 #define HW_FENCE_SYNX_FENCE_CLIENT_ID (~(u32)1)
 
+/**
+ * HW_FENCE_SYNX_FENCE_CLIENT_ID:
+ * ClientID for fences created to back fences with native dma-fence producers
+ */
+#define HW_FENCE_NATIVE_FENCE_CLIENT_ID (~(u32)2)
+
 struct synx_hwfence_interops synx_interops = {
 	.share_handle_status = NULL,
 	.get_fence = NULL,
@@ -155,10 +161,11 @@ static int _update_interop_fence(struct synx_import_indv_params *params, u64 han
 
 int hw_fence_interop_create_fence_from_import(struct synx_import_indv_params *params)
 {
-	struct msm_hw_fence_client interop_client;
+	struct msm_hw_fence_client dummy_client;
 	struct dma_fence *fence;
 	int destroy_ret, ret;
 	unsigned long flags;
+	bool is_synx;
 	u64 handle;
 
 	if (IS_ERR_OR_NULL(params) || IS_ERR_OR_NULL(params->fence)) {
@@ -175,44 +182,48 @@ int hw_fence_interop_create_fence_from_import(struct synx_import_indv_params *pa
 		spin_unlock_irqrestore(fence->lock, flags);
 		return SYNX_SUCCESS;
 	}
+	is_synx = test_bit(SYNX_NATIVE_FENCE_FLAG_ENABLED_BIT, &fence->flags);
 
-	if (!test_bit(SYNX_NATIVE_FENCE_FLAG_ENABLED_BIT, &fence->flags)) {
-		spin_unlock_irqrestore(fence->lock, flags);
-		HWFNC_ERR("Cannot import native sw dma-fence ctx:%llu seq:%llu flags:0x%lx\n",
-			fence->context, fence->seqno, fence->flags);
-		return -SYNX_INVALID;
-	}
-
-	interop_client.client_id = HW_FENCE_SYNX_FENCE_CLIENT_ID;
-	ret = hw_fence_create(hw_fence_drv_data, &interop_client, fence->context,
+	/* only synx clients can signal synx fences; no one can signal sw dma-fence from fw */
+	dummy_client.client_id = is_synx ? HW_FENCE_SYNX_FENCE_CLIENT_ID :
+		HW_FENCE_NATIVE_FENCE_CLIENT_ID;
+	ret = hw_fence_create(hw_fence_drv_data, &dummy_client, fence->context,
 		fence->seqno, &handle);
 	if (ret) {
-		HWFNC_ERR("failed to create interop fence client:%d ctx:%llu seq:%llu ret:%d\n",
-			interop_client.client_id, fence->context, fence->seqno, ret);
+		HWFNC_ERR("failed create fence client:%d ctx:%llu seq:%llu is_synx:%s ret:%d\n",
+			dummy_client.client_id, fence->context, fence->seqno,
+			is_synx ? "true" : "false", ret);
 		spin_unlock_irqrestore(fence->lock, flags);
 		return hw_fence_interop_to_synx_status(ret);
 	}
 	set_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags);
 	spin_unlock_irqrestore(fence->lock, flags);
 
-	ret = _update_interop_fence(params, handle);
+	if (is_synx)
+		/* exchange handles and register fence controller for wait on synx fence */
+		ret = _update_interop_fence(params, handle);
+	else
+		/* native dma-fences do not have a signaling client, remove ref for fctl signal */
+		ret = hw_fence_destroy_refcount(hw_fence_drv_data, handle, HW_FENCE_FCTL_REFCOUNT);
+
 	if (ret) {
-		HWFNC_ERR("failed to exchange interop handles handle:%llu ret:%d\n", handle, ret);
+		HWFNC_ERR("failed to update for signaling client handle:%llu is_synx:%s ret:%d\n",
+			handle, is_synx ? "true" : "false", ret);
 		goto error;
 	}
 
 	ret = hw_fence_add_callback(hw_fence_drv_data, fence, handle);
 	if (ret)
-		HWFNC_ERR("failed to add signal callback for interop fence handle:%llu ret:%d\n",
-			handle, ret);
+		HWFNC_ERR("failed to add signal callback for fence handle:%llu is_synx:%s ret:%d\n",
+			handle, is_synx ? "true" : "false", ret);
 
 error:
 	/* destroy reference held by creator of fence */
-	destroy_ret = hw_fence_destroy_with_hash(hw_fence_drv_data, &interop_client,
+	destroy_ret = hw_fence_destroy_with_hash(hw_fence_drv_data, &dummy_client,
 		handle);
 	if (destroy_ret) {
-		HWFNC_ERR("failed destroy interop fence client:%d handle:%llu ret:%d\n",
-			interop_client.client_id, handle, ret);
+		HWFNC_ERR("failed destroy fence client:%d handle:%llu is_synx:%s ret:%d\n",
+			dummy_client.client_id, handle, is_synx ? "true" : "false", ret);
 		ret = destroy_ret;
 	}
 
