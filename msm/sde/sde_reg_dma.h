@@ -346,16 +346,16 @@ struct sde_hw_reg_dma_ops {
 			     enum sde_reg_dma_blk blk,
 			     bool *is_supported);
 	int (*setup_payload)(struct sde_reg_dma_setup_ops_cfg *cfg);
-	int (*kick_off)(struct sde_reg_dma_kickoff_cfg *cfg);
+	int (*kick_off)(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
 	int (*reset)(struct sde_hw_ctl *ctl);
-	struct sde_reg_dma_buffer* (*alloc_reg_dma_buf)(u32 size);
-	int (*dealloc_reg_dma)(struct sde_reg_dma_buffer *lut_buf);
+	struct sde_reg_dma_buffer* (*alloc_reg_dma_buf)(u32 size, u32 dpu_idx);
+	int (*dealloc_reg_dma)(struct sde_reg_dma_buffer *lut_buf, u32 dpu_idx);
 	int (*reset_reg_dma_buf)(struct sde_reg_dma_buffer *buf);
 	int (*last_command)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
 	int (*last_command_sb)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
-	void (*dump_regs)(void);
+	void (*dump_regs)(u32 dpu_idx);
 };
 
 /**
@@ -392,11 +392,13 @@ int sde_reg_dma_init(void __iomem *addr, struct sde_mdss_cfg *m,
 /**
  * sde_reg_dma_get_ops() - singleton module, ops is returned to the clients
  *                            who call this api.
+ * @dpu_idx: dpu index
  */
-struct sde_hw_reg_dma_ops *sde_reg_dma_get_ops(void);
+struct sde_hw_reg_dma_ops *sde_reg_dma_get_ops(u32 dpu_idx);
 
 /**
  * sde_reg_dma_deinit() - de-initialize the reg dma
+ * @dpu_idx: dpu index
  */
-void sde_reg_dma_deinit(void);
+void sde_reg_dma_deinit(u32 dpu_idx);
 #endif /* _SDE_REG_DMA_H */

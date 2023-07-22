@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -538,10 +538,11 @@ struct sde_hw_sspp_ops {
 	 * @buf: Defines structure for reg dma ops on the reg dma buffer.
 	 * @scaler3_cfg: QSEEDv3 configuration
 	 * @offset: Scaler Offset
+	 * @dpu_idx: dpu index
 	 */
 	void (*setup_scaler_lut)(struct sde_reg_dma_setup_ops_cfg *buf,
 			struct sde_hw_scaler3_cfg *scaler3_cfg,
-			u32 offset);
+			u32 offset, u32 dpu_idx);
 
 	/**
 	 * setup_pre_downscale - setup pre-downscaler for inline rotation
@@ -786,6 +787,7 @@ struct sde_hw_sspp_ops {
  * @idx: pipe index
  * @cap: pointer to layer_cfg
  * @ops: pointer to operations possible for this pipe
+ * @dpu_idx: dpu index
  */
 struct sde_hw_pipe {
 	struct sde_hw_blk_reg_map hw;
@@ -799,6 +801,8 @@ struct sde_hw_pipe {
 	/* Ops */
 	struct sde_hw_sspp_ops ops;
 	struct sde_hw_ctl *ctl;
+
+	u32 dpu_idx;
 };
 
 /**
@@ -809,10 +813,12 @@ struct sde_hw_pipe {
  * @catalog : Pointer to mdss catalog data
  * @is_virtual_pipe: is this pipe virtual pipe
  * @client: Pointer to VBIF clock client info
+ * @dpu_idx: dpu index
  */
 struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 		void __iomem *addr, struct sde_mdss_cfg *catalog,
-		bool is_virtual_pipe, struct sde_vbif_clk_client *client);
+		bool is_virtual_pipe, struct sde_vbif_clk_client *client,
+		u32 dpu_idx);
 
 /**
  * sde_hw_sspp_destroy(): Destroys SSPP driver context

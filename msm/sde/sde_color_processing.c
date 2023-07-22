@@ -1975,11 +1975,16 @@ static const int dspp_feature_to_sub_blk_tbl[SDE_CP_CRTC_MAX_FEATURES] = {
 };
 
 static void _flush_sb_dma_hw(int *active_ctls, struct sde_hw_ctl *ctl,
-		u32 list_size)
+		u32 list_size, u32 dpu_idx)
 {
 	//For each CTL send last CD to SB DMA only once.
 	u32 j;
-	struct sde_hw_reg_dma_ops *dma_ops = sde_reg_dma_get_ops();
+	struct sde_hw_reg_dma_ops *dma_ops = sde_reg_dma_get_ops(dpu_idx);
+
+	if (!dma_ops) {
+		SDE_ERROR("dma ops is NULL\n");
+		return;
+	}
 
 	for (j = 0; j < list_size; j++) {
 		if (active_ctls[j] == ctl->idx) {
@@ -2020,7 +2025,7 @@ static void _sde_cp_dspp_flush_helper(struct sde_crtc *sde_crtc, u32 feature)
 				dspp->sb_dma_in_use = false;
 
 				_flush_sb_dma_hw(active_ctls, ctl,
-						ARRAY_SIZE(active_ctls));
+						ARRAY_SIZE(active_ctls), dspp->dpu_idx);
 				ctl->ops.update_bitmask_dspp_subblk(ctl,
 						dspp->idx, sub_blk, true);
 			} else {

@@ -161,6 +161,12 @@ enum sde_sspp {
 #define SDE_SSPP_VALID_VIG(x) ((x) >= SSPP_VIG0 && (x) <= SSPP_VIG_MAX)
 #define SDE_SSPP_VALID_DMA(x) ((x) >= SSPP_DMA0 && (x) <= SSPP_DMA_MAX)
 
+enum sde_dpu {
+	DPU_0,
+	DPU_1,
+	DPU_MAX
+};
+
 enum sde_sspp_type {
 	SSPP_TYPE_VIG,
 	SSPP_TYPE_DMA,

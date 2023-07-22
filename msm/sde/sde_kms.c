@@ -2479,7 +2479,9 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		msm_iounmap(pdev, sde_kms->mmio);
 	sde_kms->mmio = NULL;
 
-	sde_reg_dma_deinit();
+	if (sde_kms->dev->primary)
+		sde_reg_dma_deinit(sde_kms->dev->primary->index);
+
 	_sde_kms_mmu_destroy(sde_kms);
 }
 
