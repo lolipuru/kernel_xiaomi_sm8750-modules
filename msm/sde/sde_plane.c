@@ -3188,6 +3188,7 @@ static void _sde_plane_map_prop_to_dirty_bits(void)
 	plane_prop_array[PLANE_PROP_EXCL_RECT_V1] =
 	plane_prop_array[PLANE_PROP_UBWC_STATS_ROI] =
 	plane_prop_array[PLANE_PROP_CAC_TYPE] =
+	plane_prop_array[PLANE_PROP_SRC_IMG_SIZE] =
 		SDE_PLANE_DIRTY_RECTS;
 
 	plane_prop_array[PLANE_PROP_CSC_V1] =
@@ -3465,6 +3466,9 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 			!is_sde_plane_virtual(plane))
 		psde->pipe_hw->ops.setup_scaler_cac(
 			psde->pipe_hw, &psde->scaler3_cfg.cac_cfg);
+
+	if (psde->pipe_hw->ops.setup_img_size && cac_pipe)
+		psde->pipe_hw->ops.setup_img_size(psde->pipe_hw, &pstate->src_img_rec);
 }
 
 static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
@@ -4362,6 +4366,8 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		msm_property_install_enum(&psde->property_info, "cac_type", 0x0,
 			0, e_cac_type, ARRAY_SIZE(e_cac_type), 0,
 			PLANE_PROP_CAC_TYPE);
+		msm_property_install_volatile_range(&psde->property_info,
+			"src_img_size", 0x0, 0, ~0, 0, PLANE_PROP_SRC_IMG_SIZE);
 	}
 
 	msm_property_install_volatile_range(&psde->property_info, "bg_alpha",
@@ -4669,6 +4675,32 @@ static void _sde_plane_set_excl_rect_v1(struct sde_plane *psde,
 			pstate->excl_rect.w, pstate->excl_rect.h);
 }
 
+static void _sde_plane_set_img_size(struct sde_plane *psde,
+	struct sde_plane_state *pstate, void __user *usr_ptr)
+{
+	struct drm_clip_rect src_img_rec;
+
+	if (!psde || !pstate) {
+		SDE_ERROR("invalid argument(s)\n");
+		return;
+	}
+
+	if (!usr_ptr) {
+		memset(&pstate->src_img_rec, 0, sizeof(pstate->src_img_rec));
+		return;
+	}
+
+	if (copy_from_user(&src_img_rec, usr_ptr, sizeof(src_img_rec))) {
+		SDE_ERROR_PLANE(psde, "failed to copy cac src img data\n");
+		return;
+	}
+
+	pstate->src_img_rec.x = src_img_rec.x1;
+	pstate->src_img_rec.y = src_img_rec.y1;
+	pstate->src_img_rec.w = src_img_rec.x2 - src_img_rec.x1;
+	pstate->src_img_rec.h = src_img_rec.y2 - src_img_rec.y1;
+}
+
 static void _sde_plane_set_ubwc_stats_roi(struct sde_plane *psde,
 		struct sde_plane_state *pstate, void __user *usr_ptr)
 {
@@ -4744,6 +4776,10 @@ static int sde_plane_atomic_set_property(struct drm_plane *plane,
 			case PLANE_PROP_UBWC_STATS_ROI:
 				_sde_plane_set_ubwc_stats_roi(psde, pstate,
 						(void __user *)(uintptr_t)val);
+				break;
+			case PLANE_PROP_SRC_IMG_SIZE:
+				_sde_plane_set_img_size(psde, pstate,
+						(void *)(uintptr_t)val);
 				break;
 			default:
 				/* nothing to do */

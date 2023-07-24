@@ -798,6 +798,14 @@ struct sde_hw_sspp_ops {
 	 */
 	void (*setup_scaler_cac)(struct sde_hw_pipe *ctx,
 		struct sde_hw_cac_cfg *cac_cfg);
+
+	/**
+	 * setup_img_size - set img size params for CAC
+	 * @ctx: Pointer to pipe object
+	 * @img_rec: Pointer to image rect structure
+	 */
+	void (*setup_img_size)(struct sde_hw_pipe *ctx,
+		struct sde_rect *img_rec);
 };
 
 /**

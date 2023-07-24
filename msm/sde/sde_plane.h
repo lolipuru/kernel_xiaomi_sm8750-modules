@@ -170,6 +170,7 @@ enum sde_plane_sclcheck_state {
  * @csc_cfg: csc configuration for pipe
  * @csc_usr_ptr: valid user override configuration for csc
  * @csc_ptr: default csc configuration
+ * @src_img_rec: source image rect values
  */
 struct sde_plane_state {
 	struct drm_plane_state base;
@@ -212,6 +213,7 @@ struct sde_plane_state {
 	struct sde_csc_cfg csc_cfg;
 	struct sde_csc_cfg *csc_usr_ptr;
 	struct sde_csc_cfg *csc_ptr;
+	struct sde_rect src_img_rec;
 };
 
 /**

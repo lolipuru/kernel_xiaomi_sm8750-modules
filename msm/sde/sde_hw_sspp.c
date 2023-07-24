@@ -19,6 +19,7 @@
 
 /* SDE_SSPP_SRC */
 #define SSPP_SRC_SIZE                      0x00
+#define SSPP_SRC_IMG_SIZE                  0x04
 #define SSPP_SRC_XY                        0x08
 #define SSPP_OUT_SIZE                      0x0c
 #define SSPP_OUT_XY                        0x10
@@ -1535,6 +1536,19 @@ static void sde_hw_sspp_setup_scaler_cac(struct sde_hw_pipe *ctx,
 	sde_hw_setup_scaler_cac(&ctx->hw, idx, cac_cfg);
 }
 
+static void sde_hw_sspp_setup_img_size(struct sde_hw_pipe *ctx,
+	struct sde_rect *img_rec)
+{
+	u32 img_size, idx;
+
+	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+		return;
+
+	img_size = img_rec->h << 16 | img_rec->w;
+
+	SDE_REG_WRITE(&ctx->hw, SSPP_SRC_IMG_SIZE + idx, img_size);
+}
+
 static void _setup_layer_ops(struct sde_hw_pipe *c,
 		unsigned long features, unsigned long perf_features,
 		bool is_virtual_pipe)
@@ -1637,6 +1651,7 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 		if (test_bit(SDE_SSPP_SCALER_QSEED3, &features) ||
 			test_bit(SDE_SSPP_SCALER_QSEED3LITE, &features))
 			c->ops.setup_scaler_cac = sde_hw_sspp_setup_scaler_cac;
+		c->ops.setup_img_size = sde_hw_sspp_setup_img_size;
 	}
 }
 
