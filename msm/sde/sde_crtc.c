@@ -1681,7 +1681,9 @@ static int _sde_crtc_validate_src_split_order(struct drm_crtc *crtc,
 		cur_layout = cur_pstate->sde_pstate->layout;
 
 		if (prv_pstate->stage != cur_pstate->stage ||
-				prev_layout != cur_layout)
+				prev_layout != cur_layout ||
+			sde_plane_is_cac_enabled(prv_pstate->sde_pstate) ||
+			sde_plane_is_cac_enabled(cur_pstate->sde_pstate))
 			continue;
 
 		stage = cur_pstate->stage;
@@ -6148,7 +6150,6 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	struct drm_display_mode *mode;
 	int layout_split;
 	u32 crtc_width, crtc_height;
-	u32 sspp_cac_mode = 0;
 
 	kms = _sde_crtc_get_kms(crtc);
 
@@ -6172,9 +6173,8 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 
 		pstate = to_sde_plane_state(plane_state);
 		layout_split = crtc_width >> 1;
-		sspp_cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
 
-		if (sspp_cac_mode != SDE_CAC_NONE) {
+		if (sde_plane_is_cac_enabled(pstate)) {
 			pstate->layout_offset = -1;
 		} else if (plane_state->crtc_x >= layout_split) {
 			plane_state->crtc_x -= layout_split;

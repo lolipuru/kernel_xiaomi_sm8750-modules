@@ -450,4 +450,15 @@ bool sde_plane_is_sw_fence_signaled(struct drm_plane *plane);
 bool sde_plane_property_is_dirty(struct drm_plane_state *plane_state,
 		 uint32_t property_idx);
 
+/** sde_plane_is_cac_enabled - indicates if cac is enabled for
+ *	the plane
+ * @pstate: Pointer to sde plane state
+ * Returns true if cac is enabled, otherwise false.
+ */
+static inline bool sde_plane_is_cac_enabled(struct sde_plane_state *pstate)
+{
+	return sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE)
+			!= SDE_CAC_NONE;
+}
+
 #endif /* _SDE_PLANE_H_ */

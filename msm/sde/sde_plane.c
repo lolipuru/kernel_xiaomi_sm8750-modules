@@ -207,11 +207,28 @@ void sde_plane_setup_src_split_order(struct drm_plane *plane,
 		enum sde_sspp_multirect_index rect_mode, bool enable)
 {
 	struct sde_plane *psde;
+	struct sde_plane_state *pstate;
+	u32 cac_pref_lm;
 
 	if (!plane)
 		return;
 
 	psde = to_sde_plane(plane);
+	pstate = to_sde_plane_state(plane->state);
+
+	if (sde_plane_in_cac_fetch_mode(pstate)) {
+		/*
+		 * pipe to lm configuration is currently fixed during cac
+		 * usecases. cac_lm_pref can be used to set the preferred
+		 * lm for each sspp. More details on this can be found
+		 * in Documentation(sde.txt).
+		 */
+		cac_pref_lm = psde->pipe_sblk->cac_lm_pref[rect_mode -
+				SDE_SSPP_RECT_0];
+		enable = ((cac_pref_lm == 0xFF) ? enable :
+				(cac_pref_lm % MAX_MIXERS_PER_LAYOUT));
+	}
+
 	if (psde->pipe_hw->ops.set_src_split_order)
 		psde->pipe_hw->ops.set_src_split_order(psde->pipe_hw,
 					rect_mode, enable);
@@ -1912,7 +1929,6 @@ int sde_plane_validate_multirect_v2(struct sde_multirect_plane_states *plane)
 	enum sde_sspp_multirect_mode mode = SDE_SSPP_MULTIRECT_NONE;
 	const struct msm_format *msm_fmt;
 	bool const_alpha_enable = true;
-	bool cac_en = false;
 
 	for (i = 0; i < R_MAX; i++) {
 		drm_state[i] = i ? plane->r1 : plane->r0;
@@ -1951,9 +1967,8 @@ int sde_plane_validate_multirect_v2(struct sde_multirect_plane_states *plane)
 				drm_state[i]->crtc_y, drm_state[i]->crtc_w,
 				drm_state[i]->crtc_h, !q16_data);
 
-		cac_en = sde_plane_get_property(pstate[i], PLANE_PROP_CAC_TYPE) != SDE_CAC_NONE;
-
-		if (!cac_en && (src[i].w != dst[i].w || src[i].h != dst[i].h)) {
+		if (!sde_plane_is_cac_enabled(pstate[i]) &&
+			(src[i].w != dst[i].w || src[i].h != dst[i].h)) {
 			SDE_ERROR_PLANE(sde_plane[i],
 				"scaling is not supported in multirect mode\n");
 			return -EINVAL;
@@ -2587,8 +2602,8 @@ static int _sde_atomic_check_decimation_scaler(struct drm_plane_state *state,
 		return -EINVAL;
 	}
 
-	/* scaling checks are not needed for fsc formats */
-	if (sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE) != SDE_CAC_NONE)
+	/* scaling checks are not needed for fsc formats*/
+	if (sde_plane_is_cac_enabled(pstate))
 		return 0;
 
 	deci_w = sde_plane_get_property(pstate, PLANE_PROP_H_DECIMATE);
@@ -3364,7 +3379,7 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 
 	pstate = to_sde_plane_state(state);
 
-	cac_pipe = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE) != SDE_CAC_NONE;
+	cac_pipe = sde_plane_is_cac_enabled(pstate);
 
 	msm_fmt = msm_framebuffer_format(fb);
 	if (!msm_fmt) {
