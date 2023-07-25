@@ -6,6 +6,7 @@
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/iopoll.h>
+#include <linux/ktime.h>
 
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_debug.h"
@@ -27,6 +28,8 @@
 #define HW_FENCE_MAX_DATA_PER_EVENT_DUMP (HW_FENCE_EVENT_MAX_DATA * 9)
 
 #define HFENCE_EVT_MSG "[%d][cpu:%d][%llu] data[%d]:%s\n"
+
+#define ktime_compare_safe(A, B) ktime_compare(ktime_sub((A), (B)), ktime_set(0, 0))
 
 u32 msm_hw_fence_debug_level = HW_FENCE_PRINTK;
 
@@ -1170,6 +1173,61 @@ int process_validation_client_loopback(struct hw_fence_driver_data *drv_data,
 	mutex_unlock(&drv_data->clients_register_lock);
 
 	return 0;
+}
+
+int hw_fence_debug_wait_val(struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence,
+	u64 hash, u64 timeout_ms, u32 *error)
+{
+	int ret, read = 1, queue_type = HW_FENCE_RX_QUEUE - 1;  /* rx queue index */
+	struct msm_hw_fence_queue_payload payload;
+	ktime_t cur_ktime, exp_ktime;
+	u64 context, seqno;
+
+	if (!hw_fence_client) {
+		HWFNC_ERR("invalid client\n");
+		return -EINVAL;
+	}
+
+	exp_ktime = ktime_add_ms(ktime_get(), timeout_ms);
+	do {
+		ret = wait_event_timeout(hw_fence_client->wait_queue,
+				atomic_read(&hw_fence_client->val_signal) > 0,
+				msecs_to_jiffies(timeout_ms));
+		cur_ktime = ktime_get();
+	} while ((atomic_read(&hw_fence_client->val_signal) <= 0) && (ret == 0) &&
+		ktime_compare_safe(exp_ktime, cur_ktime) > 0);
+
+	if (!ret) {
+		HWFNC_ERR("timed out waiting for the client signal %llu\n", timeout_ms);
+		return -ETIMEDOUT;
+	}
+
+	/* clear doorbell signal flag */
+	atomic_set(&hw_fence_client->val_signal, 0);
+	context = fence ? fence->context : 0;
+	seqno = fence ? fence->seqno : 0;
+
+	while (read) {
+		read = hw_fence_read_queue(hw_fence_client, &payload, queue_type);
+		if (read < 0) {
+			HWFNC_ERR("unable to read client rxq client_id:%u\n",
+				hw_fence_client->client_id);
+			break;
+		}
+		HWFNC_DBG_L("rxq read: hash:%llu, flags:%llu, error:%u\n",
+			payload.hash, payload.flags, payload.error);
+		if ((fence && payload.ctxt_id == context && payload.seqno == seqno) ||
+				hash == payload.hash) {
+			*error = payload.error;
+			return 0;
+		}
+	}
+
+	HWFNC_ERR("fence received did not match the fence expected\n");
+	HWFNC_ERR("received: hash:%llu ctx:%llu seq:%llu expected: hash:%llu ctx:%llu seq:%llu\n",
+		payload.hash, payload.ctxt_id, payload.seqno, hash, context, seqno);
+
+	return read;
 }
 
 static const struct file_operations hw_fence_reset_client_fops = {

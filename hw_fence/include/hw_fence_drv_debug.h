@@ -74,6 +74,8 @@ int hw_fence_debug_debugfs_register(struct hw_fence_driver_data *drv_data);
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 
 int process_validation_client_loopback(struct hw_fence_driver_data *drv_data, int client_id);
+int hw_fence_debug_wait_val(struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence,
+	u64 hash, u64 timeout_ms, u32 *error);
 
 void hw_fence_debug_dump_queues(enum hw_fence_drv_prio prio,
 	struct msm_hw_fence_client *hw_fence_client);
