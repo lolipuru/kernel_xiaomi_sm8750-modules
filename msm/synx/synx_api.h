@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019, 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SYNX_API_H__
@@ -230,6 +230,7 @@ struct synx_queue_desc {
  * @SYNX_CLIENT_HW_FENCE_IFE13_CTX0 : HW Fence IFE13 Client 0
  * @SYNX_CLIENT_HW_FENCE_IFE14_CTX0 : HW Fence IFE14 Client 0
  * @SYNX_CLIENT_HW_FENCE_IFE15_CTX0 : HW Fence IFE15 Client 0
+ * @SYNX_CLIENT_HW_FENCE_TEST_CTX0  : HW Fence Test Client 0
  */
 enum synx_client_id {
 	SYNX_CLIENT_NATIVE = 0,
@@ -282,6 +283,8 @@ enum synx_client_id {
 	SYNX_CLIENT_HW_FENCE_IFE14_CTX0 = SYNX_CLIENT_HW_FENCE_IFE13_CTX0 +
 		SYNX_MAX_SIGNAL_PER_CLIENT,
 	SYNX_CLIENT_HW_FENCE_IFE15_CTX0 = SYNX_CLIENT_HW_FENCE_IFE14_CTX0 +
+		SYNX_MAX_SIGNAL_PER_CLIENT,
+	SYNX_CLIENT_HW_FENCE_TEST_CTX0 = SYNX_CLIENT_HW_FENCE_IFE15_CTX0 +
 		SYNX_MAX_SIGNAL_PER_CLIENT,
 	SYNX_CLIENT_MAX = SYNX_HW_FENCE_CLIENT_END,
 };
