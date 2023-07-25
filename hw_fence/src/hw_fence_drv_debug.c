@@ -581,6 +581,7 @@ static int dump_single_entry(struct hw_fence_driver_data *drv_data, char *buf, u
 	}
 
 	len = _dump_fence(hw_fence, buf, len, max_size, hash, 0);
+	hw_fence_destroy_with_hash(drv_data, NULL, hash); /* release ref from msm_hw_fence_find */
 
 exit:
 	/* move idx to end of table to stop the dump */
