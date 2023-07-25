@@ -3753,6 +3753,18 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	else
 		fastrpc_lowest_capacity_corecount(data);
 
+	kref_init(&data->refcount);
+	dev_set_drvdata(&rpdev->dev, data);
+	rdev->dma_mask = &data->dma_mask;
+	dma_set_mask_and_coherent(rdev, DMA_BIT_MASK(32));
+	INIT_LIST_HEAD(&data->users);
+	INIT_LIST_HEAD(&data->invoke_interrupted_mmaps);
+	spin_lock_init(&data->lock);
+	spin_lock_init(&(data->gmsg_log[domain_id].tx_lock));
+	spin_lock_init(&(data->gmsg_log[domain_id].rx_lock));
+	idr_init(&data->ctx_idr);
+	data->domain_id = domain_id;
+
 	switch (domain_id) {
 	case ADSP_DOMAIN_ID:
 	case MDSP_DOMAIN_ID:
@@ -3781,18 +3793,6 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		goto fdev_error;
 	}
 
-	kref_init(&data->refcount);
-
-	dev_set_drvdata(&rpdev->dev, data);
-	rdev->dma_mask = &data->dma_mask;
-	dma_set_mask_and_coherent(rdev, DMA_BIT_MASK(32));
-	INIT_LIST_HEAD(&data->users);
-	INIT_LIST_HEAD(&data->invoke_interrupted_mmaps);
-	spin_lock_init(&data->lock);
-	spin_lock_init(&(data->gmsg_log[domain_id].tx_lock));
-	spin_lock_init(&(data->gmsg_log[domain_id].rx_lock));
-	idr_init(&data->ctx_idr);
-	data->domain_id = domain_id;
 	data->rpdev = rpdev;
 
 	err = of_platform_populate(rdev->of_node, NULL, NULL, rdev);
