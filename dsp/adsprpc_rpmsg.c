@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/rpmsg.h>
 #include <linux/of.h>
 #include <linux/module.h>
 #include "fastrpc_trace.h"
-#include <trace/events/rproc_qcom.h>
+//#include <trace/events/rproc_qcom.h>
 #include "adsprpc_shared.h"
 
 struct frpc_transport_session_control {
@@ -238,11 +238,17 @@ static struct rpmsg_driver fastrpc_rpmsg_client = {
 	},
 };
 
+
 void fastrpc_rproc_trace_events(const char *name, const char *event,
 				const char *subevent)
 {
-	trace_rproc_qcom_event(name, event, subevent);
+	//TODO: Enable traces once rproc trace driver is enabled
+	//trace_rproc_qcom_event(name, event, subevent);
+	(void)name;
+	(void)event;
+	(void)subevent;
 }
+
 
 inline void fastrpc_transport_session_init(int cid, char *subsys)
 {
