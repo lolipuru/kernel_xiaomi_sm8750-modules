@@ -1916,7 +1916,7 @@ static int msm_runtime_suspend(struct device *dev)
 	if (priv->mdss)
 		msm_mdss_disable(priv->mdss);
 	else
-		sde_power_resource_enable(&priv->phandle, false);
+		sde_power_resource_enable(&priv->phandle, false, DPUID(ddev));
 
 	return 0;
 }
@@ -1932,7 +1932,7 @@ static int msm_runtime_resume(struct device *dev)
 	if (priv->mdss)
 		ret = msm_mdss_enable(priv->mdss);
 	else
-		ret = sde_power_resource_enable(&priv->phandle, true);
+		ret = sde_power_resource_enable(&priv->phandle, true, DPUID(ddev));
 
 	return ret;
 }

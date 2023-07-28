@@ -577,7 +577,7 @@ not_flushed:
 			flush_register, event,
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
 			intf_status.frame_count, intf_status.line_count,
-			fence_ready);
+			fence_ready, DPUID(phys_enc->parent->dev));
 
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&phys_enc->pending_kickoff_wq);
@@ -1377,7 +1377,7 @@ static u32 sde_encoder_phys_vid_get_underrun_line_count(
 
 	SDE_EVT32(DRMID(phys_enc->parent), underrun_linecount,
 		intf_status.frame_count, intf_status.line_count,
-		intf_intr_status);
+		intf_intr_status, DPUID(phys_enc->parent->dev));
 
 	return underrun_linecount;
 }

@@ -238,6 +238,7 @@ struct dp_parser {
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;
+	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 
 	u8 *swing_hbr2_3;
 	u8 *pre_emp_hbr2_3;

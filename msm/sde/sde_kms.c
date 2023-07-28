@@ -70,7 +70,7 @@
 /* defines for secure channel call */
 #define MEM_PROTECT_SD_CTRL_SWITCH 0x18
 #define MDP_DEVICE_ID            0x1A
-
+#define MDP_MASTER_CORE          0
 #define DEMURA_REGION_NAME_MAX      32
 
 EXPORT_TRACEPOINT_SYMBOL(tracing_mark_write);
@@ -894,7 +894,8 @@ static int _sde_kms_splash_mem_put(struct sde_kms *sde_kms,
 	struct msm_mmu *mmu = NULL;
 	int rc = 0;
 
-	if (!sde_kms || !sde_kms->aspace[0] || !sde_kms->aspace[0]->mmu) {
+	if (!sde_kms || !sde_kms->aspace[0] || !sde_kms->aspace[0]->mmu ||
+		!sde_kms->dev || !sde_kms->dev->primary) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -913,11 +914,13 @@ static int _sde_kms_splash_mem_put(struct sde_kms *sde_kms,
 	if (!splash->ref_cnt) {
 		mmu->funcs->one_to_one_unmap(mmu, splash->splash_buf_base,
 				splash->splash_buf_size);
-		rc = _sde_kms_release_shared_buffer(splash->splash_buf_base,
+		if (sde_kms->dev->primary->index == MDP_MASTER_CORE) {
+			rc = _sde_kms_release_shared_buffer(splash->splash_buf_base,
 				splash->splash_buf_size, splash->ramdump_base,
 				splash->ramdump_size);
-		splash->splash_buf_base = 0;
-		splash->splash_buf_size = 0;
+			splash->splash_buf_base = 0;
+			splash->splash_buf_size = 0;
+		}
 	}
 
 	return rc;
@@ -1775,7 +1778,7 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 
 	/* dsi */
 	sde_kms->dsi_displays = NULL;
-	sde_kms->dsi_display_count = dsi_display_get_num_of_displays();
+	sde_kms->dsi_display_count = dsi_display_get_num_of_displays(sde_kms->dev);
 	if (sde_kms->dsi_display_count) {
 		sde_kms->dsi_displays = kcalloc(sde_kms->dsi_display_count,
 				sizeof(void *),
@@ -1785,13 +1788,13 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			goto exit_deinit_dsi;
 		}
 		sde_kms->dsi_display_count =
-			dsi_display_get_active_displays(sde_kms->dsi_displays,
+			dsi_display_get_active_displays(sde_kms->dev, sde_kms->dsi_displays,
 					sde_kms->dsi_display_count);
 	}
 
 	/* wb */
 	sde_kms->wb_displays = NULL;
-	sde_kms->wb_display_count = sde_wb_get_num_of_displays();
+	sde_kms->wb_display_count = sde_wb_get_num_of_displays(sde_kms->dev);
 	if (sde_kms->wb_display_count) {
 		sde_kms->wb_displays = kcalloc(sde_kms->wb_display_count,
 				sizeof(void *),
@@ -1801,13 +1804,13 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			goto exit_deinit_wb;
 		}
 		sde_kms->wb_display_count =
-			wb_display_get_displays(sde_kms->wb_displays,
+			wb_display_get_displays(sde_kms->dev, sde_kms->wb_displays,
 					sde_kms->wb_display_count);
 	}
 
 	/* dp */
 	sde_kms->dp_displays = NULL;
-	sde_kms->dp_display_count = dp_display_get_num_of_displays();
+	sde_kms->dp_display_count = dp_display_get_num_of_displays(sde_kms->dev);
 	if (sde_kms->dp_display_count) {
 		sde_kms->dp_displays = kcalloc(sde_kms->dp_display_count,
 				sizeof(void *), GFP_KERNEL);
@@ -1816,10 +1819,11 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			goto exit_deinit_dp;
 		}
 		sde_kms->dp_display_count =
-			dp_display_get_displays(sde_kms->dp_displays,
+			dp_display_get_displays(sde_kms->dev,
+					sde_kms->dp_displays,
 					sde_kms->dp_display_count);
 
-		sde_kms->dp_stream_count = dp_display_get_num_of_streams();
+		sde_kms->dp_stream_count = dp_display_get_num_of_streams(sde_kms->dev);
 	}
 	return 0;
 
@@ -2092,6 +2096,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 	for (i = 0; i < sde_kms->dp_display_count &&
 			priv->num_encoders < max_encoders; ++i) {
 		int idx;
+		struct dp_display_info dp_info = {0};
 
 		display = sde_kms->dp_displays[i];
 		encoder = NULL;
@@ -2103,6 +2108,13 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
+		rc = dp_display_get_info(display, &dp_info);
+		if (rc) {
+			SDE_ERROR("failed to read dp info, %d\n", rc);
+			continue;
+		}
+
+		info.h_tile_instance[0] = dp_info.intf_idx[0];
 		encoder = sde_encoder_init(dev, &info);
 		if (IS_ERR_OR_NULL(encoder)) {
 			SDE_ERROR("dp encoder init failed %d\n", i);
@@ -2136,9 +2148,9 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		/* update display cap to MST_MODE for DP MST encoders */
 		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
 
-		for (idx = 0; idx < sde_kms->dp_stream_count &&
+		for (idx = 0; idx < dp_info.stream_cnt &&
 				priv->num_encoders < max_encoders; idx++) {
-			info.h_tile_instance[0] = idx;
+			info.h_tile_instance[0] = dp_info.intf_idx[idx];
 			encoder = sde_encoder_init(dev, &info);
 			if (IS_ERR_OR_NULL(encoder)) {
 				SDE_ERROR("dp mst encoder init failed %d\n", i);
@@ -4743,7 +4755,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 	return ret;
 }
 
-static int _sde_kms_get_splash_data(struct sde_splash_data *data)
+static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_data *data)
 {
 	int i = 0;
 	int ret = 0;
@@ -4786,7 +4798,7 @@ static int _sde_kms_get_splash_data(struct sde_splash_data *data)
 	 * cont_splash_region  should be collection of all memory regions
 	 * Ex: <r1.start r1.end r2.start r2.end  ... rn.start, rn.end>
 	 */
-	num_displays = dsi_display_get_num_of_displays();
+	num_displays = dsi_display_get_num_of_displays(dev);
 	num_regions = of_property_count_u64_elems(node, "reg") / 2;
 
 	data->num_splash_displays = num_displays;
@@ -5215,7 +5227,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	if (rc)
 		goto error;
 
-	rc = _sde_kms_get_splash_data(&sde_kms->splash_data);
+	rc = _sde_kms_get_splash_data(dev, &sde_kms->splash_data);
 	if (rc)
 		SDE_DEBUG("sde splash data fetch failed: %d\n", rc);
 
