@@ -59,8 +59,18 @@ static bool sde_encoder_phys_cmd_mode_fixup(
 		const struct drm_display_mode *mode,
 		struct drm_display_mode *adj_mode)
 {
+	struct sde_encoder_phys_cmd *cmd_enc;
+
 	if (phys_enc)
 		SDE_DEBUG_CMDENC(to_sde_encoder_phys_cmd(phys_enc), "\n");
+
+	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
+
+	if (sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)) {
+		SDE_ERROR_CMDENC(cmd_enc, "interface sync not validated in cmd mode\n");
+		return false;
+	}
+
 	return true;
 }
 

@@ -6830,6 +6830,8 @@ int dsi_display_get_info(struct drm_connector *connector,
 
 	info->dsc_count = display->panel->dsc_count;
 	info->lm_count = display->panel->lm_count;
+	info->ctl_op_sync = display->panel->ctl_op_sync;
+	info->is_master = display->is_master;
 error:
 	mutex_unlock(&display->display_lock);
 	return rc;

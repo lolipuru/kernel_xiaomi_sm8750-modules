@@ -910,6 +910,9 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 
 	sde_kms_info_add_keyint(info, "bit_depth", bpp);
 
+	if (dsi_display->panel->ctl_op_sync)
+		sde_kms_info_add_keystr(info, "dpu_ctl_op_sync", "true");
+
 end:
 	return 0;
 }
