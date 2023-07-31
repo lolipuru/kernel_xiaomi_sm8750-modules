@@ -922,4 +922,12 @@ int dsi_display_phy_configure(void *priv, bool commit);
  * Return: Zero on Success
  */
 int dsi_display_phy_pll_toggle(void *priv, bool enable);
+
+/**
+ * is_skip_op_required() - check cont splash or trusted vm environment
+ * @display: Handle to display
+ *
+ * Return: True if continuous splash or trusted vm environment
+ */
+bool is_skip_op_required(struct dsi_display *display);
 #endif /* _DSI_DISPLAY_H_ */
