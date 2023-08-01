@@ -1786,7 +1786,7 @@ static void sde_encoder_phys_wb_ctl_start_irq(void *arg, int irq_idx)
 	struct sde_encoder_phys_wb *wb_enc = arg;
 	struct sde_encoder_phys *phys_enc;
 	struct sde_hw_wb *hw_wb;
-	u32 line_cnt = 0;
+	u32 line_cnt = 0, frame_count = 0;
 
 	if (!wb_enc)
 		return;
@@ -1800,8 +1800,11 @@ static void sde_encoder_phys_wb_ctl_start_irq(void *arg, int irq_idx)
 	if (hw_wb->ops.get_line_count)
 		line_cnt = hw_wb->ops.get_line_count(hw_wb);
 
+	if (hw_wb->ops.get_frame_count)
+		frame_count = hw_wb->ops.get_frame_count(hw_wb);
+
 	SDE_ATRACE_END("ctl_start_irq");
-	SDE_EVT32_IRQ(DRMID(phys_enc->parent), WBID(wb_enc), line_cnt,
+	SDE_EVT32_IRQ(DRMID(phys_enc->parent), WBID(wb_enc), line_cnt, frame_count,
 		DPUID(phys_enc->parent->dev));
 }
 
@@ -1810,7 +1813,7 @@ static void _sde_encoder_phys_wb_frame_done_helper(void *arg, bool frame_error)
 	struct sde_encoder_phys_wb *wb_enc = arg;
 	struct sde_encoder_phys *phys_enc = &wb_enc->base;
 	u32 event = frame_error ? SDE_ENCODER_FRAME_EVENT_ERROR : 0;
-	u32 ubwc_error = 0;
+	u32 ubwc_error = 0, frame_count = 0;
 
 	/* don't notify upper layer for internal commit */
 	if (phys_enc->enable_state == SDE_ENC_DISABLING && !phys_enc->in_clone_mode)
@@ -1844,6 +1847,8 @@ static void _sde_encoder_phys_wb_frame_done_helper(void *arg, bool frame_error)
 	if (!phys_enc->in_clone_mode && phys_enc->parent_ops.handle_vblank_virt)
 		phys_enc->parent_ops.handle_vblank_virt(phys_enc->parent, phys_enc);
 
+	if (wb_enc->hw_wb->ops.get_frame_count)
+		frame_count = wb_enc->hw_wb->ops.get_frame_count(wb_enc->hw_wb);
 end:
 	if (frame_error && wb_enc->hw_wb->ops.get_ubwc_error
 			&& wb_enc->hw_wb->ops.clear_ubwc_error) {
@@ -1853,8 +1858,7 @@ end:
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent), WBID(wb_enc), phys_enc->in_clone_mode,
 			phys_enc->enable_state, event, atomic_read(&phys_enc->pending_kickoff_cnt),
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
-			ubwc_error, frame_error,
-			DPUID(phys_enc->parent->dev));
+			ubwc_error, frame_error, frame_count, DPUID(phys_enc->parent->dev));
 
 	wake_up_all(&phys_enc->pending_kickoff_wq);
 }

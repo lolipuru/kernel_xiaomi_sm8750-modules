@@ -704,6 +704,7 @@ enum {
  * @SDE_WB_CWB_DITHER_CTRL  CWB dither is available for configuring
  * @SDE_WB_PROG_LINE        Writeback block supports programmable line ptr
  * @SDE_WB_LINEAR_ROTATION  Writeback block supports line mode image rotation
+ * @SDE_WB_FRAME_COUNT      Writeback block support frame count
  * @SDE_WB_MAX              maximum value
  */
 enum {
@@ -729,6 +730,7 @@ enum {
 	SDE_WB_CWB_DITHER_CTRL,
 	SDE_WB_PROG_LINE,
 	SDE_WB_LINEAR_ROTATION,
+	SDE_WB_FRAME_COUNT,
 	SDE_WB_MAX
 };
 

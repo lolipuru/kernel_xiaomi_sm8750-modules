@@ -2647,6 +2647,9 @@ static int sde_wb_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 			set_bit(SDE_WB_SYS_CACHE, &wb->features);
 		}
 
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+			set_bit(SDE_WB_FRAME_COUNT, &wb->features);
+
 		rc = _add_to_irq_offset_list(sde_cfg, SDE_INTR_HWBLK_WB, wb->id, wb->base);
 
 		if (test_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features)) {
