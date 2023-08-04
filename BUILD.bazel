@@ -45,10 +45,12 @@ ddk_headers(
     hdrs = [":audio_common_headers",  ":audio_uapi_headers", ":audio_src_headers", ":audio_configs"]
 )
 
+load(":build/sun.bzl", "define_sun")
 load(":build/pineapple.bzl", "define_pineapple")
 load(":build/kalama.bzl", "define_kalama")
 load(":build/blair.bzl", "define_blair")
 
+define_sun()
 define_kalama()
 define_pineapple()
 define_blair()
