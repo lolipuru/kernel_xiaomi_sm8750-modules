@@ -17,6 +17,7 @@ def define_modules(target, variant):
         deps = ["//msm-kernel:all_headers"],
         srcs = [
             "dsp/fastrpc.c",
+            "dsp/fastrpc_rpmsg.c",
             "dsp/fastrpc_shared.h",
         ],
         out = "fastrpc.ko",

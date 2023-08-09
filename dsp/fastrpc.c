@@ -16,7 +16,6 @@
 #include <linux/of.h>
 #include <linux/sort.h>
 #include <linux/of_platform.h>
-#include <linux/rpmsg.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
@@ -184,7 +183,7 @@ skip_buf_cache:
 	return;
 }
 
-static void fastrpc_buf_free(struct fastrpc_buf *buf, bool cache)
+void fastrpc_buf_free(struct fastrpc_buf *buf, bool cache)
 {
 	struct fastrpc_user *fl = buf->fl;
 
@@ -311,7 +310,7 @@ static int fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 static int fastrpc_remote_heap_alloc(struct fastrpc_user *fl, struct device *dev,
 				     u64 size, struct fastrpc_buf **obuf)
 {
-	struct device *rdev = &fl->cctx->rpdev->dev;
+	struct device *rdev = fl->cctx->dev;
 
 	return  __fastrpc_buf_alloc(fl, rdev, size, obuf);
 }
@@ -330,7 +329,7 @@ static void fastrpc_channel_ctx_get(struct fastrpc_channel_ctx *cctx)
 	kref_get(&cctx->refcount);
 }
 
-static void fastrpc_channel_ctx_put(struct fastrpc_channel_ctx *cctx)
+void fastrpc_channel_ctx_put(struct fastrpc_channel_ctx *cctx)
 {
 	kref_put(&cctx->refcount, fastrpc_channel_ctx_free);
 }
@@ -1099,7 +1098,7 @@ static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 	msg->size = roundup(ctx->msg_sz, PAGE_SIZE);
 	// fastrpc_context_get(ctx);
 
-	ret = rpmsg_send(cctx->rpdev->ept, (void *)msg, sizeof(*msg));
+	ret = fastrpc_transport_send(cctx, (void *)msg, sizeof(*msg));
 
 	// if (ret)
 		// fastrpc_context_put(ctx);
@@ -1248,7 +1247,6 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 				   struct fastrpc_enhanced_invoke *invoke)
 {
 	struct fastrpc_invoke_ctx *ctx = NULL;
-	struct fastrpc_buf *buf, *b;
 	struct fastrpc_invoke *inv = &invoke->inv;
 	u32 handle, sc;
 	int err = 0, perferr = 0;
@@ -1261,7 +1259,7 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 	if (!fl->sctx)
 		return -EINVAL;
 
-	if (!fl->cctx->rpdev)
+	if (!fl->cctx->dev)
 		return -EPIPE;
 
 	handle = inv->handle;
@@ -1452,7 +1450,7 @@ static bool is_session_rejected(struct fastrpc_user *fl, bool unsigned_pd_reques
 		 * that does not support unsigned PD offload
 		 */
 		if (!fl->cctx->unsigned_support || !unsigned_pd_request) {
-			dev_err(&fl->cctx->rpdev->dev, "Error: Untrusted application trying to offload to signed PD");
+			dev_err(fl->cctx->dev, "Error: Untrusted application trying to offload to signed PD");
 			return true;
 		}
 	}
@@ -1498,7 +1496,7 @@ static void fastrpc_check_privileged_process(struct fastrpc_user *fl,
 	/* disregard any privilege bits from userspace */
 	init->attrs &= (~FASTRPC_MODE_PRIVILEGED);
 	if (gid) {
-		dev_info(&fl->cctx->rpdev->dev, "%s: %s (PID %d, GID %u) is a privileged process\n",
+		dev_info(fl->cctx->dev, "%s: %s (PID %d, GID %u) is a privileged process\n",
 				__func__, current->comm, fl->tgid, gid);
 		init->attrs |= FASTRPC_MODE_PRIVILEGED;
 	}
@@ -1511,7 +1509,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	struct fastrpc_invoke_args *args;
 	struct fastrpc_enhanced_invoke ioctl;
 	struct fastrpc_phy_page pages[1];
-	struct fastrpc_buf *buf;
+	struct fastrpc_buf *buf = NULL;
 	char *name;
 	int err;
 	struct {
@@ -1563,10 +1561,10 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 			}
 		}
 		fl->cctx->staticpd_status = true;
+		spin_lock(&fl->lock);
+		list_add_tail(&buf->node, &fl->cctx->gmaps);
+		spin_unlock(&fl->lock);
 	}
-	spin_lock(&fl->lock);
-	list_add_tail(&buf->node, &fl->cctx->gmaps);
-	spin_unlock(&fl->lock);
 
 	inbuf.pgid = fl->tgid;
 	inbuf.namelen = init.namelen;
@@ -1639,7 +1637,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	struct fastrpc_phy_page pages[1];
 	struct fastrpc_map *map = NULL;
 	struct fastrpc_buf *imem = NULL;
-	int memlen, one_mb = 1024*1024, dsp_userpd_memlen = 3 * one_mb;;
+	int memlen, one_mb = 1024*1024, dsp_userpd_memlen = 3 * one_mb;
 	int err;
 	struct {
 		int pgid;
@@ -1649,7 +1647,6 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		u32 attrs;
 		u32 siglen;
 	} inbuf;
-	u32 sc;
 
 	args = kcalloc(FASTRPC_CREATE_PROCESS_NARGS, sizeof(*args), GFP_KERNEL);
 	if (!args)
@@ -1908,7 +1905,7 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 
 	fl->sctx = fastrpc_session_alloc(cctx);
 	if (!fl->sctx) {
-		dev_err(&cctx->rpdev->dev, "No session available\n");
+		dev_err(cctx->dev, "No session available\n");
 		mutex_destroy(&fl->mutex);
 		kfree(fl);
 
@@ -2160,11 +2157,11 @@ static int fastrpc_manage_poll_mode(struct fastrpc_user *fl, u32 enable, u32 tim
 	const unsigned int MAX_POLL_TIMEOUT_US = 10000;
 
 	if ((fl->cctx->domain_id != CDSP_DOMAIN_ID) || (fl->pd != USER_PD)) {
-		dev_err(&fl->cctx->rpdev->dev,"poll mode only allowed for dynamic CDSP process\n");
+		dev_err(fl->cctx->dev,"poll mode only allowed for dynamic CDSP process\n");
 		return -EPERM;
 	}
 	if (timeout > MAX_POLL_TIMEOUT_US) {
-		dev_err(&fl->cctx->rpdev->dev,"poll timeout %u is greater than max allowed value %u\n",
+		dev_err(fl->cctx->dev,"poll timeout %u is greater than max allowed value %u\n",
 			timeout, MAX_POLL_TIMEOUT_US);
 		return -EBADMSG;
 	}
@@ -2177,7 +2174,7 @@ static int fastrpc_manage_poll_mode(struct fastrpc_user *fl, u32 enable, u32 tim
 		fl->poll_timeout = 0;
 	}
 	spin_unlock(&fl->lock);
-	dev_info(&fl->cctx->rpdev->dev,"updated poll mode to %d, timeout %u\n", enable, timeout);
+	dev_info(fl->cctx->dev,"updated poll mode to %d, timeout %u\n", enable, timeout);
 	return 0;
 }
 
@@ -2204,7 +2201,7 @@ static int fastrpc_internal_control(struct fastrpc_user *fl,
 		if (latency == 0)
 			return -EINVAL;
 		if (!(cctx->lowest_capacity_core_count && fl->dev_pm_qos_req)) {
-			dev_err(&fl->cctx->rpdev->dev, "Skipping PM QoS latency voting, core count: %u\n",
+			dev_err(fl->cctx->dev, "Skipping PM QoS latency voting, core count: %u\n",
 						cctx->lowest_capacity_core_count);
 			return -EINVAL;
 		}
@@ -2226,7 +2223,7 @@ static int fastrpc_internal_control(struct fastrpc_user *fl,
 						latency);
 			}
 			if (ret < 0) {
-				dev_err(&fl->cctx->rpdev->dev, "QoS with lat %u failed for CPU %d, err %d, req %d\n",
+				dev_err(fl->cctx->dev, "QoS with lat %u failed for CPU %d, err %d, req %d\n",
 					latency, cpu, err, fl->qos_request);
 				break;
 			}
@@ -2260,7 +2257,7 @@ static int fastrpc_dspsignal_signal(struct fastrpc_user *fl,
 		return -EINVAL;
 
 	msg = (((uint64_t)fl->tgid) << 32) | ((uint64_t)fsig->signal_id);
-	err = rpmsg_send(cctx->rpdev->ept, (void *)&msg, sizeof(msg));
+	err = fastrpc_transport_send(cctx, (void *)&msg, sizeof(msg));
 
 	return err;
 }
@@ -2287,14 +2284,14 @@ int fastrpc_dspsignal_wait(struct fastrpc_user *fl,
 	}
 	if ((s == NULL) || (s->state == DSPSIGNAL_STATE_UNUSED)) {
 		spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
-		dev_err(&fl->cctx->rpdev->dev, "Unknown signal id %u\n", signal_id);
+		dev_err(fl->cctx->dev, "Unknown signal id %u\n", signal_id);
 		return -ENOENT;
 	}
 	if (s->state != DSPSIGNAL_STATE_PENDING) {
 		if ((s->state == DSPSIGNAL_STATE_CANCELED) || (s->state == DSPSIGNAL_STATE_UNUSED))
 			err = -EINTR;
 		spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
-		dev_err(&fl->cctx->rpdev->dev, "Signal %u in state %u, complete wait immediately",
+		dev_err(fl->cctx->dev, "Signal %u in state %u, complete wait immediately",
 				  signal_id, s->state);
 		return err;
 	}
@@ -2306,10 +2303,10 @@ int fastrpc_dspsignal_wait(struct fastrpc_user *fl,
 		ret = wait_for_completion_interruptible(&s->comp);
 
 	if (ret == 0) {
-		dev_err(&fl->cctx->rpdev->dev, "Wait for signal %u timed out\n", signal_id);
+		dev_err(fl->cctx->dev, "Wait for signal %u timed out\n", signal_id);
 		return -ETIMEDOUT;
 	} else if (ret < 0) {
-		dev_err(&fl->cctx->rpdev->dev, "Wait for signal %u failed %d\n", signal_id, (int)ret);
+		dev_err(fl->cctx->dev, "Wait for signal %u failed %d\n", signal_id, (int)ret);
 		return ret;
 	}
 
@@ -2317,7 +2314,7 @@ int fastrpc_dspsignal_wait(struct fastrpc_user *fl,
 	if (s->state == DSPSIGNAL_STATE_SIGNALED) {
 		s->state = DSPSIGNAL_STATE_PENDING;
 	} else if ((s->state == DSPSIGNAL_STATE_CANCELED) || (s->state == DSPSIGNAL_STATE_UNUSED)) {
-		dev_err(&fl->cctx->rpdev->dev, "Signal %u cancelled or destroyed\n", signal_id);
+		dev_err(fl->cctx->dev, "Signal %u cancelled or destroyed\n", signal_id);
 		err = -EINTR;
 	}
 	spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
@@ -2363,7 +2360,7 @@ static int fastrpc_dspsignal_create(struct fastrpc_user *fl,
 	if (sig->state != DSPSIGNAL_STATE_UNUSED) {
 		spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
 		mutex_unlock(&fl->signal_create_mutex);
-		dev_err(&fl->cctx->rpdev->dev,"Attempting to create signal %u already in use (state %u)\n",
+		dev_err(fl->cctx->dev,"Attempting to create signal %u already in use (state %u)\n",
 			    signal_id, sig->state);
 		return -EBUSY;
 	}
@@ -2397,7 +2394,7 @@ static int fastrpc_dspsignal_destroy(struct fastrpc_user *fl,
 	}
 	if ((s == NULL) || (s->state == DSPSIGNAL_STATE_UNUSED)) {
 		spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
-		dev_err(&fl->cctx->rpdev->dev,"Attempting to destroy unused signal %u\n", signal_id);
+		dev_err(fl->cctx->dev,"Attempting to destroy unused signal %u\n", signal_id);
 		return -ENOENT;
 	}
 
@@ -2429,7 +2426,7 @@ static int fastrpc_dspsignal_cancel_wait(struct fastrpc_user *fl,
 	}
 	if ((s == NULL) || (s->state == DSPSIGNAL_STATE_UNUSED)) {
 		spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
-		dev_err(&fl->cctx->rpdev->dev,"Attempting to cancel unused signal %u\n", signal_id);
+		dev_err(fl->cctx->dev,"Attempting to cancel unused signal %u\n", signal_id);
 		return -ENOENT;
 	}
 
@@ -2591,12 +2588,11 @@ static int fastrpc_get_info_from_kernel(struct fastrpc_ioctl_capability *cap,
 
 	err = fastrpc_get_info_from_dsp(fl, dsp_attributes, FASTRPC_MAX_DSP_ATTRIBUTES);
 	if (err == DSP_UNSUPPORTED_API) {
-		dev_info(&cctx->rpdev->dev,
-			 "Warning: DSP capabilities not supported on domain: %d\n", domain);
+		dev_info(cctx->dev, "Warning: DSP capabilities not supported on domain: %d\n", domain);
 		kfree(dsp_attributes);
 		return -EOPNOTSUPP;
 	} else if (err) {
-		dev_err(&cctx->rpdev->dev, "Error: dsp information is incorrect err: %d\n", err);
+		dev_err(cctx->dev, "Error: dsp information is incorrect err: %d\n", err);
 		kfree(dsp_attributes);
 		return err;
 	}
@@ -2621,19 +2617,19 @@ static int fastrpc_get_dsp_info(struct fastrpc_user *fl, char __user *argp)
 
 	cap.capability = 0;
 	if (cap.domain >= FASTRPC_DEV_MAX) {
-		dev_err(&fl->cctx->rpdev->dev, "Error: Invalid domain id:%d, err:%d\n",
+		dev_err(fl->cctx->dev, "Error: Invalid domain id:%d, err:%d\n",
 			cap.domain, err);
 		return -ECHRNG;
 	}
 
 	/* Fastrpc Capablities does not support modem domain */
 	if (cap.domain == MDSP_DOMAIN_ID) {
-		dev_err(&fl->cctx->rpdev->dev, "Error: modem not supported %d\n", err);
+		dev_err(fl->cctx->dev, "Error: modem not supported %d\n", err);
 		return -ECHRNG;
 	}
 
 	if (cap.attribute_id >= FASTRPC_MAX_DSP_ATTRIBUTES) {
-		dev_err(&fl->cctx->rpdev->dev, "Error: invalid attribute: %d, err: %d\n",
+		dev_err(fl->cctx->dev, "Error: invalid attribute: %d, err: %d\n",
 			cap.attribute_id, err);
 		return -EOVERFLOW;
 	}
@@ -3014,7 +3010,7 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int cmd,
 	return err;
 }
 
-static int fastrpc_init_privileged_gids(struct device *dev, char *prop_name,
+int fastrpc_init_privileged_gids(struct device *dev, char *prop_name,
 						struct gid_list *gidlist)
 {
 	int err = 0;
@@ -3067,7 +3063,8 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 	unsigned long flags;
 	int rc;
 
-	cctx = dev_get_drvdata(dev->parent);
+	cctx = get_current_channel_ctx(dev);
+
 	if (!cctx)
 		return -EINVAL;
 
@@ -3142,7 +3139,7 @@ static struct platform_driver fastrpc_cb_driver = {
 	},
 };
 
-static int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ctx *cctx,
+int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ctx *cctx,
 				   bool is_secured, const char *domain)
 {
 	struct fastrpc_device *fdev;
@@ -3154,6 +3151,7 @@ static int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ct
 
 	fdev->secure = is_secured;
 	fdev->cctx = cctx;
+	cctx->dev = dev;
 	fdev->miscdev.minor = MISC_DYNAMIC_MINOR;
 	fdev->miscdev.fops = &fastrpc_fops;
 	fdev->miscdev.name = devm_kasprintf(dev, GFP_KERNEL, "fastrpc-%s%s",
@@ -3172,7 +3170,7 @@ static int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ct
 	return err;
 }
 
-static void fastrpc_lowest_capacity_corecount(struct fastrpc_channel_ctx *cctx)
+void fastrpc_lowest_capacity_corecount(struct fastrpc_channel_ctx *cctx)
 {
 	u32 cpu = 0;
 
@@ -3181,131 +3179,8 @@ static void fastrpc_lowest_capacity_corecount(struct fastrpc_channel_ctx *cctx)
 		if (topology_cluster_id(cpu) == 0)
 			cctx->lowest_capacity_core_count++;
 	}
-	dev_info(&cctx->rpdev->dev, "lowest capacity core count: %u\n",
+	dev_info(cctx->dev, "lowest capacity core count: %u\n",
 					cctx->lowest_capacity_core_count);
-}
-
-static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
-{
-	struct device *rdev = &rpdev->dev;
-	struct fastrpc_channel_ctx *data;
-	int i, err, domain_id = -1, vmcount;
-	const char *domain;
-	bool secure_dsp;
-	unsigned int vmids[FASTRPC_MAX_VMIDS];
-
-	err = of_property_read_string(rdev->of_node, "label", &domain);
-	if (err) {
-		dev_info(rdev, "FastRPC Domain not specified in DT\n");
-		return err;
-	}
-
-	for (i = 0; i <= CDSP_DOMAIN_ID; i++) {
-		if (!strcmp(domains[i], domain)) {
-			domain_id = i;
-			break;
-		}
-	}
-
-	if (domain_id < 0) {
-		dev_info(rdev, "FastRPC Invalid Domain ID %d\n", domain_id);
-		return -EINVAL;
-	}
-
-	if (of_reserved_mem_device_init_by_idx(rdev, rdev->of_node, 0))
-		dev_info(rdev, "no reserved DMA memory for FASTRPC\n");
-
-	vmcount = of_property_read_variable_u32_array(rdev->of_node,
-				"qcom,vmids", &vmids[0], 0, FASTRPC_MAX_VMIDS);
-	if (vmcount < 0)
-		vmcount = 0;
-	else if (!qcom_scm_is_available())
-		return -EPROBE_DEFER;
-
-	data = kzalloc(sizeof(*data), GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
-
-	err = fastrpc_init_privileged_gids(rdev, "qcom,fastrpc-gids", &data->gidlist);
-	if (err)
-		dev_err(rdev, "Privileged gids init failed.\n");
-
-	if (vmcount) {
-		data->vmcount = vmcount;
-		data->perms = BIT(QCOM_SCM_VMID_HLOS);
-		for (i = 0; i < data->vmcount; i++) {
-			data->vmperms[i].vmid = vmids[i];
-			data->vmperms[i].perm = QCOM_SCM_PERM_RWX;
-		}
-	}
-
-	secure_dsp = !(of_property_read_bool(rdev->of_node, "qcom,non-secure-domain"));
-	data->secure = secure_dsp;
-
-	of_property_read_u32(rdev->of_node, "qcom,rpc-latency-us",
-			&data->qos_latency);
-	if (of_property_read_bool(rdev->of_node, "qcom,single-core-latency-vote"))
-		data->lowest_capacity_core_count = 1;
-	else
-		fastrpc_lowest_capacity_corecount(data);
-
-	kref_init(&data->refcount);
-	dev_set_drvdata(&rpdev->dev, data);
-	rdev->dma_mask = &data->dma_mask;
-	dma_set_mask_and_coherent(rdev, DMA_BIT_MASK(32));
-	INIT_LIST_HEAD(&data->users);
-	INIT_LIST_HEAD(&data->invoke_interrupted_mmaps);
-	spin_lock_init(&data->lock);
-	spin_lock_init(&(data->gmsg_log[domain_id].tx_lock));
-	spin_lock_init(&(data->gmsg_log[domain_id].rx_lock));
-	idr_init(&data->ctx_idr);
-	data->domain_id = domain_id;
-
-	switch (domain_id) {
-	case ADSP_DOMAIN_ID:
-	case MDSP_DOMAIN_ID:
-	case SDSP_DOMAIN_ID:
-		/* Unsigned PD offloading is only supported on CDSP*/
-		data->unsigned_support = false;
-		err = fastrpc_device_register(rdev, data, secure_dsp, domains[domain_id]);
-		if (err)
-			goto fdev_error;
-		data->cpuinfo_todsp = FASTRPC_CPUINFO_DEFAULT;
-		break;
-	case CDSP_DOMAIN_ID:
-		data->unsigned_support = true;
-		/* Create both device nodes so that we can allow both Signed and Unsigned PD */
-		err = fastrpc_device_register(rdev, data, true, domains[domain_id]);
-		if (err)
-			goto fdev_error;
-
-		err = fastrpc_device_register(rdev, data, false, domains[domain_id]);
-		if (err)
-			goto fdev_error;
-		data->cpuinfo_todsp = FASTRPC_CPUINFO_EARLY_WAKEUP;
-		break;
-	default:
-		err = -EINVAL;
-		goto fdev_error;
-	}
-
-	data->rpdev = rpdev;
-
-	err = of_platform_populate(rdev->of_node, NULL, NULL, rdev);
-	if (err)
-		goto populate_error;
-
-	return 0;
-
-populate_error:
-	if (data->fdevice)
-		misc_deregister(&data->fdevice->miscdev);
-	if (data->secure_fdevice)
-		misc_deregister(&data->secure_fdevice->miscdev);
-
-fdev_error:
-	kfree(data);
-	return err;
 }
 
 static void fastrpc_notify_user_ctx(struct fastrpc_invoke_ctx *ctx, int retval,
@@ -3333,7 +3208,7 @@ static void fastrpc_notify_user_ctx(struct fastrpc_invoke_ctx *ctx, int retval,
 	}
 }
 
-static void fastrpc_notify_users(struct fastrpc_user *user)
+void fastrpc_notify_users(struct fastrpc_user *user)
 {
 	struct fastrpc_invoke_ctx *ctx;
 
@@ -3344,37 +3219,6 @@ static void fastrpc_notify_users(struct fastrpc_user *user)
 		complete(&ctx->work);
 	}
 	spin_unlock(&user->lock);
-}
-
-static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
-{
-	struct fastrpc_channel_ctx *cctx = dev_get_drvdata(&rpdev->dev);
-	struct fastrpc_buf *buf, *b;
-	struct fastrpc_user *user;
-	unsigned long flags;
-
-	/* No invocations past this point */
-	spin_lock_irqsave(&cctx->lock, flags);
-	cctx->rpdev = NULL;
-	cctx->staticpd_status = false;
-	list_for_each_entry(user, &cctx->users, user)
-		fastrpc_notify_users(user);
-	spin_unlock_irqrestore(&cctx->lock, flags);
-
-	if (cctx->fdevice)
-		misc_deregister(&cctx->fdevice->miscdev);
-
-	if (cctx->secure_fdevice)
-		misc_deregister(&cctx->secure_fdevice->miscdev);
-
-	list_for_each_entry_safe(buf, b, &cctx->gmaps, node) {
-		list_del(&buf->node);
-		fastrpc_buf_free(buf, false);
-	}
-	kfree(cctx->gidlist.gids);
-	of_platform_depopulate(&rpdev->dev);
-
-	fastrpc_channel_ctx_put(cctx);
 }
 
 static void fastrpc_handle_signal_rpmsg(uint64_t msg, struct fastrpc_channel_ctx *cctx)
@@ -3413,10 +3257,8 @@ static void fastrpc_handle_signal_rpmsg(uint64_t msg, struct fastrpc_channel_ctx
 	spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
 }
 
-static int fastrpc_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
-				  int len, void *priv, u32 addr)
+int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, int len)
 {
-	struct fastrpc_channel_ctx *cctx = dev_get_drvdata(&rpdev->dev);
 	struct fastrpc_invoke_rsp *rsp = data;
 	struct fastrpc_invoke_rspv2 *rspv2 = NULL;
 	struct dsp_notif_rsp *notif = (struct dsp_notif_rsp *)data;
@@ -3456,7 +3298,7 @@ static int fastrpc_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	if (!ctx) {
-		dev_err(&rpdev->dev, "No context ID matches response\n");
+		dev_err(cctx->dev, "No context ID matches response\n");
 		return -ENOENT;
 	}
 
@@ -3476,22 +3318,6 @@ static int fastrpc_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
 	return 0;
 }
 
-static const struct of_device_id fastrpc_rpmsg_of_match[] = {
-	{ .compatible = "qcom,fastrpc" },
-	{ },
-};
-MODULE_DEVICE_TABLE(of, fastrpc_rpmsg_of_match);
-
-static struct rpmsg_driver fastrpc_driver = {
-	.probe = fastrpc_rpmsg_probe,
-	.remove = fastrpc_rpmsg_remove,
-	.callback = fastrpc_rpmsg_callback,
-	.drv = {
-		.name = "qcom,fastrpc",
-		.of_match_table = fastrpc_rpmsg_of_match,
-	},
-};
-
 static int fastrpc_init(void)
 {
 	int ret;
@@ -3502,7 +3328,7 @@ static int fastrpc_init(void)
 		return ret;
 	}
 
-	ret = register_rpmsg_driver(&fastrpc_driver);
+	ret = fastrpc_transport_init();
 	if (ret < 0) {
 		pr_err("fastrpc: failed to register rpmsg driver\n");
 		platform_driver_unregister(&fastrpc_cb_driver);
@@ -3516,7 +3342,7 @@ module_init(fastrpc_init);
 static void fastrpc_exit(void)
 {
 	platform_driver_unregister(&fastrpc_cb_driver);
-	unregister_rpmsg_driver(&fastrpc_driver);
+	fastrpc_transport_deinit();
 }
 module_exit(fastrpc_exit);
 

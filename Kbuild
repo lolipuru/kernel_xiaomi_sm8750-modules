@@ -35,6 +35,7 @@ LINUXINCLUDE += -I$(DSP_ROOT)/include/linux
 LINUXINCLUDE += -I$(DSP_ROOT)/include/uapi
 
 fastrpc-y := dsp/fastrpc.o	\
+			 dsp/fastrpc_rpmsg.o \
 
 cdsp-loader-y := dsp/cdsp-loader.o
 

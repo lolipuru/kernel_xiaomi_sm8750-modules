@@ -345,6 +345,7 @@ struct fastrpc_channel_ctx {
 	u64 perms;
 	struct qcom_scm_vmperm vmperms[FASTRPC_MAX_VMIDS];
 	struct rpmsg_device *rpdev;
+	struct device *dev;
 	struct fastrpc_session_ctx session[FASTRPC_MAX_SESSIONS];
 	spinlock_t lock;
 	struct idr ctx_idr;
@@ -516,4 +517,11 @@ struct fastrpc_dspsignal {
 	int state;
 };
 
+int fastrpc_transport_send(struct fastrpc_channel_ctx *cctx, void *rpc_msg, uint32_t rpc_msg_size);
+int fastrpc_transport_init(void);
+void fastrpc_transport_deinit(void);
+int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, int len);
+int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ctx *cctx,
+				bool is_secured, const char *domain);
+struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev);
 #endif /* __FASTRPC_SHARED_H__ */
