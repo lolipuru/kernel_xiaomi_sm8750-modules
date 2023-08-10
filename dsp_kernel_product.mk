@@ -8,5 +8,5 @@ endif
 
 ifeq ($(FASTRPC_DLKM_ENABLED), true)
 PRODUCT_PACKAGES += frpc-adsprpc.ko
-PRODUCT_PACKAGES += cdsp-loader.ko
+#PRODUCT_PACKAGES += cdsp-loader.ko
 endif
