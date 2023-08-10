@@ -375,6 +375,7 @@ struct hw_fence_signal_cb {
  * @ipcc_dpu_initialized: flag to indicate if dpu hw is initialized
  * @dma_fence_table_lock: lock to synchronize access to dma-fence table
  * @dma_fence_table: table with internal dma-fences for hw-fences
+ * @has_soccp: flag to indicate if soccp is present (otherwise vm is used)
  */
 struct hw_fence_driver_data {
 
@@ -460,6 +461,9 @@ struct hw_fence_driver_data {
 	spinlock_t dma_fence_table_lock;
 	/* table with internal dma-fences created by the this driver on client's behalf */
 	DECLARE_HASHTABLE(dma_fence_table, DMA_FENCE_HASH_TABLE_BIT);
+
+	/* soccp is present */
+	bool has_soccp;
 };
 
 /**

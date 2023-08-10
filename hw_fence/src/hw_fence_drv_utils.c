@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_platform.h>
@@ -140,7 +140,7 @@ struct hw_fence_client_type_desc hw_fence_client_types[HW_FENCE_MAX_CLIENT_TYPE]
 		true},
 };
 
-static void _lock(uint64_t *wait)
+static void _lock_vm(uint64_t *wait)
 {
 #if defined(__aarch64__)
 	__asm__(
@@ -156,10 +156,12 @@ static void _lock(uint64_t *wait)
 		:
 		: [i_lock] "r" (wait)
 		: "memory");
+#elif
+	HWFNC_ERR("cannot lock\n");
 #endif
 }
 
-static void _unlock(struct hw_fence_driver_data *drv_data, uint64_t *lock)
+static void _unlock_vm(struct hw_fence_driver_data *drv_data, uint64_t *lock)
 {
 	uint64_t lock_val;
 
@@ -174,6 +176,8 @@ static void _unlock(struct hw_fence_driver_data *drv_data, uint64_t *lock)
 		:
 		: [i_out] "r" (lock)
 		: "memory");
+#elif
+	HWFNC_ERR("cannot unlock\n");
 #endif
 	mb(); /* Make sure the memory is updated */
 
@@ -195,13 +199,52 @@ static void _unlock(struct hw_fence_driver_data *drv_data, uint64_t *lock)
 	}
 }
 
+static void _lock_soccp(uint64_t *wait)
+{
+	/* Wait (without WFE) */
+#if defined(__aarch64__)
+	__asm__("SEVL\n\t"
+		"PRFM PSTL1KEEP, [%x[i_lock]]\n\t"
+		"1:\n\t"
+		"LDAXR W5, [%x[i_lock]]\n\t"
+		"CBNZ W5, 1b\n\t"
+		"STXR W5, W0, [%x[i_lock]]\n\t"
+		"CBNZ W5, 1b\n"
+		:
+		: [i_lock] "r" (wait)
+		: "memory");
+#elif
+	HWFNC_ERR("cannot lock\n");
+#endif
+}
+
+static void _unlock_soccp(uint64_t *lock)
+{
+	/* Signal Client */
+#if defined(__aarch64__)
+	__asm__("STLR WZR, [%x[i_out]]\n\t"
+		"SEV\n"
+		:
+		: [i_out] "r" (lock)
+		: "memory");
+#elif
+	HWFNC_ERR("cannot unlock\n");
+#endif
+}
+
 void global_atomic_store(struct hw_fence_driver_data *drv_data, uint64_t *lock, bool val)
 {
 	if (val) {
 		preempt_disable();
-		_lock(lock);
+		if (drv_data->has_soccp)
+			_lock_soccp(lock);
+		else
+			_lock_vm(lock);
 	} else {
-		_unlock(drv_data, lock);
+		if (drv_data->has_soccp)
+			_unlock_soccp(lock);
+		else
+			_unlock_vm(drv_data, lock);
 		preempt_enable();
 	}
 }
@@ -997,6 +1040,9 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 	if (!drv_data->clients)
 		return -ENOMEM;
 
+	/* check presence of soccp */
+	drv_data->has_soccp = of_property_read_bool(drv_data->dev->of_node, "soccp_controller");
+
 	HWFNC_DBG_INIT("table: entries=%u mem_size=%u queue: entries=%u\b",
 		drv_data->hw_fence_table_entries, drv_data->hw_fence_mem_fences_table_size,
 		drv_data->hw_fence_queue_entries);
@@ -1004,6 +1050,7 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 		drv_data->hw_fence_ctrl_queue_size, drv_data->hw_fence_mem_ctrl_queues_size);
 	HWFNC_DBG_INIT("clients_num: %u, total_mem_size:%u\n", drv_data->clients_num,
 		drv_data->used_mem_size);
+	HWFNC_DBG_INIT("has_soccp:%s\n", drv_data->has_soccp ? "true" : "false");
 
 	return 0;
 }
