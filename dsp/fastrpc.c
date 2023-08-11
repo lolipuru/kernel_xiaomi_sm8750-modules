@@ -646,6 +646,43 @@ static const struct dma_buf_ops fastrpc_dma_buf_ops = {
 	.release = fastrpc_release,
 };
 
+static void fastrpc_pm_awake(struct fastrpc_user *fl,
+					u32 is_secure_channel)
+{
+	struct fastrpc_channel_ctx *cctx = fl->cctx;
+	struct wakeup_source *wake_source = NULL;
+
+	/*
+	 * Vote with PM to abort any suspend in progress and
+	 * keep system awake for specified timeout
+	 */
+	if (is_secure_channel)
+		wake_source = cctx->wake_source_secure;
+	else
+		wake_source = cctx->wake_source;
+
+	if (wake_source)
+		pm_wakeup_ws_event(wake_source, fl->ws_timeout, true);
+}
+
+static void fastrpc_pm_relax(struct fastrpc_user *fl,
+					u32 is_secure_channel)
+{
+	struct fastrpc_channel_ctx *cctx = fl->cctx;
+	struct wakeup_source *wake_source = NULL;
+
+	if (!fl->wake_enable)
+		return;
+
+	if (is_secure_channel)
+		wake_source = cctx->wake_source_secure;
+	else
+		wake_source = cctx->wake_source;
+
+	if (wake_source)
+		__pm_relax(wake_source);
+}
+
 static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 			      u64 len, u32 attr, struct fastrpc_map **ppmap)
 {
@@ -1857,6 +1894,7 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 		}
 	}
 	kfree(fl->dev_pm_qos_req);
+	fastrpc_pm_relax(fl,cctx->secure);
 	fastrpc_session_free(cctx, fl->sctx);
 	fastrpc_channel_ctx_put(cctx);
 	for (i = 0; i < (FASTRPC_DSPSIGNAL_NUM_SIGNALS /FASTRPC_DSPSIGNAL_GROUP_SIZE); i++)
@@ -2234,6 +2272,27 @@ static int fastrpc_internal_control(struct fastrpc_user *fl,
 			fl->qos_request = 1;
 			err = 0;
 		}
+		break;
+	case FASTRPC_CONTROL_SMMU:
+		fl->sharedcb = cp->smmu.sharedcb;
+		break;
+	case FASTRPC_CONTROL_WAKELOCK:
+		if (!fl->is_secure_dev) {
+			dev_err(fl->cctx->dev,
+				"PM voting not allowed for non-secure device node");
+			err = -EPERM;
+			return err;
+		}
+		fl->wake_enable = cp->wp.enable;
+		break;
+	case FASTRPC_CONTROL_PM:
+		if (!fl->wake_enable)
+			return -EACCES;
+		if (cp->pm.timeout > FASTRPC_MAX_PM_TIMEOUT_MS)
+			fl->ws_timeout = FASTRPC_MAX_PM_TIMEOUT_MS;
+		else
+			fl->ws_timeout = cp->pm.timeout;
+		fastrpc_pm_awake(fl, fl->cctx->secure);
 		break;
 	case FASTRPC_CONTROL_RPC_POLL:
 		err = fastrpc_manage_poll_mode(fl, cp->lp.enable, cp->lp.latency);
@@ -3184,6 +3243,21 @@ void fastrpc_lowest_capacity_corecount(struct fastrpc_channel_ctx *cctx)
 	}
 	dev_info(cctx->dev, "lowest capacity core count: %u\n",
 					cctx->lowest_capacity_core_count);
+}
+
+void fastrpc_register_wakeup_source(struct device *dev,
+	const char *client_name, struct wakeup_source **device_wake_source)
+{
+	struct wakeup_source *wake_source = NULL;
+
+	wake_source = wakeup_source_register(dev, client_name);
+	if (IS_ERR_OR_NULL(wake_source)) {
+		dev_err(dev, "wakeup_source_register failed for dev %s, client %s with err %ld\n",
+		dev_name(dev), client_name, PTR_ERR(wake_source));
+		return;
+	}
+
+	*device_wake_source = wake_source;
 }
 
 static void fastrpc_notify_user_ctx(struct fastrpc_invoke_ctx *ctx, int retval,

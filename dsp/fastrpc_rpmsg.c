@@ -10,6 +10,7 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/rpmsg.h>
+#include <linux/pm_qos.h>
 #include "../include/uapi/misc/fastrpc.h"
 #include <linux/of_reserved_mem.h>
 #include "fastrpc_shared.h"
@@ -19,6 +20,8 @@ void fastrpc_channel_ctx_put(struct fastrpc_channel_ctx *cctx);
 void fastrpc_lowest_capacity_corecount(struct fastrpc_channel_ctx *cctx);
 int fastrpc_init_privileged_gids(struct device *dev, char *prop_name,
 						struct gid_list *gidlist);
+void fastrpc_register_wakeup_source(struct device *dev,
+	const char *client_name, struct wakeup_source **device_wake_source);
 void fastrpc_notify_users(struct fastrpc_user *user);
 
 struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev)
@@ -130,11 +133,18 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		goto fdev_error;
 	}
 
-	data->rpdev = rpdev;
+	if(data->fdevice)
+		fastrpc_register_wakeup_source(data->fdevice->miscdev.this_device,
+			FASTRPC_NON_SECURE_WAKE_SOURCE_CLIENT_NAME, &data->wake_source);
+	if(data->secure_fdevice)
+		fastrpc_register_wakeup_source(data->secure_fdevice->miscdev.this_device,
+			FASTRPC_SECURE_WAKE_SOURCE_CLIENT_NAME, &data->wake_source_secure);
 
 	err = of_platform_populate(rdev->of_node, NULL, NULL, rdev);
 	if (err)
 		goto populate_error;
+
+	data->rpdev = rpdev;
 
 	return 0;
 
@@ -174,6 +184,12 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 		list_del(&buf->node);
 		fastrpc_buf_free(buf, false);
 	}
+
+	if (cctx->wake_source)
+		wakeup_source_unregister(cctx->wake_source);
+	if (cctx->wake_source_secure)
+		wakeup_source_unregister(cctx->wake_source_secure);
+
 	kfree(cctx->gidlist.gids);
 	of_platform_depopulate(&rpdev->dev);
 

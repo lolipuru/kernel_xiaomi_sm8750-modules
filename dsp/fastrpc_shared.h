@@ -127,6 +127,8 @@
 
 /* Maximum PM timeout that can be voted through fastrpc */
 #define FASTRPC_MAX_PM_TIMEOUT_MS 50
+#define FASTRPC_NON_SECURE_WAKE_SOURCE_CLIENT_NAME	"fastrpc-non_secure"
+#define FASTRPC_SECURE_WAKE_SOURCE_CLIENT_NAME		"fastrpc-secure"
 
 #ifndef topology_cluster_id
 #define topology_cluster_id(cpu) topology_physical_package_id(cpu)
@@ -336,6 +338,7 @@ struct fastrpc_session_ctx {
 	int sid;
 	bool used;
 	bool valid;
+	bool sharedcb;
 };
 
 struct fastrpc_channel_ctx {
@@ -363,6 +366,10 @@ struct fastrpc_channel_ctx {
 	struct gid_list gidlist;
 	struct list_head gmaps;
 	struct fastrpc_rpmsg_log gmsg_log[FASTRPC_DEV_MAX];
+	/* Secure subsystems like ADSP/SLPI will use secure client */
+	struct wakeup_source *wake_source_secure;
+	/* Non-secure subsystem like CDSP will use regular client */
+	struct wakeup_source *wake_source;
 	bool secure;
 	bool unsigned_support;
 	u64 dma_mask;
@@ -465,7 +472,7 @@ struct fastrpc_user {
 	u32 ws_timeout;
 	u32 qos_request;
 	/* Flag to enable PM wake/relax voting for invoke */
-	int wake_enable;
+	u32 wake_enable;
 	bool is_secure_dev;
 	/* If set, threads will poll for DSP response instead of glink wait */
 	bool poll_mode;
@@ -491,9 +498,26 @@ struct fastrpc_ctrl_latency {
 	u32 latency;	/* latency request in us */
 };
 
+struct fastrpc_ctrl_smmu {
+	u32 sharedcb;	/* Set to SMMU share context bank */
+};
+
+struct fastrpc_ctrl_wakelock {
+	u32 enable;	/* wakelock control enable */
+};
+
+struct fastrpc_ctrl_pm {
+	u32 timeout;	/* timeout(in ms) for PM to keep system awake */
+};
+
 struct fastrpc_internal_control {
 	u32 req;
-	struct fastrpc_ctrl_latency lp;
+	union {
+		struct fastrpc_ctrl_latency lp;
+		struct fastrpc_ctrl_smmu smmu;
+		struct fastrpc_ctrl_wakelock wp;
+		struct fastrpc_ctrl_pm pm;
+	};
 };
 
 enum fastrpc_dspsignal_state {
