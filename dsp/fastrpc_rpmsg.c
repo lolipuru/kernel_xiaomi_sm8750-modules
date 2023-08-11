@@ -17,6 +17,7 @@
 #include <linux/soc/qcom/pdr.h>
 
 void fastrpc_channel_ctx_put(struct fastrpc_channel_ctx *cctx);
+void fastrpc_update_gctx(struct fastrpc_channel_ctx *cctx, int flag);
 void fastrpc_lowest_capacity_corecount(struct fastrpc_channel_ctx *cctx);
 int fastrpc_init_privileged_gids(struct device *dev, char *prop_name,
 						struct gid_list *gidlist);
@@ -114,6 +115,7 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	spin_lock_init(&(data->gmsg_log[domain_id].tx_lock));
 	spin_lock_init(&(data->gmsg_log[domain_id].rx_lock));
 	idr_init(&data->ctx_idr);
+	ida_init(&data->tgid_frpc_ida);
 	data->domain_id = domain_id;
 	data->max_sess_per_proc = 4; // TODO: Fix this in a macro
 
@@ -158,17 +160,17 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		err = fastrpc_setup_service_locator(data, AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME,
 			AUDIO_PDR_ADSP_SERVICE_NAME, ADSP_AUDIOPD_NAME, 0);
 		if (err)
-			goto fdev_error;
+			return err;
 
 		err = fastrpc_setup_service_locator(data, SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME,
 			SENSORS_PDR_ADSP_SERVICE_NAME, ADSP_SENSORPD_NAME, 1);
 		if (err)
-			goto fdev_error;
+			return err;
 	} else if (domain_id == SDSP_DOMAIN_ID) {
 		err = fastrpc_setup_service_locator(data, SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME,
 			SENSORS_PDR_SLPI_SERVICE_NAME, SLPI_SENSORPD_NAME, 0);
 		if (err)
-			goto fdev_error;
+			return err;
 	}
 
 	mutex_lock(&data->wake_mutex);
@@ -180,6 +182,7 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 			FASTRPC_SECURE_WAKE_SOURCE_CLIENT_NAME, &data->wake_source_secure);
 	mutex_unlock(&data->wake_mutex);
 
+	fastrpc_update_gctx(data, 1);
 	data->rpdev = rpdev;
 
 	return 0;
@@ -240,6 +243,7 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 	kfree(cctx->gidlist.gids);
 	of_platform_depopulate(&rpdev->dev);
 
+	fastrpc_update_gctx(cctx, 0);
 	fastrpc_channel_ctx_put(cctx);
 }
 
