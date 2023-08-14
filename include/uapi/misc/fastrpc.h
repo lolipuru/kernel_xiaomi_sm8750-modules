@@ -75,6 +75,7 @@ enum fastrpc_proc_attr {
 
 /* Fastrpc attribute for memory protection of buffers */
 #define FASTRPC_ATTR_SECUREMAP	(1)
+#define FASTRPC_ATTR_NOVA		(256)
 
 struct fastrpc_invoke_args {
 	__u64 ptr;
