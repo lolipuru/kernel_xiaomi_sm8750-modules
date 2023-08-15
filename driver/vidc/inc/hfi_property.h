@@ -613,6 +613,8 @@ enum hfi_fence_direction_type {
 
 #define HFI_PROP_FENCE_ERROR_DATA_CORRUPT                       0x0300019F
 
+#define HFI_PROP_HDR10_MAX_RGB_INFO                             0x030001A2
+
 #define HFI_PROP_OPEN_GOP                                       0x030001A6
 
 #define HFI_PROP_END                                            0x03FFFFFF

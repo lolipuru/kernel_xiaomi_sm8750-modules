@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_media_info.h"
@@ -830,7 +830,7 @@ static int msm_venc_metadata_subscription(struct msm_vidc_inst *inst,
 			if (is_meta_rx_out_enabled(inst, i)) {
 				if (count + 1 >= sizeof(payload) / sizeof(u32)) {
 					i_vpr_e(inst,
-						"%s: input metadatas (%d) exceeded limit (%lu)\n",
+						"%s: output metadatas (%d) exceeded limit (%lu)\n",
 						__func__, count, sizeof(payload) / sizeof(u32));
 					return -EINVAL;
 				}
