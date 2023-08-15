@@ -57,6 +57,7 @@
 #include "sde_vm.h"
 #include "sde_fence.h"
 #include "sde_aiqe_common.h"
+#include "sde_cesta.h"
 
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <linux/firmware/qcom/qcom_scm.h>
@@ -1964,10 +1965,12 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 	struct msm_display_info info;
 	struct drm_encoder *encoder;
 	void *display, *connector;
+	struct sde_cesta_client *cesta_client;
 	int i, max_encoders;
 	int rc = 0;
 	u32 dsc_count = 0, mixer_count = 0;
 	u32 max_dp_dsc_count, max_dp_mixer_count;
+	char cesta_client_name[32];
 
 	if (!dev || !priv || !sde_kms) {
 		SDE_ERROR("invalid argument(s)\n");
@@ -1995,7 +1998,10 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
-		encoder = sde_encoder_init(dev, &info);
+		snprintf(cesta_client_name, sizeof(cesta_client_name), "wb%u", i);
+		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+
+		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
 			SDE_ERROR("encoder init failed for wb %d\n", i);
 			continue;
@@ -2037,14 +2043,16 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			SDE_ERROR("dsi get_info %d failed\n", i);
 			continue;
 		}
+		snprintf(cesta_client_name, sizeof(cesta_client_name), "dsi%u", i);
+		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
 
-		encoder = sde_encoder_init(dev, &info);
+		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
 			SDE_ERROR("encoder init failed for dsi %d\n", i);
 			continue;
 		}
 
-		rc = dsi_display_drm_bridge_init(display, encoder);
+		rc = dsi_display_drm_bridge_init(display, encoder, cesta_client);
 		if (rc) {
 			SDE_ERROR("dsi bridge %d init failed, %d\n", i, rc);
 			sde_encoder_destroy(encoder);
@@ -2121,7 +2129,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		}
 
 		info.h_tile_instance[0] = dp_info.intf_idx[0];
-		encoder = sde_encoder_init(dev, &info);
+
+		snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u", i);
+		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+
+		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
 			SDE_ERROR("dp encoder init failed %d\n", i);
 			continue;
@@ -2157,7 +2169,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		for (idx = 0; idx < dp_info.stream_cnt &&
 				priv->num_encoders < max_encoders; idx++) {
 			info.h_tile_instance[0] = dp_info.intf_idx[idx];
-			encoder = sde_encoder_init(dev, &info);
+
+			snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u.%u", i, idx);
+			cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+
+			encoder = sde_encoder_init(dev, &info, cesta_client);
 			if (IS_ERR_OR_NULL(encoder)) {
 				SDE_ERROR("dp mst encoder init failed %d\n", i);
 				continue;
@@ -5280,6 +5296,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	struct drm_device *dev;
 	struct msm_drm_private *priv;
 	struct platform_device *platformdev;
+	struct sde_cesta_perf_cfg perf_cfg = {0, };
 	int irq_num, rc = -EINVAL;
 
 	if (!kms) {
@@ -5337,6 +5354,14 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	irq_num = platform_get_irq(to_platform_device(sde_kms->dev->dev), 0);
 	SDE_DEBUG("Registering for notification of irq_num: %d\n", irq_num);
 	irq_set_affinity_notifier(irq_num, &sde_kms->affinity_notify);
+
+	perf_cfg.min_bw_kbps = sde_kms->catalog->perf.max_bw_low;
+	perf_cfg.max_bw_kbps = sde_kms->catalog->perf.max_bw_high;
+	perf_cfg.max_core_clk_rate = sde_kms->perf.max_core_clk_rate;
+	perf_cfg.num_ddr_channels = sde_kms->catalog->perf.num_ddr_channels;
+	perf_cfg.dram_efficiency = sde_kms->catalog->perf.dram_efficiency;
+
+	sde_cesta_update_perf_config(DPUID(dev), &perf_cfg);
 
 	if (sde_in_trusted_vm(sde_kms)) {
 		rc = sde_vm_trusted_init(sde_kms);

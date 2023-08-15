@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -17,6 +17,7 @@
 #include <drm/drm_bridge.h>
 
 #include "msm_drv.h"
+#include "sde_cesta.h"
 #include "dsi_defs.h"
 #include "dsi_ctrl.h"
 #include "dsi_phy.h"
@@ -348,11 +349,12 @@ void dsi_display_set_active_state(struct dsi_display *display, bool is_active);
  * @display:            Handle to the display.
  * @encoder:            Pointer to the encoder object which is connected to the
  *			display.
+ * @cesta_client:	Pointer to the display cesta client.
  *
  * Return: error code.
  */
 int dsi_display_drm_bridge_init(struct dsi_display *display,
-		struct drm_encoder *enc);
+		struct drm_encoder *enc, struct sde_cesta_client *cesta_client);
 
 /**
  * dsi_display_drm_bridge_deinit() - destroys DRM bridge for the display
