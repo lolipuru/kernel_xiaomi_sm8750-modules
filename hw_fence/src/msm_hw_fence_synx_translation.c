@@ -162,7 +162,7 @@ static int synx_hwfence_create(struct synx_session *session, struct synx_create_
 		msm_hw_fence_destroy_with_handle(session->client, handle);
 		return -SYNX_INVALID;
 	}
-	*params->h_synx = handle;
+	*params->h_synx = SYNX_HW_FENCE_HANDLE_FLAG | handle;
 
 	return SYNX_SUCCESS;
 }
@@ -171,12 +171,14 @@ static int synx_hwfence_release(struct synx_session *session, u32 h_synx)
 {
 	int ret;
 
-	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type)) {
+	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type) ||
+			!(h_synx & SYNX_HW_FENCE_HANDLE_FLAG)) {
 		HWFNC_ERR("invalid session:0x%pK synx_id:%d\n", session,
 			IS_ERR_OR_NULL(session) ? -1 : session->type);
 		return -SYNX_INVALID;
 	}
 
+	h_synx &= HW_FENCE_HANDLE_INDEX_MASK;
 	ret = msm_hw_fence_destroy_with_handle(session->client, h_synx);
 	if (ret)
 		HWFNC_ERR("synx_id:%d failed to destroy fence h_synx:%u ret:%d\n", session->type,
@@ -192,15 +194,17 @@ static int synx_hwfence_signal(struct synx_session *session, u32 h_synx,
 	int ret;
 
 	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type) ||
+			!(h_synx & SYNX_HW_FENCE_HANDLE_FLAG) ||
 			!(status == SYNX_STATE_SIGNALED_SUCCESS ||
 			status == SYNX_STATE_SIGNALED_CANCEL ||
 			status > SYNX_STATE_SIGNALED_MAX)) {
-		HWFNC_ERR("invalid session:0x%pK synx_id:%d status:%u\n", session,
-			IS_ERR_OR_NULL(session) ? -1 : session->type, status);
+		HWFNC_ERR("invalid session:0x%pK synx_id:%d h_synx:%u status:%u\n", session,
+			IS_ERR_OR_NULL(session) ? -1 : session->type, h_synx, status);
 		return -SYNX_INVALID;
 	}
 
 	error = hw_fence_interop_to_hw_fence_error(status);
+	h_synx &= HW_FENCE_HANDLE_INDEX_MASK;
 	ret = msm_hw_fence_update_txq(session->client, h_synx, 0, error);
 	if (ret)
 		HWFNC_ERR("synx_id:%d failed to signal fence h_synx:%u status:%d ret:%d\n",
@@ -229,22 +233,14 @@ EXPORT_SYMBOL_GPL(synx_hwfence_recover);
 
 static void *synx_hwfence_get_fence(struct synx_session *session, u32 h_synx)
 {
-	struct dma_fence *fence = NULL;
-
-	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type)) {
-		HWFNC_ERR("invalid session:0x%pK synx_id:%d\n", session,
-			IS_ERR_OR_NULL(session) ? -1 : session->type);
+	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type) ||
+			!(h_synx & SYNX_HW_FENCE_HANDLE_FLAG)) {
+		HWFNC_ERR("invalid session:0x%pK synx_id:%d h_synx:%u\n", session,
+			IS_ERR_OR_NULL(session) ? -1 : session->type, h_synx);
 		return ERR_PTR(-SYNX_INVALID);
 	}
 
-	fence = hw_fence_dma_fence_find(hw_fence_drv_data, h_synx, true);
-
-	/* add a reference to the dma-fence, this must be released by the caller */
-	if (IS_ERR_OR_NULL(fence))
-		HWFNC_ERR("synx_id:%d failed to get fence for h_synx:%u ret:%ld\n", session->type,
-			h_synx, PTR_ERR(fence));
-
-	return (void *)fence;
+	return (void *)hw_fence_interop_get_fence(h_synx);
 }
 
 static int synx_hwfence_get_status(struct synx_session *session, u32 h_synx)
@@ -253,12 +249,14 @@ static int synx_hwfence_get_status(struct synx_session *session, u32 h_synx)
 	u32 error;
 	int ret;
 
-	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type)) {
-		HWFNC_ERR("invalid session:0x%pK synx_id:%d\n", session,
-			IS_ERR_OR_NULL(session) ? -1 : session->type);
+	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type) ||
+			!(h_synx & SYNX_HW_FENCE_HANDLE_FLAG)) {
+		HWFNC_ERR("invalid session:0x%pK synx_id:%d h_synx:%u\n", session,
+			IS_ERR_OR_NULL(session) ? -1 : session->type, h_synx);
 		return SYNX_STATE_INVALID;
 	}
 
+	h_synx &= HW_FENCE_HANDLE_INDEX_MASK;
 	ret = hw_fence_get_flags_error(hw_fence_drv_data, h_synx, &flags, &error);
 	if (ret) {
 		HWFNC_ERR("Failed to get status for client:%d h_synx:%u\n", session->type, h_synx);
@@ -268,23 +266,12 @@ static int synx_hwfence_get_status(struct synx_session *session, u32 h_synx)
 	return hw_fence_interop_to_synx_signal_status(flags, error);
 }
 
-static int synx_hwfence_import_indv(void *client, struct synx_import_indv_params *params)
+static int synx_hwfence_import_fence(void *client, struct synx_import_indv_params *params)
 {
 	struct dma_fence_array *array;
 	struct dma_fence *fence;
 	u64 handle;
 	int ret, i;
-
-	if (IS_ERR_OR_NULL(client) || IS_ERR_OR_NULL(params) ||
-			IS_ERR_OR_NULL(params->new_h_synx) ||
-			!(params->flags & SYNX_IMPORT_DMA_FENCE) ||
-			(params->flags & SYNX_IMPORT_SYNX_FENCE) || IS_ERR_OR_NULL(params->fence)) {
-		HWFNC_ERR("invalid client:0x%pK params:0x%pK h_synx:0x%pK flags:0x%x fence:0x%pK\n",
-			client, params, IS_ERR_OR_NULL(params) ? NULL : params->new_h_synx,
-			IS_ERR_OR_NULL(params) ? 0 : params->flags,
-			IS_ERR_OR_NULL(params) ? NULL : params->fence);
-		return -SYNX_INVALID;
-	}
 
 	fence = (struct dma_fence *)params->fence;
 	array = to_dma_fence_array(fence);
@@ -330,10 +317,62 @@ static int synx_hwfence_import_indv(void *client, struct synx_import_indv_params
 			NULL, 1, false);
 		return -SYNX_INVALID;
 	}
-	*params->new_h_synx = handle;
+	*params->new_h_synx = SYNX_HW_FENCE_HANDLE_FLAG | handle;
 
 error:
 	return hw_fence_interop_to_synx_status(ret);
+}
+
+static int synx_hwfence_import_handle(void *client, struct synx_import_indv_params *params)
+{
+	struct synx_import_indv_params fence_params;
+	u32 h_synx;
+	int ret;
+
+	if (!synx_interops.get_fence) {
+		HWFNC_ERR("invalid synx_get_fence:0x%pK\n", synx_interops.get_fence);
+		return -SYNX_INVALID;
+	}
+	h_synx = *(u32 *)params->fence;
+	if (h_synx & SYNX_HW_FENCE_HANDLE_FLAG)
+		fence_params.fence = hw_fence_interop_get_fence(h_synx);
+	else
+		fence_params.fence = synx_interops.get_fence(h_synx);
+	if (IS_ERR_OR_NULL(fence_params.fence)) {
+		HWFNC_ERR("failed to get native fence h_synx:%u ret:0x%pK\n", h_synx,
+			fence_params.fence);
+		return -SYNX_INVALID;
+	}
+	fence_params.new_h_synx = params->new_h_synx;
+	fence_params.flags = SYNX_IMPORT_DMA_FENCE;
+	ret = synx_hwfence_import_fence(client, &fence_params);
+	dma_fence_put(fence_params.fence); /* release dma-fence ref acquired by get_fence */
+
+	return ret;
+}
+
+static int synx_hwfence_import_indv(void *client, struct synx_import_indv_params *params)
+{
+	if (IS_ERR_OR_NULL(client) || IS_ERR_OR_NULL(params) ||
+			IS_ERR_OR_NULL(params->new_h_synx) ||
+			!((params->flags & SYNX_IMPORT_DMA_FENCE) ||
+			(params->flags & SYNX_IMPORT_SYNX_FENCE)) ||
+			IS_ERR_OR_NULL(params->fence)) {
+		HWFNC_ERR("invalid client:0x%pK params:0x%pK h_synx:0x%pK flags:0x%x fence:0x%pK\n",
+			client, params, IS_ERR_OR_NULL(params) ? NULL : params->new_h_synx,
+			IS_ERR_OR_NULL(params) ? 0 : params->flags,
+			IS_ERR_OR_NULL(params) ? NULL : params->fence);
+		return -SYNX_INVALID;
+	}
+
+	if (params->flags & SYNX_IMPORT_DMA_FENCE)
+		return synx_hwfence_import_fence(client, params);
+	else if (params->flags & SYNX_IMPORT_SYNX_FENCE)
+		return synx_hwfence_import_handle(client, params);
+
+	HWFNC_ERR("invalid import flags:0x%x\n", params->flags);
+
+	return -SYNX_INVALID;
 }
 
 static int synx_hwfence_import_arr(void *client, struct synx_import_arr_params *params)

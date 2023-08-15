@@ -12,6 +12,11 @@ extern struct hw_fence_driver_data *hw_fence_drv_data;
 extern struct synx_hwfence_interops synx_interops;
 
 /**
+ * HW_FENCE_HANDLE_INDEX_MASK: Mask to extract table index from hw-fence handle
+ */
+#define HW_FENCE_HANDLE_INDEX_MASK GENMASK(16, 0)
+
+/**
  * hw_fence_interop_to_synx_status() - Converts hw-fence status code to synx status code
  *
  * @param code  : hw-fence status code
@@ -60,5 +65,14 @@ int hw_fence_interop_create_fence_from_import(struct synx_import_indv_params *pa
  */
 int hw_fence_interop_share_handle_status(struct synx_import_indv_params *params, u32 h_synx,
 	u32 *signal_status);
+
+/**
+ * hw_fence_interop_get_fence() – return the dma-fence associated with the given handle
+ *
+ * @param h_synx : hw-fence handle
+ *
+ * @return dma-fence associated with hw-fence handle. Null or error pointer in case of error.
+ */
+void *hw_fence_interop_get_fence(u32 h_synx);
 
 #endif /* __HW_FENCE_INTEROP_H */

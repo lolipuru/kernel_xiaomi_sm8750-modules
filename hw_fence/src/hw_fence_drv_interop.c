@@ -287,6 +287,26 @@ end:
 	return hw_fence_interop_to_synx_status(ret);
 }
 
+void *hw_fence_interop_get_fence(u32 h_synx)
+{
+	struct dma_fence *fence;
+
+	if (!(h_synx & SYNX_HW_FENCE_HANDLE_FLAG)) {
+		HWFNC_ERR("invalid h_synx:%u does not have hw-fence handle bit set:%lu\n",
+			h_synx, SYNX_HW_FENCE_HANDLE_FLAG);
+		return ERR_PTR(-SYNX_INVALID);
+	}
+
+	h_synx &= HW_FENCE_HANDLE_INDEX_MASK;
+	fence = hw_fence_dma_fence_find(hw_fence_drv_data, h_synx, true);
+	if (!fence) {
+		HWFNC_ERR("failed to find dma-fence for hw-fence idx:%u\n", h_synx);
+		return ERR_PTR(-SYNX_INVALID);
+	}
+
+	return (void *)fence;
+}
+
 int synx_hwfence_init_interops(struct synx_hwfence_interops *synx_ops,
 	struct synx_hwfence_interops *hwfence_ops)
 {
@@ -300,6 +320,7 @@ int synx_hwfence_init_interops(struct synx_hwfence_interops *synx_ops,
 	synx_interops.get_fence = synx_ops->get_fence;
 	synx_interops.notify_recover = synx_ops->notify_recover;
 	hwfence_ops->share_handle_status = hw_fence_interop_share_handle_status;
+	hwfence_ops->get_fence = hw_fence_interop_get_fence;
 
 	return 0;
 }
