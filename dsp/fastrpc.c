@@ -2128,7 +2128,6 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 	err = fastrpc_internal_invoke(fl, true, &ioctl);
 	if (err)
 		return err;
-	fastrpc_send_cpuinfo_to_dsp(fl);
 
 	return 0;
 }
@@ -2172,7 +2171,7 @@ static void fastrpc_queue_pd_status(struct fastrpc_user *fl, int domain, int sta
 	struct fastrpc_notif_rsp *notif_rsp = NULL;
 	unsigned long flags;
 
-	notif_rsp = kzalloc(sizeof(*notif_rsp), GFP_KERNEL);
+	notif_rsp = kzalloc(sizeof(*notif_rsp), GFP_ATOMIC);
 	if (!notif_rsp) {
 		dev_err(fl->sctx->dev, "Allocation failed for notif");
 		return;
@@ -3420,10 +3419,12 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 	}
 
 	if (notif->ctx == FASTRPC_NOTIF_CTX_RESERVED) {
-		if (notif->type == STATUS_RESPONSE && len >= sizeof(*notif))
+		if (notif->type == STATUS_RESPONSE && len >= sizeof(*notif)) {
 			fastrpc_notif_find_process(cctx->domain_id, cctx, notif);
-		else
+			return 0;
+		} else {
 			return -ENOENT;
+		}
 	}
 
 	if (len < sizeof(*rsp))
