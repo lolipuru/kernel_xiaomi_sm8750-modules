@@ -51,9 +51,13 @@
 #define DSI_CTRL_CMD_SUBLINK1 0x800
 
 /* DSI embedded mode fifo size
- * If the command is greater than 256 bytes it is sent in non-embedded mode.
+ * If the command is greater than the maximum size in bytes it is sent in non-embedded mode.
+ * Maximum size depends on the DSI controller version:
+ * - Up to but not including 2.9.0, maximum size is 256
+ * - 2.9.0 or newer, maximum size is 1024
  */
-#define DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES 256
+#define DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES_PRE_2P9 256
+#define DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES 1024
 
 /* max size supported for dsi cmd transfer using TPG */
 #define DSI_CTRL_MAX_CMD_FIFO_STORE_SIZE 64
