@@ -1928,14 +1928,13 @@ struct sde_rsc_client *sde_encoder_get_rsc_client(struct drm_encoder *drm_enc)
 	return sde_enc->rsc_client;
 }
 
-static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
-		bool enable)
+static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, bool enable)
 {
 	struct sde_kms *sde_kms;
-	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_virt *sde_enc =  to_sde_encoder_virt(drm_enc);
 	int rc;
+	bool enter_idle = false;
 
-	sde_enc = to_sde_encoder_virt(drm_enc);
 	sde_kms = sde_encoder_get_kms(drm_enc);
 	if (!sde_kms)
 		return -EINVAL;
@@ -1959,8 +1958,7 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 
 		sde_enc->elevated_ahb_vote = true;
 		/* enable DSI clks */
-		rc = sde_connector_clk_ctrl(sde_enc->cur_master->connector,
-				true);
+		rc = sde_connector_clk_ctrl(sde_enc->cur_master->connector, true, false);
 		if (rc) {
 			SDE_ERROR("failed to enable clk control %d\n", rc);
 			pm_runtime_put_sync(drm_enc->dev->dev);
@@ -1979,7 +1977,8 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 		sde_encoder_irq_control(drm_enc, false);
 
 		/* disable DSI clks */
-		sde_connector_clk_ctrl(sde_enc->cur_master->connector, false);
+		enter_idle = (sde_enc->rc_state == SDE_ENC_RC_STATE_ON) ? true : false;
+		sde_connector_clk_ctrl(sde_enc->cur_master->connector, false, enter_idle);
 
 		/* disable SDE core clks */
 		pm_runtime_put_sync(drm_enc->dev->dev);

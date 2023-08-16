@@ -203,6 +203,7 @@ struct dsi_ctrl_interrupts {
  * @hw:                  DSI controller hardware object.
  * @current_state:       Current driver and hardware state.
  * @clk_cb:		 Callback for DSI clock control.
+ * @idle_pc:             Caching the power-collapse state of DPU.
  * @irq_info:            Interrupt information.
  * @recovery_cb:         Recovery call back to SDE.
  * @panel_id_cb:         Callback for reporting panel id.
@@ -273,6 +274,7 @@ struct dsi_ctrl {
 	/* Current state */
 	struct dsi_ctrl_state_info current_state;
 	struct clk_ctrl_cb clk_cb;
+	bool idle_pc;
 
 	struct dsi_ctrl_interrupts irq_info;
 	struct dsi_event_cb_info recovery_cb;

@@ -932,4 +932,16 @@ int dsi_display_phy_pll_toggle(void *priv, bool enable);
  * Return: True if continuous splash or trusted vm environment
  */
 bool is_skip_op_required(struct dsi_display *display);
+
+/**
+ * dsi_display_set_clk_state() - set clk state request from MDP
+ * @display:     Handle to display
+ * @clk_type:   Clock which is being controlled.
+ * @clk_state:  Desired state of clock
+ * @idle_pc:    Idle power collapse status
+ *
+ * return: error code in case of failure or 0 for success.
+ */
+int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state, bool idle_pc);
+
 #endif /* _DSI_DISPLAY_H_ */
