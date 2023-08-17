@@ -136,8 +136,7 @@ struct cvp_kmem_cache {
 
 struct msm_cvp_drv {
 	struct mutex lock;
-	struct list_head cores;
-	int num_cores;
+	struct msm_cvp_core *cvp_core;
 	struct dentry *debugfs_root;
 	int thermal_level;
 	u32 sku_version;
@@ -171,7 +170,6 @@ struct cvp_clock_data {
 	u32 ddr_bw;
 	u32 sys_cache_bw;
 	u32 operating_rate;
-	u32 core_id;
 	bool low_latency_mode;
 	bool turbo_mode;
 };
@@ -212,22 +210,6 @@ struct cvp_session_queue {
 	unsigned int msg_count;
 	struct list_head msgs;
 	wait_queue_head_t wq;
-};
-
-#define CVP_CYCLE_STAT_SIZE		8
-struct cvp_cycle_stat {
-	u32 busy[CVP_CYCLE_STAT_SIZE];
-	u32 total;
-	u32 idx;
-	u32 size;
-};
-
-struct cvp_cycle_info {
-	u32 sum_fps[HFI_MAX_HW_THREADS];
-	u32 hi_ctrl_lim[HFI_MAX_HW_THREADS];
-	u32 lo_ctrl_lim[HFI_MAX_HW_THREADS];
-	struct cvp_cycle_stat cycle[HFI_MAX_HW_THREADS];
-	unsigned long conf_freq;
 };
 
 struct cvp_session_prop {
@@ -332,15 +314,13 @@ struct cvp_debug_log {
 };
 
 struct msm_cvp_core {
-	struct list_head list;
 	struct mutex lock;
 	struct mutex clk_lock;
-	int id;
 	dev_t dev_num;
 	struct cdev cdev;
 	struct class *class;
 	struct device *dev;
-	struct cvp_hfi_device *device;
+	struct cvp_hfi_ops *dev_ops;
 	struct msm_cvp_platform_data *platform_data;
 	struct msm_cvp_synx_ops *synx_ftbl;
 	struct list_head instances;
@@ -360,7 +340,7 @@ struct msm_cvp_core {
 	bool trigger_ssr;
 	unsigned long curr_freq;
 	unsigned long orig_core_sum;
-	struct cvp_cycle_info dyn_clk;
+	unsigned long bw_sum;
 	atomic64_t kernel_trans_id;
 	struct cvp_debug_log log;
 };
@@ -371,7 +351,7 @@ struct msm_cvp_inst {
 	struct mutex sync_lock, lock;
 	struct msm_cvp_core *core;
 	enum session_type session_type;
-	u32 process_id;
+	u32 dsp_handle;
 	struct task_struct *task;
 	atomic_t smem_count;
 	struct cvp_session_queue session_queue;

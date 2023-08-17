@@ -46,7 +46,7 @@ struct cvp_oob_pool wncc_buf_pool;
 
 static void _wncc_print_cvpwnccbufs_table(struct msm_cvp_inst* inst);
 static int _wncc_unmap_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
-	unsigned int num_layers, unsigned int metadata_bufs_offset,
+	struct eva_kmd_oob_wncc *wncc_oob,
 	struct eva_kmd_wncc_metadata** wncc_metadata);
 
 void msm_cvp_print_inst_bufs(struct msm_cvp_inst *inst, bool log);
@@ -178,7 +178,7 @@ void print_client_buffer(u32 tag, const char *str,
 
 	dprintk(tag,
 		"%s: %x : idx %2d fd %d off %d size %d type %d flags 0x%x"
-                " reserved[0] %u\n",
+		" reserved[0] %u\n",
 		str, hash32_ptr(inst->session), cbuf->index, cbuf->fd,
 		cbuf->offset, cbuf->size, cbuf->type, cbuf->flags,
 		cbuf->reserved[0]);
@@ -188,7 +188,7 @@ static bool __is_buf_valid(struct msm_cvp_inst *inst,
 		struct eva_kmd_buffer *buf)
 {
 	struct cvp_hal_session *session;
-	struct cvp_internal_buf *cbuf = NULL;
+	struct cvp_internal_buf *cbuf = (struct cvp_internal_buf *)0xdeadbeef;
 	bool found = false;
 
 	if (!inst || !inst->core || !buf) {
@@ -290,7 +290,7 @@ int msm_cvp_map_buf_dsp(struct msm_cvp_inst *inst, struct eva_kmd_buffer *buf)
 
 	file = msm_cvp_fget(buf->fd, inst->task, FMODE_PATH, 1);
 	if (file == NULL) {
-		dprintk(CVP_WARN, "%s fail to get file from fd\n", __func__);
+		dprintk(CVP_WARN, "%s fail to get file from fd %d %s\n", __func__, buf->fd, inst->proc_name);
 		return -EINVAL;
 	}
 
@@ -301,6 +301,13 @@ int msm_cvp_map_buf_dsp(struct msm_cvp_inst *inst, struct eva_kmd_buffer *buf)
 	if (dma_buf == ERR_PTR(-EINVAL)) {
 		dprintk(CVP_ERR, "%s: Invalid fd = %d", __func__, buf->fd);
 		rc = -EINVAL;
+		goto exit;
+	}
+
+	if (dma_buf->size < buf->size) {
+		dprintk(CVP_ERR, "%s DSP client buffer too large %d > %d\n",
+			__func__, buf->size, dma_buf->size);
+		rc =  -EINVAL;
 		goto exit;
 	}
 
@@ -363,7 +370,7 @@ int msm_cvp_unmap_buf_dsp(struct msm_cvp_inst *inst, struct eva_kmd_buffer *buf)
 {
 	int rc = 0;
 	bool found;
-	struct cvp_internal_buf *cbuf;
+	struct cvp_internal_buf *cbuf = (struct cvp_internal_buf *)0xdeadbeef;
 	struct cvp_hal_session *session;
 
 	if (!inst || !inst->core || !buf) {
@@ -417,7 +424,7 @@ int msm_cvp_map_buf_wncc(struct msm_cvp_inst *inst,
 {
 	int rc = 0, i;
 	bool found = false;
-	struct cvp_internal_buf* cbuf;
+	struct cvp_internal_buf* cbuf = (struct cvp_internal_buf *)0xdeadbeef;
 	struct msm_cvp_smem* smem = NULL;
 	struct dma_buf* dma_buf = NULL;
 
@@ -506,6 +513,17 @@ int msm_cvp_map_buf_wncc(struct msm_cvp_inst *inst,
 	cbuf->ownership = CLIENT;
 	cbuf->index = buf->index;
 
+	/* Added for PreSil/RUMI testing */
+#ifdef USE_PRESIL
+	dprintk(CVP_DBG,
+		"wncc buffer is %x for cam_presil_send_buffer"
+		" with MAP_ADDR_OFFSET %x",
+		(u64)(smem->device_addr) - MAP_ADDR_OFFSET, MAP_ADDR_OFFSET);
+	cam_presil_send_buffer((u64)smem->dma_buf, 0,
+		(u32)cbuf->offset, (u32)cbuf->size,
+		(u64)(smem->device_addr) - MAP_ADDR_OFFSET);
+#endif
+
 	mutex_lock(&inst->cvpwnccbufs.lock);
 	if (inst->cvpwnccbufs_table == NULL) {
 		inst->cvpwnccbufs_table =
@@ -568,7 +586,7 @@ int msm_cvp_unmap_buf_wncc(struct msm_cvp_inst *inst,
 {
 	int rc = 0;
 	bool found;
-	struct cvp_internal_buf *cbuf;
+	struct cvp_internal_buf *cbuf = (struct cvp_internal_buf *)0xdeadbeef;
 	uint32_t buf_id, buf_idx;
 
 	if (!inst || !inst->core || !buf) {
@@ -760,7 +778,7 @@ static int _wncc_copy_oob_from_user(struct eva_kmd_hfi_packet* in_pkt,
 	struct eva_kmd_oob_wncc* wncc_oob)
 {
 	int rc = 0;
-	u32 oob_type;
+	u32 oob_type = 0;
 	struct eva_kmd_oob_buf* oob_buf_u;
 	struct eva_kmd_oob_wncc* wncc_oob_u;
 	struct eva_kmd_oob_wncc* wncc_oob_k;
@@ -778,6 +796,12 @@ static int _wncc_copy_oob_from_user(struct eva_kmd_hfi_packet* in_pkt,
 		return -EINVAL;
 	}
 
+	if (!access_ok(&oob_buf_u->oob_type, sizeof(oob_buf_u->oob_type))) {
+		dprintk(CVP_ERR,
+			"%s: bad OOB buf pointer, oob_type inaccessible",
+			__func__);
+		return -EINVAL;
+	}
 	rc = get_user(oob_type, &oob_buf_u->oob_type);
 	if (rc)
 		return rc;
@@ -790,6 +814,13 @@ static int _wncc_copy_oob_from_user(struct eva_kmd_hfi_packet* in_pkt,
 	wncc_oob_u = &oob_buf_u->wncc;
 	wncc_oob_k = wncc_oob;
 
+	if (!access_ok(&wncc_oob_u->metadata_bufs_offset,
+		sizeof(wncc_oob_u->metadata_bufs_offset))) {
+		dprintk(CVP_ERR,
+			"%s: bad OOB buf pointer, wncc.metadata_bufs_offset inaccessible",
+			__func__);
+		return -EINVAL;
+	}
 	rc = get_user(wncc_oob_k->metadata_bufs_offset,
 		&wncc_oob_u->metadata_bufs_offset);
 	if (rc)
@@ -801,6 +832,13 @@ static int _wncc_copy_oob_from_user(struct eva_kmd_hfi_packet* in_pkt,
 		return -EINVAL;
 	}
 
+	if (!access_ok(&wncc_oob_u->num_layers,
+		sizeof(wncc_oob_u->num_layers))) {
+		dprintk(CVP_ERR,
+			"%s: bad OOB buf pointer, wncc.num_layers inaccessible",
+			__func__);
+		return -EINVAL;
+	}
 	rc = get_user(wncc_oob_k->num_layers, &wncc_oob_u->num_layers);
 	if (rc)
 		return rc;
@@ -812,6 +850,13 @@ static int _wncc_copy_oob_from_user(struct eva_kmd_hfi_packet* in_pkt,
 
 	for (i = 0; i < wncc_oob_k->num_layers; i++) {
 
+		if (!access_ok(&wncc_oob_u->layers[i].num_addrs,
+			sizeof(wncc_oob_u->layers[i].num_addrs))) {
+			dprintk(CVP_ERR,
+				"%s: bad OOB buf pointer, wncc.layers[%u].num_addrs inaccessible",
+				__func__, i);
+			return -EINVAL;
+		}
 		rc = get_user(wncc_oob_k->layers[i].num_addrs,
 			&wncc_oob_u->layers[i].num_addrs);
 		if (rc)
@@ -826,10 +871,18 @@ static int _wncc_copy_oob_from_user(struct eva_kmd_hfi_packet* in_pkt,
 			break;
 		}
 
+		if (!access_ok(wncc_oob_u->layers[i].addrs,
+				num_addrs * sizeof(struct eva_kmd_wncc_addr)) ||
+			!access_ok(&wncc_oob_u->layers[i].addrs[num_addrs - 1],
+				sizeof(struct eva_kmd_wncc_addr))) {
+			dprintk(CVP_ERR,
+				"%s: bad OOB buf pointer, wncc.layers[%u].addrs inaccessible",
+				__func__, i);
+			return -EINVAL;
+		}
 		rc = copy_from_user(wncc_oob_k->layers[i].addrs,
 			wncc_oob_u->layers[i].addrs,
-			wncc_oob_k->layers[i].num_addrs *
-			sizeof(struct eva_kmd_wncc_addr));
+			num_addrs * sizeof(struct eva_kmd_wncc_addr));
 		if (rc)
 			break;
 	}
@@ -841,17 +894,24 @@ static int _wncc_copy_oob_from_user(struct eva_kmd_hfi_packet* in_pkt,
 }
 
 static int _wncc_map_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
-	unsigned int num_layers, unsigned int metadata_bufs_offset,
+	struct eva_kmd_oob_wncc *wncc_oob,
 	struct eva_kmd_wncc_metadata** wncc_metadata)
 {
 	int rc = 0, i;
 	struct cvp_buf_type* wncc_metadata_bufs;
 	struct dma_buf* dmabuf;
 	struct eva_buf_map map;
+	__u32 num_layers, metadata_bufs_offset;
 
-	if (!in_pkt || !wncc_metadata ||
-		num_layers < 1 || num_layers > EVA_KMD_WNCC_MAX_LAYERS) {
+	if (!in_pkt || !wncc_metadata || !wncc_oob) {
 		dprintk(CVP_ERR, "%s: invalid params", __func__);
+		return -EINVAL;
+	}
+
+	num_layers = wncc_oob->num_layers;
+	metadata_bufs_offset = wncc_oob->metadata_bufs_offset;
+	if (num_layers < 1 || num_layers > EVA_KMD_WNCC_MAX_LAYERS) {
+		dprintk(CVP_ERR, "%s: invalid wncc num layers", __func__);
 		return -EINVAL;
 	}
 	if (metadata_bufs_offset > ((sizeof(in_pkt->pkt_data)
@@ -871,6 +931,16 @@ static int _wncc_map_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
 				"%s: dma_buf_get() failed for "
 				"wncc_metadata_bufs[%d], rc %d",
 				__func__, i, rc);
+			break;
+		}
+
+		if (dmabuf->size < wncc_oob->layers[i].num_addrs *
+			sizeof(struct eva_kmd_wncc_metadata)) {
+			dprintk(CVP_ERR,
+				"%s: wncc_metadata_bufs[%d] size insufficient for num addrs in oob",
+				__func__, i);
+			dma_buf_put(dmabuf);
+			rc = -EINVAL;
 			break;
 		}
 
@@ -903,24 +973,30 @@ static int _wncc_map_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
 	}
 
 	if (rc)
-		_wncc_unmap_metadata_bufs(in_pkt, i, metadata_bufs_offset,
-			wncc_metadata);
+		_wncc_unmap_metadata_bufs(in_pkt, wncc_oob, wncc_metadata);
 
 	return rc;
 }
 
 static int _wncc_unmap_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
-	unsigned int num_layers, unsigned int metadata_bufs_offset,
+	struct eva_kmd_oob_wncc *wncc_oob,
 	struct eva_kmd_wncc_metadata** wncc_metadata)
 {
 	int rc = 0, i;
 	struct cvp_buf_type* wncc_metadata_bufs;
 	struct dma_buf* dmabuf;
 	struct eva_buf_map map;
+	__u32 num_layers, metadata_bufs_offset;
 
-	if (!in_pkt || !wncc_metadata ||
-		num_layers < 1 || num_layers > EVA_KMD_WNCC_MAX_LAYERS) {
+	if (!in_pkt || !wncc_metadata || !wncc_oob) {
 		dprintk(CVP_ERR, "%s: invalid params", __func__);
+		return -EINVAL;
+	}
+
+	num_layers = wncc_oob->num_layers;
+	metadata_bufs_offset = wncc_oob->metadata_bufs_offset;
+	if (num_layers < 1 || num_layers > EVA_KMD_WNCC_MAX_LAYERS) {
+		dprintk(CVP_ERR, "%s: invalid wncc num layers", __func__);
 		return -EINVAL;
 	}
 	if (metadata_bufs_offset > ((sizeof(in_pkt->pkt_data)
@@ -934,8 +1010,7 @@ static int _wncc_unmap_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
 		&in_pkt->pkt_data[metadata_bufs_offset];
 	for (i = 0; i < num_layers; i++) {
 		if (!wncc_metadata[i]) {
-			rc = -EINVAL;
-			break;
+			continue;
 		}
 
 		dmabuf = dma_buf_get(wncc_metadata_bufs[i].fd);
@@ -1070,9 +1145,9 @@ static int msm_cvp_proc_oob_wncc(struct msm_cvp_inst* inst,
 		goto exit;
 	}
 
-	rc = _wncc_map_metadata_bufs(in_pkt,
-		wncc_oob->num_layers, wncc_oob->metadata_bufs_offset,
-		wncc_metadata);
+	memset(wncc_metadata, 0,
+		sizeof(*wncc_metadata) * EVA_KMD_WNCC_MAX_LAYERS);
+	rc = _wncc_map_metadata_bufs(in_pkt, wncc_oob, wncc_metadata);
 	if (rc) {
 		dprintk(CVP_ERR, "%s: failed to map wncc metadata bufs",
 			__func__);
@@ -1140,9 +1215,7 @@ static int msm_cvp_proc_oob_wncc(struct msm_cvp_inst* inst,
 		_wncc_print_metadata_buf(wncc_oob->num_layers,
 			wncc_oob->layers[0].num_addrs, wncc_metadata);
 
-	if (_wncc_unmap_metadata_bufs(in_pkt,
-		wncc_oob->num_layers, wncc_oob->metadata_bufs_offset,
-		wncc_metadata)) {
+	if (_wncc_unmap_metadata_bufs(in_pkt, wncc_oob, wncc_metadata)) {
 		dprintk(CVP_ERR, "%s: failed to unmap wncc metadata bufs",
 			__func__);
 	}
@@ -1210,8 +1283,8 @@ static struct msm_cvp_smem *msm_cvp_session_find_smem(struct msm_cvp_inst *inst,
 				u32 pkt_type)
 {
 	struct msm_cvp_smem *smem;
-	struct msm_cvp_frame *frame;
-	struct cvp_internal_buf *buf;
+	struct msm_cvp_frame *frame = (struct msm_cvp_frame *)0xdeadbeef;
+	struct cvp_internal_buf *buf = (struct cvp_internal_buf *)0xdeadbeef;
 	int i;
 
 	if (inst->dma_cache.nr > MAX_DMABUF_NUMS)
@@ -1407,15 +1480,15 @@ exit:
 	return smem;
 }
 
-static u32 msm_cvp_map_user_persist_buf(struct msm_cvp_inst *inst,
+static int msm_cvp_unmap_user_persist_buf(struct msm_cvp_inst *inst,
 				struct cvp_buf_type *buf,
-				u32 pkt_type, u32 buf_idx)
+				u32 pkt_type, u32 buf_idx, u32 *iova)
 {
-	u32 iova = 0;
 	struct msm_cvp_smem *smem = NULL;
-	struct list_head *ptr, *next;
-	struct cvp_internal_buf *pbuf;
-	struct dma_buf *dma_buf;
+        struct list_head *ptr;
+        struct list_head *next;
+        struct cvp_internal_buf *pbuf;
+        struct dma_buf *dma_buf;
 
 	if (!inst) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
@@ -1428,19 +1501,77 @@ static u32 msm_cvp_map_user_persist_buf(struct msm_cvp_inst *inst,
 
 	mutex_lock(&inst->persistbufs.lock);
 	list_for_each_safe(ptr, next, &inst->persistbufs.list) {
+		if (!ptr) {
+			mutex_unlock(&inst->persistbufs.lock);
+			return -EINVAL;
+		}
+		pbuf = list_entry(ptr, struct cvp_internal_buf, list);
+		if (dma_buf == pbuf->smem->dma_buf && (pbuf->smem->flags & SMEM_PERSIST)) {
+			*iova = pbuf->smem->device_addr;
+			dprintk(CVP_MEM,
+				"Unmap persist fd %d, dma_buf %#llx iova %#x\n",
+				pbuf->fd, pbuf->smem->dma_buf, *iova);
+			list_del(&pbuf->list);
+			if (*iova) {
+				msm_cvp_unmap_smem(inst, pbuf->smem, "unmap user persist");
+				msm_cvp_smem_put_dma_buf(pbuf->smem->dma_buf);
+				pbuf->smem->device_addr = 0;
+			}
+			cvp_kmem_cache_free(&cvp_driver->smem_cache, smem);
+			pbuf->smem = NULL;
+			cvp_kmem_cache_free(&cvp_driver->buf_cache, pbuf);
+			mutex_unlock(&inst->persistbufs.lock);
+			dma_buf_put(dma_buf);
+			return 0;
+		}
+	}
+	mutex_unlock(&inst->persistbufs.lock);
+	dma_buf_put(dma_buf);
+
+	return -EINVAL;
+}
+
+static int msm_cvp_map_user_persist_buf(struct msm_cvp_inst *inst,
+				struct cvp_buf_type *buf,
+				u32 pkt_type, u32 buf_idx, u32 *iova)
+{
+	struct msm_cvp_smem *smem = NULL;
+	struct list_head *ptr;
+	struct list_head *next;
+	struct cvp_internal_buf *pbuf;
+	struct dma_buf *dma_buf;
+	int ret;
+
+	if (!inst) {
+		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
+
+	dma_buf = msm_cvp_smem_get_dma_buf(buf->fd);
+	if (!dma_buf)
+		return -EINVAL;
+
+	mutex_lock(&inst->persistbufs.lock);
+	if (!inst->persistbufs.list.next) {
+		mutex_unlock(&inst->persistbufs.lock);
+		return -EINVAL;
+	}
+	list_for_each_safe(ptr, next, &inst->persistbufs.list) {
+		if (!ptr)
+			return -EINVAL;
 		pbuf = list_entry(ptr, struct cvp_internal_buf, list);
 		if (dma_buf == pbuf->smem->dma_buf) {
 			pbuf->size =
 				(pbuf->size >= buf->size) ?
 				pbuf->size : buf->size;
-			iova = pbuf->smem->device_addr + buf->offset;
+			*iova = pbuf->smem->device_addr + buf->offset;
 			mutex_unlock(&inst->persistbufs.lock);
 			atomic_inc(&pbuf->smem->refcount);
 			dma_buf_put(dma_buf);
 			dprintk(CVP_MEM,
 				"map persist Reuse fd %d, dma_buf %#llx\n",
 				pbuf->fd, pbuf->smem->dma_buf);
-			return iova;
+			return 0;
 		}
 	}
 	mutex_unlock(&inst->persistbufs.lock);
@@ -1451,7 +1582,7 @@ static u32 msm_cvp_map_user_persist_buf(struct msm_cvp_inst *inst,
 	if (!pbuf) {
 		dprintk(CVP_ERR, "%s failed to allocate kmem obj\n",
 			__func__);
-		return 0;
+		return -ENOMEM;
 	}
 
 	if (is_params_pkt(pkt_type))
@@ -1459,8 +1590,10 @@ static u32 msm_cvp_map_user_persist_buf(struct msm_cvp_inst *inst,
 	else
 		smem = msm_cvp_session_get_smem(inst, buf, true, pkt_type);
 
-	if (!smem)
+	if (!smem) {
+		ret = -ENOMEM;
 		goto exit;
+	}
 
 	smem->pkt_type = pkt_type;
 	smem->buf_idx = buf_idx;
@@ -1477,13 +1610,13 @@ static u32 msm_cvp_map_user_persist_buf(struct msm_cvp_inst *inst,
 
 	print_internal_buffer(CVP_MEM, "map persist", inst, pbuf);
 
-	iova = smem->device_addr + buf->offset;
+	*iova = smem->device_addr + buf->offset;
 
-	return iova;
+	return 0;
 
 exit:
 	cvp_kmem_cache_free(&cvp_driver->buf_cache, pbuf);
-	return 0;
+	return ret;
 }
 
 static u32 msm_cvp_map_frame_buf(struct msm_cvp_inst *inst,
@@ -1598,7 +1731,7 @@ static void backup_frame_buffers(struct msm_cvp_inst *inst,
 
 void msm_cvp_unmap_frame(struct msm_cvp_inst *inst, u64 ktid)
 {
-	struct msm_cvp_frame *frame, *dummy1;
+	struct msm_cvp_frame *frame = (struct msm_cvp_frame *)0xdeadbeef, *dummy1;
 	bool found;
 
 	if (!inst) {
@@ -1616,40 +1749,35 @@ void msm_cvp_unmap_frame(struct msm_cvp_inst *inst, u64 ktid)
 		if (frame->ktid == ktid) {
 			found = true;
 			list_del(&frame->list);
+			dprintk(CVP_CMD, "%s: "
+				"pkt_type %08x sess_id %08x trans_id <> ktid %llu\n",
+				__func__, frame->pkt_type,
+				hash32_ptr(inst->session),
+				frame->ktid);
+			/* Save the previous frame mappings for debug */
+			backup_frame_buffers(inst, frame);
+			msm_cvp_unmap_frame_buf(inst, frame);
 			break;
 		}
 	}
 	mutex_unlock(&inst->frames.lock);
 
-	if (found) {
-		dprintk(CVP_CMD, "%s: "
-			"pkt_type %08x sess_id %08x trans_id <> ktid %llu\n",
-			__func__, frame->pkt_type,
-			hash32_ptr(inst->session),
-			frame->ktid);
-		/* Save the previous frame mappings for debug */
-		backup_frame_buffers(inst, frame);
-		msm_cvp_unmap_frame_buf(inst, frame);
-	}
-	else
+	if (!found)
 		dprintk(CVP_WARN, "%s frame %llu not found!\n", __func__, ktid);
 }
 
-int msm_cvp_mark_user_persist(struct msm_cvp_inst *inst,
-			struct eva_kmd_hfi_packet *in_pkt,
-			unsigned int offset, unsigned int buf_num)
-{
-	dprintk(CVP_ERR, "Unexpected user persistent buffer release\n");
-		return 0;
-}
-
-int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
+/*
+ * Unmap persistent buffer before sending RELEASE_PERSIST_BUFFERS to FW
+ * This packet is sent after SESSION_STOP. The assumption is FW/HW will
+ * NOT access any of the 3 persist buffer.
+ */
+int msm_cvp_unmap_user_persist(struct msm_cvp_inst *inst,
 			struct eva_kmd_hfi_packet *in_pkt,
 			unsigned int offset, unsigned int buf_num)
 {
 	struct cvp_buf_type *buf;
 	struct cvp_hfi_cmd_session_hdr *cmd_hdr;
-	int i;
+	int i, ret;
 	u32 iova;
 
 	if (!offset || !buf_num)
@@ -1663,14 +1791,48 @@ int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
 		if (buf->fd < 0 || !buf->size)
 			continue;
 
-		iova = msm_cvp_map_user_persist_buf(inst, buf,
-				cmd_hdr->packet_type, i);
-		if (!iova) {
+		ret = msm_cvp_unmap_user_persist_buf(inst, buf,
+				cmd_hdr->packet_type, i, &iova);
+		if (ret) {
 			dprintk(CVP_ERR,
-				"%s: buf %d register failed.\n",
+				"%s: buf %d unmap failed.\n",
 				__func__, i);
 
-			return -EINVAL;
+			return ret;
+		}
+		buf->fd = iova;
+	}
+	return 0;
+}
+
+int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
+			struct eva_kmd_hfi_packet *in_pkt,
+			unsigned int offset, unsigned int buf_num)
+{
+	struct cvp_buf_type *buf;
+	struct cvp_hfi_cmd_session_hdr *cmd_hdr;
+	int i, ret;
+	u32 iova;
+
+	if (!offset || !buf_num)
+		return 0;
+
+	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
+	for (i = 0; i < buf_num; i++) {
+		buf = (struct cvp_buf_type *)&in_pkt->pkt_data[offset];
+		offset += sizeof(*buf) >> 2;
+
+		if (buf->fd < 0 || !buf->size)
+			continue;
+
+		ret = msm_cvp_map_user_persist_buf(inst, buf,
+				cmd_hdr->packet_type, i, &iova);
+		if (ret) {
+			dprintk(CVP_ERR,
+				"%s: buf %d map failed.\n",
+				__func__, i);
+
+			return ret;
 		}
 		buf->fd = iova;
 	}
@@ -1687,10 +1849,10 @@ int msm_cvp_map_frame(struct msm_cvp_inst *inst,
 	u64 ktid;
 	struct msm_cvp_frame *frame;
 	struct cvp_hfi_cmd_session_hdr *cmd_hdr;
-	struct msm_cvp_inst *instance;
+	struct msm_cvp_inst *instance = (struct  msm_cvp_inst *)0xdeadbeef;
 	struct msm_cvp_core *core = NULL;
 
-	core = get_cvp_core(MSM_CORE_CVP);
+	core = cvp_driver->cvp_core;
 	if (!core)
 		return -EINVAL;
 
@@ -1756,11 +1918,12 @@ int msm_cvp_session_deinit_buffers(struct msm_cvp_inst *inst)
 {
 	int rc = 0, i;
 	struct cvp_internal_buf *cbuf, *dummy;
-	struct msm_cvp_frame *frame, *dummy1;
+	struct msm_cvp_frame *frame = (struct msm_cvp_frame *)0xdeadbeef, *dummy1;
 	struct msm_cvp_smem *smem;
 	struct cvp_hal_session *session;
 	struct eva_kmd_buffer buf;
-	struct list_head *ptr, *next;
+	struct list_head *ptr = (struct list_head *)0xdead;
+	struct list_head *next = (struct list_head *)0xdead;
 
 	session = (struct cvp_hal_session *)inst->session;
 
@@ -1773,6 +1936,8 @@ int msm_cvp_session_deinit_buffers(struct msm_cvp_inst *inst)
 
 	mutex_lock(&inst->persistbufs.lock);
 	list_for_each_safe(ptr, next, &inst->persistbufs.list) {
+		if (!ptr)
+			return -EINVAL;
 		cbuf = list_entry(ptr, struct cvp_internal_buf, list);
 		smem = cbuf->smem;
 		if (!smem) {
@@ -1828,22 +1993,15 @@ int msm_cvp_session_deinit_buffers(struct msm_cvp_inst *inst)
 	}
 	mutex_unlock(&inst->dma_cache.lock);
 
+	cbuf = (struct cvp_internal_buf *)0xdeadbeef;
 	mutex_lock(&inst->cvpdspbufs.lock);
 	list_for_each_entry_safe(cbuf, dummy, &inst->cvpdspbufs.list, list) {
 		print_internal_buffer(CVP_MEM, "remove dspbufs", inst, cbuf);
 		if (cbuf->ownership == CLIENT) {
-			rc = cvp_dsp_deregister_buffer(hash32_ptr(session),
-				cbuf->fd, cbuf->smem->dma_buf->size, cbuf->size,
-				cbuf->offset, cbuf->index,
-				(uint32_t)cbuf->smem->device_addr);
-			if (rc)
-				dprintk(CVP_ERR,
-				"%s: failed dsp deregistration fd=%d rc=%d",
-				__func__, cbuf->fd, rc);
 			msm_cvp_unmap_smem(inst, cbuf->smem, "unmap dsp");
 			msm_cvp_smem_put_dma_buf(cbuf->smem->dma_buf);
 		} else if (cbuf->ownership == DSP) {
-			rc = cvp_dsp_fastrpc_unmap(inst->process_id, cbuf);
+			rc = cvp_dsp_fastrpc_unmap(inst->dsp_handle, cbuf);
 			if (rc)
 				dprintk(CVP_ERR,
 				"%s: failed to unmap buf from DSP\n",
@@ -1881,13 +2039,13 @@ int msm_cvp_session_deinit_buffers(struct msm_cvp_inst *inst)
 #define MAX_NUM_FRAMES_DUMP 4
 void msm_cvp_print_inst_bufs(struct msm_cvp_inst *inst, bool log)
 {
-	struct cvp_internal_buf *buf;
-	struct msm_cvp_frame *frame;
+	struct cvp_internal_buf *buf = (struct cvp_internal_buf *)0xdeadbeef;
+	struct msm_cvp_frame *frame = (struct msm_cvp_frame *)0xdeadbeef;
 	struct msm_cvp_core *core;
 	struct inst_snapshot *snap = NULL;
 	int i = 0, c = 0;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (log && core->log.snapshot_index < 16) {
 		snap = &core->log.snapshot[core->log.snapshot_index];
 		snap->session = inst->session;
@@ -2024,11 +2182,12 @@ fail_kzalloc:
 int cvp_release_arp_buffers(struct msm_cvp_inst *inst)
 {
 	struct msm_cvp_smem *smem;
-	struct list_head *ptr, *next;
+	struct list_head *ptr = (struct list_head *)0xdead;
+	struct list_head *next = (struct list_head *)0xdead;
 	struct cvp_internal_buf *buf;
 	int rc = 0;
 	struct msm_cvp_core *core;
-	struct cvp_hfi_device *hdev;
+	struct cvp_hfi_ops *ops_tbl;
 
 	if (!inst) {
 		dprintk(CVP_ERR, "Invalid instance pointer = %pK\n", inst);
@@ -2040,9 +2199,9 @@ int cvp_release_arp_buffers(struct msm_cvp_inst *inst)
 		dprintk(CVP_ERR, "Invalid core pointer = %pK\n", core);
 		return -EINVAL;
 	}
-	hdev = core->device;
-	if (!hdev) {
-		dprintk(CVP_ERR, "Invalid device pointer = %pK\n", hdev);
+	ops_tbl = core->dev_ops;
+	if (!ops_tbl) {
+		dprintk(CVP_ERR, "Invalid device pointer = %pK\n", ops_tbl);
 		return -EINVAL;
 	}
 
@@ -2050,8 +2209,8 @@ int cvp_release_arp_buffers(struct msm_cvp_inst *inst)
 
 	mutex_lock(&inst->persistbufs.lock);
 	/* Workaround for FW: release buffer means release all */
-	if (inst->state <= MSM_CVP_CLOSE_DONE) {
-		rc = call_hfi_op(hdev, session_release_buffers,
+	if (inst->state > MSM_CVP_CORE_INIT_DONE && inst->state <= MSM_CVP_CLOSE_DONE) {
+		rc = call_hfi_op(ops_tbl, session_release_buffers,
 				(void *)inst->session);
 		if (!rc) {
 			mutex_unlock(&inst->persistbufs.lock);
@@ -2059,7 +2218,7 @@ int cvp_release_arp_buffers(struct msm_cvp_inst *inst)
 				HAL_SESSION_RELEASE_BUFFER_DONE);
 			if (rc)
 				dprintk(CVP_WARN,
-				"%s: wait for signal failed, rc %d\n",
+				"%s: wait release_arp signal failed, rc %d\n",
 				__func__, rc);
 			mutex_lock(&inst->persistbufs.lock);
 		} else {
@@ -2068,6 +2227,8 @@ int cvp_release_arp_buffers(struct msm_cvp_inst *inst)
 	}
 
 	list_for_each_safe(ptr, next, &inst->persistbufs.list) {
+		if (!ptr)
+			return -EINVAL;
 		buf = list_entry(ptr, struct cvp_internal_buf, list);
 		smem = buf->smem;
 		if (!smem) {
@@ -2201,7 +2362,7 @@ int cvp_release_dsp_buffers(struct msm_cvp_inst *inst,
 int msm_cvp_register_buffer(struct msm_cvp_inst *inst,
 		struct eva_kmd_buffer *buf)
 {
-	struct cvp_hfi_device *hdev;
+	struct cvp_hfi_ops *ops_tbl;
 	struct cvp_hal_session *session;
 	struct msm_cvp_inst *s;
 	int rc = 0;
@@ -2221,7 +2382,7 @@ int msm_cvp_register_buffer(struct msm_cvp_inst *inst,
 		rc = -EINVAL;
 		goto exit;
 	}
-	hdev = inst->core->device;
+	ops_tbl = inst->core->dev_ops;
 	print_client_buffer(CVP_HFI, "register", inst, buf);
 
 	if (buf->index)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+/*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <asm/memory.h>
@@ -111,9 +112,10 @@ static int __reset_control_assert_name(struct iris_hfi_device *device, const cha
 static int __reset_control_deassert_name(struct iris_hfi_device *device, const char *name);
 static int __reset_control_acquire(struct iris_hfi_device *device, const char *name);
 static int __reset_control_release(struct iris_hfi_device *device, const char *name);
+static bool __is_ctl_power_on(struct iris_hfi_device *device);
 
 
-static struct iris_hfi_vpu_ops iris2_ops = {
+static struct cvp_hal_ops hal_ops = {
 	.interrupt_init = interrupt_init_iris2,
 	.setup_dsp_uc_memmap = setup_dsp_uc_memmap_vpu5,
 	.clock_config_on_enable = clock_config_on_enable_vpu5,
@@ -176,8 +178,8 @@ int get_hfi_version(void)
 	struct msm_cvp_core *core;
 	struct iris_hfi_device *hfi;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
-	hfi = (struct iris_hfi_device *)core->device->hfi_device_data;
+	core = cvp_driver->cvp_core;
+	hfi = (struct iris_hfi_device *)core->dev_ops->hfi_device_data;
 
 	return hfi->version;
 }
@@ -188,9 +190,9 @@ unsigned int get_msg_size(struct cvp_hfi_msg_session_hdr *hdr)
 	struct iris_hfi_device *device;
 	u32 minor_ver;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core)
-		device = core->device->hfi_device_data;
+		device = core->dev_ops->hfi_device_data;
 	else
 		return 0;
 
@@ -443,16 +445,15 @@ static int __write_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 
 	cmd_pkt = (struct cvp_hfi_cmd_session_hdr *)packet;
 
-	if (cmd_pkt->size >= sizeof(struct cvp_hfi_cmd_session_hdr)) 
-		dprintk(CVP_CMD, "%s: "
-			"pkt_type %08x sess_id %08x trans_id %u ktid %llu\n",
+	if (cmd_pkt->size >= sizeof(struct cvp_hfi_cmd_session_hdr))
+		dprintk(CVP_CMD, "%s: pkt_type %08x sess_id %08x trans_id %u ktid %llu\n",
 			__func__, cmd_pkt->packet_type,
 			cmd_pkt->session_id,
 			cmd_pkt->client_data.transaction_id,
 			cmd_pkt->client_data.kdata & (FENCE_BIT - 1));
-	else 
-		dprintk(CVP_CMD, "%s: "
-			"pkt_type %08x", __func__, cmd_pkt->packet_type);
+	else if (cmd_pkt->size >= 12)
+		dprintk(CVP_CMD, "%s: pkt_type %08x sess_id %08x\n", __func__,
+			cmd_pkt->packet_type, cmd_pkt->session_id);
 
 	if (msm_cvp_debug & CVP_PKT) {
 		dprintk(CVP_PKT, "%s: %pK\n", __func__, qinfo);
@@ -809,6 +810,21 @@ static int __read_register(struct iris_hfi_device *device, u32 reg)
 	return rc;
 }
 
+static bool __is_ctl_power_on(struct iris_hfi_device *device)
+{
+	u32 reg;
+
+	reg = __read_register(device, CVP_CC_MVS1C_GDSCR);
+	if (!(reg & 0x80000000))
+		return false;
+
+	reg = __read_register(device, CVP_CC_MVS1C_CBCR);
+	if (reg & 0x80000000)
+		return false;
+
+	return true;
+}
+
 static int __set_registers(struct iris_hfi_device *device)
 {
 	struct msm_cvp_core *core;
@@ -822,7 +838,7 @@ static int __set_registers(struct iris_hfi_device *device)
 		return -EINVAL ;
 	}
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	pdata = core->platform_data;
 
 	reg_set = &device->res->reg_set;
@@ -910,7 +926,7 @@ static int __unvote_buses(struct iris_hfi_device *device)
 	device->bus_vote.data_count = 0;
 
 	iris_hfi_for_each_bus(device, bus) {
-		rc = msm_cvp_set_bw(bus, 0);
+		rc = cvp_set_bw(bus, 0);
 		if (rc) {
 			dprintk(CVP_ERR,
 			"%s: Failed unvoting bus\n", __func__);
@@ -951,7 +967,7 @@ no_data_count:
 
 	iris_hfi_for_each_bus(device, bus) {
 		if (bus) {
-			rc = msm_cvp_set_bw(bus, bus->range[1]);
+			rc = cvp_set_bw(bus, bus->range[1]);
 			if (rc)
 				dprintk(CVP_ERR,
 				"Failed voting bus %s to ab %u\n",
@@ -963,7 +979,7 @@ err_no_mem:
 	return rc;
 }
 
-static int iris_hfi_vote_buses(void *dev, struct cvp_bus_vote_data *d, int n)
+static int iris_hfi_vote_buses(void *dev, struct bus_info *bus, unsigned long bw)
 {
 	int rc = 0;
 	struct iris_hfi_device *device = dev;
@@ -972,11 +988,10 @@ static int iris_hfi_vote_buses(void *dev, struct cvp_bus_vote_data *d, int n)
 		return -EINVAL;
 
 	mutex_lock(&device->lock);
-	rc = __vote_buses(device, d, n);
+	rc = cvp_set_bw(bus, bw);
 	mutex_unlock(&device->lock);
 
 	return rc;
-
 }
 
 static int __core_set_resource(struct iris_hfi_device *device,
@@ -1151,7 +1166,7 @@ static const char boot_states[0x40][32] = {
 static inline int __boot_firmware(struct iris_hfi_device *device)
 {
 	int rc = 0, loop = 10;
-	u32 ctrl_init_val = 0, ctrl_status = 0, count = 0, max_tries = 500;
+	u32 ctrl_init_val = 0, ctrl_status = 0, count = 0, max_tries = 5000;
 	u32 reg_gdsc;
 
 	/*
@@ -1191,8 +1206,8 @@ skip_core_power_check:
 			break;
 		}
 
-		/* Reduce to 500, 1000 on silicon */
-		usleep_range(500, 1000);
+		/* Reduce to 50, 100 on silicon */
+		usleep_range(50, 100);
 		count++;
 	}
 
@@ -1409,6 +1424,8 @@ static int __iface_cmdq_write(struct iris_hfi_device *device, void *pkt)
 	if (!rc && needs_interrupt) {
 		/* Consumer of cmdq prefers that we raise an interrupt */
 		rc = 0;
+		if (!__is_ctl_power_on(device))
+			dprintk(CVP_ERR, "%s power off, don't access reg\n", __func__);
 		__write_register(device, CVP_CPU_CS_H2ASOFTINT, 1);
 	}
 
@@ -1442,8 +1459,11 @@ static int __iface_msgq_read(struct iris_hfi_device *device, void *pkt)
 	}
 
 	if (!__read_queue(q_info, (u8 *)pkt, &tx_req_is_set)) {
-		if (tx_req_is_set)
+		if (tx_req_is_set) {
+			if (!__is_ctl_power_on(device))
+				dprintk(CVP_ERR, "%s power off, don't access reg\n", __func__);
 			__write_register(device, CVP_CPU_CS_H2ASOFTINT, 1);
+		}
 		rc = 0;
 	} else
 		rc = -ENODATA;
@@ -1473,8 +1493,11 @@ static int __iface_dbgq_read(struct iris_hfi_device *device, void *pkt)
 	}
 
 	if (!__read_queue(q_info, (u8 *)pkt, &tx_req_is_set)) {
-		if (tx_req_is_set)
+		if (tx_req_is_set) {
+			if (!__is_ctl_power_on(device))
+				dprintk(CVP_ERR, "%s power off, don't access reg\n", __func__);
 			__write_register(device, CVP_CPU_CS_H2ASOFTINT, 1);
+		}
 		rc = 0;
 	} else
 		rc = -ENODATA;
@@ -2026,6 +2049,8 @@ static void cvp_pm_qos_update(struct iris_hfi_device *device, bool vote_on)
 
 	if (device->res->pm_qos.latency_us && device->res->pm_qos.pm_qos_hdls)
 		for (i = 0; i < device->res->pm_qos.silver_count; i++) {
+			if (!cpu_possible(device->res->pm_qos.silver_cores[i]))
+				continue;
 			err = dev_pm_qos_update_request(
 				&device->res->pm_qos.pm_qos_hdls[i],
 				latency);
@@ -2298,6 +2323,8 @@ static int iris_hfi_core_init(void *device)
 
 		for (i = 0; i < dev->res->pm_qos.silver_count; i++) {
 			cpu = dev->res->pm_qos.silver_cores[i];
+			if (!cpu_possible(cpu))
+				continue;
 			err = dev_pm_qos_add_request(
 				get_cpu_device(cpu),
 				&dev->res->pm_qos.pm_qos_hdls[i],
@@ -2342,6 +2369,7 @@ static int iris_hfi_core_release(void *dev)
 	struct iris_hfi_device *device = dev;
 	struct cvp_hal_session *session, *next;
 	struct dev_pm_qos_request *qos_hdl;
+	u32 ipcc_iova;
 
 	if (!device) {
 		dprintk(CVP_ERR, "invalid device\n");
@@ -2353,6 +2381,8 @@ static int iris_hfi_core_release(void *dev)
 	if (device->res->pm_qos.latency_us &&
 		device->res->pm_qos.pm_qos_hdls) {
 		for (i = 0; i < device->res->pm_qos.silver_count; i++) {
+			if (!cpu_possible(device->res->pm_qos.silver_cores[i]))
+				continue;
 			qos_hdl = &device->res->pm_qos.pm_qos_hdls[i];
 			if ((qos_hdl != NULL) && dev_pm_qos_request_active(qos_hdl))
 				dev_pm_qos_remove_request(qos_hdl);
@@ -2370,6 +2400,8 @@ static int iris_hfi_core_release(void *dev)
 	__dsp_shutdown(device);
 
 	__disable_subcaches(device);
+	ipcc_iova = __read_register(device, CVP_MMAP_ADDR);
+	msm_cvp_unmap_ipcc_regs(ipcc_iova);
 	__unload_fw(device);
 	__hwfence_regs_unmap(device);
 
@@ -2521,6 +2553,11 @@ static int iris_debug_hook(void *device)
 		dprintk(CVP_ERR, "%s Invalid device\n", __func__);
 		return -ENODEV;
 	}
+	//__write_register(dev, CVP_WRAPPER_CORE_CLOCK_CONFIG, 0x11);
+	//__write_register(dev, CVP_WRAPPER_TZ_CPU_CLOCK_CONFIG, 0x1);
+	dprintk(CVP_ERR, "Halt Tensilica and core and axi\n");
+	return 0;
+
 	/******* FDU & MPU *****/
 #define CVP0_CVP_SS_FDU_SECURE_ENABLE 0x90
 #define CVP0_CVP_SS_MPU_SECURE_ENABLE 0x94
@@ -2927,7 +2964,6 @@ static void __process_fatal_error(
 {
 	struct msm_cvp_cb_cmd_done cmd_done = {0};
 
-	cmd_done.device_id = device->device_id;
 	device->callback(HAL_SYS_ERROR, &cmd_done);
 }
 
@@ -2956,9 +2992,9 @@ static void iris_hfi_pm_handler(struct work_struct *work)
 	struct msm_cvp_core *core;
 	struct iris_hfi_device *device;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core)
-		device = core->device->hfi_device_data;
+		device = core->dev_ops->hfi_device_data;
 	else
 		return;
 
@@ -3296,10 +3332,8 @@ static void **get_session_id(struct msm_cvp_cb_info *info)
 	case HAL_SESSION_PROPERTY_INFO:
 	case HAL_SESSION_EVENT_CHANGE:
 	case HAL_SESSION_DUMP_NOTIFY:
-		session_id = &info->response.cmd.session_id;
-		break;
 	case HAL_SESSION_ERROR:
-		session_id = &info->response.data.session_id;
+		session_id = &info->response.cmd.session_id;
 		break;
 	case HAL_RESPONSE_UNUSED:
 	default:
@@ -3350,7 +3384,7 @@ static int __response_handler(struct iris_hfi_device *device)
 		struct msm_cvp_cb_info info = {
 			.response_type = HAL_SYS_WATCHDOG_TIMEOUT,
 			.response.cmd = {
-				.device_id = device->device_id,
+				.device_id = 0,
 			}
 		};
 
@@ -3379,8 +3413,7 @@ static int __response_handler(struct iris_hfi_device *device)
 		int rc = 0;
 
 		print_msg_hdr(hdr);
-		rc = cvp_hfi_process_msg_packet(device->device_id,
-					raw_packet, info);
+		rc = cvp_hfi_process_msg_packet(0, raw_packet, info);
 		if (rc) {
 			dprintk(CVP_WARN,
 				"Corrupt/unknown packet found, discarding\n");
@@ -3449,7 +3482,7 @@ exit:
 	return packet_count;
 }
 
-static void iris_hfi_core_work_handler(struct work_struct *work)
+irqreturn_t iris_hfi_core_work_handler(int irq, void *data)
 {
 	struct msm_cvp_core *core;
 	struct iris_hfi_device *device;
@@ -3457,15 +3490,13 @@ static void iris_hfi_core_work_handler(struct work_struct *work)
 	u32 intr_status;
 	static bool warning_on = true;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core)
-		device = core->device->hfi_device_data;
+		device = core->dev_ops->hfi_device_data;
 	else
-		return;
+		return IRQ_HANDLED;
 
 	mutex_lock(&device->lock);
-
-
 	if (!__core_in_valid_state(device)) {
 		if (warning_on) {
 			dprintk(CVP_WARN, "%s Core not in init state\n",
@@ -3516,6 +3547,7 @@ err_no_work:
 		}
 		dprintk(CVP_HFI, "Processing response %d of %d, type %d\n",
 			(i + 1), num_responses, r->response_type);
+		/* callback = void cvp_handle_cmd_response() */
 		device->callback(r->response_type, rsp);
 	}
 
@@ -3523,21 +3555,13 @@ err_no_work:
 	if (!(intr_status & CVP_WRAPPER_INTR_STATUS_A2HWD_BMSK))
 		enable_irq(device->cvp_hal_data->irq);
 
-	/*
-	 * XXX: Don't add any code beyond here.  Reacquiring locks after release
-	 * it above doesn't guarantee the atomicity that we're aiming for.
-	 */
+	return IRQ_HANDLED;
 }
-
-static DECLARE_WORK(iris_hfi_work, iris_hfi_core_work_handler);
 
 irqreturn_t cvp_hfi_isr(int irq, void *dev)
 {
-	struct iris_hfi_device *device = dev;
-
 	disable_irq_nosync(irq);
-	queue_work(device->cvp_workq, &iris_hfi_work);
-	return IRQ_HANDLED;
+	return IRQ_WAKE_THREAD;
 }
 
 static void iris_hfi_wd_work_handler(struct work_struct *work)
@@ -3546,15 +3570,15 @@ static void iris_hfi_wd_work_handler(struct work_struct *work)
 	struct iris_hfi_device *device;
 	struct msm_cvp_cb_cmd_done response  = {0};
 	enum hal_command_response cmd = HAL_SYS_WATCHDOG_TIMEOUT;
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core)
-		device = core->device->hfi_device_data;
+		device = core->dev_ops->hfi_device_data;
 	else
 		return;
 	if (msm_cvp_hw_wd_recovery) {
 		dprintk(CVP_ERR, "Cleaning up as HW WD recovery is enable %d\n",
 				msm_cvp_hw_wd_recovery);
-		response.device_id = device->device_id;
+		response.device_id = 0;
 		handle_sys_error(cmd, (void *) &response);
 		enable_irq(device->cvp_hal_data->irq_wd);
 	}
@@ -4368,7 +4392,7 @@ static int __power_on_controller(struct iris_hfi_device *device)
 	if (rc)
 		dprintk(CVP_ERR, "%s: assert cvp_core_reset failed\n", __func__);
 	/* wait for deassert */
-	usleep_range(1000, 1050);
+	usleep_range(300, 400);
 
 	rc = call_iris_op(device, reset_control_deassert_name, device, "cvp_axi_reset");
 	if (rc)
@@ -4439,7 +4463,7 @@ static int __power_on_core(struct iris_hfi_device *device)
 static int __iris_power_on(struct iris_hfi_device *device)
 {
 	int rc = 0;
-
+	u32 reg_gdsc, reg_cbcr, spare_val;
 
 	if (device->power_enabled)
 		return 0;
@@ -4482,6 +4506,36 @@ static int __iris_power_on(struct iris_hfi_device *device)
 		goto fail_enable_core;
 
 	dprintk(CVP_CORE, "Done with register set\n");
+
+	reg_gdsc = __read_register(device, CVP_CC_MVS1_GDSCR);
+	reg_cbcr = __read_register(device, CVP_CC_MVS1_CBCR);
+	if (!(reg_gdsc & 0x80000000) || (reg_cbcr & 0x80000000)) {
+		rc = -EINVAL;
+		dprintk(CVP_ERR, "CORE power on failed gdsc %x cbcr %x\n",
+			reg_gdsc, reg_cbcr);
+		goto fail_enable_core;
+	}
+
+	reg_gdsc = __read_register(device, CVP_CC_MVS1C_GDSCR);
+	reg_cbcr = __read_register(device, CVP_CC_MVS1C_CBCR);
+	if (!(reg_gdsc & 0x80000000) || (reg_cbcr & 0x80000000)) {
+		rc = -EINVAL;
+		dprintk(CVP_ERR, "CTRL power on failed gdsc %x cbcr %x\n",
+			reg_gdsc, reg_cbcr);
+		goto fail_enable_core;
+	}
+
+	spare_val = __read_register(device, CVP_AON_WRAPPER_SPARE);
+	if ((spare_val & 0x2) != 0) {
+		usleep_range(2000, 3000);
+		spare_val = __read_register(device, CVP_AON_WRAPPER_SPARE);
+		if ((spare_val & 0x2) != 0) {
+			dprintk(CVP_ERR, "WRAPPER_SPARE non-zero %#x\n", spare_val);
+			rc = -EINVAL;
+			goto fail_enable_core;
+		}
+	}
+
 	call_iris_op(device, interrupt_init, device);
 	dprintk(CVP_CORE, "Done with interrupt enabling\n");
 	device->intr_status = 0;
@@ -4876,7 +4930,6 @@ static void power_off_iris2(struct iris_hfi_device *device)
 static inline int __resume(struct iris_hfi_device *device)
 {
 	int rc = 0;
-	u32 reg_gdsc, reg_cbcr;
 	struct msm_cvp_core *core;
 
 	if (!device) {
@@ -4889,7 +4942,7 @@ static inline int __resume(struct iris_hfi_device *device)
 		return -EINVAL;
 	}
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 
 	dprintk(CVP_PWR, "Resuming from power collapse\n");
 	rc = __iris_power_on(device);
@@ -4897,12 +4950,6 @@ static inline int __resume(struct iris_hfi_device *device)
 		dprintk(CVP_ERR, "Failed to power on cvp\n");
 		goto err_iris_power_on;
 	}
-
-	reg_gdsc = __read_register(device, CVP_CC_MVS1C_GDSCR);
-	reg_cbcr = __read_register(device, CVP_CC_MVS1C_CBCR);
-	if (!(reg_gdsc & 0x80000000) || (reg_cbcr & 0x80000000))
-		dprintk(CVP_ERR, "CVP power on failed gdsc %x cbcr %x\n",
-			reg_gdsc, reg_cbcr);
 
 	__setup_ucregion_memory_map(device);
 
@@ -5102,11 +5149,11 @@ static void __noc_error_info_iris2(struct iris_hfi_device *device)
 {
 	struct msm_cvp_core *core;
 	struct cvp_noc_log *noc_log;
-	u32 val = 0, regi, regii, regiii, i;
+	u32 val = 0, regi, regii, regiii;
 	bool log_required = false;
 	int rc;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 
 	if (!core->ssr_count && core->resources.max_ssr_allowed > 1)
 		log_required = true;
@@ -5208,7 +5255,7 @@ static void __noc_error_info_iris2(struct iris_hfi_device *device)
 	__err_log(log_required, &noc_log->err_core_errlog2_high,
 			"CVP_NOC_CORE_ERL_MAIN_ERRLOG2_HIGH", val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG3_LOW_OFFS);
-	__err_log(log_required, &noc_log->err_core_errlog3_low, 
+	__err_log(log_required, &noc_log->err_core_errlog3_low,
 			"CORE ERRLOG3_LOW, below details", val);
 	__print_reg_details(val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG3_HIGH_OFFS);
@@ -5226,20 +5273,6 @@ static void __noc_error_info_iris2(struct iris_hfi_device *device)
 	__write_register(device, CVP_SS_CLK_HALT, 0);
 	__write_register(device, CVP_SS_CLK_EN, 0x3f);
 	__write_register(device, CVP_VPU_WRAPPER_CORE_CONFIG, 0);
-
-	for (i = 0; i < 15; i++) {
-		regi = 0xC0000000 + i;
-		__write_register(device, CVP_SS_ARP_TEST_BUS_CONTROL, regi);
-		val = __read_register(device, CVP_SS_ARP_TEST_BUS_REGISTER);
-		noc_log->arp_test_bus[i] = val;
-	}
-
-	for (i = 0; i < 512; i++) {
-		regi = 0x40000000 + i;
-		__write_register(device, CVP_DMA_TEST_BUS_CONTROL, regi);
-		val = __read_register(device, CVP_DMA_TEST_BUS_REGISTER);
-		noc_log->dma_test_bus[i] = val;
-	}
 }
 
 static int iris_hfi_noc_error_info(void *dev)
@@ -5285,11 +5318,10 @@ static int __initialize_packetization(struct iris_hfi_device *device)
 
 void __init_cvp_ops(struct iris_hfi_device *device)
 {
-	device->vpu_ops = &iris2_ops;
+	device->hal_ops = &hal_ops;
 }
 
-static struct iris_hfi_device *__add_device(u32 device_id,
-			struct msm_cvp_platform_resources *res,
+static struct iris_hfi_device *__add_device(struct msm_cvp_platform_resources *res,
 			hfi_cmd_response_callback callback)
 {
 	struct iris_hfi_device *hdevice = NULL;
@@ -5299,8 +5331,6 @@ static struct iris_hfi_device *__add_device(u32 device_id,
 		dprintk(CVP_ERR, "Invalid Parameters\n");
 		return NULL;
 	}
-
-	dprintk(CVP_INFO, "%s: device_id: %d\n", __func__, device_id);
 
 	hdevice = kzalloc(sizeof(*hdevice), GFP_KERNEL);
 	if (!hdevice) {
@@ -5327,7 +5357,6 @@ static struct iris_hfi_device *__add_device(u32 device_id,
 		goto err_cleanup;
 
 	hdevice->res = res;
-	hdevice->device_id = device_id;
 	hdevice->callback = callback;
 
 	__init_cvp_ops(hdevice);
@@ -5363,8 +5392,7 @@ exit:
 	return NULL;
 }
 
-static struct iris_hfi_device *__get_device(u32 device_id,
-				struct msm_cvp_platform_resources *res,
+static struct iris_hfi_device *__get_device(struct msm_cvp_platform_resources *res,
 				hfi_cmd_response_callback callback)
 {
 	if (!res || !callback) {
@@ -5372,7 +5400,7 @@ static struct iris_hfi_device *__get_device(u32 device_id,
 		return NULL;
 	}
 
-	return __add_device(device_id, res, callback);
+	return __add_device(res, callback);
 }
 
 void cvp_iris_hfi_delete_device(void *device)
@@ -5383,9 +5411,9 @@ void cvp_iris_hfi_delete_device(void *device)
 	if (!device)
 		return;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core)
-		dev = core->device->hfi_device_data;
+		dev = core->dev_ops->hfi_device_data;
 
 	if (!dev)
 		return;
@@ -5422,55 +5450,55 @@ static int iris_hfi_validate_session(void *sess, const char *func)
 	return rc;
 }
 
-static void iris_init_hfi_callbacks(struct cvp_hfi_device *hdev)
+static void iris_init_hfi_callbacks(struct cvp_hfi_ops *ops_tbl)
 {
-	hdev->core_init = iris_hfi_core_init;
-	hdev->core_release = iris_hfi_core_release;
-	hdev->core_trigger_ssr = iris_hfi_core_trigger_ssr;
-	hdev->session_init = iris_hfi_session_init;
-	hdev->session_end = iris_hfi_session_end;
-	hdev->session_start = iris_hfi_session_start;
-	hdev->session_stop = iris_hfi_session_stop;
-	hdev->session_abort = iris_hfi_session_abort;
-	hdev->session_clean = iris_hfi_session_clean;
-	hdev->session_set_buffers = iris_hfi_session_set_buffers;
-	hdev->session_release_buffers = iris_hfi_session_release_buffers;
-	hdev->session_send = iris_hfi_session_send;
-	hdev->session_flush = iris_hfi_session_flush;
-	hdev->scale_clocks = iris_hfi_scale_clocks;
-	hdev->vote_bus = iris_hfi_vote_buses;
-	hdev->get_fw_info = iris_hfi_get_fw_info;
-	hdev->get_core_capabilities = iris_hfi_get_core_capabilities;
-	hdev->suspend = iris_hfi_suspend;
-	hdev->resume = iris_hfi_resume;
-	hdev->flush_debug_queue = iris_hfi_flush_debug_queue;
-	hdev->noc_error_info = iris_hfi_noc_error_info;
-	hdev->validate_session = iris_hfi_validate_session;
-	hdev->pm_qos_update = iris_pm_qos_update;
-	hdev->debug_hook = iris_debug_hook;
+	ops_tbl->core_init = iris_hfi_core_init;
+	ops_tbl->core_release = iris_hfi_core_release;
+	ops_tbl->core_trigger_ssr = iris_hfi_core_trigger_ssr;
+	ops_tbl->session_init = iris_hfi_session_init;
+	ops_tbl->session_end = iris_hfi_session_end;
+	ops_tbl->session_start = iris_hfi_session_start;
+	ops_tbl->session_stop = iris_hfi_session_stop;
+	ops_tbl->session_abort = iris_hfi_session_abort;
+	ops_tbl->session_clean = iris_hfi_session_clean;
+	ops_tbl->session_set_buffers = iris_hfi_session_set_buffers;
+	ops_tbl->session_release_buffers = iris_hfi_session_release_buffers;
+	ops_tbl->session_send = iris_hfi_session_send;
+	ops_tbl->session_flush = iris_hfi_session_flush;
+	ops_tbl->scale_clocks = iris_hfi_scale_clocks;
+	ops_tbl->vote_bus = iris_hfi_vote_buses;
+	ops_tbl->get_fw_info = iris_hfi_get_fw_info;
+	ops_tbl->get_core_capabilities = iris_hfi_get_core_capabilities;
+	ops_tbl->suspend = iris_hfi_suspend;
+	ops_tbl->resume = iris_hfi_resume;
+	ops_tbl->flush_debug_queue = iris_hfi_flush_debug_queue;
+	ops_tbl->noc_error_info = iris_hfi_noc_error_info;
+	ops_tbl->validate_session = iris_hfi_validate_session;
+	ops_tbl->pm_qos_update = iris_pm_qos_update;
+	ops_tbl->debug_hook = iris_debug_hook;
 }
 
-int cvp_iris_hfi_initialize(struct cvp_hfi_device *hdev, u32 device_id,
+int cvp_iris_hfi_initialize(struct cvp_hfi_ops *ops_tbl,
 		struct msm_cvp_platform_resources *res,
 		hfi_cmd_response_callback callback)
 {
 	int rc = 0;
 
-	if (!hdev || !res || !callback) {
+	if (!ops_tbl || !res || !callback) {
 		dprintk(CVP_ERR, "Invalid params: %pK %pK %pK\n",
-			hdev, res, callback);
+			ops_tbl, res, callback);
 		rc = -EINVAL;
 		goto err_iris_hfi_init;
 	}
 
-	hdev->hfi_device_data = __get_device(device_id, res, callback);
+	ops_tbl->hfi_device_data = __get_device(res, callback);
 
-	if (IS_ERR_OR_NULL(hdev->hfi_device_data)) {
-		rc = PTR_ERR(hdev->hfi_device_data) ?: -EINVAL;
+	if (IS_ERR_OR_NULL(ops_tbl->hfi_device_data)) {
+		rc = PTR_ERR(ops_tbl->hfi_device_data) ?: -EINVAL;
 		goto err_iris_hfi_init;
 	}
 
-	iris_init_hfi_callbacks(hdev);
+	iris_init_hfi_callbacks(ops_tbl);
 
 err_iris_hfi_init:
 	return rc;

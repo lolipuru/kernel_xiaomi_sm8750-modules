@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef MSM_CVP_DSP_H
@@ -28,6 +29,7 @@ enum fastrpc_driver_status {
 enum fastrpc_driver_invoke_nums {
 	FASTRPC_DEV_MAP_DMA = 1,
 	FASTRPC_DEV_UNMAP_DMA,
+	FASTRPC_DEV_GET_HLOS_PID,
 };
 
 struct fastrpc_driver {
@@ -47,7 +49,7 @@ struct fastrpc_driver {
 #define DSP_VM_NUM 2
 #define CVP_DSP_MAX_RESERVED 5
 #define CVP_DSP2CPU_RESERVED 8
-#define CVP_DSP_RESPONSE_TIMEOUT 300
+#define CVP_DSP_RESPONSE_TIMEOUT 600
 #define CVP_INVALID_RPMSG_TYPE 0xBADDFACE
 #define MAX_FRAME_BUF_NUM 16
 
@@ -210,7 +212,7 @@ enum DRIVER_NAME_STATUS {
 
 struct cvp_dsp_fastrpc_driver_entry {
 	struct list_head list;
-	uint32_t handle;
+	uint32_t handle;	/*handle is not PID*/
 	uint32_t session_cnt;
 	uint32_t driver_name_idx;
 	atomic_t refcount;
@@ -266,41 +268,9 @@ int cvp_dsp_resume(void);
  */
 int cvp_dsp_shutdown(void);
 
-/*
- * API to register iova buffer address with CDSP
- *
- * @session_id:     cvp session id
- * @buff_fd:        buffer fd
- * @buff_fd_size:   total size of fd in bytes
- * @buff_size:      size in bytes of cvp buffer
- * @buff_offset:    buffer offset
- * @buff_index:     buffer index
- * @iova_buff_addr: IOVA buffer address
- */
-int cvp_dsp_register_buffer(uint32_t session_id, uint32_t buff_fd,
-			uint32_t buff_fd_size, uint32_t buff_size,
-			uint32_t buff_offset, uint32_t buff_index,
-			uint32_t buff_fd_iova);
+int cvp_dsp_fastrpc_unmap(uint32_t handle, struct cvp_internal_buf *buf);
 
-/*
- * API to de-register iova buffer address from CDSP
- *
- * @session_id:     cvp session id
- * @buff_fd:        buffer fd
- * @buff_fd_size:   total size of fd in bytes
- * @buff_size:      size in bytes of cvp buffer
- * @buff_offset:    buffer offset
- * @buff_index:     buffer index
- * @iova_buff_addr: IOVA buffer address
- */
-int cvp_dsp_deregister_buffer(uint32_t session_id, uint32_t buff_fd,
-			uint32_t buff_fd_size, uint32_t buff_size,
-			uint32_t buff_offset, uint32_t buff_index,
-			uint32_t buff_fd_iova);
-
-int cvp_dsp_fastrpc_unmap(uint32_t process_id, struct cvp_internal_buf *buf);
-
-int cvp_dsp_del_sess(uint32_t process_id, struct msm_cvp_inst *inst);
+int cvp_dsp_del_sess(uint32_t handle, struct msm_cvp_inst *inst);
 
 void cvp_dsp_send_debug_mask(void);
 

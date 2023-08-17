@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_cvp_common.h"
@@ -80,17 +81,17 @@ int msm_cvp_mmrm_notifier_cb(
 
 int msm_cvp_set_clocks(struct msm_cvp_core *core)
 {
-	struct cvp_hfi_device *hdev;
+	struct cvp_hfi_ops *ops_tbl;
 	int rc;
 
-	if (!core || !core->device) {
+	if (!core || !core->dev_ops) {
 		dprintk(CVP_ERR, "%s Invalid args: %pK\n", __func__, core);
 		return -EINVAL;
 	}
 
-	hdev = core->device;
-	rc = call_hfi_op(hdev, scale_clocks,
-		hdev->hfi_device_data, core->curr_freq);
+	ops_tbl = core->dev_ops;
+	rc = call_hfi_op(ops_tbl, scale_clocks,
+		ops_tbl->hfi_device_data, core->curr_freq);
 	return rc;
 }
 
@@ -458,12 +459,30 @@ void msm_cvp_deinit_clocks(struct iris_hfi_device *device)
 	}
 }
 
-int msm_cvp_set_bw(struct bus_info *bus, unsigned long bw)
+int msm_cvp_set_bw(struct msm_cvp_core *core, struct bus_info *bus, unsigned long bw)
+{
+	struct cvp_hfi_ops *ops_tbl;
+	int rc;
+
+	if (!core || !core->dev_ops) {
+		dprintk(CVP_ERR, "%s Invalid args: %pK\n", __func__, core);
+		return -EINVAL;
+	}
+
+	ops_tbl = core->dev_ops;
+	rc = call_hfi_op(ops_tbl, vote_bus, ops_tbl->hfi_device_data, bus, bw);
+	return rc;
+
+}
+
+int cvp_set_bw(struct bus_info *bus, unsigned long bw)
 {
 	int rc = 0;
 
 	if (!bus->client)
 		return -EINVAL;
+	dprintk(CVP_PWR, "bus->name = %s to bw = %u\n",
+			bus->name, bw);
 
 	rc = icc_set_bw(bus->client, bw, 0);
 	if (rc)

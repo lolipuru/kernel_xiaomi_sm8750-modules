@@ -15,7 +15,7 @@
 #include <media/msm_eva_private.h>
 #include "cvp_comm_def.h"
 
-#define MAX_FRAME_BUFFER_NUMS 30
+#define MAX_FRAME_BUFFER_NUMS 40
 #define MAX_DMABUF_NUMS 64
 #define IS_CVP_BUF_VALID(buf, smem) \
 	((buf->size <= smem->size) && \
@@ -113,11 +113,11 @@ static inline void DEINIT_DMAMAP_CACHE(struct cvp_dmamap_cache *cache)
 #define INPUT_FENCE_BITMASK 0x1
 #define OUTPUT_FENCE_BITMASK 0x2
 
+/* Track source of dma_buf allocator/owner */
 enum buffer_owner {
-	DRIVER,
-	FIRMWARE,
-	CLIENT,
-	DSP,
+	DRIVER,		/* Allocated by KMD, for CPU driver */
+	CLIENT,		/* Allocated by Client (DSP or CPU) */
+	DSP,		/* Allocated by KMD, for DSP driver */
 	MAX_OWNER
 };
 
@@ -195,6 +195,7 @@ int msm_cvp_smem_cache_operations(struct dma_buf *dbuf,
 				unsigned long offset,
 				unsigned long size);
 int msm_cvp_map_ipcc_regs(u32 *iova);
+int msm_cvp_unmap_ipcc_regs(u32 iova);
 
 /* CVP driver internal buffer management functions*/
 struct cvp_internal_buf *cvp_allocate_arp_bufs(struct msm_cvp_inst *inst,
@@ -218,7 +219,7 @@ int msm_cvp_proc_oob(struct msm_cvp_inst* inst,
 			struct eva_kmd_hfi_packet* in_pkt);
 void msm_cvp_cache_operations(struct msm_cvp_smem *smem,
 			u32 type, u32 offset, u32 size);
-int msm_cvp_mark_user_persist(struct msm_cvp_inst *inst,
+int msm_cvp_unmap_user_persist(struct msm_cvp_inst *inst,
 			struct eva_kmd_hfi_packet *in_pkt,
 			unsigned int offset, unsigned int buf_num);
 int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,

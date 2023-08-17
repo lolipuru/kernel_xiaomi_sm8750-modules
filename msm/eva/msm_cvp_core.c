@@ -139,7 +139,7 @@ static void __deinit_session_queue(struct msm_cvp_inst *inst)
 	wake_up_all(&inst->session_queue.wq);
 }
 
-void *msm_cvp_open(int core_id, int session_type, struct task_struct *task)
+struct msm_cvp_inst *msm_cvp_open(int session_type, struct task_struct *task)
 {
 	struct msm_cvp_inst *inst = NULL;
 	struct msm_cvp_core *core = NULL;
@@ -147,16 +147,9 @@ void *msm_cvp_open(int core_id, int session_type, struct task_struct *task)
 	int i = 0;
 	u32 instance_count;
 
-	if (core_id >= MSM_CVP_CORES_MAX ||
-			session_type >= MSM_CVP_MAX_DEVICES) {
-		dprintk(CVP_ERR, "Invalid input, core_id = %d, session = %d\n",
-			core_id, session_type);
-		goto err_invalid_core;
-	}
-	core = get_cvp_core(core_id);
+	core = cvp_driver->cvp_core;
 	if (!core) {
-		dprintk(CVP_ERR,
-			"Failed to find core for core_id = %d\n", core_id);
+		dprintk(CVP_ERR, "%s CVP core not initialized\n", __func__);
 		goto err_invalid_core;
 	}
 
@@ -183,8 +176,7 @@ void *msm_cvp_open(int core_id, int session_type, struct task_struct *task)
 		goto err_invalid_core;
 	}
 
-	pr_info_ratelimited(
-		CVP_DBG_TAG "%s opening cvp instance: %pK type %d cnt %d\n",
+	pr_info(CVP_DBG_TAG "%s opening cvp instance: %pK type %d cnt %d\n",
 		"sess", task->comm, inst, session_type, instance_count);
 	mutex_init(&inst->sync_lock);
 	mutex_init(&inst->lock);
@@ -211,7 +203,6 @@ void *msm_cvp_open(int core_id, int session_type, struct task_struct *task)
 	inst->clk_data.ddr_bw = 0;
 	inst->clk_data.sys_cache_bw = 0;
 	inst->clk_data.bitrate = 0;
-	inst->clk_data.core_id = 0;
 
 	for (i = SESSION_MSG_INDEX(SESSION_MSG_START);
 		i <= SESSION_MSG_INDEX(SESSION_MSG_END); i++) {
@@ -295,17 +286,18 @@ check_again:
 	}
 }
 
-static void msm_cvp_cleanup_instance(struct msm_cvp_inst *inst)
+static int msm_cvp_cleanup_instance(struct msm_cvp_inst *inst)
 {
 	bool empty;
-	int max_retries;
+	int rc, max_retries;
 	struct msm_cvp_frame *frame;
 	struct cvp_session_queue *sq, *sqf;
-	struct cvp_hfi_device *hdev;
+	struct cvp_hfi_ops *ops_tbl;
+	struct msm_cvp_inst *tmp;
 
 	if (!inst) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
-		return;
+		return -EINVAL;
 	}
 
 	sqf = &inst->session_queue_fence;
@@ -319,16 +311,21 @@ wait_dsp:
 	empty = list_empty(&inst->cvpdspbufs.list);
 	if (!empty && max_retries > 0) {
 		mutex_unlock(&inst->cvpdspbufs.lock);
-		usleep_range(1000, 2000);
+		usleep_range(2000, 3000);
 		max_retries--;
 		goto wait_dsp;
 	}
 	mutex_unlock(&inst->cvpdspbufs.lock);
 
-	if (!empty)
-		dprintk(CVP_WARN, "Failed sess %pK DSP frame retried %d\n",
-			inst,
-			(inst->core->resources.msm_cvp_hw_rsp_timeout >> 5));
+	if (!empty) {
+		dprintk(CVP_WARN, "Failed sess %pK DSP frame pending\n", inst);
+		/*
+		 * A session is either DSP session or CPU session, cannot have both
+		 * DSP and frame buffers
+		 */
+		goto stop_session;
+	}
+
 	max_retries =  inst->core->resources.msm_cvp_hw_rsp_timeout >> 1;
 wait_frame:
 	mutex_lock(&inst->frames.lock);
@@ -355,6 +352,32 @@ wait_frame:
 		inst->core->synx_ftbl->cvp_dump_fence_queue(inst);
 	}
 
+stop_session:
+	tmp = cvp_get_inst_validate(inst->core, inst);
+	if (!tmp) {
+		dprintk(CVP_ERR, "%s has a invalid session %llx\n",
+			__func__, inst);
+		return -EINVAL;
+	}
+	if (!empty) {
+		/* STOP SESSION to avoid SMMU fault after releasing ARP */
+		ops_tbl = inst->core->dev_ops;
+		rc = call_hfi_op(ops_tbl, session_stop, (void *)inst->session);
+		if (rc) {
+			dprintk(CVP_WARN, "%s: cannot stop session rc %d\n",
+				__func__, rc);
+			goto release_arp;
+		}
+
+		/*Fail stop session, release arp later may cause smmu fault*/
+		rc = wait_for_sess_signal_receipt(inst, HAL_SESSION_STOP_DONE);
+		if (rc)
+			dprintk(CVP_WARN, "%s: wait for sess_stop fail, rc %d\n",
+					__func__, rc);
+		/* Continue to release ARP anyway */
+	}
+release_arp:
+	cvp_put_inst(tmp);
 	if (cvp_release_arp_buffers(inst))
 		dprintk_rl(CVP_WARN,
 			"Failed to release persist buffers\n");
@@ -365,13 +388,14 @@ wait_frame:
 		if (inst->core->resources.pm_qos.off_vote_cnt > 0)
 			inst->core->resources.pm_qos.off_vote_cnt--;
 		else
-			dprintk(CVP_WARN, "%s Unexpected pm_qos off vote %d\n",
+			dprintk(CVP_INFO, "%s Unexpected pm_qos off vote %d\n",
 				__func__,
 				inst->core->resources.pm_qos.off_vote_cnt);
 		spin_unlock(&inst->core->resources.pm_qos.lock);
-		hdev = inst->core->device;
-		call_hfi_op(hdev, pm_qos_update, hdev->hfi_device_data);
+		ops_tbl = inst->core->dev_ops;
+		call_hfi_op(ops_tbl, pm_qos_update, ops_tbl->hfi_device_data);
 	}
+	return 0;
 }
 
 int msm_cvp_destroy(struct msm_cvp_inst *inst)
@@ -384,6 +408,11 @@ int msm_cvp_destroy(struct msm_cvp_inst *inst)
 	}
 
 	core = inst->core;
+
+	if (inst->session_type == MSM_CVP_DSP) {
+		cvp_dsp_del_sess(inst->dsp_handle, inst);
+		inst->task = NULL;
+	}
 
 	/* Ensure no path has core->clk_lock and core->lock sequence */
 	mutex_lock(&core->lock);
@@ -412,8 +441,7 @@ int msm_cvp_destroy(struct msm_cvp_inst *inst)
 	__deinit_fence_queue(inst);
 	core->synx_ftbl->cvp_sess_deinit_synx(inst);
 
-	pr_info_ratelimited(
-		CVP_DBG_TAG
+	pr_info(CVP_DBG_TAG
 		"closed cvp instance: %pK session_id = %d type %d %d\n",
 		inst->proc_name, inst, hash32_ptr(inst->session),
 		inst->session_type, core->smem_leak_count);
@@ -436,8 +464,11 @@ int msm_cvp_destroy(struct msm_cvp_inst *inst)
 
 static void close_helper(struct kref *kref)
 {
-	struct msm_cvp_inst *inst = container_of(kref,
-			struct msm_cvp_inst, kref);
+	struct msm_cvp_inst *inst;
+
+	if (!kref)
+		return;
+	inst = container_of(kref, struct msm_cvp_inst, kref);
 
 	msm_cvp_destroy(inst);
 }
@@ -452,8 +483,26 @@ int msm_cvp_close(void *instance)
 		return -EINVAL;
 	}
 
+	pr_info(CVP_DBG_TAG
+		"to close instance: %pK session_id = %d type %d state %d\n",
+		inst->proc_name, inst, hash32_ptr(inst->session),
+		inst->session_type, inst->state);
+
+	if (inst->session == 0) {
+		if (inst->state >= MSM_CVP_CORE_INIT_DONE &&
+			inst->state < MSM_CVP_OPEN_DONE) {
+			/* Session is not created, no ARP */
+			inst->state = MSM_CVP_CORE_UNINIT;
+			goto exit;
+		}
+		if (inst->state == MSM_CVP_CORE_UNINIT)
+			return -EINVAL;
+	}
+
 	if (inst->session_type != MSM_CVP_BOOT) {
-		msm_cvp_cleanup_instance(inst);
+		rc = msm_cvp_cleanup_instance(inst);
+		if (rc)
+			return -EINVAL;
 		msm_cvp_session_deinit(inst);
 	}
 
@@ -465,17 +514,14 @@ int msm_cvp_close(void *instance)
 	}
 
 	msm_cvp_comm_session_clean(inst);
-
-	if (inst->session_type == MSM_CVP_DSP)
-		cvp_dsp_del_sess(inst->process_id, inst);
-
+exit:
 	kref_put(&inst->kref, close_helper);
 	return 0;
 }
 EXPORT_SYMBOL(msm_cvp_close);
 
-int msm_cvp_suspend(int core_id)
+int msm_cvp_suspend(void)
 {
-	return msm_cvp_comm_suspend(core_id);
+	return msm_cvp_comm_suspend();
 }
 EXPORT_SYMBOL(msm_cvp_suspend);

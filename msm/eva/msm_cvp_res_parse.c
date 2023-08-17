@@ -848,7 +848,13 @@ int cvp_read_platform_resources_from_drv_data(
 
 	res->pm_qos.latency_us = find_key_value(platform_data,
 			"qcom,pm-qos-latency-us");
-	res->pm_qos.silver_count = 4;
+	res->pm_qos.silver_count = 0;
+	for(i = 0; i < MAX_SILVER_CORE_NUM; i++) {
+		if(topology_cluster_id(i) == 0)
+			res->pm_qos.silver_count++;
+		else
+			break;
+	}
 	for (i = 0; i < res->pm_qos.silver_count; i++)
 		res->pm_qos.silver_cores[i] = i;
 	res->pm_qos.off_vote_cnt = 0;
@@ -1039,22 +1045,26 @@ int msm_cvp_smmu_fault_handler(struct iommu_domain *domain,
 		return -EINVAL;
 	}
 
+	dprintk(CVP_ERR, "%s - faulting address: %lx fault cnt %d\n",
+			__func__, iova, core->smmu_fault_count);
+	if (core->smmu_fault_count > 0) {
+		core->smmu_fault_count++;
+		return -ENOSYS;
+	}
 	mutex_lock(&core->lock);
 	core->smmu_fault_count++;
 	if (!core->last_fault_addr)
 		core->last_fault_addr = iova;
-	dprintk(CVP_ERR, "%s - faulting address: %lx, %d\n",
-		__func__, iova, core->smmu_fault_count);
 
 	log = (core->log.snapshot_index > 0)? false : true;
 	list_for_each_entry(inst, &core->instances, list) {
 		cvp_print_inst(CVP_ERR, inst);
 		msm_cvp_print_inst_bufs(inst, log);
 	}
-	hdev = core->device->hfi_device_data;
+	hdev = core->dev_ops->hfi_device_data;
 	if (hdev) {
 		hdev->error = CVP_ERR_NOC_ERROR;
-		call_hfi_op(core->device, debug_hook, hdev);
+		call_hfi_op(core->dev_ops, debug_hook, hdev);
 	}
 	mutex_unlock(&core->lock);
 	/*

@@ -11,7 +11,6 @@
 #include "cvp_hfi_api.h"
 #include "msm_cvp_dsp.h"
 
-#define CREATE_TRACE_POINTS
 #define MAX_SSR_STRING_LEN 10
 int msm_cvp_debug = CVP_ERR | CVP_WARN | CVP_FW;
 EXPORT_SYMBOL(msm_cvp_debug);
@@ -70,13 +69,13 @@ static ssize_t core_info_read(struct file *file, char __user *buf,
 		size_t count, loff_t *ppos)
 {
 	struct msm_cvp_core *core = file->private_data;
-	struct cvp_hfi_device *hdev;
+	struct cvp_hfi_ops *ops_tbl;
 	struct cvp_hal_fw_info fw_info = { {0} };
 	char *dbuf, *cur, *end;
 	int i = 0, rc = 0;
 	ssize_t len = 0;
 
-	if (!core || !core->device) {
+	if (!core || !core->dev_ops) {
 		dprintk(CVP_ERR, "Invalid params, core: %pK\n", core);
 		return 0;
 	}
@@ -88,13 +87,13 @@ static ssize_t core_info_read(struct file *file, char __user *buf,
 	}
 	cur = dbuf;
 	end = cur + MAX_DBG_BUF_SIZE;
-	hdev = core->device;
+	ops_tbl = core->dev_ops;
 
 	cur += write_str(cur, end - cur, "===============================\n");
-	cur += write_str(cur, end - cur, "CORE %d: %pK\n", core->id, core);
+	cur += write_str(cur, end - cur, "CORE %d: %pK\n", 0, core);
 	cur += write_str(cur, end - cur, "===============================\n");
 	cur += write_str(cur, end - cur, "Core state: %d\n", core->state);
-	rc = call_hfi_op(hdev, get_fw_info, hdev->hfi_device_data, &fw_info);
+	rc = call_hfi_op(ops_tbl, get_fw_info, ops_tbl->hfi_device_data, &fw_info);
 	if (rc) {
 		dprintk(CVP_WARN, "Failed to read FW info\n");
 		goto err_fw_info;
@@ -178,18 +177,18 @@ static const struct file_operations ssr_fops = {
 
 static int cvp_power_get(void *data, u64 *val)
 {
-	struct cvp_hfi_device *hfi_ops;
+	struct cvp_hfi_ops *ops_tbl;
 	struct msm_cvp_core *core;
 	struct iris_hfi_device *hfi_device;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (!core)
 		return 0;
-	hfi_ops = core->device;
-	if (!hfi_ops)
+	ops_tbl = core->dev_ops;
+	if (!ops_tbl)
 		return 0;
 
-	hfi_device = hfi_ops->hfi_device_data;
+	hfi_device = ops_tbl->hfi_device_data;
 	if (!hfi_device)
 		return 0;
 
@@ -202,20 +201,20 @@ static int cvp_power_get(void *data, u64 *val)
 
 static int cvp_power_set(void *data, u64 val)
 {
-	struct cvp_hfi_device *hfi_ops;
+	struct cvp_hfi_ops *ops_tbl;
 	struct msm_cvp_core *core;
 	struct iris_hfi_device *hfi_device;
 	int rc = 0;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (!core)
 		return -EINVAL;
 
-	hfi_ops = core->device;
-	if (!hfi_ops)
+	ops_tbl = core->dev_ops;
+	if (!ops_tbl)
 		return -EINVAL;
 
-	hfi_device = hfi_ops->hfi_device_data;
+	hfi_device = ops_tbl->hfi_device_data;
 	if (!hfi_device)
 		return -EINVAL;
 
@@ -231,7 +230,7 @@ static int cvp_power_set(void *data, u64 val)
 		return -EINVAL;
 
 	if (val > 0) {
-		rc = call_hfi_op(hfi_ops, resume, hfi_ops->hfi_device_data);
+		rc = call_hfi_op(ops_tbl, resume, ops_tbl->hfi_device_data);
 		if (rc)
 			dprintk(CVP_ERR, "debugfs fail to power on cvp\n");
 	}
@@ -285,20 +284,20 @@ failed_create_dir:
 static int _clk_rate_set(void *data, u64 val)
 {
 	struct msm_cvp_core *core;
-	struct cvp_hfi_device *dev;
+	struct cvp_hfi_ops *ops_tbl;
 	struct allowed_clock_rates_table *tbl = NULL;
 	unsigned int tbl_size, i;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
-	dev = core->device;
+	core = cvp_driver->cvp_core;
+	ops_tbl = core->dev_ops;
 	tbl = core->resources.allowed_clks_tbl;
 	tbl_size = core->resources.allowed_clks_tbl_size;
 
 	if (val == 0) {
-		struct iris_hfi_device *hdev = dev->hfi_device_data;
+		struct iris_hfi_device *hdev = ops_tbl->hfi_device_data;
 
 		msm_cvp_clock_voting = 0;
-		call_hfi_op(dev, scale_clocks, hdev, hdev->clk_freq);
+		call_hfi_op(ops_tbl, scale_clocks, hdev, hdev->clk_freq);
 		return 0;
 	}
 
@@ -314,7 +313,7 @@ static int _clk_rate_set(void *data, u64 val)
 	dprintk(CVP_WARN, "Override cvp_clk_rate with %d\n",
 			msm_cvp_clock_voting);
 
-	call_hfi_op(dev, scale_clocks, dev->hfi_device_data,
+	call_hfi_op(ops_tbl, scale_clocks, ops_tbl->hfi_device_data,
 		msm_cvp_clock_voting);
 
 	return 0;
@@ -325,8 +324,8 @@ static int _clk_rate_get(void *data, u64 *val)
 	struct msm_cvp_core *core;
 	struct iris_hfi_device *hdev;
 
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
-	hdev = core->device->hfi_device_data;
+	core = cvp_driver->cvp_core;
+	hdev = core->dev_ops->hfi_device_data;
 	if (msm_cvp_clock_voting)
 		*val = msm_cvp_clock_voting;
 	else
@@ -358,7 +357,7 @@ DEFINE_DEBUGFS_ATTRIBUTE(dsp_debug_fops, _dsp_dbg_get, _dsp_dbg_set, "%llu\n");
 static int _max_ssr_set(void *data, u64 val)
 {
 	struct msm_cvp_core *core;
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core) {
 		if (val < 1) {
 			dprintk(CVP_WARN,
@@ -374,7 +373,7 @@ static int _max_ssr_set(void *data, u64 val)
 static int _max_ssr_get(void *data, u64 *val)
 {
 	struct msm_cvp_core *core;
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core)
 		*val = core->resources.max_ssr_allowed;
 
@@ -386,7 +385,7 @@ DEFINE_DEBUGFS_ATTRIBUTE(max_ssr_fops, _max_ssr_get, _max_ssr_set, "%llu\n");
 static int _ssr_stall_set(void *data, u64 val)
 {
 	struct msm_cvp_core *core;
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core)
 		core->resources.fatal_ssr = (val >= 1) ? true : false;
 
@@ -396,7 +395,7 @@ static int _ssr_stall_set(void *data, u64 val)
 static int _ssr_stall_get(void *data, u64 *val)
 {
 	struct msm_cvp_core *core;
-	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
+	core = cvp_driver->cvp_core;
 	if (core)
 		*val = core->resources.fatal_ssr ? 1 : 0;
 
@@ -417,7 +416,7 @@ struct dentry *msm_cvp_debugfs_init_core(struct msm_cvp_core *core,
 		goto failed_create_dir;
 	}
 
-	snprintf(debugfs_name, MAX_DEBUGFS_NAME, "core%d", core->id);
+	snprintf(debugfs_name, MAX_DEBUGFS_NAME, "core%d", 0);
 	dir = debugfs_create_dir(debugfs_name, parent);
 	if (IS_ERR_OR_NULL(dir)) {
 		dir = NULL;
@@ -477,8 +476,11 @@ static int publish_unreleased_reference(struct msm_cvp_inst *inst,
 
 static void put_inst_helper(struct kref *kref)
 {
-	struct msm_cvp_inst *inst = container_of(kref,
-			struct msm_cvp_inst, kref);
+	struct msm_cvp_inst *inst;
+
+	if (!kref)
+		return;
+	inst = container_of(kref, struct msm_cvp_inst, kref);
 
 	msm_cvp_destroy(inst);
 }
