@@ -5116,32 +5116,15 @@ static void _dspp_igcv4_off(struct sde_hw_dspp *ctx, void *cfg)
 	_perform_sbdma_kickoff(ctx, hw_cfg, dma_ops, blk, IGC);
 }
 
-void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav2_setup_dspp_igc_common(struct sde_hw_dspp *ctx, void *cfg,
+		u32 len, u16 *data, u32 transfer_size_bytes)
 {
 	struct drm_msm_igc_lut *lut_cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
-	int rc = 0, i = 0, j = 0;
-	u16 *data = NULL;
-	u32 len = 0, reg = 0, num_of_mixers = 0, blk = 0, transfer_size_bytes;
-
-	rc = reg_dma_dspp_check(ctx, cfg, IGC);
-	if (rc)
-		return;
-
-	if (!hw_cfg->payload) {
-		DRM_DEBUG_DRIVER("disable igc feature\n");
-		LOG_FEATURE_OFF;
-		_dspp_igcv4_off(ctx, cfg);
-		return;
-	}
-
-	if (hw_cfg->len != sizeof(struct drm_msm_igc_lut)) {
-		DRM_ERROR("invalid size of payload len %d exp %zd\n",
-				hw_cfg->len, sizeof(struct drm_msm_igc_lut));
-		return;
-	}
+	int rc = 0;
+	u32 reg = 0, num_of_mixers = 0, blk = 0;
 
 	rc = reg_dmav1_get_dspp_blk(hw_cfg, ctx->idx, &blk,
 			&num_of_mixers);
@@ -5172,29 +5155,6 @@ void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
 		return;
 	}
 
-	/* 257 entries per color * 3 colors * 16 bit per LUT entry */
-	len = (IGC_TBL_LEN + 1) * 3 * sizeof(u16);
-	/* Data size must be aligned with word size AND LUT transfer size */
-	transfer_size_bytes = LUTBUS_IGC_TRANS_SIZE * sizeof(u32);
-	if (len % transfer_size_bytes)
-		len = len + (transfer_size_bytes - len % transfer_size_bytes);
-
-	data = kvzalloc(len, GFP_KERNEL);
-	if (!data)
-		return;
-
-	for (i = 0, j = 0; i < IGC_TBL_LEN; i++) {
-		/* c0 --> G; c1 --> B; c2 --> R */
-		/* 16 bit per LUT entry and MSB aligned to allow expansion,
-		 * hence, sw need to left shift 4 bits before sending to HW.
-		 */
-		data[j++] = (u16)(lut_cfg->c2[i] << 4);
-		data[j++] = (u16)(lut_cfg->c0[i] << 4);
-		data[j++] = (u16)(lut_cfg->c1[i] << 4);
-	}
-	data[j++] = (4095 << 4);
-	data[j++] = (4095 << 4);
-	data[j++] = (4095 << 4);
 	REG_DMA_SETUP_OPS(dma_write_cfg, 0, (u32 *)data, len,
 			REG_BLK_LUT_WRITE, 0, 0, 0);
 	/* table select is only relevant to SSPP Gamut */
@@ -5206,7 +5166,7 @@ void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
 	rc = dma_ops->setup_payload(&dma_write_cfg);
 	if (rc) {
 		DRM_ERROR("lut write failed ret %d\n", rc);
-		goto exit;
+		return;
 	}
 
 	reg = BIT(8);
@@ -5215,18 +5175,137 @@ void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
 		reg |= (lut_cfg->strength & IGC_DITHER_DATA_MASK);
 	}
 
+	if (lut_cfg->flags & IGC_HIGH_PREC_ENABLE)
+		reg |= BIT(16);
+
 	REG_DMA_SETUP_OPS(dma_write_cfg, ctx->cap->sblk->igc.base + 0x4,
 			&reg, sizeof(reg), REG_SINGLE_WRITE, 0, 0, 0);
 	rc = dma_ops->setup_payload(&dma_write_cfg);
 	if (rc) {
 		DRM_ERROR("setting opcode failed ret %d\n", rc);
-		goto exit;
+		return;
 	}
 
 	LOG_FEATURE_ON;
 	_perform_sbdma_kickoff(ctx, hw_cfg, dma_ops, blk, IGC);
+}
 
-exit:
+void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct drm_msm_igc_lut *lut_cfg;
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	int rc = 0, i = 0, j = 0;
+	u32 len = 0, transfer_size_bytes = 0;
+	u16 *data = NULL;
+
+	rc = reg_dma_dspp_check(ctx, cfg, IGC);
+	if (rc)
+		return;
+
+	if (!hw_cfg->payload) {
+		DRM_DEBUG_DRIVER("disable igc feature\n");
+		LOG_FEATURE_OFF;
+		_dspp_igcv4_off(ctx, cfg);
+		return;
+	}
+
+	if (hw_cfg->len != sizeof(struct drm_msm_igc_lut)) {
+		DRM_ERROR("invalid size of payload len %d exp %zd\n",
+				hw_cfg->len, sizeof(struct drm_msm_igc_lut));
+		return;
+	}
+	lut_cfg = hw_cfg->payload;
+
+	/* 257 entries per color * 3 colors * 16 bit per LUT entry */
+	len = (IGC_TBL_LEN + 1) * 3 * sizeof(u16);
+
+	/* Data size must be aligned with word size AND LUT transfer size */
+	transfer_size_bytes = LUTBUS_IGC_TRANS_SIZE * sizeof(u32);
+	if (len % transfer_size_bytes)
+		len = len + (transfer_size_bytes - len % transfer_size_bytes);
+
+	data = kvzalloc(len, GFP_KERNEL);
+	if (!data)
+		return;
+
+	for (i = 0, j = 0; i < IGC_TBL_LEN; i++) {
+		/* c0 --> G; c1 --> B; c2 --> R */
+		data[j++] = (u16)(lut_cfg->c2[i] << 4);
+		data[j++] = (u16)(lut_cfg->c0[i] << 4);
+		data[j++] = (u16)(lut_cfg->c1[i] << 4);
+	}
+	data[j++] = lut_cfg->c2_last ? (u16)(lut_cfg->c2_last << 4) : (4095 << 4);
+	data[j++] = lut_cfg->c0_last ? (u16)(lut_cfg->c0_last << 4) : (4095 << 4);
+	data[j++] = lut_cfg->c1_last ? (u16)(lut_cfg->c1_last << 4) : (4095 << 4);
+
+	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes);
+	kvfree(data);
+}
+
+void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct drm_msm_igc_lut *lut_cfg;
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	int rc = 0, i = 0, j = 0;
+	u32 len = 0, transfer_size_bytes = 0;
+	u16 *data = NULL;
+	bool use_high_prec = false;
+
+	rc = reg_dma_dspp_check(ctx, cfg, IGC);
+	if (rc)
+		return;
+
+	if (!hw_cfg->payload) {
+		DRM_DEBUG_DRIVER("disable igc feature\n");
+		LOG_FEATURE_OFF;
+		_dspp_igcv4_off(ctx, cfg);
+		return;
+	}
+
+	if (hw_cfg->len != sizeof(struct drm_msm_igc_lut)) {
+		DRM_ERROR("invalid size of payload len %d exp %zd\n",
+				hw_cfg->len, sizeof(struct drm_msm_igc_lut));
+		return;
+	}
+	lut_cfg = hw_cfg->payload;
+
+	use_high_prec = lut_cfg->flags & IGC_HIGH_PREC_ENABLE;
+
+	if (use_high_prec)
+		/* 385 entries per color * 3 colors * 16 bit per LUT entry */
+		len = (IGC_TBL_LEN + 1 + IGC_TBL_LEN_EXTENDED) * 3 * sizeof(u16);
+	else
+		/* 257 entries per color * 3 colors * 16 bit per LUT entry */
+		len = (IGC_TBL_LEN + 1) * 3 * sizeof(u16);
+
+	/* Data size must be aligned with word size AND LUT transfer size */
+	transfer_size_bytes = LUTBUS_IGC_TRANS_SIZE * sizeof(u32);
+	if (len % transfer_size_bytes)
+		len = len + (transfer_size_bytes - len % transfer_size_bytes);
+
+	data = kvzalloc(len, GFP_KERNEL);
+	if (!data)
+		return;
+
+	for (i = 0, j = 0; i < IGC_TBL_LEN; i++) {
+		/* c0 --> G; c1 --> B; c2 --> R */
+		data[j++] = (u16)(lut_cfg->c2[i]);
+		data[j++] = (u16)(lut_cfg->c0[i]);
+		data[j++] = (u16)(lut_cfg->c1[i]);
+	}
+	data[j++] = lut_cfg->c2_last ? (u16)(lut_cfg->c2_last) : REG_MASK(16);
+	data[j++] = lut_cfg->c0_last ? (u16)(lut_cfg->c0_last) : REG_MASK(16);
+	data[j++] = lut_cfg->c1_last ? (u16)(lut_cfg->c1_last) : REG_MASK(16);
+
+	if (use_high_prec) {
+		for (i = 0; i < IGC_TBL_LEN_EXTENDED; i++) {
+			data[j++] = (u16)(lut_cfg->c2_extended[i]);
+			data[j++] = (u16)(lut_cfg->c0_extended[i]);
+			data[j++] = (u16)(lut_cfg->c1_extended[i]);
+		}
+	}
+
+	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes);
 	kvfree(data);
 }
 

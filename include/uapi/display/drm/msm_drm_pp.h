@@ -255,7 +255,9 @@ struct drm_msm_pgc_lut {
 };
 
 #define IGC_TBL_LEN 256
+#define IGC_TBL_LEN_EXTENDED 128
 #define IGC_DITHER_ENABLE (1 << 0)
+#define IGC_HIGH_PREC_ENABLE (1 << 1)
 /**
  * struct drm_msm_igc_lut - igc lut feature structure
  * @flags: flags for the feature customization, values can be:
@@ -268,6 +270,9 @@ struct drm_msm_pgc_lut {
  * @c0_last: color0 lut_last component
  * @c1_last: color1 lut_last component
  * @c2_last: color2 lut_last component
+ * @c0_extended: extended color0 component lut
+ * @c1_extended: extended color1 component lut
+ * @c2_extended: extended color2 component lut
  */
 struct drm_msm_igc_lut {
 	__u64 flags;
@@ -278,6 +283,9 @@ struct drm_msm_igc_lut {
 	__u32 c0_last;
 	__u32 c1_last;
 	__u32 c2_last;
+	__u32 c0_extended[IGC_TBL_LEN_EXTENDED];
+	__u32 c1_extended[IGC_TBL_LEN_EXTENDED];
+	__u32 c2_extended[IGC_TBL_LEN_EXTENDED];
 };
 #define LAST_LUT 2
 
