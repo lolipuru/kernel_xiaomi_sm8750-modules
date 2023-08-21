@@ -2481,6 +2481,10 @@ static int get_args(uint32_t kernel, struct smq_invoke_ctx *ctx)
 			err = -EFAULT;
 			goto bail;
 		}
+		if (templen > DEBUG_PRINT_SIZE_LIMIT)
+			ADSPRPC_WARN(
+				"user passed non ion buffer size %zu, mend 0x%lx mstart 0x%lx, sc 0x%x  handle 0x%x\n",
+				templen, mend, mstart, sc, ctx->handle);
 		copylen += templen;
 	}
 	totallen = ALIGN(totallen, BALIGN) + copylen;
