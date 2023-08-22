@@ -1670,7 +1670,7 @@ int msm_ioctl_rmfb2(struct drm_device *dev, void *data,
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_ioctl_rmfb2);
+EXPORT_SYMBOL_GPL(msm_ioctl_rmfb2);
 
 /**
  * msm_ioctl_power_ctrl - enable/disable power vote on MDSS Hw
@@ -2115,7 +2115,7 @@ void *msm_register_fence_error_event(struct drm_device *ddev, struct msm_fence_e
 
 	return (void *)client_entry;
 }
-EXPORT_SYMBOL(msm_register_fence_error_event);
+EXPORT_SYMBOL_GPL(msm_register_fence_error_event);
 
 int msm_unregister_fence_error_event(struct drm_device *ddev,
 		struct msm_fence_error_client_entry *client_entry_handle)
@@ -2141,7 +2141,7 @@ int msm_unregister_fence_error_event(struct drm_device *ddev,
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_unregister_fence_error_event);
+EXPORT_SYMBOL_GPL(msm_unregister_fence_error_event);
 
 struct msm_gem_address_space *
 msm_gem_smmu_address_space_get(struct drm_device *dev,
