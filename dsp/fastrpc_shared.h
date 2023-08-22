@@ -8,6 +8,10 @@
 #define __FASTRPC_SHARED_H__
 
 #include <linux/rpmsg.h>
+#include <linux/uaccess.h>
+#include <linux/qrtr.h>
+#include <net/sock.h>
+#include <linux/workqueue.h>
 #include <linux/qcom_scm.h>
 #include <linux/miscdevice.h>
 
@@ -160,6 +164,46 @@
 			(uint64_t *)(perf_ptr + offset)\
 				: (uint64_t *)NULL) : (uint64_t *)NULL)
 
+/* Registered QRTR service ID */
+#define FASTRPC_REMOTE_SERVER_SERVICE_ID 5012
+/*
+ * Fastrpc remote server instance ID bit-map:
+ *
+ * bits 0-1   : channel ID
+ * bits 2-7   : reserved
+ * bits 8-9   : remote domains (SECURE_PD, GUEST_OS)
+ * bits 10-31 : reserved
+ */
+#define REMOTE_DOMAIN_INSTANCE_INDEX (8)
+#define GET_SERVER_INSTANCE(remote_domain, cid) \
+	((remote_domain << REMOTE_DOMAIN_INSTANCE_INDEX) | cid)
+#define GET_CID_FROM_SERVER_INSTANCE(remote_server_instance) \
+	(remote_server_instance & 0x3)
+/* Maximun received fastprc packet size */
+#define FASTRPC_SOCKET_RECV_SIZE sizeof(union rsp)
+
+enum fastrpc_remote_domains_id {
+	SECURE_PD = 0,
+	GUEST_OS = 1,
+	MAX_REMOTE_ID = SECURE_PD + 1,
+};
+
+struct fastrpc_socket {
+	struct socket *sock;                   // Socket used to communicate with remote domain
+	struct sockaddr_qrtr local_sock_addr;  // Local socket address on kernel side
+	struct sockaddr_qrtr remote_sock_addr; // Remote socket address on remote domain side
+	struct mutex socket_mutex;             // Mutex for socket synchronization
+	void *recv_buf;                        // Received packet buffer
+};
+
+struct frpc_transport_session_control {
+	struct fastrpc_socket frpc_socket;     // Fastrpc socket data structure
+	u32 remote_server_instance;       // Unique remote server instance ID
+	bool remote_server_online;             // Flag to indicate remote server status
+	struct work_struct work;               // work for handling incoming messages
+	struct workqueue_struct *wq;           // workqueue to post @work on
+};
+
 static const char *domains[FASTRPC_DEV_MAX] = { "adsp", "mdsp",
 						"sdsp", "cdsp"};
 struct fastrpc_phy_page {
@@ -272,6 +316,19 @@ struct fastrpc_rpmsg_log {
 	spinlock_t rx_lock;
 };
 
+struct dsp_notif_rsp {
+	u64 ctx;		  /* response context */
+	u32 type;        /* Notification type */
+	int pid;		      /* user process pid */
+	u32 status;	  /* userpd status notification */
+};
+
+union rsp {
+	struct fastrpc_invoke_rsp rsp;
+	struct fastrpc_invoke_rspv2 rsp2;
+	struct dsp_notif_rsp rsp3;
+};
+
 struct fastrpc_buf_overlap {
 	u64 start;
 	u64 end;
@@ -339,6 +396,16 @@ struct fastrpc_session_ctx {
 	bool used;
 	bool valid;
 	bool sharedcb;
+#if IS_ENABLED(CONFIG_QCOM_FASTRPC_TRUSTED)
+	/* gen pool for QRTR */
+	struct gen_pool *frpc_genpool;
+	/* fastrpc gen pool buffer */
+	struct fastrpc_buf *frpc_genpool_buf;
+	/* fastrpc gen pool buffer fixed IOVA */
+	unsigned long genpool_iova;
+	/* fastrpc gen pool buffer size */
+	size_t genpool_size;
+#endif
 };
 
 struct fastrpc_channel_ctx {
@@ -347,7 +414,11 @@ struct fastrpc_channel_ctx {
 	int vmcount;
 	u64 perms;
 	struct qcom_scm_vmperm vmperms[FASTRPC_MAX_VMIDS];
+#if !IS_ENABLED(CONFIG_QCOM_FASTRPC_TRUSTED)
 	struct rpmsg_device *rpdev;
+#else
+	struct frpc_transport_session_control session_control;
+#endif
 	struct device *dev;
 	struct fastrpc_session_ctx session[FASTRPC_MAX_SESSIONS];
 	spinlock_t lock;
@@ -434,13 +505,6 @@ struct fastrpc_notif_rsp {
 	struct list_head notifn;
 	u32 domain;
 	enum fastrpc_status_flags status;
-};
-
-struct dsp_notif_rsp {
-	int pid;		/* user process pid */
-	u32 type;		/* Notification type */
-	u32 status;		/* userpd status notification */
-	u64 ctx;		/* response context */
 };
 
 struct fastrpc_user {
@@ -549,4 +613,5 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ctx *cctx,
 				bool is_secured, const char *domain);
 struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev);
+void fastrpc_notify_users(struct fastrpc_user *user);
 #endif /* __FASTRPC_SHARED_H__ */

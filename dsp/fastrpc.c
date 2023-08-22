@@ -16,6 +16,9 @@
 #include <linux/of.h>
 #include <linux/sort.h>
 #include <linux/of_platform.h>
+#include <linux/iommu.h>
+#include <linux/msm_dma_iommu_mapping.h>
+#include <linux/genalloc.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
@@ -3188,11 +3191,16 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	int i, sessions = 0;
 	unsigned long flags;
-	int rc;
+	int rc, err = 0;
+	struct fastrpc_buf *buf = NULL;
+	struct iommu_domain *domain = NULL;
+	struct gen_pool *gen_pool = NULL;
+	int frpc_gen_addr_pool[2] = {0, 0};
+	struct sg_table sgt;
 
 	cctx = get_current_channel_ctx(dev);
 
-	if (!cctx)
+	if (IS_ERR_OR_NULL(cctx))
 		return -EINVAL;
 
 	of_property_read_u32(dev->of_node, "qcom,nsessions", &sessions);
@@ -3223,13 +3231,100 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 		}
 	}
 	spin_unlock_irqrestore(&cctx->lock, flags);
+	if (of_get_property(dev->of_node, "qrtr-gen-pool", NULL) != NULL) {
+
+		err = of_property_read_u32_array(dev->of_node, "frpc-gen-addr-pool",
+							frpc_gen_addr_pool, 2);
+		if (err) {
+			dev_err(&pdev->dev, "Error: parsing frpc-gen-addr-pool arguments failed for %s with err %d\n",
+					dev_name(dev), err);
+			goto bail;
+		}
+		sess->genpool_iova = frpc_gen_addr_pool[0];
+		sess->genpool_size = frpc_gen_addr_pool[1];
+
+		buf = kzalloc(sizeof(*buf), GFP_KERNEL);
+		if (IS_ERR_OR_NULL(buf)) {
+			err = -ENOMEM;
+			dev_err(&pdev->dev, "allocation failed for size 0x%zx\n", sizeof(*buf));
+			goto bail;
+		}
+		INIT_LIST_HEAD(&buf->attachments);
+		INIT_LIST_HEAD(&buf->node);
+		mutex_init(&buf->lock);
+		buf->virt = NULL;
+		buf->phys = 0;
+		buf->size = frpc_gen_addr_pool[1];
+		buf->dev = NULL;
+		buf->raddr = 0;
+
+
+		/* Allocate memory for adding to genpool */
+		buf->virt = dma_alloc_coherent(sess->dev, buf->size,
+					(dma_addr_t *)&buf->phys, GFP_KERNEL);
+
+		if (IS_ERR_OR_NULL(buf->virt)) {
+			dev_err(&pdev->dev, "dma_alloc failed for size 0x%zx, returned %pK\n",
+				buf->size, buf->virt);
+			err = -ENOBUFS;
+			goto dma_alloc_bail;
+		}
+
+		err = dma_get_sgtable(sess->dev, &sgt, buf->virt,
+				buf->phys, buf->size);
+		if (err) {
+			dev_err(&pdev->dev, "dma_get_sgtable_attrs failed with err %d", err);
+				goto iommu_map_bail;
+		}
+		domain = iommu_get_domain_for_dev(sess->dev);
+		if (!domain) {
+			dev_err(&pdev->dev, "iommu_get_domain_for_dev failed ");
+			goto iommu_map_bail;
+		}
+
+		/* Map the allocated memory with fixed IOVA and is shared to remote subsystem */
+		err = iommu_map_sg(domain, frpc_gen_addr_pool[0], sgt.sgl,
+				sgt.nents, IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE);
+		if (err < 0) {
+			dev_err(&pdev->dev, "iommu_map_sg failed with err %d", err);
+			goto iommu_map_bail;
+		}
+
+		/* Create genpool using SMMU device */
+		gen_pool = devm_gen_pool_create(sess->dev, 0, NUMA_NO_NODE, NULL);
+		if (IS_ERR(gen_pool)) {
+			err = PTR_ERR(gen_pool);
+			dev_err(&pdev->dev, "devm_gen_pool_create failed with err %d", err);
+			goto genpool_create_bail;
+		}
+		/* Add allocated memory to genpool */
+		err = gen_pool_add_virt(gen_pool, (unsigned long)buf->virt,
+				buf->phys, buf->size, NUMA_NO_NODE);
+		if (err) {
+				dev_err(&pdev->dev, "gen_pool_add_virt failed with err %d", err);
+			goto genpool_add_bail;
+		}
+		sess->frpc_genpool = gen_pool;
+		sess->frpc_genpool_buf = buf;
+		dev_err(&pdev->dev, "fastrpc_cb_probe qrtr-gen-pool end\n");
+	}
 	rc = dma_set_mask(dev, DMA_BIT_MASK(32));
 	if (rc) {
 		dev_err(dev, "32-bit DMA enable failed\n");
 		return rc;
 	}
 
-	return 0;
+bail:
+	return err;
+genpool_add_bail:
+	gen_pool_destroy(gen_pool);
+genpool_create_bail:
+	iommu_unmap(domain, sess->genpool_iova, sess->genpool_size);
+iommu_map_bail:
+	dma_free_coherent(sess->dev, buf->size, buf->virt, FASTRPC_PHYS(buf->phys));
+dma_alloc_bail:
+	kfree(buf);
+	return err;
 }
 
 static int fastrpc_cb_remove(struct platform_device *pdev)
