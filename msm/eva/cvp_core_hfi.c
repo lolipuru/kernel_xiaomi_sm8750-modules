@@ -7,6 +7,7 @@
 #include <linux/slab.h>
 #include "msm_cvp_debug.h"
 #include "cvp_hfi_api.h"
+#include "msm_cvp_clocks.h"
 #include "cvp_core_hfi.h"
 
 struct cvp_hfi_ops *cvp_hfi_initialize(enum msm_cvp_hfi_type hfi_type,

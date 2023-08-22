@@ -34,5 +34,8 @@ ddk_headers(
 )
 
 
+load(":sun.bzl", "define_sun")
+define_sun()
+
 load(":pineapple.bzl", "define_pineapple")
 define_pineapple()

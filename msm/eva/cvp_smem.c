@@ -21,6 +21,10 @@
 #include "cvp_core_hfi.h"
 #include "msm_cvp_dsp.h"
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0))
+#define DMA_ATTR_IOMMU_USE_UPSTREAM_HINT 1;
+#endif
+
 static void * __cvp_dma_buf_vmap(struct dma_buf *dbuf)
 {
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 16, 0))
@@ -31,7 +35,11 @@ static void * __cvp_dma_buf_vmap(struct dma_buf *dbuf)
 	void *dma_map;
 	int err;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
 	err = dma_buf_vmap(dbuf, &map);
+#else
+	err = dma_buf_vmap_unlocked(dbuf, &map);
+#endif
 	dma_map = err ? NULL : map.vaddr;
 	if (!dma_map)
 		dprintk(CVP_ERR, "map to kvaddr failed\n");
@@ -53,7 +61,29 @@ static void __cvp_dma_buf_vunmap(struct dma_buf *dbuf, void *vaddr)
 	};
 #endif
 	if (vaddr)
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
 		dma_buf_vunmap(dbuf, &map);
+#else
+		dma_buf_vunmap_unlocked(dbuf, &map);
+#endif
+}
+
+static struct sg_table* __cvp_dma_buf_map_attachment(struct dma_buf_attachment* attach, enum dma_data_direction direction)
+{
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
+	return dma_buf_map_attachment(attach, direction);
+#else
+	return dma_buf_map_attachment_unlocked(attach, direction);
+#endif
+}
+
+static void __cvp_dma_buf_unmap_attachment(struct dma_buf_attachment* attach, struct sg_table* sg_table, enum dma_data_direction direction)
+{
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
+	return dma_buf_unmap_attachment(attach, sg_table,direction);
+#else
+	return dma_buf_unmap_attachment_unlocked(attach, sg_table, direction);
+#endif
 }
 
 static int msm_dma_get_device_address(struct dma_buf *dbuf, u32 align,
@@ -106,7 +136,7 @@ static int msm_dma_get_device_address(struct dma_buf *dbuf, u32 align,
 			attach->dma_map_attrs |=
 				DMA_ATTR_IOMMU_USE_UPSTREAM_HINT;
 
-		table = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+		table = __cvp_dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
 		if (IS_ERR_OR_NULL(table)) {
 			dprintk(CVP_ERR, "Failed to map table %d\n", PTR_ERR(table));
 			dprintk(CVP_ERR,
@@ -136,7 +166,7 @@ static int msm_dma_get_device_address(struct dma_buf *dbuf, u32 align,
 
 	return 0;
 mem_map_sg_failed:
-	dma_buf_unmap_attachment(attach, table, DMA_BIDIRECTIONAL);
+	__cvp_dma_buf_unmap_attachment(attach, table, DMA_BIDIRECTIONAL);
 mem_map_table_failed:
 	dma_buf_detach(dbuf, attach);
 mem_buf_attach_failed:

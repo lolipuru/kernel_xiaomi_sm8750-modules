@@ -7,6 +7,12 @@
 #ifndef __H_CVP_CORE_HFI_H__
 #define __H_CVP_CORE_HFI_H__
 
+#include "cvp_hfi_api.h"
+#include "cvp_hfi_helper.h"
+#include "cvp_hfi_api.h"
+#include "cvp_hfi.h"
+#include "msm_cvp_resources.h"
+#include "hfi_packetization.h"
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/mutex.h>
@@ -14,13 +20,73 @@
 #include <linux/pm_qos.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
+#include <linux/version.h>
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
 #include <linux/soc/qcom/msm_mmrm.h>
-#include "cvp_hfi_api.h"
-#include "cvp_hfi_helper.h"
-#include "cvp_hfi_api.h"
-#include "cvp_hfi.h"
-#include "msm_cvp_resources.h"
-#include "hfi_packetization.h"
+#else
+#define MMRM_CLK_CLIENT_NAME_SIZE  128
+#define MMRM_CLIENT_DOMAIN_CVP 0
+
+enum mmrm_client_type {
+	MMRM_CLIENT_CLOCK,
+};
+
+enum mmrm_client_priority {
+	MMRM_CLIENT_PRIOR_HIGH = 0x1,
+	MMRM_CLIENT_PRIOR_LOW = 0x2
+};
+
+enum mmrm_cb_type {
+	MMRM_CLIENT_RESOURCE_VALUE_CHANGE = 0x1,
+};
+
+struct mmrm_res_val_chng {
+	unsigned long old_val;
+	unsigned long new_val;
+};
+
+struct mmrm_client_notifier_data {
+	enum mmrm_cb_type cb_type;
+	union {
+		struct mmrm_res_val_chng val_chng;
+	} cb_data;
+	void* pvt_data;
+};
+
+struct mmrm_client_res_value {
+	unsigned long min;
+	unsigned long cur;
+	unsigned long max;
+};
+
+struct mmrm_client {
+	enum mmrm_client_type client_type;
+	u32 client_uid;
+};
+
+struct mmrm_clk_client_desc {
+	u32 client_domain;
+	u32 client_id;
+	const char name[MMRM_CLK_CLIENT_NAME_SIZE];
+	struct clk* clk;
+};
+
+struct mmrm_client_desc {
+	enum mmrm_client_type client_type;
+	union {
+		struct mmrm_clk_client_desc desc;
+	} client_info;
+	enum mmrm_client_priority priority;
+	void* pvt_data;
+	int (*notifier_callback_fn)(
+		struct mmrm_client_notifier_data* notifier_data);
+};
+
+struct mmrm_client_data {
+	u32 num_hw_blocks;
+	u32 flags;
+};
+#endif
 
 #define HFI_MASK_QHDR_TX_TYPE			0xFF000000
 #define HFI_MASK_QHDR_RX_TYPE			0x00FF0000

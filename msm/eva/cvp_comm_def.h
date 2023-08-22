@@ -40,6 +40,9 @@ enum queue_state {
 #define CVP_FASTRPC_ENABLED 1
 #endif	/* End of CONFIG_EVA_PINEAPPLE */
 
+#ifdef CONFIG_EVA_SUN
+#endif /* End of CONFIG_EVA_SUN*/
+
 
 #ifdef CONFIG_EVA_WAIPIO
 #define CVP_MINIDUMP_ENABLED 1

@@ -33,13 +33,13 @@ register_eva_module(
         "eva/vm/cvp_vm_msgq.c",
         "eva/vm/cvp_vm_resource.c",
     ],
-    config_deps = {
-       "TARGET_SYNX_ENABLE": [
-           "//vendor/qcom/opensource/synx-kernel:synx_headers",
-           "//vendor/qcom/opensource/synx-kernel:%b_modules"
-        ],
-        "TARGET_DSP_ENABLE": [
-             "//vendor/qcom/opensource/dsp-kernel:%b_frpc-adsprpc"
-        ],
-    },
+   # config_deps = {
+       #"TARGET_SYNX_ENABLE": [
+       #   "//vendor/qcom/opensource/synx-kernel:synx_headers",
+    #       "//vendor/qcom/opensource/synx-kernel:%b_modules"
+    #    ],
+    #    "TARGET_DSP_ENABLE": [
+    #         "//vendor/qcom/opensource/dsp-kernel:%b_frpc-adsprpc"
+    #    ],
+  #  },
 )

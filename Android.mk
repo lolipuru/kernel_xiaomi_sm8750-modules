@@ -1,19 +1,11 @@
-ENABLE_EVA_KERNEL := true
-ifeq ($(TARGET_USES_QMAA), true)
-ifneq ($(TARGET_USES_QMAA_OVERRIDE_CVP), true)
-ENABLE_EVA_KERNEL := false
-endif
-endif
-
-ifeq ($(ENABLE_EVA_KERNEL), true)
 ifneq ($(TARGET_BOARD_PLATFORM), qssi)
 ifeq ($(call is-board-platform-in-list, $(TARGET_BOARD_PLATFORM)),true)
 
 DLKM_DIR   := device/qcom/common/dlkm
 
 LOCAL_PATH := $(call my-dir)
-# For DDK
-LOCAL_MODULE_DDK_BUILD := true
+# For DDK 		
+LOCAL_MODULE_DDK_BUILD := true		
 LOCAL_MODULE_KO_DIRS := msm/msm-eva.ko
 
 include $(CLEAR_VARS)
@@ -27,12 +19,12 @@ LOCAL_ADDITIONAL_DEPENDENCY      := synx-driver.ko
 
 # export to kbuild
 # Setup mmrm dependency
-LOCAL_REQUIRED_MODULES    := mmrm-module-symvers
-LOCAL_ADDITIONAL_DEPENDENCIES := $(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
-KBUILD_REQUIRED_KOS += msm-mmrm.ko
+#LOCAL_REQUIRED_MODULES    := mmrm-module-symvers
+#LOCAL_ADDITIONAL_DEPENDENCIES := $(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
+#KBUILD_REQUIRED_KOS += msm-mmrm.ko
 
 # Setup SynX dependency
-CONFIG_SYNX := y
+CONFIG_SYNX := n
 #ifdef CONFIG_SYNX
 ifeq ($(CONFIG_SYNX), y)
 $(warning Compiling SynX)
@@ -42,7 +34,7 @@ KBUILD_REQUIRED_KOS += synx-driver.ko
 endif
 
 # Setup fastRPC dependency
-CONFIG_FASTRPC := y
+CONFIG_FASTRPC := n
 ifeq ($(CONFIG_FASTRPC), y)
 $(warning Compiling FastRPC)
 LOCAL_REQUIRED_MODULES    += dsp-module-symvers
@@ -62,4 +54,3 @@ include $(DLKM_DIR)/Build_external_kernelmodule.mk
 
 endif # End of check for board platform
 endif # End of check for target product
-endif # End of enable eva kernel check

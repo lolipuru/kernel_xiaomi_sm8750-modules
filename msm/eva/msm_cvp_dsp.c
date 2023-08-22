@@ -8,6 +8,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_fdt.h>
 #include <linux/qcom_scm.h>
+#include <linux/version.h>
 #include <soc/qcom/secure_buffer.h>
 #include "msm_cvp_core.h"
 #include "msm_cvp.h"
@@ -20,6 +21,21 @@ struct cvp_dsp_apps gfa_cv;
 static int cvp_reinit_dsp(void);
 
 static void cvp_remove_dsp_sessions(void);
+
+static int  cvp_qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz,
+	u64 *src,
+	const struct qcom_scm_vmperm* newvm,
+	unsigned int dest_cnt)
+{
+	int rc = 0;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
+	rc = qcom_scm_assign_mem(mem_addr, mem_sz, src, newvm, dest_cnt);
+#else
+	rc = qcom_scm_assign_mem(mem_addr, mem_sz, (unsigned int*)src, newvm, dest_cnt);
+#endif
+	return rc;
+}
+
 
 static int __fastrpc_driver_register(struct fastrpc_driver *driver)
 {
@@ -145,7 +161,7 @@ static int cvp_hyp_assign_to_dsp(uint64_t addr, uint32_t size)
 	};
 
 	if (!me->hyp_assigned) {
-		rc = qcom_scm_assign_mem(addr, size, &hlosVMid, dspVM, DSP_VM_NUM);
+		rc = cvp_qcom_scm_assign_mem(addr, size, &hlosVMid, dspVM, DSP_VM_NUM);
 		if (rc) {
 			dprintk(CVP_ERR, "%s failed. rc=%d\n", __func__, rc);
 			return rc;
@@ -169,7 +185,7 @@ static int cvp_hyp_assign_from_dsp(void)
 	};
 
 	if (me->hyp_assigned) {
-		rc = qcom_scm_assign_mem(me->addr, me->size, &dspVMids, hlosVM, HLOS_VM_NUM);
+		rc = cvp_qcom_scm_assign_mem(me->addr, me->size, &dspVMids, hlosVM, HLOS_VM_NUM);
 		if (rc) {
 			dprintk(CVP_ERR, "%s failed. rc=%d\n", __func__, rc);
 			return rc;
