@@ -5060,7 +5060,7 @@ void _sde_encoder_delay_kickoff_processing(struct sde_encoder_virt *sde_enc)
 	ktime_t current_ts, ept_ts;
 	u32 avr_step_fps, min_fps = 0, qsync_mode, fps;
 	u64 timeout_us = 0, ept, next_vsync_time_ns;
-	bool is_cmd_mode;
+	bool is_cmd_mode, is_vid_mode;
 	char atrace_buf[64];
 	struct drm_connector *drm_conn;
 	struct msm_mode_info *info = &sde_enc->mode_info;
@@ -5085,6 +5085,8 @@ void _sde_encoder_delay_kickoff_processing(struct sde_encoder_virt *sde_enc)
 
 	is_cmd_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_CMD_MODE);
 
+	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
+
 	/* for cmd mode with qsync - EPT_FPS will be used to delay the processing */
 	if (test_bit(SDE_FEATURE_EPT_FPS, sde_kms->catalog->features)
 			&& is_cmd_mode && qsync_mode) {
@@ -5094,6 +5096,15 @@ void _sde_encoder_delay_kickoff_processing(struct sde_encoder_virt *sde_enc)
 	}
 
 	avr_step_fps = info->avr_step_fps;
+
+	/*
+	 * EPT will be handled through num_avr_step for video mode panels
+	 * with qsync + avr_step enabled
+	 */
+	if (avr_step_fps && is_vid_mode && test_bit(SDE_INTF_NUM_AVR_STEP,
+			&sde_enc->cur_master->hw_intf->cap->features))
+		return;
+
 	current_ts = ktime_get_ns();
 	/* ept is in ns and avr_step is mulitple of refresh rate */
 	ept_ts = avr_step_fps ? ept - DIV_ROUND_UP(NSEC_PER_SEC, avr_step_fps) + NSEC_PER_MSEC

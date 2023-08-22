@@ -656,6 +656,7 @@ enum {
  * @SDE_INTF_VSYNC_TS_SRC_EN    INTF block has VSYNC timestamp source selection support
  * @SDE_INTF_TE_LEVEL_TRIGGER   INTF block has TE Level trigger gating support
  * @SDE_INTF_TEAR_TE_LEVEL_MODE	INTF block has TE Level mode support
+ * @SDE_INTF_NUM_AVR_STEP       INTF block has NUM_AVR_STEP support
  * @SDE_INTF_MAX
  */
 enum {
@@ -677,6 +678,7 @@ enum {
 	SDE_INTF_VSYNC_TS_SRC_EN,
 	SDE_INTF_TE_LEVEL_TRIGGER,
 	SDE_INTF_TEAR_TE_LEVEL_MODE,
+	SDE_INTF_NUM_AVR_STEP,
 	SDE_INTF_MAX
 };
 
