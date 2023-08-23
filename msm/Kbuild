@@ -1,7 +1,7 @@
 LINUXINCLUDE    += -I$(SYNX_ROOT)/include \
                    -I$(SYNX_ROOT)/include/uapi \
 		   -I$(SYNX_ROOT)/include/uapi/synx/media \
-		   -I$(SYNX_ROOT)/../mm-drivers/hw_fence/include/
+		#   -I$(SYNX_ROOT)/../mm-drivers/hw_fence/include/
 
 ccflags-y += -I$(SYNX_ROOT)/msm/synx/
 
@@ -31,6 +31,13 @@ $(info within KBUILD file CONFIG_ARCH_PINEAPPLE = $(CONFIG_ARCH_PINEAPPLE))
 # include $(SYNX_ROOT)/config/pineapple.mk
 KBUILD_CPPFLAGS += -DCONFIG_SYNX_PINEAPPLE=1
 ccflags-y += -DCONFIG_SYNX_PINEAPPLE=1
+endif
+
+ifeq ($(CONFIG_ARCH_SUN), y)
+$(info within KBUILD file CONFIG_ARCH_PINEAPPLE = $(CONFIG_ARCH_SUN))
+# include $(SYNX_ROOT)/config/sun.mk
+KBUILD_CPPFLAGS += -DCONFIG_SYNX_SUN=1
+ccflags-y += -DCONFIG_SYNX_SUN=1
 endif
 
 obj-m += synx-driver.o

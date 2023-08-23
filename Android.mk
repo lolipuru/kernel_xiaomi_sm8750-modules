@@ -16,7 +16,7 @@ SYNX_BLD_DIR := $(TOP)/vendor/qcom/opensource/synx-kernel
 # This is set once per LOCAL_PATH, not per (kernel) module
 KBUILD_OPTIONS := SYNX_ROOT=$(SYNX_BLD_DIR)
 KBUILD_OPTIONS += BOARD_PLATFORM=$(TARGET_BOARD_PLATFORM)
-KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
+#KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
 ###########################################################
 
 DLKM_DIR   := $(TOP)/device/qcom/common/dlkm
@@ -43,8 +43,8 @@ $(info LOCAL_SRC_FILES = $(LOCAL_SRC_FILES))
 LOCAL_MODULE      := synx-driver.ko
 LOCAL_MODULE_KBUILD_NAME := msm/synx/synx-driver.ko
 LOCAL_MODULE_PATH := $(KERNEL_MODULES_OUT)
-LOCAL_REQUIRED_MODULES    := hw-fence-module-symvers
-LOCAL_ADDITIONAL_DEPENDENCIES := $(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
+#LOCAL_REQUIRED_MODULES    := hw-fence-module-symvers
+#LOCAL_ADDITIONAL_DEPENDENCIES := $(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 
 

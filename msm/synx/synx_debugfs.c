@@ -33,7 +33,7 @@ void populate_bound_rows(
 
 	for (j = 0; j < row->num_bound_synxs; j++)
 		cur += scnprintf(cur, end - cur,
-			"\n\tID: %d",
+			"\n\tID: %llu",
 			row->bound_synxs[j].external_desc.id);
 }
 static ssize_t synx_table_read(struct file *file,

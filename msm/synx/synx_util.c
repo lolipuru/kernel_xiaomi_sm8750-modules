@@ -303,7 +303,7 @@ void synx_util_object_destroy(struct synx_coredata *synx_obj)
 		synx_cb->status = SYNX_STATE_SIGNALED_CANCEL;
 		if (synx_cb->timeout != SYNX_NO_TIMEOUT) {
 			dprintk(SYNX_VERB,
-				"Deleting timer synx_cb 0x%x, timeout 0x%llx\n",
+				"Deleting timer synx_cb 0x%p, timeout 0x%llx\n",
 				synx_cb, synx_cb->timeout);
 			del_timer(&synx_cb->synx_timer);
 		}
@@ -1183,7 +1183,7 @@ void synx_util_callback_dispatch(struct synx_coredata *synx_obj, u32 status)
 		synx_cb->status = status;
 		if (synx_cb->timeout != SYNX_NO_TIMEOUT) {
 			dprintk(SYNX_VERB,
-				"Deleting timer synx_cb 0x%x, timeout 0x%llx\n",
+				"Deleting timer synx_cb %p, timeout 0x%llx\n",
 				synx_cb, synx_cb->timeout);
 			del_timer(&synx_cb->synx_timer);
 		}
@@ -1525,7 +1525,7 @@ int synx_util_save_data(void *fence, u32 flags,
 				kref_init(&entry->refcount);
 				hash_add(synx_dev->native->csl_fence_map,
 					&entry->node, entry->key);
-				dprintk(SYNX_MEM, "added csl fence %d to map %pK\n",
+				dprintk(SYNX_MEM, "added csl fence %llu to map %pK\n",
 					entry->key, entry);
 			} else {
 				rc = -SYNX_NOMEM;

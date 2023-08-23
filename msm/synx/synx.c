@@ -891,7 +891,7 @@ void synx_timer_cb(struct timer_list *data)
 	client = synx_get_client(synx_cb->session);
 	if (IS_ERR_OR_NULL(client)) {
 		dprintk(SYNX_ERR,
-			"invalid session data 0x%x in cb payload\n",
+			"invalid session data %p in cb payload\n",
 			synx_cb->session);
 		return;
 	}
@@ -899,12 +899,12 @@ void synx_timer_cb(struct timer_list *data)
 	synx_obj = synx_util_obtain_object(synx_data);
 	if (IS_ERR_OR_NULL(synx_obj)) {
 		dprintk(SYNX_ERR,
-			"[sess :0x%llx] invalid handle access 0x%x\n",
+			"[sess :%p] invalid handle access 0x%x\n",
 			synx_cb->session, synx_cb->h_synx);
 		return;
 	}
 	dprintk(SYNX_VERB,
-		"Timer expired for synx_cb 0x%x timeout 0x%llx. Deleting the timer.\n",
+		"Timer expired for synx_cb %p timeout 0x%llx. Deleting the timer.\n",
 		synx_cb, synx_cb->timeout);
 
 	synx_cb->status = SYNX_STATE_TIMEOUT;
@@ -920,7 +920,7 @@ static int synx_start_timer(struct synx_cb_data *synx_cb)
 	timer_setup(&synx_cb->synx_timer, synx_timer_cb, 0);
 	rc = mod_timer(&synx_cb->synx_timer, jiffies + msecs_to_jiffies(synx_cb->timeout));
 	dprintk(SYNX_VERB,
-		"Timer started for synx_cb 0x%x timeout 0x%llx\n",
+		"Timer started for synx_cb %p timeout 0x%llx\n",
 		synx_cb, synx_cb->timeout);
 	return rc;
 }
@@ -1006,7 +1006,7 @@ int synx_internal_async_wait(struct synx_session *session,
 			rc = synx_start_timer(synx_cb);
 			if (rc != SYNX_SUCCESS) {
 				dprintk(SYNX_ERR,
-					"[sess :%llu] timer start failed - synx_cb: 0x%x, params->timeout_ms: 0x%llx, handle: 0x%x, ret : %d\n",
+					"[sess :%llu] timer start failed - synx_cb: %p, params->timeout_ms: 0x%llx, handle: 0x%x, ret : %d\n",
 					client->id, synx_cb, params->timeout_ms,
 					params->h_synx, rc);
 				goto release;
@@ -1106,7 +1106,7 @@ int synx_internal_cancel_async_wait(
 		ret = synx_match_payload(&cb_payload->kernel_cb, &payload);
 		if (synx_cb->timeout != SYNX_NO_TIMEOUT) {
 			dprintk(SYNX_VERB,
-				"Deleting timer synx_cb 0x%x, timeout 0x%llx\n",
+				"Deleting timer synx_cb %p, timeout 0x%llx\n",
 				synx_cb, synx_cb->timeout);
 			del_timer(&synx_cb->synx_timer);
 		}

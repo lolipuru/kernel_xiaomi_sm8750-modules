@@ -1272,7 +1272,7 @@ static int ipclite_test_callback_fn(unsigned int client_id, long long msg,
 		return -EINVAL;
 	}
 
-	pr_debug("The message received is %lx\n", msg);
+	pr_debug("The message received is %lld\n", msg);
 
 	switch (test_info) {
 	case PING:
@@ -1351,10 +1351,10 @@ static int ipclite_test_callback_fn(unsigned int client_id, long long msg,
 			}
 		}
 		if (pass_fail_info == IPCLITE_TEST_PASS)
-			pr_info("Test %d passed on core %s\n",
+			pr_info("Test %llu passed on core %s\n",
 						test_info, core_name[client_id]);
 		else if (pass_fail_info == IPCLITE_TEST_FAIL)
-			pr_info("Test %d failed on core %s\n",
+			pr_info("Test %llu failed on core %s\n",
 					test_info, core_name[client_id]);
 		break;
 	case GLOBAL_ATOMIC:

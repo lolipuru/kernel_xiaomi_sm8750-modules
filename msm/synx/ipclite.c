@@ -365,7 +365,7 @@ static size_t ipcmem_rx_avail(struct ipclite_fifo *rx_fifo)
 	if (WARN_ON_ONCE(len > rx_fifo->length))
 		len = 0;
 
-	IPCLITE_OS_LOG(IPCLITE_DBG, "len=%d\n", len);
+	IPCLITE_OS_LOG(IPCLITE_DBG, "len=%zu\n", len);
 
 	return len;
 }
@@ -726,7 +726,7 @@ static int map_ipcmem(struct ipclite_info *ipclite, const char *name)
 	if (!ipclite->ipcmem.mem.virt_base)
 		return -ENOMEM;
 
-	IPCLITE_OS_LOG(IPCLITE_DBG, "aux_base = %lx, size=%d,virt_base=%p\n",
+	IPCLITE_OS_LOG(IPCLITE_DBG, "aux_base = %llu, size=%d,virt_base=%p\n",
 			ipclite->ipcmem.mem.aux_base, ipclite->ipcmem.mem.size,
 			ipclite->ipcmem.mem.virt_base);
 
@@ -814,7 +814,7 @@ static void update_partition(struct ipclite_mem *ipcmem, uint32_t p)
 	ipcmem->partition[p] = ADD_OFFSET(ipcmem->mem.virt_base,
 					ipcmem->toc_data.partition_entry[p].base_offset);
 
-	IPCLITE_OS_LOG(IPCLITE_DBG, "partition[%d] = %p,partition_base_offset[%d]=%lx",
+	IPCLITE_OS_LOG(IPCLITE_DBG, "partition[%d] = %p,partition_base_offset[%d]= %u ",
 				p, ipcmem->partition[p],
 				p, ipcmem->toc_data.partition_entry[p].base_offset);
 
@@ -1597,7 +1597,7 @@ static int32_t get_global_partition_info_v0(struct global_region_info *global_ip
 							global_partition->hdr.region_offset);
 	global_ipcmem->size = (size_t)(global_partition->hdr.region_size);
 
-	IPCLITE_OS_LOG(IPCLITE_DBG, "base = %p, size=%lx\n", global_ipcmem->virt_base,
+	IPCLITE_OS_LOG(IPCLITE_DBG, "base = %p, size= %u ", global_ipcmem->virt_base,
 									global_ipcmem->size);
 	return 0;
 }
