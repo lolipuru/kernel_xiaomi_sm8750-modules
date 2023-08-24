@@ -2740,7 +2740,23 @@ int synx_internal_share_handle_status(struct synx_import_indv_params *params,
 
 void *synx_internal_get_dma_fence(u32 h_synx)
 {
-	return NULL;
+	int i;
+	void *fence = NULL;
+	struct hlist_node *tmp;
+	struct synx_fence_entry *curr = NULL;
+
+	spin_lock_bh(&synx_dev->native->fence_map_lock);
+	hash_for_each_safe(synx_dev->native->fence_map, i,
+		tmp, curr, node) {
+		if (curr->g_handle == h_synx) {
+			fence = (void *)curr->key;
+			dma_fence_get((struct dma_fence *)curr->key);
+			break;
+		}
+	}
+	spin_unlock_bh(&synx_dev->native->fence_map_lock);
+
+	return fence;
 }
 
 int synx_internal_recover(enum synx_client_id id)
