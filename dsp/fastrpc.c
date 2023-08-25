@@ -351,7 +351,7 @@ static void fastrpc_context_free(struct kref *ref)
 		fastrpc_buf_free(ctx->buf, true);
 
 	if (ctx->fl->profile)
-		kfree(ctx->perf_kernel);
+		kfree(ctx->perf);
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	idr_remove(&cctx->ctx_idr, ctx->ctxid >> 4);
