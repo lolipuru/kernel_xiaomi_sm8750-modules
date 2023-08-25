@@ -1360,13 +1360,11 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 
 	if (fl->profile)
 		perf_counter = (u64 *)ctx->perf + PERF_COUNT;
-	if (ctx->nscalars) {
-		PERF(fl->profile, GET_COUNTER(perf_counter, PERF_GETARGS),
-		err = fastrpc_get_args(kernel, ctx);
-		if (err)
-			goto bail;
-		PERF_END);
-	}
+	PERF(fl->profile, GET_COUNTER(perf_counter, PERF_GETARGS),
+	err = fastrpc_get_args(kernel, ctx);
+	if (err)
+		goto bail;
+	PERF_END);
 
 	/* make sure that all CPU memory writes are seen by DSP */
 	dma_wmb();
@@ -1390,21 +1388,19 @@ wait:
 		goto bail;
 	}
 
+	/* make sure that all memory writes by DSP are seen by CPU */
+	dma_rmb();
+	/* populate all the output buffers with results */
+	PERF(fl->profile, GET_COUNTER(perf_counter, PERF_PUTARGS),
+	err = fastrpc_put_args(ctx, kernel);
+	if (err)
+		goto bail;
+	PERF_END);
+
 	/* Check the response from remote dsp */
 	err = ctx->retval;
 	if (err)
 		goto bail;
-
-	if (ctx->nscalars) {
-		/* make sure that all memory writes by DSP are seen by CPU */
-		dma_rmb();
-		/* populate all the output buffers with results */
-		PERF(fl->profile, GET_COUNTER(perf_counter, PERF_PUTARGS),
-		err = fastrpc_put_args(ctx, kernel);
-		if (err)
-			goto bail;
-		PERF_END);
-	}
 
 bail:
 	if (ctx && interrupted == -ERESTARTSYS) {
