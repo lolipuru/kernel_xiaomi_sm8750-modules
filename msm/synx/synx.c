@@ -2734,9 +2734,39 @@ EXPORT_SYMBOL(synx_ipc_callback);
 int synx_internal_share_handle_status(struct synx_import_indv_params *params,
 		u32 h_hwfence, u32 *signal_status)
 {
-	return -SYNX_INVALID;
-}
+	u32 h_synx;
+	u32 status = SYNX_STATE_ACTIVE;
+	if (IS_ERR_OR_NULL(params) || IS_ERR_OR_NULL(params->fence)
+		|| !(params->flags & SYNX_IMPORT_DMA_FENCE))
+	{
+		dprintk(SYNX_ERR,"Invalid params \n");
+		return -SYNX_INVALID;
+	}
 
+	h_synx = synx_util_get_fence_entry((u64)params->fence, 1);
+
+	if ((h_synx == 0) || (!synx_util_is_global_handle(h_synx)))
+	{
+		dprintk(SYNX_ERR,"invalid fence id: %p \n", params->fence);
+		return -SYNX_INVALID;
+	}
+
+	status = synx_global_test_status_update_coredata(
+		synx_util_global_idx(h_synx), SYNX_CORE_SOCCP, h_hwfence);
+	if (status != SYNX_STATE_ACTIVE) {
+		if (status < 0) {
+			dprintk(SYNX_ERR, "Failed to update coredata err:%d \n", status);
+			return status;
+		}
+		goto bail;
+	}
+
+	*params->new_h_synx = h_synx;
+
+bail:
+	*signal_status = status;
+	return SYNX_SUCCESS;
+}
 
 void *synx_internal_get_dma_fence(u32 h_synx)
 {

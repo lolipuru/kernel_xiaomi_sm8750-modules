@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SYNX_SHARED_MEM_H__
@@ -26,6 +26,7 @@ enum synx_core_id {
 	SYNX_CORE_EVA,
 	SYNX_CORE_IRIS,
 	SYNX_CORE_ICP,
+	SYNX_CORE_SOCCP,
 	SYNX_CORE_MAX,
 };
 
@@ -307,5 +308,24 @@ int synx_global_dump_shared_memory(void);
  * @return SYNX_SUCCESS on success. Negative error on failure.
  */
 int synx_global_fetch_handle_details(u32 idx, u32 *h_synx);
+
+/**
+ * synx_global_test_status_update_coredata - Check status and if handle is not
+ * signaled then take reference on global entry, add core as waiter and
+ * subscriber, add hwfence mapping
+ *
+ * This tests and adds the waiter and hwfence in one atomic operation, to avoid
+ * race with signal which can miss sending the IPC signal or mismatch in synx
+ * to hw fence entries if these operations are done separately
+ * (signal coming in between the two ops).
+ *
+ * @param idx       : Global entry index
+ * @param id        : Core to be set as waiter and subscriber (if unsignaled)
+ * @param h_hwfence :  hw_fence handle to be mapped.
+ *
+ * @return Status of global entry idx.
+ */
+int synx_global_test_status_update_coredata(u32 idx,
+	enum synx_core_id id, u32 h_hwfence);
 
 #endif /* __SYNX_SHARED_MEM_H__ */
