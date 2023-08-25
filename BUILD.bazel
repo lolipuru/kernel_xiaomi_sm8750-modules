@@ -21,3 +21,7 @@ define_modules("blair", "gki")
 define_modules("sun", "consolidate")
 
 define_modules("sun", "gki")
+
+define_modules("niobe", "consolidate")
+
+define_modules("niobe", "gki")
