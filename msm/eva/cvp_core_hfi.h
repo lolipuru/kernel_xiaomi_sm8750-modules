@@ -199,11 +199,6 @@ struct cvp_iface_q_info {
 	iris_hfi_for_each_thing_reverse_continue(__device, __thing, __thingy, \
 			(__device)->res->__thingy##_set.count - 1)
 
-/* TODO: the __from parameter technically not required since we can figure it
- * out with some pointer magic (i.e. __thing - __thing##_tbl[0]).  If this macro
- * sees extensive use, probably worth cleaning it up but for now omitting it
- * since it introduces unnecessary complexity.
- */
 #define iris_hfi_for_each_thing_continue(__device, __thing, __thingy, __from) \
 	for (__thing = &(__device)->res->\
 			__thingy##_set.__thingy##_tbl[__from]; \
@@ -296,8 +291,15 @@ struct cvp_hal_ops {
 	void (*interrupt_init)(struct iris_hfi_device *ptr);
 	void (*setup_dsp_uc_memmap)(struct iris_hfi_device *device);
 	void (*clock_config_on_enable)(struct iris_hfi_device *device);
-	void (*power_off)(struct iris_hfi_device *device);
+	int (*power_off_controller)(struct iris_hfi_device *device);
+	int (*power_off_core)(struct iris_hfi_device *device);
+	int (*power_on_controller)(struct iris_hfi_device *device);
+	int (*power_on_core)(struct iris_hfi_device *device);
 	void (*noc_error_info)(struct iris_hfi_device *device);
+	int (*check_ctl_power_on)(struct iris_hfi_device *device);
+	int (*check_core_power_on)(struct iris_hfi_device *device);
+	void (*print_sbm_regs)(struct iris_hfi_device *device);
+	int (*enable_hw_power_collapse)(struct iris_hfi_device *device);
 	int (*reset_control_assert_name)(struct iris_hfi_device *device, const char *name);
 	int (*reset_control_deassert_name)(struct iris_hfi_device *device, const char *name);
 	int (*reset_control_acquire_name)(struct iris_hfi_device *device, const char *name);
