@@ -4441,6 +4441,37 @@ void sde_encoder_helper_update_out_fence_txq(struct sde_encoder_virt *sde_enc, b
 		sde_kms->debugfs_hw_fence : 0);
 }
 
+u32 sde_encoder_helper_get_bw_update_time_lines(struct sde_encoder_virt *sde_enc)
+{
+	struct msm_mode_info *mode_info = &sde_enc->mode_info;
+	struct drm_display_mode *mode;
+	struct sde_kms *sde_kms;
+	u32 fps, height;
+	u64 line_time_ns;
+
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return 0;
+	}
+
+	mode = &sde_enc->crtc->state->mode;
+	fps = sde_encoder_get_fps(&sde_enc->base);
+	if (!fps) {
+		SDE_ERROR("fps not set\n");
+		return 0;
+	}
+
+	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_CMD_MODE))
+		height = mode->vdisplay;
+	else
+		height = mode_info->vtotal;
+
+	line_time_ns = DIV_ROUND_UP(NSEC_PER_SEC, fps * height);
+
+	return DIV_ROUND_UP(sde_kms->catalog->max_bw_upvote_threshold_ns, line_time_ns);
+}
+
 /**
  * _sde_encoder_kickoff_phys - handle physical encoder kickoff
  *	Iterate through the physical encoders and perform consolidated flush

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -10,6 +10,7 @@
 #include "sde_core_irq.h"
 #include "sde_formats.h"
 #include "sde_trace.h"
+#include "sde_cesta.h"
 
 #define SDE_DEBUG_CMDENC(e, fmt, ...) SDE_DEBUG("enc%d intf%d " fmt, \
 		(e) && (e)->base.parent ? \
@@ -1435,11 +1436,43 @@ exit:
 	return;
 }
 
-static void sde_encoder_phys_cmd_tearcheck_config(
-		struct sde_encoder_phys *phys_enc)
+static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *phys_enc)
 {
-	struct sde_encoder_phys_cmd *cmd_enc =
-		to_sde_encoder_phys_cmd(phys_enc);
+	struct drm_display_mode *mode = &phys_enc->cached_mode;
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct msm_mode_info *info = &sde_enc->mode_info;
+	struct intf_panic_wakeup_cfg cfg = { 0 };
+	u32 bw_update_time_lines, prefill_lines, vrefresh;
+
+	if (!phys_enc->hw_intf || !phys_enc->hw_intf->ops.setup_te_panic_wakeup)
+		return;
+
+	vrefresh = drm_mode_vrefresh(mode);
+	prefill_lines = (vrefresh > DEFAULT_FPS) ?
+				DIV_ROUND_UP(info->prefill_lines * vrefresh, DEFAULT_FPS)
+					: info->prefill_lines;
+
+	cfg.wakeup_window = DEFAULT_TEARCHECK_SYNC_THRESH_CONTINUE;
+	cfg.wakeup_start =  mode->vdisplay
+				+ (mode->vdisplay
+					- DIV_ROUND_UP(mode->vdisplay * info->jitter_numer,
+						info->jitter_denom * 100)) - prefill_lines;
+
+	bw_update_time_lines = sde_encoder_helper_get_bw_update_time_lines(sde_enc);
+	cfg.panic_window = bw_update_time_lines + cfg.wakeup_window;
+	cfg.panic_start = cfg.wakeup_start - bw_update_time_lines;
+
+	phys_enc->hw_intf->ops.setup_te_panic_wakeup(phys_enc->hw_intf, &cfg);
+
+	SDE_EVT32(phys_enc->hw_intf->idx - INTF_0, cfg.wakeup_start, cfg.wakeup_window,
+			cfg.panic_start, cfg.panic_window, mode->vdisplay, bw_update_time_lines,
+			prefill_lines, info->prefill_lines, vrefresh, info->jitter_numer,
+			info->jitter_denom);
+}
+
+static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_encoder_phys_cmd *cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
 	struct sde_hw_tear_check tc_cfg = { 0 };
 	struct drm_display_mode *mode;
 	bool tc_enable = true;
@@ -1550,6 +1583,8 @@ static void sde_encoder_phys_cmd_tearcheck_config(
 				&tc_cfg);
 		phys_enc->hw_intf->ops.enable_tearcheck(phys_enc->hw_intf,
 				tc_enable);
+		if (sde_encoder_get_cesta_client(phys_enc->parent))
+			_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
 	} else {
 		phys_enc->hw_pp->ops.setup_tearcheck(phys_enc->hw_pp, &tc_cfg);
 		phys_enc->hw_pp->ops.enable_tearcheck(phys_enc->hw_pp,
@@ -1861,6 +1896,14 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 
 		cmd_enc->frame_tx_timeout_report_cnt = 0;
 		phys_enc->recovered = false;
+	}
+
+	/* update cesta wakeup/panic window with cont-splash */
+	if (phys_enc->cont_splash_enabled && sde_encoder_phys_cmd_is_master(phys_enc)
+			&& sde_encoder_get_cesta_client(phys_enc->parent) && phys_enc->hw_ctl) {
+		_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
+		phys_enc->hw_ctl->ops.update_bitmask(phys_enc->hw_ctl, SDE_HW_FLUSH_INTF,
+				phys_enc->intf_idx, 1);
 	}
 
 	if (sde_connector_is_qsync_updated(phys_enc->connector)) {

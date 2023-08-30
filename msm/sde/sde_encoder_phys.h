@@ -690,6 +690,12 @@ int sde_encoder_helper_switch_vsync(struct drm_encoder *drm_enc,
 		bool watchdog_te);
 
 /**
+ * sde_encoder_helper_get_bw_update_time_lines - gets the bandwidth update time in lines
+ * @sde_enc: Pointer to sde encoder structure
+ */
+u32 sde_encoder_helper_get_bw_update_time_lines(struct sde_encoder_virt *sde_enc);
+
+/**
  * sde_encoder_phys_has_role_master_dpu_master_intf - check if role of physical
 	 encoder is (MASTER_DPU, MASTER_INTF) when interface synchronization is enabled.
  * @phys_enc: Pointer to physical encoder structure
