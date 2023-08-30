@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SYNX_PRIVATE_H__
@@ -275,5 +275,34 @@ void *synx_internal_get_fence(struct synx_session *session, u32 h_synx);
 int synx_internal_release(struct synx_session *session, u32 h_synx);
 
 int synx_internal_recover(enum synx_client_id id);
+
+/**
+ * synx_internal_share_handle_status - if synx object is not signaled, update
+ * synx global table with hwfence handle, return synx handle and signal status.
+ * else if synx object is signaled then function will return synx status.
+ *
+ * This API has to be called by hwfence driver during synx_import.
+ *
+ * @param params        : pointer to import params
+ * @param h_hwfence     : hw-fence handle
+ * @param signal_status : signaling status
+ *
+ * @return Status of operation. Negative in case of error. SYNX_SUCCESS otherwise.
+ */
+int synx_internal_share_handle_status(struct synx_import_indv_params *params,
+	u32 h_hwfence, u32 *signal_status);
+
+/**
+ * synx_internal_get_dma_fence - return the dma-fence associated with the
+ * given handle.
+ *
+ * This API will take a reference on dma-fence which has to be released
+ * by the caller.
+ *
+ * @param h_synx : native synx handle
+ *
+ * @return dma-fence pointer on success. Null in case of error.
+ */
+void *synx_internal_get_dma_fence(u32 h_synx);
 
 #endif /* __SYNX_PRIVATE_H__ */

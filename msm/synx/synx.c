@@ -21,6 +21,10 @@
 #include "synx_private.h"
 #include "synx_util.h"
 #include "synx_hwfence.h"
+#include "synx_interop.h"
+
+struct synx_hwfence_interops hwfence_shared_ops = { NULL };
+struct synx_hwfence_interops synx_shared_ops = { NULL };
 
 struct synx_device *synx_dev;
 static atomic64_t synx_counter = ATOMIC64_INIT(1);
@@ -2727,6 +2731,18 @@ int synx_ipc_callback(u32 client_id,
 }
 EXPORT_SYMBOL(synx_ipc_callback);
 
+int synx_internal_share_handle_status(struct synx_import_indv_params *params,
+		u32 h_hwfence, u32 *signal_status)
+{
+	return -SYNX_INVALID;
+}
+
+
+void *synx_internal_get_dma_fence(u32 h_synx)
+{
+	return NULL;
+}
+
 int synx_internal_recover(enum synx_client_id id)
 {
 	u32 core_id;
@@ -2880,6 +2896,14 @@ static int __init synx_init(void)
 	rc = synx_hwfence_init_ops(&synx_hwfence_ops);
 	if (rc)
 		dprintk(SYNX_DBG, "hwfence is not supported through synx api, err=%d\n", rc);
+
+	synx_shared_ops.share_handle_status = synx_internal_share_handle_status;
+	synx_shared_ops.get_fence = synx_internal_get_dma_fence;
+	synx_shared_ops.notify_recover = NULL;
+	rc  = synx_hwfence_init_interops(&synx_shared_ops, &hwfence_shared_ops);
+	if (rc) {
+		dprintk(SYNX_ERR, "Hw fence inter-op mapping failed, err %d\n", rc);
+	}
 
 	ipclite_register_client(synx_ipc_callback, NULL);
 	synx_local_mem_init();
