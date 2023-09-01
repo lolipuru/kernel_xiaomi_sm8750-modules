@@ -1602,8 +1602,11 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	struct fastrpc_enhanced_invoke ioctl;
 	struct fastrpc_phy_page pages[1];
 	struct fastrpc_buf *buf = NULL;
+	u64 phys = 0, size = 0;
 	char *name;
 	int err;
+	bool scm_done = false;
+	unsigned long flags;
 	struct {
 		int pgid;
 		u32 namelen;
@@ -1640,22 +1643,25 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		if (err)
 			goto err_name;
 
+		phys = buf->phys;
+		size = buf->size;
 		/* Map if we have any heap VMIDs associated with this ADSP Static Process. */
 		if (fl->cctx->vmcount) {
 			u64 src_perms = BIT(QCOM_SCM_VMID_HLOS);
 
-			err = qcom_scm_assign_mem(buf->phys, (u64)buf->size,
+			err = qcom_scm_assign_mem(phys, (u64)size,
 							&src_perms, fl->cctx->vmperms, fl->cctx->vmcount);
 			if (err) {
 				dev_err(fl->sctx->dev, "%s: Failed to assign memory with phys 0x%llx size 0x%llx err %d",
-					__func__, buf->phys, buf->size, err);
+					__func__, phys, size, err);
 				goto err_map;
 			}
+			scm_done = true;
 		}
 		fl->cctx->staticpd_status = true;
-		spin_lock(&fl->lock);
+		spin_lock_irqsave(&fl->cctx->lock, flags);
 		list_add_tail(&buf->node, &fl->cctx->gmaps);
-		spin_unlock(&fl->lock);
+		spin_unlock_irqrestore(&fl->cctx->lock, flags);
 	}
 
 	inbuf.pgid = fl->tgid;
@@ -1671,8 +1677,8 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	args[1].length = inbuf.namelen;
 	args[1].fd = -1;
 
-	pages[0].addr = buf->phys;
-	pages[0].size = buf->size;
+	pages[0].addr = phys;
+	pages[0].size = size;
 
 	args[2].ptr = (u64)(uintptr_t) pages;
 	args[2].length = sizeof(*pages);
@@ -1690,7 +1696,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 
 	return 0;
 err_invoke:
-	if (fl->cctx->vmcount) {
+	if (fl->cctx->vmcount && scm_done) {
 		u64 src_perms = 0;
 		struct qcom_scm_vmperm dst_perms;
 		u32 i;
@@ -1700,11 +1706,11 @@ err_invoke:
 
 		dst_perms.vmid = QCOM_SCM_VMID_HLOS;
 		dst_perms.perm = QCOM_SCM_PERM_RWX;
-		err = qcom_scm_assign_mem(buf->phys, (u64)buf->size,
+		err = qcom_scm_assign_mem(phys, (u64)size,
 						&src_perms, &dst_perms, 1);
 		if (err)
 			dev_err(fl->sctx->dev, "%s: Failed to assign memory phys 0x%llx size 0x%llx err %d",
-				__func__, buf->phys, buf->size, err);
+				__func__, phys, size, err);
 	}
 err_map:
 	fl->cctx->staticpd_status = false;
