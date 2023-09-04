@@ -224,8 +224,12 @@ int msm_gem_mmap_obj(struct drm_gem_object *obj,
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 25))
 	vma->vm_flags &= ~VM_PFNMAP;
 	vma->vm_flags |= VM_MIXEDMAP;
+#else
+	vm_flags_mod(vma, VM_MIXEDMAP, VM_PFNMAP);
+#endif
 
 	if (msm_obj->flags & MSM_BO_WC) {
 		vma->vm_page_prot = pgprot_writecombine(vm_get_page_prot(vma->vm_flags));
@@ -813,12 +817,11 @@ static void msm_gem_vunmap_locked(struct drm_gem_object *obj)
 	if (obj->import_attach) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 		dma_buf_vunmap(obj->import_attach->dmabuf, &map);
-		dma_buf_end_cpu_access(obj->import_attach->dmabuf, DMA_BIDIRECTIONAL);
 #else
 		dma_buf_vunmap(obj->import_attach->dmabuf, msm_obj->vaddr);
+#endif
 		if (obj->dev && obj->dev->dev && !dev_is_dma_coherent(obj->dev->dev))
 			dma_buf_end_cpu_access(obj->import_attach->dmabuf, DMA_BIDIRECTIONAL);
-#endif
 	} else {
 		vunmap(msm_obj->vaddr);
 	}
