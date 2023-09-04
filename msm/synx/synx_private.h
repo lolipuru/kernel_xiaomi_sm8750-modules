@@ -47,6 +47,8 @@
 
 #define SYNX_MAX_REF_COUNTS         100
 
+#define IS_HW_FENCE(hw_fence) (hw_fence & SYNX_HW_FENCE_HANDLE_FLAG)
+
 struct synx_bind_desc {
 	struct synx_external_desc_v2 external_desc;
 	void *external_data;

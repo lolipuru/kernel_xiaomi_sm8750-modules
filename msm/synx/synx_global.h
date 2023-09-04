@@ -321,11 +321,13 @@ int synx_global_fetch_handle_details(u32 idx, u32 *h_synx);
  *
  * @param idx       : Global entry index
  * @param id        : Core to be set as waiter and subscriber (if unsignaled)
- * @param h_hwfence :  hw_fence handle to be mapped.
+ * @param h_hwfence : hw_fence handle to be mapped.
+ * @param is_waiter : Flag to set core as waiter.
  *
  * @return Status of global entry idx.
  */
 int synx_global_test_status_update_coredata(u32 idx,
-	enum synx_core_id id, u32 h_hwfence);
+	enum synx_core_id id, u32 h_hwfence,
+	bool is_waiter);
 
 #endif /* __SYNX_SHARED_MEM_H__ */

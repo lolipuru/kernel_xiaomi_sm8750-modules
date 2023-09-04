@@ -865,7 +865,8 @@ free:
 }
 
 int synx_global_test_status_update_coredata(u32 idx,
-	enum synx_core_id id, u32 h_hwfence)
+	enum synx_core_id id, u32 h_hwfence,
+	bool is_waiter)
 {
 	int rc;
 	unsigned long flags;
@@ -888,7 +889,8 @@ int synx_global_test_status_update_coredata(u32 idx,
 	if (status == SYNX_STATE_ACTIVE || synx_g_obj->num_child != 0) {
 		synx_g_obj->refcount++;
 		synx_g_obj->subscribers |= (1UL << id);
-		synx_g_obj->waiters |= (1UL << id);
+		if (is_waiter)
+			synx_g_obj->waiters |= (1UL << id);
 		synx_g_obj->h_hwfence = h_hwfence;
 		status = SYNX_STATE_ACTIVE;
 	}

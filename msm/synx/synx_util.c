@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -10,6 +10,7 @@
 
 #include "synx_debugfs.h"
 #include "synx_util.h"
+#include "synx_interop.h"
 
 extern void synx_external_callback(s32 sync_obj, int status, void *data);
 static u32 __fence_state(struct dma_fence *fence, bool locked);
@@ -108,6 +109,7 @@ int synx_util_init_coredata(struct synx_coredata *synx_obj,
 	if (rc != SYNX_SUCCESS)
 		goto clean;
 
+	set_bit(SYNX_NATIVE_FENCE_FLAG_ENABLED_BIT, &fence->flags);
 	synx_obj->status = synx_util_get_object_status(synx_obj);
 	return SYNX_SUCCESS;
 
