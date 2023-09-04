@@ -3616,19 +3616,22 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	ctx = idr_find(&cctx->ctx_idr, ctxid);
-	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	if (!ctx) {
-		dev_err(cctx->dev, "No context ID matches response\n");
-		return -ENOENT;
+		dev_info(cctx->dev, "Warning: No context ID matches response\n");
+		spin_unlock_irqrestore(&cctx->lock, flags);
+		return 0;
 	}
 
 	if (rspv2) {
-		if (rspv2->version != FASTRPC_RSP_VERSION2)
+		if (rspv2->version != FASTRPC_RSP_VERSION2) {
+			dev_err(cctx->dev, "Incorrect response version %d\n", rspv2->version);
+			spin_unlock_irqrestore(&cctx->lock, flags);
 			return -EINVAL;
+		}
 	}
 	fastrpc_notify_user_ctx(ctx, rsp->retval, rsp_flags, early_wake_time);
-
+	spin_unlock_irqrestore(&cctx->lock, flags);
 	/*
 	 * The DMA buffer associated with the context cannot be freed in
 	 * interrupt context so schedule it through a worker thread to
