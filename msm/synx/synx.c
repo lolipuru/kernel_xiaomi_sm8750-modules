@@ -1976,6 +1976,9 @@ static int synx_native_import_indv(struct synx_client *client,
 	struct synx_import_indv_params *params)
 {
 	int rc = -SYNX_INVALID;
+	void *fence = NULL;
+	enum synx_import_flags flags;
+	u32 hw_fence = 0;
 
 	if (IS_ERR_OR_NULL(params) ||
 		IS_ERR_OR_NULL(params->new_h_synx) ||
@@ -1984,10 +1987,38 @@ static int synx_native_import_indv(struct synx_client *client,
 		return -SYNX_INVALID;
 	}
 
+	flags = params->flags;
+	fence = params->fence;
+	hw_fence = *((u32 *)params->fence);
+
+	if ((params->flags & SYNX_IMPORT_SYNX_FENCE) && IS_HW_FENCE(hw_fence)) {
+
+		if (IS_ERR_OR_NULL(hwfence_shared_ops.get_fence)) {
+			dprintk(SYNX_ERR, "Hw fence not initialized\n");
+			return -SYNX_INVALID;
+		}
+
+		params->fence = hwfence_shared_ops.get_fence(hw_fence);
+
+		if (IS_ERR_OR_NULL(params->fence)) {
+			dprintk(SYNX_ERR, "Invalid hw fence %pK, %u passed\n", params->fence, hw_fence);
+			params->fence = fence;
+			return -SYNX_INVALID;
+		}
+
+		params->flags = SYNX_IMPORT_GLOBAL_FENCE | SYNX_IMPORT_DMA_FENCE;
+	}
+
 	if (likely(params->flags & SYNX_IMPORT_DMA_FENCE))
 		rc = synx_native_import_fence(client, params);
 	else if (params->flags & SYNX_IMPORT_SYNX_FENCE)
 		rc = synx_native_import_handle(client, params);
+
+	if ((flags & SYNX_IMPORT_SYNX_FENCE) && IS_HW_FENCE(hw_fence)) {
+		dma_fence_put((struct dma_fence *)params->fence);
+		params->fence = fence;
+		params->flags = flags;
+	}
 
 	dprintk(SYNX_DBG,
 		"[sess :%llu] import of fence %pK %s, handle %u\n",
