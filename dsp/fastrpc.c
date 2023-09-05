@@ -844,7 +844,7 @@ static int fastrpc_get_meta_size(struct fastrpc_invoke_ctx *ctx)
 		sizeof(struct fastrpc_phy_page)) * ctx->nscalars +
 		sizeof(u64) * FASTRPC_MAX_FDLIST +
 		sizeof(u32) * FASTRPC_MAX_CRCLIST +
-		sizeof(u64) * FASTRPC_DSP_PERF_LIST;
+		sizeof(u32) + sizeof(u64) * FASTRPC_DSP_PERF_LIST;
 
 	return size;
 }
