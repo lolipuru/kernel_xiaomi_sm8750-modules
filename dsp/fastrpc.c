@@ -1964,7 +1964,9 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 		fastrpc_map_put(map);
 
 	list_for_each_entry_safe(buf, b, &fl->mmaps, node) {
+		spin_lock(&fl->lock);
 		list_del(&buf->node);
+		spin_unlock(&fl->lock);
 		fastrpc_buf_free(buf, false);
 	}
 
