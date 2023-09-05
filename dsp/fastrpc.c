@@ -1528,6 +1528,9 @@ static int fastrpc_create_persistent_headers(struct fastrpc_user *fl)
 
 	return 0;
 err_dsp_map:
+	dev_err(dev, "Warning: failed to map len %zu, flags %d, num headers %u with err %d\n",
+			hdr_buf_alloc_len, ADSP_MMAP_PERSIST_HDR,
+			num_pers_hdrs, err);
 	fastrpc_buf_free(pers_hdr_buf, 0);
 	return err;
 }
@@ -1741,7 +1744,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	struct fastrpc_phy_page pages[1];
 	struct fastrpc_map *map = NULL;
 	struct fastrpc_buf *imem = NULL;
-	int memlen, one_mb = 1024*1024, dsp_userpd_memlen = 3 * one_mb;
+	int memlen;
 	int err;
 	struct {
 		int pgid;
@@ -1798,10 +1801,8 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 
 	fastrpc_check_privileged_process(fl, &init);
 
-	if (fl->is_unsigned_pd)
-		dsp_userpd_memlen += 2 * one_mb;
-
-	memlen = ALIGN(max(dsp_userpd_memlen, (int)init.filelen * 4), one_mb);
+	memlen = ALIGN(max(INIT_FILELEN_MAX, (int)init.filelen * 4),
+		       1024 * 1024);
 	err = fastrpc_buf_alloc(fl, fl->sctx->dev, memlen,
 				INITMEM_BUF, &imem);
 	if (err)
@@ -1846,12 +1847,11 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		goto err_invoke;
 
 	if (fl->cctx->domain_id == CDSP_DOMAIN_ID) {
-		err = fastrpc_create_persistent_headers(fl);
-		if (err)
-			goto err_invoke;
+		fastrpc_create_persistent_headers(fl);
 	}
 
 	kfree(args);
+	fastrpc_map_put(map);
 
 	return 0;
 
