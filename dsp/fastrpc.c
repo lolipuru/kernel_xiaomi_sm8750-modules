@@ -1638,6 +1638,12 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		goto err_name;
 	}
 
+	fl->sctx = fastrpc_session_alloc(cctx, fl->sharedcb);
+	if (!fl->sctx) {
+		dev_err(cctx->dev, "No session available\n");
+		return -EBUSY;
+	}
+
 	if (!fl->cctx->staticpd_status) {
 		err = fastrpc_remote_heap_alloc(fl, fl->sctx->dev, init.memlen, &buf);
 		if (err)
@@ -1768,6 +1774,12 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		goto err;
 	}
 
+	fl->sctx = fastrpc_session_alloc(cctx, fl->sharedcb);
+	if (!fl->sctx) {
+		dev_err(cctx->dev, "No session available\n");
+		return -EBUSY;
+	}
+
 	fastrpc_get_process_gids(&fl->gidlist);
 
 	inbuf.pgid = fl->tgid;
@@ -1855,7 +1867,7 @@ err:
 }
 
 static struct fastrpc_session_ctx *fastrpc_session_alloc(
-					struct fastrpc_channel_ctx *cctx)
+					struct fastrpc_channel_ctx *cctx, bool sharedcb)
 {
 	struct fastrpc_session_ctx *session = NULL;
 	unsigned long flags;
@@ -1863,7 +1875,8 @@ static struct fastrpc_session_ctx *fastrpc_session_alloc(
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 0; i < cctx->sesscount; i++) {
-		if (!cctx->session[i].used && cctx->session[i].valid) {
+		if (!cctx->session[i].used && cctx->session[i].valid &&
+				cctx->session[i].sharedcb == sharedcb) {
 			cctx->session[i].used = true;
 			session = &cctx->session[i];
 			break;
@@ -2018,14 +2031,6 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	fl->is_secure_dev = fdevice->secure;
 	fl->sessionid = 0;
 
-	fl->sctx = fastrpc_session_alloc(cctx);
-	if (!fl->sctx) {
-		dev_err(cctx->dev, "No session available\n");
-		mutex_destroy(&fl->mutex);
-		kfree(fl);
-
-		return -EBUSY;
-	}
 	if (cctx->lowest_capacity_core_count) {
 		fl->dev_pm_qos_req = kzalloc((cctx->lowest_capacity_core_count) *
 				sizeof(struct dev_pm_qos_request), GFP_KERNEL);
@@ -2122,6 +2127,11 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 	struct fastrpc_enhanced_invoke ioctl;
 	int err, tgid = fl->tgid;
 
+	fl->sctx = fastrpc_session_alloc(cctx, fl->sharedcb);
+	if (!fl->sctx) {
+		dev_err(cctx->dev, "No session available\n");
+		return -EBUSY;
+	}
 	args[0].ptr = (u64)(uintptr_t) &tgid;
 	args[0].length = sizeof(tgid);
 	args[0].fd = -1;
@@ -3305,6 +3315,7 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 	if (sessions > 0) {
 		struct fastrpc_session_ctx *dup_sess;
 
+		sess->sharedcb = true;
 		for (i = 1; i < sessions; i++) {
 			if (cctx->sesscount >= FASTRPC_MAX_SESSIONS)
 				break;
