@@ -3116,11 +3116,13 @@ static int fastrpc_req_mem_unmap_impl(struct fastrpc_user *fl, struct fastrpc_me
 	ioctl.inv.args = (__u64)args;
 
 	err = fastrpc_internal_invoke(fl, true, &ioctl);
+	if (err) {
+		dev_err(dev, "Unmap on DSP failed for fd:%d, addr:0x%09llx\n",  map->fd, map->raddr);
+		return err;
+	}
 	fastrpc_map_put(map);
-	if (err)
-		dev_err(dev, "unmmap\tpt fd = %d, 0x%09llx error\n",  map->fd, map->raddr);
 
-	return err;
+	return 0;
 }
 
 static int fastrpc_req_mem_unmap(struct fastrpc_user *fl, char __user *argp)
