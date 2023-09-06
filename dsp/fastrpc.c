@@ -722,14 +722,15 @@ static void fastrpc_pm_relax(struct fastrpc_user *fl,
 }
 
 static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
-			      u64 len, u32 attr, struct fastrpc_map **ppmap)
+			      u64 len, u32 attr, struct fastrpc_map **ppmap,
+				  bool take_ref)
 {
 	struct fastrpc_session_ctx *sess = fl->sctx;
 	struct fastrpc_map *map = NULL;
 	struct sg_table *table;
 	int err = 0;
 
-	if (!fastrpc_map_lookup(fl, fd, ppmap, true))
+	if (!fastrpc_map_lookup(fl, fd, ppmap, take_ref))
 		return 0;
 
 	map = kzalloc(sizeof(*map), GFP_KERNEL);
@@ -876,13 +877,16 @@ static int fastrpc_create_maps(struct fastrpc_invoke_ctx *ctx)
 	int i, err;
 
 	for (i = 0; i < ctx->nscalars; ++i) {
+		bool take_ref = true;
 
 		if (ctx->args[i].fd == 0 || ctx->args[i].fd == -1 ||
 		    ctx->args[i].length == 0)
 			continue;
 
+		if (i >= ctx->nbufs)
+			take_ref = false;
 		err = fastrpc_map_create(ctx->fl, ctx->args[i].fd,
-			 ctx->args[i].length, ctx->args[i].attr, &ctx->maps[i]);
+			 ctx->args[i].length, ctx->args[i].attr, &ctx->maps[i], take_ref);
 		if (err) {
 			dev_err(dev, "Error Creating map %d\n", err);
 			return -EINVAL;
@@ -1794,7 +1798,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	fl->pd = USER_PD;
 
 	if (init.filelen && init.filefd) {
-		err = fastrpc_map_create(fl, init.filefd, init.filelen, 0, &map);
+		err = fastrpc_map_create(fl, init.filefd, init.filelen, 0, &map, true);
 		if (err)
 			goto err;
 	}
@@ -3020,7 +3024,7 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 			goto err_assign;
 		}
 	} else {
-		err = fastrpc_map_create(fl, req.fd, req.size, 0, &map);
+		err = fastrpc_map_create(fl, req.fd, req.size, 0, &map, true);
 		if (err) {
 			dev_err(dev, "failed to map buffer, fd = %d\n", req.fd);
 			return err;
@@ -3149,7 +3153,7 @@ static int fastrpc_req_mem_map(struct fastrpc_user *fl, char __user *argp)
 		return -EFAULT;
 
 	/* create SMMU mapping */
-	err = fastrpc_map_create(fl, req.fd, req.length, 0, &map);
+	err = fastrpc_map_create(fl, req.fd, req.length, 0, &map, true);
 	if (err) {
 		dev_err(dev, "failed to map buffer, fd = %d\n", req.fd);
 		return err;
