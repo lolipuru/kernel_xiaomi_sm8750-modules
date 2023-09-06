@@ -26,6 +26,7 @@ def define_sun():
             "radio-i2c-rtc6226-qca",
            # "btfm_slim_codec",
             "btfmcodec",
+            "bt_fm_swr",
          ],
          config_options = [
              "CONFIG_MSM_BT_POWER",
@@ -33,5 +34,6 @@ def define_sun():
            #  "CONFIG_SLIM_BTFM_CODEC",
 	     "CONFIG_BTFM_CODEC",
            #  "CONFIG_BT_HW_SECURE_DISABLE",
+            "CONFIG_BTFM_SWR",
         ]
     )

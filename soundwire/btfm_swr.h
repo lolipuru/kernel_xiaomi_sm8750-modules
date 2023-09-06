@@ -10,7 +10,7 @@
 #include <linux/types.h>
 #include <linux/mutex.h>
 #include <bindings/audio-codec-port-types.h>
-#include "soc/soundwire.h"
+#include <soc/soundwire.h>
 
 #define SWR_SLAVE_COMPATIBLE_STR	"btfmswr_slave"
 

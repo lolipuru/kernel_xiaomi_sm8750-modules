@@ -17,6 +17,7 @@ ifeq ($(call is-board-platform-in-list, taro kalama pineapple blair sun), true)
 BT_SELECT := CONFIG_MSM_BT_POWER=m
 BT_SELECT += CONFIG_SLIM_BTFM_CODEC=n
 BT_SELECT += CONFIG_I2C_RTC6226_QCA=m
+BT_SELECT += CONFIG_BTFM_SWR=m
 
 ifeq ($(TARGET_KERNEL_DLKM_SECURE_MSM_OVERRIDE), true)
 ifeq ($(ENABLE_PERIPHERAL_STATE_UTILS), true)
@@ -29,6 +30,7 @@ LOCAL_MODULE_DDK_BUILD := true
 LOCAL_MODULE_KO_DIRS := pwr/btpower.ko
 LOCAL_MODULE_KO_DIRS += rtc6226/radio-i2c-rtc6226-qca.ko
 #LOCAL_MODULE_KO_DIRS += slimbus/btfm_slim_codec.ko
+LOCAL_MODULE_KO_DIRS += soundwire/bt_fm_swr.ko
 
 ifneq ($(TARGET_BOARD_PLATFORM), pineapple)
 BT_SELECT += CONFIG_BTFM_CODEC=m
@@ -61,6 +63,8 @@ KBUILD_REQUIRED_KOS := smcinvoke_dlkm.ko
 endif
 endif
 
+
+KBUILD_REQUIRED_KOS += swr_dlkm.ko
 
 # Module.symvers needs to be generated as a intermediate module so that
 # other modules which depend on BT platform modules can set local
@@ -118,6 +122,18 @@ LOCAL_MODULE              := radio-i2c-rtc6226-qca.ko
 LOCAL_MODULE_KBUILD_NAME  := rtc6226/radio-i2c-rtc6226-qca.ko
 LOCAL_MODULE_TAGS         := optional
 LOCAL_MODULE_DEBUG_ENABLE := true
+LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
+include $(DLKM_DIR)/Build_external_kernelmodule.mk
+################################ slimbus ################################
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES           := $(BT_SRC_FILES)
+LOCAL_MODULE              := bt_fm_swr.ko
+LOCAL_MODULE_KBUILD_NAME  := soundwire/bt_fm_swr.ko
+LOCAL_MODULE_TAGS         := optional
+LOCAL_MODULE_DEBUG_ENABLE := true
+#KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(call intermediates-dir-for,DLKM,swr_dlkm)/Module.symvers
+#LOCAL_REQUIRED_MODULES    := swr_dlkm
+#LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,swr_dlkm)/Module.symvers
 LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 ###########################################################
