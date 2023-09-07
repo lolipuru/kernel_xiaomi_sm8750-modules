@@ -10,8 +10,8 @@ def define_pineapple():
         ],
         config_options = [
             #"CONFIG_TARGET_SYNX_ENABLE",
-            "TARGET_SYNX_ENABLE",
-            "TARGET_DSP_ENABLE",
+            #"TARGET_SYNX_ENABLE",
+            #"TARGET_DSP_ENABLE",
             "CONFIG_EVA_PINEAPPLE"
         ],
     )

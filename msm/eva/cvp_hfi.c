@@ -139,7 +139,7 @@ static int __power_off_controller(struct iris_hfi_device *device);
 static int __power_off_core(struct iris_hfi_device *device);
 static int __check_ctl_power_on(struct iris_hfi_device *device);
 static int __check_core_power_on(struct iris_hfi_device *device);
-static void __print_sidebandmanager_regs(struct iris_hfi_device *device)
+static void __print_sidebandmanager_regs(struct iris_hfi_device *device);
 static int __enable_hw_power_collapse(struct iris_hfi_device *device);
 
 static struct cvp_hal_ops hal_ops = {

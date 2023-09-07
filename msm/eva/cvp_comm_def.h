@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_COMM_DEF_H_
@@ -34,10 +35,9 @@ enum queue_state {
 #define CVP_FASTRPC_ENABLED 1
 #endif	/* End of CONFIG_EVA_KALAMA */
 
+/*SYNX MMRM and FASTRPC are removed temporarily*/
+/*Need to put them back when dependencies are available*/
 #ifdef CONFIG_EVA_PINEAPPLE
-#define CVP_MMRM_ENABLED 1
-#define CVP_SYNX_ENABLED 1
-#define CVP_FASTRPC_ENABLED 1
 #endif	/* End of CONFIG_EVA_PINEAPPLE */
 
 #ifdef CONFIG_EVA_SUN
