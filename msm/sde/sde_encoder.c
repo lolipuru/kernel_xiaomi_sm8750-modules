@@ -404,6 +404,16 @@ static bool _sde_encoder_is_autorefresh_enabled(
 			CONNECTOR_PROP_AUTOREFRESH) ? true : false;
 }
 
+static bool _sde_encoder_is_autorefresh_status_busy(struct sde_encoder_virt *sde_enc)
+{
+	if (!sde_enc->cur_master || !sde_enc->cur_master->hw_intf ||
+			!sde_enc->cur_master->hw_intf->ops.get_autorefresh_status)
+		return false;
+
+	return sde_enc->cur_master->hw_intf->ops.get_autorefresh_status(
+			sde_enc->cur_master->hw_intf);
+}
+
 static void sde_configure_qdss(struct sde_encoder_virt *sde_enc,
 				struct sde_hw_qdss *hw_qdss,
 				struct sde_encoder_phys *phys, bool enable)
@@ -1668,28 +1678,6 @@ static void sde_encoder_control_te(struct sde_encoder_virt *sde_enc, bool enable
 	}
 }
 
-static void _sde_encoder_wait_for_vsync_on_autorefresh_busy(struct sde_encoder_phys *phys_enc)
-{
-	u32 autorefresh_status;
-	int ret = 0;
-
-	if (!phys_enc || !phys_enc->hw_intf || !phys_enc->hw_intf->ops.get_autorefresh_status) {
-		SDE_ERROR("invalid params\n");
-		return;
-	}
-
-	autorefresh_status = phys_enc->hw_intf->ops.get_autorefresh_status(phys_enc->hw_intf);
-	if (autorefresh_status) {
-		ret = sde_encoder_wait_for_event(phys_enc->parent, MSM_ENC_VBLANK);
-		if (ret) {
-			autorefresh_status = phys_enc->hw_intf->ops.get_autorefresh_status(
-					phys_enc->hw_intf);
-			SDE_ERROR("wait for vblank timed out, autorefresh_status:%d\n",
-					autorefresh_status);
-		}
-	}
-}
-
 int sde_encoder_helper_switch_vsync(struct drm_encoder *drm_enc,
 	 bool watchdog_te)
 {
@@ -1885,7 +1873,8 @@ static int _sde_encoder_update_rsc_client(
 		qsync_mode = sde_connector_get_qsync_mode(
 				sde_enc->cur_master->connector);
 		sde_enc->autorefresh_solver_disable =
-			 _sde_encoder_is_autorefresh_enabled(sde_enc) ? true : false;
+			_sde_encoder_is_autorefresh_status_busy(sde_enc) ||
+			_sde_encoder_is_autorefresh_enabled(sde_enc);
 	}
 
 	/* left primary encoder keep vote */
@@ -4140,6 +4129,28 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	sde_rm_release(&sde_kms->rm, drm_enc, false);
 }
 
+static void _sde_encoder_helper_virt_disable(struct drm_encoder *drm_enc)
+{
+	int i;
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (!sde_encoder_in_clone_mode(drm_enc)) {
+		/* disable autorefresh */
+		for (i = 0; i < sde_enc->num_phys_encs; i++) {
+			struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+
+			if (phys && phys->ops.disable_autorefresh &&
+					phys->ops.wait_for_vsync_on_autorefresh_busy) {
+				phys->ops.disable_autorefresh(phys);
+				phys->ops.wait_for_vsync_on_autorefresh_busy(phys);
+			}
+		}
+
+		/* wait for idle */
+		sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
+	}
+}
+
 static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
@@ -4185,20 +4196,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 
 	SDE_EVT32(DRMID(drm_enc));
 
-	if (!sde_encoder_in_clone_mode(drm_enc)) {
-		/* disable autorefresh */
-		for (i = 0; i < sde_enc->num_phys_encs; i++) {
-			struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
-
-			if (phys && phys->ops.disable_autorefresh) {
-				phys->ops.disable_autorefresh(phys);
-				_sde_encoder_wait_for_vsync_on_autorefresh_busy(phys);
-			}
-		}
-
-		/* wait for idle */
-		sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
-	}
+	_sde_encoder_helper_virt_disable(drm_enc);
 
 	_sde_encoder_input_handler_unregister(drm_enc);
 
