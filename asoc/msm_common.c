@@ -19,8 +19,9 @@
 #include <sound/info.h>
 #include <dsp/audio_prm.h>
 #include <dsp/digital-cdc-rsc-mgr.h>
+#ifdef CONFIG_SCHED_WALT
 #include <linux/sched/walt.h>
-
+#endif
 #include "msm_common.h"
 
 struct snd_card_pdata {
@@ -1005,7 +1006,12 @@ static void msm_audio_update_qos_request(u32 latency)
 static int msm_get_and_print_cpu_map_taken(cpumask_t* expected_cpu_map) {
 	int ret = 0;
 	int cpu = 0;
+
+#ifdef CONFIG_SCHED_WALT
 	cpumask_t current_cpu_map = walt_get_cpus_taken();
+#else
+	cpumask_t current_cpu_map = CPU_MASK_NONE;
+#endif
 
 	if (memcmp(&current_cpu_map, &CPU_MASK_NONE, sizeof(cpumask_t)) == 0) {
 		pr_debug("%s: current cpu map is none.\n", __func__);
@@ -1043,7 +1049,9 @@ static int msm_qos_ctl_put(struct snd_kcontrol *kcontrol,
 				return 0;
 			}
 
+#ifdef CONFIG_SCHED_WALT
 			walt_set_cpus_taken(&audio_cpu_map);
+#endif
 			pr_debug("%s: set cpus taken to walt for audio RT tasks.\n",
 						__func__);
 
@@ -1064,7 +1072,9 @@ static int msm_qos_ctl_put(struct snd_kcontrol *kcontrol,
 				return 0;
 			}
 
+#ifdef CONFIG_SCHED_WALT
 			walt_unset_cpus_taken(&audio_cpu_map);
+#endif
 			pr_debug("%s: unset cpus taken to walt for audio RT tasks.\n",
 						__func__);
 
