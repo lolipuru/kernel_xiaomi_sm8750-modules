@@ -71,7 +71,8 @@ enum fastrpc_proc_attr {
 	COPYDATA_BUF,
 	INITMEM_BUF,
 	USER_BUF,
-};
+	REMOTEHEAP_BUF,
+ };
 
 /* Fastrpc attribute for memory protection of buffers */
 #define FASTRPC_ATTR_SECUREMAP	(1)

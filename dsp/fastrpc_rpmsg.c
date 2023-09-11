@@ -14,15 +14,18 @@
 #include "../include/uapi/misc/fastrpc.h"
 #include <linux/of_reserved_mem.h>
 #include "fastrpc_shared.h"
+#include <linux/soc/qcom/pdr.h>
 
-void fastrpc_buf_free(struct fastrpc_buf *buf, bool cache);
 void fastrpc_channel_ctx_put(struct fastrpc_channel_ctx *cctx);
 void fastrpc_lowest_capacity_corecount(struct fastrpc_channel_ctx *cctx);
 int fastrpc_init_privileged_gids(struct device *dev, char *prop_name,
 						struct gid_list *gidlist);
+int fastrpc_setup_service_locator(struct fastrpc_channel_ctx *cctx, char *client_name,
+					char *service_name, char *service_path, int spd_session);
 void fastrpc_register_wakeup_source(struct device *dev,
 	const char *client_name, struct wakeup_source **device_wake_source);
 void fastrpc_notify_users(struct fastrpc_user *user);
+int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx);
 
 struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev)
 {
@@ -133,6 +136,23 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		goto fdev_error;
 	}
 
+	if (domain_id == ADSP_DOMAIN_ID) {
+		err = fastrpc_setup_service_locator(data, AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME,
+			AUDIO_PDR_ADSP_SERVICE_NAME, ADSP_AUDIOPD_NAME, 0);
+		if (err)
+			goto fdev_error;
+
+		err = fastrpc_setup_service_locator(data, SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME,
+			SENSORS_PDR_ADSP_SERVICE_NAME, ADSP_SENSORPD_NAME, 1);
+		if (err)
+			goto fdev_error;
+	} else if (domain_id == SDSP_DOMAIN_ID) {
+		err = fastrpc_setup_service_locator(data, SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME,
+			SENSORS_PDR_SLPI_SERVICE_NAME, SLPI_SENSORPD_NAME, 0);
+		if (err)
+			goto fdev_error;
+	}
+
 	if(data->fdevice)
 		fastrpc_register_wakeup_source(data->fdevice->miscdev.this_device,
 			FASTRPC_NON_SECURE_WAKE_SOURCE_CLIENT_NAME, &data->wake_source);
@@ -162,7 +182,6 @@ fdev_error:
 static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 {
 	struct fastrpc_channel_ctx *cctx = dev_get_drvdata(&rpdev->dev);
-	struct fastrpc_buf *buf, *b;
 	struct fastrpc_user *user;
 	unsigned long flags;
 
@@ -180,9 +199,13 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 	if (cctx->secure_fdevice)
 		misc_deregister(&cctx->secure_fdevice->miscdev);
 
-	list_for_each_entry_safe(buf, b, &cctx->gmaps, node) {
-		list_del(&buf->node);
-		fastrpc_buf_free(buf, false);
+	fastrpc_mmap_remove_ssr(cctx);
+
+	if (cctx->domain_id == ADSP_DOMAIN_ID) {
+		pdr_handle_release(cctx->spd[0].pdrhandle);
+		pdr_handle_release(cctx->spd[1].pdrhandle);
+	} else if (cctx->domain_id == SDSP_DOMAIN_ID) {
+		pdr_handle_release(cctx->spd[0].pdrhandle);
 	}
 
 	if (cctx->wake_source)

@@ -21,6 +21,7 @@
 #define CDSP_DOMAIN_ID (3)
 #define FASTRPC_DEV_MAX		4 /* adsp, mdsp, slpi, cdsp*/
 #define FASTRPC_MAX_SESSIONS	14
+#define FASTRPC_MAX_SPD		4
 #define FASTRPC_MAX_VMIDS	16
 #define FASTRPC_ALIGN		128
 #define FASTRPC_MAX_FDLIST	16
@@ -142,6 +143,18 @@
 #define FASTRPC_DSPSIGNAL_TIMEOUT_NONE 0xffffffff
 #define FASTRPC_DSPSIGNAL_NUM_SIGNALS 1024
 #define FASTRPC_DSPSIGNAL_GROUP_SIZE 256
+
+#define AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME   "audio_pdr_adsp"
+#define AUDIO_PDR_ADSP_SERVICE_NAME              "avs/audio"
+#define ADSP_AUDIOPD_NAME                        "msm/adsp/audio_pd"
+
+#define SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME   "sensors_pdr_adsp"
+#define SENSORS_PDR_ADSP_SERVICE_NAME              "tms/servreg"
+#define ADSP_SENSORPD_NAME                       "msm/adsp/sensor_pd"
+
+#define SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME "sensors_pdr_slpi"
+#define SENSORS_PDR_SLPI_SERVICE_NAME            SENSORS_PDR_ADSP_SERVICE_NAME
+#define SLPI_SENSORPD_NAME                       "msm/slpi/sensor_pd"
 
 #define PERF_END ((void)0)
 
@@ -408,6 +421,16 @@ struct fastrpc_session_ctx {
 #endif
 };
 
+struct fastrpc_static_pd {
+	char *servloc_name;
+	char *spdname;
+	void *pdrhandle;
+	u64 pdrcount;
+	u64 prevpdrcount;
+	atomic_t ispdup;
+	struct fastrpc_channel_ctx *cctx;
+};
+
 struct fastrpc_channel_ctx {
 	int domain_id;
 	int sesscount;
@@ -421,6 +444,7 @@ struct fastrpc_channel_ctx {
 #endif
 	struct device *dev;
 	struct fastrpc_session_ctx session[FASTRPC_MAX_SESSIONS];
+	struct fastrpc_static_pd spd[FASTRPC_MAX_SPD];
 	spinlock_t lock;
 	struct idr ctx_idr;
 	struct list_head users;
@@ -542,6 +566,8 @@ struct fastrpc_user {
 	/* If set, threads will poll for DSP response instead of glink wait */
 	bool poll_mode;
 	bool is_unsigned_pd;
+	bool sharedcb;
+	char *servloc_name;;
 	/* Lock for lists */
 	spinlock_t lock;
 	/* lock for dsp signals */
