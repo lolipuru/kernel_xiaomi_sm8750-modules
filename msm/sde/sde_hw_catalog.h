@@ -630,6 +630,7 @@ enum {
  * @SDE_CTL_HW_FENCE_DIR_WRITE  CTL support hw fencing dir writes
  * @SDE_CTL_NO_LAYER_EXT        CTL removal of CTL_LAYER_EXTx registers and addition
  *                              of active bits for pipes and layer mixers
+ * @SDE_CTL_CESTA_FLUSH         CTL supports display cesta flush programming
  * @SDE_CTL_MAX
  */
 enum {
@@ -643,6 +644,7 @@ enum {
 	SDE_CTL_HW_FENCE_TRIGGER_SEL,
 	SDE_CTL_HW_FENCE_DIR_WRITE,
 	SDE_CTL_NO_LAYER_EXT,
+	SDE_CTL_CESTA_FLUSH,
 	SDE_CTL_MAX
 };
 

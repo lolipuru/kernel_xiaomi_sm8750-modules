@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -12,6 +12,7 @@
 #include "sde_hw_catalog.h"
 #include "sde_hw_sspp.h"
 #include "sde_fence.h"
+#include "sde_cesta.h"
 
 #define INVALID_CTL_STATUS 0xfffff88e
 #define CTL_MAX_DSPP_COUNT (DSPP_MAX - DSPP_0)
@@ -160,6 +161,19 @@ struct sde_ctl_flush_cfg {
 	u32 active_fetch_pipe_mask;
 	u32 active_pipe_mask;
 	u32 active_lm_mask;
+};
+
+enum sde_ctl_cesta_flag {
+	SDE_CTL_CESTA_SCC_WAIT = BIT(0),
+	SDE_CTL_CESTA_CHN_WAIT = BIT(1),
+	SDE_CTL_CESTA_SCC_FLUSH = BIT(2),
+	SDE_CTL_CESTA_OVERRIDE_FLAG = BIT(3),
+};
+
+struct sde_ctl_cesta_cfg {
+	u32 index;
+	u32 flags;
+	enum sde_cesta_vote_state vote_state;
 };
 
 /**
@@ -592,6 +606,13 @@ struct sde_hw_ctl_ops {
 	 * @Return: bitmap of enum sde_lm mixers found
 	 */
 	u32 (*get_active_lms)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * Setup Cesta flush
+	 * @ctx: ctl path ctx pointer
+	 * @cfg: Cesta flush config settings
+	 */
+	void (*cesta_flush)(struct sde_hw_ctl *ctx, struct sde_ctl_cesta_cfg *cfg);
 };
 
 /**
