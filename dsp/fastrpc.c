@@ -2541,8 +2541,8 @@ int fastrpc_dspsignal_wait(struct fastrpc_user *fl,
 		if ((s->state == DSPSIGNAL_STATE_CANCELED) || (s->state == DSPSIGNAL_STATE_UNUSED))
 			err = -EINTR;
 		spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
-		dev_err(fl->cctx->dev, "Signal %u in state %u, complete wait immediately",
-				  signal_id, s->state);
+		dev_dbg(fl->cctx->dev, "Signal %u in state %u, complete wait immediately",
+				signal_id, s->state);
 		return err;
 	}
 	spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
@@ -2553,7 +2553,7 @@ int fastrpc_dspsignal_wait(struct fastrpc_user *fl,
 		ret = wait_for_completion_interruptible(&s->comp);
 
 	if (ret == 0) {
-		dev_err(fl->cctx->dev, "Wait for signal %u timed out\n", signal_id);
+		dev_dbg(fl->cctx->dev, "Wait for signal %u timed out\n", signal_id);
 		return -ETIMEDOUT;
 	} else if (ret < 0) {
 		dev_err(fl->cctx->dev, "Wait for signal %u failed %d\n", signal_id, (int)ret);
