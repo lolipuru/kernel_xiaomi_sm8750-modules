@@ -2086,7 +2086,9 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 		fastrpc_buf_free(fl->pers_hdr_buf, false);
 	kfree(fl->hdr_bufs);
 
+	spin_lock_irqsave(&cctx->lock, flags);
 	fastrpc_cached_buf_list_free(fl);
+	spin_unlock_irqrestore(&cctx->lock, flags);
 	if (fl->qos_request && fl->dev_pm_qos_req) {
 		for (i = 0; i < cctx->lowest_capacity_core_count; i++) {
 			if (!dev_pm_qos_request_active(&fl->dev_pm_qos_req[i]))
@@ -3621,10 +3623,17 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 {
 	struct fastrpc_channel_ctx *cctx = dev_get_drvdata(pdev->dev.parent);
 	struct fastrpc_session_ctx *sess = dev_get_drvdata(&pdev->dev);
+	struct fastrpc_user *fl;
 	unsigned long flags;
 	int i;
 
 	spin_lock_irqsave(&cctx->lock, flags);
+	list_for_each_entry(fl, &cctx->users, user) {
+		if(fl->sctx && fl->sctx->sid == sess->sid) {
+			fastrpc_cached_buf_list_free(fl);
+			break;
+		}
+	}
 	for (i = 1; i < FASTRPC_MAX_SESSIONS; i++) {
 		if (cctx->session[i].sid == sess->sid) {
 			cctx->session[i].valid = false;
