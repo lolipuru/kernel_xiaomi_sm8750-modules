@@ -757,7 +757,7 @@ skip_buf_cache:
 		}
 		vmid = fl->apps->channel[cid].vmid;
 		if ((vmid) && (fl->apps->channel[cid].in_hib == 0)) {
-			unsigned int src_perms = BIT(QCOM_SCM_VMID_HLOS)| BIT(vmid);
+			u64 src_perms = BIT(QCOM_SCM_VMID_HLOS)| BIT(vmid);
 			struct qcom_scm_vmperm dest_perms = {0};
 			int hyp_err = 0;
 
@@ -1066,7 +1066,7 @@ static void fastrpc_mmap_free(struct fastrpc_mmap *map, uint32_t flags)
 		vmid = fl->apps->channel[cid].vmid;
 		if (vmid && map->phys && (me->channel[cid].in_hib == 0)) {
 			int hyp_err = 0;
-			unsigned int src_perms = BIT(QCOM_SCM_VMID_HLOS) | BIT(vmid);
+			u64 src_perms = BIT(QCOM_SCM_VMID_HLOS) | BIT(vmid);
 			struct qcom_scm_vmperm dst_perms = {0};
 
 			dst_perms.vmid = QCOM_SCM_VMID_HLOS;
@@ -1375,7 +1375,7 @@ static int fastrpc_mmap_create(struct fastrpc_file *fl, int fd, struct dma_buf *
 
 		vmid = fl->apps->channel[cid].vmid;
 		if (vmid) {
-			unsigned int src_perms = BIT(QCOM_SCM_VMID_HLOS);
+			u64 src_perms = BIT(QCOM_SCM_VMID_HLOS);
 			struct qcom_scm_vmperm dst_perms[2] = {0};
 
 			dst_perms[0].vmid = QCOM_SCM_VMID_HLOS;
@@ -1553,7 +1553,7 @@ static int fastrpc_buf_alloc(struct fastrpc_file *fl, size_t size,
 
 	vmid = fl->apps->channel[cid].vmid;
 	if (vmid) {
-		unsigned int src_perms = BIT(QCOM_SCM_VMID_HLOS);
+		u64 src_perms = BIT(QCOM_SCM_VMID_HLOS);
 		struct qcom_scm_vmperm dst_perms[2] = {0};
 
 		dst_perms[0].vmid = QCOM_SCM_VMID_HLOS;
@@ -4243,7 +4243,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_file *fl,
 		 * hyp_assign from HLOS to those VMs (LPASS, ADSP).
 		 */
 		if (rhvm->vmid && mem->refs == 1 && size) {
-			unsigned int src_perms = BIT(QCOM_SCM_VMID_HLOS);
+			u64 src_perms = BIT(QCOM_SCM_VMID_HLOS);
 			struct qcom_scm_vmperm *dst_perms;
 			uint32_t i = 0;
 
@@ -4309,7 +4309,7 @@ bail:
 		me->staticpd_flags = 0;
 		if (rh_hyp_done) {
 			int hyp_err = 0;
-			unsigned int src_perms = 0;
+			u64 src_perms = 0;
 			struct qcom_scm_vmperm dst_perms;
 			uint32_t i = 0;
 
@@ -4888,7 +4888,7 @@ static int fastrpc_mmap_on_dsp(struct fastrpc_file *fl, uint32_t flags,
 	if (flags == ADSP_MMAP_REMOTE_HEAP_ADDR
 				&& me->channel[cid].rhvm.vmid && refs == 1) {
 		struct secure_vm *rhvm = &me->channel[cid].rhvm;
-		unsigned int src_perms = BIT(QCOM_SCM_VMID_HLOS);
+		u64 src_perms = BIT(QCOM_SCM_VMID_HLOS);
 		struct qcom_scm_vmperm *dst_perms;
 		uint32_t i = 0;
 
@@ -4990,7 +4990,7 @@ static int fastrpc_munmap_rh(uint64_t phys, size_t size,
 
 	if ((rhvm->vmid)
 			&& (me->channel[RH_CID].in_hib == 0)) {
-		unsigned int src_perms = 0;
+		u64 src_perms = 0;
 		struct qcom_scm_vmperm dst_perms = {0};
 		uint32_t i = 0;
 
@@ -5077,7 +5077,7 @@ static int fastrpc_mmap_remove_ssr(struct fastrpc_file *fl, int locked)
 				}
 				//scm assign it back to HLOS
 				if (rhvm->vmid) {
-					unsigned int src_perms = 0;
+					u64 src_perms = 0;
 					struct qcom_scm_vmperm dst_perms = {0};
 					uint32_t i = 0;
 
