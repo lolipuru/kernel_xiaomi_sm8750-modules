@@ -388,6 +388,7 @@ struct fastrpc_map {
 	u64 raddr;
 	u32 attr;
 	struct kref refcount;
+	int secure;
 };
 
 struct fastrpc_perf {
@@ -408,6 +409,7 @@ struct fastrpc_session_ctx {
 	int sid;
 	bool used;
 	bool valid;
+	bool secure;
 	bool sharedcb;
 #if IS_ENABLED(CONFIG_QCOM_FASTRPC_TRUSTED)
 	/* gen pool for QRTR */
@@ -639,5 +641,4 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ctx *cctx,
 				bool is_secured, const char *domain);
 struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev);
-void fastrpc_notify_users(struct fastrpc_user *user);
 #endif /* __FASTRPC_SHARED_H__ */

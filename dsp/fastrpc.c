@@ -28,6 +28,7 @@
 #include <linux/of_reserved_mem.h>
 #include <linux/cred.h>
 #include <linux/arch_topology.h>
+#include <linux/mem-buf.h>
 #include <linux/soc/qcom/pdr.h>
 #include "fastrpc_shared.h"
 
@@ -686,6 +687,41 @@ static const struct dma_buf_ops fastrpc_dma_buf_ops = {
 	.release = fastrpc_release,
 };
 
+static struct fastrpc_session_ctx *fastrpc_session_alloc(
+					struct fastrpc_channel_ctx *cctx, bool sharedcb, bool secure)
+{
+	struct fastrpc_session_ctx *session = NULL;
+	unsigned long flags;
+	int i;
+
+	if (!cctx->dev)
+		return session;
+
+	spin_lock_irqsave(&cctx->lock, flags);
+	for (i = 0; i < cctx->sesscount; i++) {
+		if (!cctx->session[i].used && cctx->session[i].valid &&
+			cctx->session[i].secure == secure &&
+			cctx->session[i].sharedcb == sharedcb) {
+			cctx->session[i].used = true;
+			session = &cctx->session[i];
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&cctx->lock, flags);
+
+	return session;
+}
+
+static void fastrpc_session_free(struct fastrpc_channel_ctx *cctx,
+				 struct fastrpc_session_ctx *session)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&cctx->lock, flags);
+	session->used = false;
+	spin_unlock_irqrestore(&cctx->lock, flags);
+}
+
 static void fastrpc_pm_awake(struct fastrpc_user *fl,
 					u32 is_secure_channel)
 {
@@ -727,7 +763,7 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 			      u64 len, u32 attr, struct fastrpc_map **ppmap,
 				  bool take_ref)
 {
-	struct fastrpc_session_ctx *sess = fl->sctx;
+	struct fastrpc_session_ctx *sess = NULL;
 	struct fastrpc_map *map = NULL;
 	struct scatterlist *sgl = NULL;
 	struct sg_table *table;
@@ -749,6 +785,21 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 	if (IS_ERR(map->buf)) {
 		err = PTR_ERR(map->buf);
 		goto get_err;
+		}
+	}
+	map->secure = (mem_buf_dma_buf_exclusive_owner(map->buf)) ? 0 : 1;
+	if (map->secure) {
+		if (!fl->secsctx) {
+			fl->secsctx = fastrpc_session_alloc(fl->cctx, false, true);
+			if (!fl->secsctx) {
+				dev_err(sess->dev, "No secure session available\n");
+				err = -EBUSY;
+				goto attach_err;
+			}
+		}
+		sess = fl->secsctx;
+	} else {
+		sess = fl->sctx;
 	}
 
 	map->attach = dma_buf_attach(map->buf, sess->dev);
@@ -769,7 +820,7 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 		map->phys = sg_phys(map->table->sgl);
 	} else {
 		map->phys = sg_dma_address(map->table->sgl);
-		map->phys += ((u64)fl->sctx->sid << 32);
+		map->phys += ((u64)sess->sid << 32);
 	}
 	for_each_sg(map->table->sgl, sgl, map->table->nents,
 		sgl_index)
@@ -1721,7 +1772,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		goto err_name;
 	}
 
-	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb);
+	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
 		return -EBUSY;
@@ -1869,7 +1920,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		goto err;
 	}
 
-	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb);
+	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
 		return -EBUSY;
@@ -1956,37 +2007,6 @@ err:
 	kfree(args);
 
 	return err;
-}
-
-static struct fastrpc_session_ctx *fastrpc_session_alloc(
-					struct fastrpc_channel_ctx *cctx, bool sharedcb)
-{
-	struct fastrpc_session_ctx *session = NULL;
-	unsigned long flags;
-	int i;
-
-	spin_lock_irqsave(&cctx->lock, flags);
-	for (i = 0; i < cctx->sesscount; i++) {
-		if (!cctx->session[i].used && cctx->session[i].valid &&
-				cctx->session[i].sharedcb == sharedcb) {
-			cctx->session[i].used = true;
-			session = &cctx->session[i];
-			break;
-		}
-	}
-	spin_unlock_irqrestore(&cctx->lock, flags);
-
-	return session;
-}
-
-static void fastrpc_session_free(struct fastrpc_channel_ctx *cctx,
-				 struct fastrpc_session_ctx *session)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&cctx->lock, flags);
-	session->used = false;
-	spin_unlock_irqrestore(&cctx->lock, flags);
 }
 
 static void fastrpc_context_list_free(struct fastrpc_user *fl)
@@ -2076,7 +2096,10 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	}
 	kfree(fl->dev_pm_qos_req);
 	fastrpc_pm_relax(fl,cctx->secure);
-	fastrpc_session_free(cctx, fl->sctx);
+	if (fl->sctx)
+		fastrpc_session_free(cctx, fl->sctx);
+	if (fl->secsctx)
+		fastrpc_session_free(cctx, fl->secsctx);
 	fastrpc_channel_ctx_put(cctx);
 	for (i = 0; i < (FASTRPC_DSPSIGNAL_NUM_SIGNALS /FASTRPC_DSPSIGNAL_GROUP_SIZE); i++)
 		kfree(fl->signal_groups[i]);
@@ -2221,7 +2244,7 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 	struct fastrpc_enhanced_invoke ioctl;
 	int err, tgid = fl->tgid;
 
-	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb);
+	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
 		return -EBUSY;
@@ -3480,6 +3503,7 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 	sess->used = false;
 	sess->valid = true;
 	sess->dev = dev;
+	sess->secure = of_property_read_bool(dev->of_node, "qcom,secure-context-bank");
 	dev_set_drvdata(dev, sess);
 
 	if (of_property_read_u32(dev->of_node, "reg", &sess->sid))
