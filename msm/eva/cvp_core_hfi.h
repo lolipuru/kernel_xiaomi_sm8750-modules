@@ -299,6 +299,7 @@ struct cvp_hal_ops {
 	int (*check_ctl_power_on)(struct iris_hfi_device *device);
 	int (*check_core_power_on)(struct iris_hfi_device *device);
 	void (*print_sbm_regs)(struct iris_hfi_device *device);
+	int (*set_registers)(struct iris_hfi_device *device);
 	int (*enable_hw_power_collapse)(struct iris_hfi_device *device);
 	int (*reset_control_assert_name)(struct iris_hfi_device *device, const char *name);
 	int (*reset_control_deassert_name)(struct iris_hfi_device *device, const char *name);

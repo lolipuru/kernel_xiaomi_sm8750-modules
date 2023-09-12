@@ -141,6 +141,7 @@ static int __check_ctl_power_on(struct iris_hfi_device *device);
 static int __check_core_power_on(struct iris_hfi_device *device);
 static void __print_sidebandmanager_regs(struct iris_hfi_device *device);
 static int __enable_hw_power_collapse(struct iris_hfi_device *device);
+static int __set_registers(struct iris_hfi_device *device);
 
 static struct cvp_hal_ops hal_ops = {
 	.interrupt_init = interrupt_init_iris2,
@@ -155,6 +156,7 @@ static struct cvp_hal_ops hal_ops = {
 	.check_core_power_on = __check_core_power_on,
 	.print_sbm_regs = __print_sidebandmanager_regs,
 	.enable_hw_power_collapse = __enable_hw_power_collapse,
+	.set_registers = __set_registers,
 	.reset_control_assert_name = __reset_control_assert_name,
 	.reset_control_deassert_name = __reset_control_deassert_name,
 	.reset_control_acquire_name = __reset_control_acquire,
@@ -171,6 +173,7 @@ static int __check_ctl_power_on_v1(struct iris_hfi_device *device);
 static int __check_core_power_on_v1(struct iris_hfi_device *device);
 static void __print_sidebandmanager_regs_v1(struct iris_hfi_device *device);
 static int __enable_hw_power_collapse_v1(struct iris_hfi_device *device);
+static int __set_registers_v1(struct iris_hfi_device *device);
 
 static struct cvp_hal_ops hal_ops = {
 	.interrupt_init = interrupt_init_iris2,
@@ -185,6 +188,7 @@ static struct cvp_hal_ops hal_ops = {
 	.check_core_power_on = __check_core_power_on_v1,
 	.print_sbm_regs = __print_sidebandmanager_regs_v1,
 	.enable_hw_power_collapse = __enable_hw_power_collapse_v1,
+	.set_registers = __set_registers_v1,
 	.reset_control_assert_name = __reset_control_assert_name,
 	.reset_control_deassert_name = __reset_control_deassert_name,
 	.reset_control_acquire_name = __reset_control_acquire,
@@ -873,78 +877,6 @@ static int __read_register(struct iris_hfi_device *device, u32 reg)
 		base_addr, reg, rc);
 
 	return rc;
-}
-
-static int __set_registers(struct iris_hfi_device *device)
-{
-	struct msm_cvp_core *core;
-	struct msm_cvp_platform_data *pdata;
-	struct reg_set *reg_set;
-	int i;
-
-	if (!device->res) {
-		dprintk(CVP_ERR,
-			"device resources null, cannot set registers\n");
-		return -EINVAL ;
-	}
-
-	core = cvp_driver->cvp_core;
-	pdata = core->platform_data;
-
-	reg_set = &device->res->reg_set;
-	for (i = 0; i < reg_set->count; i++) {
-		__write_register(device, reg_set->reg_tbl[i].reg,
-				reg_set->reg_tbl[i].value);
-		dprintk(CVP_REG, "write_reg offset=%x, val=%x\n",
-					reg_set->reg_tbl[i].reg,
-					reg_set->reg_tbl[i].value);
-	}
-
-	i = call_iris_op(device, reset_control_acquire_name, device, "cvp_xo_reset");
-	if (i) {
-		dprintk(CVP_WARN, "%s Fail acquire xo_reset\n", __func__);
-		return -EINVAL;
-	}
-
-	__write_register(device, CVP_CPU_CS_AXI4_QOS,
-				pdata->noc_qos->axi_qos);
-	__write_register(device, CVP_NOC_RGE_PRIORITYLUT_LOW,
-				pdata->noc_qos->prioritylut_low);
-	__write_register(device, CVP_NOC_RGE_PRIORITYLUT_HIGH,
-				pdata->noc_qos->prioritylut_high);
-	__write_register(device, CVP_NOC_RGE_URGENCY_LOW,
-				pdata->noc_qos->urgency_low);
-	__write_register(device, CVP_NOC_RGE_DANGERLUT_LOW,
-				pdata->noc_qos->dangerlut_low);
-	__write_register(device, CVP_NOC_RGE_SAFELUT_LOW,
-				pdata->noc_qos->safelut_low);
-	__write_register(device, CVP_NOC_CDM_PRIORITYLUT_LOW,
-				pdata->noc_qos->prioritylut_low);
-	__write_register(device, CVP_NOC_CDM_PRIORITYLUT_HIGH,
-				pdata->noc_qos->prioritylut_high);
-	__write_register(device, CVP_NOC_CDM_URGENCY_LOW,
-				pdata->noc_qos->urgency_low);
-	__write_register(device, CVP_NOC_CDM_DANGERLUT_LOW,
-				pdata->noc_qos->dangerlut_low);
-	__write_register(device, CVP_NOC_CDM_SAFELUT_LOW,
-				pdata->noc_qos->safelut_low);
-
-	/* Below registers write moved from FW to SW to enable UBWC */
-	__write_register(device, CVP_NOC_RGE_NIU_DECCTL_LOW,
-				0x1);
-	__write_register(device, CVP_NOC_RGE_NIU_ENCCTL_LOW,
-				0x1);
-	__write_register(device, CVP_NOC_GCE_VADL_TOF_NIU_DECCTL_LOW,
-				0x1);
-	__write_register(device, CVP_NOC_GCE_VADL_TOF_NIU_ENCCTL_LOW,
-				0x1);
-	__write_register(device, CVP_NOC_CORE_ERR_MAINCTL_LOW_OFFS,
-				0x3);
-	__write_register(device, CVP_NOC_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW,
-				0x1);
-
-	call_iris_op(device, reset_control_release_name, device, "cvp_xo_reset");
-	return 0;
 }
 
 /*
@@ -4415,7 +4347,7 @@ static int __iris_power_on(struct iris_hfi_device *device)
 	 * regulator_disable() and _enable()
 	 * calling below function requires CORE powered on
 	 */
-	rc = __set_registers(device);
+	rc = call_iris_op(device, set_registers, device);
 	if (rc)
 		goto fail_enable_core;
 
@@ -5032,60 +4964,6 @@ static int iris_hfi_validate_session(void *sess, const char *func)
 	return rc;
 }
 
-static void iris_init_hfi_callbacks(struct cvp_hfi_ops *ops_tbl)
-{
-	ops_tbl->core_init = iris_hfi_core_init;
-	ops_tbl->core_release = iris_hfi_core_release;
-	ops_tbl->core_trigger_ssr = iris_hfi_core_trigger_ssr;
-	ops_tbl->session_init = iris_hfi_session_init;
-	ops_tbl->session_end = iris_hfi_session_end;
-	ops_tbl->session_start = iris_hfi_session_start;
-	ops_tbl->session_stop = iris_hfi_session_stop;
-	ops_tbl->session_abort = iris_hfi_session_abort;
-	ops_tbl->session_clean = iris_hfi_session_clean;
-	ops_tbl->session_set_buffers = iris_hfi_session_set_buffers;
-	ops_tbl->session_release_buffers = iris_hfi_session_release_buffers;
-	ops_tbl->session_send = iris_hfi_session_send;
-	ops_tbl->session_flush = iris_hfi_session_flush;
-	ops_tbl->scale_clocks = iris_hfi_scale_clocks;
-	ops_tbl->vote_bus = iris_hfi_vote_buses;
-	ops_tbl->get_fw_info = iris_hfi_get_fw_info;
-	ops_tbl->get_core_capabilities = iris_hfi_get_core_capabilities;
-	ops_tbl->suspend = iris_hfi_suspend;
-	ops_tbl->resume = iris_hfi_resume;
-	ops_tbl->flush_debug_queue = iris_hfi_flush_debug_queue;
-	ops_tbl->noc_error_info = iris_hfi_noc_error_info;
-	ops_tbl->validate_session = iris_hfi_validate_session;
-	ops_tbl->pm_qos_update = iris_pm_qos_update;
-	ops_tbl->debug_hook = iris_debug_hook;
-}
-
-int cvp_iris_hfi_initialize(struct cvp_hfi_ops *ops_tbl,
-		struct msm_cvp_platform_resources *res,
-		hfi_cmd_response_callback callback)
-{
-	int rc = 0;
-
-	if (!ops_tbl || !res || !callback) {
-		dprintk(CVP_ERR, "Invalid params: %pK %pK %pK\n",
-			ops_tbl, res, callback);
-		rc = -EINVAL;
-		goto err_iris_hfi_init;
-	}
-
-	ops_tbl->hfi_device_data = __get_device(res, callback);
-
-	if (IS_ERR_OR_NULL(ops_tbl->hfi_device_data)) {
-		rc = PTR_ERR(ops_tbl->hfi_device_data) ?: -EINVAL;
-		goto err_iris_hfi_init;
-	}
-
-	iris_init_hfi_callbacks(ops_tbl);
-
-err_iris_hfi_init:
-	return rc;
-}
-
 /***************************************************************************
  *
  * Start Arch specific implementation
@@ -5570,6 +5448,79 @@ static int __enable_hw_power_collapse(struct iris_hfi_device *device)
 	return rc;
 }
 
+static int __set_registers(struct iris_hfi_device *device)
+{
+	struct msm_cvp_core *core;
+	struct msm_cvp_platform_data *pdata;
+	struct reg_set *reg_set;
+	int i;
+
+	if (!device->res) {
+		dprintk(CVP_ERR,
+			"device resources null, cannot set registers\n");
+		return -EINVAL ;
+	}
+
+	core = cvp_driver->cvp_core;
+	pdata = core->platform_data;
+
+	reg_set = &device->res->reg_set;
+	for (i = 0; i < reg_set->count; i++) {
+		__write_register(device, reg_set->reg_tbl[i].reg,
+				reg_set->reg_tbl[i].value);
+		dprintk(CVP_REG, "write_reg offset=%x, val=%x\n",
+					reg_set->reg_tbl[i].reg,
+					reg_set->reg_tbl[i].value);
+	}
+
+	i = call_iris_op(device, reset_control_acquire_name, device, "cvp_xo_reset");
+	if (i) {
+		dprintk(CVP_WARN, "%s Fail acquire xo_reset\n", __func__);
+		return -EINVAL;
+	}
+
+	__write_register(device, CVP_CPU_CS_AXI4_QOS,
+				pdata->noc_qos->axi_qos);
+	__write_register(device, CVP_NOC_RGE_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_NOC_RGE_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_NOC_RGE_URGENCY_LOW,
+				pdata->noc_qos->urgency_low);
+	__write_register(device, CVP_NOC_RGE_DANGERLUT_LOW,
+				pdata->noc_qos->dangerlut_low);
+	__write_register(device, CVP_NOC_RGE_SAFELUT_LOW,
+				pdata->noc_qos->safelut_low);
+	__write_register(device, CVP_NOC_CDM_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_NOC_CDM_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_NOC_CDM_URGENCY_LOW,
+				pdata->noc_qos->urgency_low);
+	__write_register(device, CVP_NOC_CDM_DANGERLUT_LOW,
+				pdata->noc_qos->dangerlut_low);
+	__write_register(device, CVP_NOC_CDM_SAFELUT_LOW,
+				pdata->noc_qos->safelut_low);
+
+	/* Below registers write moved from FW to SW to enable UBWC */
+	__write_register(device, CVP_NOC_RGE_NIU_DECCTL_LOW,
+				0x1);
+	__write_register(device, CVP_NOC_RGE_NIU_ENCCTL_LOW,
+				0x1);
+	__write_register(device, CVP_NOC_GCE_VADL_TOF_NIU_DECCTL_LOW,
+				0x1);
+	__write_register(device, CVP_NOC_GCE_VADL_TOF_NIU_ENCCTL_LOW,
+				0x1);
+	__write_register(device, CVP_NOC_CORE_ERR_MAINCTL_LOW_OFFS,
+				0x3);
+	__write_register(device, CVP_NOC_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW,
+				0x1);
+
+	call_iris_op(device, reset_control_release_name, device, "cvp_xo_reset");
+	return 0;
+}
+
+
 #elif CONFIG_EVA_SUN
 static int __check_ctl_power_on_v1(struct iris_hfi_device *device)
 {
@@ -5636,13 +5587,13 @@ static int __power_on_controller_v1(struct iris_hfi_device *device)
 		dprintk(CVP_ERR, "%s: de-assert cvp_core_reset failed\n", __func__);
 
 	****************************************************************************/
-	rc = msm_cvp_prepare_enable_clk(device, "gcc_eva_axi0");
+	rc = msm_cvp_prepare_enable_clk(device, "core_axi_clock");
 	if (rc) {
 		dprintk(CVP_ERR, "Failed to enable axi0 clk: %d\n", rc);
 		goto fail_enable_axi0;
 	}
 
-	rc = msm_cvp_prepare_enable_clk(device, "gcc_eva_axi0c");
+	rc = msm_cvp_prepare_enable_clk(device, "cvp_axi_clock");
 	if (rc) {
 		dprintk(CVP_ERR, "Failed to enable axi0c clk: %d\n", rc);
 		goto fail_enable_axi0c;
@@ -5666,9 +5617,9 @@ static int __power_on_controller_v1(struct iris_hfi_device *device)
 fail_enable_freerun:
 	msm_cvp_disable_unprepare_clk(device, "cvp");
 fail_enable_cvp:
-	msm_cvp_disable_unprepare_clk(device, "gcc_eva_axi0c");
+	msm_cvp_disable_unprepare_clk(device, "cvp_axi_clock");
 fail_enable_axi0c:
-	msm_cvp_disable_unprepare_clk(device, "gcc_eva_axi0");
+	msm_cvp_disable_unprepare_clk(device, "core_axi_clock");
 fail_enable_axi0:
 	msm_cvp_disable_unprepare_clk(device, "sleep_clk");
 fail_reset_sleep:
@@ -5937,8 +5888,8 @@ static int __power_off_controller_v1(struct iris_hfi_device *device)
 	/* Below sequence are missing from HPG Section 3.7.
 	 * It disables GCC clks in power on sequence
 	 */
-	rc = msm_cvp_disable_unprepare_clk(device, "gcc_eva_axi0");
-	rc = msm_cvp_disable_unprepare_clk(device, "gcc_eva_axi0c");
+	rc = msm_cvp_disable_unprepare_clk(device, "core_axi_clock");
+	rc = msm_cvp_disable_unprepare_clk(device, "cvp_axi_clock");
 
 
 	/****************** TODO RESET ****************************************
@@ -6048,7 +5999,130 @@ static int __enable_hw_power_collapse_v1(struct iris_hfi_device *device)
 	return rc;
 }
 
+static int __set_registers_v1(struct iris_hfi_device *device)
+{
+	struct msm_cvp_core *core;
+	struct msm_cvp_platform_data *pdata;
+	struct reg_set *reg_set;
+	int i;
+
+	if (!device->res) {
+		dprintk(CVP_ERR,
+			"device resources null, cannot set registers\n");
+		return -EINVAL ;
+	}
+
+	core = cvp_driver->cvp_core;
+	pdata = core->platform_data;
+
+	reg_set = &device->res->reg_set;
+	for (i = 0; i < reg_set->count; i++) {
+		__write_register(device, reg_set->reg_tbl[i].reg,
+				reg_set->reg_tbl[i].value);
+		dprintk(CVP_REG, "write_reg offset=%x, val=%x\n",
+					reg_set->reg_tbl[i].reg,
+					reg_set->reg_tbl[i].value);
+	}
+
+	__write_register(device, CVP_CPU_CS_AXI4_QOS,
+				pdata->noc_qos->axi_qos);
+	__write_register(device, CVP_NOC_A_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_NOC_A_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_NOC_A_URGENCY_LOW,
+				pdata->noc_qos->urgency_low);
+	__write_register(device, CVP_NOC_A_DANGERLUT_LOW,
+				pdata->noc_qos->dangerlut_low);
+	__write_register(device, CVP_NOC_A_SAFELUT_LOW,
+				pdata->noc_qos->safelut_low);
+	__write_register(device, CVP_NOC_B_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_NOC_B_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_NOC_B_URGENCY_LOW,
+				pdata->noc_qos->urgency_low);
+	__write_register(device, CVP_NOC_B_DANGERLUT_LOW,
+				pdata->noc_qos->dangerlut_low);
+	__write_register(device, CVP_NOC_B_SAFELUT_LOW,
+				pdata->noc_qos->safelut_low);
+	__write_register(device, CVP_NOC_C_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_NOC_C_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_NOC_C_URGENCY_LOW,
+				pdata->noc_qos->urgency_low_ro);
+	__write_register(device, CVP_NOC_C_DANGERLUT_LOW,
+				pdata->noc_qos->dangerlut_low);
+	__write_register(device, CVP_NOC_C_SAFELUT_LOW,
+				pdata->noc_qos->safelut_low);
+
+	/* Below registers write moved from FW to SW to enable UBWC */
+	__write_register(device, CVP_NOC_A_NIU_DECCTL_LOW, 0x1);
+	__write_register(device, CVP_NOC_A_NIU_ENCCTL_LOW, 0x1);
+	__write_register(device, CVP_NOC_B_NIU_DECCTL_LOW, 0x1);
+	__write_register(device, CVP_NOC_B_NIU_ENCCTL_LOW, 0x1);
+	__write_register(device, CVP_NOC_CORE_ERR_MAINCTL_LOW_OFFS, 0x3);
+	__write_register(device, CVP_NOC_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW, 0x1);
+
+	return 0;
+}
 
 
 #endif	/* End of CONFIG_EVA_PINEAPPLE */
+
+static void iris_init_hfi_callbacks(struct cvp_hfi_ops *ops_tbl)
+{
+	ops_tbl->core_init = iris_hfi_core_init;
+	ops_tbl->core_release = iris_hfi_core_release;
+	ops_tbl->core_trigger_ssr = iris_hfi_core_trigger_ssr;
+	ops_tbl->session_init = iris_hfi_session_init;
+	ops_tbl->session_end = iris_hfi_session_end;
+	ops_tbl->session_start = iris_hfi_session_start;
+	ops_tbl->session_stop = iris_hfi_session_stop;
+	ops_tbl->session_abort = iris_hfi_session_abort;
+	ops_tbl->session_clean = iris_hfi_session_clean;
+	ops_tbl->session_set_buffers = iris_hfi_session_set_buffers;
+	ops_tbl->session_release_buffers = iris_hfi_session_release_buffers;
+	ops_tbl->session_send = iris_hfi_session_send;
+	ops_tbl->session_flush = iris_hfi_session_flush;
+	ops_tbl->scale_clocks = iris_hfi_scale_clocks;
+	ops_tbl->vote_bus = iris_hfi_vote_buses;
+	ops_tbl->get_fw_info = iris_hfi_get_fw_info;
+	ops_tbl->get_core_capabilities = iris_hfi_get_core_capabilities;
+	ops_tbl->suspend = iris_hfi_suspend;
+	ops_tbl->resume = iris_hfi_resume;
+	ops_tbl->flush_debug_queue = iris_hfi_flush_debug_queue;
+	ops_tbl->noc_error_info = iris_hfi_noc_error_info;
+	ops_tbl->validate_session = iris_hfi_validate_session;
+	ops_tbl->pm_qos_update = iris_pm_qos_update;
+	ops_tbl->debug_hook = iris_debug_hook;
+}
+
+int cvp_iris_hfi_initialize(struct cvp_hfi_ops *ops_tbl,
+		struct msm_cvp_platform_resources *res,
+		hfi_cmd_response_callback callback)
+{
+	int rc = 0;
+
+	if (!ops_tbl || !res || !callback) {
+		dprintk(CVP_ERR, "Invalid params: %pK %pK %pK\n",
+			ops_tbl, res, callback);
+		rc = -EINVAL;
+		goto err_iris_hfi_init;
+	}
+
+	ops_tbl->hfi_device_data = __get_device(res, callback);
+
+	if (IS_ERR_OR_NULL(ops_tbl->hfi_device_data)) {
+		rc = PTR_ERR(ops_tbl->hfi_device_data) ?: -EINVAL;
+		goto err_iris_hfi_init;
+	}
+
+	iris_init_hfi_callbacks(ops_tbl);
+
+err_iris_hfi_init:
+	return rc;
+}
+
 
