@@ -2307,7 +2307,7 @@ static int fastrpc_invoke(struct fastrpc_user *fl, char __user *argp)
 	return err;
 }
 
-static void fastrpc_queue_pd_status(struct fastrpc_user *fl, int domain, int status)
+void fastrpc_queue_pd_status(struct fastrpc_user *fl, int domain, int status)
 {
 	struct fastrpc_notif_rsp *notif_rsp = NULL;
 	unsigned long flags;

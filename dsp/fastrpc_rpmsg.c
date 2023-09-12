@@ -26,6 +26,7 @@ void fastrpc_register_wakeup_source(struct device *dev,
 	const char *client_name, struct wakeup_source **device_wake_source);
 void fastrpc_notify_users(struct fastrpc_user *user);
 int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx);
+void fastrpc_queue_pd_status(struct fastrpc_user *fl, int domain, int status);
 
 struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev)
 {
@@ -189,8 +190,10 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 	spin_lock_irqsave(&cctx->lock, flags);
 	cctx->rpdev = NULL;
 	cctx->staticpd_status = false;
-	list_for_each_entry(user, &cctx->users, user)
+	list_for_each_entry(user, &cctx->users, user) {
+		fastrpc_queue_pd_status(user, cctx->domain_id, FASTRPC_DSP_SSR);
 		fastrpc_notify_users(user);
+	}
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	if (cctx->fdevice)
