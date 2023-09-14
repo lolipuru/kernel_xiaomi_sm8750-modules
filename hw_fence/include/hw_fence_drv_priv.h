@@ -208,6 +208,7 @@ enum payload_type {
  * @seqno: sequence no for fences created internally
  * @wait_queue: wait queue for the validation clients
  * @val_signal: doorbell flag to signal the validation clients in the wait queue
+ * @kref: number of active references to this client
  */
 struct msm_hw_fence_client {
 	enum hw_fence_client_id client_id;
@@ -227,6 +228,7 @@ struct msm_hw_fence_client {
 	bool txq_update_send_ipc;
 	u64 context_id;
 	atomic_t seqno;
+	struct kref kref;
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	wait_queue_head_t wait_queue;
 	atomic_t val_signal;
