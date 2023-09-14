@@ -34,9 +34,8 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 		return ERR_PTR(-EAGAIN);
 	}
 
-	if (!mem_descriptor || client_id_ext >= HW_FENCE_CLIENT_MAX) {
-		HWFNC_ERR("Invalid params: %d client_id_ext:%d\n",
-			!mem_descriptor, client_id_ext);
+	if (client_id_ext >= HW_FENCE_CLIENT_MAX) {
+		HWFNC_ERR("Invalid client_id_ext:%d\n", client_id_ext);
 		return ERR_PTR(-EINVAL);
 	}
 

@@ -756,8 +756,11 @@ int hw_fence_alloc_client_resources(struct hw_fence_driver_data *drv_data,
 	}
 
 	/* Init client memory descriptor */
-	memcpy(mem_descriptor, &hw_fence_client->mem_descriptor,
-		sizeof(struct msm_hw_fence_mem_addr));
+	if (!IS_ERR_OR_NULL(mem_descriptor))
+		memcpy(mem_descriptor, &hw_fence_client->mem_descriptor,
+			sizeof(struct msm_hw_fence_mem_addr));
+	else
+		HWFNC_DBG_L("null mem descriptor, skipping copy\n");
 
 exit:
 	return ret;

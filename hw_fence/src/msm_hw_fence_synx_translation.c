@@ -104,9 +104,8 @@ struct synx_session *synx_hwfence_initialize(struct synx_initialization_params *
 	if (!hw_fence_driver_enable)
 		return ERR_PTR(-SYNX_INVALID);
 
-	if (IS_ERR_OR_NULL(params) || IS_ERR_OR_NULL(params->ptr)) {
-		HWFNC_ERR("invalid params:0x%pK params->ptr:0x%pK\n", params,
-			IS_ERR_OR_NULL(params) ? NULL : params->ptr);
+	if (IS_ERR_OR_NULL(params)) {
+		HWFNC_ERR("invalid params:0x%pK\n", params);
 		return ERR_PTR(-SYNX_INVALID);
 	}
 
