@@ -411,7 +411,6 @@ struct fastrpc_session_ctx {
 	bool valid;
 	bool secure;
 	bool sharedcb;
-#if IS_ENABLED(CONFIG_QCOM_FASTRPC_TRUSTED)
 	/* gen pool for QRTR */
 	struct gen_pool *frpc_genpool;
 	/* fastrpc gen pool buffer */
@@ -420,7 +419,6 @@ struct fastrpc_session_ctx {
 	unsigned long genpool_iova;
 	/* fastrpc gen pool buffer size */
 	size_t genpool_size;
-#endif
 };
 
 struct fastrpc_static_pd {
