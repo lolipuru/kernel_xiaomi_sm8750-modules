@@ -2800,7 +2800,7 @@ static int __init synx_init(void)
 		goto reg_fail;
 	}
 
-	synx_dev->class = class_create(THIS_MODULE, SYNX_DEVICE_NAME);
+	synx_dev->class = class_create(SYNX_DEVICE_NAME);
 	device_create(synx_dev->class, NULL, synx_dev->dev,
 		NULL, SYNX_DEVICE_NAME);
 
