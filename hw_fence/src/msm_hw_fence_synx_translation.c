@@ -257,6 +257,26 @@ int synx_hwfence_recover(enum synx_client_id id)
 }
 EXPORT_SYMBOL_GPL(synx_hwfence_recover);
 
+static void *synx_hwfence_get_fence(struct synx_session *session, u32 h_synx)
+{
+	struct dma_fence *fence = NULL;
+
+	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type)) {
+		HWFNC_ERR("invalid session:0x%pK synx_id:%d\n", session,
+			IS_ERR_OR_NULL(session) ? -1 : session->type);
+		return ERR_PTR(-SYNX_INVALID);
+	}
+
+	fence = hw_fence_dma_fence_find(hw_fence_drv_data, h_synx, true);
+
+	/* add a reference to the dma-fence, this must be released by the caller */
+	if (IS_ERR_OR_NULL(fence))
+		HWFNC_ERR("synx_id:%d failed to get fence for h_synx:%u ret:%ld\n", session->type,
+			h_synx, PTR_ERR(fence));
+
+	return (void *)fence;
+}
+
 static int synx_hwfence_import_indv(void *client, struct synx_import_indv_params *params)
 {
 	u64 handle;
@@ -348,6 +368,7 @@ int synx_hwfence_init_ops(struct synx_ops *hwfence_ops)
 	hwfence_ops->release = synx_hwfence_release;
 	hwfence_ops->signal = synx_hwfence_signal;
 	hwfence_ops->import = synx_hwfence_import;
+	hwfence_ops->get_fence = synx_hwfence_get_fence;
 
 	return SYNX_SUCCESS;
 }

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __HW_FENCE_DRV_INTERNAL_H
@@ -608,5 +608,7 @@ struct dma_fence *hw_dma_fence_init(struct msm_hw_fence_client *hw_fence_client,
 	u64 seqno);
 struct dma_fence *hw_fence_internal_dma_fence_create(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, u64 *hash);
+struct dma_fence *hw_fence_dma_fence_find(struct hw_fence_driver_data *drv_data,
+	u64 hash, bool incr_refcount);
 
 #endif /* __HW_FENCE_DRV_INTERNAL_H */
