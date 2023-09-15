@@ -508,6 +508,11 @@ static int audio_prm_probe(struct gpr_device *adev)
 		return -EPROBE_DEFER;
 	}
 
+	ret = of_property_read_u32(adev->dev.of_node,
+		"qcom,sleep-api-supported", &g_prm.prm_sleep_api_supported);
+	if (ret < 0)
+		pr_debug("%s: sleep API not supported\n", __func__);
+
 	ret = audio_notifier_register("audio_prm", AUDIO_NOTIFIER_ADSP_DOMAIN,
 				      &service_nb);
 	if (ret < 0) {
