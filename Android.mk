@@ -3,11 +3,11 @@
 LOCAL_PATH := $(call my-dir)
 
 # Build/Package only in case of supported target
-ifeq ($(call is-board-platform-in-list,taro kalama pineapple blair), true)
+ifeq ($(call is-board-platform-in-list,taro kalama pineapple blair sun), true)
 
 BT_SELECT := CONFIG_MSM_BT_POWER=m
 #ifdef CONFIG_SLIMBUS
-BT_SELECT += CONFIG_BTFM_SLIM=m
+BT_SELECT += CONFIG_BTFM_SLIM=n
 #endif
 BT_SELECT += CONFIG_I2C_RTC6226_QCA=m
 
@@ -80,14 +80,14 @@ LOCAL_MODULE_DEBUG_ENABLE := true
 LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 ################################ slimbus ################################
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES           := $(BT_SRC_FILES)
-LOCAL_MODULE              := bt_fm_slim.ko
-LOCAL_MODULE_KBUILD_NAME  := slimbus/bt_fm_slim.ko
-LOCAL_MODULE_TAGS         := optional
-LOCAL_MODULE_DEBUG_ENABLE := true
-LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
-include $(DLKM_DIR)/Build_external_kernelmodule.mk
+#include $(CLEAR_VARS)
+#LOCAL_SRC_FILES           := $(BT_SRC_FILES)
+#LOCAL_MODULE              := bt_fm_slim.ko
+#LOCAL_MODULE_KBUILD_NAME  := slimbus/bt_fm_slim.ko
+#LOCAL_MODULE_TAGS         := optional
+#LOCAL_MODULE_DEBUG_ENABLE := true
+#LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
+#include $(DLKM_DIR)/Build_external_kernelmodule.mk
 ################################ rtc6226 ################################
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES           := $(BT_SRC_FILES)
