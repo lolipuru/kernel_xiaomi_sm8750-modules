@@ -1,8 +1,8 @@
 load(":synx_modules.bzl", "synx_modules")
-load(":synx_module_build.bzl", "define_consolidate_gki_modules")
+load(":synx_module_build.bzl", "define_consolidate_perf_modules")
 
 def define_pineapple():
-    define_consolidate_gki_modules(
+    define_consolidate_perf_modules(
         target = "pineapple",
         registry = synx_modules,
         modules = [
