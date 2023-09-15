@@ -1163,7 +1163,7 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 		}
 
 		/* Reduce to 50, 100 on silicon */
-		usleep_range(50, 100);
+		usleep_range(50000, 100000);
 		count++;
 	}
 

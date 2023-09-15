@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -99,6 +100,11 @@ static int __load_fw_to_memory(struct platform_device *pdev,
 				__func__, rc, firmware_name);
 		goto exit;
 	}
+
+	dprintk(CVP_ERR, "Successfully loaded FW, but NOT READY FOR BOOTING\n");
+	rc = -29;
+	goto exit;
+
 	rc = qcom_scm_pas_auth_and_reset(pas_id);
 	if (rc) {
 		dprintk(CVP_ERR, "%s: error %d authenticating \"%s\"\n",
