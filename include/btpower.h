@@ -9,8 +9,7 @@
 
 #include <linux/cdev.h>
 #include <linux/types.h>
-#include <linux/mailbox_client.h>
-#include <linux/mailbox/qmp.h>
+#include <linux/soc/qcom/qcom_aoss.h>
 #include <linux/workqueue.h>
 
 /*
@@ -111,7 +110,7 @@ struct platform_pwr_data {
 	int bt_num_vregs;
 	int uwb_num_vregs;
 	int platform_num_vregs;
-	struct mbox_client mbox_client_data;
+	struct qmp *qmp;
 	struct mbox_chan *mbox_chan;
 	const char *vreg_ipa;
 	bool is_ganges_dt;
