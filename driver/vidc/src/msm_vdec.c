@@ -1079,7 +1079,7 @@ int msm_vdec_subscribe_metadata(struct msm_vidc_inst *inst,
 					inst, i, port)) {
 				if (count + 1 >= sizeof(payload) / sizeof(u32)) {
 					i_vpr_e(inst,
-						"%s: input metadatas (%d) exceeded limit (%d)\n",
+						"%s: input metadatas (%d) exceeded limit (%lu)\n",
 						__func__, count, sizeof(payload) / sizeof(u32));
 					return -EINVAL;
 				}
@@ -1094,7 +1094,7 @@ int msm_vdec_subscribe_metadata(struct msm_vidc_inst *inst,
 					inst, i, port)) {
 				if (count + 1 >= sizeof(payload) / sizeof(u32)) {
 					i_vpr_e(inst,
-						"%s: input metadatas (%d) exceeded limit (%d)\n",
+						"%s: input metadatas (%d) exceeded limit (%lu)\n",
 						__func__, count, sizeof(payload) / sizeof(u32));
 					return -EINVAL;
 				}
@@ -1135,7 +1135,7 @@ static int msm_vdec_set_delivery_mode_metadata(struct msm_vidc_inst *inst,
 			if (is_meta_tx_inp_enabled(inst, i)) {
 				if (count + 1 >= sizeof(payload) / sizeof(u32)) {
 					i_vpr_e(inst,
-						"%s: input metadatas (%d) exceeded limit (%d)\n",
+						"%s: input metadatas (%d) exceeded limit (%lu)\n",
 						__func__, count, sizeof(payload) / sizeof(u32));
 					return -EINVAL;
 				}
@@ -1150,7 +1150,7 @@ static int msm_vdec_set_delivery_mode_metadata(struct msm_vidc_inst *inst,
 					inst, i, port)) {
 				if (count + 1 >= sizeof(payload) / sizeof(u32)) {
 					i_vpr_e(inst,
-						"%s: input metadatas (%d) exceeded limit (%d)\n",
+						"%s: input metadatas (%d) exceeded limit (%lu)\n",
 						__func__, count, sizeof(payload) / sizeof(u32));
 					return -EINVAL;
 				}
