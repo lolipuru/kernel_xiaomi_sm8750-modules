@@ -1008,7 +1008,7 @@ static ssize_t usbcss_sysfs_store(struct kobject *kobj,
 
 	if (strcmp(attr->attr.name, "rdson") == 0) {
 		if (val > MAX_USBCSS_HS_IMPEDANCE_MOHMS) {
-			dev_err(wcd939x->dev, "%s: Value %d out of HS impedance range %d\n",
+			dev_err(wcd939x->dev, "%s: Value %ld out of HS impedance range %d\n",
 			__func__, val, MAX_USBCSS_HS_IMPEDANCE_MOHMS);
 			return count;
 		}
@@ -1016,14 +1016,14 @@ static ssize_t usbcss_sysfs_store(struct kobject *kobj,
 		update_linearizer = usbcss_hs->xtalk_config == XTALK_ANALOG;
 	} else if (strcmp(attr->attr.name, "r2") == 0) {
 		if (val > MAX_USBCSS_HS_IMPEDANCE_MOHMS) {
-			dev_err(wcd939x->dev, "%s: Value %d out of HS impedance range %d\n",
+			dev_err(wcd939x->dev, "%s: Value %ld out of HS impedance range %d\n",
 			__func__, val, MAX_USBCSS_HS_IMPEDANCE_MOHMS);
 			return count;
 		}
 		usbcss_hs->r_conn_par_load_pos_mohms = val;
 	} else if (strcmp(attr->attr.name, "r3") == 0) {
 		if (val > MAX_USBCSS_HS_IMPEDANCE_MOHMS) {
-			dev_err(wcd939x->dev, "%s: Value %d out of HS impedance range %d\n",
+			dev_err(wcd939x->dev, "%s: Value %ld out of HS impedance range %d\n",
 			__func__, val, MAX_USBCSS_HS_IMPEDANCE_MOHMS);
 			return count;
 		}
@@ -1031,7 +1031,7 @@ static ssize_t usbcss_sysfs_store(struct kobject *kobj,
 		update_linearizer = true;
 	} else if (strcmp(attr->attr.name, "r4") == 0) {
 		if (val > MAX_USBCSS_HS_IMPEDANCE_MOHMS) {
-			dev_err(wcd939x->dev, "%s: Value %d out of HS impedance range %d\n",
+			dev_err(wcd939x->dev, "%s: Value %ld out of HS impedance range %d\n",
 			__func__, val, MAX_USBCSS_HS_IMPEDANCE_MOHMS);
 			return count;
 		}
@@ -1053,7 +1053,7 @@ static ssize_t usbcss_sysfs_store(struct kobject *kobj,
 		}
 	} else if (strcmp(attr->attr.name, "r5") == 0) {
 		if (val > MAX_USBCSS_HS_IMPEDANCE_MOHMS) {
-			dev_err(wcd939x->dev, "%s: Value %d out of HS impedance range %d\n",
+			dev_err(wcd939x->dev, "%s: Value %ld out of HS impedance range %d\n",
 			__func__, val, MAX_USBCSS_HS_IMPEDANCE_MOHMS);
 			return count;
 		}
@@ -1074,7 +1074,7 @@ static ssize_t usbcss_sysfs_store(struct kobject *kobj,
 		}
 	} else if (strcmp(attr->attr.name, "r6") == 0) {
 		if (val > MAX_USBCSS_HS_IMPEDANCE_MOHMS) {
-			dev_err(wcd939x->dev, "%s: Value %d out of HS impedance range %d\n",
+			dev_err(wcd939x->dev, "%s: Value %ld out of HS impedance range %d\n",
 			__func__, val, MAX_USBCSS_HS_IMPEDANCE_MOHMS);
 			return count;
 		}
@@ -1095,7 +1095,7 @@ static ssize_t usbcss_sysfs_store(struct kobject *kobj,
 		}
 	} else if (strcmp(attr->attr.name, "r7") == 0) {
 		if (val > MAX_USBCSS_HS_IMPEDANCE_MOHMS) {
-			dev_err(wcd939x->dev, "%s: Value %d out of HS impedance range %d\n",
+			dev_err(wcd939x->dev, "%s: Value %ld out of HS impedance range %d\n",
 			__func__, val, MAX_USBCSS_HS_IMPEDANCE_MOHMS);
 			return count;
 		}
@@ -1116,7 +1116,7 @@ static ssize_t usbcss_sysfs_store(struct kobject *kobj,
 		}
 	} else if (strcmp(attr->attr.name, "lin-k-aud") == 0) {
 		if (val < MIN_K_TIMES_100 || val > MAX_K_TIMES_100) {
-			dev_err(wcd939x->dev, "%s: Value %d out of bounds. Min: %d, Max: %d\n",
+			dev_err(wcd939x->dev, "%s: Value %ld out of bounds. Min: %d, Max: %d\n",
 			__func__, val, MIN_K_TIMES_100, MAX_K_TIMES_100);
 			return count;
 		}
@@ -1124,7 +1124,7 @@ static ssize_t usbcss_sysfs_store(struct kobject *kobj,
 		update_linearizer = true;
 	} else if (strcmp(attr->attr.name, "lin-k-gnd") == 0) {
 		if (val < MIN_K_TIMES_100 || val > MAX_K_TIMES_100) {
-			dev_err(wcd939x->dev, "%s: Value %d out of bounds. Min: %d, Max: %d\n",
+			dev_err(wcd939x->dev, "%s: Value %ld out of bounds. Min: %d, Max: %d\n",
 			__func__, val, MIN_K_TIMES_100, MAX_K_TIMES_100);
 			return count;
 		}
@@ -1172,7 +1172,9 @@ static ssize_t usbcss_sysfs_store(struct kobject *kobj,
 
 	if (update_linearizer) {
 		get_linearizer_taps(pdata, &aud_tap, &gnd_tap);
+#if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
 		wcd_usbss_set_linearizer_sw_tap(aud_tap, gnd_tap);
+#endif
 		dev_err(wcd939x->dev, "%s: Updated linearizer thru sysfs\n",
 			__func__);
 	}
@@ -1280,11 +1282,13 @@ static void wcd939x_wcd_mbhc_calc_impedance(struct wcd_mbhc *mbhc, uint32_t *zl,
 	struct wcd939x_mbhc_zdet_param zdet_param = {4, 0, 6, 0x18, 0x60, 0x78};
 	struct wcd939x_mbhc_zdet_param *zdet_param_ptr = &zdet_param;
 	s16 d1[] = {0, 30, 30, 6};
+#if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
 	uint32_t cached_regs[4][2] = {{WCD_USBSS_EXT_LIN_EN, 0}, {WCD_USBSS_EXT_SW_CTRL_1, 0},
 				      {WCD_USBSS_MG1_BIAS, 0}, {WCD_USBSS_MG2_BIAS, 0}};
 	uint32_t l_3_6V_regs[4][2] = {{WCD_USBSS_EXT_LIN_EN, 0x00}, {WCD_USBSS_EXT_SW_CTRL_1, 0x00},
 				      {WCD_USBSS_MG1_BIAS, 0x0E}, {WCD_USBSS_MG2_BIAS, 0x0E}};
 	uint32_t diff_regs[2][2] = {{WCD_USBSS_EXT_LIN_EN, 0x00}, {WCD_USBSS_EXT_SW_CTRL_1, 0xE8}};
+#endif
 
 	WCD_MBHC_RSC_ASSERT_LOCKED(mbhc);
 
