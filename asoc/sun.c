@@ -26,7 +26,6 @@
 #include <sound/pcm_params.h>
 #include <sound/info.h>
 #include <soc/snd_event.h>
-#include <soc/qcom/socinfo.h>
 #include <dsp/audio_prm.h>
 #include <soc/swr-common.h>
 #include <soc/soundwire.h>
@@ -40,13 +39,13 @@
 #include "codecs/lpass-cdc/lpass-cdc.h"
 #include <bindings/audio-codec-port-types.h>
 #include "codecs/lpass-cdc/lpass-cdc-wsa-macro.h"
-#include "pineapple-port-config.h"
+#include "sun-port-config.h"
 #include "msm-audio-defs.h"
 #include "msm_common.h"
 #include "msm_dailink.h"
 
-#define DRV_NAME "pineapple-asoc-snd"
-#define __CHIPSET__ "PINEAPPLE "
+#define DRV_NAME "sun-asoc-snd"
+#define __CHIPSET__ "SUN "
 #define MSM_DAILINK_NAME(name) (__CHIPSET__#name)
 
 #define WCD9XXX_MBHC_DEF_RLOADS     5
@@ -87,7 +86,7 @@ struct msm_asoc_mach_data {
 
 static bool is_initial_boot;
 static bool codec_reg_done;
-static struct snd_soc_card snd_soc_card_pineapple_msm;
+static struct snd_soc_card snd_soc_card_sun_msm;
 static int dmic_0_1_gpio_cnt;
 static int dmic_2_3_gpio_cnt;
 static int dmic_4_5_gpio_cnt;
@@ -1227,7 +1226,7 @@ static struct snd_soc_dai_link msm_tdm_dai_links[] = {
 	},
 };
 
-static struct snd_soc_dai_link msm_pineapple_dai_links[
+static struct snd_soc_dai_link msm_sun_dai_links[
 			ARRAY_SIZE(msm_wsa_cdc_dma_be_dai_links) +
 			ARRAY_SIZE(msm_wsa2_cdc_dma_be_dai_links) +
 			ARRAY_SIZE(msm_wsa_wsa2_cdc_dma_be_dai_links) +
@@ -1356,7 +1355,7 @@ static struct snd_soc_ops msm_stub_be_ops = {
 };
 
 struct snd_soc_card snd_soc_card_stub_msm = {
-	.name		= "pineapple-stub-snd-card",
+	.name		= "sun-stub-snd-card",
 };
 
 static struct snd_soc_dai_link msm_stub_be_dai_links[] = {
@@ -1384,10 +1383,10 @@ static struct snd_soc_dai_link msm_stub_be_dai_links[] = {
 static struct snd_soc_dai_link msm_stub_dai_links[
 			 ARRAY_SIZE(msm_stub_be_dai_links)];
 
-static const struct of_device_id pineapple_asoc_machine_of_match[]  = {
-	{ .compatible = "qcom,pineapple-asoc-snd",
+static const struct of_device_id sun_asoc_machine_of_match[]  = {
+	{ .compatible = "qcom,sun-asoc-snd",
 	  .data = "codec"},
-	{ .compatible = "qcom,pineapple-asoc-snd-stub",
+	{ .compatible = "qcom,sun-asoc-snd-stub",
 	  .data = "stub_codec"},
 	{},
 };
@@ -1454,7 +1453,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 	u32 val = 0;
 	const struct of_device_id *match;
 
-	match = of_match_node(pineapple_asoc_machine_of_match, dev->of_node);
+	match = of_match_node(sun_asoc_machine_of_match, dev->of_node);
 	if (!match) {
 		dev_err_ratelimited(dev, "%s: No DT match found for sound card\n",
 			__func__);
@@ -1462,10 +1461,10 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 	}
 
 	if (!strcmp(match->data, "codec")) {
-		card = &snd_soc_card_pineapple_msm;
+		card = &snd_soc_card_sun_msm;
 
 		/* late probe uses dai link at index '0' to get wcd component */
-		memcpy(msm_pineapple_dai_links + total_links,
+		memcpy(msm_sun_dai_links + total_links,
 		       msm_rx_tx_cdc_dma_be_dai_links,
 		       sizeof(msm_rx_tx_cdc_dma_be_dai_links));
 		total_links +=
@@ -1474,7 +1473,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 		switch (wsa_max_devs) {
 		case MONO_SPEAKER:
 		case STEREO_SPEAKER:
-			memcpy(msm_pineapple_dai_links + total_links,
+			memcpy(msm_sun_dai_links + total_links,
 			       msm_wsa_cdc_dma_be_dai_links,
 			       sizeof(msm_wsa_cdc_dma_be_dai_links));
 			total_links += ARRAY_SIZE(msm_wsa_cdc_dma_be_dai_links);
@@ -1482,22 +1481,22 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 		case QUAD_SPEAKER:
 			if (of_find_property(dev->of_node,
 					"qcom,dedicated-wsa2", NULL)) {
-				memcpy(msm_pineapple_dai_links + total_links,
+				memcpy(msm_sun_dai_links + total_links,
 					msm_wsa_cdc_dma_be_dai_links,
 					sizeof(msm_wsa_cdc_dma_be_dai_links));
 				total_links += ARRAY_SIZE(msm_wsa_cdc_dma_be_dai_links);
 
-				memcpy(msm_pineapple_dai_links + total_links,
+				memcpy(msm_sun_dai_links + total_links,
 					msm_wsa2_cdc_dma_be_dai_links,
 					sizeof(msm_wsa2_cdc_dma_be_dai_links));
 				total_links += ARRAY_SIZE(msm_wsa2_cdc_dma_be_dai_links);
 			} else {
-				memcpy(msm_pineapple_dai_links + total_links,
+				memcpy(msm_sun_dai_links + total_links,
 					msm_wsa2_cdc_dma_be_dai_links,
 					sizeof(msm_wsa2_cdc_dma_be_dai_links));
 				total_links += ARRAY_SIZE(msm_wsa2_cdc_dma_be_dai_links);
 
-				memcpy(msm_pineapple_dai_links + total_links,
+				memcpy(msm_sun_dai_links + total_links,
 					msm_wsa_wsa2_cdc_dma_be_dai_links,
 					sizeof(msm_wsa_wsa2_cdc_dma_be_dai_links));
 				total_links += ARRAY_SIZE(msm_wsa_wsa2_cdc_dma_be_dai_links);
@@ -1510,12 +1509,12 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 			break;
 		}
 
-		memcpy(msm_pineapple_dai_links + total_links,
+		memcpy(msm_sun_dai_links + total_links,
 		       msm_va_cdc_dma_be_dai_links,
 		       sizeof(msm_va_cdc_dma_be_dai_links));
 		total_links += ARRAY_SIZE(msm_va_cdc_dma_be_dai_links);
 
-		memcpy(msm_pineapple_dai_links + total_links,
+		memcpy(msm_sun_dai_links + total_links,
 		       msm_common_be_dai_links,
 		       sizeof(msm_common_be_dai_links));
 		total_links += ARRAY_SIZE(msm_common_be_dai_links);
@@ -1523,7 +1522,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 		rc = of_property_read_u32(dev->of_node,
 				"qcom,mi2s-audio-intf", &val);
 		if (!rc && val) {
-			memcpy(msm_pineapple_dai_links + total_links,
+			memcpy(msm_sun_dai_links + total_links,
 					msm_mi2s_dai_links,
 					sizeof(msm_mi2s_dai_links));
 			total_links += ARRAY_SIZE(msm_mi2s_dai_links);
@@ -1532,7 +1531,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 		rc = of_property_read_u32(dev->of_node,
 				"qcom,tdm-audio-intf", &val);
 		if (!rc && val) {
-			memcpy(msm_pineapple_dai_links + total_links,
+			memcpy(msm_sun_dai_links + total_links,
 					msm_tdm_dai_links,
 					sizeof(msm_tdm_dai_links));
 			total_links += ARRAY_SIZE(msm_tdm_dai_links);
@@ -1541,27 +1540,25 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 		rc = of_property_read_u32(dev->of_node,
 					   "qcom,ext-disp-audio-rx", &val);
 		if (!rc && val) {
-			if (!socinfo_get_part_info(PART_DISPLAY)) {
-				dev_dbg(dev, "%s(): ext disp audio support present\n",
-					__func__);
-				memcpy(msm_pineapple_dai_links + total_links,
-				       ext_disp_be_dai_link,
-				       sizeof(ext_disp_be_dai_link));
-				total_links += ARRAY_SIZE(ext_disp_be_dai_link);
-			}
+			dev_dbg(dev, "%s(): ext disp audio support present\n",
+				__func__);
+			memcpy(msm_sun_dai_links + total_links,
+			       ext_disp_be_dai_link,
+			       sizeof(ext_disp_be_dai_link));
+			total_links += ARRAY_SIZE(ext_disp_be_dai_link);
 		}
 
 		rc = of_property_read_u32(dev->of_node, "qcom,wcn-bt", &val);
 		if (!rc && val) {
 			dev_dbg(dev, "%s(): WCN BT support present\n",
 				__func__);
-			memcpy(msm_pineapple_dai_links + total_links,
+			memcpy(msm_sun_dai_links + total_links,
 			       msm_wcn_be_dai_links,
 			       sizeof(msm_wcn_be_dai_links));
 			total_links += ARRAY_SIZE(msm_wcn_be_dai_links);
 		}
 
-		dailink = msm_pineapple_dai_links;
+		dailink = msm_sun_dai_links;
 	} else if(!strcmp(match->data, "stub_codec")) {
 		card = &snd_soc_card_stub_msm;
 
@@ -1982,7 +1979,7 @@ done:
 	return ret;
 }
 
-static int pineapple_ssr_enable(struct device *dev, void *data)
+static int sun_ssr_enable(struct device *dev, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
@@ -1996,7 +1993,7 @@ static int pineapple_ssr_enable(struct device *dev, void *data)
 		goto err;
 	}
 
-	if (!strcmp(card->name, "pineapple-stub-snd-card")) {
+	if (!strcmp(card->name, "sun-stub-snd-card")) {
 		/* TODO */
 		dev_dbg(dev, "%s: TODO \n", __func__);
 	}
@@ -2053,7 +2050,7 @@ err:
 	return ret;
 }
 
-static void pineapple_ssr_disable(struct device *dev, void *data)
+static void sun_ssr_disable(struct device *dev, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
@@ -2066,15 +2063,15 @@ static void pineapple_ssr_disable(struct device *dev, void *data)
 	dev_dbg(dev, "%s: setting snd_card to OFFLINE\n", __func__);
 	snd_card_notify_user(SND_CARD_STATUS_OFFLINE);
 
-	if (!strcmp(card->name, "pineapple-stub-snd-card")) {
+	if (!strcmp(card->name, "sun-stub-snd-card")) {
 		/* TODO */
 		dev_dbg(dev, "%s: TODO \n", __func__);
 	}
 }
 
-static const struct snd_event_ops pineapple_ssr_ops = {
-	.enable = pineapple_ssr_enable,
-	.disable = pineapple_ssr_disable,
+static const struct snd_event_ops sun_ssr_ops = {
+	.enable = sun_ssr_enable,
+	.disable = sun_ssr_disable,
 };
 
 static int msm_audio_ssr_compare(struct device *dev, void *data)
@@ -2102,7 +2099,7 @@ static int msm_audio_ssr_register(struct device *dev)
 					msm_audio_ssr_compare, node);
 	}
 
-	ret = snd_event_master_register(dev, &pineapple_ssr_ops,
+	ret = snd_event_master_register(dev, &sun_ssr_ops,
 					ssr_clients, NULL);
 	if (!ret)
 		snd_event_notify(dev, SND_EVENT_UP);
@@ -2173,7 +2170,7 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	match = of_match_node(pineapple_asoc_machine_of_match, pdev->dev.of_node);
+	match = of_match_node(sun_asoc_machine_of_match, pdev->dev.of_node);
 	if (!match) {
 		dev_err(&pdev->dev, "%s: No DT match found for sound card\n",
 			__func__);
@@ -2303,12 +2300,12 @@ static int msm_asoc_machine_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct platform_driver pineapple_asoc_machine_driver = {
+static struct platform_driver sun_asoc_machine_driver = {
 	.driver = {
 		.name = DRV_NAME,
 		.owner = THIS_MODULE,
 		.pm = &snd_soc_pm_ops,
-		.of_match_table = pineapple_asoc_machine_of_match,
+		.of_match_table = sun_asoc_machine_of_match,
 		.suppress_bind_attrs = true,
 	},
 	.probe = msm_asoc_machine_probe,
@@ -2318,13 +2315,13 @@ static struct platform_driver pineapple_asoc_machine_driver = {
 static int __init msm_asoc_machine_init(void)
 {
 	snd_card_sysfs_init();
-	return platform_driver_register(&pineapple_asoc_machine_driver);
+	return platform_driver_register(&sun_asoc_machine_driver);
 }
 module_init(msm_asoc_machine_init);
 
 static void __exit msm_asoc_machine_exit(void)
 {
-	platform_driver_unregister(&pineapple_asoc_machine_driver);
+	platform_driver_unregister(&sun_asoc_machine_driver);
 }
 module_exit(msm_asoc_machine_exit);
 
@@ -2336,4 +2333,4 @@ MODULE_SOFTDEP("pre: btfmcodec");
 MODULE_DESCRIPTION("ALSA SoC msm");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:" DRV_NAME);
-MODULE_DEVICE_TABLE(of, pineapple_asoc_machine_of_match);
+MODULE_DEVICE_TABLE(of, sun_asoc_machine_of_match);

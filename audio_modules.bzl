@@ -174,6 +174,9 @@ audio_modules.register(
         ],
         "CONFIG_SND_SOC_SDX": [
             "sdx-target.c"
+        ],
+        "CONFIG_SND_SOC_SUN": [
+            "sun.c"
         ]
     },
 )

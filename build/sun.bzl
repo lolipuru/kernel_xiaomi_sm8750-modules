@@ -1,10 +1,10 @@
 load(":audio_modules.bzl", "audio_modules")
 load(":module_mgr.bzl", "define_target_modules")
 
-def define_pineapple():
+def define_sun():
     define_target_modules(
-        target = "pineapple",
-        variants = ["consolidate", "gki"],
+        target = "sun",
+        variants = ["consolidate", "perf"],
         registry = audio_modules,
         modules = [
             "q6_dlkm",
@@ -41,7 +41,7 @@ def define_pineapple():
             "wcd939x_slave_dlkm"
         ],
         config_options = [
-            "CONFIG_SND_SOC_PINEAPPLE",
+            "CONFIG_SND_SOC_SUN",
             "CONFIG_SND_SOC_MSM_QDSP6V2_INTF",
             "CONFIG_MSM_QDSP6_SSR",
             "CONFIG_DIGITAL_CDC_RSC_MGR",
