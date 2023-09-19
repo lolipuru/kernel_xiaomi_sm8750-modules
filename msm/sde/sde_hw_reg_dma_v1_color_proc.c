@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2216,7 +2216,7 @@ void reg_dmav2_setup_dspp_sixzonev2(struct sde_hw_dspp *ctx, void *cfg)
 	struct drm_msm_sixzone *sixzone;
 	struct sde_hw_dspp *dspp_list[DSPP_MAX];
 	u32 local_opcode = 0, local_hold = 0, sv_ctl = 0;
-	u32 num_of_mixers, blk = 0, len, transfer_size_bytes;
+	u32 num_of_mixers, blk = 0, len, transfer_size_bytes, modify_blk;
 	u16 *data = NULL;
 	int i, rc, j, k;
 
@@ -2362,8 +2362,8 @@ void reg_dmav2_setup_dspp_sixzonev2(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	for (i = 0; i < num_of_mixers; i++) {
-		blk = dspp_mapping[dspp_list[i]->idx];
-		REG_DMA_INIT_OPS(dma_write_cfg, blk, SIX_ZONE,
+		modify_blk = dspp_mapping[dspp_list[i]->idx];
+		REG_DMA_INIT_OPS(dma_write_cfg, modify_blk, SIX_ZONE,
 			dspp_buf[SIX_ZONE][ctx->idx][ctx->dpu_idx]);
 
 		REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT,
