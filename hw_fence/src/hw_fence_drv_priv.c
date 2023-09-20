@@ -722,10 +722,14 @@ int hw_fence_init(struct hw_fence_driver_data *drv_data)
 		goto exit;
 	}
 
-	/* Init vIRQ from VM */
-	ret = hw_fence_utils_init_virq(drv_data);
+	/* Init irq from fctl */
+	if (drv_data->has_soccp)
+		ret = hw_fence_utils_init_soccp_irq(drv_data);
+	else
+		ret = hw_fence_utils_init_virq(drv_data);
 	if (ret) {
-		HWFNC_ERR("failed to init virq\n");
+		HWFNC_ERR("failed to init irq has_soccp:%s\n", drv_data->has_soccp ? "true" :
+			"false");
 		goto exit;
 	}
 
@@ -778,7 +782,7 @@ exit:
 int hw_fence_init_controller_signal(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client)
 {
-	int ret = 0;
+	int client_id, ret = 0;
 
 	/*
 	 * Initialize IPCC Signals for this client
@@ -800,7 +804,20 @@ int hw_fence_init_controller_signal(struct hw_fence_driver_data *drv_data,
 	case HW_FENCE_CLIENT_ID_VAL4:
 	case HW_FENCE_CLIENT_ID_VAL5:
 	case HW_FENCE_CLIENT_ID_VAL6:
-		/* nothing to initialize for validation clients */
+		/* initialize ipcc signals for val clients */
+		HWFNC_DBG_H("init_controller_signal: val client_id_ext:%d init:%d\n",
+			hw_fence_client->client_id_ext, drv_data->ipcc_val_initialized);
+
+		if (!drv_data->ipcc_val_initialized) {
+			drv_data->ipcc_val_initialized = true;
+			client_id = hw_fence_utils_get_client_id_priv(drv_data,
+				HW_FENCE_CLIENT_ID_VAL0);
+
+			if (drv_data->has_soccp) {
+				/* init input-soccp signals for val clients */
+				hw_fence_ipcc_enable_client_signal_pairs(drv_data, client_id);
+			}
+		}
 		break;
 #endif /* CONFIG_DEBUG_FS */
 	case HW_FENCE_CLIENT_ID_CTL0:
@@ -814,9 +831,12 @@ int hw_fence_init_controller_signal(struct hw_fence_driver_data *drv_data,
 			hw_fence_client->client_id_ext, drv_data->ipcc_dpu_initialized);
 		if (!drv_data->ipcc_dpu_initialized) {
 			drv_data->ipcc_dpu_initialized = true;
+			client_id = hw_fence_utils_get_client_id_priv(drv_data,
+				HW_FENCE_CLIENT_ID_CTL0);
 
 			/* Init dpu client ipcc signal */
-			hw_fence_ipcc_enable_dpu_signaling(drv_data);
+			hw_fence_ipcc_enable_protocol(drv_data, client_id);
+			hw_fence_ipcc_enable_client_signal_pairs(drv_data, client_id);
 		}
 		break;
 	case HW_FENCE_CLIENT_ID_IPE ... HW_FENCE_CLIENT_ID_IPE +

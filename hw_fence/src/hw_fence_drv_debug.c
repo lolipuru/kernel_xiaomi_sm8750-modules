@@ -124,7 +124,7 @@ static ssize_t hw_fence_dbg_ipcc_write(struct file *file, const char __user *use
 	struct hw_fence_driver_data *drv_data = file->private_data;
 
 	return _debugfs_ipcc_trigger(file, user_buf, count, ppos, drv_data->ipcc_client_pid,
-		drv_data->ipcc_client_vid);
+		drv_data->ipcc_fctl_vid);
 }
 
 /**

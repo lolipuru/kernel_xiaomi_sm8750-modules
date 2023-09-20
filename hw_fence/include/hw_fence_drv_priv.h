@@ -364,6 +364,8 @@ struct hw_fence_signal_cb {
  * @protocol_id: ipcc protocol id used by this driver
  * @ipcc_client_vid: ipcc client virtual-id for this driver
  * @ipcc_client_pid: ipcc client physical-id for this driver
+ * @ipcc_fctl_vid: ipcc client virtual-id for fctl
+ * @ipcc_fctl_pid: ipcc client physical-id for fctl
  * @ipc_clients_table: table with the ipcc mapping for each client of this driver
  * @qtime_reg_base: qtimer register base address
  * @qtime_io_mem: qtimer io mem map
@@ -371,8 +373,9 @@ struct hw_fence_signal_cb {
  * @client_id_mask: bitmask for tracking registered client_ids
  * @clients_register_lock: lock to synchronize clients registration and deregistration
  * @clients: table with the handles of the registered clients; size is equal to clients_num
- * @vm_ready: flag to indicate if vm has been initialized
+ * @fctl_ready: flag to indicate if fence controller has been initialized
  * @ipcc_dpu_initialized: flag to indicate if dpu hw is initialized
+ * @ipcc_val_initialized: flag to indicate if val is initialized
  * @dma_fence_table_lock: lock to synchronize access to dma-fence table
  * @dma_fence_table: table with internal dma-fences for hw-fences
  * @has_soccp: flag to indicate if soccp is present (otherwise vm is used)
@@ -439,6 +442,8 @@ struct hw_fence_driver_data {
 	u32 protocol_id;
 	u32 ipcc_client_vid;
 	u32 ipcc_client_pid;
+	u32 ipcc_fctl_vid;
+	u32 ipcc_fctl_pid;
 
 	/* table with mapping of ipc client for each hw-fence client */
 	struct hw_fence_client_ipc_map *ipc_clients_table;
@@ -454,9 +459,13 @@ struct hw_fence_driver_data {
 	/* table with registered client handles */
 	struct msm_hw_fence_client **clients;
 
-	bool vm_ready;
+	bool fctl_ready;
 	/* state variables */
 	bool ipcc_dpu_initialized;
+
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+	bool ipcc_val_initialized;
+#endif /* CONFIG_DEBUG_FS */
 
 	spinlock_t dma_fence_table_lock;
 	/* table with internal dma-fences created by the this driver on client's behalf */
