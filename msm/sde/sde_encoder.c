@@ -3923,6 +3923,22 @@ void sde_encoder_perf_uidle_status(struct sde_kms *sde_kms,
 			status.uidle_en_fal10);
 	}
 
+	if ((sde_kms->catalog->uidle_cfg.debugfs_perf & SDE_PERF_UIDLE_STATUS)
+			&& uidle->ops.uidle_get_status_ext1) {
+
+		uidle->ops.uidle_get_status_ext1(uidle, &status);
+		trace_sde_perf_uidle_status_v1(
+			crtc->base.id,
+			status.uidle_danger_status_2,
+			status.uidle_danger_status_3,
+			status.uidle_safe_status_2,
+			status.uidle_safe_status_3,
+			status.uidle_idle_status_2,
+			status.uidle_idle_status_3,
+			status.uidle_fal_status_2,
+			status.uidle_fal_status_3);
+	}
+
 	if ((sde_kms->catalog->uidle_cfg.debugfs_perf & SDE_PERF_UIDLE_CNT)
 			&& uidle->ops.uidle_get_cntr) {
 

@@ -766,11 +766,13 @@ enum {
  * uidle features
  * @SDE_UIDLE_QACTIVE_OVERRIDE    uidle sends qactive signal
  * @SDE_UIDLE_WB_FAL_STATUS       wb contributes to fal status
+ * @SDE_UIDLE_STATUS_EXT1         uidle status_2 & status_3 for danger/safe/idle/fal
  * @SDE_UIDLE_MAX                 maximum value
  */
 enum {
 	SDE_UIDLE_QACTIVE_OVERRIDE = 0x1,
 	SDE_UIDLE_WB_FAL_STATUS,
+	SDE_UIDLE_STATUS_EXT1,
 	SDE_UIDLE_MAX
 };
 

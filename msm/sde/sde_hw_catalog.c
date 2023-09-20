@@ -3664,6 +3664,9 @@ static int sde_uidle_parse_dt(struct device_node *np,
 		rc = -EINVAL;
 	}
 
+	if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+		set_bit(SDE_UIDLE_STATUS_EXT1, &sde_cfg->uidle_cfg.features);
+
 end:
 	if (rc && sde_cfg->uidle_cfg.uidle_rev) {
 		SDE_DEBUG("wrong dt entries, will disable uidle\n");
