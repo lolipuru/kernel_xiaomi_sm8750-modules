@@ -366,4 +366,10 @@ void sde_power_handle_unregister_event(struct sde_power_handle *phandle,
  */
 const char *sde_power_handle_get_dbus_name(u32 bus_id);
 
+/**
+ * sde_power_mmrm_reserve - requests the mmrm supported clk reservation
+ * @phandle:	pointer to power handle
+ */
+void sde_power_mmrm_reserve(struct sde_power_handle *phandle);
+
 #endif /* _SDE_POWER_HANDLE_H_ */

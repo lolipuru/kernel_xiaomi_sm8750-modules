@@ -941,6 +941,7 @@ void sde_core_perf_crtc_reserve_res(struct drm_crtc *crtc, u64 reserve_rate)
 	struct sde_crtc *sde_crtc;
 	struct sde_kms *kms;
 	struct msm_drm_private *priv;
+	struct sde_power_handle *phandle;
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -960,7 +961,10 @@ void sde_core_perf_crtc_reserve_res(struct drm_crtc *crtc, u64 reserve_rate)
 	kms->perf.core_clk_reserve_rate = max(kms->perf.core_clk_reserve_rate, reserve_rate);
 	kms->perf.core_clk_reserve_rate = min(kms->perf.core_clk_reserve_rate,
 			kms->perf.max_core_clk_rate);
-	sde_power_clk_reserve_rate(&priv->phandle, kms->perf.clk_name,
+
+	phandle = kms->perf.cesta_phandle ? kms->perf.cesta_phandle : &priv->phandle;
+
+	sde_power_clk_reserve_rate(phandle, kms->perf.clk_name,
 			kms->perf.core_clk_reserve_rate);
 
 	SDE_DEBUG("reserve clk:%llu\n", kms->perf.core_clk_reserve_rate);
@@ -1558,6 +1562,10 @@ int sde_core_perf_init(struct sde_core_perf *perf,
 		perf->bw_vote_mode = DISP_RSC_MODE;
 	else
 		perf->bw_vote_mode = APPS_RSC_MODE;
+
+	/* core clk will be part of cesta node, when cesta is enabled */
+	perf->cesta_phandle = sde_cesta_get_phandle(DPUID(dev));
+	phandle = perf->cesta_phandle ? perf->cesta_phandle : phandle;
 
 	perf->core_clk = sde_power_clk_get_clk(phandle, clk_name);
 	if (!perf->core_clk) {

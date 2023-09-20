@@ -30,6 +30,18 @@ bool sde_cesta_is_enabled(u32 cesta_index)
 	return cesta_list[cesta_index] ? true : false;
 }
 
+struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index)
+{
+	struct sde_cesta *cesta;
+
+	if ((cesta_index >= MAX_CESTA_COUNT) || !sde_cesta_is_enabled(cesta_index))
+		return NULL;
+
+	cesta = cesta_list[cesta_index];
+
+	return &cesta->phandle;
+}
+
 void sde_cesta_update_perf_config(u32 cesta_index, struct sde_cesta_perf_cfg *cfg)
 {
 	struct sde_cesta *cesta;
@@ -88,8 +100,9 @@ int sde_cesta_clk_bw_check(struct sde_cesta_client *client, struct sde_cesta_par
 	struct sde_cesta *cesta;
 	struct sde_cesta_client *c;
 	struct sde_cesta_client_data *client_data;
-	u64 bw_ab, bw_ib = 0, core_clk_ab, core_clk_ib;
-	int ret = 0;
+	struct dss_module_power *mp;
+	u64 bw_ab, bw_ib = 0, core_clk_ab, core_clk_ib, core_clk_rate;
+	int i, ret = 0;
 
 	if (!client || !params || (client->cesta_index >= MAX_CESTA_COUNT)) {
 		SDE_DEBUG_CESTA("invalid values - client:%d, param:%d, cesta_index:%d\n",
@@ -134,12 +147,30 @@ int sde_cesta_clk_bw_check(struct sde_cesta_client *client, struct sde_cesta_par
 	}
 
 	/* Clk validation */
-	if (max(core_clk_ab, core_clk_ib) > cesta->perf_cfg.max_core_clk_rate) {
+	core_clk_rate = max(core_clk_ab, core_clk_ib);
+	if (core_clk_rate > cesta->perf_cfg.max_core_clk_rate) {
 		SDE_ERROR_CESTA("Clk exceeded - ab:%llu, ib:%llu, c_ab:%llu, c_ib:%llu, max:%llu\n",
 				core_clk_ab, core_clk_ib, params->data.core_clk_rate_ab,
 				params->data.core_clk_rate_ib, cesta->perf_cfg.max_core_clk_rate);
 		ret = -E2BIG;
 		goto end;
+	}
+
+	/* reserve core_clk in MMRM based on the consolidated clk value */
+	mp = &cesta->phandle.mp;
+	for (i = 0; i < mp->num_clk; i++) {
+		if (mp->clk_config[i].type != DSS_CLK_MMRM)
+			continue;
+
+		core_clk_rate = clk_round_rate(mp->clk_config[i].clk, core_clk_rate);
+		ret = sde_power_clk_set_rate(&cesta->phandle, mp->clk_config[i].clk_name,
+				core_clk_rate, MMRM_CLIENT_DATA_FLAG_RESERVE_ONLY);
+		if (ret) {
+			SDE_ERROR_CESTA("cannot reserve core clk rate:%llu, ret:%d\n",
+					core_clk_rate, ret);
+			ret = -E2BIG;
+			goto end;
+		}
 	}
 
 end:
@@ -484,6 +515,7 @@ int sde_cesta_resource_disable(u32 cesta_index)
 	if (ret)
 		SDE_ERROR_CESTA("sw-client-0 vote for core-clk failed in disable, ret:%d\n", ret);
 
+	sde_power_mmrm_reserve(phandle);
 	msm_dss_enable_clk(mp->clk_config, mp->num_clk, false);
 
 	/* avoid regulator disable, once gdsc is put to hw-ctrl mode */

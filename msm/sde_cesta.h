@@ -299,6 +299,12 @@ void sde_cesta_ctrl_setup(struct sde_cesta_client *client, struct sde_cesta_ctrl
  */
 void sde_cesta_get_status(struct sde_cesta_client *client, struct sde_cesta_scc_status *status);
 
+/**
+ * sde_cesta_get_phandle - retrieves the power handle context for the requested cesta instance
+ * @cesta_index: cesta instance used
+ */
+struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index);
+
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
 {
@@ -353,6 +359,11 @@ static inline void sde_cesta_ctrl_setup(struct sde_cesta_client *client,
 static inline void sde_cesta_get_status(struct sde_cesta_client *client,
 		struct sde_cesta_scc_status *status)
 {
+}
+
+static inline struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index)
+{
+	return NULL;
 }
 
 #endif /* CONFIG_DRM_SDE_CESTA */
