@@ -1305,7 +1305,7 @@ static void _dp_panel_dsc_get_num_extra_pclk(struct dp_panel *dp_panel,
 	else
 		dsc->extra_width = 0;
 
-	DP_DEBUG("extra pclks required: %d\n", dsc->extra_width);
+	DP_DEBUG_V("extra pclks required: %d\n", dsc->extra_width);
 }
 
 static void _dp_panel_dsc_bw_overhead_calc(struct dp_panel *dp_panel,
@@ -1334,7 +1334,7 @@ static void _dp_panel_dsc_bw_overhead_calc(struct dp_panel *dp_panel,
 	dwidth_dsc_bytes = tot_num_hor_bytes + tot_num_eoc_symbols +
 				tot_num_dummy_bytes;
 
-	DP_DEBUG("dwidth_dsc_bytes:%d, tot_num_hor_bytes:%d\n",
+	DP_DEBUG_V("dwidth_dsc_bytes:%d, tot_num_hor_bytes:%d\n",
 			dwidth_dsc_bytes, tot_num_hor_bytes);
 
 	dp_mode->dsc_overhead_fp = drm_fixp_from_fraction(dwidth_dsc_bytes,
@@ -1501,7 +1501,7 @@ static int dp_panel_dsc_prepare_basic_params(
 			(dsc_version_minor == 0x1 || dsc_version_minor == 0x2))
 			? true : false;
 
-	DP_DEBUG("DSC version: %d.%d, dpcd value: %x\n",
+	DP_DEBUG_V("DSC version: %d.%d, dpcd value: %x\n",
 			dsc_version_major, dsc_version_minor,
 			dp_panel->sink_dsc_caps.version);
 
@@ -2418,6 +2418,9 @@ static int dp_panel_deinit_panel_info(struct dp_panel *dp_panel, u32 flags)
 	dhdr_vsif_sdp = &panel->catalog->dhdr_vsif_sdp;
 	shdr_if_sdp = &panel->catalog->shdr_if_sdp;
 	vsc_colorimetry = &panel->catalog->vsc_colorimetry;
+
+	/*clearing LINK INFO capabilities during disconnect*/
+	dp_panel->link_info.capabilities = 0;
 
 	if (dp_panel->edid_ctrl->edid)
 		sde_free_edid((void **)&dp_panel->edid_ctrl);
