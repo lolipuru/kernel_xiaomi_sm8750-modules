@@ -1227,7 +1227,7 @@ static void __ipa_convert_rt_rule_in(struct ipa_rt_rule rule_in,
 {
 	if (unlikely(sizeof(struct ipa_rt_rule) >
 			sizeof(struct ipa_rt_rule_i))) {
-		IPAERR_RL("invalid size in: %d size out: %d\n",
+		IPAERR_RL("invalid size in: %lu size out: %lu\n",
 			sizeof(struct ipa_rt_rule),
 			sizeof(struct ipa_rt_rule_i));
 		return;
@@ -1241,7 +1241,7 @@ static void __ipa_convert_rt_rule_out(struct ipa_rt_rule_i rule_in,
 {
 	if (unlikely(sizeof(struct ipa_rt_rule) >
 			sizeof(struct ipa_rt_rule_i))) {
-		IPAERR_RL("invalid size in:%d size out:%d\n",
+		IPAERR_RL("invalid size in:%lu size out:%lu\n",
 			sizeof(struct ipa_rt_rule),
 			sizeof(struct ipa_rt_rule_i));
 		return;
@@ -1255,7 +1255,7 @@ static void __ipa_convert_rt_mdfy_in(struct ipa_rt_rule_mdfy rule_in,
 {
 	if (unlikely(sizeof(struct ipa_rt_rule_mdfy) >
 			sizeof(struct ipa_rt_rule_mdfy_i))) {
-		IPAERR_RL("invalid size in:%d size out:%d\n",
+		IPAERR_RL("invalid size in:%lu size out:%lu\n",
 			sizeof(struct ipa_rt_rule_mdfy),
 			sizeof(struct ipa_rt_rule_mdfy_i));
 		return;
@@ -1272,7 +1272,7 @@ static void __ipa_convert_rt_mdfy_out(struct ipa_rt_rule_mdfy_i rule_in,
 {
 	if (unlikely(sizeof(struct ipa_rt_rule_mdfy) >
 			sizeof(struct ipa_rt_rule_mdfy_i))) {
-		IPAERR_RL("invalid size in:%d size out:%d\n",
+		IPAERR_RL("invalid size in:%lu size out:%lu\n",
 			sizeof(struct ipa_rt_rule_mdfy),
 			sizeof(struct ipa_rt_rule_mdfy_i));
 		return;
@@ -2615,4 +2615,3 @@ ret:
 
 	return result;
 }
-

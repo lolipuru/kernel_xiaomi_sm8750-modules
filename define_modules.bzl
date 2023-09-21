@@ -153,12 +153,12 @@ def define_modules(target, variant):
                     "drivers/platform/msm/ipa/ipa_v3/ipa_mpm.c",
                 ],
             },
-	    "CONFIG_IPA3_MHI_PROXY": {
-		True: [
-		    "drivers/platform/msm/ipa/ipa_v3/ipa_mhi_proxy.h",
-		    "drivers/platform/msm/ipa/ipa_v3/ipa_mhi_proxy.c",
-		],
-	    },
+            "CONFIG_IPA3_MHI_PROXY": {
+                True: [
+                    "drivers/platform/msm/ipa/ipa_v3/ipa_mhi_proxy.h",
+                    "drivers/platform/msm/ipa/ipa_v3/ipa_mhi_proxy.c",
+                ],
+            },
             "CONFIG_IPA_TSP": {
                 True: [
                     "drivers/platform/msm/ipa/ipa_v3/ipahal/ipahal_tsp.c",

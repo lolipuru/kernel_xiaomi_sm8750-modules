@@ -3,11 +3,15 @@ load("//build/kernel/kleaf:kernel.bzl", "ddk_headers")
 
 define_modules("pineapple", "consolidate")
 
-define_modules("pineapple", "gki")
+define_modules("pineapple", "perf")
+
+define_modules("sun", "consolidate")
+
+define_modules("sun", "perf")
 
 define_modules("blair", "consolidate")
 
-define_modules("blair", "gki")
+define_modules("blair", "perf")
 
 package(
     default_visibility = [
@@ -74,7 +78,7 @@ ddk_headers(
 )
 
 ddk_headers(
-    name = "gki_config_headers",
+    name = "perf_config_headers",
     hdrs = [
         "config/dataipa_vendor.h",
     ],
@@ -92,7 +96,7 @@ genrule(
 )
 
 genrule(
-    name = "gki_defconfig",
+    name = "perf_defconfig",
     srcs = [
         "config/dataipa_GKI.conf",
     ],

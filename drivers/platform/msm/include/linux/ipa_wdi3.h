@@ -915,7 +915,7 @@ static inline int ipa_wdi_opt_dpath_notify_flt_rlsd_per_inst(ipa_wdi_hdl_t hdl,
 
 static int ipa_wdi_opt_dpath_rsrv_filter_req(
 	struct ipa_wlan_opt_dp_rsrv_filter_req_msg_v01 *req,
-	struct ipa_wlan_opt_dp_rsrv_filter_resp_msg_v01 *resp);
+	struct ipa_wlan_opt_dp_rsrv_filter_resp_msg_v01 *resp)
 {
 	return -EPERM;
 }
