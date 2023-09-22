@@ -22,13 +22,17 @@ ifeq ($(call is-board-platform-in-list,pineapple),true)
 AUDIO_SELECT  := CONFIG_SND_SOC_PINEAPPLE=m
 endif
 
+ifeq ($(call is-board-platform-in-list,sun),true)
+AUDIO_SELECT  := CONFIG_SND_SOC_SUN=m
+endif
+
 ifeq ($(ENABLE_AUDIO_LEGACY_TECHPACK),true)
 include $(call all-subdir-makefiles)
 LOCAL_PATH := vendor/qcom/opensource/audio-kernel
 endif
 
 # Build/Package only in case of supported target
-ifeq ($(call is-board-platform-in-list,taro kalama bengal pineapple holi blair gen4 msmnile), true)
+ifeq ($(call is-board-platform-in-list,taro kalama bengal pineapple sun holi blair gen4 msmnile), true)
 
 # This makefile is only for DLKM
 ifneq ($(findstring vendor,$(LOCAL_PATH)),)
