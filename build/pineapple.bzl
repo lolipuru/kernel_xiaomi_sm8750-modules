@@ -4,7 +4,7 @@ load(":module_mgr.bzl", "define_target_modules")
 def define_pineapple():
     define_target_modules(
         target = "pineapple",
-        variants = ["consolidate", "gki"],
+        variants = ["consolidate", "gki", "perf"],
         registry = audio_modules,
         modules = [
             "q6_dlkm",
