@@ -342,7 +342,7 @@ static int msm_probe_cvp_device(struct platform_device *pdev)
 		goto err_alloc_chrdev;
 	}
 
-	core->class = class_create(THIS_MODULE, CLASS_NAME);
+	core->class = class_create(CLASS_NAME);
 	if (IS_ERR(core->class)) {
 		rc = PTR_ERR(core->class);
 		dprintk(CVP_ERR, "class_create failed: %d\n",

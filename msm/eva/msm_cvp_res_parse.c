@@ -992,7 +992,7 @@ static int msm_cvp_setup_context_bank(struct msm_cvp_platform_resources *res,
 		struct context_bank_info *cb, struct device *dev)
 {
 	int rc = 0;
-	struct bus_type *bus;
+	const struct bus_type *bus;
 
 	if (!dev || !cb || !res) {
 		dprintk(CVP_ERR,
