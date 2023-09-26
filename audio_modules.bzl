@@ -277,7 +277,6 @@ audio_modules.register(
     config_option = "CONFIG_LPASS_BT_SWR",
     srcs = ["lpass-bt-swr.c"]
 )
-audio_modules.register(
 # >>>> ASOC/CODECS/LPASS-CDC MODULES <<<<
 audio_modules.register(
     name = "lpass_cdc_dlkm",
