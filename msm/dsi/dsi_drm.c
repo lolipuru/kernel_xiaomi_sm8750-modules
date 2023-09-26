@@ -662,12 +662,6 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 	mode_info->avr_step_fps = dsi_mode->timing.avr_step_fps;
 	mode_info->wd_jitter = dsi_mode->priv_info->wd_jitter;
 
-	mode_info->vpadding = dsi_display->panel->host_config.vpadding;
-	if (mode_info->vpadding < drm_mode->vdisplay) {
-		mode_info->vpadding = 0;
-		dsi_display->panel->host_config.line_insertion_enable = 0;
-	}
-
 	memcpy(&mode_info->topology, &dsi_mode->priv_info->topology,
 			sizeof(struct msm_display_topology));
 

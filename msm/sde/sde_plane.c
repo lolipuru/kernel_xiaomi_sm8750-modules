@@ -148,6 +148,7 @@ static void _sde_plane_setup_panel_stacking(struct sde_plane *psde,
 	u32 h_start = 0, h_total = 0, y_start = 0;
 	struct drm_plane_state *dpstate = NULL;
 	struct drm_crtc *drm_crtc = NULL;
+	int ret;
 
 	if (!psde || !psde->base.state || !psde->base.state->crtc) {
 		SDE_ERROR("Invalid plane psde %p or drm plane state or drm crtc\n", psde);
@@ -157,10 +158,8 @@ static void _sde_plane_setup_panel_stacking(struct sde_plane *psde,
 	dpstate = psde->base.state;
 	drm_crtc = dpstate->crtc;
 	cstate = to_sde_crtc_state(drm_crtc->state);
-	pstate->lineinsertion_feature = cstate->line_insertion.panel_line_insertion_enable;
 
-	if ((!test_bit(SDE_SSPP_LINE_INSERTION, (unsigned long *)&psde->features)) ||
-	    !cstate->line_insertion.panel_line_insertion_enable)
+	if ((!test_bit(SDE_SSPP_LINE_INSERTION, (unsigned long *)&psde->features)))
 		return;
 
 	cfg = &pstate->line_insertion_cfg;
@@ -168,9 +167,14 @@ static void _sde_plane_setup_panel_stacking(struct sde_plane *psde,
 	if (!cstate->line_insertion.padding_height)
 		return;
 
-	sde_crtc_calc_vpadding_param(psde->base.state->crtc->state,
-				     pstate->base.crtc_y, pstate->base.crtc_h,
-				     &y_start, &h_start, &h_total);
+	ret = sde_crtc_calc_vpadding_param(psde->base.state->crtc->state,
+					   pstate->base.crtc_y, pstate->base.crtc_h,
+					   &y_start, &h_start, &h_total);
+	if (ret) {
+		SDE_ERROR("failed to calculate vpadding parameters\n");
+		return;
+	}
+
 	cfg->enable = true;
 	cfg->dummy_lines = cstate->line_insertion.padding_dummy;
 	cfg->active_lines = cstate->line_insertion.padding_active;
@@ -3474,7 +3478,7 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 				pstate->multirect_index,
 				pstate->multirect_mode);
 	/* update line insertion */
-	if (pstate->lineinsertion_feature && psde->pipe_hw->ops.setup_line_insertion)
+	if (psde->pipe_hw->ops.setup_line_insertion)
 		psde->pipe_hw->ops.setup_line_insertion(psde->pipe_hw,
 				pstate->multirect_index,
 				&pstate->line_insertion_cfg);
