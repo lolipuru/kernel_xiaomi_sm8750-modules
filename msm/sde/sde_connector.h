@@ -944,6 +944,7 @@ int sde_connector_set_property_for_commit(struct drm_connector *connector,
  * @ops: Pointer to callback operations function table
  * @connector_poll: Set to appropriate DRM_CONNECTOR_POLL_ setting
  * @connector_type: Set to appropriate DRM_MODE_CONNECTOR_ type
+ * @shared: Flag to identify if a connector is sharing resource of its parent in SHD
  * Returns: Pointer to newly created drm connector struct
  */
 struct drm_connector *sde_connector_init(struct drm_device *dev,
@@ -952,7 +953,7 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 		void *display,
 		const struct sde_connector_ops *ops,
 		int connector_poll,
-		int connector_type);
+		int connector_type, bool shared);
 
 /**
  * sde_connector_fence_error_ctx_signal - sde fence error context update for retire fence
@@ -1387,5 +1388,12 @@ const char *sde_conn_get_topology_name(struct drm_connector *conn,
  * @Return: line insertion support status
  */
 bool sde_connector_is_line_insertion_supported(struct sde_connector *sde_conn);
+
+/**
+ * _sde_connector_get_display - get dsi display according to connector
+ * @c_conn: Pointer to sde connector struct
+ * @Return: pointer to dsi display
+ */
+struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn);
 
 #endif /* _SDE_CONNECTOR_H_ */

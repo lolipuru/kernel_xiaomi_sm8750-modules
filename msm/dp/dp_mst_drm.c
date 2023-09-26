@@ -1665,7 +1665,7 @@ dp_mst_add_connector(struct drm_dp_mst_topology_mgr *mgr,
 				dp_display,
 				&dp_mst_connector_ops,
 				DRM_CONNECTOR_POLL_HPD,
-				DRM_MODE_CONNECTOR_DisplayPort);
+				DRM_MODE_CONNECTOR_DisplayPort, false);
 
 	if (IS_ERR_OR_NULL(connector)) {
 		DP_ERR("mst sde_connector_init failed\n");
@@ -1954,7 +1954,7 @@ dp_mst_drm_fixed_connector_init(struct dp_display *dp_display,
 				dp_display,
 				&dp_mst_connector_ops,
 				DRM_CONNECTOR_POLL_HPD,
-				DRM_MODE_CONNECTOR_DisplayPort);
+				DRM_MODE_CONNECTOR_DisplayPort, false);
 
 	if (IS_ERR_OR_NULL(connector)) {
 		DP_ERR("mst sde_connector_init failed\n");

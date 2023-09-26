@@ -142,11 +142,12 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 {
 	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_rm *rm;
-	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter;
+	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter, ds_iter;
 	struct drm_encoder *encoder;
 	struct sde_shd_hw_ctl *hw_ctl;
 	struct sde_shd_hw_mixer *hw_lm;
 	struct sde_hw_pingpong *hw_pp;
+	struct sde_hw_ds *hw_ds;
 	struct sde_hw_mixer *sde_hw_lm;
 	struct sde_hw_ctl *sde_hw_ctl;
 
@@ -170,6 +171,7 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
 	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
 	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
+	sde_rm_init_hw_iter(&ds_iter, DRMID(encoder), SDE_HW_BLK_DS);
 
 	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		/* reserve lm */
@@ -228,6 +230,20 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 						       &hw_ctl->base);
 		if (rc) {
 			SDE_ERROR("failed to create & reserve ctl\n");
+			break;
+		}
+	}
+
+	for (i = 0; i < num_mixers; i++) {
+			/* reserve ds */
+		if (!sde_rm_get_hw(rm,  &ds_iter))
+			break;
+		hw_ds = to_sde_hw_ds(ds_iter.hw);
+
+		rc = sde_rm_ext_blk_create_reserve(rm, ds_iter.blk, phys_enc->parent,
+						   &hw_ds->hw);
+		if (rc) {
+			SDE_ERROR("failed to create & reserve ds\n");
 			break;
 		}
 	}
@@ -427,6 +443,7 @@ static int sde_encoder_phys_shd_control_vblank_irq(struct sde_encoder_phys *phys
 		return -EINVAL;
 	}
 
+	mutex_lock(phys_enc->vblank_ctl_lock);
 	refcount = atomic_read(&phys_enc->vblank_refcount);
 	shd_enc = to_sde_encoder_phys_shd(phys_enc);
 
@@ -459,6 +476,7 @@ end:
 		SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_intf->idx - INTF_0,
 			  enable, refcount, SDE_EVTLOG_ERROR);
 	}
+	mutex_unlock(phys_enc->vblank_ctl_lock);
 	return ret;
 }
 
@@ -642,6 +660,7 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id, void
 	phys_enc->intf_idx = INTF_0 + controller_id;
 
 	phys_enc->enc_spinlock = p->enc_spinlock;
+	phys_enc->vblank_ctl_lock = p->vblank_ctl_lock;
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
 
 	irq = &phys_enc->irq[INTR_IDX_VSYNC];

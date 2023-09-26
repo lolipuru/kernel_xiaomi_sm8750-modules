@@ -1102,7 +1102,8 @@ static int shd_drm_obj_init(struct shd_display *display)
 		display->dsi_base =  (struct dsi_display *)sde_kms->dsi_displays[0];
 
 	connector = sde_connector_init(dev, encoder, dsi_display_get_drm_panel(display->dsi_base),
-				       display, &shd_ops, DRM_CONNECTOR_POLL_HPD, info.intf_type);
+				       display, &shd_ops, DRM_CONNECTOR_POLL_HPD,
+				       info.intf_type, true);
 	if (connector) {
 		priv->encoders[priv->num_encoders++] = encoder;
 		priv->connectors[priv->num_connectors++] = connector;
