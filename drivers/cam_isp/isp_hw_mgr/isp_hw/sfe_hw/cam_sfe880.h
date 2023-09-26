@@ -1105,6 +1105,26 @@ static struct cam_sfe_bus_wr_hw_info sfe880_bus_wr_hw_info = {
 			.global_irq_cmd_offset = 0x00000830,
 			.global_clear_bitmask  = 0x00000001,
 		},
+		.num_perf_counters                = 4,
+		.perf_cnt_status                  = 0x000008B4,
+		.perf_cnt_reg = {
+			{
+				.perf_cnt_cfg = 0x00000874,
+				.perf_cnt_val = 0x00000894,
+			},
+			{
+				.perf_cnt_cfg = 0x00000878,
+				.perf_cnt_val = 0x00000898,
+			},
+			{
+				.perf_cnt_cfg = 0x0000087C,
+				.perf_cnt_val = 0x0000089C,
+			},
+			{
+				.perf_cnt_cfg = 0x00000880,
+				.perf_cnt_val = 0x000008A0,
+			},
+		},
 	},
 	.num_client = 17,
 	.bus_client_reg = {

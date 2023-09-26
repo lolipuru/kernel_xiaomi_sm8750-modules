@@ -1170,6 +1170,42 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.global_irq_cmd_offset    = 0x00000C30,
 			.global_clear_bitmask     = 0x00000001,
 		},
+		.num_perf_counters                = 8,
+		.perf_cnt_status                  = 0x00000CB4,
+		.perf_cnt_reg = {
+			{
+				.perf_cnt_cfg = 0x00000C74,
+				.perf_cnt_val = 0x00000C94,
+			},
+			{
+				.perf_cnt_cfg = 0x00000C78,
+				.perf_cnt_val = 0x00000C98,
+			},
+			{
+				.perf_cnt_cfg = 0x00000C7C,
+				.perf_cnt_val = 0x00000C9C,
+			},
+			{
+				.perf_cnt_cfg = 0x00000C80,
+				.perf_cnt_val = 0x00000CA0,
+			},
+			{
+				.perf_cnt_cfg = 0x00000C84,
+				.perf_cnt_val = 0x00000CA4,
+			},
+			{
+				.perf_cnt_cfg = 0x00000C88,
+				.perf_cnt_val = 0x00000CA8,
+			},
+			{
+				.perf_cnt_cfg = 0x00000C8C,
+				.perf_cnt_val = 0x00000CAC,
+			},
+			{
+				.perf_cnt_cfg = 0x00000C90,
+				.perf_cnt_val = 0x00000CB0,
+			},
+		},
 	},
 	.num_client = CAM_VFE_BUS_VER3_880_MAX_CLIENTS,
 	.bus_client_reg = {

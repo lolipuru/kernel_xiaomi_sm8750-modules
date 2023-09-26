@@ -17,7 +17,6 @@
 #include "cam_vfe_hw_intf.h"
 #include "cam_irq_controller.h"
 #include "cam_tasklet_util.h"
-#include "cam_vfe_bus.h"
 #include "cam_vfe_bus_ver3.h"
 #include "cam_vfe_core.h"
 #include "cam_vfe_soc.h"
@@ -106,6 +105,7 @@ struct cam_vfe_bus_ver3_common_data {
 	uint32_t                                    num_sec_out;
 	uint32_t                                    addr_no_sync;
 	uint32_t                                    supported_irq;
+	uint32_t                                    perf_cnt_cfg[CAM_VFE_PERF_CNT_MAX];
 	bool                                        comp_config_needed;
 	bool                                        is_lite;
 	bool                                        hw_init;
@@ -114,10 +114,12 @@ struct cam_vfe_bus_ver3_common_data {
 	bool                                        disable_ubwc_comp;
 	bool                                        init_irq_subscribed;
 	bool                                        disable_mmu_prefetch;
+	bool                                        perf_cnt_en;
 	cam_hw_mgr_event_cb_func                    event_cb;
 	int                        rup_irq_handle[CAM_VFE_BUS_VER3_SRC_GRP_MAX];
 	uint32_t                                    pack_align_shift;
 	uint32_t                                    max_bw_counter_limit;
+	uint32_t                                    cntr;
 };
 
 struct cam_vfe_bus_ver3_wm_cfg_data {
@@ -1366,7 +1368,7 @@ static int cam_vfe_bus_ver3_start_wm_util(
 static int cam_vfe_bus_ver3_start_wm(struct cam_isp_resource_node *wm_res)
 {
 	const uint32_t enable_debug_status_1 = 11 << 8;
-	int i, rc = 0;
+	int i, j, rc = 0;
 	uint32_t restore_ctxt_sel_val = 0;
 	struct cam_vfe_bus_ver3_wm_resource_data   *rsrc_data = wm_res->res_priv;
 	struct cam_vfe_bus_ver3_common_data        *common_data = rsrc_data->common_data;
@@ -1420,6 +1422,23 @@ static int cam_vfe_bus_ver3_start_wm(struct cam_isp_resource_node *wm_res)
 		rsrc_data->cfg.stride, 0xF, rsrc_data->out_rsrc_data->dst_hw_ctxt_id_mask);
 
 	wm_res->res_state = CAM_ISP_RESOURCE_STATE_STREAMING;
+	common_data->cntr = 0;
+
+	if (!common_data->perf_cnt_en) {
+		for (j = 0; j < CAM_VFE_PERF_CNT_MAX; j++) {
+			if (!common_data->perf_cnt_cfg[j])
+				continue;
+
+			cam_io_w_mb(common_data->perf_cnt_cfg[j],
+				common_data->mem_base +
+				common_data->common_reg->perf_cnt_reg[j].perf_cnt_cfg);
+			common_data->perf_cnt_en = true;
+			CAM_DBG(CAM_ISP, "VFE:%u perf_cnt_%d:0x%x offset: 0x%x",
+				rsrc_data->common_data->core_index,
+				j, common_data->perf_cnt_cfg[j],
+			common_data->common_reg->perf_cnt_reg[j].perf_cnt_cfg);
+		}
+	}
 
 end:
 	return rc;
@@ -1435,6 +1454,7 @@ static inline void cam_vfe_bus_ver3_stop_wm_util(
 static int cam_vfe_bus_ver3_stop_wm(struct cam_isp_resource_node *wm_res)
 {
 	struct cam_vfe_bus_ver3_wm_resource_data   *rsrc_data = wm_res->res_priv;
+	struct cam_vfe_bus_ver3_common_data        *common_data = rsrc_data->common_data;
 	int i;
 
 	if (rsrc_data->out_rsrc_data->mc_based || rsrc_data->out_rsrc_data->cntxt_cfg_except) {
@@ -1469,6 +1489,7 @@ static int cam_vfe_bus_ver3_stop_wm(struct cam_isp_resource_node *wm_res)
 		}
 	}
 
+	common_data->perf_cnt_en = false;
 	return 0;
 }
 
@@ -4970,6 +4991,46 @@ static uint32_t cam_vfe_bus_ver3_get_last_consumed_addr(
 	return last_consumed_addr;
 }
 
+static int cam_vfe_bus_ver3_read_rst_perf_cntrs(
+	struct cam_vfe_bus_ver3_priv *bus_priv)
+{
+	int i;
+	bool print = false;
+	uint32_t val, status;
+	size_t len = 0;
+	uint8_t log_buf[256];
+	struct cam_vfe_bus_ver3_common_data *common_data = &bus_priv->common_data;
+
+	if (!common_data->perf_cnt_en)
+		return 0;
+
+	CAM_DBG(CAM_ISP, "IFE%u Checking perf count status", common_data->core_index);
+	common_data->cntr++;
+	for (i = 0; i < CAM_VFE_PERF_CNT_MAX; i++) {
+
+		status = cam_io_r_mb(common_data->mem_base +
+			common_data->common_reg->perf_cnt_status);
+		if (!(status & BIT(i)))
+			continue;
+
+		val = cam_io_r_mb(common_data->mem_base +
+			common_data->common_reg->perf_cnt_reg[i].perf_cnt_val);
+
+		cam_io_w_mb(common_data->perf_cnt_cfg[i],
+			common_data->mem_base +
+			common_data->common_reg->perf_cnt_reg[i].perf_cnt_cfg);
+		CAM_INFO_BUF(CAM_ISP, log_buf, 256, &len, "cnt%d: 0x%x ", i, val);
+		print = true;
+	}
+
+	if (print)
+		CAM_INFO(CAM_ISP,
+			"IFE%u Frame: %u Perf counters %s",
+			common_data->core_index, common_data->cntr, log_buf);
+
+	return 0;
+}
+
 static int cam_vfe_bus_ver3_process_cmd(
 	struct cam_isp_resource_node *priv,
 	uint32_t cmd_type, void *cmd_args, uint32_t arg_size)
@@ -5070,6 +5131,9 @@ static int cam_vfe_bus_ver3_process_cmd(
 			bus_priv->bus_hw_info->skip_regdump_start_offset;
 		vfe_bus_cap->skip_regdump_data.skip_regdump_stop_offset =
 			bus_priv->bus_hw_info->skip_regdump_stop_offset;
+		vfe_bus_cap->num_wr_perf_counters =
+			bus_priv->bus_hw_info->common_reg.num_perf_counters;
+		rc = 0;
 		break;
 	case CAM_ISP_HW_CMD_GET_LAST_CONSUMED_ADDR:
 		bus_priv = (struct cam_vfe_bus_ver3_priv  *) priv;
@@ -5080,12 +5144,18 @@ static int cam_vfe_bus_ver3_process_cmd(
 			rc = 0;
 		break;
 	case CAM_ISP_HW_CMD_IFE_DEBUG_CFG: {
+		int i;
 		struct cam_vfe_generic_debug_config *debug_cfg;
 
 		bus_priv = (struct cam_vfe_bus_ver3_priv  *) priv;
 		debug_cfg = (struct cam_vfe_generic_debug_config *)cmd_args;
 		bus_priv->common_data.disable_mmu_prefetch =
 			debug_cfg->disable_ife_mmu_prefetch;
+
+		for (i = 0; i < CAM_VFE_PERF_CNT_MAX; i++) {
+			bus_priv->common_data.perf_cnt_cfg[i] =
+				debug_cfg->vfe_bus_wr_perf_counter_val[i];
+		}
 
 		CAM_DBG(CAM_ISP, "IFE: %u bus WR prefetch %s",
 			bus_priv->common_data.core_index,
@@ -5109,6 +5179,11 @@ static int cam_vfe_bus_ver3_process_cmd(
 		break;
 	case CAM_ISP_HW_CMD_DUMP_IRQ_DESCRIPTION:
 		rc = cam_vfe_bus_ver3_dump_irq_desc(priv, cmd_args, arg_size);
+		break;
+	case CAM_ISP_HW_CMD_READ_RST_PERF_CNTRS: {
+		bus_priv = (struct cam_vfe_bus_ver3_priv  *) priv;
+		rc = cam_vfe_bus_ver3_read_rst_perf_cntrs(bus_priv);
+	}
 		break;
 	default:
 		CAM_ERR_RATE_LIMIT(CAM_ISP, "VFE:%u Invalid camif process command:%d",
