@@ -38,7 +38,8 @@ def define_sun():
             "wcd938x_dlkm",
             "wcd938x_slave_dlkm",
             "wcd939x_dlkm",
-            "wcd939x_slave_dlkm"
+            "wcd939x_slave_dlkm",
+            "lpass_bt_swr_dlkm"
         ],
         config_options = [
             "CONFIG_SND_SOC_SUN",
@@ -52,5 +53,7 @@ def define_sun():
             "CONFIG_SND_SOC_WCD_IRQ",
             "CONFIG_SND_SOC_WCD9XXX_V2",
             "CONFIG_SND_SOC_WCD_MBHC_ADC",
+            "CONFIG_LPASS_BT_SWR",
+            "CONFIG_AUDIO_BTFM_PROXY",
         ]
     )
