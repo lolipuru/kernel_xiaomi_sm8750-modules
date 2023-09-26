@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015, 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SWRM_REGISTERS_H
@@ -125,6 +125,13 @@
 #define SWRM_DIN_DP_INT_CLEAR(n)          (SWRM_BASE+0x1008+0x100*n)
 #define SWRM_DIN_DP_FEATURES_EN(n)        (SWRM_BASE+0x104C+0x100*n)
 #define SWRM_DIN_DP_PCM_PORT_CTRL(n)      (SWRM_BASE+0x1054+0x100*n)
+
+#define SWRM_DP_FLOW_CTRL_M_VALID_SAMPLE(n)	(SWRM_BASE+0x1080+0x100*n)
+#define SWRM_DP_FLOW_CTRL_N_REPEAT_PERIOD(n)    (SWRM_BASE+0x1084+0x100*n)
+
+#define SWRM_DP_PORT_CONTROL__FLOW_MODE_PUSH (0x8)
+#define SWRM_DP_PORT_CONTROL__FLOW_MODE_PULL (0x10)
+#define SWRM_DOUT_DP_PCM_PORT_CTRL__SELF_GEN_SUB_RATE_EN (0x4)
 
 #ifdef CONFIG_SWRM_VER_2P0
 #define SWRM_MAX_REGISTER SWRM_TO_CPU_SW_MESSAGE_READ(2, 2)
