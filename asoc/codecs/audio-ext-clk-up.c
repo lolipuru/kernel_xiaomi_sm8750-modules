@@ -38,6 +38,9 @@ enum {
 	AUDIO_EXT_CLK_LPASS11,
 	AUDIO_EXT_CLK_LPASS12,
 	AUDIO_EXT_CLK_LPASS13,
+	AUDIO_EXT_CLK_LPASS14,
+	AUDIO_EXT_CLK_LPASS15,
+	AUDIO_EXT_CLK_LPASS16,
 	AUDIO_EXT_CLK_LPASS_MAX,
 	AUDIO_EXT_CLK_EXTERNAL_PLL = AUDIO_EXT_CLK_LPASS_MAX,
 	AUDIO_EXT_CLK_MAX,
@@ -475,6 +478,39 @@ static struct audio_ext_clk audio_clk_array[] = {
 			.div = 1,
 			.hw.init = &(struct clk_init_data){
 				.name = "audio_lpass_mclk13",
+				.ops = &audio_ext_clk_ops,
+			},
+		},
+	},
+	{
+		.pnctrl_info = {NULL},
+		.fact = {
+			.mult = 1,
+			.div = 1,
+			.hw.init = &(struct clk_init_data){
+				.name = "audio_lpass_mclk14",
+				.ops = &audio_ext_clk_ops,
+			},
+		},
+	},
+	{
+		.pnctrl_info = {NULL},
+		.fact = {
+			.mult = 1,
+			.div = 1,
+			.hw.init = &(struct clk_init_data){
+				.name = "audio_lpass_mclk15",
+				.ops = &audio_ext_clk_ops,
+			},
+		},
+	},
+	{
+		.pnctrl_info = {NULL},
+		.fact = {
+			.mult = 1,
+			.div = 1,
+			.hw.init = &(struct clk_init_data){
+				.name = "audio_lpass_mclk16",
 				.ops = &audio_ext_clk_ops,
 			},
 		},
