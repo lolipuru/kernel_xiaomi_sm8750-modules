@@ -168,6 +168,7 @@ struct sde_cesta_hw_ops {
  * @crm_dev: CRM device pointer, used to communicate with CRM driver
  * @perf_cfg: object to store all the performance params set by sde_kms during bootup
  * @debug_mode: enables the logging for each register read/write
+ * @debugfs_root: pointer to cesta debugfs root
  */
 struct sde_cesta {
 	struct device *dev;
@@ -193,6 +194,7 @@ struct sde_cesta {
 
 	struct sde_cesta_perf_cfg perf_cfg;
 	u32 debug_mode;
+	struct dentry *debugfs_root;
 };
 
 /**

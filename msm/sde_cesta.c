@@ -548,6 +548,87 @@ int sde_cesta_resource_enable(u32 cesta_index)
 	return ret;
 }
 
+#if defined(CONFIG_DEBUG_FS)
+static int _sde_debugfs_status_show(struct seq_file *s, void *data)
+{
+	struct sde_cesta *cesta;
+	struct sde_cesta_client *client;
+	struct sde_cesta_client_data *hw_data;
+	struct sde_cesta_scc_status status = {0, };
+	bool enabled = false;
+	u32 pwr_event;
+
+	if (!s || !s->private)
+		return -EINVAL;
+
+	cesta = s->private;
+
+	mutex_lock(&cesta->client_lock);
+
+	list_for_each_entry(client, &cesta->client_list, list) {
+
+		hw_data = &client->hw;
+		enabled |= client->enabled;
+
+		seq_printf(s, "client%d:%s en:%d\n", client->client_index, client->name,
+				client->enabled);
+		seq_printf(s, "\t pwr_override:%d vote_state:%d aoss_cp_level:%d\n",
+				client->pwr_st_override, client->vote_state, client->aoss_cp_level);
+
+		seq_printf(s, "\t HW-Client - core_clk[ab,ib]:%llu,%llu ",
+				hw_data->core_clk_rate_ab, hw_data->core_clk_rate_ib);
+		seq_printf(s, "bw[ab,ib]:%llu,%llu ", hw_data->bw_ab, hw_data->bw_ib);
+		seq_puts(s, "\n\n");
+	}
+
+	if (enabled && cesta->hw_ops.get_status && cesta->hw_ops.get_pwr_event) {
+		pwr_event = cesta->hw_ops.get_pwr_event(cesta);
+		seq_printf(s, "PWR_event:%d\n", pwr_event);
+
+		list_for_each_entry(client, &cesta->client_list, list) {
+			cesta->hw_ops.get_status(cesta, client->client_index, &status);
+
+			seq_printf(s, "SCC[%d] status - ", client->client_index);
+			seq_printf(s, "frame_region:%d scc_hshake:%d fsm_st:%d flush_miss_cnt:%d\n",
+					status.frame_region, status.sch_handshake, status.fsm_state,
+					status.flush_missed_counter);
+		}
+	}
+
+	seq_puts(s, "\n");
+	mutex_unlock(&cesta->client_lock);
+
+	return 0;
+}
+
+static int _sde_debugfs_status_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, _sde_debugfs_status_show, inode->i_private);
+}
+
+static const struct file_operations debugfs_status_fops = {
+	.open =		_sde_debugfs_status_open,
+	.read =		seq_read,
+	.llseek =	seq_lseek,
+	.release =	single_release,
+};
+
+static void _sde_cesta_init_debugfs(struct sde_cesta *cesta, char *name)
+{
+	cesta->debugfs_root = debugfs_create_dir(name, NULL);
+	if (!cesta->debugfs_root)
+		return;
+
+	debugfs_create_file("status", 0400, cesta->debugfs_root, cesta, &debugfs_status_fops);
+	debugfs_create_x32("debug_mode", 0600, cesta->debugfs_root, &cesta->debug_mode);
+}
+
+#else
+static void _sde_cesta_init_debugfs(struct sde_cesta *cesta, char *name)
+{
+}
+#endif /* defined(CONFIG_DEBUG_FS) */
+
 static int sde_cesta_get_io_resources(struct msm_io_res *io_res, void *data)
 {
 	int rc = 0;
@@ -567,7 +648,7 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sde_cesta *cesta;
-
+	int i;
 	struct msm_vm_ops vm_event_ops = {
 		.vm_get_io_resources = sde_cesta_get_io_resources,
 	};
@@ -581,6 +662,17 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 	if (!cesta) {
 		SDE_ERROR_CESTA("invalid sde cesta\n");
 		return -EINVAL;
+	}
+
+	sde_dbg_reg_register_base("sde_rsc_wrapper", cesta->wrapper_io.base,
+			cesta->wrapper_io.len, msm_get_phys_addr(pdev, "wrapper"), SDE_DBG_RSC);
+
+	for (i = 0; i < cesta->scc_count; i++) {
+		char blk_name[32];
+
+		snprintf(blk_name, sizeof(blk_name), "scc_%u", cesta->scc_index[i]);
+		sde_dbg_reg_register_base(blk_name, cesta->scc_io[i].base,
+			cesta->scc_io[i].len, msm_get_phys_addr(pdev, blk_name), SDE_DBG_RSC);
 	}
 
 	msm_register_vm_event(master, dev, &vm_event_ops, (void *)cesta);
@@ -645,6 +737,7 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	struct sde_cesta *cesta;
 	int ret, i, index;
 	struct icc_path *path;
+	char name[MAX_CESTA_CLIENT_NAME_LEN];
 
 	cesta = devm_kzalloc(&pdev->dev, sizeof(struct sde_cesta), GFP_KERNEL);
 	if (!cesta)
@@ -743,6 +836,9 @@ static int sde_cesta_probe(struct platform_device *pdev)
 
 	sde_cesta_hw_init(cesta);
 	cesta->hw_ops.init(cesta);
+
+	snprintf(name, MAX_CESTA_CLIENT_NAME_LEN, "%s%d", "sde_cesta_", index);
+	_sde_cesta_init_debugfs(cesta, name);
 
 	pr_info("sde cesta index:%d probed successfully\n", index);
 
