@@ -27,6 +27,7 @@
 #include "ipahal.h"
 #include "ipahal_fltrt.h"
 #include "ipa_stats.h"
+#include <rmnet_mem.h>
 
 #define IPA_GSI_EVENT_RP_SIZE 8
 #define IPA_WAN_NAPI_MAX_FRAMES (NAPI_WEIGHT / IPA_WAN_AGGR_PKT_CNT)
@@ -1933,6 +1934,7 @@ fail_wq3:
 fail_wq2:
 	destroy_workqueue(ep->sys->wq);
 fail_wq:
+	*clnt_hdl = -1;
 	kfree(ep->sys);
 	memset(&ipa3_ctx->ep[ipa_ep_idx], 0, sizeof(struct ipa3_ep_context));
 fail_and_disable_clocks:
@@ -2674,6 +2676,36 @@ static struct page *ipa3_alloc_page(
 	return page;
 }
 
+static struct page *ipa3_rmnet_alloc_page(
+	gfp_t flag, u32 *page_order, bool try_lower)
+{
+	struct page *page = NULL;
+	u32 p_order = *page_order;
+	int rc, porder;
+
+	while (true) {
+		page = rmnet_mem_get_pages_entry(
+			flag, p_order, &rc, &porder, IPA_ID);
+
+		if (unlikely(!page)) {
+			if (p_order > 0) {
+				p_order = p_order - 1;
+				continue;
+			}
+			break;
+		}
+
+		ipa3_ctx->stats.lower_order++;
+		break;
+	}
+
+	if (unlikely(!page))
+		IPAERR("rmnet page alloc fails\n");
+
+	*page_order = p_order;
+	return page;
+}
+
 
 static struct ipa3_rx_pkt_wrapper *ipa3_alloc_rx_pkt_page(
 	gfp_t flag, bool is_tmp_alloc, struct ipa3_sys_context *sys)
@@ -2688,12 +2720,16 @@ static struct ipa3_rx_pkt_wrapper *ipa3_alloc_rx_pkt_page(
 
 	rx_pkt->page_data.page_order = sys->page_order;
 	/* For temporary allocations, avoid triggering OOM Killer. */
-	if (is_tmp_alloc)
+	if (is_tmp_alloc) {
 		flag |= __GFP_RETRY_MAYFAIL | __GFP_NOWARN;
-	/* Try a lower order page for order 3 pages in case allocation fails. */
-	rx_pkt->page_data.page = ipa3_alloc_page(flag,
-				&rx_pkt->page_data.page_order,
-				(is_tmp_alloc && rx_pkt->page_data.page_order == 3));
+		rx_pkt->page_data.page = ipa3_rmnet_alloc_page(
+			flag, &rx_pkt->page_data.page_order, true);
+	} else {
+		/* Try a lower order page for order 3 pages in case allocation fails. */
+		rx_pkt->page_data.page = ipa3_alloc_page(flag,
+					&rx_pkt->page_data.page_order,
+					(is_tmp_alloc && rx_pkt->page_data.page_order == 3));
+	}
 
 	if (unlikely(!rx_pkt->page_data.page))
 		goto fail_page_alloc;

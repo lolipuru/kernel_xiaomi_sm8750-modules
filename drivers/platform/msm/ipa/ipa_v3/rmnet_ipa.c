@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c)2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -3789,7 +3789,7 @@ static int ipa3_wwan_remove(struct platform_device *pdev)
 		ipa3_del_a7_qmap_hdr();
 	}
 	ipa3_del_mux_qmap_hdrs();
-	if (!ipa3_qmi_ctx->modem_cfg_emb_pipe_flt)
+	if (ipa3_qmi_ctx && !ipa3_qmi_ctx->modem_cfg_emb_pipe_flt)
 		ipa3_wwan_del_ul_flt_rule_to_ipa();
 	ipa3_cleanup_deregister_intf();
 	/* reset dl_csum_offload_enabled */
