@@ -79,6 +79,7 @@ struct synx_global_coredata {
 	u16 subscribers;
 	u16 waiters;
 	u16 parents[SYNX_GLOBAL_MAX_PARENTS];
+	u32 h_hwfence;
 };
 
 /**
