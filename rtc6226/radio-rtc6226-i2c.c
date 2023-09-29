@@ -34,6 +34,7 @@
 #include <media/v4l2-ioctl.h>
 #include <linux/uaccess.h>
 #include <linux/regulator/consumer.h>
+#include <linux/pinctrl/consumer.h>
 #include "radio-rtc6226.h"
 #include <linux/workqueue.h>
 #include <linux/version.h>
@@ -545,7 +546,7 @@ int rtc6226_fops_open(struct file *file)
 	struct rtc6226_device *radio = video_drvdata(file);
 	int retval;
 
-	FMDBG("%s enter user num = %d\n", __func__, radio->users);
+	//FMDBG("%s enter user num = %d\n", __func__, radio->users);
 	if (atomic_inc_return(&radio->users) != 1) {
 		FMDERR("Device already in use. Try again later\n");
 		atomic_dec(&radio->users);
@@ -698,8 +699,7 @@ static int rtc6226_dt_parse_vreg_info(struct device *dev,
 /*
  * rtc6226_i2c_probe - probe for the device
  */
-static int rtc6226_i2c_probe(struct i2c_client *client,
-	const struct i2c_device_id *id)
+static int rtc6226_i2c_probe(struct i2c_client *client)
 {
 	struct rtc6226_device *radio;
 	struct v4l2_device *v4l2_dev;

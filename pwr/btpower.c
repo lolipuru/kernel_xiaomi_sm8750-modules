@@ -1511,7 +1511,7 @@ static int __init btpower_init(void)
 		goto chrdev_err;
 	}
 
-	bt_class = class_create(THIS_MODULE, "bt-dev");
+	bt_class = class_create("bt-dev");
 	if (IS_ERR(bt_class)) {
 		pr_err("%s: coudn't create class\n", __func__);
 		ret = -1;
