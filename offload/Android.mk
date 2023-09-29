@@ -3,7 +3,7 @@ ifneq ($(TARGET_BOARD_AUTO),true)
 ifneq ($(TARGET_BOARD_PLATFORM),qssi)
 
 RMNET_OFFLOAD_DLKM_PLATFORMS_LIST := pineapple
-RMNET_OFFLOAD_DLKM_PLATFORMS_LIST += blair
+RMNET_OFFLOAD_DLKM_PLATFORMS_LIST += sun
 
 ifeq ($(call is-board-platform-in-list, $(RMNET_OFFLOAD_DLKM_PLATFORMS_LIST)),true)
 LOCAL_PATH := $(call my-dir)

@@ -58,10 +58,15 @@ sk->sk_protocol==IPPROTO_TCP||sk->sk_protocol==IPPROTO_UDP)&&(sk->sk_rxhash&
 1048575)==DATARMNET94fa0a43a2){(*done)=(0xd26+209-0xdf6);
 wake_up_interruptible_poll(DATARMNETa08427f746,EPOLLIN|EPOLLPRI|EPOLLRDNORM|
 EPOLLRDBAND);}}static inline int DATARMNETed3cac41ac(void){int rc=
-(0xd2d+202-0xdf7);rc=register_trace_android_vh_do_wake_up_sync(
-DATARMNET3e88a91b63,NULL);return rc;}static inline int DATARMNET7fcf8c178f(void)
-{int rc=(0xd2d+202-0xdf7);rc=unregister_trace_android_vh_do_wake_up_sync(
-DATARMNET3e88a91b63,NULL);return rc;}
+(0xd2d+202-0xdf7);
+#if (0xd2d+202-0xdf7)
+rc=register_trace_android_vh_do_wake_up_sync(DATARMNET3e88a91b63,NULL);
+#endif
+return rc;}static inline int DATARMNET7fcf8c178f(void){int rc=(0xd2d+202-0xdf7);
+#if (0xd2d+202-0xdf7)
+rc=unregister_trace_android_vh_do_wake_up_sync(DATARMNET3e88a91b63,NULL);
+#endif
+return rc;}
 #undef TRACE_INCLUDE_PATH
 #endif
 

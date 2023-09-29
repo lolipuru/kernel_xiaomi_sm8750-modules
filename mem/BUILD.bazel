@@ -2,12 +2,10 @@ load(":define_mem.bzl", "define_mem")
 load("//build/kernel/kleaf:kernel.bzl", "ddk_headers")
 
 define_mem("pineapple", "consolidate")
+define_mem("pineapple", "perf")
 
-define_mem("pineapple", "gki")
-
-define_mem("blair", "consolidate")
-
-define_mem("blair", "gki")
+define_mem("sun", "consolidate")
+define_mem("sun", "perf")
 
 package(
 	default_visibility = [
