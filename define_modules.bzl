@@ -23,7 +23,7 @@ def define_modules(target, variant):
                     "core/rmnet_ctl_client.c",
                 ],
             },
-            "CONFIG_ARCH_BLAIR": {
+            "CONFIG_ARCH_SUN": {
                 True: [
                     "core/rmnet_ctl_client.c",
                 ],
