@@ -718,8 +718,7 @@ int cam_req_mgr_ordered_list_cmp(void *priv,
 }
 #endif
 
-#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE && \
-	KERNEL_VERSION(5, 18, 0) > LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 long cam_dma_buf_set_name(struct dma_buf *dmabuf, const char *name)
 {
 	long ret = 0;
