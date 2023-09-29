@@ -57,8 +57,11 @@
 /**
  * msm hw fence flags:
  * MSM_HW_FENCE_FLAG_SIGNAL - Flag set when the hw-fence is signaled
+ * MSM_HW_FENCE_FLAG_CREATE_SIGNALED - Flag set when the hw-fence is created to back a signaled
+ *                                     dma-fence whose hw-fence has been destroyed
  */
-#define MSM_HW_FENCE_FLAG_SIGNAL	BIT(0)
+#define MSM_HW_FENCE_FLAG_SIGNAL		BIT(0)
+#define MSM_HW_FENCE_FLAG_CREATE_SIGNALED	BIT(1)
 
 /**
  * MSM_HW_FENCE_MAX_JOIN_PARENTS:
@@ -560,6 +563,9 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 struct msm_hw_fence *msm_hw_fence_find(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client,
 	u64 context, u64 seqno, u64 *hash);
+struct msm_hw_fence *hw_fence_find_with_dma_fence(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence, u64 *hash,
+	bool *is_signaled, bool create);
 enum hw_fence_client_data_id hw_fence_get_client_data_id(enum hw_fence_client_id client_id);
 
 #endif /* __HW_FENCE_DRV_INTERNAL_H */
