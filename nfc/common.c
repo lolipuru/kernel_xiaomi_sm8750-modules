@@ -233,9 +233,15 @@ void nfc_misc_unregister(struct nfc_dev *nfc_dev, int count)
 		ipc_log_context_destroy(nfc_dev->ipcl);
 }
 
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+int nfc_misc_register(struct nfc_dev *nfc_dev,
+                      const struct file_operations *nfc_fops, int count,
+                      char *devname, const char *classname)
+#else
 int nfc_misc_register(struct nfc_dev *nfc_dev,
 		      const struct file_operations *nfc_fops, int count,
-		      char *devname, char *classname)
+		      char *devname, const char *classname)
+#endif
 {
 	int ret = 0;
 
@@ -245,7 +251,11 @@ int nfc_misc_register(struct nfc_dev *nfc_dev,
 		       ret);
 		return ret;
 	}
-	nfc_dev->nfc_class = class_create(THIS_MODULE, classname);
+        #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+        nfc_dev->nfc_class = class_create(classname);
+        #else
+        nfc_dev->nfc_class = class_create(THIS_MODULE, classname);
+        #endif
 	if (IS_ERR(nfc_dev->nfc_class)) {
 		ret = PTR_ERR(nfc_dev->nfc_class);
 		pr_err("NxpDrv: %s: failed to register device class ret %d\n", __func__,

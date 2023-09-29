@@ -23,6 +23,7 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+#include <linux/version.h>
 #include <linux/cdev.h>
 #include <linux/of_gpio.h>
 #include <linux/delay.h>
@@ -302,9 +303,15 @@ long nfc_dev_compat_ioctl(struct file *pfile, unsigned int cmd,
 long nfc_dev_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg);
 int nfc_parse_dt(struct device *dev, struct platform_configs *nfc_configs,
 		 uint8_t interface);
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 int nfc_misc_register(struct nfc_dev *nfc_dev,
 		      const struct file_operations *nfc_fops, int count,
-		      char *devname, char *classname);
+		      char *devname,const char *classname);
+#else
+int nfc_misc_register(struct nfc_dev *nfc_dev,
+                      const struct file_operations *nfc_fops, int count,
+                      char *devname,char *classname);
+#endif
 void nfc_misc_unregister(struct nfc_dev *nfc_dev, int count);
 int configure_gpio(unsigned int gpio, int flag);
 void gpio_set_ven(struct nfc_dev *nfc_dev, int value);

@@ -12,7 +12,7 @@ endif
 
 ########## Build kernel module based on local DLKM flag status ##########
 ifeq ($(NFC_DLKM_ENABLED), true)
-ifeq ($(call is-board-platform-in-list, pineapple blair),true)
+ifeq ($(call is-board-platform-in-list, sun),true)
   BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/nxp-nci.ko
 endif
 endif
