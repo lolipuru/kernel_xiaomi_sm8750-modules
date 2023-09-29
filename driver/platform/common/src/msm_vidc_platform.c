@@ -21,6 +21,10 @@
 #include "hfi_property.h"
 #include "venus_hfi.h"
 
+#if defined(CONFIG_MSM_VIDC_SUN)
+#include "msm_vidc_sun.h"
+#include "msm_vidc_iris35.h"
+#endif
 #if defined(CONFIG_MSM_VIDC_PINEAPPLE)
 #include "msm_vidc_pineapple.h"
 #include "msm_vidc_iris33.h"
@@ -234,6 +238,13 @@ static const struct msm_vidc_compat_handle compat_handle[] = {
 		.compat                     = "qcom,sm8450-vidc",
 		.init_platform              = msm_vidc_init_platform_waipio,
 		.init_iris                  = msm_vidc_init_iris2,
+	},
+#endif
+#if defined(CONFIG_MSM_VIDC_SUN)
+	{
+		.compat                     = "qcom,sm8750-vidc",
+		.init_platform              = msm_vidc_init_platform_sun,
+		.init_iris                  = msm_vidc_init_iris35,
 	},
 #endif
 };
