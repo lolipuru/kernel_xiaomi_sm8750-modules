@@ -18,6 +18,7 @@
  * responsible to configure master.
  */
 #define BTADV_AUDIO_MASTER_CONFIG	0
+#define BTADV_CONFIGURE_DMA             1
 #define DEVICE_NAME_MAX_LEN	64
 
 struct hwep_configurations {
@@ -27,6 +28,7 @@ struct hwep_configurations {
 	uint8_t bit_width;
 	uint8_t codectype;
 	uint32_t direction;
+	uint8_t num_channels;
 	struct list_head dai_list;
 };
 
@@ -40,6 +42,18 @@ struct master_hwep_configurations {
 	uint8_t codectype;
 	uint16_t direction;
 };
+
+struct hwep_dma_configurations {
+	uint8_t stream_id;
+	uint32_t sample_rate;
+	uint8_t bit_width;
+	uint8_t num_channels;
+	uint8_t codectype;
+	uint8_t lpaif; // Low power audio interface
+	uint8_t inf_index; // interface index
+	uint8_t active_channel_mask;
+};
+
 struct hwep_comp_drv {
 	int  (*hwep_probe)  (struct snd_soc_component *);
 	void (*hwep_remove) (struct snd_soc_component *);
@@ -51,14 +65,13 @@ struct hwep_comp_drv {
 struct hwep_dai_ops {
 	int (*hwep_startup)(void *);
 	void (*hwep_shutdown)(void *, int);
-	int (*hwep_hw_params)(void *, uint32_t, uint32_t);
+	int (*hwep_hw_params)(void *, uint32_t, uint32_t, uint8_t);
 	int (*hwep_prepare)(void *, uint32_t, uint32_t, int);
 	int (*hwep_set_channel_map)(void *, unsigned int, unsigned int *,
 				unsigned int, unsigned int *);
 	int (*hwep_get_channel_map)(void *, unsigned int *, unsigned int *,
 				unsigned int *, unsigned int *, int);
-	int (*hwep_get_configs)(void *, struct master_hwep_configurations *,
-				uint8_t);
+	int (*hwep_get_configs)(void *a, void *b, uint8_t c);
 	uint8_t *hwep_codectype;
 };
 
