@@ -13,6 +13,7 @@
 #include "hw_fence_drv_utils.h"
 #include "hw_fence_drv_debug.h"
 #include "hw_fence_drv_ipc.h"
+#include "hw_fence_drv_fence.h"
 
 struct hw_fence_driver_data *hw_fence_drv_data;
 bool hw_fence_driver_enable;
@@ -117,6 +118,7 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	if (ret)
 		goto error;
 
+	hw_fence_client->context_id = dma_fence_context_alloc(1);
 	mutex_init(&hw_fence_client->error_cb_lock);
 
 	HWFNC_DBG_INIT("Initialized ptr:0x%p client_id:%d q_num:%d ipc signal:%d vid:%d pid:%d\n",
@@ -173,7 +175,7 @@ int msm_hw_fence_create(void *client_handle,
 	struct dma_fence *fence;
 	int ret;
 
-	if (IS_ERR_OR_NULL(client_handle) || !params || !params->fence || !params->handle) {
+	if (IS_ERR_OR_NULL(client_handle) || !params || !params->handle) {
 		HWFNC_ERR("Invalid input\n");
 		return -EINVAL;
 	}
@@ -183,10 +185,23 @@ int msm_hw_fence_create(void *client_handle,
 		return -EAGAIN;
 	}
 
+	HWFNC_DBG_H("+\n");
+
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 	fence = (struct dma_fence *)params->fence;
 
-	HWFNC_DBG_H("+\n");
+	/* if not provided, create a dma-fence */
+	if (!fence) {
+		fence = hw_fence_internal_dma_fence_create(hw_fence_drv_data, hw_fence_client,
+			params->handle);
+		if (IS_ERR_OR_NULL(fence)) {
+			HWFNC_ERR("failed to create internal dma-fence for client:%d err:%ld\n",
+				hw_fence_client->client_id, PTR_ERR(fence));
+			return PTR_ERR(fence);
+		}
+
+		return 0;
+	}
 
 	/* Block any Fence-Array, we should only get individual fences */
 	array = to_dma_fence_array(fence);
@@ -202,8 +217,8 @@ int msm_hw_fence_create(void *client_handle,
 	}
 
 	/* Create the HW Fence, i.e. add entry in the Global Table for this Fence */
-	ret = hw_fence_create(hw_fence_drv_data, hw_fence_client,
-		  fence->context, fence->seqno, params->handle);
+	ret = hw_fence_create(hw_fence_drv_data, hw_fence_client, fence->context,
+		fence->seqno, params->handle);
 	if (ret) {
 		HWFNC_ERR("Error creating HW fence\n");
 		return ret;
@@ -255,6 +270,12 @@ int msm_hw_fence_destroy(void *client_handle,
 	/* This Fence not a HW-Fence */
 	if (!test_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags)) {
 		HWFNC_ERR("DMA Fence is not a HW Fence flags:0x%lx\n", fence->flags);
+		return -EINVAL;
+	}
+
+	if (dma_fence_is_hw_dma(fence)) {
+		HWFNC_ERR("deprecated api cannot destroy hw_dma_fence ctx:%llu seq:%llu\n",
+			fence->context, fence->seqno);
 		return -EINVAL;
 	}
 

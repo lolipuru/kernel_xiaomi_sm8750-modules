@@ -11,6 +11,7 @@
 #include "hw_fence_drv_debug.h"
 #include "hw_fence_drv_ipc.h"
 #include "hw_fence_drv_utils.h"
+#include "hw_fence_drv_fence.h"
 
 #define HW_FENCE_DEBUG_MAX_LOOPS 200
 
@@ -399,7 +400,7 @@ static ssize_t hw_fence_dbg_tx_and_signal_clients_wr(struct file *file,
 		/******************************************/
 
 		/* cleanup hw fence for src client */
-		ret = hw_fence_destroy(drv_data, hw_fence_client, context, seqno);
+		ret = hw_fence_destroy_with_hash(drv_data, hw_fence_client, hash);
 		if (ret) {
 			HWFNC_ERR("Error destroying HW fence\n");
 			goto exit;
@@ -430,8 +431,8 @@ static ssize_t hw_fence_dbg_create_wr(struct file *file,
 	struct msm_hw_fence_create_params params;
 	struct hw_fence_driver_data *drv_data;
 	struct client_data *client_info;
-	struct hw_dma_fence *dma_fence;
-	spinlock_t *fence_lock;
+	struct hw_dma_fence *hw_dma_fence;
+	struct dma_fence *fence;
 	static u64 hw_fence_dbg_seqno = 1;
 	int client_id, ret;
 	u64 hash;
@@ -446,39 +447,25 @@ static ssize_t hw_fence_dbg_create_wr(struct file *file,
 		return -EINVAL;
 	}
 
-	/* create debug dma_fence */
-	fence_lock = kzalloc(sizeof(*fence_lock), GFP_KERNEL);
-	if (!fence_lock)
-		return -ENOMEM;
+	fence = hw_dma_fence_init(client_info->client_handle, client_info->dma_context,
+		hw_fence_dbg_seqno);
+	if (IS_ERR_OR_NULL(fence))
+		return -EINVAL;
+	hw_dma_fence = (struct hw_dma_fence *)fence;
 
-	dma_fence = kzalloc(sizeof(*dma_fence), GFP_KERNEL);
-	if (!dma_fence) {
-		kfree(fence_lock);
-		return -ENOMEM;
-	}
-
-	snprintf(dma_fence->name, HW_FENCE_NAME_SIZE, "hwfence:id:%d:ctx=%llu:seqno:%llu",
-		client_id, client_info->dma_context, hw_fence_dbg_seqno);
-
-	spin_lock_init(fence_lock);
-	dma_fence_init(&dma_fence->base, &hw_fence_dbg_ops, fence_lock,
-		client_info->dma_context, hw_fence_dbg_seqno);
-
-	HWFNC_DBG_H("creating hw_fence for client:%d ctx:%llu seqno:%llu\n", client_id,
-		client_info->dma_context, hw_fence_dbg_seqno);
-	params.fence = &dma_fence->base;
+	params.fence = fence;
 	params.handle = &hash;
 	ret = msm_hw_fence_create(client_info->client_handle, &params);
 	if (ret) {
 		HWFNC_ERR("failed to create hw_fence for client:%d ctx:%llu seqno:%llu\n",
 			client_id, client_info->dma_context, hw_fence_dbg_seqno);
-		dma_fence_put(&dma_fence->base);
+		dma_fence_put(fence);
 		return -EINVAL;
 	}
 	hw_fence_dbg_seqno++;
 
 	/* keep handle in dma_fence, to destroy hw-fence during release */
-	dma_fence->client_handle = client_info->client_handle;
+	hw_dma_fence->client_handle = client_info->client_handle;
 
 	return count;
 }
@@ -992,6 +979,21 @@ static ssize_t hw_fence_dbg_dump_table_wr(struct file *file,
 }
 
 
+static inline void _cleanup_fences(int i, struct dma_fence **fences, spinlock_t **fences_lock)
+{
+	struct hw_dma_fence *dma_fence;
+	int fence_idx;
+
+	for (fence_idx = i; fence_idx >= 0 ; fence_idx--) {
+		kfree(fences_lock[fence_idx]);
+
+		dma_fence = to_hw_dma_fence(fences[fence_idx]);
+		kfree(dma_fence);
+	}
+
+	kfree(fences_lock);
+	kfree(fences);
+}
 
 /**
  * hw_fence_dbg_create_join_fence() - debugfs write to simulate the lifecycle of a join hw-fence.

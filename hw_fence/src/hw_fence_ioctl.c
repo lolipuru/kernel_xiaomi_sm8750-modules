@@ -14,6 +14,7 @@
 #include "hw_fence_drv_utils.h"
 #include "hw_fence_drv_ipc.h"
 #include "hw_fence_drv_debug.h"
+#include "hw_fence_drv_fence.h"
 
 #define HW_SYNC_IOCTL_COUNT		ARRAY_SIZE(hw_sync_debugfs_ioctls)
 #define HW_FENCE_ARRAY_SIZE		10
@@ -229,7 +230,7 @@ static long hw_sync_ioctl_create_fence(struct hw_sync_obj *obj, unsigned long ar
 	struct msm_hw_fence_create_params params;
 	struct hw_fence_sync_create_data data;
 	struct hw_dma_fence *fence;
-	spinlock_t *fence_lock;
+	struct dma_fence *dma_fence;
 	u64 hash;
 	struct sync_file *sync_file;
 	int fd, ret;
@@ -244,26 +245,12 @@ static long hw_sync_ioctl_create_fence(struct hw_sync_obj *obj, unsigned long ar
 	if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
 		return -EFAULT;
 
-	/* create dma fence */
-	fence_lock = kzalloc(sizeof(*fence_lock), GFP_KERNEL);
-	if (!fence_lock)
-		return -ENOMEM;
+	dma_fence = hw_dma_fence_init(obj->client_handle, obj->context, data.seqno);
+	if (IS_ERR_OR_NULL(dma_fence))
+		return -EINVAL;
+	fence = (struct hw_dma_fence *)dma_fence;
 
-	fence = kzalloc(sizeof(*fence), GFP_KERNEL);
-	if (!fence) {
-		kfree(fence_lock);
-		return -ENOMEM;
-	}
-
-	snprintf(fence->name, HW_FENCE_NAME_SIZE, "hwfence:id:%d:ctx=%llu:seqno:%llu",
-			obj->client_id, obj->context, data.seqno);
-
-	spin_lock_init(fence_lock);
-	dma_fence_init(&fence->base, &hw_fence_dbg_ops, fence_lock, obj->context, data.seqno);
-
-	HWFNC_DBG_H("creating hw_fence for client:%d ctx:%llu seqno:%llu\n", obj->client_id,
-				obj->context, data.seqno);
-	params.fence = &fence->base;
+	params.fence = dma_fence;
 	params.handle = &hash;
 
 	/* create hw fence */

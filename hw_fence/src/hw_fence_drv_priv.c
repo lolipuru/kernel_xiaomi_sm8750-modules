@@ -11,6 +11,7 @@
 #include "hw_fence_drv_utils.h"
 #include "hw_fence_drv_ipc.h"
 #include "hw_fence_drv_debug.h"
+#include "hw_fence_drv_fence.h"
 
 /* Global atomic lock */
 #define GLOBAL_ATOMIC_STORE(drv_data, lock, val) global_atomic_store(drv_data, lock, val)
@@ -655,6 +656,12 @@ static int init_ctrl_queue(struct hw_fence_driver_data *drv_data)
 	return ret;
 }
 
+static void hw_fence_dma_fence_init_hash_table(struct hw_fence_driver_data *drv_data)
+{
+	hash_init(drv_data->dma_fence_table);
+	spin_lock_init(&drv_data->dma_fence_table_lock);
+}
+
 int hw_fence_init(struct hw_fence_driver_data *drv_data)
 {
 	int ret;
@@ -721,6 +728,8 @@ int hw_fence_init(struct hw_fence_driver_data *drv_data)
 		HWFNC_ERR("failed to init virq\n");
 		goto exit;
 	}
+
+	hw_fence_dma_fence_init_hash_table(drv_data);
 
 	mem = drv_data->io_mem_base;
 	HWFNC_DBG_H("memory ptr:0x%pK val:0x%x\n", mem, *mem);
@@ -1259,6 +1268,219 @@ struct msm_hw_fence *_hw_fence_lookup_and_process(struct hw_fence_driver_data *d
 		drv_data->hw_fence_table_entries);
 }
 
+struct dma_fence *hw_dma_fence_init(struct msm_hw_fence_client *hw_fence_client, u64 context,
+	u64 seqno)
+{
+	struct hw_dma_fence *fence;
+	spinlock_t *fence_lock;
+
+	/* create dma fence */
+	fence_lock = kzalloc(sizeof(*fence_lock), GFP_KERNEL);
+	if (!fence_lock)
+		return ERR_PTR(-ENOMEM);
+
+	fence = kzalloc(sizeof(*fence), GFP_KERNEL);
+	if (!fence) {
+		kfree(fence_lock);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	snprintf(fence->name, HW_FENCE_NAME_SIZE, "hwfence:id:%d:ctx=%llu:seqno:%llu",
+		hw_fence_client->client_id, context, seqno);
+	spin_lock_init(fence_lock);
+
+	HWFNC_DBG_L("creating dma_fence for client:%d ctx:%llu seqno:%llu\n",
+		hw_fence_client->client_id, context, seqno);
+
+	dma_fence_init(&fence->base, &hw_fence_dbg_ops, fence_lock, context, seqno);
+	fence->client_handle = hw_fence_client;
+
+	return (struct dma_fence *)fence;
+}
+
+int hw_fence_dma_fence_table_add(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence, u64 hw_fence_hash)
+{
+	struct hw_dma_fence *hw_dma_fence;
+	u32 dma_fence_key = hw_fence_hash % DMA_FENCE_HASH_TABLE_SIZE;
+	unsigned long flags;
+
+	if (!fence || !drv_data || !hw_fence_client) {
+		HWFNC_ERR("invalid params fence:0x%pK drv_data:0x%pK hw_fence_client:0x%pK\n",
+			fence, drv_data, hw_fence_client);
+		return -EINVAL;
+	}
+
+	hw_dma_fence = to_hw_dma_fence(fence);
+	HWFNC_DBG_L("add hw_dma_fence:%pK client:%d ctx:%llu seqno:%llu key:%u hash:%llu\n",
+		hw_dma_fence, hw_fence_client->client_id, fence->context, fence->seqno,
+		dma_fence_key, hw_fence_hash);
+
+	hw_dma_fence->dma_fence_key = dma_fence_key;
+	hw_dma_fence->is_internal = true;
+	hw_dma_fence->signal_cb.hash = hw_fence_hash;
+	hw_dma_fence->signal_cb.drv_data = drv_data;
+
+	spin_lock_irqsave(&drv_data->dma_fence_table_lock, flags);
+	hash_add(drv_data->dma_fence_table, &hw_dma_fence->node, dma_fence_key);
+	spin_unlock_irqrestore(&drv_data->dma_fence_table_lock, flags);
+
+	return 0;
+}
+
+static void msm_hw_fence_internal_signal_callback(struct dma_fence *fence, struct dma_fence_cb *cb)
+{
+	struct hw_fence_signal_cb *signal_cb;
+
+	if (!fence || !cb) {
+		HWFNC_ERR("Invalid params fence:0x%pK cb:0x%pK\n", fence, cb);
+		return;
+	}
+
+	HWFNC_DBG_IRQ("dma-fence signal callback ctx:%llu seqno:%llu flags:%lx err:%d\n",
+		fence->context, fence->seqno, fence->flags, fence->error);
+
+	signal_cb = (struct hw_fence_signal_cb *)cb;
+
+	if (hw_fence_signal_fence(signal_cb->drv_data, fence, signal_cb->hash, fence->error, false))
+		HWFNC_ERR("failed to signal fence ctx:%llu seq:%llu hash:%llu err:%u\n",
+			fence->context, fence->seqno, signal_cb->hash, fence->error);
+}
+
+
+struct dma_fence *hw_fence_internal_dma_fence_create(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_client *hw_fence_client, u64 *hash)
+{
+	struct hw_dma_fence *hw_dma_fence;
+	struct msm_hw_fence *hw_fence;
+	struct dma_fence *fence;
+	u64 context, seqno;
+	int ret = 0;
+
+	if (!drv_data || !hw_fence_client || !hash)
+		return ERR_PTR(-EINVAL);
+
+	context = hw_fence_client->context_id;
+	seqno = atomic_add_return(1, &hw_fence_client->seqno);
+	fence = hw_dma_fence_init(hw_fence_client, context, seqno);
+	if (IS_ERR_OR_NULL(fence)) {
+		HWFNC_ERR("failed to create internal dma-fence client:%d ctx:%llu seq:%llu\n",
+			hw_fence_client->client_id, context, seqno);
+		return ERR_PTR(-EINVAL);
+	}
+
+	ret = hw_fence_create(drv_data, hw_fence_client, context, seqno, hash);
+	if (ret) {
+		HWFNC_ERR("failed to back internal dma-fence client:%d ctx:%llu seq:%llu\n",
+			hw_fence_client->client_id, context, seqno);
+		ret = -EINVAL;
+		goto error;
+	}
+
+	hw_fence = _get_hw_fence(drv_data->hw_fence_table_entries, drv_data->hw_fences_tbl, *hash);
+	if (!hw_fence) {
+		HWFNC_ERR("bad hw fence hash:%llu client:%u\n", *hash, hw_fence_client->client_id);
+		ret = -EINVAL;
+		goto error;
+	}
+
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 1); /* lock */
+	hw_fence->flags |= MSM_HW_FENCE_FLAG_INTERNAL_OWNED;
+	hw_fence->refcount |= HW_FENCE_DMA_FENCE_REFCOUNT;
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
+
+	/* If no error, set the HW Fence Flag in the dma-fence */
+	set_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags);
+
+	ret = hw_fence_dma_fence_table_add(drv_data, hw_fence_client, fence, *hash);
+	if (ret) {
+		HWFNC_ERR("failed to add hw-fence ctx:%llu seq:%llu hash:%llu to dma-fence table\n",
+			context, seqno, *hash);
+		ret = -EINVAL;
+		goto error;
+	}
+
+	hw_dma_fence = to_hw_dma_fence(fence);
+	/* internal_signal_callback does not take an additional hw-fence refcount */
+	ret = dma_fence_add_callback(fence, &hw_dma_fence->signal_cb.fence_cb,
+		msm_hw_fence_internal_signal_callback);
+	if (ret)
+		HWFNC_ERR("Failed to add signal callback ctx:%llu seq:%llu hash:%llu ret:%d\n",
+			context, seqno, *hash, ret);
+
+error:
+	if (ret) {
+		dma_fence_put(fence);
+		return ERR_PTR(ret);
+	}
+
+	return fence;
+}
+
+struct dma_fence *hw_fence_dma_fence_find(struct hw_fence_driver_data *drv_data,
+	u64 hw_fence_hash, bool incr_refcount)
+{
+	u32 dma_fence_key = hw_fence_hash % DMA_FENCE_HASH_TABLE_SIZE;
+	struct hw_dma_fence *hw_dma_fence = NULL, *curr;
+	struct dma_fence *fence = NULL;
+	unsigned long flags;
+
+	spin_lock_irqsave(&drv_data->dma_fence_table_lock, flags);
+	hash_for_each_possible(drv_data->dma_fence_table, curr, node, dma_fence_key) {
+		if (hw_fence_hash == curr->signal_cb.hash) {
+			hw_dma_fence = curr;
+			fence = &hw_dma_fence->base;
+			if (incr_refcount)
+				dma_fence_get(fence);
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&drv_data->dma_fence_table_lock, flags);
+
+	HWFNC_DBG_L("hw_dma_fence: %s:%pK ctx:%llu seqno:%llu key:%u dma_fence_ref:%u incr:%s\n",
+		fence ? "found" : "not found", hw_dma_fence,
+		fence ? fence->context : 0, fence ? fence->seqno : 0,
+		dma_fence_key, fence ? kref_read(&fence->refcount) : -1,
+		incr_refcount ? "true" : "false");
+
+	return fence;
+}
+
+static int hw_fence_dma_fence_table_del(struct hw_fence_driver_data *drv_data, u64 hash)
+{
+	struct hw_dma_fence *hw_dma_fence;
+	struct dma_fence *fence;
+	unsigned long flags;
+	int ret = 0;
+
+	fence = hw_fence_dma_fence_find(drv_data, hash, false);
+	if (IS_ERR_OR_NULL(fence))
+		return PTR_ERR(fence);
+
+	hw_dma_fence = to_hw_dma_fence(fence);
+
+	HWFNC_DBG_L("removing dma_fence ctx:%llu seqno:%llu key:%u dma_fence_ref:%u\n",
+		fence->context, fence->seqno, hw_dma_fence->dma_fence_key,
+		kref_read(&fence->refcount));
+
+	spin_lock_irqsave(&drv_data->dma_fence_table_lock, flags);
+	/* remove dma-fence from the internal hash table */
+	if (hash_hashed(&hw_dma_fence->node))
+		hash_del(&hw_dma_fence->node);
+	else
+		ret = -EINVAL;
+	spin_unlock_irqrestore(&drv_data->dma_fence_table_lock, flags);
+
+	if (ret)
+		HWFNC_ERR("internally owned dma-fence is not in table ctx:%llu seqno:%llu key:%u\n",
+			fence->context, fence->seqno, hw_dma_fence->dma_fence_key);
+
+	dma_fence_remove_callback(fence, &hw_dma_fence->signal_cb.fence_cb);
+	dma_fence_put(fence);
+
+	return ret;
+}
+
 int hw_fence_create(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client,
 	u64 context, u64 seqno, u64 *hash)
@@ -1299,13 +1521,61 @@ int hw_fence_destroy(struct hw_fence_driver_data *drv_data,
 	return ret;
 }
 
+/*
+ * This must be called while holding hw-fence lock; this releases hw-fence lock and (if needed)
+ * associated dma-fence if necessary
+ */
+static int hw_fence_put_and_unlock(struct hw_fence_driver_data *drv_data, u32 client_id,
+	struct msm_hw_fence *hw_fence, u64 hash)
+{
+	bool release_dma = false;
+	int ret = 0;
+
+	if (hw_fence->refcount & HW_FENCE_HLOS_REFCOUNT_MASK) {
+		hw_fence->refcount--;
+	} else {
+		ret = -EINVAL;
+		goto end; /* keep hw-fence in table for debugging purposes */
+	}
+
+	if ((hw_fence->flags & MSM_HW_FENCE_FLAG_INTERNAL_OWNED) &&
+			!(hw_fence->refcount & HW_FENCE_HLOS_REFCOUNT_MASK)) {
+		hw_fence->flags &= ~MSM_HW_FENCE_FLAG_INTERNAL_OWNED;
+		release_dma = true;
+	}
+
+	if (!hw_fence->refcount) {
+		_cleanup_hw_fence(hw_fence);
+
+		/* unreserve this HW fence */
+		hw_fence->valid = 0;
+	}
+
+end:
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
+
+	if (ret) {
+		HWFNC_ERR("fence client:%d ctx:%llu seq:%llu hash:%llu ref:0x%llx before decr\n",
+			client_id, hw_fence->ctx_id, hw_fence->seq_id, hash, hw_fence->refcount);
+		return ret;
+	}
+
+	if (release_dma) {
+		ret = hw_fence_dma_fence_table_del(drv_data, hash);
+		if (ret)
+			HWFNC_ERR("Failed to delete internal dma-fence for hw-fence hash:%llu\n",
+				hash);
+	}
+
+	return ret;
+}
+
 int hw_fence_destroy_with_hash(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, u64 hash)
 {
 	u32 client_id = hw_fence_client ? hw_fence_client->client_id : ~0;
 	struct msm_hw_fence *hw_fences_tbl = drv_data->hw_fences_tbl;
 	struct msm_hw_fence *hw_fence = NULL;
-	int ret = 0;
 
 	hw_fence = _get_hw_fence(drv_data->hw_fence_table_entries, hw_fences_tbl, hash);
 	if (!hw_fence) {
@@ -1313,19 +1583,8 @@ int hw_fence_destroy_with_hash(struct hw_fence_driver_data *drv_data,
 		return -EINVAL;
 	}
 
-	/* decrement refcount on hw-fence */
 	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 1); /* lock */
-	if (hw_fence->valid)
-		_unreserve_hw_fence(drv_data, hw_fence, client_id, hw_fence->ctx_id,
-			hw_fence->seq_id, hash, 0);
-	else
-		ret = -EINVAL;
-	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
-
-	if (ret)
-		HWFNC_ERR("unreserve of invalid fence hash:%llu client:%u\n", hash, client_id);
-
-	return ret;
+	return hw_fence_put_and_unlock(drv_data, client_id, hw_fence, hash);
 }
 
 static struct msm_hw_fence *_hw_fence_process_join_fence(struct hw_fence_driver_data *drv_data,
@@ -1479,9 +1738,7 @@ static void _cleanup_join_and_child_fences(struct hw_fence_driver_data *drv_data
 			}
 		}
 		/* decrement refcount acquired by finding fence */
-		_unreserve_hw_fence(drv_data, hw_fence_child, hw_fence_client->client_id,
-			hw_fence_child->ctx_id, hw_fence_child->seq_id, hash, 0);
-		GLOBAL_ATOMIC_STORE(drv_data, &hw_fence_child->lock, 0); /* unlock */
+		hw_fence_put_and_unlock(drv_data, hw_fence_client->client_id, hw_fence_child, hash);
 	}
 
 destroy_fence:
@@ -1612,15 +1869,9 @@ int hw_fence_process_fence_array(struct hw_fence_driver_data *drv_data,
 				hw_fence_child->parents_cnt--;
 
 				/* decrement refcount acquired by finding fence */
-				_unreserve_hw_fence(drv_data, hw_fence_child,
-					hw_fence_client->client_id, hw_fence_child->ctx_id,
-					hw_fence_child->seq_id, hash, 0);
+				hw_fence_put_and_unlock(drv_data, hw_fence_client->client_id,
+					hw_fence_child, hash);
 
-				/* update memory for the table update */
-				wmb();
-
-				/* unlock */
-				GLOBAL_ATOMIC_STORE(drv_data, &hw_fence_child->lock, 0);
 				ret = -EINVAL;
 				goto error_array;
 			}
@@ -1629,12 +1880,7 @@ int hw_fence_process_fence_array(struct hw_fence_driver_data *drv_data,
 				*hash_join_fence;
 		}
 		/* decrement refcount acquired by finding fence */
-		_unreserve_hw_fence(drv_data, hw_fence_child, hw_fence_client->client_id,
-			hw_fence_child->ctx_id, hw_fence_child->seq_id, hash, 0);
-
-		/* update memory for the table update */
-		wmb();
-		GLOBAL_ATOMIC_STORE(drv_data, &hw_fence_child->lock, 0); /* unlock */
+		hw_fence_put_and_unlock(drv_data, hw_fence_client->client_id, hw_fence_child, hash);
 	}
 
 	if (client_data)
@@ -1989,12 +2235,11 @@ int hw_fence_utils_cleanup_fence(struct hw_fence_driver_data *drv_data,
 		hw_fence->wait_client_mask &= ~BIT(hw_fence_client->client_id);
 
 		/* remove reference held by waiting client */
-		if (!(reset_flags & MSM_HW_FENCE_RESET_WITHOUT_DESTROY))
-			_unreserve_hw_fence(drv_data, hw_fence, hw_fence_client->client_id,
-				hw_fence->ctx_id, hw_fence->seq_id, hash, 0);
-
-		/* update memory for the table update */
-		wmb();
+		if (!(reset_flags & MSM_HW_FENCE_RESET_WITHOUT_DESTROY)) {
+			hw_fence_put_and_unlock(drv_data, hw_fence_client->client_id, hw_fence,
+				hash);
+			return 0;
+		}
 	}
 	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
 
@@ -2006,11 +2251,9 @@ int hw_fence_utils_cleanup_fence(struct hw_fence_driver_data *drv_data,
 		if (reset_flags & MSM_HW_FENCE_RESET_WITHOUT_DESTROY)
 			goto skip_destroy;
 
-		ret = hw_fence_destroy(drv_data, hw_fence_client,
-			hw_fence->ctx_id, hw_fence->seq_id);
+		ret = hw_fence_destroy_with_hash(drv_data, hw_fence_client, hash);
 		if (ret) {
-			HWFNC_ERR("Error destroying HW fence: ctx:%llu seqno:%llu\n",
-				hw_fence->ctx_id, hw_fence->seq_id);
+			HWFNC_ERR("Error destroying HW fence: hash:%llu\n", hash);
 		}
 	}
 
@@ -2046,44 +2289,58 @@ enum hw_fence_client_data_id hw_fence_get_client_data_id(enum hw_fence_client_id
 	return data_id;
 }
 
+int hw_fence_signal_fence(struct hw_fence_driver_data *drv_data, struct dma_fence *fence, u64 hash,
+	u32 error, bool release_ref)
+{
+	struct msm_hw_fence *hw_fence;
+
+	if (!drv_data || !fence) {
+		HWFNC_ERR("bad params drv_data:0x%pK fence:0x%pK\n", drv_data, fence);
+		return -EINVAL;
+	}
+
+	hw_fence = _get_hw_fence(drv_data->hw_fence_table_entries, drv_data->hw_fences_tbl, hash);
+	if (!hw_fence) {
+		HWFNC_ERR("bad hw fence hash:%llu\n", hash);
+		return -EINVAL;
+	}
+
+	if (hw_fence->ctx_id != fence->context || hw_fence->seq_id != fence->seqno) {
+		HWFNC_ERR("invalid hfence hash:%llu ctx:%llu seq:%llu expected ctx:%llu seq:%llu\n",
+			hash, hw_fence->ctx_id, hw_fence->seq_id, fence->context, fence->seqno);
+		return -EINVAL;
+	}
+
+	/* if unsignaled, signal but do not release ref held by FCTL */
+	_signal_fence_if_unsignaled(drv_data, hw_fence, hash, error, release_ref);
+
+	return 0;
+}
+
 static void msm_hw_fence_signal_callback(struct dma_fence *fence, struct dma_fence_cb *cb)
 {
-	struct hw_fence_driver_data *drv_data;
 	struct hw_fence_signal_cb *signal_cb;
-	struct msm_hw_fence *hw_fence;
-	u64 hash;
+	int ret = 0;
 
 	if (!fence || !cb) {
 		HWFNC_ERR("Invalid params fence:0x%pK cb:0x%pK\n", fence, cb);
 		return;
 	}
 
-	signal_cb = (struct hw_fence_signal_cb *)cb;
-	drv_data = signal_cb->drv_data;
-	hash = signal_cb->hash;
-	if (!drv_data) {
-		HWFNC_ERR("invalid signal_cb params\n");
-		return;
-	}
 	HWFNC_DBG_IRQ("dma-fence signal callback ctx:%llu seqno:%llu flags:%lx err:%d\n",
 		fence->context, fence->seqno, fence->flags, fence->error);
 
-	hw_fence = _get_hw_fence(drv_data->hw_fence_table_entries, drv_data->hw_fences_tbl, hash);
-	if (!hw_fence) {
-		HWFNC_ERR("bad hw fence hash:%llu\n", hash);
-		goto error;
-	}
+	signal_cb = (struct hw_fence_signal_cb *)cb;
+	ret = hw_fence_signal_fence(signal_cb->drv_data, fence, signal_cb->hash, fence->error,
+		false);
+	if (ret)
+		HWFNC_ERR("failed to signal fence ctx:%llu seq:%llu hash:%llu err:%u\n",
+			fence->context, fence->seqno, signal_cb->hash, fence->error);
+	else
+		/* release ref held by dma-fence signal */
+		hw_fence_destroy_refcount(signal_cb->drv_data, signal_cb->hash,
+			HW_FENCE_DMA_FENCE_REFCOUNT);
 
-	if (hw_fence->ctx_id != fence->context || hw_fence->seq_id != fence->seqno) {
-		HWFNC_ERR("invalid hfence hash:%llu ctx:%llu seq:%llu expected ctx:%llu seq:%llu\n",
-			hash, hw_fence->ctx_id, hw_fence->seq_id, fence->context, fence->seqno);
-		goto error;
-	}
-
-	/* if unsignaled, signal but do not release ref held by FCTL */
-	_signal_fence_if_unsignaled(drv_data, hw_fence, hash, fence->error, false);
-	hw_fence_destroy_with_hash(drv_data, NULL, hash); /* release ref held by dma-fence signal */
-error:
 	kfree(signal_cb);
 }
 
@@ -2107,7 +2364,7 @@ int hw_fence_add_callback(struct hw_fence_driver_data *drv_data, struct dma_fenc
 	signal_cb->hash = hash;
 
 	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 1);
-	hw_fence->refcount++;
+	hw_fence->refcount |= HW_FENCE_DMA_FENCE_REFCOUNT;
 	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0);
 
 	ret = dma_fence_add_callback(fence, &signal_cb->fence_cb, msm_hw_fence_signal_callback);
@@ -2121,7 +2378,8 @@ int hw_fence_add_callback(struct hw_fence_driver_data *drv_data, struct dma_fenc
 			HWFNC_ERR("failed to add signal_cb ctx:%llu seq:%llu f:%lx err:%d ret:%d\n",
 				fence->context, fence->seqno, fence->flags, fence->error, ret);
 			/* release ref held by dma-fence signal */
-			hw_fence_destroy_with_hash(drv_data, NULL, hash);
+			hw_fence_destroy_refcount(signal_cb->drv_data, signal_cb->hash,
+				HW_FENCE_DMA_FENCE_REFCOUNT);
 			kfree(signal_cb);
 		}
 	}

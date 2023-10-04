@@ -12,6 +12,8 @@
 #include <linux/dma-mapping.h>
 #include <linux/dma-fence-array.h>
 #include <linux/slab.h>
+#include <linux/bitmap.h>
+#include <linux/hashtable.h>
 #include "msm_hw_fence.h"
 
 /* max u64 to indicate invalid fence */
@@ -59,9 +61,12 @@
  * MSM_HW_FENCE_FLAG_SIGNAL - Flag set when the hw-fence is signaled
  * MSM_HW_FENCE_FLAG_CREATE_SIGNALED - Flag set when the hw-fence is created to back a signaled
  *                                     dma-fence whose hw-fence has been destroyed
+ * MSM_HW_FENCE_FLAG_INTERNAL_OWNED - Flag set when HLOS Native fence is internally owned and
+ *                                    present in dma-fence table
  */
 #define MSM_HW_FENCE_FLAG_SIGNAL		BIT(0)
 #define MSM_HW_FENCE_FLAG_CREATE_SIGNALED	BIT(1)
+#define MSM_HW_FENCE_FLAG_INTERNAL_OWNED	BIT(2)
 
 /**
  * MSM_HW_FENCE_MAX_JOIN_PARENTS:
@@ -90,12 +95,29 @@
 #define HW_FENCE_FCTL_REFCOUNT BIT(31)
 
 /**
+ * HW_FENCE_DMA_FENCE_REFCOUNT:
+ * Refcount held by HW Fence Driver for dma-fence release or signal.
+ * For dma-fences internally owned by the HW Fence Driver, this is set during hw-fence creation and
+ * cleared during dma_fence_release.
+ * For external dma-fences initialized by the client, this is set when the hw-fence signal callback
+ * is added to the dma-fence and cleared during dma_fence_signal.
+ */
+#define HW_FENCE_DMA_FENCE_REFCOUNT BIT(30)
+
+/**
  * HW_FENCE_HLOS_REFCOUNT_MASK:
  * Mask for refcounts acquired and released from HLOS.
  * The field "hw_fence->refcount & HW_FENCE_HLOS_REFCOUNT_MASK" stores the number of refcounts held
  * by HW Fence clients or HW Fence Driver.
  */
-#define HW_FENCE_HLOS_REFCOUNT_MASK GENMASK(30, 0)
+#define HW_FENCE_HLOS_REFCOUNT_MASK GENMASK(29, 0)
+
+/*
+ * DMA_FENCE_HASH_TABLE_BIT: Bit that define the size of the dma-fences hash table
+ * DMA_FENCE_HASH_TABLE_SIZE: Size of dma-fences hash table
+ */
+#define DMA_FENCE_HASH_TABLE_BIT (12) /* size of table = (1 << 12) = 4096 */
+#define DMA_FENCE_HASH_TABLE_SIZE (1 << DMA_FENCE_HASH_TABLE_BIT)
 
 enum hw_fence_lookup_ops {
 	HW_FENCE_LOOKUP_OP_CREATE = 0x1,
@@ -175,6 +197,8 @@ enum payload_type {
  * @ipc_client_pid: physical id of the ipc client for this hw fence driver client
  * @update_rxq: bool to indicate if client uses rx-queue
  * @send_ipc: bool to indicate if client requires ipc interrupt for already signaled fences
+ * @context_id: context id for fences created internally
+ * @seqno: sequence no for fences created internally
  * @wait_queue: wait queue for the validation clients
  * @val_signal: doorbell flag to signal the validation clients in the wait queue
  */
@@ -192,6 +216,8 @@ struct msm_hw_fence_client {
 	int ipc_client_pid;
 	bool update_rxq;
 	bool send_ipc;
+	u64 context_id;
+	atomic_t seqno;
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	wait_queue_head_t wait_queue;
 	atomic_t val_signal;
@@ -347,6 +373,8 @@ struct hw_fence_signal_cb {
  * @clients: table with the handles of the registered clients; size is equal to clients_num
  * @vm_ready: flag to indicate if vm has been initialized
  * @ipcc_dpu_initialized: flag to indicate if dpu hw is initialized
+ * @dma_fence_table_lock: lock to synchronize access to dma-fence table
+ * @dma_fence_table: table with internal dma-fences for hw-fences
  */
 struct hw_fence_driver_data {
 
@@ -428,6 +456,10 @@ struct hw_fence_driver_data {
 	bool vm_ready;
 	/* state variables */
 	bool ipcc_dpu_initialized;
+
+	spinlock_t dma_fence_table_lock;
+	/* table with internal dma-fences created by the this driver on client's behalf */
+	DECLARE_HASHTABLE(dma_fence_table, DMA_FENCE_HASH_TABLE_BIT);
 };
 
 /**
@@ -496,7 +528,8 @@ struct msm_hw_fence_event {
  * @fence_trigger_time: debug info with the trigger time timestamp
  * @fence_wait_time: debug info with the register-for-wait timestamp
  * @refcount: refcount on the hw-fence. This is split into multiple fields, see
- *            HW_FENCE_HLOS_REFCOUNT_MASK and HW_FENCE_FCTL_REFCOUNT for more detail
+ *            HW_FENCE_HLOS_REFCOUNT_MASK and HW_FENCE_FCTL_REFCOUNT and HW_FENCE_DMA_FENCE_REFCOUNT
+ *            for more detail
  * @client_data: array of data optionally passed from and returned to clients waiting on the fence
  *               during fence signaling
  */
@@ -567,5 +600,13 @@ struct msm_hw_fence *hw_fence_find_with_dma_fence(struct hw_fence_driver_data *d
 	struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence, u64 *hash,
 	bool *is_signaled, bool create);
 enum hw_fence_client_data_id hw_fence_get_client_data_id(enum hw_fence_client_id client_id);
+int hw_fence_signal_fence(struct hw_fence_driver_data *drv_data, struct dma_fence *fence, u64 hash,
+	u32 error, bool release_ref);
+
+/* apis for internally managed dma-fence */
+struct dma_fence *hw_dma_fence_init(struct msm_hw_fence_client *hw_fence_client, u64 context,
+	u64 seqno);
+struct dma_fence *hw_fence_internal_dma_fence_create(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_client *hw_fence_client, u64 *hash);
 
 #endif /* __HW_FENCE_DRV_INTERNAL_H */

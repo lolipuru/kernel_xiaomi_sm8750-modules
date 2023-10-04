@@ -169,11 +169,16 @@ int synx_hwfence_create(struct synx_session *session, struct synx_create_params 
 	}
 
 	if (IS_ERR_OR_NULL(params->h_synx) || (params->flags > SYNX_CREATE_MAX_FLAGS) ||
-			!(params->flags & SYNX_CREATE_DMA_FENCE) ||
-			(params->flags & SYNX_CREATE_CSL_FENCE) ||
-			IS_ERR_OR_NULL(params->fence)) {
-		HWFNC_ERR("synx_id:%d invalid create params h_synx:0x%pK flags:0x%x fence:0x%pK\n",
-			session->type, params->h_synx, params->flags, params->fence);
+			(params->flags & SYNX_CREATE_CSL_FENCE)) {
+		HWFNC_ERR("synx_id:%d invalid create params h_synx:0x%pK flags:0x%x\n",
+			session->type, params->h_synx, params->flags);
+		return -SYNX_INVALID;
+	}
+
+	/* if SYNX_CREATE_DMA_FENCE specified and no dma-fence, fail */
+	if (!params->fence && (params->flags & SYNX_CREATE_DMA_FENCE)) {
+		HWFNC_ERR("synx_id:%d invalid fence:%pK params flags:0x%x\n",
+			session->type, params->fence, params->flags);
 		return -SYNX_INVALID;
 	}
 
