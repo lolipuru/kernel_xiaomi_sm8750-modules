@@ -5251,7 +5251,7 @@ static int __power_off_core(struct iris_hfi_device *device)
 			"Core NOC not in qaccept status %x %x %x %x\n",
 			reg_status, lpi_status, wfi_status, pc_ready);
 
-		call_iris_op(device, print_sbm_regs, device);
+		warn_flag = 1;
 	}
 
 	__write_register(device, CVP_AON_WRAPPER_CVP_NOC_LPI_CONTROL, 0x0);
@@ -5698,7 +5698,7 @@ static int __power_off_core_v1(struct iris_hfi_device *device)
 		msm_cvp_disable_unprepare_clk(device, "core_clk");
 		msm_cvp_disable_unprepare_clk(device, "eva_cc_mvs0_clk_src");
 		return 0;
-	 } else if (!(value & 0x2)) {
+	} else if (!(value & 0x2) && msm_cvp_fw_low_power_mode) {
 		/*
 		 * HW_CONTROL PC disabled, then core is powered on for
 		 * CVP NoC access
@@ -5709,8 +5709,9 @@ static int __power_off_core_v1(struct iris_hfi_device *device)
                 return 0;
 	}
 
-	/* TODO */
 	dprintk(CVP_PWR, "Driver controls Core power off now\n");
+
+	/* HPG 3.4.4 step 1 */
 	/*
 	 * check to make sure core clock branch enabled else
 	 * we cannot read core idle register
@@ -5741,9 +5742,12 @@ static int __power_off_core_v1(struct iris_hfi_device *device)
 		warn_flag = 1;
 	}
 
+	/* HPG 3.4.4 step 2 */
 	count = 0;
 	max_count = 1000;
 	__write_register(device, CVP_AON_WRAPPER_CVP_NOC_LPI_CONTROL, 0x1);
+
+	/* HPG 3.4.4 step 3 */
 	while (!reg_status && count < max_count) {
 		lpi_status =
 			 __read_register(device,
@@ -5766,14 +5770,16 @@ static int __power_off_core_v1(struct iris_hfi_device *device)
 			"Core NOC not in qaccept status %x %x %x %x\n",
 			reg_status, lpi_status, wfi_status, pc_ready);
 
-		call_iris_op(device, print_sbm_regs, device);
+		warn_flag = 1;
 	}
 
+	/* HPG 3.4.4 step 4 */
 	__write_register(device, CVP_AON_WRAPPER_CVP_NOC_LPI_CONTROL, 0x0);
 
 	if (warn_flag)
 		call_iris_op(device, print_sbm_regs, device);
 
+	/* HPG 3.4.4 step 5 */
 	/* Reset both sides of 2 ahb2ahb_bridges (TZ and non-TZ) */
 	__write_register(device, CVP_AHB_BRIDGE_SYNC_RESET, 0x3);
 	__write_register(device, CVP_AHB_BRIDGE_SYNC_RESET, 0x2);
@@ -5781,6 +5787,7 @@ static int __power_off_core_v1(struct iris_hfi_device *device)
 
 	__write_register(device, CVP_WRAPPER_CORE_CLOCK_CONFIG, config);
 
+	/* HPG 3.4.4 step 6-7 */
 	__disable_hw_power_collapse(device);
 	usleep_range(100, 200);
 	__disable_regulator(device, "cvp-core");
