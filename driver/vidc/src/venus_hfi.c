@@ -5,12 +5,11 @@
  */
 
 #include <linux/iommu.h>
-#include <linux/qcom_scm.h>
 #include <linux/soc/qcom/smem.h>
 #include <linux/irqreturn.h>
 #include <linux/of_address.h>
 #include <linux/firmware.h>
-#include <linux/qcom_scm.h>
+#include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/soc/qcom/mdt_loader.h>
 #include <linux/soc/qcom/llcc-qcom.h>
 #include <linux/iopoll.h>

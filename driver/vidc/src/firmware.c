@@ -7,7 +7,7 @@
 #include <linux/of_address.h>
 #include <linux/devcoredump.h>
 #include <linux/firmware.h>
-#include <linux/qcom_scm.h>
+#include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/soc/qcom/mdt_loader.h>
 #include <linux/soc/qcom/smem.h>
 
