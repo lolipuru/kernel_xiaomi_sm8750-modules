@@ -60,7 +60,7 @@ static int msm_vidc_init_codec_input_freq(struct msm_vidc_inst *inst, u32 data_s
 		return -EINVAL;
 	}
 	/* (civirakt) - To change to sun target */
-	codec_input->chipset_gen = MSM_PINEAPPLE;
+	codec_input->chipset_gen = MSM_SUN;
 
 	if (inst->codec == MSM_VIDC_H264) {
 		codec_input->codec    = CODEC_H264;
@@ -178,7 +178,7 @@ static int msm_vidc_init_codec_input_bus(struct msm_vidc_inst *inst, struct vidc
 		return -EINVAL;
 	}
 	/* (civirakt) - To change to sun target */
-	codec_input->chipset_gen = MSM_PINEAPPLE;
+	codec_input->chipset_gen = MSM_SUN;
 
 	if (d->codec == MSM_VIDC_H264) {
 		if (inst->capabilities[ENTROPY_MODE].value ==
@@ -496,7 +496,7 @@ static int msm_vidc_calc_bw_iris35_new(struct msm_vidc_inst *inst,
 	vidc_data->calc_bw_ddr = kbps(codec_output.ddr_bw_rd + codec_output.ddr_bw_wr);
 	vidc_data->calc_bw_llcc = kbps(codec_output.noc_bw_rd + codec_output.noc_bw_wr);
 
-	i_vpr_l(inst, "%s: calc_bw_ddr %lu calc_bw_llcc %lu",
+	i_vpr_l(inst, "%s: calc_bw_ddr %llu calc_bw_llcc %llu",
 		__func__, vidc_data->calc_bw_ddr, vidc_data->calc_bw_llcc);
 
 	return ret;
@@ -1105,7 +1105,7 @@ static u64 __calculate_encoder(struct vidc_bus_vote_data *d)
 
 	if (d->use_sys_cache) {
 		llc_ref_chroma_cache_enabled = true;
-		llc_top_line_buf_enabled = true,
+		llc_top_line_buf_enabled = true;
 		llc_vpss_rot_line_buf_enabled = true;
 	}
 

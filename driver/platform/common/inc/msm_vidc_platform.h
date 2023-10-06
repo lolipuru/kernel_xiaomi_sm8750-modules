@@ -227,7 +227,7 @@ struct msm_vidc_platform_data {
 	const char *fwname;
 	u32 pas_id;
 	bool supports_mmrm;
-	struct msm_platform_core_capability *core_data;
+	const struct msm_platform_core_capability *core_data;
 	u32 core_data_size;
 	struct msm_platform_inst_capability *inst_cap_data;
 	u32 inst_cap_data_size;

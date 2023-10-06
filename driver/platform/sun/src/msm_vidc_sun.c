@@ -17,7 +17,8 @@
 #include "msm_vidc_internal.h"
 #include "msm_vidc_platform_ext.h"
 #include "msm_vidc_memory_ext.h"
-#include "msm_vidc_synx.h"
+// TODO gdoddabe Enable when Synx changes are available
+// #include "msm_vidc_synx.h"
 #include "resources_ext.h"
 #include "msm_vidc_iris35.h"
 #include "hfi_property.h"
@@ -280,7 +281,7 @@ static struct matrix_coeff_info matrix_coeff_data_sun[] = {
 	},
 };
 
-static struct msm_platform_core_capability core_data_sun[] = {
+static const struct msm_platform_core_capability core_data_sun[] = {
 	/* {type, value} */
 	{ENC_CODECS, H264 | HEVC | HEIC},
 	{DEC_CODECS, H264 | HEVC | VP9 | AV1 | HEIC},
@@ -320,9 +321,9 @@ static struct msm_platform_core_capability core_data_sun[] = {
 	{AV_SYNC_WINDOW_SIZE, 40},
 	{NON_FATAL_FAULTS, 1},
 	{ENC_AUTO_FRAMERATE, 1},
-	{DEVICE_CAPS, V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_META_CAPTURE |
-		V4L2_CAP_STREAMING},
-	{SUPPORTS_SYNX_FENCE, 1},
+	{DEVICE_CAPS, V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_META_CAPTURE | V4L2_CAP_STREAMING},
+	// TODO gdoddabe Enable when Synx changes are available
+	//{SUPPORTS_SYNX_FENCE, 1},
 	{SUPPORTS_REQUESTS, 0},
 };
 
@@ -2902,7 +2903,7 @@ static const struct msm_vidc_platform_data sun_data = {
 	.reg_prst_tbl_size = ARRAY_SIZE(sun_reg_preset_table),
 	.dev_reg_tbl = sun_device_region_table,
 	.dev_reg_tbl_size = ARRAY_SIZE(sun_device_region_table),
-	.fwname = "vpu33_4v",
+	.fwname = "vpu35_4v",
 	.pas_id = 9,
 	.supports_mmrm = 1,
 
@@ -2987,11 +2988,15 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 		d_vpr_e("%s: invalid resource ext ops\n", __func__);
 		return -EINVAL;
 	}
+
+	// TODO gdoddabe Enable when Synx changes are available
+/*
 	core->fence_ops = get_synx_fence_ops();
 	if (!core->fence_ops) {
 		d_vpr_e("%s: invalid synx fence ops\n", __func__);
 		return -EINVAL;
 	}
+*/
 
 	rc = msm_vidc_sun_check_ddr_type();
 	if (rc)

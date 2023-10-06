@@ -3483,9 +3483,8 @@ int msm_vidc_init_core_caps(struct msm_vidc_core *core)
 {
 	int rc = 0;
 	int i, num_platform_caps;
-	struct msm_platform_core_capability *platform_data;
+	const struct msm_platform_core_capability *platform_data = core->platform->data.core_data;
 
-	platform_data = core->platform->data.core_data;
 	if (!platform_data) {
 		d_vpr_e("%s: platform core data is NULL\n",
 				__func__);
