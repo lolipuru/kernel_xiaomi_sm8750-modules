@@ -990,6 +990,9 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 
 	ctx->msg_sz = pkt_size;
 
+	if (!ctx->fl->sctx->dev)
+		return -EPIPE;
+
 	err = fastrpc_buf_alloc(ctx->fl, dev, pkt_size, METADATA_BUF, &ctx->buf);
 	if (err)
 		return err;
@@ -1401,7 +1404,7 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 	if (!fl->sctx)
 		return -EINVAL;
 
-	if (!fl->cctx->dev)
+	if ((!fl->cctx->dev) || (!fl->sctx->dev))
 		return -EPIPE;
 
 	handle = inv->handle;
@@ -1661,9 +1664,7 @@ int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx)
 {
 	struct fastrpc_buf *buf, *b;
 	int err = 0;
-	unsigned long flags;
 
-	spin_lock_irqsave(&cctx->lock, flags);
 	list_for_each_entry_safe(buf, b, &cctx->gmaps, node) {
 		if (cctx->vmcount) {
 			u64 src_perms = 0;
@@ -1675,7 +1676,6 @@ int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx)
 
 			dst_perms.vmid = QCOM_SCM_VMID_HLOS;
 			dst_perms.perm = QCOM_SCM_PERM_RWX;
-			spin_unlock_irqrestore(&cctx->lock, flags);
 			err = qcom_scm_assign_mem(buf->phys, (u64)buf->size,
 							&src_perms, &dst_perms, 1);
 			if (err) {
@@ -1683,12 +1683,10 @@ int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx)
 					__func__, buf->phys, buf->size, err);
 				return err;
 			}
-			spin_lock_irqsave(&cctx->lock, flags);
 		}
 		list_del(&buf->node);
 		fastrpc_buf_free(buf, false);
 	}
-	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	return 0;
 }
@@ -2086,9 +2084,7 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 		fastrpc_buf_free(fl->pers_hdr_buf, false);
 	kfree(fl->hdr_bufs);
 
-	spin_lock_irqsave(&cctx->lock, flags);
 	fastrpc_cached_buf_list_free(fl);
-	spin_unlock_irqrestore(&cctx->lock, flags);
 	if (fl->qos_request && fl->dev_pm_qos_req) {
 		for (i = 0; i < cctx->lowest_capacity_core_count; i++) {
 			if (!dev_pm_qos_request_active(&fl->dev_pm_qos_req[i]))
@@ -2102,6 +2098,7 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 		fastrpc_session_free(cctx, fl->sctx);
 	if (fl->secsctx)
 		fastrpc_session_free(cctx, fl->secsctx);
+
 	fastrpc_channel_ctx_put(cctx);
 	for (i = 0; i < (FASTRPC_DSPSIGNAL_NUM_SIGNALS /FASTRPC_DSPSIGNAL_GROUP_SIZE); i++)
 		kfree(fl->signal_groups[i]);
@@ -3627,15 +3624,16 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 	unsigned long flags;
 	int i;
 
-	spin_lock_irqsave(&cctx->lock, flags);
 	list_for_each_entry(fl, &cctx->users, user) {
 		if(fl->sctx && fl->sctx->sid == sess->sid) {
 			fastrpc_cached_buf_list_free(fl);
 			break;
 		}
 	}
+	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 1; i < FASTRPC_MAX_SESSIONS; i++) {
 		if (cctx->session[i].sid == sess->sid) {
+			cctx->session[i].dev = NULL;
 			cctx->session[i].valid = false;
 			cctx->sesscount--;
 		}
