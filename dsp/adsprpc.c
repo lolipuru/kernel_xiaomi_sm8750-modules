@@ -5189,6 +5189,14 @@ static int fastrpc_mmap_remove_pdr(struct fastrpc_file *fl)
 		err = -ENOTCONN;
 		goto bail;
 	}
+	// Restrict more than one app from attaching to audio pd
+	if (atomic_add_unless(&me->channel[cid].spd[session].is_attach, 1, 1)) {
+		fl->spd = &me->channel[cid].spd[session];
+	} else {
+		ADSPRPC_ERR("Application already attached to audio PD\n");
+		err = -ECONNREFUSED;
+		goto bail;
+	}
 	if (me->channel[cid].spd[session].pdrcount !=
 		me->channel[cid].spd[session].prevpdrcount) {
 		err = fastrpc_mmap_remove_ssr(fl, 0);
@@ -5782,6 +5790,11 @@ static int fastrpc_file_free(struct fastrpc_file *fl)
 
 	if (!fl)
 		return 0;
+
+	// If app attached to audio pd, then reset attach flag
+	if (fl->spd)
+		atomic_set(&fl->spd->is_attach, 0);
+
 	cid = fl->cid;
 
 	spin_lock_irqsave(&me->hlock, irq_flags);
@@ -7757,8 +7770,10 @@ static void fastrpc_pdr_cb(int state, char *service_path, void *priv)
 		atomic_set(&spd->ispdup, 0);
 		mutex_unlock(&me->channel[spd->cid].smd_mutex);
 		if (!strcmp(spd->servloc_name,
-				AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME))
+				AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME)) {
 			me->staticpd_flags = 0;
+			atomic_set(&spd->is_attach, 0);
+		}
 
 		fastrpc_notify_pdr_drivers(me, spd->servloc_name);
 		break;

@@ -671,6 +671,8 @@ struct fastrpc_static_pd {
 	atomic_t ispdup;
 	int cid;
 	wait_queue_head_t wait_for_pdup;
+	/* Indicates app attach to static PD */
+	atomic_t is_attach;
 };
 
 struct fastrpc_dsp_capabilities {
@@ -925,6 +927,8 @@ struct fastrpc_file {
 	bool multi_session_support;
 	/* Flag to indicate session info is set */
 	bool set_session_info;
+	/* Reference to spd allotted session */
+	struct fastrpc_static_pd *spd;
 };
 
 int fastrpc_internal_invoke(struct fastrpc_file *fl, uint32_t mode,
