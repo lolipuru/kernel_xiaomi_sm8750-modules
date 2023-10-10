@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _UAPI_MSM_IPA_H_
@@ -1551,7 +1551,7 @@ struct ipa_hdr_add {
 struct ipa_ioc_add_hdr {
 	uint8_t commit;
 	uint8_t num_hdrs;
-	struct ipa_hdr_add hdr[0];
+	struct ipa_hdr_add hdr[];
 };
 
 /**
@@ -1728,7 +1728,7 @@ struct ipa_hdr_proc_ctx_add {
 struct ipa_ioc_add_hdr_proc_ctx {
 	uint8_t commit;
 	uint8_t num_proc_ctxs;
-	struct ipa_hdr_proc_ctx_add proc_ctx[0];
+	struct ipa_hdr_proc_ctx_add proc_ctx[];
 };
 
 /**
@@ -1792,7 +1792,7 @@ struct ipa_hdr_del {
 struct ipa_ioc_del_hdr {
 	uint8_t commit;
 	uint8_t num_hdls;
-	struct ipa_hdr_del hdl[0];
+	struct ipa_hdr_del hdl[];
 };
 
 /**
@@ -1819,7 +1819,7 @@ struct ipa_hdr_proc_ctx_del {
 struct ipa_ioc_del_hdr_proc_ctx {
 	uint8_t commit;
 	uint8_t num_hdls;
-	struct ipa_hdr_proc_ctx_del hdl[0];
+	struct ipa_hdr_proc_ctx_del hdl[];
 };
 
 /**
@@ -1875,7 +1875,7 @@ struct ipa_ioc_add_rt_rule {
 	enum ipa_ip_type ip;
 	char rt_tbl_name[IPA_RESOURCE_NAME_MAX];
 	uint8_t num_rules;
-	struct ipa_rt_rule_add rules[0];
+	struct ipa_rt_rule_add rules[];
 };
 
 /**
@@ -1922,7 +1922,7 @@ struct ipa_ioc_add_rt_rule_after {
 	char rt_tbl_name[IPA_RESOURCE_NAME_MAX];
 	uint8_t num_rules;
 	uint32_t add_after_hdl;
-	struct ipa_rt_rule_add rules[0];
+	struct ipa_rt_rule_add rules[];
 };
 
 /**
@@ -1996,7 +1996,7 @@ struct ipa_ioc_mdfy_rt_rule {
 	uint8_t commit;
 	enum ipa_ip_type ip;
 	uint8_t num_rules;
-	struct ipa_rt_rule_mdfy rules[0];
+	struct ipa_rt_rule_mdfy rules[];
 };
 
 /**
@@ -2090,7 +2090,7 @@ struct ipa_ioc_add_rt_rule_ext {
 	enum ipa_ip_type ip;
 	char rt_tbl_name[IPA_RESOURCE_NAME_MAX];
 	uint8_t num_rules;
-	struct ipa_rt_rule_add_ext rules[0];
+	struct ipa_rt_rule_add_ext rules[];
 };
 
 /**
@@ -2132,7 +2132,7 @@ struct ipa_ioc_del_rt_rule {
 	uint8_t commit;
 	enum ipa_ip_type ip;
 	uint8_t num_hdls;
-	struct ipa_rt_rule_del hdl[0];
+	struct ipa_rt_rule_del hdl[];
 };
 
 /**
@@ -2202,7 +2202,7 @@ struct ipa_ioc_add_flt_rule {
 	enum ipa_client_type ep;
 	uint8_t global;
 	uint8_t num_rules;
-	struct ipa_flt_rule_add rules[0];
+	struct ipa_flt_rule_add rules[];
 };
 
 /**
@@ -2253,7 +2253,7 @@ struct ipa_ioc_add_flt_rule_after {
 	enum ipa_client_type ep;
 	uint8_t num_rules;
 	uint32_t add_after_hdl;
-	struct ipa_flt_rule_add rules[0];
+	struct ipa_flt_rule_add rules[];
 };
 
 /**
@@ -2325,7 +2325,7 @@ struct ipa_ioc_mdfy_flt_rule {
 	uint8_t commit;
 	enum ipa_ip_type ip;
 	uint8_t num_rules;
-	struct ipa_flt_rule_mdfy rules[0];
+	struct ipa_flt_rule_mdfy rules[];
 };
 
 /**
@@ -2373,7 +2373,7 @@ struct ipa_ioc_del_flt_rule {
 	uint8_t commit;
 	enum ipa_ip_type ip;
 	uint8_t num_hdls;
-	struct ipa_flt_rule_del hdl[0];
+	struct ipa_flt_rule_del hdl[];
 };
 
 /**
@@ -2434,12 +2434,12 @@ struct ipa_ioc_tx_intf_prop {
  * struct ipa_ioc_query_intf_tx_props - interface tx propertie
  * @name: name of interface
  * @num_tx_props: number of TX properties
- * @tx[0]: output parameter, the tx properties go here back to back
+ * @tx[]: output parameter, the tx properties go here back to back
  */
 struct ipa_ioc_query_intf_tx_props {
 	char name[IPA_RESOURCE_NAME_MAX];
 	uint32_t num_tx_props;
-	struct ipa_ioc_tx_intf_prop tx[0];
+	struct ipa_ioc_tx_intf_prop tx[];
 };
 
 /**
@@ -2470,12 +2470,12 @@ struct ipa_ioc_ext_intf_prop {
  * struct ipa_ioc_query_intf_ext_props - interface ext propertie
  * @name: name of interface
  * @num_ext_props: number of EXT properties
- * @ext[0]: output parameter, the ext properties go here back to back
+ * @ext[]: output parameter, the ext properties go here back to back
  */
 struct ipa_ioc_query_intf_ext_props {
 	char name[IPA_RESOURCE_NAME_MAX];
 	uint32_t num_ext_props;
-	struct ipa_ioc_ext_intf_prop ext[0];
+	struct ipa_ioc_ext_intf_prop ext[];
 };
 
 /**
@@ -2501,7 +2501,7 @@ struct ipa_ioc_rx_intf_prop {
 struct ipa_ioc_query_intf_rx_props {
 	char name[IPA_RESOURCE_NAME_MAX];
 	uint32_t num_rx_props;
-	struct ipa_ioc_rx_intf_prop rx[0];
+	struct ipa_ioc_rx_intf_prop rx[];
 };
 
 /**
@@ -2621,7 +2621,7 @@ struct ipa_ioc_nat_dma_one {
 struct ipa_ioc_nat_dma_cmd {
 	uint8_t entries;
 	uint8_t mem_type;
-	struct ipa_ioc_nat_dma_one dma[0];
+	struct ipa_ioc_nat_dma_one dma[];
 };
 
 /**
@@ -2861,7 +2861,7 @@ struct ipa_wlan_hdr_attrib_val {
 struct ipa_wlan_msg_ex {
 	char name[IPA_RESOURCE_NAME_MAX];
 	uint8_t num_of_attribs;
-	struct ipa_wlan_hdr_attrib_val attribs[0];
+	struct ipa_wlan_hdr_attrib_val attribs[];
 };
 
 /**
@@ -3840,7 +3840,7 @@ struct teth_aggr_params {
  */
 struct teth_aggr_capabilities {
 	uint16_t num_protocols;
-	struct teth_aggr_params_link prot_caps[0];
+	struct teth_aggr_params_link prot_caps[];
 };
 
 /**
