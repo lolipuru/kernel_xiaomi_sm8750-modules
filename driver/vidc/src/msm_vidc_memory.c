@@ -340,7 +340,11 @@ static int msm_vidc_dma_buf_unmap_attachment(struct msm_vidc_core *core,
 		return -EINVAL;
 	}
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
 	dma_buf_unmap_attachment(attach, table, DMA_BIDIRECTIONAL);
+#else
+	dma_buf_unmap_attachment_unlocked(attach, table, DMA_BIDIRECTIONAL);
+#endif
 
 	return rc;
 }
@@ -356,7 +360,11 @@ static struct sg_table *msm_vidc_dma_buf_map_attachment(
 		return NULL;
 	}
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
 	table = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+#else
+	table = dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
+#endif
 	if (IS_ERR_OR_NULL(table)) {
 		rc = PTR_ERR(table) ? PTR_ERR(table) : -1;
 		d_vpr_e("Failed to map table, error %d\n", rc);
