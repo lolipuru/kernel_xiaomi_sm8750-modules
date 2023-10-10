@@ -212,6 +212,7 @@ static int cvp_dsp_rpmsg_probe(struct rpmsg_device *rpdev)
 	me->state = DSP_PROBED;
 	mutex_unlock(&me->tx_lock);
 	complete(&me->completions[CPU2DSP_MAX_CMD]);
+	dprintk(CVP_DSP, "glink probed, DSP driver ready!\n");
 
 	return ret;
 }
