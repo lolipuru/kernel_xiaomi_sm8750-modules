@@ -2,6 +2,8 @@
 /*
  * Copyright (C) 2016-2019, STMicroelectronics Limited.
  * Authors: AMG(Analog Mems Group) <marco.cali@st.com>
+ *
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -34,26 +36,29 @@
 #define I2C_WAIT_BEFORE_RETRY	2	/* /< wait in ms before retry an i2c
 					 * transaction */
 
-#ifdef I2C_INTERFACE
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
-struct i2c_client *getClient(void);
-#else
 #include <linux/spi/spi.h>
-struct spi_device *getClient(void);
-#endif
+
+struct client_info {
+	void *client;
+	struct device *dev;
+	u16 bus_type;
+	int irq;
+};
 
 
+int openChannel(void *ctl);
+struct client_info *getClient(void);
+struct i2c_client *toI2CClient(void);
+struct spi_device *toSPIClient(void);
 
-int openChannel(void *clt);
 struct device *getDev(void);
 
-
+u8 remap_reg(u8 reg, u16 bus_type);
 
 /*************** NEW I2C API ****************/
-#ifdef I2C_INTERFACE
 int changeSAD(u8 sad);
-#endif
 int fts_read(u8 *outBuf, int byteToRead);
 int fts_writeRead(u8 *cmd, int cmdLength, u8 *outBuf, int byteToRead);
 int fts_write(u8 *cmd, int cmdLength);

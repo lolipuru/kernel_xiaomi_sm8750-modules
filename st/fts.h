@@ -232,7 +232,8 @@ typedef void (*event_dispatch_handler_t)
 /**
   * FTS capacitive touch screen device information
   * - dev             Pointer to the structure device \n
-  * - client          client structure \n
+  * - i2c_client      client structure for I2C\n
+  * - spi_client      client structure for SPI\n
   * - input_dev       Input device structure \n
   * - work            Work thread \n
   * - event_wq        Event queue for work thread \n
@@ -255,16 +256,15 @@ typedef void (*event_dispatch_handler_t)
   * - input_report_mutex  mutex for handling the pressure of keys \n
   * - series_of_switches  to store the enabling status of a particular feature
   * from the host \n
+  * - ready           Touch ready indicator \n
+  * - bus_type        Indicate touch bus type \n
+  * - irq             saved touch irq number \n
   */
 struct fts_ts_info {
 	struct device            *dev;	/* /< Pointer to the structure device */
-#ifdef I2C_INTERFACE
-	struct i2c_client        *client;	/* /< I2C client structure */
-#else
-	struct spi_device        *client;	/* /< SPI client structure */
-#endif
+	struct i2c_client        *i2c_client;	/* /< I2C client structure */
+	struct spi_device        *spi_client;	/* /< SPI client structure */
 	struct input_dev         *input_dev;	/* /< Input device structure */
-
 	struct work_struct work;	/* /< Event work thread */
 	struct work_struct suspend_work;	/* /< Suspend work thread */
 	struct work_struct resume_work;	/* /< Resume work thread */
@@ -327,6 +327,10 @@ struct fts_ts_info {
 				 * when allowed */
 	int grip_enabled;	/* /< if set, the grip mode mode will be enabled
 				 * when allowed */
+
+	bool ready;	/* /< indicate whether probe finished and touch is ready */
+	u16 bus_type;	/* /< bus interface used for touch IC */
+	int irq;	/* /< saved irq number for touch*/
 };
 
 

@@ -71,7 +71,7 @@ int initCore(struct fts_ts_info *info)
 	int ret = OK;
 
 	logError(0, "%s %s: Initialization of the Core...\n", tag, __func__);
-	ret |= openChannel(info->client);
+	ret |= openChannel(info);
 	ret |= resetErrorList();
 	ret |= initTestToDo();
 	setResetGpio(info->board->reset_gpio);

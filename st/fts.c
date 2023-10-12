@@ -57,6 +57,9 @@
 
 #include <linux/notifier.h>
 #include <linux/fb.h>
+#if defined(CONFIG_DRM)
+#include <linux/soc/qcom/panel_event_notifier.h>
+#endif
 
 #ifdef KERNEL_ABOVE_2_6_38
 #include <linux/input/mt.h>
@@ -135,6 +138,9 @@ static int fts_mode_handler(struct fts_ts_info *info, int force);
 
 
 static int fts_chip_initialization(struct fts_ts_info *info, int init_type);
+#if defined(CONFIG_DRM)
+static struct drm_panel *active_panel;
+#endif
 
 
 /**
@@ -229,6 +235,8 @@ static ssize_t fts_fwupdate_store(struct device *dev,
 		if (ret < OK)
 			logError(1, "%s  %s Unable to upgrade firmware! ERROR %08X\n",
 				 tag, __func__, ret);
+		else if (info && info->ready && (ret == OK))
+			queue_work(info->event_wq, &info->resume_work);
 	} else
 		logError(1, "%s  %s Wrong number of parameters! ERROR %08X\n",
 				 tag, __func__, ERROR_OP_NOT_ALLOW);
@@ -2184,8 +2192,6 @@ static void fts_leave_pointer_event_handler(struct fts_ts_info *info, unsigned
 	touchType = event[1] & 0x0F;
 	touchId = (event[1] & 0xF0) >> 4;
 
-
-
 	input_mt_slot(info->input_dev, touchId);
 	switch (touchType) {
 #ifdef STYLUS_MODE
@@ -2773,9 +2779,6 @@ static void fts_event_handler(struct work_struct *work)
 		/* logError(1, "%s %s overflow ID = %02X  Last = %02X\n", tag,
 		 * __func__, data[0], data[7]); */
 
-
-
-
 		if (eventId < NUM_EVT_ID) {	/* this check prevent array out
 						 * of index in case of no sense
 						 * event ID */
@@ -2956,6 +2959,10 @@ int fts_fw_update(struct fts_ts_info *info)
 			 error);
 
 	logError(1, "%s Fw Update Finished! error = %08X\n", tag, error);
+
+	if (error == 0)
+		info->ready = true;
+
 	return error;
 }
 
@@ -3029,7 +3036,7 @@ static irqreturn_t fts_interrupt_handler(int irq, void *handle)
 {
 	struct fts_ts_info *info = handle;
 
-	disable_irq_nosync(info->client->irq);
+	disable_irq_nosync(info->irq);
 
 	queue_work(info->event_wq, &info->work);
 
@@ -3071,7 +3078,7 @@ static int fts_interrupt_install(struct fts_ts_info *info)
 	error = fts_disableInterrupt();
 
 	logError(1, "%s Interrupt Mode\n", tag);
-	if (request_irq(info->client->irq, fts_interrupt_handler,
+	if (request_irq(info->irq, fts_interrupt_handler,
 			IRQF_TRIGGER_LOW, FTS_TS_DRV_NAME, info)) {
 		logError(1, "%s Request irq failed\n", tag);
 		kfree(info->event_dispatch_table);
@@ -3091,7 +3098,7 @@ static void fts_interrupt_uninstall(struct fts_ts_info *info)
 
 	kfree(info->event_dispatch_table);
 
-	free_irq(info->client->irq, info);
+	free_irq(info->irq, info);
 }
 
 /**
@@ -3100,7 +3107,7 @@ static void fts_interrupt_uninstall(struct fts_ts_info *info)
 static void fts_interrupt_enable(struct fts_ts_info *info)
 {
 	/* logError(0, "%s %s : enable interrupts!\n",tag,__func__); */
-	enable_irq(info->client->irq);
+	enable_irq(info->irq);
 }
 
 /**@}*/
@@ -3117,79 +3124,83 @@ static int fts_init(struct fts_ts_info *info)
 	int error;
 	u8 readData[3];
 
-#if !defined(I2C_INTERFACE) && defined(SPI4_WIRE)
-	/* configure manually SPI4 because when no fw is running the chip use
-	 * SPI3 by default */
-	u8 cmd[1] = {0x00};
+	if (getClient()->bus_type == BUS_SPI) {
+#if defined(SPI4_WIRE)
+		/* configure manually SPI4 because when no fw is running the chip use
+		 * SPI3 by default
+		 */
+		u8 cmd[1] = {0x00};
 
-	logError(0, "%s Setting SPI4 mode...\n", tag);
-	cmd[0] = 0x10;
-	error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-			    ADDR_GPIO_DIRECTION, cmd, 1);
-	if (error < OK) {
-		logError(1, "%s can not set gpio dir ERROR %08X\n",
-			 tag, error);
-		return error;
-	}
+		logError(0, "%s Setting SPI4 mode...\n", tag);
+		cmd[0] = 0x10;
+		error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+				    ADDR_GPIO_DIRECTION, cmd, 1);
+		if (error < OK) {
+			logError(1, "%s can not set gpio dir ERROR %08X\n",
+				 tag, error);
+			return error;
+		}
 
-	cmd[0] = 0x02;
-	error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-			    ADDR_GPIO_PULLUP, cmd, 1);
-	if (error < OK) {
-		logError(1, "%s can not set gpio pull-up ERROR %08X\n",
-			 tag, error);
-		return error;
-	}
+		cmd[0] = 0x02;
+		error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+				    ADDR_GPIO_PULLUP, cmd, 1);
+		if (error < OK) {
+			logError(1, "%s can not set gpio pull-up ERROR %08X\n",
+				 tag, error);
+			return error;
+		}
 
 #if defined(ALIX) || defined (SALIXP)
-#if defined(ALIX)	
-	cmd[0] = 0x70;
+#if defined(ALIX)
+		cmd[0] = 0x70;
 #else
-	cmd[0] = 0x07;
+		cmd[0] = 0x07;
 #endif
-	error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-			    ADDR_GPIO_CONFIG_REG3, cmd, 1);
-	if (error < OK) {
-		logError(1, "%s can not set gpio config ERROR %08X\n",
-			 tag, error);
-		return error;
-	}
+		error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+				    ADDR_GPIO_CONFIG_REG3, cmd, 1);
+		if (error < OK) {
+			logError(1, "%s can not set gpio config ERROR %08X\n",
+				 tag, error);
+			return error;
+		}
 
 #else
-	cmd[0] = 0x07;
-	error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-			    ADDR_GPIO_CONFIG_REG2, cmd, 1);
-	if (error < OK) {
-		logError(1, "%s can not set gpio config ERROR %08X\n",
-			 tag, error);
-		return error;
-	}
+		cmd[0] = 0x07;
+		error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+				    ADDR_GPIO_CONFIG_REG2, cmd, 1);
+		if (error < OK) {
+			logError(1, "%s can not set gpio config ERROR %08X\n",
+				 tag, error);
+			return error;
+		}
 #endif
 
-	cmd[0] = 0x30;
-	error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-			    ADDR_GPIO_CONFIG_REG0, cmd, 1);
-	if (error < OK) {
-		logError(1, "%s can not set gpio config ERROR %08X\n",
-			 tag, error);
-		return error;
+		cmd[0] = 0x30;
+		error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+				    ADDR_GPIO_CONFIG_REG0, cmd, 1);
+		if (error < OK) {
+			logError(1, "%s can not set gpio config ERROR %08X\n",
+				 tag, error);
+			return error;
+		}
+
+		cmd[0] = SPI4_MASK;
+		error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG, ADDR_ICR, cmd,
+				    1);
+		if (error < OK) {
+			logError(1, "%s can not set spi4 mode ERROR %08X\n",
+				 tag, error);
+			return error;
+		}
+		usleep_range(1000, 1100);	/* wait for the GPIO to stabilize */
+#endif
 	}
 
-	cmd[0] = SPI4_MASK;
-	error = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG, ADDR_ICR, cmd,
-			    1);
-	if (error < OK) {
-		logError(1, "%s can not set spi4 mode ERROR %08X\n",
-			 tag, error);
-		return error;
-	}
-	msleep(1);	/* wait for the GPIO to stabilize */
-#endif
 	logError(1, "%s Reading chip id\n", tag);
 	error = fts_writeReadU8UX(FTS_CMD_HW_REG_R, ADDR_SIZE_HW_REG,
 					    ADDR_DCHIP_ID, readData, 2, DUMMY_FIFO);
 	logError(1, "%s chip id: %02X %02X!\n",tag, readData[0], readData[1]);
-	
+
 	if((readData[0] != DCHIP_ID_0) || (readData[1] != DCHIP_ID_1))
 	{
 		logError(1, "%s wrong chip id detected!\n", tag);
@@ -3350,7 +3361,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 	/* disable irq wake because resuming from gesture mode */
 	if (IS_POWER_MODE(info->mode, SCAN_MODE_LOW_POWER) &&
 	    (info->resume_bit == 1))
-		disable_irq_wake(info->client->irq);
+		disable_irq_wake(info->irq);
 
 	info->mode = MODE_NOTHING;	/* initialize the mode to nothing in
 					 * order to be updated depending on the
@@ -3376,7 +3387,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 				 __func__);
 			res = enterGestureMode(isSystemResettedDown());
 			if (res >= OK) {
-				enable_irq_wake(info->client->irq);
+				enable_irq_wake(info->irq);
 				fromIDtoMask(FEAT_SEL_GESTURE,
 					     (u8 *)&info->mode,
 					     sizeof(info->mode));
@@ -3866,6 +3877,79 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	return OK;
 }
 
+#if defined(CONFIG_DRM)
+static int st_check_dt(struct device_node *np)
+{
+	int i;
+	int count;
+	struct device_node *node;
+	struct drm_panel *panel;
+
+	count = of_count_phandle_with_args(np, "panel", NULL);
+	if (count <= 0)
+		return 0;
+
+	for (i = 0; i < count; i++) {
+		node = of_parse_phandle(np, "panel", i);
+		panel = of_drm_find_panel(node);
+		of_node_put(node);
+		if (!IS_ERR(panel)) {
+			active_panel = panel;
+			return 0;
+		}
+	}
+
+	return PTR_ERR(panel);
+}
+
+static int st_check_default_tp(struct device_node *dt, const char *prop)
+{
+	const char **active_tp = NULL;
+	int count, tmp, score = 0;
+	const char *active;
+	int ret, i;
+
+	count = of_property_count_strings(dt->parent, prop);
+	if (count <= 0 || count > 3)
+		return -ENODEV;
+
+	active_tp = kcalloc(count, sizeof(char *),  GFP_KERNEL);
+	if (!active_tp) {
+		logError(0, "active_tp alloc failed\n");
+		return -ENOMEM;
+	}
+
+	ret = of_property_read_string_array(dt->parent, prop,
+			active_tp, count);
+	if (ret < 0) {
+		logError(0, "fail to read %s %d\n", prop, ret);
+		ret = -ENODEV;
+		goto out;
+	}
+
+	for (i = 0; i < count; i++) {
+		active = active_tp[i];
+		if (active != NULL) {
+			tmp = of_device_is_compatible(dt, active);
+			if (tmp > 0) {
+				score++;
+				break;
+			}
+		}
+	}
+
+	if (score <= 0) {
+		logError(0, "not match this driver\n");
+		ret = -ENODEV;
+		goto out;
+	}
+	ret = 0;
+out:
+	kfree(active_tp);
+	return ret;
+}
+#endif
+
 /**
   * Probe function, called when the driver it is matched with a device with the
   *same name compatible name
@@ -3875,74 +3959,19 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
   *registers the IRQ handler, suspend/resume callbacks, registers the device to
   *the linux input subsystem etc.
   */
-#ifdef I2C_INTERFACE
-static int fts_probe(struct i2c_client *client, const struct i2c_device_id *idp)
+static int st_fts_probe_entry(struct fts_ts_info *info)
 {
-#else
-static int fts_probe(struct spi_device *client)
-{
-#endif
-
-	struct fts_ts_info *info = NULL;
 	int error = 0;
-	struct device_node *dp = client->dev.of_node;
+	struct device_node *dp = info->dev->of_node;
 	int retval;
 	int skip_5_1 = 0;
-	u16 bus_type;
 
 	logError(1, "%s %s: driver probe begin!\n", tag, __func__);
 
-
 	logError(1, "%s driver ver. %s\n", tag, FTS_TS_DRV_VERSION);
 
-
-	logError(1, "%s SET Bus Functionality :\n", tag);
-#ifdef I2C_INTERFACE
-	logError(1, "%s I2C interface...\n", tag);
-	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		logError(1, "%s Unsupported I2C functionality\n", tag);
-		error = -EIO;
-		goto ProbeErrorExit_0;
-	}
-
-	logError(1, "%s i2c address: %x\n", tag, client->addr);
-	bus_type = BUS_I2C;
-#else
-	logError(1, "%s SPI interface...\n", tag);
-	client->mode = SPI_MODE_0;
-#ifndef SPI4_WIRE
-	client->mode |= SPI_3WIRE;
-#endif
-	client->max_speed_hz = SPI_CLOCK_FREQ;
-	client->bits_per_word = 8;
-	if (spi_setup(client) < 0) {
-		logError(1, "%s Unsupported SPI functionality\n", tag);
-		error = -EIO;
-		goto ProbeErrorExit_0;
-	}
-	bus_type = BUS_SPI;
-#endif
-
-
-	logError(1, "%s SET Device driver INFO:\n", tag);
-
-
-	info = kzalloc(sizeof(struct fts_ts_info), GFP_KERNEL);
-	if (!info) {
-		logError(1,
-			 "%s Out of memory... Impossible to allocate struct info!\n",
-			 tag);
-		error = -ENOMEM;
-		goto ProbeErrorExit_0;
-	}
-
-	info->client = client;
-	info->dev = &info->client->dev;
-
-	dev_set_drvdata(info->dev, info);
-
 	if (dp) {
-		info->board = devm_kzalloc(&client->dev,
+		info->board = devm_kzalloc(info->dev,
 					   sizeof(struct fts_hw_platform_data),
 					   GFP_KERNEL);
 		if (!info->board) {
@@ -3950,7 +3979,7 @@ static int fts_probe(struct spi_device *client)
 				 tag);
 			goto ProbeErrorExit_1;
 		}
-		parse_dt(&client->dev, info->board);
+		parse_dt(info->dev, info->board);
 	}
 
 	logError(1, "%s SET Regulators:\n", tag);
@@ -3975,7 +4004,7 @@ static int fts_probe(struct spi_device *client)
 			 __func__);
 		goto ProbeErrorExit_2;
 	}
-	info->client->irq = gpio_to_irq(info->board->irq_gpio);
+	info->irq = gpio_to_irq(info->board->irq_gpio);
 
 	logError(1, "%s SET Event Handler:\n", tag);
 
@@ -3994,8 +4023,6 @@ static int fts_probe(struct spi_device *client)
 	INIT_WORK(&info->resume_work, fts_resume_work);
 	INIT_WORK(&info->suspend_work, fts_suspend_work);
 
-	info->dev = &info->client->dev;
-
 	logError(1, "%s SET Input Device Property:\n", tag);
 	info->input_dev = input_allocate_device();
 	if (!info->input_dev) {
@@ -4003,12 +4030,12 @@ static int fts_probe(struct spi_device *client)
 		error = -ENODEV;
 		goto ProbeErrorExit_5;
 	}
-	info->input_dev->dev.parent = &client->dev;
+	info->input_dev->dev.parent = info->dev;
 	info->input_dev->name = FTS_TS_DRV_NAME;
 	snprintf(fts_ts_phys, sizeof(fts_ts_phys), "%s/input0",
 		 info->input_dev->name);
 	info->input_dev->phys = fts_ts_phys;
-	info->input_dev->id.bustype = bus_type;
+	info->input_dev->id.bustype = info->bus_type;
 	info->input_dev->id.vendor = 0x0001;
 	info->input_dev->id.product = 0x0002;
 	info->input_dev->id.version = 0x0100;
@@ -4143,7 +4170,7 @@ static int fts_probe(struct spi_device *client)
 	logError(1, "%s SET Device File Nodes:\n", tag);
 	/* sysfs stuff */
 	info->attrs.attrs = fts_attr_group;
-	error = sysfs_create_group(&client->dev.kobj, &info->attrs);
+	error = sysfs_create_group(&info->dev->kobj, &info->attrs);
 	if (error) {
 		logError(1, "%s ERROR: Cannot create sysfs structure!\n", tag);
 		error = -ENODEV;
@@ -4190,31 +4217,122 @@ ProbeErrorExit_2:
 ProbeErrorExit_1:
 	kfree(info);
 
-ProbeErrorExit_0:
-	logError(1, "%s Probe Failed!\n", tag);
-
 	return error;
 }
 
+static int st_fts_i2c_probe(struct i2c_client *client)
+{
+	int ret;
+	struct fts_ts_info *info = NULL;
+	struct device_node *dp = client->dev.of_node;
+
+	logError(1, "%s %s: I2C probe begin!\n", tag, __func__);
+
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		logError(1, "%s %s: I2C not supported\n", tag, __func__);
+		return -ENODEV;
+	}
+
+	ret = st_check_dt(dp);
+	if (ret == -EPROBE_DEFER)
+		return ret;
+
+	if (ret) {
+		if (!st_check_default_tp(dp, "qcom,touch-active"))
+			ret = -EPROBE_DEFER;
+		else
+			ret = -ENODEV;
+
+		return ret;
+	}
+
+	/* malloc memory for global struct variable */
+	info = kzalloc(sizeof(*info), GFP_KERNEL);
+	if (!info) {
+		logError(1, "%s %s: allocate memory for fts_ts_info fail\n", tag, __func__);
+		return -ENOMEM;
+	}
+
+	info->i2c_client = client;
+	info->dev = &client->dev;
+	info->bus_type = BUS_I2C;
+	i2c_set_clientdata(client, info);
+
+	ret = st_fts_probe_entry(info);
+	if (ret) {
+		logError(1, "%s %s: ST Touch Screen(I2C BUS) driver probe fail\n", tag, __func__);
+		kfree(info);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int st_fts_spi_probe(struct spi_device *spi)
+{
+	int ret = 0;
+	struct fts_ts_info *info = NULL;
+	struct device_node *dp = spi->dev.of_node;
+
+	logError(1, "%s %s: SPI probe begin!\n", tag, __func__);
+
+	ret = st_check_dt(dp);
+	if (ret == -EPROBE_DEFER)
+		return ret;
+
+	if (ret) {
+		if (!st_check_default_tp(dp, "qcom,touch-active"))
+			ret = -EPROBE_DEFER;
+		else
+			ret = -ENODEV;
+
+		return ret;
+	}
+
+	logError(1, "%s SPI interface...\n", tag);
+	spi->mode = SPI_MODE_0;
+#ifndef SPI4_WIRE
+	spi->mode |= SPI_3WIRE;
+#endif
+	spi->max_speed_hz = SPI_CLOCK_FREQ;
+	spi->bits_per_word = 8;
+	if (spi_setup(spi) < 0) {
+		logError(1, "%s Unsupported SPI functionality\n", tag);
+		return -EIO;
+	}
+
+	/* malloc memory for global struct variable */
+	info = kzalloc(sizeof(*info), GFP_KERNEL);
+	if (!info) {
+		logError(1, "%s %s: allocate memory for fts_ts_info fail\n", tag, __func__);
+		return -ENOMEM;
+	}
+
+	info->spi_client = spi;
+	info->dev = &spi->dev;
+	info->bus_type = BUS_SPI;
+	spi_set_drvdata(spi, info);
+
+	ret = st_fts_probe_entry(info);
+	if (ret) {
+		logError(1, "%s %s: ST Touch Screen(SPI BUS) driver probe fail\n", tag, __func__);
+		kfree(info);
+		return ret;
+	}
+
+	return 0;
+}
 
 /**
   * Clear and free all the resources associated to the driver.
   * This function is called when the driver need to be removed.
   */
-#ifdef I2C_INTERFACE
-static void fts_remove(struct i2c_client *client)
+static void st_fts_remove_entry(struct fts_ts_info *info)
 {
-#else
-static void fts_remove(struct spi_device *client)
-{
-#endif
-
-	struct fts_ts_info *info = dev_get_drvdata(&(client->dev));
-
 	fts_proc_remove();
 
 	/* sysfs stuff */
-	sysfs_remove_group(&client->dev.kobj, &info->attrs);
+	sysfs_remove_group(&info->dev->kobj, &info->attrs);
 
 	/* remove interrupt and event handlers */
 	fts_interrupt_uninstall(info);
@@ -4240,6 +4358,16 @@ static void fts_remove(struct spi_device *client)
 	kfree(info);
 }
 
+static void st_fts_i2c_remove(struct i2c_client *client)
+{
+	st_fts_remove_entry(i2c_get_clientdata(client));
+}
+
+static void st_fts_spi_remove(struct spi_device *spi)
+{
+	st_fts_remove_entry(spi_get_drvdata(spi));
+}
+
 /**
   * Struct which contains the compatible names that need to match with
   * the definition of the device in the device tree node
@@ -4251,7 +4379,6 @@ static struct of_device_id fts_of_match_table[] = {
 	{},
 };
 
-#ifdef I2C_INTERFACE
 static const struct i2c_device_id fts_device_id[] = {
 	{ FTS_TS_DRV_NAME, 0 },
 	{}
@@ -4262,41 +4389,35 @@ static struct i2c_driver fts_i2c_driver = {
 		.name		= FTS_TS_DRV_NAME,
 		.of_match_table = fts_of_match_table,
 	},
-	.probe			= fts_probe,
-	.remove			= fts_remove,
+	.probe			= st_fts_i2c_probe,
+	.remove			= st_fts_i2c_remove,
 	.id_table		= fts_device_id,
 };
-#else
+
 static struct spi_driver fts_spi_driver = {
 	.driver			= {
 		.name		= FTS_TS_DRV_NAME,
 		.of_match_table = fts_of_match_table,
 		.owner		= THIS_MODULE,
 	},
-	.probe			= fts_probe,
-	.remove			= fts_remove,
+	.probe			= st_fts_spi_probe,
+	.remove			= st_fts_spi_remove,
 };
-#endif
-
-
-
 
 static int __init fts_driver_init(void)
 {
-#ifdef I2C_INTERFACE
-	return i2c_add_driver(&fts_i2c_driver);
-#else
-	return spi_register_driver(&fts_spi_driver);
-#endif
+	int ret = 0;
+
+	ret = i2c_add_driver(&fts_i2c_driver);
+	ret |= spi_register_driver(&fts_spi_driver);
+
+	return ret;
 }
 
 static void __exit fts_driver_exit(void)
 {
-#ifdef I2C_INTERFACE
 	i2c_del_driver(&fts_i2c_driver);
-#else
 	spi_unregister_driver(&fts_spi_driver);
-#endif
 }
 
 

@@ -58,7 +58,7 @@
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/firmware.h>
-
+#include <linux/input.h>
 
 #ifdef FW_H_FILE
 #include "../fts_fw.h"
@@ -232,7 +232,8 @@ int flashProcedure(const char *path, int force, int keep_cx)
   */
 int wait_for_flash_ready(u8 type)
 {
-	u8 cmd[5] = { FTS_CMD_HW_REG_R, 0x20, 0x00, 0x00, type };
+	u8 cmd_reg = remap_reg(FTS_CMD_HW_REG_R, getClient()->bus_type);
+	u8 cmd[5] = { cmd_reg, 0x20, 0x00, 0x00, type };
 
 	u8 readData[2] = { 0 };
 	int i, res = -1;
@@ -244,11 +245,11 @@ int wait_for_flash_ready(u8 type)
 			logError(1, "%s wait_for_flash_ready: ERROR %08X\n",
 				 tag, ERROR_BUS_W);
 		else {
-#ifdef I2C_INTERFACE	/* in case of spi there is a dummy byte */
-			res = readData[0] & 0x80;
-#else
-			res = readData[1] & 0x80;
-#endif
+			/* in case of spi there is a dummy byte */
+			if (getClient()->bus_type == BUS_I2C)
+				res = readData[0] & 0x80;
+			else if (getClient()->bus_type == BUS_SPI)
+				res = readData[1] & 0x80;
 
 			logError(0, "%s flash status = %d\n", tag, res);
 		}
@@ -279,77 +280,80 @@ int hold_m3(void)
 	ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
 			    ADDR_SYSTEM_RESET, cmd, 1);
 	if (ret < OK) {
-		logError(1, "%s hold_m3: ERROR %08X\n", tag, ret);
+		logError(1, "%s %s: ERROR %08X\n", tag, __func__, ret);
 		return ret;
 	}
 	logError(0, "%s Hold M3 DONE!\n", tag);
 
-#if !defined(I2C_INTERFACE) && defined(SPI4_WIRE)
-	/* configure manually SPI4 because when no fw is running the chip use
-	 * SPI3 by default */
-	logError(0, "%s Setting SPI4 mode...\n", tag);
-	cmd[0] = 0x10;
-	ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-			    ADDR_GPIO_DIRECTION, cmd, 1);
-	if (ret < OK) {
-		logError(1, "%s hold_m3: can not set gpio dir ERROR %08X\n",
-			 tag, ret);
-		return ret;
-	}
+	if (getClient()->bus_type == BUS_SPI) {
+#if  defined(SPI4_WIRE)
+		/* configure manually SPI4 because when no fw is running the chip use
+		 * SPI3 by default
+		 */
+		logError(0, "%s Setting SPI4 mode...\n", tag);
+		cmd[0] = 0x10;
+		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+				    ADDR_GPIO_DIRECTION, cmd, 1);
+		if (ret < OK) {
+			logError(1, "%s %s: can not set gpio dir ERROR %08X\n",
+				 tag, __func__, ret);
+			return ret;
+		}
 
-	cmd[0] = 0x02;
-	ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-			    ADDR_GPIO_PULLUP, cmd, 1);
-	if (ret < OK) {
-		logError(1, "%s hold_m3: can not set gpio pull-up ERROR %08X\n",
-			 tag, ret);
-		return ret;
-	}
+		cmd[0] = 0x02;
+		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+				    ADDR_GPIO_PULLUP, cmd, 1);
+		if (ret < OK) {
+			logError(1, "%s %s: can not set gpio pull-up ERROR %08X\n",
+				 tag, __func__, ret);
+			return ret;
+		}
 
 #if defined(ALIX) || defined (SALIXP)
-#if defined(ALIX) 	
-	cmd[0] = 0x70;
+#if defined(ALIX)
+		cmd[0] = 0x70;
 #else
-	cmd[0] = 0x07;
+		cmd[0] = 0x07;
 #endif
-	ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-			    ADDR_GPIO_CONFIG_REG3, cmd, 1);
-	if (ret < OK) {
-		logError(1, "%s hold_m3: can not set gpio config ERROR %08X\n",
-			 tag, ret);
-		return ret;
-	}
+		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+				    ADDR_GPIO_CONFIG_REG3, cmd, 1);
+		if (ret < OK) {
+			logError(1, "%s %s: can not set gpio config ERROR %08X\n",
+				 tag, __func__, ret);
+			return ret;
+		}
 
 #else
-	cmd[0] = 0x07;
-	ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-			    ADDR_GPIO_CONFIG_REG2, cmd, 1);
-	if (ret < OK) {
-		logError(1, "%s hold_m3: can not set gpio config ERROR %08X\n",
-			 tag, ret);
-		return ret;
-	}
+		cmd[0] = 0x07;
+		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+				    ADDR_GPIO_CONFIG_REG2, cmd, 1);
+		if (ret < OK) {
+			logError(1, "%s %s: can not set gpio config ERROR %08X\n",
+				 tag, __func__, ret);
+			return ret;
+		}
 #endif
 
-	cmd[0] = 0x30;
-	ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
-			    ADDR_GPIO_CONFIG_REG0, cmd, 1);
-	if (ret < OK) {
-		logError(1, "%s hold_m3: can not set gpio config ERROR %08X\n",
-			 tag, ret);
-		return ret;
-	}
+		cmd[0] = 0x30;
+		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG,
+				    ADDR_GPIO_CONFIG_REG0, cmd, 1);
+		if (ret < OK) {
+			logError(1, "%s %s: can not set gpio config ERROR %08X\n",
+				 tag, __func__, ret);
+			return ret;
+		}
 
-	cmd[0] = SPI4_MASK;
-	ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG, ADDR_ICR, cmd,
-			    1);
-	if (ret < OK) {
-		logError(1, "%s hold_m3: can not set spi4 mode ERROR %08X\n",
-			 tag, ret);
-		return ret;
-	}
-	msleep(1);	/* wait for the GPIO to stabilize */
+		cmd[0] = SPI4_MASK;
+		ret = fts_writeU8UX(FTS_CMD_HW_REG_W, ADDR_SIZE_HW_REG, ADDR_ICR, cmd,
+				    1);
+		if (ret < OK) {
+			logError(1, "%s %s: can not set spi4 mode ERROR %08X\n",
+				 tag, __func__, ret);
+			return ret;
+		}
+		usleep_range(1000, 1100);	/* wait for the GPIO to stabilize */
 #endif
+	}
 
 	return OK;
 }
@@ -1029,7 +1033,6 @@ int fillFlash(u32 address, u8 *data, int size)
 int flash_burn(Firmware fw, int force_burn, int keep_cx)
 {
 	int res;
-
 
 	if (!force_burn) {
 		for (res = EXTERNAL_RELEASE_INFO_SIZE - 1; res >= 0; res--)

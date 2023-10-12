@@ -44,25 +44,20 @@
 #include <linux/delay.h>
 #include <linux/ctype.h>
 #include <linux/of_gpio.h>
-
-#ifdef I2C_INTERFACE
+#include <linux/input.h>
+#include <linux/spi/spidev.h>
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
-static u16 I2CSAD;	/* /< slave address of the IC in the i2c bus */
-#else
-#include <linux/spi/spidev.h>
-#endif
-
-static void *client;	/* /< bus client retrived by the OS and
-				  * used to execute the bus transfers */
-
-
-
 #include "ftsCore.h"
 #include "ftsError.h"
 #include "ftsHardware.h"
 #include "ftsIO.h"
 
+
+static u16 I2CSAD;	/* /< slave address of the IC in the i2c bus */
+struct client_info gClient;	/* /< bus client retrieved by the OS and
+				 * used to execute the bus transfers
+				 */
 
 /**
   * Initialize the static client variable of the fts_lib library in order
@@ -71,27 +66,34 @@ static void *client;	/* /< bus client retrived by the OS and
   * slave device
   * @return OK
   */
-int openChannel(void *clt)
+int openChannel(void *ctl)
 {
-	client = clt;
-#ifdef I2C_INTERFACE
-	I2CSAD = ((struct i2c_client *)clt)->addr;
-	logError(1, "%s openChannel: SAD: %02X\n", tag, I2CSAD);
-#else
-	logError(1, "%s %s: spi_master: flags = %04X !\n", tag, __func__,
-		 ((struct spi_device *)client)->master->flags);
-	logError(1,
-		 "%s %s: spi_device: max_speed = %d chip select = %02X bits_per_words = %d mode = %04X !\n",
-		 tag, __func__, ((struct spi_device *)client)->max_speed_hz,
-		 ((struct spi_device *)client)->chip_select,
-		 ((struct spi_device *)client)->bits_per_word,
-		 ((struct spi_device *)client)->mode);
-	logError(1, "%s openChannel: completed!\n", tag);
-#endif
+	struct fts_ts_info *info = (struct fts_ts_info *)ctl;
+
+	gClient.irq = info->irq;
+	gClient.dev = info->dev;
+	gClient.bus_type = info->bus_type;
+
+	if (info->bus_type == BUS_I2C) {
+		gClient.client = info->i2c_client;
+		I2CSAD = info->i2c_client->addr;
+		logError(1, "%s %s: SAD: %02X\n", tag, __func__, I2CSAD);
+	} else if (info->bus_type == BUS_SPI) {
+		gClient.client = info->spi_client;
+		logError(1, "%s %s: spi_master: flags = %04X !\n", tag, __func__,
+			 info->spi_client->master->flags);
+		logError(1,
+			 "%s %s: spi_device: max_speed = %d chip select = %02X bits_per_words = %d mode = %04X !\n",
+			 tag, __func__, info->spi_client->max_speed_hz,
+			 info->spi_client->chip_select,
+			 info->spi_client->bits_per_word,
+			 info->spi_client->mode);
+		logError(1, "%s %s: completed!\n", tag, __func__);
+	}
+
 	return OK;
 }
 
-#ifdef I2C_INTERFACE
 /**
   * Change the I2C slave address which will be used during the transaction
   * (For Debug Only)
@@ -103,7 +105,7 @@ int changeSAD(u8 sad)
 	I2CSAD = sad;
 	return OK;
 }
-#endif
+
 
 
 /**
@@ -113,44 +115,77 @@ int changeSAD(u8 sad)
   */
 struct device *getDev(void)
 {
-	if (client != NULL)
-		return &(getClient()->dev);
-	else
-		return NULL;
+	if (getClient())
+		return getClient()->dev;
+
+	return NULL;
 }
 
-
-#ifdef I2C_INTERFACE
-/**
-  * Retrieve the pointer of the i2c_client struct representing the IC as i2c
-  *slave
-  * @return client if it was previously set or NULL in all the other cases
-  */
-struct i2c_client *getClient()
+struct client_info *getClient(void)
 {
-	if (client != NULL)
-		return (struct i2c_client *)client;
-	else
+	if (gClient.client == NULL || (gClient.bus_type != BUS_I2C && gClient.bus_type != BUS_SPI))
 		return NULL;
-}
-#else
-/**
-  * Retrieve the pointer of the spi_device struct representing the IC as spi
-  *slave
-  * @return client if it was previously set or NULL in all the other cases
-  */
-struct spi_device *getClient(void)
-{
-	if (client != NULL)
-		return (struct spi_device *)client;
 	else
-		return NULL;
+		return &gClient;
 }
-#endif
 
+struct i2c_client *toI2CClient(void)
+{
+	if (getClient() && (getClient()->bus_type == BUS_I2C))
+		return (struct i2c_client *)getClient()->client;
+	return NULL;
+}
+
+struct spi_device *toSPIClient(void)
+{
+	if (getClient() && (getClient()->bus_type == BUS_SPI))
+		return (struct spi_device *)getClient()->client;
+	return NULL;
+}
 
 
 /****************** New I2C API *********************/
+
+u8 remap_reg(u8 reg, u16 bus_type)
+{
+	if (bus_type != BUS_I2C)
+		return reg;
+
+	if (reg == FTS_CMD_HW_REG_R)
+		return FTS_CMD_I2C_HW_REG_R;
+	if (reg == FTS_CMD_HW_REG_W)
+		return FTS_CMD_I2C_HW_REG_W;
+	if (reg == FTS_CMD_FRAMEBUFFER_W)
+		return FTS_CMD_I2C_FRAMEBUFFER_W;
+	if (reg == FTS_CMD_FRAMEBUFFER_R)
+		return FTS_CMD_I2C_FRAMEBUFFER_R;
+	if (reg == FTS_CMD_CONFIG_R)
+		return FTS_CMD_I2C_CONFIG_R;
+	if (reg == FTS_CMD_CONFIG_W)
+		return FTS_CMD_I2C_CONFIG_W;
+	if (reg == FIFO_CMD_READONE)
+		return FIFO_CMD_I2C_READONE;
+
+	return reg;
+}
+
+int remap_dummy_byte(int dymmy_byte, u16 bus_type)
+{
+	if (bus_type != BUS_I2C)
+		return dymmy_byte;
+
+	if (dymmy_byte == DUMMY_HW_REG)
+		return DUMMY_I2C_HW_REG;
+	else if (dymmy_byte == DUMMY_FRAMEBUFFER)
+		return DUMMY_I2C_FRAMEBUFFER;
+	else if (dymmy_byte == DUMMY_CONFIG)
+		return DUMMY_I2C_CONFIG;
+	else if (dymmy_byte == DUMMY_FIFO)
+		return DUMMY_I2C_FIFO;
+
+	return dymmy_byte;
+}
+
 
 /**
   * Perform a direct bus read
@@ -163,47 +198,57 @@ int fts_read(u8 *outBuf, int byteToRead)
 {
 	int ret = -1;
 	int retry = 0;
+	u8 *rx_buf = NULL;
 
-#ifdef I2C_INTERFACE
 	struct i2c_msg I2CMsg[1];
-
-	I2CMsg[0].addr = (__u16)I2CSAD;
-	I2CMsg[0].flags = (__u16)I2C_M_RD;
-	I2CMsg[0].len = (__u16)byteToRead;
-	I2CMsg[0].buf = (__u8 *)outBuf;
-#else
 	struct spi_message msg;
 	struct spi_transfer transfer[1] = { { 0 } };
 
-	spi_message_init(&msg);
+	rx_buf = kzalloc(byteToRead, GFP_KERNEL);
 
-	transfer[0].len = byteToRead;
-	transfer[0].delay.value = SPI_DELAY_CS;
+	if (!rx_buf) {
+		logError(1, "alloc rx_buf failed\n");
+		return ERROR_ALLOC;
+	}
 
-	transfer[0].tx_buf = NULL;
-	transfer[0].rx_buf = outBuf;
-	spi_message_add_tail(&transfer[0], &msg);
-#endif
-
-
-	if (client == NULL)
+	if (getClient() == NULL) {
+		kfree(rx_buf);
 		return ERROR_BUS_O;
-	while (retry < I2C_RETRY && ret < OK) {
-#ifdef I2C_INTERFACE
-		ret = i2c_transfer(getClient()->adapter, I2CMsg, 1);
-#else
-		ret = spi_sync(getClient(), &msg);
-#endif
+	}
 
+	if (getClient()->bus_type == BUS_I2C) {
+		I2CMsg[0].addr = (__u16)I2CSAD;
+		I2CMsg[0].flags = (__u16)I2C_M_RD;
+		I2CMsg[0].len = (__u16)byteToRead;
+		I2CMsg[0].buf = (__u8 *)rx_buf;
+	} else if (getClient()->bus_type == BUS_SPI) {
+		spi_message_init(&msg);
+		transfer[0].len = byteToRead;
+		transfer[0].delay.value = SPI_DELAY_CS;
+		transfer[0].tx_buf = NULL;
+		transfer[0].rx_buf = rx_buf;
+		spi_message_add_tail(&transfer[0], &msg);
+	}
+
+	while (retry < I2C_RETRY && ret < OK) {
+		if (getClient()->bus_type == BUS_I2C)
+			ret = i2c_transfer(toI2CClient()->adapter, I2CMsg, 1);
+		else if (getClient()->bus_type == BUS_SPI)
+			ret = spi_sync(toSPIClient(), &msg);
 		retry++;
 		if (ret < OK)
 			msleep(I2C_WAIT_BEFORE_RETRY);
 		/* logError(1,"%s fts_writeCmd: attempt %d\n", tag, retry); */
 	}
 	if (ret < 0) {
+		kfree(rx_buf);
 		logError(1, "%s %s: ERROR %08X\n", tag, __func__, ERROR_BUS_R);
 		return ERROR_BUS_R;
 	}
+
+	memcpy(outBuf, rx_buf, byteToRead);
+
+	kfree(rx_buf);
 	return OK;
 }
 
@@ -221,59 +266,77 @@ int fts_writeRead(u8 *cmd, int cmdLength, u8 *outBuf, int byteToRead)
 {
 	int ret = -1;
 	int retry = 0;
-
-#ifdef I2C_INTERFACE
+	u8 *tx_buf = NULL;
+	u8 *rx_buf = NULL;
 	struct i2c_msg I2CMsg[2];
-
-	/* write msg */
-	I2CMsg[0].addr = (__u16)I2CSAD;
-	I2CMsg[0].flags = (__u16)0;
-	I2CMsg[0].len = (__u16)cmdLength;
-	I2CMsg[0].buf = (__u8 *)cmd;
-
-	/* read msg */
-	I2CMsg[1].addr = (__u16)I2CSAD;
-	I2CMsg[1].flags = I2C_M_RD;
-	I2CMsg[1].len = byteToRead;
-	I2CMsg[1].buf = (__u8 *)outBuf;
-
-#else
 	struct spi_message msg;
 	struct spi_transfer transfer[2] = { { 0 }, { 0 } };
 
-	spi_message_init(&msg);
 
-	transfer[0].len = cmdLength;
-	transfer[0].tx_buf = cmd;
-	transfer[0].rx_buf = NULL;
-	spi_message_add_tail(&transfer[0], &msg);
+	tx_buf = kzalloc(cmdLength, GFP_KERNEL);
+	rx_buf = kzalloc(byteToRead, GFP_KERNEL);
 
-	transfer[1].len = byteToRead;
-	transfer[1].delay.value = SPI_DELAY_CS;
-	transfer[1].tx_buf = NULL;
-	transfer[1].rx_buf = outBuf;
-	spi_message_add_tail(&transfer[1], &msg);
+	if (!rx_buf || !tx_buf) {
+		logError(1, "alloc tx/rx_buf failed\n");
+		return ERROR_ALLOC;
+	}
 
-#endif
-
-	if (client == NULL)
+	if (getClient() == NULL) {
+		kfree(tx_buf);
+		kfree(rx_buf);
 		return ERROR_BUS_O;
+	}
+
+	memcpy(tx_buf, cmd, cmdLength);
+
+	if (getClient()->bus_type == BUS_I2C) {
+		/* write msg */
+		I2CMsg[0].addr = (__u16)I2CSAD;
+		I2CMsg[0].flags = (__u16)0;
+		I2CMsg[0].len = (__u16)cmdLength;
+		I2CMsg[0].buf = (__u8 *)tx_buf;
+
+		/* read msg */
+		I2CMsg[1].addr = (__u16)I2CSAD;
+		I2CMsg[1].flags = I2C_M_RD;
+		I2CMsg[1].len = byteToRead;
+		I2CMsg[1].buf = (__u8 *)rx_buf;
+	} else if (getClient()->bus_type == BUS_SPI) {
+		spi_message_init(&msg);
+
+		transfer[0].len = cmdLength;
+		transfer[0].tx_buf = tx_buf;
+		transfer[0].rx_buf = NULL;
+		spi_message_add_tail(&transfer[0], &msg);
+
+		transfer[1].len = byteToRead;
+		transfer[1].delay.value = SPI_DELAY_CS;
+		transfer[1].tx_buf = NULL;
+		transfer[1].rx_buf = rx_buf;
+		spi_message_add_tail(&transfer[1], &msg);
+	}
 
 	while (retry < I2C_RETRY && ret < OK) {
-#ifdef I2C_INTERFACE
-		ret = i2c_transfer(getClient()->adapter, I2CMsg, 2);
-#else
-		ret = spi_sync(getClient(), &msg);
-#endif
-
+		if (getClient()->bus_type == BUS_I2C)
+			ret = i2c_transfer(toI2CClient()->adapter, I2CMsg, 2);
+		else if (getClient()->bus_type == BUS_SPI)
+			ret = spi_sync(toSPIClient(), &msg);
 		retry++;
 		if (ret < OK)
 			msleep(I2C_WAIT_BEFORE_RETRY);
 	}
+
 	if (ret < 0) {
+		kfree(tx_buf);
+		kfree(rx_buf);
 		logError(1, "%s %s: ERROR %08X\n", tag, __func__, ERROR_BUS_WR);
 		return ERROR_BUS_WR;
 	}
+	if (rx_buf)
+		memcpy(outBuf, rx_buf, byteToRead);
+
+	kfree(tx_buf);
+	kfree(rx_buf);
 	return OK;
 }
 
@@ -288,36 +351,45 @@ int fts_write(u8 *cmd, int cmdLength)
 {
 	int ret = -1;
 	int retry = 0;
+	u8 *tx_buf = NULL;
 
-#ifdef I2C_INTERFACE
 	struct i2c_msg I2CMsg[1];
-
-	I2CMsg[0].addr = (__u16)I2CSAD;
-	I2CMsg[0].flags = (__u16)0;
-	I2CMsg[0].len = (__u16)cmdLength;
-	I2CMsg[0].buf = (__u8 *)cmd;
-#else
 	struct spi_message msg;
 	struct spi_transfer transfer[1] = { { 0 } };
 
-	spi_message_init(&msg);
+	tx_buf = kzalloc(cmdLength, GFP_KERNEL);
 
-	transfer[0].len = cmdLength;
-	transfer[0].delay.value = SPI_DELAY_CS;
-	transfer[0].tx_buf = cmd;
-	transfer[0].rx_buf = NULL;
-	spi_message_add_tail(&transfer[0], &msg);
-#endif
+	if (!tx_buf) {
+		logError(1, "alloc tx failed\n");
+		return ERROR_ALLOC;
+	}
 
-
-	if (client == NULL)
+	if (getClient() == NULL) {
+		kfree(tx_buf);
 		return ERROR_BUS_O;
+	}
+
+	memcpy(tx_buf, cmd, cmdLength);
+
+	if (getClient()->bus_type == BUS_I2C) {
+		I2CMsg[0].addr = (__u16)I2CSAD;
+		I2CMsg[0].flags = (__u16)0;
+		I2CMsg[0].len = (__u16)cmdLength;
+		I2CMsg[0].buf = (__u8 *)tx_buf;
+	} else if (getClient()->bus_type == BUS_SPI) {
+		spi_message_init(&msg);
+		transfer[0].len = cmdLength;
+		transfer[0].delay.value = SPI_DELAY_CS;
+		transfer[0].tx_buf = tx_buf;
+		transfer[0].rx_buf = NULL;
+		spi_message_add_tail(&transfer[0], &msg);
+	}
+
 	while (retry < I2C_RETRY && ret < OK) {
-#ifdef I2C_INTERFACE
-		ret = i2c_transfer(getClient()->adapter, I2CMsg, 1);
-#else
-		ret = spi_sync(getClient(), &msg);
-#endif
+		if (getClient()->bus_type == BUS_I2C)
+			ret = i2c_transfer(toI2CClient()->adapter, I2CMsg, 1);
+		else if (getClient()->bus_type == BUS_SPI)
+			ret = spi_sync(toSPIClient(), &msg);
 
 		retry++;
 		if (ret < OK)
@@ -325,9 +397,11 @@ int fts_write(u8 *cmd, int cmdLength)
 		/* logError(1,"%s fts_writeCmd: attempt %d\n", tag, retry); */
 	}
 	if (ret < 0) {
+		kfree(tx_buf);
 		logError(1, "%s %s: ERROR %08X\n", tag, __func__, ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
+	kfree(tx_buf);
 	return OK;
 }
 
@@ -342,36 +416,47 @@ int fts_writeFwCmd(u8 *cmd, int cmdLength)
 	int ret = -1;
 	int ret2 = -1;
 	int retry = 0;
+	u8 *tx_buf = NULL;
 
-#ifdef I2C_INTERFACE
 	struct i2c_msg I2CMsg[1];
-
-	I2CMsg[0].addr = (__u16)I2CSAD;
-	I2CMsg[0].flags = (__u16)0;
-	I2CMsg[0].len = (__u16)cmdLength;
-	I2CMsg[0].buf = (__u8 *)cmd;
-#else
 	struct spi_message msg;
 	struct spi_transfer transfer[1] = { { 0 } };
 
-	spi_message_init(&msg);
+	tx_buf = kzalloc(cmdLength, GFP_KERNEL);
 
-	transfer[0].len = cmdLength;
-	transfer[0].delay.value = SPI_DELAY_CS;
-	transfer[0].tx_buf = cmd;
-	transfer[0].rx_buf = NULL;
-	spi_message_add_tail(&transfer[0], &msg);
-#endif
+	if (!tx_buf) {
+		logError(1, "alloc tx_buf failed\n");
+		return ERROR_ALLOC;
+	}
 
-	if (client == NULL)
+	if (getClient() == NULL) {
+		kfree(tx_buf);
 		return ERROR_BUS_O;
+	}
+
+	memcpy(tx_buf, cmd, cmdLength);
+
+	if (getClient()->bus_type == BUS_I2C) {
+		I2CMsg[0].addr = (__u16)I2CSAD;
+		I2CMsg[0].flags = (__u16)0;
+		I2CMsg[0].len = (__u16)cmdLength;
+		I2CMsg[0].buf = (__u8 *)tx_buf;
+	} else if (getClient()->bus_type == BUS_SPI) {
+		spi_message_init(&msg);
+		transfer[0].len = cmdLength;
+		transfer[0].delay.value = SPI_DELAY_CS;
+		transfer[0].tx_buf = tx_buf;
+		transfer[0].rx_buf = NULL;
+		spi_message_add_tail(&transfer[0], &msg);
+	}
+
 	resetErrorList();
 	while (retry < I2C_RETRY && (ret < OK || ret2 < OK)) {
-#ifdef I2C_INTERFACE
-		ret = i2c_transfer(getClient()->adapter, I2CMsg, 1);
-#else
-		ret = spi_sync(getClient(), &msg);
-#endif
+		if (getClient()->bus_type == BUS_I2C)
+			ret = i2c_transfer(toI2CClient()->adapter, I2CMsg, 1);
+		else if (getClient()->bus_type == BUS_SPI)
+			ret = spi_sync(toSPIClient(), &msg);
+
 		retry++;
 		if (ret >= 0)
 			ret2 = checkEcho(cmd, cmdLength);
@@ -380,15 +465,18 @@ int fts_writeFwCmd(u8 *cmd, int cmdLength)
 		/* logError(1,"%s fts_writeCmd: attempt %d\n", tag, retry); */
 	}
 	if (ret < 0) {
+		kfree(tx_buf);
 		logError(1, "%s fts_writeFwCmd: ERROR %08X\n", tag,
 			 ERROR_BUS_W);
 		return ERROR_BUS_W;
 	}
 	if (ret2 < OK) {
+		kfree(tx_buf);
 		logError(1, "%s fts_writeFwCmd: check echo ERROR %08X\n", tag,
 			 ret2);
 		return ret2;
 	}
+	kfree(tx_buf);
 	return OK;
 }
 
@@ -412,70 +500,98 @@ int fts_writeThenWriteRead(u8 *writeCmd1, int writeCmdLength, u8 *readCmd1, int
 	int ret = -1;
 	int retry = 0;
 
-#ifdef I2C_INTERFACE
+	u8 *tx_buf = NULL;
+	u8 *tx_buf1 = NULL;
+	u8 *rx_buf = NULL;
+
 	struct i2c_msg I2CMsg[3];
-
-	/* write msg */
-	I2CMsg[0].addr = (__u16)I2CSAD;
-	I2CMsg[0].flags = (__u16)0;
-	I2CMsg[0].len = (__u16)writeCmdLength;
-	I2CMsg[0].buf = (__u8 *)writeCmd1;
-
-	/* write msg */
-	I2CMsg[1].addr = (__u16)I2CSAD;
-	I2CMsg[1].flags = (__u16)0;
-	I2CMsg[1].len = (__u16)readCmdLength;
-	I2CMsg[1].buf = (__u8 *)readCmd1;
-
-	/* read msg */
-	I2CMsg[2].addr = (__u16)I2CSAD;
-	I2CMsg[2].flags = I2C_M_RD;
-	I2CMsg[2].len = byteToRead;
-	I2CMsg[2].buf = (__u8 *)outBuf;
-#else
 	struct spi_message msg;
 	struct spi_transfer transfer[3] = { { 0 }, { 0 }, { 0 } };
 
-	spi_message_init(&msg);
+	tx_buf = kzalloc(writeCmdLength, GFP_KERNEL);
+	tx_buf1 = kzalloc(readCmdLength, GFP_KERNEL);
+	rx_buf = kzalloc(byteToRead, GFP_KERNEL);
 
-	transfer[0].len = writeCmdLength;
-	transfer[0].tx_buf = writeCmd1;
-	transfer[0].rx_buf = NULL;
-	spi_message_add_tail(&transfer[0], &msg);
+	if (!tx_buf || !tx_buf1 || !rx_buf) {
+		logError(1, "alloc tx/rx_buf failed\n");
+		return ERROR_ALLOC;
+	}
 
-	transfer[1].len = readCmdLength;
-	transfer[1].tx_buf = readCmd1;
-	transfer[1].rx_buf = NULL;
-	spi_message_add_tail(&transfer[1], &msg);
-
-	transfer[2].len = byteToRead;
-	transfer[2].delay.value = SPI_DELAY_CS;
-	transfer[2].tx_buf = NULL;
-	transfer[2].rx_buf = outBuf;
-	spi_message_add_tail(&transfer[2], &msg);
-#endif
-
-	if (client == NULL)
+	if (getClient() == NULL) {
+		kfree(tx_buf);
+		kfree(tx_buf1);
+		kfree(rx_buf);
 		return ERROR_BUS_O;
+	}
+
+	memcpy(tx_buf, writeCmd1, writeCmdLength);
+	memcpy(tx_buf1, readCmd1, readCmdLength);
+
+
+	if (getClient()->bus_type == BUS_I2C) {
+		/* write msg */
+		I2CMsg[0].addr = (__u16)I2CSAD;
+		I2CMsg[0].flags = (__u16)0;
+		I2CMsg[0].len = (__u16)writeCmdLength;
+		I2CMsg[0].buf = (__u8 *)tx_buf;
+
+		/* write msg */
+		I2CMsg[1].addr = (__u16)I2CSAD;
+		I2CMsg[1].flags = (__u16)0;
+		I2CMsg[1].len = (__u16)readCmdLength;
+		I2CMsg[1].buf = (__u8 *)tx_buf1;
+
+		/* read msg */
+		I2CMsg[2].addr = (__u16)I2CSAD;
+		I2CMsg[2].flags = I2C_M_RD;
+		I2CMsg[2].len = byteToRead;
+		I2CMsg[2].buf = (__u8 *)rx_buf;
+	} else if (getClient()->bus_type == BUS_SPI) {
+		spi_message_init(&msg);
+
+		transfer[0].len = writeCmdLength;
+		transfer[0].tx_buf = tx_buf;
+		transfer[0].rx_buf = NULL;
+		spi_message_add_tail(&transfer[0], &msg);
+
+		transfer[1].len = readCmdLength;
+		transfer[1].tx_buf = tx_buf1;
+		transfer[1].rx_buf = NULL;
+		spi_message_add_tail(&transfer[1], &msg);
+
+		transfer[2].len = byteToRead;
+		transfer[2].delay.value = SPI_DELAY_CS;
+		transfer[2].tx_buf = NULL;
+		transfer[2].rx_buf = rx_buf;
+		spi_message_add_tail(&transfer[2], &msg);
+	}
+
 	while (retry < I2C_RETRY && ret < OK) {
-#ifdef I2C_INTERFACE
-		ret = i2c_transfer(getClient()->adapter, I2CMsg, 3);
-#else
-		ret = spi_sync(getClient(), &msg);
-#endif
+
+		if (getClient()->bus_type == BUS_I2C)
+			ret = i2c_transfer(toI2CClient()->adapter, I2CMsg, 3);
+		else if (getClient()->bus_type == BUS_SPI)
+			ret = spi_sync(toSPIClient(), &msg);
+
 		retry++;
 		if (ret < OK)
 			msleep(I2C_WAIT_BEFORE_RETRY);
 	}
 
 	if (ret < 0) {
+		kfree(tx_buf);
+		kfree(tx_buf1);
+		kfree(rx_buf);
 		logError(1, "%s %s: ERROR %08X\n", tag, __func__, ERROR_BUS_WR);
 		return ERROR_BUS_WR;
 	}
+
+	memcpy(outBuf, rx_buf, byteToRead);
+	kfree(tx_buf);
+	kfree(tx_buf1);
+	kfree(rx_buf);
 	return OK;
 }
-
-
 
 /**
   * Perform a chunked write with one byte op code and 1 to 8 bytes address
@@ -493,6 +609,8 @@ int fts_writeU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *data, int
 	u8 finalCmd[FTS_ADDR_SIZE_MAX + WRITE_CHUNK];
 	int remaining = dataSize;
 	int toWrite = 0, i = 0;
+
+	cmd = remap_reg(cmd, getClient()->bus_type);
 
 	if (addrSize <= sizeof(u64)) {
 		while (remaining > 0) {
@@ -555,6 +673,9 @@ int fts_writeReadU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *outBuf, int
 	u8 buff[READ_CHUNK + 1];/* worst case has dummy byte */
 	int remaining = byteToRead;
 	int toRead = 0, i = 0;
+
+	hasDummyByte = remap_dummy_byte(hasDummyByte, getClient()->bus_type);
+	cmd = remap_reg(cmd, getClient()->bus_type);
 
 	while (remaining > 0) {
 		if (remaining >= READ_CHUNK) {
@@ -699,7 +820,6 @@ int fts_writeU8UXthenWriteReadU8UX(u8 cmd1, AddrSize addrSize1, u8 cmd2,
 	int remaining = byteToRead;
 	int toRead = 0, i = 0;
 
-
 	while (remaining > 0) {
 		if (remaining >= READ_CHUNK) {
 			toRead = READ_CHUNK;
@@ -754,7 +874,6 @@ int fts_writeU8UXthenWriteReadU8UX(u8 cmd1, AddrSize addrSize1, u8 cmd2,
 		}
 
 		address += toRead;
-
 		outBuf += toRead;
 	}
 

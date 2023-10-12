@@ -32,6 +32,7 @@
 #include <linux/seq_file.h>
 #include <linux/delay.h>
 #include <linux/uaccess.h>
+#include <linux/input.h>
 #include "fts.h"
 #include "fts_lib/ftsCompensation.h"
 #include "fts_lib/ftsCore.h"
@@ -905,9 +906,8 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 			fileSize |= 0x00100000;
 #endif
 
-#ifdef I2C_INTERFACE
-			fileSize |= 0x00200000;
-#endif
+			if (getClient()->bus_type == BUS_I2C)
+				fileSize |= 0x00200000;
 
 #ifdef SPI4_WIRE
 			fileSize |= 0x00400000;
@@ -2426,11 +2426,10 @@ END_DIAGNOSTIC:
 			printed = 0;
 			goto ERROR;
 			break;
-#ifdef I2C_INTERFACE
+
 		case CMD_CHANGE_SAD:
 			res = changeSAD(cmd[1]);
 			break;
-#endif
 
 		default:
 			logError(1, "%s COMMAND ID NOT VALID!!!\n", tag);

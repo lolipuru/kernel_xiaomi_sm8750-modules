@@ -2,6 +2,8 @@
 /*
  * Copyright (C) 2016-2019, STMicroelectronics Limited.
  * Authors: AMG(Analog Mems Group) <marco.cali@st.com>
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -64,18 +66,15 @@
 						  * max allowed value is 2kB */
 
 /* PROTOCOL INFO */
-//#define I2C_INTERFACE	 /*/< comment if the chip use SPI bus */
-#ifdef I2C_INTERFACE
+
 #define I2C_SAD			0x49	/* /< slave address of the IC */
-#else
+
 #define SPI4_WIRE	/* /< comment if the master is SPI3 wires
 			 *  (MOSI and MISO share same line) */
 #define SPI_DELAY_CS			10	/* /< time in usec to wait
 						 * before rising the CS */
 #define SPI_CLOCK_FREQ			7000000	/* /< clock frequency in Hz of
 						 * the SPI bus */
-#endif
-
 
 
 #define IER_ENABLE			0x41	/* /< value to write in IER_ADDR
@@ -181,69 +180,50 @@
 				 * collect before going in overflow in FTM5 */
 
 
+//register for SPI bus used as default
+#define FIFO_CMD_READALL	0x87	/* /< command to read all the events in the FIFO */
 
-#ifdef I2C_INTERFACE
-#define FIFO_CMD_READALL	0x86	/* /< command to read all the events in
-					 * the FIFO */
-#else
-#define FIFO_CMD_READALL	0x87	/* /< command to read all the events in
-					 * the FIFO */
-#endif
-#define FIFO_CMD_READONE	FIFO_CMD_READALL	/* /< commad to read one
-							 * event from FIFO */
+//register for I2C bus
+#define FIFO_CMD_I2C_READALL	0x86	/* /< command to read all the events in the FIFO */
+
+
+#define FIFO_CMD_READONE	FIFO_CMD_READALL	/* /< commad to read one event from FIFO */
+#define FIFO_CMD_I2C_READONE	FIFO_CMD_I2C_READALL	/* /< commad to read one event from FIFO */
 
 
 /* OP CODES FOR MEMORY (based on protocol) */
-#ifdef I2C_INTERFACE
-#define FTS_CMD_HW_REG_R	0xFA	/* /< command to read an hw register if
-					 * FTI */
-#define FTS_CMD_HW_REG_W	0xFA	/* /< command to write an hw register if
-					 * FTI */
-#define FTS_CMD_FRAMEBUFFER_W	0xA6	/* /< command to write the framebuffer if
-					 * FTI */
-#define FTS_CMD_FRAMEBUFFER_R	0xA6	/* /< command to read the framebuffer if
-					 * FTI */
-#define FTS_CMD_CONFIG_R	0xA8	/* /< command to read the config memory
-					 * if FTI */
-#define FTS_CMD_CONFIG_W	0xA8	/* /< command to write the config memory
-					 * if FTI */
-#else
-#define FTS_CMD_HW_REG_R	0xFB	/* /< command to read an hw register if
-					 * FTI */
-#define FTS_CMD_HW_REG_W	0xFA	/* /< command to write an hw register if
-					 * FTI */
-#define FTS_CMD_FRAMEBUFFER_W	0xA6	/* /< command to write the framebuffer if
-					 * FTI */
-#define FTS_CMD_FRAMEBUFFER_R	0xA7	/* /< command to read the framebuffer if
-					 * FTI */
-#define FTS_CMD_CONFIG_R	0xA9	/* /< command to read the config memory
-					 * if FTI */
-#define FTS_CMD_CONFIG_W	0xA8	/* /< command to write the config memory
-					 * if FTI */
-#endif
+
+//registers for SPI bus used as default
+#define FTS_CMD_HW_REG_R	0xFB	/* /< command to read an hw register if FTI */
+#define FTS_CMD_HW_REG_W	0xFA	/* /< command to write an hw register if FTI */
+#define FTS_CMD_FRAMEBUFFER_W	0xA6	/* /< command to write the framebuffer if FTI */
+#define FTS_CMD_FRAMEBUFFER_R	0xA7	/* /< command to read the framebuffer if FTI */
+#define FTS_CMD_CONFIG_R	0xA9	/* /< command to read the config memory if FTI */
+#define FTS_CMD_CONFIG_W	0xA8	/* /< command to write the config memory if FTI */
+
+//registers for I2C
+#define FTS_CMD_I2C_HW_REG_R	0xFA	/* /< command to read an hw register if FTI*/
+#define FTS_CMD_I2C_HW_REG_W	0xFA	/* /< command to write an hw register if FTI */
+#define FTS_CMD_I2C_FRAMEBUFFER_W	0xA6	/* /< command to write the framebuffer if FTI */
+#define FTS_CMD_I2C_FRAMEBUFFER_R	0xA6	/* /< command to read the framebuffer if FTI */
+#define FTS_CMD_I2C_CONFIG_R	0xA8	/* /< command to read the config memory if FTI */
+#define FTS_CMD_I2C_CONFIG_W	0xA8	/* /< command to write the config memory if FTI */
+
 
 
 /* DUMMY BYTES DATA */
+//dummy bytes for SPI used as default
+#define DUMMY_HW_REG		1	/* /< 1 if first byte read from HW register is dummy */
+#define DUMMY_FRAMEBUFFER	1	/* /< 1 if first byte read from Frame buffer is dummy */
+#define DUMMY_CONFIG		1	/* /< 1 if first byte read from Config Memory is dummy */
+#define DUMMY_FIFO		1	/* /< 1 if first byte read from FIFO is dummy */
 
-#ifndef I2C_INTERFACE
-#define DUMMY_HW_REG		1	/* /< 1 if the first byte read from HW
-					 * register is dummy */
-#define DUMMY_FRAMEBUFFER	1	/* /< 1 if the first byte read from
-					 * Frame buffer is dummy */
-#define DUMMY_CONFIG		1	/* /< 1 if the first byte read from
-					 * Config Memory is dummy */
-#define DUMMY_FIFO		1	/* /< 1 if the first byte read from FIFO
-					 * is dummy */
-#else
-#define DUMMY_HW_REG		0	/* /< 1 if the first byte read from HW
-					 * register is dummy */
-#define DUMMY_FRAMEBUFFER	0	/* /< 1 if the first byte read from
-					 * Frame buffer is dummy */
-#define DUMMY_CONFIG		0	/* /< 1 if the first byte read from
-					 * Config Memory is dummy */
-#define DUMMY_FIFO		0	/* /< 1 if the first byte read from FIFO
-					 * is dummy */
-#endif
+//dummy bytes for I2C
+#define DUMMY_I2C_HW_REG	0	/* /< 0 if first byte read from HW register is dummy */
+#define DUMMY_I2C_FRAMEBUFFER	0	/* /< 0 if first byte read from Frame buffer is dummy */
+#define DUMMY_I2C_CONFIG	0	/* /< 0 if first byte read from Config Memory is dummy */
+#define DUMMY_I2C_FIFO		0	/* /< 0 if first byte read from FIFO is dummy */
+
 
 
 /** @defgroup hw_adr HW Address
