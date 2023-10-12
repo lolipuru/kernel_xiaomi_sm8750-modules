@@ -2,6 +2,8 @@
 /*
  * Copyright (C) 2016-2019, STMicroelectronics Limited.
  * Authors: AMG(Analog Mems Group) <marco.cali@st.com>
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -33,7 +35,12 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+#include <linux/stdarg.h>
+#else
 #include <stdarg.h>
+#endif
 #include <linux/delay.h>
 #include <linux/ctype.h>
 #include <linux/of_gpio.h>
@@ -132,7 +139,7 @@ struct i2c_client *getClient()
   *slave
   * @return client if it was previously set or NULL in all the other cases
   */
-struct spi_device *getClient()
+struct spi_device *getClient(void)
 {
 	if (client != NULL)
 		return (struct spi_device *)client;
@@ -171,7 +178,8 @@ int fts_read(u8 *outBuf, int byteToRead)
 	spi_message_init(&msg);
 
 	transfer[0].len = byteToRead;
-	transfer[0].delay_usecs = SPI_DELAY_CS;
+	transfer[0].delay.value = SPI_DELAY_CS;
+
 	transfer[0].tx_buf = NULL;
 	transfer[0].rx_buf = outBuf;
 	spi_message_add_tail(&transfer[0], &msg);
@@ -241,7 +249,7 @@ int fts_writeRead(u8 *cmd, int cmdLength, u8 *outBuf, int byteToRead)
 	spi_message_add_tail(&transfer[0], &msg);
 
 	transfer[1].len = byteToRead;
-	transfer[1].delay_usecs = SPI_DELAY_CS;
+	transfer[1].delay.value = SPI_DELAY_CS;
 	transfer[1].tx_buf = NULL;
 	transfer[1].rx_buf = outBuf;
 	spi_message_add_tail(&transfer[1], &msg);
@@ -295,7 +303,7 @@ int fts_write(u8 *cmd, int cmdLength)
 	spi_message_init(&msg);
 
 	transfer[0].len = cmdLength;
-	transfer[0].delay_usecs = SPI_DELAY_CS;
+	transfer[0].delay.value = SPI_DELAY_CS;
 	transfer[0].tx_buf = cmd;
 	transfer[0].rx_buf = NULL;
 	spi_message_add_tail(&transfer[0], &msg);
@@ -349,7 +357,7 @@ int fts_writeFwCmd(u8 *cmd, int cmdLength)
 	spi_message_init(&msg);
 
 	transfer[0].len = cmdLength;
-	transfer[0].delay_usecs = SPI_DELAY_CS;
+	transfer[0].delay.value = SPI_DELAY_CS;
 	transfer[0].tx_buf = cmd;
 	transfer[0].rx_buf = NULL;
 	spi_message_add_tail(&transfer[0], &msg);
@@ -441,7 +449,7 @@ int fts_writeThenWriteRead(u8 *writeCmd1, int writeCmdLength, u8 *readCmd1, int
 	spi_message_add_tail(&transfer[1], &msg);
 
 	transfer[2].len = byteToRead;
-	transfer[2].delay_usecs = SPI_DELAY_CS;
+	transfer[2].delay.value = SPI_DELAY_CS;
 	transfer[2].tx_buf = NULL;
 	transfer[2].rx_buf = outBuf;
 	spi_message_add_tail(&transfer[2], &msg);
@@ -482,7 +490,7 @@ int fts_writeThenWriteRead(u8 *writeCmd1, int writeCmdLength, u8 *readCmd1, int
 int fts_writeU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *data, int
 		  dataSize)
 {
-	u8 finalCmd[1 + addrSize + WRITE_CHUNK];
+	u8 finalCmd[FTS_ADDR_SIZE_MAX + WRITE_CHUNK];
 	int remaining = dataSize;
 	int toWrite = 0, i = 0;
 
@@ -543,7 +551,7 @@ int fts_writeU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *data, int
 int fts_writeReadU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *outBuf, int
 		      byteToRead, int hasDummyByte)
 {
-	u8 finalCmd[1 + addrSize];
+	u8 finalCmd[FTS_ADDR_SIZE_MAX];
 	u8 buff[READ_CHUNK + 1];/* worst case has dummy byte */
 	int remaining = byteToRead;
 	int toRead = 0, i = 0;
@@ -610,8 +618,9 @@ int fts_writeReadU8UX(u8 cmd, AddrSize addrSize, u64 address, u8 *outBuf, int
 int fts_writeU8UXthenWriteU8UX(u8 cmd1, AddrSize addrSize1, u8 cmd2, AddrSize
 			       addrSize2, u64 address, u8 *data, int dataSize)
 {
-	u8 finalCmd1[1 + addrSize1];
-	u8 finalCmd2[1 + addrSize2 + WRITE_CHUNK];
+	u8 finalCmd1[FTS_ADDR_SIZE_MAX];
+	u8 finalCmd2[FTS_ADDR_SIZE_MAX + WRITE_CHUNK];
+
 	int remaining = dataSize;
 	int toWrite = 0, i = 0;
 
@@ -682,8 +691,10 @@ int fts_writeU8UXthenWriteReadU8UX(u8 cmd1, AddrSize addrSize1, u8 cmd2,
 				   AddrSize addrSize2, u64 address, u8 *outBuf,
 				   int byteToRead, int hasDummyByte)
 {
-	u8 finalCmd1[1 + addrSize1];
-	u8 finalCmd2[1 + addrSize2];
+	u8 finalCmd1[FTS_ADDR_SIZE_MAX];
+	u8 finalCmd2[FTS_ADDR_SIZE_MAX];
+
+
 	u8 buff[READ_CHUNK + 1];/* worst case has dummy byte */
 	int remaining = byteToRead;
 	int toRead = 0, i = 0;

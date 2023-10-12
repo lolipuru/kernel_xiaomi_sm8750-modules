@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+/*
   *
   **************************************************************************
   **                        STMicroelectronics				 **
@@ -638,16 +641,16 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 	int numberParam = 0;
 	struct fts_ts_info *info = dev_get_drvdata(getDev());
 	char *p = NULL;
-	char pbuf[count];
-	char path[100] = { 0 };
+	char *pbuf = NULL;
+	char path[120] = { 0 };
 	int res = -1, j, index = 0;
 	int size = 6;
 	int temp, byte_call = 0;
 	u16 byteToRead = 0;
 	u32 fileSize = 0;
 	u8 *readData = NULL;
-	u8 cmd[count];	/* worst case needs count bytes */
-	u32 funcToTest[((count + 1) / 3)];
+	u8 *cmd = NULL;	/* worst case needs count bytes */
+	u32 *funcToTest = NULL;
 	u64 addr = 0;
 	MutualSenseFrame frameMS;
 	SelfSenseFrame frameSS;
@@ -667,10 +670,22 @@ static ssize_t fts_driver_test_write(struct file *file, const char __user *buf,
 	mess.action = 0;
 	mess.msg_size = 0;
 
+	pbuf = kvzalloc(count, GFP_KERNEL);
+	if (pbuf == NULL)
+		goto ERROR;
+
+	cmd = kvzalloc(count, GFP_KERNEL);
+	if (cmd == NULL)
+		goto ERROR;
+
+	funcToTest = kvzalloc(((count + 1) / 3)*sizeof(u32), GFP_KERNEL);
+	if (funcToTest == NULL)
+		goto ERROR;
+
 	/*for(temp = 0; temp<count; temp++){
 	  *      logError(0,"%s p[%d] = %02X\n",tag, temp, p[temp]);
 	  * }*/
-	if (access_ok(VERIFY_READ, buf, count) < OK ||
+	if (!access_ok(buf, count) ||
 	    copy_from_user(pbuf, buf, count) != 0) {
 		res = ERROR_ALLOC;
 		goto END;
@@ -3002,6 +3017,12 @@ ERROR:
 			 * wait the next command, comment if you want to repeat
 			 * the last comand sent just doing a cat */
 	/* logError(0,"%s numberParameters = %d\n",tag, numberParam); */
+	if (pbuf != NULL)
+		kvfree(pbuf);
+	if (cmd != NULL)
+		kvfree(cmd);
+	if (funcToTest != NULL)
+		kvfree(funcToTest);
 	if (readData != NULL)
 		kfree(readData);
 
@@ -3014,12 +3035,12 @@ ERROR:
   * file_operations struct which define the functions for the canonical
   *operation on a device file node (open. read, write etc.)
   */
-static const struct file_operations fts_driver_test_ops = {
-	.open		= fts_open,
-	.read		= seq_read,
-	.write		= fts_driver_test_write,
-	.llseek		= seq_lseek,
-	.release	= seq_release
+static const struct proc_ops fts_driver_test_ops = {
+	.proc_open		= fts_open,
+	.proc_read		= seq_read,
+	.proc_write		= fts_driver_test_write,
+	.proc_lseek		= seq_lseek,
+	.proc_release		= seq_release
 };
 
 /*****************************************************************************/

@@ -2,6 +2,8 @@
 /*
  * Copyright (C) 2016-2019, STMicroelectronics Limited.
  * Authors: AMG(Analog Mems Group) <marco.cali@st.com>
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -40,7 +42,12 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+#include <linux/stdarg.h>
+#else
 #include <stdarg.h>
+#endif
 #include <linux/serio.h>
 #include <linux/time.h>
 #include <linux/delay.h>
@@ -62,12 +69,6 @@ int getChannelsLength(void)
 {
 	int ret;
 	u8 data[2];
-
-	if (data == NULL) {
-		logError(1, "%s getChannelsLength: ERROR %08X\n", tag,
-			 ERROR_ALLOC);
-		return ERROR_ALLOC;
-	}
 
 	ret = readConfig(ADDR_CONFIG_SENSE_LEN, data, 2);
 	if (ret < OK) {

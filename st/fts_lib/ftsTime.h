@@ -2,6 +2,8 @@
 /*
  * Copyright (C) 2016-2019, STMicroelectronics Limited.
  * Authors: AMG(Analog Mems Group) <marco.cali@st.com>
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -66,8 +68,8 @@
   * Struct used to measure the time elapsed between a starting and ending point.
   */
 typedef struct {
-	struct timespec start;	/* /< store the starting time */
-	struct timespec end;	/* /< store the finishing time */
+	struct timespec64 start;	/* /< store the starting time */
+	struct timespec64 end;	/* /< store the finishing time */
 } StopWatch;
 
 

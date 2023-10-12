@@ -2,6 +2,8 @@
 /*
  * Copyright (C) 2016-2019, STMicroelectronics Limited.
  * Authors: AMG(Analog Mems Group) <marco.cali@st.com>
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -61,6 +63,8 @@ typedef enum {
 
 
 /********************  NEW API  *********************/
+
+#define FTS_ADDR_SIZE_MAX 16	/* /< Maximal address length in bytes */
 
 /* HOST COMMAND */
 /** @defgroup host_command Fw Host op codes

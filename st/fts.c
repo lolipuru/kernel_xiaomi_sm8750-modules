@@ -23,6 +23,8 @@
   * INFORMATION CONTAINED HEREIN IN CONNECTION WITH THEIR PRODUCTS.
   *
   * THIS SOFTWARE IS SPECIFICALLY DESIGNED FOR EXCLUSIVE USE WITH ST PARTS.
+  *
+  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
   */
 
 
@@ -207,7 +209,7 @@ static ssize_t fts_fwupdate_store(struct device *dev,
 				const char *buf, size_t count)
 {
 	int ret, mode[2];
-	char path[100];
+	char path[120];
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 
 	/* default(if not specified by user) set force = 0 and keep_cx to 1 */
@@ -2117,13 +2119,16 @@ static void fts_enter_pointer_event_handler(struct fts_ts_info *info, unsigned
 			__set_bit(touchId, &info->stylus_id);
 			break;
 		}
+		fallthrough;
 #endif
 	/* TODO: customer can implement a different strategy for each kind of
 	 * touch */
 	case TOUCH_TYPE_FINGER:
 	/* logError(0, "%s  %s : It is a finger!\n",tag,__func__); */
+		fallthrough;
 	case TOUCH_TYPE_GLOVE:
 	/* logError(0, "%s  %s : It is a glove!\n",tag,__func__); */
+		fallthrough;
 	case TOUCH_TYPE_PALM:
 		/* logError(0, "%s  %s : It is a palm!\n",tag,__func__); */
 		tool = MT_TOOL_FINGER;
@@ -2196,14 +2201,18 @@ static void fts_leave_pointer_event_handler(struct fts_ts_info *info, unsigned
 			__clear_bit(touchId, &info->stylus_id);
 			break;
 		}
+		fallthrough;
 #endif
 
 	case TOUCH_TYPE_FINGER:
 	/* logError(0, "%s  %s : It is a finger!\n",tag,__func__); */
+		fallthrough;
 	case TOUCH_TYPE_GLOVE:
 	/* logError(0, "%s  %s : It is a glove!\n",tag,__func__); */
+		fallthrough;
 	case TOUCH_TYPE_PALM:
 	/* logError(0, "%s  %s : It is a palm!\n",tag,__func__); */
+		fallthrough;
 	case TOUCH_TYPE_HOVER:
 		tool = MT_TOOL_FINGER;
 		__clear_bit(touchId, &info->touch_id);
@@ -2744,7 +2753,7 @@ static void fts_event_handler(struct work_struct *work)
 
 	info = container_of(work, struct fts_ts_info, work);
 
-	__pm_wakeup_event(&info->wakesrc, jiffies_to_msecs(HZ));
+	__pm_wakeup_event(info->wakesrc, jiffies_to_msecs(HZ));
 
 	/* read the FIFO and parsing events */
 
@@ -3490,8 +3499,8 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		 * of the following options */
 		/* settings[0] = ACTIVE_MULTI_TOUCH | ACTIVE_KEY | ACTIVE_HOVER
 		 * | ACTIVE_PROXIMITY | ACTIVE_FORCE; */
-		settings[0] = 0xFF;	/* enable all the possible scans mode
-					 * supported by the config */
+		settings[0] = ACTIVE_MULTI_TOUCH;
+
 		logError(0, "%s %s: Sense ON!\n", tag, __func__);
 		res |= setScanMode(SCAN_MODE_ACTIVE, settings[0]);
 		info->mode |= (SCAN_MODE_ACTIVE << 24);
@@ -3526,7 +3535,7 @@ static void fts_resume_work(struct work_struct *work)
 
 	info = container_of(work, struct fts_ts_info, resume_work);
 
-	__pm_wakeup_event(&info->wakesrc, jiffies_to_msecs(HZ));
+	__pm_wakeup_event(info->wakesrc, jiffies_to_msecs(HZ));
 
 	info->resume_bit = 1;
 
@@ -3551,7 +3560,7 @@ static void fts_suspend_work(struct work_struct *work)
 
 	info = container_of(work, struct fts_ts_info, suspend_work);
 
-	__pm_wakeup_event(&info->wakesrc, jiffies_to_msecs(HZ));
+	__pm_wakeup_event(info->wakesrc, jiffies_to_msecs(HZ));
 
 	info->resume_bit = 0;
 
@@ -3826,7 +3835,7 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	const char *name;
 	struct device_node *np = dev->of_node;
 
-	bdata->irq_gpio = of_get_named_gpio_flags(np, "st,irq-gpio", 0, NULL);
+	bdata->irq_gpio = of_get_named_gpio(np, "st,irq-gpio", 0);
 
 	logError(0, "%s irq_gpio = %d\n", tag, bdata->irq_gpio);
 
@@ -3852,9 +3861,7 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	}
 
 	if (of_property_read_bool(np, "st,reset-gpio")) {
-		bdata->reset_gpio = of_get_named_gpio_flags(np,
-							    "st,reset-gpio", 0,
-							    NULL);
+		bdata->reset_gpio = of_get_named_gpio(np, "st,reset-gpio", 0);
 		logError(0, "%s reset_gpio =%d\n", tag, bdata->reset_gpio);
 	} else
 		bdata->reset_gpio = GPIO_NOT_DEFINED;
@@ -3974,7 +3981,9 @@ static int fts_probe(struct spi_device *client)
 	info->client->irq = gpio_to_irq(info->board->irq_gpio);
 
 	logError(1, "%s SET Event Handler:\n", tag);
-	wakeup_source_init(&info->wakesrc, "fts_tp");
+
+	info->wakesrc = wakeup_source_register(info->dev, "fts_tp");
+
 	info->event_wq = alloc_workqueue("fts-event-queue", WQ_UNBOUND |
 					 WQ_HIGHPRI | WQ_CPU_INTENSIVE, 1);
 	if (!info->event_wq) {
@@ -4180,7 +4189,7 @@ ProbeErrorExit_5:
 
 ProbeErrorExit_4:
 	/* destroy_workqueue(info->fwu_workqueue); */
-	wakeup_source_trash(&info->wakesrc);
+	wakeup_source_unregister(info->wakesrc);
 
 	fts_enable_reg(info, false);
 
@@ -4202,10 +4211,10 @@ ProbeErrorExit_0:
   * This function is called when the driver need to be removed.
   */
 #ifdef I2C_INTERFACE
-static int fts_remove(struct i2c_client *client)
+static void fts_remove(struct i2c_client *client)
 {
 #else
-static int fts_remove(struct spi_device *client)
+static void fts_remove(struct spi_device *client)
 {
 #endif
 
@@ -4228,7 +4237,7 @@ static int fts_remove(struct spi_device *client)
 
 	/* Remove the work thread */
 	destroy_workqueue(info->event_wq);
-	wakeup_source_trash(&info->wakesrc);
+	wakeup_source_unregister(info->wakesrc);
 #ifndef FW_UPDATE_ON_PROBE
 	destroy_workqueue(info->fwu_workqueue);
 #endif
@@ -4238,8 +4247,6 @@ static int fts_remove(struct spi_device *client)
 
 	/* free all */
 	kfree(info);
-
-	return OK;
 }
 
 /**

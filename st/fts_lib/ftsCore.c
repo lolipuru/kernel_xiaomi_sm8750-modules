@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+/*
   *
   **************************************************************************
   **                        STMicroelectronics				**
@@ -407,9 +410,13 @@ int setScanMode(u8 mode, u8 settings)
   */
 int setFeatures(u8 feat, u8 *settings, int size)
 {
-	u8 cmd[2 + size];
+	u8 *cmd = NULL;
 	int i = 0;
 	int ret;
+
+	cmd = kzalloc(2 + size, GFP_KERNEL);
+	if (cmd == NULL)
+		return ERROR_ALLOC;
 
 	logError(0, "%s %s: Setting feature: feat = %02X !\n", tag, __func__,
 		 feat);
@@ -427,9 +434,11 @@ int setFeatures(u8 feat, u8 *settings, int size)
 	if (ret < OK) {
 		logError(1, "%s %s: write failed...ERROR %08X !\n", tag,
 			 __func__, ret);
+		kfree(cmd);
 		return ret | ERROR_SET_FEATURE_FAIL;
 	}
 	logError(0, "%s %s: Setting feature OK!\n", tag, __func__);
+	kfree(cmd);
 	return OK;
 }
 /** @}*/
@@ -449,8 +458,12 @@ int setFeatures(u8 feat, u8 *settings, int size)
   */
 int writeSysCmd(u8 sys_cmd, u8 *sett, int size)
 {
-	u8 cmd[2 + size];
+	u8 *cmd = NULL;
 	int ret;
+
+	cmd = kzalloc(2 + size, GFP_KERNEL);
+	if (cmd == NULL)
+		return ERROR_ALLOC;
 
 	cmd[0] = FTS_CMD_SYSTEM;
 	cmd[1] = sys_cmd;
@@ -471,6 +484,7 @@ int writeSysCmd(u8 sys_cmd, u8 *sett, int size)
 		else {
 			logError(1, "%s %s: No setting argument! ERROR %08X\n",
 				 tag, __func__, ERROR_OP_NOT_ALLOW);
+			kfree(cmd);
 			return ERROR_OP_NOT_ALLOW;
 		}
 	}
@@ -480,6 +494,7 @@ int writeSysCmd(u8 sys_cmd, u8 *sett, int size)
 	else
 		logError(0, "%s %s: FINISHED!\n", tag, __func__);
 
+	kfree(cmd);
 	return ret;
 }
 /** @}*/

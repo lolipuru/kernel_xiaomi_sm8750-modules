@@ -2,6 +2,8 @@
 /*
  * Copyright (C) 2016-2019, STMicroelectronics Limited.
  * Authors: AMG(Analog Mems Group) <marco.cali@st.com>
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -33,7 +35,12 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+#include <linux/stdarg.h>
+#else
 #include <stdarg.h>
+#endif
 #include <linux/time.h>
 #include <linux/delay.h>
 #include <linux/ctype.h>
@@ -45,7 +52,7 @@
   */
 void startStopWatch(StopWatch *w)
 {
-	w->start = current_kernel_time();
+	w->start = ktime_to_timespec64(ktime_get());
 }
 
 /**
@@ -54,7 +61,7 @@ void startStopWatch(StopWatch *w)
   */
 void stopStopWatch(StopWatch *w)
 {
-	w->end = current_kernel_time();
+	w->end = ktime_to_timespec64(ktime_get());
 }
 
 /**
