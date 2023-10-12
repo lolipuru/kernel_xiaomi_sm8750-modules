@@ -608,7 +608,7 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 	HWFNC_DBG_INIT("notifier: ret:%d peer_name:%d notifier_ret:%d\n", ret,
 		drv_data->peer_name, notifier_ret);
 	if (notifier_ret) {
-		HWFNC_ERR("fail to register notifier ret:%d\n", notifier_ret);
+		HWFNC_ERR_ONCE("fail to register notifier ret:%d\n", notifier_ret);
 		return -EPROBE_DEFER;
 	}
 

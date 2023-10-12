@@ -687,7 +687,7 @@ static int msm_hw_fence_probe_init(struct platform_device *pdev)
 		/* Allocate hw fence driver mem pool and share it with HYP */
 		rc = hw_fence_utils_alloc_mem(hw_fence_drv_data);
 		if (rc) {
-			HWFNC_ERR("failed to alloc base memory\n");
+			HWFNC_ERR_ONCE("failed to alloc base memory\n");
 			goto error;
 		}
 
@@ -703,7 +703,7 @@ error:
 	kfree(hw_fence_drv_data);
 	hw_fence_drv_data = (void *) -EPROBE_DEFER;
 
-	HWFNC_ERR("error %d\n", rc);
+	HWFNC_ERR_ONCE("error %d\n", rc);
 	return rc;
 }
 
@@ -728,7 +728,7 @@ static int msm_hw_fence_probe(struct platform_device *pdev)
 	return 0;
 
 err_exit:
-	HWFNC_ERR("error %d\n", rc);
+	HWFNC_ERR_ONCE("error %d\n", rc);
 	return rc;
 }
 
