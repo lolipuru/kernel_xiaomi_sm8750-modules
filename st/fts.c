@@ -125,7 +125,7 @@ static u8 key_mask = 0x00;	/* /< store the last update of the key mask
 #endif
 
 
-extern spinlock_t fts_int;
+extern struct mutex fts_int;
 
 
 
@@ -2163,9 +2163,6 @@ static void fts_enter_pointer_event_handler(struct fts_ts_info *info, unsigned
 	input_report_abs(info->input_dev, ABS_MT_POSITION_X, x);
 	input_report_abs(info->input_dev, ABS_MT_POSITION_Y, y);
 	input_report_abs(info->input_dev, ABS_MT_TOUCH_MAJOR, z);
-	input_report_abs(info->input_dev, ABS_MT_TOUCH_MINOR, z);
-	input_report_abs(info->input_dev, ABS_MT_PRESSURE, z);
-	input_report_abs(info->input_dev, ABS_MT_DISTANCE, distance);
 	/* logError(0, "%s  %s :  Event 0x%02x - ID[%d], (x, y) = (%3d, %3d)
 	 * Size = %d\n", tag, __func__, *event, touchId, x, y, touchType); */
 
@@ -4033,12 +4030,6 @@ static int fts_probe(struct spi_device *client)
 			     Y_AXIS_MAX, 0, 0);
 	input_set_abs_params(info->input_dev, ABS_MT_TOUCH_MAJOR, AREA_MIN,
 			     AREA_MAX, 0, 0);
-	input_set_abs_params(info->input_dev, ABS_MT_TOUCH_MINOR, AREA_MIN,
-			     AREA_MAX, 0, 0);
-	input_set_abs_params(info->input_dev, ABS_MT_PRESSURE, PRESSURE_MIN,
-			     PRESSURE_MAX, 0, 0);
-	input_set_abs_params(info->input_dev, ABS_MT_DISTANCE, DISTANCE_MIN,
-			     DISTANCE_MAX, 0, 0);
 
 #ifdef GESTURE_MODE
 	input_set_capability(info->input_dev, EV_KEY, KEY_WAKEUP);
@@ -4084,7 +4075,7 @@ static int fts_probe(struct spi_device *client)
 	mutex_init(&gestureMask_mutex);
 #endif
 
-	spin_lock_init(&fts_int);
+	mutex_init(&fts_int);
 
 	/* register the multi-touch input device */
 	error = input_register_device(info->input_dev);

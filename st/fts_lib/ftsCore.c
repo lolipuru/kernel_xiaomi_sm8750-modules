@@ -55,7 +55,7 @@ static int system_reseted_down;	/* /< flag checked during suspend to
 static int disable_irq_count = 1;	/* /< count the number of call to
 					 * disable_irq, start with 1 because at
 					 * the boot IRQ are already disabled */
-spinlock_t fts_int;	/* /< spinlock to controll the access to the
+struct mutex fts_int;	/* /< mutex to control the access to the
 			 * disable_irq_counter */
 
 
@@ -878,10 +878,8 @@ int writeConfig(u16 offset, u8 *data, int len)
   */
 int fts_disableInterrupt(void)
 {
-	unsigned long flag;
-
 	if (getClient() != NULL) {
-		spin_lock_irqsave(&fts_int, flag);
+		mutex_lock(&fts_int);
 		logError(0, "%s Number of disable = %d\n", tag,
 			 disable_irq_count);
 		if (disable_irq_count == 0) {
@@ -891,7 +889,7 @@ int fts_disableInterrupt(void)
 		}
 		/* disable_irq is re-entrant so it is required to keep track
 		  * of the number of calls of this when reenabling */
-		spin_unlock_irqrestore(&fts_int, flag);
+		mutex_unlock(&fts_int);
 		logError(0, "%s Interrupt Disabled!\n", tag);
 		return OK;
 	} else {
@@ -909,7 +907,7 @@ int fts_disableInterrupt(void)
 int fts_disableInterruptNoSync(void)
 {
 	if (getClient() != NULL) {
-		spin_lock_irq(&fts_int);
+		mutex_lock(&fts_int);
 		logError(0, "%s Number of disable = %d\n", tag,
 			 disable_irq_count);
 		if (disable_irq_count == 0) {
@@ -920,7 +918,7 @@ int fts_disableInterruptNoSync(void)
 		/* disable_irq is re-entrant so it is required to keep track
 		  * of the number of calls of this when reenabling */
 
-		spin_unlock(&fts_int);
+		mutex_unlock(&fts_int);
 		logError(0, "%s Interrupt No Sync Disabled!\n", tag);
 		return OK;
 	} else {
@@ -947,10 +945,8 @@ int fts_resetDisableIrqCount(void)
   */
 int fts_enableInterrupt(void)
 {
-	unsigned long flag;
-
 	if (getClient() != NULL) {
-		spin_lock_irqsave(&fts_int, flag);
+		mutex_lock(&fts_int);
 		logError(0, "%s Number of re-enable = %d\n", tag,
 			 disable_irq_count);
 		while (disable_irq_count > 0) {
@@ -961,7 +957,7 @@ int fts_enableInterrupt(void)
 			disable_irq_count--;
 		}
 
-		spin_unlock_irqrestore(&fts_int, flag);
+		mutex_unlock(&fts_int);
 		logError(0, "%s Interrupt Enabled!\n", tag);
 		return OK;
 	} else {
