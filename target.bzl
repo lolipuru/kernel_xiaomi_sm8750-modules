@@ -1,9 +1,9 @@
 load(":display_modules.bzl", "display_driver_modules")
 load(":display_driver_build.bzl", "define_target_variant_modules")
-load("//msm-kernel:target_variants.bzl", "get_all_la_variants", "get_all_le_variants", "get_all_lxc_variants")
+load("//msm-kernel:target_variants.bzl", "get_all_la_variants")
 
 def define_target():
-    for (t, v) in get_all_la_variants() + get_all_le_variants() + get_all_lxc_variants():
+    for (t, v) in get_all_la_variants():
         define_target_variant_modules(
             target = t,
             variant = v,
@@ -22,11 +22,11 @@ def define_target():
                 "CONFIG_DRM_SDE_RSC",
                 "CONFIG_DRM_MSM_REGISTER_LOGGING",
                 "CONFIG_QCOM_MDSS_PLL",
-                "CONFIG_HDCP_QSEECOM",
-                #"CONFIG_DRM_SDE_VM",
+                #"CONFIG_HDCP_QSEECOM",
+                # "CONFIG_DRM_SDE_VM",
                 "CONFIG_QCOM_WCD939X_I2C",
                 "CONFIG_THERMAL_OF",
-                "CONFIG_MSM_MMRM",
+                #"CONFIG_MSM_MMRM",
                 "CONFIG_QTI_HW_FENCE",
                 "CONFIG_QCOM_SPEC_SYNC",
                 "CONFIG_MSM_EXT_DISPLAY"
