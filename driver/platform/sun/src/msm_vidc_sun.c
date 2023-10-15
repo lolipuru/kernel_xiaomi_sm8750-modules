@@ -2705,17 +2705,21 @@ static const struct regulator_table sun_regulator_table[] = {
 
 /* name, clock id, scaling */
 static const struct clk_table sun_clk_table[] = {
-	{ "gcc_video_axi0_clk",     GCC_VIDEO_AXI0_CLK,     0 },
-	{ "video_cc_mvs0c_clk",     VIDEO_CC_MVS0C_CLK,     0 },
-	{ "video_cc_mvs0_clk",      VIDEO_CC_MVS0_CLK,      0 },
-	{ "video_cc_mvs0_clk_src",  VIDEO_CC_MVS0_CLK_SRC,  1 },
+	{ "gcc_video_axi1_clk",        GCC_VIDEO_AXI1_CLK,         0 },
+	{ "gcc_video_axi0_clk",        GCC_VIDEO_AXI0_CLK,         0 },
+	{"video_cc_mvs0c_freerun_clk", VIDEO_CC_MVS0C_FREERUN_CLK, 0 },
+	{"video_cc_mvs0_freerun_clk",  VIDEO_CC_MVS0_FREERUN_CLK,  0 },
+	{ "video_cc_mvs0c_clk",        VIDEO_CC_MVS0C_CLK,         0 },
+	{ "video_cc_mvs0_clk",         VIDEO_CC_MVS0_CLK,          0 },
+	{ "video_cc_mvs0_clk_src",     VIDEO_CC_MVS0_CLK_SRC,      1 },
 };
 
 /* name, exclusive_release */
 static const struct clk_rst_table sun_clk_reset_table[] = {
-	{ "video_axi_reset",        0  },
-	{ "video_xo_reset",         1  },
-	{ "video_mvs0c_reset",      0  },
+	{ "video_axi1_reset",                   0  },
+	{ "video_axi0_reset",                   0  },
+	{ "video_mvs0c_freerun_reset",          0  },
+	{ "video_mvs0_freerun_reset",           0  },
 };
 
 /* name, llcc_id */

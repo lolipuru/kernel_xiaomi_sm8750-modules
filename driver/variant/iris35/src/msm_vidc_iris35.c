@@ -21,20 +21,28 @@
 
 #define VIDEO_ARCH_LX 1
 
-#define VCODEC_BASE_OFFS_IRIS35                 0x00000000
-#define VCODEC_CPU_CS_IRIS35                    0x000A0000
-#define AON_BASE_OFFS                           0x000E0000
-
-#define VCODEC_VPU_CPU_CS_VCICMDARG0_IRIS35                 (VCODEC_CPU_CS_IRIS35 + 0x24)
-#define VCODEC_VPU_CPU_CS_VCICMDARG1_IRIS35                 (VCODEC_CPU_CS_IRIS35 + 0x28)
-#define VCODEC_VPU_CPU_CS_SCIACMD_IRIS35                    (VCODEC_CPU_CS_IRIS35 + 0x48)
-#define VCODEC_VPU_CPU_CS_SCIACMDARG0_IRIS35                (VCODEC_CPU_CS_IRIS35 + 0x4C)
-#define VCODEC_VPU_CPU_CS_SCIACMDARG1_IRIS35                (VCODEC_CPU_CS_IRIS35 + 0x50)
-#define VCODEC_VPU_CPU_CS_SCIACMDARG2_IRIS35                (VCODEC_CPU_CS_IRIS35 + 0x54)
-#define VCODEC_VPU_CPU_CS_SCIBCMD_IRIS35                    (VCODEC_CPU_CS_IRIS35 + 0x5C)
-#define VCODEC_VPU_CPU_CS_SCIBCMDARG0_IRIS35                (VCODEC_CPU_CS_IRIS35 + 0x60)
-#define VCODEC_VPU_CPU_CS_SCIBARG1_IRIS35                   (VCODEC_CPU_CS_IRIS35 + 0x64)
-#define VCODEC_VPU_CPU_CS_SCIBARG2_IRIS35                   (VCODEC_CPU_CS_IRIS35 + 0x68)
+/*
+ * --------------------------------------------------------------------------
+ * MODULE: VCODEC_CPU_CS
+ * --------------------------------------------------------------------------
+ */
+#define VCODEC_CPU_CS_IRIS35                          0x000A0000
+#define CPU_CS_A2HSOFTINTCLR_IRIS35                   (VCODEC_CPU_CS_IRIS35 + 0x1C)
+#define VCODEC_VPU_CPU_CS_VCICMDARG0_IRIS35           (VCODEC_CPU_CS_IRIS35 + 0x24)
+#define VCODEC_VPU_CPU_CS_VCICMDARG1_IRIS35           (VCODEC_CPU_CS_IRIS35 + 0x28)
+#define VCODEC_VPU_CPU_CS_SCIACMD_IRIS35              (VCODEC_CPU_CS_IRIS35 + 0x48)
+#define VCODEC_VPU_CPU_CS_SCIACMDARG0_IRIS35          (VCODEC_CPU_CS_IRIS35 + 0x4C)
+#define VCODEC_VPU_CPU_CS_SCIACMDARG1_IRIS35          (VCODEC_CPU_CS_IRIS35 + 0x50)
+#define VCODEC_VPU_CPU_CS_SCIACMDARG2_IRIS35          (VCODEC_CPU_CS_IRIS35 + 0x54)
+#define VCODEC_VPU_CPU_CS_SCIBCMD_IRIS35              (VCODEC_CPU_CS_IRIS35 + 0x5C)
+#define VCODEC_VPU_CPU_CS_SCIBCMDARG0_IRIS35          (VCODEC_CPU_CS_IRIS35 + 0x60)
+#define VCODEC_VPU_CPU_CS_SCIBARG1_IRIS35             (VCODEC_CPU_CS_IRIS35 + 0x64)
+#define VCODEC_VPU_CPU_CS_SCIBARG2_IRIS35             (VCODEC_CPU_CS_IRIS35 + 0x68)
+#define CPU_CS_H2XSOFTINTEN_IRIS35                    (VCODEC_CPU_CS_IRIS35 + 0x148)
+#define CPU_IC_SOFTINT_IRIS35                         (VCODEC_CPU_CS_IRIS35 + 0x150)
+#define CPU_CS_AHB_BRIDGE_SYNC_RESET                  (VCODEC_CPU_CS_IRIS35 + 0x160)
+#define CPU_CS_X2RPMh_IRIS35                          (VCODEC_CPU_CS_IRIS35 + 0x168)
+#define CPU_IC_SOFTINT_H2A_SHFT_IRIS35                0x0
 
 #define HFI_CTRL_INIT_IRIS35                          VCODEC_VPU_CPU_CS_SCIACMD_IRIS35
 #define HFI_CTRL_STATUS_IRIS35                        VCODEC_VPU_CPU_CS_SCIACMDARG0_IRIS35
@@ -62,72 +70,71 @@ typedef enum {
 #define HFI_DEVICE_REGION_SIZE_IRIS35                 VCODEC_VPU_CPU_CS_VCICMDARG1_IRIS35
 #define HFI_SFR_ADDR_IRIS35                           VCODEC_VPU_CPU_CS_SCIBCMD_IRIS35
 
-#define CPU_CS_A2HSOFTINTCLR_IRIS35             (VCODEC_CPU_CS_IRIS35 + 0x1C)
-#define CPU_CS_H2XSOFTINTEN_IRIS35	(VCODEC_CPU_CS_IRIS35 + 0x148)
+/*
+ * --------------------------------------------------------------------------
+ * MODULE: VCODEC_IRIS_WRAPPER_TOP
+ * --------------------------------------------------------------------------
+ */
+#define WRAPPER_BASE_OFFS_IRIS35                      0x000B0000
+#define WRAPPER_INTR_STATUS_IRIS35                    (WRAPPER_BASE_OFFS_IRIS35 + 0x0C)
+#define WRAPPER_INTR_STATUS_A2HWD_BMSK_IRIS35         0x8
+#define WRAPPER_INTR_STATUS_A2H_BMSK_IRIS35           0x4
 
-#define CPU_CS_AHB_BRIDGE_SYNC_RESET            (VCODEC_CPU_CS_IRIS35 + 0x160)
+#define WRAPPER_INTR_MASK_IRIS35                      (WRAPPER_BASE_OFFS_IRIS35 + 0x10)
+#define WRAPPER_INTR_MASK_A2HWD_BMSK_IRIS35           0x8
+#define WRAPPER_INTR_MASK_A2HCPU_BMSK_IRIS35          0x4
 
-/* FAL10 Feature Control */
-#define CPU_CS_X2RPMh_IRIS35		(VCODEC_CPU_CS_IRIS35 + 0x168)
-
-#define CPU_IC_SOFTINT_IRIS35		(VCODEC_CPU_CS_IRIS35 + 0x150)
-#define CPU_IC_SOFTINT_H2A_SHFT_IRIS35	0x0
+#define WRAPPER_DEBUG_BRIDGE_LPI_CONTROL_IRIS35       (WRAPPER_BASE_OFFS_IRIS35 + 0x54)
+#define WRAPPER_DEBUG_BRIDGE_LPI_STATUS_IRIS35        (WRAPPER_BASE_OFFS_IRIS35 + 0x58)
+#define WRAPPER_IRIS_CPU_NOC_LPI_CONTROL              (WRAPPER_BASE_OFFS_IRIS35 + 0x5C)
+#define WRAPPER_IRIS_CPU_NOC_LPI_STATUS               (WRAPPER_BASE_OFFS_IRIS35 + 0x60)
+#define WRAPPER_CORE_POWER_STATUS                     (WRAPPER_BASE_OFFS_IRIS35 + 0x80)
+#define WRAPPER_CORE_CLOCK_CONFIG_IRIS35              (WRAPPER_BASE_OFFS_IRIS35 + 0x88)
 
 /*
  * --------------------------------------------------------------------------
- * MODULE: wrapper
+ * MODULE: TZ_WRAPPER
  * --------------------------------------------------------------------------
  */
-#define WRAPPER_BASE_OFFS_IRIS35		0x000B0000
-#define WRAPPER_INTR_STATUS_IRIS35	(WRAPPER_BASE_OFFS_IRIS35 + 0x0C)
-#define WRAPPER_INTR_STATUS_A2HWD_BMSK_IRIS35	0x8
-#define WRAPPER_INTR_STATUS_A2H_BMSK_IRIS35	0x4
-
-#define WRAPPER_INTR_MASK_IRIS35		(WRAPPER_BASE_OFFS_IRIS35 + 0x10)
-#define WRAPPER_INTR_MASK_A2HWD_BMSK_IRIS35	0x8
-#define WRAPPER_INTR_MASK_A2HCPU_BMSK_IRIS35	0x4
-
-#define WRAPPER_DEBUG_BRIDGE_LPI_CONTROL_IRIS35	(WRAPPER_BASE_OFFS_IRIS35 + 0x54)
-#define WRAPPER_DEBUG_BRIDGE_LPI_STATUS_IRIS35	(WRAPPER_BASE_OFFS_IRIS35 + 0x58)
-#define WRAPPER_IRIS_CPU_NOC_LPI_CONTROL	(WRAPPER_BASE_OFFS_IRIS35 + 0x5C)
-#define WRAPPER_IRIS_CPU_NOC_LPI_STATUS		(WRAPPER_BASE_OFFS_IRIS35 + 0x60)
-#define WRAPPER_CORE_POWER_STATUS		(WRAPPER_BASE_OFFS_IRIS35 + 0x80)
-#define WRAPPER_CORE_CLOCK_CONFIG_IRIS35		(WRAPPER_BASE_OFFS_IRIS35 + 0x88)
+#define WRAPPER_TZ_BASE_OFFS                          0x000C0000
+#define WRAPPER_TZ_CPU_STATUS                         (WRAPPER_TZ_BASE_OFFS + 0x10)
+#define WRAPPER_TZ_CTL_AXI_CLOCK_CONFIG               (WRAPPER_TZ_BASE_OFFS + 0x14)
+#define WRAPPER_TZ_QNS4PDXFIFO_RESET                  (WRAPPER_TZ_BASE_OFFS + 0x18)
 
 /*
  * --------------------------------------------------------------------------
- * MODULE: tz_wrapper
+ * MODULE: AON_WRAPPER
  * --------------------------------------------------------------------------
  */
-#define WRAPPER_TZ_BASE_OFFS	0x000C0000
-#define WRAPPER_TZ_CPU_STATUS	(WRAPPER_TZ_BASE_OFFS + 0x10)
-#define WRAPPER_TZ_CTL_AXI_CLOCK_CONFIG	(WRAPPER_TZ_BASE_OFFS + 0x14)
-#define WRAPPER_TZ_QNS4PDXFIFO_RESET	(WRAPPER_TZ_BASE_OFFS + 0x18)
+#define AON_BASE_OFFS                                 0x000E0000
+#define AON_WRAPPER_MVP_NOC_LPI_CONTROL               (AON_BASE_OFFS)
+#define AON_WRAPPER_MVP_NOC_LPI_STATUS                (AON_BASE_OFFS + 0x4)
+#define AON_WRAPPER_MVP_NOC_CORE_SW_RESET             (AON_BASE_OFFS + 0x18)
+#define AON_WRAPPER_MVP_NOC_CORE_CLK_CONTROL          (AON_BASE_OFFS + 0x20)
+#define AON_WRAPPER_SPARE                             (AON_BASE_OFFS + 0x28)
+#define AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_CONTROL     (AON_BASE_OFFS + 0x2C)
+#define AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_STATUS      (AON_BASE_OFFS + 0x30)
 
-#define AON_WRAPPER_MVP_NOC_LPI_CONTROL	(AON_BASE_OFFS)
-#define AON_WRAPPER_MVP_NOC_LPI_STATUS	(AON_BASE_OFFS + 0x4)
-#define AON_WRAPPER_MVP_NOC_CORE_SW_RESET (AON_BASE_OFFS + 0x18)
-#define AON_WRAPPER_MVP_NOC_CORE_CLK_CONTROL (AON_BASE_OFFS + 0x20)
-#define AON_WRAPPER_SPARE (AON_BASE_OFFS + 0x28)
 /*
  * --------------------------------------------------------------------------
  * MODULE: VCODEC_SS registers
  * --------------------------------------------------------------------------
  */
-#define VCODEC_SS_IDLE_STATUSn           (VCODEC_BASE_OFFS_IRIS35 + 0x70)
+#define VCODEC_BASE_OFFS_IRIS35                       0x00000000
+#define VCODEC_SS_IDLE_STATUSn                        (VCODEC_BASE_OFFS_IRIS35 + 0x70)
 
 /*
  * --------------------------------------------------------------------------
  * MODULE: VCODEC_NOC
  * --------------------------------------------------------------------------
  */
-#define NOC_BASE_OFFS   0x00010000
+#define NOC_BASE_OFFS                                      0x00010000
 #define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_MAINCTL_LOW   (NOC_BASE_OFFS + 0xA008)
 #define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRCLR_LOW    (NOC_BASE_OFFS + 0xA018)
 #define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_LOW   (NOC_BASE_OFFS + 0xA020)
 #define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_HIGH  (NOC_BASE_OFFS + 0xA024)
 #define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_LOW   (NOC_BASE_OFFS + 0xA028)
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH   (NOC_BASE_OFFS + 0xA02C)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH  (NOC_BASE_OFFS + 0xA02C)
 #define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_LOW   (NOC_BASE_OFFS + 0xA030)
 #define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_HIGH  (NOC_BASE_OFFS + 0xA034)
 #define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_LOW   (NOC_BASE_OFFS + 0xA038)
@@ -148,6 +155,46 @@ static int __interrupt_init_iris35(struct msm_vidc_core *core)
 	mask_val &= ~(WRAPPER_INTR_MASK_A2HWD_BMSK_IRIS35|
 			WRAPPER_INTR_MASK_A2HCPU_BMSK_IRIS35);
 	rc = __write_register(core, WRAPPER_INTR_MASK_IRIS35, mask_val);
+	if (rc)
+		return rc;
+
+	return 0;
+}
+
+static int __raise_interrupt_iris35(struct msm_vidc_core *core)
+{
+	int rc = 0;
+
+	rc = __write_register(core, CPU_IC_SOFTINT_IRIS35, 1 << CPU_IC_SOFTINT_H2A_SHFT_IRIS35);
+	if (rc)
+		return rc;
+
+	return 0;
+}
+
+static int __clear_interrupt_iris35(struct msm_vidc_core *core)
+{
+	u32 intr_status = 0, mask = 0;
+	int rc = 0;
+
+	rc = __read_register(core, WRAPPER_INTR_STATUS_IRIS35, &intr_status);
+	if (rc)
+		return rc;
+
+	mask = (WRAPPER_INTR_STATUS_A2H_BMSK_IRIS35 |
+		WRAPPER_INTR_STATUS_A2HWD_BMSK_IRIS35 |
+		HFI_CTRL_VCODEC_IDLE);
+
+	if (intr_status & mask) {
+		core->intr_status |= intr_status;
+		core->reg_count++;
+		d_vpr_l("INTERRUPT: times: %d interrupt_status: %d\n",
+			core->reg_count, intr_status);
+	} else {
+		core->spur_count++;
+	}
+
+	rc = __write_register(core, CPU_CS_A2HSOFTINTCLR_IRIS35, 1);
 	if (rc)
 		return rc;
 
@@ -252,6 +299,59 @@ static int __program_bootup_registers_iris35(struct msm_vidc_core *core)
 	return 0;
 }
 
+static int __boot_firmware_iris35(struct msm_vidc_core *core)
+{
+	int rc = 0;
+	u32 ctrl_init_val = 0, ctrl_status = 0, count = 0, max_tries = 1000;
+
+	rc = __program_bootup_registers_iris35(core);
+	if (rc)
+		return rc;
+
+	ctrl_init_val = BIT(0);
+
+	rc = __write_register(core, HFI_CTRL_INIT_IRIS35, ctrl_init_val);
+	if (rc)
+		return rc;
+
+	while (count < max_tries) {
+		rc = __read_register(core, HFI_CTRL_STATUS_IRIS35, &ctrl_status);
+		if (rc)
+			return rc;
+
+		if ((ctrl_status & HFI_CTRL_ERROR_FATAL) ||
+		    (ctrl_status & HFI_CTRL_ERROR_UC_REGION_NOT_SET) ||
+		    (ctrl_status & HFI_CTRL_ERROR_HW_FENCE_QUEUE)) {
+			d_vpr_e("%s: boot firmware failed, ctrl status %#x\n",
+				__func__, ctrl_status);
+			return -EINVAL;
+		} else if (ctrl_status & HFI_CTRL_READY) {
+			d_vpr_h("%s: boot firmware is successful, ctrl status %#x\n",
+				__func__, ctrl_status);
+			break;
+		}
+
+		usleep_range(50, 100);
+		count++;
+	}
+
+	if (count >= max_tries) {
+		d_vpr_e("Error booting up vidc firmware, ctrl status %#x\n", ctrl_status);
+		return -ETIME;
+	}
+
+	/* Enable interrupt before sending commands to venus */
+	rc = __write_register(core, CPU_CS_H2XSOFTINTEN_IRIS35, 0x1);
+	if (rc)
+		return rc;
+
+	rc = __write_register(core, CPU_CS_X2RPMh_IRIS35, 0x0);
+	if (rc)
+		return rc;
+
+	return rc;
+}
+
 static bool is_iris35_hw_power_collapsed(struct msm_vidc_core *core)
 {
 	int rc = 0;
@@ -271,6 +371,7 @@ static int __power_off_iris35_hardware(struct msm_vidc_core *core)
 	int rc = 0, i;
 	u32 value = 0;
 	bool pwr_collapsed = false;
+	u32 count = 0;
 
 	/*
 	 * Incase hw power control is enabled, for any error case
@@ -309,7 +410,7 @@ static int __power_off_iris35_hardware(struct msm_vidc_core *core)
 
 	/*
 	 * add MNoC idle check before collapsing MVS0 per HPG update
-	 * poll for NoC DMA idle -> HPG 6.1.1
+	 * poll for NoC DMA idle -> HPG 3.4.4
 	 */
 	for (i = 0; i < core->capabilities[NUM_VPP_PIPE].value; i++) {
 		rc = __read_register_with_poll_timeout(core, VCODEC_SS_IDLE_STATUSn + 4*i,
@@ -325,10 +426,38 @@ static int __power_off_iris35_hardware(struct msm_vidc_core *core)
 	if (rc)
 		return rc;
 
-	rc = __read_register_with_poll_timeout(core, AON_WRAPPER_MVP_NOC_LPI_STATUS,
-					0x1, 0x1, 200, 2000);
+	rc = __read_register(core, AON_WRAPPER_MVP_NOC_LPI_STATUS, &value);
 	if (rc)
-		d_vpr_e("%s: AON_WRAPPER_MVP_NOC_LPI_CONTROL failed\n", __func__);
+		return rc;
+
+	while ((!(value & BIT(0))) && (value & BIT(1) || value & BIT(2))) {
+		rc = __write_register_masked(core, AON_WRAPPER_MVP_NOC_LPI_CONTROL,
+					     0x0, BIT(0));
+		if (rc)
+			return rc;
+
+		usleep_range(10, 20);
+
+		rc = __write_register_masked(core, AON_WRAPPER_MVP_NOC_LPI_CONTROL,
+					     0x1, BIT(0));
+		if (rc)
+			return rc;
+
+		rc = __read_register(core, AON_WRAPPER_MVP_NOC_LPI_STATUS, &value);
+		if (rc)
+			return rc;
+
+		++count;
+		if (count >= 1000) {
+			d_vpr_e("%s: AON_WRAPPER_MVP_NOC_LPI_CONTROL failed\n", __func__);
+			break;
+		}
+	}
+
+	rc = __read_register_with_poll_timeout(core, AON_WRAPPER_MVP_NOC_LPI_STATUS,
+					       0x1, 0x1, 200, 2000);
+	if (rc)
+		d_vpr_e("%s: AON_WRAPPER_MVP_NOC_LPI_CONTROL failed1\n", __func__);
 
 	rc = __write_register_masked(core, AON_WRAPPER_MVP_NOC_LPI_CONTROL,
 					0x0, BIT(0));
@@ -374,7 +503,7 @@ static int __power_off_iris35_controller(struct msm_vidc_core *core)
 
 	/*
 	 * mask fal10_veto QLPAC error since fal10_veto can go 1
-	 * when pwwait == 0 and clamped to 0 -> HPG 6.1.2
+	 * when pwwait == 0 and clamped to 0 -> HPG 3.7.4
 	 */
 	rc = __write_register(core, CPU_CS_X2RPMh_IRIS35, 0x3);
 	if (rc)
@@ -391,156 +520,63 @@ static int __power_off_iris35_controller(struct msm_vidc_core *core)
 	if (rc)
 		d_vpr_e("%s: WRAPPER_IRIS_CPU_NOC_LPI_CONTROL failed\n", __func__);
 
+	rc = __write_register_masked(core, WRAPPER_IRIS_CPU_NOC_LPI_CONTROL,
+				     0x0, BIT(0));
+	if (rc)
+		return rc;
+
+	rc = __write_register_masked(core, AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_CONTROL,
+				     0x1, BIT(0));
+	if (rc)
+		return rc;
+
+	rc = __read_register(core, AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_STATUS, &value);
+	if (rc)
+		return rc;
+
+	while ((!(value & BIT(0))) && (value & BIT(1) || value & BIT(2))) {
+		rc = __write_register_masked(core, AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_CONTROL,
+					     0x0, BIT(0));
+		if (rc)
+			return rc;
+
+		usleep_range(10, 20);
+
+		rc = __write_register_masked(core, AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_CONTROL,
+					     0x1, BIT(0));
+		if (rc)
+			return rc;
+
+		rc = __read_register(core, AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_STATUS, &value);
+		if (rc)
+			return rc;
+
+		++count;
+		if (count >= 1000) {
+			d_vpr_e("%s: AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_CONTROL failed\n", __func__);
+			break;
+		}
+	}
+
+	rc = __read_register_with_poll_timeout(core, AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_STATUS,
+					       0x1, 0x1, 200, 2000);
+	if (rc)
+		d_vpr_e("%s: AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_CONTROL failed\n", __func__);
+
+	rc = __write_register_masked(core, AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_CONTROL,
+				     0x0, BIT(0));
+	if (rc)
+		return rc;
+
 	/* Debug bridge LPI release */
 	rc = __write_register(core, WRAPPER_DEBUG_BRIDGE_LPI_CONTROL_IRIS35, 0x0);
 	if (rc)
 		return rc;
 
 	rc = __read_register_with_poll_timeout(core, WRAPPER_DEBUG_BRIDGE_LPI_STATUS_IRIS35,
-			0xffffffff, 0x0, 200, 2000);
+					       0xffffffff, 0x0, 200, 2000);
 	if (rc)
 		d_vpr_e("%s: debug bridge release failed\n", __func__);
-
-	/* Reset MVP QNS4PDXFIFO */
-	rc = __write_register(core, WRAPPER_TZ_CTL_AXI_CLOCK_CONFIG, 0x3);
-	if (rc)
-		return rc;
-
-	rc = __write_register(core, WRAPPER_TZ_QNS4PDXFIFO_RESET, 0x1);
-	if (rc)
-		return rc;
-
-	rc = __write_register(core, WRAPPER_TZ_QNS4PDXFIFO_RESET, 0x0);
-	if (rc)
-		return rc;
-
-	rc = __write_register(core, WRAPPER_TZ_CTL_AXI_CLOCK_CONFIG, 0x0);
-	if (rc)
-		return rc;
-
-	/* assert and deassert axi and mvs0c resets */
-	rc = call_res_op(core, reset_control_assert, core, "video_axi_reset");
-	if (rc)
-		d_vpr_e("%s: assert video_axi_reset failed\n", __func__);
-	/* set retain mem and peripheral before asset mvs0c reset */
-	rc = call_res_op(core, clk_set_flag, core,
-		"video_cc_mvs0c_clk", MSM_VIDC_CLKFLAG_RETAIN_MEM);
-	if (rc)
-		d_vpr_e("%s: set retain mem failed\n", __func__);
-	rc = call_res_op(core, clk_set_flag, core,
-		"video_cc_mvs0c_clk", MSM_VIDC_CLKFLAG_RETAIN_PERIPH);
-	if (rc)
-		d_vpr_e("%s: set retain peripheral failed\n", __func__);
-	rc = call_res_op(core, reset_control_assert, core, "video_mvs0c_reset");
-	if (rc)
-		d_vpr_e("%s: assert video_mvs0c_reset failed\n", __func__);
-	usleep_range(400, 500);
-	rc = call_res_op(core, reset_control_deassert, core, "video_axi_reset");
-	if (rc)
-		d_vpr_e("%s: de-assert video_axi_reset failed\n", __func__);
-	rc = call_res_op(core, reset_control_deassert, core, "video_mvs0c_reset");
-	if (rc)
-		d_vpr_e("%s: de-assert video_mvs0c_reset failed\n", __func__);
-
-	/* Disable MVP NoC clock */
-	rc = __write_register_masked(core, AON_WRAPPER_MVP_NOC_CORE_CLK_CONTROL,
-			0x1, BIT(0));
-	if (rc)
-		return rc;
-
-	/* enable MVP NoC reset */
-	rc = __write_register_masked(core, AON_WRAPPER_MVP_NOC_CORE_SW_RESET,
-			0x1, BIT(0));
-	if (rc)
-		return rc;
-
-	/*
-	 * need to acquire "video_xo_reset" before assert and release
-	 * after de-assert "video_xo_reset" reset clock to avoid other
-	 * drivers (eva driver) operating on this shared reset clock
-	 * and AON_WRAPPER_SPARE register in parallel.
-	 */
-	count = 0;
-	do {
-		rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
-		if (!rc) {
-			break;
-		} else {
-			d_vpr_e(
-				"%s: failed to acquire video_xo_reset control, count %d\n",
-				__func__, count);
-			count++;
-			usleep_range(1000, 1000);
-		}
-	} while (count < 100);
-
-	if (count >= 100) {
-		d_vpr_e("%s: timeout acquiring video_xo_reset\n", __func__);
-		goto skip_video_xo_reset;
-	}
-
-	/* poll AON spare register bit0 to become zero with 50ms timeout */
-	rc = __read_register_with_poll_timeout(core, AON_WRAPPER_SPARE,
-			0x1, 0x0, 1000, 50 * 1000);
-	if (rc)
-		d_vpr_e("%s: AON spare register is not zero\n", __func__);
-
-	/* enable bit(1) to avoid cvp noc xo reset */
-	rc = __write_register(core, AON_WRAPPER_SPARE, value | 0x2);
-	if (rc)
-		return rc;
-
-	/* assert video_cc XO reset */
-	rc = call_res_op(core, reset_control_assert, core, "video_xo_reset");
-	if (rc)
-		d_vpr_e("%s: assert video_xo_reset failed\n", __func__);
-
-	/* De-assert MVP NoC reset */
-	rc = __write_register_masked(core, AON_WRAPPER_MVP_NOC_CORE_SW_RESET,
-			0x0, BIT(0));
-	if (rc)
-		d_vpr_e("%s: MVP_NOC_CORE_SW_RESET failed\n", __func__);
-
-	/* De-assert video_cc XO reset */
-	usleep_range(80, 100);
-	rc = call_res_op(core, reset_control_deassert, core, "video_xo_reset");
-	if (rc)
-		d_vpr_e("%s: deassert video_xo_reset failed\n", __func__);
-
-	/* reset AON spare register */
-	rc = __write_register(core, AON_WRAPPER_SPARE, 0x0);
-	if (rc)
-		return rc;
-
-	/* release reset control for other consumers */
-	rc = call_res_op(core, reset_control_release, core, "video_xo_reset");
-	if (rc)
-		d_vpr_e("%s: failed to release video_xo_reset reset\n", __func__);
-
-skip_video_xo_reset:
-	/* Enable MVP NoC clock */
-	rc = __write_register_masked(core, AON_WRAPPER_MVP_NOC_CORE_CLK_CONTROL,
-			0x0, BIT(0));
-	if (rc)
-		return rc;
-
-	/* remove retain mem and retain peripheral */
-	rc = call_res_op(core, clk_set_flag, core,
-		"video_cc_mvs0c_clk", MSM_VIDC_CLKFLAG_NORETAIN_PERIPH);
-	if (rc)
-		d_vpr_e("%s: set noretain peripheral failed\n", __func__);
-
-	rc = call_res_op(core, clk_set_flag, core,
-		"video_cc_mvs0c_clk", MSM_VIDC_CLKFLAG_NORETAIN_MEM);
-	if (rc)
-		d_vpr_e("%s: set noretain mem failed\n", __func__);
-
-	/* Turn off MVP MVS0C core clock */
-	rc = call_res_op(core, clk_disable, core, "video_cc_mvs0c_clk");
-	if (rc) {
-		d_vpr_e("%s: disable unprepare video_cc_mvs0c_clk failed\n", __func__);
-		rc = 0;
-	}
 
 	/* power down process */
 	rc = call_res_op(core, gdsc_off, core, "iris-ctl");
@@ -549,12 +585,69 @@ skip_video_xo_reset:
 		rc = 0;
 	}
 
-	/* Turn off GCC AXI clock */
+	rc = call_res_op(core, clk_disable, core, "gcc_video_axi1_clk");
+	if (rc) {
+		d_vpr_e("%s: disable unprepare gcc_video_axi1_clk failed\n", __func__);
+		rc = 0;
+	}
+
 	rc = call_res_op(core, clk_disable, core, "gcc_video_axi0_clk");
 	if (rc) {
 		d_vpr_e("%s: disable unprepare gcc_video_axi0_clk failed\n", __func__);
 		rc = 0;
 	}
+
+	rc = call_res_op(core, clk_disable, core, "video_cc_mvs0c_freerun_clk");
+	if (rc) {
+		d_vpr_e("%s: disable unprepare video_cc_mvs0c_freerun_clk failed\n", __func__);
+		rc = 0;
+	}
+
+	rc = call_res_op(core, clk_disable, core, "video_cc_mvs0_freerun_clk");
+	if (rc) {
+		d_vpr_e("%s: disable unprepare video_cc_mvs0_freerun_clk failed\n", __func__);
+		rc = 0;
+	}
+
+	rc = call_res_op(core, clk_disable, core, "video_cc_mvs0c_clk");
+	if (rc) {
+		d_vpr_e("%s: disable unprepare video_cc_mvs0c_clk failed\n", __func__);
+		rc = 0;
+	}
+
+	rc = call_res_op(core, reset_control_assert, core, "video_axi1_reset");
+	if (rc)
+		d_vpr_e("%s: assert video_axi1_reset failed\n", __func__);
+
+	rc = call_res_op(core, reset_control_assert, core, "video_axi0_reset");
+	if (rc)
+		d_vpr_e("%s: assert video_axi0_reset failed\n", __func__);
+
+	rc = call_res_op(core, reset_control_assert, core, "video_mvs0c_freerun_reset");
+	if (rc)
+		d_vpr_e("%s: assert video_mvs0c_reset failed\n", __func__);
+
+	rc = call_res_op(core, reset_control_assert, core, "video_mvs0_freerun_reset");
+	if (rc)
+		d_vpr_e("%s: assert video_mvs0_reset failed\n", __func__);
+
+	usleep_range(400, 500);
+
+	rc = call_res_op(core, reset_control_deassert, core, "video_mvs0_freerun_reset");
+	if (rc)
+		d_vpr_e("%s: deassert video_mvs0_reset failed\n", __func__);
+
+	rc = call_res_op(core, reset_control_deassert, core, "video_mvs0c_freerun_reset");
+	if (rc)
+		d_vpr_e("%s: deassert video_mvs0c_reset failed\n", __func__);
+
+	rc = call_res_op(core, reset_control_deassert, core, "video_axi0_reset");
+	if (rc)
+		d_vpr_e("%s: deassert video_axi0_reset failed\n", __func__);
+
+	rc = call_res_op(core, reset_control_deassert, core, "video_axi1_reset");
+	if (rc)
+		d_vpr_e("%s: deassert video_axi1_reset failed\n", __func__);
 
 	return rc;
 }
@@ -600,24 +693,13 @@ static int __power_on_iris35_controller(struct msm_vidc_core *core)
 	if (rc)
 		goto fail_regulator;
 
-	rc = call_res_op(core, reset_control_assert, core, "video_axi_reset");
-	if (rc)
-		goto fail_reset_assert_axi;
-	rc = call_res_op(core, reset_control_assert, core, "video_mvs0c_reset");
-	if (rc)
-		goto fail_reset_assert_mvs0c;
-	/* add usleep between assert and deassert */
-	usleep_range(1000, 1100);
-	rc = call_res_op(core, reset_control_deassert, core, "video_axi_reset");
-	if (rc)
-		goto fail_reset_deassert_axi;
-	rc = call_res_op(core, reset_control_deassert, core, "video_mvs0c_reset");
-	if (rc)
-		goto fail_reset_deassert_mvs0c;
-
-	rc = call_res_op(core, clk_enable, core, "gcc_video_axi0_clk");
+	rc = call_res_op(core, clk_enable, core, "gcc_video_axi1_clk");
 	if (rc)
 		goto fail_clk_axi;
+
+	rc = call_res_op(core, clk_enable, core, "video_cc_mvs0c_freerun_clk");
+	if (rc)
+		goto fail_clk_freerun;
 
 	rc = call_res_op(core, clk_enable, core, "video_cc_mvs0c_clk");
 	if (rc)
@@ -626,14 +708,10 @@ static int __power_on_iris35_controller(struct msm_vidc_core *core)
 	return 0;
 
 fail_clk_controller:
-	call_res_op(core, clk_disable, core, "gcc_video_axi0_clk");
+	call_res_op(core, clk_disable, core, "video_cc_mvs0c_freerun_clk");
+fail_clk_freerun:
+	call_res_op(core, clk_disable, core, "gcc_video_axi1_clk");
 fail_clk_axi:
-fail_reset_deassert_mvs0c:
-fail_reset_deassert_axi:
-	call_res_op(core, reset_control_deassert, core, "video_mvs0c_reset");
-fail_reset_assert_mvs0c:
-	call_res_op(core, reset_control_deassert, core, "video_axi_reset");
-fail_reset_assert_axi:
 	call_res_op(core, gdsc_off, core, "iris-ctl");
 fail_regulator:
 	return rc;
@@ -647,6 +725,14 @@ static int __power_on_iris35_hardware(struct msm_vidc_core *core)
 	if (rc)
 		goto fail_regulator;
 
+	rc = call_res_op(core, clk_enable, core, "gcc_video_axi0_clk");
+	if (rc)
+		goto fail_clk_axi;
+
+	rc = call_res_op(core, clk_enable, core, "video_cc_mvs0_freerun_clk");
+	if (rc)
+		goto fail_clk_freerun;
+
 	rc = call_res_op(core, clk_enable, core, "video_cc_mvs0_clk");
 	if (rc)
 		goto fail_clk_controller;
@@ -654,6 +740,10 @@ static int __power_on_iris35_hardware(struct msm_vidc_core *core)
 	return 0;
 
 fail_clk_controller:
+	call_res_op(core, clk_disable, core, "video_cc_mvs0_freerun_clk");
+fail_clk_freerun:
+	call_res_op(core, clk_disable, core, "gcc_video_axi0_clk");
+fail_clk_axi:
 	call_res_op(core, gdsc_off, core, "vcodec");
 fail_regulator:
 	return rc;
@@ -664,7 +754,6 @@ static int __power_on_iris35(struct msm_vidc_core *core)
 	struct frequency_table *freq_tbl;
 	u32 freq = 0;
 	int rc = 0;
-	int count = 0;
 
 	if (is_core_sub_state(core, CORE_SUBSTATE_POWER_ENABLE))
 		return 0;
@@ -707,70 +796,6 @@ static int __power_on_iris35(struct msm_vidc_core *core)
 		d_vpr_e("%s: failed to scale clocks\n", __func__);
 		rc = 0;
 	}
-	/*
-	 * Re-program all of the registers that get reset as a result of
-	 * regulator_disable() and _enable()
-	 * When video module writing to QOS registers EVA module is not
-	 * supposed to do video_xo_reset operations else we will see register
-	 * access failure, so acquire video_xo_reset to ensure EVA module is
-	 * not doing assert or de-assert on video_xo_reset.
-	 */
-	do {
-		rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
-		if (!rc) {
-			break;
-		} else {
-			d_vpr_e(
-				"%s: failed to acquire video_xo_reset control, count %d\n",
-				__func__, count);
-			count++;
-			usleep_range(1000, 1000);
-		}
-	} while (count < 100);
-
-	if (count >= 100) {
-		d_vpr_e("%s: timeout acquiring video_xo_reset\n", __func__);
-		goto fail_assert_xo_reset;
-	}
-
-	__set_registers(core);
-
-	/*
-	 * Programm NOC error registers before releasing xo reset
-	 * Clear error logger registers and then enable StallEn
-	 */
-	rc = __write_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRCLR_LOW, 0x1);
-	if (rc) {
-		d_vpr_e(
-			"%s: error clearing NOC_MAIN_ERRORLOGGER_ERRCLR_LOW\n",
-			__func__);
-		goto fail_program_noc_regs;
-	}
-
-	rc = __write_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_MAINCTL_LOW, 0x3);
-	if (rc) {
-		d_vpr_e(
-			"%s: failed to set NOC_ERL_MAIN_ERRORLOGGER_MAINCTL_LOW\n",
-			__func__);
-		goto fail_program_noc_regs;
-	}
-	rc = __write_register(core,
-			NOC_SIDEBANDMANAGER_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW, 0x1);
-	if (rc) {
-		d_vpr_e(
-			"%s: failed to set NOC_SIDEBANDMANAGER_FAULTINEN0_LOW\n",
-			__func__);
-		goto fail_program_noc_regs;
-	}
-
-	/* release reset control for other consumers */
-	rc = call_res_op(core, reset_control_release, core, "video_xo_reset");
-	if (rc) {
-		d_vpr_e("%s: failed to release video_xo_reset reset\n", __func__);
-		goto fail_deassert_xo_reset;
-	}
 
 	__interrupt_init_iris35(core);
 	core->intr_status = 0;
@@ -778,9 +803,6 @@ static int __power_on_iris35(struct msm_vidc_core *core)
 
 	return rc;
 
-fail_program_noc_regs:
-fail_deassert_xo_reset:
-fail_assert_xo_reset:
 fail_power_on_substate:
 	__power_off_iris35_hardware(core);
 fail_power_on_hardware:
@@ -854,17 +876,6 @@ skip_power_off:
 	return -EAGAIN;
 }
 
-static int __raise_interrupt_iris35(struct msm_vidc_core *core)
-{
-	int rc = 0;
-
-	rc = __write_register(core, CPU_IC_SOFTINT_IRIS35, 1 << CPU_IC_SOFTINT_H2A_SHFT_IRIS35);
-	if (rc)
-		return rc;
-
-	return 0;
-}
-
 static int __watchdog_iris35(struct msm_vidc_core *core, u32 intr_status)
 {
 	int rc = 0;
@@ -879,72 +890,12 @@ static int __watchdog_iris35(struct msm_vidc_core *core, u32 intr_status)
 
 static int __noc_error_info_iris35(struct msm_vidc_core *core)
 {
-	u32 value, count = 0;
+	u32 value;
 	int rc = 0;
-
-	/*
-	 * we are not supposed to access vcodec subsystem registers
-	 * unless vcodec core clock WRAPPER_CORE_CLOCK_CONFIG_IRIS35 is enabled.
-	 * core clock might have been disabled by video firmware as part of
-	 * inter frame power collapse (power plane control feature).
-	 */
-
-	/*
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_SWID_LOW);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_SWID_LOW:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_SWID_HIGH);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_SWID_HIGH:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_MAINCTL_LOW);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_MAINCTL_LOW:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_ERRVLD_LOW);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_ERRVLD_LOW:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_ERRCLR_LOW);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_ERRCLR_LOW:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_ERRLOG0_LOW);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_ERRLOG0_LOW:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_ERRLOG0_HIGH);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_ERRLOG0_HIGH:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_ERRLOG1_LOW);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_ERRLOG1_LOW:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_ERRLOG1_HIGH);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_ERRLOG1_HIGH:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_ERRLOG2_LOW);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_ERRLOG2_LOW:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_ERRLOG2_HIGH);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_ERRLOG2_HIGH:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_ERRLOG3_LOW);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_ERRLOG3_LOW:     %#x\n", val);
-	val = __read_register(core, VCODEC_NOC_ERL_MAIN_ERRLOG3_HIGH);
-	d_vpr_e("VCODEC_NOC_ERL_MAIN_ERRLOG3_HIGH:     %#x\n", val);
-	 */
 
 	if (is_iris35_hw_power_collapsed(core)) {
 		d_vpr_e("%s: video hardware already power collapsed\n", __func__);
 		return rc;
-	}
-
-	/*
-	 * Acquire video_xo_reset to ensure EVA module is
-	 * not doing assert or de-assert on video_xo_reset
-	 * while reading noc registers
-	 */
-	d_vpr_e("%s: read NOC ERR LOG registers\n", __func__);
-	do {
-		rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
-		if (!rc) {
-			break;
-		} else {
-			d_vpr_e(
-				"%s: failed to acquire video_xo_reset control, count %d\n",
-				__func__, count);
-			count++;
-			usleep_range(1000, 1000);
-		}
-	} while (count < 100);
-
-	if (count >= 100) {
-		d_vpr_e("%s: timeout acquiring video_xo_reset\n", __func__);
-		goto fail_assert_xo_reset;
 	}
 
 	rc = __read_register(core,
@@ -987,97 +938,6 @@ static int __noc_error_info_iris35(struct msm_vidc_core *core)
 	if (!rc)
 		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH:  %#x\n",
 			__func__, value);
-	/* release reset control for other consumers */
-	rc = call_res_op(core, reset_control_release, core, "video_xo_reset");
-	if (rc) {
-		d_vpr_e("%s: failed to release video_xo_reset reset\n", __func__);
-		goto fail_deassert_xo_reset;
-	}
-
-fail_deassert_xo_reset:
-fail_assert_xo_reset:
-	MSM_VIDC_FATAL(true);
-	return rc;
-}
-
-static int __clear_interrupt_iris35(struct msm_vidc_core *core)
-{
-	u32 intr_status = 0, mask = 0;
-	int rc = 0;
-
-	rc = __read_register(core, WRAPPER_INTR_STATUS_IRIS35, &intr_status);
-	if (rc)
-		return rc;
-
-	mask = (WRAPPER_INTR_STATUS_A2H_BMSK_IRIS35|
-		WRAPPER_INTR_STATUS_A2HWD_BMSK_IRIS35|
-		HFI_CTRL_VCODEC_IDLE);
-
-	if (intr_status & mask) {
-		core->intr_status |= intr_status;
-		core->reg_count++;
-		d_vpr_l("INTERRUPT: times: %d interrupt_status: %d\n",
-			core->reg_count, intr_status);
-	} else {
-		core->spur_count++;
-	}
-
-	rc = __write_register(core, CPU_CS_A2HSOFTINTCLR_IRIS35, 1);
-	if (rc)
-		return rc;
-
-	return 0;
-}
-
-static int __boot_firmware_iris35(struct msm_vidc_core *core)
-{
-	int rc = 0;
-	u32 ctrl_init_val = 0, ctrl_status = 0, count = 0, max_tries = 1000;
-
-	rc = __program_bootup_registers_iris35(core);
-	if (rc)
-		return rc;
-
-	ctrl_init_val = BIT(0);
-
-	rc = __write_register(core, HFI_CTRL_INIT_IRIS35, ctrl_init_val);
-	if (rc)
-		return rc;
-
-	while (count < max_tries) {
-		rc = __read_register(core, HFI_CTRL_STATUS_IRIS35, &ctrl_status);
-		if (rc)
-			return rc;
-
-		if ((ctrl_status & HFI_CTRL_ERROR_FATAL) ||
-			(ctrl_status & HFI_CTRL_ERROR_UC_REGION_NOT_SET) ||
-			(ctrl_status & HFI_CTRL_ERROR_HW_FENCE_QUEUE)) {
-			d_vpr_e("%s: boot firmware failed, ctrl status %#x\n",
-				__func__, ctrl_status);
-			return -EINVAL;
-		} else if (ctrl_status & HFI_CTRL_READY) {
-			d_vpr_h("%s: boot firmware is successful, ctrl status %#x\n",
-				__func__, ctrl_status);
-			break;
-		}
-
-		usleep_range(50, 100);
-		count++;
-	}
-
-	if (count >= max_tries) {
-		d_vpr_e("Error booting up vidc firmware, ctrl status %#x\n", ctrl_status);
-		return -ETIME;
-	}
-
-	/* Enable interrupt before sending commands to venus */
-	rc = __write_register(core, CPU_CS_H2XSOFTINTEN_IRIS35, 0x1);
-	if (rc)
-		return rc;
-
-	rc = __write_register(core, CPU_CS_X2RPMh_IRIS35, 0x0);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -1285,12 +1145,10 @@ adjust:
 	return 0;
 }
 
-
-
 static struct msm_vidc_venus_ops iris35_ops = {
-	.boot_firmware = __boot_firmware_iris35,
 	.raise_interrupt = __raise_interrupt_iris35,
 	.clear_interrupt = __clear_interrupt_iris35,
+	.boot_firmware = __boot_firmware_iris35,
 	.power_on = __power_on_iris35,
 	.power_off = __power_off_iris35,
 	.prepare_pc = __prepare_pc_iris35,
