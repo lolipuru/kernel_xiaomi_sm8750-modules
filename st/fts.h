@@ -250,7 +250,8 @@ typedef void (*event_dispatch_handler_t)
   * - avdd_reg        AVDD power regulator \n
   * - resume_bit      Indicate if screen off/on \n
   * - fwupdate_stat   Store the result of a fw update triggered by the host \n
-  * - notifier        Used for be notified from a suspend/resume event \n
+  * - fb_notifier     Used for be notified from a suspend/resume event \n
+  * - notifier_cookie saved cookie during panel event notification \n
   * - sensor_sleep    true suspend was called, false resume was called \n
   * - wakesrc         Wakeup Source struct \n
   * - input_report_mutex  mutex for handling the pressure of keys \n
@@ -304,8 +305,15 @@ struct fts_ts_info {
 				 * by the host */
 
 
-	struct notifier_block notifier;	/* /< Used for be notified from a
-					 * suspend/resume event */
+#if defined(CONFIG_DRM)
+	struct notifier_block fb_notifier;
+	void *notifier_cookie;
+#elif defined(CONFIG_FB)
+	struct notifier_block fb_notifier;	/* /< Used for be notified from a
+						 * suspend/resume event
+						 */
+#endif
+
 	bool sensor_sleep;	/* /< if true suspend was called while if false
 				 * resume was called */
 	struct wakeup_source *wakesrc;	/* Wake Lock struct */
@@ -330,7 +338,7 @@ struct fts_ts_info {
 
 	bool ready;	/* /< indicate whether probe finished and touch is ready */
 	u16 bus_type;	/* /< bus interface used for touch IC */
-	int irq;	/* /< saved irq number for touch*/
+	int irq;	/* /< saved irq number for touch */
 };
 
 
