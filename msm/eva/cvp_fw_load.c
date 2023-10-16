@@ -106,10 +106,6 @@ static int __load_fw_to_memory(struct platform_device *pdev,
 		goto exit;
 	}
 
-	dprintk(CVP_ERR, "Successfully loaded FW, but NOT READY FOR BOOTING\n");
-	rc = -29;
-	goto exit;
-
 	rc = qcom_scm_pas_auth_and_reset(pas_id);
 	if (rc) {
 		dprintk(CVP_ERR, "%s: error %d authenticating \"%s\"\n",

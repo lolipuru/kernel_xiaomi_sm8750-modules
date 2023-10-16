@@ -18,7 +18,7 @@ EXPORT_SYMBOL(msm_cvp_debug);
 int msm_cvp_debug_out = CVP_OUT_PRINTK;
 EXPORT_SYMBOL(msm_cvp_debug_out);
 
-int msm_cvp_fw_debug = 0x18;
+int msm_cvp_fw_debug = 0x10018;
 int msm_cvp_fw_debug_mode = 1;
 int msm_cvp_fw_low_power_mode = !1;
 bool msm_cvp_fw_coverage = !true;
@@ -37,7 +37,7 @@ bool msm_cvp_mmrm_enabled = !true;
 bool msm_cvp_dcvs_disable = !true;
 int msm_cvp_minidump_enable = !1;
 int cvp_kernel_fence_enabled = 2;
-int msm_cvp_hw_wd_recovery = 1;
+int msm_cvp_hw_wd_recovery = !1;
 
 #define MAX_DBG_BUF_SIZE 4096
 
