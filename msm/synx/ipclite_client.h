@@ -13,13 +13,13 @@ typedef atomic_t ipclite_atomic_int32_t;
  */
 enum ipcmem_host_type {
 	IPCMEM_APPS         =  0,                     /**< Apps Processor */
-	IPCMEM_MODEM        =  1,                     /**< Modem processor */
+	IPCMEM_CAM1         =  1,                     /**< Camera processor ICP1 */
 	IPCMEM_LPASS        =  2,                     /**< Audio processor */
 	IPCMEM_SLPI         =  3,                     /**< Sensor processor */
 	IPCMEM_GPU          =  4,                     /**< Graphics processor */
 	IPCMEM_CDSP         =  5,                     /**< Compute DSP processor */
 	IPCMEM_CVP          =  6,                     /**< Computer Vision processor */
-	IPCMEM_CAM          =  7,                     /**< Camera processor */
+	IPCMEM_CAM          =  7,                     /**< Camera processor ICP0 */
 	IPCMEM_VPU          =  8,                     /**< Video processor */
 	IPCMEM_NUM_HOSTS    =  9,                     /**< Max number of host in target */
 
