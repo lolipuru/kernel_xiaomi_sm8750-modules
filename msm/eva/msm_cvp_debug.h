@@ -65,6 +65,7 @@ extern bool msm_cvp_thermal_mitigation_disabled;
 extern bool msm_cvp_cacheop_disabled;
 extern int msm_cvp_clock_voting;
 extern bool msm_cvp_syscache_disable;
+extern bool msm_cvp_probe_allowed;
 extern bool msm_cvp_dsp_disable;
 extern bool msm_cvp_mmrm_enabled;
 extern bool msm_cvp_dcvs_disable;

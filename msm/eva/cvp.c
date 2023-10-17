@@ -471,6 +471,8 @@ static int msm_cvp_probe_bus(struct platform_device *pdev)
 
 static int msm_cvp_probe(struct platform_device *pdev)
 {
+	if (!msm_cvp_probe_allowed)
+		return 0;
 	/*
 	 * Sub devices probe will be triggered by of_platform_populate() towards
 	 * the end of the probe function after msm-cvp device probe is
