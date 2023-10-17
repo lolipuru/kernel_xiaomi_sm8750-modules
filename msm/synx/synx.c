@@ -2009,11 +2009,20 @@ static int synx_native_import_indv(struct synx_client *client,
 		params->flags = SYNX_IMPORT_GLOBAL_FENCE | SYNX_IMPORT_DMA_FENCE;
 	}
 
-	if (likely(params->flags & SYNX_IMPORT_DMA_FENCE))
+	if (likely(params->flags & SYNX_IMPORT_DMA_FENCE)) {
+
+		if (dma_fence_is_array(params->fence)) {
+			dprintk(SYNX_ERR, "Cannot import dma fence array %pK\n", params->fence);
+			rc = -SYNX_NOSUPPORT;
+			goto bail;
+		}
+
 		rc = synx_native_import_fence(client, params);
+	}
 	else if (params->flags & SYNX_IMPORT_SYNX_FENCE)
 		rc = synx_native_import_handle(client, params);
 
+bail:
 	if ((flags & SYNX_IMPORT_SYNX_FENCE) && IS_HW_FENCE(hw_fence)) {
 		dma_fence_put((struct dma_fence *)params->fence);
 		params->fence = fence;
