@@ -1154,6 +1154,24 @@ static int msm_cvp_get_sysprop(struct msm_cvp_inst *inst,
 	return rc;
 }
 
+static int cvp_session_name_copy_u32(u32 idx,
+		struct cvp_session_prop *session_prop,
+		u32 *val)
+{
+	int rc = 0;
+
+	if (idx > SESSION_NAME_MAX_LEN - 4) {
+		dprintk(CVP_ERR, "Session name exceed maximum length %d\n",
+				SESSION_NAME_MAX_LEN);
+		memset(session_prop->session_name, 0x00, SESSION_NAME_MAX_LEN);
+		rc = -E2BIG;
+	} else {
+		memcpy(&session_prop->session_name[idx],
+			val, sizeof(u32));
+	}
+	return rc;
+}
+
 static int msm_cvp_set_sysprop(struct msm_cvp_inst *inst,
 		struct eva_kmd_arg *arg)
 {
@@ -1302,6 +1320,14 @@ static int msm_cvp_set_sysprop(struct msm_cvp_inst *inst,
 		case EVA_KMD_PROP_SESSION_DUMPSIZE:
 			session_prop->dump_size = prop_array[i].data;
 			break;
+		case EVA_KMD_PROP_SET_NAME:
+		{
+			u32 idx = i * 4;
+
+			rc = cvp_session_name_copy_u32(idx, session_prop,
+								(u32 *)&(prop_array[i].data));
+			break;
+		}
 		default:
 			dprintk(CVP_ERR,
 				"unrecognized sys property to set %d\n",
@@ -1309,6 +1335,7 @@ static int msm_cvp_set_sysprop(struct msm_cvp_inst *inst,
 			rc = -EFAULT;
 		}
 	}
+
 	return rc;
 }
 

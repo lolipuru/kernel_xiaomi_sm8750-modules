@@ -44,6 +44,8 @@
 #define SYS_MSG_INDEX(__msg) (__msg - SYS_MSG_START)
 #define SESSION_MSG_INDEX(__msg) (__msg - SESSION_MSG_START)
 
+#define SESSION_NAME_MAX_LEN 64
+
 #define ARP_BUF_SIZE 0x300000
 
 #define CVP_RT_PRIO_THRESHOLD 1
@@ -231,6 +233,7 @@ struct cvp_session_prop {
 	u32 fps[HFI_MAX_HW_THREADS];
 	u32 dump_offset;
 	u32 dump_size;
+	char session_name[SESSION_NAME_MAX_LEN];
 };
 
 enum cvp_event_t {
