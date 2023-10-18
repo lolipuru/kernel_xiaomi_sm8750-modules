@@ -6,6 +6,7 @@
  * Copyright (C) 2011-2014 Atmel Corporation
  * Copyright (C) 2012 Google, Inc.
  * Copyright (C) 2016 Zodiac Inflight Innovations
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Author: Joonyoung Shim <jy0922.shim@samsung.com>
  */
@@ -3705,14 +3706,14 @@ static void mxt_register_for_panel_events(struct device_node *dt,
 		pr_err("Failed to register for panel events\n");
 		return;
 	}
-	pr_debug("registered for panel notifications on panel: 0x%x\n",
-		       active_panel);
+	pr_debug("registered for panel notifications on panel: 0x%pK\n",
+			active_panel);
 
 	data->notifier_cookie = cookie;
 }
 #endif
 
-static int mxt_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int mxt_probe(struct i2c_client *client)
 {
 	struct mxt_data *data;
 	int error = 0;

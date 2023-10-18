@@ -1526,10 +1526,9 @@ err_gpio_config_failed:
  * return:
  *     Executive outcomes. 0---succeed. negative---failed
  *******************************************************/
-static int32_t nvt_ts_probe(struct i2c_client *client,
-	const struct i2c_device_id *id)
+static int nvt_ts_probe(struct i2c_client *client)
 {
-	int32_t ret = 0;
+	int ret = 0;
 #if defined(CONFIG_DRM)
 	struct device_node *dp = client->dev.of_node;
 #endif
@@ -1567,8 +1566,6 @@ static int32_t nvt_ts_probe(struct i2c_client *client,
 
 	mutex_init(&ts->lock);
 	mutex_init(&ts->xbuf_lock);
-
-	ts->id = id;
 
 #if defined(CONFIG_DRM)
 	nvt_i2c_register_for_panel_events(client->dev.of_node, ts);
@@ -3781,9 +3778,9 @@ err_flash_proc_init_failed:
  *	Executive outcomes. 0---succeed. negative---failed
  ******************************************************
  */
-static int32_t nvt_spi_probe(struct spi_device *client)
+static int nvt_spi_probe(struct spi_device *client)
 {
-	int32_t ret = 0;
+	int ret = 0;
 #if defined(CONFIG_DRM)
 	struct device_node *dp = NULL;
 #endif
