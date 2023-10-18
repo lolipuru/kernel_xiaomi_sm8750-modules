@@ -21,9 +21,14 @@ ddk_headers(
         "msm/synx",
     ],
 )
+
 load(":pineapple.bzl", "define_pineapple")
 
 define_pineapple()
+
+load(":niobe.bzl", "define_niobe")
+
+define_niobe()
 
 load(":sun.bzl", "define_sun")
 
