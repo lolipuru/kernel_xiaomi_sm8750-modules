@@ -957,7 +957,8 @@ static int ipclite_channel_irq_init(struct device *parent, struct device_node *n
 	irq_info->mbox_chan = mbox_request_channel(&irq_info->mbox_client, 0);
 	IPCLITE_OS_LOG(IPCLITE_DBG, "irq_info[%d].mbox_chan=%p\n", index, irq_info->mbox_chan);
 	if (IS_ERR(irq_info->mbox_chan)) {
-		if (PTR_ERR(irq_info->mbox_chan) != -EPROBE_DEFER)
+		ret = PTR_ERR(irq_info->mbox_chan);
+		if (ret != -EPROBE_DEFER)
 			IPCLITE_OS_LOG(IPCLITE_ERR, "failed to acquire IPC channel\n");
 		goto err_dev;
 	}
@@ -1453,12 +1454,14 @@ static int ipclite_init_v0(struct platform_device *pdev)
 		probe_subsystem(&pdev->dev, cn);
 
 	/* Broadcast init_done signal to all subsystems once mbox channels are set up */
-	broadcast = ipclite->channel[IPCMEM_APPS];
-	ret = mbox_send_message(broadcast.irq_info[IPCLITE_MEM_INIT_SIGNAL].mbox_chan, NULL);
-	if (ret < 0)
-		goto mem_release;
+	if (ipclite->channel[IPCMEM_APPS].status == ACTIVE) {
+		broadcast = ipclite->channel[IPCMEM_APPS];
+		ret = mbox_send_message(broadcast.irq_info[IPCLITE_MEM_INIT_SIGNAL].mbox_chan, NULL);
+		if (ret < 0)
+			goto mem_release;
 
-	mbox_client_txdone(broadcast.irq_info[IPCLITE_MEM_INIT_SIGNAL].mbox_chan, 0);
+		mbox_client_txdone(broadcast.irq_info[IPCLITE_MEM_INIT_SIGNAL].mbox_chan, 0);
+	}
 
 	/* Debug Setup */
 	ret = ipclite_debug_setup();
