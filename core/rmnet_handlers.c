@@ -77,36 +77,6 @@ void rmnet_set_skb_proto(struct sk_buff *skb)
 }
 EXPORT_SYMBOL(rmnet_set_skb_proto);
 
-bool (*rmnet_shs_slow_start_detect)(u32 hash_key) __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_shs_slow_start_detect);
-
-bool rmnet_slow_start_on(u32 hash_key)
-{
-	bool (*rmnet_shs_slow_start_on)(u32 hash_key);
-
-	rmnet_shs_slow_start_on = rcu_dereference(rmnet_shs_slow_start_detect);
-	if (rmnet_shs_slow_start_on)
-		return rmnet_shs_slow_start_on(hash_key);
-
-	return false;
-}
-EXPORT_SYMBOL(rmnet_slow_start_on);
-
-/* Shs hook handler */
-int (*rmnet_shs_skb_entry)(struct sk_buff *skb,
-			   struct rmnet_shs_clnt_s *cfg) __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_shs_skb_entry);
-
-int (*rmnet_shs_switch)(struct sk_buff *skb,
-			   struct rmnet_shs_clnt_s *cfg) __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_shs_switch);
-
-
-/* Shs hook handler for work queue*/
-int (*rmnet_shs_skb_entry_wq)(struct sk_buff *skb,
-			      struct rmnet_shs_clnt_s *cfg) __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_shs_skb_entry_wq);
-
 /* Generic handler */
 
 void
@@ -253,17 +223,11 @@ free_skb:
 	kfree_skb(skb);
 }
 
-int (*rmnet_perf_deag_entry)(struct sk_buff *skb,
-			     struct rmnet_port *port) __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_deag_entry);
-
 static void
 rmnet_map_ingress_handler(struct sk_buff *skb,
 			  struct rmnet_port *port)
 {
 	struct sk_buff *skbn;
-	int (*rmnet_perf_core_deaggregate)(struct sk_buff *skb,
-					   struct rmnet_port *port);
 
 	if (skb->dev->type == ARPHRD_ETHER) {
 		if (pskb_expand_head(skb, ETH_HLEN, 0, GFP_ATOMIC)) {
@@ -288,20 +252,6 @@ rmnet_map_ingress_handler(struct sk_buff *skb,
 		return;
 	}
 
-	if (skb->priority == 0xda1a)
-		goto no_perf;
-
-	/* Pass off handling to rmnet_perf module, if present */
-	rcu_read_lock();
-	rmnet_perf_core_deaggregate = rcu_dereference(rmnet_perf_deag_entry);
-	if (rmnet_perf_core_deaggregate) {
-		rmnet_perf_core_deaggregate(skb, port);
-		rcu_read_unlock();
-		return;
-	}
-	rcu_read_unlock();
-
-no_perf:
 	/* Deaggregation and freeing of HW originating
 	 * buffers is done within here
 	 */
