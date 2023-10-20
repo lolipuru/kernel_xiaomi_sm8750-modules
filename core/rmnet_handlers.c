@@ -112,9 +112,6 @@ EXPORT_SYMBOL(rmnet_shs_skb_entry_wq);
 void
 rmnet_deliver_skb(struct sk_buff *skb, struct rmnet_port *port)
 {
-	int (*rmnet_shs_stamp)(struct sk_buff *skb,
-			       struct rmnet_shs_clnt_s *cfg);
-
 	trace_rmnet_low(RMNET_MODULE, RMNET_DLVR_SKB, 0xDEF, 0xDEF,
 			0xDEF, 0xDEF, (void *)skb, NULL);
 	skb_reset_network_header(skb);
@@ -127,14 +124,8 @@ rmnet_deliver_skb(struct sk_buff *skb, struct rmnet_port *port)
 	if (skb->priority == 0xda1a)
 		goto skip_shs;
 
-	rcu_read_lock();
-	rmnet_shs_stamp = rcu_dereference(rmnet_shs_skb_entry);
-	if (rmnet_shs_stamp) {
-		rmnet_shs_stamp(skb, &port->shs_cfg);
-		rcu_read_unlock();
+	if (rmnet_module_hook_shs_skb_entry(NULL, skb, &port->shs_cfg))
 		return;
-	}
-	rcu_read_unlock();
 
 skip_shs:
 	if (rmnet_module_hook_shs_skb_ll_entry(NULL, skb, &port->shs_cfg))
@@ -149,8 +140,6 @@ void
 rmnet_deliver_skb_wq(struct sk_buff *skb, struct rmnet_port *port,
 		     enum rmnet_packet_context ctx)
 {
-	int (*rmnet_shs_stamp)(struct sk_buff *skb,
-			       struct rmnet_shs_clnt_s *cfg);
 	struct rmnet_priv *priv = netdev_priv(skb->dev);
 
 	trace_rmnet_low(RMNET_MODULE, RMNET_DLVR_SKB, 0xDEF, 0xDEF,
@@ -165,15 +154,10 @@ rmnet_deliver_skb_wq(struct sk_buff *skb, struct rmnet_port *port,
 	/* packets coming from work queue context due to packet flush timer
 	 * must go through the special workqueue path in SHS driver
 	 */
-	rcu_read_lock();
-	rmnet_shs_stamp = (!ctx) ? rcu_dereference(rmnet_shs_skb_entry) :
-				   rcu_dereference(rmnet_shs_skb_entry_wq);
-	if (rmnet_shs_stamp) {
-		rmnet_shs_stamp(skb, &port->shs_cfg);
-		rcu_read_unlock();
-		return;
+	if (!ctx) {
+		if (rmnet_module_hook_shs_skb_entry(NULL, skb, &port->shs_cfg))
+			return;
 	}
-	rcu_read_unlock();
 
 	if (ctx == RMNET_NET_RX_CTX)
 		netif_receive_skb(skb);
@@ -430,8 +414,7 @@ rx_handler_result_t rmnet_rx_handler(struct sk_buff **pskb)
 	struct sk_buff *skb = *pskb;
 	struct rmnet_port *port;
 	struct net_device *dev;
-	int (*rmnet_core_shs_switch)(struct sk_buff *skb,
-				     struct rmnet_shs_clnt_s *cfg);
+	int consumed;
 
 	if (!skb)
 		goto done;
@@ -451,16 +434,11 @@ rx_handler_result_t rmnet_rx_handler(struct sk_buff **pskb)
 
 	switch (port->rmnet_mode) {
 	case RMNET_EPMODE_VND:
-
-		rcu_read_lock();
-		rmnet_core_shs_switch = rcu_dereference(rmnet_shs_switch);
-		if (rmnet_core_shs_switch) {
-			if (rmnet_core_shs_switch(skb, &port->phy_shs_cfg)) {
-				rcu_read_unlock();
+		if (rmnet_module_hook_shs_switch(&consumed, skb,
+						 &port->phy_shs_cfg)) {
+			if (consumed)
 				return RX_HANDLER_CONSUMED;
-			}
 		}
-		rcu_read_unlock();
 
 		rmnet_map_ingress_handler(skb, port);
 		break;
