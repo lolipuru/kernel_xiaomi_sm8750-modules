@@ -1,5 +1,14 @@
 # Android makefile for BT kernel modules
 
+BT_DLKM_ENABLE := true
+ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
+        ifeq ($(TARGET_KERNEL_DLKM_BT_OVERRIDE), false)
+               BT_DLKM_ENABLE := false
+        endif
+endif
+
+ifeq ($(BT_DLKM_ENABLE),  true)
+
 LOCAL_PATH := $(call my-dir)
 
 # Build/Package only in case of supported target
@@ -27,7 +36,7 @@ LOCAL_MODULE_KO_DIRS += btfmcodec/btfmcodec.ko
 ifneq ($(findstring vendor,$(LOCAL_PATH)),)
 
 ifneq ($(findstring opensource,$(LOCAL_PATH)),)
-	BT_BLD_DIR := $(abspath .)/vendor/qcom/opensource/bt-kernel
+BT_BLD_DIR := $(abspath .)/vendor/qcom/opensource/bt-kernel
 endif # opensource
 
 DLKM_DIR := $(TOP)/device/qcom/common/dlkm
@@ -37,11 +46,11 @@ DLKM_DIR := $(TOP)/device/qcom/common/dlkm
 # This is set once per LOCAL_PATH, not per (kernel) module
 KBUILD_OPTIONS := BT_KERNEL_ROOT=$(BT_BLD_DIR)
 KBUILD_OPTIONS += $(foreach bt_select, \
-       $(BT_SELECT), \
-       $(bt_select))
+        $(BT_SELECT), \
+        $(bt_select))
 BT_SRC_FILES := \
-	$(wildcard $(LOCAL_PATH)/*) \
-	$(wildcard $(LOCAL_PATH)/*/*) \
+        $(wildcard $(LOCAL_PATH)/*) \
+        $(wildcard $(LOCAL_PATH)/*/*) \
 
 ifeq ($(TARGET_KERNEL_DLKM_SECURE_MSM_OVERRIDE), true)
 ifeq ($(ENABLE_PERIPHERAL_STATE_UTILS), true)
@@ -113,3 +122,4 @@ include $(DLKM_DIR)/Build_external_kernelmodule.mk
 
 endif # DLKM check
 endif # supported target check
+endif # TARGET_KERNEL_DLKM_BT_OVERRIDE
