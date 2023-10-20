@@ -1118,13 +1118,16 @@ static int msm_cvp_populate_context_bank(struct device *dev,
 		return 0;
 	}
 
-	rc = of_property_read_u32_array(np, "qcom,iommu-dma-addr-pool",
-			(u32 *)&cb->addr_range, 2);
-	if (rc) {
-		dprintk(CVP_ERR,
-			"Could not read addr pool for context bank : %s %d\n",
-			cb->name, rc);
-		goto err_setup_cb;
+	/* Note: ensure address range match the ranges defined in devicetree */
+	if (!strcmp(cb->name, "cvp_hlos")) {
+		cb->addr_range.start = 0x4b000000;
+		cb->addr_range.size = 0x90000000;
+	} else if (!strcmp(cb->name, "cvp_sec_nonpixel")) {
+		cb->addr_range.start = 0x01000000;
+		cb->addr_range.size = 0x25800000;
+	} else if (!strcmp(cb->name, "cvp_sec_pixel")) {
+		cb->addr_range.start = 0x26800000;
+		cb->addr_range.size = 0x24800000;
 	}
 
 	cb->is_secure = of_property_read_bool(np, "qcom,iommu-vmid");
