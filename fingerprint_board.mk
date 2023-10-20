@@ -6,8 +6,7 @@ ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
 endif
 
 ifeq ($(FINGERPRINT_DLKM_ENABLED), true)
-ifeq ($(call is-board-platform-in-list,pineapple), true)
+ifeq ($(call is-board-platform-in-list,pineapple sun), true)
 BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/qbt_handler.ko
 endif
-
 endif

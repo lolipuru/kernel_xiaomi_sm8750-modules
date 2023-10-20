@@ -8,7 +8,7 @@ endif
 
 ifeq ($(FINGERPRINT_DLKM_ENABLED), true)
 
-ifeq ($(call is-board-platform-in-list,pineapple), true)
+ifeq ($(call is-board-platform-in-list,pineapple sun), true)
 ifneq (,$(filter arm aarch64 arm64, $(TARGET_ARCH)))
 
 LOCAL_PATH := $(call my-dir)

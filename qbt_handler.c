@@ -25,6 +25,7 @@
 #include <linux/mutex.h>
 #include <linux/atomic.h>
 #include <linux/of_gpio.h>
+#include <linux/gpio.h>
 #include <linux/kfifo.h>
 #include <linux/poll.h>
 #include <linux/input.h>
@@ -40,6 +41,7 @@
 #define QBT_TOUCH_FD_VERSION_2 2
 #define QBT_TOUCH_FD_VERSION_3 3
 #define DEBUG
+#define FD_GPIO_ACTIVE_LOW 0  // FIXME: Need to get this flag value from devicetree
 
 struct finger_detect_gpio {
 	int gpio;
@@ -368,7 +370,7 @@ static void qbt_touch_work_func(struct work_struct *work)
 			if (config->intr2_enable) {
 				pr_debug("Setting INTR2 GPIO to %d\n", intr2_state);
 				if (gpio_is_valid(drvdata->intr2_gpio))
-					__gpio_set_value(drvdata->intr2_gpio, intr2_state);
+					gpio_set_value(drvdata->intr2_gpio, intr2_state);
 				else
 					pr_debug("INTR2 GPIO not available\n");
 			}
@@ -687,7 +689,7 @@ static long qbt_ioctl(
 		}
 		pr_debug("Setting INTR2 GPIO to %d\n", test.state);
 		if (gpio_is_valid(drvdata->intr2_gpio))
-			__gpio_set_value(drvdata->intr2_gpio, test.state);
+			gpio_set_value(drvdata->intr2_gpio, test.state);
 		else
 			pr_debug("INTR2 GPIO is not available\n");
 
@@ -913,8 +915,7 @@ static int qbt_dev_register(struct qbt_drvdata *drvdata)
 		goto err_cdev_add;
 	}
 
-	drvdata->qbt_class = class_create(THIS_MODULE,
-					   drvdata->qbt_node);
+	drvdata->qbt_class = class_create(drvdata->qbt_node);
 	if (IS_ERR(drvdata->qbt_class)) {
 		ret = PTR_ERR(drvdata->qbt_class);
 		pr_err("class_create failed %d\n", ret);
@@ -1090,7 +1091,7 @@ static void qbt_gpio_work_func(struct work_struct *work)
 
 	drvdata = container_of(work, struct qbt_drvdata, fd_gpio.work);
 
-	state = (__gpio_get_value(drvdata->fd_gpio.gpio) ?
+	state = (gpio_get_value(drvdata->fd_gpio.gpio) ?
 			QBT_EVENT_FINGER_DOWN : QBT_EVENT_FINGER_UP)
 			^ drvdata->fd_gpio.active_low;
 
@@ -1305,7 +1306,6 @@ static int qbt_read_device_tree(struct platform_device *pdev,
 {
 	int rc = 0;
 	int gpio;
-	enum of_gpio_flags flags;
 
 	drvdata->intr2_gpio = of_get_named_gpio(pdev->dev.of_node,
 			"qcom,intr2-gpio", 0);
@@ -1321,17 +1321,17 @@ static int qbt_read_device_tree(struct platform_device *pdev,
 		goto end;
 	}
 
-	gpio = of_get_named_gpio_flags(pdev->dev.of_node,
-				"qcom,finger-detect-gpio", 0, &flags);
+	gpio = of_get_named_gpio(pdev->dev.of_node,
+				"qcom,finger-detect-gpio", 0);
 	if (gpio < 0) {
-		pr_err("failed to get gpio flags\n");
+		pr_err("failed to get gpio descriptor\n");
 		drvdata->is_wuhb_connected = 0;
 		goto end;
 	}
 
 	drvdata->is_wuhb_connected = 1;
 	drvdata->fd_gpio.gpio = gpio;
-	drvdata->fd_gpio.active_low = flags & OF_GPIO_ACTIVE_LOW;
+	drvdata->fd_gpio.active_low = FD_GPIO_ACTIVE_LOW;
 	pr_debug("is_wuhb_connected=%d\n", drvdata->is_wuhb_connected);
 
 end:
