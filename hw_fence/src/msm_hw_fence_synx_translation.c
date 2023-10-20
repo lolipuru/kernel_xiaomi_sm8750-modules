@@ -190,26 +190,37 @@ static int synx_hwfence_release(struct synx_session *session, u32 h_synx)
 static int synx_hwfence_signal(struct synx_session *session, u32 h_synx,
 	enum synx_signal_status status)
 {
+	struct msm_hw_fence_client *hw_fence_client;
 	u32 error;
 	int ret;
 
-	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type) ||
+	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type) || !session->client ||
 			!(h_synx & SYNX_HW_FENCE_HANDLE_FLAG) ||
 			!(status == SYNX_STATE_SIGNALED_SUCCESS ||
 			status == SYNX_STATE_SIGNALED_CANCEL ||
 			status > SYNX_STATE_SIGNALED_MAX)) {
-		HWFNC_ERR("invalid session:0x%pK synx_id:%d h_synx:%u status:%u\n", session,
-			IS_ERR_OR_NULL(session) ? -1 : session->type, h_synx, status);
+		HWFNC_ERR("invalid session:0x%pK synx_id:%d client:0x%pK h_synx:%u status:%u\n",
+			session, IS_ERR_OR_NULL(session) ? -1 : session->type,
+			IS_ERR_OR_NULL(session) ? NULL : session->client, h_synx, status);
 		return -SYNX_INVALID;
 	}
 
 	error = hw_fence_interop_to_hw_fence_error(status);
 	h_synx &= HW_FENCE_HANDLE_INDEX_MASK;
 	ret = msm_hw_fence_update_txq(session->client, h_synx, 0, error);
-	if (ret)
+	if (ret) {
 		HWFNC_ERR("synx_id:%d failed to signal fence h_synx:%u status:%d ret:%d\n",
 			session->type, h_synx, status, ret);
+		goto error;
+	}
 
+	hw_fence_client = (struct msm_hw_fence_client *)session->client;
+	if (hw_fence_client->txq_update_send_ipc)
+		hw_fence_ipcc_trigger_signal(hw_fence_drv_data,
+			hw_fence_client->ipc_client_pid, hw_fence_drv_data->ipcc_fctl_vid,
+			hw_fence_client->ipc_signal_id);
+
+error:
 	return hw_fence_interop_to_synx_status(ret);
 }
 
