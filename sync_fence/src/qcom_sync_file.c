@@ -343,7 +343,7 @@ int spec_sync_wait_bind_array(struct dma_fence_array *fence_array, u32 timeout_m
 
 	return ret;
 }
-EXPORT_SYMBOL(spec_sync_wait_bind_array);
+EXPORT_SYMBOL_GPL(spec_sync_wait_bind_array);
 
 static int spec_sync_bind_array(struct fence_bind_data *sync_bind_info)
 {

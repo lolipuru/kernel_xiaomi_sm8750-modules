@@ -138,7 +138,7 @@ error:
 	HWFNC_ERR("failed with error:%d\n", ret);
 	return ERR_PTR(ret);
 }
-EXPORT_SYMBOL(msm_hw_fence_register);
+EXPORT_SYMBOL_GPL(msm_hw_fence_register);
 
 int msm_hw_fence_deregister(void *client_handle)
 {
@@ -164,7 +164,7 @@ int msm_hw_fence_deregister(void *client_handle)
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_deregister);
+EXPORT_SYMBOL_GPL(msm_hw_fence_deregister);
 
 int msm_hw_fence_create(void *client_handle,
 	struct msm_hw_fence_create_params *params)
@@ -217,7 +217,7 @@ int msm_hw_fence_create(void *client_handle,
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_create);
+EXPORT_SYMBOL_GPL(msm_hw_fence_create);
 
 int msm_hw_fence_destroy(void *client_handle,
 	struct dma_fence *fence)
@@ -262,7 +262,7 @@ int msm_hw_fence_destroy(void *client_handle,
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_destroy);
+EXPORT_SYMBOL_GPL(msm_hw_fence_destroy);
 
 int msm_hw_fence_destroy_with_handle(void *client_handle, u64 handle)
 {
@@ -294,7 +294,7 @@ int msm_hw_fence_destroy_with_handle(void *client_handle, u64 handle)
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_destroy_with_handle);
+EXPORT_SYMBOL_GPL(msm_hw_fence_destroy_with_handle);
 
 int msm_hw_fence_wait_update_v2(void *client_handle,
 	struct dma_fence **fence_list, u64 *handles, u64 *client_data_list, u32 num_fences,
@@ -366,7 +366,7 @@ int msm_hw_fence_wait_update_v2(void *client_handle,
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_wait_update_v2);
+EXPORT_SYMBOL_GPL(msm_hw_fence_wait_update_v2);
 
 int msm_hw_fence_wait_update(void *client_handle,
 	struct dma_fence **fence_list, u32 num_fences, bool create)
@@ -374,7 +374,7 @@ int msm_hw_fence_wait_update(void *client_handle,
 	return msm_hw_fence_wait_update_v2(client_handle, fence_list, NULL, NULL, num_fences,
 		create);
 }
-EXPORT_SYMBOL(msm_hw_fence_wait_update);
+EXPORT_SYMBOL_GPL(msm_hw_fence_wait_update);
 
 int msm_hw_fence_reset_client(void *client_handle, u32 reset_flags)
 {
@@ -404,7 +404,7 @@ int msm_hw_fence_reset_client(void *client_handle, u32 reset_flags)
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_reset_client);
+EXPORT_SYMBOL_GPL(msm_hw_fence_reset_client);
 
 int msm_hw_fence_reset_client_by_id(enum hw_fence_client_id client_id_ext, u32 reset_flags)
 {
@@ -425,7 +425,7 @@ int msm_hw_fence_reset_client_by_id(enum hw_fence_client_id client_id_ext, u32 r
 	return msm_hw_fence_reset_client(hw_fence_drv_data->clients[client_id],
 		reset_flags);
 }
-EXPORT_SYMBOL(msm_hw_fence_reset_client_by_id);
+EXPORT_SYMBOL_GPL(msm_hw_fence_reset_client_by_id);
 
 int msm_hw_fence_update_txq(void *client_handle, u64 handle, u64 flags, u32 error)
 {
@@ -451,7 +451,7 @@ int msm_hw_fence_update_txq(void *client_handle, u64 handle, u64 flags, u32 erro
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_update_txq);
+EXPORT_SYMBOL_GPL(msm_hw_fence_update_txq);
 
 
 int msm_hw_fence_update_txq_error(void *client_handle, u64 handle, u32 error, u32 update_flags)
@@ -480,7 +480,7 @@ int msm_hw_fence_update_txq_error(void *client_handle, u64 handle, u32 error, u3
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_update_txq_error);
+EXPORT_SYMBOL_GPL(msm_hw_fence_update_txq_error);
 
 /* tx client has to be the physical, rx client virtual id*/
 int msm_hw_fence_trigger_signal(void *client_handle,
@@ -505,7 +505,7 @@ int msm_hw_fence_trigger_signal(void *client_handle,
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_trigger_signal);
+EXPORT_SYMBOL_GPL(msm_hw_fence_trigger_signal);
 
 int msm_hw_fence_register_error_cb(void *client_handle, msm_hw_fence_error_cb_t cb, void *data)
 {
@@ -533,7 +533,7 @@ int msm_hw_fence_register_error_cb(void *client_handle, msm_hw_fence_error_cb_t 
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_register_error_cb);
+EXPORT_SYMBOL_GPL(msm_hw_fence_register_error_cb);
 
 int msm_hw_fence_deregister_error_cb(void *client_handle)
 {
@@ -572,7 +572,7 @@ exit:
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_deregister_error_cb);
+EXPORT_SYMBOL_GPL(msm_hw_fence_deregister_error_cb);
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 int msm_hw_fence_dump_debug_data(void *client_handle, u32 dump_flags, u32 dump_clients_mask)
@@ -608,7 +608,7 @@ int msm_hw_fence_dump_debug_data(void *client_handle, u32 dump_flags, u32 dump_c
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_dump_debug_data);
+EXPORT_SYMBOL_GPL(msm_hw_fence_dump_debug_data);
 
 int msm_hw_fence_dump_fence(void *client_handle, struct dma_fence *fence)
 {
@@ -640,7 +640,7 @@ int msm_hw_fence_dump_fence(void *client_handle, struct dma_fence *fence)
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_dump_fence);
+EXPORT_SYMBOL_GPL(msm_hw_fence_dump_fence);
 #endif /* CONFIG_DEBUG_FS */
 
 /* Function used for simulation purposes only. */
@@ -658,7 +658,7 @@ int msm_hw_fence_driver_doorbell_sim(u64 db_mask)
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_hw_fence_driver_doorbell_sim);
+EXPORT_SYMBOL_GPL(msm_hw_fence_driver_doorbell_sim);
 
 static int msm_hw_fence_probe_init(struct platform_device *pdev)
 {
