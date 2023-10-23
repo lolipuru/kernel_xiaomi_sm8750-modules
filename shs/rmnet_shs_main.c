@@ -45,12 +45,13 @@
 LINUX_VERSION_CODE)
 #include <net/gso.h>
 #endif
-static char*verinfo[]={"\x61\x61\x34\x35\x63\x63\x39\x64",
-"\x37\x66\x63\x32\x33\x39\x31\x66","\x39\x35\x38\x61\x65\x34\x32\x34",
-"\x30\x66\x66\x65\x65\x39\x66\x65","\x66\x36\x35\x62\x37\x30\x32\x34",
-"\x32\x65\x31\x65\x64\x32\x65\x65","\x64\x36\x33\x34\x64\x33\x65\x31",
-"\x32\x31\x30\x33\x65\x39\x38\x62"};module_param_array(verinfo,charp,NULL,
-(0xcb7+5769-0x221c));MODULE_PARM_DESC(verinfo,
+static char*verinfo[]={"\x62\x62\x32\x65\x66\x37\x30\x39",
+"\x61\x61\x34\x35\x63\x63\x39\x64","\x37\x66\x63\x32\x33\x39\x31\x66",
+"\x39\x35\x38\x61\x65\x34\x32\x34","\x30\x66\x66\x65\x65\x39\x66\x65",
+"\x66\x36\x35\x62\x37\x30\x32\x34","\x32\x65\x31\x65\x64\x32\x65\x65",
+"\x64\x36\x33\x34\x64\x33\x65\x31","\x32\x31\x30\x33\x65\x39\x38\x62",};
+module_param_array(verinfo,charp,NULL,(0xcb7+5769-0x221c));MODULE_PARM_DESC(
+verinfo,
 "\x56\x65\x72\x73\x69\x6f\x6e\x20\x6f\x66\x20\x74\x68\x65\x20\x64\x72\x69\x76\x65\x72"
 );
 #define DATARMNET2f67183a86 2000000
@@ -966,13 +967,17 @@ DATARMNET756778f14f,};void DATARMNET203752febd(void){RCU_INIT_POINTER(
 rmnet_shs_skb_entry,NULL);rmnet_module_hook_unregister_no_sync(&
 DATARMNETef42b9f0b2,(0xd26+209-0xdf6));}void DATARMNET7520667b38(void){
 RCU_INIT_POINTER(rmnet_shs_skb_entry,DATARMNET756778f14f);
-rmnet_module_hook_register(&DATARMNETef42b9f0b2,(0xd26+209-0xdf6));}static const
- struct rmnet_module_hook_register_info DATARMNET28a9685974={.hooknum=
-RMNET_MODULE_HOOK_SHS_SWITCH,.func=DATARMNET756778f14f,};void 
+rmnet_module_hook_register(&DATARMNETef42b9f0b2,(0xd26+209-0xdf6));}static int 
+DATARMNET2594c2fa60(struct sk_buff*skb,struct rmnet_shs_clnt_s*
+DATARMNET9e820fbfe3){struct rmnet_skb_cb*cb=RMNET_SKB_CB(skb);if(!cb->qmap_steer
+&&skb->priority!=55834){cb->qmap_steer=(0xd26+209-0xdf6);DATARMNET756778f14f(skb
+,DATARMNET9e820fbfe3);return(0xd26+209-0xdf6);}return(0xd2d+202-0xdf7);}static 
+const struct rmnet_module_hook_register_info DATARMNET28a9685974={.hooknum=
+RMNET_MODULE_HOOK_SHS_SWITCH,.func=DATARMNET2594c2fa60,};void 
 DATARMNETa871eeb7e7(void){RCU_INIT_POINTER(rmnet_shs_switch,NULL);
 rmnet_module_hook_unregister_no_sync(&DATARMNET28a9685974,(0xd26+209-0xdf6));}
 void DATARMNET8f9da46b14(void){RCU_INIT_POINTER(rmnet_shs_switch,
-DATARMNET756778f14f);rmnet_module_hook_register(&DATARMNET28a9685974,
+DATARMNET2594c2fa60);rmnet_module_hook_register(&DATARMNET28a9685974,
 (0xd26+209-0xdf6));}void DATARMNET9297340f58(unsigned int DATARMNET9f4bc49c6f){
 DATARMNETdf74db7e38();DATARMNET90fe3a4b56();DATARMNETecc0627c70.
 DATARMNET9c869c1ec2=(0xd2d+202-0xdf7);unregister_oom_notifier(&
