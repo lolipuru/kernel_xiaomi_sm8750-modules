@@ -539,13 +539,13 @@ static long spss_utils_ioctl(struct file *file,
 	if (size && (cmd & IOC_IN)) {
 		if (size > sizeof(data)) {
 			pr_err("cmd [0x%x] size [0x%x] too large\n",
-				cmd, size);
+				cmd, (unsigned int)size);
 			return -EINVAL;
 		}
 
 		if (copy_from_user(data, (void __user *)arg, size)) {
 			pr_err("copy_from_user() failed, cmd [0x%x] size [0x%x]\n",
-				cmd, size);
+				cmd, (unsigned int)size);
 			return -EFAULT;
 		}
 	}
@@ -573,7 +573,7 @@ static long spss_utils_ioctl(struct file *file,
 	case SPSS_IOC_WAIT_FOR_EVENT:
 		/* check input params */
 		if (size != sizeof(struct spss_ioc_wait_for_event)) {
-			pr_err("cmd [0x%x] invalid size [0x%x]\n", cmd, size);
+			pr_err("cmd [0x%x] invalid size [0x%x]\n", cmd, (unsigned int)size);
 			return -EINVAL;
 		}
 		ret = spss_wait_for_event(req);
@@ -591,7 +591,7 @@ static long spss_utils_ioctl(struct file *file,
 	case SPSS_IOC_SIGNAL_EVENT:
 		/* check input params */
 		if (size != sizeof(struct spss_ioc_signal_event)) {
-			pr_err("cmd [0x%x] invalid size [0x%x]\n", cmd, size);
+			pr_err("cmd [0x%x] invalid size [0x%x]\n", cmd, (unsigned int)size);
 			return -EINVAL;
 		}
 		ret = spss_signal_event(req);
@@ -608,7 +608,7 @@ static long spss_utils_ioctl(struct file *file,
 	case SPSS_IOC_IS_EVENT_SIGNALED:
 		/* check input params */
 		if (size != sizeof(struct spss_ioc_is_signaled)) {
-			pr_err("cmd [0x%x] invalid size [0x%x]\n", cmd, size);
+			pr_err("cmd [0x%x] invalid size [0x%x]\n", cmd, (unsigned int)size);
 			return -EINVAL;
 		}
 		ret = spss_is_event_signaled(req);
@@ -626,7 +626,7 @@ static long spss_utils_ioctl(struct file *file,
 	case SPSS_IOC_SET_SSR_STATE:
 		/* check input params */
 		if (size != sizeof(uint32_t)) {
-			pr_err("cmd [0x%x] invalid size [0x%x]\n", cmd, size);
+			pr_err("cmd [0x%x] invalid size [0x%x]\n", cmd, (unsigned int)size);
 			return -EINVAL;
 		}
 
@@ -678,7 +678,7 @@ static int spss_utils_create_chardev(struct device *dev)
 		return ret;
 	}
 
-	spss_utils_dev->driver_class = class_create(THIS_MODULE, DEVICE_NAME);
+	spss_utils_dev->driver_class = class_create(DEVICE_NAME);
 	if (IS_ERR(spss_utils_dev->driver_class)) {
 		ret = -ENOMEM;
 		pr_err("class_create failed %d\n", ret);
@@ -963,7 +963,7 @@ static int spss_parse_dt(struct device_node *node)
 
 	/* cmac buffer after spss firmware end */
 	cmac_mem_addr = pil_addr + pil_size;
-	pr_info("iar_buf_addr [0x%08x].\n", cmac_mem_addr);
+	pr_info("iar_buf_addr [0x%08x].\n", (unsigned int)cmac_mem_addr);
 
 	memset(saved_fw_cmac, 0xA5, sizeof(saved_fw_cmac));
 	memset(saved_apps_cmac, 0xA5, sizeof(saved_apps_cmac));

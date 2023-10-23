@@ -2722,7 +2722,7 @@ static int spcom_ioctl_handle_lock_dmabuf_command(struct spcom_ioctl_dmabuf_lock
 	int fd = 0;
 	int i = 0;
 
-	spcom_pr_dbg("Lock dmabuf cmd arg: ch_name[%s], fd[%d], padding[%u], PID[%ld]\n",
+	spcom_pr_dbg("Lock dmabuf cmd arg: ch_name[%s], fd[%d], padding[%u], PID[%d]\n",
 		arg->ch_name, arg->fd, arg->padding, current_pid());
 
 	ch_name = arg->ch_name;
@@ -2825,7 +2825,7 @@ static int spcom_ioctl_handle_unlock_dmabuf_command(struct spcom_ioctl_dmabuf_lo
 	int ret = 0;
 	bool unlock_all = false;
 
-	spcom_pr_dbg("Unlock dmabuf cmd arg: ch_name[%s], fd[%d], padding[%u], PID[%ld]\n",
+	spcom_pr_dbg("Unlock dmabuf cmd arg: ch_name[%s], fd[%d], padding[%u], PID[%d]\n",
 		arg->ch_name, arg->fd, arg->padding, current_pid());
 
 	ch_name = arg->ch_name;
@@ -3218,12 +3218,12 @@ bool is_arg_size_expected(unsigned int cmd, uint32_t arg_size)
 		expected_size = sizeof(struct spcom_ioctl_dmabuf_lock);
 		break;
 	default:
-		spcom_pr_err("No userspace data for ioctl cmd[%ld]\n", cmd);
+		spcom_pr_err("No userspace data for ioctl cmd[%d]\n", cmd);
 		return false;
 	}
 
 	if (arg_size != expected_size) {
-		spcom_pr_err("Invalid cmd size: cmd[%ld], arg size[%u], expected[%u]\n",
+		spcom_pr_err("Invalid cmd size: cmd[%d], arg size[%u], expected[%u]\n",
 				cmd, arg_size, expected_size);
 		return false;
 	}
@@ -3475,7 +3475,7 @@ static int spcom_register_chardev(void)
 		return ret;
 	}
 
-	spcom_dev->driver_class = class_create(THIS_MODULE, DEVICE_NAME);
+	spcom_dev->driver_class = class_create(DEVICE_NAME);
 	if (IS_ERR(spcom_dev->driver_class)) {
 		ret = -ENOMEM;
 		spcom_pr_err("class_create failed %d\n", ret);
