@@ -158,11 +158,7 @@ DATARMNET623224aa0a,DATARMNET94906cea05,};extern struct DATARMNET37ef896af8
 DATARMNET1731db288b;extern spinlock_t DATARMNETd83ee17944;extern spinlock_t 
 DATARMNET3764d083f0;extern spinlock_t DATARMNETec2a4f5211;extern spinlock_t 
 DATARMNETfbdbab2ef6;extern struct hlist_head DATARMNETe603c3a4b3[
-(0xd26+209-0xdf6)<<(DATARMNET25437d35fd)];extern int(*rmnet_shs_skb_entry)(
-struct sk_buff*skb,struct rmnet_shs_clnt_s*DATARMNET9e820fbfe3);extern int(*
-rmnet_shs_ll_skb_entry)(struct sk_buff*skb,struct rmnet_shs_clnt_s*
-DATARMNET9e820fbfe3);extern int(*rmnet_shs_switch)(struct sk_buff*skb,struct 
-rmnet_shs_clnt_s*DATARMNET9e820fbfe3);void DATARMNET203752febd(void);void 
+(0xd26+209-0xdf6)<<(DATARMNET25437d35fd)];void DATARMNET203752febd(void);void 
 DATARMNET7520667b38(void);void DATARMNETa871eeb7e7(void);void 
 DATARMNET8f9da46b14(void);int DATARMNET362b15f941(u16 cpu);void 
 DATARMNETeacad8334e(void);void DATARMNETe1f95274f1(void);unsigned int 

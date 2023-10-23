@@ -45,13 +45,13 @@
 LINUX_VERSION_CODE)
 #include <net/gso.h>
 #endif
-static char*verinfo[]={"\x62\x62\x32\x65\x66\x37\x30\x39",
-"\x61\x61\x34\x35\x63\x63\x39\x64","\x37\x66\x63\x32\x33\x39\x31\x66",
-"\x39\x35\x38\x61\x65\x34\x32\x34","\x30\x66\x66\x65\x65\x39\x66\x65",
-"\x66\x36\x35\x62\x37\x30\x32\x34","\x32\x65\x31\x65\x64\x32\x65\x65",
-"\x64\x36\x33\x34\x64\x33\x65\x31","\x32\x31\x30\x33\x65\x39\x38\x62",};
-module_param_array(verinfo,charp,NULL,(0xcb7+5769-0x221c));MODULE_PARM_DESC(
-verinfo,
+static char*verinfo[]={"\x35\x38\x61\x61\x39\x62\x65\x65",
+"\x62\x62\x32\x65\x66\x37\x30\x39","\x61\x61\x34\x35\x63\x63\x39\x64",
+"\x37\x66\x63\x32\x33\x39\x31\x66","\x39\x35\x38\x61\x65\x34\x32\x34",
+"\x30\x66\x66\x65\x65\x39\x66\x65","\x66\x36\x35\x62\x37\x30\x32\x34",
+"\x32\x65\x31\x65\x64\x32\x65\x65","\x64\x36\x33\x34\x64\x33\x65\x31",
+"\x32\x31\x30\x33\x65\x39\x38\x62",};module_param_array(verinfo,charp,NULL,
+(0xcb7+5769-0x221c));MODULE_PARM_DESC(verinfo,
 "\x56\x65\x72\x73\x69\x6f\x6e\x20\x6f\x66\x20\x74\x68\x65\x20\x64\x72\x69\x76\x65\x72"
 );
 #define DATARMNET2f67183a86 2000000
@@ -437,22 +437,23 @@ DATARMNET76192fa639;DATARMNETecc0627c70.DATARMNETa2e32cdd3a-=DATARMNET8bf94cc2f7
 DATARMNETecc0627c70.DATARMNET132b9c7dc4[DATARMNET42a992465f].DATARMNETe61d62310f
 =(0xd2d+202-0xdf7);DATARMNET0997c5650d[DATARMNET42a992465f].DATARMNET4133fc9428=
 (0xd2d+202-0xdf7);spin_unlock_bh(&DATARMNET3764d083f0);if(DATARMNET42a992465f==
-DATARMNETecc0627c70.DATARMNET6625085b71&&rcu_dereference(rmnet_shs_switch)){
-DATARMNETa871eeb7e7();DATARMNETecc0627c70.DATARMNETfeee6933fc=(0xd2d+202-0xdf7);
-DATARMNETecc0627c70.DATARMNET6625085b71=DATARMNETecc0627c70.DATARMNET7d667e828e;
-}DATARMNET52de1f3dc0(DATARMNET4510abc30d,DATARMNET576793621a,DATARMNETecc0627c70
-.DATARMNETa2e32cdd3a,DATARMNETecc0627c70.DATARMNETc252a1f55d,DATARMNET8bf94cc2f7
-,DATARMNET76192fa639,NULL,NULL);}void DATARMNET056c939591(struct work_struct*
-DATARMNET33110a3ff5){struct DATARMNETa6f2d499b2*DATARMNET4b39dc1574=container_of
-(DATARMNET33110a3ff5,struct DATARMNETa6f2d499b2,DATARMNET33110a3ff5);
-DATARMNETfbc06e60f1(DATARMNET4b39dc1574->DATARMNET42c3ecbd5e);
-DATARMNET14ed771dfb[DATARMNETbb5757569c]++;}void DATARMNETcba2f7f7b6(struct 
-DATARMNET63d7680df2*DATARMNET63b1a086d5,u8 DATARMNETf345c1d909,struct sk_buff**
-DATARMNETc88d0a6cdd){struct sk_buff*skb=NULL;struct sk_buff*DATARMNETcebafc57a4=
-NULL;u32 DATARMNETe20a9cab2b=(0xd2d+202-0xdf7);u32 DATARMNETb481d13a78=
-(0xd2d+202-0xdf7);u32 DATARMNET1fcbf046ec=(0xd2d+202-0xdf7);u8 map=
-(0xd2d+202-0xdf7),DATARMNET0258668025=(0xd2d+202-0xdf7);u16 DATARMNET87636d0152=
-(0xd2d+202-0xdf7);u16 index;u8 DATARMNET3894230a14=(0xd2d+202-0xdf7);u8 cpu;if(!
+DATARMNETecc0627c70.DATARMNET6625085b71&&rmnet_module_hook_is_set(
+RMNET_MODULE_HOOK_SHS_SWITCH)){DATARMNETa871eeb7e7();DATARMNETecc0627c70.
+DATARMNETfeee6933fc=(0xd2d+202-0xdf7);DATARMNETecc0627c70.DATARMNET6625085b71=
+DATARMNETecc0627c70.DATARMNET7d667e828e;}DATARMNET52de1f3dc0(DATARMNET4510abc30d
+,DATARMNET576793621a,DATARMNETecc0627c70.DATARMNETa2e32cdd3a,DATARMNETecc0627c70
+.DATARMNETc252a1f55d,DATARMNET8bf94cc2f7,DATARMNET76192fa639,NULL,NULL);}void 
+DATARMNET056c939591(struct work_struct*DATARMNET33110a3ff5){struct 
+DATARMNETa6f2d499b2*DATARMNET4b39dc1574=container_of(DATARMNET33110a3ff5,struct 
+DATARMNETa6f2d499b2,DATARMNET33110a3ff5);DATARMNETfbc06e60f1(DATARMNET4b39dc1574
+->DATARMNET42c3ecbd5e);DATARMNET14ed771dfb[DATARMNETbb5757569c]++;}void 
+DATARMNETcba2f7f7b6(struct DATARMNET63d7680df2*DATARMNET63b1a086d5,u8 
+DATARMNETf345c1d909,struct sk_buff**DATARMNETc88d0a6cdd){struct sk_buff*skb=NULL
+;struct sk_buff*DATARMNETcebafc57a4=NULL;u32 DATARMNETe20a9cab2b=
+(0xd2d+202-0xdf7);u32 DATARMNETb481d13a78=(0xd2d+202-0xdf7);u32 
+DATARMNET1fcbf046ec=(0xd2d+202-0xdf7);u8 map=(0xd2d+202-0xdf7),
+DATARMNET0258668025=(0xd2d+202-0xdf7);u16 DATARMNET87636d0152=(0xd2d+202-0xdf7);
+u16 index;u8 DATARMNET3894230a14=(0xd2d+202-0xdf7);u8 cpu;if(!
 DATARMNET63b1a086d5->DATARMNETae4b27456e.head)return;if(!DATARMNET63b1a086d5->
 DATARMNETfbbec4c537){map=DATARMNETecc0627c70.map_mask;DATARMNET0258668025=
 DATARMNETecc0627c70.map_len;index=DATARMNET63b1a086d5->map_index;}else{map=
@@ -874,12 +875,12 @@ DATARMNETa4055affd5=&DATARMNET0997c5650d[DATARMNETecc0627c70.DATARMNET7d667e828e
 ];DATARMNETe102b3a798(node_p,&DATARMNETa4055affd5->DATARMNET3dc4262f53,node_p->
 map_cpu);DATARMNETb7ddf3c5dd[DATARMNETcf84373518]++;}DATARMNET02fc8b29a0(node_p,
 DATARMNET0bf01e7c6f,skb->dev);netif_rx(skb);break;}node_p->DATARMNET0371465875++
-;DATARMNET495dab3d72(skb,node_p,DATARMNET0bf01e7c6f);if(!rcu_dereference(
-rmnet_shs_switch)){DATARMNET68d84e7b98[DATARMNET2e68f4bd9f]++;
-DATARMNET7c5ef97eab=DATARMNET27fb9a225d;break;}if(DATARMNETadb0248bd4(
-DATARMNETecc0627c70.DATARMNET7d667e828e)>=(node_p->queue_head+node_p->
-DATARMNET0371465875)){DATARMNET7c5ef97eab=DATARMNETbbf8fe40aa;break;}if(
-DATARMNETaf998640fd&&node_p->DATARMNETae4b27456e.DATARMNET6215127f48>
+;DATARMNET495dab3d72(skb,node_p,DATARMNET0bf01e7c6f);if(!
+rmnet_module_hook_is_set(RMNET_MODULE_HOOK_SHS_SWITCH)){DATARMNET68d84e7b98[
+DATARMNET2e68f4bd9f]++;DATARMNET7c5ef97eab=DATARMNET27fb9a225d;break;}if(
+DATARMNETadb0248bd4(DATARMNETecc0627c70.DATARMNET7d667e828e)>=(node_p->
+queue_head+node_p->DATARMNET0371465875)){DATARMNET7c5ef97eab=DATARMNETbbf8fe40aa
+;break;}if(DATARMNETaf998640fd&&node_p->DATARMNETae4b27456e.DATARMNET6215127f48>
 DATARMNETaf998640fd){DATARMNET14ed771dfb[DATARMNETcc3c294f38]++;
 DATARMNET7c5ef97eab=DATARMNET95c85e6fe1;break;}spin_unlock_bh(&
 DATARMNET3764d083f0);return(0xd2d+202-0xdf7);}else DATARMNET495dab3d72(skb,
@@ -963,21 +964,18 @@ DATARMNET1c55e5fdb1){DATARMNET14ed771dfb[DATARMNET01bf75e27c]++;
 DATARMNETa4bf9fbf64((0xd2d+202-0xdf7),DATARMNET0b15fd8b54);}return
 (0xd2d+202-0xdf7);}static const struct rmnet_module_hook_register_info 
 DATARMNETef42b9f0b2={.hooknum=RMNET_MODULE_HOOK_SHS_SKB_ENTRY,.func=
-DATARMNET756778f14f,};void DATARMNET203752febd(void){RCU_INIT_POINTER(
-rmnet_shs_skb_entry,NULL);rmnet_module_hook_unregister_no_sync(&
-DATARMNETef42b9f0b2,(0xd26+209-0xdf6));}void DATARMNET7520667b38(void){
-RCU_INIT_POINTER(rmnet_shs_skb_entry,DATARMNET756778f14f);
-rmnet_module_hook_register(&DATARMNETef42b9f0b2,(0xd26+209-0xdf6));}static int 
-DATARMNET2594c2fa60(struct sk_buff*skb,struct rmnet_shs_clnt_s*
-DATARMNET9e820fbfe3){struct rmnet_skb_cb*cb=RMNET_SKB_CB(skb);if(!cb->qmap_steer
-&&skb->priority!=55834){cb->qmap_steer=(0xd26+209-0xdf6);DATARMNET756778f14f(skb
-,DATARMNET9e820fbfe3);return(0xd26+209-0xdf6);}return(0xd2d+202-0xdf7);}static 
-const struct rmnet_module_hook_register_info DATARMNET28a9685974={.hooknum=
-RMNET_MODULE_HOOK_SHS_SWITCH,.func=DATARMNET2594c2fa60,};void 
-DATARMNETa871eeb7e7(void){RCU_INIT_POINTER(rmnet_shs_switch,NULL);
+DATARMNET756778f14f,};void DATARMNET203752febd(void){
+rmnet_module_hook_unregister_no_sync(&DATARMNETef42b9f0b2,(0xd26+209-0xdf6));}
+void DATARMNET7520667b38(void){rmnet_module_hook_register(&DATARMNETef42b9f0b2,
+(0xd26+209-0xdf6));}static int DATARMNET2594c2fa60(struct sk_buff*skb,struct 
+rmnet_shs_clnt_s*DATARMNET9e820fbfe3){struct rmnet_skb_cb*cb=RMNET_SKB_CB(skb);
+if(!cb->qmap_steer&&skb->priority!=55834){cb->qmap_steer=(0xd26+209-0xdf6);
+DATARMNET756778f14f(skb,DATARMNET9e820fbfe3);return(0xd26+209-0xdf6);}return
+(0xd2d+202-0xdf7);}static const struct rmnet_module_hook_register_info 
+DATARMNET28a9685974={.hooknum=RMNET_MODULE_HOOK_SHS_SWITCH,.func=
+DATARMNET2594c2fa60,};void DATARMNETa871eeb7e7(void){
 rmnet_module_hook_unregister_no_sync(&DATARMNET28a9685974,(0xd26+209-0xdf6));}
-void DATARMNET8f9da46b14(void){RCU_INIT_POINTER(rmnet_shs_switch,
-DATARMNET2594c2fa60);rmnet_module_hook_register(&DATARMNET28a9685974,
+void DATARMNET8f9da46b14(void){rmnet_module_hook_register(&DATARMNET28a9685974,
 (0xd26+209-0xdf6));}void DATARMNET9297340f58(unsigned int DATARMNET9f4bc49c6f){
 DATARMNETdf74db7e38();DATARMNET90fe3a4b56();DATARMNETecc0627c70.
 DATARMNET9c869c1ec2=(0xd2d+202-0xdf7);unregister_oom_notifier(&

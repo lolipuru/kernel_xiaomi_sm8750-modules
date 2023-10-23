@@ -23,11 +23,11 @@
 #include "rmnet_offload_state.h"
 #include "rmnet_offload_engine.h"
 #include "rmnet_offload_stats.h"
-static char*verinfo[]={"\x63\x38\x61\x63\x61\x66\x38\x35",
-"\x65\x32\x31\x38\x66\x34\x35\x31","\x32\x61\x34\x34\x66\x36\x62\x65",
-"\x37\x34\x31\x35\x39\x32\x31\x63","\x34\x31\x32\x39\x36\x62\x30\x39"};
-module_param_array(verinfo,charp,NULL,(0xcb7+5769-0x221c));MODULE_PARM_DESC(
-verinfo,
+static char*verinfo[]={"\x35\x38\x61\x61\x39\x62\x65\x65",
+"\x63\x38\x61\x63\x61\x66\x38\x35","\x65\x32\x31\x38\x66\x34\x35\x31",
+"\x32\x61\x34\x34\x66\x36\x62\x65","\x37\x34\x31\x35\x39\x32\x31\x63",
+"\x34\x31\x32\x39\x36\x62\x30\x39"};module_param_array(verinfo,charp,NULL,
+(0xcb7+5769-0x221c));MODULE_PARM_DESC(verinfo,
 "\x56\x65\x72\x73\x69\x6f\x6e\x20\x6f\x66\x20\x74\x68\x65\x20\x64\x72\x69\x76\x65\x72"
 );static DEFINE_SPINLOCK(DATARMNET0b5e447f18);static u32 DATARMNETcb7325e02d(
 struct DATARMNETd812bcdbb5*DATARMNET458b70e7e5){struct DATARMNET4287f07234*
@@ -222,20 +222,19 @@ DATARMNET664568fcd0(void){spin_lock_bh(&DATARMNET0b5e447f18);}void
 DATARMNET6a76048590(void){spin_unlock_bh(&DATARMNET0b5e447f18);}static const 
 struct rmnet_module_hook_register_info DATARMNET162e7a2013={.hooknum=
 RMNET_MODULE_HOOK_OFFLOAD_INGRESS,.func=DATARMNET29e8d137c4,};void 
-DATARMNET818b960147(void){rcu_assign_pointer(rmnet_perf_desc_entry,
-DATARMNETb56d685c50);rmnet_module_hook_register(&DATARMNET162e7a2013,
-(0xd26+209-0xdf6));}void DATARMNETba38823a2f(void){rcu_assign_pointer(
-rmnet_perf_desc_entry,NULL);rmnet_module_hook_unregister_no_sync(&
-DATARMNET162e7a2013,(0xd26+209-0xdf6));}void DATARMNETc70e73c8d4(struct 
-list_head*DATARMNETb5730f5283){struct DATARMNET70f3b87b5d*DATARMNETe05748b000=
-DATARMNETc2a630b113();struct rmnet_frag_descriptor*DATARMNET9d1b321642,*
-DATARMNET0386f6f82a;list_for_each_entry_safe(DATARMNET9d1b321642,
-DATARMNET0386f6f82a,DATARMNETb5730f5283,list){DATARMNETe26a68d20e(
-DATARMNET9d1b321642->len);DATARMNETa00cda79d0(DATARMNET65843ad009);list_del_init
-(&DATARMNET9d1b321642->list);rmnet_frag_deliver(DATARMNET9d1b321642,
-DATARMNETe05748b000->DATARMNET403589239f);}}void DATARMNET19d190f2bd(struct 
-DATARMNETd812bcdbb5*DATARMNET458b70e7e5,struct list_head*DATARMNET6f9bfa17e6){
-struct rmnet_frag_descriptor*DATARMNET9d1b321642=DATARMNET458b70e7e5->
+DATARMNET818b960147(void){rmnet_module_hook_register(&DATARMNET162e7a2013,
+(0xd26+209-0xdf6));}void DATARMNETba38823a2f(void){
+rmnet_module_hook_unregister_no_sync(&DATARMNET162e7a2013,(0xd26+209-0xdf6));}
+void DATARMNETc70e73c8d4(struct list_head*DATARMNETb5730f5283){struct 
+DATARMNET70f3b87b5d*DATARMNETe05748b000=DATARMNETc2a630b113();struct 
+rmnet_frag_descriptor*DATARMNET9d1b321642,*DATARMNET0386f6f82a;
+list_for_each_entry_safe(DATARMNET9d1b321642,DATARMNET0386f6f82a,
+DATARMNETb5730f5283,list){DATARMNETe26a68d20e(DATARMNET9d1b321642->len);
+DATARMNETa00cda79d0(DATARMNET65843ad009);list_del_init(&DATARMNET9d1b321642->
+list);rmnet_frag_deliver(DATARMNET9d1b321642,DATARMNETe05748b000->
+DATARMNET403589239f);}}void DATARMNET19d190f2bd(struct DATARMNETd812bcdbb5*
+DATARMNET458b70e7e5,struct list_head*DATARMNET6f9bfa17e6){struct 
+rmnet_frag_descriptor*DATARMNET9d1b321642=DATARMNET458b70e7e5->
 DATARMNET719f68fb88;u32 DATARMNET5affe290b8=DATARMNET458b70e7e5->
 DATARMNET1ef22e4c76+DATARMNET458b70e7e5->DATARMNET144d119066.DATARMNET4ca5ac9de1
 +DATARMNET458b70e7e5->DATARMNET144d119066.DATARMNET0aeee57ceb;if(
