@@ -1882,6 +1882,8 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
 	int chipset_version = 0;
+	unsigned int panic_reason = 0;
+	unsigned short primary_reason = 0, sec_reason = 0;
 
 #ifdef CONFIG_MSM_BT_OOBS
 	enum btpower_obs_param clk_cntrl;
@@ -2013,6 +2015,16 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case BT_CMD_KERNEL_PANIC:
 		pr_info("%s: BT_CMD_KERNEL_PANIC\n", __func__);
 		panic("subsys-restart: Resetting the SoC - Bluetooth crashed\n");
+		break;
+	case UWB_CMD_KERNEL_PANIC:
+		pr_err("%s: UWB_CMD_KERNEL_PANIC\n", __func__);
+		panic_reason = (unsigned int)arg;
+		primary_reason = panic_reason & 0xFFFF;
+		sec_reason = (panic_reason & 0xFFFF0000) >> 16;
+		pr_err("%s: UWB kernel panic primary reason [0x%04x] secondary reason [0x%04x]\n",
+				__func__, primary_reason, sec_reason);
+		panic("subsys-restart: Resetting the SoC - UWB crashed primary reason [0x%04x] secondary reason [0x%04x]\n",
+				primary_reason, sec_reason);
 		break;
 	default:
 		return -ENOIOCTLCMD;
