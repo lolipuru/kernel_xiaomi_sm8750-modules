@@ -8,6 +8,10 @@
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
+#include <linux/remoteproc/qcom_rproc.h>
+#endif
 
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_utils.h"
@@ -17,6 +21,26 @@
 
 struct hw_fence_driver_data *hw_fence_drv_data;
 bool hw_fence_driver_enable;
+
+static int _set_power_vote_if_needed(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_client *hw_fence_client, bool state)
+{
+	int ret = 0;
+
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+	if (drv_data->has_soccp &&
+			hw_fence_client->client_id_ext >= HW_FENCE_CLIENT_ID_VAL0 &&
+			hw_fence_client->client_id_ext <= HW_FENCE_CLIENT_ID_VAL6) {
+#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
+		ret = rproc_set_state(drv_data->soccp_rproc, state);
+#else
+		ret = -EINVAL;
+#endif
+	}
+#endif /* CONFIG_DEBUG_FS */
+
+	return ret;
+}
 
 void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	struct msm_hw_fence_mem_addr *mem_descriptor)
@@ -133,6 +157,13 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	init_waitqueue_head(&hw_fence_client->wait_queue);
 #endif /* CONFIG_DEBUG_FS */
 
+	ret = _set_power_vote_if_needed(hw_fence_drv_data, hw_fence_client, true);
+	if (ret) {
+		HWFNC_ERR("set soccp power vote failed, fail client:%u registration ret:%d\n",
+			hw_fence_client->client_id_ext, ret);
+		goto error;
+	}
+
 	return (void *)hw_fence_client;
 error:
 
@@ -147,6 +178,7 @@ EXPORT_SYMBOL_GPL(msm_hw_fence_register);
 int msm_hw_fence_deregister(void *client_handle)
 {
 	struct msm_hw_fence_client *hw_fence_client;
+	int ret;
 
 	if (IS_ERR_OR_NULL(client_handle)) {
 		HWFNC_ERR("Invalid client handle\n");
@@ -160,6 +192,11 @@ int msm_hw_fence_deregister(void *client_handle)
 	}
 
 	HWFNC_DBG_H("+\n");
+
+	ret = _set_power_vote_if_needed(hw_fence_drv_data, hw_fence_client, false);
+	if (ret)
+		HWFNC_ERR("remove soccp power vote failed, fail client:%u deregistration ret:%d\n",
+			hw_fence_client->client_id_ext, ret);
 
 	/* Free all the allocated resources */
 	hw_fence_cleanup_client(hw_fence_drv_data, hw_fence_client);

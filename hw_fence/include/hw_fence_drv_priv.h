@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/bitmap.h>
 #include <linux/hashtable.h>
+#include <linux/remoteproc.h>
 #include "msm_hw_fence.h"
 
 /* max u64 to indicate invalid fence */
@@ -380,6 +381,7 @@ struct hw_fence_signal_cb {
  * @ipcc_val_initialized: flag to indicate if val is initialized
  * @dma_fence_table_lock: lock to synchronize access to dma-fence table
  * @dma_fence_table: table with internal dma-fences for hw-fences
+ * @soccp_rproc: soccp rproc object used to set power vote
  * @has_soccp: flag to indicate if soccp is present (otherwise vm is used)
  */
 struct hw_fence_driver_data {
@@ -474,6 +476,7 @@ struct hw_fence_driver_data {
 	DECLARE_HASHTABLE(dma_fence_table, DMA_FENCE_HASH_TABLE_BIT);
 
 	/* soccp is present */
+	struct rproc *soccp_rproc;
 	bool has_soccp;
 };
 
