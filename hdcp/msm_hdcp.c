@@ -19,6 +19,7 @@
 #include <linux/errno.h>
 #include <linux/msm_hdcp.h>
 #include <linux/of.h>
+#include <linux/version.h>
 
 #define CLASS_NAME "hdcp"
 #define DRIVER_NAME "msm_hdcp"
@@ -265,7 +266,12 @@ static int msm_hdcp_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+	hdcp->class = class_create(CLASS_NAME);
+#else
 	hdcp->class = class_create(THIS_MODULE, CLASS_NAME);
+#endif
+
 	if (IS_ERR(hdcp->class)) {
 		ret = PTR_ERR(hdcp->class);
 		pr_err("couldn't create class rc = %d\n", ret);
