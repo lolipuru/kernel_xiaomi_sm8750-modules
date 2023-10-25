@@ -613,9 +613,7 @@ int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
 		desc.pvt_data = (void *)mmrm_cb_data;
 		desc.notifier_callback_fn = cb_fnc;
 
-#if IS_ENABLED(CONFIG_MSM_MMRM)
 		clk_array[i].mmrm.mmrm_client = mmrm_client_register(&desc);
-#endif
 		if (!clk_array[i].mmrm.mmrm_client) {
 			DEV_ERR("mmrm register error\n");
 			DEV_ERR("clk[%d] type:%d id:%d name:%s\n",
@@ -640,7 +638,7 @@ EXPORT_SYMBOL_GPL(msm_dss_mmrm_register);
 void msm_dss_mmrm_deregister(struct device *dev,
 	struct dss_module_power *mp)
 {
-	int i, ret = 0;
+	int i, ret;
 	struct dss_clk *clk_array = mp->clk_config;
 	int num_clk = mp->num_clk;
 
@@ -648,10 +646,8 @@ void msm_dss_mmrm_deregister(struct device *dev,
 		if (clk_array[i].type != DSS_CLK_MMRM)
 			continue;
 
-#if IS_ENABLED(CONFIG_MSM_MMRM)
 		ret = mmrm_client_deregister(
 			clk_array[i].mmrm.mmrm_client);
-#endif
 		if (ret) {
 			DEV_DBG("fail mmrm deregister ret:%d clk:%s\n",
 				ret, clk_array[i].clk_name);
@@ -702,12 +698,10 @@ int msm_dss_single_clk_set_rate(struct dss_clk *clk)
 		client_data.num_hw_blocks = 1;
 		client_data.flags = clk->mmrm.flags;
 
-#if IS_ENABLED(CONFIG_MSM_MMRM)
 		rc = mmrm_client_set_value(
 			clk->mmrm.mmrm_client,
 			&client_data,
 			clk->rate);
-#endif
 		if (rc) {
 			DEV_ERR("%pS->%s: %s mmrm setval fail rc:%d\n",
 				__builtin_return_address(0),
