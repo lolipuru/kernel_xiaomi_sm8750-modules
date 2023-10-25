@@ -16,7 +16,6 @@ ifeq ($(call is-board-platform-in-list, taro kalama pineapple blair sun), true)
 
 BT_SELECT := CONFIG_MSM_BT_POWER=m
 BT_SELECT += CONFIG_SLIM_BTFM_CODEC=n
-BT_SELECT += CONFIG_BTFM_CODEC=m
 BT_SELECT += CONFIG_I2C_RTC6226_QCA=m
 
 ifeq ($(TARGET_KERNEL_DLKM_SECURE_MSM_OVERRIDE), true)
@@ -30,7 +29,11 @@ LOCAL_MODULE_DDK_BUILD := true
 LOCAL_MODULE_KO_DIRS := pwr/btpower.ko
 LOCAL_MODULE_KO_DIRS += rtc6226/radio-i2c-rtc6226-qca.ko
 #LOCAL_MODULE_KO_DIRS += slimbus/btfm_slim_codec.ko
+
+ifneq ($(TARGET_BOARD_PLATFORM), pineapple)
+BT_SELECT += CONFIG_BTFM_CODEC=m
 LOCAL_MODULE_KO_DIRS += btfmcodec/btfmcodec.ko
+endif
 
 # This makefile is only for DLKM
 ifneq ($(findstring vendor,$(LOCAL_PATH)),)
