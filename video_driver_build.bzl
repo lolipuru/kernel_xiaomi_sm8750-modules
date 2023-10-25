@@ -96,7 +96,3 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
         mode_overrides = {"**/*": "644"},
         log = "info",
     )
-
-def define_consolidate_gki_modules(target, registry, modules, config_options = []):
-    define_target_variant_modules(target, "consolidate", registry, modules, config_options)
-    define_target_variant_modules(target, "gki", registry, modules, config_options)
