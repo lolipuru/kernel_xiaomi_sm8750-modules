@@ -124,7 +124,7 @@ struct synx_session *synx_hwfence_initialize(struct synx_initialization_params *
 		(struct msm_hw_fence_mem_addr *)params->ptr);
 	if (IS_ERR_OR_NULL(client_handle)) {
 		kfree(session);
-		HWFNC_ERR("failed to initialize synx_id:%d ret:%d\n", params->id,
+		HWFNC_ERR("failed to initialize synx_id:%d ret:%ld\n", params->id,
 			PTR_ERR(client_handle));
 		return ERR_PTR(to_synx_status(PTR_ERR(client_handle)));
 	}
@@ -134,7 +134,7 @@ struct synx_session *synx_hwfence_initialize(struct synx_initialization_params *
 
 	return session;
 }
-EXPORT_SYMBOL(synx_hwfence_initialize);
+EXPORT_SYMBOL_GPL(synx_hwfence_initialize);
 
 int synx_hwfence_uninitialize(struct synx_session *session)
 {
@@ -154,7 +154,7 @@ int synx_hwfence_uninitialize(struct synx_session *session)
 
 	return to_synx_status(ret);
 }
-EXPORT_SYMBOL(synx_hwfence_uninitialize);
+EXPORT_SYMBOL_GPL(synx_hwfence_uninitialize);
 
 int synx_hwfence_create(struct synx_session *session, struct synx_create_params *params)
 {
@@ -196,7 +196,7 @@ int synx_hwfence_create(struct synx_session *session, struct synx_create_params 
 
 	return SYNX_SUCCESS;
 }
-EXPORT_SYMBOL(synx_hwfence_create);
+EXPORT_SYMBOL_GPL(synx_hwfence_create);
 
 int synx_hwfence_release(struct synx_session *session, u32 h_synx)
 {
@@ -215,7 +215,7 @@ int synx_hwfence_release(struct synx_session *session, u32 h_synx)
 
 	return to_synx_status(ret);
 }
-EXPORT_SYMBOL(synx_hwfence_release);
+EXPORT_SYMBOL_GPL(synx_hwfence_release);
 
 int synx_hwfence_signal(struct synx_session *session, u32 h_synx, enum synx_signal_status status)
 {
@@ -234,7 +234,7 @@ int synx_hwfence_signal(struct synx_session *session, u32 h_synx, enum synx_sign
 
 	return to_synx_status(ret);
 }
-EXPORT_SYMBOL(synx_hwfence_signal);
+EXPORT_SYMBOL_GPL(synx_hwfence_signal);
 
 int synx_hwfence_recover(enum synx_client_id id)
 {
@@ -252,7 +252,7 @@ int synx_hwfence_recover(enum synx_client_id id)
 
 	return to_synx_status(ret);
 }
-EXPORT_SYMBOL(synx_hwfence_recover);
+EXPORT_SYMBOL_GPL(synx_hwfence_recover);
 
 static int synx_hwfence_import_indv(void *client, struct synx_import_indv_params *params)
 {
@@ -332,4 +332,4 @@ int synx_hwfence_import(struct synx_session *session, struct synx_import_params 
 
 	return ret;
 }
-EXPORT_SYMBOL(synx_hwfence_import);
+EXPORT_SYMBOL_GPL(synx_hwfence_import);
