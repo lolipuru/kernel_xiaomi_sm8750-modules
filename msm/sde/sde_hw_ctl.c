@@ -154,7 +154,7 @@ static const u32 wb_flush_tbl[WB_MAX] = {SDE_NONE, SDE_NONE, 1, 2};
 /**
  * list of INTF bits in CTL_INTF_FLUSH
  */
-static const u32 intf_flush_tbl[INTF_MAX] = {SDE_NONE, 0, 1, 2, 3, 4, 5};
+static const u32 intf_flush_tbl[INTF_MAX] = {SDE_NONE, 0, 1, 2, 3, 4, 5, 6, 7, 8};
 
 /**
  * list of DSC bits in CTL_DSC_FLUSH
@@ -994,11 +994,13 @@ static void sde_hw_ctl_clear_all_blendstages(struct sde_hw_ctl *ctx)
 		return;
 
 	c = &ctx->hw;
+	SDE_REG_WRITE(c, CTL_FETCH_PIPE_ACTIVE, 0);
+
 	for (i = 0; i < ctx->mixer_count; i++) {
 		int mixer_id = ctx->mixer_hw_caps[i].id;
 
 		if (mixer_id >= LM_DCWB_DUMMY_0)
-			return;
+			break;
 
 		SDE_REG_WRITE(c, CTL_LAYER(mixer_id), 0);
 		SDE_REG_WRITE(c, CTL_LAYER_EXT(mixer_id), 0);
@@ -1006,7 +1008,6 @@ static void sde_hw_ctl_clear_all_blendstages(struct sde_hw_ctl *ctx)
 		SDE_REG_WRITE(c, CTL_LAYER_EXT3(mixer_id), 0);
 		SDE_REG_WRITE(c, CTL_LAYER_EXT4(mixer_id), 0);
 	}
-	SDE_REG_WRITE(c, CTL_FETCH_PIPE_ACTIVE, 0);
 }
 
 static void _sde_hw_ctl_get_mixer_cfg(struct sde_hw_ctl *ctx,
@@ -1444,7 +1445,12 @@ static inline bool sde_hw_ctl_read_active_status(struct sde_hw_ctl *ctx,
 
 static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 {
-	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops();
+	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+
+	if (!ops) {
+		SDE_ERROR("dma ops is NULL\n");
+		return -EINVAL;
+	}
 
 	if (!ctx)
 		return -EINVAL;
@@ -1539,7 +1545,8 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m)
+		struct sde_mdss_cfg *m,
+		u32 dpu_idx)
 {
 	struct sde_hw_ctl *c;
 	struct sde_ctl_cfg *cfg;
@@ -1560,6 +1567,7 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 	c->idx = idx;
 	c->mixer_count = m->mixer_count;
 	c->mixer_hw_caps = m->mixer;
+	c->dpu_idx = dpu_idx;
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);

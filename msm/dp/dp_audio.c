@@ -5,8 +5,12 @@
  */
 
 #include <linux/of_platform.h>
-#include <linux/soc/qcom/msm_ext_display.h>
 #include <linux/version.h>
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <msm_ext_display.h>
+#else
+#include <linux/soc/qcom/msm_ext_display.h>
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
 #include <drm/display/drm_dp_helper.h>
@@ -626,7 +630,7 @@ static int dp_audio_register_ext_disp(struct dp_audio_private *audio)
 		rc = -ENODEV;
 		goto end;
 	}
-#if defined(CONFIG_MSM_EXT_DISPLAY)
+#if IS_ENABLED(CONFIG_MSM_EXT_DISPLAY)
 	rc = msm_ext_disp_register_intf(audio->ext_pdev, ext);
 	if (rc)
 		DP_ERR("failed to register disp\n");
@@ -667,7 +671,7 @@ static int dp_audio_deregister_ext_disp(struct dp_audio_private *audio)
 		goto end;
 	}
 
-#if defined(CONFIG_MSM_EXT_DISPLAY)
+#if IS_ENABLED(CONFIG_MSM_EXT_DISPLAY)
 	rc = msm_ext_disp_deregister_intf(audio->ext_pdev, ext);
 	if (rc)
 		DP_ERR("failed to deregister disp\n");

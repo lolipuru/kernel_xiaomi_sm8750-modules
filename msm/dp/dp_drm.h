@@ -139,6 +139,18 @@ void dp_connector_post_open(struct drm_connector *connector, void *display);
  * @max_mixer_count: max available mixers for dp display
  * @max_dsc_count: max available dsc for dp display
  */
+
+/**
+ * dp_conn_set_info_blob - callback to perform info blob initialization
+ * @connector: Pointer to drm connector structure
+ * @info: Pointer to sde connector info structure
+ * @display: Pointer to private display handle
+ * @mode_info: Pointer to mode info structure
+ * Returns: Zero on success
+ */
+int dp_connector_set_info_blob(struct drm_connector *connector,
+		void *info, void *display, struct msm_mode_info *mode_info);
+
 int dp_drm_bridge_init(void *display, struct drm_encoder *encoder,
 	u32 max_mixer_count, u32 max_dsc_count);
 
@@ -250,6 +262,12 @@ static inline void dp_connector_post_open(struct drm_connector *connector,
 {
 }
 
+static inline int dp_connector_set_info_blob(struct drm_connector *connector,
+			void *info, void *display, struct msm_mode_info *mode_info)
+{
+	return 0;
+}
+
 static inline int dp_drm_bridge_init(void *display, struct drm_encoder *encoder,
 		u32 max_mixer_count, u32 max_dsc_count)
 {
@@ -265,7 +283,7 @@ static inline void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
 {
 }
 
-static int dp_connector_install_properties(void *display,
+static inline int dp_connector_install_properties(void *display,
 		struct drm_connector *conn)
 {
 	return 0;

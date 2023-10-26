@@ -28,7 +28,11 @@
 #include <drm/drm_flip_work.h>
 #include <soc/qcom/of_common.h>
 #include <linux/version.h>
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <qcom_sync_file.h>
+#else
 #include <linux/soc/qcom/qcom_sync_file.h>
+#endif
 #include <linux/file.h>
 
 #include "sde_kms.h"
@@ -605,7 +609,7 @@ static void sde_crtc_event_notify(struct drm_crtc *crtc, uint32_t type, void *pa
 
 	SDE_EVT32(DRMID(crtc), type, len, *data,
 			((uint64_t)payload) >> 32, ((uint64_t)payload) & 0xFFFFFFFF);
-	SDE_DEBUG("crtc:%d event(%lu) ptr(%pK) value(%lu) notified\n",
+	SDE_DEBUG("crtc:%d event(%u) ptr(%pK) value(%u) notified\n",
 			DRMID(crtc), type, payload, *data);
 }
 
@@ -746,14 +750,18 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 	uint32_t blend_op, fg_alpha, bg_alpha;
 	uint32_t blend_type;
 	struct sde_hw_mixer *lm = mixer->hw_lm;
+	struct drm_plane_state *plane_state = &pstate->base;
 
 	/* default to opaque blending */
 	fg_alpha = sde_plane_get_property(pstate, PLANE_PROP_ALPHA);
 	bg_alpha = 0xFF - fg_alpha;
+	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA))
+		bg_alpha = sde_plane_get_property(pstate, PLANE_PROP_BG_ALPHA);
 	blend_op = SDE_BLEND_FG_ALPHA_FG_CONST | SDE_BLEND_BG_ALPHA_BG_CONST;
 	blend_type = sde_plane_get_property(pstate, PLANE_PROP_BLEND_OP);
 
-	SDE_DEBUG("blend type:0x%x blend alpha:0x%x\n", blend_type, fg_alpha);
+	SDE_DEBUG("blend type:0x%x blend alpha:0x%x bg_alpha:0x%x\n",
+			blend_type, fg_alpha, bg_alpha);
 
 	switch (blend_type) {
 
@@ -977,9 +985,18 @@ static int _sde_crtc_set_roi_v1(struct drm_crtc_state *state,
 		return -EINVAL;
 	}
 
+	cstate->user_roi_list.roi_feature_flags = roi_v1.roi_feature_flags;
 	cstate->user_roi_list.num_rects = roi_v1.num_rects;
 	for (i = 0; i < roi_v1.num_rects; ++i) {
 		cstate->user_roi_list.roi[i] = roi_v1.roi[i];
+		if (cstate->user_roi_list.roi_feature_flags & SDE_DRM_ROI_SPR_FLAG_EN)
+			cstate->user_roi_list.spr_roi[i] = roi_v1.spr_roi[i];
+		else
+			/*
+			 * backward compatible, spr_roi has the same value with roi,
+			 * it will have the same behavior with before.
+			 */
+			cstate->user_roi_list.spr_roi[i] = roi_v1.roi[i];
 		SDE_DEBUG("crtc%d: roi%d: roi (%d,%d) (%d,%d)\n",
 				DRMID(crtc), i,
 				cstate->user_roi_list.roi[i].x1,
@@ -991,6 +1008,17 @@ static int _sde_crtc_set_roi_v1(struct drm_crtc_state *state,
 				cstate->user_roi_list.roi[i].y1,
 				cstate->user_roi_list.roi[i].x2,
 				cstate->user_roi_list.roi[i].y2);
+		SDE_DEBUG("crtc%d, roi_feature_flags %d: spr roi%d: spr roi (%d,%d) (%d,%d)\n",
+				DRMID(crtc), roi_v1.roi_feature_flags, i,
+				roi_v1.spr_roi[i].x1,
+				roi_v1.spr_roi[i].y1,
+				roi_v1.spr_roi[i].x2,
+				roi_v1.spr_roi[i].y2);
+		SDE_EVT32_VERBOSE(DRMID(crtc), roi_v1.roi_feature_flags,
+				roi_v1.spr_roi[i].x1,
+				roi_v1.spr_roi[i].y1,
+				roi_v1.spr_roi[i].x2,
+				roi_v1.spr_roi[i].y2);
 	}
 
 	return 0;
@@ -1055,13 +1083,15 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 			continue;
 
 		/*
-		 * current driver only supports same connector and crtc size,
-		 * but if support for different sizes is added, driver needs
-		 * to check the connector roi here to make sure is full screen
-		 * for dsc 3d-mux topology that doesn't support partial update.
+		 * When enable spr 2D filter in PU, it require over fetch lines.
+		 * In this case, the roi size of connector and crtc are different.
+		 * But the spr_roi is the original roi with over fetch lines,
+		 * that should same with connector size.
 		 */
-		if (memcmp(&sde_conn_state->rois, &crtc_state->user_roi_list,
-				sizeof(crtc_state->user_roi_list))) {
+		if (memcmp(&sde_conn_state->rois.roi, &crtc_state->user_roi_list.spr_roi,
+				sizeof(crtc_state->user_roi_list.spr_roi)) &&
+				(sde_conn_state->rois.num_rects !=
+				crtc_state->user_roi_list.num_rects)) {
 			SDE_ERROR("%s: crtc -> conn roi scaling unsupported\n",
 					sde_crtc->name);
 			return -EINVAL;
@@ -1677,7 +1707,9 @@ static int _sde_crtc_validate_src_split_order(struct drm_crtc *crtc,
 		cur_layout = cur_pstate->sde_pstate->layout;
 
 		if (prv_pstate->stage != cur_pstate->stage ||
-				prev_layout != cur_layout)
+				prev_layout != cur_layout ||
+			sde_plane_is_cac_enabled(prv_pstate->sde_pstate) ||
+			sde_plane_is_cac_enabled(cur_pstate->sde_pstate))
 			continue;
 
 		stage = cur_pstate->stage;
@@ -1858,7 +1890,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	int zpos_cnt[MAX_LAYOUTS_PER_CRTC][SDE_STAGE_MAX + 1];
 	int i, mode, cnt = 0;
 	bool bg_alpha_enable = false;
-	u32 blend_type;
+	u32 blend_type, cac_mode;
 	struct sde_cp_crtc_skip_blend_plane skip_blend_plane;
 	DECLARE_BITMAP(fetch_active, SSPP_MAX);
 
@@ -1912,6 +1944,8 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 
 		blend_type = sde_plane_get_property(pstate,
 					PLANE_PROP_BLEND_OP);
+		cac_mode = sde_plane_get_property(pstate,
+					PLANE_PROP_CAC_TYPE);
 
 		if (blend_type == SDE_DRM_BLEND_OP_SKIP) {
 			skip_blend_plane.valid_plane = true;
@@ -1932,7 +1966,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 					state->src_w >> 16, state->src_h >> 16,
 					state->crtc_x, state->crtc_y,
 					state->crtc_w, state->crtc_h,
-					pstate->rotation, mode);
+					pstate->rotation, mode, cac_mode);
 
 			/*
 			 * none or left layout will program to layer mixer
@@ -1970,12 +2004,11 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			}
 		}
 
-		if (cnt >= SDE_PSTATES_MAX)
+		if (cnt >= SDE_PSTATES_MAX || (cac_mode == SDE_CAC_UNPACK))
 			continue;
 
 		pstates[cnt].sde_pstate = pstate;
 		pstates[cnt].drm_pstate = state;
-
 		if (blend_type == SDE_DRM_BLEND_OP_SKIP)
 			pstates[cnt].stage = SKIP_STAGING_PIPE_ZPOS;
 		else
@@ -4072,7 +4105,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 		MAX_HW_FENCES);
 
 	/* register the hw-fences for hw-wait */
-	if (num_hw_fences) {
+	if (num_hw_fences > 0 && num_hw_fences <= MAX_HW_FENCES) {
 
 		ret = sde_fence_register_hw_fences_wait(hw_ctl, dma_hw_fences, num_hw_fences);
 		if (ret) {
@@ -4295,6 +4328,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	struct drm_device *dev;
 	struct sde_kms *sde_kms;
 	struct sde_splash_display *splash_display;
+	struct sde_crtc_state *cstate;
 	bool cont_splash_enabled = false;
 	size_t i;
 
@@ -4317,6 +4351,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	SDE_DEBUG("crtc%d\n", crtc->base.id);
 
 	sde_crtc = to_sde_crtc(crtc);
+	cstate = to_sde_crtc_state(crtc->state);
 	dev = crtc->dev;
 
 	if (!sde_crtc->num_mixers) {
@@ -4335,6 +4370,12 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 
 		/* encoder will trigger pending mask now */
 		sde_encoder_trigger_kickoff_pending(encoder);
+	}
+
+	if (!cstate->rsc_update) {
+		drm_for_each_encoder_mask(encoder, dev, crtc->state->encoder_mask)
+			cstate->rsc_client = sde_encoder_get_rsc_client(encoder);
+		cstate->rsc_update = true;
 	}
 
 	/* update performance setting */
@@ -4417,7 +4458,6 @@ static void sde_crtc_atomic_begin(struct drm_crtc *crtc,
 static void sde_crtc_atomic_flush_common(struct drm_crtc *crtc,
 		struct drm_atomic_state *state)
 {
-	struct drm_encoder *encoder;
 	struct sde_crtc *sde_crtc;
 	struct drm_device *dev;
 	struct drm_plane *plane;
@@ -4511,15 +4551,6 @@ static void sde_crtc_atomic_flush_common(struct drm_crtc *crtc,
 
 	/* wait for acquire fences before anything else is done */
 	cstate->hwfence_in_fences_set = _sde_crtc_wait_for_fences(crtc);
-
-	if (!cstate->rsc_update) {
-		drm_for_each_encoder_mask(encoder, dev,
-				crtc->state->encoder_mask) {
-			cstate->rsc_client =
-				sde_encoder_get_rsc_client(encoder);
-		}
-		cstate->rsc_update = true;
-	}
 
 	/*
 	 * Final plane updates: Give each plane a chance to complete all
@@ -5018,7 +5049,7 @@ static void _sde_crtc_reserve_resource(struct drm_crtc *crtc, struct drm_connect
 	/* mode clock = [(h * v * fps * 1.05) / (num_lm)] */
 	mode_clock_hz = mult_frac(crtc->mode.htotal * crtc->mode.vtotal * updated_fps, 105, 100);
 	mode_clock_hz = div_u64(mode_clock_hz, lm_count);
-	SDE_DEBUG("[%s] h=%d v=%d fps=%d lm=%d mode_clk=%u\n",
+	SDE_DEBUG("[%s] h=%d v=%d fps=%lld lm=%d mode_clk=%llu\n",
 			crtc->mode.name, crtc->mode.htotal, crtc->mode.vtotal,
 			updated_fps, lm_count, mode_clock_hz);
 
@@ -5191,7 +5222,7 @@ static void sde_crtc_mmrm_cb_notification(struct drm_crtc *crtc)
 	/* notify user space the reduced clk rate */
 	sde_crtc_event_notify(crtc, DRM_EVENT_MMRM_CB, &requested_clk, sizeof(unsigned long));
 
-	SDE_DEBUG("crtc[%d]: MMRM cb notified clk:%d\n",
+	SDE_DEBUG("crtc[%d]: MMRM cb notified clk:%lu\n",
 		crtc->base.id, requested_clk);
 }
 
@@ -6143,6 +6174,7 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	struct drm_display_mode *mode;
 	int layout_split;
 	u32 crtc_width, crtc_height;
+	enum sde_layout layout;
 
 	kms = _sde_crtc_get_kms(crtc);
 
@@ -6170,11 +6202,21 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 		if (plane_state->crtc_x >= layout_split) {
 			plane_state->crtc_x -= layout_split;
 			pstate->layout_offset = layout_split;
-			pstate->layout = SDE_LAYOUT_RIGHT;
+			layout = SDE_LAYOUT_RIGHT;
 		} else {
 			pstate->layout_offset = -1;
-			pstate->layout = SDE_LAYOUT_LEFT;
+			layout = SDE_LAYOUT_LEFT;
 		}
+
+		/*
+		 * When CAC is enabled, the plane coordinates can change based
+		 * on whether single eye or dual eye is used in quad lm usecases,
+		 * but plane layout is fixed as sspp to mixer configuration
+		 * is also fixed for cac usecases.
+		 */
+		if (!sde_plane_is_cac_enabled(pstate))
+			pstate->layout = layout;
+
 		SDE_DEBUG("plane%d updated: crtc_x=%d layout=%d\n",
 				DRMID(plane), plane_state->crtc_x,
 				pstate->layout);
@@ -6574,6 +6616,8 @@ static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
 		sde_kms_info_add_keystr(info, "qseed_type", "qseed3");
 	if (catalog->qseed_sw_lib_rev == SDE_SSPP_SCALER_QSEED3LITE)
 		sde_kms_info_add_keystr(info, "qseed_type", "qseed3lite");
+	if (catalog->cac_version == SDE_SSPP_CAC_V2)
+		sde_kms_info_add_keystr(info, "cac_version", "cac_v2");
 
 	if (catalog->ubwc_rev) {
 		sde_kms_info_add_keyint(info, "UBWC version", catalog->ubwc_rev);
@@ -8300,7 +8344,7 @@ int sde_crtc_post_init(struct drm_device *dev, struct drm_crtc *crtc)
 	sde_crtc = to_sde_crtc(crtc);
 	sde_crtc->sysfs_dev = device_create_with_groups(
 		dev->primary->kdev->class, dev->primary->kdev, 0, crtc,
-		sde_crtc_attr_groups, "sde-crtc-%d", crtc->index);
+		sde_crtc_attr_groups, "card%d-sde-crtc-%d", DPUID(dev), crtc->index);
 	if (IS_ERR_OR_NULL(sde_crtc->sysfs_dev)) {
 		SDE_ERROR("crtc:%d sysfs create failed rc:%ld\n", crtc->index,
 			PTR_ERR(sde_crtc->sysfs_dev));

@@ -118,6 +118,7 @@ static void drm_mode_to_intf_timing_params(
 	}
 
 	timing->wide_bus_en = sde_encoder_is_widebus_enabled(phys_enc->parent);
+	timing->pclk_factor = sde_encoder_get_pclk_factor(phys_enc->parent);
 
 	/*
 	 * for DP, divide the horizonal parameters by 2 when
@@ -127,11 +128,11 @@ static void drm_mode_to_intf_timing_params(
 	if (phys_enc->hw_intf->cap->type == INTF_DP &&
 			(timing->wide_bus_en ||
 			(vid_enc->base.comp_ratio > MSM_DISPLAY_COMPRESSION_RATIO_NONE))) {
-		timing->width = timing->width >> 1;
-		timing->xres = timing->xres >> 1;
-		timing->h_back_porch = timing->h_back_porch >> 1;
-		timing->h_front_porch = timing->h_front_porch >> 1;
-		timing->hsync_pulse_width = timing->hsync_pulse_width >> 1;
+		timing->width = timing->width / (timing->pclk_factor);
+		timing->xres = timing->xres / (timing->pclk_factor);
+		timing->h_back_porch = timing->h_back_porch / (timing->pclk_factor);
+		timing->h_front_porch = timing->h_front_porch / (timing->pclk_factor);
+		timing->hsync_pulse_width = timing->hsync_pulse_width / (timing->pclk_factor);
 
 		if (vid_enc->base.comp_type == MSM_DISPLAY_COMPRESSION_DSC &&
 				(vid_enc->base.comp_ratio > MSM_DISPLAY_COMPRESSION_RATIO_NONE)) {
@@ -315,6 +316,15 @@ static void programmable_fetch_config(struct sde_encoder_phys *phys_enc,
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 	phys_enc->hw_intf->ops.setup_prg_fetch(phys_enc->hw_intf, &f);
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+
+	/*
+	 * In Dual DPU sync mode, prog_intf_offset set in Master DPU
+	 * to enable Slave DPU timing engine.
+	 */
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
+		sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc) &&
+		phys_enc->hw_intf->ops.setup_dpu_sync_prog_intf_offset)
+		phys_enc->hw_intf->ops.setup_dpu_sync_prog_intf_offset(phys_enc->hw_intf, &f);
 }
 
 static bool sde_encoder_phys_vid_mode_fixup(
@@ -436,7 +446,8 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 	drm_mode_debug_printmodeline(&mode);
 
 	is_split_link = phys_enc->hw_intf->cfg.split_link_en;
-	if (phys_enc->split_role != ENC_ROLE_SOLO || is_split_link) {
+	if ((phys_enc->split_role != ENC_ROLE_SOLO && !sde_encoder_master_in_solo_mode(phys_enc))
+				|| is_split_link) {
 		mode.hdisplay >>= 1;
 		mode.htotal >>= 1;
 		mode.hsync_start >>= 1;
@@ -577,7 +588,7 @@ not_flushed:
 			flush_register, event,
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
 			intf_status.frame_count, intf_status.line_count,
-			fence_ready);
+			fence_ready, DPUID(phys_enc->parent->dev));
 
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&phys_enc->pending_kickoff_wq);
@@ -859,10 +870,10 @@ static void sde_encoder_phys_vid_enable(struct sde_encoder_phys *phys_enc)
 		ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_PERIPH, intf->idx, 1);
 
 skip_flush:
-	SDE_DEBUG_VIDENC(vid_enc, "update pending flush ctl %d intf %d\n",
-		ctl->idx - CTL_0, intf->idx);
-	SDE_EVT32(DRMID(phys_enc->parent),
-		atomic_read(&phys_enc->pending_retire_fence_cnt));
+	SDE_DEBUG_VIDENC(vid_enc, "update pending flush ctl %d intf %d role %d\n",
+		ctl->idx - CTL_0, intf->idx, phys_enc->split_role);
+	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->split_role,
+		atomic_read(&phys_enc->pending_retire_fence_cnt), phys_enc->enable_state);
 
 	/* ctl_flush & timing engine enable will be triggered by framework */
 	if (phys_enc->enable_state == SDE_ENC_DISABLED)
@@ -1006,7 +1017,18 @@ static void sde_encoder_phys_vid_update_txq(struct sde_encoder_phys *phys_enc)
 static int sde_encoder_phys_vid_wait_for_commit_done(
 		struct sde_encoder_phys *phys_enc)
 {
-	int rc;
+	int rc = 0;
+
+	/*
+	 * With Interface sync, Master DPU will send signal to enable the Slave DPU Timing engine.
+	 * Hence, Slave DPU should not wait for vsync during power on commit.
+	 * For all other commits, wait_for_vsync is still needed.
+	 */
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
+			phys_enc->enable_state == SDE_ENC_POST_ENABLING) {
+		phys_enc->enable_state = SDE_ENC_ENABLED;
+		return rc;
+	}
 
 	rc =  _sde_encoder_phys_vid_wait_for_vblank(phys_enc, true);
 	if (rc)
@@ -1107,6 +1129,7 @@ static void sde_encoder_phys_vid_single_vblank_wait(
 		struct sde_encoder_phys *phys_enc)
 {
 	int ret;
+	struct intf_status intf_status = {0};
 	struct sde_encoder_phys_vid *vid_enc
 					= to_sde_encoder_phys_vid(phys_enc);
 
@@ -1131,13 +1154,18 @@ static void sde_encoder_phys_vid_single_vblank_wait(
 		ret = _sde_encoder_phys_vid_wait_for_vblank(phys_enc, false);
 		if (ret) {
 			atomic_set(&phys_enc->pending_kickoff_cnt, 0);
-			SDE_ERROR_VIDENC(vid_enc,
-					"failure waiting for disable: %d\n",
-					ret);
-			SDE_EVT32(DRMID(phys_enc->parent),
+			if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_status) {
+				phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &intf_status);
+				ret = intf_status.is_en ? ret : 0;
+			}
+			if (ret) {
+				SDE_ERROR_VIDENC(vid_enc,
+					"failure waiting for disable: %d\n", ret);
+				SDE_EVT32(DRMID(phys_enc->parent),
 					phys_enc->hw_intf->idx - INTF_0, ret,
-					SDE_EVTLOG_FUNC_CASE2,
+					SDE_EVTLOG_FUNC_CASE2, intf_status.is_en,
 					SDE_EVTLOG_ERROR);
+			}
 		}
 		sde_encoder_phys_vid_control_vblank_irq(phys_enc, false);
 	}
@@ -1180,8 +1208,17 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 		goto exit;
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
+
+	/* Disconnect the sync mux, when suspend is requested on slave dpu */
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
+			sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc) &&
+			phys_enc->hw_intf->ops.enable_dpu_sync_ctrl)
+		phys_enc->hw_intf->ops.enable_dpu_sync_ctrl(phys_enc->hw_intf, 0);
+
+	/* Slave DPU timing engine is disabled */
 	phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 0);
 	sde_encoder_phys_inc_pending(phys_enc);
+
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
 	if (phys_enc->hw_intf->ops.reset_counter)
@@ -1203,7 +1240,7 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 	sde_encoder_helper_phys_disable(phys_enc, NULL);
 exit:
 	SDE_EVT32(DRMID(phys_enc->parent),
-		atomic_read(&phys_enc->pending_retire_fence_cnt));
+		atomic_read(&phys_enc->pending_retire_fence_cnt), phys_enc->split_role);
 	phys_enc->vfp_cached = 0;
 	phys_enc->enable_state = SDE_ENC_DISABLED;
 }
@@ -1253,25 +1290,34 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	SDE_DEBUG_VIDENC(vid_enc, "enable_state %d\n", phys_enc->enable_state);
 
+	if (phys_enc->enable_state == SDE_ENC_ENABLING)
+		SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_intf->idx - INTF_0,
+			phys_enc->split_role);
+
 	/*
 	 * Video mode must flush CTL before enabling timing engine
 	 * Video encoders need to turn on their interfaces now
 	 */
 	if (phys_enc->enable_state == SDE_ENC_ENABLING) {
-		if (sde_encoder_phys_vid_is_master(phys_enc)) {
-			SDE_EVT32(DRMID(phys_enc->parent),
-				phys_enc->hw_intf->idx - INTF_0);
+		if (sde_encoder_phys_vid_is_master(phys_enc) &&
+			!sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)) {
 			spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
-			phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf,
-				1);
-			spin_unlock_irqrestore(phys_enc->enc_spinlock,
-				lock_flags);
+			phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
+			spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
 			ret = sde_encoder_phys_vid_poll_for_active_region(phys_enc);
 			if (ret)
 				SDE_DEBUG_VIDENC(vid_enc, "poll for active failed ret:%d\n", ret);
+			phys_enc->enable_state = SDE_ENC_ENABLED;
+		/* Slave DPU Timing engine mux select from Master DPU */
+		} else if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
+				sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc) &&
+				phys_enc->hw_intf->ops.enable_dpu_sync_ctrl) {
+			spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
+			phys_enc->hw_intf->ops.enable_dpu_sync_ctrl(phys_enc->hw_intf, 1);
+			spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+			phys_enc->enable_state = SDE_ENC_POST_ENABLING;
 		}
-		phys_enc->enable_state = SDE_ENC_ENABLED;
 	}
 
 	avr_mode = sde_connector_get_qsync_mode(phys_enc->connector);
@@ -1377,7 +1423,7 @@ static u32 sde_encoder_phys_vid_get_underrun_line_count(
 
 	SDE_EVT32(DRMID(phys_enc->parent), underrun_linecount,
 		intf_status.frame_count, intf_status.line_count,
-		intf_intr_status);
+		intf_intr_status, DPUID(phys_enc->parent->dev));
 
 	return underrun_linecount;
 }

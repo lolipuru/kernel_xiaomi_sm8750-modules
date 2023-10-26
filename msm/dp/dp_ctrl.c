@@ -267,20 +267,11 @@ static int dp_ctrl_read_link_status(struct dp_ctrl_private *ctrl,
 					u8 *link_status)
 {
 	int ret = 0, len;
-	u32 const offset = DP_LANE_ALIGN_STATUS_UPDATED - DP_LANE0_1_STATUS;
-	u32 link_status_read_max_retries = 100;
 
-	while (--link_status_read_max_retries) {
-		len = drm_dp_dpcd_read_link_status(ctrl->aux->drm_aux,
-			link_status);
-		if (len != DP_LINK_STATUS_SIZE) {
-			DP_ERR("DP link status read failed, err: %d\n", len);
-			ret = len;
-			break;
-		}
-
-		if (!(link_status[offset] & DP_LINK_STATUS_UPDATED))
-			break;
+	len = drm_dp_dpcd_read_link_status(ctrl->aux->drm_aux, link_status);
+	if (len != DP_LINK_STATUS_SIZE) {
+		DP_ERR("DP link status read failed, err: %d\n", len);
+		ret = len;
 	}
 
 	return ret;
@@ -798,8 +789,10 @@ static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
 			break;
 		}
 
-		if (rc != -EAGAIN)
+		if (rc != -EAGAIN) {
 			dp_ctrl_link_rate_down_shift(ctrl);
+			ctrl->panel->init(ctrl->panel);
+		}
 
 		dp_ctrl_configure_source_link_params(ctrl, false);
 		dp_ctrl_disable_link_clock(ctrl);
@@ -837,9 +830,7 @@ static int dp_ctrl_enable_stream_clocks(struct dp_ctrl_private *ctrl,
 		return -EINVAL;
 	}
 
-	pclk = dp_panel->pinfo.widebus_en ?
-		(dp_panel->pinfo.pixel_clk_khz >> 1) :
-		(dp_panel->pinfo.pixel_clk_khz);
+	pclk = dp_panel->pinfo.pixel_clk_khz / (dp_panel->pclk_factor);
 
 	dp_ctrl_set_clock_rate(ctrl, clk_name, clk_type, pclk);
 

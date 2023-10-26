@@ -632,6 +632,9 @@ struct msm_dsi_phy *dsi_phy_get(struct device_node *of_node)
 	} else {
 		phy->refcount++;
 	}
+
+	phy->sync_en_refcount = 0;
+
 	mutex_unlock(&phy->phy_lock);
 	return phy;
 }
@@ -1034,8 +1037,9 @@ int dsi_phy_enable(struct msm_dsi_phy *phy,
 	phy->cfg.bit_clk_rate_hz = config->bit_clk_rate_hz;
 
 	/**
-	 * If PHY timing parameters are not present in panel dtsi file,
-	 * then calculate them in the driver
+	 * If PHY timing parameters have not yet been updated either through the panel
+	 * dtsi or through a previous call to calculate_timing_params, they need to be
+	 * updated before enabling PHY.
 	 */
 	if (!phy->cfg.is_phy_timing_present)
 		rc = phy->hw.ops.calculate_timing_params(&phy->hw,
@@ -1059,9 +1063,8 @@ error:
 	return rc;
 }
 
-/* update dsi phy timings for dynamic clk switch use case */
 int dsi_phy_update_phy_timings(struct msm_dsi_phy *phy,
-			       struct dsi_host_config *config)
+		struct dsi_host_config *config, bool use_mode_bit_clk)
 {
 	int rc = 0;
 
@@ -1073,9 +1076,11 @@ int dsi_phy_update_phy_timings(struct msm_dsi_phy *phy,
 	memcpy(&phy->mode, &config->video_timing, sizeof(phy->mode));
 	rc = phy->hw.ops.calculate_timing_params(&phy->hw, &phy->mode,
 						 &config->common_config,
-						 &phy->cfg.timing, true);
+						 &phy->cfg.timing, use_mode_bit_clk);
 	if (rc)
 		DSI_PHY_ERR(phy, "failed to calculate phy timings %d\n", rc);
+	else
+		phy->cfg.is_phy_timing_present = true;
 
 	return rc;
 }

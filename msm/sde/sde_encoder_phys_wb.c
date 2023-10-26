@@ -1127,7 +1127,7 @@ static int _sde_encoder_phys_wb_validate_output_fmt(struct sde_encoder_phys *phy
 
 	fmt = sde_get_sde_format_ext(fb->format->format, fb->modifier);
 	if (!fmt) {
-		SDE_ERROR("[enc:%d wb:%d] invalid output pixel format:0x%x mod:0x%x\n",
+		SDE_ERROR("[enc:%d wb:%d] invalid output pixel format:0x%x mod:0x%llx\n",
 				DRMID(phys_enc->parent), WBID(wb_enc),
 				fb->format->format, fb->modifier);
 		return -EINVAL;
@@ -1139,7 +1139,7 @@ static int _sde_encoder_phys_wb_validate_output_fmt(struct sde_encoder_phys *phy
 
 	ret = sde_format_validate_fmt(&sde_kms->base, fmt, format_list);
 	if (ret) {
-		SDE_ERROR("[enc:%d wb:%d] unsupported format for wb rotate:%d fmt:0x%x mod:0x%x\n",
+		SDE_ERROR("[enc:%d wb:%d] unsupport format for wb rotate:%d fmt:0x%x mod:0x%llx\n",
 				DRMID(phys_enc->parent), WBID(wb_enc), rotation_type,
 				fb->format->format, fb->modifier);
 		return ret;
@@ -1223,7 +1223,7 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 
 	fmt = sde_get_sde_format_ext(fb->format->format, fb->modifier);
 	if (!fmt) {
-		SDE_ERROR("[enc:%d wb:%d] invalid output pixel format:0x%x mod:0x%x\n",
+		SDE_ERROR("[enc:%d wb:%d] invalid output pixel format:0x%x mod:0x%llx\n",
 				DRMID(phys_enc->parent), WBID(wb_enc),
 				fb->format->format, fb->modifier);
 		return -EINVAL;
@@ -1236,7 +1236,7 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 
         rc = _sde_encoder_phys_wb_validate_output_fmt(phys_enc, fb, rotation_type);
 	if (rc) {
-		SDE_ERROR("[enc:%d wb:%d] output fmt failed fb:%u fmt:0x%x mod:0x%x rot:%d",
+		SDE_ERROR("[enc:%d wb:%d] output fmt failed fb:%u fmt:0x%x mod:0x%llx rot:%d",
 				 DRMID(phys_enc->parent), WBID(wb_enc), fb->base.id,
 				 fb->format->format, fb->modifier, rotation_type);
 		return rc;
@@ -1757,7 +1757,8 @@ static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 		fb->format->format, fb->modifier, wb_roi->x, wb_roi->y, wb_roi->w, wb_roi->h);
 
 	SDE_EVT32(DRMID(phys_enc->parent), WBID(wb_enc), wb_roi->x, wb_roi->y, wb_roi->w, wb_roi->h,
-			out_width, out_height, fb->width, fb->height, mode.hdisplay, mode.vdisplay);
+			out_width, out_height, fb->width, fb->height, mode.hdisplay, mode.vdisplay,
+			DPUID(phys_enc->parent->dev));
 
 	sde_encoder_phys_wb_set_ot_limit(phys_enc);
 
@@ -1800,7 +1801,8 @@ static void sde_encoder_phys_wb_ctl_start_irq(void *arg, int irq_idx)
 		line_cnt = hw_wb->ops.get_line_count(hw_wb);
 
 	SDE_ATRACE_END("ctl_start_irq");
-	SDE_EVT32_IRQ(DRMID(phys_enc->parent), WBID(wb_enc), line_cnt);
+	SDE_EVT32_IRQ(DRMID(phys_enc->parent), WBID(wb_enc), line_cnt,
+		DPUID(phys_enc->parent->dev));
 }
 
 static void _sde_encoder_phys_wb_frame_done_helper(void *arg, bool frame_error)
@@ -1851,7 +1853,8 @@ end:
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent), WBID(wb_enc), phys_enc->in_clone_mode,
 			phys_enc->enable_state, event, atomic_read(&phys_enc->pending_kickoff_cnt),
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
-			ubwc_error, frame_error);
+			ubwc_error, frame_error,
+			DPUID(phys_enc->parent->dev));
 
 	wake_up_all(&phys_enc->pending_kickoff_wq);
 }

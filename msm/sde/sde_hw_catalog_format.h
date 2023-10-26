@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2019, 2021 The Linux Foundation. All rights reserved.
  */
 
@@ -194,3 +194,8 @@ static const struct sde_dnsc_blur_filter_info dnsc_blur_v100_filters[] = {
 	{DNSC_BLUR_PCMN_FILTER, 16, 8192, 1, 8192, 1, 128, 1, 0, {0}},
 };
 
+static const struct sde_format_extended cac_formats[] = {
+	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED},
+	{DRM_FORMAT_ABGR2101010, DRM_FORMAT_MOD_QCOM_COMPRESSED},
+	{0, 0},
+};

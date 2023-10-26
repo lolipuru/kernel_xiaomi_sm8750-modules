@@ -8,6 +8,7 @@
 #include <linux/slab.h>
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/pwm.h>
 #include <video/mipi_display.h>
 
@@ -237,7 +238,9 @@ static int dsi_panel_vm_trigger_esd_attack(struct dsi_panel *panel)
 
 static int dsi_panel_trigger_esd_attack(struct dsi_panel *panel)
 {
+	struct dsi_parser_utils *utils = &panel->utils;
 	struct dsi_panel_reset_config *r_config;
+	int reset_gpio;
 
 	if (!panel) {
 		DSI_ERR("Invalid panel param\n");
@@ -250,7 +253,13 @@ static int dsi_panel_trigger_esd_attack(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
-	return dsi_panel_trigger_esd_attack_sub(r_config->reset_gpio);
+	reset_gpio = r_config->reset_gpio;
+	if ((!strcmp(panel->type, "secondary")) &&
+			(!gpio_is_valid(reset_gpio)))
+		reset_gpio = utils->get_named_gpio(utils->data,
+				"qcom,platform-reset-gpio", 0);
+
+	return dsi_panel_trigger_esd_attack_sub(reset_gpio);
 }
 
 static int dsi_panel_reset(struct dsi_panel *panel)
@@ -334,7 +343,7 @@ static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
 	if (panel->host_config.ext_bridge_mode)
 		return 0;
 
-	if (!panel->pinctrl.pinctrl)
+	if (IS_ERR_OR_NULL(panel->pinctrl.pinctrl))
 		return 0;
 
 	if (enable)
@@ -495,6 +504,9 @@ static int dsi_panel_pinctrl_init(struct dsi_panel *panel)
 	if (panel->host_config.ext_bridge_mode)
 		return 0;
 
+	if (panel->ctl_op_sync && !strcmp(panel->type, "secondary"))
+		return 0;
+
 	/* TODO:  pinctrl is defined in dsi dt node */
 	panel->pinctrl.pinctrl = devm_pinctrl_get(panel->parent);
 	if (IS_ERR_OR_NULL(panel->pinctrl.pinctrl)) {
@@ -548,6 +560,20 @@ static int dsi_panel_wled_register(struct dsi_panel *panel,
 	return 0;
 }
 
+static int mipi_dsi_dcs_subtype_set_display_brightness(struct mipi_dsi_device *dsi,
+	u32 bl_lvl, u32 bl_dcs_subtype)
+{
+	u16 brightness = (u16)bl_lvl;
+	u8 first_byte = brightness & 0xff;
+	u8 second_byte = brightness >> 8;
+	u8 payload[8] = {second_byte, first_byte,
+		second_byte, first_byte,
+		second_byte, first_byte,
+		second_byte, first_byte};
+
+	return mipi_dsi_dcs_write(dsi, bl_dcs_subtype, payload, sizeof(payload));
+}
+
 static int dsi_panel_update_backlight(struct dsi_panel *panel,
 	u32 bl_lvl)
 {
@@ -569,7 +595,12 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 	if (panel->bl_config.bl_inverted_dbv)
 		bl_lvl = (((bl_lvl & 0xff) << 8) | (bl_lvl >> 8));
 
-	rc = mipi_dsi_dcs_set_display_brightness(dsi, bl_lvl);
+	if (panel->bl_config.bl_dcs_subtype)
+		rc = mipi_dsi_dcs_subtype_set_display_brightness(dsi,
+			bl_lvl, panel->bl_config.bl_dcs_subtype);
+	else
+		rc = mipi_dsi_dcs_set_display_brightness(dsi, bl_lvl);
+
 	if (rc < 0)
 		DSI_ERR("failed to update dcs backlight:%d\n", bl_lvl);
 
@@ -2576,6 +2607,17 @@ static int dsi_panel_parse_bl_config(struct dsi_panel *panel)
 		panel->bl_config.brightness_max_level = val;
 	}
 
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-bl-ctrl-dcs-subtype",
+		&val);
+	if (rc) {
+		DSI_DEBUG("[%s] bl-ctrl-dcs-subtype, defautling to zero\n",
+			panel->name);
+		panel->bl_config.bl_dcs_subtype = 0;
+		rc = 0;
+	} else {
+		panel->bl_config.bl_dcs_subtype = val;
+	}
+
 	panel->bl_config.bl_inverted_dbv = utils->read_bool(utils->data,
 		"qcom,mdss-dsi-bl-inverted-dbv");
 
@@ -3663,7 +3705,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	struct dsi_panel *panel;
 	struct dsi_parser_utils *utils;
 	const char *panel_physical_type;
-	int rc = 0;
+	int rc = 0, size;
+	char *new_panel_name = NULL, *panel_eye_type;
+	bool is_panel_xr;
 
 	panel = kzalloc(sizeof(*panel), GFP_KERNEL);
 	if (!panel)
@@ -3678,8 +3722,26 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	dsi_panel_update_util(panel, parser_node);
 	utils = &panel->utils;
 
-	panel->name = utils->get_property(utils->data,
-				"qcom,mdss-dsi-panel-name", NULL);
+	panel->name = utils->get_property(utils->data, "qcom,mdss-dsi-panel-name", &size);
+
+	is_panel_xr = utils->read_bool(utils->data, "qcom,mdss-dsi-panel-xr");
+
+	if (is_panel_xr) {
+		panel_eye_type = (!strcmp(panel->type, "primary") ? " left" : " right");
+
+		size += strlen(panel_eye_type);
+
+		new_panel_name = kzalloc(size, GFP_KERNEL);
+		if (!new_panel_name) {
+			rc = -ENOMEM;
+			goto error;
+		}
+
+		strscpy(new_panel_name, panel->name, size);
+		strlcat(new_panel_name, panel_eye_type, size);
+		panel->name = new_panel_name;
+	}
+
 	if (!panel->name)
 		panel->name = DSI_PANEL_DEFAULT_LABEL;
 
@@ -3785,6 +3847,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 
 	return panel;
 error:
+	kfree(new_panel_name);
 	kfree(panel);
 	return ERR_PTR(rc);
 }

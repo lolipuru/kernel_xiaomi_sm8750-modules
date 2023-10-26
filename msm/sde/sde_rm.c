@@ -662,13 +662,13 @@ static int _sde_rm_hw_blk_create(
 		hw = sde_hw_lm_init(id, mmio, cat);
 		break;
 	case SDE_HW_BLK_DSPP:
-		hw = sde_hw_dspp_init(id, mmio, cat);
+		hw = sde_hw_dspp_init(id, mmio, cat, sde_kms->dev->primary->index);
 		break;
 	case SDE_HW_BLK_DS:
 		hw = sde_hw_ds_init(id, mmio, cat);
 		break;
 	case SDE_HW_BLK_CTL:
-		hw = sde_hw_ctl_init(id, mmio, cat);
+		hw = sde_hw_ctl_init(id, mmio, cat, sde_kms->dev->primary->index);
 		break;
 	case SDE_HW_BLK_CDM:
 		hw = sde_hw_cdm_init(id, mmio, cat, hw_mdp);
@@ -1541,7 +1541,7 @@ static bool _sde_rm_check_dsc(struct sde_rm *rm,
 	 * DSC blks to any of the odd numbered PP blks.
 	 */
 	if (!pp_blk || !IS_COMPATIBLE_PP_DSC(pp_blk->id, dsc->id)) {
-		SDE_DEBUG("dsc %d can't match of pp %d\n", dsc_cfg->id, pp_blk->id);
+		SDE_DEBUG("dsc %d can't match of pp %d\n", dsc_cfg->id, pp_blk ? pp_blk->id : -1);
 		return false;
 	}
 
@@ -1644,16 +1644,15 @@ static int _sde_rm_reserve_dsc(
 	/* Find a first DSC */
 	while (alloc_count != num_dsc_enc &&
 			_sde_rm_get_hw_locked(rm, &iter_i, list_forward)) {
-		const struct sde_hw_dsc *hw_dsc = to_sde_hw_dsc(
-				iter_i.blk->hw);
+		int req_index = list_forward ? alloc_count : (num_dsc_enc - alloc_count - 1);
+		const struct sde_hw_dsc *hw_dsc = to_sde_hw_dsc(iter_i.blk->hw);
 		unsigned long features = hw_dsc->caps->features;
-		bool has_422_420_support =
-			BIT(SDE_DSC_NATIVE_422_EN) & features;
+		bool has_422_420_support = BIT(SDE_DSC_NATIVE_422_EN) & features;
 
 		if (reserve_mask & (1 << iter_i.blk->id))
 			continue;
 
-		if (_dsc_ids && (iter_i.blk->id != _dsc_ids[alloc_count]))
+		if (_dsc_ids && (iter_i.blk->id != _dsc_ids[req_index]))
 			continue;
 
 		/* if this hw block does not support required feature */
@@ -1668,7 +1667,7 @@ static int _sde_rm_reserve_dsc(
 		SDE_DEBUG("blk id = %d, _dsc_ids[%d] = %d\n",
 			iter_i.blk->id,
 			alloc_count,
-			_dsc_ids ? _dsc_ids[alloc_count] : -1);
+			_dsc_ids ? _dsc_ids[req_index] : -1);
 
 		/* reset and restart from current block if allocated dsc blocks are not contiguous */
 		if (alloc_count >= 1 && (abs(dsc[alloc_count - 1]->id - iter_i.blk->id) != 1)) {
@@ -1687,11 +1686,12 @@ static int _sde_rm_reserve_dsc(
 		sde_rm_init_hw_iter(&iter_j, 0, SDE_HW_BLK_DSC);
 
 		while (_sde_rm_get_hw_locked(rm, &iter_j, list_forward)) {
+			req_index = list_forward ? alloc_count : (num_dsc_enc - alloc_count - 1);
 			if (reserve_mask & (1 << iter_j.blk->id))
 				continue;
 
 			if (_dsc_ids && (iter_j.blk->id !=
-					_dsc_ids[alloc_count]))
+					_dsc_ids[req_index]))
 				continue;
 
 			if (!_sde_rm_check_dsc(rm, rsvp, iter_j.blk,
@@ -1701,7 +1701,7 @@ static int _sde_rm_reserve_dsc(
 			SDE_DEBUG("blk id = %d, _dsc_ids[%d] = %d\n",
 				iter_j.blk->id,
 				alloc_count,
-				_dsc_ids ? _dsc_ids[alloc_count] : -1);
+				_dsc_ids ? _dsc_ids[req_index] : -1);
 
 			reserve_mask |= (1 << iter_j.blk->id);
 			dsc[alloc_count++] = iter_j.blk;
@@ -2272,7 +2272,7 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 					splash_display->pipe_info.bordercolor) {
 				splash_display->lm_ids[splash_display->lm_cnt++] =
 					iter_lm.blk->id;
-				SDE_DEBUG("lm_cnt=%d lm_id %d pipe_cnt%d\n",
+				SDE_DEBUG("lm_cnt=%d lm_id %d pipe_cnt%ld\n",
 						splash_display->lm_cnt,
 						iter_lm.blk->id - LM_0,
 						pipes_per_lm);
@@ -2475,7 +2475,7 @@ static int _sde_rm_populate_requirements(
 
 	SDE_DEBUG("top_ctrl: 0x%llX num_h_tiles: %d\n", reqs->top_ctrl,
 			reqs->hw_res.display_num_of_h_tiles);
-	SDE_DEBUG("num_lm: %d num_ctl: %d topology: %d split_display: %d mask: 0x%llX\n",
+	SDE_DEBUG("num_lm: %d num_ctl: %d topology: %d split_display: %d mask: 0x%X\n",
 			reqs->topology->num_lm, reqs->topology->num_ctl,
 			reqs->topology->top_name,
 			reqs->topology->needs_split_display, reqs->conn_lm_mask);

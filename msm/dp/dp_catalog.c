@@ -12,6 +12,7 @@
 #include "dp_reg.h"
 #include "dp_debug.h"
 #include "dp_link.h"
+#include "dp_lphw_hpd.h"
 
 #define DP_GET_MSB(x)	(x >> 8)
 #define DP_GET_LSB(x)	(x & 0xff)
@@ -1333,8 +1334,7 @@ static void dp_catalog_panel_config_msa(struct dp_catalog_panel *panel,
 
 	DP_DEBUG("rate = %d\n", rate);
 
-	if (panel->widebus_en)
-		mvid <<= 1;
+	mvid = mvid * (panel->pclk_factor);
 
 	if (link_rate_hbr2 == rate)
 		nvid *= 2;
@@ -2102,7 +2102,7 @@ static void dp_catalog_ctrl_fec_config(struct dp_catalog_ctrl *ctrl,
 	if (enable)
 		reg |= BIT(12) | BIT(22) | BIT(23) | BIT(24) | BIT(25);
 	else
-		reg &= ~BIT(12);
+		reg &= ~(BIT(12) | BIT(23) | BIT(24));
 
 	dp_write(DP_MAINLINK_CTRL, reg);
 	/* make sure mainlink configuration is updated with fec sequence */
@@ -2498,6 +2498,16 @@ end:
 	return 0;
 }
 
+static void dp_catalog_hpd_set_edp_mode(struct dp_catalog_hpd *hpd, bool is_edp)
+{
+	if (!hpd) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	hpd->is_edp = is_edp;
+}
+
 static void dp_catalog_hpd_config_hpd(struct dp_catalog_hpd *hpd, bool en)
 {
 	struct dp_catalog_private *catalog;
@@ -2514,9 +2524,15 @@ static void dp_catalog_hpd_config_hpd(struct dp_catalog_hpd *hpd, bool en)
 	if (en) {
 		u32 reftimer = dp_read(DP_DP_HPD_REFTIMER);
 
-		/* Arm only the UNPLUG and HPD_IRQ interrupts */
+		/*
+		 * Arm only the UNPLUG and HPD_IRQ interrupts for DP
+		 * whereas for EDP arm only the HPD_IRQ interrupt
+		 */
 		dp_write(DP_DP_HPD_INT_ACK, 0xF);
-		dp_write(DP_DP_HPD_INT_MASK, 0xA);
+		if (hpd->is_edp)
+			dp_write(DP_DP_HPD_INT_MASK, 0x2);
+		else
+			dp_write(DP_DP_HPD_INT_MASK, 0xA);
 
 		/* Enable REFTIMER to count 1ms */
 		reftimer |= BIT(16);
@@ -2537,7 +2553,7 @@ static void dp_catalog_hpd_config_hpd(struct dp_catalog_hpd *hpd, bool en)
 
 static u32 dp_catalog_hpd_get_interrupt(struct dp_catalog_hpd *hpd)
 {
-	u32 isr = 0;
+	u32 isr = 0, isr_mask = 0;
 	struct dp_catalog_private *catalog;
 	struct dp_io_data *io_data;
 
@@ -2552,7 +2568,35 @@ static u32 dp_catalog_hpd_get_interrupt(struct dp_catalog_hpd *hpd)
 	isr = dp_read(DP_DP_HPD_INT_STATUS);
 	dp_write(DP_DP_HPD_INT_ACK, (isr & 0xf));
 
-	return isr;
+	isr_mask = dp_read(DP_DP_HPD_INT_MASK);
+
+	return (isr & isr_mask);
+}
+
+static bool dp_catalog_hpd_wait_for_edp_panel_ready(struct dp_catalog_hpd *hpd)
+{
+	u32 reg, state;
+	void __iomem *base;
+	bool success = true;
+	u32 const poll_sleep_us = 2000;
+	u32 const pll_timeout_us = 1000000;
+	struct dp_catalog_private *catalog;
+
+	catalog = dp_catalog_get_priv(hpd);
+
+	base = catalog->io.dp_aux->io.base;
+
+	reg = DP_DP_HPD_INT_STATUS;
+
+	if (readl_poll_timeout_atomic((base + reg), state,
+			((state & DP_HPD_STATE_STATUS_CONNECTED) > 0),
+			poll_sleep_us, pll_timeout_us)) {
+		DP_ERR("DP_HPD_STATE_STATUS CONNECTED bit is still low, status=%x\n", state);
+
+		success = false;
+	}
+
+	return success;
 }
 
 static void dp_catalog_audio_init(struct dp_catalog_audio *audio)
@@ -2956,12 +3000,23 @@ static int dp_catalog_init(struct device *dev, struct dp_catalog *dp_catalog,
 	struct dp_catalog_private *catalog = container_of(dp_catalog,
 				struct dp_catalog_private, dp_catalog);
 
-	if (parser->hw_cfg.phy_version >= DP_PHY_VERSION_4_2_0)
-		dp_catalog->sub = dp_catalog_get_v420(dev, dp_catalog, &catalog->io);
-	else if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
-		dp_catalog->sub = dp_catalog_get_v200(dev, dp_catalog, &catalog->io);
-	else
+	switch (parser->hw_cfg.phy_version) {
+	case DP_PHY_VERSION_4_2_0:
+	case DP_PHY_VERSION_6_0_0:
+		dp_catalog->sub = dp_catalog_get_v420(dev, dp_catalog,
+					&catalog->io);
+		break;
+	case DP_PHY_VERSION_2_0_0:
+		dp_catalog->sub = dp_catalog_get_v200(dev, dp_catalog,
+					&catalog->io);
+		break;
+	case DP_PHY_VERSION_5_0_0:
+		dp_catalog->sub = dp_catalog_get_v500(dev, dp_catalog,
+					&catalog->io);
+		break;
+	default:
 		goto end;
+	}
 
 	if (IS_ERR(dp_catalog->sub)) {
 		rc = PTR_ERR(dp_catalog->sub);
@@ -3041,6 +3096,8 @@ struct dp_catalog *dp_catalog_get(struct device *dev, struct dp_parser *parser)
 	struct dp_catalog_hpd hpd = {
 		.config_hpd	= dp_catalog_hpd_config_hpd,
 		.get_interrupt	= dp_catalog_hpd_get_interrupt,
+		.wait_for_edp_panel_ready = dp_catalog_hpd_wait_for_edp_panel_ready,
+		.set_edp_mode = dp_catalog_hpd_set_edp_mode,
 	};
 	struct dp_catalog_audio audio = {
 		.init       = dp_catalog_audio_init,
@@ -3108,6 +3165,7 @@ struct dp_catalog *dp_catalog_get(struct device *dev, struct dp_parser *parser)
 	}
 
 	dp_catalog = &catalog->dp_catalog;
+	dp_catalog->parser = parser;
 
 	dp_catalog->aux   = aux;
 	dp_catalog->ctrl  = ctrl;

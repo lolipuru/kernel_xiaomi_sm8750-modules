@@ -30,6 +30,7 @@
 #include <linux/soc/qcom/panel_event_notifier.h>
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_probe_helper.h>
+#include <linux/version.h>
 
 #include "msm_drv.h"
 #include "msm_mmu.h"
@@ -56,7 +57,11 @@
 #include "sde_vm.h"
 #include "sde_fence.h"
 
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <linux/firmware/qcom/qcom_scm.h>
+#else
 #include <linux/qcom_scm.h>
+#endif
 #include <linux/qcom-iommu-util.h>
 #include "soc/qcom/secure_buffer.h"
 #include <linux/qtee_shmbridge.h>
@@ -70,7 +75,7 @@
 /* defines for secure channel call */
 #define MEM_PROTECT_SD_CTRL_SWITCH 0x18
 #define MDP_DEVICE_ID            0x1A
-
+#define MDP_MASTER_CORE          0
 #define DEMURA_REGION_NAME_MAX      32
 
 EXPORT_TRACEPOINT_SYMBOL(tracing_mark_write);
@@ -773,14 +778,16 @@ static int _sde_kms_release_shared_buffer(unsigned long mem_addr,
 	pfn_start = mem_addr >> PAGE_SHIFT;
 	pfn_end = (mem_addr + splash_buffer_size) >> PAGE_SHIFT;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
-	memblock_free((unsigned int*)mem_addr, splash_buffer_size);
-#else
-	ret = memblock_free(mem_addr, splash_buffer_size);
-	if (ret) {
-		SDE_ERROR("continuous splash memory free failed:%d\n", ret);
-		return ret;
-	}
+#if (KERNEL_VERSION(6, 3, 0) > LINUX_VERSION_CODE)
+	#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+		memblock_free((unsigned int *)mem_addr, splash_buffer_size);
+	#else
+		ret = memblock_free(mem_addr, splash_buffer_size);
+		if (ret) {
+			SDE_ERROR("continuous splash memory free failed:%d\n", ret);
+			return ret;
+		}
+	#endif
 #endif
 
 	for (pfn_idx = pfn_start; pfn_idx < pfn_end; pfn_idx++)
@@ -853,7 +860,7 @@ static int _sde_kms_splash_mem_get(struct sde_kms *sde_kms,
 	}
 
 	splash->ref_cnt++;
-	SDE_DEBUG("one2one mapping done for base:%lx size:%x ref_cnt:%d\n",
+	SDE_DEBUG("one2one mapping done for base:%lx size:%u ref_cnt:%d\n",
 				splash->splash_buf_base,
 				splash->splash_buf_size,
 				splash->ref_cnt);
@@ -894,7 +901,8 @@ static int _sde_kms_splash_mem_put(struct sde_kms *sde_kms,
 	struct msm_mmu *mmu = NULL;
 	int rc = 0;
 
-	if (!sde_kms || !sde_kms->aspace[0] || !sde_kms->aspace[0]->mmu) {
+	if (!sde_kms || !sde_kms->aspace[0] || !sde_kms->aspace[0]->mmu ||
+		!sde_kms->dev || !sde_kms->dev->primary) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -913,11 +921,13 @@ static int _sde_kms_splash_mem_put(struct sde_kms *sde_kms,
 	if (!splash->ref_cnt) {
 		mmu->funcs->one_to_one_unmap(mmu, splash->splash_buf_base,
 				splash->splash_buf_size);
-		rc = _sde_kms_release_shared_buffer(splash->splash_buf_base,
+		if (sde_kms->dev->primary->index == MDP_MASTER_CORE) {
+			rc = _sde_kms_release_shared_buffer(splash->splash_buf_base,
 				splash->splash_buf_size, splash->ramdump_base,
 				splash->ramdump_size);
-		splash->splash_buf_base = 0;
-		splash->splash_buf_size = 0;
+			splash->splash_buf_base = 0;
+			splash->splash_buf_size = 0;
+		}
 	}
 
 	return rc;
@@ -1662,7 +1672,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 		struct drm_crtc *crtc)
 {
 	struct sde_kms *sde_kms;
-	struct drm_encoder *encoder;
+	struct drm_encoder *encoder, *cwb_enc = NULL;
 	struct drm_device *dev;
 	int ret;
 	bool cwb_disabling;
@@ -1694,9 +1704,10 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		cwb_disabling = false;
 		if (encoder->crtc != crtc) {
-			cwb_disabling = sde_encoder_is_cwb_disabling(encoder,
-					crtc);
-			if (!cwb_disabling)
+			cwb_disabling = sde_encoder_is_cwb_disabling(encoder, crtc);
+			if (cwb_disabling)
+				cwb_enc = encoder;
+			else
 				continue;
 		}
 
@@ -1714,20 +1725,16 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 			SDE_EVT32(DRMID(crtc), DRMID(encoder), cwb_disabling,
 					ret, SDE_EVTLOG_ERROR);
 			sde_crtc_request_frame_reset(crtc, encoder);
-
-			/* call ensure virt_reset for cwb encoder before exiting the loop */
-			if (cwb_disabling)
-				sde_encoder_virt_reset(encoder);
 			break;
 		}
 
 		sde_encoder_hw_fence_error_handle(encoder);
 
 		sde_crtc_complete_flip(crtc, NULL);
-
-		if (cwb_disabling)
-			sde_encoder_virt_reset(encoder);
 	}
+
+	if (cwb_disabling && cwb_enc)
+		sde_encoder_virt_reset(cwb_enc);
 
 	/* avoid system cache update to set rd-noalloc bit when NSE feature is enabled */
 	if (!test_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_kms->catalog->features))
@@ -1775,7 +1782,7 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 
 	/* dsi */
 	sde_kms->dsi_displays = NULL;
-	sde_kms->dsi_display_count = dsi_display_get_num_of_displays();
+	sde_kms->dsi_display_count = dsi_display_get_num_of_displays(sde_kms->dev);
 	if (sde_kms->dsi_display_count) {
 		sde_kms->dsi_displays = kcalloc(sde_kms->dsi_display_count,
 				sizeof(void *),
@@ -1785,13 +1792,13 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			goto exit_deinit_dsi;
 		}
 		sde_kms->dsi_display_count =
-			dsi_display_get_active_displays(sde_kms->dsi_displays,
+			dsi_display_get_active_displays(sde_kms->dev, sde_kms->dsi_displays,
 					sde_kms->dsi_display_count);
 	}
 
 	/* wb */
 	sde_kms->wb_displays = NULL;
-	sde_kms->wb_display_count = sde_wb_get_num_of_displays();
+	sde_kms->wb_display_count = sde_wb_get_num_of_displays(sde_kms->dev);
 	if (sde_kms->wb_display_count) {
 		sde_kms->wb_displays = kcalloc(sde_kms->wb_display_count,
 				sizeof(void *),
@@ -1801,13 +1808,13 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			goto exit_deinit_wb;
 		}
 		sde_kms->wb_display_count =
-			wb_display_get_displays(sde_kms->wb_displays,
+			wb_display_get_displays(sde_kms->dev, sde_kms->wb_displays,
 					sde_kms->wb_display_count);
 	}
 
 	/* dp */
 	sde_kms->dp_displays = NULL;
-	sde_kms->dp_display_count = dp_display_get_num_of_displays();
+	sde_kms->dp_display_count = dp_display_get_num_of_displays(sde_kms->dev);
 	if (sde_kms->dp_display_count) {
 		sde_kms->dp_displays = kcalloc(sde_kms->dp_display_count,
 				sizeof(void *), GFP_KERNEL);
@@ -1816,10 +1823,11 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			goto exit_deinit_dp;
 		}
 		sde_kms->dp_display_count =
-			dp_display_get_displays(sde_kms->dp_displays,
+			dp_display_get_displays(sde_kms->dev,
+					sde_kms->dp_displays,
 					sde_kms->dp_display_count);
 
-		sde_kms->dp_stream_count = dp_display_get_num_of_streams();
+		sde_kms->dp_stream_count = dp_display_get_num_of_streams(sde_kms->dev);
 	}
 	return 0;
 
@@ -1929,6 +1937,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.update_transfer_time = NULL,
 	};
 	static const struct sde_connector_ops dp_ops = {
+		.set_info_blob = dp_connector_set_info_blob,
 		.post_init  = dp_connector_post_init,
 		.detect     = dp_connector_detect,
 		.get_modes  = dp_connector_get_modes,
@@ -2092,6 +2101,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 	for (i = 0; i < sde_kms->dp_display_count &&
 			priv->num_encoders < max_encoders; ++i) {
 		int idx;
+		struct dp_display_info dp_info = {0};
 
 		display = sde_kms->dp_displays[i];
 		encoder = NULL;
@@ -2103,6 +2113,13 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
+		rc = dp_display_get_info(display, &dp_info);
+		if (rc) {
+			SDE_ERROR("failed to read dp info, %d\n", rc);
+			continue;
+		}
+
+		info.h_tile_instance[0] = dp_info.intf_idx[0];
 		encoder = sde_encoder_init(dev, &info);
 		if (IS_ERR_OR_NULL(encoder)) {
 			SDE_ERROR("dp encoder init failed %d\n", i);
@@ -2123,7 +2140,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 					display,
 					&dp_ops,
 					DRM_CONNECTOR_POLL_HPD,
-					DRM_MODE_CONNECTOR_DisplayPort);
+					info.intf_type);
 		if (connector) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;
@@ -2136,9 +2153,9 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		/* update display cap to MST_MODE for DP MST encoders */
 		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
 
-		for (idx = 0; idx < sde_kms->dp_stream_count &&
+		for (idx = 0; idx < dp_info.stream_cnt &&
 				priv->num_encoders < max_encoders; idx++) {
-			info.h_tile_instance[0] = idx;
+			info.h_tile_instance[0] = dp_info.intf_idx[idx];
 			encoder = sde_encoder_init(dev, &info);
 			if (IS_ERR_OR_NULL(encoder)) {
 				SDE_ERROR("dp mst encoder init failed %d\n", i);
@@ -2479,7 +2496,9 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		msm_iounmap(pdev, sde_kms->mmio);
 	sde_kms->mmio = NULL;
 
-	sde_reg_dma_deinit();
+	if (sde_kms->dev->primary)
+		sde_reg_dma_deinit(sde_kms->dev->primary->index);
+
 	_sde_kms_mmu_destroy(sde_kms);
 }
 
@@ -4720,7 +4739,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 			continue;
 
 		} else if (!mem->splash_buf_base || !mem->splash_buf_size) {
-			SDE_ERROR("mem for disp %d invalid: add:%lx size:%lx\n",
+			SDE_ERROR("mem for disp %d invalid: add:%lx size:%u\n",
 					(i+1), mem->splash_buf_base,
 					mem->splash_buf_size);
 			continue;
@@ -4730,7 +4749,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 		splash_display->demura = mem;
 		count++;
 
-		SDE_DEBUG("demura mem for disp:%d add:%lx size:%x\n", (i + 1),
+		SDE_DEBUG("demura mem for disp:%d add:%lx size:%u\n", (i + 1),
 				mem->splash_buf_base,
 				mem->splash_buf_size);
 	}
@@ -4741,7 +4760,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 	return ret;
 }
 
-static int _sde_kms_get_splash_data(struct sde_splash_data *data)
+static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_data *data)
 {
 	int i = 0;
 	int ret = 0;
@@ -4784,7 +4803,7 @@ static int _sde_kms_get_splash_data(struct sde_splash_data *data)
 	 * cont_splash_region  should be collection of all memory regions
 	 * Ex: <r1.start r1.end r2.start r2.end  ... rn.start, rn.end>
 	 */
-	num_displays = dsi_display_get_num_of_displays();
+	num_displays = dsi_display_get_num_of_displays(dev);
 	num_regions = of_property_count_u64_elems(node, "reg") / 2;
 
 	data->num_splash_displays = num_displays;
@@ -5213,7 +5232,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	if (rc)
 		goto error;
 
-	rc = _sde_kms_get_splash_data(&sde_kms->splash_data);
+	rc = _sde_kms_get_splash_data(dev, &sde_kms->splash_data);
 	if (rc)
 		SDE_DEBUG("sde splash data fetch failed: %d\n", rc);
 

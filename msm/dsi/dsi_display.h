@@ -163,6 +163,7 @@ struct dsi_display_ext_bridge {
  *		      index into the ctrl[MAX_DSI_CTRLS_PER_DISPLAY] array.
  * @cmd_master_idx:   The master controller for sending DSI commands to panel.
  * @video_master_idx: The master controller for enabling video engine.
+ * @is_master:        Indicates whether this display is master in sync mode.
  * @dyn_bit_clk:      The DSI bit clock rate dynamically set by user mode client.
  * @dyn_bit_clk_pending: Flag indicating the pending DSI dynamic bit clock rate change.
  * @cached_clk_rate:  The cached DSI clock rate set dynamically by sysfs.
@@ -234,6 +235,8 @@ struct dsi_display {
 	u32 clk_master_idx;
 	u32 cmd_master_idx;
 	u32 video_master_idx;
+
+	bool is_master;
 
 	/* dynamic DSI clock info*/
 	u32 dyn_bit_clk;
@@ -310,18 +313,19 @@ int dsi_display_dev_remove(struct platform_device *pdev);
 /**
  * dsi_display_get_num_of_displays() - returns number of display devices
  *				       supported.
- *
+ * @dev: Pointer to DRM device
  * Return: number of displays.
  */
-int dsi_display_get_num_of_displays(void);
+int dsi_display_get_num_of_displays(struct drm_device *dev);
 
 /**
  * dsi_display_get_active_displays - returns pointers for active display devices
+ * @dev: Pointer to DRM device
  * @display_array: Pointer to display array to be filled
  * @max_display_count: Size of display_array
  * @Returns: Number of display entries filled
  */
-int dsi_display_get_active_displays(void **display_array,
+int dsi_display_get_active_displays(struct drm_device *dev, void **display_array,
 		u32 max_display_count);
 
 /**
@@ -848,4 +852,82 @@ int dsi_display_update_transfer_time(void *display, u32 transfer_time);
  */
 int dsi_display_get_panel_scan_line(void *display, u16 *scan_line, ktime_t *scan_line_ts);
 
+/**
+ * dsi_display_phy_enable() - enables the phy for the display
+ * @display: Handle to display
+ * @m_src: Configuration for PLL
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_phy_enable(struct dsi_display *display, enum dsi_phy_pll_source m_src);
+
+/**
+ * dsi_display_phy_disable() - disables the phy for the display
+ * @display: Handle to display
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_phy_disable(struct dsi_display *display);
+
+/**
+ * dsi_display_phy_sw_reset() - enforces sw reset on the phy
+ * @display: Handle to display
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_phy_sw_reset(struct dsi_display *display);
+
+/**
+ * dsi_display_phy_idle_off() - puts the phy to idle
+ * @display: Handle to display
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_phy_idle_off(struct dsi_display *display);
+
+/**
+ * dsi_display_phy_idle_on() - brings the phy out of idle
+ * @display: Handle to display
+ * @mmss_clamp: bool to indicate whether clamp should be enabled
+ * @m_src: Configuration for PLL
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_phy_idle_on(struct dsi_display *display, bool mmss_clamp,
+		enum dsi_phy_pll_source m_src);
+
+/**
+ * dsi_display_set_clk_src() - set parent of RCG branch clock
+ * @display: Handle to display
+ * @set_xo: bool to indicate whether to set parent of RCG to xo clock or PLL
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_set_clk_src(struct dsi_display *display, bool set_xo);
+
+/**
+ * dsi_display_phy_configure() - configure DSI PHY PLL
+ * @priv: Handle to display
+ * @commit: bool to indicate suspend resume use case
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_phy_configure(void *priv, bool commit);
+
+/**
+ * dsi_display_phy_pll_toggle() - toggle DSI PHY PLL
+ * @priv: Handle to display
+ * @enable: bool to enable / disable DSI PHY PLL
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_phy_pll_toggle(void *priv, bool enable);
+
+/**
+ * is_skip_op_required() - check cont splash or trusted vm environment
+ * @display: Handle to display
+ *
+ * Return: True if continuous splash or trusted vm environment
+ */
+bool is_skip_op_required(struct dsi_display *display);
 #endif /* _DSI_DISPLAY_H_ */

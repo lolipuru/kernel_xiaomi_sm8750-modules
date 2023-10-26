@@ -73,6 +73,10 @@ extern "C" {
  */
 #define DRM_FORMAT_MOD_QCOM_ALPHA_SWAP	fourcc_mod_code(QCOM, 0x10)
 
+#define DRM_FORMAT_MOD_QCOM_CAC_R          fourcc_mod_code(QCOM, 0x40)
+#define DRM_FORMAT_MOD_QCOM_CAC_G          fourcc_mod_code(QCOM, 0x80)
+#define DRM_FORMAT_MOD_QCOM_CAC_B          fourcc_mod_code(QCOM, 0x100)
+
 /**
  * Blend operations for "blend_op" property
  *
@@ -255,6 +259,57 @@ struct sde_drm_de_v1 {
 	__s16 adjust_c[SDE_MAX_DE_CURVES];
 };
 
+/**
+ * struct sde_drm_cac :    QSEEDv3 CAC configuration
+ * @cac_mode:              CAC mode for current configuration
+ * @cac_le_phase_init2_x:  LE horizontal initial phase2
+ * @cac_le_phase_init2_y:  LE vertical initial phase2
+ * @cac_re_phase_init2_y:  RE vertical initial phase2
+ * @cac_re_phase_init_y:   RE vertical initial phase
+ * @cac_le_thr_x:          LE horizontal threshold
+ * @cac_le_thr_y:          LE vertical threshold
+ * @cac_re_thr_y:          RE vertical threshold
+ * @cac_re_preload_y:      RE preload value
+ * @cac_dst_uv_w:          uv destination width
+ * @cac_dst_uv_h:          uv destination height
+ * @cac_le_dst_h_offset:   LE destination horizontal offset
+ * @cac_le_dst_v_offset:   LE destination vertical offset
+ * @cac_re_dst_v_offset:   RE destination vertical offset
+ * @cac_phase_inc_first_x: horizontal inc_first control
+ * @cac_phase_inc_first_y: vertical inc_first control
+ * @cac_le_inc_skip_x:     LE horizontal inc_skip control
+ * @cac_le_inc_skip_y:     LE vertical inc_skip control
+ * @cac_re_inc_skip_x:     RE horizontal inc_skip control
+ * @cac_re_inc_skip_y:     RE vertical inc_skip control
+ */
+struct sde_drm_cac {
+	__u32 cac_mode;
+
+	__u32 cac_le_phase_init2_x[SDE_MAX_PLANES];
+	__u32 cac_le_phase_init2_y[SDE_MAX_PLANES];
+	__u32 cac_re_phase_init2_y[SDE_MAX_PLANES];
+	__u32 cac_re_phase_init_y[SDE_MAX_PLANES];
+
+	__u32 cac_le_thr_x[SDE_MAX_PLANES];
+	__u32 cac_le_thr_y[SDE_MAX_PLANES];
+
+	__u32 cac_re_thr_y[SDE_MAX_PLANES];
+	__u32 cac_re_preload_y[SDE_MAX_PLANES];
+
+	__u32 cac_dst_uv_w;
+	__u32 cac_dst_uv_h;
+	__u32 cac_le_dst_h_offset;
+	__u32 cac_le_dst_v_offset;
+	__u32 cac_re_dst_v_offset;
+
+	__u16 cac_phase_inc_first_x[SDE_MAX_PLANES];
+	__u16 cac_phase_inc_first_y[SDE_MAX_PLANES];
+	__u16 cac_le_inc_skip_x[SDE_MAX_PLANES];
+	__u16 cac_le_inc_skip_y[SDE_MAX_PLANES];
+	__u16 cac_re_inc_skip_x[SDE_MAX_PLANES];
+	__u16 cac_re_inc_skip_y[SDE_MAX_PLANES];
+};
+
 /*
  * Scaler configuration flags
  */
@@ -312,6 +367,7 @@ struct sde_drm_de_v1 {
  * @de_lpf_m:          Detail enhancer lpf blend medium
  * @dir45_en:          45/-45 degree direction filtering enable
  * @cor_en:            corner enhancer enable
+ * @cac_cfg:           CAC QSEED config
  */
 struct sde_drm_scaler_v2 {
 	/*
@@ -384,6 +440,8 @@ struct sde_drm_scaler_v2 {
 	__u32 de_lpf_m;
 	__u32 dir45_en;
 	__u32 cor_en;
+
+	struct sde_drm_cac cac_cfg;
 };
 
 /* Number of dest scalers supported */
@@ -406,6 +464,7 @@ struct sde_drm_scaler_v2 {
  * @lm_height:  Layer mixer height configuration
  * @scaler_cfg: The scaling parameters for all the mode except disable
  *              Userspace pointer to struct sde_drm_scaler_v2
+ * @merge_mode: Specify pipe merge mode for each DS block
  */
 struct sde_drm_dest_scaler_cfg {
 	__u32 flags;
@@ -413,6 +472,7 @@ struct sde_drm_dest_scaler_cfg {
 	__u32 lm_width;
 	__u32 lm_height;
 	__u64 scaler_cfg;
+	__u32 merge_mode;
 };
 
 /**
@@ -519,15 +579,22 @@ struct sde_drm_wb_cfg {
 };
 
 #define SDE_MAX_ROI_V1	4
+#define SDE_DRM_SPR_ROI	1
+/* DRM_ROI_CONFIG_FLAGS */
+#define SDE_DRM_ROI_SPR_FLAG_EN	(1 << 0)
 
 /**
  * struct sde_drm_roi_v1 - list of regions of interest for a drm object
  * @num_rects: number of valid rectangles in the roi array
  * @roi: list of roi rectangles
+ * @roi_feature_flags: flags indicates that specific roi rect is valid or not
+ * @spr_roi: list of roi rectangles for spr
  */
 struct sde_drm_roi_v1 {
 	__u32 num_rects;
 	struct drm_clip_rect roi[SDE_MAX_ROI_V1];
+	__u32 roi_feature_flags;
+	struct drm_clip_rect spr_roi[SDE_MAX_ROI_V1];
 };
 
 /**

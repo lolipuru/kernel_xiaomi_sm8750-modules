@@ -832,8 +832,13 @@ void sde_encoder_helper_update_intf_cfg(
 			intf_cfg->intf_mode_sel = SDE_CTL_MODE_SEL_VID;
 	}
 
-	/* configure this interface as master for split display */
-	if (phys_enc->split_role == ENC_ROLE_MASTER)
+	/**
+	 * configure this interface as master for split display.
+	 * With Dual DPU sync enabled, configure DPU_MASTER, DPU_SLAVE
+	 * with this intf as master.
+	 */
+	if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc) ||
+		sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc))
 		intf_cfg->intf_master = phys_enc->hw_intf->idx;
 
 	/* setup which pp blk will connect to this intf */
@@ -888,9 +893,10 @@ void sde_encoder_helper_split_config(
 	 * disable split modes since encoder will be operating in as the only
 	 * encoder, either for the entire use case in the case of, for example,
 	 * single DSI, or for this frame in the case of left/right only partial
-	 * update.
+	 * update. In Dual DPU sync solo mode, only one encoder will be
+	 * operating in master and slave DPU.
 	 */
-	if (phys_enc->split_role == ENC_ROLE_SOLO) {
+	if (phys_enc->split_role == ENC_ROLE_SOLO || sde_encoder_master_in_solo_mode(phys_enc)) {
 		if (hw_mdptop->ops.setup_split_pipe)
 			hw_mdptop->ops.setup_split_pipe(hw_mdptop, cfg);
 		if (hw_mdptop->ops.setup_pp_split)
@@ -912,7 +918,8 @@ void sde_encoder_helper_split_config(
 	else
 		cfg->pp_split_slave = INTF_MAX;
 
-	if (phys_enc->split_role == ENC_ROLE_MASTER) {
+	if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc) ||
+		sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)) {
 		SDE_DEBUG_ENC(sde_enc, "enable %d\n", cfg->en);
 
 		if (hw_mdptop->ops.setup_split_pipe)
@@ -2065,8 +2072,14 @@ static int sde_encoder_hw_fence_signal(struct sde_encoder_phys *phys_enc)
 	/* out of order hw fence error signal is needed for video panel. */
 	if (sde_encoder_check_curr_mode(phys_enc->parent, MSM_DISPLAY_VIDEO_MODE)) {
 		/* out of order hw fence error signal */
-		msm_hw_fence_update_txq_error(hwfence_data->hw_fence_handle,
-			phys_enc->sde_hw_fence_handle, 1, MSM_HW_FENCE_UPDATE_ERROR_WITH_MOVE);
+		rc = msm_hw_fence_update_txq_error(hwfence_data->hw_fence_handle,
+			phys_enc->sde_hw_fence_handle, phys_enc->sde_hw_fence_error_value,
+			MSM_HW_FENCE_UPDATE_ERROR_WITH_MOVE);
+		if (rc) {
+			SDE_ERROR("msm_hw_fence_update_txq_error failed, rc = %d\n", rc);
+			SDE_EVT32(DRMID(phys_enc->parent), rc, SDE_EVTLOG_ERROR);
+		}
+
 	/* wait for frame done to avoid out of order signalling for cmd mode. */
 	} else if (pending_kickoff_cnt) {
 		SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FUNC_CASE1);
@@ -3300,6 +3313,15 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 				sde_enc->cur_master->hw_mdptop,
 				sde_kms->catalog);
 
+	/* Timing engine enable output to Slave DPU */
+	if (sde_encoder_has_dpu_ctl_op_sync(drm_enc) && sde_enc->cur_master->hw_mdptop &&
+			sde_encoder_phys_has_role_master_dpu_master_intf(sde_enc->cur_master) &&
+			sde_enc->cur_master->hw_mdptop->ops.dpu_sync_intf_mux) {
+		sde_enc->cur_master->hw_mdptop->ops.dpu_sync_intf_mux(
+				sde_enc->cur_master->hw_mdptop,
+				sde_enc->cur_master->hw_intf->idx - INTF_0);
+	}
+
 	if (sde_enc->cur_master->hw_ctl &&
 			sde_enc->cur_master->hw_ctl->ops.setup_intf_cfg_v1 &&
 			!sde_enc->cur_master->cont_splash_enabled)
@@ -3988,7 +4010,7 @@ static void sde_encoder_underrun_callback(struct drm_encoder *drm_enc,
 
 	SDE_ATRACE_BEGIN("encoder_underrun_callback");
 	atomic_inc(&phy_enc->underrun_cnt);
-	SDE_EVT32(DRMID(drm_enc), atomic_read(&phy_enc->underrun_cnt));
+	SDE_EVT32(DRMID(drm_enc), atomic_read(&phy_enc->underrun_cnt), DPUID(drm_enc->dev));
 	if (sde_enc->cur_master &&
 			sde_enc->cur_master->ops.get_underrun_line_count)
 		sde_enc->cur_master->ops.get_underrun_line_count(
@@ -4270,11 +4292,11 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0,
 				ctl->idx - CTL_0,
 				pending_flush.pending_flush_mask,
-				pend_ret_fence_cnt);
+				pend_ret_fence_cnt, DPUID(drm_enc->dev));
 	} else {
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0,
 				ctl->idx - CTL_0,
-				pend_ret_fence_cnt);
+				pend_ret_fence_cnt, DPUID(drm_enc->dev));
 	}
 }
 
@@ -4346,7 +4368,7 @@ void sde_encoder_helper_trigger_start(struct sde_encoder_phys *phys_enc)
 	ctl = phys_enc->hw_ctl;
 	if (ctl && ctl->ops.trigger_start) {
 		ctl->ops.trigger_start(ctl);
-		SDE_EVT32(DRMID(phys_enc->parent), ctl->idx - CTL_0);
+		SDE_EVT32(DRMID(phys_enc->parent), ctl->idx - CTL_0, DPUID(phys_enc->parent->dev));
 	}
 }
 
@@ -4619,6 +4641,10 @@ static void _sde_encoder_update_master(struct drm_encoder *drm_enc,
 	if (sde_enc->num_phys_encs <= 1)
 		return;
 
+	/* Do not update split roles for DPU sync usecase */
+	if (sde_enc->dpu_ctl_op_sync)
+		return;
+
 	/* count bits set */
 	num_active_phys = hweight_long(params->affected_displays);
 
@@ -4645,14 +4671,14 @@ static void _sde_encoder_update_master(struct drm_encoder *drm_enc,
 		if (active && num_active_phys == 1)
 			new_role = ENC_ROLE_SOLO;
 		else if (active && !master_assigned)
-			new_role = ENC_ROLE_MASTER;
+			new_role = DPU_MASTER_ENC_ROLE_MASTER;
 		else if (active)
 			new_role = ENC_ROLE_SLAVE;
 		else
 			new_role = ENC_ROLE_SKIP;
 
 		phys->ops.update_split_role(phys, new_role);
-		if (new_role == ENC_ROLE_SOLO || new_role == ENC_ROLE_MASTER) {
+		if (new_role == ENC_ROLE_SOLO || new_role == DPU_MASTER_ENC_ROLE_MASTER) {
 			sde_enc->cur_master = phys;
 			master_assigned = true;
 		}
@@ -5161,7 +5187,7 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 	sde_crtc = to_sde_crtc(sde_enc->crtc);
 
 	SDE_DEBUG_ENC(sde_enc, "\n");
-	SDE_EVT32(DRMID(drm_enc));
+	SDE_EVT32(DRMID(drm_enc), DPUID(drm_enc->dev));
 
 	cur_master = sde_enc->cur_master;
 	is_cmd_mode = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE);
@@ -5928,6 +5954,9 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	if (disp_info->intf_type == DRM_MODE_CONNECTOR_DSI) {
 		*drm_enc_mode = DRM_MODE_ENCODER_DSI;
 		intf_type = INTF_DSI;
+	} else if (disp_info->intf_type == DRM_MODE_CONNECTOR_eDP) {
+		*drm_enc_mode = DRM_MODE_ENCODER_TMDS;
+		intf_type = INTF_DP;
 	} else if (disp_info->intf_type == DRM_MODE_CONNECTOR_HDMIA) {
 		*drm_enc_mode = DRM_MODE_ENCODER_TMDS;
 		intf_type = INTF_HDMI;
@@ -5954,6 +5983,9 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 
 	sde_enc->idle_pc_enabled = test_bit(SDE_FEATURE_IDLE_PC, sde_kms->catalog->features);
 
+	if (test_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_kms->catalog->mdp[0].features))
+		sde_enc->dpu_ctl_op_sync = disp_info->ctl_op_sync;
+
 	sde_enc->input_event_enabled = test_bit(SDE_FEATURE_TOUCH_WAKEUP,
 						sde_kms->catalog->features);
 
@@ -5966,14 +5998,21 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		 * Left-most tile is at index 0, content is controller id
 		 * h_tile_instance_ids[2] = {0, 1}; DSI0 = left, DSI1 = right
 		 * h_tile_instance_ids[2] = {1, 0}; DSI1 = left, DSI0 = right
+		 * If Dual DPU sync is enabled, roles are decided from ctl_op_sync
+		 * and is_master populated from dsi driver.
 		 */
 		u32 controller_id = disp_info->h_tile_instance[i];
 
 		if (disp_info->num_of_h_tiles > 1) {
-			if (i == 0)
-				phys_params.split_role = ENC_ROLE_MASTER;
+			if (i == 0 && sde_enc->dpu_ctl_op_sync && !disp_info->is_master)
+				phys_params.split_role = DPU_SLAVE_ENC_ROLE_MASTER;
+			else if (i == 0)
+				phys_params.split_role = DPU_MASTER_ENC_ROLE_MASTER;
 			else
 				phys_params.split_role = ENC_ROLE_SLAVE;
+		} else if (sde_enc->dpu_ctl_op_sync) {
+			phys_params.split_role = disp_info->is_master ? DPU_MASTER_ENC_ROLE_MASTER
+					: DPU_SLAVE_ENC_ROLE_MASTER;
 		} else {
 			phys_params.split_role = ENC_ROLE_SOLO;
 		}
@@ -6093,7 +6132,7 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 			intf_index = phys->intf_idx - INTF_0;
 	}
 	snprintf(name, SDE_NAME_SIZE, "rsc_enc%u", drm_enc->base.id);
-	sde_enc->rsc_client = sde_rsc_client_create(SDE_RSC_INDEX, name,
+	sde_enc->rsc_client = sde_rsc_client_create(DPUID(dev), name,
 		(disp_info->display_type == SDE_CONNECTOR_PRIMARY) ?
 		SDE_RSC_PRIMARY_DISP_CLIENT :
 		SDE_RSC_EXTERNAL_DISP_CLIENT, intf_index + 1);

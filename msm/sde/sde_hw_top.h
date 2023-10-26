@@ -238,6 +238,14 @@ struct sde_hw_mdp_ops {
 	 * @sz:       indicates size of the ppb in terms of pixels
 	 */
 	void (*set_ppb_fifo_size)(struct sde_hw_mdp *mdp, u32 pp, u32 sz);
+
+	/**
+	 * dpu_sync_intf_mux - selects the Master INTF which drives the Slave DPU
+	 * @mdp:     mdp top context driver
+	 * @intf_idx:  intf block index which drives the master and Slave DPU
+	 *		INTF_1/INTF_5 are only possible values.
+	 */
+	void (*dpu_sync_intf_mux)(struct sde_hw_mdp *mdp, int intf_idx);
 };
 
 struct sde_hw_mdp {

@@ -39,13 +39,17 @@
  *	split-panel configuration, where one panel is master, and others slaves.
  *	Masters have extra responsibilities, like managing the VBLANK IRQ.
  * @ENC_ROLE_SOLO:	This is the one and only panel. This encoder is master.
- * @ENC_ROLE_MASTER:	This encoder is the master of a split panel config.
+ * @DPU_MASTER_ENC_ROLE_MASTER:	This encoder is the master of a split panel config.
+				DPU master with role master in Dual DPU sync mode.
+ * @DPU_SLAVE_ENC_ROLE_MASTER:	This encoder is the master of a split panel config.
+				DPU slave with role master in Dual DPU sync mode.
  * @ENC_ROLE_SLAVE:	This encoder is not the master of a split panel config.
  * @ENC_ROLE_SKIP:	This encoder is not participating in kickoffs
  */
 enum sde_enc_split_role {
 	ENC_ROLE_SOLO,
-	ENC_ROLE_MASTER,
+	DPU_MASTER_ENC_ROLE_MASTER,
+	DPU_SLAVE_ENC_ROLE_MASTER,
 	ENC_ROLE_SLAVE,
 	ENC_ROLE_SKIP
 };
@@ -57,6 +61,8 @@ enum sde_enc_split_role {
  * @SDE_ENC_DISABLED:	Encoder is disabled
  * @SDE_ENC_ENABLING:	Encoder transitioning to enabled
  *			Events bounding transition are encoder type specific
+ * @SDE_ENC_POST_ENABLING: Intermittent state of the encoder when DPU interface
+ *			 sync is enabled
  * @SDE_ENC_ENABLED:	Encoder is enabled
  * @SDE_ENC_ERR_NEEDS_HW_RESET:	Encoder is enabled, but requires a hw_reset
  *				to recover from a previous error
@@ -65,6 +71,7 @@ enum sde_enc_enable_state {
 	SDE_ENC_DISABLING,
 	SDE_ENC_DISABLED,
 	SDE_ENC_ENABLING,
+	SDE_ENC_POST_ENABLING,
 	SDE_ENC_ENABLED,
 	SDE_ENC_ERR_NEEDS_HW_RESET
 };
@@ -684,6 +691,51 @@ int sde_encoder_helper_switch_vsync(struct drm_encoder *drm_enc,
 		bool watchdog_te);
 
 /**
+ * sde_encoder_phys_has_role_master_dpu_master_intf - check if role of physical
+	 encoder is (MASTER_DPU, MASTER_INTF) when interface synchronization is enabled.
+ * @phys_enc: Pointer to physical encoder structure
+ */
+static inline bool sde_encoder_phys_has_role_master_dpu_master_intf(
+		struct sde_encoder_phys *phys_enc)
+{
+	if (!phys_enc)
+		return false;
+
+	return (phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER) ? true : false;
+}
+
+/**
+ * sde_encoder_phys_has_role_slave_dpu_master_intf - check if role of physical
+	encoder is (SLAVE_DPU, MASTER_INTF) when interface synchronization is enabled.
+ * @phys_enc: Pointer to physical encoder structure
+ */
+static inline bool sde_encoder_phys_has_role_slave_dpu_master_intf(
+		struct sde_encoder_phys *phys_enc)
+{
+	if (!phys_enc)
+		return false;
+
+	return (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER) ? true : false;
+}
+
+/*
+ * sde_encoder_in_solo_mode - check if DPU's are enabled in sync mode with each DPU in solo mode
+ * @phys_enc:    Pointer to physical encoder structure
+ * @Return: true if each DPU is operating in sync_mode with 1 tile display
+ */
+static inline bool sde_encoder_master_in_solo_mode(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!phys_enc || !phys_enc->parent)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+
+	return ((sde_enc->num_phys_encs == 1) && (sde_enc->dpu_ctl_op_sync)) ? true : false;
+}
+
+/**
  * sde_encoder_helper_hw_reset - issue ctl hw reset
  *	This helper function may be optionally specified by physical
  *	encoders if they require ctl hw reset. If state is currently
@@ -716,10 +768,13 @@ static inline enum sde_3d_blend_mode sde_encoder_helper_get_3d_blend_mode(
 	mode_3d = (num_lm > def.num_enc) ? true : false;
 	split_role = phys_enc->split_role;
 
-	if (split_role == ENC_ROLE_SOLO && num_lm == 2 && mode_3d)
+	/* solo mode / Dual DPU sync solo mode enabled with mode_3d in topology */
+	if ((split_role == ENC_ROLE_SOLO || sde_encoder_master_in_solo_mode(phys_enc))
+			&& num_lm == 2 && mode_3d)
 		return BLEND_3D_H_ROW_INT;
 
-	if ((split_role == ENC_ROLE_MASTER || split_role == ENC_ROLE_SLAVE)
+	/* split mode / Dual DPU sync split mode enabled with mode_3d in topology */
+	if ((split_role != ENC_ROLE_SOLO && !sde_encoder_master_in_solo_mode(phys_enc))
 			&& num_lm == 4 && mode_3d)
 		return BLEND_3D_H_ROW_INT;
 

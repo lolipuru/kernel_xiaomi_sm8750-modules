@@ -34,6 +34,7 @@
 
 struct msm_smmu_client {
 	struct device *dev;
+	struct device *host_dev;
 	const char *compat;
 	struct iommu_domain *domain;
 	const struct dma_map_ops *dma_ops;
@@ -192,8 +193,14 @@ static int msm_smmu_one_to_one_map(struct msm_mmu *mmu, uint32_t iova,
 	if (!client || !client->domain)
 		return -ENODEV;
 
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+	ret = iommu_map(client->domain, iova, dest_address,
+			size, prot, GFP_ATOMIC);
+#else
 	ret = iommu_map(client->domain, iova, dest_address,
 			size, prot);
+#endif
+
 	if (ret)
 		pr_err("smmu map failed\n");
 
@@ -208,8 +215,15 @@ static int msm_smmu_map(struct msm_mmu *mmu, uint64_t iova,
 	size_t ret = 0;
 
 	if (sgt && sgt->sgl) {
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+		ret = iommu_map_sg(client->domain, iova, sgt->sgl,
+				sgt->orig_nents, prot, GFP_ATOMIC);
+#else
 		ret = iommu_map_sg(client->domain, iova, sgt->sgl,
 				sgt->orig_nents, prot);
+#endif
+
 		WARN_ON((int)ret < 0);
 		DRM_DEBUG("%pad/0x%x/0x%x/\n", &sgt->sgl->dma_address,
 				sgt->sgl->dma_length, prot);
@@ -368,7 +382,7 @@ static const struct of_device_id msm_smmu_dt_match[] = {
 };
 MODULE_DEVICE_TABLE(of, msm_smmu_dt_match);
 
-static struct msm_smmu_client *msm_smmu_get_smmu(const char *compat)
+static struct msm_smmu_client *msm_smmu_get_smmu(struct device *dev, const char *compat)
 {
 	struct msm_smmu_client *curr = NULL;
 	bool found = false;
@@ -380,7 +394,8 @@ static struct msm_smmu_client *msm_smmu_get_smmu(const char *compat)
 
 	mutex_lock(&smmu_list_lock);
 	list_for_each_entry(curr, &sde_smmu_list, smmu_list) {
-		if (of_compat_cmp(compat, curr->compat, strlen(compat)) == 0) {
+		if (of_compat_cmp(compat, curr->compat, strlen(compat)) == 0 &&
+				curr->host_dev == dev) {
 			DRM_DEBUG("found msm_smmu_client for %s\n", compat);
 			found = true;
 			break;
@@ -414,7 +429,7 @@ static struct device *msm_smmu_device_add(struct device *dev,
 	}
 	DRM_DEBUG("found domain %d compat: %s\n", domain, compat);
 
-	smmu->client = msm_smmu_get_smmu(compat);
+	smmu->client = msm_smmu_get_smmu(dev, compat);
 	if (IS_ERR_OR_NULL(smmu->client)) {
 		DRM_DEBUG("unable to find domain %d compat: %s\n", domain,
 				compat);
@@ -481,6 +496,24 @@ static int msm_smmu_fault_handler(struct iommu_domain *domain,
  */
 static int msm_smmu_bind(struct device *dev, struct device *master, void *data)
 {
+	struct platform_device *pdev;
+	struct msm_smmu_client *client;
+
+	if (!dev || !master) {
+		DRM_ERROR("invalid param(s), dev %pK, master %pK\n", dev, master);
+		return -EINVAL;
+	}
+
+	pdev = to_platform_device(dev);
+
+	client = platform_get_drvdata(pdev);
+	if (!client) {
+		DRM_ERROR("invalid client\n");
+		return -EINVAL;
+	}
+
+	client->host_dev = master;
+
 	return 0;
 }
 
@@ -547,7 +580,7 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	if (!client->dev->dma_parms)
 		client->dev->dma_parms = devm_kzalloc(client->dev,
 				sizeof(*client->dev->dma_parms), GFP_KERNEL);
-	dma_set_max_seg_size(client->dev, DMA_BIT_MASK(32));
+	dma_set_max_seg_size(client->dev, (unsigned int)DMA_BIT_MASK(32));
 	dma_set_seg_boundary(client->dev, (unsigned long)DMA_BIT_MASK(64));
 
 	iommu_set_fault_handler(client->domain,

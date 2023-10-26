@@ -1101,7 +1101,7 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
 
 	SDE_EVT32(connector->base.id, params.qsync_mode,
-		  params.qsync_update, rc);
+		  params.qsync_update, rc, DPUID(connector->dev));
 
 	return rc;
 }
@@ -1747,7 +1747,7 @@ static int _sde_connector_set_prop_dyn_transfer_time(struct sde_connector *c_con
 
 	rc = c_conn->ops.update_transfer_time(c_conn->display, val);
 	if (rc)
-		SDE_ERROR_CONN(c_conn, "updating transfer time failed, val: %u, rc %d\n", val, rc);
+		SDE_ERROR_CONN(c_conn, "transfer time update failed, val: %llu, rc %d\n", val, rc);
 
 	return rc;
 }

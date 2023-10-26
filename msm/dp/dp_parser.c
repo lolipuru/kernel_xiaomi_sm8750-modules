@@ -167,6 +167,16 @@ static int dp_parser_misc(struct dp_parser *parser)
 	if (rc)
 		parser->max_lclk_khz = DP_MAX_LINK_CLK_KHZ;
 
+	for (i = 0; i < MAX_DP_MST_STREAMS; i++) {
+		of_property_read_u32_index(of_node,
+				"qcom,pclk-reg-off", i,
+				&parser->pixel_base_off[i]);
+	}
+
+	parser->display_type = of_get_property(of_node, "qcom,display-type", NULL);
+	if (!parser->display_type)
+		parser->display_type = "unknown";
+
 	return 0;
 }
 
@@ -231,16 +241,20 @@ static int dp_parser_gpio(struct dp_parser *parser)
 	struct device *dev = &parser->pdev->dev;
 	struct device_node *of_node = dev->of_node;
 	struct dss_module_power *mp = &parser->mp[DP_CORE_PM];
-	static const char * const dp_gpios[] = {
+	static const char * const dp_gpios[DP_GPIO_MAX] = {
 		"qcom,aux-en-gpio",
 		"qcom,aux-sel-gpio",
 		"qcom,usbplug-cc-gpio",
+		"qcom,edp-vcc-en-gpio",
+		"qcom,edp-backlight-pwr-gpio",
+		"qcom,edp-pwm-en-gpio",
+		"qcom,edp-backlight-en-gpio",
 	};
 
 	if (of_find_property(of_node, "qcom,dp-gpio-aux-switch", NULL))
 		parser->gpio_aux_switch = true;
 	mp->gpio_config = devm_kzalloc(dev,
-		sizeof(struct dss_gpio) * ARRAY_SIZE(dp_gpios), GFP_KERNEL);
+		sizeof(struct dss_gpio) * DP_GPIO_MAX, GFP_KERNEL);
 	if (!mp->gpio_config)
 		return -ENOMEM;
 
@@ -673,12 +687,33 @@ static int dp_parser_catalog(struct dp_parser *parser)
 {
 	int rc;
 	u32 version;
+	const char *st = NULL;
 	struct device *dev = &parser->pdev->dev;
 
 	rc = of_property_read_u32(dev->of_node, "qcom,phy-version", &version);
 
 	if (!rc)
 		parser->hw_cfg.phy_version = version;
+
+	/* phy-mode */
+	rc = of_property_read_string(dev->of_node, "qcom,phy-mode", &st);
+
+	if (!rc) {
+		if (!strcmp(st, "dp"))
+			parser->hw_cfg.phy_mode = DP_PHY_MODE_DP;
+		else if (!strcmp(st, "minidp"))
+			parser->hw_cfg.phy_mode = DP_PHY_MODE_MINIDP;
+		else if (!strcmp(st, "edp"))
+			parser->hw_cfg.phy_mode = DP_PHY_MODE_EDP;
+		else if (!strcmp(st, "edp-highswing"))
+			parser->hw_cfg.phy_mode = DP_PHY_MODE_EDP_HIGH_SWING;
+		else {
+			parser->hw_cfg.phy_mode = DP_PHY_MODE_UNKNOWN;
+			pr_warn("unknown phy-mode %s\n", st);
+		}
+	} else {
+		parser->hw_cfg.phy_mode = DP_PHY_MODE_UNKNOWN;
+	}
 
 	return 0;
 }
@@ -698,6 +733,12 @@ static int dp_parser_mst(struct dp_parser *parser)
 		of_property_read_u32_index(dev->of_node,
 				"qcom,mst-fixed-topology-ports", i,
 				&parser->mst_fixed_port[i]);
+		of_property_read_string_index(
+				dev->of_node,
+				"qcom,mst-fixed-topology-display-types", i,
+				&parser->mst_fixed_display_type[i]);
+		if (!parser->mst_fixed_display_type[i])
+			parser->mst_fixed_display_type[i] = "unknown";
 	}
 
 	return 0;
@@ -736,7 +777,7 @@ static void dp_parser_qos(struct dp_parser *parser)
 	parser->qos_cpu_mask = mask;
 	parser->qos_cpu_latency = latency;
 
-	DP_DEBUG("qos parsing successful. mask:%x latency:%ld\n", mask, latency);
+	DP_DEBUG("qos parsing successful. mask:%x latency:%u\n", mask, latency);
 }
 
 static void dp_parser_fec(struct dp_parser *parser)
@@ -757,8 +798,12 @@ static void dp_parser_widebus(struct dp_parser *parser)
 	parser->has_widebus = of_property_read_bool(dev->of_node,
 			"qcom,widebus-enable");
 
+	parser->has_4ppc_enabled = of_property_read_bool(dev->of_node, "qcom,4ppc-enable");
+
 	DP_DEBUG("widebus parsing successful. widebus:%d\n",
 			parser->has_widebus);
+
+	DP_DEBUG("4ppc enablement : %d\n", parser->has_4ppc_enabled);
 }
 
 static int parse_lt_param(struct device *dev, u8 **ptr, char *property) {

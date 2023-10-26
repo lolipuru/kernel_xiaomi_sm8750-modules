@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -132,7 +132,7 @@ struct sde_rsc_client *sde_rsc_client_create(u32 rsc_index, char *client_name,
 
 	return client;
 }
-EXPORT_SYMBOL(sde_rsc_client_create);
+EXPORT_SYMBOL_GPL(sde_rsc_client_create);
 
 /**
  * sde_rsc_client_destroy() - Destroy the sde rsc client.
@@ -187,7 +187,7 @@ void sde_rsc_client_destroy(struct sde_rsc_client *client)
 end:
 	return;
 }
-EXPORT_SYMBOL(sde_rsc_client_destroy);
+EXPORT_SYMBOL_GPL(sde_rsc_client_destroy);
 
 struct sde_rsc_event *sde_rsc_register_event(int rsc_index, uint32_t event_type,
 		void (*cb_func)(uint32_t event_type, void *usr), void *usr)
@@ -225,7 +225,7 @@ struct sde_rsc_event *sde_rsc_register_event(int rsc_index, uint32_t event_type,
 
 	return evt;
 }
-EXPORT_SYMBOL(sde_rsc_register_event);
+EXPORT_SYMBOL_GPL(sde_rsc_register_event);
 
 void sde_rsc_unregister_event(struct sde_rsc_event *event)
 {
@@ -252,7 +252,7 @@ void sde_rsc_unregister_event(struct sde_rsc_event *event)
 end:
 	return;
 }
-EXPORT_SYMBOL(sde_rsc_unregister_event);
+EXPORT_SYMBOL_GPL(sde_rsc_unregister_event);
 
 bool is_sde_rsc_available(int rsc_index)
 {
@@ -267,7 +267,7 @@ bool is_sde_rsc_available(int rsc_index)
 
 	return true;
 }
-EXPORT_SYMBOL(is_sde_rsc_available);
+EXPORT_SYMBOL_GPL(is_sde_rsc_available);
 
 enum sde_rsc_state get_sde_rsc_current_state(int rsc_index)
 {
@@ -285,7 +285,7 @@ enum sde_rsc_state get_sde_rsc_current_state(int rsc_index)
 	rsc = rsc_prv_list[rsc_index];
 	return rsc->current_state;
 }
-EXPORT_SYMBOL(get_sde_rsc_current_state);
+EXPORT_SYMBOL_GPL(get_sde_rsc_current_state);
 
 static u32 sde_rsc_timer_calculate(struct sde_rsc_priv *rsc,
 	struct sde_rsc_cmd_config *cmd_config, enum sde_rsc_state state)
@@ -993,7 +993,7 @@ end:
 	mutex_unlock(&rsc->client_lock);
 	return rc;
 }
-EXPORT_SYMBOL(sde_rsc_client_state_update);
+EXPORT_SYMBOL_GPL(sde_rsc_client_state_update);
 
 /**
  * sde_rsc_client_vote() - ab/ib vote from rsc client
@@ -1032,7 +1032,7 @@ int sde_rsc_client_vote(struct sde_rsc_client *caller_client,
 
 	return 0;
 }
-EXPORT_SYMBOL(sde_rsc_client_vote);
+EXPORT_SYMBOL_GPL(sde_rsc_client_vote);
 
 int sde_rsc_client_trigger_vote(struct sde_rsc_client *caller_client,
 	bool delta_vote)
@@ -1114,7 +1114,7 @@ end:
 
 	return rc;
 }
-EXPORT_SYMBOL(sde_rsc_client_trigger_vote);
+EXPORT_SYMBOL_GPL(sde_rsc_client_trigger_vote);
 
 #if defined(CONFIG_DEBUG_FS)
 void sde_rsc_debug_dump(u32 mux_sel)
@@ -1703,14 +1703,8 @@ static int sde_rsc_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct sde_rsc_priv *rsc;
-	static int counter;
 	char  name[MAX_RSC_CLIENT_NAME_LEN];
-
-	if (counter >= MAX_RSC_COUNT) {
-		pr_err("sde rsc supports probe till MAX_RSC_COUNT=%d devices\n",
-			MAX_RSC_COUNT);
-		return -EINVAL;
-	}
+	int index;
 
 	rsc = kzalloc(sizeof(*rsc), GFP_KERNEL);
 	if (!rsc) {
@@ -1722,6 +1716,16 @@ static int sde_rsc_probe(struct platform_device *pdev)
 	rsc->dev = &pdev->dev;
 	of_property_read_u32(pdev->dev.of_node, "qcom,sde-rsc-version",
 								&rsc->version);
+
+	ret = of_property_read_u32(pdev->dev.of_node, "cell-index", &index);
+	if (ret)
+		index = SDE_RSC_INDEX;
+
+	if (index >= MAX_RSC_COUNT) {
+		pr_err("sde rsc supports probe till MAX_RSC_COUNT=%d devices\n",
+			MAX_RSC_COUNT);
+		return -EINVAL;
+	}
 
 	switch (rsc->version) {
 	case SDE_RSC_REV_1:
@@ -1765,7 +1769,7 @@ static int sde_rsc_probe(struct platform_device *pdev)
 		goto sde_rsc_fail;
 	}
 
-	rsc->rpmh_dev = rpmh_dev[SDE_RSC_INDEX + counter];
+	rsc->rpmh_dev = rpmh_dev[index];
 	if (IS_ERR_OR_NULL(rsc->rpmh_dev)) {
 		ret = !rsc->rpmh_dev ? -EINVAL : PTR_ERR(rsc->rpmh_dev);
 		rsc->rpmh_dev = NULL;
@@ -1826,13 +1830,11 @@ static int sde_rsc_probe(struct platform_device *pdev)
 	init_waitqueue_head(&rsc->rsc_vsync_waitq);
 	atomic_set(&rsc->resource_refcount, 0);
 
-	pr_info("sde rsc index:%d probed successfully\n",
-				SDE_RSC_INDEX + counter);
+	pr_info("sde rsc index:%d probed successfully\n", index);
 
-	rsc_prv_list[SDE_RSC_INDEX + counter] = rsc;
-	snprintf(name, MAX_RSC_CLIENT_NAME_LEN, "%s%d", "sde_rsc", counter);
+	rsc_prv_list[index] = rsc;
+	snprintf(name, MAX_RSC_CLIENT_NAME_LEN, "%s%d", "sde_rsc", index);
 	_sde_rsc_init_debugfs(rsc, name);
-	counter++;
 
 	ret = component_add(&pdev->dev, &sde_rsc_comp_ops);
 	if (ret)

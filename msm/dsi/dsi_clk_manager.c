@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -1135,7 +1135,7 @@ error:
 }
 
 int dsi_clk_req_state(void *client, enum dsi_clk_type clk,
-	enum dsi_clk_state state)
+	enum dsi_clk_state state, bool take_lock)
 {
 	int rc = 0;
 	struct dsi_clk_client_info *c = client;
@@ -1150,7 +1150,9 @@ int dsi_clk_req_state(void *client, enum dsi_clk_type clk,
 	}
 
 	mngr = c->mngr;
-	mutex_lock(&mngr->clk_mutex);
+
+	if (take_lock)
+		mutex_lock(&mngr->clk_mutex);
 
 	DSI_DEBUG("[%s]%s: CLK=%d, new_state=%d, core=%d, linkl=%d\n",
 	       mngr->name, c->name, clk, state, c->core_clk_state,
@@ -1230,7 +1232,8 @@ int dsi_clk_req_state(void *client, enum dsi_clk_type clk,
 			DSI_ERR("Failed to adjust clock state rc = %d\n", rc);
 	}
 
-	mutex_unlock(&mngr->clk_mutex);
+	if (take_lock)
+		mutex_unlock(&mngr->clk_mutex);
 	return rc;
 }
 
@@ -1305,10 +1308,28 @@ int dsi_display_clk_ctrl(void *handle,
 	}
 
 	mutex_lock(&dsi_mngr_clk_mutex);
-	rc = dsi_clk_req_state(handle, clk_type, clk_state);
+	rc = dsi_clk_req_state(handle, clk_type, clk_state, true);
 	if (rc)
 		DSI_ERR("failed set clk state, rc = %d\n", rc);
 	mutex_unlock(&dsi_mngr_clk_mutex);
+
+	return rc;
+}
+
+int dsi_display_clk_ctrl_nolock(void *handle,
+	u32 clk_type, u32 clk_state)
+{
+	int rc = 0;
+
+	if ((!handle) || (clk_type > DSI_ALL_CLKS) ||
+			(clk_state > DSI_CLK_EARLY_GATE)) {
+		DSI_ERR("Invalid arg\n");
+		return -EINVAL;
+	}
+
+	rc = dsi_clk_req_state(handle, clk_type, clk_state, false);
+	if (rc)
+		DSI_ERR("failed set clk state, rc = %d\n", rc);
 
 	return rc;
 }

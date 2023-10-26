@@ -62,6 +62,7 @@
 #define GET_MAJOR_REV(rev)		((rev) >> 28)
 #define GET_MINOR_REV(rev)		(((rev) >> 16) & 0xFFF)
 #define GET_STEP_REV(rev)		((rev) & 0xFFFF)
+#define DPUID(dev)			dev->primary->index
 
 struct msm_kms;
 struct msm_gpu;
@@ -150,6 +151,8 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_FP16_UNMULT,
 	PLANE_PROP_UCSC_UNMULT,
 	PLANE_PROP_UCSC_ALPHA_DITHER,
+	PLANE_PROP_BG_ALPHA,
+	PLANE_PROP_SRC_IMG_SIZE,
 
 	/* enum/bitmask properties */
 	PLANE_PROP_BLEND_OP,
@@ -158,7 +161,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_MULTIRECT_MODE,
 	PLANE_PROP_UCSC_IGC,
 	PLANE_PROP_UCSC_GC,
-
+	PLANE_PROP_CAC_TYPE,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -858,6 +861,7 @@ struct msm_mode_info {
 	struct msm_compression_info comp_info;
 	struct msm_roi_caps roi_caps;
 	bool wide_bus_en;
+	u32 pclk_factor;
 	u32 panel_mode_caps;
 	u32 pixel_format_caps;
 	u32 bpp;
@@ -923,6 +927,8 @@ struct msm_resource_caps_info {
  *			for dsi display)
  * @lm_count:		max layer mixer blocks used by display (only available
  *			for dsi display)
+ * @ctl_op_sync:        Indicates dual display panels are operating in sync mode
+ * @is_master:          Flag indicating the Master display which drives the displays in sync mode
  */
 struct msm_display_info {
 	int intf_type;
@@ -953,6 +959,8 @@ struct msm_display_info {
 
 	uint32_t dsc_count;
 	uint32_t lm_count;
+	bool ctl_op_sync;
+	bool is_master;
 };
 
 #define MSM_MAX_ROI	4
@@ -961,10 +969,14 @@ struct msm_display_info {
  * struct msm_roi_list - list of regions of interest for a drm object
  * @num_rects: number of valid rectangles in the roi array
  * @roi: list of roi rectangles
+ * @roi_feature_flags: flags indicates that specific roi rect is valid or not
+ * @spr_roi: list of roi rectangles for spr
  */
 struct msm_roi_list {
 	uint32_t num_rects;
 	struct drm_clip_rect roi[MSM_MAX_ROI];
+	uint32_t roi_feature_flags;
+	struct drm_clip_rect spr_roi[MSM_MAX_ROI];
 };
 
 /**

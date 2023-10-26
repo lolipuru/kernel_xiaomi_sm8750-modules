@@ -59,8 +59,18 @@ static bool sde_encoder_phys_cmd_mode_fixup(
 		const struct drm_display_mode *mode,
 		struct drm_display_mode *adj_mode)
 {
+	struct sde_encoder_phys_cmd *cmd_enc;
+
 	if (phys_enc)
 		SDE_DEBUG_CMDENC(to_sde_encoder_phys_cmd(phys_enc), "\n");
+
+	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
+
+	if (sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)) {
+		SDE_ERROR_CMDENC(cmd_enc, "interface sync not validated in cmd mode\n");
+		return false;
+	}
+
 	return true;
 }
 
@@ -272,7 +282,7 @@ void sde_encoder_restore_tearcheck_rd_ptr(struct sde_encoder_phys *phys_enc)
 			mode->vtotal, panel_scan_line, qsync_timeout_lines, latency_margin_lines,
 			restored_rd_ptr_lines, info[0].rd_ptr_line_count - mode->vdisplay,
 			ktime_to_us(time_into_frame_ns));
-	SDE_DEBUG_CMDENC(cmd_enc, "scan_line:%u rest_rd_ptr:%u rd_ptr:%u frame_ns:%u\n",
+	SDE_DEBUG_CMDENC(cmd_enc, "scan_line:%u rest_rd_ptr:%u rd_ptr:%u frame_ns:%llu\n",
 			panel_scan_line, restored_rd_ptr_lines,
 			info[0].rd_ptr_line_count - mode->vdisplay,
 			ktime_to_us(time_into_frame_ns));
@@ -435,7 +445,8 @@ static void _sde_encoder_phys_signal_frame_done(struct sde_encoder_phys *phys_en
 		event, scheduler_status, phys_enc->autorefresh_disable_trans, info[0].pp_idx,
 		info[0].intf_idx, info[0].intf_frame_count, info[0].wr_ptr_line_count,
 		info[0].rd_ptr_line_count, info[1].pp_idx, info[1].intf_idx,
-		info[1].intf_frame_count, info[1].wr_ptr_line_count, info[1].rd_ptr_line_count);
+		info[1].intf_frame_count, info[1].wr_ptr_line_count, info[1].rd_ptr_line_count,
+		DPUID(phys_enc->parent->dev));
 
 	/*
 	 * For hw-fences, in the last frame during the autorefresh disable transition
@@ -498,7 +509,7 @@ static void sde_encoder_phys_cmd_autorefresh_done_irq(void *arg, int irq_idx)
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent), phys_enc->hw_pp->idx - PINGPONG_0,
-			phys_enc->hw_intf->idx - INTF_0, new_cnt);
+			phys_enc->hw_intf->idx - INTF_0, new_cnt, DPUID(phys_enc->parent->dev));
 
 	if (new_cnt)
 		_sde_encoder_phys_signal_frame_done(phys_enc);
@@ -545,7 +556,8 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent), scheduler_status, fence_ready, info[0].pp_idx,
 		info[0].intf_idx, info[0].intf_frame_count, info[0].wr_ptr_line_count,
 		info[0].rd_ptr_line_count, info[1].pp_idx, info[1].intf_idx,
-		info[1].intf_frame_count, info[1].wr_ptr_line_count, info[1].rd_ptr_line_count);
+		info[1].intf_frame_count, info[1].wr_ptr_line_count, info[1].rd_ptr_line_count,
+		DPUID(phys_enc->parent->dev));
 
 	_sde_encoder_phys_cmd_process_sim_qsync_event(phys_enc, SDE_SIM_QSYNC_EVENT_TE_TRIGGER);
 
@@ -587,7 +599,7 @@ static void sde_encoder_phys_cmd_wr_ptr_irq(void *arg, int irq_idx)
 		info[0].pp_idx, info[0].intf_idx, info[0].intf_frame_count,
 		info[0].wr_ptr_line_count, info[0].rd_ptr_line_count, info[1].pp_idx,
 		info[1].intf_idx, info[1].intf_frame_count, info[1].wr_ptr_line_count,
-		info[1].rd_ptr_line_count);
+		info[1].rd_ptr_line_count, DPUID(phys_enc->parent->dev));
 
 	if (qsync_mode &&
 			!test_bit(SDE_INTF_TE_SINGLE_UPDATE, &phys_enc->hw_intf->cap->features))

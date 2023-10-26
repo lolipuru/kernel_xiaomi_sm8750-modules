@@ -50,6 +50,7 @@ enum sde_format_flags {
 	SDE_FORMAT_FLAG_COMPRESSED_BIT,
 	SDE_FORMAT_FLAG_ALPHA_SWAP_BIT,
 	SDE_FORMAT_FLAG_FP16_BIT,
+	SDE_FORMAT_FLAG_CAC_BIT,
 	SDE_FORMAT_FLAG_BIT_MAX,
 };
 
@@ -58,6 +59,7 @@ enum sde_format_flags {
 #define SDE_FORMAT_FLAG_COMPRESSED	BIT(SDE_FORMAT_FLAG_COMPRESSED_BIT)
 #define SDE_FORMAT_FLAG_ALPHA_SWAP	BIT(SDE_FORMAT_FLAG_ALPHA_SWAP_BIT)
 #define SDE_FORMAT_FLAG_FP16		BIT(SDE_FORMAT_FLAG_FP16_BIT)
+#define SDE_FORMAT_FLAG_CAC		BIT(SDE_FORMAT_FLAG_CAC_BIT)
 #define SDE_FORMAT_IS_YUV(X)		\
 	(test_bit(SDE_FORMAT_FLAG_YUV_BIT, (X)->flag))
 #define SDE_FORMAT_IS_DX(X)		\
@@ -73,6 +75,8 @@ enum sde_format_flags {
 	(test_bit(SDE_FORMAT_FLAG_ALPHA_SWAP_BIT, (X)->flag))
 #define SDE_FORMAT_IS_FP16(X) \
 	(test_bit(SDE_FORMAT_FLAG_FP16_BIT, (X)->flag))
+#define SDE_FORMAT_IS_CAC_FETCH(X) \
+	(test_bit(SDE_FORMAT_FLAG_CAC_BIT, (X)->flag))
 
 #define MDP_TICK_COUNT                    16
 #define XO_CLK_RATE                       19200
@@ -160,6 +164,12 @@ enum sde_sspp {
 #define SDE_SSPP_VALID(x) ((x) > SSPP_NONE && (x) < SSPP_MAX)
 #define SDE_SSPP_VALID_VIG(x) ((x) >= SSPP_VIG0 && (x) <= SSPP_VIG_MAX)
 #define SDE_SSPP_VALID_DMA(x) ((x) >= SSPP_DMA0 && (x) <= SSPP_DMA_MAX)
+
+enum sde_dpu {
+	DPU_0,
+	DPU_1,
+	DPU_MAX
+};
 
 enum sde_sspp_type {
 	SSPP_TYPE_VIG,
@@ -307,6 +317,8 @@ enum sde_intf {
 	INTF_4,
 	INTF_5,
 	INTF_6,
+	INTF_7,
+	INTF_8,
 	INTF_MAX
 };
 

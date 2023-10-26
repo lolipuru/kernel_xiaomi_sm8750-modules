@@ -38,6 +38,28 @@ static int dsi_pll_clock_register(struct platform_device *pdev,
 	return rc;
 }
 
+int dsi_pll_program_slave(struct dsi_pll_resource *pll_res, bool skip_op)
+{
+	int rc;
+
+	switch (pll_res->pll_revision) {
+	case DSI_PLL_5NM:
+		rc = dsi_pll_5nm_program_slave(pll_res, skip_op);
+		break;
+	case DSI_PLL_4NM:
+		rc = dsi_pll_4nm_program_slave(pll_res, skip_op);
+		break;
+	default:
+		rc = -EINVAL;
+		break;
+	}
+
+	if (rc)
+		DSI_PLL_ERR(pll_res, "%s failed rc=%d\n", __func__, rc);
+
+	return rc;
+}
+
 static inline int dsi_pll_get_ioresources(struct platform_device *pdev,
 				void __iomem **regmap, char *resource_name)
 {

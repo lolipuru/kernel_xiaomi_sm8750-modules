@@ -135,6 +135,7 @@ struct dsi_backlight_config {
 	u32 bl_level;
 	u32 bl_scale;
 	u32 bl_scale_sv;
+	u32 bl_dcs_subtype;
 	bool bl_inverted_dbv;
 	/* digital dimming backlight LUT */
 	struct drm_msm_dimming_bl_lut *dimming_bl_lut;
@@ -270,8 +271,11 @@ struct dsi_panel {
 	u32 dsc_count;
 	u32 lm_count;
 
+	bool ctl_op_sync;
+
 	int panel_test_gpio;
 	int power_mode;
+	bool powered;
 	enum dsi_panel_physical_type panel_type;
 
 	struct dsi_panel_ops panel_ops;

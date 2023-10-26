@@ -271,6 +271,7 @@ struct sde_intr_irq_offsets {
  * @SDE_MDP_PERIPH_TOP_REMOVED Indicates if periph top0 block is removed
  * @SDE_MDP_TOP_PPB_SET_SIZE   Indicates if top block supports ppb size setting
  * @SDE_MDP_HW_FENCE_DIR_WRITE Indicates if hw supports hw-fence dir write
+ * @SDE_MDP_DUAL_DPU_SYNC  Indicates if Dpu Sync feature is supported
  * @SDE_MDP_MAX            Maximum value
  */
 enum {
@@ -286,6 +287,7 @@ enum {
 	SDE_MDP_PERIPH_TOP_0_REMOVED,
 	SDE_MDP_TOP_PPB_SET_SIZE,
 	SDE_MDP_HW_FENCE_DIR_WRITE,
+	SDE_MDP_DUAL_DPU_SYNC,
 	SDE_MDP_MAX
 };
 
@@ -330,6 +332,7 @@ enum {
  * @SDE_SSPP_UCSC_CSC        UCSC CSC color processing block support
  * @SDE_SSPP_UCSC_UNMULT     UCSC alpha unmult color processing block support
  * @SDE_SSPP_UCSC_ALPHA_DITHER UCSC alpha dither color processing block support
+ * @SDE_SSPP_CAC_V2          CAC v2 support
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -372,6 +375,7 @@ enum {
 	SDE_SSPP_UCSC_CSC,
 	SDE_SSPP_UCSC_UNMULT,
 	SDE_SSPP_UCSC_ALPHA_DITHER,
+	SDE_SSPP_CAC_V2,
 	SDE_SSPP_MAX
 };
 
@@ -1054,6 +1058,7 @@ enum sde_danger_safe_lut_types {
  * @format_list: Pointer to list of supported formats
  * @virt_format_list: Pointer to list of supported formats for virtual planes
  * @in_rot_format_list: Pointer to list of supported formats for inline rotation
+ * @cac_format_list : Pointer to list of supported formats for CAC
  * @in_rot_maxdwnscale_rt_num: max downscale ratio for inline rotation
  *                                 rt clients - numerator
  * @in_rot_maxdwnscale_rt_denom: max downscale ratio for inline rotation
@@ -1066,6 +1071,9 @@ enum sde_danger_safe_lut_types {
  * @in_rot_maxheight: max pre rotated height for inline rotation
  * @llcc_scid: scid for the system cache
  * @llcc_slice size: slice size of the system cache
+ * @cac_mode: supported cac mode for each sspp
+ * @cac_parent_rec: parent rec id for each sspp
+ * @cac_lm_pref: preferred lm for each sspp rec
  */
 struct sde_sspp_sub_blks {
 	u32 maxlinewidth;
@@ -1117,6 +1125,7 @@ struct sde_sspp_sub_blks {
 	const struct sde_format_extended *format_list;
 	const struct sde_format_extended *virt_format_list;
 	const struct sde_format_extended *in_rot_format_list;
+	const struct sde_format_extended *cac_format_list;
 	u32 in_rot_maxdwnscale_rt_num;
 	u32 in_rot_maxdwnscale_rt_denom;
 	u32 in_rot_maxdwnscale_nrt;
@@ -1125,6 +1134,9 @@ struct sde_sspp_sub_blks {
 	u32 in_rot_maxheight;
 	int llcc_scid;
 	size_t llcc_slice_size;
+	int cac_mode;
+	u32 cac_parent_rec[SSPP_SUBBLK_COUNT_MAX];
+	u32 cac_lm_pref[SSPP_SUBBLK_COUNT_MAX];
 };
 
 /**
@@ -1881,6 +1893,7 @@ struct sde_perf_cfg {
  * @true_inline_rot_rev inline rotator feature revision
  * @dnsc_blur_rev       downscale blur HW block version
  * @hw_fence_rev        hw fence feature revision
+ * @cac_version        CAC version supported by the target
  * @mdss_count          number of valid MDSS HW blocks
  * @mdss                array of pointers to MDSS HW blocks
  * @mdss_hw_block_size  max offset of MDSS_HW block (0 offset), used for debug
@@ -1972,6 +1985,7 @@ struct sde_perf_cfg {
  * @inline_rot_restricted_formats       restricted formats for inline rotation
  * @dnsc_blur_filters        supported filters for downscale blur
  * @dnsc_blur_filter_count   supported filter count for downscale blur
+ * @cac_formats         supported formats for CAC
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
@@ -1992,6 +2006,7 @@ struct sde_mdss_cfg {
 	u32 true_inline_rot_rev;
 	u32 dnsc_blur_rev;
 	u32 hw_fence_rev;
+	u32 cac_version;
 
 	/* HW Blocks */
 	u32 mdss_count;
@@ -2094,6 +2109,7 @@ struct sde_mdss_cfg {
 	struct sde_format_extended *inline_rot_restricted_formats;
 	struct sde_dnsc_blur_filter_info *dnsc_blur_filters;
 	u32 dnsc_blur_filter_count;
+	struct sde_format_extended *cac_formats;
 
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;

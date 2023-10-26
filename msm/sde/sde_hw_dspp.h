@@ -352,6 +352,7 @@ struct sde_hw_rc_state {
  * @ltm_checksum_support: flag to check if checksum present
  * @spr_cfg_18_default: Default SPR cfg 18 HW details. Needed for PU handling
  * @rc_state: Structure for RC state
+ * @dpu_idx: dpu index
  */
 struct sde_hw_dspp {
 	struct sde_hw_blk_reg_map hw;
@@ -371,6 +372,7 @@ struct sde_hw_dspp {
 
 	/* rc state */
 	struct sde_hw_rc_state rc_state;
+	u32 dpu_idx;
 };
 
 /**
@@ -388,11 +390,14 @@ static inline struct sde_hw_dspp *to_sde_hw_dspp(struct sde_hw_blk_reg_map *hw)
  * should be called once before accessing every dspp.
  * @idx:  DSPP index for which driver object is required
  * @addr: Mapped register io address of MDP
+ * @m :   pointer to mdss catalog data
+ * @dpu_idx: dpu index
  * @Return: pointer to structure or ERR_PTR
  */
 struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 			void __iomem *addr,
-			struct sde_mdss_cfg *m);
+			struct sde_mdss_cfg *m,
+			u32 dpu_idx);
 
 /**
  * sde_hw_dspp_destroy(): Destroys DSPP driver context

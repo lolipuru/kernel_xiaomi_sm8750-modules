@@ -60,6 +60,7 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(DISPLAY_ROOT)/msm/dp \
 	-I$(DISPLAY_ROOT)/msm/dsi \
 	-I$(DISPLAY_ROOT)/msm/sde \
+	-I$(DISPLAY_ROOT)/../mm-drivers/hw_fence/include \
 	-I$(DISPLAY_ROOT)/include/uapi/display \
 
 CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
@@ -136,6 +137,7 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 				dp/dp_catalog.o \
 				dp/dp_catalog_v420.o \
 				dp/dp_catalog_v200.o \
+				dp/dp_catalog_v500.o \
 				dp/dp_aux.o \
 				dp/dp_panel.o \
 				dp/dp_link.o \
@@ -236,6 +238,7 @@ msm_drm-$(CONFIG_DRM_MSM_DSI) += dsi/dsi_phy.o \
 				 dsi/dsi_catalog.o \
 				 dsi/dsi_drm.o \
 				 dsi/dsi_display.o \
+				 dsi/dsi_display_manager.o \
 				 dsi/dsi_panel.o \
 				 dsi/dsi_clk_manager.o \
 				 dsi/dsi_display_test.o

@@ -170,6 +170,7 @@ enum sde_plane_sclcheck_state {
  * @csc_cfg: csc configuration for pipe
  * @csc_usr_ptr: valid user override configuration for csc
  * @csc_ptr: default csc configuration
+ * @src_img_rec: source image rect values
  */
 struct sde_plane_state {
 	struct drm_plane_state base;
@@ -212,6 +213,7 @@ struct sde_plane_state {
 	struct sde_csc_cfg csc_cfg;
 	struct sde_csc_cfg *csc_usr_ptr;
 	struct sde_csc_cfg *csc_ptr;
+	struct sde_rect src_img_rec;
 };
 
 /**
@@ -439,4 +441,24 @@ void sde_plane_dump_input_fence(struct drm_plane *plane);
  * Returns: true if the input sw fence is signaled, otherwise false.
  */
 bool sde_plane_is_sw_fence_signaled(struct drm_plane *plane);
+
+/**
+ * sde_plane_property_is_dirty - check if property is dirty
+ * @plane_state: Pointer to drm plane state structure
+ * @property_idx: property index
+ */
+bool sde_plane_property_is_dirty(struct drm_plane_state *plane_state,
+		 uint32_t property_idx);
+
+/** sde_plane_is_cac_enabled - indicates if cac is enabled for
+ *	the plane
+ * @pstate: Pointer to sde plane state
+ * Returns true if cac is enabled, otherwise false.
+ */
+static inline bool sde_plane_is_cac_enabled(struct sde_plane_state *pstate)
+{
+	return sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE)
+			!= SDE_CAC_NONE;
+}
+
 #endif /* _SDE_PLANE_H_ */

@@ -223,6 +223,7 @@ enum sde_sim_qsync_event {
  * @ctl_done_supported          boolean flag to indicate the availability of
  *                              ctl done irq support for the hardware
  * @dynamic_irqs_config         bitmask config to enable encoder dynamic irqs
+ * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -295,6 +296,8 @@ struct sde_encoder_virt {
 	bool ctl_done_supported;
 
 	unsigned long dynamic_irqs_config;
+
+	bool dpu_ctl_op_sync;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -747,6 +750,22 @@ static inline bool sde_encoder_is_widebus_enabled(struct drm_encoder *drm_enc)
 }
 
 /*
+ * sde_encoder_get_pclk_factor - check the value of pclk_factor for current mode
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return: the value of pclk_factor for current mode
+ */
+static inline u32 sde_encoder_get_pclk_factor(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	return sde_enc->mode_info.pclk_factor;
+}
+
+/*
  * sde_encoder_is_line_insertion_supported - get line insertion
  * feature bit value from panel
  * @drm_enc:    Pointer to drm encoder structure
@@ -767,6 +786,22 @@ struct sde_hw_ctl *sde_encoder_get_hw_ctl(struct sde_connector *c_conn);
  * @Return: programmable fetch time in microseconds
  */
 u32 sde_encoder_get_programmed_fetch_time(struct drm_encoder *encoder);
+
+/**
+ * sde_encoder_has_dpu_ctl_op_sync - check if dpu sync is enabled for this encoder
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return: true if DPU Interface sync is enabled
+ */
+static inline bool sde_encoder_has_dpu_ctl_op_sync(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	return sde_enc->dpu_ctl_op_sync;
+}
 
 void sde_encoder_add_data_to_minidump_va(struct drm_encoder *drm_enc);
 

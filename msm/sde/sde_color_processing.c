@@ -957,9 +957,9 @@ static int _check_spr_pu_feature(struct sde_hw_dspp *hw_dspp,
 		return -EINVAL;
 	}
 
-	if ((roi_list->roi[0].x2 - roi_list->roi[0].x1) != hw_cfg->displayh) {
+	if ((roi_list->spr_roi[0].x2 - roi_list->spr_roi[0].x1) != hw_cfg->displayh) {
 		SDE_ERROR("pu region not full width %d\n",
-				(roi_list->roi[0].x2 - roi_list->roi[0].x1));
+				(roi_list->spr_roi[0].x2 - roi_list->spr_roi[0].x1));
 		return -EINVAL;
 	}
 
@@ -1332,7 +1332,7 @@ static int _sde_cp_cache_range_property(struct drm_crtc *crtc,
 	if (!cstate->cp_range_payload[prop_node->feature].addr ||
 		cstate->cp_range_payload[prop_node->feature].len
 		!= blob_ptr->length) {
-		DRM_ERROR("invalid addr %pK exp len %d act %d feature is %d\n",
+		DRM_ERROR("invalid addr %llu exp len %zu act %d feature is %d\n",
 			cstate->cp_range_payload[prop_node->feature].addr,
 			blob_ptr->length,
 			cstate->cp_range_payload[prop_node->feature].len,
@@ -1975,11 +1975,16 @@ static const int dspp_feature_to_sub_blk_tbl[SDE_CP_CRTC_MAX_FEATURES] = {
 };
 
 static void _flush_sb_dma_hw(int *active_ctls, struct sde_hw_ctl *ctl,
-		u32 list_size)
+		u32 list_size, u32 dpu_idx)
 {
 	//For each CTL send last CD to SB DMA only once.
 	u32 j;
-	struct sde_hw_reg_dma_ops *dma_ops = sde_reg_dma_get_ops();
+	struct sde_hw_reg_dma_ops *dma_ops = sde_reg_dma_get_ops(dpu_idx);
+
+	if (!dma_ops) {
+		SDE_ERROR("dma ops is NULL\n");
+		return;
+	}
 
 	for (j = 0; j < list_size; j++) {
 		if (active_ctls[j] == ctl->idx) {
@@ -2020,7 +2025,7 @@ static void _sde_cp_dspp_flush_helper(struct sde_crtc *sde_crtc, u32 feature)
 				dspp->sb_dma_in_use = false;
 
 				_flush_sb_dma_hw(active_ctls, ctl,
-						ARRAY_SIZE(active_ctls));
+						ARRAY_SIZE(active_ctls), dspp->dpu_idx);
 				ctl->ops.update_bitmask_dspp_subblk(ctl,
 						dspp->idx, sub_blk, true);
 			} else {
@@ -2667,7 +2672,7 @@ int sde_cp_crtc_set_property(struct drm_crtc *crtc,
 
 	if (cstate->cp_prop_cnt >= ARRAY_SIZE(cstate->cp_dirty_list) ||
 	    prop_node->feature >= SDE_CP_CRTC_MAX_FEATURES) {
-		DRM_ERROR("invalid cnt %d exp %d feature %d\n",
+		DRM_ERROR("invalid cnt %d exp %ld feature %d\n",
 		    cstate->cp_prop_cnt, ARRAY_SIZE(cstate->cp_dirty_list),
 		    prop_node->feature);
 		return -EINVAL;
