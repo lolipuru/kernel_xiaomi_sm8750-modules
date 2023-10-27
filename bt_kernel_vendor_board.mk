@@ -6,7 +6,9 @@ ifeq ($(TARGET_USES_QMAA),true)
            BT_KERNEL_DRIVER := $(KERNEL_MODULES_OUT)/btpower.ko
            #BT_KERNEL_DRIVER += $(KERNEL_MODULES_OUT)/btfm_slim_codec.ko
            BT_KERNEL_DRIVER += $(KERNEL_MODULES_OUT)/radio-i2c-rtc6226-qca.ko
+           ifneq ($(TARGET_BOARD_PLATFORM), pineapple)
            BT_KERNEL_DRIVER += $(KERNEL_MODULES_OUT)/btfmcodec.ko
+           endif
            BOARD_VENDOR_KERNEL_MODULES += $(BT_KERNEL_DRIVER)
      endif
   endif
@@ -15,7 +17,9 @@ else
      BT_KERNEL_DRIVER := $(KERNEL_MODULES_OUT)/btpower.ko
      #BT_KERNEL_DRIVER += $(KERNEL_MODULES_OUT)/btfm_slim_codec.ko
      BT_KERNEL_DRIVER += $(KERNEL_MODULES_OUT)/radio-i2c-rtc6226-qca.ko
+     ifneq ($(TARGET_BOARD_PLATFORM), pineapple)
      BT_KERNEL_DRIVER += $(KERNEL_MODULES_OUT)/btfmcodec.ko
+     endif
      BOARD_VENDOR_KERNEL_MODULES += $(BT_KERNEL_DRIVER)
   endif
 endif
