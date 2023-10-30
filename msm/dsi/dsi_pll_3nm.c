@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -10,7 +9,7 @@
 #include <linux/delay.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-#include "dsi_pll_4nm.h"
+#include "dsi_pll_3nm.h"
 
 #define VCO_DELAY_USEC 1
 
@@ -56,16 +55,16 @@ struct dsi_pll_config {
 	u32 refclk_cycles;
 };
 
-struct dsi_pll_4nm {
+struct dsi_pll_3nm {
 	struct dsi_pll_resource *rsc;
 	struct dsi_pll_config pll_configuration;
 	struct dsi_pll_regs reg_setup;
 	bool cphy_enabled;
 };
 
-static inline bool dsi_pll_4nm_is_hw_revision(struct dsi_pll_resource *rsc)
+static inline bool dsi_pll_3nm_is_hw_revision(struct dsi_pll_resource *rsc)
 {
-	return (rsc->pll_revision == DSI_PLL_4NM) ? true : false;
+	return (rsc->pll_revision == DSI_PLL_3NM) ? true : false;
 }
 
 static inline void dsi_pll_set_pll_post_div(struct dsi_pll_resource *pll, u32 pll_post_div)
@@ -188,7 +187,7 @@ static inline int dsi_pll_get_pclk_div(struct dsi_pll_resource *pll)
 }
 
 static struct dsi_pll_resource *pll_rsc_db[DSI_PLL_MAX];
-static struct dsi_pll_4nm plls[DSI_PLL_MAX];
+static struct dsi_pll_3nm plls[DSI_PLL_MAX];
 
 static void dsi_pll_config_slave(struct dsi_pll_resource *rsc)
 {
@@ -227,7 +226,7 @@ static void dsi_pll_config_slave(struct dsi_pll_resource *rsc)
 			rsc->slave[0] ? "configured" : "absent");
 }
 
-static void dsi_pll_setup_config(struct dsi_pll_4nm *pll, struct dsi_pll_resource *rsc)
+static void dsi_pll_setup_config(struct dsi_pll_3nm *pll, struct dsi_pll_resource *rsc)
 {
 	struct dsi_pll_config *config = &pll->pll_configuration;
 
@@ -256,7 +255,7 @@ static void dsi_pll_setup_config(struct dsi_pll_4nm *pll, struct dsi_pll_resourc
 	}
 }
 
-static void dsi_pll_calc_dec_frac(struct dsi_pll_4nm *pll, struct dsi_pll_resource *rsc)
+static void dsi_pll_calc_dec_frac(struct dsi_pll_3nm *pll, struct dsi_pll_resource *rsc)
 {
 	struct dsi_pll_config *config = &pll->pll_configuration;
 	struct dsi_pll_regs *regs = &pll->reg_setup;
@@ -280,11 +279,23 @@ static void dsi_pll_calc_dec_frac(struct dsi_pll_4nm *pll, struct dsi_pll_resour
 
 	dec = div_u64(dec_multiple, multiplier);
 
-	if (pll_freq <= 1300000000ULL)
+	if (pll_freq < 163000000ULL)
 		regs->pll_clock_inverters = 0xA0;
-	else if (pll_freq <= 2500000000ULL)
+	else if (pll_freq < 175000000ULL)
 		regs->pll_clock_inverters = 0x20;
-	else if (pll_freq <= 4000000000ULL)
+	else if (pll_freq < 325000000ULL)
+		regs->pll_clock_inverters = 0xA0;
+	else if (pll_freq < 350000000ULL)
+		regs->pll_clock_inverters = 0x20;
+	else if (pll_freq < 650000000ULL)
+		regs->pll_clock_inverters = 0xA0;
+	else if (pll_freq < 700000000ULL)
+		regs->pll_clock_inverters = 0x20;
+	else if (pll_freq < 1300000000ULL)
+		regs->pll_clock_inverters = 0xA0;
+	else if (pll_freq < 2500000000ULL)
+		regs->pll_clock_inverters = 0x20;
+	else if (pll_freq < 4000000000ULL)
 		regs->pll_clock_inverters = 0x00;
 	else
 		regs->pll_clock_inverters = 0x40;
@@ -297,7 +308,7 @@ static void dsi_pll_calc_dec_frac(struct dsi_pll_4nm *pll, struct dsi_pll_resour
 	regs->pll_prop_gain_rate = 10;
 }
 
-static void dsi_pll_calc_ssc(struct dsi_pll_4nm *pll, struct dsi_pll_resource *rsc)
+static void dsi_pll_calc_ssc(struct dsi_pll_3nm *pll, struct dsi_pll_resource *rsc)
 {
 	struct dsi_pll_config *config = &pll->pll_configuration;
 	struct dsi_pll_regs *regs = &pll->reg_setup;
@@ -340,7 +351,7 @@ static void dsi_pll_calc_ssc(struct dsi_pll_4nm *pll, struct dsi_pll_resource *r
 			(u32)ssc_step_size, config->ssc_adj_per);
 }
 
-static void dsi_pll_ssc_commit(struct dsi_pll_4nm *pll, struct dsi_pll_resource *rsc)
+static void dsi_pll_ssc_commit(struct dsi_pll_3nm *pll, struct dsi_pll_resource *rsc)
 {
 	void __iomem *pll_base = rsc->pll_base;
 	struct dsi_pll_regs *regs = &pll->reg_setup;
@@ -357,7 +368,7 @@ static void dsi_pll_ssc_commit(struct dsi_pll_4nm *pll, struct dsi_pll_resource 
 	}
 }
 
-static void dsi_pll_config_hzindep_reg(struct dsi_pll_4nm *pll, struct dsi_pll_resource *rsc)
+static void dsi_pll_config_hzindep_reg(struct dsi_pll_3nm *pll, struct dsi_pll_resource *rsc)
 {
 	void __iomem *pll_base = rsc->pll_base;
 	u64 vco_rate = rsc->vco_current_rate;
@@ -542,7 +553,7 @@ static void dsi_pll_init_val(struct dsi_pll_resource *rsc)
 
 }
 
-static void dsi_pll_detect_phy_mode(struct dsi_pll_4nm *pll, struct dsi_pll_resource *rsc)
+static void dsi_pll_detect_phy_mode(struct dsi_pll_3nm *pll, struct dsi_pll_resource *rsc)
 {
 	u32 reg_val;
 
@@ -550,7 +561,7 @@ static void dsi_pll_detect_phy_mode(struct dsi_pll_4nm *pll, struct dsi_pll_reso
 	pll->cphy_enabled = (reg_val & BIT(6)) ? true : false;
 }
 
-static void dsi_pll_commit(struct dsi_pll_4nm *pll, struct dsi_pll_resource *rsc)
+static void dsi_pll_commit(struct dsi_pll_3nm *pll, struct dsi_pll_resource *rsc)
 {
 	void __iomem *pll_base = rsc->pll_base;
 	struct dsi_pll_regs *reg = &pll->reg_setup;
@@ -566,7 +577,7 @@ static void dsi_pll_commit(struct dsi_pll_4nm *pll, struct dsi_pll_resource *rsc
 	DSI_PLL_REG_W(pll_base, PLL_CLOCK_INVERTERS_1, reg->pll_clock_inverters);
 }
 
-static int dsi_pll_4nm_lock_status(struct dsi_pll_resource *pll)
+static int dsi_pll_3nm_lock_status(struct dsi_pll_resource *pll)
 {
 	int rc;
 	u32 status;
@@ -646,7 +657,6 @@ static void dsi_pll_disable_sub(struct dsi_pll_resource *rsc)
 
 static void dsi_pll_unprepare_stub(struct clk_hw *hw)
 {
-	return;
 }
 
 static int dsi_pll_prepare_stub(struct clk_hw *hw)
@@ -686,17 +696,17 @@ static unsigned long dsi_pll_vco_recalc_rate(struct dsi_pll_resource *pll)
 	u32 pll_post_div;
 	u64 pll_freq, tmp64;
 	u64 vco_rate;
-	struct dsi_pll_4nm *pll_4nm;
+	struct dsi_pll_3nm *pll_3nm;
 	struct dsi_pll_config *config;
 
 	ref_clk = pll->vco_ref_clk_rate;
-	pll_4nm = pll->priv;
-	if (!pll_4nm) {
+	pll_3nm = pll->priv;
+	if (!pll_3nm) {
 		DSI_PLL_ERR(pll, "pll configuration not found\n");
 		return -EINVAL;
 	}
 
-	config = &pll_4nm->pll_configuration;
+	config = &pll_3nm->pll_configuration;
 
 	dec = DSI_PLL_REG_R(pll->pll_base, PLL_DECIMAL_DIV_START_1);
 	dec &= 0xFF;
@@ -905,7 +915,7 @@ static struct dsi_pll_clk mdss_1_dsi1_phy_pll_out_dsiclk = {
 	},
 };
 
-static struct dsi_pll_clk *dsi_pllcc_4nm[] = {
+static struct dsi_pll_clk *dsi_pllcc_3nm[] = {
 	[MDSS_0_DSI0_PLL_BYTECLK] = &dsi0_phy_pll_out_byteclk,
 	[MDSS_0_DSI0_PLL_DSICLK] = &dsi0_phy_pll_out_dsiclk,
 	[MDSS_0_DSI1_PLL_BYTECLK] = &dsi1_phy_pll_out_byteclk,
@@ -918,7 +928,7 @@ static struct dsi_pll_clk *dsi_pllcc_4nm[] = {
 	[MDSS_0_DSIM_PLL_DSICLK] = &dsi_m_phy_pll_out_dsiclk,
 };
 
-int dsi_pll_clock_register_4nm(struct platform_device *pdev, struct dsi_pll_resource *pll_res)
+int dsi_pll_clock_register_3nm(struct platform_device *pdev, struct dsi_pll_resource *pll_res)
 {
 	int rc = 0, ndx;
 	struct clk *clk;
@@ -960,12 +970,12 @@ int dsi_pll_clock_register_4nm(struct platform_device *pdev, struct dsi_pll_reso
 	/* Establish client data */
 	byteclk_idx = 2 * ndx;
 	dsiclk_idx = 2 * ndx + 1;
-	dsi_pllcc_4nm[byteclk_idx]->priv = pll_res;
-	dsi_pllcc_4nm[dsiclk_idx]->priv = pll_res;
+	dsi_pllcc_3nm[byteclk_idx]->priv = pll_res;
+	dsi_pllcc_3nm[dsiclk_idx]->priv = pll_res;
 
 	/* byte clk registration */
 	clk = devm_clk_register(&pdev->dev,
-			&dsi_pllcc_4nm[byteclk_idx]->hw);
+			&dsi_pllcc_3nm[byteclk_idx]->hw);
 	if (IS_ERR(clk)) {
 		DSI_PLL_ERR(pll_res,
 			"byte clk registration failed\n");
@@ -976,7 +986,7 @@ int dsi_pll_clock_register_4nm(struct platform_device *pdev, struct dsi_pll_reso
 
 	/* dsi clk registration */
 	clk = devm_clk_register(&pdev->dev,
-			&dsi_pllcc_4nm[dsiclk_idx]->hw);
+			&dsi_pllcc_3nm[dsiclk_idx]->hw);
 	if (IS_ERR(clk)) {
 		DSI_PLL_ERR(pll_res,
 			"dsi clk registration failed\n");
@@ -986,10 +996,10 @@ int dsi_pll_clock_register_4nm(struct platform_device *pdev, struct dsi_pll_reso
 	clk_data->clks[1] = clk;
 
 	if (ndx == 0) {
-		dsi_pllcc_4nm[MDSS_0_DSIM_PLL_BYTECLK]->priv = pll_res;
-		dsi_pllcc_4nm[MDSS_0_DSIM_PLL_DSICLK]->priv = pll_res;
+		dsi_pllcc_3nm[MDSS_0_DSIM_PLL_BYTECLK]->priv = pll_res;
+		dsi_pllcc_3nm[MDSS_0_DSIM_PLL_DSICLK]->priv = pll_res;
 
-		clk = devm_clk_register(&pdev->dev, &dsi_pllcc_4nm[MDSS_0_DSIM_PLL_BYTECLK]->hw);
+		clk = devm_clk_register(&pdev->dev, &dsi_pllcc_3nm[MDSS_0_DSIM_PLL_BYTECLK]->hw);
 		if (IS_ERR(clk)) {
 			DSI_PLL_ERR(pll_res, "mbyte clk registration failed\n");
 			rc = -EINVAL;
@@ -997,7 +1007,7 @@ int dsi_pll_clock_register_4nm(struct platform_device *pdev, struct dsi_pll_reso
 		}
 		clk_data->clks[2] = clk;
 
-		clk = devm_clk_register(&pdev->dev, &dsi_pllcc_4nm[MDSS_0_DSIM_PLL_DSICLK]->hw);
+		clk = devm_clk_register(&pdev->dev, &dsi_pllcc_3nm[MDSS_0_DSIM_PLL_DSICLK]->hw);
 		if (IS_ERR(clk)) {
 			DSI_PLL_ERR(pll_res, "mdsi clk registration failed\n");
 			rc = -EINVAL;
@@ -1018,7 +1028,7 @@ clk_register_fail:
 	return rc;
 }
 
-static int dsi_pll_4nm_set_byteclk_div(struct dsi_pll_resource *pll, bool commit)
+static int dsi_pll_3nm_set_byteclk_div(struct dsi_pll_resource *pll, bool commit)
 {
 
 	int i = 0;
@@ -1032,21 +1042,21 @@ static int dsi_pll_4nm_set_byteclk_div(struct dsi_pll_resource *pll, bool commit
 		bitclk_rate = pll->byteclk_rate * 8;
 
 		if (bitclk_rate <= phy_rate_split) {
-			table = pll_4nm_dphy_lb;
-			table_size = ARRAY_SIZE(pll_4nm_dphy_lb);
+			table = pll_3nm_dphy_lb;
+			table_size = ARRAY_SIZE(pll_3nm_dphy_lb);
 		} else {
-			table = pll_4nm_dphy_hb;
-			table_size = ARRAY_SIZE(pll_4nm_dphy_hb);
+			table = pll_3nm_dphy_hb;
+			table_size = ARRAY_SIZE(pll_3nm_dphy_hb);
 		}
 	} else {
 		bitclk_rate = pll->byteclk_rate * 7;
 
 		if (bitclk_rate <= phy_rate_split) {
-			table = pll_4nm_cphy_lb;
-			table_size = ARRAY_SIZE(pll_4nm_cphy_lb);
+			table = pll_3nm_cphy_lb;
+			table_size = ARRAY_SIZE(pll_3nm_cphy_lb);
 		} else {
-			table = pll_4nm_cphy_hb;
-			table_size = ARRAY_SIZE(pll_4nm_cphy_hb);
+			table = pll_3nm_cphy_hb;
+			table_size = ARRAY_SIZE(pll_3nm_cphy_hb);
 		}
 	}
 
@@ -1185,28 +1195,26 @@ static int dsi_pll_calc_dsiclk_sel(struct dsi_pll_resource *pll)
 	u32 dsiclk_sel;
 
 	if (pll->type == DSI_PHY_TYPE_DPHY) {
-		if (pll->bpp == 30 && (pll->lanes == 2 || pll->lanes == 4)) {
+		if (pll->bpp == 30 && (pll->lanes == 2 || pll->lanes == 4))
 			dsiclk_sel = 0;
-		} else if (pll->bpp == 3 && pll->lanes >= 3) {
+		else if (pll->bpp == 3 && pll->lanes >= 3)
 			dsiclk_sel = 0;
-		} else {
+		else
 			dsiclk_sel = 1;
-		}
 	} else {
 		if (pll->bpp == 24 || (pll->bpp == 16 && pll->lanes == 2)
-				|| (pll->bpp == 30 && pll->lanes == 1)) {
+				|| (pll->bpp == 30 && pll->lanes == 1))
 			dsiclk_sel = 3;
-		} else if (pll->bpp == 3 && pll->lanes >= 2) {
+		else if (pll->bpp == 3 && pll->lanes >= 2)
 			dsiclk_sel = 2;
-		} else {
+		else
 			dsiclk_sel = 0;
-		}
 	}
 
 	return dsiclk_sel;
 }
 
-static int dsi_pll_4nm_set_pclk_div(struct dsi_pll_resource *pll, bool commit)
+static int dsi_pll_3nm_set_pclk_div(struct dsi_pll_resource *pll, bool commit)
 {
 
 	int dsiclk_sel = 0, pclk_div = 0;
@@ -1241,17 +1249,16 @@ static int dsi_pll_4nm_set_pclk_div(struct dsi_pll_resource *pll, bool commit)
 	DSI_PLL_DBG(pll, "pclk rate: %llu, dsiclk_sel: %d, pclk_div: %d\n",
 			pll->pclk_rate, dsiclk_sel, pclk_div);
 
-	if (commit) {
+	if (commit)
 		dsi_pll_set_pclk_div(pll, pclk_div);
-	}
 
 	return 0;
 
 }
 
-static int dsi_pll_4nm_vco_set_rate(struct dsi_pll_resource *pll_res)
+static int dsi_pll_3nm_vco_set_rate(struct dsi_pll_resource *pll_res)
 {
-	struct dsi_pll_4nm *pll;
+	struct dsi_pll_3nm *pll;
 
 	pll = pll_res->priv;
 	if (!pll) {
@@ -1320,7 +1327,7 @@ static int dsi_pll_read_stored_trim_codes(struct dsi_pll_resource *pll_res,
 	return 0;
 }
 
-static void dsi_pll_4nm_dynamic_refresh(struct dsi_pll_4nm *pll, struct dsi_pll_resource *rsc)
+static void dsi_pll_3nm_dynamic_refresh(struct dsi_pll_3nm *pll, struct dsi_pll_resource *rsc)
 {
 	u32 data;
 	u32 offset = DSI_PHY_TO_PLL_OFFSET;
@@ -1485,10 +1492,10 @@ static void dsi_pll_4nm_dynamic_refresh(struct dsi_pll_4nm *pll, struct dsi_pll_
 	wmb(); /* commit register writes */
 }
 
-static int dsi_pll_4nm_dynamic_clk_vco_set_rate(struct dsi_pll_resource *rsc)
+static int dsi_pll_3nm_dynamic_clk_vco_set_rate(struct dsi_pll_resource *rsc)
 {
 	int rc;
-	struct dsi_pll_4nm *pll;
+	struct dsi_pll_3nm *pll;
 	u32 rate;
 
 	if (!rsc) {
@@ -1515,12 +1522,12 @@ static int dsi_pll_4nm_dynamic_clk_vco_set_rate(struct dsi_pll_resource *rsc)
 	dsi_pll_calc_dec_frac(pll, rsc);
 
 	/* program dynamic refresh control registers */
-	dsi_pll_4nm_dynamic_refresh(pll, rsc);
+	dsi_pll_3nm_dynamic_refresh(pll, rsc);
 
 	return 0;
 }
 
-static int dsi_pll_4nm_enable(struct dsi_pll_resource *rsc)
+static int dsi_pll_3nm_enable(struct dsi_pll_resource *rsc)
 {
 	int rc = 0, i;
 
@@ -1534,7 +1541,7 @@ static int dsi_pll_4nm_enable(struct dsi_pll_resource *rsc)
 	wmb();
 
 	/* Check for PLL lock */
-	rc = dsi_pll_4nm_lock_status(rsc);
+	rc = dsi_pll_3nm_lock_status(rsc);
 	if (rc) {
 		DSI_PLL_ERR(rsc, "lock failed\n");
 		goto error;
@@ -1553,7 +1560,7 @@ error:
 	return rc;
 }
 
-static int dsi_pll_4nm_disable(struct dsi_pll_resource *rsc)
+static int dsi_pll_3nm_disable(struct dsi_pll_resource *rsc)
 {
 	int i;
 
@@ -1597,7 +1604,7 @@ static void dsi_pll_assert_pll_reset(struct dsi_pll_resource *rsc)
 	wmb();
 }
 
-void dsi_pll_4nm_trigger_resets_pre_enable(struct dsi_pll_resource *rsc)
+void dsi_pll_3nm_trigger_resets_pre_enable(struct dsi_pll_resource *rsc)
 {
 	int i;
 
@@ -1625,7 +1632,7 @@ void dsi_pll_4nm_trigger_resets_pre_enable(struct dsi_pll_resource *rsc)
 	}
 }
 
-int dsi_pll_4nm_configure(void *pll, bool commit)
+int dsi_pll_3nm_configure(void *pll, bool commit)
 {
 
 	int rc = 0, i;
@@ -1635,7 +1642,7 @@ int dsi_pll_4nm_configure(void *pll, bool commit)
 	 * of DSI PHY before PLL is enabled and locked
 	 */
 	if (commit)
-		dsi_pll_4nm_trigger_resets_pre_enable(rsc);
+		dsi_pll_3nm_trigger_resets_pre_enable(rsc);
 
 	dsi_pll_config_slave(rsc);
 
@@ -1649,19 +1656,19 @@ int dsi_pll_4nm_configure(void *pll, bool commit)
 
 	dsi_pll_init_val(rsc);
 
-	rc = dsi_pll_4nm_set_byteclk_div(rsc, commit);
+	rc = dsi_pll_3nm_set_byteclk_div(rsc, commit);
 
 	if (commit) {
-		rc = dsi_pll_4nm_set_pclk_div(rsc, commit);
-		rc = dsi_pll_4nm_vco_set_rate(rsc);
+		rc = dsi_pll_3nm_set_pclk_div(rsc, commit);
+		rc = dsi_pll_3nm_vco_set_rate(rsc);
 	} else {
-		rc = dsi_pll_4nm_dynamic_clk_vco_set_rate(rsc);
+		rc = dsi_pll_3nm_dynamic_clk_vco_set_rate(rsc);
 	}
 
 	return 0;
 }
 
-int dsi_pll_4nm_toggle(void *pll, bool prepare)
+int dsi_pll_3nm_toggle(void *pll, bool prepare)
 {
 	int rc = 0;
 	struct dsi_pll_resource *pll_res = (struct dsi_pll_resource *)pll;
@@ -1672,11 +1679,11 @@ int dsi_pll_4nm_toggle(void *pll, bool prepare)
 	}
 
 	if (prepare) {
-		rc = dsi_pll_4nm_enable(pll_res);
+		rc = dsi_pll_3nm_enable(pll_res);
 		if (rc)
 			DSI_PLL_ERR(pll_res, "enable failed: %d\n", rc);
 	} else {
-		rc = dsi_pll_4nm_disable(pll_res);
+		rc = dsi_pll_3nm_disable(pll_res);
 		if (rc)
 			DSI_PLL_ERR(pll_res, "disable failed: %d\n", rc);
 	}
@@ -1684,7 +1691,7 @@ int dsi_pll_4nm_toggle(void *pll, bool prepare)
 	return rc;
 }
 
-int dsi_pll_4nm_program_slave(struct dsi_pll_resource *pll, bool skip_op)
+int dsi_pll_3nm_program_slave(struct dsi_pll_resource *pll, bool skip_op)
 {
 	struct dsi_pll_resource *m_pll = pll_rsc_db[DSI_PLL_0];
 	u32 pll_post_div;

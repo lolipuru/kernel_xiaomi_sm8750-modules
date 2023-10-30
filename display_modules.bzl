@@ -131,6 +131,7 @@ module_entry(
             "msm/dsi/dsi_pll.c",
             "msm/dsi/dsi_pll_5nm.c",
             "msm/dsi/dsi_pll_4nm.c",
+            "msm/dsi/dsi_pll_3nm.c",
             "msm/dsi/dsi_ctrl_hw_cmn.c",
             "msm/dsi/dsi_ctrl_hw_2_2.c",
             "msm/dsi/dsi_ctrl.c",
