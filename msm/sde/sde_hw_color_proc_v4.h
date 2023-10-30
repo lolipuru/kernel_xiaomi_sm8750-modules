@@ -186,12 +186,30 @@ void sde_setup_ucsc_cscv1(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 /**
+ * sde_setup_ucsc_cscv1_1 - api to set UCSC CSC cp block
+ * @ctx: pointer to pipe object
+ * @index: pipe rectangle to operate on
+ * @data: pointer to sde_hw_cp_cfg object containing drm_msm_ucsc_csc data
+ */
+void sde_setup_ucsc_cscv1_1(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, void *data);
+
+/**
  * sde_setup_ucsc_gcv1 - api to set UCSC GC cp block
  * @ctx: pointer to pipe object
  * @index: pipe rectangle to operate on
  * @data: pointer to sde_hw_cp_cfg object containing gc mode data
  */
 void sde_setup_ucsc_gcv1(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, void *data);
+
+/**
+ * sde_setup_ucsc_gcv1_1 - api to set UCSC GC cp block
+ * @ctx: pointer to pipe object
+ * @index: pipe rectangle to operate on
+ * @data: pointer to sde_hw_cp_cfg object containing gc mode data
+ */
+void sde_setup_ucsc_gcv1_1(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 /**
@@ -204,12 +222,30 @@ void sde_setup_ucsc_igcv1(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 /**
+ * sde_setup_ucsc_igcv1_1 - api to set UCSC IGC cp block
+ * @ctx: pointer to pipe object
+ * @index: pipe rectangle to operate on
+ * @data: pointer to sde_hw_cp_cfg object containing igc mode data
+ */
+void sde_setup_ucsc_igcv1_1(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, void *data);
+
+/**
  * sde_setup_ucsc_unmultv1 - api to set UCSC UNMULT cp block
  * @ctx: pointer to pipe object
  * @index: pipe rectangle to operate on
  * @data: pointer to sde_hw_cp_cfg object containing bool data
  */
 void sde_setup_ucsc_unmultv1(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, void *data);
+
+/**
+ * sde_setup_ucsc_unmultv1_1 - api to set UCSC UNMULT cp block
+ * @ctx: pointer to pipe object
+ * @index: pipe rectangle to operate on
+ * @data: pointer to sde_hw_cp_cfg object containing bool data
+ */
+void sde_setup_ucsc_unmultv1_1(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 /**

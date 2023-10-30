@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1355,21 +1355,45 @@ static void _setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_unmult_blk[0].version))
 		c->ops.setup_fp16_unmult = sde_setup_fp16_unmultv1;
 
-	if (test_bit(SDE_SSPP_UCSC_IGC, &features) &&
-			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_igc_blk[0].version))
-		c->ops.setup_ucsc_igc = sde_setup_ucsc_igcv1;
+	if (test_bit(SDE_SSPP_UCSC_IGC, &features)) {
+		if (c->cap->sblk->ucsc_igc_blk[0].version ==
+			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			c->ops.setup_ucsc_igc = sde_setup_ucsc_igcv1_1;
+		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_igc_blk[0].version))
+			c->ops.setup_ucsc_igc = sde_setup_ucsc_igcv1;
+		else
+			c->ops.setup_ucsc_igc = NULL;
+	}
 
-	if (test_bit(SDE_SSPP_UCSC_GC, &features) &&
-			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_gc_blk[0].version))
-		c->ops.setup_ucsc_gc = sde_setup_ucsc_gcv1;
+	if (test_bit(SDE_SSPP_UCSC_GC, &features)) {
+		if (c->cap->sblk->ucsc_gc_blk[0].version ==
+			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			c->ops.setup_ucsc_gc = sde_setup_ucsc_gcv1_1;
+		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_gc_blk[0].version))
+			c->ops.setup_ucsc_gc = sde_setup_ucsc_gcv1;
+		else
+			c->ops.setup_ucsc_gc = NULL;
+	}
 
-	if (test_bit(SDE_SSPP_UCSC_CSC, &features) &&
-			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_csc_blk[0].version))
-		c->ops.setup_ucsc_csc = sde_setup_ucsc_cscv1;
+	if (test_bit(SDE_SSPP_UCSC_CSC, &features)) {
+		if (c->cap->sblk->ucsc_csc_blk[0].version ==
+			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			c->ops.setup_ucsc_csc = sde_setup_ucsc_cscv1_1;
+		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_csc_blk[0].version))
+			c->ops.setup_ucsc_csc = sde_setup_ucsc_cscv1;
+		else
+			c->ops.setup_ucsc_csc = NULL;
+	}
 
-	if (test_bit(SDE_SSPP_UCSC_UNMULT, &features) &&
-			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_unmult_blk[0].version))
-		c->ops.setup_ucsc_unmult = sde_setup_ucsc_unmultv1;
+	if (test_bit(SDE_SSPP_UCSC_UNMULT, &features)) {
+		if (c->cap->sblk->ucsc_unmult_blk[0].version ==
+			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			c->ops.setup_ucsc_unmult = sde_setup_ucsc_unmultv1_1;
+		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_unmult_blk[0].version))
+			c->ops.setup_ucsc_unmult = sde_setup_ucsc_unmultv1;
+		else
+			c->ops.setup_ucsc_unmult = NULL;
+	}
 
 	if (test_bit(SDE_SSPP_UCSC_ALPHA_DITHER, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_alpha_dither_blk[0].version))
