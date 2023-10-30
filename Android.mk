@@ -32,7 +32,7 @@ LOCAL_ADDITIONAL_DEPENDENCY      := synx-driver.ko
 #KBUILD_REQUIRED_KOS += msm-mmrm.ko
 
 # Setup SynX dependency
-CONFIG_SYNX := n
+CONFIG_SYNX := y
 #ifdef CONFIG_SYNX
 ifeq ($(CONFIG_SYNX), y)
 $(warning Compiling SynX)

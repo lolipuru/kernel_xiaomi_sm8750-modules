@@ -41,6 +41,7 @@ enum queue_state {
 #endif	/* End of CONFIG_EVA_PINEAPPLE */
 
 #ifdef CONFIG_EVA_SUN
+#define CVP_SYNX_ENABLED 1
 #endif /* End of CONFIG_EVA_SUN*/
 
 
