@@ -145,6 +145,24 @@ void dsi_phy_hw_v5_0_set_continuous_clk(struct dsi_phy_hw *phy, bool enable);
 void dsi_phy_hw_v5_0_commit_phy_timing(struct dsi_phy_hw *phy,
 		struct dsi_phy_per_lane_cfgs *timing);
 
+/* Definitions for 3nm PHY hardware driver */
+void dsi_phy_hw_v7_2_enable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
+void dsi_phy_hw_v7_2_disable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
+int dsi_phy_hw_v7_2_wait_for_lane_idle(struct dsi_phy_hw *phy, u32 lanes);
+void dsi_phy_hw_v7_2_ulps_request(struct dsi_phy_hw *phy,
+		struct dsi_phy_cfg *cfg, u32 lanes);
+void dsi_phy_hw_v7_2_ulps_exit(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg, u32 lanes);
+u32 dsi_phy_hw_v7_2_get_lanes_in_ulps(struct dsi_phy_hw *phy);
+bool dsi_phy_hw_v7_2_is_lanes_in_ulps(u32 lanes, u32 ulps_lanes);
+int dsi_phy_hw_timing_val_v7_2(struct dsi_phy_per_lane_cfgs *timing_cfg, u32 *timing_val,
+		u32 size);
+int dsi_phy_hw_v7_2_lane_reset(struct dsi_phy_hw *phy);
+void dsi_phy_hw_v7_2_toggle_resync_fifo(struct dsi_phy_hw *phy);
+void dsi_phy_hw_v7_2_reset_clk_en_sel(struct dsi_phy_hw *phy);
+void dsi_phy_hw_v7_2_set_continuous_clk(struct dsi_phy_hw *phy, bool enable);
+void dsi_phy_hw_v7_2_commit_phy_timing(struct dsi_phy_hw *phy,
+		struct dsi_phy_per_lane_cfgs *timing);
+
 /* DSI controller common ops */
 u32 dsi_ctrl_hw_cmn_get_interrupt_status(struct dsi_ctrl_hw *ctrl);
 u32 dsi_ctrl_hw_cmn_poll_dma_status(struct dsi_ctrl_hw *ctrl);
@@ -318,6 +336,20 @@ int dsi_phy_hw_v5_0_cache_phy_timings(struct dsi_phy_per_lane_cfgs *timings,
 				      u32 *dst, u32 size);
 void dsi_phy_hw_v5_0_phy_idle_off(struct dsi_phy_hw *phy,
 				struct dsi_phy_cfg *cfg);
+
+void dsi_phy_hw_v7_2_dyn_refresh_trigger_sel(struct dsi_phy_hw *phy,
+		bool is_master);
+void dsi_phy_hw_v7_2_dyn_refresh_helper(struct dsi_phy_hw *phy, u32 offset);
+void dsi_phy_hw_v7_2_dyn_refresh_config(struct dsi_phy_hw *phy,
+				struct dsi_phy_cfg *cfg, bool is_master);
+void dsi_phy_hw_v7_2_dyn_refresh_pipe_delay(struct dsi_phy_hw *phy,
+					    struct dsi_dyn_clk_delay *delay);
+
+int dsi_phy_hw_v7_2_cache_phy_timings(struct dsi_phy_per_lane_cfgs *timings,
+				      u32 *dst, u32 size);
+void dsi_phy_hw_v7_2_phy_idle_off(struct dsi_phy_hw *phy,
+				struct dsi_phy_cfg *cfg);
+
 void dsi_ctrl_hw_22_configure_cmddma_window(struct dsi_ctrl_hw *ctrl,
 		struct dsi_ctrl_cmd_dma_info *cmd,
 		u32 line_no, u32 window);

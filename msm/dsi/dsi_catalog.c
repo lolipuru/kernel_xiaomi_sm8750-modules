@@ -270,6 +270,36 @@ static void dsi_catalog_phy_5_0_init(struct dsi_phy_hw *phy)
 }
 
 /**
+ * dsi_catalog_phy_7_2_init() - catalog init for DSI PHY 3nm
+ */
+static void dsi_catalog_phy_7_2_init(struct dsi_phy_hw *phy)
+{
+	phy->ops.regulator_enable = NULL;
+	phy->ops.regulator_disable = NULL;
+	phy->ops.enable = dsi_phy_hw_v7_2_enable;
+	phy->ops.disable = dsi_phy_hw_v7_2_disable;
+	phy->ops.calculate_timing_params = dsi_phy_hw_calculate_timing_params;
+	phy->ops.ulps_ops.wait_for_lane_idle = dsi_phy_hw_v7_2_wait_for_lane_idle;
+	phy->ops.ulps_ops.ulps_request = dsi_phy_hw_v7_2_ulps_request;
+	phy->ops.ulps_ops.ulps_exit = dsi_phy_hw_v7_2_ulps_exit;
+	phy->ops.ulps_ops.get_lanes_in_ulps = dsi_phy_hw_v7_2_get_lanes_in_ulps;
+	phy->ops.ulps_ops.is_lanes_in_ulps = dsi_phy_hw_v7_2_is_lanes_in_ulps;
+	phy->ops.phy_timing_val = dsi_phy_hw_timing_val_v7_2;
+	phy->ops.phy_lane_reset = dsi_phy_hw_v7_2_lane_reset;
+	phy->ops.toggle_resync_fifo = dsi_phy_hw_v7_2_toggle_resync_fifo;
+	phy->ops.reset_clk_en_sel = dsi_phy_hw_v7_2_reset_clk_en_sel;
+
+	phy->ops.dyn_refresh_ops.dyn_refresh_config = dsi_phy_hw_v7_2_dyn_refresh_config;
+	phy->ops.dyn_refresh_ops.dyn_refresh_pipe_delay = dsi_phy_hw_v7_2_dyn_refresh_pipe_delay;
+	phy->ops.dyn_refresh_ops.dyn_refresh_helper = dsi_phy_hw_v7_2_dyn_refresh_helper;
+	phy->ops.dyn_refresh_ops.dyn_refresh_trigger_sel = dsi_phy_hw_v7_2_dyn_refresh_trigger_sel;
+	phy->ops.dyn_refresh_ops.cache_phy_timings = dsi_phy_hw_v7_2_cache_phy_timings;
+	phy->ops.set_continuous_clk = dsi_phy_hw_v7_2_set_continuous_clk;
+	phy->ops.commit_phy_timing = dsi_phy_hw_v7_2_commit_phy_timing;
+	phy->ops.phy_idle_off = dsi_phy_hw_v7_2_phy_idle_off;
+}
+
+/**
  * dsi_catalog_phy_setup() - return catalog info for dsi phy hardware
  * @ctrl:        Pointer to DSI PHY hw object.
  * @version:     DSI PHY version.
@@ -310,6 +340,9 @@ int dsi_catalog_phy_setup(struct dsi_phy_hw *phy,
 		break;
 	case DSI_PHY_VERSION_5_2:
 		dsi_catalog_phy_5_0_init(phy);
+		break;
+	case DSI_PHY_VERSION_7_2:
+		dsi_catalog_phy_7_2_init(phy);
 		break;
 	default:
 		return -ENOTSUPP;

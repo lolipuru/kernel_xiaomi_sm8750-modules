@@ -124,6 +124,7 @@ module_entry(
             "msm/dsi/dsi_phy_hw_v3_0.c",
             "msm/dsi/dsi_phy_hw_v4_0.c",
             "msm/dsi/dsi_phy_hw_v5_0.c",
+            "msm/dsi/dsi_phy_hw_v7_2.c",
             "msm/dsi/dsi_phy_timing_calc.c",
             "msm/dsi/dsi_phy_timing_v3_0.c",
             "msm/dsi/dsi_phy_timing_v4_0.c",

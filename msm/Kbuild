@@ -226,6 +226,7 @@ msm_drm-$(CONFIG_DRM_MSM_DSI) += dsi/dsi_phy.o \
 				 dsi/dsi_phy_hw_v3_0.o \
 				 dsi/dsi_phy_hw_v4_0.o \
 				 dsi/dsi_phy_hw_v5_0.o \
+				 dsi/dsi_phy_hw_v7_2.o \
 				 dsi/dsi_phy_timing_calc.o \
 				 dsi/dsi_phy_timing_v3_0.o \
 				 dsi/dsi_phy_timing_v4_0.o \
@@ -257,4 +258,3 @@ msm_drm-$(CONFIG_DRM_MSM) += msm_atomic.o \
 			     msm_prop.o
 
 CDEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"
-
