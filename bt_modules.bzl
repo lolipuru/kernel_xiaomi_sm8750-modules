@@ -56,7 +56,7 @@ register_bt_modules(
     config_opt = "CONFIG_MSM_BT_POWER",
     srcs = ["btpower.c"],
     config_deps = {
-        "CONFIG_BT_HW_SECURE_DISABLE": [
+		    "CONFIG_BT_HW_SECURE_DISABLE": [ ":smcinvoke_kernel_headers",
             "//vendor/qcom/opensource/securemsm-kernel:%b_smcinvoke_dlkm",
         ]
     },
