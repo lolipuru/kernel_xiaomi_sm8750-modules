@@ -654,7 +654,7 @@ static int ipclite_tx(struct ipclite_channel *channel,
 		ret = -EAGAIN;
 		return ret;
 	}
-
+	channel->irq_info->signal_id = ipclite_signal;
 	ipclite_tx_write(channel, &data, dlen);
 
 	mbox_send_message(channel->irq_info[ipclite_signal].mbox_chan, NULL);

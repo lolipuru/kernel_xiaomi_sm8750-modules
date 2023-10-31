@@ -2,6 +2,8 @@
 /*
  * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
+#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+
 #include <linux/kthread.h>
 #include <linux/string.h>
 #include <linux/bits.h>
@@ -11,105 +13,124 @@
 
 struct kobject *sysfs_dir;
 
-static int threads_started, threads_completed, cores_completed;
-static bool ssr_complete;
-/* data_lock spinlock is used to increment ping counters in thread safe manner.
- * core_wq to ensure all the cores have completed the test before next step.
- * ssr_wq to wait during ssr operation.
- * reply_wq to wait on replies to ping sent.
- * thread_wq to wait on all threads local to APPS to complete
+static int threads_completed, cores_completed;
+static unsigned int pingsend_fail;
+/* thread_wq to wait on all threads local to APPS to complete
  * test_done is a completion barrier which ensures test case is completed
- * crash_done is a completion barrier which ensures ssr crash is completed
  */
-DEFINE_SPINLOCK(data_lock);
-DECLARE_WAIT_QUEUE_HEAD(core_wq);
-DECLARE_WAIT_QUEUE_HEAD(ssr_wq);
-DECLARE_WAIT_QUEUE_HEAD(reply_wq);
 DECLARE_WAIT_QUEUE_HEAD(thread_wq);
 DECLARE_COMPLETION(test_done);
-DECLARE_COMPLETION(crash_done);
 
-static struct ipclite_thread_data wakeup_check, bg_pings;
-static struct ipclite_thread_data thread_data;
-
-struct handle_t *handle_ptr;
-static int handle_data[512];
-static struct ipclite_test_data *data;
+static struct ipclite_thread_data m_thread, wakeup_check, bg_pings;
+static struct ipclite_thread_data *th_arr;
+static struct global_region_info global_memory;
+static int ssr_client;
+static struct ipclite_test_params test_params;
 
 static void init_test_params(void)
 {
-	data->test_params.wait = 1;
-	data->test_params.num_pings = 1000;
-	data->test_params.num_itr = 1;
-	data->test_params.selected_senders = 1;
-	data->test_params.selected_receivers = 1;
-	data->test_params.enabled_cores = IPCLITE_TEST_ALL_CORES;
-	data->test_params.selected_test_case = 0;
-	data->test_params.num_thread = 1;
-	data->test_params.num_senders = 1;
-	data->test_params.num_receivers = 1;
+	test_params.wait = 1;
+	test_params.num_pings = 1000;
+	test_params.num_itr = 1;
+	test_params.selected_senders = 1;
+	test_params.selected_receivers = 1;
+	test_params.selected_test_case = 0;
+	test_params.num_thread = 1;
+	test_params.num_senders = 1;
+	test_params.num_receivers = 1;
 }
 /* Function to pack the different fields into one 64 bit message value
  * 1 byte header of constant patter 01010101
  * 1 byte to store the parameter type
  * 1 byte to store the test case id
- * 3 bytes to store the value of parameter in payload
+ * 4 bits to store the thread id
+ * 20 bits to store the value of parameter in payload
  * 1 byte to store test start/stop information
  * 1 byte to store test pass/fail information
  */
-static uint64_t get_param_macro(uint64_t parameter_info, uint64_t test_info,
-				uint64_t payload_info, uint64_t start_stop_info,
-				uint64_t pass_fail_info)
+static uint64_t get_test_macro(uint64_t test_info,
+				uint64_t thread_count, uint64_t payload_info,
+				uint64_t start_stop_info, uint64_t pass_fail_info)
 {
-	uint64_t param_macro = 0;
+	uint64_t param_macro = 0, parameter_info = TEST_CASE;
 
-	parameter_info &= GENMASK_ULL(7, 0);
-	test_info &= GENMASK_ULL(7, 0);
-	payload_info &= GENMASK_ULL(23, 0);
-	start_stop_info &= GENMASK_ULL(7, 0);
-	pass_fail_info &= GENMASK_ULL(7, 0);
+	param_macro = (uint64_t)IPCLITE_TEST_HEADER << 56;
+	param_macro |= (parameter_info & GENMASK_ULL(7, 0)) << 48;
+	param_macro |= (test_info & GENMASK_ULL(7, 0)) << 40;
+	param_macro |= (thread_count & GENMASK_ULL(3, 0)) << 36;
+	param_macro |= (payload_info & GENMASK_ULL(19, 0)) << 16;
+	param_macro |= (start_stop_info & GENMASK_ULL(7, 0)) << 8;
+	param_macro |= (pass_fail_info & GENMASK_ULL(7, 0));
 
-	param_macro = ((uint64_t)IPCLITE_TEST_HEADER) << 56;
-	param_macro |= parameter_info << 48;
-	param_macro |= test_info << 40;
-	param_macro |= payload_info << 16;
-	param_macro |= start_stop_info << 8;
-	param_macro |= pass_fail_info;
+	return param_macro;
+}
+/* Function to pack the different fields into one 64 bit message value
+ * 1 byte to store the wait
+ * 1 byte to store the parameter_info
+ * 20 bits to store the number of pings
+ * 12 bits to store the number of iterations
+ * 12 bits to store the selected receivers
+ * 4 bits to store the numbers of threads
+ */
+static uint64_t get_param_macro(void)
+{
+	uint64_t param_macro = 0, parameter_info = PARAM;
 
+	param_macro = (test_params.wait & GENMASK_ULL(7, 0)) << 56;
+	param_macro |= (parameter_info & GENMASK_ULL(7, 0)) << 48;
+	param_macro |= (test_params.num_pings & GENMASK_ULL(19, 0)) << 28;
+	param_macro |= (test_params.num_itr & GENMASK_ULL(11, 0)) << 16;
+	param_macro |= (test_params.selected_receivers & GENMASK_ULL(11, 0)) << 4;
+	param_macro |= (test_params.num_thread & GENMASK_ULL(3, 0));
 	return param_macro;
 }
 
 static inline bool is_enabled_core(int core_id)
 {
-	return (data->test_params.enabled_cores & BIT(core_id)) ? true : false;
+	return (test_params.enabled_cores & BIT(core_id)) ? true : false;
 }
 
 static inline bool is_selected_receiver(int core_id)
 {
-	return (data->test_params.selected_receivers & BIT(core_id)) ? true : false;
+	return (test_params.selected_receivers & BIT(core_id)) ? true : false;
 }
 
 static inline bool is_selected_sender(int core_id)
 {
-	return (data->test_params.selected_senders & BIT(core_id)) ? true : false;
+	return (test_params.selected_senders & BIT(core_id)) ? true : false;
 }
 
-static void ping_receive(struct ipclite_test_data *data)
+static void ping_receive(void *data, int client_id)
 {
+	int pings;
+	struct ipclite_thread_data *th_data = data;
+
 	pr_debug("Successfully received a ping\n");
-	data->pings_received[data->client_id]++;
-	wake_up_interruptible(&reply_wq);
+	th_data->pings_received[client_id]++;
+	pings = th_data->pings_received[client_id];
+	if (test_params.wait == 0)
+		return;
+	if (pings % test_params.wait == 0 || pings == th_data->num_pings)
+		wake_up_interruptible(&th_data->wq);
 }
 
-static int check_pings(struct ipclite_test_data *data)
+static int check_pings(void)
 {
+	bool fail = false;
 	for (int i = 0; i < IPCMEM_NUM_HOSTS; ++i) {
 		if (!is_selected_receiver(i))
 			continue;
-		if (data->pings_sent[i] != data->pings_received[i])
-			return -IPCLITE_TEST_FAIL;
+		for (int id = 0; id < test_params.num_thread; id++) {
+			if (th_arr[id].pings_received[i] != th_arr[id].num_pings) {
+				pr_err("fail: host :%d, thread :%d, send:%d, receive:%d\n",
+				i, id, th_arr[id].pings_sent[i], th_arr[id].pings_received[i]);
+				fail = true;
+			} else
+				pr_debug("pass: host :%d, thread :%d, send:%d, receive:%d\n",
+				i, id, th_arr[id].pings_sent[i], th_arr[id].pings_received[i]);
+		}
 	}
-	return 0;
+	return fail ? -IPCLITE_TEST_FAIL : 0;
 }
 
 static void ping_all_enabled_cores(u64 msg)
@@ -124,15 +145,14 @@ static void ping_all_enabled_cores(u64 msg)
 static void ping_sel_senders(uint64_t msg)
 {
 	for (int i = 0; i < IPCMEM_NUM_HOSTS; ++i) {
-		if (i == IPCMEM_APPS || !(data->test_params.selected_senders & BIT(i)))
+		if (i == IPCMEM_APPS || !is_selected_sender(i))
 			continue;
 		ipclite_test_msg_send(i, msg);
 	}
 }
 
-static int thread_init(struct ipclite_thread_data *th_data, void *data_ptr, void *fptr)
+static int thread_init(struct ipclite_thread_data *th_data, void *fptr)
 {
-	th_data->data = data_ptr;
 	th_data->run = false;
 	init_waitqueue_head(&th_data->wq);
 	th_data->thread = kthread_run(fptr, th_data, "test thread");
@@ -146,108 +166,107 @@ static int thread_init(struct ipclite_thread_data *th_data, void *data_ptr, void
 static int ping_selected_receivers(void *data_ptr)
 {
 	struct ipclite_thread_data *t_data = data_ptr;
-	struct ipclite_test_data *data = t_data->data;
 	int ret = 0;
-	uint64_t macro_to_ping = get_param_macro(TEST_CASE,
-						data->test_params.selected_test_case,
-						PING_SEND, 0, 0);
 	bool fail = false;
-
+	uint64_t macro_to_ping = get_test_macro(test_params.selected_test_case,
+						t_data->t_id, PING_SEND, 0, 0);
+	t_data->num_pings = test_params.num_pings/test_params.num_thread;
+	if (t_data->t_id == 0)
+		t_data->num_pings += test_params.num_pings%test_params.num_thread;
 	while (!kthread_should_stop()) {
-
 		wait_event_interruptible(t_data->wq, t_data->run);
 		if (kthread_should_stop())
 			break;
 		t_data->run = false;
-
-		for (int i = 0; i < data->test_params.num_pings/data->test_params.num_thread; ++i) {
-			for (int j = 0; j < IPCMEM_NUM_HOSTS; ++j) {
-				if (!is_selected_receiver(j))
+		for (int i = 0; i < t_data->num_pings; ++i) {
+			for (int host = 0; host < IPCMEM_NUM_HOSTS; ++host) {
+				if (!is_selected_receiver(host))
 					continue;
-				ret = ipclite_test_msg_send(j, macro_to_ping);
-				if (ret == 0) {
-					spin_lock(&data_lock);
-					data->pings_sent[j]++;
-					spin_unlock(&data_lock);
-				} else
+retry_ping:
+				ret = ipclite_test_msg_send(host, macro_to_ping);
+				if (ret == 0)
+					t_data->pings_sent[host]++;
+				else if (ret == -EAGAIN) {
+					msleep_interruptible(RETRY_DELAY);
+					goto retry_ping;
+				} else {
 					fail = true;
+					break;
+				}
 				/* If wait is enabled and number of pings to wait on is sent,
 				 * Wait for replies or timeout
 				 */
-				if (data->test_params.wait != 0 &&
-							(i+1) % data->test_params.wait == 0) {
-					ret = wait_event_interruptible_timeout(reply_wq,
-								check_pings(data) == 0,
-								msecs_to_jiffies(1000));
-					if (ret < 1)
+				if (test_params.wait == 0)
+					continue;
+				if ((i+1) % test_params.wait == 0 ||
+								(i+1 == t_data->num_pings)) {
+					ret = wait_event_interruptible_timeout(t_data->wq,
+					t_data->pings_sent[host] == t_data->pings_received[host],
+					msecs_to_jiffies(SEC_DELAY + test_params.wait * 50));
+					if (ret < 1) {
 						pr_err("Timeout occurred\n");
+						fail = true;
+						break;
+					}
 				}
 			}
+			if (fail)
+				break;
 		}
 		pr_debug("Completed iteration. Marking thread as completed\n");
-		spin_lock(&data_lock);
-		threads_completed++;
+		ipclite_global_atomic_inc((ipclite_atomic_int32_t *) &threads_completed);
 		wake_up_interruptible(&thread_wq);
-		spin_unlock(&data_lock);
 	}
-
-	return fail ? -IPCLITE_TEST_FAIL : 0;
+	return 0;
 }
 
 static int negative_tests(void *data_ptr)
 {
 	struct ipclite_thread_data *t_data = data_ptr;
-	int ret = 0, fail = 0;
-	uint64_t param;
+	int ret = 0;
+	bool fail = false;
+	uint64_t macro;
 
-	while (!kthread_should_stop()) {
-		wait_event_interruptible(t_data->wq, t_data->run);
-		if (kthread_should_stop())
-			break;
-		t_data->run = false;
+	wait_event_interruptible(t_data->wq, t_data->run);
+	if (is_selected_sender(IPCMEM_APPS)) {
 		pr_info("Test 1: Sending messages to disabled cores\n");
-		for (int i = 0; i < IPCMEM_NUM_HOSTS; ++i) {
-			if (!is_selected_receiver(i))
+		macro = get_test_macro(NEGATIVE, 0, PING_SEND, 0, 0);
+		for (int host = 0; host < IPCMEM_NUM_HOSTS; ++host) {
+			if (!is_selected_receiver(host))
 				continue;
-			param = get_param_macro(TEST_CASE, NEGATIVE,
-						PING_SEND, 0, 0);
-			ret = ipclite_test_msg_send(i, param);
+			ret = ipclite_test_msg_send(host, macro);
 			if (ret == 0) {
-				pr_err("TEST FAILED\n");
-				fail++;
+				pr_err("Disabled core %d test failed\n", host);
+				fail = true;
 			}
 		}
-		if (!fail)
-			pr_info("TEST PASSED\n");
 
 		pr_info("Test 2: Passing NULL to get_global_parition_info\n");
 		ret = get_global_partition_info(NULL);
 		if (ret == 0) {
-			pr_err("TEST FAILED\n");
-			fail++;
-		} else
-			pr_info("TEST PASSED\n");
-
-		if (fail != 0)
-			pr_err("Negative TEST FAILED\n");
-		else
-			pr_info("Negative TEST PASSED\n");
-
-		param = get_param_macro(TEST_CASE, NEGATIVE, 0,
-					IPCLITE_TEST_STOP, 0);
-		ipclite_test_msg_send(IPCMEM_APPS, param);
-		wait_event_interruptible_timeout(core_wq,
-						cores_completed == data->test_params.num_senders,
-						msecs_to_jiffies(1000));
-		complete(&test_done);
+			pr_err("Passing NULL test failed\n");
+			fail = true;
+		}
+		if (!fail)
+			pr_info("Negative test - pass\n");
+		++cores_completed;
 	}
-	return fail == 0 ? 0 : -IPCLITE_TEST_FAIL;
+	ret = wait_event_interruptible_timeout(t_data->wq,
+					cores_completed == test_params.num_senders,
+						msecs_to_jiffies(SEC_DELAY));
+	if (ret < 1)
+		pr_err("Timeout - other cores not completed\n");
+	else
+		pr_info("Test completed on all cores\n");
+	complete(&test_done);
+	return fail ? -IPCLITE_TEST_FAIL : 0;
 }
 
-static int hw_unlock_test(void *hw_mutex_byte)
+static int hw_unlock_test(void *hw_mutex_byte, void *data_ptr)
 {
+	struct ipclite_thread_data *t_data = data_ptr;
 	int ret = 0;
-	uint64_t param;
+	uint64_t macro;
 
 	if (!hw_mutex_byte) {
 		pr_err("Byte for hardware mutex testing is not initialized.\n");
@@ -269,22 +288,25 @@ static int hw_unlock_test(void *hw_mutex_byte)
 	*((int *)(hw_mutex_byte)) = IPCMEM_APPS;
 	pr_debug("The new value of the byte is %d\n", *((int *)(hw_mutex_byte)));
 
+	macro = get_test_macro(HW_MUTEX, 0, HW_MUTEX_RELEASE,
+					IPCLITE_TEST_START, 0);
 	for (int i = 0; i < IPCMEM_NUM_HOSTS; ++i) {
 		if (i == IPCMEM_APPS || !is_selected_receiver(i))
 			continue;
+		t_data->run = false;
 		pr_debug("Pinging %s to try and release the locked mutex\n",
 						core_name[i]);
-		param = get_param_macro(TEST_CASE, HW_MUTEX,
-					HW_MUTEX_RELEASE,
-					IPCLITE_TEST_START, 0);
-		ipclite_test_msg_send(i, param);
+		ipclite_test_msg_send(i, macro);
 		// Wait for timeout here
-		udelay(1000);
+		mdelay(100);
+		if (t_data->run == false)
+			pr_debug("Timeout\n");
+
+		if (*((int *)(hw_mutex_byte)) != IPCMEM_APPS) {
+			pr_err("hw_mutex acquired by %s core\n", core_name[i]);
+			return -IPCLITE_TEST_FAIL;
+		}
 	}
-
-	if (*((int *)(hw_mutex_byte)) != IPCMEM_APPS)
-		return -IPCLITE_TEST_FAIL;
-
 	ret = ipclite_hw_mutex_release();
 	if (ret != 0)
 		pr_err("Could not release mutex lock successfully\n");
@@ -294,59 +316,56 @@ static int hw_unlock_test(void *hw_mutex_byte)
 static int hw_mutex_test(void *data_ptr)
 {
 	struct ipclite_thread_data *t_data = data_ptr;
-	struct ipclite_test_data *data = t_data->data;
 	int ret = 0;
-	void *addr = data->global_memory->virt_base;
+	uint64_t macro = get_test_macro(HW_MUTEX, 0,
+					0, IPCLITE_TEST_START, 0);
 
-	while (!kthread_should_stop()) {
-		wait_event_interruptible(t_data->wq, t_data->run);
-		if (kthread_should_stop())
-			break;
+	wait_event_interruptible(t_data->wq, t_data->run);
+	if (is_selected_sender(IPCMEM_APPS)) {
+		ret = hw_unlock_test(global_memory.virt_base, data_ptr);
+		if (ret != 0)
+			pr_err("HW Unlock test failed.\n");
+	} else {
 		t_data->run = false;
-
-		ret = hw_unlock_test(addr);
-
-		if (ret == 0)
-			pr_info("HW Unlock Test Passed.\n");
-		else
-			pr_info("HW Unlock Test Failed.\n");
-
-		complete(&test_done);
+		ping_sel_senders(macro);
 	}
+
+	ret = wait_event_interruptible_timeout(t_data->wq,
+					t_data->run, msecs_to_jiffies(SEC_DELAY));
+	if (ret < 1)
+		pr_err("Timeout - other core not completed\n");
+	else
+		pr_info("Test completed on all cores\n");
+
+	complete(&test_done);
 	return  ret;
 }
 /* Ping cores which are not selected for ssr in the background */
 static int send_bg_pings(void *data_ptr)
 {
 	struct ipclite_thread_data *t_data = data_ptr;
-	struct ipclite_test_data *data = t_data->data;
 	int ret;
-	uint64_t param;
+	uint64_t macro = get_test_macro(SSR, 0, PING_SEND, 0, 0);
 
+	wait_event_interruptible(t_data->wq, t_data->run);
 	while (!kthread_should_stop()) {
-		wait_event_interruptible(t_data->wq, t_data->run);
-		if (kthread_should_stop())
-			break;
 		t_data->run = false;
-
-		while (!ssr_complete && !kthread_should_stop()) {
-			for (int i = 0; i < IPCMEM_NUM_HOSTS; ++i) {
-				if (i == data->ssr_client || !is_selected_receiver(i))
-					continue;
-				param = get_param_macro(TEST_CASE,
-							SSR,
-							PING_SEND, 0, 0);
-				ret = ipclite_test_msg_send(i, param);
-				if (ret != 0)
-					pr_err("Unable to ping core %d\n", i);
-			}
-			wait_event_interruptible_timeout(ssr_wq,
-							ssr_complete,
-							msecs_to_jiffies(1000));
+		for (int host = 0; host < IPCMEM_NUM_HOSTS; ++host) {
+			if (host == IPCMEM_APPS || !is_selected_receiver(host))
+				continue;
+			ret = ipclite_test_msg_send(host, macro);
+			if (ret != 0)
+				pr_err("Unable to ping core %d\n", host);
+			ret = wait_event_interruptible_timeout(t_data->wq,
+						t_data->run, msecs_to_jiffies(SEC_DELAY));
+			if (kthread_should_stop())
+				break;
+			if (ret < 1)
+				pr_err("Timeout - waiting for %d core\n", host);
 		}
-		pr_debug("SSR recovery of core %d completed. Exiting thread\n",
-								data->ssr_client);
 	}
+	pr_debug("SSR recovery of core %d completed. Exiting thread\n",
+							ssr_client);
 	return 0;
 }
 /* Wait for 30s and then send pings one to by one to see if core wakeup
@@ -355,194 +374,155 @@ static int send_bg_pings(void *data_ptr)
 static int ssr_wakeup_check(void *data_ptr)
 {
 	struct ipclite_thread_data *t_data = data_ptr;
-	struct ipclite_test_data *data = t_data->data;
 	int count = 0, ret = 0;
-	uint64_t param;
+	uint64_t macro = get_test_macro(SSR, 0, SSR_WAKEUP, IPCLITE_TEST_START, 0);
 
-	while (!kthread_should_stop()) {
-		wait_event_interruptible(t_data->wq, t_data->run);
-		if (kthread_should_stop())
+	wait_event_interruptible(t_data->wq, t_data->run);
+	t_data->run = false;
+	msleep_interruptible(SSR_DELAY);
+	while (count < 10) {
+		pr_debug("Sent ping number %d to check if wakeup is completed\n",
+						count);
+		ipclite_test_msg_send(ssr_client, macro);
+		ret = wait_event_interruptible_timeout(t_data->wq,
+						t_data->run, msecs_to_jiffies(SEC_DELAY));
+		if (ret > 0)
 			break;
-		t_data->run = false;
-
-		ssr_complete = false;
-		msleep_interruptible(30000);
-		while (count < 10) {
-			pr_debug("Sent ping number %d to check if wakeup is completed\n",
-							count);
-			param = get_param_macro(TEST_CASE, SSR,
-						SSR_WAKEUP,
-						IPCLITE_TEST_START, 0);
-			ret = ipclite_test_msg_send(data->ssr_client, param);
-			++count;
-			wait_event_interruptible_timeout(ssr_wq,
-							ssr_complete,
-							msecs_to_jiffies(1000));
-		}
-		if (count == 10 && !ssr_complete) {
-			pr_info("FW Core wakeup failed.\n");
-			return -IPCLITE_TEST_FAIL;
-		}
-		pr_info("FW Core wakeup completed successfully.\n");
-		pr_info("Going for non crashing testing.\n");
-		param = get_param_macro(TEST_CASE, PING, 0,
-					IPCLITE_TEST_START, 0);
-		ipclite_test_msg_send(data->ssr_client, param);
-		complete(&crash_done);
+		++count;
 	}
+	kthread_stop(bg_pings.thread);
+	if (count == 10) {
+		pr_info("FW Core wakeup failed.\n");
+		goto exit;
+	}
+	t_data->run = false;
+	pr_info("FW Core wakeup completed successfully.\n");
+	pr_debug("Going for non crashing testing.\n");
+	macro = get_param_macro();
+	ipclite_test_msg_send(ssr_client, macro);
+	macro = get_test_macro(PING, 0, 0, IPCLITE_TEST_START, 0);
+	ipclite_test_msg_send(ssr_client, macro);
+	wait_event_interruptible_timeout(t_data->wq,
+			t_data->run, msecs_to_jiffies(SEC_DELAY + test_params.num_pings/10));
+	if (!t_data->run)
+		pr_info("SSR ping test failed\n");
+exit:
+	m_thread.run = true;
+	wake_up_interruptible(&m_thread.wq);
 	return 0;
 }
 
 static int ssr_test(void *data_ptr)
 {
 	struct ipclite_thread_data *t_data = data_ptr;
-	struct ipclite_test_data *data = t_data->data;
-	uint64_t param = 0;
+	uint64_t macro = 0;
 	int ret = 0;
 
-	while (!kthread_should_stop()) {
-		wait_event_interruptible(t_data->wq, t_data->run);
-		if (kthread_should_stop())
-			break;
-		t_data->run = false;
+	wait_event_interruptible(t_data->wq, t_data->run);
+	t_data->run = false;
+	ret = thread_init(&wakeup_check, ssr_wakeup_check);
+	if (ret != 0)
+		return -EINVAL;
 
-		ssr_complete = false;
-		ret = thread_init(&wakeup_check, data, ssr_wakeup_check);
-
-		if (ret != 0) {
-			pr_err("Thread creation failed\n");
-			return -EINVAL;
-		}
-
-		ret = thread_init(&bg_pings, data, send_bg_pings);
-		if (ret != 0) {
-			pr_err("Thread creation failed\n");
-			kthread_stop(wakeup_check.thread);
-			return -EINVAL;
-		}
-		pr_info("Starting on SSR test for core %d\n", data->ssr_client);
-		memset(data->pings_sent, 0, sizeof(data->pings_sent));
-		memset(data->pings_received, 0, sizeof(data->pings_received));
-		param = get_param_macro(TEST_CASE, SSR,
-					SSR_CRASHING, IPCLITE_TEST_START, 0);
-		ipclite_test_msg_send(data->ssr_client, param);
-		wait_for_completion(&crash_done);
+	ret = thread_init(&bg_pings, send_bg_pings);
+	if (ret != 0) {
 		kthread_stop(wakeup_check.thread);
-		kthread_stop(bg_pings.thread);
-		complete(&test_done);
+		return -EINVAL;
 	}
+	memset(m_thread.pings_received, 0, sizeof(m_thread.pings_received));
+	macro = get_test_macro(SSR, 0, SSR_CRASHING, IPCLITE_TEST_START, 0);
+	ipclite_test_msg_send(ssr_client, macro);
+	wait_event_interruptible_timeout(t_data->wq, t_data->run,
+					msecs_to_jiffies(CRASH_DELAY + test_params.num_pings/10));
+	complete(&test_done);
 	return 0;
 }
 
 static int inc_byte(void *data_ptr)
 {
 	struct ipclite_thread_data *t_data = data_ptr;
-	ipclite_atomic_uint32_t *addr = t_data->data;
+	ipclite_atomic_uint32_t *addr = global_memory.virt_base;
 
-	while (!kthread_should_stop()) {
-		wait_event_interruptible(t_data->wq, t_data->run);
-		if (kthread_should_stop())
-			break;
-		t_data->run = false;
-		for (int i = 0; i < data->test_params.num_itr; ++i)
-			ipclite_global_atomic_inc(addr);
-		threads_completed++;
-		wake_up_interruptible(&thread_wq);
-	}
+	wait_event_interruptible(t_data->wq, t_data->run);
+	if (kthread_should_stop())
+		return 0;
+	for (int i = 0; i < test_params.num_itr; ++i)
+		ipclite_global_atomic_inc(addr);
+	threads_completed++;
+	wake_up_interruptible(&thread_wq);
 	return 0;
 }
 
 static int dec_byte(void *data_ptr)
 {
 	struct ipclite_thread_data *t_data = data_ptr;
-	ipclite_atomic_uint32_t *addr = t_data->data;
+	ipclite_atomic_uint32_t *addr = global_memory.virt_base;
 
-	while (!kthread_should_stop()) {
-		wait_event_interruptible(t_data->wq, t_data->run);
-		if (kthread_should_stop())
-			break;
-		t_data->run = false;
-		for (int i = 0; i < data->test_params.num_itr; ++i)
-			ipclite_global_atomic_dec(addr);
-		threads_completed++;
-		wake_up_interruptible(&thread_wq);
-	}
+	wait_event_interruptible(t_data->wq, t_data->run);
+	if (kthread_should_stop())
+		return 0;
+	for (int i = 0; i < test_params.num_itr; ++i)
+		ipclite_global_atomic_dec(addr);
+	threads_completed++;
+	wake_up_interruptible(&thread_wq);
 	return 0;
 }
 
-static int global_atomics_test(void *byte, int test_number)
+static int global_atomics_test(int test_number)
 {
-	int ret = 0;
+	int ret, threads_started;
 	int total_increment = 0;
-	uint64_t param;
+	uint64_t macro;
 	bool fail = false;
 	struct ipclite_thread_data ga_t1, ga_t2;
+	void *thread_1, *thread_2;
+	void *gmem = global_memory.virt_base;
 
-
-	if (!byte) {
-		pr_err("Byte not initialized. Test Failed\n");
+	if (!gmem) {
+		pr_err("gmem not initialized.\n");
 		return -EFAULT;
 	}
-	pr_debug("The initial value of the byte is %x\n", *((int *)byte));
+	pr_debug("The initial value of the gmem is %x\n", *((int *)gmem));
 
 	threads_completed = 0;
 	threads_started = 0;
 
 	switch (test_number) {
 	case GLOBAL_ATOMICS_INC:
-		ret = thread_init(&ga_t1, byte, inc_byte);
-		if (ret != 0) {
-			pr_err("Thread creation failed\n");
-			return -EINVAL;
-		}
-		ret = thread_init(&ga_t2, byte, inc_byte);
-		if (ret != 0) {
-			pr_err("Thread creation failed\n");
-			kthread_stop(ga_t1.thread);
-			return -EINVAL;
-		}
+		thread_1 = inc_byte;
+		thread_2 = inc_byte;
 		break;
 	case GLOBAL_ATOMICS_DEC:
-		ret = thread_init(&ga_t1, byte, dec_byte);
-		if (ret != 0) {
-			pr_err("Thread creation failed\n");
-			return -EINVAL;
-		}
-		ret = thread_init(&ga_t2, byte, dec_byte);
-		if (ret != 0) {
-			pr_err("Thread creation failed\n");
-			kthread_stop(ga_t1.thread);
-			return -EINVAL;
-		}
+		thread_1 = dec_byte;
+		thread_2 = dec_byte;
 		break;
 	case GLOBAL_ATOMICS_INC_DEC:
-		ret = thread_init(&ga_t1, byte, inc_byte);
-		if (ret != 0) {
-			pr_err("Thread creation failed\n");
-			return -EINVAL;
-		}
-		ret = thread_init(&ga_t2, byte, dec_byte);
-		if (ret != 0) {
-			pr_err("Thread creation failed\n");
-			kthread_stop(ga_t1.thread);
-			return -EINVAL;
-		}
+		thread_1 = inc_byte;
+		thread_2 = dec_byte;
 		break;
 	default:
 		pr_err("Wrong input provided\n");
 		return -EINVAL;
 	}
-	param = get_param_macro(TEST_CASE,
-				GLOBAL_ATOMIC,
-				test_number,
+	ret = thread_init(&ga_t1, thread_1);
+	if (ret != 0)
+		return -EINVAL;
+	ret = thread_init(&ga_t2, thread_2);
+	if (ret != 0) {
+		kthread_stop(ga_t1.thread);
+		return -EINVAL;
+	}
+	macro = get_test_macro(GLOBAL_ATOMIC, 0, test_number,
 				IPCLITE_TEST_START, 0);
 
 	for (int i = 0; i < IPCMEM_NUM_HOSTS; ++i) {
 		if (i == IPCMEM_APPS || !is_selected_receiver(i))
 			continue;
-		ret = ipclite_test_msg_send(i, param);
+		ret = ipclite_test_msg_send(i, macro);
 		if (ret == 0)
 			threads_started += 2;
+		else
+			pr_err("unable to start test in core %s\n", core_name[i]);
 	}
 	if (is_selected_receiver(IPCMEM_APPS)) {
 		ga_t1.run = true;
@@ -553,22 +533,19 @@ static int global_atomics_test(void *byte, int test_number)
 	}
 	/* Wait for all threads to complete or timeout */
 	ret = wait_event_interruptible_timeout(thread_wq,
-					threads_started == 2 * data->test_params.num_receivers &&
-					threads_completed == 2 * data->test_params.num_receivers,
-					msecs_to_jiffies(1000));
+					threads_completed == threads_started,
+					msecs_to_jiffies(SEC_DELAY));
 	if (ret < 1)
 		pr_err("Threads could not complete successfully\n");
 
-	pr_debug("The value of the byte is %x\n", *((int *)byte));
+	pr_debug("The value of the gmem is %x\n", *((int *)gmem));
 	/* Stopping threads if they have not already completed before evaluation */
-	kthread_stop(ga_t1.thread);
-	kthread_stop(ga_t2.thread);
 
-	total_increment = 2 * data->test_params.num_receivers * data->test_params.num_itr;
+	total_increment = 2 * test_params.num_receivers * test_params.num_itr;
 
 	switch (test_number) {
 	case GLOBAL_ATOMICS_INC:
-		if (*((int *)byte) == total_increment)
+		if (*((int *)gmem) == total_increment)
 			pr_info("Increment Successful.\n");
 		else {
 			pr_err("Increment Failed.\n");
@@ -576,7 +553,7 @@ static int global_atomics_test(void *byte, int test_number)
 		}
 		break;
 	case GLOBAL_ATOMICS_DEC:
-		if (*((int *)byte) == 0)
+		if (*((int *)gmem) == 0)
 			pr_info("Decrement Successful\n");
 		else {
 			pr_err("Decrement Failed\n");
@@ -584,16 +561,13 @@ static int global_atomics_test(void *byte, int test_number)
 		}
 		break;
 	case GLOBAL_ATOMICS_INC_DEC:
-		if (*((int *)byte) == 0)
+		if (*((int *)gmem) == 0)
 			pr_info("Increment and Decrement Successful\n");
 		else {
 			pr_err("Increment and Decrement Failed\n");
 			fail = true;
 		}
 		break;
-	default:
-		pr_err("Wrong input provided\n");
-		return -EINVAL;
 	}
 
 	return fail ? -IPCLITE_TEST_FAIL : 0;
@@ -662,27 +636,39 @@ void clear_index(int *bitmap_base, uint32_t index)
 	ipclite_global_test_and_clear_bit(ii, (ipclite_atomic_uint32_t *)(bitmap_base + addr_idx));
 }
 
-static int global_atomics_test_set_clear(struct ipclite_test_data *data)
+static int global_atomics_test_set_clear(void)
 {
-	int index = 0, ret = 0;
+	int index = 0, ret = 0, threads_started;
 	bool fail = false;
-	uint64_t param;
+	struct handle_t *handle_ptr;
+	uint64_t macro;
+	int *handle_data = kcalloc(512, sizeof(int), GFP_KERNEL);
 
-	handle_ptr = data->global_memory->virt_base;
-	pr_info("Starting global atomics Test 4. Starting allocation of index\n");
+	if (!handle_data)
+		return -ENOMEM;
+	macro = get_test_macro(GLOBAL_ATOMIC, 0,
+					GLOBAL_ATOMICS_SET_CLR, IPCLITE_TEST_CREATE, 0);
+	for (int host = 0; host < IPCMEM_NUM_HOSTS; ++host) {
+		if (host == IPCMEM_APPS || !is_selected_receiver(host))
+			continue;
+		ret = ipclite_test_msg_send(host, macro);
+		if (ret != 0)
+			pr_err("unable to start test in core %s\n", core_name[host]);
+	}
+	handle_ptr = global_memory.virt_base;
+	pr_info("Starting global atomics Test 4.\n");
+	pr_debug("Starting allocation of index\n");
 	pr_debug("The total number of handles is %d\n", NUM_HANDLES);
 	pr_debug("Global Base : %p\n", handle_ptr);
-	for (int itr = 0; itr < data->test_params.num_itr; itr++) {
+	macro = get_test_macro(GLOBAL_ATOMIC, 0, GLOBAL_ATOMICS_SET_CLR,
+						IPCLITE_TEST_START, 0);
+	for (int itr = 0; itr < test_params.num_itr; itr++) {
 		threads_started = 0;
 		threads_completed = 0;
-		for (int j = 0; j < IPCMEM_NUM_HOSTS; ++j) {
-			if (j == IPCMEM_APPS || !is_selected_receiver(j))
+		for (int host = 0; host < IPCMEM_NUM_HOSTS; ++host) {
+			if (host == IPCMEM_APPS || !is_selected_receiver(host))
 				continue;
-			param = get_param_macro(TEST_CASE,
-						GLOBAL_ATOMIC,
-						GLOBAL_ATOMICS_SET_CLR,
-						IPCLITE_TEST_START, 0);
-			ret = ipclite_test_msg_send(j, param);
+			ret = ipclite_test_msg_send(host, macro);
 			if (ret == 0)
 				threads_started++;
 		}
@@ -712,13 +698,24 @@ static int global_atomics_test_set_clear(struct ipclite_test_data *data)
 			if (fail)
 				break;
 		}
-		wait_event_interruptible_timeout(thread_wq,
-				threads_started == data->test_params.num_receivers &&
-				threads_completed == data->test_params.num_receivers,
-				msecs_to_jiffies(1000));
+		ret = wait_event_interruptible_timeout(thread_wq,
+					threads_completed == threads_started,
+					msecs_to_jiffies(SEC_DELAY));
+		if (ret < 1) {
+			pr_err("Timeout - not all cores completed\n");
+			break;
+		}
+	}
+	macro = get_test_macro(GLOBAL_ATOMIC, 0, GLOBAL_ATOMICS_SET_CLR,
+						IPCLITE_TEST_DESTROY, 0);
+	for (int host = 0; host < IPCMEM_NUM_HOSTS; ++host) {
+		if (host == IPCMEM_APPS || !is_selected_receiver(host))
+			continue;
+		ipclite_test_msg_send(host, macro);
 	}
 	if (!fail)
-		pr_info("Global Atomics Set and Clear test passed successfully\n");
+		pr_info("Global Atomics Set and Clear test passed\n");
+	kfree(handle_data);
 	return fail ? -IPCLITE_TEST_FAIL  : 0;
 }
 
@@ -726,381 +723,254 @@ static int global_atomics_test_wrapper(void *data_ptr)
 {
 	int result = 0, ret = 0;
 	struct ipclite_thread_data *t_data = data_ptr;
-	struct ipclite_test_data *data = t_data->data;
-	void *addr = data->global_memory->virt_base;
 
-	while (!kthread_should_stop()) {
-		wait_event_interruptible(t_data->wq, t_data->run);
-		if (kthread_should_stop())
-			break;
-		t_data->run = false;
-		*((int *)addr) = 0;
-		result = global_atomics_test(addr, GLOBAL_ATOMICS_INC);
-		result &= global_atomics_test(addr, GLOBAL_ATOMICS_DEC);
-		result &= global_atomics_test(addr, GLOBAL_ATOMICS_INC_DEC);
-		result &= global_atomics_test_set_clear(data);
-		if (result != 0) {
-			pr_err("Global Atomics TEST FAILED\n");
-			ret = -IPCLITE_TEST_FAIL;
-		} else {
-			pr_info("Global Atomics TEST PASSED\n");
-			ret = 0;
-		}
-		complete(&test_done);
+	wait_event_interruptible(t_data->wq, t_data->run);
+	*((int *)global_memory.virt_base) = 0;
+	result = global_atomics_test(GLOBAL_ATOMICS_INC);
+	result &= global_atomics_test(GLOBAL_ATOMICS_DEC);
+	result &= global_atomics_test(GLOBAL_ATOMICS_INC_DEC);
+	result &= global_atomics_test_set_clear();
+	if (result != 0) {
+		pr_err("Global Atomics test failed\n");
+		ret = -IPCLITE_TEST_FAIL;
+	} else {
+		pr_info("Global Atomics test passed\n");
+		ret = 0;
 	}
+	complete(&test_done);
 	return ret;
 }
 
-static int ping_test(void *data_ptr)
+static int ping_test(void)
 {
 	int ret = 0;
-	uint64_t param_macro;
-	struct ipclite_test_data *data = data_ptr;
-	struct ipclite_thread_data th_arr[IPCLITE_TEST_MAX_THREADS];
-	int count;
-
-	memset(data->pings_sent, 0, sizeof(data->pings_sent));
-	memset(data->pings_received, 0, sizeof(data->pings_received));
 	threads_completed = 0;
-	param_macro = 0;
-	for (count = 0; count < data->test_params.num_thread; ++count) {
-		ret = thread_init(&th_arr[count], data, ping_selected_receivers);
-		if (ret != 0)
-			break;
+	for (int id = 0; id < test_params.num_thread; ++id) {
+		memset(th_arr[id].pings_sent, 0, sizeof(th_arr[id].pings_sent));
+		memset(th_arr[id].pings_received, 0, sizeof(th_arr[id].pings_received));
+		th_arr[id].run = true;
+		wake_up_interruptible(&th_arr[id].wq);
 	}
-	if (count != data->test_params.num_thread)
-		while (count > 0) {
-			kthread_stop(th_arr[count-1].thread);
-			--count;
-		}
-	if (ret != 0) {
-		pr_err("Threads could not be initialized. Ping Test Failed\n");
-		return ret;
-	}
-	for (threads_started = 0; threads_started < data->test_params.num_thread;
-							++threads_started) {
-		th_arr[threads_started].run = true;
-		wake_up_interruptible(&th_arr[threads_started].wq);
-	}
-	ret = wait_event_interruptible_timeout(thread_wq,
-				threads_started == data->test_params.num_thread &&
-				threads_completed == data->test_params.num_thread,
-				msecs_to_jiffies(1000) * data->test_params.num_thread);
-	if (ret < 1) {
-		pr_err("Threads not completed successfully. Only completed %d threads\n",
+	ret = wait_event_interruptible(thread_wq,
+				threads_completed == test_params.num_thread);
+	if (ret < 0) {
+		pr_err("Timeout - All threads not completed, completed %d\n",
 						threads_completed);
-		return ret;
-
+		goto stop;
 	}
-	pr_info("All threads completed successfully.\n");
+	pr_debug("All threads completed successfully.\n");
 	pr_debug("Going for checking\n");
 	/*Wait for the queue to get processed before checking if all replies are received*/
-	if (!data->test_params.wait)
-		msleep_interruptible(1000);
-	ret = check_pings(data);
-
+	if (!test_params.wait)
+		msleep_interruptible(WAIT_DELAY * test_params.num_receivers);
+	ret = check_pings();
 	if (ret == 0)
-		pr_debug("All replies received successfully.\n");
-	else
-		pr_debug("All replies not received successfully.\n");
-
-	while (count > 0) {
-		kthread_stop(th_arr[count-1].thread);
-		--count;
+		pr_info("Ping test passed on IPCMEM_APPS\n");
+	else {
+		pr_err("PING_SEND failed :%d\n", pingsend_fail);
+		pr_err("Ping test failed on IPCMEM_APPS\n");
 	}
-	param_macro = get_param_macro(TEST_CASE, PING, 0,
-					IPCLITE_TEST_STOP, 0);
-	ipclite_test_msg_send(IPCMEM_APPS, param_macro);
+
+stop:
+	++cores_completed;
 	return ret;
 }
 
 static int wrapper_ping_test(void *data_ptr)
 {
-	int ret = 0;
-	uint64_t param_macro;
+	int ret = 0, id;
 	struct ipclite_thread_data *t_data = data_ptr;
-	struct ipclite_test_data *data = t_data->data;
+	uint64_t param_macro;
 
-	while (!kthread_should_stop()) {
-		wait_event_interruptible(t_data->wq, t_data->run);
-		if (kthread_should_stop())
-			break;
-		t_data->run = false;
-
-		for (int i = 0; i < data->test_params.num_itr; ++i) {
-			cores_completed = 0;
-			param_macro = get_param_macro(TEST_CASE,
-							PING,
-							0, IPCLITE_TEST_START, 0);
-			/* Ping all senders to start sending messages.
-			 *  If APPS is one of the senders start sending
-			 */
-			ping_sel_senders(param_macro);
-			if (is_selected_sender(IPCMEM_APPS))
-				ping_test(data);
-			wait_event_interruptible_timeout(core_wq,
-						cores_completed == data->test_params.num_senders,
-						msecs_to_jiffies(1000));
-			ret = check_pings(data);
+	wait_event_interruptible(t_data->wq, t_data->run);
+	if (is_selected_sender(IPCMEM_APPS)) {
+		for (id = 0; id < test_params.num_thread; ++id) {
+			th_arr[id].t_id = id;
+			ret = thread_init(&th_arr[id], ping_selected_receivers);
 			if (ret != 0)
-				pr_info("Iteration %d of ping test failed\n", i+1);
-			else
-				pr_info("Iteration %d of ping test passed\n", i+1);
+				goto exit;
 		}
-	if (is_selected_sender(IPCMEM_APPS))
-		complete(&test_done);
 	}
+
+	param_macro = get_test_macro(PING, 0, 0, IPCLITE_TEST_START, 0);
+	for (int i = 0; i < test_params.num_itr; ++i) {
+		cores_completed = 0;
+		pingsend_fail = 0;
+		/* Ping all senders to start sending messages.
+		 *  If APPS is one of the senders start sending
+		 */
+		ping_sel_senders(param_macro);
+		if (is_selected_sender(IPCMEM_APPS))
+			ping_test();
+		ret = wait_event_interruptible_timeout(t_data->wq,
+			cores_completed == test_params.num_senders,
+			msecs_to_jiffies(CORE_DELAY * (test_params.num_senders
+								+ !test_params.wait)));
+		if (ret < 1) {
+			pr_err("Timeout - Iteration %d of ping test failed\n", i+1);
+			break;
+		}
+		pr_info("Iteration %d of ping test passed\n", i+1);
+		msleep_interruptible(REFRESH_DELAY);
+	}
+
+exit:
+	if (is_selected_sender(IPCMEM_APPS))
+		while (id-- > 0)
+			kthread_stop(th_arr[id].thread);
+	complete(&test_done);
 	return 0;
 }
 
 static int debug_tests(void *data_ptr)
 {
 	struct ipclite_thread_data *t_data = data_ptr;
-	uint64_t param;
-	int disabled_core = ffz(data->test_params.enabled_cores);
+	uint64_t macro;
+	int ret;
+	int disabled_core = ffz(test_params.enabled_cores);
 
-	while (!kthread_should_stop()) {
-		wait_event_interruptible(t_data->wq, t_data->run);
-		if (kthread_should_stop())
-			break;
-		t_data->run = false;
-		param = get_param_macro(TEST_CASE, DEBUG,
-					PING_SEND, 0, 0);
+	wait_event_interruptible(t_data->wq, t_data->run);
+	if (is_selected_sender(IPCMEM_APPS)) {
+		macro = get_test_macro(DEBUG, 0, PING_SEND, 0, 0);
 		if (disabled_core == IPCMEM_NUM_HOSTS)
 			pr_err("All cores are enabled. No Disabled cores\n");
 		/* Pinging one enabled and disabled cores to get the error and dbg prints */
-		if (disabled_core < IPCMEM_NUM_HOSTS)
-			ipclite_test_msg_send(disabled_core, param);
-
-		param = get_param_macro(TEST_CASE, PING, 0,
-						IPCLITE_TEST_STOP, 0);
-		ipclite_test_msg_send(IPCMEM_APPS, param);
-		wait_event_interruptible_timeout(core_wq,
-						cores_completed == data->test_params.num_senders,
-						msecs_to_jiffies(1000));
-		complete(&test_done);
+		if (disabled_core < IPCMEM_NUM_HOSTS) {
+			ret = ipclite_test_msg_send(disabled_core, macro);
+			if (ret == 0)
+				pr_err("Debug test failed\n");
+			else
+				pr_info("Debug test passed\n");
+		}
+		++cores_completed;
 	}
+
+	ret = wait_event_interruptible_timeout(t_data->wq,
+					cores_completed == test_params.num_senders,
+						msecs_to_jiffies(SEC_DELAY));
+	if (ret < 1)
+		pr_err("Timeout - other cores not completed\n");
+	else
+		pr_info("Test completed on all cores\n");
+	complete(&test_done);
 	return 0;
-}
-
-static void ipclite_test_set_enabled_cores(void)
-{
-	if (data->test_params.enabled_cores < 0 ||
-					data->test_params.enabled_cores > IPCLITE_TEST_ALL_CORES) {
-		pr_err("Invalid parameter value given to enabled cores\n");
-		data->test_params.enabled_cores = IPCLITE_TEST_ALL_CORES;
-		return;
-	}
-	pr_info("Enabled cores set to %d\n", data->test_params.enabled_cores);
-}
-
-static void ipclite_test_set_wait(void)
-{
-	uint64_t param;
-
-	if (data->test_params.wait < 0) {
-		pr_err("Invalid parameter value given to wait\n");
-		data->test_params.wait = 1;
-		return;
-	}
-
-	pr_info("wait set to %d\n", data->test_params.wait);
-
-	param = get_param_macro(WAIT, 0, data->test_params.wait, 0, 0);
-	ping_all_enabled_cores(param);
-}
-
-static void ipclite_test_set_num_pings(void)
-{
-	uint64_t param;
-
-	pr_info("num_pings set to %d\n", data->test_params.num_pings);
-
-	param = get_param_macro(NUM_PINGS, 0,
-				data->test_params.num_pings, 0, 0);
-	ping_all_enabled_cores(param);
-}
-
-static void ipclite_test_set_num_itr(void)
-{
-	uint64_t param;
-
-	pr_info("num_itr set to %d\n", data->test_params.num_itr);
-
-	param = get_param_macro(NUM_ITR, 1,
-				data->test_params.num_itr, 0, 0);
-	ping_all_enabled_cores(param);
 }
 
 static void ipclite_test_set_receivers(void)
 {
-	uint64_t param;
-
-	if (data->test_params.selected_receivers < 0 ||
-		data->test_params.selected_receivers > IPCLITE_TEST_ALL_CORES) {
-		pr_err("Invalid parameter value given to selected_receivers\n");
-		data->test_params.selected_receivers = 1;
-		data->test_params.num_receivers = 1;
-		return;
+	if (test_params.selected_receivers > IPCLITE_TEST_ALL_CORES) {
+		pr_err("Invalid value given to selected_receivers\n");
+		test_params.selected_receivers = 1;
 	}
 	/* Check number of 1s using hamming weight function.
 	 * Number of 1s is number of receivers
 	 */
-	data->test_params.num_receivers = hweight_long(data->test_params.selected_receivers);
-
-	pr_info("selected_receivers set to %d\n", data->test_params.selected_receivers);
-
-	param = get_param_macro(RECEIVER_LIST, 0,
-				data->test_params.selected_receivers, 0, 0);
-	ping_all_enabled_cores(param);
+	test_params.num_receivers = hweight_long(test_params.selected_receivers);
+	pr_info("selected_receivers set to %d\n", test_params.selected_receivers);
 }
 
 static void ipclite_test_set_senders(void)
 {
-	if (data->test_params.selected_senders < 0 ||
-		data->test_params.selected_senders > IPCLITE_TEST_ALL_CORES) {
-		pr_err("Invalid parameter value given to selected_senders\n");
-		data->test_params.selected_senders = 1;
-		data->test_params.num_senders = 1;
-		return;
+	if (test_params.selected_senders > IPCLITE_TEST_ALL_CORES) {
+		pr_err("Invalid value given to selected_senders\n");
+		test_params.selected_senders = 1;
 	}
-
 	/* Check number of 1s using hamming weight function. */
-	data->test_params.num_senders = hweight_long(data->test_params.selected_senders);
-
-	pr_info("selected_senders set to %d\n", data->test_params.selected_senders);
+	test_params.num_senders = hweight_long(test_params.selected_senders);
+	pr_info("selected_senders set to %d\n", test_params.selected_senders);
 }
 
-static void ipclite_test_set_num_threads(void)
+static int main_thread_create(void *fptr)
 {
-	uint64_t param;
+	int ret = 0;
 
-	if (data->test_params.num_thread < 0 ||
-					data->test_params.num_thread > IPCLITE_TEST_MAX_THREADS) {
-		pr_err("Invalid parameter value given to num_thread\n");
-		data->test_params.num_thread = 1;
-		return;
-	}
-
-	pr_info("num_thread set to %d\n", data->test_params.num_thread);
-
-	param = get_param_macro(NUM_THREADS, 0,
-				data->test_params.num_thread, 0, 0);
-	ping_all_enabled_cores(param);
+	ret = thread_init(&m_thread, fptr);
+	if (ret != 0)
+		return ret;
+	m_thread.run = true;
+	wake_up_interruptible(&m_thread.wq);
+	return 0;
 }
 
 static void ipclite_test_set_test(void)
 {
-	uint64_t param;
 	int ret = 0;
+	uint64_t macro;
 
-	if (data->test_params.selected_test_case < 0 || data->test_params.selected_test_case > 8) {
-		pr_err("Invalid parameter value given to test_case\n");
-		data->test_params.selected_test_case = 0;
+	if (test_params.selected_test_case > 8) {
+		pr_err("Invalid value given to test_case\n");
 		return;
 	}
 
-	pr_info("selected_test_case set to %d\n", data->test_params.selected_test_case);
-	param = get_param_macro(TEST_CASE,
-				data->test_params.selected_test_case, 0,
-				IPCLITE_TEST_START, 0);
+	pr_info("selected_test_case set to %s\n",
+				test_name[test_params.selected_test_case - 1]);
+	macro = get_test_macro(test_params.selected_test_case, 0,
+				0, IPCLITE_TEST_START, 0);
 
-	switch (data->test_params.selected_test_case) {
+	switch (test_params.selected_test_case) {
 	case PING:
-		ret = thread_init(&thread_data, data, wrapper_ping_test);
-		if (ret != 0) {
-			pr_err("Could not create thread for testing\n");
+		th_arr = kcalloc(test_params.num_thread, sizeof(*th_arr), GFP_KERNEL);
+		if (!th_arr)
 			return;
-		}
-		thread_data.run = true;
-		wake_up_interruptible(&thread_data.wq);
+		ret = main_thread_create(wrapper_ping_test);
 		break;
 	case NEGATIVE:
-		ping_sel_senders(param);
-		if (is_selected_sender(IPCMEM_APPS)) {
-			pr_info("Starting test %d for core %s\n",
-				NEGATIVE, core_name[IPCMEM_APPS]);
-			ret = thread_init(&thread_data, data, negative_tests);
-			if (ret != 0) {
-				pr_err("Could not create thread for testing\n");
-				return;
-			}
-			thread_data.run = true;
-			wake_up_interruptible(&thread_data.wq);
-		}
+		cores_completed = 0;
+		ping_sel_senders(macro);
+		ret = main_thread_create(negative_tests);
 		break;
 	case GLOBAL_ATOMIC:
-		ret = thread_init(&thread_data, data, global_atomics_test_wrapper);
-		if (ret != 0) {
-			pr_err("Could not create thread for testing\n");
-			return;
-		}
-		thread_data.run = true;
-		wake_up_interruptible(&thread_data.wq);
+		ret = main_thread_create(global_atomics_test_wrapper);
 		break;
 	case DEBUG:
-		ping_sel_senders(param);
-		if (is_selected_sender(IPCMEM_APPS)) {
-			ret = thread_init(&thread_data, data, debug_tests);
-			if (ret != 0) {
-				pr_err("Could not create thread for testing\n");
-				return;
-			}
-			thread_data.run = true;
-			wake_up_interruptible(&thread_data.wq);
-		}
+		cores_completed = 0;
+		ping_sel_senders(macro);
+		ret = main_thread_create(debug_tests);
 		break;
 	case SSR:
-		if (data->test_params.num_senders != 1) {
+		if (test_params.num_senders != 1) {
 			pr_err("SSR Testing requires only 1 core to be selected\n");
 			return;
 		}
+		if (test_params.selected_senders & test_params.selected_receivers) {
+			pr_err("SSR Testing can't be done within the same core\n");
+			return;
+		}
+		if (!is_selected_receiver(IPCMEM_APPS)) {
+			pr_err("SSR Testing need apps to be one of the receiver\n");
+			return;
+		}
 		/* Find first set (ffs) to get the bit position/index of sender */
-		data->ssr_client = ffs(data->test_params.selected_senders) - 1;
-		if (data->ssr_client == 0 || !is_enabled_core(data->ssr_client)) {
+		ssr_client = ffs(test_params.selected_senders) - 1;
+		if (ssr_client == 0 || !is_enabled_core(ssr_client)) {
 			pr_err("Invalid core selected for SSR Testing\n");
 			return;
 		}
-		pr_info("Starting test %d for core %s\n",
-			SSR, core_name[data->ssr_client]);
-		ret = thread_init(&thread_data, data, ssr_test);
-		if (ret != 0) {
-			pr_err("Could not create thread for testing\n");
-			return;
-		}
-		thread_data.run = true;
-		wake_up_interruptible(&thread_data.wq);
+		pr_info("Starting SSR test for core %s\n", core_name[ssr_client]);
+		ret = main_thread_create(ssr_test);
 		break;
 	case HW_MUTEX:
-		if (data->test_params.num_senders != 1) {
+		if (test_params.num_senders != 1) {
 			pr_err("HW Mutex Testing requires only 1 core to be selected\n");
 			return;
 		}
-
-		if (is_selected_sender(IPCMEM_APPS)) {
-			pr_info("Starting test %d for core %s\n",
-				HW_MUTEX, core_name[IPCMEM_APPS]);
-			ret = thread_init(&thread_data, data, hw_mutex_test);
-			if (ret != 0) {
-				pr_err("Could not create thread for testing\n");
-				return;
-			}
-			thread_data.run = true;
-			wake_up_interruptible(&thread_data.wq);
-		} else
-			ping_sel_senders(param);
+		if (test_params.selected_senders & test_params.selected_receivers) {
+			pr_err("HW Mutex Testing can't be done within the same core\n");
+			return;
+		}
+		ret = main_thread_create(hw_mutex_test);
 		break;
 	default:
 		pr_err("Wrong input provided\n");
 		return;
 	}
-	wait_for_completion(&test_done);
-	if (thread_data.thread != NULL)
-		ret = kthread_stop(thread_data.thread);
-	if (ret != 0)
-		pr_err("Test did not complete successfully\n");
-	else
-		pr_info("Test completed successfully\n");
+	if (ret == 0)
+		wait_for_completion(&test_done);
+	if (test_params.selected_test_case == PING) {
+		kfree(th_arr);
+		th_arr = NULL;
+	}
+	pr_info("Test completed successfully\n");
 }
 
 static int parse_param(char **temp_buf, int *addr)
@@ -1127,7 +997,8 @@ static ssize_t ipclite_test_params_write(struct kobject *kobj,
 {
 	char *temp_buf = kmalloc(strlen(buf)+1, GFP_KERNEL);
 	char *temp_ptr = temp_buf;
-	int ret, param = 0;
+	int ret, param = 0, common_cores;
+	uint64_t param_macro;
 
 	if (!temp_buf) {
 		pr_err("Memory not allocated\n");
@@ -1146,94 +1017,125 @@ static ssize_t ipclite_test_params_write(struct kobject *kobj,
 		goto exit;
 
 	if (param  == ENABLED_CORES) {
-		ret = parse_param(&temp_buf, &data->test_params.enabled_cores);
-		if (ret == 0)
-			ipclite_test_set_enabled_cores();
+		ret = parse_param(&temp_buf, &test_params.enabled_cores);
+		if (ret == 0) {
+			if (test_params.enabled_cores > IPCLITE_TEST_ALL_CORES) {
+				pr_err("Invalid parameter value given to enabled cores\n");
+				test_params.enabled_cores = IPCLITE_TEST_ALL_CORES;
+			}
+			pr_info("Enabled cores set to %d\n", test_params.enabled_cores);
+		}
 		goto exit;
-	} else
-		data->test_params.selected_test_case = param;
+	}
+	init_test_params();
+	test_params.selected_test_case = param;
 
-	switch (data->test_params.selected_test_case) {
+	switch (test_params.selected_test_case) {
 	case PING:
-		ret = parse_param(&temp_buf, &data->test_params.selected_senders);
+		ret = parse_param(&temp_buf, &test_params.selected_senders);
 		if (ret != 0)
 			break;
 		ipclite_test_set_senders();
-		ret = parse_param(&temp_buf, &data->test_params.selected_receivers);
+		ret = parse_param(&temp_buf, &test_params.selected_receivers);
 		if (ret != 0)
 			break;
 		ipclite_test_set_receivers();
-		ret = parse_param(&temp_buf, &data->test_params.num_pings);
+		ret = parse_param(&temp_buf, &test_params.num_pings);
 		if (ret != 0)
 			break;
-		ipclite_test_set_num_pings();
-		ret = parse_param(&temp_buf, &data->test_params.wait);
+		ret = parse_param(&temp_buf, &test_params.wait);
 		if (ret != 0)
 			break;
-		ipclite_test_set_wait();
-		ret = parse_param(&temp_buf, &data->test_params.num_itr);
+		ret = parse_param(&temp_buf, &test_params.num_itr);
 		if (ret != 0)
 			break;
-		ipclite_test_set_num_itr();
-		ret = parse_param(&temp_buf, &data->test_params.num_thread);
+		ret = parse_param(&temp_buf, &test_params.num_thread);
 		if (ret != 0)
 			break;
-		ipclite_test_set_num_threads();
+		if (test_params.num_pings > 200000) {
+			pr_err("Invalid value given to pings\n");
+			test_params.num_pings = 1;
+		}
+		if (test_params.num_thread > IPCLITE_TEST_MAX_THREADS) {
+			pr_err("Invalid value given to num_thread\n");
+			test_params.num_thread = 1;
+		} else if (test_params.num_thread > test_params.num_pings) {
+			pr_err("Invalid num_thread for given number of pings\n");
+			test_params.num_thread = test_params.num_pings;
+		}
+		common_cores = hweight_long(test_params.selected_senders
+								& test_params.selected_receivers);
+		if (test_params.wait * test_params.num_thread * common_cores > 1000) {
+			pr_err("Overall wait value is more then queue size. Setting max.\n");
+			test_params.wait = 1000/(test_params.num_thread * common_cores);
+		} else if (test_params.wait > test_params.num_pings) {
+			pr_err("Invalid value given to wait\n");
+			test_params.wait = 1;
+		}
+		if (test_params.num_itr > 4000) {
+			pr_err("Invalid value given to itr\n");
+			test_params.num_itr = 1;
+		}
+		pr_info("num_pings set to %d\n", test_params.num_pings);
+		pr_info("num_itr set to %d\n", test_params.num_itr);
+		pr_info("wait set to %d\n", test_params.wait);
+		pr_info("num_thread set to %d\n", test_params.num_thread);
 		break;
 	case NEGATIVE:
-		ret = parse_param(&temp_buf, &data->test_params.selected_senders);
+	case HW_MUTEX:
+		ret = parse_param(&temp_buf, &test_params.selected_senders);
 		if (ret != 0)
 			break;
 		ipclite_test_set_senders();
-		ret = parse_param(&temp_buf, &data->test_params.selected_receivers);
+		ret = parse_param(&temp_buf, &test_params.selected_receivers);
 		if (ret != 0)
 			break;
 		ipclite_test_set_receivers();
 		break;
 	case GLOBAL_ATOMIC:
-		ret = parse_param(&temp_buf, &data->test_params.selected_receivers);
+		ret = parse_param(&temp_buf, &test_params.selected_receivers);
 		if (ret != 0)
 			break;
 		ipclite_test_set_receivers();
-		ret = parse_param(&temp_buf, &data->test_params.num_itr);
+		ret = parse_param(&temp_buf, &test_params.num_itr);
 		if (ret != 0)
 			break;
-		ipclite_test_set_num_itr();
+		if (test_params.num_itr > 4000) {
+			pr_err("Invalid value given to itr\n");
+			test_params.num_itr = 1;
+		}
+		pr_info("num_itr set to %d\n", test_params.num_itr);
 		break;
 	case DEBUG:
-		ret = parse_param(&temp_buf, &data->test_params.selected_senders);
+		ret = parse_param(&temp_buf, &test_params.selected_senders);
 		if (ret != 0)
 			break;
 		ipclite_test_set_senders();
 		break;
 	case SSR:
-		ret = parse_param(&temp_buf, &data->test_params.selected_senders);
+		ret = parse_param(&temp_buf, &test_params.selected_senders);
 		if (ret != 0)
 			break;
 		ipclite_test_set_senders();
-		ret = parse_param(&temp_buf, &data->test_params.selected_receivers);
+		ret = parse_param(&temp_buf, &test_params.selected_receivers);
 		if (ret != 0)
 			break;
 		ipclite_test_set_receivers();
-		ret = parse_param(&temp_buf, &data->test_params.num_pings);
+		ret = parse_param(&temp_buf, &test_params.num_pings);
 		if (ret != 0)
 			break;
-		ipclite_test_set_num_pings();
-		break;
-	case HW_MUTEX:
-		ret = parse_param(&temp_buf, &data->test_params.selected_senders);
-		if (ret != 0)
-			break;
-		ipclite_test_set_senders();
-		ret = parse_param(&temp_buf, &data->test_params.selected_receivers);
-		if (ret != 0)
-			break;
-		ipclite_test_set_receivers();
+		if (test_params.num_pings > 20000) {
+			pr_err("Invalid value given to pings\n");
+			test_params.num_pings = 1;
+		}
+		pr_info("num_pings set to %d\n", test_params.num_pings);
 		break;
 	default:
 		pr_err("Wrong input provided\n");
 		goto exit;
 	}
+	param_macro = get_param_macro();
+	ping_all_enabled_cores(param_macro);
 	if (ret == 0)
 		ipclite_test_set_test();
 exit:
@@ -1243,29 +1145,21 @@ exit:
 
 
 
-static int ipclite_test_callback_fn(unsigned int client_id, long long msg,
-					void *data_ptr)
+static int ipclite_test_callback_fn(uint32_t client_id, int64_t msg, void *data)
 {
-	struct ipclite_test_data *data = data_ptr;
-	uint64_t header, parameter_info, test_info, payload_info,
-			start_stop_info, pass_fail_info;
+	uint64_t header, test_info, t_id, payload_info,
+				start_stop_info, pass_fail_info;
 	uint64_t reply_macro;
 	int ret = 0;
 
 	/* Unpack the different bit fields from message value */
 	header = (msg & GENMASK(63, 56))>>56;
-	parameter_info = (msg & GENMASK(55, 48))>>48;
+	//parameter_info = (msg & GENMASK(55, 48))>>48;
 	test_info = (msg & GENMASK(47, 40))>>40;
-	payload_info = (msg & GENMASK(39, 16))>>16;
+	t_id = (msg & GENMASK(39, 36))>>36;
+	payload_info = (msg & GENMASK(35, 16))>>16;
 	start_stop_info = (msg & GENMASK(15, 8))>>8;
 	pass_fail_info = (msg & GENMASK(7, 0));
-
-	if (!data) {
-		pr_err("Callback data pointer not loaded successfully\n");
-		return -EFAULT;
-	}
-
-	data->client_id = client_id;
 
 	if (header != IPCLITE_TEST_HEADER) {
 		pr_err("Corrupted message packed received\n");
@@ -1279,61 +1173,58 @@ static int ipclite_test_callback_fn(unsigned int client_id, long long msg,
 	case NEGATIVE:
 	case DEBUG:
 		if (payload_info == PING_SEND) {
-			reply_macro = get_param_macro(TEST_CASE,
-							test_info,
-							PING_REPLY,
-							0, 0);
-			ipclite_test_msg_send(client_id, reply_macro);
+			reply_macro = get_test_macro(test_info, t_id,
+							PING_REPLY,	0, 0);
+			ret = ipclite_test_msg_send(client_id, reply_macro);
+			if (ret == -EAGAIN)
+				++pingsend_fail;
 			break;
 		}
 		if (payload_info == PING_REPLY) {
-			ping_receive(data);
+			if (test_info == PING)
+				ping_receive(&th_arr[t_id], client_id);
 			break;
 		}
 		if (pass_fail_info == IPCLITE_TEST_PASS)
 			pr_info("Test passed on core %s\n", core_name[client_id]);
 		else if (pass_fail_info == IPCLITE_TEST_FAIL)
-			pr_info("Test failed on core %s\n", core_name[client_id]);
+			pr_err("Test failed on core %s\n", core_name[client_id]);
 		if (start_stop_info == IPCLITE_TEST_STOP) {
+			if (test_params.selected_test_case == SSR) {
+				wakeup_check.run = true;
+				wake_up_interruptible(&wakeup_check.wq);
+				break;
+			}
 			++cores_completed;
-			if (cores_completed == data->test_params.num_senders)
-				pr_info("Test completed on all cores\n");
-			if (is_selected_sender(IPCMEM_APPS))
-				wake_up_interruptible(&core_wq);
-			else
-				complete(&test_done);
+			if (cores_completed == test_params.num_senders)
+				wake_up_interruptible(&m_thread.wq);
 		}
 		break;
 	case HW_MUTEX:
 		if (start_stop_info == IPCLITE_TEST_START) {
 			ret = ipclite_hw_mutex_release();
 			if (ret == 0)
-				*((int *)data->global_memory->virt_base) = IPCMEM_APPS;
-			reply_macro = get_param_macro(TEST_CASE,
-							test_info,
-							HW_MUTEX_RELEASE,
+				*((int *)global_memory.virt_base) = IPCMEM_APPS;
+			reply_macro = get_test_macro(test_info, 0, HW_MUTEX_RELEASE,
 							IPCLITE_TEST_STOP, 0);
 			ipclite_test_msg_send(client_id, reply_macro);
-
 		}
 		if (pass_fail_info == IPCLITE_TEST_PASS)
 			pr_info("HW Unlock Test passed on core %s\n",
 					core_name[client_id]);
 		else if (pass_fail_info == IPCLITE_TEST_FAIL)
-			pr_info("HW Unlock Test failed on core %s\n",
+			pr_err("HW Unlock Test failed on core %s\n",
 					core_name[client_id]);
-		if (start_stop_info == IPCLITE_TEST_STOP)
-			complete(&test_done);
+		if (start_stop_info == IPCLITE_TEST_STOP) {
+			m_thread.run = true;
+			if (!is_selected_sender(IPCMEM_APPS))
+				wake_up_interruptible(&m_thread.wq);
+		}
 		break;
 	case SSR:
 		if (payload_info == PING_SEND) {
-			reply_macro = get_param_macro(TEST_CASE,
-							test_info,
-							PING_REPLY,
-							0, 0);
-			data->pings_received[client_id]++;
-			ipclite_test_msg_send(client_id, reply_macro);
-			if (data->pings_received[client_id] == data->test_params.num_pings) {
+			m_thread.pings_received[client_id]++;
+			if (m_thread.pings_received[client_id] == test_params.num_pings) {
 				pr_info("Waking up ssr_wakeup_check_thread.\n");
 				pr_info("Signaling other cores to make sure there is no other crash\n");
 				wakeup_check.run = true;
@@ -1341,30 +1232,32 @@ static int ipclite_test_callback_fn(unsigned int client_id, long long msg,
 				bg_pings.run = true;
 				wake_up_interruptible(&bg_pings.wq);
 			}
+			break;
 		}
 		if (payload_info == SSR_WAKEUP) {
 			if (start_stop_info == IPCLITE_TEST_STOP) {
-				ssr_complete = true;
+				wakeup_check.run = true;
 				pr_info("%s wakeup completed\n",
 						core_name[client_id]);
-				wake_up_interruptible(&ssr_wq);
+				wake_up_interruptible(&wakeup_check.wq);
 			}
+			break;
 		}
-		if (pass_fail_info == IPCLITE_TEST_PASS)
-			pr_info("Test %llu passed on core %s\n",
-						test_info, core_name[client_id]);
-		else if (pass_fail_info == IPCLITE_TEST_FAIL)
-			pr_info("Test %llu failed on core %s\n",
-					test_info, core_name[client_id]);
+		if (payload_info == PING_REPLY) {
+			bg_pings.run = true;
+			wake_up_interruptible(&bg_pings.wq);
+		}
 		break;
 	case GLOBAL_ATOMIC:
-		if (start_stop_info == IPCLITE_TEST_STOP) {
-			pr_debug("%s completed Global Atomics Test.\n",
-						core_name[client_id]);
-			if (payload_info == GLOBAL_ATOMICS_SET_CLR)
+		if (payload_info == GLOBAL_ATOMICS_SET_CLR) {
+			if (pass_fail_info == IPCLITE_TEST_PASS) {
 				threads_completed++;
-			else
-				threads_completed += 2;
+				wake_up_interruptible(&thread_wq);
+			} else
+				pr_err("%s Global Atomics test failed\n",
+									core_name[client_id]);
+		} else {
+			threads_completed += 2;
 			wake_up_interruptible(&thread_wq);
 		}
 		break;
@@ -1402,23 +1295,13 @@ static int __init ipclite_test_init(void)
 {
 	int ret = 0;
 
-	data = kzalloc(sizeof(*data), GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
-	data->global_memory = kzalloc(sizeof(*(data->global_memory)),
-						GFP_KERNEL);
-	if (!data->global_memory) {
-		kfree(data);
-		data = NULL;
-		return -ENOMEM;
-	}
-	ret = get_global_partition_info(data->global_memory);
+	ret = get_global_partition_info(&global_memory);
 	if (ret != 0) {
 		pr_err("Unable to load global partition information\n");
 		goto bail;
 	}
 
-	ret = ipclite_register_test_client(ipclite_test_callback_fn, data);
+	ret = ipclite_register_test_client(ipclite_test_callback_fn, NULL);
 	if (ret != 0) {
 		pr_err("Could not register client\n");
 		goto bail;
@@ -1430,12 +1313,8 @@ static int __init ipclite_test_init(void)
 		goto bail;
 	}
 
-	init_test_params();
-	return 0;
+	test_params.enabled_cores = IPCLITE_TEST_ALL_CORES;
 bail:
-	kfree(data->global_memory);
-	kfree(data);
-	data = NULL;
 	return ret;
 }
 
@@ -1444,9 +1323,6 @@ static void __exit ipclite_test_exit(void)
 	pr_info("Removing IPCLite Test Module\n");
 	sysfs_remove_file(sysfs_dir, &ipclite_test_params.attr);
 	kobject_put(sysfs_dir);
-	kfree(data->global_memory);
-	kfree(data);
-	data = NULL;
 }
 
 module_init(ipclite_test_init);
