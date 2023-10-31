@@ -1699,7 +1699,7 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 								slv_id, bank));
 			}
 			if (port_req->req_ch_rate != port_req->ch_rate) {
-				pr_err("requested sample rate is fractional");
+				pr_dbg("requested sample rate is fractional");
 				if (mport->dir == 0) {
 					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 					val[len++] =
@@ -1720,16 +1720,26 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 				val[len++] = SWR_REG_VAL_PACK(4,
 							port_req->dev_num, get_cmd_id(swrm),
 							SWRS_DPn_FEATURE_EN(port_req->slave_port_id));
+
 				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 				val[len++] = SWR_REG_VAL_PACK(1,
 							port_req->dev_num, get_cmd_id(swrm),
 							SWRS_DPn_FLOW_CTRL_N_REPEAT_PERIOD(
 								port_req->slave_port_id));
+
 				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 				val[len++] = SWR_REG_VAL_PACK(1,
 							port_req->dev_num, get_cmd_id(swrm),
 							SWRS_DPn_FLOW_CTRL_M_VALID_SAMPLE(
 								port_req->slave_port_id));
+			} else {
+				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+				val[len++] = SWR_REG_VAL_PACK(0, port_req->dev_num, get_cmd_id(swrm),
+							SWRS_DP_PORT_CONTROL(slv_id));
+
+				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+				val[len++] = SWR_REG_VAL_PACK(0, port_req->dev_num, get_cmd_id(swrm),
+							SWRS_DPn_FEATURE_EN(port_req->slave_port_id));
 			}
 
 			port_req->ch_en = port_req->req_ch;
