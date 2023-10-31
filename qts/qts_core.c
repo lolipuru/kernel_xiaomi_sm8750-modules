@@ -462,6 +462,9 @@ static void qts_trusted_touch_tvm_vm_mode_enable(struct qts_data *qts_data)
 	pr_debug("irq:returned from accept:%d\n", irq);
 	qts_data->irq = irq;
 
+	if (qts_data->vendor_ops.set_irq_num)
+		qts_data->vendor_ops.set_irq_num(qts_data->vendor_data, qts_data->irq);
+
 	rc = qts_vm_handle_vm_hardware(qts_data);
 	if (rc) {
 		pr_err("Delayed probe failure on TVM!\n");

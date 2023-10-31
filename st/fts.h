@@ -241,8 +241,7 @@ typedef void (*event_dispatch_handler_t)
   * - attrs           SysFS attributes \n
   * - mode            Device operating mode (bitmask) \n
   * - touch_id        Bitmask for touch id (mapped to input slots) \n
-  * - stylus_id       Bitmask for tracking the stylus touches (mapped using the
-  * touchId) \n
+  * - stylus_id       Bitmask for tracking the stylus touches (mapped using the touchId) \n
   * - timer           Timer when operating in polling mode \n
   * - power           Power on/off routine \n
   * - board           HW info retrieved from device tree \n
@@ -255,8 +254,7 @@ typedef void (*event_dispatch_handler_t)
   * - sensor_sleep    true suspend was called, false resume was called \n
   * - wakesrc         Wakeup Source struct \n
   * - input_report_mutex  mutex for handling the pressure of keys \n
-  * - series_of_switches  to store the enabling status of a particular feature
-  * from the host \n
+  * - series_of_switches  to store the enabling status of a particular feature from the host \n
   * - ready           Touch ready indicator \n
   * - bus_type        Indicate touch bus type \n
   * - irq             saved touch irq number \n
@@ -335,6 +333,8 @@ struct fts_ts_info {
 				 * when allowed */
 	int grip_enabled;	/* /< if set, the grip mode mode will be enabled
 				 * when allowed */
+	bool qts_en;	/* /< indicate whether qts is enabled or not */
+	struct mutex tui_transition_lock;	/* /< mutex for trusted input operation */
 
 	bool ready;	/* /< indicate whether probe finished and touch is ready */
 	u16 bus_type;	/* /< bus interface used for touch IC */

@@ -79,6 +79,7 @@
 #include "fts_lib/ftsTime.h"
 #include "fts_lib/ftsTool.h"
 
+#include "../qts/qts_core_common.h"
 
 
 /**
@@ -2854,6 +2855,10 @@ int fts_fw_update(struct fts_ts_info *info)
 	int keep_cx = 0;
 #endif
 
+#ifdef CONFIG_ARCH_QTI_VM
+	goto skip_to_init_sensing;
+#endif
+
 
 	logError(1, "%s Fw Auto Update is starting...\n", tag);
 
@@ -2981,6 +2986,10 @@ int fts_fw_update(struct fts_ts_info *info)
 				 __func__, error);
 	}
 
+#ifdef CONFIG_ARCH_QTI_VM
+skip_to_init_sensing:
+#endif
+
 	error = fts_init_sensing(info);
 	if (error < OK)
 		logError(1,
@@ -3104,6 +3113,7 @@ static int fts_interrupt_install(struct fts_ts_info *info)
 	install_handler(info, STATUS_UPDATE, status);
 	install_handler(info, USER_REPORT, user_report);
 
+#ifndef CONFIG_ARCH_QTI_VM
 	/* disable interrupts in any case */
 	error = fts_disableInterrupt();
 
@@ -3114,6 +3124,7 @@ static int fts_interrupt_install(struct fts_ts_info *info)
 		kfree(info->event_dispatch_table);
 		error = -EBUSY;
 	}
+#endif
 
 	return error;
 }
@@ -3347,15 +3358,22 @@ static int fts_init_sensing(struct fts_ts_info *info)
 {
 	int error = 0;
 
+#ifndef CONFIG_ARCH_QTI_VM
 #if defined(CONFIG_DRM)
 	if (active_panel)
 		error |= st_register_for_panel_events(info->dev->of_node, info);
 #elif defined(CONFIG_FB)
 	error |= fb_register_client(&info->fb_notifier); /* register the suspend/resume function */
 #endif
+#endif
+
 	error |= fts_interrupt_install(info);	/* register event handler */
+
+#ifndef CONFIG_ARCH_QTI_VM
 	error |= fts_mode_handler(info, 0);	/* enable the features and
 						 * sensing */
+#endif
+
 	/* error |= fts_enableInterrupt(); */	/* enable the interrupt */
 	error |= fts_resetDisableIrqCount();
 
@@ -3928,10 +3946,17 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	const char *name;
 	struct device_node *np = dev->of_node;
 
+#ifndef CONFIG_ARCH_QTI_VM
 	bdata->irq_gpio = of_get_named_gpio(np, "st,irq-gpio", 0);
 
 	logError(0, "%s irq_gpio = %d\n", tag, bdata->irq_gpio);
 
+	if (of_property_read_bool(np, "st,reset-gpio")) {
+		bdata->reset_gpio = of_get_named_gpio(np, "st,reset-gpio", 0);
+		logError(0, "%s reset_gpio =%d\n", tag, bdata->reset_gpio);
+	} else
+		bdata->reset_gpio = GPIO_NOT_DEFINED;
+#endif
 
 	retval = of_property_read_string(np, "st,regulator_dvdd", &name);
 	if (retval == -EINVAL)
@@ -3952,12 +3977,6 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 		bdata->avdd_reg_name = name;
 		logError(0, "%s bus_reg_name = %s\n", tag, name);
 	}
-
-	if (of_property_read_bool(np, "st,reset-gpio")) {
-		bdata->reset_gpio = of_get_named_gpio(np, "st,reset-gpio", 0);
-		logError(0, "%s reset_gpio =%d\n", tag, bdata->reset_gpio);
-	} else
-		bdata->reset_gpio = GPIO_NOT_DEFINED;
 
 	return OK;
 }
@@ -4035,6 +4054,167 @@ out:
 }
 #endif
 
+static int st_ts_suspend_helper(void *data)
+{
+	struct fts_ts_info *info = data;
+
+	if (!info || !info->ready)
+		return 0;
+
+	queue_work(info->event_wq, &info->suspend_work);
+
+	return 0;
+}
+
+static int st_ts_resume_helper(void *data)
+{
+	struct fts_ts_info *info = data;
+
+	if (!info || !info->ready)
+		return 0;
+
+	queue_work(info->event_wq, &info->resume_work);
+
+	return 0;
+}
+
+static int st_ts_enable_touch_irq(void *data, bool enable)
+{
+	int ret = 0;
+
+	if (enable)
+		ret = fts_enableInterrupt();
+	else
+		ret = fts_disableInterrupt();
+
+	return ret;
+}
+
+static int st_ts_pre_la_tui_enable(void *data)
+{
+	struct fts_ts_info *info = data;
+
+	mutex_lock(&info->tui_transition_lock);
+
+	return 0;
+}
+
+static int st_ts_post_la_tui_enable(void *data)
+{
+	struct fts_ts_info *info = data;
+
+	release_all_touches(info);
+	mutex_unlock(&info->tui_transition_lock);
+	return 0;
+}
+
+static int st_ts_post_le_tui_enable(void *data)
+{
+	int error;
+	u8 readData[3];
+
+	logError(1, "%s Reading chip id\n", tag);
+	error = fts_writeReadU8UX(FTS_CMD_HW_REG_R, ADDR_SIZE_HW_REG,
+					    ADDR_DCHIP_ID, readData, 2, DUMMY_FIFO);
+	logError(1, "%s chip id: %02X %02X!\n", tag, readData[0], readData[1]);
+
+	if ((readData[0] != DCHIP_ID_0) || (readData[1] != DCHIP_ID_1)) {
+		logError(1, "%s wrong chip id detected!\n", tag);
+		return ERROR_OP_NOT_ALLOW;
+	}
+
+	logError(1, "%s chip id read successful!\n", tag);
+
+	return 0;
+}
+
+static int st_ts_post_le_tui_disable(void *data)
+{
+	struct fts_ts_info *info = data;
+
+	release_all_touches(info);
+	return 0;
+}
+
+static int st_ts_get_irq_num(void *data)
+{
+	struct fts_ts_info *info = data;
+
+	return info->irq;
+}
+
+static int st_ts_set_irq_num(void *data, int irq)
+{
+	struct fts_ts_info *info = data;
+
+	info->irq = irq;
+
+	return 0;
+}
+
+static irqreturn_t st_irq_handler(int irq, void *data)
+{
+	struct fts_ts_info *info = data;
+
+	if (!mutex_trylock(&info->tui_transition_lock))
+		return IRQ_HANDLED;
+
+	fts_interrupt_handler(irq, data);
+
+	mutex_unlock(&info->tui_transition_lock);
+
+	return IRQ_HANDLED;
+}
+
+static void st_ts_fill_qts_vendor_data(struct qts_vendor_data *qts_vendor_data,
+		 struct fts_ts_info *info)
+{
+	struct device_node *node;
+	const char *touch_type;
+	int rc = 0;
+
+	node = info->dev->of_node;
+
+	rc = of_property_read_string(node, "st,touch-type", &touch_type);
+	if (rc) {
+		logError(1, "%s %s: No touch type\n", tag, __func__);
+		return;
+	}
+
+	if (!strcmp(touch_type, "primary"))
+		qts_vendor_data->client_type = QTS_CLIENT_PRIMARY_TOUCH;
+	else
+		qts_vendor_data->client_type = QTS_CLIENT_SECONDARY_TOUCH;
+
+	if (info->bus_type == BUS_I2C) {
+		qts_vendor_data->client = info->i2c_client;
+		qts_vendor_data->spi = NULL;
+		qts_vendor_data->bus_type = QTS_BUS_TYPE_I2C;
+	} else {
+		qts_vendor_data->client = NULL;
+		qts_vendor_data->spi = info->spi_client;
+		qts_vendor_data->bus_type = QTS_BUS_TYPE_SPI;
+	}
+
+	qts_vendor_data->vendor_data = info;
+	qts_vendor_data->schedule_suspend = false;
+	qts_vendor_data->schedule_resume = false;
+	qts_vendor_data->qts_vendor_ops.suspend = st_ts_suspend_helper;
+	qts_vendor_data->qts_vendor_ops.resume = st_ts_resume_helper;
+	qts_vendor_data->qts_vendor_ops.enable_touch_irq = st_ts_enable_touch_irq;
+	qts_vendor_data->qts_vendor_ops.get_irq_num = st_ts_get_irq_num;
+	qts_vendor_data->qts_vendor_ops.set_irq_num = st_ts_set_irq_num;
+	qts_vendor_data->qts_vendor_ops.pre_la_tui_enable = st_ts_pre_la_tui_enable;
+	qts_vendor_data->qts_vendor_ops.post_la_tui_enable = st_ts_post_la_tui_enable;
+	qts_vendor_data->qts_vendor_ops.pre_la_tui_disable = NULL;
+	qts_vendor_data->qts_vendor_ops.post_la_tui_disable = NULL;
+	qts_vendor_data->qts_vendor_ops.pre_le_tui_enable = NULL;
+	qts_vendor_data->qts_vendor_ops.post_le_tui_enable = st_ts_post_le_tui_enable;
+	qts_vendor_data->qts_vendor_ops.pre_le_tui_disable = NULL;
+	qts_vendor_data->qts_vendor_ops.post_le_tui_disable = st_ts_post_le_tui_disable;
+	qts_vendor_data->qts_vendor_ops.irq_handler = st_irq_handler;
+}
+
 /**
   * Probe function, called when the driver it is matched with a device with the
   *same name compatible name
@@ -4050,6 +4230,8 @@ static int st_fts_probe_entry(struct fts_ts_info *info)
 	struct device_node *dp = info->dev->of_node;
 	int retval;
 	int skip_5_1 = 0;
+	struct qts_vendor_data qts_vendor_data;
+	bool qts_en = false;
 
 	logError(1, "%s %s: driver probe begin!\n", tag, __func__);
 
@@ -4066,6 +4248,10 @@ static int st_fts_probe_entry(struct fts_ts_info *info)
 		}
 		parse_dt(info->dev, info->board);
 	}
+
+#ifdef CONFIG_ARCH_QTI_VM
+	goto skip_to_power_gpio_setup;
+#endif
 
 	logError(1, "%s SET Regulators:\n", tag);
 	retval = fts_get_reg(info, true);
@@ -4091,9 +4277,25 @@ static int st_fts_probe_entry(struct fts_ts_info *info)
 	}
 	info->irq = gpio_to_irq(info->board->irq_gpio);
 
+#ifdef CONFIG_ARCH_QTI_VM
+skip_to_power_gpio_setup:
+#endif
 	logError(1, "%s SET Event Handler:\n", tag);
 
 	info->wakesrc = wakeup_source_register(info->dev, "fts_tp");
+
+	qts_en = of_property_read_bool(dp, "st,qts_en");
+	if (qts_en) {
+		mutex_init(&info->tui_transition_lock);
+		st_ts_fill_qts_vendor_data(&qts_vendor_data, info);
+
+		retval = qts_client_register(qts_vendor_data);
+		if (retval) {
+			pr_err("qts client register failed, rc %d\n", retval);
+			goto ProbeErrorExit_4;
+		}
+		info->qts_en = qts_en;
+	}
 
 	info->event_wq = alloc_workqueue("fts-event-queue", WQ_UNBOUND |
 					 WQ_HIGHPRI | WQ_CPU_INTENSIVE, 1);
@@ -4222,6 +4424,11 @@ static int st_fts_probe_entry(struct fts_ts_info *info)
 
 	logError(1, "%s Init Core Lib:\n", tag);
 	initCore(info);
+
+#ifdef CONFIG_ARCH_QTI_VM
+	goto skip_to_fw_update;
+#endif
+
 	/* init hardware device */
 	logError(1, "%s Device Initialization:\n", tag);
 	error = fts_init(info);
@@ -4231,6 +4438,10 @@ static int st_fts_probe_entry(struct fts_ts_info *info)
 		error = -ENODEV;
 		goto ProbeErrorExit_6;
 	}
+
+#ifdef CONFIG_ARCH_QTI_VM
+skip_to_fw_update:
+#endif
 
 #if defined(FW_UPDATE_ON_PROBE) && defined(FW_H_FILE)
 	logError(1, "%s FW Update and Sensing Initialization:\n", tag);
@@ -4302,11 +4513,14 @@ ProbeErrorExit_5:
 ProbeErrorExit_4:
 	/* destroy_workqueue(info->fwu_workqueue); */
 	wakeup_source_unregister(info->wakesrc);
-
+#ifndef CONFIG_ARCH_QTI_VM
 	fts_enable_reg(info, false);
+#endif
 
 ProbeErrorExit_2:
+#ifndef CONFIG_ARCH_QTI_VM
 	fts_get_reg(info, false);
+#endif
 
 ProbeErrorExit_1:
 	kfree(info);
