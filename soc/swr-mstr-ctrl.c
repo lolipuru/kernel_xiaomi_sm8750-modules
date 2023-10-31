@@ -833,8 +833,8 @@ static int swrm_pcm_port_config(struct swr_mstr_ctrl *swrm, u8 port_num,
 	u32 reg_val = 0;
 	u8 stream_type = mport->stream_type;
 	bool dir = mport->dir;
-	u32 flow_mode = (dir) ? SWRM_DP_PORT_CONTROL__FLOW_MODE_PUSH :
-			SWRM_DP_PORT_CONTROL__FLOW_MODE_PULL;
+	u32 flow_mode = (dir) ? SWRM_DP_PORT_CONTROL__FLOW_MODE_PULL :
+			SWRM_DP_PORT_CONTROL__FLOW_MODE_PUSH;
 
 	if (!port_num || port_num > SWR_MSTR_PORT_LEN) {
 		dev_err_ratelimited(swrm->dev, "%s: invalid port: %d\n",
@@ -1523,7 +1523,10 @@ static void swrm_get_device_frame_shape(struct swr_mstr_ctrl *swrm,
 	} else if (swrm->master_id == MASTER_ID_BT) {
 		port_req->sinterval =
 				((swrm->bus_clk * 2) / port_req->ch_rate) - 1;
-		port_req->offset1 = 0;
+		if (mport->dir == 0)
+			port_req->offset1 = 0;
+		else
+			port_req->offset1 = 0x10;
 		port_req->offset2 = 0x00;
 		port_req->hstart = 1;
 		port_req->hstop = 0xF;
@@ -1695,6 +1698,40 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 						SWRS_DP_LANE_CONTROL_BANK(
 								slv_id, bank));
 			}
+			if (port_req->req_ch_rate != port_req->ch_rate) {
+				pr_err("requested sample rate is fractional");
+				if (mport->dir == 0) {
+					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+					val[len++] =
+						SWR_REG_VAL_PACK(1,
+							port_req->dev_num, get_cmd_id(swrm),
+							SWRS_DP_PORT_CONTROL(
+								slv_id));
+				} else if (mport->dir == 1) {
+					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+					val[len++] =
+						SWR_REG_VAL_PACK(2,
+							port_req->dev_num, get_cmd_id(swrm),
+							SWRS_DP_PORT_CONTROL(
+								slv_id));
+				}
+
+				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+				val[len++] = SWR_REG_VAL_PACK(4,
+							port_req->dev_num, get_cmd_id(swrm),
+							SWRS_DPn_FEATURE_EN(port_req->slave_port_id));
+				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+				val[len++] = SWR_REG_VAL_PACK(1,
+							port_req->dev_num, get_cmd_id(swrm),
+							SWRS_DPn_FLOW_CTRL_N_REPEAT_PERIOD(
+								port_req->slave_port_id));
+				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+				val[len++] = SWR_REG_VAL_PACK(1,
+							port_req->dev_num, get_cmd_id(swrm),
+							SWRS_DPn_FLOW_CTRL_M_VALID_SAMPLE(
+								port_req->slave_port_id));
+			}
+
 			port_req->ch_en = port_req->req_ch;
 			dev_offset[port_req->dev_num] = port_req->offset1;
 		}
@@ -3087,7 +3124,10 @@ static int swrm_probe(struct platform_device *pdev)
 
 		if (swrm->master_id == MASTER_ID_TX || swrm->master_id == MASTER_ID_BT) {
 			swrm->mport_cfg[i].sinterval = 0xFFFF;
-			swrm->mport_cfg[i].offset1 = 0x00;
+			if (swrm->master_id == MASTER_ID_BT && i > 3)
+				swrm->mport_cfg[i].offset1 = 0x10;
+			else
+				swrm->mport_cfg[i].offset1 = 0x00;
 			swrm->mport_cfg[i].offset2 = 0x00;
 			swrm->mport_cfg[i].hstart = 0xFF;
 			swrm->mport_cfg[i].hstop = 0xFF;
@@ -3095,7 +3135,10 @@ static int swrm_probe(struct platform_device *pdev)
 			swrm->mport_cfg[i].blk_grp_count = 0xFF;
 			swrm->mport_cfg[i].word_length = 0xFF;
 			swrm->mport_cfg[i].lane_ctrl = 0x00;
-			swrm->mport_cfg[i].dir = 0x00;
+			if (swrm->master_id == MASTER_ID_BT && i > 3)
+				swrm->mport_cfg[i].dir = 0x01;
+			else
+				swrm->mport_cfg[i].dir = 0x00;
 			swrm->mport_cfg[i].stream_type =
 				(swrm->master_id == MASTER_ID_TX) ? 0x00 : 0x01;
 		}
