@@ -85,6 +85,7 @@
 #define AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME   "audio_pdr_adsprpc"
 #define AUDIO_PDR_ADSP_SERVICE_NAME              "avs/audio"
 #define ADSP_AUDIOPD_NAME                        "msm/adsp/audio_pd"
+#define AUDIOPD_NAME                             "audiopd"
 
 #define SENSORS_PDR_ADSP_DTSI_PROPERTY_NAME        "qcom,fastrpc-adsp-sensors-pdr"
 #define SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME   "sensors_pdr_adsprpc"
@@ -95,6 +96,12 @@
 #define SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME "sensors_pdr_sdsprpc"
 #define SENSORS_PDR_SLPI_SERVICE_NAME            SENSORS_PDR_ADSP_SERVICE_NAME
 #define SLPI_SENSORPD_NAME                       "msm/slpi/sensor_pd"
+
+#define OIS_PDR_ADSP_DTSI_PROPERTY_NAME        "qcom,fastrpc-adsp-ois-pdr"
+#define OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME   "ois_pdr_adsprpc"
+#define OIS_PDR_ADSP_SERVICE_NAME              "msm/adsp/ois_pd"
+#define ADSP_OISPD_NAME                        OIS_PDR_ADSP_SERVICE_NAME
+#define OISPD_NAME                             "oispd"
 
 #define FASTRPC_SECURE_WAKE_SOURCE_CLIENT_NAME		"adsprpc-secure"
 #define FASTRPC_NON_SECURE_WAKE_SOURCE_CLIENT_NAME	"adsprpc-non_secure"
@@ -356,7 +363,13 @@ static struct fastrpc_channel_ctx gcinfo[NUM_CHANNELS] = {
 				SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME,
 				.spdname = ADSP_SENSORPD_NAME,
 				.cid = ADSP_DOMAIN_ID,
-			}
+			},
+			{
+				.servloc_name =
+				OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME,
+				.spdname = ADSP_OISPD_NAME,
+				.cid = ADSP_DOMAIN_ID,
+			},
 		},
 		.cpuinfo_todsp = FASTRPC_CPUINFO_DEFAULT,
 		.cpuinfo_status = false,
@@ -3273,6 +3286,8 @@ int fastrpc_internal_invoke(struct fastrpc_file *fl, uint32_t mode,
 			SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME);
 		err |= fastrpc_check_pd_status(fl,
 			SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME);
+		err |= fastrpc_check_pd_status(fl,
+			OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME);
 		if (err)
 			goto bail;
 	}
@@ -4168,6 +4183,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_file *fl,
 		unsigned int pageslen;
 	} inbuf;
 	unsigned long irq_flags = 0;
+	bool is_oispd = false;
 
 	if (fl->dev_minor == MINOR_NUM_DEV) {
 		err = -ECONNREFUSED;
@@ -4205,6 +4221,8 @@ static int fastrpc_init_create_static_process(struct fastrpc_file *fl,
 	inbuf.namelen = init->filelen;
 	inbuf.pageslen = 0;
 
+	is_oispd = !strncmp(proc_name, OISPD_NAME, strlen(OISPD_NAME));
+
 	if (!strcmp(proc_name, "audiopd")) {
 		/*
 		 * Remove any previous mappings in case process is trying
@@ -4213,14 +4231,20 @@ static int fastrpc_init_create_static_process(struct fastrpc_file *fl,
 		err = fastrpc_mmap_remove_pdr(fl);
 		if (err)
 			goto bail;
-	} else {
+	} else if (!is_oispd) {
+		/*
+		 * If any other PD name apart from audio and OIS PD is passed,
+		 * then set error and goto bail.
+		 */
 		ADSPRPC_ERR(
 			"Create static process is failed for proc_name %s",
 			proc_name);
+		err = -EBADR;
 		goto bail;
 	}
 
-	if ((!me->staticpd_flags && !me->legacy_remote_heap)) {
+	// Remote heap not supported for oispd
+	if ((!me->staticpd_flags && !me->legacy_remote_heap && !is_oispd)) {
 		inbuf.pageslen = 1;
 		if (!fastrpc_get_persistent_map(init->memlen, &mem)) {
 			mutex_lock(&fl->map_mutex);
@@ -4367,8 +4391,10 @@ static void fastrpc_set_servloc(struct fastrpc_file *fl,
 			err = -EFAULT;
 			goto bail;
 		}
-		if (!strcmp(proc_name, "audiopd"))
+		if (!strncmp(proc_name, AUDIOPD_NAME, strlen(AUDIOPD_NAME)))
 			fl->servloc_name = AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME;
+		else if (!strncmp(proc_name, OISPD_NAME, strlen(OISPD_NAME)))
+			fl->servloc_name = OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME;
 	}
 bail:
 	kfree(proc_name);
@@ -7774,7 +7800,9 @@ static void fastrpc_pdr_cb(int state, char *service_path, void *priv)
 		atomic_set(&spd->ispdup, 0);
 		mutex_unlock(&me->channel[spd->cid].smd_mutex);
 		if (!strcmp(spd->servloc_name,
-				AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME)) {
+				AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME) ||
+			!strcmp(spd->servloc_name,
+				OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME)) {
 			me->staticpd_flags = 0;
 			atomic_set(&spd->is_attach, 0);
 		}
@@ -8276,6 +8304,11 @@ static int fastrpc_probe(struct platform_device *pdev)
 	err = fastrpc_setup_service_locator(dev, SENSORS_PDR_SLPI_DTSI_PROPERTY_NAME,
 		SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME,
 		SENSORS_PDR_SLPI_SERVICE_NAME, SLPI_SENSORPD_NAME);
+
+	err = fastrpc_setup_service_locator(dev, OIS_PDR_ADSP_DTSI_PROPERTY_NAME,
+		OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME,
+		OIS_PDR_ADSP_SERVICE_NAME, ADSP_OISPD_NAME);
+
 	if (err)
 		goto bail;
 
