@@ -27,13 +27,15 @@ PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/swr_dmic_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/lpass_cdc_rx_macro_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/lpass_cdc_tx_macro_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/lpass_cdc_dlkm.ko \
-	$(KERNEL_MODULES_OUT)/lpass_bt_swr_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wsa884x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wsa883x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd938x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd938x_slave_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd939x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd939x_slave_dlkm.ko
+endif
+ifeq ($(call is-board-platform-in-list,sun), true)
+PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/lpass_bt_swr_dlkm.ko
 endif
 ifeq ($(call is-board-platform-in-list,bengal holi blair), true)
 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/bolero_cdc_dlkm.ko \
