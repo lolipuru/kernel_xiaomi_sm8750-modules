@@ -1,6 +1,10 @@
 /* Copyright (c) 2011-2017, 2019-2021 The Linux Foundation. All rights reserved.
  * Copyright (c) 2018, Linaro Limited
+<<<<<<< HEAD   (6fe11a Merge "soc: swr-mstr: update configuration for bt swr slave )
  * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+=======
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+>>>>>>> CHANGE (378a3e dsp : Update timeout for spf_apm_ready_check)
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -95,6 +99,11 @@ int gpr_send_pkt(struct gpr_device *adev, struct gpr_pkt *pkt)
 	uint32_t pkt_size;
 	int ret;
 
+	if (gpr_get_q6_state() == GPR_SUBSYS_DOWN) {
+		pr_err_ratelimited("%s: q6 state is down\n", __func__);
+		return -EINVAL;
+	}
+
 	if(!adev)
 	{
 		pr_err_ratelimited("%s: enter pointer adev[%pK] \n", __func__, adev);
@@ -118,13 +127,11 @@ int gpr_send_pkt(struct gpr_device *adev, struct gpr_pkt *pkt)
 
 	if ((adev->domain_id == GPR_DOMAIN_ADSP) &&
 	    (gpr_get_q6_state() != GPR_SUBSYS_LOADED)) {
-		dev_err_ratelimited(gpr->dev, "%s: domain_id[%d], Still Dsp is not Up\n",
-			__func__, adev->domain_id);
+		dev_err_ratelimited(gpr->dev, "%s: Still Dsp is not Up\n", __func__);
 		return -ENETRESET;
-		} else if ((adev->domain_id == GPR_DOMAIN_MODEM) &&
+	} else if ((adev->domain_id == GPR_DOMAIN_MODEM) &&
 		   (gpr_get_modem_state() == GPR_SUBSYS_DOWN)) {
-		dev_err_ratelimited(gpr->dev, "%s: domain_id[%d], Still Modem is not Up\n",
-			__func__, adev->domain_id );
+		dev_err_ratelimited(gpr->dev, "%s: Still Modem is not Up\n", __func__);
 		return -ENETRESET;
 	}
 
