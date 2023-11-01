@@ -37,9 +37,9 @@ register_eva_module(
        "TARGET_SYNX_ENABLE": [
           "//vendor/qcom/opensource/synx-kernel:synx_headers",
            "//vendor/qcom/opensource/synx-kernel:%b_modules"
-        ]
-    #    "TARGET_DSP_ENABLE": [
-    #         "//vendor/qcom/opensource/dsp-kernel:%b_frpc-adsprpc"
-    #    ],
+        ],
+        "TARGET_DSP_ENABLE": [
+             "//vendor/qcom/opensource/dsp-kernel:%b_frpc-adsprpc"
+        ],
     },
 )

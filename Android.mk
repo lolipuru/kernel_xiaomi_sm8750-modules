@@ -42,7 +42,7 @@ KBUILD_REQUIRED_KOS += synx-driver.ko
 endif
 
 # Setup fastRPC dependency
-CONFIG_FASTRPC := n
+CONFIG_FASTRPC := y
 ifeq ($(CONFIG_FASTRPC), y)
 $(warning Compiling FastRPC)
 LOCAL_REQUIRED_MODULES    += dsp-module-symvers
