@@ -1581,6 +1581,19 @@ static inline void sde_rotator_smmu_driver_unregister(void)
 }
 #endif /* CONFIG_MSM_SDE_ROTATOR */
 
+#if IS_ENABLED(CONFIG_DRM_MSM_LEASE)
+void __init msm_lease_drm_register(void);
+void __exit msm_lease_drm_unregister(void);
+#else
+static inline void __init msm_lease_drm_register(void)
+{
+}
+
+static inline void __exit msm_lease_drm_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_MSM_LEASE */
+
 struct clk *msm_clk_get(struct platform_device *pdev, const char *name);
 int msm_clk_bulk_get(struct device *dev, struct clk_bulk_data **bulk);
 
