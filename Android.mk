@@ -38,7 +38,8 @@ LOCAL_MODULE_DDK_BUILD    := true
 LOCAL_MODULE_KO_DIRS      := msm_video/msm_video.ko
 
 LOCAL_REQUIRED_MODULES    := mmrm-module-symvers
-LOCAL_ADDITIONAL_DEPENDENCIES := $(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
+# TODO Enable MMRM when dependancy is available AI:gdoddabe
+#LOCAL_ADDITIONAL_DEPENDENCIES := $(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
 
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 endif
