@@ -1350,7 +1350,7 @@ static int sde_hw_ctl_update_intf_cfg(struct sde_hw_ctl *ctx,
 	u32 vdc_active = 0;
 	struct sde_hw_blk_reg_map *c;
 
-	if (!ctx)
+	if (!ctx || !cfg)
 		return -EINVAL;
 
 	c = &ctx->hw;

@@ -3111,14 +3111,17 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	/* perform mode_set on phys_encs */
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+		struct sde_connector *sde_conn = to_sde_connector(conn->state->connector);
 
 		if (phys) {
-			if (!sde_enc->hw_pp[i * num_pp_per_intf]) {
-				SDE_ERROR_ENC(sde_enc, "invalid phys %d pp_per_intf %d",
-						i, num_pp_per_intf);
-				return;
+			if (!sde_conn->shared) {
+				if (!sde_enc->hw_pp[i * num_pp_per_intf]) {
+					SDE_ERROR_ENC(sde_enc, "invalid phys %d pp_per_intf %d",
+						      i, num_pp_per_intf);
+					return;
+				}
+				phys->hw_pp = sde_enc->hw_pp[i * num_pp_per_intf];
 			}
-			phys->hw_pp = sde_enc->hw_pp[i * num_pp_per_intf];
 			phys->connector = conn;
 			if (phys->ops.mode_set)
 				phys->ops.mode_set(phys, mode, adj_mode,
@@ -6032,6 +6035,20 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		SDE_DEBUG("h_tile_instance %d = %d, split_role %d\n",
 				i, controller_id, phys_params.split_role);
 
+		if (sde_enc->ops.phys_init) {
+			struct sde_encoder_phys *enc;
+
+			enc = sde_enc->ops.phys_init(intf_type, controller_id, &phys_params);
+
+			if (enc) {
+				sde_enc->phys_encs[sde_enc->num_phys_encs] = enc;
+				++sde_enc->num_phys_encs;
+			} else {
+				SDE_ERROR_ENC(sde_enc, "failed to add phys encs\n");
+			}
+			continue;
+		}
+
 		if (intf_type == INTF_WB) {
 			phys_params.intf_idx = INTF_MAX;
 			phys_params.wb_idx = sde_encoder_get_wb(
@@ -6106,6 +6123,13 @@ static const struct drm_encoder_funcs sde_encoder_funcs = {
 
 struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_info *disp_info)
 {
+	return sde_encoder_init_with_ops(dev, disp_info, NULL);
+}
+
+struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
+					      struct msm_display_info *disp_info,
+					      const struct sde_encoder_ops *ops)
+{
 	struct msm_drm_private *priv = dev->dev_private;
 	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
 	struct drm_encoder *drm_enc = NULL;
@@ -6114,12 +6138,16 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 	char name[SDE_NAME_SIZE];
 	int ret = 0, i, intf_index = INTF_MAX;
 	struct sde_encoder_phys *phys = NULL;
+	enum sde_rsc_client_type client_type;
 
 	sde_enc = kzalloc(sizeof(*sde_enc), GFP_KERNEL);
 	if (!sde_enc) {
 		ret = -ENOMEM;
 		goto fail;
 	}
+
+	if (ops)
+		sde_enc->ops = *ops;
 
 	mutex_init(&sde_enc->enc_lock);
 	ret = sde_encoder_setup_display(sde_enc, sde_kms, disp_info,
@@ -6143,15 +6171,19 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 		if (phys->ops.is_master && phys->ops.is_master(phys))
 			intf_index = phys->intf_idx - INTF_0;
 	}
-	snprintf(name, SDE_NAME_SIZE, "rsc_enc%u", drm_enc->base.id);
-	sde_enc->rsc_client = sde_rsc_client_create(DPUID(dev), name,
-		(disp_info->display_type == SDE_CONNECTOR_PRIMARY) ?
-		SDE_RSC_PRIMARY_DISP_CLIENT :
-		SDE_RSC_EXTERNAL_DISP_CLIENT, intf_index + 1);
-	if (IS_ERR_OR_NULL(sde_enc->rsc_client)) {
-		SDE_DEBUG("sde rsc client create failed :%ld\n",
-						PTR_ERR(sde_enc->rsc_client));
-		sde_enc->rsc_client = NULL;
+
+	if (!sde_enc->ops.phys_init) {
+		client_type = (disp_info->display_type == SDE_CONNECTOR_PRIMARY) ?
+				SDE_RSC_PRIMARY_DISP_CLIENT : SDE_RSC_EXTERNAL_DISP_CLIENT;
+		snprintf(name, SDE_NAME_SIZE, "rsc_enc%u", drm_enc->base.id);
+
+		sde_enc->rsc_client = sde_rsc_client_create(DPUID(dev), name, client_type,
+							    intf_index + 1);
+		if (IS_ERR_OR_NULL(sde_enc->rsc_client)) {
+			SDE_DEBUG("sde rsc client create failed :%ld\n",
+				  PTR_ERR(sde_enc->rsc_client));
+			sde_enc->rsc_client = NULL;
+		}
 	}
 
 	if (disp_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE &&

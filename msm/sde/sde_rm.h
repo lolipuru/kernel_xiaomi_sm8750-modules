@@ -413,4 +413,43 @@ bool sde_rm_topology_is_group(struct sde_rm *rm,
 void sde_rm_get_resource_info(struct sde_rm *rm,
 		struct drm_encoder *drm_enc,
 		struct msm_resource_caps_info *avail_res);
+
+/**
+ * sde_rm_ext_blk_create_reserve - Create external HW blocks
+ *	in resource manager and reserve for specific encoder.
+ * @rm: SDE Resource Manager handle
+ * @hw_rm: external HW block
+ * @enc: DRM Encoder handle
+ * @pp_shd_hw: Pointer to hardware block register map object
+ * @Return: 0 on Success otherwise -ERROR
+ */
+int sde_rm_ext_blk_create_reserve(struct sde_rm *rm,
+				  struct sde_rm_hw_blk *hw_rm, struct drm_encoder *enc,
+				  struct sde_hw_blk_reg_map *pp_shd_hw);
+
+/**
+ * sde_rm_ext_blk_create_reserve - Create external HW blocks
+ *	in resource manager and reserve for specific encoder.
+ * @rm: SDE Resource Manager handle
+ * @hw: external HW block
+ * @enc: DRM Encoder handle
+ * @sde_hw_ctl: ctl SHD ops updated HW block
+ * @Return: 0 on Success otherwise -ERROR
+ */
+int sde_rm_ext_blk_create_reserve_ctl(struct sde_rm *rm,
+				      struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
+				      struct sde_hw_ctl *sde_hw_ctl);
+
+/**
+ * sde_rm_ext_blk_create_reserve - Create external HW blocks
+ *	in resource manager and reserve for specific encoder.
+ * @rm: SDE Resource Manager handle
+ * @hw: external HW block
+ * @enc: DRM Encoder handle
+ * @sde_hw_lm: lm SHD ops updated HW block
+ * @Return: 0 on Success otherwise -ERROR
+ */
+int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm,
+				     struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
+				     struct sde_hw_mixer *sde_hw_lm);
 #endif /* __SDE_RM_H__ */

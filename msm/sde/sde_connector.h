@@ -578,6 +578,7 @@ struct sde_misr_sign {
  * @previous_misr_sign: store previous misr signature
  * @hwfence_wb_retire_fences_enable: enable hw-fences for wb retire-fence
  * @max_mode_width: max width of all available modes
+ * @shared: If a connector is sharing resource of its parent
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -660,6 +661,7 @@ struct sde_connector {
 	bool hwfence_wb_retire_fences_enable;
 
 	u32 max_mode_width;
+	bool shared;
 };
 
 /**

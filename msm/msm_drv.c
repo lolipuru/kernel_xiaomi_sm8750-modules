@@ -912,6 +912,7 @@ static int msm_drm_component_init(struct device *dev)
 	INIT_LIST_HEAD(&priv->inactive_list);
 	INIT_LIST_HEAD(&priv->vm_client_list);
 	INIT_LIST_HEAD(&priv->fence_error_client_list);
+	BLOCKING_INIT_NOTIFIER_HEAD(&priv->component_notifier_list);
 	mutex_init(&priv->mm_lock);
 
 	mutex_init(&priv->vm_client_lock);
@@ -939,6 +940,7 @@ static int msm_drm_component_init(struct device *dev)
 		goto fail;
 	}
 
+	msm_drm_notify_components(ddev, MSM_COMP_OBJECT_CREATED);
 	/* Register rotator platform driver only after genpd init */
 	sde_rotator_register();
 	sde_rotator_smmu_driver_register();
@@ -1547,6 +1549,42 @@ void msm_mode_object_event_notify(struct drm_mode_object *obj,
 		drm_send_event_locked(dev, &notify->base);
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
+}
+
+int msm_drm_register_component(struct drm_device *dev, struct notifier_block *nb)
+{
+	struct msm_drm_private *priv;
+
+	if (!dev || !dev->dev_private)
+		return -EINVAL;
+
+	priv = dev->dev_private;
+
+	return blocking_notifier_chain_register(&priv->component_notifier_list, nb);
+}
+
+int msm_drm_unregister_component(struct drm_device *dev, struct notifier_block *nb)
+{
+	struct msm_drm_private *priv;
+
+	if (!dev || !dev->dev_private)
+		return -EINVAL;
+
+	priv = dev->dev_private;
+
+	return blocking_notifier_chain_unregister(&priv->component_notifier_list, nb);
+}
+
+int msm_drm_notify_components(struct drm_device *dev, enum msm_component_event event)
+{
+	struct msm_drm_private *priv;
+
+	if (!dev || !dev->dev_private)
+		return -EINVAL;
+
+	priv = dev->dev_private;
+
+	return blocking_notifier_call_chain(&priv->component_notifier_list, event, NULL);
 }
 
 static int msm_release(struct inode *inode, struct file *filp)
@@ -2365,6 +2403,7 @@ static int __init msm_drm_register(void)
 	msm_dsi_register();
 	msm_edp_register();
 	msm_hdmi_register();
+	sde_shd_register();
 	return 0;
 }
 
@@ -2382,6 +2421,7 @@ static void __exit msm_drm_unregister(void)
 	dp_display_unregister();
 	dsi_display_unregister();
 	sde_rsc_unregister();
+	sde_shd_unregister();
 	platform_driver_unregister(&msm_platform_driver);
 }
 
