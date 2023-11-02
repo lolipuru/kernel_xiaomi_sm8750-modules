@@ -82,6 +82,15 @@ ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
 	endif
 endif
 
+ifeq ($(CONFIG_QTS_ENABLE), y)
+	LINUX_INC += -include $(TOUCH_ROOT)/qts/qts_core.h
+	LINUX_INC += -include $(TOUCH_ROOT)/qts/qts_core_common.h
+
+	qts-y := ./qts/qts_core.o
+
+	obj-$(CONFIG_MSM_TOUCH) += qts.o
+endif
+
 ifeq ($(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX), y)
 
 	LINUX_INC += -include $(TOUCH_ROOT)/synaptics_dsx/synaptics_dsx.h
@@ -130,8 +139,6 @@ endif
 
 ifeq ($(CONFIG_TOUCHSCREEN_GOODIX_BRL), y)
 	LINUX_INC += -include $(TOUCH_ROOT)/goodix_berlin_driver/goodix_ts_core.h
-	LINUX_INC += -include $(TOUCH_ROOT)/qts/qts_core.h
-	LINUX_INC += -include $(TOUCH_ROOT)/qts/qts_core_common.h
 
 	goodix_ts-y := \
 		 ./goodix_berlin_driver/goodix_ts_core.o \
@@ -144,9 +151,42 @@ ifeq ($(CONFIG_TOUCHSCREEN_GOODIX_BRL), y)
 		 ./goodix_berlin_driver/goodix_ts_inspect.o \
 		 ./goodix_berlin_driver/goodix_brl_spi.o \
 		 ./goodix_berlin_driver/goodix_brl_i2c.o \
-		 ./qts/qts_core.o
 
 	obj-$(CONFIG_MSM_TOUCH) += goodix_ts.o
+endif
+
+ifeq ($(CONFIG_TOUCHSCREEN_ST), y)
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_fw.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_limits.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsCompensation.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsCore.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsError.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsFlash.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsFrame.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsGesture.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsHardware.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsIO.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsSoftware.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsTest.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsTime.h
+	LINUX_INC += -include $(TOUCH_ROOT)/st/fts_lib/ftsTool.h
+
+	st_fts-y := \
+		 ./st/fts.o \
+		 ./st/fts_proc.o \
+		 ./st/fts_lib/ftsCompensation.o \
+		 ./st/fts_lib/ftsCore.o \
+		 ./st/fts_lib/ftsError.o \
+		 ./st/fts_lib/ftsFlash.o \
+		 ./st/fts_lib/ftsFrame.o \
+		 ./st/fts_lib/ftsGesture.o \
+		 ./st/fts_lib/ftsIO.o \
+		 ./st/fts_lib/ftsTest.o \
+		 ./st/fts_lib/ftsTime.o \
+		 ./st/fts_lib/ftsTool.o
+
+	obj-$(CONFIG_MSM_TOUCH) += st_fts.o
 endif
 
 ifeq ($(CONFIG_TOUCHSCREEN_ATMEL_MXT), y)

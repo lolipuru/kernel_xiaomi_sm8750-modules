@@ -16,6 +16,11 @@ ifeq ($(TOUCH_DLKM_ENABLE),  true)
                                         $(KERNEL_MODULES_OUT)/raydium_ts.ko
                         else ifeq ($(TARGET_BOARD_PLATFORM), kona)
                                 BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/focaltech_fts.ko
+                        else ifeq ($(TARGET_BOARD_PLATFORM), sun)
+                                BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/goodix_ts.ko \
+                                        $(KERNEL_MODULES_OUT)/atmel_mxt_ts.ko \
+                                        $(KERNEL_MODULES_OUT)/st_fts.ko \
+                                        $(KERNEL_MODULES_OUT)/qts.ko
                         else ifeq ($(TARGET_BOARD_PLATFORM), pineapple)
                                 BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/goodix_ts.ko \
                                         $(KERNEL_MODULES_OUT)/atmel_mxt_ts.ko

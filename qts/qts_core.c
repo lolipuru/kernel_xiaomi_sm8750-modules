@@ -1812,3 +1812,6 @@ qts_register_end:
 	return rc;
 }
 EXPORT_SYMBOL(qts_client_register);
+
+MODULE_DESCRIPTION("Qualcomm Technologies, Inc. Touchscreen driver");
+MODULE_LICENSE("GPL");

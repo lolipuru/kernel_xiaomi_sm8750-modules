@@ -9,6 +9,35 @@ module_entry = touch_driver_modules.register
 
 #--------------- TOUCH-DRIVERS MODULES ------------------
 
+#define ddk_module() for qts
+module_entry(
+    name = "qts",
+    config_option = "CONFIG_QTS_ENABLE",
+    srcs = [
+            "qts/qts_core.c"
+    ]
+)
+
+#define ddk_module() for st_fts
+module_entry(
+    name = "st_fts",
+    config_option = "CONFIG_TOUCHSCREEN_ST",
+    srcs = [
+            "st/fts.c",
+            "st/fts_proc.c",
+            "st/fts_lib/ftsCompensation.c",
+            "st/fts_lib/ftsCore.c",
+            "st/fts_lib/ftsError.c",
+            "st/fts_lib/ftsFlash.c",
+            "st/fts_lib/ftsFrame.c",
+            "st/fts_lib/ftsGesture.c",
+            "st/fts_lib/ftsIO.c",
+            "st/fts_lib/ftsTest.c",
+            "st/fts_lib/ftsTime.c",
+            "st/fts_lib/ftsTool.c"
+    ]
+)
+
 #define ddk_module() for goodix_ts
 module_entry(
     name = "goodix_ts",
@@ -23,8 +52,7 @@ module_entry(
             "goodix_berlin_driver/goodix_ts_gesture.c",
             "goodix_berlin_driver/goodix_ts_inspect.c",
             "goodix_berlin_driver/goodix_ts_tools.c",
-            "goodix_berlin_driver/goodix_ts_utils.c",
-            "qts/qts_core.c"
+            "goodix_berlin_driver/goodix_ts_utils.c"
     ]
 )
 
