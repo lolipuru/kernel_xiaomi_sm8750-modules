@@ -797,6 +797,8 @@ static int __power_on_iris35(struct msm_vidc_core *core)
 		rc = 0;
 	}
 
+	__set_registers(core);
+
 	__interrupt_init_iris35(core);
 	core->intr_status = 0;
 	enable_irq(core->resource->irq);
