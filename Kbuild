@@ -75,6 +75,13 @@ endif
 
 ######### CONFIG_MSM_TOUCH ########
 
+ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
+	ifeq ($(TARGET_KERNEL_DLKM_TOUCH_OVERRIDE), false)
+		dummy_ts-y := ./dummy_touch/dummy_touch.o
+		obj-$(CONFIG_MSM_TOUCH) += dummy_ts.o
+	endif
+endif
+
 ifeq ($(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX), y)
 
 	LINUX_INC += -include $(TOUCH_ROOT)/synaptics_dsx/synaptics_dsx.h
@@ -150,10 +157,12 @@ ifeq ($(CONFIG_TOUCHSCREEN_ATMEL_MXT), y)
 	obj-$(CONFIG_MSM_TOUCH) += atmel_mxt_ts.o
 endif
 
-ifeq ($(CONFIG_TOUCHSCREEN_DUMMY), y)
-	dummy_ts-y := ./dummy_touch/dummy_touch.o
+ifeq ($(TARGET_KERNEL_DLKM_TOUCH_OVERRIDE), true)
+	ifeq ($(CONFIG_TOUCHSCREEN_DUMMY), y)
+		dummy_ts-y := ./dummy_touch/dummy_touch.o
 
-	obj-$(CONFIG_MSM_TOUCH) += dummy_ts.o
+		obj-$(CONFIG_MSM_TOUCH) += dummy_ts.o
+	endif
 endif
 
 ifeq ($(CONFIG_TOUCHSCREEN_SYNAPTICS_TCM), y)
