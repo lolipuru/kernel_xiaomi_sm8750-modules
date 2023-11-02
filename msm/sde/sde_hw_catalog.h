@@ -56,6 +56,7 @@
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
+#define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
 #define IS_SDE_MAJOR_SAME(rev1, rev2)   \
@@ -86,6 +87,7 @@
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
+#define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -415,6 +417,9 @@ enum {
  * @SDE_DISP_SECONDARY_PREF   Layer mixer preferred for secondary display
  * @SDE_MIXER_COMBINED_ALPHA  Layer mixer bg and fg alpha in single register
  * @SDE_MIXER_NOISE_LAYER     Layer mixer supports noise layer
+ * @SDE_MIXER_X_SRC_SEL       Layer mixer supports source selection programming model
+ * @SDE_MIXER_10_BITS_ALPHA   Layer mixer supports 10 bits constant alpha
+ * @SDE_MIXER_10_BITS_COLOR   Layer mixer supports 10 bits color border and color fill
  * @SDE_MIXER_MAX             maximum value
  */
 enum {
@@ -428,6 +433,9 @@ enum {
 	SDE_DISP_DCWB_PREF,
 	SDE_MIXER_COMBINED_ALPHA,
 	SDE_MIXER_NOISE_LAYER,
+	SDE_MIXER_X_SRC_SEL,
+	SDE_MIXER_10_BITS_ALPHA,
+	SDE_MIXER_10_BITS_COLOR,
 	SDE_MIXER_MAX
 };
 
@@ -606,6 +614,8 @@ enum {
  * @SDE_CTL_HW_FENCE            CTL supports hw fencing
  * @SDE_CTL_HW_FENCE_TRIGGER_SEL CTL supports SW selection of cmd/vid modes for trigger sel
  * @SDE_CTL_HW_FENCE_DIR_WRITE  CTL support hw fencing dir writes
+ * @SDE_CTL_NO_LAYER_EXT        CTL removal of CTL_LAYER_EXTx registers and addition
+ *                              of active bits for pipes and layer mixers
  * @SDE_CTL_MAX
  */
 enum {
@@ -618,6 +628,7 @@ enum {
 	SDE_CTL_HW_FENCE,
 	SDE_CTL_HW_FENCE_TRIGGER_SEL,
 	SDE_CTL_HW_FENCE_DIR_WRITE,
+	SDE_CTL_NO_LAYER_EXT,
 	SDE_CTL_MAX
 };
 
@@ -812,6 +823,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_HW_FENCE_IPCC  HW fence supports ipcc signaling in dpu
  * @SDE_FEATURE_EMULATED_ENV   Emulated environment supported
  * @SDE_FEATURE_UCSC_SUPPORTED  UCSC pipe format supported
+ * @SDE_FEATURE_10_BITS_COMPONENTS Support for 10 bits components
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -860,6 +872,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_HW_FENCE_IPCC,
 	SDE_FEATURE_EMULATED_ENV,
 	SDE_FEATURE_UCSC_SUPPORTED,
+	SDE_FEATURE_10_BITS_COMPONENTS,
 	SDE_FEATURE_MAX
 };
 

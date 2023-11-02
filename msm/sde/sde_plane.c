@@ -4352,8 +4352,12 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 	msm_property_install_range(&psde->property_info, "zpos",
 		0x0, 0, zpos_max, zpos_def, PLANE_PROP_ZPOS);
 
-	msm_property_install_range(&psde->property_info, "alpha",
-		0x0, 0, 255, 255, PLANE_PROP_ALPHA);
+	if (test_bit(SDE_FEATURE_10_BITS_COMPONENTS, catalog->features))
+		msm_property_install_range(&psde->property_info, "alpha", 0x0, 0, 65535, 65535,
+				PLANE_PROP_ALPHA);
+	else
+		msm_property_install_range(&psde->property_info, "alpha", 0x0, 0, 255, 255,
+				PLANE_PROP_ALPHA);
 
 	/* linux default file descriptor range on each process */
 	msm_property_install_range(&psde->property_info, "input_fence",
