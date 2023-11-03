@@ -190,11 +190,12 @@ enum sde_lm {
 	LM_3,
 	LM_4,
 	LM_5,
+	LM_6,
+	LM_7,
 	LM_DCWB_DUMMY_0,
 	LM_DCWB_DUMMY_1,
 	LM_DCWB_DUMMY_2,
 	LM_DCWB_DUMMY_3,
-	LM_6,
 	LM_MAX
 };
 
@@ -283,6 +284,8 @@ enum sde_pingpong {
 	PINGPONG_3,
 	PINGPONG_4,
 	PINGPONG_5,
+	PINGPONG_6,
+	PINGPONG_7,
 	PINGPONG_CWB_0,
 	PINGPONG_CWB_1,
 	PINGPONG_CWB_2,
@@ -409,6 +412,7 @@ enum sde_merge_3d {
 	MERGE_3D_0 = 1,
 	MERGE_3D_1,
 	MERGE_3D_2,
+	MERGE_3D_3,
 	MERGE_3D_CWB_0,
 	MERGE_3D_CWB_1,
 	MERGE_3D_MAX
@@ -752,6 +756,35 @@ struct sde_sspp_index_info {
 	DECLARE_BITMAP(pipes, SSPP_MAX);
 	DECLARE_BITMAP(virt_pipes, SSPP_MAX);
 	bool bordercolor;
+};
+
+/**
+ * SDE_SSPP_RECT_SOLO - multirect disabled
+ * SDE_SSPP_RECT_0 - rect0 of a multirect pipe
+ * SDE_SSPP_RECT_1 - rect1 of a multirect pipe
+ * SDE_SSPP_RECT_MAX - max enum of multirect pipe
+ *
+ * Note: HW supports multirect with either RECT0 or
+ * RECT1. Considering no benefit of such configs over
+ * SOLO mode and to keep the plane management simple,
+ * we dont support single rect multirect configs.
+ */
+enum sde_sspp_multirect_index {
+	SDE_SSPP_RECT_SOLO = 0,
+	SDE_SSPP_RECT_0,
+	SDE_SSPP_RECT_1,
+	SDE_SSPP_RECT_MAX,
+};
+
+/**
+ * struct sde_hw_stage_cfg - blending stage cfg
+ * @stage : SSPP_ID at each stage
+ * @multirect_index: index of the rectangle of SSPP.
+ */
+struct sde_hw_stage_cfg {
+	enum sde_sspp stage[SDE_STAGE_MAX][PIPES_PER_STAGE];
+	enum sde_sspp_multirect_index multirect_index
+					[SDE_STAGE_MAX][PIPES_PER_STAGE];
 };
 
 /**

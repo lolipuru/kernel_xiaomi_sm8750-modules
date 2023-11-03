@@ -64,16 +64,6 @@ enum ctl_hw_flush_type {
 };
 
 struct sde_hw_ctl;
-/**
- * struct sde_hw_stage_cfg - blending stage cfg
- * @stage : SSPP_ID at each stage
- * @multirect_index: index of the rectangle of SSPP.
- */
-struct sde_hw_stage_cfg {
-	enum sde_sspp stage[SDE_STAGE_MAX][PIPES_PER_STAGE];
-	enum sde_sspp_multirect_index multirect_index
-					[SDE_STAGE_MAX][PIPES_PER_STAGE];
-};
 
 /**
  * struct sde_hw_intf_cfg :Describes how the SDE writes data to output interface
@@ -159,11 +149,17 @@ struct sde_hw_intf_cfg_v1 {
  * exercising top level flush
  * @pending_hw_flush_mask: pending flush mask for each active HW blk
  * @pending_dspp_flush_masks: pending flush masks for sub-blks of each DSPP
+ * @active_fetch_pipe_mask: active fetch pipes on this control path
+ * @active_pipe_mask: active pipes on this control path
+ * @active_lm_mask: active lms on this control path
  */
 struct sde_ctl_flush_cfg {
 	u32 pending_flush_mask;
 	u32 pending_hw_flush_mask[SDE_HW_FLUSH_MAX];
 	u32 pending_dspp_flush_masks[CTL_MAX_DSPP_COUNT];
+	u32 active_fetch_pipe_mask;
+	u32 active_pipe_mask;
+	u32 active_lm_mask;
 };
 
 /**
@@ -555,17 +551,47 @@ struct sde_hw_ctl_ops {
 	/**
 	 * set the active fetch pipes attached to this CTL
 	 * @ctx         : ctl path ctx pointer
-	 * @fetch_active: bitmap of enum sde_sspp pipes attached
+	 * @active_fetch_pipes: bitmap of enum sde_sspp pipes attached
 	 */
-	void (*set_active_pipes)(struct sde_hw_ctl *ctx,
-			unsigned long *fetch_active);
+	void (*set_active_fetch_pipes)(struct sde_hw_ctl *ctx,
+			unsigned long *active_fetch_pipes);
 
 	/**
 	 * Get all the sspp marked for fetching on the control path.
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: bitmap of enum sde_sspp pipes found
 	 */
+	u32 (*get_active_fetch_pipes)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * set the active pipes attached to this CTL
+	 * @ctx         : ctl path ctx pointer
+	 * @active_pipes: bitmap of enum sde_sspp pipes attached
+	 */
+	void (*set_active_pipes)(struct sde_hw_ctl *ctx,
+			unsigned long *active_pipes);
+
+	/**
+	 * Get all the sspp marked for on the control path.
+	 * @ctx       : ctl path ctx pointer
+	 * @Return: bitmap of enum sde_sspp pipes found
+	 */
 	u32 (*get_active_pipes)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * set the active layer mixers attached to this CTL
+	 * @ctx         : ctl path ctx pointer
+	 * @active_lms: bitmap of enum sde_lm mixers attached
+	 */
+	void (*set_active_lms)(struct sde_hw_ctl *ctx,
+			unsigned long *active_lms);
+
+	/**
+	 * Get all the active layer mixers marked on the control path.
+	 * @ctx       : ctl path ctx pointer
+	 * @Return: bitmap of enum sde_lm mixers found
+	 */
+	u32 (*get_active_lms)(struct sde_hw_ctl *ctx);
 };
 
 /**
