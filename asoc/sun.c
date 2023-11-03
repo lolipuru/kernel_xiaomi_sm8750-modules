@@ -547,6 +547,20 @@ static struct snd_soc_dai_link msm_common_be_dai_links[] = {
 	},
 };
 
+static struct snd_soc_dai_link msm_swr_haptics_be_dai_links[] = {
+	{
+		.name = LPASS_BE_RX_CDC_DMA_RX_6,
+		.stream_name = LPASS_BE_RX_CDC_DMA_RX_6,
+		.playback_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+		.ops = &msm_common_be_ops,
+		SND_SOC_DAILINK_REG(rx_dma_rx6),
+	},
+};
+
 #ifndef CONFIG_AUDIO_BTFM_PROXY
 static struct snd_soc_dai_link msm_wcn_be_dai_links[] = {
 	{
@@ -847,17 +861,6 @@ static struct snd_soc_dai_link msm_rx_tx_cdc_dma_be_dai_links[] = {
 		.ignore_suspend = 1,
 		.ops = &msm_common_be_ops,
 		SND_SOC_DAILINK_REG(rx_dma_rx5),
-	},
-	{
-		.name = LPASS_BE_RX_CDC_DMA_RX_6,
-		.stream_name = LPASS_BE_RX_CDC_DMA_RX_6,
-		.playback_only = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
-			SND_SOC_DPCM_TRIGGER_POST},
-		.ignore_pmdown_time = 1,
-		.ignore_suspend = 1,
-		.ops = &msm_common_be_ops,
-		SND_SOC_DAILINK_REG(rx_dma_rx6),
 	},
 	/* TX CDC DMA Backend DAI Links */
 	{
@@ -1235,6 +1238,7 @@ static struct snd_soc_dai_link msm_sun_dai_links[
 			ARRAY_SIZE(ext_disp_be_dai_link) +
 			ARRAY_SIZE(msm_common_be_dai_links) +
 			ARRAY_SIZE(msm_wcn_be_dai_links) +
+			ARRAY_SIZE(msm_swr_haptics_be_dai_links) +
 			ARRAY_SIZE(msm_mi2s_dai_links) +
 			ARRAY_SIZE(msm_tdm_dai_links)];
 
@@ -1556,6 +1560,16 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 			       msm_wcn_be_dai_links,
 			       sizeof(msm_wcn_be_dai_links));
 			total_links += ARRAY_SIZE(msm_wcn_be_dai_links);
+		}
+
+		if (of_find_property(dev->of_node, "swr-haptics-unsupported",
+			NULL)) {
+			dev_dbg(dev, "%s(): swr haptics support not present\n", __func__);
+		} else {
+			memcpy(msm_sun_dai_links + total_links,
+					msm_swr_haptics_be_dai_links,
+					sizeof(msm_swr_haptics_be_dai_links));
+			total_links += ARRAY_SIZE(msm_swr_haptics_be_dai_links);
 		}
 
 		dailink = msm_sun_dai_links;
