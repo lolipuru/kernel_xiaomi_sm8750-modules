@@ -1699,7 +1699,7 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 								slv_id, bank));
 			}
 			if (port_req->req_ch_rate != port_req->ch_rate) {
-				pr_dbg("requested sample rate is fractional");
+				dev_dbg(swrm->dev, "requested sample rate is fractional");
 				if (mport->dir == 0) {
 					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 					val[len++] =
