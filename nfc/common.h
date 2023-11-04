@@ -1,6 +1,6 @@
 /******************************************************************************
  * Copyright (C) 2015, The Linux Foundation. All rights reserved.
- * Copyright (C) 2019-2022 NXP
+ * Copyright (C) 2019-2023 NXP
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -72,15 +72,18 @@
 #define NCI_RSP_PKT_TYPE		(0x40)
 #define MAX_NCI_PAYLOAD_LEN		(255)
 #define MAX_NCI_BUFFER_SIZE		(NCI_HDR_LEN + MAX_NCI_PAYLOAD_LEN)
-/*
- * From MW 11.04 buffer size increased to support
- * frame size of 554 in FW download mode
- * Frame len(2) + Frame Header(6) + DATA(512) + HASH(32) + CRC(2) + RFU(4)
+/* Compile time option to select maximum writer buffer of either 4K or 550 bytes.
+ * Default value is set as 4K. This value shall be chosen based on Hal flag "HDLL_4K_WRITE_SUPPORTED".
+ * undef or comment HDLL_4K_WRITE_SUPPORTED to fallback to 550 bytes write frame buffer.
  */
-#define MAX_DL_PAYLOAD_LEN		(550)
+#define HDLL_4K_WRITE_SUPPORTED
+#ifdef HDLL_4K_WRITE_SUPPORTED
+  #define MAX_DL_PAYLOAD_LEN	(4096)
+#else
+  #define MAX_DL_PAYLOAD_LEN    (550)
+#endif
 #define MAX_DL_BUFFER_SIZE		(DL_HDR_LEN + DL_CRC_LEN + \
 					MAX_DL_PAYLOAD_LEN)
-
 
 /* Retry count for normal write */
 #define NO_RETRY			(1)
