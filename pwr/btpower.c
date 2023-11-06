@@ -184,22 +184,29 @@ static struct vreg_data bt_vregs_info_kiwi[] = {
 };
 
 static struct vreg_data platform_vregs_info_peach[] = {
-	{NULL, "qcom,bt-vdd18-aon",      1800000, 1800000, 0, false, true,
+	/* VDD1P8_AON */
+	{NULL, "qcom,bt-vdd18-aon",      1620000, 1980000, 0, false, true,
 		{BT_VDD_LDO, BT_VDD_LDO_CURRENT}},
-	{NULL, "qcom,bt-vdd12-io",      1200000, 1200000, 0, false, true,
+	/* VDD1P2_IOAV91C_VDD Extractor */
+	{NULL, "qcom,bt-vdd12-io",      1080000, 1980000, 0, false, true,
 		{BT_VDD_IO_LDO, BT_VDD_IO_LDO_CURRENT}},
+	/* AV91C_VDD Extractor */
 	{NULL, "qcom,bt-ant-ldo",  1776000, 1776000, 0, false, true,
 		{BT_VDD_ANT_LDO, BT_VDD_ANT_LDO_CURRENT}},
-	{NULL, "qcom,bt-vdd-dig",      950000,  950000,  0, false, true,
-		{BT_VDD_DIG_LDO, BT_VDD_DIG_LDO_CURRENT}},
-	{NULL, "qcom,bt-vdd-aon",     950000,  950000,  0, false, true,
-		{BT_VDD_AON_LDO, BT_VDD_AON_LDO_CURRENT}},
-	{NULL, "qcom,bt-vdd-rfaOp8",  950000,  952000,  0, false, true,
-		{BT_VDD_RFA_0p8, BT_VDD_RFA_0p8_CURRENT}},
 	/* BT_CX_MX */
-	{NULL, "qcom,bt-vdd-rfa2",     1900000, 1900000, 0, false, true,
+	{NULL, "qcom,bt-vdd-dig",      700000,  2100000,  0, false, true,
+		{BT_VDD_DIG_LDO, BT_VDD_DIG_LDO_CURRENT}},
+	/* RFA_CMN/AON */
+	{NULL, "qcom,bt-vdd-aon",     800000,  2100000,  0, false, true,
+		{BT_VDD_AON_LDO, BT_VDD_AON_LDO_CURRENT}},
+	/* RFA_OP75 */
+	{NULL, "qcom,bt-vdd-rfa0p75",  800000,  2100000,  0, false, true,
+		{BT_VDD_RFA_0p8, BT_VDD_RFA_0p8_CURRENT}},
+	/* RFA_1P8 */
+	{NULL, "qcom,bt-vdd-rfa1p8",     1850000, 2100000, 0, false, true,
 		{BT_VDD_RFA2_LDO, BT_VDD_RFA2_LDO_CURRENT}},
-	{NULL, "qcom,bt-vdd-rfa1",     1350000, 1350000, 0, false, true,
+	/* RFA_1P25 */
+	{NULL, "qcom,bt-vdd-rfa1p25",     1300000, 2100000, 0, false, true,
 		{BT_VDD_RFA1_LDO, BT_VDD_RFA1_LDO_CURRENT}},
 };
 
