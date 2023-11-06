@@ -13,6 +13,6 @@ def define_target_modules():
                 "video",
             ],
             config_options = [
-                "CONFIG_MSM_VIDC_{}".format(target.capitalize()),
+                "CONFIG_MSM_VIDC_{}".format(target.upper()),
             ],
         )
