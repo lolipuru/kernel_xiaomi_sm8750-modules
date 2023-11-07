@@ -827,11 +827,6 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 static void _sde_crtc_calc_split_dim_layer_yh_param(struct drm_crtc *crtc, u16 *y, u16 *h)
 {
 	u32 padding_y = 0, padding_start = 0, padding_height = 0;
-	struct sde_crtc_state *cstate;
-
-	cstate = to_sde_crtc_state(crtc->state);
-	if (!cstate->line_insertion.panel_line_insertion_enable)
-		return;
 
 	sde_crtc_calc_vpadding_param(crtc->state, *y, *h, &padding_y,
 				     &padding_start, &padding_height);
@@ -1535,27 +1530,21 @@ static int _sde_crtc_check_panel_stacking(struct drm_crtc *crtc, struct drm_crtc
 	struct msm_sub_mode sub_mode;
 	u32 gcd = 0, num_of_active_lines = 0, num_of_dummy_lines = 0;
 	int rc;
-	struct drm_encoder *encoder;
-	const u32 max_encoder_cnt = 1;
-	u32 encoder_cnt = 0;
 
 	kms = _sde_crtc_get_kms(crtc);
 	if (!kms || !kms->catalog) {
 		SDE_ERROR("invalid kms\n");
 		return -EINVAL;
 	}
-
 	sde_crtc = to_sde_crtc(crtc);
 	sde_crtc_state = to_sde_crtc_state(state);
 	/* panel stacking only support single connector */
-	drm_for_each_encoder_mask(encoder, crtc->dev, state->encoder_mask)
-		encoder_cnt++;
+	if (sde_crtc_state->num_connectors != 1)
+		return 0;
 
-	if (!kms->catalog->has_line_insertion || !state->mode_changed ||
-	    encoder_cnt > max_encoder_cnt) {
-		SDE_DEBUG("no line insertion support mode change %d enc cnt %d\n",
-			  state->mode_changed, encoder_cnt);
-		sde_crtc_state->line_insertion.padding_height = 0;
+	if (!kms->catalog->has_line_insertion) {
+		SDE_DEBUG("no line insertion support mode change %d\n",
+			  state->mode_changed);
 		return 0;
 	}
 
@@ -1567,7 +1556,7 @@ static int _sde_crtc_check_panel_stacking(struct drm_crtc *crtc, struct drm_crtc
 	}
 
 	if (!mode_info.vpadding) {
-		sde_crtc_state->line_insertion.padding_height = 0;
+		sde_crtc_state->line_insertion.padding_height = mode_info.vpadding;
 		return 0;
 	}
 
@@ -1575,11 +1564,6 @@ static int _sde_crtc_check_panel_stacking(struct drm_crtc *crtc, struct drm_crtc
 		SDE_ERROR("padding height %d is less than vdisplay %d\n",
 			  mode_info.vpadding, state->mode.vdisplay);
 		return -EINVAL;
-	} else if (mode_info.vpadding == state->mode.vdisplay) {
-		SDE_DEBUG("padding height %d is equal to the vdisplay %d\n",
-			  mode_info.vpadding, state->mode.vdisplay);
-		sde_crtc_state->line_insertion.padding_height = 0;
-		return 0;
 	} else if (mode_info.vpadding == sde_crtc_state->line_insertion.padding_height) {
 		return 0;   /* skip calculation if already cached */
 	}
@@ -4237,26 +4221,6 @@ static void _sde_crtc_setup_mixer_for_encoder(
 	}
 }
 
-bool sde_crtc_is_line_insertion_supported(struct drm_crtc *crtc)
-{
-	struct drm_encoder *enc = NULL;
-	struct sde_kms *kms;
-
-	if (!crtc)
-		return false;
-
-	kms = _sde_crtc_get_kms(crtc);
-	if (!kms || !kms->catalog || !kms->catalog->has_line_insertion)
-		return false;
-
-	list_for_each_entry(enc, &crtc->dev->mode_config.encoder_list, head) {
-		if (enc->crtc == crtc)
-			return sde_encoder_is_line_insertion_supported(enc);
-	}
-
-	return false;
-}
-
 static void _sde_crtc_setup_mixers(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
@@ -5551,8 +5515,6 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	SDE_DEBUG("crtc%d\n", crtc->base.id);
 	SDE_EVT32_VERBOSE(DRMID(crtc));
 	sde_crtc = to_sde_crtc(crtc);
-	cstate->line_insertion.panel_line_insertion_enable =
-			sde_crtc_is_line_insertion_supported(crtc);
 
 	/*
 	 * Avoid drm_crtc_vblank_on during seamless DMS case
@@ -8799,8 +8761,8 @@ void _sde_crtc_vm_release_notify(struct drm_crtc *crtc)
 	sde_crtc_event_notify(crtc, DRM_EVENT_VM_RELEASE, &val, sizeof(uint32_t));
 }
 
-void sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint32_t crtc_h,
-				  u32 *padding_y, u32 *padding_start, u32 *padding_height)
+int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint32_t crtc_h,
+				 u32 *padding_y, u32 *padding_start, u32 *padding_height)
 {
 	struct sde_kms *kms;
 	struct sde_crtc_state *cstate = to_sde_crtc_state(state);
@@ -8810,15 +8772,15 @@ void sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint
 	kms = _sde_crtc_get_kms(state->crtc);
 	if (!kms || !kms->catalog) {
 		SDE_ERROR("invalid kms or catalog\n");
-		return;
+		return -EINVAL;
 	}
 
 	if (!kms->catalog->has_line_insertion)
-		return;
+		return 0;
 
 	if (!cstate->line_insertion.padding_active) {
 		SDE_ERROR("zero padding active value\n");
-		return;
+		return -EINVAL;
 	}
 
 	/*
@@ -8827,8 +8789,6 @@ void sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint
 	 */
 	m = cstate->line_insertion.padding_active;
 	n = m + cstate->line_insertion.padding_dummy;
-	if (m == 0)
-		return;
 
 	y_remain = crtc_y % m;
 	y_start = y_remain + crtc_y / m * n;
@@ -8836,10 +8796,13 @@ void sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint
 	*padding_y = y_start;
 	*padding_start = m - y_remain;
 	*padding_height = y_end - y_start + 1;
+
 	SDE_EVT32(DRMID(cstate->base.crtc), y_remain, y_start, y_end, *padding_y, *padding_start,
 		  *padding_height);
 	SDE_DEBUG("crtc:%d padding_y:%d padding_start:%d padding_height:%d\n",
 		  DRMID(cstate->base.crtc), *padding_y, *padding_start, *padding_height);
+	return 0;
+
 }
 
 void sde_crtc_backlight_notify(struct drm_crtc *crtc, u32 bl_val, u32 bl_max)
