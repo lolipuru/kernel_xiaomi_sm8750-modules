@@ -300,55 +300,67 @@ exit:
 	return ret;
 }
 
-static int _process_fence_error_client_loopback(struct hw_fence_driver_data *drv_data,
-	int db_flag_id)
+static int _process_fence_error_payload(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_queue_payload *payload)
 {
 	struct msm_hw_fence_client *hw_fence_client;
-	struct msm_hw_fence_queue_payload payload;
-	int i, cb_ret, ret = 0, read = 1;
 	u32 client_id;
+	int ret;
+
+	if (!drv_data || !payload || payload->type != HW_FENCE_PAYLOAD_TYPE_2) {
+		HWFNC_ERR("invalid drv_data:0x%pK payload:0x%pK type:%d expected type:%d\n",
+			drv_data, payload, payload ? payload->type : -1, HW_FENCE_PAYLOAD_TYPE_2);
+		return -EINVAL;
+	}
+
+	if (payload->client_data < HW_FENCE_CLIENT_ID_CTX0 ||
+			payload->client_data >= drv_data->clients_num) {
+		HWFNC_ERR("read invalid client_id:%llu from ctrl rxq min:%u max:%u\n",
+			payload->client_data, HW_FENCE_CLIENT_ID_CTX0,
+			drv_data->clients_num);
+		return -EINVAL;
+	}
+
+	client_id = payload->client_data;
+	HWFNC_DBG_Q("ctrl rxq rd: h:%llu ctx:%llu seq:%llu f:%llu e:%u client:%u\n", payload->hash,
+		payload->ctxt_id, payload->seqno, payload->flags, payload->error, client_id);
+
+	hw_fence_client = drv_data->clients[client_id];
+	if (!hw_fence_client) {
+		HWFNC_ERR("processing fence error cb for unregistered client_id:%u\n",
+			client_id);
+		return -EINVAL;
+	}
+
+	ret = hw_fence_utils_fence_error_cb(hw_fence_client, payload->ctxt_id,
+		payload->seqno, payload->hash, payload->flags, payload->error);
+	if (ret)
+		HWFNC_ERR("fence_error_cb failed for client:%u ctx:%llu seq:%llu err:%u\n",
+			client_id, payload->ctxt_id, payload->seqno, payload->error);
+
+	return ret;
+}
+
+static int _process_ctrl_rx_queue(struct hw_fence_driver_data *drv_data)
+{
+	struct msm_hw_fence_queue_payload payload;
+	int i, ret = 0, read = 1;
 
 	for (i = 0; read && i < HW_FENCE_MAX_ITER_READ; i++) {
 		read = hw_fence_read_queue_helper(drv_data,
 			&drv_data->ctrl_queues[HW_FENCE_RX_QUEUE - 1], &payload);
 		if (read < 0) {
-			HWFNC_DBG_Q("unable to read ctrl rxq for db_flag_id:%d\n", db_flag_id);
+			HWFNC_DBG_Q("unable to read ctrl rxq\n");
 			return read;
 		}
-		if (payload.type != HW_FENCE_PAYLOAD_TYPE_2) {
-			HWFNC_ERR("unsupported payload type in ctrl rxq received:%u expected:%u\n",
-				payload.type, HW_FENCE_PAYLOAD_TYPE_2);
+		switch (payload.type) {
+		case HW_FENCE_PAYLOAD_TYPE_2:
+			ret = _process_fence_error_payload(drv_data, &payload);
+			break;
+		default:
+			HWFNC_ERR("received unexpected ctrl queue payload type:%d\n", payload.type);
 			ret = -EINVAL;
-			continue;
-		}
-		if (payload.client_data < HW_FENCE_CLIENT_ID_CTX0 ||
-				payload.client_data >= drv_data->clients_num) {
-			HWFNC_ERR("read invalid client_id:%llu from ctrl rxq min:%u max:%u\n",
-				payload.client_data, HW_FENCE_CLIENT_ID_CTX0,
-				drv_data->clients_num);
-			ret = -EINVAL;
-			continue;
-		}
-
-		client_id = payload.client_data;
-		HWFNC_DBG_Q("ctrl rxq rd: it:%d h:%llu ctx:%llu seq:%llu f:%llu e:%u client:%u\n",
-			i, payload.hash, payload.ctxt_id, payload.seqno, payload.flags,
-			payload.error, client_id);
-
-		hw_fence_client = drv_data->clients[client_id];
-		if (!hw_fence_client) {
-			HWFNC_ERR("processing fence error cb for unregistered client_id:%u\n",
-				client_id);
-			ret = -EINVAL;
-			continue;
-		}
-
-		cb_ret = hw_fence_utils_fence_error_cb(hw_fence_client, payload.ctxt_id,
-			payload.seqno, payload.hash, payload.flags, payload.error);
-		if (cb_ret) {
-			HWFNC_ERR("fence_error_cb failed for client:%u ctx:%llu seq:%llu err:%u\n",
-				client_id, payload.ctxt_id, payload.seqno, payload.error);
-			ret = cb_ret;
+			break;
 		}
 	}
 
@@ -362,7 +374,7 @@ static int _process_signaled_client_id(struct hw_fence_driver_data *drv_data, in
 	HWFNC_DBG_H("Processing signaled client mask id:%d\n", client_id);
 	switch (client_id) {
 	case HW_FENCE_CLIENT_ID_CTRL_QUEUE:
-		ret = _process_fence_error_client_loopback(drv_data, client_id);
+		ret = _process_ctrl_rx_queue(drv_data);
 		break;
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	case HW_FENCE_CLIENT_ID_VAL0:
