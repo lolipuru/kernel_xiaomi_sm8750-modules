@@ -177,10 +177,12 @@ struct msm_hw_fence_queue {
  * enum payload_type - Enum with the queue payload types.
  * HW_FENCE_PAYLOAD_TYPE_1: client queue payload
  * HW_FENCE_PAYLOAD_TYPE_2: ctrl queue payload for fence error; client_data stores client_id
+ * HW_FENCE_PAYLOAD_TYPE_3: ctrl queue payload for memory sharing
  */
 enum payload_type {
 	HW_FENCE_PAYLOAD_TYPE_1 = 1,
-	HW_FENCE_PAYLOAD_TYPE_2
+	HW_FENCE_PAYLOAD_TYPE_2,
+	HW_FENCE_PAYLOAD_TYPE_3
 };
 
 /**

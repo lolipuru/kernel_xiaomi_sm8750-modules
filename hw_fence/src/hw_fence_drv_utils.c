@@ -345,6 +345,29 @@ static int _process_fence_error_payload(struct hw_fence_driver_data *drv_data,
 	return ret;
 }
 
+static int _process_init_soccp_payload(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_queue_payload *payload)
+{
+	int ret;
+
+	if (!drv_data || !drv_data->has_soccp || !payload ||
+			payload->type != HW_FENCE_PAYLOAD_TYPE_3) {
+		HWFNC_ERR("invalid drv_data:0x%pK has_soccp:%d payload:0x%pK type:%d expected:%d\n",
+			drv_data, drv_data ? drv_data->has_soccp : -1, payload,
+			payload ? payload->type : -1, HW_FENCE_PAYLOAD_TYPE_3);
+		return -EINVAL;
+	}
+
+	HWFNC_DBG_INIT("Received ctrlq msg that soccp is initialized\n");
+	drv_data->fctl_ready = true;
+
+	ret = hw_fence_utils_set_power_vote(drv_data, false);
+	if (ret)
+		HWFNC_ERR("failed to remove power vote used to send ctrl queue message\n");
+
+	return ret;
+}
+
 static int _process_ctrl_rx_queue(struct hw_fence_driver_data *drv_data)
 {
 	struct msm_hw_fence_queue_payload payload;
@@ -360,6 +383,9 @@ static int _process_ctrl_rx_queue(struct hw_fence_driver_data *drv_data)
 		switch (payload.type) {
 		case HW_FENCE_PAYLOAD_TYPE_2:
 			ret = _process_fence_error_payload(drv_data, &payload);
+			break;
+		case HW_FENCE_PAYLOAD_TYPE_3:
+			ret = _process_init_soccp_payload(drv_data, &payload);
 			break;
 		default:
 			HWFNC_ERR("received unexpected ctrl queue payload type:%d\n", payload.type);
@@ -507,6 +533,41 @@ static int hw_fence_soccp_listener(void *data)
 	return 0;
 }
 
+static int _send_ctrl_txq_msg(struct hw_fence_driver_data *drv_data, u32 payload_type)
+{
+	struct msm_hw_fence_queue *queue;
+	int ret;
+
+	ret = hw_fence_utils_set_power_vote(drv_data, true);
+	if (ret) {
+		HWFNC_ERR("failed to set power vote to send ctrlq message ret:%d\n", ret);
+		return -EINVAL;
+	}
+
+	/* soccp may fail to wake up during hw-fence driver probe */
+	if (!drv_data->soccp_props.is_awake) {
+		HWFNC_DBG_INFO("rproc_set_state call failed to wake up soccp\n");
+		ret = hw_fence_utils_set_power_vote(drv_data, false);
+		if (ret)
+			HWFNC_ERR("failed to remove power vote for ctrlq msg ret:%d\n", ret);
+
+		return -EINVAL;
+	}
+
+	queue = &drv_data->ctrl_queues[HW_FENCE_TX_QUEUE - 1];
+	ret = hw_fence_update_queue_helper(drv_data, 0, queue, payload_type, 0, 0, 0,
+		0, 0, 0, HW_FENCE_TX_QUEUE - 1);
+	if (ret) {
+		HWFNC_ERR("unable to update ctrl txq message\n");
+		return ret;
+	}
+
+	hw_fence_ipcc_trigger_signal(drv_data, drv_data->ipcc_client_pid, drv_data->ipcc_fctl_vid,
+		hw_fence_ipcc_get_signal_id(drv_data, 0));
+
+	return ret;
+}
+
 int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data)
 {
 	struct platform_device *pdev;
@@ -613,13 +674,7 @@ int hw_fence_utils_set_power_vote(struct hw_fence_driver_data *drv_data, bool st
 	return 0; /* do not expose failures of power vote to client */
 }
 #else
-static int _set_intended_soccp_state(struct hw_fence_soccp *soccp_props)
-{
-	HWFNC_ERR("Kernel version does not support SOCCP power votes\n");
-	return -EINVAL;
-}
-
-int hw_fence_utils_set_power_vote(struct hw_fence_soccp *soccp_props, bool state)
+int hw_fence_utils_set_power_vote(struct hw_fence_driver_data *drv_data, bool state)
 {
 	HWFNC_ERR("Kernel version does not support SOCCP power votes\n");
 	return -EINVAL;
@@ -628,7 +683,7 @@ int hw_fence_utils_set_power_vote(struct hw_fence_soccp *soccp_props, bool state
 
 static int _set_soccp_rproc(struct hw_fence_soccp *soccp_props, phandle ph)
 {
-	int ret;
+	int ret = 0;
 
 	mutex_lock(&soccp_props->rproc_lock);
 	if (IS_ERR_OR_NULL(soccp_props->rproc))
@@ -638,8 +693,6 @@ static int _set_soccp_rproc(struct hw_fence_soccp *soccp_props, phandle ph)
 		if (!ret)
 			ret = -EINVAL;
 		soccp_props->rproc = NULL;
-	} else {
-		ret = _set_intended_soccp_state(soccp_props);
 	}
 	mutex_unlock(&soccp_props->rproc_lock);
 
@@ -649,6 +702,8 @@ static int _set_soccp_rproc(struct hw_fence_soccp *soccp_props, phandle ph)
 static int hw_fence_notify_ssr(struct notifier_block *nb, unsigned long action, void *data)
 {
 	struct hw_fence_soccp *soccp_props = container_of(nb, struct hw_fence_soccp, ssr_nb);
+	struct hw_fence_driver_data *drv_data = container_of(soccp_props,
+		struct hw_fence_driver_data, soccp_props);
 	struct qcom_ssr_notify_data *notify_data = data;
 	int ret;
 
@@ -664,6 +719,10 @@ static int hw_fence_notify_ssr(struct notifier_block *nb, unsigned long action, 
 			HWFNC_ERR("failed getting soccp_rproc:0x%pK ph:%d usage_cnt:0x%x ret:%d\n",
 				soccp_props->rproc, soccp_props->rproc_ph,
 				refcount_read(&soccp_props->usage_cnt), ret);
+		/* inform soccp of ctrl queue updates once it is up; this will set a power vote */
+		ret = _send_ctrl_txq_msg(drv_data, HW_FENCE_PAYLOAD_TYPE_3);
+		if (ret)
+			HWFNC_ERR("failed to send ctrlq message for bootup event\n");
 		break;
 	case QCOM_SSR_BEFORE_SHUTDOWN:
 		HWFNC_DBG_SSR("received soccp %s event\n", notify_data->crashed ? "crashed" :
@@ -690,6 +749,7 @@ int hw_fence_utils_register_soccp_ssr_notifier(struct hw_fence_driver_data *drv_
 {
 	void *notifier;
 	struct hw_fence_soccp *soccp_props;
+	int ret;
 
 	if (!drv_data || !drv_data->has_soccp) {
 		HWFNC_ERR("invalid drv_data:0x%pK has_soccp:%d\n", drv_data,
@@ -709,6 +769,11 @@ int hw_fence_utils_register_soccp_ssr_notifier(struct hw_fence_driver_data *drv_
 	}
 	soccp_props->ssr_notifier = notifier;
 	HWFNC_DBG_SSR("registered for soccp ssr notification notifier:0x%pK\n", notifier);
+
+	/* if soccp is already up, do initial bootup here; this first attempt may fail */
+	ret = _send_ctrl_txq_msg(drv_data, HW_FENCE_PAYLOAD_TYPE_3);
+	if (ret)
+		HWFNC_DBG_INFO("can't send ctrl tx queue msg to inform soccp of mem map\n");
 
 	return 0;
 }
@@ -926,19 +991,12 @@ static int _init_soccp_mem(struct hw_fence_driver_data *drv_data)
 	ret = iommu_map(domain, shbuf_soccp_va, drv_data->res.start, drv_data->size,
 		IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE);
 #endif
-	if (ret) {
+	if (ret)
 		HWFNC_ERR("failed to map for soccp smmu phys_addr:0x%llx va:0x%x sz:%lx ret:%d\n",
 			drv_data->res.start, shbuf_soccp_va, drv_data->size, ret);
-	} else {
-		/*
-		 * HW Fence Driver resources may not be ready at this point (this is separately
-		 * tracked via resources_ready), but we assume soccp is ready once memory mapping
-		 * is done.
-		 */
-		drv_data->fctl_ready = true;
+	else
 		HWFNC_DBG_INIT("mapped for soccp smmu phys_addr:0x%llx va:0x%x sz:%lx ret:%d\n",
 			drv_data->res.start, shbuf_soccp_va, drv_data->size, ret);
-	}
 
 	return ret;
 }
