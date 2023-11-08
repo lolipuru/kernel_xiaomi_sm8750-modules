@@ -78,7 +78,7 @@ struct msm_gem_vma;
 
 #define NUM_DOMAINS    4    /* one for KMS, then one per gpu core (?) */
 #define MAX_CRTCS      16
-#define MAX_PLANES     20
+#define MAX_PLANES     32
 #define MAX_ENCODERS   16
 #define MAX_BRIDGES    16
 #define MAX_CONNECTORS 16
@@ -1167,6 +1167,9 @@ struct msm_drm_private {
 
 	struct mutex fence_error_client_lock;
 	struct list_head fence_error_client_list;
+
+	/* list of component registered for notification */
+	struct blocking_notifier_head component_notifier_list;
 };
 
 /* get struct msm_kms * from drm_device * */
@@ -1489,6 +1492,19 @@ static inline void __exit dsi_display_unregister(void)
 }
 #endif /* CONFIG_DRM_MSM_DSI */
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+void __init sde_shd_register(void);
+void __exit sde_shd_unregister(void);
+#else
+static inline void __init sde_shd_register(void)
+{
+}
+
+static inline void __exit sde_shd_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_SDE_SHD */
+
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 void __init msm_hdcp_register(void);
 void __exit msm_hdcp_unregister(void);
@@ -1622,5 +1638,39 @@ int msm_get_dsc_count(struct msm_drm_private *priv,
 		u32 hdisplay, u32 *num_dsc);
 
 int msm_get_src_bpc(int chroma_format, int bpc);
+
+/**
+ * enum msm_component_event - type of component events
+ * @MSM_COMP_OBJECT_CREATED - notify when all builtin objects are created
+ */
+enum msm_component_event {
+	MSM_COMP_OBJECT_CREATED = 0,
+};
+
+/**
+ * msm_drm_register_component - register a component notifier
+ * @dev: drm device
+ * @nb: notifier block to callback on events
+ *
+ * This function registers a notifier callback function
+ * to msm_drm_component_list, which would be called during module init.
+ */
+int msm_drm_register_component(struct drm_device *dev, struct notifier_block *nb);
+
+/**
+ * msm_drm_unregister_component - unregister a component notifier
+ * @dev: drm device
+ * @nb: notifier block to callback on events
+ *
+ * This function registers a notifier callback function
+ * to msm_drm_component_list, which would be called during module deinit.
+ */
+int msm_drm_unregister_component(struct drm_device *dev, struct notifier_block *nb);
+
+/**
+ * msm_drm_notify_components - notify components of msm_component_event
+ * @event: defined in msm_component_event
+ */
+int msm_drm_notify_components(struct drm_device *dev, enum msm_component_event event);
 
 #endif /* __MSM_DRV_H__ */

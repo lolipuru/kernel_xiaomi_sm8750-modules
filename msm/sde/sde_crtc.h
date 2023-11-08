@@ -513,13 +513,11 @@ enum sde_crtc_dirty_flags {
 
 /**
  * struct sde_line_insertion_param - sde line insertion parameters
- * @panel_line_insertion_enable: line insertion support status
  * @padding_height: panel height after line padding
  * @padding_active: active lines in panel stacking pattern
  * @padding_dummy: dummy lines in panel stacking pattern
  */
 struct sde_line_insertion_param {
-	bool panel_line_insertion_enable;
 	u32 padding_height;
 	u32 padding_active;
 	u32 padding_dummy;
@@ -1188,14 +1186,6 @@ struct drm_encoder *sde_crtc_get_src_encoder_of_clone(struct drm_crtc *crtc);
  */
 void _sde_crtc_vm_release_notify(struct drm_crtc *crtc);
 
-/*
- * sde_crtc_is_line_insertion_supported - get lineinsertion
- * feature bit value from panel
- * @drm_crtc:    Pointer to drm crtc structure
- * @Return: line insertion support status
- */
-bool sde_crtc_is_line_insertion_supported(struct drm_crtc *crtc);
-
 /**
  * sde_crtc_calc_vpadding_param - calculate vpadding parameters
  * @state: Pointer to DRM crtc state object
@@ -1205,8 +1195,8 @@ bool sde_crtc_is_line_insertion_supported(struct drm_crtc *crtc);
  * @padding_start: Padding start offset
  * @padding_height: Padding height in total
  */
-void sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, u32 crtc_h,
-				  u32 *padding_y, u32 *padding_start, u32 *padding_height);
+int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, u32 crtc_h,
+				 u32 *padding_y, u32 *padding_start, u32 *padding_height);
 
 /**
  * sde_crtc_backlight_notify - notify backlight
