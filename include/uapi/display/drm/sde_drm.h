@@ -78,6 +78,18 @@ extern "C" {
 #define DRM_FORMAT_MOD_QCOM_CAC_B          fourcc_mod_code(QCOM, 0x100)
 
 /**
+ * @DRM_FORMAT_MOD_QCOM_LOSSY_8_5:	Refers to RGBA888 UBWC pixel format with 1.26x
+ *					compression ratio.
+ */
+#define DRM_FORMAT_MOD_QCOM_LOSSY_8_5	fourcc_mod_code(QCOM, 0x20)
+
+/**
+ * @DRM_FORMAT_MOD_QCOM_LOSSY_2_1:	Refers to RGBA8888 UBWC pixel format with 2x
+ *					compression ratio.
+ */
+#define DRM_FORMAT_MOD_QCOM_LOSSY_2_1	fourcc_mod_code(QCOM, 0x200)
+
+/**
  * Blend operations for "blend_op" property
  *
  * @SDE_DRM_BLEND_OP_NOT_DEFINED:   No blend operation defined for the layer.

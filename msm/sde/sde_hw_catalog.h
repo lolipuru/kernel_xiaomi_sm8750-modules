@@ -835,6 +835,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_EMULATED_ENV   Emulated environment supported
  * @SDE_FEATURE_UCSC_SUPPORTED  UCSC pipe format supported
  * @SDE_FEATURE_10_BITS_COMPONENTS Support for 10 bits components
+ * @SDE_FEATURE_UBWC_LOSSY	Support UBWC Lossy
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -884,6 +885,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_EMULATED_ENV,
 	SDE_FEATURE_UCSC_SUPPORTED,
 	SDE_FEATURE_10_BITS_COMPONENTS,
+	SDE_FEATURE_UBWC_LOSSY,
 	SDE_FEATURE_MAX
 };
 
@@ -2010,6 +2012,7 @@ struct sde_perf_cfg {
  * @dnsc_blur_filters        supported filters for downscale blur
  * @dnsc_blur_filter_count   supported filter count for downscale blur
  * @cac_formats         supported formats for CAC
+ * @rgb_lossy_formats	supported formats for UBWC lossy
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
@@ -2134,6 +2137,7 @@ struct sde_mdss_cfg {
 	struct sde_dnsc_blur_filter_info *dnsc_blur_filters;
 	u32 dnsc_blur_filter_count;
 	struct sde_format_extended *cac_formats;
+	struct sde_format_extended *rgb_lossy_formats;
 
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;
