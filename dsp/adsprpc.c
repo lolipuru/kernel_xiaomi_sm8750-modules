@@ -7442,8 +7442,7 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int ioctl_num,
  *        structure smq_invoke_ctx
  *        void* mini_dump_buff
  */
-// TODO: Compilation errors in minidump functions on Pakala. Uncomment after resolution.
-#if 0
+
 static void fastrpc_smq_ctx_detail(struct smq_invoke_ctx *smq_ctx, int cid, void *mini_dump_buff)
 {
 	int i = 0;
@@ -7468,9 +7467,9 @@ static void fastrpc_smq_ctx_detail(struct smq_invoke_ctx *smq_ctx, int cid, void
 			scnprintf(mini_dump_buff + strlen(mini_dump_buff),
 					MINI_DUMP_DBG_SIZE - strlen(mini_dump_buff),
 					fastrpc_mmap_params,
-					map->fd, (void*)map->flags, map->buf,
+					(int)map->fd, (void*)(size_t)map->flags, map->buf,
 					(void*)map->phys, (int)map->size, (void*)map->va,
-					(void*)map->raddr, (size_t)map->len, map->refs,
+					(void*)map->raddr, (int)map->len, map->refs,
 					map->secure);
 		} else {
 			scnprintf(mini_dump_buff + strlen(mini_dump_buff),
@@ -7496,9 +7495,10 @@ static void fastrpc_print_fastrpcbuf(struct fastrpc_buf *buf, void *buffer)
 
 	scnprintf(buffer + strlen(buffer),
 			MINI_DUMP_DBG_SIZE - strlen(buffer),
-			fastrpc_buf_params, buf->fl, buf->phys,
-			buf->virt, buf->size, buf->dma_attr, buf->raddr,
-			buf->flags, buf->type, buf->in_use);
+				fastrpc_buf_params, buf->fl, (void*)buf->phys,
+				buf->virt, (int)buf->size, buf->dma_attr, (void*)buf->raddr,
+				buf->flags, buf->type, buf->in_use);
+
 }
 
 /*
@@ -7559,8 +7559,8 @@ static void  fastrpc_print_debug_data(int cid)
 					MINI_DUMP_DBG_SIZE -
 					strlen(mini_dump_buff),
 					fastrpc_file_params, fl->tgid,
-					fl->cid, fl->ssrcount, fl->pd,
-					fl->profile, fl->mode,
+						fl->cid, (void*)fl->ssrcount, fl->pd,
+						(void*)(size_t)fl->profile, (void*)(size_t)fl->mode,
 					fl->tgid_open, fl->num_cached_buf,
 					fl->num_pers_hdrs, fl->sessionid,
 					fl->servloc_name, fl->file_close,
@@ -7583,10 +7583,11 @@ static void  fastrpc_print_debug_data(int cid)
 						strlen(mini_dump_buff),
 						fastrpc_mmap_params,
 						map->fd,
-						map->flags, map->buf,
-						map->phys, map->size,
-						map->va, map->raddr,
-						map->len, map->refs,
+							(void*)(size_t)map->flags, map->buf,
+							(void*)map->phys, (int)map->size,
+							(void*)map->va, (void*)map->raddr,
+							(int)map->len, map->refs,
+
 						map->secure);
 			}
 			scnprintf(mini_dump_buff + strlen(mini_dump_buff),
@@ -7657,7 +7658,7 @@ static void  fastrpc_print_debug_data(int cid)
 			rsp = &chan->gmsg_log.rx_msgs[i].rsp;
 			len += scnprintf(gmsg_log_rx + len, MD_GMSG_BUFFER - len,
 					"ctx: 0x%x, retval: %d, flags: %d, early_wake_time: %d, version: %d\n",
-					rsp->ctx, rsp->retval, rsp->flags,
+					(unsigned int)rsp->ctx, rsp->retval, rsp->flags,
 					rsp->early_wake_time, rsp->version);
 		}
 	}
@@ -7670,11 +7671,11 @@ static void  fastrpc_print_debug_data(int cid)
 					"pid: %d, tid: %d, ctx: 0x%x, handle: 0x%x, sc: 0x%x, addr: 0x%x, size:%d\n",
 					tx_msg->msg.pid,
 					tx_msg->msg.tid,
-					tx_msg->msg.invoke.header.ctx,
+					(unsigned int)tx_msg->msg.invoke.header.ctx,
 					tx_msg->msg.invoke.header.handle,
 					tx_msg->msg.invoke.header.sc,
-					tx_msg->msg.invoke.page.addr,
-					tx_msg->msg.invoke.page.size);
+					(unsigned int)tx_msg->msg.invoke.page.addr,
+					(int)tx_msg->msg.invoke.page.size);
 		}
 	}
 	spin_unlock_irqrestore(&chan->gmsg_log.lock, flags);
@@ -7689,7 +7690,6 @@ static void  fastrpc_print_debug_data(int cid)
 	kfree(gmsg_log_tx);
 	kfree(gmsg_log_rx);
 }
-#endif
 
 void fastrpc_restart_drivers(int cid)
 {
@@ -7753,8 +7753,8 @@ static int fastrpc_restart_notifier_cb(struct notifier_block *nb,
 		if (cid == CDSP_DOMAIN_ID && dump_enabled() &&
 				ctx->ssrcount) {
 			mutex_lock(&me->channel[cid].smd_mutex);
-// TODO: Uncomment after minidump functionality is enabled
-//			fastrpc_print_debug_data(cid);
+
+			fastrpc_print_debug_data(cid);
 			mutex_unlock(&me->channel[cid].smd_mutex);
 			ktime_get_real_ts64(&startT);
 			fastrpc_ramdump_collection(cid);
