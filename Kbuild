@@ -57,3 +57,15 @@ ifneq (, $(filter y, $(ARCH_QTI_VM) $(CONFIG_ARCH_PINEAPPLE) $(CONFIG_ARCH_SUN))
     smmu_proxy_dlkm-objs += smmu-proxy/qti-smmu-proxy-tvm.o
     endif
 endif
+
+#Enable QCE Dev Frontend if CONFIG_ARCH_LEMANS is set to y
+#ifeq ($(CONFIG_ARCH_LEMANS), y)
+ifeq ($(CONFIG_QTI_QUIN_GVM), y)
+
+include $(SSG_MODULE_ROOT)/config/sec-kernel_defconfig_qcedev_fe.conf
+LINUXINCLUDE += -include $(SSG_MODULE_ROOT)/config/sec-kernel_defconfig_qcedev_fe.h
+
+obj-$(CONFIG_QCEDEV_FE) += qcedev_fe_dlkm.o
+qcedev_fe_dlkm-objs := qcedev_fe/qcedev_fe.o qcedev_fe/qcedev_smmu.o
+endif #CONFIG_QTI_QUIN_GVM
+#endif #CONFIG_ARCH_LEMANS
