@@ -1118,6 +1118,15 @@ static void free_wncc_buf(struct wncc_oob_buf *wob)
 	}
 }
 
+static unsigned int eva_calculate_crc(unsigned int *pbuf, uint32_t size)
+{
+	unsigned long crc_value = 0;
+
+	for (uint32_t i = 0; i < (size / sizeof(uint32_t)); i++)
+		crc_value += *(pbuf + i);
+	return (unsigned int)(crc_value & 0xFFFFFFFF);
+}
+
 static int msm_cvp_proc_oob_wncc(struct msm_cvp_inst* inst,
 	struct eva_kmd_hfi_packet* in_pkt)
 {
@@ -1125,6 +1134,7 @@ static int msm_cvp_proc_oob_wncc(struct msm_cvp_inst* inst,
 	struct eva_kmd_oob_wncc* wncc_oob;
 	struct wncc_oob_buf wob;
 	struct eva_kmd_wncc_metadata* wncc_metadata[EVA_KMD_WNCC_MAX_LAYERS];
+	struct cvp_buf_type *wncc_metadata_bufs;
 	unsigned int i, j;
 	bool empty = false;
 	u32 buf_id, buf_idx, buf_offset, iova;
@@ -1207,6 +1217,16 @@ static int msm_cvp_proc_oob_wncc(struct msm_cvp_inst* inst,
 				buf_offset;
 			wncc_metadata[i][j].iova_lsb = iova;
 			wncc_metadata[i][j].iova_msb = iova >> 22;
+		}
+
+		wncc_metadata_bufs = (struct cvp_buf_type *)
+			&in_pkt->pkt_data[wncc_oob->metadata_bufs_offset];
+		if ((wncc_metadata_bufs[i].debug_flags & 0x00000001) != 0) {
+			wncc_metadata_bufs[i].crc =
+				eva_calculate_crc((unsigned int *)wncc_metadata[i],
+				wncc_metadata_bufs[i].size);
+			dprintk(CVP_MEM, "%s: updated CRC 0x%x", __func__,
+				wncc_metadata_bufs[i].crc);
 		}
 	}
 	mutex_unlock(&inst->cvpwnccbufs.lock);
