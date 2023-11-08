@@ -489,7 +489,6 @@ static int msm_cvp_populate_bus(struct device *dev,
 		struct msm_cvp_platform_resources *res)
 {
 	struct bus_set *buses = &res->bus_set;
-	const char *temp_name = NULL;
 	struct bus_info *bus = NULL, *temp_table;
 	u32 range[2];
 	int rc = 0;
@@ -507,28 +506,9 @@ static int msm_cvp_populate_bus(struct device *dev,
 
 	memset(bus, 0x0, sizeof(struct bus_info));
 
-	rc = of_property_read_string(dev->of_node, "label", &temp_name);
+	rc = of_property_read_string(dev->of_node, "interconnect-names", &bus->name);
 	if (rc) {
-		dprintk(CVP_ERR, "'label' not found in node\n");
-		goto err_bus;
-	}
-	/* need a non-const version of name, hence copying it over */
-	bus->name = devm_kstrdup(dev, temp_name, GFP_KERNEL);
-	if (!bus->name) {
-		rc = -ENOMEM;
-		goto err_bus;
-	}
-
-	rc = of_property_read_u32(dev->of_node, "qcom,bus-master",
-			&bus->master);
-	if (rc) {
-		dprintk(CVP_ERR, "'qcom,bus-master' not found in node\n");
-		goto err_bus;
-	}
-
-	rc = of_property_read_u32(dev->of_node, "qcom,bus-slave", &bus->slave);
-	if (rc) {
-		dprintk(CVP_ERR, "'qcom,bus-slave' not found in node\n");
+		dprintk(CVP_ERR, "'interconnect-names' not found in node\n");
 		goto err_bus;
 	}
 
@@ -559,8 +539,7 @@ static int msm_cvp_populate_bus(struct device *dev,
 
 	buses->count++;
 	bus->dev = dev;
-	dprintk(CVP_CORE, "Found bus %s [%d->%d] with governor %s\n",
-			bus->name, bus->master, bus->slave, bus->governor);
+	dprintk(CVP_CORE, "Found bus %s with governor %s\n", bus->name, bus->governor);
 err_bus:
 	return rc;
 }
