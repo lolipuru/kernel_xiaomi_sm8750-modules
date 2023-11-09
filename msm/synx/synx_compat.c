@@ -4,10 +4,10 @@
  */
 
 #include <linux/types.h>
-//#include <msm_hw_fence_synx_translation.h>
+#include <msm_hw_fence_synx_translation.h>
 #include "synx_api.h"
 #include "synx_private.h"
-/*
+
 static struct synx_ops synx_hwfence_ops = {
 	.uninitialize = synx_hwfence_uninitialize,
 	.create = synx_hwfence_create,
@@ -21,7 +21,7 @@ static struct synx_ops synx_hwfence_ops = {
 	.wait = NULL,
 	.cancel_async_wait = NULL
 };
-*/
+
 static struct synx_ops synx_internal_ops = {
 	.uninitialize = synx_internal_uninitialize,
 	.create = synx_internal_create,
@@ -35,31 +35,31 @@ static struct synx_ops synx_internal_ops = {
 	.wait = synx_internal_wait,
 	.cancel_async_wait = synx_internal_cancel_async_wait
 };
-/*
+
 static bool is_hw_fence_client(enum synx_client_id synx_client_id)
 {
 	return synx_client_id >= SYNX_HW_FENCE_CLIENT_START
 		&& synx_client_id < SYNX_HW_FENCE_CLIENT_END;
 }
-*/
+
 struct synx_session *synx_initialize(struct synx_initialization_params *params)
 {
 	struct synx_session *session = NULL;
 
 	if (IS_ERR_OR_NULL(params))
 		return ERR_PTR(-SYNX_INVALID);
-/*
+
 	if (is_hw_fence_client(params->id)) {
 		session = synx_hwfence_initialize(params);
 		if (IS_ERR_OR_NULL(session))
 			return session;
 		session->ops = &synx_hwfence_ops;
-	} else {*/
-	session = synx_internal_initialize(params);
-	if (IS_ERR_OR_NULL(session))
-		return session;
-	session->ops = &synx_internal_ops;
-	//}
+	} else {
+		session = synx_internal_initialize(params);
+		if (IS_ERR_OR_NULL(session))
+			return session;
+		session->ops = &synx_internal_ops;
+	}
 	return session;
 }
 EXPORT_SYMBOL(synx_initialize);
@@ -107,10 +107,10 @@ EXPORT_SYMBOL(synx_async_wait);
 int synx_recover(enum synx_client_id id)
 {
 	int ret = 0;
-/*
+
 	if (is_hw_fence_client(id))
 		ret = synx_hwfence_recover(id);
-	else*/
+	else
 		ret = synx_internal_recover(id);
 	return ret;
 }

@@ -1,7 +1,7 @@
 LINUXINCLUDE    += -I$(SYNX_ROOT)/include \
                    -I$(SYNX_ROOT)/include/uapi \
 		   -I$(SYNX_ROOT)/include/uapi/synx/media \
-		#   -I$(SYNX_ROOT)/../mm-drivers/hw_fence/include/
+		   -I$(SYNX_ROOT)/../mm-drivers/hw_fence/include/
 
 ccflags-y += -I$(SYNX_ROOT)/msm/synx/
 
