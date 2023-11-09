@@ -232,14 +232,14 @@ int msm_cvp_update_power(struct msm_cvp_inst *inst)
 		goto adjust_exit;
 	}
 	for (bus_count = 0; bus_count < core->resources.bus_set.count; bus_count++) {
-		if (!strcmp(core->resources.bus_set.bus_tbl[bus_count].name, "cvp-ddr")) {
+		if (!strcmp(core->resources.bus_set.bus_tbl[bus_count].name, "eva-ddr")) {
 			bus = &core->resources.bus_set.bus_tbl[bus_count];
 			max_bw = bus->range[1];
 			min_bw = max_bw/10;
 		}
 	}
 	if (!bus) {
-		dprintk(CVP_ERR, "bus node is NULL for cvp-ddr\n");
+		dprintk(CVP_ERR, "bus node is NULL for eva-ddr\n");
 		rc = -EINVAL;
 		goto adjust_exit;
 	}
