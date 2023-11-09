@@ -26,6 +26,7 @@
 #include <linux/of_device.h>
 #include <soc/qcom/cmd-db.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
+#include <linux/soc/qcom/qcom_aoss.h>
 #include "btpower.h"
 #if (defined CONFIG_BT_SLIM)
 #include "btfm_slim.h"
@@ -2120,14 +2121,10 @@ driver_err:
  */
 int bt_aop_send_msg(struct platform_pwr_data *plat_priv, char *mbox_msg)
 {
-	struct qmp_pkt pkt;
 	int ret = 0;
-	pkt.size = BTPOWER_MBOX_MSG_MAX_LEN;
-	pkt.data = mbox_msg;
-	pr_err("%s: %s\n", __func__, mbox_msg);
-	ret = mbox_send_message(plat_priv->mbox_chan, &pkt);
+	ret = qmp_send(plat_priv->qmp, mbox_msg, BTPOWER_MBOX_MSG_MAX_LEN);
 	if (ret < 0)
-		pr_err("Failed to send AOP mbox msg: %s\n", mbox_msg);
+		pr_err("Failed to send AOP qmp  xmsg: %s\n", mbox_msg);
 	else
 		ret =0;
 	return ret;
@@ -2142,7 +2139,7 @@ int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata)
 		return 0;
 	pr_debug("Setting PDC defaults\n");
 	for (i = 0; i < pdata->pdc_init_table_len; i++) {
-		ret =bt_aop_send_msg(pdata,(char *)pdata->pdc_init_table[i]);
+		ret = bt_aop_send_msg(pdata, (char *)pdata->pdc_init_table[i]);
 		if (ret < 0)
 			break;
 	}
@@ -2151,30 +2148,20 @@ int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata)
 
 int btpower_aop_mbox_init(struct platform_pwr_data *pdata)
 {
-	struct mbox_client *mbox = &pdata->mbox_client_data;
-	struct mbox_chan *chan;
 	int ret = 0;
-
-	mbox->dev = &pdata->pdev->dev;
-	mbox->tx_block = true;
-	mbox->tx_tout = BTPOWER_MBOX_TIMEOUT_MS;
-	mbox->knows_txdone = false;
-
-	pdata->mbox_chan = NULL;
-	chan = mbox_request_channel(mbox, 0);
-	if (IS_ERR(chan)) {
-		pr_err("%s: failed to get mbox channel\n", __func__);
-		return PTR_ERR(chan);
+// ret = of_find_property(pdata->pdev->dev.of_node, "qcom,qmp", NULL);
+	pdata->qmp = qmp_get(&pdata->pdev->dev);
+	if (IS_ERR(pdata->qmp)) {
+		pr_err("%s: failed to get qmp\n", __func__);
+		return PTR_ERR(pdata->qmp);
 	}
-	pdata->mbox_chan = chan;
-
 	ret = of_property_read_string(pdata->pdev->dev.of_node,
 				      "qcom,vreg_ipa",
 				      &pdata->vreg_ipa);
 	if (ret)
 		pr_info("%s: vreg for iPA not configured\n", __func__);
 	else
-		pr_info("%s: Mbox channel initialized\n", __func__);
+		pr_info("%s: qmp initialized\n", __func__);
 
 	ret = bt_aop_pdc_reconfig(pdata);
 	if (ret)
@@ -2188,7 +2175,7 @@ static int btpower_aop_set_vreg_param(struct platform_pwr_data *pdata,
 				   enum btpower_vreg_param param,
 				   enum btpower_tcs_seq seq, int val)
 {
-	struct qmp_pkt pkt;
+
 	char mbox_msg[BTPOWER_MBOX_MSG_MAX_LEN];
 	static const char * const vreg_param_str[] = {"v", "m", "e"};
 	static const char *const tcs_seq_str[] = {"upval", "dwnval", "enable"};
@@ -2202,10 +2189,7 @@ static int btpower_aop_set_vreg_param(struct platform_pwr_data *pdata,
 		 vreg_param_str[param], tcs_seq_str[seq], val);
 
 	pr_info("%s: sending AOP Mbox msg: %s\n", __func__, mbox_msg);
-	pkt.size = BTPOWER_MBOX_MSG_MAX_LEN;
-	pkt.data = mbox_msg;
-
-	ret = mbox_send_message(pdata->mbox_chan, &pkt);
+	ret = qmp_send(pdata->qmp, mbox_msg, BTPOWER_MBOX_MSG_MAX_LEN);
 	if (ret < 0)
 		pr_err("%s:Failed to send AOP mbox msg(%s), err(%d)\n",
 					__func__, mbox_msg, ret);
@@ -2223,7 +2207,7 @@ static int btpower_enable_ipa_vreg(struct platform_pwr_data *pdata)
 		return 0;
 	}
 
-	if (!pdata->vreg_ipa || !pdata->mbox_chan) {
+	if (!pdata->vreg_ipa) {
 		pr_info("%s: mbox/iPA vreg not configured\n", __func__);
 	} else {
 		ret = btpower_aop_set_vreg_param(pdata,
@@ -2241,6 +2225,7 @@ static int btpower_enable_ipa_vreg(struct platform_pwr_data *pdata)
 
 static void __exit btpower_exit(void)
 {
+	qmp_put(pwr_data->qmp);
 	platform_driver_unregister(&bt_power_driver);
 }
 
