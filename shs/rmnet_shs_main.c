@@ -40,11 +40,15 @@
 #include <linux/cpumask.h>
 #include <linux/icmp.h>
 #include <linux/inet.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION((0xd03+244-0xdf1), (0xd0a+237-0xdf2), (0xd2d+202-0xdf7)) <= \
+LINUX_VERSION_CODE)
 #include <net/gso.h>
-static char*verinfo[]={"\x32\x65\x31\x65\x64\x32\x65\x65",
-"\x64\x36\x33\x34\x64\x33\x65\x31","\x32\x31\x30\x33\x65\x39\x38\x62"};
-module_param_array(verinfo,charp,NULL,(0xcb7+5769-0x221c));MODULE_PARM_DESC(
-verinfo,
+#endif
+static char*verinfo[]={"\x66\x36\x35\x62\x37\x30\x32\x34",
+"\x32\x65\x31\x65\x64\x32\x65\x65","\x64\x36\x33\x34\x64\x33\x65\x31",
+"\x32\x31\x30\x33\x65\x39\x38\x62"};module_param_array(verinfo,charp,NULL,
+(0xcb7+5769-0x221c));MODULE_PARM_DESC(verinfo,
 "\x56\x65\x72\x73\x69\x6f\x6e\x20\x6f\x66\x20\x74\x68\x65\x20\x64\x72\x69\x76\x65\x72"
 );
 #define DATARMNET2f67183a86 2000000
