@@ -38,6 +38,7 @@ enum queue_state {
 /*SYNX MMRM and FASTRPC are removed temporarily*/
 /*Need to put them back when dependencies are available*/
 #ifdef CONFIG_EVA_PINEAPPLE
+#define CVP_SYNX_ENABLED 1
 #endif	/* End of CONFIG_EVA_PINEAPPLE */
 
 #ifdef CONFIG_EVA_SUN
