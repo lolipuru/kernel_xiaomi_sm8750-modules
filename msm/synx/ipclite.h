@@ -5,7 +5,6 @@
 #include <linux/hwspinlock.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-#include <dt-bindings/soc/qcom,ipcc.h>
 #include <linux/mailbox_client.h>
 #include <linux/mailbox_controller.h>
 #include "ipclite_client.h"
