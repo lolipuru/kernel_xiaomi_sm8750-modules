@@ -3790,7 +3790,6 @@ static int __init_bus(struct iris_hfi_device *device)
 				dev_name(bus->dev));
 		dev_set_drvdata(bus->dev, device);
 		bus->client = of_icc_get(bus->dev, bus->name);
-		return -EINVAL;
 
 		if (IS_ERR_OR_NULL(bus->client)) {
 			rc = PTR_ERR(bus->client) ?: -EBADHANDLE;
