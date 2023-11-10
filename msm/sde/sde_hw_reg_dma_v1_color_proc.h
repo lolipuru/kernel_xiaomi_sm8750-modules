@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -110,6 +110,13 @@ void reg_dmav1_setup_dspp_3d_gamutv42(struct sde_hw_dspp *ctx, void *cfg);
  * @cfg: pointer to struct sde_hw_cp_cfg
  */
 void reg_dmav1_setup_dspp_gcv18(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * reg_dmav1_setup_dspp_gcv2() - gc v2 implementation using reg dma v1.
+ * @ctx: dspp ctx info
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_dspp_gcv2(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
  * reg_dmav1_setup_dspp_igcv31() - igc v31 implementation using reg dma v1.

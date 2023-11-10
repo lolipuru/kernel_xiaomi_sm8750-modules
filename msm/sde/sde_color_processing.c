@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -3220,6 +3220,7 @@ static void _dspp_gc_install_property(struct drm_crtc *crtc)
 		"SDE_DSPP_GC_V", version);
 	switch (version) {
 	case 1:
+	case 2:
 		_sde_cp_crtc_install_blob_property(crtc, feature_name,
 			SDE_CP_CRTC_DSPP_GC, sizeof(struct drm_msm_pgc_lut));
 		break;
