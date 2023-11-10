@@ -1935,6 +1935,39 @@ int synx_internal_import(struct synx_session *session,
 	return rc;
 }
 
+static int synx_handle_initialize(struct synx_private_ioctl_arg *k_ioctl,
+	struct synx_session **session)
+{
+	struct synx_initialize_v2 init_info;
+	struct synx_initialization_params params = {0};
+
+	if (k_ioctl->size != sizeof(init_info))
+		return -SYNX_INVALID;
+
+	if (!IS_ERR_OR_NULL(*session)) {
+		dprintk(SYNX_ERR, "Session is already initialized %pK \n", *session);
+		return -SYNX_ALREADY;
+	}
+
+	if (copy_from_user(&init_info,
+			u64_to_user_ptr(k_ioctl->ioctl_ptr),
+			k_ioctl->size))
+		return -EFAULT;
+
+	params.id = init_info.id;
+	params.flags = init_info.flags;
+	params.name = init_info.name;
+
+	(*session) = synx_initialize(&params);
+	if (IS_ERR_OR_NULL(*session)) {
+		dprintk(SYNX_ERR, "Failed to initialize session, err: %ld \n", PTR_ERR(*session));
+		return -SYNX_INVALID;
+	}
+
+	return SYNX_SUCCESS;
+
+}
+
 static int synx_handle_create(struct synx_private_ioctl_arg *k_ioctl,
 	struct synx_session *session)
 {
@@ -2342,11 +2375,20 @@ static long synx_ioctl(struct file *filep,
 	if (!k_ioctl.ioctl_ptr)
 		return -SYNX_INVALID;
 
+	if (IS_ERR_OR_NULL(session) && k_ioctl.id != SYNX_INITIALIZE) {
+		dprintk(SYNX_ERR, "session is not initialized \n");
+		return -SYNX_INVALID;
+	}
+
 	dprintk(SYNX_VERB, "[sess :%llu] Enter cmd %u from pid %d\n",
-		((struct synx_client *)session)->id,
+		(!IS_ERR_OR_NULL(session)? ((struct synx_client *)session)->id : -1),
 		k_ioctl.id, current->pid);
 
 	switch (k_ioctl.id) {
+	case SYNX_INITIALIZE:
+		rc = synx_handle_initialize(&k_ioctl, &session);
+		filep->private_data = session;
+		break;
 	case SYNX_CREATE:
 		rc = synx_handle_create(&k_ioctl, session);
 		break;
@@ -2399,7 +2441,8 @@ static long synx_ioctl(struct file *filep,
 	}
 
 	dprintk(SYNX_VERB, "[sess :%llu] exit with status %d\n",
-		((struct synx_client *)session)->id, rc);
+		(!IS_ERR_OR_NULL(session)? ((struct synx_client *)session)->id : -1),
+		rc);
 
 	return rc;
 }
@@ -2546,24 +2589,9 @@ int synx_internal_uninitialize(struct synx_session *session)
 static int synx_open(struct inode *inode, struct file *filep)
 {
 	int rc = 0;
-	char name[SYNX_OBJ_NAME_LEN];
-	struct synx_initialization_params params = {0};
 
 	dprintk(SYNX_VERB, "Enter pid: %d\n", current->pid);
-
-	scnprintf(name, SYNX_OBJ_NAME_LEN, "umd-client-%d", current->pid);
-	params.name = name;
-	params.id = SYNX_CLIENT_NATIVE;
-
-	filep->private_data = synx_initialize(&params);
-	if (IS_ERR_OR_NULL(filep->private_data)) {
-		dprintk(SYNX_ERR, "session allocation failed for pid: %d\n",
-			current->pid);
-		rc = PTR_ERR(filep->private_data);
-	} else {
-		dprintk(SYNX_VERB, "allocated new session for pid: %d\n",
-			current->pid);
-	}
+	filep->private_data = NULL;
 
 	return rc;
 }

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __UAPI_SYNX_H__
@@ -303,6 +303,22 @@ struct synx_private_ioctl_arg {
 	__u64 ioctl_ptr;
 };
 
+
+/**
+ * struct synx_initialize_v2 - synx initialization information
+ *
+ * @name     : Optional string representation of the synx object
+ * @id       : Client identifier
+ * @flags    : synx initialization flags
+ * @reserved : Reserved
+ */
+struct synx_initialize_v2 {
+	char name[64];
+	__u32 id;
+	__u32 flags;
+	__u32 reserved;
+};
+
 #define SYNX_PRIVATE_MAGIC_NUM 's'
 
 #define SYNX_PRIVATE_IOCTL_CMD \
@@ -322,5 +338,6 @@ struct synx_private_ioctl_arg {
 #define SYNX_EXPORT                          11
 #define SYNX_IMPORT_ARR                      12
 #define SYNX_GETFENCE_FD                     13
+#define SYNX_INITIALIZE                      14
 
 #endif /* __UAPI_SYNX_H__ */
