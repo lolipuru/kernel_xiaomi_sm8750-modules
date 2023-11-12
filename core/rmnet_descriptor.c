@@ -430,22 +430,31 @@ static u8 rmnet_frag_do_flow_control(struct rmnet_map_header *qmap,
 
 static void rmnet_frag_send_ack(struct rmnet_map_header *qmap,
 				unsigned char type,
+				struct rmnet_map_control_command *cmd,
 				struct rmnet_port *port)
 {
-	struct rmnet_map_control_command *cmd;
+	struct rmnet_map_control_command *_cmd;
 	struct net_device *dev = port->dev;
 	struct sk_buff *skb;
-	u16 alloc_len = ntohs(qmap->pkt_len) + sizeof(*qmap);
+	u16 alloc_len = ntohs(qmap->pkt_len) + RMNET_MAP_DEAGGR_SPACING;
 
 	skb = alloc_skb(alloc_len, GFP_ATOMIC);
 	if (!skb)
 		return;
 
+	skb_reserve(skb, RMNET_MAP_DEAGGR_HEADROOM);
+
+	skb_put(skb, ntohs(qmap->pkt_len));
+	memcpy(skb->data, cmd, ntohs(qmap->pkt_len));
+
+	skb_push(skb, sizeof(*qmap));
+	memcpy(skb->data, qmap, sizeof(*qmap));
+
 	skb->protocol = htons(ETH_P_MAP);
 	skb->dev = dev;
 
-	cmd = rmnet_map_get_cmd_start(skb);
-	cmd->cmd_type = type & 0x03;
+	_cmd = rmnet_map_get_cmd_start(skb);
+	_cmd->cmd_type = type & 0x03;
 
 	netif_tx_lock(dev);
 	dev->netdev_ops->ndo_start_xmit(skb, dev);
@@ -580,7 +589,7 @@ void rmnet_frag_command(struct rmnet_frag_descriptor *frag_desc,
 		break;
 	}
 	if (rc == RMNET_MAP_COMMAND_ACK)
-		rmnet_frag_send_ack(qmap, rc, port);
+		rmnet_frag_send_ack(qmap, rc, cmd, port);
 }
 
 int rmnet_frag_flow_command(struct rmnet_frag_descriptor *frag_desc,
