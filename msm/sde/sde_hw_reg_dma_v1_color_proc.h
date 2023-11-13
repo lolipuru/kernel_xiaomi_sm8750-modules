@@ -320,6 +320,13 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg);
 void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
+ * reg_dmav1_setup_ltm_roiv1_3() - LTM ROI v1.3 implementation using reg dma v1.
+ * @ctx: dspp ctx info
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
  * reg_dmav1_setup_ltm_vlutv1() - LTM VLUT v1 implementation using reg dma v1.
  * @ctx: dspp instance
  * @cfg: pointer to struct sde_hw_cp_cfg

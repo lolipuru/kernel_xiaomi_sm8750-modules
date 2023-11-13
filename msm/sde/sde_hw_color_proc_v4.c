@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 #include <drm/msm_drm_pp.h>
@@ -1203,4 +1203,40 @@ void sde_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
 		alpha_dither &= ~BIT(17);
 
 	SDE_REG_WRITE(&ctx->hw, alpha_dither_base, alpha_dither);
+}
+
+int sde_validate_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *ltm_cfg = cfg;
+	struct drm_msm_ltm_cfg_param *ltm_init;
+	size_t expected_len = sizeof(struct drm_msm_ltm_cfg_param);
+	u32 a1, a2;
+
+	if (!ctx || !cfg) {
+		DRM_ERROR("invalid parameter\tctx: %pK\tcfg: %pK\n",
+				ctx, cfg);
+		return -EINVAL;
+	}
+
+	if (!ltm_cfg->payload)
+		return 0;
+
+	if (ltm_cfg->len != expected_len) {
+		DRM_ERROR("invalid ltm_cfg payload\tdspp: %d\tlen: %u\tpayload: %pK\n",
+				  ctx->idx, ltm_cfg->len, ltm_cfg->payload);
+		return -EINVAL;
+	}
+
+	ltm_init = (struct drm_msm_ltm_cfg_param *)(ltm_cfg->payload);
+	a1 = (ltm_init->cfg_param_05 >> 16) & 0x1FF;
+	a2 = ltm_init->cfg_param_05 & 0x1FF;
+	if ((a1 + a2) > 256)
+		DRM_INFO("cfg_param_05 exceeds expected limits\n");
+
+	a1 = (ltm_init->cfg_param_06 >> 16) & 0x1FF;
+	a2 = ltm_init->cfg_param_06 & 0x1FF;
+	if ((a1 + a2) > 256)
+		DRM_INFO("cfg_param_06 exceeds expected limits\n");
+
+	return 0;
 }
