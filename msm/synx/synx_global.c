@@ -153,6 +153,8 @@ u32 synx_global_map_core_id(enum synx_core_id id)
 		host_id = IPCMEM_CVP; break;
 	case SYNX_CORE_ICP:
 		host_id = IPCMEM_CAM; break;
+	case SYNX_CORE_SOCCP:
+		host_id = IPCMEM_SOCCP; break;
 	default:
 		host_id = IPCMEM_NUM_HOSTS;
 		dprintk(SYNX_ERR, "invalid core id\n");
