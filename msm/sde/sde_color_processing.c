@@ -3396,6 +3396,7 @@ static void _sde_cp_update_list(struct sde_cp_node *prop_node,
 	case SDE_CP_CRTC_DSPP_LTM_QUEUE_BUF2:
 	case SDE_CP_CRTC_DSPP_LTM_QUEUE_BUF3:
 	case SDE_CP_CRTC_DSPP_MDNIE_ART:
+	case SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA:
 		if (cp_dirty_list)
 			list_add_tail(&prop_node->cp_dirty_list,
 					&crtc->cp_dirty_list);
