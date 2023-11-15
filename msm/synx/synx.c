@@ -15,6 +15,7 @@
 #include <linux/sync_file.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#include <linux/version.h>
 
 #include "synx_debugfs.h"
 #include "synx_private.h"
@@ -2828,7 +2829,11 @@ static int __init synx_init(void)
 		goto reg_fail;
 	}
 
-	synx_dev->class = class_create(SYNX_DEVICE_NAME);
+#if (KERNEL_VERSION(6, 4, 0) <= LINUX_VERSION_CODE)
+	synx_dev->class = class_create("SYNX_DEVICE_NAME");
+#else
+	synx_dev->class = class_create(THIS_MODULE, "SYNX_DEVICE_NAME");
+#endif
 	device_create(synx_dev->class, NULL, synx_dev->dev,
 		NULL, SYNX_DEVICE_NAME);
 
