@@ -1540,10 +1540,10 @@ static int bt_power_probe(struct platform_device *pdev)
 
 	if (btpower_rfkill_probe(pdev) < 0)
 		goto free_pdata;
-
+/*
 	bt_power_pdc_init_params(pwr_data);
 	btpower_aop_mbox_init(pwr_data);
-
+*/
 	probe_finished = true;
 	return 0;
 
