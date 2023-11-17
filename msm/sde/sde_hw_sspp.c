@@ -335,7 +335,7 @@ static void sde_hw_sspp_setup_ubwc(struct sde_hw_pipe *ctx, struct sde_hw_blk_re
 	else
 		ubwc_ctrl_off = SSPP_UBWC_STATIC_CTRL_REC1;
 
-	if (IS_UBWC_40_SUPPORTED(ctx->catalog->ubwc_rev)) {
+	if (SDE_HW_MAJOR(ctx->catalog->ubwc_rev) >= SDE_HW_MAJOR(SDE_HW_UBWC_VER_40)) {
 		SDE_REG_WRITE(c, ubwc_ctrl_off, SDE_FORMAT_IS_YUV(fmt) ? 0 : BIT(30));
 	} else if (IS_UBWC_30_SUPPORTED(ctx->catalog->ubwc_rev)) {
 		color_en_mask = const_color_en ? BIT(30) : 0;

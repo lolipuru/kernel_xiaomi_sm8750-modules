@@ -32,6 +32,11 @@ else
 endif
 endif
 
+ifeq ($(CONFIG_ARCH_SUN), y)
+	include $(DISPLAY_ROOT)/config/gki_sundisp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_sundispconf.h
+endif
+
 ifeq ($(CONFIG_ARCH_KALAMA), y)
 ifeq ($(CONFIG_ARCH_QTI_VM), y)
         include $(DISPLAY_ROOT)/config/gki_kalamadisptui.conf
@@ -155,7 +160,8 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 				dp/dp_drm.o \
 				dp/dp_pll.o \
 				dp/dp_pll_5nm.o \
-				dp/dp_pll_4nm.o
+				dp/dp_pll_4nm.o \
+				dp/dp_pll_3nm.o
 
 msm_drm-$(CONFIG_DRM_MSM_DP_MST) += dp/dp_mst_drm.o
 
