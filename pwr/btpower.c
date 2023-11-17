@@ -1416,7 +1416,7 @@ static int bt_power_populate_dt_pinfo(struct platform_device *pdev)
 	pwr_data->power_setup = power_regulators;
 	return 0;
 }
-
+/*
 static void bt_power_pdc_init_params(struct platform_pwr_data *pdata)
 {
 	int ret;
@@ -1436,7 +1436,7 @@ static void bt_power_pdc_init_params(struct platform_pwr_data *pdata)
 		pr_debug("PDC Init Table not configured\n");
 	}
 }
-
+*/
 static void bt_signal_handler(struct work_struct *w_arg)
 {
 	struct kernel_siginfo siginfo;
