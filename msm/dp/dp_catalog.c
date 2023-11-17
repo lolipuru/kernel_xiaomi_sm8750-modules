@@ -3003,6 +3003,7 @@ static int dp_catalog_init(struct device *dev, struct dp_catalog *dp_catalog,
 	switch (parser->hw_cfg.phy_version) {
 	case DP_PHY_VERSION_4_2_0:
 	case DP_PHY_VERSION_6_0_0:
+	case DP_PHY_VERSION_8_0_0:
 		dp_catalog->sub = dp_catalog_get_v420(dev, dp_catalog,
 					&catalog->io);
 		break;

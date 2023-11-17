@@ -150,6 +150,7 @@ enum dp_phy_aux_config_type {
  * @DP_PHY_VERSION_4_2_0:   DP phy v4.2.0 controller
  * @DP_PHY_VERSION_5_0_0:   DP phy v5.0.0 controller
  * @DP_PHY_VERSION_6_0_0:   DP phy v6.0.0 controller
+ * @DP_PHY_VERSION_8_0_0:   DP phy v8.0.0 controller
  * @DP_PHY_VERSION_MAX:     max version
  */
 enum dp_phy_version {
@@ -158,6 +159,7 @@ enum dp_phy_version {
 	DP_PHY_VERSION_4_2_0 = 0x420,
 	DP_PHY_VERSION_5_0_0 = 0x500,
 	DP_PHY_VERSION_6_0_0 = 0x600,
+	DP_PHY_VERSION_8_0_0 = 0x800,
 	DP_PHY_VERSION_MAX
 };
 
