@@ -109,6 +109,7 @@ module_entry(
             "msm/sde_vdc_helper.c",
             "msm/sde/sde_hw_dnsc_blur.c",
             "msm/sde/sde_hw_rc.c",
+            "msm/sde/sde_color_proc_property_helper.c",
          ],
          "CONFIG_DRM_SDE_WB" : [
             "msm/sde/sde_wb.c",
