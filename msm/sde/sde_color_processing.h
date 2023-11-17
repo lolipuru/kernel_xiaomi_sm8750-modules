@@ -42,6 +42,8 @@ struct sde_cp_node {
 	struct sde_irq_callback *irq;
 };
 
+struct sde_kms *get_kms(struct drm_crtc *crtc);
+
 /*
  * PA MEMORY COLOR types
  * @MEMCOLOR_SKIN          Skin memory color type
@@ -140,6 +142,9 @@ enum sde_cp_crtc_features {
 	SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT,
 	SDE_CP_CRTC_DSPP_DEMURA_BOOT_PLANE,
 	SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2,
+	SDE_CP_CRTC_DSPP_MDNIE,
+	SDE_CP_CRTC_DSPP_MDNIE_ART,
+	SDE_CP_CRTC_DSPP_COPR,
 	SDE_CP_CRTC_DSPP_MAX,
 	/* DSPP features end */
 
@@ -414,5 +419,11 @@ int sde_dspp_spr_read_opr_value(struct sde_hw_dspp *hw_dspp, u32 *opr_value);
  * @bl_max: Max backlight value.
  */
 void sde_cp_backlight_notification(struct drm_crtc *crtc, u32 bl_val, u32 bl_max);
+
+/**
+ * _sde_cp_mark_mdnie_art_property(): mark mdnie art property internally as dirty.
+ * @crtc: pointer to drm crtc.
+ */
+void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc);
 
 #endif /*_SDE_COLOR_PROCESSING_H */
