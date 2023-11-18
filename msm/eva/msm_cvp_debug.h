@@ -77,7 +77,7 @@ extern int msm_cvp_hw_wd_recovery;
 	do { \
 		if (msm_cvp_debug & __level) { \
 			if (msm_cvp_debug_out == CVP_OUT_PRINTK) { \
-				pr_alert(CVP_DBG_TAG __fmt, \
+				pr_info(CVP_DBG_TAG __fmt, \
 					get_debug_level_str(__level),   \
 					## arg); \
 			} \
