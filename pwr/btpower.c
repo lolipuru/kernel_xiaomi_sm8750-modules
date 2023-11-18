@@ -2024,14 +2024,12 @@ static int bt_power_release(struct inode *inode, struct file *file)
 		if (pwr_data->reftask->tgid == pwr_data->reftask_bt->tgid) {
 			pr_err("%s called by BT service(PID-%d)\n",
 					__func__, pwr_data->reftask->tgid);
-			pwr_data->reftask_bt = NULL;
 			power_disable(BLUETOOTH);
 		}
 	} else if (pwr_data->reftask_uwb != NULL) {
 		if (pwr_data->reftask->tgid == pwr_data->reftask_uwb->tgid) {
 			pr_err("%s called by uwb service(PID-%d)\n",
 					__func__, pwr_data->reftask->tgid);
-			pwr_data->reftask_uwb = NULL;
 			power_disable(UWB);
 		}
 	}
