@@ -573,7 +573,7 @@ static int _set_staged_sspp(u32 stage,
 		struct sde_hw_stage_cfg *stage_cfg, int pipes_per_stage, u32 *value)
 {
 	int i;
-	u32 pipe_type = 0, pipe_id = 0, rec_id = 0;
+	u32 pipe_type = 0, pipe_id = 0, rec_id = 0, layout = 0;
 	u32 src_sel[PIPES_PER_STAGE];
 
 	/* reset mask is 0xc0c0 */
@@ -585,7 +585,7 @@ static int _set_staged_sspp(u32 stage,
 		enum sde_sspp pipe = stage_cfg->stage[stage][i];
 		enum sde_sspp_multirect_index rect_index = stage_cfg->multirect_index[stage][i];
 
-		src_sel[i] = LM_SRC_SEL_RESET_VALUE >> 8;
+		src_sel[i] = LM_SRC_SEL_RESET_VALUE;
 
 		if (!pipe || pipe >= SSPP_MAX || rect_index >= SDE_SSPP_RECT_MAX)
 			continue;
@@ -618,8 +618,10 @@ static int _set_staged_sspp(u32 stage,
 
 	/* calculate final SWI register value for rec-0 and rec-1 */
 	*value = 0;
-	for (i = 0; i < pipes_per_stage; i++)
-		*value |= (src_sel[i] << (i * 8));
+	for (i = 0; i < pipes_per_stage; i++) {
+		layout = stage_cfg->layout[stage][i];
+		*value |= (src_sel[i] << (layout * 8));
+	}
 
 	return 0;
 }
