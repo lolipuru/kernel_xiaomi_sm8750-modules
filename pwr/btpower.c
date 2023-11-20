@@ -27,6 +27,11 @@
 #include <soc/qcom/cmd-db.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
 #include <linux/soc/qcom/qcom_aoss.h>
+#include <linux/pinctrl/consumer.h>
+#include <linux/pinctrl/devinfo.h>
+#include <linux/pinctrl/machine.h>
+#include <linux/pinctrl/pinctrl.h>
+
 #include "btpower.h"
 #if (defined CONFIG_BT_SLIM)
 #include "btfm_slim.h"
@@ -1271,9 +1276,12 @@ static int get_gpio_dt_pinfo(struct platform_device *pdev)
 {
 	int ret;
 	struct device_node *child;
+	struct pinctrl *pinctrl1;
+	struct pinctrl_state *sw_ctrl;
 
 	child = pdev->dev.of_node;
 
+	pinctrl1 =  devm_pinctrl_get(&pdev->dev);
 	pwr_data->bt_gpio_sys_rst =
 		of_get_named_gpio(child,
 					"qcom,bt-reset-gpio", 0);
@@ -1298,6 +1306,20 @@ static int get_gpio_dt_pinfo(struct platform_device *pdev)
 				  &pwr_data->sw_cntrl_gpio);
 	if (ret)
 		pr_warn("sw_cntrl-gpio not provided in devicetree\n");
+
+	if (pinctrl1) {
+		sw_ctrl = pinctrl_lookup_state(pinctrl1, "sw_ctrl");
+                if (IS_ERR_OR_NULL(sw_ctrl)) {
+                        ret = PTR_ERR(sw_ctrl);
+                        pr_err("Failed to get sw_ctrl state, err = %d\n", ret);
+                } else {
+                        ret = pinctrl_select_state(pinctrl1, sw_ctrl);
+			if (ret)
+				pr_err("Failed to select sw_ctrl state, err = %d\n", ret);
+		}
+       } else {
+	       pr_err("%s: pinctrl is null", __func__);
+       }
 
 	pwr_data->bt_gpio_debug  = of_get_named_gpio(child,
 							"qcom,bt-debug-gpio", 0);
@@ -1416,7 +1438,7 @@ static int bt_power_populate_dt_pinfo(struct platform_device *pdev)
 	pwr_data->power_setup = power_regulators;
 	return 0;
 }
-/*
+
 static void bt_power_pdc_init_params(struct platform_pwr_data *pdata)
 {
 	int ret;
@@ -1436,7 +1458,7 @@ static void bt_power_pdc_init_params(struct platform_pwr_data *pdata)
 		pr_debug("PDC Init Table not configured\n");
 	}
 }
-*/
+
 static void bt_signal_handler(struct work_struct *w_arg)
 {
 	struct kernel_siginfo siginfo;
@@ -1540,10 +1562,10 @@ static int bt_power_probe(struct platform_device *pdev)
 
 	if (btpower_rfkill_probe(pdev) < 0)
 		goto free_pdata;
-/*
+
 	bt_power_pdc_init_params(pwr_data);
 	btpower_aop_mbox_init(pwr_data);
-*/
+
 	probe_finished = true;
 	return 0;
 
