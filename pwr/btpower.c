@@ -15,6 +15,7 @@
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/rfkill.h>
+#include <linux/skbuff.h>
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/of.h>
@@ -25,6 +26,11 @@
 #include <linux/uaccess.h>
 #include <linux/of_device.h>
 #include <soc/qcom/cmd-db.h>
+#include <linux/kdev_t.h>
+#include <linux/refcount.h>
+#include <linux/idr.h>
+#include <linux/cdev.h>
+#include <linux/device.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
 #include <linux/soc/qcom/qcom_aoss.h>
 #include <linux/pinctrl/consumer.h>
@@ -307,16 +313,18 @@ static struct class *bt_class;
 static int bt_major;
 static int soc_id;
 static bool probe_finished;
+static struct workqueue_struct *workq = NULL;
+struct device_node *bt_of_node, *uwb_of_node;
 const struct pwr_data *data;
+u8 client_rsp_q[2];
+char bt_arg[ ][20] = {"power off BT", "power on BT", "BT power retention"};
+char uwb_arg[ ][20] = {"power off UWB", "power on UWB", "UWB power retention"};
+char pwr_states[ ][40] = {"Both Sub-System powered OFF", "BT powered ON", "UWB powered ON", "Both Sub-System powered ON"};
+char ssr_state[ ][40] = {"No SSR on Sub-Sytem", "SSR on BT", "SSR Completed on BT", "SSR on UWB", "SSR Completed on UWB"};
+char reg_mode[ ][25] = {"vote off", "vote on", "vote for retention"};
 
-char *bt_arg[20] = {"power off BT", "power on BT", "BT power retention"};
-char *uwb_arg[20] = {"power off UWB", "power on UWB", "UWB power retention"};
-char *pwr_states[40] = {"Both Sub-System powered OFF", "BT powered ON",
-			"UWB powered ON", "Both Sub-System powered ON"};
-char *ssr_state[40] = {"No SSR on Sub-Sytem", "SSR on BT",
-		       "SSR Completed on BT", "SSR on UWB",
-		       "SSR Completed on UWB"};
-char *reg_mode[25] = {"vote off", "vote on", "vote for retention"};
+#define TIMEOUT 5000
+static void bt_power_vote(struct work_struct *work);
 
 static struct {
 	int platform_state[BT_POWER_SRC_SIZE];
@@ -1517,16 +1525,25 @@ static int bt_power_probe(struct platform_device *pdev)
 	pwr_data->pdev = pdev;
 
 	pwr_data->is_ganges_dt = of_property_read_bool(pdev->dev.of_node,
-							  "qcom,peach-bt");
+													"qcom,peach-bt");
+	pr_info("%s is_ganges_dt %d\n", __func__, pwr_data->is_ganges_dt);
 
 	if (pwr_data->is_ganges_dt) {
-		pwr_data->workq = alloc_workqueue("btpwrwq", WQ_HIGHPRI, WQ_DFL_ACTIVE);
-		if (!pwr_data->workq) {
-			pr_err("%s: Failed to create workqueue\n", __func__);
+		workq = alloc_workqueue("workq", WQ_HIGHPRI, WQ_DFL_ACTIVE);
+		if (!workq) {
+			pr_err("%s: Failed to creat the Work Queue (workq)\n",
+				__func__);
 			return -ENOMEM;
 		}
+
 		INIT_WORK(&pwr_data->uwb_wq, uwb_signal_handler);
 		INIT_WORK(&pwr_data->bt_wq, bt_signal_handler);
+		INIT_WORK(&pwr_data->wq_pwr_voting, bt_power_vote);
+		for (itr = 0; itr < BTPWR_MAX_CLIENTS; itr++) {
+			init_waitqueue_head(&pwr_data->rsp_wait_q[itr]);
+		}
+		skb_queue_head_init(&pwr_data->rxq);
+		mutex_init(&pwr_data->pwr_mtx);
 	}
 
 	perisec_cnss_bt_hw_disable_check(pwr_data);
@@ -1676,16 +1693,18 @@ static int get_sub_state(void)
 	return pwr_data->sub_state;
 }
 
-void power_enable(int SubSystemType)
+int power_enable (enum SubSystem SubSystemType)
 {
+	int ret;
+
 	switch (get_pwr_state()) {
 	case IDLE:
-		power_regulators(PLATFORM_CORE, POWER_ENABLE);
+		ret = power_regulators(PLATFORM_CORE, POWER_ENABLE);
 		if (SubSystemType == BLUETOOTH) {
-			power_regulators(BT_CORE, POWER_ENABLE);
+			ret = power_regulators(BT_CORE, POWER_ENABLE);
 			update_pwr_state(BT_ON);
 		} else {
-			power_regulators(UWB_CORE, POWER_ENABLE);
+			ret = power_regulators(UWB_CORE, POWER_ENABLE);
 			update_pwr_state(UWB_ON);
 		}
 		break;
@@ -1693,25 +1712,26 @@ void power_enable(int SubSystemType)
 		if (SubSystemType == BLUETOOTH) {
 			pr_err("%s: BT Regulators already Voted-On\n",
 				__func__);
-			return;
+			return 0;
 		}
-		power_regulators(UWB_CORE, POWER_ENABLE);
+		ret = power_regulators(UWB_CORE, POWER_ENABLE);
 		update_pwr_state(ALL_CLIENTS_ON);
 		break;
 	case UWB_ON:
 		if (SubSystemType == UWB) {
 			pr_err("%s: UWB Regulators already Voted-On\n",
 				__func__);
-			return;
+			return 0;
 		}
-		power_regulators(BT_CORE, POWER_ENABLE);
+		ret = power_regulators(BT_CORE, POWER_ENABLE);
 		update_pwr_state(ALL_CLIENTS_ON);
 		break;
 	case ALL_CLIENTS_ON:
 		pr_err("%s: Both BT and UWB Regulators already Voted-On\n",
 			__func__);
-		return;
+		return 0;
 	}
+	return ret;
 }
 
 void send_signal_to_subsystem(int SubSystemType, int state)
@@ -1723,30 +1743,32 @@ void send_signal_to_subsystem(int SubSystemType, int state)
 		queue_work(pwr_data->workq, &pwr_data->uwb_wq);
 }
 
-void power_disable(int SubSystemType)
+int power_disable (enum SubSystem SubSystemType)
 {
+	int ret = 0;
+
 	switch (get_pwr_state()) {
 	case IDLE:
 		pr_err("%s: both BT and UWB regulators already voted-Off\n", __func__);
-		return;
+		return 0;
 	case ALL_CLIENTS_ON:
 		if (SubSystemType == BLUETOOTH) {
-			power_regulators(BT_CORE, POWER_DISABLE);
+			ret = power_regulators(BT_CORE, POWER_DISABLE);
 			update_pwr_state(UWB_ON);
-			if (get_sub_state() == SSR_ON_BT) {
-				power_regulators(UWB_CORE, POWER_DISABLE);
-				power_regulators(PLATFORM_CORE, POWER_DISABLE);
+			if(get_sub_state() == SSR_ON_BT) {
+				ret = power_regulators(UWB_CORE, POWER_DISABLE);
+				ret = power_regulators(PLATFORM_CORE, POWER_DISABLE);
 				update_pwr_state(IDLE);
 				update_sub_state(SUB_STATE_IDLE);
 				send_signal_to_subsystem(UWB,
 					BT_SSR_COMPLETED);
 			}
 		} else {
-			power_regulators(UWB_CORE, POWER_DISABLE);
+			ret  = power_regulators(UWB_CORE, POWER_DISABLE);
 			update_pwr_state(BT_ON);
-			if (get_sub_state() == SSR_ON_UWB) {
-				power_regulators(BT_CORE, POWER_DISABLE);
-				power_regulators(PLATFORM_CORE, POWER_DISABLE);
+			if(get_sub_state() == SSR_ON_UWB) {
+				ret = power_regulators(BT_CORE, POWER_DISABLE);
+				ret = power_regulators(PLATFORM_CORE, POWER_DISABLE);
 				update_pwr_state(IDLE);
 				update_sub_state(SUB_STATE_IDLE);
 				send_signal_to_subsystem(BLUETOOTH,
@@ -1757,24 +1779,25 @@ void power_disable(int SubSystemType)
 	case UWB_ON:
 		if (SubSystemType == BLUETOOTH) {
 			pr_err("%s: BT Regulator already Voted-Off\n", __func__);
-			return;
+			return -1;
 		}
-		power_regulators(UWB_CORE, POWER_DISABLE);
-		power_regulators(PLATFORM_CORE, POWER_DISABLE);
+		ret = power_regulators(UWB_CORE, POWER_DISABLE);
+		ret = power_regulators(PLATFORM_CORE, POWER_DISABLE);
 		update_pwr_state(IDLE);
 		update_sub_state(SUB_STATE_IDLE);
 		break;
 	case BT_ON:
 		if (SubSystemType == UWB) {
 			pr_err("%s: UWB Regulator already Voted-Off\n", __func__);
-			return;
+			return -1;
 		}
-		power_regulators(BT_CORE, POWER_DISABLE);
-		power_regulators(PLATFORM_CORE, POWER_DISABLE);
+		ret = power_regulators(BT_CORE, POWER_DISABLE);
+		ret = power_regulators(PLATFORM_CORE, POWER_DISABLE);
 		update_pwr_state(IDLE);
 		update_sub_state(SUB_STATE_IDLE);
 		break;
 	}
+	return ret;
 }
 
 static int client_state_notified(int SubSystemType)
@@ -1873,10 +1896,132 @@ void log_power_src_val(void)
 		set_pwr_srcs_status(&pwr_data->uwb_vregs[itr], UWB_CORE);
 }
 
+
+int btpower_retenion(enum plt_pwr_state client)
+{
+	int ret;
+
+	if (client == POWER_ON_BT_RETENION) {
+		ret = power_regulators(PLATFORM_CORE, POWER_RETENTION);
+		ret = power_regulators(BT_CORE, POWER_RETENTION);
+	} else {
+		ret = power_regulators(PLATFORM_CORE, POWER_RETENTION);
+		ret = power_regulators(UWB_CORE, POWER_RETENTION);
+	}
+
+	return ret;
+}
+
+int btpower_off(enum plt_pwr_state client)
+{
+	return power_disable((client == POWER_OFF_BT) ? BLUETOOTH : UWB);
+}
+
+int btpower_on(enum plt_pwr_state client)
+{
+	int ret = 0;
+
+	if (client == POWER_ON_BT) {
+		if (get_sub_state() == SSR_ON_UWB) {
+			pr_err("%s: SSR_ON_UWB not allowing to BT POWER ON\n", __func__);
+			return -1;
+		}
+		ret = power_enable(BLUETOOTH);
+	} else {
+		if (get_sub_state() == SSR_ON_BT) {
+			pr_err("%s: SSR_ON_BT not allowing to UWB POWER ON\n", __func__);
+			return -1;
+		}
+		ret = power_enable(UWB);
+	}
+
+	return ret;
+}
+
+int STREAM_TO_UINT32 (struct sk_buff *skb)
+{
+	return (skb->data[0] | (skb->data[1] << 8) |
+		(skb->data[2] << 16) | (skb->data[3] << 24));
+}
+
+static void bt_power_vote(struct work_struct *work)
+{
+	struct sk_buff *skb;
+	int request;
+	int ret;
+
+	while (1) {
+		mutex_lock(&pwr_data->pwr_mtx);
+		if (!(skb = skb_dequeue(&pwr_data->rxq))) {
+			mutex_unlock(&pwr_data->pwr_mtx);
+			break;
+		}
+		request = STREAM_TO_UINT32(skb);
+		skb_pull(skb, sizeof(uint32_t));
+		mutex_unlock(&pwr_data->pwr_mtx);
+		pr_err("%s: request %s", __func__, pwr_req[request]);
+		pr_err("%s: current state = %s, %s\n", __func__,
+			pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
+		if (request == POWER_ON_BT || request == POWER_ON_UWB)
+			ret = btpower_on((enum plt_pwr_state)request);
+		else if (request == POWER_OFF_UWB || request == POWER_OFF_BT)
+			ret = btpower_off((enum plt_pwr_state)request);
+		else if (request == POWER_ON_BT_RETENION || request == POWER_ON_UWB_RETENION)
+			ret = btpower_retenion(request);
+
+		pwr_data->wait_status[request] = ret == 0? PWR_RSP_RECV: PWR_FAIL_RSP_RECV;
+		wake_up_interruptible(&pwr_data->rsp_wait_q[request]);
+		pr_err("%s: current state = %s, %s\n", __func__,
+			pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
+	}
+}
+
+int schedule_client_pwr_voting(enum plt_pwr_state request)
+{
+	struct sk_buff *skb;
+	wait_queue_head_t *rsp_wait_q;
+	u8 *status;
+	int ret = 0;
+	uint32_t req = (uint32_t)request;
+
+	mutex_lock(&pwr_data->pwr_mtx);
+	skb = alloc_skb(sizeof(uint32_t), GFP_KERNEL);
+
+	if (!skb) {
+		pr_err("%s: Unable to creat SK buff\n", __func__);
+		mutex_unlock(&pwr_data->pwr_mtx);
+		return -1;
+	}
+
+	rsp_wait_q = &pwr_data->rsp_wait_q[(u8)request];
+	status = &pwr_data->wait_status[(u8)request];
+	*status = PWR_WAITING_RSP;
+	skb_put_data(skb, &req, sizeof(uint32_t));
+	skb_queue_tail(&pwr_data->rxq, skb);
+	schedule_work(&pwr_data->wq_pwr_voting);
+	mutex_unlock(&pwr_data->pwr_mtx);
+	ret = wait_event_interruptible_timeout(*rsp_wait_q, (*status) != PWR_WAITING_RSP,
+					       msecs_to_jiffies(TIMEOUT));
+
+	if (ret == 0) {
+		pr_err("%s: failed to vote %d due to timeout", __func__, request);
+		ret = -ETIMEDOUT;
+	} else {
+		if (*status == PWR_RSP_RECV)
+			return 0;
+		else if (*status == PWR_FAIL_RSP_RECV || *status == PWR_CLIENT_KILLED)
+			return -1;
+	}
+
+	return ret;
+}
+
 static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
 	int chipset_version = 0;
+	unsigned int panic_reason = 0;
+	unsigned short primary_reason = 0, sec_reason = 0;
 
 #ifdef CONFIG_MSM_BT_OOBS
 	enum btpower_obs_param clk_cntrl;
@@ -1936,10 +2081,46 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 #endif
 		break;
 	case BT_CMD_PWR_CTRL:
-		set_pwr_state(BLUETOOTH, (int)arg);
+		pr_err("%s: BT_CMD_PWR_CTRL cmd voted to %s, current state = %s, %s\n",
+			__func__, bt_arg[(int)arg], pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
+
+		switch ((int)arg) {
+		case POWER_DISABLE:
+			ret = schedule_client_pwr_voting(POWER_OFF_BT);
+			pr_err("%s: %s, SSR state = %s\n", __func__,
+				pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
+			break;
+		case POWER_ENABLE:
+			ret = schedule_client_pwr_voting(POWER_ON_BT);
+			pr_err("%s: %s, SSR state = %s\n", __func__,
+				pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
+			break;
+		case POWER_RETENTION:
+			ret = schedule_client_pwr_voting(POWER_ON_BT_RETENION);
+			break;
+		}
 		break;
 	case UWB_CMD_PWR_CTRL:
-		set_pwr_state(UWB, (int)arg);
+
+		pr_err("%s: UWB_CMD_PWR_CTRL voted for %s, sub_system count = %s, %s\n",
+		        __func__, uwb_arg[(int)arg], pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
+
+		switch ((int)arg) {
+		case POWER_DISABLE:
+			ret = schedule_client_pwr_voting(POWER_OFF_UWB);
+			pr_err("%s: %s, SSR state = %s\n", __func__,
+				pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
+			break;
+		case POWER_ENABLE:
+			ret = schedule_client_pwr_voting(POWER_ON_UWB);
+			pr_err("%s: %s, SSR state = %s\n", __func__,
+				pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
+			break;
+		case POWER_RETENTION:
+			ret = schedule_client_pwr_voting(POWER_ON_UWB_RETENION);
+			pr_err("%s:BT Power Retention done", __func__);
+			break;
+		}
 		break;
 	case BT_CMD_REGISTRATION:
 		client_notified(BLUETOOTH, (int)arg);
@@ -2006,8 +2187,14 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		btpower_enable_ipa_vreg(pwr_data);
 		break;
 	case BT_CMD_KERNEL_PANIC:
-		pr_info("%s: BT_CMD_KERNEL_PANIC\n", __func__);
-		panic("subsys-restart: Resetting the SoC - Bluetooth crashed\n");
+		pr_err("%s: BT_CMD_KERNEL_PANIC\n", __func__);
+		panic_reason = (unsigned int)arg;
+		primary_reason = panic_reason & 0xFFFF;
+		sec_reason = (panic_reason & 0xFFFF0000) >> 16;
+		pr_err("%s: BT kernel panic primary reason [0x%04x] secondary reason [0x%04x]\n",
+		        __func__, primary_reason, sec_reason);
+		panic("subsys-restart: Resetting the SoC - BT crashed primary reason [0x%04x] secondary reason [0x%04x]\n",
+		        primary_reason, sec_reason);
 		break;
 	default:
 		return -ENOIOCTLCMD;
@@ -2023,18 +2210,47 @@ static int bt_power_release(struct inode *inode, struct file *file)
 	}
 
 	pwr_data->reftask = get_current();
+
+	pwr_data->reftask = get_current();
 	if (pwr_data->reftask_bt != NULL) {
 		if (pwr_data->reftask->tgid == pwr_data->reftask_bt->tgid) {
 			pr_err("%s called by BT service(PID-%d)\n",
 					__func__, pwr_data->reftask->tgid);
-			power_disable(BLUETOOTH);
-		}
-	} else if (pwr_data->reftask_uwb != NULL) {
-		if (pwr_data->reftask->tgid == pwr_data->reftask_uwb->tgid) {
+/*
+			if(get_pwr_state() == BT_ON)
+			{
+				bt_regulators_pwr(POWER_DISABLE);
+				platform_regulators_pwr(POWER_DISABLE);
+				update_pwr_state(IDLE);
+
+			}
+			else if (get_pwr_state() == ALL_CLIENTS_ON)
+			{
+				bt_regulators_pwr(POWER_DISABLE);
+				update_pwr_state(UWB_ON);
+			}
+	*/	}
+
+	}
+	else if (pwr_data->reftask_uwb != NULL)
+	{
+		if (pwr_data->reftask->tgid == pwr_data->reftask_uwb->tgid)
+		{
 			pr_err("%s called by uwb service(PID-%d)\n",
 					__func__, pwr_data->reftask->tgid);
-			power_disable(UWB);
-		}
+
+	/*		if(get_pwr_state() == UWB_ON)
+			{
+				uwb_regulators_pwr(POWER_DISABLE);
+				platform_regulators_pwr(POWER_DISABLE);
+				update_pwr_state(IDLE);
+			}
+			else if (get_pwr_state() == ALL_CLIENTS_ON)
+			{
+				uwb_regulators_pwr(POWER_DISABLE);
+				update_pwr_state(BT_ON);
+			}
+		*/ }
 	}
 	return 0;
 }

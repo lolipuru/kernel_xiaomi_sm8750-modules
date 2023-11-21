@@ -11,7 +11,9 @@
 #include <linux/types.h>
 #include <linux/soc/qcom/qcom_aoss.h>
 #include <linux/workqueue.h>
+#include <linux/skbuff.h>
 
+#define BTPWR_MAX_CLIENTS   6 
 /*
  * voltage regulator information required for configuring the
  * bluetooth chipset
@@ -49,6 +51,22 @@ enum ssr_states {
 	UWB_SSR_COMPLETED,
 	REG_BT_PID,
 	REG_UWB_PID,
+};
+
+enum plt_pwr_state {
+	POWER_ON_BT = 0,
+	POWER_OFF_BT,
+	POWER_ON_UWB,
+	POWER_OFF_UWB,
+	POWER_ON_BT_RETENION,
+	POWER_ON_UWB_RETENION,
+};
+
+enum {
+	PWR_WAITING_RSP,
+	PWR_RSP_RECV,
+	PWR_FAIL_RSP_RECV,
+	PWR_CLIENT_KILLED,
 };
 
 struct log_index {
@@ -130,16 +148,25 @@ struct platform_pwr_data {
 	enum ssr_states sub_state;
 	enum ssr_states wrkq_signal_state;
 	struct workqueue_struct *workq;
-	struct work_struct bt_wq;
-	struct work_struct uwb_wq;
 	struct device_node *bt_of_node;
 	struct device_node *uwb_of_node;
+	struct work_struct bt_wq;
+	struct work_struct uwb_wq;
+	wait_queue_head_t rsp_wait_q[BTPWR_MAX_CLIENTS];
+	uint8_t wait_status[BTPWR_MAX_CLIENTS];
+	struct work_struct wq_pwr_voting;
+	struct sk_buff_head rxq;
+	struct mutex pwr_mtx;
 };
 
 int btpower_register_slimdev(struct device *dev);
 int btpower_get_chipset_version(void);
 int btpower_aop_mbox_init(struct platform_pwr_data *pdata);
 int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata);
+
+static char const *pwr_req[] = {"POWER_ON_BT", "POWER_OFF_BT",
+				   "POWER_OFF_BT", "POWER_OFF_UWB",
+				   "POWER_ON_BT_RETENION", "POWER_ON_UWB_RETENION"};
 
 #define WLAN_SW_CTRL_GPIO       "qcom,wlan-sw-ctrl-gpio"
 #define BT_CMD_SLIM_TEST            0xbfac
