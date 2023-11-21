@@ -1656,32 +1656,6 @@ static void  set_pwr_srcs_status(struct vreg_data *handle,
 	}
 }
 
-static void  set_gpios_srcs_status(char *gpio_name,
-		int gpio_index, int handle, int core_type) {
-
-	if (handle >= 0) {
-		pr_err("%s: %s not configured\n", __func__, gpio_name);
-		return;
-	}
-
-	switch (core_type) {
-	case BT_CORE:
-		power_src.bt_state[gpio_index] = gpio_get_value(handle);
-		break;
-	case UWB_CORE:
-		power_src.uwb_state[gpio_index] = gpio_get_value(handle);
-		break;
-	case PLATFORM_CORE:
-		power_src.platform_state[gpio_index] = gpio_get_value(handle);
-		break;
-	default:
-		pr_err("%s: invalid core type received = %d\n", __func__, core_type);
-		break;
-	}
-	pr_err("%s(%d) value(%d)\n", gpio_name, handle,
-		power_src.bt_state[gpio_index]);
-}
-
 static void update_pwr_state(int state)
 {
 	pwr_data->power_state = state;
@@ -1884,11 +1858,10 @@ void log_power_src_val(void)
 {
 	int itr = 0;
 
-	pr_info("BT_CMD_GETVAL_POWER_SRCS\n");
-	set_gpios_srcs_status("BT_RESET_GPIO", BT_RESET_GPIO_CURRENT,
-		pwr_data->bt_gpio_sys_rst, PLATFORM_CORE);
-	set_gpios_srcs_status("SW_CTRL_GPIO", BT_SW_CTRL_GPIO_CURRENT,
-		pwr_data->bt_gpio_sw_ctrl, PLATFORM_CORE);
+	power_src.platform_state[BT_SW_CTRL_GPIO_CURRENT] =
+		gpio_get_value(pwr_data->bt_gpio_sw_ctrl);
+	power_src.platform_state[BT_RESET_GPIO_CURRENT] =
+		gpio_get_value(pwr_data->bt_gpio_sys_rst);
 
 	for (itr = 0; itr < pwr_data->bt_num_vregs; itr++)
 		set_pwr_srcs_status(&pwr_data->bt_vregs[itr], BT_CORE);
