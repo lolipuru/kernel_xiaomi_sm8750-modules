@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __UAPI_SYNX_H__
@@ -319,6 +319,17 @@ struct synx_initialize_v2 {
 	__u32 reserved;
 };
 
+/**
+ * struct synx_recover_info - synx recover information
+ *
+ * @id       : Client identifier
+ * @reserved : Reserved
+ */
+struct synx_recover_info {
+	__u32 id;
+	__u32 reserved;
+};
+
 #define SYNX_PRIVATE_MAGIC_NUM 's'
 
 #define SYNX_PRIVATE_IOCTL_CMD \
@@ -339,5 +350,6 @@ struct synx_initialize_v2 {
 #define SYNX_IMPORT_ARR                      12
 #define SYNX_GETFENCE_FD                     13
 #define SYNX_INITIALIZE                      14
+#define SYNX_RECOVER                         15
 
 #endif /* __UAPI_SYNX_H__ */

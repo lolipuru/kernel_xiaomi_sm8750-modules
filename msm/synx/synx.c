@@ -2526,6 +2526,25 @@ static int synx_handle_get_fence(struct synx_private_ioctl_arg *k_ioctl,
 	return SYNX_SUCCESS;
 }
 
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+static int synx_handle_recover(struct synx_private_ioctl_arg *k_ioctl, struct synx_session *session)
+{
+	struct synx_recover_info recover_info;
+
+	if (k_ioctl->size != sizeof(recover_info))
+		return -SYNX_INVALID;
+
+	if (copy_from_user(&recover_info,
+			u64_to_user_ptr(k_ioctl->ioctl_ptr),
+			k_ioctl->size))
+		return -EFAULT;
+
+	k_ioctl->result = synx_recover(session->type);
+
+	return k_ioctl->result;
+}
+#endif /* CONFIG_DEBUG_FS */
+
 static long synx_ioctl(struct file *filep,
 	unsigned int cmd,
 	unsigned long arg)
@@ -2610,6 +2629,11 @@ static long synx_ioctl(struct file *filep,
 	case SYNX_GETFENCE_FD:
 		rc = synx_handle_get_fence(&k_ioctl, session);
 		break;
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+	case SYNX_RECOVER:
+		rc = synx_handle_recover(&k_ioctl, session);
+		break;
+#endif /* CONFIG_DEBUG_FS */
 	default:
 		rc = -SYNX_INVALID;
 	}
