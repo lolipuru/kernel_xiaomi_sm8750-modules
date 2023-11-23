@@ -101,7 +101,7 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
             name = rule_name,
             srcs = module_srcs,
             out = "{}.ko".format(module.name),
-			copts = ["-Wno-format","-Wno-array-bounds","-fstrict-flex-arrays=0"],
+			copts = ["-Wno-format","-Wno-array-bounds"],
             deps = headers + _get_kernel_build_module_deps(module, options, formatter),
             local_defines = options.keys(),
         )

@@ -984,15 +984,27 @@ static int __core_set_resource(struct iris_hfi_device *device,
 		struct cvp_resource_hdr *resource_hdr, void *resource_value)
 {
 	struct cvp_hfi_cmd_sys_set_resource_packet *pkt;
-	u8 packet[CVP_IFACEQ_VAR_SMALL_PKT_SIZE];
+	struct cvp_hfi_resource_syscache_info_type *res_sc_info;
 	int rc = 0;
+	int pkt_size = 0;
 
 	if (!device || !resource_hdr || !resource_value) {
 		dprintk(CVP_ERR, "set_res: Invalid Params\n");
 		return -EINVAL;
 	}
 
-	pkt = (struct cvp_hfi_cmd_sys_set_resource_packet *) packet;
+	res_sc_info = (struct cvp_hfi_resource_syscache_info_type *)resource_value;
+	if ((resource_hdr->resource_id == CVP_RESOURCE_SYSCACHE) &&
+			(res_sc_info->num_entries > 0)) {
+		pkt_size = sizeof(struct cvp_hfi_cmd_sys_set_resource_packet)
+				+ sizeof(u32)
+				+ (sizeof(struct cvp_hfi_resource_subcache_type))
+				* res_sc_info->num_entries;
+	} else {
+		pkt_size = sizeof(struct cvp_hfi_cmd_sys_set_resource_packet) + sizeof(u32);
+	}
+
+	pkt = kzalloc(pkt_size, GFP_KERNEL);
 
 	rc = call_hfi_pkt_op(device, sys_set_resource,
 			pkt, resource_hdr, resource_value);
@@ -1006,6 +1018,7 @@ static int __core_set_resource(struct iris_hfi_device *device,
 		rc = -ENOTEMPTY;
 
 err_create_pkt:
+	kfree(pkt);
 	return rc;
 }
 
@@ -1914,57 +1927,70 @@ fail_alloc_queue:
 
 static int __sys_set_debug(struct iris_hfi_device *device, u32 debug)
 {
-	u8 packet[CVP_IFACEQ_VAR_SMALL_PKT_SIZE];
 	int rc = 0;
-	struct cvp_hfi_cmd_sys_set_property_packet *pkt =
-		(struct cvp_hfi_cmd_sys_set_property_packet *) &packet;
+	struct cvp_hfi_cmd_sys_set_property_packet *pkt;
+
+	pkt = kzalloc(sizeof(struct cvp_hfi_cmd_sys_set_property_packet) + sizeof(u32) +
+		sizeof(struct cvp_hfi_debug_config), GFP_KERNEL);
 
 	rc = call_hfi_pkt_op(device, sys_debug_config, pkt, debug);
 	if (rc) {
-		dprintk(CVP_WARN,
-			"Debug mode setting to FW failed\n");
-		return -ENOTEMPTY;
+		dprintk(CVP_WARN, "Debug mode setting to FW failed %d\n", rc);
+		rc = -ENOTEMPTY;
+		goto fail_set_debug;
 	}
 
-	if (__iface_cmdq_write(device, pkt))
-		return -ENOTEMPTY;
-	return 0;
+	if (__iface_cmdq_write(device, pkt)) {
+		rc = -ENOTEMPTY;
+		goto fail_set_debug;
+	}
+fail_set_debug:
+	kfree(pkt);
+	return rc;
 }
 
 static int __sys_set_idle_indicator(struct iris_hfi_device *device,
 	bool enable)
 {
-	u8 packet[CVP_IFACEQ_VAR_SMALL_PKT_SIZE];
 	int rc = 0;
-	struct cvp_hfi_cmd_sys_set_property_packet *pkt =
-		(struct cvp_hfi_cmd_sys_set_property_packet *) &packet;
+	struct cvp_hfi_cmd_sys_set_property_packet *pkt;
+
+	pkt = kzalloc(sizeof(struct cvp_hfi_cmd_sys_set_property_packet) + 2 * sizeof(u32),
+		GFP_KERNEL);
 
 	rc = call_hfi_pkt_op(device, sys_set_idle_indicator, pkt, enable);
-	if (__iface_cmdq_write(device, pkt))
+	if (__iface_cmdq_write(device, pkt)) {
+		kfree(pkt);
 		return -ENOTEMPTY;
+	}
+	kfree(pkt);
 	return 0;
 }
 
 static int __sys_set_coverage(struct iris_hfi_device *device, u32 mode)
 {
-	u8 packet[CVP_IFACEQ_VAR_SMALL_PKT_SIZE];
 	int rc = 0;
-	struct cvp_hfi_cmd_sys_set_property_packet *pkt =
-		(struct cvp_hfi_cmd_sys_set_property_packet *) &packet;
+	struct cvp_hfi_cmd_sys_set_property_packet *pkt;
+
+	pkt = kzalloc(sizeof(struct cvp_hfi_cmd_sys_set_property_packet) + 2 * sizeof(u32),
+			GFP_KERNEL);
 
 	rc = call_hfi_pkt_op(device, sys_coverage_config,
 			pkt, mode);
 	if (rc) {
 		dprintk(CVP_WARN,
 			"Coverage mode setting to FW failed\n");
-		return -ENOTEMPTY;
+		rc = -ENOTEMPTY;
+		goto fail_set_coverage;
 	}
 
 	if (__iface_cmdq_write(device, pkt)) {
 		dprintk(CVP_WARN, "Failed to send coverage pkt to f/w\n");
-		return -ENOTEMPTY;
+		rc = -ENOTEMPTY;
+		goto fail_set_coverage;
 	}
-
+fail_set_coverage:
+	kfree(pkt);
 	return 0;
 }
 
@@ -1973,9 +1999,7 @@ static int __sys_set_power_control(struct iris_hfi_device *device,
 {
 	struct regulator_info *rinfo;
 	bool supported = false;
-	u8 packet[CVP_IFACEQ_VAR_SMALL_PKT_SIZE];
-	struct cvp_hfi_cmd_sys_set_property_packet *pkt =
-		(struct cvp_hfi_cmd_sys_set_property_packet *) &packet;
+	struct cvp_hfi_cmd_sys_set_property_packet *pkt;
 
 	iris_hfi_for_each_regulator(device, rinfo) {
 		if (rinfo->has_hw_power_collapse) {
@@ -1987,9 +2011,15 @@ static int __sys_set_power_control(struct iris_hfi_device *device,
 	if (!supported)
 		return 0;
 
+	pkt = kzalloc(sizeof(struct cvp_hfi_cmd_sys_set_property_packet) + sizeof(u32) +
+		sizeof(struct cvp_hfi_enable), GFP_KERNEL);
+
 	call_hfi_pkt_op(device, sys_power_control, pkt, enable);
-	if (__iface_cmdq_write(device, pkt))
+	if (__iface_cmdq_write(device, pkt)) {
+		kfree(pkt);
 		return -ENOTEMPTY;
+	}
+	kfree(pkt);
 	return 0;
 }
 
@@ -2153,14 +2183,13 @@ static int iris_hfi_core_init(void *device)
 	int rc = 0;
 	u32 ipcc_iova;
 	struct cvp_hfi_cmd_sys_init_packet pkt;
-	struct cvp_hfi_cmd_sys_get_property_packet version_pkt;
+	struct cvp_hfi_cmd_sys_get_property_packet *pversion_pkt;
 	struct iris_hfi_device *dev;
 
 	if (!device) {
 		dprintk(CVP_ERR, "Invalid device\n");
 		return -ENODEV;
 	}
-
 	dev = device;
 
 	dprintk(CVP_CORE, "Core initializing\n");
@@ -2255,10 +2284,13 @@ static int iris_hfi_core_init(void *device)
 		rc = -ENOTEMPTY;
 		goto err_core_init;
 	}
-
-	rc = call_hfi_pkt_op(dev, sys_image_version, &version_pkt);
-	if (rc || __iface_cmdq_write(dev, &version_pkt))
+	pversion_pkt = kzalloc(sizeof(struct cvp_hfi_cmd_sys_get_property_packet) + sizeof(u32),
+							GFP_KERNEL);
+	rc = call_hfi_pkt_op(dev, sys_image_version, pversion_pkt);
+	if (rc || __iface_cmdq_write(dev, pversion_pkt))
 		dprintk(CVP_WARN, "Failed to send image version pkt to f/w\n");
+
+	kfree(pversion_pkt);
 
 	__sys_set_debug(device, msm_cvp_fw_debug);
 
@@ -3199,7 +3231,7 @@ static void __flush_debug_queue(struct iris_hfi_device *device, u8 *packet)
 			 * line.
 			 */
 			pkt->rg_msg_data[pkt->msg_size-1] = '\0';
-			dprintk(log_level, "%s", &pkt->rg_msg_data[1]);
+			dprintk(log_level, "%s", &pkt->rg_msg_data[0]);
 		}
 	}
 #undef SKIP_INVALID_PKT
@@ -4286,14 +4318,15 @@ static void clock_config_on_enable_vpu5(struct iris_hfi_device *device)
 
 static int __set_ubwc_config(struct iris_hfi_device *device)
 {
-	u8 packet[CVP_IFACEQ_VAR_SMALL_PKT_SIZE];
 	int rc = 0;
-
-	struct cvp_hfi_cmd_sys_set_property_packet *pkt =
-		(struct cvp_hfi_cmd_sys_set_property_packet *) &packet;
+	struct cvp_hfi_cmd_sys_set_property_packet *pkt;
 
 	if (!device->res->ubwc_config)
 		return 0;
+
+	pkt = kzalloc(sizeof(struct cvp_hfi_cmd_sys_set_property_packet) +
+		sizeof(struct cvp_hfi_cmd_sys_set_ubwc_config_packet_type) + sizeof(u32),
+		GFP_KERNEL);
 
 	rc = call_hfi_pkt_op(device, sys_ubwc_config, pkt,
 		device->res->ubwc_config);
@@ -4310,6 +4343,7 @@ static int __set_ubwc_config(struct iris_hfi_device *device)
 	}
 
 fail_to_set_ubwc_config:
+	kfree(pkt);
 	return rc;
 }
 

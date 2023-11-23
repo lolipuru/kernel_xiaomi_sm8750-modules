@@ -201,8 +201,7 @@ enum cvp_status cvp_hfi_process_sys_init_done_prop_read(
 		return CVP_ERR_FAIL;
 	}
 
-	rem_bytes = pkt->size - sizeof(struct
-			cvp_hfi_msg_sys_init_done_packet) + sizeof(u32);
+	rem_bytes = pkt->size - sizeof(struct cvp_hfi_msg_sys_init_done_packet);
 
 	if (!rem_bytes) {
 		dprintk(CVP_ERR,
