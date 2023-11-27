@@ -219,7 +219,8 @@ static int btfm_swr_probe(struct swr_device *pdev)
 		goto register_err;
 	}
 
-	btfm_swr_class = class_create(THIS_MODULE, "btfmswr-dev");
+	//btfm_swr_class = class_create(THIS_MODULE, "btfmswr-dev");
+	btfm_swr_class = class_create("btfmswr-dev");
 	if (IS_ERR(btfm_swr_class)) {
 		BTFMSWR_ERR("%s: coudn't create class\n", __func__);
 		ret = -1;

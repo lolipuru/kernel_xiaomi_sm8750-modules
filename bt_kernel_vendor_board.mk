@@ -9,6 +9,7 @@ ifeq ($(TARGET_USES_QMAA),true)
            ifneq ($(TARGET_BOARD_PLATFORM), pineapple)
            BT_KERNEL_DRIVER += $(KERNEL_MODULES_OUT)/btfmcodec.ko
            endif
+           BT_KERNEL_DRIVER += $(KERNEL_MODULES_OUT)/bt_fm_swr.ko
            BOARD_VENDOR_KERNEL_MODULES += $(BT_KERNEL_DRIVER)
      endif
   endif
@@ -20,6 +21,7 @@ else
      ifneq ($(TARGET_BOARD_PLATFORM), pineapple)
      BT_KERNEL_DRIVER += $(KERNEL_MODULES_OUT)/btfmcodec.ko
      endif
+     BT_KERNEL_DRIVER += $(KERNEL_MODULES_OUT)/bt_fm_swr.ko
      BOARD_VENDOR_KERNEL_MODULES += $(BT_KERNEL_DRIVER)
   endif
 endif
