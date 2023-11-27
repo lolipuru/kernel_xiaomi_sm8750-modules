@@ -1184,8 +1184,7 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 	/* Enable interrupt before sending commands to tensilica */
 	__write_register(device, CVP_CPU_CS_H2XSOFTINTEN, 0x1);
 	__write_register(device, CVP_CPU_CS_X2RPMh, 0x0);
-	/*Disable HW Synx*/
-	__write_register(device, CVP_CPU_CS_SCIACMD, 0x8);
+
 
 	return rc;
 }
