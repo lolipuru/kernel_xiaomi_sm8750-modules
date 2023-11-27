@@ -5696,7 +5696,7 @@ static int __power_off_core_v1(struct iris_hfi_device *device)
 		}
 		__disable_regulator(device, "cvp-core");
 		msm_cvp_disable_unprepare_clk(device, "core_clk");
-		msm_cvp_disable_unprepare_clk(device, "eva_cc_mvs0_clk_src");
+		msm_cvp_disable_unprepare_clk(device, "core_freerun_clk");
 		return 0;
 	} else if (!(value & 0x2) && msm_cvp_fw_low_power_mode) {
 		/*
@@ -5705,7 +5705,7 @@ static int __power_off_core_v1(struct iris_hfi_device *device)
 		 */
 		__disable_regulator(device, "cvp-core");
                 msm_cvp_disable_unprepare_clk(device, "core_clk");
-                msm_cvp_disable_unprepare_clk(device, "eva_cc_mvs0_clk_src");
+		msm_cvp_disable_unprepare_clk(device, "core_freerun_clk");
                 return 0;
 	}
 
@@ -5792,7 +5792,7 @@ static int __power_off_core_v1(struct iris_hfi_device *device)
 	usleep_range(100, 200);
 	__disable_regulator(device, "cvp-core");
 	msm_cvp_disable_unprepare_clk(device, "core_clk");
-	msm_cvp_disable_unprepare_clk(device, "eva_cc_mvs0_clk_src");
+	msm_cvp_disable_unprepare_clk(device, "core_freerun_clk");
 	return 0;
 }
 
@@ -5927,7 +5927,10 @@ static int __power_off_controller_v1(struct iris_hfi_device *device)
 		dprintk(CVP_ERR, "%s: de-assert cvp_core_reset failed\n", __func__);
 
 	***********************************************************************/
-
+	rc = msm_cvp_disable_unprepare_clk(device, "eva_cc_mvs0_clk_src");
+	if (rc) {
+		dprintk(CVP_ERR, "Failed to disable eva_cc_mvs0_clk_src: %d\n", rc);
+	}
 	return 0;
 }
 
