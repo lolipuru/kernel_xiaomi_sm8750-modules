@@ -15,7 +15,7 @@ LOCAL_PATH := $(call my-dir)
 ifeq ($(call is-board-platform-in-list, taro kalama pineapple blair sun), true)
 
 BT_SELECT := CONFIG_MSM_BT_POWER=m
-BT_SELECT += CONFIG_SLIM_BTFM_CODEC=n
+BT_SELECT += CONFIG_SLIM_BTFM_CODEC=m
 BT_SELECT += CONFIG_I2C_RTC6226_QCA=m
 BT_SELECT += CONFIG_BTFM_SWR=m
 
@@ -29,7 +29,7 @@ LOCAL_PATH := $(call my-dir)
 LOCAL_MODULE_DDK_BUILD := true
 LOCAL_MODULE_KO_DIRS := pwr/btpower.ko
 LOCAL_MODULE_KO_DIRS += rtc6226/radio-i2c-rtc6226-qca.ko
-#LOCAL_MODULE_KO_DIRS += slimbus/btfm_slim_codec.ko
+LOCAL_MODULE_KO_DIRS += slimbus/btfm_slim_codec.ko
 LOCAL_MODULE_KO_DIRS += soundwire/bt_fm_swr.ko
 
 ifneq ($(TARGET_BOARD_PLATFORM), pineapple)
@@ -106,14 +106,14 @@ LOCAL_MODULE_DEBUG_ENABLE := true
 LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 ############################ slimbus with BTFM CODEC Driver #################
-#include $(CLEAR_VARS)
-#LOCAL_SRC_FILES           := $(BT_SRC_FILES)
-#LOCAL_MODULE              := btfm_slim_codec.ko
-#LOCAL_MODULE_KBUILD_NAME  := slimbus/btfm_slim_codec.ko
-#LOCAL_MODULE_TAGS         := optional
-#LOCAL_MODULE_DEBUG_ENABLE := true
-#LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
-#include $(DLKM_DIR)/Build_external_kernelmodule.mk
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES           := $(BT_SRC_FILES)
+LOCAL_MODULE              := btfm_slim_codec.ko
+LOCAL_MODULE_KBUILD_NAME  := slimbus/btfm_slim_codec.ko
+LOCAL_MODULE_TAGS         := optional
+LOCAL_MODULE_DEBUG_ENABLE := true
+LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
+include $(DLKM_DIR)/Build_external_kernelmodule.mk
 endif
 ################################ rtc6226 ################################
 include $(CLEAR_VARS)

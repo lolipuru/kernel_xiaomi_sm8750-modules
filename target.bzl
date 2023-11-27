@@ -24,14 +24,14 @@ def define_sun():
         modules = [
             "btpower",
             "radio-i2c-rtc6226-qca",
-           # "btfm_slim_codec",
+            "btfm_slim_codec",
             "btfmcodec",
             "bt_fm_swr",
          ],
          config_options = [
              "CONFIG_MSM_BT_POWER",
              "CONFIG_I2C_RTC6226_QCA",
-           #  "CONFIG_SLIM_BTFM_CODEC",
+             "CONFIG_SLIM_BTFM_CODEC",
 	     "CONFIG_BTFM_CODEC",
            #  "CONFIG_BT_HW_SECURE_DISABLE",
             "CONFIG_BTFM_SWR",
