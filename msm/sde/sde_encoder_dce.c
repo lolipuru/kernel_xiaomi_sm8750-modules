@@ -338,7 +338,8 @@ static int _dce_dsc_setup_single(struct sde_encoder_virt *sde_enc,
 	 * 3d_merge dsc should be bound to left side of the pipe
 	 */
 	if (merge_3d || half_panel_partial_update)
-		hw_pp = (active) ? sde_enc->hw_pp[0] : sde_enc->hw_pp[1];
+		hw_pp = (active) ? sde_enc->hw_pp[(index/2) * 2]
+				: sde_enc->hw_pp[((index/2) * 2) + 1];
 	else
 		hw_pp = sde_enc->hw_pp[index];
 
@@ -438,10 +439,10 @@ static int _dce_dsc_setup_helper(struct sde_encoder_virt *sde_enc,
 
 	dsc->half_panel_pu = _dce_check_half_panel_update(num_lm, sde_enc);
 	dsc_merge = ((num_dsc > num_intf) && !dsc->half_panel_pu &&
-			!(enc_master->hw_intf->cfg.split_link_en)) ?
+			!(enc_master->hw_intf->cfg.split_link_en) && !merge_3d) ?
 			true : false;
 	disable_merge_3d = (merge_3d && dsc->half_panel_pu) ?
-			false : true;
+			true : false;
 	dsc_4hsmerge = (dsc_merge && num_dsc == 4 && num_intf == 1) ?
 			true : false;
 
@@ -503,6 +504,8 @@ static int _dce_dsc_setup_helper(struct sde_encoder_virt *sde_enc,
 				roi->w, roi->h, dsc_common_mode);
 
 	for (i = 0; i < num_dsc; i++) {
+		if (merge_3d && (i & 1))
+			continue;
 		rc = _dce_dsc_setup_single(sde_enc, dsc, affected_displays, i,
 				roi, dsc_common_mode, merge_3d,
 				disable_merge_3d, mode_3d, dsc_4hsmerge,
