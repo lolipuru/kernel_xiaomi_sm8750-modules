@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/types.h>
 #include <linux/slab.h>
+#include <synx_api.h>
+#include <synx_hwfence.h>
 #include "msm_hw_fence.h"
-#include "msm_hw_fence_synx_translation.h"
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_debug.h"
 
@@ -135,7 +136,7 @@ struct synx_session *synx_hwfence_initialize(struct synx_initialization_params *
 }
 EXPORT_SYMBOL_GPL(synx_hwfence_initialize);
 
-int synx_hwfence_uninitialize(struct synx_session *session)
+static int synx_hwfence_uninitialize(struct synx_session *session)
 {
 	int ret;
 
@@ -153,9 +154,8 @@ int synx_hwfence_uninitialize(struct synx_session *session)
 
 	return to_synx_status(ret);
 }
-EXPORT_SYMBOL_GPL(synx_hwfence_uninitialize);
 
-int synx_hwfence_create(struct synx_session *session, struct synx_create_params *params)
+static int synx_hwfence_create(struct synx_session *session, struct synx_create_params *params)
 {
 	int ret = 0;
 	struct msm_hw_fence_create_params hwfence_params;
@@ -201,9 +201,8 @@ int synx_hwfence_create(struct synx_session *session, struct synx_create_params 
 
 	return SYNX_SUCCESS;
 }
-EXPORT_SYMBOL_GPL(synx_hwfence_create);
 
-int synx_hwfence_release(struct synx_session *session, u32 h_synx)
+static int synx_hwfence_release(struct synx_session *session, u32 h_synx)
 {
 	int ret;
 
@@ -220,9 +219,9 @@ int synx_hwfence_release(struct synx_session *session, u32 h_synx)
 
 	return to_synx_status(ret);
 }
-EXPORT_SYMBOL_GPL(synx_hwfence_release);
 
-int synx_hwfence_signal(struct synx_session *session, u32 h_synx, enum synx_signal_status status)
+static int synx_hwfence_signal(struct synx_session *session, u32 h_synx,
+	enum synx_signal_status status)
 {
 	int ret;
 
@@ -239,7 +238,6 @@ int synx_hwfence_signal(struct synx_session *session, u32 h_synx, enum synx_sign
 
 	return to_synx_status(ret);
 }
-EXPORT_SYMBOL_GPL(synx_hwfence_signal);
 
 int synx_hwfence_recover(enum synx_client_id id)
 {
@@ -337,4 +335,20 @@ int synx_hwfence_import(struct synx_session *session, struct synx_import_params 
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(synx_hwfence_import);
+
+int synx_hwfence_init_ops(struct synx_ops *hwfence_ops)
+{
+	if (IS_ERR_OR_NULL(hwfence_ops)) {
+		HWFNC_ERR("invalid ops\n");
+		return -SYNX_INVALID;
+	}
+
+	hwfence_ops->uninitialize = synx_hwfence_uninitialize;
+	hwfence_ops->create = synx_hwfence_create;
+	hwfence_ops->release = synx_hwfence_release;
+	hwfence_ops->signal = synx_hwfence_signal;
+	hwfence_ops->import = synx_hwfence_import;
+
+	return SYNX_SUCCESS;
+}
+EXPORT_SYMBOL_GPL(synx_hwfence_init_ops);
