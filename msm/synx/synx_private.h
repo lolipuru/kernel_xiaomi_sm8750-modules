@@ -229,6 +229,8 @@ struct synx_device {
 	struct synx_cdsp_ssr cdsp_ssr;
 };
 
+extern struct synx_ops synx_hwfence_ops;
+
 int synx_signal_core(struct synx_coredata *synx_obj,
 	u32 status,
 	bool cb_signal,
