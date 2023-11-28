@@ -54,5 +54,6 @@ def define_sun():
             "CONFIG_SND_SOC_WCD9XXX_V2",
             "CONFIG_SND_SOC_WCD_MBHC_ADC",
             "CONFIG_LPASS_BT_SWR",
+            "CONFIG_AUDIO_BTFM_PROXY",
         ]
     )
