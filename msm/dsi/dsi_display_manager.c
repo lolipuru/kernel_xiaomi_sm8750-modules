@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -401,11 +401,15 @@ error_display_get:
 int dsi_display_mgr_phy_enable(struct dsi_display *display)
 {
 	int ret = 0;
+	enum dsi_phy_pll_source m_src =
+			display->ctrl_count == 1 ?
+			DSI_PLL_SOURCE_STANDALONE :
+			DSI_PLL_SOURCE_NATIVE;
 
 	if (!display->panel->ctl_op_sync) {
 		ret = dsi_display_phy_sw_reset(display);
 		if (!ret)
-			return dsi_display_phy_enable(display, DSI_PLL_SOURCE_STANDALONE);
+			return dsi_display_phy_enable(display, m_src);
 	}
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
