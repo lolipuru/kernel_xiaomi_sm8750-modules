@@ -28,6 +28,9 @@ void fastrpc_notify_users(struct fastrpc_user *user);
 int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx);
 void fastrpc_queue_pd_status(struct fastrpc_user *fl, int domain, int status);
 
+static struct fastrpc_channel_ctx *gadsp;
+static struct fastrpc_channel_ctx *gcdsp;
+
 struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev)
 {
 	return dev_get_drvdata(dev->parent);
@@ -119,6 +122,7 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		if (err)
 			goto fdev_error;
 		data->cpuinfo_todsp = FASTRPC_CPUINFO_DEFAULT;
+		gadsp = data;
 		break;
 	case CDSP_DOMAIN_ID:
 		data->unsigned_support = true;
@@ -131,6 +135,7 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		if (err)
 			goto fdev_error;
 		data->cpuinfo_todsp = FASTRPC_CPUINFO_EARLY_WAKEUP;
+		gcdsp = data;
 		break;
 	default:
 		err = -EINVAL;
