@@ -2196,6 +2196,16 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		panic("subsys-restart: Resetting the SoC - BT crashed primary reason [0x%04x] secondary reason [0x%04x]\n",
 		        primary_reason, sec_reason);
 		break;
+	case UWB_CMD_KERNEL_PANIC:
+		pr_err("%s: UWB_CMD_KERNEL_PANIC\n", __func__);
+		panic_reason = (unsigned int)arg;
+		primary_reason = panic_reason & 0xFFFF;
+		sec_reason = (panic_reason & 0xFFFF0000) >> 16;
+		pr_err("%s: UWB kernel panic primary reason [0x%04x] secondary reason [0x%04x]\n",
+				__func__, primary_reason, sec_reason);
+		panic("subsys-restart: Resetting the SoC - UWB crashed primary reason [0x%04x] secondary reason [0x%04x]\n",
+				primary_reason, sec_reason);
+		break;
 	default:
 		return -ENOIOCTLCMD;
 	}

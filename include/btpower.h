@@ -177,6 +177,7 @@ static char const *pwr_req[] = {"POWER_ON_BT", "POWER_OFF_BT",
 #define BT_CMD_GETVAL_POWER_SRCS    0xbfb1
 #define BT_CMD_SET_IPA_TCS_INFO     0xbfc0
 #define BT_CMD_KERNEL_PANIC         0xbfc1
+#define UWB_CMD_KERNEL_PANIC        0xbfc2
 #define UWB_CMD_PWR_CTRL            0xbfe1
 #define BT_CMD_REGISTRATION	    0xbfe2
 #define UWB_CMD_REGISTRATION        0xbfe3
