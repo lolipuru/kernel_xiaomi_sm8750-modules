@@ -421,6 +421,59 @@ TRACE_EVENT(sde_perf_uidle_status,
 			)
 );
 
+TRACE_EVENT(sde_perf_uidle_status_v1,
+	TP_PROTO(u32 crtc,
+			u32 uidle_danger_status_2,
+			u32 uidle_danger_status_3,
+			u32 uidle_safe_status_2,
+			u32 uidle_safe_status_3,
+			u32 uidle_idle_status_2,
+			u32 uidle_idle_status_3,
+			u32 uidle_fal_status_2,
+			u32 uidle_fal_status_3),
+	TP_ARGS(crtc,
+			uidle_danger_status_2,
+			uidle_danger_status_3,
+			uidle_safe_status_2,
+			uidle_safe_status_3,
+			uidle_idle_status_2,
+			uidle_idle_status_3,
+			uidle_fal_status_2,
+			uidle_fal_status_3),
+	TP_STRUCT__entry(
+			__field(u32, crtc)
+			__field(u32, uidle_danger_status_2)
+			__field(u32, uidle_danger_status_3)
+			__field(u32, uidle_safe_status_2)
+			__field(u32, uidle_safe_status_3)
+			__field(u32, uidle_idle_status_2)
+			__field(u32, uidle_idle_status_3)
+			__field(u32, uidle_fal_status_2)
+			__field(u32, uidle_fal_status_3)),
+	TP_fast_assign(
+			__entry->crtc = crtc;
+			__entry->uidle_danger_status_2 = uidle_danger_status_2;
+			__entry->uidle_danger_status_3 = uidle_danger_status_3;
+			__entry->uidle_safe_status_2 = uidle_safe_status_2;
+			__entry->uidle_safe_status_3 = uidle_safe_status_3;
+			__entry->uidle_idle_status_2 = uidle_idle_status_2;
+			__entry->uidle_idle_status_3 = uidle_idle_status_3;
+			__entry->uidle_fal_status_2 = uidle_fal_status_2;
+			__entry->uidle_fal_status_3 = uidle_fal_status_3;),
+	 TP_printk(
+		"crtc:%d ext_v1 danger[0x%x 0x%x] safe[0x%x 0x%x] idle[0x%x 0x%x] fal[0x%x 0x%x]",
+			__entry->crtc,
+			__entry->uidle_danger_status_2,
+			__entry->uidle_danger_status_3,
+			__entry->uidle_safe_status_2,
+			__entry->uidle_safe_status_3,
+			__entry->uidle_idle_status_2,
+			__entry->uidle_idle_status_3,
+			__entry->uidle_fal_status_2,
+			__entry->uidle_fal_status_3
+			)
+);
+
 TRACE_EVENT(sde_hw_fence_status,
 	TP_PROTO(u32 crtc,
 			char *fence,

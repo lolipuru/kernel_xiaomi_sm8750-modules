@@ -656,6 +656,7 @@ enum {
  * @SDE_INTF_VSYNC_TS_SRC_EN    INTF block has VSYNC timestamp source selection support
  * @SDE_INTF_TE_LEVEL_TRIGGER   INTF block has TE Level trigger gating support
  * @SDE_INTF_TEAR_TE_LEVEL_MODE	INTF block has TE Level mode support
+ * @SDE_INTF_NUM_AVR_STEP       INTF block has NUM_AVR_STEP support
  * @SDE_INTF_MAX
  */
 enum {
@@ -677,6 +678,7 @@ enum {
 	SDE_INTF_VSYNC_TS_SRC_EN,
 	SDE_INTF_TE_LEVEL_TRIGGER,
 	SDE_INTF_TEAR_TE_LEVEL_MODE,
+	SDE_INTF_NUM_AVR_STEP,
 	SDE_INTF_MAX
 };
 
@@ -764,11 +766,13 @@ enum {
  * uidle features
  * @SDE_UIDLE_QACTIVE_OVERRIDE    uidle sends qactive signal
  * @SDE_UIDLE_WB_FAL_STATUS       wb contributes to fal status
+ * @SDE_UIDLE_STATUS_EXT1         uidle status_2 & status_3 for danger/safe/idle/fal
  * @SDE_UIDLE_MAX                 maximum value
  */
 enum {
 	SDE_UIDLE_QACTIVE_OVERRIDE = 0x1,
 	SDE_UIDLE_WB_FAL_STATUS,
+	SDE_UIDLE_STATUS_EXT1,
 	SDE_UIDLE_MAX
 };
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  *
  */
@@ -38,6 +38,16 @@
 #define UIDLE_FAL10_NUM_TRANSITIONS_CNTR 0x64
 #define UIDLE_MIN_GATE_CNTR 0x68
 #define UIDLE_MAX_GATE_CNTR 0x6c
+
+#define UIDLE_DANGER_STATUS_2 0x70
+#define UIDLE_SAFE_STATUS_2 0x74
+#define UIDLE_IDLE_STATUS_2 0x78
+#define UIDLE_FAL_STATUS_2 0x7c
+
+#define UIDLE_DANGER_STATUS_3 0x80
+#define UIDLE_SAFE_STATUS_3 0x84
+#define UIDLE_IDLE_STATUS_3 0x88
+#define UIDLE_FAL_STATUS_3 0x8c
 
 static const struct sde_uidle_cfg *_top_offset(enum sde_uidle uidle,
 		struct sde_mdss_cfg *m, void __iomem *addr,
@@ -93,6 +103,21 @@ void sde_hw_uidle_get_status(struct sde_hw_uidle *uidle,
 		SDE_REG_READ(c, UIDLE_STATUS);
 	status->uidle_en_fal10 =
 		(status->uidle_status & BIT(2)) ? 1 : 0;
+}
+
+void sde_hw_uidle_get_status_ext1(struct sde_hw_uidle *uidle,
+		struct sde_uidle_status *status)
+{
+	struct sde_hw_blk_reg_map *c = &uidle->hw;
+
+	status->uidle_danger_status_2 = SDE_REG_READ(c, UIDLE_DANGER_STATUS_2);
+	status->uidle_danger_status_3 = SDE_REG_READ(c, UIDLE_DANGER_STATUS_3);
+	status->uidle_safe_status_2 = SDE_REG_READ(c, UIDLE_SAFE_STATUS_2);
+	status->uidle_safe_status_3 = SDE_REG_READ(c, UIDLE_SAFE_STATUS_3);
+	status->uidle_idle_status_2 = SDE_REG_READ(c, UIDLE_IDLE_STATUS_2);
+	status->uidle_idle_status_3 = SDE_REG_READ(c, UIDLE_IDLE_STATUS_3);
+	status->uidle_fal_status_2 = SDE_REG_READ(c, UIDLE_FAL_STATUS_2);
+	status->uidle_fal_status_3 = SDE_REG_READ(c, UIDLE_FAL_STATUS_3);
 }
 
 void sde_hw_uidle_get_cntr(struct sde_hw_uidle *uidle,
@@ -224,6 +249,10 @@ static inline void _setup_uidle_ops(struct sde_hw_uidle_ops *ops,
 	ops->uidle_setup_cntr = sde_hw_uidle_setup_cntr;
 	ops->uidle_get_cntr = sde_hw_uidle_get_cntr;
 	ops->uidle_get_status = sde_hw_uidle_get_status;
+
+	if (cap & BIT(SDE_UIDLE_STATUS_EXT1))
+		ops->uidle_get_status_ext1 = sde_hw_uidle_get_status_ext1;
+
 	if (cap & BIT(SDE_UIDLE_QACTIVE_OVERRIDE))
 		ops->active_override_enable = sde_hw_uilde_active_override;
 	ops->uidle_fal10_override = sde_hw_uidle_fal10_override;
