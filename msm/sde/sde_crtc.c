@@ -1771,9 +1771,12 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 	enum sde_layout prev_layout, cur_layout;
 	struct sde_kms *sde_kms;
 	struct sde_rect left_rect, right_rect;
-	int32_t left_pid, right_pid;
-	int32_t stage;
-	int i;
+	struct drm_plane *plane;
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct sde_plane_state *cur_sde_pstate;
+	struct sde_hw_stage_cfg *stage_cfg;
+	int32_t left_pid, right_pid, stage, i, j;
+	uint32_t layout_idx;
 
 	sde_kms = _sde_crtc_get_kms(crtc);
 	if (!sde_kms || !sde_kms->catalog) {
@@ -1837,6 +1840,22 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 			cur_pstate->drm_pstate->plane,
 			cur_pstate->sde_pstate->multirect_index,
 			cur_pstate->sde_pstate->pipe_order_flags);
+
+		cur_sde_pstate = cur_pstate->sde_pstate;
+		plane = cur_pstate->drm_pstate->plane;
+		layout_idx = (cur_sde_pstate->layout <= SDE_LAYOUT_LEFT) ? 0 : 1;
+		stage_cfg = &sde_crtc->stage_cfg[layout_idx];
+
+		if (cur_sde_pstate->pipe_order_flags & SDE_SSPP_RIGHT) {
+			for (j = 0; j < PIPES_PER_STAGE; j++) {
+				if (stage_cfg->stage[cur_sde_pstate->stage][j]
+								== sde_plane_pipe(plane)) {
+					stage_cfg->layout[cur_sde_pstate->stage][j] = 1;
+					break;
+				}
+			}
+		}
+
 	}
 }
 

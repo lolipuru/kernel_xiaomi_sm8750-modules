@@ -780,11 +780,12 @@ enum sde_sspp_multirect_index {
  * struct sde_hw_stage_cfg - blending stage cfg
  * @stage : SSPP_ID at each stage
  * @multirect_index: index of the rectangle of SSPP.
+ * @layout: indicates if its the left or right layout.
  */
 struct sde_hw_stage_cfg {
 	enum sde_sspp stage[SDE_STAGE_MAX][PIPES_PER_STAGE];
-	enum sde_sspp_multirect_index multirect_index
-					[SDE_STAGE_MAX][PIPES_PER_STAGE];
+	enum sde_sspp_multirect_index multirect_index[SDE_STAGE_MAX][PIPES_PER_STAGE];
+	u32 layout[SDE_STAGE_MAX][PIPES_PER_STAGE];
 };
 
 /**
