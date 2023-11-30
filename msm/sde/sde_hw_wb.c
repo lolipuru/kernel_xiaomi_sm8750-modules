@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -40,6 +40,7 @@
 #define WB_CLK_STATUS			0x17C
 #define WB_LINE_COUNT			0x184
 #define WB_PROG_LINE_COUNT		0x188
+#define WB_FRAME_COUNT			0x198
 #define WB_CSC_BASE			0x260
 #define WB_DST_ADDR_SW_STATUS		0x2B0
 #define WB_CDP_CNTL			0x2B4
@@ -607,6 +608,15 @@ static void sde_hw_wb_clear_ubwc_error(struct sde_hw_wb *ctx)
 	return SDE_REG_WRITE(c, WB_UBWC_ERROR_STATUS, BIT(31));
 }
 
+static u32 sde_hw_wb_get_frame_count(struct sde_hw_wb *ctx)
+{
+	struct sde_hw_blk_reg_map *c;
+
+	c = &ctx->hw;
+
+	return SDE_REG_READ(c, WB_FRAME_COUNT) & 0xFFFF;
+}
+
 static void _setup_wb_ops(struct sde_hw_wb_ops *ops,
 	unsigned long features)
 {
@@ -644,6 +654,9 @@ static void _setup_wb_ops(struct sde_hw_wb_ops *ops,
 		ops->get_line_count = sde_hw_wb_get_line_count;
 		ops->set_prog_line_count = sde_hw_wb_set_prog_line_count;
 	}
+
+	if (test_bit(SDE_WB_FRAME_COUNT, &features))
+		ops->get_frame_count = sde_hw_wb_get_frame_count;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_wb_init(enum sde_wb idx,

@@ -914,6 +914,21 @@ static int sde_hw_intf_enable_te(struct sde_hw_intf *intf, bool enable)
 	return 0;
 }
 
+static void sde_hw_intf_enable_te_level_mode(struct sde_hw_intf *intf, bool enable)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+	u32 val = 0;
+
+	val = SDE_REG_READ(c, INTF_TEAR_TEAR_CHECK_EN);
+
+	if (enable)
+		val |= BIT(7);
+	else
+		val &= ~BIT(7);
+
+	SDE_REG_WRITE(c, INTF_TEAR_TEAR_CHECK_EN, val);
+}
+
 static void sde_hw_intf_update_te(struct sde_hw_intf *intf,
 		struct sde_hw_tear_check *te)
 {
@@ -1138,7 +1153,9 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->check_and_reset_tearcheck = sde_hw_intf_v1_check_and_reset_tearcheck;
 		ops->override_tear_rd_ptr_val = sde_hw_intf_override_tear_rd_ptr_val;
 
-		if (cap & BIT(SDE_INTF_TE_LEVEL_TRIGGER))
+		if (cap & BIT(SDE_INTF_TEAR_TE_LEVEL_MODE))
+			ops->enable_te_level_trigger = sde_hw_intf_enable_te_level_mode;
+		else if (cap & BIT(SDE_INTF_TE_LEVEL_TRIGGER))
 			ops->enable_te_level_trigger = sde_hw_intf_enable_te_level_trigger;
 	}
 
