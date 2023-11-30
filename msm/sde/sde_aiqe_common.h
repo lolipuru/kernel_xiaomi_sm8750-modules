@@ -6,7 +6,10 @@
 #ifndef _SDE_AIQE_COMMON_H
 #define _SDE_AIQE_COMMON_H
 
-#include "sde_crtc.h"
+struct sde_aiqe_top_level {
+	struct mutex aiqe_mutex;
+	u32 aiqe_mask;
+};
 
 enum aiqe_merge_mode {
 	SINGLE_MODE,

@@ -60,6 +60,25 @@ static int _reg_dmav1_aiqe_write_top_level_v1(struct sde_reg_dma_setup_ops_cfg *
 	return rc;
 }
 
+void sde_reset_mdnie_art(struct sde_hw_dspp *ctx)
+{
+	u32 aiqe_base = 0;
+
+	if (!ctx) {
+		DRM_ERROR("invalid parameters ctx %pK\n", ctx);
+		return;
+	}
+
+	aiqe_base = ctx->cap->sblk->aiqe.base;
+	if (!aiqe_base) {
+		DRM_DEBUG_DRIVER("AIQE not supported on DSPP idx %d", ctx->idx);
+		return;
+	}
+
+	SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x3dc, 0x10);
+	SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x100, 0);
+}
+
 int sde_read_mdnie_art_done(struct sde_hw_dspp *ctx, uint32_t *art_done)
 {
 	uint32_t art_off;
@@ -70,6 +89,7 @@ int sde_read_mdnie_art_done(struct sde_hw_dspp *ctx, uint32_t *art_done)
 	art_off = ctx->cap->sblk->aiqe.base + 0x3d8;
 	*art_done = (SDE_REG_READ(&ctx->hw, art_off) & BIT(4)) >> 4;
 
+	SDE_EVT32(*art_done);
 	return 0;
 }
 
@@ -88,11 +108,12 @@ int sde_read_copr_status(struct sde_hw_dspp *ctx, struct drm_msm_copr_status *co
 	return 0;
 }
 
+
 void sde_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 {
-		struct sde_hw_cp_cfg *hw_cfg = cfg;
-		struct drm_msm_mdnie_art *mdnie_art = NULL;
-		u32 art_value, art_id, aiqe_base = 0;
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_mdnie_art *mdnie_art = NULL;
+	u32 art_value, art_id, aiqe_base = 0;
 
 	if (!ctx || !cfg) {
 		DRM_ERROR("invalid parameters ctx %pK cfg %pK\n", ctx, cfg);
@@ -114,24 +135,24 @@ void sde_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 
 	if (!mdnie_art || !(mdnie_art->param & BIT(0))) {
 		DRM_DEBUG_DRIVER("Disable MDNIE ART feature\n");
-		aiqe_deregister_client(FEATURE_MDNIE_ART, aiqe_top);
 		sde_setup_aiqe_common_v1(ctx, hw_cfg, aiqe_top);
 		SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x100, 0);
+		LOG_FEATURE_OFF;
 		return;
 	}
 
-	aiqe_register_client(FEATURE_MDNIE_ART, aiqe_top);
 	sde_setup_aiqe_common_v1(ctx, hw_cfg, aiqe_top);
 	art_id = ~((SDE_REG_READ(&ctx->hw, aiqe_base + 0x100) & BIT(1)) >> 1) & BIT(0);
 	art_value = (mdnie_art->param & 0xFFFFFF01) | (art_id << 1);
 	SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x100, art_value);
+	LOG_FEATURE_ON;
 }
 
 void sde_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
-	struct drm_msm_copr *copr_stats = NULL;
-	u32 stats, i, aiqe_base = 0;
+	struct drm_msm_copr *copr_data = NULL;
+	u32 data, i, aiqe_base = 0;
 
 	if (!ctx || !cfg) {
 		DRM_ERROR("invalid parameters ctx %pK cfg %pK\n", ctx, cfg);
@@ -144,27 +165,27 @@ void sde_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 		return;
 	}
 
-	copr_stats = (struct drm_msm_copr *)(hw_cfg->payload);
-	if (copr_stats && hw_cfg->len != sizeof(struct drm_msm_copr)) {
+	copr_data = (struct drm_msm_copr *)(hw_cfg->payload);
+	if (copr_data && hw_cfg->len != sizeof(struct drm_msm_copr)) {
 		DRM_ERROR("invalid size of payload len %d exp %zd\n",
 				hw_cfg->len, sizeof(struct drm_msm_copr));
 		return;
 	}
 
-	if (!copr_stats || !(copr_stats->param[0] & BIT(0))) {
+	if (!copr_data || !(copr_data->param[0] & BIT(0))) {
 		DRM_DEBUG_DRIVER("Disable COPR feature\n");
-		aiqe_deregister_client(FEATURE_COPR, aiqe_top);
 		sde_setup_aiqe_common_v1(ctx, hw_cfg, aiqe_top);
 		SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x300, 0);
+		LOG_FEATURE_OFF;
 		return;
 	}
 
-	aiqe_register_client(FEATURE_COPR, aiqe_top);
 	sde_setup_aiqe_common_v1(ctx, hw_cfg, aiqe_top);
 	for (i = 0; i < AIQE_COPR_PARAM_LEN; i++) {
-		stats = copr_stats->param[i];
-		SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x300 + (i * 4), stats);
+		data = copr_data->param[i];
+		SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x300 + (i * 4), data);
 	}
+	LOG_FEATURE_ON;
 }
 
 void sde_setup_mdnie_psr(struct sde_hw_dspp *ctx)
@@ -262,12 +283,10 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 
 	if (!mdnie_data || !(mdnie_data->param[0] & BIT(0))) {
 		DRM_DEBUG_DRIVER("Disable MDNIE feature\n");
-		aiqe_deregister_client(FEATURE_MDNIE, aiqe_top);
 		_mdnie_disable_v1(&dma_write_cfg, ctx, hw_cfg, dma_ops, aiqe_top);
 		return;
 	}
 
-	aiqe_register_client(FEATURE_MDNIE, aiqe_top);
 	rc = _reg_dmav1_aiqe_write_top_level_v1(&dma_write_cfg, ctx, hw_cfg, dma_ops, aiqe_top);
 	if (rc)
 		return;

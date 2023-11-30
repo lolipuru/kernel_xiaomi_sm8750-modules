@@ -36,6 +36,7 @@ void aiqe_register_client(enum aiqe_features feature_id, struct sde_aiqe_top_lev
 	if (!aiqe_top || feature_id >= AIQE_FEATURE_MAX)
 		return;
 
+	SDE_EVT32(feature_id);
 	mutex_lock(&aiqe_top->aiqe_mutex);
 	aiqe_top->aiqe_mask |= 1 << feature_id;
 	mutex_unlock(&aiqe_top->aiqe_mutex);
@@ -46,6 +47,7 @@ void aiqe_deregister_client(enum aiqe_features feature_id, struct sde_aiqe_top_l
 	if (!aiqe_top || feature_id >= AIQE_FEATURE_MAX)
 		return;
 
+	SDE_EVT32(feature_id);
 	mutex_lock(&aiqe_top->aiqe_mutex);
 	aiqe_top->aiqe_mask &= ~(1 << feature_id);
 	mutex_unlock(&aiqe_top->aiqe_mutex);
@@ -109,7 +111,7 @@ static void aiqe_get_common_values_v1(struct sde_hw_cp_cfg *cfg,
 
 bool mdnie_art_in_progress(struct sde_aiqe_top_level *aiqe_top)
 {
-	u32 status = 0;
+	bool status = false;
 
 	if (!aiqe_top)
 		return status;

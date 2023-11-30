@@ -363,6 +363,11 @@ struct sde_hw_dspp_ops {
 	 */
 	int (*read_copr_status)(struct sde_hw_dspp *ctx, struct drm_msm_copr_status *copr_status);
 	/**
+	 * reset_mdnie_art - function to reset art param after art done
+	 * @ctx: Pointer to dspp context
+	 */
+	void (*reset_mdnie_art)(struct sde_hw_dspp *ctx);
+	/**
 	 * setup_mdnie_psr - function to enable mdnie psr flag
 	 * @ctx: Pointer to dspp context
 	 */

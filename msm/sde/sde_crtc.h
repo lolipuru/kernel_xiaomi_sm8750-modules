@@ -31,6 +31,7 @@
 #include "sde_hw_ds.h"
 #include "sde_color_processing.h"
 #include "sde_encoder.h"
+#include "sde_aiqe_common.h"
 
 #define SDE_CRTC_NAME_SIZE	12
 
@@ -280,11 +281,6 @@ enum sde_crtc_hw_fence_flags {
 	HW_FENCE_IN_FENCES_ENABLE,
 	HW_FENCE_IN_FENCES_NO_OVERRIDE,
 	HW_FENCE_FEATURES_MAX,
-};
-
-struct sde_aiqe_top_level {
-	struct mutex aiqe_mutex;
-	u32 aiqe_mask;
 };
 
 /**

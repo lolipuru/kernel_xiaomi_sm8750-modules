@@ -12,8 +12,8 @@
 #include "sde_hw_dspp.h"
 #include "sde_hw_sspp.h"
 
-#define LOG_FEATURE_OFF SDE_EVT32(ctx->idx, 0)
-#define LOG_FEATURE_ON SDE_EVT32(ctx->idx, 1)
+#define LOG_FEATURE_OFF SDE_EVT32(ctx->idx, ctx->dpu_idx, 0)
+#define LOG_FEATURE_ON SDE_EVT32(ctx->idx, ctx->dpu_idx, 1)
 
 #define REG_DMA_INIT_OPS(cfg, block, reg_dma_feature, feature_dma_buf) \
 	do { \

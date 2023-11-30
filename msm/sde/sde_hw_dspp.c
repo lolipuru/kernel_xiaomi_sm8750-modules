@@ -16,6 +16,7 @@
 #include "sde_hw_rc.h"
 #include "sde_kms.h"
 #include "sde_aiqe_common.h"
+#include "sde_hw_color_proc_aiqe_v1.h"
 
 #define DSPP_VALID_START_OFF 0x800
 
@@ -424,6 +425,8 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 	c->ops.setup_copr = NULL;
 	c->ops.read_mdnie_art_done = NULL;
 	c->ops.read_copr_status = NULL;
+	c->ops.reset_mdnie_art = NULL;
+	c->ops.setup_mdnie_psr = NULL;
 
 	if (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_AIQE, c);
@@ -432,6 +435,7 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 				c->ops.setup_mdnie = reg_dmav1_setup_mdnie_v1;
 				c->ops.setup_mdnie_art = sde_setup_mdnie_art_v1;
 				c->ops.read_mdnie_art_done = sde_read_mdnie_art_done;
+				c->ops.reset_mdnie_art = sde_reset_mdnie_art;
 				c->ops.setup_mdnie_psr = sde_setup_mdnie_psr;
 			}
 
