@@ -4226,9 +4226,8 @@ static void st_ts_fill_qts_vendor_data(struct qts_vendor_data *qts_vendor_data,
   */
 static int st_fts_probe_entry(struct fts_ts_info *info)
 {
-	int error = 0;
+	int retval = 0;
 	struct device_node *dp = info->dev->of_node;
-	int retval;
 	int skip_5_1 = 0;
 	struct qts_vendor_data qts_vendor_data;
 	bool qts_en = false;
@@ -4244,6 +4243,7 @@ static int st_fts_probe_entry(struct fts_ts_info *info)
 		if (!info->board) {
 			logError(1, "%s ERROR:info.board kzalloc failed\n",
 				 tag);
+			retval = -ENODEV;
 			goto ProbeErrorExit_1;
 		}
 		parse_dt(info->dev, info->board);
@@ -4255,14 +4255,14 @@ static int st_fts_probe_entry(struct fts_ts_info *info)
 
 	logError(1, "%s SET Regulators:\n", tag);
 	retval = fts_get_reg(info, true);
-	if (retval < 0) {
+	if (retval) {
 		logError(1, "%s ERROR: %s: Failed to get regulators\n", tag,
 			 __func__);
 		goto ProbeErrorExit_1;
 	}
 
 	retval = fts_enable_reg(info, true);
-	if (retval < 0) {
+	if (retval) {
 		logError(1, "%s %s: ERROR Failed to enable regulators\n", tag,
 			 __func__);
 		goto ProbeErrorExit_2;
@@ -4270,7 +4270,7 @@ static int st_fts_probe_entry(struct fts_ts_info *info)
 
 	logError(1, "%s SET GPIOS:\n", tag);
 	retval = fts_set_gpio(info);
-	if (retval < 0) {
+	if (retval) {
 		logError(1, "%s %s: ERROR Failed to set up GPIO's\n", tag,
 			 __func__);
 		goto ProbeErrorExit_2;
@@ -4301,7 +4301,7 @@ skip_to_power_gpio_setup:
 					 WQ_HIGHPRI | WQ_CPU_INTENSIVE, 1);
 	if (!info->event_wq) {
 		logError(1, "%s ERROR: Cannot create work thread\n", tag);
-		error = -ENOMEM;
+		retval = -ENOMEM;
 		goto ProbeErrorExit_4;
 	}
 
@@ -4314,7 +4314,7 @@ skip_to_power_gpio_setup:
 	info->input_dev = input_allocate_device();
 	if (!info->input_dev) {
 		logError(1, "%s ERROR: No such input device defined!\n", tag);
-		error = -ENODEV;
+		retval = -ENODEV;
 		goto ProbeErrorExit_5;
 	}
 	info->input_dev->dev.parent = info->dev;
@@ -4392,10 +4392,9 @@ skip_to_power_gpio_setup:
 	mutex_init(&fts_int);
 
 	/* register the multi-touch input device */
-	error = input_register_device(info->input_dev);
-	if (error) {
+	retval = input_register_device(info->input_dev);
+	if (retval) {
 		logError(1, "%s ERROR: No such input device\n", tag);
-		error = -ENODEV;
 		goto ProbeErrorExit_5_1;
 	}
 
@@ -4431,11 +4430,10 @@ skip_to_power_gpio_setup:
 
 	/* init hardware device */
 	logError(1, "%s Device Initialization:\n", tag);
-	error = fts_init(info);
-	if (error < OK) {
+	retval = fts_init(info);
+	if (retval) {
 		logError(1, "%s Cannot initialize the device ERROR %08X\n", tag,
-			 error);
-		error = -ENODEV;
+			 retval);
 		goto ProbeErrorExit_6;
 	}
 
@@ -4445,13 +4443,12 @@ skip_to_fw_update:
 
 #if defined(FW_UPDATE_ON_PROBE) && defined(FW_H_FILE)
 	logError(1, "%s FW Update and Sensing Initialization:\n", tag);
-	error = fts_fw_update(info);
-	if (error < OK) {
+	retval = fts_fw_update(info);
+	if (retval) {
 		logError(1,
 			 "%s Cannot execute fw upgrade the device ERROR %08X\n",
 			 tag,
-			 error);
-		error = -ENODEV;
+			 retval);
 		goto ProbeErrorExit_7;
 	}
 
@@ -4461,6 +4458,7 @@ skip_to_fw_update:
 					      WQ_HIGHPRI | WQ_CPU_INTENSIVE, 1);
 	if (!info->fwu_workqueue) {
 		logError(1, "%s ERROR: Cannot create fwu work thread\n", tag);
+		retval = -ENODEV;
 		goto ProbeErrorExit_7;
 	}
 	INIT_DELAYED_WORK(&info->fwu_work, fts_fw_update_auto);
@@ -4469,15 +4467,14 @@ skip_to_fw_update:
 	logError(1, "%s SET Device File Nodes:\n", tag);
 	/* sysfs stuff */
 	info->attrs.attrs = fts_attr_group;
-	error = sysfs_create_group(&info->dev->kobj, &info->attrs);
-	if (error) {
+	retval = sysfs_create_group(&info->dev->kobj, &info->attrs);
+	if (retval) {
 		logError(1, "%s ERROR: Cannot create sysfs structure!\n", tag);
-		error = -ENODEV;
 		goto ProbeErrorExit_7;
 	}
 
-	error = fts_proc_init();
-	if (error < OK)
+	retval = fts_proc_init();
+	if (retval)
 		logError(1, "%s Error: can not create /proc file!\n", tag);
 
 #ifndef FW_UPDATE_ON_PROBE
@@ -4523,9 +4520,8 @@ ProbeErrorExit_2:
 #endif
 
 ProbeErrorExit_1:
-	kfree(info);
 
-	return error;
+	return retval;
 }
 
 static int st_fts_i2c_probe(struct i2c_client *client)
