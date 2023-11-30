@@ -588,16 +588,17 @@ static int audio_pkt_plaform_driver_register_gpr(struct platform_device *pdev,
 	if (!ap_priv)
 		return -ENOMEM;
 
+	ap_priv->status = AUDIO_PKT_INIT;
+	mutex_init(&ap_priv->lock);
+	ap_priv->ap_dev = audpkt_dev;
 	ret = gpr_driver_register(&audio_pkt_driver);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "%s: registering to gpr driver failed, err = %d\n",
 			__func__, ret);
+		mutex_destroy(&ap_priv->lock);
 		goto err;
 	}
 
-	mutex_init(&ap_priv->lock);
-	ap_priv->status = AUDIO_PKT_INIT;
-	ap_priv->ap_dev = audpkt_dev;
 	ap_priv->dev = audpkt_dev->dev;
 err:
 	return ret;
@@ -719,6 +720,7 @@ static int audio_pkt_platform_driver_remove(struct platform_device *adev)
 		unregister_chrdev_region(MAJOR(audpkt_dev->audio_pkt_major),
 				 MINOR_NUMBER_COUNT);
 	}
+	mutex_destroy(&ap_priv->lock);
 
 	//of_platform_depopulate(&adev->dev);
 	AUDIO_PKT_INFO("Audio Packet Port Driver Removed\n");
