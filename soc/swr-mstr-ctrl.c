@@ -775,8 +775,10 @@ static int swrm_get_port_config(struct swr_mstr_ctrl *swrm)
 	struct port_params *params;
 	u32 usecase = 0;
 
-	if (swrm->master_id == MASTER_ID_TX || swrm->master_id == MASTER_ID_BT)
+	if (swrm->master_id == MASTER_ID_TX || swrm->master_id == MASTER_ID_BT) {
+		pr_err("master id is Tx or BT, returning from %s\n", __func__);
 		return 0;
+	}
 	/* TODO - Send usecase information to avoid checking for master_id */
 	if (swrm->mport_cfg[SWRM_DSD_PARAMS_PORT].port_en &&
 				(swrm->master_id == MASTER_ID_RX))
@@ -973,6 +975,7 @@ static void swrm_wait_for_fifo_avail(struct swr_mstr_ctrl *swrm, int swrm_rd_wr)
 			dev_err_ratelimited(swrm->dev,
 					"%s err write overflow\n", __func__);
 	}
+
 }
 
 static int swrm_cmd_fifo_rd_cmd(struct swr_mstr_ctrl *swrm, int *cmd_data,
@@ -2495,7 +2498,8 @@ handle_irq:
 	}
 
 	mutex_lock(&swrm->reslock);
-	swrm_clk_request(swrm, false);
+	if (swrm->master_id != MASTER_ID_BT)
+		swrm_clk_request(swrm, false);
 err_audio_core_vote:
 	swrm_request_hw_vote(swrm, LPASS_AUDIO_CORE, false);
 
@@ -3630,26 +3634,31 @@ static int swrm_runtime_suspend(struct device *dev)
 			trace_printk("%s: clk stop mode not supported or SSR exit\n",
 				__func__);
 		} else {
-			/* Mask bus clash interrupt */
-			swrm->intr_mask &= ~((u32)0x08);
-			swr_master_write(swrm, SWRM_INTERRUPT_EN(swrm->ee_val),
-					 swrm->intr_mask);
-			mutex_unlock(&swrm->reslock);
-			/* clock stop sequence */
-			swrm_cmd_fifo_wr_cmd(swrm, 0x2, 0xF, 0xF,
-					SWRS_SCP_CONTROL);
-			mutex_lock(&swrm->reslock);
+			if (swrm->master_id != MASTER_ID_BT) {
+				/* Mask bus clash interrupt */
+				swrm->intr_mask &= ~((u32)0x08);
+				swr_master_write(swrm, SWRM_INTERRUPT_EN(swrm->ee_val),
+						swrm->intr_mask);
+				mutex_unlock(&swrm->reslock);
+				/* clock stop sequence */
+				swrm_cmd_fifo_wr_cmd(swrm, 0x2, 0xF, 0xF,
+						SWRS_SCP_CONTROL);
+				mutex_lock(&swrm->reslock);
+			}
 			usleep_range(100, 105);
 		}
 chk_lnk_status:
 		if (!swrm_check_link_status(swrm, 0x0))
 			dev_dbg(dev, "%s:failed in disconnecting, ssr?\n",
 				__func__);
-		ret = swrm_clk_request(swrm, false);
-		if (ret) {
-			dev_err_ratelimited(dev, "%s: swrmn clk failed\n", __func__);
-			ret = 0;
-			goto exit;
+
+		if (swrm->master_id != MASTER_ID_BT) {
+			ret = swrm_clk_request(swrm, false);
+			if (ret) {
+				dev_err_ratelimited(dev, "%s: swrmn clk failed\n", __func__);
+				ret = 0;
+				goto exit;
+			}
 		}
 
 		if (swrm->clk_stop_mode0_supp) {
