@@ -1526,25 +1526,25 @@ static int bt_power_probe(struct platform_device *pdev)
 
 	pwr_data->is_ganges_dt = of_property_read_bool(pdev->dev.of_node,
 													"qcom,peach-bt");
-	pr_info("%s is_ganges_dt %d\n", __func__, pwr_data->is_ganges_dt);
+	pr_info("%s: is_ganges_dt = %d\n", __func__, pwr_data->is_ganges_dt);
 
-	if (pwr_data->is_ganges_dt) {
-		workq = alloc_workqueue("workq", WQ_HIGHPRI, WQ_DFL_ACTIVE);
-		if (!workq) {
-			pr_err("%s: Failed to creat the Work Queue (workq)\n",
-				__func__);
-			return -ENOMEM;
-		}
-
-		INIT_WORK(&pwr_data->uwb_wq, uwb_signal_handler);
-		INIT_WORK(&pwr_data->bt_wq, bt_signal_handler);
-		INIT_WORK(&pwr_data->wq_pwr_voting, bt_power_vote);
-		for (itr = 0; itr < BTPWR_MAX_CLIENTS; itr++) {
-			init_waitqueue_head(&pwr_data->rsp_wait_q[itr]);
-		}
-		skb_queue_head_init(&pwr_data->rxq);
-		mutex_init(&pwr_data->pwr_mtx);
+	workq = alloc_workqueue("workq", WQ_HIGHPRI, WQ_DFL_ACTIVE);
+	if (!workq) {
+		pr_err("%s: Failed to creat the Work Queue (workq)\n",
+			__func__);
+		return -ENOMEM;
 	}
+
+	INIT_WORK(&pwr_data->uwb_wq, uwb_signal_handler);
+	INIT_WORK(&pwr_data->bt_wq, bt_signal_handler);
+	INIT_WORK(&pwr_data->wq_pwr_voting, bt_power_vote);
+
+	for (itr = 0; itr < BTPWR_MAX_CLIENTS; itr++) {
+		init_waitqueue_head(&pwr_data->rsp_wait_q[itr]);
+	}
+
+	skb_queue_head_init(&pwr_data->rxq);
+	mutex_init(&pwr_data->pwr_mtx);
 
 	perisec_cnss_bt_hw_disable_check(pwr_data);
 
