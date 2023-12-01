@@ -62,6 +62,15 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 				sizeof(struct drm_msm_mdnie_art));
 		}
 
+		if (catalog->dspp[0].sblk->aiqe.ssrc_supported) {
+			_sde_cp_crtc_install_blob_property(crtc, "SDE_DSPP_AIQE_SSRC_CONFIG_V1",
+					SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG,
+					sizeof(struct drm_msm_ssrc_config));
+			_sde_cp_crtc_install_blob_property(crtc, "SDE_DSPP_AIQE_SSRC_DATA_V1",
+					SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA,
+					sizeof(struct drm_msm_ssrc_data));
+		}
+
 		if (catalog->dspp[0].sblk->aiqe.copr_supported) {
 			_sde_cp_crtc_install_range_property(crtc, "SDE_DSPP_AIQE_COPR_V1",
 				SDE_CP_CRTC_DSPP_COPR, 0, U64_MAX, 0);
@@ -107,6 +116,55 @@ int set_mdnie_art_feature(struct sde_hw_dspp *hw_dspp,
 		ret = -EINVAL;
 	else
 		hw_dspp->ops.setup_mdnie_art(hw_dspp, hw_cfg, &hw_crtc->aiqe_top_level);
+
+	return ret;
+}
+
+int check_aiqe_ssrc_data(struct sde_hw_dspp *hw_dspp,
+		struct sde_hw_cp_cfg *hw_cfg,
+		struct sde_crtc *sde_crtc)
+{
+	int ret = 0;
+
+	if (!hw_dspp || !hw_dspp->ops.validate_aiqe_ssrc_data)
+		ret = -EINVAL;
+	else
+		ret = hw_dspp->ops.validate_aiqe_ssrc_data(hw_dspp, hw_cfg,
+				&sde_crtc->aiqe_top_level);
+
+	return ret;
+}
+
+int set_aiqe_ssrc_config(struct sde_hw_dspp *hw_dspp,
+		struct sde_hw_cp_cfg *hw_cfg,
+		struct sde_crtc *sde_crtc)
+{
+	int ret = 0;
+
+	if (!hw_dspp)
+		ret = -EINVAL;
+	else if (!hw_dspp->ops.setup_aiqe_ssrc_config)
+		ret = 0;
+	else
+		hw_dspp->ops.setup_aiqe_ssrc_config(hw_dspp, hw_cfg,
+				&sde_crtc->aiqe_top_level);
+
+	return ret;
+}
+
+int set_aiqe_ssrc_data(struct sde_hw_dspp *hw_dspp,
+		struct sde_hw_cp_cfg *hw_cfg,
+		struct sde_crtc *sde_crtc)
+{
+	int ret = 0;
+
+	if (!hw_dspp)
+		ret = -EINVAL;
+	else if (!hw_dspp->ops.setup_aiqe_ssrc_data)
+		ret = 0;
+	else
+		hw_dspp->ops.setup_aiqe_ssrc_data(hw_dspp, hw_cfg,
+				&sde_crtc->aiqe_top_level);
 
 	return ret;
 }

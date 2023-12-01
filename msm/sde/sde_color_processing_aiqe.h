@@ -25,6 +25,31 @@ int set_mdnie_art_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_
 			     struct sde_crtc *hw_crtc);
 
 /**
+ * check_aiqe_ssrc_data - validate SSRC data payload
+ * @hw_dspp: pointer to dspp hardware description
+ * @hw_cfg: pointer to feature configuration
+ * @hw_crtc: pointer to virtualized crtc data structure
+ */
+int check_aiqe_ssrc_data(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
+		struct sde_crtc *hw_crtc);
+/**
+ * set_aiqe_ssrc_config - set SSRC config to HW
+ * @hw_dspp: pointer to dspp hardware description
+ * @hw_cfg: pointer to feature configuration
+ * @hw_crtc: pointer to virtualized crtc data structure
+ */
+int set_aiqe_ssrc_config(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
+		struct sde_crtc *hw_crtc);
+/**
+ * set_aiqe_ssrc_data - set SSRC data to HW
+ * @hw_dspp: pointer to dspp hardware description
+ * @hw_cfg: pointer to feature configuration
+ * @hw_crtc: pointer to virtualized crtc data structure
+ */
+int set_aiqe_ssrc_data(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
+		struct sde_crtc *hw_crtc);
+
+/**
  * set_copr_feature - setup dspp ops for copr
  * @hw_dspp: pointer to dspp hardware description
  * @hw_cfg: pointer to feature configuration

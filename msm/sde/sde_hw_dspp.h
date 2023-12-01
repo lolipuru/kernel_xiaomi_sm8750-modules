@@ -343,6 +343,31 @@ struct sde_hw_dspp_ops {
 	 * @aiqe_top: Pointer to aiqe top level structure
 	 */
 	void (*setup_mdnie_art)(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
+
+	/**
+	 * setup_aiqe_ssrc_config - function to set SSRC configuration
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 * @mdnie_top: Pointer to top level mdnie structure
+	 */
+	void (*setup_aiqe_ssrc_config)(struct sde_hw_dspp *ctx, void *cfg, void *mdnie_top);
+
+	/**
+	 * setup_aiqe_ssrc_data - function to set SSRC data
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 * @mdnie_top: Pointer to top level mdnie structure
+	 */
+	void (*setup_aiqe_ssrc_data)(struct sde_hw_dspp *ctx, void *cfg, void *mdnie_top);
+
+	/**
+	 * validate_aiqe_ssrc_data - validate SSRC data payload
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 * @mdnie_top: Pointer to top level mdnie structure
+	 */
+	int (*validate_aiqe_ssrc_data)(struct sde_hw_dspp *ctx, void *cfg, void *mdnie_top);
+
 	/**
 	 * setup_copr - function to configure copr params
 	 * @ctx: Pointer to dspp context

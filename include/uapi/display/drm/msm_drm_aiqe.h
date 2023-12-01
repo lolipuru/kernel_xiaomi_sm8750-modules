@@ -37,6 +37,36 @@ struct drm_msm_mdnie_art_done {
 	__u32 art_done;
 };
 
+
+#define AIQE_SSRC_SUPPORTED
+/*
+ * struct drm_msm_ssrc_config - AIQE SSRC configuration structure
+ * @flags - Configuration flags for AIQE SSRC
+ * @config - Configuration data
+ */
+#define AIQE_SSRC_PARAM_LEN 16
+struct drm_msm_ssrc_config {
+	__u32 flags;
+	__u32 config[AIQE_SSRC_PARAM_LEN];
+};
+
+/*
+ * struct drm_msm_ssrc_data - AIQE SSRC data update structure
+ * @data_size - Size of total region data
+ * @data - Region data for SRAM. Format is as follows:
+ *  Addr 0 - Region A size
+ *  Addr 1:{Region A size} -  SRAM data
+ *  Addr {Region A size + 1} - Region B size
+ *  ...
+ *
+ * Data description must match size reported in data_size.
+ */
+#define AIQE_SSRC_DATA_LEN 5128
+struct drm_msm_ssrc_data {
+	__u32 data_size;
+	__u32 data[AIQE_SSRC_DATA_LEN];
+};
+
 #define AIQE_COPR_PARAM_LEN 17
 /**
  * struct drm_msm_copr - COPR feature structure
