@@ -3426,9 +3426,13 @@ static int fastrpc_wait_on_async_queue(
 	bool isworkdone = false;
 
 read_async_job:
+	if (!fl) {
+		err = -EBADF;
+		goto bail;
+	}
 	interrupted = wait_event_interruptible(fl->async_wait_queue,
 				atomic_read(&fl->async_queue_job_count));
-	if (!fl || fl->file_close >= FASTRPC_PROCESS_EXIT_START) {
+	if (fl->file_close >= FASTRPC_PROCESS_EXIT_START) {
 		err = -EBADF;
 		goto bail;
 	}
@@ -3512,12 +3516,12 @@ static int fastrpc_wait_on_notif_queue(
 	struct smq_notif_rsp  *notif = NULL, *inotif = NULL, *n = NULL;
 
 read_notif_status:
+        if (!fl) {
+                err = -EBADF;
+                goto bail;
+        }
 	interrupted = wait_event_interruptible(fl->proc_state_notif.notif_wait_queue,
 				atomic_read(&fl->proc_state_notif.notif_queue_count));
-	if (!fl) {
-		err = -EBADF;
-		goto bail;
-	}
 	if (fl->exit_notif) {
 		err = -EFAULT;
 		goto bail;
@@ -7556,20 +7560,20 @@ static void  fastrpc_print_debug_data(int cid)
 	VERIFY(err, NULL != (gmsg_log_tx = kzalloc(MD_GMSG_BUFFER, GFP_KERNEL)));
 	if (err) {
 		err = -ENOMEM;
-		return;
+		goto free_buf;
 	}
 	VERIFY(err, NULL != (gmsg_log_rx = kzalloc(MD_GMSG_BUFFER, GFP_KERNEL)));
 	if (err) {
 		err = -ENOMEM;
-		return;
+                goto free_buf;
 	}
 	chan = &me->channel[cid];
 	if ((!chan) || (!chan->buf))
-		return;
+                goto free_buf;
 
 	mini_dump_buff = chan->buf->virt;
 	if (!mini_dump_buff)
-		return;
+                goto free_buf;
 
 	if (chan) {
 		tx_index = chan->gmsg_log.tx_index;
@@ -7716,6 +7720,7 @@ static void  fastrpc_print_debug_data(int cid)
 			"gmsg_log_rx:\n %s\n", gmsg_log_rx);
 	if (chan && chan->buf)
 		chan->buf->size = strlen(mini_dump_buff);
+free_buf:
 	kfree(gmsg_log_tx);
 	kfree(gmsg_log_rx);
 }
