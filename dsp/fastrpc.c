@@ -1007,6 +1007,7 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 
 	for (oix = 0; oix < ctx->nbufs; ++oix) {
 		int mlen;
+		u64 offset = 0;
 
 		i = ctx->olaps[oix].raix;
 		len = ctx->args[i].length;
@@ -1030,9 +1031,15 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 				mmap_read_lock(current->mm);
 				vma = find_vma(current->mm, ctx->args[i].ptr);
 				if (vma)
-					pages[i].addr += ctx->args[i].ptr -
-							 vma->vm_start;
+					offset = (ctx->args[i].ptr & PAGE_MASK) - vma->vm_start;
 				mmap_read_unlock(current->mm);
+				if ((offset + len) > ctx->maps[i]->size) {
+					err = -EFAULT;
+					dev_err(dev, "Invalid buffer addr 0x%llx & len 0x%llx",
+						ctx->args[i].ptr, len);
+					goto bail;
+				}
+				pages[i].addr += offset;
 			}
 
 			pg_start = (ctx->args[i].ptr & PAGE_MASK) >> PAGE_SHIFT;
