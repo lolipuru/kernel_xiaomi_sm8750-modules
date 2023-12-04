@@ -1074,15 +1074,15 @@ static int msm_cvp_populate_context_bank(struct device *dev,
 		return -ENOMEM;
 	}
 
-	INIT_LIST_HEAD(&cb->list);
-	list_add_tail(&cb->list, &core->resources.context_banks);
-
 	rc = of_property_read_string(np, "label", &cb->name);
 	if (rc) {
 		dprintk(CVP_CORE,
 			"Failed to read cb label from device tree\n");
 		rc = 0;
 	}
+
+	INIT_LIST_HEAD(&cb->list);
+	list_add_tail(&cb->list, &core->resources.context_banks);
 
 	dprintk(CVP_CORE, "%s: context bank has name %s\n", __func__, cb->name);
 	if (!strcmp(cb->name, "cvp_camera")) {

@@ -357,7 +357,7 @@ stop_session:
 	if (!tmp) {
 		dprintk(CVP_ERR, "%s has a invalid session %llx\n",
 			__func__, inst);
-		return -EINVAL;
+		goto exit;
 	}
 	if (!empty) {
 		/* STOP SESSION to avoid SMMU fault after releasing ARP */
@@ -378,6 +378,7 @@ stop_session:
 	}
 release_arp:
 	cvp_put_inst(tmp);
+exit:
 	if (cvp_release_arp_buffers(inst))
 		dprintk_rl(CVP_WARN,
 			"Failed to release persist buffers\n");
@@ -452,6 +453,7 @@ int msm_cvp_destroy(struct msm_cvp_inst *inst)
 		core->smem_leak_count += atomic_read(&inst->smem_count);
 	}
 	kfree(inst);
+	inst = NULL;
 	dprintk(CVP_SESS,
 		"sys-stat: nr_insts %d msgs %d, frames %d, bufs %d, smems %d\n",
 		atomic_read(&nr_insts),
