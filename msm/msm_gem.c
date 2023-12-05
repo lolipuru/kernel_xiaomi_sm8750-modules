@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -354,8 +354,12 @@ dma_addr_t msm_gem_get_dma_addr(struct drm_gem_object *obj)
 	struct sg_table *sgt;
 
 	if (!msm_obj->sgt) {
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+		sgt = dma_buf_map_attachment_unlocked(obj->import_attach, DMA_BIDIRECTIONAL);
+#else
 		sgt = dma_buf_map_attachment(obj->import_attach,
 						DMA_BIDIRECTIONAL);
+#endif
 		if (IS_ERR_OR_NULL(sgt)) {
 			DRM_ERROR("dma_buf_map_attachment failure, err=%ld\n",
 					PTR_ERR(sgt));
@@ -477,8 +481,13 @@ static int msm_gem_get_iova_locked(struct drm_gem_object *obj,
 					 msm_obj->obj_dirty);
 
 			if (msm_obj->sgt)
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+				dma_buf_unmap_attachment_unlocked(obj->import_attach,
+					msm_obj->sgt, DMA_BIDIRECTIONAL);
+#else
 				dma_buf_unmap_attachment(obj->import_attach,
 					msm_obj->sgt, DMA_BIDIRECTIONAL);
+#endif
 			dma_buf_detach(dmabuf, obj->import_attach);
 
 			obj->import_attach = dma_buf_attach(dmabuf, dev);
@@ -736,7 +745,12 @@ static void *get_vaddr(struct drm_gem_object *obj, unsigned madv)
 					goto fail;
 			}
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+			ret = dma_buf_vmap_unlocked(obj->import_attach->dmabuf, &map);
+			if (ret)
+				goto fail;
+			msm_obj->vaddr = map.vaddr;
+#elif (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 			ret = dma_buf_vmap(obj->import_attach->dmabuf, &map);
 			if (ret)
 				goto fail;
@@ -815,7 +829,9 @@ static void msm_gem_vunmap_locked(struct drm_gem_object *obj)
 		return;
 
 	if (obj->import_attach) {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+		dma_buf_vunmap_unlocked(obj->import_attach->dmabuf, &map);
+#elif (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 		dma_buf_vunmap(obj->import_attach->dmabuf, &map);
 #else
 		dma_buf_vunmap(obj->import_attach->dmabuf, msm_obj->vaddr);
@@ -898,7 +914,9 @@ void msm_gem_free_object(struct drm_gem_object *obj)
 
 	if (obj->import_attach) {
 		if (msm_obj->vaddr)
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+			dma_buf_vunmap_unlocked(obj->import_attach->dmabuf, &map);
+#elif (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 			dma_buf_vunmap(obj->import_attach->dmabuf, &map);
 #else
 			dma_buf_vunmap(obj->import_attach->dmabuf, msm_obj->vaddr);
@@ -1165,7 +1183,11 @@ int msm_gem_delayed_import(struct drm_gem_object *obj)
 	 * dma_buf_map_attachment will call dma_map_sg for ion buffer
 	 * mapping, and iova will get mapped when the function returns.
 	 */
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	sgt = dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
+#else
 	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+#endif
 	if (IS_ERR(sgt)) {
 		ret = PTR_ERR(sgt);
 		DRM_ERROR("dma_buf_map_attachment failure, err=%d\n",
