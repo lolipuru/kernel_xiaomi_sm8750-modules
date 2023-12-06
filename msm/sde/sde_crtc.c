@@ -1836,21 +1836,24 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 
 	for (i = 0; i < cnt; i++) {
 		cur_pstate = &pstates[i];
-		sde_plane_setup_src_split_order(
-			cur_pstate->drm_pstate->plane,
-			cur_pstate->sde_pstate->multirect_index,
-			cur_pstate->sde_pstate->pipe_order_flags);
-
 		cur_sde_pstate = cur_pstate->sde_pstate;
 		plane = cur_pstate->drm_pstate->plane;
+
+		sde_plane_setup_src_split_order(plane, cur_sde_pstate->multirect_index,
+							cur_sde_pstate->pipe_order_flags);
+
 		layout_idx = (cur_sde_pstate->layout <= SDE_LAYOUT_LEFT) ? 0 : 1;
 		stage_cfg = &sde_crtc->stage_cfg[layout_idx];
+		stage = cur_sde_pstate->stage;
 
 		if (cur_sde_pstate->pipe_order_flags & SDE_SSPP_RIGHT) {
 			for (j = 0; j < PIPES_PER_STAGE; j++) {
-				if (stage_cfg->stage[cur_sde_pstate->stage][j]
-								== sde_plane_pipe(plane)) {
-					stage_cfg->layout[cur_sde_pstate->stage][j] = 1;
+				if ((stage_cfg->stage[stage][j] == sde_plane_pipe(plane))
+						&& (stage_cfg->multirect_index[stage][j]
+							== cur_sde_pstate->multirect_index)) {
+					SDE_EVT32(DRMID(plane), sde_plane_pipe(plane), layout_idx,
+							stage, j, cur_sde_pstate->multirect_index);
+					stage_cfg->layout[stage][j] = 1;
 					break;
 				}
 			}
