@@ -2697,8 +2697,7 @@ static const struct bw_table pineapple_bw_table[] = {
 /* name, hw_trigger */
 static const struct regulator_table pineapple_regulator_table[] = {
 	{ "iris-ctl", 0 },
-	// TODO gdoddabe, enable when FW shared fix
-	{ "vcodec",   0 },
+	{ "vcodec",   1 },
 };
 
 /* name, clock id, scaling */
