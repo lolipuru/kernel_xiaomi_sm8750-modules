@@ -2700,7 +2700,7 @@ static const struct bw_table sun_bw_table[] = {
 /* name, hw_trigger */
 static const struct regulator_table sun_regulator_table[] = {
 	{ "iris-ctl", 0 },
-	{ "vcodec",   1 },
+	{ "vcodec",   0 },
 };
 
 /* name, clock id, scaling */
