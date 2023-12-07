@@ -11,6 +11,14 @@
 #include "cvp_comm_def.h"
 #include "cvp_power.h"
 #include "cvp_hfi_api.h"
+/*
+ * only need #define CREATE_TRACE_POINTS in one source file
+ * but every source file which add CVPKERNEL_ATRACE_BEGIN/CVPKERNEL_ATRACE_END
+ * should include "msm_cvp_events.h"
+ */
+#define CREATE_TRACE_POINTS
+#include "msm_cvp_events.h"
+
 static int cvp_enqueue_pkt(struct msm_cvp_inst* inst,
 	struct eva_kmd_hfi_packet *in_pkt,
 	unsigned int in_offset,
@@ -44,7 +52,7 @@ static bool cvp_msg_pending(struct cvp_session_queue *sq,
 {
 	struct cvp_session_msg *mptr = NULL, *dummy;
 	bool result = false;
-
+	CVPKERNEL_ATRACE_BEGIN("cvp_msg_pending");
 	if (!sq)
 		return false;
 	spin_lock(&sq->lock);
@@ -80,6 +88,7 @@ static bool cvp_msg_pending(struct cvp_session_queue *sq,
 	}
 	spin_unlock(&sq->lock);
 	*msg = mptr;
+	CVPKERNEL_ATRACE_END("cvp_msg_pending");
 	return !result;
 }
 
@@ -91,7 +100,7 @@ static int cvp_wait_process_message(struct msm_cvp_inst *inst,
 	struct cvp_session_msg *msg = NULL;
 	struct cvp_hfi_msg_session_hdr *hdr;
 	int rc = 0;
-
+	CVPKERNEL_ATRACE_BEGIN("cvp_wait_process_message");
 	if (wait_event_timeout(sq->wq,
 		cvp_msg_pending(sq, &msg, ktid), timeout) == 0) {
 		dprintk(CVP_WARN, "session queue wait timeout\n");
@@ -123,12 +132,15 @@ static int cvp_wait_process_message(struct msm_cvp_inst *inst,
 	}
 
 	hdr = (struct cvp_hfi_msg_session_hdr *)&msg->pkt;
+	CVPKERNEL_ATRACE_BEGIN("before and after memcpy");
 	memcpy(out, &msg->pkt, get_msg_size(hdr));
+	CVPKERNEL_ATRACE_END("before and after memcpy");
 	if (hdr->client_data.kdata >= ARRAY_SIZE(cvp_hfi_defs))
 		msm_cvp_unmap_frame(inst, hdr->client_data.kdata);
 	cvp_kmem_cache_free(&cvp_driver->msg_cache, msg);
 
 exit:
+	CVPKERNEL_ATRACE_END("cvp_wait_process_message");
 	return rc;
 }
 
@@ -139,6 +151,7 @@ static int msm_cvp_session_receive_hfi(struct msm_cvp_inst *inst,
 	struct cvp_session_queue *sq;
 	struct msm_cvp_inst *s;
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_receive_hfi");
 
 	if (!inst) {
 		dprintk(CVP_ERR, "%s invalid session\n", __func__);
@@ -156,6 +169,7 @@ static int msm_cvp_session_receive_hfi(struct msm_cvp_inst *inst,
 	rc = cvp_wait_process_message(inst, sq, NULL, wait_time, out_pkt);
 
 	cvp_put_inst(inst);
+	CVPKERNEL_ATRACE_END("msm_cvp_session_receive_hfi");
 	return rc;
 }
 
@@ -173,6 +187,7 @@ static int msm_cvp_session_process_hfi(
 	struct cvp_hfi_cmd_session_hdr *pkt_hdr;
 	bool is_config_pkt;
 
+	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_process_hfi");
 
 	if (!inst || !inst->core || !in_pkt) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
@@ -259,6 +274,7 @@ static int msm_cvp_session_process_hfi(
 
 exit:
 	cvp_put_inst(inst);
+	CVPKERNEL_ATRACE_END("msm_cvp_session_process_hfi");
 	return rc;
 }
 
@@ -309,6 +325,7 @@ static int cvp_fence_proc(struct msm_cvp_inst *inst,
 	struct cvp_session_queue *sq;
 	u32 hfi_err = HFI_ERR_NONE;
 	struct cvp_hfi_msg_session_hdr_ext hdr;
+	CVPKERNEL_ATRACE_BEGIN("cvp_fence_proc");
 
 	dprintk(CVP_SYNX, "%s %s\n", current->comm, __func__);
 
@@ -319,15 +336,18 @@ static int cvp_fence_proc(struct msm_cvp_inst *inst,
 	sq = &inst->session_queue_fence;
 	ktid = pkt->client_data.kdata;
 
+	CVPKERNEL_ATRACE_BEGIN("cvp_synx_ops CVP_INPUT_SYNX");
 	rc = inst->core->synx_ftbl->cvp_synx_ops(inst, CVP_INPUT_SYNX,
 			fc, &synx_state);
+	CVPKERNEL_ATRACE_END("cvp_synx_ops CVP_INPUT_SYNX");
 	if (rc) {
 		msm_cvp_unmap_frame(inst, pkt->client_data.kdata);
 		goto exit;
 	}
-
+	CVPKERNEL_ATRACE_BEGIN("call_hfi_op -- session_send");
 	rc = call_hfi_op(ops_tbl, session_send, (void *)inst->session,
 			(struct eva_kmd_hfi_packet *)pkt);
+	CVPKERNEL_ATRACE_END("call_hfi_op -- session_send");
 	if (rc) {
 		dprintk(CVP_ERR, "%s %s: Failed in call_hfi_op %d, %x\n",
 			current->comm, __func__, pkt->size, pkt->packet_type);
@@ -362,8 +382,11 @@ static int cvp_fence_proc(struct msm_cvp_inst *inst,
 	}
 
 exit:
+	CVPKERNEL_ATRACE_BEGIN("cvp_synx_ops CVP_OUTPUT_SYNX");
 	rc = inst->core->synx_ftbl->cvp_synx_ops(inst, CVP_OUTPUT_SYNX,
 			fc, &synx_state);
+	CVPKERNEL_ATRACE_END("cvp_synx_ops CVP_OUTPUT_SYNX");
+	CVPKERNEL_ATRACE_END("cvp_fence_proc");
 	return rc;
 }
 
@@ -405,7 +428,7 @@ static int cvp_fence_thread(void *data)
 	struct cvp_hfi_cmd_session_hdr *pkt;
 	u32 *synx;
 	u64 ktid = 0;
-
+	CVPKERNEL_ATRACE_BEGIN("cvp_fence_thread");
 	dprintk(CVP_SYNX, "Enter %s\n", current->comm);
 
 	inst = (struct msm_cvp_inst *)data;
@@ -465,6 +488,7 @@ wait:
 exit:
 	dprintk(CVP_SYNX, "%s exit\n", current->comm);
 	cvp_put_inst(inst);
+	CVPKERNEL_ATRACE_END("cvp_fence_thread");
 	return rc;
 }
 
@@ -489,6 +513,7 @@ static int cvp_populate_fences( struct eva_kmd_hfi_packet *in_pkt,
 	bool override;
 
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("cvp_populate_fences");
 
 	override = get_pkt_fenceoverride((struct cvp_hal_session_cmd_pkt*)in_pkt);
 
@@ -631,6 +656,7 @@ fence_cmd_queue:
 free_exit:
 	cvp_free_fence_data(f);
 exit:
+	CVPKERNEL_ATRACE_END("cvp_populate_fences");
 	return rc;
 }
 
@@ -644,6 +670,7 @@ static int cvp_enqueue_pkt(struct msm_cvp_inst* inst,
 	struct cvp_hfi_cmd_session_hdr *cmd_hdr;
 	int pkt_type, rc = 0;
 	enum buf_map_type map_type;
+	CVPKERNEL_ATRACE_BEGIN("cvp_enqueue_pkt");
 
 	ops_tbl = inst->core->dev_ops;
 
@@ -672,8 +699,10 @@ static int cvp_enqueue_pkt(struct msm_cvp_inst* inst,
 
 	rc = cvp_populate_fences(in_pkt, in_offset, in_buf_num, inst);
 	if (rc == 0) {
+		CVPKERNEL_ATRACE_BEGIN(" call_hfi_op  -- session_send");
 		rc = call_hfi_op(ops_tbl, session_send, (void *)inst->session,
 			in_pkt);
+		CVPKERNEL_ATRACE_END(" call_hfi_op  -- session_send");
 		if (rc) {
 			dprintk(CVP_ERR,"%s: Failed in call_hfi_op %d, %x\n",
 					__func__, in_pkt->pkt_data[0],
@@ -691,7 +720,7 @@ static int cvp_enqueue_pkt(struct msm_cvp_inst* inst,
 		if (map_type == MAP_FRAME)
 			msm_cvp_unmap_frame(inst, cmd_hdr->client_data.kdata);
 	}
-
+	CVPKERNEL_ATRACE_END("cvp_enqueue_pkt");
 	return rc;
 }
 
@@ -711,6 +740,7 @@ int msm_cvp_session_create(struct msm_cvp_inst *inst)
 {
 	int rc = 0, rc1 = 0;
 	struct cvp_session_queue *sq;
+	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_create");
 
 	if (!inst || !inst->core)
 		return -EINVAL;
@@ -745,6 +775,7 @@ int msm_cvp_session_create(struct msm_cvp_inst *inst)
 	spin_lock(&sq->lock);
 	sq->state = QUEUE_ACTIVE;
 	spin_unlock(&sq->lock);
+	CVPKERNEL_ATRACE_END("msm_cvp_session_create");
 	return rc;
 
 fail_init:
@@ -847,6 +878,7 @@ int msm_cvp_session_start(struct msm_cvp_inst *inst,
 	struct cvp_hfi_ops *ops_tbl;
 	int rc;
 	enum queue_state old_state;
+	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_start");
 
 	if (!inst || !inst->core) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
@@ -901,6 +933,7 @@ int msm_cvp_session_start(struct msm_cvp_inst *inst,
 
 	pr_info_ratelimited(CVP_DBG_TAG "session %llx (%#x) started\n",
 		"sess", inst, hash32_ptr(inst->session));
+	CVPKERNEL_ATRACE_END("msm_cvp_session_start");
 
 	return 0;
 
@@ -922,6 +955,7 @@ int msm_cvp_session_stop(struct msm_cvp_inst *inst,
 	struct msm_cvp_inst *s;
 	struct cvp_hfi_ops *ops_tbl;
 	int rc;
+	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_stop");
 
 	if (!inst || !inst->core) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
@@ -976,6 +1010,7 @@ stop_thread:
 	cvp_fence_thread_stop(inst);
 exit:
 	cvp_put_inst(s);
+	CVPKERNEL_ATRACE_END("msm_cvp_session_stop");
 	return rc;
 }
 
@@ -1009,6 +1044,7 @@ static int msm_cvp_session_ctrl(struct msm_cvp_inst *inst,
 	struct eva_kmd_session_control *ctrl = &arg->data.session_ctrl;
 	int rc = 0;
 	unsigned int ctrl_type;
+	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_ctrl");
 
 	ctrl_type = ctrl->ctrl_type;
 
@@ -1036,6 +1072,7 @@ static int msm_cvp_session_ctrl(struct msm_cvp_inst *inst,
 			__func__, ctrl->ctrl_type);
 		rc = -EINVAL;
 	}
+	CVPKERNEL_ATRACE_END("msm_cvp_session_ctrl");
 	return rc;
 }
 
@@ -1486,6 +1523,7 @@ static int cvp_flush_all(struct msm_cvp_inst *inst)
 	struct msm_cvp_inst *s;
 	struct cvp_fence_queue *q;
 	struct cvp_hfi_ops *ops_tbl;
+	CVPKERNEL_ATRACE_BEGIN("cvp_flush_all");
 
 	if (!inst || !inst->core) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
@@ -1531,12 +1569,14 @@ exit:
 	mutex_unlock(&q->lock);
 
 	cvp_put_inst(s);
+	CVPKERNEL_ATRACE_END("cvp_flush_all");
 	return rc;
 }
 
 int msm_cvp_handle_syscall(struct msm_cvp_inst *inst, struct eva_kmd_arg *arg)
 {
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("msm_cvp_handle_syscall");
 
 	if (!inst || !arg) {
 		dprintk(CVP_ERR, "%s: invalid args\n", __func__);
@@ -1630,6 +1670,7 @@ int msm_cvp_handle_syscall(struct msm_cvp_inst *inst, struct eva_kmd_arg *arg)
 		rc = -ENOTSUPP;
 		break;
 	}
+	CVPKERNEL_ATRACE_END("msm_cvp_handle_syscall");
 
 	return rc;
 }

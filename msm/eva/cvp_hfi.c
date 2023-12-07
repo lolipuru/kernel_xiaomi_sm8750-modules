@@ -38,6 +38,7 @@
 #include "msm_cvp_clocks.h"
 #include "vm/cvp_vm.h"
 #include "cvp_dump.h"
+#include "msm_cvp_events.h"
 
 // ysi - added for debug
 #include <linux/clk/qcom.h>
@@ -506,6 +507,7 @@ static int __write_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 	u32 packet_size_in_words, new_write_idx;
 	u32 empty_space, read_idx, write_idx;
 	u32 *write_ptr;
+	CVPKERNEL_ATRACE_BEGIN("__write_queue");
 
 	if (!qinfo || !packet) {
 		dprintk(CVP_ERR, "Invalid Params\n");
@@ -598,6 +600,7 @@ static int __write_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 	 */
 	mb();
 	spin_unlock(&qinfo->hfi_lock);
+	CVPKERNEL_ATRACE_END("__write_queue");
 	return 0;
 }
 
@@ -1166,7 +1169,7 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 {
 	int rc = 0;
 	u32 ctrl_init_val = 0, ctrl_status = 0, count = 0, max_tries = 5000;
-
+	CVPKERNEL_ATRACE_BEGIN("__boot_firmware");
 	/*
 	 * Hand off control of regulators to h/w _after_ enabling clocks.
 	 * Note that the GDSC will turn off when switching from normal
@@ -1206,6 +1209,7 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 	__write_register(device, CVP_CPU_CS_H2XSOFTINTEN, 0x1);
 	__write_register(device, CVP_CPU_CS_X2RPMh, 0x0);
 
+	CVPKERNEL_ATRACE_END("__boot_firmware");
 
 	return rc;
 }
@@ -3399,6 +3403,7 @@ irqreturn_t iris_hfi_core_work_handler(int irq, void *data)
 	int num_responses = 0, i = 0;
 	u32 intr_status;
 	static bool warning_on = true;
+	CVPKERNEL_ATRACE_BEGIN("iris_hfi_core_work_handler");
 
 	core = cvp_driver->cvp_core;
 	if (core)
@@ -3464,13 +3469,15 @@ err_no_work:
 	/* We need re-enable the irq which was disabled in ISR handler */
 	if (!(intr_status & CVP_WRAPPER_INTR_STATUS_A2HWD_BMSK))
 		enable_irq(device->cvp_hal_data->irq);
-
+	CVPKERNEL_ATRACE_END("iris_hfi_core_work_handler");
 	return IRQ_HANDLED;
 }
 
 irqreturn_t cvp_hfi_isr(int irq, void *dev)
 {
+	CVPKERNEL_ATRACE_BEGIN("iris_hfi_isr");
 	disable_irq_nosync(irq);
+	CVPKERNEL_ATRACE_END("iris_hfi_isr");
 	return IRQ_WAKE_THREAD;
 }
 
@@ -3866,6 +3873,7 @@ static int __init_resources(struct iris_hfi_device *device,
 				struct msm_cvp_platform_resources *res)
 {
 	int i, rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("__init_resources");
 
 	rc = __init_regulators(device);
 	if (rc) {
@@ -3902,6 +3910,7 @@ static int __init_resources(struct iris_hfi_device *device,
 	device->sys_init_capabilities =
 		kzalloc(sizeof(struct msm_cvp_capability)
 		* CVP_MAX_SESSIONS, GFP_KERNEL);
+	CVPKERNEL_ATRACE_END("__init_resources");
 
 	return rc;
 
@@ -5233,6 +5242,7 @@ static int __power_off_core(struct iris_hfi_device *device)
 static int __power_on_controller(struct iris_hfi_device *device)
 {
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("__power_on_controller");
 
 	rc = __enable_regulator(device, "cvp");
 	if (rc) {
@@ -5276,6 +5286,7 @@ static int __power_on_controller(struct iris_hfi_device *device)
 	}
 
 	dprintk(CVP_PWR, "EVA controller powered on\n");
+	CVPKERNEL_ATRACE_END("__power_on_controller");
 	return 0;
 
 fail_enable_clk:
@@ -5288,6 +5299,7 @@ fail_reset_clks:
 static int __power_on_core(struct iris_hfi_device *device)
 {
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("__power_on_core");
 
 	rc = __enable_regulator(device, "cvp-core");
 	if (rc) {
@@ -5319,6 +5331,7 @@ static int __power_on_core(struct iris_hfi_device *device)
 	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_FORCECLOCKON_LOW, 0);
 #endif*/
 	dprintk(CVP_PWR, "EVA core powered on\n");
+	CVPKERNEL_ATRACE_END("__power_on_core");
 	return 0;
 }
 
@@ -5521,6 +5534,7 @@ static int __check_core_power_on_v1(struct iris_hfi_device *device)
 static int __power_on_controller_v1(struct iris_hfi_device *device)
 {
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("__power_on_controller_v1");
 
 	rc = __enable_regulator(device, "cvp");
 	if (rc) {
@@ -5590,12 +5604,14 @@ fail_enable_axi0:
 	msm_cvp_disable_unprepare_clk(device, "sleep_clk");
 fail_reset_sleep:
 	__disable_regulator(device, "cvp");
+	CVPKERNEL_ATRACE_END("__power_on_controller_v1");
 	return rc;
 }
 
 static int __power_on_core_v1(struct iris_hfi_device *device)
 {
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("__power_on_core_v1");
 
 	rc = __enable_regulator(device, "cvp-core");
 	if (rc) {
@@ -5623,6 +5639,7 @@ static int __power_on_core_v1(struct iris_hfi_device *device)
 	}
 
 	dprintk(CVP_PWR, "EVA core powered on\n");
+	CVPKERNEL_ATRACE_END("__power_on_core_v1");
 
 	return 0;
 
