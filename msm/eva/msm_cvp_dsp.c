@@ -1270,8 +1270,14 @@ void cvp_dsp_send_hfi_queue(void)
 		goto exit;
 	}
 
-	if (me->state != DSP_PROBED && me->state != DSP_INACTIVE)
+	if (me->state != DSP_PROBED && me->state != DSP_INACTIVE) {
+		dprintk(CVP_DSP,
+			"%s: DSP is not probed or  not in proper state. me->state = %d\n",
+			__func__, me->state);
 		goto exit;
+	}
+
+	dprintk(CVP_DSP, "DSP probed successfully, me->state = %d\n", me->state);
 
 	rc = cvp_hyp_assign_to_dsp(addr, size);
 	if (rc) {
@@ -1484,9 +1490,9 @@ void __dsp_cvp_sess_create(struct cvp_dsp_cmd_msg *cmd)
 
 	inst->task = task;
 	dprintk(CVP_DSP,
-		"%s CREATE_SESS id 0x%x, cpu_low 0x%x, cpu_high 0x%x\n",
+		"%s CREATE_SESS id 0x%x, cpu_low 0x%x, cpu_high 0x%x inst %pK, inst->session %pK\n",
 		__func__, cmd->session_id, cmd->session_cpu_low,
-		cmd->session_cpu_high);
+		cmd->session_cpu_high, inst, inst->session);
 
 	spin_lock(&inst->core->resources.pm_qos.lock);
 	inst->core->resources.pm_qos.off_vote_cnt++;
@@ -1809,9 +1815,9 @@ void __dsp_cvp_mem_alloc(struct cvp_dsp_cmd_msg *cmd)
 	cmd->sbuf.offset = 0;
 	cmd->sbuf.iova = buf->smem->device_addr;
 	cmd->sbuf.v_dsp_addr = v_dsp_addr;
-	dprintk(CVP_DSP, "%s: size %d, iova 0x%x, v_dsp_addr 0x%llx\n",
+	dprintk(CVP_DSP, "%s: size %d, iova 0x%x, v_dsp_addr 0x%llx id %#x, fd %#x, refcount %d\n",
 		__func__, cmd->sbuf.size, cmd->sbuf.iova,
-		cmd->sbuf.v_dsp_addr);
+		cmd->sbuf.v_dsp_addr, dsp2cpu_cmd->session_id, buf->smem->fd, buf->smem->refcount);
 
 	cvp_put_fastrpc_node(frpc_node);
 	return;
@@ -1882,7 +1888,8 @@ void __dsp_cvp_mem_free(struct cvp_dsp_cmd_msg *cmd)
 		}
 
 		/* Verify with device addr */
-		if (buf->smem->device_addr == dsp2cpu_cmd->sbuf.iova) {
+		if ((buf->smem->device_addr == dsp2cpu_cmd->sbuf.iova) &&
+			(buf->fd == dsp2cpu_cmd->sbuf.fd)) {
 			dprintk(CVP_DSP, "%s find device addr 0x%x\n",
 				__func__, buf->smem->device_addr);
 			dprintk(CVP_DSP, "fd in list 0x%x, fd from dsp 0x%x\n",
@@ -2197,7 +2204,12 @@ int cvp_dsp_device_init(void)
 		goto register_bail;
 	}
 	snprintf(tname, sizeof(tname), "cvp-dsp-thread");
-	me->state = DSP_UNINIT;
+
+	mutex_lock(&me->tx_lock);
+	if (me->state == DSP_INVALID)
+		me->state = DSP_UNINIT;
+	mutex_unlock(&me->tx_lock);
+
 	me->dsp_thread = kthread_run(cvp_dsp_thread, me, tname);
 	if (!me->dsp_thread) {
 		dprintk(CVP_ERR, "%s create %s fail", __func__, tname);
