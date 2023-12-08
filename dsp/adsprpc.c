@@ -6821,12 +6821,6 @@ int fastrpc_setmode(unsigned long ioctl_param,
 		fl->profile = (uint32_t)ioctl_param;
 		break;
 	case FASTRPC_MODE_SESSION:
-		if (fl->untrusted_process) {
-			err = -EPERM;
-			ADSPRPC_ERR(
-				"multiple sessions not allowed for untrusted apps\n");
-			goto bail;
-		}
 		if (!fl->multi_session_support)
 			fl->sessionid = 1;
 		break;
@@ -6834,7 +6828,6 @@ int fastrpc_setmode(unsigned long ioctl_param,
 		err = -ENOTTY;
 		break;
 	}
-bail:
 	return err;
 }
 
