@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -5457,6 +5457,7 @@ void ipa3_q6_pre_shutdown_cleanup(void)
 		memset(&req, 0, sizeof(struct ipa_wlan_opt_dp_remove_all_filter_req_msg_v01));
 
 		ipa_wdi_opt_dpath_remove_all_filter_req(&req, &resp);
+		ipa_wdi_opt_dpath_remove_all_ctrl_filter_req();
 	}
 
 	if (ipa3_q6_clean_q6_tables()) {

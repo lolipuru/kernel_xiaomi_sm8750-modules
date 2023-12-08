@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -1857,6 +1857,171 @@ static void ipa3_handle_ipa_wlan_opt_dp_remove_filter_req(struct qmi_handle *qmi
 		IPAWANDBG("Replied to remove filter request\n");
 }
 
+int ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req (
+	struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01 *req,
+	uint32_t *q6_rtng_table_index
+)
+{
+	struct ipa_msg_desc req_desc, resp_desc;
+	int rc;
+	struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_resp_msg_v01 resp;
+
+	memset(&resp, 0, sizeof(struct ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_v01));
+
+	req_desc.max_msg_len = IPA_WLAN_OPT_DP_SET_WLAN_CTRL_READY_REQ_MSG_V01_MAX_MSG_LEN;
+	req_desc.msg_id = QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_CTRL_READY_REQ_V01;
+	req_desc.ei_array = ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_data_v01_ei;
+
+	resp_desc.max_msg_len = IPA_WLAN_OPT_DP_SET_WLAN_CTRL_READY_RESP_MSG_V01_MAX_MSG_LEN;
+	resp_desc.msg_id = QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_CTRL_READY_RESP_V01;
+	resp_desc.ei_array = ipa_wlan_opt_dp_set_wlan_ctrl_ready_resp_msg_data_v01_ei;
+
+	IPAWANDBG("Sending QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_CTRL_READY_REQ_V01\n");
+
+	if (unlikely(!ipa_q6_clnt))
+		return -ETIMEDOUT;
+	rc = ipa3_qmi_send_req_wait(ipa_q6_clnt,
+		&req_desc, req,
+		&resp_desc, &resp,
+		QMI_SEND_STATS_REQ_TIMEOUT_MS);
+
+	if (rc < 0) {
+		IPAWANERR("QMI send Req %d failed, rc= %d\n",
+			QMI_IPA_GET_APN_DATA_STATS_REQ_V01,
+			rc);
+		return rc;
+	}
+
+	IPAWANDBG("QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_CTRL_READY_RESP_V01 received\n");
+
+	if (q6_rtng_table_index != NULL) {
+		*q6_rtng_table_index = resp.q6_rtng_table_index;
+		IPAWANDBG("rt_tbl_idx = %d\n", resp.q6_rtng_table_index);
+	}
+
+	return ipa3_check_qmi_response(rc,
+		QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_CTRL_READY_RESP_V01, resp.resp.result,
+		resp.resp.error, "ipa_wlan_opt_dp_set_wlan_per_info_req_msg_v01");
+}
+EXPORT_SYMBOL(ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req);
+
+static void ipa3_handle_ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req(struct qmi_handle *qmi_handle,
+	struct sockaddr_qrtr *sq,
+	struct qmi_txn *txn,
+	const void *decoded_msg)
+{
+	struct ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_resp_msg_v01 resp;
+	struct ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req_msg_v01 *req =
+		(struct ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req_msg_v01 *)decoded_msg;
+	int rc = 0;
+
+	memset(&resp, 0, sizeof(resp));
+
+	/* cache the client sq */
+	memcpy(&ipa3_qmi_ctx->client_sq, sq, sizeof(*sq));
+
+	IPAWANDBG("wlan_opt_dp_wlan_ctrl_pkt_rcvd_req: packet_count %d\n",
+		req->packet_count);
+
+	rc = ipa_wdi_opt_dpath_wlan_ctrl_pkt_rcvd_req(
+		req);
+
+	rc = qmi_send_response(qmi_handle, sq, txn,
+		QMI_IPA_WLAN_OPT_DATAPATH_WLAN_CTRL_PACKET_RCVD_RESP_V01,
+		IPA_WLAN_OPT_DP_WLAN_CTRL_PACKET_RCVD_RESP_MSG_V01_MAX_MSG_LEN,
+		ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_resp_msg_data_v01_ei,
+		&resp);
+}
+
+static void ipa3_handle_ipa_wlan_opt_dp_add_ctrl_filter_req(struct qmi_handle *qmi_handle,
+	struct sockaddr_qrtr *sq,
+	struct qmi_txn *txn,
+	const void *decoded_msg)
+{
+	struct ipa_wlan_opt_dp_add_filter_resp_msg_v01 resp;
+	struct ipa_wlan_opt_dp_add_filter_complt_ind_msg_v01 ind;
+	struct ipa_wlan_opt_dp_add_filter_req_msg_v01 *req =
+		(struct ipa_wlan_opt_dp_add_filter_req_msg_v01 *)decoded_msg;
+	int rc = 0;
+
+	memset(&resp, 0, sizeof(resp));
+	memset(&ind, 0, sizeof(ind));
+
+	/* cache the client sq */
+	memcpy(&ipa3_qmi_ctx->client_sq, sq, sizeof(*sq));
+
+	rc = qmi_send_response(qmi_handle, sq, txn,
+		QMI_IPA_WLAN_OPT_DATAPATH_ADD_CTRL_FILTER_RESP_V01,
+		IPA_WLAN_OPT_DP_ADD_FILTER_RESP_MSG_V01_MAX_MSG_LEN,
+		ipa_wlan_opt_dp_add_filter_resp_msg_data_v01_ei,
+		&resp);
+
+	IPAWANDBG("add_ctrl_filter_req: filter_idx %d, iptype %d\n",
+		req->filter_idx, req->ip_type);
+
+	rc = ipa_wdi_opt_dpath_add_ctrl_filter_req(
+			req, &ind);
+
+	IPAWANDBG("qmi_snd_rsp: ctrl_flt_idx %d, ctrl_flt_hdl%d\n",
+		ind.filter_idx, ind.filter_handle);
+
+	IPAWANDBG("qmi_snd_rsp: result %d, err %d\n",
+		ind.filter_add_status.result, ind.filter_add_status.error);
+
+	rc = qmi_send_indication(qmi_handle,
+		&ipa3_qmi_ctx->client_sq,
+		QMI_IPA_WLAN_OPT_DATAPATH_ADD_CTRL_FILTER_COMPLT_IND_V01,
+		IPA_WLAN_OPT_DP_ADD_FILTER_COMPLT_IND_MSG_V01_MAX_MSG_LEN,
+		ipa_wlan_opt_dp_add_filter_complt_ind_msg_v01_ei,
+		&ind);
+
+	if (rc < 0)
+		IPAWANERR("Add  filter rules failed\n");
+	else
+		IPAWANDBG("Replied to add filter request\n");
+}
+
+static void ipa3_handle_ipa_wlan_opt_dp_remove_ctrl_filter_req(struct qmi_handle *qmi_handle,
+	struct sockaddr_qrtr *sq,
+	struct qmi_txn *txn,
+	const void *decoded_msg)
+{
+	struct ipa_wlan_opt_dp_remove_filter_resp_msg_v01 resp;
+	struct ipa_wlan_opt_dp_remove_filter_complt_ind_msg_v01 ind;
+	struct ipa_wlan_opt_dp_remove_filter_req_msg_v01 *req =
+		(struct ipa_wlan_opt_dp_remove_filter_req_msg_v01 *)decoded_msg;
+	int rc = 0;
+
+	memset(&resp, 0, sizeof(resp));
+	memset(&ind, 0, sizeof(ind));
+
+	/* cache the client sq */
+	memcpy(&ipa3_qmi_ctx->client_sq, sq, sizeof(*sq));
+
+	IPAWANDBG("remove_filter_req: filter_idx %d, filter_hdl %d\n",
+		req->filter_idx, req->filter_handle);
+
+	rc = qmi_send_response(qmi_handle, sq, txn,
+		QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_CTRL_FILTER_RESP_V01,
+		IPA_WLAN_OPT_DP_REMOVE_FILTER_RESP_MSG_V01_MAX_MSG_LEN,
+		ipa_wlan_opt_dp_remove_filter_resp_msg_data_v01_ei,
+		&resp);
+
+	rc = ipa_wdi_opt_dpath_remove_ctrl_filter_req(
+		req, &ind);
+
+	if (rc < 0) {
+		IPAWANERR("Remove filter rules failed\n");
+		qmi_send_indication(ipa3_svc_handle,
+			&ipa3_qmi_ctx->client_sq,
+			QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_CTRL_FILTER_COMPLT_IND_V01,
+			IPA_WLAN_OPT_DP_REM_CTRL_FILTER_COMPLT_IND_MSG_V01_MAX_MSG_LEN,
+			ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_data_v01_ei,
+			&ind);
+	} else
+		IPAWANDBG("Replied to remove filter request\n");
+}
+
 static void ipa3_q6_clnt_svc_arrive(struct work_struct *work)
 {
 	int rc;
@@ -2114,6 +2279,27 @@ static struct qmi_msg_handler server_handlers[] = {
 		.ei = ipa_wlan_opt_dp_remove_all_filter_req_msg_data_v01_ei,
 		.decoded_size = sizeof(struct ipa_wlan_opt_dp_remove_all_filter_req_msg_v01),
 		.fn = ipa3_handle_ipa_wlan_opt_dp_remove_all_filter_req,
+	},
+	{
+		.type = QMI_REQUEST,
+		.msg_id = QMI_IPA_WLAN_OPT_DATAPATH_WLAN_CTRL_PACKET_RCVD_REQ_V01,
+		.ei = ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req_msg_data_v01_ei,
+		.decoded_size = sizeof(struct ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req_msg_v01),
+		.fn = ipa3_handle_ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req,
+	},
+	{
+		.type = QMI_REQUEST,
+		.msg_id = QMI_IPA_WLAN_OPT_DATAPATH_ADD_CTRL_FILTER_REQ_V01,
+		.ei = ipa_wlan_opt_dp_add_filter_req_msg_data_v01_ei,
+		.decoded_size = sizeof(struct ipa_wlan_opt_dp_add_filter_req_msg_v01),
+		.fn = ipa3_handle_ipa_wlan_opt_dp_add_ctrl_filter_req,
+	},
+	{
+		.type = QMI_REQUEST,
+		.msg_id = QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_CTRL_FILTER_REQ_V01,
+		.ei = ipa_wlan_opt_dp_remove_filter_req_msg_data_v01_ei,
+		.decoded_size = sizeof(struct ipa_wlan_opt_dp_remove_filter_req_msg_v01),
+		.fn = ipa3_handle_ipa_wlan_opt_dp_remove_ctrl_filter_req,
 	},
 	{},
 
@@ -2751,6 +2937,31 @@ int ipa3_qmi_send_wdi_opt_dpath_rmv_all_flt_ind(
 }
 EXPORT_SYMBOL(ipa3_qmi_send_wdi_opt_dpath_rmv_all_flt_ind);
 
+int ipa3_qmi_send_wdi_opt_dpath_rmv_ctrl_flt_ind(
+	struct ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_v01 *ind)
+{
+	IPAWANDBG("Sending QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_CTRL_FILTER_COMPLT_IND_V01\n");
+
+	if (unlikely(!ipa3_svc_handle))
+		return -ETIMEDOUT;
+
+	if (atomic_read(&ipa3_ctx->is_ssr)) {
+		IPAWANDBG("SSR in progress , no need to send ind\n");
+		return 0;
+	}
+
+	IPAWANDBG("wdi_opt_dpath_rmv_all_flt_ind: result %d, err %d\n",
+		ind->ctrl_filter_removal_status.result,
+		ind->ctrl_filter_removal_status.error);
+
+	return qmi_send_indication(ipa3_svc_handle,
+		&ipa3_qmi_ctx->client_sq,
+		QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_CTRL_FILTER_COMPLT_IND_V01,
+		IPA_WLAN_OPT_DP_REM_CTRL_FILTER_COMPLT_IND_MSG_V01_MAX_MSG_LEN,
+		ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_data_v01_ei,
+		ind);
+}
+EXPORT_SYMBOL(ipa3_qmi_send_wdi_opt_dpath_rmv_ctrl_flt_ind);
 
 int ipa3_qmi_send_wdi_opt_dpath_ep_info(
 	struct ipa_wlan_opt_dp_set_wlan_per_info_req_msg_v01 *req)
@@ -2767,7 +2978,7 @@ int ipa3_qmi_send_wdi_opt_dpath_ep_info(
 
 	resp_desc.max_msg_len = IPA_WLAN_OPT_DP_SET_WLAN_PER_INFO_RESP_MSG_V1_MAX_MSG_LEN;
 	resp_desc.msg_id = QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_PER_INFO_RESP_V01;
-	resp_desc.ei_array = ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_data_v01;
+	resp_desc.ei_array = ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_data_v01_ei;
 
 	IPAWANDBG("Sending QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_PER_INFO_REQ_V01\n");
 
@@ -2854,4 +3065,3 @@ void ipa3_qmi_cleanup(void)
 {
 	mutex_destroy(&ipa3_qmi_lock);
 }
-
