@@ -194,6 +194,8 @@
 	(remote_server_instance & 0x3)
 /* Maximun received fastprc packet size */
 #define FASTRPC_SOCKET_RECV_SIZE sizeof(union rsp)
+/* DMA handle reverse RPC support */
+#define DMA_HANDLE_REVERSE_RPC_CAP (128)
 
 enum fastrpc_remote_domains_id {
 	SECURE_PD = 0,

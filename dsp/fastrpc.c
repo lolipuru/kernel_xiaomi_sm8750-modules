@@ -930,13 +930,15 @@ static u64 fastrpc_get_payload_size(struct fastrpc_invoke_ctx *ctx, int metalen)
 static int fastrpc_create_maps(struct fastrpc_invoke_ctx *ctx)
 {
 	struct device *dev = ctx->fl->sctx->dev;
+	struct fastrpc_channel_ctx *cctx = ctx->fl->cctx;
 	int i, err;
 
 	for (i = 0; i < ctx->nscalars; ++i) {
 		bool take_ref = true;
 
 		if (ctx->args[i].fd == 0 || ctx->args[i].fd == -1 ||
-		    ctx->args[i].length == 0)
+		   (i >= ctx->nbufs && cctx->dsp_attributes[DMA_HANDLE_REVERSE_RPC_CAP]) ||
+                    ctx->args[i].length == 0)
 			continue;
 
 		if (i >= ctx->nbufs)
