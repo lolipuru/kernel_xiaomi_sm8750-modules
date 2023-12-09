@@ -840,7 +840,6 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 		dst_perms[0].perm = QCOM_SCM_PERM_RW;
 		dst_perms[1].vmid = fl->cctx->vmperms[0].vmid;
 		dst_perms[1].perm = QCOM_SCM_PERM_RWX;
-		map->attr = attr;
 		err = qcom_scm_assign_mem(map->phys, (u64)map->size, &src_perms, dst_perms, 2);
 		if (err) {
 			dev_err(sess->dev, "Failed to assign memory with phys 0x%llx size 0x%llx err %d",
@@ -848,6 +847,7 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 			goto map_err;
 		}
 	}
+	map->attr = attr;
 	spin_lock(&fl->lock);
 	list_add_tail(&map->node, &fl->maps);
 	spin_unlock(&fl->lock);
