@@ -1587,6 +1587,7 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 		list_for_each_entry(port_req, &mport->port_req_list, list) {
 			if (!port_req->dev_num)
 				continue;
+
 			j++;
 			slv_id = port_req->slave_port_id;
 			/* Assumption: If different channels in the same port
@@ -1607,28 +1608,36 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 					__func__, i);
 				return;
 			}
-			reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
-			val[len++] = SWR_REG_VAL_PACK(port_req->req_ch,
-					port_req->dev_num, get_cmd_id(swrm),
-					SWRS_DP_CHANNEL_ENABLE_BANK(slv_id,
-								bank));
 
-			reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
-			val[len++] = SWR_REG_VAL_PACK(
-					port_req->sinterval & 0xFF,
-					port_req->dev_num, get_cmd_id(swrm),
-					SWRS_DP_SAMPLE_CONTROL_1_BANK(slv_id,
-								bank));
+			if (len < SWRM_MAX_PORT_REG) {
+				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+				val[len++] = SWR_REG_VAL_PACK(port_req->req_ch,
+						port_req->dev_num, get_cmd_id(swrm),
+						SWRS_DP_CHANNEL_ENABLE_BANK(slv_id,
+									bank));
+			}
 
-			/* Only wite MSB if SI > 0xFF */
-			reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
-			val[len++] = SWR_REG_VAL_PACK(
-					(port_req->sinterval >> 8) & 0xFF,
-					port_req->dev_num, get_cmd_id(swrm),
-					SWRS_DP_SAMPLE_CONTROL_2_BANK(slv_id,
-								bank));
+			if (len < SWRM_MAX_PORT_REG) {
+				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+				val[len++] = SWR_REG_VAL_PACK(
+						port_req->sinterval & 0xFF,
+						port_req->dev_num, get_cmd_id(swrm),
+						SWRS_DP_SAMPLE_CONTROL_1_BANK(slv_id,
+									bank));
+			}
 
-			if (port_req->offset1 != SWR_INVALID_PARAM) {
+			if (len < SWRM_MAX_PORT_REG) {
+				/* Only wite MSB if SI > 0xFF */
+				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+				val[len++] = SWR_REG_VAL_PACK(
+						(port_req->sinterval >> 8) & 0xFF,
+						port_req->dev_num, get_cmd_id(swrm),
+						SWRS_DP_SAMPLE_CONTROL_2_BANK(slv_id,
+									bank));
+			}
+
+			if (len < SWRM_MAX_PORT_REG
+				&& port_req->offset1 != SWR_INVALID_PARAM) {
 				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 				val[len++] = SWR_REG_VAL_PACK(port_req->offset1,
 						port_req->dev_num, get_cmd_id(swrm),
@@ -1636,32 +1645,38 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 									bank));
 			}
 
-			if (port_req->offset2 != SWR_INVALID_PARAM) {
+			if (len < SWRM_MAX_PORT_REG
+				&& port_req->offset2 != SWR_INVALID_PARAM) {
 				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 				val[len++] = SWR_REG_VAL_PACK(port_req->offset2,
 						port_req->dev_num, get_cmd_id(swrm),
 						SWRS_DP_OFFSET_CONTROL_2_BANK(
 							slv_id, bank));
 			}
-			if (port_req->hstart != SWR_INVALID_PARAM
+
+			if (len < SWRM_MAX_PORT_REG
+				&& port_req->hstart != SWR_INVALID_PARAM
 				&& port_req->hstop != SWR_INVALID_PARAM) {
 				hparams = (port_req->hstart << 4) |
 						port_req->hstop;
-
 				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 				val[len++] = SWR_REG_VAL_PACK(hparams,
 						port_req->dev_num, get_cmd_id(swrm),
 						SWRS_DP_HCONTROL_BANK(slv_id,
 									bank));
 			}
-			if (port_req->word_length != SWR_INVALID_PARAM) {
+
+			if (len < SWRM_MAX_PORT_REG
+				&& port_req->word_length != SWR_INVALID_PARAM) {
 				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 				val[len++] =
 					SWR_REG_VAL_PACK(port_req->word_length,
 						port_req->dev_num, get_cmd_id(swrm),
 						SWRS_DP_BLOCK_CONTROL_1(slv_id));
 			}
-			if (port_req->blk_pack_mode != SWR_INVALID_PARAM) {
+
+			if (len < SWRM_MAX_PORT_REG
+				&& port_req->blk_pack_mode != SWR_INVALID_PARAM) {
 				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 				val[len++] =
 					SWR_REG_VAL_PACK(
@@ -1670,7 +1685,9 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 					SWRS_DP_BLOCK_CONTROL_3_BANK(slv_id,
 									bank));
 			}
-			if (port_req->blk_grp_count != SWR_INVALID_PARAM) {
+
+			if (len < SWRM_MAX_PORT_REG
+				&& port_req->blk_grp_count != SWR_INVALID_PARAM) {
 				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 				val[len++] =
 					 SWR_REG_VAL_PACK(
@@ -1679,7 +1696,9 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 						SWRS_DP_BLOCK_CONTROL_2_BANK(
 								slv_id, bank));
 			}
-			if (port_req->lane_ctrl != SWR_INVALID_PARAM) {
+
+			if (len < SWRM_MAX_PORT_REG
+				&& port_req->lane_ctrl != SWR_INVALID_PARAM) {
 				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 				val[len++] =
 					SWR_REG_VAL_PACK(port_req->lane_ctrl,
@@ -1687,7 +1706,9 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 						SWRS_DP_LANE_CONTROL_BANK(
 								slv_id, bank));
 			}
-			if (port_req->req_ch_rate != port_req->ch_rate) {
+
+			if (len < SWRM_MAX_PORT_REG
+				&& port_req->req_ch_rate != port_req->ch_rate) {
 				dev_dbg(swrm->dev, "requested sample rate is fractional");
 				if (mport->dir == 0) {
 					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
@@ -1705,35 +1726,50 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 								slv_id));
 				}
 
-				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
-				val[len++] = SWR_REG_VAL_PACK(4,
-							port_req->dev_num, get_cmd_id(swrm),
-							SWRS_DPn_FEATURE_EN(port_req->slave_port_id));
+				if (len < SWRM_MAX_PORT_REG) {
+					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+					val[len++] = SWR_REG_VAL_PACK(4,
+								port_req->dev_num, get_cmd_id(swrm),
+								SWRS_DPn_FEATURE_EN(
+									port_req->slave_port_id));
+				}
 
-				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
-				val[len++] = SWR_REG_VAL_PACK(1,
-							port_req->dev_num, get_cmd_id(swrm),
-							SWRS_DPn_FLOW_CTRL_N_REPEAT_PERIOD(
-								port_req->slave_port_id));
+				if (len < SWRM_MAX_PORT_REG) {
+					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+					val[len++] = SWR_REG_VAL_PACK(1,
+								port_req->dev_num, get_cmd_id(swrm),
+								SWRS_DPn_FLOW_CTRL_N_REPEAT_PERIOD(
+									port_req->slave_port_id));
+				}
 
-				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
-				val[len++] = SWR_REG_VAL_PACK(1,
-							port_req->dev_num, get_cmd_id(swrm),
-							SWRS_DPn_FLOW_CTRL_M_VALID_SAMPLE(
-								port_req->slave_port_id));
+				if (len < SWRM_MAX_PORT_REG) {
+					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+					val[len++] = SWR_REG_VAL_PACK(1,
+								port_req->dev_num, get_cmd_id(swrm),
+								SWRS_DPn_FLOW_CTRL_M_VALID_SAMPLE(
+									port_req->slave_port_id));
+				}
 			} else {
-				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
-				val[len++] = SWR_REG_VAL_PACK(0, port_req->dev_num, get_cmd_id(swrm),
-							SWRS_DP_PORT_CONTROL(slv_id));
+				if (len < SWRM_MAX_PORT_REG) {
+					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+					val[len++] = SWR_REG_VAL_PACK(0, port_req->dev_num,
+								get_cmd_id(swrm),
+								SWRS_DP_PORT_CONTROL(slv_id));
+				}
 
-				reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
-				val[len++] = SWR_REG_VAL_PACK(0, port_req->dev_num, get_cmd_id(swrm),
-							SWRS_DPn_FEATURE_EN(port_req->slave_port_id));
+				if (len < SWRM_MAX_PORT_REG) {
+					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
+					val[len++] = SWR_REG_VAL_PACK(0, port_req->dev_num,
+								get_cmd_id(swrm),
+								SWRS_DPn_FEATURE_EN(
+									port_req->slave_port_id));
+				}
 			}
 
 			port_req->ch_en = port_req->req_ch;
 			dev_offset[port_req->dev_num] = port_req->offset1;
 		}
+
 		if (swrm->master_id == MASTER_ID_TX) {
 			mport->sinterval = sinterval;
 			mport->lane_ctrl = lane_ctrl;
@@ -1756,44 +1792,57 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 		mport->offset1 = controller_offset;
 		value |= (mport->sinterval & 0xFF);
 
-		reg[len] = SWRM_DP_PORT_CTRL_BANK((i + 1), bank);
-		val[len++] = value;
-		dev_dbg(swrm->dev, "%s: mport :%d, reg: 0x%x, val: 0x%x\n",
-			__func__, (i + 1),
-			(SWRM_DP_PORT_CTRL_BANK((i + 1), bank)), value);
+		if (len < SWRM_MAX_PORT_REG) {
+			reg[len] = SWRM_DP_PORT_CTRL_BANK((i + 1), bank);
+			val[len++] = value;
+			dev_dbg(swrm->dev, "%s: mport :%d, reg: 0x%x, val: 0x%x\n",
+				__func__, (i + 1),
+				(SWRM_DP_PORT_CTRL_BANK((i + 1), bank)), value);
+		}
 
-		reg[len] = SWRM_DP_SAMPLECTRL2_BANK((i + 1), bank);
-		val[len++] = ((mport->sinterval >> 8) & 0xFF);
+		if (len < SWRM_MAX_PORT_REG) {
+			reg[len] = SWRM_DP_SAMPLECTRL2_BANK((i + 1), bank);
+			val[len++] = ((mport->sinterval >> 8) & 0xFF);
+		}
 
-		if (mport->lane_ctrl != SWR_INVALID_PARAM) {
+		if (len < SWRM_MAX_PORT_REG
+			&& mport->lane_ctrl != SWR_INVALID_PARAM) {
 			reg[len] = SWRM_DP_PORT_CTRL_2_BANK((i + 1), bank);
 			val[len++] = mport->lane_ctrl;
 		}
-		if (mport->word_length != SWR_INVALID_PARAM) {
+
+		if (len < SWRM_MAX_PORT_REG
+			&& mport->word_length != SWR_INVALID_PARAM) {
 			reg[len] = SWRM_DP_BLOCK_CTRL_1((i + 1));
 			val[len++] = mport->word_length;
 		}
 
-		if (mport->blk_grp_count != SWR_INVALID_PARAM) {
+		if (len < SWRM_MAX_PORT_REG
+			&& mport->blk_grp_count != SWR_INVALID_PARAM) {
 			reg[len] = SWRM_DP_BLOCK_CTRL2_BANK((i + 1), bank);
 			val[len++] = mport->blk_grp_count;
 		}
-		if (mport->hstart != SWR_INVALID_PARAM
+
+		if (len < SWRM_MAX_PORT_REG) {
+			if (mport->hstart != SWR_INVALID_PARAM
 				&& mport->hstop != SWR_INVALID_PARAM) {
-			reg[len] = SWRM_DP_PORT_HCTRL_BANK((i + 1), bank);
-			hparams = (mport->hstop << 4) | mport->hstart;
-			val[len++] = hparams;
-		} else {
-			reg[len] = SWRM_DP_PORT_HCTRL_BANK((i + 1), bank);
-			hparams = (SWR_HSTOP_MAX_VAL << 4) | SWR_HSTART_MIN_VAL;
-			val[len++] = hparams;
+				reg[len] = SWRM_DP_PORT_HCTRL_BANK((i + 1), bank);
+				hparams = (mport->hstop << 4) | mport->hstart;
+				val[len++] = hparams;
+			} else {
+				reg[len] = SWRM_DP_PORT_HCTRL_BANK((i + 1), bank);
+				hparams = (SWR_HSTOP_MAX_VAL << 4) | SWR_HSTART_MIN_VAL;
+				val[len++] = hparams;
+			}
 		}
-		if (mport->blk_pack_mode != SWR_INVALID_PARAM) {
+
+		if (len < SWRM_MAX_PORT_REG
+			&& mport->blk_pack_mode != SWR_INVALID_PARAM) {
 			reg[len] = SWRM_DP_BLOCK_CTRL3_BANK((i + 1), bank);
 			val[len++] = mport->blk_pack_mode;
 		}
-		mport->ch_en = mport->req_ch;
 
+		mport->ch_en = mport->req_ch;
 	}
 	swrm_reg_dump(swrm, reg, val, len, __func__);
 	swr_master_bulk_write(swrm, reg, val, len);
