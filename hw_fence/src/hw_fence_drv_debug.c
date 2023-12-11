@@ -1175,35 +1175,16 @@ int process_validation_client_loopback(struct hw_fence_driver_data *drv_data,
 	return 0;
 }
 
-int hw_fence_debug_wait_val(struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence,
-	u64 hash, u64 timeout_ms, u32 *error)
+static long _process_val_signal(struct msm_hw_fence_client *hw_fence_client,
+	struct dma_fence *fence, u64 hash, u32 *error)
 {
-	int ret, read = 1, queue_type = HW_FENCE_RX_QUEUE - 1;  /* rx queue index */
 	struct msm_hw_fence_queue_payload payload;
-	ktime_t cur_ktime, exp_ktime;
+	int read = 1, queue_type = HW_FENCE_RX_QUEUE - 1;  /* rx queue index */
 	u64 context, seqno;
 
-	if (!hw_fence_client) {
-		HWFNC_ERR("invalid client\n");
-		return -EINVAL;
-	}
-
-	exp_ktime = ktime_add_ms(ktime_get(), timeout_ms);
-	do {
-		ret = wait_event_timeout(hw_fence_client->wait_queue,
-				atomic_read(&hw_fence_client->val_signal) > 0,
-				msecs_to_jiffies(timeout_ms));
-		cur_ktime = ktime_get();
-	} while ((atomic_read(&hw_fence_client->val_signal) <= 0) && (ret == 0) &&
-		ktime_compare_safe(exp_ktime, cur_ktime) > 0);
-
-	if (!ret) {
-		HWFNC_ERR("timed out waiting for the client signal %llu\n", timeout_ms);
-		return -ETIMEDOUT;
-	}
-
-	/* clear doorbell signal flag */
+	/* clear validation signal flag */
 	atomic_set(&hw_fence_client->val_signal, 0);
+
 	context = fence ? fence->context : 0;
 	seqno = fence ? fence->seqno : 0;
 
@@ -1227,7 +1208,41 @@ int hw_fence_debug_wait_val(struct msm_hw_fence_client *hw_fence_client, struct 
 	HWFNC_ERR("received: hash:%llu ctx:%llu seq:%llu expected: hash:%llu ctx:%llu seq:%llu\n",
 		payload.hash, payload.ctxt_id, payload.seqno, hash, context, seqno);
 
-	return read;
+	return -EINVAL;
+}
+
+int hw_fence_debug_wait_val(struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence,
+	u64 hash, u64 timeout_ms, u32 *error)
+{
+	ktime_t cur_ktime, exp_ktime;
+	int ret = -EINVAL;
+
+	if (!hw_fence_client) {
+		HWFNC_ERR("invalid client\n");
+		return -EINVAL;
+	}
+
+	exp_ktime = ktime_add_ms(ktime_get(), timeout_ms);
+	while (ret) {
+		do {
+			ret = wait_event_timeout(hw_fence_client->wait_queue,
+					atomic_read(&hw_fence_client->val_signal) > 0,
+					msecs_to_jiffies(timeout_ms));
+			cur_ktime = ktime_get();
+		} while ((atomic_read(&hw_fence_client->val_signal) <= 0) && (ret == 0) &&
+			ktime_compare_safe(exp_ktime, cur_ktime) > 0);
+
+		if (!ret) {
+			HWFNC_ERR("timed out waiting for the client signal %llu\n", timeout_ms);
+			/* Decrement the refcount that hw_sync_get_fence increments */
+			dma_fence_put(fence);
+			return -ETIMEDOUT;
+		}
+		ret = _process_val_signal(hw_fence_client, fence, hash, error);
+		/* if val client fails to find expected fence, keep waiting until timeout */
+	}
+
+	return ret;
 }
 
 static const struct file_operations hw_fence_reset_client_fops = {
