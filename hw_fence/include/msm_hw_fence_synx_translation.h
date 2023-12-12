@@ -9,6 +9,7 @@
 #include <synx_api.h>
 
 extern bool hw_fence_driver_enable;
+extern struct hw_fence_driver_data *hw_fence_drv_data;
 
 #ifndef SYNX_HW_FENCE_CLIENT_START
 #define SYNX_HW_FENCE_CLIENT_START 1024

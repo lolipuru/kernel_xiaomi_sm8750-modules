@@ -104,9 +104,8 @@ struct synx_session *synx_hwfence_initialize(struct synx_initialization_params *
 	if (!hw_fence_driver_enable)
 		return ERR_PTR(-SYNX_INVALID);
 
-	if (IS_ERR_OR_NULL(params) || IS_ERR_OR_NULL(params->ptr)) {
-		HWFNC_ERR("invalid params:0x%pK params->ptr:0x%pK\n", params,
-			IS_ERR_OR_NULL(params) ? NULL : params->ptr);
+	if (IS_ERR_OR_NULL(params)) {
+		HWFNC_ERR("invalid params:0x%pK\n", params);
 		return ERR_PTR(-SYNX_INVALID);
 	}
 
@@ -170,11 +169,16 @@ int synx_hwfence_create(struct synx_session *session, struct synx_create_params 
 	}
 
 	if (IS_ERR_OR_NULL(params->h_synx) || (params->flags > SYNX_CREATE_MAX_FLAGS) ||
-			!(params->flags & SYNX_CREATE_DMA_FENCE) ||
-			(params->flags & SYNX_CREATE_CSL_FENCE) ||
-			IS_ERR_OR_NULL(params->fence)) {
-		HWFNC_ERR("synx_id:%d invalid create params h_synx:0x%pK flags:0x%x fence:0x%pK\n",
-			session->type, params->h_synx, params->flags, params->fence);
+			(params->flags & SYNX_CREATE_CSL_FENCE)) {
+		HWFNC_ERR("synx_id:%d invalid create params h_synx:0x%pK flags:0x%x\n",
+			session->type, params->h_synx, params->flags);
+		return -SYNX_INVALID;
+	}
+
+	/* if SYNX_CREATE_DMA_FENCE specified and no dma-fence, fail */
+	if (!params->fence && (params->flags & SYNX_CREATE_DMA_FENCE)) {
+		HWFNC_ERR("synx_id:%d invalid fence:%pK params flags:0x%x\n",
+			session->type, params->fence, params->flags);
 		return -SYNX_INVALID;
 	}
 
@@ -189,6 +193,7 @@ int synx_hwfence_create(struct synx_session *session, struct synx_create_params 
 	if (handle > U32_MAX) {
 		HWFNC_ERR("synx_id:%d fence handle:%llu would overflow h_synx\n", session->type,
 			handle);
+		hw_fence_destroy_refcount(hw_fence_drv_data, handle, HW_FENCE_FCTL_REFCOUNT);
 		msm_hw_fence_destroy_with_handle(session->client, handle);
 		return -SYNX_INVALID;
 	}
