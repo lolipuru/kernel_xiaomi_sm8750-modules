@@ -9,7 +9,38 @@
 #include "sde_hw_mdss.h"
 #include <drm/drm_crtc.h>
 
-struct sde_irq_callback;
+/**
+ * struct sde_cp_node - structure to define color processing
+ *                      property info
+ * @property_id: drm id for the property
+ * @prop_flags: flags to indicate type of property
+ * @feature: cp crtc feature enum
+ * @blob_ptr: pointer to drm blob property
+ * @prop_val: property value
+ * @pp_blk: pointer to sde_pp_blk struct
+ * @cp_feature_list: color processing feature list
+ * @cp_active_list: color processing active feature list
+ * @cp_dirty_list: color processing dirty feature list
+ * @is_dspp_feature: indicate if the feature is in dspp
+ * @lm_flush_override: indicate if lm flush override is enabled
+ * @prob_blob_sz: size of blob property
+ * @irq: pointer to sde_irq_callback
+ */
+struct sde_cp_node {
+	u32 property_id;
+	u32 prop_flags;
+	u32 feature;
+	void *blob_ptr;
+	uint64_t prop_val;
+	const struct sde_pp_blk *pp_blk;
+	struct list_head cp_feature_list;
+	struct list_head cp_active_list;
+	struct list_head cp_dirty_list;
+	bool is_dspp_feature;
+	bool lm_flush_override;
+	u32 prop_blob_sz;
+	struct sde_irq_callback *irq;
+};
 
 /*
  * PA MEMORY COLOR types
