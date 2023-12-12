@@ -88,6 +88,7 @@ enum sde_reg_dma_features {
 	RC_PU_CFG,
 	DEMURA_CFG,
 	DEMURA_CFG0_PARAM2,
+	AIQE_MDNIE,
 	REG_DMA_FEATURES_MAX,
 };
 

@@ -46,6 +46,7 @@
 #include "sde_encoder_dce.h"
 #include "sde_vm.h"
 #include "sde_fence.h"
+#include "sde_aiqe_common.h"
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -2347,9 +2348,10 @@ void sde_encoder_cancel_delayed_work(struct drm_encoder *encoder)
 }
 
 static void _sde_encoder_rc_kickoff_delayed(struct sde_encoder_virt *sde_enc,
-	u32 sw_event)
+	u32 sw_event, struct sde_crtc *sde_crtc)
 {
-	if (_sde_encoder_is_autorefresh_enabled(sde_enc))
+	if (_sde_encoder_is_autorefresh_enabled(sde_enc) ||
+			!mdnie_art_in_progress(&sde_crtc->aiqe_top_level))
 		_sde_encoder_rc_cancel_delayed(sde_enc, sw_event);
 	else
 		_sde_encoder_rc_restart_delayed(sde_enc, sw_event);
@@ -2358,6 +2360,9 @@ static void _sde_encoder_rc_kickoff_delayed(struct sde_encoder_virt *sde_enc,
 static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 	u32 sw_event, struct sde_encoder_virt *sde_enc, bool is_vid_mode)
 {
+	struct drm_crtc *crtc = drm_enc->crtc;
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+
 	int ret = 0;
 
 	mutex_lock(&sde_enc->rc_lock);
@@ -2401,7 +2406,7 @@ static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 	sde_enc->rc_state = SDE_ENC_RC_STATE_ON;
 
 end:
-	_sde_encoder_rc_kickoff_delayed(sde_enc, sw_event);
+	_sde_encoder_rc_kickoff_delayed(sde_enc, sw_event, sde_crtc);
 
 	mutex_unlock(&sde_enc->rc_lock);
 	return ret;
@@ -2605,7 +2610,7 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 		SDE_DEBUG_ENC(sde_enc, "skip idle entry");
 		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
 			sde_crtc_frame_pending(sde_enc->crtc), SDE_EVTLOG_ERROR);
-		_sde_encoder_rc_kickoff_delayed(sde_enc, sw_event);
+		_sde_encoder_rc_kickoff_delayed(sde_enc, sw_event, sde_crtc);
 		goto end;
 	}
 

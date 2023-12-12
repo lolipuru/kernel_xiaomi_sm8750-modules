@@ -15,6 +15,7 @@
 #include "sde_ad4.h"
 #include "sde_hw_rc.h"
 #include "sde_kms.h"
+#include "sde_aiqe_common.h"
 
 #define DSPP_VALID_START_OFF 0x800
 
@@ -409,6 +410,40 @@ static void dspp_demura(struct sde_hw_dspp *c)
 	}
 }
 
+static void dspp_aiqe(struct sde_hw_dspp *c)
+{
+	int ret = 0;
+
+	if (!c) {
+		SDE_ERROR("invalid arguments\n");
+		return;
+	}
+
+	c->ops.setup_mdnie = NULL;
+	c->ops.setup_mdnie_art = NULL;
+	c->ops.setup_copr = NULL;
+	c->ops.read_mdnie_art_done = NULL;
+	c->ops.read_copr_status = NULL;
+
+	if (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) {
+		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_AIQE, c);
+		if (!ret) {
+			if (c->cap->sblk->aiqe.mdnie_supported) {
+				c->ops.setup_mdnie = reg_dmav1_setup_mdnie_v1;
+				c->ops.setup_mdnie_art = sde_setup_mdnie_art_v1;
+				c->ops.read_mdnie_art_done = sde_read_mdnie_art_done;
+				c->ops.setup_mdnie_psr = sde_setup_mdnie_psr;
+			}
+
+			if (c->cap->sblk->aiqe.copr_supported) {
+				c->ops.setup_copr = sde_setup_copr_v1;
+				c->ops.read_copr_status = sde_read_copr_status;
+			}
+		}
+	}
+}
+
+
 static void (*dspp_blocks[SDE_DSPP_MAX])(struct sde_hw_dspp *c);
 
 static void _init_dspp_ops(void)
@@ -428,6 +463,7 @@ static void _init_dspp_ops(void)
 	dspp_blocks[SDE_DSPP_RC] = dspp_rc;
 	dspp_blocks[SDE_DSPP_SPR] = dspp_spr;
 	dspp_blocks[SDE_DSPP_DEMURA] = dspp_demura;
+	dspp_blocks[SDE_DSPP_AIQE] = dspp_aiqe;
 }
 
 static void _setup_dspp_ops(struct sde_hw_dspp *c, unsigned long features)
@@ -516,6 +552,15 @@ struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 				c->hw.blk_off + cfg->sblk->demura.base,
 				c->hw.blk_off + cfg->sblk->demura.base +
 				cfg->sblk->demura.len, c->hw.xin_id);
+	}
+
+	if (cfg->sblk->aiqe.id == SDE_DSPP_AIQE && cfg->sblk->aiqe.base
+			&& cfg->sblk->aiqe.base != 0xffffffff) {
+		snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "aiqe", c->idx - DSPP_0);
+		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
+				c->hw.blk_off + cfg->sblk->aiqe.base,
+				c->hw.blk_off + cfg->sblk->aiqe.base +
+				cfg->sblk->aiqe.len, c->hw.xin_id);
 	}
 
 	return &c->hw;

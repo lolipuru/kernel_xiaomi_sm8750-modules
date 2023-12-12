@@ -9,6 +9,7 @@
 #include <linux/dma-buf.h>
 #include <linux/string.h>
 #include <drm/msm_drm_pp.h>
+#include <drm/msm_drm_aiqe.h>
 #include "sde_color_processing.h"
 #include "sde_kms.h"
 #include "sde_crtc.h"
@@ -21,6 +22,8 @@
 #include "sde_hw_color_proc_common_v4.h"
 #include "sde_vm.h"
 #include "sde_color_proc_property_helper.h"
+#include "sde_color_processing_aiqe.h"
+#include "sde_aiqe_common.h"
 
 #define DEMURA_BACKLIGHT_MAX 1024
 #define DEMURA_BACKLIGHT_MIN 64
@@ -114,6 +117,7 @@ do { \
 	func[SDE_DSPP_DITHER] = _dspp_dither_install_property; \
 	func[SDE_DSPP_RC] = _dspp_rc_install_property; \
 	func[SDE_DSPP_DEMURA] = _dspp_demura_install_property; \
+	func[SDE_DSPP_AIQE] = _dspp_aiqe_install_property; \
 } while (0)
 
 typedef void (*lm_prop_install_func_t)(struct drm_crtc *crtc);
@@ -167,6 +171,7 @@ enum sde_dspp_caps_features {
 	SDE_CP_DEMRUA_CAPS,
 	SDE_CP_SPR_CAPS,
 	SDE_CP_LTM_CAPS,
+	SDE_CP_AIQE_CAPS,
 	SDE_CP_CAPS_MAX,
 };
 
@@ -177,6 +182,7 @@ static void _demura_caps_update(struct sde_crtc *crtc,
 				struct sde_kms_info *info);
 static void _spr_caps_update(struct sde_crtc *crtc, struct sde_kms_info *info);
 static void _ltm_caps_update(struct sde_crtc *crtc, struct sde_kms_info *info);
+
 static dspp_cap_update_func_t dspp_cap_update_func[SDE_CP_CAPS_MAX];
 
 #define setup_dspp_caps_funcs(func) \
@@ -186,6 +192,7 @@ do { \
 	func[SDE_CP_DEMRUA_CAPS] = _demura_caps_update; \
 	func[SDE_CP_SPR_CAPS] = _spr_caps_update; \
 	func[SDE_CP_LTM_CAPS] = _ltm_caps_update; \
+	func[SDE_CP_AIQE_CAPS] = _aiqe_caps_update; \
 } while (0)
 
 static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc);
@@ -195,7 +202,7 @@ typedef int (*feature_wrapper)(struct sde_hw_dspp *hw_dspp,
 				   struct sde_crtc *hw_crtc);
 
 
-static struct sde_kms *get_kms(struct drm_crtc *crtc)
+struct sde_kms *get_kms(struct drm_crtc *crtc)
 {
 	struct msm_drm_private *priv = crtc->dev->dev_private;
 
@@ -1121,6 +1128,9 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_UDC] = _set_spr_udc_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_INIT] = _set_demura_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = _set_demura_cfg0_param2; \
+	wrappers[SDE_CP_CRTC_DSPP_MDNIE] = set_mdnie_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_MDNIE_ART] = set_mdnie_art_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_COPR] = set_copr_feature; \
 } while (0)
 
 feature_wrapper set_crtc_pu_feature_wrappers[SDE_CP_CRTC_MAX_PU_FEATURES];
@@ -1685,6 +1695,9 @@ static const int dspp_feature_to_sub_blk_tbl[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT] = SDE_DSPP_DEMURA,
 	[SDE_CP_CRTC_DSPP_MAX] = SDE_DSPP_MAX,
 	[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = SDE_DSPP_DEMURA,
+	[SDE_CP_CRTC_DSPP_MDNIE] = SDE_DSPP_AIQE,
+	[SDE_CP_CRTC_DSPP_MDNIE_ART] = SDE_DSPP_AIQE,
+	[SDE_CP_CRTC_DSPP_COPR] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_LM_GC] = SDE_DSPP_MAX,
 };
 
@@ -2658,6 +2671,7 @@ void sde_cp_crtc_suspend(struct drm_crtc *crtc)
 		return;
 	}
 
+	_sde_cp_mark_mdnie_art_property(crtc);
 	sde_cp_crtc_mark_features_dirty(crtc);
 
 	spin_lock_irqsave(&sde_crtc->ltm_lock, irq_flags);
@@ -3336,6 +3350,7 @@ static void _sde_cp_update_list(struct sde_cp_node *prop_node,
 	case SDE_CP_CRTC_DSPP_LTM_QUEUE_BUF:
 	case SDE_CP_CRTC_DSPP_LTM_QUEUE_BUF2:
 	case SDE_CP_CRTC_DSPP_LTM_QUEUE_BUF3:
+	case SDE_CP_CRTC_DSPP_MDNIE_ART:
 		if (cp_dirty_list)
 			list_add_tail(&prop_node->cp_dirty_list,
 					&crtc->cp_dirty_list);
@@ -3623,6 +3638,7 @@ void sde_cp_crtc_post_ipc(struct drm_crtc *drm_crtc)
 	}
 
 	_sde_cp_ad_set_prop(sde_crtc, AD_IPC_RESUME);
+	sde_set_mdnie_psr(sde_crtc);
 }
 
 static void _sde_cp_hist_interrupt_cb(void *arg, int irq_idx)
@@ -4699,6 +4715,19 @@ static struct sde_cp_node *_sde_cp_feature_getnode_activelist(u32 feature, struc
 	return NULL;
 }
 
+/* this func needs to be called within crtc_cp_lock mutex */
+static struct sde_cp_node *_sde_cp_feature_getnode_featurelist(u32 feature, struct list_head *list)
+{
+	struct sde_cp_node *node = NULL;
+
+	list_for_each_entry(node, list, cp_feature_list) {
+		if (feature == node->feature)
+			return node;
+	}
+
+	return NULL;
+}
+
 void sde_cp_crtc_vm_primary_handoff(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = NULL;
@@ -5019,4 +5048,27 @@ void _sde_cp_mark_bl_properties(struct sde_crtc *crtc)
 skip_demura_bl:
 	crtc->back_light_pending = false;
 	mutex_unlock(&crtc->crtc_cp_lock);
+}
+void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_cp_node *prop_node;
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	mutex_lock(&sde_crtc->crtc_cp_lock);
+
+	if (_sde_cp_feature_in_dirtylist(SDE_CP_CRTC_DSPP_MDNIE_ART,
+			&sde_crtc->cp_dirty_list))
+		goto exit;
+
+	prop_node = _sde_cp_feature_getnode_featurelist(SDE_CP_CRTC_DSPP_MDNIE_ART,
+		&sde_crtc->cp_feature_list);
+
+	if (prop_node) {
+		prop_node->prop_val = 0;
+		_sde_cp_update_list(prop_node, sde_crtc, true);
+	}
+exit:
+	mutex_unlock(&sde_crtc->crtc_cp_lock);
 }
