@@ -17,8 +17,8 @@ register_synx_module(
     ],
 
     deps = [
-    #    "//vendor/qcom/opensource/mm-drivers/hw_fence:%b_msm_hw_fence",
-    #    "//vendor/qcom/opensource/mm-drivers/hw_fence:hw_fence_headers",
+        "//vendor/qcom/opensource/mm-drivers/hw_fence:%b_msm_hw_fence",
+        "//vendor/qcom/opensource/mm-drivers/hw_fence:hw_fence_headers",
     ]
 )
 
