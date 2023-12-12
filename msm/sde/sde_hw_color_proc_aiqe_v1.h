@@ -30,6 +30,12 @@ int sde_read_copr_status(struct sde_hw_dspp *ctx, struct drm_msm_copr_status *co
 void sde_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
 
 /**
+ * sde_reset_mdnie_art - api to reset mdnie art after art done
+ * @ctx: pointer to dspp object.
+ */
+void sde_reset_mdnie_art(struct sde_hw_dspp *ctx);
+
+/**
  * sde_setup_copr_v1 - api to setup copr programming
  * @ctx: pointer to dspp object.
  * @cfg: Pointer to sde_hw_cp_cfg.

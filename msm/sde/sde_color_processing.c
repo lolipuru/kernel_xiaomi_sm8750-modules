@@ -99,6 +99,7 @@ static int _sde_cp_crtc_cache_property(struct drm_crtc *crtc,
 				uint64_t val);
 
 static void _sde_cp_mark_active_dirty_internal(struct sde_crtc *crtc);
+static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_node *prop_node);
 
 #define setup_dspp_prop_install_funcs(func) \
 do { \
@@ -2451,9 +2452,11 @@ static int _sde_cp_flush_properties(struct drm_crtc *crtc)
 		cstate->cp_prop_values[feature].cp_node = 0;
 		cstate->cp_prop_values[feature].prop_val = 0;
 		SDE_EVT32(feature, val);
-		if (prop_node)
+		if (prop_node) {
 			_sde_cp_crtc_cache_property(crtc, cstate, prop_node,
 					property, val);
+			_sde_cp_check_aiqe_properties(crtc, prop_node);
+		}
 	}
 	cstate->cp_prop_cnt = 0;
 	memset(&cstate->cp_dirty_list, 0, sizeof(cstate->cp_dirty_list));
@@ -4674,6 +4677,37 @@ void sde_cp_crtc_res_change(struct drm_crtc *crtc_drm)
 		}
 	}
 	mutex_unlock(&crtc->crtc_cp_lock);
+}
+
+static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_node *prop_node)
+{
+	u32 feature, prop_val = 0;
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+
+	feature = prop_node->feature;
+	prop_val = prop_node->prop_val;
+	switch (feature) {
+	case SDE_CP_CRTC_DSPP_MDNIE:
+		if (prop_val)
+			aiqe_register_client(FEATURE_MDNIE, &sde_crtc->aiqe_top_level);
+		else
+			aiqe_deregister_client(FEATURE_MDNIE, &sde_crtc->aiqe_top_level);
+		break;
+	case SDE_CP_CRTC_DSPP_MDNIE_ART:
+		if (prop_val)
+			aiqe_register_client(FEATURE_MDNIE_ART, &sde_crtc->aiqe_top_level);
+		else
+			aiqe_deregister_client(FEATURE_MDNIE_ART, &sde_crtc->aiqe_top_level);
+		break;
+	case SDE_CP_CRTC_DSPP_COPR:
+		if (prop_val)
+			aiqe_register_client(FEATURE_COPR, &sde_crtc->aiqe_top_level);
+		else
+			aiqe_deregister_client(FEATURE_COPR, &sde_crtc->aiqe_top_level);
+		break;
+	default:
+		break;
+	}
 }
 
 /* this func needs to be called within crtc_cp_lock mutex */

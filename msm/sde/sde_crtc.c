@@ -3248,11 +3248,8 @@ void sde_crtc_mdnie_art_event_notify(struct drm_crtc *crtc)
 				(u8 *)&mdnie_art_done);
 
 		// Reset ART_DONE and ART_EN
-		SDE_REG_WRITE(&dspp->hw, dspp->cap->sblk->aiqe.base + 0x3dc, 0x10);
-		SDE_REG_WRITE(&dspp->hw, dspp->cap->sblk->aiqe.base + 0x100, 0);
-
+		dspp->ops.reset_mdnie_art(dspp);
 		_sde_cp_mark_mdnie_art_property(crtc);
-
 	}
 }
 
