@@ -617,9 +617,12 @@ static int _set_staged_sspp(u32 stage,
 	}
 
 	/* calculate final SWI register value for rec-0 and rec-1 */
-	*value = 0;
 	for (i = 0; i < pipes_per_stage; i++) {
+		if (src_sel[i] == LM_SRC_SEL_RESET_VALUE)
+			continue;
+
 		layout = stage_cfg->layout[stage][i];
+		*value = *value & ~(0xff << (layout * 8));
 		*value |= (src_sel[i] << (layout * 8));
 	}
 

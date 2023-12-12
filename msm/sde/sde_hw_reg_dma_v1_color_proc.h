@@ -12,6 +12,61 @@
 #include "sde_hw_dspp.h"
 #include "sde_hw_sspp.h"
 
+#define LOG_FEATURE_OFF SDE_EVT32(ctx->idx, ctx->dpu_idx, 0)
+#define LOG_FEATURE_ON SDE_EVT32(ctx->idx, ctx->dpu_idx, 1)
+
+#define REG_DMA_INIT_OPS(cfg, block, reg_dma_feature, feature_dma_buf) \
+	do { \
+		memset(&cfg, 0, sizeof(cfg)); \
+		(cfg).blk = block; \
+		(cfg).feature = reg_dma_feature; \
+		(cfg).dma_buf = feature_dma_buf; \
+	} while (0)
+
+#define REG_DMA_SETUP_OPS(cfg, block_off, data_ptr, data_len, op, \
+		wrap_sz, wrap_inc, reg_mask) \
+	do { \
+		(cfg).ops = op; \
+		(cfg).blk_offset = block_off; \
+		(cfg).data_size = data_len; \
+		(cfg).data = data_ptr; \
+		(cfg).inc = wrap_inc; \
+		(cfg).wrap_size = wrap_sz; \
+		(cfg).mask = reg_mask; \
+	} while (0)
+
+#define REG_DMA_SETUP_KICKOFF(cfg, hw_ctl, feature_dma_buf, ops, ctl_q, \
+		mode, reg_dma_feature) \
+	do { \
+		memset(&cfg, 0, sizeof(cfg)); \
+		(cfg).ctl = hw_ctl; \
+		(cfg).dma_buf = feature_dma_buf; \
+		(cfg).op = ops; \
+		(cfg).dma_type = REG_DMA_TYPE_DB; \
+		(cfg).queue_select = ctl_q; \
+		(cfg).trigger_mode = mode; \
+		(cfg).feature = reg_dma_feature; \
+	} while (0)
+
+extern struct sde_reg_dma_buffer *dspp_buf[REG_DMA_FEATURES_MAX][DSPP_MAX][DPU_MAX];
+
+/**
+ * reg_dma_buf_init - regdma buffer initialization
+ * @buff - pointer to regdma buffer structure
+ * @sz - regdma buffer size
+ * @dpu_idx - index of target dpu
+ */
+int reg_dma_buf_init(struct sde_reg_dma_buffer **buf, u32 sz, u32 dpu_idx);
+
+/**
+ * reg_dma_dspp_check - basic validation for dspp features using regdma
+ * @ctx - pointer to dspp object
+ * @cfg - pointer to sde_hw_cp_cfg
+ * @feature - dspp feature using regdma
+ */
+int reg_dma_dspp_check(struct sde_hw_dspp *ctx, void *cfg,
+		enum sde_reg_dma_features feature);
+
 /**
  * reg_dmav1_init_dspp_op_v4() - initialize the dspp feature op for sde v4
  *                               using reg dma v1.

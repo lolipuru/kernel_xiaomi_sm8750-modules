@@ -18,6 +18,8 @@
 #include <linux/delay.h>
 #include <linux/uaccess.h>
 #include <linux/module.h>
+#include <linux/pm_domain.h>
+#include <linux/pm_runtime.h>
 
 #include <soc/qcom/rpmh.h>
 #include "msm_drv.h"
@@ -1590,8 +1592,14 @@ static void sde_rsc_deinit(struct platform_device *pdev,
 		return;
 
 	sde_rsc_resource_disable(rsc);
-	if (rsc->sw_fs_enabled)
-		regulator_disable(rsc->fs);
+	if (rsc->sw_fs_enabled) {
+		if (rsc->pd_fs)
+			pm_runtime_put_sync(rsc->pd_fs);
+		if (rsc->fs)
+			regulator_disable(rsc->fs);
+	}
+	if (rsc->pd_fs)
+		dev_pm_domain_detach(rsc->pd_fs, false);
 	if (rsc->fs)
 		devm_regulator_put(rsc->fs);
 	if (rsc->wrapper_io.base)
@@ -1792,8 +1800,19 @@ static int sde_rsc_probe(struct platform_device *pdev)
 	rsc->fs = devm_regulator_get(&pdev->dev, "vdd");
 	if (IS_ERR_OR_NULL(rsc->fs)) {
 		rsc->fs = NULL;
-		pr_err("unable to get regulator\n");
-		goto sde_rsc_fail;
+		pr_debug("unable to get regulator\n");
+
+		/*
+		 * Use GenPD when the regulator is not available, latest kernel switched to
+		 * use the power-domain to control the GDSC.
+		 * If device has single power domain, the power domain is attached to
+		 * device by core framework before probe callback is called, we can use
+		 * pm_runtime_get_sync(), pm_runtime_put_sync() API's directly on device
+		 * node to control the power domain after calling pm_runtime_enable() on
+		 * device
+		 */
+		pm_runtime_enable(&pdev->dev);
+		rsc->pd_fs = &pdev->dev;
 	}
 
 	if (rsc->version >= SDE_RSC_REV_3)
@@ -1805,7 +1824,11 @@ static int sde_rsc_probe(struct platform_device *pdev)
 		goto sde_rsc_fail;
 	}
 
-	ret = regulator_enable(rsc->fs);
+	if (rsc->pd_fs)
+		/* Enable display GDSC and move it to HW control mode */
+		ret = pm_runtime_get_sync(rsc->pd_fs);
+	else if (rsc->fs)
+		ret = regulator_enable(rsc->fs);
 	if (ret) {
 		pr_err("sde rsc: fs on failed ret:%d\n", ret);
 		goto sde_rsc_fail;

@@ -15,6 +15,7 @@
 #include "sde_dbg.h"
 #include "sde_hw_util.h"
 #include "sde_kms.h"
+#include <drm/msm_drm_aiqe.h>
 
 /* Reserve space of 128 words for LUT dma payload set-up */
 #define REG_DMA_HEADERS_BUFFER_SZ (sizeof(u32) * 128)
@@ -93,6 +94,8 @@
 		REG_DMA_HEADERS_BUFFER_SZ)
 #define DEMURA_CFG0_PARAM2_MEM_SIZE ((sizeof(struct drm_msm_dem_cfg0_param2)) + \
 		REG_DMA_HEADERS_BUFFER_SZ)
+#define AIQE_MDNIE_SIZE ((sizeof(struct drm_msm_mdnie)) + \
+		REG_DMA_HEADERS_BUFFER_SZ)
 
 #define APPLY_MASK_AND_SHIFT(x, n, shift) ((x & (REG_MASK(n))) << (shift))
 #define REG_DMA_VIG_GAMUT_OP_MASK 0x300
@@ -126,9 +129,6 @@
 
 #define REG_DMA_DSPP_GAMUT_OP_MASK 0xFFFFFFE0
 
-#define LOG_FEATURE_OFF SDE_EVT32(ctx->idx, ctx->dpu_idx, 0)
-#define LOG_FEATURE_ON SDE_EVT32(ctx->idx, ctx->dpu_idx, 1)
-
 enum ltm_vlut_ops_bitmask {
 	ltm_unsharp = BIT(0),
 	ltm_dither = BIT(1),
@@ -139,7 +139,7 @@ enum ltm_vlut_ops_bitmask {
 
 static u32 ltm_vlut_ops_mask[LTM_MAX][DPU_MAX];
 
-static struct sde_reg_dma_buffer *dspp_buf[REG_DMA_FEATURES_MAX][DSPP_MAX][DPU_MAX];
+struct sde_reg_dma_buffer *dspp_buf[REG_DMA_FEATURES_MAX][DSPP_MAX][DPU_MAX];
 static struct sde_reg_dma_buffer
 	*sspp_buf[SDE_SSPP_RECT_MAX][REG_DMA_FEATURES_MAX][SSPP_MAX][DPU_MAX];
 static struct sde_reg_dma_buffer *ltm_buf[REG_DMA_FEATURES_MAX][LTM_MAX][DPU_MAX];
@@ -163,6 +163,7 @@ static u32 feature_map[SDE_DSPP_MAX] = {
 	[SDE_DSPP_RC] = RC_MASK_CFG,
 	[SDE_DSPP_DEMURA] = DEMURA_CFG,
 	[SDE_DSPP_DEMURA_CFG0_PARAM2] = DEMURA_CFG0_PARAM2,
+	[SDE_DSPP_AIQE] = AIQE_MDNIE,
 };
 
 static u32 sspp_feature_map[SDE_SSPP_MAX] = {
@@ -194,6 +195,7 @@ static u32 feature_reg_dma_sz[SDE_DSPP_MAX] = {
 	[SDE_DSPP_SPR] = SPR_INIT_MEM_SIZE,
 	[SDE_DSPP_DEMURA] = DEMURA_MEM_SIZE,
 	[SDE_DSPP_DEMURA_CFG0_PARAM2] = DEMURA_CFG0_PARAM2_MEM_SIZE,
+	[SDE_DSPP_AIQE] = AIQE_MDNIE_SIZE,
 };
 
 static u32 sspp_feature_reg_dma_sz[SDE_SSPP_MAX] = {
@@ -238,42 +240,6 @@ static u32 ltm_mapping[LTM_MAX] = {
 	[LTM_3] = LTM3,
 };
 
-#define REG_DMA_INIT_OPS(cfg, block, reg_dma_feature, feature_dma_buf) \
-	do { \
-		memset(&cfg, 0, sizeof(cfg)); \
-		(cfg).blk = block; \
-		(cfg).feature = reg_dma_feature; \
-		(cfg).dma_buf = feature_dma_buf; \
-	} while (0)
-
-#define REG_DMA_SETUP_OPS(cfg, block_off, data_ptr, data_len, op, \
-		wrap_sz, wrap_inc, reg_mask) \
-	do { \
-		(cfg).ops = op; \
-		(cfg).blk_offset = block_off; \
-		(cfg).data_size = data_len; \
-		(cfg).data = data_ptr; \
-		(cfg).inc = wrap_inc; \
-		(cfg).wrap_size = wrap_sz; \
-		(cfg).mask = reg_mask; \
-	} while (0)
-
-#define REG_DMA_SETUP_KICKOFF(cfg, hw_ctl, feature_dma_buf, ops, ctl_q, \
-		mode, reg_dma_feature) \
-	do { \
-		memset(&cfg, 0, sizeof(cfg)); \
-		(cfg).ctl = hw_ctl; \
-		(cfg).dma_buf = feature_dma_buf; \
-		(cfg).op = ops; \
-		(cfg).dma_type = REG_DMA_TYPE_DB; \
-		(cfg).queue_select = ctl_q; \
-		(cfg).trigger_mode = mode; \
-		(cfg).feature = reg_dma_feature; \
-	} while (0)
-
-static int reg_dma_buf_init(struct sde_reg_dma_buffer **buf, u32 sz, u32 dpu_idx);
-static int reg_dma_dspp_check(struct sde_hw_dspp *ctx, void *cfg,
-		enum sde_reg_dma_features feature);
 static int reg_dma_sspp_check(struct sde_hw_pipe *ctx, void *cfg,
 		enum sde_reg_dma_features feature,
 		enum sde_sspp_multirect_index idx);
@@ -465,7 +431,7 @@ static int _reg_dmav1_rc_program_data_offset(
 	return rc;
 }
 
-static int reg_dma_buf_init(struct sde_reg_dma_buffer **buf, u32 size, u32 dpu_idx)
+int reg_dma_buf_init(struct sde_reg_dma_buffer **buf, u32 size, u32 dpu_idx)
 {
 	struct sde_hw_reg_dma_ops *dma_ops;
 
@@ -489,7 +455,7 @@ static int reg_dma_buf_init(struct sde_reg_dma_buffer **buf, u32 size, u32 dpu_i
 	return 0;
 }
 
-static int reg_dma_dspp_check(struct sde_hw_dspp *ctx, void *cfg,
+int reg_dma_dspp_check(struct sde_hw_dspp *ctx, void *cfg,
 		enum sde_reg_dma_features feature)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
@@ -556,6 +522,13 @@ static int _reg_dma_init_dspp_feature_buf(int feature, struct sde_hw_dspp *ctx)
 			&dspp_buf[RC_PU_CFG][ctx->idx][ctx->dpu_idx],
 			feature_reg_dma_sz[SDE_DSPP_RC_PU],
 			ctx->dpu_idx);
+	} else if (feature == SDE_DSPP_AIQE) {
+		rc = reg_dma_buf_init(
+			&dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx],
+			feature_reg_dma_sz[feature],
+			ctx->dpu_idx);
+		if (rc)
+			return rc;
 	} else {
 		rc = reg_dma_buf_init(
 			&dspp_buf[feature_map[feature]][ctx->idx][ctx->dpu_idx],
