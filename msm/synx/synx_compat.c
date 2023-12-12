@@ -4,18 +4,18 @@
  */
 
 #include <linux/types.h>
-#include <msm_hw_fence_synx_translation.h>
 #include "synx_api.h"
+#include "synx_hwfence.h"
 #include "synx_private.h"
 
-static struct synx_ops synx_hwfence_ops = {
-	.uninitialize = synx_hwfence_uninitialize,
-	.create = synx_hwfence_create,
-	.release = synx_hwfence_release,
-	.signal = synx_hwfence_signal,
+struct synx_ops synx_hwfence_ops = {
+	.uninitialize = NULL,
+	.create = NULL,
+	.release = NULL,
+	.signal = NULL,
 	.async_wait = NULL,
 	.get_fence = NULL,
-	.import = synx_hwfence_import,
+	.import = NULL,
 	.get_status = NULL,
 	.merge = NULL,
 	.wait = NULL,
