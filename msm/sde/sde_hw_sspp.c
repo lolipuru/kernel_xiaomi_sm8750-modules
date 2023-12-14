@@ -323,7 +323,7 @@ static void sde_hw_sspp_setup_ubwc(struct sde_hw_pipe *ctx, struct sde_hw_blk_re
 		const struct sde_format *fmt, bool const_alpha_en, bool const_color_en,
 		enum sde_sspp_multirect_index rect_mode)
 {
-	u32 alpha_en_mask = 0, color_en_mask = 0, ubwc_ctrl_off;
+	u32 alpha_en_mask = 0, color_en_mask = 0, ubwc_ctrl_off, ctrl_val = 0;
 
 	SDE_REG_WRITE(c, SSPP_FETCH_CONFIG,
 		SDE_FETCH_CONFIG_RESET_VALUE |
@@ -335,7 +335,12 @@ static void sde_hw_sspp_setup_ubwc(struct sde_hw_pipe *ctx, struct sde_hw_blk_re
 	else
 		ubwc_ctrl_off = SSPP_UBWC_STATIC_CTRL_REC1;
 
-	if (SDE_HW_MAJOR(ctx->catalog->ubwc_rev) >= SDE_HW_MAJOR(SDE_HW_UBWC_VER_40)) {
+	if (SDE_HW_MAJOR(ctx->catalog->ubwc_rev) >= SDE_HW_MAJOR(SDE_HW_UBWC_VER_50)) {
+		ctrl_val |= SDE_FORMAT_IS_YUV(fmt) ? 0 : BIT(30);
+		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_2_1(fmt) ? ((0x3 << 16) | BIT(31)) : 0;
+		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_8_5(fmt) ? (BIT(16) | BIT(31)) : 0;
+		SDE_REG_WRITE(c, ubwc_ctrl_off, ctrl_val);
+	} else if (IS_UBWC_40_SUPPORTED(ctx->catalog->ubwc_rev)) {
 		SDE_REG_WRITE(c, ubwc_ctrl_off, SDE_FORMAT_IS_YUV(fmt) ? 0 : BIT(30));
 	} else if (IS_UBWC_30_SUPPORTED(ctx->catalog->ubwc_rev)) {
 		color_en_mask = const_color_en ? BIT(30) : 0;

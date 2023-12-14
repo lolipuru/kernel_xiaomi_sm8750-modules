@@ -199,3 +199,9 @@ static const struct sde_format_extended cac_formats[] = {
 	{DRM_FORMAT_ABGR2101010, DRM_FORMAT_MOD_QCOM_COMPRESSED},
 	{0, 0},
 };
+
+static const struct sde_format_extended rgb_lossy_formats[] = {
+	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED | DRM_FORMAT_MOD_QCOM_LOSSY_8_5},
+	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED | DRM_FORMAT_MOD_QCOM_LOSSY_2_1},
+	{0, 0},
+};

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __MMM_COLOR_FMT_INFO_H__
 #define __MMM_COLOR_FMT_INFO_H__
@@ -847,6 +847,88 @@ enum mmm_color_fmts {
 	 * Total size = align(RGB_Meta_Plane_size + RGB_Plane_size, 4096)
 	 */
 	MMM_COLOR_FMT_RGBA16161616F_UBWC,
+	/* RGBA8888_L_8_5 UBWC format:
+	 * Contains 2 planes in the following order -
+	 * (A) Meta plane
+	 * (B) RGBA plane
+	 *
+	 * <--- RGBA_Meta_Stride ---->
+	 * <-------- Width ------>
+	 * M M M M M M M M M M M M . .      ^           ^
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      Height      |
+	 * M M M M M M M M M M M M . .      |       Meta_RGBA_Scanlines
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      V           |
+	 * . . . . . . . . . . . . . .                  |
+	 * . . . . . . . . . . . . . .                  |
+	 * . . . . . . . . . . . . . .      -------> Buffer size aligned to 4k
+	 * . . . . . . . . . . . . . .                  V
+	 * <-------- RGBA_Stride -------->
+	 * <------- Width ------->
+	 * R R R R R R R R R R R R . . . .  ^           ^
+	 * R R R R R R R R R R R R . . . .  |           |
+	 * R R R R R R R R R R R R . . . .  Height      |
+	 * R R R R R R R R R R R R . . . .  |       RGBA_Scanlines
+	 * R R R R R R R R R R R R . . . .  |           |
+	 * R R R R R R R R R R R R . . . .  |           |
+	 * R R R R R R R R R R R R . . . .  |           |
+	 * R R R R R R R R R R R R . . . .  V           |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .    -------> Buffer size aligned to 4k
+	 * . . . . . . . . . . . . . . . .              V
+	 *
+	 * RGBA_Stride = align(Width * 4, 256)
+	 * RGBA_Scanlines = align(Height, 16)
+	 * RGBA_Plane_size = align(RGBA_Stride * RGBA_Scanlines, 4096)
+	 * RGBA_Meta_Stride = align(roundup(Width, RGBA_TileWidth), 64)
+	 * RGBA_Meta_Scanline = align(roundup(Height, RGBA_TileHeight), 16)
+	 * RGBA_Meta_Plane_size = align(RGBA_Meta_Stride *
+	 *		RGBA_Meta_Scanlines, 4096)
+	 *
+	 * Total size = align(RGBA_Meta_Plane_size + RGBA_Plane_size, 4096)
+	 */
+	MMM_COLOR_FMT_RGBA8888_L_8_5_UBWC,
+	/* RGBA8888 UBWC format:
+	 * Contains 2 planes in the following order -
+	 * (A) Meta plane
+	 * (B) RGBA plane
+	 *
+	 * <--- RGBA_Meta_Stride ---->
+	 * <-------- Width ------>
+	 * M M M M M M M M M M M M . .      ^           ^
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      Height/2    |
+	 * M M M M M M M M M M M M . .      |       Meta_RGBA_Scanlines
+	 * . . . . . . . . . . . . . .      V           |
+	 * . . . . . . . . . . . . . .                  |
+	 * . . . . . . . . . . . . . .      -------> Buffer size aligned to 4k
+	 * . . . . . . . . . . . . . .                  V
+	 * <-------- RGBA_Stride -------->
+	 * <------- Width ------->
+	 * R R R R R R R R R R R R . . . .  ^           ^
+	 * R R R R R R R R R R R R . . . .  |           |
+	 * R R R R R R R R R R R R . . . .  Height/2    |
+	 * R R R R R R R R R R R R . . . .  |       RGBA_Scanlines
+	 * . . . . . . . . . . . . . . . .  V           |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .    -------> Buffer size aligned to 4k
+	 * . . . . . . . . . . . . . . . .              V
+	 *
+	 * RGBA_Stride = align(Width * 4, 256)
+	 * RGBA_Scanlines = align(Height/2, 16)
+	 * RGBA_Plane_size = align(RGBA_Stride * RGBA_Scanlines, 4096)
+	 * RGBA_Meta_Stride = align(roundup(Width, RGBA_TileWidth), 64)
+	 * RGBA_Meta_Scanline = align(roundup(Height, RGBA_TileHeight), 16)
+	 * RGBA_Meta_Plane_size = align(RGBA_Meta_Stride *
+	 *		RGBA_Meta_Scanlines, 4096)
+	 *
+	 * Total size = align(RGBA_Meta_Plane_size + RGBA_Plane_size, 4096)
+	 */
+	MMM_COLOR_FMT_RGBA8888_L_2_1_UBWC,
 };
 
 /*
@@ -1176,6 +1258,8 @@ static inline unsigned int MMM_COLOR_FMT_RGB_STRIDE(unsigned int color_fmt,
 		bpp = 2;
 		break;
 	case MMM_COLOR_FMT_RGBA8888_UBWC:
+	case MMM_COLOR_FMT_RGBA8888_L_8_5_UBWC:
+	case MMM_COLOR_FMT_RGBA8888_L_2_1_UBWC:
 	case MMM_COLOR_FMT_RGBA1010102_UBWC:
 		alignment = 256;
 		break;
@@ -1206,10 +1290,15 @@ static inline unsigned int MMM_COLOR_FMT_RGB_SCANLINES(unsigned int color_fmt,
 		alignment = 32;
 		break;
 	case MMM_COLOR_FMT_RGBA8888_UBWC:
+	case MMM_COLOR_FMT_RGBA8888_L_8_5_UBWC:
 	case MMM_COLOR_FMT_RGBA1010102_UBWC:
 	case MMM_COLOR_FMT_RGB565_UBWC:
 	case MMM_COLOR_FMT_RGBA16161616F_UBWC:
 		alignment = 16;
+		break;
+	case MMM_COLOR_FMT_RGBA8888_L_2_1_UBWC:
+		alignment = 16;
+		height = height / 2;
 		break;
 	default:
 		goto invalid_input;
@@ -1231,6 +1320,8 @@ static inline unsigned int MMM_COLOR_FMT_RGB_META_STRIDE(unsigned int color_fmt,
 
 	switch (color_fmt) {
 	case MMM_COLOR_FMT_RGBA8888_UBWC:
+	case MMM_COLOR_FMT_RGBA8888_L_8_5_UBWC:
+	case MMM_COLOR_FMT_RGBA8888_L_2_1_UBWC:
 	case MMM_COLOR_FMT_RGBA1010102_UBWC:
 	case MMM_COLOR_FMT_RGB565_UBWC:
 		rgb_tile_width = 16;
@@ -1259,6 +1350,8 @@ static inline unsigned int MMM_COLOR_FMT_RGB_META_SCANLINES(
 
 	switch (color_fmt) {
 	case MMM_COLOR_FMT_RGBA8888_UBWC:
+	case MMM_COLOR_FMT_RGBA8888_L_8_5_UBWC:
+	case MMM_COLOR_FMT_RGBA8888_L_2_1_UBWC:
 	case MMM_COLOR_FMT_RGBA1010102_UBWC:
 	case MMM_COLOR_FMT_RGB565_UBWC:
 	case MMM_COLOR_FMT_RGBA16161616F_UBWC:
@@ -1407,6 +1500,8 @@ static inline unsigned int MMM_COLOR_FMT_BUFFER_SIZE(unsigned int color_fmt,
 		size = rgb_plane;
 		break;
 	case MMM_COLOR_FMT_RGBA8888_UBWC:
+	case MMM_COLOR_FMT_RGBA8888_L_8_5_UBWC:
+	case MMM_COLOR_FMT_RGBA8888_L_2_1_UBWC:
 	case MMM_COLOR_FMT_RGBA1010102_UBWC:
 	case MMM_COLOR_FMT_RGB565_UBWC:
 	case MMM_COLOR_FMT_RGBA16161616F_UBWC:
