@@ -1949,6 +1949,11 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		u32 pageslen;
 	} inbuf;
 
+	if (!fl->is_secure_dev) {
+		dev_err(fl->cctx->dev, "untrusted app trying to attach to privileged DSP PD\n");
+		return -EACCES;
+	}
+
 	args = kcalloc(FASTRPC_CREATE_STATIC_PROCESS_NARGS, sizeof(*args), GFP_KERNEL);
 	if (!args)
 		return -ENOMEM;
@@ -2117,7 +2122,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		fl->is_unsigned_pd = true;
 
 	if (is_session_rejected(fl, fl->is_unsigned_pd)) {
-		err = -ECONNREFUSED;
+		err = -EACCES;
 		goto err;
 	}
 
@@ -2458,6 +2463,10 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 	struct fastrpc_enhanced_invoke ioctl;
 	int err, tgid = fl->tgid;
 
+	if (!fl->is_secure_dev) {
+		dev_err(fl->cctx->dev, "untrusted app trying to attach to privileged DSP PD\n");
+		return -EACCES;
+	}
 	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
