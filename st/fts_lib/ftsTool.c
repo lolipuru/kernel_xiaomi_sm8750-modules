@@ -87,12 +87,12 @@ char *printHex(char *label, u8 *buff, int count, u8 *result)
   * Clear the FIFO from any event
   * @return OK if success or an error code which specify the type of error
   */
-int flushFIFO(void)
+int flushFIFO(struct fts_ts_info *info)
 {
 	int ret;
 	u8 sett = SPECIAL_FIFO_FLUSH;
 
-	ret = writeSysCmd(SYS_CMD_SPECIAL, &sett, 1);	/* flush the FIFO */
+	ret = writeSysCmd(info, SYS_CMD_SPECIAL, &sett, 1);	/* flush the FIFO */
 	if (ret < OK) {
 		logError(1, "%s flushFIFO: ERROR %08X\n", tag, ret);
 		return ret;
@@ -298,11 +298,11 @@ int attempt_function(int (*code)(void), unsigned long wait_before_retry, int
   * Enable all the possible sensing mode supported by the FW
   * @return OK if success or an error code which specify the type of error
   */
-int senseOn(void)
+int senseOn(struct fts_ts_info *info)
 {
 	int ret;
 
-	ret = setScanMode(SCAN_MODE_ACTIVE, 0xFF);	/* enable all */
+	ret = setScanMode(info, SCAN_MODE_ACTIVE, 0xFF);	/* enable all */
 	if (ret < OK) {
 		logError(1, "%s senseOn: ERROR %08X\n", tag, ret);
 		return ret;
@@ -316,11 +316,11 @@ int senseOn(void)
   * Disable  all the sensing mode
   * @return  OK if success or an error code which specify the type of error
   */
-int senseOff(void)
+int senseOff(struct fts_ts_info *info)
 {
 	int ret;
 
-	ret = setScanMode(SCAN_MODE_ACTIVE, 0x00);
+	ret = setScanMode(info, SCAN_MODE_ACTIVE, 0x00);
 	if (ret < OK) {
 		logError(1, "%s senseOff: ERROR %08X\n", tag, ret);
 		return ret;
@@ -338,21 +338,21 @@ int senseOff(void)
   * @param enableTouch if 1, re-enable the sensing and the interrupt of the IC
   * @return OK if success or an error code which specify the type of error
   */
-int cleanUp(int enableTouch)
+int cleanUp(struct fts_ts_info *info, int enableTouch)
 {
 	int res;
 
 	logError(0, "%s cleanUp: system reset...\n", tag);
-	res = fts_system_reset();
+	res = fts_system_reset(info);
 	if (res < OK)
 		return res;
 	if (enableTouch) {
 		logError(0, "%s cleanUp: enabling touches...\n", tag);
-		res = senseOn();	/* already enable everything */
+		res = senseOn(info);	/* already enable everything */
 		if (res < OK)
 			return res;
 		logError(0, "%s cleanUp: enabling interrupts...\n", tag);
-		res = fts_enableInterrupt();
+		res = fts_enableInterrupt(info);
 		if (res < OK)
 			return res;
 	}
