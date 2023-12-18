@@ -165,8 +165,8 @@ int btpower_aop_mbox_init(struct platform_pwr_data *pdata);
 int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata);
 
 static char const *pwr_req[] = {"POWER_ON_BT", "POWER_OFF_BT",
-				   "POWER_OFF_BT", "POWER_OFF_UWB",
-				   "POWER_ON_BT_RETENION", "POWER_ON_UWB_RETENION"};
+								"POWER_ON_UWB", "POWER_OFF_UWB",
+								"POWER_ON_BT_RETENION", "POWER_ON_UWB_RETENION"};
 
 #define WLAN_SW_CTRL_GPIO       "qcom,wlan-sw-ctrl-gpio"
 #define BT_CMD_SLIM_TEST            0xbfac
