@@ -20,53 +20,11 @@
 #include "msm_cvp_resources.h"
 #include "cvp_core_hfi.h"
 #include "msm_cvp_dsp.h"
+#include "msm_cvp_buf.h"
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0))
 #define DMA_ATTR_IOMMU_USE_UPSTREAM_HINT 1;
 #endif
-
-static void * __cvp_dma_buf_vmap(struct dma_buf *dbuf)
-{
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 16, 0))
-	struct dma_buf_map map;
-#else
-	struct iosys_map map;
-#endif
-	void *dma_map;
-	int err;
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
-	err = dma_buf_vmap(dbuf, &map);
-#else
-	err = dma_buf_vmap_unlocked(dbuf, &map);
-#endif
-	dma_map = err ? NULL : map.vaddr;
-	if (!dma_map)
-		dprintk(CVP_ERR, "map to kvaddr failed\n");
-
-	return dma_map;
-}
-
-static void __cvp_dma_buf_vunmap(struct dma_buf *dbuf, void *vaddr)
-{
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 16, 0))
-	struct dma_buf_map map = { \
-			.vaddr = vaddr, \
-			.is_iomem = false, \
-	};
-#else
-	struct iosys_map map = { \
-			.vaddr = vaddr, \
-			.is_iomem = false, \
-	};
-#endif
-	if (vaddr)
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
-		dma_buf_vunmap(dbuf, &map);
-#else
-		dma_buf_vunmap_unlocked(dbuf, &map);
-#endif
-}
 
 static struct sg_table* __cvp_dma_buf_map_attachment(struct dma_buf_attachment* attach, enum dma_data_direction direction)
 {
@@ -244,6 +202,7 @@ int msm_cvp_map_smem(struct msm_cvp_inst *inst,
 	u32 align = SZ_4K;
 	struct dma_buf *dma_buf;
 	bool is_config_pkt = false;
+	struct cvp_dma_buf_vmap vmap = {0};
 
 	if (!inst || !smem) {
 		dprintk(CVP_ERR, "%s: Invalid params: %pK %pK\n",
@@ -297,7 +256,8 @@ int msm_cvp_map_smem(struct msm_cvp_inst *inst,
 
 	if (i > 0 && cvp_hfi_defs[i].checksum_enabled) {
 		dma_buf_begin_cpu_access(dma_buf, DMA_BIDIRECTIONAL);
-		smem->kvaddr = __cvp_dma_buf_vmap(dma_buf);
+		msm_cvp_dma_buf_vmap(dma_buf, &vmap);
+		smem->kvaddr = vmap.vaddr;
 		if (!smem->kvaddr) {
 			dprintk(CVP_WARN, "%s Fail map into kernel\n",
 					__func__);
@@ -327,6 +287,7 @@ int msm_cvp_unmap_smem(struct msm_cvp_inst *inst,
 	int i, rc = 0;
 	u32 checksum = 0;
 	struct dma_buf *dma_buf;
+	struct cvp_dma_buf_vmap vmap = {0};
 
 	if (!smem) {
 		dprintk(CVP_ERR, "%s: Invalid params: %pK\n", __func__, smem);
@@ -347,7 +308,8 @@ int msm_cvp_unmap_smem(struct msm_cvp_inst *inst,
 				checksum += *(u32 *)(smem->kvaddr + i*sizeof(u32));
 			dprintk(CVP_MEM, "Unmap checksum %#x fd=%d\n",
 				checksum, smem->fd);
-			__cvp_dma_buf_vunmap(dma_buf, smem->kvaddr);
+			vmap.vaddr = smem->kvaddr;
+			msm_cvp_dma_buf_vunmap(dma_buf, &vmap);
 			smem->kvaddr = 0;
 			dma_buf_end_cpu_access(dma_buf, DMA_BIDIRECTIONAL);
 		}
@@ -375,6 +337,7 @@ static int alloc_dma_mem(size_t size, u32 align, int map_kernel,
 	struct mem_buf_lend_kernel_arg arg;
 	int vmids[1];
 	int perms[1];
+	struct cvp_dma_buf_vmap vmap = {0};
 
 	if (!res) {
 		dprintk(CVP_ERR, "%s: NULL res\n", __func__);
@@ -445,7 +408,8 @@ static int alloc_dma_mem(size_t size, u32 align, int map_kernel,
 
 	if (map_kernel) {
 		dma_buf_begin_cpu_access(dbuf, DMA_BIDIRECTIONAL);
-		mem->kvaddr = __cvp_dma_buf_vmap(dbuf);
+		msm_cvp_dma_buf_vmap(dbuf, &vmap);
+		mem->kvaddr = vmap.vaddr;
 		if (!mem->kvaddr) {
 			dprintk(CVP_ERR,
 				"Failed to map shared mem in kernel\n");
@@ -471,6 +435,7 @@ fail_shared_mem_alloc:
 
 static int free_dma_mem(struct msm_cvp_smem *mem)
 {
+	struct cvp_dma_buf_vmap vmap = {0};
 	dprintk(CVP_MEM,
 		"%s: dma_buf = %pK, device_addr = %x, size = %d, kvaddr = %pK\n",
 		__func__, mem->dma_buf, mem->device_addr, mem->size, mem->kvaddr);
@@ -481,7 +446,8 @@ static int free_dma_mem(struct msm_cvp_smem *mem)
 	}
 
 	if (mem->kvaddr) {
-		__cvp_dma_buf_vunmap(mem->dma_buf, mem->kvaddr);
+		vmap.vaddr = mem->kvaddr;
+		msm_cvp_dma_buf_vunmap(mem->dma_buf, &vmap);
 		mem->kvaddr = NULL;
 		dma_buf_end_cpu_access(mem->dma_buf, DMA_BIDIRECTIONAL);
 	}

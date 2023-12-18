@@ -6,7 +6,7 @@
 
 #ifndef _MSM_CVP_BUF_H_
 #define _MSM_CVP_BUF_H_
-
+#include <linux/version.h>
 #include <linux/poll.h>
 #include <linux/types.h>
 #include <linux/dma-buf.h>
@@ -65,6 +65,15 @@ struct cvp_dma_mapping_info {
 	struct dma_buf_attachment *attach;
 	struct dma_buf *buf;
 	void *cb_info;
+};
+
+struct cvp_dma_buf_vmap {
+#if (KERNEL_VERSION(5, 18, 0) <= LINUX_VERSION_CODE)
+	struct iosys_map map;
+#elif (KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE)
+	struct dma_buf_map map;
+#endif
+	void *vaddr;
 };
 
 struct msm_cvp_smem {
@@ -241,4 +250,9 @@ int cvp_allocate_dsp_bufs(struct msm_cvp_inst *inst,
 			u32 secure_type);
 int cvp_release_dsp_buffers(struct msm_cvp_inst *inst,
 			struct cvp_internal_buf *buf);
+void cvp_buf_map_set_vaddr(struct cvp_dma_buf_vmap *vmap, void *vaddr);
+int msm_cvp_dma_buf_vmap(struct dma_buf *dmabuf, struct cvp_dma_buf_vmap *vmap);
+void msm_cvp_dma_buf_vunmap(struct dma_buf *dmabuf, struct cvp_dma_buf_vmap *vmap);
+
+
 #endif
