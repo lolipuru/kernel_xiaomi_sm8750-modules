@@ -73,6 +73,8 @@
 #define SIGIO_SSR_ON_UWB          0x00000001
 #define SIGIO_UWB_SSR_COMPLETED   0x00000002
 
+#define CRASH_REASON_NOT_FOUND  ((char *)"Crash reason not found")
+
 /**
  * enum btpower_vreg_param: Voltage regulator TCS param
  * @BTPOWER_VREG_VOLTAGE: Provides voltage level to be configured in TCS
@@ -2272,6 +2274,42 @@ int btpower_process_access_req(unsigned int cmd, int req)
 	return ret;
 }
 
+char* GetBtSecondaryCrashReason(enum BtSecondaryReasonCode reason)
+{
+  for(int i =0; i < (int)(sizeof(btSecReasonMap)/sizeof(BtSecondaryReasonMap)); i++)
+    if (btSecReasonMap[i].reason == reason)
+      return btSecReasonMap[i].reasonstr;
+
+  return CRASH_REASON_NOT_FOUND;
+}
+
+char* GetBtPrimaryCrashReason(enum BtPrimaryReasonCode reason)
+{
+  for(int i =0; i < (int)(sizeof(btPriReasonMap)/sizeof(BtPrimaryReasonMap)); i++)
+    if (btPriReasonMap[i].reason == reason)
+      return btPriReasonMap[i].reasonstr;
+
+  return CRASH_REASON_NOT_FOUND;
+}
+
+char* GetUwbSecondaryCrashReason(enum UwbSecondaryReasonCode reason)
+{
+  for(int i =0; i < (int)(sizeof(uwbSecReasonMap)/sizeof(UwbSecondaryReasonMap)); i++)
+    if (uwbSecReasonMap[i].reason == reason)
+      return uwbSecReasonMap[i].reasonstr;
+
+  return CRASH_REASON_NOT_FOUND;
+}
+
+char* GetUwbPrimaryCrashReason(enum UwbPrimaryReasonCode reason)
+{
+  for(int i =0; i < (int)(sizeof(uwbPriReasonMap)/sizeof(UwbPrimaryReasonMap)); i++)
+    if (uwbPriReasonMap[i].reason == reason)
+      return uwbPriReasonMap[i].reasonstr;
+
+  return CRASH_REASON_NOT_FOUND;
+}
+
 static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
@@ -2415,20 +2453,24 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		panic_reason = (unsigned int)arg;
 		primary_reason = panic_reason & 0xFFFF;
 		sec_reason = (panic_reason & 0xFFFF0000) >> 16;
-		pr_err("%s: BT kernel panic primary reason [0x%04x] secondary reason [0x%04x]\n",
-		        __func__, primary_reason, sec_reason);
-		panic("subsys-restart: Resetting the SoC - BT crashed primary reason [0x%04x] secondary reason [0x%04x]\n",
-		        primary_reason, sec_reason);
+		pr_err("%s: BT kernel panic Primary reason = %s, Secondary reason = %s\n",
+			__func__, GetBtPrimaryCrashReason(primary_reason),
+			GetBtSecondaryCrashReason(sec_reason));
+		panic("%s: BT kernel panic Primary reason = %s, Secondary reason = %s\n",
+			__func__, GetBtPrimaryCrashReason(primary_reason),
+			GetBtSecondaryCrashReason(sec_reason));
 		break;
 	case UWB_CMD_KERNEL_PANIC:
 		pr_err("%s: UWB_CMD_KERNEL_PANIC\n", __func__);
 		panic_reason = (unsigned int)arg;
 		primary_reason = panic_reason & 0xFFFF;
 		sec_reason = (panic_reason & 0xFFFF0000) >> 16;
-		pr_err("%s: UWB kernel panic primary reason [0x%04x] secondary reason [0x%04x]\n",
-				__func__, primary_reason, sec_reason);
-		panic("subsys-restart: Resetting the SoC - UWB crashed primary reason [0x%04x] secondary reason [0x%04x]\n",
-				primary_reason, sec_reason);
+		pr_err("%s: UWB kernel panic Primary reason = %s, Secondary reason = %s\n",
+			__func__, GetUwbPrimaryCrashReason(primary_reason),
+			GetUwbSecondaryCrashReason(sec_reason));
+		panic("%s: UWB kernel panic Primary reason = %s, Secondary reason = %s\n",
+			__func__, GetUwbPrimaryCrashReason(primary_reason),
+			GetUwbSecondaryCrashReason(sec_reason));
 		break;
 	default:
 		return -ENOIOCTLCMD;
