@@ -2000,7 +2000,12 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			skip_blend_plane.plane = sde_plane_pipe(plane);
 			skip_blend_plane.height = plane_crtc_roi.h;
 			skip_blend_plane.width = plane_crtc_roi.w;
+			skip_blend_plane.is_virtual = is_sde_plane_virtual(plane);
 			sde_cp_set_skip_blend_plane_info(crtc, &skip_blend_plane);
+			SDE_EVT32(DRMID(crtc), DRMID(plane), state->src_x >> 16,
+				state->src_y >> 16, state->src_w >> 16, state->src_h >> 16,
+				state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h,
+				pstate->rotation);
 		}
 
 		if (blend_type != SDE_DRM_BLEND_OP_SKIP) {

@@ -216,6 +216,7 @@ static const u32 dspp_sub_blk_flush_tbl[SDE_DSPP_MAX] = {
 	[SDE_DSPP_SPR] = 8,
 	[SDE_DSPP_DEMURA] = 9,
 	[SDE_DSPP_RC] = 10,
+	[SDE_DSPP_AIQE_WRAPPER] = 11,
 	[SDE_DSPP_AIQE] = 12,
 	[SDE_DSPP_AI_SCALER] = 13,
 	[SDE_DSPP_SB] = 31,

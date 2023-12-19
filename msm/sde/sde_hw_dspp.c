@@ -458,6 +458,8 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 	c->ops.validate_aiqe_ssrc_data = NULL;
 	c->ops.setup_aiqe_ssrc_config = NULL;
 	c->ops.setup_aiqe_ssrc_data = NULL;
+	c->ops.setup_aiqe_abc = NULL;
+
 
 	if (!c->sde_kms || !c->sde_kms->catalog)
 		return;
@@ -489,6 +491,9 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 				c->ops.setup_copr = sde_setup_copr_v1;
 				c->ops.read_copr_status = sde_read_copr_status;
 			}
+
+			if (c->cap->sblk->aiqe.abc_supported)
+				c->ops.setup_aiqe_abc = sde_setup_aiqe_abc_v1;
 		}
 	}
 }
