@@ -387,4 +387,11 @@ static inline bool is_params_pkt(int pkt_type)
 	return false;
 }
 
+enum tzbsp_subsys_state {
+	TZ_SUBSYS_STATE_SUSPEND = 0,
+	TZ_SUBSYS_STATE_RESUME = 1,
+	TZ_SUBSYS_STATE_RESTORE_THRESHOLD = 2,
+};
+int __tzbsp_set_cvp_state(enum tzbsp_subsys_state state);
+
 #endif

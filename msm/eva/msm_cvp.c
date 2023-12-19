@@ -19,6 +19,9 @@
 #define CREATE_TRACE_POINTS
 #include "msm_cvp_events.h"
 
+#define TZ_SUBSYS_STATE_SID_EVA      0xCEDE1
+#define TZ_SUBSYS_STATE_SID_CAMERA     0xCEDE2
+
 static int cvp_enqueue_pkt(struct msm_cvp_inst* inst,
 	struct eva_kmd_hfi_packet *in_pkt,
 	unsigned int in_offset,
@@ -736,6 +739,59 @@ int msm_cvp_session_delete(struct msm_cvp_inst *inst)
 	return 0;
 }
 
+int msm_cvp_secure_sess_check(struct msm_cvp_inst *inst)
+{
+	int rc = 0;
+	struct msm_cvp_core *core = NULL;
+	struct msm_cvp_inst *active_inst = NULL;
+
+	if (!inst || !inst->core)
+		return -EINVAL;
+
+	if (inst->prop.is_secure) {
+		core = inst->core;
+		mutex_lock(&core->lock);
+		list_for_each_entry(active_inst, &core->instances, list) {
+			if (active_inst->prop.is_secure) {
+				if (inst->prop.type == active_inst->prop.type) {
+					dprintk(CVP_SESS,
+						"Allow new session create, type %d, secure %d\n",
+						inst->prop.type, inst->prop.is_secure);
+					break;
+				} else if (inst->prop.type == HFI_SESSION_CV &&
+						active_inst->prop.type == HFI_SESSION_DMM) {
+					dprintk(CVP_WARN,
+						"Skip EVA secure sess as active secure CAM sess");
+					rc = -EINVAL;
+					break;
+				} else if (inst->prop.type == HFI_SESSION_DMM
+						&& active_inst->prop.type == HFI_SESSION_CV) {
+					dprintk(CVP_WARN,
+						"Tear EVA secure sess, create secure CAM sess\n");
+					msm_cvp_comm_kill_session(active_inst);
+				}
+			}
+		}
+
+		if (rc == 0) {
+			dprintk(CVP_ERR, "Calling TZ SID begin with secure flag %d",
+				inst->prop.is_secure);
+			if (inst->prop.type == HFI_SESSION_CV) {
+				dprintk(CVP_ERR, "Calling TZ SID for OF");
+				__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_EVA);
+			} else if (inst->prop.type == HFI_SESSION_DMM) {
+				dprintk(CVP_ERR, "Calling TZ SID for DMM ");
+				__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_CAMERA);
+			}
+			dprintk(CVP_ERR, "Calling TZ SID end ");
+		}
+
+		mutex_unlock(&core->lock);
+	}
+
+	return rc;
+}
+
 int msm_cvp_session_create(struct msm_cvp_inst *inst)
 {
 	int rc = 0, rc1 = 0;
@@ -760,6 +816,13 @@ int msm_cvp_session_create(struct msm_cvp_inst *inst)
 	if (rc) {
 		dprintk(CVP_ERR,
 			"Failed to move instance to open done state\n");
+		goto fail_create;
+	}
+
+	rc = msm_cvp_secure_sess_check(inst);
+	if (rc) {
+		dprintk(CVP_WARN,
+			"%s: Failed to create session\n", __func__);
 		goto fail_create;
 	}
 

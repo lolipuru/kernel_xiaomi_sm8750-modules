@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __MSM_CVP_RESOURCES_H__
@@ -141,6 +142,7 @@ struct msm_cvp_mem_cdsp {
 #define MAX_SILVER_CORE_NUM 8
 #define HFI_SESSION_FD 4
 #define HFI_SESSION_DMM 2
+#define HFI_SESSION_CV 1
 
 struct cvp_pm_qos {
 	u32 silver_count;

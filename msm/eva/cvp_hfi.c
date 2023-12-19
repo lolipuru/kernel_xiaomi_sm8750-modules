@@ -60,12 +60,6 @@ struct cvp_tzbsp_memprot {
 /* Poll interval in uS */
 #define POLL_INTERVAL_US 100
 
-enum tzbsp_subsys_state {
-	TZ_SUBSYS_STATE_SUSPEND = 0,
-        TZ_SUBSYS_STATE_RESUME = 1,
-        TZ_SUBSYS_STATE_RESTORE_THRESHOLD = 2,
-};
-
 const struct msm_cvp_gov_data CVP_DEFAULT_BUS_VOTE = {
 	.data = NULL,
 	.data_count = 0,
@@ -92,7 +86,6 @@ static int __iface_cmdq_write(struct iris_hfi_device *device,
 static int __load_fw(struct iris_hfi_device *device);
 static int __power_on_init(struct iris_hfi_device *device);
 static void __unload_fw(struct iris_hfi_device *device);
-static int __tzbsp_set_cvp_state(enum tzbsp_subsys_state state);
 static int __enable_subcaches(struct iris_hfi_device *device);
 static int __set_subcaches(struct iris_hfi_device *device);
 static int __release_subcaches(struct iris_hfi_device *device);
@@ -1063,7 +1056,7 @@ err_create_pkt:
 	return rc;
 }
 
-static int __tzbsp_set_cvp_state(enum tzbsp_subsys_state state)
+int __tzbsp_set_cvp_state(enum tzbsp_subsys_state state)
 {
 	int rc = 0;
 
