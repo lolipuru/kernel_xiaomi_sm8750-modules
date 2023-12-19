@@ -373,6 +373,7 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 		if (rc < 0) {
 			dev_err_ratelimited(swr_hap->dev, "%s: Enable hpwr_vreg failed, rc=%d\n",
 					__func__, rc);
+			swr_device_wakeup_unvote(swr_hap->swr_slave);
 			return rc;
 		}
 
@@ -384,6 +385,7 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 			dev_err_ratelimited(swr_hap->dev, "%s: Enable SWR_PLAY failed, rc=%d\n",
 						__func__, rc);
 			swr_hap_disable_hpwr_vreg(swr_hap);
+			swr_device_wakeup_unvote(swr_hap->swr_slave);
 			mutex_unlock(&swr_hap->play_lock);
 			return rc;
 		}
@@ -402,8 +404,10 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 				rc = 0;
 			}
 		}
+		swr_device_wakeup_unvote(swr_hap->swr_slave);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
+		swr_device_wakeup_vote(swr_hap->swr_slave);
 		/* stop SWR play */
 		mutex_lock(&swr_hap->play_lock);
 		val = SWR_PLAY_SRC_VAL_SWR;
@@ -411,6 +415,7 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 		if (rc) {
 			dev_err_ratelimited(swr_hap->dev, "%s: Enable SWR_PLAY failed, rc=%d\n",
 					__func__, rc);
+			swr_device_wakeup_unvote(swr_hap->swr_slave);
 			mutex_unlock(&swr_hap->play_lock);
 			return rc;
 		}
@@ -421,6 +426,7 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 		if (rc < 0) {
 			dev_err_ratelimited(swr_hap->dev, "%s: Disable hpwr_vreg failed, rc=%d\n",
 					__func__, rc);
+			swr_device_wakeup_unvote(swr_hap->swr_slave);
 			return rc;
 		}
 		break;
