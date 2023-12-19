@@ -313,7 +313,6 @@ static struct class *bt_class;
 static int bt_major;
 static int soc_id;
 static bool probe_finished;
-static struct workqueue_struct *workq = NULL;
 struct device_node *bt_of_node, *uwb_of_node;
 const struct pwr_data *data;
 u8 client_rsp_q[2];
@@ -1525,11 +1524,11 @@ static int bt_power_probe(struct platform_device *pdev)
 	pwr_data->pdev = pdev;
 
 	pwr_data->is_ganges_dt = of_property_read_bool(pdev->dev.of_node,
-													"qcom,peach-bt");
+							"qcom,peach-bt");
 	pr_info("%s: is_ganges_dt = %d\n", __func__, pwr_data->is_ganges_dt);
 
-	workq = alloc_workqueue("workq", WQ_HIGHPRI, WQ_DFL_ACTIVE);
-	if (!workq) {
+	pwr_data->workq = alloc_workqueue("workq", WQ_HIGHPRI, WQ_DFL_ACTIVE);
+	if (!pwr_data->workq) {
 		pr_err("%s: Failed to creat the Work Queue (workq)\n",
 			__func__);
 		return -ENOMEM;
