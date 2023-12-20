@@ -1755,21 +1755,12 @@ int power_disable (enum SubSystem SubSystemType)
 			ret = power_regulators(BT_CORE, POWER_DISABLE);
 			update_pwr_state(UWB_ON);
 			if(get_sub_state() == SSR_ON_BT) {
-				ret = power_regulators(UWB_CORE, POWER_DISABLE);
-				ret = power_regulators(PLATFORM_CORE, POWER_DISABLE);
-				update_pwr_state(IDLE);
-				update_sub_state(SUB_STATE_IDLE);
-				send_signal_to_subsystem(UWB,
-					BT_SSR_COMPLETED);
+				send_signal_to_subsystem(UWB, BT_SSR_COMPLETED);
 			}
 		} else {
 			ret  = power_regulators(UWB_CORE, POWER_DISABLE);
 			update_pwr_state(BT_ON);
 			if(get_sub_state() == SSR_ON_UWB) {
-				ret = power_regulators(BT_CORE, POWER_DISABLE);
-				ret = power_regulators(PLATFORM_CORE, POWER_DISABLE);
-				update_pwr_state(IDLE);
-				update_sub_state(SUB_STATE_IDLE);
 				send_signal_to_subsystem(BLUETOOTH,
 					(SIGIO_NOTIFICATION_SIGNAL|SIGIO_UWB_SSR_COMPLETED));
 			}
