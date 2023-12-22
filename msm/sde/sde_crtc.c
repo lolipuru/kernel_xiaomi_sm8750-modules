@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -28,10 +28,12 @@
 #include <drm/drm_flip_work.h>
 #include <soc/qcom/of_common.h>
 #include <linux/version.h>
+#ifdef CONFIG_QCOM_SPEC_SYNC
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <qcom_sync_file.h>
 #else
 #include <linux/soc/qcom/qcom_sync_file.h>
+#endif
 #endif
 #include <linux/file.h>
 #include <drm/msm_drm_aiqe.h>
@@ -3936,6 +3938,7 @@ static struct sde_hw_ctl *_sde_crtc_get_hw_ctl(struct drm_crtc *drm_crtc)
 
 static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 {
+#ifdef CONFIG_QTI_HW_FENCE
 	struct dma_fence *fence;
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
@@ -4001,6 +4004,9 @@ static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 
 exit:
 	return input_hw_fence;
+#else
+	return NULL;
+#endif
 }
 
 /**
