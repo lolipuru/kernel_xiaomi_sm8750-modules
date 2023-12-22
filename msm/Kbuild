@@ -33,8 +33,13 @@ endif
 endif
 
 ifeq ($(CONFIG_ARCH_SUN), y)
+ifeq ($(CONFIG_ARCH_QTI_VM), y)
+    include $(DISPLAY_ROOT)/config/gki_sundisptui.conf
+    LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_sundisptuiconf.h
+else
 	include $(DISPLAY_ROOT)/config/gki_sundisp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_sundispconf.h
+endif
 endif
 
 ifeq ($(CONFIG_ARCH_KALAMA), y)
