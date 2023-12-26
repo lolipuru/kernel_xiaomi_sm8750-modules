@@ -3,7 +3,7 @@
  * QTI Crypto Engine driver.
  *
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "QCE50: %s: " fmt, __func__
@@ -181,6 +181,7 @@ struct qce_device {
 	bool no_clock_support;
 	bool kernel_pipes_support;
 	bool offload_pipes_support;
+	bool no_clock_gating;
 };
 
 static void print_notify_debug(struct sps_event_notify *notify);
@@ -309,7 +310,14 @@ static int qce_crypto_config(struct qce_device *pce_dev,
 
 static void qce_enable_clock_gating(struct qce_device *pce_dev)
 {
-	/* This feature might cause some HW issues, noop till resolved. */
+	if (pce_dev->no_clock_gating) {
+		pr_info("Clock gating is either not supported or disabled.\n");
+		return;
+	}
+	if (pce_dev->ce_bam_info.major_version == 5 &&
+		pce_dev->ce_bam_info.minor_version >= 9) {
+		writel(CRYPTO_AUTO_SHUTDOWN_EN,	pce_dev->iobase + CRYPTO_PWR_CTRL);
+	}
 	return;
 }
 
@@ -2441,8 +2449,6 @@ int qce_manage_timeout(void *handle, int req_info)
 
 	if (_qce_unlock_other_pipes(pce_dev, req_info))
 		pr_err("%s: fail unlock other pipes\n", __func__);
-
-	qce_enable_clock_gating(pce_dev);
 
 	if (!atomic_read(&preq_info->in_use)) {
 		pr_err("request information %d already done\n", req_info);
@@ -6339,6 +6345,9 @@ static int __qce_get_device_tree_data(struct platform_device *pdev,
 
 	pce_dev->no_clock_support = of_property_read_bool((&pdev->dev)->of_node,
 					"qcom,no-clock-support");
+
+	pce_dev->no_clock_gating = of_property_read_bool((&pdev->dev)->of_node,
+					"qcom,no-clk-gating");
 
 	for (i = 0; i < QCE_OFFLOAD_OPER_LAST; i++) {
 		/* Source/destination pipes for all usecases */
