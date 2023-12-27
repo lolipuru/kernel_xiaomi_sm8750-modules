@@ -58,4 +58,28 @@ void sde_setup_mdnie_psr(struct sde_hw_dspp *ctx);
 void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
 
 
+/**
+ * sde_validate_aiqe_ssrc_data_v1 - api to validate SSRC data for SSRC V1
+ * @ctx: pointer to dspp information structure
+ * @cfg: pointer to sde_hw_cp_cfg payload
+ * @mdnie_top: Pointer to top level mdnie structure
+ */
+int sde_validate_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *mdnie_top);
+
+/**
+ * reg_dmav1_setup_aiqe_ssrc_config_v1 - api to setup SSRC config for SSRC V1
+ * @ctx: pointer to dspp information structure
+ * @cfg: pointer to sde_hw_cp_cfg payload
+ * @mdnie_top: Pointer to top level mdnie structure
+ */
+void reg_dmav1_setup_aiqe_ssrc_config_v1(struct sde_hw_dspp *ctx, void *cfg, void *mdnie_top);
+
+/**
+ * reg_dmav1_setup_aiqe_ssrc_data_v1 - api to setup SSRC data for SSRC V1
+ * @ctx: pointer to dspp information structure
+ * @cfg: pointer to sde_hw_cp_cfg payload
+ * @mdnie_top: Pointer to top level mdnie structure
+ */
+void reg_dmav1_setup_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *mdnie_top);
+
 #endif /* _SDE_HW_COLOR_PROC_AIQE_H_ */

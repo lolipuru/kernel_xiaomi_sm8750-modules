@@ -427,6 +427,9 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 	c->ops.read_copr_status = NULL;
 	c->ops.reset_mdnie_art = NULL;
 	c->ops.setup_mdnie_psr = NULL;
+	c->ops.validate_aiqe_ssrc_data = NULL;
+	c->ops.setup_aiqe_ssrc_config = NULL;
+	c->ops.setup_aiqe_ssrc_data = NULL;
 
 	if (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_AIQE, c);
@@ -437,6 +440,13 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 				c->ops.read_mdnie_art_done = sde_read_mdnie_art_done;
 				c->ops.reset_mdnie_art = sde_reset_mdnie_art;
 				c->ops.setup_mdnie_psr = sde_setup_mdnie_psr;
+			}
+
+			if (c->cap->sblk->aiqe.ssrc_supported) {
+				c->ops.validate_aiqe_ssrc_data = sde_validate_aiqe_ssrc_data_v1;
+				c->ops.setup_aiqe_ssrc_config =
+						reg_dmav1_setup_aiqe_ssrc_config_v1;
+				c->ops.setup_aiqe_ssrc_data = reg_dmav1_setup_aiqe_ssrc_data_v1;
 			}
 
 			if (c->cap->sblk->aiqe.copr_supported) {

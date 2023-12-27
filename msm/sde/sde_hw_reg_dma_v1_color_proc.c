@@ -96,6 +96,10 @@
 		REG_DMA_HEADERS_BUFFER_SZ)
 #define AIQE_MDNIE_SIZE ((sizeof(struct drm_msm_mdnie)) + \
 		REG_DMA_HEADERS_BUFFER_SZ)
+#define AIQE_SSRC_CONFIG_MEM_SIZE ((sizeof(struct drm_msm_ssrc_config)) + \
+		REG_DMA_HEADERS_BUFFER_SZ)
+#define AIQE_SSRC_DATA_MEM_SIZE ((sizeof(struct drm_msm_ssrc_data)) + \
+		REG_DMA_HEADERS_BUFFER_SZ)
 
 #define APPLY_MASK_AND_SHIFT(x, n, shift) ((x & (REG_MASK(n))) << (shift))
 #define REG_DMA_VIG_GAMUT_OP_MASK 0x300
@@ -213,7 +217,7 @@ static u32 ltm_feature_reg_dma_sz[SDE_LTM_MAX] = {
 	[SDE_LTM_VLUT] = LTM_VLUT_MEM_SIZE,
 };
 
-static u32 dspp_mapping[DSPP_MAX] = {
+u32 dspp_mapping[DSPP_MAX] = {
 	[DSPP_0] = DSPP0,
 	[DSPP_1] = DSPP1,
 	[DSPP_2] = DSPP2,
@@ -529,6 +533,21 @@ static int _reg_dma_init_dspp_feature_buf(int feature, struct sde_hw_dspp *ctx)
 			ctx->dpu_idx);
 		if (rc)
 			return rc;
+
+		rc = reg_dma_buf_init(
+			&dspp_buf[AIQE_SSRC_CONFIG][ctx->idx][ctx->dpu_idx],
+			AIQE_SSRC_CONFIG_MEM_SIZE,
+			ctx->dpu_idx);
+		if (rc)
+			return rc;
+
+		rc = reg_dma_buf_init(
+			&dspp_buf[AIQE_SSRC_DATA][ctx->idx][ctx->dpu_idx],
+			AIQE_SSRC_DATA_MEM_SIZE,
+			ctx->dpu_idx);
+		if (rc)
+			return rc;
+
 	} else {
 		rc = reg_dma_buf_init(
 			&dspp_buf[feature_map[feature]][ctx->idx][ctx->dpu_idx],

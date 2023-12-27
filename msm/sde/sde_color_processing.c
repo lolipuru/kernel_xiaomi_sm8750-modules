@@ -1081,6 +1081,7 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_RC_MASK] = _check_rc_mask_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_INIT] = _check_spr_init_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_UDC] = _check_spr_udc_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = check_aiqe_ssrc_data; \
 } while (0)
 
 feature_wrapper set_crtc_feature_wrappers[SDE_CP_CRTC_MAX_FEATURES];
@@ -1131,6 +1132,8 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = _set_demura_cfg0_param2; \
 	wrappers[SDE_CP_CRTC_DSPP_MDNIE] = set_mdnie_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_MDNIE_ART] = set_mdnie_art_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = set_aiqe_ssrc_config; \
+	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = set_aiqe_ssrc_data; \
 	wrappers[SDE_CP_CRTC_DSPP_COPR] = set_copr_feature; \
 } while (0)
 
@@ -1698,6 +1701,8 @@ static const int dspp_feature_to_sub_blk_tbl[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = SDE_DSPP_DEMURA,
 	[SDE_CP_CRTC_DSPP_MDNIE] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_MDNIE_ART] = SDE_DSPP_AIQE,
+	[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = SDE_DSPP_AIQE,
+	[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_COPR] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_LM_GC] = SDE_DSPP_MAX,
 };
@@ -4699,6 +4704,17 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 		else
 			aiqe_deregister_client(FEATURE_MDNIE_ART, &sde_crtc->aiqe_top_level);
 		break;
+	case SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG: {
+		struct drm_msm_ssrc_config *data = prop_node->blob_ptr;
+
+		if (data && prop_node->prop_blob_sz == sizeof(struct drm_msm_ssrc_config) &&
+				data->config[0] & BIT(0))
+			aiqe_register_client(FEATURE_SSRC, &sde_crtc->aiqe_top_level);
+		else
+			aiqe_deregister_client(FEATURE_SSRC, &sde_crtc->aiqe_top_level);
+
+		break;
+	}
 	case SDE_CP_CRTC_DSPP_COPR:
 		if (prop_val)
 			aiqe_register_client(FEATURE_COPR, &sde_crtc->aiqe_top_level);

@@ -49,6 +49,7 @@
 	} while (0)
 
 extern struct sde_reg_dma_buffer *dspp_buf[REG_DMA_FEATURES_MAX][DSPP_MAX][DPU_MAX];
+extern u32 dspp_mapping[DSPP_MAX];
 
 /**
  * reg_dma_buf_init - regdma buffer initialization
