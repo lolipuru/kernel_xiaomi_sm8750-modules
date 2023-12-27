@@ -1099,13 +1099,34 @@ static void cnss_pci_smmu_fault_handler_irq(struct iommu_domain *domain,
 	cnss_record_smmu_fault_timestamp(pci_priv, SMMU_CB_EXIT);
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
+void cnss_register_iommu_fault_handler_irq(struct cnss_pci_data *pci_priv)
+{
+	qcom_iommu_register_device_fault_handler_irq(&pci_priv->pci_dev->dev,
+						     cnss_pci_smmu_fault_handler_irq,
+						     pci_priv);
+}
+#else
 void cnss_register_iommu_fault_handler_irq(struct cnss_pci_data *pci_priv)
 {
 	qcom_iommu_set_fault_handler_irq(pci_priv->iommu_domain,
 					 cnss_pci_smmu_fault_handler_irq, pci_priv);
 }
+#endif
 #else
 void cnss_register_iommu_fault_handler_irq(struct cnss_pci_data *pci_priv)
+{
+}
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
+void cnss_unregister_iommu_fault_handler(struct cnss_pci_data *pci_priv)
+{
+	iommu_unregister_device_fault_handler(&pci_priv->pci_dev->dev);
+}
+#else
+static inline
+void cnss_unregister_iommu_fault_handler(struct cnss_pci_data *pci_priv)
 {
 }
 #endif
@@ -5303,6 +5324,7 @@ void cnss_pci_fw_boot_timeout_hdlr(struct cnss_pci_data *pci_priv)
 
 static void cnss_pci_deinit_smmu(struct cnss_pci_data *pci_priv)
 {
+	cnss_unregister_iommu_fault_handler(pci_priv);
 	pci_priv->iommu_domain = NULL;
 }
 

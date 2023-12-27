@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include "pci_platform.h"
 #include "debug.h"
@@ -544,13 +544,14 @@ bool cnss_pci_is_force_one_msi(struct cnss_pci_data *pci_priv)
 }
 #endif
 
-static int cnss_pci_smmu_fault_handler(struct iommu_domain *domain,
-				       struct device *dev, unsigned long iova,
-				       int flags, void *handler_token)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
+static int
+cnss_pci_smmu_dev_fault_handler(struct iommu_fault *fault,  void *data)
 {
-	struct cnss_pci_data *pci_priv = handler_token;
+	struct cnss_pci_data *pci_priv = data;
 
-	cnss_fatal_err("SMMU fault happened with IOVA 0x%lx\n", iova);
+	cnss_fatal_err("SMMU fault happened with IOVA 0x%llx\n",
+		       fault->event.addr);
 
 	if (!pci_priv) {
 		cnss_pr_err("pci_priv is NULL\n");
@@ -565,7 +566,16 @@ static int cnss_pci_smmu_fault_handler(struct iommu_domain *domain,
 	return -ENOSYS;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
+static
+void cnss_register_iommu_fault_handler(struct cnss_pci_data *pci_priv)
+{
+	struct pci_dev *pci_dev = pci_priv->pci_dev;
+
+	iommu_register_device_fault_handler(&pci_dev->dev,
+					    cnss_pci_smmu_dev_fault_handler,
+					    pci_priv);
+}
+
 int cnss_pci_get_iommu_addr(struct cnss_pci_data *pci_priv,
 			    struct device_node *iommu_group_node)
 {
@@ -619,6 +629,34 @@ int cnss_pci_get_iommu_addr(struct cnss_pci_data *pci_priv,
 		0 : -EINVAL;
 }
 #else
+static int cnss_pci_smmu_fault_handler(struct iommu_domain *domain,
+				       struct device *dev, unsigned long iova,
+				       int flags, void *handler_token)
+{
+	struct cnss_pci_data *pci_priv = handler_token;
+
+	cnss_fatal_err("SMMU fault happened with IOVA 0x%lx\n", iova);
+
+	if (!pci_priv) {
+		cnss_pr_err("pci_priv is NULL\n");
+		return -ENODEV;
+	}
+
+	pci_priv->is_smmu_fault = true;
+	cnss_pci_update_status(pci_priv, CNSS_FW_DOWN);
+	cnss_force_fw_assert(&pci_priv->pci_dev->dev);
+
+	/* IOMMU driver requires -ENOSYS to print debug info. */
+	return -ENOSYS;
+}
+
+static
+void cnss_register_iommu_fault_handler(struct cnss_pci_data *pci_priv)
+{
+	iommu_set_fault_handler(pci_priv->iommu_domain,
+				cnss_pci_smmu_fault_handler, pci_priv);
+}
+
 int cnss_pci_get_iommu_addr(struct cnss_pci_data *pci_priv,
 			    struct device_node *iommu_group_node)
 {
@@ -657,8 +695,7 @@ int cnss_pci_init_smmu(struct cnss_pci_data *pci_priv)
 	if (!ret && !strcmp("fastmap", iommu_dma_type)) {
 		cnss_pr_dbg("Enabling SMMU S1 stage\n");
 		pci_priv->smmu_s1_enable = true;
-		iommu_set_fault_handler(pci_priv->iommu_domain,
-					cnss_pci_smmu_fault_handler, pci_priv);
+		cnss_register_iommu_fault_handler(pci_priv);
 		cnss_register_iommu_fault_handler_irq(pci_priv);
 	}
 
