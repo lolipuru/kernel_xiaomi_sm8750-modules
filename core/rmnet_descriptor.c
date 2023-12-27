@@ -22,6 +22,7 @@
 #include "rmnet_config.h"
 #include "rmnet_descriptor.h"
 #include "rmnet_handlers.h"
+#include "rmnet_module.h"
 #include "rmnet_private.h"
 #include "rmnet_vnd.h"
 #include "rmnet_qmi.h"
@@ -805,7 +806,6 @@ static void rmnet_frag_gso_stamp(struct sk_buff *skb,
 static void rmnet_frag_partial_csum(struct sk_buff *skb,
 				    struct rmnet_frag_descriptor *frag_desc)
 {
-	rmnet_perf_tether_ingress_hook_t rmnet_perf_tether_ingress;
 	struct iphdr *iph = (struct iphdr *)skb->data;
 	__sum16 pseudo;
 	u16 pkt_len = skb->len - frag_desc->ip_len;
@@ -833,9 +833,7 @@ static void rmnet_frag_partial_csum(struct sk_buff *skb,
 		tp->check = pseudo;
 		skb->csum_offset = offsetof(struct tcphdr, check);
 
-		rmnet_perf_tether_ingress = rcu_dereference(rmnet_perf_tether_ingress_hook);
-		if (rmnet_perf_tether_ingress)
-			rmnet_perf_tether_ingress(tp, skb);
+		rmnet_module_hook_perf_tether_ingress(tp, skb);
 	} else {
 		struct udphdr *up = (struct udphdr *)
 				    ((u8 *)iph + frag_desc->ip_len);
@@ -1845,7 +1843,6 @@ static void
 __rmnet_frag_ingress_handler(struct rmnet_frag_descriptor *frag_desc,
 			     struct rmnet_port *port)
 {
-	rmnet_perf_desc_hook_t rmnet_perf_ingress;
 	struct rmnet_map_header *qmap, __qmap;
 	struct rmnet_endpoint *ep;
 	struct rmnet_frag_descriptor *frag, *tmp;
@@ -1912,17 +1909,8 @@ __rmnet_frag_ingress_handler(struct rmnet_frag_descriptor *frag_desc,
 	if (skip_perf)
 		goto no_perf;
 
-	rcu_read_lock();
-	rmnet_perf_ingress = rcu_dereference(rmnet_perf_desc_entry);
-	if (rmnet_perf_ingress) {
-		list_for_each_entry_safe(frag, tmp, &segs, list) {
-			list_del_init(&frag->list);
-			rmnet_perf_ingress(frag, port);
-		}
-		rcu_read_unlock();
+	if (rmnet_module_hook_offload_ingress(&segs, port))
 		return;
-	}
-	rcu_read_unlock();
 
 no_perf:
 	list_for_each_entry_safe(frag, tmp, &segs, list) {
@@ -1977,7 +1965,6 @@ void rmnet_descriptor_classify_frag_count(u64 frag_count,
 void rmnet_frag_ingress_handler(struct sk_buff *skb,
 				struct rmnet_port *port)
 {
-	rmnet_perf_chain_hook_t rmnet_perf_opt_chain_end;
 	LIST_HEAD(desc_list);
 	bool skip_perf = (skb->priority == 0xda1a);
 	u64 chain_count = 0;
@@ -2021,11 +2008,7 @@ void rmnet_frag_ingress_handler(struct sk_buff *skb,
 	if (skip_perf)
 		return;
 
-	rcu_read_lock();
-	rmnet_perf_opt_chain_end = rcu_dereference(rmnet_perf_chain_end);
-	if (rmnet_perf_opt_chain_end)
-		rmnet_perf_opt_chain_end();
-	rcu_read_unlock();
+	rmnet_module_hook_offload_chain_end();
 }
 
 void rmnet_descriptor_deinit(struct rmnet_port *port)
