@@ -83,10 +83,6 @@ struct rmnet_pid_node_s {
 	pid_t pid;
 };
 
-typedef void (*rmnet_perf_tether_cmd_hook_t)(u8 message, u64 val);
-rmnet_perf_tether_cmd_hook_t rmnet_perf_tether_cmd_hook __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_tether_cmd_hook);
-
 void rmnet_update_pid_and_check_boost(pid_t pid, unsigned int len,
 				      int *boost_enable, u64 *boost_period)
 {

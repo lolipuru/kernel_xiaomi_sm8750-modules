@@ -45,28 +45,6 @@
 #include "rmnet_qmi.h"
 #include "rmnet_trace.h"
 
-typedef void (*rmnet_perf_tether_egress_hook_t)(struct sk_buff *skb);
-rmnet_perf_tether_egress_hook_t rmnet_perf_tether_egress_hook __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_tether_egress_hook);
-
-typedef void (*rmnet_perf_egress_hook1_t)(struct sk_buff *skb);
-rmnet_perf_egress_hook1_t rmnet_perf_egress_hook1 __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_egress_hook1);
-
-typedef void (*rmnet_aps_pre_queue_t)(struct net_device *dev,
-				      struct sk_buff *skb);
-rmnet_aps_pre_queue_t rmnet_aps_pre_queue __read_mostly;
-EXPORT_SYMBOL(rmnet_aps_pre_queue);
-
-typedef int (*rmnet_aps_post_queue_t)(struct net_device *dev,
-				      struct sk_buff *skb);
-rmnet_aps_post_queue_t rmnet_aps_post_queue __read_mostly;
-EXPORT_SYMBOL(rmnet_aps_post_queue);
-
-typedef void (*rmnet_wlan_ll_tuple_hook_t)(struct sk_buff *skb);
-rmnet_wlan_ll_tuple_hook_t rmnet_wlan_ll_tuple_hook __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_wlan_ll_tuple_hook);
-
 /* RX/TX Fixup */
 
 void rmnet_vnd_rx_fixup(struct net_device *dev, u32 skb_len)

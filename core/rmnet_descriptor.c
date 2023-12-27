@@ -47,14 +47,6 @@
 #define rmnet_descriptor_for_each_frag_safe_reverse(p, tmp, desc) \
 	list_for_each_entry_safe_reverse(p, tmp, &desc->frags, list)
 
-typedef void (*rmnet_perf_desc_hook_t)(struct rmnet_frag_descriptor *frag_desc,
-				       struct rmnet_port *port);
-typedef void (*rmnet_perf_chain_hook_t)(void);
-
-typedef void (*rmnet_perf_tether_ingress_hook_t)(struct tcphdr *tp, struct sk_buff *skb);
-rmnet_perf_tether_ingress_hook_t rmnet_perf_tether_ingress_hook __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_tether_ingress_hook);
-
 struct rmnet_frag_descriptor *
 rmnet_get_frag_descriptor(struct rmnet_port *port)
 {
@@ -1835,10 +1827,6 @@ int rmnet_frag_process_next_hdr_packet(struct rmnet_frag_descriptor *frag_desc,
 	return rc;
 }
 
-/* Perf hook handler */
-rmnet_perf_desc_hook_t rmnet_perf_desc_entry __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_desc_entry);
-
 static void
 __rmnet_frag_ingress_handler(struct rmnet_frag_descriptor *frag_desc,
 			     struct rmnet_port *port)
@@ -1922,10 +1910,6 @@ no_perf:
 recycle:
 	rmnet_recycle_frag_descriptor(frag_desc, port);
 }
-
-/* Notify perf at the end of SKB chain */
-rmnet_perf_chain_hook_t rmnet_perf_chain_end __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_chain_end);
 
 void rmnet_descriptor_classify_chain_count(u64 chain_count,
 					   struct rmnet_port *port)
