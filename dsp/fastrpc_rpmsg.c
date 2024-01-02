@@ -112,6 +112,13 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	idr_init(&data->ctx_idr);
 	data->domain_id = domain_id;
 
+	err = of_platform_populate(rdev->of_node, NULL, NULL, rdev);
+	if (err)
+		goto populate_error;
+
+	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++)
+		mutex_init(&data->session[i].map_mutex);
+
 	switch (domain_id) {
 	case ADSP_DOMAIN_ID:
 	case MDSP_DOMAIN_ID:
@@ -166,13 +173,12 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		fastrpc_register_wakeup_source(data->secure_fdevice->miscdev.this_device,
 			FASTRPC_SECURE_WAKE_SOURCE_CLIENT_NAME, &data->wake_source_secure);
 
-	err = of_platform_populate(rdev->of_node, NULL, NULL, rdev);
-	if (err)
-		goto populate_error;
-
 	data->rpdev = rpdev;
 
 	return 0;
+
+fdev_error:
+	kfree(data);
 
 populate_error:
 	if (data->fdevice)
@@ -180,8 +186,6 @@ populate_error:
 	if (data->secure_fdevice)
 		misc_deregister(&data->secure_fdevice->miscdev);
 
-fdev_error:
-	kfree(data);
 	return err;
 }
 
