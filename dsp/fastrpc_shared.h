@@ -114,11 +114,6 @@
 #define FASTRPC_RMID_INIT_MEM_MAP      10
 #define FASTRPC_RMID_INIT_MEM_UNMAP    11
 
-/* Protection Domain(PD) ids */
-#define ROOT_PD		(0)
-#define USER_PD		(1)
-#define SENSORS_PD	(2)
-
 #define miscdev_to_fdevice(d) container_of(d, struct fastrpc_device, miscdev)
 
 /* Length of glink transaction history to store */
@@ -214,6 +209,21 @@
 	count; \
 	})
 #define COUNT_OF(number) (number == 0 ? 1 : FIND_DIGITS(number))
+
+/*
+ * Process types on remote subsystem
+ * Always add new PD types at the end, before MAX_PD_TYPE
+ */
+#define DEFAULT_UNUSED    0  /* pd type not configured for context banks */
+#define ROOT_PD           1  /* Root PD */
+#define AUDIO_STATICPD    2  /* ADSP Audio Static PD */
+#define SENSORS_STATICPD  3  /* ADSP Sensors Static PD */
+#define SECURE_STATICPD   4  /* CDSP Secure Static PD */
+#define OIS_STATICPD      5  /* ADSP OIS Static PD */
+#define CPZ_USERPD        6  /* CDSP CPZ USER PD */
+#define USERPD            7  /* DSP User Dynamic PD */
+#define GUEST_OS_SHARED   8  /* Legacy Guest OS Shared */
+#define MAX_PD_TYPE       9  /* Max PD type */
 
 enum fastrpc_remote_domains_id {
 	SECURE_PD = 0,
@@ -433,6 +443,7 @@ struct fastrpc_perf {
 struct fastrpc_session_ctx {
 	struct device *dev;
 	int sid;
+	int pd_type;
 	bool used;
 	bool valid;
 	bool secure;
@@ -497,6 +508,8 @@ struct fastrpc_channel_ctx {
 	bool unsigned_support;
 	u64 dma_mask;
 	u64 cpuinfo_todsp;
+	int max_sess_per_proc;
+	bool pd_type;
 };
 
 struct fastrpc_invoke_ctx {
@@ -538,6 +551,19 @@ struct fastrpc_device {
 	bool secure;
 };
 
+struct fastrpc_internal_config {
+	int init_fd;
+	int init_size;
+};
+
+/* FastRPC ioctl structure to set session related info */
+struct fastrpc_internal_sessinfo {
+	uint32_t domain_id;  /* Set the remote subsystem, Domain ID of the session  */
+	uint32_t session_id; /* Unused, Set the Session ID on remote subsystem */
+	uint32_t pd;    /* Set the process type on remote subsystem */
+	uint32_t sharedcb;   /* Unused, Session can share context bank with other sessions */
+};
+
 struct fastrpc_notif_queue {
 	/* Number of pending status notifications in queue */
 	atomic_t notif_queue_count;
@@ -556,6 +582,7 @@ struct fastrpc_internal_notif_rsp {
 struct fastrpc_notif_rsp {
 	struct list_head notifn;
 	u32 domain;
+	u32 session;
 	enum fastrpc_status_flags status;
 };
 
@@ -614,6 +641,10 @@ struct fastrpc_user {
 	/* Process status notification queue */
 	struct fastrpc_notif_queue proc_state_notif;
 	struct list_head notif_queue;
+	struct fastrpc_internal_config config;
+	bool multi_session_support;
+	bool untrusted_process;
+	bool set_session_info;
 };
 
 struct fastrpc_ctrl_latency {

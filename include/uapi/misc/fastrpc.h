@@ -113,6 +113,8 @@ enum fastrpc_multimode_invoke_type {
 	FASTRPC_INVOKE_DSPSIGNAL = 4,
 	FASTRPC_INVOKE_NOTIF = 5,
 	FASTRPC_INVOKE_MULTISESSION = 6,
+	FASTRPC_INVOKE_CONFIG = 7,
+	FASTRPC_INVOKE_SESSIONINFO = 8,
 };
 
 enum fastrpc_response_flags {

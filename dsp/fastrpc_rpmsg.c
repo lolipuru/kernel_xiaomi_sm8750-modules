@@ -115,6 +115,7 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	spin_lock_init(&(data->gmsg_log[domain_id].rx_lock));
 	idr_init(&data->ctx_idr);
 	data->domain_id = domain_id;
+	data->max_sess_per_proc = 4; // TODO: Fix this in a macro
 
 	err = of_platform_populate(rdev->of_node, NULL, NULL, rdev);
 	if (err)

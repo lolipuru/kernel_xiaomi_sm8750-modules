@@ -713,7 +713,8 @@ static const struct dma_buf_ops fastrpc_dma_buf_ops = {
 };
 
 static struct fastrpc_session_ctx *fastrpc_session_alloc(
-					struct fastrpc_channel_ctx *cctx, bool sharedcb, bool secure)
+					struct fastrpc_channel_ctx *cctx,
+					bool sharedcb, int pd_type, bool secure)
 {
 	struct fastrpc_session_ctx *session = NULL;
 	unsigned long flags;
@@ -722,11 +723,19 @@ static struct fastrpc_session_ctx *fastrpc_session_alloc(
 	if (!cctx->dev)
 		return session;
 
+	/*
+	 * If PD type is configured for context banks,
+	 * Use CPZ_USERPD, to allocate secure context bank type.
+	 */
+	if (secure && cctx->pd_type)
+		pd_type = CPZ_USERPD;
+
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 0; i < cctx->sesscount; i++) {
 		if (!cctx->session[i].used && cctx->session[i].valid &&
 			cctx->session[i].secure == secure &&
-			cctx->session[i].sharedcb == sharedcb) {
+			cctx->session[i].sharedcb == sharedcb &&
+			(pd_type == DEFAULT_UNUSED || cctx->session[i].pd_type == pd_type)) {
 			cctx->session[i].used = true;
 			session = &cctx->session[i];
 			break;
@@ -821,7 +830,7 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 	map->secure = (mem_buf_dma_buf_exclusive_owner(map->buf)) ? 0 : 1;
 	if (map->secure && (!(attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP))) {
 		if (!fl->secsctx) {
-			fl->secsctx = fastrpc_session_alloc(fl->cctx, false, true);
+			fl->secsctx = fastrpc_session_alloc(fl->cctx, false, fl->pd, true);
 			if (!fl->secsctx) {
 				dev_err(sess->dev, "No secure session available\n");
 				err = -EBUSY;
@@ -1279,6 +1288,17 @@ static void fastrpc_update_rxmsg_buf(struct fastrpc_channel_ctx *chan,
 	spin_unlock_irqrestore(&(chan->gmsg_log[chan->domain_id].rx_lock), flags);
 }
 
+static inline int fastrpc_getpd_msgidx (int pd) {
+	if(pd == ROOT_PD)
+		return 0;
+	else if(pd == USERPD)
+		return 1;
+	else if(pd == SENSORS_STATICPD)
+		return 2;
+	else
+		return 1;
+}
+
 static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 			       struct fastrpc_invoke_ctx *ctx,
 			       u32 kernel, uint32_t handle)
@@ -1291,13 +1311,11 @@ static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 	cctx = fl->cctx;
 	msg->pid = fl->tgid;
 	msg->tid = current->pid;
-	if (fl->sessionid)
-		msg->tid |= SESSION_ID_MASK;
 
 	if (kernel)
 		msg->pid = 0;
 
-	msg->ctx = ctx->ctxid | fl->pd;
+	msg->ctx = ctx->ctxid | fastrpc_getpd_msgidx(fl->pd);
 	msg->handle = handle;
 	msg->sc = ctx->sc;
 	msg->addr = ctx->buf ? ctx->buf->phys : 0;
@@ -2033,7 +2051,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		goto err_name;
 	}
 
-	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, false);
+	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, fl->pd, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
 		return -EBUSY;
@@ -2080,7 +2098,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	inbuf.pgid = fl->tgid;
 	inbuf.namelen = init.namelen;
 	inbuf.pageslen = 0;
-	fl->pd = USER_PD;
+	fl->pd = USERPD;
 
 	args[0].ptr = (u64)(uintptr_t)&inbuf;
 	args[0].length = sizeof(inbuf);
@@ -2149,7 +2167,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	struct fastrpc_init_create init;
 	struct fastrpc_invoke_args *args;
 	struct fastrpc_enhanced_invoke ioctl;
-	struct fastrpc_phy_page pages[1];
+	struct fastrpc_phy_page pages[2];
 	struct fastrpc_map *map = NULL;
 	struct fastrpc_buf *imem = NULL;
 	int memlen;
@@ -2185,7 +2203,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		goto err;
 	}
 
-	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, false);
+	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, fl->pd, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
 		return -EBUSY;
@@ -2199,7 +2217,17 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	inbuf.pageslen = 1;
 	inbuf.attrs = init.attrs;
 	inbuf.siglen = init.siglen;
-	fl->pd = USER_PD;
+	fl->pd = USERPD;
+
+	if(fl->config.init_fd != -1 && fl->config.init_size > 0) {
+		struct fastrpc_map *configmap = NULL;
+		err = fastrpc_map_create(fl, fl->config.init_fd, 0, fl->config.init_size, 0, &configmap, true); //TODO: Where should this memory be unmaped?
+		if (err)
+			goto err;
+		inbuf.pageslen = 2;
+		pages[1].addr = configmap->phys;
+		pages[1].size = configmap->size;
+	}
 
 	if (init.filelen && init.filefd) {
 		err = fastrpc_map_create(fl, init.filefd, init.file, init.filelen, 0, &map, true);
@@ -2233,7 +2261,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	pages[0].size = imem->size;
 
 	args[3].ptr = (u64)(uintptr_t) pages;
-	args[3].length = 1 * sizeof(*pages);
+	args[3].length = inbuf.pageslen * sizeof(*pages);
 	args[3].fd = -1;
 
 	args[4].ptr = (u64)(uintptr_t)&inbuf.attrs;
@@ -2420,6 +2448,10 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	fl->cctx = cctx;
 	fl->is_secure_dev = fdevice->secure;
 	fl->sessionid = 0;
+	fl->config.init_fd = -1;
+	fl->pd = DEFAULT_UNUSED;
+	fl->multi_session_support = false;
+	fl->set_session_info = false;
 
 	if (cctx->lowest_capacity_core_count) {
 		fl->dev_pm_qos_req = kzalloc((cctx->lowest_capacity_core_count) *
@@ -2521,7 +2553,7 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 		dev_err(fl->cctx->dev, "untrusted app trying to attach to privileged DSP PD\n");
 		return -EACCES;
 	}
-	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, false);
+	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, fl->pd, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
 		return -EBUSY;
@@ -2530,7 +2562,7 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 	args[0].length = sizeof(tgid);
 	args[0].fd = -1;
 	fl->pd = pd;
-	if (pd == SENSORS_PD) {
+	if (pd == SENSORS_STATICPD) {
 		if (fl->cctx->domain_id == ADSP_DOMAIN_ID)
 			fl->servloc_name = SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME;
 		else if (fl->cctx->domain_id == SDSP_DOMAIN_ID)
@@ -2586,7 +2618,7 @@ static int fastrpc_invoke(struct fastrpc_user *fl, char __user *argp)
 	return err;
 }
 
-void fastrpc_queue_pd_status(struct fastrpc_user *fl, int domain, int status)
+void fastrpc_queue_pd_status(struct fastrpc_user *fl, int domain, int status, int sessionid)
 {
 	struct fastrpc_notif_rsp *notif_rsp = NULL;
 	unsigned long flags;
@@ -2599,6 +2631,7 @@ void fastrpc_queue_pd_status(struct fastrpc_user *fl, int domain, int status)
 
 	notif_rsp->status = status;
 	notif_rsp->domain = domain;
+	notif_rsp->session = sessionid;
 
 	spin_lock_irqsave(&fl->proc_state_notif.nqlock, flags);
 	list_add_tail(&notif_rsp->notifn, &fl->notif_queue);
@@ -2624,7 +2657,7 @@ static void fastrpc_notif_find_process(int domain, struct fastrpc_channel_ctx *c
 
 	if (!is_process_found)
 		return;
-	fastrpc_queue_pd_status(user, domain, notif->status);
+	fastrpc_queue_pd_status(user, domain, notif->status, user->sessionid);
 }
 
 static int fastrpc_wait_on_notif_queue(
@@ -2684,7 +2717,7 @@ static int fastrpc_manage_poll_mode(struct fastrpc_user *fl, u32 enable, u32 tim
 {
 	const unsigned int MAX_POLL_TIMEOUT_US = 10000;
 
-	if ((fl->cctx->domain_id != CDSP_DOMAIN_ID) || (fl->pd != USER_PD)) {
+	if ((fl->cctx->domain_id != CDSP_DOMAIN_ID) || (fl->pd != USERPD)) {
 		dev_err(fl->cctx->dev,"poll mode only allowed for dynamic CDSP process\n");
 		return -EPERM;
 	}
@@ -2785,7 +2818,7 @@ static int fastrpc_internal_control(struct fastrpc_user *fl,
 	case FASTRPC_CONTROL_DSPPROCESS_CLEAN:
 		err = fastrpc_release_current_dsp_process(fl);
 		if (!err)
-			fastrpc_queue_pd_status(fl, fl->cctx->domain_id, FASTRPC_USERPD_FORCE_KILL);
+			fastrpc_queue_pd_status(fl, fl->cctx->domain_id, FASTRPC_USERPD_FORCE_KILL, fl->sessionid);
 		break;
 	case FASTRPC_CONTROL_RPC_POLL:
 		err = fastrpc_manage_poll_mode(fl, cp->lp.enable, cp->lp.latency);
@@ -2794,6 +2827,72 @@ static int fastrpc_internal_control(struct fastrpc_user *fl,
 		err = -EBADRQC;
 		break;
 	}
+	return err;
+}
+
+static int fastrpc_set_session_info(
+		struct fastrpc_user *fl, struct fastrpc_internal_sessinfo *sessinfo)
+{
+	int err = 0;
+
+	spin_lock(&fl->lock);
+	if (fl->set_session_info) {
+		spin_unlock(&fl->lock);
+		dev_err(fl->cctx->dev,"Set session info invoked multiple times\n");
+		err = -EBADR;
+		goto bail;
+	}
+	fl->set_session_info = true;
+	spin_unlock(&fl->lock);
+	/*
+	 * Third-party apps don't have permission to open the fastrpc device, so
+	 * it is opened on their behalf by DSP HAL. This is detected by
+	 * comparing current PID with the one stored during device open.
+	 */
+	if (current->tgid != fl->tgid)
+		fl->untrusted_process = true;
+
+	if(sessinfo->pd <= DEFAULT_UNUSED ||
+				sessinfo->pd >= MAX_PD_TYPE) {
+		dev_err(fl->cctx->dev,"Invalid PD type %d, range is %d - %d\n",
+					sessinfo->pd, DEFAULT_UNUSED + 1, MAX_PD_TYPE - 1);
+		goto bail;
+	}
+
+	if (err) {
+		dev_err(fl->cctx->dev,
+		"Session PD type %u is invalid for the process\n",
+							sessinfo->pd);
+		err = -EBADR;
+		goto bail;
+	}
+	if (fl->untrusted_process && sessinfo->pd != USERPD) {
+		dev_err(fl->cctx->dev,
+		"Session PD type %u not allowed for untrusted process\n",
+						sessinfo->pd);
+		err = -EBADR;
+		goto bail;
+	}
+	/*
+	 * If PD type is not configured for context banks,
+	 * ignore PD type passed by the user, leave pd_type set to DEFAULT_UNUSED(0)
+	 */
+	if (fl->cctx->pd_type)
+		fl->pd = sessinfo->pd;
+	// Processes attaching to Sensor Static PD, share context bank.
+	if (sessinfo->pd == SENSORS_STATICPD)
+		fl->sharedcb = 1;
+	if (sessinfo->session_id >= fl->cctx->max_sess_per_proc) {
+		dev_err(fl->cctx->dev,
+		"Session ID %u cannot be beyond %u\n",
+				sessinfo->session_id, fl->cctx->max_sess_per_proc);
+		err = -EBADR;
+		goto bail;
+	}
+	fl->sessionid = sessinfo->session_id;
+	// Set multi_session_support, to disable old way of setting session_id
+	fl->multi_session_support = true;
+bail:
 	return err;
 }
 
@@ -3026,6 +3125,8 @@ static int fastrpc_multimode_invoke(struct fastrpc_user *fl, char __user *argp)
 	struct fastrpc_internal_control cp = {0};
 	struct fastrpc_internal_dspsignal *fsig = NULL;
 	struct fastrpc_internal_notif_rsp notif;
+	struct fastrpc_internal_config config;
+	struct fastrpc_internal_sessinfo sessinfo;
 	u32 nscalars;
 	u32 multisession;
 	u64 *perf_kernel;
@@ -3085,8 +3186,24 @@ static int fastrpc_multimode_invoke(struct fastrpc_user *fl, char __user *argp)
 	case FASTRPC_INVOKE_MULTISESSION:
 		if (copy_from_user(&multisession, (void __user *)(uintptr_t)invoke.invparam, sizeof(multisession)))
 			return  -EFAULT;
-		fl->sessionid = 1;
-		fl->tgid |= SESSION_ID_MASK;
+		if(!fl->multi_session_support)
+			fl->sessionid = 1;
+		break;
+	case FASTRPC_INVOKE_CONFIG:
+
+		if (copy_from_user(&config, (void __user *)(uintptr_t)invoke.invparam, 
+								sizeof(struct fastrpc_internal_config)))
+			return -EFAULT;
+
+		fl->config.init_fd = config.init_fd;
+		fl->config.init_size = config.init_size;
+
+		break;
+	case FASTRPC_INVOKE_SESSIONINFO:
+		if(copy_from_user(&sessinfo,(void __user *)(uintptr_t)invoke.invparam, 
+								sizeof(struct fastrpc_internal_sessinfo)))
+			return -EFAULT;
+		err = fastrpc_set_session_info(fl, &sessinfo);
 		break;
 	default:
 		err = -ENOTTY;
@@ -3605,7 +3722,7 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int cmd,
 		fastrpc_send_cpuinfo_to_dsp(fl);
 		break;
 	case FASTRPC_IOCTL_INIT_ATTACH_SNS:
-		err = fastrpc_init_attach(fl, SENSORS_PD);
+		err = fastrpc_init_attach(fl, SENSORS_STATICPD);
 		break;
 	case FASTRPC_IOCTL_INIT_CREATE_STATIC:
 		err = fastrpc_init_create_static_process(fl, argp);
@@ -3791,6 +3908,15 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 
 	if (of_property_read_u32(dev->of_node, "reg", &sess->sid))
 		dev_info(dev, "FastRPC Session ID not specified in DT\n");
+
+	if (of_get_property(dev->of_node, "pd-type", NULL) != NULL) {
+		err = of_property_read_u32(dev->of_node, "pd-type",
+				&(sess->pd_type));
+		if (err)
+			goto bail;
+		// Set pd_type, if the process type is configured for context banks
+		cctx->pd_type = true;
+	}
 
 	if (sessions > 0) {
 		struct fastrpc_session_ctx *dup_sess;
