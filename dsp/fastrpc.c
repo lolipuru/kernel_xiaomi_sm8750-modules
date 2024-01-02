@@ -768,6 +768,7 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 	struct scatterlist *sgl = NULL;
 	struct sg_table *table;
 	int err = 0, sgl_index = 0;
+	struct device *dev = NULL;
 
 	if (!fastrpc_map_lookup(fl, fd, va, len, ppmap, take_ref))
 		return 0;
@@ -787,8 +788,9 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 		goto get_err;
 		}
 	}
+
 	map->secure = (mem_buf_dma_buf_exclusive_owner(map->buf)) ? 0 : 1;
-	if (map->secure) {
+	if (map->secure && (!(attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP))) {
 		if (!fl->secsctx) {
 			fl->secsctx = fastrpc_session_alloc(fl->cctx, false, true);
 			if (!fl->secsctx) {
@@ -802,9 +804,21 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 		sess = fl->sctx;
 	}
 
-	map->attach = dma_buf_attach(map->buf, sess->dev);
+	if (attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP)
+		dev = fl->cctx->dev;
+	else
+		dev =  sess->dev;
+
+	mutex_lock(&fl->sctx->map_mutex);
+	if (!fl->sctx->dev) {
+		err = -ENODEV;
+		mutex_unlock(&fl->sctx->map_mutex);
+		goto attach_err;
+	}
+
+	map->attach = dma_buf_attach(map->buf, dev);
 	if (IS_ERR(map->attach)) {
-		dev_err(sess->dev, "Failed to attach dmabuf\n");
+		dev_err(dev, "Failed to attach dmabuf\n");
 		err = PTR_ERR(map->attach);
 		goto attach_err;
 	}
@@ -818,15 +832,26 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 
 	if (attr & FASTRPC_ATTR_SECUREMAP) {
 		map->phys = sg_phys(map->table->sgl);
+		for_each_sg(map->table->sgl, sgl, map->table->nents,
+			sgl_index)
+			map->size += sg_dma_len(sgl);
+		map->va = (void *) (uintptr_t) va;
+		map->len = len;
+	} else if (attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP){
+
+		map->phys = sg_dma_address(map->table->sgl);
+		map->size = len;
+		map->flags = FASTRPC_MAP_FD_DELAYED;
+		map->va = (void *) (uintptr_t) va;
 	} else {
 		map->phys = sg_dma_address(map->table->sgl);
 		map->phys += ((u64)sess->sid << 32);
+		for_each_sg(map->table->sgl, sgl, map->table->nents,
+			sgl_index)
+			map->size += sg_dma_len(sgl);
+		map->va = (void *) (uintptr_t) va;
+		map->len = len;
 	}
-	for_each_sg(map->table->sgl, sgl, map->table->nents,
-		sgl_index)
-		map->size += sg_dma_len(sgl);
-	map->va = sg_virt(map->table->sgl);
-	map->len = len;
 
 	if (attr & FASTRPC_ATTR_SECUREMAP) {
 		/*

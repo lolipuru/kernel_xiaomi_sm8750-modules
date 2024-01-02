@@ -62,6 +62,13 @@
 /* Map persistent header buffer on DSP */
 #define ADSP_MMAP_PERSIST_HDR  0x4000
 
+
+/* Fastrpc attribute for no mapping of fd  */
+#define FASTRPC_ATTR_NOMAP (16)
+
+/* This flag is used to skip CPU mapping  */
+#define  FASTRPC_MAP_FD_NOMAP (16)
+
 #define DSP_UNSUPPORTED_API (0x80000414)
 /* MAX NUMBER of DSP ATTRIBUTES SUPPORTED */
 #define FASTRPC_MAX_DSP_ATTRIBUTES (256)
