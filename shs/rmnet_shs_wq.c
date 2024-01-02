@@ -1,5 +1,5 @@
 /* Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -26,6 +26,10 @@
 #include "rmnet_shs_common.h"
 #include <linux/pm_wakeup.h>
 #include "rmnet_module.h"
+#if (KERNEL_VERSION((0xd03+244-0xdf1), (0xd03+244-0xdf1), (0xd2d+202-0xdf7)) <= \
+LINUX_VERSION_CODE)
+#include <net/netdev_rx_queue.h>
+#endif
 MODULE_LICENSE("\x47\x50\x4c\x20\x76\x32");
 #define DATARMNET59f7cb903f (0xc07+4861-0x1e3c)
 #define DATARMNET832dcfb5f8 (0xeb7+698-0x110d)
