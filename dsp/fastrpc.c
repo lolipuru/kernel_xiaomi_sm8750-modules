@@ -727,15 +727,17 @@ static struct fastrpc_session_ctx *fastrpc_session_alloc(
 	 * If PD type is configured for context banks,
 	 * Use CPZ_USERPD, to allocate secure context bank type.
 	 */
-	if (secure && cctx->pd_type)
+	if (secure && cctx->pd_type) {
 		pd_type = CPZ_USERPD;
+		sharedcb = true;
+	}
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 0; i < cctx->sesscount; i++) {
 		if (!cctx->session[i].used && cctx->session[i].valid &&
 			cctx->session[i].secure == secure &&
 			cctx->session[i].sharedcb == sharedcb &&
-			(pd_type == DEFAULT_UNUSED || cctx->session[i].pd_type == pd_type)) {
+			(pd_type == DEFAULT_UNUSED || cctx->session[i].pd_type == pd_type || secure)) {
 			cctx->session[i].used = true;
 			session = &cctx->session[i];
 			break;
@@ -832,7 +834,7 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 		if (!fl->secsctx) {
 			fl->secsctx = fastrpc_session_alloc(fl->cctx, false, fl->pd, true);
 			if (!fl->secsctx) {
-				dev_err(sess->dev, "No secure session available\n");
+				dev_err(fl->cctx->dev, "No secure session available\n");
 				err = -EBUSY;
 				goto attach_err;
 			}
