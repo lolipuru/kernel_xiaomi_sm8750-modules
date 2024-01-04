@@ -2787,8 +2787,6 @@ static void fts_event_handler(struct work_struct *work)
 
 	info = container_of(work, struct fts_ts_info, work);
 
-	__pm_wakeup_event(info->wakesrc, jiffies_to_msecs(HZ));
-
 	/* read the FIFO and parsing events */
 
 
@@ -3594,8 +3592,6 @@ static void fts_resume_work(struct work_struct *work)
 
 	info = container_of(work, struct fts_ts_info, resume_work);
 
-	__pm_wakeup_event(info->wakesrc, jiffies_to_msecs(HZ));
-
 	info->resume_bit = 1;
 
 	fts_system_reset();
@@ -3618,8 +3614,6 @@ static void fts_suspend_work(struct work_struct *work)
 	struct fts_ts_info *info;
 
 	info = container_of(work, struct fts_ts_info, suspend_work);
-
-	__pm_wakeup_event(info->wakesrc, jiffies_to_msecs(HZ));
 
 	info->resume_bit = 0;
 
