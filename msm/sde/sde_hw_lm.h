@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2019, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -106,11 +106,11 @@ struct sde_hw_lm_ops {
 	/**
 	 * Get all the sspp staged on a layer mixer
 	 * @ctx: Pointer to layer mixer context
-	 * @stage: stage number
+	 * @lm: layer mixer enumeration
 	 * @info: structure to populate connected sspp index info
 	 */
 	int (*get_staged_sspp)(struct sde_hw_mixer *ctx,
-		uint32_t stage, struct sde_sspp_index_info *info);
+		enum sde_lm lm, struct sde_sspp_index_info *info);
 
 };
 
