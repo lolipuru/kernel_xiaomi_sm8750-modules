@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <drm/msm_drm_aiqe.h>
@@ -98,8 +98,14 @@ int set_mdnie_feature(struct sde_hw_dspp *hw_dspp,
 {
 	int ret = 0;
 
-	if (!hw_dspp || !hw_dspp->ops.setup_mdnie)
+	if (!hw_dspp)
 		ret = -EINVAL;
+	else if (!hw_dspp->ops.setup_mdnie) {
+		if (!hw_dspp->cap->sblk->aiqe.mdnie_supported)
+			DRM_DEBUG_DRIVER("MDNIE not supported in dspp idx %d", hw_dspp->idx);
+		else
+			ret = -EINVAL;
+	}
 	else
 		hw_dspp->ops.setup_mdnie(hw_dspp, hw_cfg, &hw_crtc->aiqe_top_level);
 
@@ -112,8 +118,14 @@ int set_mdnie_art_feature(struct sde_hw_dspp *hw_dspp,
 {
 	int ret = 0;
 
-	if (!hw_dspp || !hw_dspp->ops.setup_mdnie_art)
+	if (!hw_dspp)
 		ret = -EINVAL;
+	else if (!hw_dspp->ops.setup_mdnie_art) {
+		if (!hw_dspp->cap->sblk->aiqe.mdnie_supported)
+			DRM_DEBUG_DRIVER("MDNIE not supported in dspp idx %d", hw_dspp->idx);
+		else
+			ret = -EINVAL;
+	}
 	else
 		hw_dspp->ops.setup_mdnie_art(hw_dspp, hw_cfg, &hw_crtc->aiqe_top_level);
 
@@ -175,8 +187,14 @@ int set_copr_feature(struct sde_hw_dspp *hw_dspp,
 {
 	int ret = 0;
 
-	if (!hw_dspp || !hw_dspp->ops.setup_copr)
+	if (!hw_dspp)
 		ret = -EINVAL;
+	else if (!hw_dspp->ops.setup_copr) {
+		if (!hw_dspp->cap->sblk->aiqe.copr_supported)
+			DRM_DEBUG_DRIVER("COPR not supported in dspp idx %d", hw_dspp->idx);
+		else
+			ret = -EINVAL;
+	}
 	else
 		hw_dspp->ops.setup_copr(hw_dspp, hw_cfg, &hw_crtc->aiqe_top_level);
 
