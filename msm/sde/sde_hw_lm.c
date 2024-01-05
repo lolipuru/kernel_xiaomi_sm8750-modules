@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -677,7 +677,7 @@ static int sde_hw_lm_setup_blendstage(struct sde_hw_mixer *ctx,
 
 static int _get_staged_sspp(u32 value, int pipes_per_stage, struct sde_sspp_index_info *info)
 {
-	u32 i, b;
+	int i;
 	u32 pipe_type = 0, rec_id = 0, pipe_count = 0;
 	unsigned long pipe_id = 0;
 
@@ -688,17 +688,16 @@ static int _get_staged_sspp(u32 value, int pipes_per_stage, struct sde_sspp_inde
 
 		if (rec_id < 0x2) {
 			if (pipe_type == 0x0) {
-				for_each_set_bit(b, &pipe_id, SSPP_MAX) {
-					set_bit(b - SSPP_DMA0, info->pipes);
-					pipe_count++;
-				}
+				set_bit(pipe_id + SSPP_DMA0,
+						rec_id ? info->virt_pipes : info->pipes);
+				pipe_count++;
 			} else if (pipe_type == 0x1) {
-				for_each_set_bit(b, &pipe_id, SSPP_MAX) {
-					set_bit(b - SSPP_VIG0, info->pipes);
-					pipe_count++;
-				}
+				set_bit(pipe_id + SSPP_VIG0,
+						rec_id ? info->virt_pipes : info->pipes);
+				pipe_count++;
 			} else {
-				SDE_ERROR("invalid rec-%d pipe_type %d\n", i, pipe_type);
+				SDE_DEBUG("invalid rec-%d pipe_type %d, value:0x%x\n",
+						i, pipe_type, value);
 				return 0;
 			}
 		}
@@ -708,27 +707,36 @@ static int _get_staged_sspp(u32 value, int pipes_per_stage, struct sde_sspp_inde
 }
 
 static int sde_hw_lm_get_staged_sspp(struct sde_hw_mixer *ctx,
-		u32 stage, struct sde_sspp_index_info *info)
+		enum sde_lm lm, struct sde_sspp_index_info *info)
 {
 	struct sde_hw_blk_reg_map *c;
 	int stage_off, pipes_per_stage;
-	u32 value, pipe_count;
+	u32 value, pipe_count = 0;
+	int i, stages, ret;
 
 	if (!ctx || !info)
-		return -EINVAL;
+		return 0;
 
 	c = &ctx->hw;
-	stage_off = _stage_offset(ctx, stage);
-	if (stage_off < 0)
-		return stage_off;
+	stages = ctx->cap->sblk->maxblendstages;
+	if (stages <= SDE_STAGE_BASE)
+		return 0;
 
 	if (test_bit(SDE_MIXER_SOURCESPLIT, &ctx->cap->features))
 		pipes_per_stage = PIPES_PER_STAGE;
 	else
 		pipes_per_stage = 1;
 
-	value = SDE_REG_READ(c, LM_BLEND0_FG_SRC_SEL_V1 + stage_off);
-	pipe_count = _get_staged_sspp(value, pipes_per_stage, info);
+	for (i = SDE_STAGE_0; i <= stages; i++) {
+		stage_off = _stage_offset(ctx, i);
+		if (stage_off < 0)
+			return 0;
+
+		value = SDE_REG_READ(c, LM_BLEND0_FG_SRC_SEL_V1 + stage_off);
+		ret = _get_staged_sspp(value, pipes_per_stage, info);
+		if (ret > 0)
+			pipe_count++;
+	}
 
 	return pipe_count;
 }
