@@ -17,6 +17,13 @@ else
     LINUXINCLUDE += -include $(SSG_MODULE_ROOT)/config/sec-kernel_defconfig_qseecom_compat.h
 endif
 
+ifeq ($(CONFIG_ARCH_QTI_VM), y)
+    ifneq (, $(filter y, $(CONFIG_ARCH_LEMANS)))
+        include $(SSG_MODULE_ROOT)/config/sec-kernel_defconfig_qrng.conf
+        LINUXINCLUDE += -include $(SSG_MODULE_ROOT)/config/sec-kernel_defconfig_qrng.h
+    endif
+endif
+
 obj-$(CONFIG_QSEECOM) += qseecom_dlkm.o
 qseecom_dlkm-objs := qseecom/qseecom.o
 
