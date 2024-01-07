@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -285,11 +285,17 @@ static struct pwr_data vreg_info_wcn6750 = {
 	.bt_num_vregs = ARRAY_SIZE(bt_vregs_info_qca6xx0),
 };
 
-/* Kiwi supports both BT & UWB SS. For now it requires
+/* Peach supports both BT & UWB SS. For now it requires
  * only platform regulators to be powered ON.
  */
 static struct pwr_data vreg_info_peach = {
 	.compatible = "qcom,peach-bt",
+	.platform_vregs = platform_vregs_info_peach,
+	.platform_num_vregs = ARRAY_SIZE(platform_vregs_info_peach),
+};
+
+static struct pwr_data vreg_info_wcn788x = {
+	.compatible = "qcom,wcn788x",
 	.platform_vregs = platform_vregs_info_peach,
 	.platform_num_vregs = ARRAY_SIZE(platform_vregs_info_peach),
 };
@@ -305,6 +311,7 @@ static const struct of_device_id bt_power_match_table[] = {
 	{	.compatible = "qcom,wcn6750-bt", .data = &vreg_info_wcn6750},
 	{	.compatible = "qcom,bt-qca-converged", .data = &vreg_info_converged},
 	{	.compatible = "qcom,peach-bt", .data = &vreg_info_peach},
+	{	.compatible = "qcom,wcn788x", .data = &vreg_info_wcn788x},
 	{},
 };
 
@@ -850,7 +857,7 @@ static int bt_regulators_pwr(int pwr_state)
 	bt_num_vregs =  pwr_data->bt_num_vregs;
 
 	if (!bt_num_vregs) {
-		pr_warn("%s: not avilable to %s\n",
+		pr_warn("%s: not available to %s\n",
 			__func__, reg_mode[pwr_state]);
 		return 0;
 	}
@@ -949,7 +956,7 @@ static int uwb_regulators_pwr(int pwr_state)
 	uwb_num_vregs =  pwr_data->uwb_num_vregs;
 
 	if (!uwb_num_vregs) {
-		pr_warn("%s: not avilable to %s\n",
+		pr_warn("%s: not available to %s\n",
 			__func__, reg_mode[pwr_state]);
 		return 0;
 	}
@@ -1533,7 +1540,9 @@ static int bt_power_probe(struct platform_device *pdev)
 	pwr_data->pdev = pdev;
 
 	pwr_data->is_ganges_dt = of_property_read_bool(pdev->dev.of_node,
-							"qcom,peach-bt");
+							"qcom,peach-bt") ||
+							of_property_read_bool(pdev->dev.of_node,
+							"qcom,wcn788x");
 	pr_info("%s: is_ganges_dt = %d\n", __func__, pwr_data->is_ganges_dt);
 
 	pwr_data->workq = alloc_workqueue("workq", WQ_HIGHPRI, WQ_DFL_ACTIVE);
