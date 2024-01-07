@@ -54,6 +54,7 @@ register_securemsm_module(
     default_srcs = [
         "qseecom.c",
         "ice.h",
+        "qseecom_32bit_impl.c"
     ],
     deps = [":qseecom_kernel_headers"],
     #srcs = ["config/sec-kernel_defconfig_qseecom.h"],
