@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -506,6 +506,7 @@ struct dsi_split_link_config {
  *			 cmd it points to the line after TE.
  * @dma_sched_window:	 Determines the width of the window during the
  *			 DSI command will be sent by the HW.
+ * @skip_pps_update:	 Skip sending pps command.
  */
 struct dsi_host_common_cfg {
 	enum dsi_pixel_format dst_format;
@@ -534,6 +535,7 @@ struct dsi_host_common_cfg {
 	u32 byte_intf_clk_div;
 	u32 dma_sched_line;
 	u32 dma_sched_window;
+	bool skip_pps_update;
 };
 
 /**
