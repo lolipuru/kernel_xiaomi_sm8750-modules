@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -60,6 +60,12 @@ static void dspp_igc(struct sde_hw_dspp *c)
 		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_IGC, c);
 		if (!ret)
 			c->ops.setup_igc = reg_dmav2_setup_dspp_igcv4;
+	} else if (c->cap->sblk->igc.version ==
+			SDE_COLOR_PROCESS_VER(0x5, 0x0)) {
+		c->ops.setup_igc = NULL;
+		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_IGC, c);
+		if (!ret)
+			c->ops.setup_igc = reg_dmav2_setup_dspp_igcv5;
 	}
 }
 
@@ -67,17 +73,19 @@ static void dspp_pcc(struct sde_hw_dspp *c)
 {
 	int ret = 0;
 
-	if (c->cap->sblk->pcc.version == (SDE_COLOR_PROCESS_VER(0x1, 0x7)))
+	if (c->cap->sblk->pcc.version == SDE_COLOR_PROCESS_VER(0x1, 0x7)) {
 		c->ops.setup_pcc = sde_setup_dspp_pcc_v1_7;
-	else if (c->cap->sblk->pcc.version ==
-			(SDE_COLOR_PROCESS_VER(0x4, 0x0))) {
+	} else if (c->cap->sblk->pcc.version ==
+			SDE_COLOR_PROCESS_VER(0x4, 0x0)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_PCC, c);
 		if (!ret)
 			c->ops.setup_pcc = reg_dmav1_setup_dspp_pccv4;
 		else
 			c->ops.setup_pcc = sde_setup_dspp_pccv4;
 	} else if (c->cap->sblk->pcc.version ==
-			(SDE_COLOR_PROCESS_VER(0x5, 0x0))) {
+			SDE_COLOR_PROCESS_VER(0x5, 0x0) ||
+			c->cap->sblk->pcc.version ==
+			SDE_COLOR_PROCESS_VER(0x6, 0x0)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_PCC, c);
 		if (!ret)
 			c->ops.setup_pcc = reg_dmav1_setup_dspp_pccv5;
@@ -100,6 +108,12 @@ static void dspp_gc(struct sde_hw_dspp *c)
 		 */
 		else
 			c->ops.setup_gc = sde_setup_dspp_gc_v1_7;
+	} else if (c->cap->sblk->gc.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
+		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_GC, c);
+		if (!ret)
+			c->ops.setup_gc = reg_dmav1_setup_dspp_gcv2;
+		else
+			c->ops.setup_gc = NULL;
 	}
 }
 
