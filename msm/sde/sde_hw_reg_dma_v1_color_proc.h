@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -110,6 +110,13 @@ void reg_dmav1_setup_dspp_3d_gamutv42(struct sde_hw_dspp *ctx, void *cfg);
  * @cfg: pointer to struct sde_hw_cp_cfg
  */
 void reg_dmav1_setup_dspp_gcv18(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * reg_dmav1_setup_dspp_gcv2() - gc v2 implementation using reg dma v1.
+ * @ctx: dspp ctx info
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_dspp_gcv2(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
  * reg_dmav1_setup_dspp_igcv31() - igc v31 implementation using reg dma v1.
@@ -313,6 +320,13 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg);
 void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
+ * reg_dmav1_setup_ltm_roiv1_3() - LTM ROI v1.3 implementation using reg dma v1.
+ * @ctx: dspp ctx info
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
  * reg_dmav1_setup_ltm_vlutv1() - LTM VLUT v1 implementation using reg dma v1.
  * @ctx: dspp instance
  * @cfg: pointer to struct sde_hw_cp_cfg
@@ -363,6 +377,13 @@ int reg_dmav2_init_dspp_op_v4(int feature, struct sde_hw_dspp *ctx);
  * @cfg: pointer to struct sde_hw_cp_cfg
  */
 void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * reg_dmav2_setup_dspp_igcv5() - igc v5 implementation using reg dma v2.
+ * @ctx: dspp ctx info
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
  * reg_dmav2_setup_3d_gamutv43() - gamut v4_3 implementation using reg dma v2.

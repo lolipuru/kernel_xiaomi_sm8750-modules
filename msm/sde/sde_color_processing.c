@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -804,6 +804,28 @@ static int _check_spr_udc_feature(struct sde_hw_dspp *hw_dspp,
 	return ret;
 }
 
+static int _check_ltm_roi_feature(struct sde_hw_dspp *hw_dspp,
+			      struct sde_hw_cp_cfg *hw_cfg,
+			      struct sde_crtc *sde_crtc)
+{
+	int ret = 0;
+
+	if (!hw_dspp || !hw_cfg || !sde_crtc) {
+		DRM_ERROR("invalid arguments");
+		return -EINVAL;
+	}
+
+	/* Some LTM versions have no validation function */
+	if (!hw_dspp->ops.validate_ltm_roi)
+		return 0;
+
+	ret = hw_dspp->ops.validate_ltm_roi(hw_dspp, hw_cfg);
+	if (ret)
+		DRM_ERROR("failed to validate LTM roi %d", ret);
+
+	return ret;
+}
+
 static int _set_rc_mask_feature(struct sde_hw_dspp *hw_dspp,
 			       struct sde_hw_cp_cfg *hw_cfg,
 			       struct sde_crtc *sde_crtc)
@@ -1081,6 +1103,7 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_RC_MASK] = _check_rc_mask_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_INIT] = _check_spr_init_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_UDC] = _check_spr_udc_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_LTM_ROI] = _check_ltm_roi_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = check_aiqe_ssrc_data; \
 } while (0)
 
@@ -2819,6 +2842,7 @@ static void _dspp_pcc_install_property(struct drm_crtc *crtc)
 	case 1:
 	case 4:
 	case 5:
+	case 6:
 		_sde_cp_crtc_install_blob_property(crtc, feature_name,
 			SDE_CP_CRTC_DSPP_PCC, sizeof(struct drm_msm_pcc));
 		break;
@@ -3010,11 +3034,16 @@ static void _dspp_ltm_install_property(struct drm_crtc *crtc)
 
 	kms = get_kms(crtc);
 	catalog = kms->catalog;
-	version = catalog->dspp[0].sblk->ltm.version >> 16;
+	if (catalog->dspp[0].sblk->ltm.version ==
+				SDE_COLOR_PROCESS_VER(0x1, 0x3))
+		version = 2;
+	else
+		version = catalog->dspp[0].sblk->ltm.version >> 16;
 	snprintf(feature_name, ARRAY_SIZE(feature_name), "%s%d",
 		"SDE_DSPP_LTM_V", version);
 	switch (version) {
 	case 1:
+	case 2:
 		_sde_cp_crtc_install_immutable_property(crtc,
 			feature_name, SDE_CP_CRTC_DSPP_LTM);
 
@@ -3220,6 +3249,7 @@ static void _dspp_gc_install_property(struct drm_crtc *crtc)
 		"SDE_DSPP_GC_V", version);
 	switch (version) {
 	case 1:
+	case 2:
 		_sde_cp_crtc_install_blob_property(crtc, feature_name,
 			SDE_CP_CRTC_DSPP_GC, sizeof(struct drm_msm_pgc_lut));
 		break;
@@ -3245,6 +3275,7 @@ static void _dspp_igc_install_property(struct drm_crtc *crtc)
 	switch (version) {
 	case 3:
 	case 4:
+	case 5:
 		_sde_cp_crtc_install_blob_property(crtc, feature_name,
 			SDE_CP_CRTC_DSPP_IGC, sizeof(struct drm_msm_igc_lut));
 		break;

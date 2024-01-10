@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2019, 2021 The Linux Foundation. All rights reserved.
  */
 #ifndef _SDE_HW_COLOR_PROC_V4_H_
@@ -186,12 +186,30 @@ void sde_setup_ucsc_cscv1(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 /**
+ * sde_setup_ucsc_cscv1_1 - api to set UCSC CSC cp block
+ * @ctx: pointer to pipe object
+ * @index: pipe rectangle to operate on
+ * @data: pointer to sde_hw_cp_cfg object containing drm_msm_ucsc_csc data
+ */
+void sde_setup_ucsc_cscv1_1(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, void *data);
+
+/**
  * sde_setup_ucsc_gcv1 - api to set UCSC GC cp block
  * @ctx: pointer to pipe object
  * @index: pipe rectangle to operate on
  * @data: pointer to sde_hw_cp_cfg object containing gc mode data
  */
 void sde_setup_ucsc_gcv1(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, void *data);
+
+/**
+ * sde_setup_ucsc_gcv1_1 - api to set UCSC GC cp block
+ * @ctx: pointer to pipe object
+ * @index: pipe rectangle to operate on
+ * @data: pointer to sde_hw_cp_cfg object containing gc mode data
+ */
+void sde_setup_ucsc_gcv1_1(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 /**
@@ -204,12 +222,30 @@ void sde_setup_ucsc_igcv1(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 /**
+ * sde_setup_ucsc_igcv1_1 - api to set UCSC IGC cp block
+ * @ctx: pointer to pipe object
+ * @index: pipe rectangle to operate on
+ * @data: pointer to sde_hw_cp_cfg object containing igc mode data
+ */
+void sde_setup_ucsc_igcv1_1(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, void *data);
+
+/**
  * sde_setup_ucsc_unmultv1 - api to set UCSC UNMULT cp block
  * @ctx: pointer to pipe object
  * @index: pipe rectangle to operate on
  * @data: pointer to sde_hw_cp_cfg object containing bool data
  */
 void sde_setup_ucsc_unmultv1(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, void *data);
+
+/**
+ * sde_setup_ucsc_unmultv1_1 - api to set UCSC UNMULT cp block
+ * @ctx: pointer to pipe object
+ * @index: pipe rectangle to operate on
+ * @data: pointer to sde_hw_cp_cfg object containing bool data
+ */
+void sde_setup_ucsc_unmultv1_1(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 /**
@@ -220,5 +256,12 @@ void sde_setup_ucsc_unmultv1(struct sde_hw_pipe *ctx,
  */
 void sde_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
+
+/**
+ * sde_validate_ltm_roiv1_3 - api to validate the LTM roi configuration
+ * @ctx: pointer to dspp object.
+ * @cfg: sde_hw_cp_cfg containing LTM roi configuration for the frame.
+ */
+int sde_validate_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg);
 
 #endif /* _SDE_HW_COLOR_PROC_V4_H_ */
