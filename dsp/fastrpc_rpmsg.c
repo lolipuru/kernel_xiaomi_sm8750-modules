@@ -90,6 +90,9 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		}
 	}
 
+	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++)
+		mutex_init(&data->session[i].map_mutex);
+
 	secure_dsp = !(of_property_read_bool(rdev->of_node, "qcom,non-secure-domain"));
 	data->secure = secure_dsp;
 
@@ -202,6 +205,7 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 	spin_lock_irqsave(&cctx->lock, flags);
 	cctx->rpdev = NULL;
 	cctx->staticpd_status = false;
+	fastrpc_mmap_remove_ssr(cctx);
 	list_for_each_entry(user, &cctx->users, user) {
 		fastrpc_queue_pd_status(user, cctx->domain_id, FASTRPC_DSP_SSR);
 		fastrpc_notify_users(user);
@@ -213,8 +217,6 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 
 	if (cctx->secure_fdevice)
 		misc_deregister(&cctx->secure_fdevice->miscdev);
-
-	fastrpc_mmap_remove_ssr(cctx);
 
 	if (cctx->domain_id == ADSP_DOMAIN_ID) {
 		pdr_handle_release(cctx->spd[0].pdrhandle);

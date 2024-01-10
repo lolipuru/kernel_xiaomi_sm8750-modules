@@ -46,13 +46,18 @@ static inline int64_t getnstimediff(struct timespec64 *start)
 static void fastrpc_free_map(struct kref *ref)
 {
 	struct fastrpc_map *map;
+	struct fastrpc_user *fl;
 
 	map = container_of(ref, struct fastrpc_map, refcount);
+
+	fl = map->fl;
+	if (!fl)
+		return;
 
 	if (map->table) {
 		if (map->attr & FASTRPC_ATTR_SECUREMAP) {
 			struct qcom_scm_vmperm perm;
-			int vmid = map->fl->cctx->vmperms[0].vmid;
+			int vmid = fl->cctx->vmperms[0].vmid;
 			u64 src_perms = BIT(QCOM_SCM_VMID_HLOS) | BIT(vmid);
 			int err = 0;
 
@@ -61,15 +66,21 @@ static void fastrpc_free_map(struct kref *ref)
 			err = qcom_scm_assign_mem(map->phys, map->size,
 				&src_perms, &perm, 1);
 			if (err) {
-				dev_err(map->fl->sctx->dev, "Failed to assign memory phys 0x%llx size 0x%llx err %d",
+				dev_err(fl->sctx->dev, "Failed to assign memory phys 0x%llx size 0x%llx err %d",
 						map->phys, map->size, err);
 				return;
 			}
+		}
+		mutex_lock(&fl->sctx->map_mutex);
+		if (!fl->sctx->dev) {
+			mutex_unlock(&fl->sctx->map_mutex);
+			return;
 		}
 		dma_buf_unmap_attachment(map->attach, map->table,
 					 DMA_BIDIRECTIONAL);
 		dma_buf_detach(map->buf, map->attach);
 		dma_buf_put(map->buf);
+		mutex_unlock(&fl->sctx->map_mutex);
 	}
 
 	if (map->fl) {
@@ -185,7 +196,10 @@ static void fastrpc_cached_buf_list_add(struct fastrpc_buf *buf)
 	}
 
 skip_buf_cache:
-	__fastrpc_buf_free(buf);
+	mutex_lock(&fl->sctx->map_mutex);
+	if (fl->sctx->dev)
+		__fastrpc_buf_free(buf);
+	mutex_unlock(&fl->sctx->map_mutex);
 	return;
 }
 
@@ -200,10 +214,14 @@ static void fastrpc_buf_free(struct fastrpc_buf *buf, bool cache)
 		spin_unlock(&fl->lock);
 		return;
 	}
-	if (cache)
+	if (cache) {
 		fastrpc_cached_buf_list_add(buf);
-	else
-		__fastrpc_buf_free(buf);
+	} else {
+		mutex_lock(&fl->sctx->map_mutex);
+		if (fl->sctx->dev)
+			__fastrpc_buf_free(buf);
+		mutex_unlock(&fl->sctx->map_mutex);
+	}
 }
 
 static inline bool fastrpc_get_cached_buf(struct fastrpc_user *fl,
@@ -275,8 +293,11 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 	buf->raddr = 0;
 	buf->type = buf_type;
 
-	buf->virt = dma_alloc_coherent(dev, buf->size, (dma_addr_t *)&buf->phys,
-				       GFP_KERNEL);
+	mutex_lock(&fl->sctx->map_mutex);
+	if (fl->sctx->dev)
+		buf->virt = dma_alloc_coherent(dev, buf->size, (dma_addr_t *)&buf->phys,
+						GFP_KERNEL);
+	mutex_unlock(&fl->sctx->map_mutex);
 	if (!buf->virt) {
 		mutex_destroy(&buf->lock);
 		kfree(buf);
@@ -324,10 +345,13 @@ static int fastrpc_remote_heap_alloc(struct fastrpc_user *fl, struct device *dev
 static void fastrpc_channel_ctx_free(struct kref *ref)
 {
 	struct fastrpc_channel_ctx *cctx;
+	int i;
 
 	cctx = container_of(ref, struct fastrpc_channel_ctx, refcount);
 	mutex_destroy(&cctx->wake_mutex);
 
+	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++)
+		mutex_destroy(&cctx->session[i].map_mutex);
 	kfree(cctx);
 }
 
@@ -825,12 +849,14 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 	if (IS_ERR(map->attach)) {
 		dev_err(dev, "Failed to attach dmabuf\n");
 		err = PTR_ERR(map->attach);
+		mutex_unlock(&fl->sctx->map_mutex);
 		goto attach_err;
 	}
 
 	table = dma_buf_map_attachment(map->attach, DMA_BIDIRECTIONAL);
 	if (IS_ERR(table)) {
 		err = PTR_ERR(table);
+		mutex_unlock(&fl->sctx->map_mutex);
 		goto map_err;
 	}
 	map->table = table;
@@ -857,6 +883,7 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
 		map->va = (void *) (uintptr_t) va;
 		map->len = len;
 	}
+	mutex_unlock(&fl->sctx->map_mutex);
 
 	if (attr & FASTRPC_ATTR_SECUREMAP) {
 		/*
@@ -1021,9 +1048,6 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 	PERF_END);
 
 	ctx->msg_sz = pkt_size;
-
-	if (!ctx->fl->sctx->dev)
-		return -EPIPE;
 
 	err = fastrpc_buf_alloc(ctx->fl, dev, pkt_size, METADATA_BUF, &ctx->buf);
 	if (err)
@@ -1724,7 +1748,7 @@ int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx)
 			}
 		}
 		list_del(&buf->node);
-		fastrpc_buf_free(buf, false);
+		__fastrpc_buf_free(buf);
 	}
 
 	return 0;
@@ -3568,6 +3592,7 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int cmd,
 	char __user *argp = (char __user *)arg;
 	int err;
 
+	fastrpc_channel_ctx_get(fl->cctx);
 	switch (cmd) {
 	case FASTRPC_IOCTL_INVOKE:
 		err = fastrpc_invoke(fl, argp);
@@ -3610,6 +3635,7 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int cmd,
 		err = -ENOTTY;
 		break;
 	}
+	fastrpc_channel_ctx_put(fl->cctx);
 
 	return err;
 }
@@ -3902,7 +3928,11 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 1; i < FASTRPC_MAX_SESSIONS; i++) {
 		if (cctx->session[i].sid == sess->sid) {
+			spin_unlock_irqrestore(&cctx->lock, flags);
+			mutex_lock(&cctx->session[i].map_mutex);
 			cctx->session[i].dev = NULL;
+			mutex_unlock(&cctx->session[i].map_mutex);
+			spin_lock_irqsave(&cctx->lock, flags);
 			cctx->session[i].valid = false;
 			cctx->sesscount--;
 		}
