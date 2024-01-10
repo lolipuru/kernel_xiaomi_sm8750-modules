@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -160,6 +160,14 @@ struct sde_hw_dspp_ops {
 	 */
 	void (*ad_read_intr_resp)(struct sde_hw_dspp *ctx, u32 event,
 			u32 *resp_in, u32 *resp_out);
+
+	/**
+	 * validate_ltm_roi -  Validate LTM roi configuration
+	 * @ctx: Pointer to dspp context.
+	 * @cfg: Pointer to configuration.
+	 * Return: 0 on success, non-zero otherwise.
+	 */
+	int (*validate_ltm_roi)(struct sde_hw_dspp *ctx, void *cfg);
 
 	/**
 	 * setup_ltm_init - setup LTM INIT

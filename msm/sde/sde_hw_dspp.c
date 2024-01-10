@@ -253,9 +253,12 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 {
 	int ret = 0;
 
+	c->ops.validate_ltm_roi = NULL;
+
 	if (c->cap->sblk->ltm.version == SDE_COLOR_PROCESS_VER(0x1, 0x0) ||
 		c->cap->sblk->ltm.version == SDE_COLOR_PROCESS_VER(0x1, 0x1) ||
-		c->cap->sblk->ltm.version == SDE_COLOR_PROCESS_VER(0x1, 0x2)) {
+		c->cap->sblk->ltm.version == SDE_COLOR_PROCESS_VER(0x1, 0x2) ||
+		c->cap->sblk->ltm.version == SDE_COLOR_PROCESS_VER(0x1, 0x3)) {
 		ret = reg_dmav1_init_ltm_op_v6(SDE_LTM_INIT, c);
 		if (!ret)
 			ret = reg_dmav1_init_ltm_op_v6(SDE_LTM_ROI, c);
@@ -264,7 +267,9 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 
 		if (!ret) {
 			if (c->cap->sblk->ltm.version ==
-				SDE_COLOR_PROCESS_VER(0x1, 0x2)) {
+				SDE_COLOR_PROCESS_VER(0x1, 0x2) ||
+				c->cap->sblk->ltm.version ==
+				SDE_COLOR_PROCESS_VER(0x1, 0x3)) {
 				c->ops.setup_ltm_vlut =
 					reg_dmav1_setup_ltm_vlutv1_2;
 				c->ops.setup_ltm_hist_ctrl =
@@ -280,8 +285,15 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 					sde_ltm_clear_merge_mode;
 			}
 
+			if (c->cap->sblk->ltm.version ==
+					SDE_COLOR_PROCESS_VER(0x1, 0x3)) {
+				c->ops.setup_ltm_roi = reg_dmav1_setup_ltm_roiv1_3;
+				c->ops.validate_ltm_roi = sde_validate_ltm_roiv1_3;
+			} else {
+				c->ops.setup_ltm_roi = reg_dmav1_setup_ltm_roiv1;
+			}
+
 			c->ops.setup_ltm_init = reg_dmav1_setup_ltm_initv1;
-			c->ops.setup_ltm_roi = reg_dmav1_setup_ltm_roiv1;
 			c->ops.setup_ltm_thresh = sde_setup_dspp_ltm_threshv1;
 			c->ops.setup_ltm_hist_buffer =
 				sde_setup_dspp_ltm_hist_bufferv1;
@@ -299,7 +311,9 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 		if (!ret && (c->cap->sblk->ltm.version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1) ||
 			c->cap->sblk->ltm.version ==
-			SDE_COLOR_PROCESS_VER(0x1, 0x2)))
+			SDE_COLOR_PROCESS_VER(0x1, 0x2) ||
+			c->cap->sblk->ltm.version ==
+			SDE_COLOR_PROCESS_VER(0x1, 0x3)))
 			c->ltm_checksum_support = true;
 		else
 			c->ltm_checksum_support = false;

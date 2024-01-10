@@ -4591,22 +4591,17 @@ static void ltm_roiv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 	}
 }
 
-void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav1_setup_ltm_roi_v1_common(
+		struct sde_hw_dspp *ctx, void *cfg, u32 *roi_data, u32 reg_count)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	struct sde_reg_dma_kickoff_cfg kick_off;
-	struct drm_msm_ltm_cfg_param *cfg_param = NULL;
 	enum sde_ltm dspp_idx[LTM_MAX] = {0};
 	enum sde_ltm idx = 0;
 	u32 blk = 0, opmode = 0, i = 0, num_mixers = 0;
-	u32 roi_data[3];
 	int rc = 0;
-
-	rc = reg_dma_ltm_check(ctx, cfg, LTM_ROI);
-	if (rc)
-		return;
 
 	idx = (enum sde_ltm)ctx->idx;
 	rc = reg_dmav1_get_ltm_blk(hw_cfg, idx, &dspp_idx[0], &blk);
@@ -4617,47 +4612,6 @@ void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	num_mixers = hw_cfg->num_of_mixers;
-	/* disable case */
-	if (!hw_cfg->payload) {
-		DRM_DEBUG_DRIVER("Disable LTM roi feature\n");
-		LOG_FEATURE_OFF;
-		ltm_roiv1_disable(ctx, cfg, num_mixers, dspp_idx);
-		return;
-	}
-
-	if (hw_cfg->len != sizeof(struct drm_msm_ltm_cfg_param)) {
-		DRM_ERROR("invalid size of payload len %d exp %zd\n",
-			hw_cfg->len, sizeof(struct drm_msm_ltm_cfg_param));
-		return;
-	}
-
-	cfg_param = hw_cfg->payload;
-	/* input param exceeds the display width */
-	if (cfg_param->cfg_param_01 + cfg_param->cfg_param_03 >
-			hw_cfg->displayh) {
-		DRM_DEBUG_DRIVER("invalid input = [%u,%u], displayh = %u\n",
-			cfg_param->cfg_param_01, cfg_param->cfg_param_03,
-			hw_cfg->displayh);
-		/* set the roi width to max register value */
-		cfg_param->cfg_param_03 = 0xFFFF;
-	}
-
-	/* input param exceeds the display height */
-	if (cfg_param->cfg_param_02 + cfg_param->cfg_param_04 >
-			hw_cfg->displayv) {
-		DRM_DEBUG_DRIVER("invalid input = [%u,%u], displayv = %u\n",
-			cfg_param->cfg_param_02, cfg_param->cfg_param_04,
-			hw_cfg->displayv);
-		/* set the roi height to max register value */
-		cfg_param->cfg_param_04 = 0xFFFF;
-	}
-
-	roi_data[0] = ((cfg_param->cfg_param_02 & 0xFFFF) << 16) |
-			(cfg_param->cfg_param_01 & 0xFFFF);
-	roi_data[1] = ((cfg_param->cfg_param_04 & 0xFFFF) << 16) |
-			(cfg_param->cfg_param_03 & 0xFFFF);
-	roi_data[2] = ((cfg_param->cfg_param_05 & 0x1FF) << 16) |
-			(cfg_param->cfg_param_06 & 0x1FF);
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
@@ -4673,7 +4627,7 @@ void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg)
 		return;
 	}
 
-	REG_DMA_SETUP_OPS(dma_write_cfg, 0xb0, roi_data, sizeof(u32) * 3,
+	REG_DMA_SETUP_OPS(dma_write_cfg, 0xb0, roi_data, sizeof(u32) * reg_count,
 			REG_BLK_WRITE_SINGLE, 0, 0, 0);
 	rc = dma_ops->setup_payload(&dma_write_cfg);
 	if (rc) {
@@ -4716,6 +4670,144 @@ void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg)
 		DRM_ERROR("failed to kick off ret %d\n", rc);
 		return;
 	}
+}
+
+void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_ltm_cfg_param *cfg_param = NULL;
+	enum sde_ltm dspp_idx[LTM_MAX] = {0};
+	enum sde_ltm idx = 0;
+	u32 blk = 0, reg_count = 0;
+	u32 roi_data[3];
+	int rc = 0;
+
+	rc = reg_dma_ltm_check(ctx, cfg, LTM_ROI);
+	if (rc)
+		return;
+
+	idx = (enum sde_ltm)ctx->idx;
+	rc = reg_dmav1_get_ltm_blk(hw_cfg, idx, &dspp_idx[0], &blk);
+	if (rc) {
+		if (rc != -EALREADY)
+			DRM_ERROR("failed to get the blk info\n");
+		return;
+	}
+
+	/* disable case */
+	if (!hw_cfg->payload) {
+		DRM_DEBUG_DRIVER("Disable LTM roi feature\n");
+		LOG_FEATURE_OFF;
+		ltm_roiv1_disable(ctx, cfg, hw_cfg->num_of_mixers, dspp_idx);
+		return;
+	}
+
+	if (hw_cfg->len != sizeof(struct drm_msm_ltm_cfg_param)) {
+		DRM_ERROR("invalid size of payload len %d exp %zd\n",
+			hw_cfg->len, sizeof(struct drm_msm_ltm_cfg_param));
+		return;
+	}
+
+	cfg_param = hw_cfg->payload;
+	/* input param exceeds the display width */
+	if (cfg_param->cfg_param_01 + cfg_param->cfg_param_03 >
+			hw_cfg->displayh) {
+		DRM_DEBUG_DRIVER("invalid input = [%u,%u], displayh = %u\n",
+			cfg_param->cfg_param_01, cfg_param->cfg_param_03,
+			hw_cfg->displayh);
+		/* set the roi width to max register value */
+		cfg_param->cfg_param_03 = 0xFFFF;
+	}
+
+	/* input param exceeds the display height */
+	if (cfg_param->cfg_param_02 + cfg_param->cfg_param_04 >
+			hw_cfg->displayv) {
+		DRM_DEBUG_DRIVER("invalid input = [%u,%u], displayv = %u\n",
+			cfg_param->cfg_param_02, cfg_param->cfg_param_04,
+			hw_cfg->displayv);
+		/* set the roi height to max register value */
+		cfg_param->cfg_param_04 = 0xFFFF;
+	}
+
+	reg_count = 3;
+	roi_data[0] = ((cfg_param->cfg_param_02 & 0xFFFF) << 16) |
+			(cfg_param->cfg_param_01 & 0xFFFF);
+	roi_data[1] = ((cfg_param->cfg_param_04 & 0xFFFF) << 16) |
+			(cfg_param->cfg_param_03 & 0xFFFF);
+	roi_data[2] = ((cfg_param->cfg_param_05 & 0x1FF) << 16) |
+			(cfg_param->cfg_param_06 & 0x1FF);
+
+	reg_dmav1_setup_ltm_roi_v1_common(ctx, cfg, roi_data, reg_count);
+}
+
+void reg_dmav1_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_ltm_cfg_param *cfg_param = NULL;
+	enum sde_ltm dspp_idx[LTM_MAX] = {0};
+	enum sde_ltm idx = 0;
+	u32 blk = 0, reg_count = 0;
+	u32 roi_data[4];
+	int rc = 0;
+
+	rc = reg_dma_ltm_check(ctx, cfg, LTM_ROI);
+	if (rc)
+		return;
+
+	idx = (enum sde_ltm)ctx->idx;
+	rc = reg_dmav1_get_ltm_blk(hw_cfg, idx, &dspp_idx[0], &blk);
+	if (rc) {
+		if (rc != -EALREADY)
+			DRM_ERROR("failed to get the blk info\n");
+		return;
+	}
+
+	/* disable case */
+	if (!hw_cfg->payload) {
+		DRM_DEBUG_DRIVER("Disable LTM roi feature\n");
+		LOG_FEATURE_OFF;
+		ltm_roiv1_disable(ctx, cfg, hw_cfg->num_of_mixers, dspp_idx);
+		return;
+	}
+
+	if (hw_cfg->len != sizeof(struct drm_msm_ltm_cfg_param)) {
+		DRM_ERROR("invalid size of payload len %d exp %zd\n",
+			hw_cfg->len, sizeof(struct drm_msm_ltm_cfg_param));
+		return;
+	}
+
+	cfg_param = hw_cfg->payload;
+	/* input param exceeds the display width */
+	if (cfg_param->cfg_param_01 + cfg_param->cfg_param_03 >
+			hw_cfg->displayh) {
+		DRM_DEBUG_DRIVER("invalid input = [%u,%u], displayh = %u\n",
+			cfg_param->cfg_param_01, cfg_param->cfg_param_03,
+			hw_cfg->displayh);
+		/* set the roi width to max register value */
+		cfg_param->cfg_param_03 = 0xFFFF;
+	}
+
+	/* input param exceeds the display height */
+	if (cfg_param->cfg_param_02 + cfg_param->cfg_param_04 >
+			hw_cfg->displayv) {
+		DRM_DEBUG_DRIVER("invalid input = [%u,%u], displayv = %u\n",
+			cfg_param->cfg_param_02, cfg_param->cfg_param_04,
+			hw_cfg->displayv);
+		/* set the roi height to max register value */
+		cfg_param->cfg_param_04 = 0xFFFF;
+	}
+
+	reg_count = 4;
+	roi_data[0] = ((cfg_param->cfg_param_02 & 0xFFFF) << 16) |
+			(cfg_param->cfg_param_01 & 0xFFFF);
+	roi_data[1] = ((cfg_param->cfg_param_04 & 0xFFFF) << 16) |
+			(cfg_param->cfg_param_03 & 0xFFFF);
+	roi_data[2] = ((cfg_param->cfg_param_05 & 0x1FF) << 16) |
+			(cfg_param->cfg_param_06 & 0x1FF);
+	roi_data[3] = ((cfg_param->cfg_param_05 & 0x1FF0000) |
+			((cfg_param->cfg_param_06 >> 16) & 0x1FF));
+
+	reg_dmav1_setup_ltm_roi_v1_common(ctx, cfg, roi_data, reg_count);
 }
 
 static void ltm_vlutv1_disable(struct sde_hw_dspp *ctx, u32 clear)
