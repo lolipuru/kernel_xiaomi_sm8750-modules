@@ -3926,7 +3926,7 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 		}
 	}
 	spin_lock_irqsave(&cctx->lock, flags);
-	for (i = 1; i < FASTRPC_MAX_SESSIONS; i++) {
+	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++) {
 		if (cctx->session[i].sid == sess->sid) {
 			spin_unlock_irqrestore(&cctx->lock, flags);
 			mutex_lock(&cctx->session[i].map_mutex);
