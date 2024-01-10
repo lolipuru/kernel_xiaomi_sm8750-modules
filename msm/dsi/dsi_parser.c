@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2024, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -923,7 +923,7 @@ void *dsi_parser_get_head_node(void *in,
 		goto err;
 	}
 
-	parser->buf = devm_kzalloc(parser->dev, size, GFP_KERNEL);
+	parser->buf = devm_kzalloc(parser->dev, size+1, GFP_KERNEL);
 	if (!parser->buf)
 		goto err;
 
@@ -1296,4 +1296,3 @@ void dsi_parser_put(void *data)
 	devm_kfree(parser->dev, parser->buf);
 	devm_kfree(parser->dev, parser);
 }
-
