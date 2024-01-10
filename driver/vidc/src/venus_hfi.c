@@ -1112,6 +1112,46 @@ exit:
 	return rc;
 }
 
+int venus_hfi_set_crc(struct msm_vidc_core *core)
+{
+	int rc = 0;
+
+	rc = hfi_create_header(core->packet, core->packet_size,
+			   0 /*session_id*/,
+			   core->header_id++);
+	if (rc)
+		goto exit;
+
+	if (core->debug_enable_crc)
+		core->hfi_debug_config |= HFI_DEBUG_CONFIG_CRC;
+	else
+		core->hfi_debug_config &= ~HFI_DEBUG_CONFIG_CRC;
+
+	/* HFI_DEBUG_CONFIG_CRC */
+	rc = hfi_create_packet(core->packet, core->packet_size,
+			HFI_PROP_DEBUG_CONFIG,
+			HFI_HOST_FLAGS_NONE,
+			HFI_PAYLOAD_U32_ENUM,
+			HFI_PORT_NONE,
+			core->packet_id++,
+			&core->hfi_debug_config,
+			sizeof(u32));
+	if (rc)
+		goto exit;
+
+	rc = __cmdq_write(core, core->packet);
+	if (rc)
+		goto exit;
+
+	return rc;
+
+exit:
+	if (rc)
+		d_vpr_e("%s(): failed\n", __func__);
+
+	return rc;
+}
+
 int venus_hfi_trigger_stability(struct msm_vidc_inst *inst, u32 type,
 	u32 client_id, u32 val)
 {

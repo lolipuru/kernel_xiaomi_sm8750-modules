@@ -486,6 +486,7 @@ void msm_vidc_ssr_handler(struct work_struct *work);
 int msm_vidc_trigger_stability(struct msm_vidc_core *core,
 			       u64 trigger_stability_val);
 void msm_vidc_stability_handler(struct work_struct *work);
+int msm_vidc_set_crc(struct msm_vidc_core *core);
 int cancel_stability_work_sync(struct msm_vidc_inst *inst);
 void msm_vidc_fw_unload_handler(struct work_struct *work);
 int msm_vidc_suspend(struct msm_vidc_core *core);

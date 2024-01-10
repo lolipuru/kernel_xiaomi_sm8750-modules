@@ -105,6 +105,8 @@ struct msm_vidc_core {
 	struct work_struct                     ssr_work;
 	struct msm_vidc_core_power             power;
 	struct msm_vidc_ssr                    ssr;
+	bool                                   debug_enable_crc;
+	u32                                    hfi_debug_config;
 	u32                                    skip_pc_count;
 	u32                                    last_packet_type;
 	u8                                    *packet;

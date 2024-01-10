@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/types.h>
@@ -745,6 +745,12 @@ void *msm_vidc_open(struct msm_vidc_core *core, u32 session_type)
 		goto fail_add_session;
 	}
 
+	rc = msm_vidc_set_crc(core);
+	if (rc) {
+		i_vpr_e(inst, "%s: failed to set crc\n", __func__);
+		goto fail_set_crc;
+	}
+
 	rc = msm_vidc_pools_init(inst);
 	if (rc) {
 		i_vpr_e(inst, "%s: failed to init pool buffers\n", __func__);
@@ -848,6 +854,7 @@ fail_eventq_init:
 	destroy_workqueue(inst->workq);
 fail_create_workq:
 	msm_vidc_pools_deinit(inst);
+fail_set_crc:
 fail_pools_init:
 	msm_vidc_remove_session(inst);
 	msm_vidc_remove_dangling_session(inst);
