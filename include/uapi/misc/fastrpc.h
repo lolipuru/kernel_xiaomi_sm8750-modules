@@ -199,11 +199,11 @@ enum fastrpc_dspsignal_type {
 };
 
 enum fastrpc_status_flags {
-	FASTRPC_USERPD_UP			= 1,
-	FASTRPC_USERPD_EXIT 		= 2,
-	FASTRPC_USERPD_FORCE_KILL		= 3,
-	FASTRPC_USERPD_EXCEPTION = 4,
-	FASTRPC_DSP_SSR = 5,
+	FASTRPC_USERPD_UP			= 0,
+	FASTRPC_USERPD_EXIT			= 1,
+	FASTRPC_USERPD_FORCE_KILL	= 2,
+	FASTRPC_USERPD_EXCEPTION	= 3,
+	FASTRPC_DSP_SSR				= 4,
 };
 
 struct fastrpc_ioctl_capability {
