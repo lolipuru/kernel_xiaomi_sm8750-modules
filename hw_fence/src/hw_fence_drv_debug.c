@@ -762,14 +762,13 @@ exit:
 	return len;
 }
 
-static void _dump_queue(enum hw_fence_drv_prio prio, struct msm_hw_fence_client *hw_fence_client,
-	int queue_type)
+static void _dump_queue(struct hw_fence_driver_data *drv_data, enum hw_fence_drv_prio prio,
+	struct msm_hw_fence_client *hw_fence_client, int queue_type)
 {
 	struct msm_hw_fence_queue *queue;
-	struct msm_hw_fence_hfi_queue_header *hfi_header;
 	struct msm_hw_fence_queue_payload *payload;
 	u64 timestamp;
-	u32 *read_ptr, queue_entries;
+	u32 *read_ptr, *rd_idx_ptr, *wr_idx_ptr, *tx_wm_ptr, queue_entries;
 	int i;
 
 	queue = &hw_fence_client->queues[queue_type - 1];
@@ -782,13 +781,13 @@ static void _dump_queue(enum hw_fence_drv_prio prio, struct msm_hw_fence_client 
 			queue, queue ? queue->va_header : NULL, queue ? queue->va_queue : NULL);
 		return;
 	}
-	hfi_header = (struct msm_hw_fence_hfi_queue_header *)queue->va_header;
+	hw_fence_get_queue_idx_ptrs(drv_data, queue->va_header, &rd_idx_ptr, &wr_idx_ptr,
+		&tx_wm_ptr);
 
 	mb(); /* make sure data is ready before read */
 	HWFNC_DBG_DUMP(prio, "%s va:0x%pK rd_idx:%u wr_idx:%u tx_wm:%u q_size_bytes:%u\n",
 		(queue_type == HW_FENCE_TX_QUEUE) ? "TX QUEUE" : "RX QUEUE", queue->va_queue,
-		hfi_header->read_index, hfi_header->write_index, hfi_header->tx_wm,
-		queue->q_size_bytes);
+		*rd_idx_ptr, *wr_idx_ptr, *tx_wm_ptr, queue->q_size_bytes);
 	queue_entries = queue->q_size_bytes / HW_FENCE_CLIENT_QUEUE_PAYLOAD;
 
 	for (i = 0; i < queue_entries; i++) {
@@ -805,7 +804,7 @@ static void _dump_queue(enum hw_fence_drv_prio prio, struct msm_hw_fence_client 
 	}
 }
 
-void hw_fence_debug_dump_queues(enum hw_fence_drv_prio prio,
+void hw_fence_debug_dump_queues(struct hw_fence_driver_data *drv_data, enum hw_fence_drv_prio prio,
 	struct msm_hw_fence_client *hw_fence_client)
 {
 	if (!hw_fence_client) {
@@ -815,8 +814,8 @@ void hw_fence_debug_dump_queues(enum hw_fence_drv_prio prio,
 
 	HWFNC_DBG_DUMP(prio, "Queues for client %d\n", hw_fence_client->client_id);
 	if (hw_fence_client->queues_num == HW_FENCE_CLIENT_QUEUES)
-		_dump_queue(prio, hw_fence_client, HW_FENCE_RX_QUEUE);
-	_dump_queue(prio, hw_fence_client, HW_FENCE_TX_QUEUE);
+		_dump_queue(drv_data, prio, hw_fence_client, HW_FENCE_RX_QUEUE);
+	_dump_queue(drv_data, prio, hw_fence_client, HW_FENCE_TX_QUEUE);
 }
 
 /**
@@ -850,7 +849,7 @@ static ssize_t hw_fence_dbg_dump_queues_wr(struct file *file, const char __user 
 		HWFNC_ERR("client %d not initialized\n", client_id);
 		return -EINVAL;
 	}
-	hw_fence_debug_dump_queues(HW_FENCE_PRINTK, drv_data->clients[client_id]);
+	hw_fence_debug_dump_queues(drv_data, HW_FENCE_PRINTK, drv_data->clients[client_id]);
 
 	return count;
 }
@@ -1175,7 +1174,8 @@ int process_validation_client_loopback(struct hw_fence_driver_data *drv_data,
 	return 0;
 }
 
-static long _process_val_signal(struct msm_hw_fence_client *hw_fence_client,
+static long _process_val_signal(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_client *hw_fence_client,
 	struct dma_fence *fence, u64 hash, u32 *error)
 {
 	struct msm_hw_fence_queue_payload payload;
@@ -1189,7 +1189,7 @@ static long _process_val_signal(struct msm_hw_fence_client *hw_fence_client,
 	seqno = fence ? fence->seqno : 0;
 
 	while (read) {
-		read = hw_fence_read_queue(hw_fence_client, &payload, queue_type);
+		read = hw_fence_read_queue(drv_data, hw_fence_client, &payload, queue_type);
 		if (read < 0) {
 			HWFNC_ERR("unable to read client rxq client_id:%u\n",
 				hw_fence_client->client_id);
@@ -1211,13 +1211,14 @@ static long _process_val_signal(struct msm_hw_fence_client *hw_fence_client,
 	return -EINVAL;
 }
 
-int hw_fence_debug_wait_val(struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence,
-	u64 hash, u64 timeout_ms, u32 *error)
+int hw_fence_debug_wait_val(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence, u64 hash,
+	u64 timeout_ms, u32 *error)
 {
 	ktime_t cur_ktime, exp_ktime;
 	int ret = -EINVAL;
 
-	if (!hw_fence_client) {
+	if (!hw_fence_client || !drv_data) {
 		HWFNC_ERR("invalid client\n");
 		return -EINVAL;
 	}
@@ -1238,7 +1239,7 @@ int hw_fence_debug_wait_val(struct msm_hw_fence_client *hw_fence_client, struct 
 			dma_fence_put(fence);
 			return -ETIMEDOUT;
 		}
-		ret = _process_val_signal(hw_fence_client, fence, hash, error);
+		ret = _process_val_signal(drv_data, hw_fence_client, fence, hash, error);
 		/* if val client fails to find expected fence, keep waiting until timeout */
 	}
 

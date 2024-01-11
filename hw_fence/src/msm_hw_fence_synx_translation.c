@@ -249,7 +249,8 @@ static int synx_hwfence_wait(struct synx_session *session, u32 h_synx, u64 timeo
 	h_synx &= HW_FENCE_HANDLE_INDEX_MASK;
 	if (session->type >= SYNX_CLIENT_HW_FENCE_TEST_CTX0
 			&& session->type <= SYNX_CLIENT_HW_FENCE_TEST_CTX0 + MAX_SUPPORTED_TEST)
-		ret = hw_fence_debug_wait_val(session->client, NULL, h_synx, timeout_ms, &error);
+		ret = hw_fence_debug_wait_val(hw_fence_drv_data, session->client, NULL, h_synx,
+			timeout_ms, &error);
 #endif /* CONFIG_DEBUG_FS */
 
 	if (ret) {

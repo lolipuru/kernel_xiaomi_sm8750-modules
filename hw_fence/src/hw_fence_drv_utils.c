@@ -300,8 +300,8 @@ static int _process_fence_error_client_loopback(struct hw_fence_driver_data *drv
 	u32 client_id;
 
 	for (i = 0; read && i < HW_FENCE_MAX_ITER_READ; i++) {
-		read = hw_fence_read_queue_helper(&drv_data->ctrl_queues[HW_FENCE_RX_QUEUE - 1],
-			&payload);
+		read = hw_fence_read_queue_helper(drv_data,
+			&drv_data->ctrl_queues[HW_FENCE_RX_QUEUE - 1], &payload);
 		if (read < 0) {
 			HWFNC_DBG_Q("unable to read ctrl rxq for db_flag_id:%d\n", db_flag_id);
 			return read;
@@ -917,15 +917,16 @@ static int _parse_client_queue_dt_props_extra(struct hw_fence_driver_data *drv_d
 		goto exit;
 	}
 
-	if (desc->start_padding >= U32_MAX - HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num)) {
+	if (desc->start_padding >= U32_MAX - HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num,
+			drv_data->has_soccp)) {
 		HWFNC_ERR("%s client queues_num:%u start_padding:%u will overflow mem_size\n",
 			desc->name, desc->queues_num, desc->start_padding);
 		ret = -EINVAL;
 		goto exit;
 	}
 
-	if (desc->end_padding >= U32_MAX - HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num) -
-			desc->start_padding) {
+	if (desc->end_padding >= U32_MAX - HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num,
+			drv_data->has_soccp) - desc->start_padding) {
 		HWFNC_ERR("%s client q_num:%u start_p:%u end_p:%u will overflow mem_size\n",
 			desc->name, desc->queues_num, desc->start_padding, desc->end_padding);
 		ret = -EINVAL;
@@ -1000,15 +1001,16 @@ static int _parse_client_queue_dt_props_indv(struct hw_fence_driver_data *drv_da
 
 	queue_size = HW_FENCE_CLIENT_QUEUE_PAYLOAD * desc->queue_entries;
 	if (queue_size >= ((U32_MAX & PAGE_MASK) -
-			(HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num) +
+			(HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num, drv_data->has_soccp) +
 			desc->start_padding + desc->end_padding)) / desc->queues_num) {
 		HWFNC_ERR("%s client queue_sz:%u start_p:%u end_p:%u will overflow mem size\n",
 			desc->name, queue_size, desc->start_padding, desc->end_padding);
 		return -EINVAL;
 	}
 
-	desc->mem_size = PAGE_ALIGN(HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num) +
-		(queue_size * desc->queues_num) + desc->start_padding + desc->end_padding);
+	desc->mem_size = PAGE_ALIGN(HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num,
+		drv_data->has_soccp) + (queue_size * desc->queues_num) + desc->start_padding +
+		desc->end_padding);
 
 	if (desc->mem_size > MAX_CLIENT_QUEUE_MEM_SIZE) {
 		HWFNC_ERR("%s client queue mem_size:%u greater than max mem size:%d\n",
@@ -1120,15 +1122,17 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 		return -EINVAL;
 	}
 	drv_data->hw_fence_ctrl_queue_size = HW_FENCE_CTRL_QUEUE_PAYLOAD *
-		drv_data->hw_fence_queue_entries;
+		HW_FENCE_CTRL_QUEUE_ENTRIES;
 
-	if (drv_data->hw_fence_ctrl_queue_size >= (U32_MAX - HW_FENCE_HFI_CTRL_HEADERS_SIZE) /
+	if (drv_data->hw_fence_ctrl_queue_size >= (U32_MAX -
+			HW_FENCE_HFI_CTRL_HEADERS_SIZE(drv_data->has_soccp)) /
 			HW_FENCE_CTRL_QUEUES) {
 		HWFNC_ERR("queue size:%u will overflow ctrl queue mem size\n",
 			drv_data->hw_fence_ctrl_queue_size);
 		return -EINVAL;
 	}
-	drv_data->hw_fence_mem_ctrl_queues_size = HW_FENCE_HFI_CTRL_HEADERS_SIZE +
+	drv_data->hw_fence_mem_ctrl_queues_size =
+		HW_FENCE_HFI_CTRL_HEADERS_SIZE(drv_data->has_soccp) +
 		(HW_FENCE_CTRL_QUEUES * drv_data->hw_fence_ctrl_queue_size);
 
 	/* clients queues init */

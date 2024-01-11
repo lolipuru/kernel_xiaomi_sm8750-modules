@@ -659,13 +659,14 @@ int msm_hw_fence_dump_debug_data(void *client_handle, u32 dump_flags, u32 dump_c
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 
 	if (dump_flags & MSM_HW_FENCE_DBG_DUMP_QUEUES) {
-		hw_fence_debug_dump_queues(HW_FENCE_PRINTK, hw_fence_client);
+		hw_fence_debug_dump_queues(hw_fence_drv_data, HW_FENCE_PRINTK, hw_fence_client);
 
 		if (dump_clients_mask)
 			for (client_id = 0; client_id < HW_FENCE_CLIENT_MAX; client_id++)
 				if ((dump_clients_mask & (1 << client_id)) &&
 						hw_fence_drv_data->clients[client_id])
-					hw_fence_debug_dump_queues(HW_FENCE_PRINTK,
+					hw_fence_debug_dump_queues(hw_fence_drv_data,
+						HW_FENCE_PRINTK,
 						hw_fence_drv_data->clients[client_id]);
 	}
 

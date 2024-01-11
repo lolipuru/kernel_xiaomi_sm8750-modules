@@ -28,27 +28,39 @@
 #define HW_FENCE_CLIENT_QUEUES	2 /* Rx and Tx Queues */
 
 /* hfi headers calculation */
-#define HW_FENCE_HFI_TABLE_HEADER_SIZE (sizeof(struct msm_hw_fence_hfi_queue_table_header))
-#define HW_FENCE_HFI_QUEUE_HEADER_SIZE (sizeof(struct msm_hw_fence_hfi_queue_header))
+#define HW_FENCE_HFI_TABLE_HEADER_SIZE(has_soccp) \
+			((has_soccp) ? (sizeof(struct msm_hw_fence_hfi_queue_table_header_v2)) : \
+			(sizeof(struct msm_hw_fence_hfi_queue_table_header)))
 
-#define HW_FENCE_HFI_CTRL_HEADERS_SIZE (HW_FENCE_HFI_TABLE_HEADER_SIZE + \
-			(HW_FENCE_HFI_QUEUE_HEADER_SIZE * HW_FENCE_CTRL_QUEUES))
+#define HW_FENCE_HFI_QUEUE_HEADER_SIZE(has_soccp) \
+			((has_soccp) ? (sizeof(struct msm_hw_fence_hfi_queue_header_v2)) : \
+			(sizeof(struct msm_hw_fence_hfi_queue_header)))
 
-#define HW_FENCE_HFI_CLIENT_HEADERS_SIZE(queues_num) (HW_FENCE_HFI_TABLE_HEADER_SIZE + \
-			(HW_FENCE_HFI_QUEUE_HEADER_SIZE * queues_num))
+#define HW_FENCE_HFI_CTRL_HEADERS_SIZE(has_soccp) (HW_FENCE_HFI_TABLE_HEADER_SIZE(has_soccp) + \
+			(HW_FENCE_HFI_QUEUE_HEADER_SIZE(has_soccp) * HW_FENCE_CTRL_QUEUES))
+
+#define HW_FENCE_HFI_CLIENT_HEADERS_SIZE(queues_num, has_soccp) \
+			(HW_FENCE_HFI_TABLE_HEADER_SIZE(has_soccp) + \
+			(HW_FENCE_HFI_QUEUE_HEADER_SIZE(has_soccp) * queues_num))
 
 /*
- * Max Payload size is the bigest size of the message that we can have in the CTRL queue
- * in this case the max message is calculated like following, using 32-bits elements:
- * 1 header + 1 msg-type + 1 client_id + 2 hash + 1 error
+ * CTRL queue uses same 64-byte aligned payload size as client queue.
  */
-#define HW_FENCE_CTRL_QUEUE_MAX_PAYLOAD_SIZE ((1 + 1 + 1 + 2 + 1) * sizeof(u32))
+#define HW_FENCE_CTRL_QUEUE_MAX_PAYLOAD_SIZE (sizeof(struct msm_hw_fence_queue_payload))
 
 #define HW_FENCE_CTRL_QUEUE_PAYLOAD HW_FENCE_CTRL_QUEUE_MAX_PAYLOAD_SIZE
 #define HW_FENCE_CLIENT_QUEUE_PAYLOAD (sizeof(struct msm_hw_fence_queue_payload))
+#define HW_FENCE_CTRL_QUEUE_ENTRIES 64
+
+/*
+ * On targets with SOCCP, client RxQ lock is 64-bit in size but each lock is at a separate 64-byte
+ * chunk of memory
+ */
+#define HW_FENCE_LOCK_IDX_OFFSET 8
 
 /* Locks area for all clients with RxQ */
-#define HW_FENCE_MEM_LOCKS_SIZE(rxq_clients_num) (sizeof(u64) * rxq_clients_num)
+#define HW_FENCE_MEM_LOCKS_SIZE(rxq_clients_num) (HW_FENCE_LOCK_IDX_OFFSET * sizeof(u64) * \
+	rxq_clients_num)
 
 #define HW_FENCE_TX_QUEUE 1
 #define HW_FENCE_RX_QUEUE 2
@@ -129,23 +141,13 @@ enum hw_fence_lookup_ops {
 /**
  * enum hw_fence_client_data_id - Enum with the clients having client_data, an optional
  *                                parameter passed from the waiting client and returned
- *                                to it upon fence signaling. Only the first HW Fence
- *                                Client for non-VAL clients (e.g. GFX, IPE, VPU) have
- *                                client_data.
+ *                                to it upon fence signaling.
  * @HW_FENCE_CLIENT_DATA_ID_CTX0: GFX Client 0.
- * @HW_FENCE_CLIENT_DATA_ID_IPE: IPE Client 0.
- * @HW_FENCE_CLIENT_DATA_ID_VPU: VPU Client 0.
- * @HW_FENCE_CLIENT_DATA_ID_VAL0: Debug validation client 0.
- * @HW_FENCE_CLIENT_DATA_ID_VAL1: Debug validation client 1.
  * @HW_FENCE_MAX_CLIENTS_WITH_DATA: Max number of clients with data, also indicates an
  *                                  invalid hw_fence_client_data_id
  */
 enum hw_fence_client_data_id {
 	HW_FENCE_CLIENT_DATA_ID_CTX0,
-	HW_FENCE_CLIENT_DATA_ID_IPE,
-	HW_FENCE_CLIENT_DATA_ID_VPU,
-	HW_FENCE_CLIENT_DATA_ID_VAL0,
-	HW_FENCE_CLIENT_DATA_ID_VAL1,
 	HW_FENCE_MAX_CLIENTS_WITH_DATA,
 };
 
@@ -603,10 +605,13 @@ int hw_fence_update_queue(struct hw_fence_driver_data *drv_data,
 int hw_fence_update_existing_txq_payload(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, u64 hash, u32 error);
 inline u64 hw_fence_get_qtime(struct hw_fence_driver_data *drv_data);
-int hw_fence_read_queue(struct msm_hw_fence_client *hw_fence_client,
-	struct msm_hw_fence_queue_payload *payload, int queue_type);
-int hw_fence_read_queue_helper(struct msm_hw_fence_queue *queue,
-	struct msm_hw_fence_queue_payload *payload);
+int hw_fence_read_queue(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_client *hw_fence_client, struct msm_hw_fence_queue_payload *payload,
+	int queue_type);
+int hw_fence_read_queue_helper(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_queue *queue, struct msm_hw_fence_queue_payload *payload);
+void hw_fence_get_queue_idx_ptrs(struct hw_fence_driver_data *drv_data, void *va_header,
+	u32 **rd_idx_ptr, u32 **wr_idx_ptr, u32 **tx_wm_ptr);
 int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 	struct dma_fence *fence, struct msm_hw_fence_client *hw_fence_client, u64 context,
 	u64 seqno, u64 *hash, u64 client_data);

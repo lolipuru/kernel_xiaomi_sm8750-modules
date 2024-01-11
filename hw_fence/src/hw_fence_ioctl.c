@@ -506,7 +506,8 @@ static long hw_sync_ioctl_fence_wait(struct hw_sync_obj *obj, unsigned long arg)
 		return -EINVAL;
 	}
 
-	ret = hw_fence_debug_wait_val(hw_fence_client, fence, 0, data.timeout_ms, &error);
+	ret = hw_fence_debug_wait_val(hw_fence_drv_data, hw_fence_client, fence, 0,
+		data.timeout_ms, &error);
 	if (ret)
 		HWFNC_ERR("failed to wait for hw-fence client:%d ctx:%llu seq:%llu\n",
 			hw_fence_client->client_id, fence->context, fence->seqno);
