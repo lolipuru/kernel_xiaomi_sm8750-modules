@@ -23,6 +23,9 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/time64.h>
+#if IS_ENABLED(CONFIG_MSM_QMP)
+#include <linux/mailbox/qmp.h>
+#endif
 #ifdef CONFIG_CNSS_OUT_OF_TREE
 #include "cnss2.h"
 #else
@@ -41,6 +44,8 @@
 #endif
 #include <linux/iommu.h>
 #include "qmi.h"
+#include "cnss_prealloc.h"
+#include "cnss_common.h"
 
 #define MAX_NO_OF_MAC_ADDR		4
 #define QMI_WLFW_MAX_TIMESTAMP_LEN	32
@@ -54,6 +59,7 @@
 #define CNSS_RAMDUMP_MAGIC		0x574C414E
 #define CNSS_RAMDUMP_VERSION		0
 #define MAX_FIRMWARE_NAME_LEN		40
+#define FW_V1_NUMBER                    1
 #define FW_V2_NUMBER                    2
 #ifdef CONFIG_CNSS_SUPPORT_DUAL_DEV
 #define POWER_ON_RETRY_MAX_TIMES	2
@@ -75,6 +81,10 @@
 #define CNSS_EVENT_SYNC_UNINTERRUPTIBLE (CNSS_EVENT_SYNC | \
 				CNSS_EVENT_UNINTERRUPTIBLE)
 #define CNSS_EVENT_SYNC_UNKILLABLE (CNSS_EVENT_SYNC | CNSS_EVENT_UNKILLABLE)
+#define QMI_WLFW_MAX_TME_OPT_FILE_NUM 3
+#define TME_OEM_FUSE_FILE_NAME		"peach_sec.dat"
+#define TME_RPR_FILE_NAME		"peach_rpr.bin"
+#define TME_DPR_FILE_NAME		"peach_dpr.bin"
 
 enum cnss_dt_type {
 	CNSS_DTT_LEGACY = 0,
@@ -127,6 +137,8 @@ struct cnss_pinctrl_info {
 	struct pinctrl_state *sol_default;
 	struct pinctrl_state *wlan_en_active;
 	struct pinctrl_state *wlan_en_sleep;
+	struct pinctrl_state *sw_ctrl;
+	struct pinctrl_state *sw_ctrl_wl_cx;
 	int bt_en_gpio;
 	int wlan_en_gpio;
 	int xo_clk_gpio; /*qca6490 only */
@@ -263,17 +275,19 @@ enum cnss_mem_type {
 	CNSS_MEM_M3,
 	CNSS_MEM_CAL_V01,
 	CNSS_MEM_DPD_V01,
+	CNSS_MEM_AUX,
 };
 
 enum cnss_fw_dump_type {
 	CNSS_FW_IMAGE,
 	CNSS_FW_RDDM,
 	CNSS_FW_REMOTE_HEAP,
+	CNSS_FW_CAL,
 	CNSS_FW_DUMP_TYPE_MAX,
 };
 
 struct cnss_dump_entry {
-	u32 type;
+	int type;
 	u32 entry_start;
 	u32 entry_num;
 };
@@ -408,6 +422,18 @@ struct cnss_cal_info {
 	enum cnss_cal_status cal_status;
 };
 
+/**
+ * enum cnss_time_sync_period_vote - to get per vote time sync period
+ * @TIME_SYNC_VOTE_WLAN: WLAN Driver vote
+ * @TIME_SYNC_VOTE_CNSS: sys config vote
+ * @TIME_SYNC_VOTE_MAX
+ */
+enum cnss_time_sync_period_vote {
+	TIME_SYNC_VOTE_WLAN,
+	TIME_SYNC_VOTE_CNSS,
+	TIME_SYNC_VOTE_MAX,
+};
+
 struct cnss_control_params {
 	unsigned long quirks;
 	unsigned int mhi_timeout;
@@ -415,6 +441,7 @@ struct cnss_control_params {
 	unsigned int qmi_timeout;
 	unsigned int bdf_type;
 	unsigned int time_sync_period;
+	unsigned int time_sync_period_vote[TIME_SYNC_VOTE_MAX];
 };
 
 struct cnss_tcs_info {
@@ -528,7 +555,10 @@ struct cnss_plat_data {
 	u32 fw_mem_seg_len;
 	struct cnss_fw_mem fw_mem[QMI_WLFW_MAX_NUM_MEM_SEG_V01];
 	struct cnss_fw_mem m3_mem;
+	struct cnss_fw_mem tme_lite_mem;
+	struct cnss_fw_mem tme_opt_file_mem[QMI_WLFW_MAX_TME_OPT_FILE_NUM];
 	struct cnss_fw_mem *cal_mem;
+	struct cnss_fw_mem aux_mem;
 	u64 cal_time;
 	bool cbc_file_download;
 	u32 cal_file_size;
@@ -545,6 +575,7 @@ struct cnss_plat_data {
 	struct mutex dev_lock; /* mutex for register access through debugfs */
 	struct mutex driver_ops_lock; /* mutex for external driver ops */
 	struct cnss_wlan_driver *driver_ops;
+	u32 supported_link_speed;
 	u32 device_freq_hz;
 	u32 diag_reg_read_addr;
 	u32 diag_reg_read_mem_type;
@@ -555,7 +586,9 @@ struct cnss_plat_data {
 	u8 use_fw_path_with_prefix;
 	char firmware_name[MAX_FIRMWARE_NAME_LEN];
 	char fw_fallback_name[MAX_FIRMWARE_NAME_LEN];
+#ifndef CONFIG_DISABLE_CNSS_SRAM_DUMP
 	u8 *sram_dump;
+#endif
 	struct completion rddm_complete;
 	struct completion recovery_complete;
 	struct cnss_control_params ctrl_params;
@@ -575,6 +608,7 @@ struct cnss_plat_data {
 	u8 set_wlaon_pwr_ctrl;
 	struct cnss_tcs_info tcs_info;
 	bool fw_pcie_gen_switch;
+	bool fw_aux_uc_support;
 	u64 fw_caps;
 	u8 pcie_gen_speed;
 	struct iommu_domain *audio_iommu_domain;
@@ -584,6 +618,10 @@ struct cnss_plat_data {
 	u8 charger_mode;
 	struct mbox_client mbox_client_data;
 	struct mbox_chan *mbox_chan;
+#if IS_ENABLED(CONFIG_MSM_QMP)
+	struct qmp *qmp;
+#endif
+	bool use_direct_qmp;
 	const char *vreg_ol_cpr, *vreg_ipa;
 	const char **pdc_init_table, **vreg_pdc_map, **pmu_vreg_map;
 	int pdc_init_table_len, vreg_pdc_map_len, pmu_vreg_map_len;
@@ -607,6 +645,8 @@ struct cnss_plat_data {
 	const char *pld_bus_ops_name;
 	u32 on_chip_pmic_devices_count;
 	u32 *on_chip_pmic_board_ids;
+	bool no_bwscale;
+	bool sleep_clk;
 };
 
 #if IS_ENABLED(CONFIG_ARCH_QCOM)
@@ -632,12 +672,15 @@ static inline u64 cnss_get_host_timestamp(struct cnss_plat_data *plat_priv)
 int cnss_wlan_hw_disable_check(struct cnss_plat_data *plat_priv);
 int cnss_wlan_hw_enable(void);
 struct cnss_plat_data *cnss_get_plat_priv(struct platform_device *plat_dev);
+struct cnss_plat_data *cnss_get_first_plat_priv(struct platform_device *plat_dev);
 void cnss_pm_stay_awake(struct cnss_plat_data *plat_priv);
 void cnss_pm_relax(struct cnss_plat_data *plat_priv);
 struct cnss_plat_data *cnss_get_plat_priv_by_rc_num(int rc_num);
 int cnss_get_plat_env_count(void);
 struct cnss_plat_data *cnss_get_plat_env(int index);
 void cnss_get_qrtr_info(struct cnss_plat_data *plat_priv);
+void cnss_get_sleep_clk_supported(struct cnss_plat_data *plat_priv);
+void cnss_get_bwscal_info(struct cnss_plat_data *plat_priv);
 bool cnss_is_dual_wlan_enabled(void);
 int cnss_driver_event_post(struct cnss_plat_data *plat_priv,
 			   enum cnss_driver_event_type type,
@@ -690,7 +733,8 @@ int cnss_enable_int_pow_amp_vreg(struct cnss_plat_data *plat_priv);
 int cnss_get_tcs_info(struct cnss_plat_data *plat_priv);
 unsigned int cnss_get_timeout(struct cnss_plat_data *plat_priv,
 			      enum cnss_timeout_type);
-int cnss_aop_mbox_init(struct cnss_plat_data *plat_priv);
+int cnss_aop_interface_init(struct cnss_plat_data *plat_priv);
+void cnss_aop_interface_deinit(struct cnss_plat_data *plat_priv);
 int cnss_aop_pdc_reconfig(struct cnss_plat_data *plat_priv);
 int cnss_aop_send_msg(struct cnss_plat_data *plat_priv, char *msg);
 void cnss_power_misc_params_init(struct cnss_plat_data *plat_priv);
@@ -708,4 +752,9 @@ int cnss_get_feature_list(struct cnss_plat_data *plat_priv,
 int cnss_get_input_gpio_value(struct cnss_plat_data *plat_priv, int gpio_num);
 bool cnss_check_driver_loading_allowed(void);
 int cnss_dev_specific_power_on(struct cnss_plat_data *plat_priv);
+void cnss_recovery_handler(struct cnss_plat_data *plat_priv);
+size_t cnss_get_platform_name(struct cnss_plat_data *plat_priv,
+			      char *buf, const size_t buf_len);
+int cnss_iommu_map(struct iommu_domain *domain, unsigned long iova,
+		   phys_addr_t paddr, size_t size, int prot);
 #endif /* _CNSS_MAIN_H */

@@ -13,7 +13,18 @@ ifeq ($(ENABLE_WLAN_PLATFORM_DLKM), true)
 
 # LOCAL_PATH is a relative path to root build directory.
 LOCAL_PATH := $(call my-dir)
-DLKM_DIR := $(TOP)/device/qcom/common/dlkm
+LOCAL_MODULE_DDK_BUILD := true
+LOCAL_MODULE_DDK_ALLOW_UNSAFE_HEADERS := true
+LOCAL_MODULE_KO_DIRS := cnss2/cnss2.ko
+LOCAL_MODULE_KO_DIRS += cnss_utils/cnss_plat_ipc_qmi_svc.ko
+LOCAL_MODULE_KO_DIRS += cnss_utils/wlan_firmware_service.ko
+LOCAL_MODULE_KO_DIRS += cnss_genl/cnss_nl.ko
+LOCAL_MODULE_KO_DIRS += cnss_prealloc/cnss_prealloc.ko
+LOCAL_MODULE_KO_DIRS += cnss_utils/cnss_utils.ko
+LOCAL_MODULE_KO_DIRS += icnss2/icnss2.ko
+
+BOARD_COMMON_DIR ?= device/qcom/common
+DLKM_DIR := $(TOP)/$(BOARD_COMMON_DIR)/dlkm
 
 # WLAN_PLATFORM_ROOT needs to be a absolute since it will be used
 # for header files. $(TOP) cannot be used here since it will be
@@ -31,7 +42,9 @@ CNSS_SRC_FILES := \
 	$(wildcard $(LOCAL_PATH)/*) \
 	$(wildcard $(LOCAL_PATH)/*/*) \
 
+ifeq ($(TARGET_KERNEL_DLKM_SECURE_MSM_OVERRIDE), true)
 KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS=$(PWD)/$(call intermediates-dir-for,DLKM,sec-module-symvers)/Module.symvers
+endif
 
 # Module.symvers needs to be generated as a intermediate module so that
 # other modules which depend on WLAN platform modules can set local

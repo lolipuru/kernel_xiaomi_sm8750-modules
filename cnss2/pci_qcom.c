@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include "pci_platform.h"
 #include "debug.h"
@@ -159,7 +159,7 @@ static int cnss_pci_set_link_down(struct cnss_pci_data *pci_priv)
 	return ret;
 }
 
-bool cnss_pci_is_drv_supported(struct cnss_pci_data *pci_priv)
+void cnss_pci_update_drv_supported(struct cnss_pci_data *pci_priv)
 {
 	struct pci_dev *root_port = pcie_find_root_port(pci_priv->pci_dev);
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
@@ -169,7 +169,7 @@ bool cnss_pci_is_drv_supported(struct cnss_pci_data *pci_priv)
 	if (!root_port) {
 		cnss_pr_err("PCIe DRV is not supported as root port is null\n");
 		pci_priv->drv_supported = false;
-		return drv_supported;
+		return;
 	}
 
 	root_of_node = root_port->dev.of_node;
@@ -189,8 +189,6 @@ bool cnss_pci_is_drv_supported(struct cnss_pci_data *pci_priv)
 		plat_priv->cap.cap_flag |= CNSS_HAS_DRV_SUPPORT;
 		cnss_set_feature_list(plat_priv, CNSS_DRV_SUPPORT_V01);
 	}
-
-	return drv_supported;
 }
 
 static void cnss_pci_event_cb(struct msm_pcie_notify *notify)
@@ -236,12 +234,14 @@ static void cnss_pci_event_cb(struct msm_pcie_notify *notify)
 		cnss_pci_handle_linkdown(pci_priv);
 		break;
 	case MSM_PCIE_EVENT_WAKEUP:
+		cnss_pr_dbg("PCI Wake up event callback\n");
 		if ((cnss_pci_get_monitor_wake_intr(pci_priv) &&
 		     cnss_pci_get_auto_suspended(pci_priv)) ||
 		     dev->power.runtime_status == RPM_SUSPENDING) {
 			cnss_pci_set_monitor_wake_intr(pci_priv, false);
 			cnss_pci_pm_request_resume(pci_priv);
 		}
+		complete(&pci_priv->wake_event_complete);
 		break;
 	case MSM_PCIE_EVENT_DRV_CONNECT:
 		cnss_pr_dbg("DRV subsystem is connected\n");
@@ -268,7 +268,7 @@ int cnss_reg_pci_event(struct cnss_pci_data *pci_priv)
 			    MSM_PCIE_EVENT_LINKDOWN |
 			    MSM_PCIE_EVENT_WAKEUP;
 
-	if (cnss_pci_is_drv_supported(pci_priv))
+	if (cnss_pci_get_drv_supported(pci_priv))
 		pci_event->events = pci_event->events |
 			MSM_PCIE_EVENT_DRV_CONNECT |
 			MSM_PCIE_EVENT_DRV_DISCONNECT;
@@ -298,6 +298,9 @@ int cnss_wlan_adsp_pc_enable(struct cnss_pci_data *pci_priv,
 	int ret = 0;
 	u32 pm_options = PM_OPTIONS_DEFAULT;
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
+
+	if (!cnss_pci_get_drv_supported(pci_priv))
+		return 0;
 
 	if (plat_priv->adsp_pc_enabled == control) {
 		cnss_pr_dbg("ADSP power collapse already %s\n",
@@ -362,6 +365,11 @@ static int cnss_set_pci_link_status(struct cnss_pci_data *pci_priv,
 int cnss_set_pci_link(struct cnss_pci_data *pci_priv, bool link_up)
 {
 	int ret = 0, retry = 0;
+	struct cnss_plat_data *plat_priv;
+	int sw_ctrl_gpio;
+
+	plat_priv = pci_priv->plat_priv;
+	sw_ctrl_gpio = plat_priv->pinctrl_info.sw_ctrl_gpio;
 
 	cnss_pr_vdbg("%s PCI link\n", link_up ? "Resuming" : "Suspending");
 
@@ -370,6 +378,8 @@ retry:
 		ret = cnss_pci_set_link_up(pci_priv);
 		if (ret && retry++ < LINK_TRAINING_RETRY_MAX_TIMES) {
 			cnss_pr_dbg("Retry PCI link training #%d\n", retry);
+			cnss_pr_dbg("Value of SW_CTRL GPIO: %d\n",
+				    cnss_get_input_gpio_value(plat_priv, sw_ctrl_gpio));
 			if (pci_priv->pci_link_down_ind)
 				msleep(LINK_TRAINING_RETRY_DELAY_MS * retry);
 			goto retry;
@@ -578,6 +588,7 @@ int cnss_pci_init_smmu(struct cnss_pci_data *pci_priv)
 		pci_priv->smmu_s1_enable = true;
 		iommu_set_fault_handler(pci_priv->iommu_domain,
 					cnss_pci_smmu_fault_handler, pci_priv);
+		cnss_register_iommu_fault_handler_irq(pci_priv);
 	}
 
 	ret = of_property_read_u32_array(of_node,  "qcom,iommu-dma-addr-pool",
@@ -642,9 +653,13 @@ int cnss_pci_of_reserved_mem_device_init(struct cnss_pci_data *pci_priv)
 	 * attached to platform device of_node.
 	 */
 	ret = of_reserved_mem_device_init(dev_pci);
-	if (ret)
-		cnss_pr_err("Failed to init reserved mem device, err = %d\n",
-			    ret);
+	if (ret) {
+		if (ret == -EINVAL)
+			cnss_pr_vdbg("Ignore, no specific reserved-memory assigned\n");
+		else
+			cnss_pr_err("Failed to init reserved mem device, err = %d\n",
+				    ret);
+	}
 	if (dev_pci->cma_area)
 		cnss_pr_dbg("CMA area is %s\n",
 			    cma_get_name(dev_pci->cma_area));
