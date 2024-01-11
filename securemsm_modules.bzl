@@ -124,7 +124,8 @@ register_securemsm_module(
     path = QCEDEV_PATH,
     default_srcs = [
                 "qcedev.c",
-                "qcedev_smmu.c"],
+                "qcedev_smmu.c",
+                "compat_qcedev.c"],
     deps = [":qcedev_local_headers",
             "%b_qce50_dlkm"],
 )
