@@ -2612,15 +2612,16 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	spin_lock_init(&fl->proc_state_notif.nqlock);
 	init_completion(&fl->dma_invoke);
 
+	fl->cctx = cctx;
 	fl->tgid = current->tgid;
 	fl->tgid_frpc = get_unique_hlos_process_id(cctx);
 
 	if (fl->tgid_frpc == -1) {
-		pr_err("too many fastrpc clients, max %u allowed\n", MAX_FRPC_TGID);
+		dev_err(cctx->dev, "too many fastrpc clients, max %u allowed\n", MAX_FRPC_TGID);
 		return -EUSERS;
 	}
-
-	fl->cctx = cctx;
+	dev_info(cctx->dev, "HLOS pid %d, domain %d is mapped to unique sessions pid %d",
+			fl->tgid, fl->cctx->domain_id, fl->tgid_frpc);
 	fl->is_secure_dev = fdevice->secure;
 	fl->sessionid = 0;
 	fl->config.init_fd = -1;
