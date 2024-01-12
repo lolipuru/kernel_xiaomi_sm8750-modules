@@ -476,6 +476,7 @@ struct fastrpc_static_pd {
 	u64 pdrcount;
 	u64 prevpdrcount;
 	atomic_t ispdup;
+	atomic_t is_attached;
 	struct fastrpc_channel_ctx *cctx;
 };
 
@@ -613,6 +614,7 @@ struct fastrpc_user {
 	struct fastrpc_buf *init_mem;
 	/* Pre-allocated header buffer */
 	struct fastrpc_buf *pers_hdr_buf;
+	struct fastrpc_static_pd *spd;
 	/* Pre-allocated buffer divided into N chunks */
 	struct fastrpc_buf *hdr_bufs;
 	/*

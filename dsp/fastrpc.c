@@ -1884,14 +1884,20 @@ static int fastrpc_mmap_remove_pdr(struct fastrpc_user *fl)
 	if (atomic_read(&fl->cctx->spd[session].ispdup) == 0)
 		return -ENOTCONN;
 
-	if (fl->cctx->spd[session].pdrcount !=
-		fl->cctx->spd[session].prevpdrcount) {
+	if (atomic_add_unless(&fl->cctx->spd[session].is_attached, 1, 1)) {
+		fl->spd = &fl->cctx->spd[session];
+	} else {
+		dev_err(fl->cctx->dev,"Application already attached to audio PD\n");
+		return -ECONNREFUSED;
+	}
+	if (fl->spd->pdrcount !=
+		fl->spd->prevpdrcount) {
 		err = fastrpc_mmap_remove_ssr(fl->cctx);
 		if (err)
 			pr_warn("failed to unmap remote heap (err %d)\n",
 					err);
-		fl->cctx->spd[session].prevpdrcount =
-				fl->cctx->spd[session].pdrcount;
+		fl->spd->prevpdrcount =
+				fl->spd->pdrcount;
 	}
 
 	return err;
@@ -2488,6 +2494,9 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 		list_del(&frpc_drv->hn);
 	}
 	spin_unlock_irqrestore(&cctx->lock, flags);
+	if (fl->spd)
+		atomic_set(&fl->spd->is_attached, 0);
+
 	fastrpc_release_current_dsp_process(fl);
 
 	spin_lock_irqsave(&cctx->lock, flags);
@@ -4488,6 +4497,7 @@ static void fastrpc_pdr_cb(int state, char *service_path, void *priv)
 		spin_lock_irqsave(&cctx->lock, flags);
 		spd->pdrcount++;
 		atomic_set(&spd->ispdup, 0);
+		atomic_set(&spd->is_attached, 0);
 		spin_unlock_irqrestore(&cctx->lock, flags);
 		if (!strcmp(spd->servloc_name,
 				AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME))
