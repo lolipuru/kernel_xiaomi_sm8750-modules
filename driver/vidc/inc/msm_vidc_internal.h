@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_VIDC_INTERNAL_H_
@@ -126,6 +126,7 @@ enum msm_vidc_metadata_bits {
 #define MAX_SUPPORTED_MIN_QUALITY            70
 #define MIN_CHROMA_QP_OFFSET                -12
 #define MAX_CHROMA_QP_OFFSET                  0
+#define MAX_CHROMA_QP_OFFSET_MASK        0xFFFF
 #define MIN_QP_10BIT                        -11
 #define MIN_QP_8BIT                           1
 #define INVALID_FD                           -1
