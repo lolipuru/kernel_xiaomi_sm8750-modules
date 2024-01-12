@@ -166,6 +166,11 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 			SENSORS_PDR_ADSP_SERVICE_NAME, ADSP_SENSORPD_NAME, 1);
 		if (err)
 			return err;
+
+		err = fastrpc_setup_service_locator(data, OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME,
+			OIS_PDR_ADSP_SERVICE_NAME, ADSP_OISPD_NAME, 2);
+		if (err)
+			return err;
 	} else if (domain_id == SDSP_DOMAIN_ID) {
 		err = fastrpc_setup_service_locator(data, SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME,
 			SENSORS_PDR_SLPI_SERVICE_NAME, SLPI_SENSORPD_NAME, 0);

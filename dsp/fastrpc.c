@@ -2110,6 +2110,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	char *name;
 	int err;
 	bool scm_done = false;
+	bool is_oispd = false;
 	unsigned long flags;
 	struct {
 		int pgid;
@@ -2150,12 +2151,13 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, fl->pd, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
-		return -EBUSY;
+		err = -EBUSY;
+		goto err;
 	}
 
-	fl->servloc_name = AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME;
-
+	is_oispd = !strcmp(name, "oispd");
 	if (!strcmp(name, "audiopd")) {
+		fl->servloc_name = AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME;
 		/*
 		 * Remove any previous mappings in case process is trying
 		 * to reconnect after a PD restart on remote subsystem.
@@ -2163,9 +2165,15 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		err = fastrpc_mmap_remove_pdr(fl);
 		if (err)
 			goto err_name;
+	} else if (is_oispd) {
+		fl->servloc_name = OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME;
+	} else {
+		dev_err(fl->sctx->dev, "Create static process is failed for proc_name %s", name);
+		err = -EINVAL;
+		goto err;
 	}
 
-	if (!fl->cctx->staticpd_status) {
+	if (!fl->cctx->staticpd_status && !is_oispd) {
 		err = fastrpc_remote_heap_alloc(fl, fl->sctx->dev, init.memlen, REMOTEHEAP_BUF, &buf);
 		if (err)
 			goto err_name;
@@ -4501,7 +4509,9 @@ static void fastrpc_pdr_cb(int state, char *service_path, void *priv)
 		atomic_set(&spd->is_attached, 0);
 		spin_unlock_irqrestore(&cctx->lock, flags);
 		if (!strcmp(spd->servloc_name,
-				AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME))
+				AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME) ||
+			!strcmp(spd->servloc_name,
+				OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME))
 			cctx->staticpd_status = false;
 
 		fastrpc_notify_pdr_drivers(cctx, spd->servloc_name);
