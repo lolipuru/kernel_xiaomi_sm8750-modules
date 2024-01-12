@@ -5147,6 +5147,7 @@ void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc)
 		&sde_crtc->cp_feature_list);
 
 	if (prop_node) {
+		list_del_init(&prop_node->cp_dirty_list);
 		prop_node->prop_val = 0;
 		_sde_cp_update_list(prop_node, sde_crtc, true);
 	}
