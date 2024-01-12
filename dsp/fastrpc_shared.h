@@ -48,6 +48,7 @@
 #define SESSION_ID_INDEX (30)
 #define SESSION_ID_MASK (1 << SESSION_ID_INDEX)
 #define MAX_FRPC_TGID 64
+#define COPY_BUF_WARN_LIMIT (512*1024)
 
 /* Maximum buffers cached in cached buffer list */
 #define FASTRPC_MAX_CACHED_BUFS (32)

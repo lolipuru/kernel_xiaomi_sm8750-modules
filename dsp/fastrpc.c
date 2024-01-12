@@ -1205,6 +1205,13 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 
 			mlen = ctx->olaps[oix].mend - ctx->olaps[oix].mstart;
 
+			if (mlen > LONG_MAX)
+				return -EFAULT;
+
+			if (mlen > COPY_BUF_WARN_LIMIT)
+				dev_warn(dev, "user passed non ion buffer size %u, mend 0x%llx mstart 0x%llx, sc 0x%x",
+					mlen, ctx->olaps[oix].mend, ctx->olaps[oix].mstart, ctx->sc);
+
 			if (rlen < mlen)
 				goto bail;
 
