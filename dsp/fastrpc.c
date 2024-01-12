@@ -4509,9 +4509,7 @@ static void fastrpc_pdr_cb(int state, char *service_path, void *priv)
 		atomic_set(&spd->is_attached, 0);
 		spin_unlock_irqrestore(&cctx->lock, flags);
 		if (!strcmp(spd->servloc_name,
-				AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME) ||
-			!strcmp(spd->servloc_name,
-				OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME))
+				AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME))
 			cctx->staticpd_status = false;
 
 		fastrpc_notify_pdr_drivers(cctx, spd->servloc_name);
