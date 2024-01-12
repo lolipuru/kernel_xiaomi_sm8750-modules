@@ -12,10 +12,17 @@
 #include <linux/qrtr.h>
 #include <net/sock.h>
 #include <linux/workqueue.h>
-#include <linux/qcom_scm.h>
 #include <linux/miscdevice.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <linux/version.h>
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <linux/cpu.h>
+#include <linux/firmware/qcom/qcom_scm.h>
+#else
+#include <linux/qcom_scm.h>
+#endif
 
 #define ADSP_DOMAIN_ID (0)
 #define MDSP_DOMAIN_ID (1)

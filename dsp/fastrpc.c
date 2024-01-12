@@ -22,7 +22,6 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
-#include <linux/qcom_scm.h>
 #include <linux/pm_qos.h>
 #include "../include/uapi/misc/fastrpc.h"
 #include "../include/linux/fastrpc.h"
@@ -67,6 +66,41 @@ void fastrpc_update_gctx(struct fastrpc_channel_ctx *cctx, int flag)
 		gctx[cctx->domain_id] = NULL;
 }
 
+
+static void dma_buf_unmap_attachment_wrap(struct fastrpc_map *map)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0))
+	dma_buf_unmap_attachment_unlocked(map->attach, map->table,
+		DMA_BIDIRECTIONAL);
+#else
+	dma_buf_unmap_attachment(map->attach, map->table,
+		DMA_BIDIRECTIONAL);
+#endif
+}
+static int dma_buf_map_attachment_wrap(struct fastrpc_map *map)
+{
+	int err = 0;
+	struct sg_table *table;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0))
+	table = dma_buf_map_attachment_unlocked(map->attach,
+		DMA_BIDIRECTIONAL);
+	if (IS_ERR(table)) {
+		err = PTR_ERR(table);
+		return err;
+	}
+#else
+	table = dma_buf_map_attachment(map->attach,
+		DMA_BIDIRECTIONAL);
+	if (IS_ERR(table)) {
+		err = PTR_ERR(table);
+		return err;
+	}
+#endif
+	map->table = table;
+	return err;
+}
+
 static void fastrpc_free_map(struct kref *ref)
 {
 	struct fastrpc_map *map;
@@ -100,8 +134,7 @@ static void fastrpc_free_map(struct kref *ref)
 			mutex_unlock(&fl->sctx->map_mutex);
 			return;
 		}
-		dma_buf_unmap_attachment(map->attach, map->table,
-					 DMA_BIDIRECTIONAL);
+		dma_buf_unmap_attachment_wrap(map);
 		dma_buf_detach(map->buf, map->attach);
 		dma_buf_put(map->buf);
 		mutex_unlock(&fl->sctx->map_mutex);
@@ -913,13 +946,11 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 		goto attach_err;
 	}
 
-	table = dma_buf_map_attachment(map->attach, DMA_BIDIRECTIONAL);
-	if (IS_ERR(table)) {
-		err = PTR_ERR(table);
+	err = dma_buf_map_attachment_wrap(map);
+	if (err) {
 		mutex_unlock(&fl->sctx->map_mutex);
 		goto map_err;
 	}
-	map->table = table;
 
 	if (attr & FASTRPC_ATTR_SECUREMAP) {
 		map->phys = sg_phys(map->table->sgl);
@@ -1672,7 +1703,7 @@ static int fastrpc_mem_map_to_dsp(struct fastrpc_user *fl, int fd, int offset,
 	ioctl.inv.args = (__u64)args;
 	err = fastrpc_internal_invoke(fl, true, &ioctl);
 	if (err) {
-		dev_err(dev, "mem mmap error, fd %d, vaddr %llx, size %lld\n",
+		dev_err(dev, "mem mmap error, fd %d, vaddr %x, size %lx\n",
 			fd, va, size);
 		return err;
 	}
@@ -1869,11 +1900,11 @@ static int fastrpc_mmap_remove_pdr(struct fastrpc_user *fl)
 #ifdef CONFIG_DEBUG_FS
 void print_buf_info(struct seq_file *s_file, struct fastrpc_buf *buf)
 {
-    seq_printf(s_file,"\n %s %2s 0x%lx", "virt", ":", buf->virt);
-	seq_printf(s_file,"\n %s %2s 0x%lx", "phys", ":", buf->phys);
+    seq_printf(s_file,"\n %s %2s 0x%p", "virt", ":", buf->virt);
+	seq_printf(s_file,"\n %s %2s 0x%llx", "phys", ":", buf->phys);
 	seq_printf(s_file,"\n %s %2s 0x%lx", "raddr", ":", buf->raddr);
 	seq_printf(s_file,"\n %s %2s 0x%x", "type", ":", buf->type);
-	seq_printf(s_file,"\n %s %2s 0x%x", "size", ":", buf->size);
+	seq_printf(s_file,"\n %s %2s 0x%llx", "size", ":", buf->size);
 	seq_printf(s_file,"\n %s %s %d", "in_use", ":", buf->in_use);
 }
 
@@ -1882,16 +1913,16 @@ void print_ictx_info(struct seq_file *s_file, struct fastrpc_invoke_ctx *ictx)
 	seq_printf(s_file,"\n %s %7s %d", "nscalars", ":", ictx->nscalars);
 	seq_printf(s_file,"\n %s %10s %d", "nbufs", ":", ictx->nbufs);
 	seq_printf(s_file,"\n %s %10s %d", "retval", ":", ictx->retval);
-	seq_printf(s_file,"\n %s %12s %d", "crc", ":", ictx->crc);
+	seq_printf(s_file,"\n %s %12s %px", "crc", ":", ictx->crc);
 	seq_printf(s_file,"\n %s %1s %d", "early_wake_time", ":", ictx->early_wake_time);
-	seq_printf(s_file,"\n %s %5s %d", "perf_kernel", ":", ictx->perf_kernel);
-	seq_printf(s_file,"\n %s %7s %d", "perf_dsp", ":", ictx->perf_dsp);
+	seq_printf(s_file,"\n %s %5s %px", "perf_kernel", ":", ictx->perf_kernel);
+	seq_printf(s_file,"\n %s %7s %px", "perf_dsp", ":", ictx->perf_dsp);
 	seq_printf(s_file,"\n %s %12s %d", "pid", ":", ictx->pid);
 	seq_printf(s_file,"\n %s %11s %d", "tgid", ":", ictx->tgid);
 	seq_printf(s_file,"\n %s %13s 0x%x", "sc", ":", ictx->sc);
-	seq_printf(s_file,"\n %s %10s %d", "ctxid", ":", ictx->ctxid);
+	seq_printf(s_file,"\n %s %10s %llu", "ctxid", ":", ictx->ctxid);
 	seq_printf(s_file,"\n %s %3s %d", "is_work_done", ":", ictx->is_work_done);
-	seq_printf(s_file,"\n %s %9s %d", "msg_sz", ":", ictx->msg_sz);
+	seq_printf(s_file,"\n %s %9s %llu", "msg_sz", ":", ictx->msg_sz);
 }
 
 void print_sctx_info(struct seq_file *s_file, struct fastrpc_session_ctx *sctx)
@@ -1901,8 +1932,8 @@ void print_sctx_info(struct seq_file *s_file, struct fastrpc_session_ctx *sctx)
 	seq_printf(s_file,"%s %11s %d\n", "valid", ":", sctx->valid);
 	seq_printf(s_file,"%s %10s %d\n", "secure", ":", sctx->secure);
 	seq_printf(s_file,"%s %8s %d\n", "sharedcb", ":", sctx->sharedcb);
-	seq_printf(s_file,"%s %4s %d\n", "genpool_iova", ":", sctx->genpool_iova);
-	seq_printf(s_file,"%s %4s %d\n", "genpool_size", ":", sctx->genpool_size);
+	seq_printf(s_file,"%s %4s %lu\n", "genpool_iova", ":", sctx->genpool_iova);
+	seq_printf(s_file,"%s %4s %zu\n", "genpool_size", ":", sctx->genpool_size);
 }
 
 void print_ctx_info(struct seq_file *s_file, struct fastrpc_channel_ctx *ctx)
@@ -1910,7 +1941,7 @@ void print_ctx_info(struct seq_file *s_file, struct fastrpc_channel_ctx *ctx)
 	seq_printf(s_file,"%s %8s %d\n", "domain_id", ":", ctx->domain_id);
 	seq_printf(s_file,"%s %8s %d\n", "sesscount", ":", ctx->sesscount);
 	seq_printf(s_file,"%s %10s %d\n", "vmcount", ":", ctx->vmcount);
-	seq_printf(s_file,"%s %12s %d\n", "perms", ":", ctx->perms);
+	seq_printf(s_file,"%s %12s %llu\n", "perms", ":", ctx->perms);
 	seq_printf(s_file,"%s %s %d\n", "valid_attributes", ":", ctx->valid_attributes);
 	seq_printf(s_file,"%s %3s %d\n", "cpuinfo_status", ":", ctx->cpuinfo_status);
 	seq_printf(s_file,"%s %2s %d\n", "staticpd_status", ":", ctx->staticpd_status);
@@ -1921,11 +1952,11 @@ void print_ctx_info(struct seq_file *s_file, struct fastrpc_channel_ctx *ctx)
 void print_map_info(struct seq_file *s_file, struct fastrpc_map *map)
 {
 	seq_printf(s_file,"%s %4s %d\n", "fd", ":", map->fd);
-	seq_printf(s_file,"%s %s 0x%lx\n", "phys", ":", map->phys);
-	seq_printf(s_file,"%s %s 0x%x\n", "size", ":", map->size);
-	seq_printf(s_file,"%s %4s 0x%lx\n", "va", ":", map->va);
-	seq_printf(s_file,"%s %3s 0x%x\n", "len", ":", map->len);
-	seq_printf(s_file,"%s %2s 0x%x\n", "raddr", ":", map->raddr);
+	seq_printf(s_file,"%s %s 0x%llx\n", "phys", ":", map->phys);
+	seq_printf(s_file,"%s %s 0x%llx\n", "size", ":", map->size);
+	seq_printf(s_file,"%s %4s 0x%p\n", "va", ":", map->va);
+	seq_printf(s_file,"%s %3s 0x%llx\n", "len", ":", map->len);
+	seq_printf(s_file,"%s %2s 0x%llx\n", "raddr", ":", map->raddr);
 	seq_printf(s_file,"%s %2s 0x%x\n", "attr", ":", map->attr);
 	seq_printf(s_file,"%s %2s 0x%x\n", "flags", ":", map->flags);
 }
@@ -4575,7 +4606,7 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 					(dma_addr_t *)&buf->phys, GFP_KERNEL);
 
 		if (IS_ERR_OR_NULL(buf->virt)) {
-			dev_err(&pdev->dev, "dma_alloc failed for size 0x%zx, returned %pK\n",
+			dev_err(&pdev->dev, "dma_alloc failed for size 0x%llx, returned %pK\n",
 				buf->size, buf->virt);
 			err = -ENOBUFS;
 			goto dma_alloc_bail;
@@ -4594,8 +4625,14 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 		}
 
 		/* Map the allocated memory with fixed IOVA and is shared to remote subsystem */
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+		err = iommu_map_sg(domain, frpc_gen_addr_pool[0], sgt.sgl,
+				sgt.nents, IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE, GFP_KERNEL);
+#else
 		err = iommu_map_sg(domain, frpc_gen_addr_pool[0], sgt.sgl,
 				sgt.nents, IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE);
+
+#endif
 		if (err < 0) {
 			dev_err(&pdev->dev, "iommu_map_sg failed with err %d", err);
 			goto iommu_map_bail;
