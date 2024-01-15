@@ -30,6 +30,7 @@
 #include <linux/arch_topology.h>
 #include <linux/mem-buf.h>
 #include <linux/soc/qcom/pdr.h>
+#include <soc/qcom/secure_buffer.h>
 #include "fastrpc_shared.h"
 
 /* global copy of channel context */
@@ -869,6 +870,74 @@ static void fastrpc_pm_relax(struct fastrpc_user *fl,
 	mutex_unlock(&cctx->wake_mutex);
 }
 
+static int get_buffer_attr(struct dma_buf *buf, bool *exclusive_access, bool *hlos_access)
+{
+	const int *vmids_list = NULL;
+	const int  *perms = NULL;
+	int err = 0;
+	int vmids_list_len = 0;
+	*exclusive_access = false;
+	*hlos_access = false;
+
+	err = mem_buf_dma_buf_get_vmperm(buf, &vmids_list, &perms, &vmids_list_len);
+	if (err)
+		return err;
+	/*
+	 * If one VM has access to buffer and is the current VM,
+	 * then VM has exclusive access to buffer
+	 */
+	if (vmids_list_len == 1 && vmids_list[0] == mem_buf_current_vmid())
+		*exclusive_access = true;
+#if IS_ENABLED(CONFIG_MSM_ADSPRPC_TRUSTED)
+	/*
+	 * PVM (HLOS) can share buffers with TVM. In that case,
+	 * it is expected to relinquish its ownership to those buffers
+	 * before sharing. But if the PVM still retains access, then
+	 * these buffers cannot be used by TVM.
+	 */
+	for (int ii = 0; ii < vmids_list_len; ii++) {
+		if (vmids_list[ii] == VMID_HLOS) {
+			*hlos_access = true;
+			break;
+		}
+	}
+#endif
+	return err;
+}
+
+static int set_buffer_secure_type(struct fastrpc_map *map)
+{
+	int err = 0;
+	bool hlos_access = false;
+	bool exclusive_access = false;
+	struct device *dev = map->fl->sctx->dev;
+
+	err = get_buffer_attr(map->buf, &exclusive_access, &hlos_access);
+	if (err) {
+		dev_err(dev, "failed to obtain buffer attributes for fd %d ret %d\n", map->fd, err);
+		return -EBADFD;
+	}
+#if IS_ENABLED(CONFIG_MSM_ADSPRPC_TRUSTED)
+	if (hlos_access) {
+		dev_err(dev, "Sharing HLOS buffer (fd %d) not allowed on TVM\n", map->fd);
+		return -EACCES;
+	}
+#endif
+	/*
+	 * Secure buffers would always be owned by multiple VMs.
+	 * If current VM is the exclusive owner of a buffer, it is considered non-secure.
+	 * In PVM:
+	 *	- CPZ buffers are secure
+	 *	- All other buffers are non-secure
+	 * In TVM:
+	 *	- Since it is a secure environment by default, there are no explicit "secure" buffers
+	 *	- All buffers are marked "non-secure"
+	 */
+	map->secure = (exclusive_access) ? 0 : 1;
+
+	return err;
+}
+
 static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 			      u64 va, struct dma_buf *buf, u64 len,
 			      u32 attr, int mflags, struct fastrpc_map **ppmap,
@@ -877,7 +946,6 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 	struct fastrpc_session_ctx *sess = NULL;
 	struct fastrpc_map *map = NULL;
 	struct scatterlist *sgl = NULL;
-	struct sg_table *table;
 	int err = 0, sgl_index = 0;
 	struct device *dev = NULL;
 
@@ -911,7 +979,10 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 		}
 	}
 
-	map->secure = (mem_buf_dma_buf_exclusive_owner(map->buf)) ? 0 : 1;
+	err = set_buffer_secure_type(map);
+	if (err)
+		goto attach_err;
+
 	if (map->secure && (!(attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP))) {
 		if (!fl->secsctx) {
 			fl->secsctx = fastrpc_session_alloc(fl->cctx, false, fl->pd, true);
