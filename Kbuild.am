@@ -8,7 +8,7 @@ ccflags-y += -DCONFIG_DSP_PINEAPPLE=1
 ccflags-y += -DCONFIG_QCOM_FASTRPC_TRUSTED=1
 endif
 
-fastrpc-trusted-y := dsp/fastrpc.o	\
+frpc-trusted-adsprpc-y := dsp/fastrpc.o	\
 					 dsp/fastrpc_socket.o \
 
-obj-m := fastrpc-trusted.o
+obj-m := frpc-trusted-adsprpc.o

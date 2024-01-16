@@ -7,6 +7,6 @@ ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
 endif
 
 ifeq ($(FASTRPC_DLKM_ENABLED), true)
-PRODUCT_PACKAGES += fastrpc.ko
+PRODUCT_PACKAGES += frpc-adsprpc.ko
 #PRODUCT_PACKAGES += cdsp-loader.ko
 endif
