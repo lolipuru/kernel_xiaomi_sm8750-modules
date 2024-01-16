@@ -12,3 +12,15 @@ load(":define_modules.bzl", "define_modules")
 define_modules("pineapple", "consolidate")
 
 define_modules("pineapple", "gki")
+
+define_modules("blair", "consolidate")
+
+define_modules("blair", "gki")
+
+define_modules("sun", "consolidate")
+
+define_modules("sun", "perf")
+
+define_modules("niobe", "consolidate")
+
+define_modules("niobe", "gki")
