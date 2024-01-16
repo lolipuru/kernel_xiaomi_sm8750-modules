@@ -27,6 +27,7 @@
 #define CODEC_GOP_bONLY                         5
 #define CODEC_GOP_BONLY                         6
 #define CODEC_GOP_IONLY                         7
+#define CODEC_GOP_LOSSLESS                      8
 
 #define CODEC_ENCODER_GOP_Bb_ENTRY              0
 #define CODEC_ENCODER_GOP_P_ENTRY               1
@@ -149,6 +150,9 @@ struct api_calculation_input {
 
 	/* used in aurora for depth map decode */
 	u32 lumaonly_decode;
+
+	/* 0: TP10; 1: P010; */
+	u32 format_10bpp;
 };
 
 struct corner_voting {

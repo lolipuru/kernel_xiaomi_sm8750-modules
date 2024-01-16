@@ -137,16 +137,16 @@ static int msm_vidc_init_codec_input_freq(struct msm_vidc_inst *inst, u32 data_s
 		/* check resolution and tile info */
 		codec_input->av1d_commer_tile_enable = 1;
 
-		if (res_is_less_than_or_equal_to(1920, 1088, codec_input->frame_width,
-				codec_input->frame_height)) {
+		if (res_is_less_than_or_equal_to(codec_input->frame_width,
+				codec_input->frame_height, 1920, 1088)) {
 			if (tile_rows_columns <= 2)
 				codec_input->av1d_commer_tile_enable = 0;
-		} else if (res_is_less_than_or_equal_to(4096, 2172, codec_input->frame_width,
-				codec_input->frame_height)) {
+		} else if (res_is_less_than_or_equal_to(codec_input->frame_width,
+				codec_input->frame_height, 4096, 2176)) {
 			if (tile_rows_columns <= 4)
 				codec_input->av1d_commer_tile_enable = 0;
-		} else if (res_is_less_than_or_equal_to(8192, 4320, codec_input->frame_width,
-				codec_input->frame_height)) {
+		} else if (res_is_less_than_or_equal_to(codec_input->frame_width,
+				codec_input->frame_height, 8192, 4320)) {
 			if (tile_rows_columns <= 16)
 				codec_input->av1d_commer_tile_enable = 0;
 		}
@@ -247,10 +247,14 @@ static int msm_vidc_init_codec_input_bus(struct msm_vidc_inst *inst, struct vidc
 
 	codec_input->status_llc_onoff = d->use_sys_cache;
 
-	if (__bpp(d->color_formats[0]) == 8)
+	if (__bpp(d->color_formats[0]) == 8) {
 		codec_input->bitdepth = CODEC_BITDEPTH_8;
-	else
+		codec_input->format_10bpp = 0;
+	} else {
 		codec_input->bitdepth = CODEC_BITDEPTH_10;
+		codec_input->format_10bpp =
+			!__ubwc(d->color_formats[d->num_formats - 1]) ? 1 : 0;
+	}
 
 	if (d->num_formats == 1) {
 		codec_input->split_opb = 0;
@@ -304,16 +308,16 @@ static int msm_vidc_init_codec_input_bus(struct msm_vidc_inst *inst, struct vidc
 		/* check resolution and tile info */
 		codec_input->av1d_commer_tile_enable = 1;
 
-		if (res_is_less_than_or_equal_to(1920, 1088, codec_input->frame_width,
-				codec_input->frame_height)) {
+		if (res_is_less_than_or_equal_to(codec_input->frame_width,
+					codec_input->frame_height, 1920, 1088)) {
 			if (tile_rows_columns <= 2)
 				codec_input->av1d_commer_tile_enable = 0;
-		} else if (res_is_less_than_or_equal_to(4096, 2172, codec_input->frame_width,
-				codec_input->frame_height)) {
+		} else if (res_is_less_than_or_equal_to(codec_input->frame_width,
+					codec_input->frame_height, 4096, 2176)) {
 			if (tile_rows_columns <= 4)
 				codec_input->av1d_commer_tile_enable = 0;
-		} else if (res_is_less_than_or_equal_to(8192, 4320, codec_input->frame_width,
-				codec_input->frame_height)) {
+		} else if (res_is_less_than_or_equal_to(codec_input->frame_width,
+					codec_input->frame_height, 8192, 4320)) {
 			if (tile_rows_columns <= 16)
 				codec_input->av1d_commer_tile_enable = 0;
 		}
@@ -345,6 +349,7 @@ static int msm_vidc_init_codec_input_bus(struct msm_vidc_inst *inst, struct vidc
 		{"hierachical_layer", "%d", codec_input->hierachical_layer},
 		{"status_llc_onoff", "%d", codec_input->status_llc_onoff},
 		{"bit_depth", "%d", codec_input->bitdepth},
+		{"format_10bpp", "%d", codec_input->format_10bpp},
 		{"split_opb", "%d", codec_input->split_opb},
 		{"linear_opb", "%d", codec_input->linear_opb},
 		{"linear_ipb", "%d", codec_input->linear_ipb},
