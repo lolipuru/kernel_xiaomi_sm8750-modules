@@ -234,6 +234,38 @@ int wlfw_wlan_hw_init_cfg_msg(struct icnss_priv *penv,
 {
 	return 0;
 }
+
+int icnss_wlfw_phy_ucode_dnld_send_sync(struct icnss_priv *priv)
+{
+	return 0;
+}
+
+int icnss_load_phy_ucode(struct icnss_priv *priv)
+{
+	return 0;
+}
+
+int icnss_wlfw_aux_dnld_send_sync(struct icnss_priv *priv)
+{
+	return 0;
+}
+
+int icnss_load_aux(struct icnss_priv *priv)
+{
+	return 0;
+}
+
+int icnss_set_feature_list(struct icnss_priv *priv,
+			   enum cnss_feature_v01 feature)
+{
+	return 0;
+}
+
+int icnss_get_feature_list(struct icnss_priv *priv,
+			   u64 *feature_list)
+{
+	return 0;
+}
 #else
 int wlfw_ind_register_send_sync_msg(struct icnss_priv *priv);
 int icnss_connect_to_fw_server(struct icnss_priv *priv, void *data);
@@ -297,6 +329,13 @@ int wlfw_cal_report_req(struct icnss_priv *priv);
 int icnss_send_vbatt_update(struct icnss_priv *priv, uint64_t voltage_uv);
 int wlfw_wlan_hw_init_cfg_msg(struct icnss_priv *penv,
 			      enum wlfw_wlan_rf_subtype_v01 type);
+int icnss_wlfw_phy_ucode_dnld_send_sync(struct icnss_priv *priv);
+int icnss_load_phy_ucode(struct icnss_priv *priv);
+int icnss_wlfw_aux_dnld_send_sync(struct icnss_priv *priv);
+int icnss_load_aux(struct icnss_priv *priv);
+int icnss_set_feature_list(struct icnss_priv *priv,
+			   enum cnss_feature_v01 feature);
+int icnss_get_feature_list(struct icnss_priv *priv, u64 *feature_list);
 #endif
 
 #endif /* __ICNSS_QMI_H__*/

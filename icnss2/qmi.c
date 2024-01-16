@@ -46,7 +46,9 @@
 #define BIN_BDF_FILE_NAME_PREFIX	"bdwlan."
 #define REGDB_FILE_NAME			"regdb.bin"
 
-#define QDSS_TRACE_CONFIG_FILE "qdss_trace_config.cfg"
+#define DEFAULT_PHY_UCODE_FILE_NAME	"phy_ucode.elf"
+#define DEFAULT_AUX_FILE_NAME		"aux_ucode.elf"
+#define QDSS_TRACE_CONFIG_FILE		"qdss_trace_config.cfg"
 
 #define WLAN_BOARD_ID_INDEX		0x100
 #define DEVICE_BAR_SIZE			0x200000
@@ -803,6 +805,12 @@ int wlfw_cap_send_sync_msg(struct icnss_priv *priv)
 
 	if (resp->phy_qam_cap_valid)
 		priv->phy_qam_cap = (enum icnss_phy_qam_cap)resp->phy_qam_cap;
+
+	if (resp->fw_caps_valid) {
+		priv->fw_aux_uc_support =
+			!!(resp->fw_caps & QMI_WLFW_AUX_UC_SUPPORT_V01);
+		icnss_pr_dbg("FW supports aux uc support capability");
+	}
 
 	icnss_pr_dbg("Capability, chip_id: 0x%x, chip_family: 0x%x, board_id: 0x%x, soc_id: 0x%x",
 		     priv->chip_info.chip_id, priv->chip_info.chip_family,
@@ -3361,7 +3369,7 @@ int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 	u32 gpio;
 	int ret = 0;
 	u64 iova_start = 0, iova_size = 0,
-	    iova_ipa_start = 0, iova_ipa_size = 0;
+	    iova_ipa_start = 0, iova_ipa_size = 0, feature_list = 0;
 
 	icnss_pr_dbg("Sending host capability message, state: 0x%lx\n",
 		    priv->state);
@@ -3403,6 +3411,14 @@ int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 
 	req->host_build_type_valid = 1;
 	req->host_build_type = icnss_get_host_build_type();
+
+	ret = icnss_get_feature_list(priv, &feature_list);
+	if (!ret) {
+		req->feature_list_valid = 1;
+		req->feature_list = feature_list;
+		icnss_pr_dbg("Sending feature list 0x%llx\n",
+			     req->feature_list);
+	}
 
 	if (priv->wlan_en_delay_ms >= 100) {
 		icnss_pr_dbg("Setting WLAN_EN delay: %d ms\n",
@@ -3983,4 +3999,244 @@ int icnss_register_ims_service(struct icnss_priv *priv)
 void icnss_unregister_ims_service(struct icnss_priv *priv)
 {
 	qmi_handle_release(&priv->ims_qmi);
+}
+
+int icnss_set_feature_list(struct icnss_priv *priv,
+			   enum cnss_feature_v01 feature)
+{
+	if (unlikely(!priv || feature >= CNSS_MAX_FEATURE_V01))
+		return -EINVAL;
+
+	priv->feature_list |= 1 << feature;
+	return 0;
+}
+
+int icnss_get_feature_list(struct icnss_priv *priv,
+			   u64 *feature_list)
+{
+	if (unlikely(!priv))
+		return -EINVAL;
+
+	*feature_list = priv->feature_list;
+	return 0;
+}
+
+int icnss_load_phy_ucode(struct icnss_priv *priv)
+{
+	struct icnss_fw_mem *phy_ucode_mem = &priv->phy_ucode_mem;
+	char filename[ICNSS_MAX_FILE_NAME];
+	const struct firmware *fw_entry = NULL;
+	int ret = 0;
+
+	if (!phy_ucode_mem->va && !phy_ucode_mem->size) {
+		icnss_add_fw_prefix_name(priv, filename, DEFAULT_PHY_UCODE_FILE_NAME);
+		ret = firmware_request_nowarn(&fw_entry, filename,
+					      &priv->pdev->dev);
+		if (ret) {
+			icnss_pr_err("Failed to load M3 image: %s\n", filename);
+			return ret;
+		}
+
+		phy_ucode_mem->va = dma_alloc_coherent(&priv->pdev->dev,
+						       fw_entry->size, &phy_ucode_mem->pa,
+						       GFP_KERNEL);
+		if (!phy_ucode_mem->va) {
+			icnss_pr_err("Failed to allocate memory for M3, size: 0x%zx\n",
+				     fw_entry->size);
+			release_firmware(fw_entry);
+			return -ENOMEM;
+		}
+
+		memcpy(phy_ucode_mem->va, fw_entry->data, fw_entry->size);
+		phy_ucode_mem->size = fw_entry->size;
+		release_firmware(fw_entry);
+	}
+
+	return 0;
+}
+
+int icnss_wlfw_phy_ucode_dnld_send_sync(struct icnss_priv *priv)
+{
+	struct wlfw_m3_info_req_msg_v01 *req;
+	struct wlfw_m3_info_resp_msg_v01 *resp;
+	struct qmi_txn txn;
+	struct icnss_fw_mem *phy_ucode_mem = &priv->phy_ucode_mem;
+	int ret = 0;
+
+	icnss_pr_dbg("Sending Phy ucode information message, state");
+
+	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	if (!req)
+		return -ENOMEM;
+
+	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
+	if (!resp) {
+		kfree(req);
+		return -ENOMEM;
+	}
+
+	if (!phy_ucode_mem->pa || !phy_ucode_mem->size) {
+		icnss_pr_err("Memory for Phy ucode is not available\n");
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	icnss_pr_dbg("Phy ucode memory, va: 0x%pK, pa: %pa, size: 0x%zx\n",
+		     phy_ucode_mem->va, &phy_ucode_mem->pa, phy_ucode_mem->size);
+
+	req->addr = priv->phy_ucode_mem.pa;
+	req->size = priv->phy_ucode_mem.size;
+
+	ret = qmi_txn_init(&priv->qmi, &txn,
+			   wlfw_m3_info_resp_msg_v01_ei, resp);
+	if (ret < 0) {
+		icnss_pr_err("Failed to initialize txn for Phy ucode information request, err: %d\n",
+			     ret);
+		goto out;
+	}
+
+	ret = qmi_send_request(&priv->qmi, NULL, &txn,
+			       QMI_WLFW_M3_INFO_REQ_V01,
+			       WLFW_M3_INFO_REQ_MSG_V01_MAX_MSG_LEN,
+			       wlfw_m3_info_req_msg_v01_ei, req);
+	if (ret < 0) {
+		qmi_txn_cancel(&txn);
+		icnss_pr_err("Failed to send Phy ucode information request, err: %d\n",
+			     ret);
+		goto out;
+	}
+
+	ret = qmi_txn_wait(&txn, priv->ctrl_params.qmi_timeout);
+	if (ret < 0) {
+		icnss_pr_err("Failed to wait for response of Phy ucode information request, err: %d\n",
+			     ret);
+		goto out;
+	}
+
+	if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
+		icnss_pr_err("Phy ucode information request failed, result: %d, err: %d\n",
+			     resp->resp.result, resp->resp.error);
+		ret = -resp->resp.result;
+		goto out;
+	}
+
+	kfree(req);
+	kfree(resp);
+	return 0;
+
+out:
+	ICNSS_QMI_ASSERT();
+	kfree(req);
+	kfree(resp);
+	return ret;
+}
+
+int icnss_load_aux(struct icnss_priv *priv)
+{
+	struct icnss_fw_mem *aux_mem = &priv->aux_mem;
+	char filename[ICNSS_MAX_FILE_NAME];
+	const struct firmware *fw_entry = NULL;
+	int ret = 0;
+
+	if (!aux_mem->va && !aux_mem->size) {
+		icnss_add_fw_prefix_name(priv, filename, DEFAULT_AUX_FILE_NAME);
+		ret = firmware_request_nowarn(&fw_entry, filename,
+					      &priv->pdev->dev);
+		if (ret) {
+			icnss_pr_err("Failed to load AUX image: %s\n", filename);
+			return ret;
+		}
+
+		aux_mem->va = dma_alloc_coherent(&priv->pdev->dev,
+						 fw_entry->size, &aux_mem->pa,
+						 GFP_KERNEL);
+		if (!aux_mem->va) {
+			icnss_pr_err("Failed to allocate memory for AUX, size: 0x%zx\n",
+				     fw_entry->size);
+			release_firmware(fw_entry);
+			return -ENOMEM;
+		}
+
+		memcpy(aux_mem->va, fw_entry->data, fw_entry->size);
+		aux_mem->size = fw_entry->size;
+		release_firmware(fw_entry);
+	}
+
+	return 0;
+}
+
+int icnss_wlfw_aux_dnld_send_sync(struct icnss_priv *priv)
+{
+	struct wlfw_aux_uc_info_req_msg_v01 *req;
+	struct wlfw_aux_uc_info_resp_msg_v01 *resp;
+	struct qmi_txn txn;
+	struct icnss_fw_mem *aux_mem = &priv->aux_mem;
+	int ret = 0;
+
+	icnss_pr_dbg("Sending Aux file download message");
+
+	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	if (!req)
+		return -ENOMEM;
+
+	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
+	if (!resp) {
+		kfree(req);
+		return -ENOMEM;
+	}
+
+	if (!aux_mem->pa || !aux_mem->size) {
+		icnss_pr_err("Memory for AUX is not available\n");
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	icnss_pr_dbg("AUX memory, va: 0x%pK, pa: %pa, size: 0x%zx\n",
+		     aux_mem->va, &aux_mem->pa, aux_mem->size);
+
+	req->addr = priv->aux_mem.pa;
+	req->size = priv->aux_mem.size;
+
+	ret = qmi_txn_init(&priv->qmi, &txn,
+			   wlfw_aux_uc_info_resp_msg_v01_ei, resp);
+	if (ret < 0) {
+		icnss_pr_err("Failed to initialize txn for QMI_WLFW_AUX_UC_INFO_REQ_V01 request, err: %d\n",
+			     ret);
+		goto out;
+	}
+
+	ret = qmi_send_request(&priv->qmi, NULL, &txn,
+			       QMI_WLFW_AUX_UC_INFO_REQ_V01,
+			       WLFW_AUX_UC_INFO_REQ_MSG_V01_MAX_MSG_LEN,
+			       wlfw_aux_uc_info_req_msg_v01_ei, req);
+	if (ret < 0) {
+		qmi_txn_cancel(&txn);
+		icnss_pr_err("Failed to send QMI_WLFW_AUX_UC_INFO_REQ_V01 request, err: %d\n",
+			     ret);
+		goto out;
+	}
+
+	ret = qmi_txn_wait(&txn, priv->ctrl_params.qmi_timeout);
+	if (ret < 0) {
+		icnss_pr_err("Failed to wait for response of QMI_WLFW_AUX_UC_INFO_REQ_V01 request, err: %d\n",
+			     ret);
+		goto out;
+	}
+
+	if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
+		icnss_pr_err("QMI_WLFW_AUX_UC_INFO_REQ_V01 request failed, result: %d, err: %d\n",
+			     resp->resp.result, resp->resp.error);
+		ret = -resp->resp.result;
+		goto out;
+	}
+
+	kfree(req);
+	kfree(resp);
+	return 0;
+
+out:
+	ICNSS_QMI_ASSERT();
+	kfree(req);
+	kfree(resp);
+	return ret;
 }

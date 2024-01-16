@@ -475,6 +475,9 @@ struct icnss_priv {
 	atomic_t is_shutdown;
 	u32 qdss_mem_seg_len;
 	struct icnss_fw_mem qdss_mem[QMI_WLFW_MAX_NUM_MEM_SEG_V01];
+	struct icnss_fw_mem phy_ucode_mem;
+	struct icnss_fw_mem aux_mem;
+	bool fw_aux_uc_support;
 	void *get_info_cb_ctx;
 	int (*get_info_cb)(void *ctx, void *event, int event_len);
 	atomic_t soc_wake_ref_count;
@@ -531,6 +534,7 @@ struct icnss_priv {
 	enum icnss_phy_he_channel_width_cap phy_he_channel_width_cap;
 	enum icnss_phy_qam_cap phy_qam_cap;
 	bool rproc_fw_download;
+	u64 feature_list;
 };
 
 struct icnss_reg_info {
