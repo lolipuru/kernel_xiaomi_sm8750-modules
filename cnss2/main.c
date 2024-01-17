@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -5339,6 +5339,7 @@ static int cnss_probe(struct platform_device *plat_dev)
 	struct cnss_plat_data *plat_priv;
 	const struct of_device_id *of_id;
 	const struct platform_device_id *device_id;
+	static bool prealloc_initialized;
 
 	if (cnss_get_plat_priv(plat_dev)) {
 		cnss_pr_err("Driver is already initialized!\n");
@@ -5382,7 +5383,10 @@ static int cnss_probe(struct platform_device *plat_dev)
 		goto reset_plat_dev;
 	}
 
-	cnss_initialize_mem_pool(plat_priv->device_id);
+	if (!prealloc_initialized) {
+		cnss_initialize_mem_pool(plat_priv->device_id);
+		prealloc_initialized = true;
+	}
 
 	ret = cnss_get_pld_bus_ops_name(plat_priv);
 	if (ret)
@@ -5488,7 +5492,6 @@ free_res:
 reset_ctx:
 	cnss_aop_interface_deinit(plat_priv);
 	platform_set_drvdata(plat_dev, NULL);
-	cnss_deinitialize_mem_pool();
 reset_plat_dev:
 	cnss_clear_plat_priv(plat_priv);
 out:

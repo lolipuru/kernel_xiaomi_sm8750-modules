@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2020, 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "icnss2: " fmt
@@ -4742,6 +4742,7 @@ static int icnss_probe(struct platform_device *pdev)
 	struct icnss_priv *priv;
 	const struct of_device_id *of_id;
 	const struct platform_device_id *device_id;
+	static bool prealloc_initialized;
 
 	if (dev_get_drvdata(dev)) {
 		icnss_pr_err("Driver is already initialized\n");
@@ -4773,7 +4774,10 @@ static int icnss_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&priv->clk_list);
 	icnss_allow_recursive_recovery(dev);
 
-	icnss_initialize_mem_pool(priv->device_id);
+	if (!prealloc_initialized) {
+		icnss_initialize_mem_pool(priv->device_id);
+		prealloc_initialized = true;
+	}
 
 	icnss_init_control_params(priv);
 
@@ -4893,7 +4897,6 @@ smmu_cleanup:
 out_free_resources:
 	icnss_put_resources(priv);
 out_reset_drvdata:
-	icnss_deinitialize_mem_pool();
 	dev_set_drvdata(dev, NULL);
 	return ret;
 }
