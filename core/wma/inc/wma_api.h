@@ -164,9 +164,9 @@ int wma_rx_service_ready_ext2_event(void *handle, uint8_t *ev, uint32_t len);
 QDF_STATUS wma_wait_for_ready_event(WMA_HANDLE handle);
 
 int wma_cli_get_command(int vdev_id, int param_id, int vpdev);
-int wma_cli_set_command(int vdev_id, int param_id, int sval, int vpdev);
-int wma_cli_set2_command(int vdev_id, int param_id, int sval1,
-			 int sval2, int vpdev);
+int wma_cli_set_command(int vdev_id, int param_id, uint32_t sval, int vpdev);
+int wma_cli_set2_command(int vdev_id, int param_id, uint32_t sval1,
+			 uint32_t sval2, int vpdev);
 
 /**
  * wma_get_fw_phy_mode_for_freq_cb() - Callback to get current PHY Mode.
@@ -904,4 +904,13 @@ void wma_cleanup_vdev(struct wlan_objmgr_vdev *vdev);
  * Return: None
  */
 void wma_set_wakeup_logs_to_console(bool value);
+
+#ifdef WLAN_FEATURE_PEER_TXQ_FLUSH_CONF
+QDF_STATUS
+wma_peer_txq_flush_config_send(struct peer_txq_flush_config_params *params);
+
+QDF_STATUS
+wma_peer_flush_tids_send(uint8_t peer_addr[QDF_MAC_ADDR_SIZE],
+			 struct peer_flush_params *param);
+#endif
 #endif /* WMA_API_H */

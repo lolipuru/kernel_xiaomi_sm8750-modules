@@ -449,8 +449,8 @@ static void wma_set_feature_set_info(tp_wma_handle wma_handle,
 					mlme_feature_set.roaming_ctrl_get_cu;
 	feature_set->vendor_req_2_version =
 			mlme_feature_set.vendor_req_2_version;
-	feature_set->sta_dual_p2p_support =
-					mlme_feature_set.sta_dual_p2p_support;
+	feature_set->iface_combinations = mlme_feature_set.iface_combinations;
+
 	if (mlme_feature_set.enable2x2)
 		feature_set->num_antennas = WMI_HOST_MIMO_2X2;
 	else
@@ -938,8 +938,8 @@ int wma_cli_get_command(int vdev_id, int param_id, int vpdev)
  *
  * Return: 0 on success, errno on failure
  */
-int wma_cli_set2_command(int vdev_id, int param_id, int sval1,
-			 int sval2, int vpdev)
+int wma_cli_set2_command(int vdev_id, int param_id, uint32_t sval1,
+			 uint32_t sval2, int vpdev)
 {
 	struct scheduler_msg msg = { 0 };
 	wma_cli_set_cmd_t *iwcmd;
@@ -979,7 +979,7 @@ int wma_cli_set2_command(int vdev_id, int param_id, int sval1,
  *
  * Return: 0 on success, errno on failure
  */
-int wma_cli_set_command(int vdev_id, int param_id, int sval, int vpdev)
+int wma_cli_set_command(int vdev_id, int param_id, uint32_t sval, int vpdev)
 {
 	return wma_cli_set2_command(vdev_id, param_id, sval, 0, vpdev);
 

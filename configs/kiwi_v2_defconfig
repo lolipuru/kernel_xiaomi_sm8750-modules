@@ -1,5 +1,6 @@
 CONFIG_CNSS_KIWI := y
 CONFIG_CNSS_KIWI_V2 := y
+CONFIG_INCLUDE_HAL_KIWI := y
 
 ifeq ($(CONFIG_ARCH_SDXPINN), y)
 CONFIG_MOBILE_ROUTER := y
@@ -22,6 +23,7 @@ endif
 # Enable EHT rate sysfs entry
 ifeq ($(CONFIG_WLAN_SYSFS), y)
 CONFIG_WLAN_SYSFS_EHT_RATE := y
+CONFIG_WLAN_SYSFS_BITRATES := y
 endif
 
 # Max Sta Vdev Config

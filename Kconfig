@@ -120,6 +120,14 @@ config CNSS_PEACH
 	bool "Enable CNSS_PEACH"
 	default n
 
+config INCLUDE_HAL_KIWI
+	bool "Enable INCLUDE_HAL_KIWI"
+	default n
+
+config INCLUDE_HAL_PEACH
+	bool "Enable INCLUDE_HAL_PEACH"
+	default n
+
 config CNSS_UTILS_MODULE
 	bool "Enable CNSS_UTILS_MODULE"
 	default n
@@ -1176,6 +1184,10 @@ config WLAN_HDD_MULTI_VDEV_SINGLE_NDEV
 	bool "Enable WLAN_HDD_MULTI_VDEV_SINGLE_NDEV"
 	default n
 
+config QCA_DP_TX_FW_METADATA_V2
+        bool "Enable QCA_DP_TX_FW_METADATA_V2"
+        default n
+
 config WLAN_FEATURE_11W
 	bool "Enable the WLAN 802.11w Protected Management Frames feature"
 	default n
@@ -1948,6 +1960,10 @@ config DP_SWLM
 
 config DP_TX_TRACKING
 	bool "Enable DP_TX_TRACKING"
+	default n
+
+config WLAN_DP_MLO_DEV_CTX
+	bool "Enable WLAN_DP_MLO_DEV_CTX"
 	default n
 
 config DP_WAR_VALIDATE_RX_ERR_MSDU_COOKIE

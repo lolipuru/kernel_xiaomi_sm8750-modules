@@ -1651,7 +1651,7 @@ static void populate_dot11f_qcn_ie_he_params(struct mac_context *mac,
 					     tDot11fIEqcn_ie *qcn_ie,
 					     uint8_t attr_id)
 {
-	uint16_t mcs_12_13_supp;
+	uint16_t mcs_12_13_supp = 0;
 
 	if (!lim_is_session_he_capable(pe_session))
 		return;
@@ -1659,10 +1659,16 @@ static void populate_dot11f_qcn_ie_he_params(struct mac_context *mac,
 	/* To fix WAPI IoT issue.*/
 	if (pe_session->encryptType == eSIR_ED_WPI)
 		return;
-	if (wlan_reg_is_24ghz_ch_freq(pe_session->curr_op_freq))
-		mcs_12_13_supp = mac->mlme_cfg->he_caps.he_mcs_12_13_supp_2g;
-	else
+
+	if (wlan_reg_is_24ghz_ch_freq(pe_session->curr_op_freq)) {
+		if (!(LIM_IS_AP_ROLE(pe_session) &&
+		      pe_session->ch_width == CH_WIDTH_40MHZ &&
+		      (mac->mlme_cfg->he_caps.disable_sap_mcs_12_13 &
+		       BIT(DISABLE_MCS_12_13_2G_40M))))
+			mcs_12_13_supp = mac->mlme_cfg->he_caps.he_mcs_12_13_supp_2g;
+	} else {
 		mcs_12_13_supp = mac->mlme_cfg->he_caps.he_mcs_12_13_supp_5g;
+	}
 
 	if (!mcs_12_13_supp)
 		return;
@@ -1885,8 +1891,11 @@ populate_dot11f_power_caps(struct mac_context *mac,
 
 	/* Use firmware updated max tx power if non zero */
 	mlme_obj = wlan_vdev_mlme_get_cmpt_obj(pe_session->vdev);
-	if (mlme_obj && mlme_obj->mgmt.generic.tx_pwrlimit)
+	if (mlme_obj && mlme_obj->mgmt.generic.tx_pwrlimit) {
 		pCaps->maxTxPower = mlme_obj->mgmt.generic.tx_pwrlimit;
+		pCaps->minTxPower = QDF_MIN(pCaps->minTxPower,
+					    mlme_obj->mgmt.generic.minpower);
+	}
 
 	pCaps->present = 1;
 } /* End populate_dot11f_power_caps. */

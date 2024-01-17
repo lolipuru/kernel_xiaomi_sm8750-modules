@@ -249,6 +249,7 @@
 #include <wlan_mlo_mgr_link_switch.h>
 #include "cdp_txrx_mon.h"
 #include "os_if_ll_sap.h"
+#include "wlan_crypto_obj_mgr_i.h"
 
 #ifdef MULTI_CLIENT_LL_SUPPORT
 #define WLAM_WLM_HOST_DRIVER_PORT_ID 0xFFFFFF
@@ -3971,6 +3972,8 @@ static bool hdd_is_chan_switch_in_progress(void)
 	wlan_net_dev_ref_dbgid dbgid = NET_DEV_HOLD_IS_CHAN_SWITCH_IN_PROGRESS;
 	struct hdd_ap_ctx *ap_ctx;
 	struct wlan_hdd_link_info *link_info;
+	bool is_restart;
+	struct wlan_objmgr_vdev *vdev;
 
 	hdd_for_each_adapter_dev_held_safe(hdd_ctx, adapter, next_adapter,
 					   dbgid) {
@@ -3980,7 +3983,21 @@ static bool hdd_is_chan_switch_in_progress(void)
 
 		hdd_adapter_for_each_active_link_info(adapter, link_info) {
 			ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(link_info);
-			if (qdf_atomic_read(&ap_ctx->ch_switch_in_progress)) {
+			vdev = hdd_objmgr_get_vdev_by_user(link_info,
+							   WLAN_OSIF_ID);
+			if (!vdev)
+				continue;
+			is_restart = false;
+			if (wlan_vdev_is_restart_progress(vdev) ==
+			    QDF_STATUS_SUCCESS) {
+				hdd_debug("vdev: %d restart in progress",
+					  wlan_vdev_get_id(vdev));
+				is_restart = true;
+			}
+			hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
+
+			if (is_restart ||
+			    qdf_atomic_read(&ap_ctx->ch_switch_in_progress)) {
 				hdd_debug("channel switch progress for vdev_id %d",
 					  link_info->vdev_id);
 				hdd_adapter_dev_put_debug(adapter, dbgid);
@@ -9674,6 +9691,7 @@ static void hdd_stop_sap_go_adapter(struct hdd_adapter *adapter)
 	struct wlan_hdd_link_info *link_info = adapter->deflink;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	uint8_t link_id;
 
 	mode = adapter->device_mode;
 	ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(link_info);
@@ -9745,6 +9763,13 @@ static void hdd_stop_sap_go_adapter(struct hdd_adapter *adapter)
 		clear_bit(SOFTAP_INIT_DONE, &link_info->link_flags);
 		qdf_mem_free(ap_ctx->beacon);
 		ap_ctx->beacon = NULL;
+
+		if (vdev) {
+			link_id = wlan_vdev_get_link_id(vdev);
+			ucfg_crypto_free_key_by_link_id(hdd_ctx->psoc,
+							&link_info->link_addr,
+							link_id);
+		}
 	}
 	/* Clear all the cached sta info */
 	hdd_clear_cached_sta_info(adapter);
@@ -11456,7 +11481,6 @@ void hdd_wlan_exit(struct hdd_context *hdd_ctx)
 	}
 
 	hdd_deinit_regulatory_update_event(hdd_ctx);
-	hdd_exit_netlink_services(hdd_ctx);
 #ifdef FEATURE_WLAN_CH_AVOID
 	mutex_destroy(&hdd_ctx->avoid_freq_lock);
 #endif
@@ -18417,6 +18441,65 @@ wlan_hdd_mlo_sap_reinit(struct wlan_hdd_link_info *link_info)
 }
 #endif
 
+void wlan_hdd_set_sap_beacon_protection(struct hdd_context *hdd_ctx,
+					struct wlan_hdd_link_info *link_info,
+					struct hdd_beacon_data *beacon)
+{
+	const uint8_t *ie = NULL;
+	struct s_ext_cap *p_ext_cap;
+	struct wlan_objmgr_vdev *vdev;
+	bool target_bigtk_support = false;
+	uint8_t vdev_id;
+	uint8_t ie_len;
+
+	if (!beacon) {
+		hdd_err("beacon is null");
+		return;
+	}
+
+	ie = wlan_get_ie_ptr_from_eid(DOT11F_EID_EXTCAP, beacon->tail,
+				      beacon->tail_len);
+	if (!ie) {
+		hdd_err("IE is null");
+		return;
+	}
+
+	if (ie[1] > DOT11F_IE_EXTCAP_MAX_LEN ||
+	    ie[1] < DOT11F_IE_EXTCAP_MIN_LEN) {
+		hdd_err("Invalid IEs eid: %d elem_len: %d", ie[0], ie[1]);
+		return;
+	}
+
+	p_ext_cap = qdf_mem_malloc(sizeof(*p_ext_cap));
+	if (!p_ext_cap)
+		return;
+
+	ie_len = (ie[1] > sizeof(*p_ext_cap)) ? sizeof(*p_ext_cap) : ie[1];
+
+	qdf_mem_copy(p_ext_cap, &ie[2], ie_len);
+
+	vdev = hdd_objmgr_get_vdev_by_user(link_info, WLAN_HDD_ID_OBJ_MGR);
+	if (!vdev) {
+		hdd_err("vdev is null");
+		goto end;
+	}
+
+	vdev_id = wlan_vdev_get_id(vdev);
+
+	hdd_debug("vdev %d beacon protection %d", vdev_id,
+		  p_ext_cap->beacon_protection_enable);
+
+	ucfg_mlme_get_bigtk_support(hdd_ctx->psoc, &target_bigtk_support);
+
+	if (target_bigtk_support && p_ext_cap->beacon_protection_enable)
+		mlme_set_bigtk_support(vdev, true);
+
+	hdd_objmgr_put_vdev_by_user(vdev, WLAN_HDD_ID_OBJ_MGR);
+
+end:
+	qdf_mem_free(p_ext_cap);
+}
+
 void wlan_hdd_start_sap(struct wlan_hdd_link_info *link_info, bool reinit)
 {
 	struct hdd_ap_ctx *ap_ctx;
@@ -18460,6 +18543,8 @@ void wlan_hdd_start_sap(struct wlan_hdd_link_info *link_info, bool reinit)
 				       ap_adapter->dev);
 	if (QDF_IS_STATUS_ERROR(qdf_status))
 		goto end;
+
+	wlan_hdd_set_sap_beacon_protection(hdd_ctx, link_info, ap_ctx->beacon);
 
 	hdd_debug("Waiting for SAP to start");
 	qdf_status = qdf_wait_single_event(&hostapd_state->qdf_event,
@@ -19577,6 +19662,9 @@ void hdd_component_psoc_close(struct wlan_objmgr_psoc *psoc)
 	ucfg_fwol_psoc_close(psoc);
 	ucfg_dlm_psoc_close(psoc);
 	ucfg_mlme_psoc_close(psoc);
+
+	if (!cds_is_driver_recovering())
+		ucfg_crypto_flush_entries(psoc);
 }
 
 void hdd_component_psoc_enable(struct wlan_objmgr_psoc *psoc)
@@ -20291,7 +20379,7 @@ static void hdd_distroy_wifi_feature_interface(void)
 
 void hdd_driver_unload(void)
 {
-	struct osif_driver_sync *driver_sync;
+	struct osif_driver_sync *driver_sync = NULL;
 	struct hdd_context *hdd_ctx;
 	QDF_STATUS status;
 	void *hif_ctx;
@@ -20315,12 +20403,14 @@ void hdd_driver_unload(void)
 	 * the driver load/unload flag to further ensure that any upcoming
 	 * trans are rejected via wlan_hdd_validate_context.
 	 */
-	status = osif_driver_sync_trans_start_wait(&driver_sync);
-	if (QDF_IS_STATUS_ERROR(status) && status != -ETIMEDOUT) {
+	if (!cds_is_pcie_link_resume_fail()) {
+		status = osif_driver_sync_trans_start_wait(&driver_sync);
 		QDF_BUG(QDF_IS_STATUS_SUCCESS(status));
-		hdd_err("Unable to unload wlan; status:%u", status);
-		hdd_place_marker(NULL, "UNLOAD FAILURE", NULL);
-		return;
+		if (QDF_IS_STATUS_ERROR(status)) {
+			hdd_err("Unable to unload wlan; status:%u", status);
+			hdd_place_marker(NULL, "UNLOAD FAILURE", NULL);
+			return;
+		}
 	}
 
 	hif_ctx = cds_get_context(QDF_MODULE_ID_HIF);
@@ -20359,12 +20449,14 @@ void hdd_driver_unload(void)
 	/* trigger SoC remove */
 	wlan_hdd_unregister_driver();
 
-	status = osif_driver_sync_trans_start_wait(&driver_sync);
-	if (QDF_IS_STATUS_ERROR(status) && status != -ETIMEDOUT) {
+	if (!cds_is_pcie_link_resume_fail()) {
+		status = osif_driver_sync_trans_start_wait(&driver_sync);
 		QDF_BUG(QDF_IS_STATUS_SUCCESS(status));
-		hdd_err("Unable to unload wlan; status:%u", status);
-		hdd_place_marker(NULL, "UNLOAD FAILURE", NULL);
-		return;
+		if (QDF_IS_STATUS_ERROR(status)) {
+			hdd_err("Unable to unload wlan; status:%u", status);
+			hdd_place_marker(NULL, "UNLOAD FAILURE", NULL);
+			return;
+		}
 	}
 
 	osif_driver_sync_unregister();
