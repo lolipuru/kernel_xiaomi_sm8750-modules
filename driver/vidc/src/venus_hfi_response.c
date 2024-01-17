@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_address.h>
@@ -16,7 +16,7 @@
 #include "msm_vidc_fence.h"
 #include "msm_vidc_platform.h"
 
-#define in_range(range, val) (((range.begin) < (val)) && ((range.end) > (val)))
+#define is_in_range(range, val) (((range.begin) < (val)) && ((range.end) > (val)))
 
 extern struct msm_vidc_core *g_core;
 struct msm_vidc_core_hfi_range {
@@ -1831,7 +1831,7 @@ static int handle_system_response(struct msm_vidc_core *core,
 					goto exit;
 				goto exit;
 			}
-			if (in_range(be[i], packet->type)) {
+			if (is_in_range(be[i], packet->type)) {
 				rc = be[i].handle(core, packet);
 				if (rc)
 					goto exit;
@@ -1877,7 +1877,7 @@ static int __handle_session_response(struct msm_vidc_inst *inst,
 					__func__, packet->type);
 				handle_session_error(inst, packet);
 			}
-			if (in_range(be[i], packet->type)) {
+			if (is_in_range(be[i], packet->type)) {
 				dequeue |= (packet->type == HFI_CMD_BUFFER);
 				rc = be[i].handle(inst, packet);
 				if (rc)
