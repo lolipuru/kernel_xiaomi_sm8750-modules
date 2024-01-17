@@ -27,6 +27,7 @@ def define_sun():
             "wcd9xxx_dlkm",
             "swr_haptics_dlkm",
             "stub_dlkm",
+            "hdmi_dlkm",
             "lpass_cdc_dlkm",
             "lpass_cdc_wsa_macro_dlkm",
             "lpass_cdc_wsa2_macro_dlkm",
@@ -55,5 +56,6 @@ def define_sun():
             "CONFIG_SND_SOC_WCD_MBHC_ADC",
             "CONFIG_LPASS_BT_SWR",
             "CONFIG_AUDIO_BTFM_PROXY",
+            "CONFIG_MSM_EXT_DISPLAY",
         ]
     )
