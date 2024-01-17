@@ -68,6 +68,10 @@
 #include <wmi_unified_vdev_tlv.h>
 #include <wmi_unified_11be_tlv.h>
 
+#ifdef FEATURE_SET
+#include "wlan_mlme_public_struct.h"
+#endif
+
 /*
  * If FW supports WMI_SERVICE_SCAN_CONFIG_PER_CHANNEL,
  * then channel_list may fill the upper 12 bits with channel flags,
@@ -10492,7 +10496,50 @@ static inline void copy_feature_set_info(uint32_t *feature_set_bitmap,
 	WMI_SET_MAX_TDLS_PEERS_SUPPORT(feature_set_bitmap,
 				       feature_set->max_tdls_peers);
 	WMI_SET_STA_DUAL_P2P_SUPPORT(feature_set_bitmap,
-				     feature_set->sta_dual_p2p_support);
+				     (feature_set->iface_combinations &
+				      MLME_IFACE_STA_DUAL_P2P_SUPPORT) > 0);
+	WMI_SET_STA_P2P_SUPPORT(feature_set_bitmap,
+				(feature_set->iface_combinations &
+				 MLME_IFACE_STA_P2P_SUPPORT) > 0);
+	WMI_SET_STA_SAP_SUPPORT(feature_set_bitmap,
+				(feature_set->iface_combinations &
+				 MLME_IFACE_STA_SAP_SUPPORT) > 0);
+	WMI_SET_STA_NAN_SUPPORT(feature_set_bitmap,
+				(feature_set->iface_combinations &
+				 MLME_IFACE_STA_NAN_SUPPORT) > 0);
+	WMI_SET_STA_TDLS_SUPPORT(feature_set_bitmap,
+				 (feature_set->iface_combinations &
+				  MLME_IFACE_STA_TDLS_SUPPORT) > 0);
+	WMI_SET_STA_SAP_P2P_SUPPORT(feature_set_bitmap,
+				    (feature_set->iface_combinations &
+				     MLME_IFACE_STA_SAP_P2P_SUPPORT) > 0);
+	WMI_SET_STA_SAP_NAN_SUPPORT(feature_set_bitmap,
+				    (feature_set->iface_combinations &
+				     MLME_IFACE_STA_SAP_NAN_SUPPORT) > 0);
+	WMI_SET_STA_P2P_NAN_SUPPORT(feature_set_bitmap,
+				    (feature_set->iface_combinations &
+				     MLME_IFACE_STA_P2P_NAN_SUPPORT) > 0);
+	WMI_SET_STA_P2P_TDLS_SUPPORT(feature_set_bitmap,
+				     (feature_set->iface_combinations &
+				      MLME_IFACE_STA_P2P_TDLS_SUPPORT) > 0);
+	WMI_SET_STA_SAP_TDLS_SUPPORT(feature_set_bitmap,
+				     (feature_set->iface_combinations &
+				      MLME_IFACE_STA_SAP_TDLS_SUPPORT) > 0);
+	WMI_SET_STA_NAN_TDLS_SUPPORT(feature_set_bitmap,
+				     (feature_set->iface_combinations &
+				      MLME_IFACE_STA_NAN_TDLS_SUPPORT) > 0);
+	WMI_SET_STA_SAP_P2P_TDLS_SUPPORT(feature_set_bitmap,
+				(feature_set->iface_combinations &
+				 MLME_IFACE_STA_SAP_P2P_TDLS_SUPPORT) > 0);
+	WMI_SET_STA_SAP_NAN_TDLS_SUPPORT(feature_set_bitmap,
+				(feature_set->iface_combinations &
+				 MLME_IFACE_STA_SAP_NAN_TDLS_SUPPORT) > 0);
+	WMI_SET_STA_P2P_P2P_TDLS_SUPPORT(feature_set_bitmap,
+				(feature_set->iface_combinations &
+				 MLME_IFACE_STA_P2P_P2P_TDLS_SUPPORT) > 0);
+	WMI_SET_STA_P2P_NAN_TDLS_SUPPORT(feature_set_bitmap,
+				(feature_set->iface_combinations &
+				 MLME_IFACE_STA_P2P_NAN_TDLS_SUPPORT) > 0);
 	WMI_SET_PEER_BIGDATA_GETBSSINFO_API_SUPPORT(
 				feature_set_bitmap,
 				feature_set->peer_bigdata_getbssinfo_support);
@@ -21735,6 +21782,123 @@ static QDF_STATUS extract_tgtr2p_table_event_tlv(wmi_unified_t wmi_handle,
 	return QDF_STATUS_SUCCESS;
 }
 
+#ifdef WLAN_VENDOR_EXTN
+static QDF_STATUS
+send_vendor_peer_cmd_tlv(wmi_unified_t wmi_handle,
+			 enum wmi_peer_vendor_cmd_subtypes subtype,
+			 void *param)
+{
+	/*
+	 * Add vendor callback here.
+	 */
+
+	return QDF_STATUS_SUCCESS;
+}
+
+static QDF_STATUS
+send_vendor_vdev_cmd_tlv(wmi_unified_t wmi_handle,
+			 enum wmi_vdev_vendor_cmd_subtypes subtype,
+			 void *param)
+{
+	/*
+	 * Add vendor callback here.
+	 */
+
+	return QDF_STATUS_SUCCESS;
+}
+
+static QDF_STATUS
+send_vendor_pdev_cmd_tlv(wmi_unified_t wmi_handle,
+			 enum wmi_pdev_vendor_cmd_subtypes subtype,
+			 void *param)
+{
+	/*
+	 * Add vendor callback here.
+	 */
+
+	return QDF_STATUS_SUCCESS;
+}
+
+static QDF_STATUS
+extract_vendor_peer_event_tlv(wmi_unified_t wmi_handle,
+			      uint8_t *evt_buf,
+			      struct wmi_vendor_peer_event *param)
+{
+	WMI_VENDOR_PEER_EVENTID_param_tlvs *param_buf;
+	wmi_vendor_peer_event_fixed_param *evt_fixed_hdr;
+
+	param_buf = (WMI_VENDOR_PEER_EVENTID_param_tlvs *)evt_buf;
+	if (!param_buf) {
+		wmi_err("Invalid vendor peer event buf");
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	evt_fixed_hdr = param_buf->fixed_param;
+	param->vdev_id = evt_fixed_hdr->vdev_id;
+	param->pdev_id = evt_fixed_hdr->pdev_id;
+	WMI_MAC_ADDR_TO_CHAR_ARRAY(&evt_fixed_hdr->peer_macaddr,
+				   param->peer_mac_addr.bytes);
+	param->sub_type = evt_fixed_hdr->sub_type;
+	param->val.peer_sample1_event =
+			evt_fixed_hdr->evt.peer_sample1_event;
+	param->val.peer_sample2_event =
+			evt_fixed_hdr->evt.peer_sample2_event;
+
+	return QDF_STATUS_SUCCESS;
+}
+
+static QDF_STATUS
+extract_vendor_vdev_event_tlv(wmi_unified_t wmi_handle,
+			      uint8_t *evt_buf,
+			      struct wmi_vendor_vdev_event *param)
+{
+	WMI_VENDOR_VDEV_EVENTID_param_tlvs *param_buf;
+	wmi_vendor_vdev_event_fixed_param *evt_fixed_hdr;
+
+	param_buf = (WMI_VENDOR_VDEV_EVENTID_param_tlvs *)evt_buf;
+	if (!param_buf) {
+		wmi_err("Invalid vendor peer event buf");
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	evt_fixed_hdr = param_buf->fixed_param;
+	param->pdev_id = evt_fixed_hdr->pdev_id;
+	param->vdev_id = evt_fixed_hdr->vdev_id;
+	param->sub_type = evt_fixed_hdr->sub_type;
+	param->val.vdev_sample1_event =
+		evt_fixed_hdr->evt.vdev_sample1_event;
+	param->val.vdev_sample2_event =
+		evt_fixed_hdr->evt.vdev_sample2_event;
+
+	return QDF_STATUS_SUCCESS;
+}
+
+static QDF_STATUS
+extract_vendor_pdev_event_tlv(wmi_unified_t wmi_handle,
+			      uint8_t *evt_buf,
+			      struct wmi_vendor_pdev_event *param)
+{
+	WMI_VENDOR_PDEV_EVENTID_param_tlvs *param_buf;
+	wmi_vendor_pdev_event_fixed_param *evt_fixed_hdr;
+
+	param_buf = (WMI_VENDOR_PDEV_EVENTID_param_tlvs *)evt_buf;
+	if (!param_buf) {
+		wmi_err("Invalid vendor pdev event buf");
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	evt_fixed_hdr = param_buf->fixed_param;
+	param->pdev_id = evt_fixed_hdr->pdev_id;
+	param->sub_type = evt_fixed_hdr->sub_type;
+	param->val.pdev_sample1_event =
+		evt_fixed_hdr->evt.pdev_sample1_event;
+	param->val.pdev_sample2_event =
+		evt_fixed_hdr->evt.pdev_sample2_event;
+
+	return QDF_STATUS_SUCCESS;
+}
+#endif /* WLAN_VENDOR_EXTN */
+
 struct wmi_ops tlv_ops =  {
 	.send_vdev_create_cmd = send_vdev_create_cmd_tlv,
 	.send_vdev_delete_cmd = send_vdev_delete_cmd_tlv,
@@ -22240,6 +22404,14 @@ struct wmi_ops tlv_ops =  {
 #endif /* WLAN_RCC_ENHANCED_AOA_SUPPORT */
 #if defined(OL_ATH_SUPPORT_LED) && (OL_ATH_SUPPORT_LED == 1)
 	.send_led_blink_rate_table_cmd = send_led_blink_rate_table_cmd_tlv,
+#endif
+#ifdef WLAN_VENDOR_EXTN
+	.send_vendor_peer_cmd = send_vendor_peer_cmd_tlv,
+	.send_vendor_vdev_cmd = send_vendor_vdev_cmd_tlv,
+	.send_vendor_pdev_cmd = send_vendor_pdev_cmd_tlv,
+	.extract_vendor_peer_event = extract_vendor_peer_event_tlv,
+	.extract_vendor_vdev_event = extract_vendor_vdev_event_tlv,
+	.extract_vendor_pdev_event = extract_vendor_pdev_event_tlv,
 #endif
 };
 
@@ -23388,6 +23560,12 @@ static void populate_tlv_service(uint32_t *wmi_service)
 #endif
 	wmi_service[wmi_service_multiple_reorder_queue_setup_support] =
 			WMI_SERVICE_MULTIPLE_REORDER_QUEUE_SETUP_SUPPORT;
+#if defined(OL_ATH_SUPPORT_LED) && (OL_ATH_SUPPORT_LED == 1)
+	wmi_service[wmi_service_pcie_data_rate_led_blink_support] =
+				WMI_SERVICE_PCIE_DATA_RATE_LED_BLINK_SUPPORT;
+#endif
+	wmi_service[wmi_service_p2p_device_update_mac_addr_support] =
+			WMI_SERVICE_P2P_DEVICE_UPDATE_MAC_ADDR_SUPPORT;
 }
 
 /**
