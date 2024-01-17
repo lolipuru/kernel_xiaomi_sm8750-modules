@@ -13,7 +13,6 @@
 #include <linux/workqueue.h>
 #include <linux/skbuff.h>
 
-#define BTPWR_MAX_CLIENTS   6 
 /*
  * voltage regulator information required for configuring the
  * bluetooth chipset
@@ -22,7 +21,8 @@
 enum power_modes {
 	POWER_DISABLE = 0,
 	POWER_ENABLE,
-	POWER_RETENTION
+	POWER_RETENTION,
+	POWER_DISABLE_RETENTION,
 };
 
 enum SubSystem {
@@ -36,6 +36,88 @@ enum power_states {
 	UWB_ON,
 	ALL_CLIENTS_ON,
 };
+
+enum retention_states {
+	/* Default state */
+	RETENTION_IDLE = 0,
+	/* When BT is only client and it is in retention_state */
+	BT_IN_RETENTION,
+	/* BT is retention mode and UWB powered ON triggered */
+	BT_OUT_OF_RETENTION,
+	/* When UWB is only client and it is in retention_state */
+	UWB_IN_RETENTION,
+	/* UWB is retention mode and BT powered ON triggered */
+	UWB_OUT_OF_RETENTION,
+	/* Both clients are voted for retention */
+	BOTH_CLIENTS_IN_RETENTION,
+};
+
+enum grant_return_values {
+	ACCESS_GRANTED = 0,
+	ACCESS_DENIED  = 1,
+	ACCESS_RELEASED = 2,
+	ACCESS_DISALLOWED = -1,
+};
+
+enum grant_states {
+	/* Default state */
+	NO_GRANT_FOR_ANY_SS = 0,
+	NO_OTHER_CLIENT_WAITING_FOR_GRANT,
+	BT_HAS_GRANT,
+	UWB_HAS_GRANT,
+	BT_WAITING_FOR_GRANT,
+	UWB_WAITING_FOR_GRANT,
+};
+
+static inline char *ConvertGrantRetToString(enum grant_return_values state)
+{
+	switch (state) {
+	case ACCESS_GRANTED: {
+		return "ACCESS_GRANTED";
+		break;
+	} case ACCESS_DENIED: {
+		return "ACCESS_DENIED";
+		break;
+	} case ACCESS_RELEASED: {
+		return "ACCESS_RELEASED";
+		break;
+	} case ACCESS_DISALLOWED: {
+		return "ACCESS_DISALLOWED";
+		break;
+	} default: {
+		return "INVALID State";
+		break;
+	}	
+	}	     
+}
+
+static inline char *ConvertGrantToString(enum grant_states state) 
+{
+	switch (state) {
+	case NO_GRANT_FOR_ANY_SS: {
+		return "NO_GRANT_FOR_ANY_SS";
+		break;
+	} case NO_OTHER_CLIENT_WAITING_FOR_GRANT:{
+		return "NO_OTHER_CLIENT_WAITING_FOR_GRANT";
+		break;
+	} case BT_HAS_GRANT : {
+		return "BT_HAS_GRANT";
+		break;
+	} case UWB_HAS_GRANT: {
+		return "UWB_HAS_GRANT";
+		break;
+	} case BT_WAITING_FOR_GRANT : {
+		return "BT_WAITING_FOR_GRANT";
+		break;
+	} case UWB_WAITING_FOR_GRANT: {
+		return "UWB_WAITING_FOR_GRANT";
+		break;
+	} default: {
+		return "INVALID STATE";
+		break;
+	}
+	}
+}
 
 enum cores {
 	BT_CORE = 0,
@@ -60,12 +142,17 @@ enum plt_pwr_state {
 	POWER_OFF_UWB,
 	POWER_ON_BT_RETENION,
 	POWER_ON_UWB_RETENION,
+	BT_ACCESS_REQ,
+	UWB_ACCESS_REQ,
+	BT_RELEASE_ACCESS,
+	UWB_RELEASE_ACCESS,
+	BT_MAX_PWR_STATE,
 };
 
 enum {
-	PWR_WAITING_RSP,
-	PWR_RSP_RECV,
-	PWR_FAIL_RSP_RECV,
+	PWR_WAITING_RSP = -2,
+	PWR_RSP_RECV = 0,
+	PWR_FAIL_RSP_RECV = -1,
 	PWR_CLIENT_KILLED,
 };
 
@@ -101,6 +188,15 @@ struct bt_power_clk_data {
 	bool is_enabled;  /* is this clock enabled? */
 };
 
+struct btpower_state_machine {
+	struct mutex state_machine_lock;
+	enum power_states power_state;
+	enum retention_states retention_mode;
+	enum grant_states grant_state;
+	enum grant_states grant_pending;
+};
+
+#define BTPWR_MAX_REQ         BT_MAX_PWR_STATE 
 /*
  * Platform data for the bluetooth power driver.
  */
@@ -144,7 +240,7 @@ struct platform_pwr_data {
 	struct task_struct *reftask;
 	struct task_struct *reftask_bt;
 	struct task_struct *reftask_uwb;
-	enum power_states power_state;
+	struct btpower_state_machine btpower_state;
 	enum ssr_states sub_state;
 	enum ssr_states wrkq_signal_state;
 	struct workqueue_struct *workq;
@@ -152,8 +248,8 @@ struct platform_pwr_data {
 	struct device_node *uwb_of_node;
 	struct work_struct bt_wq;
 	struct work_struct uwb_wq;
-	wait_queue_head_t rsp_wait_q[BTPWR_MAX_CLIENTS];
-	uint8_t wait_status[BTPWR_MAX_CLIENTS];
+	wait_queue_head_t rsp_wait_q[BTPWR_MAX_REQ];
+	int wait_status[BTPWR_MAX_REQ];
 	struct work_struct wq_pwr_voting;
 	struct sk_buff_head rxq;
 	struct mutex pwr_mtx;
@@ -165,8 +261,11 @@ int btpower_aop_mbox_init(struct platform_pwr_data *pdata);
 int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata);
 
 static char const *pwr_req[] = {"POWER_ON_BT", "POWER_OFF_BT",
-				   "POWER_OFF_BT", "POWER_OFF_UWB",
-				   "POWER_ON_BT_RETENION", "POWER_ON_UWB_RETENION"};
+				"POWER_ON_UWB", "POWER_OFF_UWB",
+				"POWER_ON_BT_RETENION",
+				"POWER_ON_UWB_RETENION",
+				"BT_ACCESS_REQ", "UWB_ACCESS_REQ",
+				"BT_RELEASE_ACCESS", "UWB_RELEASE_ACCESS"};
 
 #define WLAN_SW_CTRL_GPIO       "qcom,wlan-sw-ctrl-gpio"
 #define BT_CMD_SLIM_TEST            0xbfac
@@ -181,6 +280,8 @@ static char const *pwr_req[] = {"POWER_ON_BT", "POWER_OFF_BT",
 #define UWB_CMD_PWR_CTRL            0xbfe1
 #define BT_CMD_REGISTRATION	    0xbfe2
 #define UWB_CMD_REGISTRATION        0xbfe3
+#define BT_CMD_ACCESS_CTRL	    0xbfe4
+#define UWB_CMD_ACCESS_CTRL        0xbfe5
 
 #ifdef CONFIG_MSM_BT_OOBS
 #define BT_CMD_OBS_VOTE_CLOCK		0xbfd1
@@ -198,5 +299,18 @@ enum btpower_obs_param {
 	BTPOWER_OBS_DEV_ON,
 };
 #endif
-
+static const char * const bt_arg[] = {"power off BT", "power on BT",
+				      "BT power retention"};
+static const char * const uwb_arg[]= {"power off UWB", "power on UWB",
+				       "UWB power retention"};
+static const char * const pwr_states[] = {"Both Sub-System powered OFF", "BT powered ON",
+					  "UWB powered ON",
+					  "Both Sub-System powered ON"};
+static const char * const ssr_state[ ] = {"No SSR on Sub-Sytem", "SSR on BT",
+					  "SSR Completed on BT", "SSR on UWB",
+					  "SSR Completed on UWB"};
+static const char * const reg_mode[ ] = {"vote off", "vote on", "vote for retention", "vote off retention"};
+static const char * const retention_mode[] = {"IDLE", "BT_IN_RETENTION", "BT_OUT_OF_RETENTION",
+					      "UWB_IN_RETENTION", "UWB_OUT_OF_RETENTION",
+					      "BOTH_CLIENT_IN_RETENTION"};
 #endif /* __LINUX_BLUETOOTH_POWER_H */

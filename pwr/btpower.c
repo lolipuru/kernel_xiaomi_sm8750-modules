@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -62,9 +62,12 @@
 #define BTPOWER_MBOX_TIMEOUT_MS 1000
 #define XO_CLK_RETRY_COUNT_MAX 5
 #define MAX_PROP_SIZE 32
+#define BTPOWER_CONFIG_MAX_TIMEOUT 500
 
 #define SIGIO_OOBS_SINGAL         0x00010000
 #define SIGIO_NOTIFICATION_SIGNAL 0x00020000
+#define SIGIO_SOC_ACCESS_SIGNAL   0x00040000
+
 #define SIGIO_GPIO_HIGH           0x00000001
 #define SIGIO_GPIO_LOW            0x00000000
 #define SIGIO_SSR_ON_UWB          0x00000001
@@ -282,11 +285,17 @@ static struct pwr_data vreg_info_wcn6750 = {
 	.bt_num_vregs = ARRAY_SIZE(bt_vregs_info_qca6xx0),
 };
 
-/* Kiwi supports both BT & UWB SS. For now it requires
+/* Peach supports both BT & UWB SS. For now it requires
  * only platform regulators to be powered ON.
  */
 static struct pwr_data vreg_info_peach = {
 	.compatible = "qcom,peach-bt",
+	.platform_vregs = platform_vregs_info_peach,
+	.platform_num_vregs = ARRAY_SIZE(platform_vregs_info_peach),
+};
+
+static struct pwr_data vreg_info_wcn788x = {
+	.compatible = "qcom,wcn788x",
 	.platform_vregs = platform_vregs_info_peach,
 	.platform_num_vregs = ARRAY_SIZE(platform_vregs_info_peach),
 };
@@ -302,28 +311,18 @@ static const struct of_device_id bt_power_match_table[] = {
 	{	.compatible = "qcom,wcn6750-bt", .data = &vreg_info_wcn6750},
 	{	.compatible = "qcom,bt-qca-converged", .data = &vreg_info_converged},
 	{	.compatible = "qcom,peach-bt", .data = &vreg_info_peach},
+	{	.compatible = "qcom,wcn788x", .data = &vreg_info_wcn788x},
 	{},
 };
 
 static int btpower_enable_ipa_vreg(struct platform_pwr_data *pdata);
 static struct platform_pwr_data *pwr_data;
 static bool previous;
-static int pwr_state;
 static struct class *bt_class;
 static int bt_major;
 static int soc_id;
 static bool probe_finished;
-static struct workqueue_struct *workq = NULL;
-struct device_node *bt_of_node, *uwb_of_node;
-const struct pwr_data *data;
-u8 client_rsp_q[2];
-char bt_arg[ ][20] = {"power off BT", "power on BT", "BT power retention"};
-char uwb_arg[ ][20] = {"power off UWB", "power on UWB", "UWB power retention"};
-char pwr_states[ ][40] = {"Both Sub-System powered OFF", "BT powered ON", "UWB powered ON", "Both Sub-System powered ON"};
-char ssr_state[ ][40] = {"No SSR on Sub-Sytem", "SSR on BT", "SSR Completed on BT", "SSR on UWB", "SSR Completed on UWB"};
-char reg_mode[ ][25] = {"vote off", "vote on", "vote for retention"};
 
-#define TIMEOUT 5000
 static void bt_power_vote(struct work_struct *work);
 
 static struct {
@@ -438,6 +437,34 @@ static irqreturn_t btpower_host_wake_isr(int irq, void *data)
 }
 #endif
 
+static int vreg_configure(struct vreg_data *vreg, bool retention)
+{
+	int rc = 0;
+
+	if ((vreg->min_vol != 0) && (vreg->max_vol != 0)) {
+		rc = regulator_set_voltage(vreg->reg,
+					   (retention == false ? vreg->min_vol: 0),
+					   vreg->max_vol);
+		if (rc < 0) {
+			pr_err("%s: regulator_set_voltage(%s) failed rc=%d\n",
+				__func__, vreg->name, rc);
+			return rc;
+		}
+	}
+
+	if (vreg->load_curr >= 0) {
+		rc = regulator_set_load(vreg->reg,
+				(retention == false ? vreg->load_curr: 0));
+		if (rc < 0) {
+			pr_err("%s: regulator_set_load(%s) failed rc=%d\n",
+			__func__, vreg->name, rc);
+			return rc;
+		}
+	}
+
+	return rc;
+}
+
 static int vreg_enable(struct vreg_data *vreg)
 {
 	int rc = 0;
@@ -445,36 +472,33 @@ static int vreg_enable(struct vreg_data *vreg)
 	pr_debug("%s: vreg_en for : %s\n", __func__, vreg->name);
 
 	if (!vreg->is_enabled) {
-		if ((vreg->min_vol != 0) && (vreg->max_vol != 0)) {
-			rc = regulator_set_voltage(vreg->reg,
-						vreg->min_vol,
-						vreg->max_vol);
-			if (rc < 0) {
-				pr_err("%s: regulator_set_voltage(%s) failed rc=%d\n",
-						__func__, vreg->name, rc);
-				goto out;
-			}
+		if (vreg_configure(vreg, false) < 0) {
+			return rc;
 		}
-
-		if (vreg->load_curr >= 0) {
-			rc = regulator_set_load(vreg->reg,
-					vreg->load_curr);
-			if (rc < 0) {
-				pr_err("%s: regulator_set_load(%s) failed rc=%d\n",
-				__func__, vreg->name, rc);
-				goto out;
-			}
-		}
-
 		rc = regulator_enable(vreg->reg);
 		if (rc < 0) {
 			pr_err("%s: regulator_enable(%s) failed. rc=%d\n",
 					__func__, vreg->name, rc);
-			goto out;
+			return rc;
 		}
 		vreg->is_enabled = true;
 	}
-out:
+
+	return rc;
+}
+
+static int vreg_disable_retention(struct vreg_data *vreg)
+{
+	int rc = 0;
+
+	if (!vreg)
+		return rc;
+
+	pr_err("%s: disable_retention for : %s\n", __func__, vreg->name);
+
+	if ((vreg->is_enabled) && (vreg->is_retention_supp))
+		rc = vreg_configure(vreg, false);
+
 	return rc;
 }
 
@@ -487,25 +511,10 @@ static int vreg_enable_retention(struct vreg_data *vreg)
 
 	pr_debug("%s: enable_retention for : %s\n", __func__, vreg->name);
 
-	if ((vreg->is_enabled) && (vreg->is_retention_supp)) {
-		if ((vreg->min_vol != 0) && (vreg->max_vol != 0)) {
-			/* Set the min voltage to 0 */
-			rc = regulator_set_voltage(vreg->reg, 0, vreg->max_vol);
-			if (rc < 0) {
-				pr_err("%s: regulator_set_voltage(%s) failed rc=%d\n",
-				__func__, vreg->name, rc);
-				goto out;
-			}
-		}
-		if (vreg->load_curr >= 0) {
-			rc = regulator_set_load(vreg->reg, 0);
-			if (rc < 0) {
-				pr_err("%s: regulator_set_load(%s) failed rc=%d\n",
-				__func__, vreg->name, rc);
-			}
-		}
-	}
-out:
+	if ((vreg->is_enabled) && (vreg->is_retention_supp))
+		if ((vreg->min_vol != 0) && (vreg->max_vol != 0))
+			rc = vreg_configure(vreg, true);
+
 	return rc;
 }
 
@@ -848,7 +857,7 @@ static int bt_regulators_pwr(int pwr_state)
 	bt_num_vregs =  pwr_data->bt_num_vregs;
 
 	if (!bt_num_vregs) {
-		pr_warn("%s: not avilable to %s\n",
+		pr_warn("%s: not available to %s\n",
 			__func__, reg_mode[pwr_state]);
 		return 0;
 	}
@@ -947,7 +956,7 @@ static int uwb_regulators_pwr(int pwr_state)
 	uwb_num_vregs =  pwr_data->uwb_num_vregs;
 
 	if (!uwb_num_vregs) {
-		pr_warn("%s: not avilable to %s\n",
+		pr_warn("%s: not available to %s\n",
 			__func__, reg_mode[pwr_state]);
 		return 0;
 	}
@@ -1006,7 +1015,7 @@ static int platform_regulators_pwr(int pwr_state)
 		return 0;
 	}
 
-	pr_info("%s: %s\n", __func__, reg_mode[pwr_state]);
+	pr_err("%s: %s\n", __func__, reg_mode[pwr_state]);
 
 	switch (pwr_state) {
 	case POWER_ENABLE:
@@ -1054,6 +1063,12 @@ regulator_failed:
 		for (i = 0; i < platform_num_vregs; i++) {
 			platform_vregs = &pwr_data->platform_vregs[i];
 			rc = vreg_enable_retention(platform_vregs);
+		}
+		break;
+	case POWER_DISABLE_RETENTION:
+		for (i = 0; i < platform_num_vregs; i++) {
+			platform_vregs = &pwr_data->platform_vregs[i];
+			rc = vreg_disable_retention(platform_vregs);
 		}
 		break;
 	}
@@ -1361,9 +1376,9 @@ static int get_gpio_dt_pinfo(struct platform_device *pdev)
 static int get_power_dt_pinfo(struct platform_device *pdev)
 {
 	int rc, i;
+	const struct pwr_data *data;
 
 	data = of_device_get_match_data(&pdev->dev);
-
 	if (!data) {
 		pr_err("%s: failed to get dev node\n", __func__);
 		return -EINVAL;
@@ -1525,11 +1540,13 @@ static int bt_power_probe(struct platform_device *pdev)
 	pwr_data->pdev = pdev;
 
 	pwr_data->is_ganges_dt = of_property_read_bool(pdev->dev.of_node,
-													"qcom,peach-bt");
+							"qcom,peach-bt") ||
+							of_property_read_bool(pdev->dev.of_node,
+							"qcom,wcn788x");
 	pr_info("%s: is_ganges_dt = %d\n", __func__, pwr_data->is_ganges_dt);
 
-	workq = alloc_workqueue("workq", WQ_HIGHPRI, WQ_DFL_ACTIVE);
-	if (!workq) {
+	pwr_data->workq = alloc_workqueue("workq", WQ_HIGHPRI, WQ_DFL_ACTIVE);
+	if (!pwr_data->workq) {
 		pr_err("%s: Failed to creat the Work Queue (workq)\n",
 			__func__);
 		return -ENOMEM;
@@ -1539,12 +1556,17 @@ static int bt_power_probe(struct platform_device *pdev)
 	INIT_WORK(&pwr_data->bt_wq, bt_signal_handler);
 	INIT_WORK(&pwr_data->wq_pwr_voting, bt_power_vote);
 
-	for (itr = 0; itr < BTPWR_MAX_CLIENTS; itr++) {
+	for (itr = 0; itr < BTPWR_MAX_REQ; itr++) {
 		init_waitqueue_head(&pwr_data->rsp_wait_q[itr]);
 	}
 
 	skb_queue_head_init(&pwr_data->rxq);
 	mutex_init(&pwr_data->pwr_mtx);
+	mutex_init(&pwr_data->btpower_state.state_machine_lock);
+	pwr_data->btpower_state.power_state = IDLE;
+	pwr_data->btpower_state.retention_mode = RETENTION_IDLE;
+	pwr_data->btpower_state.grant_state = NO_GRANT_FOR_ANY_SS;
+	pwr_data->btpower_state.grant_pending = NO_OTHER_CLIENT_WAITING_FOR_GRANT;
 
 	perisec_cnss_bt_hw_disable_check(pwr_data);
 
@@ -1571,7 +1593,6 @@ static int bt_power_probe(struct platform_device *pdev)
 
 		memcpy(pwr_data, pdev->dev.platform_data,
 			sizeof(struct platform_pwr_data));
-		pwr_state = 0;
 	} else {
 		pr_err("%s: Failed to get platform data\n", __func__);
 		goto free_pdata;
@@ -1673,14 +1694,68 @@ static void  set_pwr_srcs_status(struct vreg_data *handle,
 	}
 }
 
-static void update_pwr_state(int state)
+static inline void update_pwr_state(int state)
 {
-	pwr_data->power_state = state;
+	mutex_lock(&pwr_data->btpower_state.state_machine_lock);
+	pwr_data->btpower_state.power_state = state;
+	mutex_unlock(&pwr_data->btpower_state.state_machine_lock);
 }
 
-static int get_pwr_state(void)
+static inline int get_pwr_state(void)
 {
-	return pwr_data->power_state;
+	int state;
+	mutex_lock(&pwr_data->btpower_state.state_machine_lock);
+	state = (int)pwr_data->btpower_state.power_state;
+	mutex_unlock(&pwr_data->btpower_state.state_machine_lock);
+	return state;
+}
+
+static inline void btpower_set_retenion_mode_state(int state)
+{
+	mutex_lock(&pwr_data->btpower_state.state_machine_lock);
+	pwr_data->btpower_state.retention_mode = state;
+	mutex_unlock(&pwr_data->btpower_state.state_machine_lock);
+}
+
+static inline int btpower_get_retenion_mode_state(void)
+{
+	int state;
+	mutex_lock(&pwr_data->btpower_state.state_machine_lock);
+	state = (int)pwr_data->btpower_state.retention_mode;
+	mutex_unlock(&pwr_data->btpower_state.state_machine_lock);
+	return state;
+}
+
+static inline void btpower_set_grant_pending_state(enum grant_states state)
+{
+	mutex_lock(&pwr_data->btpower_state.state_machine_lock);
+	pwr_data->btpower_state.grant_pending = state;
+	mutex_unlock(&pwr_data->btpower_state.state_machine_lock);
+}
+
+static inline enum grant_states btpower_get_grant_pending_state(void)
+{
+	enum grant_states state;
+	mutex_lock(&pwr_data->btpower_state.state_machine_lock);
+	state = pwr_data->btpower_state.grant_pending;
+	mutex_unlock(&pwr_data->btpower_state.state_machine_lock);
+	return state;
+}
+
+static inline void btpower_set_grant_state(enum grant_states state)
+{
+	mutex_lock(&pwr_data->btpower_state.state_machine_lock);
+	pwr_data->btpower_state.grant_state = state;
+	mutex_unlock(&pwr_data->btpower_state.state_machine_lock);
+}
+
+static inline enum grant_states btpower_get_grant_state(void)
+{
+	enum grant_states state;
+	mutex_lock(&pwr_data->btpower_state.state_machine_lock);
+	state = pwr_data->btpower_state.grant_state;
+	mutex_unlock(&pwr_data->btpower_state.state_machine_lock);
+	return state;
 }
 
 static void update_sub_state(int state)
@@ -1690,7 +1765,7 @@ static void update_sub_state(int state)
 
 static int get_sub_state(void)
 {
-	return pwr_data->sub_state;
+	return (int)pwr_data->sub_state;
 }
 
 int power_enable (enum SubSystem SubSystemType)
@@ -1746,6 +1821,9 @@ void send_signal_to_subsystem(int SubSystemType, int state)
 int power_disable (enum SubSystem SubSystemType)
 {
 	int ret = 0;
+	int ret_mode_state = btpower_get_retenion_mode_state();
+	enum grant_states grant_state = btpower_get_grant_state();
+	enum grant_states grant_pending = btpower_get_grant_pending_state();
 
 	switch (get_pwr_state()) {
 	case IDLE:
@@ -1755,46 +1833,71 @@ int power_disable (enum SubSystem SubSystemType)
 		if (SubSystemType == BLUETOOTH) {
 			ret = power_regulators(BT_CORE, POWER_DISABLE);
 			update_pwr_state(UWB_ON);
+			if (ret_mode_state == BOTH_CLIENTS_IN_RETENTION)
+				btpower_set_retenion_mode_state(UWB_IN_RETENTION);
+			else if (ret_mode_state == BT_IN_RETENTION)
+				btpower_set_retenion_mode_state(RETENTION_IDLE);
 			if(get_sub_state() == SSR_ON_BT) {
-				ret = power_regulators(UWB_CORE, POWER_DISABLE);
-				ret = power_regulators(PLATFORM_CORE, POWER_DISABLE);
-				update_pwr_state(IDLE);
-				update_sub_state(SUB_STATE_IDLE);
-				send_signal_to_subsystem(UWB,
-					BT_SSR_COMPLETED);
+				send_signal_to_subsystem(UWB, BT_SSR_COMPLETED);
 			}
+			if (grant_state == BT_HAS_GRANT) {
+				if (grant_pending == UWB_WAITING_FOR_GRANT) {
+					send_signal_to_subsystem(UWB, SIGIO_SOC_ACCESS_SIGNAL|(ACCESS_GRANTED + 1));
+					btpower_set_grant_state(UWB_HAS_GRANT);
+				} else {
+					btpower_set_grant_state(NO_GRANT_FOR_ANY_SS);
+				}
+			}
+			if (grant_pending == BT_WAITING_FOR_GRANT)
+				btpower_set_grant_pending_state(NO_OTHER_CLIENT_WAITING_FOR_GRANT);
 		} else {
 			ret  = power_regulators(UWB_CORE, POWER_DISABLE);
 			update_pwr_state(BT_ON);
+			if (ret_mode_state == BOTH_CLIENTS_IN_RETENTION)
+				btpower_set_retenion_mode_state(BT_IN_RETENTION);
+			else if (ret_mode_state == UWB_IN_RETENTION)
+				btpower_set_retenion_mode_state(RETENTION_IDLE);
 			if(get_sub_state() == SSR_ON_UWB) {
-				ret = power_regulators(BT_CORE, POWER_DISABLE);
-				ret = power_regulators(PLATFORM_CORE, POWER_DISABLE);
-				update_pwr_state(IDLE);
-				update_sub_state(SUB_STATE_IDLE);
 				send_signal_to_subsystem(BLUETOOTH,
 					(SIGIO_NOTIFICATION_SIGNAL|SIGIO_UWB_SSR_COMPLETED));
 			}
+			if (grant_state == UWB_HAS_GRANT) {
+				if (grant_pending == BT_WAITING_FOR_GRANT) {
+					send_signal_to_subsystem(BLUETOOTH, SIGIO_SOC_ACCESS_SIGNAL|(ACCESS_GRANTED + 1));
+					btpower_set_grant_state(BT_HAS_GRANT);
+				} else {
+					btpower_set_grant_state(NO_GRANT_FOR_ANY_SS);
+				}
+			}
+			if (grant_pending == UWB_WAITING_FOR_GRANT)
+				btpower_set_grant_pending_state(NO_OTHER_CLIENT_WAITING_FOR_GRANT);
 		}
 		break;
 	case UWB_ON:
 		if (SubSystemType == BLUETOOTH) {
 			pr_err("%s: BT Regulator already Voted-Off\n", __func__);
-			return -1;
+			return 0;
 		}
 		ret = power_regulators(UWB_CORE, POWER_DISABLE);
 		ret = power_regulators(PLATFORM_CORE, POWER_DISABLE);
 		update_pwr_state(IDLE);
 		update_sub_state(SUB_STATE_IDLE);
+		btpower_set_retenion_mode_state(RETENTION_IDLE);
+		btpower_set_grant_state(NO_GRANT_FOR_ANY_SS);
+		btpower_set_grant_pending_state(NO_OTHER_CLIENT_WAITING_FOR_GRANT);
 		break;
 	case BT_ON:
 		if (SubSystemType == UWB) {
 			pr_err("%s: UWB Regulator already Voted-Off\n", __func__);
-			return -1;
+			return 0;
 		}
 		ret = power_regulators(BT_CORE, POWER_DISABLE);
 		ret = power_regulators(PLATFORM_CORE, POWER_DISABLE);
 		update_pwr_state(IDLE);
 		update_sub_state(SUB_STATE_IDLE);
+		btpower_set_retenion_mode_state(RETENTION_IDLE);
+		btpower_set_grant_state(NO_GRANT_FOR_ANY_SS);
+		btpower_set_grant_pending_state(NO_OTHER_CLIENT_WAITING_FOR_GRANT);
 		break;
 	}
 	return ret;
@@ -1832,32 +1935,7 @@ static int client_state_notified(int SubSystemType)
 	return 0;
 }
 
-void set_pwr_state(int core, int mode)
-{
-	pr_info("%s: Entry %s, %s\n", __func__,
-		pwr_states[(int)get_pwr_state()],
-		ssr_state[(int)get_sub_state()]);
-
-	switch (mode) {
-	case POWER_DISABLE:
-		power_disable(core);
-		break;
-	case POWER_ENABLE:
-		power_enable(core);
-		break;
-	case POWER_RETENTION:
-		power_regulators(PLATFORM_CORE, POWER_RETENTION);
-		power_regulators((core == BLUETOOTH ? BT_CORE : UWB_CORE),
-				POWER_RETENTION);
-		pr_err("%s: BT Power Retention done\n", __func__);
-		break;
-	}
-	pr_info("%s: Done %s, %s\n", __func__,
-		pwr_states[(int)get_pwr_state()],
-		ssr_state[(int)get_sub_state()]);
-}
-
-void client_notified(int client, int cmd)
+void btpower_register_client(int client, int cmd)
 {
 	if (cmd == REG_BT_PID) {
 		pwr_data->reftask_bt = get_current();
@@ -1900,13 +1978,40 @@ void log_power_src_val(void)
 int btpower_retenion(enum plt_pwr_state client)
 {
 	int ret;
+	int current_pwr_state = get_pwr_state();
+	int retention_mode_state = btpower_get_retenion_mode_state();
 
-	if (client == POWER_ON_BT_RETENION) {
+	if (current_pwr_state == IDLE) {
+		pr_err("%s: invalid retention_mode request", __func__);
+		return -1;
+	}
+	
+	ret = power_regulators((client == POWER_ON_BT_RETENION ? BT_CORE : UWB_CORE),
+				POWER_RETENTION);
+	if (ret < 0)
+		return ret;
+
+	if ((current_pwr_state == BT_ON || current_pwr_state == UWB_ON) &&
+	     retention_mode_state == IDLE) {
 		ret = power_regulators(PLATFORM_CORE, POWER_RETENTION);
-		ret = power_regulators(BT_CORE, POWER_RETENTION);
-	} else {
+		if (ret < 0)
+			return ret;
+		btpower_set_retenion_mode_state(client == POWER_ON_BT_RETENION ? BT_IN_RETENTION: UWB_IN_RETENTION);
+	} else if (current_pwr_state == ALL_CLIENTS_ON && retention_mode_state == IDLE) {
+		btpower_set_retenion_mode_state(client == POWER_ON_BT_RETENION ? BT_IN_RETENTION: UWB_IN_RETENTION);
+	} else if (current_pwr_state == ALL_CLIENTS_ON &&
+		   (retention_mode_state == BT_IN_RETENTION ||
+		    retention_mode_state == UWB_IN_RETENTION)) {
 		ret = power_regulators(PLATFORM_CORE, POWER_RETENTION);
-		ret = power_regulators(UWB_CORE, POWER_RETENTION);
+		if (ret < 0)
+			return ret;
+		btpower_set_retenion_mode_state(BOTH_CLIENTS_IN_RETENTION);
+	} else if (retention_mode_state == UWB_OUT_OF_RETENTION ||
+		   retention_mode_state == BT_OUT_OF_RETENTION) {
+		ret = power_regulators(PLATFORM_CORE, POWER_RETENTION);
+		if (ret < 0)
+			return ret;
+		btpower_set_retenion_mode_state(BOTH_CLIENTS_IN_RETENTION);
 	}
 
 	return ret;
@@ -1920,21 +2025,33 @@ int btpower_off(enum plt_pwr_state client)
 int btpower_on(enum plt_pwr_state client)
 {
 	int ret = 0;
+	int current_ssr_state = get_sub_state();
+	int retention_mode_state = btpower_get_retenion_mode_state();
 
-	if (client == POWER_ON_BT) {
-		if (get_sub_state() == SSR_ON_UWB) {
-			pr_err("%s: SSR_ON_UWB not allowing to BT POWER ON\n", __func__);
-			return -1;
-		}
-		ret = power_enable(BLUETOOTH);
-	} else {
-		if (get_sub_state() == SSR_ON_BT) {
-			pr_err("%s: SSR_ON_BT not allowing to UWB POWER ON\n", __func__);
-			return -1;
-		}
-		ret = power_enable(UWB);
+	if (retention_mode_state == UWB_IN_RETENTION ||
+	    retention_mode_state == BT_IN_RETENTION) {
+		ret = platform_regulators_pwr(POWER_DISABLE_RETENTION);
+		if (ret < 0)
+			return ret;
+		if (retention_mode_state == BT_IN_RETENTION) 
+			btpower_set_retenion_mode_state(BT_OUT_OF_RETENTION);
+		else
+			btpower_set_retenion_mode_state(UWB_OUT_OF_RETENTION);
 	}
 
+	/* No Point in going further if SSR is on any subsystem */
+	if (current_ssr_state != SUB_STATE_IDLE) {
+		pr_err("%s: %s not allowing to power on\n", __func__,
+			ssr_state[current_ssr_state]);
+		return -1;
+	}
+
+	ret = power_enable(client == POWER_ON_BT ? BLUETOOTH : UWB);
+
+	/* Return current state machine to clients */
+	if (!ret) {
+		ret = (int)get_pwr_state();
+	}
 	return ret;
 }
 
@@ -1942,6 +2059,76 @@ int STREAM_TO_UINT32 (struct sk_buff *skb)
 {
 	return (skb->data[0] | (skb->data[1] << 8) |
 		(skb->data[2] << 16) | (skb->data[3] << 24));
+}
+
+int btpower_access_ctrl(enum plt_pwr_state request)
+{
+	enum grant_states grant_state = btpower_get_grant_state();
+	enum grant_states grant_pending = btpower_get_grant_pending_state();
+	int current_ssr_state = get_sub_state();
+
+	pr_info("%s: request for %s grant_state %s grant_pending %s", __func__,
+		pwr_req[(int)request], ConvertGrantToString(grant_state),
+		ConvertGrantToString(grant_pending));
+
+	if (current_ssr_state != SUB_STATE_IDLE &&
+	    (request == BT_ACCESS_REQ || request == UWB_ACCESS_REQ)) {
+		pr_err("%s: not allowing this request as %s", __func__, ssr_state[current_ssr_state]);
+		return (int)ACCESS_DISALLOWED;
+	}
+
+	if ((grant_state == NO_GRANT_FOR_ANY_SS &&
+		grant_pending != NO_OTHER_CLIENT_WAITING_FOR_GRANT)) {
+		pr_err("%s: access ctrl gone for toss, reseting it back", __func__ );
+		grant_pending = NO_OTHER_CLIENT_WAITING_FOR_GRANT;
+		btpower_set_grant_pending_state(NO_OTHER_CLIENT_WAITING_FOR_GRANT);
+	}
+
+	if (request == BT_ACCESS_REQ && grant_state == NO_GRANT_FOR_ANY_SS) {
+		btpower_set_grant_state(BT_HAS_GRANT);
+		return ACCESS_GRANTED;
+	} else if (request == UWB_ACCESS_REQ && grant_state == NO_GRANT_FOR_ANY_SS) {
+		btpower_set_grant_state(UWB_HAS_GRANT);
+		return ACCESS_GRANTED;
+	} else if (request == BT_ACCESS_REQ && grant_state == UWB_HAS_GRANT) {
+		btpower_set_grant_pending_state(BT_WAITING_FOR_GRANT);
+		return ACCESS_DENIED;
+	} else if (request == UWB_ACCESS_REQ && grant_state == BT_HAS_GRANT) {
+		btpower_set_grant_pending_state(UWB_WAITING_FOR_GRANT);
+		return ACCESS_DENIED;
+	} else if (request == BT_RELEASE_ACCESS && grant_state == BT_HAS_GRANT) {
+		if (grant_pending == UWB_WAITING_FOR_GRANT) {
+			if (!pwr_data->reftask_uwb) {
+				pr_err("%s: UWB service got killed\n", 	__func__);
+			} else {
+				send_signal_to_subsystem(UWB, SIGIO_SOC_ACCESS_SIGNAL|(ACCESS_GRANTED + 1));
+				btpower_set_grant_state(UWB_HAS_GRANT);
+			}
+			btpower_set_grant_pending_state(NO_OTHER_CLIENT_WAITING_FOR_GRANT);
+			return ACCESS_RELEASED;
+			
+		} else {
+			btpower_set_grant_state(NO_GRANT_FOR_ANY_SS);
+			btpower_set_grant_pending_state(NO_OTHER_CLIENT_WAITING_FOR_GRANT);
+			return ACCESS_RELEASED; 
+		}
+	} else if (request == UWB_RELEASE_ACCESS && grant_state == UWB_HAS_GRANT) {
+		if (grant_pending == BT_WAITING_FOR_GRANT) {
+			if (!pwr_data->reftask_uwb) {
+				pr_err("%s: BT service got killed\n", 	__func__);
+			} else {
+				send_signal_to_subsystem(BLUETOOTH, SIGIO_SOC_ACCESS_SIGNAL|(ACCESS_GRANTED+1));
+				btpower_set_grant_state(BT_HAS_GRANT);
+			}
+		} else {
+			btpower_set_grant_state(NO_GRANT_FOR_ANY_SS);
+		}
+		btpower_set_grant_pending_state(NO_OTHER_CLIENT_WAITING_FOR_GRANT);
+		return ACCESS_RELEASED;
+	} else {
+		pr_err("%s: unhandled event", __func__);
+	}
+	return ACCESS_DISALLOWED;
 }
 
 static void bt_power_vote(struct work_struct *work)
@@ -1959,28 +2146,39 @@ static void bt_power_vote(struct work_struct *work)
 		request = STREAM_TO_UINT32(skb);
 		skb_pull(skb, sizeof(uint32_t));
 		mutex_unlock(&pwr_data->pwr_mtx);
-		pr_err("%s: request %s", __func__, pwr_req[request]);
-		pr_err("%s: current state = %s, %s\n", __func__,
-			pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
+		pr_err("%s: request from is %s cur state = %s %s retention %s access %s pending %s\n",
+			__func__, pwr_req[request], pwr_states[get_pwr_state()],
+			ssr_state[get_sub_state()],
+			retention_mode[btpower_get_retenion_mode_state()],
+			ConvertGrantToString(btpower_get_grant_state()),
+			ConvertGrantToString(btpower_get_grant_pending_state()));
 		if (request == POWER_ON_BT || request == POWER_ON_UWB)
 			ret = btpower_on((enum plt_pwr_state)request);
 		else if (request == POWER_OFF_UWB || request == POWER_OFF_BT)
 			ret = btpower_off((enum plt_pwr_state)request);
 		else if (request == POWER_ON_BT_RETENION || request == POWER_ON_UWB_RETENION)
 			ret = btpower_retenion(request);
-
-		pwr_data->wait_status[request] = ret == 0? PWR_RSP_RECV: PWR_FAIL_RSP_RECV;
+		else if (request >= BT_ACCESS_REQ && request <= UWB_RELEASE_ACCESS) {
+			ret = btpower_access_ctrl(request);
+			pr_info("%s: grant status %s", __func__, ConvertGrantRetToString((int)ret));
+		}
+		pr_err("%s: request from is %s cur state = %s %s retention %s access %s pending %s\n",
+			__func__, pwr_req[request], pwr_states[get_pwr_state()],
+			ssr_state[get_sub_state()],
+			retention_mode[btpower_get_retenion_mode_state()],
+			ConvertGrantToString(btpower_get_grant_state()),
+			ConvertGrantToString(btpower_get_grant_pending_state()));
+	
+		pwr_data->wait_status[request] = ret;
 		wake_up_interruptible(&pwr_data->rsp_wait_q[request]);
-		pr_err("%s: current state = %s, %s\n", __func__,
-			pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
 	}
 }
 
-int schedule_client_pwr_voting(enum plt_pwr_state request)
+int schedule_client_voting(enum plt_pwr_state request)
 {
 	struct sk_buff *skb;
 	wait_queue_head_t *rsp_wait_q;
-	u8 *status;
+	int *status;
 	int ret = 0;
 	uint32_t req = (uint32_t)request;
 
@@ -1988,7 +2186,7 @@ int schedule_client_pwr_voting(enum plt_pwr_state request)
 	skb = alloc_skb(sizeof(uint32_t), GFP_KERNEL);
 
 	if (!skb) {
-		pr_err("%s: Unable to creat SK buff\n", __func__);
+		pr_err("%s: Unable to create skbuff\n", __func__);
 		mutex_unlock(&pwr_data->pwr_mtx);
 		return -1;
 	}
@@ -2001,17 +2199,75 @@ int schedule_client_pwr_voting(enum plt_pwr_state request)
 	schedule_work(&pwr_data->wq_pwr_voting);
 	mutex_unlock(&pwr_data->pwr_mtx);
 	ret = wait_event_interruptible_timeout(*rsp_wait_q, (*status) != PWR_WAITING_RSP,
-					       msecs_to_jiffies(TIMEOUT));
-
+					       msecs_to_jiffies(BTPOWER_CONFIG_MAX_TIMEOUT));
+	pr_err("%s: %d", __func__, *status);
 	if (ret == 0) {
 		pr_err("%s: failed to vote %d due to timeout", __func__, request);
 		ret = -ETIMEDOUT;
 	} else {
-		if (*status == PWR_RSP_RECV)
-			return 0;
-		else if (*status == PWR_FAIL_RSP_RECV || *status == PWR_CLIENT_KILLED)
-			return -1;
+		ret = *status;
 	}
+
+	return ret;
+}
+
+int btpower_handle_client_request(unsigned int cmd, int arg)
+{
+	int ret = -1;
+
+	pr_info("%s: %s cmd voted to %s, current state = %s, %s\n", __func__,
+		(cmd == BT_CMD_PWR_CTRL ? "BT_CMD_PWR_CTRL": "UWB_CMD_PWR_CTRL"),
+		bt_arg[(int)arg], pwr_states[get_pwr_state()],
+	 	ssr_state[(int)get_sub_state()]);
+
+	if (cmd == BT_CMD_PWR_CTRL) {
+		switch ((int)arg) {
+		case POWER_DISABLE:
+			ret = schedule_client_voting(POWER_OFF_BT);
+			break;
+		case POWER_ENABLE:
+			ret = schedule_client_voting(POWER_ON_BT);
+			break;
+		case POWER_RETENTION:
+			ret = schedule_client_voting(POWER_ON_BT_RETENION);
+			break;
+		}
+	} else if (cmd == UWB_CMD_PWR_CTRL) {
+		switch ((int)arg) {
+		case POWER_DISABLE:
+			ret = schedule_client_voting(POWER_OFF_UWB);
+			break;
+		case POWER_ENABLE:
+			ret = schedule_client_voting(POWER_ON_UWB);
+			break;
+		case POWER_RETENTION:
+			ret = schedule_client_voting(POWER_ON_UWB_RETENION);
+			break;
+		}
+	}
+	pr_err("%s: %s, SSR state = %s\n", __func__,
+		pwr_states[get_pwr_state()], ssr_state[(int)get_sub_state()]);
+
+	return ret;
+}
+
+int btpower_process_access_req(unsigned int cmd, int req)
+{
+	int ret = -1;
+
+	pr_info("%s: by %s: request type %s", __func__,
+		cmd == BT_CMD_ACCESS_CTRL ? "BT": "UWB",
+		req == 1? "Request": "Release");
+	if (cmd == BT_CMD_ACCESS_CTRL && req == 1)
+		ret = schedule_client_voting(BT_ACCESS_REQ);
+	else if (cmd == BT_CMD_ACCESS_CTRL && req == 2)
+		ret = schedule_client_voting(BT_RELEASE_ACCESS);
+	else if (cmd == UWB_CMD_ACCESS_CTRL && req == 1)
+		ret = schedule_client_voting(UWB_ACCESS_REQ);
+	else if (cmd == UWB_CMD_ACCESS_CTRL && req == 2)
+		ret = schedule_client_voting(UWB_RELEASE_ACCESS);
+	else 
+		pr_err("%s: unhandled command %04x req %02x", __func__, cmd, req);
 
 	return ret;
 }
@@ -2081,53 +2337,21 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 #endif
 		break;
 	case BT_CMD_PWR_CTRL:
-		pr_err("%s: BT_CMD_PWR_CTRL cmd voted to %s, current state = %s, %s\n",
-			__func__, bt_arg[(int)arg], pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
-
-		switch ((int)arg) {
-		case POWER_DISABLE:
-			ret = schedule_client_pwr_voting(POWER_OFF_BT);
-			pr_err("%s: %s, SSR state = %s\n", __func__,
-				pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
-			break;
-		case POWER_ENABLE:
-			ret = schedule_client_pwr_voting(POWER_ON_BT);
-			pr_err("%s: %s, SSR state = %s\n", __func__,
-				pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
-			break;
-		case POWER_RETENTION:
-			ret = schedule_client_pwr_voting(POWER_ON_BT_RETENION);
-			break;
-		}
+	case UWB_CMD_PWR_CTRL: {
+		ret = btpower_handle_client_request(cmd, (int)arg);
 		break;
-	case UWB_CMD_PWR_CTRL:
-
-		pr_err("%s: UWB_CMD_PWR_CTRL voted for %s, sub_system count = %s, %s\n",
-		        __func__, uwb_arg[(int)arg], pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
-
-		switch ((int)arg) {
-		case POWER_DISABLE:
-			ret = schedule_client_pwr_voting(POWER_OFF_UWB);
-			pr_err("%s: %s, SSR state = %s\n", __func__,
-				pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
-			break;
-		case POWER_ENABLE:
-			ret = schedule_client_pwr_voting(POWER_ON_UWB);
-			pr_err("%s: %s, SSR state = %s\n", __func__,
-				pwr_states[(int)get_pwr_state()], ssr_state[(int)get_sub_state()]);
-			break;
-		case POWER_RETENTION:
-			ret = schedule_client_pwr_voting(POWER_ON_UWB_RETENION);
-			pr_err("%s:BT Power Retention done", __func__);
-			break;
-		}
-		break;
+	}
 	case BT_CMD_REGISTRATION:
-		client_notified(BLUETOOTH, (int)arg);
+		btpower_register_client(BLUETOOTH, (int)arg);
 		break;
 	case UWB_CMD_REGISTRATION:
-		client_notified(UWB, (int)arg);
+		btpower_register_client(UWB, (int)arg);
 		break;
+	case BT_CMD_ACCESS_CTRL:
+	case UWB_CMD_ACCESS_CTRL: {
+		ret = btpower_process_access_req(cmd, (int)arg);
+		break;
+	}	  
 	case BT_CMD_CHIPSET_VERS:
 		chipset_version = (int)arg;
 		pr_warn("%s: unified Current SOC Version : %x\n", __func__,
