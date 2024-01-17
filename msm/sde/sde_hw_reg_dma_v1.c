@@ -1098,6 +1098,9 @@ int init_v3(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 
 	v1_supported[DEMURA_CFG] = v1_supported[DEMURA_CFG] | DSPP2 | DSPP3;
 	v1_supported[DEMURA_CFG0_PARAM2] = v1_supported[DEMURA_CFG0_PARAM2] | DSPP2 | DSPP3;
+	v1_supported[AIQE_MDNIE] = MDSS | DSPP0 | DSPP2;
+	v1_supported[AIQE_SSRC_CONFIG] = MDSS | DSPP0 | DSPP2;
+	v1_supported[AIQE_SSRC_DATA] = MDSS | DSPP0 | DSPP2;
 	return 0;
 }
 

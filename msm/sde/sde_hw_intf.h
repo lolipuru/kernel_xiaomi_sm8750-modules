@@ -239,6 +239,16 @@ struct sde_hw_intf_ops {
 	u32 (*get_avr_status)(struct sde_hw_intf *intf);
 
 	/**
+	 * Indicates the number of AVR armed
+	 */
+	void (*set_num_avr_step)(struct sde_hw_intf *intf, u32 num_avr_step);
+
+	/**
+	 * Indicates the current AVR step number
+	 */
+	u32 (*get_cur_num_avr_step)(struct sde_hw_intf *intf);
+
+	/**
 	 * Enable/disable 64 bit compressed data input to interface block
 	 */
 	void (*enable_compressed_input)(struct sde_hw_intf *intf,

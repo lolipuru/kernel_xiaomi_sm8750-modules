@@ -9,7 +9,40 @@
 #include "sde_hw_mdss.h"
 #include <drm/drm_crtc.h>
 
-struct sde_irq_callback;
+/**
+ * struct sde_cp_node - structure to define color processing
+ *                      property info
+ * @property_id: drm id for the property
+ * @prop_flags: flags to indicate type of property
+ * @feature: cp crtc feature enum
+ * @blob_ptr: pointer to drm blob property
+ * @prop_val: property value
+ * @pp_blk: pointer to sde_pp_blk struct
+ * @cp_feature_list: color processing feature list
+ * @cp_active_list: color processing active feature list
+ * @cp_dirty_list: color processing dirty feature list
+ * @is_dspp_feature: indicate if the feature is in dspp
+ * @lm_flush_override: indicate if lm flush override is enabled
+ * @prob_blob_sz: size of blob property
+ * @irq: pointer to sde_irq_callback
+ */
+struct sde_cp_node {
+	u32 property_id;
+	u32 prop_flags;
+	u32 feature;
+	void *blob_ptr;
+	uint64_t prop_val;
+	const struct sde_pp_blk *pp_blk;
+	struct list_head cp_feature_list;
+	struct list_head cp_active_list;
+	struct list_head cp_dirty_list;
+	bool is_dspp_feature;
+	bool lm_flush_override;
+	u32 prop_blob_sz;
+	struct sde_irq_callback *irq;
+};
+
+struct sde_kms *get_kms(struct drm_crtc *crtc);
 
 /*
  * PA MEMORY COLOR types
@@ -109,6 +142,11 @@ enum sde_cp_crtc_features {
 	SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT,
 	SDE_CP_CRTC_DSPP_DEMURA_BOOT_PLANE,
 	SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2,
+	SDE_CP_CRTC_DSPP_MDNIE,
+	SDE_CP_CRTC_DSPP_MDNIE_ART,
+	SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG,
+	SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA,
+	SDE_CP_CRTC_DSPP_COPR,
 	SDE_CP_CRTC_DSPP_MAX,
 	/* DSPP features end */
 
@@ -383,5 +421,11 @@ int sde_dspp_spr_read_opr_value(struct sde_hw_dspp *hw_dspp, u32 *opr_value);
  * @bl_max: Max backlight value.
  */
 void sde_cp_backlight_notification(struct drm_crtc *crtc, u32 bl_val, u32 bl_max);
+
+/**
+ * _sde_cp_mark_mdnie_art_property(): mark mdnie art property internally as dirty.
+ * @crtc: pointer to drm crtc.
+ */
+void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc);
 
 #endif /*_SDE_COLOR_PROCESSING_H */

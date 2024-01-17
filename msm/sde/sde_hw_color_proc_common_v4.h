@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2019, 2021 The Linux Foundation. All rights reserved.
  */
 #ifndef _SDE_HW_COLOR_PROC_COMMON_V4_H_
@@ -61,6 +61,7 @@ enum {
 #define GC_EN BIT(0)
 #define GC_TBL_NUM 3
 #define GC_LUT_SWAP_OFF 0x1c
+#define GC_HIGHPREC_EN BIT(2)
 
 #define IGC_TBL_NUM 3
 #define IGC_DITHER_OFF 0x7e0

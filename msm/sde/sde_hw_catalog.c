@@ -544,6 +544,23 @@ enum {
 	NOISEL_LAYER_PROP_MAX
 };
 
+enum {
+	AIQE_OFF,
+	AIQE_VERSION,
+	AIQE_LEN,
+	MDNIE,
+	ABC,
+	SSRC,
+	COPR,
+	AIQE_DITHER_OFF,
+	AIQE_DITHER_VERSION,
+	AIQE_DITHER_LEN,
+	AIQE_WRAPPER_OFF,
+	AIQE_WRAPPER_VERSION,
+	AIQE_WRAPPER_LEN,
+	AIQE_PROP_MAX,
+};
+
 /*************************************************************
  * dts property definition
  *************************************************************/
@@ -1035,6 +1052,28 @@ static struct sde_prop_type noise_layer_prop[] = {
 			false, PROP_TYPE_U32},
 	[NOISE_LAYER_VERSION] =  {NOISE_LAYER_VERSION,
 		"qcom,sde-lm-noise-version", false, PROP_TYPE_U32},
+};
+
+static struct sde_prop_type aiqe_prop[] = {
+	[AIQE_OFF] = {AIQE_OFF, "qcom,sde-dspp-aiqe-off", false, PROP_TYPE_U32_ARRAY},
+	[AIQE_VERSION] = {AIQE_VERSION, "qcom,sde-dspp-aiqe-version", false, PROP_TYPE_U32},
+	[AIQE_LEN] = {AIQE_LEN, "qcom,sde-dspp-aiqe-size", false, PROP_TYPE_U32},
+	[MDNIE] = {MDNIE, "qcom,sde-aiqe-has-feature-mdnie", false, PROP_TYPE_BOOL},
+	[ABC] = {ABC, "qcom,sde-aiqe-has-feature-abc", false, PROP_TYPE_BOOL},
+	[SSRC] = {SSRC, "qcom,sde-aiqe-has-feature-ssrc", false, PROP_TYPE_BOOL},
+	[COPR] = {COPR, "qcom,sde-aiqe-has-feature-copr", false, PROP_TYPE_BOOL},
+	[AIQE_DITHER_OFF] = {AIQE_DITHER_OFF, "qcom,sde-dspp-aiqe-dither-off", false,
+			PROP_TYPE_U32_ARRAY},
+	[AIQE_DITHER_VERSION] = {AIQE_DITHER_VERSION, "qcom,sde-dspp-aiqe-dither-version", false,
+			PROP_TYPE_U32},
+	[AIQE_DITHER_LEN] = {AIQE_DITHER_LEN, "qcom,sde-dspp-aiqe-dither-size", false,
+			PROP_TYPE_U32},
+	[AIQE_WRAPPER_OFF] = {AIQE_WRAPPER_OFF, "qcom,sde-dspp-aiqe-wrapper-off", false,
+			PROP_TYPE_U32_ARRAY},
+	[AIQE_WRAPPER_VERSION] = {AIQE_WRAPPER_VERSION, "qcom,sde-dspp-aiqe-wrapper-version",
+			false, PROP_TYPE_U32},
+	[AIQE_WRAPPER_LEN] = {AIQE_WRAPPER_LEN, "qcom,sde-dspp-aiqe-wrapper-size", false,
+			PROP_TYPE_U32},
 };
 
 /*************************************************************
@@ -2647,6 +2686,9 @@ static int sde_wb_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 			set_bit(SDE_WB_SYS_CACHE, &wb->features);
 		}
 
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+			set_bit(SDE_WB_FRAME_COUNT, &wb->features);
+
 		rc = _add_to_irq_offset_list(sde_cfg, SDE_INTR_HWBLK_WB, wb->id, wb->base);
 
 		if (test_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features)) {
@@ -3028,6 +3070,105 @@ exit:
 	return 0;
 }
 
+static int _sde_aiqe_parse_dt(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	int off_count, i;
+	struct sde_dt_props *props;
+
+	props = sde_get_dt_props(np, AIQE_PROP_MAX, aiqe_prop,
+			ARRAY_SIZE(aiqe_prop), &off_count);
+	if (IS_ERR(props))
+		return PTR_ERR(props);
+
+	sde_cfg->aiqe_count = off_count;
+	if (off_count > sde_cfg->dspp_count) {
+		SDE_ERROR("limiting %d AIQE blocks to %d DSPP instances\n",
+				off_count, sde_cfg->dspp_count);
+		sde_cfg->aiqe_count = sde_cfg->dspp_count;
+	}
+
+	if (props->exists[AIQE_OFF]) {
+		for (i = 0; i < sde_cfg->dspp_count; i++) {
+			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
+			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
+
+			if (i >= off_count)
+				break;
+
+			sblk->aiqe.id = SDE_DSPP_AIQE;
+			sblk->aiqe.base = PROP_VALUE_ACCESS(props->values,
+						AIQE_OFF, i);
+			if (sblk->aiqe.base >= MAX_AIQE_OFF) {
+				sblk->aiqe.base = 0;
+				continue;
+			}
+			sblk->aiqe.version = PROP_VALUE_ACCESS(props->values,
+					AIQE_VERSION, 0);
+			sblk->aiqe.len = PROP_VALUE_ACCESS(props->values,
+					AIQE_LEN, 0);
+			if (PROP_VALUE_ACCESS(props->values, MDNIE, 0))
+				sblk->aiqe.mdnie_supported = true;
+			if (PROP_VALUE_ACCESS(props->values, ABC, 0))
+				sblk->aiqe.abc_supported = true;
+			if (PROP_VALUE_ACCESS(props->values, SSRC, 0))
+				sblk->aiqe.ssrc_supported = true;
+			if (PROP_VALUE_ACCESS(props->values, COPR, 0))
+				sblk->aiqe.copr_supported = true;
+			set_bit(SDE_DSPP_AIQE, &dspp->features);
+		}
+	}
+
+	if (props->exists[AIQE_DITHER_OFF]) {
+		for (i = 0; i < sde_cfg->dspp_count; i++) {
+			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
+			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
+
+			if (i >= off_count)
+				break;
+
+			sblk->aiqe_dither.id = SDE_DSPP_AIQE_DITHER;
+			sblk->aiqe_dither.base = PROP_VALUE_ACCESS(props->values,
+						AIQE_DITHER_OFF, i);
+			if (sblk->aiqe_dither.base >= MAX_AIQE_OFF) {
+				sblk->aiqe_dither.base = 0;
+				continue;
+			}
+			sblk->aiqe_dither.version = PROP_VALUE_ACCESS(props->values,
+					AIQE_DITHER_VERSION, 0);
+			sblk->aiqe_dither.len = PROP_VALUE_ACCESS(props->values,
+					AIQE_DITHER_LEN, 0);
+			set_bit(SDE_DSPP_AIQE_DITHER, &dspp->features);
+		}
+	}
+
+	if (props->exists[AIQE_WRAPPER_OFF]) {
+		for (i = 0; i < sde_cfg->dspp_count; i++) {
+			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
+			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
+
+			if (i >= off_count)
+				break;
+
+			sblk->aiqe_wrapper.id = SDE_DSPP_AIQE_WRAPPER;
+			sblk->aiqe_wrapper.base = PROP_VALUE_ACCESS(props->values,
+						AIQE_WRAPPER_OFF, i);
+			if (sblk->aiqe_wrapper.base >= MAX_AIQE_OFF) {
+				sblk->aiqe_wrapper.base = 0;
+				continue;
+			}
+			sblk->aiqe_wrapper.version = PROP_VALUE_ACCESS(props->values,
+					AIQE_WRAPPER_VERSION, 0);
+			sblk->aiqe_wrapper.len = PROP_VALUE_ACCESS(props->values,
+					AIQE_WRAPPER_LEN, 0);
+			set_bit(SDE_DSPP_AIQE_WRAPPER, &dspp->features);
+		}
+	}
+
+	sde_put_dt_props(props);
+	return 0;
+}
+
 static void _sde_init_dspp_sblk(struct sde_dspp_cfg *dspp,
 		struct sde_pp_blk *pp_blk, int prop_id, int blk_id,
 		struct sde_dt_props *props)
@@ -3173,6 +3314,10 @@ static int sde_dspp_parse_dt(struct device_node *np,
 		goto end;
 
 	rc = _sde_rc_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = _sde_aiqe_parse_dt(np, sde_cfg);
 end:
 	return rc;
 }
@@ -3660,6 +3805,9 @@ static int sde_uidle_parse_dt(struct device_node *np,
 			sde_cfg->uidle_cfg.base, sde_cfg->uidle_cfg.len);
 		rc = -EINVAL;
 	}
+
+	if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+		set_bit(SDE_UIDLE_STATUS_EXT1, &sde_cfg->uidle_cfg.features);
 
 end:
 	if (rc && sde_cfg->uidle_cfg.uidle_rev) {
@@ -4890,6 +5038,8 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 	dma_list_size = ARRAY_SIZE(plane_formats);
 	if (test_bit(SDE_FEATURE_FP16, sde_cfg->features))
 		dma_list_size += ARRAY_SIZE(fp16_formats);
+	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
+		dma_list_size += ARRAY_SIZE(rgb_lossy_formats);
 
 	sde_cfg->dma_formats = kcalloc(dma_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -4903,6 +5053,9 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 	if (test_bit(SDE_FEATURE_FP16, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->dma_formats, dma_list_size,
 			index, fp16_formats, ARRAY_SIZE(fp16_formats));
+	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->dma_formats, dma_list_size,
+			index, rgb_lossy_formats, ARRAY_SIZE(rgb_lossy_formats));
 
 	/* ViG pipe input formats */
 	vig_list_size = ARRAY_SIZE(plane_formats_vig);
@@ -4910,6 +5063,8 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 		vig_list_size += ARRAY_SIZE(p010_ubwc_formats);
 	if (test_bit(SDE_FEATURE_FP16, sde_cfg->features))
 		vig_list_size += ARRAY_SIZE(fp16_formats);
+	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
+		vig_list_size += ARRAY_SIZE(rgb_lossy_formats);
 
 	sde_cfg->vig_formats = kcalloc(vig_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -4927,6 +5082,9 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 	if (test_bit(SDE_FEATURE_FP16, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
 			index, fp16_formats, ARRAY_SIZE(fp16_formats));
+	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->dma_formats, vig_list_size,
+			index, rgb_lossy_formats, ARRAY_SIZE(rgb_lossy_formats));
 
 	/* Virtual ViG pipe input formats (all virt pipes use DMA formats) */
 	virt_vig_list_size = ARRAY_SIZE(plane_formats);
@@ -4946,6 +5104,10 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 		index += sde_copy_formats(sde_cfg->virt_vig_formats,
 				virt_vig_list_size, index, fp16_formats,
 				ARRAY_SIZE(fp16_formats));
+	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->virt_vig_formats,
+				virt_vig_list_size, index, rgb_lossy_formats,
+				ARRAY_SIZE(rgb_lossy_formats));
 
 	/* WB output formats */
 	wb2_list_size = ARRAY_SIZE(wb2_formats);
@@ -5525,6 +5687,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
 		set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
 		set_bit(SDE_FEATURE_FP16, sde_cfg->features);
+		set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
 		set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 		set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
 		set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
@@ -5534,6 +5697,8 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 		set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 		set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+		set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
+		set_bit(SDE_SYS_CACHE_DISP_WB, sde_cfg->sde_sys_cache_type_map);
 		set_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_cfg->features);
 		set_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features);
 		set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);

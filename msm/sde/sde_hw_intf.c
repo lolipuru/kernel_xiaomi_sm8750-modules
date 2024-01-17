@@ -112,6 +112,8 @@
 #define INTF_TEAR_INT_COUNT_VAL_EXT     0x2DC
 #define INTF_TEAR_SYNC_THRESH_EXT       0x2E0
 #define INTF_TEAR_SYNC_WRCOUNT_EXT      0x2E4
+#define MDP_INTF_NUM_AVR_STEP		0x460
+#define MDP_INTF_CURRENT_AVR_STEP	0x464
 
 static struct sde_intf_cfg *_intf_offset(enum sde_intf intf,
 		struct sde_mdss_cfg *m,
@@ -220,6 +222,31 @@ static u32 sde_hw_intf_get_avr_status(struct sde_hw_intf *ctx)
 	avr_ctrl = SDE_REG_READ(c, INTF_AVR_CONTROL);
 
 	return avr_ctrl >> 31;
+}
+
+static void sde_hw_intf_set_num_avr_step(struct sde_hw_intf *ctx,
+	u32 num_avr_step)
+{
+	struct sde_hw_blk_reg_map *c;
+
+	if (!ctx)
+		return;
+
+	c = &ctx->hw;
+
+	SDE_REG_WRITE(c, MDP_INTF_NUM_AVR_STEP, num_avr_step & 0xFFF);
+}
+
+static u32 sde_hw_intf_get_cur_num_avr_step(struct sde_hw_intf *ctx)
+{
+	struct sde_hw_blk_reg_map *c;
+
+	if (!ctx)
+		return 0;
+
+	c = &ctx->hw;
+
+	return SDE_REG_READ(c, MDP_INTF_CURRENT_AVR_STEP);
 }
 
 static inline void _check_and_set_comp_bit(struct sde_hw_intf *ctx,
@@ -914,6 +941,21 @@ static int sde_hw_intf_enable_te(struct sde_hw_intf *intf, bool enable)
 	return 0;
 }
 
+static void sde_hw_intf_enable_te_level_mode(struct sde_hw_intf *intf, bool enable)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+	u32 val = 0;
+
+	val = SDE_REG_READ(c, INTF_TEAR_TEAR_CHECK_EN);
+
+	if (enable)
+		val |= BIT(7);
+	else
+		val &= ~BIT(7);
+
+	SDE_REG_WRITE(c, INTF_TEAR_TEAR_CHECK_EN, val);
+}
+
 static void sde_hw_intf_update_te(struct sde_hw_intf *intf,
 		struct sde_hw_tear_check *te)
 {
@@ -1125,6 +1167,11 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 	if (cap & BIT(SDE_INTF_AVR_STATUS))
 		ops->get_avr_status = sde_hw_intf_get_avr_status;
 
+	if (cap & BIT(SDE_INTF_NUM_AVR_STEP)) {
+		ops->set_num_avr_step = sde_hw_intf_set_num_avr_step;
+		ops->get_cur_num_avr_step = sde_hw_intf_get_cur_num_avr_step;
+	}
+
 	if (cap & BIT(SDE_INTF_TE)) {
 		ops->setup_tearcheck = sde_hw_intf_setup_te_config;
 		ops->enable_tearcheck = sde_hw_intf_enable_te;
@@ -1138,7 +1185,9 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->check_and_reset_tearcheck = sde_hw_intf_v1_check_and_reset_tearcheck;
 		ops->override_tear_rd_ptr_val = sde_hw_intf_override_tear_rd_ptr_val;
 
-		if (cap & BIT(SDE_INTF_TE_LEVEL_TRIGGER))
+		if (cap & BIT(SDE_INTF_TEAR_TE_LEVEL_MODE))
+			ops->enable_te_level_trigger = sde_hw_intf_enable_te_level_mode;
+		else if (cap & BIT(SDE_INTF_TE_LEVEL_TRIGGER))
 			ops->enable_te_level_trigger = sde_hw_intf_enable_te_level_trigger;
 	}
 

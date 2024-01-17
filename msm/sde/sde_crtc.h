@@ -31,6 +31,7 @@
 #include "sde_hw_ds.h"
 #include "sde_color_processing.h"
 #include "sde_encoder.h"
+#include "sde_aiqe_common.h"
 
 #define SDE_CRTC_NAME_SIZE	12
 
@@ -380,6 +381,10 @@ enum sde_crtc_hw_fence_flags {
  * @back_light: backlight value
  * @back_light_max: max backlight value
  * @back_light_pending: flag to indicate if backlight update is pending
+ * @framedone_event_notify_enabled: flag to indicate if framedone notify is enabled or not
+ * @mdnie_art_event_notify_enabled: flag to indicate if art done notify is enabled or not
+ * @copr_status_event_notify_enabled: flag to indicate if copr status notify is enabled or not
+ * @aiqe_top_level: aiqe top level mutex and mask
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -500,6 +505,12 @@ struct sde_crtc {
 	u32 back_light;
 	u32 back_light_max;
 	u32 back_light_pending;
+
+	bool framedone_event_notify_enabled;
+	bool mdnie_art_event_notify_enabled;
+	bool copr_status_event_notify_enabled;
+
+	struct sde_aiqe_top_level aiqe_top_level;
 };
 
 enum sde_crtc_dirty_flags {

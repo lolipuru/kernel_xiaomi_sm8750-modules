@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -4356,12 +4356,17 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 	msm_property_install_range(&psde->property_info, "zpos",
 		0x0, 0, zpos_max, zpos_def, PLANE_PROP_ZPOS);
 
-	if (test_bit(SDE_FEATURE_10_BITS_COMPONENTS, catalog->features))
+	if (test_bit(SDE_FEATURE_10_BITS_COMPONENTS, catalog->features)) {
 		msm_property_install_range(&psde->property_info, "alpha", 0x0, 0, 65535, 65535,
 				PLANE_PROP_ALPHA);
-	else
+		msm_property_install_volatile_range(&psde->property_info, "bg_alpha",
+			0x0, 0, 65535, 255, PLANE_PROP_BG_ALPHA);
+	} else {
 		msm_property_install_range(&psde->property_info, "alpha", 0x0, 0, 255, 255,
 				PLANE_PROP_ALPHA);
+		msm_property_install_volatile_range(&psde->property_info, "bg_alpha",
+			0x0, 0, 255, 255, PLANE_PROP_BG_ALPHA);
+	}
 
 	/* linux default file descriptor range on each process */
 	msm_property_install_range(&psde->property_info, "input_fence",
@@ -4395,9 +4400,6 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		msm_property_install_volatile_range(&psde->property_info,
 			"src_img_size", 0x0, 0, ~0, 0, PLANE_PROP_SRC_IMG_SIZE);
 	}
-
-	msm_property_install_volatile_range(&psde->property_info, "bg_alpha",
-		0x0, 0, 255, 255, PLANE_PROP_BG_ALPHA);
 
 	if (psde->pipe_hw->ops.setup_solidfill)
 		msm_property_install_range(&psde->property_info, "color_fill",

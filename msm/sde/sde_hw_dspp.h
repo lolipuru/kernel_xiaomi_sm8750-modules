@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -8,6 +8,7 @@
 #define _SDE_HW_DSPP_H
 
 #include <drm/msm_drm_pp.h>
+#include <drm/msm_drm_aiqe.h>
 #include "msm_drv.h"
 
 struct sde_hw_dspp;
@@ -159,6 +160,14 @@ struct sde_hw_dspp_ops {
 	 */
 	void (*ad_read_intr_resp)(struct sde_hw_dspp *ctx, u32 event,
 			u32 *resp_in, u32 *resp_out);
+
+	/**
+	 * validate_ltm_roi -  Validate LTM roi configuration
+	 * @ctx: Pointer to dspp context.
+	 * @cfg: Pointer to configuration.
+	 * Return: 0 on success, non-zero otherwise.
+	 */
+	int (*validate_ltm_roi)(struct sde_hw_dspp *ctx, void *cfg);
 
 	/**
 	 * setup_ltm_init - setup LTM INIT
@@ -328,6 +337,74 @@ struct sde_hw_dspp_ops {
 	 * @cfg: Pointer to configuration
 	 */
 	void (*setup_demura_cfg0_param2)(struct sde_hw_dspp *ctx, void *cfg);
+	/**
+	 * setup_mdnie - function to configure mdnie params
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 * @aiqe_top: Pointer to aiqe top level structure
+	 */
+	void (*setup_mdnie)(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
+	/**
+	 * setup_mdnie_art - function to configure mdnie_art params
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 * @aiqe_top: Pointer to aiqe top level structure
+	 */
+	void (*setup_mdnie_art)(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
+
+	/**
+	 * setup_aiqe_ssrc_config - function to set SSRC configuration
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 * @mdnie_top: Pointer to top level mdnie structure
+	 */
+	void (*setup_aiqe_ssrc_config)(struct sde_hw_dspp *ctx, void *cfg, void *mdnie_top);
+
+	/**
+	 * setup_aiqe_ssrc_data - function to set SSRC data
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 * @mdnie_top: Pointer to top level mdnie structure
+	 */
+	void (*setup_aiqe_ssrc_data)(struct sde_hw_dspp *ctx, void *cfg, void *mdnie_top);
+
+	/**
+	 * validate_aiqe_ssrc_data - validate SSRC data payload
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 * @mdnie_top: Pointer to top level mdnie structure
+	 */
+	int (*validate_aiqe_ssrc_data)(struct sde_hw_dspp *ctx, void *cfg, void *mdnie_top);
+
+	/**
+	 * setup_copr - function to configure copr params
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 * @aiqe_top: Pointer to aiqe top level structure
+	 */
+	void (*setup_copr)(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
+	/**
+	 * read_mdnie_art_done - function to read mdnie art done
+	 * @ctx: Pointer to dspp context
+	 * @art_done: Pointer to art done value
+	 */
+	int (*read_mdnie_art_done)(struct sde_hw_dspp *ctx,  u32 *art_done);
+	/**
+	 * read_copr_status - function to read copr status
+	 * @ctx: Pointer to dspp context
+	 * @copr_status: Pointer to copr_status struct.
+	 */
+	int (*read_copr_status)(struct sde_hw_dspp *ctx, struct drm_msm_copr_status *copr_status);
+	/**
+	 * reset_mdnie_art - function to reset art param after art done
+	 * @ctx: Pointer to dspp context
+	 */
+	void (*reset_mdnie_art)(struct sde_hw_dspp *ctx);
+	/**
+	 * setup_mdnie_psr - function to enable mdnie psr flag
+	 * @ctx: Pointer to dspp context
+	 */
+	void (*setup_mdnie_psr)(struct sde_hw_dspp *ctx);
 };
 
 /**

@@ -217,6 +217,9 @@ enum {
 #define MAX_VPADDING_RATIO_M	63
 #define MAX_VPADDING_RATIO_N	15
 
+/*Check for invalid aiqe blocks*/
+#define MAX_AIQE_OFF 0xFFFFFFFF
+
 /**
  * sde_sys_cache_type: Types of system cache supported
  * SDE_SYS_CACHE_DISP: System cache for static display read/write path use case
@@ -474,6 +477,9 @@ enum {
  * @SDE_DSPP_RC_PU           RC block (pu)
  * @SDE_DSPP_SB              SB LUT DMA
  * @SDE_DSPP_DEMURA_CFG0_PARAM2 Demura block
+ * @SDE_DSPP_AIQE            AIQE Block
+ * @SDE_DSPP_AIQE_DITHER     AIQE Dither Block
+ * @SDE_DSPP_AIQE_WRAPPER    AIQE Wrapper Block
  * @SDE_DSPP_MAX             maximum value
  */
 enum {
@@ -495,6 +501,9 @@ enum {
 	SDE_DSPP_RC_PU,
 	SDE_DSPP_SB,
 	SDE_DSPP_DEMURA_CFG0_PARAM2,
+	SDE_DSPP_AIQE,
+	SDE_DSPP_AIQE_DITHER,
+	SDE_DSPP_AIQE_WRAPPER,
 	SDE_DSPP_MAX
 };
 
@@ -655,6 +664,8 @@ enum {
  * @SDE_INTF_TE_DEASSERT_DETECT INTF block has TE Deassert detect support
  * @SDE_INTF_VSYNC_TS_SRC_EN    INTF block has VSYNC timestamp source selection support
  * @SDE_INTF_TE_LEVEL_TRIGGER   INTF block has TE Level trigger gating support
+ * @SDE_INTF_TEAR_TE_LEVEL_MODE	INTF block has TE Level mode support
+ * @SDE_INTF_NUM_AVR_STEP       INTF block has NUM_AVR_STEP support
  * @SDE_INTF_MAX
  */
 enum {
@@ -675,6 +686,8 @@ enum {
 	SDE_INTF_TE_DEASSERT_DETECT,
 	SDE_INTF_VSYNC_TS_SRC_EN,
 	SDE_INTF_TE_LEVEL_TRIGGER,
+	SDE_INTF_TEAR_TE_LEVEL_MODE,
+	SDE_INTF_NUM_AVR_STEP,
 	SDE_INTF_MAX
 };
 
@@ -704,6 +717,7 @@ enum {
  * @SDE_WB_CWB_DITHER_CTRL  CWB dither is available for configuring
  * @SDE_WB_PROG_LINE        Writeback block supports programmable line ptr
  * @SDE_WB_LINEAR_ROTATION  Writeback block supports line mode image rotation
+ * @SDE_WB_FRAME_COUNT      Writeback block support frame count
  * @SDE_WB_MAX              maximum value
  */
 enum {
@@ -729,6 +743,7 @@ enum {
 	SDE_WB_CWB_DITHER_CTRL,
 	SDE_WB_PROG_LINE,
 	SDE_WB_LINEAR_ROTATION,
+	SDE_WB_FRAME_COUNT,
 	SDE_WB_MAX
 };
 
@@ -760,11 +775,13 @@ enum {
  * uidle features
  * @SDE_UIDLE_QACTIVE_OVERRIDE    uidle sends qactive signal
  * @SDE_UIDLE_WB_FAL_STATUS       wb contributes to fal status
+ * @SDE_UIDLE_STATUS_EXT1         uidle status_2 & status_3 for danger/safe/idle/fal
  * @SDE_UIDLE_MAX                 maximum value
  */
 enum {
 	SDE_UIDLE_QACTIVE_OVERRIDE = 0x1,
 	SDE_UIDLE_WB_FAL_STATUS,
+	SDE_UIDLE_STATUS_EXT1,
 	SDE_UIDLE_MAX
 };
 
@@ -827,6 +844,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_EMULATED_ENV   Emulated environment supported
  * @SDE_FEATURE_UCSC_SUPPORTED  UCSC pipe format supported
  * @SDE_FEATURE_10_BITS_COMPONENTS Support for 10 bits components
+ * @SDE_FEATURE_UBWC_LOSSY	Support UBWC Lossy
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -876,6 +894,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_EMULATED_ENV,
 	SDE_FEATURE_UCSC_SUPPORTED,
 	SDE_FEATURE_10_BITS_COMPONENTS,
+	SDE_FEATURE_UBWC_LOSSY,
 	SDE_FEATURE_MAX
 };
 
@@ -1187,6 +1206,24 @@ struct sde_dspp_rc {
 	u32 min_region_width;
 };
 
+/**
+ * struct sde_dspp_aiqe: AIQE sub-blk information
+ * @info: HW register and features supported by this sub-blk.
+ * @version: HW Algorithm version.
+ * @mdnie_supported: flag to add support for mdnie module
+ * @abc_supported: flag to add support for abc module
+ * @ssrc_supported: flag to add support for ssrc module
+ * @copr_supported: flag to add support for copr module
+ */
+struct sde_dspp_aiqe {
+	SDE_HW_SUBBLK_INFO;
+	u32 version;
+	bool mdnie_supported;
+	bool abc_supported;
+	bool ssrc_supported;
+	bool copr_supported;
+};
+
 struct sde_dspp_sub_blks {
 	struct sde_pp_blk igc;
 	struct sde_pp_blk pcc;
@@ -1203,6 +1240,9 @@ struct sde_dspp_sub_blks {
 	struct sde_pp_blk vlut;
 	struct sde_dspp_rc rc;
 	struct sde_pp_blk demura;
+	struct sde_dspp_aiqe aiqe;
+	struct sde_pp_blk aiqe_dither;
+	struct sde_pp_blk aiqe_wrapper;
 };
 
 struct sde_pingpong_sub_blks {
@@ -1957,6 +1997,7 @@ struct sde_perf_cfg {
  * @spr_count           number of SPR hardware instances
  * @demura_count        number of demura hardware instances
  * @demura_supported    indicates which SSPP/RECT combinations support demura
+ * @aiqe_count          number of aiqe hardware instances
  * @trusted_vm_env      true if the driver is executing in the trusted VM
  * @tvm_reg_count	number of sub-driver register ranges that need to be included
  *					for trusted vm for accepting the resources
@@ -2002,6 +2043,7 @@ struct sde_perf_cfg {
  * @dnsc_blur_filters        supported filters for downscale blur
  * @dnsc_blur_filter_count   supported filter count for downscale blur
  * @cac_formats         supported formats for CAC
+ * @rgb_lossy_formats	supported formats for UBWC lossy
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
@@ -2073,6 +2115,7 @@ struct sde_mdss_cfg {
 	u32 spr_count;
 	u32 demura_count;
 	u32 demura_supported[SSPP_MAX][2];
+	u32 aiqe_count;
 
 	/* Secure & Trusted UI */
 	bool trusted_vm_env;
@@ -2126,6 +2169,7 @@ struct sde_mdss_cfg {
 	struct sde_dnsc_blur_filter_info *dnsc_blur_filters;
 	u32 dnsc_blur_filter_count;
 	struct sde_format_extended *cac_formats;
+	struct sde_format_extended *rgb_lossy_formats;
 
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;

@@ -34,6 +34,7 @@
 #include <linux/soc/qcom/qcom_sync_file.h>
 #endif
 #include <linux/file.h>
+#include <drm/msm_drm_aiqe.h>
 
 #include "sde_kms.h"
 #include "sde_hw_lm.h"
@@ -52,6 +53,7 @@
 #include "sde_trace.h"
 #include "msm_drv.h"
 #include "sde_vm.h"
+#include "sde_color_processing_aiqe.h"
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
@@ -92,6 +94,12 @@ static int sde_crtc_vm_release_handler(struct drm_crtc *crtc_drm,
 	bool en, struct sde_irq_callback *irq);
 static int sde_crtc_opr_event_handler(struct drm_crtc *crtc_drm,
 	bool en, struct sde_irq_callback *irq);
+static int sde_crtc_framedone_event_handler(struct drm_crtc *crtc_drm,
+	bool en, struct sde_irq_callback *irq);
+static int sde_crtc_mdnie_art_event_handler(struct drm_crtc *crtc_drm,
+	bool en, struct sde_irq_callback *irq);
+static int sde_crtc_copr_status_event_handler(struct drm_crtc *crtc_drm,
+	bool en, struct sde_irq_callback *irq);
 
 static struct sde_crtc_custom_events custom_events[] = {
 	{DRM_EVENT_AD_BACKLIGHT, sde_cp_ad_interrupt},
@@ -106,6 +114,9 @@ static struct sde_crtc_custom_events custom_events[] = {
 	{DRM_EVENT_VM_RELEASE, sde_crtc_vm_release_handler},
 	{DRM_EVENT_FRAME_DATA, sde_crtc_frame_data_interrupt_handler},
 	{DRM_EVENT_OPR_VALUE, sde_crtc_opr_event_handler},
+	{DRM_EVENT_FRAME_DONE, sde_crtc_framedone_event_handler},
+	{DRM_EVENT_MDNIE_ART, sde_crtc_mdnie_art_event_handler},
+	{DRM_EVENT_COPR, sde_crtc_copr_status_event_handler},
 };
 
 /* default input fence timeout, in ms */
@@ -1836,21 +1847,24 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 
 	for (i = 0; i < cnt; i++) {
 		cur_pstate = &pstates[i];
-		sde_plane_setup_src_split_order(
-			cur_pstate->drm_pstate->plane,
-			cur_pstate->sde_pstate->multirect_index,
-			cur_pstate->sde_pstate->pipe_order_flags);
-
 		cur_sde_pstate = cur_pstate->sde_pstate;
 		plane = cur_pstate->drm_pstate->plane;
+
+		sde_plane_setup_src_split_order(plane, cur_sde_pstate->multirect_index,
+							cur_sde_pstate->pipe_order_flags);
+
 		layout_idx = (cur_sde_pstate->layout <= SDE_LAYOUT_LEFT) ? 0 : 1;
 		stage_cfg = &sde_crtc->stage_cfg[layout_idx];
+		stage = cur_sde_pstate->stage;
 
 		if (cur_sde_pstate->pipe_order_flags & SDE_SSPP_RIGHT) {
 			for (j = 0; j < PIPES_PER_STAGE; j++) {
-				if (stage_cfg->stage[cur_sde_pstate->stage][j]
-								== sde_plane_pipe(plane)) {
-					stage_cfg->layout[cur_sde_pstate->stage][j] = 1;
+				if ((stage_cfg->stage[stage][j] == sde_plane_pipe(plane))
+						&& (stage_cfg->multirect_index[stage][j]
+							== cur_sde_pstate->multirect_index)) {
+					SDE_EVT32(DRMID(plane), sde_plane_pipe(plane), layout_idx,
+							stage, j, cur_sde_pstate->multirect_index);
+					stage_cfg->layout[stage][j] = 1;
 					break;
 				}
 			}
@@ -3209,11 +3223,64 @@ void sde_crtc_opr_event_notify(struct drm_crtc *crtc)
 	}
 }
 
+void sde_crtc_mdnie_art_event_notify(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+	struct drm_msm_mdnie_art_done mdnie_art_done;
+	struct sde_hw_dspp *dspp;
+	u32 current_art_done;
+	int rc;
+	struct drm_event event;
+
+	sde_crtc = to_sde_crtc(crtc);
+	dspp = sde_crtc->mixers[0].hw_dspp;
+	rc = sde_dspp_mdnie_read_art_done(dspp, &current_art_done);
+	if (rc) {
+		SDE_ERROR("failed to collect MDNIE ART rc: %d\n", rc);
+		return;
+	}
+
+	if (current_art_done == 1) {
+		mdnie_art_done.art_done = current_art_done;
+		event.type = DRM_EVENT_MDNIE_ART;
+		event.length = sizeof(mdnie_art_done);
+		msm_mode_object_event_notify(&crtc->base, crtc->dev, &event,
+				(u8 *)&mdnie_art_done);
+
+		// Reset ART_DONE and ART_EN
+		dspp->ops.reset_mdnie_art(dspp);
+		_sde_cp_mark_mdnie_art_property(crtc);
+	}
+}
+
+void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+	struct drm_msm_copr_status copr_status;
+	int rc;
+	struct drm_event event;
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	rc = sde_dspp_copr_read_status(sde_crtc->mixers[0].hw_dspp, &copr_status);
+	if (rc) {
+		SDE_ERROR("failed to collect COPR STATUS rc: %d\n", rc);
+		return;
+	}
+
+	event.type = DRM_EVENT_COPR;
+	event.length = sizeof(copr_status);
+	msm_mode_object_event_notify(&crtc->base, crtc->dev, &event,
+		(u8 *)&copr_status);
+
+}
+
 static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 		struct sde_crtc_frame_event *fevent)
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_connector *sde_conn;
+	u32 frame_done = 1;
 
 	sde_crtc = to_sde_crtc(crtc);
 	if (sde_crtc->opr_event_notify_enabled)
@@ -3222,6 +3289,15 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 	sde_conn = to_sde_connector(fevent->connector);
 	if (sde_conn && sde_conn->misr_event_notify_enabled)
 		sde_encoder_misr_sign_event_notify(fevent->connector->encoder);
+
+	if (sde_crtc->framedone_event_notify_enabled)
+		sde_crtc_event_notify(crtc, DRM_EVENT_FRAME_DONE, &frame_done, sizeof(u32));
+
+	if (sde_crtc->mdnie_art_event_notify_enabled)
+		sde_crtc_mdnie_art_event_notify(crtc);
+
+	if (sde_crtc->copr_status_event_notify_enabled)
+		sde_crtc_copr_status_event_notify(crtc);
 }
 
 static void sde_crtc_frame_event_work(struct kthread_work *work)
@@ -8595,6 +8671,45 @@ static int sde_crtc_opr_event_handler(struct drm_crtc *crtc_drm,
 		return -EINVAL;
 
 	sde_crtc->opr_event_notify_enabled = en;
+	return 0;
+}
+
+static int sde_crtc_framedone_event_handler(struct drm_crtc *crtc_drm,
+	bool en, struct sde_irq_callback *irq)
+{
+	struct sde_crtc *sde_crtc;
+
+	sde_crtc = to_sde_crtc(crtc_drm);
+	if (!sde_crtc)
+		return -EINVAL;
+
+	sde_crtc->framedone_event_notify_enabled = en;
+	return 0;
+}
+
+static int sde_crtc_mdnie_art_event_handler(struct drm_crtc *crtc_drm,
+	bool en, struct sde_irq_callback *irq)
+{
+	struct sde_crtc *sde_crtc;
+
+	sde_crtc = to_sde_crtc(crtc_drm);
+	if (!sde_crtc)
+		return -EINVAL;
+
+	sde_crtc->mdnie_art_event_notify_enabled = en;
+	return 0;
+}
+
+static int sde_crtc_copr_status_event_handler(struct drm_crtc *crtc_drm,
+	bool en, struct sde_irq_callback *irq)
+{
+	struct sde_crtc *sde_crtc;
+
+	sde_crtc = to_sde_crtc(crtc_drm);
+	if (!sde_crtc)
+		return -EINVAL;
+
+	sde_crtc->copr_status_event_notify_enabled = en;
 	return 0;
 }
 

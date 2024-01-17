@@ -650,6 +650,22 @@ static const struct sde_format sde_format_map_ubwc[] = {
 		SDE_FETCH_UBWC, 4, SDE_TILE_HEIGHT_NV12),
 };
 
+static const struct sde_format sde_format_map_LOSSY_8_5[] = {
+	INTERLEAVED_RGB_FMT_TILED(ABGR8888,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C2_R_Cr, C0_G_Y, C1_B_Cb, C3_ALPHA, 4,
+		true, 4, (SDE_FORMAT_FLAG_LOSSY_8_5 | SDE_FORMAT_FLAG_COMPRESSED),
+		SDE_FETCH_UBWC, 2, SDE_TILE_HEIGHT_UBWC),
+};
+
+static const struct sde_format sde_format_map_LOSSY_2_1[] = {
+	INTERLEAVED_RGB_FMT_TILED(ABGR8888,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C2_R_Cr, C0_G_Y, C1_B_Cb, C3_ALPHA, 4,
+		true, 4, (SDE_FORMAT_FLAG_LOSSY_2_1 | SDE_FORMAT_FLAG_COMPRESSED),
+		SDE_FETCH_UBWC, 2, SDE_TILE_HEIGHT_UBWC),
+};
+
 static const struct sde_format sde_format_map_p010[] = {
 	PSEUDO_YUV_FMT_LOOSE(NV12,
 		0, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
@@ -787,11 +803,18 @@ static int _sde_format_get_media_color_ubwc(const struct sde_format *fmt)
 		return color_fmt;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(sde_media_ubwc_map); ++i)
-		if (fmt->base.pixel_format == sde_media_ubwc_map[i].format) {
-			color_fmt = sde_media_ubwc_map[i].color;
-			break;
+	if (test_bit(SDE_FORMAT_FLAG_LOSSY_8_5_BIT, fmt->flag)) {
+		color_fmt = MMM_COLOR_FMT_RGBA8888_L_8_5_UBWC;
+	} else if (test_bit(SDE_FORMAT_FLAG_LOSSY_2_1_BIT, fmt->flag)) {
+		color_fmt = MMM_COLOR_FMT_RGBA8888_L_2_1_UBWC;
+	} else {
+		for (i = 0; i < ARRAY_SIZE(sde_media_ubwc_map); ++i) {
+			if (fmt->base.pixel_format == sde_media_ubwc_map[i].format) {
+				color_fmt = sde_media_ubwc_map[i].color;
+				break;
+			}
 		}
+	}
 	return color_fmt;
 }
 
@@ -1253,6 +1276,16 @@ const struct sde_format *sde_get_sde_format_ext(
 		map_size = ARRAY_SIZE(sde_format_map_ubwc);
 		SDE_DEBUG("found fmt: %4.4s  DRM_FORMAT_MOD_QCOM_COMPRESSED\n",
 				(char *)&format);
+		break;
+	case DRM_FORMAT_MOD_QCOM_COMPRESSED | DRM_FORMAT_MOD_QCOM_LOSSY_8_5:
+		map = sde_format_map_LOSSY_8_5;
+		map_size = ARRAY_SIZE(sde_format_map_LOSSY_8_5);
+		SDE_DEBUG("found fmt: %4.4s DRM_FORMAT_MOD_QCOM_LOSSY_8_5\n", (char *)&format);
+		break;
+	case DRM_FORMAT_MOD_QCOM_COMPRESSED | DRM_FORMAT_MOD_QCOM_LOSSY_2_1:
+		map = sde_format_map_LOSSY_2_1;
+		map_size = ARRAY_SIZE(sde_format_map_LOSSY_2_1);
+		SDE_DEBUG("found fmt: %4.4s DRM_FORMAT_MOD_QCOM_LOSSY_2_1\n", (char *)&format);
 		break;
 	case DRM_FORMAT_MOD_QCOM_DX:
 		map = sde_format_map_p010;

@@ -382,6 +382,47 @@ static void _sde_encoder_phys_vid_setup_avr(
 	}
 }
 
+static void _sde_encoder_phys_vid_set_num_avr_step(struct sde_encoder_phys *phys_enc)
+{
+	struct drm_connector *conn = phys_enc->connector;
+	struct sde_encoder_phys_vid *vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct msm_mode_info *info = &sde_enc->mode_info;
+	struct sde_hw_intf *intf = vid_enc->base.hw_intf;
+	unsigned long lock_flags;
+	u64 ept, delta_ts = 0, avr_step_time = 0;
+	u32 num_avr_step = 0, cur_avr_step = 0;
+	ktime_t current_ts, ept_ts;
+
+	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
+	current_ts = ktime_get_ns();
+	ept = sde_connector_get_property(conn->state, CONNECTOR_PROP_EPT);
+	if (!ept || !info->avr_step_fps) {
+		spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+		return;
+	}
+
+	ept_ts = ktime_set(0, ept);
+
+	if (ktime_after(ept_ts, current_ts)) {
+		delta_ts = ept_ts - current_ts;
+		avr_step_time = DIV_ROUND_UP(NSEC_PER_SEC, info->avr_step_fps);
+		num_avr_step = DIV_ROUND_UP(delta_ts, avr_step_time);
+	}
+	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+
+	if (intf->ops.get_cur_num_avr_step)
+		cur_avr_step = intf->ops.get_cur_num_avr_step(intf);
+
+	num_avr_step += cur_avr_step;
+
+	if (intf->ops.set_num_avr_step)
+		intf->ops.set_num_avr_step(intf, num_avr_step);
+
+	SDE_EVT32(DRMID(phys_enc->parent), ktime_to_us(ept_ts), ktime_to_us(current_ts),
+			ktime_to_us(delta_ts), info->avr_step_fps, cur_avr_step, num_avr_step);
+}
+
 static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 {
 	struct intf_avr_params avr_params;
@@ -389,6 +430,7 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	struct drm_connector *conn = phys_enc->connector;
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct msm_mode_info *info = &sde_enc->mode_info;
+	struct sde_hw_intf *intf = vid_enc->base.hw_intf;
 	u32 avr_step_state;
 
 	if (!conn || !conn->state)
@@ -403,13 +445,16 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 		avr_params.avr_step_lines = mult_frac(phys_enc->cached_mode.vtotal,
 				vid_enc->timing_params.vrefresh, info->avr_step_fps);
 
-	if (vid_enc->base.hw_intf->ops.avr_ctrl)
-		vid_enc->base.hw_intf->ops.avr_ctrl(vid_enc->base.hw_intf, &avr_params);
+	if (intf->ops.avr_ctrl)
+		intf->ops.avr_ctrl(intf, &avr_params);
 
-	if (vid_enc->base.hw_intf->ops.enable_te_level_trigger &&
+	if (intf->ops.enable_te_level_trigger &&
 			!sde_enc->disp_info.is_te_using_watchdog_timer)
-		vid_enc->base.hw_intf->ops.enable_te_level_trigger(vid_enc->base.hw_intf,
+		intf->ops.enable_te_level_trigger(intf,
 				(avr_step_state == AVR_STEP_ENABLE));
+
+	if (test_bit(SDE_INTF_NUM_AVR_STEP, &intf->cap->features))
+		_sde_encoder_phys_vid_set_num_avr_step(phys_enc);
 
 	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_intf->idx - INTF_0, avr_params.avr_mode,
 			avr_params.avr_step_lines, info->avr_step_fps, avr_step_state,

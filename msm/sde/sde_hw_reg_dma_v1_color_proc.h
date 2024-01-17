@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -11,6 +11,62 @@
 #include "sde_hw_catalog.h"
 #include "sde_hw_dspp.h"
 #include "sde_hw_sspp.h"
+
+#define LOG_FEATURE_OFF SDE_EVT32(ctx->idx, ctx->dpu_idx, 0)
+#define LOG_FEATURE_ON SDE_EVT32(ctx->idx, ctx->dpu_idx, 1)
+
+#define REG_DMA_INIT_OPS(cfg, block, reg_dma_feature, feature_dma_buf) \
+	do { \
+		memset(&cfg, 0, sizeof(cfg)); \
+		(cfg).blk = block; \
+		(cfg).feature = reg_dma_feature; \
+		(cfg).dma_buf = feature_dma_buf; \
+	} while (0)
+
+#define REG_DMA_SETUP_OPS(cfg, block_off, data_ptr, data_len, op, \
+		wrap_sz, wrap_inc, reg_mask) \
+	do { \
+		(cfg).ops = op; \
+		(cfg).blk_offset = block_off; \
+		(cfg).data_size = data_len; \
+		(cfg).data = data_ptr; \
+		(cfg).inc = wrap_inc; \
+		(cfg).wrap_size = wrap_sz; \
+		(cfg).mask = reg_mask; \
+	} while (0)
+
+#define REG_DMA_SETUP_KICKOFF(cfg, hw_ctl, feature_dma_buf, ops, ctl_q, \
+		mode, reg_dma_feature) \
+	do { \
+		memset(&cfg, 0, sizeof(cfg)); \
+		(cfg).ctl = hw_ctl; \
+		(cfg).dma_buf = feature_dma_buf; \
+		(cfg).op = ops; \
+		(cfg).dma_type = REG_DMA_TYPE_DB; \
+		(cfg).queue_select = ctl_q; \
+		(cfg).trigger_mode = mode; \
+		(cfg).feature = reg_dma_feature; \
+	} while (0)
+
+extern struct sde_reg_dma_buffer *dspp_buf[REG_DMA_FEATURES_MAX][DSPP_MAX][DPU_MAX];
+extern u32 dspp_mapping[DSPP_MAX];
+
+/**
+ * reg_dma_buf_init - regdma buffer initialization
+ * @buff - pointer to regdma buffer structure
+ * @sz - regdma buffer size
+ * @dpu_idx - index of target dpu
+ */
+int reg_dma_buf_init(struct sde_reg_dma_buffer **buf, u32 sz, u32 dpu_idx);
+
+/**
+ * reg_dma_dspp_check - basic validation for dspp features using regdma
+ * @ctx - pointer to dspp object
+ * @cfg - pointer to sde_hw_cp_cfg
+ * @feature - dspp feature using regdma
+ */
+int reg_dma_dspp_check(struct sde_hw_dspp *ctx, void *cfg,
+		enum sde_reg_dma_features feature);
 
 /**
  * reg_dmav1_init_dspp_op_v4() - initialize the dspp feature op for sde v4
@@ -54,6 +110,13 @@ void reg_dmav1_setup_dspp_3d_gamutv42(struct sde_hw_dspp *ctx, void *cfg);
  * @cfg: pointer to struct sde_hw_cp_cfg
  */
 void reg_dmav1_setup_dspp_gcv18(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * reg_dmav1_setup_dspp_gcv2() - gc v2 implementation using reg dma v1.
+ * @ctx: dspp ctx info
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_dspp_gcv2(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
  * reg_dmav1_setup_dspp_igcv31() - igc v31 implementation using reg dma v1.
@@ -257,6 +320,13 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg);
 void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
+ * reg_dmav1_setup_ltm_roiv1_3() - LTM ROI v1.3 implementation using reg dma v1.
+ * @ctx: dspp ctx info
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
  * reg_dmav1_setup_ltm_vlutv1() - LTM VLUT v1 implementation using reg dma v1.
  * @ctx: dspp instance
  * @cfg: pointer to struct sde_hw_cp_cfg
@@ -307,6 +377,13 @@ int reg_dmav2_init_dspp_op_v4(int feature, struct sde_hw_dspp *ctx);
  * @cfg: pointer to struct sde_hw_cp_cfg
  */
 void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * reg_dmav2_setup_dspp_igcv5() - igc v5 implementation using reg dma v2.
+ * @ctx: dspp ctx info
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
  * reg_dmav2_setup_3d_gamutv43() - gamut v4_3 implementation using reg dma v2.

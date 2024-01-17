@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -15,6 +15,8 @@
 #include "sde_ad4.h"
 #include "sde_hw_rc.h"
 #include "sde_kms.h"
+#include "sde_aiqe_common.h"
+#include "sde_hw_color_proc_aiqe_v1.h"
 
 #define DSPP_VALID_START_OFF 0x800
 
@@ -58,6 +60,12 @@ static void dspp_igc(struct sde_hw_dspp *c)
 		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_IGC, c);
 		if (!ret)
 			c->ops.setup_igc = reg_dmav2_setup_dspp_igcv4;
+	} else if (c->cap->sblk->igc.version ==
+			SDE_COLOR_PROCESS_VER(0x5, 0x0)) {
+		c->ops.setup_igc = NULL;
+		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_IGC, c);
+		if (!ret)
+			c->ops.setup_igc = reg_dmav2_setup_dspp_igcv5;
 	}
 }
 
@@ -65,17 +73,19 @@ static void dspp_pcc(struct sde_hw_dspp *c)
 {
 	int ret = 0;
 
-	if (c->cap->sblk->pcc.version == (SDE_COLOR_PROCESS_VER(0x1, 0x7)))
+	if (c->cap->sblk->pcc.version == SDE_COLOR_PROCESS_VER(0x1, 0x7)) {
 		c->ops.setup_pcc = sde_setup_dspp_pcc_v1_7;
-	else if (c->cap->sblk->pcc.version ==
-			(SDE_COLOR_PROCESS_VER(0x4, 0x0))) {
+	} else if (c->cap->sblk->pcc.version ==
+			SDE_COLOR_PROCESS_VER(0x4, 0x0)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_PCC, c);
 		if (!ret)
 			c->ops.setup_pcc = reg_dmav1_setup_dspp_pccv4;
 		else
 			c->ops.setup_pcc = sde_setup_dspp_pccv4;
 	} else if (c->cap->sblk->pcc.version ==
-			(SDE_COLOR_PROCESS_VER(0x5, 0x0))) {
+			SDE_COLOR_PROCESS_VER(0x5, 0x0) ||
+			c->cap->sblk->pcc.version ==
+			SDE_COLOR_PROCESS_VER(0x6, 0x0)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_PCC, c);
 		if (!ret)
 			c->ops.setup_pcc = reg_dmav1_setup_dspp_pccv5;
@@ -98,6 +108,12 @@ static void dspp_gc(struct sde_hw_dspp *c)
 		 */
 		else
 			c->ops.setup_gc = sde_setup_dspp_gc_v1_7;
+	} else if (c->cap->sblk->gc.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
+		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_GC, c);
+		if (!ret)
+			c->ops.setup_gc = reg_dmav1_setup_dspp_gcv2;
+		else
+			c->ops.setup_gc = NULL;
 	}
 }
 
@@ -237,9 +253,12 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 {
 	int ret = 0;
 
+	c->ops.validate_ltm_roi = NULL;
+
 	if (c->cap->sblk->ltm.version == SDE_COLOR_PROCESS_VER(0x1, 0x0) ||
 		c->cap->sblk->ltm.version == SDE_COLOR_PROCESS_VER(0x1, 0x1) ||
-		c->cap->sblk->ltm.version == SDE_COLOR_PROCESS_VER(0x1, 0x2)) {
+		c->cap->sblk->ltm.version == SDE_COLOR_PROCESS_VER(0x1, 0x2) ||
+		c->cap->sblk->ltm.version == SDE_COLOR_PROCESS_VER(0x1, 0x3)) {
 		ret = reg_dmav1_init_ltm_op_v6(SDE_LTM_INIT, c);
 		if (!ret)
 			ret = reg_dmav1_init_ltm_op_v6(SDE_LTM_ROI, c);
@@ -248,7 +267,9 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 
 		if (!ret) {
 			if (c->cap->sblk->ltm.version ==
-				SDE_COLOR_PROCESS_VER(0x1, 0x2)) {
+				SDE_COLOR_PROCESS_VER(0x1, 0x2) ||
+				c->cap->sblk->ltm.version ==
+				SDE_COLOR_PROCESS_VER(0x1, 0x3)) {
 				c->ops.setup_ltm_vlut =
 					reg_dmav1_setup_ltm_vlutv1_2;
 				c->ops.setup_ltm_hist_ctrl =
@@ -264,8 +285,15 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 					sde_ltm_clear_merge_mode;
 			}
 
+			if (c->cap->sblk->ltm.version ==
+					SDE_COLOR_PROCESS_VER(0x1, 0x3)) {
+				c->ops.setup_ltm_roi = reg_dmav1_setup_ltm_roiv1_3;
+				c->ops.validate_ltm_roi = sde_validate_ltm_roiv1_3;
+			} else {
+				c->ops.setup_ltm_roi = reg_dmav1_setup_ltm_roiv1;
+			}
+
 			c->ops.setup_ltm_init = reg_dmav1_setup_ltm_initv1;
-			c->ops.setup_ltm_roi = reg_dmav1_setup_ltm_roiv1;
 			c->ops.setup_ltm_thresh = sde_setup_dspp_ltm_threshv1;
 			c->ops.setup_ltm_hist_buffer =
 				sde_setup_dspp_ltm_hist_bufferv1;
@@ -283,7 +311,9 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 		if (!ret && (c->cap->sblk->ltm.version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1) ||
 			c->cap->sblk->ltm.version ==
-			SDE_COLOR_PROCESS_VER(0x1, 0x2)))
+			SDE_COLOR_PROCESS_VER(0x1, 0x2) ||
+			c->cap->sblk->ltm.version ==
+			SDE_COLOR_PROCESS_VER(0x1, 0x3)))
 			c->ltm_checksum_support = true;
 		else
 			c->ltm_checksum_support = false;
@@ -409,6 +439,53 @@ static void dspp_demura(struct sde_hw_dspp *c)
 	}
 }
 
+static void dspp_aiqe(struct sde_hw_dspp *c)
+{
+	int ret = 0;
+
+	if (!c) {
+		SDE_ERROR("invalid arguments\n");
+		return;
+	}
+
+	c->ops.setup_mdnie = NULL;
+	c->ops.setup_mdnie_art = NULL;
+	c->ops.setup_copr = NULL;
+	c->ops.read_mdnie_art_done = NULL;
+	c->ops.read_copr_status = NULL;
+	c->ops.reset_mdnie_art = NULL;
+	c->ops.setup_mdnie_psr = NULL;
+	c->ops.validate_aiqe_ssrc_data = NULL;
+	c->ops.setup_aiqe_ssrc_config = NULL;
+	c->ops.setup_aiqe_ssrc_data = NULL;
+
+	if (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) {
+		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_AIQE, c);
+		if (!ret) {
+			if (c->cap->sblk->aiqe.mdnie_supported) {
+				c->ops.setup_mdnie = reg_dmav1_setup_mdnie_v1;
+				c->ops.setup_mdnie_art = sde_setup_mdnie_art_v1;
+				c->ops.read_mdnie_art_done = sde_read_mdnie_art_done;
+				c->ops.reset_mdnie_art = sde_reset_mdnie_art;
+				c->ops.setup_mdnie_psr = sde_setup_mdnie_psr;
+			}
+
+			if (c->cap->sblk->aiqe.ssrc_supported) {
+				c->ops.validate_aiqe_ssrc_data = sde_validate_aiqe_ssrc_data_v1;
+				c->ops.setup_aiqe_ssrc_config =
+						reg_dmav1_setup_aiqe_ssrc_config_v1;
+				c->ops.setup_aiqe_ssrc_data = reg_dmav1_setup_aiqe_ssrc_data_v1;
+			}
+
+			if (c->cap->sblk->aiqe.copr_supported) {
+				c->ops.setup_copr = sde_setup_copr_v1;
+				c->ops.read_copr_status = sde_read_copr_status;
+			}
+		}
+	}
+}
+
+
 static void (*dspp_blocks[SDE_DSPP_MAX])(struct sde_hw_dspp *c);
 
 static void _init_dspp_ops(void)
@@ -428,6 +505,7 @@ static void _init_dspp_ops(void)
 	dspp_blocks[SDE_DSPP_RC] = dspp_rc;
 	dspp_blocks[SDE_DSPP_SPR] = dspp_spr;
 	dspp_blocks[SDE_DSPP_DEMURA] = dspp_demura;
+	dspp_blocks[SDE_DSPP_AIQE] = dspp_aiqe;
 }
 
 static void _setup_dspp_ops(struct sde_hw_dspp *c, unsigned long features)
@@ -516,6 +594,15 @@ struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 				c->hw.blk_off + cfg->sblk->demura.base,
 				c->hw.blk_off + cfg->sblk->demura.base +
 				cfg->sblk->demura.len, c->hw.xin_id);
+	}
+
+	if (cfg->sblk->aiqe.id == SDE_DSPP_AIQE && cfg->sblk->aiqe.base
+			&& cfg->sblk->aiqe.base != 0xffffffff) {
+		snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "aiqe", c->idx - DSPP_0);
+		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
+				c->hw.blk_off + cfg->sblk->aiqe.base,
+				c->hw.blk_off + cfg->sblk->aiqe.base +
+				cfg->sblk->aiqe.len, c->hw.xin_id);
 	}
 
 	return &c->hw;
