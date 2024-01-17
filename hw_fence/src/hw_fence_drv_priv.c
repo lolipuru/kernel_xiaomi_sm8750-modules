@@ -1669,7 +1669,7 @@ struct msm_hw_fence *msm_hw_fence_find(struct hw_fence_driver_data *drv_data,
 
 static void _fence_ctl_signal(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, struct msm_hw_fence *hw_fence, u64 hash,
-	u64 flags, u64 client_data, u32 error)
+	u64 flags, u64 client_data, u32 error, bool signal_from_import)
 {
 	u32 tx_client_id = drv_data->ipcc_client_pid; /* phys id for tx client */
 	u32 rx_client_id = hw_fence_client->ipc_client_vid; /* virt id for rx client */
@@ -1682,13 +1682,14 @@ static void _fence_ctl_signal(struct hw_fence_driver_data *drv_data,
 			hash, flags, error);
 	} else {
 		/* Write to Rx queue */
-		if (hw_fence_client->update_rxq)
+		if (hw_fence_client->signaled_update_rxq ||
+				(hw_fence_client->update_rxq && !signal_from_import))
 			hw_fence_update_queue(drv_data, hw_fence_client, hw_fence->ctx_id,
 				hw_fence->seq_id, hash, flags, client_data, error,
 				HW_FENCE_RX_QUEUE - 1);
 
 		/* Signal the hw fence now */
-		if (hw_fence_client->signaled_send_ipc)
+		if (hw_fence_client->signaled_send_ipc || !signal_from_import)
 			hw_fence_ipcc_trigger_signal(drv_data, tx_client_id, rx_client_id,
 				hw_fence_client->ipc_signal_id);
 	}
@@ -1911,7 +1912,7 @@ int hw_fence_process_fence_array(struct hw_fence_driver_data *drv_data,
 
 		/* signal the join hw fence */
 		_fence_ctl_signal(drv_data, hw_fence_client, join_fence, *hash_join_fence, 0,
-			client_data, join_fence->error);
+			client_data, join_fence->error, true);
 		set_bit(MSM_HW_FENCE_FLAG_SIGNALED_BIT, &array->base.flags);
 
 		/*
@@ -1996,7 +1997,7 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 		if (fence != NULL)
 			set_bit(MSM_HW_FENCE_FLAG_SIGNALED_BIT, &fence->flags);
 		_fence_ctl_signal(drv_data, hw_fence_client, hw_fence, *hash, 0, client_data,
-			hw_fence->error);
+			hw_fence->error, true);
 	}
 
 	return 0;
@@ -2048,7 +2049,7 @@ static void _signal_all_wait_clients(struct hw_fence_driver_data *drv_data,
 				client_data = hw_fence->client_data[data_id];
 
 			_fence_ctl_signal(drv_data, hw_fence_wait_client, hw_fence,
-				hash, 0, client_data, error);
+				hash, 0, client_data, error, false);
 		}
 	}
 }

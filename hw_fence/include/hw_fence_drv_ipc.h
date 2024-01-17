@@ -155,6 +155,17 @@ int hw_fence_ipcc_get_signal_id(struct hw_fence_driver_data *drv_data, u32 clien
 bool hw_fence_ipcc_needs_rxq_update(struct hw_fence_driver_data *drv_data, int client_id);
 
 /**
+ * hw_fence_ipcc_signaled_needs_rxq_update() - Returns bool to indicate if client requires
+ *		rx-queue update when registering to wait on an already signaled fence.
+ * @drv_data: driver data.
+ * @client_id: hw fence driver client id.
+ *
+ * Return: true if client needs to update rxq when dma-fence is signaled, false otherwise
+ */
+bool hw_fence_ipcc_signaled_needs_rxq_update(struct hw_fence_driver_data *drv_data,
+	int client_id);
+
+/**
  * hw_fence_ipcc_signaled_needs_ipc_irq() - Returns bool to indicate if client needs ipc interrupt
  *                                          for already signaled fences
  * @drv_data: driver data.
