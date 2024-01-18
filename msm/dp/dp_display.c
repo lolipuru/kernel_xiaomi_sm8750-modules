@@ -1021,8 +1021,8 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp, bool 
 			(!!dp_display_state_is(DP_STATE_ENABLED) == hpd))
 		goto skip_wait;
 
-	// wait 2 seconds
-	if (wait_for_completion_timeout(&dp->notification_comp, HZ * 2))
+	// wait 4 seconds
+	if (wait_for_completion_timeout(&dp->notification_comp, HZ * 4))
 		goto skip_wait;
 
 	//resend notification
@@ -1031,8 +1031,8 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp, bool 
 	else
 		dp_display_send_hpd_event(dp);
 
-	// wait another 3 seconds
-	if (!wait_for_completion_timeout(&dp->notification_comp, HZ * 3)) {
+	// wait another 2 seconds
+	if (!wait_for_completion_timeout(&dp->notification_comp, HZ * 2)) {
 		DP_WARN("%s timeout\n", hpd ? "connect" : "disconnect");
 		ret = -EINVAL;
 	}
