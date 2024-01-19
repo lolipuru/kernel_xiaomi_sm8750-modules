@@ -22,6 +22,7 @@
 #include "rmnet_config.h"
 #include "rmnet_descriptor.h"
 #include "rmnet_handlers.h"
+#include "rmnet_module.h"
 #include "rmnet_private.h"
 #include "rmnet_vnd.h"
 #include "rmnet_qmi.h"
@@ -45,14 +46,6 @@
 	list_for_each_entry_safe(p, tmp, &desc->frags, list)
 #define rmnet_descriptor_for_each_frag_safe_reverse(p, tmp, desc) \
 	list_for_each_entry_safe_reverse(p, tmp, &desc->frags, list)
-
-typedef void (*rmnet_perf_desc_hook_t)(struct rmnet_frag_descriptor *frag_desc,
-				       struct rmnet_port *port);
-typedef void (*rmnet_perf_chain_hook_t)(void);
-
-typedef void (*rmnet_perf_tether_ingress_hook_t)(struct tcphdr *tp, struct sk_buff *skb);
-rmnet_perf_tether_ingress_hook_t rmnet_perf_tether_ingress_hook __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_tether_ingress_hook);
 
 struct rmnet_frag_descriptor *
 rmnet_get_frag_descriptor(struct rmnet_port *port)
@@ -344,12 +337,13 @@ int rmnet_frag_descriptor_add_frags_from(struct rmnet_frag_descriptor *to,
 EXPORT_SYMBOL(rmnet_frag_descriptor_add_frags_from);
 
 int rmnet_frag_ipv6_skip_exthdr(struct rmnet_frag_descriptor *frag_desc,
-				int start, u8 *nexthdrp, __be16 *fragp)
+				int start, u8 *nexthdrp, __be16 *frag_offp,
+				bool *frag_hdrp)
 {
 	u8 nexthdr = *nexthdrp;
 
-	*fragp = 0;
-
+	*frag_offp = 0;
+	*frag_hdrp = false;
 	while (ipv6_ext_hdr(nexthdr)) {
 		struct ipv6_opt_hdr *hp, __hp;
 		int hdrlen;
@@ -371,8 +365,9 @@ int rmnet_frag_ipv6_skip_exthdr(struct rmnet_frag_descriptor *frag_desc,
 			if (!fp)
 				return -EINVAL;
 
-			*fragp = *fp;
-			if (ntohs(*fragp) & ~0x7)
+			*frag_offp = *fp;
+			*frag_hdrp = true;
+			if (ntohs(*frag_offp) & ~0x7)
 				break;
 			hdrlen = 8;
 		} else if (nexthdr == NEXTHDR_AUTH) {
@@ -430,22 +425,31 @@ static u8 rmnet_frag_do_flow_control(struct rmnet_map_header *qmap,
 
 static void rmnet_frag_send_ack(struct rmnet_map_header *qmap,
 				unsigned char type,
+				struct rmnet_map_control_command *cmd,
 				struct rmnet_port *port)
 {
-	struct rmnet_map_control_command *cmd;
+	struct rmnet_map_control_command *_cmd;
 	struct net_device *dev = port->dev;
 	struct sk_buff *skb;
-	u16 alloc_len = ntohs(qmap->pkt_len) + sizeof(*qmap);
+	u16 alloc_len = ntohs(qmap->pkt_len) + RMNET_MAP_DEAGGR_SPACING;
 
 	skb = alloc_skb(alloc_len, GFP_ATOMIC);
 	if (!skb)
 		return;
 
+	skb_reserve(skb, RMNET_MAP_DEAGGR_HEADROOM);
+
+	skb_put(skb, ntohs(qmap->pkt_len));
+	memcpy(skb->data, cmd, ntohs(qmap->pkt_len));
+
+	skb_push(skb, sizeof(*qmap));
+	memcpy(skb->data, qmap, sizeof(*qmap));
+
 	skb->protocol = htons(ETH_P_MAP);
 	skb->dev = dev;
 
-	cmd = rmnet_map_get_cmd_start(skb);
-	cmd->cmd_type = type & 0x03;
+	_cmd = rmnet_map_get_cmd_start(skb);
+	_cmd->cmd_type = type & 0x03;
 
 	netif_tx_lock(dev);
 	dev->netdev_ops->ndo_start_xmit(skb, dev);
@@ -580,7 +584,7 @@ void rmnet_frag_command(struct rmnet_frag_descriptor *frag_desc,
 		break;
 	}
 	if (rc == RMNET_MAP_COMMAND_ACK)
-		rmnet_frag_send_ack(qmap, rc, port);
+		rmnet_frag_send_ack(qmap, rc, cmd, port);
 }
 
 int rmnet_frag_flow_command(struct rmnet_frag_descriptor *frag_desc,
@@ -794,7 +798,6 @@ static void rmnet_frag_gso_stamp(struct sk_buff *skb,
 static void rmnet_frag_partial_csum(struct sk_buff *skb,
 				    struct rmnet_frag_descriptor *frag_desc)
 {
-	rmnet_perf_tether_ingress_hook_t rmnet_perf_tether_ingress;
 	struct iphdr *iph = (struct iphdr *)skb->data;
 	__sum16 pseudo;
 	u16 pkt_len = skb->len - frag_desc->ip_len;
@@ -822,9 +825,7 @@ static void rmnet_frag_partial_csum(struct sk_buff *skb,
 		tp->check = pseudo;
 		skb->csum_offset = offsetof(struct tcphdr, check);
 
-		rmnet_perf_tether_ingress = rcu_dereference(rmnet_perf_tether_ingress_hook);
-		if (rmnet_perf_tether_ingress)
-			rmnet_perf_tether_ingress(tp, skb);
+		rmnet_module_hook_perf_tether_ingress(tp, skb);
 	} else {
 		struct udphdr *up = (struct udphdr *)
 				    ((u8 *)iph + frag_desc->ip_len);
@@ -1340,6 +1341,7 @@ rmnet_frag_segment_coal_data(struct rmnet_frag_descriptor *coal_desc,
 		struct ipv6hdr *ip6h, __ip6h;
 		int ip_len;
 		__be16 frag_off;
+		bool frag_hdr;
 		u8 protocol;
 
 		ip6h = rmnet_frag_header_ptr(coal_desc, 0, sizeof(*ip6h),
@@ -1352,16 +1354,25 @@ rmnet_frag_segment_coal_data(struct rmnet_frag_descriptor *coal_desc,
 		ip_len = rmnet_frag_ipv6_skip_exthdr(coal_desc,
 						     sizeof(*ip6h),
 						     &protocol,
-						     &frag_off);
+						     &frag_off,
+						     &frag_hdr);
 		coal_desc->trans_proto = protocol;
 
-		/* If we run into a problem, or this has a fragment header
+		/* If we run into a problem, or this is fragmented packet
 		 * (which should technically not be possible, if the HW
 		 * works as intended...), bail.
 		 */
 		if (ip_len < 0 || frag_off) {
 			priv->stats.coal.coal_ip_invalid++;
 			return;
+		}
+
+		if (frag_hdr) {
+			/* There is a fragment header, but this is not a
+			 * fragmented packet. We can handle this, but it
+			 * cannot be coalesced because of kernel limitations.
+			 */
+			gro = false;
 		}
 
 		coal_desc->ip_len = (u16)ip_len;
@@ -1649,6 +1660,7 @@ static int rmnet_frag_checksum_pkt(struct rmnet_frag_descriptor *frag_desc)
 		struct ipv6hdr *ip6h, __ip6h;
 		int ip_len;
 		__be16 frag_off;
+		bool frag_hdr;
 		u8 protocol;
 
 		ip6h = rmnet_frag_header_ptr(frag_desc, offset, sizeof(*ip6h),
@@ -1660,7 +1672,8 @@ static int rmnet_frag_checksum_pkt(struct rmnet_frag_descriptor *frag_desc)
 		protocol = ip6h->nexthdr;
 		ip_len = rmnet_frag_ipv6_skip_exthdr(frag_desc,
 						     offset + sizeof(*ip6h),
-						     &protocol, &frag_off);
+						     &protocol, &frag_off,
+						     &frag_hdr);
 		if (ip_len < 0 || frag_off)
 			return -EINVAL;
 
@@ -1814,15 +1827,10 @@ int rmnet_frag_process_next_hdr_packet(struct rmnet_frag_descriptor *frag_desc,
 	return rc;
 }
 
-/* Perf hook handler */
-rmnet_perf_desc_hook_t rmnet_perf_desc_entry __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_desc_entry);
-
 static void
 __rmnet_frag_ingress_handler(struct rmnet_frag_descriptor *frag_desc,
 			     struct rmnet_port *port)
 {
-	rmnet_perf_desc_hook_t rmnet_perf_ingress;
 	struct rmnet_map_header *qmap, __qmap;
 	struct rmnet_endpoint *ep;
 	struct rmnet_frag_descriptor *frag, *tmp;
@@ -1889,17 +1897,8 @@ __rmnet_frag_ingress_handler(struct rmnet_frag_descriptor *frag_desc,
 	if (skip_perf)
 		goto no_perf;
 
-	rcu_read_lock();
-	rmnet_perf_ingress = rcu_dereference(rmnet_perf_desc_entry);
-	if (rmnet_perf_ingress) {
-		list_for_each_entry_safe(frag, tmp, &segs, list) {
-			list_del_init(&frag->list);
-			rmnet_perf_ingress(frag, port);
-		}
-		rcu_read_unlock();
+	if (rmnet_module_hook_offload_ingress(&segs, port))
 		return;
-	}
-	rcu_read_unlock();
 
 no_perf:
 	list_for_each_entry_safe(frag, tmp, &segs, list) {
@@ -1911,10 +1910,6 @@ no_perf:
 recycle:
 	rmnet_recycle_frag_descriptor(frag_desc, port);
 }
-
-/* Notify perf at the end of SKB chain */
-rmnet_perf_chain_hook_t rmnet_perf_chain_end __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_chain_end);
 
 void rmnet_descriptor_classify_chain_count(u64 chain_count,
 					   struct rmnet_port *port)
@@ -1954,7 +1949,6 @@ void rmnet_descriptor_classify_frag_count(u64 frag_count,
 void rmnet_frag_ingress_handler(struct sk_buff *skb,
 				struct rmnet_port *port)
 {
-	rmnet_perf_chain_hook_t rmnet_perf_opt_chain_end;
 	LIST_HEAD(desc_list);
 	bool skip_perf = (skb->priority == 0xda1a);
 	u64 chain_count = 0;
@@ -1998,11 +1992,7 @@ void rmnet_frag_ingress_handler(struct sk_buff *skb,
 	if (skip_perf)
 		return;
 
-	rcu_read_lock();
-	rmnet_perf_opt_chain_end = rcu_dereference(rmnet_perf_chain_end);
-	if (rmnet_perf_opt_chain_end)
-		rmnet_perf_opt_chain_end();
-	rcu_read_unlock();
+	rmnet_module_hook_offload_chain_end();
 }
 
 void rmnet_descriptor_deinit(struct rmnet_port *port)

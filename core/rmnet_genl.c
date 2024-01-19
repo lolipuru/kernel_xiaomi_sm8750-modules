@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * RMNET Data Generic Netlink
  *
@@ -9,6 +10,7 @@
 #include <net/sock.h>
 #include <linux/skbuff.h>
 #include <linux/ktime.h>
+#include "rmnet_module.h"
 
 #define RMNET_CORE_GENL_MAX_STR_LEN	255
 
@@ -80,10 +82,6 @@ struct rmnet_pid_node_s {
 	int sched_boost_enable;
 	pid_t pid;
 };
-
-typedef void (*rmnet_perf_tether_cmd_hook_t)(u8 message, u64 val);
-rmnet_perf_tether_cmd_hook_t rmnet_perf_tether_cmd_hook __rcu __read_mostly;
-EXPORT_SYMBOL(rmnet_perf_tether_cmd_hook);
 
 void rmnet_update_pid_and_check_boost(pid_t pid, unsigned int len,
 				      int *boost_enable, u64 *boost_period)
@@ -393,7 +391,6 @@ int rmnet_core_genl_tether_info_req_hdlr(struct sk_buff *skb_2,
 	struct nlattr *na;
 	struct rmnet_core_tether_info_req tether_info_req;
 	int is_req_valid = 0;
-	rmnet_perf_tether_cmd_hook_t rmnet_perf_tether_cmd;
 
 	rm_err("CORE_GNL: %s", __func__);
 
@@ -422,9 +419,7 @@ int rmnet_core_genl_tether_info_req_hdlr(struct sk_buff *skb_2,
 		return RMNET_GENL_FAILURE;
 	}
 
-	rmnet_perf_tether_cmd = rcu_dereference(rmnet_perf_tether_cmd_hook);
-	if (rmnet_perf_tether_cmd)
-		rmnet_perf_tether_cmd(1, tether_info_req.tether_filters_en);
+	rmnet_module_hook_perf_tether_cmd(1, tether_info_req.tether_filters_en);
 
 	rm_err("CORE_GNL: tether filters %s",
 	       tether_info_req.tether_filters_en ? "enabled" : "disabled");
