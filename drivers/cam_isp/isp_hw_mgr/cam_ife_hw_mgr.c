@@ -1883,7 +1883,8 @@ static int cam_ife_hw_mgr_release_hw_for_ctx(
 	ife_ctx->common.cb_priv = NULL;
 	ife_ctx->common.event_cb = NULL;
 
-	ife_ctx->flags.need_csid_top_cfg = false;
+	/* Reset all stream flags */
+	memset(&ife_ctx->flags, 0, sizeof(struct cam_ife_hw_mgr_ctx_flags));
 
 	CAM_DBG(CAM_ISP, "release context completed ctx id:%u",
 		ife_ctx->ctx_index);
@@ -5679,6 +5680,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	ife_ctx->pri_rdi_out_res = g_ife_hw_mgr.isp_caps.max_vfe_out_res_type;
 	ife_ctx->left_hw_idx = CAM_IFE_CSID_HW_NUM_MAX;
 	ife_ctx->right_hw_idx = CAM_IFE_CSID_HW_NUM_MAX;
+	ife_ctx->ctx_index = acquire_args->ctx_id;
 
 	acquire_hw_info = (struct cam_isp_acquire_hw_info *) acquire_args->acquire_info;
 
@@ -7124,6 +7126,7 @@ static int cam_ife_mgr_config_hw(
 	size_t len = 0;
 	uint32_t *buf_addr = NULL, *buf_start = NULL, *buf_end = NULL;
 	uint32_t cmd_type = 0;
+	bool wait_for_cdm = false;
 
 	if (!hw_mgr_priv || !config_hw_args) {
 		CAM_ERR(CAM_ISP,
@@ -7300,14 +7303,24 @@ skip_bw_clk_update:
 		"Enter ctx id:%u num_hw_upd_entries %d request id: %llu",
 		ctx->ctx_index, cfg->num_hw_update_entries, cfg->request_id);
 
+	if (cam_presil_mode_enabled() || cfg->init_packet || hw_update_data->mup_en ||
+		g_ife_hw_mgr.debug_cfg.per_req_reg_dump ||
+		g_ife_hw_mgr.debug_cfg.per_req_wait_cdm ||
+		(ctx->ctx_config & CAM_IFE_CTX_CFG_SW_SYNC_ON))
+		wait_for_cdm = true;
+
 	if (cfg->num_hw_update_entries > 0) {
 		cdm_cmd                    = ctx->cdm_cmd;
 		cdm_cmd->type              = CAM_CDM_BL_CMD_TYPE_MEM_HANDLE;
-		cdm_cmd->flag              = true;
 		cdm_cmd->userdata          = ctx;
 		cdm_cmd->cookie            = cfg->request_id;
 		cdm_cmd->gen_irq_arb       = false;
 		cdm_cmd->genirq_buff       = &hw_update_data->kmd_cmd_buff_info;
+
+		if (wait_for_cdm)
+			cdm_cmd->flag              = true;
+		else
+			cdm_cmd->flag              = false;
 
 		for (i = 0 ; i < cfg->num_hw_update_entries; i++) {
 			cmd = (cfg->hw_update_entries + i);
@@ -7414,7 +7427,10 @@ skip_bw_clk_update:
 		ctx->applied_req_id = cfg->request_id;
 
 		CAM_DBG(CAM_ISP, "Submit to CDM, ctx_idx=%u", ctx->ctx_index);
-		atomic_set(&ctx->cdm_done, 0);
+
+		if (wait_for_cdm)
+			atomic_set(&ctx->cdm_done, 0);
+
 		rc = cam_cdm_submit_bls(ctx->cdm_handle, cdm_cmd);
 		if (rc) {
 			CAM_ERR(CAM_ISP,
@@ -7423,8 +7439,7 @@ skip_bw_clk_update:
 			return rc;
 		}
 
-		if (cam_presil_mode_enabled() || cfg->init_packet || hw_update_data->mup_en ||
-			(ctx->ctx_config & CAM_IFE_CTX_CFG_SW_SYNC_ON)) {
+		if (wait_for_cdm) {
 			rem_jiffies = cam_common_wait_for_completion_timeout(
 				&ctx->config_done_complete,
 				msecs_to_jiffies(60));
@@ -7751,13 +7766,17 @@ static int cam_ife_mgr_stop_hw(void *hw_mgr_priv, void *stop_hw_args)
 
 	cam_ife_mgr_pause_hw(ctx);
 
-	rem_jiffies = cam_common_wait_for_completion_timeout(
-		&ctx->config_done_complete,
-		msecs_to_jiffies(10));
-	if (rem_jiffies == 0)
-		CAM_WARN(CAM_ISP,
-			"config done completion timeout for last applied req_id=%llu ctx_index %u",
-			ctx->applied_req_id, ctx->ctx_index);
+	if (!atomic_read(&ctx->cdm_done)) {
+		rem_jiffies = cam_common_wait_for_completion_timeout(
+				&ctx->config_done_complete,
+				msecs_to_jiffies(10));
+
+		if (rem_jiffies == 0)
+			CAM_WARN(CAM_ISP,
+				"config done completion timeout for last applied req_id=%llu ctx_index %u",
+				ctx->applied_req_id, ctx->ctx_index);
+
+	}
 
 	/* Reset CDM for KMD internal stop */
 	if (stop_isp->is_internal_stop) {
@@ -8476,6 +8495,7 @@ static int cam_ife_mgr_release_hw(void *hw_mgr_priv,
 	}
 
 	ctx->ctx_type = CAM_IFE_CTX_TYPE_NONE;
+	ctx->ctx_index = CAM_IFE_CTX_MAX;
 	ctx->buf_done_controller = NULL;
 	ctx->mc_comp_buf_done_controller = NULL;
 	kfree(ctx->scratch_buf_info.sfe_scratch_config);
@@ -8490,7 +8510,6 @@ static int cam_ife_mgr_release_hw(void *hw_mgr_priv,
 	ctx->vfe_bus_comp_grp = NULL;
 	ctx->sfe_bus_comp_grp = NULL;
 
-	memset(&ctx->flags, 0, sizeof(struct cam_ife_hw_mgr_ctx_flags));
 	atomic_set(&ctx->overflow_pending, 0);
 	for (i = 0; i < CAM_IFE_HW_NUM_MAX; i++) {
 		ctx->sof_cnt[i] = 0;
@@ -12125,9 +12144,16 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 	}
 		break;
 	case CAM_ISP_GENERIC_BLOB_TYPE_IFE_FCG_CFG: {
-		struct cam_isp_generic_fcg_config *fcg_config_args;
-		struct cam_isp_fcg_caps           *fcg_caps =
+		struct cam_isp_prepare_hw_update_data *prepare_hw_data;
+		struct cam_isp_generic_fcg_config     *fcg_config_args;
+		struct cam_isp_fcg_caps               *fcg_caps =
 			&g_ife_hw_mgr.isp_caps.fcg_caps;
+
+		prepare_hw_data = (struct cam_isp_prepare_hw_update_data *) prepare->priv;
+		if (prepare_hw_data->packet_opcode_type == CAM_ISP_PACKET_INIT_DEV) {
+			CAM_WARN(CAM_ISP, "Detected IFE FCG blob in INIT packet, ignore it");
+			return 0;
+		}
 
 		if (!fcg_caps->ife_fcg_supported) {
 			CAM_ERR(CAM_ISP,
@@ -12867,9 +12893,16 @@ static int cam_sfe_packet_generic_blob_handler(void *user_data,
 	}
 		break;
 	case CAM_ISP_GENERIC_BLOB_TYPE_SFE_FCG_CFG: {
-		struct cam_isp_generic_fcg_config *fcg_config_args;
-		struct cam_isp_fcg_caps           *fcg_caps =
+		struct cam_isp_prepare_hw_update_data *prepare_hw_data;
+		struct cam_isp_generic_fcg_config     *fcg_config_args;
+		struct cam_isp_fcg_caps               *fcg_caps =
 			&g_ife_hw_mgr.isp_caps.fcg_caps;
+
+		prepare_hw_data = (struct cam_isp_prepare_hw_update_data *) prepare->priv;
+		if (prepare_hw_data->packet_opcode_type == CAM_ISP_PACKET_INIT_DEV) {
+			CAM_WARN(CAM_ISP, "Detected SFE FCG blob in INIT packet, ignore it");
+			return 0;
+		}
 
 		if (!fcg_caps->sfe_fcg_supported) {
 			CAM_ERR(CAM_ISP, "FCG is not supported by SFE hardware, ctx_idx: %u",
@@ -14914,12 +14947,14 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 			return 0;
 
 		ctx->flags.dump_on_flush = true;
-		rem_jiffies = cam_common_wait_for_completion_timeout(
-			&ctx->config_done_complete, msecs_to_jiffies(30));
-		if (rem_jiffies == 0)
-			CAM_ERR(CAM_ISP,
-				"config done completion timeout, Reg dump will be unreliable rc=%d ctx_index %u",
-				rc, ctx->ctx_index);
+		if (!atomic_read(&ctx->cdm_done)) {
+			rem_jiffies = cam_common_wait_for_completion_timeout(
+					&ctx->config_done_complete, msecs_to_jiffies(30));
+			if (rem_jiffies == 0)
+				CAM_ERR(CAM_ISP,
+					"config done completion timeout, Reg dump will be unreliable rc=%d ctx_index %u",
+					rc, ctx->ctx_index);
+		}
 
 		rc = cam_ife_mgr_handle_reg_dump(ctx, ctx->reg_dump_buf_desc,
 			ctx->num_reg_dump_buf,
@@ -17549,6 +17584,9 @@ static int cam_ife_hw_mgr_debug_register(void)
 	debugfs_create_u32("csid_domain_id_value", 0644,
 		g_ife_hw_mgr.debug_cfg.dentry,
 		&g_ife_hw_mgr.debug_cfg.csid_domain_id_value);
+	debugfs_create_bool("per_req_wait_cdm", 0644,
+		g_ife_hw_mgr.debug_cfg.dentry,
+		&g_ife_hw_mgr.debug_cfg.per_req_wait_cdm);
 end:
 	g_ife_hw_mgr.debug_cfg.enable_csid_recovery = 1;
 	return rc;
@@ -18049,7 +18087,8 @@ int cam_ife_hw_mgr_init(struct cam_hw_mgr_intf *hw_mgr_intf, int *iommu_hdl,
 				&g_ife_hw_mgr.ctx_pool[i].free_res_list);
 		}
 
-		g_ife_hw_mgr.ctx_pool[i].ctx_index = i;
+		/* ctx index will be overridden during acquire and reset during release */
+		g_ife_hw_mgr.ctx_pool[i].ctx_index = CAM_IFE_CTX_MAX;
 		g_ife_hw_mgr.ctx_pool[i].hw_mgr = &g_ife_hw_mgr;
 
 		cam_tasklet_init(&g_ife_hw_mgr.mgr_common.tasklet_pool[i],

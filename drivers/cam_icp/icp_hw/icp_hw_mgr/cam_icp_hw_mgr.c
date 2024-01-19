@@ -1437,6 +1437,13 @@ static bool cam_icp_check_bw_update(struct cam_icp_hw_mgr *hw_mgr,
 	} else if (ctx_data->bw_config_version == CAM_ICP_BW_CONFIG_V2) {
 		request_clk_info_v2 = &ctx_data->hfi_frame_process.clk_info_v2[idx];
 
+		if (request_clk_info_v2->num_paths > CAM_ICP_MAX_PER_PATH_VOTES ||
+				dev_clk_info->num_paths > CAM_ICP_MAX_PER_PATH_VOTES) {
+			CAM_ERR(CAM_ICP, "Invalid num of clk path req num path:%d, dev num path:%d"
+				, request_clk_info_v2->num_paths, dev_clk_info->num_paths);
+			return false;
+		}
+
 		CAM_DBG(CAM_PERF, "%s: index=%d, num_paths=%d, ctx_data=%pK",
 			ctx_data->ctx_id_string, idx, request_clk_info_v2->num_paths, ctx_data);
 
@@ -5164,16 +5171,7 @@ static int cam_icp_mgr_hw_open(void *hw_mgr_priv, void *download_fw_args)
 	if (download_fw_args)
 		icp_pc = *((bool *)download_fw_args);
 
-	if (icp_pc && hw_mgr->icp_pc_flag) {
-		rc = cam_icp_device_deint(hw_mgr);
-		if (rc)
-			CAM_ERR(CAM_ICP, "[%s] Failed in ipe bps deinit with icp_pc rc %d",
-				hw_mgr->hw_mgr_name, rc);
-
-		CAM_DBG(CAM_ICP, "[%s] deinit all clocks", hw_mgr->hw_mgr_name);
-	}
-
-	if (icp_pc)
+	if (icp_pc || !hw_mgr->icp_pc_flag)
 		return rc;
 
 	rc = cam_icp_mgr_icp_power_collapse(hw_mgr);

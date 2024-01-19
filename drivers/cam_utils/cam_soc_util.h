@@ -65,6 +65,21 @@
 /* Client index to be used to vote clk frequency through sw client */
 #define CAM_CLK_SW_CLIENT_IDX -1
 
+#define CAM_SAVE_START_TIMESTAMP_IF(ts1)                            \
+({                                                                  \
+	if (clk_rgltr_bus_ops_profiling)                            \
+		CAM_GET_TIMESTAMP(ts1);                             \
+})
+
+#define CAM_COMPUTE_TIME_TAKEN_IF(ts1, ts2, usec, op, name)         \
+({                                                                  \
+	if (clk_rgltr_bus_ops_profiling) {                          \
+		CAM_GET_TIMESTAMP(ts2);                             \
+		CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts1, ts2, usec);    \
+		trace_cam_log_event(op, name, usec, 0);             \
+	}                                                           \
+})
+
 /**
  * enum cam_vote_level - Enum for voting level
  *
@@ -788,6 +803,9 @@ int cam_soc_util_clk_enable_default(struct cam_hw_soc_info *soc_info, int cesta_
 int cam_soc_util_get_clk_level(struct cam_hw_soc_info *soc_info,
 	int64_t clk_rate, int clk_idx, int32_t *clk_lvl);
 
+int cam_soc_util_get_valid_clk_rate(struct cam_hw_soc_info *soc_info,
+	enum cam_vote_level req_level, int64_t *apply_rate);
+
 /* Callback to get reg space data for specific HW */
 typedef int (*cam_soc_util_regspace_data_cb)(uint32_t reg_base_type,
 	void *ctx, struct cam_hw_soc_info **soc_info_ptr,
@@ -954,5 +972,12 @@ inline int cam_wrapper_regulator_set_mode(
  */
 inline void cam_soc_util_set_bypass_drivers(
 	uint32_t bypass_drivers);
+
+/**
+ * cam_soc_util_create_debugfs()
+ *
+ * @return:    Success or failure
+ */
+int cam_soc_util_create_debugfs(void);
 
 #endif /* _CAM_SOC_UTIL_H_ */
