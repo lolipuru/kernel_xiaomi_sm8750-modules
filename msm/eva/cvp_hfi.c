@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <asm/memory.h>
@@ -4582,6 +4582,7 @@ static int iris_hfi_get_core_capabilities(void *dev)
 	return 0;
 }
 
+#ifdef CONFIG_EVA_PINEAPPLE
 static const char * const mid_names[16] = {
 	"CVP_FW",
 	"ARP_DATA",
@@ -4600,8 +4601,37 @@ static const char * const mid_names[16] = {
 	"Invalid",
 	"Invalid"
 };
+#elif CONFIG_EVA_SUN
+static const char * const mid_names[25] = {
+	"CVP_FW",
+	"ARP_DATA",
+	"CDM_DATA",
+	"Invalid",
+	"CVP_MPU_PIXEL",
+	"CVP_MPU_NON_PIXEL",
+	"Invalid",
+	"Invalid",
+	"CVP_FDU_PIXEL",
+	"CVP_FDU_NON_PIXEL",
+	"Invalid",
+	"Invalid",
+	"CVP_GCE_PIXEL",
+	"CVP_GCE_NON_PIXEL",
+	"Invalid",
+	"Invalid",
+	"CVP_TOF_PIXEL",
+	"CVP_TOF_NON_PIXEL",
+	"Invalid",
+	"Invalid",
+	"Invalid",
+	"Invalid",
+	"Invalid",
+	"Invalid",
+	"CVP_RGE_NON_PIXEL",
+};
+#endif
 
-static void __print_reg_details(u32 val)
+static void __print_reg_details_errlog3_low(u32 val)
 {
 	u32 mid, sid;
 
@@ -4609,6 +4639,24 @@ static void __print_reg_details(u32 val)
 	sid = (val >> 2) & 0x7;
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG3_LOW:     %#x\n", val);
 	dprintk(CVP_ERR, "Sub-client:%s, SID: %d\n", mid_names[mid], sid);
+}
+
+static void __print_reg_details_errlog1_high(u32 val)
+{
+	u32 mid, pid;
+	char *rw;
+
+
+	mid = val & 0x1F;
+	pid = (val >> 5) & 0x1F;
+
+	if (((mid >> 5) & 0x01) == 1)
+		rw = "Write to DDR";
+	else if (((mid >> 5) & 0x01) == 0)
+		rw = "Read from DDR";
+
+	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG1_HIGH:     %#x\n", val);
+	dprintk(CVP_ERR, "MID: %#x, PID: %#x, Op: %s\n", mid, pid, rw);
 }
 
 static void __err_log(bool logging, u32 *data, const char *name, u32 val)
@@ -4725,6 +4773,7 @@ static void __noc_error_info_iris2(struct iris_hfi_device *device)
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG1_HIGH_OFFS);
 	__err_log(log_required, &noc_log->err_core_errlog1_high,
 			"CVP_NOC_CORE_ERL_MAIN_ERRLOG1_HIGH", val);
+	__print_reg_details_errlog1_high(val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG2_LOW_OFFS);
 	__err_log(log_required, &noc_log->err_core_errlog2_low,
 			"CVP_NOC_CORE_ERL_MAIN_ERRLOG2_LOW", val);
@@ -4734,7 +4783,7 @@ static void __noc_error_info_iris2(struct iris_hfi_device *device)
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG3_LOW_OFFS);
 	__err_log(log_required, &noc_log->err_core_errlog3_low,
 			"CORE ERRLOG3_LOW, below details", val);
-	__print_reg_details(val);
+	__print_reg_details_errlog3_low(val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG3_HIGH_OFFS);
 	__err_log(log_required, &noc_log->err_core_errlog3_high,
 			"CVP_NOC_CORE_ERL_MAIN_ERRLOG3_HIGH", val);
@@ -6142,14 +6191,14 @@ static void __dump_noc_regs_v1(struct iris_hfi_device *device)
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG1_LOW_OFFS);
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG1_LOW 0x%x", val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG1_HIGH_OFFS);
-	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG1_HIGH 0x%x", val);
+	__print_reg_details_errlog1_high(val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG2_LOW_OFFS);
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG2_LOW 0x%x", val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG2_HIGH_OFFS);
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG2_HIGH 0x%x", val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG3_LOW_OFFS);
 	dprintk(CVP_ERR, "CORE ERRLOG3_LOW 0x%x, below details", val);
-	__print_reg_details(val);
+	__print_reg_details_errlog3_low(val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG3_HIGH_OFFS);
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG3_HIGH 0x%x", val);
 	__write_register(device, CVP_NOC_CORE_ERR_ERRCLR_LOW_OFFS, 0x1);
