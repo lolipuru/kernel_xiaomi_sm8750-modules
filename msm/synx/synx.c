@@ -15,10 +15,12 @@
 #include <linux/sync_file.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#include <linux/version.h>
 
 #include "synx_debugfs.h"
 #include "synx_private.h"
 #include "synx_util.h"
+#include "synx_hwfence.h"
 
 struct synx_device *synx_dev;
 static atomic64_t synx_counter = ATOMIC64_INIT(1);
@@ -2828,7 +2830,11 @@ static int __init synx_init(void)
 		goto reg_fail;
 	}
 
-	synx_dev->class = class_create(SYNX_DEVICE_NAME);
+#if (KERNEL_VERSION(6, 4, 0) <= LINUX_VERSION_CODE)
+	synx_dev->class = class_create("SYNX_DEVICE_NAME");
+#else
+	synx_dev->class = class_create(THIS_MODULE, "SYNX_DEVICE_NAME");
+#endif
 	device_create(synx_dev->class, NULL, synx_dev->dev,
 		NULL, SYNX_DEVICE_NAME);
 
@@ -2866,6 +2872,9 @@ static int __init synx_init(void)
 		dprintk(SYNX_ERR, "SSR registration failed\n");
 		goto err;
 	}
+	rc = synx_hwfence_init_ops(&synx_hwfence_ops);
+	if (rc)
+		dprintk(SYNX_DBG, "hwfence is not supported through synx api, err=%d\n", rc);
 
 	ipclite_register_client(synx_ipc_callback, NULL);
 	synx_local_mem_init();
