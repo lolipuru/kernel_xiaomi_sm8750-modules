@@ -1211,7 +1211,7 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 		return err;
 	PERF_END);
 
-	ctx->msg_sz = pkt_size;
+	ctx->msg_sz = metalen;
 
 	err = fastrpc_buf_alloc(ctx->fl, dev, pkt_size, METADATA_BUF, &ctx->buf);
 	if (err)
