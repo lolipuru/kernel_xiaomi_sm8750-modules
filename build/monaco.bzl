@@ -15,6 +15,6 @@ def define_monaco():
         ],
         extra_options = [
             "CONFIG_QCOM_SMCINVOKE",
-	    "CONFIG_QSEECOM_COMPAT",
+            "CONFIG_QSEECOM",
         ],
     )
