@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -866,7 +866,6 @@ static void _sde_crtc_setup_dim_layer_cfg(struct drm_crtc *crtc,
 			dim_layer->flags, dim_layer->stage);
 
 	split_dim_layer.stage = dim_layer->stage;
-	split_dim_layer.color_fill = dim_layer->color_fill;
 
 	/*
 	 * traverse through the layer mixers attached to crtc and find the
@@ -874,6 +873,7 @@ static void _sde_crtc_setup_dim_layer_cfg(struct drm_crtc *crtc,
 	 */
 	for (i = 0; i < sde_crtc->num_mixers; i++) {
 		split_dim_layer.flags = dim_layer->flags;
+		split_dim_layer.color_fill = dim_layer->color_fill;
 
 		sde_kms_rect_intersect(&cstate->lm_roi[i], &dim_layer->rect,
 					&split_dim_layer.rect);
