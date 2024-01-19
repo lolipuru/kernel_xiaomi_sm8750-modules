@@ -19,21 +19,20 @@
 #include "rmnet_perf_tcp.h"
 #include "rmnet_perf_udp.h"
 MODULE_LICENSE("\x47\x50\x4c\x20\x76\x32");static char*verinfo[]={
-"\x38\x61\x62\x30\x61\x38\x65\x65","\x66\x32\x32\x62\x61\x63\x65\x30",
-"\x63\x63\x39\x38\x66\x30\x38\x61","\x63\x65\x37\x39\x33\x32\x31\x63",
-"\x35\x64\x63\x64\x64\x34\x63\x30","\x34\x63\x39\x62\x35\x33\x33\x37",
-"\x61\x33\x62\x61\x62\x64\x34\x30","\x37\x66\x30\x37\x38\x66\x39\x36",
-"\x65\x35\x36\x63\x62\x35\x35\x64","\x65\x32\x31\x38\x66\x34\x35\x31",
-"\x33\x39\x63\x62\x64\x37\x64\x35","\x37\x34\x31\x35\x39\x32\x31\x63",
-"\x34\x64\x65\x34\x39\x64\x62\x35","\x62\x31\x63\x34\x34\x62\x34\x63"};
-module_param_array(verinfo,charp,NULL,(0xcb7+5769-0x221c));MODULE_PARM_DESC(
-verinfo,
+"\x35\x38\x61\x61\x39\x62\x65\x65","\x38\x61\x62\x30\x61\x38\x65\x65",
+"\x66\x32\x32\x62\x61\x63\x65\x30","\x63\x63\x39\x38\x66\x30\x38\x61",
+"\x63\x65\x37\x39\x33\x32\x31\x63","\x35\x64\x63\x64\x64\x34\x63\x30",
+"\x34\x63\x39\x62\x35\x33\x33\x37","\x61\x33\x62\x61\x62\x64\x34\x30",
+"\x37\x66\x30\x37\x38\x66\x39\x36","\x65\x35\x36\x63\x62\x35\x35\x64",
+"\x65\x32\x31\x38\x66\x34\x35\x31","\x33\x39\x63\x62\x64\x37\x64\x35",
+"\x37\x34\x31\x35\x39\x32\x31\x63","\x34\x64\x65\x34\x39\x64\x62\x35",
+"\x62\x31\x63\x34\x34\x62\x34\x63"};module_param_array(verinfo,charp,NULL,
+(0xcb7+5769-0x221c));MODULE_PARM_DESC(verinfo,
 "\x56\x65\x72\x73\x69\x6f\x6e\x20\x6f\x66\x20\x74\x68\x65\x20\x64\x72\x69\x76\x65\x72"
 );bool DATARMNETc03b668e4c=true;module_param_named(rmnet_perf_knob0,
 DATARMNETc03b668e4c,bool,(0xdb7+6665-0x261c));static bool DATARMNET21c7a3c377=
 true;module_param_named(rmnet_perf_knob1,DATARMNET21c7a3c377,bool,
-(0xdb7+6665-0x261c));extern void(*rmnet_perf_egress_hook1)(struct sk_buff*
-DATARMNET543491eb0f);
+(0xdb7+6665-0x261c));
 #define DATARMNETf241a4b20f (0xe07+6616-0x2624)
 static inline bool DATARMNETe1ef3edea2(struct udphdr*DATARMNETa1abb4897c){return
  be16_to_cpu(DATARMNETa1abb4897c->source)==DATARMNETf241a4b20f||be16_to_cpu(
@@ -120,16 +119,16 @@ RMNET_MODULE_HOOK_PERF_INGRESS,.func=DATARMNETf2958615b1,},{.hooknum=
 RMNET_MODULE_HOOK_PERF_EGRESS,.func=DATARMNET324fe25dad,},{.hooknum=
 RMNET_MODULE_HOOK_PERF_SET_THRESH,.func=DATARMNET7fa1835595,},{.hooknum=
 RMNET_MODULE_HOOK_PERF_INGRESS_RX_HANDLER,.func=DATARMNET7b0253229f,},};void 
-DATARMNET49c17a32bc(void){rcu_assign_pointer(rmnet_perf_egress_hook1,
-DATARMNET324fe25dad);rmnet_module_hook_register(DATARMNET95a71e03c1,ARRAY_SIZE(
-DATARMNET95a71e03c1));}void DATARMNET41e8cc085c(void){rcu_assign_pointer(
-rmnet_perf_egress_hook1,NULL);rmnet_module_hook_unregister(DATARMNET95a71e03c1,
-ARRAY_SIZE(DATARMNET95a71e03c1));}static int __init DATARMNET63abbdc3d3(void){
-int DATARMNETb14e52a504;pr_info("%s(): Loading\n",__func__);DATARMNETb14e52a504=
-DATARMNET7e9995246e();if(DATARMNETb14e52a504)return DATARMNETb14e52a504;
-DATARMNETb14e52a504=DATARMNETe80a33d544();if(DATARMNETb14e52a504){
-DATARMNET38bb6f2b7a();return DATARMNETb14e52a504;}DATARMNET49c17a32bc();return
-(0xd2d+202-0xdf7);}static void __exit DATARMNETa343229e33(void){
-DATARMNET41e8cc085c();DATARMNET4b5170a1ef();DATARMNET38bb6f2b7a();pr_info(
+DATARMNET49c17a32bc(void){rmnet_module_hook_register(DATARMNET95a71e03c1,
+ARRAY_SIZE(DATARMNET95a71e03c1));}void DATARMNET41e8cc085c(void){
+rmnet_module_hook_unregister(DATARMNET95a71e03c1,ARRAY_SIZE(DATARMNET95a71e03c1)
+);}static int __init DATARMNET63abbdc3d3(void){int DATARMNETb14e52a504;pr_info(
+"\x25\x73\x28\x29\x3a\x20\x4c\x6f\x61\x64\x69\x6e\x67" "\n",__func__);
+DATARMNETb14e52a504=DATARMNET7e9995246e();if(DATARMNETb14e52a504)return 
+DATARMNETb14e52a504;DATARMNETb14e52a504=DATARMNETe80a33d544();if(
+DATARMNETb14e52a504){DATARMNET38bb6f2b7a();return DATARMNETb14e52a504;}
+DATARMNET49c17a32bc();return(0xd2d+202-0xdf7);}static void __exit 
+DATARMNETa343229e33(void){DATARMNET41e8cc085c();DATARMNET4b5170a1ef();
+DATARMNET38bb6f2b7a();pr_info(
 "\x25\x73\x28\x29\x3a\x20\x65\x78\x69\x74\x69\x6e\x67" "\n",__func__);}
 module_init(DATARMNET63abbdc3d3);module_exit(DATARMNETa343229e33);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * RMNET PERF TETHER framework
  *
@@ -13,22 +13,18 @@
 #include "rmnet_qmap.h"
 #include "rmnet_module.h"
 MODULE_LICENSE("\x47\x50\x4c\x20\x76\x32");static char*verinfo[]={
-"\x65\x32\x31\x38\x66\x34\x35\x31","\x36\x34\x38\x62\x37\x30\x39\x35",
-"\x37\x34\x31\x35\x39\x32\x31\x63","\x34\x39\x61\x66\x39\x62\x64\x34"};
-module_param_array(verinfo,charp,NULL,(0xcb7+5769-0x221c));MODULE_PARM_DESC(
-verinfo,
+"\x35\x38\x61\x61\x39\x62\x65\x65","\x65\x32\x31\x38\x66\x34\x35\x31",
+"\x36\x34\x38\x62\x37\x30\x39\x35","\x37\x34\x31\x35\x39\x32\x31\x63",
+"\x34\x39\x61\x66\x39\x62\x64\x34"};module_param_array(verinfo,charp,NULL,
+(0xcb7+5769-0x221c));MODULE_PARM_DESC(verinfo,
 "\x56\x65\x72\x73\x69\x6f\x6e\x20\x6f\x66\x20\x74\x68\x65\x20\x64\x72\x69\x76\x65\x72"
-);extern void(*rmnet_perf_tether_ingress_hook)(struct tcphdr*DATARMNET2e7cc88971
-,struct rmnet_frag_descriptor*DATARMNET9d1b321642,struct iphdr*
-DATARMNET86f1f2cdc9);extern void(*rmnet_perf_tether_egress_hook)(struct sk_buff*
-DATARMNET543491eb0f);extern void(*rmnet_perf_tether_cmd_hook)(u8 
-DATARMNET07b1a05079,u64 DATARMNETcc6099cb14);struct DATARMNETf9eee4068d{u8 
-DATARMNETd0ef85194f;};static struct DATARMNETf9eee4068d*DATARMNET8a1e9920bf;
-unsigned int configure_knob1 __read_mostly=(0xd2d+202-0xdf7);module_param(
-configure_knob1,uint,(0xdb7+6665-0x261c));unsigned int knob1 __read_mostly=
-(0xd2d+202-0xdf7);module_param(knob1,uint,(0xdb7+6665-0x261c));unsigned int 
-configure_knob2 __read_mostly=(0xd2d+202-0xdf7);module_param(configure_knob2,
-uint,(0xdb7+6665-0x261c));unsigned int knob2 __read_mostly=(0xd2d+202-0xdf7);
+);struct DATARMNETf9eee4068d{u8 DATARMNETd0ef85194f;};static struct 
+DATARMNETf9eee4068d*DATARMNET8a1e9920bf;unsigned int configure_knob1 
+__read_mostly=(0xd2d+202-0xdf7);module_param(configure_knob1,uint,
+(0xdb7+6665-0x261c));unsigned int knob1 __read_mostly=(0xd2d+202-0xdf7);
+module_param(knob1,uint,(0xdb7+6665-0x261c));unsigned int configure_knob2 
+__read_mostly=(0xd2d+202-0xdf7);module_param(configure_knob2,uint,
+(0xdb7+6665-0x261c));unsigned int knob2 __read_mostly=(0xd2d+202-0xdf7);
 module_param(knob2,uint,(0xdb7+6665-0x261c));static DEFINE_SPINLOCK(
 DATARMNETcf56327171);
 #define DATARMNETd063f2edce ((0xef7+1112-0x131d))
@@ -163,8 +159,8 @@ DATARMNET543491eb0f);hash_add(DATARMNET031f18e039,&DATARMNET63b1a086d5->hlist,
 DATARMNET63b1a086d5->hash);break;}}spin_unlock_irqrestore(&DATARMNETcf56327171,
 DATARMNETfb0677cc3c);}void DATARMNET136e008d70(u8 DATARMNET07b1a05079,u64 
 DATARMNETcc6099cb14){struct net_device*dev=dev_get_by_name(&init_net,
-"rmnet_ipa0");struct sk_buff*DATARMNET543491eb0f;if(!dev)return;if(
-DATARMNET07b1a05079==DATARMNETc99cb98651){struct 
+"\x72\x6d\x6e\x65\x74\x5f\x69\x70\x61\x30");struct sk_buff*DATARMNET543491eb0f;
+if(!dev)return;if(DATARMNET07b1a05079==DATARMNETc99cb98651){struct 
 rmnet_map_control_command_header*DATARMNETb87c07b92a;struct DATARMNETb0eda9d28e*
 DATARMNETcd32395e82;struct rmnet_map_header*DATARMNETf937c77d8f;
 DATARMNET543491eb0f=alloc_skb((0xeb7+1158-0x132d),GFP_ATOMIC);if(!
@@ -185,17 +181,12 @@ rmnet_module_hook_register_info DATARMNET0762b4f121[]={{.hooknum=
 RMNET_MODULE_HOOK_PERF_TETHER_INGRESS,.func=DATARMNETe70d5ec61a,},{.hooknum=
 RMNET_MODULE_HOOK_PERF_TETHER_EGRESS,.func=DATARMNET6ab362e985,},{.hooknum=
 RMNET_MODULE_HOOK_PERF_TETHER_CMD,.func=DATARMNET136e008d70,},};void 
-DATARMNET5fe3ffe2ab(void){rcu_assign_pointer(rmnet_perf_tether_ingress_hook,
-DATARMNETe70d5ec61a);rcu_assign_pointer(rmnet_perf_tether_egress_hook,
-DATARMNET6ab362e985);rcu_assign_pointer(rmnet_perf_tether_cmd_hook,
-DATARMNET136e008d70);rmnet_module_hook_register(DATARMNET0762b4f121,ARRAY_SIZE(
-DATARMNET0762b4f121));}void DATARMNET229327cbd2(void){rcu_assign_pointer(
-rmnet_perf_tether_ingress_hook,NULL);rcu_assign_pointer(
-rmnet_perf_tether_egress_hook,NULL);rcu_assign_pointer(
-rmnet_perf_tether_cmd_hook,NULL);rmnet_module_hook_unregister(
-DATARMNET0762b4f121,ARRAY_SIZE(DATARMNET0762b4f121));}static int 
-DATARMNETaa549ce89a(void){int DATARMNETefc9df3df2;DATARMNET8a1e9920bf=kzalloc(
-sizeof(*DATARMNET8a1e9920bf),GFP_KERNEL);if(!DATARMNET8a1e9920bf){pr_err(
+DATARMNET5fe3ffe2ab(void){rmnet_module_hook_register(DATARMNET0762b4f121,
+ARRAY_SIZE(DATARMNET0762b4f121));}void DATARMNET229327cbd2(void){
+rmnet_module_hook_unregister(DATARMNET0762b4f121,ARRAY_SIZE(DATARMNET0762b4f121)
+);}static int DATARMNETaa549ce89a(void){int DATARMNETefc9df3df2;
+DATARMNET8a1e9920bf=kzalloc(sizeof(*DATARMNET8a1e9920bf),GFP_KERNEL);if(!
+DATARMNET8a1e9920bf){pr_err(
 "\x25\x73\x28\x29\x3a\x20\x52\x65\x73\x6f\x75\x72\x63\x65\x20\x61\x6c\x6c\x6f\x63\x61\x74\x69\x6f\x6e\x20\x66\x61\x69\x6c\x65\x64" "\n"
 ,__func__);return-(0xd26+209-0xdf6);}DATARMNET8a1e9920bf->DATARMNETd0ef85194f++;
 for(DATARMNETefc9df3df2=(0xd2d+202-0xdf7);DATARMNETefc9df3df2<
