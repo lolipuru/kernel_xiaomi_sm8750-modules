@@ -2247,7 +2247,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
 		err = -EBUSY;
-		goto err;
+		goto err_name;
 	}
 
 	is_oispd = !strcmp(name, "oispd");
@@ -2407,6 +2407,14 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		goto err;
 	}
 
+	/*
+	 * Third-party apps don't have permission to open the fastrpc device, so
+	 * it is opened on their behalf by DSP HAL. This is detected by
+	 * comparing current PID with the one stored during device open.
+	 */
+	if (current->tgid != fl->tgid)
+		fl->untrusted_process = true;
+
 	if (init.attrs & FASTRPC_MODE_UNSIGNED_MODULE)
 		fl->is_unsigned_pd = true;
 
@@ -2430,7 +2438,8 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, fl->pd, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
-		return -EBUSY;
+		err = -EBUSY;
+		goto err;
 	}
 
 	fastrpc_get_process_gids(&fl->gidlist);
@@ -3118,46 +3127,22 @@ static int fastrpc_internal_control(struct fastrpc_user *fl,
 static int fastrpc_set_session_info(
 		struct fastrpc_user *fl, struct fastrpc_internal_sessinfo *sessinfo)
 {
-	int err = 0;
-
 	spin_lock(&fl->lock);
 	if (fl->set_session_info) {
 		spin_unlock(&fl->lock);
 		dev_err(fl->cctx->dev,"Set session info invoked multiple times\n");
-		err = -EBADR;
-		goto bail;
+		return -EBADR;
 	}
 	fl->set_session_info = true;
 	spin_unlock(&fl->lock);
-	/*
-	 * Third-party apps don't have permission to open the fastrpc device, so
-	 * it is opened on their behalf by DSP HAL. This is detected by
-	 * comparing current PID with the one stored during device open.
-	 */
-	if (current->tgid != fl->tgid)
-		fl->untrusted_process = true;
 
 	if(sessinfo->pd <= DEFAULT_UNUSED ||
 				sessinfo->pd >= MAX_PD_TYPE) {
 		dev_err(fl->cctx->dev,"Invalid PD type %d, range is %d - %d\n",
 					sessinfo->pd, DEFAULT_UNUSED + 1, MAX_PD_TYPE - 1);
-		goto bail;
+		return -EBADR;
 	}
 
-	if (err) {
-		dev_err(fl->cctx->dev,
-		"Session PD type %u is invalid for the process\n",
-							sessinfo->pd);
-		err = -EBADR;
-		goto bail;
-	}
-	if (fl->untrusted_process && sessinfo->pd != USERPD) {
-		dev_err(fl->cctx->dev,
-		"Session PD type %u not allowed for untrusted process\n",
-						sessinfo->pd);
-		err = -EBADR;
-		goto bail;
-	}
 	/*
 	 * If PD type is not configured for context banks,
 	 * ignore PD type passed by the user, leave pd_type set to DEFAULT_UNUSED(0)
@@ -3171,14 +3156,13 @@ static int fastrpc_set_session_info(
 		dev_err(fl->cctx->dev,
 		"Session ID %u cannot be beyond %u\n",
 				sessinfo->session_id, fl->cctx->max_sess_per_proc);
-		err = -EBADR;
-		goto bail;
+		return -EBADR;
 	}
 	fl->sessionid = sessinfo->session_id;
 	// Set multi_session_support, to disable old way of setting session_id
 	fl->multi_session_support = true;
-bail:
-	return err;
+
+	return 0;
 }
 
 static int fastrpc_dspsignal_signal(struct fastrpc_user *fl,
