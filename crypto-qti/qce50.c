@@ -399,6 +399,9 @@ static int qce_dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
 	int i;
 
 	for (i = 0; i < nents; ++i) {
+		/* sg maybe NULL that be referenced */
+		if (!sg)
+			return -EINVAL;
 		dma_map_sg(dev, sg, 1, direction);
 		sg = sg_next(sg);
 	}
@@ -412,6 +415,9 @@ static int qce_dma_unmap_sg(struct device *dev, struct scatterlist *sg,
 	int i;
 
 	for (i = 0; i < nents; ++i) {
+		/* sg maybe NULL that be referenced */
+		if (!sg)
+			return -EINVAL;
 		dma_unmap_sg(dev, sg, 1, direction);
 		sg = sg_next(sg);
 	}
