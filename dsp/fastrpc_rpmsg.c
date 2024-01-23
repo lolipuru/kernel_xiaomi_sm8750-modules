@@ -106,11 +106,19 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	dma_set_mask_and_coherent(rdev, DMA_BIT_MASK(32));
 	INIT_LIST_HEAD(&data->users);
 	INIT_LIST_HEAD(&data->gmaps);
+	mutex_init(&data->wake_mutex);
 	spin_lock_init(&data->lock);
 	spin_lock_init(&(data->gmsg_log[domain_id].tx_lock));
 	spin_lock_init(&(data->gmsg_log[domain_id].rx_lock));
 	idr_init(&data->ctx_idr);
 	data->domain_id = domain_id;
+
+	err = of_platform_populate(rdev->of_node, NULL, NULL, rdev);
+	if (err)
+		goto populate_error;
+
+	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++)
+		mutex_init(&data->session[i].map_mutex);
 
 	switch (domain_id) {
 	case ADSP_DOMAIN_ID:
@@ -159,20 +167,21 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 			goto fdev_error;
 	}
 
+	mutex_lock(&data->wake_mutex);
 	if(data->fdevice)
 		fastrpc_register_wakeup_source(data->fdevice->miscdev.this_device,
 			FASTRPC_NON_SECURE_WAKE_SOURCE_CLIENT_NAME, &data->wake_source);
 	if(data->secure_fdevice)
 		fastrpc_register_wakeup_source(data->secure_fdevice->miscdev.this_device,
 			FASTRPC_SECURE_WAKE_SOURCE_CLIENT_NAME, &data->wake_source_secure);
-
-	err = of_platform_populate(rdev->of_node, NULL, NULL, rdev);
-	if (err)
-		goto populate_error;
+	mutex_unlock(&data->wake_mutex);
 
 	data->rpdev = rpdev;
 
 	return 0;
+
+fdev_error:
+	kfree(data);
 
 populate_error:
 	if (data->fdevice)
@@ -180,8 +189,6 @@ populate_error:
 	if (data->secure_fdevice)
 		misc_deregister(&data->secure_fdevice->miscdev);
 
-fdev_error:
-	kfree(data);
 	return err;
 }
 
@@ -216,10 +223,16 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 		pdr_handle_release(cctx->spd[0].pdrhandle);
 	}
 
-	if (cctx->wake_source)
+	mutex_lock(&cctx->wake_mutex);
+	if (cctx->wake_source) {
 		wakeup_source_unregister(cctx->wake_source);
-	if (cctx->wake_source_secure)
+		cctx->wake_source = NULL;
+	}
+	if (cctx->wake_source_secure) {
 		wakeup_source_unregister(cctx->wake_source_secure);
+		cctx->wake_source_secure = NULL;
+	}
+	mutex_unlock(&cctx->wake_mutex);
 
 	kfree(cctx->gidlist.gids);
 	of_platform_depopulate(&rpdev->dev);

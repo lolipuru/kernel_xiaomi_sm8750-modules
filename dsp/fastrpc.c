@@ -326,6 +326,7 @@ static void fastrpc_channel_ctx_free(struct kref *ref)
 	struct fastrpc_channel_ctx *cctx;
 
 	cctx = container_of(ref, struct fastrpc_channel_ctx, refcount);
+	mutex_destroy(&cctx->wake_mutex);
 
 	kfree(cctx);
 }
@@ -732,6 +733,7 @@ static void fastrpc_pm_awake(struct fastrpc_user *fl,
 	 * Vote with PM to abort any suspend in progress and
 	 * keep system awake for specified timeout
 	 */
+	mutex_lock(&cctx->wake_mutex);
 	if (is_secure_channel)
 		wake_source = cctx->wake_source_secure;
 	else
@@ -739,6 +741,7 @@ static void fastrpc_pm_awake(struct fastrpc_user *fl,
 
 	if (wake_source)
 		pm_wakeup_ws_event(wake_source, fl->ws_timeout, true);
+	mutex_unlock(&cctx->wake_mutex);
 }
 
 static void fastrpc_pm_relax(struct fastrpc_user *fl,
@@ -750,6 +753,7 @@ static void fastrpc_pm_relax(struct fastrpc_user *fl,
 	if (!fl->wake_enable)
 		return;
 
+	mutex_lock(&cctx->wake_mutex);
 	if (is_secure_channel)
 		wake_source = cctx->wake_source_secure;
 	else
@@ -757,6 +761,7 @@ static void fastrpc_pm_relax(struct fastrpc_user *fl,
 
 	if (wake_source)
 		__pm_relax(wake_source);
+	mutex_unlock(&cctx->wake_mutex);
 }
 
 static int fastrpc_map_create(struct fastrpc_user *fl, int fd, u64 va,
@@ -4117,7 +4122,6 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 	ctx = idr_find(&cctx->ctx_idr, ctxid);
 
 	if (!ctx) {
-		dev_info(cctx->dev, "Warning: No context ID matches response\n");
 		spin_unlock_irqrestore(&cctx->lock, flags);
 		return 0;
 	}

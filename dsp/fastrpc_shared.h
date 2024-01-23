@@ -491,6 +491,7 @@ struct fastrpc_channel_ctx {
 	struct wakeup_source *wake_source_secure;
 	/* Non-secure subsystem like CDSP will use regular client */
 	struct wakeup_source *wake_source;
+	struct mutex wake_mutex;
 	bool secure;
 	bool unsigned_support;
 	u64 dma_mask;
