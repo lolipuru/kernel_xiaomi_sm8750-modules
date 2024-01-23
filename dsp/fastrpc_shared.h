@@ -8,8 +8,14 @@
 #define __FASTRPC_SHARED_H__
 
 #include <linux/rpmsg.h>
+#include <linux/uaccess.h>
+#include <linux/qrtr.h>
+#include <net/sock.h>
+#include <linux/workqueue.h>
 #include <linux/qcom_scm.h>
 #include <linux/miscdevice.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
 
 #define ADSP_DOMAIN_ID (0)
 #define MDSP_DOMAIN_ID (1)
@@ -17,6 +23,7 @@
 #define CDSP_DOMAIN_ID (3)
 #define FASTRPC_DEV_MAX		4 /* adsp, mdsp, slpi, cdsp*/
 #define FASTRPC_MAX_SESSIONS	14
+#define FASTRPC_MAX_SPD		4
 #define FASTRPC_MAX_VMIDS	16
 #define FASTRPC_ALIGN		128
 #define FASTRPC_MAX_FDLIST	16
@@ -28,7 +35,7 @@
 #define FASTRPC_INIT_HANDLE	1
 #define FASTRPC_DSP_UTILITIES_HANDLE	2
 #define FASTRPC_CTXID_MASK (0xFF0)
-#define INIT_FILELEN_MAX (2 * 1024 * 1024)
+#define INIT_FILELEN_MAX (5 * 1024 * 1024)
 #define INIT_FILE_NAMELEN_MAX (128)
 #define FASTRPC_DEVICE_NAME	"fastrpc"
 #define SESSION_ID_INDEX (30)
@@ -54,6 +61,13 @@
 #define ADSP_MMAP_ADD_PAGES_LLC 0x3000
 /* Map persistent header buffer on DSP */
 #define ADSP_MMAP_PERSIST_HDR  0x4000
+
+
+/* Fastrpc attribute for no mapping of fd  */
+#define FASTRPC_ATTR_NOMAP (16)
+
+/* This flag is used to skip CPU mapping  */
+#define  FASTRPC_MAP_FD_NOMAP (16)
 
 #define DSP_UNSUPPORTED_API (0x80000414)
 /* MAX NUMBER of DSP ATTRIBUTES SUPPORTED */
@@ -139,6 +153,18 @@
 #define FASTRPC_DSPSIGNAL_NUM_SIGNALS 1024
 #define FASTRPC_DSPSIGNAL_GROUP_SIZE 256
 
+#define AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME   "audio_pdr_adsp"
+#define AUDIO_PDR_ADSP_SERVICE_NAME              "avs/audio"
+#define ADSP_AUDIOPD_NAME                        "msm/adsp/audio_pd"
+
+#define SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME   "sensors_pdr_adsp"
+#define SENSORS_PDR_ADSP_SERVICE_NAME              "tms/servreg"
+#define ADSP_SENSORPD_NAME                       "msm/adsp/sensor_pd"
+
+#define SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME "sensors_pdr_slpi"
+#define SENSORS_PDR_SLPI_SERVICE_NAME            SENSORS_PDR_ADSP_SERVICE_NAME
+#define SLPI_SENSORPD_NAME                       "msm/slpi/sensor_pd"
+
 #define PERF_END ((void)0)
 
 #define PERF(enb, cnt, ff) \
@@ -160,8 +186,65 @@
 			(uint64_t *)(perf_ptr + offset)\
 				: (uint64_t *)NULL) : (uint64_t *)NULL)
 
+/* Registered QRTR service ID */
+#define FASTRPC_REMOTE_SERVER_SERVICE_ID 5012
+/*
+ * Fastrpc remote server instance ID bit-map:
+ *
+ * bits 0-1   : channel ID
+ * bits 2-7   : reserved
+ * bits 8-9   : remote domains (SECURE_PD, GUEST_OS)
+ * bits 10-31 : reserved
+ */
+#define REMOTE_DOMAIN_INSTANCE_INDEX (8)
+#define GET_SERVER_INSTANCE(remote_domain, cid) \
+	((remote_domain << REMOTE_DOMAIN_INSTANCE_INDEX) | cid)
+#define GET_CID_FROM_SERVER_INSTANCE(remote_server_instance) \
+	(remote_server_instance & 0x3)
+/* Maximun received fastprc packet size */
+#define FASTRPC_SOCKET_RECV_SIZE sizeof(union rsp)
+/* DMA handle reverse RPC support */
+#define DMA_HANDLE_REVERSE_RPC_CAP (128)
+#define FIND_DIGITS(number) ({ \
+		unsigned int count = 0, i= number; \
+		while(i != 0) { \
+			i /= 10; \
+			count++; \
+		} \
+	count; \
+	})
+#define COUNT_OF(number) (number == 0 ? 1 : FIND_DIGITS(number))
+
+enum fastrpc_remote_domains_id {
+	SECURE_PD = 0,
+	GUEST_OS = 1,
+	MAX_REMOTE_ID = SECURE_PD + 1,
+};
+
+struct fastrpc_socket {
+	struct socket *sock;                   // Socket used to communicate with remote domain
+	struct sockaddr_qrtr local_sock_addr;  // Local socket address on kernel side
+	struct sockaddr_qrtr remote_sock_addr; // Remote socket address on remote domain side
+	struct mutex socket_mutex;             // Mutex for socket synchronization
+	void *recv_buf;                        // Received packet buffer
+};
+
+struct frpc_transport_session_control {
+	struct fastrpc_socket frpc_socket;     // Fastrpc socket data structure
+	u32 remote_server_instance;       // Unique remote server instance ID
+	bool remote_server_online;             // Flag to indicate remote server status
+	struct work_struct work;               // work for handling incoming messages
+	struct workqueue_struct *wq;           // workqueue to post @work on
+};
+
 static const char *domains[FASTRPC_DEV_MAX] = { "adsp", "mdsp",
 						"sdsp", "cdsp"};
+
+#ifdef CONFIG_DEBUG_FS
+static struct dentry *debugfs_root;
+static struct dentry *debugfs_global_file;
+#endif
+
 struct fastrpc_phy_page {
 	u64 addr;		/* physical address */
 	u64 size;		/* size of contiguous region */
@@ -272,6 +355,19 @@ struct fastrpc_rpmsg_log {
 	spinlock_t rx_lock;
 };
 
+struct dsp_notif_rsp {
+	u64 ctx;		  /* response context */
+	u32 type;        /* Notification type */
+	int pid;		      /* user process pid */
+	u32 status;	  /* userpd status notification */
+};
+
+union rsp {
+	struct fastrpc_invoke_rsp rsp;
+	struct fastrpc_invoke_rspv2 rsp2;
+	struct dsp_notif_rsp rsp3;
+};
+
 struct fastrpc_buf_overlap {
 	u64 start;
 	u64 end;
@@ -318,6 +414,7 @@ struct fastrpc_map {
 	u64 raddr;
 	u32 attr;
 	struct kref refcount;
+	int secure;
 };
 
 struct fastrpc_perf {
@@ -338,7 +435,26 @@ struct fastrpc_session_ctx {
 	int sid;
 	bool used;
 	bool valid;
+	bool secure;
 	bool sharedcb;
+	/* gen pool for QRTR */
+	struct gen_pool *frpc_genpool;
+	/* fastrpc gen pool buffer */
+	struct fastrpc_buf *frpc_genpool_buf;
+	/* fastrpc gen pool buffer fixed IOVA */
+	unsigned long genpool_iova;
+	/* fastrpc gen pool buffer size */
+	size_t genpool_size;
+};
+
+struct fastrpc_static_pd {
+	char *servloc_name;
+	char *spdname;
+	void *pdrhandle;
+	u64 pdrcount;
+	u64 prevpdrcount;
+	atomic_t ispdup;
+	struct fastrpc_channel_ctx *cctx;
 };
 
 struct fastrpc_channel_ctx {
@@ -347,9 +463,14 @@ struct fastrpc_channel_ctx {
 	int vmcount;
 	u64 perms;
 	struct qcom_scm_vmperm vmperms[FASTRPC_MAX_VMIDS];
+#if !IS_ENABLED(CONFIG_QCOM_FASTRPC_TRUSTED)
 	struct rpmsg_device *rpdev;
+#else
+	struct frpc_transport_session_control session_control;
+#endif
 	struct device *dev;
 	struct fastrpc_session_ctx session[FASTRPC_MAX_SESSIONS];
+	struct fastrpc_static_pd spd[FASTRPC_MAX_SPD];
 	spinlock_t lock;
 	struct idr ctx_idr;
 	struct list_head users;
@@ -436,17 +557,11 @@ struct fastrpc_notif_rsp {
 	enum fastrpc_status_flags status;
 };
 
-struct dsp_notif_rsp {
-	int pid;		/* user process pid */
-	u32 type;		/* Notification type */
-	u32 status;		/* userpd status notification */
-	u64 ctx;		/* response context */
-};
-
 struct fastrpc_user {
 	struct list_head user;
 	struct list_head maps;
 	struct list_head pending;
+	struct list_head interrupted;
 	struct list_head mmaps;
 	struct list_head cached_bufs;
 
@@ -458,7 +573,11 @@ struct fastrpc_user {
 	struct fastrpc_buf *pers_hdr_buf;
 	/* Pre-allocated buffer divided into N chunks */
 	struct fastrpc_buf *hdr_bufs;
-
+#ifdef CONFIG_DEBUG_FS
+	bool debugfs_file_create;
+	struct dentry *debugfs_file;
+	char *debugfs_buf;
+#endif
 	int tgid;
 	int pd;
 	/* total cached buffers */
@@ -477,6 +596,8 @@ struct fastrpc_user {
 	/* If set, threads will poll for DSP response instead of glink wait */
 	bool poll_mode;
 	bool is_unsigned_pd;
+	bool sharedcb;
+	char *servloc_name;;
 	/* Lock for lists */
 	spinlock_t lock;
 	/* lock for dsp signals */
