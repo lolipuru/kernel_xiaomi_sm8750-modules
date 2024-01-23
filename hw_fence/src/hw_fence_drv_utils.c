@@ -6,6 +6,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 #include <linux/io.h>
+#include <linux/iommu.h>
 #include <linux/gunyah/gh_rm_drv.h>
 #include <linux/gunyah/gh_dbl.h>
 #include <linux/version.h>
@@ -634,6 +635,78 @@ end:
 	return NOTIFY_DONE;
 }
 
+static int _register_vm_mem_with_hyp(struct hw_fence_driver_data *drv_data,
+	struct device_node *node_compat)
+{
+	int ret, notifier_ret;
+
+	if (!drv_data || !node_compat) {
+		HWFNC_ERR("invalid params drv_data:0x%pK node_compat:0x%pK\n", drv_data,
+			node_compat);
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u32(node_compat, "gunyah-label", &drv_data->label);
+	if (ret) {
+		HWFNC_ERR("failed to find label info %d\n", ret);
+		return ret;
+	}
+
+	/* Register memory with HYP for vm */
+	ret = of_property_read_u32(node_compat, "peer-name", &drv_data->peer_name);
+	if (ret)
+		drv_data->peer_name = GH_SELF_VM;
+
+	drv_data->rm_nb.notifier_call = hw_fence_rm_cb;
+	drv_data->rm_nb.priority = INT_MAX;
+	notifier_ret = gh_rm_register_notifier(&drv_data->rm_nb);
+	HWFNC_DBG_INIT("notifier: ret:%d peer_name:%d notifier_ret:%d\n", ret,
+		drv_data->peer_name, notifier_ret);
+	if (notifier_ret) {
+		HWFNC_ERR_ONCE("fail to register notifier ret:%d\n", ret);
+		return -EPROBE_DEFER;
+	}
+
+	return 0;
+}
+
+static int _init_soccp_mem(struct hw_fence_driver_data *drv_data)
+{
+	struct iommu_domain *domain;
+	int ret;
+
+	if (!drv_data) {
+		HWFNC_ERR("invalid params drv_data:0x%pK\n", drv_data);
+		return -EINVAL;
+	}
+
+	domain = iommu_get_domain_for_dev(drv_data->dev);
+	if (IS_ERR_OR_NULL(domain)) {
+		HWFNC_ERR("failed to get iommu domain for device ret:%ld\n", PTR_ERR(domain));
+		return PTR_ERR(domain);
+	}
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+	ret = iommu_map(domain, drv_data->res.start, drv_data->res.start, drv_data->size,
+		IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
+#else
+	ret = iommu_map(domain, drv_data->res.start, drv_data->res.start, drv_data->size,
+		IOMMU_READ | IOMMU_WRITE);
+#endif
+	if (ret)
+		HWFNC_ERR("failed to one-to-one map for soccp smmu addr:0x%llx sz:%lx ret:%d\n",
+			drv_data->res.start, drv_data->size, ret);
+	else
+		/*
+		 * HW Fence Driver resources may not be ready at this point (this is separately
+		 * tracked via resources_ready), but we assume soccp is ready once memory mapping
+		 * is done.
+		 */
+		drv_data->fctl_ready = true;
+
+	return ret;
+}
+
 /* Allocates carved-out mapped memory */
 int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 {
@@ -642,18 +715,12 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 	const char *compat = "qcom,msm-hw-fence-mem";
 	struct device *dev = drv_data->dev;
 	struct device_node *np;
-	int notifier_ret, ret;
+	int ret;
 
 	node_compat = of_find_compatible_node(node, NULL, compat);
 	if (!node_compat) {
 		HWFNC_ERR("Failed to find dev node with compat:%s\n", compat);
 		return -EINVAL;
-	}
-
-	ret = of_property_read_u32(node_compat, "gunyah-label", &drv_data->label);
-	if (ret) {
-		HWFNC_ERR("failed to find label info %d\n", ret);
-		return ret;
 	}
 
 	np = of_parse_phandle(node_compat, "shared-buffer", 0);
@@ -682,28 +749,23 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 		return -ENOMEM;
 	}
 
-	HWFNC_DBG_INIT("io_mem_base:0x%pK start:0x%llx end:0x%llx size:0x%lx name:%s\n",
-		drv_data->io_mem_base, drv_data->res.start,
-		drv_data->res.end, drv_data->size, drv_data->res.name);
+	HWFNC_DBG_INIT("io_mem_base:0x%pK start:0x%llx end:0x%llx sz:0x%lx name:%s has_soccp:%s\n",
+		drv_data->io_mem_base, drv_data->res.start, drv_data->res.end, drv_data->size,
+		drv_data->res.name, drv_data->has_soccp ? "true" : "false");
 
 	memset_io(drv_data->io_mem_base, 0x0, drv_data->size);
 
-	/* Register memory with HYP */
-	ret = of_property_read_u32(node_compat, "peer-name", &drv_data->peer_name);
+	if (drv_data->has_soccp)
+		ret = _init_soccp_mem(drv_data);
+	else
+		ret = _register_vm_mem_with_hyp(drv_data, node_compat);
+
 	if (ret)
-		drv_data->peer_name = GH_SELF_VM;
+		HWFNC_ERR("failed to share memory with %s va:0x%pK pa:0x%llx sz:0x%lx name:%s\n",
+			drv_data->has_soccp ? "soccp" : "vm", drv_data->io_mem_base,
+			drv_data->res.start, drv_data->size, drv_data->res.name);
 
-	drv_data->rm_nb.notifier_call = hw_fence_rm_cb;
-	drv_data->rm_nb.priority = INT_MAX;
-	notifier_ret = gh_rm_register_notifier(&drv_data->rm_nb);
-	HWFNC_DBG_INIT("notifier: ret:%d peer_name:%d notifier_ret:%d\n", ret,
-		drv_data->peer_name, notifier_ret);
-	if (notifier_ret) {
-		HWFNC_ERR_ONCE("fail to register notifier ret:%d\n", notifier_ret);
-		return -EPROBE_DEFER;
-	}
-
-	return 0;
+	return ret;
 }
 
 char *_get_mem_reserve_type(enum hw_fence_mem_reserve type)

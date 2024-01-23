@@ -196,7 +196,8 @@ enum payload_type {
  * @ipc_client_vid: virtual id of the ipc client for this hw fence driver client
  * @ipc_client_pid: physical id of the ipc client for this hw fence driver client
  * @update_rxq: bool to indicate if client uses rx-queue
- * @send_ipc: bool to indicate if client requires ipc interrupt for already signaled fences
+ * @signaled_send_ipc: bool to indicate if client requires ipc interrupt for already signaled fences
+ * @txq_update_send_ipc: bool to indicate if client requires ipc interrupt for txq updates
  * @context_id: context id for fences created internally
  * @seqno: sequence no for fences created internally
  * @wait_queue: wait queue for the validation clients
@@ -215,7 +216,8 @@ struct msm_hw_fence_client {
 	int ipc_client_vid;
 	int ipc_client_pid;
 	bool update_rxq;
-	bool send_ipc;
+	bool signaled_send_ipc;
+	bool txq_update_send_ipc;
 	u64 context_id;
 	atomic_t seqno;
 #if IS_ENABLED(CONFIG_DEBUG_FS)
