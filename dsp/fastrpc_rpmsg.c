@@ -100,10 +100,11 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 
 	of_property_read_u32(rdev->of_node, "qcom,rpc-latency-us",
 			&data->qos_latency);
-	if (of_property_read_bool(rdev->of_node, "qcom,single-core-latency-vote"))
+
+	fastrpc_lowest_capacity_corecount(rdev, data);
+	if (data->lowest_capacity_core_count > 0 &&
+	    of_property_read_bool(rdev->of_node, "qcom,single-core-latency-vote"))
 		data->lowest_capacity_core_count = 1;
-	else
-		fastrpc_lowest_capacity_corecount(rdev, data);
 
 	kref_init(&data->refcount);
 	dev_set_drvdata(&rpdev->dev, data);
