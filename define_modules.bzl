@@ -1,3 +1,5 @@
+# TODO
+# Add ddk module definition for frpc-trusted driver
 load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 
 load(
@@ -11,6 +13,9 @@ load(
 def define_modules(target, variant):
     kernel_build_variant = "{}_{}".format(target, variant)
 
+    # Path to dsp folder from msm-kernel/include/trace directory
+    trace_include_path = "../../../{}/dsp".format(native.package_name())
+
     ddk_module(
         name = "{}_fastrpc".format(kernel_build_variant),
         kernel_build = "//msm-kernel:{}".format(kernel_build_variant),
@@ -20,15 +25,16 @@ def define_modules(target, variant):
             "dsp/fastrpc_rpmsg.c",
             "dsp/fastrpc_shared.h",
         ],
+        local_defines = ["DSP_TRACE_INCLUDE_PATH={}".format(trace_include_path)],
         out = "fastrpc.ko",
         hdrs = [
 	     	"include/uapi/misc/fastrpc.h",
 		"include/linux/fastrpc.h"
-			   ],
+        ],
         includes = [
-		"include/linux",
-		"include/uapi",
-	],
+            "include/linux",
+            "include/uapi",
+        ],
     )
 
     ddk_module(

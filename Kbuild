@@ -20,7 +20,7 @@ ccflags-y += -DCONFIG_DSP_PINEAPPLE=1
 endif
 
 ifeq ($(CONFIG_ARCH_SUN), y)
-$(info within KBUILD file CONFIG_ARCH_PINEAPPLE = $(CONFIG_ARCH_SUN))
+$(info within KBUILD file CONFIG_ARCH_SUN = $(CONFIG_ARCH_SUN))
 KBUILD_CPPFLAGS += -DCONFIG_DSP_SUN=1
 ccflags-y += -DCONFIG_DSP_SUN=1
 endif
