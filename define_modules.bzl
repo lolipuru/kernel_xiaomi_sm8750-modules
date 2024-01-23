@@ -21,8 +21,14 @@ def define_modules(target, variant):
             "dsp/fastrpc_shared.h",
         ],
         out = "fastrpc.ko",
-        hdrs = ["include/uapi/misc/fastrpc.h"],
-        includes = ["include"],
+        hdrs = [
+	     	"include/uapi/misc/fastrpc.h",
+		"include/linux/fastrpc.h"
+			   ],
+        includes = [
+		"include/linux",
+		"include/uapi",
+	],
     )
 
     ddk_module(

@@ -12,10 +12,17 @@
 #include <linux/qrtr.h>
 #include <net/sock.h>
 #include <linux/workqueue.h>
-#include <linux/qcom_scm.h>
 #include <linux/miscdevice.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <linux/version.h>
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <linux/cpu.h>
+#include <linux/firmware/qcom/qcom_scm.h>
+#else
+#include <linux/qcom_scm.h>
+#endif
 
 #define ADSP_DOMAIN_ID (0)
 #define MDSP_DOMAIN_ID (1)
@@ -40,6 +47,8 @@
 #define FASTRPC_DEVICE_NAME	"fastrpc"
 #define SESSION_ID_INDEX (30)
 #define SESSION_ID_MASK (1 << SESSION_ID_INDEX)
+#define MAX_FRPC_TGID 64
+#define COPY_BUF_WARN_LIMIT (512*1024)
 
 /* Maximum buffers cached in cached buffer list */
 #define FASTRPC_MAX_CACHED_BUFS (32)
@@ -48,6 +57,7 @@
 #define FASTRPC_MAX_PERSISTENT_HEADERS    (8)
 /* Process status notifications from DSP will be sent with this unique context */
 #define FASTRPC_NOTIF_CTX_RESERVED 0xABCDABCD
+#define FASTRPC_UNIQUE_ID_CONST 1000
 
 /* Add memory to static PD pool, protection thru XPU */
 #define ADSP_MMAP_HEAP_ADDR  4
@@ -114,12 +124,7 @@
 #define FASTRPC_RMID_INIT_MEM_MAP      10
 #define FASTRPC_RMID_INIT_MEM_UNMAP    11
 
-/* Protection Domain(PD) ids */
-#define ROOT_PD		(0)
-#define USER_PD		(1)
-#define SENSORS_PD	(2)
-
-#define miscdev_to_fdevice(d) container_of(d, struct fastrpc_device, miscdev)
+#define miscdev_to_fdevice(d) container_of(d, struct fastrpc_device_node, miscdev)
 
 /* Length of glink transaction history to store */
 #define GLINK_MSG_HISTORY_LEN	(128)
@@ -164,6 +169,10 @@
 #define SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME "sensors_pdr_slpi"
 #define SENSORS_PDR_SLPI_SERVICE_NAME            SENSORS_PDR_ADSP_SERVICE_NAME
 #define SLPI_SENSORPD_NAME                       "msm/slpi/sensor_pd"
+
+#define OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME   "ois_pdr_adsprpc"
+#define OIS_PDR_ADSP_SERVICE_NAME              "msm/adsp/ois_pd"
+#define ADSP_OISPD_NAME                        OIS_PDR_ADSP_SERVICE_NAME
 
 #define PERF_END ((void)0)
 
@@ -214,6 +223,21 @@
 	count; \
 	})
 #define COUNT_OF(number) (number == 0 ? 1 : FIND_DIGITS(number))
+
+/*
+ * Process types on remote subsystem
+ * Always add new PD types at the end, before MAX_PD_TYPE
+ */
+#define DEFAULT_UNUSED    0  /* pd type not configured for context banks */
+#define ROOT_PD           1  /* Root PD */
+#define AUDIO_STATICPD    2  /* ADSP Audio Static PD */
+#define SENSORS_STATICPD  3  /* ADSP Sensors Static PD */
+#define SECURE_STATICPD   4  /* CDSP Secure Static PD */
+#define OIS_STATICPD      5  /* ADSP OIS Static PD */
+#define CPZ_USERPD        6  /* CDSP CPZ USER PD */
+#define USERPD            7  /* DSP User Dynamic PD */
+#define GUEST_OS_SHARED   8  /* Legacy Guest OS Shared */
+#define MAX_PD_TYPE       9  /* Max PD type */
 
 enum fastrpc_remote_domains_id {
 	SECURE_PD = 0,
@@ -413,6 +437,7 @@ struct fastrpc_map {
 	u64 len;
 	u64 raddr;
 	u32 attr;
+	u32 flags;
 	struct kref refcount;
 	int secure;
 };
@@ -433,6 +458,7 @@ struct fastrpc_perf {
 struct fastrpc_session_ctx {
 	struct device *dev;
 	int sid;
+	int pd_type;
 	bool used;
 	bool valid;
 	bool secure;
@@ -455,6 +481,7 @@ struct fastrpc_static_pd {
 	u64 pdrcount;
 	u64 prevpdrcount;
 	atomic_t ispdup;
+	atomic_t is_attached;
 	struct fastrpc_channel_ctx *cctx;
 };
 
@@ -474,6 +501,7 @@ struct fastrpc_channel_ctx {
 	struct fastrpc_static_pd spd[FASTRPC_MAX_SPD];
 	spinlock_t lock;
 	struct idr ctx_idr;
+	struct ida tgid_frpc_ida;
 	struct list_head users;
 	struct kref refcount;
 	/* Flag if dsp attributes are cached */
@@ -483,8 +511,8 @@ struct fastrpc_channel_ctx {
 	u32 dsp_attributes[FASTRPC_MAX_DSP_ATTRIBUTES];
 	u32 lowest_capacity_core_count;
 	u32 qos_latency;
-	struct fastrpc_device *secure_fdevice;
-	struct fastrpc_device *fdevice;
+	struct fastrpc_device_node *secure_fdevice;
+	struct fastrpc_device_node *fdevice;
 	struct gid_list gidlist;
 	struct list_head gmaps;
 	struct fastrpc_rpmsg_log gmsg_log[FASTRPC_DEV_MAX];
@@ -497,6 +525,8 @@ struct fastrpc_channel_ctx {
 	bool unsigned_support;
 	u64 dma_mask;
 	u64 cpuinfo_todsp;
+	int max_sess_per_proc;
+	bool pd_type;
 };
 
 struct fastrpc_invoke_ctx {
@@ -532,10 +562,23 @@ struct fastrpc_invoke_ctx {
 	struct fastrpc_perf *perf;
 };
 
-struct fastrpc_device {
+struct fastrpc_device_node {
 	struct fastrpc_channel_ctx *cctx;
 	struct miscdevice miscdev;
 	bool secure;
+};
+
+struct fastrpc_internal_config {
+	int init_fd;
+	int init_size;
+};
+
+/* FastRPC ioctl structure to set session related info */
+struct fastrpc_internal_sessinfo {
+	uint32_t domain_id;  /* Set the remote subsystem, Domain ID of the session  */
+	uint32_t session_id; /* Unused, Set the Session ID on remote subsystem */
+	uint32_t pd;    /* Set the process type on remote subsystem */
+	uint32_t sharedcb;   /* Unused, Session can share context bank with other sessions */
 };
 
 struct fastrpc_notif_queue {
@@ -556,6 +599,7 @@ struct fastrpc_internal_notif_rsp {
 struct fastrpc_notif_rsp {
 	struct list_head notifn;
 	u32 domain;
+	u32 session;
 	enum fastrpc_status_flags status;
 };
 
@@ -566,6 +610,8 @@ struct fastrpc_user {
 	struct list_head interrupted;
 	struct list_head mmaps;
 	struct list_head cached_bufs;
+	/* list of client drivers registered to fastrpc driver*/
+	struct list_head fastrpc_drivers;
 
 	struct fastrpc_channel_ctx *cctx;
 	struct fastrpc_session_ctx *sctx;
@@ -573,15 +619,25 @@ struct fastrpc_user {
 	struct fastrpc_buf *init_mem;
 	/* Pre-allocated header buffer */
 	struct fastrpc_buf *pers_hdr_buf;
+	struct fastrpc_static_pd *spd;
 	/* Pre-allocated buffer divided into N chunks */
 	struct fastrpc_buf *hdr_bufs;
+	/*
+	 * Unique device struct for each process, shared with
+	 * client drivers when attached to fastrpc driver.
+	 */
+	struct fastrpc_device *device;
 #ifdef CONFIG_DEBUG_FS
 	bool debugfs_file_create;
 	struct dentry *debugfs_file;
 	char *debugfs_buf;
 #endif
 	int tgid;
+	/* Unique pid send to dsp*/
+	int tgid_frpc;
 	int pd;
+	/* Variable to identify process status*/
+	int file_close;
 	/* total cached buffers */
 	u32 num_cached_buf;
 	/* total persistent headers */
@@ -598,22 +654,32 @@ struct fastrpc_user {
 	/* If set, threads will poll for DSP response instead of glink wait */
 	bool poll_mode;
 	bool is_unsigned_pd;
+	/* Variable to identify if client driver dma operation are pending*/
+	bool is_dma_invoke_pend;
 	bool sharedcb;
 	char *servloc_name;;
 	/* Lock for lists */
 	spinlock_t lock;
 	/* lock for dsp signals */
 	spinlock_t dspsignals_lock;
-	/* lock for allocations */
-	struct mutex mutex;
+	/* mutex for  remote mapping synchronization*/
+	struct mutex remote_map_mutex;
+	/*mutex for process maps synchronization*/
+	struct mutex map_mutex;
 	struct mutex signal_create_mutex;
 	struct gid_list gidlist;
+	/* Compleation object for dma invocations by client driver*/
+	struct completion dma_invoke;
 	/* Completion objects and state for dspsignals */
 	struct fastrpc_dspsignal *signal_groups[FASTRPC_DSPSIGNAL_NUM_SIGNALS /FASTRPC_DSPSIGNAL_GROUP_SIZE];
 	struct dev_pm_qos_request *dev_pm_qos_req;
 	/* Process status notification queue */
 	struct fastrpc_notif_queue proc_state_notif;
 	struct list_head notif_queue;
+	struct fastrpc_internal_config config;
+	bool multi_session_support;
+	bool untrusted_process;
+	bool set_session_info;
 };
 
 struct fastrpc_ctrl_latency {
