@@ -22,6 +22,7 @@
 #include <linux/qcom_scm.h>
 #include "../include/uapi/misc/fastrpc.h"
 #include <linux/of_reserved_mem.h>
+#include <linux/cred.h>
 
 #define ADSP_DOMAIN_ID (0)
 #define MDSP_DOMAIN_ID (1)
@@ -170,6 +171,11 @@ struct fastrpc_mem_unmap_req_msg {
 	u64 len;
 };
 
+struct gid_list {
+	u32 *gids;
+	u32 gidcount;
+};
+
 struct fastrpc_msg {
 	int pid;		/* process group id */
 	int tid;		/* thread id */
@@ -297,6 +303,7 @@ struct fastrpc_channel_ctx {
 	struct fastrpc_device *secure_fdevice;
 	struct fastrpc_device *fdevice;
 	struct fastrpc_buf *remote_heap;
+	struct gid_list gidlist;
 	struct list_head invoke_interrupted_mmaps;
 	struct fastrpc_rpmsg_log gmsg_log[FASTRPC_DEV_MAX];
 	bool secure;
@@ -328,6 +335,7 @@ struct fastrpc_user {
 	spinlock_t lock;
 	/* lock for allocations */
 	struct mutex mutex;
+	struct gid_list gidlist;
 };
 
 static void fastrpc_free_map(struct kref *ref)
@@ -545,6 +553,31 @@ static void fastrpc_context_put_wq(struct work_struct *work)
 }
 
 #define CMP(aa, bb) ((aa) == (bb) ? 0 : (aa) < (bb) ? -1 : 1)
+
+static u32 sorted_lists_intersection(u32 *listA,
+		u32 lenA, u32 *listB, u32 lenB)
+{
+	u32 i = 0, j = 0;
+
+	while (i < lenA && j < lenB) {
+		if (listA[i] < listB[j])
+			i++;
+		else if (listA[i] > listB[j])
+			j++;
+		else
+			return listA[i];
+	}
+	return 0;
+}
+
+static int uint_cmp_func(const void *p1, const void *p2)
+{
+	u32 a1 = *((u32 *)p1);
+	u32 a2 = *((u32 *)p2);
+
+	return CMP(a1, a2);
+}
+
 static int olaps_cmp(const void *a, const void *b)
 {
 	struct fastrpc_buf_overlap *pa = (struct fastrpc_buf_overlap *)a;
@@ -1310,6 +1343,50 @@ static bool is_session_rejected(struct fastrpc_user *fl, bool unsigned_pd_reques
 	return false;
 }
 
+static int fastrpc_get_process_gids(struct gid_list *gidlist)
+{
+	struct group_info *group_info = get_current_groups();
+	int i, num_gids;
+	u32 *gids = NULL;
+
+	if (!group_info)
+		return -EFAULT;
+
+	num_gids = group_info->ngroups + 1;
+	gids = kcalloc(num_gids, sizeof(u32), GFP_KERNEL);
+	if (!gids)
+		return -ENOMEM;
+
+	/* Get the real GID */
+	gids[0] = __kgid_val(current_gid());
+
+	/* Get the supplemental GIDs */
+	for (i = 1; i < num_gids; i++)
+		gids[i] = __kgid_val(group_info->gid[i - 1]);
+
+	sort(gids, num_gids, sizeof(*gids), uint_cmp_func, NULL);
+	gidlist->gids = gids;
+	gidlist->gidcount = num_gids;
+
+	return 0;
+}
+
+static void fastrpc_check_privileged_process(struct fastrpc_user *fl,
+				struct fastrpc_init_create *init)
+{
+	u32 gid = sorted_lists_intersection(fl->gidlist.gids,
+			fl->gidlist.gidcount, fl->cctx->gidlist.gids,
+			fl->cctx->gidlist.gidcount);
+
+	/* disregard any privilege bits from userspace */
+	init->attrs &= (~FASTRPC_MODE_PRIVILEGED);
+	if (gid) {
+		dev_info(&fl->cctx->rpdev->dev, "%s: %s (PID %d, GID %u) is a privileged process\n",
+				__func__, current->comm, fl->tgid, gid);
+		init->attrs |= FASTRPC_MODE_PRIVILEGED;
+	}
+}
+
 static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 					      char __user *argp)
 {
@@ -1465,6 +1542,8 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		goto err;
 	}
 
+	fastrpc_get_process_gids(&fl->gidlist);
+
 	inbuf.pgid = fl->tgid;
 	inbuf.namelen = strlen(current->comm) + 1;
 	inbuf.filelen = init.filelen;
@@ -1478,6 +1557,8 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		if (err)
 			goto err;
 	}
+
+	fastrpc_check_privileged_process(fl, &init);
 
 	if (fl->is_unsigned_pd)
 		dsp_userpd_memlen += 2 * one_mb;
@@ -1600,6 +1681,7 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	spin_lock_irqsave(&cctx->lock, flags);
 	list_del(&fl->user);
 	spin_unlock_irqrestore(&cctx->lock, flags);
+	kfree(fl->gidlist.gids);
 
 	if (fl->init_mem)
 		fastrpc_buf_free(fl->init_mem);
@@ -2250,6 +2332,43 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int cmd,
 	return err;
 }
 
+static int fastrpc_init_privileged_gids(struct device *dev, char *prop_name,
+						struct gid_list *gidlist)
+{
+	int err = 0;
+	u32 len = 0, i;
+	u32 *gids = NULL;
+
+	if (!of_find_property(dev->of_node, prop_name, &len))
+		return 0;
+	if (len == 0)
+		return 0;
+
+	len /= sizeof(u32);
+	gids = kcalloc(len, sizeof(u32), GFP_KERNEL);
+	if (!gids)
+		return -ENOMEM;
+
+	for (i = 0; i < len; i++) {
+		err = of_property_read_u32_index(dev->of_node, prop_name,
+								i, &gids[i]);
+		if (err) {
+			dev_err(dev, "%s: failed to read GID %u\n",
+					__func__, i);
+			goto read_error;
+		}
+		dev_info(dev, "adsprpc: %s: privileged GID: %u\n", __func__, gids[i]);
+	}
+	sort(gids, len, sizeof(*gids), uint_cmp_func, NULL);
+	gidlist->gids = gids;
+	gidlist->gidcount = len;
+
+	return 0;
+read_error:
+	kfree(gids);
+	return err;
+}
+
 static const struct file_operations fastrpc_fops = {
 	.open = fastrpc_device_open,
 	.release = fastrpc_device_release,
@@ -2412,6 +2531,10 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	if (!data)
 		return -ENOMEM;
 
+	err = fastrpc_init_privileged_gids(rdev, "qcom,fastrpc-gids", &data->gidlist);
+	if (err)
+		dev_err(rdev, "Privileged gids init failed.\n");
+
 	if (vmcount) {
 		data->vmcount = vmcount;
 		data->perms = BIT(QCOM_SCM_VMID_HLOS);
@@ -2519,6 +2642,7 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 	if (cctx->remote_heap)
 		fastrpc_buf_free(cctx->remote_heap);
 
+	kfree(cctx->gidlist.gids);
 	of_platform_depopulate(&rpdev->dev);
 
 	fastrpc_channel_ctx_put(cctx);
