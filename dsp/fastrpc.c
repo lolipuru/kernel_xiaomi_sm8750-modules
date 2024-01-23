@@ -366,7 +366,7 @@ struct fastrpc_invoke_ctx {
 	struct kref refcount;
 	struct list_head node; /* list of ctxs */
 	struct completion work;
-	struct work_struct put_work;
+	// struct work_struct put_work;
 	struct fastrpc_msg msg;
 	struct fastrpc_user *fl;
 	union fastrpc_remote_arg *rpra;
@@ -867,23 +867,23 @@ static void fastrpc_context_free(struct kref *ref)
 	fastrpc_channel_ctx_put(cctx);
 }
 
-static void fastrpc_context_get(struct fastrpc_invoke_ctx *ctx)
-{
-	kref_get(&ctx->refcount);
-}
+// static void fastrpc_context_get(struct fastrpc_invoke_ctx *ctx)
+// {
+	// kref_get(&ctx->refcount);
+// }
 
 static void fastrpc_context_put(struct fastrpc_invoke_ctx *ctx)
 {
 	kref_put(&ctx->refcount, fastrpc_context_free);
 }
 
-static void fastrpc_context_put_wq(struct work_struct *work)
-{
-	struct fastrpc_invoke_ctx *ctx =
-			container_of(work, struct fastrpc_invoke_ctx, put_work);
+// static void fastrpc_context_put_wq(struct work_struct *work)
+// {
+	// struct fastrpc_invoke_ctx *ctx =
+			// container_of(work, struct fastrpc_invoke_ctx, put_work);
 
-	fastrpc_context_put(ctx);
-}
+	// fastrpc_context_put(ctx);
+// }
 
 #define CMP(aa, bb) ((aa) == (bb) ? 0 : (aa) < (bb) ? -1 : 1)
 
@@ -1016,7 +1016,7 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 	ctx->rsp_flags = NORMAL_RESPONSE;
 	ctx->is_work_done = false;
 	init_completion(&ctx->work);
-	INIT_WORK(&ctx->put_work, fastrpc_context_put_wq);
+	// INIT_WORK(&ctx->put_work, fastrpc_context_put_wq);
 
 	spin_lock(&user->lock);
 	list_add_tail(&ctx->node, &user->pending);
@@ -1597,12 +1597,12 @@ static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 	msg->sc = ctx->sc;
 	msg->addr = ctx->buf ? ctx->buf->phys : 0;
 	msg->size = roundup(ctx->msg_sz, PAGE_SIZE);
-	fastrpc_context_get(ctx);
+	// fastrpc_context_get(ctx);
 
 	ret = rpmsg_send(cctx->rpdev->ept, (void *)msg, sizeof(*msg));
 
-	if (ret)
-		fastrpc_context_put(ctx);
+	// if (ret)
+		// fastrpc_context_put(ctx);
 	fastrpc_update_txmsg_buf(cctx, msg, ret, get_timestamp_in_ns());
 
 	return ret;
@@ -3951,7 +3951,7 @@ static int fastrpc_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
 	 * interrupt context so schedule it through a worker thread to
 	 * avoid a kernel BUG.
 	 */
-	schedule_work(&ctx->put_work);
+	// schedule_work(&ctx->put_work);
 
 	return 0;
 }
