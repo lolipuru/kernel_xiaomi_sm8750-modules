@@ -21,6 +21,10 @@
 #include "synx_private.h"
 #include "synx_util.h"
 #include "synx_hwfence.h"
+#include "synx_interop.h"
+
+struct synx_hwfence_interops hwfence_shared_ops = { NULL };
+struct synx_hwfence_interops synx_shared_ops = { NULL };
 
 struct synx_device *synx_dev;
 static atomic64_t synx_counter = ATOMIC64_INIT(1);
@@ -1713,6 +1717,107 @@ static int synx_native_import_handle(struct synx_client *client,
 	return rc;
 }
 
+static int synx_internal_get_handle_status(struct synx_import_indv_params *params, u32 h_hwfence,
+        u32 *signal_status, bool is_waiter)
+{
+	u32 h_synx;
+	u32 status = SYNX_STATE_ACTIVE;
+	if (IS_ERR_OR_NULL(params) || IS_ERR_OR_NULL(params->fence)
+		|| !(params->flags & SYNX_IMPORT_DMA_FENCE))
+	{
+		dprintk(SYNX_ERR,"Invalid params \n");
+		return -SYNX_INVALID;
+	}
+
+	h_synx = synx_util_get_fence_entry((u64)params->fence, 1);
+
+	if ((h_synx == 0) || (!synx_util_is_global_handle(h_synx)))
+	{
+		dprintk(SYNX_ERR,"invalid fence id: %p \n", params->fence);
+		return -SYNX_INVALID;
+	}
+
+	status = synx_global_test_status_update_coredata(
+		synx_util_global_idx(h_synx), SYNX_CORE_SOCCP, h_hwfence, is_waiter);
+	if (status != SYNX_STATE_ACTIVE) {
+		if (status < 0) {
+			dprintk(SYNX_ERR, "Failed to update coredata err:%d \n", status);
+			return status;
+		}
+		goto bail;
+	}
+
+	*params->new_h_synx = h_synx;
+
+bail:
+	*signal_status = status;
+	return SYNX_SUCCESS;
+}
+
+int synx_internal_share_handle_status(
+	struct synx_import_indv_params *params,
+	u32 h_hwfence, u32 *signal_status)
+{
+	return synx_internal_get_handle_status(
+		params, h_hwfence, signal_status, true);
+}
+
+static int synx_register_hw_fence(struct synx_client *client,
+	struct synx_import_indv_params *params)
+{
+	int rc = SYNX_SUCCESS;
+	u32 h_synx, signal_status = SYNX_STATE_ACTIVE;
+
+	if (IS_ERR_OR_NULL(client) || IS_ERR_OR_NULL(params) ||
+		IS_ERR_OR_NULL(params->new_h_synx) ||
+		IS_ERR_OR_NULL(hwfence_shared_ops.share_handle_status))
+		return -SYNX_INVALID;
+
+	h_synx = *params->new_h_synx;
+	rc = hwfence_shared_ops.share_handle_status(
+			params, h_synx, &signal_status);
+
+	if (rc != SYNX_SUCCESS) {
+		dprintk(SYNX_ERR,
+			"[sess :%llu] failed to get hw fence status \
+			for dma fence %pK, synx handle %u, err=%d\n",
+			client->id, params->fence, h_synx, rc);
+		goto bail;
+	}
+
+	if (signal_status != SYNX_STATE_ACTIVE) {
+		synx_global_update_status(
+			synx_util_global_idx(h_synx), signal_status);
+
+		dprintk(SYNX_DBG,
+			"[sess :%llu] Hw fence %u not registered, \
+			synx handle %u signaled with status %d",
+			client->id, *params->new_h_synx, h_synx, signal_status);
+		goto bail;
+	}
+	else {
+		rc = synx_internal_get_handle_status(params,
+			*params->new_h_synx, &signal_status, false);
+
+		if (rc != SYNX_SUCCESS) {
+			dprintk(SYNX_ERR,
+				"[sess :%llu] unable to register hw_fence %u, \
+				dma fence %pK with synx handle %u with err=%d\n",
+				client->id, *params->new_h_synx,
+				params->fence, h_synx, rc);
+				goto bail;
+		}
+	}
+
+	dprintk(SYNX_DBG,
+		"[sess :%llu] Successfully registered hw fence %u with \
+		synx handle %u for hw fence status %d\n",
+		client->id, *params->new_h_synx, h_synx, signal_status);
+
+bail:
+	return rc;
+}
+
 static int synx_native_import_fence(struct synx_client *client,
 	struct synx_import_indv_params *params)
 {
@@ -1843,6 +1948,21 @@ retry:
 			params->fence, *params->new_h_synx);
 	}
 
+	if (test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT,
+		&((struct dma_fence *)params->fence)->flags) &&
+		synx_util_is_global_handle(*params->new_h_synx)) {
+		/* register hw fence with synx */
+		rc = synx_register_hw_fence(client, params);
+		*params->new_h_synx = curr_h_synx;
+
+		if (rc != SYNX_SUCCESS) {
+			dprintk(SYNX_ERR,
+				"[sess :%llu] failed to register synx handle %u with hw fence with err %d\n",
+				client->id, *params->new_h_synx, rc);
+			goto release;
+		}
+	}
+
 	return rc;
 
 release:
@@ -1856,6 +1976,9 @@ static int synx_native_import_indv(struct synx_client *client,
 	struct synx_import_indv_params *params)
 {
 	int rc = -SYNX_INVALID;
+	void *fence = NULL;
+	enum synx_import_flags flags;
+	u32 hw_fence = 0;
 
 	if (IS_ERR_OR_NULL(params) ||
 		IS_ERR_OR_NULL(params->new_h_synx) ||
@@ -1864,10 +1987,47 @@ static int synx_native_import_indv(struct synx_client *client,
 		return -SYNX_INVALID;
 	}
 
-	if (likely(params->flags & SYNX_IMPORT_DMA_FENCE))
+	flags = params->flags;
+	fence = params->fence;
+	hw_fence = *((u32 *)params->fence);
+
+	if ((params->flags & SYNX_IMPORT_SYNX_FENCE) && IS_HW_FENCE(hw_fence)) {
+
+		if (IS_ERR_OR_NULL(hwfence_shared_ops.get_fence)) {
+			dprintk(SYNX_ERR, "Hw fence not initialized\n");
+			return -SYNX_INVALID;
+		}
+
+		params->fence = hwfence_shared_ops.get_fence(hw_fence);
+
+		if (IS_ERR_OR_NULL(params->fence)) {
+			dprintk(SYNX_ERR, "Invalid hw fence %pK, %u passed\n", params->fence, hw_fence);
+			params->fence = fence;
+			return -SYNX_INVALID;
+		}
+
+		params->flags = SYNX_IMPORT_GLOBAL_FENCE | SYNX_IMPORT_DMA_FENCE;
+	}
+
+	if (likely(params->flags & SYNX_IMPORT_DMA_FENCE)) {
+
+		if (dma_fence_is_array(params->fence)) {
+			dprintk(SYNX_ERR, "Cannot import dma fence array %pK\n", params->fence);
+			rc = -SYNX_NOSUPPORT;
+			goto bail;
+		}
+
 		rc = synx_native_import_fence(client, params);
+	}
 	else if (params->flags & SYNX_IMPORT_SYNX_FENCE)
 		rc = synx_native_import_handle(client, params);
+
+bail:
+	if ((flags & SYNX_IMPORT_SYNX_FENCE) && IS_HW_FENCE(hw_fence)) {
+		dma_fence_put((struct dma_fence *)params->fence);
+		params->fence = fence;
+		params->flags = flags;
+	}
 
 	dprintk(SYNX_DBG,
 		"[sess :%llu] import of fence %pK %s, handle %u\n",
@@ -2739,6 +2899,27 @@ int synx_ipc_callback(u32 client_id,
 }
 EXPORT_SYMBOL(synx_ipc_callback);
 
+void *synx_internal_get_dma_fence(u32 h_synx)
+{
+	int i;
+	void *fence = NULL;
+	struct hlist_node *tmp;
+	struct synx_fence_entry *curr = NULL;
+
+	spin_lock_bh(&synx_dev->native->fence_map_lock);
+	hash_for_each_safe(synx_dev->native->fence_map, i,
+		tmp, curr, node) {
+		if (curr->g_handle == h_synx) {
+			fence = (void *)curr->key;
+			dma_fence_get((struct dma_fence *)curr->key);
+			break;
+		}
+	}
+	spin_unlock_bh(&synx_dev->native->fence_map_lock);
+
+	return fence;
+}
+
 int synx_internal_recover(enum synx_client_id id)
 {
 	u32 core_id;
@@ -2892,6 +3073,14 @@ static int __init synx_init(void)
 	rc = synx_hwfence_init_ops(&synx_hwfence_ops);
 	if (rc)
 		dprintk(SYNX_DBG, "hwfence is not supported through synx api, err=%d\n", rc);
+
+	synx_shared_ops.share_handle_status = synx_internal_share_handle_status;
+	synx_shared_ops.get_fence = synx_internal_get_dma_fence;
+	synx_shared_ops.notify_recover = NULL;
+	rc  = synx_hwfence_init_interops(&synx_shared_ops, &hwfence_shared_ops);
+	if (rc) {
+		dprintk(SYNX_ERR, "Hw fence inter-op mapping failed, err %d\n", rc);
+	}
 
 	ipclite_register_client(synx_ipc_callback, NULL);
 	synx_local_mem_init();
