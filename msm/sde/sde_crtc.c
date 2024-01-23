@@ -878,7 +878,6 @@ static void _sde_crtc_setup_dim_layer_cfg(struct drm_crtc *crtc,
 			dim_layer->flags, dim_layer->stage);
 
 	split_dim_layer.stage = dim_layer->stage;
-	split_dim_layer.color_fill = dim_layer->color_fill;
 
 	/*
 	 * traverse through the layer mixers attached to crtc and find the
@@ -886,6 +885,7 @@ static void _sde_crtc_setup_dim_layer_cfg(struct drm_crtc *crtc,
 	 */
 	for (i = 0; i < sde_crtc->num_mixers; i++) {
 		split_dim_layer.flags = dim_layer->flags;
+		split_dim_layer.color_fill = dim_layer->color_fill;
 
 		sde_kms_rect_intersect(&cstate->lm_roi[i], &dim_layer->rect,
 					&split_dim_layer.rect);
