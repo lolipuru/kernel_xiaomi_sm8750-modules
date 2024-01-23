@@ -437,6 +437,7 @@ struct fastrpc_session_ctx {
 	bool valid;
 	bool secure;
 	bool sharedcb;
+	struct mutex map_mutex;
 	/* gen pool for QRTR */
 	struct gen_pool *frpc_genpool;
 	/* fastrpc gen pool buffer */
