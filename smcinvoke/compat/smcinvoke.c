@@ -884,7 +884,7 @@ static void del_mem_map_obj_locked(struct kref *kref)
 	mem_obj->p_addr = 0;
 	if (mem_obj->sgt) {
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0))
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
 		dma_buf_unmap_attachment_unlocked(mem_obj->buf_attach,
 				mem_obj->sgt, DMA_BIDIRECTIONAL);
 #else
@@ -1203,7 +1203,7 @@ static int32_t smcinvoke_map_mem_region_locked(struct smcinvoke_mem_obj* mem_obj
 		}
 		mem_obj->buf_attach = buf_attach;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0))
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
 		sgt = dma_buf_map_attachment_unlocked(buf_attach, DMA_BIDIRECTIONAL);
 #else
 		sgt = dma_buf_map_attachment(buf_attach, DMA_BIDIRECTIONAL);
@@ -3299,6 +3299,6 @@ module_init(smcinvoke_init);
 module_exit(smcinvoke_exit);
 
 MODULE_LICENSE("GPL v2");
-MODULE_DESCRIPTION("SMC Invoke driver");
+MODULE_DESCRIPTION("SMC Invoke driver (compat)");
 MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
 MODULE_IMPORT_NS(DMA_BUF);

@@ -17,8 +17,8 @@
 #include "smcinvoke_object.h"
 #include "IClientEnv.h"
 #if IS_ENABLED(CONFIG_QSEECOM_COMPAT)
-#include "IQSEEComCompat.h"
-#include "IQSEEComCompatAppLoader.h"
+#include "../IQSEEComCompat.h"
+#include "../IQSEEComCompatAppLoader.h"
 #include "linux/qseecom_api.h"
 #if IS_ENABLED(CONFIG_QSEECOM_PROXY)
 #include <linux/qseecom_kernel.h>
@@ -325,7 +325,7 @@ int32_t get_client_env_object(struct Object *clientEnvObj)
 	Object_release(rootObj);
 	return ret;
 }
-EXPORT_SYMBOL(get_client_env_object);
+EXPORT_SYMBOL_GPL(get_client_env_object);
 
 #if IS_ENABLED(CONFIG_QSEECOM_COMPAT)
 
@@ -511,13 +511,13 @@ int qseecom_start_app(struct qseecom_handle **handle,
 {
     return __qseecom_start_app(handle, app_name, size);
 }
-EXPORT_SYMBOL(qseecom_start_app);
+EXPORT_SYMBOL_GPL(qseecom_start_app);
 
 int qseecom_shutdown_app(struct qseecom_handle **handle)
 {
     return __qseecom_shutdown_app(handle);
 }
-EXPORT_SYMBOL(qseecom_shutdown_app);
+EXPORT_SYMBOL_GPL(qseecom_shutdown_app);
 
 int qseecom_send_command(struct qseecom_handle *handle, void *send_buf,
             uint32_t sbuf_len, void *resp_buf, uint32_t rbuf_len)
@@ -525,7 +525,7 @@ int qseecom_send_command(struct qseecom_handle *handle, void *send_buf,
     return __qseecom_send_command(handle, send_buf, sbuf_len,
                         resp_buf, rbuf_len);
 }
-EXPORT_SYMBOL(qseecom_send_command);
+EXPORT_SYMBOL_GPL(qseecom_send_command);
 #endif
 
 #endif
@@ -636,4 +636,4 @@ release_fw_entry00:
 	kfree(offset);
 	return img_data_ptr;
 }
-EXPORT_SYMBOL(firmware_request_from_smcinvoke);
+EXPORT_SYMBOL_GPL(firmware_request_from_smcinvoke);
