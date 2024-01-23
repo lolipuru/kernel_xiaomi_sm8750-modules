@@ -405,6 +405,20 @@ struct sde_hw_dspp_ops {
 	 * @ctx: Pointer to dspp context
 	 */
 	void (*setup_mdnie_psr)(struct sde_hw_dspp *ctx);
+
+	/**
+	 * check_ai_scaler - function to check ai scaler cfg
+	 * @ctx: Pointer to dspp context
+	 * @status: Pointer to configuration.
+	 */
+	int (*check_ai_scaler)(struct sde_hw_dspp *ctx, void *cfg);
+
+	/**
+	 * setup_ai_scaler - function to program ai scaler cfg
+	 * @ctx: Pointer to dspp context
+	 * @status: Pointer to configuration.
+	 */
+	int (*setup_ai_scaler)(struct sde_hw_dspp *ctx, void *cfg);
 };
 
 /**

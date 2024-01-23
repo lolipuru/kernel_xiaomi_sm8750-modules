@@ -485,6 +485,23 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 	}
 }
 
+static void dspp_ai_scaler(struct sde_hw_dspp *c)
+{
+	if (!c) {
+		SDE_ERROR("invalid arguments\n");
+		return;
+	}
+
+	c->ops.setup_ai_scaler = NULL;
+	c->ops.check_ai_scaler = NULL;
+
+	if (c->cap->sblk->ai_scaler.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) {
+		if (c->cap->sblk->ai_scaler.ai_scaler_supported) {
+			c->ops.check_ai_scaler = sde_check_ai_scaler_v1;
+			c->ops.setup_ai_scaler = sde_setup_ai_scaler_v1;
+		}
+	}
+}
 
 static void (*dspp_blocks[SDE_DSPP_MAX])(struct sde_hw_dspp *c);
 
@@ -506,6 +523,7 @@ static void _init_dspp_ops(void)
 	dspp_blocks[SDE_DSPP_SPR] = dspp_spr;
 	dspp_blocks[SDE_DSPP_DEMURA] = dspp_demura;
 	dspp_blocks[SDE_DSPP_AIQE] = dspp_aiqe;
+	dspp_blocks[SDE_DSPP_AI_SCALER] = dspp_ai_scaler;
 }
 
 static void _setup_dspp_ops(struct sde_hw_dspp *c, unsigned long features)
@@ -603,6 +621,16 @@ struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 				c->hw.blk_off + cfg->sblk->aiqe.base,
 				c->hw.blk_off + cfg->sblk->aiqe.base +
 				cfg->sblk->aiqe.len, c->hw.xin_id);
+	}
+
+	if ((cfg->sblk->ai_scaler.id == SDE_DSPP_AI_SCALER) &&
+			cfg->sblk->ai_scaler.base) {
+		snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "ai_scaler",
+				c->idx - DSPP_0);
+		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
+				c->hw.blk_off + cfg->sblk->ai_scaler.base,
+				c->hw.blk_off + cfg->sblk->ai_scaler.base +
+				cfg->sblk->ai_scaler.len, c->hw.xin_id);
 	}
 
 	return &c->hw;

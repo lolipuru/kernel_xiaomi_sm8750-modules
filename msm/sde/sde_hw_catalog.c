@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -561,6 +561,14 @@ enum {
 	AIQE_PROP_MAX,
 };
 
+enum {
+	AI_SCALER_OFF,
+	AI_SCALER_VERSION,
+	AI_SCALER_LEN,
+	AI_SCALER,
+	AI_SCALER_PROP_MAX,
+};
+
 /*************************************************************
  * dts property definition
  *************************************************************/
@@ -1074,6 +1082,13 @@ static struct sde_prop_type aiqe_prop[] = {
 			false, PROP_TYPE_U32},
 	[AIQE_WRAPPER_LEN] = {AIQE_WRAPPER_LEN, "qcom,sde-dspp-aiqe-wrapper-size", false,
 			PROP_TYPE_U32},
+};
+
+static struct sde_prop_type ai_scaler_prop[] = {
+	{AI_SCALER_OFF, "qcom,sde-dspp-aiqe-aiscaler-off", false, PROP_TYPE_U32_ARRAY},
+	{AI_SCALER_VERSION, "qcom,sde-dspp-aiqe-aiscaler-version", false, PROP_TYPE_U32},
+	{AI_SCALER_LEN, "qcom,sde-dspp-aiqe-aiscaler-size", false, PROP_TYPE_U32},
+	{AI_SCALER, "qcom,sde-aiqe-has-feature-aiscaler", false, PROP_TYPE_BOOL},
 };
 
 /*************************************************************
@@ -3169,6 +3184,55 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	return 0;
 }
 
+static int _sde_ai_scaler_parse_dt(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	int off_count, i;
+	struct sde_dt_props *props;
+
+	props = sde_get_dt_props(np, AI_SCALER_PROP_MAX, ai_scaler_prop,
+			ARRAY_SIZE(ai_scaler_prop), &off_count);
+	if (IS_ERR(props))
+		return PTR_ERR(props);
+
+	sde_cfg->ai_scaler_count = 0;
+	if (!(PROP_VALUE_ACCESS(props->values, AI_SCALER, 0))
+		|| off_count == 0) {
+		sde_put_dt_props(props);
+		return 0;
+	}
+
+	if (off_count > sde_cfg->dspp_count) {
+		SDE_ERROR("limiting %d AI Scaler blocks to %d DSPP instances\n",
+				off_count, sde_cfg->dspp_count);
+	}
+
+	for (i = 0; i < sde_cfg->dspp_count; i++) {
+		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
+		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
+
+		sblk->ai_scaler.id = SDE_DSPP_AI_SCALER;
+		if (props->exists[AI_SCALER_OFF] && i < off_count) {
+			sblk->ai_scaler.base = PROP_VALUE_ACCESS(props->values,
+				AI_SCALER_OFF, i);
+			if (sblk->ai_scaler.base >= MAX_AIQE_OFF) {
+				sblk->ai_scaler.base = 0;
+				continue;
+			}
+			sblk->ai_scaler.len = PROP_VALUE_ACCESS(props->values,
+					AI_SCALER_LEN, 0);
+			sblk->ai_scaler.version = PROP_VALUE_ACCESS(props->values,
+					AI_SCALER_VERSION, 0);
+			sblk->ai_scaler.ai_scaler_supported = true;
+			set_bit(SDE_DSPP_AI_SCALER, &dspp->features);
+			sde_cfg->ai_scaler_count = sde_cfg->ai_scaler_count + 1;
+		}
+	}
+
+	sde_put_dt_props(props);
+	return 0;
+}
+
 static void _sde_init_dspp_sblk(struct sde_dspp_cfg *dspp,
 		struct sde_pp_blk *pp_blk, int prop_id, int blk_id,
 		struct sde_dt_props *props)
@@ -3318,6 +3382,12 @@ static int sde_dspp_parse_dt(struct device_node *np,
 		goto end;
 
 	rc = _sde_aiqe_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = _sde_ai_scaler_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
 end:
 	return rc;
 }

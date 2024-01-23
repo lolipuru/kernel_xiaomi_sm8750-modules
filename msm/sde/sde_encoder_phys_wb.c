@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -349,12 +349,13 @@ static void _sde_enc_phys_wb_get_out_resolution(struct drm_crtc_state *crtc_stat
 {
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
 	const struct drm_display_mode *mode = &crtc_state->mode;
-	struct sde_io_res ds_res = {0, }, dnsc_blur_res = {0, };
+	struct sde_io_res ds_res = {0, }, dnsc_blur_res = {0, }, ai_scaler_res = {0, };
 	u32 ds_tap_pt = sde_crtc_get_property(cstate, CRTC_PROP_CAPTURE_OUTPUT);
 	enum sde_wb_rot_type rotation_type;
 
 	sde_crtc_get_ds_io_res(crtc_state, &ds_res);
 	sde_connector_get_dnsc_blur_io_res(conn_state, &dnsc_blur_res);
+	sde_crtc_get_ai_scaler_io_res(crtc_state, &ai_scaler_res);
 	rotation_type = sde_connector_get_property(conn_state, CONNECTOR_PROP_WB_ROT_TYPE);
 
 	if (dnsc_blur_res.enabled) {
@@ -367,6 +368,17 @@ static void _sde_enc_phys_wb_get_out_resolution(struct drm_crtc_state *crtc_stat
 		} else if (ds_tap_pt == CAPTURE_MIXER_OUT) {
 			*out_width = ds_res.src_w;
 			*out_height = ds_res.src_h;
+		} else {
+			*out_width = mode->hdisplay;
+			*out_height = mode->vdisplay;
+		}
+	} else if (ai_scaler_res.enabled) {
+		if (ds_tap_pt == CAPTURE_DSPP_OUT) {
+			*out_width = ai_scaler_res.dst_w;
+			*out_height = ai_scaler_res.dst_h;
+		} else if (ds_tap_pt == CAPTURE_MIXER_OUT) {
+			*out_width = ai_scaler_res.src_w;
+			*out_height = ai_scaler_res.src_h;
 		} else {
 			*out_width = mode->hdisplay;
 			*out_height = mode->vdisplay;

@@ -228,6 +228,7 @@ void sde_crtc_get_mixer_resolution(struct drm_crtc *crtc, struct drm_crtc_state 
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
 	struct sde_connector_state *virt_cstate;
+	struct sde_io_res ai_scaler_res = {0, };
 
 	*width = 0;
 	*height = 0;
@@ -239,10 +240,14 @@ void sde_crtc_get_mixer_resolution(struct drm_crtc *crtc, struct drm_crtc_state 
 	cstate = to_sde_crtc_state(crtc_state);
 	virt_conn_state = _sde_crtc_get_virt_conn_state(crtc, crtc_state);
 	virt_cstate = virt_conn_state ? to_sde_connector_state(virt_conn_state) : NULL;
+	sde_crtc_get_ai_scaler_io_res(crtc_state, &ai_scaler_res);
 
 	if (cstate->num_ds_enabled) {
 		*width = cstate->ds_cfg[0].lm_width;
 		*height = cstate->ds_cfg[0].lm_height;
+	} else if (ai_scaler_res.enabled) {
+		*width = ai_scaler_res.src_w / sde_crtc->num_mixers;
+		*height = ai_scaler_res.src_h;
 	} else if (virt_cstate && virt_cstate->dnsc_blur_count) {
 		*width = (virt_cstate->dnsc_blur_cfg[0].src_width
 				* virt_cstate->dnsc_blur_count) / sde_crtc->num_mixers;
@@ -260,6 +265,7 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
 	struct sde_connector_state *virt_cstate;
+	struct sde_io_res ai_scaler_res = {0, };
 
 	*width = 0;
 	*height = 0;
@@ -267,6 +273,7 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	if (!crtc || !crtc_state || !mode)
 		return;
 
+	sde_crtc_get_ai_scaler_io_res(crtc_state, &ai_scaler_res);
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(crtc_state);
 	virt_conn_state = _sde_crtc_get_virt_conn_state(crtc, crtc_state);
@@ -275,6 +282,9 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	if (cstate->num_ds_enabled) {
 		*width = cstate->ds_cfg[0].lm_width * cstate->num_ds_enabled;
 		*height = cstate->ds_cfg[0].lm_height;
+	} else if (ai_scaler_res.enabled) {
+		*width = ai_scaler_res.src_w;
+		*height = ai_scaler_res.src_h;
 	} else if (virt_cstate && virt_cstate->dnsc_blur_count) {
 		*width = virt_cstate->dnsc_blur_cfg[0].src_width * virt_cstate->dnsc_blur_count;
 		*height = virt_cstate->dnsc_blur_cfg[0].src_height;
@@ -6960,6 +6970,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		if (catalog->demura_count)
 			sde_kms_info_add_keyint(info, "demura_count",
 					catalog->demura_count);
+
+		if (catalog->ai_scaler_count)
+			sde_kms_info_add_keyint(info, "ai_scaler_count",
+					catalog->ai_scaler_count);
 	}
 
 	sde_kms_info_add_keyint(info, "dsc_block_count", catalog->dsc_count);

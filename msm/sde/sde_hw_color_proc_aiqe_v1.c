@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <drm/msm_drm_aiqe.h>
@@ -541,4 +541,137 @@ void reg_dmav1_setup_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void 
 		DRM_ERROR("failed to kick off ret %d\n", rc);
 	else
 		LOG_FEATURE_ON;
+}
+
+int sde_check_ai_scaler_v1(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_ai_scaler *ai_scaler_cfg = NULL;
+
+	if (!ctx || !cfg) {
+		DRM_ERROR("invalid parameters ctx %pK cfg %pK\n", ctx, cfg);
+		return -EINVAL;
+	}
+
+	if (hw_cfg->payload || ctx->idx != hw_cfg->dspp[0]->idx)
+		return 0;
+
+	/* check for number of mixers */
+	if (hw_cfg->num_of_mixers > 2) {
+		DRM_ERROR("invalid mixer count %d\n", hw_cfg->num_of_mixers);
+		return -EINVAL;
+	}
+
+	if (!hw_cfg->payload)
+		return 0;
+
+	if (hw_cfg->len != sizeof(struct drm_msm_ai_scaler)) {
+		DRM_ERROR("invalid size of payload len %d exp %zd\n",
+				hw_cfg->len, sizeof(struct drm_msm_ai_scaler));
+		return -EINVAL;
+	}
+
+	ai_scaler_cfg = (struct drm_msm_ai_scaler *)(hw_cfg->payload);
+
+	/* check for scaler input resolution */
+	if (ai_scaler_cfg->src_w != hw_cfg->displayh ||
+		ai_scaler_cfg->src_h != hw_cfg->displayv) {
+		DRM_ERROR("invalid scaler input resolution %d %d\n",
+				ai_scaler_cfg->src_w, ai_scaler_cfg->src_h);
+		return -EINVAL;
+	}
+
+	/* check for scaler output resolution */
+	if (ai_scaler_cfg->dst_w != hw_cfg->panel_width ||
+		ai_scaler_cfg->dst_h != hw_cfg->panel_height) {
+		DRM_ERROR("invalid scaler output resolution %d %d\n",
+			ai_scaler_cfg->dst_w, ai_scaler_cfg->dst_h);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int sde_setup_ai_scaler_v1(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	u32 ai_scaler_base, width, height, size, i, offset = 0;
+	struct drm_msm_ai_scaler *ai_scaler_cfg = NULL;
+
+	if (!ctx || !cfg) {
+		DRM_ERROR("invalid parameters ctx %pK cfg %pK\n", ctx, cfg);
+		return -EINVAL;
+	}
+
+	ai_scaler_base = ctx->cap->sblk->ai_scaler.base;
+	if (!ai_scaler_base) {
+		DRM_DEBUG_DRIVER("AI Scaler not supported on DSPP idx %d", ctx->idx);
+		return -EINVAL;
+	}
+
+	/* program ai scaler for single dspp instance */
+	if (ctx->idx != hw_cfg->dspp[0]->idx) {
+		DRM_DEBUG_DRIVER("AI Scaler need not be programmed on %d", ctx->idx);
+		return 0;
+	}
+
+	if (!hw_cfg->payload) {
+		LOG_FEATURE_OFF;
+		DRM_DEBUG_DRIVER("Disable AI SCALER feature\n");
+		SDE_REG_WRITE(&ctx->hw, ai_scaler_base + 0x4, 0);
+		return 0;
+	}
+
+	if (hw_cfg->len != sizeof(struct drm_msm_ai_scaler)) {
+		DRM_ERROR("invalid size of payload len %d exp %zd\n",
+				hw_cfg->len, sizeof(struct drm_msm_ai_scaler));
+		return -EINVAL;
+	}
+
+	ai_scaler_cfg = (struct drm_msm_ai_scaler *)(hw_cfg->payload);
+
+	/* program config register */
+	SDE_REG_WRITE(&ctx->hw, ai_scaler_base + 0x4, ai_scaler_cfg->config);
+
+	/* program merge control config register */
+	if (hw_cfg->num_of_mixers == 1)
+		SDE_REG_WRITE(&ctx->hw, ai_scaler_base + 0x8, 0);
+	else if (hw_cfg->num_of_mixers == 2)
+		SDE_REG_WRITE(&ctx->hw, ai_scaler_base + 0x8, 1);
+	else {
+		DRM_ERROR("invalid number of mixers %d\n", hw_cfg->num_of_mixers);
+		return -EINVAL;
+	}
+
+	/* program input size register */
+	width = (ai_scaler_cfg->src_w) & 0xFFF;
+	height = (ai_scaler_cfg->src_h) & 0xFFF;
+	size = width | height << 0x10;
+	SDE_REG_WRITE(&ctx->hw, ai_scaler_base + 0xC, size);
+
+	/* program output size register */
+	width = (ai_scaler_cfg->dst_w) & 0xFFF;
+	height = (ai_scaler_cfg->dst_h) & 0xFFF;
+	size = width | height << 0x10;
+	SDE_REG_WRITE(&ctx->hw, ai_scaler_base + 0x10, size);
+
+	/* program parameter registers only when weight selection bit is set */
+	if (!(ai_scaler_cfg->config & BIT(18)))
+		goto end;
+
+	offset = 0x3C;
+	for (i = 0; i < AIQE_AI_SCALER_PARAM_LEN; i++) {
+		SDE_DEBUG("param[%d] = 0x%X\n", i, ai_scaler_cfg->param[i]);
+		SDE_REG_WRITE(&ctx->hw, ai_scaler_base + offset, ai_scaler_cfg->param[i]);
+		offset += 0x4;
+	}
+
+end:
+	LOG_FEATURE_ON;
+	SDE_DEBUG("Enable AI Scaler: src_w:0x%X src_h:0x%X dst_w:0x%X dst_h:0x%X\n",
+			ai_scaler_cfg->src_w, ai_scaler_cfg->src_h, ai_scaler_cfg->dst_w,
+			ai_scaler_cfg->dst_h);
+	SDE_EVT32(hw_cfg->num_of_mixers, ai_scaler_cfg->config, ai_scaler_cfg->src_w,
+			ai_scaler_cfg->src_h, ai_scaler_cfg->dst_w, ai_scaler_cfg->dst_h);
+	return 0;
 }

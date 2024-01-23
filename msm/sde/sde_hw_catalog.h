@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -480,6 +480,7 @@ enum {
  * @SDE_DSPP_AIQE            AIQE Block
  * @SDE_DSPP_AIQE_DITHER     AIQE Dither Block
  * @SDE_DSPP_AIQE_WRAPPER    AIQE Wrapper Block
+ * @SDE_DSPP_AI_SCALER       AI Scaler block
  * @SDE_DSPP_MAX             maximum value
  */
 enum {
@@ -504,6 +505,7 @@ enum {
 	SDE_DSPP_AIQE,
 	SDE_DSPP_AIQE_DITHER,
 	SDE_DSPP_AIQE_WRAPPER,
+	SDE_DSPP_AI_SCALER,
 	SDE_DSPP_MAX
 };
 
@@ -1214,6 +1216,7 @@ struct sde_dspp_rc {
  * @abc_supported: flag to add support for abc module
  * @ssrc_supported: flag to add support for ssrc module
  * @copr_supported: flag to add support for copr module
+ * @ai_scaler_supported: flag to add support for ai scaler module
  */
 struct sde_dspp_aiqe {
 	SDE_HW_SUBBLK_INFO;
@@ -1222,6 +1225,7 @@ struct sde_dspp_aiqe {
 	bool abc_supported;
 	bool ssrc_supported;
 	bool copr_supported;
+	bool ai_scaler_supported;
 };
 
 struct sde_dspp_sub_blks {
@@ -1243,6 +1247,7 @@ struct sde_dspp_sub_blks {
 	struct sde_dspp_aiqe aiqe;
 	struct sde_pp_blk aiqe_dither;
 	struct sde_pp_blk aiqe_wrapper;
+	struct sde_dspp_aiqe ai_scaler;
 };
 
 struct sde_pingpong_sub_blks {
@@ -1998,6 +2003,7 @@ struct sde_perf_cfg {
  * @demura_count        number of demura hardware instances
  * @demura_supported    indicates which SSPP/RECT combinations support demura
  * @aiqe_count          number of aiqe hardware instances
+ * @ai_scaler_count     number of ai scaler hardware instances
  * @trusted_vm_env      true if the driver is executing in the trusted VM
  * @tvm_reg_count	number of sub-driver register ranges that need to be included
  *					for trusted vm for accepting the resources
@@ -2116,6 +2122,7 @@ struct sde_mdss_cfg {
 	u32 demura_count;
 	u32 demura_supported[SSPP_MAX][2];
 	u32 aiqe_count;
+	u32 ai_scaler_count;
 
 	/* Secure & Trusted UI */
 	bool trusted_vm_env;

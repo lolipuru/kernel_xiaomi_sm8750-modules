@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1029,6 +1029,16 @@ static inline void sde_crtc_get_ds_io_res(struct drm_crtc_state *state, struct s
 			res->dst_h = cstate->ds_cfg[i].scl3_cfg.dst_height;
 		}
 	}
+}
+
+/**
+ * sde_crtc_get_ai_scaler_io_res - populates the AI scaler src/dst w/h
+ * @state: pointer to drm crtc state
+ * @res: pointer to the output struct to populate the src/dst
+ */
+static inline void sde_crtc_get_ai_scaler_io_res(struct drm_crtc_state *state,
+					    struct sde_io_res *res) {
+	sde_cp_get_ai_scaler_io_res(state, res);
 }
 
 /**
