@@ -109,6 +109,29 @@ struct sde_hw_fence_data hw_fence_data_dpu_client[SDE_HW_FENCE_CLIENT_MAX] = {
 		{5, 11}, 0, 8, 25, 0, 0}
 };
 
+/**
+ * hw_fence_data_dpu_client_with_soccp - this table maps the dpu ipcc input and output signals
+ * for disp clients to communicate with the fence controller on targets with SOCCP.
+ * This struct must match the order of the 'sde_hw_fence_clients' enum,
+ * the output signal must match with the signals that FenceCTL expects for each display client.
+ * This 'hw_fence_data_dpu_client_with_soccp' must be used for HW that supports dpu-signal and
+ * SOCCP.
+ */
+struct sde_hw_fence_data hw_fence_data_dpu_client_with_soccp[SDE_HW_FENCE_CLIENT_MAX] = {
+	{SDE_HW_FENCE_CLIENT_CTL_0, SYNX_CLIENT_HW_FENCE_DPU0_CTL0, NULL, {0}, NULL, NULL, 8, 0,
+		{0, 6}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_1, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 1, NULL, {0}, NULL, NULL, 8, 1,
+		{1, 7}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_2, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 2, NULL, {0}, NULL, NULL, 8, 2,
+		{2, 8}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_3, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 3, NULL, {0}, NULL, NULL, 8, 3,
+		{3, 9}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_4, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 4, NULL, {0}, NULL, NULL, 8, 4,
+		{4, 10}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_5, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 5, NULL, {0}, NULL, NULL, 8, 5,
+		{5, 11}, 0, 46, 25, 0, 0}
+};
+
 void msm_hw_fence_error_cb(u32 handle, int error, void *cb_data)
 {
 	struct msm_hw_fence_cb_data *msm_hw_fence_cb_data;
@@ -135,7 +158,7 @@ void msm_hw_fence_error_cb(u32 handle, int error, void *cb_data)
 }
 
 int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool use_dpu_ipcc,
-		struct msm_mmu *mmu)
+		bool use_soccp, struct msm_mmu *mmu)
 {
 	struct synx_hw_fence_hfi_queue_header *hfi_queue_header_va, *hfi_queue_header_pa;
 	struct synx_hw_fence_hfi_queue_table_header *hfi_table_header;
@@ -158,7 +181,15 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 	}
 
 	hwfence_data = &hw_ctl->hwfence_data;
-	sde_hw_fence_data = use_dpu_ipcc ? hw_fence_data_dpu_client : hw_fence_data_no_dpu;
+
+	if (use_dpu_ipcc) {
+		if (use_soccp)
+			sde_hw_fence_data = hw_fence_data_dpu_client_with_soccp;
+		else
+			sde_hw_fence_data = hw_fence_data_dpu_client;
+	} else {
+		sde_hw_fence_data = hw_fence_data_no_dpu;
+	}
 
 	if (sde_hw_fence_data[ctl_id].client_id != ctl_id) {
 		SDE_ERROR("Unexpected client_id:%d for ctl_id:%d\n",
