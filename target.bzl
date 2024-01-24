@@ -14,5 +14,6 @@ def define_target_modules():
             ],
             config_options = [
                 "CONFIG_MSM_VIDC_{}".format(target.upper()),
+                "CONFIG_MSM_MMRM",
             ],
         )
