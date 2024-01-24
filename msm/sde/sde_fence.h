@@ -205,12 +205,13 @@ struct sde_fence_context *sde_fence_init(const char *name,
  * @hw_ctl: hw ctl client to init.
  * @sde_kms: used for hw fence error cb register.
  * @use_ipcc: boolean to indicate if hw should use dpu ipcc signals.
+ * @use_soccp: boolean to indicate if hw should send ipcc signals to soccp.
  * @mmu: mmu to map memory for queues
  *
  * Returns: Zero on success, otherwise returns an error code.
  */
 int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool use_dpu_ipcc,
-	struct msm_mmu *mmu);
+	bool use_soccp, struct msm_mmu *mmu);
 
 /**
  * sde_fence_hw_fence_deinit - deinitialize hw-fence clients

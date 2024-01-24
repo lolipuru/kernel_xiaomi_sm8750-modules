@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -740,7 +740,8 @@ static int _sde_rm_hw_blk_create(
 	return 0;
 }
 
-static int _init_hw_fences(struct sde_rm *rm, bool use_ipcc, struct sde_kms *sde_kms)
+static int _init_hw_fences(struct sde_rm *rm, bool use_ipcc, bool use_soccp,
+		struct sde_kms *sde_kms)
 {
 	struct sde_rm_hw_iter iter;
 	int ret = 0;
@@ -751,7 +752,7 @@ static int _init_hw_fences(struct sde_rm *rm, bool use_ipcc, struct sde_kms *sde
 
 		if (sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE] &&
 				sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE]->mmu) {
-			if (sde_hw_fence_init(ctl, sde_kms, use_ipcc,
+			if (sde_hw_fence_init(ctl, sde_kms, use_ipcc, use_soccp,
 					sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE]->mmu)) {
 				SDE_DEBUG("failed to init hw_fence idx:%d\n", ctl->idx);
 				ret = -EINVAL;
@@ -859,7 +860,7 @@ static int _sde_rm_hw_blk_create_new(struct sde_rm *rm,
 
 	if (cat->hw_fence_rev) {
 		if (_init_hw_fences(rm, test_bit(SDE_FEATURE_HW_FENCE_IPCC, cat->features),
-				sde_kms)) {
+				cat->soccp_ph ? true : false, sde_kms)) {
 			SDE_INFO("failed to init hw-fences, disabling hw-fences\n");
 			cat->hw_fence_rev = 0;
 		}
