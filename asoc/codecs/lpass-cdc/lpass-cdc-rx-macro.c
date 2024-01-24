@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -1875,7 +1875,9 @@ static int lpass_cdc_rx_macro_config_compander(struct snd_soc_component *compone
 		return 0;
 
 	comp = interp_n;
-	if (!rx_priv->comp_enabled[comp] && rx_priv->is_pcm_enabled)
+	if (!rx_priv->comp_enabled[comp])
+		return 0;
+	if (rx_priv->is_pcm_enabled)
 		return 0;
 
 	if (rx_priv->is_ear_mode_on && interp_n == INTERP_HPHL)
