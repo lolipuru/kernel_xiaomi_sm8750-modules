@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -349,8 +349,7 @@ struct sde_encoder_irq {
  *				that if handing fence error in driver
  * @sde_hw_fence_error_value:	hw fence error value from cb function
  * @sde_hw_fence_handle:	Hw fence driver client handle, this handle was returned
- *				during the call 'msm_hw_fence_register' to register the
- *				client
+ *				during the call 'synx_initialize' to register the client
  * @fence_error_handle_in_progress:
  *				bool to indicate if fence error handling in progress
  *				This is set once fence error occurs and cleared only when
