@@ -23,6 +23,12 @@
 #include <linux/input.h>
 #include <linux/seq_file.h>
 #include <linux/sde_rsc.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <msm_hw_fence.h>
+#else
+#include <linux/soc/qcom/msm_hw_fence.h>
+#endif
 
 #include "msm_drv.h"
 #include "sde_kms.h"
@@ -2033,7 +2039,8 @@ static int sde_encoder_hw_fence_signal(struct sde_encoder_phys *phys_enc)
 	int pending_kickoff_cnt = -1;
 	int rc = 0;
 
-	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_ctl) {
+	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_ctl ||
+			!phys_enc->hw_ctl->hwfence_data.hw_fence_handle) {
 		SDE_DEBUG("invalid parameters\n");
 		SDE_EVT32(SDE_EVTLOG_ERROR);
 		return -EINVAL;
@@ -2047,7 +2054,7 @@ static int sde_encoder_hw_fence_signal(struct sde_encoder_phys *phys_enc)
 	/* out of order hw fence error signal is needed for video panel. */
 	if (sde_encoder_check_curr_mode(phys_enc->parent, MSM_DISPLAY_VIDEO_MODE)) {
 		/* out of order hw fence error signal */
-		rc = msm_hw_fence_update_txq_error(hwfence_data->hw_fence_handle,
+		rc = msm_hw_fence_update_txq_error(hwfence_data->hw_fence_handle->client,
 			phys_enc->sde_hw_fence_handle, phys_enc->sde_hw_fence_error_value,
 			MSM_HW_FENCE_UPDATE_ERROR_WITH_MOVE);
 		if (rc) {

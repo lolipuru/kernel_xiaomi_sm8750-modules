@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef _MSM_DRM_AIQE_H_
 #define _MSM_DRM_AIQE_H_
@@ -85,6 +85,27 @@ struct drm_msm_copr {
  */
 struct drm_msm_copr_status {
 	__u32 status[AIQE_COPR_STATUS_LEN];
+};
+
+#define AIQE_AI_SCALER_PARAM_LEN 485
+/**
+ * struct drm_msm_ai_scaler - AI Scaler configuration structure
+ * @flags - Setting flags. Currently unused
+ * @config - configuration data
+ * @src_w - AI Scaler input width
+ * @src_h - AI Scaler input height
+ * @dst_w - AI Scaler output width
+ * @dst_h - AI Scaler output height
+ * @param - parameter data
+ */
+struct drm_msm_ai_scaler {
+	__u64 flags;
+	__u32 config;
+	__u32 src_w;
+	__u32 src_h;
+	__u32 dst_w;
+	__u32 dst_h;
+	__u32 param[AIQE_AI_SCALER_PARAM_LEN];
 };
 
 #endif /* _MSM_DRM_AIQE_H_ */

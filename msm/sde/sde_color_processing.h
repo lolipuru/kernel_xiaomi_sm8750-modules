@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -147,6 +147,7 @@ enum sde_cp_crtc_features {
 	SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG,
 	SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA,
 	SDE_CP_CRTC_DSPP_COPR,
+	SDE_CP_CRTC_DSPP_AI_SCALER,
 	SDE_CP_CRTC_DSPP_MAX,
 	/* DSPP features end */
 
@@ -427,5 +428,12 @@ void sde_cp_backlight_notification(struct drm_crtc *crtc, u32 bl_val, u32 bl_max
  * @crtc: pointer to drm crtc.
  */
 void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc);
+
+/**
+ * sde_cp_get_ai_scaler_io_res - populates the destination scaler src/dst w/h
+ * @crtc_state: pointer to drm crtc state
+ * @res: pointer to the output struct to populate the src/dst
+ */
+void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state, struct sde_io_res *res);
 
 #endif /*_SDE_COLOR_PROCESSING_H */
