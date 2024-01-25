@@ -47,6 +47,7 @@
 enum pmic_type {
 	PM8350B = 1,
 	PM8550B = 2,
+	PMIH010X = 3,
 };
 
 enum {
@@ -735,6 +736,10 @@ static const struct of_device_id swr_haptics_match_table[] = {
 		.compatible = "qcom,pm8550b-swr-haptics",
 		.data = (void *)PM8550B,
 	},
+	{
+		.compatible = "qcom,pmih010x-swr-haptics",
+		.data = (void *)PMIH010X,
+	},
 	{ },
 };
 
@@ -742,6 +747,7 @@ static const struct swr_device_id swr_haptics_id[] = {
 	{"swr-haptics", 0},
 	{"pm8350b-swr-haptics", 0},
 	{"pm8550b-swr-haptics", 0},
+	{"pmih010x-swr-haptics", 0},
 	{},
 };
 
