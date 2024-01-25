@@ -8,6 +8,7 @@ def _define_module(target, variant):
         name = "{}_msm_hw_fence".format(tv),
         srcs = [
             "src/hw_fence_drv_debug.c",
+            "src/hw_fence_drv_interop.c",
             "src/hw_fence_drv_ipc.c",
             "src/hw_fence_drv_priv.c",
             "src/hw_fence_drv_utils.c",

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __MSM_HW_FENCE_H
@@ -9,6 +9,9 @@
 
 #include <linux/types.h>
 #include <linux/dma-fence.h>
+
+extern struct hw_fence_driver_data *hw_fence_drv_data;
+extern bool hw_fence_driver_enable;
 
 /**
  * MSM_HW_FENCE_FLAG_ENABLED_BIT - Hw-fence is enabled for the dma_fence.

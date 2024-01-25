@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __HW_FENCE_DRV_UTILS_H
@@ -49,7 +49,7 @@ enum hw_fence_mem_reserve {
 void global_atomic_store(struct hw_fence_driver_data *drv_data, uint64_t *lock, bool val);
 
 /**
- * hw_fence_utils_init_virq() - Initialilze doorbell (i.e. vIRQ) for SVM to HLOS signaling
+ * hw_fence_utils_init_virq() - Initialize doorbell (i.e. vIRQ) for SVM to HLOS signaling
  * @drv_data: hw fence driver data
  *
  * Returns zero if success, otherwise returns negative error code.
@@ -57,12 +57,22 @@ void global_atomic_store(struct hw_fence_driver_data *drv_data, uint64_t *lock, 
 int hw_fence_utils_init_virq(struct hw_fence_driver_data *drv_data);
 
 /**
- * hw_fence_utils_process_doorbell_mask() - Sends doorbell mask to process the signaled clients
- *                                          this API is only exported for simulation purposes.
- * @drv_data: hw fence driver data.
- * @db_flags: doorbell flag
+ * hw_fence_utils_init_soccp_irq() - Initialize interrupt handler for SOCCP to HLOS signaling
+ * @drv_data: hw fence driver data
+ *
+ * Returns zero if success, otherwise returns negative error code.
  */
-void hw_fence_utils_process_doorbell_mask(struct hw_fence_driver_data *drv_data, u64 db_flags);
+int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data);
+
+/**
+ * hw_fence_utils_process_signaled_clients_mask() - Process the mask containing HW Fence client IDs
+ *                                                  that HW Fence Driver is responsible for, i.e.
+ *                                                  ctrl queue and validation clients.
+ * @drv_data: hw fence driver data.
+ * @mask: mask with signaled clients
+ */
+void hw_fence_utils_process_signaled_clients_mask(struct hw_fence_driver_data *drv_data,
+	u64 mask);
 
 /**
  * hw_fence_utils_alloc_mem() - Allocates the carved-out memory pool that will be used for the HW

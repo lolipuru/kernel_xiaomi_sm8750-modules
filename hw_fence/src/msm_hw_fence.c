@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/io.h>
@@ -87,7 +87,10 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	}
 
 	hw_fence_client->update_rxq = hw_fence_ipcc_needs_rxq_update(hw_fence_drv_data, client_id);
-	hw_fence_client->send_ipc = hw_fence_ipcc_needs_ipc_irq(hw_fence_drv_data, client_id);
+	hw_fence_client->signaled_send_ipc = hw_fence_ipcc_signaled_needs_ipc_irq(hw_fence_drv_data,
+		client_id);
+	hw_fence_client->txq_update_send_ipc =
+		hw_fence_ipcc_txq_update_needs_ipc_irq(hw_fence_drv_data, client_id);
 
 	hw_fence_client->queues_num = hw_fence_utils_get_queues_num(hw_fence_drv_data, client_id);
 	if (!hw_fence_client->queues_num || (hw_fence_client->update_rxq &&
@@ -180,7 +183,7 @@ int msm_hw_fence_create(void *client_handle,
 		return -EINVAL;
 	}
 
-	if (!hw_fence_drv_data->vm_ready) {
+	if (!hw_fence_drv_data->fctl_ready) {
 		HWFNC_DBG_H("VM not ready, cannot create fence\n");
 		return -EAGAIN;
 	}
@@ -342,7 +345,7 @@ int msm_hw_fence_wait_update_v2(void *client_handle,
 		return -EINVAL;
 	}
 
-	if (!hw_fence_drv_data->vm_ready) {
+	if (!hw_fence_drv_data->fctl_ready) {
 		HWFNC_DBG_H("VM not ready, cannot destroy fence\n");
 		return -EAGAIN;
 	}
@@ -453,7 +456,7 @@ int msm_hw_fence_reset_client(void *client_handle, u32 reset_flags)
 		return -EINVAL;
 	}
 
-	if (!hw_fence_drv_data->vm_ready) {
+	if (!hw_fence_drv_data->fctl_ready) {
 		HWFNC_DBG_H("VM not ready, cannot reset client\n");
 		return -EAGAIN;
 	}
@@ -498,7 +501,7 @@ int msm_hw_fence_update_txq(void *client_handle, u64 handle, u64 flags, u32 erro
 	struct msm_hw_fence_client *hw_fence_client;
 
 	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready ||
-			!hw_fence_drv_data->vm_ready) {
+			!hw_fence_drv_data->fctl_ready) {
 		HWFNC_ERR("hw fence driver  or vm not ready\n");
 		return -EAGAIN;
 	} else if (IS_ERR_OR_NULL(client_handle) ||
@@ -525,7 +528,7 @@ int msm_hw_fence_update_txq_error(void *client_handle, u64 handle, u32 error, u3
 	struct msm_hw_fence_client *hw_fence_client;
 
 	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready ||
-			!hw_fence_drv_data->vm_ready) {
+			!hw_fence_drv_data->fctl_ready) {
 		HWFNC_ERR("hw fence driver or vm not ready\n");
 		return -EAGAIN;
 	} else if (IS_ERR_OR_NULL(client_handle) ||
@@ -556,7 +559,7 @@ int msm_hw_fence_trigger_signal(void *client_handle,
 	struct msm_hw_fence_client *hw_fence_client;
 
 	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready
-			|| !hw_fence_drv_data->vm_ready) {
+			|| !hw_fence_drv_data->fctl_ready) {
 		HWFNC_ERR("hw fence driver or vm not ready\n");
 		return -EAGAIN;
 	} else if (IS_ERR_OR_NULL(client_handle)) {
@@ -722,7 +725,7 @@ int msm_hw_fence_driver_doorbell_sim(u64 db_mask)
 	HWFNC_DBG_IRQ("db callback sim-mode flags:0x%llx qtime:%llu\n",
 		db_mask, hw_fence_get_qtime(hw_fence_drv_data));
 
-	hw_fence_utils_process_doorbell_mask(hw_fence_drv_data, db_mask);
+	hw_fence_utils_process_signaled_clients_mask(hw_fence_drv_data, db_mask);
 
 	return 0;
 }
@@ -752,6 +755,10 @@ static int msm_hw_fence_probe_init(struct platform_device *pdev)
 		/* set ready value so clients can register */
 		hw_fence_drv_data->resources_ready = true;
 	} else {
+		/* check for presence of soccp */
+		hw_fence_drv_data->has_soccp =
+			of_property_read_bool(hw_fence_drv_data->dev->of_node, "soccp_controller");
+
 		/* Allocate hw fence driver mem pool and share it with HYP */
 		rc = hw_fence_utils_alloc_mem(hw_fence_drv_data);
 		if (rc) {
