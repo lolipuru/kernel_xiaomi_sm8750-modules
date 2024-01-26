@@ -5,6 +5,7 @@
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
+#include <linux/nvmem-consumer.h>
 #include <linux/slab.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
@@ -6022,6 +6023,65 @@ end:
 	return rc;
 }
 
+static int sde_hw_parse_fuse_configuration(struct platform_device *pdev, const char *cell_name,
+				 uint32_t *data)
+{
+	struct nvmem_cell *cell;
+	int rc = 0;
+	void *buf;
+	size_t len;
+
+	cell = nvmem_cell_get(&pdev->dev, cell_name);
+	rc = PTR_ERR_OR_ZERO(cell);
+	if (rc) {
+		if (rc == -ENOENT)
+			return 0;
+		return rc;
+	}
+
+	buf = nvmem_cell_read(cell, &len);
+	nvmem_cell_put(cell);
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
+
+	memcpy(data, buf, min(len, sizeof(data)));
+	kfree(buf);
+
+	return 0;
+}
+
+static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *sde_cfg)
+{
+	struct platform_device *pdev;
+	int rc = -EINVAL;
+	uint32_t fuse = 0;
+	bool disable = false, polarity = false;
+
+	if (!dev || !dev->dev || !sde_cfg) {
+		SDE_ERROR("invalid input\n");
+		return rc;
+	}
+
+	pdev = to_platform_device(dev->dev);
+	rc = sde_hw_parse_fuse_configuration(pdev, "ssip_config", &fuse);
+	if (rc) {
+		SDE_DEBUG("failed to read ssip config for ss_config %d\n", rc);
+		sde_cfg->ssip_allowed = false;
+		return 0;
+	}
+
+	disable = (fuse & BIT(1)) >> 1;
+	polarity = fuse & BIT(0);
+
+	SDE_INFO("ssip: disable = %d polarity = %d\n", disable, polarity);
+	if ((disable && polarity) || (!disable && !polarity))
+		sde_cfg->ssip_allowed = true;
+	else
+		sde_cfg->ssip_allowed = false;
+
+	return rc;
+}
+
 /*************************************************************
  * hardware catalog init
  *************************************************************/
@@ -6146,6 +6206,10 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 		goto end;
 
 	rc = _sde_hardware_post_caps(sde_cfg, sde_cfg->hw_rev);
+	if (rc)
+		goto end;
+
+	rc = sde_hw_check_ssip_fuse(dev, sde_cfg);
 	if (rc)
 		goto end;
 
