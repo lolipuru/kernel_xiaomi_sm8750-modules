@@ -414,8 +414,27 @@ int cnss_pci_prevent_l1(struct device *dev)
 		return -ENODEV;
 	}
 
+	mutex_lock(&pci_priv->bus_lock);
+	ret = __cnss_pci_prevent_l1(dev);
+	mutex_unlock(&pci_priv->bus_lock);
+
+	return ret;
+}
+EXPORT_SYMBOL(cnss_pci_prevent_l1);
+
+int __cnss_pci_prevent_l1(struct device *dev)
+{
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+	struct cnss_pci_data *pci_priv = cnss_get_pci_priv(pci_dev);
+	int ret;
+
+	if (!pci_priv) {
+		cnss_pr_err("pci_priv is NULL\n");
+		return -ENODEV;
+	}
+
 	if (pci_priv->pci_link_state == PCI_LINK_DOWN) {
-		cnss_pr_dbg("PCIe link is in suspend state\n");
+		cnss_pr_err("PCIe link is in suspend state\n");
 		return -EIO;
 	}
 
@@ -432,7 +451,6 @@ int cnss_pci_prevent_l1(struct device *dev)
 
 	return ret;
 }
-EXPORT_SYMBOL(cnss_pci_prevent_l1);
 
 void cnss_pci_allow_l1(struct device *dev)
 {
@@ -444,8 +462,24 @@ void cnss_pci_allow_l1(struct device *dev)
 		return;
 	}
 
+	mutex_lock(&pci_priv->bus_lock);
+	__cnss_pci_allow_l1(dev);
+	mutex_unlock(&pci_priv->bus_lock);
+}
+EXPORT_SYMBOL(cnss_pci_allow_l1);
+
+void __cnss_pci_allow_l1(struct device *dev)
+{
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+	struct cnss_pci_data *pci_priv = cnss_get_pci_priv(pci_dev);
+
+	if (!pci_priv) {
+		cnss_pr_err("pci_priv is NULL\n");
+		return;
+	}
+
 	if (pci_priv->pci_link_state == PCI_LINK_DOWN) {
-		cnss_pr_dbg("PCIe link is in suspend state\n");
+		cnss_pr_err("PCIe link is in suspend state\n");
 		return;
 	}
 
@@ -456,7 +490,6 @@ void cnss_pci_allow_l1(struct device *dev)
 
 	_cnss_pci_allow_l1(pci_priv);
 }
-EXPORT_SYMBOL(cnss_pci_allow_l1);
 
 int cnss_pci_get_msi_assignment(struct cnss_pci_data *pci_priv)
 {
