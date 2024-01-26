@@ -13,7 +13,6 @@
 #include "sde_color_processing_aiqe.h"
 #include "sde_aiqe_common.h"
 
-
 void _aiqe_caps_update(struct sde_crtc *crtc, struct sde_kms_info *info)
 {
 	struct sde_mdss_cfg *catalog = get_kms(&crtc->base)->catalog;
@@ -43,8 +42,22 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 	struct sde_kms *kms = NULL;
 	struct sde_mdss_cfg *catalog = NULL;
 	u32 major_version, version;
+	int rc = 0;
+	bool ssip_allowed = false;
 
 	kms = get_kms(crtc);
+	// check ssip fuse configuration
+	rc = sde_cp_crtc_check_ssip_fuse(kms, &ssip_allowed);
+	if (rc) {
+		DRM_DEBUG("failed to check ssip fuse %d\n", rc);
+		return;
+	}
+
+	if (!ssip_allowed) {
+		DRM_INFO("ssip_allowed = %d\n", ssip_allowed);
+		return;
+	}
+
 	catalog = kms->catalog;
 	version = catalog->dspp[0].sblk->aiqe.version;
 	major_version = version >> 16;
@@ -241,6 +254,8 @@ void sde_set_mdnie_psr(struct sde_crtc *sde_crtc)
 	if (!sde_crtc || !hw_dspp)
 		return;
 
-	for (i = 0; i < num_mixers; i++)
-		hw_dspp->ops.setup_mdnie_psr(hw_dspp);
+	if (hw_dspp->ops.setup_mdnie_psr) {
+		for (i = 0; i < num_mixers; i++)
+			hw_dspp->ops.setup_mdnie_psr(hw_dspp);
+	}
 }

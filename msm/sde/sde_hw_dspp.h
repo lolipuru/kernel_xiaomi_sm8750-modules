@@ -450,6 +450,7 @@ struct sde_hw_dspp {
 	/* rc state */
 	struct sde_hw_rc_state rc_state;
 	u32 dpu_idx;
+	struct sde_kms *sde_kms;
 };
 
 /**
@@ -468,13 +469,13 @@ static inline struct sde_hw_dspp *to_sde_hw_dspp(struct sde_hw_blk_reg_map *hw)
  * @idx:  DSPP index for which driver object is required
  * @addr: Mapped register io address of MDP
  * @m :   pointer to mdss catalog data
- * @dpu_idx: dpu index
+ * @sde_kms: pointer to sde_kms
  * @Return: pointer to structure or ERR_PTR
  */
 struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 			void __iomem *addr,
 			struct sde_mdss_cfg *m,
-			u32 dpu_idx);
+			struct sde_kms *sde_kms);
 
 /**
  * sde_hw_dspp_destroy(): Destroys DSPP driver context

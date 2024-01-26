@@ -5,6 +5,7 @@
 
 #include "sde_kms.h"
 #include "sde_aiqe_common.h"
+#include "sde_hw_catalog.h"
 #include "sde_hw_mdss.h"
 
 #define AIQE_VER_1_0 0x00010000
@@ -124,4 +125,39 @@ bool mdnie_art_in_progress(struct sde_aiqe_top_level *aiqe_top)
 
 void aiqe_deinit(struct sde_aiqe_top_level *aiqe_top)
 {
+}
+
+int sde_cp_crtc_check_ssip_fuse(struct sde_kms *sde_kms, bool *allowed)
+{
+	struct drm_device *dev;
+	struct platform_device *pdev;
+	int rc = -EINVAL;
+	uint32_t fuse = 0;
+	bool disable = false, polarity = false;
+
+	*allowed = false;
+	dev = sde_kms->dev;
+	if (!dev || !dev->dev) {
+		DRM_ERROR("invalid device\n");
+		return rc;
+	}
+
+	pdev = to_platform_device(dev->dev);
+	rc = sde_parse_fuse_configuration(pdev, "ssip_config", &fuse);
+	if (rc) {
+		DRM_DEBUG("failed to read ssip config for ss_config %d\n", rc);
+		*allowed = false;
+		return 0;
+	}
+
+	disable = (fuse & BIT(1)) >> 1;
+	polarity = fuse & BIT(0);
+
+	DRM_INFO("ssip: disable = %d polarity = %d\n", disable, polarity);
+	if (disable && polarity)
+		*allowed = true;
+	else if (!disable && !polarity)
+		*allowed = true;
+
+	return rc;
 }
