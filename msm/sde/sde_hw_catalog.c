@@ -5153,13 +5153,15 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
 			index, fp16_formats, ARRAY_SIZE(fp16_formats));
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
-		index += sde_copy_formats(sde_cfg->dma_formats, vig_list_size,
+		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
 			index, rgb_lossy_formats, ARRAY_SIZE(rgb_lossy_formats));
 
 	/* Virtual ViG pipe input formats (all virt pipes use DMA formats) */
 	virt_vig_list_size = ARRAY_SIZE(plane_formats);
 	if (test_bit(SDE_FEATURE_FP16, sde_cfg->features))
 		virt_vig_list_size += ARRAY_SIZE(fp16_formats);
+	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
+		virt_vig_list_size += ARRAY_SIZE(rgb_lossy_formats);
 
 	sde_cfg->virt_vig_formats = kcalloc(virt_vig_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5215,7 +5217,7 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 		inline_fmt_tbl = true_inline_rot_v201_fmts;
 		in_rot_list_size = ARRAY_SIZE(true_inline_rot_v201_fmts);
 		inline_restricted_fmt_tbl = true_inline_rot_v201_restricted_fmts;
-		in_rot_restricted_list_size = ARRAY_SIZE(true_inline_rot_v201_fmts);
+		in_rot_restricted_list_size = ARRAY_SIZE(true_inline_rot_v201_restricted_fmts);
 	}
 
 	if (in_rot_list_size) {
