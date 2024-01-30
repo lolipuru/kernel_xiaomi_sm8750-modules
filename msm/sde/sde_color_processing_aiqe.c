@@ -138,8 +138,10 @@ int check_aiqe_ssrc_data(struct sde_hw_dspp *hw_dspp,
 {
 	int ret = 0;
 
-	if (!hw_dspp || !hw_dspp->ops.validate_aiqe_ssrc_data)
+	if (!hw_dspp)
 		ret = -EINVAL;
+	else if (!hw_dspp->ops.validate_aiqe_ssrc_data)
+		ret = 0;
 	else
 		ret = hw_dspp->ops.validate_aiqe_ssrc_data(hw_dspp, hw_cfg,
 				&sde_crtc->aiqe_top_level);
