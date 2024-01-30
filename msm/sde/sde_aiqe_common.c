@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "sde_kms.h"
@@ -67,6 +67,19 @@ void aiqe_get_common_values(struct sde_hw_cp_cfg *cfg, struct sde_aiqe_top_level
 	}
 
 	(*aiqe_get_common_values_func)(cfg, aiqe_top, aiqe_cmn);
+}
+
+bool aiqe_is_client_registered(enum aiqe_features feature_id, struct sde_aiqe_top_level *aiqe_top)
+{
+	bool registered = false;
+
+	if (!aiqe_top || feature_id >= AIQE_FEATURE_MAX)
+		return false;
+
+	mutex_lock(&aiqe_top->aiqe_mutex);
+	registered = (aiqe_top->aiqe_mask & (1 << feature_id));
+	mutex_unlock(&aiqe_top->aiqe_mutex);
+	return registered;
 }
 
 static void aiqe_get_common_values_v1(struct sde_hw_cp_cfg *cfg,
