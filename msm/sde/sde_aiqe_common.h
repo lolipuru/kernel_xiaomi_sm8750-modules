@@ -7,8 +7,7 @@
 #define _SDE_AIQE_COMMON_H
 
 struct sde_aiqe_top_level {
-	struct mutex aiqe_mutex;
-	u32 aiqe_mask;
+	atomic_t aiqe_mask;
 };
 
 enum aiqe_merge_mode {

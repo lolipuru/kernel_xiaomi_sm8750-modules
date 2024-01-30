@@ -20,7 +20,6 @@ void aiqe_init(u32 aiqe_version, struct sde_aiqe_top_level *aiqe_top)
 	if (!aiqe_top)
 		return;
 
-	mutex_lock(&aiqe_top->aiqe_mutex);
 	switch (aiqe_version) {
 	case AIQE_VER_1_0:
 		aiqe_get_common_values_func = &aiqe_get_common_values_v1;
@@ -28,7 +27,6 @@ void aiqe_init(u32 aiqe_version, struct sde_aiqe_top_level *aiqe_top)
 	default:
 		break;
 	}
-	mutex_unlock(&aiqe_top->aiqe_mutex);
 }
 
 void aiqe_register_client(enum aiqe_features feature_id, struct sde_aiqe_top_level *aiqe_top)
@@ -37,9 +35,7 @@ void aiqe_register_client(enum aiqe_features feature_id, struct sde_aiqe_top_lev
 		return;
 
 	SDE_EVT32(feature_id);
-	mutex_lock(&aiqe_top->aiqe_mutex);
-	aiqe_top->aiqe_mask |= 1 << feature_id;
-	mutex_unlock(&aiqe_top->aiqe_mutex);
+	atomic_or(1 << feature_id, &aiqe_top->aiqe_mask);
 }
 
 void aiqe_deregister_client(enum aiqe_features feature_id, struct sde_aiqe_top_level *aiqe_top)
@@ -48,9 +44,7 @@ void aiqe_deregister_client(enum aiqe_features feature_id, struct sde_aiqe_top_l
 		return;
 
 	SDE_EVT32(feature_id);
-	mutex_lock(&aiqe_top->aiqe_mutex);
-	aiqe_top->aiqe_mask &= ~(1 << feature_id);
-	mutex_unlock(&aiqe_top->aiqe_mutex);
+	atomic_andnot(1 << feature_id, &aiqe_top->aiqe_mask);
 }
 
 void aiqe_get_common_values(struct sde_hw_cp_cfg *cfg, struct sde_aiqe_top_level *aiqe_top,
@@ -71,15 +65,10 @@ void aiqe_get_common_values(struct sde_hw_cp_cfg *cfg, struct sde_aiqe_top_level
 
 bool aiqe_is_client_registered(enum aiqe_features feature_id, struct sde_aiqe_top_level *aiqe_top)
 {
-	bool registered = false;
-
 	if (!aiqe_top || feature_id >= AIQE_FEATURE_MAX)
 		return false;
 
-	mutex_lock(&aiqe_top->aiqe_mutex);
-	registered = (aiqe_top->aiqe_mask & (1 << feature_id));
-	mutex_unlock(&aiqe_top->aiqe_mutex);
-	return registered;
+	return (atomic_read(&aiqe_top->aiqe_mask) & (1 << feature_id));
 }
 
 static void aiqe_get_common_values_v1(struct sde_hw_cp_cfg *cfg,
@@ -87,10 +76,11 @@ static void aiqe_get_common_values_v1(struct sde_hw_cp_cfg *cfg,
 					struct aiqe_reg_common *aiqe_cmn)
 {
 	struct sde_hw_mixer *hw_lm = NULL;
+	u32 mask_value = 0;
 
 	hw_lm = cfg->mixer_info;
-	mutex_lock(&aiqe_top->aiqe_mutex);
-	if (aiqe_top->aiqe_mask == 0)
+	mask_value = atomic_read(&aiqe_top->aiqe_mask);
+	if (mask_value == 0)
 		aiqe_cmn->config &= ~BIT(0);
 	else
 		aiqe_cmn->config |= BIT(0);
@@ -101,7 +91,6 @@ static void aiqe_get_common_values_v1(struct sde_hw_cp_cfg *cfg,
 		aiqe_cmn->config |= BIT(1);
 	} else {
 		DRM_DEBUG_DRIVER("AIQE not supported on LM idx %d", hw_lm->idx);
-		mutex_unlock(&aiqe_top->aiqe_mutex);
 		return;
 	}
 
@@ -113,26 +102,19 @@ static void aiqe_get_common_values_v1(struct sde_hw_cp_cfg *cfg,
 		aiqe_cmn->merge = QUAD_MODE;
 	} else {
 		DRM_ERROR("Invalid number of mixers %d", cfg->num_of_mixers);
-		mutex_unlock(&aiqe_top->aiqe_mutex);
 		return;
 	}
 
 	aiqe_cmn->height = cfg->panel_height;
 	aiqe_cmn->width = cfg->panel_width;
-	mutex_unlock(&aiqe_top->aiqe_mutex);
 }
 
 bool mdnie_art_in_progress(struct sde_aiqe_top_level *aiqe_top)
 {
-	bool status = false;
-
 	if (!aiqe_top)
-		return status;
+		return false;
 
-	mutex_lock(&aiqe_top->aiqe_mutex);
-	status = ((1 << FEATURE_MDNIE_ART) & aiqe_top->aiqe_mask) >> FEATURE_MDNIE_ART;
-	mutex_unlock(&aiqe_top->aiqe_mutex);
-	return status;
+	return aiqe_is_client_registered(FEATURE_MDNIE_ART, aiqe_top);
 }
 
 void aiqe_deinit(struct sde_aiqe_top_level *aiqe_top)
