@@ -70,6 +70,7 @@ ifdef CONFIG_SND_SOC_WCD939X
 	WCD939X_OBJS += wcd939x-regmap.o
 	WCD939X_OBJS += wcd939x-tables.o
 	WCD939X_OBJS += wcd939x-mbhc.o
+	WCD939X_OBJS += wcd939x-regulator.o
 endif
 
 ifdef CONFIG_SND_SOC_WCD939X_SLAVE

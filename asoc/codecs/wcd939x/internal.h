@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _WCD939X_INTERNAL_H
@@ -303,6 +303,7 @@ enum {
 	WCD939X_NUM_IRQS,
 };
 
+extern int wcd_init_mb_regulator(struct device *dev);
 extern struct wcd939x_mbhc *wcd939x_soc_get_mbhc(
 				struct snd_soc_component *component);
 extern void wcd939x_disable_bcs_before_slow_insert(

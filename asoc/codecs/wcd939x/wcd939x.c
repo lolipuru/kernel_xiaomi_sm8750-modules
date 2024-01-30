@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -137,6 +137,7 @@ static const DECLARE_TLV_DB_SCALE(analog_gain, 0, 25, 1);
 /* Will be set by reading the registers during bind()*/
 static int wcd939x_version = WCD939X_VERSION_2_0;
 
+static int wcd939x_wakeup(void *handle, bool enable);
 static int wcd939x_handle_post_irq(void *data);
 static int wcd939x_reset(struct device *dev);
 static int wcd939x_reset_low(struct device *dev);
@@ -2460,6 +2461,34 @@ static int wcd939x_enable_req(struct snd_soc_dapm_widget *w,
 		}
 		break;
 	};
+	return ret;
+}
+
+int wcd939x_micb_external_event(struct device *dev, int micb_num, bool req)
+{
+	struct wcd939x_priv *wcd939x;
+	int ret = 0;
+
+	if (!dev)
+		return -EINVAL;
+
+	if ((micb_num <= 0) || (micb_num > WCD939X_MAX_MICBIAS))
+		return -EINVAL;
+
+	wcd939x = dev_get_drvdata(dev);
+	if (!wcd939x)
+		return -EINVAL;
+
+	if (req) {
+		wcd939x_wakeup(wcd939x, true);
+		ret = wcd939x_micbias_control(wcd939x->component, micb_num, MICB_ENABLE, false);
+		wcd939x_wakeup(wcd939x, false);
+	} else {
+		wcd939x_wakeup(wcd939x, true);
+		ret = wcd939x_micbias_control(wcd939x->component, micb_num, MICB_DISABLE, false);
+		wcd939x_wakeup(wcd939x, false);
+	}
+
 	return ret;
 }
 
@@ -5201,6 +5230,13 @@ static int wcd939x_bind(struct device *dev)
 	}
 	wcd939x->dev_up = true;
 
+	/* Register Micbias regulator */
+	ret = wcd_init_mb_regulator(dev);
+	if (ret < 0) {
+		dev_err(dev, "Initialize wcd mb regulator failed, rc = %d\n",
+				ret);
+		ret = 0;
+	}
 	return ret;
 err_irq:
 	wcd_irq_exit(&wcd939x->irq_info, wcd939x->virq);
