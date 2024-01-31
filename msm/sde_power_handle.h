@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -20,6 +20,7 @@
 
 #include <linux/sde_io_util.h>
 #include <linux/interconnect.h>
+#include <linux/remoteproc.h>
 
 /* event will be triggered before power handler disable */
 #define SDE_POWER_EVENT_PRE_DISABLE	0x1
@@ -170,6 +171,7 @@ struct sde_power_mmrm_reserve {
  * @rsc_client_init: boolean to control rsc client create
  * @mmrm_enable: boolean to indicate if mmrm is enabled
  * @ib_quota: ib quota of the given bus
+ * @rproc: soccp rproc needed to set power vote
  * @mmrm_reserve: mmrm resource reservation
  */
 struct sde_power_handle {
@@ -185,6 +187,7 @@ struct sde_power_handle {
 	bool rsc_client_init;
 	bool mmrm_enable;
 	u64 ib_quota[SDE_POWER_HANDLE_DBUS_ID_MAX];
+	struct rproc *rproc;
 
 	struct sde_power_mmrm_reserve mmrm_reserve;
 };

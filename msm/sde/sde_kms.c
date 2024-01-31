@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -5122,6 +5122,16 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (rc) {
 		SDE_ERROR("modeset init failed: %d\n", rc);
 		goto drm_obj_init_err;
+	}
+
+	if (sde_kms->catalog->hw_fence_rev) {
+		priv->phandle.rproc = rproc_get_by_phandle(sde_kms->catalog->soccp_ph);
+		if (IS_ERR_OR_NULL(priv->phandle.rproc)) {
+			SDE_ERROR("failed to find rproc for phandle:%u, disabling hw-fencing\n",
+				sde_kms->catalog->soccp_ph);
+			sde_kms->catalog->hw_fence_rev = 0;
+			priv->phandle.rproc = NULL;
+		}
 	}
 
 	return 0;
