@@ -259,7 +259,11 @@ static struct msm_cvp_common_data sm8750_common_data[] = {
 	},
 	{
 		.key = "qcom,sw-power-collapse",
+#ifdef USE_PRESIL
+		.value = 0,
+#else
 		.value = 1,
+#endif
 	},
 	{
 		.key = "qcom,domain-attr-non-fatal-faults",
@@ -288,7 +292,11 @@ static struct msm_cvp_common_data sm8750_common_data[] = {
 	},
 	{
 		.key = "qcom,hw-resp-timeout",
+#ifdef USE_PRESIL
+		.value = 15000000,
+#else
 		.value = 2000,
+#endif
 	},
 	{
 		.key = "qcom,dsp-resp-timeout",

@@ -1183,8 +1183,12 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 			break;
 		}
 
+#ifdef USE_PRESIL
+		usleep_range(50000, 100000);
+#else
 		/* Reduce to 50, 100 on silicon */
 		usleep_range(100, 200);
+#endif
 		count++;
 	}
 
@@ -1204,6 +1208,10 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 
 	CVPKERNEL_ATRACE_END("__boot_firmware");
 
+#ifdef USE_PRESIL
+	/*Disable HW Synx if RUMI Support for Synx unavailable*/
+	__write_register(device, CVP_CPU_CS_SCIACMD, 0x8);
+#endif
 	return rc;
 }
 
