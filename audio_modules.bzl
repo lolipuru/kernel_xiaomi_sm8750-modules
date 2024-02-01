@@ -449,3 +449,13 @@ audio_modules.register(
     config_option = "CONFIG_SND_SOC_WCD939X_SLAVE",
     srcs = ["wcd939x-slave.c"]
 )
+# >>>> QMP1000 MODULES <<<<
+audio_modules.register(
+    name = "qmp_dlkm",
+    path = ASOC_CODECS_PATH + "/qmp1000",
+    config_option = "CONFIG_SND_SOC_QMP",
+    srcs = [
+        "qmp-dmic.c",
+        "qmp-aggregator.c",
+    ]
+)
