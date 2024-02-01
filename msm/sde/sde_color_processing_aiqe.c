@@ -213,20 +213,6 @@ int set_copr_feature(struct sde_hw_dspp *hw_dspp,
 	return ret;
 }
 
-int sde_dspp_mdnie_read_art_done(struct sde_hw_dspp *hw_dspp, u32 *art_done)
-{
-	int rc;
-
-	if (!art_done || !hw_dspp || !hw_dspp->ops.read_mdnie_art_done)
-		return -EINVAL;
-
-	rc = hw_dspp->ops.read_mdnie_art_done(hw_dspp, art_done);
-	if (rc)
-		SDE_ERROR("invalid art read %d", rc);
-
-	return rc;
-}
-
 int set_aiqe_abc_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
 			struct sde_crtc *hw_crtc)
 {

@@ -91,20 +91,6 @@ void sde_reset_mdnie_art(struct sde_hw_dspp *ctx)
 	SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x100, 0);
 }
 
-int sde_read_mdnie_art_done(struct sde_hw_dspp *ctx, uint32_t *art_done)
-{
-	uint32_t art_off;
-
-	if (!ctx || !art_done)
-		return -EINVAL;
-
-	art_off = ctx->cap->sblk->aiqe.base + 0x3d8;
-	*art_done = (SDE_REG_READ(&ctx->hw, art_off) & BIT(4)) >> 4;
-
-	SDE_EVT32(*art_done);
-	return 0;
-}
-
 int sde_read_copr_status(struct sde_hw_dspp *ctx, struct drm_msm_copr_status *copr_status)
 {
 	uint32_t status_off;
@@ -119,7 +105,6 @@ int sde_read_copr_status(struct sde_hw_dspp *ctx, struct drm_msm_copr_status *co
 
 	return 0;
 }
-
 
 void sde_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 {

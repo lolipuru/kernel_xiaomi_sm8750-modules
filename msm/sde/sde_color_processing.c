@@ -2137,6 +2137,7 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 
 	_sde_cp_flush_properties(crtc);
 	_sde_cp_mark_bl_properties(sde_crtc);
+	_sde_cp_check_mdnie_art_done(crtc);
 	mutex_lock(&sde_crtc->crtc_cp_lock);
 	_sde_clear_ltm_merge_mode(sde_crtc);
 
@@ -4792,6 +4793,7 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
 	enum aiqe_features feature = AIQE_FEATURE_MAX;
 	struct drm_msm_ssrc_config *data;
+	struct drm_property_blob *blob = NULL;
 
 	prop_val = prop_node->prop_val;
 
@@ -4819,7 +4821,21 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 	if (feature == AIQE_FEATURE_MAX)
 		return;
 
-	if (feature == FEATURE_SSRC) {
+	if (feature == FEATURE_MDNIE_ART) {
+		if (prop_val) {
+			struct drm_msm_mdnie_art *art = NULL;
+
+			blob = prop_node->blob_ptr;
+			if (blob) {
+				art = blob->data;
+				aiqe_register_client(feature, &sde_crtc->aiqe_top_level);
+				get_mdnie_art_frame_count(&sde_crtc->mdnie_art_frame_count,
+							art->param);
+			}
+		} else {
+			aiqe_deregister_client(feature, &sde_crtc->aiqe_top_level);
+		}
+	} else if (feature == FEATURE_SSRC) {
 		data = prop_node->blob_ptr;
 		if (data && prop_node->prop_blob_sz == sizeof(struct drm_msm_ssrc_config) &&
 				data->config[0] & BIT(0))
@@ -5204,6 +5220,7 @@ skip_demura_bl:
 	crtc->back_light_pending = false;
 	mutex_unlock(&crtc->crtc_cp_lock);
 }
+
 void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc;
@@ -5225,6 +5242,46 @@ void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc)
 		prop_node->prop_val = 0;
 		_sde_cp_update_list(prop_node, sde_crtc, true);
 	}
+exit:
+	mutex_unlock(&sde_crtc->crtc_cp_lock);
+}
+
+void _sde_cp_check_mdnie_art_done(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+	u32 num_mixers = 0, i = 0;
+	u32 *mdnie_art_count = NULL;
+	struct sde_hw_dspp *hw_dspp = NULL;
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	mutex_lock(&sde_crtc->crtc_cp_lock);
+	mdnie_art_count = &sde_crtc->mdnie_art_frame_count;
+	if (!mdnie_art_count || *mdnie_art_count == 0)
+		goto exit;
+
+	num_mixers = sde_crtc->num_mixers;
+	if (!num_mixers) {
+		DRM_ERROR("no mixers for this crtc\n");
+		goto exit;
+	}
+
+	if (*mdnie_art_count == 1) {
+		if (sde_crtc->mdnie_art_event_notify_enabled)
+			sde_crtc_mdnie_art_event_notify(crtc);
+
+		for (i = 0; i < num_mixers; i++) {
+			hw_dspp = sde_crtc->mixers[i].hw_dspp;
+			if (!hw_dspp || i >= DSPP_MAX)
+				goto exit;
+			else if (hw_dspp->ops.reset_mdnie_art) {
+				hw_dspp->ops.reset_mdnie_art(hw_dspp);
+				aiqe_deregister_client(FEATURE_MDNIE_ART,
+							&sde_crtc->aiqe_top_level);
+			}
+		}
+	}
+	(*mdnie_art_count)--;
 exit:
 	mutex_unlock(&sde_crtc->crtc_cp_lock);
 }

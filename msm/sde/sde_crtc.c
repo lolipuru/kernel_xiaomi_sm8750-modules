@@ -3289,31 +3289,15 @@ void sde_crtc_mdnie_art_event_notify(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc;
 	struct drm_msm_mdnie_art_done mdnie_art_done;
-	struct sde_hw_dspp *dspp;
-	u32 current_art_done;
-	int rc;
 	struct drm_event event;
 
 	sde_crtc = to_sde_crtc(crtc);
-	dspp = sde_crtc->mixers[0].hw_dspp;
-	rc = sde_dspp_mdnie_read_art_done(dspp, &current_art_done);
-	if (rc) {
-		SDE_ERROR("failed to collect MDNIE ART rc: %d\n", rc);
-		return;
-	}
 
-	if (current_art_done == 1) {
-		mdnie_art_done.art_done = current_art_done;
-		event.type = DRM_EVENT_MDNIE_ART;
-		event.length = sizeof(mdnie_art_done);
-		msm_mode_object_event_notify(&crtc->base, crtc->dev, &event,
-				(u8 *)&mdnie_art_done);
-
-		// Reset ART_DONE and ART_EN
-		if (dspp->ops.reset_mdnie_art)
-			dspp->ops.reset_mdnie_art(dspp);
-		_sde_cp_mark_mdnie_art_property(crtc);
-	}
+	mdnie_art_done.art_done = 1;
+	event.type = DRM_EVENT_MDNIE_ART;
+	event.length = sizeof(mdnie_art_done);
+	msm_mode_object_event_notify(&crtc->base, crtc->dev, &event,
+			(u8 *)&mdnie_art_done);
 }
 
 void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc)
@@ -3355,9 +3339,6 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 
 	if (sde_crtc->framedone_event_notify_enabled)
 		sde_crtc_event_notify(crtc, DRM_EVENT_FRAME_DONE, &frame_done, sizeof(u32));
-
-	if (sde_crtc->mdnie_art_event_notify_enabled)
-		sde_crtc_mdnie_art_event_notify(crtc);
 
 	if (sde_crtc->copr_status_event_notify_enabled)
 		sde_crtc_copr_status_event_notify(crtc);

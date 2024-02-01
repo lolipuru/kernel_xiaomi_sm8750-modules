@@ -464,7 +464,6 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 	c->ops.setup_mdnie = NULL;
 	c->ops.setup_mdnie_art = NULL;
 	c->ops.setup_copr = NULL;
-	c->ops.read_mdnie_art_done = NULL;
 	c->ops.read_copr_status = NULL;
 	c->ops.reset_mdnie_art = NULL;
 	c->ops.setup_mdnie_psr = NULL;
@@ -488,7 +487,6 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 			if (c->cap->sblk->aiqe.mdnie_supported) {
 				c->ops.setup_mdnie = reg_dmav1_setup_mdnie_v1;
 				c->ops.setup_mdnie_art = sde_setup_mdnie_art_v1;
-				c->ops.read_mdnie_art_done = sde_read_mdnie_art_done;
 				c->ops.reset_mdnie_art = sde_reset_mdnie_art;
 				c->ops.setup_mdnie_psr = sde_setup_mdnie_psr;
 			}

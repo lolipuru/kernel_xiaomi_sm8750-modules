@@ -41,6 +41,7 @@ void aiqe_get_common_values(struct sde_hw_cp_cfg *cfg,
 			    struct sde_aiqe_top_level *aiqe_top, struct aiqe_reg_common *aiqe_cmn);
 bool aiqe_is_client_registered(enum aiqe_features feature_id, struct sde_aiqe_top_level *aiqe_top);
 bool mdnie_art_in_progress(struct sde_aiqe_top_level *aiqe_top);
+void get_mdnie_art_frame_count(u32 *mdnie_art_frame_count, u32 art_param);
 void aiqe_deinit(struct sde_aiqe_top_level *aiqe_top);
 
 #endif /* _SDE_AIQE_COMMON_H */
