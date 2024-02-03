@@ -6840,6 +6840,11 @@ static int cnss_pci_handle_mhi_sys_err(struct cnss_pci_data *pci_priv)
 
 int cnss_pci_handle_dev_sol_irq(struct cnss_pci_data *pci_priv)
 {
+	if (!pci_priv) {
+		cnss_pr_err("pci priv is null\n");
+		return -ENODEV;
+	}
+
 	return cnss_pci_handle_mhi_sys_err(pci_priv);
 }
 
