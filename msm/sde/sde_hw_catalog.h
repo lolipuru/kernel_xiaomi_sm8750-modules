@@ -1365,6 +1365,7 @@ struct sde_clk_ctrl_reg {
  * @ubwc_swizzle:      ubwc default swizzle setting
  * @has_dest_scaler:   indicates support of destination scaler
  * @smart_panel_align_mode: split display smart panel align modes
+ * @hw_fence_mdp_offset: address for mdp hw-fence reg block
  * @clk_ctrls          clock control register definition
  * @clk_status         clock status register definition
  */
@@ -1375,6 +1376,7 @@ struct sde_mdp_cfg {
 	u32 ubwc_swizzle;
 	bool has_dest_scaler;
 	u32 smart_panel_align_mode;
+	u32 hw_fence_mdp_offset;
 	struct sde_clk_ctrl_reg clk_ctrls[SDE_CLK_CTRL_MAX];
 	struct sde_clk_ctrl_reg clk_status[SDE_CLK_CTRL_MAX];
 };
