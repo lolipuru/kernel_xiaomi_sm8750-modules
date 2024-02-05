@@ -307,7 +307,11 @@ static void qts_trusted_touch_intr_gpio_toggle(struct qts_data *qts_data,
 		return;
 
 	base = ioremap(TOUCH_INTR_GPIO_BASE, TOUCH_INTR_GPIO_SIZE);
-	val = readl_relaxed(base + TOUCH_RESET_GPIO_OFFSET);
+	if (!base) {
+		pr_err("Failed to get intr base!\n");
+		return;
+	}
+	val = readl_relaxed(base + TOUCH_INTR_GPIO_OFFSET);
 	if (enable) {
 		val |= BIT(0);
 		writel_relaxed(val, base + TOUCH_INTR_GPIO_OFFSET);
