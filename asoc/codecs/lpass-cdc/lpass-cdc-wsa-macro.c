@@ -1154,6 +1154,7 @@ static int lpass_cdc_wsa_macro_enable_vi_decimator(struct snd_soc_component *com
 		snd_soc_component_update_bits(component,
 			LPASS_CDC_WSA_TX1_SPKR_PROT_PATH_CTL,
 		0x20, 0x20);
+		usleep_range(1000, 1500);
 		snd_soc_component_update_bits(component,
 			LPASS_CDC_WSA_TX0_SPKR_PROT_PATH_CTL,
 		0x0F, val);
@@ -1166,6 +1167,7 @@ static int lpass_cdc_wsa_macro_enable_vi_decimator(struct snd_soc_component *com
 		snd_soc_component_update_bits(component,
 			LPASS_CDC_WSA_TX1_SPKR_PROT_PATH_CTL,
 			0x10, 0x10);
+		usleep_range(1000, 1500);
 		snd_soc_component_update_bits(component,
 			LPASS_CDC_WSA_TX0_SPKR_PROT_PATH_CTL,
 			0x20, 0x00);
@@ -1183,6 +1185,7 @@ static int lpass_cdc_wsa_macro_enable_vi_decimator(struct snd_soc_component *com
 		snd_soc_component_update_bits(component,
 			LPASS_CDC_WSA_TX3_SPKR_PROT_PATH_CTL,
 			0x20, 0x20);
+		usleep_range(1000, 1500);
 		snd_soc_component_update_bits(component,
 			LPASS_CDC_WSA_TX2_SPKR_PROT_PATH_CTL,
 			0x0F, val);
@@ -1195,6 +1198,7 @@ static int lpass_cdc_wsa_macro_enable_vi_decimator(struct snd_soc_component *com
 		snd_soc_component_update_bits(component,
 			LPASS_CDC_WSA_TX3_SPKR_PROT_PATH_CTL,
 			0x10, 0x10);
+		usleep_range(1000, 1500);
 		snd_soc_component_update_bits(component,
 			LPASS_CDC_WSA_TX2_SPKR_PROT_PATH_CTL,
 			0x20, 0x00);
