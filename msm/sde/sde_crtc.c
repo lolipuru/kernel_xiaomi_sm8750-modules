@@ -3949,7 +3949,7 @@ static struct sde_hw_ctl *_sde_crtc_get_hw_ctl(struct drm_crtc *drm_crtc)
 
 static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 {
-#ifdef CONFIG_QTI_HW_FENCE
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 	struct dma_fence *fence;
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
@@ -4017,7 +4017,7 @@ exit:
 	return input_hw_fence;
 #else
 	return NULL;
-#endif
+#endif /* CONFIG_QTI_HW_FENCE */
 }
 
 /**
