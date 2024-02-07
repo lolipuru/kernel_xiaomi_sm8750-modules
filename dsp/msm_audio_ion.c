@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -22,6 +22,7 @@
 #include <linux/cdev.h>
 #include <linux/fs.h>
 #include <linux/device.h>
+#include <linux/version.h>
 #ifndef CONFIG_SPF_CORE
 #include <ipc/apr.h>
 #endif
@@ -116,7 +117,11 @@ static int msm_audio_ion_map_kernel(struct dma_buf *dma_buf,
 		goto exit;
 	}
 
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	rc = dma_buf_vmap_unlocked(dma_buf, iosys_vmap);
+#else
 	rc = dma_buf_vmap(dma_buf, iosys_vmap);
+#endif
 	if (rc) {
 		pr_err("%s: kernel mapping of dma_buf failed\n",
 		       __func__);
@@ -183,8 +188,13 @@ static int msm_audio_dma_buf_map(struct dma_buf *dma_buf,
 	 * read buffer, hence the request is bi-directional
 	 * to accommodate both read and write mappings.
 	 */
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	alloc_data->table = dma_buf_map_attachment_unlocked(alloc_data->attach,
+				DMA_BIDIRECTIONAL);
+#else
 	alloc_data->table = dma_buf_map_attachment(alloc_data->attach,
 				DMA_BIDIRECTIONAL);
+#endif
 	if (IS_ERR(alloc_data->table)) {
 		rc = PTR_ERR(alloc_data->table);
 		dev_err(cb_dev,
@@ -320,8 +330,12 @@ static int msm_audio_ion_unmap_kernel(struct dma_buf *dma_buf, struct msm_audio_
 		goto err;
 	}
 
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	dma_buf_vunmap_unlocked(dma_buf, iosys_vmap);
+#else
 	dma_buf_vunmap(dma_buf, iosys_vmap);
 
+#endif
 	rc = dma_buf_end_cpu_access(dma_buf, DMA_BIDIRECTIONAL);
 	if (rc) {
 		dev_err(cb_dev, "%s: kmap dma_buf_end_cpu_access fail\n",
