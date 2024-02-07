@@ -17,6 +17,7 @@
 #include "msm_cvp_core.h"
 #include "msm_cvp_dsp.h"
 #include "eva_shared_def.h"
+#include "cvp_presil.h"
 
 void cvp_buf_map_set_vaddr(struct cvp_dma_buf_vmap *vmap, void *vaddr)
 {
@@ -522,7 +523,8 @@ int msm_cvp_map_buf_wncc(struct msm_cvp_inst *inst,
 		(u64)(smem->device_addr) - MAP_ADDR_OFFSET, MAP_ADDR_OFFSET);
 	cam_presil_send_buffer((u64)smem->dma_buf, 0,
 		(u32)cbuf->offset, (u32)cbuf->size,
-		(u64)(smem->device_addr) - MAP_ADDR_OFFSET);
+		(u64)(smem->device_addr) - MAP_ADDR_OFFSET,
+		(uintptr_t)NULL, false);
 #endif
 
 	mutex_lock(&inst->cvpwnccbufs.lock);
@@ -1631,6 +1633,10 @@ static int msm_cvp_map_user_persist_buf(struct msm_cvp_inst *inst,
 
 	print_internal_buffer(CVP_MEM, "map persist", inst, pbuf);
 
+#ifdef USE_PRESIL42
+	presil42_send_map_user_persist_buffer(smem, iova, pbuf);
+#endif
+
 	*iova = smem->device_addr + buf->offset;
 
 	return 0;
@@ -1679,6 +1685,10 @@ static u32 msm_cvp_map_frame_buf(struct msm_cvp_inst *inst,
 	type = EVA_KMD_BUFTYPE_INPUT | EVA_KMD_BUFTYPE_OUTPUT;
 	msm_cvp_cache_operations(smem, type, buf->offset, buf->size);
 
+#ifdef USE_PRESIL42
+	presil42_send_map_frame_buffer(smem, iova, buf);
+#endif
+
 	iova = smem->device_addr + buf->offset;
 
 	return iova;
@@ -1698,6 +1708,10 @@ static void msm_cvp_unmap_frame_buf(struct msm_cvp_inst *inst,
 		buf = &frame->bufs[i];
 		smem = buf->smem;
 		msm_cvp_cache_operations(smem, type, buf->offset, buf->size);
+
+#ifdef USE_PRESIL42
+	presil42_unmap_frame_buf(smem, buf);
+#endif
 
 		if (smem->bitmap_index >= MAX_DMABUF_NUMS) {
 			/* smem not in dmamap cache */
@@ -1855,6 +1869,11 @@ int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
 
 			return ret;
 		}
+
+#ifdef USE_PRESIL42
+		presil42_set_buf_fd(buf, iova, "cvp_map_user_persist");
+		return 0;
+#endif
 		buf->fd = iova;
 	}
 	return 0;
@@ -1924,7 +1943,12 @@ int msm_cvp_map_frame(struct msm_cvp_inst *inst,
 			msm_cvp_unmap_frame_buf(inst, frame);
 			return -EINVAL;
 		}
+
+#ifdef USE_PRESIL42
+		presil42_set_buf_fd(buf, iova, "cvp_map_frame");
+#else
 		buf->fd = iova;
+#endif
 	}
 
 	mutex_lock(&inst->frames.lock);
@@ -2157,6 +2181,9 @@ struct cvp_internal_buf *cvp_allocate_arp_bufs(struct msm_cvp_inst *inst,
 	if (!buffer_size)
 		return NULL;
 
+#ifdef USE_PRESIL42
+	presil42_set_smem_flags(smem_flags);
+#endif
 	/* If PERSIST buffer requires secure mapping, uncomment
 	 * below flags setting
 	 * smem_flags |= SMEM_SECURE | SMEM_NON_PIXEL;

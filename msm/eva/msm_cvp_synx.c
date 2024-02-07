@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_cvp_common.h"
@@ -184,7 +185,11 @@ static int cvp_wait_synx(struct synx_session *ssid, u32 *synx, u32 num_synx,
 		u32 *synx_state)
 {
 	int i = 0, rc = 0;
+#ifdef USE_PRESIL42
+	unsigned long timeout_ms = 180000;
+#else
 	unsigned long timeout_ms = 2000;
+#endif
 	u32 h_synx;
 
 	while (i < num_synx) {

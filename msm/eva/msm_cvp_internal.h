@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_CVP_INTERNAL_H_
@@ -216,6 +216,7 @@ enum msm_cvp_modes {
 };
 
 #define MAX_NUM_MSGS_PER_SESSION	128
+#define CVP_MAX_WAIT_TIME	2000
 
 struct cvp_session_msg {
 	struct list_head node;

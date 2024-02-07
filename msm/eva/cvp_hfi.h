@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __H_CVP_HFI_H__
@@ -392,6 +392,8 @@ enum tzbsp_subsys_state {
 	TZ_SUBSYS_STATE_RESUME = 1,
 	TZ_SUBSYS_STATE_RESTORE_THRESHOLD = 2,
 };
+struct iris_hfi_device;
 int __tzbsp_set_cvp_state(enum tzbsp_subsys_state state);
-
+int __resume(struct iris_hfi_device *device);
+int __response_handler(struct iris_hfi_device *device);
 #endif

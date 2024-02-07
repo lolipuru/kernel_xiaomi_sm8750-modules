@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only
  *
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <asm/memory.h>
 #include <linux/coresight-stm.h>
@@ -36,6 +36,7 @@
 #include "msm_cvp_clocks.h"
 #include "cvp_dump.h"
 #include "cvp_vm.h"
+#include "cvp_presil.h"
 
 #define FIRMWARE_SIZE			0X00A00000
 
@@ -158,6 +159,11 @@ static int msm_cvp_vm_init_reg_and_irq(struct iris_hfi_device *device,
 	}
 
 	device->cvp_hal_data = hal;
+
+#ifdef USE_PRESIL42
+	return presil42_set_irq_settings(hal, device, rc);
+#endif
+
 	rc = request_threaded_irq(res->irq, cvp_hfi_isr, iris_hfi_core_work_handler,
 			IRQF_TRIGGER_HIGH, "msm_cvp", device);
 	if (unlikely(rc)) {
@@ -178,7 +184,6 @@ static int msm_cvp_vm_init_reg_and_irq(struct iris_hfi_device *device,
 		&res->firmware_base, &res->register_base,
 		res->register_size);
 	return rc;
-
 error_irq_fail:
 	kfree(hal);
 err_core_init:
