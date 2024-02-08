@@ -507,7 +507,7 @@ static int vreg_disable_retention(struct vreg_data *vreg)
 	if (!vreg)
 		return rc;
 
-	pr_err("%s: disable_retention for : %s\n", __func__, vreg->name);
+	pr_debug("%s: disable_retention for : %s\n", __func__, vreg->name);
 
 	if ((vreg->is_enabled) && (vreg->is_retention_supp))
 		rc = vreg_configure(vreg, false);
@@ -870,12 +870,12 @@ static int bt_regulators_pwr(int pwr_state)
 	bt_num_vregs =  pwr_data->bt_num_vregs;
 
 	if (!bt_num_vregs) {
-		pr_warn("%s: not available to %s\n",
-			__func__, reg_mode[pwr_state]);
+		pr_warn("%s: not avilable to %s\n",
+			__func__, ConvertRegisterModeToString(pwr_state));
 		return 0;
 	}
 
-	pr_info("%s: %s\n", __func__, reg_mode[pwr_state]);
+	pr_info("%s: %s\n", __func__, ConvertRegisterModeToString(pwr_state));
 
 	if (pwr_state == POWER_ENABLE) {
 		/* Power On */
@@ -969,12 +969,12 @@ static int uwb_regulators_pwr(int pwr_state)
 	uwb_num_vregs =  pwr_data->uwb_num_vregs;
 
 	if (!uwb_num_vregs) {
-		pr_warn("%s: not available to %s\n",
-			__func__, reg_mode[pwr_state]);
+		pr_warn("%s: not avilable to %s\n",
+			__func__, ConvertRegisterModeToString(pwr_state));
 		return 0;
 	}
 
-	pr_info("%s: %s\n", __func__, reg_mode[pwr_state]);
+	pr_info("%s: %s\n", __func__, ConvertRegisterModeToString(pwr_state));
 
 	switch (pwr_state) {
 	case POWER_ENABLE:
@@ -1023,12 +1023,12 @@ static int platform_regulators_pwr(int pwr_state)
 	platform_num_vregs =  pwr_data->platform_num_vregs;
 
 	if (!platform_num_vregs) {
-		pr_warn("%s: not available to %s\n",
-			__func__, reg_mode[pwr_state]);
+		pr_warn("%s: not avilable to %s\n",
+			__func__, ConvertRegisterModeToString(pwr_state));
 		return 0;
 	}
 
-	pr_err("%s: %s\n", __func__, reg_mode[pwr_state]);
+	pr_info("%s: %s\n", __func__, ConvertRegisterModeToString(pwr_state));
 
 	switch (pwr_state) {
 	case POWER_ENABLE:
@@ -1771,14 +1771,14 @@ static inline enum grant_states btpower_get_grant_state(void)
 	return state;
 }
 
-static void update_sub_state(int state)
-{
-	pwr_data->sub_state = state;
-}
-
 static int get_sub_state(void)
 {
 	return (int)pwr_data->sub_state;
+}
+
+static void update_sub_state(int state)
+{
+	pwr_data->sub_state = state;
 }
 
 int power_enable (enum SubSystem SubSystemType)
@@ -2055,7 +2055,7 @@ int btpower_on(enum plt_pwr_state client)
 	/* No Point in going further if SSR is on any subsystem */
 	if (current_ssr_state != SUB_STATE_IDLE) {
 		pr_err("%s: %s not allowing to power on\n", __func__,
-			ssr_state[current_ssr_state]);
+			ConvertSsrStatusToString(current_ssr_state));
 		return -1;
 	}
 
@@ -2080,13 +2080,10 @@ int btpower_access_ctrl(enum plt_pwr_state request)
 	enum grant_states grant_pending = btpower_get_grant_pending_state();
 	int current_ssr_state = get_sub_state();
 
-	pr_info("%s: request for %s grant_state %s grant_pending %s", __func__,
-		pwr_req[(int)request], ConvertGrantToString(grant_state),
-		ConvertGrantToString(grant_pending));
-
 	if (current_ssr_state != SUB_STATE_IDLE &&
-	    (request == BT_ACCESS_REQ || request == UWB_ACCESS_REQ)) {
-		pr_err("%s: not allowing this request as %s", __func__, ssr_state[current_ssr_state]);
+		(request == BT_ACCESS_REQ || request == UWB_ACCESS_REQ)) {
+		pr_err("%s: not allowing this request as %s\n", __func__,
+			ConvertSsrStatusToString(current_ssr_state));
 		return (int)ACCESS_DISALLOWED;
 	}
 
@@ -2159,10 +2156,11 @@ static void bt_power_vote(struct work_struct *work)
 		request = STREAM_TO_UINT32(skb);
 		skb_pull(skb, sizeof(uint32_t));
 		mutex_unlock(&pwr_data->pwr_mtx);
-		pr_err("%s: request from is %s cur state = %s %s retention %s access %s pending %s\n",
-			__func__, pwr_req[request], pwr_states[get_pwr_state()],
-			ssr_state[get_sub_state()],
-			retention_mode[btpower_get_retenion_mode_state()],
+		pr_info("%s: Start %s %s, %s state access %s pending %s\n",
+			__func__,
+			ConvertPowerStatusToString(get_pwr_state()),
+			ConvertSsrStatusToString(get_sub_state()),
+			ConvertRetentionModeToString(btpower_get_retenion_mode_state()),
 			ConvertGrantToString(btpower_get_grant_state()),
 			ConvertGrantToString(btpower_get_grant_pending_state()));
 		if (request == POWER_ON_BT || request == POWER_ON_UWB)
@@ -2175,10 +2173,11 @@ static void bt_power_vote(struct work_struct *work)
 			ret = btpower_access_ctrl(request);
 			pr_info("%s: grant status %s", __func__, ConvertGrantRetToString((int)ret));
 		}
-		pr_err("%s: request from is %s cur state = %s %s retention %s access %s pending %s\n",
-			__func__, pwr_req[request], pwr_states[get_pwr_state()],
-			ssr_state[get_sub_state()],
-			retention_mode[btpower_get_retenion_mode_state()],
+		pr_info("%s: Completed %s %s, %s state access %s pending %s\n",
+			__func__,
+			ConvertPowerStatusToString(get_pwr_state()),
+			ConvertSsrStatusToString(get_sub_state()),
+			ConvertRetentionModeToString(btpower_get_retenion_mode_state()),
 			ConvertGrantToString(btpower_get_grant_state()),
 			ConvertGrantToString(btpower_get_grant_pending_state()));
 	
@@ -2228,10 +2227,10 @@ int btpower_handle_client_request(unsigned int cmd, int arg)
 {
 	int ret = -1;
 
-	pr_info("%s: %s cmd voted to %s, current state = %s, %s\n", __func__,
-		(cmd == BT_CMD_PWR_CTRL ? "BT_CMD_PWR_CTRL": "UWB_CMD_PWR_CTRL"),
-		bt_arg[(int)arg], pwr_states[get_pwr_state()],
-	 	ssr_state[(int)get_sub_state()]);
+	pr_info("%s: Start of %s cmd request to %s.\n",
+		__func__,
+		(cmd == BT_CMD_PWR_CTRL ? "BT_CMD_PWR_CTRL" : "UWB_CMD_PWR_CTRL"),
+		ConvertClientReqToString(arg));
 
 	if (cmd == BT_CMD_PWR_CTRL) {
 		switch ((int)arg) {
@@ -2258,8 +2257,7 @@ int btpower_handle_client_request(unsigned int cmd, int arg)
 			break;
 		}
 	}
-	pr_err("%s: %s, SSR state = %s\n", __func__,
-		pwr_states[get_pwr_state()], ssr_state[(int)get_sub_state()]);
+
 
 	return ret;
 }
@@ -2268,9 +2266,9 @@ int btpower_process_access_req(unsigned int cmd, int req)
 {
 	int ret = -1;
 
-	pr_info("%s: by %s: request type %s", __func__,
-		cmd == BT_CMD_ACCESS_CTRL ? "BT": "UWB",
-		req == 1? "Request": "Release");
+	pr_info("%s: by %s: request type %s\n", __func__,
+		cmd == BT_CMD_ACCESS_CTRL ? "BT_CMD_ACCESS_CTRL" : "UWB_CMD_ACCESS_CTRL",
+		req == 1 ? "Request" : "Release");
 	if (cmd == BT_CMD_ACCESS_CTRL && req == 1)
 		ret = schedule_client_voting(BT_ACCESS_REQ);
 	else if (cmd == BT_CMD_ACCESS_CTRL && req == 2)
