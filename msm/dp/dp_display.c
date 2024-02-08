@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -172,7 +172,6 @@ struct dp_display_private {
 	char *name;
 	int irq;
 
-	enum drm_connector_status cached_connector_status;
 	enum dp_display_states state;
 
 	struct platform_device *pdev;
@@ -927,14 +926,6 @@ static bool dp_display_send_hpd_event(struct dp_display_private *dp)
 	connector->status = display->is_sst_connected ? connector_status_connected :
 			connector_status_disconnected;
 
-	if (dp->cached_connector_status == connector->status) {
-		DP_DEBUG("connector status (%d) unchanged, skipping uevent\n",
-				dp->cached_connector_status);
-		return false;
-	}
-
-	dp->cached_connector_status = connector->status;
-
 	dev = connector->dev;
 
 	if (dp->debug->skip_uevent) {
@@ -1030,8 +1021,8 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp, bool 
 			(!!dp_display_state_is(DP_STATE_ENABLED) == hpd))
 		goto skip_wait;
 
-	// wait 2 seconds
-	if (wait_for_completion_timeout(&dp->notification_comp, HZ * 2))
+	// wait 4 seconds
+	if (wait_for_completion_timeout(&dp->notification_comp, HZ * 4))
 		goto skip_wait;
 
 	//resend notification
@@ -1040,8 +1031,8 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp, bool 
 	else
 		dp_display_send_hpd_event(dp);
 
-	// wait another 3 seconds
-	if (!wait_for_completion_timeout(&dp->notification_comp, HZ * 3)) {
+	// wait another 2 seconds
+	if (!wait_for_completion_timeout(&dp->notification_comp, HZ * 2)) {
 		DP_WARN("%s timeout\n", hpd ? "connect" : "disconnect");
 		ret = -EINVAL;
 	}
@@ -2342,7 +2333,6 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 		goto error_debug;
 	}
 
-	dp->cached_connector_status = connector_status_disconnected;
 	dp->tot_dsc_blks_in_use = 0;
 	dp->tot_lm_blks_in_use = 0;
 
