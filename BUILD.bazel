@@ -61,7 +61,7 @@ ddk_headers(
         "include/uapi/linux/*.h",
         "crypto-qti/*.h"
     ]),
-    includes = ["include/uapi", "include/uapi/linux", "crypto-qti"]
+    includes = ["linux", "include/uapi", "include/uapi/linux", "crypto-qti"]
 )
 
 ddk_headers(
