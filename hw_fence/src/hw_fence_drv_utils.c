@@ -1089,6 +1089,18 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 	int ret;
 	size_t size;
 	u32 val = 0;
+	phandle ph;
+
+	/* check presence of soccp */
+	ret = of_property_read_u32(drv_data->dev->of_node, "soccp_controller", &ph);
+	if (!ret) {
+		drv_data->has_soccp = true;
+		drv_data->soccp_rproc = rproc_get_by_phandle(ph);
+		if (IS_ERR_OR_NULL(drv_data->soccp_rproc)) {
+			HWFNC_ERR("failed to find rproc for phandle:%u\n", ph);
+			return -EINVAL;
+		}
+	}
 
 	ret = of_property_read_u32(drv_data->dev->of_node, "qcom,hw-fence-table-entries", &val);
 	if (ret || !val) {
@@ -1145,9 +1157,6 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 	drv_data->clients = kzalloc(size, GFP_KERNEL);
 	if (!drv_data->clients)
 		return -ENOMEM;
-
-	/* check presence of soccp */
-	drv_data->has_soccp = of_property_read_bool(drv_data->dev->of_node, "soccp_controller");
 
 	HWFNC_DBG_INIT("table: entries=%u mem_size=%u queue: entries=%u\b",
 		drv_data->hw_fence_table_entries, drv_data->hw_fence_mem_fences_table_size,
