@@ -880,7 +880,8 @@ end:
 static u32 sde_hw_ctl_get_active_lms(struct sde_hw_ctl *ctx)
 {
 	int i;
-	u32 lm_info, lm_active = 0;
+	u32 lm_active = 0;
+	unsigned long lm_info;
 
 	if (!ctx)  {
 		DRM_ERROR("invalid args - ctx invalid\n");
@@ -890,8 +891,9 @@ static u32 sde_hw_ctl_get_active_lms(struct sde_hw_ctl *ctx)
 	lm_info = SDE_REG_READ(&ctx->hw, CTL_LAYER_ACTIVE);
 
 	for (i = LM_0; i < LM_MAX; i++) {
-		if (lm_active_tbl[i] != CTL_INVALID_BIT && lm_info & BIT(lm_active_tbl[i]))
-			lm_active |= BIT(i);
+		if (lm_active_tbl[i] != CTL_INVALID_BIT &&
+				test_bit((i - LM_0), &lm_info))
+			lm_active |= BIT(lm_active_tbl[i]);
 	}
 
 	return lm_active;
