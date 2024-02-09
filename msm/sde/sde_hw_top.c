@@ -1016,7 +1016,8 @@ struct sde_hw_mdp *sde_hw_mdptop_init(enum sde_mdp idx,
 
 		/* do not use blk_off, following offsets start from  mdp_phys */
 		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "hw_fence", cfg->hw_fence_mdp_offset,
-			MDP_CTL_HW_FENCE_ID_OFFSET_m(MDP_CTL_HW_FENCE_IDm_ATTR, 5), mdp->hw.xin_id);
+			MDP_CTL_HW_FENCE_ID_OFFSET_m(cfg->hw_fence_mdp_offset
+				+ MDP_CTL_HW_FENCE_IDm_ATTR, 5), mdp->hw.xin_id);
 	} else {
 		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
 			mdp->hw.blk_off, mdp->hw.blk_off + mdp->hw.length,
