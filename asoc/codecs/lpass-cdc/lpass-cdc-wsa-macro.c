@@ -236,6 +236,7 @@ enum {
 	LPASS_CDC_WSA_MACRO_AIF_VI,
 	LPASS_CDC_WSA_MACRO_AIF_ECHO,
 	LPASS_CDC_WSA_MACRO_AIF_CPS,
+	LPASS_CDC_WSA_MACRO_AIF4_PB,
 	LPASS_CDC_WSA_MACRO_MAX_DAIS,
 };
 
@@ -521,6 +522,20 @@ static struct snd_soc_dai_driver lpass_cdc_wsa_macro_dai[] = {
 			.rate_min = 48000,
 			.channels_min = 1,
 			.channels_max = 2,
+		},
+		.ops = &lpass_cdc_wsa_macro_dai_ops,
+	},
+	{
+		.name = "wsa_macro_rx4",
+		.id = LPASS_CDC_WSA_MACRO_AIF4_PB,
+		.playback = {
+				.stream_name = "WSA AIF4 Playback",
+				.rates = LPASS_CDC_WSA_MACRO_RX_RATES,
+				.formats = LPASS_CDC_WSA_MACRO_RX_FORMATS,
+				.rate_max = 192000,
+				.rate_min = 8000,
+				.channels_min = 1,
+				.channels_max = 2,
 		},
 		.ops = &lpass_cdc_wsa_macro_dai_ops,
 	},
@@ -842,6 +857,10 @@ static int lpass_cdc_wsa_macro_get_channel_map(struct snd_soc_dai *dai,
 		*tx_slot = wsa_priv->active_ch_mask[dai->id];
 		*tx_num = wsa_priv->active_ch_cnt[dai->id];
 		break;
+	case LPASS_CDC_WSA_MACRO_AIF4_PB:
+		*rx_slot = 0x1;
+		*rx_num = 0x01;
+		break;
 	case LPASS_CDC_WSA_MACRO_AIF1_PB:
 	case LPASS_CDC_WSA_MACRO_AIF_MIX1_PB:
 		for_each_set_bit(temp, &wsa_priv->active_ch_mask[dai->id],
@@ -873,6 +892,9 @@ static int lpass_cdc_wsa_macro_get_channel_map(struct snd_soc_dai *dai,
 		dev_err_ratelimited(wsa_dev, "%s: Invalid AIF\n", __func__);
 		break;
 	}
+	dev_dbg(wsa_priv->dev,
+			"%s: dai->id:%d, rx_mask:%d, rx_ch_cnt:%d, tx_mask:%d, tx_ch_cnt:%d\n",
+			__func__, dai->id, *rx_slot, *rx_num, *tx_slot, *tx_num);
 	return 0;
 }
 
@@ -2935,6 +2957,9 @@ static const struct snd_soc_dapm_widget lpass_cdc_wsa_macro_dapm_widgets[] = {
 	SND_SOC_DAPM_AIF_OUT("WSA AIF_CPS", "WSA_AIF_CPS Capture", 0,
 		SND_SOC_NOPM, 0, 0),
 
+	SND_SOC_DAPM_AIF_IN("WSA AIF4 PB", "WSA AIF4 Playback", 0,
+		SND_SOC_NOPM, 0, 0),
+
 	SND_SOC_DAPM_MIXER("WSA_AIF_VI Mixer", SND_SOC_NOPM, LPASS_CDC_WSA_MACRO_AIF_VI,
 		0, aif_vi_mixer, ARRAY_SIZE(aif_vi_mixer)),
 	SND_SOC_DAPM_MIXER("WSA_AIF_CPS Mixer", SND_SOC_NOPM, LPASS_CDC_WSA_MACRO_AIF_CPS,
@@ -3045,6 +3070,7 @@ static const struct snd_soc_dapm_widget lpass_cdc_wsa_macro_dapm_widgets[] = {
 
 	SND_SOC_DAPM_OUTPUT("WSA_SPK1 OUT"),
 	SND_SOC_DAPM_OUTPUT("WSA_SPK2 OUT"),
+	SND_SOC_DAPM_OUTPUT("WSA_HAPT OUT"),
 
 	SND_SOC_DAPM_SUPPLY_S("WSA_MCLK", 0, SND_SOC_NOPM, 0, 0,
 	lpass_cdc_wsa_macro_mclk_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
@@ -3062,6 +3088,10 @@ static const struct snd_soc_dapm_route wsa_audio_map[] = {
 	{"WSA_AIF_CPS Mixer", "WSA_SPKR_CPS_2", "CPSINPUT_WSA"},
 	{"WSA AIF_CPS", NULL, "WSA_AIF_CPS Mixer"},
 	{"WSA AIF_CPS", NULL, "WSA_MCLK"},
+
+	/* Haptics PCM*/
+	{"WSA AIF4 PB", NULL, "WSA_MCLK"},
+	{"WSA_HAPT OUT", NULL, "WSA AIF4 PB"},
 
 	{"WSA RX_MIX EC0_MUX", "RX_MIX_TX0", "WSA_RX INT0 SEC MIX"},
 	{"WSA RX_MIX EC1_MUX", "RX_MIX_TX0", "WSA_RX INT0 SEC MIX"},
@@ -3614,12 +3644,14 @@ static int lpass_cdc_wsa_macro_init(struct snd_soc_component *component)
 		return ret;
 	}
 	snd_soc_dapm_ignore_suspend(dapm, "WSA_AIF1 Playback");
+	snd_soc_dapm_ignore_suspend(dapm, "WSA AIF4 Playback");
 	snd_soc_dapm_ignore_suspend(dapm, "WSA_AIF_MIX1 Playback");
 	snd_soc_dapm_ignore_suspend(dapm, "WSA_AIF_VI Capture");
 	snd_soc_dapm_ignore_suspend(dapm, "WSA_AIF_ECHO Capture");
 	snd_soc_dapm_ignore_suspend(dapm, "WSA_AIF_CPS Capture");
 	snd_soc_dapm_ignore_suspend(dapm, "WSA_SPK1 OUT");
 	snd_soc_dapm_ignore_suspend(dapm, "WSA_SPK2 OUT");
+	snd_soc_dapm_ignore_suspend(dapm, "WSA_HAPT OUT");
 	snd_soc_dapm_ignore_suspend(dapm, "VIINPUT_WSA");
 	snd_soc_dapm_ignore_suspend(dapm, "CPSINPUT_WSA");
 	snd_soc_dapm_ignore_suspend(dapm, "WSA SRC0_INP");
