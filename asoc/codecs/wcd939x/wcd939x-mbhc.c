@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/module.h>
 #include <linux/init.h>
@@ -2088,7 +2088,7 @@ static int wcd939x_hph_impedance_get(struct snd_kcontrol *kcontrol,
 {
 	uint32_t zl, zr;
 	bool hphr;
-	struct soc_multi_mixer_control *mc;
+	struct soc_mixer_control *mc;
 	struct snd_soc_component *component =
 					snd_soc_kcontrol_component(kcontrol);
 	struct wcd939x_mbhc *wcd939x_mbhc = wcd939x_soc_get_mbhc(component);
@@ -2098,7 +2098,7 @@ static int wcd939x_hph_impedance_get(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	}
 
-	mc = (struct soc_multi_mixer_control *)(kcontrol->private_value);
+	mc = (struct soc_mixer_control *)(kcontrol->private_value);
 	hphr = mc->shift;
 	wcd_mbhc_get_impedance(&wcd939x_mbhc->wcd_mbhc, &zl, &zr);
 	dev_dbg(component->dev, "%s: zl=%u(ohms), zr=%u(ohms)\n", __func__, zl, zr);
