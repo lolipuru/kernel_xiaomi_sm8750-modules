@@ -97,6 +97,24 @@
 #define HW_FENCE_MAX_EVENTS 1000
 
 /**
+ * DT_PROPS_CLIENT_NAME_SIZE:
+ * Maximum number of characters in client name used in device-tree properties
+ */
+#define DT_PROPS_CLIENT_NAME_SIZE 10
+
+/**
+ * DT_PROPS_CLIENT_PROPS_SIZE:
+ * Maximum number of characters in property name for base client queue properties.
+ */
+#define DT_PROPS_CLIENT_PROPS_SIZE (DT_PROPS_CLIENT_NAME_SIZE + 27)
+
+/**
+ * DT_PROPS_CLIENT_EXTRA_PROPS_SIZE:
+ * Maximum number of characters in property name for extra client queue properties.
+ */
+#define DT_PROPS_CLIENT_EXTRA_PROPS_SIZE (DT_PROPS_CLIENT_NAME_SIZE + 33)
+
+/**
  * struct hw_fence_client_types - Table describing all supported client types, used to parse
  *                                device-tree properties related to client queue size.
  *
@@ -141,6 +159,14 @@ struct hw_fence_client_type_desc hw_fence_client_types[HW_FENCE_MAX_CLIENT_TYPE]
 	{"ife6", HW_FENCE_CLIENT_ID_IFE6, HW_FENCE_CLIENT_TYPE_MAX_IFE, 0, 1, 0, 0, 0, 0, 0, 0,
 		true},
 	{"ife7", HW_FENCE_CLIENT_ID_IFE7, HW_FENCE_CLIENT_TYPE_MAX_IFE, 0, 1, 0, 0, 0, 0, 0, 0,
+		true},
+	{"ife8", HW_FENCE_CLIENT_ID_IFE8, HW_FENCE_CLIENT_TYPE_MAX_IFE, 0, 1, 0, 0, 0, 0, 0, 0,
+		true},
+	{"ife9", HW_FENCE_CLIENT_ID_IFE9, HW_FENCE_CLIENT_TYPE_MAX_IFE, 0, 1, 0, 0, 0, 0, 0, 0,
+		true},
+	{"ife10", HW_FENCE_CLIENT_ID_IFE10, HW_FENCE_CLIENT_TYPE_MAX_IFE, 0, 1, 0, 0, 0, 0, 0, 0,
+		true},
+	{"ife11", HW_FENCE_CLIENT_ID_IFE11, HW_FENCE_CLIENT_TYPE_MAX_IFE, 0, 1, 0, 0, 0, 0, 0, 0,
 		true},
 };
 
@@ -904,7 +930,7 @@ static int _parse_client_queue_dt_props_extra(struct hw_fence_driver_data *drv_d
 	struct hw_fence_client_type_desc *desc)
 {
 	u32 max_idx_from_zero, payload_size_u32 = HW_FENCE_CLIENT_QUEUE_PAYLOAD / sizeof(u32);
-	char name[40];
+	char name[DT_PROPS_CLIENT_EXTRA_PROPS_SIZE];
 	u32 tmp[4];
 	bool idx_by_payload = false;
 	int count, ret;
@@ -990,7 +1016,7 @@ exit:
 static int _parse_client_queue_dt_props_indv(struct hw_fence_driver_data *drv_data,
 	struct hw_fence_client_type_desc *desc)
 {
-	char name[31];
+	char name[DT_PROPS_CLIENT_PROPS_SIZE];
 	u32 tmp[4];
 	u32 queue_size;
 	int ret;

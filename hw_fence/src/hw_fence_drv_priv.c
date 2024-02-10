@@ -872,7 +872,7 @@ int hw_fence_init_controller_signal(struct hw_fence_driver_data *drv_data,
 			MSM_HW_FENCE_MAX_SIGNAL_PER_CLIENT - 1:
 		/* nothing to initialize for VPU client */
 		break;
-	case HW_FENCE_CLIENT_ID_IFE0 ... HW_FENCE_CLIENT_ID_IFE7 +
+	case HW_FENCE_CLIENT_ID_IFE0 ... HW_FENCE_CLIENT_ID_IFE11 +
 			MSM_HW_FENCE_MAX_SIGNAL_PER_CLIENT - 1:
 		/* nothing to initialize for IFE clients */
 		break;
