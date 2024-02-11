@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _IPA3_I_H_
@@ -2548,6 +2548,7 @@ struct ipa3_context {
 	u32 ipa_gen_rx_cmn_page_pool_sz_factor;
 	u32 ipa_gen_rx_cmn_temp_pool_sz_factor;
 	u32 ipa_gen_rx_ll_pool_sz_factor;
+	u32 ipa_temp_pool_capacity;
 	struct ipa3_app_clock_vote app_clock_vote;
 	bool clients_registered;
 	bool ipa_gpi_event_rp_ddr;

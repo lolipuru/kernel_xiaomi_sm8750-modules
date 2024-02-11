@@ -3,7 +3,7 @@
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/ip.h>
 #include <linux/ipv6.h>
@@ -1425,6 +1425,19 @@ static void ipa3_tasklet_find_freepage(unsigned long data)
 
 }
 
+static int ipa3_rmnet_mem_notifier(struct notifier_block *this,
+	unsigned long pool_size, void *ptr)
+{
+	IPADBG("New pool size: %lu\n", pool_size);
+	ipa3_ctx->ipa_temp_pool_capacity = pool_size;
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block ipa3_rmnet_mem_blk = {
+	.notifier_call = ipa3_rmnet_mem_notifier,
+	.priority = INT_MAX,
+};
+
 /**
  * ipa_setup_sys_pipe() - Setup an IPA GPI pipe and perform
  * IPA EP configuration
@@ -1449,6 +1462,7 @@ int ipa_setup_sys_pipe(struct ipa_sys_connect_params *sys_in, u32 *clnt_hdl)
 	char buff[IPA_RESOURCE_NAME_MAX];
 	struct ipa_ep_cfg ep_cfg_copy;
 	int (*tx_completion_func)(struct napi_struct *, int);
+	int pool_capacity = 0;
 
 	if (sys_in == NULL || clnt_hdl == NULL) {
 		IPAERR(
@@ -1789,6 +1803,16 @@ int ipa_setup_sys_pipe(struct ipa_sys_connect_params *sys_in, u32 *clnt_hdl)
 				ep->sys->repl->capacity = (ep->sys->rx_pool_sz + 1);
 			IPADBG("Repl capacity for client:%d, value:%d\n",
 					   sys_in->client, ep->sys->repl->capacity);
+			if (sys_in->client == IPA_CLIENT_APPS_WAN_COAL_CONS ||
+				sys_in->client == IPA_CLIENT_APPS_WAN_CONS) {
+				pool_capacity =
+					rmnet_mem_get_pool_size(ep->sys->page_order);
+				 ipa3_ctx->ipa_temp_pool_capacity = (pool_capacity > 0) ?
+					pool_capacity : ep->sys->repl->capacity / 2;
+				IPADBG("Temp pool capacity for client:%d, value:%u\n",
+					   sys_in->client, ipa3_ctx->ipa_temp_pool_capacity);
+				rmnet_mem_register_notifier(&ipa3_rmnet_mem_blk);
+			}
 			atomic_set(&ep->sys->repl->pending, 0);
 			ep->sys->repl->cache = kcalloc(ep->sys->repl->capacity,
 					sizeof(void *), GFP_KERNEL);
@@ -2809,6 +2833,12 @@ begin:
 		/* ensure write is done before setting tail index */
 		mb();
 		atomic_set(&sys->repl->tail_idx, next);
+		if ((sys->ep->client == IPA_CLIENT_APPS_WAN_CONS ||
+			sys->ep->client == IPA_CLIENT_APPS_WAN_COAL_CONS) &&
+			((atomic_read(&sys->repl->tail_idx) -
+			atomic_read(&sys->repl->head_idx)) % sys->repl->capacity) >
+			ipa3_ctx->ipa_temp_pool_capacity)
+			break;
 	}
 
 	return;
@@ -2831,6 +2861,7 @@ fail_kmem_cache_alloc:
 static inline void __trigger_repl_work(struct ipa3_sys_context *sys)
 {
 	int tail, head, avail;
+	u32 thrshld = 0;
 
 	if (atomic_read(&sys->repl->pending))
 		return;
@@ -2839,7 +2870,12 @@ static inline void __trigger_repl_work(struct ipa3_sys_context *sys)
 	head = atomic_read(&sys->repl->head_idx);
 	avail = (tail - head) % sys->repl->capacity;
 
-	if (avail < sys->repl->capacity / 2) {
+	thrshld = (sys->ep->client == IPA_CLIENT_APPS_WAN_CONS ||
+				sys->ep->client == IPA_CLIENT_APPS_WAN_COAL_CONS) ?
+				ipa3_ctx->ipa_temp_pool_capacity / 2 :
+				sys->repl->capacity / 2;
+
+	if (avail < thrshld) {
 		atomic_set(&sys->repl->pending, 1);
 		queue_work(sys->repl_wq, &sys->repl_work);
 	}
@@ -3811,6 +3847,10 @@ static void ipa3_cleanup_rx(struct ipa3_sys_context *sys)
 		kfree(sys->repl->cache);
 		kfree(sys->repl);
 		sys->repl = NULL;
+		if (sys->ep->client == IPA_CLIENT_APPS_WAN_CONS ||
+			sys->ep->client == IPA_CLIENT_APPS_WAN_COAL_CONS) {
+			rmnet_mem_unregister_notifier(&ipa3_rmnet_mem_blk);
+		}
 	}
 }
 
