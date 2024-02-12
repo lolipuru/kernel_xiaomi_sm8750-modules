@@ -111,6 +111,8 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	}
 
 	hw_fence_client->update_rxq = hw_fence_ipcc_needs_rxq_update(hw_fence_drv_data, client_id);
+	hw_fence_client->signaled_update_rxq =
+		hw_fence_ipcc_signaled_needs_rxq_update(hw_fence_drv_data, client_id);
 	hw_fence_client->signaled_send_ipc = hw_fence_ipcc_signaled_needs_ipc_irq(hw_fence_drv_data,
 		client_id);
 	hw_fence_client->txq_update_send_ipc =
@@ -118,10 +120,12 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 
 	hw_fence_client->queues_num = hw_fence_utils_get_queues_num(hw_fence_drv_data, client_id);
 	if (!hw_fence_client->queues_num || (hw_fence_client->update_rxq &&
-			hw_fence_client->queues_num < HW_FENCE_CLIENT_QUEUES)) {
-		HWFNC_ERR("client:%d invalid q_num:%d for updates_rxq:%s\n", client_id,
-			hw_fence_client->queues_num,
-			hw_fence_client->update_rxq ? "true" : "false");
+			hw_fence_client->queues_num < HW_FENCE_CLIENT_QUEUES) ||
+			(!hw_fence_client->update_rxq && hw_fence_client->signaled_update_rxq)) {
+		HWFNC_ERR("client:%d invalid q_num:%d for updates_rxq:%s signaled_update_rxq:%s\n",
+			client_id, hw_fence_client->queues_num,
+			hw_fence_client->update_rxq ? "true" : "false",
+			hw_fence_client->signaled_update_rxq ? "true" : "false");
 		ret = -EINVAL;
 		goto error;
 	}
