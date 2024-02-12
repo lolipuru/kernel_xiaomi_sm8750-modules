@@ -666,7 +666,7 @@ static int _sde_rm_hw_blk_create(
 		hw = sde_hw_lm_init(id, mmio, cat);
 		break;
 	case SDE_HW_BLK_DSPP:
-		hw = sde_hw_dspp_init(id, mmio, cat, sde_kms->dev->primary->index);
+		hw = sde_hw_dspp_init(id, mmio, cat, sde_kms);
 		break;
 	case SDE_HW_BLK_DS:
 		hw = sde_hw_ds_init(id, mmio, cat);

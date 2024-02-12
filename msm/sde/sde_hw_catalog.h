@@ -2006,6 +2006,7 @@ struct sde_perf_cfg {
  * @demura_supported    indicates which SSPP/RECT combinations support demura
  * @aiqe_count          number of aiqe hardware instances
  * @ai_scaler_count     number of ai scaler hardware instances
+ * @ssip_allowed        indicates if ssip register access is allowed
  * @trusted_vm_env      true if the driver is executing in the trusted VM
  * @tvm_reg_count	number of sub-driver register ranges that need to be included
  *					for trusted vm for accepting the resources
@@ -2126,6 +2127,7 @@ struct sde_mdss_cfg {
 	u32 demura_supported[SSPP_MAX][2];
 	u32 aiqe_count;
 	u32 ai_scaler_count;
+	bool ssip_allowed;
 
 	/* Secure & Trusted UI */
 	bool trusted_vm_env;

@@ -46,6 +46,11 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 
 	kms = get_kms(crtc);
 	catalog = kms->catalog;
+	if (!catalog->ssip_allowed) {
+		DRM_INFO("ssip_allowed = %d\n", catalog->ssip_allowed);
+		return;
+	}
+
 	version = catalog->dspp[0].sblk->aiqe.version;
 	major_version = version >> 16;
 	switch (major_version) {
@@ -241,8 +246,10 @@ void sde_set_mdnie_psr(struct sde_crtc *sde_crtc)
 	if (!sde_crtc || !hw_dspp)
 		return;
 
-	for (i = 0; i < num_mixers; i++)
-		hw_dspp->ops.setup_mdnie_psr(hw_dspp);
+	if (hw_dspp->ops.setup_mdnie_psr) {
+		for (i = 0; i < num_mixers; i++)
+			hw_dspp->ops.setup_mdnie_psr(hw_dspp);
+	}
 }
 
 void _dspp_ai_scaler_install_property(struct drm_crtc *crtc)
