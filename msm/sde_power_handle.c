@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d]: " fmt, __func__, __LINE__
@@ -17,6 +17,10 @@
 
 #include <linux/sde_io_util.h>
 #include <linux/sde_rsc.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
+#include <linux/remoteproc/qcom_rproc.h>
+#endif
 
 #include "sde_power_handle.h"
 #include "sde_trace.h"
@@ -668,6 +672,15 @@ u64 sde_power_mmrm_get_requested_clk(struct sde_power_handle *phandle,
 	return rate;
 }
 
+static int _set_power_vote(struct rproc *rproc, bool state)
+{
+#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
+	return rproc_set_state(rproc, state);
+#else
+	return 0;
+#endif
+}
+
 int sde_power_resource_init(struct platform_device *pdev,
 	struct sde_power_handle *phandle)
 {
@@ -728,6 +741,12 @@ int sde_power_resource_init(struct platform_device *pdev,
 	if (rc) {
 		pr_err("bus parse failed rc=%d\n", rc);
 		goto bus_err;
+	}
+
+	if (phandle->rproc) {
+		rc = _set_power_vote(phandle->rproc, true);
+		if (rc)
+			pr_err("soccp power vote enable failed rc:%d\n", rc);
 	}
 
 	phandle->rsc_client = NULL;
@@ -914,12 +933,26 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 			goto clk_err;
 		}
 
+		if (phandle->rproc) {
+			rc = _set_power_vote(phandle->rproc, enable);
+			if (rc)
+				pr_err("soccp power vote failed, state:%s rc:%d\n",
+						enable ? "enable" : "disable", rc);
+		}
+
 		sde_power_event_trigger_locked(phandle,
 				SDE_POWER_EVENT_POST_ENABLE);
 
 	} else {
 		sde_power_event_trigger_locked(phandle,
 				SDE_POWER_EVENT_PRE_DISABLE);
+
+		if (phandle->rproc) {
+			rc = _set_power_vote(phandle->rproc, enable);
+			if (rc)
+				pr_err("soccp power vote failed, state:%s rc:%d\n",
+						enable ? "enable" : "disable", rc);
+		}
 
 		SDE_EVT32_VERBOSE(enable, SDE_EVTLOG_FUNC_CASE2);
 		sde_power_rsc_update(phandle, false);
