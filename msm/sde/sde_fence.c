@@ -170,6 +170,7 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 	void *queue_va;
 	u32 qhdr0_offset, ctl_hfi_iova;
 	int ctl_id, ret;
+	int iommu_flags;
 
 	if (!hw_ctl || !hw_ctl->ops.hw_fence_output_fence_dir_write_init)
 		return -EINVAL;
@@ -229,9 +230,12 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 	/* one-to-one memory map of ctl-path client queues */
 	ctl_hfi_iova = HW_FENCE_HFI_MMAP_DPU_BA +
 		PAGE_ALIGN(hwfence_data->mem_descriptor.size * ctl_id);
+	iommu_flags = IOMMU_READ | IOMMU_WRITE;
+	if (use_soccp)
+		iommu_flags |= IOMMU_CACHE;
 	ret = mmu->funcs->one_to_one_map(mmu, ctl_hfi_iova,
 		hwfence_data->mem_descriptor.dev_addr,
-		hwfence_data->mem_descriptor.size, IOMMU_READ | IOMMU_WRITE);
+		hwfence_data->mem_descriptor.size, iommu_flags);
 	if (ret) {
 		SDE_ERROR("queue one2one memory smmu map failed, ret:%d ctl_id:%d, client:%d\n",
 			ret, ctl_id, hwfence_data->hw_fence_client_id);
