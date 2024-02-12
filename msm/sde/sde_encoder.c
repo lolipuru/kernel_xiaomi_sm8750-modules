@@ -2034,6 +2034,7 @@ void sde_encoder_clear_fence_error_in_progress(struct sde_encoder_phys *phys_enc
 
 static int sde_encoder_hw_fence_signal(struct sde_encoder_phys *phys_enc)
 {
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 	struct sde_hw_ctl *hw_ctl;
 	struct sde_hw_fence_data *hwfence_data;
 	int pending_kickoff_cnt = -1;
@@ -2082,6 +2083,9 @@ static int sde_encoder_hw_fence_signal(struct sde_encoder_phys *phys_enc)
 
 	SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FUNC_EXIT);
 	return rc;
+#else
+	return -EINVAL;
+#endif /* CONFIG_QTI_HW_FENCE */
 }
 
 int sde_encoder_handle_dma_fence_out_of_order(struct drm_encoder *drm_enc)
