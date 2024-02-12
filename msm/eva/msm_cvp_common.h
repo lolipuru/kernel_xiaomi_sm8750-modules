@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 
@@ -33,4 +34,5 @@ int cvp_comm_release_persist_buffers(struct msm_cvp_inst *inst);
 int msm_cvp_noc_error_info(struct msm_cvp_core *core);
 int cvp_print_inst(u32 tag, struct msm_cvp_inst *inst);
 unsigned long long get_aon_time(void);
+void handle_session_error(enum hal_command_response cmd, void *data);
 #endif

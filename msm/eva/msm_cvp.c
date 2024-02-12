@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_cvp.h"
@@ -1194,6 +1194,11 @@ static int msm_cvp_get_sysprop(struct msm_cvp_inst *inst,
 
 			props->prop_data[i].data = rc;
 			rc = 0;
+			break;
+		}
+		case EVA_KMD_PROP_SESSION_STATE:
+		{
+			props->prop_data[i].data = inst->error_code;
 			break;
 		}
 		case EVA_KMD_PROP_PWR_FDU:
