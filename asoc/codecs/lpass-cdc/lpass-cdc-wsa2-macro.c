@@ -63,6 +63,9 @@
 #define LPASS_CDC_WSA2_MACRO_FS_RATE_MASK 0x0F
 #define LPASS_CDC_WSA2_MACRO_EC_MIX_TX0_MASK 0x03
 #define LPASS_CDC_WSA2_MACRO_EC_MIX_TX1_MASK 0x18
+#define LPASS_AUDIO_WSA_DATA_FS_CTL_VALUE 0x16
+#define LPASS_CDC_WSA2_TOP_SEQ_CTL0_VALUE 0x40
+#define LPASS_CDC_WSA2_TOP_SEQ_CTL0_MASK 0x40
 
 #define LPASS_CDC_WSA2_MACRO_MAX_DMA_CH_PER_PORT 0x2
 #define LPASS_CDC_WSA2_MACRO_THERMAL_MAX_STATE 11
@@ -321,6 +324,7 @@ struct lpass_cdc_wsa2_macro_priv {
 	int pbr_clk_users;
 	char __iomem *wsa2_fs_reg_base;
 	bool wsa2_2ch_dma_enable;
+	bool wsa2_pcm_hapt_enable;
 };
 
 static struct snd_soc_dai_driver lpass_cdc_wsa2_macro_dai[];
@@ -951,6 +955,7 @@ static int lpass_cdc_wsa2_macro_mclk_enable(
 {
 	struct regmap *regmap = dev_get_regmap(wsa2_priv->dev->parent, NULL);
 	int ret = 0;
+	uint32_t temp = 0;
 
 	if (regmap == NULL) {
 		dev_err_ratelimited(wsa2_priv->dev, "%s: regmap is NULL\n", __func__);
@@ -979,6 +984,30 @@ static int lpass_cdc_wsa2_macro_mclk_enable(
 			regcache_sync_region(regmap,
 					WSA2_START_OFFSET,
 					WSA2_MAX_OFFSET);
+
+			/*Update registers to enable PCM Hapt SWR Path*/
+			if (wsa2_priv->wsa2_pcm_hapt_enable) {
+				if (wsa2_priv->wsa2_fs_reg_base) {
+					temp = ioread32(wsa2_priv->wsa2_fs_reg_base);
+					if (temp != LPASS_AUDIO_WSA_DATA_FS_CTL_VALUE) {
+						temp = LPASS_AUDIO_WSA_DATA_FS_CTL_VALUE;
+						iowrite32(temp, wsa2_priv->wsa2_fs_reg_base);
+					}
+					dev_dbg(wsa2_priv->dev,
+					"%s: LPASS_AUDIO_WSA_DATA_FS_CTL: %d", __func__, temp);
+				} else {
+					dev_err_ratelimited(wsa2_priv->dev,
+					"%s: Failed to read LPASS_AUDIO_WSA_DATA_FS_CTL", __func__);
+				}
+
+				regmap_update_bits(regmap,
+					LPASS_CDC_WSA2_TOP_SEQ_CTL0,
+					LPASS_CDC_WSA2_TOP_SEQ_CTL0_MASK,
+					LPASS_CDC_WSA2_TOP_SEQ_CTL0_VALUE);
+
+				dev_dbg(wsa2_priv->dev, "%s: LPASS_CDC_WSA2_TOP_SEQ_CTL0: %d",
+						__func__, LPASS_CDC_WSA2_TOP_SEQ_CTL0_VALUE);
+			}
 			/* 9.6MHz MCLK, set value 0x00 if other frequency */
 			regmap_update_bits(regmap,
 				LPASS_CDC_WSA2_TOP_FREQ_MCLK, 0x01, 0x01);
@@ -2706,6 +2735,36 @@ static int lpass_cdc_wsa2_macro_2ch_dma_enable_put(struct snd_kcontrol *kcontrol
 	return 0;
 }
 
+static int lpass_cdc_wsa2_macro_hapt_pcm_enable_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component =
+		snd_soc_kcontrol_component(kcontrol);
+	struct device *wsa2_dev = NULL;
+	struct lpass_cdc_wsa2_macro_priv *wsa2_priv = NULL;
+
+	if (!lpass_cdc_wsa2_macro_get_data(component, &wsa2_dev, &wsa2_priv, __func__))
+		return -EINVAL;
+
+	ucontrol->value.integer.value[0] = wsa2_priv->wsa2_pcm_hapt_enable;
+	return 0;
+}
+
+static int lpass_cdc_wsa2_macro_hapt_pcm_enable_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component =
+		snd_soc_kcontrol_component(kcontrol);
+	struct device *wsa2_dev = NULL;
+	struct lpass_cdc_wsa2_macro_priv *wsa2_priv = NULL;
+
+	if (!lpass_cdc_wsa2_macro_get_data(component, &wsa2_dev, &wsa2_priv, __func__))
+		return -EINVAL;
+
+	wsa2_priv->wsa2_pcm_hapt_enable = ucontrol->value.integer.value[0];
+	return 0;
+}
+
 static const struct snd_kcontrol_new lpass_cdc_wsa2_macro_snd_controls[] = {
 	SOC_ENUM_EXT("WSA2_GSM mode Enable", lpass_cdc_wsa2_macro_vbat_bcl_gsm_mode_enum,
 		     lpass_cdc_wsa2_macro_vbat_bcl_gsm_mode_func_get,
@@ -2762,6 +2821,9 @@ static const struct snd_kcontrol_new lpass_cdc_wsa2_macro_snd_controls[] = {
 	SOC_SINGLE_EXT("WSA2 2CH_DMA ENABLE", SND_SOC_NOPM, 0, 1,
 			0, lpass_cdc_wsa2_macro_2ch_dma_enable_get,
 			lpass_cdc_wsa2_macro_2ch_dma_enable_put),
+	SOC_SINGLE_EXT("WSA2 HAPT_PCM ENABLE", SND_SOC_NOPM, 0, 1,
+			0, lpass_cdc_wsa2_macro_hapt_pcm_enable_get,
+			lpass_cdc_wsa2_macro_hapt_pcm_enable_put),
 };
 
 static const struct soc_enum rx_mux_enum =
