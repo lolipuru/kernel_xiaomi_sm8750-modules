@@ -688,10 +688,10 @@ static int _init_soccp_mem(struct hw_fence_driver_data *drv_data)
 
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 	ret = iommu_map(domain, drv_data->res.start, drv_data->res.start, drv_data->size,
-		IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
+		IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE, GFP_KERNEL);
 #else
 	ret = iommu_map(domain, drv_data->res.start, drv_data->res.start, drv_data->size,
-		IOMMU_READ | IOMMU_WRITE);
+		IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE);
 #endif
 	if (ret)
 		HWFNC_ERR("failed to one-to-one map for soccp smmu addr:0x%llx sz:%lx ret:%d\n",
@@ -713,7 +713,6 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 	struct device_node *node = drv_data->dev->of_node;
 	struct device_node *node_compat;
 	const char *compat = "qcom,msm-hw-fence-mem";
-	struct device *dev = drv_data->dev;
 	struct device_node *np;
 	int ret;
 
@@ -736,8 +735,13 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 		return -EINVAL;
 	}
 
-	drv_data->io_mem_base = devm_ioremap_wc(dev, drv_data->res.start,
-		resource_size(&drv_data->res));
+	if (drv_data->has_soccp)
+		drv_data->io_mem_base = memremap(drv_data->res.start, resource_size(&drv_data->res),
+			MEMREMAP_WB);
+	else
+		drv_data->io_mem_base = devm_ioremap_wc(drv_data->dev, drv_data->res.start,
+			resource_size(&drv_data->res));
+
 	if (!drv_data->io_mem_base) {
 		HWFNC_ERR("ioremap failed!\n");
 		return -ENXIO;
