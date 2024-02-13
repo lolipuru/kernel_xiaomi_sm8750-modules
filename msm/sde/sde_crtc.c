@@ -6978,6 +6978,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		if (catalog->ai_scaler_count)
 			sde_kms_info_add_keyint(info, "ai_scaler_count",
 					catalog->ai_scaler_count);
+
+		if (catalog->abc_count)
+			sde_kms_info_add_keyint(info, "abc_count",
+					catalog->abc_count);
 	}
 
 	sde_kms_info_add_keyint(info, "dsc_block_count", catalog->dsc_count);

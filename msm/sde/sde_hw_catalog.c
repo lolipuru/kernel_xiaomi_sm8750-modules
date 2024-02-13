@@ -3097,6 +3097,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 {
 	int off_count, i;
 	struct sde_dt_props *props;
+	sde_cfg->abc_count = 0;
 
 	props = sde_get_dt_props(np, AIQE_PROP_MAX, aiqe_prop,
 			ARRAY_SIZE(aiqe_prop), &off_count);
@@ -3131,8 +3132,10 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 					AIQE_LEN, 0);
 			if (PROP_VALUE_ACCESS(props->values, MDNIE, 0))
 				sblk->aiqe.mdnie_supported = true;
-			if (PROP_VALUE_ACCESS(props->values, ABC, 0))
+			if (PROP_VALUE_ACCESS(props->values, ABC, 0)) {
+				sde_cfg->abc_count++;
 				sblk->aiqe.abc_supported = true;
+			}
 			if (PROP_VALUE_ACCESS(props->values, SSRC, 0))
 				sblk->aiqe.ssrc_supported = true;
 			if (PROP_VALUE_ACCESS(props->values, COPR, 0))
