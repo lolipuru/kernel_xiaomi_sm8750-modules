@@ -46,6 +46,11 @@ static enum hw_fence_client_id _get_hw_fence_client_id(enum synx_client_id synx_
 		hw_fence_client_id = synx_client_id - SYNX_CLIENT_HW_FENCE_DPU0_CTL0 +
 			HW_FENCE_CLIENT_ID_CTL0;
 		break;
+	case SYNX_CLIENT_HW_FENCE_IPA_CTX0 ... SYNX_CLIENT_HW_FENCE_IPA_CTX0 +
+			SYNX_MAX_SIGNAL_PER_CLIENT - 1:
+		hw_fence_client_id = synx_client_id - SYNX_CLIENT_HW_FENCE_IPA_CTX0 +
+			HW_FENCE_CLIENT_ID_IPA;
+		break;
 	case SYNX_CLIENT_HW_FENCE_IFE0_CTX0 ... SYNX_CLIENT_HW_FENCE_IFE7_CTX0 +
 			SYNX_MAX_SIGNAL_PER_CLIENT - 1:
 		hw_fence_client_id = synx_client_id - SYNX_CLIENT_HW_FENCE_IFE0_CTX0 +

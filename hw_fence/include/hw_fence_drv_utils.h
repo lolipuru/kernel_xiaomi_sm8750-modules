@@ -14,9 +14,9 @@
 
 /**
  * HW_FENCE_MAX_CLIENT_TYPE_CONFIGURABLE:
- * Maximum number of client types with configurable number of sub-clients (e.g. IPE, VPU, IFE)
+ * Maximum number of client types with configurable number of sub-clients (e.g. IPE, VPU, IFE, IPA)
  */
-#define HW_FENCE_MAX_CLIENT_TYPE_CONFIGURABLE 14
+#define HW_FENCE_MAX_CLIENT_TYPE_CONFIGURABLE 15
 
 /**
  * HW_FENCE_MAX_STATIC_CLIENTS_INDEX:
