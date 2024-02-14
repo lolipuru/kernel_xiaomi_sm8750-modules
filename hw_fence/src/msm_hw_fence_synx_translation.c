@@ -20,10 +20,6 @@
 #define MAX_SUPPORTED_DPU0 (HW_FENCE_CLIENT_ID_CTL5 - HW_FENCE_CLIENT_ID_CTL0)
 #define MAX_SUPPORTED_TEST (HW_FENCE_CLIENT_ID_VAL6 - HW_FENCE_CLIENT_ID_VAL1)
 
-#ifndef SYNX_CLIENT_HW_FENCE_TEST_CTX0
-#define SYNX_CLIENT_HW_FENCE_TEST_CTX0 2368
-#endif
-
 static enum hw_fence_client_id _get_hw_fence_client_id(enum synx_client_id synx_client_id)
 {
 	enum hw_fence_client_id hw_fence_client_id;
