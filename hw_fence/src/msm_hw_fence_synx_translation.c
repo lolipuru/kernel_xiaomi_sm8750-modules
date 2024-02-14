@@ -14,10 +14,15 @@
 #include "hw_fence_drv_interop.h"
 
 /**
- * MAX_SUPPORTED_DPU0:
- * Maximum number of dpu clients supported
+ * MAX_SUPPORTED_DPU0: Maximum number of dpu clients supported
+ * MAX_SUPPORTED_TEST: Maximum number of validation clients supported
  */
 #define MAX_SUPPORTED_DPU0 (HW_FENCE_CLIENT_ID_CTL5 - HW_FENCE_CLIENT_ID_CTL0)
+#define MAX_SUPPORTED_TEST (HW_FENCE_CLIENT_ID_VAL6 - HW_FENCE_CLIENT_ID_VAL1)
+
+#ifndef SYNX_CLIENT_HW_FENCE_TEST_CTX0
+#define SYNX_CLIENT_HW_FENCE_TEST_CTX0 2368
+#endif
 
 static enum hw_fence_client_id _get_hw_fence_client_id(enum synx_client_id synx_client_id)
 {
@@ -45,6 +50,10 @@ static enum hw_fence_client_id _get_hw_fence_client_id(enum synx_client_id synx_
 			SYNX_MAX_SIGNAL_PER_CLIENT - 1:
 		hw_fence_client_id = synx_client_id - SYNX_CLIENT_HW_FENCE_IFE0_CTX0 +
 			HW_FENCE_CLIENT_ID_IFE0;
+		break;
+	case SYNX_CLIENT_HW_FENCE_TEST_CTX0 ... SYNX_CLIENT_HW_FENCE_TEST_CTX0 + MAX_SUPPORTED_TEST:
+		hw_fence_client_id = synx_client_id - SYNX_CLIENT_HW_FENCE_TEST_CTX0 +
+			HW_FENCE_CLIENT_ID_VAL0;
 		break;
 	default:
 		HWFNC_ERR("Unsupported hw-fence client for synx_id:%d\n", synx_client_id);
@@ -222,6 +231,35 @@ static int synx_hwfence_signal(struct synx_session *session, u32 h_synx,
 
 error:
 	return hw_fence_interop_to_synx_status(ret);
+}
+
+static int synx_hwfence_wait(struct synx_session *session, u32 h_synx, u64 timeout_ms)
+{
+	int ret = -EINVAL;
+	u32 error;
+
+	if (IS_ERR_OR_NULL(session) || !is_hw_fence_client(session->type) ||
+			!(h_synx & SYNX_HW_FENCE_HANDLE_FLAG)) {
+		HWFNC_ERR("invalid session:0x%pK synx_id:%d\n", session,
+			IS_ERR_OR_NULL(session) ? -1 : session->type);
+		return -SYNX_INVALID;
+	}
+
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+	h_synx &= HW_FENCE_HANDLE_INDEX_MASK;
+	if (session->type >= SYNX_CLIENT_HW_FENCE_TEST_CTX0
+			&& session->type <= SYNX_CLIENT_HW_FENCE_TEST_CTX0 + MAX_SUPPORTED_TEST)
+		ret = hw_fence_debug_wait_val(hw_fence_drv_data, session->client, NULL, h_synx,
+			timeout_ms, &error);
+#endif /* CONFIG_DEBUG_FS */
+
+	if (ret) {
+		HWFNC_ERR("synx_id:%d failed to wait on fence h_synx:%u timeout_ms:%llu\n",
+			session->type, h_synx, timeout_ms);
+		return hw_fence_interop_to_synx_status(ret);
+	}
+
+	return error ? error : SYNX_STATE_SIGNALED_SUCCESS;
 }
 
 int synx_hwfence_recover(enum synx_client_id id)
@@ -445,6 +483,7 @@ int synx_hwfence_init_ops(struct synx_ops *hwfence_ops)
 	hwfence_ops->import = synx_hwfence_import;
 	hwfence_ops->get_fence = synx_hwfence_get_fence;
 	hwfence_ops->get_status = synx_hwfence_get_status;
+	hwfence_ops->wait = synx_hwfence_wait;
 
 	return SYNX_SUCCESS;
 }
