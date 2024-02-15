@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SDE_AIQE_COMMON_H
@@ -41,5 +41,5 @@ void aiqe_get_common_values(struct sde_hw_cp_cfg *cfg,
 			    struct sde_aiqe_top_level *aiqe_top, struct aiqe_reg_common *aiqe_cmn);
 bool mdnie_art_in_progress(struct sde_aiqe_top_level *aiqe_top);
 void aiqe_deinit(struct sde_aiqe_top_level *aiqe_top);
-int sde_cp_crtc_check_ssip_fuse(struct sde_kms *sde_kms, bool *allowed);
+
 #endif /* _SDE_AIQE_COMMON_H */

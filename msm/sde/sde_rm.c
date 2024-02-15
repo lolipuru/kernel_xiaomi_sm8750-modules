@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -666,7 +666,7 @@ static int _sde_rm_hw_blk_create(
 		hw = sde_hw_lm_init(id, mmio, cat);
 		break;
 	case SDE_HW_BLK_DSPP:
-		hw = sde_hw_dspp_init(id, mmio, cat, sde_kms);
+		hw = sde_hw_dspp_init(id, mmio, cat, sde_kms->dev->primary->index);
 		break;
 	case SDE_HW_BLK_DS:
 		hw = sde_hw_ds_init(id, mmio, cat);

@@ -5,7 +5,6 @@
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
-#include <linux/nvmem-consumer.h>
 #include <linux/slab.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
@@ -6085,31 +6084,4 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 end:
 	sde_hw_catalog_deinit(sde_cfg);
 	return NULL;
-}
-
-int sde_parse_fuse_configuration(struct platform_device *pdev, const char *cell_name,
-				 uint32_t *data)
-{
-	struct nvmem_cell *cell;
-	int rc = 0;
-	void *buf;
-	size_t len;
-
-	cell = nvmem_cell_get(&pdev->dev, cell_name);
-	rc = PTR_ERR_OR_ZERO(cell);
-	if (rc) {
-		if (rc == -ENOENT)
-			return 0;
-		return rc;
-	}
-
-	buf = nvmem_cell_read(cell, &len);
-	nvmem_cell_put(cell);
-	if (IS_ERR(buf))
-		return PTR_ERR(buf);
-
-	memcpy(data, buf, min(len, sizeof(data)));
-	kfree(buf);
-
-	return 0;
 }

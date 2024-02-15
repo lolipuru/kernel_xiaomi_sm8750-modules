@@ -2255,13 +2255,4 @@ static inline bool sde_hw_sspp_multirect_enabled(const struct sde_sspp_cfg *cfg)
 			 test_bit(SDE_SSPP_SMART_DMA_V2, &cfg->features) ||
 			 test_bit(SDE_SSPP_SMART_DMA_V2p5, &cfg->features);
 }
-
-/**
- * sde_parse_fuse_configuration - parse fuse configuration
- * @pdev:          pointer to platform_device
- * @cell_name:     pointer to the cell name
- * @data:          pointer to fuse configuration value
- */
-int sde_parse_fuse_configuration(struct platform_device *pdev, const char *cell_name,
-				 uint32_t *data);
 #endif /* _SDE_HW_CATALOG_H */
