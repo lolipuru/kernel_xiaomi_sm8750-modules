@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _WCD939X_H
@@ -100,6 +100,7 @@ static inline int wcd939x_slave_get_slave_ch_val(int ch)
 
 	return -EINVAL;
 }
+int wcd939x_micb_external_event(struct device *dev, int micb, bool req);
 #else
 static inline int wcd939x_info_create_codec_entry(
 					struct snd_info_entry *codec_root,
@@ -131,6 +132,10 @@ static inline int wcd939x_slave_get_slave_ch_val(int ch)
 	return 0;
 }
 static int wcd939x_codec_get_dev_num(struct snd_soc_component *component)
+{
+	return 0;
+}
+int wcd939x_micb_external_event(struct device *dev, int micb, bool req)
 {
 	return 0;
 }
