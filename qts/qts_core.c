@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"%s: " fmt, __func__
@@ -307,7 +307,11 @@ static void qts_trusted_touch_intr_gpio_toggle(struct qts_data *qts_data,
 		return;
 
 	base = ioremap(TOUCH_INTR_GPIO_BASE, TOUCH_INTR_GPIO_SIZE);
-	val = readl_relaxed(base + TOUCH_RESET_GPIO_OFFSET);
+	if (!base) {
+		pr_err("Failed to get intr base!\n");
+		return;
+	}
+	val = readl_relaxed(base + TOUCH_INTR_GPIO_OFFSET);
 	if (enable) {
 		val |= BIT(0);
 		writel_relaxed(val, base + TOUCH_INTR_GPIO_OFFSET);
@@ -348,7 +352,7 @@ static int qts_vm_compare_sgl_desc(struct gh_sgl_desc *expected,
 
 		if ((left->ipa_base != right->ipa_base) ||
 				(left->size != right->size)) {
-			pr_err("sgl mismatch: left_base:%d right base:%d left size:%d right size:%d\n",
+			pr_err("sgl mismatch: left_base:%lld right base:%lld left size:%lld right size:%lld\n",
 				left->ipa_base, right->ipa_base, left->size, right->size);
 
 			return -EINVAL;
@@ -398,7 +402,7 @@ static void qts_trusted_touch_tvm_vm_mode_enable(struct qts_data *qts_data)
 
 	acl_desc = qts_vm_get_acl(GH_TRUSTED_VM);
 	if (IS_ERR(acl_desc)) {
-		pr_err("failed to populated acl data:rc=%d\n", PTR_ERR(acl_desc));
+		pr_err("failed to populated acl data:rc=%ld\n", PTR_ERR(acl_desc));
 		goto accept_fail;
 	}
 
@@ -410,7 +414,7 @@ static void qts_trusted_touch_tvm_vm_mode_enable(struct qts_data *qts_data)
 			GH_RM_MEM_ACCEPT_DONE,  TRUSTED_TOUCH_MEM_LABEL,
 			acl_desc, NULL, NULL, 0);
 	if (IS_ERR_OR_NULL(sgl_desc)) {
-		pr_err("failed to do mem accept :rc=%d\n", PTR_ERR(sgl_desc));
+		pr_err("failed to do mem accept :rc=%ld\n", PTR_ERR(sgl_desc));
 		goto acl_fail;
 	}
 	qts_trusted_touch_set_vm_state(qts_data, TVM_IOMEM_ACCEPTED);
