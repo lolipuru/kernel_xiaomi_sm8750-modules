@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/hwspinlock.h>
@@ -153,6 +153,8 @@ u32 synx_global_map_core_id(enum synx_core_id id)
 		host_id = IPCMEM_CVP; break;
 	case SYNX_CORE_ICP:
 		host_id = IPCMEM_CAM; break;
+	case SYNX_CORE_SOCCP:
+		host_id = IPCMEM_SOCCP; break;
 	default:
 		host_id = IPCMEM_NUM_HOSTS;
 		dprintk(SYNX_ERR, "invalid core id\n");
@@ -862,6 +864,44 @@ free:
 	kfree(clear_idx);
 
 	return rc;
+}
+
+int synx_global_test_status_update_coredata(u32 idx,
+	enum synx_core_id id, u32 h_hwfence,
+	bool is_waiter)
+{
+	int rc;
+	unsigned long flags;
+	u32 status;
+	struct synx_global_coredata *synx_g_obj;
+
+	if (!synx_gmem.table)
+		return -SYNX_NOMEM;
+
+	if (id >= SYNX_CORE_MAX || !synx_is_valid_idx(idx))
+		return -SYNX_INVALID;
+
+	rc = synx_gmem_lock(idx, &flags);
+	if (rc)
+		return rc;
+	synx_g_obj = &synx_gmem.table[idx];
+	synx_global_print_data(synx_g_obj, __func__);
+	status = synx_g_obj->status;
+	/* if handle is still ACTIVE */
+	if (status == SYNX_STATE_ACTIVE || synx_g_obj->num_child != 0) {
+		synx_g_obj->refcount++;
+		synx_g_obj->subscribers |= (1UL << id);
+		if (is_waiter)
+			synx_g_obj->waiters |= (1UL << id);
+		synx_g_obj->h_hwfence = h_hwfence;
+		status = SYNX_STATE_ACTIVE;
+	}
+	else
+		dprintk(SYNX_DBG, "handle %u already signaled %u",
+			synx_g_obj->handle, synx_g_obj->status);
+	synx_gmem_unlock(idx, &flags);
+
+	return status;
 }
 
 int synx_global_mem_init(void)
