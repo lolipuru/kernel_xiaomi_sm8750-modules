@@ -2,6 +2,7 @@
 
 ENABLE_SECUREMSM_DLKM := true
 ENABLE_SECUREMSM_QTEE_DLKM := true
+ENABLE_QCEDEV_FE := false
 
 ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
   ifeq ($(TARGET_KERNEL_DLKM_SECURE_MSM_OVERRIDE),false)
@@ -33,12 +34,19 @@ endif #ENABLE_SECUREMSM_QTEE_DLKM
 ifeq ($(TARGET_USES_GY), true)
   ENABLE_QCRYPTO_DLKM := false
   ENABLE_HDCP_QSEECOM_DLKM := false
-  ENABLE_QRNG_DLKM := false
+  ENABLE_QRNG_DLKM := true
   ENABLE_SMMU_PROXY := false
   ENABLE_SMCINVOKE_DLKM := true
   ENABLE_TZLOG_DLKM := false
   ENABLE_QSEECOM_DLKM := false
 endif #TARGET_USES_GY
+
+#enable QCEDEV_FE driver only on Automotive Lemans LA GVM.
+#ifeq ($(CONFIG_ARCH_LEMANS), y)
+ifeq ($(CONFIG_QTI_QUIN_GVM), y)
+  ENABLE_QCEDEV_FE := true
+endif # CONFIG_QTI_QUIN_GVM
+#endif # CONFIG_ARCH_LEMANS
 
 LOCAL_PATH := $(call my-dir)
 
@@ -179,3 +187,16 @@ LOCAL_MODULE_DEBUG_ENABLE := true
 LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 endif #ENABLE_SMMU_PROXY
+
+###################################################
+###################################################
+ifeq ($(ENABLE_QCEDEV_FE), true)
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES           := $(SSG_SRC_FILES)
+LOCAL_MODULE              := qcedev_fe_dlkm.ko
+LOCAL_MODULE_KBUILD_NAME  := qcedev_fe_dlkm.ko
+LOCAL_MODULE_TAGS         := optional
+LOCAL_MODULE_DEBUG_ENABLE := true
+LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
+include $(DLKM_DIR)/Build_external_kernelmodule.mk
+endif #ENABLE_QCEDEV_FE

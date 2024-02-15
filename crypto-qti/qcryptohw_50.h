@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DRIVERS_CRYPTO_MSM_QCRYPTOHW_50_H_
@@ -495,6 +496,9 @@
 #define CRYPTO_GO				0
 #define CRYPTO_CLR_CNTXT			1
 #define CRYPTO_RESULTS_DUMP			2
+
+/* pwr_ctrl reg */
+#define CRYPTO_AUTO_SHUTDOWN_EN 1
 
 /*  F8 definition of CRYPTO_ENCR_CNTR1_IV1 REG  */
 #define CRYPTO_CNTR1_IV1_REG_F8_PKT_CNT		16	/* bit 31 - 16 */

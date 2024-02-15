@@ -2,6 +2,7 @@
 
 ENABLE_SECUREMSM_DLKM := true
 ENABLE_SECUREMSM_QTEE_DLKM := true
+ENABLE_QCEDEV_FE := false
 
 ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
   ifeq ($(TARGET_KERNEL_DLKM_SECURE_MSM_OVERRIDE), false)
@@ -11,6 +12,13 @@ ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
       ENABLE_SECUREMSM_QTEE_DLKM := false
   endif
 endif
+
+#enable QCEDEV_FE driver only on Automotive Lemans LA GVM.
+#ifeq ($(CONFIG_ARCH_LEMANS), y)
+ifeq ($(CONFIG_QTI_QUIN_GVM), y)
+  ENABLE_QCEDEV_FE := true
+endif # CONFIG_QTI_QUIN_GVM
+#endif # CONFIG_ARCH_LEMANS
 
 ifeq ($(ENABLE_SECUREMSM_DLKM), true)
   ENABLE_QCRYPTO_DLKM := true
@@ -33,7 +41,7 @@ endif #ENABLE_SECUREMSM_QTEE_DLKM
 ifeq ($(TARGET_USES_GY), true)
   ENABLE_QCRYPTO_DLKM := false
   ENABLE_HDCP_QSEECOM_DLKM := false
-  ENABLE_QRNG_DLKM := false
+  ENABLE_QRNG_DLKM := true
   ENABLE_SMMU_PROXY := false
   ENABLE_SMCINVOKE_DLKM := true
   ENABLE_TZLOG_DLKM := false
@@ -69,3 +77,7 @@ endif #ENABLE_TZLOG_DLKM
 ifeq ($(ENABLE_QSEECOM_DLKM), true)
 PRODUCT_PACKAGES += qseecom_dlkm.ko
 endif #ENABLE_QSEECOM_DLKM
+
+ifeq ($(ENABLE_QCEDEV_FE), true)
+PRODUCT_PACKAGES += qcedev_fe_dlkm.ko
+endif #ENABLE_QCEDEV_FE
