@@ -528,7 +528,7 @@ int smem_mailbox_write(int id, int flags, __u8 *data, u16 data_length) {
 	memcpy(buf + sizeof(time_tlv) + sizeof(xo_time) + sizeof(data_tlv), data, data_length);
 
 	// Read/Write must always be word aligned for modem.
-	word_offset = 4 - (buf_length % 4);
+	word_offset = (~4 & (4 - (buf_length % 4)));
 	write_buf = GET_WRITE_BUF(smem, entry);
 
 	overflow_bytes = head_index + buf_length - entry->write_size;
