@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -159,7 +159,7 @@ struct wmi_ext_dbg_msg {
 	uint32_t len;
 	uint64_t ts;
 	enum WMI_MSG_TYPE type;
-	uint8_t buf[0];
+	uint8_t buf[];
 };
 #endif /*WMI_EXT_DBG */
 
@@ -542,7 +542,7 @@ QDF_STATUS (*send_vdev_nss_chain_params_cmd)(wmi_unified_t wmi_handle,
 					 struct vdev_nss_chains *user_cfg);
 
 QDF_STATUS (*send_vdev_stop_cmd)(wmi_unified_t wmi,
-					uint8_t vdev_id);
+				 struct vdev_stop_params *params);
 
 QDF_STATUS (*send_vdev_down_cmd)(wmi_unified_t wmi,
 			uint8_t vdev_id);
@@ -1959,6 +1959,11 @@ QDF_STATUS (*extract_dcs_awgn_info)(
 		wmi_unified_t wmi_handle,
 		void *evt_buf,
 		struct wmi_host_dcs_awgn_info *awgn_info);
+
+QDF_STATUS (*extract_dcs_obss_intf_info)(
+		wmi_unified_t wmi_handle,
+		void *evt_buf,
+		wmi_host_dcs_obss_intf_info *obss_intf_info);
 #endif
 
 QDF_STATUS (*extract_fips_event_data)(wmi_unified_t wmi_handle,
@@ -2370,6 +2375,11 @@ QDF_STATUS (*extract_dbr_buf_cqi_metadata)(
 			wmi_unified_t wmi_handle,
 			uint8_t *evt_buf, uint8_t idx,
 			struct direct_buf_rx_cqi_metadata *param);
+
+QDF_STATUS (*extract_dbr_buf_wifi_radar_metadata)(
+			wmi_unified_t wmi_handle,
+			uint8_t *evt_buf, uint8_t idx,
+			struct direct_buf_rx_wifi_radar_metadata *param);
 #endif
 
 QDF_STATUS (*extract_pdev_utf_event)(wmi_unified_t wmi_hdl,
@@ -3144,6 +3154,14 @@ QDF_STATUS
 #endif /* WLAN_RCC_ENHANCED_AOA_SUPPORT */
 #endif
 
+#ifdef WLAN_WIFI_RADAR_ENABLE
+QDF_STATUS
+(*extract_wifi_radar_cal_status_param)
+			(wmi_unified_t wmi_handle,
+			 void *evt_buf,
+			 struct wmi_wifi_radar_cal_status_param *param);
+#endif
+
 QDF_STATUS (*send_set_halphy_cal)(wmi_unified_t wmi_handle,
 				  struct wmi_host_send_set_halphy_cal_info *param);
 
@@ -3473,6 +3491,9 @@ QDF_STATUS (*extract_oob_connect_response_event)(
 			uint8_t *event, uint32_t data_len,
 			struct wmi_oob_connect_response_event *response);
 
+#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
+QDF_STATUS (*get_tsf_stats_for_csa)(wmi_unified_t wmi_handle, uint8_t vdev_id);
+#endif
 #endif /* WLAN_FEATURE_LL_LT_SAP */
 #endif /* QCA_TARGET_IF_MLME */
 
@@ -4072,6 +4093,14 @@ static inline void wmi_ext_dbg_msg_put(struct wmi_ext_dbg_msg *msg)
 void wmi_cfr_attach_tlv(struct wmi_unified *wmi_handle);
 #else
 static inline void wmi_cfr_attach_tlv(struct wmi_unified *wmi_handle)
+{
+}
+#endif
+
+#ifdef WLAN_WIFI_RADAR_ENABLE
+void wmi_wifi_radar_attach_tlv(struct wmi_unified *wmi_handle);
+#else
+static inline void wmi_wifi_radar_attach_tlv(struct wmi_unified *wmi_handle)
 {
 }
 #endif

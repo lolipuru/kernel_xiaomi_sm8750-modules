@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -227,12 +227,17 @@ static const  uint8_t rxdma2host_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
 #endif /* CONFIG_BERYLLIUM */
 
 #ifdef CONFIG_BERYLLIUM
+#ifdef FEATURE_ML_MONITOR_MODE_SUPPORT
+static const  uint8_t rx_mon_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
+	[13] = WLAN_CFG_RX_MON_RING_MASK_0, [14] = WLAN_CFG_RX_MON_RING_MASK_1};
+#else
 #ifdef WLAN_FEATURE_LOCAL_PKT_CAPTURE
 static const  uint8_t rx_mon_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
 	[14] = WLAN_CFG_RX_MON_RING_MASK_0 | WLAN_CFG_RX_MON_RING_MASK_1};
 #else
 static const  uint8_t rx_mon_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
 	[5] = WLAN_CFG_RX_MON_RING_MASK_0};
+#endif
 #endif
 #else
 static const  uint8_t rx_mon_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
@@ -3620,6 +3625,10 @@ void wlan_cfg_fill_interrupt_mask(struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx,
 
 #define WLAN_CFG_IPA_ENABLE_MASK BIT(0)
 #ifdef IPA_WDI3_TX_TWO_PIPES
+
+/* This must be same as WLAN_IPA_TWO_TX_PIPES_ENABLE_MASK */
+#define WLAN_CFG_IPA_TWO_TX_PIPES_ENABLE_MASK BIT(10)
+
 /**
  * wlan_soc_ipa_cfg_attach() - Update ipa tx and tx alt config
  *  in dp soc cfg context
@@ -3632,12 +3641,20 @@ static void
 wlan_soc_ipa_cfg_attach(struct cdp_ctrl_objmgr_psoc *psoc,
 			struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx)
 {
+	uint32_t ipa_config;
+
 	if (ucfg_ipa_get_pld_enable()) {
-		wlan_cfg_ctx->ipa_enabled =
-			(get_ipa_config((struct wlan_objmgr_psoc *)psoc) &
-			 WLAN_CFG_IPA_ENABLE_MASK);
+		ipa_config = get_ipa_config((struct wlan_objmgr_psoc *)psoc);
+
+		wlan_cfg_ctx->ipa_enabled = ipa_config &
+			WLAN_CFG_IPA_ENABLE_MASK;
 		dp_info("is IPA enabled from ini: %d",
 			wlan_cfg_ctx->ipa_enabled);
+
+		wlan_cfg_ctx->ipa_two_tx_pipes_enable = ipa_config &
+			WLAN_CFG_IPA_TWO_TX_PIPES_ENABLE_MASK;
+		dp_info("IPA two tx pipes feature enable: %d",
+			wlan_cfg_ctx->ipa_two_tx_pipes_enable);
 	} else {
 		wlan_cfg_ctx->ipa_enabled = false;
 		dp_info("IPA disabled from platform driver");
@@ -3686,7 +3703,7 @@ wlan_soc_ipa_cfg_attach(struct cdp_ctrl_objmgr_psoc *psoc,
 			struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx)
 {
 }
-#endif
+#endif /* IPA_OFFLOAD */
 
 #ifdef DP_HW_COOKIE_CONVERT_EXCEPTION
 static void
@@ -4046,6 +4063,31 @@ wlan_soc_sawf_mcast_attach(struct cdp_ctrl_objmgr_psoc *psoc,
 }
 #endif
 
+#ifdef WLAN_SUPPORT_LAPB
+static void
+wlan_soc_lapb_cfg_attach(struct cdp_ctrl_objmgr_psoc *psoc,
+			 struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx)
+{
+	wlan_cfg_ctx->is_lapb_enabled = cfg_get(psoc, CFG_WLAN_SUPPORT_LAPB);
+}
+
+bool wlan_cfg_is_lapb_enabled(struct wlan_cfg_dp_soc_ctxt *cfg)
+{
+	return cfg->is_lapb_enabled;
+}
+#else
+static void
+wlan_soc_lapb_cfg_attach(struct cdp_ctrl_objmgr_psoc *psoc,
+			 struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx)
+{
+}
+
+bool wlan_cfg_is_lapb_enabled(struct wlan_cfg_dp_soc_ctxt *cfg)
+{
+	return false;
+}
+#endif
+
 #ifdef WLAN_SOFTUMAC_SUPPORT
 struct wlan_cfg_dp_soc_ctxt *
 wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
@@ -4233,6 +4275,7 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 			cfg_get(psoc, CFG_DP_TXMON_SW_PEER_FILTERING);
 	wlan_soc_tx_packet_inspect_attach(psoc, wlan_cfg_ctx);
 	wlan_soc_local_pkt_capture_cfg_attach(psoc, wlan_cfg_ctx);
+	wlan_soc_lapb_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_soc_umac_reset_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_cfg_ctx->rx_buffer_size = cfg_get(psoc, CFG_DP_RX_BUFFER_SIZE);
 	wlan_cfg_ctx->avg_rate_stats_filter_val =
@@ -4493,6 +4536,7 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 			cfg_get(psoc, CFG_DP_POINTER_NUM_THRESHOLD_RX);
 	wlan_soc_tx_packet_inspect_attach(psoc, wlan_cfg_ctx);
 	wlan_soc_local_pkt_capture_cfg_attach(psoc, wlan_cfg_ctx);
+	wlan_soc_lapb_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_cfg_ctx->special_frame_msk =
 			cfg_get(psoc, CFG_SPECIAL_FRAME_MSK);
 	wlan_soc_umac_reset_cfg_attach(psoc, wlan_cfg_ctx);
@@ -5711,6 +5755,11 @@ uint32_t wlan_cfg_ipa_tx_comp_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg)
 }
 
 #ifdef IPA_WDI3_TX_TWO_PIPES
+bool wlan_cfg_is_ipa_two_tx_pipes_enabled(struct wlan_cfg_dp_soc_ctxt *cfg)
+{
+	return cfg->ipa_two_tx_pipes_enable;
+}
+
 int wlan_cfg_ipa_tx_alt_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg)
 {
 	return cfg->ipa_tx_alt_ring_size;
@@ -5721,7 +5770,7 @@ int wlan_cfg_ipa_tx_alt_comp_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg)
 	return cfg->ipa_tx_alt_comp_ring_size;
 }
 
-#else
+#else /* !IPA_WDI3_TX_TWO_PIPES */
 int wlan_cfg_ipa_tx_alt_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg)
 {
 	return cfg->ipa_tx_ring_size;
@@ -5731,8 +5780,8 @@ int wlan_cfg_ipa_tx_alt_comp_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg)
 {
 	return cfg->ipa_tx_comp_ring_size;
 }
-#endif
-#endif
+#endif /* IPA_WDI3_TX_TWO_PIPES */
+#endif /* IPA_OFFLOAD */
 
 #ifdef WLAN_SUPPORT_PPEDS
 bool

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -41,9 +41,7 @@
 #ifdef FEATURE_WDS
 #include "dp_txrx_wds.h"
 #endif
-#ifdef QCA_IPA_LL_TX_FLOW_CONTROL
 #include <pld_common.h>
-#endif
 
 /* Hard coded config parameters until dp_ops_cfg.cfg_attach implemented */
 #define CFG_IPA_UC_TX_BUF_SIZE_DEFAULT            (2048)
@@ -256,28 +254,6 @@ static QDF_STATUS __dp_ipa_tx_buf_smmu_mapping(
 	return ret;
 }
 
-#ifndef QCA_OL_DP_SRNG_LOCK_LESS_ACCESS
-static void dp_ipa_set_reo_ctx_mapping_lock_required(struct dp_soc *soc,
-						     bool lock_required)
-{
-	hal_ring_handle_t hal_ring_hdl;
-	int ring;
-
-	for (ring = 0; ring < soc->num_reo_dest_rings; ring++) {
-		hal_ring_hdl = soc->reo_dest_ring[ring].hal_srng;
-		hal_srng_lock(hal_ring_hdl);
-		soc->ipa_reo_ctx_lock_required[ring] = lock_required;
-		hal_srng_unlock(hal_ring_hdl);
-	}
-}
-#else
-static void dp_ipa_set_reo_ctx_mapping_lock_required(struct dp_soc *soc,
-						     bool lock_required)
-{
-}
-
-#endif
-
 #ifdef RX_DESC_MULTI_PAGE_ALLOC
 static QDF_STATUS dp_ipa_handle_rx_buf_pool_smmu_mapping(struct dp_soc *soc,
 							 struct dp_pdev *pdev,
@@ -304,9 +280,9 @@ static QDF_STATUS dp_ipa_handle_rx_buf_pool_smmu_mapping(struct dp_soc *soc,
 	pdev_id = pdev->pdev_id;
 	rx_pool = &soc->rx_desc_buf[pdev_id];
 
-	dp_ipa_set_reo_ctx_mapping_lock_required(soc, true);
+	dp_rx_set_reo_ctx_mapping_lock_required(soc, true);
 	qdf_spin_lock_bh(&rx_pool->lock);
-	dp_ipa_rx_buf_smmu_mapping_lock(soc);
+	dp_rx_buf_smmu_mapping_lock(soc);
 	num_desc = rx_pool->pool_size;
 	num_desc_per_page = rx_pool->desc_pages.num_element_per_page;
 	for (i = 0; i < num_desc; i++) {
@@ -339,9 +315,9 @@ static QDF_STATUS dp_ipa_handle_rx_buf_pool_smmu_mapping(struct dp_soc *soc,
 						       rx_pool->buf_size,
 						       create, func, line);
 	}
-	dp_ipa_rx_buf_smmu_mapping_unlock(soc);
+	dp_rx_buf_smmu_mapping_unlock(soc);
 	qdf_spin_unlock_bh(&rx_pool->lock);
-	dp_ipa_set_reo_ctx_mapping_lock_required(soc, false);
+	dp_rx_set_reo_ctx_mapping_lock_required(soc, false);
 
 	return ret;
 }
@@ -368,9 +344,9 @@ static QDF_STATUS dp_ipa_handle_rx_buf_pool_smmu_mapping(
 	pdev_id = pdev->pdev_id;
 	rx_pool = &soc->rx_desc_buf[pdev_id];
 
-	dp_ipa_set_reo_ctx_mapping_lock_required(soc, true);
+	dp_rx_set_reo_ctx_mapping_lock_required(soc, true);
 	qdf_spin_lock_bh(&rx_pool->lock);
-	dp_ipa_rx_buf_smmu_mapping_lock(soc);
+	dp_rx_buf_smmu_mapping_lock(soc);
 	for (i = 0; i < rx_pool->pool_size; i++) {
 		if ((!(rx_pool->array[i].rx_desc.in_use)) ||
 		    rx_pool->array[i].rx_desc.unmapped)
@@ -396,9 +372,9 @@ static QDF_STATUS dp_ipa_handle_rx_buf_pool_smmu_mapping(
 		__dp_ipa_handle_buf_smmu_mapping(soc, nbuf, rx_pool->buf_size,
 						 create, func, line);
 	}
-	dp_ipa_rx_buf_smmu_mapping_unlock(soc);
+	dp_rx_buf_smmu_mapping_unlock(soc);
 	qdf_spin_unlock_bh(&rx_pool->lock);
-	dp_ipa_set_reo_ctx_mapping_lock_required(soc, false);
+	dp_rx_set_reo_ctx_mapping_lock_required(soc, false);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -551,6 +527,30 @@ dp_ipa_setup_tx_smmu_params_pmac_id(struct dp_soc *soc,
 
 	QDF_IPA_WDI_SETUP_INFO_SMMU_RX_PMAC_ID(tx_smmu, pmac_id);
 }
+
+static void
+dp_ipa_set_rx_chip_id(struct dp_soc *soc,
+		      qdf_ipa_wdi_pipe_setup_info_t *rx)
+{
+	uint8_t mlo_chip_id = 0xFF;
+
+	if (soc->cdp_soc.ol_ops->get_mlo_chip_id)
+		mlo_chip_id = soc->cdp_soc.ol_ops->get_mlo_chip_id(soc->ctrl_psoc);
+
+	QDF_IPA_WDI_SETUP_INFO_CHIP_ID(rx, mlo_chip_id);
+}
+
+static void
+dp_ipa_set_rx_smmu_chip_id(struct dp_soc *soc,
+			   qdf_ipa_wdi_pipe_setup_info_smmu_t *rx_smmu)
+{
+	uint8_t mlo_chip_id = 0xFF;
+
+	if (soc->cdp_soc.ol_ops->get_mlo_chip_id)
+		mlo_chip_id = soc->cdp_soc.ol_ops->get_mlo_chip_id(soc->ctrl_psoc);
+
+	QDF_IPA_WDI_SETUP_INFO_SMMU_CHIP_ID(rx_smmu, mlo_chip_id);
+}
 #else
 static inline void
 dp_ipa_setup_tx_alt_params_pmac_id(struct dp_soc *soc,
@@ -575,7 +575,101 @@ dp_ipa_setup_tx_smmu_params_pmac_id(struct dp_soc *soc,
 				    qdf_ipa_wdi_pipe_setup_info_smmu_t *tx_smmu)
 {
 }
+
+static inline void
+dp_ipa_set_rx_chip_id(struct dp_soc *soc,
+		      qdf_ipa_wdi_pipe_setup_info_t *rx)
+{
+}
+
+static inline void
+dp_ipa_set_rx_smmu_chip_id(struct dp_soc *soc,
+			   qdf_ipa_wdi_pipe_setup_info_smmu_t *rx_smmu)
+{
+}
 #endif
+
+/**
+ * dp_ipa_set_smmu_txr_rn_db_addr() - Indicate IPA to set or clear the
+ * 40th bit of transfer ring DB addr
+ * @dev: Pointer to device
+ * @txrx_smmu: WDI TX/RX configuration
+ *
+ * Return: None
+ */
+static void
+dp_ipa_set_smmu_txr_rn_db_addr(struct device *dev,
+			       qdf_ipa_wdi_pipe_setup_info_smmu_t *txrx_smmu)
+{
+	int pcie_slot = pld_get_pci_slot(dev);
+
+	if (pcie_slot)
+		QDF_IPA_WDI_SETUP_INFO_SMMU_IS_TXR_RN_DB_PCIE_ADDR(txrx_smmu) =
+			false;
+	else
+		QDF_IPA_WDI_SETUP_INFO_SMMU_IS_TXR_RN_DB_PCIE_ADDR(txrx_smmu) =
+			true;
+}
+
+/**
+ * dp_ipa_set_smmu_evt_rn_db_addr() - Indicate IPA to set or clear the
+ * 40th bit of evt ring DB addr
+ * @dev: Pointer to device
+ * @txrx_smmu: WDI TX/RX configuration
+ *
+ * Return: None
+ */
+static void
+dp_ipa_set_smmu_evt_rn_db_addr(struct device *dev,
+			       qdf_ipa_wdi_pipe_setup_info_smmu_t *txrx_smmu)
+{
+	int pcie_slot = pld_get_pci_slot(dev);
+
+	if (pcie_slot)
+		QDF_IPA_WDI_SETUP_INFO_SMMU_IS_EVT_RN_DB_PCIE_ADDR(txrx_smmu) =
+			false;
+	else
+		QDF_IPA_WDI_SETUP_INFO_SMMU_IS_EVT_RN_DB_PCIE_ADDR(txrx_smmu) =
+			true;
+}
+
+/**
+ * dp_ipa_set_txr_rn_db_addr() - Indicate IPA to set or clear the 40th
+ * bit of transfer ring DB addr for non-smmu case
+ * @dev: Pointer to device
+ * @txrx: WDI TX/RX configuration
+ *
+ * Return: None
+ */
+static void dp_ipa_set_txr_rn_db_addr(struct device *dev,
+				      qdf_ipa_wdi_pipe_setup_info_t *txrx)
+{
+	int pcie_slot = pld_get_pci_slot(dev);
+
+	if (pcie_slot)
+		QDF_IPA_WDI_SETUP_INFO_IS_TXR_RN_DB_PCIE_ADDR(txrx) = false;
+	else
+		QDF_IPA_WDI_SETUP_INFO_IS_TXR_RN_DB_PCIE_ADDR(txrx) = true;
+}
+
+/**
+ * dp_ipa_set_evt_rn_db_addr() - Indicate IPA to set or clear the 40th
+ * bit of evt ring DB addr for non-smmu case
+ * @dev: Pointer to device
+ * @txrx: WDI TX/RX configuration
+ *
+ * Return: None
+ */
+static void dp_ipa_set_evt_rn_db_addr(struct device *dev,
+				      qdf_ipa_wdi_pipe_setup_info_t *txrx)
+{
+	int pcie_slot = pld_get_pci_slot(dev);
+
+	if (pcie_slot)
+		QDF_IPA_WDI_SETUP_INFO_IS_EVT_RN_DB_PCIE_ADDR(txrx) = false;
+	else
+		QDF_IPA_WDI_SETUP_INFO_IS_EVT_RN_DB_PCIE_ADDR(txrx) = true;
+}
 
 #ifdef IPA_WDI3_TX_TWO_PIPES
 static void dp_ipa_tx_alt_pool_detach(struct dp_soc *soc, struct dp_pdev *pdev)
@@ -583,6 +677,9 @@ static void dp_ipa_tx_alt_pool_detach(struct dp_soc *soc, struct dp_pdev *pdev)
 	struct dp_ipa_resources *ipa_res;
 	qdf_nbuf_t nbuf;
 	int idx;
+
+	if (!wlan_cfg_is_ipa_two_tx_pipes_enabled(soc->wlan_cfg_ctx))
+		return;
 
 	for (idx = 0; idx < soc->ipa_uc_tx_rsc_alt.alloc_tx_buf_cnt; idx++) {
 		nbuf = (qdf_nbuf_t)
@@ -614,8 +711,7 @@ static int dp_ipa_tx_alt_pool_attach(struct dp_soc *soc)
 	uint32_t tx_buffer_count;
 	uint32_t ring_base_align = 8;
 	qdf_dma_addr_t buffer_paddr;
-	struct hal_srng *wbm_srng = (struct hal_srng *)
-			soc->tx_comp_ring[IPA_TX_ALT_COMP_RING_IDX].hal_srng;
+	struct hal_srng *wbm_srng;
 	struct hal_srng_params srng_params;
 	uint32_t wbm_bm_id;
 	void *ring_entry;
@@ -623,17 +719,24 @@ static int dp_ipa_tx_alt_pool_attach(struct dp_soc *soc)
 	qdf_nbuf_t nbuf;
 	int retval = QDF_STATUS_SUCCESS;
 	int max_alloc_count = 0;
+	unsigned int uc_tx_buf_sz;
+	unsigned int alloc_size;
+
+	if (!wlan_cfg_is_ipa_two_tx_pipes_enabled(soc->wlan_cfg_ctx))
+		return retval;
 
 	/*
 	 * Uncomment when dp_ops_cfg.cfg_attach is implemented
 	 * unsigned int uc_tx_buf_sz =
 	 *		dp_cfg_ipa_uc_tx_buf_size(pdev->osif_pdev);
 	 */
-	unsigned int uc_tx_buf_sz = CFG_IPA_UC_TX_BUF_SIZE_DEFAULT;
-	unsigned int alloc_size = uc_tx_buf_sz + ring_base_align - 1;
+	uc_tx_buf_sz = CFG_IPA_UC_TX_BUF_SIZE_DEFAULT;
+	alloc_size = uc_tx_buf_sz + ring_base_align - 1;
 
 	wbm_bm_id = wlan_cfg_get_rbm_id_for_index(soc->wlan_cfg_ctx,
 						  IPA_TX_ALT_RING_IDX);
+	wbm_srng = (struct hal_srng *)
+			soc->tx_comp_ring[IPA_TX_ALT_COMP_RING_IDX].hal_srng;
 
 	hal_get_srng_params(soc->hal_soc,
 			    hal_srng_to_hal_ring_handle(wbm_srng),
@@ -722,6 +825,9 @@ static QDF_STATUS dp_ipa_tx_alt_ring_get_resource(struct dp_pdev *pdev)
 	struct dp_soc *soc = pdev->soc;
 	struct dp_ipa_resources *ipa_res = &pdev->ipa_resource;
 
+	if (!wlan_cfg_is_ipa_two_tx_pipes_enabled(soc->wlan_cfg_ctx))
+		return QDF_STATUS_SUCCESS;
+
 	ipa_res->tx_alt_ring_num_alloc_buffer =
 		(uint32_t)soc->ipa_uc_tx_rsc_alt.alloc_tx_buf_cnt;
 
@@ -750,6 +856,9 @@ static void dp_ipa_tx_alt_ring_resource_setup(struct dp_soc *soc)
 	struct hal_srng *hal_srng;
 	struct hal_srng_params srng_params;
 	unsigned long addr_offset, dev_base_paddr;
+
+	if (!wlan_cfg_is_ipa_two_tx_pipes_enabled(soc->wlan_cfg_ctx))
+		return;
 
 	/* IPA TCL_DATA Alternative Ring - HAL_SRNG_SW2TCL2 */
 	hal_srng = (struct hal_srng *)
@@ -908,6 +1017,9 @@ static QDF_STATUS dp_ipa_tx_alt_buf_smmu_mapping(struct dp_soc *soc,
 	qdf_nbuf_t nbuf;
 	uint32_t index;
 
+	if (!wlan_cfg_is_ipa_two_tx_pipes_enabled(soc->wlan_cfg_ctx))
+		return QDF_STATUS_SUCCESS;
+
 	if (!ipa_is_ready()) {
 		dp_info("IPA is not READY");
 		return QDF_STATUS_SUCCESS;
@@ -945,7 +1057,7 @@ static void dp_ipa_wdi_tx_alt_pipe_params(struct dp_soc *soc,
 	/* WBM Tail Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_TRANSFER_RING_DOORBELL_PA(tx) =
 		soc->ipa_uc_tx_rsc_alt.ipa_wbm_tp_paddr;
-	QDF_IPA_WDI_SETUP_INFO_IS_TXR_RN_DB_PCIE_ADDR(tx) = true;
+	dp_ipa_set_txr_rn_db_addr(soc->osdev->dev, tx);
 
 	QDF_IPA_WDI_SETUP_INFO_EVENT_RING_BASE_PA(tx) =
 		qdf_mem_get_dma_addr(soc->osdev,
@@ -957,7 +1069,7 @@ static void dp_ipa_wdi_tx_alt_pipe_params(struct dp_soc *soc,
 	/* TCL Head Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_EVENT_RING_DOORBELL_PA(tx) =
 		soc->ipa_uc_tx_rsc_alt.ipa_tcl_hp_paddr;
-	QDF_IPA_WDI_SETUP_INFO_IS_EVT_RN_DB_PCIE_ADDR(tx) = true;
+	dp_ipa_set_evt_rn_db_addr(soc->osdev->dev, tx);
 
 	QDF_IPA_WDI_SETUP_INFO_NUM_PKT_BUFFERS(tx) =
 		ipa_res->tx_alt_ring_num_alloc_buffer;
@@ -986,7 +1098,7 @@ dp_ipa_wdi_tx_alt_pipe_smmu_params(struct dp_soc *soc,
 	/* WBM Tail Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_SMMU_TRANSFER_RING_DOORBELL_PA(tx_smmu) =
 		soc->ipa_uc_tx_rsc_alt.ipa_wbm_tp_paddr;
-	QDF_IPA_WDI_SETUP_INFO_SMMU_IS_TXR_RN_DB_PCIE_ADDR(tx_smmu) = true;
+	dp_ipa_set_smmu_txr_rn_db_addr(soc->osdev->dev, tx_smmu);
 
 	qdf_mem_copy(&QDF_IPA_WDI_SETUP_INFO_SMMU_EVENT_RING_BASE(tx_smmu),
 		     &ipa_res->tx_alt_ring.sgtable,
@@ -997,7 +1109,7 @@ dp_ipa_wdi_tx_alt_pipe_smmu_params(struct dp_soc *soc,
 	/* TCL Head Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_SMMU_EVENT_RING_DOORBELL_PA(tx_smmu) =
 		soc->ipa_uc_tx_rsc_alt.ipa_tcl_hp_paddr;
-	QDF_IPA_WDI_SETUP_INFO_SMMU_IS_EVT_RN_DB_PCIE_ADDR(tx_smmu) = true;
+	dp_ipa_set_smmu_evt_rn_db_addr(soc->osdev->dev, tx_smmu);
 
 	QDF_IPA_WDI_SETUP_INFO_SMMU_NUM_PKT_BUFFERS(tx_smmu) =
 		ipa_res->tx_alt_ring_num_alloc_buffer;
@@ -1016,6 +1128,9 @@ static void dp_ipa_setup_tx_alt_pipe(struct dp_soc *soc,
 	qdf_ipa_wdi_pipe_setup_info_smmu_t *tx_smmu = NULL;
 	qdf_ipa_wdi_pipe_setup_info_t *tx = NULL;
 	qdf_ipa_ep_cfg_t *tx_cfg;
+
+	if (!wlan_cfg_is_ipa_two_tx_pipes_enabled(soc->wlan_cfg_ctx))
+		return;
 
 	QDF_IPA_WDI_CONN_IN_PARAMS_IS_TX1_USED(in) = true;
 
@@ -1038,15 +1153,18 @@ static void dp_ipa_setup_tx_alt_pipe(struct dp_soc *soc,
 	QDF_IPA_EP_CFG_HDR_LITTLE_ENDIAN(tx_cfg) = true;
 }
 
-static void dp_ipa_set_pipe_db(struct dp_ipa_resources *res,
+static void dp_ipa_set_pipe_db(struct dp_soc *soc,
+			       struct dp_ipa_resources *res,
 			       qdf_ipa_wdi_conn_out_params_t *out)
 {
 	res->tx_comp_doorbell_paddr =
 		QDF_IPA_WDI_CONN_OUT_PARAMS_TX_UC_DB_PA(out);
 	res->rx_ready_doorbell_paddr =
 		QDF_IPA_WDI_CONN_OUT_PARAMS_RX_UC_DB_PA(out);
-	res->tx_alt_comp_doorbell_paddr =
-		QDF_IPA_WDI_CONN_OUT_PARAMS_TX_UC_ALT_DB_PA(out);
+
+	if (wlan_cfg_is_ipa_two_tx_pipes_enabled(soc->wlan_cfg_ctx))
+		res->tx_alt_comp_doorbell_paddr =
+			QDF_IPA_WDI_CONN_OUT_PARAMS_TX_UC_ALT_DB_PA(out);
 }
 
 #ifdef QCA_IPA_LL_TX_FLOW_CONTROL
@@ -1265,7 +1383,8 @@ void dp_ipa_setup_tx_alt_pipe(struct dp_soc *soc, struct dp_ipa_resources *res,
 {
 }
 
-static void dp_ipa_set_pipe_db(struct dp_ipa_resources *res,
+static void dp_ipa_set_pipe_db(struct dp_soc *soc,
+			       struct dp_ipa_resources *res,
 			       qdf_ipa_wdi_conn_out_params_t *out)
 {
 	res->tx_comp_doorbell_paddr =
@@ -2238,63 +2357,11 @@ bool dp_ipa_is_target_ready(struct dp_soc *soc)
 	else
 		return true;
 }
-
-/**
- * dp_ipa_update_txr_db_status() - Indicate transfer ring DB is SMMU mapped or not
- * @dev: Pointer to device
- * @txrx_smmu: WDI TX/RX configuration
- *
- * Return: None
- */
-static inline
-void dp_ipa_update_txr_db_status(struct device *dev,
-				 qdf_ipa_wdi_pipe_setup_info_smmu_t *txrx_smmu)
-{
-	int pcie_slot = pld_get_pci_slot(dev);
-
-	if (pcie_slot)
-		QDF_IPA_WDI_SETUP_INFO_SMMU_IS_TXR_RN_DB_PCIE_ADDR(txrx_smmu) = false;
-	else
-		QDF_IPA_WDI_SETUP_INFO_SMMU_IS_TXR_RN_DB_PCIE_ADDR(txrx_smmu) = true;
-}
-
-/**
- * dp_ipa_update_evt_db_status() - Indicate evt ring DB is SMMU mapped or not
- * @dev: Pointer to device
- * @txrx_smmu: WDI TX/RX configuration
- *
- * Return: None
- */
-static inline
-void dp_ipa_update_evt_db_status(struct device *dev,
-				 qdf_ipa_wdi_pipe_setup_info_smmu_t *txrx_smmu)
-{
-	int pcie_slot = pld_get_pci_slot(dev);
-
-	if (pcie_slot)
-		QDF_IPA_WDI_SETUP_INFO_SMMU_IS_EVT_RN_DB_PCIE_ADDR(txrx_smmu) = false;
-	else
-		QDF_IPA_WDI_SETUP_INFO_SMMU_IS_EVT_RN_DB_PCIE_ADDR(txrx_smmu) = true;
-}
 #else
 static inline
 bool dp_ipa_is_target_ready(struct dp_soc *soc)
 {
 	return true;
-}
-
-static inline
-void dp_ipa_update_txr_db_status(struct device *dev,
-				 qdf_ipa_wdi_pipe_setup_info_smmu_t *txrx_smmu)
-{
-	QDF_IPA_WDI_SETUP_INFO_SMMU_IS_TXR_RN_DB_PCIE_ADDR(txrx_smmu) = true;
-}
-
-static inline
-void dp_ipa_update_evt_db_status(struct device *dev,
-				 qdf_ipa_wdi_pipe_setup_info_smmu_t *txrx_smmu)
-{
-	QDF_IPA_WDI_SETUP_INFO_SMMU_IS_EVT_RN_DB_PCIE_ADDR(txrx_smmu) = true;
 }
 #endif
 
@@ -2463,7 +2530,7 @@ static void dp_ipa_wdi_tx_params(struct dp_soc *soc,
 	/* WBM Tail Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_TRANSFER_RING_DOORBELL_PA(tx) =
 		soc->ipa_uc_tx_rsc.ipa_wbm_tp_paddr;
-	QDF_IPA_WDI_SETUP_INFO_IS_TXR_RN_DB_PCIE_ADDR(tx) = true;
+	dp_ipa_set_txr_rn_db_addr(soc->osdev->dev, tx);
 
 	QDF_IPA_WDI_SETUP_INFO_EVENT_RING_BASE_PA(tx) =
 		qdf_mem_get_dma_addr(soc->osdev,
@@ -2475,7 +2542,7 @@ static void dp_ipa_wdi_tx_params(struct dp_soc *soc,
 	/* TCL Head Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_EVENT_RING_DOORBELL_PA(tx) =
 		soc->ipa_uc_tx_rsc.ipa_tcl_hp_paddr;
-	QDF_IPA_WDI_SETUP_INFO_IS_EVT_RN_DB_PCIE_ADDR(tx) = true;
+	dp_ipa_set_evt_rn_db_addr(soc->osdev->dev, tx);
 
 	QDF_IPA_WDI_SETUP_INFO_NUM_PKT_BUFFERS(tx) =
 		ipa_res->tx_num_alloc_buffer;
@@ -2494,11 +2561,9 @@ static void dp_ipa_wdi_rx_params(struct dp_soc *soc,
 				 bool over_gsi)
 {
 	if (over_gsi)
-		QDF_IPA_WDI_SETUP_INFO_CLIENT(rx) =
-					IPA_CLIENT_WLAN2_PROD;
+		QDF_IPA_WDI_SETUP_INFO_CLIENT(rx) = IPA_CLIENT_WLAN2_PROD;
 	else
-		QDF_IPA_WDI_SETUP_INFO_CLIENT(rx) =
-					IPA_CLIENT_WLAN1_PROD;
+		QDF_IPA_WDI_SETUP_INFO_CLIENT(rx) = IPA_CLIENT_WLAN1_PROD;
 
 	QDF_IPA_WDI_SETUP_INFO_TRANSFER_RING_BASE_PA(rx) =
 		qdf_mem_get_dma_addr(soc->osdev,
@@ -2510,7 +2575,7 @@ static void dp_ipa_wdi_rx_params(struct dp_soc *soc,
 	/* REO Tail Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_TRANSFER_RING_DOORBELL_PA(rx) =
 		soc->ipa_uc_rx_rsc.ipa_reo_tp_paddr;
-	QDF_IPA_WDI_SETUP_INFO_IS_TXR_RN_DB_PCIE_ADDR(rx) = true;
+	dp_ipa_set_txr_rn_db_addr(soc->osdev->dev, rx);
 
 	QDF_IPA_WDI_SETUP_INFO_EVENT_RING_BASE_PA(rx) =
 		qdf_mem_get_dma_addr(soc->osdev,
@@ -2526,6 +2591,9 @@ static void dp_ipa_wdi_rx_params(struct dp_soc *soc,
 
 	QDF_IPA_WDI_SETUP_INFO_PKT_OFFSET(rx) =
 		soc->rx_pkt_tlv_size + L3_HEADER_PADDING;
+
+	/* Set Chip ID, extract chip id from be_soc and pass to IPA */
+	dp_ipa_set_rx_chip_id(soc, rx);
 }
 
 static void
@@ -2559,7 +2627,7 @@ dp_ipa_wdi_tx_smmu_params(struct dp_soc *soc,
 	/* WBM Tail Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_SMMU_TRANSFER_RING_DOORBELL_PA(tx_smmu) =
 		soc->ipa_uc_tx_rsc.ipa_wbm_tp_paddr;
-	dp_ipa_update_txr_db_status(soc->osdev->dev, tx_smmu);
+	dp_ipa_set_smmu_txr_rn_db_addr(soc->osdev->dev, tx_smmu);
 
 	qdf_mem_copy(&QDF_IPA_WDI_SETUP_INFO_SMMU_EVENT_RING_BASE(tx_smmu),
 		     &ipa_res->tx_ring.sgtable,
@@ -2570,7 +2638,7 @@ dp_ipa_wdi_tx_smmu_params(struct dp_soc *soc,
 	/* TCL Head Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_SMMU_EVENT_RING_DOORBELL_PA(tx_smmu) =
 		soc->ipa_uc_tx_rsc.ipa_tcl_hp_paddr;
-	dp_ipa_update_evt_db_status(soc->osdev->dev, tx_smmu);
+	dp_ipa_set_smmu_evt_rn_db_addr(soc->osdev->dev, tx_smmu);
 
 	QDF_IPA_WDI_SETUP_INFO_SMMU_NUM_PKT_BUFFERS(tx_smmu) =
 		ipa_res->tx_num_alloc_buffer;
@@ -2613,7 +2681,7 @@ dp_ipa_wdi_rx_smmu_params(struct dp_soc *soc,
 	/* REO Tail Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_SMMU_TRANSFER_RING_DOORBELL_PA(rx_smmu) =
 		soc->ipa_uc_rx_rsc.ipa_reo_tp_paddr;
-	dp_ipa_update_txr_db_status(soc->osdev->dev, rx_smmu);
+	dp_ipa_set_smmu_txr_rn_db_addr(soc->osdev->dev, rx_smmu);
 
 	qdf_mem_copy(&QDF_IPA_WDI_SETUP_INFO_SMMU_EVENT_RING_BASE(rx_smmu),
 		     &ipa_res->rx_refill_ring.sgtable,
@@ -2629,6 +2697,9 @@ dp_ipa_wdi_rx_smmu_params(struct dp_soc *soc,
 
 	QDF_IPA_WDI_SETUP_INFO_SMMU_PKT_OFFSET(rx_smmu) =
 		soc->rx_pkt_tlv_size + L3_HEADER_PADDING;
+
+	/* Set Chip ID, extract chip id from be_soc and pass to IPA */
+	dp_ipa_set_rx_smmu_chip_id(soc, rx_smmu);
 }
 
 #ifdef IPA_WDI3_VLAN_SUPPORT
@@ -2676,7 +2747,7 @@ dp_ipa_wdi_rx_alt_pipe_smmu_params(struct dp_soc *soc,
 	/* REO Tail Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_SMMU_TRANSFER_RING_DOORBELL_PA(rx_smmu) =
 		soc->ipa_uc_rx_rsc_alt.ipa_reo_tp_paddr;
-	QDF_IPA_WDI_SETUP_INFO_SMMU_IS_TXR_RN_DB_PCIE_ADDR(rx_smmu) = true;
+	dp_ipa_set_smmu_txr_rn_db_addr(soc->osdev->dev, rx_smmu);
 
 	qdf_mem_copy(&QDF_IPA_WDI_SETUP_INFO_SMMU_EVENT_RING_BASE(rx_smmu),
 		     &ipa_res->rx_alt_refill_ring.sgtable,
@@ -2692,6 +2763,9 @@ dp_ipa_wdi_rx_alt_pipe_smmu_params(struct dp_soc *soc,
 
 	QDF_IPA_WDI_SETUP_INFO_SMMU_PKT_OFFSET(rx_smmu) =
 		soc->rx_pkt_tlv_size + L3_HEADER_PADDING;
+
+	/* Set Chip ID, extract chip id from be_soc and pass to IPA */
+	dp_ipa_set_rx_smmu_chip_id(soc, rx_smmu);
 }
 
 /**
@@ -2738,7 +2812,7 @@ static void dp_ipa_wdi_rx_alt_pipe_params(struct dp_soc *soc,
 	/* REO Tail Pointer Address */
 	QDF_IPA_WDI_SETUP_INFO_TRANSFER_RING_DOORBELL_PA(rx) =
 		soc->ipa_uc_rx_rsc_alt.ipa_reo_tp_paddr;
-	QDF_IPA_WDI_SETUP_INFO_IS_TXR_RN_DB_PCIE_ADDR(rx) = true;
+	dp_ipa_set_txr_rn_db_addr(soc->osdev->dev, rx);
 
 	QDF_IPA_WDI_SETUP_INFO_EVENT_RING_BASE_PA(rx) =
 		qdf_mem_get_dma_addr(soc->osdev,
@@ -2754,6 +2828,9 @@ static void dp_ipa_wdi_rx_alt_pipe_params(struct dp_soc *soc,
 
 	QDF_IPA_WDI_SETUP_INFO_PKT_OFFSET(rx) =
 		soc->rx_pkt_tlv_size + L3_HEADER_PADDING;
+
+	/* Set Chip ID, extract chip id from be_soc and pass to IPA */
+	dp_ipa_set_rx_chip_id(soc, rx);
 }
 
 /**
@@ -2973,7 +3050,7 @@ QDF_STATUS dp_ipa_setup(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 		(unsigned int)QDF_IPA_WDI_CONN_OUT_PARAMS_TX_UC_DB_PA(&pipe_out),
 		(unsigned int)QDF_IPA_WDI_CONN_OUT_PARAMS_RX_UC_DB_PA(&pipe_out));
 
-	dp_ipa_set_pipe_db(ipa_res, &pipe_out);
+	dp_ipa_set_pipe_db(soc, ipa_res, &pipe_out);
 	dp_ipa_set_rx_alt_pipe_db(ipa_res, &pipe_out);
 
 	ipa_res->is_db_ddr_mapped =
@@ -2981,9 +3058,6 @@ QDF_STATUS dp_ipa_setup(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 
 	soc->ipa_first_tx_db_access = true;
 	qdf_mem_free(pipe_in);
-
-	qdf_spinlock_create(&soc->ipa_rx_buf_map_lock);
-	soc->ipa_rx_buf_map_lock_initialized = true;
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -3489,11 +3563,6 @@ QDF_STATUS dp_ipa_cleanup(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 		status = QDF_STATUS_E_FAILURE;
 	}
 
-	if (soc->ipa_rx_buf_map_lock_initialized) {
-		qdf_spinlock_destroy(&soc->ipa_rx_buf_map_lock);
-		soc->ipa_rx_buf_map_lock_initialized = false;
-	}
-
 	pdev = dp_get_pdev_from_soc_pdev_id_wifi3(soc, pdev_id);
 	if (qdf_unlikely(!pdev)) {
 		dp_err_rl("Invalid pdev for pdev_id %d", pdev_id);
@@ -3794,6 +3863,12 @@ void dp_ipa_wdi_opt_dpath_notify_flt_rlsd(int flt0_rslt, int flt1_rslt)
 void dp_ipa_wdi_opt_dpath_notify_flt_rsvd(bool is_success)
 {
 	wlan_ipa_wdi_opt_dpath_notify_flt_rsvd(is_success);
+}
+
+QDF_STATUS dp_ipa_tx_super_rule_setup(struct cdp_soc_t *soc_hdl,
+				      void *flt_params)
+{
+	return QDF_STATUS_SUCCESS;
 }
 #endif
 

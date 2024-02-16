@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -191,7 +191,7 @@ struct dcs_afc_select_chan_cbk {
 };
 
 /**
- * struct dcs_pdev_priv_obj - define dcs pdev priv
+ * struct dcs_pdev_priv_obj  - define dcs pdev priv
  * @dcs_host_params: dcs host configuration parameter
  * @dcs_im_stats: dcs im statistics
  * @dcs_freq_ctrl_params: dcs frequency control parameter
@@ -318,6 +318,32 @@ QDF_STATUS wlan_dcs_detach(struct wlan_objmgr_psoc *psoc);
 QDF_STATUS wlan_dcs_cmd_send(struct wlan_objmgr_psoc *psoc,
 			     uint32_t pdev_id,
 			     bool is_host_pdev_id);
+
+#ifdef WLAN_FEATURE_VDEV_DCS
+/**
+ * wlan_send_dcs_cmd_for_vdev() - Send dcs command to target_if layer in
+ * vdev level
+ * @psoc: psoc pointer
+ * @mac_id: mac_id
+ * @vdev_id: vdev_id
+ *
+ * The function gets called to send dcs command in vdev level to FW
+ *
+ * return: QDF_STATUS_SUCCESS for success or error code
+ */
+QDF_STATUS wlan_send_dcs_cmd_for_vdev(struct wlan_objmgr_psoc *psoc,
+				      uint32_t mac_id,
+				      uint8_t vdev_id);
+#endif
+
+/**
+ * wlan_is_vdev_level_dcs_supported() -API to check whether vdev level
+ * DCS is supported or not
+ * @psoc: pointer to psoc object
+ *
+ * Return: True/False
+ */
+bool wlan_is_vdev_level_dcs_supported(struct wlan_objmgr_psoc *psoc);
 
 /**
  * wlan_dcs_process() - dcs process main entry

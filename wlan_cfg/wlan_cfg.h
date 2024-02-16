@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -310,6 +310,8 @@ struct wlan_srng_cfg {
  * @peer_link_stats_enabled: true if MLO Peer Link stats are enabled
  * @ipa_tx_ring_size: IPA tx ring size
  * @ipa_tx_comp_ring_size: IPA tx completion ring size
+ * @ipa_two_tx_pipes_enable: flag to indicate if IPA two tx pipes feature is
+ *			     enabled or not
  * @ipa_tx_alt_ring_size: IPA tx alt ring size
  * @ipa_tx_alt_comp_ring_size: IPA tx alt completion ring size
  * @hw_cc_enabled: cookie conversion enabled
@@ -358,6 +360,7 @@ struct wlan_srng_cfg {
  * @avg_rate_stats_filter_val: Average rate filter value for stats.
  * @rx_mon_wq_threshold: rx monitor work queue threshold.
  * @rx_mon_wq_depth: rx monitor work queue depth.
+ * @is_lapb_enabled: LAPB feature enable flag.
  *
  */
 struct wlan_cfg_dp_soc_ctxt {
@@ -511,6 +514,7 @@ struct wlan_cfg_dp_soc_ctxt {
 	uint32_t ipa_tx_ring_size;
 	uint32_t ipa_tx_comp_ring_size;
 #ifdef IPA_WDI3_TX_TWO_PIPES
+	bool ipa_two_tx_pipes_enable;
 	int ipa_tx_alt_ring_size;
 	int ipa_tx_alt_comp_ring_size;
 #endif /* IPA_WDI3_TX_TWO_PIPES */
@@ -578,6 +582,9 @@ struct wlan_cfg_dp_soc_ctxt {
 	uint16_t avg_rate_stats_filter_val;
 	uint8_t rx_mon_wq_threshold;
 	uint8_t rx_mon_wq_depth;
+#ifdef WLAN_SUPPORT_LAPB
+	bool is_lapb_enabled;
+#endif
 };
 
 /**
@@ -2238,7 +2245,24 @@ int wlan_cfg_ipa_tx_alt_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg);
 int
 wlan_cfg_ipa_tx_alt_comp_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg);
 
-#else
+#ifdef IPA_WDI3_TX_TWO_PIPES
+/**
+ * wlan_cfg_is_ipa_two_tx_pipes_enabled() - Get IPA two tx pipes feature
+ *					    status
+ * @cfg: dp cfg context
+ *
+ * Return: true if IPA two tx pipes feature is enabled. Otherwise false
+ */
+bool wlan_cfg_is_ipa_two_tx_pipes_enabled(struct wlan_cfg_dp_soc_ctxt *cfg);
+#else /* !IPA_WDI3_TX_TWO_PIPES */
+static inline bool
+wlan_cfg_is_ipa_two_tx_pipes_enabled(struct wlan_cfg_dp_soc_ctxt *cfg)
+{
+	return false;
+}
+#endif /* IPA_WDI3_TX_TWO_PIPES */
+
+#else /* !IPA_OFFLOAD */
 static inline
 uint32_t wlan_cfg_ipa_tx_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg)
 {
@@ -2250,7 +2274,7 @@ uint32_t wlan_cfg_ipa_tx_comp_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg)
 {
 	return 0;
 }
-#endif
+#endif /* IPA_OFFLOAD */
 
 /**
  * wlan_cfg_radio0_default_reo_get -  Get Radio0 default REO
@@ -2775,6 +2799,15 @@ bool wlan_cfg_get_ast_indication_disable(struct wlan_cfg_dp_soc_ctxt *cfg);
  * Return: dpdk_cfg
  */
 int wlan_cfg_get_dp_soc_dpdk_cfg(struct cdp_ctrl_objmgr_psoc *psoc);
+
+/**
+ * wlan_cfg_is_lapb_enabled() - Get lapb enable flag
+ * @cfg: soc configuration context
+ *
+ * Return: true if enabled, false otherwise.
+ */
+bool
+wlan_cfg_is_lapb_enabled(struct wlan_cfg_dp_soc_ctxt *cfg);
 
 #ifdef FEATURE_AST
 /**

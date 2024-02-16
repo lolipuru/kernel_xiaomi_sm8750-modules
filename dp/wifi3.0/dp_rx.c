@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -102,7 +102,7 @@ QDF_STATUS dp_rx_desc_sanity(struct dp_soc *soc, hal_soc_handle_t hal_soc,
 
 fail:
 	DP_STATS_INC(soc, rx.err.invalid_cookie, 1);
-	dp_err("Ring Desc:");
+	dp_err_rl("Sanity failed for ring Desc:");
 	hal_srng_dump_ring_desc(hal_soc, hal_ring_hdl,
 				ring_desc);
 	return QDF_STATUS_E_NULL_VALUE;
@@ -370,6 +370,9 @@ dp_pdev_nbuf_alloc_and_map_replenish(struct dp_soc *dp_soc,
 					  rx_desc_pool->buf_size,
 					  true, __func__, __LINE__,
 					  DP_RX_IPA_SMMU_MAP_REPLENISH);
+
+	dp_audio_smmu_map(dp_soc, (nbuf_frag_info_t->virt_addr).nbuf,
+			  rx_desc_pool->buf_size);
 
 	ret = dp_check_paddr(dp_soc, &((nbuf_frag_info_t->virt_addr).nbuf),
 			     &nbuf_frag_info_t->paddr,
@@ -1035,6 +1038,7 @@ QDF_STATUS __dp_rx_buffers_replenish(struct dp_soc *dp_soc, uint32_t mac_id,
 
 	count = 0;
 
+	dp_rx_buf_smmu_mapping_lock(dp_soc);
 	while (count < num_req_buffers) {
 		/* Flag is set while pdev rx_desc_pool initialization */
 		if (qdf_unlikely(rx_desc_pool->rx_mon_dest_frag_enable))
@@ -1090,6 +1094,7 @@ QDF_STATUS __dp_rx_buffers_replenish(struct dp_soc *dp_soc, uint32_t mac_id,
 		*desc_list = next;
 
 	}
+	dp_rx_buf_smmu_mapping_unlock(dp_soc);
 
 	dp_rx_refill_ring_record_entry(dp_soc, dp_pdev->lmac_id, rxdma_srng,
 				       num_req_buffers, count);
@@ -1205,6 +1210,7 @@ bool dp_rx_intrabss_mcbc_fwd(struct dp_soc *soc, struct dp_txrx_peer *ta_peer,
 {
 	uint16_t len;
 	qdf_nbuf_t nbuf_copy;
+	qdf_ether_header_t *eh;
 
 	if (dp_rx_intrabss_eapol_drop_check(soc, ta_peer, rx_tlv_hdr,
 					    nbuf))
@@ -1235,6 +1241,9 @@ bool dp_rx_intrabss_mcbc_fwd(struct dp_soc *soc, struct dp_txrx_peer *ta_peer,
 		return false;
 
 	/* Don't send packets if tx is paused */
+	eh = (qdf_ether_header_t *)qdf_nbuf_data(nbuf_copy);
+	if (QDF_IS_ADDR_BROADCAST(eh->ether_dhost))
+		nbuf_copy->pkt_type = PACKET_BROADCAST;
 	if (!soc->is_tx_pause &&
 	    !dp_tx_send((struct cdp_soc_t *)soc,
 			ta_peer->vdev->vdev_id, nbuf_copy)) {
@@ -2837,7 +2846,9 @@ void dp_rx_deliver_to_stack_no_peer(struct dp_soc *soc, qdf_nbuf_t nbuf)
 	uint32_t pkt_len = 0;
 	uint8_t *rx_tlv_hdr;
 	uint32_t frame_mask = FRAME_MASK_IPV4_ARP | FRAME_MASK_IPV4_DHCP |
-				FRAME_MASK_IPV4_EAPOL | FRAME_MASK_IPV6_DHCP;
+			      FRAME_MASK_IPV4_EAPOL | FRAME_MASK_IPV6_DHCP |
+			      FRAME_MASK_DNS_QUERY | FRAME_MASK_DNS_RESP;
+
 	bool is_special_frame = false;
 	struct dp_peer *peer = NULL;
 
@@ -3037,15 +3048,40 @@ QDF_STATUS dp_rx_vdev_detach(struct dp_vdev *vdev)
 	return QDF_STATUS_SUCCESS;
 }
 
-static QDF_STATUS
-dp_pdev_nbuf_alloc_and_map(struct dp_soc *dp_soc,
-			   struct dp_rx_nbuf_frag_info *nbuf_frag_info_t,
-			   struct dp_pdev *dp_pdev,
-			   struct rx_desc_pool *rx_desc_pool,
-			   bool dp_buf_page_frag_alloc_enable)
+#ifdef DP_RX_BUFFER_OPTIMIZATION
+/**
+ *dp_rx_nbuf_alloc_for_frag_info() - allocate RX nbuf to fill in
+ *                                   dp_rx_nbuf_frag_info structure.
+ * @dp_soc: DP SOC handle
+ * @nbuf_frag_info_t: pointer to dp_rx_nbuf_frag_info structure
+ * @rx_desc_pool: pointer to RX Desc pool
+ * @dp_buf_page_frag_alloc_enable: flag to allocate nbuf by page frag
+ *
+ * If DP_RX_BUFFER_OPTIMIZATION is enabled, this function will stick to
+ * qdf_nbuf_alloc() way to allocate RX nbuf, this is required to ensure
+ * 2K slab memory allocation for skb->head buffer which will be 128 bytes
+ * aligned.
+ *
+ * Return: None
+ */
+static inline void
+dp_rx_nbuf_alloc_for_frag_info(struct dp_soc *dp_soc,
+			       struct dp_rx_nbuf_frag_info *nbuf_frag_info_t,
+			       struct rx_desc_pool *rx_desc_pool,
+			       bool dp_buf_page_frag_alloc_enable)
 {
-	QDF_STATUS ret = QDF_STATUS_E_FAILURE;
-
+	(nbuf_frag_info_t->virt_addr).nbuf =
+		qdf_nbuf_alloc(dp_soc->osdev, rx_desc_pool->buf_size,
+			       RX_BUFFER_RESERVATION,
+			       rx_desc_pool->buf_alignment, FALSE);
+}
+#else
+static inline void
+dp_rx_nbuf_alloc_for_frag_info(struct dp_soc *dp_soc,
+			       struct dp_rx_nbuf_frag_info *nbuf_frag_info_t,
+			       struct rx_desc_pool *rx_desc_pool,
+			       bool dp_buf_page_frag_alloc_enable)
+{
 	if (dp_buf_page_frag_alloc_enable) {
 		(nbuf_frag_info_t->virt_addr).nbuf =
 			qdf_nbuf_frag_alloc(dp_soc->osdev,
@@ -3058,6 +3094,22 @@ dp_pdev_nbuf_alloc_and_map(struct dp_soc *dp_soc,
 				       RX_BUFFER_RESERVATION,
 				       rx_desc_pool->buf_alignment, FALSE);
 	}
+}
+#endif
+
+static QDF_STATUS
+dp_pdev_nbuf_alloc_and_map(struct dp_soc *dp_soc,
+			   struct dp_rx_nbuf_frag_info *nbuf_frag_info_t,
+			   struct dp_pdev *dp_pdev,
+			   struct rx_desc_pool *rx_desc_pool,
+			   bool dp_buf_page_frag_alloc_enable)
+{
+	QDF_STATUS ret = QDF_STATUS_E_FAILURE;
+
+	dp_rx_nbuf_alloc_for_frag_info(dp_soc, nbuf_frag_info_t,
+				       rx_desc_pool,
+				       dp_buf_page_frag_alloc_enable);
+
 	if (!((nbuf_frag_info_t->virt_addr).nbuf)) {
 		dp_err("nbuf alloc failed");
 		DP_STATS_INC(dp_pdev, replenish.nbuf_alloc_fail, 1);
@@ -3240,12 +3292,6 @@ dp_pdev_rx_buffers_attach(struct dp_soc *dp_soc, uint32_t mac_id,
 						__func__, __LINE__,
 						DP_RX_IPA_SMMU_MAP_BUFF_ATTACH);
 
-			dp_audio_smmu_map(dp_soc->osdev,
-					  qdf_mem_paddr_from_dmaaddr(dp_soc->osdev,
-								     QDF_NBUF_CB_PADDR(nbuf)),
-					  QDF_NBUF_CB_PADDR(nbuf),
-					  rx_desc_pool->buf_size);
-
 			desc_list = next;
 		}
 
@@ -3379,7 +3425,7 @@ QDF_STATUS dp_rx_pdev_desc_pool_init(struct dp_pdev *pdev)
 
 	rx_desc_pool->owner = dp_rx_get_rx_bm_id(soc);
 	rx_desc_pool->buf_size = buf_size;
-	rx_desc_pool->buf_alignment = RX_DATA_BUFFER_ALIGNMENT;
+	rx_desc_pool->buf_alignment = RX_DATA_BUFFER_OPT_ALIGNMENT;
 	/* Disable monitor dest processing via frag */
 	if (target_type == TARGET_TYPE_QCN9160) {
 		rx_desc_pool->buf_size = RX_MONITOR_BUFFER_SIZE;
@@ -3527,3 +3573,72 @@ bool dp_rx_multipass_process(struct dp_txrx_peer *txrx_peer, qdf_nbuf_t nbuf,
 	return true;
 }
 #endif /* QCA_MULTIPASS_SUPPORT */
+
+#ifdef FEATURE_DIRECT_LINK
+/**
+ * dp_rx_handle_buf_pool_audio_smmu_mapping() - Handle rx buffer pool audio
+ *  map/unmap on direct link enable/disable
+ * @soc: core txrx main context
+ * @pdev_id: pdev id
+ * @create: whether map or unmap
+ *
+ * Return: QDF status
+ */
+QDF_STATUS dp_rx_handle_buf_pool_audio_smmu_mapping(struct dp_soc *soc,
+						    uint8_t pdev_id,
+						    bool create)
+{
+	struct rx_desc_pool *rx_pool;
+	uint32_t num_desc, page_id, offset, i;
+	uint16_t num_desc_per_page;
+	union dp_rx_desc_list_elem_t *rx_desc_elem;
+	struct dp_rx_desc *rx_desc;
+	qdf_nbuf_t nbuf;
+
+	if (create)
+		qdf_atomic_set(&soc->direct_link_active, 1);
+	else
+		qdf_atomic_set(&soc->direct_link_active, 0);
+
+	rx_pool = &soc->rx_desc_buf[pdev_id];
+
+	dp_rx_set_reo_ctx_mapping_lock_required(soc, true);
+	dp_rx_buf_smmu_mapping_lock(soc);
+	num_desc = rx_pool->pool_size;
+	num_desc_per_page = rx_pool->desc_pages.num_element_per_page;
+	for (i = 0; i < num_desc; i++) {
+		page_id = i / num_desc_per_page;
+		offset = i % num_desc_per_page;
+		if (qdf_unlikely(!(rx_pool->desc_pages.cacheable_pages)))
+			break;
+		rx_desc_elem = dp_rx_desc_find(page_id, offset, rx_pool);
+		rx_desc = &rx_desc_elem->rx_desc;
+		if ((!(rx_desc->in_use)) || rx_desc->unmapped)
+			continue;
+		nbuf = rx_desc->nbuf;
+
+		if (qdf_unlikely(create ==
+				 qdf_nbuf_get_rx_audio_smmu_map(nbuf))) {
+			if (create) {
+				DP_STATS_INC(soc,
+					     rx.err.audio_smmu_map_dup, 1);
+			} else {
+				DP_STATS_INC(soc,
+					     rx.err.audio_smmu_unmap_dup, 1);
+			}
+			continue;
+		}
+
+		qdf_nbuf_set_rx_audio_smmu_map(nbuf, create);
+
+		if (create)
+			__dp_audio_smmu_map(soc, nbuf, rx_pool->buf_size);
+		else
+			__dp_audio_smmu_unmap(soc, nbuf, rx_pool->buf_size);
+	}
+	dp_rx_buf_smmu_mapping_unlock(soc);
+	dp_rx_set_reo_ctx_mapping_lock_required(soc, false);
+
+	return QDF_STATUS_SUCCESS;
+}
+#endif

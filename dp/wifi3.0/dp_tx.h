@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -35,10 +35,16 @@
 #ifdef CONFIG_SAWF
 #include "dp_sawf.h"
 #endif
+#ifdef WLAN_SUPPORT_LAPB
+#include "wlan_dp_lapb_flow.h"
+#endif
 #include <qdf_pkt_add_timestamp.h>
 #include "dp_ipa.h"
 #ifdef IPA_OFFLOAD
 #include <wlan_ipa_obj_mgmt_api.h>
+#endif
+#ifdef WLAN_SUPPORT_FLOW_PRIORTIZATION
+#include "wlan_dp_api.h"
 #endif
 
 #define DP_INVALID_VDEV_ID 0xFF
@@ -76,6 +82,7 @@ int dp_tx_proxy_arp(struct dp_vdev *vdev, qdf_nbuf_t nbuf);
 #define DP_TX_DESC_FLAG_PPEDS		0x20000
 #define DP_TX_DESC_FLAG_FAST		0x40000
 #define DP_TX_DESC_FLAG_SPECIAL         0x80000
+#define DP_TX_DESC_FLAG_BCAST           0x100000
 
 #define DP_TX_EXT_DESC_FLAG_METADATA_VALID 0x1
 
@@ -105,7 +112,7 @@ do {                                                           \
 #define MAX_CDP_SEC_TYPE 12
 
 /* number of dwords for htt_tx_msdu_desc_ext2_t */
-#define DP_TX_MSDU_INFO_META_DATA_DWORDS 7
+#define DP_TX_MSDU_INFO_META_DATA_DWORDS 9
 
 #define dp_tx_alert(params...) QDF_TRACE_FATAL(QDF_MODULE_ID_DP_TX, params)
 #define dp_tx_err(params...) QDF_TRACE_ERROR(QDF_MODULE_ID_DP_TX, params)
@@ -231,13 +238,12 @@ struct dp_tx_msdu_info_s {
 	uint32_t meta_data[DP_TX_MSDU_INFO_META_DATA_DWORDS];
 	uint16_t ppdu_cookie;
 	uint8_t xmit_type;
-#if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_MLO_MULTI_CHIP)
-#ifdef WLAN_MCAST_MLO
+#if defined(WLAN_FEATURE_11BE_MLO) && ((defined(WLAN_MLO_MULTI_CHIP) &&\
+	defined(WLAN_MCAST_MLO)) || defined(WLAN_MCAST_MLO_SAP))
 	uint16_t gsn;
 	uint8_t vdev_id;
 #endif
-#endif
-#ifdef WLAN_DP_FEATURE_SW_LATENCY_MGR
+#if defined(WLAN_DP_FEATURE_SW_LATENCY_MGR) || defined(WLAN_SUPPORT_LAPB)
 	uint8_t skip_hp_update;
 #endif
 #ifdef QCA_DP_TX_RMNET_OPTIMIZATION
@@ -781,6 +787,7 @@ static inline QDF_STATUS dp_tx_pdev_init(struct dp_pdev *pdev)
  * @hal_ring_hdl: ring pointer
  * @last_prefetched_hw_desc: pointer to the last prefetched HW descriptor
  * @last_prefetched_sw_desc: pointer to last prefetch SW desc
+ * @last_hw_desc: pointer to last HW desc
  *
  * Return: None
  */
@@ -792,12 +799,17 @@ void dp_tx_prefetch_hw_sw_nbuf_desc(struct dp_soc *soc,
 				    hal_ring_handle_t hal_ring_hdl,
 				    void **last_prefetched_hw_desc,
 				    struct dp_tx_desc_s
-				    **last_prefetched_sw_desc)
+				    **last_prefetched_sw_desc,
+				    void *last_hw_desc)
 {
 	if (*last_prefetched_sw_desc) {
 		qdf_prefetch((uint8_t *)(*last_prefetched_sw_desc)->nbuf);
 		qdf_prefetch((uint8_t *)(*last_prefetched_sw_desc)->nbuf + 64);
 	}
+
+	if (qdf_unlikely(last_hw_desc &&
+			 (*last_prefetched_hw_desc == last_hw_desc)))
+		return;
 
 	if (num_avail_for_reap && *last_prefetched_hw_desc) {
 		soc->arch_ops.tx_comp_get_params_from_hal_desc(soc,
@@ -847,7 +859,8 @@ void dp_tx_prefetch_hw_sw_nbuf_desc(struct dp_soc *soc,
 				    hal_ring_handle_t hal_ring_hdl,
 				    void **last_prefetched_hw_desc,
 				    struct dp_tx_desc_s
-				    **last_prefetched_sw_desc)
+				    **last_prefetched_sw_desc,
+				    void *last_hw_desc)
 {
 }
 
@@ -963,10 +976,13 @@ static inline enum qdf_dp_tx_rx_status dp_tx_hw_to_qdf(uint16_t status)
 static inline void dp_tx_get_queue(struct dp_vdev *vdev,
 				   qdf_nbuf_t nbuf, struct dp_tx_queue *queue)
 {
+	struct dp_soc *soc = vdev->pdev->soc;
+
 	queue->ring_id = qdf_get_cpu();
-	if (vdev->pdev->soc->wlan_cfg_ctx->ipa_enabled)
+	if (soc->wlan_cfg_ctx->ipa_enabled)
 		if ((queue->ring_id == IPA_TCL_DATA_RING_IDX) ||
-		    (queue->ring_id == IPA_TX_ALT_RING_IDX))
+		    ((queue->ring_id == IPA_TX_ALT_RING_IDX) &&
+		     wlan_cfg_is_ipa_two_tx_pipes_enabled(soc->wlan_cfg_ctx))
 			queue->ring_id = 0;
 
 	queue->desc_pool_id = queue->ring_id;
@@ -1038,6 +1054,24 @@ static inline void dp_tx_get_queue(struct dp_vdev *vdev,
 		queue->ring_id = (qdf_nbuf_get_queue_mapping(nbuf) %
 					vdev->pdev->soc->num_tcl_data_rings);
 }
+#elif defined(WLAN_SUPPORT_LAPB)
+static inline void dp_tx_get_queue(struct dp_vdev *vdev,
+				   qdf_nbuf_t nbuf, struct dp_tx_queue *queue)
+{
+	/* get flow id */
+	queue->desc_pool_id = DP_TX_GET_DESC_POOL_ID(vdev);
+
+	if (wlan_cfg_is_lapb_enabled(vdev->pdev->soc->wlan_cfg_ctx)) {
+		if (wlan_dp_is_lapb_frame(vdev->pdev->soc, nbuf))
+			queue->ring_id =
+				    vdev->pdev->soc->num_tcl_data_rings - 1;
+		else
+			queue->ring_id = (qdf_nbuf_get_queue_mapping(nbuf) %
+				    (vdev->pdev->soc->num_tcl_data_rings - 1));
+	} else
+		queue->ring_id = (qdf_nbuf_get_queue_mapping(nbuf) %
+				  vdev->pdev->soc->num_tcl_data_rings);
+}
 #else
 static inline void dp_tx_get_queue(struct dp_vdev *vdev,
 				   qdf_nbuf_t nbuf, struct dp_tx_queue *queue)
@@ -1062,6 +1096,33 @@ static inline hal_ring_handle_t dp_tx_get_hal_ring_hdl(struct dp_soc *soc,
 						       uint8_t ring_id)
 {
 	return soc->tcl_data_ring[ring_id].hal_srng;
+}
+#endif
+
+#if defined(TX_MULTI_TCL) && defined(WLAN_FEATURE_11BE_MLO) && \
+	defined(WLAN_DP_TXPOOL_SHARE)
+/**
+ * dp_tx_override_flow_pool_id() - Override the pool id of the tx desc pool
+ * @queue: queue ids container for nbuf
+ * @pool_id: tx desc pool id
+ * @override: indicate if need to overwrite the flow pool id or not
+ *
+ * Return: None
+ */
+static inline void
+dp_tx_override_flow_pool_id(struct dp_tx_queue *queue,
+			    uint8_t pool_id,
+			    bool override)
+{
+	if (override)
+		queue->desc_pool_id = pool_id;
+}
+#else
+static inline void
+dp_tx_override_flow_pool_id(struct dp_tx_queue *queue,
+			    uint8_t pool_id,
+			    bool override)
+{
 }
 #endif
 
@@ -1133,6 +1194,17 @@ static inline void dp_tx_hal_ring_access_end_reap(struct dp_soc *soc,
 #define DP_TX_TID_OVERRIDE(_msdu_info, _nbuf)
 #endif
 
+#ifdef WLAN_SUPPORT_FLOW_PRIORTIZATION
+#define DP_FLOW_TX_TID_OVERRIDE(_msdu_info, _nbuf) \
+	do { \
+		uint8_t tid = 0; \
+		if (qdf_unlikely(wlan_dp_fpm_is_tid_override(_nbuf, &tid))) { \
+			(_msdu_info)->tid = tid; \
+		} \
+	} while (0)
+#else
+#define DP_FLOW_TX_TID_OVERRIDE(_msdu_info, _nbuf)
+#endif
 /* TODO TX_FEATURE_NOT_YET */
 static inline void dp_tx_comp_process_exception(struct dp_tx_desc_s *tx_desc)
 {
@@ -1396,7 +1468,7 @@ dp_send_completion_to_pkt_capture(struct dp_soc *soc,
 #endif
 
 #ifndef QCA_HOST_MODE_WIFI_DISABLED
-#ifdef WLAN_DP_FEATURE_SW_LATENCY_MGR
+#if defined WLAN_DP_FEATURE_SW_LATENCY_MGR || defined WLAN_SUPPORT_LAPB
 /**
  * dp_tx_update_stats() - Update soc level tx stats
  * @soc: DP soc handle
@@ -2235,4 +2307,106 @@ dp_tx_latency_stats_config(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 QDF_STATUS dp_tx_latency_stats_register_cb(struct cdp_soc_t *handle,
 					   cdp_tx_latency_cb cb);
 #endif
+
+#ifdef QCA_DP_TX_NBUF_LIST_FREE
+static inline void
+dp_tx_nbuf_queue_head_init(qdf_nbuf_queue_head_t *nbuf_queue_head)
+{
+	qdf_nbuf_queue_head_init(nbuf_queue_head);
+}
+
+static inline void
+dp_tx_nbuf_dev_queue_free(qdf_nbuf_queue_head_t *nbuf_queue_head,
+			  struct dp_tx_desc_s *desc)
+{
+	qdf_nbuf_t nbuf = NULL;
+
+	nbuf = desc->nbuf;
+	if (qdf_likely(desc->flags & DP_TX_DESC_FLAG_FAST))
+		qdf_nbuf_dev_queue_head(nbuf_queue_head, nbuf);
+	else
+		qdf_nbuf_free(nbuf);
+}
+
+static inline void
+dp_tx_nbuf_dev_queue_free_no_flag(qdf_nbuf_queue_head_t *nbuf_queue_head,
+				  qdf_nbuf_t nbuf)
+{
+	if (!nbuf)
+		return;
+
+	if (nbuf->is_from_recycler)
+		qdf_nbuf_dev_queue_head(nbuf_queue_head, nbuf);
+	else
+		qdf_nbuf_free(nbuf);
+}
+
+static inline void
+dp_tx_nbuf_dev_kfree_list(qdf_nbuf_queue_head_t *nbuf_queue_head)
+{
+	qdf_nbuf_dev_kfree_list(nbuf_queue_head);
+}
+#else
+static inline void
+dp_tx_nbuf_queue_head_init(qdf_nbuf_queue_head_t *nbuf_queue_head)
+{
+}
+
+static inline void
+dp_tx_nbuf_dev_queue_free(qdf_nbuf_queue_head_t *nbuf_queue_head,
+			  struct dp_tx_desc_s *desc)
+{
+	qdf_nbuf_free(desc->nbuf);
+}
+
+static inline void
+dp_tx_nbuf_dev_queue_free_no_flag(qdf_nbuf_queue_head_t *nbuf_queue_head,
+				  qdf_nbuf_t nbuf)
+{
+	qdf_nbuf_free(nbuf);
+}
+
+static inline void
+dp_tx_nbuf_dev_kfree_list(qdf_nbuf_queue_head_t *nbuf_queue_head)
+{
+}
+#endif /* QCA_DP_TX_NBUF_LIST_FREE */
+
+#ifndef WLAN_SOFTUMAC_SUPPORT
+/**
+ * dp_tx_dump_tx_desc() - Dump tx desc for debugging
+ * @tx_desc: software descriptor head pointer
+ *
+ * This function will dump tx desc for further debugging
+ *
+ * Return: none
+ */
+static inline
+void dp_tx_dump_tx_desc(struct dp_tx_desc_s *tx_desc)
+{
+	if (tx_desc) {
+		dp_tx_comp_warn("tx_desc->nbuf: %pK", tx_desc->nbuf);
+		dp_tx_comp_warn("tx_desc->flags: 0x%x", tx_desc->flags);
+		dp_tx_comp_warn("tx_desc->id: %u", tx_desc->id);
+		dp_tx_comp_warn("tx_desc->dma_addr: 0x%x",
+				(unsigned int)tx_desc->dma_addr);
+		dp_tx_comp_warn("tx_desc->vdev_id: %u",
+				tx_desc->vdev_id);
+		dp_tx_comp_warn("tx_desc->tx_status: %u",
+				tx_desc->tx_status);
+		dp_tx_comp_warn("tx_desc->pdev: %pK",
+				tx_desc->pdev);
+		dp_tx_comp_warn("tx_desc->tx_encap_type: %u",
+				tx_desc->tx_encap_type);
+		dp_tx_comp_warn("tx_desc->buffer_src: %u",
+				tx_desc->buffer_src);
+		dp_tx_comp_warn("tx_desc->frm_type: %u",
+				tx_desc->frm_type);
+		dp_tx_comp_warn("tx_desc->pkt_offset: %u",
+				tx_desc->pkt_offset);
+		dp_tx_comp_warn("tx_desc->pool_id: %u",
+				tx_desc->pool_id);
+	}
+}
+#endif /* WLAN_SOFTUMAC_SUPPORT */
 #endif

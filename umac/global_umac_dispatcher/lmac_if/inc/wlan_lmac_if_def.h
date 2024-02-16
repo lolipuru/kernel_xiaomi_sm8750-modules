@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *
  * Permission to use, copy, modify, and/or distribute this software for
@@ -227,6 +227,9 @@ struct wlan_lmac_if_cp_stats_rx_ops {
  * @dcs_attach: function to register event handlers with FW
  * @dcs_detach: function to de-register event handlers with FW
  * @dcs_cmd_send: function to send dcs commands to FW
+ * @dcs_cmd_send_for_vdev: Function to send dcs command for vdev to FW
+ * @dcs_vdev_support: Function to check whether firmware supports vdev level
+ * dcs or not
  */
 struct wlan_target_if_dcs_tx_ops {
 	QDF_STATUS (*dcs_attach)(struct wlan_objmgr_psoc *psoc);
@@ -235,6 +238,10 @@ struct wlan_target_if_dcs_tx_ops {
 				   uint32_t pdev_id,
 				   bool is_host_pdev_id,
 				   uint32_t dcs_enable);
+	QDF_STATUS (*dcs_cmd_send_for_vdev)(struct wlan_objmgr_psoc *psoc,
+					    uint8_t vdev_id,
+					    uint32_t dcs_enable);
+	bool (*dcs_vdev_support)(struct wlan_objmgr_psoc *psoc);
 };
 
 /**
@@ -785,6 +792,20 @@ struct wlan_lmac_if_sa_api_tx_ops {
 			u_int32_t args_arr[]);
 };
 
+#endif
+
+#ifdef WLAN_WIFI_RADAR_ENABLE
+/**
+ * struct wlan_lmac_if_wifi_radar_tx_ops - wifi_radar tx function pointers
+ * @wifi_radar_init_pdev: Initialize wifi radar
+ * @wifi_radar_deinit_pdev: De-initialize wifi_radar
+ */
+struct wlan_lmac_if_wifi_radar_tx_ops {
+	QDF_STATUS (*wifi_radar_init_pdev)(struct wlan_objmgr_psoc *psoc,
+					   struct wlan_objmgr_pdev *pdev);
+	QDF_STATUS (*wifi_radar_deinit_pdev)(struct wlan_objmgr_psoc *psoc,
+					     struct wlan_objmgr_pdev *pdev);
+};
 #endif
 
 #ifdef WLAN_CFR_ENABLE
@@ -1802,6 +1823,7 @@ struct wlan_lmac_if_sawf_tx_ops {
  * @spatial_reuse_tx_ops: Spatial Reuse tx ops
  * @coap_ops: COAP tx ops
  * @sawf_tx_ops: SAWF tx ops
+ * @wifi_radar_tx_ops: WiFi Radar tx ops
  *
  * Callback function tabled to be registered with umac.
  * umac will use the functional table to send events/frames to wmi
@@ -1911,6 +1933,9 @@ struct wlan_lmac_if_tx_ops {
 #ifdef CONFIG_SAWF
 	struct wlan_lmac_if_sawf_tx_ops sawf_tx_ops;
 #endif
+#ifdef WLAN_WIFI_RADAR_ENABLE
+	struct wlan_lmac_if_wifi_radar_tx_ops wifi_radar_tx_ops;
+#endif
 };
 
 /**
@@ -1985,6 +2010,10 @@ struct wlan_lmac_if_mgmt_txrx_rx_ops {
  * @reg_set_disable_upper_6g_edge_ch_supp:
  * @reg_display_super_chan_list:
  * @reg_display_super_chan_list: function pointer to print super channel list
+ * @reg_set_both_psd_eirp_support: Function pointer to set the target preference
+ * to send both PSD and EIRP in WMI TPC command.
+ * @reg_get_both_psd_eirp_support: Function pointer to get the target preference
+ * to send both PSD and EIRP in WMI TPC command.
  * @reg_set_afc_dev_type:
  * @reg_get_afc_dev_type:
  * @reg_set_eirp_preferred_support:
@@ -2054,6 +2083,14 @@ struct wlan_lmac_if_reg_rx_ops {
 						 bool val);
 	QDF_STATUS
 	(*reg_display_super_chan_list)(struct wlan_objmgr_pdev *pdev);
+	QDF_STATUS
+	(*reg_set_both_psd_eirp_support)(
+				struct wlan_objmgr_psoc *psoc,
+				bool reg_is_eirp_support_preferred);
+	QDF_STATUS
+	(*reg_get_both_psd_eirp_support)(
+				struct wlan_objmgr_psoc *psoc,
+				bool *reg_is_eirp_support_preferred);
 #endif
 
 #ifdef CONFIG_AFC_SUPPORT
@@ -2273,6 +2310,22 @@ struct wlan_lmac_if_sa_api_rx_ops {
 	uint32_t (*sa_api_get_sa_mode)(struct wlan_objmgr_pdev *pdev);
 	uint32_t (*sa_api_get_beacon_txantenna)(struct wlan_objmgr_pdev *pdev);
 	uint32_t (*sa_api_cwm_action)(struct wlan_objmgr_pdev *pdev);
+};
+#endif
+
+#ifdef WLAN_WIFI_RADAR_ENABLE
+/**
+ * struct wlan_lmac_if_wifi_radar_rx_ops - wifi_radar south bound rx
+ *					   function pointers
+ * @wifi_radar_support_set: Set the wifi radar support based on FW advert
+ * @wifi_radar_info_send: Send wifi radar info to upper layers
+ */
+struct wlan_lmac_if_wifi_radar_rx_ops {
+	void (*wifi_radar_support_set)(struct wlan_objmgr_psoc *psoc,
+				       uint32_t value);
+	uint32_t (*wifi_radar_info_send)(struct wlan_objmgr_pdev *pdev,
+					 void *head, size_t hlen, void *data,
+					 size_t dlen, void *tail, size_t tlen);
 };
 #endif
 
@@ -2764,6 +2817,7 @@ struct wlan_lmac_if_green_ap_rx_ops {
  * @mlo_rx_ops: mlo rx ops
  * @twt_rx_ops: twt rx ops
  * @dbam_rx_ops: dbam rx ops
+ * @wifi_radar_rx_ops: wifi radar rx ops
  *
  * Callback function tabled to be registered with lmac/wmi.
  * lmac will use the functional table to send events/frames to umac
@@ -2835,6 +2889,9 @@ struct wlan_lmac_if_rx_ops {
 #endif
 #ifdef WLAN_FEATURE_DBAM_CONFIG
 	struct wlan_lmac_if_dbam_rx_ops dbam_rx_ops;
+#endif
+#ifdef WLAN_WIFI_RADAR_ENABLE
+	struct wlan_lmac_if_wifi_radar_rx_ops wifi_radar_rx_ops;
 #endif
 };
 

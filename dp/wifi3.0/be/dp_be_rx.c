@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -707,6 +707,7 @@ done:
 		dp_rx_prefetch_nbuf_data_be(nbuf, next);
 		if (qdf_unlikely(dp_rx_is_raw_frame_dropped(nbuf))) {
 			nbuf = next;
+			dp_verbose_debug("drop raw frame");
 			DP_STATS_INC(soc, rx.err.raw_frm_drop, 1);
 			continue;
 		}
@@ -729,6 +730,7 @@ done:
 		tid = qdf_nbuf_get_tid_val(nbuf);
 		if (qdf_unlikely(tid >= CDP_MAX_DATA_TIDS)) {
 			DP_STATS_INC(soc, rx.err.rx_invalid_tid_err, 1);
+			dp_verbose_debug("drop invalid tid");
 			dp_rx_nbuf_free(nbuf);
 			nbuf = next;
 			continue;
@@ -743,6 +745,7 @@ done:
 								 &rx_pdev, &dsf,
 								 &old_tid);
 			if (qdf_unlikely(!txrx_peer) || qdf_unlikely(!vdev)) {
+				dp_verbose_debug("drop no peer frame");
 				nbuf = next;
 				continue;
 			}
@@ -759,6 +762,7 @@ done:
 								 &rx_pdev, &dsf,
 								 &old_tid);
 			if (qdf_unlikely(!txrx_peer) || qdf_unlikely(!vdev)) {
+				dp_verbose_debug("drop by unmatch peer_id");
 				nbuf = next;
 				continue;
 			}
@@ -925,6 +929,7 @@ done:
 				DP_PEER_PER_PKT_STATS_INC(txrx_peer,
 							  rx.peer_unauth_rx_pkt_drop,
 							  1, link_id);
+				dp_verbose_debug("drop by unauthorized peer");
 				dp_rx_nbuf_free(nbuf);
 				nbuf = next;
 				continue;
@@ -945,6 +950,7 @@ done:
 						(txrx_peer,
 						 rx.multipass_rx_pkt_drop,
 						 1, link_id);
+					dp_verbose_debug("drop multi pass");
 					dp_rx_nbuf_free(nbuf);
 					nbuf = next;
 					continue;
@@ -959,6 +965,7 @@ done:
 				DP_PEER_PER_PKT_STATS_INC(txrx_peer,
 							  rx.nawds_mcast_drop,
 							  1, link_id);
+				dp_verbose_debug("drop nawds");
 				dp_rx_nbuf_free(nbuf);
 				nbuf = next;
 				continue;
@@ -1574,9 +1581,12 @@ dp_rx_intrabss_ucast_check_be(qdf_nbuf_t nbuf,
 				&be_soc->soc, rx.err.intra_bss_bad_chipid))
 		return false;
 
-	params->dest_soc =
-		dp_mlo_get_soc_ref_by_chip_id(be_soc->ml_ctxt,
-					      dest_chip_id);
+	if (!be_soc->ml_ctxt)
+		params->dest_soc = (struct dp_soc *)be_soc;
+	else
+		params->dest_soc =
+			dp_mlo_get_soc_ref_by_chip_id(be_soc->ml_ctxt,
+						      dest_chip_id);
 	if (!params->dest_soc)
 		return false;
 
@@ -1592,7 +1602,7 @@ dp_rx_intrabss_ucast_check_be(qdf_nbuf_t nbuf,
 		dp_peer_unref_delete(da_peer, DP_MOD_ID_RX);
 	}
 
-	if (!be_vdev->mlo_dev_ctxt) {
+	if ((!be_vdev->mlo_dev_ctxt) || (!be_soc->ml_ctxt)) {
 		params->tx_vdev_id = ta_peer->vdev->vdev_id;
 		return true;
 	}
@@ -1787,6 +1797,10 @@ void dp_rx_word_mask_subscribe_be(struct dp_soc *soc,
 	if (!msg_word || !tlv_filter)
 		return;
 
+	dp_info("enable %d, rx_mpdu_start_wmask 0x%x, rx_msdu_end_wmask 0x%x",
+		tlv_filter->enable, tlv_filter->rx_mpdu_start_wmask,
+		tlv_filter->rx_msdu_end_wmask);
+
 	/* tlv_filter->enable is set to 1 for monitor rings */
 	if (tlv_filter->enable)
 		return;
@@ -1822,12 +1836,60 @@ void dp_rx_word_mask_subscribe_be(struct dp_soc *soc,
 }
 #endif
 
-#if defined(WLAN_MCAST_MLO) && defined(CONFIG_MLO_SINGLE_DEV)
+#if defined(WLAN_MCAST_MLO) || defined(WLAN_MCAST_MLO_SAP)
+
+#if defined(WLAN_MCAST_MLO)
+
+/**
+ * dp_get_mlo_intrabss_vdev() - Function to get vdev for intrabss
+ *
+ * @be_soc: core DP main context
+ * @be_vdev: DP be_vdev structure
+ *
+ *  Return: dp vdev to forward the packet
+ */
+static
+struct dp_vdev *dp_get_mlo_intrabss_vdev(struct dp_soc_be *be_soc,
+					 struct dp_vdev_be *be_vdev)
+{
+	return dp_mlo_get_mcast_primary_vdev(be_soc,
+					     be_vdev,
+					     DP_MOD_ID_RX);
+}
+
+/**
+ * dp_release_mlo_intrabss_vdev() - Function to release intrabss vdev
+ *
+ * @intrabss_vdev: DP be_vdev structure
+ *
+ *  Return: None
+ */
+static void
+dp_release_mlo_intrabss_vdev(struct dp_vdev *intrabss_vdev)
+{
+	dp_vdev_unref_delete(intrabss_vdev->pdev->soc,
+			     intrabss_vdev, DP_MOD_ID_RX);
+}
+
+#else
+static
+struct dp_vdev *dp_get_mlo_intrabss_vdev(struct dp_soc_be *be_soc,
+					 struct dp_vdev_be *be_vdev)
+{
+	return &be_vdev->vdev;
+}
+
+static void
+dp_release_mlo_intrabss_vdev(struct dp_vdev *intrabss_vdev)
+{
+}
+#endif
+
 static inline
 bool dp_rx_intrabss_mlo_mcbc_fwd(struct dp_soc *soc, struct dp_vdev *vdev,
 				 qdf_nbuf_t nbuf_copy)
 {
-	struct dp_vdev *mcast_primary_vdev = NULL;
+	struct dp_vdev *intrabss_vdev = NULL;
 	struct dp_vdev_be *be_vdev = dp_get_be_vdev_from_dp_vdev(vdev);
 	struct dp_soc_be *be_soc = dp_get_be_soc_from_dp_soc(soc);
 	struct cdp_tx_exception_metadata tx_exc_metadata = {0};
@@ -1838,25 +1900,23 @@ bool dp_rx_intrabss_mlo_mcbc_fwd(struct dp_soc *soc, struct dp_vdev *vdev,
 	tx_exc_metadata.peer_id = CDP_INVALID_PEER;
 	tx_exc_metadata.tid = CDP_INVALID_TID;
 
-	mcast_primary_vdev = dp_mlo_get_mcast_primary_vdev(be_soc,
-							   be_vdev,
-							   DP_MOD_ID_RX);
+	intrabss_vdev = dp_get_mlo_intrabss_vdev(be_soc, be_vdev);
 
-	if (!mcast_primary_vdev)
+	if (!intrabss_vdev)
 		return false;
 
 	nbuf_copy = dp_tx_send_exception((struct cdp_soc_t *)
-					 mcast_primary_vdev->pdev->soc,
-					 mcast_primary_vdev->vdev_id,
+					 intrabss_vdev->pdev->soc,
+					 intrabss_vdev->vdev_id,
 					 nbuf_copy, &tx_exc_metadata);
 
 	if (nbuf_copy)
 		qdf_nbuf_free(nbuf_copy);
 
-	dp_vdev_unref_delete(mcast_primary_vdev->pdev->soc,
-			     mcast_primary_vdev, DP_MOD_ID_RX);
+	dp_release_mlo_intrabss_vdev(intrabss_vdev);
 	return true;
 }
+
 #else
 static inline
 bool dp_rx_intrabss_mlo_mcbc_fwd(struct dp_soc *soc, struct dp_vdev *vdev,
@@ -2129,10 +2189,10 @@ dp_rx_wbm_err_reap_desc_be(struct dp_intr *int_ctx, struct dp_soc *soc,
 		nbuf = rx_desc->nbuf;
 
 		rx_desc_pool = &soc->rx_desc_buf[rx_desc->pool_id];
-		dp_ipa_rx_buf_smmu_mapping_lock(soc);
+		dp_rx_buf_smmu_mapping_lock(soc);
 		dp_rx_nbuf_unmap_pool(soc, rx_desc_pool, nbuf);
 		rx_desc->unmapped = 1;
-		dp_ipa_rx_buf_smmu_mapping_unlock(soc);
+		dp_rx_buf_smmu_mapping_unlock(soc);
 
 		/*
 		 * Read wbm err info , MSDU info , MPDU info , peer meta data,

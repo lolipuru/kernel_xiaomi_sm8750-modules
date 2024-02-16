@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -632,6 +632,8 @@ static int init_deinit_service_ext2_ready_event_handler(ol_scn_t scn_handle,
 		info->wlan_res_cfg.is_full_bw_nol_supported = true;
 	}
 
+	target_if_wifi_radar_support_enable(psoc, tgt_hdl, event);
+
 	target_if_regulatory_set_ext_tpc(psoc);
 
 	target_if_reg_set_lower_6g_edge_ch_info(psoc);
@@ -641,6 +643,8 @@ static int init_deinit_service_ext2_ready_event_handler(ol_scn_t scn_handle,
 	target_if_reg_set_afc_dev_type(psoc, tgt_hdl);
 
 	target_if_set_regulatory_eirp_preferred_support(psoc);
+
+	target_if_set_regulatory_is_both_psd_eirp_support_for_sp(psoc);
 
 	tgt_if_set_reg_afc_configure(tgt_hdl, psoc);
 

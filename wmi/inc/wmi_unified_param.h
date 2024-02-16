@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1331,8 +1331,7 @@ struct wmi_host_tid_to_link_map_ap_params {
 	uint8_t vdev_id;
 	uint8_t num_t2lm_info;
 	uint16_t hw_link_id;
-	uint16_t disabled_link_bitmap;
-	struct wlan_t2lm_info info[WLAN_MAX_T2LM_IE];
+	struct wlan_mlo_t2lm_ie info[WLAN_MAX_T2LM_IE];
 };
 
 /**
@@ -1705,7 +1704,7 @@ struct scan_chan_list_params {
 	uint16_t nallchans;
 	bool append;
 	bool max_bw_support_present;
-	struct channel_param ch_param[1];
+	QDF_FLEX_ARRAY(struct channel_param, ch_param);
 };
 
 #ifdef QCA_SUPPORT_AGILE_DFS
@@ -4878,7 +4877,7 @@ typedef struct {
 	uint32_t flag;
 	uint32_t payload_len;
 	uint32_t buffer_len;
-	uint8_t buffer[1];
+	QDF_FLEX_ARRAY(uint8_t, buffer);
 } wmi_unit_test_event;
 
 
@@ -5479,6 +5478,9 @@ typedef enum {
 #ifdef WLAN_MGMT_RX_REO_SUPPORT
 	wmi_mgmt_rx_fw_consumed_eventid,
 #endif
+#if defined(WLAN_FEATURE_MULTI_LINK_SAP) && defined(WLAN_FEATURE_11BE_MLO)
+	wmi_mlo_link_info_sync_event_id,
+#endif
 #ifdef WLAN_FEATURE_11BE_MLO
 	wmi_mlo_setup_complete_event_id,
 	wmi_mlo_teardown_complete_event_id,
@@ -5565,7 +5567,9 @@ typedef enum {
 	wmi_audio_transport_switch_type_event_id,
 	wmi_vdev_oob_connection_response_event_id,
 #endif
-
+#ifdef WLAN_WIFI_RADAR_ENABLE
+	wmi_pdev_wifi_radar_cal_completion_status_event_id,
+#endif
 	wmi_events_max,
 } wmi_conv_event_id;
 
@@ -5955,6 +5959,8 @@ typedef enum {
 		   PDEV_PARAM_ENABLE_SMALL_MRU),
 	PDEV_PARAM(pdev_param_enable_large_mru,
 		   PDEV_PARAM_ENABLE_LARGE_MRU),
+	PDEV_PARAM(pdev_param_pwr_reduction_in_quarter_db,
+		   PDEV_PARAM_PWR_REDUCTION_IN_QUARTER_DB),
 	pdev_param_max,
 } wmi_conv_pdev_params_id;
 
@@ -6132,6 +6138,7 @@ typedef enum {
 	VDEV_PARAM(vdev_param_rate_dropdown_bmap,
 		   VDEV_PARAM_RATE_DROPDOWN_BMAP),
 	VDEV_PARAM(vdev_param_moddtim_cnt, VDEV_PARAM_MODDTIM_CNT),
+	VDEV_PARAM(vdev_param_telesdtim_cnt, VDEV_PARAM_TELESDTIM_CNT),
 	VDEV_PARAM(vdev_param_max_li_of_moddtim, VDEV_PARAM_MAX_LI_OF_MODDTIM),
 	VDEV_PARAM(vdev_param_dyndtim_cnt, VDEV_PARAM_DYNDTIM_CNT),
 	VDEV_PARAM(vdev_param_enable_disable_rtt_responder_role,
@@ -6289,6 +6296,8 @@ typedef enum {
 		   VDEV_PARAM_DISABLE_TWT_INFO_FRAME),
 	VDEV_PARAM(vdev_param_mlo_max_recom_active_links,
 		   VDEV_PARAM_MLO_MAX_RECOM_ACTIVE_LINKS),
+	VDEV_PARAM(vdev_param_dcs,
+		   VDEV_PARAM_DCS),
 	vdev_param_max,
 } wmi_conv_vdev_param_id;
 
@@ -6679,10 +6688,14 @@ typedef enum {
 	wmi_service_xpan_support,
 #endif
 	wmi_service_multiple_reorder_queue_setup_support,
+	wmi_service_both_psd_eirp_for_ap_sp_client_sp_support,
 #if defined(OL_ATH_SUPPORT_LED) && (OL_ATH_SUPPORT_LED == 1)
 	wmi_service_pcie_data_rate_led_blink_support,
 #endif
 	wmi_service_p2p_device_update_mac_addr_support,
+	wmi_service_wifi_radar_support,
+	wmi_service_dcs_obss_int_support,
+	wmi_service_vdev_dcs_stats_support,
 	wmi_services_max,
 } wmi_conv_service_ids;
 #define WMI_SERVICE_UNAVAILABLE 0xFFFF
@@ -7064,6 +7077,7 @@ struct target_feature_set {
  * @rf_path: Indicates RF path 0 primary, 1 secondary
  * @fw_ast_indication_disable: Disable AST indication
  * @is_full_bw_nol_supported: Is full bandwidth needed to put to NOL
+ * @is_qms_smem_supported: Is qms smem functionality supported
  */
 typedef struct {
 	uint32_t num_vdevs;
@@ -7199,6 +7213,7 @@ typedef struct {
 	bool rf_path;
 	bool fw_ast_indication_disable;
 	bool is_full_bw_nol_supported;
+	bool is_qms_smem_supported;
 } target_resource_config;
 
 /**
@@ -7319,7 +7334,7 @@ typedef struct {
  */
 typedef struct {
 	uint32_t num_entry;
-	wmi_host_mcast_ageout_entry entry[1];
+	QDF_FLEX_ARRAY(wmi_host_mcast_ageout_entry, entry);
 } wmi_host_mcast_list_ageout_event;
 
 /**
@@ -7347,7 +7362,7 @@ typedef struct {
 	uint32_t frag_id;
 	uint32_t more_frag;
 	uint32_t buf_len;
-	uint32_t buf_info[1];
+	QDF_FLEX_ARRAY(uint32_t, buf_info);
 } wmi_host_pdev_generic_buffer_event;
 
 /**
@@ -8362,6 +8377,8 @@ struct wmi_host_dcs_awgn_info {
 	uint32_t               chan_bw_intf_bitmap;
 };
 
+typedef struct wmi_host_dcs_awgn_info wmi_host_dcs_obss_intf_info;
+
 #define WMI_MAX_POWER_DBG_ARGS 8
 
 /**
@@ -9309,7 +9326,7 @@ struct wmi_roam_scan_stats_params {
  */
 struct wmi_roam_scan_stats_res {
 	uint32_t num_roam_scans;
-	struct wmi_roam_scan_stats_params roam_scan[0];
+	struct wmi_roam_scan_stats_params roam_scan[];
 };
 
 #define MAX_ROAM_CANDIDATE_AP    9
@@ -9610,6 +9627,7 @@ struct wmi_roam_scan_data {
  * @status:             0 - Roaming is success ; 1 - Roaming failed ;
  * 2 - No roam
  * @fail_reason:        One of WMI_ROAM_FAIL_REASON_ID
+ * @roam_abort_reason:  Roam abort reason codes
  * @fail_bssid:         BSSID of the last attempted roam failed AP
  */
 struct wmi_roam_result {
@@ -9617,6 +9635,7 @@ struct wmi_roam_result {
 	uint32_t timestamp;
 	uint32_t status;
 	uint32_t fail_reason;
+	uint32_t roam_abort_reason;
 	struct qdf_mac_addr fail_bssid;
 };
 
@@ -9930,6 +9949,19 @@ struct wmi_cfr_enh_phase_delta_param {
 	uint32_t *enh_phase_delta_array;
 };
 #endif /* WLAN_RCC_ENHANCED_AOA_SUPPORT */
+
+#ifdef WLAN_WIFI_RADAR_ENABLE
+struct wmi_wifi_radar_cal_status_param {
+	uint32_t pdev_id;
+	uint32_t wifi_radar_pkt_bw;
+	uint32_t channel_bw;
+	uint32_t band_center_freq;
+	uint32_t num_ltf_tx;
+	uint32_t num_skip_ltf_rx;
+	uint32_t num_ltf_accumulation;
+	uint32_t per_chain_cal_status[WMI_HOST_MAX_NUM_CHAINS];
+};
+#endif
 
 /**
  * struct wmi_host_oem_indirect_data - Indirect OEM data

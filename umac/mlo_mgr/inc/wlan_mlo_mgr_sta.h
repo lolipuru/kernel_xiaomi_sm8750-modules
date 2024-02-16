@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1232,6 +1232,17 @@ mlo_set_chan_switch_in_progress(struct wlan_objmgr_vdev *vdev, bool val);
  * Return: True if flag ml_chan_switch_in_progress is set, false otherwise
  */
 bool mlo_is_chan_switch_in_progress(struct wlan_objmgr_vdev *vdev);
+
+/**
+ * mlo_sta_reset_requested_emlsr_mode: Reset the requested emlsr mode
+ * @ml_dev: ml dev context
+ *
+ * This API is to reset the requested EMLSR mode
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+mlo_sta_reset_requested_emlsr_mode(struct wlan_mlo_dev_context *ml_dev);
 #else
 static inline
 void mlo_defer_set_keys(struct wlan_objmgr_vdev *vdev,
@@ -1263,5 +1274,32 @@ mlo_is_chan_switch_in_progress(struct wlan_objmgr_vdev *vdev)
 {
 	return false;
 }
+
+static inline QDF_STATUS
+mlo_sta_reset_requested_emlsr_mode(struct wlan_mlo_dev_context *ml_dev)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
 #endif
+
+#ifdef WLAN_FEATURE_11BE_MLO_ADV_FEATURE
+/**
+ * mlo_mgr_get_per_link_chan_info: Get wlan channel info per link id
+ * @vdev: vdev obj
+ * @link_id: link id
+ * @chan_info: wlan channel info buffer
+ *
+ * Return: zero for success, non-zero for failure
+ */
+int mlo_mgr_get_per_link_chan_info(struct wlan_objmgr_vdev *vdev, int link_id,
+				   struct wlan_channel *chan_info);
+#else
+static inline int
+mlo_mgr_get_per_link_chan_info(struct wlan_objmgr_vdev *vdev, int link_id,
+			       struct wlan_channel *chan_info)
+{
+	return -EINVAL;
+}
+#endif
+
 #endif

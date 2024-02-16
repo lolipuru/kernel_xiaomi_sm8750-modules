@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -469,6 +469,8 @@ static const uint32_t pdev_param_tlv[] = {
 		  PDEV_PARAM_ENABLE_SMALL_MRU),
 	PARAM_MAP(pdev_param_enable_large_mru,
 		  PDEV_PARAM_ENABLE_LARGE_MRU),
+	PARAM_MAP(pdev_param_pwr_reduction_in_quarter_db,
+		  PDEV_PARAM_PWR_REDUCTION_IN_QUARTER_DB),
 };
 
 /* Populate vdev_param array whose index is host param, value is target param */
@@ -688,6 +690,7 @@ static const uint32_t vdev_param_tlv[] = {
 	PARAM_MAP(vdev_param_max_li_of_moddtim,
 		  VDEV_PARAM_MAX_LI_OF_MODDTIM),
 	PARAM_MAP(vdev_param_moddtim_cnt, VDEV_PARAM_MODDTIM_CNT),
+	PARAM_MAP(vdev_param_telesdtim_cnt, VDEV_PARAM_TELESDTIM_CNT),
 	PARAM_MAP(vdev_param_max_li_of_moddtim_ms,
 		  VDEV_PARAM_MAX_LI_OF_MODDTIM_MS),
 	PARAM_MAP(vdev_param_dyndtim_cnt, VDEV_PARAM_DYNDTIM_CNT),
@@ -1178,33 +1181,40 @@ send_vdev_nss_chain_params_cmd_tlv(wmi_unified_t wmi_handle,
 /**
  * send_vdev_stop_cmd_tlv() - send vdev stop command to fw
  * @wmi: wmi handle
- * @vdev_id: vdev id
+ * @params: VDEV stop params
  *
  * Return: QDF_STATUS_SUCCESS for success or error code
  */
 static QDF_STATUS send_vdev_stop_cmd_tlv(wmi_unified_t wmi,
-					uint8_t vdev_id)
+					 struct vdev_stop_params *params)
 {
 	wmi_vdev_stop_cmd_fixed_param *cmd;
 	wmi_buf_t buf;
 	int32_t len = sizeof(*cmd);
+	uint8_t *buf_ptr;
+
+	len += vdev_stop_mlo_params_size(params);
 
 	buf = wmi_buf_alloc(wmi, len);
 	if (!buf)
 		return QDF_STATUS_E_NOMEM;
 
-	cmd = (wmi_vdev_stop_cmd_fixed_param *) wmi_buf_data(buf);
+	buf_ptr = wmi_buf_data(buf);
+	cmd = (wmi_vdev_stop_cmd_fixed_param *)buf_ptr;
 	WMITLV_SET_HDR(&cmd->tlv_header,
 		       WMITLV_TAG_STRUC_wmi_vdev_stop_cmd_fixed_param,
 		       WMITLV_GET_STRUCT_TLVLEN(wmi_vdev_stop_cmd_fixed_param));
-	cmd->vdev_id = vdev_id;
+	cmd->vdev_id = params->vdev_id;
+	buf_ptr += sizeof(wmi_vdev_stop_cmd_fixed_param);
+	buf_ptr = vdev_stop_add_mlo_params(buf_ptr, params);
+
 	wmi_mtrace(WMI_VDEV_STOP_CMDID, cmd->vdev_id, 0);
 	if (wmi_unified_cmd_send(wmi, buf, len, WMI_VDEV_STOP_CMDID)) {
 		wmi_err("Failed to send vdev stop command");
 		wmi_buf_free(buf);
 		return QDF_STATUS_E_FAILURE;
 	}
-	wmi_debug("vdev id = %d", vdev_id);
+	wmi_debug("vdev id = %d", cmd->vdev_id);
 
 	return 0;
 }
@@ -1383,6 +1393,11 @@ static QDF_STATUS send_vdev_start_cmd_tlv(wmi_unified_t wmi_handle,
 	cmd->regdomain = req->regdomain;
 	cmd->he_ops = req->he_ops;
 
+	if (req->is_restart) {
+		cmd->target_tsf_us_lo = req->target_tsf_us_lo;
+		cmd->target_tsf_us_hi = req->target_tsf_us_hi;
+	}
+
 	buf_ptr = (uint8_t *) (((uintptr_t) cmd) + sizeof(*cmd) +
 			       sizeof(wmi_channel));
 	WMITLV_SET_HDR(buf_ptr, WMITLV_TAG_ARRAY_STRUC,
@@ -1399,15 +1414,16 @@ static QDF_STATUS send_vdev_start_cmd_tlv(wmi_unified_t wmi_handle,
 		 "beacon interval %d dtim %d center_chan %d center_freq2 %d "
 		 "reg_info_1: 0x%x reg_info_2: 0x%x, req->max_txpow: 0x%x "
 		 "Tx SS %d, Rx SS %d, ldpc_rx: %d, cac %d, regd %d, HE ops: %d"
-		 "req->dis_hw_ack: %d ", req->vdev_id,
-		 chan->mhz, req->channel.phy_mode, chan->info,
+		 "req->dis_hw_ack: %d target_tsf_us_lo %ul target_tsf_us_hi %ul",
+		 req->vdev_id, chan->mhz, req->channel.phy_mode, chan->info,
 		 req->channel.dfs_set, req->beacon_interval, cmd->dtim_period,
 		 chan->band_center_freq1, chan->band_center_freq2,
 		 chan->reg_info_1, chan->reg_info_2, req->channel.maxregpower,
 		 req->preferred_tx_streams, req->preferred_rx_streams,
 		 req->ldpc_rx_enabled, req->cac_duration_ms,
 		 req->regdomain, req->he_ops,
-		 req->disable_hw_ack);
+		 req->disable_hw_ack, req->target_tsf_us_lo,
+		 req->target_tsf_us_hi);
 
 	vdev_start_cmd_fill_11be(cmd, req);
 
@@ -10015,6 +10031,12 @@ void wmi_copy_resource_config(wmi_resource_config *resource_cfg,
 				tgt_res_cfg->max_ndp_sessions;
 	resource_cfg->max_ndi_interfaces = tgt_res_cfg->max_ndi;
 	resource_cfg->num_max_active_vdevs = tgt_res_cfg->num_max_active_vdevs;
+
+	if (tgt_res_cfg->is_qms_smem_supported) {
+		WMI_RSRC_CFG_HOST_SERVICE_FLAG_QMS_DLKM_SUPPORT_SET(
+			resource_cfg->host_service_flags, 1);
+	}
+
 	resource_cfg->num_max_mlo_link_per_ml_bss =
 				tgt_res_cfg->num_max_mlo_link_per_ml_bss;
 
@@ -15228,9 +15250,12 @@ extract_num_max_mlo_link(wmi_service_ready_ext2_event_fixed_param *ev,
 {
 	param->num_max_mlo_link_per_ml_bss_supp =
 				ev->num_max_mlo_link_per_ml_bss_supp;
+	param->num_max_mlo_link_per_ml_sap_supp =
+				ev->num_max_mlo_link_per_ml_sap_supp;
 
-	wmi_debug("Firmware Max MLO link support: %d",
-		  param->num_max_mlo_link_per_ml_bss_supp);
+	wmi_debug("Firmware Max MLO link support: %d(mlo sta) %d(mlo sap)",
+		  param->num_max_mlo_link_per_ml_bss_supp,
+		  param->num_max_mlo_link_per_ml_sap_supp);
 }
 #else
 static inline void
@@ -19916,6 +19941,8 @@ wlan_roam_fail_reason_code(uint16_t wmi_roam_fail_reason)
 		return ROAM_FAIL_REASON_NO_CAND_AP_FOUND_AND_FINAL_BMISS_SENT;
 	case WMI_ROAM_FAIL_REASON_CURR_AP_STILL_OK:
 		return ROAM_FAIL_REASON_CURR_AP_STILL_OK;
+	case WMI_ROAM_FAIL_REASON_SCAN_CANCEL:
+		return ROAM_FAIL_REASON_SCAN_CANCEL;
 	default:
 		return ROAM_FAIL_REASON_UNKNOWN;
 	}
@@ -20566,6 +20593,7 @@ extract_roam_result_stats_tlv(wmi_unified_t wmi_handle, void *evt_buf,
 	dst->present = true;
 	dst->status = src_data->roam_status;
 	dst->timestamp = src_data->timestamp;
+	dst->roam_abort_reason = src_data->roam_abort_reason;
 	if (src_data->roam_fail_reason != ROAM_SUCCESS)
 		dst->fail_reason =
 			wlan_roam_fail_reason_code(src_data->roam_fail_reason);
@@ -21105,6 +21133,121 @@ QDF_STATUS send_afc_cmd_tlv(wmi_unified_t wmi_handle,
 }
 #endif
 
+#define HOST_TO_FW_DBM_MULTIPLIER 4
+static QDF_STATUS
+send_both_eirp_psd_for_set_tpc_tlv(wmi_unified_t wmi_handle,
+				   uint8_t vdev_id,
+				   struct reg_tpc_power_info *param)
+{
+	wmi_buf_t buf;
+	wmi_vdev_set_tpc_power_fixed_param *set_tpc_fixed_param;
+	wmi_vdev_ch_power_psd_info *ch_power_psd_info;
+	wmi_vdev_ch_power_eirp_info *ch_power_eirp_info;
+	uint8_t *buf_ptr;
+	uint16_t idx;
+	uint32_t len;
+	QDF_STATUS ret;
+
+	len =  sizeof(wmi_vdev_set_tpc_power_fixed_param);
+	len += WMI_TLV_HDR_SIZE;
+	len += WMI_TLV_HDR_SIZE + (sizeof(wmi_vdev_ch_power_psd_info) *
+				   param->num_psd_pwr_levels);
+	len += WMI_TLV_HDR_SIZE + (sizeof(wmi_vdev_ch_power_eirp_info) *
+				   param->num_eirp_pwr_levels);
+
+	buf = wmi_buf_alloc(wmi_handle, len);
+	if (!buf)
+		return QDF_STATUS_E_NOMEM;
+
+	buf_ptr = (uint8_t *)wmi_buf_data(buf);
+	set_tpc_fixed_param = (wmi_vdev_set_tpc_power_fixed_param *)buf_ptr;
+
+	WMITLV_SET_HDR(&set_tpc_fixed_param->tlv_header,
+		WMITLV_TAG_STRUC_wmi_vdev_set_tpc_power_cmd_fixed_param,
+		WMITLV_GET_STRUCT_TLVLEN(wmi_vdev_set_tpc_power_fixed_param));
+
+	set_tpc_fixed_param->vdev_id = vdev_id;
+	set_tpc_fixed_param->psd_power = param->is_psd_power;
+	set_tpc_fixed_param->eirp_power = (param->eirp_power *
+					   HOST_TO_FW_DBM_MULTIPLIER);
+	set_tpc_fixed_param->power_type_6ghz = param->power_type_6g;
+
+	wmi_debug("eirp_power = %d is_psd_power = %d",
+		  set_tpc_fixed_param->eirp_power,
+		  set_tpc_fixed_param->psd_power);
+	reg_print_ap_power_type_6ghz(set_tpc_fixed_param->power_type_6ghz);
+
+	buf_ptr += sizeof(wmi_vdev_set_tpc_power_fixed_param);
+
+	WMITLV_SET_HDR(buf_ptr, WMITLV_TAG_ARRAY_STRUC,
+		       sizeof(wmi_vdev_ch_power_psd_info) * 0);
+	buf_ptr += WMI_TLV_HDR_SIZE;
+
+	WMITLV_SET_HDR(buf_ptr, WMITLV_TAG_ARRAY_STRUC,
+		       (sizeof(wmi_vdev_ch_power_psd_info) *
+			param->num_psd_pwr_levels));
+
+	buf_ptr += WMI_TLV_HDR_SIZE;
+	ch_power_psd_info = (wmi_vdev_ch_power_psd_info *)buf_ptr;
+
+	wmi_debug("PSD Array");
+	for (idx = 0; idx < param->num_psd_pwr_levels; ++idx) {
+		WMITLV_SET_HDR(&ch_power_psd_info[idx].tlv_header,
+			WMITLV_TAG_STRUC_wmi_vdev_ch_power_psd_info,
+			WMITLV_GET_STRUCT_TLVLEN(wmi_vdev_ch_power_psd_info));
+		ch_power_psd_info[idx].chan_cfreq =
+			param->chan_psd_power_info[idx].chan_cfreq;
+		ch_power_psd_info[idx].psd_power =
+			(param->chan_psd_power_info[idx].tx_power *
+			 HOST_TO_FW_DBM_MULTIPLIER);
+		wmi_debug("chan_cfreq = %d tx_power = %d",
+			  ch_power_psd_info[idx].chan_cfreq,
+			  ch_power_psd_info[idx].psd_power);
+		buf_ptr += sizeof(wmi_vdev_ch_power_psd_info);
+	}
+
+	WMITLV_SET_HDR(buf_ptr, WMITLV_TAG_ARRAY_STRUC,
+		       (sizeof(wmi_vdev_ch_power_eirp_info) *
+			param->num_eirp_pwr_levels));
+
+	buf_ptr += WMI_TLV_HDR_SIZE;
+	ch_power_eirp_info = (wmi_vdev_ch_power_eirp_info *)buf_ptr;
+
+	wmi_debug("EIRP Array");
+	for (idx = 0; idx < param->num_eirp_pwr_levels; ++idx) {
+		WMITLV_SET_HDR(&ch_power_eirp_info[idx].tlv_header,
+			WMITLV_TAG_STRUC_wmi_vdev_ch_power_eirp_info,
+			WMITLV_GET_STRUCT_TLVLEN(wmi_vdev_ch_power_eirp_info));
+		ch_power_eirp_info[idx].chan_cfreq =
+			param->chan_eirp_power_info[idx].chan_cfreq;
+		ch_power_eirp_info[idx].eirp_power =
+			(param->chan_eirp_power_info[idx].tx_power *
+			 HOST_TO_FW_DBM_MULTIPLIER);
+		wmi_debug("chan_cfreq = %d tx_power = %d",
+			  ch_power_eirp_info[idx].chan_cfreq,
+			  ch_power_eirp_info[idx].eirp_power);
+		buf_ptr += sizeof(wmi_vdev_ch_power_eirp_info);
+	}
+
+	wmi_mtrace(WMI_VDEV_SET_TPC_POWER_CMDID, vdev_id, 0);
+	ret = wmi_unified_cmd_send(wmi_handle, buf, len,
+				   WMI_VDEV_SET_TPC_POWER_CMDID);
+	if (QDF_IS_STATUS_ERROR(ret))
+		wmi_buf_free(buf);
+
+	return ret;
+}
+
+static inline
+bool is_both_psd_eirp_support_present_for_sp(wmi_unified_t wmi_handle,
+					     struct reg_tpc_power_info *param)
+{
+	return (is_service_enabled_tlv(wmi_handle,
+		    WMI_SERVICE_BOTH_PSD_EIRP_FOR_AP_SP_CLIENT_SP_SUPPORT) &&
+		(param->power_type_6g == REG_STANDARD_POWER_AP ||
+			param->is_power_type_client_sp));
+}
+
 /**
  * send_set_tpc_power_cmd_tlv() - Sends the set TPC power level to FW
  * @wmi_handle: wmi handle
@@ -21124,6 +21267,12 @@ static QDF_STATUS send_set_tpc_power_cmd_tlv(wmi_unified_t wmi_handle,
 	uint16_t idx;
 	uint32_t len;
 	QDF_STATUS ret;
+
+	if (is_both_psd_eirp_support_present_for_sp(wmi_handle, param)) {
+		return send_both_eirp_psd_for_set_tpc_tlv(wmi_handle,
+							  vdev_id,
+							  param);
+	}
 
 	len = sizeof(wmi_vdev_set_tpc_power_fixed_param) + WMI_TLV_HDR_SIZE;
 	len += (sizeof(wmi_vdev_ch_power_info) * param->num_pwr_levels);
@@ -22418,6 +22567,10 @@ struct wmi_ops tlv_ops =  {
 #ifdef WLAN_FEATURE_11BE_MLO
 static void populate_tlv_events_id_mlo(WMI_EVT_ID *event_ids)
 {
+#if defined(WLAN_FEATURE_MULTI_LINK_SAP) && defined(WLAN_FEATURE_11BE_MLO)
+	event_ids[wmi_mlo_link_info_sync_event_id] =
+			WMI_MLO_LINK_INFO_SYNC_EVENTID;
+#endif
 	event_ids[wmi_mlo_setup_complete_event_id] =
 			WMI_MLO_SETUP_COMPLETE_EVENTID;
 	event_ids[wmi_mlo_teardown_complete_event_id] =
@@ -22958,6 +23111,10 @@ static void populate_tlv_events_id(WMI_EVT_ID *event_ids)
 			WMI_AUDIO_TRANSPORT_SWITCH_TYPE_EVENTID;
 	event_ids[wmi_vdev_oob_connection_response_event_id] =
 			WMI_VDEV_OOB_CONNECTION_RESP_EVENTID;
+#endif
+#ifdef WLAN_WIFI_RADAR_ENABLE
+	event_ids[wmi_pdev_wifi_radar_cal_completion_status_event_id] =
+			WMI_PDEV_WIFI_RADAR_CAL_COMPLETION_STATUS_EVENTID;
 #endif
 
 }
@@ -23560,12 +23717,21 @@ static void populate_tlv_service(uint32_t *wmi_service)
 #endif
 	wmi_service[wmi_service_multiple_reorder_queue_setup_support] =
 			WMI_SERVICE_MULTIPLE_REORDER_QUEUE_SETUP_SUPPORT;
+	wmi_service[wmi_service_both_psd_eirp_for_ap_sp_client_sp_support] =
+			WMI_SERVICE_BOTH_PSD_EIRP_FOR_AP_SP_CLIENT_SP_SUPPORT;
 #if defined(OL_ATH_SUPPORT_LED) && (OL_ATH_SUPPORT_LED == 1)
 	wmi_service[wmi_service_pcie_data_rate_led_blink_support] =
 				WMI_SERVICE_PCIE_DATA_RATE_LED_BLINK_SUPPORT;
 #endif
 	wmi_service[wmi_service_p2p_device_update_mac_addr_support] =
 			WMI_SERVICE_P2P_DEVICE_UPDATE_MAC_ADDR_SUPPORT;
+	wmi_service[wmi_service_wifi_radar_support] =
+				WMI_SERVICE_WIFI_RADAR_SUPPORT;
+	wmi_service[wmi_service_dcs_obss_int_support] =
+			WMI_SERVICE_DCS_OBSS_INT_SUPPORT;
+
+	wmi_service[wmi_service_vdev_dcs_stats_support] =
+				WMI_SERVICE_VDEV_DCS_STATS_SUPPORT;
 }
 
 /**
@@ -23627,6 +23793,7 @@ void wmi_tlv_attach(wmi_unified_t wmi_handle)
 	wmi_11be_attach_tlv(wmi_handle);
 	wmi_coap_attach_tlv(wmi_handle);
 	wmi_mlme_attach_tlv(wmi_handle);
+	wmi_wifi_radar_attach_tlv(wmi_handle);
 }
 qdf_export_symbol(wmi_tlv_attach);
 

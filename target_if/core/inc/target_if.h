@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -284,6 +284,7 @@ struct tgt_info {
  * @mlo_capable: Checks if the SoC is MLO capable
  * @mlo_get_group_id: Get the MLO group id of the SoC
  * @mlo_setup_done_event: MLO setup sequence complete event handler
+ * @wifi_radar_support_enable: wifi radar support enable
  */
 struct target_ops {
 	QDF_STATUS (*ext_resource_config_enable)
@@ -352,6 +353,10 @@ struct target_ops {
 	uint8_t (*mlo_get_group_id)(struct wlan_objmgr_psoc *psoc);
 	void (*mlo_setup_done_event)(struct wlan_objmgr_psoc *psoc);
 #endif
+	void (*wifi_radar_support_enable)(struct wlan_objmgr_psoc *psoc,
+					  struct target_psoc_info *tgt_hdl,
+					  uint8_t *event);
+
 };
 
 /**
@@ -2125,6 +2130,28 @@ static inline void target_if_cfr_support_enable(struct wlan_objmgr_psoc *psoc,
 }
 
 /**
+ * target_if_wifi_radar_support_enable() - Enable wifi radar support
+ * @psoc:  psoc object
+ * @tgt_hdl: target_psoc_info pointer
+ * @evt_buf: Event buffer received from FW
+ *
+ * API to enable wifi radar support
+ *
+ * Return: none
+ */
+static inline void
+target_if_wifi_radar_support_enable(struct wlan_objmgr_psoc *psoc,
+				    struct target_psoc_info *tgt_hdl,
+				    uint8_t *evt_buf)
+{
+	if ((tgt_hdl->tif_ops) &&
+	    (tgt_hdl->tif_ops->wifi_radar_support_enable))
+		tgt_hdl->tif_ops->wifi_radar_support_enable(psoc,
+							    tgt_hdl,
+							    evt_buf);
+}
+
+/**
  * target_if_set_pktlog_checksum() - Set pktlog checksum
  * @pdev: pdev object
  * @tgt_hdl: target_psoc_info pointer
@@ -2607,6 +2634,24 @@ uint32_t target_psoc_get_num_max_mlo_link(struct target_psoc_info *tgt_hdl)
 
 static inline
 uint16_t target_if_res_cfg_get_num_max_mlo_link(struct target_psoc_info *tgt_hdl)
+{
+	return 0;
+}
+#endif
+
+#ifdef WLAN_FEATURE_MULTI_LINK_SAP
+static inline
+uint32_t target_psoc_get_mlo_sap_support_link(struct target_psoc_info *tgt_hdl)
+{
+	if (!tgt_hdl)
+		return 0;
+
+	return tgt_hdl->info.service_ext2_param.
+			num_max_mlo_link_per_ml_sap_supp;
+}
+#else
+static inline
+uint32_t target_psoc_get_mlo_sap_support_link(struct target_psoc_info *tgt_hdl)
 {
 	return 0;
 }

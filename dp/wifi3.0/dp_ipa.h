@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -358,6 +358,14 @@ QDF_STATUS dp_ipa_set_perf_level(int client, uint32_t max_supported_bw_mbps,
 #ifdef IPA_OPT_WIFI_DP
 QDF_STATUS dp_ipa_rx_super_rule_setup(struct cdp_soc_t *soc_hdl,
 				      void *flt_params);
+
+/**
+ * dp_ipa_tx_super_rule_setup() - TX super rule setup
+ * @soc_hdl: handle to the soc
+ * @flt_params: filter parameters
+ */
+QDF_STATUS dp_ipa_tx_super_rule_setup(struct cdp_soc_t *soc_hdl,
+				      void *flt_params);
 int dp_ipa_pcie_link_up(struct cdp_soc_t *soc_hdl);
 void dp_ipa_pcie_link_down(struct cdp_soc_t *soc_hdl);
 #endif
@@ -457,65 +465,6 @@ QDF_STATUS dp_ipa_rx_buf_pool_smmu_mapping(struct cdp_soc_t *soc_hdl,
 					   uint32_t line);
 QDF_STATUS dp_ipa_set_smmu_mapped(struct cdp_soc_t *soc, int val);
 int dp_ipa_get_smmu_mapped(struct cdp_soc_t *soc);
-
-#ifndef QCA_OL_DP_SRNG_LOCK_LESS_ACCESS
-static inline void
-dp_ipa_rx_buf_smmu_mapping_lock(struct dp_soc *soc)
-{
-	if (soc->ipa_rx_buf_map_lock_initialized)
-		qdf_spin_lock_bh(&soc->ipa_rx_buf_map_lock);
-}
-
-static inline void
-dp_ipa_rx_buf_smmu_mapping_unlock(struct dp_soc *soc)
-{
-	if (soc->ipa_rx_buf_map_lock_initialized)
-		qdf_spin_unlock_bh(&soc->ipa_rx_buf_map_lock);
-}
-
-static inline void
-dp_ipa_reo_ctx_buf_mapping_lock(struct dp_soc *soc,
-				uint32_t reo_ring_num)
-{
-	if (!soc->ipa_reo_ctx_lock_required[reo_ring_num])
-		return;
-
-	qdf_spin_lock_bh(&soc->ipa_rx_buf_map_lock);
-}
-
-static inline void
-dp_ipa_reo_ctx_buf_mapping_unlock(struct dp_soc *soc,
-				  uint32_t reo_ring_num)
-{
-	if (!soc->ipa_reo_ctx_lock_required[reo_ring_num])
-		return;
-
-	qdf_spin_unlock_bh(&soc->ipa_rx_buf_map_lock);
-}
-#else
-
-static inline void
-dp_ipa_rx_buf_smmu_mapping_lock(struct dp_soc *soc)
-{
-}
-
-static inline void
-dp_ipa_rx_buf_smmu_mapping_unlock(struct dp_soc *soc)
-{
-}
-
-static inline void
-dp_ipa_reo_ctx_buf_mapping_lock(struct dp_soc *soc,
-				uint32_t reo_ring_num)
-{
-}
-
-static inline void
-dp_ipa_reo_ctx_buf_mapping_unlock(struct dp_soc *soc,
-				  uint32_t reo_ring_num)
-{
-}
-#endif
 
 #ifdef IPA_WDS_EASYMESH_FEATURE
 /**

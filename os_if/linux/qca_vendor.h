@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -854,6 +854,11 @@
  *	information will be set to target. Target will decide the final TX power
  *	based on this and chip specific power conformance test limits (CTL), and
  *	SAR limits.
+ *
+ * @QCA_NL80211_VENDOR_SUBCMD_FW_PAGE_FAULT_REPORT: Event indication from the
+ *      driver to user space which is carrying firmware page fault related
+ *      summary report. The attributes for this command are defined in
+ *      enum qca_wlan_vendor_attr_fw_page_fault_report.
  */
 
 enum qca_nl80211_vendor_subcmds {
@@ -1118,7 +1123,11 @@ enum qca_nl80211_vendor_subcmds {
 	QCA_NL80211_VENDOR_SUBCMD_AUDIO_TRANSPORT_SWITCH = 232,
 	QCA_NL80211_VENDOR_SUBCMD_TX_LATENCY = 233,
 	QCA_NL80211_VENDOR_SUBCMD_HIGH_AP_AVAILABILITY = 234,
+	QCA_NL80211_VENDOR_SUBCMD_SDWF_PHY_OPS = 235,
+	QCA_NL80211_VENDOR_SUBCMD_SDWF_DEV_OPS = 236,
 	QCA_NL80211_VENDOR_SUBCMD_REGULATORY_TPC_INFO = 237,
+	QCA_NL80211_VENDOR_SUBCMD_FW_PAGE_FAULT_REPORT = 238,
+	QCA_NL80211_VENDOR_SUBCMD_FLOW_POLICY = 239,
 };
 
 enum qca_wlan_vendor_tos {
@@ -1237,6 +1246,25 @@ enum qca_wlan_vendor_hang_reason {
 	QCA_WLAN_HANG_FLUSH_LOGS = 35,
 	/* Host wakeup because of page fault */
 	QCA_WLAN_HANG_HOST_WAKEUP_REASON_PAGE_FAULT = 36,
+};
+
+/**
+ * enum qca_wlan_vendor_attr_fw_page_fault_report - Used by the vendor
+ * command %QCA_NL80211_VENDOR_SUBCMD_FW_PAGE_FAULT_REPORT.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_FW_PAGE_FAULT_REPORT_DATA: The binary blob data
+ * associated with the firmware page fault that is expected to contain the
+ * required dump to analyze frequent page faults.
+ * NLA_BINARY attribute, the maximum size is QDF_HANG_EVENT_DATA_SIZE
+ */
+enum qca_wlan_vendor_attr_fw_page_fault_report {
+	QCA_WLAN_VENDOR_ATTR_FW_PAGE_FAULT_REPORT_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_FW_PAGE_FAULT_REPORT_DATA = 1,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_FW_PAGE_FAULT_REPORT_LAST,
+	QCA_WLAN_VENDOR_ATTR_FW_PAGE_FAULT_REPORT_MAX =
+	QCA_WLAN_VENDOR_ATTR_FW_PAGE_FAULT_REPORT_LAST - 1,
 };
 
 /**
@@ -2995,6 +3023,10 @@ enum qca_wlan_vendor_scan_priority {
  *      qca_wlan_vendor_scan_priority. This is an optional attribute.
  *      If this attribute is not configured, the driver shall use
  *      QCA_WLAN_VENDOR_SCAN_PRIORITY_HIGH as the priority of vendor scan.
+ * @QCA_WLAN_VENDOR_ATTR_SCAN_LINK_ID: This u8 attribute is used for OBSS scan
+ *      when AP is operating as MLD to specify which link is requesting the
+ *      scan or which link the scan result is for. No need of this attribute
+ *      in other cases.
  */
 enum qca_wlan_vendor_attr_scan {
 	QCA_WLAN_VENDOR_ATTR_SCAN_INVALID_PARAM = 0,
@@ -3011,6 +3043,7 @@ enum qca_wlan_vendor_attr_scan {
 	QCA_WLAN_VENDOR_ATTR_SCAN_BSSID = 11,
 	QCA_WLAN_VENDOR_ATTR_SCAN_DWELL_TIME = 12,
 	QCA_WLAN_VENDOR_ATTR_SCAN_PRIORITY = 13,
+	QCA_WLAN_VENDOR_ATTR_SCAN_LINK_ID = 15,
 	QCA_WLAN_VENDOR_ATTR_SCAN_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_SCAN_MAX =
 	QCA_WLAN_VENDOR_ATTR_SCAN_AFTER_LAST - 1
@@ -3087,6 +3120,50 @@ enum qca_vendor_attr_wisa_cmd {
 	QCA_WLAN_VENDOR_ATTR_WISA_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_WISA_MAX =
 		QCA_WLAN_VENDOR_ATTR_WISA_AFTER_LAST - 1
+};
+
+enum qca_wlan_vendor_attr_sdwf_phy {
+	QCA_WLAN_VENDOR_ATTR_SDWF_PHY_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_SDWF_PHY_OPERATION,
+	QCA_WLAN_VENDOR_ATTR_SDWF_PHY_SVC_PARAMS,
+
+	/* keep last */
+	QCA_WLAN_VENDOR_ATTR_SDWF_PHY_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_SDWF_PHY_MAX =
+		QCA_WLAN_VENDOR_ATTR_SDWF_PHY_AFTER_LAST - 1,
+};
+
+enum qca_wlan_vendor_sdwf_phy_oper {
+	QCA_WLAN_VENDOR_SDWF_PHY_OPER_SVC_SET = 0,
+	QCA_WLAN_VENDOR_SDWF_PHY_OPER_SVC_DEL = 1,
+	QCA_WLAN_VENDOR_SDWF_PHY_OPER_SVC_GET = 2,
+};
+
+enum qca_wlan_vendor_attr_sdwf_svc {
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_INVALID = 0,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_ID,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_MIN_TP,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_MAX_TP,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_BURST_SIZE,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_INTERVAL,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_DELAY_BOUND,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_MSDU_TTL,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_PRIO,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_TID,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_MSDU_RATE_LOSS,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_UL_SVC_INTERVAL,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_UL_MIN_TPUT,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_UL_MAX_LATENCY,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_UL_BURST_SIZE,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_UL_OFDMA_DISABLE,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_UL_MU_MIMO_DISABLE,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_BUFFER_LATENCY_TOLERANCE,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_TX_TRIGGER_DSCP,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_TX_REPLACE_DSCP,
+
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_SDWF_SVC_MAX =
+		QCA_WLAN_VENDOR_ATTR_SDWF_SVC_AFTER_LAST - 1,
 };
 
 enum qca_roaming_policy {
@@ -4927,6 +5004,11 @@ enum qca_wlan_tdls_caps_features_supported {
  * scoring. In case scan was performed on partial set of channels configured
  * with this command, within last QCA_WLAN_VENDOR_ATTR_ACS_LAST_SCAN_AGEOUT_TIME
  * (in ms), then scan only remaining channels.
+ *
+ * @QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID: Mandatory on AP MLD (u8).
+ * Used with command to configure ACS operation for a specific link affiliated
+ * to an AP MLD.
+ *
  */
 enum qca_wlan_vendor_attr_acs_offload {
 	QCA_WLAN_VENDOR_ATTR_ACS_CHANNEL_INVALID = 0,
@@ -4950,6 +5032,7 @@ enum qca_wlan_vendor_attr_acs_offload {
 	QCA_WLAN_VENDOR_ATTR_ACS_PUNCTURE_BITMAP = 18,
 	QCA_WLAN_VENDOR_ATTR_ACS_EHT_ENABLED = 19,
 	QCA_WLAN_VENDOR_ATTR_ACS_LAST_SCAN_AGEOUT_TIME = 20,
+	QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID = 21,
 
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_ACS_AFTER_LAST,
@@ -10255,6 +10338,13 @@ enum qca_wlan_vendor_attr_wifi_test_config {
 	 */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MLD_ID_ML_PROBE_REQ = 72,
 
+	/* 8-bit unsigned value to configure the SCS traffic description
+	 * support in the EHT capabilities of an Association Request frame.
+	 * 1-enable, 0-disable
+	 * This attribute is used to configure the testbed device.
+	 */
+	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_EHT_SCS_TRAFFIC_SUPPORT = 73,
+
 	/* keep last */
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
@@ -14910,12 +15000,14 @@ enum qca_wlan_vendor_attr_roam_events {
  * @QCA_WLAN_RATEMASK_PARAMS_TYPE_HT: HT rate mask config
  * @QCA_WLAN_RATEMASK_PARAMS_TYPE_VHT: VHT rate mask config
  * @QCA_WLAN_RATEMASK_PARAMS_TYPE_HE: HE rate mask config
+ * @QCA_WLAN_RATEMASK_PARAMS_TYPE_EHT: EHT rate mask config
  */
 enum qca_wlan_ratemask_params_type {
 	QCA_WLAN_RATEMASK_PARAMS_TYPE_CCK_OFDM = 0,
 	QCA_WLAN_RATEMASK_PARAMS_TYPE_HT = 1,
 	QCA_WLAN_RATEMASK_PARAMS_TYPE_VHT = 2,
 	QCA_WLAN_RATEMASK_PARAMS_TYPE_HE = 3,
+	QCA_WLAN_RATEMASK_PARAMS_TYPE_EHT = 4,
 };
 
 /* enum qca_wlan_vendor_attr_ratemask_params - Used by the
@@ -17537,5 +17629,65 @@ enum qca_wlan_vendor_attr_tpc_links {
 	QCA_WLAN_VENDOR_ATTR_TPC_LINKS_AFTER_LAST,
 	QCA_WLAN_VENDOR_ATTR_TPC_LINKS_MAX =
 	QCA_WLAN_VENDOR_ATTR_TPC_AFTER_LAST - 1,
+};
+
+enum qca_wlan_vendor_attr_flow_policy {
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_INVALID = 0,
+
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_OPERATION = 1,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_ID = 2,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM = 3,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_CONFIG = 4,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_LIST = 5,
+
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_MAX =
+		QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_AFTER_LAST - 1,
+};
+
+enum qca_wlan_vendor_flow_policy_operation {
+	QCA_WLAN_VENDOR_FLOW_POLICY_OPER_ADD = 0,
+	QCA_WLAN_VENDOR_FLOW_POLICY_OPER_DELETE = 1,
+	QCA_WLAN_VENDOR_FLOW_POLICY_OPER_UPDATE = 2,
+	QCA_WLAN_VENDOR_FLOW_POLICY_OPER_QUERY = 3,
+};
+
+enum qca_wlan_vendor_attr_flow_policy_param {
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_INVALID = 0,
+
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_POLICY_TYPE = 1,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_IPV4_SRC_IP = 2,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_IPV6_SRC_IP = 3,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_SRC_PORT = 4,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_IPV4_DST_IP = 5,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_IPV6_DST_IP = 6,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_DST_PORT = 7,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_PROTO = 8,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_PRIORITY = 9,
+
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_MAX =
+		QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_PARAM_AFTER_LAST - 1,
+};
+
+enum qca_wlan_vendor_flow_policy_type {
+	QCA_WLAN_VENDOR_FLOW_POLICY_TYPE_IPV4 = 0,
+	QCA_WLAN_VENDOR_FLOW_POLICY_TYPE_IPV6 = 1,
+};
+
+enum qca_wlan_vendor_flow_policy_proto {
+	QCA_WLAN_VENDOR_FLOW_POLICY_PROTO_UDP = 0,
+	QCA_WLAN_VENDOR_FLOW_POLICY_PROTO_TCP = 1,
+};
+
+enum qca_wlan_vendor_attr_flow_policy_config {
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_CONFIG_INVALID = 0,
+
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_CONFIG_TID = 1,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_CONFIG_SERVICE_CLASS_ID = 2,
+
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_CONFIG_AFTER_LAST,
+	QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_CONFIG_MAX =
+		QCA_WLAN_VENDOR_ATTR_FLOW_POLICY_CONFIG_AFTER_LAST - 1,
 };
 #endif

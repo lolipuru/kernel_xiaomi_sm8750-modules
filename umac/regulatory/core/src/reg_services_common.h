@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *
  * Permission to use, copy, modify, and/or distribute this software for
@@ -703,6 +703,14 @@ uint16_t reg_min_6ghz_chan_freq(void);
 uint16_t reg_max_6ghz_chan_freq(void);
 
 /**
+ * reg_is_6g_ap_type_invalid() - Check if the input power mode is valid.
+ * @ap_pwr_type: AP power type
+ *
+ * Return: true if the power type is invalid, else false.
+ */
+bool reg_is_6g_ap_type_invalid(enum reg_6g_ap_type ap_pwr_type);
+
+/**
  * reg_is_6ghz_unii5_chan_freq() - Check if the given 6GHz channel frequency is
  * uinii5 band frequency or not.
  * @freq: Channel frequency
@@ -751,6 +759,11 @@ static inline bool reg_is_range_only6g(qdf_freq_t low_freq,
 static inline bool REG_IS_6GHZ_FREQ(uint16_t freq)
 {
 	return false;
+}
+
+static inline bool reg_is_6g_ap_type_invalid(enum reg_6g_ap_type ap_pwr_type)
+{
+	return true;
 }
 
 static inline bool reg_is_6ghz_psc_chan_freq(uint16_t freq)
@@ -2076,8 +2089,8 @@ QDF_STATUS reg_get_client_power_for_connecting_ap(struct wlan_objmgr_pdev *pdev,
 						  enum reg_6g_ap_type ap_type,
 						  qdf_freq_t chan_freq,
 						  bool is_psd,
-						  uint16_t *tx_power,
-						  uint16_t *eirp_psd_power);
+						  int16_t *tx_power,
+						  int16_t *eirp_psd_power);
 
 /**
  * reg_get_client_power_for_6ghz_ap() - Find the channel information when
@@ -2100,8 +2113,8 @@ QDF_STATUS reg_get_client_power_for_connecting_ap(struct wlan_objmgr_pdev *pdev,
 QDF_STATUS reg_get_client_power_for_6ghz_ap(struct wlan_objmgr_pdev *pdev,
 					    enum reg_6g_client_type client_type,
 					    qdf_freq_t chan_freq,
-					    bool *is_psd, uint16_t *tx_power,
-					    uint16_t *eirp_psd_power);
+					    bool *is_psd, int16_t *tx_power,
+					    int16_t *eirp_psd_power);
 
 /**
  * reg_set_ap_pwr_and_update_chan_list() - Set the AP power mode and recompute
@@ -2143,6 +2156,31 @@ reg_find_txpower_from_6g_list(qdf_freq_t freq,
 			      struct regulatory_channel *chan_list,
 			      int16_t *reg_eirp);
 
+/**
+ * reg_set_both_psd_eirp_preferred_support() - Set both PSD and EIRP as
+ * preferred by the target for TPC power command.
+ * @psoc: psoc pointer
+ * @reg_is_both_psd_eirp_support_preferred: Boolean to indicate if target
+ * prefers PSD and EIRP support for TPC power command.
+ *
+ * Return: Success or Failure
+ */
+QDF_STATUS reg_set_both_psd_eirp_preferred_support(
+				struct wlan_objmgr_psoc *psoc,
+				bool reg_is_both_psd_eirp_support_preferred);
+
+/**
+ * reg_get_both_psd_eirp_preferred_support() - Check if both PSD and EIRP
+ * support is preferred by the target for TPC power command.
+ * @psoc: psoc pointer
+ * @reg_is_both_psd_eirp_support_preferred: Pointer to
+ * reg_is_both_psd_eirp_support_preferred.
+ *
+ * Return: Success or Failure
+ */
+QDF_STATUS reg_get_both_psd_eirp_preferred_support(
+				struct wlan_objmgr_psoc *psoc,
+				bool *reg_is_both_psd_eirp_support_preferred);
 #else
 static inline QDF_STATUS
 reg_set_cur_6g_ap_pwr_type(struct wlan_objmgr_pdev *pdev,
@@ -2220,8 +2258,8 @@ QDF_STATUS reg_get_client_power_for_connecting_ap(struct wlan_objmgr_pdev *pdev,
 						  enum reg_6g_ap_type ap_type,
 						  qdf_freq_t chan_freq,
 						  bool is_psd,
-						  uint16_t *tx_power,
-						  uint16_t *eirp_psd_power)
+						  int16_t *tx_power,
+						  int16_t *eirp_psd_power)
 {
 	*tx_power = 0;
 	*eirp_psd_power = 0;
@@ -2232,8 +2270,8 @@ static inline
 QDF_STATUS reg_get_client_power_for_6ghz_ap(struct wlan_objmgr_pdev *pdev,
 					    enum reg_6g_client_type client_type,
 					    qdf_freq_t chan_freq,
-					    bool *is_psd, uint16_t *tx_power,
-					    uint16_t *eirp_psd_power)
+					    bool *is_psd, int16_t *tx_power,
+					    int16_t *eirp_psd_power)
 {
 	*is_psd = false;
 	*tx_power = 0;
@@ -2263,6 +2301,23 @@ reg_find_txpower_from_6g_list(qdf_freq_t freq,
 			      int16_t *reg_eirp)
 {
 	*reg_eirp = 0;
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline QDF_STATUS reg_set_both_psd_eirp_preferred_support(
+				struct wlan_objmgr_psoc *psoc,
+				bool reg_is_both_psd_eirp_support_preferred)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline QDF_STATUS reg_get_both_psd_eirp_preferred_support(
+				struct wlan_objmgr_psoc *psoc,
+				bool *reg_is_both_psd_eirp_support_preferred)
+{
+	if (reg_is_both_psd_eirp_support_preferred)
+		*reg_is_both_psd_eirp_support_preferred = false;
+
 	return QDF_STATUS_E_NOSUPPORT;
 }
 #endif
@@ -2763,12 +2818,12 @@ enum reg_6g_ap_type reg_get_best_pwr_mode(struct wlan_objmgr_pdev *pdev,
  *
  * Return: EIRP power
  */
-int8_t reg_get_eirp_pwr(struct wlan_objmgr_pdev *pdev, qdf_freq_t freq,
-			qdf_freq_t cen320,
-			uint16_t bw, enum reg_6g_ap_type ap_pwr_type,
-			uint16_t in_punc_pattern,
-			bool is_client_list_lookup_needed,
-			enum reg_6g_client_type client_type);
+int16_t reg_get_eirp_pwr(struct wlan_objmgr_pdev *pdev, qdf_freq_t freq,
+			 qdf_freq_t cen320,
+			 uint16_t bw, enum reg_6g_ap_type ap_pwr_type,
+			 uint16_t in_punc_pattern,
+			 bool is_client_list_lookup_needed,
+			 enum reg_6g_client_type client_type);
 
 #else
 static inline

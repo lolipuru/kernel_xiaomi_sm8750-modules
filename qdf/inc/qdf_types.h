@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -36,6 +36,19 @@
 
 /* Preprocessor definitions and constants */
 #define QDF_MAX_SGLIST 4
+
+#define __QDF_DECLARE_FLEX_ARRAY(type, name) \
+	struct { \
+		struct {} dummy_struct; \
+		type name[]; \
+	}
+
+/* Define a QDF macro for declaring flexible arrays */
+#define QDF_FLEX_ARRAY(type, name) \
+	union { \
+		type name ## _first_element; \
+		__QDF_DECLARE_FLEX_ARRAY(type, name); \
+	}
 
 /*
  * Add more levels here based on the number of perf clusters in SoC
@@ -1554,11 +1567,13 @@ struct qdf_tso_info_t {
  * @QDF_SYSTEM_SUSPEND: System suspend triggered wlan suspend
  * @QDF_RUNTIME_SUSPEND: Runtime pm inactivity timer triggered wlan suspend
  * @QDF_UNIT_TEST_WOW_SUSPEND: WoW unit test suspend
+ * @QDF_WOW_UNSUPPORTED_TYPE: Wow unsupported
  */
 enum qdf_suspend_type {
 	QDF_SYSTEM_SUSPEND,
 	QDF_RUNTIME_SUSPEND,
-	QDF_UNIT_TEST_WOW_SUSPEND
+	QDF_UNIT_TEST_WOW_SUSPEND,
+	QDF_WOW_UNSUPPORTED_TYPE
 };
 
 /**

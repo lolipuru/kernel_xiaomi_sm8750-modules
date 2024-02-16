@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -103,7 +103,11 @@
 #if defined(RX_DATA_BUFFER_SIZE)
 #define WLAN_CFG_RX_BUFFER_SIZE RX_DATA_BUFFER_SIZE
 #else
+#ifdef DP_RX_BUFFER_OPTIMIZATION
+#define WLAN_CFG_RX_BUFFER_SIZE 1664
+#else
 #define WLAN_CFG_RX_BUFFER_SIZE 2048
+#endif /* DP_RX_BUFFER_OPTIMIZATION */
 #endif
 
 #define WLAN_CFG_QREF_CONTROL_SIZE 0
@@ -124,6 +128,10 @@
 /* Tx Descriptor and Tx Extension Descriptor pool sizes */
 #define WLAN_CFG_NUM_TX_DESC  4096
 #define WLAN_CFG_NUM_TX_EXT_DESC 4096
+#elif defined(IPA_OFFLOAD) && defined(QCA_WIFI_QCN9224)
+#define WLAN_CFG_NUM_TX_DESC 0x2000
+#define WLAN_CFG_NUM_TX_EXT_DESC 4096
+#define WLAN_CFG_TX_COMP_RING_SIZE 4096
 #else
 #define WLAN_CFG_TX_COMP_RING_SIZE 1024
 
@@ -199,7 +207,11 @@
 #define WLAN_CFG_TX_COMP_RING_SIZE_MAX 0x80000
 
 #define WLAN_CFG_NUM_TX_DESC_MIN  16
+#if defined(IPA_OFFLOAD) && defined(QCA_WIFI_QCN9224)
+#define WLAN_CFG_NUM_TX_DESC_MAX  0x2000
+#else
 #define WLAN_CFG_NUM_TX_DESC_MAX  0x10000
+#endif
 
 #define WLAN_CFG_NUM_TX_SPL_DESC  1024
 #define WLAN_CFG_NUM_TX_SPL_DESC_MIN  0
@@ -2055,6 +2067,27 @@
 #define CFG_TX_PKT_INSPECT_FOR_ILP_CFG
 #endif
 
+#ifdef WLAN_SUPPORT_LAPB
+/*
+ * <ini>
+ * TX packet LAPB flow - Enable/Disable
+ *
+ * @Default: false
+ *
+ * This ini enable/disables TX packet LAPB flow
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_WLAN_SUPPORT_LAPB \
+	CFG_INI_BOOL("dp_enable_lapb", false, \
+	"Enable/Disable WLAN LAPB flow")
+#define CFG_WLAN_SUPPORT_LAPB_CFG CFG(CFG_WLAN_SUPPORT_LAPB)
+#else
+#define CFG_WLAN_SUPPORT_LAPB_CFG
+#endif
+
 /*
  * <ini>
  * special_frame_msk - frame mask to mark special frame type
@@ -2244,6 +2277,7 @@
 		CFG(CFG_DP_POINTER_NUM_THRESHOLD_RX) \
 		CFG_DP_LOCAL_PKT_CAPTURE_CONFIG \
 		CFG(CFG_SPECIAL_FRAME_MSK) \
+		CFG_WLAN_SUPPORT_LAPB_CFG \
 		CFG(CFG_DP_SW2RXDMA_LINK_RING) \
 		CFG(CFG_DP_TX_CAPT_RADIO_0_RBM_ID) \
 		CFG(CFG_DP_TX_CAPT_RADIO_1_RBM_ID) \

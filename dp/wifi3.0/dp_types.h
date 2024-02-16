@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -45,6 +45,7 @@
 #include <hal_api.h>
 #include <hal_api_mon.h>
 #include "hal_rx.h"
+#include <qdf_hrtimer.h>
 
 #define dp_init_alert(params...) QDF_TRACE_FATAL(QDF_MODULE_ID_DP_INIT, params)
 #define dp_init_err(params...) QDF_TRACE_ERROR(QDF_MODULE_ID_DP_INIT, params)
@@ -234,19 +235,23 @@
 typedef void dp_ptnr_soc_iter_func(struct dp_soc *ptnr_soc, void *arg,
 				   int chip_id);
 
+#if defined(WLAN_FEATURE_11BE_MLO)
+#define DP_LINK_VDEV_ITER 1
+#define DP_ALL_VDEV_ITER 3
+#define IS_LINK_VDEV_ITER_REQUIRED(type) (type & DP_LINK_VDEV_ITER)
+#define DP_VDEV_ITERATE_SKIP_SELF 0
+#endif
+
 #if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_MLO_MULTI_CHIP)
 #define DP_MLD_MODE_UNIFIED_NONBOND 0
 #define DP_MLD_MODE_UNIFIED_BOND    1
 #define DP_MLD_MODE_HYBRID_NONBOND  2
 #define DP_MLD_MODE_MAX             DP_MLD_MODE_HYBRID_NONBOND
 
-#define DP_LINK_VDEV_ITER 1
 #define DP_BRIDGE_VDEV_ITER 2
-#define DP_ALL_VDEV_ITER 3
-#define IS_LINK_VDEV_ITER_REQUIRED(type) (type & DP_LINK_VDEV_ITER)
+
 #define IS_BRIDGE_VDEV_ITER_REQUIRED(type) (type & DP_BRIDGE_VDEV_ITER)
 #define DP_VDEV_ITERATE_ALL 1
-#define DP_VDEV_ITERATE_SKIP_SELF 0
 #endif
 
 /**
@@ -1231,6 +1236,22 @@ struct reo_cmd_event_history {
 };
 #endif /* WLAN_FEATURE_DP_EVENT_HISTORY */
 
+/**
+ * struct htt_t2h_msg_stats: HTT T2H message stats
+ * @peer_map: Peer map event count
+ * @peer_unmap: Peer unmap event count (peer_unmap -= ml_peer_unmap)
+ * @invalid_peer_unmap: Peer unmap with invalid peer id
+ * @ml_peer_map: MLD peer map count
+ * @ml_peer_unmap: MLD peer unmap count
+ */
+struct htt_t2h_msg_stats {
+	uint32_t peer_map;
+	uint32_t peer_unmap;
+	uint32_t invalid_peer_unmap;
+	uint32_t ml_peer_map;
+	uint32_t ml_peer_unmap;
+};
+
 /* SoC level data path statistics */
 struct dp_soc_stats {
 	struct {
@@ -1373,6 +1394,14 @@ struct dp_soc_stats {
 			uint32_t ipa_smmu_unmap_dup;
 			/* ipa smmu unmap while ipa pipes is disabled */
 			uint32_t ipa_unmap_no_pipe;
+#ifdef FEATURE_DIRECT_LINK
+			/* audio smmu map duplicate count */
+			uint32_t audio_smmu_map_dup;
+			/* audio smmu unmap duplicate count */
+			uint32_t audio_smmu_unmap_dup;
+			/* audio smmu unmap while direct link is disabled */
+			uint32_t audio_unmap_no_link;
+#endif
 			/* REO cmd send fail/requeue count */
 			uint32_t reo_cmd_send_fail;
 			/* REO cmd send drain count */
@@ -1450,6 +1479,7 @@ struct dp_soc_stats {
 #ifdef WLAN_FEATURE_DP_EVENT_HISTORY
 	struct reo_cmd_event_history cmd_event_history;
 #endif /* WLAN_FEATURE_DP_EVENT_HISTORY */
+	struct htt_t2h_msg_stats t2h_msg_stats;
 };
 
 union dp_align_mac_addr {
@@ -1583,7 +1613,7 @@ struct rx_refill_buff_pool {
 	uint16_t tail;
 	struct dp_pdev *dp_pdev;
 	uint16_t max_bufq_len;
-	qdf_nbuf_t buf_elem[2048];
+	qdf_nbuf_t *buf_elem;
 };
 
 #ifdef DP_TX_HW_DESC_HISTORY
@@ -2196,6 +2226,30 @@ struct ipa_dp_rx_rsc {
 #endif
 
 struct dp_tx_msdu_info_s;
+
+#ifdef WLAN_SUPPORT_LAPB
+struct wlan_lapb_ops {
+	void (*wlan_dp_lapb_handle_frame)(struct dp_soc *soc, qdf_nbuf_t  nbuf,
+					  int *coalesce,
+					  struct dp_tx_msdu_info_s *msdu_info);
+};
+
+struct wlan_lapb_stats {
+	uint32_t pkt_recvd;
+	uint32_t timer_expired;
+	uint32_t app_spcl_ind_recvd;
+};
+
+struct wlan_lapb {
+	bool is_init;
+	uint8_t ring_id;
+	struct wlan_lapb_ops *ops;
+	struct dp_soc *soc;
+	qdf_hrtimer_data_t lapb_flow_timer;
+	struct wlan_lapb_stats stats;
+};
+#endif
+
 /**
  * enum dp_context_type- DP Context Type
  * @DP_CONTEXT_TYPE_SOC: Context type DP SOC
@@ -2614,6 +2668,7 @@ struct dp_arch_ops {
  * @umac_hw_reset_support: UMAC HW reset support
  * @wds_ext_ast_override_enable:
  * @multi_rx_reorder_q_setup_support: multi rx reorder q setup at a time support
+ * @fw_support_ml_monitor: FW support ML monitor mode
  */
 struct dp_soc_features {
 	uint8_t pn_in_reo_dest:1,
@@ -2622,6 +2677,7 @@ struct dp_soc_features {
 	bool umac_hw_reset_support;
 	bool wds_ext_ast_override_enable;
 	bool multi_rx_reorder_q_setup_support;
+	bool fw_support_ml_monitor;
 };
 
 enum sysfs_printing_mode {
@@ -3068,9 +3124,10 @@ struct dp_soc {
 #endif
 	qdf_atomic_t ipa_pipes_enabled;
 	bool ipa_first_tx_db_access;
-	qdf_spinlock_t ipa_rx_buf_map_lock;
-	bool ipa_rx_buf_map_lock_initialized;
-	uint8_t ipa_reo_ctx_lock_required[MAX_REO_DEST_RINGS];
+#endif
+#if defined(IPA_OFFLOAD) || defined(FEATURE_DIRECT_LINK)
+	qdf_spinlock_t rx_buf_map_lock;
+	uint8_t reo_ctx_lock_required[MAX_REO_DEST_RINGS];
 #endif
 
 #ifdef WLAN_FEATURE_STATS_EXT
@@ -3170,6 +3227,10 @@ struct dp_soc {
 	struct dp_swlm swlm;
 #endif
 
+#ifdef WLAN_SUPPORT_LAPB
+	struct wlan_lapb lapb;
+#endif
+
 #ifdef FEATURE_RUNTIME_PM
 	/* DP Rx timestamp */
 	qdf_time_t rx_last_busy;
@@ -3254,12 +3315,6 @@ struct dp_soc {
 #endif
 	bool is_tx_pause;
 
-#ifdef WLAN_SUPPORT_RX_FLOW_TAG
-	/* number of IPv4 flows inserted */
-	qdf_atomic_t ipv4_fse_cnt;
-	/* number of IPv6 flows inserted */
-	qdf_atomic_t ipv6_fse_cnt;
-#endif
 	/* Reo queue ref table items */
 	struct reo_queue_ref_table reo_qref;
 #ifdef DP_TX_PACKET_INSPECT_FOR_ILP
@@ -3294,6 +3349,9 @@ struct dp_soc {
 #endif
 #ifdef DP_RX_PEEK_MSDU_DONE_WAR
 	struct dp_rx_msdu_done_fail_desc_list msdu_done_fail_desc_list;
+#endif
+#ifdef FEATURE_DIRECT_LINK
+	qdf_atomic_t direct_link_active;
 #endif
 };
 
@@ -4150,6 +4208,9 @@ struct dp_vdev {
 	/* callback to classify critical packets */
 	ol_txrx_classify_critical_pkt_fp tx_classify_critical_pkt_cb;
 
+	/* delete notifier to DP component */
+	ol_txrx_vdev_delete_cb vdev_del_notify;
+
 	/* deferred vdev deletion state */
 	struct {
 		/* VDEV delete pending */
@@ -4553,6 +4614,24 @@ struct dp_mld_link_peers {
 #define DP_MAX_MLO_LINKS 0
 #endif
 
+/**
+ * struct dp_peer_setup_info - MLD peer setup information
+ * @mld_mac_addr: mld peer mac address
+ * @is_first_link: set true for first MLO link peer
+ * @is_primary_link: set true for MLO primary link peer
+ * @primary_umac_id: primary umac_id
+ * @num_links: number of links in MLO
+ * @is_bridge_peer: flag to indicate if peer is bridge peer or not
+ */
+struct dp_peer_setup_info {
+	union dp_align_mac_addr mld_mac_addr;
+	uint8_t is_first_link:1,
+		is_primary_link:1;
+	uint8_t primary_umac_id;
+	uint8_t num_links;
+	uint8_t is_bridge_peer;
+};
+
 typedef void *dp_txrx_ref_handle;
 
 /**
@@ -4567,20 +4646,21 @@ typedef void *dp_txrx_ref_handle;
  * @ofdma: Total Packets as ofdma
  * @non_amsdu_cnt: Number of MSDUs with no MSDU level aggregation
  * @amsdu_cnt: Number of MSDUs part of AMSDU
- * @dropped: Dropped packet statistics
- * @dropped.fw_rem: Discarded by firmware
- * @dropped.fw_rem_notx: firmware_discard_untransmitted
- * @dropped.fw_rem_tx: firmware_discard_transmitted
- * @dropped.age_out: aged out in mpdu/msdu queues
- * @dropped.fw_reason1: discarded by firmware reason 1
- * @dropped.fw_reason2: discarded by firmware reason 2
- * @dropped.fw_reason3: discarded by firmware reason  3
- * @dropped.fw_rem_no_match: dropped due to fw no match command
- * @dropped.drop_threshold: dropped due to HW threshold
- * @dropped.drop_link_desc_na: dropped due resource not available in HW
- * @dropped.invalid_drop: Invalid msdu drop
- * @dropped.mcast_vdev_drop: MCAST drop configured for VDEV in HW
- * @dropped.invalid_rr: Invalid TQM release reason
+ * @tqm_rr_counter: Counters for dropped packet statistics
+ * @tqm_rr_counter.fw_rem: Discarded by firmware
+ * @tqm_rr_counter.fw_rem_notx: firmware_discard_untransmitted
+ * @tqm_rr_counter.fw_rem_tx: firmware_discard_transmitted
+ * @tqm_rr_counter.age_out: aged out in mpdu/msdu queues
+ * @tqm_rr_counter.fw_reason1: discarded by firmware reason 1
+ * @tqm_rr_counter.fw_reason2: discarded by firmware reason 2
+ * @tqm_rr_counter.fw_reason3: discarded by firmware reason  3
+ * @tqm_rr_counter.fw_rem_no_match: dropped due to fw no match command
+ * @tqm_rr_counter.drop_threshold: dropped due to HW threshold
+ * @tqm_rr_counter.drop_link_desc_na: dropped due resource
+ * not available in HW
+ * @tqm_rr_counter.invalid_drop: Invalid msdu drop
+ * @tqm_rr_counter.mcast_vdev_drop: MCAST drop configured for VDEV in HW
+ * @tqm_rr_counter.invalid_rr: Invalid TQM release reason
  * @failed_retry_count: packets failed due to retry above 802.11 retry limit
  * @retry_count: packets successfully send after one or more retry
  * @multiple_retry_count: packets successfully sent after more than one retry
@@ -4603,22 +4683,35 @@ struct dp_peer_per_pkt_tx_stats {
 	uint32_t ofdma;
 	uint32_t non_amsdu_cnt;
 	uint32_t amsdu_cnt;
-	struct {
-		struct cdp_pkt_info fw_rem;
-		uint32_t fw_rem_notx;
-		struct cdp_pkt_info fw_rem_tx;
-		uint32_t age_out;
-		uint32_t fw_reason1;
-		uint32_t fw_reason2;
-		uint32_t fw_reason3;
-		uint32_t fw_rem_queue_disable;
-		uint32_t fw_rem_no_match;
-		uint32_t drop_threshold;
-		uint32_t drop_link_desc_na;
-		uint32_t invalid_drop;
-		uint32_t mcast_vdev_drop;
-		uint32_t invalid_rr;
-	} dropped;
+	union {
+		struct {
+			uint32_t frame_acked;
+			uint32_t fw_rem;
+			uint32_t fw_rem_tx;
+			uint32_t fw_rem_notx;
+			uint32_t age_out;
+			uint32_t fw_reason1;
+			uint32_t fw_reason2;
+			uint32_t fw_reason3;
+			uint32_t fw_rem_queue_disable;
+			uint32_t fw_rem_no_match;
+			uint32_t drop_threshold;
+			uint32_t drop_link_desc_na;
+			uint32_t invalid_drop;
+			uint32_t mcast_vdev_drop;
+			uint32_t vdev_mismatch_drop;
+			uint32_t invalid_rr;
+			uint64_t fw_rem_bytes;
+			uint64_t fw_rem_tx_bytes;
+		} res;
+		struct {
+			/* Above res structure and tqm_rr_update structure
+			 * should be mapped */
+			uint32_t drop_stats[HAL_TX_TQM_RR_MAX + 1];
+			uint64_t fw_rem_bytes;
+			uint64_t fw_rem_tx_bytes;
+		} tqm_rr_update;
+	} tqm_rr_counter;
 	uint32_t failed_retry_count;
 	uint32_t retry_count;
 	uint32_t multiple_retry_count;
@@ -5117,14 +5210,15 @@ struct dp_peer {
 		sta_self_peer:1, /* Indicate STA self peer */
 		is_tdls_peer:1; /* Indicate TDLS peer */
 
+	/* MCL specific peer local id */
+	uint16_t local_id;
+	enum ol_txrx_peer_state state;
+
 #ifdef WLAN_FEATURE_11BE_MLO
 	uint8_t first_link:1, /* first link peer for MLO */
 		primary_link:1; /* primary link for MLO */
 #endif
 
-	/* MCL specific peer local id */
-	uint16_t local_id;
-	enum ol_txrx_peer_state state;
 	qdf_spinlock_t peer_info_lock;
 
 	/* Peer calibrated stats */
@@ -5193,6 +5287,9 @@ struct dp_peer {
 
 	/* Peer Frequency */
 	uint32_t freq;
+
+	/* peer setup info */
+	struct dp_peer_setup_info setup_info;
 };
 
 /**
@@ -5275,6 +5372,13 @@ struct dp_rx_fst {
 	bool fse_setup_done;
 	/* Last ring id used to add a flow */
 	uint8_t ring_id;
+	/* number of IPv4 flows inserted */
+	uint16_t ipv4_fse_cnt;
+	/* number of IPv6 flows inserted */
+	uint16_t ipv6_fse_cnt;
+	/* lock to prevent concurrent table access */
+	qdf_spinlock_t fst_lock;
+
 };
 
 #define DP_RX_GET_SW_FT_ENTRY_SIZE sizeof(struct dp_rx_fse)

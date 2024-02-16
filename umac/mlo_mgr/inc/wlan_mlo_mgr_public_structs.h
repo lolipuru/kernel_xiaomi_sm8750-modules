@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -33,6 +33,9 @@
 #endif
 #include <wlan_mlo_t2lm.h>
 #include <net/cfg80211.h>
+#ifdef WLAN_FEATURE_11BE_MLO_ADV_FEATURE
+#include "cfg_mlme_generic.h"
+#endif
 
 /* MAX MLO dev support */
 #ifndef WLAN_UMAC_MLO_MAX_VDEVS
@@ -55,7 +58,7 @@
 
 /* MAX MLO Assoc Links per MLD */
 #ifndef WLAN_UMAC_MLO_ASSOC_MAX_SUPPORTED_LINKS
-#ifdef SAP_MULTI_LINK_EMULATION
+#if defined(SAP_MULTI_LINK_EMULATION) || defined(WLAN_FEATURE_MULTI_LINK_SAP)
 #define WLAN_UMAC_MLO_ASSOC_MAX_SUPPORTED_LINKS 2
 #else
 #define WLAN_UMAC_MLO_ASSOC_MAX_SUPPORTED_LINKS 1
@@ -66,6 +69,11 @@
 /* Default Initialization value for Max Recommended Simultaneous Links */
 #ifndef WLAN_UMAC_MLO_RECOM_MAX_SIMULT_LINKS_DEFAULT
 #define WLAN_UMAC_MLO_RECOM_MAX_SIMULT_LINKS_DEFAULT 2
+#endif
+
+/* Default initialization for RMSL Advertisement */
+#ifndef WLAN_UMAC_MLO_EXTMLDCAP_ENABLE_ADVERTISEMENT
+#define WLAN_UMAC_MLO_EXTMLDCAP_ENABLE_ADVERTISEMENT 1
 #endif
 
 /* Max PEER support */
@@ -797,6 +805,7 @@ struct wlan_mlo_sta_assoc_pending_list {
  * @ml_partner_info: mlo partner link info
  * @emlsr_cap: EMLSR capabilities info
  * @link_force_ctx: set link force mode context
+ * @emlsr_mode_req: store requested emlsr mode
  * @ml_link_control_mode: link control mode configured via user space
  * @ml_chan_switch_in_progress: Flag to track CSA at MLD level
  */
@@ -827,6 +836,7 @@ struct wlan_mlo_sta {
 #endif
 #ifdef WLAN_FEATURE_11BE_MLO_ADV_FEATURE
 	struct wlan_link_force_context link_force_ctx;
+	enum wlan_emlsr_action_mode emlsr_mode_req;
 #endif
 	uint8_t ml_link_control_mode;
 	bool ml_chan_switch_in_progress;
@@ -912,6 +922,8 @@ struct wlan_mlo_link_mac_update {
  * @mlo_peer_id_bmap: mlo_peer_id bitmap for ptqm migration
  * @link_ctx: link related information
  * @mlo_max_recom_simult_links: Max Recommended Simultaneous Links
+ * @mlo_extmld_cap_advertisement: Enable/disable Extended MLD Cap and OP
+ *                                advertisement
  */
 struct wlan_mlo_dev_context {
 	qdf_list_node_t node;
@@ -945,6 +957,7 @@ struct wlan_mlo_dev_context {
 #endif
 	struct mlo_link_switch_context *link_ctx;
 	uint8_t mlo_max_recom_simult_links;
+	bool mlo_extmld_cap_advertisement;
 };
 
 /**
@@ -1423,6 +1436,45 @@ struct ml_link_force_cmd {
 	uint8_t link_num;
 };
 
+/* MLO invalid link bitmap for upto 4 links*/
+#define MLO_INVALID_LINK_BMAP 0xFFFFFFFF
+
+/* Max number of disallowed bitmap combination sent to FW */
+#define MAX_DISALLOW_BMAP_COMB 4
+
+/**
+ * enum mlo_disallowed_mode: MLO disallowed mode reasons
+ * @MLO_DISALLOWED_MODE_NO_RESTRICTION:
+ *  Set disallowed mode has no restrictions(any mode allowed).
+ * @MLO_DISALLOWED_MODE_NO_MLMR:
+ *  Set disallowed mode has restriction set to no MLMR.
+ * @MLO_DISALLOWED_MODE_NO_EMLSR:
+ *  Set disallowed mode has restriction set to no EMLSR.
+ * @MLO_DISALLOWED_MODE_NO_MLMR_EMLSR:
+ *  Set disallowed mode has restriction set to no MLMR or EMLSR
+ */
+enum mlo_disallowed_mode {
+	MLO_DISALLOWED_MODE_NO_RESTRICTION = 0,
+	MLO_DISALLOWED_MODE_NO_MLMR = 1,
+	MLO_DISALLOWED_MODE_NO_EMLSR = 2,
+	MLO_DISALLOWED_MODE_NO_MLMR_EMLSR = 3,
+};
+
+/**
+ * struct ml_link_disallow_mode_bitmap: MLO link disallow mode bitmap params
+ * @disallowed_mode: Bitmap of MLO Modes like MLMR, eMLSR which are not allowed.
+ * @ieee_link_id_comb: MLO IEEE Link Ids for which above,
+ * disallowed_mode_bitmap is applicable.
+ * @ieee_link_id: Each 8-bits in ieee_link_id_comb represents one link ID.
+ **/
+struct ml_link_disallow_mode_bitmap {
+	uint32_t disallowed_mode;
+	union {
+		uint32_t ieee_link_id_comb;
+		uint8_t ieee_link_id[4];
+	};
+};
+
 /**
  * struct mlo_link_set_active_param: MLO link set active params
  * @force_mode: operation to take (enum mlo_link_force_mode)
@@ -1449,6 +1501,8 @@ struct ml_link_force_cmd {
  *  If this value is true, the "force_cmd" field should be provided and
  *  that will be sent to target
  * @force_cmd: force command which includes link id bitmap
+ * @num_disallow_mode_comb: Number of disallowed mode link bitmap combinations
+ * @disallow_mode_link_bmap: MLO link disallowed mode link bitmap
  */
 struct mlo_link_set_active_param {
 	uint32_t force_mode;
@@ -1462,6 +1516,8 @@ struct mlo_link_set_active_param {
 	struct mlo_control_flags control_flags;
 	bool use_ieee_link_id;
 	struct ml_link_force_cmd force_cmd;
+	uint32_t num_disallow_mode_comb;
+	struct ml_link_disallow_mode_bitmap disallow_mode_link_bmap[MAX_DISALLOW_BMAP_COMB];
 };
 
 /**

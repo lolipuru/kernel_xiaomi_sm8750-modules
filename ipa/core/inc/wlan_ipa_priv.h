@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -86,6 +86,10 @@
 #define WLAN_IPA_UC_STA_ENABLE_MASK         BIT(6)
 #define WLAN_IPA_REAL_TIME_DEBUGGING        BIT(8)
 #define WLAN_IPA_OPT_WIFI_DP                BIT(9)
+/* With CONFIG_IPA_WDI3_TX_TWO_PIPES=y, this bitmask is added to support
+ * runtime IPA two tx pipes feature enablement.
+ */
+#define WLAN_IPA_TWO_TX_PIPES_ENABLE_MASK   BIT(10)
 
 #ifdef QCA_IPA_LL_TX_FLOW_CONTROL
 #define WLAN_IPA_MAX_BANDWIDTH              4800
@@ -209,7 +213,7 @@ struct wlan_ipa_tx_hdr {
  * @reserved: Reserved not used
  */
 struct frag_header {
-	uint8_t reserved[0];
+	__QDF_DECLARE_FLEX_ARRAY(uint8_t, reserved);
 };
 #elif defined(QCA_WIFI_3_0)
 /**
@@ -241,7 +245,7 @@ struct frag_header {
  * @reserved: Reserved not used
  */
 struct ipa_header {
-	uint8_t reserved[0];
+	__QDF_DECLARE_FLEX_ARRAY(uint8_t, reserved);
 };
 #else
 /**
@@ -702,7 +706,8 @@ struct wlan_ipa_priv {
 
 	uint8_t activated_fw_pipe;
 	uint8_t num_sap_connected;
-	uint8_t sap_num_connected_sta;
+	uint16_t sap_num_connected_sta;
+	uint16_t sap_num_mlo_connected_sta;
 	uint8_t sta_connected;
 	uint32_t tx_pipe_handle;
 	uint32_t rx_pipe_handle;
@@ -820,6 +825,8 @@ static inline char *wlan_ipa_wlan_event_to_str(qdf_ipa_wlan_event event)
 	CASE_RETURN_STRING(QDF_IPA_STA_CONNECT);
 	CASE_RETURN_STRING(QDF_IPA_STA_DISCONNECT);
 	CASE_RETURN_STRING(QDF_IPA_CLIENT_CONNECT_EX);
+	CASE_RETURN_STRING(QDF_IPA_MLO_CLIENT_CONNECT_EX);
+	CASE_RETURN_STRING(QDF_IPA_MLO_CLIENT_DISCONNECT);
 	CASE_RETURN_STRING(QDF_SWITCH_TO_SCC);
 	CASE_RETURN_STRING(QDF_SWITCH_TO_MCC);
 	CASE_RETURN_STRING(QDF_WDI_ENABLE);

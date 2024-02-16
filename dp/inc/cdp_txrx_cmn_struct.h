@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -515,6 +515,18 @@ enum ol_txrx_peer_state {
 };
 
 /**
+ * struct cdp_peer_output_param - peer output info for dp hash find
+ * @vdev_id: Vdev ID
+ * @state: peer state
+ * @mld_peer: whether is mld peer
+ */
+struct cdp_peer_output_param {
+	uint8_t vdev_id;
+	enum ol_txrx_peer_state state;
+	bool mld_peer;
+};
+
+/**
  * enum cdp_txrx_ast_entry_type - AST entry type information
  * @CDP_TXRX_AST_TYPE_NONE: static ast entry for connected peer
  * @CDP_TXRX_AST_TYPE_STATIC: static ast entry for connected peer
@@ -707,7 +719,7 @@ struct cdp_tx_exception_metadata {
 #ifdef QCA_SUPPORT_WDS_EXTENDED
 	uint8_t is_wds_extended;
 #endif
-#ifdef WLAN_MCAST_MLO
+#if defined(WLAN_MCAST_MLO) || defined(WLAN_MCAST_MLO_SAP)
 	uint8_t is_mlo_mcast;
 #endif
 };
@@ -1195,6 +1207,7 @@ typedef QDF_STATUS(*ol_txrx_get_tsf_time)(void *osif_dev, uint64_t input_time,
  * @get_key: function pointer to get key of the peer with
  * specific key index
  * @get_tsf_time: function pointer to get TSF
+ * @vdev_del_notify: vdev delete notifier
  */
 struct ol_txrx_ops {
 	struct {
@@ -1227,6 +1240,7 @@ struct ol_txrx_ops {
 
 	ol_txrx_get_key_fp  get_key;
 	ol_txrx_get_tsf_time get_tsf_time;
+	ol_txrx_vdev_delete_cb vdev_del_notify;
 };
 
 /**
@@ -1490,6 +1504,7 @@ enum cdp_pdev_param_type {
  * @rx_pkt_tlv_size: RX packet TLV size
  * @cdp_ast_indication_disable: AST indication disable
  * @cdp_psoc_param_mlo_oper_mode: mlo operation mode
+ * @cdp_fw_support_ml_mon: FW support ML monitor mode
  */
 typedef union cdp_config_param_t {
 	/* peer params */
@@ -1607,6 +1622,7 @@ typedef union cdp_config_param_t {
 	uint16_t rx_pkt_tlv_size;
 	bool cdp_ast_indication_disable;
 	uint8_t cdp_psoc_param_mlo_oper_mode;
+	bool cdp_fw_support_ml_mon;
 } cdp_config_param_type;
 
 /**
@@ -1780,6 +1796,7 @@ enum cdp_vdev_param_type {
  * @CDP_CFG_GET_MLO_OPER_MODE: Get MLO operation mode
  * @CDP_CFG_PEER_JITTER_STATS: Peer Jitter Stats
  * @CDP_CONFIG_DP_DEBUG_LOG: set/get dp debug logging
+ * @CDP_FW_SUPPORT_ML_MON: FW support ML monitor
  */
 enum cdp_psoc_param_type {
 	CDP_ENABLE_RATE_STATS,
@@ -1810,6 +1827,7 @@ enum cdp_psoc_param_type {
 	CDP_CFG_GET_MLO_OPER_MODE,
 	CDP_CFG_PEER_JITTER_STATS,
 	CDP_CONFIG_DP_DEBUG_LOG,
+	CDP_FW_SUPPORT_ML_MON,
 };
 
 #ifdef CONFIG_AP_PLATFORM

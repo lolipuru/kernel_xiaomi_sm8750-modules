@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1468,10 +1468,12 @@ void DP_PRINT_STATS(const char *fmt, ...);
 #define DP_TX_HIST_STATS_PER_PDEV()
 #endif /* DISABLE_DP_STATS */
 
-#define FRAME_MASK_IPV4_ARP   1
-#define FRAME_MASK_IPV4_DHCP  2
-#define FRAME_MASK_IPV4_EAPOL 4
-#define FRAME_MASK_IPV6_DHCP  8
+#define FRAME_MASK_IPV4_ARP   0x1
+#define FRAME_MASK_IPV4_DHCP  0x2
+#define FRAME_MASK_IPV4_EAPOL 0x4
+#define FRAME_MASK_IPV6_DHCP  0x8
+#define FRAME_MASK_DNS_QUERY  0x10
+#define FRAME_MASK_DNS_RESP   0x20
 
 static inline int dp_log2_ceil(unsigned int value)
 {
@@ -1973,24 +1975,44 @@ void dp_update_vdev_stats_on_peer_unmap(struct dp_vdev *vdev,
 		_tgtobj->rx.to_stack.bytes += _srcobj->rx.to_stack.bytes; \
 	} while (0)
 
-#define DP_UPDATE_PER_PKT_STATS(_tgtobj, _srcobj) \
+#define DP_UPDATE_PER_PKT_TX_TQM_RR_STATS(_tgtobj, _srcobj) \
 	do { \
-		uint8_t i; \
-		_tgtobj->tx.ucast.num += _srcobj->tx.ucast.num; \
-		_tgtobj->tx.ucast.bytes += _srcobj->tx.ucast.bytes; \
-		_tgtobj->tx.mcast.num += _srcobj->tx.mcast.num; \
-		_tgtobj->tx.mcast.bytes += _srcobj->tx.mcast.bytes; \
-		_tgtobj->tx.bcast.num += _srcobj->tx.bcast.num; \
-		_tgtobj->tx.bcast.bytes += _srcobj->tx.bcast.bytes; \
-		_tgtobj->tx.nawds_mcast.num += _srcobj->tx.nawds_mcast.num; \
-		_tgtobj->tx.nawds_mcast.bytes += \
-					_srcobj->tx.nawds_mcast.bytes; \
-		_tgtobj->tx.tx_success.num += _srcobj->tx.tx_success.num; \
-		_tgtobj->tx.tx_success.bytes += _srcobj->tx.tx_success.bytes; \
-		_tgtobj->tx.nawds_mcast_drop += _srcobj->tx.nawds_mcast_drop; \
-		_tgtobj->tx.ofdma += _srcobj->tx.ofdma; \
-		_tgtobj->tx.non_amsdu_cnt += _srcobj->tx.non_amsdu_cnt; \
-		_tgtobj->tx.amsdu_cnt += _srcobj->tx.amsdu_cnt; \
+		_tgtobj->tx.dropped.fw_rem.num += \
+			_srcobj->tx.tqm_rr_counter.res.fw_rem;\
+		_tgtobj->tx.dropped.fw_rem.bytes += \
+			_srcobj->tx.tqm_rr_counter.res.fw_rem_bytes; \
+		_tgtobj->tx.dropped.fw_rem_notx += \
+			_srcobj->tx.tqm_rr_counter.res.fw_rem_notx; \
+		_tgtobj->tx.dropped.fw_rem_tx.num += \
+			_srcobj->tx.tqm_rr_counter.res.fw_rem_tx; \
+		_tgtobj->tx.dropped.fw_rem_tx.bytes += \
+			_srcobj->tx.tqm_rr_counter.res.fw_rem_tx_bytes; \
+		_tgtobj->tx.dropped.age_out += \
+			_srcobj->tx.tqm_rr_counter.res.age_out; \
+		_tgtobj->tx.dropped.fw_reason1 += \
+			_srcobj->tx.tqm_rr_counter.res.fw_reason1; \
+		_tgtobj->tx.dropped.fw_reason2 += \
+			_srcobj->tx.tqm_rr_counter.res.fw_reason2; \
+		_tgtobj->tx.dropped.fw_reason3 += \
+			_srcobj->tx.tqm_rr_counter.res.fw_reason3; \
+		_tgtobj->tx.dropped.fw_rem_queue_disable += \
+			_srcobj->tx.tqm_rr_counter.res.fw_rem_queue_disable; \
+		_tgtobj->tx.dropped.fw_rem_no_match += \
+			_srcobj->tx.tqm_rr_counter.res.fw_rem_no_match; \
+		_tgtobj->tx.dropped.drop_threshold += \
+			_srcobj->tx.tqm_rr_counter.res.drop_threshold; \
+		_tgtobj->tx.dropped.drop_link_desc_na += \
+			_srcobj->tx.tqm_rr_counter.res.drop_link_desc_na; \
+		_tgtobj->tx.dropped.invalid_drop += \
+			_srcobj->tx.tqm_rr_counter.res.invalid_drop; \
+		_tgtobj->tx.dropped.mcast_vdev_drop += \
+			_srcobj->tx.tqm_rr_counter.res.mcast_vdev_drop; \
+		_tgtobj->tx.dropped.invalid_rr += \
+			_srcobj->tx.tqm_rr_counter.res.invalid_rr; \
+	} while (0)
+
+#define DP_UPDATE_VDEV_TQM_RR_STATS(_tgtobj, _srcobj) \
+	do { \
 		_tgtobj->tx.dropped.fw_rem.num += \
 					_srcobj->tx.dropped.fw_rem.num; \
 		_tgtobj->tx.dropped.fw_rem.bytes += \
@@ -2022,6 +2044,26 @@ void dp_update_vdev_stats_on_peer_unmap(struct dp_vdev *vdev,
 					_srcobj->tx.dropped.mcast_vdev_drop; \
 		_tgtobj->tx.dropped.invalid_rr += \
 					_srcobj->tx.dropped.invalid_rr; \
+	} while (0)
+
+#define DP_UPDATE_PER_PKT_TX_RX_STATS(_tgtobj, _srcobj) \
+	do { \
+		uint8_t i; \
+		_tgtobj->tx.ucast.num += _srcobj->tx.ucast.num; \
+		_tgtobj->tx.ucast.bytes += _srcobj->tx.ucast.bytes; \
+		_tgtobj->tx.mcast.num += _srcobj->tx.mcast.num; \
+		_tgtobj->tx.mcast.bytes += _srcobj->tx.mcast.bytes; \
+		_tgtobj->tx.bcast.num += _srcobj->tx.bcast.num; \
+		_tgtobj->tx.bcast.bytes += _srcobj->tx.bcast.bytes; \
+		_tgtobj->tx.nawds_mcast.num += _srcobj->tx.nawds_mcast.num; \
+		_tgtobj->tx.nawds_mcast.bytes += \
+					_srcobj->tx.nawds_mcast.bytes; \
+		_tgtobj->tx.tx_success.num += _srcobj->tx.tx_success.num; \
+		_tgtobj->tx.tx_success.bytes += _srcobj->tx.tx_success.bytes; \
+		_tgtobj->tx.nawds_mcast_drop += _srcobj->tx.nawds_mcast_drop; \
+		_tgtobj->tx.ofdma += _srcobj->tx.ofdma; \
+		_tgtobj->tx.non_amsdu_cnt += _srcobj->tx.non_amsdu_cnt; \
+		_tgtobj->tx.amsdu_cnt += _srcobj->tx.amsdu_cnt; \
 		_tgtobj->tx.failed_retry_count += \
 					_srcobj->tx.failed_retry_count; \
 		_tgtobj->tx.inval_link_id_pkt_cnt += \
@@ -2108,6 +2150,18 @@ void dp_update_vdev_stats_on_peer_unmap(struct dp_vdev *vdev,
 		} \
 		DP_IPA_UPDATE_PER_PKT_RX_STATS(_tgtobj, _srcobj); \
 		DP_UPDATE_PROTOCOL_COUNT_STATS(_tgtobj, _srcobj); \
+	} while (0)
+
+#define DP_UPDATE_PER_PKT_STATS(_tgtobj, _srcobj) \
+	do { \
+		DP_UPDATE_PER_PKT_TX_RX_STATS(_tgtobj, _srcobj); \
+		DP_UPDATE_PER_PKT_TX_TQM_RR_STATS(_tgtobj, _srcobj); \
+	} while (0)
+
+#define DP_UPDATE_VDEV_STATS(_tgtobj, _srcobj) \
+	do { \
+		DP_UPDATE_PER_PKT_TX_RX_STATS(_tgtobj, _srcobj); \
+		DP_UPDATE_VDEV_TQM_RR_STATS(_tgtobj, _srcobj); \
 	} while (0)
 
 #define DP_UPDATE_EXTD_STATS(_tgtobj, _srcobj) \
@@ -2273,7 +2327,7 @@ void dp_update_vdev_stats_on_peer_unmap(struct dp_vdev *vdev,
 #define DP_UPDATE_VDEV_STATS_FOR_UNMAPPED_PEERS(_tgtobj, _srcobj) \
 	do { \
 		DP_UPDATE_BASIC_STATS(_tgtobj, _srcobj); \
-		DP_UPDATE_PER_PKT_STATS(_tgtobj, _srcobj); \
+		DP_UPDATE_VDEV_STATS(_tgtobj, _srcobj); \
 		DP_UPDATE_EXTD_STATS(_tgtobj, _srcobj); \
 	} while (0)
 
@@ -2858,13 +2912,14 @@ uint8_t *dp_peer_get_peer_mac_addr(void *peer);
  * @soc: datapath soc handle
  * @vdev_id: vdev id
  * @peer_mac: peer mac addr
+ * @slowpath: call from slowpath or not
  *
  * Get local peer state
  *
  * Return: peer status
  */
 int dp_get_peer_state(struct cdp_soc_t *soc, uint8_t vdev_id,
-		      uint8_t *peer_mac);
+		      uint8_t *peer_mac, bool slowpath);
 
 /**
  * dp_local_peer_id_pool_init() - local peer id pool alloc for physical device
@@ -2948,6 +3003,25 @@ void dp_set_peer_as_tdls_peer(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
  */
 bool dp_find_peer_exist(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 			uint8_t *peer_addr);
+
+/**
+ * dp_get_info_by_peer_mac - get vdev id, state and device type of
+ * peer if already exists
+ * @soc_hdl: datapath soc handle
+ * @peer_mac: peer mac address
+ * @vdev_id: store vdev id that peer is under
+ * @param: store output dp peer info
+ *
+ * Get local peer state, type, vdev id of peer or
+ * primary vdevid for mld peer
+ *
+ * Return: None
+ */
+
+void dp_get_info_by_peer_mac(struct cdp_soc_t *soc_hdl,
+			     uint8_t *peer_mac,
+			     uint8_t vdev_id,
+			     struct cdp_peer_output_param *param);
 
 #ifdef DP_UMAC_HW_RESET_SUPPORT
 /**
@@ -4102,15 +4176,16 @@ static inline void *dp_srng_dst_get_next(struct dp_soc *dp_soc,
  * @hal_ring_hdl: opaque pointer to the HAL Rx Destination ring
  * @num_entries: Entry count
  *
- * Return: None
+ * Return: HAL ring descriptor
  */
-static inline void dp_srng_dst_inv_cached_descs(struct dp_soc *dp_soc,
-						hal_ring_handle_t hal_ring_hdl,
-						uint32_t num_entries)
+static inline void *dp_srng_dst_inv_cached_descs(struct dp_soc *dp_soc,
+						 hal_ring_handle_t hal_ring_hdl,
+						 uint32_t num_entries)
 {
 	hal_soc_handle_t hal_soc = dp_soc->hal_soc;
 
-	hal_srng_dst_inv_cached_descs(hal_soc, hal_ring_hdl, num_entries);
+	return hal_srng_dst_inv_cached_descs(hal_soc, hal_ring_hdl,
+					     num_entries);
 }
 #else
 static inline void *dp_srng_dst_get_next(struct dp_soc *dp_soc,
@@ -4121,10 +4196,11 @@ static inline void *dp_srng_dst_get_next(struct dp_soc *dp_soc,
 	return hal_srng_dst_get_next(hal_soc, hal_ring_hdl);
 }
 
-static inline void dp_srng_dst_inv_cached_descs(struct dp_soc *dp_soc,
-						hal_ring_handle_t hal_ring_hdl,
-						uint32_t num_entries)
+static inline void *dp_srng_dst_inv_cached_descs(struct dp_soc *dp_soc,
+						 hal_ring_handle_t hal_ring_hdl,
+						 uint32_t num_entries)
 {
+	return NULL;
 }
 #endif /* QCA_CACHED_RING_DESC */
 
@@ -4834,7 +4910,7 @@ struct dp_frag_history_opaque_atomic {
 	qdf_atomic_t index;
 	uint16_t num_entries_per_slot;
 	uint16_t allocated;
-	void *entry[0];
+	void *entry[];
 };
 
 static inline QDF_STATUS
@@ -5875,6 +5951,60 @@ dp_tx_latency_stats_update_cca(struct dp_soc *soc, uint16_t peer_id,
  */
 void dp_tx_latency_stats_report(struct dp_soc *soc, struct dp_pdev *pdev);
 #endif
+
+#ifndef WLAN_SUPPORT_FLOW_PRIORTIZATION
+static inline bool wlan_dp_fpm_is_tid_override(qdf_nbuf_t nbuf, uint8_t *tid)
+{
+	return false;
+}
+#endif
+
+#ifndef WLAN_SUPPORT_LAPB
+/**
+ * wlan_dp_lapb_flow_attach() - Attach LAPB flow
+ * @soc: Datapath global soc handle
+ *
+ * Returns: QDF_STATUS
+ */
+static inline QDF_STATUS wlan_dp_lapb_flow_attach(struct dp_soc *soc)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+/**
+ * wlan_dp_lapb_flow_detach() - Detach LAPB flow
+ * @soc: Datapath global soc handle
+ *
+ * Returns: QDF_STATUS
+ */
+static inline QDF_STATUS wlan_dp_lapb_flow_detach(struct dp_soc *soc)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+/**
+ * wlan_dp_lapb_display_stats() - Get LAPB flow stats
+ * @soc: Datapath global soc handle
+ *
+ * Returns: QDF_STATUS
+ */
+static inline QDF_STATUS wlan_dp_lapb_display_stats(struct dp_soc *soc)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+/**
+ * wlan_dp_lapb_clear_stats() - Clear LAPB flow stats
+ * @soc: Datapath global soc handle
+ *
+ * Returns: QDF_STATUS
+ */
+static inline void wlan_dp_lapb_clear_stats(struct dp_soc *soc)
+{
+}
+
+#endif
+
 #ifdef WLAN_FEATURE_SSR_DRIVER_DUMP
 /**
  * dp_ssr_dump_srng_register() - Register DP ring with SSR dump.

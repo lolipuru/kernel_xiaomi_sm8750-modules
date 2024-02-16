@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2019-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -43,6 +43,9 @@
 #endif
 #include <wlan_vdev_mgr_utils_api.h>
 #include <wlan_vdev_mgr_api.h>
+#ifdef WLAN_FEATURE_LL_LT_SAP
+#include "wlan_ll_sap_api.h"
+#endif
 
 #ifdef QCA_VDEV_STATS_HW_OFFLOAD_SUPPORT
 /**
@@ -302,6 +305,8 @@ mlo_ap_append_bridge_vdevs(struct wlan_objmgr_vdev *vdev,
 			wlan_vdev_get_id(bridge_vdev_list[i]);
 		mlo_ptr->partner_info[p_idx].hw_mld_link_id =
 			wlan_mlo_get_pdev_hw_link_id(pdev);
+		mlo_ptr->partner_info[p_idx].is_bridge_vdev =
+			wlan_vdev_mlme_is_mlo_bridge_vdev(bridge_vdev_list[i]);
 		qdf_mem_copy(mlo_ptr->partner_info[p_idx].mac_addr,
 			     wlan_vdev_mlme_get_macaddr(bridge_vdev_list[i]),
 			     QDF_MAC_ADDR_SIZE);
@@ -407,7 +412,9 @@ vdev_mgr_start_param_update_mlo(struct vdev_mlme_obj *mlme_obj,
 		if (wlan_vdev_mlme_op_flags_get(
 			vdev, WLAN_VDEV_OP_MLO_LINK_ADD))
 			param->mlo_flags.mlo_link_add  = 1;
-
+		/* Update the bridge vdev bit */
+		param->mlo_flags.is_bridge_vdev =
+			wlan_vdev_mlme_is_mlo_bridge_vdev(vdev);
 		vdev_mgr_start_param_update_mlo_mcast(vdev, param);
 		vdev_mgr_start_param_update_mlo_partner(vdev, param);
 	}
@@ -572,6 +579,40 @@ static QDF_STATUS vdev_mgr_start_param_update(
 	return QDF_STATUS_SUCCESS;
 }
 
+#ifdef WLAN_FEATURE_LL_LT_SAP
+#define TSF_UPPER_MASK 0xFFFFFFFF00000000
+#define TSF_LOWER_MASK 0xFFFFFFFF
+
+/**
+ * vdev_mgr_get_target_tsf() - Get target_tsf for given vdev
+ * @param: pointer to vdev_start_params
+ * @vdev: vdev pointer
+ *
+ * Return: None
+ */
+static
+void vdev_mgr_get_target_tsf(struct vdev_start_params *param,
+			     struct wlan_objmgr_vdev *vdev)
+{
+	uint64_t target_tsf = 0;
+
+	param->target_tsf_us_lo = 0;
+	param->target_tsf_us_hi = 0;
+	target_tsf = wlan_ll_sap_get_target_tsf_for_vdev_restart(vdev);
+	if (target_tsf) {
+		param->target_tsf_us_lo = (target_tsf & TSF_LOWER_MASK);
+		param->target_tsf_us_hi = (target_tsf & TSF_UPPER_MASK) >> 32;
+	}
+}
+#else
+static inline
+void vdev_mgr_get_target_tsf(struct vdev_start_params *param,
+			     struct wlan_objmgr_vdev *vdev)
+{
+	param->target_tsf_us_lo = 0;
+	param->target_tsf_us_hi = 0;
+}
+#endif
 QDF_STATUS vdev_mgr_start_send(
 			struct vdev_mlme_obj *mlme_obj,
 			bool restart)
@@ -591,6 +632,9 @@ QDF_STATUS vdev_mgr_start_send(
 	}
 
 	param.is_restart = restart;
+	if (param.is_restart)
+		vdev_mgr_get_target_tsf(&param, mlme_obj->vdev);
+
 	status = tgt_vdev_mgr_start_send(mlme_obj, &param);
 
 	return status;
@@ -646,6 +690,8 @@ static QDF_STATUS vdev_mgr_stop_param_update(
 	}
 
 	param->vdev_id = wlan_vdev_get_id(vdev);
+	param->is_mlo_link_switch =
+		wlan_vdev_mlme_is_mlo_link_switch_in_progress(vdev);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -707,8 +753,12 @@ static QDF_STATUS vdev_mgr_up_param_update(
 	wlan_vdev_mgr_get_param_bssid(vdev, bssid);
 
 	if (wlan_vdev_mlme_get_opmode(vdev) != QDF_SAP_MODE) {
-		if (qdf_mem_cmp(bssid, mbss->non_trans_bssid,
-				QDF_MAC_ADDR_SIZE))
+		mlme_debug("trans BSSID " QDF_MAC_ADDR_FMT " non-trans BSSID " QDF_MAC_ADDR_FMT " profile_num %d, profile_idx %d",
+			   QDF_MAC_ADDR_REF(mbss->trans_bssid),
+			   QDF_MAC_ADDR_REF(mbss->non_trans_bssid),
+			  mbss->profile_idx, mbss->profile_num);
+		if ((qdf_mem_cmp(bssid, mbss->trans_bssid, QDF_MAC_ADDR_SIZE)) &&
+		    (qdf_mem_cmp(bssid, mbss->non_trans_bssid, QDF_MAC_ADDR_SIZE)))
 			return QDF_STATUS_SUCCESS;
 	}
 

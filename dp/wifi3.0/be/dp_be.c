@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1686,30 +1686,6 @@ qdf_size_t dp_get_soc_context_size_be(void)
 	return sizeof(struct dp_soc_be);
 }
 
-#ifdef CONFIG_WORD_BASED_TLV
-/**
- * dp_rxdma_ring_wmask_cfg_be() - Setup RXDMA ring word mask config
- * @soc: Common DP soc handle
- * @htt_tlv_filter: Rx SRNG TLV and filter setting
- *
- * Return: none
- */
-static inline void
-dp_rxdma_ring_wmask_cfg_be(struct dp_soc *soc,
-			   struct htt_rx_ring_tlv_filter *htt_tlv_filter)
-{
-	htt_tlv_filter->rx_msdu_end_wmask =
-				 hal_rx_msdu_end_wmask_get(soc->hal_soc);
-	htt_tlv_filter->rx_mpdu_start_wmask =
-				 hal_rx_mpdu_start_wmask_get(soc->hal_soc);
-}
-#else
-static inline void
-dp_rxdma_ring_wmask_cfg_be(struct dp_soc *soc,
-			   struct htt_rx_ring_tlv_filter *htt_tlv_filter)
-{
-}
-#endif
 #ifdef WLAN_SUPPORT_PPEDS
 static
 void dp_free_ppeds_interrupts(struct dp_soc *soc, struct dp_srng *srng,
@@ -1881,7 +1857,7 @@ dp_rxdma_ring_sel_cfg_be(struct dp_soc *soc)
 	htt_tlv_filter.rx_msdu_end_offset =
 				hal_rx_msdu_end_offset_get(soc->hal_soc);
 
-	dp_rxdma_ring_wmask_cfg_be(soc, &htt_tlv_filter);
+	dp_htt_rxdma_ring_wmask_cfg(soc, &htt_tlv_filter);
 
 	for (i = 0; i < MAX_PDEV_CNT; i++) {
 		struct dp_pdev *pdev = soc->pdev_list[i];
@@ -2011,7 +1987,7 @@ dp_rxdma_ring_sel_cfg_be(struct dp_soc *soc)
 		htt_tlv_filter.rx_header_offset,
 		htt_tlv_filter.rx_packet_offset);
 
-	dp_rxdma_ring_wmask_cfg_be(soc, &htt_tlv_filter);
+	dp_htt_rxdma_ring_wmask_cfg(soc, &htt_tlv_filter);
 	for (i = 0; i < MAX_PDEV_CNT; i++) {
 		struct dp_pdev *pdev = soc->pdev_list[i];
 
@@ -2187,9 +2163,164 @@ static void dp_soc_interrupt_detach_be(struct cdp_soc_t *txrx_soc)
 	return dp_soc_interrupt_detach(txrx_soc);
 }
 
+#ifdef WLAN_MLO_MULTI_CHIP
+static inline
+uint32_t dp_tx_comp_handler_wrapper(struct dp_intr *int_ctx, struct dp_soc *soc,
+				    hal_ring_handle_t hal_ring_hdl,
+				    uint8_t ring_id, uint32_t quota)
+{
+	return dp_tx_comp_handler_be(int_ctx, soc,
+				     hal_ring_hdl,
+				     ring_id, quota);
+}
+#else
+static inline
+uint32_t dp_tx_comp_handler_wrapper(struct dp_intr *int_ctx, struct dp_soc *soc,
+				    hal_ring_handle_t hal_ring_hdl,
+				    uint8_t ring_id, uint32_t quota)
+{
+	return dp_tx_comp_handler(int_ctx, soc,
+				  hal_ring_hdl,
+				  ring_id, quota);
+}
+#endif /* WLAN_MLO_MULTI_CHIP */
+
 static uint32_t dp_service_srngs_be(void *dp_ctx, uint32_t dp_budget, int cpu)
 {
-	return dp_service_srngs(dp_ctx, dp_budget, cpu);
+	struct dp_intr *int_ctx = (struct dp_intr *)dp_ctx;
+	struct dp_intr_stats *intr_stats = &int_ctx->intr_stats;
+	struct dp_soc *soc = int_ctx->soc;
+	int ring = 0;
+	int index;
+	uint32_t work_done  = 0;
+	int budget = dp_budget;
+	uint32_t remaining_quota = dp_budget;
+	uint8_t tx_mask = 0;
+	uint8_t rx_mask = 0;
+	uint8_t rx_err_mask = 0;
+	uint8_t rx_wbm_rel_mask = 0;
+	uint8_t reo_status_mask = 0;
+
+	qdf_atomic_set_bit(cpu, &soc->service_rings_running);
+
+	tx_mask = int_ctx->tx_ring_mask;
+	rx_mask = int_ctx->rx_ring_mask;
+	rx_err_mask = int_ctx->rx_err_ring_mask;
+	rx_wbm_rel_mask = int_ctx->rx_wbm_rel_ring_mask;
+	reo_status_mask = int_ctx->reo_status_ring_mask;
+
+	dp_verbose_debug("tx %x rx %x rx_err %x rx_wbm_rel %x reo_status %x rx_mon_ring %x host2rxdma %x rxdma2host %x",
+			 tx_mask, rx_mask, rx_err_mask, rx_wbm_rel_mask,
+			 reo_status_mask,
+			 int_ctx->rx_mon_ring_mask,
+			 int_ctx->host2rxdma_ring_mask,
+			 int_ctx->rxdma2host_ring_mask);
+
+	/* Process Tx completion interrupts first to return back buffers */
+	for (index = 0; index < soc->num_tx_comp_rings; index++) {
+		if (!(1 << wlan_cfg_get_wbm_ring_num_for_index(soc->wlan_cfg_ctx, index) & tx_mask))
+			continue;
+		work_done = dp_tx_comp_handler_wrapper(
+					int_ctx,
+					soc,
+					soc->tx_comp_ring[index].hal_srng,
+					index, remaining_quota);
+		if (work_done) {
+			intr_stats->num_tx_ring_masks[index]++;
+			dp_verbose_debug("tx mask 0x%x index %d, budget %d, work_done %d",
+					 tx_mask, index, budget,
+					 work_done);
+		}
+		budget -= work_done;
+		if (budget <= 0)
+			goto budget_done;
+
+		remaining_quota = budget;
+	}
+
+	/* Process REO Exception ring interrupt */
+	if (rx_err_mask) {
+		work_done = dp_rx_err_process(int_ctx, soc,
+					      soc->reo_exception_ring.hal_srng,
+					      remaining_quota);
+
+		if (work_done) {
+			intr_stats->num_rx_err_ring_masks++;
+			dp_verbose_debug("REO Exception Ring: work_done %d budget %d",
+					 work_done, budget);
+		}
+
+		budget -=  work_done;
+		if (budget <= 0)
+			goto budget_done;
+		remaining_quota = budget;
+	}
+
+	/* Process Rx WBM release ring interrupt */
+	if (rx_wbm_rel_mask) {
+		work_done = dp_rx_wbm_err_process(int_ctx, soc,
+						  soc->rx_rel_ring.hal_srng,
+						  remaining_quota);
+
+		if (work_done) {
+			intr_stats->num_rx_wbm_rel_ring_masks++;
+			dp_verbose_debug("WBM Release Ring: work_done %d budget %d",
+					 work_done, budget);
+		}
+
+		budget -=  work_done;
+		if (budget <= 0)
+			goto budget_done;
+		remaining_quota = budget;
+	}
+
+	/* Process Rx interrupts */
+	if (rx_mask) {
+		for (ring = 0; ring < soc->num_reo_dest_rings; ring++) {
+			if (!(rx_mask & (1 << ring)))
+				continue;
+			work_done = dp_rx_process_be(
+					int_ctx,
+					soc->reo_dest_ring[ring].hal_srng,
+					ring,
+					remaining_quota);
+			if (work_done) {
+				intr_stats->num_rx_ring_masks[ring]++;
+				dp_verbose_debug("rx mask 0x%x ring %d, work_done %d budget %d",
+						 rx_mask, ring,
+						 work_done, budget);
+				budget -=  work_done;
+				if (budget <= 0)
+					goto budget_done;
+				remaining_quota = budget;
+			}
+		}
+	}
+
+	if (reo_status_mask) {
+		if (dp_reo_status_ring_handler(int_ctx, soc))
+			int_ctx->intr_stats.num_reo_status_ring_masks++;
+	}
+
+	if (qdf_unlikely(!dp_monitor_is_vdev_timer_running(soc))) {
+		work_done = dp_process_lmac_rings(int_ctx, remaining_quota);
+		if (work_done) {
+			budget -=  work_done;
+			if (budget <= 0)
+				goto budget_done;
+			remaining_quota = budget;
+		}
+	}
+
+	qdf_lro_flush(int_ctx->lro_ctx);
+	intr_stats->num_masks++;
+
+budget_done:
+	qdf_atomic_clear_bit(cpu, &soc->service_rings_running);
+
+	dp_umac_reset_trigger_pre_reset_notify_cb(soc);
+
+	return dp_budget - budget;
 }
 
 #ifdef WLAN_SUPPORT_PPEDS
@@ -3148,7 +3279,6 @@ void dp_mlo_dev_ctxt_unref_delete(struct dp_mlo_dev_ctxt *mlo_dev_ctxt,
 
 	QDF_ASSERT(mlo_dev_ctxt->ref_delete_pending);
 	qdf_spinlock_destroy(&mlo_dev_ctxt->vdev_list_lock);
-	qdf_spinlock_destroy(&mlo_dev_ctxt->sn_lock);
 	qdf_mem_free(mlo_dev_ctxt);
 }
 
@@ -3247,7 +3377,8 @@ QDF_STATUS dp_mlo_dev_ctxt_create(struct cdp_soc_t *soc_hdl,
 	qdf_mem_set(mlo_dev_ctxt->bridge_vdev,
 		    WLAN_MAX_MLO_CHIPS * WLAN_MAX_MLO_LINKS_PER_SOC,
 		    CDP_INVALID_VDEV_ID);
-	mlo_dev_ctxt->seq_num = 0;
+
+	qdf_atomic_init(&mlo_dev_ctxt->seq_num);
 
 	/* Add mlo_dev_ctxt to the global DP MLO list */
 	qdf_spin_lock_bh(&mlo_dev_obj->mlo_dev_list_lock);
@@ -3260,7 +3391,6 @@ QDF_STATUS dp_mlo_dev_ctxt_create(struct cdp_soc_t *soc_hdl,
 
 	mlo_dev_ctxt->ref_delete_pending = 0;
 	qdf_spinlock_create(&mlo_dev_ctxt->vdev_list_lock);
-	qdf_spinlock_create(&mlo_dev_ctxt->sn_lock);
 	return QDF_STATUS_SUCCESS;
 }
 
@@ -3621,7 +3751,7 @@ static bool dp_reo_remap_config_be(struct dp_soc *soc,
 }
 #endif
 
-#ifdef CONFIG_MLO_SINGLE_DEV
+#if defined(CONFIG_MLO_SINGLE_DEV) || defined(WLAN_MCAST_MLO_SAP)
 static inline
 void dp_initialize_arch_ops_be_single_dev(struct dp_arch_ops *arch_ops)
 {

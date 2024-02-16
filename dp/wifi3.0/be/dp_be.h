@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -20,6 +20,7 @@
 #define __DP_BE_H
 
 #include <dp_types.h>
+#include <dp_tx.h>
 #include <hal_be_tx.h>
 #ifdef WLAN_MLO_MULTI_CHIP
 #include "mlo/dp_mlo.h"
@@ -481,8 +482,7 @@ struct dp_mlo_dev_ctxt {
 	bool is_bridge_vdev_present;
 	qdf_spinlock_t vdev_list_lock;
 	uint16_t vdev_count;
-	qdf_spinlock_t sn_lock;
-	uint16_t seq_num;
+	qdf_atomic_t seq_num;
 	qdf_atomic_t ref_cnt;
 	qdf_atomic_t mod_refs[DP_MOD_ID_MAX];
 	uint8_t ref_delete_pending;
