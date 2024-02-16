@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/io.h>
@@ -1050,14 +1050,50 @@ int msm_vidc_adjust_transform_8x8(void *instance, struct v4l2_ctrl *ctrl)
 int msm_vidc_adjust_chroma_qp_index_offset(void *instance,
 	struct v4l2_ctrl *ctrl)
 {
-	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+	s32 chroma_qp, profile = 0;
+	s8 chroma_cr_qp = 0, chroma_cb_qp = 0, offset = 12;
+	u32 adjusted_value = 0;
 
-	adjusted_value = ctrl ? ctrl->val :
+	chroma_qp = ctrl ? ctrl->val :
 		inst->capabilities[CHROMA_QP_INDEX_OFFSET].value;
 
-	if (adjusted_value != MIN_CHROMA_QP_OFFSET)
-		adjusted_value = MAX_CHROMA_QP_OFFSET;
+	if (chroma_qp > MAX_CHROMA_QP_OFFSET) {
+		chroma_cr_qp = chroma_qp & 0xFF;
+		chroma_cb_qp = (chroma_qp & 0xFF00) >> 8;
+		if (chroma_cr_qp < MIN_CHROMA_QP_OFFSET || chroma_cr_qp > MAX_CHROMA_QP_OFFSET)
+			chroma_cr_qp = MAX_CHROMA_QP_OFFSET;
+
+		if (chroma_cb_qp < MIN_CHROMA_QP_OFFSET || chroma_cb_qp > MAX_CHROMA_QP_OFFSET)
+			chroma_cb_qp = MAX_CHROMA_QP_OFFSET;
+
+		chroma_cr_qp += offset;
+		chroma_cb_qp += offset;
+	} else {
+		if (chroma_qp != MIN_CHROMA_QP_OFFSET)
+			chroma_qp = MAX_CHROMA_QP_OFFSET;
+
+		chroma_cr_qp = chroma_qp + offset;
+		chroma_cb_qp = chroma_cr_qp;
+	}
+
+	if (chroma_cr_qp != chroma_cb_qp) {
+		profile = inst->capabilities[PROFILE].value;
+		if (inst->codec == MSM_VIDC_H264 &&
+			profile != V4L2_MPEG_VIDEO_H264_PROFILE_HIGH) {
+			i_vpr_h(inst, "AVC unsupported cr(%d) and cb(%d) for non-high profile\n",
+					chroma_cr_qp, chroma_cb_qp);
+			if (chroma_cr_qp < chroma_cb_qp)
+				chroma_cb_qp = chroma_cr_qp;
+			else
+				chroma_cr_qp = chroma_cb_qp;
+
+			i_vpr_h(inst, "set the same cr and cb(%d) for the non-high profile\n",
+					chroma_cr_qp);
+		}
+	}
+
+	adjusted_value = chroma_cr_qp | chroma_cb_qp << 8;
 
 	msm_vidc_update_cap_value(inst, CHROMA_QP_INDEX_OFFSET,
 		adjusted_value, __func__);
@@ -2849,16 +2885,14 @@ int msm_vidc_set_chroma_qp_index_offset(void *instance,
 	int rc = 0;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 	u32 hfi_value = 0, chroma_qp_offset_mode = 0, chroma_qp = 0;
-	u32 offset = 12;
 
 	if (inst->capabilities[cap_id].flags & CAP_FLAG_CLIENT_SET)
 		chroma_qp_offset_mode = HFI_FIXED_CHROMAQP_OFFSET;
 	else
 		chroma_qp_offset_mode = HFI_ADAPTIVE_CHROMAQP_OFFSET;
 
-	chroma_qp = inst->capabilities[cap_id].value + offset;
-	hfi_value = chroma_qp_offset_mode | chroma_qp << 8 | chroma_qp << 16;
-
+	chroma_qp = inst->capabilities[cap_id].value;
+	hfi_value = chroma_qp_offset_mode | chroma_qp << 8;
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_32_PACKED,
 		&hfi_value, sizeof(u32), __func__);
 	if (rc)
