@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_SOC_UTIL_H_
@@ -52,6 +52,21 @@
 
 /* maximum number of irq per device */
 #define CAM_SOC_MAX_IRQ_LINES_PER_DEV 2
+
+/* maximum length of soc name */
+#define CAM_SOC_MAX_LENGTH_NAME 64
+
+/* maximum number of soc device use gpio*/
+#define CAM_SOC_MAX_GPIO 4
+
+/* vmrm resource id list max */
+#define CAM_VMRM_MAX_RESOURCE_IDS 4
+
+/* vmrm resource irq id offset */
+#define CAM_VMRM_RESOURCE_IRQ_OFFSET 2
+
+/* vmrm resource irq bit map offset */
+#define CAM_VMRM_RESOURCE_IRQ_BIT_MAP_OFFSET 1
 
 /* DDR device types */
 #define DDR_TYPE_LPDDR4        6
@@ -181,14 +196,16 @@ struct cam_soc_pinctrl_info {
  * @cam_gpio_common_tbl:       It is list of al the gpios present in gpios node
  * @cam_gpio_common_tbl_size:  It is equal to number of gpios prsent in
  *                             gpios node in DTSI
- * @cam_gpio_req_tbl            It is list of al the requesetd gpios
- * @cam_gpio_req_tbl_size:      It is size of requested gpios
+ * @cam_gpio_req_tbl           It is list of al the requesetd gpios
+ * @cam_gpio_req_tbl_size:     It is size of requested gpios
+ * @gpio_for_vmrm_purpose:     It is just for vmrm purpose, does not has valid gpio request table
  **/
 struct cam_soc_gpio_data {
 	struct gpio *cam_gpio_common_tbl;
 	uint8_t cam_gpio_common_tbl_size;
 	struct gpio *cam_gpio_req_tbl;
 	uint8_t cam_gpio_req_tbl_size;
+	bool gpio_for_vmrm_purpose;
 };
 
 /**
@@ -263,6 +280,12 @@ struct cam_soc_gpio_data {
  * @cam_cx_ipeak_enable     cx-ipeak enable/disable flag
  * @cam_cx_ipeak_bit        cx-ipeak mask for driver
  * @soc_private:            Soc private data
+ * @hw_id:                  Vm resource manager to identify hw
+ * @num_vmrm_resource_ids:  Vm resource manager resource ids count
+ * @vmrm_resource_ids:      Vm resource manager resource ids array, parameter order is mem label,
+ *                          mem tag, irq label. For example one device has two irqs and two mem
+ *                          space, parameter is like this, mem label, mem tag, irq1 label,
+ *                          irq2 label.
  */
 struct cam_hw_soc_info {
 	struct platform_device         *pdev;
@@ -332,6 +355,11 @@ struct cam_hw_soc_info {
 	int32_t                         cam_cx_ipeak_bit;
 
 	void                           *soc_private;
+	uint32_t                        hw_id;
+#ifdef CONFIG_SPECTRA_VMRM
+	uint32_t                        num_vmrm_resource_ids;
+	uint32_t                        vmrm_resource_ids[CAM_VMRM_MAX_RESOURCE_IDS];
+#endif
 };
 
 /**
@@ -360,6 +388,21 @@ struct cam_hw_soc_dump_args {
 	uint64_t             request_id;
 	size_t               offset;
 	uint32_t             buf_handle;
+};
+
+/**
+ * struct cam_hw_soc_skip_dump :   SOC Dump args for skiping offset
+ *
+ * @skip_regdump         skip offset is required for dump or not
+ * @start_offset:        offset for skipping reg dump
+ * @stop_offset:         offset for stoping skip reg dump
+ * @reg_base_type:       register base type
+ */
+struct cam_hw_soc_skip_dump_args {
+	bool                skip_regdump;
+	uint32_t            start_offset;
+	uint32_t            stop_offset;
+	uint32_t            reg_base_type;
 };
 
 /*
@@ -831,6 +874,7 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 	struct cam_cmd_buf_desc *cmd_desc, uint64_t req_id,
 	cam_soc_util_regspace_data_cb reg_data_cb,
 	struct cam_hw_soc_dump_args *soc_dump_args,
+	struct cam_hw_soc_skip_dump_args *soc_skip_dump_args,
 	bool user_triggered_dump);
 
 /**

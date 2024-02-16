@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -77,12 +77,12 @@ typedef int (*cam_isp_irq_inject_cmd_parse_handler)(
 	 CAM_ISP_HW_ERROR_CSID_MISSING_PKT_HDR_DATA  |   \
 	 CAM_ISP_HW_ERROR_CSID_FATAL                 |   \
 	 CAM_ISP_HW_ERROR_CSID_UNBOUNDED_FRAME       |   \
-	 CAM_ISP_HW_ERROR_CSID_MISSING_EOT           |   \
-	 CAM_ISP_HW_ERROR_CSID_PKT_PAYLOAD_CORRUPTED)
+	 CAM_ISP_HW_ERROR_CSID_MISSING_EOT)
 
 #define CAM_ISP_RECOVERABLE_CSID_ERRORS              \
 	(CAM_ISP_HW_ERROR_CSID_SENSOR_SWITCH_ERROR   |   \
-	 CAM_ISP_HW_ERROR_CSID_SENSOR_FRAME_DROP)
+	 CAM_ISP_HW_ERROR_CSID_SENSOR_FRAME_DROP     |   \
+	 CAM_ISP_HW_ERROR_CSID_PKT_PAYLOAD_CORRUPTED)
 
 static uint32_t blob_type_hw_cmd_map[CAM_ISP_GENERIC_BLOB_TYPE_MAX] = {
 	CAM_ISP_HW_CMD_GET_HFR_UPDATE,
@@ -484,6 +484,8 @@ static int cam_ife_mgr_handle_reg_dump(struct cam_ife_hw_mgr_ctx *ctx,
 	bool user_triggered_dump)
 {
 	int rc = 0, i;
+	struct cam_hw_soc_skip_dump_args skip_dump_args;
+
 
 	if (cam_presil_mode_enabled()) {
 		if (g_ife_hw_mgr.debug_cfg.enable_presil_reg_dump) {
@@ -509,6 +511,16 @@ static int cam_ife_mgr_handle_reg_dump(struct cam_ife_hw_mgr_ctx *ctx,
 			"Reg dump values might be from more than one request, ctx_idx: %u",
 			ctx->ctx_index);
 
+	if ((meta_type != CAM_ISP_PACKET_META_REG_DUMP_ON_ERROR) &&
+			g_ife_hw_mgr.isp_caps.skip_regdump_data.skip_regdump) {
+		skip_dump_args.skip_regdump =
+			g_ife_hw_mgr.isp_caps.skip_regdump_data.skip_regdump;
+		skip_dump_args.start_offset =
+			g_ife_hw_mgr.isp_caps.skip_regdump_data.skip_regdump_start_offset;
+		skip_dump_args.stop_offset =
+			g_ife_hw_mgr.isp_caps.skip_regdump_data.skip_regdump_stop_offset;
+	}
+
 	for (i = 0; i < num_reg_dump_buf; i++) {
 		rc = cam_packet_util_validate_cmd_desc(&reg_dump_buf_desc[i]);
 		if (rc)
@@ -522,6 +534,7 @@ static int cam_ife_mgr_handle_reg_dump(struct cam_ife_hw_mgr_ctx *ctx,
 				ctx->applied_req_id,
 				cam_ife_mgr_regspace_data_cb,
 				soc_dump_args,
+				&skip_dump_args,
 				user_triggered_dump);
 			if (rc) {
 				CAM_ERR(CAM_ISP,
@@ -3663,6 +3676,7 @@ static int cam_ife_hw_mgr_acquire_csid_hw(
 	struct cam_ife_csid_hw_caps *csid_caps = NULL;
 	bool can_use_lite = false;
 	int busy_count = 0, compat_count = 0;
+	bool is_secure_mode = false;
 
 	if (!ife_ctx || !csid_acquire) {
 		CAM_ERR(CAM_ISP,
@@ -3676,8 +3690,14 @@ static int cam_ife_hw_mgr_acquire_csid_hw(
 	if (ife_ctx->ctx_type == CAM_IFE_CTX_TYPE_SFE)
 		is_start_lower_idx =  true;
 
-	if (in_port->num_out_res)
-		out_port = &(in_port->data[0]);
+	/* Update the secure mode of CSID based on all the out ports */
+	for (i = 0; i < in_port->num_out_res; i++) {
+		out_port = &(in_port->data[i]);
+		if (out_port->secure_mode) {
+			is_secure_mode = true;
+			break;
+		}
+	}
 
 	ife_ctx->flags.is_dual = (bool)in_port->usage_type;
 
@@ -3697,9 +3717,9 @@ static int cam_ife_hw_mgr_acquire_csid_hw(
 				continue;
 			if (in_port->num_out_res &&
 				((csid_res_iterator->is_secure == 1 &&
-				out_port->secure_mode == 0) ||
+				is_secure_mode == false) ||
 				(csid_res_iterator->is_secure == 0 &&
-				out_port->secure_mode == 1)))
+				is_secure_mode == true)))
 				continue;
 			if (!in_port->num_out_res &&
 				csid_res_iterator->is_secure == 1)
@@ -3711,6 +3731,14 @@ static int cam_ife_hw_mgr_acquire_csid_hw(
 
 			if (csid_caps->is_lite && !can_use_lite) {
 				CAM_DBG(CAM_ISP, "CSID[%u] cannot use lite, ctx_idx: %u",
+					hw_intf->hw_idx, ife_ctx->ctx_index);
+				continue;
+			}
+
+			if (csid_caps->is_ife_sfe_mapped &&
+				(ife_ctx->ctx_type == CAM_IFE_CTX_TYPE_SFE) &&
+				!ife_hw_mgr->sfe_devices[hw_intf->hw_idx]) {
+				CAM_DBG(CAM_ISP, "No sfe_device with idx: %d, ctx_idx: %u",
 					hw_intf->hw_idx, ife_ctx->ctx_index);
 				continue;
 			}
@@ -3754,6 +3782,14 @@ static int cam_ife_hw_mgr_acquire_csid_hw(
 		}
 
 		compat_count++;
+
+		if (ife_hw_mgr->csid_hw_caps[hw_intf->hw_idx].is_ife_sfe_mapped &&
+			(ife_ctx->ctx_type == CAM_IFE_CTX_TYPE_SFE) &&
+			!ife_hw_mgr->sfe_devices[hw_intf->hw_idx]) {
+			CAM_DBG(CAM_ISP, "No sfe_device with idx: %d, ctx_idx: %u",
+				hw_intf->hw_idx, ife_ctx->ctx_index);
+			continue;
+		}
 
 		rc = hw_intf->hw_ops.reserve(hw_intf->hw_priv, csid_acquire,
 			sizeof(struct cam_csid_hw_reserve_resource_args));
@@ -3869,9 +3905,13 @@ static int cam_ife_hw_mgr_acquire_res_ife_csid_pxl(
 		csid_acquire.sync_mode = CAM_ISP_HW_SYNC_NONE;
 	}
 
-	if (in_port->num_out_res) {
-		out_port = &(in_port->data[0]);
-		csid_res->is_secure = out_port->secure_mode;
+	/* Update the secure mode of CSID based on all the out ports */
+	for (i = 0; i < in_port->num_out_res; i++) {
+		out_port = &(in_port->data[i]);
+		if (out_port->secure_mode) {
+			csid_res->is_secure = out_port->secure_mode;
+			break;
+		}
 	}
 
 	CAM_DBG(CAM_ISP, "CSID Acquire: Enter, ctx_idx: %u", ife_ctx->ctx_index);
@@ -7680,6 +7720,13 @@ static int cam_ife_mgr_stop_hw(void *hw_mgr_priv, void *stop_hw_args)
 		}
 	}
 
+	rc = cam_cdm_reset_hw(ctx->cdm_handle);
+	if (rc) {
+		CAM_WARN(CAM_ISP, "CDM: %u reset failed rc: %d in ctx: %u",
+			ctx->cdm_id, rc, ctx->ctx_index);
+		rc = 0;
+	}
+
 	/*
 	 * If Context does not have PIX resources and has only RDI resource
 	 * then take the first base index.
@@ -7776,16 +7823,6 @@ static int cam_ife_mgr_stop_hw(void *hw_mgr_priv, void *stop_hw_args)
 				"config done completion timeout for last applied req_id=%llu ctx_index %u",
 				ctx->applied_req_id, ctx->ctx_index);
 
-	}
-
-	/* Reset CDM for KMD internal stop */
-	if (stop_isp->is_internal_stop) {
-		rc = cam_cdm_reset_hw(ctx->cdm_handle);
-		if (rc) {
-			CAM_WARN(CAM_ISP, "CDM: %u reset failed rc: %d in ctx: %u",
-				ctx->cdm_id, rc, ctx->ctx_index);
-			rc = 0;
-		}
 	}
 
 	if (stop_isp->stop_only)
@@ -11225,7 +11262,7 @@ static int cam_isp_validate_scratch_buffer_blob(
 
 	if (blob_size <
 		(sizeof(struct cam_isp_sfe_init_scratch_buf_config) +
-		(scratch_config->num_ports - 1) *
+		((int32_t)scratch_config->num_ports - 1) *
 		sizeof(struct cam_isp_sfe_scratch_buf_info))) {
 		CAM_ERR(CAM_ISP, "Invalid blob size: %u expected: %lu ctx_idx: %u",
 			blob_size,
@@ -17934,6 +17971,12 @@ int cam_ife_hw_mgr_init(struct cam_hw_mgr_intf *hw_mgr_intf, int *iommu_hdl,
 		isp_cap.fcg_supported;
 	max_ife_out_res =
 		g_ife_hw_mgr.isp_caps.max_vfe_out_res_type & 0xFF;
+	g_ife_hw_mgr.isp_caps.skip_regdump_data.skip_regdump =
+		isp_cap.skip_regdump_data.skip_regdump;
+	g_ife_hw_mgr.isp_caps.skip_regdump_data.skip_regdump_start_offset =
+		isp_cap.skip_regdump_data.skip_regdump_start_offset;
+	g_ife_hw_mgr.isp_caps.skip_regdump_data.skip_regdump_stop_offset =
+		isp_cap.skip_regdump_data.skip_regdump_stop_offset;
 	memset(&isp_cap, 0x0, sizeof(struct cam_isp_hw_cap));
 
 	for (i = 0; i < path_port_map.num_entries; i++) {

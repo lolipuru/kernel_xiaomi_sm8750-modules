@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_IFE_CSID_COMMON_H_
@@ -11,9 +11,15 @@
 #include "cam_ife_csid_hw_intf.h"
 #include "cam_ife_csid_soc.h"
 
-#define CAM_IFE_CSID_VER_1_0  0x100
-#define CAM_IFE_CSID_VER_2_0  0x200
-#define CAM_IFE_CSID_MAX_ERR_COUNT  100
+#define CAM_IFE_CSID_VER_1_0                              0x100
+#define CAM_IFE_CSID_VER_2_0                              0x200
+#define CAM_IFE_CSID_MAX_ERR_COUNT                        100
+
+/*
+ * CRC error threshold is set to be 1% of frame width and
+ * this macro is used as divisor in calculation
+ */
+#define CAM_IFE_CSID_MAX_CRC_ERR_DIVISOR                  100
 
 #define CAM_IFE_CSID_HW_CAP_IPP                           0x1
 #define CAM_IFE_CSID_HW_CAP_RDI                           0x2
@@ -32,7 +38,7 @@
 #define CAM_IFE_CSID_HW_IDX_1                             0x2
 #define CAM_IFE_CSID_HW_IDX_2                             0x4
 
-#define CAM_IFE_CSID_LOG_BUF_LEN                          512
+#define CAM_IFE_CSID_LOG_BUF_LEN                          1024
 
 #define CAM_IFE_CSID_CAP_INPUT_LCR                        BIT(0)
 #define CAM_IFE_CSID_CAP_RDI_UNPACK_MSB                   BIT(1)
@@ -367,11 +373,13 @@ struct cam_ife_csid_core_info {
  * @csi2_reserve_cnt:       Reserve count for csi2
  * @irq_debug_cnt:          irq debug counter
  * @error_irq_count:        error irq counter
+ * @crc_error_irq_count:    crc error irq counter
  */
 struct cam_ife_csid_hw_counters {
 	uint32_t                          csi2_reserve_cnt;
 	uint32_t                          irq_debug_cnt;
 	uint32_t                          error_irq_count;
+	uint32_t                          crc_error_irq_count;
 };
 
 /*

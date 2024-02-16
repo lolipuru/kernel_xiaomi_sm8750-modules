@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -29,6 +29,7 @@
 #include "cam_cpas_hw.h"
 #include "cam_compat.h"
 #include "camera_main.h"
+#include "cam_vmrm_interface.h"
 
 #define CAM_REQ_MGR_EVENT_MAX 30
 #define CAM_I3C_MASTER_COMPAT "qcom,geni-i3c"
@@ -1025,6 +1026,23 @@ static int cam_req_mgr_component_master_bind(struct device *dev)
 
 	CAM_INFO(CAM_CRM,
 		"All components bound successfully, Spectra camera driver initialized");
+
+	rc = cam_vmrm_populate_io_resource_info();
+	if (rc) {
+		CAM_ERR(CAM_CRM,
+			"Error in populate io resource in rm rc: %d, Camera initialization failed!",
+			rc);
+		goto req_mgr_device_deinit;
+	}
+
+	rc = cam_vmrm_register_gh_callback();
+	if (rc) {
+		CAM_ERR(CAM_CRM,
+			"Error in register gh callback in rm rc: %d, Camera initialization failed!",
+			rc);
+		goto req_mgr_device_deinit;
+	}
+
 	rc = sysfs_create_file(&dev->kobj, &camera_debug_sysfs_attr.attr);
 	if (rc < 0) {
 		CAM_ERR(CAM_CPAS,
@@ -1055,6 +1073,15 @@ media_setup_fail:
 
 static void cam_req_mgr_component_master_unbind(struct device *dev)
 {
+	int rc = 0;
+
+	rc = cam_vmrm_unregister_gh_callback();
+	if (rc) {
+		CAM_ERR(CAM_CRM,
+			"Error in unregister gh callback in rm rc: %d", rc);
+		return;
+	}
+
 	/* Unbinding all slave components first */
 	component_unbind_all(dev, NULL);
 
@@ -1089,6 +1116,10 @@ static int cam_req_mgr_probe(struct platform_device *pdev)
 	struct device_node *np = NULL;
 	uint32_t cam_bypass_driver = 0;
 	struct device_node *of_node = NULL;
+#ifdef CONFIG_ARCH_QTI_VM
+	uint32_t device_heap_size = 0;
+	uint32_t session_heap_size = 0;
+#endif
 
 	for (i = 0; i < ARRAY_SIZE(cam_component_i2c_drivers); i++) {
 		while ((np = of_find_compatible_node(np, NULL,
@@ -1142,6 +1173,29 @@ static int cam_req_mgr_probe(struct platform_device *pdev)
 		rc = 0;
 	}
 
+#ifdef CONFIG_ARCH_QTI_VM
+	rc = of_property_read_u32(of_node, "device-heap-size",
+		&device_heap_size);
+	if (rc) {
+		CAM_WARN(CAM_CRM, "device heap size parameter not found");
+
+		/* Setup default devie heap size to 4M */
+		device_heap_size = SZ_4M;
+		rc = 0;
+	}
+
+	rc = of_property_read_u32(of_node, "session-heap-size",
+		&session_heap_size);
+	if (rc) {
+		CAM_WARN(CAM_CRM, "session heap size parameter not found");
+
+		/* Setup default devie heap size to 200M */
+		session_heap_size = SZ_128M | SZ_64M | SZ_8M;
+		rc = 0;
+	}
+
+	cam_mem_mgr_set_svm_heap_sizes(device_heap_size, session_heap_size);
+#endif
 end:
 	of_node_put(np);
 	return rc;

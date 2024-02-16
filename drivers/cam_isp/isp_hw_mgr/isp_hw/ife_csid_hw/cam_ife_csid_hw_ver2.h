@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_IFE_CSID_HW_VER2_H_
@@ -737,6 +737,7 @@ struct cam_ife_csid_ver2_reg_info {
 	const struct cam_ife_csid_rx_debug_mask          *rx_debug_mask;
 	const uint32_t                                    num_top_regs;
 	const uint32_t                                    num_rx_regs;
+	bool                                              is_ife_sfe_mapped;
 };
 
 /*
@@ -779,6 +780,7 @@ struct cam_ife_csid_ver2_reg_info {
  * @discard_frame_per_path:   Count of paths dropping initial frames
  * @drv_init_done:            Indicates if drv init config is done
  * @is_drv_config_en:         If drv config is enabled
+ * @crc_error_threshold:      CRC error threshold to be treated as fatal error
  *
  */
 struct cam_ife_csid_ver2_hw {
@@ -830,6 +832,7 @@ struct cam_ife_csid_ver2_hw {
 	atomic_t                               discard_frame_per_path;
 	bool                                   drv_init_done;
 	bool                                   is_drv_config_en;
+	uint32_t                               crc_error_threshold;
 };
 
 /*

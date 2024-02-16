@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -15,6 +15,7 @@
 #include "cam_mem_mgr.h"
 #include "cam_presil_hw_access.h"
 #include "cam_compat.h"
+#include "cam_vmrm_interface.h"
 
 #if IS_ENABLED(CONFIG_QCOM_CRM)
 #include <soc/qcom/crm.h>
@@ -1196,6 +1197,11 @@ int cam_soc_util_get_clk_level(struct cam_hw_soc_info *soc_info,
 	int i;
 	long clk_rate_round;
 
+	if (cam_vmrm_proxy_clk_rgl_voting_enable()) {
+		*clk_lvl = CAM_MINSVS_VOTE;
+		return 0;
+	}
+
 	if (!soc_info || (clk_idx < 0) || (clk_idx >= CAM_SOC_MAX_CLK)) {
 		CAM_ERR(CAM_UTIL, "Invalid src_clk_idx: %d", clk_idx);
 		*clk_lvl = -1;
@@ -1775,6 +1781,16 @@ int cam_soc_util_set_src_clk_rate(struct cam_hw_soc_info *soc_info, int cesta_cl
 			goto end;
 	}
 
+	if (cam_vmrm_proxy_clk_rgl_voting_enable()) {
+		rc = cam_vmrm_set_src_clk_rate(soc_info->hw_id,
+			CAM_CLK_SW_CLIENT_IDX, clk_rate_high, clk_rate_low);
+		if (rc) {
+			CAM_ERR(CAM_UTIL, "vmrm set src clk rate failed %d", rc);
+			return rc;
+		}
+		goto end;
+	}
+
 	rc = cam_soc_util_set_clk_rate(soc_info, clk,
 		soc_info->clk_name[src_clk_idx], clk_rate_high,
 		CAM_IS_BIT_SET(soc_info->shared_clk_mask, src_clk_idx),
@@ -1870,6 +1886,9 @@ int cam_soc_util_get_option_clk_by_name(struct cam_hw_soc_info *soc_info,
 	int rc = 0;
 	struct device_node *of_node = NULL;
 	uint32_t shared_clk_val;
+
+	if (cam_vmrm_proxy_clk_rgl_voting_enable())
+		return 0;
 
 	if (!soc_info || !clk_name || !clk_index) {
 		CAM_ERR(CAM_UTIL,
@@ -2504,6 +2523,21 @@ int cam_soc_util_set_clk_rate_level(struct cam_hw_soc_info *soc_info,
 	enum cam_vote_level apply_level_low = soc_info->lowest_clk_level;
 	unsigned long applied_clk_rate;
 
+	if (debug_bypass_drivers & CAM_BYPASS_CLKS) {
+		CAM_WARN(CAM_UTIL, "Bypass clk set rate");
+		return 0;
+	}
+
+	if (cam_vmrm_proxy_clk_rgl_voting_enable()) {
+		rc = cam_vmrm_set_clk_rate_level(soc_info->hw_id, CAM_CLK_SW_CLIENT_IDX,
+			clk_level_high, clk_level_low, do_not_set_src_clk, 0);
+		if (rc) {
+			CAM_ERR(CAM_UTIL, "vmrm set clk rate level failed %d", rc);
+			return rc;
+		}
+		goto end;
+	}
+
 	if ((soc_info->num_clk == 0) ||
 		(soc_info->num_clk >= CAM_SOC_MAX_CLK)) {
 		CAM_ERR(CAM_UTIL, "Invalid number of clock %d", soc_info->num_clk);
@@ -2581,6 +2615,7 @@ int cam_soc_util_set_clk_rate_level(struct cam_hw_soc_info *soc_info,
 			soc_info->applied_src_clk_rates.sw_client = applied_clk_rate;
 	}
 
+end:
 	return rc;
 };
 
@@ -2732,6 +2767,12 @@ static int cam_soc_util_get_gpio_info(struct cam_hw_soc_info *soc_info)
 
 	gconf->cam_gpio_common_tbl_size = gpio_array_size;
 	soc_info->gpio_data = gconf;
+
+	soc_info->gpio_data->gpio_for_vmrm_purpose =
+		of_property_read_bool(of_node, "gpio_for_vmrm_purpose");
+	CAM_DBG(CAM_UTIL, "dev name %s gpio_for_vmrm_purpose %d", soc_info->dev_name,
+		soc_info->gpio_data->gpio_for_vmrm_purpose);
+
 	kfree(gpio_array);
 
 	return rc;
@@ -2766,6 +2807,12 @@ static int cam_soc_util_request_gpio_table(
 	}
 	size = gpio_conf->cam_gpio_req_tbl_size;
 	gpio_tbl = gpio_conf->cam_gpio_req_tbl;
+
+	if (soc_info->gpio_data->gpio_for_vmrm_purpose) {
+		CAM_DBG(CAM_UTIL, "dev name %s does not have valid request gpio table",
+			soc_info->dev_name);
+		return 0;
+	}
 
 	if (!gpio_tbl || !size) {
 		CAM_ERR(CAM_UTIL, "Invalid gpio_tbl %pK / size %d",
@@ -2883,6 +2930,9 @@ int cam_soc_util_get_dt_properties(struct cam_hw_soc_info *soc_info)
 {
 	struct device_node *of_node = NULL;
 	int count = 0, i = 0, rc = 0;
+#ifdef CONFIG_SPECTRA_VMRM
+	int num_vmrm_resource_ids = 0;
+#endif
 
 	if (!soc_info || !soc_info->dev)
 		return -EINVAL;
@@ -3001,6 +3051,24 @@ int cam_soc_util_get_dt_properties(struct cam_hw_soc_info *soc_info)
 	if (of_find_property(of_node, "qcom,cam-cx-ipeak", NULL))
 		rc = cam_cx_ipeak_register_cx_ipeak(soc_info);
 
+#ifdef CONFIG_SPECTRA_VMRM
+	num_vmrm_resource_ids = of_property_count_u32_elems(of_node, "vmrm-resource-ids");
+
+	if ((num_vmrm_resource_ids <= 0) ||
+		(num_vmrm_resource_ids > CAM_VMRM_MAX_RESOURCE_IDS)) {
+		CAM_ERR(CAM_UTIL, "Invalid vmrm resource ids counter %d max %d",
+			num_vmrm_resource_ids, CAM_VMRM_MAX_RESOURCE_IDS);
+	} else {
+		soc_info->num_vmrm_resource_ids  = num_vmrm_resource_ids;
+		for (i = 0; i < num_vmrm_resource_ids; i++) {
+			of_property_read_u32_index(of_node, "vmrm-resource-ids", i,
+				&soc_info->vmrm_resource_ids[i]);
+			CAM_DBG(CAM_UTIL, "dev name %s vmrm resource id num %d index %d id %d",
+				soc_info->dev_name, num_vmrm_resource_ids, i,
+				soc_info->vmrm_resource_ids[i]);
+		}
+	}
+#endif
 	return rc;
 }
 
@@ -3502,6 +3570,7 @@ int cam_soc_util_request_platform_resource(
 	irq_handler_t handler, void **irq_data)
 {
 	int i = 0, rc = 0;
+	bool clk_regulator_needed = true;
 
 	if (!soc_info || !soc_info->dev) {
 		CAM_ERR(CAM_UTIL, "Invalid parameters");
@@ -3513,6 +3582,9 @@ int cam_soc_util_request_platform_resource(
 			soc_info->irq_count, CAM_SOC_MAX_IRQ_LINES_PER_DEV);
 		return -EINVAL;
 	}
+
+	if (cam_vmrm_proxy_clk_rgl_voting_enable())
+		clk_regulator_needed = false;
 
 	for (i = 0; i < soc_info->num_mem_block; i++) {
 
@@ -3536,17 +3608,19 @@ int cam_soc_util_request_platform_resource(
 		soc_info->num_reg_map++;
 	}
 
-	for (i = 0; i < soc_info->num_rgltr; i++) {
-		if (soc_info->rgltr_name[i] == NULL) {
-			CAM_ERR(CAM_UTIL, "can't find regulator name");
-			goto put_regulator;
-		}
+	if (clk_regulator_needed) {
+		for (i = 0; i < soc_info->num_rgltr; i++) {
+			if (soc_info->rgltr_name[i] == NULL) {
+				CAM_ERR(CAM_UTIL, "can't find regulator name");
+				goto put_regulator;
+			}
 
-		rc = cam_soc_util_get_regulator(soc_info->dev,
-			&soc_info->rgltr[i],
-			soc_info->rgltr_name[i]);
-		if (rc)
-			goto put_regulator;
+			rc = cam_soc_util_get_regulator(soc_info->dev,
+				&soc_info->rgltr[i],
+				soc_info->rgltr_name[i]);
+			if (rc)
+				goto put_regulator;
+		}
 	}
 
 	for (i = 0; i < soc_info->irq_count; i++) {
@@ -3563,58 +3637,62 @@ int cam_soc_util_request_platform_resource(
 		soc_info->irq_data[i] = irq_data[i];
 	}
 
-	/* Get Clock */
-	for (i = 0; i < soc_info->num_clk; i++) {
-		soc_info->clk[i] = cam_wrapper_clk_get(soc_info->dev,
-			soc_info->clk_name[i]);
-		if (IS_ERR(soc_info->clk[i])) {
-			CAM_ERR(CAM_UTIL, "get failed for %s",
+	if (clk_regulator_needed) {
+		/* Get Clock */
+		for (i = 0; i < soc_info->num_clk; i++) {
+			soc_info->clk[i] = cam_wrapper_clk_get(soc_info->dev,
 				soc_info->clk_name[i]);
-			rc = -ENOENT;
-			goto put_clk;
-		} else if (!soc_info->clk[i]) {
-			CAM_DBG(CAM_UTIL, "%s handle is NULL skip get",
-				soc_info->clk_name[i]);
-			continue;
-		}
-
-		/* Create a wrapper entry if this is a shared clock */
-		if (CAM_IS_BIT_SET(soc_info->shared_clk_mask, i)) {
-			uint32_t min_level = soc_info->lowest_clk_level;
-
-			CAM_DBG(CAM_UTIL,
-				"Dev %s, clk %s, id %d register wrapper entry for shared clk",
-				soc_info->dev_name, soc_info->clk_name[i],
-				soc_info->clk_id[i]);
-
-			rc = cam_soc_util_clk_wrapper_register_entry(
-				soc_info->clk_id[i], soc_info->clk[i],
-				(i == soc_info->src_clk_idx) ? true : false,
-				soc_info, soc_info->clk_rate[min_level][i],
-				soc_info->clk_name[i]);
-			if (rc) {
-				CAM_ERR(CAM_UTIL,
-					"Failed in registering shared clk Dev %s id %d",
-					soc_info->dev_name,
-					soc_info->clk_id[i]);
-				cam_wrapper_clk_put(soc_info->clk[i], soc_info->clk_name[i]);
-				soc_info->clk[i] = NULL;
+			if (IS_ERR(soc_info->clk[i])) {
+				CAM_ERR(CAM_UTIL, "get failed for %s",
+					soc_info->clk_name[i]);
+				rc = -ENOENT;
 				goto put_clk;
+			} else if (!soc_info->clk[i]) {
+				CAM_DBG(CAM_UTIL, "%s handle is NULL skip get",
+					soc_info->clk_name[i]);
+				continue;
 			}
-		} else if (i == soc_info->src_clk_idx) {
-			rc = cam_soc_util_register_mmrm_client(
-				soc_info->clk_id[i], soc_info->clk[i],
-				soc_info->is_nrt_dev,
-				soc_info, soc_info->clk_name[i],
-				&soc_info->mmrm_handle);
-			if (rc) {
-				CAM_ERR(CAM_UTIL,
-					"Failed in register mmrm client Dev %s clk id %d",
-					soc_info->dev_name,
+
+			/* Create a wrapper entry if this is a shared clock */
+			if (CAM_IS_BIT_SET(soc_info->shared_clk_mask, i)) {
+				uint32_t min_level = soc_info->lowest_clk_level;
+
+				CAM_DBG(CAM_UTIL,
+					"Dev %s, clk %s, id %d register wrapper entry for shared clk",
+					soc_info->dev_name, soc_info->clk_name[i],
 					soc_info->clk_id[i]);
-				cam_wrapper_clk_put(soc_info->clk[i], soc_info->clk_name[i]);
-				soc_info->clk[i] = NULL;
-				goto put_clk;
+
+				rc = cam_soc_util_clk_wrapper_register_entry(
+					soc_info->clk_id[i], soc_info->clk[i],
+					(i == soc_info->src_clk_idx) ? true : false,
+					soc_info, soc_info->clk_rate[min_level][i],
+					soc_info->clk_name[i]);
+				if (rc) {
+					CAM_ERR(CAM_UTIL,
+						"Failed in registering shared clk Dev %s id %d",
+						soc_info->dev_name,
+						soc_info->clk_id[i]);
+					cam_wrapper_clk_put(soc_info->clk[i],
+						soc_info->clk_name[i]);
+					soc_info->clk[i] = NULL;
+					goto put_clk;
+				}
+			} else if (i == soc_info->src_clk_idx) {
+				rc = cam_soc_util_register_mmrm_client(
+					soc_info->clk_id[i], soc_info->clk[i],
+					soc_info->is_nrt_dev,
+					soc_info, soc_info->clk_name[i],
+					&soc_info->mmrm_handle);
+				if (rc) {
+					CAM_ERR(CAM_UTIL,
+						"Failed in register mmrm client Dev %s clk id %d",
+						soc_info->dev_name,
+						soc_info->clk_id[i]);
+					cam_wrapper_clk_put(soc_info->clk[i],
+						soc_info->clk_name[i]);
+					soc_info->clk[i] = NULL;
+					goto put_clk;
+				}
 			}
 		}
 	}
@@ -3631,26 +3709,30 @@ int cam_soc_util_request_platform_resource(
 		goto put_clk;
 	}
 
-	if (soc_info->clk_control_enable)
-		cam_soc_util_create_clk_lvl_debugfs(soc_info);
+	if (clk_regulator_needed) {
+		if (soc_info->clk_control_enable)
+			cam_soc_util_create_clk_lvl_debugfs(soc_info);
+	}
 
 	return rc;
 
 put_clk:
 
-	if (soc_info->mmrm_handle) {
-		cam_soc_util_unregister_mmrm_client(soc_info->mmrm_handle);
-		soc_info->mmrm_handle = NULL;
-	}
+	if (clk_regulator_needed) {
+		if (soc_info->mmrm_handle) {
+			cam_soc_util_unregister_mmrm_client(soc_info->mmrm_handle);
+			soc_info->mmrm_handle = NULL;
+		}
 
-	for (i = i - 1; i >= 0; i--) {
-		if (soc_info->clk[i]) {
-			if (CAM_IS_BIT_SET(soc_info->shared_clk_mask, i))
-				cam_soc_util_clk_wrapper_unregister_entry(
-					soc_info->clk_id[i], soc_info);
+		for (i = i - 1; i >= 0; i--) {
+			if (soc_info->clk[i]) {
+				if (CAM_IS_BIT_SET(soc_info->shared_clk_mask, i))
+					cam_soc_util_clk_wrapper_unregister_entry(
+						soc_info->clk_id[i], soc_info);
 
-			cam_wrapper_clk_put(soc_info->clk[i], soc_info->clk_name[i]);
-			soc_info->clk[i] = NULL;
+				cam_wrapper_clk_put(soc_info->clk[i], soc_info->clk_name[i]);
+				soc_info->clk[i] = NULL;
+			}
 		}
 	}
 
@@ -3663,13 +3745,17 @@ put_irq:
 	}
 
 put_regulator:
-	if (i == -1)
-		i = soc_info->num_rgltr;
-	for (i = i - 1; i >= 0; i--) {
-		if (soc_info->rgltr[i]) {
-			cam_wrapper_regulator_disable(soc_info->rgltr[i], soc_info->rgltr_name[i]);
-			cam_wrapper_regulator_put(soc_info->rgltr[i], soc_info->rgltr_name[i]);
-			soc_info->rgltr[i] = NULL;
+	if (clk_regulator_needed) {
+		if (i == -1)
+			i = soc_info->num_rgltr;
+		for (i = i - 1; i >= 0; i--) {
+			if (soc_info->rgltr[i]) {
+				cam_wrapper_regulator_disable(soc_info->rgltr[i],
+					soc_info->rgltr_name[i]);
+				cam_wrapper_regulator_put(soc_info->rgltr[i],
+					soc_info->rgltr_name[i]);
+				soc_info->rgltr[i] = NULL;
+			}
 		}
 	}
 
@@ -3692,41 +3778,48 @@ int cam_soc_util_release_platform_resource(struct cam_hw_soc_info *soc_info)
 {
 	int i;
 	bool b_ret = false;
+	bool clk_regulator_needed = true;
 
 	if (!soc_info || !soc_info->dev) {
 		CAM_ERR(CAM_UTIL, "Invalid parameter");
 		return -EINVAL;
 	}
 
-	if (soc_info->mmrm_handle) {
-		cam_soc_util_unregister_mmrm_client(soc_info->mmrm_handle);
-		soc_info->mmrm_handle = NULL;
-	}
+	if (cam_vmrm_proxy_clk_rgl_voting_enable())
+		clk_regulator_needed = false;
 
-	for (i = soc_info->num_clk - 1; i >= 0; i--) {
-		if (CAM_IS_BIT_SET(soc_info->shared_clk_mask, i))
-			cam_soc_util_clk_wrapper_unregister_entry(
-				soc_info->clk_id[i], soc_info);
-		if (!soc_info->clk[i]) {
-			CAM_DBG(CAM_UTIL, "%s handle is NULL skip put",
-				soc_info->clk_name[i]);
-			continue;
+	if (clk_regulator_needed) {
+		if (soc_info->mmrm_handle) {
+			cam_soc_util_unregister_mmrm_client(soc_info->mmrm_handle);
+			soc_info->mmrm_handle = NULL;
 		}
-		cam_wrapper_clk_put(soc_info->clk[i], soc_info->clk_name[i]);
-		soc_info->clk[i] = NULL;
-	}
 
-	for (i = soc_info->num_rgltr - 1; i >= 0; i--) {
-		if (soc_info->rgltr[i]) {
-			cam_wrapper_regulator_put(soc_info->rgltr[i], soc_info->rgltr_name[i]);
-			soc_info->rgltr[i] = NULL;
+		for (i = soc_info->num_clk - 1; i >= 0; i--) {
+			if (CAM_IS_BIT_SET(soc_info->shared_clk_mask, i))
+				cam_soc_util_clk_wrapper_unregister_entry(
+					soc_info->clk_id[i], soc_info);
+			if (!soc_info->clk[i]) {
+				CAM_DBG(CAM_UTIL, "%s handle is NULL skip put",
+					soc_info->clk_name[i]);
+				continue;
+			}
+			cam_wrapper_clk_put(soc_info->clk[i], soc_info->clk_name[i]);
+			soc_info->clk[i] = NULL;
 		}
-	}
 
-	for (i = soc_info->num_reg_map - 1; i >= 0; i--) {
-		iounmap(soc_info->reg_map[i].mem_base);
-		soc_info->reg_map[i].mem_base = NULL;
-		soc_info->reg_map[i].size = 0;
+		for (i = soc_info->num_rgltr - 1; i >= 0; i--) {
+			if (soc_info->rgltr[i]) {
+				cam_wrapper_regulator_put(soc_info->rgltr[i],
+					soc_info->rgltr_name[i]);
+				soc_info->rgltr[i] = NULL;
+			}
+		}
+
+		for (i = soc_info->num_reg_map - 1; i >= 0; i--) {
+			iounmap(soc_info->reg_map[i].mem_base);
+			soc_info->reg_map[i].mem_base = NULL;
+			soc_info->reg_map[i].size = 0;
+		}
 	}
 
 	for (i = soc_info->irq_count -1; i >= 0; i--) {
@@ -3766,16 +3859,24 @@ int cam_soc_util_enable_platform_resource(struct cam_hw_soc_info *soc_info,
 	if (!soc_info)
 		return -EINVAL;
 
-	rc = cam_soc_util_regulator_enable_default(soc_info);
-	if (rc) {
-		CAM_ERR(CAM_UTIL, "Regulators enable failed");
-		return rc;
-	}
+	if (cam_vmrm_proxy_clk_rgl_voting_enable()) {
+		rc = cam_vmrm_soc_enable_disable_resources(soc_info->hw_id, true);
+		if (rc) {
+			CAM_ERR(CAM_UTIL, "vmrm soc enable soc resources failed %d", rc);
+			return rc;
+		}
+	} else {
+		rc = cam_soc_util_regulator_enable_default(soc_info);
+		if (rc) {
+			CAM_ERR(CAM_UTIL, "Regulators enable failed");
+			return rc;
+		}
 
-	if (enable_clocks) {
-		rc = cam_soc_util_clk_enable_default(soc_info, cesta_client_idx, clk_level);
-		if (rc)
-			goto disable_regulator;
+		if (enable_clocks) {
+			rc = cam_soc_util_clk_enable_default(soc_info, cesta_client_idx, clk_level);
+			if (rc)
+				goto disable_regulator;
+		}
 	}
 
 	if (irq_enable) {
@@ -3799,11 +3900,19 @@ disable_irq:
 			disable_irq(soc_info->irq_num[i]);
 	}
 
-	if (enable_clocks)
-		cam_soc_util_clk_disable_default(soc_info, cesta_client_idx);
+	if (cam_vmrm_proxy_clk_rgl_voting_enable()) {
+		rc = cam_vmrm_soc_enable_disable_resources(soc_info->hw_id, false);
+		if (rc) {
+			CAM_ERR(CAM_UTIL, "vmrm soc disable soc resources failed %d", rc);
+			return rc;
+		}
+	} else {
+		if (enable_clocks)
+			cam_soc_util_clk_disable_default(soc_info, cesta_client_idx);
 
 disable_regulator:
-	cam_soc_util_regulator_disable_default(soc_info);
+		cam_soc_util_regulator_disable_default(soc_info);
+	}
 
 	return rc;
 }
@@ -3819,10 +3928,18 @@ int cam_soc_util_disable_platform_resource(struct cam_hw_soc_info *soc_info,
 	if (disable_irq)
 		rc |= cam_soc_util_irq_disable(soc_info);
 
-	if (disable_clocks)
-		cam_soc_util_clk_disable_default(soc_info, cesta_client_idx);
+	if (cam_vmrm_proxy_clk_rgl_voting_enable()) {
+		rc = cam_vmrm_soc_enable_disable_resources(soc_info->hw_id, false);
+		if (rc) {
+			CAM_ERR(CAM_UTIL, "vmrm soc disable soc resources failed %d", rc);
+			return rc;
+		}
+	} else {
+		if (disable_clocks)
+			cam_soc_util_clk_disable_default(soc_info, cesta_client_idx);
 
-	cam_soc_util_regulator_disable_default(soc_info);
+		cam_soc_util_regulator_disable_default(soc_info);
+	}
 
 	return rc;
 }
@@ -3870,7 +3987,8 @@ static inline int cam_soc_util_reg_addr_validation(
 static int cam_soc_util_dump_cont_reg_range(
 	struct cam_hw_soc_info *soc_info,
 	struct cam_reg_range_read_desc *reg_read, uint32_t base_idx,
-	struct cam_reg_dump_out_buffer *dump_out_buf, uintptr_t cmd_buf_end)
+	struct cam_reg_dump_out_buffer *dump_out_buf,
+	uintptr_t cmd_buf_end)
 {
 	int         i = 0, rc = 0;
 	uint32_t    write_idx = 0, reg_map_size;
@@ -3928,15 +4046,19 @@ end:
 	return rc;
 }
 
-static int cam_soc_util_dump_dmi_reg_range(
+static int cam_soc_util_dump_dmi_ctxt_reg_range(
 	struct cam_hw_soc_info *soc_info,
-	struct cam_dmi_read_desc *dmi_read, uint32_t base_idx,
-	struct cam_reg_dump_out_buffer *dump_out_buf, uintptr_t cmd_buf_end)
+	struct cam_dmi_read_desc *reg_read, uint32_t base_idx,
+	struct cam_reg_dump_out_buffer *dump_out_buf,
+	struct cam_hw_soc_skip_dump_args *soc_skip_dump_args,
+	uintptr_t cmd_buf_end, uint64_t type)
 {
 	int        i = 0, rc = 0;
 	uint32_t   write_idx = 0, reg_map_size;
+	uint32_t   offset, start_offset, end_offset, reg_base_type;
+	bool skip_register_read = false;
 
-	if (!soc_info || !dump_out_buf || !dmi_read || !cmd_buf_end) {
+	if (!soc_info || !dump_out_buf || !reg_read || !cmd_buf_end) {
 		CAM_ERR(CAM_UTIL,
 			"Invalid input args soc_info: %pK, dump_out_buffer: %pK",
 			soc_info, dump_out_buf);
@@ -3944,28 +4066,28 @@ static int cam_soc_util_dump_dmi_reg_range(
 		goto end;
 	}
 
-	if (dmi_read->num_pre_writes > CAM_REG_DUMP_DMI_CONFIG_MAX ||
-		dmi_read->num_post_writes > CAM_REG_DUMP_DMI_CONFIG_MAX) {
+	if (reg_read->num_pre_writes > CAM_REG_DUMP_DMI_CONFIG_MAX ||
+		reg_read->num_post_writes > CAM_REG_DUMP_DMI_CONFIG_MAX) {
 		CAM_ERR(CAM_UTIL,
 			"Invalid number of requested writes, pre: %d post: %d",
-			dmi_read->num_pre_writes, dmi_read->num_post_writes);
+			reg_read->num_pre_writes, reg_read->num_post_writes);
 		rc = -EINVAL;
 		goto end;
 	}
 
-	if ((dmi_read->num_pre_writes + dmi_read->dmi_data_read.num_values)
-		&& ((dmi_read->num_pre_writes > U32_MAX / 2) ||
-		(dmi_read->dmi_data_read.num_values > U32_MAX / 2) ||
-		((dmi_read->num_pre_writes * 2) > U32_MAX -
-		(dmi_read->dmi_data_read.num_values * 2)) ||
+	if ((reg_read->num_pre_writes + reg_read->dmi_data_read.num_values)
+		&& ((reg_read->num_pre_writes > U32_MAX / 2) ||
+		(reg_read->dmi_data_read.num_values > U32_MAX / 2) ||
+		((reg_read->num_pre_writes * 2) > U32_MAX -
+		(reg_read->dmi_data_read.num_values * 2)) ||
 		(sizeof(uint32_t) > ((U32_MAX -
 		sizeof(struct cam_reg_dump_out_buffer) -
-		dump_out_buf->bytes_written) / ((dmi_read->num_pre_writes +
-		dmi_read->dmi_data_read.num_values) * 2))))) {
+		dump_out_buf->bytes_written) / ((reg_read->num_pre_writes +
+		reg_read->dmi_data_read.num_values) * 2))))) {
 		CAM_ERR(CAM_UTIL,
 			"Integer Overflow bytes_written: [%u] num_pre_writes: [%u] num_values: [%u]",
-			dump_out_buf->bytes_written, dmi_read->num_pre_writes,
-			dmi_read->dmi_data_read.num_values);
+			dump_out_buf->bytes_written, reg_read->num_pre_writes,
+			reg_read->dmi_data_read.num_values);
 		rc = -EOVERFLOW;
 		goto end;
 	}
@@ -3974,13 +4096,13 @@ static int cam_soc_util_dump_dmi_reg_range(
 		(uintptr_t)(
 		sizeof(struct cam_reg_dump_out_buffer) - sizeof(uint32_t) +
 		(dump_out_buf->bytes_written +
-		(dmi_read->num_pre_writes * 2 * sizeof(uint32_t)) +
-		(dmi_read->dmi_data_read.num_values * 2 *
+		(reg_read->num_pre_writes * 2 * sizeof(uint32_t)) +
+		(reg_read->dmi_data_read.num_values * 2 *
 		sizeof(uint32_t))))) {
 		CAM_ERR(CAM_UTIL,
 			"Insufficient space in out buffer num_read_val: [%d] num_write_val: [%d] cmd_buf_end: %pK dump_out_buf: %pK",
-			dmi_read->dmi_data_read.num_values,
-			dmi_read->num_pre_writes, cmd_buf_end,
+			reg_read->dmi_data_read.num_values,
+			reg_read->num_pre_writes, cmd_buf_end,
 			(uintptr_t)dump_out_buf);
 		rc = -EINVAL;
 		goto end;
@@ -3988,80 +4110,106 @@ static int cam_soc_util_dump_dmi_reg_range(
 
 	write_idx = dump_out_buf->bytes_written / sizeof(uint32_t);
 	reg_map_size = (uint32_t)soc_info->reg_map[base_idx].size;
-	for (i = 0; i < dmi_read->num_pre_writes; i++) {
+	for (i = 0; i < reg_read->num_pre_writes; i++) {
 		rc = cam_soc_util_reg_addr_validation(reg_map_size,
-			dmi_read->pre_read_config[i].offset,
+			reg_read->pre_read_config[i].offset,
 			"pre_read_config");
 		if (rc)
 			continue;
 
 		cam_soc_util_w_mb(soc_info, base_idx,
-			dmi_read->pre_read_config[i].offset,
-			dmi_read->pre_read_config[i].value);
+			reg_read->pre_read_config[i].offset,
+			reg_read->pre_read_config[i].value);
 		dump_out_buf->dump_data[write_idx++] =
-			dmi_read->pre_read_config[i].offset;
+			reg_read->pre_read_config[i].offset;
 		dump_out_buf->dump_data[write_idx++] =
-			dmi_read->pre_read_config[i].value;
+			reg_read->pre_read_config[i].value;
 		dump_out_buf->bytes_written += (2 * sizeof(uint32_t));
 	}
 
 	rc = cam_soc_util_reg_addr_validation(reg_map_size,
-		dmi_read->dmi_data_read.offset,
+		reg_read->dmi_data_read.offset,
 		"dmi_data_read");
 	if (!rc) {
-		for (i = 0; i < dmi_read->dmi_data_read.num_values; i++) {
-			dump_out_buf->dump_data[write_idx++] =
-				dmi_read->dmi_data_read.offset;
-			dump_out_buf->dump_data[write_idx++] =
-				cam_soc_util_r_mb(soc_info, base_idx,
-				dmi_read->dmi_data_read.offset);
+		for (i = 0; i < reg_read->dmi_data_read.num_values; i++) {
+			if (type == CAM_REG_DUMP_READ_TYPE_DMI) {
+				offset = reg_read->dmi_data_read.offset;
+			} else {
+				offset = reg_read->dmi_data_read.offset + (i * sizeof(uint32_t));
+				rc = cam_soc_util_reg_addr_validation(reg_map_size,
+					offset, "mc_reg_read");
+				if (rc)
+					continue;
+			}
+
+			if (soc_skip_dump_args->skip_regdump) {
+				reg_base_type = soc_skip_dump_args->reg_base_type;
+				if (reg_base_type == CAM_REG_DUMP_BASE_TYPE_ISP_LEFT ||
+					reg_base_type == CAM_REG_DUMP_BASE_TYPE_ISP_RIGHT) {
+					start_offset = soc_skip_dump_args->start_offset;
+					end_offset = soc_skip_dump_args->stop_offset;
+					if (offset >= start_offset && offset <= end_offset)
+						skip_register_read = true;
+				}
+			}
+
+			dump_out_buf->dump_data[write_idx++] = offset;
+
+			if (skip_register_read)
+				dump_out_buf->dump_data[write_idx++] = 0X1234;
+			else
+				dump_out_buf->dump_data[write_idx++] =
+					cam_soc_util_r_mb(soc_info, base_idx, offset);
+
 			dump_out_buf->bytes_written += (2 * sizeof(uint32_t));
+			skip_register_read = false;
 		}
 	}
 
-	for (i = 0; i < dmi_read->num_post_writes; i++) {
+	for (i = 0; i < reg_read->num_post_writes; i++) {
 		rc = cam_soc_util_reg_addr_validation(reg_map_size,
-			dmi_read->post_read_config[i].offset,
+			reg_read->post_read_config[i].offset,
 			"post_read_config");
 		if (rc)
 			continue;
-
 		cam_soc_util_w_mb(soc_info, base_idx,
-			dmi_read->post_read_config[i].offset,
-			dmi_read->post_read_config[i].value);
+			reg_read->post_read_config[i].offset,
+			reg_read->post_read_config[i].value);
 	}
-
 end:
 	return rc;
 }
 
-static int cam_soc_util_dump_dmi_reg_range_user_buf(
+static int cam_soc_util_dump_dmi_ctxt_reg_range_user_buf(
 	struct cam_hw_soc_info *soc_info,
-	struct cam_dmi_read_desc *dmi_read, uint32_t base_idx,
-	struct cam_hw_soc_dump_args *dump_args)
+	struct cam_dmi_read_desc *reg_read, uint32_t base_idx,
+	struct cam_hw_soc_skip_dump_args *soc_skip_dump_args,
+	struct cam_hw_soc_dump_args *dump_args, uint32_t type)
 {
 	int                            i;
 	int                            rc;
 	size_t                         buf_len = 0;
 	uint8_t                       *dst;
 	size_t                         remain_len;
-	uint32_t                       min_len, reg_map_size;
+	uint32_t                       min_len, reg_map_size = 0;
 	uint32_t                      *waddr, *start;
 	uintptr_t                      cpu_addr;
 	struct cam_hw_soc_dump_header *hdr;
+	uint32_t   offset, start_offset, end_offset, reg_base_type;
+	bool skip_register_read = false;
 
-	if (!soc_info || !dump_args || !dmi_read) {
+	if (!soc_info || !dump_args || !reg_read) {
 		CAM_ERR(CAM_UTIL,
 			"Invalid input args soc_info: %pK, dump_args: %pK",
 			soc_info, dump_args);
 		return -EINVAL;
 	}
 
-	if (dmi_read->num_pre_writes > CAM_REG_DUMP_DMI_CONFIG_MAX ||
-		dmi_read->num_post_writes > CAM_REG_DUMP_DMI_CONFIG_MAX) {
+	if (reg_read->num_pre_writes > CAM_REG_DUMP_DMI_CONFIG_MAX ||
+		reg_read->num_post_writes > CAM_REG_DUMP_DMI_CONFIG_MAX) {
 		CAM_ERR(CAM_UTIL,
 			"Invalid number of requested writes, pre: %d post: %d",
-			dmi_read->num_pre_writes, dmi_read->num_post_writes);
+			reg_read->num_pre_writes, reg_read->num_post_writes);
 		return -EINVAL;
 	}
 
@@ -4079,14 +4227,14 @@ static int cam_soc_util_dump_dmi_reg_range_user_buf(
 		goto end;
 	}
 	remain_len = buf_len - dump_args->offset;
-	min_len = (dmi_read->num_pre_writes * 2 * sizeof(uint32_t)) +
-		(dmi_read->dmi_data_read.num_values * 2 * sizeof(uint32_t)) +
+	min_len = (reg_read->num_pre_writes * 2 * sizeof(uint32_t)) +
+		(reg_read->dmi_data_read.num_values * 2 * sizeof(uint32_t)) +
 		sizeof(uint32_t);
 	if (remain_len < min_len) {
 		CAM_WARN(CAM_UTIL,
 			"Dump Buffer exhaust read %d write %d remain %zu min %u",
-			dmi_read->dmi_data_read.num_values,
-			dmi_read->num_pre_writes, remain_len,
+			reg_read->dmi_data_read.num_values,
+			reg_read->num_pre_writes, remain_len,
 			min_len);
 		rc = -ENOSPC;
 		goto end;
@@ -4104,42 +4252,70 @@ static int cam_soc_util_dump_dmi_reg_range_user_buf(
 	waddr++;
 
 	reg_map_size = (uint32_t)soc_info->reg_map[base_idx].size;
-	for (i = 0; i < dmi_read->num_pre_writes; i++) {
+	for (i = 0; i < reg_read->num_pre_writes; i++) {
 		rc = cam_soc_util_reg_addr_validation(reg_map_size,
-			dmi_read->pre_read_config[i].offset,
+			reg_read->pre_read_config[i].offset,
 			"pre_read_config");
-		if (rc)
+		if(rc)
 			continue;
 
 		cam_soc_util_w_mb(soc_info, base_idx,
-			dmi_read->pre_read_config[i].offset,
-			dmi_read->pre_read_config[i].value);
-		*waddr++ = dmi_read->pre_read_config[i].offset;
-		*waddr++ = dmi_read->pre_read_config[i].value;
+			reg_read->pre_read_config[i].offset,
+			reg_read->pre_read_config[i].value);
+		*waddr++ = reg_read->pre_read_config[i].offset;
+		*waddr++ = reg_read->pre_read_config[i].value;
 	}
 
 	rc = cam_soc_util_reg_addr_validation(reg_map_size,
-		dmi_read->dmi_data_read.offset,
+		reg_read->dmi_data_read.offset,
 		"dmi_data_read");
 	if (!rc) {
-		for (i = 0; i < dmi_read->dmi_data_read.num_values; i++) {
-			*waddr++ = dmi_read->dmi_data_read.offset;
-			*waddr++ = cam_soc_util_r_mb(soc_info, base_idx,
-				dmi_read->dmi_data_read.offset);
+		for (i = 0; i < reg_read->dmi_data_read.num_values; i++) {
+			if (type == CAM_REG_DUMP_READ_TYPE_DMI) {
+				offset = reg_read->dmi_data_read.offset;
+			} else {
+				offset = reg_read->dmi_data_read.offset + (i * sizeof(uint32_t));
+				rc = cam_soc_util_reg_addr_validation(reg_map_size,
+					offset, "mc_reg_read");
+				if (rc)
+					continue;
+			}
+
+			if (soc_skip_dump_args->skip_regdump) {
+				reg_base_type = soc_skip_dump_args->reg_base_type;
+				if (reg_base_type == CAM_REG_DUMP_BASE_TYPE_ISP_LEFT ||
+					reg_base_type == CAM_REG_DUMP_BASE_TYPE_ISP_RIGHT) {
+					offset = reg_read->dmi_data_read.offset;
+					start_offset = soc_skip_dump_args->start_offset;
+					end_offset = soc_skip_dump_args->stop_offset;
+					if (offset >= start_offset && offset <= end_offset)
+						skip_register_read = true;
+				}
+			}
+
+			*waddr++ = offset;
+
+			if (skip_register_read)
+				*waddr++ = 0X1234;
+			else
+				*waddr++ = cam_soc_util_r_mb(soc_info, base_idx, offset);
+
+			skip_register_read = false;
 		}
 	}
 
-	for (i = 0; i < dmi_read->num_post_writes; i++) {
+	for (i = 0; i < reg_read->num_post_writes; i++) {
 		rc = cam_soc_util_reg_addr_validation(reg_map_size,
-			dmi_read->post_read_config[i].offset,
+			reg_read->post_read_config[i].offset,
 			"post_read_config");
 		if (rc)
 			continue;
 
 		cam_soc_util_w_mb(soc_info, base_idx,
-			dmi_read->post_read_config[i].offset,
-			dmi_read->post_read_config[i].value);
+			reg_read->post_read_config[i].offset,
+			reg_read->post_read_config[i].value);
 	}
+
 	hdr->size = (waddr - start) * hdr->word_size;
 	dump_args->offset +=  hdr->size +
 		sizeof(struct cam_hw_soc_dump_header);
@@ -4160,7 +4336,7 @@ static int cam_soc_util_dump_cont_reg_range_user_buf(
 	size_t                         buf_len;
 	uint8_t                       *dst;
 	size_t                         remain_len;
-	uint32_t                       min_len, reg_map_size;
+	uint32_t                       min_len, reg_map_size = 0;
 	uint32_t                      *waddr, *start;
 	uintptr_t                      cpu_addr;
 	struct cam_hw_soc_dump_header  *hdr;
@@ -4232,6 +4408,7 @@ static int cam_soc_util_user_reg_dump(
 	struct cam_reg_dump_desc *reg_dump_desc,
 	struct cam_hw_soc_dump_args *dump_args,
 	struct cam_hw_soc_info *soc_info,
+	struct cam_hw_soc_skip_dump_args *soc_skip_dump_args,
 	uint32_t reg_base_idx)
 {
 	int rc = 0;
@@ -4254,13 +4431,15 @@ static int cam_soc_util_user_reg_dump(
 				&reg_read_info->reg_read,
 				reg_base_idx,
 				dump_args);
-		} else if (reg_read_info->type ==
-				CAM_REG_DUMP_READ_TYPE_DMI) {
-			rc = cam_soc_util_dump_dmi_reg_range_user_buf(
+		} else if ((reg_read_info->type == CAM_REG_DUMP_READ_TYPE_DMI) ||
+				(reg_read_info->type == CAM_REG_DUMP_READ_TYPE_CTXT)) {
+			rc = cam_soc_util_dump_dmi_ctxt_reg_range_user_buf(
 				soc_info,
 				&reg_read_info->dmi_read,
 				reg_base_idx,
-				dump_args);
+				soc_skip_dump_args,
+				dump_args,
+				reg_read_info->type);
 		} else {
 			CAM_ERR(CAM_UTIL,
 					"Invalid Reg dump read type: %d",
@@ -4284,6 +4463,7 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 	struct cam_cmd_buf_desc *cmd_desc, uint64_t req_id,
 	cam_soc_util_regspace_data_cb reg_data_cb,
 	struct cam_hw_soc_dump_args *soc_dump_args,
+	struct cam_hw_soc_skip_dump_args *soc_skip_dump_args,
 	bool user_triggered_dump)
 {
 	int                               rc = 0, i, j;
@@ -4468,8 +4648,9 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 		 * user provided buffer and exit.
 		 */
 		if (user_triggered_dump) {
+			soc_skip_dump_args->reg_base_type = reg_base_type;
 			rc = cam_soc_util_user_reg_dump(reg_dump_desc,
-				soc_dump_args, soc_info, reg_base_idx);
+				soc_dump_args, soc_info, soc_skip_dump_args, reg_base_idx);
 			CAM_INFO(CAM_UTIL,
 				"%s reg_base_idx %d dumped offset %u",
 				soc_info->dev_name, reg_base_idx,
@@ -4485,6 +4666,7 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 			(uintptr_t)reg_dump_desc->dump_buffer_offset);
 		dump_out_buf->req_id = req_id;
 		dump_out_buf->bytes_written = 0;
+		soc_skip_dump_args->reg_base_type = reg_base_type;
 
 		for (j = 0; j < reg_dump_desc->num_read_range; j++) {
 			CAM_DBG(CAM_UTIL,
@@ -4496,11 +4678,12 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 				rc = cam_soc_util_dump_cont_reg_range(soc_info,
 					&reg_read_info->reg_read, reg_base_idx,
 					dump_out_buf, cmd_buf_end);
-			} else if (reg_read_info->type ==
-				CAM_REG_DUMP_READ_TYPE_DMI) {
-				rc = cam_soc_util_dump_dmi_reg_range(soc_info,
+			} else if ((reg_read_info->type == CAM_REG_DUMP_READ_TYPE_DMI) ||
+					(reg_read_info->type == CAM_REG_DUMP_READ_TYPE_CTXT)) {
+				rc = cam_soc_util_dump_dmi_ctxt_reg_range(soc_info,
 					&reg_read_info->dmi_read, reg_base_idx,
-					dump_out_buf, cmd_buf_end);
+					dump_out_buf, soc_skip_dump_args,
+					cmd_buf_end, reg_read_info->type);
 			} else {
 				CAM_ERR(CAM_UTIL,
 					"Invalid Reg dump read type: %d",

@@ -24,9 +24,9 @@ def _define_module(target, variant):
             "//vendor/qcom/opensource/synx-kernel:synx_headers",
             "//vendor/qcom/opensource/synx-kernel:{}_modules".format(tv),
             "//vendor/qcom/opensource/securemsm-kernel:smcinvoke_kernel_headers",
-            #"//vendor/qcom/opensource/securemsm-kernel:smmu_proxy_headers",
+            "//vendor/qcom/opensource/securemsm-kernel:smmu_proxy_headers",
             "//vendor/qcom/opensource/securemsm-kernel:{}_smcinvoke_dlkm".format(tv),
-            #"//vendor/qcom/opensource/securemsm-kernel:{}_smmu_proxy_dlkm".format(tv),
+            "//vendor/qcom/opensource/securemsm-kernel:{}_smmu_proxy_dlkm".format(tv),
             #"//vendor/qcom/opensource/mmrm-driver:{}_mmrm_driver".format(tv),
         ])
     ddk_module(
@@ -66,6 +66,7 @@ def _define_module(target, variant):
             "drivers/cam_cdm/cam_cdm_virtual_core.c",
             "drivers/cam_cdm/cam_cdm_hw_core.c",
             "drivers/cam_utils/cam_soc_icc.c",
+            "drivers/cam_vmrm/cam_vmrm_interface.c",
             "drivers/camera_main.c",
         ],
         conditional_srcs = {

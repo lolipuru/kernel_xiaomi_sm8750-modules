@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_TFE980_H_
@@ -1018,6 +1018,11 @@ static struct cam_vfe_bus_ver3_hw_info tfe980_bus_hw_info = {
 		.mc_read_sel_shift                = 0x5,
 		.mc_write_sel_shift               = 0x0,
 		.mc_ctxt_mask                     = 0x7,
+		.wm_mode_shift                    = 16,
+		.wm_mode_val                      = { 0x0, 0x1, 0x2 },
+		.wm_en_shift                      = 0,
+		.frmheader_en_shift               = 2,
+		.virtual_frm_en_shift             = 1,
 		.irq_reg_info = {
 			.num_registers            = 2,
 			.irq_reg_set              = tfe980_bus_irq_reg,
@@ -2093,7 +2098,7 @@ static struct cam_vfe_bus_ver3_hw_info tfe980_bus_hw_info = {
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_RDI4,
 			.max_width     = 16384,
 			.max_height    = 16384,
-			.source_group  = CAM_VFE_BUS_VER3_SRC_GRP_5,
+			.source_group  = CAM_VFE_BUS_VER3_SRC_GRP_6,
 			.mid           = tfe980_out_port_mid[4],
 			.num_mid       = 1,
 			.num_wm        = 1,
@@ -2379,7 +2384,6 @@ static struct cam_vfe_bus_ver3_hw_info tfe980_bus_hw_info = {
 			.mid           = tfe980_out_port_mid[20],
 			.num_mid       = 1,
 			.num_wm        = 1,
-			.line_based    = 1,
 			.wm_idx        = {
 				19,
 			},
@@ -2582,6 +2586,9 @@ static struct cam_vfe_bus_ver3_hw_info tfe980_bus_hw_info = {
 	.max_out_res           = CAM_ISP_IFE_OUT_RES_BASE + 43,
 	.pack_align_shift      = 5,
 	.max_bw_counter_limit  = 0xFF,
+	.skip_regdump          = true,
+	.skip_regdump_start_offset = 0x800,
+	.skip_regdump_stop_offset = 0x209C,
 };
 
 static struct cam_vfe_irq_hw_info tfe980_irq_hw_info = {

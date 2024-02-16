@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -29,6 +29,7 @@
 #include "cam_trace.h"
 #include "cam_req_mgr_workq.h"
 #include "cam_common_util.h"
+#include "cam_vmrm_interface.h"
 
 #define CAM_CDM_BL_FIFO_WAIT_TIMEOUT         2000
 #define CAM_CDM_DBG_GEN_IRQ_USR_DATA         0xff
@@ -1899,35 +1900,54 @@ int cam_hw_cdm_get_cdm_config(struct cam_hw_info *cdm_hw)
 
 	core = (struct cam_cdm *)cdm_hw->core_info;
 	soc_info = &cdm_hw->soc_info;
-	rc = cam_soc_util_enable_platform_resource(soc_info, CAM_CLK_SW_CLIENT_IDX, true,
+
+	if (!cam_vmrm_no_register_read_on_bind()) {
+		rc = cam_soc_util_enable_platform_resource(soc_info, CAM_CLK_SW_CLIENT_IDX, true,
 			soc_info->lowest_clk_level, true);
-	if (rc) {
-		CAM_ERR(CAM_CDM, "Enable platform failed for dev %s",
+		if (rc) {
+			CAM_ERR(CAM_CDM, "Enable platform failed for dev %s",
 				soc_info->dev_name);
-		goto end;
-	} else {
-		CAM_DBG(CAM_CDM, "%s%u init success",
-			soc_info->label_name, soc_info->index);
-		cdm_hw->hw_state = CAM_HW_STATE_POWER_UP;
-	}
+			goto end;
+		} else {
+			CAM_DBG(CAM_CDM, "%s%u init success",
+				soc_info->label_name, soc_info->index);
+			cdm_hw->hw_state = CAM_HW_STATE_POWER_UP;
+		}
 
-	if (cam_cdm_read_hw_reg(cdm_hw,
-			core->offsets->cmn_reg->cdm_hw_version,
-			&core->hw_version)) {
-		CAM_ERR(CAM_CDM, "Failed to read HW Version for %s%u",
-			soc_info->label_name, soc_info->index);
-		rc = -EIO;
-		goto disable_platform_resource;
-	}
-
-	if (core->offsets->cmn_reg->cam_version) {
 		if (cam_cdm_read_hw_reg(cdm_hw,
-				core->offsets->cmn_reg->cam_version->hw_version,
-				&core->hw_family_version)) {
-			CAM_ERR(CAM_CDM, "Failed to read %s%d family Version",
+			core->offsets->cmn_reg->cdm_hw_version, &core->hw_version)) {
+			CAM_ERR(CAM_CDM, "Failed to read HW Version for %s%u",
 				soc_info->label_name, soc_info->index);
 			rc = -EIO;
 			goto disable_platform_resource;
+		}
+
+		if (core->offsets->cmn_reg->cam_version) {
+			if (cam_cdm_read_hw_reg(cdm_hw,
+					core->offsets->cmn_reg->cam_version->hw_version,
+					&core->hw_family_version)) {
+				CAM_ERR(CAM_CDM, "Failed to read %s%d family Version",
+					soc_info->label_name, soc_info->index);
+				rc = -EIO;
+				goto disable_platform_resource;
+			}
+		}
+	} else {
+		/*
+		 * This is temporary workaround in TVM to avoid register read during probe/bind.
+		 */
+		rc = of_property_read_u32(soc_info->pdev->dev.of_node,
+			"override-cdm-family", &core->hw_family_version);
+		if (rc) {
+			CAM_ERR(CAM_CDM, "no cdm family");
+			return rc;
+		}
+
+		rc = of_property_read_u32(soc_info->pdev->dev.of_node,
+			"override-cdm-version", &core->hw_version);
+		if (rc) {
+			CAM_ERR(CAM_CDM, "no cdm version");
+			return rc;
 		}
 	}
 
@@ -1974,6 +1994,8 @@ int cam_hw_cdm_get_cdm_config(struct cam_hw_info *cdm_hw)
 	}
 
 disable_platform_resource:
+	if (cam_vmrm_no_register_read_on_bind())
+		return rc;
 	ret = cam_soc_util_disable_platform_resource(soc_info, CAM_CLK_SW_CLIENT_IDX, true, true);
 	if (ret) {
 		CAM_ERR(CAM_CDM, "disable platform failed for dev %s",
@@ -2377,6 +2399,15 @@ static int cam_hw_cdm_component_bind(struct device *dev,
 			cdm_hw->soc_info.index);
 		goto destroy_non_secure_hdl;
 	}
+
+	cdm_hw->soc_info.hw_id = CAM_HW_ID_CDM0 + cdm_hw->soc_info.index;
+	rc = cam_vmvm_populate_hw_instance_info(&cdm_hw->soc_info, NULL, NULL);
+	if (rc) {
+		CAM_ERR(CAM_CDM, " cdm %d hw instance populate failed: %d",
+			cdm_hw->soc_info.index, rc);
+		goto release_platform_resource;
+	}
+
 	cpas_parms.cam_cpas_client_cb = cam_cdm_cpas_cb;
 	cpas_parms.cell_index = cdm_hw->soc_info.index;
 	cpas_parms.dev = &pdev->dev;
@@ -2392,10 +2423,12 @@ static int cam_hw_cdm_component_bind(struct device *dev,
 		cpas_parms.client_handle);
 	cdm_core->cpas_handle = cpas_parms.client_handle;
 
-	rc = cam_cdm_util_cpas_start(cdm_hw);
-	if (rc) {
-		CAM_ERR(CAM_CDM, "CPAS start failed");
-		goto cpas_unregister;
+	if (!cam_vmrm_no_register_read_on_bind()) {
+		rc = cam_cdm_util_cpas_start(cdm_hw);
+		if (rc) {
+			CAM_ERR(CAM_CDM, "CPAS start failed");
+			goto cpas_unregister;
+		}
 	}
 
 	rc = cam_hw_cdm_get_cdm_config(cdm_hw);
@@ -2443,10 +2476,12 @@ static int cam_hw_cdm_component_bind(struct device *dev,
 		goto cpas_stop;
 	}
 
-	rc = cam_cpas_stop(cdm_core->cpas_handle);
-	if (rc) {
-		CAM_ERR(CAM_CDM, "CPAS stop failed");
-		goto cpas_unregister;
+	if (!cam_vmrm_no_register_read_on_bind()) {
+		rc = cam_cpas_stop(cdm_core->cpas_handle);
+		if (rc) {
+			CAM_ERR(CAM_CDM, "CPAS stop failed");
+			goto cpas_unregister;
+		}
 	}
 
 	rc = cam_cdm_intf_register_hw_cdm(cdm_hw_intf,
@@ -2464,8 +2499,10 @@ static int cam_hw_cdm_component_bind(struct device *dev,
 	return rc;
 
 cpas_stop:
-	if (cam_cpas_stop(cdm_core->cpas_handle))
-		CAM_ERR(CAM_CDM, "CPAS stop failed");
+	if (!cam_vmrm_no_register_read_on_bind()) {
+		if (cam_cpas_stop(cdm_core->cpas_handle))
+			CAM_ERR(CAM_CDM, "CPAS stop failed");
+	}
 cpas_unregister:
 	if (cam_cpas_unregister_client(cdm_core->cpas_handle))
 		CAM_ERR(CAM_CDM, "CPAS unregister failed");

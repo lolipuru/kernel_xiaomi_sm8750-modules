@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/device.h>
@@ -19,6 +19,7 @@
 #include "cam_compat.h"
 #include "cam_mem_mgr_api.h"
 #include "cam_req_mgr_interface.h"
+#include "cam_vmrm_interface.h"
 
 #define CAM_CPAS_LOG_BUF_LEN      512
 #define CAM_CPAS_APPLY_TYPE_START  1
@@ -1272,11 +1273,27 @@ static int cam_cpas_util_set_camnoc_axi_hlos_clk_rate(struct cam_hw_soc_info *so
 	 */
 
 	if (cpas_core->streamon_clients) {
-		rc = cam_cpas_util_set_max_camnoc_axi_clk_rate(cpas_core, soc_info);
-		if (rc)
-			CAM_ERR(CAM_CPAS,
-				"Failed in setting camnoc axi clk [BW Clk]:[%llu %lld] rc:%d",
-				req_hlos_camnoc_bw, hlos_clk_rate, rc);
+		if (cam_vmrm_proxy_clk_rgl_voting_enable()) {
+			rc = cam_vmrm_set_clk_rate_level(soc_info->hw_id, CAM_CLK_SW_CLIENT_IDX,
+				cpas_core->hlos_axi_floor_lvl, 0, false, hlos_clk_rate);
+			if (rc) {
+				CAM_ERR(CAM_CPAS,
+					"Failed in setting camnoc axi clk applied rate:[%lld] rc:%d",
+					hlos_clk_rate, rc);
+				return rc;
+			}
+			/*
+			 * Since actual clk frequencies are not available,
+			 * saving hlos_clk_rate here.
+			 */
+			cpas_core->applied_camnoc_axi_rate.sw_client = hlos_clk_rate;
+		} else {
+			rc = cam_cpas_util_set_max_camnoc_axi_clk_rate(cpas_core, soc_info);
+			if (rc)
+				CAM_ERR(CAM_CPAS,
+					"Failed in setting camnoc axi clk [BW Clk]:[%llu %lld] rc:%d",
+					req_hlos_camnoc_bw, hlos_clk_rate, rc);
+		}
 	}
 
 	return rc;
@@ -4932,16 +4949,18 @@ int cam_cpas_hw_probe(struct platform_device *pdev,
 		goto ahb_cleanup;
 	}
 
-	/* Need to vote first before enabling clocks */
-	rc = cam_cpas_util_vote_default_ahb_axi(cpas_hw, true);
-	if (rc)
-		goto axi_cleanup;
+	if (!cam_vmrm_no_register_read_on_bind()) {
+		/* Need to vote first before enabling clocks */
+		rc = cam_cpas_util_vote_default_ahb_axi(cpas_hw, true);
+		if (rc)
+			goto axi_cleanup;
 
-	rc = cam_cpas_soc_enable_resources(&cpas_hw->soc_info,
-		cpas_hw->soc_info.lowest_clk_level);
-	if (rc) {
-		CAM_ERR(CAM_CPAS, "failed in soc_enable_resources, rc=%d", rc);
-		goto remove_default_vote;
+		rc = cam_cpas_soc_enable_resources(&cpas_hw->soc_info,
+			cpas_hw->soc_info.lowest_clk_level);
+		if (rc) {
+			CAM_ERR(CAM_CPAS, "failed in soc_enable_resources, rc=%d", rc);
+			goto remove_default_vote;
+		}
 	}
 
 	if (internal_ops->get_hw_info) {
@@ -4974,15 +4993,17 @@ int cam_cpas_hw_probe(struct platform_device *pdev,
 #endif
 	}
 
-	rc = cam_cpas_soc_disable_resources(&cpas_hw->soc_info, true, true);
-	if (rc) {
-		CAM_ERR(CAM_CPAS, "failed in soc_disable_resources, rc=%d", rc);
-		goto remove_default_vote;
-	}
+	if (!cam_vmrm_no_register_read_on_bind()) {
+		rc = cam_cpas_soc_disable_resources(&cpas_hw->soc_info, true, true);
+		if (rc) {
+			CAM_ERR(CAM_CPAS, "failed in soc_disable_resources, rc=%d", rc);
+			goto remove_default_vote;
+		}
 
-	rc = cam_cpas_util_vote_default_ahb_axi(cpas_hw, false);
-	if (rc)
-		goto axi_cleanup;
+		rc = cam_cpas_util_vote_default_ahb_axi(cpas_hw, false);
+		if (rc)
+			goto axi_cleanup;
+	}
 
 	rc = cam_cpas_util_create_debugfs(cpas_core);
 	if (unlikely(rc))
@@ -4992,9 +5013,11 @@ int cam_cpas_hw_probe(struct platform_device *pdev,
 	return 0;
 
 disable_soc_res:
-	cam_cpas_soc_disable_resources(&cpas_hw->soc_info, true, true);
+	if (!cam_vmrm_no_register_read_on_bind())
+		cam_cpas_soc_disable_resources(&cpas_hw->soc_info, true, true);
 remove_default_vote:
-	cam_cpas_util_vote_default_ahb_axi(cpas_hw, false);
+	if (!cam_vmrm_no_register_read_on_bind())
+		cam_cpas_util_vote_default_ahb_axi(cpas_hw, false);
 axi_cleanup:
 	cam_cpas_util_axi_cleanup(cpas_core, &cpas_hw->soc_info);
 ahb_cleanup:
