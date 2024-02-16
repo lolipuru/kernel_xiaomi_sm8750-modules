@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <asm/memory.h>
@@ -38,6 +38,7 @@
 #include "msm_cvp_clocks.h"
 #include "vm/cvp_vm.h"
 #include "cvp_dump.h"
+#include "msm_cvp_events.h"
 
 // ysi - added for debug
 #include <linux/clk/qcom.h>
@@ -58,12 +59,6 @@ struct cvp_tzbsp_memprot {
 
 /* Poll interval in uS */
 #define POLL_INTERVAL_US 100
-
-enum tzbsp_subsys_state {
-	TZ_SUBSYS_STATE_SUSPEND = 0,
-        TZ_SUBSYS_STATE_RESUME = 1,
-        TZ_SUBSYS_STATE_RESTORE_THRESHOLD = 2,
-};
 
 const struct msm_cvp_gov_data CVP_DEFAULT_BUS_VOTE = {
 	.data = NULL,
@@ -91,7 +86,6 @@ static int __iface_cmdq_write(struct iris_hfi_device *device,
 static int __load_fw(struct iris_hfi_device *device);
 static int __power_on_init(struct iris_hfi_device *device);
 static void __unload_fw(struct iris_hfi_device *device);
-static int __tzbsp_set_cvp_state(enum tzbsp_subsys_state state);
 static int __enable_subcaches(struct iris_hfi_device *device);
 static int __set_subcaches(struct iris_hfi_device *device);
 static int __release_subcaches(struct iris_hfi_device *device);
@@ -506,6 +500,7 @@ static int __write_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 	u32 packet_size_in_words, new_write_idx;
 	u32 empty_space, read_idx, write_idx;
 	u32 *write_ptr;
+	CVPKERNEL_ATRACE_BEGIN("__write_queue");
 
 	if (!qinfo || !packet) {
 		dprintk(CVP_ERR, "Invalid Params\n");
@@ -598,6 +593,7 @@ static int __write_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 	 */
 	mb();
 	spin_unlock(&qinfo->hfi_lock);
+	CVPKERNEL_ATRACE_END("__write_queue");
 	return 0;
 }
 
@@ -1060,7 +1056,7 @@ err_create_pkt:
 	return rc;
 }
 
-static int __tzbsp_set_cvp_state(enum tzbsp_subsys_state state)
+int __tzbsp_set_cvp_state(enum tzbsp_subsys_state state)
 {
 	int rc = 0;
 
@@ -1166,7 +1162,7 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 {
 	int rc = 0;
 	u32 ctrl_init_val = 0, ctrl_status = 0, count = 0, max_tries = 5000;
-
+	CVPKERNEL_ATRACE_BEGIN("__boot_firmware");
 	/*
 	 * Hand off control of regulators to h/w _after_ enabling clocks.
 	 * Note that the GDSC will turn off when switching from normal
@@ -1187,8 +1183,12 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 			break;
 		}
 
+#ifdef USE_PRESIL
+		usleep_range(50000, 100000);
+#else
 		/* Reduce to 50, 100 on silicon */
 		usleep_range(100, 200);
+#endif
 		count++;
 	}
 
@@ -1206,7 +1206,12 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 	__write_register(device, CVP_CPU_CS_H2XSOFTINTEN, 0x1);
 	__write_register(device, CVP_CPU_CS_X2RPMh, 0x0);
 
+	CVPKERNEL_ATRACE_END("__boot_firmware");
 
+#ifdef USE_PRESIL
+	/*Disable HW Synx if RUMI Support for Synx unavailable*/
+	__write_register(device, CVP_CPU_CS_SCIACMD, 0x8);
+#endif
 	return rc;
 }
 
@@ -3399,6 +3404,7 @@ irqreturn_t iris_hfi_core_work_handler(int irq, void *data)
 	int num_responses = 0, i = 0;
 	u32 intr_status;
 	static bool warning_on = true;
+	CVPKERNEL_ATRACE_BEGIN("iris_hfi_core_work_handler");
 
 	core = cvp_driver->cvp_core;
 	if (core)
@@ -3464,13 +3470,15 @@ err_no_work:
 	/* We need re-enable the irq which was disabled in ISR handler */
 	if (!(intr_status & CVP_WRAPPER_INTR_STATUS_A2HWD_BMSK))
 		enable_irq(device->cvp_hal_data->irq);
-
+	CVPKERNEL_ATRACE_END("iris_hfi_core_work_handler");
 	return IRQ_HANDLED;
 }
 
 irqreturn_t cvp_hfi_isr(int irq, void *dev)
 {
+	CVPKERNEL_ATRACE_BEGIN("iris_hfi_isr");
 	disable_irq_nosync(irq);
+	CVPKERNEL_ATRACE_END("iris_hfi_isr");
 	return IRQ_WAKE_THREAD;
 }
 
@@ -3866,6 +3874,7 @@ static int __init_resources(struct iris_hfi_device *device,
 				struct msm_cvp_platform_resources *res)
 {
 	int i, rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("__init_resources");
 
 	rc = __init_regulators(device);
 	if (rc) {
@@ -3902,6 +3911,7 @@ static int __init_resources(struct iris_hfi_device *device,
 	device->sys_init_capabilities =
 		kzalloc(sizeof(struct msm_cvp_capability)
 		* CVP_MAX_SESSIONS, GFP_KERNEL);
+	CVPKERNEL_ATRACE_END("__init_resources");
 
 	return rc;
 
@@ -4582,6 +4592,7 @@ static int iris_hfi_get_core_capabilities(void *dev)
 	return 0;
 }
 
+#ifdef CONFIG_EVA_PINEAPPLE
 static const char * const mid_names[16] = {
 	"CVP_FW",
 	"ARP_DATA",
@@ -4600,8 +4611,37 @@ static const char * const mid_names[16] = {
 	"Invalid",
 	"Invalid"
 };
+#elif CONFIG_EVA_SUN
+static const char * const mid_names[25] = {
+	"CVP_FW",
+	"ARP_DATA",
+	"CDM_DATA",
+	"Invalid",
+	"CVP_MPU_PIXEL",
+	"CVP_MPU_NON_PIXEL",
+	"Invalid",
+	"Invalid",
+	"CVP_FDU_PIXEL",
+	"CVP_FDU_NON_PIXEL",
+	"Invalid",
+	"Invalid",
+	"CVP_GCE_PIXEL",
+	"CVP_GCE_NON_PIXEL",
+	"Invalid",
+	"Invalid",
+	"CVP_TOF_PIXEL",
+	"CVP_TOF_NON_PIXEL",
+	"Invalid",
+	"Invalid",
+	"Invalid",
+	"Invalid",
+	"Invalid",
+	"Invalid",
+	"CVP_RGE_NON_PIXEL",
+};
+#endif
 
-static void __print_reg_details(u32 val)
+static void __print_reg_details_errlog3_low(u32 val)
 {
 	u32 mid, sid;
 
@@ -4609,6 +4649,24 @@ static void __print_reg_details(u32 val)
 	sid = (val >> 2) & 0x7;
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG3_LOW:     %#x\n", val);
 	dprintk(CVP_ERR, "Sub-client:%s, SID: %d\n", mid_names[mid], sid);
+}
+
+static void __print_reg_details_errlog1_high(u32 val)
+{
+	u32 mid, pid;
+	char *rw;
+
+
+	mid = val & 0x1F;
+	pid = (val >> 5) & 0x1F;
+
+	if (((mid >> 5) & 0x01) == 1)
+		rw = "Write to DDR";
+	else if (((mid >> 5) & 0x01) == 0)
+		rw = "Read from DDR";
+
+	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG1_HIGH:     %#x\n", val);
+	dprintk(CVP_ERR, "MID: %#x, PID: %#x, Op: %s\n", mid, pid, rw);
 }
 
 static void __err_log(bool logging, u32 *data, const char *name, u32 val)
@@ -4725,6 +4783,7 @@ static void __noc_error_info_iris2(struct iris_hfi_device *device)
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG1_HIGH_OFFS);
 	__err_log(log_required, &noc_log->err_core_errlog1_high,
 			"CVP_NOC_CORE_ERL_MAIN_ERRLOG1_HIGH", val);
+	__print_reg_details_errlog1_high(val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG2_LOW_OFFS);
 	__err_log(log_required, &noc_log->err_core_errlog2_low,
 			"CVP_NOC_CORE_ERL_MAIN_ERRLOG2_LOW", val);
@@ -4734,7 +4793,7 @@ static void __noc_error_info_iris2(struct iris_hfi_device *device)
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG3_LOW_OFFS);
 	__err_log(log_required, &noc_log->err_core_errlog3_low,
 			"CORE ERRLOG3_LOW, below details", val);
-	__print_reg_details(val);
+	__print_reg_details_errlog3_low(val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG3_HIGH_OFFS);
 	__err_log(log_required, &noc_log->err_core_errlog3_high,
 			"CVP_NOC_CORE_ERL_MAIN_ERRLOG3_HIGH", val);
@@ -5233,6 +5292,7 @@ static int __power_off_core(struct iris_hfi_device *device)
 static int __power_on_controller(struct iris_hfi_device *device)
 {
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("__power_on_controller");
 
 	rc = __enable_regulator(device, "cvp");
 	if (rc) {
@@ -5276,6 +5336,7 @@ static int __power_on_controller(struct iris_hfi_device *device)
 	}
 
 	dprintk(CVP_PWR, "EVA controller powered on\n");
+	CVPKERNEL_ATRACE_END("__power_on_controller");
 	return 0;
 
 fail_enable_clk:
@@ -5288,6 +5349,7 @@ fail_reset_clks:
 static int __power_on_core(struct iris_hfi_device *device)
 {
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("__power_on_core");
 
 	rc = __enable_regulator(device, "cvp-core");
 	if (rc) {
@@ -5319,6 +5381,7 @@ static int __power_on_core(struct iris_hfi_device *device)
 	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_FORCECLOCKON_LOW, 0);
 #endif*/
 	dprintk(CVP_PWR, "EVA core powered on\n");
+	CVPKERNEL_ATRACE_END("__power_on_core");
 	return 0;
 }
 
@@ -5521,6 +5584,7 @@ static int __check_core_power_on_v1(struct iris_hfi_device *device)
 static int __power_on_controller_v1(struct iris_hfi_device *device)
 {
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("__power_on_controller_v1");
 
 	rc = __enable_regulator(device, "cvp");
 	if (rc) {
@@ -5590,12 +5654,14 @@ fail_enable_axi0:
 	msm_cvp_disable_unprepare_clk(device, "sleep_clk");
 fail_reset_sleep:
 	__disable_regulator(device, "cvp");
+	CVPKERNEL_ATRACE_END("__power_on_controller_v1");
 	return rc;
 }
 
 static int __power_on_core_v1(struct iris_hfi_device *device)
 {
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("__power_on_core_v1");
 
 	rc = __enable_regulator(device, "cvp-core");
 	if (rc) {
@@ -5623,6 +5689,7 @@ static int __power_on_core_v1(struct iris_hfi_device *device)
 	}
 
 	dprintk(CVP_PWR, "EVA core powered on\n");
+	CVPKERNEL_ATRACE_END("__power_on_core_v1");
 
 	return 0;
 
@@ -6142,14 +6209,14 @@ static void __dump_noc_regs_v1(struct iris_hfi_device *device)
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG1_LOW_OFFS);
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG1_LOW 0x%x", val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG1_HIGH_OFFS);
-	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG1_HIGH 0x%x", val);
+	__print_reg_details_errlog1_high(val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG2_LOW_OFFS);
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG2_LOW 0x%x", val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG2_HIGH_OFFS);
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG2_HIGH 0x%x", val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG3_LOW_OFFS);
 	dprintk(CVP_ERR, "CORE ERRLOG3_LOW 0x%x, below details", val);
-	__print_reg_details(val);
+	__print_reg_details_errlog3_low(val);
 	val = __read_register(device, CVP_NOC_CORE_ERR_ERRLOG3_HIGH_OFFS);
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG3_HIGH 0x%x", val);
 	__write_register(device, CVP_NOC_CORE_ERR_ERRCLR_LOW_OFFS, 0x1);

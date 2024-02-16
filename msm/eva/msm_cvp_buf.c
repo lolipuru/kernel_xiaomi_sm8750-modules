@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/pid.h>
@@ -18,13 +18,14 @@
 #include "msm_cvp_dsp.h"
 #include "eva_shared_def.h"
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 16, 0))
-#define eva_buf_map dma_buf_map
-#define _buf_map_set_vaddr dma_buf_map_set_vaddr
-#else
-#define eva_buf_map iosys_map
-#define _buf_map_set_vaddr iosys_map_set_vaddr
-#endif
+void cvp_buf_map_set_vaddr(struct cvp_dma_buf_vmap *vmap, void *vaddr)
+{
+	#if (KERNEL_VERSION(5, 16, 0) > LINUX_VERSION_CODE)
+		dma_buf_map_set_vaddr(&vmap->map, vaddr);
+	#else
+		iosys_map_set_vaddr(&vmap->map, vaddr);
+	#endif
+}
 
 #define CLEAR_USE_BITMAP(idx, inst) \
 	do { \
@@ -653,14 +654,12 @@ int msm_cvp_unmap_buf_wncc(struct msm_cvp_inst *inst,
 			NUM_WNCC_BUFS : inst->unused_wncc_bufs.nr;
 		inst->unused_wncc_bufs.ktid = ++idx % NUM_WNCC_BUFS;
 	}
-	mutex_unlock(&inst->cvpwnccbufs.lock);
 
 	if (cbuf->smem->device_addr) {
 		msm_cvp_unmap_smem(inst, cbuf->smem, "unmap wncc");
 		msm_cvp_smem_put_dma_buf(cbuf->smem->dma_buf);
 	}
 
-	mutex_lock(&inst->cvpwnccbufs.lock);
 	list_del(&cbuf->list);
 	inst->cvpwnccbufs_table[buf_idx].fd = 0;
 	inst->cvpwnccbufs_table[buf_idx].iova = 0;
@@ -900,10 +899,10 @@ static int _wncc_map_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
 	int rc = 0, i;
 	struct cvp_buf_type* wncc_metadata_bufs;
 	struct dma_buf* dmabuf;
-	struct eva_buf_map map;
+	struct cvp_dma_buf_vmap vmap = {0};
 	__u32 num_layers, metadata_bufs_offset;
 
-	_buf_map_set_vaddr(&map, (void *)0xdeadbeaf);
+	cvp_buf_map_set_vaddr(&vmap, (void *)0xdeadbeaf);
 
 	if (!in_pkt || !wncc_metadata || !wncc_oob) {
 		dprintk(CVP_ERR, "%s: invalid params", __func__);
@@ -956,7 +955,7 @@ static int _wncc_map_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
 			break;
 		}
 
-		rc = dma_buf_vmap(dmabuf, &map);
+		rc = msm_cvp_dma_buf_vmap(dmabuf, &vmap);
 		if (rc) {
 			dprintk(CVP_ERR,
 				"%s: dma_buf_vmap() failed for "
@@ -968,8 +967,8 @@ static int _wncc_map_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
 		}
 		dprintk(CVP_DBG,
 			"%s: wncc_metadata_bufs[%d] map.is_iomem is %d",
-			__func__, i, map.is_iomem);
-		wncc_metadata[i] = (struct eva_kmd_wncc_metadata*)map.vaddr;
+			__func__, i, vmap.map.is_iomem);
+		wncc_metadata[i] = (struct eva_kmd_wncc_metadata *)vmap.vaddr;
 
 		dma_buf_put(dmabuf);
 	}
@@ -987,7 +986,7 @@ static int _wncc_unmap_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
 	int rc = 0, i;
 	struct cvp_buf_type* wncc_metadata_bufs;
 	struct dma_buf* dmabuf;
-	struct eva_buf_map map;
+	struct cvp_dma_buf_vmap vmap = {0};
 	__u32 num_layers, metadata_bufs_offset;
 
 	if (!in_pkt || !wncc_metadata || !wncc_oob) {
@@ -1025,8 +1024,8 @@ static int _wncc_unmap_metadata_bufs(struct eva_kmd_hfi_packet* in_pkt,
 			break;
 		}
 
-		_buf_map_set_vaddr(&map, wncc_metadata[i]);
-		dma_buf_vunmap(dmabuf, &map);
+		cvp_buf_map_set_vaddr(&vmap, (void *)wncc_metadata[i]);
+		msm_cvp_dma_buf_vunmap(dmabuf, &vmap);
 		wncc_metadata[i] = NULL;
 
 		rc = dma_buf_end_cpu_access(dmabuf, DMA_TO_DEVICE);
@@ -2444,3 +2443,34 @@ int msm_cvp_unregister_buffer(struct msm_cvp_inst *inst,
 	cvp_put_inst(s);
 	return rc;
 }
+
+int msm_cvp_dma_buf_vmap(struct dma_buf *dmabuf, struct cvp_dma_buf_vmap *vmap)
+{
+	int ret = 0;
+
+	#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+		ret = dma_buf_vmap_unlocked(dmabuf, &vmap->map);
+		vmap->vaddr = vmap->map.vaddr;
+	#elif (KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE)
+		ret = dma_buf_vmap(dmabuf, &vmap->map);
+		vmap->vaddr = vmap->map.vaddr;
+	#else
+		vmap->vaddr = dma_buf_vmap(dmabuf);
+		if (!vmap->vaddr)
+			ret = -EINVAL;
+	#endif
+
+	return ret;
+}
+
+void msm_cvp_dma_buf_vunmap(struct dma_buf *dmabuf, struct cvp_dma_buf_vmap *vmap)
+{
+	#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+		dma_buf_vunmap_unlocked(dmabuf, &vmap->map);
+	#elif (KERNEL_VERSION(5, 11, 0) <= LINUX_VERSION_CODE)
+		dma_buf_vunmap(dmabuf, &vmap->map);
+	#else
+		dma_buf_vunmap(dmabuf, vmap->vaddr);
+	#endif
+}
+

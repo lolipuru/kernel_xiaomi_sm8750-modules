@@ -16,6 +16,7 @@
 #include "msm_cvp_clocks.h"
 #include "msm_cvp.h"
 #include "cvp_core_hfi.h"
+#include "msm_cvp_events.h"
 
 #define IS_ALREADY_IN_STATE(__p, __d) (\
 	(__p >= __d)\
@@ -853,6 +854,7 @@ exit:
 static int msm_comm_init_core_done(struct msm_cvp_inst *inst)
 {
 	int rc = 0;
+	CVPKERNEL_ATRACE_BEGIN("msm_comm_init_core_done");
 
 	rc = msm_cvp_comm_check_core_init(inst->core);
 	if (rc) {
@@ -861,6 +863,7 @@ static int msm_comm_init_core_done(struct msm_cvp_inst *inst)
 		return rc;
 	}
 	change_cvp_inst_state(inst, MSM_CVP_CORE_INIT_DONE);
+	CVPKERNEL_ATRACE_END("msm_comm_init_core_done");
 	return rc;
 }
 
@@ -869,6 +872,7 @@ static int msm_comm_init_core(struct msm_cvp_inst *inst)
 	int rc = 0;
 	struct cvp_hfi_ops *ops_tbl;
 	struct msm_cvp_core *core;
+	CVPKERNEL_ATRACE_BEGIN("msm_comm_init_core");
 
 	if (!inst || !inst->core || !inst->core->dev_ops)
 		return -EINVAL;
@@ -908,7 +912,7 @@ static int msm_comm_init_core(struct msm_cvp_inst *inst)
 core_already_inited:
 	change_cvp_inst_state(inst, MSM_CVP_CORE_INIT);
 	mutex_unlock(&core->lock);
-
+	CVPKERNEL_ATRACE_END("msm_comm_init_core");
 	return rc;
 
 fail_core_init:
@@ -924,6 +928,7 @@ int msm_cvp_deinit_core(struct msm_cvp_inst *inst)
 {
 	struct msm_cvp_core *core;
 	struct cvp_hfi_ops *ops_tbl;
+	CVPKERNEL_ATRACE_BEGIN("msm_cvp_deinit_core");
 
 	if (!inst || !inst->core || !inst->core->dev_ops) {
 		dprintk(CVP_ERR, "%s invalid parameters\n", __func__);
@@ -936,6 +941,7 @@ int msm_cvp_deinit_core(struct msm_cvp_inst *inst)
 	mutex_lock(&core->lock);
 	change_cvp_inst_state(inst, MSM_CVP_CORE_UNINIT);
 	mutex_unlock(&core->lock);
+	CVPKERNEL_ATRACE_END("msm_cvp_deinit_core");
 	return 0;
 }
 
@@ -943,6 +949,7 @@ static int msm_comm_session_init_done(int flipped_state,
 	struct msm_cvp_inst *inst)
 {
 	int rc;
+	CVPKERNEL_ATRACE_BEGIN("msm_comm_session_init_done");
 
 	dprintk(CVP_SESS, "inst %pK: waiting for session init done\n", inst);
 	rc = wait_for_state(inst, flipped_state, MSM_CVP_OPEN_DONE,
@@ -951,6 +958,7 @@ static int msm_comm_session_init_done(int flipped_state,
 		dprintk(CVP_ERR, "Session init failed for inst %pK\n", inst);
 		return rc;
 	}
+	CVPKERNEL_ATRACE_END("msm_comm_session_init_done");
 
 	return rc;
 }
@@ -960,6 +968,7 @@ static int msm_comm_session_init(int flipped_state,
 {
 	int rc = 0;
 	struct cvp_hfi_ops *ops_tbl;
+	CVPKERNEL_ATRACE_BEGIN("msm_comm_session_init");
 
 	if (!inst || !inst->core || !inst->core->dev_ops) {
 		dprintk(CVP_ERR, "%s invalid parameters\n", __func__);
@@ -987,6 +996,7 @@ static int msm_comm_session_init(int flipped_state,
 	change_cvp_inst_state(inst, MSM_CVP_OPEN);
 
 exit:
+	CVPKERNEL_ATRACE_END("msm_comm_session_init");
 	return rc;
 }
 
@@ -995,6 +1005,7 @@ static int msm_comm_session_close(int flipped_state,
 {
 	int rc = 0;
 	struct cvp_hfi_ops *ops_tbl;
+	CVPKERNEL_ATRACE_BEGIN("msm_comm_session_close");
 
 	if (!inst || !inst->core || !inst->core->dev_ops) {
 		dprintk(CVP_ERR, "%s invalid params\n", __func__);
@@ -1016,6 +1027,7 @@ static int msm_comm_session_close(int flipped_state,
 	}
 	change_cvp_inst_state(inst, MSM_CVP_CLOSE);
 exit:
+	CVPKERNEL_ATRACE_END("msm_comm_session_close");
 	return rc;
 }
 
@@ -1075,6 +1087,7 @@ int msm_cvp_comm_try_state(struct msm_cvp_inst *inst, int state)
 	int rc = 0;
 	int flipped_state;
 	struct msm_cvp_core *core;
+	CVPKERNEL_ATRACE_BEGIN("msm_cvp_comm_try_state");
 
 	core = cvp_driver->cvp_core;
 
@@ -1158,6 +1171,7 @@ int msm_cvp_comm_try_state(struct msm_cvp_inst *inst, int state)
 		if (inst->state != MSM_CVP_CORE_INVALID)
 			msm_cvp_comm_kill_session(inst);
 	}
+	CVPKERNEL_ATRACE_END("msm_cvp_comm_try_state");
 	return rc;
 }
 
