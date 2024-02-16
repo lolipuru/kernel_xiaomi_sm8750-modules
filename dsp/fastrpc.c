@@ -3170,10 +3170,14 @@ static int fastrpc_dspsignal_signal(struct fastrpc_user *fl,
 	u64 msg = 0;
 	u32 signal_id = fsig->signal_id;
 
+	dev_dbg(fl->cctx->dev, "Send signal PID %u, unique fastrpc pid %u signal %u\n",
+					fl->tgid, fl->tgid_frpc, signal_id);
 	cctx = fl->cctx;
-
-	if (!(signal_id < FASTRPC_DSPSIGNAL_NUM_SIGNALS))
+	if (!(signal_id < FASTRPC_DSPSIGNAL_NUM_SIGNALS)) {
+		dev_err(fl->cctx->dev, "Sending bad signal %u for PID %u",
+				signal_id, fl->tgid);
 		return -EINVAL;
+	}
 
 	msg = (((uint64_t)fl->tgid_frpc) << 32) | ((uint64_t)fsig->signal_id);
 	err = fastrpc_transport_send(cctx, (void *)&msg, sizeof(msg));
@@ -3191,8 +3195,11 @@ int fastrpc_dspsignal_wait(struct fastrpc_user *fl,
 	long ret = 0;
 	unsigned long irq_flags = 0;
 
-	if (!(signal_id <FASTRPC_DSPSIGNAL_NUM_SIGNALS))
+	dev_dbg(fl->cctx->dev, "Wait for signal %u\n", signal_id);
+	if (!(signal_id <FASTRPC_DSPSIGNAL_NUM_SIGNALS)) {
+		dev_err(fl->cctx->dev, "Waiting on bad signal %u\n", signal_id);
 		return -EINVAL;
+	}
 
 	spin_lock_irqsave(&fl->dspsignals_lock, irq_flags);
 	if (fl->signal_groups[signal_id /FASTRPC_DSPSIGNAL_GROUP_SIZE] != NULL) {
@@ -3232,8 +3239,9 @@ int fastrpc_dspsignal_wait(struct fastrpc_user *fl,
 	spin_lock_irqsave(&fl->dspsignals_lock, irq_flags);
 	if (s->state == DSPSIGNAL_STATE_SIGNALED) {
 		s->state = DSPSIGNAL_STATE_PENDING;
+		dev_dbg(fl->cctx->dev, "Signal %u completed\n", signal_id);
 	} else if ((s->state == DSPSIGNAL_STATE_CANCELED) || (s->state == DSPSIGNAL_STATE_UNUSED)) {
-		dev_err(fl->cctx->dev, "Signal %u cancelled or destroyed\n", signal_id);
+		dev_dbg(fl->cctx->dev, "Signal %u cancelled or destroyed\n", signal_id);
 		err = -EINTR;
 	}
 	spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
@@ -3262,6 +3270,7 @@ static int fastrpc_dspsignal_create(struct fastrpc_user *fl,
 		group = kzalloc(FASTRPC_DSPSIGNAL_GROUP_SIZE * sizeof(*group),
 					     GFP_KERNEL);
 		if (group == NULL) {
+			dev_err(fl->cctx->dev, "Unable to allocate signal group\n");
 			mutex_unlock(&fl->signal_create_mutex);
 			return -ENOMEM;
 		}
@@ -3289,6 +3298,7 @@ static int fastrpc_dspsignal_create(struct fastrpc_user *fl,
 
 	spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
 	mutex_unlock(&fl->signal_create_mutex);
+	dev_dbg(fl->cctx->dev, "Signal %u created\n", signal_id);
 
 	return err;
 }
@@ -3300,6 +3310,7 @@ static int fastrpc_dspsignal_destroy(struct fastrpc_user *fl,
 	struct fastrpc_dspsignal *s = NULL;
 	unsigned long irq_flags = 0;
 
+	dev_dbg(fl->cctx->dev, "Destroy signal %u\n", signal_id);
 	if (!(signal_id <FASTRPC_DSPSIGNAL_NUM_SIGNALS))
 		return -EINVAL;
 
@@ -3321,6 +3332,7 @@ static int fastrpc_dspsignal_destroy(struct fastrpc_user *fl,
 	complete_all(&s->comp);
 
 	spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
+	dev_dbg(fl->cctx->dev, "Signal %u destroyed\n", signal_id);
 
 	return 0;
 }
@@ -3332,6 +3344,7 @@ static int fastrpc_dspsignal_cancel_wait(struct fastrpc_user *fl,
 	struct fastrpc_dspsignal *s = NULL;
 	unsigned long irq_flags = 0;
 
+	dev_dbg(fl->cctx->dev, "Cancel wait for signal %u\n", signal_id);
 	if (!(signal_id <FASTRPC_DSPSIGNAL_NUM_SIGNALS))
 		return -EINVAL;
 
@@ -3355,6 +3368,7 @@ static int fastrpc_dspsignal_cancel_wait(struct fastrpc_user *fl,
 	}
 
 	spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
+	dev_dbg(fl->cctx->dev, "Signal %u cancelled\n", signal_id);
 
 	return 0;
 }
