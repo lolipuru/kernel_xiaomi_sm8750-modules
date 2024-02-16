@@ -4300,9 +4300,7 @@ static int cam_icp_mgr_proc_boot(struct cam_icp_hw_mgr *hw_mgr, bool use_proxy_b
 static void cam_icp_mgr_proc_shutdown(struct cam_icp_hw_mgr *hw_mgr, bool use_proxy_boot_up)
 {
 	struct cam_hw_intf *icp_dev_intf = hw_mgr->icp_dev_intf;
-	bool send_freq_info = false;
-	enum cam_icp_cmd_type shutdown_cmd = ((use_proxy_boot_up) ?
-			CAM_ICP_CMD_PREP_SHUTDOWN : CAM_ICP_CMD_PROC_SHUTDOWN);
+	bool send_freq_info = false, fw_dump = atomic_read(&hw_mgr->recovery);
 
 	if (!icp_dev_intf) {
 		CAM_ERR(CAM_ICP, "[%s] ICP device interface is NULL", hw_mgr->hw_mgr_name);
@@ -4311,7 +4309,12 @@ static void cam_icp_mgr_proc_shutdown(struct cam_icp_hw_mgr *hw_mgr, bool use_pr
 
 	icp_dev_intf->hw_ops.init(icp_dev_intf->hw_priv, &send_freq_info, sizeof(send_freq_info));
 
-	icp_dev_intf->hw_ops.process_cmd(icp_dev_intf->hw_priv, shutdown_cmd, NULL, 0);
+	if (use_proxy_boot_up)
+		icp_dev_intf->hw_ops.process_cmd(icp_dev_intf->hw_priv,
+			CAM_ICP_CMD_PREP_SHUTDOWN, NULL, 0);
+	else
+		icp_dev_intf->hw_ops.process_cmd(icp_dev_intf->hw_priv,
+			CAM_ICP_CMD_PROC_SHUTDOWN, &fw_dump, sizeof(bool));
 
 	icp_dev_intf->hw_ops.deinit(icp_dev_intf->hw_priv, &send_freq_info,
 			sizeof(send_freq_info));

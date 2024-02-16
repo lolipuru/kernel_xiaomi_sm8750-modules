@@ -4,6 +4,7 @@
  * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <linux/devcoredump.h>
 #include <linux/of_address.h>
 #include <linux/soc/qcom/mdt_loader.h>
 
@@ -34,6 +35,49 @@ static const struct hfi_ops hfi_icp_v2_ops = {
 	.irq_enable = cam_icp_v2_irq_enable,
 	.iface_addr = cam_icp_v2_iface_addr,
 };
+
+static void cam_icp_v2_fw_coredump(struct platform_device *pdev)
+{
+	int rc = 0;
+	struct device_node *node = NULL;
+	struct resource res = {0};
+	phys_addr_t phys_mem = 0;
+	size_t res_size = 0;
+	void *cpu_addr = NULL, *data = NULL;
+
+	node = of_parse_phandle(pdev->dev.of_node, "memory-region", 0);
+	if (!node)
+		return;
+
+	rc = of_address_to_resource(node, 0, &res);
+	of_node_put(node);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "Failed to get firmware resource address rc=%d", rc);
+		return;
+	}
+
+	phys_mem = res.start;
+	res_size = (size_t)resource_size(&res);
+
+	cpu_addr = memremap(phys_mem, res_size, MEMREMAP_WC);
+	if (!cpu_addr) {
+		CAM_ERR(CAM_ICP, "Unable to map firmware carve out");
+		return;
+	}
+
+	data = vmalloc(res_size);
+	if (!data) {
+		CAM_ERR(CAM_ICP, "Failed to dynamically allocate memory of size: %llu",
+			res_size);
+		goto unmap_iomem;
+	}
+
+	memcpy(data, cpu_addr, res_size);
+	dev_coredumpv(&pdev->dev, data, res_size, GFP_KERNEL);
+
+unmap_iomem:
+	memunmap(cpu_addr);
+}
 
 static int cam_icp_v2_ubwc_configure(struct cam_hw_soc_info *soc_info,
 	struct cam_icp_v2_core_info *core_info, void *args, uint32_t arg_size)
@@ -812,9 +856,11 @@ err:
 	return rc;
 }
 
-static int cam_icp_v2_shutdown(struct cam_hw_info *icp_v2_info)
+static int cam_icp_v2_shutdown(struct cam_hw_info *icp_v2_info, bool *args,
+	uint32_t arg_size)
 {
 	int rc = 0;
+	bool fw_dump = false;
 	struct cam_icp_v2_core_info *core_info =
 		(struct cam_icp_v2_core_info *)icp_v2_info->core_info;
 	struct cam_icp_soc_info *soc_priv =
@@ -826,9 +872,16 @@ static int cam_icp_v2_shutdown(struct cam_hw_info *icp_v2_info)
 		return rc;
 	}
 
-	if (core_info->use_sec_pil)
+	if (arg_size != sizeof(bool))
+		CAM_ERR(CAM_ICP, "Invalid args size %u", arg_size);
+	else
+		fw_dump = *args;
+
+	if (core_info->use_sec_pil) {
 		rc = qcom_scm_pas_shutdown(soc_priv->fw_pas_id);
-	else {
+		if (fw_dump)
+			cam_icp_v2_fw_coredump(icp_v2_info->soc_info.pdev);
+	} else {
 		int32_t sys_base_idx = core_info->reg_base_idx[ICP_V2_SYS_BASE];
 		void __iomem *base;
 
@@ -1061,7 +1114,7 @@ int cam_icp_v2_process_cmd(void *priv, uint32_t cmd_type,
 		rc = cam_icp_v2_set_hfi_handle(icp_v2_info->core_info, args, arg_size);
 		break;
 	case CAM_ICP_CMD_PROC_SHUTDOWN:
-		rc = cam_icp_v2_shutdown(icp_v2_info);
+		rc = cam_icp_v2_shutdown(icp_v2_info, args, arg_size);
 		break;
 	case CAM_ICP_CMD_PROC_BOOT:
 		rc = cam_icp_v2_download_fw(icp_v2_info, args, arg_size);
