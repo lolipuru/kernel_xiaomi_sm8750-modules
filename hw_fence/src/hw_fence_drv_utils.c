@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 #include <linux/io.h>
+#include <linux/iommu.h>
 #include <linux/gunyah/gh_rm_drv.h>
 #include <linux/gunyah/gh_dbl.h>
 #include <linux/version.h>
@@ -58,27 +59,28 @@
 #define HW_FENCE_CLIENT_TYPE_MAX_IFE 32
 
 /**
- * HW_FENCE_CTRL_QUEUE_DOORBELL:
- * Bit set in doorbell flags mask if hw fence driver should read ctrl rx queue
+ * HW_FENCE_CLIENT_ID_CTRL_QUEUE:
+ * Bit set in signaled clients mask if hw fence driver should read ctrl rx queue
  */
-#define HW_FENCE_CTRL_QUEUE_DOORBELL 0
+#define HW_FENCE_CLIENT_ID_CTRL_QUEUE 0
 
 /**
- * HW_FENCE_DOORBELL_FLAGS_ID_LAST:
- * Last doorbell flags id for which HW Fence Driver can receive doorbell
+ * HW_FENCE_SIGNALED_CLIENTS_LAST:
+ * Last signaled clients id for which HW Fence Driver can receive doorbell
  */
 #if IS_ENABLED(CONFIG_DEBUG_FS)
-#define HW_FENCE_DOORBELL_FLAGS_ID_LAST HW_FENCE_CLIENT_ID_VAL6
+#define HW_FENCE_SIGNALED_CLIENTS_LAST HW_FENCE_CLIENT_ID_VAL6
 #else
-#define HW_FENCE_DOORBELL_FLAGS_ID_LAST HW_FENCE_CTRL_QUEUE_DOORBELL
+#define HW_FENCE_SIGNALED_CLIENTS_LAST HW_FENCE_CLIENT_ID_CTRL_QUEUE
 #endif /* CONFIG_DEBUG_FS */
 
 /**
- * HW_FENCE_DOORBELL_MASK:
- * Each bit in this mask represents possible doorbell flag ids for which hw fence driver can receive
+ * HW_FENCE_ALL_SIGNALED_CLIENTS_MASK:
+ * Each bit in this mask represents possible signaled client ids for which hw fence driver can
+ * receive
  */
-#define HW_FENCE_DOORBELL_MASK \
-	GENMASK(HW_FENCE_DOORBELL_FLAGS_ID_LAST, HW_FENCE_CTRL_QUEUE_DOORBELL)
+#define HW_FENCE_ALL_SIGNALED_CLIENTS_MASK \
+	GENMASK(HW_FENCE_SIGNALED_CLIENTS_LAST, HW_FENCE_CLIENT_ID_CTRL_QUEUE)
 
 /**
  * HW_FENCE_MAX_ITER_READ:
@@ -140,7 +142,7 @@ struct hw_fence_client_type_desc hw_fence_client_types[HW_FENCE_MAX_CLIENT_TYPE]
 		true},
 };
 
-static void _lock(uint64_t *wait)
+static void _lock_vm(uint64_t *wait)
 {
 #if defined(__aarch64__)
 	__asm__(
@@ -156,10 +158,12 @@ static void _lock(uint64_t *wait)
 		:
 		: [i_lock] "r" (wait)
 		: "memory");
+#elif
+	HWFNC_ERR("cannot lock\n");
 #endif
 }
 
-static void _unlock(struct hw_fence_driver_data *drv_data, uint64_t *lock)
+static void _unlock_vm(struct hw_fence_driver_data *drv_data, uint64_t *lock)
 {
 	uint64_t lock_val;
 
@@ -174,6 +178,8 @@ static void _unlock(struct hw_fence_driver_data *drv_data, uint64_t *lock)
 		:
 		: [i_out] "r" (lock)
 		: "memory");
+#elif
+	HWFNC_ERR("cannot unlock\n");
 #endif
 	mb(); /* Make sure the memory is updated */
 
@@ -191,17 +197,56 @@ static void _unlock(struct hw_fence_driver_data *drv_data, uint64_t *lock)
 #endif
 		hw_fence_ipcc_trigger_signal(drv_data,
 			drv_data->ipcc_client_pid,
-			drv_data->ipcc_client_vid, 30); /* Trigger APPS Signal 30 */
+			drv_data->ipcc_fctl_vid, 30); /* Trigger APPS Signal 30 */
 	}
+}
+
+static void _lock_soccp(uint64_t *wait)
+{
+	/* Wait (without WFE) */
+#if defined(__aarch64__)
+	__asm__("SEVL\n\t"
+		"PRFM PSTL1KEEP, [%x[i_lock]]\n\t"
+		"1:\n\t"
+		"LDAXR W5, [%x[i_lock]]\n\t"
+		"CBNZ W5, 1b\n\t"
+		"STXR W5, W0, [%x[i_lock]]\n\t"
+		"CBNZ W5, 1b\n"
+		:
+		: [i_lock] "r" (wait)
+		: "memory");
+#elif
+	HWFNC_ERR("cannot lock\n");
+#endif
+}
+
+static void _unlock_soccp(uint64_t *lock)
+{
+	/* Signal Client */
+#if defined(__aarch64__)
+	__asm__("STLR WZR, [%x[i_out]]\n\t"
+		"SEV\n"
+		:
+		: [i_out] "r" (lock)
+		: "memory");
+#elif
+	HWFNC_ERR("cannot unlock\n");
+#endif
 }
 
 void global_atomic_store(struct hw_fence_driver_data *drv_data, uint64_t *lock, bool val)
 {
 	if (val) {
 		preempt_disable();
-		_lock(lock);
+		if (drv_data->has_soccp)
+			_lock_soccp(lock);
+		else
+			_lock_vm(lock);
 	} else {
-		_unlock(drv_data, lock);
+		if (drv_data->has_soccp)
+			_unlock_soccp(lock);
+		else
+			_unlock_vm(drv_data, lock);
 		preempt_enable();
 	}
 }
@@ -301,14 +346,14 @@ static int _process_fence_error_client_loopback(struct hw_fence_driver_data *drv
 	return ret;
 }
 
-static int _process_doorbell_id(struct hw_fence_driver_data *drv_data, int db_flag_id)
+static int _process_signaled_client_id(struct hw_fence_driver_data *drv_data, int client_id)
 {
 	int ret;
 
-	HWFNC_DBG_H("Processing doorbell mask id:%d\n", db_flag_id);
-	switch (db_flag_id) {
-	case HW_FENCE_CTRL_QUEUE_DOORBELL:
-		ret = _process_fence_error_client_loopback(drv_data, db_flag_id);
+	HWFNC_DBG_H("Processing signaled client mask id:%d\n", client_id);
+	switch (client_id) {
+	case HW_FENCE_CLIENT_ID_CTRL_QUEUE:
+		ret = _process_fence_error_client_loopback(drv_data, client_id);
 		break;
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	case HW_FENCE_CLIENT_ID_VAL0:
@@ -318,35 +363,40 @@ static int _process_doorbell_id(struct hw_fence_driver_data *drv_data, int db_fl
 	case HW_FENCE_CLIENT_ID_VAL4:
 	case HW_FENCE_CLIENT_ID_VAL5:
 	case HW_FENCE_CLIENT_ID_VAL6:
-		ret = process_validation_client_loopback(drv_data, db_flag_id);
+		ret = process_validation_client_loopback(drv_data, client_id);
 		break;
 #endif /* CONFIG_DEBUG_FS */
 	default:
-		HWFNC_ERR("unknown mask id:%d\n", db_flag_id);
+		HWFNC_ERR("unknown mask id:%d\n", client_id);
 		ret = -EINVAL;
 	}
 
 	return ret;
 }
 
-void hw_fence_utils_process_doorbell_mask(struct hw_fence_driver_data *drv_data, u64 db_flags)
+void hw_fence_utils_process_signaled_clients_mask(struct hw_fence_driver_data *drv_data,
+	u64 signaled_clients_mask)
 {
-	int db_flag_id = HW_FENCE_CTRL_QUEUE_DOORBELL;
+	int signaled_client_id;
 	u64 mask;
 
-	for (; db_flag_id <= HW_FENCE_DOORBELL_FLAGS_ID_LAST; db_flag_id++) {
-		mask = 1 << db_flag_id;
-		if (mask & db_flags) {
-			HWFNC_DBG_H("db_flag:%d signaled! flags:0x%llx\n", db_flag_id, db_flags);
+	for (signaled_client_id = HW_FENCE_CLIENT_ID_CTRL_QUEUE;
+			signaled_client_id <= HW_FENCE_SIGNALED_CLIENTS_LAST;
+			signaled_client_id++) {
+		mask = 1 << signaled_client_id;
+		if (mask & signaled_clients_mask) {
+			HWFNC_DBG_H("received signaled_client:%d mask:0x%llx\n", signaled_client_id,
+				signaled_clients_mask);
 
-			if (_process_doorbell_id(drv_data, db_flag_id))
-				HWFNC_ERR("Failed to process db_flag_id:%d\n", db_flag_id);
+			if (_process_signaled_client_id(drv_data, signaled_client_id))
+				HWFNC_ERR("Failed to process signaled_client:%d\n",
+					signaled_client_id);
 
 			/* clear mask for this flag id if nothing else pending finish */
-			db_flags = db_flags & ~(mask);
-			HWFNC_DBG_H("db_flag_id:%d cleared flags:0x%llx mask:0x%llx ~mask:0x%llx\n",
-				db_flag_id, db_flags, mask, ~(mask));
-			if (!db_flags)
+			signaled_clients_mask = signaled_clients_mask & ~(mask);
+			HWFNC_DBG_H("signaled_client:%d cleared flags:0x%llx mask:0x%llx\n",
+				signaled_client_id, signaled_clients_mask, mask);
+			if (!signaled_clients_mask)
 				break;
 		}
 	}
@@ -356,7 +406,7 @@ void hw_fence_utils_process_doorbell_mask(struct hw_fence_driver_data *drv_data,
 static void _hw_fence_cb(int irq, void *data)
 {
 	struct hw_fence_driver_data *drv_data = (struct hw_fence_driver_data *)data;
-	gh_dbl_flags_t clear_flags = HW_FENCE_DOORBELL_MASK;
+	gh_dbl_flags_t clear_flags = HW_FENCE_ALL_SIGNALED_CLIENTS_MASK;
 	int ret;
 
 	if (!drv_data)
@@ -371,7 +421,7 @@ static void _hw_fence_cb(int irq, void *data)
 	HWFNC_DBG_IRQ("db callback label:%d irq:%d flags:0x%llx qtime:%llu\n", drv_data->db_label,
 		irq, clear_flags, hw_fence_get_qtime(drv_data));
 
-	hw_fence_utils_process_doorbell_mask(drv_data, clear_flags);
+	hw_fence_utils_process_signaled_clients_mask(drv_data, clear_flags);
 }
 
 int hw_fence_utils_init_virq(struct hw_fence_driver_data *drv_data)
@@ -402,6 +452,44 @@ int hw_fence_utils_init_virq(struct hw_fence_driver_data *drv_data)
 	}
 
 	return 0;
+}
+
+static irqreturn_t hw_fence_soccp_irq_handler(int irq, void *data)
+{
+	struct hw_fence_driver_data *drv_data = (struct hw_fence_driver_data *)data;
+	u64 mask;
+
+	mask = hw_fence_ipcc_get_signaled_clients_mask(drv_data);
+	hw_fence_utils_process_signaled_clients_mask(drv_data, mask);
+
+	return IRQ_HANDLED;
+}
+
+int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data)
+{
+	struct platform_device *pdev;
+	int irq, ret;
+
+	if (!drv_data || !drv_data->dev || !drv_data->has_soccp) {
+		HWFNC_ERR("invalid drv_data:0x%pK dev:0x%pK has_soccp:%d\n", drv_data,
+			drv_data ? drv_data->dev : NULL, drv_data ? drv_data->has_soccp : -1);
+		return -EINVAL;
+	}
+
+	pdev = to_platform_device(drv_data->dev);
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0) {
+		HWFNC_ERR("failed to get the irq\n");
+		return irq;
+	}
+	HWFNC_DBG_INIT("Registering irq:%d\n", irq);
+
+	ret = devm_request_irq(drv_data->dev, irq, hw_fence_soccp_irq_handler, IRQF_TRIGGER_HIGH,
+		"hwfence-driver", drv_data);
+	if (ret < 0)
+		HWFNC_ERR("failed to register irq:%d ret:%d\n", irq, ret);
+
+	return ret;
 }
 
 static int hw_fence_gunyah_share_mem(struct hw_fence_driver_data *drv_data,
@@ -524,11 +612,11 @@ static int hw_fence_rm_cb(struct notifier_block *nb, unsigned long cmd, void *da
 			if (hw_fence_gunyah_share_mem(drv_data, self_vmid, peer_vmid))
 				HWFNC_ERR("failed to share memory\n");
 			else
-				drv_data->vm_ready = true;
+				drv_data->fctl_ready = true;
 		} else {
 			if (drv_data->res.start == res.start &&
 					resource_size(&drv_data->res) == resource_size(&res)) {
-				drv_data->vm_ready = true;
+				drv_data->fctl_ready = true;
 				HWFNC_DBG_INIT("mem_ready: add:0x%llx size:%llu ret:%d\n",
 					res.start, resource_size(&res), ret);
 			} else {
@@ -547,6 +635,78 @@ end:
 	return NOTIFY_DONE;
 }
 
+static int _register_vm_mem_with_hyp(struct hw_fence_driver_data *drv_data,
+	struct device_node *node_compat)
+{
+	int ret, notifier_ret;
+
+	if (!drv_data || !node_compat) {
+		HWFNC_ERR("invalid params drv_data:0x%pK node_compat:0x%pK\n", drv_data,
+			node_compat);
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u32(node_compat, "gunyah-label", &drv_data->label);
+	if (ret) {
+		HWFNC_ERR("failed to find label info %d\n", ret);
+		return ret;
+	}
+
+	/* Register memory with HYP for vm */
+	ret = of_property_read_u32(node_compat, "peer-name", &drv_data->peer_name);
+	if (ret)
+		drv_data->peer_name = GH_SELF_VM;
+
+	drv_data->rm_nb.notifier_call = hw_fence_rm_cb;
+	drv_data->rm_nb.priority = INT_MAX;
+	notifier_ret = gh_rm_register_notifier(&drv_data->rm_nb);
+	HWFNC_DBG_INIT("notifier: ret:%d peer_name:%d notifier_ret:%d\n", ret,
+		drv_data->peer_name, notifier_ret);
+	if (notifier_ret) {
+		HWFNC_ERR_ONCE("fail to register notifier ret:%d\n", ret);
+		return -EPROBE_DEFER;
+	}
+
+	return 0;
+}
+
+static int _init_soccp_mem(struct hw_fence_driver_data *drv_data)
+{
+	struct iommu_domain *domain;
+	int ret;
+
+	if (!drv_data) {
+		HWFNC_ERR("invalid params drv_data:0x%pK\n", drv_data);
+		return -EINVAL;
+	}
+
+	domain = iommu_get_domain_for_dev(drv_data->dev);
+	if (IS_ERR_OR_NULL(domain)) {
+		HWFNC_ERR("failed to get iommu domain for device ret:%ld\n", PTR_ERR(domain));
+		return PTR_ERR(domain);
+	}
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+	ret = iommu_map(domain, drv_data->res.start, drv_data->res.start, drv_data->size,
+		IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
+#else
+	ret = iommu_map(domain, drv_data->res.start, drv_data->res.start, drv_data->size,
+		IOMMU_READ | IOMMU_WRITE);
+#endif
+	if (ret)
+		HWFNC_ERR("failed to one-to-one map for soccp smmu addr:0x%llx sz:%lx ret:%d\n",
+			drv_data->res.start, drv_data->size, ret);
+	else
+		/*
+		 * HW Fence Driver resources may not be ready at this point (this is separately
+		 * tracked via resources_ready), but we assume soccp is ready once memory mapping
+		 * is done.
+		 */
+		drv_data->fctl_ready = true;
+
+	return ret;
+}
+
 /* Allocates carved-out mapped memory */
 int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 {
@@ -555,18 +715,12 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 	const char *compat = "qcom,msm-hw-fence-mem";
 	struct device *dev = drv_data->dev;
 	struct device_node *np;
-	int notifier_ret, ret;
+	int ret;
 
 	node_compat = of_find_compatible_node(node, NULL, compat);
 	if (!node_compat) {
 		HWFNC_ERR("Failed to find dev node with compat:%s\n", compat);
 		return -EINVAL;
-	}
-
-	ret = of_property_read_u32(node_compat, "gunyah-label", &drv_data->label);
-	if (ret) {
-		HWFNC_ERR("failed to find label info %d\n", ret);
-		return ret;
 	}
 
 	np = of_parse_phandle(node_compat, "shared-buffer", 0);
@@ -595,28 +749,23 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 		return -ENOMEM;
 	}
 
-	HWFNC_DBG_INIT("io_mem_base:0x%pK start:0x%llx end:0x%llx size:0x%lx name:%s\n",
-		drv_data->io_mem_base, drv_data->res.start,
-		drv_data->res.end, drv_data->size, drv_data->res.name);
+	HWFNC_DBG_INIT("io_mem_base:0x%pK start:0x%llx end:0x%llx sz:0x%lx name:%s has_soccp:%s\n",
+		drv_data->io_mem_base, drv_data->res.start, drv_data->res.end, drv_data->size,
+		drv_data->res.name, drv_data->has_soccp ? "true" : "false");
 
 	memset_io(drv_data->io_mem_base, 0x0, drv_data->size);
 
-	/* Register memory with HYP */
-	ret = of_property_read_u32(node_compat, "peer-name", &drv_data->peer_name);
+	if (drv_data->has_soccp)
+		ret = _init_soccp_mem(drv_data);
+	else
+		ret = _register_vm_mem_with_hyp(drv_data, node_compat);
+
 	if (ret)
-		drv_data->peer_name = GH_SELF_VM;
+		HWFNC_ERR("failed to share memory with %s va:0x%pK pa:0x%llx sz:0x%lx name:%s\n",
+			drv_data->has_soccp ? "soccp" : "vm", drv_data->io_mem_base,
+			drv_data->res.start, drv_data->size, drv_data->res.name);
 
-	drv_data->rm_nb.notifier_call = hw_fence_rm_cb;
-	drv_data->rm_nb.priority = INT_MAX;
-	notifier_ret = gh_rm_register_notifier(&drv_data->rm_nb);
-	HWFNC_DBG_INIT("notifier: ret:%d peer_name:%d notifier_ret:%d\n", ret,
-		drv_data->peer_name, notifier_ret);
-	if (notifier_ret) {
-		HWFNC_ERR_ONCE("fail to register notifier ret:%d\n", notifier_ret);
-		return -EPROBE_DEFER;
-	}
-
-	return 0;
+	return ret;
 }
 
 char *_get_mem_reserve_type(enum hw_fence_mem_reserve type)
@@ -940,6 +1089,18 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 	int ret;
 	size_t size;
 	u32 val = 0;
+	phandle ph;
+
+	/* check presence of soccp */
+	ret = of_property_read_u32(drv_data->dev->of_node, "soccp_controller", &ph);
+	if (!ret) {
+		drv_data->has_soccp = true;
+		drv_data->soccp_rproc = rproc_get_by_phandle(ph);
+		if (IS_ERR_OR_NULL(drv_data->soccp_rproc)) {
+			HWFNC_ERR("failed to find rproc for phandle:%u\n", ph);
+			return -EINVAL;
+		}
+	}
 
 	ret = of_property_read_u32(drv_data->dev->of_node, "qcom,hw-fence-table-entries", &val);
 	if (ret || !val) {
@@ -1004,6 +1165,7 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 		drv_data->hw_fence_ctrl_queue_size, drv_data->hw_fence_mem_ctrl_queues_size);
 	HWFNC_DBG_INIT("clients_num: %u, total_mem_size:%u\n", drv_data->clients_num,
 		drv_data->used_mem_size);
+	HWFNC_DBG_INIT("has_soccp:%s\n", drv_data->has_soccp ? "true" : "false");
 
 	return 0;
 }

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __HW_FENCE_DRV_IPC_H
@@ -12,6 +12,7 @@
 #define HW_FENCE_IPC_CLIENT_ID_IPE_VID 11
 #define HW_FENCE_IPC_CLIENT_ID_VPU_VID 12
 #define HW_FENCE_IPC_CLIENT_ID_DPU_VID 25
+#define HW_FENCE_IPC_CLIENT_ID_SOCCP_VID 46
 #define HW_FENCE_IPC_CLIENT_ID_IFE0_VID 128
 #define HW_FENCE_IPC_CLIENT_ID_IFE1_VID 129
 #define HW_FENCE_IPC_CLIENT_ID_IFE2_VID 130
@@ -35,19 +36,29 @@
 #define HW_FENCE_IPC_CLIENT_ID_IFE5_PID 16
 #define HW_FENCE_IPC_CLIENT_ID_IFE6_PID 17
 #define HW_FENCE_IPC_CLIENT_ID_IFE7_PID 18
+#define HW_FENCE_IPC_CLIENT_ID_SOCCP_PID 22
+
+/* ipc clients physical client-id on other targets */
+#define HW_FENCE_IPC_CLIENT_ID_IPE_PID_SUN 9
+#define HW_FENCE_IPC_CLIENT_ID_DPU_PID_SUN 20
 
 #define HW_FENCE_IPC_COMPUTE_L1_PROTOCOL_ID_KALAMA 2
 #define HW_FENCE_IPC_COMPUTE_L1_PROTOCOL_ID_PINEAPPLE 2
 #define HW_FENCE_IPC_FENCE_PROTOCOL_ID_PINEAPPLE 4
+#define HW_FENCE_IPC_FENCE_PROTOCOL_ID_SUN 4
 
 #define HW_FENCE_IPCC_HW_REV_170 0x00010700  /* Kalama */
 #define HW_FENCE_IPCC_HW_REV_203 0x00020003  /* Pineapple */
+#define HW_FENCE_IPCC_HW_REV_2A2 0x00020A02  /* Sun */
 
 #define IPC_PROTOCOLp_CLIENTc_VERSION(base, p, c) (base + (0x40000*p) + (0x1000*c))
 #define IPC_PROTOCOLp_CLIENTc_CONFIG(base, p, c) (base + 0x8 + (0x40000*p) + (0x1000*c))
 #define IPC_PROTOCOLp_CLIENTc_RECV_SIGNAL_ENABLE(base, p, c) \
 	(base + 0x14 + (0x40000*p) + (0x1000*c))
 #define IPC_PROTOCOLp_CLIENTc_SEND(base, p, c) ((base + 0xc) + (0x40000*p) + (0x1000*c))
+#define IPC_PROTOCOLp_CLIENTc_RECV_ID(base, p, c) (base + 0x10 + (0x40000*p) + (0x1000*c))
+#define IPC_PROTOCOLp_CLIENTc_RECV_SIGNAL_CLEAR(base, p, c) (base + 0x1C + (0x40000*p) + (0x1000*c))
+#define HW_FENCE_IPC_RECV_ID_NONE 0xFFFFFFFF
 
 /**
  * hw_fence_ipcc_trigger_signal() - Trigger ipc signal for the requested client/signal pair.
@@ -70,12 +81,33 @@ void hw_fence_ipcc_trigger_signal(struct hw_fence_driver_data *drv_data,
 int hw_fence_ipcc_enable_signaling(struct hw_fence_driver_data *drv_data);
 
 /**
- * hw_fence_ipcc_enable_dpu_signaling() - Enable ipcc signaling for dpu client.
- * @drv_data: driver data.
+ * hw_fence_ipcc_enable_protocol() - Enable ipcc protocol used for hw-fencing
+ * (either compute l1 or fence depending on target) for given client.
+ * @drv_data: driver data
+ * @client_id: hw fence driver client id
+ *
+ * This should only be called once for each IPCC client, e.g. if protocol is enabled
+ * for one dpu client, it should not be called again for another dpu client.
  *
  * Return: 0 on success or negative errno (-EINVAL)
  */
-int hw_fence_ipcc_enable_dpu_signaling(struct hw_fence_driver_data *drv_data);
+int hw_fence_ipcc_enable_protocol(struct hw_fence_driver_data *drv_data, u32 client_id);
+
+/**
+ * hw_fence_ipcc_enable_client_signal_pairs() - Enable ipcc signaling for all client-signal
+ * pairs required for hw-fencing for given client.
+ * @drv_data: driver data.
+ * @start_client: first hw fence driver client id for given ipcc client
+ *
+ * This API enables input signal from driver and fctl (if fctl is separate from driver) for
+ * given client. IPCC protocol must be enabled via hw_fence_ipcc_enable_protocol() prior
+ * to this call. This API iterates through driver's ipc client table to ensure all client-
+ * signal pairs for given client are enabled.
+ *
+ * Return: 0 on success or negative errno (-EINVAL)
+ */
+int hw_fence_ipcc_enable_client_signal_pairs(struct hw_fence_driver_data *drv_data,
+	u32 start_client);
 
 /**
  * hw_fence_ipcc_get_client_virt_id() - Returns the ipc client virtual id that corresponds to the
@@ -123,13 +155,32 @@ int hw_fence_ipcc_get_signal_id(struct hw_fence_driver_data *drv_data, u32 clien
 bool hw_fence_ipcc_needs_rxq_update(struct hw_fence_driver_data *drv_data, int client_id);
 
 /**
- * hw_fence_ipcc_needs_ipc_irq() - Returns bool to indicate if client needs ipc interrupt for
- *		already signaled fences
+ * hw_fence_ipcc_signaled_needs_ipc_irq() - Returns bool to indicate if client needs ipc interrupt
+ *                                          for already signaled fences
  * @drv_data: driver data.
  * @client_id: hw fence driver client id.
  *
  * Return: true if client needs ipc interrupt for signaled fences, false otherwise
  */
-bool hw_fence_ipcc_needs_ipc_irq(struct hw_fence_driver_data *drv_data, int client_id);
+bool hw_fence_ipcc_signaled_needs_ipc_irq(struct hw_fence_driver_data *drv_data, int client_id);
+
+/**
+ * hw_fence_ipcc_txq_update_needs_ipc_irq() - Returns bool to indicate if client needs ipc interrupt
+ *                                            when updating client tx queue in hlos
+ * @drv_data: driver data.
+ * @client_id: hw fence driver client id.
+ *
+ * Return: true if client needs ipc interrupt when updating client tx queue, false otherwise
+ */
+bool hw_fence_ipcc_txq_update_needs_ipc_irq(struct hw_fence_driver_data *drv_data, int client_id);
+
+/**
+ * hw_fence_ipcc_get_signaled_clients_mask() - Returns mask to indicate signals for which clients
+ *		were received by HW Fence Driver
+ * @drv_data: driver_data
+ *
+ * Return: mask on success or zero upon error
+ */
+u64 hw_fence_ipcc_get_signaled_clients_mask(struct hw_fence_driver_data *drv_data);
 
 #endif /* __HW_FENCE_DRV_IPC_H */

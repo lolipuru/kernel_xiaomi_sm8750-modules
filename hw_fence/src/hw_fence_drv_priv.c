@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/uaccess.h>
@@ -722,10 +722,14 @@ int hw_fence_init(struct hw_fence_driver_data *drv_data)
 		goto exit;
 	}
 
-	/* Init vIRQ from VM */
-	ret = hw_fence_utils_init_virq(drv_data);
+	/* Init irq from fctl */
+	if (drv_data->has_soccp)
+		ret = hw_fence_utils_init_soccp_irq(drv_data);
+	else
+		ret = hw_fence_utils_init_virq(drv_data);
 	if (ret) {
-		HWFNC_ERR("failed to init virq\n");
+		HWFNC_ERR("failed to init irq has_soccp:%s\n", drv_data->has_soccp ? "true" :
+			"false");
 		goto exit;
 	}
 
@@ -778,7 +782,7 @@ exit:
 int hw_fence_init_controller_signal(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client)
 {
-	int ret = 0;
+	int client_id, ret = 0;
 
 	/*
 	 * Initialize IPCC Signals for this client
@@ -800,7 +804,20 @@ int hw_fence_init_controller_signal(struct hw_fence_driver_data *drv_data,
 	case HW_FENCE_CLIENT_ID_VAL4:
 	case HW_FENCE_CLIENT_ID_VAL5:
 	case HW_FENCE_CLIENT_ID_VAL6:
-		/* nothing to initialize for validation clients */
+		/* initialize ipcc signals for val clients */
+		HWFNC_DBG_H("init_controller_signal: val client_id_ext:%d init:%d\n",
+			hw_fence_client->client_id_ext, drv_data->ipcc_val_initialized);
+
+		if (!drv_data->ipcc_val_initialized) {
+			drv_data->ipcc_val_initialized = true;
+			client_id = hw_fence_utils_get_client_id_priv(drv_data,
+				HW_FENCE_CLIENT_ID_VAL0);
+
+			if (drv_data->has_soccp) {
+				/* init input-soccp signals for val clients */
+				hw_fence_ipcc_enable_client_signal_pairs(drv_data, client_id);
+			}
+		}
 		break;
 #endif /* CONFIG_DEBUG_FS */
 	case HW_FENCE_CLIENT_ID_CTL0:
@@ -814,9 +831,12 @@ int hw_fence_init_controller_signal(struct hw_fence_driver_data *drv_data,
 			hw_fence_client->client_id_ext, drv_data->ipcc_dpu_initialized);
 		if (!drv_data->ipcc_dpu_initialized) {
 			drv_data->ipcc_dpu_initialized = true;
+			client_id = hw_fence_utils_get_client_id_priv(drv_data,
+				HW_FENCE_CLIENT_ID_CTL0);
 
 			/* Init dpu client ipcc signal */
-			hw_fence_ipcc_enable_dpu_signaling(drv_data);
+			hw_fence_ipcc_enable_protocol(drv_data, client_id);
+			hw_fence_ipcc_enable_client_signal_pairs(drv_data, client_id);
 		}
 		break;
 	case HW_FENCE_CLIENT_ID_IPE ... HW_FENCE_CLIENT_ID_IPE +
@@ -1018,7 +1038,7 @@ static int  _unreserve_hw_fence(struct hw_fence_driver_data *drv_data,
 		hw_fence->valid = 0;
 	}
 
-	HWFNC_DBG_LUT("Unreserved fence client:%d ctx:%llu seq:%llu hash:%u refcount:%llx\n",
+	HWFNC_DBG_LUT("Unreserved fence client:%d ctx:%llu seq:%llu hash:%u refcount:%x\n",
 		client_id, context, seqno, hash, hw_fence->refcount);
 
 	return 0;
@@ -1041,7 +1061,7 @@ int hw_fence_destroy_refcount(struct hw_fence_driver_data *drv_data, u64 hash, u
 		hw_fence->refcount &= ~ref;
 	} else {
 		GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
-		HWFNC_ERR("fence ctx:%llu seq:%llu hash:%llu ref:0x%llx before destroy ref:0x%x\n",
+		HWFNC_ERR("fence ctx:%llu seq:%llu hash:%llu ref:0x%x before destroy ref:0x%x\n",
 			hw_fence->ctx_id, hw_fence->seq_id, hash, hw_fence->refcount, ref);
 		/* keep hw-fence in table for debugging purposes */
 		return -EINVAL;
@@ -1054,7 +1074,7 @@ int hw_fence_destroy_refcount(struct hw_fence_driver_data *drv_data, u64 hash, u
 	}
 
 	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
-	HWFNC_DBG_H("Removed 0x%x refcount on fence hash:%llu ref:0x%llx\n", ref, hash,
+	HWFNC_DBG_H("Removed 0x%x refcount on fence hash:%llu ref:0x%x\n", ref, hash,
 		hw_fence->refcount);
 
 	return ret;
@@ -1100,7 +1120,7 @@ static int  _fence_found(struct hw_fence_driver_data *drv_data,
 	 */
 
 	hw_fence->refcount++;
-	HWFNC_DBG_LUT("Found fence client:%d ctx:%llu seq:%llu hash:%u ref:0x%llx\n",
+	HWFNC_DBG_LUT("Found fence client:%d ctx:%llu seq:%llu hash:%u ref:0x%x\n",
 		client_id, context, seqno, hash, hw_fence->refcount);
 
 	return 0;
@@ -1555,7 +1575,7 @@ end:
 	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
 
 	if (ret) {
-		HWFNC_ERR("fence client:%d ctx:%llu seq:%llu hash:%llu ref:0x%llx before decr\n",
+		HWFNC_ERR("fence client:%d ctx:%llu seq:%llu hash:%llu ref:0x%x before decr\n",
 			client_id, hw_fence->ctx_id, hw_fence->seq_id, hash, hw_fence->refcount);
 		return ret;
 	}
@@ -1668,7 +1688,7 @@ static void _fence_ctl_signal(struct hw_fence_driver_data *drv_data,
 				HW_FENCE_RX_QUEUE - 1);
 
 		/* Signal the hw fence now */
-		if (hw_fence_client->send_ipc)
+		if (hw_fence_client->signaled_send_ipc)
 			hw_fence_ipcc_trigger_signal(drv_data, tx_client_id, rx_client_id,
 				hw_fence_client->ipc_signal_id);
 	}
@@ -2294,8 +2314,8 @@ int hw_fence_signal_fence(struct hw_fence_driver_data *drv_data, struct dma_fenc
 {
 	struct msm_hw_fence *hw_fence;
 
-	if (!drv_data || !fence) {
-		HWFNC_ERR("bad params drv_data:0x%pK fence:0x%pK\n", drv_data, fence);
+	if (!drv_data) {
+		HWFNC_ERR("bad drv_data\n");
 		return -EINVAL;
 	}
 
@@ -2305,7 +2325,7 @@ int hw_fence_signal_fence(struct hw_fence_driver_data *drv_data, struct dma_fenc
 		return -EINVAL;
 	}
 
-	if (hw_fence->ctx_id != fence->context || hw_fence->seq_id != fence->seqno) {
+	if (fence && (hw_fence->ctx_id != fence->context || hw_fence->seq_id != fence->seqno)) {
 		HWFNC_ERR("invalid hfence hash:%llu ctx:%llu seq:%llu expected ctx:%llu seq:%llu\n",
 			hash, hw_fence->ctx_id, hw_fence->seq_id, fence->context, fence->seqno);
 		return -EINVAL;
@@ -2383,6 +2403,59 @@ int hw_fence_add_callback(struct hw_fence_driver_data *drv_data, struct dma_fenc
 			kfree(signal_cb);
 		}
 	}
+
+	return ret;
+}
+
+int hw_fence_get_flags_error(struct hw_fence_driver_data *drv_data, u64 hash, u64 *flags,
+	u32 *error)
+{
+	struct msm_hw_fence *hw_fence;
+
+	if (!drv_data) {
+		HWFNC_ERR("invalid drv_data\n");
+		return -EINVAL;
+	}
+
+	hw_fence = _get_hw_fence(drv_data->hw_fence_table_entries, drv_data->hw_fences_tbl, hash);
+	if (!hw_fence) {
+		HWFNC_ERR("Failed to get hw-fence for hash:%llu\n", hash);
+		return -EINVAL;
+	}
+	*flags = hw_fence->flags;
+	*error = hw_fence->error;
+
+	return 0;
+}
+
+int hw_fence_update_hsynx(struct hw_fence_driver_data *drv_data, u64 hash, u32 h_synx,
+	bool wait_for)
+{
+	struct msm_hw_fence *hw_fence;
+	int ret = 0;
+
+	hw_fence = _get_hw_fence(drv_data->hw_fence_table_entries, drv_data->hw_fences_tbl, hash);
+	if (!hw_fence) {
+		HWFNC_ERR("Failed to get hw-fence for hash:%llu\n", hash);
+		return -EINVAL;
+	}
+
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 1); /* lock */
+	if (hw_fence->h_synx && hw_fence->h_synx != h_synx) {
+		ret = -EINVAL;
+		goto error;
+	}
+	hw_fence->h_synx = h_synx;
+	if (wait_for)
+		hw_fence->fence_wait_time = hw_fence_get_qtime(drv_data);
+error:
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0); /* unlock */
+
+	wmb(); /* update table */
+
+	if (ret)
+		HWFNC_ERR("setting h_synx:%u for hw-fence hash:%llu with existing h_synx:%u\n",
+			h_synx, hash, hw_fence->h_synx);
 
 	return ret;
 }

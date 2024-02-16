@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __HW_FENCE_DRV_DEBUG
@@ -31,42 +31,42 @@ extern u32 msm_hw_fence_debug_level;
 
 
 #define HWFNC_ERR(fmt, ...) \
-	pr_err("[hwfence:%s:%d][err][%pS] "fmt, __func__, __LINE__, \
+	pr_err("[hwfence_error:%s:%d][%pS] "fmt, __func__, __LINE__, \
 	__builtin_return_address(0), ##__VA_ARGS__)
 
 #define HWFNC_ERR_ONCE(fmt, ...) \
-	pr_err_once("[hwfence:%s:%d][err][%pS] "fmt, __func__, __LINE__, \
+	pr_err_once("[hwfence_error:%s:%d][%pS] "fmt, __func__, __LINE__, \
 	__builtin_return_address(0), ##__VA_ARGS__)
 
 #define HWFNC_DBG_H(fmt, ...) \
-	dprintk(HW_FENCE_HIGH, "[hwfence:%s:%d][dbgh]"fmt, __func__, __LINE__, ##__VA_ARGS__)
+	dprintk(HW_FENCE_HIGH, "[hwfence_dbgh:%s:%d]"fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 #define HWFNC_DBG_L(fmt, ...) \
-	dprintk(HW_FENCE_LOW, "[hwfence:%s:%d][dbgl]"fmt, __func__, __LINE__, ##__VA_ARGS__)
+	dprintk(HW_FENCE_LOW, "[hwfence_dbgl:%s:%d]"fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 #define HWFNC_DBG_INFO(fmt, ...) \
-	dprintk(HW_FENCE_INFO, "[hwfence:%s:%d][dbgi]"fmt, __func__, __LINE__, ##__VA_ARGS__)
+	dprintk(HW_FENCE_INFO, "[hwfence_dbgi:%s:%d]"fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 #define HWFNC_DBG_INIT(fmt, ...) \
-	dprintk(HW_FENCE_INIT, "[hwfence:%s:%d][dbg]"fmt, __func__, __LINE__, ##__VA_ARGS__)
+	dprintk(HW_FENCE_INIT, "[hwfence_dbg:%s:%d]"fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 #define HWFNC_DBG_Q(fmt, ...) \
-	dprintk(HW_FENCE_QUEUE, "[hwfence:%s:%d][dbgq]"fmt, __func__, __LINE__, ##__VA_ARGS__)
+	dprintk(HW_FENCE_QUEUE, "[hwfence_dbgq:%s:%d]"fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 #define HWFNC_DBG_LUT(fmt, ...) \
-	dprintk(HW_FENCE_LUT, "[hwfence:%s:%d][dbglut]"fmt, __func__, __LINE__, ##__VA_ARGS__)
+	dprintk(HW_FENCE_LUT, "[hwfence_dbglut:%s:%d]"fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 #define HWFNC_DBG_IRQ(fmt, ...) \
-	dprintk(HW_FENCE_IRQ, "[hwfence:%s:%d][dbgirq]"fmt, __func__, __LINE__, ##__VA_ARGS__)
+	dprintk(HW_FENCE_IRQ, "[hwfence_dbgirq:%s:%d]"fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 #define HWFNC_DBG_LOCK(fmt, ...) \
-	dprintk(HW_FENCE_LOCK, "[hwfence:%s:%d][dbglock]"fmt, __func__, __LINE__, ##__VA_ARGS__)
+	dprintk(HW_FENCE_LOCK, "[hwfence_dbglock:%s:%d]"fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 #define HWFNC_DBG_DUMP(prio, fmt, ...) \
-	dprintk(prio, "[hwfence:%s:%d][dbgd]"fmt, __func__, __LINE__, ##__VA_ARGS__)
+	dprintk(prio, "[hwfence_dbgd:%s:%d]"fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 #define HWFNC_WARN(fmt, ...) \
-	pr_warn("[hwfence:%s:%d][warn][%pS] "fmt, __func__, __LINE__, \
+	pr_warn("[hwfence_warn:%s:%d][%pS] "fmt, __func__, __LINE__, \
 	__builtin_return_address(0), ##__VA_ARGS__)
 
 int hw_fence_debug_debugfs_register(struct hw_fence_driver_data *drv_data);
