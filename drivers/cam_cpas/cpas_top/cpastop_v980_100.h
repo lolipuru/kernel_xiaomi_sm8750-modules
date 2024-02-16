@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CPASTOP_V980_100_H_
@@ -1596,6 +1596,26 @@ static struct cam_cpas_cesta_info cam_v980_cesta_info = {
 	 .cesta_reg_info = &cam_cpas_v980_100_cesta_reg_info,
 };
 
+static struct cam_camnoc_addr_trans_client_info
+	cam980_cpas100_addr_trans_client_info[] = {
+	{
+		.client_name = "icp1",
+		.reg_enable = 0x5508,
+		.reg_offset0 = 0x5518,
+		.reg_base1 = 0x5520,
+		.reg_offset1 = 0x5528,
+		.reg_base2 = 0x5530,
+		.reg_offset2 = 0x5538,
+		.reg_base3 = 0x5540,
+		.reg_offset3 = 0x5548,
+	},
+};
+
+static struct cam_camnoc_addr_trans_info cam980_cpas100_addr_trans_info = {
+	.num_supported_clients = ARRAY_SIZE(cam980_cpas100_addr_trans_client_info),
+	.addr_trans_client_info = &cam980_cpas100_addr_trans_client_info[0],
+};
+
 static struct cam_camnoc_info cam980_cpas100_camnoc_info_rt = {
 	.specific = &cam_cpas_v980_100_camnoc_specific_rt[0],
 	.specific_size = ARRAY_SIZE(cam_cpas_v980_100_camnoc_specific_rt),
@@ -1622,6 +1642,7 @@ static struct cam_camnoc_info cam980_cpas100_camnoc_info_nrt = {
 		.sbm_enable_mask = 0x400,
 		.sbm_clear_mask = 0x1,
 	},
+	.addr_trans_info = &cam980_cpas100_addr_trans_info,
 };
 
 static struct cam_cpas_camnoc_qchannel cam980_cpas100_qchannel_info_rt = {

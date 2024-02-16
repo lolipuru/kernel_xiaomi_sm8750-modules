@@ -78,6 +78,7 @@ MODULE_IMPORT_NS(DMA_BUF);
 struct cam_fw_alloc_info {
 	struct device *fw_dev;
 	void          *fw_kva;
+	uint32_t       fw_id;
 	uint64_t       fw_hdl;
 };
 

@@ -612,6 +612,119 @@ unlock_client:
 	return rc;
 }
 
+static int cam_cpas_hw_set_addr_trans(struct cam_hw_info *cpas_hw,
+	struct cam_cpas_hw_addr_trans_data *cmd_addr_trans)
+{
+	struct cam_hw_soc_info *soc_info = &cpas_hw->soc_info;
+	uint32_t client_handle = cmd_addr_trans->client_handle;
+	struct cam_cpas_addr_trans_data *addr_trans_data = cmd_addr_trans->addr_trans_data;
+	uint32_t client_indx = CAM_CPAS_GET_CLIENT_IDX(client_handle);
+	struct cam_cpas *cpas_core = (struct cam_cpas *) cpas_hw->core_info;
+	int reg_base_index = cpas_core->regbase_index[CAM_CPAS_REG_CAMNOC_NRT];
+	int camnoc_info_idx = cpas_core->camnoc_info_idx[CAM_CAMNOC_HW_NRT];
+	struct cam_camnoc_info *camnoc_info;
+	struct cam_camnoc_addr_trans_info *addr_trans_info;
+	struct cam_cpas_client *cpas_client;
+	struct cam_camnoc_addr_trans_client_info *client_info;
+	struct cam_cpas_private_soc *soc_private =
+		(struct cam_cpas_private_soc *) soc_info->soc_private;
+	char client_name[CAM_HW_IDENTIFIER_LENGTH + 3];
+	void __iomem *cam_noc_base;
+	int rc = 0, i;
+	bool found = false;
+
+	if (camnoc_info_idx < 0) {
+		CAM_ERR(CAM_CPAS, "Setting address translator is only supported after CPAS v980");
+		return -EINVAL;
+	}
+
+	camnoc_info = cpas_core->camnoc_info[camnoc_info_idx];
+	if (!camnoc_info) {
+		CAM_ERR(CAM_CPAS, "Invalid cam noc info");
+		return -EINVAL;
+	}
+
+	addr_trans_info = camnoc_info->addr_trans_info;
+	if (!addr_trans_info) {
+		CAM_ERR(CAM_CPAS, "Invalid address translator information, camnoc name: %s",
+			camnoc_info->camnoc_name);
+		return -EINVAL;
+	}
+
+	if (!CAM_CPAS_CLIENT_VALID(client_indx))
+		return -EINVAL;
+
+	mutex_lock(&cpas_core->client_mutex[client_indx]);
+	cpas_client = cpas_core->cpas_client[client_indx];
+
+	if (!CAM_CPAS_CLIENT_STARTED(cpas_core, client_indx)) {
+		CAM_ERR(CAM_CPAS, "client=[%d][%s][%d] has not started",
+			client_indx, cpas_client->data.identifier,
+			cpas_client->data.cell_index);
+		rc = -EPERM;
+		goto unlock_client;
+	}
+
+	if (soc_private->client_id_based)
+		snprintf(client_name, sizeof(client_name), "%s%d",
+			cpas_client->data.identifier,
+			cpas_client->data.cell_index);
+	else
+		snprintf(client_name, sizeof(client_name), "%s",
+			cpas_client->data.identifier);
+
+	for (i = 0; i < addr_trans_info->num_supported_clients; i++) {
+		client_info = &addr_trans_info->addr_trans_client_info[i];
+		if (!strnstr(client_name, client_info->client_name, strlen(client_name)))
+			continue;
+
+		CAM_DBG(CAM_CPAS, "Found corresponding client %s that supports address translate",
+			client_name);
+		cam_noc_base = soc_info->reg_map[reg_base_index].mem_base;
+
+		if (addr_trans_data->enable) {
+			cam_io_w_mb(0x1, cam_noc_base + client_info->reg_enable);
+
+			/* Mapped (0 - 64MB) to (128MB - 192MB) */
+			cam_io_w_mb(addr_trans_data->val_offset0,
+				cam_noc_base + client_info->reg_offset0);
+			cam_io_w_mb(addr_trans_data->val_base1,
+				cam_noc_base + client_info->reg_base1);
+
+			/* Avoid address translator touching other space */
+			cam_io_w_mb(addr_trans_data->val_offset1,
+				cam_noc_base + client_info->reg_offset1);
+			cam_io_w_mb(addr_trans_data->val_base2,
+				cam_noc_base + client_info->reg_base2);
+			cam_io_w_mb(addr_trans_data->val_offset2,
+				cam_noc_base + client_info->reg_offset2);
+			cam_io_w_mb(addr_trans_data->val_base3,
+				cam_noc_base + client_info->reg_base3);
+			cam_io_w_mb(addr_trans_data->val_offset3,
+				cam_noc_base + client_info->reg_offset3);
+
+			CAM_DBG(CAM_CPAS, "Enabled address translator for %s", client_name);
+		} else {
+			cam_io_w_mb(0x0, cam_noc_base + client_info->reg_enable);
+
+			CAM_DBG(CAM_CPAS, "Disabled address translator for %s", client_name);
+		}
+		found = true;
+		break;
+	}
+
+	if (!found) {
+		CAM_ERR(CAM_CPAS, "No address translator support for this client: %s",
+			client_name);
+		rc = -EINVAL;
+	}
+
+unlock_client:
+	mutex_unlock(&cpas_core->client_mutex[client_indx]);
+	return rc;
+}
+
+
 static int cam_cpas_hw_reg_read(struct cam_hw_info *cpas_hw,
 	uint32_t client_handle, enum cam_cpas_reg_base reg_base,
 	uint32_t offset, bool mb, uint32_t *value)
@@ -4349,6 +4462,19 @@ static int cam_cpas_hw_process_cmd(void *hw_priv,
 
 		client_handle = (uint32_t *)cmd_args;
 		rc = cam_cpas_hw_unregister_client(hw_priv, *client_handle);
+		break;
+	}
+	case CAM_CPAS_HW_CMD_SET_ADDR_TRANS: {
+		struct cam_cpas_hw_addr_trans_data *cmd_addr_trans;
+
+		if (sizeof(struct cam_cpas_hw_addr_trans_data) != arg_size) {
+			CAM_ERR(CAM_CPAS, "cmd_type %d, size mismatch %d",
+				cmd_type, arg_size);
+			break;
+		}
+
+		cmd_addr_trans = (struct cam_cpas_hw_addr_trans_data *)cmd_args;
+		rc = cam_cpas_hw_set_addr_trans(hw_priv, cmd_addr_trans);
 		break;
 	}
 	case CAM_CPAS_HW_CMD_REG_WRITE: {

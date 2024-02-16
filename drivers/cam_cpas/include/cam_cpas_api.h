@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_CPAS_API_H_
@@ -554,6 +554,30 @@ struct cam_axi_vote {
 };
 
 /**
+ * struct cam_cpas_addr_trans_data : Register value to be programmed for address translator
+ *
+ * @enable: Indicate whether to enable address translator
+ * @val_offset0: Address delta for 0 to base1
+ * @val_base1: Address from 0 to base1 is shifted by offset0
+ * @val_offset1: Address delta for base1 to base2
+ * @val_base2: Address from base1 to base2 is shifted by offset1
+ * @val_offset2: Address delta for base2 to base3
+ * @val_base3: Address from base2 to base3 is shifted by offset2
+ * @val_offset3: Address delta for the rest memory region
+ *
+ */
+struct cam_cpas_addr_trans_data {
+	bool                         enable;
+	uint32_t                     val_offset0;
+	uint32_t                     val_base1;
+	uint32_t                     val_offset1;
+	uint32_t                     val_base2;
+	uint32_t                     val_offset2;
+	uint32_t                     val_base3;
+	uint32_t                     val_offset3;
+};
+
+/**
  * cam_cpas_prepare_subpart_info()
  *
  * @brief: API to update the number of ifes, ife_lites, sfes and custom
@@ -702,6 +726,21 @@ int cam_cpas_reg_write(
 	uint32_t                  offset,
 	bool                      mb,
 	uint32_t                  value);
+
+/**
+ * cam_cpas_set_addr_trans()
+ *
+ * @brief: API to program ICP address translator registers
+ *
+ * @client_handle   : Client cpas handle
+ * @addr_trans_data : Register values to be programmed for address translator
+ *
+ * @return 0 on success.
+ *
+ */
+int cam_cpas_set_addr_trans(
+	uint32_t                         client_handle,
+	struct cam_cpas_addr_trans_data *addr_trans_data);
 
 /**
  * cam_cpas_reg_read()

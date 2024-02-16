@@ -528,6 +528,28 @@ static int __cam_icp_v2_power_resume(struct cam_hw_info *icp_v2_info)
 	cam_io_w_mb(ICP_V2_FUNC_RESET,
 		sys_base + ICP_V2_SYS_RESET);
 
+	/*
+	 * ICP0 fw starts at 0x0 as before, while ICP1 fw in non-secure loading
+	 * starts at 128MB in order to avoid conflicts with ICP0 fw or AHB space
+	 */
+	if (soc_info->index == 1) {
+		struct cam_cpas_addr_trans_data addr_trans_data;
+
+		addr_trans_data.enable = true;
+		/* Mapped (0 - 64MB) to (128MB - 192MB) */
+		addr_trans_data.val_offset0 = 0x08000000;
+		addr_trans_data.val_base1 = 0x04000000;
+
+		/* Avoid address translator touching other space */
+		addr_trans_data.val_offset1 = 0x0;
+		addr_trans_data.val_base2 = 0xfc000000;
+		addr_trans_data.val_offset2 = 0x0;
+		addr_trans_data.val_base3 = 0xfc000000;
+		addr_trans_data.val_offset3 = 0x0;
+
+		cam_cpas_set_addr_trans(core_info->cpas_handle, &addr_trans_data);
+	}
+
 	if (soc_priv->qos_val)
 		cam_io_w_mb(soc_priv->qos_val, sys_base + ICP_V2_SYS_ACCESS);
 

@@ -49,7 +49,7 @@
 static int g_num_pf_handled = 1;
 module_param(g_num_pf_handled, int, 0644);
 
-struct cam_fw_alloc_info icp_fw;
+struct cam_fw_alloc_info *icp_fw;
 struct cam_smmu_buffer_tracker *buf_tracking_pool;
 
 struct cam_smmu_work_payload {
@@ -172,7 +172,6 @@ struct cam_context_bank_info {
 	uint8_t qdss_support;
 	uint8_t device_region_support;
 	dma_addr_t qdss_phy_addr;
-	bool is_fw_allocated;
 	bool is_secheap_allocated;
 	bool is_qdss_allocated;
 	bool non_fatal_faults_en;
@@ -183,10 +182,10 @@ struct cam_context_bank_info {
 
 	/* Regular singleton regions */
 	struct cam_smmu_region_info scratch_info;
-	struct cam_smmu_region_info firmware_info;
 	struct cam_smmu_region_info secheap_info;
 
 	/* Regions capable of having multiple of them */
+	struct cam_smmu_multi_region_info firmware_info;
 	struct cam_smmu_multi_region_info shared_info;
 	struct cam_smmu_multi_region_info io_info;
 	struct cam_smmu_multi_region_info fwuncached_region;
@@ -315,7 +314,6 @@ struct cam_smmu_mini_dump_cb_info {
 	uint8_t qdss_support;
 	bool is_mul_client;
 	bool is_secure;
-	bool is_fw_allocated;
 	bool is_secheap_allocated;
 	bool is_fwuncached_buf_allocated;
 	bool is_qdss_allocated;
@@ -603,6 +601,11 @@ static int cam_smmu_validate_nested_region_idx(
 {
 	/* Array indexing starts from 0, subtracting number of regions by 1 */
 	switch (region_id) {
+	case CAM_SMMU_REGION_FIRMWARE:
+		if ((*nested_reg_idx) > (cb_info->firmware_info.num_regions - 1))
+			goto err;
+
+		break;
 	case CAM_SMMU_REGION_SHARED:
 		if ((*nested_reg_idx) > (cb_info->shared_info.num_regions - 1))
 			goto err;
@@ -1679,10 +1682,11 @@ int cam_smmu_alloc_firmware(int32_t smmu_hdl,
 	size_t *len)
 {
 	int rc;
-	int32_t idx;
-	size_t firmware_len = 0;
-	size_t firmware_start = 0;
+	int32_t idx, multi_client_device_idx, nested_reg_idx = 0;
+	size_t firmware_len = 0, firmware_start = 0;
 	struct iommu_domain *domain;
+	struct cam_smmu_nested_region_info *nested_reg_info;
+	struct cam_context_bank_info *cb;
 
 	if (!iova || !len || !cpuva || (smmu_hdl == HANDLE_INIT)) {
 		CAM_ERR(CAM_SMMU, "Error: Input args are invalid");
@@ -1690,6 +1694,7 @@ int cam_smmu_alloc_firmware(int32_t smmu_hdl,
 	}
 
 	idx = GET_SMMU_TABLE_IDX(smmu_hdl);
+	multi_client_device_idx = GET_SMMU_MULTI_CLIENT_IDX(smmu_hdl);
 	if (idx < 0 || idx >= iommu_cb_set.cb_num) {
 		CAM_ERR(CAM_SMMU,
 			"Error: handle or index invalid. idx = %d hdl = %x",
@@ -1698,32 +1703,40 @@ int cam_smmu_alloc_firmware(int32_t smmu_hdl,
 		goto end;
 	}
 
-	if (!iommu_cb_set.cb_info[idx].firmware_support) {
+	cb = &iommu_cb_set.cb_info[idx];
+	if (cam_smmu_get_multiregion_client_dev_idx(cb,
+		multi_client_device_idx, CAM_SMMU_REGION_FIRMWARE, &nested_reg_idx))
+		return -EINVAL;
+
+	if (!cb->firmware_support) {
 		CAM_ERR(CAM_SMMU,
 			"Firmware memory not supported for this SMMU handle");
 		rc = -EINVAL;
 		goto end;
 	}
 
-	mutex_lock(&iommu_cb_set.cb_info[idx].lock);
-	if (iommu_cb_set.cb_info[idx].is_fw_allocated) {
+	mutex_lock(&cb->lock);
+	nested_reg_info = &cb->firmware_info.nested_regions[nested_reg_idx];
+	if (nested_reg_info->is_allocated) {
 		CAM_ERR(CAM_SMMU, "Trying to allocate twice");
 		rc = -ENOMEM;
 		goto unlock_and_end;
 	}
 
-	firmware_len = iommu_cb_set.cb_info[idx].firmware_info.iova_len;
-	firmware_start = iommu_cb_set.cb_info[idx].firmware_info.iova_start;
-	CAM_DBG(CAM_SMMU, "Firmware area len from DT = %zu", firmware_len);
+	firmware_len = nested_reg_info->region_info.iova_len;
+	firmware_start = nested_reg_info->region_info.iova_start;
+	CAM_DBG(CAM_SMMU, "Firmware area from DT, firmware_start: %zu, firmware_len: %zu",
+		firmware_start, firmware_len);
 
-	rc = cam_reserve_icp_fw(&icp_fw, firmware_len);
+	rc = cam_reserve_icp_fw(&icp_fw[multi_client_device_idx], firmware_len);
 	if (rc)
 		goto unlock_and_end;
 	else
 		CAM_DBG(CAM_SMMU, "DMA alloc returned fw = %pK, hdl = %pK",
-			icp_fw.fw_kva, (void *)icp_fw.fw_hdl);
+			icp_fw[multi_client_device_idx].fw_kva,
+			(void *)icp_fw[multi_client_device_idx].fw_hdl);
 
-	domain = iommu_cb_set.cb_info[idx].domain;
+	domain = cb->domain;
 
 	/*
 	 * Revisit this - what should we map this with - CACHED or UNCACHED?
@@ -1734,7 +1747,7 @@ int cam_smmu_alloc_firmware(int32_t smmu_hdl,
 	 */
 	rc = cam_iommu_map(domain,
 	firmware_start,
-	(phys_addr_t) icp_fw.fw_hdl,
+	(phys_addr_t) icp_fw[multi_client_device_idx].fw_hdl,
 	firmware_len,
 	IOMMU_READ|IOMMU_WRITE|IOMMU_PRIV);
 
@@ -1743,17 +1756,17 @@ int cam_smmu_alloc_firmware(int32_t smmu_hdl,
 		rc = -ENOMEM;
 		goto alloc_fail;
 	}
-	iommu_cb_set.cb_info[idx].is_fw_allocated = true;
+	nested_reg_info->is_allocated = true;
 
-	*iova = iommu_cb_set.cb_info[idx].firmware_info.iova_start;
-	*cpuva = (uintptr_t)icp_fw.fw_kva;
+	*iova = firmware_start;
+	*cpuva = (uintptr_t)icp_fw[multi_client_device_idx].fw_kva;
 	*len = firmware_len;
-	mutex_unlock(&iommu_cb_set.cb_info[idx].lock);
+	mutex_unlock(&cb->lock);
 
 	return rc;
 
 alloc_fail:
-	cam_unreserve_icp_fw(&icp_fw, firmware_len);
+	cam_unreserve_icp_fw(&icp_fw[multi_client_device_idx], firmware_len);
 unlock_and_end:
 	mutex_unlock(&iommu_cb_set.cb_info[idx].lock);
 end:
@@ -1764,11 +1777,13 @@ EXPORT_SYMBOL(cam_smmu_alloc_firmware);
 int cam_smmu_dealloc_firmware(int32_t smmu_hdl)
 {
 	int rc = 0;
-	int32_t idx;
+	int32_t idx, multi_client_device_idx, nested_reg_idx = 0;
 	size_t firmware_len = 0;
 	size_t firmware_start = 0;
 	struct iommu_domain *domain;
 	size_t unmapped = 0;
+	struct cam_context_bank_info *cb;
+	struct cam_smmu_nested_region_info *nested_reg_info;
 
 	if (smmu_hdl == HANDLE_INIT) {
 		CAM_ERR(CAM_SMMU, "Error: Invalid handle");
@@ -1776,6 +1791,7 @@ int cam_smmu_dealloc_firmware(int32_t smmu_hdl)
 	}
 
 	idx = GET_SMMU_TABLE_IDX(smmu_hdl);
+	multi_client_device_idx = GET_SMMU_MULTI_CLIENT_IDX(smmu_hdl);
 	if (idx < 0 || idx >= iommu_cb_set.cb_num) {
 		CAM_ERR(CAM_SMMU,
 			"Error: handle or index invalid. idx = %d hdl = %x",
@@ -1784,24 +1800,32 @@ int cam_smmu_dealloc_firmware(int32_t smmu_hdl)
 		goto end;
 	}
 
-	if (!iommu_cb_set.cb_info[idx].firmware_support) {
+	cb = &iommu_cb_set.cb_info[idx];
+	if (cam_smmu_get_multiregion_client_dev_idx(cb,
+		multi_client_device_idx, CAM_SMMU_REGION_FIRMWARE, &nested_reg_idx)) {
+		rc = -EINVAL;
+		goto end;
+	}
+
+	if (!cb->firmware_support) {
 		CAM_ERR(CAM_SMMU,
 			"Firmware memory not supported for this SMMU handle");
 		rc = -EINVAL;
 		goto end;
 	}
 
-	mutex_lock(&iommu_cb_set.cb_info[idx].lock);
-	if (!iommu_cb_set.cb_info[idx].is_fw_allocated) {
+	mutex_lock(&cb->lock);
+	nested_reg_info = &cb->firmware_info.nested_regions[nested_reg_idx];
+	if (!nested_reg_info->is_allocated) {
 		CAM_ERR(CAM_SMMU,
 			"Trying to deallocate firmware that is not allocated");
 		rc = -ENOMEM;
 		goto unlock_and_end;
 	}
 
-	firmware_len = iommu_cb_set.cb_info[idx].firmware_info.iova_len;
-	firmware_start = iommu_cb_set.cb_info[idx].firmware_info.iova_start;
-	domain = iommu_cb_set.cb_info[idx].domain;
+	firmware_len = nested_reg_info->region_info.iova_len;
+	firmware_start = nested_reg_info->region_info.iova_start;
+	domain = cb->domain;
 	unmapped = iommu_unmap(domain,
 		firmware_start,
 		firmware_len);
@@ -1813,15 +1837,15 @@ int cam_smmu_dealloc_firmware(int32_t smmu_hdl)
 		rc = -EINVAL;
 	}
 
-	cam_unreserve_icp_fw(&icp_fw, firmware_len);
+	cam_unreserve_icp_fw(&icp_fw[multi_client_device_idx], firmware_len);
 
-	icp_fw.fw_kva = NULL;
-	icp_fw.fw_hdl = 0;
+	icp_fw[multi_client_device_idx].fw_kva = NULL;
+	icp_fw[multi_client_device_idx].fw_hdl = 0;
 
-	iommu_cb_set.cb_info[idx].is_fw_allocated = false;
+	nested_reg_info->is_allocated = false;
 
 unlock_and_end:
-	mutex_unlock(&iommu_cb_set.cb_info[idx].lock);
+	mutex_unlock(&cb->lock);
 end:
 	return rc;
 }
@@ -2244,15 +2268,20 @@ int cam_smmu_get_region_info(int32_t smmu_hdl,
 	}
 
 	switch (region_id) {
-	case CAM_SMMU_REGION_FIRMWARE:
+	case CAM_SMMU_REGION_FIRMWARE: {
+		struct cam_smmu_nested_region_info *nested_reg_info;
+
 		if (!cb->firmware_support) {
 			CAM_ERR(CAM_SMMU, "Firmware not supported");
 			mutex_unlock(&iommu_cb_set.cb_info[idx].lock);
 			return -ENODEV;
 		}
 
-		region_info->iova_start = cb->firmware_info.iova_start;
-		region_info->iova_len = cb->firmware_info.iova_len;
+		nested_reg_info = &cb->shared_info.nested_regions[nested_reg_idx];
+
+		region_info->iova_start = nested_reg_info->region_info.iova_start;
+		region_info->iova_len = nested_reg_info->region_info.iova_len;
+	}
 		break;
 	case CAM_SMMU_REGION_SHARED: {
 		struct cam_smmu_nested_region_info *nested_reg_info;
@@ -4461,7 +4490,6 @@ static int cam_smmu_setup_cb(struct cam_context_bank_info *cb,
 	}
 
 	cb->dev = dev;
-	cb->is_fw_allocated = false;
 	cb->is_secheap_allocated = false;
 
 	atomic64_set(&cb->monitor_head, -1);
@@ -4878,10 +4906,36 @@ static int cam_smmu_get_memory_regions_info(struct device_node *of_node,
 		}
 
 		switch (region_id) {
-		case CAM_SMMU_REGION_FIRMWARE:
+		case CAM_SMMU_REGION_FIRMWARE: {
+			int32_t num_firmware_regions = cb->firmware_info.num_regions;
+			struct cam_smmu_nested_region_info *nested_reg_info;
+
+			if (num_firmware_regions >= CAM_SMMU_MULTI_REGION_MAX) {
+				CAM_ERR(CAM_SMMU,
+					"Exceeding max supported number of regions max: %u current: %u in cb: %s for region: %d",
+					CAM_SMMU_MULTI_REGION_MAX, num_firmware_regions,
+					cb->name[0], region_id);
+				rc = -EINVAL;
+				goto end;
+			}
+
+			nested_reg_info = &cb->firmware_info.nested_regions[num_firmware_regions];
+			nested_reg_info->subregion_support =
+				of_property_read_bool(child_node, "subregion_support");
+
+			if (nested_reg_info->subregion_support) {
+				rc = cam_smmu_get_subregions_memory_info(&child_node,
+					nested_reg_info, cb);
+				if (rc)
+					goto end;
+			}
+
+			nested_reg_info->region_info.iova_start = region_start;
+			nested_reg_info->region_info.iova_len = region_len;
+
+			cb->firmware_info.num_regions++;
 			cb->firmware_support = 1;
-			cb->firmware_info.iova_start = region_start;
-			cb->firmware_info.iova_len = region_len;
+		}
 			break;
 		case CAM_SMMU_REGION_SHARED: {
 			int32_t num_shared_regions = cb->shared_info.num_regions;
@@ -5384,7 +5438,6 @@ static unsigned long cam_smmu_mini_dump_cb(void *dst, unsigned long len,
 		cb_md = &md->cb[i];
 		cb_md->is_mul_client = cb->is_mul_client;
 		cb_md->is_secure = cb->is_secure;
-		cb_md->is_fw_allocated = cb->is_fw_allocated;
 		cb_md->is_secheap_allocated = cb->is_secheap_allocated;
 		cb_md->is_qdss_allocated = cb->is_qdss_allocated;
 		cb_md->scratch_buf_support = cb->scratch_buf_support;
@@ -5532,12 +5585,29 @@ static int cam_smmu_fw_dev_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
+	int i, num_mem_region;
 
-	icp_fw.fw_dev = &pdev->dev;
-	icp_fw.fw_kva = NULL;
-	icp_fw.fw_hdl = 0;
+	num_mem_region = of_count_phandle_with_args(dev->of_node, "memory-region", NULL);
+	if ((num_mem_region < 0) || (num_mem_region > CAM_SMMU_MULTI_REGION_MAX)) {
+		CAM_ERR(CAM_SMMU,
+			"Failed at parsing number of memory region: %d, expected maximum memory region: %d",
+			num_mem_region, CAM_SMMU_MULTI_REGION_MAX);
+		return -EINVAL;
+	}
 
-	CAM_DBG(CAM_SMMU, "FW dev component bound successfully");
+	CAM_DBG(CAM_SMMU, "Number of ICP fw memory region: %d", num_mem_region);
+	icp_fw = kvcalloc(num_mem_region, sizeof(struct cam_fw_alloc_info), GFP_KERNEL);
+	if (!icp_fw) {
+		CAM_ERR(CAM_SMMU, "Failed at allocating space for icp fw");
+		return -ENOMEM;
+	}
+
+	for (i = 0; i < num_mem_region; i++) {
+		icp_fw[i].fw_dev = dev;
+		icp_fw[i].fw_id = i;
+	}
+
+	CAM_DBG(CAM_SMMU, "Binding component: %s", pdev->name);
 	return 0;
 }
 
@@ -5545,6 +5615,9 @@ static void cam_smmu_fw_dev_component_unbind(struct device *dev,
 	struct device *master_dev, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
+
+	kvfree(icp_fw);
+	icp_fw = NULL;
 
 	CAM_DBG(CAM_SMMU, "Unbinding component: %s", pdev->name);
 }
