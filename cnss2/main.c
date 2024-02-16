@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -589,8 +589,6 @@ bool cnss_get_fw_cap(struct device *dev, enum cnss_fw_caps fw_cap)
 	case CNSS_FW_CAP_DIRECT_LINK_SUPPORT:
 		is_supported = !!(plat_priv->fw_caps &
 				  QMI_WLFW_DIRECT_LINK_SUPPORT_V01);
-		if (is_supported && cnss_get_audio_iommu_domain(plat_priv))
-			is_supported = false;
 		break;
 	case CNSS_FW_CAP_CALDB_SEG_DDR_SUPPORT:
 		is_supported = !!(plat_priv->fw_caps &
@@ -605,6 +603,30 @@ bool cnss_get_fw_cap(struct device *dev, enum cnss_fw_caps fw_cap)
 	return is_supported;
 }
 EXPORT_SYMBOL(cnss_get_fw_cap);
+
+/**
+ * cnss_audio_is_direct_link_supported - Check whether Audio can be used for direct link support
+ * @dev: Device
+ *
+ * Return: TRUE if supported, FALSE on failure or if not supported
+ */
+bool cnss_audio_is_direct_link_supported(struct device *dev)
+{
+	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
+	bool is_supported = false;
+
+	if (!plat_priv) {
+		cnss_pr_err("plat_priv not available to check audio direct link cap\n");
+		return is_supported;
+	}
+
+	if (cnss_get_audio_iommu_domain(plat_priv) == 0)
+		is_supported = true;
+
+	return is_supported;
+}
+EXPORT_SYMBOL(cnss_audio_is_direct_link_supported);
+
 
 void cnss_request_pm_qos(struct device *dev, u32 qos_val)
 {
@@ -1694,7 +1716,6 @@ int cnss_enable_dev_sol_irq(struct cnss_plat_data *plat_priv)
 	if (sol_gpio->dev_sol_gpio < 0 || sol_gpio->dev_sol_irq <= 0)
 		return 0;
 
-	enable_irq(sol_gpio->dev_sol_irq);
 	ret = enable_irq_wake(sol_gpio->dev_sol_irq);
 	if (ret)
 		cnss_pr_err("Failed to enable device SOL as wake IRQ, err = %d\n",
@@ -1715,7 +1736,6 @@ int cnss_disable_dev_sol_irq(struct cnss_plat_data *plat_priv)
 	if (ret)
 		cnss_pr_err("Failed to disable device SOL as wake IRQ, err = %d\n",
 			    ret);
-	disable_irq(sol_gpio->dev_sol_irq);
 
 	return ret;
 }
@@ -1735,9 +1755,15 @@ static irqreturn_t cnss_dev_sol_handler(int irq, void *data)
 	struct cnss_plat_data *plat_priv = data;
 	struct cnss_sol_gpio *sol_gpio = &plat_priv->sol_gpio;
 
+	if (test_bit(CNSS_POWER_OFF, &plat_priv->driver_state)) {
+		cnss_pr_dbg("Ignore Dev SOL during device power off");
+		return IRQ_HANDLED;
+	}
+
 	sol_gpio->dev_sol_counter++;
-	cnss_pr_dbg("WLAN device SOL IRQ (%u) is asserted #%u\n",
-		    irq, sol_gpio->dev_sol_counter);
+	cnss_pr_dbg("WLAN device SOL IRQ (%u) is asserted #%u, dev_sol_val: %d\n",
+		    irq, sol_gpio->dev_sol_counter,
+		    cnss_get_dev_sol_value(plat_priv));
 
 	/* Make sure abort current suspend */
 	cnss_pm_stay_awake(plat_priv);
@@ -5339,6 +5365,7 @@ static int cnss_probe(struct platform_device *plat_dev)
 	struct cnss_plat_data *plat_priv;
 	const struct of_device_id *of_id;
 	const struct platform_device_id *device_id;
+	static bool prealloc_initialized;
 
 	if (cnss_get_plat_priv(plat_dev)) {
 		cnss_pr_err("Driver is already initialized!\n");
@@ -5382,7 +5409,10 @@ static int cnss_probe(struct platform_device *plat_dev)
 		goto reset_plat_dev;
 	}
 
-	cnss_initialize_mem_pool(plat_priv->device_id);
+	if (!prealloc_initialized) {
+		cnss_initialize_mem_pool(plat_priv->device_id);
+		prealloc_initialized = true;
+	}
 
 	ret = cnss_get_pld_bus_ops_name(plat_priv);
 	if (ret)
@@ -5398,7 +5428,6 @@ static int cnss_probe(struct platform_device *plat_dev)
 
 	plat_priv->bus_type = cnss_get_bus_type(plat_priv);
 	plat_priv->use_nv_mac = cnss_use_nv_mac(plat_priv);
-	plat_priv->driver_mode = CNSS_DRIVER_MODE_MAX;
 	cnss_set_plat_priv(plat_dev, plat_priv);
 	cnss_set_device_name(plat_priv);
 	platform_set_drvdata(plat_dev, plat_priv);
@@ -5488,7 +5517,6 @@ free_res:
 reset_ctx:
 	cnss_aop_interface_deinit(plat_priv);
 	platform_set_drvdata(plat_dev, NULL);
-	cnss_deinitialize_mem_pool();
 reset_plat_dev:
 	cnss_clear_plat_priv(plat_priv);
 out:
