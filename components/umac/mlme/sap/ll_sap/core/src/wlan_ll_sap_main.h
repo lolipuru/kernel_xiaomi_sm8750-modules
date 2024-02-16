@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -38,24 +38,54 @@
 
 #define MAX_HIGH_AP_AVAILABILITY_REQUESTS 2
 
+/* Maximum number of peers for SAP */
+#define SAP_MAX_NUM_PEERS 32
+
 /**
  * struct ll_sap_psoc_priv_obj - ll_sap private psoc obj
  * @tx_ops: Tx ops registered with Target IF interface
  * @rx_ops: Rx  ops registered with Target IF interface
+ * @tsf_timer: TSF timer
+ * @timer_vdev_id: vdev id for which tsf timer needs to
+ * started
  */
 struct ll_sap_psoc_priv_obj {
 	struct wlan_ll_sap_tx_ops tx_ops;
 	struct wlan_ll_sap_rx_ops rx_ops;
+	qdf_mc_timer_t tsf_timer;
+	uint8_t timer_vdev_id;
+};
+
+/**
+ * struct target_tsf: Target TSF param
+ * @twt_target_tsf: Get target_tsf for twt session present
+ * @non_twt_target_tsf: Get target_tsf for non twt session present
+ */
+struct target_tsf {
+	uint64_t twt_target_tsf;
+	uint64_t non_twt_target_tsf;
+};
+
+ /**
+  * struct ll_sap_vdev_peer_entry - ll_sap vdev peer entries
+  * @macpeer: peer mac address
+  * @num_peer: number of peer
+  */
+struct ll_sap_vdev_peer_entry {
+	struct qdf_mac_addr macaddr[SAP_MAX_NUM_PEERS];
+	uint8_t num_peer;
 };
 
 /**
  * struct ll_sap_vdev_priv_obj - ll sap private vdev obj
  * @bearer_switch_ctx: Bearer switch context
  * @high_ap_availability_cookie: High AP availability cookie
+ * @target_tsf: pointer to target_tsf structure
  */
 struct ll_sap_vdev_priv_obj {
 	struct bearer_switch_info *bearer_switch_ctx;
 	uint16_t high_ap_availability_cookie[MAX_HIGH_AP_AVAILABILITY_REQUESTS];
+	struct target_tsf target_tsf;
 };
 
 /**

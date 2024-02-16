@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -262,7 +262,7 @@ static int __wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 	     adapter->device_mode == QDF_P2P_CLIENT_MODE ||
 	     adapter->device_mode == QDF_P2P_GO_MODE ||
 	     adapter->device_mode == QDF_NAN_DISC_MODE) &&
-	    (type == SIR_MAC_MGMT_FRAME &&
+	    (type == WLAN_FC0_TYPE_MGMT &&
 	    sub_type == SIR_MAC_MGMT_AUTH)) {
 		/* Request ROC for PASN authentication frame */
 		if (len > (sizeof(struct wlan_frame_hdr) +
@@ -299,7 +299,7 @@ static int __wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 	 */
 	if ((adapter->device_mode == QDF_SAP_MODE ||
 	     adapter->device_mode == QDF_P2P_GO_MODE) &&
-	    (type == SIR_MAC_MGMT_FRAME) &&
+	    (type == WLAN_FC0_TYPE_MGMT) &&
 	    (sub_type == SIR_MAC_MGMT_ASSOC_RSP ||
 	     sub_type == SIR_MAC_MGMT_REASSOC_RSP)) {
 		assoc_resp = &((struct ieee80211_mgmt *)buf)->u.assoc_resp.variable[0];
@@ -1136,29 +1136,31 @@ __hdd_indicate_mgmt_frame_to_user(struct hdd_adapter *adapter,
 	struct hdd_adapter *assoc_adapter;
 	bool eht_capab;
 	struct hdd_ap_ctx *ap_ctx;
-
-	hdd_debug("Frame Type = %d Frame Length = %d freq = %d",
-		  frame_type, frm_len, rx_freq);
+	struct action_frm_hdr *action_hdr;
+	tpSirMacVendorSpecificPublicActionFrameHdr vendor_specific;
 
 	if (!adapter) {
-		hdd_err("adapter is NULL");
+		hdd_err("adapter is NULL for frame %d len %d rx freq %d",
+			frame_type, frm_len, rx_freq);
 		return;
 	}
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 
 	if (!frm_len) {
-		hdd_err("Frame Length is Invalid ZERO");
+		hdd_err("Frame Length is ZERO, for frame %d rx freq %d",
+			frame_type, rx_freq);
 		return;
 	}
 
 	if (!pb_frames) {
-		hdd_err("pbFrames is NULL");
+		hdd_err("pbFrames is NULL  for frame %d len %d rx freq %d",
+			frame_type, frm_len, rx_freq);
 		return;
 	}
 
 	type = WLAN_HDD_GET_TYPE_FRM_FC(pb_frames[0]);
 	sub_type = WLAN_HDD_GET_SUBTYPE_FRM_FC(pb_frames[0]);
-	if (type == SIR_MAC_MGMT_FRAME &&
+	if (type == WLAN_FC0_TYPE_MGMT &&
 	    sub_type == SIR_MAC_MGMT_AUTH &&
 	    frm_len > (sizeof(struct wlan_frame_hdr) +
 		       WLAN_AUTH_FRAME_MIN_LEN)) {
@@ -1174,8 +1176,26 @@ __hdd_indicate_mgmt_frame_to_user(struct hdd_adapter *adapter,
 		}
 	}
 
+	if (type == WLAN_FC0_TYPE_MGMT && sub_type == WLAN_FC0_STYPE_ACTION &&
+	    frm_len >= (sizeof(struct wlan_frame_hdr) +
+			sizeof(*vendor_specific))) {
+		action_hdr = (struct action_frm_hdr *)(pb_frames +
+						sizeof(struct wlan_frame_hdr));
+		vendor_specific =
+			(tpSirMacVendorSpecificPublicActionFrameHdr)action_hdr;
+		if (is_nan_oui(vendor_specific->Oui)) {
+			adapter = hdd_get_adapter(hdd_ctx, QDF_NAN_DISC_MODE);
+			if (!adapter) {
+				hdd_err("NAN adapter is null");
+				return;
+			}
+
+			goto check_adapter;
+		}
+	}
+
 	/* Get adapter from Destination mac address of the frame */
-	if (type == SIR_MAC_MGMT_FRAME &&
+	if (type == WLAN_FC0_TYPE_MGMT &&
 	    sub_type != SIR_MAC_MGMT_PROBE_REQ && !is_pasn_auth_frame &&
 	    !qdf_is_macaddr_broadcast(
 	     (struct qdf_mac_addr *)&pb_frames[WLAN_HDD_80211_FRM_DA_OFFSET])) {
@@ -1190,17 +1210,15 @@ __hdd_indicate_mgmt_frame_to_user(struct hdd_adapter *adapter,
 			 * frame with BCST as destination,
 			 * we are dropping action frame
 			 */
-			hdd_err("adapter for action frame is NULL Macaddr = "
-				QDF_MAC_ADDR_FMT, QDF_MAC_ADDR_REF(dest_addr));
-			hdd_debug("Frame Type = %d Frame Length = %d subType = %d",
-				  frame_type, frm_len, sub_type);
+			hdd_err("No adapter found for type %d subtype %d len %d freq %d, dest addr: "
+				QDF_MAC_ADDR_FMT, frame_type, sub_type, frm_len,
+				rx_freq, QDF_MAC_ADDR_REF(dest_addr));
 			/*
 			 * We will receive broadcast management frames
 			 * in OCB mode
 			 */
 			adapter = hdd_get_adapter(hdd_ctx, QDF_OCB_MODE);
-			if (!adapter || !qdf_is_macaddr_broadcast(
-			    (struct qdf_mac_addr *)dest_addr)) {
+			if (!adapter) {
 				/*
 				 * Under assumption that we don't
 				 * receive any action frame with BCST
@@ -1212,6 +1230,7 @@ __hdd_indicate_mgmt_frame_to_user(struct hdd_adapter *adapter,
 		}
 	}
 
+check_adapter:
 	if (!adapter->dev) {
 		hdd_err("adapter->dev is NULL");
 		return;
@@ -1233,7 +1252,6 @@ __hdd_indicate_mgmt_frame_to_user(struct hdd_adapter *adapter,
 	assoc_adapter = adapter;
 	ucfg_psoc_mlme_get_11be_capab(hdd_ctx->psoc, &eht_capab);
 	if (hdd_adapter_is_link_adapter(adapter) && eht_capab) {
-		hdd_debug("adapter is not ml adapter move to ml adapter");
 		assoc_adapter = hdd_adapter_get_mlo_adapter_from_link(adapter);
 		if (!assoc_adapter) {
 			hdd_err("Assoc adapter is NULL");
@@ -1242,9 +1260,9 @@ __hdd_indicate_mgmt_frame_to_user(struct hdd_adapter *adapter,
 	}
 
 	/* Indicate Frame Over Normal Interface */
-	hdd_debug("Indicate Frame over NL80211 sessionid : %d, idx :%d",
-		   assoc_adapter->deflink->vdev_id,
-		   assoc_adapter->dev->ifindex);
+	hdd_debug("vdev %d (if_idx %d): Indicate Frame type %d len %d freq %d over NL80211",
+		  assoc_adapter->deflink->vdev_id, assoc_adapter->dev->ifindex,
+		  frame_type, frm_len, rx_freq);
 
 	wlan_hdd_cfg80211_convert_rxmgmt_flags(rx_flags, &nl80211_flag);
 

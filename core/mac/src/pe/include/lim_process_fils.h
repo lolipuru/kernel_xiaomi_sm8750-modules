@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -24,6 +24,7 @@
 #include <lim_global.h>
 #include <ani_global.h>
 #include <lim_ser_des_utils.h>
+#include <lim_security_utils.h>
 
 #ifdef WLAN_FEATURE_FILS_SK
 
@@ -53,6 +54,55 @@ bool lim_process_fils_auth_frame2(struct mac_context *mac_ctx,
  */
 void lim_add_fils_data_to_auth_frame(struct pe_session *session, uint8_t *body);
 
+#ifdef WLAN_FEATURE_FILS_SK_SAP
+/**
+ * lim_process_fils_auth_frame1()- This API processes fils data from auth req
+ * @mac_ctx: mac context
+ * @session: PE session
+ * @rx_auth_frm_body: pointer to auth frame
+ * @peer_mac_addr: mac address for peer
+ *
+ * Return: true if FILS data needs to be processed else false
+ */
+bool lim_process_fils_auth_frame1(struct mac_context *mac_ctx,
+				  struct pe_session *pe_session,
+				  tSirMacAuthFrameBody *rx_auth_frm_body,
+				  tSirMacAddr peer_mac_addr);
+
+/**
+ * lim_add_fils_data_to_auth_rsp_frame()- This API adds FILS data to auth frame.
+ * Following will be added in this.
+ *     1. RSNIE
+ *     2. SNonce
+ *     3. Session
+ *     4. Wrapped data
+ *
+ * @session: PE session
+ * @body: pointer to auth frame where data needs to be added
+ * @peer_mac_addr: mac address for peer
+ *
+ * Return: None
+ */
+void lim_add_fils_data_to_auth_rsp_frame(struct pe_session *session,
+					 uint8_t *body,
+					 tSirMacAddr peer_mac_addr);
+
+#else
+static inline bool
+lim_process_fils_auth_frame1(struct mac_context *mac_ctx,
+			     struct pe_session *pe_session,
+			     tSirMacAuthFrameBody *rx_auth_frm_body,
+			     tSirMacAddr peer_mac_addr)
+{
+	return true;
+}
+
+static inline void
+lim_add_fils_data_to_auth_rsp_frame(struct pe_session *session,
+				    uint8_t *body,
+				    tSirMacAddr peer_mac_addr)
+{ }
+#endif
 /**
  * lim_is_valid_fils_auth_frame()- This API checks whether auth frame is a
  * valid frame.
@@ -103,13 +153,16 @@ void lim_update_fils_config(struct mac_context *mac_ctx,
  * @mac_ctx: mac context
  * @auth_frame: pointer to auth frame
  * @session: PE session
+ * @frame_len: Length of FILS frame
+ * @peer_mac_addr: Mac Address of Peer Station
  *
  * Return: length of fils data
  */
 QDF_STATUS lim_create_fils_auth_data(struct mac_context *mac_ctx,
 				     tpSirMacAuthFrameBody auth_frame,
 				     struct pe_session *session,
-				     uint32_t *frame_len);
+				     uint32_t *frame_len,
+				     tSirMacAddr peer_mac_addr);
 
 /**
  * lim_increase_fils_sequence_number: this API increases fils sequence number in
@@ -206,6 +259,31 @@ static inline bool lim_is_fils_connection(struct pe_session *pe_session)
 	return false;
 }
 
+static inline struct pe_fils_session *
+lim_get_fils_info(struct pe_session *pe_session,
+		  tSirMacAddr peer_mac_addr)
+{
+	struct tLimPreAuthNode *sta_pre_auth_ctx;
+
+	if (LIM_IS_AP_ROLE(pe_session) && peer_mac_addr) {
+		/*
+		 * Extract pre-auth context for the STA
+		 */
+		sta_pre_auth_ctx = lim_search_pre_auth_list(pe_session->mac_ctx,
+							    peer_mac_addr);
+
+		if (!sta_pre_auth_ctx) {
+			pe_debug("No preauth node created for "
+				 QDF_MAC_ADDR_FMT,
+				 QDF_MAC_ADDR_REF(peer_mac_addr));
+			return NULL;
+		}
+		return sta_pre_auth_ctx->fils_info;
+	} else {
+		return pe_session->fils_info;
+	}
+}
+
 /**
  * lim_verify_fils_params_assoc_rsp() - Verify FILS params in assoc rsp
  * @mac_ctx: Mac context
@@ -253,7 +331,8 @@ static inline
 QDF_STATUS lim_create_fils_auth_data(struct mac_context *mac_ctx,
 				     tpSirMacAuthFrameBody auth_frame,
 				     struct pe_session *session,
-				     uint32_t *frame_len);
+				     uint32_t *frame_len,
+				     tSirMacAddr peer_mac_addr);
 {
 	return QDF_STATUS_SUCCESS;
 }

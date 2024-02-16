@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -102,6 +102,7 @@
 #include "wifi_pos_pasn_api.h"
 #ifdef DCS_INTERFERENCE_DETECTION
 #include <wlan_dcs_ucfg_api.h>
+#include <target_if_dcs.h>
 #endif
 
 #ifdef FEATURE_STA_MODE_VOTE_LINK
@@ -554,7 +555,7 @@ static QDF_STATUS wma_self_peer_remove(tp_wma_handle wma_handle,
 	QDF_STATUS qdf_status;
 	uint8_t vdev_id = del_vdev_req->vdev_id;
 	struct wma_target_req *msg = NULL;
-	struct del_sta_self_rsp_params *sta_self_wmi_rsp;
+	struct del_sta_self_rsp_params *sta_self_wmi_rsp = NULL;
 
 	wma_debug("P2P Device: removing self peer "QDF_MAC_ADDR_FMT,
 		  QDF_MAC_ADDR_REF(del_vdev_req->self_mac_addr));
@@ -591,7 +592,8 @@ static QDF_STATUS wma_self_peer_remove(tp_wma_handle wma_handle,
 		wma_err("wma_remove_peer is failed");
 		wma_remove_req(wma_handle, vdev_id,
 			       WMA_DEL_P2P_SELF_STA_RSP_START);
-		qdf_mem_free(sta_self_wmi_rsp);
+		if (sta_self_wmi_rsp)
+			qdf_mem_free(sta_self_wmi_rsp);
 
 		goto error;
 	}
@@ -1174,6 +1176,34 @@ static void wma_dcs_clear_vdev_starting(struct mac_context *mac_ctx,
 }
 
 /**
+ * wma_send_dcs_cmd() - Send DCS command
+ * @psoc: pointer to psoc object
+ * @mac_id: mac_id
+ * @vdev_id: vdev_id
+ *
+ * Return: None
+ */
+#ifdef WLAN_FEATURE_VDEV_DCS
+static void wma_send_dcs_cmd(struct wlan_objmgr_psoc *psoc,
+			     uint32_t mac_id, uint8_t vdev_id)
+{
+	/* Send DCS command only for low latency sap*/
+	if (policy_mgr_is_vdev_ll_sap(psoc, vdev_id)) {
+		if (target_if_vdev_level_dcs_is_supported(psoc))
+			ucfg_wlan_dcs_cmd_for_vdev(psoc, mac_id, vdev_id);
+		else
+			ucfg_wlan_dcs_cmd(psoc, mac_id, true);
+	}
+}
+#else
+static void wma_send_dcs_cmd(struct wlan_objmgr_psoc *psoc,
+			     uint32_t mac_id, uint8_t vdev_id)
+{
+	ucfg_wlan_dcs_cmd(psoc, mac_id, true);
+}
+#endif
+
+/**
  * wma_dcs_wlan_interference_mitigation_enable() - enable wlan
  * interference mitigation
  * @mac_ctx: mac context
@@ -1218,7 +1248,8 @@ static void wma_dcs_wlan_interference_mitigation_enable(
 	if (rsp->resp_type == WMI_HOST_VDEV_START_RESP_EVENT) {
 		ucfg_config_dcs_enable(mac_ctx->psoc, mac_id,
 				       WLAN_HOST_DCS_WLANIM);
-		ucfg_wlan_dcs_cmd(mac_ctx->psoc, mac_id, true);
+
+		wma_send_dcs_cmd(mac_ctx->psoc, mac_id, rsp->vdev_id);
 	}
 }
 #else
@@ -1281,6 +1312,7 @@ QDF_STATUS wma_vdev_start_resp_handler(struct vdev_mlme_obj *vdev_mlme,
 	const struct wlan_mlme_ratemask *ratemask_cfg;
 	struct config_ratemask_params rparams = {0};
 	void *dp_soc = cds_get_context(QDF_MODULE_ID_SOC);
+	uint32_t mac_id;
 
 	wma = cds_get_context(QDF_MODULE_ID_WMA);
 	if (!wma)
@@ -1334,19 +1366,14 @@ QDF_STATUS wma_vdev_start_resp_handler(struct vdev_mlme_obj *vdev_mlme,
 				wma_err("soc level id received for mac id");
 				return -QDF_STATUS_E_INVAL;
 			}
-			wma->interfaces[rsp->vdev_id].mac_id =
-				WMA_PDEV_TO_MAC_MAP(rsp->mac_id);
+			mac_id = WMA_PDEV_TO_MAC_MAP(rsp->mac_id);
 		} else {
-			wma->interfaces[rsp->vdev_id].mac_id =
-			rsp->mac_id;
+			mac_id = rsp->mac_id;
 		}
-
+		wlan_mlme_set_vdev_mac_id(wma->pdev, rsp->vdev_id, mac_id);
 		wma_debug("vdev:%d tx ss=%d rx ss=%d chain mask=%d mac=%d",
-				rsp->vdev_id,
-				rsp->cfgd_tx_streams,
-				rsp->cfgd_rx_streams,
-				rsp->chain_mask,
-				wma->interfaces[rsp->vdev_id].mac_id);
+			  rsp->vdev_id, rsp->cfgd_tx_streams,
+			  rsp->cfgd_rx_streams, rsp->chain_mask, mac_id);
 
 		/* Fill bss_chan after vdev start */
 		qdf_mem_copy(iface->vdev->vdev_mlme.bss_chan,
@@ -1354,15 +1381,14 @@ QDF_STATUS wma_vdev_start_resp_handler(struct vdev_mlme_obj *vdev_mlme,
 			     sizeof(struct wlan_channel));
 
 		if (wlan_vdev_mlme_is_mlo_ap(vdev_mlme->vdev))
-			cdp_update_mac_id(dp_soc, rsp->vdev_id,
-					  wma->interfaces[rsp->vdev_id].mac_id);
+			cdp_update_mac_id(dp_soc, rsp->vdev_id, mac_id);
 
 	}
 
 	if (wma_is_vdev_in_ap_mode(wma, rsp->vdev_id)) {
 		wma_dcs_clear_vdev_starting(mac_ctx, rsp->vdev_id);
 		wma_dcs_wlan_interference_mitigation_enable(mac_ctx,
-							    iface->mac_id, rsp);
+							    mac_id, rsp);
 	}
 
 #ifdef FEATURE_AP_MCC_CH_AVOIDANCE
@@ -1676,11 +1702,19 @@ QDF_STATUS wma_remove_peer(tp_wma_handle wma, uint8_t *mac_addr,
 	bool peer_unmap_conf_support_enabled;
 	uint8_t peer_vdev_id;
 	struct peer_delete_cmd_params del_param = {0};
+	struct wma_txrx_node *iface;
 
-	if (!wma->interfaces[vdev_id].peer_count) {
+	if (vdev_id >= WLAN_MAX_VDEVS) {
+		wma_err("Invalid vdev_id %d", vdev_id);
+		QDF_BUG(0);
+		return QDF_STATUS_E_INVAL;
+	}
+
+	iface = &wma->interfaces[vdev_id];
+	if (!iface->peer_count) {
 		wma_err("Can't remove peer with peer_addr "QDF_MAC_ADDR_FMT" vdevid %d peer_count %d",
 			QDF_MAC_ADDR_REF(peer_addr), vdev_id,
-			wma->interfaces[vdev_id].peer_count);
+			iface->peer_count);
 		QDF_ASSERT(0);
 		return QDF_STATUS_E_INVAL;
 	}
@@ -1693,14 +1727,14 @@ QDF_STATUS wma_remove_peer(tp_wma_handle wma, uint8_t *mac_addr,
 	if (!wma_objmgr_peer_exist(wma, peer_addr, &peer_vdev_id)) {
 		wma_err("peer doesn't exist peer_addr "QDF_MAC_ADDR_FMT" vdevid %d peer_count %d",
 			 QDF_MAC_ADDR_REF(peer_addr), vdev_id,
-			 wma->interfaces[vdev_id].peer_count);
+			 iface->peer_count);
 		return QDF_STATUS_E_INVAL;
 	}
 
 	if (peer_vdev_id != vdev_id) {
 		wma_err("peer "QDF_MAC_ADDR_FMT" is on vdev id %d but delete req on vdevid %d peer_count %d",
 			 QDF_MAC_ADDR_REF(peer_addr), peer_vdev_id, vdev_id,
-			 wma->interfaces[vdev_id].peer_count);
+			 iface->peer_count);
 		return QDF_STATUS_E_INVAL;
 	}
 	peer_unmap_conf_support_enabled =
@@ -1726,6 +1760,8 @@ QDF_STATUS wma_remove_peer(tp_wma_handle wma, uint8_t *mac_addr,
 			    0, 0);
 
 	del_param.vdev_id = vdev_id;
+	del_param.is_mlo_link_switch =
+		wlan_vdev_mlme_is_mlo_link_switch_in_progress(iface->vdev);
 	qdf_status = wmi_unified_peer_delete_send(wma->wmi_handle, peer_addr,
 						  &del_param);
 	if (QDF_IS_STATUS_ERROR(qdf_status)) {
@@ -1738,8 +1774,7 @@ QDF_STATUS wma_remove_peer(tp_wma_handle wma, uint8_t *mac_addr,
 
 peer_detach:
 	wma_debug("vdevid %d is detaching with peer_addr "QDF_MAC_ADDR_FMT" peer_count %d",
-		vdev_id, QDF_MAC_ADDR_REF(peer_addr),
-		wma->interfaces[vdev_id].peer_count);
+		vdev_id, QDF_MAC_ADDR_REF(peer_addr), iface->peer_count);
 	/* Copy peer mac to find and delete objmgr peer */
 	qdf_mem_copy(peer_mac, peer_addr, QDF_MAC_ADDR_SIZE);
 	if (no_fw_peer_delete &&
@@ -1767,9 +1802,9 @@ peer_detach:
 	}
 
 	wlan_release_peer_key_wakelock(wma->pdev, peer_mac);
-	wma_remove_objmgr_peer(wma, wma->interfaces[vdev_id].vdev, peer_mac);
+	wma_remove_objmgr_peer(wma, iface->vdev, peer_mac);
 
-	wma->interfaces[vdev_id].peer_count--;
+	iface->peer_count--;
 #undef PEER_ALL_TID_BITMASK
 
 	return qdf_status;
@@ -3320,7 +3355,6 @@ QDF_STATUS wma_vdev_pre_start(uint8_t vdev_id, bool restart)
 		CFG_TGT_DEFAULT_GTX_BW_MASK;
 	intr[vdev_id].chan_width = des_chan->ch_width;
 	intr[vdev_id].ch_freq = des_chan->ch_freq;
-	intr[vdev_id].ch_flagext = des_chan->ch_flagext;
 
 	/*
 	 * If the channel has DFS set, flip on radar reporting.
@@ -4498,6 +4532,22 @@ send_fail_resp:
 }
 #endif
 
+QDF_STATUS wma_set_vdev_bw(uint8_t vdev_id, uint8_t bw)
+{
+	QDF_STATUS status;
+	tp_wma_handle wma = cds_get_context(QDF_MODULE_ID_WMA);
+
+	if (!wma)
+		return QDF_STATUS_E_INVAL;
+
+	status = wma_vdev_set_param(wma->wmi_handle, vdev_id,
+				    wmi_vdev_param_chwidth, bw);
+	if (QDF_IS_STATUS_ERROR(status))
+		wma_err("failed to set vdev bw, status: %d", status);
+
+	return status;
+}
+
 QDF_STATUS wma_send_peer_assoc_req(struct bss_params *add_bss)
 {
 	struct wma_target_req *msg;
@@ -5075,7 +5125,7 @@ static void wma_add_sta_req_sta_mode(tp_wma_handle wma, tpAddStaParams params)
 	}
 
 	if (cdp_peer_state_get(soc, params->smesessionId,
-			       params->bssId) == OL_TXRX_PEER_STATE_DISC) {
+			       params->bssId, true) == OL_TXRX_PEER_STATE_DISC) {
 		/*
 		 * This is the case for reassociation.
 		 * peer state update and peer_assoc is required since it
@@ -5228,7 +5278,7 @@ static void wma_add_sta_req_sta_mode(tp_wma_handle wma, tpAddStaParams params)
 				  WMA_VHT_PPS_DELIM_CRC_FAIL, 1);
 	if (wmi_service_enabled(wma->wmi_handle,
 				wmi_service_listen_interval_offload_support)) {
-		struct wlan_objmgr_vdev *vdev;
+		struct wlan_objmgr_vdev *vdev = NULL;
 		uint32_t moddtim;
 		bool is_connection_roaming_cfg_set = 0;
 
@@ -5266,10 +5316,25 @@ static void wma_add_sta_req_sta_mode(tp_wma_handle wma, tpAddStaParams params)
 			wma_debug("failed to send wmi_vdev_param_dyndtim_cnt");
 			goto out;
 		}
+		status = mlme_check_index_setparam(
+						setparam,
+						wmi_vdev_param_telesdtim_cnt,
+						wma->staTelesDtim, index++,
+						MAX_VDEV_STA_REQ_PARAMS);
+		if (QDF_IS_STATUS_ERROR(status)) {
+			wma_debug("failed to send wmi_vdev_param_telescopic_dtim_cnt");
+			goto out;
+		}
+
 		vdev = wlan_objmgr_get_vdev_by_id_from_psoc(wma->psoc,
 							params->smesessionId,
 							WLAN_LEGACY_WMA_ID);
-		if (!vdev || !ucfg_pmo_get_moddtim_user_enable(vdev)) {
+		if (!vdev) {
+			wma_debug("Invalid vdev");
+			goto out;
+		}
+
+		if (!ucfg_pmo_get_moddtim_user_enable(vdev)) {
 			moddtim = wma->staModDtim;
 			status = mlme_check_index_setparam(
 						setparam,
@@ -5278,15 +5343,9 @@ static void wma_add_sta_req_sta_mode(tp_wma_handle wma, tpAddStaParams params)
 						MAX_VDEV_STA_REQ_PARAMS);
 			if (QDF_IS_STATUS_ERROR(status)) {
 				wma_debug("failed to send wmi_vdev_param_moddtim_cnt");
-				if (vdev)
-					wlan_objmgr_vdev_release_ref(vdev,
-							WLAN_LEGACY_WMA_ID);
-				goto out;
+				goto rel_ref;
 			}
-			if (vdev)
-				wlan_objmgr_vdev_release_ref(vdev,
-							    WLAN_LEGACY_WMA_ID);
-		} else if (vdev && ucfg_pmo_get_moddtim_user_enable(vdev) &&
+		} else if (ucfg_pmo_get_moddtim_user_enable(vdev) &&
 			   !ucfg_pmo_get_moddtim_user_active(vdev)) {
 			moddtim = ucfg_pmo_get_moddtim_user(vdev);
 			status = mlme_check_index_setparam(
@@ -5296,19 +5355,18 @@ static void wma_add_sta_req_sta_mode(tp_wma_handle wma, tpAddStaParams params)
 						MAX_VDEV_STA_REQ_PARAMS);
 			if (QDF_IS_STATUS_ERROR(status)) {
 				wma_debug("failed to send wmi_vdev_param_moddtim_cnt");
-				wlan_objmgr_vdev_release_ref(vdev,
-							WLAN_LEGACY_WMA_ID);
-				goto out;
+				goto rel_ref;
 			}
-			wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_WMA_ID);
 		}
 		status = wma_send_multi_pdev_vdev_set_params(MLME_VDEV_SETPARAM,
 							params->smesessionId,
 							setparam, index);
 		if (QDF_IS_STATUS_ERROR(status)) {
 			wma_err("failed to send DTIM vdev setparams");
-			goto out;
 		}
+rel_ref:
+		if (vdev)
+			wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_WMA_ID);
 
 	} else {
 		wma_debug("listen interval offload is not set");

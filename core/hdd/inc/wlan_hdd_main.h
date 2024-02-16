@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1295,6 +1295,7 @@ struct wlan_hdd_tx_power {
  * @link_info: Data structure to hold link specific information
  * @tx_power: Structure to hold connection tx Power info
  * @tx_latency_cfg: configuration for per-link transmit latency statistics
+ * @link_state_cached_timestamp: link state cached timestamp
  */
 struct hdd_adapter {
 	uint32_t magic;
@@ -1488,6 +1489,9 @@ struct hdd_adapter {
 	struct wlan_hdd_tx_power tx_power;
 #ifdef WLAN_FEATURE_TX_LATENCY_STATS
 	struct cdp_tx_latency_config tx_latency_cfg;
+#endif
+#ifdef WLAN_FEATURE_11BE_MLO
+	qdf_time_t link_state_cached_timestamp;
 #endif
 };
 
@@ -3881,10 +3885,21 @@ int hdd_update_components_config(struct hdd_context *hdd_ctx);
  */
 void hdd_chan_change_notify_work_handler(void *work);
 
-int wlan_hdd_set_channel(struct wiphy *wiphy,
-		struct net_device *dev,
-		struct cfg80211_chan_def *chandef,
-		enum nl80211_channel_type channel_type);
+/**
+ * wlan_hdd_set_channel() - set channel in sap mode
+ * @link_info: pointer to link info
+ * @wiphy: Pointer to wiphy structure
+ * @dev: Pointer to net_device structure
+ * @chandef: Pointer to channel definition structure
+ * @channel_type: Channel type
+ *
+ * Return: 0 for success non-zero for failure
+ */
+int wlan_hdd_set_channel(struct wlan_hdd_link_info *link_info,
+			 struct wiphy *wiphy,
+			 struct net_device *dev,
+			 struct cfg80211_chan_def *chandef,
+			 enum nl80211_channel_type channel_type);
 
 /**
  * wlan_hdd_cfg80211_start_bss() - start bss
@@ -5392,6 +5407,7 @@ hdd_get_link_info_by_ieee_link_id(struct hdd_adapter *adapter, int32_t link_id);
  * @mac_addr: MAC address to set
  * @mld_addr: MLD address to set
  * @update_self_peer: Set to true to update self peer's address
+ * @skip_reattach: flag indicate if need do dp vdev detach & reattach
  *
  * This API is used to update the current VDEV MAC address.
  *
@@ -5400,7 +5416,8 @@ hdd_get_link_info_by_ieee_link_id(struct hdd_adapter *adapter, int32_t link_id);
 int hdd_dynamic_mac_address_set(struct wlan_hdd_link_info *link_info,
 				struct qdf_mac_addr mac_addr,
 				struct qdf_mac_addr mld_addr,
-				bool update_self_peer);
+				bool update_self_peer,
+				bool skip_reattach);
 
 /**
  * hdd_is_dynamic_set_mac_addr_allowed() - API to check dynamic MAC address
@@ -5430,7 +5447,7 @@ static inline int hdd_update_vdev_mac_address(struct hdd_adapter *adapter,
 	struct qdf_mac_addr mld_addr = QDF_MAC_ADDR_ZERO_INIT;
 
 	return hdd_dynamic_mac_address_set(adapter->deflink, mac_addr,
-					   mld_addr, true);
+					   mld_addr, true, false);
 }
 #endif /* WLAN_FEATURE_11BE_MLO */
 #else
@@ -5444,7 +5461,8 @@ static inline int
 hdd_dynamic_mac_address_set(struct wlan_hdd_link_info *link_info,
 			    struct qdf_mac_addr mac_addr,
 			    struct qdf_mac_addr mld_addr,
-			    bool update_self_peer)
+			    bool update_self_peer,
+			    bool skip_reattach)
 {
 	return 0;
 }

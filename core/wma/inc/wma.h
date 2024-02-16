@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -477,7 +477,7 @@ struct beacon_tim_ie {
 	uint8_t dtim_count;
 	uint8_t dtim_period;
 	uint8_t tim_bitctl;
-	uint8_t tim_bitmap[1];
+	QDF_FLEX_ARRAY(uint8_t, tim_bitmap);
 } __ATTRIB_PACK;
 
 /**
@@ -738,7 +738,6 @@ struct wma_txrx_node {
 	bool extscan_in_progress;
 #endif
 	uint32_t tx_streams;
-	uint32_t mac_id;
 	int32_t roam_synch_delay;
 	struct sme_rcpi_req *rcpi_req;
 	bool in_bmps;
@@ -747,7 +746,6 @@ struct wma_txrx_node {
 	struct roam_synch_frame_ind roam_synch_frame_ind;
 	bool is_waiting_for_key;
 	uint32_t ch_freq;
-	uint16_t ch_flagext;
 	struct sir_roam_scan_stats *roam_scan_stats_req;
 	struct wma_invalid_peer_params invalid_peers[INVALID_PEER_MAX_NUM];
 	uint8_t invalid_peer_idx;
@@ -866,6 +864,7 @@ struct wma_wlm_stats_data {
  * @staMaxLIModDtim: station max listen interval
  * @sta_max_li_mod_dtim_ms: station max listen interval in ms
  * @staModDtim: station mode DTIM
+ * @staTelesDtim: station tetescopic DTIM
  * @staDynamicDtim: station dynamic DTIM
  * @hw_bd_id: hardware board id
  * @hw_bd_info: hardware board info
@@ -993,6 +992,7 @@ typedef struct {
 	uint8_t staMaxLIModDtim;
 	uint16_t sta_max_li_mod_dtim_ms;
 	uint8_t staModDtim;
+	uint8_t staTelesDtim;
 	uint8_t staDynamicDtim;
 	uint32_t hw_bd_id;
 	uint32_t hw_bd_info[HW_BD_INFO_SIZE];
@@ -2481,6 +2481,15 @@ void wma_add_bss_lfr3(tp_wma_handle wma, struct bss_params *add_bss);
 QDF_STATUS wma_add_bss_lfr2_vdev_start(struct wlan_objmgr_vdev *vdev,
 				       struct bss_params *add_bss);
 #endif
+
+/**
+ * wma_set_vdev_bw() - wma send vdev bw
+ * @vdev_id: vdev id
+ * @bw: band width
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS wma_set_vdev_bw(uint8_t vdev_id, uint8_t bw);
 
 /**
  * wma_send_peer_assoc_req() - wma send peer assoc req when sta connect

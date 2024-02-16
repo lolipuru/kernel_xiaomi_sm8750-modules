@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -35,6 +35,7 @@
 #include "wlan_cm_roam_public_struct.h"
 #include "wlan_utility.h"
 #include "sir_types.h"
+#include "cfg_mlme_generic.h"
 
 struct target_psoc_info;
 
@@ -1318,7 +1319,53 @@ policy_mgr_get_active_vdev_bitmap(struct wlan_objmgr_psoc *psoc);
  * Return: true is it's allow otherwise false
  */
 bool policy_mgr_is_emlsr_sta_concurrency_present(struct wlan_objmgr_psoc *psoc);
+
+/**
+ * policy_mgr_update_disallowed_mode_bitmap() - Update the disallowed
+ * mode bitmap concurrency if present.
+ * @psoc: PSOC object information
+ * @vdev: Vdev object pointer
+ * @req: Pointer to mlo link set active
+ *
+ * This API is to update the disallowed mode bitmap. It conveys which mode
+ * the HW can operate for links. This helps FW to understand the
+ * restrictions applied (if any) per link.
+ *
+ * Return: true or false
+ */
+bool
+policy_mgr_update_disallowed_mode_bitmap(struct wlan_objmgr_psoc *psoc,
+					 struct wlan_objmgr_vdev *vdev,
+					 struct mlo_link_set_active_req *req);
+
+/**
+ * policy_mgr_init_disallow_mode_bmap() - Initialize the disallowed
+ * mode bitmap.
+ * @req: Pointer to mlo link set active
+ *
+ * This API is to initialize the disallowed mode bitmap.
+ * Specifically to set the link id's to invalid value
+ *
+ * Return: true or false
+ */
+bool
+policy_mgr_init_disallow_mode_bmap(struct mlo_link_set_active_req *req);
+
 #else
+static inline bool
+policy_mgr_update_disallowed_mode_bitmap(struct wlan_objmgr_psoc *psoc,
+					 struct wlan_objmgr_vdev *vdev,
+					 struct mlo_link_set_active_req *req)
+{
+	return false;
+}
+
+static inline bool
+policy_mgr_init_disallow_mode_bmap(struct mlo_link_set_active_req *req)
+{
+	return false;
+}
+
 static inline bool
 policy_mgr_is_ml_vdev_id(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id)
 {
@@ -1719,6 +1766,19 @@ enum policy_mgr_three_connection_mode
 QDF_STATUS policy_mgr_incr_connection_count(struct wlan_objmgr_psoc *psoc,
 					    uint32_t vdev_id,
 					    enum QDF_OPMODE mode);
+
+/**
+ * policy_mgr_get_connection_table_entry_info() - get the vdev entry info for
+ * connection table
+ * @pdev: pdev pointer
+ * @vdev_id: vdev id
+ * @conn_table_entry: vdev entry info
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+policy_mgr_get_connection_table_entry_info(struct wlan_objmgr_pdev *pdev,
+	uint8_t vdev_id, struct policy_mgr_vdev_entry_info *conn_table_entry);
 
 /**
  * policy_mgr_update_connection_info() - updates the existing
@@ -2284,17 +2344,6 @@ struct policy_mgr_dp_cbacks {
 };
 
 /**
- * struct policy_mgr_wma_cbacks - WMA Callbacks to be invoked
- * from policy manager
- * @wma_get_connection_info: Get the connection related info
- *                         from wma table
- */
-struct policy_mgr_wma_cbacks {
-	QDF_STATUS (*wma_get_connection_info)(uint8_t vdev_id,
-		struct policy_mgr_vdev_entry_info *conn_table_entry);
-};
-
-/**
 * policy_mgr_need_opportunistic_upgrade - check whether needs to change current
 * HW mode to single mac 2x2 or the other DBS mode(for Dual DBS HW only).
 * @psoc: PSOC object information
@@ -2645,6 +2694,7 @@ QDF_STATUS policy_mgr_restart_opportunistic_timer(
  * @pcl_list_org: Pointer to the preferred channel freq list to be trimmed
  * @weight_list_org: Pointer to the weights of the preferred channel list
  * @pcl_len_org: Pointer to the length of the preferred channel list
+ * @vdev_id: VDEV ID
  *
  * Modifies the preferred channel list of SAP based on the mandatory channel
  *
@@ -2652,7 +2702,8 @@ QDF_STATUS policy_mgr_restart_opportunistic_timer(
  */
 QDF_STATUS policy_mgr_modify_sap_pcl_based_on_mandatory_channel(
 		struct wlan_objmgr_psoc *psoc, uint32_t *pcl_list_org,
-		uint8_t *weight_list_org, uint32_t *pcl_len_org);
+		uint8_t *weight_list_org, uint32_t *pcl_len_org,
+		uint8_t vdev_id);
 
 /**
  * policy_mgr_update_and_wait_for_connection_update() - Update and wait for
@@ -2699,13 +2750,15 @@ bool policy_mgr_list_has_24GHz_channel(uint32_t *ch_freq_list,
  * @ch_list: Pointer to the channel frequency list
  * @ch_cnt: Pointer to the length of the channel list
  * @mode: Device mode
+ * @vdev_id: VDEV ID
  *
  * Return: QDF_STATUS
  */
 QDF_STATUS policy_mgr_get_valid_chans_from_range(struct wlan_objmgr_psoc *psoc,
 						 uint32_t *ch_list,
 						 uint32_t *ch_cnt,
-						 enum policy_mgr_con_mode mode);
+						 enum policy_mgr_con_mode mode,
+						 uint8_t vdev_id);
 /**
  * policy_mgr_get_valid_chans() - Get the valid channel list
  * @psoc: PSOC object information
@@ -3280,20 +3333,6 @@ QDF_STATUS policy_mgr_register_cdp_cb(struct wlan_objmgr_psoc *psoc,
  */
 QDF_STATUS policy_mgr_register_dp_cb(struct wlan_objmgr_psoc *psoc,
 		struct policy_mgr_dp_cbacks *dp_cbacks);
-
-/**
- * policy_mgr_register_wma_cb() - register WMA callbacks
- * @psoc: PSOC object information
- * @wma_cbacks: function pointers from WMA
- *
- * API, allows WMA to register callbacks to be invoked by policy
- * mgr
- *
- * Return: SUCCESS,
- *         Failure (if registration fails)
- */
-QDF_STATUS policy_mgr_register_wma_cb(struct wlan_objmgr_psoc *psoc,
-		struct policy_mgr_wma_cbacks *wma_cbacks);
 
 /**
  * policy_mgr_find_if_fw_supports_dbs() - to find if FW/HW supports DBS

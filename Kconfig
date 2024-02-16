@@ -120,6 +120,10 @@ config CNSS_PEACH
 	bool "Enable CNSS_PEACH"
 	default n
 
+config CNSS_PEACH_V2
+	bool "Enable CNSS_PEACH_V2"
+	default n
+
 config INCLUDE_HAL_KIWI
 	bool "Enable INCLUDE_HAL_KIWI"
 	default n
@@ -1216,6 +1220,10 @@ config WLAN_FEATURE_DFS_OFFLOAD
 	bool "Enable dfs offload feature"
 	default n
 
+config WLAN_MCAST_MLO_SAP
+	bool "Enable mcast MLO feature"
+	default n
+
 config WLAN_FEATURE_DISA
 	bool "Enable DISA certification feature"
 	default n
@@ -2038,6 +2046,10 @@ config WLAN_FEATURE_EMLSR
 	bool "Enable EMLSR feature"
 	default n
 
+config WLAN_FEATURE_MULTI_LINK_SAP
+	bool "Enable multi link sap"
+	default n
+
 menu "Optional Configs"
 
 if CNSS_KIWI_V2
@@ -2071,6 +2083,10 @@ config DP_RX_MSDU_DONE_FAIL_HISTORY
 
 config DP_RX_PEEK_MSDU_DONE_WAR
 	bool "Enable DP_RX_PEEK_MSDU_DONE_WAR"
+	default n
+
+config WLAN_AUX_SUPPORT
+	bool "Enable WLAN_AUX_SUPPORT"
 	default n
 
 endmenu

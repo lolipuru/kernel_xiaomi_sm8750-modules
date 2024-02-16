@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -60,6 +60,10 @@
 #include <cdp_txrx_cfg.h>
 #include <cdp_txrx_cmn.h>
 #include <lim_mlo.h>
+#include "wlan_ll_sap_api.h"
+#include "sir_mac_prot_def.h"
+#include "wlan_action_oui_public_struct.h"
+#include "wlan_action_oui_main.h"
 
 /**
  * lim_cmp_ssid() - utility function to compare SSIDs
@@ -2038,6 +2042,9 @@ QDF_STATUS lim_populate_matching_rate_set(struct mac_context *mac_ctx,
 		if (session_entry->nss == NSS_1x1_MODE)
 			mcs_set[1] = 0;
 
+		wlan_ll_lt_sap_get_mcs(mac_ctx->psoc, session_entry->vdev_id,
+				       mcs_set);
+
 		for (i = 0; i < val_len; i++)
 			sta_ds->supportedRates.supportedMCSSet[i] =
 				mcs_set[i] & supported_mcs_set[i];
@@ -3214,12 +3221,12 @@ lim_check_and_announce_join_success(struct mac_context *mac_ctx,
 	 * Check for SSID only in probe response. Beacons may not carry
 	 * SSID information in hidden SSID case
 	 */
-	if (((SIR_MAC_MGMT_FRAME == header->fc.type) &&
-		(SIR_MAC_MGMT_PROBE_RSP == header->fc.subType)) &&
-		current_ssid.length &&
-		(qdf_mem_cmp((uint8_t *) &beacon_probe_rsp->ssId,
-				  (uint8_t *) &current_ssid,
-				  (uint8_t) (1 + current_ssid.length)))) {
+	if ((WLAN_FC0_TYPE_MGMT == header->fc.type &&
+	     SIR_MAC_MGMT_PROBE_RSP == header->fc.subType) &&
+	    current_ssid.length &&
+	    qdf_mem_cmp((uint8_t *)&beacon_probe_rsp->ssId,
+			(uint8_t *)&current_ssid,
+			(uint8_t)(1 + current_ssid.length))) {
 		/*
 		 * Received SSID does not match with the one we've.
 		 * Ignore received Beacon frame
@@ -3666,6 +3673,38 @@ void lim_sta_add_bss_update_ht_parameter(uint32_t bss_chan_freq,
 		add_bss->ch_width = ht_inf->recommendedTxWidthSet;
 	else
 		add_bss->ch_width = CH_WIDTH_20MHZ;
+}
+
+/**
+ * lim_limit_bw_for_iot_ap() - limit sta vdev band width for iot ap
+ *@mac_ctx: mac context
+ *@session: pe session
+ *@bss_desc: bss descriptor
+ *
+ * When connect IoT AP, limit sta vdev band width
+ *
+ * Return: None
+ */
+static void
+lim_limit_bw_for_iot_ap(struct mac_context *mac_ctx,
+			struct pe_session *session,
+			struct bss_description *bss_desc)
+{
+	struct action_oui_search_attr vendor_ap_search_attr;
+	uint16_t ie_len;
+
+	ie_len = wlan_get_ielen_from_bss_description(bss_desc);
+
+	vendor_ap_search_attr.ie_data = (uint8_t *)&bss_desc->ieFields[0];
+	vendor_ap_search_attr.ie_length = ie_len;
+
+	if (wlan_action_oui_search(mac_ctx->psoc,
+				   &vendor_ap_search_attr,
+				   ACTION_OUI_LIMIT_BW)) {
+		pe_debug("Limit vdev %d bw to 40M for IoT AP",
+			 session->vdev_id);
+		wma_set_vdev_bw(session->vdev_id, eHT_CHANNEL_WIDTH_40MHZ);
+	}
 }
 
 QDF_STATUS lim_sta_send_add_bss(struct mac_context *mac, tpSirAssocRsp pAssocRsp,
@@ -4118,6 +4157,8 @@ QDF_STATUS lim_sta_send_add_bss(struct mac_context *mac, tpSirAssocRsp pAssocRsp
 		       retCode);
 	}
 	qdf_mem_free(pAddBssParams);
+
+	lim_limit_bw_for_iot_ap(mac, pe_session, bssDescription);
 
 returnFailure:
 	/* Clean-up will be done by the caller... */

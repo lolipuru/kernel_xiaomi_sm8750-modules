@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1228,6 +1228,8 @@ QDF_STATUS wlansap_roam_callback(void *ctx,
 	case eCSR_ROAM_CHANNEL_INFO_EVENT_IND:
 		wlansap_process_chan_info_event(sap_ctx, csr_roam_info);
 		break;
+	case eCSR_ROAM_CHANNEL_SWITCH_STARTED_IND:
+		break;
 	default:
 		break;
 	}
@@ -1426,6 +1428,12 @@ QDF_STATUS wlansap_roam_callback(void *ctx,
 				   eSAP_ECSA_CHANGE_CHAN_IND, NULL);
 		if (!QDF_IS_STATUS_SUCCESS(qdf_status))
 			qdf_ret_status = QDF_STATUS_E_FAILURE;
+		break;
+	case eCSR_ROAM_RESULT_CHANNEL_SWITCH_STARTED_NOTIFY:
+		qdf_ret_status = sap_signal_hdd_event(
+					sap_ctx, csr_roam_info,
+					eSAP_CHANNEL_SWITCH_STARTED_NOTIFY,
+					NULL);
 		break;
 	default:
 		sap_err("CSR roam_result = %s (%d) not handled",
@@ -1694,6 +1702,10 @@ void wlansap_process_chan_info_event(struct sap_context *sap_ctx,
 		    roam_info->chan_info_freq) &&
 	    !wlan_reg_is_6ghz_psc_chan_freq(
 		    roam_info->chan_info_freq))
+		return;
+
+	/* Do not select first empty channel for LL_LT_SAP */
+	if (policy_mgr_is_vdev_ll_lt_sap(mac->psoc, sap_ctx->vdev_id))
 		return;
 
 	filter = qdf_mem_malloc(sizeof(*filter));

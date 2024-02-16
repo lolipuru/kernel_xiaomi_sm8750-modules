@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -70,11 +70,15 @@ cm_is_peer_preset_on_other_sta(struct wlan_objmgr_psoc *psoc,
 	tp_wma_handle wma = cds_get_context(QDF_MODULE_ID_WMA);
 	uint8_t peer_vdev_id;
 
+	if (!wma) {
+		wma_err("wma_handle is NULL");
+		return false;
+	}
+
 	sync_ind = (struct roam_offload_synch_ind *)event;
 
 	if (wma_objmgr_peer_exist(wma, sync_ind->bssid.bytes, &peer_vdev_id)) {
-		if ((!wlan_vdev_mlme_is_mlo_vdev(vdev) &&
-		     vdev_id != peer_vdev_id) ||
+		if (vdev_id != peer_vdev_id &&
 		    !mlo_check_is_given_vdevs_on_same_mld(psoc, vdev_id,
 							  peer_vdev_id)) {
 			wma_debug("Peer " QDF_MAC_ADDR_FMT
@@ -1216,6 +1220,7 @@ cm_get_and_disable_link_from_roam_ind(struct wlan_objmgr_psoc *psoc,
 			ml_nlink_set_curr_force_inactive_state(
 				psoc, vdev, 1 << synch_data->ml_link[i].link_id,
 				LINK_ADD);
+			ml_nlink_init_concurrency_link_request(psoc, vdev);
 			wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_SB_ID);
 			break;
 		}
@@ -1584,13 +1589,16 @@ static QDF_STATUS cm_handle_ho_fail(struct scheduler_msg *msg)
 
 	roam_req = cm_get_first_roam_command(vdev);
 	if (roam_req) {
-		mlme_debug("Roam req found, get cm id to remove it, after disconnect");
+		mlme_debug("Roam req found, get cm id to remove it, before disconnect");
 		cm_id = roam_req->cm_id;
 	}
 	/* CPU freq is boosted during roam sync to improve roam latency,
 	 * upon HO failure reset that request to restore cpu freq back to normal
 	 */
 	mlme_cm_osif_perfd_reset_cpufreq();
+
+	cm_sm_deliver_event(vdev, WLAN_CM_SM_EV_ROAM_HO_FAIL,
+			    sizeof(wlan_cm_id), &cm_id);
 
 	qdf_mem_zero(&ap_info, sizeof(struct reject_ap_info));
 	if (cm_ho_fail_is_avoid_list_candidate(vdev, ind)) {
@@ -1614,7 +1622,8 @@ static QDF_STATUS cm_handle_ho_fail(struct scheduler_msg *msg)
 			       WLAN_LOG_INDICATOR_HOST_DRIVER,
 			       WLAN_LOG_REASON_ROAM_HO_FAILURE, false, false);
 
-	cm_remove_cmd(cm_ctx, &cm_id);
+	if (QDF_IS_STATUS_ERROR(status))
+		cm_remove_cmd(cm_ctx, &cm_id);
 
 error:
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_CM_ID);

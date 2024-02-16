@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1703,8 +1703,8 @@ void sap_release_vdev_ref(struct sap_context *sap_ctx)
 
 	vdev = sap_ctx->vdev;
 	if (vdev) {
-		sap_ctx->vdev = NULL;
 		wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_SAP_ID);
+		sap_ctx->vdev = NULL;
 	}
 }
 
@@ -2431,6 +2431,7 @@ QDF_STATUS sap_signal_hdd_event(struct sap_context *sap_ctx,
 	tSap_StationDisassocCompleteEvent *disassoc_comp;
 	tSap_StationSetKeyCompleteEvent *key_complete;
 	tSap_StationMICFailureEvent *mic_failure;
+	struct ch_switch_started_notify *ch_switch_started_notify;
 
 	/* Format the Start BSS Complete event to return... */
 	if (!sap_ctx->sap_event_cb)
@@ -2837,6 +2838,21 @@ QDF_STATUS sap_signal_hdd_event(struct sap_context *sap_ctx,
 			  "eSAP_CHANNEL_CHANGE_RESP");
 		break;
 
+	case eSAP_CHANNEL_SWITCH_STARTED_NOTIFY:
+		if (!csr_roaminfo) {
+			sap_debug("Invalid CSR Roam Info");
+			qdf_mem_free(sap_ap_event);
+			return QDF_STATUS_E_INVAL;
+		}
+		sap_ap_event->sapHddEventCode =
+				eSAP_CHANNEL_SWITCH_STARTED_NOTIFY;
+		ch_switch_started_notify =
+				&sap_ap_event->sapevt.ch_sw_started_notify;
+		ch_switch_started_notify->freq =
+				csr_roaminfo->pSirSmeSwitchChInd->freq;
+		ch_switch_started_notify->ch_params =
+				csr_roaminfo->pSirSmeSwitchChInd->chan_params;
+		break;
 	default:
 		sap_err("SAP Unknown callback event = %d", sap_hddevent);
 		break;
@@ -5045,6 +5061,25 @@ bool sap_is_conc_sap_doing_scc_dfs(mac_handle_t mac_handle,
 	return false;
 }
 
+#ifdef WLAN_FEATURE_11BE_MLO
+static void
+sap_build_rnrie_config(struct start_bss_config *sap_bss_cfg,
+		       struct sap_config *config)
+{
+	/* RNRIE */
+	sap_bss_cfg->rnrie.length = config->rnrielen;
+	if (config->rnrielen)
+		qdf_mem_copy(sap_bss_cfg->rnrie.rnriedata,
+			     config->rnrie, config->rnrielen);
+}
+#else
+static void
+sap_build_rnrie_config(struct start_bss_config *sap_bss_cfg,
+		       struct sap_config *config)
+{
+}
+#endif
+
 /**
  * sap_build_start_bss_config() - Fill the start bss request for SAP
  * @sap_bss_cfg: start bss config
@@ -5132,6 +5167,7 @@ sap_build_start_bss_config(struct start_bss_config *sap_bss_cfg,
 		sap_bss_cfg->extendedRateSet.numRates =
 				config->extended_rates.numRates;
 	}
+	sap_build_rnrie_config(sap_bss_cfg, config);
 
 	return;
 }

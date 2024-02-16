@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -250,6 +250,8 @@
 #include "cdp_txrx_mon.h"
 #include "os_if_ll_sap.h"
 #include "wlan_crypto_obj_mgr_i.h"
+#include "wlan_p2p_ucfg_api.h"
+#include "wifi_pos_api.h"
 
 #ifdef MULTI_CLIENT_LL_SUPPORT
 #define WLAM_WLM_HOST_DRIVER_PORT_ID 0xFFFFFF
@@ -1727,6 +1729,35 @@ hdd_init_get_sta_in_ll_stats_config(struct hdd_adapter *adapter)
 {
 }
 #endif /* FEATURE_CLUB_LL_STATS_AND_GET_STATION */
+
+#ifdef WLAN_FEATURE_11BE_MLO
+
+static void
+hdd_init_link_state_cfg(struct hdd_config *config,
+			struct wlan_objmgr_psoc *psoc)
+{
+	config->link_state_cache_expiry_time =
+		cfg_get(psoc, CFG_LINK_STATE_CACHE_EXPIRY);
+}
+
+static void
+hdd_init_link_state_config(struct hdd_adapter *adapter)
+{
+	adapter->link_state_cached_timestamp = 0;
+}
+
+#else
+static void
+hdd_init_link_state_cfg(struct hdd_config *config,
+			struct wlan_objmgr_psoc *psoc)
+{
+}
+
+static void
+hdd_init_link_state_config(struct hdd_adapter *adapter)
+{
+}
+#endif /* WLAN_FEATURE_11BE_MLO */
 
 #ifdef WLAN_FEATURE_IGMP_OFFLOAD
 static void
@@ -5786,9 +5817,9 @@ bool hdd_is_dynamic_set_mac_addr_allowed(struct hdd_adapter *adapter)
 			hdd_info_rl("VDEV is not in disconnected state, set mac address isn't supported");
 			return false;
 		}
-		fallthrough;
-	case QDF_P2P_DEVICE_MODE:
 		return true;
+	case QDF_P2P_DEVICE_MODE:
+		return ucfg_is_p2p_device_dynamic_set_mac_addr_supported(adapter->hdd_ctx->psoc);
 	case QDF_SAP_MODE:
 		if (test_bit(SOFTAP_BSS_STARTED,
 			     &adapter->deflink->link_flags)) {
@@ -5807,13 +5838,14 @@ bool hdd_is_dynamic_set_mac_addr_allowed(struct hdd_adapter *adapter)
 int hdd_dynamic_mac_address_set(struct wlan_hdd_link_info *link_info,
 				struct qdf_mac_addr mac_addr,
 				struct qdf_mac_addr mld_addr,
-				bool update_self_peer)
+				bool update_self_peer,
+				bool skip_reattach)
 {
 	int ret;
 	void *cookie;
 	bool update_mld_addr;
 	uint32_t fw_resp_status;
-	QDF_STATUS status;
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	struct osif_request *request;
 	struct wlan_objmgr_vdev *vdev;
 	struct hdd_adapter *adapter = link_info->adapter;
@@ -5828,7 +5860,8 @@ int hdd_dynamic_mac_address_set(struct wlan_hdd_link_info *link_info,
 	if (!vdev)
 		return -EINVAL;
 
-	if (wlan_vdev_mlme_get_opmode(vdev) != QDF_P2P_DEVICE_MODE) {
+	if (!skip_reattach &&
+	    wlan_vdev_mlme_get_opmode(vdev) != QDF_P2P_DEVICE_MODE) {
 		status = ucfg_vdev_mgr_cdp_vdev_detach(vdev);
 		if (QDF_IS_STATUS_ERROR(status)) {
 			hdd_err("Failed to detach CDP vdev. Status:%d", status);
@@ -5838,6 +5871,8 @@ int hdd_dynamic_mac_address_set(struct wlan_hdd_link_info *link_info,
 	}
 	request = osif_request_alloc(&params);
 	if (!request) {
+		hdd_err("request alloc fail");
+		status = QDF_STATUS_E_NOMEM;
 		ret = -ENOMEM;
 		goto status_ret;
 	}
@@ -5898,18 +5933,17 @@ int hdd_dynamic_mac_address_set(struct wlan_hdd_link_info *link_info,
 
 	status = sme_update_vdev_mac_addr(vdev, mac_addr, mld_addr,
 					  update_self_peer, update_mld_addr,
-					  ret);
-
-	if (QDF_IS_STATUS_ERROR(status))
-		ret = qdf_status_to_os_return(status);
+					  ret, skip_reattach);
 
 status_ret:
 	if (QDF_IS_STATUS_ERROR(status)) {
-		hdd_err("Failed to attach CDP vdev. status:%d", status);
 		ret = qdf_status_to_os_return(status);
 		goto allow_suspend;
 	} else if (!ret) {
-		status = ucfg_dp_update_link_mac_addr(vdev, &mac_addr, false);
+		/* need to update mac address for dp vdev in the mlo sap case */
+		status = ucfg_dp_update_link_mac_addr(vdev, &mac_addr,
+						      skip_reattach);
+
 		if (QDF_IS_STATUS_ERROR(status)) {
 			ret = qdf_status_to_os_return(status);
 			hdd_err("DP link MAC update failed");
@@ -6948,6 +6982,7 @@ hdd_alloc_station_adapter(struct hdd_context *hdd_ctx, tSirMacAddr mac_addr,
 
 	qdf_atomic_init(&adapter->is_ll_stats_req_pending);
 	hdd_init_get_sta_in_ll_stats_config(adapter);
+	hdd_init_link_state_config(adapter);
 
 	return adapter;
 
@@ -7170,11 +7205,8 @@ static int hdd_vdev_destroy_event_wait(struct hdd_context *hdd_ctx,
 		if (cdp_mlo_dev_ctxt_detach(wlan_psoc_get_dp_handle(psoc),
 					    wlan_vdev_get_id(vdev),
 					    (uint8_t *)mld_addr)
-					    != QDF_STATUS_SUCCESS) {
+					    != QDF_STATUS_SUCCESS)
 			obj_mgr_err("Failed to detach DP vdev from DP MLO Dev ctxt");
-			QDF_BUG(0);
-			return QDF_STATUS_E_FAILURE;
-		}
 	}
 
 	/* close sme session (destroy vdev in firmware via legacy API) */
@@ -7323,6 +7355,7 @@ hdd_vdev_configure_rtt_params(struct wlan_objmgr_vdev *vdev)
 	struct dev_set_param vdevsetparam[MAX_VDEV_RTT_PARAMS] = {};
 	uint8_t index = 0;
 	WMI_FW_SUB_FEAT_CAPS wmi_fw_rtt_respr, wmi_fw_rtt_initr;
+	uint32_t responder_bits = 0, initiator_bits = 0, rsta_11az_support;
 
 	switch (wlan_vdev_mlme_get_opmode(vdev)) {
 	case QDF_STA_MODE:
@@ -7340,18 +7373,34 @@ hdd_vdev_configure_rtt_params(struct wlan_objmgr_vdev *vdev)
 	psoc = wlan_vdev_get_psoc(vdev);
 
 	ucfg_mlme_get_fine_time_meas_cap(psoc, &fine_time_meas_cap);
+	rsta_11az_support = wifi_pos_get_rsta_11az_ranging_cap();
+
+	if (fine_time_meas_cap & wmi_fw_rtt_respr)
+		responder_bits |= BIT(RESPONDER_RTT_11MC_SUPPORTED);
+
+	responder_bits |=
+		(rsta_11az_support &
+		 BIT(RESPONDER_RTT_11AZ_NTB_RANGING_SUPPORTED));
+
+	responder_bits |=
+		(rsta_11az_support &
+		 BIT(RESPONDER_RTT_11AZ_NTB_RANGING_SUPPORTED));
+
 	status = mlme_check_index_setparam(
 			vdevsetparam,
 			wmi_vdev_param_enable_disable_rtt_responder_role,
-			(fine_time_meas_cap & wmi_fw_rtt_respr), index++,
+			responder_bits, index++,
 			MAX_VDEV_RTT_PARAMS);
 	if (QDF_IS_STATUS_ERROR(status))
 		return status;
 
+	if (fine_time_meas_cap & wmi_fw_rtt_initr)
+		initiator_bits = wmi_fw_rtt_initr;
+
 	status = mlme_check_index_setparam(
 			vdevsetparam,
 			wmi_vdev_param_enable_disable_rtt_initiator_role,
-			(fine_time_meas_cap & wmi_fw_rtt_initr), index++,
+			initiator_bits, index++,
 			MAX_VDEV_RTT_PARAMS);
 	if (QDF_IS_STATUS_ERROR(status))
 		return status;
@@ -14147,6 +14196,9 @@ static int __hdd_psoc_idle_restart(struct hdd_context *hdd_ctx)
 
 	ret = hdd_wlan_start_modules(hdd_ctx, false);
 
+	if (!qdf_is_fw_down())
+		cds_set_recovery_in_progress(false);
+
 	hdd_soc_idle_restart_unlock();
 
 	return ret;
@@ -14546,6 +14598,7 @@ static void hdd_cfg_params_init(struct hdd_context *hdd_ctx)
 
 	config->exclude_selftx_from_cca_busy =
 			cfg_get(psoc, CFG_EXCLUDE_SELFTX_FROM_CCA_BUSY_TIME);
+	hdd_init_link_state_cfg(config, psoc);
 }
 
 #ifdef CONNECTION_ROAMING_CFG
@@ -15053,7 +15106,7 @@ int hdd_start_ap_adapter(struct hdd_adapter *adapter, bool rtnl_held)
 	 */
 	if (WLAN_HDD_GET_SAP_CTX_PTR(link_info)) {
 		is_ssr = true;
-	} else if (!hdd_sap_create_ctx(adapter)) {
+	} else if (!hdd_sap_create_ctx(link_info)) {
 		hdd_err("sap creation failed");
 		return qdf_status_to_os_return(QDF_STATUS_E_FAILURE);
 	}
@@ -17879,6 +17932,9 @@ int hdd_register_cb(struct hdd_context *hdd_ctx)
 	sme_async_oem_event_init(mac_handle,
 				 hdd_oem_event_async_cb);
 
+	sme_smem_oem_event_init(mac_handle,
+				hdd_oem_event_smem_cb);
+
 	sme_register_ssr_on_pagefault_cb(mac_handle, hdd_ssr_on_pagefault_cb);
 
 	hdd_exit();
@@ -17909,6 +17965,8 @@ void hdd_deregister_cb(struct hdd_context *hdd_ctx)
 	mac_handle = hdd_ctx->mac_handle;
 
 	sme_deregister_ssr_on_pagefault_cb(mac_handle);
+
+	sme_smem_oem_event_deinit(mac_handle);
 
 	sme_async_oem_event_deinit(mac_handle);
 

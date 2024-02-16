@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1221,6 +1221,17 @@ int pld_force_wake_request(struct device *dev);
 bool pld_is_direct_link_supported(struct device *dev);
 
 /**
+ * pld_audio_is_direct_link_supported() - Get whether direct_link is supported
+ *					  by Audio or not
+ * @dev: device
+ *
+ * Return: true if supported
+ *         false on failure or if not supported
+ */
+bool pld_audio_is_direct_link_supported(struct device *dev);
+
+
+/**
  * pld_force_wake_request_sync() - Request to awake MHI synchronously
  * @dev: device
  * @timeout_us: timeout in micro-sec request to wake
@@ -2132,4 +2143,55 @@ int pld_get_fw_lpass_shared_mem(struct device *dev, dma_addr_t *iova,
 	return -EINVAL;
 }
 #endif
+
+#ifdef FEATURE_OEM_DATA
+
+/**
+ * pld_oem_event_smem_start()- Start communication channel to smem DLKM
+ * @name: name of client
+ *
+ * Return: negative on error or ID on success
+ */
+int pld_oem_event_smem_start(char *name);
+
+/**
+ * pld_oem_event_smem_stop()- Stop communication channel to smem DLKM
+ * @id: smem ID
+ *
+ * Return: 0 on success else failure code
+ */
+int pld_oem_event_smem_stop(int id);
+
+/**
+ * pld_oem_event_smem_write()- Write to smem DLKM
+ * @id: smem ID
+ * @flags: flags for message
+ * @data: payload to send
+ *
+ * Return: 0 on success else failure code
+ */
+int pld_oem_event_smem_write(int id, int flags, const __u8 *data);
+
+#else
+
+static inline
+int pld_oem_event_smem_start(char *name)
+{
+	return 0;
+}
+
+static inline
+int pld_oem_event_smem_stop(int id)
+{
+	return 0;
+}
+
+static inline
+int pld_oem_event_smem_write(int id, int flags, const __u8 *data)
+{
+	return 0;
+}
+
+#endif
+
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -23,6 +23,7 @@
 #include "../../core/src/wlan_ll_lt_sap_main.h"
 #include "../../core/src/wlan_ll_lt_sap_bearer_switch.h"
 #include <wlan_ll_sap_ucfg_api.h>
+#include "wlan_ll_sap_api.h"
 
 QDF_STATUS ucfg_ll_sap_init(void)
 {
@@ -83,4 +84,36 @@ QDF_STATUS ucfg_ll_sap_psoc_enable(struct wlan_objmgr_psoc *psoc)
 QDF_STATUS ucfg_ll_sap_psoc_disable(struct wlan_objmgr_psoc *psoc)
 {
 	return ll_sap_psoc_disable(psoc);
+}
+
+void ucfg_ll_lt_sap_switch_bearer_for_p2p_go_start(struct wlan_objmgr_psoc *psoc,
+						   uint8_t vdev_id,
+						   qdf_freq_t oper_freq,
+						   enum QDF_OPMODE device_mode)
+{
+	ll_lt_sap_switch_bearer_for_p2p_go_start(psoc, vdev_id, oper_freq,
+						 device_mode);
+}
+
+void ucfg_ll_lt_sap_switch_bearer_on_p2p_go_complete(
+						struct wlan_objmgr_psoc *psoc,
+						uint8_t vdev_id,
+						enum QDF_OPMODE device_mode)
+{
+	ll_lt_sap_switch_bearer_on_p2p_go_complete(psoc, vdev_id, device_mode);
+}
+
+#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
+void ucfg_ll_lt_sap_get_target_tsf(struct wlan_objmgr_vdev *vdev,
+				   uint64_t *target_tsf)
+{
+	*target_tsf = wlan_ll_sap_get_target_tsf(vdev, TARGET_TSF_GATT_MSG);
+}
+#endif
+
+qdf_freq_t
+ucfg_ll_sap_get_valid_freq_for_csa(struct wlan_objmgr_psoc *psoc,
+				   uint8_t vdev_id, qdf_freq_t curr_freq)
+{
+	return ll_lt_sap_get_valid_freq(psoc, vdev_id, curr_freq);
 }

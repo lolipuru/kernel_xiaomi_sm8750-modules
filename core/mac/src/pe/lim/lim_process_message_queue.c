@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -529,7 +529,7 @@ static bool def_msg_decision(struct mac_context *mac_ctx,
 			status = lim_util_get_type_subtype(lim_msg->bodyptr,
 							   &type, &subtype);
 			if (QDF_IS_STATUS_SUCCESS(status) &&
-				(type == SIR_MAC_MGMT_FRAME) &&
+				(type == WLAN_FC0_TYPE_MGMT) &&
 				((subtype == SIR_MAC_MGMT_BEACON) ||
 				 (subtype == SIR_MAC_MGMT_PROBE_RSP)))
 				mgmt_pkt_defer = false;
@@ -1036,11 +1036,69 @@ static void lim_handle_unknown_a2_index_frames(struct mac_context *mac_ctx,
 	 * statements.
 	 */
 	if (LIM_IS_STA_ROLE(session_entry) &&
-		(mac_hdr->fc.type == SIR_MAC_MGMT_FRAME) &&
+		(mac_hdr->fc.type == WLAN_FC0_TYPE_MGMT) &&
 		(mac_hdr->fc.subType == SIR_MAC_MGMT_ACTION))
 		lim_process_action_frame(mac_ctx, rx_pkt_buffer, session_entry);
 #endif
 	return;
+}
+
+static bool
+lim_is_ignore_btm_frame(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
+			tSirMacFrameCtl fc, uint8_t *body, uint16_t frm_len)
+{
+	bool is_sta_roam_disabled_by_p2p, is_mbo_wo_pmf;
+	uint8_t action_id, category, token = 0;
+	tpSirMacActionFrameHdr action_hdr;
+	enum wlan_diag_btm_block_reason reason;
+
+	/*
+	 * Drop BTM frame received on STA interface if concurrent
+	 * P2P connection is active and p2p_disable_roam ini is
+	 * enabled. This will help to avoid scan triggered by
+	 * userspace after processing the BTM frame from AP so the
+	 * audio glitches are not seen in P2P connection.
+	 */
+	is_sta_roam_disabled_by_p2p = cfg_p2p_is_roam_config_disabled(psoc) &&
+		(policy_mgr_mode_specific_connection_count(psoc,
+							   PM_P2P_CLIENT_MODE,
+							   NULL) ||
+		 policy_mgr_mode_specific_connection_count(psoc,
+							   PM_P2P_GO_MODE,
+							   NULL));
+
+	is_mbo_wo_pmf = wlan_cm_is_mbo_ap_without_pmf(psoc, vdev_id);
+	if (!is_sta_roam_disabled_by_p2p && !is_mbo_wo_pmf)
+		return false;
+
+	action_hdr = (tpSirMacActionFrameHdr)body;
+
+	if (frm_len < sizeof(*action_hdr) || !action_hdr ||
+	    fc.type != WLAN_FC0_TYPE_MGMT || fc.subType != SIR_MAC_MGMT_ACTION)
+		return false;
+
+	action_id = action_hdr->actionID;
+	category = action_hdr->category;
+	if (category == ACTION_CATEGORY_WNM &&
+	    (action_id == WNM_BSS_TM_QUERY ||
+	     action_id == WNM_BSS_TM_REQUEST ||
+	     action_id == WNM_BSS_TM_RESPONSE)) {
+		if (frm_len >= sizeof(*action_hdr) + 1)
+			token = *(body + sizeof(*action_hdr));
+		if (is_mbo_wo_pmf) {
+			pe_debug("Drop the BTM frame as it's received from MBO AP without PMF, vdev %d",
+				 vdev_id);
+			reason = WLAN_DIAG_BTM_BLOCK_MBO_WO_PMF;
+		} else {
+			pe_debug("Drop the BTM frame as p2p session is active, vdev %d",
+				 vdev_id);
+			reason = WLAN_DIAG_BTM_BLOCK_UNSUPPORTED_P2P_CONC;
+		}
+		wlan_cm_roam_btm_block_event(vdev_id, token, reason);
+		return true;
+	}
+
+	return false;
 }
 
 /**
@@ -1069,15 +1127,13 @@ lim_check_mgmt_registered_frames(struct mac_context *mac_ctx, uint8_t *buff_desc
 	uint16_t frm_len;
 	uint8_t type, sub_type;
 	bool match = false;
-	tpSirMacActionFrameHdr action_hdr;
-	uint8_t actionID, category, vdev_id = WLAN_INVALID_VDEV_ID;
+	uint8_t vdev_id = WLAN_INVALID_VDEV_ID;
 	QDF_STATUS qdf_status;
 
 	hdr = WMA_GET_RX_MAC_HEADER(buff_desc);
 	fc = hdr->fc;
 	frm_type = (fc.type << 2) | (fc.subType << 4);
 	body = WMA_GET_RX_MPDU_DATA(buff_desc);
-	action_hdr = (tpSirMacActionFrameHdr)body;
 	frm_len = WMA_GET_RX_PAYLOAD_LEN(buff_desc);
 
 	qdf_mutex_acquire(&mac_ctx->lim.lim_frame_register_lock);
@@ -1088,13 +1144,14 @@ lim_check_mgmt_registered_frames(struct mac_context *mac_ctx, uint8_t *buff_desc
 	while (mgmt_frame) {
 		type = (mgmt_frame->frameType >> 2) & 0x03;
 		sub_type = (mgmt_frame->frameType >> 4) & 0x0f;
-		if ((type == SIR_MAC_MGMT_FRAME)
-		    && (fc.type == SIR_MAC_MGMT_FRAME)
-		    && (sub_type == SIR_MAC_MGMT_RESERVED15)) {
+		if (type == WLAN_FC0_TYPE_MGMT &&
+		    fc.type == WLAN_FC0_TYPE_MGMT &&
+		    sub_type == SIR_MAC_MGMT_RESERVED15) {
 			pe_debug("rcvd frm match for SIR_MAC_MGMT_RESERVED15");
 			match = true;
 			break;
 		}
+
 		if (mgmt_frame->frameType == frm_type) {
 			if (mgmt_frame->matchLen <= 0) {
 				match = true;
@@ -1122,36 +1179,11 @@ lim_check_mgmt_registered_frames(struct mac_context *mac_ctx, uint8_t *buff_desc
 	if (match) {
 		pe_debug("rcvd frame match with registered frame params");
 
-		/*
-		 * Drop BTM frame received on STA interface if concurrent
-		 * P2P connection is active and p2p_disable_roam ini is
-		 * enabled. This will help to avoid scan triggered by
-		 * userspace after processing the BTM frame from AP so the
-		 * audio glitches are not seen in P2P connection.
-		 */
 		if (session_entry && LIM_IS_STA_ROLE(session_entry) &&
-		    ((cfg_p2p_is_roam_config_disabled(mac_ctx->psoc) &&
-		      (policy_mgr_mode_specific_connection_count(mac_ctx->psoc,
-						PM_P2P_CLIENT_MODE, NULL) ||
-		       policy_mgr_mode_specific_connection_count(mac_ctx->psoc,
-						PM_P2P_GO_MODE, NULL))) ||
-		     wlan_cm_is_mbo_ap_without_pmf(mac_ctx->psoc,
-						   session_entry->vdev_id))) {
-			if (frm_len >= sizeof(*action_hdr) && action_hdr &&
-			    fc.type == SIR_MAC_MGMT_FRAME &&
-			    fc.subType == SIR_MAC_MGMT_ACTION) {
-				actionID = action_hdr->actionID;
-				category = action_hdr->category;
-				if (category == ACTION_CATEGORY_WNM &&
-				    (actionID == WNM_BSS_TM_QUERY ||
-				     actionID == WNM_BSS_TM_REQUEST ||
-				     actionID == WNM_BSS_TM_RESPONSE)) {
-					pe_debug("Drop the BTM frame as p2p session is active or rcvd from MBO AP without PMF, vdev %d",
-						 session_entry->vdev_id);
-					return match;
-				}
-			}
-		}
+		    lim_is_ignore_btm_frame(mac_ctx->psoc,
+					    session_entry->vdev_id, fc, body,
+					    frm_len))
+			return match;
 
 		/*
 		 * Some frames like GAS_INITIAL_REQ are registered with
@@ -1170,9 +1202,9 @@ lim_check_mgmt_registered_frames(struct mac_context *mac_ctx, uint8_t *buff_desc
 			WMA_GET_RX_RSSI_NORMALIZED(buff_desc),
 			RXMGMT_FLAG_NONE);
 
-		if ((type == SIR_MAC_MGMT_FRAME)
-		    && (fc.type == SIR_MAC_MGMT_FRAME)
-		    && (sub_type == SIR_MAC_MGMT_RESERVED15))
+		if (type == WLAN_FC0_TYPE_MGMT &&
+		    fc.type == WLAN_FC0_TYPE_MGMT &&
+		    sub_type == SIR_MAC_MGMT_RESERVED15)
 			/* These packets needs to be processed by PE/SME
 			 * as well as HDD.If it returns true here,
 			 * the packet is forwarded to HDD only.
@@ -1199,7 +1231,7 @@ lim_check_mgmt_registered_frames(struct mac_context *mac_ctx, uint8_t *buff_desc
 static bool
 lim_is_mgmt_frame_loggable(uint8_t type, uint8_t subtype)
 {
-	if (type != SIR_MAC_MGMT_FRAME)
+	if (type != WLAN_FC0_TYPE_MGMT)
 		return false;
 
 	switch (subtype) {
@@ -1285,7 +1317,7 @@ lim_handle80211_frames(struct mac_context *mac, struct scheduler_msg *limMsg,
 	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_PE, QDF_TRACE_LEVEL_ERROR, pHdr,
 			   WMA_GET_RX_MPDU_HEADER_LEN(pRxPacketInfo));
 #endif
-	if (fc.type == SIR_MAC_MGMT_FRAME) {
+	if (fc.type == WLAN_FC0_TYPE_MGMT) {
 		if ((mac->mlme_cfg->gen.debug_packet_log &
 		    DEBUG_PKTLOG_TYPE_MGMT) &&
 		    (fc.subType != SIR_MAC_MGMT_PROBE_REQ) &&
@@ -1374,7 +1406,7 @@ lim_handle80211_frames(struct mac_context *mac, struct scheduler_msg *limMsg,
 	}
 
 	switch (fc.type) {
-	case SIR_MAC_MGMT_FRAME:
+	case WLAN_FC0_TYPE_MGMT:
 	{
 		/* Received Management frame */
 		switch (fc.subType) {
@@ -1490,7 +1522,7 @@ lim_handle80211_frames(struct mac_context *mac, struct scheduler_msg *limMsg,
 
 	}
 	break;
-	case SIR_MAC_DATA_FRAME:
+	case WLAN_FC0_TYPE_DATA:
 	{
 	}
 	break;
@@ -2123,6 +2155,11 @@ static void lim_process_messages(struct mac_context *mac_ctx,
 		msg->bodyptr = NULL;
 		break;
 	case eWNI_SME_SAP_CH_WIDTH_UPDATE_REQ:
+		lim_process_sme_req_messages(mac_ctx, msg);
+		qdf_mem_free((void *)msg->bodyptr);
+		msg->bodyptr = NULL;
+		break;
+	case WNI_SME_UPDATE_RNR_IES:
 		lim_process_sme_req_messages(mac_ctx, msg);
 		qdf_mem_free((void *)msg->bodyptr);
 		msg->bodyptr = NULL;

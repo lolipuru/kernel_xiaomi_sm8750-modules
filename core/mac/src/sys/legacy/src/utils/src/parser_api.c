@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -60,6 +60,11 @@
 #include <wlan_mlo_t2lm.h>
 #endif
 #include "wlan_mlo_mgr_link_switch.h"
+#include "wlan_ll_sap_api.h"
+
+#ifdef WLAN_FEATURE_11BE
+#include "wlan_mlo_mgr_setup.h"
+#endif
 
 #define RSN_OUI_SIZE 4
 /* ////////////////////////////////////////////////////////////////////// */
@@ -160,7 +165,8 @@ int find_ie_location(struct mac_context *mac, tpSirRSNie pRsnIe, uint8_t EID)
 QDF_STATUS
 populate_dot11f_capabilities(struct mac_context *mac,
 			     tDot11fFfCapabilities *pDot11f,
-			     struct pe_session *pe_session)
+			     struct pe_session *pe_session,
+			     bool update_cu)
 {
 	uint16_t cfg;
 	QDF_STATUS nSirStatus;
@@ -171,7 +177,13 @@ populate_dot11f_capabilities(struct mac_context *mac,
 			   nSirStatus);
 		return nSirStatus;
 	}
+	if (update_cu) {
+	/* criticalUpdateFlag bit */
+		tpSirMacCapabilityInfo pcap_info;
 
+		pcap_info = (tpSirMacCapabilityInfo)&cfg;
+		lim_update_cu_flag(pcap_info, pe_session);
+	}
 	swap_bit_field16(cfg, (uint16_t *) pDot11f);
 
 	return QDF_STATUS_SUCCESS;
@@ -1076,6 +1088,9 @@ populate_dot11f_ht_caps(struct mac_context *mac,
 					(pDot11f->supportedMCSSet[1] >>
 						disable_high_ht_mcs_2x2);
 		}
+
+		wlan_ll_lt_sap_get_mcs(mac->psoc, pe_session->vdev_id,
+				       pDot11f->supportedMCSSet);
 	}
 
 	/* If STA mode, session supported NSS > 1 and
@@ -1727,6 +1742,29 @@ void populate_dot11f_edca_pifs_param_set(struct mac_context *mac,
 			     sizeof(*pparam));
 	}
 }
+
+#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
+void populate_dot11f_ecsa_param_set_for_ll_sap(
+			struct wlan_objmgr_vdev *vdev,
+			tDot11fIEqcn_ie *qcn_ie)
+{
+	uint64_t target_tsf;
+
+	if (!vdev)
+		return;
+
+	qcn_ie->present = 1;
+	qcn_ie->ecsa_target_tsf_info_attr.present = 1;
+
+	qcn_ie->ecsa_target_tsf_info_attr.twt_ch_sw_mode = 0;
+
+	target_tsf = wlan_ll_sap_get_target_tsf(vdev,
+						TARGET_TSF_ECSA_ACTION_FRAME);
+
+	qdf_mem_copy(&qcn_ie->ecsa_target_tsf_info_attr.target_tsf, &target_tsf,
+		     sizeof(target_tsf));
+}
+#endif
 
 void populate_dot11f_qcn_ie(struct mac_context *mac,
 			    struct pe_session *pe_session,
@@ -7739,7 +7777,9 @@ populate_dot11f_he_operation(struct mac_context *mac_ctx,
 
 	he_op->present = 1;
 	he_op->vht_oper_present = 0;
-	if (session->he_6ghz_band) {
+	if (session->he_6ghz_band ||
+	    (policy_mgr_is_vdev_ll_lt_sap(mac_ctx->psoc, session->vdev_id) &&
+	    WLAN_REG_IS_6GHZ_CHAN_FREQ(session->curr_op_freq))) {
 		he_op->oper_info_6g_present = 1;
 		if (session->bssType != eSIR_INFRA_AP_MODE) {
 			he_op->oper_info_6g.info.ch_width = session->ch_width;
@@ -10440,6 +10480,10 @@ QDF_STATUS populate_dot11f_assoc_rsp_mlo_ie(struct mac_context *mac_ctx,
 	uint16_t len_remaining;
 	uint16_t presence_bitmap = 0;
 	QDF_STATUS status;
+	uint16_t vdev_count;
+	struct wlan_objmgr_vdev *wlan_vdev_list[WLAN_UMAC_MLO_MAX_VDEVS];
+	int i = 0;
+	bool emlsr_cap;
 
 	if (!mac_ctx || !session || !frm)
 		return QDF_STATUS_E_NULL_VALUE;
@@ -10472,11 +10516,50 @@ QDF_STATUS populate_dot11f_assoc_rsp_mlo_ie(struct mac_context *mac_ctx,
 
 	mlo_ie->bss_param_change_cnt_present = 1;
 	presence_bitmap |= WLAN_ML_BV_CTRL_PBM_BSSPARAMCHANGECNT_P;
+	/* get from fw side */
 	mlo_ie->bss_param_change_count =
 			session->mlo_link_info.link_ie.bss_param_change_cnt;
 	common_info_len += WLAN_ML_BSSPARAMCHNGCNT_SIZE;
 
-	mlo_ie->mld_capab_and_op_present = 0;
+	/* Check if HW supports eMLSR mode */
+	emlsr_cap = policy_mgr_is_hw_emlsr_capable(mac_ctx->psoc);
+
+	if (emlsr_cap) {
+		/*
+		 * wlan_mlme_get_eml_params not applicable for sap.
+		 * will be override while new wmi service bit is ready
+		 * to indicate mlo sap support emlsr wlan client.
+		 * Now give the default zero firstly.
+		 */
+		mlo_ie->eml_capab_present = 1;
+		presence_bitmap |= WLAN_ML_BV_CTRL_PBM_EMLCAP_P;
+		common_info_len += WLAN_ML_BV_CINFO_EMLCAP_SIZE;
+		mlo_ie->eml_capabilities_info.emlmr_support = 0;
+		mlo_ie->eml_capabilities_info.transition_timeout = 0;
+		mlo_ie->eml_capabilities_info.emlsr_padding_delay = 0;
+		mlo_ie->eml_capabilities_info.emlsr_transition_delay = 0;
+	}
+
+	mlo_ie->mld_capab_and_op_present = 1;
+	presence_bitmap |= WLAN_ML_BV_CTRL_PBM_MLDCAPANDOP_P;
+
+	lim_get_mlo_vdev_list(session, &vdev_count, wlan_vdev_list);
+	for (i = 0; i < vdev_count; i++) {
+		if (!wlan_vdev_list[i])
+			continue;
+		lim_mlo_release_vdev_ref(wlan_vdev_list[i]);
+	}
+
+	/* max number of simultaneous links */
+	/*
+	 * Set to a value between 0 and 14, which is the maximum number
+	 * of affiliated STAs of the MLD that support simultaneous transmission
+	 * or reception of frames minus 1.
+	 */
+	mlo_ie->mld_capab_and_op_info.max_simultaneous_link_num =
+							vdev_count - 1;
+	common_info_len += WLAN_ML_BV_CINFO_MLDCAPANDOP_SIZE;
+
 	mlo_ie->mld_id_present = 0;
 	mlo_ie->ext_mld_capab_and_op_present = 0;
 
@@ -10503,6 +10586,48 @@ QDF_STATUS populate_dot11f_assoc_rsp_mlo_ie(struct mac_context *mac_ctx,
 
 	*p_ml_ie++ = mlo_ie->bss_param_change_count;
 	len_remaining--;
+
+	if (mlo_ie->eml_capab_present) {
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSRSUPPORT_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSRSUPPORT_BITS,
+		     mlo_ie->eml_capabilities_info.emlsr_support);
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSR_PADDINGDELAY_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSR_PADDINGDELAY_BITS,
+		     mlo_ie->eml_capabilities_info.emlsr_padding_delay);
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSRTRANSDELAY_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSRTRANSDELAY_BITS,
+		     mlo_ie->eml_capabilities_info.emlsr_transition_delay);
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLMRSUPPORT_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLMRSUPPORT_BITS,
+		     mlo_ie->eml_capabilities_info.emlmr_support);
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLMRDELAY_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLMRDELAY_BITS,
+		     mlo_ie->eml_capabilities_info.emlmr_delay);
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_TRANSTIMEOUT_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_TRANSTIMEOUT_BITS,
+		     mlo_ie->eml_capabilities_info.transition_timeout);
+
+		p_ml_ie += WLAN_ML_BV_CINFO_EMLCAP_SIZE;
+		len_remaining -= WLAN_ML_BV_CINFO_EMLCAP_SIZE;
+	}
+
+	pe_debug("EMLSR support: %d, padding delay: %d, transition delay: %d",
+		 mlo_ie->eml_capabilities_info.emlsr_support,
+		 mlo_ie->eml_capabilities_info.emlsr_padding_delay,
+		 mlo_ie->eml_capabilities_info.emlsr_transition_delay);
+
+	QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_MLDCAPANDOP_MAXSIMULLINKS_IDX,
+		     WLAN_ML_BV_CINFO_MLDCAPANDOP_MAXSIMULLINKS_BITS,
+		     mlo_ie->mld_capab_and_op_info.max_simultaneous_link_num);
+	p_ml_ie += WLAN_ML_BV_CINFO_MLDCAPANDOP_SIZE;
+	len_remaining -= WLAN_ML_BV_CINFO_MLDCAPANDOP_SIZE;
 
 	mlo_ie->num_data = p_ml_ie - mlo_ie->data;
 
@@ -10556,6 +10681,12 @@ QDF_STATUS populate_dot11f_assoc_rsp_mlo_ie(struct mac_context *mac_ctx,
 			WLAN_ML_BV_LINFO_PERSTAPROF_STACTRL_MACADDRP_IDX,
 			WLAN_ML_BV_LINFO_PERSTAPROF_STACTRL_MACADDRP_BITS,
 			1);
+		if (mlo_get_tsf_sync_support())
+			QDF_SET_BITS(
+				*(uint16_t *)sta_data,
+				WLAN_ML_BV_LINFO_PERSTAPROF_STACTRL_TSFOFFSETP_IDX,
+				WLAN_ML_BV_LINFO_PERSTAPROF_STACTRL_TSFOFFSETP_BITS,
+				1);
 		QDF_SET_BITS(
 			*(uint16_t *)sta_data,
 			WLAN_ML_BV_LINFO_PERSTAPROF_STACTRL_BCNINTP_IDX,
@@ -10566,13 +10697,20 @@ QDF_STATUS populate_dot11f_assoc_rsp_mlo_ie(struct mac_context *mac_ctx,
 			WLAN_ML_BV_LINFO_PERSTAPROF_STACTRL_DTIMINFOP_IDX,
 			WLAN_ML_BV_LINFO_PERSTAPROF_STACTRL_DTIMINFOP_BITS,
 			1);
+		QDF_SET_BITS(
+			*(uint16_t *)sta_data,
+			WLAN_ML_BV_LINFO_PERSTAPROF_STACTRL_BSSPARAMCHNGCNTP_IDX,
+			WLAN_ML_BV_LINFO_PERSTAPROF_STACTRL_BSSPARAMCHNGCNTP_BITS,
+			1);
+
 		/* sta control */
 		sta_data += 2;
 		sta_len_left -= 2;
 
 		/*
 		 * 1 Bytes for STA Info Length + 6 bytes for STA MAC Address +
-		 * 2 Bytes for Becon Interval + 2 Bytes for DTIM Info
+		 * 2 Bytes for Becon Interval + 2 Bytes for DTIM Info +
+		 * 8 Bytes for TSF Offset + 1 byte BPCC
 		 */
 		len = WLAN_ML_BV_LINFO_PERSTAPROF_STAINFO_LENGTH_SIZE +
 		      QDF_MAC_ADDR_SIZE + WLAN_BEACONINTERVAL_LEN +
@@ -10593,11 +10731,35 @@ QDF_STATUS populate_dot11f_assoc_rsp_mlo_ie(struct mac_context *mac_ctx,
 			link_session->beaconParams.beaconInterval;
 		sta_data += WLAN_BEACONINTERVAL_LEN;
 		sta_len_left -= WLAN_BEACONINTERVAL_LEN;
-		/* DTIM populated by FW */
-		sta_data += sizeof(
-			struct wlan_ml_bv_linfo_perstaprof_stainfo_dtiminfo);
-		sta_len_left -= sizeof(
-			struct wlan_ml_bv_linfo_perstaprof_stainfo_dtiminfo);
+
+		/* TSF offset is zero if fw support TSF sync */
+		if (mlo_get_tsf_sync_support()) {
+			/* TSF offset */
+			*(u64 *)sta_data = 0;
+			sta_data += WLAN_TIMESTAMP_LEN;
+			sta_len_left -= WLAN_TIMESTAMP_LEN;
+		}
+
+		/* DTIM count always set 0, host is not aware of DTIM counter */
+		*(uint8_t *)sta_data = 0;
+		sta_data += WLAN_DTIMCOUNT_LEN;
+		sta_len_left -= WLAN_DTIMCOUNT_LEN;
+
+		*(uint8_t *)sta_data = link_session->dtimPeriod;
+		sta_data += WLAN_DTIMPERIOD_LEN;
+		sta_len_left -= WLAN_DTIMPERIOD_LEN;
+
+		/* Update BPCC which is from (Re)assoc req mgmt rx event */
+		*(uint8_t *)sta_data =
+			link_session->mlo_link_info.link_ie.bss_param_change_cnt;
+		sta_data += WLAN_ML_BSSPARAMCHNGCNT_SIZE;
+		sta_len_left -= WLAN_ML_BSSPARAMCHNGCNT_SIZE;
+
+		/* update cu flag */
+		if (link_session->mlo_link_info.bss_param_change)
+			link_ie->link_cap.criticalUpdateFlag = 1;
+		else
+			link_ie->link_cap.criticalUpdateFlag = 0;
 		/* Capabilities */
 		dot11f_pack_ff_capabilities(mac_ctx, &link_ie->link_cap,
 					    sta_data);
@@ -11042,7 +11204,6 @@ QDF_STATUS populate_dot11f_assoc_rsp_mlo_ie(struct mac_context *mac_ctx,
 
 no_partner:
 	mlo_ie->num_sta_profile = num_sta_pro;
-	mlo_ie->mld_capab_and_op_info.max_simultaneous_link_num = num_sta_pro;
 	return QDF_STATUS_SUCCESS;
 }
 
@@ -11054,7 +11215,7 @@ QDF_STATUS populate_dot11f_bcn_mlo_ie(struct mac_context *mac_ctx,
 	struct wlan_mlo_ie *mlo_ie;
 	struct wlan_mlo_sta_profile *sta_pro;
 	struct mlo_link_ie *link_ie;
-	uint16_t vdev_count;
+	uint16_t vdev_count = 0;
 	struct wlan_objmgr_vdev *wlan_vdev_list[WLAN_UMAC_MLO_MAX_VDEVS];
 	struct pe_session *link_session;
 	uint16_t tmp_offset = 0;
@@ -11069,6 +11230,7 @@ QDF_STATUS populate_dot11f_bcn_mlo_ie(struct mac_context *mac_ctx,
 	uint16_t presence_bitmap = 0;
 	bool sta_pro_present;
 	QDF_STATUS status;
+	bool emlsr_cap;
 
 	if (!mac_ctx || !session)
 		return QDF_STATUS_E_NULL_VALUE;
@@ -11096,20 +11258,49 @@ QDF_STATUS populate_dot11f_bcn_mlo_ie(struct mac_context *mac_ctx,
 	mlo_ie->link_id = wlan_vdev_get_link_id(session->vdev);
 	tmp_offset += 1; /* link id */
 	common_info_length += WLAN_ML_BV_CINFO_LINKIDINFO_SIZE;
+
 	mlo_ie->bss_param_change_cnt_present = 1;
 	presence_bitmap |= WLAN_ML_BV_CTRL_PBM_BSSPARAMCHANGECNT_P;
+	/* fw will update it */
 	mlo_ie->bss_param_change_count =
 			session->mlo_link_info.link_ie.bss_param_change_cnt;
 	tmp_offset += 1; /* bss parameters change count */
 	common_info_length += WLAN_ML_BSSPARAMCHNGCNT_SIZE;
-	mlo_ie->mld_capab_and_op_present = 0;
-	mlo_ie->mld_id_present = 0;
-	mlo_ie->ext_mld_capab_and_op_present = 0;
-	sch_info->num_links = 0;
+	/* Check if HW supports eMLSR mode */
+	emlsr_cap = policy_mgr_is_hw_emlsr_capable(mac_ctx->psoc);
 
+
+	if (emlsr_cap) {
+		/* wlan_mlme_get_eml_params not applicable for sap */
+		mlo_ie->eml_capab_present = 1;
+		presence_bitmap |= WLAN_ML_BV_CTRL_PBM_EMLCAP_P;
+		tmp_offset += 2;
+		common_info_length += WLAN_ML_BV_CINFO_EMLCAP_SIZE;
+		mlo_ie->eml_capabilities_info.emlmr_support = 0;
+		mlo_ie->eml_capabilities_info.transition_timeout = 0;
+		mlo_ie->eml_capabilities_info.emlsr_padding_delay = 0;
+		mlo_ie->eml_capabilities_info.emlsr_transition_delay = 0;
+	}
+
+	mlo_ie->mld_capab_and_op_present = 1;
+	presence_bitmap |= WLAN_ML_BV_CTRL_PBM_MLDCAPANDOP_P;
 	lim_get_mlo_vdev_list(session, &vdev_count, wlan_vdev_list);
+	/* max number of simultaneous links */
+
+	/*
+	 * Set to a value between 0 and 14, which is the maximum number
+	 * of affiliated STAs of the MLD that support simultaneous transmission
+	 * or reception of frames minus 1.
+	 */
 	mlo_ie->mld_capab_and_op_info.max_simultaneous_link_num =
 							vdev_count - 1;
+	tmp_offset += 2; /* mld capabilities and operations */
+	common_info_length += WLAN_ML_BV_CINFO_MLDCAPANDOP_SIZE;
+
+	mlo_ie->mld_id_present = 0;
+
+	mlo_ie->ext_mld_capab_and_op_present = 0;
+	sch_info->num_links = 0;
 
 	mlo_ie->common_info_length = common_info_length;
 	sch_info->mlo_ie_link_info_ofst = tmp_offset;
@@ -11146,6 +11337,48 @@ QDF_STATUS populate_dot11f_bcn_mlo_ie(struct mac_context *mac_ctx,
 
 	*p_ml_ie++ = mlo_ie->bss_param_change_count;
 	len_remaining--;
+
+	if (mlo_ie->eml_capab_present) {
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSRSUPPORT_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSRSUPPORT_BITS,
+		     mlo_ie->eml_capabilities_info.emlsr_support);
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSR_PADDINGDELAY_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSR_PADDINGDELAY_BITS,
+		     mlo_ie->eml_capabilities_info.emlsr_padding_delay);
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSRTRANSDELAY_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLSRTRANSDELAY_BITS,
+		     mlo_ie->eml_capabilities_info.emlsr_transition_delay);
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLMRSUPPORT_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLMRSUPPORT_BITS,
+		     mlo_ie->eml_capabilities_info.emlmr_support);
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLMRDELAY_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_EMLMRDELAY_BITS,
+		     mlo_ie->eml_capabilities_info.emlmr_delay);
+		QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_EMLCAP_TRANSTIMEOUT_IDX,
+		     WLAN_ML_BV_CINFO_EMLCAP_TRANSTIMEOUT_BITS,
+		     mlo_ie->eml_capabilities_info.transition_timeout);
+
+		p_ml_ie += WLAN_ML_BV_CINFO_EMLCAP_SIZE;
+		len_remaining -= WLAN_ML_BV_CINFO_EMLCAP_SIZE;
+	}
+
+	pe_debug("EMLSR support: %d, padding delay: %d, transition delay: %d",
+		 mlo_ie->eml_capabilities_info.emlsr_support,
+		 mlo_ie->eml_capabilities_info.emlsr_padding_delay,
+		 mlo_ie->eml_capabilities_info.emlsr_transition_delay);
+
+	QDF_SET_BITS(*(uint16_t *)p_ml_ie,
+		     WLAN_ML_BV_CINFO_MLDCAPANDOP_MAXSIMULLINKS_IDX,
+		     WLAN_ML_BV_CINFO_MLDCAPANDOP_MAXSIMULLINKS_BITS,
+		     mlo_ie->mld_capab_and_op_info.max_simultaneous_link_num);
+	p_ml_ie += WLAN_ML_BV_CINFO_MLDCAPANDOP_SIZE;
+	len_remaining -= WLAN_ML_BV_CINFO_MLDCAPANDOP_SIZE;
 
 	mlo_ie->num_data = p_ml_ie - mlo_ie->data;
 
@@ -12356,11 +12589,19 @@ QDF_STATUS populate_dot11f_btm_extended_caps(struct mac_context *mac_ctx,
 	if (QDF_IS_STATUS_ERROR(status)) {
 		p_ext_cap->bss_transition = 0;
 		pe_debug("Disable btm for roaming not suppprted");
-	} else {
-		p_ext_cap->bss_transition = 1;
-		pe_debug("Enable btm for roaming suppprted");
 	}
 
+	if (!pe_session->lim_join_req)
+		goto compute_len;
+
+	if (p_ext_cap->bss_transition && !cm_is_open_mode(pe_session->vdev) &&
+	    pe_session->lim_join_req->bssDescription.mbo_oce_enabled_ap &&
+	    !pe_session->limRmfEnabled) {
+		pe_debug("Disable BTM as the MBO AP doesn't support PMF");
+		p_ext_cap->bss_transition = 0;
+	}
+
+compute_len:
 	dot11f->num_bytes = lim_compute_ext_cap_ie_length(dot11f);
 	if (!dot11f->num_bytes) {
 		dot11f->present = 0;
@@ -13090,8 +13331,7 @@ QDF_STATUS populate_dot11f_mlo_ie(struct mac_context *mac_ctx,
 	wlan_mlme_get_emlsr_mode_enabled(mac_ctx->psoc, &emlsr_enabled);
 
 	/* check if aux elmsr capable */
-	aux_emlsr_support = wlan_mlme_is_aux_emlsr_support(mac_ctx->psoc,
-							   WLAN_MLME_HW_MODE_MAX);
+	aux_emlsr_support = wlan_mlme_is_aux_emlsr_support(mac_ctx->psoc);
 
 	/* Check if STA supports EMLSR and vendor command prefers EMLSR mode */
 	if ((emlsr_cap && emlsr_enabled) ||

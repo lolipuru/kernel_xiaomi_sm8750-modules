@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -585,7 +585,7 @@ struct register_mgmt_frame {
 	bool registerFrame;
 	uint16_t frameType;
 	uint16_t matchLen;
-	uint8_t matchData[1];
+	QDF_FLEX_ARRAY(uint8_t, matchData);
 };
 
 /* / Generic type for sending a response message */
@@ -840,7 +840,7 @@ struct bss_description {
 	uint32_t is_single_pmk;
 #endif
 	/* Please keep the structure 4 bytes aligned above the ieFields */
-	uint32_t ieFields[1];
+	QDF_FLEX_ARRAY(uint32_t, ieFields);
 };
 
 /* / Definition for response message to previously */
@@ -1804,7 +1804,7 @@ typedef struct sSirSmeMgmtFrameInd {
 	uint8_t frameType;
 	int8_t rxRssi;
 	enum rxmgmt_flags rx_flags;
-	uint8_t frameBuf[1];    /* variable */
+	QDF_FLEX_ARRAY(uint8_t, frameBuf);
 } tSirSmeMgmtFrameInd, *tpSirSmeMgmtFrameInd;
 
 typedef void (*sir_mgmt_frame_ind_callback)(tSirSmeMgmtFrameInd *frame_ind);
@@ -1826,7 +1826,7 @@ typedef struct sSirSmeUnprotMgmtFrameInd {
 	uint8_t sessionId;
 	uint8_t frameType;
 	uint8_t frameLen;
-	uint8_t frameBuf[1];    /* variable */
+	QDF_FLEX_ARRAY(uint8_t, frameBuf);
 } tSirSmeUnprotMgmtFrameInd, *tpSirSmeUnprotMgmtFrameInd;
 
 #ifdef WLAN_FEATURE_EXTWOW_SUPPORT
@@ -2146,7 +2146,7 @@ typedef struct sSirUpdateChan {
 	uint8_t vht_24_en;
 	bool he_en;
 	bool eht_en;
-	tSirUpdateChanParam chanParam[1];
+	QDF_FLEX_ARRAY(tSirUpdateChanParam, chanParam);
 } tSirUpdateChanList, *tpSirUpdateChanList;
 
 typedef enum eSirAddonPsReq {
@@ -2316,6 +2316,29 @@ typedef struct sSirUpdateIEsInd {
 	tSirUpdateIE updateIE;
 	eUpdateIEsType updateType;
 } tSirUpdateIEsInd, *tpSirUpdateIEsInd;
+
+/* struct ssirupdaternrie - RNRIE related information
+ * @vdev_id: vdev id
+ * @ieBufferlength: ie buffer actual length
+ * @piebuffer: ie buffer pointer
+ */
+struct ssirupdaternrie {
+	uint16_t vdev_id;
+	uint16_t iebufferlength;
+	uint8_t *piebuffer;
+};
+
+/* struct ssirupdaternriesind - Message format to update RNRIE message
+ * sent to PE.
+ * @msgtype: message type
+ * @msglen: message length
+ * @updateie: rnrie related information data structure
+ */
+struct ssirupdaternriesind {
+	uint16_t msgtype;
+	uint16_t msglen;
+	struct ssirupdaternrie updateie;
+};
 
 /* Message format for requesting channel switch announcement to lower layers */
 typedef struct sSirDfsCsaIeRequest {
@@ -2871,7 +2894,7 @@ typedef struct {
 
 	uint32_t peer_event_number;
 	/* Variable  length field - Do not add anything after this */
-	uint8_t results[0];
+	uint8_t results[];
 } tSirLLStatsResults, *tpSirLLStatsResults;
 
 #ifdef WLAN_FEATURE_LINK_LAYER_STATS
@@ -3105,7 +3128,7 @@ struct wifi_peer_info {
 		uint32_t power_saving;
 		uint32_t num_rate;
 	};
-	struct wifi_rate_stat rate_stats[0];
+	struct wifi_rate_stat rate_stats[];
 };
 
 /**
@@ -3149,7 +3172,7 @@ struct wifi_interface_stats {
  */
 struct wifi_peer_stat {
 	uint32_t num_peers;
-	struct wifi_peer_info peer_info[0];
+	struct wifi_peer_info peer_info[];
 };
 
 /* wifi statistics bitmap  for getting statistics */
@@ -5005,6 +5028,7 @@ struct channel_change_req {
  * @beacon_tx_rate: Tx rate for beacon
  * @cac_duration_ms: cac duration in ms
  * @dfs_regdomain: dfs regdomain
+ * @rnrie: rnr ie
  */
 struct start_bss_config {
 	uint8_t vdev_id;
@@ -5034,6 +5058,7 @@ struct start_bss_config {
 	uint16_t beacon_tx_rate;
 	uint32_t cac_duration_ms;
 	uint32_t dfs_regdomain;
+	struct ssirrnrie rnrie;
 };
 
 #endif /* __SIR_API_H */

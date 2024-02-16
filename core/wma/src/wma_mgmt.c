@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -90,6 +90,7 @@
 #include "wlan_cm_api.h"
 #include "wlan_mlo_link_force.h"
 #include <target_if_spatial_reuse.h>
+#include "wlan_nan_api_i.h"
 
 /* Max debug string size for WMM in bytes */
 #define WMA_WMM_DEBUG_STRING_SIZE    512
@@ -1357,6 +1358,7 @@ static void wma_set_mlo_capability(tp_wma_handle wma,
 			link_id_bitmap = 1 << params->link_id;
 			ml_nlink_set_curr_force_inactive_state(
 					psoc, vdev, link_id_bitmap, LINK_ADD);
+			ml_nlink_init_concurrency_link_request(psoc, vdev);
 		}
 		wma_debug("assoc_link %d" QDF_MAC_ADDR_FMT ", force inactive %d link id %d",
 			  req->mlo_params.mlo_assoc_link,
@@ -2153,6 +2155,122 @@ static void wma_upt_mlo_partner_info(struct beacon_tmpl_params *params,
 }
 #endif
 
+#if defined(WLAN_FEATURE_MULTI_LINK_SAP) && defined(WLAN_FEATURE_11BE_MLO)
+#define CU_VDEV_BITMAP_LOWER32(_cu_vdev_map) ((_cu_vdev_map) & 0xFFFFFFFFLL)
+#define CU_VDEV_BITMAP_UPPER32(_cu_vdev_map) \
+	(((_cu_vdev_map) & 0xFFFFFFFF00000000LL) >> 32)
+
+/**
+ * wma_cu_bitmap_set() - Set cu flag for vdev
+ * @pdev: objmgr pdev
+ * @vdev_id: vdev id
+ * @vdev_bmap_cu_cat1: cu flag bitmap for category 1
+ * @vdev_bmap_cu_cat2: cu flag bitmap for category 2
+ *
+ * This function used to update cu flag bitmap for category 1 and 2.
+ *
+ * Return: None
+ */
+static void wma_cu_bitmap_set(struct wlan_objmgr_pdev *pdev,
+			      uint8_t vdev_id,
+			      unsigned long *vdev_bmap_cu_cat1,
+			      unsigned long *vdev_bmap_cu_cat2)
+{
+	struct wlan_objmgr_vdev *tmp_vdev;
+
+	tmp_vdev = wlan_objmgr_get_vdev_by_id_from_pdev(pdev, vdev_id,
+							WLAN_MLME_NB_ID);
+	if (!tmp_vdev)
+		return;
+
+	if (wlan_vdev_mlme_is_mlo_ap(tmp_vdev)) {
+		if (wlan_vdev_mlme_op_flags_get(tmp_vdev, WLAN_VDEV_OP_CU_CAT1))
+			qdf_set_bit(vdev_id, vdev_bmap_cu_cat1);
+
+		if (wlan_vdev_mlme_op_flags_get(tmp_vdev, WLAN_VDEV_OP_CU_CAT2))
+			qdf_set_bit(vdev_id, vdev_bmap_cu_cat2);
+	}
+	wlan_objmgr_vdev_release_ref(tmp_vdev, WLAN_MLME_NB_ID);
+}
+
+/**
+ * wma_cu_bitmap_set() - Clear cu flag for vdev
+ * @pdev: objmgr pdev
+ * @vdev_id: vdev id
+ *
+ * This function used to clear cu flag bitmap for category 1 and 2.
+ *
+ * Return: None
+ */
+static void wma_cu_bitmap_clear(struct wlan_objmgr_pdev *pdev,
+				uint8_t vdev_id)
+{
+	struct wlan_objmgr_vdev *tmp_vdev;
+
+	tmp_vdev = wlan_objmgr_get_vdev_by_id_from_pdev(pdev, vdev_id,
+							WLAN_MLME_NB_ID);
+	if (!tmp_vdev)
+		return;
+
+	if (wlan_vdev_mlme_is_mlo_ap(tmp_vdev)) {
+		wlan_vdev_mlme_op_flags_clear(tmp_vdev, WLAN_VDEV_OP_CU_CAT1);
+		wlan_vdev_mlme_op_flags_clear(tmp_vdev, WLAN_VDEV_OP_CU_CAT2);
+	}
+	wlan_objmgr_vdev_release_ref(tmp_vdev, WLAN_MLME_NB_ID);
+}
+
+/**
+ * wma_cu_bitmap_set() - Update cu flag for vdev in the beacon template
+ * @pdev: objmgr pdev
+ * @vdev_id: vdev id
+ * @bcn_tmpl_param: beacon template parameter
+ *
+ * Return: None
+ */
+static void
+wma_critical_update_set_notify(struct wlan_objmgr_pdev *pdev,
+			       uint8_t vdev_id,
+			       struct beacon_tmpl_params *bcn_tmpl_param)
+{
+	unsigned long vdev_bmap_cu_cat1 = 0;
+	unsigned long vdev_bmap_cu_cat2 = 0;
+
+	wma_cu_bitmap_set(pdev, vdev_id,
+			  &vdev_bmap_cu_cat1,
+			  &vdev_bmap_cu_cat2);
+
+	if (vdev_bmap_cu_cat1 || vdev_bmap_cu_cat2) {
+		bcn_tmpl_param->cu_ml_info.cu_vdev_map_cat1_lo =
+			CU_VDEV_BITMAP_LOWER32(vdev_bmap_cu_cat1);
+		bcn_tmpl_param->cu_ml_info.cu_vdev_map_cat1_hi =
+			CU_VDEV_BITMAP_UPPER32(vdev_bmap_cu_cat1);
+		bcn_tmpl_param->cu_ml_info.cu_vdev_map_cat2_lo =
+			CU_VDEV_BITMAP_LOWER32(vdev_bmap_cu_cat2);
+		bcn_tmpl_param->cu_ml_info.cu_vdev_map_cat2_hi =
+			CU_VDEV_BITMAP_UPPER32(vdev_bmap_cu_cat2);
+
+		wma_debug("hw_link_id:%d cat1 lo:0x%x hi:0x%x cat2 lo:0x%x hi:0x%x",
+			  bcn_tmpl_param->cu_ml_info.hw_link_id,
+			  bcn_tmpl_param->cu_ml_info.cu_vdev_map_cat1_lo,
+			  bcn_tmpl_param->cu_ml_info.cu_vdev_map_cat1_hi,
+			  bcn_tmpl_param->cu_ml_info.cu_vdev_map_cat2_lo,
+			  bcn_tmpl_param->cu_ml_info.cu_vdev_map_cat2_hi);
+	}
+}
+#else
+static void wma_cu_bitmap_clear(struct wlan_objmgr_pdev *pdev,
+				uint8_t vdev_id)
+{
+}
+
+static void
+wma_critical_update_set_notify(struct wlan_objmgr_pdev *pdev,
+			       uint8_t vdev_id,
+			       struct beacon_tmpl_params *bcn_tmpl_param)
+{
+}
+#endif
+
 /**
  * wma_unified_bcn_tmpl_send() - send beacon template to fw
  * @wma:wma handle
@@ -2246,12 +2364,14 @@ static QDF_STATUS wma_unified_bcn_tmpl_send(tp_wma_handle wma,
 			bcn_info->ecsa_count_offset - bytes_to_strip;
 
 	wma_upt_mlo_partner_info(&params, bcn_info, bytes_to_strip);
+	wma_critical_update_set_notify(wma->pdev, vdev_id, &params);
 
 	ret = wmi_unified_beacon_tmpl_send_cmd(wma->wmi_handle,
 				 &params);
 	if (QDF_IS_STATUS_ERROR(ret))
 		wma_err("Failed to send bcn tmpl: %d", ret);
-
+	else
+		wma_cu_bitmap_clear(wma->pdev, vdev_id);
 	return ret;
 }
 
@@ -3339,7 +3459,8 @@ int wma_process_rmf_frame(tp_wma_handle wma_handle,
 			return -EINVAL;
 		}
 
-		if (iface->type == WMI_VDEV_TYPE_NDI) {
+		if (iface->type == WMI_VDEV_TYPE_NDI ||
+		    iface->type == WMI_VDEV_TYPE_NAN) {
 			hdr_len = IEEE80211_CCMP_HEADERLEN;
 			mic_len = IEEE80211_CCMP_MICLEN;
 		} else {
@@ -3490,14 +3611,16 @@ wma_check_and_process_rmf_frame(tp_wma_handle wma_handle,
 	struct ieee80211_frame *hdr = *wh;
 
 	iface = &(wma_handle->interfaces[vdev_id]);
-	if (iface->type != WMI_VDEV_TYPE_NDI && !iface->rmfEnabled)
+	if ((iface->type != WMI_VDEV_TYPE_NDI &&
+	     iface->type != WMI_VDEV_TYPE_NAN) && !iface->rmfEnabled)
 		return 0;
 
 	if (qdf_is_macaddr_group((struct qdf_mac_addr *)(hdr->i_addr1)) ||
 	    qdf_is_macaddr_broadcast((struct qdf_mac_addr *)(hdr->i_addr1)) ||
 	    wma_get_peer_pmf_status(wma_handle, hdr->i_addr2) ||
-	    (iface->type == WMI_VDEV_TYPE_NDI &&
-	    (hdr->i_fc[1] & IEEE80211_FC1_WEP))) {
+	    ((iface->type == WMI_VDEV_TYPE_NDI ||
+	      iface->type == WMI_VDEV_TYPE_NAN) &&
+	     (hdr->i_fc[1] & IEEE80211_FC1_WEP))) {
 		status = wma_process_rmf_frame(wma_handle, iface, hdr,
 					       rx_pkt, buf);
 		if (status)
@@ -3701,6 +3824,21 @@ int wma_form_rx_packet(qdf_nbuf_t buf,
 								 buf);
 			if (status)
 				return status;
+		} else if (mgt_subtype == MGMT_SUBTYPE_ACTION) {
+			/* NAN Action frame */
+			vdev_id = wlan_nan_get_vdev_id_from_bssid(
+							wma_handle->pdev,
+							wh->i_addr3,
+							WLAN_ACTION_OUI_ID);
+
+			if (vdev_id != WMA_INVALID_VDEV_ID) {
+				status = wma_check_and_process_rmf_frame(
+								wma_handle,
+								vdev_id, &wh,
+								rx_pkt, buf);
+				if (status)
+					return status;
+			}
 		}
 	}
 

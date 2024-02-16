@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -2086,6 +2086,7 @@ static QDF_STATUS ol_txrx_vdev_register(struct cdp_soc_t *soc_hdl,
 	vdev->rx = txrx_ops->rx.rx;
 	vdev->stats_rx = txrx_ops->rx.stats_rx;
 	vdev->tx_comp = txrx_ops->tx.tx_comp;
+	vdev->vdev_del_notify = txrx_ops->vdev_del_notify;
 	txrx_ops->tx.tx = ol_tx_data;
 
 	return QDF_STATUS_SUCCESS;
@@ -2193,6 +2194,8 @@ ol_txrx_vdev_detach(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	ol_txrx_vdev_handle vdev = ol_txrx_get_vdev_from_soc_vdev_id(soc,
 								     vdev_id);
 	struct ol_txrx_pdev_t *pdev;
+	ol_txrx_vdev_delete_cb vdev_del_notify;
+	void *vdev_del_context;
 
 	if (qdf_unlikely(!vdev))
 		return QDF_STATUS_E_FAILURE;
@@ -2204,6 +2207,8 @@ ol_txrx_vdev_detach(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	/* prevent anyone from restarting the ll_pause timer again */
 	qdf_atomic_set(&vdev->delete.detaching, 1);
 
+	vdev_del_notify = vdev->vdev_del_notify;
+	vdev_del_context = vdev->osif_dev;
 	ol_txrx_vdev_tx_queue_free(vdev);
 
 	qdf_spin_lock_bh(&vdev->ll_pause.mutex);
@@ -2287,6 +2292,9 @@ ol_txrx_vdev_detach(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	qdf_mem_free(vdev);
 	if (callback)
 		callback(context);
+
+	if (vdev_del_notify)
+		vdev_del_notify(vdev_del_context);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -2715,11 +2723,12 @@ static int ol_txrx_get_opmode(struct cdp_soc_t *soc_hdl, uint8_t vdev_id)
  * @soc_hdl: datapath soc handle
  * @vdev_id: virtual interface id
  * @peer_mac: peer mac addr
+ * @slowpath: called from slow path or not
  *
  * Return: return peer state
  */
 static int ol_txrx_get_peer_state(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
-				  uint8_t *peer_mac)
+				  uint8_t *peer_mac, bool slowpath)
 {
 	struct ol_txrx_soc_t *soc = cdp_soc_t_to_ol_txrx_soc_t(soc_hdl);
 	ol_txrx_pdev_handle pdev =
@@ -2741,6 +2750,29 @@ static int ol_txrx_get_peer_state(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 		return OL_TXRX_PEER_STATE_INVALID;
 
 	return peer_state;
+}
+
+/**
+ * ol_txrx_get_info_by_peer_mac - get vdev id, state and device type of
+ * peer if already exists
+ * @soc_hdl: datapath soc handle
+ * @peer_mac: peer mac address
+ * @vdev_id: store vdev id that peer is under
+ * @param: store output dp peer info
+ *
+ * Get local peer state, type, vdev id of peer or
+ * primary vdevid for mld peer
+ *
+ * Return: None
+ */
+static void
+ol_txrx_get_info_by_peer_mac(struct cdp_soc_t *soc_hdl,
+			     uint8_t *peer_mac,
+			     uint8_t vdev_id,
+			     struct cdp_peer_output_param *param)
+{
+	param->vdev_id = vdev_id;
+	param->state = ol_txrx_get_peer_state(soc_hdl, vdev_id, peer_mac, false);
 }
 
 /**
@@ -3330,6 +3362,9 @@ int ol_txrx_peer_release_ref(ol_txrx_peer_handle peer,
 					vdev->delete.callback;
 				void *vdev_delete_context =
 					vdev->delete.context;
+				ol_txrx_vdev_delete_cb vdev_del_notify =
+						vdev->vdev_del_notify;
+				void *vdev_del_context = vdev->osif_dev;
 				/*
 				 * Now that there are no references to the peer,
 				 * we can release the peer reference lock.
@@ -3356,6 +3391,9 @@ int ol_txrx_peer_release_ref(ol_txrx_peer_handle peer,
 				qdf_mem_free(vdev);
 				if (vdev_delete_cb)
 					vdev_delete_cb(vdev_delete_context);
+
+				if (vdev_del_notify)
+					vdev_del_notify(vdev_del_context);
 			} else {
 				qdf_spin_unlock_bh(&pdev->peer_ref_mutex);
 			}
@@ -6518,6 +6556,7 @@ static struct cdp_peer_ops ol_ops_peer = {
 #endif /* CONFIG_HL_SUPPORT */
 	.peer_detach_force_delete = ol_txrx_peer_detach_force_delete,
 	.peer_flush_frags = ol_txrx_peer_flush_frags,
+	.get_info_by_peer_addr = ol_txrx_get_info_by_peer_mac,
 };
 
 static struct cdp_tx_delay_ops ol_ops_delay = {

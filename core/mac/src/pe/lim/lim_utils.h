@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -107,7 +107,6 @@
 /* To check if HT 20mhz detection bit set */
 #define OBSS_DETECTION_IS_HT_20MHZ(_m) ((_m) & OBSS_DETECTION_HT_20MHZ_BIT_MASK)
 
-#define MAX_WAIT_FOR_BCN_TX_COMPLETE_FOR_LL_SAP 500
 #define MAX_WAIT_FOR_BCN_TX_COMPLETE 4000
 
 #define MAX_WAKELOCK_FOR_CSA         5000
@@ -3380,4 +3379,15 @@ lim_get_connected_chan_for_mode(struct wlan_objmgr_psoc *psoc,
  */
 enum phy_ch_width
 lim_convert_vht_chwidth_to_phy_chwidth(uint8_t ch_width, bool is_40);
+
+/**
+ * lim_update_cu_flag() - Update cu flag in capability information
+ * @pcap_info: pointer to return capability information
+ * @pe_session: pointer to pe session
+ *
+ * Return: None
+ */
+void lim_update_cu_flag(tSirMacCapabilityInfo *pcap_info,
+			struct pe_session *pe_session);
+
 #endif /* __LIM_UTILS_H */

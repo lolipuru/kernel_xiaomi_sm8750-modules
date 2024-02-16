@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -42,7 +42,6 @@
 #include "connection_mgr/core/src/wlan_cm_main.h"
 #include "connection_mgr/core/src/wlan_cm_sm.h"
 #include "wlan_reg_ucfg_api.h"
-#include "wlan_connectivity_logging.h"
 #include "wlan_if_mgr_roam.h"
 #include "wlan_roam_debug.h"
 #include "wlan_mlo_mgr_roam.h"
@@ -2982,7 +2981,7 @@ cm_update_btm_offload_config(struct wlan_objmgr_psoc *psoc,
 {
 	struct wlan_mlme_psoc_ext_obj *mlme_obj;
 	struct wlan_mlme_btm *btm_cfg;
-	bool is_hs_20_ap;
+	bool is_hs_20_ap, is_hs_20_btm_offload_disabled;
 	struct cm_roam_values_copy temp;
 	uint8_t vdev_id;
 	bool abridge_flag;
@@ -3007,12 +3006,15 @@ cm_update_btm_offload_config(struct wlan_objmgr_psoc *psoc,
 	vdev_id = wlan_vdev_get_id(vdev);
 	wlan_cm_roam_cfg_get_value(psoc, vdev_id, HS_20_AP, &temp);
 	is_hs_20_ap = temp.bool_value;
+	wlan_mlme_is_hs_20_btm_offload_disabled(psoc,
+						&is_hs_20_btm_offload_disabled);
 
 	/*
 	 * For RSO Stop/Passpoint R2 cert test case 5.11(when STA is connected
 	 * to Hotspot-2.0 AP), disable BTM offload to firmware
 	 */
-	if (command == ROAM_SCAN_OFFLOAD_STOP || is_hs_20_ap) {
+	if (command == ROAM_SCAN_OFFLOAD_STOP ||
+	    (is_hs_20_ap && is_hs_20_btm_offload_disabled)) {
 		mlme_debug("RSO cmd: %d is_hs_20_ap:%d", command,
 			   is_hs_20_ap);
 		*btm_offload_config = 0;
@@ -6486,6 +6488,33 @@ cm_populate_roam_success_mlo_param(struct wlan_objmgr_psoc *psoc,
 }
 #endif
 
+/**
+ * cm_roam_cancel_event() - Send roam cancelled diag event
+ * @vdev_id: Vdev id
+ * @reason: Roam failure reason code
+ * @fw_timestamp: Firmware timestamp
+ *
+ * Return: QDF_STATUS
+ */
+static QDF_STATUS
+cm_roam_cancel_event(uint8_t vdev_id, enum wlan_roam_failure_reason_code reason,
+		     uint64_t fw_timestamp)
+{
+	WLAN_HOST_DIAG_EVENT_DEF(wlan_diag_event, struct wlan_diag_roam_result);
+
+	qdf_mem_zero(&wlan_diag_event, sizeof(wlan_diag_event));
+
+	populate_diag_cmn(&wlan_diag_event.diag_cmn, vdev_id, fw_timestamp,
+			  NULL);
+
+	wlan_diag_event.version = DIAG_ROAM_RESULT_VERSION;
+	wlan_diag_event.roam_fail_reason = reason;
+
+	WLAN_HOST_DIAG_EVENT_REPORT(&wlan_diag_event, EVENT_WLAN_ROAM_CANCEL);
+
+	return QDF_STATUS_SUCCESS;
+}
+
 void cm_roam_result_info_event(struct wlan_objmgr_psoc *psoc,
 			       struct wmi_roam_trigger_info *trigger,
 			       struct wmi_roam_result *res,
@@ -6494,6 +6523,7 @@ void cm_roam_result_info_event(struct wlan_objmgr_psoc *psoc,
 {
 	uint8_t i;
 	struct qdf_mac_addr bssid = {0};
+	enum wlan_roam_failure_reason_code roam_cancel_reason;
 	bool roam_abort = (res->fail_reason == ROAM_FAIL_REASON_SYNC ||
 			   res->fail_reason == ROAM_FAIL_REASON_DISCONNECT ||
 			   res->fail_reason == ROAM_FAIL_REASON_HOST ||
@@ -6503,9 +6533,30 @@ void cm_roam_result_info_event(struct wlan_objmgr_psoc *psoc,
 				ROAM_FAIL_REASON_UNABLE_TO_START_ROAM_HO);
 	bool is_full_scan = (scan_data->present &&
 			scan_data->type == WLAN_ROAM_SCAN_TYPE_FULL_SCAN);
+	bool is_roam_cancel =
+		(res->fail_reason == ROAM_FAIL_REASON_SCAN_CANCEL);
 
 	WLAN_HOST_DIAG_EVENT_DEF(wlan_diag_event,
 				 struct wlan_diag_roam_result);
+
+	if (is_roam_cancel) {
+		if (res->roam_abort_reason ==
+		    WMI_ROAM_SCAN_CANCEL_IDLE_SCREEN_ON) {
+			roam_cancel_reason = ROAM_FAIL_REASON_SCREEN_ACTIVITY;
+		} else if (res->roam_abort_reason ==
+			 WMI_ROAM_SCAN_CANCEL_OTHER_PRIORITY_ROAM_SCAN) {
+			roam_cancel_reason =
+				ROAM_FAIL_REASON_OTHER_PRIORITY_ROAM_SCAN;
+		} else {
+			mlme_debug("vdev:%d Unsupported abort reason:%d",
+				   vdev_id, res->roam_abort_reason);
+			return;
+		}
+
+		cm_roam_cancel_event(vdev_id, roam_cancel_reason,
+				     res->timestamp);
+		return;
+	}
 
 	qdf_mem_zero(&wlan_diag_event, sizeof(wlan_diag_event));
 
@@ -6580,7 +6631,6 @@ void cm_roam_result_info_event(struct wlan_objmgr_psoc *psoc,
 				       trigger->trigger_reason,
 				       wlan_diag_event.is_roam_successful,
 				       is_full_scan, res->fail_reason);
-
 }
 
 #endif
@@ -7079,6 +7129,26 @@ cm_roam_btm_req_event(struct wmi_roam_btm_trigger_data *btm_data,
 		cm_roam_btm_candidate_event(&btm_data->btm_cand[i], vdev_id, i);
 
 	return status;
+}
+
+QDF_STATUS
+cm_roam_btm_block_event(uint8_t vdev_id, uint8_t token,
+			enum wlan_diag_btm_block_reason reason)
+{
+	WLAN_HOST_DIAG_EVENT_DEF(wlan_diag_event, struct wlan_diag_btm_info);
+
+	qdf_mem_zero(&wlan_diag_event, sizeof(wlan_diag_event));
+
+	populate_diag_cmn(&wlan_diag_event.diag_cmn, vdev_id, 0, NULL);
+
+	wlan_diag_event.subtype = WLAN_CONN_DIAG_BTM_BLOCK_EVENT;
+	wlan_diag_event.version = DIAG_BTM_VERSION_2;
+	wlan_diag_event.token = token;
+	wlan_diag_event.sub_reason = reason;
+
+	WLAN_HOST_DIAG_EVENT_REPORT(&wlan_diag_event, EVENT_WLAN_BTM);
+
+	return QDF_STATUS_SUCCESS;
 }
 
 static enum wlan_diag_wifi_band

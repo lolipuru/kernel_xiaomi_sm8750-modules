@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -63,12 +63,14 @@ enum bearer_switch_status {
  * @BEARER_SWITCH_REQ_CONNECT: Bearer switch requester is connect
  * @BEARER_SWITCH_REQ_CSA: Bearer switch requester is CSA
  * @BEARER_SWITCH_REQ_FW: Bearer switch requester is FW
+ * @BEARER_SWITCH_REQ_P2P_GO: Bearer switch requester is P2P_GO
  * @BEARER_SWITCH_REQ_MAX: Indicates MAX bearer switch requester
  */
 enum bearer_switch_req_source {
 	BEARER_SWITCH_REQ_CONNECT,
 	BEARER_SWITCH_REQ_CSA,
 	BEARER_SWITCH_REQ_FW,
+	BEARER_SWITCH_REQ_P2P_GO,
 	BEARER_SWITCH_REQ_MAX,
 };
 
@@ -131,6 +133,16 @@ struct wlan_ll_lt_sap_freq_list {
 	qdf_freq_t best_freq;
 	qdf_freq_t prev_freq;
 	uint32_t weight_best_freq;
+};
+
+/**
+ * struct ll_sap_csa_tsf_rsp - LL_SAP csa tsf response
+ * @psoc: psoc object
+ * @twt_params: TWT params
+ */
+struct ll_sap_csa_tsf_rsp {
+	struct wlan_objmgr_psoc *psoc;
+	struct twt_session_stats_info twt_params;
 };
 
 /**
@@ -202,11 +214,26 @@ struct ll_sap_oob_connect_response_event {
 };
 
 /**
+ * enum ll_sap_get_target_tsf: Get target_tsf for LL_SAP in different scenario
+ * @TARGET_TSF_ECSA_ACTION_FRAME: Get target_tsf when ECSA action frame has to
+ * be sent
+ * @TARGET_TSF_VDEV_RESTART: Get target_tsf when vdev_restart command has to be
+ * sent to firmware
+ * @TARGET_TSF_GATT_MSG: Indicate target_tsf to userspace
+ */
+enum ll_sap_get_target_tsf {
+	TARGET_TSF_ECSA_ACTION_FRAME = 0,
+	TARGET_TSF_VDEV_RESTART = 1,
+	TARGET_TSF_GATT_MSG = 2,
+};
+
+/**
  * struct wlan_ll_sap_tx_ops - defines southbound tx callbacks for
  * LL_SAP (low latency sap) component
  * @send_audio_transport_switch_resp: function pointer to indicate audio
  * transport switch response to FW
  * @send_oob_connect_request: OOB connect request to FW
+ * @get_tsf_stats_for_csa: Get tsf stats for csa
  */
 struct wlan_ll_sap_tx_ops {
 	QDF_STATUS (*send_audio_transport_switch_resp)(
@@ -216,6 +243,11 @@ struct wlan_ll_sap_tx_ops {
 	QDF_STATUS (*send_oob_connect_request)(
 					struct wlan_objmgr_psoc *psoc,
 					struct ll_sap_oob_connect_request req);
+#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
+	QDF_STATUS (*get_tsf_stats_for_csa)(
+					struct wlan_objmgr_psoc *psoc,
+					uint8_t vdev_id);
+#endif
 };
 
 /**

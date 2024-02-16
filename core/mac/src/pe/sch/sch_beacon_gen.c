@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -596,7 +596,7 @@ sch_set_fixed_beacon_fields(struct mac_context *mac_ctx, struct pe_session *sess
 	 */
 	qdf_mem_zero((uint8_t *) &bcn_struct->macHdr, sizeof(tSirMacMgmtHdr));
 	mac = (tpSirMacMgmtHdr) &bcn_struct->macHdr;
-	mac->fc.type = SIR_MAC_MGMT_FRAME;
+	mac->fc.type = WLAN_FC0_TYPE_MGMT;
 	mac->fc.subType = SIR_MAC_MGMT_BEACON;
 
 	for (i = 0; i < 6; i++)
@@ -612,7 +612,8 @@ sch_set_fixed_beacon_fields(struct mac_context *mac_ctx, struct pe_session *sess
 	/* Skip over the timestamp (it'll be updated later). */
 	bcn_1->BeaconInterval.interval =
 		session->beaconParams.beaconInterval;
-	populate_dot11f_capabilities(mac_ctx, &bcn_1->Capabilities, session);
+	populate_dot11f_capabilities(mac_ctx, &bcn_1->Capabilities,
+				     session, false);
 	if (session->ssidHidden) {
 		bcn_1->SSID.present = 1;
 		/* rest of the fields are 0 for hidden ssid */
@@ -771,6 +772,11 @@ sch_set_fixed_beacon_fields(struct mac_context *mac_ctx, struct pe_session *sess
 					    &bcn_2->he_6ghz_band_cap);
 		populate_dot11f_he_bss_color_change(mac_ctx, session,
 					&bcn_2->bss_color_change);
+	} else if (WLAN_REG_IS_6GHZ_CHAN_FREQ(session->curr_op_freq) &&
+		   policy_mgr_is_vdev_ll_lt_sap(mac_ctx->psoc,
+						session->vdev_id)) {
+		populate_dot11f_he_operation(mac_ctx, session,
+					     &bcn_2->he_op);
 	}
 
 	if (lim_is_session_eht_capable(session)) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1552,6 +1552,10 @@
 #define QCA_WIFI_PEACH (1)
 #endif
 
+#ifdef CONFIG_CNSS_PEACH_V2
+#define QCA_WIFI_PEACH_V2 (1)
+#endif
+
 #ifdef CONFIG_INCLUDE_HAL_KIWI
 #define INCLUDE_HAL_KIWI (1)
 #endif
@@ -1868,6 +1872,10 @@
 
 #ifdef CONFIG_QCA_DP_TX_FW_METADATA_V2
 #define QCA_DP_TX_FW_METADATA_V2 (1)
+#endif
+
+#ifdef CONFIG_WLAN_MCAST_MLO_SAP
+#define WLAN_MCAST_MLO_SAP (1)
 #endif
 
 #ifdef CONFIG_FIX_TXDMA_LIMITATION
@@ -3001,6 +3009,16 @@
 
 #ifdef CONFIG_QDF_MAX_NO_OF_SAP_MODE
 #define QDF_MAX_NO_OF_SAP_MODE CONFIG_QDF_MAX_NO_OF_SAP_MODE
+#endif
+
+#ifdef CONFIG_WLAN_AUX_SUPPORT
+#define WLAN_AUX_SUPPORT (1)
+#endif
+
+#ifdef CONFIG_WLAN_FEATURE_11BE_MLO
+#ifdef CONFIG_WLAN_FEATURE_MULTI_LINK_SAP
+#define WLAN_FEATURE_MULTI_LINK_SAP (1)
+#endif
 #endif
 
 #endif /* CONFIG_TO_FEATURE_H */

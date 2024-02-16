@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -761,7 +761,7 @@ sme_rrm_send_chan_load_report_xmit_ind(struct mac_context *mac,
 	req_chan_width = rrm_ctx->chan_load_req_info.req_chan_width;
 	if (req_chan_width == CH_WIDTH_INVALID) {
 		sme_debug("Invalid scanned_ch_width");
-		return;
+		goto free_chan_load_resp;
 	}
 
 	if (req_chan_width == CH_WIDTH_20MHZ) {
@@ -772,7 +772,7 @@ sme_rrm_send_chan_load_report_xmit_ind(struct mac_context *mac,
 	} else if (req_chan_width == CH_WIDTH_320MHZ) {
 		if (!rrm_ctx->chan_load_req_info.bw_ind.is_bw_ind_element) {
 			sme_debug("is_bw_ind_element is false");
-			return;
+			goto free_chan_load_resp;
 		}
 
 		qdf_mem_copy(&chan_load_resp->bw_ind,
@@ -784,7 +784,7 @@ sme_rrm_send_chan_load_report_xmit_ind(struct mac_context *mac,
 		if (!range) {
 			sme_debug("vdev %d : range is null for freq %d",
 				  vdev_id, op_freq);
-			return;
+			goto free_chan_load_resp;
 		}
 
 		start_freq = range->start_freq;
@@ -807,7 +807,7 @@ sme_rrm_send_chan_load_report_xmit_ind(struct mac_context *mac,
 		if (!range) {
 			sme_debug("range is NULL for freq %d, ch_width %d",
 				  op_freq, req_chan_width);
-			return;
+			goto free_chan_load_resp;
 		}
 		start_freq = range->start_freq;
 		end_freq = range->end_freq;
@@ -830,6 +830,10 @@ sme_rrm_send_chan_load_report_xmit_ind(struct mac_context *mac,
 
 	sme_debug("SME Sending CHAN_LOAD_REPORT_RESP_XMIT_IND to PE");
 	umac_send_mb_message_to_mac(chan_load_resp);
+	return;
+
+free_chan_load_resp:
+	qdf_mem_free(chan_load_resp);
 }
 
 static void sme_rrm_scan_event_callback(struct wlan_objmgr_vdev *vdev,
@@ -1171,7 +1175,7 @@ static QDF_STATUS sme_rrm_fill_scan_channels(struct mac_context *mac,
 	if (sme_rrm_context->channelList.numOfChannels == 0) {
 		qdf_mem_free(sme_rrm_context->channelList.freq_list);
 		sme_rrm_context->channelList.freq_list = NULL;
-		sme_err("No channels populated with requested operation class and current country, Hence abort the rrm operation");
+		sme_err_rl("No channels populated with requested operation class and current country, Hence abort the rrm operation");
 		return QDF_STATUS_E_FAILURE;
 	}
 

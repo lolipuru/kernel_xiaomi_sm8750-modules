@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -3756,16 +3756,33 @@ enum wlan_crypto_cipher_type wlan_wmi_cipher_to_crypto(uint8_t cipher)
 		return WLAN_CRYPTO_CIPHER_NONE;
 	case WMI_CIPHER_WEP:
 		return WLAN_CRYPTO_CIPHER_WEP;
-	case WMI_CIPHER_WAPI:
-		return WLAN_CRYPTO_CIPHER_WAPI_SMS4;
+	case WMI_CIPHER_TKIP:
+		return WLAN_CRYPTO_CIPHER_TKIP;
+	case WMI_CIPHER_AES_OCB:
+		return WLAN_CRYPTO_CIPHER_AES_OCB;
 	case WMI_CIPHER_AES_CCM:
 		return WLAN_CRYPTO_CIPHER_AES_CCM;
+	case WMI_CIPHER_WAPI:
+		return WLAN_CRYPTO_CIPHER_WAPI_SMS4;
+	case WMI_CIPHER_CKIP:
+		return WLAN_CRYPTO_CIPHER_CKIP;
 	case WMI_CIPHER_AES_CMAC:
 		return WLAN_CRYPTO_CIPHER_AES_CMAC;
-	case WMI_CIPHER_AES_GMAC:
-		return WLAN_CRYPTO_CIPHER_AES_GMAC;
 	case WMI_CIPHER_AES_GCM:
 		return WLAN_CRYPTO_CIPHER_AES_GCM;
+	case WMI_CIPHER_AES_GMAC:
+		return WLAN_CRYPTO_CIPHER_AES_GMAC;
+	case WMI_CIPHER_WAPI_GCM_SM4:
+		return WLAN_CRYPTO_CIPHER_WAPI_GCM4;
+	case WMI_CIPHER_BIP_CMAC_128:
+		return WLAN_CRYPTO_CIPHER_AES_CMAC;
+	case WMI_CIPHER_BIP_CMAC_256:
+		return	WLAN_CRYPTO_CIPHER_AES_CMAC_256;
+	case WMI_CIPHER_BIP_GMAC_128:
+		return	WLAN_CRYPTO_CIPHER_AES_GMAC;
+	case WMI_CIPHER_BIP_GMAC_256:
+		return WLAN_CRYPTO_CIPHER_AES_GMAC_256;
+
 	default:
 		return 0;
 	}
@@ -4001,7 +4018,10 @@ extract_roam_synch_key_event_tlv(wmi_unified_t wmi_handle,
 				dst_key = key_alloc_buf[dst_key_count];
 				*dst_key = *pairwise;
 				key_entry[j].keys.key[dst_key->keyix] = dst_key;
+
 				dst_key_count++;
+				if (dst_key_count >= WMI_NUM_KEYS_ALLOCATED)
+					break;
 			}
 
 			continue;
@@ -4097,8 +4117,20 @@ extract_roam_synch_key_event_tlv(wmi_unified_t wmi_handle,
 	}
 
 	for (j = 0; j < WLAN_MAX_ML_BSS_LINKS; j++) {
-		if (key_entry[j].link_id != MLO_INVALID_LINK_IDX)
+		/*
+		 * Pairwise keys maybe copied for all the WLAN_MAX_ML_BSS_LINKS
+		 * but firmware might have roamed to AP with number of links
+		 * less than WLAN_MAX_ML_BSS_LINKS. So free the memory for those
+		 * links
+		 */
+		if (key_entry[j].link_id != MLO_INVALID_LINK_IDX) {
 			total_links++;
+		} else {
+			wmi_err_rl("Free keys for invalid entry at index:%d",
+				   j);
+			wlan_crypto_free_key(&key_entry[j].keys);
+			key_alloc_buf[j] = NULL;
+		}
 	}
 
 	*num_entries = total_links;
@@ -4126,10 +4158,12 @@ free_keys:
 		if (!key_alloc_buf[k])
 			continue;
 
+		wmi_err_rl("flush keybuf :%d, key is valid %d", flush_keybuf,
+			   key_alloc_buf[k]->valid);
 		if (!flush_keybuf && key_alloc_buf[k]->valid)
 			continue;
 
-		wmi_debug("Free key allocated at idx:%d", k);
+		wmi_err("Free key allocated at idx:%d", k);
 		qdf_mem_zero(key_alloc_buf[k], sizeof(*key_alloc_buf[k]));
 		qdf_mem_free(key_alloc_buf[k]);
 	}

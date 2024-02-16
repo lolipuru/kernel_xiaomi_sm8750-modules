@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -72,6 +72,8 @@
 #include "wma_eht.h"
 #include <target_if_spatial_reuse.h>
 #include "wlan_dp_ucfg_api.h"
+#include "cfg_hif.h"
+#include "wlan_pmo_wow.h"
 
 /* MCS Based rate table */
 /* HT MCS parameters with Nss = 1 */
@@ -3738,30 +3740,15 @@ uint8_t *wma_get_vdev_address_by_vdev_id(uint8_t vdev_id)
 	return wlan_vdev_mlme_get_macaddr(vdev);
 }
 
-QDF_STATUS wma_get_connection_info(uint8_t vdev_id,
-		struct policy_mgr_vdev_entry_info *conn_table_entry)
-{
-	struct wma_txrx_node *wma_conn_table_entry;
-
-	wma_conn_table_entry = wma_get_interface_by_vdev_id(vdev_id);
-	if (!wma_conn_table_entry) {
-		wma_err("can't find vdev_id %d in WMA table", vdev_id);
-		return QDF_STATUS_E_FAILURE;
-	}
-	conn_table_entry->chan_width = wma_conn_table_entry->chan_width;
-	conn_table_entry->mac_id = wma_conn_table_entry->mac_id;
-	conn_table_entry->mhz = wma_conn_table_entry->ch_freq;
-	conn_table_entry->sub_type = wma_conn_table_entry->sub_type;
-	conn_table_entry->type = wma_conn_table_entry->type;
-	conn_table_entry->ch_flagext = wma_conn_table_entry->ch_flagext;
-
-	return QDF_STATUS_SUCCESS;
-}
-
 QDF_STATUS wma_ndi_update_connection_info(uint8_t vdev_id,
 				struct nan_datapath_channel_info *ndp_chan_info)
 {
 	struct wma_txrx_node *wma_iface_entry;
+	tp_wma_handle wma;
+
+	wma = cds_get_context(QDF_MODULE_ID_WMA);
+	if (!wma)
+		return QDF_STATUS_E_FAILURE;
 
 	wma_iface_entry = wma_get_interface_by_vdev_id(vdev_id);
 	if (!wma_iface_entry) {
@@ -3782,7 +3769,7 @@ QDF_STATUS wma_ndi_update_connection_info(uint8_t vdev_id,
 	wma_iface_entry->chan_width = ndp_chan_info->ch_width;
 	wma_iface_entry->ch_freq = ndp_chan_info->freq;
 	wma_iface_entry->nss = ndp_chan_info->nss;
-	wma_iface_entry->mac_id = ndp_chan_info->mac_id;
+	wlan_mlme_set_vdev_mac_id(wma->pdev, vdev_id, ndp_chan_info->mac_id);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -3857,7 +3844,7 @@ void wma_update_intf_hw_mode_params(uint32_t vdev_id, uint32_t mac_id,
 			 cfgd_hw_mode_index);
 		return;
 	}
-	wma->interfaces[vdev_id].mac_id = mac_id;
+	wlan_mlme_set_vdev_mac_id(wma->pdev, vdev_id, mac_id);
 	if (mac_id == 0)
 		wma->interfaces[vdev_id].tx_streams =
 			hw_mode.mac0_tx_ss;
@@ -5113,6 +5100,14 @@ int wma_oem_event_handler(void *wma_ctx, uint8_t *event_buff, uint32_t len)
 		(struct mac_context *)cds_get_context(QDF_MODULE_ID_PE);
 	wmi_oem_data_event_fixed_param *event;
 	struct oem_data oem_event_data;
+	tp_wma_handle wma;
+
+	wma = cds_get_context(QDF_MODULE_ID_WMA);
+
+	if (!wma) {
+		wma_err("NULL wma handle");
+		return -EINVAL;
+	}
 
 	if (!pmac) {
 		wma_err("NULL mac handle");
@@ -5163,6 +5158,22 @@ int wma_oem_event_handler(void *wma_ctx, uint8_t *event_buff, uint32_t len)
 		if (pmac->sme.oem_data_async_event_handler_cb)
 			pmac->sme.oem_data_async_event_handler_cb(
 					&oem_event_data);
+	} else if (event->event_cause == WMI_OEM_DATA_EVT_CAUSE_QMS) {
+		if (!cfg_get(wma->psoc, CFG_ENABLE_SMEM_QMS)) {
+			QDF_DEBUG_PANIC("Received unsupported SMEM QMS event");
+			return QDF_STATUS_E_FAULT;
+		}
+		if (pmo_get_wow_suspend_type(wma->psoc) ==
+		    QDF_SYSTEM_SUSPEND) {
+			if (pmac->sme.oem_data_smem_event_handler_cb)
+				pmac->sme.oem_data_smem_event_handler_cb(
+					&oem_event_data,
+					pmac->sme.smem_id);
+		} else {
+			if (pmac->sme.oem_data_async_event_handler_cb)
+				pmac->sme.oem_data_async_event_handler_cb(
+						&oem_event_data);
+		}
 	} else {
 		return QDF_STATUS_E_FAILURE;
 	}

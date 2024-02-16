@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -51,11 +51,12 @@ QDF_STATUS ll_lt_sap_get_freq_list(struct wlan_objmgr_psoc *psoc,
  * ll_lt_sap_get_valid_freq() - API to get valid frequency for LL_LT_SAP
  * @psoc: Pointer to psoc object
  * @vdev_id: Vdev Id of ll_lt_sap
+ * @curr_freq: current frequency
  *
  * Return: QDF_STATUS
  */
 QDF_STATUS ll_lt_sap_get_valid_freq(struct wlan_objmgr_psoc *psoc,
-				    uint8_t vdev_id);
+				    uint8_t vdev_id, qdf_freq_t curr_freq);
 
 /*
  * ll_lt_sap_init() - Initialize ll_lt_sap infrastructure
@@ -89,4 +90,39 @@ ll_lt_sap_high_ap_availability(struct wlan_objmgr_vdev *vdev,
 			       enum high_ap_availability_operation operation,
 			       uint32_t duration, uint16_t cookie);
 
+#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
+/**
+ * ll_lt_sap_get_tsf_stats_for_csa() - Get tsf stats for csa
+ * @psoc: pointer to psoc object
+ * @vdev_id: vdev_id
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS ll_lt_sap_get_tsf_stats_for_csa(
+				struct wlan_objmgr_psoc *psoc,
+				uint8_t vdev_id);
+
+/**
+ * ll_lt_sap_continue_csa_after_tsf_rsp() - Continue CSA after getting rsp
+ * from firmware
+ * @rsp: pointer to ll_sap_csa_tsf_rsp
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS ll_lt_sap_continue_csa_after_tsf_rsp(struct ll_sap_csa_tsf_rsp *rsp);
+#else
+static inline
+QDF_STATUS ll_lt_sap_get_tsf_stats_for_csa(
+				struct wlan_objmgr_psoc *psoc,
+				uint8_t vdev_id)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline
+QDF_STATUS ll_lt_sap_continue_csa_after_tsf_rsp(struct ll_sap_csa_tsf_rsp *rsp)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+#endif
 #endif /* _WLAN_LL_SAP_MAIN_H_ */

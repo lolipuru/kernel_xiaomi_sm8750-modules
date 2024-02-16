@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -115,9 +115,10 @@ static void lim_add_mgmt_seq_num(struct mac_context *mac, tpSirMacMgmtHdr pMacHd
  * Return: None
  */
 
-void lim_populate_mac_header(struct mac_context *mac_ctx, uint8_t *buf,
-		uint8_t type, uint8_t sub_type, tSirMacAddr peer_addr,
-		tSirMacAddr self_mac_addr)
+void
+lim_populate_mac_header(struct mac_context *mac_ctx, uint8_t *buf,
+			uint8_t type, uint8_t sub_type, tSirMacAddr peer_addr,
+			tSirMacAddr self_mac_addr)
 {
 	tpSirMacMgmtHdr mac_hdr;
 
@@ -422,8 +423,8 @@ lim_send_probe_req_mgmt_frame(struct mac_context *mac_ctx,
 	qdf_mem_zero(frame, bytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac_ctx, frame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_PROBE_REQ, bssid, self_macaddr);
+	lim_populate_mac_header(mac_ctx, frame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_PROBE_REQ, bssid, self_macaddr);
 
 	/* That done, pack the Probe Request: */
 	status = dot11f_pack_probe_request(mac_ctx, pr, frame +
@@ -716,7 +717,8 @@ lim_send_probe_rsp_mgmt_frame(struct mac_context *mac_ctx,
 		frm->BeaconInterval.interval = (uint16_t) cfg;
 	}
 
-	populate_dot11f_capabilities(mac_ctx, &frm->Capabilities, pe_session);
+	populate_dot11f_capabilities(mac_ctx, &frm->Capabilities,
+				     pe_session, false);
 	populate_dot11f_ssid(mac_ctx, (tSirMacSSid *) ssid, &frm->SSID);
 	populate_dot11f_supp_rates(mac_ctx, POPULATE_DOT11F_RATES_OPERATIONAL,
 		&frm->SuppRates, pe_session);
@@ -937,9 +939,9 @@ lim_send_probe_rsp_mgmt_frame(struct mac_context *mac_ctx,
 	qdf_mem_zero(frame, bytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac_ctx, frame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_PROBE_RSP, peer_macaddr,
-		pe_session->self_mac_addr);
+	lim_populate_mac_header(mac_ctx, frame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_PROBE_RSP, peer_macaddr,
+				pe_session->self_mac_addr);
 
 	mac_hdr = (tpSirMacMgmtHdr) frame;
 
@@ -1141,8 +1143,9 @@ lim_send_addts_req_action_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peerMacAddr, pe_session->self_mac_addr);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peerMacAddr,
+				pe_session->self_mac_addr);
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
 
 	sir_copy_mac_addr(pMacHdr->bssId, pe_session->bssId);
@@ -1286,7 +1289,7 @@ void lim_send_mscs_req_action_frame(struct mac_context *mac,
 	/* Paranoia: */
 	qdf_mem_zero(frame, bytes);
 
-	lim_populate_mac_header(mac, frame, SIR_MAC_MGMT_FRAME,
+	lim_populate_mac_header(mac, frame, WLAN_FC0_TYPE_MGMT,
 				SIR_MAC_MGMT_ACTION,
 				peer_mac.bytes, pe_session->self_mac_addr);
 	peer_mac_hdr = (tpSirMacMgmtHdr) frame;
@@ -1720,7 +1723,16 @@ lim_send_assoc_rsp_mgmt_frame(struct mac_context *mac_ctx,
 	 * Populate Do11capabilities after updating session with
 	 * Assos req details
 	 */
-	populate_dot11f_capabilities(mac_ctx, &frm.Capabilities, pe_session);
+	if (sta && lim_is_sta_eht_capable(sta) &&
+	    lim_is_mlo_conn(pe_session, sta) &&
+	    lim_is_session_eht_capable(pe_session) &&
+	    wlan_vdev_mlme_is_mlo_ap(pe_session->vdev) &&
+	    (status_code != STATUS_ASSOC_REJECTED_TEMPORARILY))
+		populate_dot11f_capabilities(mac_ctx, &frm.Capabilities,
+					     pe_session, true);
+	else
+		populate_dot11f_capabilities(mac_ctx, &frm.Capabilities,
+					     pe_session, false);
 
 	beacon_params.bss_idx = pe_session->vdev_id;
 
@@ -1815,11 +1827,11 @@ lim_send_assoc_rsp_mgmt_frame(struct mac_context *mac_ctx,
 	qdf_mem_zero(frame, bytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac_ctx, frame, SIR_MAC_MGMT_FRAME,
-		(LIM_ASSOC == subtype) ?
-			SIR_MAC_MGMT_ASSOC_RSP : SIR_MAC_MGMT_REASSOC_RSP,
-			peer_addr,
-			pe_session->self_mac_addr);
+	lim_populate_mac_header(mac_ctx, frame, WLAN_FC0_TYPE_MGMT,
+				(LIM_ASSOC == subtype) ?
+				SIR_MAC_MGMT_ASSOC_RSP : SIR_MAC_MGMT_REASSOC_RSP,
+				peer_addr,
+				pe_session->self_mac_addr);
 	mac_hdr = (tpSirMacMgmtHdr) frame;
 
 	sir_copy_mac_addr(mac_hdr->bssId, pe_session->bssId);
@@ -2073,8 +2085,9 @@ lim_send_delts_req_action_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer, pe_session->self_mac_addr);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer,
+				pe_session->self_mac_addr);
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
 
 	sir_copy_mac_addr(pMacHdr->bssId, pe_session->bssId);
@@ -2951,9 +2964,9 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 	qdf_mem_zero(frame, bytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac_ctx, frame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ASSOC_REQ, pe_session->bssId,
-		pe_session->self_mac_addr);
+	lim_populate_mac_header(mac_ctx, frame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ASSOC_REQ, pe_session->bssId,
+				pe_session->self_mac_addr);
 	/* That done, pack the Assoc Request: */
 	status = dot11f_pack_assoc_request(mac_ctx, frm,
 			frame + sizeof(tSirMacMgmtHdr), payload, &payload);
@@ -3461,7 +3474,8 @@ lim_send_auth_mgmt_frame(struct mac_context *mac_ctx,
 		frame_len = sizeof(tSirMacMgmtHdr) + body_len;
 
 		status = lim_create_fils_auth_data(mac_ctx, auth_frame,
-						   session, &frame_len);
+						   session, &frame_len,
+						   NULL);
 		if (QDF_IS_STATUS_ERROR(status))
 			return;
 
@@ -3501,6 +3515,22 @@ lim_send_auth_mgmt_frame(struct mac_context *mac_ctx,
 
 			body_len = SIR_MAC_AUTH_FRAME_INFO_LEN;
 			frame_len = sizeof(tSirMacMgmtHdr) + body_len;
+		} else if (auth_frame->authAlgoNumber ==
+						SIR_FILS_SK_WITHOUT_PFS) {
+			body_len = SIR_MAC_AUTH_FRAME_INFO_LEN;
+			frame_len = sizeof(tSirMacMgmtHdr) + body_len;
+			if (auth_frame->authStatusCode == STATUS_SUCCESS) {
+				status =
+					lim_create_fils_auth_data(mac_ctx,
+								  auth_frame,
+								  session,
+								  &frame_len,
+								  peer_addr);
+				if (QDF_IS_STATUS_ERROR(status)) {
+					pe_err("Failed to create FILS Data");
+					return;
+				}
+			}
 		} else {
 			/*
 			 * Shared Key algorithm with challenge text
@@ -3580,8 +3610,9 @@ alloc_packet:
 	qdf_mem_zero(frame, frame_len);
 
 	/* Prepare BD */
-	lim_populate_mac_header(mac_ctx, frame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_AUTH, peer_addr, session->self_mac_addr);
+	lim_populate_mac_header(mac_ctx, frame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_AUTH, peer_addr,
+				session->self_mac_addr);
 	mac_hdr = (tpSirMacMgmtHdr) frame;
 	if (wep_challenge_len)
 		mac_hdr->fc.wep = LIM_WEP_IN_FC;
@@ -3679,7 +3710,18 @@ alloc_packet:
 						SIR_MAC_AUTH_FRAME_1)) {
 			pe_debug("FILS: appending fils Auth data");
 			lim_add_fils_data_to_auth_frame(session, body);
+		} else if ((auth_frame->authAlgoNumber ==
+					SIR_FILS_SK_WITHOUT_PFS) &&
+			   (auth_frame->authTransactionSeqNumber ==
+						SIR_MAC_AUTH_FRAME_2)) {
+			if (auth_frame->authStatusCode == STATUS_SUCCESS) {
+				pe_debug("FILS: appending fils Auth data for Frame 2");
+				lim_add_fils_data_to_auth_rsp_frame(session,
+								    body,
+								    peer_addr);
+			}
 		}
+
 	}
 
 	if (mlo_ie_len && mlo_ie_buf) {
@@ -4174,30 +4216,6 @@ static QDF_STATUS lim_deauth_tx_complete_cnf_handler(void *context,
 }
 
 /**
- * lim_append_ies_to_frame() - Append IEs to the frame
- *
- * @frame: Pointer to the frame buffer that needs to be populated
- * @frame_len: Pointer for current frame length
- * @ie: pointer for disconnect IEs
- *
- * This function is called by lim_send_disassoc_mgmt_frame and
- * lim_send_deauth_mgmt_frame APIs as part of disconnection.
- * Append IEs and update frame length.
- *
- * Return: None
- */
-static void
-lim_append_ies_to_frame(uint8_t *frame, uint32_t *frame_len,
-			struct element_info *ie)
-{
-	if (!ie || !ie->len || !ie->ptr)
-		return;
-	qdf_mem_copy(frame, ie->ptr, ie->len);
-	*frame_len += ie->len;
-	pe_debug("Appended IEs len: %u", ie->len);
-}
-
-/**
  * \brief This function is called to send Disassociate frame.
  *
  *
@@ -4227,7 +4245,6 @@ lim_send_disassoc_mgmt_frame(struct mac_context *mac,
 	uint8_t txFlag = 0;
 	uint32_t val = 0;
 	uint8_t smeSessionId = 0;
-	struct element_info *discon_ie;
 
 	if (!pe_session) {
 		return;
@@ -4275,10 +4292,6 @@ lim_send_disassoc_mgmt_frame(struct mac_context *mac,
 
 	nBytes = nPayload + sizeof(tSirMacMgmtHdr);
 
-	discon_ie = mlme_get_self_disconnect_ies(pe_session->vdev);
-	if (discon_ie && discon_ie->len)
-		nBytes += discon_ie->len;
-
 	qdf_status = cds_packet_alloc((uint16_t) nBytes, (void **)&pFrame,
 				      (void **)&pPacket);
 	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
@@ -4292,8 +4305,9 @@ lim_send_disassoc_mgmt_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_DISASSOC, peer, pe_session->self_mac_addr);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_DISASSOC, peer,
+				pe_session->self_mac_addr);
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
 
 	/* Prepare the BSSID */
@@ -4321,11 +4335,6 @@ lim_send_disassoc_mgmt_frame(struct mac_context *mac,
 		pe_warn("There were warnings while packing a Disassociation (0x%08x)",
 			nStatus);
 	}
-
-	/* Copy disconnect IEs to the end of the frame */
-	lim_append_ies_to_frame(pFrame + sizeof(tSirMacMgmtHdr) + nPayload,
-				&nPayload, discon_ie);
-	mlme_free_self_disconnect_ies(pe_session->vdev);
 
 	pe_nofl_info("Disassoc TX: vdev %d seq %d reason %u and waitForAck %d to " QDF_MAC_ADDR_FMT " From " QDF_MAC_ADDR_FMT,
 		     pe_session->vdev_id, mac->mgmtSeqNum, nReason, waitForAck,
@@ -4447,7 +4456,6 @@ lim_send_deauth_mgmt_frame(struct mac_context *mac,
 	tpDphHashNode sta;
 #endif
 	uint8_t smeSessionId = 0;
-	struct element_info *discon_ie;
 	bool drop_deauth = false;
 
 	if (!pe_session) {
@@ -4505,10 +4513,6 @@ lim_send_deauth_mgmt_frame(struct mac_context *mac,
 	}
 
 	nBytes = nPayload + sizeof(tSirMacMgmtHdr);
-	discon_ie = mlme_get_self_disconnect_ies(pe_session->vdev);
-	if (discon_ie && discon_ie->len)
-		nBytes += discon_ie->len;
-
 	qdf_status = cds_packet_alloc((uint16_t) nBytes, (void **)&pFrame,
 				      (void **)&pPacket);
 	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
@@ -4522,8 +4526,9 @@ lim_send_deauth_mgmt_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_DEAUTH, peer, pe_session->self_mac_addr);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_DEAUTH, peer,
+				pe_session->self_mac_addr);
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
 
 	/* Prepare the BSSID */
@@ -4545,11 +4550,6 @@ lim_send_deauth_mgmt_frame(struct mac_context *mac,
 			nStatus);
 	}
 
-	/* Copy disconnect IEs to the end of the frame */
-	lim_append_ies_to_frame(pFrame + sizeof(tSirMacMgmtHdr) + nPayload,
-				&nPayload, discon_ie);
-	mlme_free_self_disconnect_ies(pe_session->vdev);
-
 	pe_nofl_rl_info("Deauth TX: vdev %d seq_num %d reason %u waitForAck %d to " QDF_MAC_ADDR_FMT " from " QDF_MAC_ADDR_FMT,
 			pe_session->vdev_id, mac->mgmtSeqNum, nReason, waitForAck,
 			QDF_MAC_ADDR_REF(pMacHdr->da),
@@ -4562,9 +4562,8 @@ lim_send_deauth_mgmt_frame(struct mac_context *mac,
 
 	txFlag |= HAL_USE_PEER_STA_REQUESTED_MASK;
 #ifdef FEATURE_WLAN_TDLS
-	sta =
-		dph_lookup_hash_entry(mac, peer, &aid,
-				      &pe_session->dph.dphHashTable);
+	sta = dph_lookup_hash_entry(mac, peer, &aid,
+				    &pe_session->dph.dphHashTable);
 #endif
 
 	pe_session->deauth_disassoc_rc = nReason;
@@ -4763,8 +4762,8 @@ lim_send_meas_report_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer);
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
 
 	qdf_mem_copy(pMacHdr->bssId, pe_session->bssId, sizeof(tSirMacAddr));
@@ -4871,8 +4870,8 @@ lim_send_tpc_report_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer);
 
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
 
@@ -4991,9 +4990,9 @@ lim_send_channel_switch_mgmt_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Next, we fill out the buffer descriptor: */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer,
-		pe_session->self_mac_addr);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer,
+				pe_session->self_mac_addr);
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
 	qdf_mem_copy((uint8_t *) pMacHdr->bssId,
 		     (uint8_t *) pe_session->bssId, sizeof(tSirMacAddr));
@@ -5106,6 +5105,11 @@ lim_send_extended_chan_switch_action_frame(struct mac_context *mac_ctx,
 			 frm.WiderBWChanSwitchAnn.newCenterChanFreq1);
 	}
 
+	if (policy_mgr_is_vdev_ll_lt_sap(mac_ctx->psoc, session_entry->vdev_id))
+		populate_dot11f_ecsa_param_set_for_ll_sap(
+					session_entry->vdev,
+					&frm.qcn_ie);
+
 	if (lim_is_session_eht_capable(session_entry))
 		populate_dot11f_bw_ind_element(mac_ctx, session_entry,
 					       &frm.bw_ind_element);
@@ -5137,8 +5141,9 @@ lim_send_extended_chan_switch_action_frame(struct mac_context *mac_ctx,
 	qdf_mem_zero(frame, num_bytes);
 
 	/* Next, we fill out the buffer descriptor */
-	lim_populate_mac_header(mac_ctx, frame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer, session_entry->self_mac_addr);
+	lim_populate_mac_header(mac_ctx, frame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer,
+				session_entry->self_mac_addr);
 	mac_hdr = (tpSirMacMgmtHdr) frame;
 	qdf_mem_copy((uint8_t *) mac_hdr->bssId,
 				   (uint8_t *) session_entry->bssId,
@@ -5291,9 +5296,11 @@ lim_p2p_oper_chan_change_confirm_action_frame(struct mac_context *mac_ctx,
 	qdf_mem_zero(frame, num_bytes);
 
 	/* Next, fill out the buffer descriptor */
-	lim_populate_mac_header(mac_ctx, frame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer, session_entry->self_mac_addr);
-	mac_hdr = (tpSirMacMgmtHdr) frame;
+	lim_populate_mac_header(mac_ctx, frame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer,
+				session_entry->self_mac_addr);
+
+	mac_hdr = (tpSirMacMgmtHdr)frame;
 	qdf_mem_copy((uint8_t *) mac_hdr->bssId,
 				   (uint8_t *) session_entry->bssId,
 				   sizeof(tSirMacAddr));
@@ -5412,8 +5419,9 @@ lim_send_neighbor_report_request_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Copy necessary info to BD */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer, pe_session->self_mac_addr);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer,
+				pe_session->self_mac_addr);
 
 	/* Update A3 with the BSSID */
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
@@ -5541,8 +5549,9 @@ lim_send_link_report_action_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Copy necessary info to BD */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer, pe_session->self_mac_addr);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer,
+				pe_session->self_mac_addr);
 
 	/* Update A3 with the BSSID */
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
@@ -5769,8 +5778,9 @@ lim_send_radio_measure_report_action_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Copy necessary info to BD */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer, pe_session->self_mac_addr);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer,
+				pe_session->self_mac_addr);
 
 	/* Update A3 with the BSSID */
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
@@ -5804,12 +5814,12 @@ lim_send_radio_measure_report_action_frame(struct mac_context *mac,
 						 pe_session);
 	}
 
-	pe_nofl_info("TX: type:%d seq_no:%d dialog_token:%d no. of APs:%d is_last_rpt:%d num_report:%d peer:"QDF_MAC_ADDR_FMT,
-		     frm->MeasurementReport[0].type,
-		     (pMacHdr->seqControl.seqNumHi << HIGH_SEQ_NUM_OFFSET |
-		     pMacHdr->seqControl.seqNumLo),
-		     dialog_token, frm->num_MeasurementReport,
-		     is_last_report, num_report, QDF_MAC_ADDR_REF(peer));
+	pe_nofl_rl_info("TX: type:%d seq_no:%d dialog_token:%d no. of APs:%d is_last_rpt:%d num_report:%d peer:"QDF_MAC_ADDR_FMT,
+			frm->MeasurementReport[0].type,
+			(pMacHdr->seqControl.seqNumHi << HIGH_SEQ_NUM_OFFSET |
+			pMacHdr->seqControl.seqNumLo),
+			dialog_token, frm->num_MeasurementReport,
+			is_last_report, num_report, QDF_MAC_ADDR_REF(peer));
 
 	if (!wlan_reg_is_24ghz_ch_freq(pe_session->curr_op_freq) ||
 	    pe_session->opmode == QDF_P2P_CLIENT_MODE ||
@@ -5825,8 +5835,8 @@ lim_send_radio_measure_report_action_frame(struct mac_context *mac,
 	MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_TX_COMPLETE,
 			 pe_session->peSessionId, qdf_status));
 	if (QDF_STATUS_SUCCESS != qdf_status) {
-		pe_nofl_err("TX: [802.11 RRM] Send FAILED! err_status [%d]",
-			    qdf_status);
+		pe_nofl_rl_err("TX: [802.11 RRM] Send FAILED! err_status [%d]",
+			       qdf_status);
 		status_code = QDF_STATUS_E_FAILURE;
 		/* Pkt will be freed up by the callback */
 	}
@@ -5987,8 +5997,9 @@ QDF_STATUS lim_send_sa_query_request_frame(struct mac_context *mac, uint8_t *tra
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Copy necessary info to BD */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer, pe_session->self_mac_addr);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer,
+				pe_session->self_mac_addr);
 
 	/* Update A3 with the BSSID */
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
@@ -6111,8 +6122,9 @@ QDF_STATUS lim_send_sa_query_response_frame(struct mac_context *mac,
 	qdf_mem_zero(pFrame, nBytes);
 
 	/* Copy necessary info to BD */
-	lim_populate_mac_header(mac, pFrame, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer, pe_session->self_mac_addr);
+	lim_populate_mac_header(mac, pFrame, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer,
+				pe_session->self_mac_addr);
 
 	/* Update A3 with the BSSID */
 	pMacHdr = (tpSirMacMgmtHdr) pFrame;
@@ -6419,8 +6431,8 @@ QDF_STATUS lim_send_addba_response_frame(struct mac_context *mac_ctx,
 	}
 	qdf_mem_zero(frame_ptr, num_bytes);
 
-	lim_populate_mac_header(mac_ctx, frame_ptr, SIR_MAC_MGMT_FRAME,
-		SIR_MAC_MGMT_ACTION, peer_mac, self_mac);
+	lim_populate_mac_header(mac_ctx, frame_ptr, WLAN_FC0_TYPE_MGMT,
+				SIR_MAC_MGMT_ACTION, peer_mac, self_mac);
 
 	/* Update A3 with the BSSID */
 	mgmt_hdr = (tpSirMacMgmtHdr) frame_ptr;
@@ -6581,7 +6593,7 @@ lim_send_epcs_action_rsp_frame(struct wlan_objmgr_vdev *vdev,
 		return QDF_STATUS_E_FAILURE;
 	}
 
-	lim_populate_mac_header(mac_ctx, frame_ptr, SIR_MAC_MGMT_FRAME,
+	lim_populate_mac_header(mac_ctx, frame_ptr, WLAN_FC0_TYPE_MGMT,
 				SIR_MAC_MGMT_ACTION, peer_mac,
 				session->self_mac_addr);
 
@@ -6693,7 +6705,7 @@ lim_send_epcs_action_req_frame(struct wlan_objmgr_vdev *vdev,
 		return QDF_STATUS_E_FAILURE;
 	}
 
-	lim_populate_mac_header(mac_ctx, frame_ptr, SIR_MAC_MGMT_FRAME,
+	lim_populate_mac_header(mac_ctx, frame_ptr, WLAN_FC0_TYPE_MGMT,
 				SIR_MAC_MGMT_ACTION, peer_mac,
 				session->self_mac_addr);
 
@@ -6805,7 +6817,7 @@ lim_send_epcs_action_teardown_frame(struct wlan_objmgr_vdev *vdev,
 	}
 	qdf_mem_zero(frame_ptr, num_bytes);
 
-	lim_populate_mac_header(mac_ctx, frame_ptr, SIR_MAC_MGMT_FRAME,
+	lim_populate_mac_header(mac_ctx, frame_ptr, WLAN_FC0_TYPE_MGMT,
 				SIR_MAC_MGMT_ACTION, peer_mac,
 				session->self_mac_addr);
 
@@ -6917,9 +6929,79 @@ lim_mgmt_t2lm_rsp_tx_complete(void *context, qdf_nbuf_t buf,
 					      rsp.DialogToken.token,
 					      rsp.Status.status,
 					      qdf_tx_complete,
-					      mgmt_params->chanfreq,
+					      (qdf_freq_t)mgmt_params->chanfreq,
 					      false,
-					      WLAN_CONN_DIAG_MLO_T2LM_RESP_EVENT);
+					      WLAN_CONN_DIAG_MLO_T2LM_REQ_EVENT);
+out:
+	qdf_nbuf_free(buf);
+
+	return status;
+}
+
+static QDF_STATUS
+lim_mgmt_t2lm_req_tx_complete(void *context, qdf_nbuf_t buf,
+			      uint32_t tx_status, void *params)
+{
+	struct mac_context *mac_ctx = (struct mac_context *)context;
+	struct pe_session *pe_session;
+	struct wlan_frame_hdr *mac_hdr;
+	struct wmi_mgmt_params *mgmt_params;
+	tDot11ft2lm_neg_req req = {0};
+	enum qdf_dp_tx_rx_status qdf_tx_complete;
+	uint32_t extract_status;
+	uint8_t *frame_ptr;
+	uint8_t ff_offset;
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+
+	if (!params) {
+		status = QDF_STATUS_E_FAILURE;
+		goto out;
+	}
+
+	frame_ptr = qdf_nbuf_data(buf);
+	mac_hdr = (struct wlan_frame_hdr *)frame_ptr;
+
+	ff_offset = sizeof(*mac_hdr);
+	if (wlan_crypto_is_data_protected(frame_ptr))
+		ff_offset += IEEE80211_CCMP_MICLEN;
+
+	if (qdf_nbuf_len(buf) < (ff_offset + sizeof(struct action_frm_hdr))) {
+		status = QDF_STATUS_E_FAILURE;
+		goto out;
+	}
+
+	mgmt_params = params;
+	pe_session = pe_find_session_by_vdev_id(mac_ctx, mgmt_params->vdev_id);
+	if (!pe_session || pe_session->opmode != QDF_STA_MODE) {
+		status = QDF_STATUS_E_FAILURE;
+		goto out;
+	}
+
+	if (tx_status == WMI_MGMT_TX_COMP_TYPE_COMPLETE_OK)
+		qdf_tx_complete = QDF_TX_RX_STATUS_OK;
+	else if (tx_status  == WMI_MGMT_TX_COMP_TYPE_DISCARD)
+		qdf_tx_complete = QDF_TX_RX_STATUS_FW_DISCARD;
+	else
+		qdf_tx_complete = QDF_TX_RX_STATUS_NO_ACK;
+
+	extract_status =
+		dot11f_unpack_t2lm_neg_req(mac_ctx,
+					   frame_ptr + ff_offset,
+					   sizeof(req), &req, false);
+	if (DOT11F_FAILED(extract_status)) {
+		pe_err("Failed to unpack T2LM negotiation request (0x%08x)",
+		       extract_status);
+		status = QDF_STATUS_E_FAILURE;
+		goto out;
+	}
+
+	wlan_connectivity_t2lm_req_resp_event(pe_session->vdev,
+					      req.DialogToken.token,
+					      false,
+					      qdf_tx_complete,
+					      (qdf_freq_t)mgmt_params->chanfreq,
+					      false,
+					      WLAN_CONN_DIAG_MLO_T2LM_REQ_EVENT);
 out:
 	qdf_nbuf_free(buf);
 
@@ -6980,7 +7062,7 @@ lim_send_t2lm_action_rsp_frame(struct mac_context *mac_ctx,
 	}
 	qdf_mem_zero(frame_ptr, num_bytes);
 
-	lim_populate_mac_header(mac_ctx, frame_ptr, SIR_MAC_MGMT_FRAME,
+	lim_populate_mac_header(mac_ctx, frame_ptr, WLAN_FC0_TYPE_MGMT,
 				SIR_MAC_MGMT_ACTION, peer_mac,
 				session->self_mac_addr);
 
@@ -7131,7 +7213,7 @@ lim_send_t2lm_action_req_frame(struct wlan_objmgr_vdev *vdev,
 	}
 	qdf_mem_zero(frame_ptr, num_bytes);
 
-	lim_populate_mac_header(mac_ctx, frame_ptr, SIR_MAC_MGMT_FRAME,
+	lim_populate_mac_header(mac_ctx, frame_ptr, WLAN_FC0_TYPE_MGMT,
 				SIR_MAC_MGMT_ACTION, peer_mac,
 				session->self_mac_addr);
 
@@ -7165,10 +7247,13 @@ lim_send_t2lm_action_req_frame(struct wlan_objmgr_vdev *vdev,
 
 	MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_TX_MGMT,
 			 session->peSessionId, mgmt_hdr->fc.subType));
-	qdf_status = wma_tx_frame(mac_ctx, pkt_ptr, (uint16_t)num_bytes,
-				  TXRX_FRM_802_11_MGMT, ANI_TXDIR_TODS, 7,
-				  lim_tx_complete, frame_ptr, tx_flag,
-				  vdev_id, 0, RATEID_DEFAULT, 0);
+	qdf_status = wma_tx_frameWithTxComplete(
+			mac_ctx, pkt_ptr, (uint16_t)num_bytes,
+			 TXRX_FRM_802_11_MGMT, ANI_TXDIR_TODS, 7,
+			 lim_tx_complete, frame_ptr,
+			 lim_mgmt_t2lm_req_tx_complete, tx_flag,
+			 vdev_id, 0, session->curr_op_freq,
+			 RATEID_DEFAULT, 0, 0);
 	MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_TX_COMPLETE,
 			 session->peSessionId, qdf_status));
 	if (qdf_status != QDF_STATUS_SUCCESS) {
@@ -7288,7 +7373,7 @@ QDF_STATUS lim_send_delba_action_frame(struct mac_context *mac_ctx,
 	}
 	qdf_mem_zero(frame_ptr, num_bytes);
 
-	lim_populate_mac_header(mac_ctx, frame_ptr, SIR_MAC_MGMT_FRAME,
+	lim_populate_mac_header(mac_ctx, frame_ptr, WLAN_FC0_TYPE_MGMT,
 				SIR_MAC_MGMT_ACTION, peer_macaddr,
 				session->self_mac_addr);
 

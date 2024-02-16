@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -822,15 +822,49 @@ void sme_async_oem_event_init(mac_handle_t mac_handle,
  * Return: None
  */
 void sme_async_oem_event_deinit(mac_handle_t mac_handle);
+
+/**
+ * sme_smem_oem_event_init() - function to register cb for smem oem event
+ * @mac_handle: Opaque handle to the global MAC context
+ * @oem_data_smem_event_handler_cb: callback to be registered
+ *
+ * Return: None
+ */
+void sme_smem_oem_event_init(mac_handle_t mac_handle,
+			     void (*oem_data_smem_event_handler_cb)
+			     (const struct oem_data *oem_event_data,
+			     int smem_id));
+
+/**
+ * sme_smem_oem_event_deinit() - function to deregister cb for smem oem event
+ * @mac_handle: Opaque handle to the global MAC context
+ *
+ * Return: None
+ */
+void sme_smem_oem_event_deinit(mac_handle_t mac_handle);
+
 #else
-static inline void sme_async_oem_event_init(
-				mac_handle_t mac_handle,
-				void (*oem_data_async_event_handler_cb)
-				(void *oem_event_data))
+static inline
+void sme_async_oem_event_init(mac_handle_t mac_handle,
+			      void (*oem_data_async_event_handler_cb)
+			      (void *oem_event_data))
 {
 }
 
-static inline void sme_async_oem_event_deinit(mac_handle_t mac_handle)
+static inline
+void sme_async_oem_event_deinit(mac_handle_t mac_handle)
+{
+}
+
+static inline
+void sme_smem_oem_event_init(mac_handle_t mac_handle,
+			     void (*oem_data_smem_event_handler_cb)
+			     (void *oem_event_data, int smem_id))
+{
+}
+
+static inline
+void sme_smem_oem_event_deinit(mac_handle_t mac_handle)
 {
 }
 #endif
@@ -1351,6 +1385,20 @@ QDF_STATUS sme_modify_add_ie(mac_handle_t mac_handle,
 		tSirModifyIE *pModifyIE, eUpdateIEsType updateType);
 QDF_STATUS sme_update_add_ie(mac_handle_t mac_handle,
 		tSirUpdateIE *pUpdateIE, eUpdateIEsType updateType);
+
+/*
+ * sme_update_rnr_ie() - This function sends msg to updates
+ * the RNR IE buffers in PE
+ *
+ * @mac_handle - global structure
+ * @updateie - pointer to rnrie related information structure
+ *
+ * Return: QDF_STATUS_SUCCESS if update rnrie successfully else return
+ * appropriate error status.
+ */
+QDF_STATUS sme_update_rnr_ie(mac_handle_t mac_handle,
+			     struct ssirupdaternrie *updateie);
+
 QDF_STATUS sme_update_connect_debug(mac_handle_t mac_handle,
 				    uint32_t set_value);
 
@@ -3134,6 +3182,19 @@ void sme_update_eht_cap_mcs(mac_handle_t mac_handle, uint8_t session_id,
  */
 int sme_update_eht_om_ctrl_supp(mac_handle_t mac_handle, uint8_t session_id,
 				uint8_t cfg_val);
+
+/**
+ * sme_update_eht_scs_traffic_desc_support() - sets the EHT SCS traffic
+ * description support capability
+ * @mac_handle: Opaque handle to the global MAC context
+ * @session_id: SME session id
+ * @cfg_val: EHT SCS traffic description config
+ *
+ * Return: 0 on success else err code
+ */
+int sme_update_eht_scs_traffic_desc_support(mac_handle_t mac_handle,
+					    uint8_t session_id,
+					    uint8_t cfg_val);
 #else
 static inline void sme_update_tgt_eht_cap(mac_handle_t mac_handle,
 					  struct wma_tgt_cfg *cfg,
@@ -3156,6 +3217,14 @@ static inline void sme_update_eht_cap_mcs(mac_handle_t mac_handle,
 static inline
 int sme_update_eht_om_ctrl_supp(mac_handle_t mac_handle, uint8_t session_id,
 				uint8_t cfg_val)
+{
+	return 0;
+}
+
+static inline
+int sme_update_eht_scs_traffic_desc_support(mac_handle_t mac_handle,
+					    uint8_t session_id,
+					    uint8_t cfg_val)
 {
 	return 0;
 }
@@ -4435,18 +4504,6 @@ QDF_STATUS sme_register_bcn_recv_pause_ind_cb(mac_handle_t mac_handle,
 #endif
 
 /**
- * sme_set_disconnect_ies() - set disconnect IEs
- * @mac_handle: handle returned by mac_open
- * @vdev_id: vdev id
- * @ie_data: Disconnect IE data
- * @ie_len: Disconnect IE length
- *
- * Return: QDF_STATUS
- */
-QDF_STATUS sme_set_disconnect_ies(mac_handle_t mac_handle, uint8_t vdev_id,
-				  uint8_t *ie_data, uint16_t ie_len);
-
-/**
  * sme_set_vdev_sw_retry() - set sw retry threshold per vdev
  * @vdev_id: vdev id
  * @sw_retry_count: sw retry number
@@ -4726,6 +4783,7 @@ QDF_STATUS sme_send_set_mac_addr(struct qdf_mac_addr mac_addr,
  * @update_sta_self_peer: Flag to check self peer MAC address or not.
  * @update_mld_addr: Flag to check if MLD address update needed or not.
  * @req_status: Status of the set MAC address request to the FW
+ * @skip_attach: flag to indicate if skip dp vdev attach or not
  *
  * API to update MLME structures with new MAC address. This will be invoked
  * after receiving success status form the FW for the set MAC address request
@@ -4737,7 +4795,8 @@ QDF_STATUS sme_update_vdev_mac_addr(struct wlan_objmgr_vdev *vdev,
 				    struct qdf_mac_addr mac_addr,
 				    struct qdf_mac_addr mld_addr,
 				    bool update_sta_self_peer,
-				    bool update_mld_addr, int req_status);
+				    bool update_mld_addr, int req_status,
+				    bool skip_attach);
 #endif
 
 /**

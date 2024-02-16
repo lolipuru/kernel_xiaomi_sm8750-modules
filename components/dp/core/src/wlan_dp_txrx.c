@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -44,16 +44,16 @@
 #include <qdf_trace.h>
 #include <qdf_net_stats.h>
 
-uint32_t wlan_dp_intf_get_pkt_type_bitmap_value(void *intf_ctx)
+uint32_t wlan_dp_intf_get_pkt_type_bitmap_value(void *link_ctx)
 {
-	struct wlan_dp_intf *dp_intf = (struct wlan_dp_intf *)intf_ctx;
+	struct wlan_dp_link *dp_link = (struct wlan_dp_link *)link_ctx;
 
-	if (!dp_intf) {
-		dp_err_rl("DP Context is NULL");
+	if (qdf_unlikely(!dp_link)) {
+		dp_err_rl("DP Link is NULL");
 		return 0;
 	}
 
-	return dp_intf->pkt_type_bitmap;
+	return dp_link->dp_intf->pkt_type_bitmap;
 }
 
 #if defined(WLAN_SUPPORT_RX_FISA)
@@ -123,7 +123,7 @@ static int dp_intf_is_tx_allowed(qdf_nbuf_t nbuf,
 {
 	enum ol_txrx_peer_state peer_state;
 
-	peer_state = cdp_peer_state_get(soc, intf_id, peer_mac);
+	peer_state = cdp_peer_state_get(soc, intf_id, peer_mac, false);
 	if (qdf_likely(OL_TXRX_PEER_STATE_AUTH == peer_state))
 		return true;
 	if (OL_TXRX_PEER_STATE_CONN == peer_state &&

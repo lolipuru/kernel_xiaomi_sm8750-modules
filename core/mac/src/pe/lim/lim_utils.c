@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -4365,7 +4365,7 @@ tSirNwType lim_get_nw_type(struct mac_context *mac, uint32_t chan_freq, uint32_t
 	tSirNwType nwType = eSIR_11B_NW_TYPE;
 
 	/* Logic to be cleaned up for 11AC & 11AX */
-	if (type == SIR_MAC_DATA_FRAME) {
+	if (type == WLAN_FC0_TYPE_DATA) {
 		if (WLAN_REG_IS_24GHZ_CH_FREQ(chan_freq)) {
 			nwType = eSIR_11G_NW_TYPE;
 		} else {
@@ -4684,10 +4684,9 @@ void lim_diag_mgmt_rx_event_report(struct mac_context *mac_ctx, void *mgmt_hdr,
 
 	WLAN_HOST_DIAG_EVENT_DEF(mgmt_event,
 				 struct host_event_wlan_mgmt_payload_type);
-	if (!session || !mac_hdr) {
-		pe_debug("not valid input");
+	if (!session || !mac_hdr)
 		return;
-	}
+
 	lim_diag_fill_mgmt_event_report(mac_ctx, mac_hdr, session,
 					result_code, reason_code, &mgmt_event);
 	pe_debug("RX frame: type:%d sub_type:%d seq_num:%d ssid:" QDF_SSID_FMT " selfmacaddr:" QDF_MAC_ADDR_FMT " bssid:" QDF_MAC_ADDR_FMT " channel:%d",
@@ -5352,7 +5351,6 @@ static void lim_check_conc_and_send_edca(struct mac_context *mac,
 	bool params_update_required = false;
 	uint8_t i;
 	tpDphHashNode sta_ds = NULL;
-	QDF_STATUS status;
 	uint16_t assoc_id;
 
 	if (sta_session && sap_session &&
@@ -5419,10 +5417,7 @@ static void lim_check_conc_and_send_edca(struct mac_context *mac,
 				     sap_session->vdev_id, false);
 
 		sap_session->gLimEdcaParamSetCount++;
-		status = sch_set_fixed_beacon_fields(mac, sap_session);
-		if (QDF_IS_STATUS_ERROR(status))
-			pe_debug("Unable to set beacon fields!");
-
+		csr_update_beacon(mac);
 	} else if (!sap_session && sta_session) {
 	/*
 	 * Enable A-EDCA for standalone STA. The original EDCA parameters are
@@ -9020,6 +9015,21 @@ void lim_log_eht_op(struct mac_context *mac, tDot11fIEeht_op *eht_ops,
 			   eht_ops, sizeof(tDot11fIEeht_op));
 }
 
+static void
+lim_revise_eht_caps(struct mac_context *mac, tDot11fIEeht_cap *eht_cap)
+{
+	uint32_t country_max_allowed_bw;
+
+	country_max_allowed_bw = wlan_reg_get_country_max_allowed_bw(mac->pdev);
+	if (!country_max_allowed_bw) {
+		pe_debug("Failed to get country_max_allowed_bw");
+		return;
+	}
+
+	if (country_max_allowed_bw < BW_320_MHZ)
+		eht_cap->support_320mhz_6ghz = 0;
+}
+
 void lim_set_eht_caps(struct mac_context *mac,
 		      uint8_t *ie_start, uint32_t num_bytes, uint8_t band,
 		      uint8_t vdev_id)
@@ -9039,6 +9049,7 @@ void lim_set_eht_caps(struct mac_context *mac,
 		is_band_2g = true;
 
 	populate_dot11f_eht_caps_by_band(mac, is_band_2g, &dot11_cap, NULL);
+	lim_revise_eht_caps(mac, &dot11_cap);
 	populate_dot11f_he_caps_by_band(mac, is_band_2g, &dot11_he_cap,
 					NULL);
 	lim_log_eht_cap(mac, &dot11_cap);
@@ -9736,7 +9747,7 @@ QDF_STATUS lim_util_get_type_subtype(void *pkt, uint8_t *type,
 	}
 
 	hdr = WMA_GET_RX_MAC_HEADER(rxpktinfor);
-	if (hdr->fc.type == SIR_MAC_MGMT_FRAME) {
+	if (hdr->fc.type == WLAN_FC0_TYPE_MGMT) {
 		pe_debug("RxBd: %pK mHdr: %pK Type: %d Subtype: %d SizeFC: %zu",
 				rxpktinfor, hdr, hdr->fc.type, hdr->fc.subType,
 				sizeof(tSirMacFrameCtl));
@@ -9878,10 +9889,8 @@ void lim_send_sme_mgmt_frame_ind(struct mac_context *mac_ctx, uint8_t frame_type
 
 	if (qdf_is_macaddr_broadcast(
 		(struct qdf_mac_addr *)(frame + 4)) &&
-		!vdev_id) {
-		pe_debug("Broadcast action frame");
+		!vdev_id)
 		vdev_id = SME_SESSION_ID_BROADCAST;
-	}
 
 	sme_mgmt_frame->frame_len = frame_len;
 	sme_mgmt_frame->sessionId = vdev_id;
@@ -10054,7 +10063,8 @@ void lim_process_ap_ecsa_timeout(void *data)
 		return;
 	}
 
-	if (lim_is_csa_tx_pending(session->vdev_id))
+	if (lim_is_csa_tx_pending(session->vdev_id) ||
+	    policy_mgr_is_vdev_ll_lt_sap(mac_ctx->psoc, session->vdev_id))
 		return lim_send_csa_tx_complete(session->vdev_id);
 
 	csa_tx_offload = wlan_psoc_nif_fw_ext_cap_get(mac_ctx->psoc,
@@ -10361,7 +10371,7 @@ QDF_STATUS lim_ap_mlme_vdev_start_send(struct vdev_mlme_obj *vdev_mlme,
 		return QDF_STATUS_E_INVAL;
 
 	session = pe_find_session_by_session_id(mac_ctx,
-						start_req->sessionId);
+						start_req->pe_session_id);
 	if (!session) {
 		pe_err("session is NULL");
 		return QDF_STATUS_E_INVAL;
@@ -10699,6 +10709,24 @@ void lim_send_start_bss_confirm(struct mac_context *mac_ctx,
 					      sizeof(*start_cnf), start_cnf);
 	}
 }
+
+#if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_FEATURE_MLO_SAP)
+void lim_update_cu_flag(tSirMacCapabilityInfo *pcap_info,
+			struct pe_session *pe_session)
+{
+	/* update cu flag */
+	if (pe_session->mlo_link_info.bss_param_change)
+		pcap_info->criticalUpdateFlag = 1;
+	else
+		pcap_info->criticalUpdateFlag = 0;
+}
+
+#else
+void lim_update_cu_flag(tSirMacCapabilityInfo *pcap_info,
+			struct pe_session *pe_session)
+{
+}
+#endif
 
 QDF_STATUS lim_get_capability_info(struct mac_context *mac, uint16_t *pcap,
 				   struct pe_session *pe_session)
@@ -11535,10 +11563,8 @@ lim_is_power_change_required_for_sta(struct mac_context *mac_ctx,
 		return false;
 	}
 
-	if (sta_session->curr_op_freq != sap_session->curr_op_freq) {
-		pe_err("STA and SAP are not in same frequency, do not change TPC power");
+	if (sta_session->curr_op_freq != sap_session->curr_op_freq)
 		return false;
-	}
 
 	wlan_reg_get_cur_6g_ap_pwr_type(mac_ctx->pdev, &ap_power_type_6g);
 

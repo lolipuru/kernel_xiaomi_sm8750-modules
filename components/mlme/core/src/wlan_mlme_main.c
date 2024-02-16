@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1152,6 +1152,20 @@ static void mlme_init_pmf_cfg(struct wlan_objmgr_psoc *psoc,
 		cfg_get(psoc, CFG_PMF_SA_QUERY_RETRY_INTERVAL);
 }
 
+#ifdef WLAN_FEATURE_11BE
+static inline void mlme_init_oem_eht_mlo_cfg(struct wlan_objmgr_psoc *psoc,
+					     struct wlan_mlme_generic *gen)
+{
+	gen->oem_eht_mlo_crypto_bitmap =
+				cfg_get(psoc, CFG_OEM_EHT_MLO_CRYPTO_BITMAP);
+}
+#else
+static inline void mlme_init_oem_eht_mlo_cfg(struct wlan_objmgr_psoc *psoc,
+					     struct wlan_mlme_generic *gen)
+{
+}
+#endif /* WLAN_FEATURE_11BE */
+
 #ifdef WLAN_FEATURE_LPSS
 static inline void
 mlme_init_lpass_support_cfg(struct wlan_objmgr_psoc *psoc,
@@ -1377,6 +1391,7 @@ static void mlme_init_generic_cfg(struct wlan_objmgr_psoc *psoc,
 		cfg_get(psoc, CFG_ENABLE_DEAUTH_TO_DISASSOC_MAP);
 	gen->wls_6ghz_capable = cfg_get(psoc, CFG_WLS_6GHZ_CAPABLE);
 	mlme_init_pmf_cfg(psoc, gen);
+	mlme_init_oem_eht_mlo_cfg(psoc, gen);
 	mlme_init_lpass_support_cfg(psoc, gen);
 	gen->enabled_rf_test_mode = cfg_default(CFG_RF_TEST_MODE_SUPP_ENABLED);
 	gen->enabled_11h = cfg_get(psoc, CFG_11H_SUPPORT_ENABLED);
@@ -2560,7 +2575,7 @@ static void mlme_init_sta_mlo_cfg(struct wlan_objmgr_psoc *psoc,
 	sta->mlo_support_link_num =
 		cfg_get(psoc, CFG_MLO_SUPPORT_LINK_NUM);
 	sta->mlo_support_link_band =
-		cfg_default(CFG_MLO_SUPPORT_LINK_BAND);
+		cfg_get(psoc, CFG_MLO_SUPPORT_LINK_BAND);
 	sta->mlo_max_simultaneous_links =
 		cfg_default(CFG_MLO_MAX_SIMULTANEOUS_LINKS);
 	sta->mlo_prefer_percentage =
@@ -2568,7 +2583,10 @@ static void mlme_init_sta_mlo_cfg(struct wlan_objmgr_psoc *psoc,
 	sta->mlo_same_link_mld_address =
 		cfg_default(CFG_MLO_SAME_LINK_MLD_ADDR);
 	sta->mlo_5gl_5gh_mlsr =
-		cfg_default(CFG_MLO_MLO_5GL_5GH_MLSR);
+		cfg_get(psoc, CFG_MLO_MLO_5GL_5GH_MLSR);
+
+	mlme_debug("mlo_support_link_num: %d, mlo_support_link_band: 0x%x",
+		   sta->mlo_support_link_num, sta->mlo_support_link_band);
 }
 
 static bool
@@ -3246,6 +3264,8 @@ static void mlme_init_lfr_cfg(struct wlan_objmgr_psoc *psoc,
 	mlme_init_subnet_detection(psoc, lfr);
 	lfr->rso_user_config.cat_rssi_offset = DEFAULT_RSSI_DB_GAP;
 	mlme_init_bmiss_timeout(psoc, lfr);
+	lfr->hs20_btm_offload_disable = cfg_get(psoc,
+						CFG_HS_20_BTM_OFFLOAD_DISABLE);
 }
 
 static void mlme_init_power_cfg(struct wlan_objmgr_psoc *psoc,
@@ -4123,72 +4143,6 @@ void mlme_free_sae_auth_retry(struct wlan_objmgr_vdev *vdev)
 		qdf_mem_free(mlme_priv->sae_retry.sae_auth.ptr);
 	mlme_priv->sae_retry.sae_auth.ptr = NULL;
 	mlme_priv->sae_retry.sae_auth.len = 0;
-}
-
-void mlme_set_self_disconnect_ies(struct wlan_objmgr_vdev *vdev,
-				  struct element_info *ie)
-{
-	struct mlme_legacy_priv *mlme_priv;
-
-	if (!ie || !ie->len || !ie->ptr) {
-		mlme_legacy_debug("disocnnect IEs are NULL");
-		return;
-	}
-
-	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
-	if (!mlme_priv) {
-		mlme_legacy_err("vdev legacy private object is NULL");
-		return;
-	}
-
-	if (mlme_priv->disconnect_info.self_discon_ies.ptr) {
-		qdf_mem_free(mlme_priv->disconnect_info.self_discon_ies.ptr);
-		mlme_priv->disconnect_info.self_discon_ies.len = 0;
-	}
-
-	mlme_priv->disconnect_info.self_discon_ies.ptr =
-				qdf_mem_malloc(ie->len);
-	if (!mlme_priv->disconnect_info.self_discon_ies.ptr)
-		return;
-
-	qdf_mem_copy(mlme_priv->disconnect_info.self_discon_ies.ptr,
-		     ie->ptr, ie->len);
-	mlme_priv->disconnect_info.self_discon_ies.len = ie->len;
-
-	mlme_legacy_debug("Self disconnect IEs");
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_MLME, QDF_TRACE_LEVEL_DEBUG,
-			   mlme_priv->disconnect_info.self_discon_ies.ptr,
-			   mlme_priv->disconnect_info.self_discon_ies.len);
-}
-
-void mlme_free_self_disconnect_ies(struct wlan_objmgr_vdev *vdev)
-{
-	struct mlme_legacy_priv *mlme_priv;
-
-	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
-	if (!mlme_priv) {
-		mlme_legacy_err("vdev legacy private object is NULL");
-		return;
-	}
-
-	if (mlme_priv->disconnect_info.self_discon_ies.ptr) {
-		qdf_mem_free(mlme_priv->disconnect_info.self_discon_ies.ptr);
-		mlme_priv->disconnect_info.self_discon_ies.ptr = NULL;
-		mlme_priv->disconnect_info.self_discon_ies.len = 0;
-	}
-}
-
-struct element_info *mlme_get_self_disconnect_ies(struct wlan_objmgr_vdev *vdev)
-{
-	struct mlme_legacy_priv *mlme_priv;
-
-	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
-	if (!mlme_priv) {
-		mlme_legacy_err("vdev legacy private object is NULL");
-		return NULL;
-	}
-
-	return &mlme_priv->disconnect_info.self_discon_ies;
 }
 
 void mlme_set_peer_disconnect_ies(struct wlan_objmgr_vdev *vdev,
@@ -5689,3 +5643,50 @@ wlan_mlme_send_csa_event_status_ind_cmd(struct wlan_objmgr_vdev *vdev,
 	return tx_ops->send_csa_event_status_ind(vdev, csa_status);
 }
 
+
+void wlan_mlme_set_vdev_mac_id(struct wlan_objmgr_pdev *pdev,
+			       uint8_t vdev_id, uint32_t mac_id)
+{
+	struct wlan_objmgr_vdev *vdev;
+	struct mlme_legacy_priv *vdev_mlme_priv;
+
+	vdev = wlan_objmgr_get_vdev_by_id_from_pdev(pdev, vdev_id,
+						    WLAN_LEGACY_MAC_ID);
+	if (!vdev)
+		return;
+
+	vdev_mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
+	if (!vdev_mlme_priv) {
+		mlme_legacy_err("vdev %d private object is NULL", vdev_id);
+		goto rel_ref;
+	}
+
+	vdev_mlme_priv->mac_id = mac_id;
+rel_ref:
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
+}
+
+uint32_t wlan_mlme_get_vdev_mac_id(struct wlan_objmgr_pdev *pdev,
+				   uint8_t vdev_id)
+{
+	struct wlan_objmgr_vdev *vdev;
+	struct mlme_legacy_priv *vdev_mlme_priv;
+	uint32_t mac_id = 0;
+
+	vdev = wlan_objmgr_get_vdev_by_id_from_pdev(pdev, vdev_id,
+						    WLAN_LEGACY_MAC_ID);
+	if (!vdev)
+		return mac_id;
+
+	vdev_mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
+	if (!vdev_mlme_priv) {
+		mlme_legacy_err("vdev %d private object is NULL", vdev_id);
+		goto rel_ref;
+	}
+
+	mac_id = vdev_mlme_priv->mac_id;
+rel_ref:
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
+
+	return mac_id;
+}

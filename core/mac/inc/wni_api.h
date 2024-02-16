@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -224,6 +224,7 @@ enum eWniMsgTypes {
 				SIR_SME_MSG_TYPES_BEGIN + 160,
 	eWNI_SME_MONITOR_MODE_VDEV_UP = SIR_SME_MSG_TYPES_BEGIN + 161,
 	eWNI_SME_UPDATE_SESSION_EDCA_TXQ_PARAMS = SIR_SME_MSG_TYPES_BEGIN + 162,
+	eWNI_SME_CH_SWITCH_STARTED_NOTIFY = SIR_SME_MSG_TYPES_BEGIN + 163,
 	/* 164 unused */
 	eWNI_SME_TWT_ADD_DIALOG_EVENT = SIR_SME_MSG_TYPES_BEGIN + 165,
 	eWNI_SME_TWT_DEL_DIALOG_EVENT = SIR_SME_MSG_TYPES_BEGIN + 166,
@@ -241,7 +242,8 @@ enum eWniMsgTypes {
 	WIFI_POS_PASN_PEER_DELETE_ALL = SIR_SME_MSG_TYPES_BEGIN + 178,
 	eWNI_SME_CHAN_INFO_EVENT = SIR_SME_MSG_TYPES_BEGIN + 179,
 	eWNI_SME_MSG_TYPES_END = SIR_SME_MSG_TYPES_BEGIN + 180,
-	eWNI_SME_VDEV_PAUSE_IND = SIR_SME_MSG_TYPES_BEGIN + 181
+	eWNI_SME_VDEV_PAUSE_IND = SIR_SME_MSG_TYPES_BEGIN + 181,
+	WNI_SME_UPDATE_RNR_IES = SIR_SME_MSG_TYPES_BEGIN + 182,
 };
 
 typedef struct sAniCfgTxRateCtrs {

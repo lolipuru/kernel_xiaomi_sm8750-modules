@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -649,6 +649,23 @@ lim_fill_pe_session(struct mac_context *mac_ctx,
 		    struct bss_description *bss_desc);
 
 #ifdef WLAN_FEATURE_11BE_MLO
+/*
+ * lim_add_bcn_probe() - Add the generated probe resp to scan DB
+ * @vdev: VDEV object manager
+ * @bcn_probe: Pointer to bcn/probe
+ * @len: Length of frame.
+ * @freq: Freq on frame.
+ * @rssi: RSSI of the frame.
+ *
+ * Prepares the meta data to add the generated bcn/probe frame to
+ * scan DB.
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+lim_add_bcn_probe(struct wlan_objmgr_vdev *vdev, uint8_t *bcn_probe,
+		  uint32_t len, qdf_freq_t freq, int32_t rssi);
+
 /**
  * lim_update_mlo_mgr_info() - API to update mlo_mgr link info
  * @mac_ctx: Pointer to mac context
@@ -714,6 +731,13 @@ lim_process_cu_for_probe_rsp(struct mac_context *mac_ctx,
 			     uint32_t probe_rsp_len);
 
 #else
+static inline QDF_STATUS
+lim_add_bcn_probe(struct wlan_objmgr_vdev *vdev, uint8_t *bcn_probe,
+		  uint32_t len, qdf_freq_t freq, int32_t rssi)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
 static inline QDF_STATUS
 lim_update_mlo_mgr_info(struct mac_context *mac_ctx,
 			struct wlan_objmgr_vdev *vdev,
@@ -931,6 +955,18 @@ lim_mlo_roam_delete_link_peer(struct pe_session *pe_session,
 }
 #endif /* WLAN_FEATURE_ROAM_OFFLOAD && WLAN_FEATURE_11BE_MLO */
 
+#if defined(WLAN_FEATURE_MULTI_LINK_SAP) && defined(WLAN_FEATURE_11BE_MLO)
+/**
+ * lim_update_cuflag_bpcc_each_link() - Update cu flag and bpcc from
+ * rx mlo link info sync event to pe session.
+ * @cu_params: parameter of mlo link info
+ *
+ * Return: None
+ */
+void
+lim_update_cuflag_bpcc_each_link(struct mlo_mgmt_ml_info *cu_params);
+#endif
+
 enum ani_akm_type
 lim_get_connected_akm(struct pe_session *session, int32_t ucast_cipher,
 		      int32_t auth_mode, int32_t akm);
@@ -942,5 +978,53 @@ lim_get_connected_akm(struct pe_session *session, int32_t ucast_cipher,
  * Return: Encryption type enum
  */
 tAniEdType lim_get_encrypt_ed_type(int32_t ucast_cipher);
+
+#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
+/**
+ * lim_ll_sap_send_ecsa_action_frame() - Send ECSA action frame
+ * for LL_LT_SAP
+ * @vdev: vdev object
+ * @macaddr: peer mac addr
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS lim_ll_sap_send_ecsa_action_frame(struct wlan_objmgr_vdev *vdev,
+					     uint8_t *macaddr);
+
+/**
+ * lim_ll_sap_continue_vdev_restart() - Continue vdev restart for LL_SAP
+ * @vdev: pointer to vdev object
+ *
+ * Return: None
+ */
+QDF_STATUS lim_ll_sap_continue_vdev_restart(struct wlan_objmgr_vdev *vdev);
+
+/**
+ * lim_ll_sap_notify_chan_switch_started() - Notify channel switch started for
+ * LL_LT_SAP
+ *
+ * Return
+ */
+QDF_STATUS lim_ll_sap_notify_chan_switch_started(struct wlan_objmgr_vdev *vdev);
+#else
+static inline
+QDF_STATUS lim_ll_sap_send_ecsa_action_frame(struct wlan_objmgr_vdev *vdev,
+					     uint8_t *macaddr)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline
+QDF_STATUS lim_ll_sap_continue_vdev_restart(struct wlan_objmgr_vdev *vdev)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline
+QDF_STATUS lim_ll_sap_notify_chan_switch_started(struct wlan_objmgr_vdev *vdev)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+#endif
 /************************************************************/
 #endif /* __LIM_API_H */

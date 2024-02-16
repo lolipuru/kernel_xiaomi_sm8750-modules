@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -123,6 +123,8 @@ static QDF_STATUS pmo_core_calculate_listen_interval(
 
 	if (psoc_cfg->sta_dynamic_dtim) {
 		*listen_interval = psoc_cfg->sta_dynamic_dtim;
+	} else if (psoc_cfg->sta_teles_dtim) {
+		*listen_interval = psoc_cfg->sta_teles_dtim;
 	} else if ((psoc_cfg->sta_mod_dtim) &&
 		   (psoc_cfg->sta_max_li_mod_dtim)) {
 		/*
@@ -172,8 +174,9 @@ static QDF_STATUS pmo_core_calculate_listen_interval(
 		}
 	}
 
-	pmo_info("sta dynamic dtim %d sta mod dtim %d sta_max_li_mod_dtim %d max_dtim %d",
-		 psoc_cfg->sta_dynamic_dtim, psoc_cfg->sta_mod_dtim,
+	pmo_info("sta dynamic dtim %d teles dtim %d sta mod dtim %d sta_max_li_mod_dtim %d max_dtim %d",
+		 psoc_cfg->sta_dynamic_dtim, psoc_cfg->sta_teles_dtim,
+		 psoc_cfg->sta_mod_dtim,
 		 psoc_cfg->sta_max_li_mod_dtim, max_dtim);
 
 	return QDF_STATUS_SUCCESS;
@@ -836,6 +839,9 @@ pmo_core_enable_wow_in_fw(struct wlan_objmgr_psoc *psoc,
 		pmo_info("Unit test WoW, force DRV mode");
 		param.flags |= WMI_WOW_FLAG_ENABLE_DRV_PCIE_L1SS_SLEEP;
 	}
+
+	pmo_set_wow_suspend_type(psoc, type);
+
 	if (type == QDF_SYSTEM_SUSPEND) {
 		pmo_info("system suspend wow");
 		param.flags |= WMI_WOW_FLAG_SYSTEM_SUSPEND_WOW;
@@ -848,6 +854,11 @@ pmo_core_enable_wow_in_fw(struct wlan_objmgr_psoc *psoc,
 	if (psoc_cfg->is_mod_dtim_on_sys_suspend_enabled) {
 		pmo_debug("mod DTIM enabled");
 		param.flags |= WMI_WOW_FLAG_MOD_DTIM_ON_SYS_SUSPEND;
+	}
+
+	if (psoc_cfg->is_teles_dtim_only_on_sys_suspend_enabled) {
+		pmo_debug("teles DTIM enabled");
+		param.flags |= WMI_WOW_FLAG_TELES_DTIM_ON_SYS_SUSPEND;
 	}
 
 	if (psoc_cfg->sta_forced_dtim) {
@@ -902,6 +913,8 @@ pmo_core_enable_wow_in_fw(struct wlan_objmgr_psoc *psoc,
 	}
 	pmo_debug("WOW enabled successfully in fw: credits:%d pending_cmds: %d",
 		host_credits, wmi_pending_cmds);
+
+	pmo_set_wow_suspend_type(psoc, QDF_WOW_UNSUPPORTED_TYPE);
 
 	hif_latency_detect_timer_stop(pmo_core_psoc_get_hif_handle(psoc));
 
@@ -1032,12 +1045,29 @@ QDF_STATUS pmo_core_txrx_suspend(struct wlan_objmgr_psoc *psoc)
 		goto out;
 	}
 
-	cdp_display_txrx_hw_info(dp_soc);
-	/* drain RX rings only */
-	cdp_drain_txrx(dp_soc, 1);
+	if (ret == -EOPNOTSUPP) {
+		/* For chips, which not support IRQ disable,
+		 * drain will not be called, display and check
+		 * rings HP/TP once again
+		 */
+		if (!cdp_display_txrx_hw_info(dp_soc)) {
+			pmo_err("Prevent suspend, ring not empty");
+			status = QDF_STATUS_E_AGAIN;
+		}
 
-	if (ret == -EOPNOTSUPP)
 		goto out;
+	}
+
+	status = cdp_drain_txrx(dp_soc, 0);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		pmo_err("Prevent suspend unable to drain txrx");
+		ret = hif_enable_grp_irqs(hif_ctx);
+		if (ret && ret != -EOPNOTSUPP) {
+			pmo_err("Failed to enable grp irqs: %d", ret);
+			QDF_BUG(0);
+		}
+		goto out;
+	}
 
 	pmo_ctx->wow.txrx_suspended = true;
 out:

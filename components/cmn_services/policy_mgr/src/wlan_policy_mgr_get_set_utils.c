@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -5303,17 +5303,15 @@ QDF_STATUS policy_mgr_incr_connection_count(struct wlan_objmgr_psoc *psoc,
 			policy_mgr_err("Can't get NAN Connection info");
 			return status;
 		}
-	} else if (pm_ctx->wma_cbacks.wma_get_connection_info) {
-		status = pm_ctx->wma_cbacks.wma_get_connection_info(
-				vdev_id, &conn_table_entry);
-		if (QDF_STATUS_SUCCESS != status) {
+	} else {
+		status = policy_mgr_get_connection_table_entry_info(
+						pm_ctx->pdev,
+						vdev_id, &conn_table_entry);
+		if (QDF_IS_STATUS_ERROR(status)) {
 			policy_mgr_err("can't find vdev_id %d in connection table",
-			vdev_id);
+				       vdev_id);
 			return status;
 		}
-	} else {
-		policy_mgr_err("wma_get_connection_info is NULL");
-		return QDF_STATUS_E_FAILURE;
 	}
 
 	mode =  policy_mgr_qdf_opmode_to_pm_con_mode(psoc, op_mode, vdev_id);
@@ -5771,8 +5769,8 @@ policy_mgr_allow_multiple_sta_connections(struct wlan_objmgr_psoc *psoc)
 bool policy_mgr_is_6ghz_conc_mode_supported(
 	struct wlan_objmgr_psoc *psoc, enum policy_mgr_con_mode mode)
 {
-	if (mode == PM_STA_MODE || mode == PM_SAP_MODE ||
-	    mode == PM_P2P_CLIENT_MODE || mode == PM_P2P_GO_MODE)
+	if (mode == PM_STA_MODE || mode == PM_P2P_CLIENT_MODE ||
+	    policy_mgr_is_beaconing_mode(mode))
 		return true;
 	else
 		return false;
@@ -6473,6 +6471,10 @@ policy_mgr_mlo_sta_set_nlink(struct wlan_objmgr_psoc *psoc,
 	req->param.force_cmd.ieee_link_id_bitmap = link_bitmap;
 	req->param.force_cmd.ieee_link_id_bitmap2 = link_bitmap2;
 	req->param.force_cmd.link_num = link_num;
+	policy_mgr_update_disallowed_mode_bitmap(psoc,
+						 vdev,
+						 req);
+
 	if (link_control_flags & link_ctrl_f_overwrite_active_bitmap)
 		req->param.control_flags.overwrite_force_active_bitmap = true;
 	if (link_control_flags & link_ctrl_f_overwrite_inactive_bitmap)
@@ -8546,9 +8548,8 @@ policy_mgr_is_restart_sap_required_with_mlo_sta(struct wlan_objmgr_psoc *psoc,
 /**
  * policy_mgr_is_new_force_allowed() - Check if the new force command is allowed
  * @psoc: PSOC object information
- * @active_link_bitmap: Active link bitmap
- * @force_inactive_num_bitmap: Force inactive number bitmap
- * @force_inactive_num: Number of links to be forced inactive
+ * @vdev: ml sta vdev object
+ * @active_link_bitmap: Active link bitmap from user request
  *
  * If ML STA associates in 3-link (2.4 GHz + 5 GHz + 6 GHz), Host sends force
  * inactive num command between 5 GHz and 6 GHz links to firmware as it's a DBS
@@ -8560,23 +8561,54 @@ policy_mgr_is_restart_sap_required_with_mlo_sta(struct wlan_objmgr_psoc *psoc,
  */
 static bool
 policy_mgr_is_new_force_allowed(struct wlan_objmgr_psoc *psoc,
-				uint32_t active_link_bitmap,
-				uint16_t force_inactive_num_bitmap,
-				uint8_t force_inactive_num)
+				struct wlan_objmgr_vdev *vdev,
+				uint32_t active_link_bitmap)
 {
 	uint32_t link_bitmap = 0;
 	uint8_t link_num = 0;
+	struct set_link_req conc_link_req;
 
-	link_bitmap = ~active_link_bitmap & force_inactive_num_bitmap;
-	if (force_inactive_num_bitmap) {
+	qdf_mem_zero(&conc_link_req, sizeof(conc_link_req));
+	ml_nlink_get_force_link_request(psoc, vdev, &conc_link_req,
+					SET_LINK_FROM_CONCURRENCY);
+	/* If force inactive num is present due to MCC link(DBS RD) or
+	 * concurrency with legacy intf, don't allow force active if
+	 * left inactive link number doesn't meet concurrency
+	 * requirement.
+	 */
+	if (conc_link_req.force_inactive_num_bitmap ||
+	    conc_link_req.force_inactive_num) {
+		link_bitmap = ~active_link_bitmap &
+		conc_link_req.force_inactive_num_bitmap;
 		if (!link_bitmap) {
-			policy_mgr_err("New force bitmap not allowed");
+			policy_mgr_err("New force bitmap 0x%x not allowed due to force_inactive_num_bitmap 0x%x",
+				       active_link_bitmap,
+				       conc_link_req.
+				       force_inactive_num_bitmap);
 			return false;
 		}
 		link_num = convert_link_bitmap_to_link_ids(link_bitmap,
 							   0, NULL);
-		if (link_num < force_inactive_num)
+		if (link_num < conc_link_req.force_inactive_num) {
+			policy_mgr_debug("force inact num exists with %d don't allow act bitmap 0x%x",
+					 conc_link_req.force_active_num,
+					 active_link_bitmap);
 			return false;
+		}
+	}
+	/* If force inactive bitmap is present due to link removal or
+	 * concurrency with legacy intf, don't allow force active if
+	 * it is conflict with existing concurrency requirement.
+	 */
+	if (conc_link_req.force_inactive_bitmap) {
+		link_bitmap = active_link_bitmap &
+			conc_link_req.force_inactive_bitmap;
+		if (link_bitmap) {
+			policy_mgr_err("New force act bitmap 0x%x not allowed due to conc force inact bitmap 0x%x",
+				       active_link_bitmap,
+				       conc_link_req.force_inactive_bitmap);
+			return false;
+		}
 	}
 
 	return true;
@@ -8658,26 +8690,17 @@ void policy_mgr_activate_mlo_links_nlink(struct wlan_objmgr_psoc *psoc,
 		policy_mgr_debug("Concurrency exists, cannot enter EMLSR mode");
 		goto done;
 	} else {
-		ml_nlink_get_curr_force_state(psoc, vdev, &curr);
-		if (curr.force_inactive_num || curr.force_active_num) {
-			if (curr.force_inactive_num) {
-				if (!policy_mgr_is_new_force_allowed(
-						psoc, active_link_bitmap,
-						curr.force_inactive_num_bitmap,
-						curr.force_inactive_num)) {
-					policy_mgr_debug("force num exists with act %d %d don't enter EMLSR mode",
-							 curr.force_active_num,
-							 curr.force_inactive_num);
-					goto done;
-				}
-			}
-		}
+		if (!policy_mgr_is_new_force_allowed(
+			psoc, vdev, active_link_bitmap))
+			goto done;
+
 		/* If current force inactive bitmap exists, we have to remove
 		 * the new active bitmap from the existing inactive bitmap,
 		 * e.g. a link id can't be present in active bitmap and
 		 * inactive bitmap at same time, so update inactive bitmap
 		 * as well.
 		 */
+		ml_nlink_get_curr_force_state(psoc, vdev, &curr);
 		if (curr.force_inactive_bitmap && !inactive_link_cnt) {
 			inactive_link_bitmap = curr.force_inactive_bitmap &
 						~active_link_bitmap;
@@ -11217,7 +11240,9 @@ bool policy_mgr_is_sap_allowed_on_dfs_freq(struct wlan_objmgr_pdev *pdev,
 {
 	struct wlan_objmgr_psoc *psoc;
 	uint32_t sta_sap_scc_on_dfs_chan;
-	uint32_t sta_cnt, gc_cnt;
+	uint32_t sta_cnt, gc_cnt, idx;
+	uint8_t vdev_id_list[MAX_NUMBER_OF_CONC_CONNECTIONS] = {0};
+	struct wlan_objmgr_vdev *vdev;
 
 	psoc = wlan_pdev_get_psoc(pdev);
 	if (!psoc)
@@ -11225,10 +11250,12 @@ bool policy_mgr_is_sap_allowed_on_dfs_freq(struct wlan_objmgr_pdev *pdev,
 
 	sta_sap_scc_on_dfs_chan =
 		policy_mgr_is_sta_sap_scc_allowed_on_dfs_chan(psoc);
-	sta_cnt = policy_mgr_mode_specific_connection_count(psoc,
-							    PM_STA_MODE, NULL);
-	gc_cnt = policy_mgr_mode_specific_connection_count(psoc,
-						PM_P2P_CLIENT_MODE, NULL);
+	sta_cnt = policy_mgr_get_mode_specific_conn_info(psoc, NULL,
+							 vdev_id_list,
+							 PM_STA_MODE);
+	gc_cnt = policy_mgr_get_mode_specific_conn_info(psoc, NULL,
+							&vdev_id_list[sta_cnt],
+							PM_P2P_CLIENT_MODE);
 
 	policy_mgr_debug("sta_sap_scc_on_dfs_chan %u, sta_cnt %u, gc_cnt %u",
 			 sta_sap_scc_on_dfs_chan, sta_cnt, gc_cnt);
@@ -11242,6 +11269,30 @@ bool policy_mgr_is_sap_allowed_on_dfs_freq(struct wlan_objmgr_pdev *pdev,
 	    !policy_mgr_get_dfs_master_dynamic_enabled(psoc, vdev_id)) {
 		policy_mgr_err("SAP not allowed on DFS channel if no dfs master capability!!");
 		return false;
+	}
+
+	/*
+	 * Check if any of the concurrent STA/ML-STA link/P2P client are in
+	 * disconnecting state and disallow current SAP CSA. Concurrencies
+	 * would be re-evaluated upon disconnect completion and SAP would be
+	 * moved to right channel.
+	 */
+	for (idx = 0; idx < sta_cnt + gc_cnt; idx++) {
+		vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc,
+							    vdev_id_list[idx],
+							    WLAN_POLICY_MGR_ID);
+		if (!vdev) {
+			policy_mgr_err("Invalid vdev");
+			return false;
+		}
+		if (wlan_cm_is_vdev_disconnecting(vdev) ||
+		    mlo_is_any_link_disconnecting(vdev)) {
+			policy_mgr_err("SAP is not allowed to move to DFS channel at this time, vdev %d",
+				       vdev_id_list[idx]);
+			wlan_objmgr_vdev_release_ref(vdev, WLAN_POLICY_MGR_ID);
+			return false;
+		}
+		wlan_objmgr_vdev_release_ref(vdev, WLAN_POLICY_MGR_ID);
 	}
 
 	return true;
@@ -11911,6 +11962,49 @@ bool policy_mgr_is_sap_go_on_2g(struct wlan_objmgr_psoc *psoc)
 	return ret;
 }
 
+static inline bool
+policy_mgr_is_chan_eligible_for_sap(struct policy_mgr_psoc_priv_obj *pm_ctx,
+				    uint8_t vdev_id, qdf_freq_t freq)
+{
+	struct wlan_objmgr_vdev *vdev;
+	enum channel_state ch_state;
+	enum reg_6g_ap_type sta_connected_pwr_type;
+	uint32_t ap_power_type_6g = 0;
+	bool is_eligible = false;
+
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(pm_ctx->psoc, vdev_id,
+						    WLAN_POLICY_MGR_ID);
+	if (!vdev)
+		return false;
+
+	ch_state = wlan_reg_get_channel_state_for_pwrmode(pm_ctx->pdev,
+							  freq,
+							  REG_CURRENT_PWR_MODE);
+	sta_connected_pwr_type = mlme_get_best_6g_power_type(vdev);
+	wlan_reg_get_cur_6g_ap_pwr_type(pm_ctx->pdev, &ap_power_type_6g);
+
+	/*
+	 * If the SAP user configured frequency is 6 GHz,
+	 * move the SAP to STA SCC in 6 GHz only if:
+	 * a) The channel is PSC
+	 * b) The channel supports AP in VLP power type
+	 * c) The DUT is configured to operate SAP in VLP only
+	 * d) The STA is connected to the 6 GHz AP in
+	 *    either VLP or LPI.
+	 *    - If the STA is in LPI, then lim_update_tx_power()
+	 *	would move the STA to VLP.
+	 */
+	if (WLAN_REG_IS_6GHZ_PSC_CHAN_FREQ(freq) &&
+	    ap_power_type_6g == REG_VERY_LOW_POWER_AP &&
+	    ch_state == CHANNEL_STATE_ENABLE &&
+	    (sta_connected_pwr_type == REG_VERY_LOW_POWER_AP ||
+	     sta_connected_pwr_type == REG_INDOOR_AP))
+		is_eligible = true;
+
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_POLICY_MGR_ID);
+	return is_eligible;
+}
+
 bool policy_mgr_is_restart_sap_required(struct wlan_objmgr_psoc *psoc,
 					uint8_t vdev_id,
 					qdf_freq_t freq,
@@ -12088,14 +12182,20 @@ bool policy_mgr_is_restart_sap_required(struct wlan_objmgr_psoc *psoc,
 		}
 
 		if (scc_mode == QDF_MCC_TO_SCC_SWITCH_WITH_FAVORITE_CHANNEL &&
-		    connection[i].freq == freq &&
-		    WLAN_REG_IS_24GHZ_CH_FREQ(freq) &&
-		    !num_5_or_6_conn &&
-		    user_config_freq &&
-		    !WLAN_REG_IS_24GHZ_CH_FREQ(user_config_freq)) {
-			policy_mgr_debug("SAP move to user configure %d from %d",
-					 user_config_freq, freq);
-			restart_required = true;
+		    WLAN_REG_IS_24GHZ_CH_FREQ(freq) && user_config_freq) {
+			if (connection[i].freq == freq && !num_5_or_6_conn &&
+			    !WLAN_REG_IS_24GHZ_CH_FREQ(user_config_freq)) {
+				policy_mgr_debug("SAP move to user configure %d from %d",
+						 user_config_freq, freq);
+				restart_required = true;
+			} else if (connection[i].freq != freq &&
+				   WLAN_REG_IS_6GHZ_CHAN_FREQ(user_config_freq) &&
+				   policy_mgr_is_chan_eligible_for_sap(pm_ctx,
+								       connection[i].vdev_id,
+								       connection[i].freq)) {
+				policy_mgr_debug("Move SAP to STA 6 GHz channel");
+				restart_required = true;
+			}
 		}
 	}
 
@@ -12834,3 +12934,177 @@ policy_mgr_get_connection_max_channel_width(struct wlan_objmgr_psoc *psoc)
 	return bw;
 }
 
+#ifdef WLAN_FEATURE_11BE_MLO
+static bool
+policy_mgr_match_link_id(uint8_t link_id,
+			 uint16_t link_id_bitmap,
+			 uint16_t ch_freq)
+{
+	uint8_t i;
+	uint8_t cnt;
+	uint8_t bit_mask = 1;
+	uint8_t link_id_info[4];
+	uint8_t valid_link_count;
+
+	for (i = 0, cnt = 0; i < 16; i++) {
+		if (link_id_bitmap & bit_mask) {
+			link_id_info[cnt++] = i;
+			link_id_bitmap &= ~bit_mask;
+		}
+		bit_mask = bit_mask << 1;
+	}
+
+	for (i = 0, valid_link_count = 0; i < cnt; i++) {
+		if (link_id_info[i] == link_id &&
+		    (wlan_reg_is_5ghz_ch_freq(ch_freq) ||
+		     wlan_reg_is_6ghz_chan_freq(ch_freq)))
+			policy_mgr_debug("Match found: link_id %d freq %d", link_id, ch_freq);
+			valid_link_count++;
+	}
+
+	if (valid_link_count < 2)
+		return false;
+	else
+		return true;
+}
+
+static void
+policy_mgr_fill_disallowed_mode_info(struct wlan_objmgr_vdev *vdev,
+				     struct mlo_link_set_active_req *req,
+				     uint8_t num_disallow_mode_comb)
+{
+	uint8_t i, j, k;
+	uint8_t link_id;
+	struct wlan_mlo_dev_context *mlo_dev_ctx;
+
+	if (!vdev)
+		return;
+
+	mlo_dev_ctx = vdev->mlo_dev_ctx;
+	if (!mlo_dev_ctx)
+		return;
+
+	for (j = 0; j < num_disallow_mode_comb; j++) {
+		for (i = 0, k = 0;
+			(i < WLAN_UMAC_MLO_MAX_VDEVS || k < WLAN_UMAC_MLO_MAX_VDEVS);
+			 i++, k++) {
+			if (!mlo_dev_ctx->wlan_vdev_list[i])
+				continue;
+			link_id = wlan_vdev_get_link_id(mlo_dev_ctx->wlan_vdev_list[i]);
+			req->param.disallow_mode_link_bmap[j].ieee_link_id[k] = link_id;
+		}
+		req->param.disallow_mode_link_bmap[j].disallowed_mode = MLO_DISALLOWED_MODE_NO_RESTRICTION;
+		policy_mgr_debug("ieee_link_id_comb 0%x, disallowed mode %d",
+				 req->param.disallow_mode_link_bmap[j].ieee_link_id_comb,
+				 req->param.disallow_mode_link_bmap[j].disallowed_mode);
+	}
+}
+
+static bool
+policy_mgr_update_disallow_mode_elmsr_enter(struct wlan_objmgr_vdev *vdev,
+					    struct mlo_link_set_active_req *req,
+					    uint16_t link_bitmap,
+					    uint8_t num_disallow_mode_comb)
+{
+	uint8_t i, j, k;
+	uint8_t link_id;
+	struct wlan_mlo_dev_context *mlo_dev_ctx;
+	struct wlan_channel *chan;
+
+	if (!vdev)
+		return false;
+
+	mlo_dev_ctx = vdev->mlo_dev_ctx;
+	if (!mlo_dev_ctx)
+		return false;
+
+	if (!link_bitmap)
+		goto err;
+
+	for (j = 0; j < num_disallow_mode_comb; j++) {
+		for (i = 0, k = 0;
+			(i < WLAN_UMAC_MLO_MAX_VDEVS || k < WLAN_UMAC_MLO_MAX_VDEVS);
+			 i++, k++) {
+			if (!mlo_dev_ctx->wlan_vdev_list[i])
+				continue;
+			link_id = wlan_vdev_get_link_id(mlo_dev_ctx->wlan_vdev_list[i]);
+			chan = wlan_vdev_mlme_get_bss_chan(mlo_dev_ctx->wlan_vdev_list[i]);
+			if (!policy_mgr_match_link_id(link_id, link_bitmap, chan->ch_freq)) {
+				policy_mgr_err("Link id does not match %d ch_freq %d", link_id, chan->ch_freq);
+				goto err;
+			}
+			req->param.disallow_mode_link_bmap[j].ieee_link_id[k] = link_id;
+		}
+		req->param.disallow_mode_link_bmap[j].disallowed_mode = MLO_DISALLOWED_MODE_NO_MLMR;
+		policy_mgr_debug("ieee_link_id_comb 0%x, disallowed mode %d",
+				 req->param.disallow_mode_link_bmap[j].ieee_link_id_comb,
+				 req->param.disallow_mode_link_bmap[j].disallowed_mode);
+	}
+
+	return true;
+err:
+	policy_mgr_fill_disallowed_mode_info(vdev, req, num_disallow_mode_comb);
+	return false;
+}
+
+bool
+policy_mgr_update_disallowed_mode_bitmap(struct wlan_objmgr_psoc *psoc,
+					 struct wlan_objmgr_vdev *vdev,
+					 struct mlo_link_set_active_req *req)
+{
+	struct wlan_mlo_dev_context *mlo_dev_ctx;
+	uint8_t num_disallow_mode_comb;
+	uint16_t active_link_bmap = 0;
+	enum wlan_emlsr_action_mode emlsr_mode = WLAN_EMLSR_MODE_MAX;
+
+	if (!vdev)
+		return false;
+
+	if (!req)
+		return false;
+
+	mlo_dev_ctx = vdev->mlo_dev_ctx;
+	if (!mlo_dev_ctx)
+		return false;
+
+	if (!wlan_mlme_is_aux_emlsr_support(psoc))
+		return false;
+
+	emlsr_mode = mlo_dev_ctx->sta_ctx->emlsr_mode_req;
+	if (req->param.force_mode == MLO_LINK_FORCE_MODE_ACTIVE_INACTIVE ||
+	    req->param.force_mode == MLO_LINK_FORCE_MODE_ACTIVE)
+		active_link_bmap = req->param.force_cmd.ieee_link_id_bitmap;
+
+	policy_mgr_init_disallow_mode_bmap(req);
+	if (policy_mgr_get_connection_count_with_mlo(psoc) == 1) {
+		num_disallow_mode_comb = 1;
+		req->param.num_disallow_mode_comb = num_disallow_mode_comb;
+
+		if (emlsr_mode == WLAN_EMLSR_MODE_ENTER)
+			policy_mgr_update_disallow_mode_elmsr_enter(vdev,
+								    req,
+								    active_link_bmap,
+								    num_disallow_mode_comb);
+		else
+			policy_mgr_fill_disallowed_mode_info(vdev,
+							     req,
+							     num_disallow_mode_comb);
+	}
+	return true;
+}
+
+bool
+policy_mgr_init_disallow_mode_bmap(struct mlo_link_set_active_req *req)
+{
+	uint8_t i;
+
+	if (!req)
+		return false;
+
+	/* set link id to invalid */
+	for (i = 0; i < MAX_DISALLOW_BMAP_COMB ; i++)
+		req->param.disallow_mode_link_bmap[i].ieee_link_id_comb = MLO_INVALID_LINK_BMAP;
+
+	return true;
+}
+#endif

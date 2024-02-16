@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -213,7 +213,7 @@ struct pe_session *pe_find_partner_session_by_link_id(
 	}
 
 	vdev = mlo_get_vdev_by_link_id(session->vdev, link_id,
-				       WLAN_LEGACY_MAC_ID);
+				       WLAN_MLO_MGR_ID);
 
 	if (!vdev) {
 		pe_err("vdev is null");
@@ -224,7 +224,7 @@ struct pe_session *pe_find_partner_session_by_link_id(
 			mac, vdev->vdev_objmgr.vdev_id);
 
 	if (!partner_session)
-		wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
+		wlan_objmgr_vdev_release_ref(vdev, WLAN_MLO_MGR_ID);
 
 	return partner_session;
 }
@@ -576,6 +576,26 @@ bool lim_is_mlo_recv_assoc(tpDphHashNode sta_ds)
 	return sta_ds->recv_assoc_frm;
 }
 
+#ifdef WLAN_FEATURE_MULTI_LINK_SAP
+/**
+ * lim_mlo_sap_vdev_get_link_id () - get link from vdev for mlo sap
+ * @vdev: pointer to vdev
+ *
+ * Return: link id
+ */
+static inline uint8_t
+lim_mlo_sap_vdev_get_link_id(struct wlan_objmgr_vdev *vdev)
+{
+	return wlan_vdev_get_link_id(vdev);
+}
+#else
+static inline uint8_t
+lim_mlo_sap_vdev_get_link_id(struct wlan_objmgr_vdev *vdev)
+{
+	return 0;
+}
+#endif
+
 QDF_STATUS lim_mlo_proc_assoc_req_frm(struct wlan_objmgr_vdev *vdev,
 				      struct wlan_mlo_peer_context *ml_peer,
 				      struct qdf_mac_addr *link_addr,
@@ -593,6 +613,7 @@ QDF_STATUS lim_mlo_proc_assoc_req_frm(struct wlan_objmgr_vdev *vdev,
 	QDF_STATUS status;
 	qdf_size_t link_frame_len = 0;
 	struct qdf_mac_addr link_bssid;
+	uint8_t link_id = 0;
 
 	if (!vdev) {
 		pe_err("vdev is null");
@@ -637,7 +658,7 @@ QDF_STATUS lim_mlo_proc_assoc_req_frm(struct wlan_objmgr_vdev *vdev,
 	pHdr = (tpSirMacMgmtHdr)qdf_nbuf_data(buf);
 	fc = pHdr->fc;
 
-	if (fc.type == SIR_MAC_MGMT_FRAME) {
+	if (fc.type == WLAN_FC0_TYPE_MGMT) {
 		if (fc.subType == SIR_MAC_MGMT_ASSOC_REQ) {
 			sub_type = LIM_ASSOC;
 		} else if (fc.subType == SIR_MAC_MGMT_REASSOC_REQ) {
@@ -669,10 +690,11 @@ QDF_STATUS lim_mlo_proc_assoc_req_frm(struct wlan_objmgr_vdev *vdev,
 		qdf_mem_free(assoc_req);
 		return QDF_STATUS_E_NOMEM;
 	}
+	link_id = lim_mlo_sap_vdev_get_link_id(vdev);
 	qdf_copy_macaddr(&link_bssid, (struct qdf_mac_addr *)session->bssId);
 	status = util_gen_link_assoc_req(
 				frm_body, frame_len, sub_type == LIM_REASSOC,
-				0,
+				link_id,
 				link_bssid,
 				qdf_nbuf_data(assoc_req->assoc_req_buf),
 				qdf_nbuf_len(assoc_req->assoc_req_buf),
@@ -774,7 +796,12 @@ void lim_ap_mlo_sta_peer_ind(struct mac_context *mac,
 							pe_session->vdev);
 				qdf_mem_copy(linfo->link_addr.bytes,
 					     sta->staAddr, QDF_MAC_ADDR_SIZE);
+
+				/* Mlo mgr needs all link info including
+				 * the assoc peer. Increase it for assoc link.
+				 */
 				info.num_partner_links++;
+
 				wlan_mlo_peer_create(pe_session->vdev, peer,
 						     &info,
 						     assoc_req->assoc_req_buf,
@@ -1065,6 +1092,11 @@ QDF_STATUS lim_fill_complete_mlo_ie(struct pe_session *session,
 	target[consumed++] = buf[index++];
 	target[consumed++] = buf[index++];
 	mlo_ie_total_len = pbuf - buf - MIN_IE_LEN;
+	if (mlo_ie_total_len > total_len - MIN_IE_LEN) {
+		pe_err("Invalid len: %u, %u", mlo_ie_total_len, total_len);
+		qdf_mem_free(buf);
+		return QDF_STATUS_E_INVAL;
+	}
 
 	for (i = 0; i < mlo_ie_total_len; i++) {
 		if (i && (i % WLAN_MAX_IE_LEN) == 0) {

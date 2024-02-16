@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -683,6 +683,10 @@ static void wma_set_default_tgt_config(tp_wma_handle wma_handle,
 	wma_set_peer_map_unmap_v2_config(wma_handle->psoc, tgt_cfg);
 
 	tgt_cfg->notify_frame_support = DP_MARK_NOTIFY_FRAME_SUPPORT;
+
+	if (cfg_get(wma_handle->psoc, CFG_ENABLE_SMEM_QMS))
+		tgt_cfg->is_qms_smem_supported = true;
+
 }
 
 /**
@@ -3446,7 +3450,6 @@ QDF_STATUS wma_open(struct wlan_objmgr_psoc *psoc,
 	void *wmi_handle;
 	QDF_STATUS qdf_status;
 	struct wmi_unified_attach_params *params;
-	struct policy_mgr_wma_cbacks wma_cbacks;
 	struct target_psoc_info *tgt_psoc_info;
 	int i;
 	bool val = 0;
@@ -3824,6 +3827,7 @@ QDF_STATUS wma_open(struct wlan_objmgr_psoc *psoc,
 	wma_handle->staMaxLIModDtim = cds_cfg->sta_maxlimod_dtim;
 	wma_handle->sta_max_li_mod_dtim_ms = cds_cfg->sta_maxlimod_dtim_ms;
 	wma_handle->staModDtim = ucfg_pmo_get_sta_mod_dtim(wma_handle->psoc);
+	wma_handle->staTelesDtim = ucfg_pmo_get_sta_teles_dtim(wma_handle->psoc);
 	wma_handle->staDynamicDtim =
 			ucfg_pmo_get_sta_dynamic_dtim(wma_handle->psoc);
 
@@ -3921,14 +3925,8 @@ QDF_STATUS wma_open(struct wlan_objmgr_psoc *psoc,
 					      wma_vdev_get_dtim_period);
 	pmo_register_get_beacon_interval_callback(wma_handle->psoc,
 						  wma_vdev_get_beacon_interval);
-	wma_cbacks.wma_get_connection_info = wma_get_connection_info;
 	wma_register_nan_callbacks(wma_handle);
 	wma_register_pkt_capture_callbacks(wma_handle);
-	qdf_status = policy_mgr_register_wma_cb(wma_handle->psoc, &wma_cbacks);
-	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
-		wma_err("Failed to register wma cb with Policy Manager");
-	}
-
 	wmi_unified_register_event_handler(wma_handle->wmi_handle,
 			wmi_phyerr_event_id,
 			wma_unified_phyerr_rx_event_handler,

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -722,23 +722,23 @@ sir_convert_meas_req_frame2_struct(struct mac_context *, uint8_t *,
 #endif
 
 /**
- * \brief Populated a tDot11fFfCapabilities
+ * populate_dot11f_capabilities() -Populated a tDot11fFfCapabilities
+ * @mac: Pointer to the global MAC data structure
+ * @pDot11f: Address of a tDot11fFfCapabilities to be filled in
+ * @pe_session: pe session pointer
+ * @update_cu: flag for critical update
  *
- * \param mac Pointer to the global MAC data structure
- *
- * \param pDot11f Address of a tDot11fFfCapabilities to be filled in
- *
- *
- * \note If SIR_MAC_PROP_CAPABILITY_11EQOS is enabled, we'll clear the QOS
+ * If SIR_MAC_PROP_CAPABILITY_11EQOS is enabled, we'll clear the QOS
  * bit in pDot11f
  *
- *
+ * Return: QDF_STATUS
  */
 
 QDF_STATUS
 populate_dot11f_capabilities(struct mac_context *mac,
 			tDot11fFfCapabilities *pDot11f,
-			struct pe_session *pe_session);
+			struct pe_session *pe_session,
+			bool update_cu);
 /**
  * populate_dot11f_max_chan_switch_time() - populate max chan switch time
  * @mac: pointer to mac
@@ -1943,4 +1943,24 @@ void populate_dot11f_edca_pifs_param_set(
 QDF_STATUS populate_dot11f_bcn_prot_extcaps(struct mac_context *mac_ctx,
 					    struct pe_session *pe_session,
 					    tDot11fIEExtCap *dot11f);
+
+#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
+/**
+ * populate_dot11f_ecsa_param_set() - populate ecsa action frame for ll_sap
+ * @vdev: vdev object
+ * @qcn_ie: qcn ie pointer
+ *
+ * Return: None
+ */
+void populate_dot11f_ecsa_param_set_for_ll_sap(
+			struct wlan_objmgr_vdev *vdev,
+			tDot11fIEqcn_ie *qcn_ie);
+#else
+static inline
+void populate_dot11f_ecsa_param_set_for_ll_sap(
+			struct wlan_objmgr_vdev *vdev,
+			tDot11fIEqcn_ie *qcn_ie)
+{
+}
+#endif
 #endif /* __PARSE_H__ */
