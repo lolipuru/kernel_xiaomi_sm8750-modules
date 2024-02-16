@@ -7,6 +7,8 @@
 #ifndef _UAPI_COMPAT_QCEDEV__H
 #define _UAPI_COMPAT_QCEDEV__H
 
+#if IS_ENABLED(CONFIG_COMPAT)
+
 #include <linux/types.h>
 #include <linux/ioctl.h>
 
@@ -200,4 +202,5 @@ long compat_qcedev_ioctl(struct file *file,
 long qcedev_ioctl(struct file *file,
 			unsigned int cmd, unsigned long arg);
 
+#endif
 #endif /* _UAPI_COMPAT_QCEDEV__H */
