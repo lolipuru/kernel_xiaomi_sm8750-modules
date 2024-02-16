@@ -8532,7 +8532,6 @@ static int cam_ife_mgr_release_hw(void *hw_mgr_priv,
 	}
 
 	ctx->ctx_type = CAM_IFE_CTX_TYPE_NONE;
-	ctx->ctx_index = CAM_IFE_CTX_MAX;
 	ctx->buf_done_controller = NULL;
 	ctx->mc_comp_buf_done_controller = NULL;
 	kfree(ctx->scratch_buf_info.sfe_scratch_config);
@@ -8562,6 +8561,7 @@ static int cam_ife_mgr_release_hw(void *hw_mgr_priv,
 	CAM_INFO(CAM_ISP, "%llu:%llu:%llu.%llu Release HW success ctx id: %u",
 		hrs, min, sec, ms,
 		ctx->ctx_index);
+	ctx->ctx_index = CAM_IFE_CTX_MAX;
 
 	memset(&ctx->ts, 0, sizeof(struct timespec64));
 	cam_ife_hw_mgr_put_ctx(&hw_mgr->free_ctx_list, &ctx);
