@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -330,7 +330,6 @@ static int lpass_cdc_tx_macro_event_handler(struct snd_soc_component *component,
 
 	switch (event) {
 	case LPASS_CDC_MACRO_EVT_SSR_DOWN:
-		trace_printk("%s, enter SSR down\n", __func__);
 		if ((!pm_runtime_enabled(tx_dev) ||
 		     !pm_runtime_suspended(tx_dev))) {
 			ret = lpass_cdc_runtime_suspend(tx_dev);
@@ -342,7 +341,6 @@ static int lpass_cdc_tx_macro_event_handler(struct snd_soc_component *component,
 		}
 		break;
 	case LPASS_CDC_MACRO_EVT_SSR_UP:
-		trace_printk("%s, enter SSR up\n", __func__);
 		break;
 	case LPASS_CDC_MACRO_EVT_CLK_RESET:
 		lpass_cdc_rsc_clk_reset(tx_dev, TX_CORE_CLK);
@@ -575,8 +573,8 @@ static int lpass_cdc_tx_macro_tx_mixer_get(struct snd_kcontrol *kcontrol,
 		snd_soc_dapm_kcontrol_widget(kcontrol);
 	struct snd_soc_component *component =
 				snd_soc_dapm_to_component(widget->dapm);
-	struct soc_multi_mixer_control *mixer =
-		((struct soc_multi_mixer_control *)kcontrol->private_value);
+	struct soc_mixer_control *mixer =
+		((struct soc_mixer_control *)kcontrol->private_value);
 	u32 dai_id = widget->shift;
 	u32 dec_id = mixer->shift;
 	struct device *tx_dev = NULL;
@@ -600,8 +598,8 @@ static int lpass_cdc_tx_macro_tx_mixer_put(struct snd_kcontrol *kcontrol,
 	struct snd_soc_component *component =
 				snd_soc_dapm_to_component(widget->dapm);
 	struct snd_soc_dapm_update *update = NULL;
-	struct soc_multi_mixer_control *mixer =
-		((struct soc_multi_mixer_control *)kcontrol->private_value);
+	struct soc_mixer_control *mixer =
+		((struct soc_mixer_control *)kcontrol->private_value);
 	u32 dai_id = widget->shift;
 	u32 dec_id = mixer->shift;
 	u32 enable = ucontrol->value.integer.value[0];

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/device.h>
@@ -47,6 +47,7 @@
 enum pmic_type {
 	PM8350B = 1,
 	PM8550B = 2,
+	PMIH010X = 3,
 };
 
 enum {
@@ -704,7 +705,6 @@ static int swr_haptics_suspend(struct device *dev)
 		dev_err_ratelimited(dev, "%s: no data for swr_hap\n", __func__);
 		return -ENODEV;
 	}
-	trace_printk("%s: suspended\n", __func__);
 
 	return rc;
 }
@@ -719,7 +719,6 @@ static int swr_haptics_resume(struct device *dev)
 		dev_err_ratelimited(dev, "%s: no data for swr_hap\n", __func__);
 		return -ENODEV;
 	}
-	trace_printk("%s: resumed\n", __func__);
 
 	return rc;
 }
@@ -737,6 +736,10 @@ static const struct of_device_id swr_haptics_match_table[] = {
 		.compatible = "qcom,pm8550b-swr-haptics",
 		.data = (void *)PM8550B,
 	},
+	{
+		.compatible = "qcom,pmih010x-swr-haptics",
+		.data = (void *)PMIH010X,
+	},
 	{ },
 };
 
@@ -744,6 +747,7 @@ static const struct swr_device_id swr_haptics_id[] = {
 	{"swr-haptics", 0},
 	{"pm8350b-swr-haptics", 0},
 	{"pm8550b-swr-haptics", 0},
+	{"pmih010x-swr-haptics", 0},
 	{},
 };
 

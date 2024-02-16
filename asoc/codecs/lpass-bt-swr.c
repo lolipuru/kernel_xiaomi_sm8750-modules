@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+/* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_platform.h>
@@ -15,6 +15,7 @@
 #include <asoc/msm-cdc-pinctrl.h>
 #include <dsp/digital-cdc-rsc-mgr.h>
 #include <soc/swr-wcd.h>
+#include <soc/snd_event.h>
 
 #define DRV_NAME "lpass-bt-swr"
 
@@ -48,8 +49,10 @@ struct lpass_bt_swr_priv {
 	struct device *dev;
 	struct mutex vote_lock;
 	struct mutex swr_clk_lock;
+	struct mutex ssr_lock;
 	bool dev_up;
-	bool pre_dev_up;
+	bool initial_boot;
+
 	struct clk *lpass_core_hw_vote;
 	struct clk *lpass_audio_hw_vote;
 	int core_hw_vote_count;
@@ -175,7 +178,7 @@ bool lpass_bt_swr_check_core_votes(struct lpass_bt_swr_priv *priv)
 	bool ret = true;
 
 	mutex_lock(&priv->vote_lock);
-	if (!priv->pre_dev_up ||
+	if (!priv->dev_up ||
 		(priv->lpass_core_hw_vote && !priv->core_hw_vote_count) ||
 		(priv->lpass_audio_hw_vote && !priv->core_audio_vote_count))
 		ret = false;
@@ -194,7 +197,7 @@ static int lpass_bt_swr_core_vote(void *handle, bool enable)
 		return -EINVAL;
 	}
 
-	if (!priv->pre_dev_up && enable) {
+	if (!priv->dev_up && enable) {
 		pr_err("%s: adsp is not up\n", __func__);
 		return -EINVAL;
 	}
@@ -321,6 +324,75 @@ exit:
 	return ret;
 }
 
+static void lpass_bt_swr_ssr_disable(struct device *dev, void *data)
+{
+	struct lpass_bt_swr_priv *priv = data;
+
+	if (!priv->dev_up) {
+		dev_err_ratelimited(priv->dev,
+				    "%s: already disabled\n", __func__);
+		return;
+	}
+
+	mutex_lock(&priv->ssr_lock);
+	priv->dev_up = false;
+	mutex_unlock(&priv->ssr_lock);
+
+	swrm_wcd_notify(priv->swr_ctrl_data->lpass_bt_swr_pdev,
+				 SWR_DEVICE_SSR_DOWN, NULL);
+
+}
+
+static int lpass_bt_swr_ssr_enable(struct device *dev, void *data)
+{
+	struct lpass_bt_swr_priv *priv = data;
+	int ret;
+
+	if (priv->initial_boot) {
+		priv->initial_boot = false;
+		return 0;
+	}
+
+	mutex_lock(&priv->ssr_lock);
+	priv->dev_up = true;
+	mutex_unlock(&priv->ssr_lock);
+
+	mutex_lock(&priv->swr_clk_lock);
+
+	dev_dbg(priv->dev, "%s: swrm clock users %d\n",
+		__func__, priv->swr_clk_users);
+
+	lpass_bt_swr_mclk_enable(priv, false);
+	ret = msm_cdc_pinctrl_select_sleep_state(
+				priv->bt_swr_gpio_p);
+	if (ret < 0) {
+		dev_err_ratelimited(priv->dev,
+			"%s: bt swr pinctrl disable failed\n",
+			__func__);
+	}
+
+	if (priv->swr_clk_users > 0) {
+		lpass_bt_swr_mclk_enable(priv, true);
+		ret = msm_cdc_pinctrl_select_active_state(
+					priv->bt_swr_gpio_p);
+		if (ret < 0) {
+			dev_err_ratelimited(priv->dev,
+				"%s: bt swr pinctrl enable failed\n",
+				__func__);
+		}
+	}
+	mutex_unlock(&priv->swr_clk_lock);
+
+	swrm_wcd_notify(priv->swr_ctrl_data->lpass_bt_swr_pdev,
+				 SWR_DEVICE_SSR_UP, NULL);
+
+	return 0;
+}
+
+static const struct snd_event_ops lpass_bt_swr_ssr_ops = {
+	.enable = lpass_bt_swr_ssr_enable,
+	.disable = lpass_bt_swr_ssr_disable,
+};
 
 static int lpass_bt_swr_probe(struct platform_device *pdev)
 {
@@ -336,18 +408,16 @@ static int lpass_bt_swr_probe(struct platform_device *pdev)
 	if (!priv)
 		return -ENOMEM;
 
-
 	BLOCKING_INIT_NOTIFIER_HEAD(&priv->notifier);
 	priv->dev = &pdev->dev;
 	priv->dev_up = true;
-	priv->pre_dev_up = true;
-
 	priv->core_hw_vote_count = 0;
 	priv->core_audio_vote_count = 0;
 
 	dev_set_drvdata(&pdev->dev, priv);
 	mutex_init(&priv->vote_lock);
 	mutex_init(&priv->swr_clk_lock);
+	mutex_init(&priv->ssr_lock);
 
 	priv->bt_swr_gpio_p = of_parse_phandle(pdev->dev.of_node,
 					"qcom,bt-swr-gpios", 0);
@@ -428,6 +498,17 @@ static int lpass_bt_swr_probe(struct platform_device *pdev)
 	/* call scheduler to add child devices. */
 	schedule_work(&priv->lpass_bt_swr_add_child_devices_work);
 
+	priv->initial_boot = true;
+	ret = snd_event_client_register(priv->dev, &lpass_bt_swr_ssr_ops, priv);
+	if (!ret) {
+		snd_event_notify(priv->dev, SND_EVENT_UP);
+		dev_err(&pdev->dev, "%s: Registered SSR ops\n", __func__);
+	} else {
+		dev_err(&pdev->dev,
+			"%s: Registration with SND event FWK failed ret = %d\n",
+			__func__, ret);
+	}
+
 	return 0;
 }
 
@@ -443,6 +524,7 @@ static int lpass_bt_swr_remove(struct platform_device *pdev)
 	of_platform_depopulate(&pdev->dev);
 	mutex_destroy(&priv->vote_lock);
 	mutex_destroy(&priv->swr_clk_lock);
+	mutex_destroy(&priv->ssr_lock);
 
 	return 0;
 }
