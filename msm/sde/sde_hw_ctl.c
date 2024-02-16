@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -217,6 +217,7 @@ static const u32 dspp_sub_blk_flush_tbl[SDE_DSPP_MAX] = {
 	[SDE_DSPP_DEMURA] = 9,
 	[SDE_DSPP_RC] = 10,
 	[SDE_DSPP_AIQE] = 12,
+	[SDE_DSPP_AI_SCALER] = 13,
 	[SDE_DSPP_SB] = 31,
 };
 

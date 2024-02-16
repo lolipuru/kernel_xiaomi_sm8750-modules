@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -3259,7 +3259,6 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->get_sink_crc = dp_panel_get_sink_crc;
 	dp_panel->sink_crc_enable = dp_panel_sink_crc_enable;
 	dp_panel->get_panel_on = dp_panel_get_panel_on;
-	dp_panel->pclk_factor = 1;
 
 	sde_conn = to_sde_connector(dp_panel->connector);
 	sde_conn->drv_panel = dp_panel;

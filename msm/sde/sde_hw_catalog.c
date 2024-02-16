@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
+#include <linux/nvmem-consumer.h>
 #include <linux/slab.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
@@ -561,6 +562,14 @@ enum {
 	AIQE_PROP_MAX,
 };
 
+enum {
+	AI_SCALER_OFF,
+	AI_SCALER_VERSION,
+	AI_SCALER_LEN,
+	AI_SCALER,
+	AI_SCALER_PROP_MAX,
+};
+
 /*************************************************************
  * dts property definition
  *************************************************************/
@@ -1074,6 +1083,13 @@ static struct sde_prop_type aiqe_prop[] = {
 			false, PROP_TYPE_U32},
 	[AIQE_WRAPPER_LEN] = {AIQE_WRAPPER_LEN, "qcom,sde-dspp-aiqe-wrapper-size", false,
 			PROP_TYPE_U32},
+};
+
+static struct sde_prop_type ai_scaler_prop[] = {
+	{AI_SCALER_OFF, "qcom,sde-dspp-aiqe-aiscaler-off", false, PROP_TYPE_U32_ARRAY},
+	{AI_SCALER_VERSION, "qcom,sde-dspp-aiqe-aiscaler-version", false, PROP_TYPE_U32},
+	{AI_SCALER_LEN, "qcom,sde-dspp-aiqe-aiscaler-size", false, PROP_TYPE_U32},
+	{AI_SCALER, "qcom,sde-aiqe-has-feature-aiscaler", false, PROP_TYPE_BOOL},
 };
 
 /*************************************************************
@@ -3169,6 +3185,55 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	return 0;
 }
 
+static int _sde_ai_scaler_parse_dt(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	int off_count, i;
+	struct sde_dt_props *props;
+
+	props = sde_get_dt_props(np, AI_SCALER_PROP_MAX, ai_scaler_prop,
+			ARRAY_SIZE(ai_scaler_prop), &off_count);
+	if (IS_ERR(props))
+		return PTR_ERR(props);
+
+	sde_cfg->ai_scaler_count = 0;
+	if (!(PROP_VALUE_ACCESS(props->values, AI_SCALER, 0))
+		|| off_count == 0) {
+		sde_put_dt_props(props);
+		return 0;
+	}
+
+	if (off_count > sde_cfg->dspp_count) {
+		SDE_ERROR("limiting %d AI Scaler blocks to %d DSPP instances\n",
+				off_count, sde_cfg->dspp_count);
+	}
+
+	for (i = 0; i < sde_cfg->dspp_count; i++) {
+		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
+		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
+
+		sblk->ai_scaler.id = SDE_DSPP_AI_SCALER;
+		if (props->exists[AI_SCALER_OFF] && i < off_count) {
+			sblk->ai_scaler.base = PROP_VALUE_ACCESS(props->values,
+				AI_SCALER_OFF, i);
+			if (sblk->ai_scaler.base >= MAX_AIQE_OFF) {
+				sblk->ai_scaler.base = 0;
+				continue;
+			}
+			sblk->ai_scaler.len = PROP_VALUE_ACCESS(props->values,
+					AI_SCALER_LEN, 0);
+			sblk->ai_scaler.version = PROP_VALUE_ACCESS(props->values,
+					AI_SCALER_VERSION, 0);
+			sblk->ai_scaler.ai_scaler_supported = true;
+			set_bit(SDE_DSPP_AI_SCALER, &dspp->features);
+			sde_cfg->ai_scaler_count = sde_cfg->ai_scaler_count + 1;
+		}
+	}
+
+	sde_put_dt_props(props);
+	return 0;
+}
+
 static void _sde_init_dspp_sblk(struct sde_dspp_cfg *dspp,
 		struct sde_pp_blk *pp_blk, int prop_id, int blk_id,
 		struct sde_dt_props *props)
@@ -3318,6 +3383,12 @@ static int sde_dspp_parse_dt(struct device_node *np,
 		goto end;
 
 	rc = _sde_aiqe_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = _sde_ai_scaler_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
 end:
 	return rc;
 }
@@ -5083,13 +5154,15 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
 			index, fp16_formats, ARRAY_SIZE(fp16_formats));
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
-		index += sde_copy_formats(sde_cfg->dma_formats, vig_list_size,
+		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
 			index, rgb_lossy_formats, ARRAY_SIZE(rgb_lossy_formats));
 
 	/* Virtual ViG pipe input formats (all virt pipes use DMA formats) */
 	virt_vig_list_size = ARRAY_SIZE(plane_formats);
 	if (test_bit(SDE_FEATURE_FP16, sde_cfg->features))
 		virt_vig_list_size += ARRAY_SIZE(fp16_formats);
+	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
+		virt_vig_list_size += ARRAY_SIZE(rgb_lossy_formats);
 
 	sde_cfg->virt_vig_formats = kcalloc(virt_vig_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5145,7 +5218,7 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 		inline_fmt_tbl = true_inline_rot_v201_fmts;
 		in_rot_list_size = ARRAY_SIZE(true_inline_rot_v201_fmts);
 		inline_restricted_fmt_tbl = true_inline_rot_v201_restricted_fmts;
-		in_rot_restricted_list_size = ARRAY_SIZE(true_inline_rot_v201_fmts);
+		in_rot_restricted_list_size = ARRAY_SIZE(true_inline_rot_v201_restricted_fmts);
 	}
 
 	if (in_rot_list_size) {
@@ -5952,6 +6025,65 @@ end:
 	return rc;
 }
 
+static int sde_hw_parse_fuse_configuration(struct platform_device *pdev, const char *cell_name,
+				 uint32_t *data)
+{
+	struct nvmem_cell *cell;
+	int rc = 0;
+	void *buf;
+	size_t len;
+
+	cell = nvmem_cell_get(&pdev->dev, cell_name);
+	rc = PTR_ERR_OR_ZERO(cell);
+	if (rc) {
+		if (rc == -ENOENT)
+			return 0;
+		return rc;
+	}
+
+	buf = nvmem_cell_read(cell, &len);
+	nvmem_cell_put(cell);
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
+
+	memcpy(data, buf, min(len, sizeof(data)));
+	kfree(buf);
+
+	return 0;
+}
+
+static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *sde_cfg)
+{
+	struct platform_device *pdev;
+	int rc = -EINVAL;
+	uint32_t fuse = 0;
+	bool disable = false, polarity = false;
+
+	if (!dev || !dev->dev || !sde_cfg) {
+		SDE_ERROR("invalid input\n");
+		return rc;
+	}
+
+	pdev = to_platform_device(dev->dev);
+	rc = sde_hw_parse_fuse_configuration(pdev, "ssip_config", &fuse);
+	if (rc) {
+		SDE_DEBUG("failed to read ssip config for ss_config %d\n", rc);
+		sde_cfg->ssip_allowed = false;
+		return 0;
+	}
+
+	disable = (fuse & BIT(1)) >> 1;
+	polarity = fuse & BIT(0);
+
+	SDE_INFO("ssip: disable = %d polarity = %d\n", disable, polarity);
+	if ((disable && polarity) || (!disable && !polarity))
+		sde_cfg->ssip_allowed = true;
+	else
+		sde_cfg->ssip_allowed = false;
+
+	return rc;
+}
+
 /*************************************************************
  * hardware catalog init
  *************************************************************/
@@ -6076,6 +6208,10 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 		goto end;
 
 	rc = _sde_hardware_post_caps(sde_cfg, sde_cfg->hw_rev);
+	if (rc)
+		goto end;
+
+	rc = sde_hw_check_ssip_fuse(dev, sde_cfg);
 	if (rc)
 		goto end;
 

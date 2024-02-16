@@ -119,6 +119,7 @@ do { \
 	func[SDE_DSPP_RC] = _dspp_rc_install_property; \
 	func[SDE_DSPP_DEMURA] = _dspp_demura_install_property; \
 	func[SDE_DSPP_AIQE] = _dspp_aiqe_install_property; \
+	func[SDE_DSPP_AI_SCALER] = _dspp_ai_scaler_install_property; \
 } while (0)
 
 typedef void (*lm_prop_install_func_t)(struct drm_crtc *crtc);
@@ -1105,6 +1106,7 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_UDC] = _check_spr_udc_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_LTM_ROI] = _check_ltm_roi_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = check_aiqe_ssrc_data; \
+	wrappers[SDE_CP_CRTC_DSPP_AI_SCALER] = check_ai_scaler_feature; \
 } while (0)
 
 feature_wrapper set_crtc_feature_wrappers[SDE_CP_CRTC_MAX_FEATURES];
@@ -1158,6 +1160,7 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = set_aiqe_ssrc_config; \
 	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = set_aiqe_ssrc_data; \
 	wrappers[SDE_CP_CRTC_DSPP_COPR] = set_copr_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_AI_SCALER] = set_ai_scaler_feature; \
 } while (0)
 
 feature_wrapper set_crtc_pu_feature_wrappers[SDE_CP_CRTC_MAX_PU_FEATURES];
@@ -1727,6 +1730,7 @@ static const int dspp_feature_to_sub_blk_tbl[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_COPR] = SDE_DSPP_AIQE,
+	[SDE_CP_CRTC_DSPP_AI_SCALER] = SDE_DSPP_AI_SCALER,
 	[SDE_CP_CRTC_LM_GC] = SDE_DSPP_MAX,
 };
 
@@ -5147,9 +5151,84 @@ void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc)
 		&sde_crtc->cp_feature_list);
 
 	if (prop_node) {
+		list_del_init(&prop_node->cp_dirty_list);
 		prop_node->prop_val = 0;
 		_sde_cp_update_list(prop_node, sde_crtc, true);
 	}
 exit:
 	mutex_unlock(&sde_crtc->crtc_cp_lock);
+}
+
+void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state, struct sde_io_res *res)
+{
+	struct sde_crtc_state *sde_crtc_state;
+	struct sde_crtc *sde_crtc;
+	struct drm_property_blob *blob = NULL;
+	struct sde_cp_crtc_property_state *pstate;
+	struct drm_property *property;
+	struct sde_cp_node *prop_node;
+	struct drm_msm_ai_scaler *ai_scaler_cfg = NULL;
+	int i;
+	u32 feature;
+
+	if (!crtc_state || !res)
+		return;
+
+	sde_crtc_state = to_sde_crtc_state(crtc_state);
+	sde_crtc = to_sde_crtc(crtc_state->crtc);
+	res->enabled = false;
+
+	if (!sde_crtc_state->cp_prop_cnt) {
+		DRM_DEBUG_DRIVER("State dirty list is empty\n");
+		return;
+	}
+
+	for (i = 0; i < sde_crtc_state->cp_prop_cnt; i++) {
+		feature = sde_crtc_state->cp_dirty_list[i];
+		if (feature == SDE_CP_CRTC_DSPP_AI_SCALER)
+			break;
+	}
+
+	if (i == sde_crtc_state->cp_prop_cnt)
+		return;
+
+	pstate = &sde_crtc_state->cp_prop_values[feature];
+	property = pstate->prop;
+	prop_node = (struct sde_cp_node *)(pstate->cp_node);
+	if ((property->flags & DRM_MODE_PROP_BLOB) == 0)
+		return;
+
+	blob = drm_property_lookup_blob(sde_crtc->base.dev, pstate->prop_val);
+	if (!blob) {
+		SDE_DEBUG("invalid blob id %lld feature %d\n", pstate->prop_val,
+				prop_node->feature);
+		return;
+	}
+
+	ai_scaler_cfg = (struct drm_msm_ai_scaler *)blob->data;
+	if (!ai_scaler_cfg) {
+		SDE_DEBUG("ai scaler is disabled\n");
+		drm_property_blob_put(blob);
+		return;
+	}
+
+	if (blob->length != prop_node->prop_blob_sz) {
+		SDE_ERROR("invalid blob len %zd exp %d feature %d\n",
+		    blob->length, prop_node->prop_blob_sz, prop_node->feature);
+		drm_property_blob_put(blob);
+		return;
+	}
+
+	res->enabled = true;
+	res->src_w = ai_scaler_cfg->src_w;
+	res->src_h = ai_scaler_cfg->src_h;
+	res->dst_w = ai_scaler_cfg->dst_w;
+	res->dst_h = ai_scaler_cfg->dst_h;
+
+	SDE_DEBUG(
+		"AI Scaler enable:%d : src_w:0x%X src_h:0x%X dst_w:0x%X dst_h:0x%X\n",
+		res->enabled, ai_scaler_cfg->src_w, ai_scaler_cfg->src_h,
+		ai_scaler_cfg->dst_w, ai_scaler_cfg->dst_h);
+	SDE_EVT32(res->enabled, res->src_w, res->src_h, res->dst_w, res->dst_h);
+	drm_property_blob_put(blob);
 }

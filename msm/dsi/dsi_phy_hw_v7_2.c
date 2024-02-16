@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/math64.h>
@@ -277,6 +277,9 @@ static void dsi_phy_hw_cphy_enable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *c
 
 	DSI_W32(phy, DSIPHY_CMN_LANE_CTRL0, 0x17);
 
+	if (cfg->pll_source == DSI_PLL_SOURCE_NATIVE)
+		DSI_W32(phy, DSIPHY_CMN_CTRL_5, 0x07);
+
 	switch (cfg->pll_source) {
 	case DSI_PLL_SOURCE_STANDALONE:
 	case DSI_PLL_SOURCE_NATIVE:
@@ -393,6 +396,9 @@ static void dsi_phy_hw_dphy_enable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *c
 
 	/* Select full-rate mode */
 	DSI_W32(phy, DSIPHY_CMN_CTRL_2, 0x40);
+
+	if (cfg->pll_source == DSI_PLL_SOURCE_NATIVE)
+		DSI_W32(phy, DSIPHY_CMN_CTRL_5, 0x07);
 
 	switch (cfg->pll_source) {
 	case DSI_PLL_SOURCE_STANDALONE:

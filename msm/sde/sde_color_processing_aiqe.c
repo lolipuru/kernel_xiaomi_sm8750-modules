@@ -46,6 +46,11 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 
 	kms = get_kms(crtc);
 	catalog = kms->catalog;
+	if (!catalog->ssip_allowed) {
+		DRM_INFO("ssip_allowed = %d\n", catalog->ssip_allowed);
+		return;
+	}
+
 	version = catalog->dspp[0].sblk->aiqe.version;
 	major_version = version >> 16;
 	switch (major_version) {
@@ -241,6 +246,71 @@ void sde_set_mdnie_psr(struct sde_crtc *sde_crtc)
 	if (!sde_crtc || !hw_dspp)
 		return;
 
-	for (i = 0; i < num_mixers; i++)
-		hw_dspp->ops.setup_mdnie_psr(hw_dspp);
+	if (hw_dspp->ops.setup_mdnie_psr) {
+		for (i = 0; i < num_mixers; i++)
+			hw_dspp->ops.setup_mdnie_psr(hw_dspp);
+	}
+}
+
+void _dspp_ai_scaler_install_property(struct drm_crtc *crtc)
+{
+	char feature_name[256];
+	struct sde_kms *kms = NULL;
+	struct sde_mdss_cfg *catalog = NULL;
+	u32 major_version, version;
+
+	kms = get_kms(crtc);
+	catalog = kms->catalog;
+	version = catalog->dspp[0].sblk->ai_scaler.version;
+	major_version = version >> 16;
+	snprintf(feature_name, ARRAY_SIZE(feature_name), "%s%d",
+		"SDE_DSPP_AIQE_AI_SCALER_V", major_version);
+	switch (major_version) {
+	case 1:
+		if (catalog->dspp[0].sblk->ai_scaler.ai_scaler_supported)
+			_sde_cp_crtc_install_blob_property(crtc, feature_name,
+				SDE_CP_CRTC_DSPP_AI_SCALER, sizeof(struct drm_msm_ai_scaler));
+		break;
+	default:
+		DRM_ERROR("version %d not supported\n", version);
+		break;
+	}
+}
+
+int check_ai_scaler_feature(struct sde_hw_dspp *hw_dspp,
+				   struct sde_hw_cp_cfg *hw_cfg,
+				   struct sde_crtc *hw_crtc)
+{
+	int ret = 0;
+
+	if (!hw_dspp)
+		ret = -EINVAL;
+	else if (!hw_dspp->ops.check_ai_scaler) {
+		if (!hw_dspp->cap->sblk->ai_scaler.ai_scaler_supported)
+			DRM_DEBUG_DRIVER("AI Scaler not supported in dspp idx %d", hw_dspp->idx);
+		else
+			ret = -EINVAL;
+	} else
+		ret = hw_dspp->ops.check_ai_scaler(hw_dspp, hw_cfg);
+
+	return ret;
+}
+
+int set_ai_scaler_feature(struct sde_hw_dspp *hw_dspp,
+				   struct sde_hw_cp_cfg *hw_cfg,
+				   struct sde_crtc *hw_crtc)
+{
+	int ret = 0;
+
+	if (!hw_dspp)
+		ret = -EINVAL;
+	else if (!hw_dspp->ops.setup_ai_scaler) {
+		if (!hw_dspp->cap->sblk->ai_scaler.ai_scaler_supported)
+			DRM_DEBUG_DRIVER("AI Scaler not supported in dspp idx %d", hw_dspp->idx);
+		else
+			ret = -EINVAL;
+	} else
+		ret = hw_dspp->ops.setup_ai_scaler(hw_dspp, hw_cfg);
+
+	return ret;
 }

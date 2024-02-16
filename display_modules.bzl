@@ -186,6 +186,8 @@ module_entry(
       },
       deps = [
          "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
+         "//vendor/qcom/opensource/synx-kernel:%b_modules",
+         "//vendor/qcom/opensource/synx-kernel:synx_headers",
       ],
 
       # Configs are handled by config_options = []

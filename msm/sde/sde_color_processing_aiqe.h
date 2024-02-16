@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SDE_COLOR_PROCESSING_AIQE_H
@@ -93,4 +93,28 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc);
  */
 void sde_set_mdnie_psr(struct sde_crtc *sde_crtc);
 
-#endif /* _SDE_COLOR_PROCESSING_AIQE_H */
+/**
+ * _dspp_ai_scaler_install_property - install ai scaler drm properties
+ * @crtc: pointer to drm crtc
+ */
+void _dspp_ai_scaler_install_property(struct drm_crtc *crtc);
+
+/**
+ * check_ai_scaler_feature - check ai scaler feature config
+ * @hw_dspp: pointer to dspp hardware description
+ * @hw_cfg: pointer to feature configuration
+ * @hw_crtc: pointer to virtualized crtc data structure
+ */
+int check_ai_scaler_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
+			struct sde_crtc *hw_crtc);
+
+/**
+ * set_ai_scaler_feature - setup ai scaler feature config
+ * @hw_dspp: pointer to dspp hardware description
+ * @hw_cfg: pointer to feature configuration
+ * @hw_crtc: pointer to virtualized crtc data structure
+ */
+int set_ai_scaler_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
+		    struct sde_crtc *hw_crtc);
+
+#endif /*_SDE_COLOR_PROCESSING_AIQE_H */

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
  */
 
@@ -10,11 +10,7 @@
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/mutex.h>
-#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
-#include <msm_hw_fence.h>
-#else
-#include <linux/soc/qcom/msm_hw_fence.h>
-#endif
+#include <synx_api.h>
 
 #ifndef CHAR_BIT
 #define CHAR_BIT 8 /* define this if limits.h not available */
@@ -114,6 +110,7 @@ enum sde_fence_event {
  *                       to communicate with the fence controller.
  * @client_id: client_id enum for the display driver.
  * @hw_fence_client_id: client_id enum for the hw-fence driver.
+ * @hw_fence_handle: synx session handle returned by synx_initialize to access hw fence driver
  * @mem_descriptor: memory descriptor with the hfi for the rx/tx queues mapping.
  * @txq_tx_wm_va: pointer to store virtual address of tx_wm
  * @txq_wr_ptr_pa: pointer to store physical address of write_ptr
@@ -129,9 +126,9 @@ enum sde_fence_event {
  */
 struct sde_hw_fence_data {
 	int client_id;
-	enum hw_fence_client_id hw_fence_client_id;
-	void *hw_fence_handle;
-	struct msm_hw_fence_mem_addr mem_descriptor;
+	enum synx_client_id hw_fence_client_id;
+	struct synx_session *hw_fence_handle;
+	struct synx_queue_desc mem_descriptor;
 	u32 *txq_tx_wm_va;
 	u32 *txq_wr_ptr_pa;
 	u32 ipcc_in_client;

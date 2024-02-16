@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -28,10 +28,12 @@
 #include <drm/drm_flip_work.h>
 #include <soc/qcom/of_common.h>
 #include <linux/version.h>
+#ifdef CONFIG_QCOM_SPEC_SYNC
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <qcom_sync_file.h>
 #else
 #include <linux/soc/qcom/qcom_sync_file.h>
+#endif
 #endif
 #include <linux/file.h>
 #include <drm/msm_drm_aiqe.h>
@@ -226,6 +228,7 @@ void sde_crtc_get_mixer_resolution(struct drm_crtc *crtc, struct drm_crtc_state 
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
 	struct sde_connector_state *virt_cstate;
+	struct sde_io_res ai_scaler_res = {0, };
 
 	*width = 0;
 	*height = 0;
@@ -237,10 +240,14 @@ void sde_crtc_get_mixer_resolution(struct drm_crtc *crtc, struct drm_crtc_state 
 	cstate = to_sde_crtc_state(crtc_state);
 	virt_conn_state = _sde_crtc_get_virt_conn_state(crtc, crtc_state);
 	virt_cstate = virt_conn_state ? to_sde_connector_state(virt_conn_state) : NULL;
+	sde_crtc_get_ai_scaler_io_res(crtc_state, &ai_scaler_res);
 
 	if (cstate->num_ds_enabled) {
 		*width = cstate->ds_cfg[0].lm_width;
 		*height = cstate->ds_cfg[0].lm_height;
+	} else if (ai_scaler_res.enabled) {
+		*width = ai_scaler_res.src_w / sde_crtc->num_mixers;
+		*height = ai_scaler_res.src_h;
 	} else if (virt_cstate && virt_cstate->dnsc_blur_count) {
 		*width = (virt_cstate->dnsc_blur_cfg[0].src_width
 				* virt_cstate->dnsc_blur_count) / sde_crtc->num_mixers;
@@ -258,6 +265,7 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
 	struct sde_connector_state *virt_cstate;
+	struct sde_io_res ai_scaler_res = {0, };
 
 	*width = 0;
 	*height = 0;
@@ -265,6 +273,7 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	if (!crtc || !crtc_state || !mode)
 		return;
 
+	sde_crtc_get_ai_scaler_io_res(crtc_state, &ai_scaler_res);
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(crtc_state);
 	virt_conn_state = _sde_crtc_get_virt_conn_state(crtc, crtc_state);
@@ -273,6 +282,9 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	if (cstate->num_ds_enabled) {
 		*width = cstate->ds_cfg[0].lm_width * cstate->num_ds_enabled;
 		*height = cstate->ds_cfg[0].lm_height;
+	} else if (ai_scaler_res.enabled) {
+		*width = ai_scaler_res.src_w;
+		*height = ai_scaler_res.src_h;
 	} else if (virt_cstate && virt_cstate->dnsc_blur_count) {
 		*width = virt_cstate->dnsc_blur_cfg[0].src_width * virt_cstate->dnsc_blur_count;
 		*height = virt_cstate->dnsc_blur_cfg[0].src_height;
@@ -866,7 +878,6 @@ static void _sde_crtc_setup_dim_layer_cfg(struct drm_crtc *crtc,
 			dim_layer->flags, dim_layer->stage);
 
 	split_dim_layer.stage = dim_layer->stage;
-	split_dim_layer.color_fill = dim_layer->color_fill;
 
 	/*
 	 * traverse through the layer mixers attached to crtc and find the
@@ -874,6 +885,7 @@ static void _sde_crtc_setup_dim_layer_cfg(struct drm_crtc *crtc,
 	 */
 	for (i = 0; i < sde_crtc->num_mixers; i++) {
 		split_dim_layer.flags = dim_layer->flags;
+		split_dim_layer.color_fill = dim_layer->color_fill;
 
 		sde_kms_rect_intersect(&cstate->lm_roi[i], &dim_layer->rect,
 					&split_dim_layer.rect);
@@ -3248,7 +3260,8 @@ void sde_crtc_mdnie_art_event_notify(struct drm_crtc *crtc)
 				(u8 *)&mdnie_art_done);
 
 		// Reset ART_DONE and ART_EN
-		dspp->ops.reset_mdnie_art(dspp);
+		if (dspp->ops.reset_mdnie_art)
+			dspp->ops.reset_mdnie_art(dspp);
 		_sde_cp_mark_mdnie_art_property(crtc);
 	}
 }
@@ -3936,6 +3949,7 @@ static struct sde_hw_ctl *_sde_crtc_get_hw_ctl(struct drm_crtc *drm_crtc)
 
 static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 {
+#ifdef CONFIG_QTI_HW_FENCE
 	struct dma_fence *fence;
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
@@ -3972,7 +3986,7 @@ static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 				spec_fence = array->fences[i];
 
 				if (!IS_ERR_OR_NULL(spec_fence) &&
-					test_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT,
+					test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT,
 						&spec_fence->flags)) {
 					spec_hw_fence = true;
 				} else {
@@ -3988,7 +4002,7 @@ static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 			}
 			if (spec_hw_fence)
 				input_hw_fence = fence;
-		} else if (test_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags)) {
+		} else if (test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags)) {
 			input_hw_fence = fence;
 
 			SDE_DEBUG("input hwfence ctx:%llu seqno:%llu f:0x%lx timeline:%s\n",
@@ -4001,6 +4015,9 @@ static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 
 exit:
 	return input_hw_fence;
+#else
+	return NULL;
+#endif
 }
 
 /**
@@ -6954,6 +6971,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		if (catalog->demura_count)
 			sde_kms_info_add_keyint(info, "demura_count",
 					catalog->demura_count);
+
+		if (catalog->ai_scaler_count)
+			sde_kms_info_add_keyint(info, "ai_scaler_count",
+					catalog->ai_scaler_count);
 	}
 
 	sde_kms_info_add_keyint(info, "dsc_block_count", catalog->dsc_count);
