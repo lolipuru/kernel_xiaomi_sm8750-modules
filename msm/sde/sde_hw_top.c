@@ -120,6 +120,9 @@
 #define HW_FENCE_QOS_PRIORITY 0x7
 #define HW_FENCE_QOS_PRIORITY_LVL 0x0
 
+#define HW_FENCE_INPUT_FENCE_ID_MASK_ALL 0xFFFFFFFF
+#define HW_FENCE_INPUT_FENCE_ID_MASK_SIGNAL 0xFFFF
+
 static int ppb_offset_map[PINGPONG_MAX] = {1, 0, 3, 2, 5, 4, 7, 7, 6, 6, -1, -1};
 
 static void sde_hw_setup_split_pipe(struct sde_hw_mdp *mdp,
@@ -697,13 +700,14 @@ static void sde_hw_input_hw_fence_status(struct sde_hw_mdp *mdp, u64 *s_val, u64
 
 static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phys_id,
 	unsigned long ipcc_base_addr, unsigned long hw_fence_mdp_offset,
-	struct sde_hw_blk_reg_map *c)
+	struct sde_hw_blk_reg_map *c, bool has_soccp)
 {
-	u32 val, offset;
+	u32 val, offset, mask;
 
 	/*select ipcc protocol id for dpu */
 	val = (protocol_id == HW_FENCE_IPCC_FENCE_PROTOCOL_ID) ?
 		HW_FENCE_DPU_FENCE_PROTOCOL_ID : protocol_id;
+	mask = has_soccp ? HW_FENCE_INPUT_FENCE_ID_MASK_SIGNAL : HW_FENCE_INPUT_FENCE_ID_MASK_ALL;
 	SDE_REG_WRITE(c, hw_fence_mdp_offset, val);
 
 	/* set QOS priority */
@@ -727,7 +731,7 @@ static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phy
 	SDE_REG_WRITE(c, offset, val);
 
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_MASK, 0);
-	SDE_REG_WRITE(c, offset, 0xFFFFFFFF);
+	SDE_REG_WRITE(c, offset, mask);
 
 	/* configure the attribs for the write if eq data */
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_DATA, 1);
@@ -772,7 +776,7 @@ static void sde_hw_setup_hw_fences_config(struct sde_hw_mdp *mdp, u32 protocol_i
 	hw_fence_mdp_offset = mdp->caps->hw_fence_mdp_offset;
 
 	_sde_hw_setup_hw_input_fences_config(protocol_id, client_phys_id, ipcc_base_addr,
-			hw_fence_mdp_offset, &c);
+			hw_fence_mdp_offset, &c, mdp->caps->has_soccp);
 
 	/*setup output fence isr */
 
@@ -860,7 +864,7 @@ static void sde_hw_setup_hw_fences_config_with_dir_write(struct sde_hw_mdp *mdp,
 	hw_fence_mdp_offset = mdp->caps->hw_fence_mdp_offset;
 
 	_sde_hw_setup_hw_input_fences_config(protocol_id, client_phys_id, ipcc_base_addr,
-			hw_fence_mdp_offset, &c);
+			hw_fence_mdp_offset, &c, mdp->caps->has_soccp);
 
 	/*setup output fence isr */
 

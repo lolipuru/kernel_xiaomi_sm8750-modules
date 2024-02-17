@@ -4428,6 +4428,7 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 		cfg->hw_fence_rev = 0; /* disable hw fences*/
 
 	cfg->soccp_ph = PROP_VALUE_ACCESS(props->values, SOCCP_PH, 0);
+	cfg->mdp[0].has_soccp = (cfg->soccp_ph != 0);
 
 	if (props->exists[SEC_SID_MASK]) {
 		cfg->sec_sid_mask_count = props->counts[SEC_SID_MASK];
