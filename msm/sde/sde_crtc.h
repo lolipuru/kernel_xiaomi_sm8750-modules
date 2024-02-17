@@ -35,6 +35,8 @@
 
 #define SDE_CRTC_NAME_SIZE	12
 
+#define DRM_NOISE_ATTN_MAX_10_BIT_ALPHA 65535
+
 /* define the maximum number of in-flight frame events */
 /* Expand it to 2x for handling atleast 2 connectors safely */
 #define SDE_CRTC_EVENT_SIZE	(4 * 2)
