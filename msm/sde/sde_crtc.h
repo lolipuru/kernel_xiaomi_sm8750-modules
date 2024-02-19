@@ -35,6 +35,8 @@
 
 #define SDE_CRTC_NAME_SIZE	12
 
+#define DRM_NOISE_ATTN_MAX_10_BIT_ALPHA 65535
+
 /* define the maximum number of in-flight frame events */
 /* Expand it to 2x for handling atleast 2 connectors safely */
 #define SDE_CRTC_EVENT_SIZE	(4 * 2)
@@ -364,10 +366,6 @@ enum sde_crtc_hw_fence_flags {
  * @cache_type      : Current static image cache type to use
  * @dspp_blob_info  : blob containing dspp hw capability information
  * @cached_encoder_mask : cached encoder_mask for vblank work
- * @valid_skip_blend_plane: flag to indicate if skip blend plane is valid
- * @skip_blend_plane: enabled plane that has skip blending
- * @skip_blend_plane_w: skip blend plane width
- * @skip_blend_plane_h: skip blend plane height
  * @line_time_in_ns : current mode line time in nano sec is needed for QOS update
  * @frame_data      : Framedata data structure
  * @previous_opr_value : store previous opr values
@@ -385,6 +383,7 @@ enum sde_crtc_hw_fence_flags {
  * @mdnie_art_event_notify_enabled: flag to indicate if art done notify is enabled or not
  * @copr_status_event_notify_enabled: flag to indicate if copr status notify is enabled or not
  * @aiqe_top_level: aiqe top level mutex and mask
+ * @skip_blend_planes: array holding skip blend plane list
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -486,10 +485,6 @@ struct sde_crtc {
 	struct drm_property_blob *dspp_blob_info;
 	u32 cached_encoder_mask;
 
-	bool valid_skip_blend_plane;
-	enum sde_sspp skip_blend_plane;
-	u32 skip_blend_plane_w;
-	u32 skip_blend_plane_h;
 	u32 line_time_in_ns;
 
 	struct sde_frame_data frame_data;
@@ -511,6 +506,7 @@ struct sde_crtc {
 	bool copr_status_event_notify_enabled;
 
 	struct sde_aiqe_top_level aiqe_top_level;
+	struct sde_cp_skip_blend_plane skip_blend_planes[SB_PLANE_MAX];
 };
 
 enum sde_crtc_dirty_flags {

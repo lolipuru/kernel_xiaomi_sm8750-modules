@@ -2276,9 +2276,13 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 			if (ctl->ops.get_staged_sspp)
 				pipes_per_lm = ctl->ops.get_staged_sspp(ctl, iter_lm.blk->id,
 					&splash_display->pipe_info);
+
 			if (mixer->ops.get_staged_sspp)
 				pipes_per_lm = mixer->ops.get_staged_sspp(mixer, iter_lm.blk->id,
 						&splash_display->pipe_info);
+
+			if (ctl->ops.get_active_lms)
+				pipes_per_lm = ctl->ops.get_active_lms(ctl);
 
 			if (pipes_per_lm || splash_display->pipe_info.bordercolor) {
 				splash_display->lm_ids[splash_display->lm_cnt++] = iter_lm.blk->id;

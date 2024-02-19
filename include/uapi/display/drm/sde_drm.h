@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -876,9 +876,11 @@ struct drm_msm_display_hint {
  * @flags: operation control flags, for future use
  * @zposn: noise zorder
  * @zposattn: attenuation zorder
- * @attn_factor: attenuation factor in range of 1 to 255
+ * @attn_factor: attenuation factor in range of 1 to 255 for 8 bit and
+ *               1 to 65535 for 10 bit alpha
  * @stength: strength in range of 0 to 6
- * @alpha_noise: attenuation in range of 1 to 255
+ * @alpha_noise: attenuation in range of 1 to 255 for 8 bit and
+ *               1 to 65535 for 10 bit alpha
 */
 struct drm_msm_noise_layer_cfg {
 	__u64 flags;

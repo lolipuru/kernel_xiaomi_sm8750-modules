@@ -2000,7 +2000,12 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			skip_blend_plane.plane = sde_plane_pipe(plane);
 			skip_blend_plane.height = plane_crtc_roi.h;
 			skip_blend_plane.width = plane_crtc_roi.w;
+			skip_blend_plane.is_virtual = is_sde_plane_virtual(plane);
 			sde_cp_set_skip_blend_plane_info(crtc, &skip_blend_plane);
+			SDE_EVT32(DRMID(crtc), DRMID(plane), state->src_x >> 16,
+				state->src_y >> 16, state->src_w >> 16, state->src_h >> 16,
+				state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h,
+				pstate->rotation);
 		}
 
 		if (blend_type != SDE_DRM_BLEND_OP_SKIP) {
@@ -8816,6 +8821,8 @@ static int _sde_crtc_set_noise_layer(struct sde_crtc *sde_crtc,
 				void __user *usr_ptr)
 {
 	int ret;
+	struct sde_kms *kms;
+	int alpha_attn_max = DRM_NOISE_ATTN_MAX;
 
 	if (!sde_crtc || !cstate) {
 		SDE_ERROR("invalid sde_crtc/state\n");
@@ -8836,13 +8843,23 @@ static int _sde_crtc_set_noise_layer(struct sde_crtc *sde_crtc,
 		SDE_ERROR("failed to copy noise layer %d\n", ret);
 		return -EFAULT;
 	}
+	kms = _sde_crtc_get_kms(&sde_crtc->base);
+	if (!kms || !kms->catalog) {
+		SDE_ERROR("Invalid kms\n");
+		return -EINVAL;
+	}
+
+	/* Alpha attenuation max is 65535 for 10 bit alpha */
+	if (test_bit(SDE_FEATURE_10_BITS_COMPONENTS, kms->catalog->features))
+		alpha_attn_max = DRM_NOISE_ATTN_MAX_10_BIT_ALPHA;
+
 	if (cstate->layer_cfg.zposn != cstate->layer_cfg.zposattn - 1 ||
 		cstate->layer_cfg.zposattn >= SDE_STAGE_MAX ||
 		!cstate->layer_cfg.attn_factor ||
-		cstate->layer_cfg.attn_factor > DRM_NOISE_ATTN_MAX ||
+		cstate->layer_cfg.attn_factor > alpha_attn_max ||
 		cstate->layer_cfg.strength > DRM_NOISE_STREN_MAX ||
 		!cstate->layer_cfg.alpha_noise ||
-		cstate->layer_cfg.alpha_noise > DRM_NOISE_ATTN_MAX) {
+		cstate->layer_cfg.alpha_noise > alpha_attn_max) {
 		SDE_ERROR("invalid param zposn %d zposattn %d attn_factor %d \
 			   strength %d alpha noise %d\n", cstate->layer_cfg.zposn,
 			   cstate->layer_cfg.zposattn, cstate->layer_cfg.attn_factor,
@@ -8891,8 +8908,8 @@ static void sde_cp_crtc_apply_noise(struct drm_crtc *crtc,
 			break;
 
 		if (test_bit(SDE_MIXER_10_BITS_COLOR, &lm->cap->features)) {
-			cfg.alpha_noise = cfg.alpha_noise >> 6;
-			cfg.attn_factor = cfg.attn_factor >> 6;
+			cfg.alpha_noise = cstate->layer_cfg.alpha_noise >> 6;
+			cfg.attn_factor = cstate->layer_cfg.attn_factor >> 6;
 		}
 
 		if (!cstate->noise_layer_en)

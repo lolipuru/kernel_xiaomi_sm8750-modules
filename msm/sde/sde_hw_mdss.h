@@ -685,6 +685,30 @@ struct sde_mdss_color {
 #define SDE_DBG_MASK_DNSC_BLUR  (1 << 18)
 
 /**
+ * struct sde_cp_skip_blend_plane: skip blend plane payload
+ * @valid: True when skip blend plane is active
+ * @plane: hw plane being used
+ * @plane_w: width of layer
+ * @plane_h: height of layer
+ */
+struct sde_cp_skip_blend_plane {
+	bool valid;
+	enum sde_sspp plane;
+	u32 plane_w;
+	u32 plane_h;
+};
+/**
+ * enum skip_blend_plane_type: skip blend rect type.
+ * SB_PLANE_REAL - Rect0 or real plane
+ * SB_PLANE_VIRT - Rect1 or virtual plane
+ */
+enum skip_blend_plane_type {
+	SB_PLANE_REAL,
+	SB_PLANE_VIRT,
+	SB_PLANE_MAX
+};
+
+/**
  * struct sde_hw_cp_cfg: hardware dspp/lm feature payload.
  * @payload: Feature specific payload.
  * @len: Length of the payload.
@@ -699,10 +723,7 @@ struct sde_mdss_color {
  *			using LUTDMA
  * @panel_height: height of display panel in pixels.
  * @panel_width: width of display panel in pixels.
- * @valid_skip_blend_plane: true if skip plane params are valid
- * @skip_blend_plane: plane which has been skipped staging into layer mixer
- * @skip_blend_plane_w: skip plane width
- * @skip_blend_plane_h: skip plane height
+ * @skip_planes: array of skip blend planes with crtc
  * @num_ds_enabled: Number of destination scalers enabled
  */
 struct sde_hw_cp_cfg {
@@ -718,10 +739,7 @@ struct sde_hw_cp_cfg {
 	bool broadcast_disabled;
 	u32 panel_height;
 	u32 panel_width;
-	bool valid_skip_blend_plane;
-	enum sde_sspp skip_blend_plane;
-	u32 skip_blend_plane_w;
-	u32 skip_blend_plane_h;
+	struct sde_cp_skip_blend_plane skip_planes[SB_PLANE_MAX];
 	u32 num_ds_enabled;
 };
 
