@@ -551,7 +551,8 @@ int wlfw_ind_register_send_sync_msg(struct icnss_priv *priv)
 			req->rejuvenate_enable = 1;
 		}
 	} else if (priv->device_id == WCN6750_DEVICE_ID ||
-		   priv->device_id == WCN6450_DEVICE_ID) {
+		   priv->device_id == WCN6450_DEVICE_ID ||
+		   priv->device_id == WCN7750_DEVICE_ID) {
 		req->fw_init_done_enable_valid = 1;
 		req->fw_init_done_enable = 1;
 		req->cal_done_enable_valid = 1;
@@ -3213,6 +3214,7 @@ int icnss_register_fw_service(struct icnss_priv *priv)
 		return ret;
 
 	if (priv->device_id == WCN6750_DEVICE_ID ||
+	    priv->device_id == WCN7750_DEVICE_ID ||
 	    priv->device_id == WCN6450_DEVICE_ID)
 		ret = qmi_add_lookup(&priv->qmi, WLFW_SERVICE_ID_V01,
 				     WLFW_SERVICE_VERS_V01,
@@ -3304,7 +3306,8 @@ int icnss_send_wlan_enable_to_fw(struct icnss_priv *priv,
 
 		memcpy(req.shadow_reg, config->shadow_reg_cfg,
 		       sizeof(struct wlfw_msi_cfg_s_v01) * req.shadow_reg_len);
-	} else if (priv->device_id == WCN6450_DEVICE_ID) {
+	} else if (priv->device_id == WCN6450_DEVICE_ID ||
+		   priv->device_id == WCN7750_DEVICE_ID) {
 		req.shadow_reg_v3_valid = 1;
 		if (config->num_shadow_reg_v3_cfg >
 			MAX_NUM_SHADOW_REG_V3)
