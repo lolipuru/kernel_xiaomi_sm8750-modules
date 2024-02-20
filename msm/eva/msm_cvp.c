@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_cvp.h"
@@ -226,7 +226,8 @@ static int msm_cvp_session_process_hfi(
 	}
 
 	if (is_config_pkt)
-		pr_info_ratelimited(CVP_DBG_TAG "inst %pK config %s\n", "sess",
+		pr_info_ratelimited(CVP_PID_TAG "inst %pK config %s\n",
+			current->pid, current->tgid, "sess",
 			inst, cvp_hfi_defs[pkt_idx].name);
 
 	if (signal == HAL_NO_RESP) {
@@ -994,8 +995,8 @@ int msm_cvp_session_start(struct msm_cvp_inst *inst,
 		goto stop_thread;
 	}
 
-	pr_info_ratelimited(CVP_DBG_TAG "session %llx (%#x) started\n",
-		"sess", inst, hash32_ptr(inst->session));
+	pr_info_ratelimited(CVP_PID_TAG "session %llx (%#x) started\n",
+		current->pid, current->tgid, "sess", inst, hash32_ptr(inst->session));
 	CVPKERNEL_ATRACE_END("msm_cvp_session_start");
 
 	return 0;
@@ -1046,8 +1047,9 @@ int msm_cvp_session_stop(struct msm_cvp_inst *inst,
 	}
 	sq->state = QUEUE_STOP;
 
-	pr_info_ratelimited(CVP_DBG_TAG "Stop session: %pK session_id = %#x\n",
-			"sess", inst, hash32_ptr(inst->session));
+	pr_info_ratelimited(CVP_PID_TAG "Stop session: %pK session_id = %#x\n",
+			current->pid, current->tgid, "sess",
+			inst, hash32_ptr(inst->session));
 	spin_unlock(&sq->lock);
 
 	ops_tbl = inst->core->dev_ops;
