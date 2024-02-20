@@ -889,12 +889,6 @@ static int get_buffer_attr(struct dma_buf *buf, bool *exclusive_access, bool *hl
 	if (vmids_list_len == 1 && vmids_list[0] == mem_buf_current_vmid())
 		*exclusive_access = true;
 #if IS_ENABLED(CONFIG_MSM_ADSPRPC_TRUSTED)
-	/*
-	 * PVM (HLOS) can share buffers with TVM. In that case,
-	 * it is expected to relinquish its ownership to those buffers
-	 * before sharing. But if the PVM still retains access, then
-	 * these buffers cannot be used by TVM.
-	 */
 	for (int ii = 0; ii < vmids_list_len; ii++) {
 		if (vmids_list[ii] == VMID_HLOS) {
 			*hlos_access = true;
@@ -918,8 +912,13 @@ static int set_buffer_secure_type(struct fastrpc_map *map)
 		return -EBADFD;
 	}
 #if IS_ENABLED(CONFIG_MSM_ADSPRPC_TRUSTED)
+	/*
+	 * PVM (HLOS) can share buffers with TVM, in case buffers are to be shared to secure PD,
+	 * PVM is expected to relinquish its ownership to those buffers before sharing.
+	 * If PVM still retains access, then those buffers cannot be shared to secure PD.
+	 */
 	if (hlos_access) {
-		dev_err(dev, "Sharing HLOS buffer (fd %d) not allowed on TVM\n", map->fd);
+		dev_err(dev, "Buffers with HLOS access (fd %d) are not allowed on TVM\n", map->fd);
 		return -EACCES;
 	}
 #endif
@@ -933,7 +932,11 @@ static int set_buffer_secure_type(struct fastrpc_map *map)
 	 *	- Since it is a secure environment by default, there are no explicit "secure" buffers
 	 *	- All buffers are marked "non-secure"
 	 */
+#if IS_ENABLED(CONFIG_MSM_ADSPRPC_TRUSTED)
+	map->secure = 0;
+#else
 	map->secure = (exclusive_access) ? 0 : 1;
+#endif
 
 	return err;
 }
