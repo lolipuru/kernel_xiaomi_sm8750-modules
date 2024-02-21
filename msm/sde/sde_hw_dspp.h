@@ -419,14 +419,6 @@ struct sde_hw_dspp_ops {
 	 * @status: Pointer to configuration.
 	 */
 	int (*setup_ai_scaler)(struct sde_hw_dspp *ctx, void *cfg);
-
-	/**
-	 * setup_aiqe_abc - function to configure aiqe abc params
-	 * @ctx: Pointer to dspp context
-	 * @cfg: Pointer to configuration
-	 * @aiqe_top: Pointer to aiqe top level structure
-	 */
-	void (*setup_aiqe_abc)(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
 };
 
 /**
