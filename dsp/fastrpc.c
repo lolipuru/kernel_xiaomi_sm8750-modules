@@ -2265,6 +2265,10 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		if (err)
 			goto err_name;
 
+		spin_lock_irqsave(&fl->cctx->lock, flags);
+		list_add_tail(&buf->node, &fl->cctx->gmaps);
+		spin_unlock_irqrestore(&fl->cctx->lock, flags);
+
 		phys = buf->phys;
 		size = buf->size;
 		/* Map if we have any heap VMIDs associated with this ADSP Static Process. */
@@ -2281,9 +2285,6 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 			scm_done = true;
 		}
 		fl->cctx->staticpd_status = true;
-		spin_lock_irqsave(&fl->cctx->lock, flags);
-		list_add_tail(&buf->node, &fl->cctx->gmaps);
-		spin_unlock_irqrestore(&fl->cctx->lock, flags);
 	}
 
 	inbuf.pgid = fl->tgid_frpc;
@@ -2339,11 +2340,13 @@ err_invoke:
 				__func__, phys, size, err);
 	}
 err_map:
-	fl->cctx->staticpd_status = false;
-	spin_lock(&fl->lock);
-	list_del(&buf->node);
-	spin_unlock(&fl->lock);
-	fastrpc_buf_free(buf, false);
+	if (buf) {
+		fl->cctx->staticpd_status = false;
+		spin_lock(&fl->lock);
+		list_del(&buf->node);
+		spin_unlock(&fl->lock);
+		fastrpc_buf_free(buf, false);
+	}
 err_name:
 	kfree(name);
 err:
