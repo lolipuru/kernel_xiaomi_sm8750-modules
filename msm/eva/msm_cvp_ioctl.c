@@ -71,7 +71,7 @@ static int _copy_pkt_from_user(struct eva_kmd_arg *kp,
 
 	k = &kp->data.hfi_pkt;
 	u = &up->data.hfi_pkt;
-	for (i = start; i < size; i++)
+	for (i = start; i < size + start; i++)
 		if (get_user(k->pkt_data[i], &u->pkt_data[i]))
 			return -EFAULT;
 
