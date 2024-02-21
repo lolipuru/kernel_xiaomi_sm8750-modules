@@ -2536,3 +2536,45 @@ error:
 
 	return ret;
 }
+
+int hw_fence_check_hw_fence_driver(struct hw_fence_driver_data *drv_data)
+{
+	if (IS_ERR_OR_NULL(drv_data) || !drv_data->resources_ready) {
+		HWFNC_ERR("hw fence driver not ready\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int hw_fence_check_valid_client(struct hw_fence_driver_data *drv_data, void *client_handle)
+{
+	int ret;
+
+	ret = hw_fence_check_hw_fence_driver(drv_data);
+	if (ret)
+		return ret;
+
+	if (IS_ERR_OR_NULL(client_handle)) {
+		HWFNC_ERR("Invalid client\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int hw_fence_check_valid_fctl(struct hw_fence_driver_data *drv_data, void *client_handle)
+{
+	int ret;
+
+	ret = hw_fence_check_valid_client(drv_data, client_handle);
+	if (ret)
+		return ret;
+
+	if (!drv_data->fctl_ready) {
+		HWFNC_ERR("fctl in invalid state, cannot perform operation\n");
+		return -EAGAIN;
+	}
+
+	return 0;
+}

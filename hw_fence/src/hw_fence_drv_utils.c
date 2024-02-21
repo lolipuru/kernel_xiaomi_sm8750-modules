@@ -727,6 +727,8 @@ static int hw_fence_notify_ssr(struct notifier_block *nb, unsigned long action, 
 	case QCOM_SSR_BEFORE_SHUTDOWN:
 		HWFNC_DBG_SSR("received soccp %s event\n", notify_data->crashed ? "crashed" :
 			"stopping");
+		/* disallow fence creation, signaling, etc. when soccp is going to stop or crash */
+		drv_data->fctl_ready = false;
 		break;
 	case QCOM_SSR_AFTER_SHUTDOWN:
 		HWFNC_DBG_SSR("received soccp offline event\n");

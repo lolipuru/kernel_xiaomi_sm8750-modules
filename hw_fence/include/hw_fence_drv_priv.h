@@ -687,4 +687,9 @@ struct dma_fence *hw_fence_internal_dma_fence_create(struct hw_fence_driver_data
 struct dma_fence *hw_fence_dma_fence_find(struct hw_fence_driver_data *drv_data,
 	u64 hash, bool incr_refcount);
 
+/* internal checks used by msm_hw_fence and synx_hwfence functions */
+int hw_fence_check_hw_fence_driver(struct hw_fence_driver_data *drv_data);
+int hw_fence_check_valid_client(struct hw_fence_driver_data *drv_data, void *client_handle);
+int hw_fence_check_valid_fctl(struct hw_fence_driver_data *drv_data, void *client_handle);
+
 #endif /* __HW_FENCE_DRV_INTERNAL_H */
