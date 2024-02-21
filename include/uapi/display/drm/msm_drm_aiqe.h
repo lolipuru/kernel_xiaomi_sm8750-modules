@@ -5,7 +5,7 @@
 #ifndef _MSM_DRM_AIQE_H_
 #define _MSM_DRM_AIQE_H_
 
-#include <drm/drm.h>
+#include <linux/types.h>
 
 #define AIQE_MDNIE_SUPPORTED
 #define AIQE_MDNIE_PARAM_LEN 118
