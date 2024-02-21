@@ -2903,6 +2903,10 @@ static const u32 sun_vdec_output_properties_av1[] = {
 	HFI_PROP_FENCE,
 };
 
+static const u32 sun_msm_vidc_ssr_type[] = {
+	HFI_SSR_TYPE_SW_ERR_FATAL,
+};
+
 static const struct msm_vidc_platform_data sun_data = {
 	/* resources dependent on other module */
 	.bw_tbl = sun_bw_table,
@@ -2969,6 +2973,9 @@ static const struct msm_vidc_platform_data sun_data = {
 	.dec_output_prop_size_hevc = ARRAY_SIZE(sun_vdec_output_properties_hevc),
 	.dec_output_prop_size_vp9 = ARRAY_SIZE(sun_vdec_output_properties_vp9),
 	.dec_output_prop_size_av1 = ARRAY_SIZE(sun_vdec_output_properties_av1),
+
+	.msm_vidc_ssr_type = sun_msm_vidc_ssr_type,
+	.msm_vidc_ssr_type_size = ARRAY_SIZE(sun_msm_vidc_ssr_type),
 };
 
 int msm_vidc_sun_check_ddr_type(void)
