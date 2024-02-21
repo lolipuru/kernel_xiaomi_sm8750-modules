@@ -12,6 +12,8 @@ def define_sun():
             #"CONFIG_TARGET_SYNX_ENABLE",
             "TARGET_SYNX_ENABLE",
             "TARGET_DSP_ENABLE",
-            "CONFIG_EVA_SUN"
+            "TARGET_MMRM_ENABLE",
+            "CONFIG_EVA_SUN",
+            "CONFIG_MSM_MMRM"
         ],
     )

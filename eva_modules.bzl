@@ -41,5 +41,8 @@ register_eva_module(
         "TARGET_DSP_ENABLE": [
              "//vendor/qcom/opensource/dsp-kernel:%b_frpc-adsprpc"
         ],
+	"TARGET_MMRM_ENABLE": [
+             "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver"
+	],
     },
 )
