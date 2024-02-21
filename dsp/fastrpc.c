@@ -2166,8 +2166,13 @@ static int fastrpc_create_session_debugfs(struct fastrpc_user *fl)
 			if (fl->debugfs_buf == NULL) {
 				return -ENOMEM;
 			}
-			snprintf(fl->debugfs_buf, size, "%.10s%s%d%s%d",
-				cur_comm, "_", current->pid, "_", domain_id);
+			/*
+			 * Use HLOS process name, HLOS PID, unique fastrpc PID
+			 * domain_id in debugfs filename to create unique file name
+			 */
+			snprintf(fl->debugfs_buf, size, "%.10s%s%d%s%d%s%d",
+				cur_comm, "_", current->pid, "_",
+				fl->tgid_frpc, "_", domain_id);
 			fl->debugfs_file = debugfs_create_file(fl->debugfs_buf, 0644,
 					debugfs_root, fl, &fastrpc_debugfs_fops);
 			if (IS_ERR_OR_NULL(fl->debugfs_file)) {
