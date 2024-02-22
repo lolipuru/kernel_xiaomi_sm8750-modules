@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -464,10 +464,12 @@ static void cam_mem_put_slot(int32_t idx)
 
 static bool cam_mem_mgr_is_iova_info_updated_locked(
 	struct cam_mem_buf_hw_hdl_info *hw_vaddr_info_arr,
-	int32_t iommu_hdl)
+	int32_t mmu_hdl)
 {
-	int entry;
+	int entry, iommu_hdl;
 	struct cam_mem_buf_hw_hdl_info *vaddr_entry;
+
+	iommu_hdl = CAM_SMMU_GET_BASE_HDL(mmu_hdl);
 
 	/* validate hdl for entry idx */
 	if (!cam_mem_mgr_get_hwva_entry_idx(iommu_hdl, &entry))
@@ -483,11 +485,13 @@ static bool cam_mem_mgr_is_iova_info_updated_locked(
 
 static void cam_mem_mgr_update_iova_info_locked(
 	struct cam_mem_buf_hw_hdl_info *hw_vaddr_info_arr,
-	dma_addr_t vaddr, int32_t iommu_hdl, size_t len,
+	dma_addr_t vaddr, int32_t mmu_hdl, size_t len,
 	bool valid_mapping, struct kref *ref_count)
 {
-	int entry;
+	int entry, iommu_hdl;
 	struct cam_mem_buf_hw_hdl_info *vaddr_entry;
+
+	iommu_hdl = CAM_SMMU_GET_BASE_HDL(mmu_hdl);
 
 	/* validate hdl for entry idx */
 	if (!cam_mem_mgr_get_hwva_entry_idx(iommu_hdl, &entry))
@@ -508,21 +512,23 @@ static int cam_mem_mgr_try_retrieving_hwva_locked(
 	int idx, int32_t mmu_handle, dma_addr_t *iova_ptr, size_t *len_ptr,
 	struct list_head *buf_tracker)
 {
-	int rc = -EINVAL, entry;
+	int32_t rc = -EINVAL, entry, iommu_hdl;
 	struct cam_mem_buf_hw_hdl_info *hdl_info = NULL;
 
+	iommu_hdl = CAM_SMMU_GET_BASE_HDL(mmu_handle);
+
 	/* Check for valid entry */
-	if (cam_mem_mgr_get_hwva_entry_idx(mmu_handle, &entry)) {
+	if (cam_mem_mgr_get_hwva_entry_idx(iommu_hdl, &entry)) {
 		hdl_info =  &tbl.bufq[idx].hdls_info[entry];
 
 		/* Ensure we are picking a valid entry */
-		if ((hdl_info->iommu_hdl == mmu_handle) && (hdl_info->addr_updated)) {
+		if ((hdl_info->iommu_hdl == iommu_hdl) && (hdl_info->addr_updated)) {
 			*iova_ptr = hdl_info->vaddr;
 			*len_ptr = hdl_info->len;
 			if (buf_tracker)
 				cam_smmu_add_buf_to_track_list(tbl.bufq[idx].fd,
 					tbl.bufq[idx].i_ino, &hdl_info->ref_count, buf_tracker,
-					GET_SMMU_TABLE_IDX(mmu_handle));
+					GET_SMMU_TABLE_IDX(iommu_hdl));
 			rc = 0;
 		}
 	}
@@ -2648,7 +2654,8 @@ int cam_mem_mgr_free_memory_region(struct cam_mem_mgr_memory_desc *inp)
 		return -ENODEV;
 	}
 
-	if (inp->smmu_hdl != tbl.bufq[idx].hdls_info[entry_idx].iommu_hdl) {
+	if (CAM_SMMU_GET_BASE_HDL(inp->smmu_hdl) !=
+		tbl.bufq[idx].hdls_info[entry_idx].iommu_hdl) {
 		CAM_ERR(CAM_MEM,
 			"Passed SMMU handle doesn't match with internal hdl");
 		return -ENODEV;
