@@ -2253,7 +2253,10 @@ end:
 
 	/* Set default hang dump lvl */
 	hw_mgr->icp_fw_dump_lvl = HFI_FW_DUMP_ON_FAILURE;
-	hw_mgr->icp_fw_ramdump_lvl = HFI_FW_RAMDUMP_ENABLED;
+
+	/* By default, FW ramdump is disabled on both ICPs to avoid potential perf issue */
+	hw_mgr->icp_fw_ramdump_lvl = HFI_FW_RAMDUMP_DISABLED;
+
 	return rc;
 }
 
