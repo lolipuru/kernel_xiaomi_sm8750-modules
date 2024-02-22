@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/jiffies.h>
@@ -623,7 +623,7 @@ void handle_sys_error(enum hal_command_response cmd, void *data)
 	}
 	call_hfi_op(ops_tbl, flush_debug_queue, ops_tbl->hfi_device_data);
 	list_for_each_entry(inst, &core->instances, list) {
-		cvp_print_inst(CVP_WARN, inst);
+		cvp_print_inst(CVP_ERR, inst);
 		if (inst->state != MSM_CVP_CORE_INVALID) {
 			sq = &inst->session_queue;
 			spin_lock(&sq->lock);
@@ -1484,16 +1484,19 @@ bool is_cvp_inst_valid(struct msm_cvp_inst *inst)
 
 int cvp_print_inst(u32 tag, struct msm_cvp_inst *inst)
 {
+	struct cvp_session_prop *session_prop;
 	if (!inst) {
 		dprintk(CVP_ERR, "%s invalid inst %pK\n", __func__, inst);
 		return -EINVAL;
 	}
+	session_prop = &inst->prop;
 
 	dprintk(tag, "%s inst stype %d %pK id = %#x ptype %#x prio %#x secure %#x kmask %#x dmask %#x, kref %#x state %#x\n",
 		inst->proc_name, inst->session_type, inst, hash32_ptr(inst->session),
 		inst->prop.type, inst->prop.priority, inst->prop.is_secure,
 		inst->prop.kernel_mask, inst->prop.dsp_mask,
 		kref_read(&inst->kref), inst->state);
+	dprintk(tag, "session name %s", session_prop->session_name);
 
 	return 0;
 }
