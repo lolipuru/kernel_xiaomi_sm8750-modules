@@ -2324,13 +2324,13 @@ retry_mhi_suspend:
 	case CNSS_MHI_RESUME:
 		mutex_lock(&pci_priv->mhi_ctrl->pm_mutex);
 		if (pci_priv->drv_connected_last) {
-			ret = cnss_pci_prevent_l1(&pci_priv->pci_dev->dev);
+			ret = __cnss_pci_prevent_l1(&pci_priv->pci_dev->dev);
 			if (ret) {
 				mutex_unlock(&pci_priv->mhi_ctrl->pm_mutex);
 				break;
 			}
 			ret = cnss_mhi_pm_fast_resume(pci_priv, true);
-			cnss_pci_allow_l1(&pci_priv->pci_dev->dev);
+			__cnss_pci_allow_l1(&pci_priv->pci_dev->dev);
 		} else {
 			if (pci_priv->device_id == QCA6390_DEVICE_ID)
 				ret = cnss_mhi_pm_force_resume(pci_priv);
@@ -2837,7 +2837,7 @@ static int cnss_pci_update_timestamp(struct cnss_pci_data *pci_priv)
 	u32 low, high;
 	int ret;
 
-	ret = cnss_pci_prevent_l1(dev);
+	ret = __cnss_pci_prevent_l1(dev);
 	if (ret)
 		goto out;
 
@@ -2874,7 +2874,7 @@ static int cnss_pci_update_timestamp(struct cnss_pci_data *pci_priv)
 force_wake_put:
 	cnss_pci_force_wake_put(pci_priv);
 allow_l1:
-	cnss_pci_allow_l1(dev);
+	__cnss_pci_allow_l1(dev);
 out:
 	return ret;
 }
@@ -6050,16 +6050,21 @@ int cnss_pci_recover_link_down(struct cnss_pci_data *pci_priv)
 	if (!ret)
 		cnss_pr_err("Timeout waiting for wake event after link down\n");
 
+	mutex_lock(&pci_priv->bus_lock);
 	ret = cnss_suspend_pci_link(pci_priv);
 	if (ret)
 		cnss_pr_err("Failed to suspend PCI link, err = %d\n", ret);
+	mutex_unlock(&pci_priv->bus_lock);
 
+	mutex_lock(&pci_priv->bus_lock);
 	ret = cnss_resume_pci_link(pci_priv);
 	if (ret) {
 		cnss_pr_err("Failed to resume PCI link, err = %d\n", ret);
 		del_timer(&pci_priv->dev_rddm_timer);
+		mutex_unlock(&pci_priv->bus_lock);
 		return ret;
 	}
+	mutex_unlock(&pci_priv->bus_lock);
 
 retry:
 	/*
