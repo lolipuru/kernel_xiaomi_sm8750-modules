@@ -117,13 +117,4 @@ int check_ai_scaler_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *h
 int set_ai_scaler_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
 		    struct sde_crtc *hw_crtc);
 
-/**
- * set_aiqe_abc_feature - setup ops for aiqe abc feature
- * @hw_dspp: pointer to dspp hardware description
- * @hw_cfg: pointer to feature configuration
- * @hw_crtc: pointer to virtualized crtc data structure
- */
-int set_aiqe_abc_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
-						struct sde_crtc *hw_crtc);
-
-#endif /* _SDE_COLOR_PROCESSING_AIQE_H */
+#endif /*_SDE_COLOR_PROCESSING_AIQE_H */
