@@ -7007,7 +7007,7 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 			struct sde_hw_cp_cfg *hw_cfg)
 {
 	u32 h, w, temp;
-	if (!hw_cfg->valid_skip_blend_plane) {
+	if (!hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
 		DRM_ERROR("HFC plane not set\n");
 		return false;
 	}
@@ -7026,22 +7026,24 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 	w = 2 * (w / 32);
 	w = w / (hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1);
 
-	if (h != hw_cfg->skip_blend_plane_h || w != hw_cfg->skip_blend_plane_w) {
+	if (h != hw_cfg->skip_planes[SB_PLANE_REAL].plane_h ||
+			w != hw_cfg->skip_planes[SB_PLANE_REAL].plane_w) {
 		DRM_ERROR("invalid hfc cfg exp h %d exp w %d act h %d act w %d\n",
-			h, w, hw_cfg->skip_blend_plane_h, hw_cfg->skip_blend_plane_w);
+			h, w, hw_cfg->skip_planes[SB_PLANE_REAL].plane_h,
+				hw_cfg->skip_planes[SB_PLANE_REAL].plane_w);
 		DRM_ERROR("c0_depth %d c1_depth %d c2 depth %d hw_cfg->panel_width %d\n",
 			dcfg->c0_depth, dcfg->c1_depth, dcfg->c2_depth, hw_cfg->panel_width);
 		return false;
 	}
 
-	if (dcfg->src_id == BIT(3) && hw_cfg->skip_blend_plane == SSPP_DMA3)
+	if (dcfg->src_id == BIT(3) && hw_cfg->skip_planes[SB_PLANE_REAL].plane == SSPP_DMA3)
 		return true;
 
-	if (dcfg->src_id == BIT(1) && hw_cfg->skip_blend_plane == SSPP_DMA1)
+	if (dcfg->src_id == BIT(1) && hw_cfg->skip_planes[SB_PLANE_REAL].plane == SSPP_DMA1)
 		return true;
 
-	DRM_ERROR("invalid HFC plane dcfg->src_id %d hw_cfg->skip_blend_plane %d\n",
-		dcfg->src_id, hw_cfg->skip_blend_plane);
+	DRM_ERROR("invalid HFC plane dcfg->src_id %d hw_cfg->skip_planes[SB_PLANE_REAL].plane %d\n",
+		dcfg->src_id, hw_cfg->skip_planes[SB_PLANE_REAL].plane);
 	return false;
 }
 
