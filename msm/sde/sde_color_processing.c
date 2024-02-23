@@ -2706,7 +2706,6 @@ void sde_cp_crtc_suspend(struct drm_crtc *crtc)
 		return;
 	}
 
-	_sde_cp_mark_mdnie_art_property(crtc);
 	sde_cp_crtc_mark_features_dirty(crtc);
 
 	spin_lock_irqsave(&sde_crtc->ltm_lock, irq_flags);
