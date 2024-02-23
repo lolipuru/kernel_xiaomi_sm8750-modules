@@ -123,6 +123,7 @@
 #define FASTRPC_RMID_INIT_CREATE_STATIC	8
 #define FASTRPC_RMID_INIT_MEM_MAP      10
 #define FASTRPC_RMID_INIT_MEM_UNMAP    11
+#define FASTRPC_RMID_INIT_MAX (20)
 
 #define miscdev_to_fdevice(d) container_of(d, struct fastrpc_device_node, miscdev)
 
