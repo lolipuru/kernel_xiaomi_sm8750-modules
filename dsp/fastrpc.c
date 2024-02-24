@@ -809,6 +809,7 @@ static struct fastrpc_session_ctx *fastrpc_session_alloc(
 			cctx->session[i].secure == secure &&
 			cctx->session[i].sharedcb == sharedcb &&
 			(pd_type == DEFAULT_UNUSED || cctx->session[i].pd_type == pd_type || secure)) {
+			reinit_completion(&cctx->session[i].cleanup);
 			cctx->session[i].used = true;
 			session = &cctx->session[i];
 			break;
@@ -825,6 +826,7 @@ static void fastrpc_session_free(struct fastrpc_channel_ctx *cctx,
 	unsigned long flags;
 
 	spin_lock_irqsave(&cctx->lock, flags);
+	complete(&session->cleanup);
 	session->used = false;
 	spin_unlock_irqrestore(&cctx->lock, flags);
 }
@@ -1645,6 +1647,9 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 	int err = 0, perferr = 0, interrupted = 0;
 	u64 *perf_counter = NULL;
 	struct timespec64 invoket = {0};
+
+	if (atomic_read(&fl->cctx->teardown))
+		return -EPIPE;
 
 	if (fl->profile)
 		ktime_get_real_ts64(&invoket);
@@ -2684,6 +2689,9 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 
 	fdevice = miscdev_to_fdevice(filp->private_data);
 	cctx = fdevice->cctx;
+
+	if (atomic_read(&cctx->teardown))
+		return -EPIPE;
 
 	fl = kzalloc(sizeof(*fl), GFP_KERNEL);
 	if (!fl)
@@ -4670,6 +4678,7 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 	sess->valid = true;
 	sess->dev = dev;
 	sess->secure = of_property_read_bool(dev->of_node, "qcom,secure-context-bank");
+	init_completion(&sess->cleanup);
 	dev_set_drvdata(dev, sess);
 
 	if (of_property_read_u32(dev->of_node, "reg", &sess->sid))
@@ -4693,6 +4702,7 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 				break;
 			dup_sess = &cctx->session[cctx->sesscount++];
 			memcpy(dup_sess, sess, sizeof(*dup_sess));
+			init_completion(&dup_sess->cleanup);
 		}
 	}
 	spin_unlock_irqrestore(&cctx->lock, flags);
@@ -4827,6 +4837,8 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++) {
 		if (cctx->session[i].sid == sess->sid) {
 			spin_unlock_irqrestore(&cctx->lock, flags);
+			if (sess->used)
+				wait_for_completion(&sess->cleanup);
 			mutex_lock(&cctx->session[i].map_mutex);
 			cctx->session[i].dev = NULL;
 			mutex_unlock(&cctx->session[i].map_mutex);
@@ -4886,7 +4898,7 @@ int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ctx *cctx
 	return err;
 }
 
-void fastrpc_lowest_capacity_corecount(struct fastrpc_channel_ctx *cctx)
+void fastrpc_lowest_capacity_corecount(struct device *dev, struct fastrpc_channel_ctx *cctx)
 {
 	u32 cpu = 0;
 
@@ -4895,7 +4907,7 @@ void fastrpc_lowest_capacity_corecount(struct fastrpc_channel_ctx *cctx)
 		if (topology_cluster_id(cpu) == 0)
 			cctx->lowest_capacity_core_count++;
 	}
-	dev_info(cctx->dev, "lowest capacity core count: %u\n",
+	dev_info(dev, "Lowest capacity core count: %u\n",
 					cctx->lowest_capacity_core_count);
 }
 
@@ -4921,14 +4933,13 @@ int fastrpc_setup_service_locator(struct fastrpc_channel_ctx *cctx, char *client
 		err = PTR_ERR(service);
 		goto bail;
 	}
-	pr_info("fastrpc: %s: pdr_add_lookup enabled for %s (%s, %s)\n",
+	dev_info(cctx->dev, "%s: pdr_add_lookup enabled for %s (%s, %s)\n",
 		__func__, service_name, client_name, service_path);
 
 bail:
-	if (err) {
-		pr_err("fastrpc: %s: failed for %s (%s, %s)with err %d\n",
+	if (err)
+		dev_err(cctx->dev, "%s: failed for %s (%s, %s)with err %d\n",
 				__func__, service_name, client_name, service_path, err);
-	}
 	return err;
 }
 
