@@ -387,6 +387,7 @@ enum sde_crtc_hw_fence_flags {
  * @mdnie_art_event_notify_enabled: flag to indicate if art done notify is enabled or not
  * @copr_status_event_notify_enabled: flag to indicate if copr status notify is enabled or not
  * @aiqe_top_level: aiqe top level mutex and mask
+ * @ai_scaler_res: struct stores ai scaler enable flag and resolution
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -513,6 +514,7 @@ struct sde_crtc {
 	bool copr_status_event_notify_enabled;
 
 	struct sde_aiqe_top_level aiqe_top_level;
+	struct sde_io_res ai_scaler_res;
 };
 
 enum sde_crtc_dirty_flags {
@@ -1036,11 +1038,10 @@ static inline void sde_crtc_get_ds_io_res(struct drm_crtc_state *state, struct s
 /**
  * sde_crtc_get_ai_scaler_io_res - populates the AI scaler src/dst w/h
  * @state: pointer to drm crtc state
- * @res: pointer to the output struct to populate the src/dst
  */
-static inline void sde_crtc_get_ai_scaler_io_res(struct drm_crtc_state *state,
-					    struct sde_io_res *res) {
-	sde_cp_get_ai_scaler_io_res(state, res);
+static inline void sde_crtc_get_ai_scaler_io_res(struct drm_crtc_state *state)
+{
+	sde_cp_get_ai_scaler_io_res(state);
 }
 
 /**

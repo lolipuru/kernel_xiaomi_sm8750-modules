@@ -432,8 +432,7 @@ void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc);
 /**
  * sde_cp_get_ai_scaler_io_res - populates the destination scaler src/dst w/h
  * @crtc_state: pointer to drm crtc state
- * @res: pointer to the output struct to populate the src/dst
  */
-void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state, struct sde_io_res *res);
+void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state);
 
 #endif /*_SDE_COLOR_PROCESSING_H */

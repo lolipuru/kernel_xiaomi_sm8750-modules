@@ -1423,6 +1423,11 @@ void sde_cp_crtc_init(struct drm_crtc *crtc)
 	sde_crtc->back_light_max = 0;
 	sde_crtc->back_light_pending = false;
 	sde_cp_crtc_disable(crtc);
+	sde_crtc->ai_scaler_res.enabled = false;
+	sde_crtc->ai_scaler_res.src_w = 0;
+	sde_crtc->ai_scaler_res.src_h = 0;
+	sde_crtc->ai_scaler_res.dst_w = 0;
+	sde_crtc->ai_scaler_res.dst_h = 0;
 }
 
 static struct sde_crtc_irq_info *_sde_cp_get_intr_node(u32 event,
@@ -2825,6 +2830,11 @@ void sde_cp_crtc_clear(struct drm_crtc *crtc)
 	sde_crtc->ltm_hist_en = false;
 	sde_crtc->ltm_merge_clear_pending = false;
 	sde_crtc->hist_irq_idx = -1;
+	sde_crtc->ai_scaler_res.enabled = false;
+	sde_crtc->ai_scaler_res.src_w = 0;
+	sde_crtc->ai_scaler_res.src_h = 0;
+	sde_crtc->ai_scaler_res.dst_w = 0;
+	sde_crtc->ai_scaler_res.dst_h = 0;
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_free);
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_busy);
 }
@@ -5160,38 +5170,49 @@ exit:
 	mutex_unlock(&sde_crtc->crtc_cp_lock);
 }
 
-void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state, struct sde_io_res *res)
+void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state)
 {
 	struct sde_crtc_state *sde_crtc_state;
 	struct sde_crtc *sde_crtc;
 	struct drm_property_blob *blob = NULL;
 	struct sde_cp_crtc_property_state *pstate;
 	struct drm_property *property;
-	struct sde_cp_node *prop_node;
+	struct sde_cp_node *prop_node = NULL;
 	struct drm_msm_ai_scaler *ai_scaler_cfg = NULL;
 	int i;
 	u32 feature;
 
-	if (!crtc_state || !res)
+	if (!crtc_state)
 		return;
 
 	sde_crtc_state = to_sde_crtc_state(crtc_state);
-	sde_crtc = to_sde_crtc(crtc_state->crtc);
-	res->enabled = false;
-
-	if (!sde_crtc_state->cp_prop_cnt) {
-		DRM_DEBUG_DRIVER("State dirty list is empty\n");
+	if (!sde_crtc_state) {
+		DRM_ERROR("invalid sde_crtc_state %pK\n", sde_crtc_state);
 		return;
 	}
 
+	sde_crtc = to_sde_crtc(crtc_state->crtc);
+	if (!sde_crtc) {
+		DRM_ERROR("invalid sde_crtc %pK\n", sde_crtc);
+		return;
+	}
+
+	if (!sde_crtc_state->cp_prop_cnt) {
+		DRM_DEBUG_DRIVER("cp list is empty\n");
+		return;
+	}
+
+	// check for AI Scaler property in sde crtc state dirty list
 	for (i = 0; i < sde_crtc_state->cp_prop_cnt; i++) {
 		feature = sde_crtc_state->cp_dirty_list[i];
 		if (feature == SDE_CP_CRTC_DSPP_AI_SCALER)
 			break;
 	}
 
-	if (i == sde_crtc_state->cp_prop_cnt)
+	if (i == sde_crtc_state->cp_prop_cnt) {
+		SDE_DEBUG("ai scaler property not found\n");
 		return;
+	}
 
 	pstate = &sde_crtc_state->cp_prop_values[feature];
 	property = pstate->prop;
@@ -5201,35 +5222,42 @@ void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state, struct sde_i
 
 	blob = drm_property_lookup_blob(sde_crtc->base.dev, pstate->prop_val);
 	if (!blob) {
-		SDE_DEBUG("invalid blob id %lld feature %d\n", pstate->prop_val,
-				prop_node->feature);
+		sde_crtc->ai_scaler_res.enabled = false;
+		sde_crtc->ai_scaler_res.src_w = 0;
+		sde_crtc->ai_scaler_res.src_h = 0;
+		sde_crtc->ai_scaler_res.dst_w = 0;
+		sde_crtc->ai_scaler_res.dst_h = 0;
+		SDE_DEBUG("ai scaler is disabled\n");
 		return;
 	}
 
 	ai_scaler_cfg = (struct drm_msm_ai_scaler *)blob->data;
 	if (!ai_scaler_cfg) {
-		SDE_DEBUG("ai scaler is disabled\n");
+		SDE_ERROR("invalid blob id %lld feature %d\n", prop_node->prop_val,
+			prop_node->feature);
 		drm_property_blob_put(blob);
 		return;
 	}
 
 	if (blob->length != prop_node->prop_blob_sz) {
-		SDE_ERROR("invalid blob len %zd exp %d feature %d\n",
-		    blob->length, prop_node->prop_blob_sz, prop_node->feature);
+		SDE_ERROR("invalid blob len %zd exp %d feature %d\n", blob->length,
+					prop_node->prop_blob_sz, prop_node->feature);
 		drm_property_blob_put(blob);
 		return;
 	}
 
-	res->enabled = true;
-	res->src_w = ai_scaler_cfg->src_w;
-	res->src_h = ai_scaler_cfg->src_h;
-	res->dst_w = ai_scaler_cfg->dst_w;
-	res->dst_h = ai_scaler_cfg->dst_h;
+	sde_crtc->ai_scaler_res.enabled = true;
+	sde_crtc->ai_scaler_res.src_w = ai_scaler_cfg->src_w;
+	sde_crtc->ai_scaler_res.src_h = ai_scaler_cfg->src_h;
+	sde_crtc->ai_scaler_res.dst_w = ai_scaler_cfg->dst_w;
+	sde_crtc->ai_scaler_res.dst_h = ai_scaler_cfg->dst_h;
 
 	SDE_DEBUG(
 		"AI Scaler enable:%d : src_w:0x%X src_h:0x%X dst_w:0x%X dst_h:0x%X\n",
-		res->enabled, ai_scaler_cfg->src_w, ai_scaler_cfg->src_h,
-		ai_scaler_cfg->dst_w, ai_scaler_cfg->dst_h);
-	SDE_EVT32(res->enabled, res->src_w, res->src_h, res->dst_w, res->dst_h);
+		sde_crtc->ai_scaler_res.enabled, ai_scaler_cfg->src_w,
+		ai_scaler_cfg->src_h, ai_scaler_cfg->dst_w, ai_scaler_cfg->dst_h);
+	SDE_EVT32(sde_crtc->ai_scaler_res.enabled, sde_crtc->ai_scaler_res.src_w,
+		sde_crtc->ai_scaler_res.src_h, sde_crtc->ai_scaler_res.dst_w,
+		sde_crtc->ai_scaler_res.dst_h);
 	drm_property_blob_put(blob);
 }
