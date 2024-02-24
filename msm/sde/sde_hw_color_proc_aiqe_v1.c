@@ -323,8 +323,6 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 	LOG_FEATURE_ON;
 }
 
-#define PRIMARY_SSRC_EXPECTED_SIZE 1281
-#define SECONDARY_SSRC_EXPECTED_SIZE 2049
 int sde_validate_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 {
 	int rc = 0;
@@ -333,7 +331,7 @@ int sde_validate_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiq
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct aiqe_reg_common aiqe_common;
 	size_t region_count = 0, index = 0;
-	size_t max_size = 0, max_regions = 0;
+	size_t max_regions = 0;
 
 	if (!hw_cfg || !ctx || !aiqe_tl)
 		return -EINVAL;
@@ -345,32 +343,23 @@ int sde_validate_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiq
 		DRM_ERROR("Data size must be greater than 0\n");
 		return -EINVAL;
 	} else if (data->data_size > AIQE_SSRC_DATA_LEN) {
-		DRM_ERROR("Data size exceeds max data size. Max - %d\t Actual - %u",
+		DRM_ERROR("Data size exceeds max data size. Max - %d\t Actual - %u\n",
 				AIQE_SSRC_DATA_LEN, data->data_size);
 		return -EINVAL;
 	}
 
 	aiqe_get_common_values(hw_cfg, aiqe_tl, &aiqe_common);
-	if (aiqe_common.config & BIT(1)) {
-		max_size = SECONDARY_SSRC_EXPECTED_SIZE;
+	if (aiqe_common.config & BIT(1))
 		max_regions = 2;
-	} else {
-		max_size = PRIMARY_SSRC_EXPECTED_SIZE;
+	else
 		max_regions = 4;
-	}
 
 	while (index < data->data_size) {
-		size_t region_size = data->data[index];
-
 		region_count++;
-		index += region_size + 1;
-		if (region_size > max_size) {
-			DRM_ERROR("Region size exceeds max size. Max - %zu\t Actual - %zu",
-					max_size, region_size);
-			rc = -EINVAL;
-			break;
-		} else if (region_count > max_regions) {
-			DRM_ERROR("Region count exceeds max. Max - %zu\t Actual - %zu",
+		index += data->data[index] + 1;
+		if (region_count > max_regions) {
+
+			DRM_ERROR("Region count exceeds max. Max - %zu\t Actual - %zu\n",
 					max_regions, region_count);
 			rc = -EINVAL;
 			break;
@@ -378,7 +367,7 @@ int sde_validate_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiq
 	}
 
 	if (index > data->data_size) {
-		DRM_ERROR("Region data exceeds reported size. Reported - %u\t Actual - %zu",
+		DRM_ERROR("Region data exceeds reported size. Reported - %u\t Actual - %zu\n",
 				data->data_size, index);
 		rc = -EINVAL;
 	}
