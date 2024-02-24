@@ -1802,7 +1802,8 @@ static irqreturn_t cnss_dev_sol_handler(int irq, void *data)
 	struct cnss_plat_data *plat_priv = data;
 	struct cnss_sol_gpio *sol_gpio = &plat_priv->sol_gpio;
 
-	if (test_bit(CNSS_POWER_OFF, &plat_priv->driver_state)) {
+	if (test_bit(CNSS_POWER_OFF, &plat_priv->driver_state) ||
+	    test_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state)) {
 		cnss_pr_dbg("Ignore Dev SOL during device power off");
 		return IRQ_HANDLED;
 	}

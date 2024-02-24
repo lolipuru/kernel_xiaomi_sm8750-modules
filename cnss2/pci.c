@@ -3511,6 +3511,7 @@ static int cnss_qca6290_shutdown(struct cnss_pci_data *pci_priv)
 	if (plat_priv->ramdump_info_v2.dump_data_valid)
 		goto skip_power_off;
 
+	set_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state);
 	cnss_pci_power_off_mhi(pci_priv);
 	ret = cnss_suspend_pci_link(pci_priv);
 	if (ret)
