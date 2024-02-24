@@ -98,7 +98,7 @@ enum msm_vidc_metadata_bits {
 #define MAX_SUPPORTED_INSTANCES  16
 #define DEFAULT_BSE_VPP_DELAY    2
 #define MAX_CAP_PARENTS          20
-#define MAX_CAP_CHILDREN         20
+#define MAX_CAP_CHILDREN         25
 #define DEFAULT_MAX_HOST_BUF_COUNT  64
 #define DEFAULT_MAX_HOST_BURST_BUF_COUNT 256
 #define BIT_DEPTH_8 (8 << 16 | 8)
@@ -416,6 +416,7 @@ enum msm_vidc_metadata_bits {
 	CAP(LAST_FLAG_EVENT_ENABLE)               \
 	CAP(NUM_COMV)                             \
 	CAP(SIGNAL_COLOR_INFO)                    \
+	CAP(OPEN_GOP)                             \
 	CAP(INST_CAP_MAX)                         \
 }
 

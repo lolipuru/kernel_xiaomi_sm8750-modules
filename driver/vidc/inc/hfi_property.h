@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __H_HFI_PROPERTY_H__
@@ -595,6 +595,8 @@ enum hfi_fence_direction_type {
 #define HFI_PROP_FENCE_DIRECTION                                0x0300019E
 
 #define HFI_PROP_FENCE_ERROR_DATA_CORRUPT                       0x0300019F
+
+#define HFI_PROP_OPEN_GOP                                       0x030001A6
 
 #define HFI_PROP_END                                            0x03FFFFFF
 

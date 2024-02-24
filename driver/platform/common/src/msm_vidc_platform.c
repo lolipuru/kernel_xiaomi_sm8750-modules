@@ -1391,7 +1391,7 @@ exit:
 int msm_vidc_adjust_gop_size(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 adjusted_value, enh_layer_count = -1;
+	s32 adjusted_value, enh_layer_count = -1, enable_opengop = 0;
 	u32 min_gop_size, num_subgops;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[GOP_SIZE].value;
@@ -1400,23 +1400,33 @@ int msm_vidc_adjust_gop_size(void *instance, struct v4l2_ctrl *ctrl)
 		ENH_LAYER_COUNT, &enh_layer_count, __func__))
 		return -EINVAL;
 
+	if (inst->codec == MSM_VIDC_HEVC) {
+		if (msm_vidc_get_parent_value(inst, GOP_SIZE,
+			OPEN_GOP, &enable_opengop, __func__))
+			return -EINVAL;
+	}
+
 	if (!enh_layer_count)
 		goto exit;
 
-	/*
-	 * Layer encoding needs GOP size to be multiple of subgop size
-	 * And subgop size is 2 ^ number of enhancement layers.
+	/* If open GOP is enabled we dont need the following recalibration from driver
+	 * only for closed GOP, GOP size is calibrated to be multiple of sub-GOP
 	 */
+	if (!enable_opengop) {
+		/*
+		 * Layer encoding needs GOP size to be multiple of subgop size
+		 * And subgop size is 2 ^ number of enhancement layers.
+		 */
 
-	/* v4l2 layer count is the number of enhancement layers */
-	min_gop_size = 1 << enh_layer_count;
-	num_subgops = (adjusted_value + (min_gop_size >> 1)) /
-			min_gop_size;
-	if (num_subgops)
-		adjusted_value = num_subgops * min_gop_size;
-	else
-		adjusted_value = min_gop_size;
-
+		/* v4l2 layer count is the number of enhancement layers */
+		min_gop_size = 1 << enh_layer_count;
+		num_subgops = (adjusted_value + (min_gop_size >> 1)) /
+				min_gop_size;
+		if (num_subgops)
+			adjusted_value = num_subgops * min_gop_size;
+		else
+			adjusted_value = min_gop_size;
+	}
 exit:
 	msm_vidc_update_cap_value(inst, GOP_SIZE, adjusted_value, __func__);
 	return 0;
@@ -2508,6 +2518,30 @@ int msm_vidc_adjust_transcoding_stats(void *instance, struct v4l2_ctrl *ctrl)
 exit:
 	msm_vidc_update_cap_value(inst, META_TRANSCODING_STAT_INFO,
 		adjusted_value, __func__);
+
+	return 0;
+}
+
+int msm_vidc_adjust_open_gop(void *instance, struct v4l2_ctrl *ctrl)
+{
+	s32 adjusted_value;
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+	s32 enh_layer_count = -1;
+
+	adjusted_value = ctrl ? ctrl->val :
+		inst->capabilities[OPEN_GOP].value;
+
+	if (msm_vidc_get_parent_value(inst, OPEN_GOP, ENH_LAYER_COUNT,
+				      &enh_layer_count, __func__))
+		return -EINVAL;
+
+	if ((inst->codec != MSM_VIDC_HEVC) || (inst->hfi_rc_type != HFI_RC_VBR_CFR) ||
+	    !((enh_layer_count >= 1) && (enh_layer_count <= 3)) ||
+			(inst->hfi_layer_type != HFI_HIER_B)) {
+		adjusted_value = 0;
+	}
+
+	msm_vidc_update_cap_value(inst, OPEN_GOP, adjusted_value, __func__);
 
 	return 0;
 }
