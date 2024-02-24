@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/sort.h>
@@ -395,10 +395,10 @@ static int __init_power_domains(struct msm_vidc_core *core)
 	opp_tbl = core->platform->data.opp_tbl;
 	opp_count = core->platform->data.opp_tbl_size;
 
-	/* skip init if opp not supported */
+	/* skip opp initialization if not supported */
 	if (opp_count < 2) {
 		d_vpr_h("%s: opp entries not available\n", __func__);
-		return 0;
+		goto enable_runtime_pm;
 	}
 
 	/* sanitize opp table */
@@ -415,7 +415,7 @@ static int __init_power_domains(struct msm_vidc_core *core)
 		d_vpr_h("%s: opp name %s\n", __func__, opp_tbl[cnt]);
 
 	/* populate opp power domains(for rails) */
-	//rc = devm_pm_opp_attach_genpd(&core->pdev->dev, opp_tbl, &opp_vdevs);
+	rc = devm_pm_opp_attach_genpd(&core->pdev->dev, opp_tbl, &opp_vdevs);
 	rc = -EINVAL;
 	if (rc)
 		return rc;
@@ -437,6 +437,7 @@ static int __init_power_domains(struct msm_vidc_core *core)
 		return rc;
 	}
 
+enable_runtime_pm:
 	/**
 	 * 1. power up mx & mmcx supply for RCG(mvs0_clk_src)
 	 * 2. power up gdsc0c for mvs0c branch clk
@@ -897,10 +898,12 @@ static int __enable_power_domains(struct msm_vidc_core *core, const char *name)
 	int rc = 0;
 
 	/* power up rails(mxc & mmcx) to enable RCG(video_cc_mvs0_clk_src) */
-	rc = __opp_set_rate(core, ULONG_MAX);
-	if (rc) {
-		d_vpr_e("%s: opp setrate failed\n", __func__);
-		return rc;
+	if (core->platform->data.opp_tbl) {
+		rc = __opp_set_rate(core, ULONG_MAX);
+		if (rc) {
+			d_vpr_e("%s: opp setrate failed\n", __func__);
+			return rc;
+		}
 	}
 
 	/* power up (gdsc0/gdsc0c) to enable (mvs0/mvs0c) branch clock */
@@ -915,6 +918,9 @@ static int __enable_power_domains(struct msm_vidc_core *core, const char *name)
 		}
 		d_vpr_h("%s: enabled power doamin %s\n", __func__, pdinfo->name);
 	}
+
+	/* power domains are moved to HW ctrl by default after calling get_sync() */
+	msm_vidc_change_core_sub_state(core, 0, CORE_SUBSTATE_GDSC_HANDOFF, __func__);
 
 	return rc;
 }
@@ -938,10 +944,12 @@ static int __disable_power_domains(struct msm_vidc_core *core, const char *name)
 	}
 
 	/* power down rails(mxc & mmcx) to disable RCG(video_cc_mvs0_clk_src) */
-	rc = __opp_set_rate(core, 0);
-	if (rc) {
-		d_vpr_e("%s: opp setrate failed\n", __func__);
-		return rc;
+	if (core->platform->data.opp_tbl) {
+		rc = __opp_set_rate(core, 0);
+		if (rc) {
+			d_vpr_e("%s: opp setrate failed\n", __func__);
+			return rc;
+		}
 	}
 	msm_vidc_change_core_sub_state(core, CORE_SUBSTATE_GDSC_HANDOFF, 0, __func__);
 
@@ -950,6 +958,21 @@ static int __disable_power_domains(struct msm_vidc_core *core, const char *name)
 
 static int __hand_off_power_domains(struct msm_vidc_core *core)
 {
+	int rc = 0;
+
+	if (is_core_sub_state(core, CORE_SUBSTATE_GDSC_HANDOFF)) {
+		d_vpr_h("%s: power domains are already in HW ctrl mode\n",
+			__func__);
+		return 0;
+	}
+
+	rc = call_venus_op(core, switch_gdsc_mode, core, false);
+	if (rc) {
+		d_vpr_e("Failed to switch GDSC into HW control, err: %d\n", rc);
+		return rc;
+	}
+
+	d_vpr_h("%s: moved power doamin into HW control\n", __func__);
 	msm_vidc_change_core_sub_state(core, 0, CORE_SUBSTATE_GDSC_HANDOFF, __func__);
 
 	return 0;
@@ -957,6 +980,21 @@ static int __hand_off_power_domains(struct msm_vidc_core *core)
 
 static int __acquire_power_domains(struct msm_vidc_core *core)
 {
+	int rc = 0;
+
+	if (!is_core_sub_state(core, CORE_SUBSTATE_GDSC_HANDOFF)) {
+		d_vpr_h("%s: power domains are already in SW ctrl mode\n",
+			__func__);
+		return 0;
+	}
+
+	rc = call_venus_op(core, switch_gdsc_mode, core, true);
+	if (rc) {
+		d_vpr_e("Failed to switch GDSC into SW control, err: %d\n", rc);
+		return rc;
+	}
+
+	d_vpr_h("%s: moved power doamin into SW control\n", __func__);
 	msm_vidc_change_core_sub_state(core, CORE_SUBSTATE_GDSC_HANDOFF, 0, __func__);
 
 	return 0;

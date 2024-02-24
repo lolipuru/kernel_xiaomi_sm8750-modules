@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_VIDC_CORE_H_
@@ -31,6 +31,7 @@ struct msm_vidc_venus_ops {
 	int (*power_off)(struct msm_vidc_core *core);
 	int (*watchdog)(struct msm_vidc_core *core, u32 intr_status);
 	int (*noc_error_info)(struct msm_vidc_core *core);
+	int (*switch_gdsc_mode)(struct msm_vidc_core *core, bool sw_mode);
 };
 
 struct msm_vidc_mem_addr {
