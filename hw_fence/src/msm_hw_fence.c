@@ -12,6 +12,7 @@
 #if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
 #include <linux/remoteproc/qcom_rproc.h>
 #endif
+#include <linux/kthread.h>
 
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_utils.h"
@@ -863,6 +864,11 @@ static int msm_hw_fence_remove(struct platform_device *pdev)
 		HWFNC_ERR("null driver data\n");
 		return -EINVAL;
 	}
+
+	/* indicate listener thread should stop listening for interrupts from soccp */
+	hw_fence_drv_data->has_soccp = false;
+	if (hw_fence_drv_data->soccp_listener_thread)
+		kthread_stop(hw_fence_drv_data->soccp_listener_thread);
 
 	dev_set_drvdata(&pdev->dev, NULL);
 	kfree(hw_fence_drv_data);

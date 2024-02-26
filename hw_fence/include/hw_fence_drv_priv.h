@@ -389,6 +389,9 @@ struct hw_fence_signal_cb {
  * @dma_fence_table: table with internal dma-fences for hw-fences
  * @soccp_rproc: soccp rproc object used to set power vote
  * @has_soccp: flag to indicate if soccp is present (otherwise vm is used)
+ * @soccp_listener_thread: thread that processes interrupts received from soccp
+ * @soccp_wait_queue: wait queue to notify soccp_listener_thread of new interrupts
+ * @signaled_clients_mask: mask to track signals received from soccp by hw-fence driver
  */
 struct hw_fence_driver_data {
 
@@ -484,6 +487,9 @@ struct hw_fence_driver_data {
 	/* soccp is present */
 	struct rproc *soccp_rproc;
 	bool has_soccp;
+	struct task_struct *soccp_listener_thread;
+	wait_queue_head_t soccp_wait_queue;
+	atomic_t signaled_clients_mask;
 };
 
 /**
