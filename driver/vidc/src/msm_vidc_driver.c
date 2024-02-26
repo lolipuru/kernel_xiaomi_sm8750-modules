@@ -1389,7 +1389,7 @@ int msm_vidc_get_fence_fd(struct msm_vidc_inst *inst, int *fence_fd)
 	}
 
 	if (!found) {
-		i_vpr_h(inst, "%s: could not find matching fence for fence id: %d\n",
+		i_vpr_h(inst, "%s: could not find matching fence for fence id: %lld\n",
 			__func__, inst->capabilities[FENCE_ID].value);
 		goto exit;
 	}
@@ -2270,7 +2270,7 @@ bool msm_vidc_allow_decode_batch(struct msm_vidc_inst *inst)
 	value = msm_vidc_get_fps(inst);
 	allow = value < cap[BATCH_FPS].value;
 	if (!allow) {
-		i_vpr_h(inst, "%s: unsupported fps %u, max %u\n", __func__,
+		i_vpr_h(inst, "%s: unsupported fps %u, max %llu\n", __func__,
 			value, cap[BATCH_FPS].value);
 		goto exit;
 	}
@@ -2278,7 +2278,7 @@ bool msm_vidc_allow_decode_batch(struct msm_vidc_inst *inst)
 	value = msm_vidc_get_mbs_per_frame(inst);
 	allow = value < cap[BATCH_MBPF].value;
 	if (!allow) {
-		i_vpr_h(inst, "%s: unsupported mbpf %u, max %u\n", __func__,
+		i_vpr_h(inst, "%s: unsupported mbpf %u, max %llu\n", __func__,
 			value, cap[BATCH_MBPF].value);
 		goto exit;
 	}
@@ -3217,7 +3217,7 @@ int msm_vidc_add_session(struct msm_vidc_inst *inst)
 	if (count < core->capabilities[MAX_SESSION_COUNT].value) {
 		list_add_tail(&inst->list, &core->instances);
 	} else {
-		i_vpr_e(inst, "%s: max limit %d already running %d sessions\n",
+		i_vpr_e(inst, "%s: max limit %lld already running %d sessions\n",
 			__func__, core->capabilities[MAX_SESSION_COUNT].value, count);
 		rc = -EAGAIN;
 	}
@@ -3368,7 +3368,7 @@ int msm_vidc_session_streamoff(struct msm_vidc_inst *inst,
 		goto error;
 
 	core = inst->core;
-	i_vpr_h(inst, "%s: wait on port: %d for time: %d ms\n",
+	i_vpr_h(inst, "%s: wait on port: %d for time: %lld ms\n",
 		__func__, port, core->capabilities[HW_RESPONSE_TIMEOUT].value);
 	inst_unlock(inst, __func__);
 	rc = wait_for_completion_timeout(
@@ -3443,7 +3443,7 @@ int msm_vidc_session_close(struct msm_vidc_inst *inst)
 	inst->packet = NULL;
 
 	if (wait_for_response) {
-		i_vpr_h(inst, "%s: wait on close for time: %d ms\n",
+		i_vpr_h(inst, "%s: wait on close for time: %lld ms\n",
 		__func__, core->capabilities[HW_RESPONSE_TIMEOUT].value);
 		inst_unlock(inst, __func__);
 		rc = wait_for_completion_timeout(
@@ -4737,7 +4737,7 @@ void msm_vidc_schedule_core_deinit(struct msm_vidc_core *core)
 	schedule_delayed_work(&core->fw_unload_work,
 		msecs_to_jiffies(core->capabilities[FW_UNLOAD_DELAY].value));
 
-	d_vpr_h("firmware unload delayed by %u ms\n",
+	d_vpr_h("firmware unload delayed by %llu ms\n",
 		core->capabilities[FW_UNLOAD_DELAY].value);
 
 	return;
@@ -4902,7 +4902,8 @@ int msm_vidc_check_core_mbps(struct msm_vidc_inst *inst)
 	core_unlock(core, __func__);
 
 	if (critical_mbps > core->capabilities[MAX_MBPS].value) {
-		i_vpr_e(inst, "%s: Hardware overloaded with critical sessions. needed %llu, max %u",
+		i_vpr_e(inst,
+			"%s: Hardware overloaded with critical sessions. needed %llu, max %llu",
 			__func__, critical_mbps, core->capabilities[MAX_MBPS].value);
 		return -ENOMEM;
 	}
@@ -4924,7 +4925,7 @@ int msm_vidc_check_core_mbps(struct msm_vidc_inst *inst)
 	if (is_encode_session(inst)) {
 		/* reject encoder if all encoders mbps is greater than MAX_MBPS */
 		if (enc_mbps > core->capabilities[MAX_MBPS].value) {
-			i_vpr_e(inst, "%s: Hardware overloaded. needed %llu, max %u", __func__,
+			i_vpr_e(inst, "%s: Hardware overloaded. needed %llu, max %llu", __func__,
 				mbps, core->capabilities[MAX_MBPS].value);
 			return -ENOMEM;
 		}
@@ -4956,7 +4957,7 @@ int msm_vidc_check_core_mbps(struct msm_vidc_inst *inst)
 		}
 	}
 
-	i_vpr_h(inst, "%s: HW load needed %llu is within max %u", __func__,
+	i_vpr_h(inst, "%s: HW load needed %llu is within max %llu", __func__,
 			total_mbps, core->capabilities[MAX_MBPS].value);
 
 	return 0;
@@ -4979,7 +4980,7 @@ int msm_vidc_check_core_mbpf(struct msm_vidc_inst *inst)
 	core_unlock(core, __func__);
 
 	if (critical_mbpf > core->capabilities[MAX_MBPF].value) {
-		i_vpr_e(inst, "%s: Hardware overloaded with critical sessions. needed %u, max %u",
+		i_vpr_e(inst, "%s: Hardware overloaded with critical sessions. needed %u, max %llu",
 			__func__, critical_mbpf, core->capabilities[MAX_MBPF].value);
 		return -ENOMEM;
 	}
@@ -4998,13 +4999,13 @@ int msm_vidc_check_core_mbpf(struct msm_vidc_inst *inst)
 	core_unlock(core, __func__);
 
 	if (video_mbpf > core->capabilities[MAX_MBPF].value) {
-		i_vpr_e(inst, "%s: video overloaded. needed %u, max %u", __func__,
+		i_vpr_e(inst, "%s: video overloaded. needed %u, max %llu", __func__,
 			video_mbpf, core->capabilities[MAX_MBPF].value);
 		return -ENOMEM;
 	}
 
 	if (image_mbpf > core->capabilities[MAX_IMAGE_MBPF].value) {
-		i_vpr_e(inst, "%s: image overloaded. needed %u, max %u", __func__,
+		i_vpr_e(inst, "%s: image overloaded. needed %u, max %llu", __func__,
 			image_mbpf, core->capabilities[MAX_IMAGE_MBPF].value);
 		return -ENOMEM;
 	}
@@ -5020,7 +5021,7 @@ int msm_vidc_check_core_mbpf(struct msm_vidc_inst *inst)
 	core_unlock(core, __func__);
 
 	if (video_rt_mbpf > core->capabilities[MAX_RT_MBPF].value) {
-		i_vpr_e(inst, "%s: real-time video overloaded. needed %u, max %u",
+		i_vpr_e(inst, "%s: real-time video overloaded. needed %u, max %llu",
 			__func__, video_rt_mbpf, core->capabilities[MAX_RT_MBPF].value);
 		return -ENOMEM;
 	}
@@ -5135,7 +5136,7 @@ static bool msm_vidc_allow_image_encode_session(struct msm_vidc_inst *inst)
 	/* is bitrate mode CQ */
 	allow = cap[BITRATE_MODE].value == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ;
 	if (!allow) {
-		i_vpr_e(inst, "%s: bitrate mode is not CQ: %#x\n", __func__,
+		i_vpr_e(inst, "%s: bitrate mode is not CQ: %#llx\n", __func__,
 			cap[BITRATE_MODE].value);
 		goto exit;
 	}
@@ -5144,7 +5145,7 @@ static bool msm_vidc_allow_image_encode_session(struct msm_vidc_inst *inst)
 	allow = !cap[GOP_SIZE].value;
 	allow &= !cap[B_FRAME].value;
 	if (!allow) {
-		i_vpr_e(inst, "%s: not all intra: gop: %u, bframe: %u\n", __func__,
+		i_vpr_e(inst, "%s: not all intra: gop: %llu, bframe: %llu\n", __func__,
 			cap[GOP_SIZE].value, cap[B_FRAME].value);
 		goto exit;
 	}
@@ -5152,7 +5153,7 @@ static bool msm_vidc_allow_image_encode_session(struct msm_vidc_inst *inst)
 	/* is time delta based rc disabled */
 	allow = !cap[TIME_DELTA_BASED_RC].value;
 	if (!allow) {
-		i_vpr_e(inst, "%s: time delta based rc not disabled: %#x\n", __func__,
+		i_vpr_e(inst, "%s: time delta based rc not disabled: %#llx\n", __func__,
 			cap[TIME_DELTA_BASED_RC].value);
 		goto exit;
 	}
@@ -5160,7 +5161,7 @@ static bool msm_vidc_allow_image_encode_session(struct msm_vidc_inst *inst)
 	/* is frame skip mode disabled */
 	allow = !cap[FRAME_SKIP_MODE].value;
 	if (!allow) {
-		i_vpr_e(inst, "%s: frame skip mode not disabled: %#x\n", __func__,
+		i_vpr_e(inst, "%s: frame skip mode not disabled: %#llx\n", __func__,
 			cap[FRAME_SKIP_MODE].value);
 		goto exit;
 	}
@@ -5283,21 +5284,21 @@ static int msm_vidc_check_max_sessions(struct msm_vidc_inst *inst)
 	core_unlock(core, __func__);
 
 	if (num_8k_sessions > core->capabilities[MAX_NUM_8K_SESSIONS].value) {
-		i_vpr_e(inst, "%s: total 8k sessions %d, exceeded max limit %d\n",
+		i_vpr_e(inst, "%s: total 8k sessions %d, exceeded max limit %lld\n",
 			__func__, num_8k_sessions,
 			core->capabilities[MAX_NUM_8K_SESSIONS].value);
 		return -ENOMEM;
 	}
 
 	if (num_4k_sessions > core->capabilities[MAX_NUM_4K_SESSIONS].value) {
-		i_vpr_e(inst, "%s: total 4K sessions %d, exceeded max limit %d\n",
+		i_vpr_e(inst, "%s: total 4K sessions %d, exceeded max limit %lld\n",
 			__func__, num_4k_sessions,
 			core->capabilities[MAX_NUM_4K_SESSIONS].value);
 		return -ENOMEM;
 	}
 
 	if (num_1080p_sessions > core->capabilities[MAX_NUM_1080P_SESSIONS].value) {
-		i_vpr_e(inst, "%s: total 1080p sessions %d, exceeded max limit %d\n",
+		i_vpr_e(inst, "%s: total 1080p sessions %d, exceeded max limit %lld\n",
 			__func__, num_1080p_sessions,
 			core->capabilities[MAX_NUM_1080P_SESSIONS].value);
 		return -ENOMEM;

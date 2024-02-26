@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2022, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/reset.h>
@@ -1207,7 +1207,7 @@ int msm_vidc_decide_work_mode_iris33(struct msm_vidc_inst *inst)
 	}
 
 exit:
-	i_vpr_h(inst, "Configuring work mode = %u low latency = %u, gop size = %u\n",
+	i_vpr_h(inst, "Configuring work mode = %u low latency = %llu, gop size = %llu\n",
 		work_mode, inst->capabilities[LOWLATENCY_MODE].value,
 		inst->capabilities[GOP_SIZE].value);
 	msm_vidc_update_cap_value(inst, STAGE, work_mode, __func__);
@@ -1301,7 +1301,7 @@ int msm_vidc_adjust_bitrate_boost_iris33(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 	u32 width, height, frame_rate;
 	struct v4l2_format *f;
 	u32 max_bitrate = 0, bitrate = 0;

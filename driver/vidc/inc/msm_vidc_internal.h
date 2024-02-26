@@ -667,10 +667,10 @@ enum msm_vidc_inst_capability_flags {
 
 struct msm_vidc_inst_cap {
 	enum msm_vidc_inst_capability_type cap_id;
-	s32 min;
-	s32 max;
-	u32 step_or_mask;
-	s32 value;
+	s64 min;
+	s64 max;
+	u64 step_or_mask;
+	s64 value;
 	u32 v4l2_id;
 	u32 hfi_id;
 	enum msm_vidc_inst_capability_flags flags;
@@ -689,7 +689,7 @@ struct msm_vidc_inst_capability {
 
 struct msm_vidc_core_capability {
 	enum msm_vidc_core_capability_type type;
-	u32 value;
+	s64 value;
 };
 
 struct msm_vidc_inst_cap_entry {

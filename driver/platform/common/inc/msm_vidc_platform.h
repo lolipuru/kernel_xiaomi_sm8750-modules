@@ -147,10 +147,10 @@ struct msm_platform_inst_capability {
 	enum msm_vidc_inst_capability_type cap_id;
 	enum msm_vidc_domain_type domain;
 	enum msm_vidc_codec_type codec;
-	s32 min;
-	s32 max;
-	u32 step_or_mask;
-	s32 value;
+	s64 min;
+	s64 max;
+	u64 step_or_mask;
+	s64 value;
 	u32 v4l2_id;
 	u32 hfi_id;
 	enum msm_vidc_inst_capability_flags flags;
@@ -293,11 +293,11 @@ int msm_vidc_read_efuse(struct msm_vidc_core *core);
 
 enum msm_vidc_inst_capability_type msm_vidc_get_cap_id(struct msm_vidc_inst *inst, u32 id);
 int msm_vidc_update_cap_value(struct msm_vidc_inst *inst, u32 cap,
-			      s32 adjusted_val, const char *func);
+			      s64 adjusted_val, const char *func);
 bool is_parent_available(struct msm_vidc_inst *inst, u32 cap_id,
 			 u32 check_parent, const char *func);
 int msm_vidc_get_parent_value(struct msm_vidc_inst *inst, u32 cap, u32 parent,
-			      s32 *value, const char *func);
+			      s64 *value, const char *func);
 u32 msm_vidc_get_port_info(struct msm_vidc_inst *inst,
 			   enum msm_vidc_inst_capability_type cap_id);
 int msm_vidc_v4l2_menu_to_hfi(struct msm_vidc_inst *inst,
@@ -386,5 +386,6 @@ int msm_vidc_set_outbuf_fence_type(void *instance, enum msm_vidc_inst_capability
 int msm_vidc_set_outbuf_fence_direction(void *instance, enum msm_vidc_inst_capability_type cap_id);
 int msm_vidc_adjust_histogram_info(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_hdr10_max_rgb_info(void *instance, struct v4l2_ctrl *ctrl);
+int msm_vidc_set_conceal_color(void *instance, enum msm_vidc_inst_capability_type cap_id);
 
 #endif // _MSM_VIDC_PLATFORM_H_

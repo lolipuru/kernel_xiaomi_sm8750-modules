@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <media/v4l2_vidc_extensions.h>
@@ -16,8 +16,8 @@
 
 int msm_vidc_adjust_ir_period(void *instance, struct v4l2_ctrl *ctrl)
 {
-	s32 adjusted_value, all_intra = 0, roi_enable = 0,
-		pix_fmts = MSM_VIDC_FMT_NONE;
+	s32 adjusted_value;
+	s64 all_intra = 0, roi_enable = 0,  pix_fmts = MSM_VIDC_FMT_NONE;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[IR_PERIOD].value;
@@ -30,7 +30,7 @@ int msm_vidc_adjust_ir_period(void *instance, struct v4l2_ctrl *ctrl)
 
 	if (all_intra) {
 		adjusted_value = 0;
-		i_vpr_h(inst, "%s: intra refresh unsupported, all intra: %d\n",
+		i_vpr_h(inst, "%s: intra refresh unsupported, all intra: %lld\n",
 			__func__, all_intra);
 		goto exit;
 	}
@@ -107,7 +107,7 @@ int msm_vidc_adjust_dec_operating_rate(void *instance, struct v4l2_ctrl *ctrl)
 int msm_vidc_adjust_delivery_mode(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
-	s32 slice_mode = -1;
+	s64 slice_mode = -1;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 
 	if (is_decode_session(inst))
@@ -150,14 +150,14 @@ int msm_vidc_set_ir_period(void *instance,
 		   V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD_TYPE_CYCLIC) {
 		ir_type = HFI_PROP_IR_CYCLIC_PERIOD;
 	} else {
-		i_vpr_e(inst, "%s: invalid ir_type %d\n",
+		i_vpr_e(inst, "%s: invalid ir_type %lld\n",
 			__func__, inst->capabilities[IR_TYPE].value);
 		return -EINVAL;
 	}
 
 	rc = venus_hfi_set_ir_period(inst, ir_type, cap_id);
 	if (rc) {
-		i_vpr_e(inst, "%s: failed to set ir period %d\n",
+		i_vpr_e(inst, "%s: failed to set ir period %lld\n",
 			__func__, inst->capabilities[IR_PERIOD].value);
 		return rc;
 	}
@@ -237,7 +237,7 @@ int msm_vidc_set_signal_color_info(void *instance,
 int msm_vidc_adjust_csc(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
-	s32 pix_fmt = -1;
+	s64 pix_fmt = -1;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 
 	if (is_decode_session(inst))

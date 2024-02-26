@@ -1048,7 +1048,7 @@ int msm_vidc_decide_work_mode_iris35(struct msm_vidc_inst *inst)
 	}
 
 exit:
-	i_vpr_h(inst, "Configuring work mode = %u low latency = %u, gop size = %u\n",
+	i_vpr_h(inst, "Configuring work mode = %u low latency = %llu, gop size = %llu\n",
 		work_mode, inst->capabilities[LOWLATENCY_MODE].value,
 		inst->capabilities[GOP_SIZE].value);
 	msm_vidc_update_cap_value(inst, STAGE, work_mode, __func__);
@@ -1142,7 +1142,7 @@ int msm_vidc_adjust_bitrate_boost_iris35(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 	u32 width, height, frame_rate;
 	struct v4l2_format *f;
 	u32 max_bitrate = 0, bitrate = 0;
