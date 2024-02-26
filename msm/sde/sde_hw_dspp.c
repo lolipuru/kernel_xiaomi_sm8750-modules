@@ -644,23 +644,26 @@ struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 				cfg->sblk->demura.len, c->hw.xin_id);
 	}
 
-	if (cfg->sblk->aiqe.id == SDE_DSPP_AIQE && cfg->sblk->aiqe.base
-			&& cfg->sblk->aiqe.base != 0xffffffff) {
-		snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "aiqe", c->idx - DSPP_0);
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
-				c->hw.blk_off + cfg->sblk->aiqe.base,
-				c->hw.blk_off + cfg->sblk->aiqe.base +
-				cfg->sblk->aiqe.len, c->hw.xin_id);
-	}
+	if (c->sde_kms->catalog && c->sde_kms->catalog->ssip_allowed) {
+		if (cfg->sblk->aiqe.id == SDE_DSPP_AIQE && cfg->sblk->aiqe.base
+				&& cfg->sblk->aiqe.base != 0xffffffff) {
+			snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "aiqe", c->idx - DSPP_0);
+			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
+					c->hw.blk_off + cfg->sblk->aiqe.base,
+					c->hw.blk_off + cfg->sblk->aiqe.base +
+					cfg->sblk->aiqe.len, c->hw.xin_id);
+		}
 
-	if ((cfg->sblk->ai_scaler.id == SDE_DSPP_AI_SCALER) &&
-			cfg->sblk->ai_scaler.base) {
-		snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "ai_scaler",
-				c->idx - DSPP_0);
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
-				c->hw.blk_off + cfg->sblk->ai_scaler.base,
-				c->hw.blk_off + cfg->sblk->ai_scaler.base +
-				cfg->sblk->ai_scaler.len, c->hw.xin_id);
+		if ((cfg->sblk->ai_scaler.id == SDE_DSPP_AI_SCALER) &&
+				cfg->sblk->ai_scaler.base
+				&& cfg->sblk->ai_scaler.base != 0xffffffff) {
+			snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "ai_scaler",
+					c->idx - DSPP_0);
+			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
+					c->hw.blk_off + cfg->sblk->ai_scaler.base,
+					c->hw.blk_off + cfg->sblk->ai_scaler.base +
+					cfg->sblk->ai_scaler.len, c->hw.xin_id);
+		}
 	}
 
 	return &c->hw;
