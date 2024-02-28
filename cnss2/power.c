@@ -1210,6 +1210,7 @@ int cnss_power_on_device(struct cnss_plat_data *plat_priv, bool reset)
 
 	plat_priv->powered_on = true;
 	clear_bit(CNSS_POWER_OFF, &plat_priv->driver_state);
+	clear_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state);
 	cnss_enable_dev_sol_irq(plat_priv);
 	cnss_set_host_sol_value(plat_priv, 0);
 
