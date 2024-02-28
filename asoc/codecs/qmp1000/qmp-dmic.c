@@ -16,6 +16,7 @@
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include "qmp-dmic.h"
+#include "qmp-aggregator.h"
 
 #define QMP_MAX_REGISTER 0x40900070
 #define MCLK_12P288MHZ 12288000
@@ -27,6 +28,12 @@ enum {
 	QMP_SDCA_DMIC_MAX_PORTS,
 };
 
+enum {
+	QMP_DAI_NORMAL,
+	QMP_DAI_LP,
+	QMP_DAI_VA_NORMAL,
+	QMP_MAX_DAIS,
+};
 enum fu1_usage_modes {
 	FU1_NORMAL_DIV_4 = 1,
 	FU1_NORMAL_DIV_3 = 2,
@@ -75,65 +82,17 @@ struct qmp_sdca_dmic_priv {
 	const struct snd_soc_component_driver *driver;
 	struct snd_soc_dai_driver *dai_driver;
 	struct regulator *slave_vdd;
-	u8 tx_master_port_map[QMP_SDCA_DMIC_MAX_PORTS];
+	u8 tx_master_port_map[QMP_MAX_DAIS];
 	struct swr_port_params tx_port_params[SWR_UC_MAX][QMP_SDCA_DMIC_MAX_PORTS];
 	struct swr_dev_frame_config swr_tx_port_params[SWR_UC_MAX];
 	int fu1_usage_mode;
 	int fu2_usage_mode;
+	int fu1_pde11_en_ref_count;
 	unsigned long fu1_channel_rate;
 	unsigned long fu2_channel_rate;
 	unsigned long clk_freq;
 	int dai_status_mask;
-//	struct notifier_block nblock;
-};
-
-static const char * const codec_name_list[] = {
-	"qmp-dmic.01",
-	"qmp-dmic.02",
-	"qmp-dmic.03",
-	"qmp-dmic.04",
-	"qmp-dmic.05",
-	"qmp-dmic.06",
-	"qmp-dmic.07",
-	"qmp-dmic.08",
-};
-
-static const char * const dai_name_list[] = {
-	"qmp_dmic_normal_tx1",
-	"qmp_dmic_lp_tx1",
-	"qmp_dmic_normal_tx2",
-	"qmp_dmic_lp_tx2",
-	"qmp_dmic_normal_tx3",
-	"qmp_dmic_lp_tx3",
-	"qmp_dmic_normal_tx4",
-	"qmp_dmic_lp_tx4",
-	"qmp_dmic_normal_tx5",
-	"qmp_dmic_lp_tx5",
-	"qmp_dmic_normal_tx6",
-	"qmp_dmic_lp_tx6",
-	"qmp_dmic_normal_tx7",
-	"qmp_dmic_lp_tx7",
-	"qmp_dmic_normal_tx8",
-	"qmp_dmic_lp_tx8",
-};
-
-static const char *const aif_name_list[] = {
-	"QMP_DMIC AIF1 Normal Capture",
-	"QMP_DMIC AIF1 LP Capture",
-	"QMP_DMIC AIF2 Normal Capture",
-	"QMP_DMIC AIF2 LP Capture",
-	"QMP_DMIC AIF3 Normal Capture",
-	"QMP_DMIC AIF3 LP Capture",
-	"QMP_DMIC AIF4 Normal Capture",
-	"QMP_DMIC AIF4 LP Capture",
-	"QMP_DMIC AIF5 Normal Capture",
-	"QMP_DMIC AIF5 LP Capture",
-	"QMP_DMIC AIF6 Normal Capture",
-	"QMP_DMIC AIF6 LP Capture",
-	"QMP_DMIC AIF7 Normal Capture",
-	"QMP_DMIC AIF7 LP Capture",
-	"QMP_DMIC AIF8 Normal Capture",
-	"QMP_DMIC AIF8 LP Capture",
+	u8 master_port_map_cached[QMP_MAX_DAIS];
 };
 
 static bool qmp_sdca_dmic_readable_register(struct device *dev, unsigned int reg)
@@ -149,6 +108,8 @@ static bool qmp_sdca_dmic_readable_register(struct device *dev, unsigned int reg
 			QMP_SDCA_CTL_NUM0):
 	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC1, QMP_SDCA_ENT_PDE11, QMP_SDCA_CTL_PDE_ACT_PS,
 			QMP_SDCA_CTL_NUM0):
+	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC1, QMP_SDCA_ENT_ITCS, QMP_SDCA_CTL_CLOCK_VALID,
+			QMP_SDCA_CTL_NUM0):
 	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC2, QMP_SDCA_ENT_IT11, QMP_SDCA_CTL_IT_USAGE,
 			QMP_SDCA_CTL_NUM0):
 	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC2, QMP_SDCA_ENT_PDE11, QMP_SDCA_CTL_PDE_REQ_PS,
@@ -162,6 +123,8 @@ static bool qmp_sdca_dmic_readable_register(struct device *dev, unsigned int reg
 	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC2, QMP_SDCA_ENT_SMPU, QMP_SDCA_CTL_FUNC_ACT,
 			QMP_SDCA_CTL_NUM0):
 	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC2, QMP_SDCA_ENT_PDE11, QMP_SDCA_CTL_PDE_ACT_PS,
+			QMP_SDCA_CTL_NUM0):
+	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC2, QMP_SDCA_ENT_ITCS, QMP_SDCA_CTL_CLOCK_VALID,
 			QMP_SDCA_CTL_NUM0):
 		return true;
 	default:
@@ -205,6 +168,10 @@ static bool qmp_sdca_dmic_volatile_register(struct device *dev, unsigned int reg
 			QMP_SDCA_CTL_NUM0):
 	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC2, QMP_SDCA_ENT_PDE11, QMP_SDCA_CTL_PDE_ACT_PS,
 			QMP_SDCA_CTL_NUM0):
+	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC1, QMP_SDCA_ENT_ITCS, QMP_SDCA_CTL_CLOCK_VALID,
+			QMP_SDCA_CTL_NUM0):
+	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC2, QMP_SDCA_ENT_ITCS, QMP_SDCA_CTL_CLOCK_VALID,
+			QMP_SDCA_CTL_NUM0):
 		return true;
 	default:
 		return false;
@@ -225,6 +192,21 @@ static const struct regmap_config qmp_sdca_dmic_regmap = {
 	.use_single_write = true,
 };
 
+static void qmp_update_offset1(void *qmp_priv, u8 s_dp, u8 s_offset1)
+{
+	struct qmp_sdca_dmic_priv *qmp = (struct qmp_sdca_dmic_priv *)qmp_priv;
+
+	if (s_dp >= QMP_SDCA_DMIC_MAX_PORTS)
+		return;
+
+	for (int i = 0; i < SWR_UC_MAX; ++i)
+		qmp->tx_port_params[i][s_dp].offset1 = s_offset1;
+
+	swr_init_port_params(qmp->swr_slave, QMP_SDCA_DMIC_MAX_PORTS,
+			qmp->swr_tx_port_params);
+}
+
+
 static int qmp_enable_regulator(struct qmp_sdca_dmic_priv *qmp)
 {
 	int rc = 0;
@@ -237,7 +219,7 @@ static int qmp_enable_regulator(struct qmp_sdca_dmic_priv *qmp)
 		dev_err_ratelimited(qmp->dev, "qmp regulator enable failed %d", rc);
 		return rc;
 	}
-	dev_err(qmp->dev, "%s: enabled qmp vdd regulator\n", __func__);
+	dev_dbg(qmp->dev, "qmp vdd regulator enabled\n");
 	return 0;
 }
 
@@ -253,7 +235,7 @@ static int qmp_disable_regulator(struct qmp_sdca_dmic_priv *qmp)
 		dev_err_ratelimited(qmp->dev, "qmp regulator disable failed %d", rc);
 		return rc;
 	}
-	dev_err(qmp->dev, "%s: disabled qmp vdd regulator\n", __func__);
+	dev_dbg(qmp->dev, "qmp vdd regulator disabled\n");
 	return 0;
 }
 
@@ -307,6 +289,14 @@ static const char *master_port_type_to_str(int port_type)
 	}
 }
 
+static int dai_id_to_port_id(int dai_id)
+{
+	if (dai_id == QMP_DAI_LP)
+		return QMP_SDCA_LP_PORT;
+	else
+		return QMP_SDCA_NORMAL_PORT;
+}
+
 static int qmp_sdca_dmic_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
@@ -318,8 +308,18 @@ static int qmp_sdca_dmic_startup(struct snd_pcm_substream *substream,
 	if (!qmp->swr_slave)
 		return -EINVAL;
 
-	pr_err("%s(): dai_name = %s substream = %s  stream = %d\n", __func__,
-		 dai->name, substream->name, substream->stream);
+	/*
+	 * Check if this slave:dai is requested to connect to a master port or not
+	 * Otherwise, no need to enable this QMP dai
+	 */
+	if (qmp->tx_master_port_map[dai->id] == ZERO) {
+		/* TODO: check for other invalid values */
+		dev_dbg(qmp->dev, "no request to connect this qmp slave:dai_id %d(%s) to master port",
+				dai->id, dai->name);
+		return 0;
+	}
+	dev_dbg(qmp->dev, "%s(): dai_name = %s, stream = %d\n", __func__,
+		 dai->name, substream->stream);
 
 	/* Enable QMP power supply */
 	if (qmp_enable_regulator(qmp))
@@ -333,9 +333,13 @@ static int qmp_sdca_dmic_startup(struct snd_pcm_substream *substream,
 		goto err;
 	}
 	qmp->swr_slave->dev_num = dev_num;
+	qmp->swr_slave->g_scp1_val = 0;
+	qmp->swr_slave->g_scp2_val = 0;
 	swr_init_port_params(qmp->swr_slave, QMP_SDCA_DMIC_MAX_PORTS,
 			qmp->swr_tx_port_params);
+	 /* status mask indicate if this dai opened */
 	qmp->dai_status_mask |= BIT(dai->id);
+	qmp->master_port_map_cached[dai->id] = qmp->tx_master_port_map[dai->id];
 
 err:
 	return 0;
@@ -347,14 +351,34 @@ static int qmp_sdca_dmic_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_component *component = dai->component;
 	struct qmp_sdca_dmic_priv *qmp = snd_soc_component_get_drvdata(component);
+	u8 port_type = 0;
+	u32 ch_rate;
+	int rc;
 
 	if (!qmp->swr_slave)
 		return -EINVAL;
 
-	pr_err("%s(): dai_name = %s substream = %s  stream = %d\n", __func__,
-		 dai->name, substream->name, substream->stream);
+	if (!(qmp->dai_status_mask & BIT(dai->id))) {
+		dev_dbg(qmp->dev, "dai %d(%s) not opened, skip", dai->id, dai->name);
+		return 0;
+	}
 
-	return 0;
+	dev_dbg(qmp->dev, "%s(): dai_name = %s, stream = %s channels: %d\n", __func__,
+		 dai->name, substream->name, params_channels(params));
+
+	port_type = qmp->master_port_map_cached[dai->id];
+	ch_rate = qmp_get_channel_rate(qmp, dai_id_to_port_id(dai->id));
+
+	rc = stream_agg_add_channel_v2((void *)substream, params_channels(params),
+			ch_rate, port_type, dai_id_to_port_id(dai->id),
+			qmp->swr_slave->dev_num, qmp, qmp->swr_slave, qmp_update_offset1);
+	if (rc)
+		dev_err(qmp->dev, "dai_name:%s, add channel %s failed\n", dai->name,
+				master_port_type_to_str(port_type));
+	else
+		dev_dbg(qmp->dev, "dai_name:%s, add channel %s done\n", dai->name,
+			master_port_type_to_str(port_type));
+	return rc;
 }
 
 static int qmp_sdca_dmic_prepare(struct snd_pcm_substream *substream,
@@ -363,37 +387,28 @@ static int qmp_sdca_dmic_prepare(struct snd_pcm_substream *substream,
 	struct snd_soc_component *component = dai->component;
 	struct qmp_sdca_dmic_priv *qmp = snd_soc_component_get_drvdata(component);
 	int ret = 0;
-	u8 slv_port_id = dai->id;
-	u8 ch_mask = 0x01; /* only DpnChannelEN1 register is available */
-	u32 ch_rate;
-	u8 num_ch = 1;
+	u8 slv_port_id = dai_id_to_port_id(dai->id);
 	u8 port_type = 0;
 
 	if (!qmp->swr_slave)
 		return -EINVAL;
 
-	pr_err("%s(): dai name = %s substream = %s  stream = %d\n", __func__,
-		 dai->name, substream->name, substream->stream);
-
-	ch_rate = qmp_get_channel_rate(qmp, slv_port_id);
-	port_type = qmp->tx_master_port_map[slv_port_id];
-
-	dev_err(qmp->dev, "slv port id %d, master port_type: %s\n",
-		(slv_port_id + 1), master_port_type_to_str(port_type));
-
-	if (port_type == ZERO) {
-		dev_err(qmp->dev, "master port map not set for dai %d, skip swr config\n",
-				slv_port_id);
-		goto exit;
+	if (!(qmp->dai_status_mask & BIT(dai->id))) {
+		dev_dbg(qmp->dev, "dai %d(%s) not opened, skip", dai->id, dai->name);
+		return 0;
 	}
 
-	ret = swr_connect_port(qmp->swr_slave, &slv_port_id, 1, &ch_mask, &ch_rate,
-			&num_ch, &port_type);
-	if (ret)
-		goto exit;
+	dev_dbg(qmp->dev, "%s(): dai name = %s, stream = %d\n", __func__,
+		 dai->name, substream->stream);
 
-	ret = swr_slvdev_datapath_control(qmp->swr_slave, qmp->swr_slave->dev_num, true);
-exit:
+	port_type = qmp->master_port_map_cached[dai->id];
+
+	dev_dbg(qmp->dev, "slv port id %d, master port_type: %s\n",
+		(slv_port_id + 1), master_port_type_to_str(port_type));
+
+	ret = stream_agg_prepare_channel_v2((void *)substream, port_type,
+			dai_id_to_port_id(dai->id),
+			qmp->swr_slave->dev_num);
 	return ret;
 }
 
@@ -406,15 +421,23 @@ static void qmp_sdca_dmic_shutdown(struct snd_pcm_substream *substream,
 	if (!qmp->swr_slave)
 		return;
 
-	pr_err("%s(): dai_name = %s substream = %s  stream = %d\n", __func__,
-		 dai->name, substream->name, substream->stream);
+	if (!(qmp->dai_status_mask & BIT(dai->id))) {
+		dev_dbg(qmp->dev, "dai %d(%s) not opened, skip", dai->id, dai->name);
+		return;
+	}
+
+	dev_dbg(qmp->dev, "%s(): dai_name = %s, stream = %d\n", __func__,
+		 dai->name, substream->stream);
+
 
 	/* Disable QMP power supply */
 	qmp_disable_regulator(qmp);
 	qmp->dai_status_mask &= ~BIT(dai->id);
 	if (!qmp->dai_status_mask) {
 		qmp->swr_slave->dev_num = 0; /* Both dais are disabled */
-		dev_err(component->dev, "Set dev_num to 0\n");
+		qmp->swr_slave->clk_scale_initialized = 0;
+		dev_dbg(qmp->dev, "Set dev_num to 0\n");
+		qmp->master_port_map_cached[dai->id] = 0;
 	}
 }
 
@@ -423,12 +446,22 @@ static int qmp_sdca_dmic_hw_free(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_component *component = dai->component;
 	struct qmp_sdca_dmic_priv *qmp = snd_soc_component_get_drvdata(component);
+	u8 port_type = 0;
+	int ret;
 
 	if (!qmp->swr_slave)
 		return -EINVAL;
 
-	pr_err("%s(): dai_name = %s substream = %s  stream = %d\n", __func__,
-		 dai->name, substream->name, substream->stream);
+	if (!(qmp->dai_status_mask & BIT(dai->id))) {
+		dev_dbg(qmp->dev, "dai %d(%s) not opened, skip", dai->id, dai->name);
+		return 0;
+	}
+
+	dev_dbg(qmp->dev, "%s(): dai_name = %s, stream = %d\n", __func__,
+		 dai->name, substream->stream);
+	port_type = qmp->master_port_map_cached[dai->id];
+	ret = stream_agg_remove_channel_v2((void *)substream, port_type,
+				dai_id_to_port_id(dai->id), qmp->swr_slave->dev_num);
 
 	return 0;
 }
@@ -444,7 +477,7 @@ static const struct snd_soc_dai_ops qmp_sdca_dmic_dai_ops = {
 static struct snd_soc_dai_driver qmp_dmic_dai[] = {
 	{
 		.name = "",
-		.id = QMP_SDCA_NORMAL_PORT,
+		.id = QMP_DAI_NORMAL,
 		.capture = {
 			.stream_name = "",
 			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
@@ -462,7 +495,25 @@ static struct snd_soc_dai_driver qmp_dmic_dai[] = {
 	},
 	{
 		.name = "",
-		.id = QMP_SDCA_LP_PORT,
+		.id = QMP_DAI_LP,
+		.capture = {
+			.stream_name = "",
+			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
+				SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_48000 |
+				SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_192000),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				SNDRV_PCM_FMTBIT_S24_LE |
+				SNDRV_PCM_FMTBIT_S32_LE),
+			.rate_max = 192000,
+			.rate_min = 8000,
+			.channels_min = 1,
+			.channels_max = 2,
+		},
+		.ops = &qmp_sdca_dmic_dai_ops,
+	},
+	{
+		.name = "",
+		.id = QMP_DAI_VA_NORMAL,
 		.capture = {
 			.stream_name = "",
 			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
@@ -493,10 +544,22 @@ static struct snd_soc_dai_driver *get_dai_driver(struct device *dev, int dev_ind
 	memcpy(dai_drv, qmp_dmic_dai,
 			ARRAY_SIZE(qmp_dmic_dai) * sizeof(struct snd_soc_dai_driver));
 
-	dai_drv[0].name = dai_name_list[2 * dev_index];
-	dai_drv[1].name = dai_name_list[2 * dev_index + 1];
-	dai_drv[0].capture.stream_name = aif_name_list[2 * dev_index];
-	dai_drv[1].capture.stream_name = aif_name_list[2 * dev_index + 1];
+	dai_drv[0].name = devm_kasprintf(dev, GFP_KERNEL, "qmp_dmic_normal_tx%d", dev_index);
+	dai_drv[1].name = devm_kasprintf(dev, GFP_KERNEL, "qmp_dmic_lp_tx%d", dev_index);
+	dai_drv[2].name = devm_kasprintf(dev, GFP_KERNEL, "qmp_dmic_va_normal_tx%d",
+			dev_index);
+	if (!dai_drv[0].name || !dai_drv[1].name || !dai_drv[2].name)
+		return NULL;
+
+	dai_drv[0].capture.stream_name = devm_kasprintf(dev, GFP_KERNEL,
+			"QMP_DMIC AIF%d Normal Capture", dev_index);
+	dai_drv[1].capture.stream_name = devm_kasprintf(dev, GFP_KERNEL,
+			"QMP_DMIC AIF%d LP Capture", dev_index);
+	dai_drv[2].capture.stream_name = devm_kasprintf(dev, GFP_KERNEL,
+			"QMP_DMIC AIF%d VA Normal Capture", dev_index);
+	if (!dai_drv[0].capture.stream_name || !dai_drv[1].capture.stream_name ||
+			!dai_drv[2].capture.stream_name)
+		return NULL;
 
 	return dai_drv;
 }
@@ -618,15 +681,17 @@ static int qmp_dmic_tx_master_port_get(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
 	struct qmp_sdca_dmic_priv *qmp = snd_soc_component_get_drvdata(component);
-	u8 slv_port_id = QMP_SDCA_NORMAL_PORT;
+	u8 dai_id_port_map = QMP_DAI_NORMAL;
 
-	if (strnstr(kcontrol->id.name, "Normal", sizeof("Normal")))
-		slv_port_id = QMP_SDCA_NORMAL_PORT;
-	else if (strnstr(kcontrol->id.name, "LP", sizeof("LP")))
-		slv_port_id = QMP_SDCA_LP_PORT;
+	if (strnstr(kcontrol->id.name, "VA", strlen(kcontrol->id.name)))
+		dai_id_port_map = QMP_DAI_VA_NORMAL;
+	else if (strnstr(kcontrol->id.name, "Normal", strlen(kcontrol->id.name)))
+		dai_id_port_map = QMP_DAI_NORMAL;
+	else if (strnstr(kcontrol->id.name, "LP", strlen(kcontrol->id.name)))
+		dai_id_port_map = QMP_DAI_LP;
 
 	ucontrol->value.enumerated.item[0] = qmp_dmic_get_master_port_val(
-			qmp->tx_master_port_map[slv_port_id]);
+			qmp->tx_master_port_map[dai_id_port_map]);
 
 	dev_dbg(component->dev, "%s: ucontrol->value.enumerated.item[0] = %u\n",
 		__func__, ucontrol->value.enumerated.item[0]);
@@ -639,21 +704,24 @@ static int qmp_dmic_tx_master_port_put(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
 	struct qmp_sdca_dmic_priv *qmp = snd_soc_component_get_drvdata(component);
-	u8 slv_port_id = QMP_SDCA_NORMAL_PORT;
+	u8 dai_id_port_map = QMP_DAI_NORMAL;
 	unsigned int mport_idx = 0;
 
-	if (strnstr(kcontrol->id.name, "Normal", sizeof("Normal")))
-		slv_port_id = QMP_SDCA_NORMAL_PORT;
-	else if (strnstr(kcontrol->id.name, "LP", sizeof("LP")))
-		slv_port_id = QMP_SDCA_LP_PORT;
+	if (strnstr(kcontrol->id.name, "VA", strlen(kcontrol->id.name)))
+		dai_id_port_map = QMP_DAI_VA_NORMAL;
+	else if (strnstr(kcontrol->id.name, "Normal", strlen(kcontrol->id.name)))
+		dai_id_port_map = QMP_DAI_NORMAL;
+	else if (strnstr(kcontrol->id.name, "LP", strlen(kcontrol->id.name)))
+		dai_id_port_map = QMP_DAI_LP;
 
 	mport_idx = ucontrol->value.enumerated.item[0];
 	if (mport_idx < 0 || mport_idx >= ARRAY_SIZE(qmp_master_channel_map))
 		return -EINVAL;
 
-	qmp->tx_master_port_map[slv_port_id] = qmp_master_channel_map[mport_idx];
+	qmp->tx_master_port_map[dai_id_port_map] = qmp_master_channel_map[mport_idx];
 	dev_dbg(component->dev, "slv port id: %d, master_port_type: %s\n",
-		(slv_port_id + 1), master_port_type_to_str(qmp->tx_master_port_map[slv_port_id]));
+		dai_id_to_port_id(dai_id_port_map),
+		master_port_type_to_str(qmp->tx_master_port_map[dai_id_port_map]));
 
 	return 0;
 }
@@ -689,6 +757,8 @@ SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(fu2_usage_modes_text), fu2_usage_modes_text);
 static const struct snd_kcontrol_new qmp_dmic_snd_controls[] = {
 	SOC_ENUM_EXT("Normal PortMap", tx_master_port_enum,
 		qmp_dmic_tx_master_port_get, qmp_dmic_tx_master_port_put),
+	SOC_ENUM_EXT("VA Normal PortMap", tx_master_port_enum,
+		qmp_dmic_tx_master_port_get, qmp_dmic_tx_master_port_put),
 	SOC_ENUM_EXT("LP PortMap", tx_master_port_enum,
 		qmp_dmic_tx_master_port_get, qmp_dmic_tx_master_port_put),
 	SOC_ENUM_EXT("FU1 IT11 Usage Mode", fu1_usage_modes_enum,
@@ -698,7 +768,10 @@ static const struct snd_kcontrol_new qmp_dmic_snd_controls[] = {
 };
 
 static const struct snd_kcontrol_new qmp_dmic_normal_switch[] = {
-	SOC_DAPM_SINGLE("Enable", SND_SOC_NOPM, 0, 1, 0)
+	SOC_DAPM_SINGLE("Enable", SND_SOC_NOPM, 0, 1, 0),
+};
+static const struct snd_kcontrol_new qmp_dmic_va_normal_switch[] = {
+	SOC_DAPM_SINGLE("Enable", SND_SOC_NOPM, 0, 1, 0),
 };
 
 static const struct snd_kcontrol_new qmp_dmic_lp_switch[] = {
@@ -730,7 +803,7 @@ static int qmp_get_usage_mode(struct qmp_sdca_dmic_priv *qmp, int function_numbe
 
 static int wait_for_pde_state(struct qmp_sdca_dmic_priv *qmp, int ps, int func_num)
 {
-	int act_ps, cnt = 0;
+	int act_ps, cnt = 0, clock_valid;
 	int rc = 0;
 
 	do {
@@ -745,8 +818,12 @@ static int wait_for_pde_state(struct qmp_sdca_dmic_priv *qmp, int ps, int func_n
 			return rc;
 	} while (++cnt < 5);
 
-	dev_err(qmp->dev, "qmp ps%d request failed, func num %d act_ps %d\n",
-		ps, func_num, act_ps);
+	regmap_read(qmp->regmap,
+		SDW_SDCA_CTL(func_num, QMP_SDCA_ENT_ITCS,
+		QMP_SDCA_CTL_CLOCK_VALID, QMP_SDCA_CTL_NUM0),
+			&clock_valid);
+	dev_err(qmp->dev, "qmp ps%d request failed, func num %d act_ps %d, cs_valid:%d\n",
+		ps, func_num, act_ps, clock_valid);
 
 	return -EINVAL;
 
@@ -755,36 +832,7 @@ static int wait_for_pde_state(struct qmp_sdca_dmic_priv *qmp, int ps, int func_n
 static int qmp_dmic_port_enable(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
-	struct qmp_sdca_dmic_priv *qmp = snd_soc_component_get_drvdata(component);
-	u8 ch_mask = 0x01; /* only DpnChannelEN1 register is available */
-	u8 num_port = 1;
-	u8 port_type = 0;
-	u8 slv_port_id = w->shift;
-	u32 ch_rate;
-	int ret = 0;
-
-	if (slv_port_id >= QMP_SDCA_DMIC_MAX_PORTS) {
-		dev_err_ratelimited(component->dev, "invalid slv port id: %d\n", slv_port_id);
-		return -EINVAL;
-	}
-	ch_rate = qmp_get_channel_rate(qmp, slv_port_id);
-	port_type = qmp->tx_master_port_map[slv_port_id];
-
-	dev_dbg(component->dev, "slv port id %d, master port_type: %s event: %d\n",
-		(slv_port_id + 1), master_port_type_to_str(port_type), event);
-
-	switch (event) {
-	case SND_SOC_DAPM_POST_PMU:
-		break;
-	case SND_SOC_DAPM_PRE_PMD:
-		ret = swr_disconnect_port(qmp->swr_slave, &slv_port_id, num_port, &ch_mask,
-				&port_type);
-		ret = swr_slvdev_datapath_control(qmp->swr_slave, qmp->swr_slave->dev_num,
-				false);
-		break;
-	}
-	return ret;
+	return 0;
 }
 
 static int qmp_dmic_pde11_event(struct snd_soc_dapm_widget *w,
@@ -808,6 +856,13 @@ static int qmp_dmic_pde11_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+		if (function_number == FUNC_NUM_SMP_MIC1) {
+			qmp->fu1_pde11_en_ref_count++;
+			dev_dbg(component->dev, "(current) fu1 pde11 ref count:%d\n",
+					qmp->fu1_pde11_en_ref_count);
+			if (qmp->fu1_pde11_en_ref_count > 1)
+				goto exit;
+		}
 		/* Set Usage mode for the Function */
 		usage_mode = qmp_get_usage_mode(qmp, function_number);
 		regmap_write(qmp->regmap,
@@ -827,6 +882,16 @@ static int qmp_dmic_pde11_event(struct snd_soc_dapm_widget *w,
 					function_number, ps0);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
+		if (function_number == FUNC_NUM_SMP_MIC1) {
+			qmp->fu1_pde11_en_ref_count--;
+			if (qmp->fu1_pde11_en_ref_count < 0)
+				qmp->fu1_pde11_en_ref_count = 0;
+
+			dev_dbg(component->dev, "fu1 pde11 ref count:%d\n",
+					qmp->fu1_pde11_en_ref_count);
+			if (qmp->fu1_pde11_en_ref_count > 0)
+				goto exit;
+		}
 		/* Set PDE11 control */
 		regmap_write(qmp->regmap,
 			SDW_SDCA_CTL(function_number, QMP_SDCA_ENT_PDE11,
@@ -838,11 +903,12 @@ static int qmp_dmic_pde11_event(struct snd_soc_dapm_widget *w,
 					function_number, ps3);
 		break;
 	}
-
+exit:
 	return ret;
 }
 
 static const struct snd_soc_dapm_widget qmp_dmic_dapm_widgets[] = {
+	SND_SOC_DAPM_INPUT("QMP_DMIC VA Function1"),
 	SND_SOC_DAPM_INPUT("QMP_DMIC Function1"),
 	SND_SOC_DAPM_INPUT("QMP_DMIC Function2"),
 
@@ -850,6 +916,9 @@ static const struct snd_soc_dapm_widget qmp_dmic_dapm_widgets[] = {
 			qmp_dmic_normal_switch, ARRAY_SIZE(qmp_dmic_normal_switch),
 			qmp_dmic_pde11_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 
+	SND_SOC_DAPM_MIXER_E("FU1 PDE11 VA", SND_SOC_NOPM, QMP_SDCA_NORMAL_PORT, 0,
+			qmp_dmic_va_normal_switch, ARRAY_SIZE(qmp_dmic_va_normal_switch),
+			qmp_dmic_pde11_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_MIXER_E("FU2 PDE11", SND_SOC_NOPM, QMP_SDCA_LP_PORT, 0,
 			qmp_dmic_lp_switch, ARRAY_SIZE(qmp_dmic_lp_switch),
 			qmp_dmic_pde11_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
@@ -863,15 +932,20 @@ static const struct snd_soc_dapm_widget qmp_dmic_dapm_widgets[] = {
 					SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD),
 
 	SND_SOC_DAPM_OUTPUT("NORMAL_OUTPUT"),
+	SND_SOC_DAPM_OUTPUT("VA_NORMAL_OUTPUT"),
 	SND_SOC_DAPM_OUTPUT("LP_OUTPUT"),
 	SND_SOC_DAPM_MIC("QMP Digital Mic", NULL),
+	SND_SOC_DAPM_MIC("QMP VA Digital Mic", NULL),
 };
 
 static const struct snd_soc_dapm_route qmp_dmic_audio_map[] = {
+	{"QMP_DMIC VA Function1", NULL, "QMP VA Digital Mic"},
 	{"QMP_DMIC Function1", NULL, "QMP Digital Mic"},
 	{"QMP_DMIC Function2", NULL, "QMP Digital Mic"},
 	{"FU1 PDE11", "Enable", "QMP_DMIC Function1"},
+	{"FU1 PDE11 VA", "Enable", "QMP_DMIC VA Function1"},
 	{"Normal Port Enable", NULL, "FU1 PDE11"},
+	{"VA_NORMAL_OUTPUT", NULL, "FU1 PDE11 VA"},
 	{"NORMAL_OUTPUT", NULL, "Normal Port Enable"},
 	{"FU2 PDE11", "Enable", "QMP_DMIC Function2"},
 	{"LP Port Enable", NULL, "FU2 PDE11"},
@@ -881,7 +955,6 @@ static const struct snd_soc_dapm_route qmp_dmic_audio_map[] = {
 static int qmp_dmic_component_probe(struct snd_soc_component *component)
 {
 	struct qmp_sdca_dmic_priv *qmp_dmic = snd_soc_component_get_drvdata(component);
-	struct snd_soc_dapm_context *dapm = snd_soc_component_get_dapm(component);
 
 	qmp_dmic = snd_soc_component_get_drvdata(component);
 
@@ -893,8 +966,10 @@ static int qmp_dmic_component_probe(struct snd_soc_component *component)
 
 	devm_regmap_qti_debugfs_register(qmp_dmic->dev, qmp_dmic->regmap);
 
+	/*
 	snd_soc_dapm_ignore_suspend(dapm, "QMP AIF1 Capture");
 	snd_soc_dapm_ignore_suspend(dapm, "QMP AIF2 Capture");
+	*/
 
 	return 0;
 }
@@ -971,8 +1046,6 @@ static int qmp_sdca_dmic_parse_port_params(struct device *dev, char *prop)
 			cnt = (i * QMP_SDCA_DMIC_MAX_PORTS + j) * SWR_PORT_PARAMS;
 			(*map)[i][j].offset1 = dt_array[cnt];
 			(*map)[i][j].lane_ctrl = dt_array[cnt + 1];
-			dev_err(dev, "%s: port %d, uc: %d, offset1:%d, lane: %d\n",
-				__func__, j, i, dt_array[cnt], dt_array[cnt + 1]);
 		}
 		(*map_uc)[i].pp = &(*map)[i][0];
 	}
@@ -990,9 +1063,10 @@ static int qmp_sdca_dmic_init(struct device *dev, struct regmap *regmap,
 							  struct swr_device *peripheral)
 {
 	struct qmp_sdca_dmic_priv *qmp_dmic;
-	int ret, i;
+	int ret;
 	const char *qmp_dmic_codec_name_of = NULL;
 	int dev_index = -1;
+	struct  snd_soc_component_driver *component_drv = NULL;
 
 	qmp_dmic = devm_kzalloc(dev, sizeof(*qmp_dmic), GFP_KERNEL);
 	if (!qmp_dmic)
@@ -1026,28 +1100,27 @@ static int qmp_sdca_dmic_init(struct device *dev, struct regmap *regmap,
 		goto err;
 	}
 
-	qmp_dmic->driver = devm_kzalloc(dev,
-			sizeof(const struct snd_soc_component_driver), GFP_KERNEL);
-	if (!qmp_dmic->driver) {
+	component_drv = devm_kzalloc(dev, sizeof(*component_drv), GFP_KERNEL);
+	if (!component_drv) {
 		ret = -ENOMEM;
 		goto err;
 	}
 
-	memcpy(qmp_dmic->driver, &soc_codec_dev_qmp_dmic,
-		sizeof(const struct snd_soc_component_driver));
+	memcpy((void *)component_drv, &soc_codec_dev_qmp_dmic, sizeof(*component_drv));
 
-	for (i = 0; i < ARRAY_SIZE(codec_name_list); i++) {
-		if (!strcmp(qmp_dmic_codec_name_of, codec_name_list[i])) {
-			dev_index = i;
-			break;
-		}
-	}
-	if (dev_index < 0 || dev_index >= ARRAY_SIZE(codec_name_list)) {
-		ret = -EINVAL;
+	component_drv->name = devm_kstrdup(dev, qmp_dmic_codec_name_of, GFP_KERNEL);
+	if (!component_drv->name) {
+		ret = -ENOMEM;
 		goto err;
 	}
-	qmp_dmic->driver->name = codec_name_list[dev_index];
+	qmp_dmic->driver = component_drv;
 
+	ret = sscanf(qmp_dmic->driver->name, "qmp-dmic.%02d", &dev_index);
+	if (ret != 1) {
+		ret = -EINVAL;
+		dev_err(dev, "name parsing for dev_index failed:%s\n", qmp_dmic->driver->name);
+		goto err;
+	}
 	qmp_dmic->dai_driver = get_dai_driver(dev, dev_index);
 	if (!qmp_dmic->dai_driver) {
 		ret = -EINVAL;
@@ -1059,9 +1132,9 @@ static int qmp_sdca_dmic_init(struct device *dev, struct regmap *regmap,
 		dev_err(dev, "Codec component %s registration failed\n",
 			qmp_dmic->driver->name);
 	} else {
-		dev_err(dev, "Codec component %s registration success!\n",
+		dev_dbg(dev, "Codec component %s registration success!\n",
 			qmp_dmic->driver->name);
-		dev_err(dev, "Codec component:dai %s, %s registration success!\n",
+		dev_dbg(dev, "Codec component:dai %s, %s registration success!\n",
 			qmp_dmic->dai_driver[0].name, qmp_dmic->dai_driver[1].name);
 	}
 
