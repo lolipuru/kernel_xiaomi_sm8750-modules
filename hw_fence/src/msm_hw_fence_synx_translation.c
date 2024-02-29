@@ -259,7 +259,7 @@ static int synx_hwfence_wait(struct synx_session *session, u32 h_synx, u64 timeo
 		return hw_fence_interop_to_synx_status(ret);
 	}
 
-	return error ? error : SYNX_STATE_SIGNALED_SUCCESS;
+	return hw_fence_interop_to_synx_signal_status(MSM_HW_FENCE_FLAG_SIGNAL, error);
 }
 
 int synx_hwfence_recover(enum synx_client_id id)

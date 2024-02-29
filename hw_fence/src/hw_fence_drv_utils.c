@@ -19,6 +19,8 @@
 #include <linux/gh_cpusys_vm_mem_access.h>
 #endif
 #include <soc/qcom/secure_buffer.h>
+#include <linux/kthread.h>
+#include <uapi/linux/sched/types.h>
 
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_utils.h"
@@ -457,17 +459,35 @@ int hw_fence_utils_init_virq(struct hw_fence_driver_data *drv_data)
 static irqreturn_t hw_fence_soccp_irq_handler(int irq, void *data)
 {
 	struct hw_fence_driver_data *drv_data = (struct hw_fence_driver_data *)data;
-	u64 mask;
+	u32 mask;
 
 	mask = hw_fence_ipcc_get_signaled_clients_mask(drv_data);
-	hw_fence_utils_process_signaled_clients_mask(drv_data, mask);
+	atomic_or(mask, &drv_data->signaled_clients_mask);
+	wake_up_all(&drv_data->soccp_wait_queue);
 
 	return IRQ_HANDLED;
+}
+
+static int hw_fence_soccp_listener(void *data)
+{
+	struct hw_fence_driver_data *drv_data = (struct hw_fence_driver_data *)data;
+	u32 mask;
+
+	while (drv_data->has_soccp) {
+		wait_event(drv_data->soccp_wait_queue,
+			atomic_read(&drv_data->signaled_clients_mask) != 0);
+		mask = atomic_xchg(&drv_data->signaled_clients_mask, 0);
+		if (mask)
+			hw_fence_utils_process_signaled_clients_mask(drv_data, mask);
+	}
+
+	return 0;
 }
 
 int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data)
 {
 	struct platform_device *pdev;
+	struct task_struct *thread;
 	int irq, ret;
 
 	if (!drv_data || !drv_data->dev || !drv_data->has_soccp) {
@@ -475,6 +495,8 @@ int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data)
 			drv_data ? drv_data->dev : NULL, drv_data ? drv_data->has_soccp : -1);
 		return -EINVAL;
 	}
+
+	init_waitqueue_head(&drv_data->soccp_wait_queue);
 
 	pdev = to_platform_device(drv_data->dev);
 	irq = platform_get_irq(pdev, 0);
@@ -486,8 +508,18 @@ int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data)
 
 	ret = devm_request_irq(drv_data->dev, irq, hw_fence_soccp_irq_handler, IRQF_TRIGGER_HIGH,
 		"hwfence-driver", drv_data);
-	if (ret < 0)
+	if (ret < 0) {
 		HWFNC_ERR("failed to register irq:%d ret:%d\n", irq, ret);
+		return ret;
+	}
+
+	thread = kthread_run(hw_fence_soccp_listener, (void *)drv_data,
+		"msm_hw_fence_soccp_listener");
+	if (IS_ERR(thread)) {
+		HWFNC_ERR("failed to create thread to process signals received from soccp\n");
+		return PTR_ERR(thread);
+	}
+	drv_data->soccp_listener_thread = thread;
 
 	return ret;
 }
