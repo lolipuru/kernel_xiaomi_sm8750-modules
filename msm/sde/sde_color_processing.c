@@ -1161,6 +1161,7 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = set_aiqe_ssrc_data; \
 	wrappers[SDE_CP_CRTC_DSPP_COPR] = set_copr_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_AI_SCALER] = set_ai_scaler_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_AIQE_ABC] = set_aiqe_abc_feature; \
 } while (0)
 
 feature_wrapper set_crtc_pu_feature_wrappers[SDE_CP_CRTC_MAX_PU_FEATURES];
@@ -1423,6 +1424,11 @@ void sde_cp_crtc_init(struct drm_crtc *crtc)
 	sde_crtc->back_light_max = 0;
 	sde_crtc->back_light_pending = false;
 	sde_cp_crtc_disable(crtc);
+	sde_crtc->ai_scaler_res.enabled = false;
+	sde_crtc->ai_scaler_res.src_w = 0;
+	sde_crtc->ai_scaler_res.src_h = 0;
+	sde_crtc->ai_scaler_res.dst_w = 0;
+	sde_crtc->ai_scaler_res.dst_h = 0;
 }
 
 static struct sde_crtc_irq_info *_sde_cp_get_intr_node(u32 event,
@@ -1592,10 +1598,7 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 	hw_cfg.last_feature = 0;
 	hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
 	hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
-	hw_cfg.valid_skip_blend_plane = sde_crtc->valid_skip_blend_plane;
-	hw_cfg.skip_blend_plane = sde_crtc->skip_blend_plane;
-	hw_cfg.skip_blend_plane_h = sde_crtc->skip_blend_plane_h;
-	hw_cfg.skip_blend_plane_w = sde_crtc->skip_blend_plane_w;
+	memcpy(hw_cfg.skip_planes, sde_crtc->skip_blend_planes, sizeof(hw_cfg.skip_planes));
 
 	hw_cfg.num_ds_enabled = sde_crtc_state->num_ds_enabled;
 
@@ -1731,6 +1734,7 @@ static const int dspp_feature_to_sub_blk_tbl[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_COPR] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_AI_SCALER] = SDE_DSPP_AI_SCALER,
+	[SDE_CP_CRTC_DSPP_AIQE_ABC] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_LM_GC] = SDE_DSPP_MAX,
 };
 
@@ -1791,6 +1795,9 @@ static void _sde_cp_dspp_flush_helper(struct sde_crtc *sde_crtc, u32 feature)
 			} else {
 				ctl->ops.update_bitmask_dspp_subblk(ctl,
 						dspp->idx, sub_blk, true);
+				if (feature == SDE_CP_CRTC_DSPP_AIQE_ABC)
+					ctl->ops.update_bitmask_dspp_subblk(ctl,
+						dspp->idx, SDE_DSPP_AIQE_WRAPPER, true);
 			}
 		}
 	}
@@ -2706,7 +2713,6 @@ void sde_cp_crtc_suspend(struct drm_crtc *crtc)
 		return;
 	}
 
-	_sde_cp_mark_mdnie_art_property(crtc);
 	sde_cp_crtc_mark_features_dirty(crtc);
 
 	spin_lock_irqsave(&sde_crtc->ltm_lock, irq_flags);
@@ -2825,6 +2831,11 @@ void sde_cp_crtc_clear(struct drm_crtc *crtc)
 	sde_crtc->ltm_hist_en = false;
 	sde_crtc->ltm_merge_clear_pending = false;
 	sde_crtc->hist_irq_idx = -1;
+	sde_crtc->ai_scaler_res.enabled = false;
+	sde_crtc->ai_scaler_res.src_w = 0;
+	sde_crtc->ai_scaler_res.src_h = 0;
+	sde_crtc->ai_scaler_res.dst_w = 0;
+	sde_crtc->ai_scaler_res.dst_h = 0;
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_free);
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_busy);
 }
@@ -3338,8 +3349,23 @@ static void _dspp_dither_install_property(struct drm_crtc *crtc)
 	}
 }
 
-static  void _dspp_demura_install_property(struct drm_crtc *crtc)
+static void _dspp_demura_install_v1_property(struct drm_crtc *crtc)
 {
+	_sde_cp_crtc_install_range_property(crtc, "SDE_DEMURA_BACKLIGHT_V1",
+		SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT,
+		0, 1024, 0);
+	_sde_cp_crtc_install_bitmask_property(crtc, "SDE_DEMURA_BOOT_PLANE_V1",
+		SDE_CP_CRTC_DSPP_DEMURA_BOOT_PLANE, true,
+		sde_demura_fetch_planes,
+		ARRAY_SIZE(sde_demura_fetch_planes), 0xf);
+	_sde_cp_crtc_install_blob_property(crtc, "SDE_DEMURA_CFG0_PARAM2",
+		SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2,
+		sizeof(struct drm_msm_dem_cfg0_param2));
+}
+
+static void _dspp_demura_install_property(struct drm_crtc *crtc)
+{
+	char demura_init_cfg[256];
 	struct sde_kms *kms = NULL;
 	struct sde_mdss_cfg *catalog = NULL;
 	u32 version;
@@ -3348,22 +3374,21 @@ static  void _dspp_demura_install_property(struct drm_crtc *crtc)
 	catalog = kms->catalog;
 
 	version = catalog->dspp[0].sblk->demura.version >> 16;
+	snprintf(demura_init_cfg, ARRAY_SIZE(demura_init_cfg), "%s%d",
+		"SDE_DEMURA_INIT_CFG_V", version);
 	switch (version) {
 	case 1:
 	case 2:
 		_sde_cp_crtc_install_blob_property(crtc, "SDE_DEMURA_INIT_CFG_V1",
 			SDE_CP_CRTC_DSPP_DEMURA_INIT,
 			sizeof(struct drm_msm_dem_cfg));
-		_sde_cp_crtc_install_range_property(crtc, "SDE_DEMURA_BACKLIGHT_V1",
-				SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT,
-				0, 1024, 0);
-		_sde_cp_crtc_install_bitmask_property(crtc, "SDE_DEMURA_BOOT_PLANE_V1",
-				SDE_CP_CRTC_DSPP_DEMURA_BOOT_PLANE, true,
-				sde_demura_fetch_planes,
-				ARRAY_SIZE(sde_demura_fetch_planes), 0xf);
-		_sde_cp_crtc_install_blob_property(crtc, "SDE_DEMURA_CFG0_PARAM2",
-			SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2,
-			sizeof(struct drm_msm_dem_cfg0_param2));
+		_dspp_demura_install_v1_property(crtc);
+		break;
+	case 3:
+		_sde_cp_crtc_install_blob_property(crtc, demura_init_cfg,
+			SDE_CP_CRTC_DSPP_DEMURA_INIT,
+			sizeof(struct drm_msm_dem_cfg));
+		_dspp_demura_install_v1_property(crtc);
 		break;
 	default:
 		DRM_ERROR("version %d not supported\n", version);
@@ -3394,6 +3419,7 @@ static void _sde_cp_update_list(struct sde_cp_node *prop_node,
 	case SDE_CP_CRTC_DSPP_LTM_QUEUE_BUF2:
 	case SDE_CP_CRTC_DSPP_LTM_QUEUE_BUF3:
 	case SDE_CP_CRTC_DSPP_MDNIE_ART:
+	case SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA:
 		if (cp_dirty_list)
 			list_add_tail(&prop_node->cp_dirty_list,
 					&crtc->cp_dirty_list);
@@ -4721,43 +4747,49 @@ void sde_cp_crtc_res_change(struct drm_crtc *crtc_drm)
 
 static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_node *prop_node)
 {
-	u32 feature, prop_val = 0;
+	u64 prop_val = 0;
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	enum aiqe_features feature = AIQE_FEATURE_MAX;
+	struct drm_msm_ssrc_config *data;
 
-	feature = prop_node->feature;
 	prop_val = prop_node->prop_val;
-	switch (feature) {
+
+	switch (prop_node->feature) {
 	case SDE_CP_CRTC_DSPP_MDNIE:
-		if (prop_val)
-			aiqe_register_client(FEATURE_MDNIE, &sde_crtc->aiqe_top_level);
-		else
-			aiqe_deregister_client(FEATURE_MDNIE, &sde_crtc->aiqe_top_level);
+		feature = FEATURE_MDNIE;
 		break;
 	case SDE_CP_CRTC_DSPP_MDNIE_ART:
-		if (prop_val)
-			aiqe_register_client(FEATURE_MDNIE_ART, &sde_crtc->aiqe_top_level);
-		else
-			aiqe_deregister_client(FEATURE_MDNIE_ART, &sde_crtc->aiqe_top_level);
+		feature = FEATURE_MDNIE_ART;
 		break;
-	case SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG: {
-		struct drm_msm_ssrc_config *data = prop_node->blob_ptr;
-
-		if (data && prop_node->prop_blob_sz == sizeof(struct drm_msm_ssrc_config) &&
-				data->config[0] & BIT(0))
-			aiqe_register_client(FEATURE_SSRC, &sde_crtc->aiqe_top_level);
-		else
-			aiqe_deregister_client(FEATURE_SSRC, &sde_crtc->aiqe_top_level);
-
-		break;
-	}
 	case SDE_CP_CRTC_DSPP_COPR:
-		if (prop_val)
-			aiqe_register_client(FEATURE_COPR, &sde_crtc->aiqe_top_level);
-		else
-			aiqe_deregister_client(FEATURE_COPR, &sde_crtc->aiqe_top_level);
+		feature = FEATURE_COPR;
+		break;
+	case SDE_CP_CRTC_DSPP_AIQE_ABC:
+		feature = FEATURE_ABC;
+		break;
+	case SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG:
+		feature = FEATURE_SSRC;
 		break;
 	default:
+		feature = AIQE_FEATURE_MAX;
 		break;
+	}
+
+	if (feature == AIQE_FEATURE_MAX)
+		return;
+
+	if (feature == FEATURE_SSRC) {
+		data = prop_node->blob_ptr;
+		if (data && prop_node->prop_blob_sz == sizeof(struct drm_msm_ssrc_config) &&
+				data->config[0] & BIT(0))
+			aiqe_register_client(feature, &sde_crtc->aiqe_top_level);
+		else
+			aiqe_deregister_client(feature, &sde_crtc->aiqe_top_level);
+	} else {
+		if (prop_val)
+			aiqe_register_client(feature, &sde_crtc->aiqe_top_level);
+		else
+			aiqe_deregister_client(feature, &sde_crtc->aiqe_top_level);
 	}
 }
 
@@ -4999,10 +5031,7 @@ void sde_cp_crtc_disable(struct drm_crtc *drm_crtc)
 				&crtc->dspp_blob_info,
 			info->data, SDE_KMS_INFO_DATALEN(info),
 			CRTC_PROP_DSPP_INFO);
-	crtc->valid_skip_blend_plane = false;
-	crtc->skip_blend_plane = SSPP_NONE;
-	crtc->skip_blend_plane_h = 0;
-	crtc->skip_blend_plane_w = 0;
+	memset(crtc->skip_blend_planes, 0, sizeof(crtc->skip_blend_planes));
 	mutex_unlock(&crtc->crtc_cp_lock);
 	vfree(info);
 }
@@ -5051,6 +5080,8 @@ void sde_cp_set_skip_blend_plane_info(struct drm_crtc *drm_crtc,
 	struct sde_cp_crtc_skip_blend_plane *skip_blend)
 {
 	struct sde_crtc *crtc;
+	bool plane_valid;
+	struct sde_cp_skip_blend_plane *skip_plane;
 
 	if (!drm_crtc || !skip_blend) {
 		DRM_ERROR("invalid crtc handle drm_crtc %pK skip_blend %pK\n",
@@ -5059,18 +5090,16 @@ void sde_cp_set_skip_blend_plane_info(struct drm_crtc *drm_crtc,
 	}
 	crtc = to_sde_crtc(drm_crtc);
 	mutex_lock(&crtc->crtc_cp_lock);
-	if (!skip_blend->valid_plane) {
-		crtc->valid_skip_blend_plane = false;
-		crtc->skip_blend_plane = SSPP_NONE;
-		crtc->skip_blend_plane_h = 0;
-		crtc->skip_blend_plane_w = 0;
-		mutex_unlock(&crtc->crtc_cp_lock);
-		return;
-	}
-	crtc->valid_skip_blend_plane = true;
-	crtc->skip_blend_plane = skip_blend->plane;
-	crtc->skip_blend_plane_h = skip_blend->height;
-	crtc->skip_blend_plane_w = skip_blend->width;
+	plane_valid = skip_blend->valid_plane;
+
+	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[SB_PLANE_REAL] :
+		&crtc->skip_blend_planes[SB_PLANE_VIRT];
+
+	skip_plane->valid = plane_valid;
+	skip_plane->plane = (plane_valid) ? skip_blend->plane : SSPP_NONE;
+	skip_plane->plane_w = (plane_valid) ? skip_blend->width : 0;
+	skip_plane->plane_h = (plane_valid) ? skip_blend->height : 0;
+
 	mutex_unlock(&crtc->crtc_cp_lock);
 }
 
@@ -5159,38 +5188,49 @@ exit:
 	mutex_unlock(&sde_crtc->crtc_cp_lock);
 }
 
-void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state, struct sde_io_res *res)
+void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state)
 {
 	struct sde_crtc_state *sde_crtc_state;
 	struct sde_crtc *sde_crtc;
 	struct drm_property_blob *blob = NULL;
 	struct sde_cp_crtc_property_state *pstate;
 	struct drm_property *property;
-	struct sde_cp_node *prop_node;
+	struct sde_cp_node *prop_node = NULL;
 	struct drm_msm_ai_scaler *ai_scaler_cfg = NULL;
 	int i;
 	u32 feature;
 
-	if (!crtc_state || !res)
+	if (!crtc_state)
 		return;
 
 	sde_crtc_state = to_sde_crtc_state(crtc_state);
-	sde_crtc = to_sde_crtc(crtc_state->crtc);
-	res->enabled = false;
-
-	if (!sde_crtc_state->cp_prop_cnt) {
-		DRM_DEBUG_DRIVER("State dirty list is empty\n");
+	if (!sde_crtc_state) {
+		DRM_ERROR("invalid sde_crtc_state %pK\n", sde_crtc_state);
 		return;
 	}
 
+	sde_crtc = to_sde_crtc(crtc_state->crtc);
+	if (!sde_crtc) {
+		DRM_ERROR("invalid sde_crtc %pK\n", sde_crtc);
+		return;
+	}
+
+	if (!sde_crtc_state->cp_prop_cnt) {
+		DRM_DEBUG_DRIVER("cp list is empty\n");
+		return;
+	}
+
+	// check for AI Scaler property in sde crtc state dirty list
 	for (i = 0; i < sde_crtc_state->cp_prop_cnt; i++) {
 		feature = sde_crtc_state->cp_dirty_list[i];
 		if (feature == SDE_CP_CRTC_DSPP_AI_SCALER)
 			break;
 	}
 
-	if (i == sde_crtc_state->cp_prop_cnt)
+	if (i == sde_crtc_state->cp_prop_cnt) {
+		SDE_DEBUG("ai scaler property not found\n");
 		return;
+	}
 
 	pstate = &sde_crtc_state->cp_prop_values[feature];
 	property = pstate->prop;
@@ -5200,35 +5240,42 @@ void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state, struct sde_i
 
 	blob = drm_property_lookup_blob(sde_crtc->base.dev, pstate->prop_val);
 	if (!blob) {
-		SDE_DEBUG("invalid blob id %lld feature %d\n", pstate->prop_val,
-				prop_node->feature);
+		sde_crtc->ai_scaler_res.enabled = false;
+		sde_crtc->ai_scaler_res.src_w = 0;
+		sde_crtc->ai_scaler_res.src_h = 0;
+		sde_crtc->ai_scaler_res.dst_w = 0;
+		sde_crtc->ai_scaler_res.dst_h = 0;
+		SDE_DEBUG("ai scaler is disabled\n");
 		return;
 	}
 
 	ai_scaler_cfg = (struct drm_msm_ai_scaler *)blob->data;
 	if (!ai_scaler_cfg) {
-		SDE_DEBUG("ai scaler is disabled\n");
+		SDE_ERROR("invalid blob id %lld feature %d\n", prop_node->prop_val,
+			prop_node->feature);
 		drm_property_blob_put(blob);
 		return;
 	}
 
 	if (blob->length != prop_node->prop_blob_sz) {
-		SDE_ERROR("invalid blob len %zd exp %d feature %d\n",
-		    blob->length, prop_node->prop_blob_sz, prop_node->feature);
+		SDE_ERROR("invalid blob len %zd exp %d feature %d\n", blob->length,
+					prop_node->prop_blob_sz, prop_node->feature);
 		drm_property_blob_put(blob);
 		return;
 	}
 
-	res->enabled = true;
-	res->src_w = ai_scaler_cfg->src_w;
-	res->src_h = ai_scaler_cfg->src_h;
-	res->dst_w = ai_scaler_cfg->dst_w;
-	res->dst_h = ai_scaler_cfg->dst_h;
+	sde_crtc->ai_scaler_res.enabled = true;
+	sde_crtc->ai_scaler_res.src_w = ai_scaler_cfg->src_w;
+	sde_crtc->ai_scaler_res.src_h = ai_scaler_cfg->src_h;
+	sde_crtc->ai_scaler_res.dst_w = ai_scaler_cfg->dst_w;
+	sde_crtc->ai_scaler_res.dst_h = ai_scaler_cfg->dst_h;
 
 	SDE_DEBUG(
 		"AI Scaler enable:%d : src_w:0x%X src_h:0x%X dst_w:0x%X dst_h:0x%X\n",
-		res->enabled, ai_scaler_cfg->src_w, ai_scaler_cfg->src_h,
-		ai_scaler_cfg->dst_w, ai_scaler_cfg->dst_h);
-	SDE_EVT32(res->enabled, res->src_w, res->src_h, res->dst_w, res->dst_h);
+		sde_crtc->ai_scaler_res.enabled, ai_scaler_cfg->src_w,
+		ai_scaler_cfg->src_h, ai_scaler_cfg->dst_w, ai_scaler_cfg->dst_h);
+	SDE_EVT32(sde_crtc->ai_scaler_res.enabled, sde_crtc->ai_scaler_res.src_w,
+		sde_crtc->ai_scaler_res.src_h, sde_crtc->ai_scaler_res.dst_w,
+		sde_crtc->ai_scaler_res.dst_h);
 	drm_property_blob_put(blob);
 }

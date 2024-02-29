@@ -66,7 +66,6 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 			_sde_cp_create_local_blob(crtc, SDE_CP_CRTC_DSPP_MDNIE_ART,
 				sizeof(struct drm_msm_mdnie_art));
 		}
-
 		if (catalog->dspp[0].sblk->aiqe.ssrc_supported) {
 			_sde_cp_crtc_install_blob_property(crtc, "SDE_DSPP_AIQE_SSRC_CONFIG_V1",
 					SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG,
@@ -81,6 +80,12 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 				SDE_CP_CRTC_DSPP_COPR, 0, U64_MAX, 0);
 			_sde_cp_create_local_blob(crtc, SDE_CP_CRTC_DSPP_COPR,
 				sizeof(struct drm_msm_copr));
+		}
+		if (catalog->dspp[0].sblk->aiqe.abc_supported) {
+			_sde_cp_crtc_install_range_property(crtc, "SDE_DSPP_AIQE_ABC_V1",
+				SDE_CP_CRTC_DSPP_AIQE_ABC, 0, U64_MAX, 0);
+			_sde_cp_create_local_blob(crtc, SDE_CP_CRTC_DSPP_AIQE_ABC,
+				sizeof(struct drm_msm_abc));
 		}
 		break;
 	default:
@@ -143,8 +148,10 @@ int check_aiqe_ssrc_data(struct sde_hw_dspp *hw_dspp,
 {
 	int ret = 0;
 
-	if (!hw_dspp || !hw_dspp->ops.validate_aiqe_ssrc_data)
+	if (!hw_dspp)
 		ret = -EINVAL;
+	else if (!hw_dspp->ops.validate_aiqe_ssrc_data)
+		ret = 0;
 	else
 		ret = hw_dspp->ops.validate_aiqe_ssrc_data(hw_dspp, hw_cfg,
 				&sde_crtc->aiqe_top_level);
@@ -218,6 +225,26 @@ int sde_dspp_mdnie_read_art_done(struct sde_hw_dspp *hw_dspp, u32 *art_done)
 		SDE_ERROR("invalid art read %d", rc);
 
 	return rc;
+}
+
+int set_aiqe_abc_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
+			struct sde_crtc *hw_crtc)
+{
+	int ret = 0;
+
+	if (!hw_dspp)
+		ret = -EINVAL;
+	else if (!hw_dspp->ops.setup_aiqe_abc)
+		ret = 0;
+	else
+		hw_dspp->ops.setup_aiqe_abc(hw_dspp, hw_cfg, &hw_crtc->aiqe_top_level);
+
+	if (ret)
+		DRM_ERROR("invalid params hw_dspp %pK dspp idx %d setup_aiqe_abc %pK\n",
+			hw_dspp, (hw_dspp) ? hw_dspp->idx : -1,
+			(hw_dspp) ? hw_dspp->ops.setup_aiqe_abc : NULL);
+
+	return ret;
 }
 
 int sde_dspp_copr_read_status(struct sde_hw_dspp *hw_dspp,

@@ -228,7 +228,6 @@ void sde_crtc_get_mixer_resolution(struct drm_crtc *crtc, struct drm_crtc_state 
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
 	struct sde_connector_state *virt_cstate;
-	struct sde_io_res ai_scaler_res = {0, };
 
 	*width = 0;
 	*height = 0;
@@ -240,14 +239,14 @@ void sde_crtc_get_mixer_resolution(struct drm_crtc *crtc, struct drm_crtc_state 
 	cstate = to_sde_crtc_state(crtc_state);
 	virt_conn_state = _sde_crtc_get_virt_conn_state(crtc, crtc_state);
 	virt_cstate = virt_conn_state ? to_sde_connector_state(virt_conn_state) : NULL;
-	sde_crtc_get_ai_scaler_io_res(crtc_state, &ai_scaler_res);
+	sde_crtc_get_ai_scaler_io_res(crtc_state);
 
 	if (cstate->num_ds_enabled) {
 		*width = cstate->ds_cfg[0].lm_width;
 		*height = cstate->ds_cfg[0].lm_height;
-	} else if (ai_scaler_res.enabled) {
-		*width = ai_scaler_res.src_w / sde_crtc->num_mixers;
-		*height = ai_scaler_res.src_h;
+	} else if (sde_crtc->ai_scaler_res.enabled) {
+		*width = sde_crtc->ai_scaler_res.src_w / sde_crtc->num_mixers;
+		*height = sde_crtc->ai_scaler_res.src_h;
 	} else if (virt_cstate && virt_cstate->dnsc_blur_count) {
 		*width = (virt_cstate->dnsc_blur_cfg[0].src_width
 				* virt_cstate->dnsc_blur_count) / sde_crtc->num_mixers;
@@ -265,7 +264,6 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
 	struct sde_connector_state *virt_cstate;
-	struct sde_io_res ai_scaler_res = {0, };
 
 	*width = 0;
 	*height = 0;
@@ -273,7 +271,7 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	if (!crtc || !crtc_state || !mode)
 		return;
 
-	sde_crtc_get_ai_scaler_io_res(crtc_state, &ai_scaler_res);
+	sde_crtc_get_ai_scaler_io_res(crtc_state);
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(crtc_state);
 	virt_conn_state = _sde_crtc_get_virt_conn_state(crtc, crtc_state);
@@ -282,9 +280,9 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	if (cstate->num_ds_enabled) {
 		*width = cstate->ds_cfg[0].lm_width * cstate->num_ds_enabled;
 		*height = cstate->ds_cfg[0].lm_height;
-	} else if (ai_scaler_res.enabled) {
-		*width = ai_scaler_res.src_w;
-		*height = ai_scaler_res.src_h;
+	} else if (sde_crtc->ai_scaler_res.enabled) {
+		*width = sde_crtc->ai_scaler_res.src_w;
+		*height = sde_crtc->ai_scaler_res.src_h;
 	} else if (virt_cstate && virt_cstate->dnsc_blur_count) {
 		*width = virt_cstate->dnsc_blur_cfg[0].src_width * virt_cstate->dnsc_blur_count;
 		*height = virt_cstate->dnsc_blur_cfg[0].src_height;
@@ -2000,7 +1998,12 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			skip_blend_plane.plane = sde_plane_pipe(plane);
 			skip_blend_plane.height = plane_crtc_roi.h;
 			skip_blend_plane.width = plane_crtc_roi.w;
+			skip_blend_plane.is_virtual = is_sde_plane_virtual(plane);
 			sde_cp_set_skip_blend_plane_info(crtc, &skip_blend_plane);
+			SDE_EVT32(DRMID(crtc), DRMID(plane), state->src_x >> 16,
+				state->src_y >> 16, state->src_w >> 16, state->src_h >> 16,
+				state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h,
+				pstate->rotation);
 		}
 
 		if (blend_type != SDE_DRM_BLEND_OP_SKIP) {

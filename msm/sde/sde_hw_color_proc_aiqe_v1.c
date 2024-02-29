@@ -27,6 +27,8 @@ static void sde_setup_aiqe_common_v1(struct sde_hw_dspp *ctx, void *cfg,
 	SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x14,
 			((aiqe_common.width & 0xFFF) << 16) | (aiqe_common.height & 0xFFF));
 	SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x3EC, aiqe_common.irqs);
+	SDE_EVT32(aiqe_common.config, aiqe_common.merge,
+			 ((aiqe_common.width & 0xFFF) << 16), (aiqe_common.height & 0xFFF));
 }
 
 static int _reg_dmav1_aiqe_write_top_level_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
@@ -323,8 +325,6 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 	LOG_FEATURE_ON;
 }
 
-#define PRIMARY_SSRC_EXPECTED_SIZE 1281
-#define SECONDARY_SSRC_EXPECTED_SIZE 2049
 int sde_validate_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 {
 	int rc = 0;
@@ -333,7 +333,7 @@ int sde_validate_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiq
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct aiqe_reg_common aiqe_common;
 	size_t region_count = 0, index = 0;
-	size_t max_size = 0, max_regions = 0;
+	size_t max_regions = 0;
 
 	if (!hw_cfg || !ctx || !aiqe_tl)
 		return -EINVAL;
@@ -345,32 +345,23 @@ int sde_validate_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiq
 		DRM_ERROR("Data size must be greater than 0\n");
 		return -EINVAL;
 	} else if (data->data_size > AIQE_SSRC_DATA_LEN) {
-		DRM_ERROR("Data size exceeds max data size. Max - %d\t Actual - %u",
+		DRM_ERROR("Data size exceeds max data size. Max - %d\t Actual - %u\n",
 				AIQE_SSRC_DATA_LEN, data->data_size);
 		return -EINVAL;
 	}
 
 	aiqe_get_common_values(hw_cfg, aiqe_tl, &aiqe_common);
-	if (aiqe_common.config & BIT(1)) {
-		max_size = SECONDARY_SSRC_EXPECTED_SIZE;
+	if (aiqe_common.config & BIT(1))
 		max_regions = 2;
-	} else {
-		max_size = PRIMARY_SSRC_EXPECTED_SIZE;
+	else
 		max_regions = 4;
-	}
 
 	while (index < data->data_size) {
-		size_t region_size = data->data[index];
-
 		region_count++;
-		index += region_size + 1;
-		if (region_size > max_size) {
-			DRM_ERROR("Region size exceeds max size. Max - %zu\t Actual - %zu",
-					max_size, region_size);
-			rc = -EINVAL;
-			break;
-		} else if (region_count > max_regions) {
-			DRM_ERROR("Region count exceeds max. Max - %zu\t Actual - %zu",
+		index += data->data[index] + 1;
+		if (region_count > max_regions) {
+
+			DRM_ERROR("Region count exceeds max. Max - %zu\t Actual - %zu\n",
 					max_regions, region_count);
 			rc = -EINVAL;
 			break;
@@ -378,7 +369,7 @@ int sde_validate_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiq
 	}
 
 	if (index > data->data_size) {
-		DRM_ERROR("Region data exceeds reported size. Reported - %u\t Actual - %zu",
+		DRM_ERROR("Region data exceeds reported size. Reported - %u\t Actual - %zu\n",
 				data->data_size, index);
 		rc = -EINVAL;
 	}
@@ -684,4 +675,126 @@ end:
 	SDE_EVT32(hw_cfg->num_of_mixers, ai_scaler_cfg->config, ai_scaler_cfg->src_w,
 			ai_scaler_cfg->src_h, ai_scaler_cfg->dst_w, ai_scaler_cfg->dst_h);
 	return 0;
+}
+
+static bool valid_abc_main_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
+	struct sde_hw_cp_cfg *hw_cfg)
+{
+	u32 h, w, div = 1, tempw, temph;
+
+	if ((aiqe_abc->param[0] & 0x1) == 0 || !hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
+		DRM_INFO("aiqe_abc state %d valid blend plane %d\n", (aiqe_abc->param[0] & 0x1),
+				hw_cfg->skip_planes[SB_PLANE_REAL].valid);
+		return false;
+	}
+
+	if (hw_cfg->panel_width == 1080 && (hw_cfg->panel_height % 3 == 0))
+		div = 3;
+	else if (hw_cfg->panel_width % 4 == 0 && hw_cfg->panel_height % 4 == 0)
+		div = 4;
+	else
+		return false;
+
+	h = hw_cfg->panel_height / div;
+	w = hw_cfg->panel_width / div;
+
+	temph = (aiqe_abc->param[1] >> 16) & (((1 << 12) - 1));
+	tempw = aiqe_abc->param[1] & ((1 << 12) - 1);
+
+	if (w != tempw || h != temph) {
+		DRM_ERROR("invalid plane param h %d w %d exp h %d exp w %d\n", temph,
+		temph, h, w);
+		return false;
+	}
+
+	w = (w * 3) / 4;
+	if (h != hw_cfg->skip_planes[SB_PLANE_REAL].plane_h ||
+		w != hw_cfg->skip_planes[SB_PLANE_REAL].plane_w) {
+		DRM_ERROR("real plane invalid plane h %d w %d exp h %d exp w %d\n",
+			hw_cfg->skip_planes[SB_PLANE_REAL].plane_h,
+			hw_cfg->skip_planes[SB_PLANE_REAL].plane_w, h, w);
+		return false;
+	}
+	return true;
+}
+
+static bool valid_abc_udc_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
+					struct sde_hw_cp_cfg *hw_cfg)
+{
+	u32 h, w;
+
+	/* UDC is disabled early return */
+	if (!(aiqe_abc->param[0] & 0x2))
+		return true;
+
+	if ((aiqe_abc->param[0] & 0x2) && !hw_cfg->skip_planes[SB_PLANE_VIRT].valid) {
+		DRM_INFO("aiqe_abc state %d valid blend plane %d\n", (aiqe_abc->param[0] & 0x2),
+				hw_cfg->skip_planes[SB_PLANE_VIRT].valid);
+		return false;
+	}
+
+	h = (aiqe_abc->param[24] >> 16) & (((1 << 12) - 1));
+	w = aiqe_abc->param[24] & ((1 << 12) - 1);
+
+	w = (w * 3) / 4;
+
+	if (h != hw_cfg->skip_planes[SB_PLANE_VIRT].plane_h ||
+		w != hw_cfg->skip_planes[SB_PLANE_VIRT].plane_w) {
+		DRM_ERROR("virt plane invalid plane h %d w %d exp h %d exp w %d\n",
+			hw_cfg->skip_planes[SB_PLANE_VIRT].plane_h,
+			hw_cfg->skip_planes[SB_PLANE_VIRT].plane_w, h, w);
+		return false;
+	}
+	return true;
+}
+
+static bool valid_abc_v1_en_cfg(struct drm_msm_abc *aiqe_abc,
+				struct sde_hw_cp_cfg *hw_cfg)
+{
+	if (!valid_abc_main_layer_cfg_v1(aiqe_abc, hw_cfg))
+		return false;
+
+	if (!valid_abc_udc_layer_cfg_v1(aiqe_abc, hw_cfg))
+		return false;
+
+	return true;
+}
+
+void sde_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_abc *aiqe_abc = NULL;
+	u32 i, aiqe_base;
+
+	if (!ctx || !cfg || !aiqe_top) {
+		DRM_ERROR("invalid parameters ctx %pK cfg %pK aiqe top %pK\n",
+			ctx, cfg, aiqe_top);
+		return;
+	}
+	aiqe_base = ctx->cap->sblk->aiqe.base;
+	if (!aiqe_base) {
+		DRM_DEBUG_DRIVER("AIQE not supported on DSPP idx %d", ctx->idx);
+		return;
+	}
+	aiqe_abc = (struct drm_msm_abc *)(hw_cfg->payload);
+
+	if (!hw_cfg->payload || !valid_abc_v1_en_cfg(aiqe_abc, hw_cfg)) {
+		DRM_DEBUG_DRIVER("Disable ABC feature\n");
+		/* Setup common registers in disable case, error case skip */
+		if (!hw_cfg->payload)
+			sde_setup_aiqe_common_v1(ctx, hw_cfg, aiqe_top);
+		SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x020, 0);
+		return;
+	}
+
+	if (hw_cfg->len != sizeof(struct drm_msm_abc)) {
+		DRM_ERROR("invalid size of payload len %d exp %zd\n",
+			hw_cfg->len, sizeof(struct drm_msm_abc));
+		return;
+	}
+
+	for (i = 0; i < AIQE_ABC_PARAM_LEN; i++)
+		SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x020 + (i * sizeof(u32)), aiqe_abc->param[i]);
+
+	sde_setup_aiqe_common_v1(ctx, hw_cfg, aiqe_top);
 }
