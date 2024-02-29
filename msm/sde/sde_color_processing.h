@@ -148,6 +148,7 @@ enum sde_cp_crtc_features {
 	SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA,
 	SDE_CP_CRTC_DSPP_COPR,
 	SDE_CP_CRTC_DSPP_AI_SCALER,
+	SDE_CP_CRTC_DSPP_AIQE_ABC,
 	SDE_CP_CRTC_DSPP_MAX,
 	/* DSPP features end */
 
@@ -188,6 +189,7 @@ struct sde_cp_crtc_range_prop_payload {
  * @plane: plane that has been enabled and skipped blending
  * @width: plane width
  * @height: plane height
+ * @is_virtual: indicates plane type
  */
 
 struct sde_cp_crtc_skip_blend_plane {
@@ -195,6 +197,7 @@ struct sde_cp_crtc_skip_blend_plane {
 	enum sde_sspp plane;
 	u32 width;
 	u32 height;
+	bool is_virtual;
 };
 
 /**
