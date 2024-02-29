@@ -12,6 +12,11 @@
 #include "hw_fence_drv_ipc.h"
 #include "hw_fence_drv_debug.h"
 #include "hw_fence_drv_fence.h"
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE_USE_SYNX)
+#include <synx_interop.h>
+#else
+#define SYNX_HW_FENCE_HANDLE_FLAG 0
+#endif /* CONFIG_QTI_HW_FENCE_USE_SYNX */
 
 /* Global atomic lock */
 #define GLOBAL_ATOMIC_STORE(drv_data, lock, val) global_atomic_store(drv_data, lock, val)
@@ -471,7 +476,7 @@ int hw_fence_update_queue(struct hw_fence_driver_data *drv_data,
 	writew_relaxed(HW_FENCE_PAYLOAD_REV(1, 0), &write_ptr_payload->version);
 	writeq_relaxed(ctxt_id, &write_ptr_payload->ctxt_id);
 	writeq_relaxed(seqno, &write_ptr_payload->seqno);
-	writeq_relaxed(hash, &write_ptr_payload->hash);
+	writeq_relaxed(hash | SYNX_HW_FENCE_HANDLE_FLAG, &write_ptr_payload->hash);
 	writeq_relaxed(flags, &write_ptr_payload->flags);
 	writeq_relaxed(client_data, &write_ptr_payload->client_data);
 	writel_relaxed(error, &write_ptr_payload->error);
