@@ -139,6 +139,22 @@ struct sde_cesta_scc_status {
 	u32 flush_missed_counter;
 };
 
+enum sde_cesta_sw_client_update_flag {
+	SDE_CESTA_SW_CLIENT_CLK_UPDATE = BIT(0),
+	SDE_CESTA_SW_CLIENT_BW_UPDATE = BIT(1),
+	SDE_CESTA_SW_CLIENT_AOSS_UPDATE = BIT(2),
+};
+
+/**
+ * sde_cesta_sw_client_data - Software Client data; currntly supports only sw-client-0
+ * @data: cesta resources voting data for clk & bw
+ * @aoss_cp_level: current AOSS CP level
+ */
+struct sde_cesta_sw_client_data {
+	struct sde_cesta_client_data data;
+	u32 aoss_cp_level;
+};
+
 /**
  * sde_cesta_hw_ops - ops for sde cesta
  * @init: initialize sde cesta
@@ -167,6 +183,8 @@ struct sde_cesta_hw_ops {
  * @hw_ops: sde ceseta hardware operations
  * @sw_fs_enabled: track MDSS GDSC sw vote during probe
  * @bus_hdl: context structure for data bus control for each cesta HW client
+ * @sw_client_bus_hdl: context structure for data bus control for cesta SW client-0
+ * @sw_client: object to store the sw-client vote data
  * @crm_dev: CRM device pointer, used to communicate with CRM driver
  * @perf_cfg: object to store all the performance params set by sde_kms during bootup
  * @debug_mode: enables the logging for each register read/write
@@ -192,6 +210,8 @@ struct sde_cesta {
 	bool sw_fs_enabled;
 
 	struct icc_path *bus_hdl[MAX_SCC_BLOCK];
+	struct icc_path *sw_client_bus_hdl;
+	struct sde_cesta_sw_client_data sw_client;
 	const struct device *crm_dev;
 
 	struct sde_cesta_perf_cfg perf_cfg;
@@ -315,6 +335,15 @@ struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index);
  */
 void sde_cesta_splash_release(u32 cesta_index);
 
+/**
+ * sde_cesta_sw_client_update - updates clk/bw/aoss for cesta software client 0 based on the flag
+ * @cesta_index: cesta instance used
+ * @data: resource voting data
+ * @flag: flag to indicate which resources to update
+ */
+int sde_cesta_sw_client_update(u32 cesta_index, struct sde_cesta_sw_client_data *data,
+			enum sde_cesta_sw_client_update_flag flag);
+
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
 {
@@ -378,6 +407,12 @@ static inline struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index)
 
 static inline void sde_cesta_splash_release(u32 cesta_index)
 {
+}
+
+static inline int sde_cesta_sw_client_update(u32 cesta_index,
+		struct sde_cesta_sw_client_data *data, enum sde_cesta_sw_client_update_flag flag)
+{
+	return 0;
 }
 
 #endif /* CONFIG_DRM_SDE_CESTA */
