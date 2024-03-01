@@ -757,7 +757,8 @@ static int cam_ife_csid_ver2_path_top_half(
 
 	CAM_DBG(CAM_ISP, "CSID:%u %s status: 0x%x",
 		csid_hw->hw_intf->hw_idx,
-		irq_reg_tag[path_cfg->irq_reg_idx],
+		(th_payload->is_comp_irq ? "COMP_IRQ" :
+		((char *) irq_reg_tag[path_cfg->irq_reg_idx])),
 		th_payload->evt_status_arr[0]);
 
 	if (rc) {
@@ -780,6 +781,7 @@ static int cam_ife_csid_ver2_path_top_half(
 			cam_io_r_mb(soc_info->reg_map[0].mem_base +
 			path_reg->timestamp_curr0_sof_addr);
 	}
+
 	ktime_get_boottime_ts64(&evt_payload->timestamp);
 	th_payload->evt_payload_priv = evt_payload;
 
@@ -801,6 +803,7 @@ static int cam_ife_csid_ver2_mc_top_half(
 		return -ENODEV;
 	}
 
+	th_payload->is_comp_irq = true;
 	rc = cam_ife_csid_ver2_path_top_half(evt_id, th_payload);
 	evt_payload = (struct cam_ife_csid_ver2_evt_payload *)th_payload->evt_payload_priv;
 	evt_payload->is_mc = true;
@@ -2264,7 +2267,7 @@ static int cam_ife_csid_ver2_parse_path_irq_status(
 		}
 
 		if ((csid_reg->path_irq_desc[bit_pos].bitmask != 0) && (status & 0x1))
-			CAM_INFO(CAM_ISP, "CSID[%u] IRQ %s %s timestamp:[%lld.%09lld]",
+			CAM_INFO(CAM_ISP, "CSID[%u] IRQ %s %s timestamp:(%lld.%09lld)",
 				csid_hw->hw_intf->hw_idx, irq_reg_tag[index],
 				csid_reg->path_irq_desc[bit_pos].desc,
 				evt_payload->timestamp.tv_sec,
@@ -2398,7 +2401,7 @@ static int cam_ife_csid_ver2_process_top_info(
 	if ((evt_bitmap[top_idx] & BIT_ULL(CAM_IFE_CSID_TOP_INFO_VOTE_UP)) &&
 		(irq_status & BIT(bit_pos[CAM_IFE_CSID_TOP_INFO_VOTE_UP]))) {
 		cam_cpas_log_votes(true);
-		CAM_INFO(CAM_ISP, "CSID:%d INFO_VOTE_UP timestamp:[%lld.%09lld]",
+		CAM_INFO(CAM_ISP, "CSID:%d INFO_VOTE_UP timestamp:(%lld.%09lld)",
 			csid_hw->hw_intf->hw_idx, timestamp.tv_sec,
 			timestamp.tv_nsec);
 	}
@@ -2406,14 +2409,14 @@ static int cam_ife_csid_ver2_process_top_info(
 	if ((evt_bitmap[top_idx] & BIT_ULL(CAM_IFE_CSID_TOP_INFO_VOTE_DN)) &&
 		(irq_status & BIT(bit_pos[CAM_IFE_CSID_TOP_INFO_VOTE_DN]))) {
 		cam_cpas_log_votes(true);
-		CAM_INFO(CAM_ISP, "CSID:%d INFO_VOTE_DN timestamp:[%lld.%09lld]",
+		CAM_INFO(CAM_ISP, "CSID:%d INFO_VOTE_DN timestamp:(%lld.%09lld)",
 			csid_hw->hw_intf->hw_idx, timestamp.tv_sec,
 			timestamp.tv_nsec);
 	}
 
 	if ((evt_bitmap[top_idx] & BIT_ULL(CAM_IFE_CSID_TOP_ERR_NO_VOTE_DN)) &&
 		(irq_status & BIT(bit_pos[CAM_IFE_CSID_TOP_ERR_NO_VOTE_DN]))) {
-		CAM_INFO(CAM_ISP, "CSID:%d ERR_NO_VOTE_DN timestamp:[%lld.%09lld]",
+		CAM_INFO(CAM_ISP, "CSID:%d ERR_NO_VOTE_DN timestamp:(%lld.%09lld)",
 			csid_hw->hw_intf->hw_idx, timestamp.tv_sec,
 			timestamp.tv_nsec);
 
@@ -2566,6 +2569,7 @@ static int cam_ife_csid_ver2_ipp_bottom_half(
 	struct cam_hw_info                           *hw_info;
 	struct cam_ife_csid_ver2_path_cfg            *path_cfg;
 	struct cam_isp_sof_ts_data                    sof_and_boot_time;
+	const uint8_t                               **irq_reg_tag;
 	uint32_t                                      irq_status_ipp;
 	uint32_t                                      err_mask;
 	uint32_t                                      err_type = 0;
@@ -2589,6 +2593,7 @@ static int cam_ife_csid_ver2_ipp_bottom_half(
 	csid_hw = (struct cam_ife_csid_ver2_hw *)hw_info->core_info;
 	csid_reg = csid_hw->core_info->csid_reg;
 	path_cfg = (struct cam_ife_csid_ver2_path_cfg *)res->res_priv;
+	irq_reg_tag = cam_ife_csid_get_irq_reg_tag_ptr();
 
 	if (!path_cfg || (path_cfg->irq_reg_idx >= CAM_IFE_CSID_IRQ_REG_MAX)) {
 		CAM_ERR(CAM_ISP, "CSID[%u] Invalid params: path_cfg: %pK, irq_reg_idx: %d",
@@ -2602,8 +2607,9 @@ static int cam_ife_csid_ver2_ipp_bottom_half(
 	sof_and_boot_time.boot_time = payload->timestamp;
 	sof_and_boot_time.sof_ts = payload->sof_ts_reg_val;
 
-	CAM_DBG(CAM_ISP, "CSID[%u] multi_ctxt_en %d IPP status:0x%x", csid_hw->hw_intf->hw_idx,
-		payload->is_mc, irq_status_ipp);
+	CAM_DBG(CAM_ISP, "CSID[%u] %s status:0x%x", csid_hw->hw_intf->hw_idx,
+		(payload->is_mc ? "COMP_IRQ" : ((char *)irq_reg_tag[path_cfg->irq_reg_idx])),
+		irq_status_ipp);
 
 	if (!csid_hw->flags.device_enabled) {
 		CAM_DBG(CAM_ISP, "CSID[%u] bottom-half after stop [0x%x]",

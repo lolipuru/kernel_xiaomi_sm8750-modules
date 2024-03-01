@@ -1697,7 +1697,8 @@ static void cam_ife_hw_mgr_print_acquire_info(
 	if (hw_mgr_ctx->flags.is_offline)
 		len += scnprintf(log_info + len, (128 - len), " OFFLINE: Y");
 
-	if (hw_mgr_ctx->is_hw_ctx_acq) {
+	if (hw_mgr_ctx->is_hw_ctx_acq &&
+		(!hw_mgr_ctx->hw_mgr->csid_hw_caps[hw_idx[CAM_ISP_HW_SPLIT_LEFT]].is_lite)) {
 		len += scnprintf(log_info + len, (128 - len), " HW_CTXT [SRC:DST_MASK]");
 
 		for (i = 0; i < CAM_ISP_MULTI_CTXT_MAX; i++) {
@@ -5864,7 +5865,8 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 			in_port[i].sfe_ife_enable);
 
 		/* For multi-context acquire cases*/
-		if ((in_port[i].major_ver == 3) && in_port[i].ipp_count)
+		if ((in_port[i].major_ver == 3) && in_port[i].ipp_count &&
+			in_port[i].ipp_dst_hw_ctxt_mask)
 			cam_ife_mgr_populate_hw_ctxt_map(ife_ctx, &in_port[i]);
 
 		if (ife_ctx->flags.is_offline)
