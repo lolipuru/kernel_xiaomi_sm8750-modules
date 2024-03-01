@@ -320,6 +320,7 @@ static struct cam_irq_register_set cam_ife_csid_980_irq_reg_set[CAM_IFE_CSID_IRQ
 		.set_reg_offset    = 0x00000090,
 		.test_set_val      = BIT(0),
 		.test_sub_val      = BIT(0),
+		.force_rd_mask     = BIT(31), /* force read due to hw errata */
 	},
 	/* RX_1 */
 	{

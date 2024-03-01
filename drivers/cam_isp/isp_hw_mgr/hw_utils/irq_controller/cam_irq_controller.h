@@ -50,6 +50,7 @@ enum cam_irq_event_group {
  * @set_reg_offset:         Offset of IRQ SET register
  * @test_set_val:           Value to write to IRQ SET register to trigger IRQ
  * @test_sub_val:           Value to write to IRQ MASK register to receive test IRQ
+ * @force_rd_mask:          Mask value for bits to be read in hw errata cases
  */
 struct cam_irq_register_set {
 	uint32_t                       mask_reg_offset;
@@ -58,6 +59,7 @@ struct cam_irq_register_set {
 	uint32_t                       set_reg_offset;
 	uint32_t                       test_set_val;
 	uint32_t                       test_sub_val;
+	uint32_t                       force_rd_mask;
 };
 
 /*
