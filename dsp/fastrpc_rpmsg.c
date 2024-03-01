@@ -91,9 +91,6 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		}
 	}
 
-	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++)
-		mutex_init(&data->session[i].map_mutex);
-
 	atomic_set(&data->teardown, 0);
 	secure_dsp = !(of_property_read_bool(rdev->of_node, "qcom,non-secure-domain"));
 	data->secure = secure_dsp;
