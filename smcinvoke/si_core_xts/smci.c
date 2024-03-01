@@ -438,6 +438,7 @@ static int marshal_out_req(union smcinvoke_arg args[], struct si_arg u[])
 		if (!err) {
 			void __user *u_addr = u64_to_user_ptr(args[i].b.addr);
 
+			args[i].b.size = u[i].b.size;
 			if (copy_to_user(u_addr, u[i].b.addr, u[i].b.size))
 				err = -1;
 		}
