@@ -17,7 +17,7 @@
 #include "cam_compat.h"
 #include "cam_vmrm_interface.h"
 
-#if IS_ENABLED(CONFIG_QCOM_CRM)
+#if (IS_ENABLED(CONFIG_QCOM_CRM) || IS_ENABLED(CONFIG_QCOM_CRM_V2))
 #include <soc/qcom/crm.h>
 #include <linux/clk/qcom.h>
 #endif
@@ -104,13 +104,13 @@ static LIST_HEAD(wrapper_clk_list);
 
 const struct device *cam_cesta_crm_dev;
 
-#if IS_ENABLED(CONFIG_QCOM_CRM) && IS_ENABLED(CONFIG_SPECTRA_USE_CLK_CRM_API)
+#if (IS_ENABLED(CONFIG_QCOM_CRM) || IS_ENABLED(CONFIG_QCOM_CRM_V2)) && IS_ENABLED(CONFIG_SPECTRA_USE_CLK_CRM_API)
 static int cam_soc_util_set_hw_client_rate_through_mmrm(
 	void *mmrm_handle, long low_val, long high_val,
 	uint32_t num_hw_blocks, int cesta_client_idx);
 #endif
 
-#if IS_ENABLED(CONFIG_QCOM_CRM)
+#if (IS_ENABLED(CONFIG_QCOM_CRM) || IS_ENABLED(CONFIG_QCOM_CRM_V2))
 static inline const struct device *cam_wrapper_crm_get_device(
 	const char *name)
 {
@@ -157,7 +157,7 @@ static inline int cam_wrapper_crm_write_pwr_states(const struct device *dev,
 
 #endif
 
-#if IS_ENABLED(CONFIG_QCOM_CRM) && IS_ENABLED(CONFIG_SPECTRA_USE_CLK_CRM_API)
+#if (IS_ENABLED(CONFIG_QCOM_CRM) || IS_ENABLED(CONFIG_QCOM_CRM_V2)) && IS_ENABLED(CONFIG_SPECTRA_USE_CLK_CRM_API)
 static inline int cam_wrapper_qcom_clk_crm_set_rate(struct clk *clk,
 	enum crm_drv_type client_type, u32 client_idx,
 	u32 pwr_st, unsigned long rate, const char *name)
@@ -544,7 +544,7 @@ inline void cam_soc_util_set_bypass_drivers(
 	CAM_INFO(CAM_UTIL, "bypass drivers %d", debug_bypass_drivers);
 }
 
-#if IS_ENABLED(CONFIG_QCOM_CRM)
+#if (IS_ENABLED(CONFIG_QCOM_CRM) || IS_ENABLED(CONFIG_QCOM_CRM_V2))
 inline int cam_soc_util_cesta_populate_crm_device(void)
 {
 	cam_cesta_crm_dev =  cam_wrapper_crm_get_device(CAM_CRM_DEV_IDENTIFIER);
@@ -602,7 +602,7 @@ inline int cam_soc_util_cesta_channel_switch(uint32_t cesta_client_idx, const ch
 }
 #endif
 
-#if IS_ENABLED(CONFIG_QCOM_CRM) && IS_ENABLED(CONFIG_SPECTRA_USE_CLK_CRM_API)
+#if (IS_ENABLED(CONFIG_QCOM_CRM) || IS_ENABLED(CONFIG_QCOM_CRM_V2)) && IS_ENABLED(CONFIG_SPECTRA_USE_CLK_CRM_API)
 static int cam_soc_util_set_cesta_clk_rate(struct cam_hw_soc_info *soc_info,
 	uint32_t cesta_client_idx, unsigned long high_val, unsigned long low_val,
 	unsigned long *applied_high_val, unsigned long *applied_low_val)
@@ -799,7 +799,7 @@ int cam_soc_util_register_mmrm_client(
 	desc.client_info.desc.client_id = clk_id;
 	desc.client_info.desc.clk = clk;
 
-#if IS_ENABLED(CONFIG_QCOM_CRM) && IS_ENABLED(CONFIG_SPECTRA_USE_CLK_CRM_API)
+#if (IS_ENABLED(CONFIG_QCOM_CRM) || IS_ENABLED(CONFIG_QCOM_CRM_V2)) && IS_ENABLED(CONFIG_SPECTRA_USE_CLK_CRM_API)
 	if (soc_info->is_clk_drv_en) {
 		desc.client_info.desc.hw_drv_instances = CAM_CESTA_MAX_CLIENTS;
 		desc.client_info.desc.num_pwr_states = CAM_NUM_PWR_STATES;
@@ -863,7 +863,7 @@ static int cam_soc_util_set_sw_client_rate_through_mmrm(
 	client_data.num_hw_blocks = num_hw_blocks;
 	client_data.flags = 0;
 
-#if IS_ENABLED(CONFIG_QCOM_CRM) && IS_ENABLED(CONFIG_SPECTRA_USE_CLK_CRM_API)
+#if (IS_ENABLED(CONFIG_QCOM_CRM) || IS_ENABLED(CONFIG_QCOM_CRM_V2)) && IS_ENABLED(CONFIG_SPECTRA_USE_CLK_CRM_API)
 	client_data.drv_type = MMRM_CRM_SW_DRV;
 #endif
 
