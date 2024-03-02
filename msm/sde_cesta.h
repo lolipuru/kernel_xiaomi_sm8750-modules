@@ -16,6 +16,18 @@
 
 #define MAX_CESTA_CLIENT_NAME_LEN	32
 
+/* SDE CESTA resources */
+#define SDE_CESTA_RESOURCE_GDSC_INIT	BIT(0)
+#define SDE_CESTA_RESOURCE_GDSC_ENABLE	BIT(1)
+#define SDE_CESTA_RESOURCE_GDSC_DISABLE	BIT(2)
+#define SDE_CESTA_RESOURCE_GDSC_HW_CTRL BIT(3)
+#define SDE_CESTA_RESOURCE_AOSS_USED	BIT(4)
+#define SDE_CESTA_RESOURCE_CRMB_USED	BIT(5)
+#define SDE_CESTA_RESOURCE_CRMB_PT_USED BIT(6)
+#define SDE_CESTA_RESOURCE_ALL_USED (SDE_CESTA_RESOURCE_AOSS_USED \
+					| SDE_CESTA_RESOURCE_CRMB_USED \
+					| SDE_CESTA_RESOURCE_CRMB_PT_USED)
+
 struct sde_cesta;
 
 /**
@@ -187,7 +199,7 @@ struct sde_cesta {
 
 	struct sde_cesta_hw_ops hw_ops;
 
-	bool sw_fs_enabled;
+	u32 resource_used;
 
 	struct icc_path *bus_hdl[MAX_SCC_BLOCK];
 	const struct device *crm_dev;
