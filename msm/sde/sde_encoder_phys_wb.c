@@ -2682,6 +2682,15 @@ void sde_encoder_phys_wb_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 	sde_mini_dump_add_va_region("sde_enc_phys_wb", sizeof(*wb_enc), wb_enc);
 }
 
+void sde_encoder_phys_wb_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
+		struct sde_cesta_ctrl_cfg *cfg, bool *req_flush, bool *req_scc)
+{
+	cfg->enable = true;
+	cfg->wb = true;
+	cfg->req_mode = SDE_CESTA_CTRL_REQ_IMMEDIATE;
+	*req_flush = true;
+}
+
 /**
  * sde_encoder_phys_wb_init_ops - initialize writeback operations
  * @ops:	Pointer to encoder operation table
@@ -2704,6 +2713,7 @@ static void sde_encoder_phys_wb_init_ops(struct sde_encoder_phys_ops *ops)
 	ops->hw_reset = sde_encoder_helper_hw_reset;
 	ops->irq_control = sde_encoder_phys_wb_irq_ctrl;
 	ops->add_to_minidump = sde_encoder_phys_wb_add_enc_to_minidump;
+	ops->cesta_ctrl_cfg = sde_encoder_phys_wb_cesta_ctrl_cfg;
 }
 
 /**

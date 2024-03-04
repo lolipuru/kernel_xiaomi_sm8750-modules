@@ -1565,6 +1565,26 @@ void sde_encoder_phys_vid_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 	sde_mini_dump_add_va_region("sde_enc_phys_vid", sizeof(*vid_enc), vid_enc);
 }
 
+void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
+		struct sde_cesta_ctrl_cfg *cfg, bool *req_flush, bool *req_scc)
+{
+	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
+
+	cfg->enable = true;
+	cfg->avr_enable = qsync_en;
+	cfg->intf = phys_enc->intf_idx - INTF_0;
+	cfg->auto_active_on_panic = true;
+	cfg->req_mode = qsync_en ? SDE_CESTA_CTRL_REQ_PANIC_REGION :
+					SDE_CESTA_CTRL_REQ_IMMEDIATE;
+
+	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)
+			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))
+		cfg->dual_dsi = true;
+
+	*req_flush = qsync_en;
+	*req_scc = sde_connector_is_qsync_updated(phys_enc->connector);
+}
+
 static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops)
 {
 	ops->is_master = sde_encoder_phys_vid_is_master;
@@ -1594,6 +1614,7 @@ static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops)
 	ops->get_underrun_line_count =
 		sde_encoder_phys_vid_get_underrun_line_count;
 	ops->add_to_minidump = sde_encoder_phys_vid_add_enc_to_minidump;
+	ops->cesta_ctrl_cfg = sde_encoder_phys_vid_cesta_ctrl_cfg;
 }
 
 struct sde_encoder_phys *sde_encoder_phys_vid_init(

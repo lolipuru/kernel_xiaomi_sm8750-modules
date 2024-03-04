@@ -2570,6 +2570,26 @@ void sde_encoder_phys_cmd_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 	sde_mini_dump_add_va_region("sde_enc_phys_cmd", sizeof(*cmd_enc), cmd_enc);
 }
 
+void sde_encoder_phys_cmd_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
+		struct sde_cesta_ctrl_cfg *cfg, bool *req_flush, bool *req_scc)
+{
+	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
+	bool autorefresh_en = sde_encoder_phys_cmd_is_autorefresh_enabled(phys_enc);
+
+	cfg->enable = true;
+	cfg->avr_enable = qsync_en;
+	cfg->intf = phys_enc->intf_idx - INTF_0;
+	cfg->auto_active_on_panic = autorefresh_en;
+	cfg->req_mode = SDE_CESTA_CTRL_REQ_PANIC_REGION;
+
+	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)
+			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))
+		cfg->dual_dsi = true;
+
+	*req_flush = !autorefresh_en;
+	*req_scc = sde_connector_is_qsync_updated(phys_enc->connector);
+}
+
 static void sde_encoder_phys_cmd_init_ops(struct sde_encoder_phys_ops *ops)
 {
 	ops->prepare_commit = sde_encoder_phys_cmd_prepare_commit;
@@ -2606,6 +2626,7 @@ static void sde_encoder_phys_cmd_init_ops(struct sde_encoder_phys_ops *ops)
 	ops->disable_autorefresh = _sde_encoder_phys_disable_autorefresh;
 	ops->idle_pc_cache_display_status = sde_encoder_phys_cmd_store_ltj_values;
 	ops->handle_post_kickoff = sde_encoder_phys_cmd_handle_post_kickoff;
+	ops->cesta_ctrl_cfg = sde_encoder_phys_cmd_cesta_ctrl_cfg;
 }
 
 static inline bool sde_encoder_phys_cmd_intf_te_supported(

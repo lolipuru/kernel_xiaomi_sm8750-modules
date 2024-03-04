@@ -250,6 +250,8 @@ enum sde_sim_qsync_event {
  * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  * @ops:                        Encoder ops from init function
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
+ * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
+ *				which requires special handling for cesta.
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -326,6 +328,7 @@ struct sde_encoder_virt {
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
 	struct sde_cesta_client *cesta_client;
+	bool cesta_enable_frame;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -845,6 +848,18 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 int sde_encoder_handle_dma_fence_out_of_order(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_begin_commit - handles begin commit operations in encoder
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_begin_commit(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_complete_commit - handles complete commit operations in encoder
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_complete_commit(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_get_cesta_client - return the SDE CESTA client

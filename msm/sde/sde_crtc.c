@@ -3436,6 +3436,7 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc;
 	struct sde_splash_display *splash_display = NULL;
 	struct sde_kms *sde_kms;
+	struct drm_encoder *encoder;
 	bool cont_splash_enabled = false;
 	int i;
 	u32 power_on = 1;
@@ -3459,10 +3460,20 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 			cont_splash_enabled = true;
 	}
 
+	/* with cesta, clk & bw voting happens through encoder */
+	if (sde_crtc->cesta_client) {
+		drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			sde_encoder_complete_commit(encoder);
+		}
+	} else {
+		sde_core_perf_crtc_update(crtc, SDE_PERF_COMPLETE_COMMIT);
+	}
+
 	if ((crtc->state->active_changed || cont_splash_enabled) && crtc->state->active)
 		sde_crtc_event_notify(crtc, DRM_EVENT_CRTC_POWER, &power_on, sizeof(u32));
-
-	sde_core_perf_crtc_update(crtc, SDE_PERF_COMPLETE_COMMIT);
 }
 
 /**
@@ -4513,8 +4524,18 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		cstate->rsc_update = true;
 	}
 
-	/* update performance setting */
-	sde_core_perf_crtc_update(crtc, SDE_PERF_BEGIN_COMMIT);
+	/* with cesta, clk & bw voting happens through encoder */
+	if (sde_crtc->cesta_client) {
+		encoder = NULL;
+		drm_for_each_encoder_mask(encoder, dev, crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			sde_encoder_begin_commit(encoder);
+		}
+	} else {
+		sde_core_perf_crtc_update(crtc, SDE_PERF_BEGIN_COMMIT);
+	}
 
 	/*
 	 * If no mixers have been allocated in sde_crtc_atomic_check(),
@@ -5546,7 +5567,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	}
 
 	/* avoid clk/bw downvote if cont-splash is enabled */
-	if (!in_cont_splash)
+	if (!in_cont_splash && !sde_crtc->cesta_client)
 		sde_core_perf_crtc_update(crtc, SDE_PERF_DISABLE_COMMIT);
 
 	sde_crtc->cesta_client = NULL;
