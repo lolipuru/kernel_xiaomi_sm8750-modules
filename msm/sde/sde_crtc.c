@@ -3462,7 +3462,7 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 	if ((crtc->state->active_changed || cont_splash_enabled) && crtc->state->active)
 		sde_crtc_event_notify(crtc, DRM_EVENT_CRTC_POWER, &power_on, sizeof(u32));
 
-	sde_core_perf_crtc_update(crtc, 0, false);
+	sde_core_perf_crtc_update(crtc, SDE_PERF_COMPLETE_COMMIT);
 }
 
 /**
@@ -4514,7 +4514,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	}
 
 	/* update performance setting */
-	sde_core_perf_crtc_update(crtc, 1, false);
+	sde_core_perf_crtc_update(crtc, SDE_PERF_BEGIN_COMMIT);
 
 	/*
 	 * If no mixers have been allocated in sde_crtc_atomic_check(),
@@ -5545,11 +5545,11 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 		}
 	}
 
-	sde_crtc->cesta_client = NULL;
-
 	/* avoid clk/bw downvote if cont-splash is enabled */
 	if (!in_cont_splash)
-		sde_core_perf_crtc_update(crtc, 0, true);
+		sde_core_perf_crtc_update(crtc, SDE_PERF_DISABLE_COMMIT);
+
+	sde_crtc->cesta_client = NULL;
 
 	drm_for_each_encoder_mask(encoder, crtc->dev,
 			crtc->state->encoder_mask) {

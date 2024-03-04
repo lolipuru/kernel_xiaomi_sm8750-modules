@@ -31,6 +31,22 @@
 #define SDE_PERF_UIDLE_MAX BIT(2)
 
 /**
+ * enum sde_perf_commit_state - flags used while calling the perf_update
+ * SDE_PERF_NONE_COMMIT: default NONE state
+ * @SDE_PERF_BEGIN_COMMIT: set when called during atomic_begin
+ * @SDE_PERF_COMPLETE_COMMIT: set when called during commit_done
+ * @SDE_PERF_ENABLE_COMMIT: set when called for the first frame after suspend or idle-pc
+ * @SDE_PERF_DISABLE_COMMIT: set when called during disable
+ */
+enum sde_perf_commit_state {
+	SDE_PERF_NONE_COMMIT,
+	SDE_PERF_BEGIN_COMMIT,
+	SDE_PERF_COMPLETE_COMMIT,
+	SDE_PERF_ENABLE_COMMIT,
+	SDE_PERF_DISABLE_COMMIT,
+};
+
+/**
  * struct sde_core_perf_params - definition of performance parameters
  * @max_per_pipe_ib: maximum instantaneous bandwidth request
  * @bw_ctl: arbitrated bandwidth request
@@ -139,11 +155,9 @@ int sde_core_perf_crtc_check(struct drm_crtc *crtc,
 /**
  * sde_core_perf_crtc_update - update performance of the given crtc
  * @crtc: Pointer to crtc
- * @params_changed: true if crtc parameters are modified
- * @stop_req: true if this is a stop request
+ * @commit_state: commit state when perf update is called
  */
-void sde_core_perf_crtc_update(struct drm_crtc *crtc,
-		int params_changed, bool stop_req);
+void sde_core_perf_crtc_update(struct drm_crtc *crtc, enum sde_perf_commit_state commit_state);
 
 /**
  * sde_core_perf_crtc_release_bw - release bandwidth of the given crtc
