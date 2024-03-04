@@ -1135,8 +1135,8 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 		drv_data->has_soccp = true;
 		drv_data->soccp_rproc = rproc_get_by_phandle(ph);
 		if (IS_ERR_OR_NULL(drv_data->soccp_rproc)) {
-			HWFNC_ERR("failed to find rproc for phandle:%u\n", ph);
-			return -EINVAL;
+			HWFNC_DBG_INFO("failed to find rproc for phandle:%u\n", ph);
+			return -EPROBE_DEFER;
 		}
 	}
 

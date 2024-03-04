@@ -821,7 +821,8 @@ error:
 	kfree(hw_fence_drv_data);
 	hw_fence_drv_data = (void *) -EPROBE_DEFER;
 
-	HWFNC_ERR_ONCE("error %d\n", rc);
+	HWFNC_DBG_INFO("error %d\n", rc);
+
 	return rc;
 }
 
