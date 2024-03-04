@@ -1713,17 +1713,20 @@ static void _fence_ctl_signal(struct hw_fence_driver_data *drv_data,
 				hw_fence->seq_id, hash, flags, client_data, error,
 				HW_FENCE_RX_QUEUE - 1);
 
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+		/* signal validation clients on targets with vm through custom mechanism */
+		if (!drv_data->has_soccp && hw_fence_client->client_id >= HW_FENCE_CLIENT_ID_VAL0 &&
+				hw_fence_client->client_id <= HW_FENCE_CLIENT_ID_VAL6) {
+			process_validation_client_loopback(drv_data, hw_fence_client->client_id);
+			return;
+		}
+#endif /* CONFIG_DEBUG_FS */
+
 		/* Signal the hw fence now */
 		if (hw_fence_client->signaled_send_ipc || !signal_from_import)
 			hw_fence_ipcc_trigger_signal(drv_data, tx_client_id, rx_client_id,
 				hw_fence_client->ipc_signal_id);
 	}
-
-#if IS_ENABLED(CONFIG_DEBUG_FS)
-	if (hw_fence_client->client_id >= HW_FENCE_CLIENT_ID_VAL0
-			&& hw_fence_client->client_id <= HW_FENCE_CLIENT_ID_VAL6)
-		process_validation_client_loopback(drv_data, hw_fence_client->client_id);
-#endif /* CONFIG_DEBUG_FS */
 }
 
 static void _cleanup_join_and_child_fences(struct hw_fence_driver_data *drv_data,

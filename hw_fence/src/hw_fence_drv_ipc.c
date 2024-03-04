@@ -202,19 +202,19 @@ struct hw_fence_client_ipc_map hw_fence_clients_ipc_map_sun[HW_FENCE_IPC_MAP_MAX
 	{HW_FENCE_IPC_CLIENT_ID_DPU_VID,  HW_FENCE_IPC_CLIENT_ID_DPU_PID_SUN, 5, false, false, true,
 		false}, /* ctl5 */
 #if IS_ENABLED(CONFIG_DEBUG_FS)
-	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 21, true, true, false,
+	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 21, true, true, true,
 		true},
-	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 22, true, true, false,
+	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 22, true, true, true,
 		true},
-	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 23, true, true, false,
+	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 23, true, true, true,
 		true},
-	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 24, true, true, false,
+	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 24, true, true, true,
 		true},
-	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 25, true, true, false,
+	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 25, true, true, true,
 		true},
-	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 26, true, true, false,
+	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 26, true, true, true,
 		true},
-	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 27, true, true, false,
+	{HW_FENCE_IPC_CLIENT_ID_APPS_VID, HW_FENCE_IPC_CLIENT_ID_APPS_PID, 27, true, true, true,
 		true},
 #else
 	{0, 0, 0, false, false, false, false}, /* val0 */
@@ -605,7 +605,7 @@ int hw_fence_ipcc_enable_client_signal_pairs(struct hw_fence_driver_data *drv_da
 			hw_fence_client->ipc_signal_id, drv_data->has_soccp);
 
 		/* Enable input signal from driver to client */
-		if (ipc_client_vid != drv_data->ipcc_client_vid)
+		if (drv_data->has_soccp || ipc_client_vid != drv_data->ipcc_client_vid)
 			_enable_client_signal_pair(drv_data, hw_fence_client->ipc_client_id_phys,
 				drv_data->ipcc_client_vid, hw_fence_client->ipc_signal_id);
 
@@ -619,6 +619,15 @@ int hw_fence_ipcc_enable_client_signal_pairs(struct hw_fence_driver_data *drv_da
 		_get_ipc_virt_client_name(ipc_client_vid), start_client, i);
 
 	return 0;
+}
+
+static bool _is_invalid_signaling_client(struct hw_fence_driver_data *drv_data, u32 client_id)
+{
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+	return client_id != drv_data->ipcc_fctl_vid && client_id != drv_data->ipcc_client_vid;
+#else
+	return client_id != drv_data->ipcc_fctl_vid;
+#endif
 }
 
 u64 hw_fence_ipcc_get_signaled_clients_mask(struct hw_fence_driver_data *drv_data)
@@ -651,7 +660,7 @@ u64 hw_fence_ipcc_get_signaled_clients_mask(struct hw_fence_driver_data *drv_dat
 		HWFNC_DBG_IRQ("read recv_id value:0x%x client:%u signal:%u\n", reg_val, client_id,
 			signal_id);
 
-		if (client_id != drv_data->ipcc_fctl_vid) {
+		if (_is_invalid_signaling_client(drv_data, client_id)) {
 			HWFNC_ERR("Received client:%u signal:%u expected client:%u\n",
 				client_id, signal_id, drv_data->ipcc_fctl_vid);
 			continue;
@@ -665,6 +674,7 @@ u64 hw_fence_ipcc_get_signaled_clients_mask(struct hw_fence_driver_data *drv_dat
 			signal_id = signal_id - hw_fence_ipcc_get_signal_id(drv_data,
 				HW_FENCE_CLIENT_ID_VAL0) + HW_FENCE_CLIENT_ID_VAL0;
 #endif /* CONFIG_DEBUG_FS*/
+
 		mask |= BIT(signal_id);
 	}
 
