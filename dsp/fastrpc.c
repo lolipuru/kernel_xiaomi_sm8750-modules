@@ -872,14 +872,13 @@ static void fastrpc_pm_relax(struct fastrpc_user *fl,
 	mutex_unlock(&cctx->wake_mutex);
 }
 
-static int get_buffer_attr(struct dma_buf *buf, bool *exclusive_access, bool *hlos_access)
+static int get_buffer_attr(struct dma_buf *buf, bool *exclusive_access)
 {
 	const int *vmids_list = NULL;
 	const int  *perms = NULL;
 	int err = 0;
 	int vmids_list_len = 0;
 	*exclusive_access = false;
-	*hlos_access = false;
 
 	err = mem_buf_dma_buf_get_vmperm(buf, &vmids_list, &perms, &vmids_list_len);
 	if (err)
@@ -890,40 +889,21 @@ static int get_buffer_attr(struct dma_buf *buf, bool *exclusive_access, bool *hl
 	 */
 	if (vmids_list_len == 1 && vmids_list[0] == mem_buf_current_vmid())
 		*exclusive_access = true;
-#if IS_ENABLED(CONFIG_MSM_ADSPRPC_TRUSTED)
-	for (int ii = 0; ii < vmids_list_len; ii++) {
-		if (vmids_list[ii] == VMID_HLOS) {
-			*hlos_access = true;
-			break;
-		}
-	}
-#endif
+
 	return err;
 }
 
 static int set_buffer_secure_type(struct fastrpc_map *map)
 {
 	int err = 0;
-	bool hlos_access = false;
 	bool exclusive_access = false;
 	struct device *dev = map->fl->sctx->dev;
 
-	err = get_buffer_attr(map->buf, &exclusive_access, &hlos_access);
+	err = get_buffer_attr(map->buf, &exclusive_access);
 	if (err) {
 		dev_err(dev, "failed to obtain buffer attributes for fd %d ret %d\n", map->fd, err);
 		return -EBADFD;
 	}
-#if IS_ENABLED(CONFIG_MSM_ADSPRPC_TRUSTED)
-	/*
-	 * PVM (HLOS) can share buffers with TVM, in case buffers are to be shared to secure PD,
-	 * PVM is expected to relinquish its ownership to those buffers before sharing.
-	 * If PVM still retains access, then those buffers cannot be shared to secure PD.
-	 */
-	if (hlos_access) {
-		dev_err(dev, "Buffers with HLOS access (fd %d) are not allowed on TVM\n", map->fd);
-		return -EACCES;
-	}
-#endif
 	/*
 	 * Secure buffers would always be owned by multiple VMs.
 	 * If current VM is the exclusive owner of a buffer, it is considered non-secure.
