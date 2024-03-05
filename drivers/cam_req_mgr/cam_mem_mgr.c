@@ -2752,11 +2752,13 @@ int cam_mem_mgr_get_fd_from_dmabuf(uint64_t input_dmabuf)
 				tbl.bufq[idx].presil_params.refcount);
 
 			if (tbl.bufq[idx].presil_params.fd_for_umd_daemon < 0) {
-				fd_for_dmabuf = dma_buf_fd(dmabuf, O_CLOEXEC);
-				if (fd_for_dmabuf < 0) {
-					CAM_ERR(CAM_PRESIL, "get fd fail, fd_for_dmabuf=%d",
-						fd_for_dmabuf);
-					return -EINVAL;
+				if (fd_for_dmabuf == -1) {
+					fd_for_dmabuf = dma_buf_fd(dmabuf, O_CLOEXEC);
+					if (fd_for_dmabuf < 0) {
+						CAM_ERR(CAM_PRESIL, "get fd fail, fd_for_dmabuf=%d",
+							fd_for_dmabuf);
+						return -EINVAL;
+					}
 				}
 
 				tbl.bufq[idx].presil_params.fd_for_umd_daemon = fd_for_dmabuf;
@@ -2782,31 +2784,42 @@ int cam_mem_mgr_get_fd_from_dmabuf(uint64_t input_dmabuf)
 	return (int)fd_for_dmabuf;
 }
 
-int cam_mem_mgr_send_buffer_to_presil(int32_t iommu_hdl, int32_t buf_handle)
+int cam_mem_mgr_send_buffer_to_presil(int32_t mmu_hdl, int32_t buf_handle)
 {
 	int rc = 0;
 
 	/* Sending Presil IO Buf to PC side ( as iova start address indicates) */
 	uint64_t io_buf_addr;
 	size_t io_buf_size;
-	int i, j, fd = -1, idx = 0;
+	int i, j, fd = -1, idx = 0, entry = -1, iommu_hdl;
 	uint8_t *iova_ptr = NULL;
 	uint64_t dmabuf = 0;
 	bool is_mapped_in_cb = false;
 
-	CAM_DBG(CAM_PRESIL, "buf handle 0x%0x", buf_handle);
-
 	idx = CAM_MEM_MGR_GET_HDL_IDX(buf_handle);
-	for (i = 0; i < tbl.bufq[idx].num_hdl; i++) {
-		if (tbl.bufq[idx].hdls[i] == iommu_hdl)
+	iommu_hdl = CAM_SMMU_GET_BASE_HDL(mmu_hdl);
+
+	if (!cam_mem_mgr_get_hwva_entry_idx(iommu_hdl, &entry)) {
+		CAM_ERR(CAM_PRESIL, "no iommu entry, idx=%d, FD %d handle 0x%0x active %d",
+			idx, tbl.bufq[idx].fd, tbl.bufq[idx].buf_handle, tbl.bufq[idx].active);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < tbl.bufq[idx].num_hdls; i++) {
+		if ((tbl.bufq[idx].hdls_info[entry].iommu_hdl == iommu_hdl) &&
+			(tbl.bufq[idx].hdls_info[entry].addr_updated)) {
+			CAM_DBG(CAM_PRESIL, "found idx %d iommu 0x%x hdl 0x%0x bufq-iommu 0x%x",
+				idx, iommu_hdl, buf_handle,
+				tbl.bufq[idx].hdls_info[entry].iommu_hdl);
 			is_mapped_in_cb = true;
+		}
 	}
 
 	if (!is_mapped_in_cb) {
 		for (j = 0; j < CAM_MEM_BUFQ_MAX; j++) {
 			if (tbl.bufq[j].i_ino == tbl.bufq[idx].i_ino) {
-				for (i = 0; i < tbl.bufq[j].num_hdl; i++) {
-					if (tbl.bufq[j].hdls[i] == iommu_hdl)
+				for (i = 0; i < tbl.bufq[j].num_hdls; i++) {
+					if (tbl.bufq[j].hdls_info[entry].iommu_hdl == iommu_hdl)
 						is_mapped_in_cb = true;
 				}
 			}
@@ -2814,8 +2827,8 @@ int cam_mem_mgr_send_buffer_to_presil(int32_t iommu_hdl, int32_t buf_handle)
 
 		if (!is_mapped_in_cb) {
 			CAM_DBG(CAM_PRESIL,
-				"Still Could not find idx=%d, FD %d buf_handle 0x%0x",
-				idx, GET_FD_FROM_HANDLE(buf_handle), buf_handle);
+				"Still Could not find idx=%d, FD %d buf_handle 0x%0x entry %d",
+				idx, GET_FD_FROM_HANDLE(buf_handle), buf_handle, entry);
 
 			/*
 			 * Okay to return 0, since this function also gets called for buffers that
