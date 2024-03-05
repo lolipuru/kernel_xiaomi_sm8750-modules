@@ -6197,6 +6197,7 @@ static int cam_icp_packet_generic_blob_handler(void *user_data,
 	uintptr_t pResource;
 	uint32_t i = 0, j;
 	bool scid_match;
+	size_t scid_blob_size;
 
 	if (!blob_data || (blob_size == 0)) {
 		CAM_ERR(CAM_ICP, "Invalid blob info %pK %d", blob_data,
@@ -6409,7 +6410,7 @@ static int cam_icp_packet_generic_blob_handler(void *user_data,
 		break;
 
 	case CAM_ICP_CMD_GENERIC_BLOB_SYSCACHE_CONFIG:
-		if (blob_size != sizeof(struct cam_sys_cache_config_request)) {
+		if (blob_size < sizeof(struct cam_sys_cache_config_request)) {
 			CAM_ERR(CAM_ICP, "%s: Mismatch blob size %d expected %lu",
 				ctx_data->ctx_id_string, blob_size,
 				sizeof(struct cam_sys_cache_config_request));
@@ -6417,6 +6418,16 @@ static int cam_icp_packet_generic_blob_handler(void *user_data,
 		}
 
 		sys_cache_blob_info = (struct cam_sys_cache_config_request *)blob_data;
+		scid_blob_size = sizeof(struct cam_sys_cache_config_request) +
+			((sys_cache_blob_info->num - 1) *
+			sizeof(struct cam_sys_cache_config));
+
+		if (blob_size < scid_blob_size) {
+			CAM_ERR(CAM_ICP, "%s: Invalid blob size: %u",
+				ctx_data->ctx_id_string, blob_size);
+			return -EINVAL;
+		}
+
 		sys_cache_cfg = &ctx_data->sys_cache_cfg;
 		for (j = 0; j < sys_cache_blob_info->num; j++) {
 			scid_match = false;
