@@ -4361,7 +4361,7 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		msm_property_install_range(&psde->property_info, "alpha", 0x0, 0, 65535, 65535,
 				PLANE_PROP_ALPHA);
 		msm_property_install_volatile_range(&psde->property_info, "bg_alpha",
-			0x0, 0, 65535, 255, PLANE_PROP_BG_ALPHA);
+			0x0, 0, 65535, 65535, PLANE_PROP_BG_ALPHA);
 	} else {
 		msm_property_install_range(&psde->property_info, "alpha", 0x0, 0, 255, 255,
 				PLANE_PROP_ALPHA);
