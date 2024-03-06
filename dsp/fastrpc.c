@@ -931,7 +931,7 @@ static int set_buffer_secure_type(struct fastrpc_map *map)
 	 *	- Since it is a secure environment by default, there are no explicit "secure" buffers
 	 *	- All buffers are marked "non-secure"
 	 */
-#if IS_ENABLED(CONFIG_MSM_ADSPRPC_TRUSTED)
+#if IS_ENABLED(CONFIG_QCOM_FASTRPC_TRUSTED)
 	map->secure = 0;
 #else
 	map->secure = (exclusive_access) ? 0 : 1;

@@ -25,7 +25,6 @@ int fastrpc_setup_service_locator(struct fastrpc_channel_ctx *cctx, char *client
 					char *service_name, char *service_path, int spd_session);
 void fastrpc_register_wakeup_source(struct device *dev,
 	const char *client_name, struct wakeup_source **device_wake_source);
-void fastrpc_notify_users(struct fastrpc_user *user);
 int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx);
 void fastrpc_queue_pd_status(struct fastrpc_user *fl, int domain, int status);
 

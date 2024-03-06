@@ -742,4 +742,5 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ctx *cctx,
 				bool is_secured, const char *domain);
 struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev);
+void fastrpc_notify_users(struct fastrpc_user *user);
 #endif /* __FASTRPC_SHARED_H__ */

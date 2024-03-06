@@ -119,7 +119,7 @@ static void fastrpc_recv_ctrl_pkt(struct frpc_transport_session_control *session
 	const struct qrtr_ctrl_pkt *pkt = buf;
 
 	if (len < sizeof(struct qrtr_ctrl_pkt)) {
-		dev_err(scctx->dev, "Ignoring short control packet (%d bytes)", len);
+		dev_err(scctx->dev, "Ignoring short control packet (%zu bytes)", len);
 		return;
 	}
 
@@ -199,7 +199,7 @@ static void fastrpc_socket_callback_wq(struct work_struct *work)
 bail:
 	if (!ignore_err && err < 0) {
 		dev_err(scctx->dev,
-			"invalid response data %pK (rx %d bytes), buffer len %d from remote ID (0x%x) err %d\n",
+			"invalid response data %pK (rx %d bytes), buffer len %zu from remote ID (0x%x) err %d\n",
 			msg.iov_base, bytes_rx, msg.iov_len, remote_server_instance, err);
 	}
 }
