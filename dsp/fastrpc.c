@@ -1281,11 +1281,13 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 
 			mlen = ctx->olaps[oix].mend - ctx->olaps[oix].mstart;
 
-			if (mlen > LONG_MAX)
+			if (mlen > LONG_MAX) {
+				dev_err(dev, "Error: invalid payload size 0x%x", mlen);
 				return -EFAULT;
-
+			}
+			
 			if (mlen > COPY_BUF_WARN_LIMIT)
-				dev_warn(dev, "user passed non ion buffer size %u, mend 0x%llx mstart 0x%llx, sc 0x%x",
+				dev_dbg(dev, "user passed non ion buffer size %u, mend 0x%llx mstart 0x%llx, sc 0x%x",
 					mlen, ctx->olaps[oix].mend, ctx->olaps[oix].mstart, ctx->sc);
 
 			if (rlen < mlen)
@@ -1313,6 +1315,7 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 			if (!kernel) {
 				if (copy_from_user(dst, (void __user *)src,
 						   len)) {
+					dev_err(dev, "Error: invalid buffer length 0x%llx", len);
 					err = -EFAULT;
 					goto bail;
 				}
@@ -1789,8 +1792,8 @@ static int fastrpc_mem_map_to_dsp(struct fastrpc_user *fl, int fd, int offset,
 	ioctl.inv.args = (__u64)args;
 	err = fastrpc_internal_invoke(fl, true, &ioctl);
 	if (err) {
-		dev_err(dev, "mem mmap error, fd %d, vaddr %x, size %lx\n",
-			fd, va, size);
+		dev_err(dev, "mem mmap error, fd %d, vaddr %x, size %lx, err 0x%x\n",
+			fd, va, size, err);
 		return err;
 	}
 	*raddr = rsp_msg.vaddr;
@@ -4796,6 +4799,8 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 #endif
 
 bail:
+	if (!err)
+		dev_info(dev, "Successfully added %s", dev->kobj.name);
 	return err;
 genpool_add_bail:
 	gen_pool_destroy(gen_pool);
@@ -4837,7 +4842,7 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 		}
 	}
 	spin_unlock_irqrestore(&cctx->lock, flags);
-
+	dev_info(&pdev->dev, "Successfully removed %s", pdev->dev.kobj.name);
 	return 0;
 }
 
