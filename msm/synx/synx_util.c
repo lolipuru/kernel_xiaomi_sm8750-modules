@@ -184,6 +184,36 @@ int synx_util_add_callback(struct synx_coredata *synx_obj,
 	return SYNX_SUCCESS;
 }
 
+static int synx_util_count_dma_array_fences(struct dma_fence *fence)
+{
+	struct dma_fence_cb *cur, *tmp;
+	int32_t num_dma_array = 0;
+	struct dma_fence_array_cb *cb_array = NULL;
+	struct dma_fence_array *array = NULL;
+
+	if (IS_ERR_OR_NULL(fence)) {
+		dprintk(SYNX_ERR, "invalid fence passed\n");
+		return num_dma_array;
+	}
+
+	list_for_each_entry_safe(cur, tmp, &fence->cb_list, node) {
+		// count for parent fences
+		cb_array = container_of(cur, struct dma_fence_array_cb, cb);
+		if (IS_ERR_OR_NULL(cb_array)) {
+			dprintk(SYNX_VERB, "cb_array not found in fence %pK\n", fence);
+			continue;
+		}
+		array = cb_array->array;
+		if (!IS_ERR_OR_NULL(array) && dma_fence_is_array(&(array->base)))
+			num_dma_array++;
+	}
+
+	dprintk(SYNX_VERB, "number of fence_array found %d for child fence %pK\n",
+		num_dma_array, fence);
+
+	return num_dma_array;
+}
+
 int synx_util_init_group_coredata(struct synx_coredata *synx_obj,
 	struct dma_fence **fences,
 	struct synx_merge_params *params,
@@ -278,7 +308,6 @@ int synx_util_cleanup_merged_fence(struct synx_coredata *synx_obj, int status)
 						"signaling child fence %pK failed=%d\n",
 						array->fences[i], rc);
 			}
-			dma_fence_put(array->fences[i]);
 		}
 	}
 	return rc;
@@ -287,6 +316,7 @@ int synx_util_cleanup_merged_fence(struct synx_coredata *synx_obj, int status)
 void synx_util_object_destroy(struct synx_coredata *synx_obj)
 {
 	int rc;
+	int num_dma_array = 0;
 	u32 i;
 	s32 sync_id;
 	u32 type;
@@ -360,14 +390,15 @@ void synx_util_object_destroy(struct synx_coredata *synx_obj)
 		if (synx_util_is_merged_object(synx_obj) &&
 			synx_util_get_object_status_locked(synx_obj) == SYNX_STATE_ACTIVE)
 			rc = synx_util_cleanup_merged_fence(synx_obj, -SYNX_STATE_SIGNALED_CANCEL);
-		else if (kref_read(&synx_obj->fence->refcount) == 1 &&
-				(synx_util_get_object_status_locked(synx_obj) ==
-				SYNX_STATE_ACTIVE)) {
-			// set fence error to cancel
-			dma_fence_set_error(synx_obj->fence,
-				-SYNX_STATE_SIGNALED_CANCEL);
+		else if (synx_util_get_object_status_locked(synx_obj) == SYNX_STATE_ACTIVE) {
+			num_dma_array = synx_util_count_dma_array_fences(synx_obj->fence);
+			if (kref_read(&synx_obj->fence->refcount) == 1 + num_dma_array) {
+				// set fence error to cancel
+				dma_fence_set_error(synx_obj->fence,
+					-SYNX_STATE_SIGNALED_CANCEL);
 
-			rc = dma_fence_signal_locked(synx_obj->fence);
+				rc = dma_fence_signal_locked(synx_obj->fence);
+			}
 		}
 		spin_unlock_irqrestore(synx_obj->fence->lock, flags);
 		if (rc)
