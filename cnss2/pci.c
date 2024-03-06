@@ -4319,10 +4319,18 @@ static int cnss_pci_runtime_resume(struct device *dev)
 
 	driver_ops = pci_priv->driver_ops;
 	if (driver_ops && driver_ops->runtime_ops &&
-	    driver_ops->runtime_ops->runtime_resume)
+	    driver_ops->runtime_ops->runtime_resume) {
 		ret = driver_ops->runtime_ops->runtime_resume(pci_dev);
-	else
+		/*
+		 * In some scenarios, runtime_ops->runtime_resume()
+		 * might not resume PCI bus and return dummy success.
+		 * For those cases do auto resume from CNSS.
+		 */
+		if (!ret && cnss_pci_get_auto_suspended(pci_priv))
+			cnss_auto_resume(dev);
+	} else {
 		ret = cnss_auto_resume(dev);
+	}
 
 	cnss_pr_vdbg("Runtime resume status: %d\n", ret);
 
@@ -6173,11 +6181,6 @@ int cnss_pci_force_fw_assert_hdlr(struct cnss_pci_data *pci_priv)
 	ret = cnss_pci_pm_runtime_get_sync(pci_priv, RTPM_ID_CNSS);
 	if (ret < 0)
 		goto runtime_pm_put;
-	/*
-	 * In some scenarios, cnss_pci_pm_runtime_get_sync
-	 * might not resume PCI bus. For those cases do auto resume.
-	 */
-	cnss_auto_resume(&pci_priv->pci_dev->dev);
 
 	if (!pci_priv->is_smmu_fault)
 		cnss_pci_mhi_reg_dump(pci_priv);
@@ -6789,6 +6792,9 @@ static void cnss_dev_rddm_timeout_hdlr(struct timer_list *t)
 		return;
 
 	cnss_fatal_err("Timeout waiting for RDDM notification\n");
+
+	if (cnss_pci_check_link_status(pci_priv))
+		return;
 
 	mhi_ee = mhi_get_exec_env(pci_priv->mhi_ctrl);
 	if (mhi_ee == MHI_EE_PBL)
