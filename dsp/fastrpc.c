@@ -4792,16 +4792,9 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 {
 	struct fastrpc_channel_ctx *cctx = dev_get_drvdata(pdev->dev.parent);
 	struct fastrpc_session_ctx *sess = dev_get_drvdata(&pdev->dev);
-	struct fastrpc_user *fl;
 	unsigned long flags;
 	int i;
 
-	list_for_each_entry(fl, &cctx->users, user) {
-		if(fl->sctx && fl->sctx->sid == sess->sid) {
-			fastrpc_cached_buf_list_free(fl);
-			break;
-		}
-	}
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++) {
 		if (cctx->session[i].sid == sess->sid) {
