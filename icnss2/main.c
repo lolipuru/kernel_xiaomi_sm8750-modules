@@ -1049,10 +1049,39 @@ static int icnss_driver_event_server_arrive(struct icnss_priv *priv,
 			goto device_info_failure;
 	}
 
-	if (priv->device_id == WCN6450_DEVICE_ID) {
+	if (priv->device_id == WCN7750_DEVICE_ID) {
+		ret = icnss_load_phy_ucode(priv);
+		if (ret < 0) {
+			icnss_pr_err("Phy ucode image loading failed, ret = %d\n", ret);
+			goto device_info_failure;
+		}
+
+		ret = icnss_wlfw_phy_ucode_dnld_send_sync(priv);
+		if (ret < 0) {
+			icnss_pr_err("Phy ucode download to wlan fw failed, ret = %d\n", ret);
+			goto device_info_failure;
+		}
+	}
+
+	if (priv->fw_aux_uc_support) {
+		ret = icnss_load_aux(priv);
+		if (ret < 0) {
+			icnss_pr_err("AUX image loading failed, ret = %d\n", ret);
+			goto device_info_failure;
+		}
+
+		ret = icnss_wlfw_aux_dnld_send_sync(priv);
+		if (ret < 0) {
+			icnss_pr_err("AUX download to wlan fw failed, ret = %d\n", ret);
+			goto device_info_failure;
+		}
+	}
+
+	if (priv->device_id == WCN6450_DEVICE_ID ||
+	    priv->device_id == WCN7750_DEVICE_ID) {
 		ret = icnss_wlfw_qdss_dnld_send_sync(priv);
 		if (ret < 0)
-			icnss_pr_info("Failed to download qdss config file for WCN6450, ret = %d\n",
+			icnss_pr_info("Failed to download qdss config file, ret = %d\n",
 				      ret);
 	}
 
@@ -4684,6 +4713,9 @@ static void icnss_init_control_params(struct icnss_priv *priv)
 
 	if (priv->bdf_download_support && priv->device_id == ADRASTEA_DEVICE_ID)
 		priv->ctrl_params.bdf_type = ICNSS_BDF_BIN;
+
+	if (priv->device_id == WCN7750_DEVICE_ID)
+		icnss_set_feature_list(priv, CNSS_AUX_UC_SUPPORT_V01);
 }
 
 static void icnss_read_device_configs(struct icnss_priv *priv)
