@@ -254,10 +254,14 @@ static int msm_audio_dma_buf_unmap(struct dma_buf *dma_buf, struct msm_audio_ion
 
 		if (alloc_data->dma_buf == dma_buf) {
 			found = true;
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+			dma_buf_unmap_attachment_unlocked(alloc_data->attach,
+					alloc_data->table, DMA_BIDIRECTIONAL);
+#else
 			dma_buf_unmap_attachment(alloc_data->attach,
 						 alloc_data->table,
 						 DMA_BIDIRECTIONAL);
-
+#endif
 			dma_buf_detach(alloc_data->dma_buf,
 				       alloc_data->attach);
 
