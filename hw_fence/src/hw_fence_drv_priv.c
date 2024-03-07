@@ -1320,11 +1320,11 @@ struct dma_fence *hw_dma_fence_init(struct msm_hw_fence_client *hw_fence_client,
 	spinlock_t *fence_lock;
 
 	/* create dma fence */
-	fence_lock = kzalloc(sizeof(*fence_lock), GFP_KERNEL);
+	fence_lock = kzalloc(sizeof(*fence_lock), GFP_ATOMIC);
 	if (!fence_lock)
 		return ERR_PTR(-ENOMEM);
 
-	fence = kzalloc(sizeof(*fence), GFP_KERNEL);
+	fence = kzalloc(sizeof(*fence), GFP_ATOMIC);
 	if (!fence) {
 		kfree(fence_lock);
 		return ERR_PTR(-ENOMEM);
@@ -2393,7 +2393,7 @@ int hw_fence_add_callback(struct hw_fence_driver_data *drv_data, struct dma_fenc
 		return -EINVAL;
 	}
 
-	signal_cb = kzalloc(sizeof(*signal_cb), GFP_KERNEL);
+	signal_cb = kzalloc(sizeof(*signal_cb), GFP_ATOMIC);
 	if (!signal_cb)
 		return -ENOMEM;
 
