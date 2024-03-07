@@ -58,6 +58,47 @@ void sde_cesta_update_perf_config(u32 cesta_index, struct sde_cesta_perf_cfg *cf
 	memcpy(&cesta->perf_cfg, cfg, sizeof(struct sde_cesta_perf_cfg));
 }
 
+static struct clk *_sde_cesta_get_core_clk(struct sde_cesta *cesta)
+{
+	struct sde_power_handle *phandle;
+	struct dss_module_power *mp;
+	struct clk *core_clk = NULL;
+	int i;
+
+	phandle = &cesta->phandle;
+	mp = &phandle->mp;
+
+	for (i = 0; i < mp->num_clk; i++) {
+		if (!strcmp(mp->clk_config[i].clk_name, "core_clk")) {
+			core_clk = mp->clk_config[i].clk;
+			break;
+		}
+	}
+
+	return core_clk;
+}
+
+void sde_cesta_splash_release(u32 cesta_index)
+{
+	struct sde_cesta *cesta;
+	struct clk *core_clk;
+
+	if (!sde_cesta_is_enabled(cesta_index))
+		return;
+
+	cesta = cesta_list[cesta_index];
+
+	core_clk = _sde_cesta_get_core_clk(cesta);
+	if (!core_clk) {
+		SDE_ERROR_CESTA("core_clk not found\n");
+		return;
+	}
+
+	clk_set_rate(core_clk, 19200000);
+
+	SDE_EVT32(cesta_index);
+}
+
 void sde_cesta_ctrl_setup(struct sde_cesta_client *client, struct sde_cesta_ctrl_cfg *cfg)
 {
 	struct sde_cesta *cesta;
@@ -486,7 +527,7 @@ int sde_cesta_resource_disable(u32 cesta_index)
 	struct sde_power_handle *phandle;
 	struct dss_module_power *mp;
 	struct clk *core_clk = NULL;
-	int ret, i;
+	int ret;
 
 	if (!sde_cesta_is_enabled(cesta_index))
 		return 0;
@@ -504,11 +545,10 @@ int sde_cesta_resource_disable(u32 cesta_index)
 	phandle = &cesta->phandle;
 	mp = &phandle->mp;
 
-	for (i = 0; i < mp->num_clk; i++) {
-		if (!strcmp(mp->clk_config[i].clk_name, "core_clk")) {
-			core_clk = mp->clk_config[i].clk;
-			break;
-		}
+	core_clk = _sde_cesta_get_core_clk(cesta);
+	if (!core_clk) {
+		SDE_ERROR_CESTA("core_clk not found\n");
+		return -EINVAL;
 	}
 
 	ret = qcom_clk_crmb_set_rate(core_clk, CRM_SW_DRV, 0, 0, CRM_PWR_STATE0, 0, 0);

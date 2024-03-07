@@ -1419,6 +1419,7 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 				priv->phandle.ib_quota[i] ? priv->phandle.ib_quota[i] :
 				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
 
+		sde_cesta_splash_release(DPUID(sde_kms->dev));
 		pm_runtime_put_sync(sde_kms->dev->dev);
 	}
 }
@@ -2416,6 +2417,7 @@ static int sde_kms_postinit(struct msm_kms *kms)
 				SDE_POWER_HANDLE_ENABLE_BUS_AB_QUOTA,
 				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
 
+		sde_cesta_splash_release(DPUID(sde_kms->dev));
 		pm_runtime_put_sync(sde_kms->dev->dev);
 	}
 

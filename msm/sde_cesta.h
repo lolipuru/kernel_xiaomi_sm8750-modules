@@ -307,6 +307,12 @@ void sde_cesta_get_status(struct sde_cesta_client *client, struct sde_cesta_scc_
  */
 struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index);
 
+/**
+ * sde_cesta_splash_release - release the cesta related resources used for cont-splash
+ * @cesta_index: cesta instance used
+ */
+void sde_cesta_splash_release(u32 cesta_index);
+
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
 {
@@ -366,6 +372,10 @@ static inline void sde_cesta_get_status(struct sde_cesta_client *client,
 static inline struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index)
 {
 	return NULL;
+}
+
+static inline void sde_cesta_splash_release(u32 cesta_index)
+{
 }
 
 #endif /* CONFIG_DRM_SDE_CESTA */
