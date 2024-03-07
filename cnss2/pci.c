@@ -50,6 +50,7 @@
 #define DEFAULT_PHY_UCODE_FILE_NAME	"phy_ucode.elf"
 #define TME_PATCH_FILE_NAME_1_0		"tmel_peach_10.elf"
 #define TME_PATCH_FILE_NAME_2_0		"tmel_peach_20.elf"
+#define SOFT_SKU_LICENSE_FILENAME	"cnss_softsku_peach.pfm"
 #define PHY_UCODE_V2_FILE_NAME		"phy_ucode20.elf"
 #define DEFAULT_FW_FILE_NAME		"amss.bin"
 #define FW_V2_FILE_NAME			"amss20.bin"
@@ -4990,6 +4991,60 @@ void cnss_pci_free_qdss_mem(struct cnss_pci_data *pci_priv)
 	plat_priv->qdss_mem_seg_len = 0;
 }
 
+int cnss_pci_load_sku_license(struct cnss_pci_data *pci_priv)
+{
+	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
+	struct cnss_fw_mem *sku_license_mem = &plat_priv->sku_license_mem;
+	char filename[MAX_FIRMWARE_NAME_LEN];
+	char *soft_sku_filename = NULL;
+	const struct firmware *fw_entry;
+	int ret = 0;
+
+	switch (pci_priv->device_id) {
+	case PEACH_DEVICE_ID:
+		soft_sku_filename = SOFT_SKU_LICENSE_FILENAME;
+		break;
+	case QCA6174_DEVICE_ID:
+	case QCA6290_DEVICE_ID:
+	case QCA6390_DEVICE_ID:
+	case QCA6490_DEVICE_ID:
+	case KIWI_DEVICE_ID:
+	case MANGO_DEVICE_ID:
+	default:
+		cnss_pr_dbg("Soft SKU not supported for device ID: (0x%x)\n",
+			    pci_priv->device_id);
+		return 0;
+	}
+
+	if (!sku_license_mem->va && !sku_license_mem->size) {
+		scnprintf(filename, MAX_FIRMWARE_NAME_LEN, "%s", soft_sku_filename);
+
+		ret = firmware_request_nowarn(&fw_entry, filename,
+					      &pci_priv->pci_dev->dev);
+		if (ret) {
+			cnss_pr_err("Failed to load Soft SKU License: %s, ret: %d\n",
+				    filename, ret);
+			return ret;
+		}
+
+		sku_license_mem->va = dma_alloc_coherent(&pci_priv->pci_dev->dev,
+						fw_entry->size, &sku_license_mem->pa,
+						GFP_KERNEL);
+		if (!sku_license_mem->va) {
+			cnss_pr_err("Failed to allocate memory for SKU License, size: 0x%zx\n",
+				    fw_entry->size);
+			release_firmware(fw_entry);
+			return -ENOMEM;
+		}
+
+		memcpy(sku_license_mem->va, fw_entry->data, fw_entry->size);
+		sku_license_mem->size = fw_entry->size;
+		release_firmware(fw_entry);
+	}
+
+	return 0;
+}
+
 int cnss_pci_load_tme_patch(struct cnss_pci_data *pci_priv)
 {
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
@@ -5033,7 +5088,7 @@ int cnss_pci_load_tme_patch(struct cnss_pci_data *pci_priv)
 						fw_entry->size, &tme_lite_mem->pa,
 						GFP_KERNEL);
 		if (!tme_lite_mem->va) {
-			cnss_pr_err("Failed to allocate memory for M3, size: 0x%zx\n",
+			cnss_pr_err("Failed to allocate memory for TME Lite Patch, size: 0x%zx\n",
 				    fw_entry->size);
 			release_firmware(fw_entry);
 			return -ENOMEM;

@@ -905,6 +905,86 @@ err_req_fw:
 	return ret;
 }
 
+int cnss_wlfw_soft_sku_dnld_send_sync(struct cnss_plat_data *plat_priv)
+{
+	struct wlfw_soft_sku_info_req_msg_v01 *req;
+	struct wlfw_soft_sku_info_resp_msg_v01 *resp;
+	struct qmi_txn txn;
+	struct cnss_fw_mem *sku_license_mem = &plat_priv->sku_license_mem;
+	int ret = 0;
+
+	cnss_pr_dbg("Sending Soft SKU information message, state: 0x%lx\n",
+		    plat_priv->driver_state);
+
+	if (plat_priv->device_id != PEACH_DEVICE_ID)
+		return 0;
+
+	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	if (!req)
+		return -ENOMEM;
+
+	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
+	if (!resp) {
+		kfree(req);
+		return -ENOMEM;
+	}
+
+	if (!sku_license_mem->pa || !sku_license_mem->size) {
+		cnss_pr_err("Memory for Soft SKU is not available\n");
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	cnss_pr_dbg("Soft SKU memory, va: 0x%pK, pa: %pa, size: 0x%zx\n",
+		    sku_license_mem->va, &sku_license_mem->pa,
+		    sku_license_mem->size);
+
+	req->addr = sku_license_mem->pa;
+	req->size = sku_license_mem->size;
+
+	ret = qmi_txn_init(&plat_priv->qmi_wlfw, &txn,
+			   wlfw_soft_sku_info_resp_msg_v01_ei, resp);
+	if (ret < 0) {
+		cnss_pr_err("Failed to initialize txn for Soft SKU information request, err: %d\n",
+			    ret);
+		goto out;
+	}
+
+	ret = qmi_send_request(&plat_priv->qmi_wlfw, NULL, &txn,
+			       QMI_WLFW_SOFT_SKU_INFO_REQ_V01,
+			       WLFW_SOFT_SKU_INFO_REQ_MSG_V01_MAX_MSG_LEN,
+			       wlfw_soft_sku_info_req_msg_v01_ei, req);
+	if (ret < 0) {
+		qmi_txn_cancel(&txn);
+		cnss_pr_err("Failed to send Soft SKU information request, err: %d\n",
+			    ret);
+		goto out;
+	}
+
+	ret = qmi_txn_wait(&txn, QMI_WLFW_TIMEOUT_JF);
+	if (ret < 0) {
+		cnss_pr_err("Failed to wait for response of Soft SKU information request, err: %d\n",
+			    ret);
+		goto out;
+	}
+
+	if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
+		cnss_pr_err("Soft SKU information request failed, result: %d, err: %d\n",
+			    resp->resp.result, resp->resp.error);
+		ret = -resp->resp.result;
+		goto out;
+	}
+
+	kfree(req);
+	kfree(resp);
+	return 0;
+
+out:
+	kfree(req);
+	kfree(resp);
+	return ret;
+}
+
 int cnss_wlfw_tme_patch_dnld_send_sync(struct cnss_plat_data *plat_priv,
 				       enum wlfw_tme_lite_file_type_v01 file)
 {
