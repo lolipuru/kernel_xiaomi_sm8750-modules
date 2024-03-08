@@ -787,8 +787,13 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 
 	bg_alpha = max_alpha - fg_alpha;
 
-	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA))
+	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA)) {
 		bg_alpha = sde_plane_get_property(pstate, PLANE_PROP_BG_ALPHA);
+		/* scale down background alpha */
+		if (test_bit(SDE_MIXER_10_BITS_ALPHA, &lm->cap->features))
+			bg_alpha = bg_alpha >> 6;
+	}
+
 	blend_op = SDE_BLEND_FG_ALPHA_FG_CONST | SDE_BLEND_BG_ALPHA_BG_CONST;
 	blend_type = sde_plane_get_property(pstate, PLANE_PROP_BLEND_OP);
 
