@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -24,12 +24,6 @@ static struct cam_ofe_device_hw_info cam_ofe_hw_info = {
 	.hw_idx         = 0x0,
 	.pwr_ctrl       = 0x100,
 	.pwr_status     = 0xFC,
-	.top_rst_cmd    = 0x5B4,
-	.top_irq_status = 0x5C4,
-	.top_rst_val    = 0x3,
-	.cdm_rst_cmd    = 0x10,
-	.cdm_irq_status = 0x44,
-	.cdm_rst_val    = 0x7F,
 };
 
 static bool cam_ofe_cpas_cb(uint32_t client_handle, void *userdata,

@@ -299,8 +299,8 @@ int cam_icp_v2_hw_init(void *priv, void *args, uint32_t arg_size)
 	icp_v2->hw_state = CAM_HW_STATE_POWER_UP;
 	core_info->power_on_cnt++;
 	spin_unlock_irqrestore(&icp_v2->hw_lock, flags);
-
 	CAM_DBG(CAM_ICP, "ICP%u powered on", icp_v2->soc_info.index);
+
 	return 0;
 
 soc_fail:

@@ -306,87 +306,6 @@ static int cam_ofe_handle_resume(struct cam_hw_info *ofe_dev)
 	return rc;
 }
 
-static int cam_ofe_cmd_reset(struct cam_hw_soc_info *soc_info,
-	struct cam_ofe_device_core_info *core_info)
-{
-	uint32_t retry_cnt = 0, status = 0;
-	int pwr_ctrl, pwr_status, rc = 0;
-	bool reset_ofe_cdm_fail = false, reset_ofe_top_fail = false;
-	struct cam_ofe_device_hw_info *hw_info = NULL;
-
-	CAM_DBG(CAM_ICP, "CAM_ICP_OFE_CMD_RESET");
-
-	if (!core_info->clk_enable || !core_info->cpas_start) {
-		CAM_DBG(CAM_ICP, "OFE not powered on clk_en %d cpas_start %d",
-			core_info->clk_enable, core_info->cpas_start);
-		return 0;
-	}
-
-	hw_info = core_info->ofe_hw_info;
-
-	/* Reset OFE CDM core*/
-	cam_io_w_mb(hw_info->cdm_rst_val,
-		soc_info->reg_map[0].mem_base + hw_info->cdm_rst_cmd);
-	while (retry_cnt < HFI_MAX_POLL_TRY) {
-		cam_common_read_poll_timeout((soc_info->reg_map[0].mem_base +
-			hw_info->cdm_irq_status),
-			PC_POLL_DELAY_US, PC_POLL_TIMEOUT_US,
-			OFE_RST_DONE_IRQ_STATUS_BIT, OFE_RST_DONE_IRQ_STATUS_BIT,
-			&status);
-
-		CAM_DBG(CAM_ICP, "ofe_cdm_irq_status = %u", status);
-
-		if ((status & OFE_RST_DONE_IRQ_STATUS_BIT) == 0x1)
-			break;
-		retry_cnt++;
-	}
-
-	if (retry_cnt == HFI_MAX_POLL_TRY) {
-		CAM_ERR(CAM_ICP, "OFE CDM rst failed status 0x%x", status);
-		reset_ofe_cdm_fail = true;
-	}
-
-	/* Reset OFE core*/
-	status = 0;
-	retry_cnt = 0;
-	cam_io_w_mb(hw_info->top_rst_val,
-		soc_info->reg_map[0].mem_base + hw_info->top_rst_cmd);
-	while (retry_cnt < HFI_MAX_POLL_TRY) {
-		cam_common_read_poll_timeout((soc_info->reg_map[0].mem_base +
-			hw_info->top_irq_status),
-			PC_POLL_DELAY_US, PC_POLL_TIMEOUT_US,
-			OFE_RST_DONE_IRQ_STATUS_BIT, OFE_RST_DONE_IRQ_STATUS_BIT,
-			&status);
-
-		CAM_DBG(CAM_ICP, "ofe_top_irq_status = %u", status);
-
-		if ((status & OFE_RST_DONE_IRQ_STATUS_BIT) == 0x1)
-			break;
-		retry_cnt++;
-	}
-
-	if (retry_cnt == HFI_MAX_POLL_TRY) {
-		CAM_ERR(CAM_ICP, "OFE top rst failed status 0x%x", status);
-		reset_ofe_top_fail = true;
-	}
-
-	cam_cpas_reg_read(core_info->cpas_handle,
-		CAM_CPAS_REGBASE_CPASTOP, core_info->ofe_hw_info->pwr_ctrl,
-		true, &pwr_ctrl);
-	cam_cpas_reg_read(core_info->cpas_handle,
-		CAM_CPAS_REGBASE_CPASTOP, core_info->ofe_hw_info->pwr_status,
-		true, &pwr_status);
-	CAM_DBG(CAM_ICP, "(After) pwr_ctrl = %x pwr_status = %x",
-		pwr_ctrl, pwr_status);
-
-	if (reset_ofe_cdm_fail || reset_ofe_top_fail)
-		rc = -EAGAIN;
-	else
-		CAM_DBG(CAM_ICP, "OFE cdm and OFE top reset success");
-
-	return rc;
-}
-
 int cam_ofe_process_cmd(void *device_priv, uint32_t cmd_type,
 	void *cmd_args, uint32_t arg_size)
 {
@@ -514,9 +433,6 @@ int cam_ofe_process_cmd(void *device_priv, uint32_t cmd_type,
 		if (core_info->clk_enable)
 			cam_ofe_toggle_clk(soc_info, false);
 		core_info->clk_enable = false;
-		break;
-	case CAM_ICP_DEV_CMD_RESET:
-		rc = cam_ofe_cmd_reset(soc_info, core_info);
 		break;
 	default:
 		CAM_ERR(CAM_ICP, "Invalid Cmd Type:%u", cmd_type);

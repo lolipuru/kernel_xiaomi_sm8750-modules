@@ -69,6 +69,7 @@ static struct cam_icp_hw_mgr *g_icp_hw_mgr[CAM_ICP_SUBDEV_MAX];
 uint32_t icp_cpas_mask[CAM_ICP_SUBDEV_MAX] = {CPAS_ICP_BIT, CPAS_ICP1_BIT};
 
 static void cam_icp_mgr_process_dbg_buf(struct cam_icp_hw_mgr *hw_mgr);
+static int cam_icp_mgr_restart_icp(struct cam_icp_hw_mgr *hw_mgr);
 
 static int cam_icp_dump_io_cfg(struct cam_icp_hw_ctx_data *ctx_data,
 	int32_t buf_handle, uint32_t size)
@@ -1772,13 +1773,10 @@ static int cam_icp_mgr_device_resume(struct cam_icp_hw_mgr *hw_mgr,
 			rc = -EINVAL;
 			goto end;
 		}
-		if (!dev_info->dev_ctx_info.dev_clk_state) {
-			rc = dev_intf->hw_ops.init(dev_intf->hw_priv, NULL, 0);
-			if (rc) {
-				CAM_ERR(CAM_ICP, "Fail to resume device %s[%u]",
-					dev_info->dev_name, i);
-			}
-			dev_info->dev_ctx_info.dev_clk_state = true;
+		rc = dev_intf->hw_ops.init(dev_intf->hw_priv, NULL, 0);
+		if (rc) {
+			CAM_ERR(CAM_ICP, "Fail to resume device %s[%u]",
+				dev_info->dev_name, i);
 		}
 		if (hw_mgr->dev_pc_flag) {
 			dev_intf->hw_ops.process_cmd(dev_intf->hw_priv,
@@ -1872,11 +1870,8 @@ static int cam_icp_mgr_dev_power_collapse(struct cam_icp_hw_mgr *hw_mgr,
 			dev_intf->hw_ops.process_cmd(dev_intf->hw_priv,
 				CAM_ICP_DEV_CMD_POWER_COLLAPSE, NULL, 0);
 		}
-		if (dev_info->dev_ctx_info.dev_clk_state)
-			dev_intf->hw_ops.deinit(dev_intf->hw_priv, NULL, 0);
+		dev_intf->hw_ops.deinit(dev_intf->hw_priv, NULL, 0);
 	}
-
-	dev_info->dev_ctx_info.dev_clk_state = false;
 
 	hw_dev_type = dev_info->hw_dev_type;
 	switch (hw_dev_type) {
@@ -1915,9 +1910,6 @@ static int cam_icp_mgr_dev_get_gdsc_control(
 
 	for (i = 0; i < hw_mgr->num_dev_info; i++) {
 		for (j = 0; j < hw_mgr->dev_info[i].hw_dev_cnt; j++) {
-			if (!hw_mgr->dev_info[i].dev_ctx_info.dev_clk_state)
-				continue;
-
 			dev_intf = hw_mgr->dev_info[i].dev_intf[j];
 			if (!dev_intf) {
 				CAM_ERR(CAM_ICP, "Device intf for %s[%u] is NULL",
@@ -2272,6 +2264,11 @@ static int cam_icp_mgr_process_cmd(void *priv, void *data)
 	}
 
 	hw_mgr = priv;
+
+	/* Block any HFI writes if SSR is in progress */
+	if (atomic_read(&hw_mgr->ssr_triggered))
+		return -EAGAIN;
+
 	task_data = (struct hfi_cmd_work_data *)data;
 
 	rc = hfi_write_cmd(hw_mgr->hfi_handle, task_data->data);
@@ -3027,35 +3024,6 @@ static int cam_icp_mgr_process_direct_ack_msg(uint32_t *msg_ptr)
 	return rc;
 }
 
-static int cam_icp_dev_reset(struct cam_icp_hw_mgr *hw_mgr)
-{
-	int rc = 0, i, j;
-	struct cam_icp_hw_device_info *dev_info = NULL;
-	struct cam_hw_intf *dev_intf = NULL;
-
-	for (i = 0; i < hw_mgr->num_dev_info; i++) {
-		dev_info = &hw_mgr->dev_info[i];
-		if (!dev_info->dev_ctx_info.dev_ctxt_cnt)
-			continue;
-
-		for (j = 0; j < dev_info->hw_dev_cnt; j++) {
-			dev_intf = dev_info->dev_intf[j];
-			if (!dev_intf) {
-				CAM_ERR(CAM_ICP, "Device intf for %s[%u] is NULL",
-					dev_info->dev_name, j);
-				return -EINVAL;
-			}
-			rc = dev_intf->hw_ops.process_cmd(dev_intf->hw_priv,
-				CAM_ICP_DEV_CMD_RESET, NULL, 0);
-			if (rc)
-				CAM_ERR(CAM_ICP, "[%s] %s[%u] reset failed rc: %d",
-					hw_mgr->hw_mgr_name, dev_info->dev_name, j, rc);
-		}
-	}
-
-	return rc;
-}
-
 static int cam_icp_mgr_trigger_recovery(struct cam_icp_hw_mgr *hw_mgr)
 {
 	int rc = 0, i;
@@ -3065,24 +3033,22 @@ static int cam_icp_mgr_trigger_recovery(struct cam_icp_hw_mgr *hw_mgr)
 
 	CAM_DBG(CAM_ICP, "[%s] Enter", hw_mgr->hw_mgr_name);
 
-	if (atomic_read(&hw_mgr->recovery)) {
-		CAM_ERR(CAM_ICP, "%s Recovery is set", hw_mgr->hw_mgr_name);
+	if (atomic_read(&hw_mgr->ssr_triggered)) {
+		CAM_ERR(CAM_ICP, "%s SSR is set", hw_mgr->hw_mgr_name);
 		return rc;
 	}
+
+	atomic_set(&hw_mgr->recovery, 1);
+	cam_icp_mgr_dev_get_gdsc_control(hw_mgr);
 
 	sfr_buffer = (struct sfr_buf *)hw_mgr->hfi_mem.sfr_buf.kva;
 	CAM_WARN(CAM_ICP, "[%s] hw_mgr[%u] SFR:%s", hw_mgr->hw_mgr_name,
 		hw_mgr->hw_mgr_id, sfr_buffer->msg);
+
 	cam_icp_dump_debug_info(hw_mgr, false);
 	cam_icp_mgr_dump_active_req_info(hw_mgr);
 
-	cam_icp_mgr_dev_get_gdsc_control(hw_mgr);
-	cam_icp_dev_reset(hw_mgr);
-
-	atomic_set(&hw_mgr->recovery, 1);
-
 	/* Find any active context and notify userspace of system failure */
-	icp_err_evt.err_type = CAM_ICP_HW_ERROR_SYSTEM_FAILURE;
 	mutex_lock(&hw_mgr->hw_mgr_mutex);
 	for (i = 0; i < CAM_ICP_CTX_MAX; i++) {
 		ctx_data = &hw_mgr->ctx_data[i];
@@ -3091,6 +3057,8 @@ static int cam_icp_mgr_trigger_recovery(struct cam_icp_hw_mgr *hw_mgr)
 			mutex_unlock(&ctx_data->ctx_mutex);
 			continue;
 		}
+
+		icp_err_evt.err_type = CAM_ICP_HW_ERROR_SYSTEM_FAILURE;
 		ctx_data->ctxt_event_cb(ctx_data->context_priv, CAM_ICP_EVT_ID_ERROR,
 			&icp_err_evt);
 		mutex_unlock(&ctx_data->ctx_mutex);
@@ -3102,7 +3070,15 @@ static int cam_icp_mgr_trigger_recovery(struct cam_icp_hw_mgr *hw_mgr)
 			"[%s] Fail to report system failure to userspace due to no active ctx",
 			hw_mgr->hw_mgr_name);
 
-	CAM_DBG(CAM_ICP, "[%s] Done", hw_mgr->hw_mgr_name);
+
+	rc = cam_icp_mgr_restart_icp(hw_mgr);
+	if (!rc)
+		atomic_set(&hw_mgr->recovery, 0);
+
+	CAM_DBG(CAM_ICP, "[%s] recovery success: %s",
+		hw_mgr->hw_mgr_name,
+		CAM_BOOL_TO_YESNO(!atomic_read(&hw_mgr->recovery)));
+
 	return rc;
 }
 
@@ -4082,19 +4058,16 @@ static int cam_icp_device_deint(struct cam_icp_hw_mgr *hw_mgr)
 	for (i = 0; i < hw_mgr->num_dev_info; i++) {
 		dev_info = &hw_mgr->dev_info[i];
 		for (j = 0; j < dev_info->hw_dev_cnt; j++) {
-			if (dev_info->dev_ctx_info.dev_clk_state) {
-				dev_intf = dev_info->dev_intf[j];
-				if (!dev_intf) {
-					CAM_ERR(CAM_ICP, "[%s] Device intf for %s[%u] is NULL",
-						hw_mgr->hw_mgr_name, dev_info->dev_name, j);
-					return -EINVAL;
-				}
-				rc = dev_intf->hw_ops.deinit(dev_intf->hw_priv, NULL, 0);
-				if (rc) {
-					CAM_ERR(CAM_ICP, "[%s] %s[%u] failed to deinit rc: %d",
-						hw_mgr->hw_mgr_name, dev_info->dev_name, j, rc);
-				}
-				dev_info->dev_ctx_info.dev_clk_state = false;
+			dev_intf = dev_info->dev_intf[j];
+			if (!dev_intf) {
+				CAM_ERR(CAM_ICP, "[%s] Device intf for %s[%u] is NULL",
+					hw_mgr->hw_mgr_name, dev_info->dev_name, j);
+				return -EINVAL;
+			}
+			rc = dev_intf->hw_ops.deinit(dev_intf->hw_priv, NULL, 0);
+			if (rc) {
+				CAM_ERR(CAM_ICP, "[%s] %s[%u] failed to deinit rc: %d",
+					hw_mgr->hw_mgr_name, dev_info->dev_name, j, rc);
 			}
 		}
 	}
@@ -4657,11 +4630,11 @@ static int cam_icp_mgr_release_ctx(struct cam_icp_hw_mgr *hw_mgr, int ctx_id)
 	cam_icp_mgr_dev_power_collapse(hw_mgr,
 		&hw_mgr->ctx_data[ctx_id], 0);
 	hw_mgr->ctx_data[ctx_id].state = CAM_ICP_CTX_STATE_RELEASE;
-	CAM_DBG(CAM_ICP, "%s: E: recovery = %d",
+	CAM_DBG(CAM_ICP, "%s: E: SSR: %s",
 		hw_mgr->ctx_data[ctx_id].ctx_id_string,
-		atomic_read(&hw_mgr->recovery));
+		CAM_BOOL_TO_YESNO(atomic_read(&hw_mgr->ssr_triggered)));
 
-	if (!atomic_read(&hw_mgr->recovery)) {
+	if (!atomic_read(&hw_mgr->ssr_triggered)) {
 		cam_icp_mgr_abort_handle(&hw_mgr->ctx_data[ctx_id]);
 		cam_icp_mgr_destroy_handle(&hw_mgr->ctx_data[ctx_id]);
 	}
@@ -4733,7 +4706,7 @@ static unsigned long cam_icp_hw_mgr_mini_dump_cb(void *dst, unsigned long len,
 	memcpy(&md->dev_info, hw_mgr->dev_info,
 		hw_mgr->num_dev_info * sizeof(struct cam_icp_hw_device_info));
 	md->num_device_info = hw_mgr->num_dev_info;
-	md->recovery = atomic_read(&hw_mgr->recovery);
+	md->recovery = atomic_read(&hw_mgr->ssr_triggered);
 	md->icp_booted = hw_mgr->icp_booted;
 	md->icp_resumed = hw_mgr->icp_resumed;
 	md->disable_ubwc_comp = hw_mgr->disable_ubwc_comp;
@@ -4844,7 +4817,6 @@ static void cam_icp_mgr_device_deinit(struct cam_icp_hw_mgr *hw_mgr)
 				return;
 			}
 			dev_intf->hw_ops.deinit(dev_intf->hw_priv, NULL, 0);
-			dev_info->dev_ctx_info.dev_clk_state = false;
 		}
 	}
 
@@ -4898,18 +4870,6 @@ static int cam_icp_mgr_device_init(struct cam_icp_hw_mgr *hw_mgr)
 	int rc = 0, i, j;
 	struct cam_icp_hw_device_info *dev_info;
 	struct cam_hw_intf *dev_intf = NULL;
-	bool send_freq_info = false;
-
-	dev_intf = hw_mgr->icp_dev_intf;
-	if (!dev_intf) {
-		CAM_ERR(CAM_ICP, "Invalid ICP device interface");
-		return -EINVAL;
-	}
-	rc = dev_intf->hw_ops.init(dev_intf->hw_priv, &send_freq_info, sizeof(send_freq_info));
-	if (rc) {
-		CAM_ERR(CAM_ICP, "Failed in ICP init rc=%d", rc);
-		return rc;
-	}
 
 	for (i = 0; i < hw_mgr->num_dev_info; i++) {
 		dev_info = &hw_mgr->dev_info[i];
@@ -4928,7 +4888,6 @@ static int cam_icp_mgr_device_init(struct cam_icp_hw_mgr *hw_mgr)
 					hw_mgr->hw_mgr_name, dev_info->dev_name, j);
 				goto hw_dev_deinit;
 			}
-			dev_info->dev_ctx_info.dev_clk_state = true;
 		}
 	}
 
@@ -4942,10 +4901,35 @@ hw_dev_deinit:
 			dev_intf = dev_info->dev_intf[j];
 			dev_intf->hw_ops.deinit(dev_intf->hw_priv, NULL, 0);
 		}
-		dev_info->dev_ctx_info.dev_clk_state = false;
 	}
 
+	return rc;
+}
+
+static int cam_icp_mgr_init_all_cores(struct cam_icp_hw_mgr *hw_mgr)
+{
+	int rc;
+	struct cam_hw_intf *dev_intf = NULL;
+	bool send_freq_info = false;
+
 	dev_intf = hw_mgr->icp_dev_intf;
+	if (!dev_intf) {
+		CAM_ERR(CAM_ICP, "Invalid ICP device interface");
+		return -EINVAL;
+	}
+	rc = dev_intf->hw_ops.init(dev_intf->hw_priv, &send_freq_info, sizeof(send_freq_info));
+	if (rc) {
+		CAM_ERR(CAM_ICP, "Failed in ICP init rc=%d", rc);
+		return rc;
+	}
+
+	rc = cam_icp_mgr_device_init(hw_mgr);
+	if (rc)
+		goto deinit_icp;
+
+	return rc;
+
+deinit_icp:
 	dev_intf->hw_ops.deinit(dev_intf->hw_priv, &send_freq_info, sizeof(send_freq_info));
 
 	return rc;
@@ -5319,7 +5303,7 @@ static int cam_icp_mgr_hw_open(
 		}
 	}
 
-	rc = cam_icp_mgr_device_init(hw_mgr);
+	rc = cam_icp_mgr_init_all_cores(hw_mgr);
 	if (rc) {
 		CAM_ERR(CAM_ICP, "[%s] Failed in device init, rc %d",
 			hw_mgr->hw_mgr_name, rc);
@@ -5364,12 +5348,13 @@ static int cam_icp_mgr_hw_open(
 	hw_mgr->ctxt_cnt = 0;
 	hw_mgr->icp_booted = true;
 	atomic_set(&hw_mgr->recovery, 0);
+	atomic_set(&hw_mgr->ssr_triggered, 0);
 
 	CAM_INFO(CAM_ICP, "[%s] FW download done successfully", hw_mgr->hw_mgr_name);
 
 	rc = cam_icp_device_deint(hw_mgr);
 	if (rc)
-		CAM_ERR(CAM_ICP, "[%s] Failed in ipe bps deinit rc %d",
+		CAM_ERR(CAM_ICP, "[%s] Failed in device deinit rc %d",
 				hw_mgr->hw_mgr_name, rc);
 
 	if (!(open_args->icp_pc))
@@ -5393,6 +5378,60 @@ boot_failed:
 dev_init_fail:
 	cam_icp_free_hfi_mem(hw_mgr);
 alloc_hfi_mem_failed:
+	return rc;
+}
+
+static int cam_icp_mgr_restart_icp(struct cam_icp_hw_mgr *hw_mgr)
+{
+	int rc;
+	uint32_t dump_type;
+	bool use_proxy_boot_up = CAM_IS_SECONDARY_VM();
+
+	atomic_set(&hw_mgr->ssr_triggered, 1);
+
+	/* Shutdown processor */
+	cam_icp_mgr_proc_shutdown(hw_mgr, use_proxy_boot_up);
+
+	/* power on all cores */
+	rc = cam_icp_mgr_device_init(hw_mgr);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "[%s] Failed in device init, rc %d",
+			hw_mgr->hw_mgr_name, rc);
+		return rc;
+	}
+
+	/* reload and reset ICP */
+	rc = cam_icp_mgr_proc_boot(hw_mgr, use_proxy_boot_up);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "[%s] Failed in proc boot, rc %d",
+			hw_mgr->hw_mgr_name, rc);
+		goto end;
+	}
+
+	/* initialize HFI */
+	if (hw_mgr->hfi_init_done) {
+		rc = cam_icp_mgr_hfi_init(hw_mgr);
+		if (rc) {
+			CAM_ERR(CAM_ICP, "[%s] Failed in hfi init, rc %d",
+				hw_mgr->hw_mgr_name, rc);
+			dump_type = (CAM_ICP_DUMP_STATUS_REGISTERS | CAM_ICP_DUMP_CSR_REGISTERS);
+			hw_mgr->icp_dev_intf->hw_ops.process_cmd(hw_mgr->icp_dev_intf->hw_priv,
+				CAM_ICP_CMD_HW_REG_DUMP, &dump_type, sizeof(dump_type));
+			goto end;
+		}
+	}
+
+	hw_mgr->icp_booted = true;
+	CAM_INFO(CAM_ICP, "[%s] FW download done successfully",
+		hw_mgr->hw_mgr_name);
+
+end:
+	/* power down cores */
+	rc = cam_icp_device_deint(hw_mgr);
+	if (rc)
+		CAM_ERR(CAM_ICP, "[%s] Failed in core deinit rc %d",
+			hw_mgr->hw_mgr_name, rc);
+
 	return rc;
 }
 
@@ -5427,6 +5466,10 @@ static int cam_icp_mgr_enqueue_config(struct cam_icp_hw_mgr *hw_mgr,
 	struct hfi_cmd_work_data *task_data;
 	struct cam_hw_update_entry *hw_update_entries;
 	struct icp_frame_info *frame_info = NULL;
+
+	/* Block any frame process cmds if SSR has been triggered */
+	if (atomic_read(&hw_mgr->ssr_triggered))
+		return -EAGAIN;
 
 	frame_info = (struct icp_frame_info *)config_args->priv;
 	request_id = frame_info->request_id;
@@ -7303,7 +7346,7 @@ static int cam_icp_mgr_hw_flush(void *hw_priv, void *hw_flush_args)
 	switch (flush_args->flush_type) {
 	case CAM_FLUSH_TYPE_ALL:
 		mutex_lock(&hw_mgr->hw_mgr_mutex);
-		if (!atomic_read(&hw_mgr->recovery)
+		if (!atomic_read(&hw_mgr->ssr_triggered)
 			&& flush_args->num_req_active) {
 			mutex_unlock(&hw_mgr->hw_mgr_mutex);
 			cam_icp_mgr_flush_info_dump(flush_args,
@@ -7383,7 +7426,7 @@ static int cam_icp_mgr_release_hw(void *hw_mgr_priv, void *release_hw_args)
 	mutex_unlock(&hw_mgr->ctx_data[ctx_id].ctx_mutex);
 
 	mutex_lock(&hw_mgr->hw_mgr_mutex);
-	if (!atomic_read(&hw_mgr->recovery) && release_hw->active_req) {
+	if (!atomic_read(&hw_mgr->ssr_triggered) && release_hw->active_req) {
 		mutex_unlock(&hw_mgr->hw_mgr_mutex);
 		cam_icp_mgr_abort_handle(ctx_data);
 		cam_icp_mgr_send_abort_status(ctx_data);
@@ -7394,6 +7437,8 @@ static int cam_icp_mgr_release_hw(void *hw_mgr_priv, void *release_hw_args)
 	mutex_lock(&hw_mgr->hw_mgr_mutex);
 	rc = cam_icp_mgr_release_ctx(hw_mgr, ctx_id);
 	if (!hw_mgr->ctxt_cnt) {
+		/* Clear SSR flag on last release */
+		atomic_set(&hw_mgr->ssr_triggered, 0);
 		CAM_DBG(CAM_ICP, "[%s] Last Release", hw_mgr->hw_mgr_name);
 		cam_icp_mgr_icp_power_collapse(hw_mgr, &hw_args);
 		cam_icp_hw_mgr_reset_clk_info(hw_mgr);

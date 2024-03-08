@@ -25,33 +25,18 @@ static struct cam_bps_device_hw_info cam_bps_hw_info = {
 	.hw_idx = 0,
 	.pwr_ctrl = 0x48,
 	.pwr_status = 0x44,
-	.top_rst_cmd = 0x1008,
-	.top_irq_status = 0x100C,
-	.cdm_rst_cmd = 0x10,
-	.cdm_irq_status = 0x44,
-	.cdm_rst_val = 0xF,
 };
 
 static struct cam_bps_device_hw_info cam_bps680_hw_info = {
 	.hw_idx = 0,
 	.pwr_ctrl = 0x48,
 	.pwr_status = 0x44,
-	.top_rst_cmd = 0x508,
-	.top_irq_status = 0x50C,
-	.cdm_rst_cmd = 0x10,
-	.cdm_irq_status = 0x44,
-	.cdm_rst_val = 0x7F,
 };
 
 static struct cam_bps_device_hw_info cam_bps880_hw_info = {
 	.hw_idx = 0,
 	.pwr_ctrl = 0x48,
 	.pwr_status = 0x44,
-	.top_rst_cmd = 0x1008,
-	.top_irq_status = 0x100C,
-	.cdm_rst_cmd = 0x10,
-	.cdm_irq_status = 0x44,
-	.cdm_rst_val = 0x7F,
 };
 
 static bool cam_bps_cpas_cb(uint32_t client_handle, void *userdata,
