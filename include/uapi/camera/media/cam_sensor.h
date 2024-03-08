@@ -40,6 +40,7 @@
 
 /* SENSOR blob types */
 #define CAM_SENSOR_GENERIC_BLOB_RES_INFO           0
+#define CAM_SENSOR_GENERIC_BLOB_FRAME_INFO         1
 
 enum camera_sensor_cmd_type {
 	CAMERA_SENSOR_CMD_TYPE_INVALID,
@@ -386,6 +387,29 @@ struct cam_sensor_res_info {
 	__u32 num_valid_params;
 	__u32 valid_param_mask;
 	__u16 params[3];
+} __attribute__((packed));
+
+/**
+ * struct cam_sensor_frame_info - Contains sensor frame related info
+ *
+ * @frame_sync_shift  : Indicates how far the frame synchronization
+ *                      reference point from SOF, this is used to
+ *                      align with userland and kernel frame sync offset.
+ * @frame_duration    : Frame duration
+ * @blanking_duration : Vertical blanking duration for a request, and it
+ *                      is representing the blanking durations before the
+ *                      frame for this request.
+ * @num_valid_params  : Number of valid params
+ * @valid_param_mask  : Valid param mask
+ * @params            : params
+ */
+struct cam_sensor_frame_info {
+	__u64 frame_sync_shift;
+	__u64 frame_duration;
+	__u64 blanking_duration;
+	__u32 num_valid_params;
+	__u32 valid_param_mask;
+	__u64 params[4];
 } __attribute__((packed));
 
 /**
