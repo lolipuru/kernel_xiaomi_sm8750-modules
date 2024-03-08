@@ -6120,6 +6120,12 @@ static int cam_icp_llcc_sys_cache_config_util(
 		ctx_data->sys_cache_cfg.num++;
 	}
 
+	CAM_DBG(CAM_ICP,
+		"scid_match = %d, current_info details scid_id = %d staling_distance = %d  staling_mode = %d op_type = %d activated = %d",
+		scid_match, current_info->scid_id, current_info->staling_distance,
+		current_info->llcc_staling_mode, current_info->llcc_staling_op_type,
+		current_info->activated);
+
 	if (blob_info->deactivate) {
 		if (current_info->activated) {
 			rc = cam_cpas_deactivate_llcc(current_info->scid_id);
@@ -6130,6 +6136,8 @@ static int cam_icp_llcc_sys_cache_config_util(
 				goto end;
 			}
 			current_info->activated = false;
+			CAM_DBG(CAM_ICP, "llcc deactivate is success activated = %d",
+				current_info->activated);
 		} else {
 			CAM_ERR(CAM_ICP, "scid = %d already in deactivated state",
 				current_info->scid_id);
@@ -6155,6 +6163,8 @@ static int cam_icp_llcc_sys_cache_config_util(
 					current_info->staling_distance);
 				goto end;
 			}
+			CAM_DBG(CAM_ICP, "llcc configuration is success rc = %d change_params = %d",
+				rc, blob_info->change_params);
 		} else if (cam_icp_sys_cache_scid_params_changed(current_info, blob_info)) {
 			CAM_ERR(CAM_ICP, "configuration of llcc cache is failed scid = %d",
 				current_info->scid_id);
@@ -6170,6 +6180,8 @@ static int cam_icp_llcc_sys_cache_config_util(
 			goto end;
 		}
 		current_info->activated = true;
+		CAM_DBG(CAM_ICP, "llcc activation is success rc = %d activated = %d",
+				rc, current_info->activated);
 	}
 
 end:
@@ -6429,6 +6441,10 @@ static int cam_icp_packet_generic_blob_handler(void *user_data,
 		}
 
 		sys_cache_cfg = &ctx_data->sys_cache_cfg;
+
+		CAM_DBG(CAM_ICP, "num of blob cache config = %d sys cache config = %d",
+			sys_cache_blob_info->num, sys_cache_cfg->num);
+
 		for (j = 0; j < sys_cache_blob_info->num; j++) {
 			scid_match = false;
 			for (i = 0; i < sys_cache_cfg->num; i++) {
