@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <asm/memory.h>
@@ -4345,7 +4345,8 @@ static int __iris_power_on(struct iris_hfi_device *device)
 	enable_irq(device->cvp_hal_data->irq);
 	__write_register(device,
 		CVP_WRAPPER_DEBUG_BRIDGE_LPI_CONTROL, 0x7);
-	pr_info_ratelimited(CVP_DBG_TAG "cvp (eva) powered on\n", "pwr");
+	pr_info_ratelimited(CVP_PID_TAG "cvp (eva) powered on\n",
+		current->pid, current->tgid, "pwr");
 	return 0;
 
 fail_enable_core:
@@ -4408,7 +4409,8 @@ static void power_off_iris2(struct iris_hfi_device *device)
 
 	/*Do not access registers after this point!*/
 	device->power_enabled = false;
-	pr_info(CVP_DBG_TAG "cvp (eva) power collapsed\n", "pwr");
+	pr_info(CVP_PID_TAG "cvp (eva) power collapsed\n",
+		current->pid, current->tgid, "pwr");
 }
 
 static inline int __resume(struct iris_hfi_device *device)
