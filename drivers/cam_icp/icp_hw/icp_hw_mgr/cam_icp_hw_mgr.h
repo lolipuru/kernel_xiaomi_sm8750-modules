@@ -59,7 +59,6 @@
 /* Used for targets >= 480 and its variants */
 #define CPAS_TITAN_IPE0_CAP_BIT 0x800
 
-#define CAM_ICP_CTX_STATE_FREE      0x0
 #define CAM_ICP_CTX_STATE_IN_USE    0x1
 #define CAM_ICP_CTX_STATE_ACQUIRED  0x2
 #define CAM_ICP_CTX_STATE_RELEASE   0x3
@@ -388,11 +387,23 @@ struct cam_icp_hw_device_info {
 };
 
 /**
+ * struct cam_icp_hw_ctx_info
+ * @need_lock: Indicate whether it's needed to acquire ctx mutex
+ * @ctx_id: Index of ctx data in active ctx list
+ * @ctx_data: Point to the exact ctx data
+ */
+struct cam_icp_hw_ctx_info {
+	bool need_lock;
+	uint32_t ctx_id;
+	struct cam_icp_hw_ctx_data *ctx_data;
+};
+
+/**
  * struct cam_icp_hw_ctx_data
+ * @list: List member used to append this node to a linked list
  * @context_priv: Context private data
  * @hw_mgr_priv: HW MGR of the context
  * @device_info: device info associated with this ctx
- * @ctx_mutex: Mutex for context
  * @fw_handle: Firmware handle
  * @scratch_mem_size: Scratch memory size
  * @icp_dev_acquire_info: Acquire device info
@@ -415,10 +426,10 @@ struct cam_icp_hw_device_info {
  * @sys_cache_cfg: sys cache config information
  */
 struct cam_icp_hw_ctx_data {
+	struct list_head list;
 	void *context_priv;
 	void *hw_mgr_priv;
 	struct cam_icp_hw_device_info *device_info;
-	struct mutex ctx_mutex;
 	uint32_t fw_handle;
 	uint32_t scratch_mem_size;
 	struct cam_icp_acquire_dev_info *icp_dev_acquire_info;
@@ -442,6 +453,16 @@ struct cam_icp_hw_ctx_data {
 };
 
 /**
+ * struct cam_icp_hw_active_ctx_info
+ * @active_ctx_list: Linked list for allocated active ctx
+ * @active_ctx_bitmap: Indicate which ctx data is available
+ */
+struct cam_icp_hw_active_ctx_info {
+	struct list_head active_ctx_list;
+	DECLARE_BITMAP(active_ctx_bitmap, CAM_ICP_CTX_MAX);
+};
+
+/**
  * struct cam_icp_hw_mgr
  * @hw_mgr_mutex: Mutex for ICP hardware manager
  * @hw_mgr_lock: Spinlock for ICP hardware manager
@@ -450,7 +471,8 @@ struct cam_icp_hw_ctx_data {
  * @num_dev_info: number of device info for available device for the hw mgr
  * @dev_info_idx: map hw dev type to index for device info array indexing
  * @icp_dev_intf: ICP device interface
- * @ctx_data: Context data
+ * @ctx_mutex: Mutex for all possbile ctx data
+ * @active_ctx_info: Active context info
  * @mini_dump_cb: Mini dump cb
  * @hw_mgr_name: name of the hw mgr
  * @hw_mgr_id: ID of the hw mgr, equivalent to hw mgr index
@@ -505,12 +527,12 @@ struct cam_icp_hw_ctx_data {
 struct cam_icp_hw_mgr {
 	struct mutex hw_mgr_mutex;
 	spinlock_t hw_mgr_lock;
-
 	struct cam_icp_hw_device_info *dev_info;
 	uint32_t num_dev_info;
 	int8_t dev_info_idx[CAM_ICP_HW_MAX];
 	struct cam_hw_intf *icp_dev_intf;
-	struct cam_icp_hw_ctx_data ctx_data[CAM_ICP_CTX_MAX];
+	struct mutex *ctx_mutex;
+	struct cam_icp_hw_active_ctx_info active_ctx_info;
 	cam_icp_mini_dump_cb mini_dump_cb;
 	char hw_mgr_name[CAM_ICP_HW_MGR_NAME_SIZE];
 	uint32_t hw_mgr_id;
