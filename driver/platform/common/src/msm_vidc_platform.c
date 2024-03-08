@@ -2917,13 +2917,21 @@ int msm_vidc_set_chroma_qp_index_offset(void *instance,
 	enum msm_vidc_inst_capability_type cap_id)
 {
 	int rc = 0;
+	u32 width, height;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+	struct v4l2_format *f;
+
+	f = &inst->fmts[OUTPUT_PORT];
+	width = f->fmt.pix_mp.width;
+	height = f->fmt.pix_mp.height;
 	u32 hfi_value = 0, chroma_qp_offset_mode = 0, chroma_qp = 0;
 
 	if (inst->capabilities[cap_id].flags & CAP_FLAG_CLIENT_SET)
 		chroma_qp_offset_mode = HFI_FIXED_CHROMAQP_OFFSET;
-	else
+	else if (inst->codec == MSM_VIDC_HEVC && (width * height >= (7680 * 4320)))
 		chroma_qp_offset_mode = HFI_ADAPTIVE_CHROMAQP_OFFSET;
+	else
+		chroma_qp_offset_mode = HFI_FIXED_CHROMAQP_OFFSET;
 
 	chroma_qp = inst->capabilities[cap_id].value;
 	hfi_value = chroma_qp_offset_mode | chroma_qp << 8;
