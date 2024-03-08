@@ -2178,31 +2178,6 @@ int msm_vidc_adjust_enc_lowlatency_mode(void *instance, struct v4l2_ctrl *ctrl)
 	return 0;
 }
 
-int msm_vidc_adjust_dec_lowlatency_mode(void *instance, struct v4l2_ctrl *ctrl)
-{
-	s32 adjusted_value;
-	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 outbuf_fence = MSM_VIDC_META_DISABLE;
-
-	adjusted_value = ctrl ? ctrl->val :
-		inst->capabilities[LOWLATENCY_MODE].value;
-
-	if (is_valid_cap(inst, META_OUTBUF_FENCE)) {
-		if (msm_vidc_get_parent_value(inst, LOWLATENCY_MODE, META_OUTBUF_FENCE,
-			&outbuf_fence, __func__))
-			return -EINVAL;
-		/* enable lowlatency if outbuf fence is enabled */
-		if (outbuf_fence & MSM_VIDC_META_ENABLE &&
-			outbuf_fence & MSM_VIDC_META_RX_INPUT)
-			adjusted_value = 1;
-	}
-
-	msm_vidc_update_cap_value(inst, LOWLATENCY_MODE,
-		adjusted_value, __func__);
-
-	return 0;
-}
-
 int msm_vidc_adjust_session_priority(void *instance, struct v4l2_ctrl *ctrl)
 {
 	int adjusted_value;

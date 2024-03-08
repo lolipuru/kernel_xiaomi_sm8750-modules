@@ -2557,8 +2557,10 @@ int msm_vidc_alloc_and_queue_input_internal_buffers(struct msm_vidc_inst *inst)
 
 int msm_vidc_queue_deferred_buffers(struct msm_vidc_inst *inst, enum msm_vidc_buffer_type buf_type)
 {
+	struct msm_vidc_fence *fence = NULL;
 	struct msm_vidc_buffers *buffers;
 	struct msm_vidc_buffer *buf;
+	bool create_fence = false;
 	int rc = 0;
 
 	buffers = msm_vidc_get_buffers(inst, buf_type, __func__);
@@ -2567,9 +2569,20 @@ int msm_vidc_queue_deferred_buffers(struct msm_vidc_inst *inst, enum msm_vidc_bu
 
 	msm_vidc_scale_power(inst, true);
 
+	create_fence = is_meta_rx_inp_enabled(inst, META_OUTBUF_FENCE) &&
+			is_output_buffer(buf_type);
+
 	list_for_each_entry(buf, &buffers->list, list) {
 		if (!(buf->attr & MSM_VIDC_ATTR_DEFERRED))
 			continue;
+
+		if (create_fence) {
+			fence = msm_vidc_fence_create(inst);
+			if (!fence)
+				return -EINVAL;
+			buf->fence_id = fence->dma_fence.seqno;
+		}
+
 		rc = msm_vidc_queue_buffer(inst, buf);
 		if (rc)
 			return rc;

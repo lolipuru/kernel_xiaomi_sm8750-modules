@@ -1403,7 +1403,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 
 	{LOWLATENCY_MODE, DEC, H264 | HEVC | VP9,
 		{STAGE},
-		msm_vidc_adjust_dec_lowlatency_mode,
+		NULL,
 		NULL},
 
 	{LTR_COUNT, ENC, H264 | HEVC,
