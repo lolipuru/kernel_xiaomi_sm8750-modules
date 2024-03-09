@@ -2062,13 +2062,10 @@ static int _sde_rm_make_ctl_rsvp(struct sde_rm *rm, struct sde_rm_rsvp *rsvp,
  * Returns 0 if not found  or error
  */
 static int _sde_rm_find_prev_dsc(struct sde_rm *rm, struct sde_rm_rsvp *rsvp,
-		u8 *prev_dsc, u32 max_cnt)
+		u8 *prev_dsc)
 {
 	int i = 0;
 	struct sde_rm_hw_iter iter_dsc;
-
-	if ((!prev_dsc) || (max_cnt < MAX_DATA_PATH_PER_DSIPLAY))
-		return 0;
 
 	sde_rm_init_hw_iter(&iter_dsc, 0, SDE_HW_BLK_DSC);
 
@@ -2108,7 +2105,7 @@ static int _sde_rm_make_dsc_rsvp(struct sde_rm *rm, struct sde_rm_rsvp *rsvp,
 	 * dont have feasible way of decoupling previously owned dsc blocks by resetting
 	 * respective dsc encoders mux control and flush them from commit path
 	 */
-	if (!hw_ids && _sde_rm_find_prev_dsc(rm, rsvp, prev_dsc, MAX_DATA_PATH_PER_DSIPLAY))
+	if (!hw_ids && _sde_rm_find_prev_dsc(rm, rsvp, prev_dsc))
 		return  _sde_rm_reserve_dsc(rm, rsvp, reqs, prev_dsc);
 	else
 		return  _sde_rm_reserve_dsc(rm, rsvp, reqs, hw_ids);
