@@ -2,3 +2,12 @@ config QTI_HW_FENCE
 	bool "HW Fence"
 	help
 	  Enable the hw_fence module
+
+config QTI_HW_FENCE_USE_SYNX
+	bool "HW Fence uses synx"
+	help
+	  Enable the hw_fence module through synx api.
+	  This will enable hw-fence module to register
+	  hw-fence ops with synx module to support hw-
+	  fencing through synx api and inter-op
+	  functionality between synx and hw-fence.
