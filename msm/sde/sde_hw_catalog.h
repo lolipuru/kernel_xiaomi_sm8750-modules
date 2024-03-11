@@ -56,6 +56,7 @@
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
+#define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
@@ -87,6 +88,7 @@
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
+#define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
 
 #define SDE_HW_BLK_NAME_LEN	16
