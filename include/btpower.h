@@ -591,6 +591,7 @@ struct vreg_data {
 	bool is_enabled;        /* is this regulator enabled? */
 	bool is_retention_supp; /* does this regulator support retention mode */
 	struct log_index indx;  /* Index for reg. w.r.t init & crash */
+	bool fmd_mode_set;
 };
 
 struct pwr_data {
@@ -626,6 +627,7 @@ struct platform_pwr_data {
 	int bt_gpio_sys_rst;                   /* Bluetooth reset gpio */
 	int wl_gpio_sys_rst;                   /* Wlan reset gpio */
 	int bt_gpio_sw_ctrl;                   /* Bluetooth sw_ctrl gpio */
+	int bt_gpio_fmd_clk_ctrl;              /* Bluetooth fmd_clk_ctrl gpio */
 	int bt_gpio_debug;                     /* Bluetooth debug gpio */
 	unsigned int wlan_sw_ctrl_gpio;        /* Wlan switch control gpio*/
 #ifdef CONFIG_MSM_BT_OOBS
@@ -674,6 +676,9 @@ struct platform_pwr_data {
 	struct work_struct wq_pwr_voting;
 	struct sk_buff_head rxq;
 	struct mutex pwr_mtx;
+	bool is_fmd_mode_enable;
+	struct nvmem_cell *nvmem_cell;
+	u32 fmd_clk_gpio_id;
 };
 
 int btpower_register_slimdev(struct device *dev);
@@ -696,6 +701,7 @@ int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata);
 #define UWB_CMD_REGISTRATION        0xbfe3
 #define BT_CMD_ACCESS_CTRL	    0xbfe4
 #define UWB_CMD_ACCESS_CTRL        0xbfe5
+#define SET_FMD_MODE_CTRL           0xbfb2
 
 #ifdef CONFIG_MSM_BT_OOBS
 #define BT_CMD_OBS_VOTE_CLOCK		0xbfd1

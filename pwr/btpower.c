@@ -43,6 +43,7 @@
 #include "btfm_slim.h"
 #endif
 #include <linux/fs.h>
+#include <linux/nvmem-consumer.h>
 
 #ifdef CONFIG_BT_HW_SECURE_DISABLE
 #include "linux/smcinvoke_object.h"
@@ -694,6 +695,11 @@ void bt_configure_wakeup_gpios(int on)
 }
 #endif
 
+static int get_fmd_mode(void)
+{
+	return pwr_data->is_fmd_mode_enable;
+}
+
 static int bt_configure_gpios(int on)
 {
 	int rc = 0;
@@ -944,6 +950,11 @@ clk_fail:
 regulator_fail:
 		for (i = 0; i < bt_num_vregs; i++) {
 			bt_vregs = &pwr_data->bt_vregs[i];
+			if (get_fmd_mode() && bt_vregs->fmd_mode_set) {
+				pr_err("%s: FMD Mode Set: Skipping regulator %s\n",
+					__func__, bt_vregs->name);
+				continue;
+			}
 			rc = vreg_disable(bt_vregs);
 		}
 	} else if (pwr_state == POWER_RETENTION) {
@@ -1056,10 +1067,12 @@ static int platform_regulators_pwr(int pwr_state)
 		}
 		break;
 	case POWER_DISABLE:
-		rc = bt_configure_gpios(POWER_DISABLE);
-		if (rc < 0) {
-			pr_err("%s: bt_power gpio config failed\n",
-				__func__);
+		if (!get_fmd_mode()) {
+			rc = bt_configure_gpios(POWER_DISABLE);
+			if (rc < 0) {
+				pr_err("%s: bt_power gpio config failed\n",
+					__func__);
+			}
 		}
 gpio_failed:
 		if (pwr_data->bt_gpio_sys_rst > 0)
@@ -1069,6 +1082,13 @@ gpio_failed:
 regulator_failed:
 		for (i = 0; i < platform_num_vregs; i++) {
 			platform_vregs = &pwr_data->platform_vregs[i];
+		pr_err("%s: FMD MODE regulator %s\n",
+					__func__, platform_vregs->name);
+			if (get_fmd_mode() && platform_vregs->fmd_mode_set) {
+				pr_err("%s: FMD Mode Set: Skipping regulator %s\n",
+					__func__, platform_vregs->name);
+				continue;
+			}
 			rc = vreg_disable(platform_vregs);
 		}
 		break;
@@ -1220,15 +1240,27 @@ static int dt_parse_vreg_info(struct device *dev, struct device_node *child,
 		if (IS_ERR(vreg->reg)) {
 			ret = PTR_ERR(vreg->reg);
 			vreg->reg = NULL;
-			pr_warn("%s: failed to get: %s error:%d\n", __func__,
+			pr_err("%s: failed to get: %s error:%d\n", __func__,
 				vreg_name, ret);
 			return ret;
 		}
 
 		snprintf(prop_name, sizeof(prop_name), "%s-config", vreg->name);
 		prop = of_get_property(np, prop_name, &len);
-		if (!prop || len != (4 * sizeof(__be32))) {
-			pr_debug("%s: Property %s %s, use default\n",
+		if (!prop) {
+			pr_err("%s: Property %s %s, use default\n",
+				__func__, prop_name,
+				prop ? "invalid format" : "doesn't exist");
+		} else if (len == (5 * sizeof(__be32))) {
+			vreg->min_vol = be32_to_cpup(&prop[0]);
+			vreg->max_vol = be32_to_cpup(&prop[1]);
+			vreg->load_curr = be32_to_cpup(&prop[2]);
+			vreg->is_retention_supp = be32_to_cpup(&prop[3]);
+			vreg->fmd_mode_set = be32_to_cpup(&prop[4]);
+			pr_err("%s: FMD mode %d for regulator %s\n", __func__,
+							vreg->fmd_mode_set, vreg->name);
+		} else if (len != (4 * sizeof(__be32))) {
+			pr_err("%s: Property %s %s, use default\n",
 				__func__, prop_name,
 				prop ? "invalid format" : "doesn't exist");
 		} else {
@@ -1238,11 +1270,11 @@ static int dt_parse_vreg_info(struct device *dev, struct device_node *child,
 			vreg->is_retention_supp = be32_to_cpup(&prop[3]);
 		}
 
-		pr_debug("%s: Got regulator: %s, min_vol: %u, max_vol: %u, load_curr: %u,is_retention_supp: %u\n",
+		pr_err("%s: Got regulator: %s, min_vol: %u, max_vol: %u, load_curr: %u,is_retention_supp: %u\n",
 			__func__, vreg->name, vreg->min_vol, vreg->max_vol,
 			vreg->load_curr, vreg->is_retention_supp);
 	} else {
-		pr_info("%s: %s is not provided in device tree\n", __func__,
+		pr_err("%s: %s is not provided in device tree\n", __func__,
 			vreg_name);
 	}
 	return ret;
@@ -1314,6 +1346,8 @@ static int get_gpio_dt_pinfo(struct platform_device *pdev)
 	struct device_node *child;
 	struct pinctrl *pinctrl1;
 	struct pinctrl_state *sw_ctrl;
+	u32 gpio_id, i;
+	int gpio_id_n;
 
 	child = pdev->dev.of_node;
 
@@ -1337,25 +1371,46 @@ static int get_gpio_dt_pinfo(struct platform_device *pdev)
 	if (pwr_data->bt_gpio_sw_ctrl < 0)
 		pr_warn("bt-sw-ctrl-gpio not provided in devicetree\n");
 
+	pwr_data->bt_gpio_fmd_clk_ctrl  =
+		of_get_named_gpio(child,
+					"qcom,bt-fmd-clk-gpio",  0);
+	if (pwr_data->bt_gpio_fmd_clk_ctrl < 0)
+		pr_warn("bt-fmd-clk-gpio not provided in devicetree\n");
 
-	ret = of_property_read_u32(child, "mpm_wake_set_gpios",
-				  &pwr_data->sw_cntrl_gpio);
-	if (ret)
-		pr_warn("sw_cntrl-gpio not provided in devicetree\n");
+		/* Find out and configure all those GPIOs which need to be setup
+		 * for interrupt wakeup capable
+		 *
+		 */
+	gpio_id_n = of_property_count_u32_elems(child, "mpm_wake_set_gpios");
+	if (gpio_id_n > 0) {
+		pr_err("Num of GPIOs to be setup for interrupt wakeup capable: %d\n",
+						gpio_id_n);
+		for (i = 0; i < gpio_id_n; i++) {
+			ret = of_property_read_u32_index(child,
+							"mpm_wake_set_gpios",
+							i, &gpio_id);
+			if (ret) {
+				pr_err("Failed to read gpio_id at index: %d\n", i);
+				continue;
+			}
+		}
+	} else {
+		pr_err("No GPIOs to be setup for interrupt wakeup capable\n");
+	}
 
 	if (pinctrl1) {
 		sw_ctrl = pinctrl_lookup_state(pinctrl1, "sw_ctrl");
-                if (IS_ERR_OR_NULL(sw_ctrl)) {
-                        ret = PTR_ERR(sw_ctrl);
-                        pr_err("Failed to get sw_ctrl state, err = %d\n", ret);
-                } else {
-                        ret = pinctrl_select_state(pinctrl1, sw_ctrl);
+		if (IS_ERR_OR_NULL(sw_ctrl)) {
+			ret = PTR_ERR(sw_ctrl);
+			pr_err("Failed to get sw_ctrl state, err = %d\n", ret);
+		} else {
+			ret = pinctrl_select_state(pinctrl1, sw_ctrl);
 			if (ret)
 				pr_err("Failed to select sw_ctrl state, err = %d\n", ret);
 		}
-       } else {
-	       pr_err("%s: pinctrl is null", __func__);
-       }
+	} else {
+		pr_err("%s: pinctrl is null\n", __func__);
+	}
 
 	pwr_data->bt_gpio_debug  = of_get_named_gpio(child,
 							"qcom,bt-debug-gpio", 0);
@@ -1551,6 +1606,31 @@ static int bt_power_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	pwr_data->pdev = pdev;
+
+	struct device *devi = &pwr_data->pdev->dev;
+	int rc = 0;
+
+	pwr_data->nvmem_cell = devm_nvmem_cell_get(devi, "fmd_set");
+
+	if (IS_ERR(pwr_data->nvmem_cell)) {
+		rc = PTR_ERR(pwr_data->nvmem_cell);
+		pr_err("%s:Failed to get FMD nvmem-cells %d\n", __func__, rc);
+	}
+	pr_info("%s: --- Got FMD nvmem-cells %d\n", __func__, rc);
+	if (rc >= 0) {
+		u8 *buf;
+		size_t len;
+
+		dev_info(&pwr_data->pdev->dev, "Got fmd_set nvmem_cell\n");
+		buf = nvmem_cell_read(pwr_data->nvmem_cell, &len);
+		if (IS_ERR(buf)) {
+			dev_err(&pwr_data->pdev->dev, "Failed to read fmd_set: %ld\n",
+				PTR_ERR(buf));
+		} else {
+			dev_info(&pwr_data->pdev->dev, "fmd_set: %u\n", buf[0]);
+			kfree(buf);
+		}
+	}
 
 	pwr_data->is_ganges_dt = of_property_read_bool(pdev->dev.of_node,
 							"qcom,peach-bt") ||
@@ -2315,6 +2395,32 @@ const char *GetSourceSubsystemString(uint32_t source_subsystem)
 	}
 }
 
+void set_fmd_sdam_bit(void)
+{
+	int rc = 0;
+	unsigned char sdam_bit = 1;
+
+	rc = nvmem_cell_write(pwr_data->nvmem_cell, &sdam_bit, sizeof(sdam_bit));
+	if (rc < 0) {
+		pr_err("%s: SDAM BIT of FMD Write Failed %d\n", __func__, rc);
+		return;
+	}
+	pr_warn("%s:  SDAM BIT of FMD Write Success %d\n", __func__, rc);
+
+	u8 *buf;
+	size_t len;
+
+	dev_info(&pwr_data->pdev->dev, "Got fmd_set nvmem_cell\n");
+	buf = nvmem_cell_read(pwr_data->nvmem_cell, &len);
+	if (IS_ERR(buf)) {
+		dev_err(&pwr_data->pdev->dev, "Failed to read fmd_set: %ld\n", PTR_ERR(buf));
+	} else {
+		dev_info(&pwr_data->pdev->dev, "fmd_set: %u\n", buf[0]);
+		pr_warn("%s: Read SDAM BIT of FMD  %d\n", __func__, buf[0]);
+		kfree(buf);
+	}
+}
+
 static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
@@ -2382,6 +2488,20 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case BT_CMD_PWR_CTRL:
 	case UWB_CMD_PWR_CTRL: {
 		ret = btpower_handle_client_request(cmd, (int)arg);
+		break;
+	}
+	case SET_FMD_MODE_CTRL: {
+		pr_warn("%s: SET_FMD_MODE_CTRL\n", __func__);
+		pwr_data->is_fmd_mode_enable = true;
+		ret = btpower_handle_client_request(BT_CMD_PWR_CTRL, (int)POWER_ENABLE);
+		if (pwr_data->bt_chip_clk) {
+			ret = bt_clk_enable(pwr_data->bt_chip_clk);
+			if (ret < 0) {
+				pr_err("%s: bt_power gpio config failed\n", __func__);
+				return -EINVAL;
+			}
+		}
+		set_fmd_sdam_bit();
 		break;
 	}
 	case BT_CMD_REGISTRATION:
