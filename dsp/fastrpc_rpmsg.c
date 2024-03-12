@@ -115,7 +115,7 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	idr_init(&data->ctx_idr);
 	ida_init(&data->tgid_frpc_ida);
 	data->domain_id = domain_id;
-	data->max_sess_per_proc = 4; // TODO: Fix this in a macro
+	data->max_sess_per_proc = FASTRPC_MAX_SESSIONS_PER_PROCESS;
 	data->rpdev = rpdev;
 
 	err = of_platform_populate(rdev->of_node, NULL, NULL, rdev);
