@@ -24,7 +24,7 @@
   *
   * THIS SOFTWARE IS SPECIFICALLY DESIGNED FOR EXCLUSIVE USE WITH ST PARTS.
   *
-  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+  * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
   */
 
 
@@ -137,7 +137,7 @@ extern struct mutex fts_int;
 static void fts_interrupt_enable(struct fts_ts_info *info);
 static int fts_init_sensing(struct fts_ts_info *info);
 static int fts_mode_handler(struct fts_ts_info *info, int force);
-
+static int fts_enable_reg(struct fts_ts_info *info, bool enable);
 
 static int fts_chip_initialization(struct fts_ts_info *info, int init_type);
 #if defined(CONFIG_DRM)
@@ -3589,10 +3589,11 @@ static void fts_resume_work(struct work_struct *work)
 {
 	struct fts_ts_info *info;
 
-
 	info = container_of(work, struct fts_ts_info, resume_work);
 
 	info->resume_bit = 1;
+
+	fts_enable_reg(info, true);
 
 	fts_system_reset();
 
@@ -3624,6 +3625,8 @@ static void fts_suspend_work(struct work_struct *work)
 	info->sensor_sleep = true;
 
 	fts_enableInterrupt();
+
+	fts_enable_reg(info, false);
 }
 /** @}*/
 
