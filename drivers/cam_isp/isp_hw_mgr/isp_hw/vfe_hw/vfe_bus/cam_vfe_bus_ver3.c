@@ -4293,8 +4293,8 @@ static int cam_vfe_bus_ver3_update_wm_config_v2(
 		return -EINVAL;
 	}
 
-	context_id_mask = wm_config->context_id_mask;
 	for (i = 0; i < vfe_out_data->num_wm; i++) {
+		context_id_mask = wm_config->context_id_mask;
 		cfg = NULL;
 		update_wm_mode = false;
 		wm_data = vfe_out_data->wm_res[i].res_priv;
