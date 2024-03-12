@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -756,6 +756,25 @@ int dsi_conn_get_avr_step_fps(struct drm_connector_state *conn_state)
 
 	priv_info = (struct dsi_display_mode_priv_info *)(msm_mode->private);
 	return priv_info->avr_step_fps;
+}
+
+int dsi_conn_dcs_cmd_tx(struct drm_connector_state *conn_state, enum dsi_cmd_set_type cmd)
+{
+	struct drm_connector *drm_conn;
+	struct sde_connector *sde_conn;
+	struct dsi_display *display;
+
+	drm_conn = conn_state->connector;
+	sde_conn = to_sde_connector(drm_conn);
+
+	if (!sde_conn)
+		return -EINVAL;
+
+	display = sde_conn->display;
+	if (!display)
+		return -EINVAL;
+
+	return dsi_display_dcs_cmd_tx(display, cmd);
 }
 
 int dsi_conn_set_info_blob(struct drm_connector *connector,

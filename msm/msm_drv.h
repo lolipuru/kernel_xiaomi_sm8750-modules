@@ -923,6 +923,11 @@ struct msm_resource_caps_info {
  * @qsync_min_fps      Minimum fps supported by Qsync feature
  * @has_qsync_min_fps_list True if dsi-supported-qsync-min-fps-list exits
  * @avr_step_fps        AVR step fps supported
+ * @esync_enabled:      esync is supported
+ * @esync_milli_skew:   esync skew, in 1/1000ths of a line
+ * @esync_hsync_milli_pulse_width: esync's hsync pulse width, in 1/1000ths of a line
+ * @esync_emsync_fps:   esync's EM pulse rate in Hz
+ * @esync_emsync_milli_pulse_width: esync's EM pulse width, in 1/1000ths of a line
  * @te_source		vsync source pin information
  * @dsc_count:		max dsc hw blocks used by display (only available
  *			for dsi display)
@@ -955,6 +960,12 @@ struct msm_display_info {
 	uint32_t qsync_min_fps;
 	bool has_qsync_min_fps_list;
 	uint32_t avr_step_fps;
+
+	bool esync_enabled;
+	uint32_t esync_milli_skew;
+	uint32_t esync_hsync_milli_pulse_width;
+	uint32_t esync_emsync_fps;
+	uint32_t esync_emsync_milli_pulse_width;
 
 	uint32_t te_source;
 

@@ -162,6 +162,8 @@ struct sde_encoder_virt_ops {
  * @disable_autorefresh:	Disable autorefresh
  * @idle_pc_cache_display_status:	caches display status at idle power collapse
  * @cesta_ctrl_cfg:		Cesta control configuration
+ * @idle_pc_enter:		Enter idle power collapse
+ * @idle_pc_exit:		Exit idle power collapse
  */
 
 struct sde_encoder_phys_ops {
@@ -221,6 +223,8 @@ struct sde_encoder_phys_ops {
 	void (*idle_pc_cache_display_status)(struct sde_encoder_phys *phys);
 	void (*cesta_ctrl_cfg)(struct sde_encoder_phys *phys, struct sde_cesta_ctrl_cfg *cfg,
 			bool *req_flush, bool *req_scc);
+	void (*idle_pc_enter)(struct sde_encoder_phys *phys);
+	void (*idle_pc_exit)(struct sde_encoder_phys *phys);
 };
 
 /**

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -104,6 +104,14 @@ struct dsi_avr_capabilities {
 	u32 avr_step_fps_list_len;
 };
 
+struct dsi_esync_capabilities {
+	bool esync_support;
+	u32 milli_skew;
+	u32 hsync_milli_pulse_width;
+	u32 emsync_milli_pulse_width;
+	u32 emsync_fps;
+};
+
 struct dsi_dyn_clk_caps {
 	bool dyn_clk_support;
 	enum dsi_dyn_clk_feature_type type;
@@ -113,6 +121,7 @@ struct dsi_dyn_clk_caps {
 struct dsi_pinctrl_info {
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *active;
+	struct pinctrl_state *active_with_esync;
 	struct pinctrl_state *suspend;
 	struct pinctrl_state *pwm_pin;
 };
@@ -261,6 +270,7 @@ struct dsi_panel {
 	bool te_using_watchdog_timer;
 	struct dsi_qsync_capabilities qsync_caps;
 	struct dsi_avr_capabilities avr_caps;
+	struct dsi_esync_capabilities esync_caps;
 
 	char dce_pps_cmd[DSI_CMD_PPS_SIZE];
 	enum dsi_dms_mode dms_mode;
@@ -373,6 +383,8 @@ int dsi_panel_send_qsync_off_dcs(struct dsi_panel *panel,
 
 int dsi_panel_send_roi_dcs(struct dsi_panel *panel, int ctrl_idx,
 		struct dsi_rect *roi);
+
+int dsi_panel_dcs_cmd_tx(struct dsi_panel *panel, enum dsi_cmd_set_type cmd);
 
 int dsi_panel_switch_video_mode_out(struct dsi_panel *panel);
 

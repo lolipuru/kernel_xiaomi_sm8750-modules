@@ -15,6 +15,7 @@
 #include "msm_prop.h"
 #include "sde_kms.h"
 #include "sde_fence.h"
+#include "dsi_display.h"
 
 #define SDE_CONNECTOR_NAME_SIZE	16
 #define SDE_CONNECTOR_DHDR_MEMPOOL_MAX_SIZE	SZ_32
@@ -217,9 +218,15 @@ struct sde_connector_ops {
 	 * @handle: Pointer to clk handle
 	 * @type: Type of clks
 	 * @enable: State of clks
+	 */
+	int (*clk_ctrl)(void *handle, u32 type, u32 state);
+
+	/**
+	 * idle_pc_ctrl - inform DSI of the idle PC status
+	 * @display: Pointer to display struct
 	 * @idle_pc: Idle power collapse status
 	 */
-	int (*clk_ctrl)(void *handle, u32 type, u32 state, bool idle_pc);
+	void (*idle_pc_ctrl)(void *display, bool idle_pc);
 
 	/**
 	 * set_power - update dpms setting
@@ -414,6 +421,14 @@ struct sde_connector_ops {
 	 * Returns: AVR step fps value on success
 	 */
 	int (*get_avr_step_fps)(struct drm_connector_state *conn_state);
+
+	/**
+	 * dcs_cmd_tx - Arbitrary command using the DSI enum
+	 * @conn_state: Pointer to drm_connector_state structure
+	 * @cmd: Enum identifying the command
+	 * Returns: Zero on success
+	 */
+	int (*dcs_cmd_tx)(struct drm_connector_state *conn_state, enum dsi_cmd_set_type cmd);
 
 	/**
 	 * set_submode_info - populate given sub mode blob
@@ -1004,6 +1019,22 @@ int sde_connector_get_info(struct drm_connector *connector,
  * Returns: Zero on success
  */
 int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable, bool idle_pc);
+
+/**
+ * sde_connector_esync_clk_ctrl - enables/disables the esync clk
+ * @connector: Pointer to drm connector object
+ * @enable: true/false to enable/disable
+ * Returns: Zero on success
+ */
+int sde_connector_esync_clk_ctrl(struct drm_connector *connector, bool enable);
+
+/**
+ * sde_connector_osc_clk_ctrl - enables/disables the oscillator clk
+ * @connector: Pointer to drm connector object
+ * @enable: true/false to enable/disable
+ * Returns: Zero on success
+ */
+int sde_connector_osc_clk_ctrl(struct drm_connector *connector, bool enable);
 
 /**
  * sde_connector_get_dpms - query dpms setting

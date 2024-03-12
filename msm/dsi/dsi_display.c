@@ -996,7 +996,7 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 
 	dsi_display_set_ctrl_esd_check_flag(dsi_display, true);
 
-	dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
+	dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 
 	/* Disable error interrupts while doing an ESD check */
 	dsi_display_toggle_error_interrupt_status(dsi_display, false);
@@ -1029,7 +1029,7 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 		/* Enable error interrupts post an ESD success */
 		dsi_display_toggle_error_interrupt_status(dsi_display, true);
 
-	dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_OFF);
+	dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 release_panel_lock:
 	dsi_panel_release_panel_lock(panel);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, rc);
@@ -1082,7 +1082,7 @@ static int dsi_display_cmd_rx(struct dsi_display *display,
 
 	flags = DSI_CTRL_CMD_READ;
 
-	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
+	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 	dsi_display_toggle_error_interrupt_status(display, false);
 	cmd->ctrl_flags = flags;
 	dsi_display_set_cmd_tx_ctrl_flags(display, cmd);
@@ -1098,7 +1098,7 @@ static int dsi_display_cmd_rx(struct dsi_display *display,
 
 enable_error_interrupts:
 	dsi_display_toggle_error_interrupt_status(display, true);
-	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_OFF);
+	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 release_panel_lock:
 	dsi_panel_release_panel_lock(display->panel);
 	return rc;
@@ -4757,7 +4757,7 @@ static int dsi_display_dynamic_clk_switch_vid(struct dsi_display *display,
 
 	m_ctrl = &display->ctrl[display->clk_master_idx];
 
-	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
+	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 
 	/* mask PLL unlock, FIFO overflow and underflow errors */
 	mask = BIT(DSI_PLL_UNLOCK_ERR) | BIT(DSI_FIFO_UNDERFLOW) |
@@ -4802,7 +4802,7 @@ static int dsi_display_dynamic_clk_switch_vid(struct dsi_display *display,
 exit:
 	dsi_display_mask_ctrl_error_interrupts(display, mask, false);
 
-	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS,
+	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK,
 			     DSI_CLK_OFF);
 
 	/* store newly calculated phy timings in mode private info */
@@ -5391,11 +5391,22 @@ int dsi_display_cont_splash_config(void *dsi_display)
 	 * regulator are inplicit from  pre clk on callback
 	 */
 	rc = dsi_display_clk_ctrl(display->dsi_clk_handle,
-			DSI_ALL_CLKS, DSI_CLK_ON);
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 	if (rc) {
 		DSI_ERR("[%s] failed to enable DSI link clocks, rc=%d\n",
 		       display->name, rc);
 		goto clk_manager_update;
+	}
+
+	if (display->panel->esync_caps.esync_support
+	    && display->config.panel_mode == DSI_OP_VIDEO_MODE) {
+		rc = dsi_display_clk_ctrl(display->mdp_clk_handle,
+			DSI_ESYNC_CLK, DSI_CLK_ON);
+		if (rc) {
+			DSI_ERR("[%s] failed to enable DSI link clocks, rc=%d\n",
+			       display->name, rc);
+			goto esync_clk_err;
+		}
 	}
 
 	mutex_unlock(&display->display_lock);
@@ -5405,6 +5416,9 @@ int dsi_display_cont_splash_config(void *dsi_display)
 
 	return rc;
 
+esync_clk_err:
+	(void) dsi_display_clk_ctrl(display->dsi_clk_handle,
+		DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 clk_manager_update:
 	dsi_display_ctrl_isr_configure(display, false);
 	/* Update splash status for clock manager */
@@ -5428,8 +5442,17 @@ int dsi_display_splash_res_cleanup(struct  dsi_display *display)
 	if (!display->is_cont_splash_enabled)
 		return 0;
 
+	if (display->panel->esync_caps.esync_support
+	    && display->config.panel_mode == DSI_OP_VIDEO_MODE) {
+		rc = dsi_display_clk_ctrl(display->mdp_clk_handle,
+			DSI_ESYNC_CLK, DSI_CLK_OFF);
+		if (rc)
+			DSI_ERR("[%s] failed to disable DSI link clocks, rc=%d\n",
+			       display->name, rc);
+	}
+
 	rc = dsi_display_clk_ctrl(display->dsi_clk_handle,
-			DSI_ALL_CLKS, DSI_CLK_OFF);
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 	if (rc)
 		DSI_ERR("[%s] failed to disable DSI link clocks, rc=%d\n",
 		       display->name, rc);
@@ -5741,10 +5764,17 @@ static int dsi_display_bind(struct device *dev,
 		memcpy(&info.l_lp_clks[i],
 				(&display_ctrl->ctrl->clk_info.lp_link_clks),
 				sizeof(struct dsi_link_lp_clk_info));
+		memcpy(&info.e_clks[i],
+				(&display_ctrl->ctrl->clk_info.esync_clk),
+				sizeof(struct dsi_esync_clk_info));
 
 		info.c_clks[i].drm = drm;
 		info.ctrl_index[i] = display_ctrl->ctrl->cell_index;
 	}
+
+	memcpy(&info.o_clk,
+			(&display_ctrl->ctrl->clk_info.osc_clk),
+			sizeof(struct dsi_osc_clk_info));
 
 	info.pre_clkoff_cb = dsi_pre_clkoff_cb;
 	info.pre_clkon_cb = dsi_pre_clkon_cb;
@@ -6827,6 +6857,11 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->qsync_min_fps = display->panel->qsync_caps.qsync_min_fps;
 	info->has_qsync_min_fps_list = (display->panel->qsync_caps.qsync_min_fps_list_len > 0);
 	info->avr_step_fps = display->panel->avr_caps.avr_step_fps;
+	info->esync_enabled = display->panel->esync_caps.esync_support;
+	info->esync_milli_skew = display->panel->esync_caps.milli_skew;
+	info->esync_hsync_milli_pulse_width = display->panel->esync_caps.hsync_milli_pulse_width;
+	info->esync_emsync_fps = display->panel->esync_caps.emsync_fps;
+	info->esync_emsync_milli_pulse_width = display->panel->esync_caps.emsync_milli_pulse_width;
 	info->poms_align_vsync = display->panel->poms_align_vsync;
 	info->is_te_using_watchdog_timer = is_sim_panel(display);
 
@@ -7545,15 +7580,27 @@ end:
 	return rc;
 }
 
-int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state, bool idle_pc)
+int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state)
+{
+	struct dsi_display *disp = (struct dsi_display *)display;
+
+	if (!disp || !disp->mdp_clk_handle) {
+		DSI_ERR("Invalid arg\n");
+		return -EINVAL;
+	}
+
+	return dsi_display_clk_ctrl(disp->mdp_clk_handle, clk_type, clk_state);
+}
+
+void dsi_display_set_idle_pc_state(void *display, bool idle_pc)
 {
 	struct dsi_display *disp = (struct dsi_display *)display;
 	struct dsi_display_ctrl *ctrl;
 	int i;
 
-	if (!disp || !disp->mdp_clk_handle) {
+	if (!disp) {
 		DSI_ERR("Invalid arg\n");
-		return -EINVAL;
+		return;
 	}
 
 	/* update idle power collpase status in ctrl */
@@ -7564,8 +7611,6 @@ int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state, bool i
 
 		ctrl->ctrl->idle_pc = idle_pc;
 	}
-
-	return dsi_display_clk_ctrl(disp->mdp_clk_handle, clk_type, clk_state);
 }
 
 static bool dsi_display_match_timings(const struct dsi_display_mode *mode1,
@@ -8011,22 +8056,36 @@ static int dsi_display_pre_switch(struct dsi_display *display)
 	if (rc) {
 		DSI_ERR("[%s] failed to update DSI controller, rc=%d\n",
 			   display->name, rc);
-		goto error_ctrl_clk_off;
+		goto error_ctrl_clk_off_core;
 	}
 
 	rc = dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_LINK_CLK, DSI_CLK_ON);
 	if (rc) {
-		DSI_ERR("[%s] failed to enable DSI link clocks, rc=%d\n",
+		DSI_ERR("[%s] failed to enable DSI link clock, rc=%d\n",
 			   display->name, rc);
 		goto error_ctrl_deinit;
 	}
 
+	if (display->panel->esync_caps.esync_support
+	    && display->config.panel_mode == DSI_OP_VIDEO_MODE) {
+		rc = dsi_display_clk_ctrl(display->mdp_clk_handle,
+				DSI_ESYNC_CLK, DSI_CLK_ON);
+		if (rc) {
+			DSI_ERR("[%s] failed to enable DSI esync clock, rc=%d\n",
+				display->name, rc);
+			goto error_ctrl_clk_off_link;
+		}
+	}
+
 	goto error;
 
+error_ctrl_clk_off_link:
+	(void)dsi_display_clk_ctrl(display->dsi_clk_handle,
+			DSI_LINK_CLK, DSI_CLK_OFF);
 error_ctrl_deinit:
 	(void)dsi_display_ctrl_deinit(display);
-error_ctrl_clk_off:
+error_ctrl_clk_off_core:
 	(void)dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK, DSI_CLK_OFF);
 error:
@@ -8071,10 +8130,10 @@ static void dsi_display_handle_fifo_underflow(struct work_struct *work)
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
 
 	dsi_display_clk_ctrl(display->dsi_clk_handle,
-			DSI_ALL_CLKS, DSI_CLK_ON);
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 	dsi_display_soft_reset(display);
 	dsi_display_clk_ctrl(display->dsi_clk_handle,
-			DSI_ALL_CLKS, DSI_CLK_OFF);
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
 
 	mutex_unlock(&display->display_lock);
@@ -8112,7 +8171,7 @@ static void dsi_display_handle_fifo_overflow(struct work_struct *work)
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
 
 	dsi_display_clk_ctrl(display->dsi_clk_handle,
-			DSI_ALL_CLKS, DSI_CLK_ON);
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 
 	/*
 	 * below recovery sequence is not applicable to
@@ -8155,7 +8214,7 @@ static void dsi_display_handle_fifo_overflow(struct work_struct *work)
 	udelay(200);
 end:
 	dsi_display_clk_ctrl(display->dsi_clk_handle,
-			DSI_ALL_CLKS, DSI_CLK_OFF);
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
 
 	mutex_unlock(&display->display_lock);
@@ -8193,7 +8252,7 @@ static void dsi_display_handle_lp_rx_timeout(struct work_struct *work)
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
 
 	dsi_display_clk_ctrl(display->dsi_clk_handle,
-			DSI_ALL_CLKS, DSI_CLK_ON);
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 
 	/*
 	 * below recovery sequence is not applicable to
@@ -8236,7 +8295,7 @@ static void dsi_display_handle_lp_rx_timeout(struct work_struct *work)
 	udelay(200);
 end:
 	dsi_display_clk_ctrl(display->dsi_clk_handle,
-			DSI_ALL_CLKS, DSI_CLK_OFF);
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
 
 	mutex_unlock(&display->display_lock);
@@ -8433,6 +8492,17 @@ int dsi_display_prepare(struct dsi_display *display)
 		goto error_host_engine_off;
 	}
 
+	if (display->panel->esync_caps.esync_support
+	    && display->config.panel_mode == DSI_OP_VIDEO_MODE) {
+		rc = dsi_display_clk_ctrl(display->mdp_clk_handle,
+			DSI_ESYNC_CLK, DSI_CLK_ON);
+		if (rc) {
+			DSI_ERR("[%s] failed to enable DSI esync clocks, rc=%d\n",
+				display->name, rc);
+			goto error_ctrl_link_off;
+		}
+	}
+
 	if (!is_skip_op_required(display)) {
 		/*
 		 * For continuous splash/trusted vm, skip panel prepare and
@@ -8443,7 +8513,7 @@ int dsi_display_prepare(struct dsi_display *display)
 		if (rc) {
 			DSI_ERR("[%s] failed soft reset, rc=%d\n",
 					display->name, rc);
-			goto error_ctrl_link_off;
+			goto error_ctrl_esync_off;
 		}
 
 		if (!display->poms_pending) {
@@ -8451,12 +8521,17 @@ int dsi_display_prepare(struct dsi_display *display)
 			if (rc) {
 				DSI_ERR("[%s] panel prepare failed, rc=%d\n",
 						display->name, rc);
-				goto error_ctrl_link_off;
+				goto error_ctrl_esync_off;
 			}
 		}
 	}
 	goto error;
 
+error_ctrl_esync_off:
+	if (display->panel->esync_caps.esync_support
+	    && display->config.panel_mode == DSI_OP_VIDEO_MODE)
+		(void)dsi_display_clk_ctrl(display->mdp_clk_handle,
+				DSI_ESYNC_CLK, DSI_CLK_OFF);
 error_ctrl_link_off:
 	(void)dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_LINK_CLK, DSI_CLK_OFF);
@@ -8620,6 +8695,16 @@ static int dsi_display_set_roi(struct dsi_display *display,
 	}
 
 	return rc;
+}
+
+int dsi_display_dcs_cmd_tx(struct dsi_display *display, enum dsi_cmd_set_type cmd)
+{
+	struct dsi_panel *panel = display->panel;
+
+	if (!panel)
+		return -EINVAL;
+
+	return dsi_panel_dcs_cmd_tx(panel, cmd);
 }
 
 int dsi_display_pre_kickoff(struct drm_connector *connector,
@@ -8886,7 +8971,7 @@ int dsi_display_post_enable(struct dsi_display *display)
 	/* remove the clk vote for CMD mode panels */
 	if (display->config.panel_mode == DSI_OP_CMD_MODE)
 		dsi_display_clk_ctrl(display->dsi_clk_handle,
-			DSI_ALL_CLKS, DSI_CLK_OFF);
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 
 	mutex_unlock(&display->display_lock);
 	return rc;
@@ -8916,7 +9001,7 @@ int dsi_display_pre_disable(struct dsi_display *display)
 	/* enable the clk vote for CMD mode panels */
 	if (display->config.panel_mode == DSI_OP_CMD_MODE)
 		dsi_display_clk_ctrl(display->dsi_clk_handle,
-			DSI_ALL_CLKS, DSI_CLK_ON);
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 	if (display->poms_pending) {
 		if (display->config.panel_mode == DSI_OP_CMD_MODE)
 			dsi_panel_switch_cmd_mode_out(display->panel);
@@ -9166,6 +9251,15 @@ int dsi_display_unprepare(struct dsi_display *display)
 	if (rc)
 		DSI_ERR("[%s] failed to disable DSI host, rc=%d\n",
 		       display->name, rc);
+
+	if (display->panel->esync_caps.esync_support
+	    && display->config.panel_mode == DSI_OP_VIDEO_MODE) {
+		rc = dsi_display_clk_ctrl(display->mdp_clk_handle,
+				DSI_ESYNC_CLK, DSI_CLK_OFF);
+		if (rc)
+			DSI_ERR("[%s] failed to disable esync clocks, rc=%d\n",
+				display->name, rc);
+	}
 
 	rc = dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_LINK_CLK, DSI_CLK_OFF);

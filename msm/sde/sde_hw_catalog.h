@@ -663,6 +663,7 @@ enum {
  * @SDE_INTF_MDP_VSYNC_TS       INTF block has mdp vsync timestamp logged
  * @SDE_INTF_MDP_VSYNC_FC       INTF block has mdp vsync frame counter
  * @SDE_INTF_AVR_STATUS         INTF block has AVR_STATUS field in AVR_CONTROL register
+ * @SDE_INTF_ESYNC              INTF block has ESYNC support
  * @SDE_INTF_WD_JITTER          INTF block has WD timer jitter support
  * @SDE_INTF_WD_LTJ_CTL         INTF block has WD long term jitter control support
  * @SDE_INTF_TE_DEASSERT_DETECT INTF block has TE Deassert detect support
@@ -686,6 +687,7 @@ enum {
 	SDE_INTF_MDP_VSYNC_TS,
 	SDE_INTF_MDP_VSYNC_FC,
 	SDE_INTF_AVR_STATUS,
+	SDE_INTF_ESYNC,
 	SDE_INTF_WD_JITTER,
 	SDE_INTF_WD_LTJ_CTL,
 	SDE_INTF_TE_DEASSERT_DETECT,

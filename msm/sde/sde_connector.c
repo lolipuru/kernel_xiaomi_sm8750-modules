@@ -16,7 +16,6 @@
 #include <linux/string.h>
 #include <linux/file.h>
 #include "dsi_drm.h"
-#include "dsi_display.h"
 #include "sde_crtc.h"
 #include "sde_rm.h"
 #include "sde_vm.h"
@@ -1248,11 +1247,57 @@ int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable, bool id
 
 	c_conn = to_sde_connector(connector);
 	display = _sde_connector_get_display(c_conn);
-	if (!display)
-		return 0;
+	if (!display) {
+		SDE_ERROR("null display\n");
+		return -EINVAL;
+	}
+
+	if (c_conn->ops.clk_ctrl)
+		rc = c_conn->ops.clk_ctrl(display, DSI_CORE_CLK | DSI_LINK_CLK, state);
+	if (c_conn->ops.idle_pc_ctrl)
+		c_conn->ops.idle_pc_ctrl(display, idle_pc);
+
+	return rc;
+}
+
+int sde_connector_esync_clk_ctrl(struct drm_connector *connector, bool enable)
+{
+	struct sde_connector *c_conn;
+	struct dsi_display *display;
+	u32 state = enable ? DSI_CLK_ON : DSI_CLK_OFF;
+	int rc = 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+	display = (struct dsi_display *) c_conn->display;
 
 	if (display && c_conn->ops.clk_ctrl)
-		rc = c_conn->ops.clk_ctrl(display, DSI_ALL_CLKS, state, idle_pc);
+		rc = c_conn->ops.clk_ctrl(display, DSI_ESYNC_CLK, state);
+
+	return rc;
+}
+
+int sde_connector_osc_clk_ctrl(struct drm_connector *connector, bool enable)
+{
+	struct sde_connector *c_conn;
+	struct dsi_display *display;
+	u32 state = enable ? DSI_CLK_ON : DSI_CLK_OFF;
+	int rc = 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+	display = (struct dsi_display *) c_conn->display;
+
+	if (display && c_conn->ops.clk_ctrl)
+		rc = c_conn->ops.clk_ctrl(display, DSI_OSC_CLK, state);
 
 	return rc;
 }

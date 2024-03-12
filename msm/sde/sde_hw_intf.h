@@ -99,6 +99,32 @@ struct intf_wd_jitter_params {
 	u32 ltj_initial_val;
 	u32 ltj_fractional_val;
 };
+
+/**
+ * struct intf_esync_params : Interface to the INTF esync params.
+ *
+ * @avr_step_lines: number of lines in an AVR step
+ * @emsync_pulse_width: modulated pulse width of the esync signal
+ * @emsync_period_lines: period of the esync signal modulation in lines
+ * @hsync_pulse_width: unmodulated pulse width of the esync signal
+ * @hsync_period_cycles: period of the esync signal in esync clk cycles
+ * @skew: esync signal skew relative to timing engine
+ * @prog_fetch_start: programmable fetch start
+ * @hw_fence_enabled: whether hardware fencing is enabled
+ * @align_backup: whether this esync generator should align with its pair
+ */
+struct intf_esync_params {
+	u32 avr_step_lines;
+	u32 emsync_pulse_width;
+	u32 emsync_period_lines;
+	u32 hsync_pulse_width;
+	u32 hsync_period_cycles;
+	u32 skew;
+	u32 prog_fetch_start;
+	bool hw_fence_enabled;
+	bool align_backup;
+};
+
 /**
  * struct sde_hw_intf_ops : Interface to the interface Hw driver functions
  *  Assumption is these functions will be called after clocks are enabled
@@ -125,7 +151,7 @@ struct intf_wd_jitter_params {
 struct sde_hw_intf_ops {
 	void (*setup_timing_gen)(struct sde_hw_intf *intf,
 			const struct intf_timing_params *p,
-			const struct sde_format *fmt);
+			const struct sde_format *fmt, bool align_esync, bool align_avr);
 
 	void (*setup_prg_fetch)(struct sde_hw_intf *intf,
 			const struct intf_prog_fetch *fetch);
@@ -259,6 +285,36 @@ struct sde_hw_intf_ops {
 	 * Indicates the current AVR step number
 	 */
 	u32 (*get_cur_num_avr_step)(struct sde_hw_intf *intf);
+
+	/**
+	 * Configure esync generator to prepare for enablement
+	 */
+	void (*prepare_esync)(struct sde_hw_intf *intf, struct intf_esync_params *params);
+
+	/**
+	 * Enable esync generator
+	 */
+	void (*enable_esync)(struct sde_hw_intf *intf, bool enable);
+
+	/**
+	 * Configure backup esync generator to prepare for enablement
+	 */
+	void (*prepare_backup_esync)(struct sde_hw_intf *intf, struct intf_esync_params *params);
+
+	/**
+	 * Enable backup esync generator
+	 */
+	void (*enable_backup_esync)(struct sde_hw_intf *intf, bool enable);
+
+	/**
+	 * Blocks until backup esync generator is enabled
+	 */
+	int (*wait_for_esync_src_switch)(struct sde_hw_intf *intf, bool main);
+
+	/**
+	 * Allow timing generator to extend VFP infinitely
+	 */
+	void (*enable_infinite_vfp)(struct sde_hw_intf *intf, bool enable);
 
 	/**
 	 * Enable/disable 64 bit compressed data input to interface block

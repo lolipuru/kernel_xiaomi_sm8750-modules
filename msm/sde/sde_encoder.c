@@ -1928,19 +1928,145 @@ struct sde_rsc_client *sde_encoder_get_rsc_client(struct drm_encoder *drm_enc)
 	return sde_enc->rsc_client;
 }
 
+static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
+			enum sde_perf_commit_state commit_state)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	struct sde_encoder_phys *cur_master = sde_enc->phys_encs[0];
+	struct sde_cesta_client *cesta_client = sde_enc->cesta_client;
+	struct sde_hw_ctl *ctl = NULL;
+	struct sde_ctl_cesta_cfg cfg = {0,};
+	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
+	struct sde_connector_state *c_state = NULL;
+	struct msm_display_mode *msm_mode = NULL;
+	enum sde_crtc_vm_req vm_req;
+	bool req_flush = false, req_scc = false;
+
+	if (!cesta_client || !sde_enc->crtc)
+		return;
+
+	cur_master = sde_enc->phys_encs[0];
+	if (!cur_master || !cur_master->hw_ctl)
+		return;
+
+	if (sde_enc->res_switch && sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE)
+			&& (commit_state == SDE_PERF_BEGIN_COMMIT) && sde_enc->cur_master) {
+		c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
+		if (!c_state) {
+			SDE_ERROR("invalid connector state\n");
+			return;
+		}
+		msm_mode = &c_state->msm_mode;
+
+		/*
+		 * In cmd mode with cesta, below sequence is used to avoid 2-frame res-switch.
+		 * - wait for previous frame complete
+		 * - Update cesta votes and issue override cesta flush
+		 * - Send panel cmds to switch
+		 * - Update interface panic & wakeup windows
+		 * - set ctl-op-group
+		 * - ctl-flush/ctl-start
+		 * - reset ctl-op-group as part of complete_commit
+		 */
+		if (msm_is_mode_seamless_dms(msm_mode)) {
+			sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
+			commit_state = SDE_PERF_ENABLE_COMMIT;
+			sde_enc->cesta_op_group_req = true;
+		}
+	}
+
+	sde_core_perf_crtc_update(sde_enc->crtc, commit_state);
+
+	ctl = cur_master->hw_ctl;
+
+	if ((commit_state == SDE_PERF_COMPLETE_COMMIT)
+			&& (cesta_client->vote_state != SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE)
+			&& (cesta_client->vote_state != SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE))
+		return;
+
+	/* SCC configs */
+	cur_master->ops.cesta_ctrl_cfg(cur_master, &ctrl_cfg, &req_flush, &req_scc);
+
+	/*
+	 * Move to auto active on panic setting while releasing the VM & update
+	 * cesta ctrl/cesta flush. Update cesta_ctrl/cesta flush on acquing the VM
+	 * to set the older state.
+	 */
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+				CRTC_PROP_VM_REQ_STATE);
+	if ((vm_req == VM_REQ_RELEASE) && !ctrl_cfg.auto_active_on_panic) {
+		ctrl_cfg.auto_active_on_panic = true;
+		req_scc = true;
+		req_flush = true;
+	} else if ((vm_req == VM_REQ_ACQUIRE) && !ctrl_cfg.auto_active_on_panic) {
+		req_scc = true;
+		req_flush = true;
+	}
+
+	if (commit_state == SDE_PERF_DISABLE_COMMIT) {
+		sde_cesta_ctrl_setup(cesta_client, NULL);
+		sde_enc->cesta_enable_frame = true;
+	} else if (req_scc || (commit_state == SDE_PERF_ENABLE_COMMIT)) {
+		sde_cesta_ctrl_setup(cesta_client, &ctrl_cfg);
+		sde_enc->cesta_enable_frame = false;
+	}
+
+	/* CTL cesta flush configs */
+	cfg.index = cesta_client->scc_index;
+	cfg.vote_state = cesta_client->vote_state;
+
+	if (cesta_client->pwr_st_override)
+		cfg.flags |= SDE_CTL_CESTA_OVERRIDE_FLAG;
+	else
+		cfg.flags |= SDE_CTL_CESTA_CHN_WAIT;
+
+	if ((commit_state == SDE_PERF_ENABLE_COMMIT) || (commit_state == SDE_PERF_DISABLE_COMMIT)
+			|| req_scc)
+		cfg.flags |= SDE_CTL_CESTA_SCC_FLUSH;
+
+	if ((cfg.vote_state != SDE_CESTA_BW_CLK_NOCHANGE) || req_flush)
+		ctl->ops.cesta_flush(ctl, &cfg);
+
+	SDE_EVT32(DRMID(drm_enc), commit_state, cfg.index, cfg.vote_state, cfg.flags, req_flush,
+			req_scc, sde_enc->cesta_enable_frame, vm_req, sde_enc->cesta_op_group_req);
+}
+
 static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, bool enable)
 {
 	struct sde_kms *sde_kms;
 	struct sde_encoder_virt *sde_enc =  to_sde_encoder_virt(drm_enc);
-	int rc;
+	struct msm_display_info *info;
+	bool is_video_mode;
+	int i, rc;
 	bool enter_idle = false;
+	enum  {
+		REQ_OFF,
+		REQ_ON,
+		REQ_ENTER_IDLE,
+		REQ_EXIT_IDLE
+	} req;
 
+	info = &sde_enc->disp_info;
 	sde_kms = sde_encoder_get_kms(drm_enc);
 	if (!sde_kms)
 		return -EINVAL;
 
+	if (!enable && (sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE ||
+			sde_enc->rc_state == SDE_ENC_RC_STATE_OFF)) {
+		SDE_DEBUG("unbalanced call - enable: %d, rc_state: %d", enable, sde_enc->rc_state);
+		SDE_EVT32(DRMID(drm_enc), enable, sde_enc->rc_state, SDE_EVTLOG_ERROR);
+		return 0;
+	}
+
+	if (enable)
+		req = sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE ? REQ_EXIT_IDLE : REQ_ON;
+	else
+		req = sde_enc->rc_state == SDE_ENC_RC_STATE_PRE_OFF ? REQ_OFF : REQ_ENTER_IDLE;
+
 	SDE_DEBUG_ENC(sde_enc, "enable:%d\n", enable);
 	SDE_EVT32(DRMID(drm_enc), enable);
+
+	is_video_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 
 	if (!sde_enc->cur_master) {
 		SDE_ERROR("encoder master not set\n");
@@ -1965,6 +2091,15 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 			return rc;
 		}
 
+		if (req == REQ_EXIT_IDLE && is_video_mode && info->esync_enabled) {
+			for (i = 0; i < sde_enc->num_phys_encs; i++) {
+				struct sde_encoder_phys *phys_enc = sde_enc->phys_encs[i];
+
+				if (phys_enc->ops.idle_pc_exit)
+					phys_enc->ops.idle_pc_exit(phys_enc);
+			}
+		}
+
 		/* enable all the irq */
 		sde_encoder_irq_control(drm_enc, true);
 
@@ -1973,11 +2108,27 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 	} else {
 		_sde_encoder_pm_qos_remove_request(drm_enc);
 
+		if (req == REQ_ENTER_IDLE && is_video_mode && info->esync_enabled) {
+			for (i = 0; i < sde_enc->num_phys_encs; i++) {
+				struct sde_encoder_phys *phys_enc = sde_enc->phys_encs[i];
+
+				if (phys_enc->ops.idle_pc_enter)
+					phys_enc->ops.idle_pc_enter(phys_enc);
+			}
+		}
+
 		/* disable all the irq */
 		sde_encoder_irq_control(drm_enc, false);
 
+		/* disable all the clks and resources */
+		if (info->esync_enabled)
+			_sde_encoder_cesta_update(drm_enc, SDE_PERF_DISABLE_COMMIT);
+
 		/* disable DSI clks */
-		enter_idle = (sde_enc->rc_state == SDE_ENC_RC_STATE_ON) ? true : false;
+		if (info->esync_enabled)
+			enter_idle = req == REQ_ENTER_IDLE;
+		else
+			enter_idle = (sde_enc->rc_state == SDE_ENC_RC_STATE_ON) ? true : false;
 		sde_connector_clk_ctrl(sde_enc->cur_master->connector, false, enter_idle);
 
 		/* disable SDE core clks */
@@ -2301,109 +2452,6 @@ void sde_encoder_control_idle_pc(struct drm_encoder *drm_enc, bool enable)
 	SDE_EVT32(sde_enc->idle_pc_enabled);
 }
 
-static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
-			enum sde_perf_commit_state commit_state)
-{
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
-	struct sde_encoder_phys *cur_master = sde_enc->phys_encs[0];
-	struct sde_cesta_client *cesta_client = sde_enc->cesta_client;
-	struct sde_hw_ctl *ctl = NULL;
-	struct sde_ctl_cesta_cfg cfg = {0,};
-	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
-	struct sde_connector_state *c_state = NULL;
-	struct msm_display_mode *msm_mode = NULL;
-	enum sde_crtc_vm_req vm_req;
-	bool req_flush = false, req_scc = false;
-
-	if (!cesta_client || !sde_enc->crtc)
-		return;
-
-	cur_master = sde_enc->phys_encs[0];
-	if (!cur_master || !cur_master->hw_ctl)
-		return;
-
-	if (sde_enc->res_switch && sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE)
-			&& (commit_state == SDE_PERF_BEGIN_COMMIT) && sde_enc->cur_master) {
-		c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
-		if (!c_state) {
-			SDE_ERROR("invalid connector state\n");
-			return;
-		}
-		msm_mode = &c_state->msm_mode;
-
-		/*
-		 * In cmd mode with cesta, below sequence is used to avoid 2-frame res-switch.
-		 * - wait for previous frame complete
-		 * - Update cesta votes and issue override cesta flush
-		 * - Send panel cmds to switch
-		 * - Update interface panic & wakeup windows
-		 * - set ctl-op-group
-		 * - ctl-flush/ctl-start
-		 * - reset ctl-op-group as part of complete_commit
-		 */
-		if (msm_is_mode_seamless_dms(msm_mode)) {
-			sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
-			commit_state = SDE_PERF_ENABLE_COMMIT;
-			sde_enc->cesta_op_group_req = true;
-		}
-	}
-
-	sde_core_perf_crtc_update(sde_enc->crtc, commit_state);
-
-	ctl = cur_master->hw_ctl;
-
-	if ((commit_state == SDE_PERF_COMPLETE_COMMIT)
-			&& (cesta_client->vote_state != SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE)
-			&& (cesta_client->vote_state != SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE))
-		return;
-
-	/* SCC configs */
-	cur_master->ops.cesta_ctrl_cfg(cur_master, &ctrl_cfg, &req_flush, &req_scc);
-
-	/*
-	 * Move to auto active on panic setting while releasing the VM & update
-	 * cesta ctrl/cesta flush. Update cesta_ctrl/cesta flush on acquing the VM
-	 * to set the older state.
-	 */
-	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
-				CRTC_PROP_VM_REQ_STATE);
-	if ((vm_req == VM_REQ_RELEASE) && !ctrl_cfg.auto_active_on_panic) {
-		ctrl_cfg.auto_active_on_panic = true;
-		req_scc = true;
-		req_flush = true;
-	} else if ((vm_req == VM_REQ_ACQUIRE) && !ctrl_cfg.auto_active_on_panic) {
-		req_scc = true;
-		req_flush = true;
-	}
-
-	if (commit_state == SDE_PERF_DISABLE_COMMIT) {
-		sde_cesta_ctrl_setup(cesta_client, NULL);
-		sde_enc->cesta_enable_frame = true;
-	} else if (req_scc || (commit_state == SDE_PERF_ENABLE_COMMIT)) {
-		sde_cesta_ctrl_setup(cesta_client, &ctrl_cfg);
-		sde_enc->cesta_enable_frame = false;
-	}
-
-	/* CTL cesta flush configs */
-	cfg.index = cesta_client->scc_index;
-	cfg.vote_state = cesta_client->vote_state;
-
-	if (cesta_client->pwr_st_override)
-		cfg.flags |= SDE_CTL_CESTA_OVERRIDE_FLAG;
-	else
-		cfg.flags |= SDE_CTL_CESTA_CHN_WAIT;
-
-	if ((commit_state == SDE_PERF_ENABLE_COMMIT) || (commit_state == SDE_PERF_DISABLE_COMMIT)
-			|| req_scc)
-		cfg.flags |= SDE_CTL_CESTA_SCC_FLUSH;
-
-	if ((cfg.vote_state != SDE_CESTA_BW_CLK_NOCHANGE) || req_flush)
-		ctl->ops.cesta_flush(ctl, &cfg);
-
-	SDE_EVT32(DRMID(drm_enc), commit_state, cfg.index, cfg.vote_state, cfg.flags, req_flush,
-			req_scc, sde_enc->cesta_enable_frame, vm_req, sde_enc->cesta_op_group_req);
-}
-
 void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
@@ -2490,6 +2538,7 @@ static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 {
 	struct drm_crtc *crtc = drm_enc->crtc;
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct msm_display_info *info = &sde_enc->disp_info;
 
 	int ret = 0;
 
@@ -2511,7 +2560,7 @@ static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 		goto end;
 	}
 
-	if (is_vid_mode && sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE) {
+	if (is_vid_mode && !info->esync_enabled && sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE) {
 		sde_encoder_irq_control(drm_enc, true);
 		_sde_encoder_pm_qos_add_request(drm_enc);
 	} else {
@@ -2716,6 +2765,7 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 	struct drm_crtc *crtc = drm_enc->crtc;
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
 	struct sde_connector *sde_conn;
+	struct msm_display_info *info = &sde_enc->disp_info;
 	int crtc_id = 0;
 
 	priv = drm_enc->dev->dev_private;
@@ -2743,7 +2793,7 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 	}
 
 	crtc_id = drm_crtc_index(crtc);
-	if (is_vid_mode) {
+	if (is_vid_mode && !info->esync_enabled) {
 		sde_encoder_irq_control(drm_enc, false);
 		_sde_encoder_pm_qos_remove_request(drm_enc);
 	} else {
@@ -2751,7 +2801,8 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 			kthread_flush_worker(&priv->event_thread[crtc_id].worker);
 
 		/* disable all the clks and resources */
-		_sde_encoder_cesta_update(drm_enc, SDE_PERF_DISABLE_COMMIT);
+		if (!info->esync_enabled)
+			_sde_encoder_cesta_update(drm_enc, SDE_PERF_DISABLE_COMMIT);
 
 		_sde_encoder_update_rsc_client(drm_enc, false);
 		_sde_encoder_resource_control_helper(drm_enc, false);

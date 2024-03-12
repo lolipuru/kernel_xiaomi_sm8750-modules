@@ -270,6 +270,8 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_POST_TIMING_SWITCH:        Post timing switch
  * @DSI_CMD_SET_QSYNC_ON                   Enable qsync mode
  * @DSI_CMD_SET_QSYNC_OFF                  Disable qsync mode
+ * @DSI_CMD_SET_ESYNC_POST_ON:             Panel exit sleep
+ * @DSI_CMD_SET_STILL_INDICATION_ON:       Panel still indication
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -298,6 +300,8 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_POST_TIMING_SWITCH,
 	DSI_CMD_SET_QSYNC_ON,
 	DSI_CMD_SET_QSYNC_OFF,
+	DSI_CMD_SET_ESYNC_POST_ON,
+	DSI_CMD_SET_STILL_INDICATION_ON,
 	DSI_CMD_SET_MAX
 };
 
@@ -422,6 +426,8 @@ struct dsi_panel_cmd_set {
  * @roi_caps:         Panel ROI capabilities.
  * @qsync_min_fps:    Qsync min fps rate
  * @avr_step_fps:     AVR step fps rate
+ * @esync_enabled:    esync enabled
+ * @esync_emsync_fps: esync EM pulse rate
  */
 struct dsi_mode_info {
 	u32 h_active;
@@ -450,6 +456,8 @@ struct dsi_mode_info {
 	struct msm_roi_caps roi_caps;
 	u32 qsync_min_fps;
 	u32 avr_step_fps;
+	bool esync_enabled;
+	u32 esync_emsync_fps;
 };
 
 /**

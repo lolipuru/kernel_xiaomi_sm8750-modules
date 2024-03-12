@@ -125,6 +125,8 @@ struct dsi_ctrl_power_info {
  *			clocks. These clocks are specific to controller
  *			instance.
  * @xo_clk:             XO clocks used to park the DSI PLL before turning off.
+ * @esync_clk:          clocks required to drive the esync generator
+ * @osc_clk:            clocks required to drive the backup esync generator
  * @mux_clks:           Mux clocks used for Dynamic refresh feature.
  * @ext_clks:           External byte/pixel clocks from the MMSS block. These
  *			clocks are set as parent to rcg clocks.
@@ -138,6 +140,8 @@ struct dsi_ctrl_clk_info {
 	struct dsi_link_lp_clk_info lp_link_clks;
 	struct dsi_clk_link_set rcg_clks;
 	struct dsi_clk_link_set xo_clk;
+	struct dsi_esync_clk_info esync_clk;
+	struct dsi_osc_clk_info osc_clk;
 
 	/* Clocks set by DSI Manager */
 	struct dsi_clk_link_set mux_clks;

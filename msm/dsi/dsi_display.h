@@ -746,6 +746,14 @@ int dsi_display_set_power(struct drm_connector *connector,
 		int power_mode, void *display);
 
 /*
+ * dsi_display_dcs_cmd_tx - send arbitrary DCS command to panel
+ * @display: Pointer to private display structure
+ * @cmd: Enum identifying the command
+ * Returns: Zero on success
+ */
+int dsi_display_dcs_cmd_tx(struct dsi_display *display, enum dsi_cmd_set_type cmd);
+
+/*
  * dsi_display_pre_kickoff - program kickoff-time features
  * @connector: Pointer to drm connector structure
  * @display: Pointer to private display structure
@@ -938,10 +946,16 @@ bool is_skip_op_required(struct dsi_display *display);
  * @display:     Handle to display
  * @clk_type:   Clock which is being controlled.
  * @clk_state:  Desired state of clock
- * @idle_pc:    Idle power collapse status
  *
  * return: error code in case of failure or 0 for success.
  */
-int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state, bool idle_pc);
+int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state);
+
+/**
+ * dsi_display_set_idle_pc_state() - set idle pc state
+ * @display:    Handle to display
+ * @idle_pc:    Idle power collapse status
+ */
+void dsi_display_set_idle_pc_state(void *display, bool idle_pc);
 
 #endif /* _DSI_DISPLAY_H_ */

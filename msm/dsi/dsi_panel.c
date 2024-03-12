@@ -18,6 +18,7 @@
 #include "sde_dbg.h"
 #include "sde_dsc_helper.h"
 #include "sde_vdc_helper.h"
+#include "sde_hw_catalog.h"
 
 /**
  * topology is currently defined by a set of following 3 values:
@@ -346,10 +347,14 @@ static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
 	if (IS_ERR_OR_NULL(panel->pinctrl.pinctrl))
 		return 0;
 
-	if (enable)
-		state = panel->pinctrl.active;
-	else
+	if (enable) {
+		if (panel->esync_caps.esync_support)
+			state = panel->pinctrl.active_with_esync;
+		else
+			state = panel->pinctrl.active;
+	} else {
 		state = panel->pinctrl.suspend;
+	}
 
 	rc = pinctrl_select_state(panel->pinctrl.pinctrl, state);
 	if (rc)
@@ -515,12 +520,19 @@ static int dsi_panel_pinctrl_init(struct dsi_panel *panel)
 		goto error;
 	}
 
-	panel->pinctrl.active = pinctrl_lookup_state(panel->pinctrl.pinctrl,
-						       "panel_active");
+	panel->pinctrl.active =
+		pinctrl_lookup_state(panel->pinctrl.pinctrl, "panel_active");
 	if (IS_ERR_OR_NULL(panel->pinctrl.active)) {
 		rc = PTR_ERR(panel->pinctrl.active);
 		DSI_ERR("failed to get pinctrl active state, rc=%d\n", rc);
 		goto error;
+	}
+
+	panel->pinctrl.active_with_esync =
+		pinctrl_lookup_state(panel->pinctrl.pinctrl, "panel_active_with_esync");
+	if (IS_ERR_OR_NULL(panel->pinctrl.active_with_esync)) {
+		panel->pinctrl.active_with_esync = NULL;
+		DSI_DEBUG("failed to get pinctrl active with esync state\n");
 	}
 
 	panel->pinctrl.suspend =
@@ -1329,6 +1341,56 @@ error:
 	return rc;
 }
 
+static int dsi_panel_parse_esync_caps(struct dsi_panel *panel,
+				       struct device_node *of_node)
+{
+	struct dsi_esync_capabilities *esync_caps = &panel->esync_caps;
+	struct dsi_parser_utils *utils = &panel->utils;
+	int val, rc = 0;
+
+	val = utils->read_bool(utils->data, "qcom,mdss-esync");
+	esync_caps->esync_support = val;
+	if (!val) {
+		DSI_DEBUG("[%s] esync not enabled\n", panel->name);
+		return 0;
+	}
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-milli-skew", &val);
+	if (rc) {
+		DSI_DEBUG("[%s] esync skew fallback on default\n", panel->name);
+		val = 0;
+	}
+	esync_caps->milli_skew = val;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-hsync-milli-pulse-width", &val);
+	if (rc) {
+		DSI_ERR("[%s] esync enabled but hsync pulse width not defined\n", panel->name);
+		goto error;
+	}
+	esync_caps->hsync_milli_pulse_width = val;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-emsync-fps", &val);
+	if (rc) {
+		DSI_DEBUG("[%s] esync EM pulse not enabled\n", panel->name);
+		esync_caps->emsync_fps = 0;
+		return 0;
+	}
+	esync_caps->emsync_fps = val;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-emsync-milli-pulse-width", &val);
+	if (rc) {
+		DSI_ERR("[%s] esync EM pulse enabled but pulse width not defined\n", panel->name);
+		goto error;
+	}
+	esync_caps->emsync_milli_pulse_width = val;
+
+	return 0;
+
+error:
+	esync_caps->esync_support = false;
+	return rc;
+}
+
 static int dsi_panel_parse_avr_caps(struct dsi_panel *panel,
 				     struct device_node *of_node)
 {
@@ -1924,6 +1986,8 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-post-mode-switch-on-command",
 	"qcom,mdss-dsi-qsync-on-commands",
 	"qcom,mdss-dsi-qsync-off-commands",
+	"qcom,mdss-dsi-esync-post-on-commands",
+	"qcom,mdss-dsi-still-indication-commands",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -1952,6 +2016,8 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-post-mode-switch-on-command-state",
 	"qcom,mdss-dsi-qsync-on-commands-state",
 	"qcom,mdss-dsi-qsync-off-commands-state",
+	"qcom,mdss-dsi-esync-post-on-commands-state",
+	"qcom,mdss-dsi-still-indication-commands-state",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -3799,6 +3865,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (rc)
 		DSI_ERR("failed to parse AVR features, rc=%d\n", rc);
 
+	rc = dsi_panel_parse_esync_caps(panel, of_node);
+	if (rc)
+		DSI_ERR("failed to parse esync features, rc=%d\n", rc);
+
 	rc = dsi_panel_parse_dyn_clk_caps(panel);
 	if (rc)
 		DSI_ERR("failed to parse dynamic clk config, rc=%d\n", rc);
@@ -4812,6 +4882,26 @@ int dsi_panel_send_roi_dcs(struct dsi_panel *panel, int ctrl_idx,
 	dsi_panel_destroy_cmd_packets(set);
 	dsi_panel_dealloc_cmd_packets(set);
 
+	return rc;
+}
+
+int dsi_panel_dcs_cmd_tx(struct dsi_panel *panel, enum dsi_cmd_set_type cmd)
+{
+	int rc = 0;
+
+	if (!panel) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+
+	rc = dsi_panel_tx_cmd_set(panel, cmd);
+	if (rc)
+		DSI_ERR("[%s] failed to send cmds %d, rc=%d\n",
+		       panel->name, cmd, rc);
+
+	mutex_unlock(&panel->panel_lock);
 	return rc;
 }
 

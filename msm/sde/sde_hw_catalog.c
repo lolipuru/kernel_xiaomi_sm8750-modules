@@ -2611,6 +2611,9 @@ static int sde_intf_parse_dt(struct device_node *np,
 
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_A00))
 			set_bit(SDE_INTF_PANIC_CTRL, &intf->features);
+
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+			set_bit(SDE_INTF_ESYNC, &intf->features);
 	}
 
 end:
