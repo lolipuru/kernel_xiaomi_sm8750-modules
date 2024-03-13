@@ -39,6 +39,8 @@
 #define AUTOREFRESH_SEQ2_POLL_TIMEOUT	1000000
 #define TEAR_DETECT_CTRL	0x14
 
+#define CX0_PERIOD_NS	52
+
 static inline int _sde_encoder_phys_cmd_get_idle_timeout(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -1442,20 +1444,38 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct msm_mode_info *info = &sde_enc->mode_info;
 	struct intf_panic_wakeup_cfg cfg = { 0 };
-	u32 bw_update_time_lines, prefill_lines, vrefresh;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
+	u32 bw_update_time_lines, prefill_lines, vrefresh, vsync_vtotal, vsync_count, vsync_hz;
 
 	if (!phys_enc->hw_intf || !phys_enc->hw_intf->ops.setup_te_panic_wakeup)
 		return;
 
+	sde_kms = phys_enc->sde_kms;
+	if (!sde_kms || !sde_kms->dev || !sde_kms->dev->dev_private)
+		return;
+
+	priv = sde_kms->dev->dev_private;
+
 	vrefresh = drm_mode_vrefresh(mode);
+	vsync_hz = sde_power_clk_get_rate(&priv->phandle, "vsync_clk");
+	if (!vsync_hz || !mode->vtotal || !vrefresh)
+		return;
+
+	/* should match with the calcualtion done in tearchec_config */
+	vsync_count = vsync_hz / (mode->vtotal * vrefresh);
+
+	vsync_vtotal = DIV_ROUND_UP(NSEC_PER_SEC, vrefresh * CX0_PERIOD_NS);
+	vsync_vtotal = DIV_ROUND_UP(vsync_vtotal, vsync_count);
+
 	prefill_lines = (vrefresh > DEFAULT_FPS) ?
 				DIV_ROUND_UP(info->prefill_lines * vrefresh, DEFAULT_FPS)
 					: info->prefill_lines;
 
 	cfg.wakeup_window = DEFAULT_TEARCHECK_SYNC_THRESH_CONTINUE;
 	cfg.wakeup_start =  mode->vdisplay
-				+ (mode->vdisplay
-					- DIV_ROUND_UP(mode->vdisplay * info->jitter_numer,
+				+ (vsync_vtotal
+					- DIV_ROUND_UP(vsync_vtotal * info->jitter_numer,
 						info->jitter_denom * 100)) - prefill_lines;
 
 	bw_update_time_lines = sde_encoder_helper_get_bw_update_time_lines(sde_enc);
