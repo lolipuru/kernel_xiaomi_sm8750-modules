@@ -3,9 +3,8 @@
  * QTI CE 32-bit compatibility syscall for 64-bit systems
  *
  * Copyright (c) 2014-2020 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
-#if IS_ENABLED(CONFIG_COMPAT)
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -529,4 +528,3 @@ long compat_qcedev_ioctl(struct file *file,
 	}
 	return 0;
 }
-#endif
