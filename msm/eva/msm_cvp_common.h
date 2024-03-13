@@ -1,13 +1,19 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 
 #ifndef _MSM_CVP_COMMON_H_
 #define _MSM_CVP_COMMON_H_
 #include "msm_cvp_internal.h"
+
+enum cvp_irq_state {
+	CVP_IRQ_CLEAR = 1,
+	CVP_IRQ_ACCEPTED = 2,
+	CVP_IRQ_PROCESSED = 3,
+};
 
 void cvp_put_inst(struct msm_cvp_inst *inst);
 struct msm_cvp_inst *cvp_get_inst(struct msm_cvp_core *core,
