@@ -416,8 +416,6 @@ skip_calc:
 				params->data.bw_ab, params->data.bw_ib);
 	}
 
-	cesta->resource_used |= SDE_CESTA_RESOURCE_CRMB_USED | SDE_CESTA_RESOURCE_CRMB_PT_USED;
-
 	/* update the client vote values */
 	memcpy(client_data, &params->data, sizeof(struct sde_cesta_client_data));
 
@@ -472,8 +470,6 @@ int sde_cesta_aoss_update(struct sde_cesta_client *client, enum sde_cesta_aoss_c
 				client->client_index, client->scc_index, cp_level, ret);
 	else
 		client->aoss_cp_level = cp_level;
-
-	cesta->resource_used |= SDE_CESTA_RESOURCE_AOSS_USED;
 
 	SDE_EVT32(client->client_index, client->scc_index, cp_level, ret);
 
@@ -539,15 +535,12 @@ int sde_cesta_resource_disable(u32 cesta_index)
 
 	cesta = cesta_list[cesta_index];
 
-	if (cesta->fs && (cesta->resource_used & SDE_CESTA_RESOURCE_ALL_USED)
-			&& !(cesta->resource_used & SDE_CESTA_RESOURCE_GDSC_HW_CTRL)) {
+	if (cesta->sw_fs_enabled && cesta->fs) {
 		ret = regulator_set_mode(cesta->fs, REGULATOR_MODE_FAST);
 		if (ret) {
 			SDE_ERROR_CESTA("vdd reg fast mode set failed, ret:%d\n", ret);
 			return ret;
 		}
-		cesta->resource_used |= SDE_CESTA_RESOURCE_GDSC_HW_CTRL;
-		SDE_EVT32(cesta_index, cesta->resource_used);
 	}
 
 	phandle = &cesta->phandle;
@@ -567,13 +560,10 @@ int sde_cesta_resource_disable(u32 cesta_index)
 	msm_dss_enable_clk(mp->clk_config, mp->num_clk, false);
 
 	/* avoid regulator disable, once gdsc is put to hw-ctrl mode */
-	if (!(cesta->resource_used & SDE_CESTA_RESOURCE_GDSC_HW_CTRL)) {
+	if (cesta->sw_fs_enabled) {
 		if (cesta->pd_fs)
 			pm_runtime_put_sync(cesta->pd_fs);
-		else if (cesta->fs)
-			regulator_disable(cesta->fs);
-		cesta->resource_used |= SDE_CESTA_RESOURCE_GDSC_DISABLE;
-		SDE_EVT32(cesta_index, cesta->resource_used);
+		cesta->sw_fs_enabled = false;
 	}
 
 	return 0;
@@ -590,25 +580,6 @@ int sde_cesta_resource_enable(u32 cesta_index)
 		return 0;
 
 	cesta = cesta_list[cesta_index];
-
-	/*
-	 * skip after GDSC is put to HW_CTRL.
-	 * skip on the first enable as probe handles it
-	 */
-	if (!(cesta->resource_used & SDE_CESTA_RESOURCE_GDSC_HW_CTRL)
-			&& (cesta->resource_used & SDE_CESTA_RESOURCE_GDSC_DISABLE)) {
-		if (cesta->pd_fs)
-			ret = pm_runtime_get_sync(cesta->pd_fs);
-		else if (cesta->fs)
-			ret = regulator_enable(cesta->fs);
-		if (ret) {
-			SDE_ERROR_CESTA("regulator enabled failed, ret:%d\n", ret);
-			return ret;
-		}
-		cesta->resource_used |= SDE_CESTA_RESOURCE_GDSC_ENABLE;
-		SDE_EVT32(cesta_index, cesta->resource_used);
-	}
-
 	phandle = &cesta->phandle;
 	mp = &phandle->mp;
 	ret = msm_dss_enable_clk(mp->clk_config, mp->num_clk, true);
@@ -781,7 +752,7 @@ static void sde_cesta_deinit(struct platform_device *pdev, struct sde_cesta *ces
 	if (!cesta)
 		return;
 
-	if (!(cesta->resource_used & SDE_CESTA_RESOURCE_GDSC_HW_CTRL)) {
+	if (cesta->sw_fs_enabled) {
 		if (cesta->pd_fs)
 			pm_runtime_put_sync(cesta->pd_fs);
 		else if (cesta->fs)
@@ -897,7 +868,7 @@ static int sde_cesta_probe(struct platform_device *pdev)
 		SDE_ERROR_CESTA("regulator enabled failed, ret:%d\n", ret);
 		goto fail;
 	}
-	cesta->resource_used = SDE_CESTA_RESOURCE_GDSC_INIT;
+	cesta->sw_fs_enabled = true;
 
 	INIT_LIST_HEAD(&cesta->client_list);
 	mutex_init(&cesta->client_lock);
