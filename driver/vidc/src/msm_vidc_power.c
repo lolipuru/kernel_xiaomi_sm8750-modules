@@ -173,7 +173,7 @@ static int msm_vidc_set_buses(struct msm_vidc_inst *inst)
 			continue;
 
 		/* skip inactive session bus bandwidth */
-		if (!is_active_session(temp->last_qbuf_time_ns, curr_time_ns)) {
+		if (temp != inst && !is_active_session(temp->last_qbuf_time_ns, curr_time_ns)) {
 			temp->active = false;
 			continue;
 		}
@@ -360,7 +360,7 @@ int msm_vidc_set_clocks(struct msm_vidc_inst *inst)
 			continue;
 
 		/* skip inactive session clock rate */
-		if (!is_active_session(temp->last_qbuf_time_ns, curr_time_ns)) {
+		if (temp != inst && !is_active_session(temp->last_qbuf_time_ns, curr_time_ns)) {
 			temp->active = false;
 			continue;
 		}
