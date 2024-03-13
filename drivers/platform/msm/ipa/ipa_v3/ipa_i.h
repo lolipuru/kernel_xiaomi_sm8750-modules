@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _IPA3_I_H_
@@ -92,7 +92,7 @@
 #define IPA_IMM_IP_PACKET_INIT_EX_CMD_NUM (IPA5_MAX_NUM_PIPES + 1)
 
 #define IPA_Q6_FNR_START_IDX (128)
-#define IPA_Q6_FNR_IDX_CNT (52)
+#define IPA_Q6_FNR_IDX_CNT (68)
 #define IPA_Q6_FNR_END_IDX (IPA_Q6_FNR_START_IDX+IPA_Q6_FNR_IDX_CNT-1)
 #define IPA_Q6_FNR_STATS_SIZE (IPA_Q6_FNR_IDX_CNT * 16)
 #define IPA_MPM_MAX_RING_LEN 64
