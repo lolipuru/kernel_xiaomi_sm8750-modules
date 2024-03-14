@@ -4421,6 +4421,7 @@ skip_to_power_gpio_setup:
 #ifdef CONFIG_ARCH_QTI_VM
 	goto skip_to_fw_update;
 #endif
+	fts_system_reset();
 
 	/* init hardware device */
 	logError(1, "%s Device Initialization:\n", tag);
@@ -4443,7 +4444,7 @@ skip_to_fw_update:
 			 "%s Cannot execute fw upgrade the device ERROR %08X\n",
 			 tag,
 			 retval);
-		goto ProbeErrorExit_7;
+		goto ProbeErrorExit_6;
 	}
 
 #else
@@ -4453,7 +4454,7 @@ skip_to_fw_update:
 	if (!info->fwu_workqueue) {
 		logError(1, "%s ERROR: Cannot create fwu work thread\n", tag);
 		retval = -ENODEV;
-		goto ProbeErrorExit_7;
+		goto ProbeErrorExit_6;
 	}
 	INIT_DELAYED_WORK(&info->fwu_work, fts_fw_update_auto);
 #endif
@@ -4464,7 +4465,7 @@ skip_to_fw_update:
 	retval = sysfs_create_group(&info->dev->kobj, &info->attrs);
 	if (retval) {
 		logError(1, "%s ERROR: Cannot create sysfs structure!\n", tag);
-		goto ProbeErrorExit_7;
+		goto ProbeErrorExit_6;
 	}
 
 	retval = fts_proc_init();
@@ -4478,18 +4479,6 @@ skip_to_fw_update:
 
 	logError(1, "%s Probe Finished!\n", tag);
 	return OK;
-
-
-ProbeErrorExit_7:
-#ifdef FW_UPDATE_ON_PROBE
-
-#if defined(CONFIG_DRM)
-	if (info->notifier_cookie)
-		panel_event_notifier_unregister(info->notifier_cookie);
-#elif IS_ENABLED(CONFIG_FB)
-	fb_unregister_client(&info->fb_notifier);
-#endif
-#endif
 
 ProbeErrorExit_6:
 	input_unregister_device(info->input_dev);
@@ -4514,6 +4503,12 @@ ProbeErrorExit_2:
 #endif
 
 ProbeErrorExit_1:
+#if defined(CONFIG_DRM)
+	if (info->notifier_cookie)
+		panel_event_notifier_unregister(info->notifier_cookie);
+#elif IS_ENABLED(CONFIG_FB)
+	fb_unregister_client(&info->fb_notifier);
+#endif
 
 	return retval;
 }
