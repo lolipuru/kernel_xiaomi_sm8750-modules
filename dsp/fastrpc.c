@@ -2584,11 +2584,12 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	struct fastrpc_buf *buf, *b;
 	int i;
 	unsigned long flags;
-	bool locked = false;
+	bool locked = false, is_driver_registered = false;
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	if (fl->device) {
 		fl->device->dev_close = true;
+		fl->device->fl = NULL;
 	}
 	fl->file_close = 1;
 	list_for_each_entry_safe(frpc_drv, d, &fl->fastrpc_drivers, hn){
@@ -2598,8 +2599,17 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 			spin_lock_irqsave(&cctx->lock, flags);
 		}
 		list_del(&frpc_drv->hn);
+		is_driver_registered = true;
 	}
 	spin_unlock_irqrestore(&cctx->lock, flags);
+
+	/*
+	 * If no driver is registered on the device, free it here.
+	 * If any active driver is still registered, device will
+	 * be freed when driver is unregistered.
+	 */
+	if (!is_driver_registered)
+		kfree(fl->device);
 	if (fl->spd)
 		atomic_set(&fl->spd->is_attached, 0);
 
@@ -4151,9 +4161,9 @@ long fastrpc_dev_map_dma(struct fastrpc_device *dev,
 
 
 	spin_lock_irqsave(&glock, irq_flags);
-	if (!dev) {
+	if (!dev || dev->dev_close) {
 		err = -ESRCH;
-		pr_err("%s : bad dev", __func__);
+		pr_err("%s : bad dev or device is already closed", __func__);
 		spin_unlock_irqrestore(&glock, irq_flags);
 		return err;
 	}
@@ -4240,8 +4250,8 @@ long fastrpc_dev_unmap_dma(struct fastrpc_device *dev,
 	p.unmap = (struct fastrpc_dev_unmap_dma *)invoke_param;
 
 	spin_lock_irqsave(&glock, irq_flags);
-	if (!dev) {
-		pr_err("%s : bad dev", __func__);
+	if (!dev || dev->dev_close) {
+		pr_err("%s : bad dev or device is already closed", __func__);
 		err = -ESRCH;
 		spin_unlock_irqrestore(&glock, irq_flags);
 		return err;
@@ -4316,8 +4326,8 @@ long fastrpc_dev_get_hlos_pid(struct fastrpc_device *dev,
 	struct fastrpc_channel_ctx * cctx = NULL;
 
 	spin_lock_irqsave(&glock, irq_flags);
-	if (!dev) {
-		pr_err("%s : bad dev passed", __func__);
+	if (!dev  || dev->dev_close) {
+		pr_err("%s : bad dev or device is already closed", __func__);
 		err = -ESRCH;
 		spin_unlock_irqrestore(&glock, irq_flags);
 		return err;
@@ -4443,6 +4453,16 @@ void fastrpc_driver_unregister(struct fastrpc_driver *frpc_driver){
 		pr_err("passed invalid driver, fastrpc device not present");
 		return;
 	}
+
+	// If device is already closed, free the device
+	if (frpc_dev->dev_close) {
+		spin_unlock_irqrestore(&glock, irq_flags);
+		kfree(frpc_dev);
+		pr_info("Un-registering fastrpc driver with handle 0x%x\n",
+			frpc_driver->handle);
+		return;
+	}
+
 	fl = frpc_dev->fl;
 	if (!fl) {
 		spin_unlock_irqrestore(&glock, irq_flags);
@@ -4459,7 +4479,7 @@ void fastrpc_driver_unregister(struct fastrpc_driver *frpc_driver){
 	spin_unlock_irqrestore(&cctx->lock, irq_flags);
 	fastrpc_channel_ctx_put(cctx);
 
-	pr_info("Un-registering fastrpc driver with handle %d\n",
+	pr_info("Un-registering fastrpc driver with handle 0x%x\n",
 			frpc_driver->handle);
 }
 EXPORT_SYMBOL_GPL(fastrpc_driver_unregister);
@@ -4565,7 +4585,7 @@ process_found:
 	spin_unlock_irqrestore(&gctx[domain_id]->lock, irq_flags);
 	/* Execute the probe fn. of the client driver if matching process found */
 	frpc_driver->probe(user->device);
-	pr_info("fastrpc driver registered with handle %d\n", frpc_driver->handle);
+	pr_info("fastrpc driver registered with handle 0x%x\n", frpc_driver->handle);
 
 	return err;
 }
