@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_VIDC_INST_H_
@@ -131,7 +131,7 @@ struct msm_vidc_inst {
 	struct completion                  completions[MAX_SIGNAL];
 	struct msm_vidc_fence_context      fence_context;
 	bool                               active;
-	u64                                last_qbuf_time_ns;
+	u64                                last_active_time_ns;
 	u64                                initial_time_us;
 	u32                                max_input_data_size;
 	u32                                dpb_list_payload[MAX_DPB_LIST_ARRAY_SIZE];
