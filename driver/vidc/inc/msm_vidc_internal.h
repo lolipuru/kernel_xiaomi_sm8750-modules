@@ -645,6 +645,7 @@ enum msm_vidc_core_capability_type {
 	ENC_AUTO_FRAMERATE,
 	DEVICE_CAPS,
 	SUPPORTS_REQUESTS,
+	SSR_TYPE,
 	CORE_CAP_MAX,
 };
 
