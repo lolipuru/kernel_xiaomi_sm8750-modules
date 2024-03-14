@@ -579,6 +579,9 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 		intf_cfg2 |= BIT(23);
 	}
 
+	if (ctx->cap->features & BIT(SDE_INTF_PERIPHERAL_FLUSH))
+		intf_cfg2 |= BIT(24);
+
 	if (ctx->cfg.split_link_en)
 		SDE_REG_WRITE(c, INTF_REG_SPLIT_LINK, 0x3);
 
