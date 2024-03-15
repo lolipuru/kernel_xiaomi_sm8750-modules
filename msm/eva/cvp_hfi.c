@@ -387,7 +387,6 @@ static int __dsp_shutdown(struct iris_hfi_device *device)
 		dprintk(CVP_ERR,
 			"%s: dsp shutdown failed with error %d\n",
 			__func__, rc);
-		WARN_ON(1);
 	}
 
 	dprintk(CVP_DSP, "%s: dsp shutdown successful\n", __func__);
