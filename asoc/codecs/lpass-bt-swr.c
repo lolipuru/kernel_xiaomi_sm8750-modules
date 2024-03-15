@@ -224,14 +224,6 @@ static int lpass_bt_swr_mclk_enable(
 	dev_dbg(priv->dev, "%s: mclk_enable = %u\n",
 		__func__, mclk_enable);
 
-	ret = lpass_bt_swr_core_vote(priv, true);
-	if (ret < 0) {
-		dev_err_ratelimited(priv->dev,
-			"%s: request core vote failed\n",
-			__func__);
-		goto exit;
-	}
-
 	if (mclk_enable) {
 		ret = clk_prepare_enable(priv->clk_handle);
 		if (ret < 0) {
@@ -255,8 +247,6 @@ static int lpass_bt_swr_mclk_enable(
 	}
 
 error:
-	lpass_bt_swr_core_vote(priv, false);
-exit:
 	return ret;
 }
 
@@ -362,16 +352,16 @@ static int lpass_bt_swr_ssr_enable(struct device *dev, void *data)
 	dev_dbg(priv->dev, "%s: swrm clock users %d\n",
 		__func__, priv->swr_clk_users);
 
-	lpass_bt_swr_mclk_enable(priv, false);
-	ret = msm_cdc_pinctrl_select_sleep_state(
-				priv->bt_swr_gpio_p);
-	if (ret < 0) {
-		dev_err_ratelimited(priv->dev,
-			"%s: bt swr pinctrl disable failed\n",
-			__func__);
-	}
-
 	if (priv->swr_clk_users > 0) {
+		lpass_bt_swr_mclk_enable(priv, false);
+		ret = msm_cdc_pinctrl_select_sleep_state(
+					priv->bt_swr_gpio_p);
+		if (ret < 0) {
+			dev_err_ratelimited(priv->dev,
+				"%s: bt swr pinctrl disable failed\n",
+				__func__);
+		}
+
 		lpass_bt_swr_mclk_enable(priv, true);
 		ret = msm_cdc_pinctrl_select_active_state(
 					priv->bt_swr_gpio_p);
