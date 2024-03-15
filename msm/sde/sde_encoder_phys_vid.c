@@ -606,6 +606,8 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 	struct sde_encoder_phys *phys_enc = arg;
 	struct sde_hw_ctl *hw_ctl;
 	struct intf_status intf_status = {0};
+	struct sde_cesta_scc_status scc_status = {0, };
+	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 	unsigned long lock_flags;
 	u32 flush_register = ~0;
 	u32 reset_status = 0;
@@ -677,6 +679,8 @@ not_flushed:
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
 			intf_status.frame_count, intf_status.line_count,
 			fence_ready, DPUID(phys_enc->parent->dev));
+	if (cesta_client)
+		sde_cesta_get_status(cesta_client, &scc_status);
 
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&phys_enc->pending_kickoff_wq);

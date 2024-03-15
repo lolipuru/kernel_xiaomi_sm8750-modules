@@ -529,6 +529,8 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 	struct sde_hw_ctl *ctl;
 	struct sde_hw_pp_vsync_info info[MAX_CHANNELS_PER_ENC] = {{0}};
 	struct sde_encoder_phys_cmd_te_timestamp *te_timestamp;
+	struct sde_cesta_scc_status scc_status = {0, };
+	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 	unsigned long lock_flags;
 	u32 fence_ready = 0;
 
@@ -561,6 +563,8 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 		info[0].rd_ptr_line_count, info[1].pp_idx, info[1].intf_idx,
 		info[1].intf_frame_count, info[1].wr_ptr_line_count, info[1].rd_ptr_line_count,
 		DPUID(phys_enc->parent->dev));
+	if (cesta_client)
+		sde_cesta_get_status(cesta_client, &scc_status);
 
 	_sde_encoder_phys_cmd_process_sim_qsync_event(phys_enc, SDE_SIM_QSYNC_EVENT_TE_TRIGGER);
 
