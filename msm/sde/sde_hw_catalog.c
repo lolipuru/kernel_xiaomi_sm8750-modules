@@ -229,7 +229,6 @@ enum sde_prop {
 	SDE_EMULATED_ENV,
 	IPCC_CLIENT_DPU_PHYS_ID,
 	LINE_INSERTION,
-	SOCCP_PH,
 	SDE_PROP_MAX,
 };
 
@@ -671,7 +670,6 @@ static struct sde_prop_type sde_prop[] = {
 	{SDE_EMULATED_ENV, "qcom,sde-emulated-env", false, PROP_TYPE_BOOL},
 	{IPCC_CLIENT_DPU_PHYS_ID, "qcom,sde-ipcc-client-dpu-phys-id", false, PROP_TYPE_U32},
 	{LINE_INSERTION, "qcom,sde-has-line-insertion", false, PROP_TYPE_BOOL},
-	{SOCCP_PH, "qcom,sde-soccp-controller", false, PROP_TYPE_U32}
 };
 
 static struct sde_prop_type sde_perf_prop[] = {
@@ -4419,8 +4417,6 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 	cfg->ipcc_client_phys_id = PROP_VALUE_ACCESS(props->values, IPCC_CLIENT_DPU_PHYS_ID, 0);
 	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id)
 		cfg->hw_fence_rev = 0; /* disable hw fences*/
-
-	cfg->soccp_ph = PROP_VALUE_ACCESS(props->values, SOCCP_PH, 0);
 
 	if (props->exists[SEC_SID_MASK]) {
 		cfg->sec_sid_mask_count = props->counts[SEC_SID_MASK];
