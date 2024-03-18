@@ -440,6 +440,7 @@ audio_modules.register(
         "wcd939x-regmap.c",
         "wcd939x-tables.c",
         "wcd939x-mbhc.c",
+        "wcd939x-regulator.c",
     ]
 )
 audio_modules.register(
