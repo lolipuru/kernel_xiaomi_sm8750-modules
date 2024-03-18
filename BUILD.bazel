@@ -4,3 +4,6 @@ load(":define_modules.bzl", "define_modules")
 define_modules("sun", "consolidate")
 define_modules("sun", "gki")
 
+define_modules("sun", "consolidate")
+define_modules("sun", "perf")
+
