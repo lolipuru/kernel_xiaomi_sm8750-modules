@@ -65,7 +65,6 @@ enum sde_hw_fence_clients {
 	SDE_HW_FENCE_CLIENT_MAX,
 };
 
-#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 /**
  * hw_fence_data_dpu_client - this table maps the dpu ipcc input and output signals for each display
  *              clients to communicate with the fence controller.
@@ -683,12 +682,8 @@ static void _sde_hw_fence_release(struct sde_fence *f)
 {
 	struct sde_hw_fence_data *data;
 	struct sde_hw_ctl *hw_ctl = f->hwfence_out_ctl;
-	struct dma_fence *fence = &f->base;
 	int ctl_id;
 	int ret;
-
-	if (!test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags))
-		return;
 
 	if (!hw_ctl) {
 		SDE_ERROR("invalid hw_ctl\n");
@@ -777,22 +772,6 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 
 	return 0;
 }
-#else
-static int sde_fence_create_hw_fence(struct sde_hw_ctl *hw_ctl, struct sde_fence *sde_fence)
-{
-	return -EINVAL;
-}
-
-static int _reset_hw_fence_timeline(struct sde_hw_ctl *hw_ctl)
-{
-	return -EINVAL;
-}
-
-static void _sde_hw_fence_release(struct sde_fence *f)
-{
-	/* do nothing */
-}
-#endif /* CONFIG_QTI_HW_FENCE */
 
 void sde_fence_error_ctx_update(struct sde_fence_context *ctx, int input_fence_status,
 	enum sde_fence_error_state sde_fence_error_state)
@@ -965,8 +944,9 @@ static void sde_fence_release(struct dma_fence *fence)
 	if (fence) {
 		f = to_sde_fence(fence);
 
-		/* Delete the HW fence if present */
-		_sde_hw_fence_release(f);
+		/* Delete the HW fence */
+		if (test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags))
+			_sde_hw_fence_release(f);
 
 		kref_put(&f->ctx->kref, sde_fence_destroy);
 		kfree(f);
