@@ -1580,6 +1580,7 @@ void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	cfg->auto_active_on_panic = true;
 	cfg->req_mode = qsync_en ? SDE_CESTA_CTRL_REQ_PANIC_REGION :
 					SDE_CESTA_CTRL_REQ_IMMEDIATE;
+	cfg->hw_sleep_enable = true;
 
 	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)
 			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))

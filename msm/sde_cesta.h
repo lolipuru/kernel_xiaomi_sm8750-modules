@@ -122,6 +122,7 @@ enum sde_cesta_ctrl_pwr_req_mode {
  * @dual_dsi: indicate if the interface is of type dual-dsi
  * @avr_enable: avr freature is enabled
  * @auto_active_on_panic: set auto active signal on panic signal from INTF
+ * @hw_sleep_enable: enable hardware sleep during idle
  * req_mode: mode based on which scc initiates the voting
  */
 struct sde_cesta_ctrl_cfg {
@@ -131,6 +132,7 @@ struct sde_cesta_ctrl_cfg {
 	bool dual_dsi;
 	bool avr_enable;
 	bool auto_active_on_panic;
+	bool hw_sleep_enable;
 	enum sde_cesta_ctrl_pwr_req_mode req_mode;
 };
 

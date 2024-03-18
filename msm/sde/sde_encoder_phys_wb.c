@@ -2692,6 +2692,7 @@ void sde_encoder_phys_wb_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	cfg->enable = true;
 	cfg->wb = true;
 	cfg->req_mode = SDE_CESTA_CTRL_REQ_IMMEDIATE;
+	cfg->hw_sleep_enable = false;
 	*req_flush = true;
 }
 

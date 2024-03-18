@@ -2605,6 +2605,7 @@ void sde_encoder_phys_cmd_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	cfg->intf = phys_enc->intf_idx - INTF_0;
 	cfg->auto_active_on_panic = autorefresh_en;
 	cfg->req_mode = SDE_CESTA_CTRL_REQ_PANIC_REGION;
+	cfg->hw_sleep_enable = true;
 
 	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)
 			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))

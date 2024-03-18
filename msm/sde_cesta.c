@@ -115,7 +115,8 @@ void sde_cesta_ctrl_setup(struct sde_cesta_client *client, struct sde_cesta_ctrl
 
 	if (cfg)
 		SDE_EVT32(client->client_index, client->scc_index, cfg->enable, cfg->intf, cfg->wb,
-			cfg->dual_dsi, cfg->avr_enable, cfg->auto_active_on_panic, cfg->req_mode);
+			cfg->dual_dsi, cfg->avr_enable, cfg->auto_active_on_panic, cfg->req_mode,
+			cfg->hw_sleep_enable);
 	else
 		SDE_EVT32(client->client_index, client->scc_index);
 }
