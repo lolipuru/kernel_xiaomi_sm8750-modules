@@ -6,6 +6,7 @@
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/iopoll.h>
+#include <linux/ktime.h>
 
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_debug.h"
@@ -27,6 +28,8 @@
 #define HW_FENCE_MAX_DATA_PER_EVENT_DUMP (HW_FENCE_EVENT_MAX_DATA * 9)
 
 #define HFENCE_EVT_MSG "[%d][cpu:%d][%llu] data[%d]:%s\n"
+
+#define ktime_compare_safe(A, B) ktime_compare(ktime_sub((A), (B)), ktime_set(0, 0))
 
 u32 msm_hw_fence_debug_level = HW_FENCE_PRINTK;
 
@@ -759,14 +762,13 @@ exit:
 	return len;
 }
 
-static void _dump_queue(enum hw_fence_drv_prio prio, struct msm_hw_fence_client *hw_fence_client,
-	int queue_type)
+static void _dump_queue(struct hw_fence_driver_data *drv_data, enum hw_fence_drv_prio prio,
+	struct msm_hw_fence_client *hw_fence_client, int queue_type)
 {
 	struct msm_hw_fence_queue *queue;
-	struct msm_hw_fence_hfi_queue_header *hfi_header;
 	struct msm_hw_fence_queue_payload *payload;
 	u64 timestamp;
-	u32 *read_ptr, queue_entries;
+	u32 *read_ptr, *rd_idx_ptr, *wr_idx_ptr, *tx_wm_ptr, queue_entries;
 	int i;
 
 	queue = &hw_fence_client->queues[queue_type - 1];
@@ -779,13 +781,13 @@ static void _dump_queue(enum hw_fence_drv_prio prio, struct msm_hw_fence_client 
 			queue, queue ? queue->va_header : NULL, queue ? queue->va_queue : NULL);
 		return;
 	}
-	hfi_header = (struct msm_hw_fence_hfi_queue_header *)queue->va_header;
+	hw_fence_get_queue_idx_ptrs(drv_data, queue->va_header, &rd_idx_ptr, &wr_idx_ptr,
+		&tx_wm_ptr);
 
 	mb(); /* make sure data is ready before read */
 	HWFNC_DBG_DUMP(prio, "%s va:0x%pK rd_idx:%u wr_idx:%u tx_wm:%u q_size_bytes:%u\n",
 		(queue_type == HW_FENCE_TX_QUEUE) ? "TX QUEUE" : "RX QUEUE", queue->va_queue,
-		hfi_header->read_index, hfi_header->write_index, hfi_header->tx_wm,
-		queue->q_size_bytes);
+		*rd_idx_ptr, *wr_idx_ptr, *tx_wm_ptr, queue->q_size_bytes);
 	queue_entries = queue->q_size_bytes / HW_FENCE_CLIENT_QUEUE_PAYLOAD;
 
 	for (i = 0; i < queue_entries; i++) {
@@ -802,7 +804,7 @@ static void _dump_queue(enum hw_fence_drv_prio prio, struct msm_hw_fence_client 
 	}
 }
 
-void hw_fence_debug_dump_queues(enum hw_fence_drv_prio prio,
+void hw_fence_debug_dump_queues(struct hw_fence_driver_data *drv_data, enum hw_fence_drv_prio prio,
 	struct msm_hw_fence_client *hw_fence_client)
 {
 	if (!hw_fence_client) {
@@ -812,8 +814,8 @@ void hw_fence_debug_dump_queues(enum hw_fence_drv_prio prio,
 
 	HWFNC_DBG_DUMP(prio, "Queues for client %d\n", hw_fence_client->client_id);
 	if (hw_fence_client->queues_num == HW_FENCE_CLIENT_QUEUES)
-		_dump_queue(prio, hw_fence_client, HW_FENCE_RX_QUEUE);
-	_dump_queue(prio, hw_fence_client, HW_FENCE_TX_QUEUE);
+		_dump_queue(drv_data, prio, hw_fence_client, HW_FENCE_RX_QUEUE);
+	_dump_queue(drv_data, prio, hw_fence_client, HW_FENCE_TX_QUEUE);
 }
 
 /**
@@ -847,7 +849,7 @@ static ssize_t hw_fence_dbg_dump_queues_wr(struct file *file, const char __user 
 		HWFNC_ERR("client %d not initialized\n", client_id);
 		return -EINVAL;
 	}
-	hw_fence_debug_dump_queues(HW_FENCE_PRINTK, drv_data->clients[client_id]);
+	hw_fence_debug_dump_queues(drv_data, HW_FENCE_PRINTK, drv_data->clients[client_id]);
 
 	return count;
 }
@@ -1170,6 +1172,78 @@ int process_validation_client_loopback(struct hw_fence_driver_data *drv_data,
 	mutex_unlock(&drv_data->clients_register_lock);
 
 	return 0;
+}
+
+static long _process_val_signal(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_client *hw_fence_client,
+	struct dma_fence *fence, u64 hash, u32 *error)
+{
+	struct msm_hw_fence_queue_payload payload;
+	int read = 1, queue_type = HW_FENCE_RX_QUEUE - 1;  /* rx queue index */
+	u64 context, seqno;
+
+	/* clear validation signal flag */
+	atomic_set(&hw_fence_client->val_signal, 0);
+
+	context = fence ? fence->context : 0;
+	seqno = fence ? fence->seqno : 0;
+
+	while (read) {
+		read = hw_fence_read_queue(drv_data, hw_fence_client, &payload, queue_type);
+		if (read < 0) {
+			HWFNC_ERR("unable to read client rxq client_id:%u\n",
+				hw_fence_client->client_id);
+			break;
+		}
+		HWFNC_DBG_L("rxq read: hash:%llu, flags:%llu, error:%u\n",
+			payload.hash, payload.flags, payload.error);
+		if ((fence && payload.ctxt_id == context && payload.seqno == seqno) ||
+				hash == payload.hash) {
+			*error = payload.error;
+			return 0;
+		}
+	}
+
+	HWFNC_ERR("fence received did not match the fence expected\n");
+	HWFNC_ERR("received: hash:%llu ctx:%llu seq:%llu expected: hash:%llu ctx:%llu seq:%llu\n",
+		payload.hash, payload.ctxt_id, payload.seqno, hash, context, seqno);
+
+	return -EINVAL;
+}
+
+int hw_fence_debug_wait_val(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence, u64 hash,
+	u64 timeout_ms, u32 *error)
+{
+	ktime_t cur_ktime, exp_ktime;
+	int ret = -EINVAL;
+
+	if (!hw_fence_client || !drv_data) {
+		HWFNC_ERR("invalid client\n");
+		return -EINVAL;
+	}
+
+	exp_ktime = ktime_add_ms(ktime_get(), timeout_ms);
+	while (ret) {
+		do {
+			ret = wait_event_timeout(hw_fence_client->wait_queue,
+					atomic_read(&hw_fence_client->val_signal) > 0,
+					msecs_to_jiffies(timeout_ms));
+			cur_ktime = ktime_get();
+		} while ((atomic_read(&hw_fence_client->val_signal) <= 0) && (ret == 0) &&
+			ktime_compare_safe(exp_ktime, cur_ktime) > 0);
+
+		if (!ret) {
+			HWFNC_ERR("timed out waiting for the client signal %llu\n", timeout_ms);
+			/* Decrement the refcount that hw_sync_get_fence increments */
+			dma_fence_put(fence);
+			return -ETIMEDOUT;
+		}
+		ret = _process_val_signal(drv_data, hw_fence_client, fence, hash, error);
+		/* if val client fails to find expected fence, keep waiting until timeout */
+	}
+
+	return ret;
 }
 
 static const struct file_operations hw_fence_reset_client_fops = {

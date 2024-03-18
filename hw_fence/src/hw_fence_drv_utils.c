@@ -19,6 +19,8 @@
 #include <linux/gh_cpusys_vm_mem_access.h>
 #endif
 #include <soc/qcom/secure_buffer.h>
+#include <linux/kthread.h>
+#include <uapi/linux/sched/types.h>
 
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_utils.h"
@@ -300,8 +302,8 @@ static int _process_fence_error_client_loopback(struct hw_fence_driver_data *drv
 	u32 client_id;
 
 	for (i = 0; read && i < HW_FENCE_MAX_ITER_READ; i++) {
-		read = hw_fence_read_queue_helper(&drv_data->ctrl_queues[HW_FENCE_RX_QUEUE - 1],
-			&payload);
+		read = hw_fence_read_queue_helper(drv_data,
+			&drv_data->ctrl_queues[HW_FENCE_RX_QUEUE - 1], &payload);
 		if (read < 0) {
 			HWFNC_DBG_Q("unable to read ctrl rxq for db_flag_id:%d\n", db_flag_id);
 			return read;
@@ -457,17 +459,35 @@ int hw_fence_utils_init_virq(struct hw_fence_driver_data *drv_data)
 static irqreturn_t hw_fence_soccp_irq_handler(int irq, void *data)
 {
 	struct hw_fence_driver_data *drv_data = (struct hw_fence_driver_data *)data;
-	u64 mask;
+	u32 mask;
 
 	mask = hw_fence_ipcc_get_signaled_clients_mask(drv_data);
-	hw_fence_utils_process_signaled_clients_mask(drv_data, mask);
+	atomic_or(mask, &drv_data->signaled_clients_mask);
+	wake_up_all(&drv_data->soccp_wait_queue);
 
 	return IRQ_HANDLED;
+}
+
+static int hw_fence_soccp_listener(void *data)
+{
+	struct hw_fence_driver_data *drv_data = (struct hw_fence_driver_data *)data;
+	u32 mask;
+
+	while (drv_data->has_soccp) {
+		wait_event(drv_data->soccp_wait_queue,
+			atomic_read(&drv_data->signaled_clients_mask) != 0);
+		mask = atomic_xchg(&drv_data->signaled_clients_mask, 0);
+		if (mask)
+			hw_fence_utils_process_signaled_clients_mask(drv_data, mask);
+	}
+
+	return 0;
 }
 
 int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data)
 {
 	struct platform_device *pdev;
+	struct task_struct *thread;
 	int irq, ret;
 
 	if (!drv_data || !drv_data->dev || !drv_data->has_soccp) {
@@ -475,6 +495,8 @@ int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data)
 			drv_data ? drv_data->dev : NULL, drv_data ? drv_data->has_soccp : -1);
 		return -EINVAL;
 	}
+
+	init_waitqueue_head(&drv_data->soccp_wait_queue);
 
 	pdev = to_platform_device(drv_data->dev);
 	irq = platform_get_irq(pdev, 0);
@@ -486,8 +508,18 @@ int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data)
 
 	ret = devm_request_irq(drv_data->dev, irq, hw_fence_soccp_irq_handler, IRQF_TRIGGER_HIGH,
 		"hwfence-driver", drv_data);
-	if (ret < 0)
+	if (ret < 0) {
 		HWFNC_ERR("failed to register irq:%d ret:%d\n", irq, ret);
+		return ret;
+	}
+
+	thread = kthread_run(hw_fence_soccp_listener, (void *)drv_data,
+		"msm_hw_fence_soccp_listener");
+	if (IS_ERR(thread)) {
+		HWFNC_ERR("failed to create thread to process signals received from soccp\n");
+		return PTR_ERR(thread);
+	}
+	drv_data->soccp_listener_thread = thread;
 
 	return ret;
 }
@@ -688,10 +720,10 @@ static int _init_soccp_mem(struct hw_fence_driver_data *drv_data)
 
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 	ret = iommu_map(domain, drv_data->res.start, drv_data->res.start, drv_data->size,
-		IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
+		IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE, GFP_KERNEL);
 #else
 	ret = iommu_map(domain, drv_data->res.start, drv_data->res.start, drv_data->size,
-		IOMMU_READ | IOMMU_WRITE);
+		IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE);
 #endif
 	if (ret)
 		HWFNC_ERR("failed to one-to-one map for soccp smmu addr:0x%llx sz:%lx ret:%d\n",
@@ -713,7 +745,6 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 	struct device_node *node = drv_data->dev->of_node;
 	struct device_node *node_compat;
 	const char *compat = "qcom,msm-hw-fence-mem";
-	struct device *dev = drv_data->dev;
 	struct device_node *np;
 	int ret;
 
@@ -736,8 +767,13 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 		return -EINVAL;
 	}
 
-	drv_data->io_mem_base = devm_ioremap_wc(dev, drv_data->res.start,
-		resource_size(&drv_data->res));
+	if (drv_data->has_soccp)
+		drv_data->io_mem_base = memremap(drv_data->res.start, resource_size(&drv_data->res),
+			MEMREMAP_WB);
+	else
+		drv_data->io_mem_base = devm_ioremap_wc(drv_data->dev, drv_data->res.start,
+			resource_size(&drv_data->res));
+
 	if (!drv_data->io_mem_base) {
 		HWFNC_ERR("ioremap failed!\n");
 		return -ENXIO;
@@ -917,15 +953,16 @@ static int _parse_client_queue_dt_props_extra(struct hw_fence_driver_data *drv_d
 		goto exit;
 	}
 
-	if (desc->start_padding >= U32_MAX - HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num)) {
+	if (desc->start_padding >= U32_MAX - HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num,
+			drv_data->has_soccp)) {
 		HWFNC_ERR("%s client queues_num:%u start_padding:%u will overflow mem_size\n",
 			desc->name, desc->queues_num, desc->start_padding);
 		ret = -EINVAL;
 		goto exit;
 	}
 
-	if (desc->end_padding >= U32_MAX - HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num) -
-			desc->start_padding) {
+	if (desc->end_padding >= U32_MAX - HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num,
+			drv_data->has_soccp) - desc->start_padding) {
 		HWFNC_ERR("%s client q_num:%u start_p:%u end_p:%u will overflow mem_size\n",
 			desc->name, desc->queues_num, desc->start_padding, desc->end_padding);
 		ret = -EINVAL;
@@ -1000,15 +1037,16 @@ static int _parse_client_queue_dt_props_indv(struct hw_fence_driver_data *drv_da
 
 	queue_size = HW_FENCE_CLIENT_QUEUE_PAYLOAD * desc->queue_entries;
 	if (queue_size >= ((U32_MAX & PAGE_MASK) -
-			(HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num) +
+			(HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num, drv_data->has_soccp) +
 			desc->start_padding + desc->end_padding)) / desc->queues_num) {
 		HWFNC_ERR("%s client queue_sz:%u start_p:%u end_p:%u will overflow mem size\n",
 			desc->name, queue_size, desc->start_padding, desc->end_padding);
 		return -EINVAL;
 	}
 
-	desc->mem_size = PAGE_ALIGN(HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num) +
-		(queue_size * desc->queues_num) + desc->start_padding + desc->end_padding);
+	desc->mem_size = PAGE_ALIGN(HW_FENCE_HFI_CLIENT_HEADERS_SIZE(desc->queues_num,
+		drv_data->has_soccp) + (queue_size * desc->queues_num) + desc->start_padding +
+		desc->end_padding);
 
 	if (desc->mem_size > MAX_CLIENT_QUEUE_MEM_SIZE) {
 		HWFNC_ERR("%s client queue mem_size:%u greater than max mem size:%d\n",
@@ -1097,8 +1135,8 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 		drv_data->has_soccp = true;
 		drv_data->soccp_rproc = rproc_get_by_phandle(ph);
 		if (IS_ERR_OR_NULL(drv_data->soccp_rproc)) {
-			HWFNC_ERR("failed to find rproc for phandle:%u\n", ph);
-			return -EINVAL;
+			HWFNC_DBG_INFO("failed to find rproc for phandle:%u\n", ph);
+			return -EPROBE_DEFER;
 		}
 	}
 
@@ -1132,15 +1170,17 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 		return -EINVAL;
 	}
 	drv_data->hw_fence_ctrl_queue_size = HW_FENCE_CTRL_QUEUE_PAYLOAD *
-		drv_data->hw_fence_queue_entries;
+		HW_FENCE_CTRL_QUEUE_ENTRIES;
 
-	if (drv_data->hw_fence_ctrl_queue_size >= (U32_MAX - HW_FENCE_HFI_CTRL_HEADERS_SIZE) /
+	if (drv_data->hw_fence_ctrl_queue_size >= (U32_MAX -
+			HW_FENCE_HFI_CTRL_HEADERS_SIZE(drv_data->has_soccp)) /
 			HW_FENCE_CTRL_QUEUES) {
 		HWFNC_ERR("queue size:%u will overflow ctrl queue mem size\n",
 			drv_data->hw_fence_ctrl_queue_size);
 		return -EINVAL;
 	}
-	drv_data->hw_fence_mem_ctrl_queues_size = HW_FENCE_HFI_CTRL_HEADERS_SIZE +
+	drv_data->hw_fence_mem_ctrl_queues_size =
+		HW_FENCE_HFI_CTRL_HEADERS_SIZE(drv_data->has_soccp) +
 		(HW_FENCE_CTRL_QUEUES * drv_data->hw_fence_ctrl_queue_size);
 
 	/* clients queues init */

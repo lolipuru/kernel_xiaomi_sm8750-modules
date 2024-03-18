@@ -12,6 +12,7 @@
 #if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
 #include <linux/remoteproc/qcom_rproc.h>
 #endif
+#include <linux/kthread.h>
 
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_utils.h"
@@ -111,6 +112,8 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	}
 
 	hw_fence_client->update_rxq = hw_fence_ipcc_needs_rxq_update(hw_fence_drv_data, client_id);
+	hw_fence_client->signaled_update_rxq =
+		hw_fence_ipcc_signaled_needs_rxq_update(hw_fence_drv_data, client_id);
 	hw_fence_client->signaled_send_ipc = hw_fence_ipcc_signaled_needs_ipc_irq(hw_fence_drv_data,
 		client_id);
 	hw_fence_client->txq_update_send_ipc =
@@ -118,10 +121,12 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 
 	hw_fence_client->queues_num = hw_fence_utils_get_queues_num(hw_fence_drv_data, client_id);
 	if (!hw_fence_client->queues_num || (hw_fence_client->update_rxq &&
-			hw_fence_client->queues_num < HW_FENCE_CLIENT_QUEUES)) {
-		HWFNC_ERR("client:%d invalid q_num:%d for updates_rxq:%s\n", client_id,
-			hw_fence_client->queues_num,
-			hw_fence_client->update_rxq ? "true" : "false");
+			hw_fence_client->queues_num < HW_FENCE_CLIENT_QUEUES) ||
+			(!hw_fence_client->update_rxq && hw_fence_client->signaled_update_rxq)) {
+		HWFNC_ERR("client:%d invalid q_num:%d for updates_rxq:%s signaled_update_rxq:%s\n",
+			client_id, hw_fence_client->queues_num,
+			hw_fence_client->update_rxq ? "true" : "false",
+			hw_fence_client->signaled_update_rxq ? "true" : "false");
 		ret = -EINVAL;
 		goto error;
 	}
@@ -696,13 +701,14 @@ int msm_hw_fence_dump_debug_data(void *client_handle, u32 dump_flags, u32 dump_c
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 
 	if (dump_flags & MSM_HW_FENCE_DBG_DUMP_QUEUES) {
-		hw_fence_debug_dump_queues(HW_FENCE_PRINTK, hw_fence_client);
+		hw_fence_debug_dump_queues(hw_fence_drv_data, HW_FENCE_PRINTK, hw_fence_client);
 
 		if (dump_clients_mask)
 			for (client_id = 0; client_id < HW_FENCE_CLIENT_MAX; client_id++)
 				if ((dump_clients_mask & (1 << client_id)) &&
 						hw_fence_drv_data->clients[client_id])
-					hw_fence_debug_dump_queues(HW_FENCE_PRINTK,
+					hw_fence_debug_dump_queues(hw_fence_drv_data,
+						HW_FENCE_PRINTK,
 						hw_fence_drv_data->clients[client_id]);
 	}
 
@@ -815,7 +821,8 @@ error:
 	kfree(hw_fence_drv_data);
 	hw_fence_drv_data = (void *) -EPROBE_DEFER;
 
-	HWFNC_ERR_ONCE("error %d\n", rc);
+	HWFNC_DBG_INFO("error %d\n", rc);
+
 	return rc;
 }
 
@@ -858,6 +865,11 @@ static int msm_hw_fence_remove(struct platform_device *pdev)
 		HWFNC_ERR("null driver data\n");
 		return -EINVAL;
 	}
+
+	/* indicate listener thread should stop listening for interrupts from soccp */
+	hw_fence_drv_data->has_soccp = false;
+	if (hw_fence_drv_data->soccp_listener_thread)
+		kthread_stop(hw_fence_drv_data->soccp_listener_thread);
 
 	dev_set_drvdata(&pdev->dev, NULL);
 	kfree(hw_fence_drv_data);
