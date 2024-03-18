@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <asm/memory.h>
@@ -4345,7 +4345,8 @@ static int __iris_power_on(struct iris_hfi_device *device)
 	enable_irq(device->cvp_hal_data->irq);
 	__write_register(device,
 		CVP_WRAPPER_DEBUG_BRIDGE_LPI_CONTROL, 0x7);
-	pr_info_ratelimited(CVP_DBG_TAG "cvp (eva) powered on\n", "pwr");
+	pr_info_ratelimited(CVP_PID_TAG "cvp (eva) powered on\n",
+		current->pid, current->tgid, "pwr");
 	return 0;
 
 fail_enable_core:
@@ -4408,7 +4409,8 @@ static void power_off_iris2(struct iris_hfi_device *device)
 
 	/*Do not access registers after this point!*/
 	device->power_enabled = false;
-	pr_info(CVP_DBG_TAG "cvp (eva) power collapsed\n", "pwr");
+	pr_info(CVP_PID_TAG "cvp (eva) power collapsed\n",
+		current->pid, current->tgid, "pwr");
 }
 
 static inline int __resume(struct iris_hfi_device *device)
@@ -5372,14 +5374,14 @@ static int __power_on_core(struct iris_hfi_device *device)
 		return rc;
 	}
 
-/*#ifdef CONFIG_EVA_PINEAPPLE
+#ifdef CONFIG_EVA_SUN
 	__write_register(device, CVP_AON_WRAPPER_CVP_NOC_ARCG_CONTROL, 0);
-	__write_register(device, CVP_NOC_RCGCONTROLLER_HYSTERESIS_LOW, 0x2f);
+	__write_register(device, CVP_NOC_RCGCONTROLLER_HYSTERESIS_LOW, 0x3ff);
 	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_FORCECLOCKON_LOW, 1);
 	__write_register(device, CVP_NOC_RCGCONTROLLER_MAINCTL_LOW, 1);
 	usleep_range(50, 100);
 	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_FORCECLOCKON_LOW, 0);
-#endif*/
+#endif
 	dprintk(CVP_PWR, "EVA core powered on\n");
 	CVPKERNEL_ATRACE_END("__power_on_core");
 	return 0;
@@ -5970,15 +5972,16 @@ static void __print_sidebandmanager_regs_v1(struct iris_hfi_device *device)
 	sbm_ln0_low =
 		__read_register(device, CVP_NOC_SBM_SENSELN0_LOW);
 
-	if (1)
-		cpu_cs_x2rpmh = axi_cbcr =  __read_gcc_register(device, CVP_GCC_EVA_AXI0_CBCR);
-	else
-		goto exit;
-	/*cpu_cs_x2rpmh = __read_register(device, CVP_CPU_CS_X2RPMh);
+	cpu_cs_x2rpmh = __read_register(device, CVP_CPU_CS_X2RPMh);
 
 	__write_register(device, CVP_CPU_CS_X2RPMh,
 			(cpu_cs_x2rpmh | CVP_CPU_CS_X2RPMh_SWOVERRIDE_BMSK));
 	usleep_range(500, 1000);
+	val = __read_register(device, CVP_CPU_CS_X2RPMh);
+	dprintk(CVP_REG, "CVP_CPU_CS_X2RPMh %#x\n", val);
+	val = __read_register(device, CVP_CPU_CS_X2RPMh_STATUS);
+	dprintk(CVP_REG, "CVP_CPU_CS_X2RPMh_STATUS %#x\n", val);
+
 	cpu_cs_x2rpmh = __read_register(device, CVP_CPU_CS_X2RPMh);
 	if (!(cpu_cs_x2rpmh & CVP_CPU_CS_X2RPMh_SWOVERRIDE_BMSK)) {
 		dprintk(CVP_WARN,
@@ -5992,7 +5995,7 @@ static void __print_sidebandmanager_regs_v1(struct iris_hfi_device *device)
 		dprintk(CVP_WARN, "failed to turn on AXI clock %x\n",
 			axi_cbcr);
 		goto exit;
-	}*/
+	}
 
 	/* Added by Thomas to debug CPU NoC hang */
 	val = __read_register(device, CVP_NOC_ERR_ERRVLD_LOW_OFFS);

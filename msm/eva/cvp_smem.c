@@ -149,7 +149,7 @@ static int msm_dma_put_device_address(u32 flags,
 		return -EINVAL;
 	}
 
-	dma_buf_unmap_attachment(mapping_info->attach,
+	__cvp_dma_buf_unmap_attachment(mapping_info->attach,
 		mapping_info->table, DMA_BIDIRECTIONAL);
 	dma_buf_detach(mapping_info->buf, mapping_info->attach);
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_CVP_INTERNAL_H_
@@ -50,6 +50,8 @@
 
 #define CVP_RT_PRIO_THRESHOLD 1
 
+#define MAX_CVP_ERROR_COUNT 65535
+
 struct msm_cvp_inst;
 
 enum cvp_core_state {
@@ -93,6 +95,17 @@ enum sku_version {
 enum vpu_version {
 	VPU_VERSION_4 = 1,
 	VPU_VERSION_5,
+};
+
+enum cvp_session_state {
+	SESSION_NORMAL = 0x00,
+	SESSION_ERROR
+};
+
+enum cvp_session_errorcode {
+	NO_ERROR = 0x00,
+	EVA_SYS_ERROR,
+	EVA_SESSION_ERROR
 };
 
 struct msm_cvp_ubwc_config_data {

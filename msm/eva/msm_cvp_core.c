@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-direction.h>
@@ -176,8 +176,8 @@ struct msm_cvp_inst *msm_cvp_open(int session_type, struct task_struct *task)
 		goto err_invalid_core;
 	}
 
-	pr_info(CVP_DBG_TAG "%s opening cvp instance: %pK type %d cnt %d\n",
-		"sess", task->comm, inst, session_type, instance_count);
+	pr_info(CVP_PID_TAG " %s opening cvp instance: %pK type %d cnt %d\n",
+		task->pid, task->tgid, "sess", task->comm, inst, session_type, instance_count);
 	mutex_init(&inst->sync_lock);
 	mutex_init(&inst->lock);
 	spin_lock_init(&inst->event_handler.lock);
@@ -442,9 +442,9 @@ int msm_cvp_destroy(struct msm_cvp_inst *inst)
 	__deinit_fence_queue(inst);
 	core->synx_ftbl->cvp_sess_deinit_synx(inst);
 
-	pr_info(CVP_DBG_TAG
+	pr_info(CVP_PID_TAG
 		"closed cvp instance: %pK session_id = %d type %d %d\n",
-		inst->proc_name, inst, hash32_ptr(inst->session),
+		current->pid, current->tgid, inst->proc_name, inst, hash32_ptr(inst->session),
 		inst->session_type, core->smem_leak_count);
 	inst->session = (void *)0xdeadbeef;
 	if (atomic_read(&inst->smem_count) > 0) {
@@ -485,9 +485,9 @@ int msm_cvp_close(void *instance)
 		return -EINVAL;
 	}
 
-	pr_info(CVP_DBG_TAG
+	pr_info(CVP_PID_TAG
 		"to close instance: %pK session_id = %d type %d state %d\n",
-		inst->proc_name, inst, hash32_ptr(inst->session),
+		current->pid, current->tgid, inst->proc_name, inst, hash32_ptr(inst->session),
 		inst->session_type, inst->state);
 
 	if (inst->session == 0) {

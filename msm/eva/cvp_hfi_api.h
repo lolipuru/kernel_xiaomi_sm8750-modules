@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __CVP_HFI_API_H__
@@ -75,6 +75,7 @@ enum hal_ssr_trigger_type {
 	SSR_SW_DIV_BY_ZERO,
 	SSR_HW_WDOG_IRQ,
 	SSR_SESSION_ABORT,
+	SSR_SESSION_ERROR
 };
 
 enum hal_intra_refresh_mode {

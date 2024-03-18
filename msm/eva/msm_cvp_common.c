@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/jiffies.h>
@@ -22,7 +22,7 @@
 	(__p >= __d)\
 )
 
-static void handle_session_error(enum hal_command_response cmd, void *data);
+atomic_t cvp_error_count;
 
 static void dump_hfi_queue(struct iris_hfi_device *device)
 {
@@ -517,13 +517,16 @@ static void handle_session_ctrl(enum hal_command_response cmd, void *data)
 	cvp_put_inst(inst);
 }
 
-static void handle_session_error(enum hal_command_response cmd, void *data)
+void handle_session_error(enum hal_command_response cmd, void *data)
 {
 	struct msm_cvp_cb_cmd_done *response = data;
 	struct cvp_hfi_ops *ops_tbl = NULL;
 	struct msm_cvp_inst *inst = NULL;
-	//unsigned long flags = 0;
-	//int i;
+	struct cvp_session_queue *sq;
+	unsigned long flags = 0;
+	int i;
+	enum cvp_session_state s_state;
+	enum cvp_session_errorcode s_ecode;
 
 	if (!response) {
 		dprintk(CVP_ERR,
@@ -534,27 +537,38 @@ static void handle_session_error(enum hal_command_response cmd, void *data)
 	inst = cvp_get_inst(cvp_driver->cvp_core, response->session_id);
 	if (!inst) {
 		dprintk(CVP_WARN, "%s: response for an inactive session\n",
-				__func__);
+			__func__);
 		return;
 	}
 
 	ops_tbl = inst->core->dev_ops;
 	dprintk(CVP_ERR, "Sess error 0x%x received for inst %pK sess %x\n",
 		response->status, inst, hash32_ptr(inst->session));
+
+	sq = &inst->session_queue;
+	spin_lock(&sq->lock);
+	s_state = SESSION_ERROR;
+	s_ecode = EVA_SESSION_ERROR;
+	if ((atomic_read(&cvp_error_count)) < MAX_CVP_ERROR_COUNT)
+		atomic_inc(&cvp_error_count);
+
+	spin_unlock(&sq->lock);
+
+	inst->error_code = (s_state << 28) | (s_ecode << 16) | atomic_read(&cvp_error_count);
 	cvp_print_inst(CVP_WARN, inst);
 
-	//if (inst->state != MSM_CVP_CORE_INVALID) {
-	//	change_cvp_inst_state(inst, MSM_CVP_CORE_INVALID);
-	//	if (cvp_clean_session_queues(inst))
-	//		dprintk(CVP_WARN, "Failed to clean sess queues\n");
-	//	for (i = 0; i < ARRAY_SIZE(inst->completions); i++)
-	//		complete(&inst->completions[i]);
-	//	spin_lock_irqsave(&inst->event_handler.lock, flags);
-	//	inst->event_handler.event = CVP_SSR_EVENT;
-	//	spin_unlock_irqrestore(
-	//		&inst->event_handler.lock, flags);
-	//	wake_up_all(&inst->event_handler.wq);
-	//}
+	if (inst->state != MSM_CVP_CORE_INVALID) {
+		change_cvp_inst_state(inst, MSM_CVP_CORE_INVALID);
+		if (cvp_clean_session_queues(inst))
+			dprintk(CVP_WARN, "Failed to clean sess queues\n");
+		for (i = 0; i < ARRAY_SIZE(inst->completions); i++)
+			complete(&inst->completions[i]);
+		spin_lock_irqsave(&inst->event_handler.lock, flags);
+		inst->event_handler.event = CVP_SSR_EVENT;
+		spin_unlock_irqrestore(
+			&inst->event_handler.lock, flags);
+		wake_up_all(&inst->event_handler.wq);
+	}
 
 	cvp_put_inst(inst);
 }
@@ -566,9 +580,12 @@ void handle_sys_error(enum hal_command_response cmd, void *data)
 	struct cvp_hfi_ops *ops_tbl = NULL;
 	struct iris_hfi_device *hfi_device;
 	struct msm_cvp_inst *inst = NULL;
+	struct cvp_session_queue *sq;
 	int i, rc = 0;
 	unsigned long flags = 0;
 	enum cvp_core_state cur_state;
+	enum cvp_session_state s_state;
+	enum cvp_session_errorcode s_ecode;
 
 	if (!response) {
 		dprintk(CVP_ERR,
@@ -606,8 +623,18 @@ void handle_sys_error(enum hal_command_response cmd, void *data)
 	}
 	call_hfi_op(ops_tbl, flush_debug_queue, ops_tbl->hfi_device_data);
 	list_for_each_entry(inst, &core->instances, list) {
-		cvp_print_inst(CVP_WARN, inst);
+		cvp_print_inst(CVP_ERR, inst);
 		if (inst->state != MSM_CVP_CORE_INVALID) {
+			sq = &inst->session_queue;
+			spin_lock(&sq->lock);
+			s_state = SESSION_ERROR;
+			s_ecode = EVA_SYS_ERROR;
+			if ((atomic_read(&cvp_error_count)) < MAX_CVP_ERROR_COUNT)
+				atomic_inc(&cvp_error_count);
+
+			inst->error_code = (s_state << 28) | (s_ecode << 16) |
+				atomic_read(&cvp_error_count);
+			spin_unlock(&sq->lock);
 			change_cvp_inst_state(inst, MSM_CVP_CORE_INVALID);
 			if (cvp_clean_session_queues(inst))
 				dprintk(CVP_ERR, "Failed to clean fences\n");
@@ -1254,7 +1281,35 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 
 		return;
 	}
+	if (core->ssr_type == SSR_SESSION_ERROR) {
+		struct msm_cvp_cb_cmd_done response = { 1 };
+		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL;
 
+		list_for_each_entry(inst, &core->instances, list) {
+			if (inst != NULL) {
+				inst_temp = cvp_get_inst_validate(inst->core, inst);
+				if (!inst_temp) {
+					dprintk(CVP_WARN, "%s: Session is not a valid session\n",
+					__func__);
+					continue;
+				}
+				dprintk(CVP_INFO, "Session to be taken for session error 0x%x\n",
+					inst);
+				response.session_id = inst;
+				}
+				break;
+		}
+		if (!response.session_id) {
+			dprintk(CVP_ERR, "No active session\n");
+			return;
+		}
+		response.device_id = 0x00FF;
+		response.status = CVP_ERR_HW_FATAL;
+		response.size = sizeof(struct msm_cvp_cb_cmd_done);
+		dprintk(CVP_ERR, "Session error triggered\n");
+		handle_session_error(HAL_SESSION_ERROR, (void *)(&response));
+		return;
+	}
 send_again:
 	mutex_lock(&core->lock);
 	if (core->state == CVP_CORE_INIT_DONE) {
@@ -1429,16 +1484,19 @@ bool is_cvp_inst_valid(struct msm_cvp_inst *inst)
 
 int cvp_print_inst(u32 tag, struct msm_cvp_inst *inst)
 {
+	struct cvp_session_prop *session_prop;
 	if (!inst) {
 		dprintk(CVP_ERR, "%s invalid inst %pK\n", __func__, inst);
 		return -EINVAL;
 	}
+	session_prop = &inst->prop;
 
 	dprintk(tag, "%s inst stype %d %pK id = %#x ptype %#x prio %#x secure %#x kmask %#x dmask %#x, kref %#x state %#x\n",
 		inst->proc_name, inst->session_type, inst, hash32_ptr(inst->session),
 		inst->prop.type, inst->prop.priority, inst->prop.is_secure,
 		inst->prop.kernel_mask, inst->prop.dsp_mask,
 		kref_read(&inst->kref), inst->state);
+	dprintk(tag, "session name %s", session_prop->session_name);
 
 	return 0;
 }
