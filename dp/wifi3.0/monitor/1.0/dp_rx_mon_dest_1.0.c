@@ -463,7 +463,10 @@ next_msdu:
 	} while (buf_info.paddr);
 
 	dp_rx_mon_init_tail_msdu(head_msdu, msdu, last, tail_msdu);
-	dp_rx_mon_remove_raw_frame_fcs_len(soc, head_msdu, tail_msdu);
+	dp_rx_mon_remove_raw_frame_fcs_len(soc,
+					   mon_pdev,
+					   &mon_pdev->ppdu_info,
+					   head_msdu, tail_msdu);
 
 	return rx_bufs_used;
 }
@@ -607,15 +610,12 @@ dp_rx_mon_check_n_drop_mpdu(struct dp_pdev *pdev, uint32_t mac_id,
 			    uint32_t *rx_bufs_dropped)
 {
 	struct dp_soc *soc = pdev->soc;
-	struct dp_mon_pdev *mon_pdev = pdev->monitor_pdev;
-	uint32_t lmac_id = DP_MON_INVALID_LMAC_ID;
 	uint8_t src_link_id;
 	QDF_STATUS status;
+	struct dp_mon_mac *mon_mac = dp_get_mon_mac(pdev, mac_id);
 
-	if (mon_pdev->mon_chan_band == REG_BAND_UNKNOWN)
+	if (mon_mac->mon_chan_band == REG_BAND_UNKNOWN)
 		goto drop_mpdu;
-
-	lmac_id = pdev->ch_band_lmac_id_mapping[mon_pdev->mon_chan_band];
 
 	status = hal_rx_reo_ent_get_src_link_id(soc->hal_soc,
 						rxdma_dst_ring_desc,
@@ -623,7 +623,7 @@ dp_rx_mon_check_n_drop_mpdu(struct dp_pdev *pdev, uint32_t mac_id,
 	if (QDF_IS_STATUS_ERROR(status))
 		return QDF_STATUS_E_INVAL;
 
-	if (src_link_id == lmac_id)
+	if (src_link_id == mon_mac->mac_id)
 		return QDF_STATUS_E_INVAL;
 
 drop_mpdu:
@@ -661,6 +661,7 @@ void dp_rx_mon_dest_process(struct dp_soc *soc, struct dp_intr *int_ctx,
 	int mac_for_pdev = mac_id;
 	struct cdp_pdev_mon_stats *rx_mon_stats;
 	struct dp_mon_pdev *mon_pdev;
+	struct dp_mon_mac *mon_mac;
 
 	if (!pdev) {
 		dp_rx_mon_dest_debug("%pK: pdev is null for mac_id = %d", soc, mac_id);
@@ -668,6 +669,7 @@ void dp_rx_mon_dest_process(struct dp_soc *soc, struct dp_intr *int_ctx,
 	}
 
 	mon_pdev = pdev->monitor_pdev;
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
 	mon_dst_srng = dp_rxdma_get_mon_dst_ring(pdev, mac_for_pdev);
 
 	if (!mon_dst_srng || !hal_srng_initialized(mon_dst_srng)) {
@@ -726,11 +728,11 @@ void dp_rx_mon_dest_process(struct dp_soc *soc, struct dp_intr *int_ctx,
 		rx_bufs_used += mpdu_rx_bufs_used;
 
 		if (mpdu_rx_bufs_used)
-			mon_pdev->mon_dest_ring_stuck_cnt = 0;
+			mon_mac->mon_dest_ring_stuck_cnt = 0;
 		else
-			mon_pdev->mon_dest_ring_stuck_cnt++;
+			mon_mac->mon_dest_ring_stuck_cnt++;
 
-		if (mon_pdev->mon_dest_ring_stuck_cnt >
+		if (mon_mac->mon_dest_ring_stuck_cnt >
 		    MON_DEST_RING_STUCK_MAX_CNT) {
 			dp_info("destination ring stuck");
 			dp_info("ppdu_id status=%d dest=%d",

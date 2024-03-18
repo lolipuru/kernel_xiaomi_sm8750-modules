@@ -863,6 +863,8 @@ bool wlan_reg_is_range_overlap_2g(qdf_freq_t low_freq, qdf_freq_t high_freq)
 	return reg_is_range_overlap_2g(low_freq, high_freq);
 }
 
+qdf_export_symbol(wlan_reg_is_range_overlap_2g);
+
 bool wlan_reg_is_range_overlap_5g(qdf_freq_t low_freq, qdf_freq_t high_freq)
 {
 	return reg_is_range_overlap_5g(low_freq, high_freq);
@@ -1493,7 +1495,7 @@ wlan_reg_get_5g_bonded_channel_and_state_for_pwrmode(
 
 qdf_export_symbol(wlan_reg_get_5g_bonded_channel_and_state_for_pwrmode);
 
-#if defined(WLAN_FEATURE_11BE) && defined(CONFIG_REG_CLIENT)
+#if defined(CONFIG_REG_CLIENT)
 enum channel_state
 wlan_reg_get_bonded_channel_state_for_pwrmode(struct wlan_objmgr_pdev *pdev,
 					      qdf_freq_t freq,
@@ -2000,3 +2002,11 @@ wlan_reg_get_opclass_from_map(const struct reg_dmn_op_class_map_t **map,
 {
 	return reg_get_opclass_from_map(map, is_global_op_table_needed);
 }
+
+#ifdef WLAN_FEATURE_11BE
+uint16_t
+wlan_reg_find_non_punctured_bw(uint16_t bw,  uint16_t in_punc_pattern)
+{
+	return reg_find_non_punctured_bw(bw, in_punc_pattern);
+}
+#endif

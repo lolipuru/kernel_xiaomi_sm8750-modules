@@ -9938,6 +9938,24 @@ void wmi_copy_full_bw_nol_cfg(wmi_resource_config *resource_cfg,
 }
 #endif
 
+#ifdef FEATURE_SMEM_MAILBOX
+static inline
+void wmi_copy_smem_mailbox_support(wmi_resource_config *resource_cfg,
+				   target_resource_config *tgt_res_cfg)
+{
+	if (tgt_res_cfg->is_smem_mailbox_supported) {
+		WMI_RSRC_CFG_HOST_SERVICE_FLAG_SMEM_MAILBOX_SUPPORT_SET(
+			resource_cfg->host_service_flags, 1);
+	}
+}
+#else
+static inline
+void wmi_copy_smem_mailbox_support(wmi_resource_config *resource_cfg,
+				   target_resource_config *tgt_res_cfg)
+{
+}
+#endif
+
 static
 void wmi_copy_resource_config(wmi_resource_config *resource_cfg,
 				target_resource_config *tgt_res_cfg)
@@ -10032,10 +10050,7 @@ void wmi_copy_resource_config(wmi_resource_config *resource_cfg,
 	resource_cfg->max_ndi_interfaces = tgt_res_cfg->max_ndi;
 	resource_cfg->num_max_active_vdevs = tgt_res_cfg->num_max_active_vdevs;
 
-	if (tgt_res_cfg->is_qms_smem_supported) {
-		WMI_RSRC_CFG_HOST_SERVICE_FLAG_QMS_DLKM_SUPPORT_SET(
-			resource_cfg->host_service_flags, 1);
-	}
+	wmi_copy_smem_mailbox_support(resource_cfg, tgt_res_cfg);
 
 	resource_cfg->num_max_mlo_link_per_ml_bss =
 				tgt_res_cfg->num_max_mlo_link_per_ml_bss;
@@ -10175,7 +10190,9 @@ void wmi_copy_resource_config(wmi_resource_config *resource_cfg,
 		tgt_res_cfg->nan_separate_iface_support);
 	WMI_RSRC_CFG_HOST_SERVICE_FLAG_HOST_SUPPORT_MULTI_RADIO_EVTS_PER_RADIO_SET(
 		resource_cfg->host_service_flags, 1);
-
+	WMI_RSRC_CFG_HOST_SERVICE_FLAG_ML_FULL_MONITOR_MODE_SUPPORT_SET(
+			resource_cfg->host_service_flags,
+			tgt_res_cfg->con_mode_monitor);
 	WMI_RSRC_CFG_FLAG_VIDEO_OVER_WIFI_ENABLE_SET(
 		resource_cfg->flag1, tgt_res_cfg->carrier_vow_optimization);
 
@@ -15339,6 +15356,9 @@ extract_service_ready_ext2_tlv(wmi_unified_t wmi_handle, uint8_t *event,
 	extract_ul_mumimo_support(param);
 	wmi_debug("htt peer data :%d", ev->target_cap_flags);
 
+	param->fw_support_ml_mon =
+	       WMI_TARGET_CAP_ML_MONITOR_MODE_SUPPORT_GET(ev->target_cap_flags);
+
 	extract_svc_rdy_ext2_afc_tlv(ev, param);
 
 	extract_hw_bdf_status(ev);
@@ -19351,6 +19371,12 @@ extract_pasn_peer_create_req_event_tlv(wmi_unified_t wmi_handle, void *evt_buf,
 		dst->peer_info[i].force_self_mac_usage =
 			WMI_RTT_PASN_PEER_CREATE_FORCE_SELF_MAC_USE_GET(
 							buf->control_flag);
+		wmi_debug("Peer[%d]: self_mac:" QDF_MAC_ADDR_FMT " peer_mac:" QDF_MAC_ADDR_FMT "security_mode:0x%x force_self_mac:%d",
+			  i, QDF_MAC_ADDR_REF(dst->peer_info[i].self_mac.bytes),
+			  QDF_MAC_ADDR_REF(dst->peer_info[i].peer_mac.bytes),
+			  security_mode,
+			  dst->peer_info[i].force_self_mac_usage);
+
 		dst->num_peers++;
 		buf++;
 	}
@@ -21971,10 +21997,12 @@ send_vendor_pdev_cmd_tlv(wmi_unified_t wmi_handle,
 static QDF_STATUS
 extract_vendor_peer_event_tlv(wmi_unified_t wmi_handle,
 			      uint8_t *evt_buf,
-			      struct wmi_vendor_peer_event *param)
+			      void *param, void *subtype)
 {
 	WMI_VENDOR_PEER_EVENTID_param_tlvs *param_buf;
 	wmi_vendor_peer_event_fixed_param *evt_fixed_hdr;
+	struct wmi_vendor_peer_event *evt_param =
+			(struct wmi_vendor_peer_event *)param;
 
 	param_buf = (WMI_VENDOR_PEER_EVENTID_param_tlvs *)evt_buf;
 	if (!param_buf) {
@@ -21983,14 +22011,14 @@ extract_vendor_peer_event_tlv(wmi_unified_t wmi_handle,
 	}
 
 	evt_fixed_hdr = param_buf->fixed_param;
-	param->vdev_id = evt_fixed_hdr->vdev_id;
-	param->pdev_id = evt_fixed_hdr->pdev_id;
+	evt_param->vdev_id = evt_fixed_hdr->vdev_id;
+	evt_param->pdev_id = evt_fixed_hdr->pdev_id;
 	WMI_MAC_ADDR_TO_CHAR_ARRAY(&evt_fixed_hdr->peer_macaddr,
-				   param->peer_mac_addr.bytes);
-	param->sub_type = evt_fixed_hdr->sub_type;
-	param->val.peer_sample1_event =
+				   evt_param->peer_mac_addr.bytes);
+	evt_param->sub_type = evt_fixed_hdr->sub_type;
+	evt_param->val.peer_sample1_event =
 			evt_fixed_hdr->evt.peer_sample1_event;
-	param->val.peer_sample2_event =
+	evt_param->val.peer_sample2_event =
 			evt_fixed_hdr->evt.peer_sample2_event;
 
 	return QDF_STATUS_SUCCESS;
@@ -21999,10 +22027,12 @@ extract_vendor_peer_event_tlv(wmi_unified_t wmi_handle,
 static QDF_STATUS
 extract_vendor_vdev_event_tlv(wmi_unified_t wmi_handle,
 			      uint8_t *evt_buf,
-			      struct wmi_vendor_vdev_event *param)
+			      void *param, void *subtype)
 {
 	WMI_VENDOR_VDEV_EVENTID_param_tlvs *param_buf;
 	wmi_vendor_vdev_event_fixed_param *evt_fixed_hdr;
+	struct wmi_vendor_vdev_event *evt_param =
+			(struct wmi_vendor_vdev_event *)param;
 
 	param_buf = (WMI_VENDOR_VDEV_EVENTID_param_tlvs *)evt_buf;
 	if (!param_buf) {
@@ -22011,12 +22041,12 @@ extract_vendor_vdev_event_tlv(wmi_unified_t wmi_handle,
 	}
 
 	evt_fixed_hdr = param_buf->fixed_param;
-	param->pdev_id = evt_fixed_hdr->pdev_id;
-	param->vdev_id = evt_fixed_hdr->vdev_id;
-	param->sub_type = evt_fixed_hdr->sub_type;
-	param->val.vdev_sample1_event =
+	evt_param->pdev_id = evt_fixed_hdr->pdev_id;
+	evt_param->vdev_id = evt_fixed_hdr->vdev_id;
+	evt_param->sub_type = evt_fixed_hdr->sub_type;
+	evt_param->val.vdev_sample1_event =
 		evt_fixed_hdr->evt.vdev_sample1_event;
-	param->val.vdev_sample2_event =
+	evt_param->val.vdev_sample2_event =
 		evt_fixed_hdr->evt.vdev_sample2_event;
 
 	return QDF_STATUS_SUCCESS;
@@ -22025,10 +22055,12 @@ extract_vendor_vdev_event_tlv(wmi_unified_t wmi_handle,
 static QDF_STATUS
 extract_vendor_pdev_event_tlv(wmi_unified_t wmi_handle,
 			      uint8_t *evt_buf,
-			      struct wmi_vendor_pdev_event *param)
+			      void *param, void *subtype)
 {
 	WMI_VENDOR_PDEV_EVENTID_param_tlvs *param_buf;
 	wmi_vendor_pdev_event_fixed_param *evt_fixed_hdr;
+	struct wmi_vendor_pdev_event *evt_param =
+			(struct wmi_vendor_pdev_event *)param;
 
 	param_buf = (WMI_VENDOR_PDEV_EVENTID_param_tlvs *)evt_buf;
 	if (!param_buf) {
@@ -22037,11 +22069,11 @@ extract_vendor_pdev_event_tlv(wmi_unified_t wmi_handle,
 	}
 
 	evt_fixed_hdr = param_buf->fixed_param;
-	param->pdev_id = evt_fixed_hdr->pdev_id;
-	param->sub_type = evt_fixed_hdr->sub_type;
-	param->val.pdev_sample1_event =
+	evt_param->pdev_id = evt_fixed_hdr->pdev_id;
+	evt_param->sub_type = evt_fixed_hdr->sub_type;
+	evt_param->val.pdev_sample1_event =
 		evt_fixed_hdr->evt.pdev_sample1_event;
-	param->val.pdev_sample2_event =
+	evt_param->val.pdev_sample2_event =
 		evt_fixed_hdr->evt.pdev_sample2_event;
 
 	return QDF_STATUS_SUCCESS;
@@ -22613,6 +22645,8 @@ static void populate_tlv_events_id(WMI_EVT_ID *event_ids)
 	event_ids[wmi_scan_event_id] = WMI_SCAN_EVENTID;
 	event_ids[wmi_pdev_tpc_config_event_id] = WMI_PDEV_TPC_CONFIG_EVENTID;
 	event_ids[wmi_chan_info_event_id] = WMI_CHAN_INFO_EVENTID;
+	event_ids[wmi_sched_mode_probe_resp_event_id] =
+		WMI_VDEV_SCHED_MODE_PROBE_RESP_EVENTID;
 	event_ids[wmi_phyerr_event_id] = WMI_PHYERR_EVENTID;
 	event_ids[wmi_pdev_dump_event_id] = WMI_PDEV_DUMP_EVENTID;
 	event_ids[wmi_tx_pause_event_id] = WMI_TX_PAUSE_EVENTID;
@@ -23116,6 +23150,11 @@ static void populate_tlv_events_id(WMI_EVT_ID *event_ids)
 	event_ids[wmi_pdev_wifi_radar_cal_completion_status_event_id] =
 			WMI_PDEV_WIFI_RADAR_CAL_COMPLETION_STATUS_EVENTID;
 #endif
+#ifdef WLAN_VENDOR_EXTN
+	event_ids[wmi_vendor_peer_event_id] = WMI_VENDOR_PEER_EVENTID;
+	event_ids[wmi_vendor_vdev_event_id] = WMI_VENDOR_VDEV_EVENTID;
+	event_ids[wmi_vendor_pdev_event_id] = WMI_VENDOR_PDEV_EVENTID;
+#endif /* WLAN_VENDOR_EXTN*/
 
 }
 
@@ -23729,9 +23768,10 @@ static void populate_tlv_service(uint32_t *wmi_service)
 				WMI_SERVICE_WIFI_RADAR_SUPPORT;
 	wmi_service[wmi_service_dcs_obss_int_support] =
 			WMI_SERVICE_DCS_OBSS_INT_SUPPORT;
-
 	wmi_service[wmi_service_vdev_dcs_stats_support] =
 				WMI_SERVICE_VDEV_DCS_STATS_SUPPORT;
+	wmi_service[wmi_service_smem_mailbox_dlkm_support] =
+			WMI_SERVICE_SMEM_MAILBOX_SUPPORT;
 }
 
 /**

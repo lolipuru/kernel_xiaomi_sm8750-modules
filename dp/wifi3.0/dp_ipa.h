@@ -18,6 +18,7 @@
 #ifndef _DP_IPA_H_
 #define _DP_IPA_H_
 
+#include "wlan_ipa_public_struct.h"
 #if defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2)
 /* Index into soc->tcl_data_ring[] */
 #define IPA_TCL_DATA_RING_IDX	3
@@ -61,6 +62,7 @@
 
 #define IPA_SESSION_ID_SHIFT 1
 #endif /* IPA_WDI3_TX_TWO_PIPES */
+#define MAX_IPA_RX_FREE_DESC 32
 
 /**
  * struct dp_ipa_uc_tx_hdr - full tx header registered to IPA hardware
@@ -366,8 +368,44 @@ QDF_STATUS dp_ipa_rx_super_rule_setup(struct cdp_soc_t *soc_hdl,
  */
 QDF_STATUS dp_ipa_tx_super_rule_setup(struct cdp_soc_t *soc_hdl,
 				      void *flt_params);
+/**
+ * dp_ipa_tx_opt_dp_ctrl_pkt() - handle tx pkt of opt_dp_ctrl
+ * @soc_hdl: handle to the soc
+ * @vdev_id: vdev id
+ * @nbuf: nbuf
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS dp_ipa_tx_opt_dp_ctrl_pkt(struct cdp_soc_t *soc_hdl,
+				     uint8_t vdev_id,
+				     qdf_nbuf_t nbuf);
+
 int dp_ipa_pcie_link_up(struct cdp_soc_t *soc_hdl);
 void dp_ipa_pcie_link_down(struct cdp_soc_t *soc_hdl);
+#ifdef IPA_OPT_WIFI_DP_CTRL
+/**
+ * dp_ipa_wdi_opt_dpath_ctrl_notify_flt_install() - send tx super rule filter
+ * add result to ipa
+ *
+ * @flt_resp_params : array of filter parameters
+ *
+ * Return: void
+ */
+void dp_ipa_wdi_opt_dpath_ctrl_notify_flt_install(struct filter_response
+						  *flt_resp_params);
+
+/**
+ * dp_ipa_wdi_opt_dpath_ctrl_notify_flt_delete() - send tx super rule filter
+ * delete result to ipa
+ *
+ * @flt_resp_params : array of filter parameters
+ *
+ * Return: void
+ */
+void dp_ipa_wdi_opt_dpath_ctrl_notify_flt_delete(struct filter_response
+						 *flt_resp_params);
+#endif
+
 #endif
 
 #ifdef QCA_SUPPORT_WDS_EXTENDED
@@ -431,6 +469,38 @@ QDF_STATUS dp_ipa_handle_rx_buf_smmu_mapping(struct dp_soc *soc,
 					     const char *func,
 					     uint32_t line,
 					     uint8_t caller);
+#ifdef IPA_OPT_WIFI_DP_CTRL
+
+/**
+ * dp_rx_add_to_ipa_desc_free_list() - make a free list of descriptors
+ * from free desc list for ipa to be used in opt dp ctrl.
+ * @soc: core txrx main context
+ * @rx_desc: free desc from rx desc pool
+ *
+ * Return: QDF_STATUS
+ *
+ */
+QDF_STATUS
+dp_rx_add_to_ipa_desc_free_list(struct dp_soc *soc,
+				struct dp_rx_desc *rx_desc);
+
+/**
+ * dp_ipa_tx_pkt_opt_dp_ctrl() - Handle opt_dp_ctrl tx pkt
+ * @soc: data path SoC handle
+ * @vdev_id: vdev id
+ * @nbuf: nbuf
+ */
+void dp_ipa_tx_pkt_opt_dp_ctrl(struct dp_soc *soc, uint8_t vdev_id,
+			       qdf_nbuf_t nbuf);
+#else
+static inline QDF_STATUS
+dp_rx_add_to_ipa_desc_free_list(struct dp_soc *soc,
+				struct dp_rx_desc *rx_desc)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+#endif
+
 /**
  * dp_ipa_tx_buf_smmu_mapping() - Create SMMU mappings for IPA
  *				  allocated TX buffers
@@ -577,6 +647,16 @@ QDF_STATUS dp_ipa_update_peer_rx_stats(struct cdp_soc_t *soc, uint8_t vdev_id,
  * Return: None
  */
 void dp_ipa_get_wdi_version(struct cdp_soc_t *soc_hdl, uint8_t *wdi_ver);
+
+/**
+ * dp_ipa_is_ring_ipa_tx() - Check if the TX ring is used by IPA
+ *
+ * @soc: DP SoC
+ * @ring_id: TX ring id
+ *
+ * Return: bool
+ */
+bool dp_ipa_is_ring_ipa_tx(struct dp_soc *soc, uint8_t ring_id);
 #else
 static inline int dp_ipa_uc_detach(struct dp_soc *soc, struct dp_pdev *pdev)
 {
@@ -679,6 +759,19 @@ static inline QDF_STATUS dp_ipa_ast_create(struct cdp_soc_t *soc_hdl,
 static inline void dp_ipa_get_wdi_version(struct cdp_soc_t *soc_hdl,
 					  uint8_t *wdi_ver)
 {
+}
+
+static inline bool
+dp_ipa_is_ring_ipa_tx(struct dp_soc *soc, uint8_t ring_id)
+{
+	return false;
+}
+
+static inline QDF_STATUS
+dp_rx_add_to_ipa_desc_free_list(struct dp_soc *soc,
+				struct dp_rx_desc *rx_desc)
+{
+	return QDF_STATUS_E_FAILURE;
 }
 #endif
 #endif /* _DP_IPA_H_ */

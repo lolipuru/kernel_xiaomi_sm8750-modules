@@ -112,6 +112,9 @@
 #define DP_GET_HW_LINK_ID_FRM_PPDU_ID(PPDU_ID, LINK_ID_OFFSET, LINK_ID_BITS) \
 	(((PPDU_ID) >> (LINK_ID_OFFSET)) & ((1 << (LINK_ID_BITS)) - 1))
 
+QDF_COMPILE_TIME_ASSERT(max_fw2wbm_tx_status_check,
+                        MAX_EAPOL_TX_COMP_STATUS == HTT_TX_FW2WBM_TX_STATUS_MAX);
+
 /*mapping between hal encrypt type and cdp_sec_type*/
 uint8_t sec_type_map[MAX_CDP_SEC_TYPE] = {HAL_TX_ENCRYPT_TYPE_NO_CIPHER,
 					  HAL_TX_ENCRYPT_TYPE_WEP_128,
@@ -432,6 +435,60 @@ dp_tx_desc_release(struct dp_soc *soc, struct dp_tx_desc_s *tx_desc,
 		dp_tx_desc_free(soc, tx_desc, desc_pool_id);
 	return;
 }
+
+/**
+ * dp_tx_update_eapol_comp_status_stats() - EAPOL TX status
+ * @soc: soc handle
+ * @vdev: DP vdev handle
+ * @nbuf: skb
+ * @txrx_peer: dp_txrx_peer handle
+ * @link_id: link id
+ * @tx_status: Tx completion status received from firmware
+ * @pairwise: indicates if frame is pairwise or group rekey frame
+ *
+ * This function is to add tx completion stats for EAPOL frames
+ * and also notify the same to hostapd.
+ *
+ */
+void
+dp_tx_update_eapol_comp_status_stats(struct dp_soc *soc, struct dp_vdev *vdev,
+				     qdf_nbuf_t nbuf,
+				     struct dp_txrx_peer *txrx_peer,
+				     uint8_t link_id, uint8_t tx_status,
+				     bool pairwise)
+{
+	if (tx_status >= MAX_EAPOL_TX_COMP_STATUS) {
+		dp_tx_err("Invalid Tx status Received");
+		return;
+	}
+	if (soc->cdp_soc.ol_ops->notify_eapol_tx_compl_status)
+		soc->cdp_soc.ol_ops->notify_eapol_tx_compl_status(soc->ctrl_psoc,
+								  nbuf,
+								  vdev->vdev_id,
+								  tx_status);
+	if (pairwise) {
+		DP_PEER_PER_PKT_STATS_INC(txrx_peer,
+					  tx.eapol_tx_comp_failures[tx_status],
+					  1, link_id);
+	} else
+		DP_PEER_PER_PKT_STATS_INC(txrx_peer,
+					  tx.rekey_tx_comp_failures[tx_status],
+					  1, link_id);
+}
+
+#ifdef IPA_OPT_WIFI_DP_CTRL
+static void dp_tx_opt_dp_wifi_ctrl_process(struct dp_tx_msdu_info_s *msdu_info,
+					   uint16_t *htt_tcl_metadata)
+{
+	if (msdu_info->is_opt_dp_ctrl)
+		HTT_TX_TCL_METADATA_OPT_DP_CTRL_SET(*htt_tcl_metadata, 1);
+}
+#else
+static void dp_tx_opt_dp_wifi_ctrl_process(struct dp_tx_msdu_info_s *msdu_info,
+					   uint16_t *htt_tcl_metadata)
+{
+}
+#endif
 
 /**
  * dp_tx_prepare_htt_metadata() - Prepare HTT metadata for special frames
@@ -1551,16 +1608,30 @@ void dp_vdev_peer_stats_update_protocol_cnt_tx(struct dp_vdev *vdev_hdl,
 }
 #endif
 
+#ifdef WLAN_SUPPORT_LAPB
 #ifdef WLAN_DP_FEATURE_SW_LATENCY_MGR
-void dp_tx_update_stats(struct dp_soc *soc,
-			struct dp_tx_desc_s *tx_desc,
-			uint8_t ring_id)
+#error LAPB and SWLM features are not validated together
+#endif
+int
+dp_tx_attempt_coalescing(struct dp_soc *soc, struct dp_vdev *vdev,
+			 struct dp_tx_desc_s *tx_desc,
+			 uint8_t tid,
+			 struct dp_tx_msdu_info_s *msdu_info,
+			 uint8_t ring_id)
 {
-	uint32_t stats_len = dp_tx_get_pkt_len(tx_desc);
+	struct wlan_lapb *lapb = &soc->lapb;
+	int coalesce = 0;
 
-	DP_STATS_INC_PKT(soc, tx.egress[ring_id], 1, stats_len);
+	if (!lapb->is_init)
+		return coalesce;
+
+	soc->lapb.ops->wlan_dp_lapb_handle_frame(soc, tx_desc->nbuf,
+							 &coalesce, msdu_info);
+	return coalesce;
 }
+#endif
 
+#ifdef WLAN_DP_FEATURE_SW_LATENCY_MGR
 int
 dp_tx_attempt_coalescing(struct dp_soc *soc, struct dp_vdev *vdev,
 			 struct dp_tx_desc_s *tx_desc,
@@ -1599,6 +1670,17 @@ dp_tx_attempt_coalescing(struct dp_soc *soc, struct dp_vdev *vdev,
 	}
 
 	return ret;
+}
+#endif
+
+#if defined(WLAN_DP_FEATURE_SW_LATENCY_MGR) || defined(WLAN_SUPPORT_LAPB)
+void dp_tx_update_stats(struct dp_soc *soc,
+			struct dp_tx_desc_s *tx_desc,
+			uint8_t ring_id)
+{
+	uint32_t stats_len = dp_tx_get_pkt_len(tx_desc);
+
+	DP_STATS_INC_PKT(soc, tx.egress[ring_id], 1, stats_len);
 }
 
 void
@@ -1643,67 +1725,6 @@ dp_tx_check_and_flush_hp(struct dp_soc *soc,
 		dp_flush_tcp_hp(soc,
 			(msdu_info->tx_queue.ring_id & DP_TX_QUEUE_MASK));
 	}
-}
-#elif defined(WLAN_SUPPORT_LAPB)
-/**
- * dp_tx_update_stats() - Update soc level tx stats
- * @soc: DP soc handle
- * @tx_desc: TX descriptor reference
- * @ring_id: TCL ring id
- *
- * Returns: none
- */
-void dp_tx_update_stats(struct dp_soc *soc,
-			struct dp_tx_desc_s *tx_desc,
-			uint8_t ring_id)
-{
-	uint32_t stats_len = dp_tx_get_pkt_len(tx_desc);
-
-	DP_STATS_INC_PKT(soc, tx.egress[ring_id], 1, stats_len);
-}
-
-void
-dp_tx_ring_access_end(struct dp_soc *soc, hal_ring_handle_t hal_ring_hdl,
-		      int coalesce)
-{
-	if (coalesce)
-		dp_tx_hal_ring_access_end_reap(soc, hal_ring_hdl);
-	else
-		dp_tx_hal_ring_access_end(soc, hal_ring_hdl);
-}
-
-int
-dp_tx_attempt_coalescing(struct dp_soc *soc, struct dp_vdev *vdev,
-			 struct dp_tx_desc_s *tx_desc,
-			 uint8_t tid,
-			 struct dp_tx_msdu_info_s *msdu_info,
-			 uint8_t ring_id)
-{
-	int coalesce = 0;
-
-	if (!soc->lapb.is_init)
-		return coalesce;
-
-	soc->lapb.ops->wlan_dp_lapb_handle_frame(soc, tx_desc->nbuf,
-						 &coalesce, msdu_info);
-
-	return coalesce;
-}
-
-static inline void
-dp_tx_is_hp_update_required(uint32_t i, struct dp_tx_msdu_info_s *msdu_info)
-{
-	if (((i + 1) < msdu_info->num_seg))
-		msdu_info->skip_hp_update = 1;
-	else
-		msdu_info->skip_hp_update = 0;
-}
-
-static inline void
-dp_tx_check_and_flush_hp(struct dp_soc *soc,
-			 QDF_STATUS status,
-			 struct dp_tx_msdu_info_s *msdu_info)
-{
 }
 #else
 static inline void
@@ -3126,6 +3147,8 @@ dp_tx_send_msdu_single(struct dp_vdev *vdev, qdf_nbuf_t nbuf,
 	} else
 		htt_tcl_metadata = vdev->htt_tcl_metadata;
 
+	dp_tx_opt_dp_wifi_ctrl_process(msdu_info, &htt_tcl_metadata);
+
 	if (msdu_info->exception_fw)
 		DP_TX_TCL_METADATA_VALID_HTT_SET(htt_tcl_metadata, 1);
 
@@ -4133,6 +4156,9 @@ dp_tx_send_exception(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	 *  to minimize lock contention for these resources.
 	 */
 	dp_tx_get_queue(vdev, nbuf, &msdu_info.tx_queue);
+
+	dp_tx_override_flow_pool_id(soc, vdev, &msdu_info);
+
 	DP_STATS_INC(vdev,
 		     tx_i[xmit_type].rcvd_per_core[msdu_info.tx_queue.desc_pool_id],
 		     1);
@@ -4412,6 +4438,9 @@ qdf_nbuf_t dp_tx_send(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	 *  to minimize lock contention for these resources.
 	 */
 	dp_tx_get_queue(vdev, nbuf, &msdu_info.tx_queue);
+
+	dp_tx_override_flow_pool_id(soc, vdev, &msdu_info);
+
 	DP_STATS_INC(vdev,
 		     tx_i[xmit_type].rcvd_per_core[msdu_info.tx_queue.desc_pool_id],
 		     1);
@@ -4644,6 +4673,40 @@ dp_tx_reinject_mlo_hdl(struct dp_soc *soc, struct dp_vdev *vdev,
 	return false;
 }
 #endif
+#ifdef IPA_OPT_WIFI_DP_CTRL
+static inline bool
+dp_ipa_tx_opt_dp_ctrl_reinject(struct dp_soc *soc, struct dp_vdev *vdev,
+			       struct dp_tx_desc_s *tx_desc,
+			       qdf_nbuf_t nbuf,
+			       uint8_t reinject_reason)
+{
+	if (tx_desc->msdu_ext_desc) {
+		dp_err("extension descriptor should not be required for opt_dp_ctrl");
+		qdf_assert_always(0);
+	}
+	if (reinject_reason == HTT_TX_FW2WBM_REINJECT_REASON_OPT_DP_CTRL) {
+		dp_info("opt_dp_ctrl: tx pkt reinjected from fw");
+		if (soc->arch_ops.dp_tx_ipa_opt_dp_ctrl)
+			soc->arch_ops.dp_tx_ipa_opt_dp_ctrl(soc,
+							    tx_desc->vdev_id,
+							    nbuf);
+		dp_tx_outstanding_dec(tx_desc->pdev);
+		dp_tx_nbuf_unmap(soc, tx_desc);
+		dp_tx_desc_release(soc, tx_desc, tx_desc->pool_id);
+		return true;
+	}
+	return false;
+}
+#else
+static inline bool
+dp_ipa_tx_opt_dp_ctrl_reinject(struct dp_soc *soc, struct dp_vdev *vdev,
+			       struct dp_tx_desc_s *tx_desc,
+			       qdf_nbuf_t nbuf,
+			       uint8_t reinject_reason)
+{
+	return false;
+}
+#endif
 
 void dp_tx_reinject_handler(struct dp_soc *soc,
 			    struct dp_vdev *vdev,
@@ -4673,6 +4736,9 @@ void dp_tx_reinject_handler(struct dp_soc *soc,
 			 qdf_nbuf_len(tx_desc->nbuf));
 
 	if (dp_tx_reinject_mlo_hdl(soc, vdev, tx_desc, nbuf, reinject_reason))
+		return;
+	if (dp_ipa_tx_opt_dp_ctrl_reinject(soc, vdev, tx_desc, nbuf,
+					   reinject_reason))
 		return;
 
 #ifdef WDS_VENDOR_EXTENSION
@@ -8042,3 +8108,19 @@ bool dp_tx_multipass_process(struct dp_soc *soc, struct dp_vdev *vdev,
 	return true;
 }
 #endif /* QCA_MULTIPASS_SUPPORT */
+
+#ifdef WLAN_DP_TXPOOL_SHARE
+void dp_tx_override_flow_pool_id(struct dp_soc *soc,
+				 struct dp_vdev *vdev,
+				 struct dp_tx_msdu_info_s *msdu_info)
+{
+	soc->arch_ops.dp_tx_override_flow_pool_id(vdev,
+						  &msdu_info->tx_queue);
+}
+#else
+void dp_tx_override_flow_pool_id(struct dp_soc *soc,
+				 struct dp_vdev *vdev,
+				 struct dp_tx_msdu_info_s *msdu_info)
+{
+}
+#endif

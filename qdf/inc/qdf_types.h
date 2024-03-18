@@ -117,6 +117,17 @@ typedef struct qdf_sglist {
  */
 #define qdf_toupper __qdf_toupper
 
+/**
+ * enum qdf_buff_type_tx_rx: check buffer type
+ *
+ * @QDF_BUFF_TYPE_TX: TX buff type
+ * @QDF_BUFF_TYPE_RX: RX buff type
+ */
+enum qdf_buff_type_tx_rx {
+	QDF_BUFF_TYPE_TX,
+	QDF_BUFF_TYPE_RX,
+};
+
 typedef void *qdf_net_handle_t;
 
 typedef void *qdf_netlink_handle_t;
@@ -1102,6 +1113,8 @@ struct qdf_mac_addr {
  * @QDF_PROTO_EAP_WSC_NACK: EAP expanded type WSC NACK
  * @QDF_PROTO_EAP_WSC_DONE: EAP expanded type WSC DONE
  * @QDF_PROTO_EAP_WSC_FRAG_ACK: EAP expanded type WSC frag ACK
+ * @QDF_PROTO_EAPOL_G1: EAPOL Rekey frame 1/2
+ * @QDF_PROTO_EAPOL_G2: EAPOL Rekey frame 2/2
  * @QDF_PROTO_SUBTYPE_MAX: subtype max
  */
 enum qdf_proto_subtype {
@@ -1165,6 +1178,8 @@ enum qdf_proto_subtype {
 	QDF_PROTO_EAP_WSC_NACK,
 	QDF_PROTO_EAP_WSC_DONE,
 	QDF_PROTO_EAP_WSC_FRAG_ACK,
+	QDF_PROTO_EAPOL_G1,
+	QDF_PROTO_EAPOL_G2,
 	QDF_PROTO_SUBTYPE_MAX
 };
 
@@ -1630,6 +1645,7 @@ enum qdf_suspend_type {
  * @QDF_VDEV_ACTIVE_SER_LINK_SWITCH_TIMEOUT: Active link switch cmd in
  * serialization timed out.
  * @QDF_DIRECT_LINK_ADSP_NMI_CRASH: ADSP NMI crash in the context of direct link
+ * @QDF_ENABLE_IRQ_FAILURE: Failed to enable IRQs
  */
 enum qdf_hang_reason {
 	QDF_REASON_UNSPECIFIED,
@@ -1675,6 +1691,7 @@ enum qdf_hang_reason {
 	QDF_VDEV_ACTIVE_SER_REASSOC_TIMEOUT,
 	QDF_VDEV_ACTIVE_SER_LINK_SWITCH_TIMEOUT,
 	QDF_DIRECT_LINK_ADSP_NMI_CRASH,
+	QDF_ENABLE_IRQ_FAILURE,
 };
 
 /**

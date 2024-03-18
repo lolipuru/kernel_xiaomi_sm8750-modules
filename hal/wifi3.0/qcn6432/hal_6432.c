@@ -235,48 +235,6 @@ static void hal_get_tqm_scratch_reg_qca5332(hal_soc_handle_t hal_soc_hdl,
 }
 #endif
 
-#if (defined(WLAN_SA_API_ENABLE))
-/**
- * hal_rx_proc_phyrx_other_receive_info_tlv_6432(): API to get tlv info
- *
- * @rx_tlv_hdr: start address of rx_pkt_tlvs
- * @ppdu_info_hdl: PPDU info handle to fill
- *
- * Return: uint32_t
- */
-static inline
-void hal_rx_proc_phyrx_other_receive_info_tlv_6432(void *rx_tlv_hdr,
-				     void *ppdu_info_hdl)
-{
-	uint32_t tlv_tag, tlv_len;
-	void *rx_tlv;
-
-	tlv_len = HAL_RX_GET_USER_TLV32_LEN(rx_tlv_hdr);
-	rx_tlv = (uint8_t *)rx_tlv_hdr + HAL_RX_TLV64_HDR_SIZE;
-
-	if (!tlv_len)
-		return;
-
-	tlv_tag = HAL_RX_GET_USER_TLV32_TYPE(rx_tlv);
-	tlv_len = HAL_RX_GET_USER_TLV32_LEN(rx_tlv);
-
-	if (!tlv_len)
-		return;
-
-	switch (tlv_tag) {
-	case WIFIPHYRX_OTHER_RECEIVE_INFO_EVM_DETAILS_E:
-		/* Skip TLV tag to get TLV content */
-		rx_tlv = (uint8_t *)rx_tlv + HAL_RX_TLV64_HDR_SIZE;
-		break;
-	default:
-		QDF_TRACE(QDF_MODULE_ID_HAL, QDF_TRACE_LEVEL_DEBUG,
-			  "%s unhandled TLV type: %d, TLV len:%d",
-			  __func__, tlv_tag, tlv_len);
-		break;
-	}
-}
-
-#else
 /**
  * hal_rx_proc_phyrx_other_receive_info_tlv_6432(): API to get tlv info
  *
@@ -290,7 +248,6 @@ void hal_rx_proc_phyrx_other_receive_info_tlv_6432(void *rx_tlv_hdr,
 						   void *ppdu_info_hdl)
 {
 }
-#endif
 
 #if defined(WLAN_CFR_ENABLE) && defined(WLAN_ENH_CFR_ENABLE)
 static inline
@@ -1142,6 +1099,9 @@ hal_rx_flow_setup_fse_6432(uint8_t *rx_fst, uint32_t table_offset,
 	/* Reset all the other fields in FSE */
 	HAL_CLR_FLD(fse, RX_FLOW_SEARCH_ENTRY, RESERVED_9);
 	HAL_CLR_FLD(fse, RX_FLOW_SEARCH_ENTRY, MSDU_DROP);
+	HAL_SET_FLD(fse, RX_FLOW_SEARCH_ENTRY, MSDU_DROP) |=
+		HAL_SET_FLD_SM(RX_FLOW_SEARCH_ENTRY, MSDU_DROP,
+			       flow->drop);
 	HAL_CLR_FLD(fse, RX_FLOW_SEARCH_ENTRY, MSDU_COUNT);
 	HAL_CLR_FLD(fse, RX_FLOW_SEARCH_ENTRY, MSDU_BYTE_COUNT);
 	HAL_CLR_FLD(fse, RX_FLOW_SEARCH_ENTRY, TIMESTAMP);

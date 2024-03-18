@@ -5570,6 +5570,7 @@ typedef enum {
 #ifdef WLAN_WIFI_RADAR_ENABLE
 	wmi_pdev_wifi_radar_cal_completion_status_event_id,
 #endif
+	wmi_sched_mode_probe_resp_event_id,
 	wmi_events_max,
 } wmi_conv_event_id;
 
@@ -6696,6 +6697,7 @@ typedef enum {
 	wmi_service_wifi_radar_support,
 	wmi_service_dcs_obss_int_support,
 	wmi_service_vdev_dcs_stats_support,
+	wmi_service_smem_mailbox_dlkm_support,
 	wmi_services_max,
 } wmi_conv_service_ids;
 #define WMI_SERVICE_UNAVAILABLE 0xFFFF
@@ -7077,7 +7079,8 @@ struct target_feature_set {
  * @rf_path: Indicates RF path 0 primary, 1 secondary
  * @fw_ast_indication_disable: Disable AST indication
  * @is_full_bw_nol_supported: Is full bandwidth needed to put to NOL
- * @is_qms_smem_supported: Is qms smem functionality supported
+ * @is_smem_mailbox_supported: Is smem mailbox functionality supported
+ * @con_mode_monitor: Device is in Full monitor mode
  */
 typedef struct {
 	uint32_t num_vdevs;
@@ -7213,7 +7216,10 @@ typedef struct {
 	bool rf_path;
 	bool fw_ast_indication_disable;
 	bool is_full_bw_nol_supported;
-	bool is_qms_smem_supported;
+#ifdef FEATURE_SMEM_MAILBOX
+	bool is_smem_mailbox_supported;
+#endif
+	bool con_mode_monitor;
 } target_resource_config;
 
 /**
@@ -10488,5 +10494,17 @@ struct wmi_vendor_pdev_event {
 	union wmi_host_pdev_vendor_event_val val;
 };
 #endif /* WLAN_VENDOR_EXTN */
+
+/**
+ * struct wmi_host_mu_on_off_params - mu on off params
+ * @vdev_id: vdev_id
+ * @mu_on_duration: On duration for which mu will be on
+ * @mu_off_duration: Off duration for which mu will be off
+ */
+struct wmi_host_mu_on_off_params {
+	uint8_t vdev_id;
+	uint32_t mu_on_duration;
+	uint32_t mu_off_duration;
+};
 
 #endif /* _WMI_UNIFIED_PARAM_H_ */

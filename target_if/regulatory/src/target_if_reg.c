@@ -1424,6 +1424,15 @@ tgt_if_regulatory_unregister_rate2power_table_update_handler(
 			wmi_handle, wmi_pdev_set_tgtr2p_table_eventid);
 }
 
+QDF_STATUS target_if_register_afc_tx_ops(struct wlan_lmac_if_tx_ops *tx_ops)
+{
+	struct wlan_lmac_if_afc_tx_ops *afc_ops = &tx_ops->afc_ops;
+
+	afc_ops->extract_netdev = NULL;
+
+	return QDF_STATUS_SUCCESS;
+}
+
 QDF_STATUS target_if_register_regulatory_tx_ops(
 		struct wlan_lmac_if_tx_ops *tx_ops)
 {
@@ -1480,6 +1489,8 @@ QDF_STATUS target_if_register_regulatory_tx_ops(
 	reg_ops->set_tpc_power = tgt_if_regulatory_set_tpc_power;
 
 	reg_ops->get_opclass_tbl_idx = NULL;
+
+	reg_ops->init_dfs_nol = NULL;
 
 	tgt_if_register_afc_callback(reg_ops);
 

@@ -2847,7 +2847,8 @@ void dp_rx_deliver_to_stack_no_peer(struct dp_soc *soc, qdf_nbuf_t nbuf)
 	uint8_t *rx_tlv_hdr;
 	uint32_t frame_mask = FRAME_MASK_IPV4_ARP | FRAME_MASK_IPV4_DHCP |
 			      FRAME_MASK_IPV4_EAPOL | FRAME_MASK_IPV6_DHCP |
-			      FRAME_MASK_DNS_QUERY | FRAME_MASK_DNS_RESP;
+			      FRAME_MASK_DNS_QUERY | FRAME_MASK_DNS_RESP |
+			      FRAME_MASK_IPV4_WAPI;
 
 	bool is_special_frame = false;
 	struct dp_peer *peer = NULL;
@@ -3097,7 +3098,7 @@ dp_rx_nbuf_alloc_for_frag_info(struct dp_soc *dp_soc,
 }
 #endif
 
-static QDF_STATUS
+QDF_STATUS
 dp_pdev_nbuf_alloc_and_map(struct dp_soc *dp_soc,
 			   struct dp_rx_nbuf_frag_info *nbuf_frag_info_t,
 			   struct dp_pdev *dp_pdev,
@@ -3462,8 +3463,9 @@ dp_rx_pdev_buffers_alloc(struct dp_pdev *pdev)
 	uint32_t target_type = hal_get_target_type(soc->hal_soc);
 
 	dp_rxdma_srng = &soc->rx_refill_buf_ring[mac_for_pdev];
-	rxdma_entries = dp_rxdma_srng->num_entries;
-
+	rxdma_entries = dp_get_num_entries(pdev,
+					   dp_rxdma_srng->num_entries,
+					   QDF_BUFF_TYPE_RX);
 	rx_desc_pool = &soc->rx_desc_buf[mac_for_pdev];
 
 	/* Initialize RX buffer pool which will be
@@ -3599,6 +3601,9 @@ QDF_STATUS dp_rx_handle_buf_pool_audio_smmu_mapping(struct dp_soc *soc,
 		qdf_atomic_set(&soc->direct_link_active, 1);
 	else
 		qdf_atomic_set(&soc->direct_link_active, 0);
+
+	if (soc->wlan_cfg_ctx->is_audio_shared_iommu_group)
+		return QDF_STATUS_SUCCESS;
 
 	rx_pool = &soc->rx_desc_buf[pdev_id];
 

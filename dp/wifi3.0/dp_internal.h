@@ -768,16 +768,17 @@ static inline void dp_monitor_neighbour_peer_add_ast(struct dp_pdev *pdev,
 }
 
 static inline void
-dp_monitor_set_chan_band(struct dp_pdev *pdev, enum reg_wifi_band chan_band)
+dp_monitor_set_chan_band(struct dp_vdev *vdev, enum reg_wifi_band chan_band)
 {
 }
 
 static inline void
-dp_monitor_set_chan_freq(struct dp_pdev *pdev, qdf_freq_t chan_freq)
+dp_monitor_set_chan_freq(struct dp_vdev *vdev, qdf_freq_t chan_freq)
 {
 }
 
-static inline void dp_monitor_set_chan_num(struct dp_pdev *pdev, int chan_num)
+static inline void
+dp_monitor_set_chan_num(struct dp_vdev *vdev, int chan_num)
 {
 }
 
@@ -805,13 +806,13 @@ dp_monitor_get_chan_band(struct dp_pdev *pdev)
 }
 
 static inline int
-dp_monitor_get_chan_num(struct dp_pdev *pdev)
+dp_monitor_get_chan_num(struct dp_pdev *vdev)
 {
 	return 0;
 }
 
 static inline qdf_freq_t
-dp_monitor_get_chan_freq(struct dp_pdev *pdev)
+dp_monitor_get_chan_freq(struct dp_pdev *vdev)
 {
 	return 0;
 }
@@ -1474,6 +1475,7 @@ void DP_PRINT_STATS(const char *fmt, ...);
 #define FRAME_MASK_IPV6_DHCP  0x8
 #define FRAME_MASK_DNS_QUERY  0x10
 #define FRAME_MASK_DNS_RESP   0x20
+#define FRAME_MASK_IPV4_WAPI  0x40
 
 static inline int dp_log2_ceil(unsigned int value)
 {
@@ -2082,7 +2084,14 @@ void dp_update_vdev_stats_on_peer_unmap(struct dp_vdev *vdev,
 			_tgtobj->tx.no_ack_count[i] += \
 					_srcobj->tx.no_ack_count[i];\
 		} \
-		\
+		for (i = 0; i < MAX_EAPOL_TX_COMP_STATUS; i++) { \
+			 _tgtobj->tx.eapol_tx_comp_failures[i] += \
+					 _srcobj->tx.eapol_tx_comp_failures[i];\
+		} \
+		for (i = 0; i < MAX_EAPOL_TX_COMP_STATUS; i++) { \
+			_tgtobj->tx.rekey_tx_comp_failures[i] += \
+					_srcobj->tx.rekey_tx_comp_failures[i];\
+		} \
 		_tgtobj->rx.multicast.num += _srcobj->rx.multicast.num; \
 		_tgtobj->rx.multicast.bytes += _srcobj->rx.multicast.bytes; \
 		_tgtobj->rx.rx_success.num += _srcobj->rx.rx_success.num;\
@@ -2801,6 +2810,23 @@ void dp_peer_rx_init_wrapper(struct dp_pdev *pdev, struct dp_peer *peer,
  *
  */
 void dp_peer_cleanup(struct dp_vdev *vdev, struct dp_peer *peer);
+
+/**
+ * dp_pdev_nbuf_alloc_and_map - allocate and map buffer
+ * @dp_soc: dp soc
+ * @nbuf_frag_info_t: nbuf frag info
+ * @dp_pdev: struct dp_pdev *
+ * @rx_desc_pool: Rx desc pool
+ * @dp_buf_page_frag_alloc_enable: is frag alloc enable
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+dp_pdev_nbuf_alloc_and_map(struct dp_soc *dp_soc,
+			   struct dp_rx_nbuf_frag_info *nbuf_frag_info_t,
+			   struct dp_pdev *dp_pdev,
+			   struct rx_desc_pool *rx_desc_pool,
+			   bool dp_buf_page_frag_alloc_enable);
 
 #ifdef DP_PEER_EXTENDED_API
 /**
@@ -5320,6 +5346,29 @@ dp_get_peer_deter_stats(struct cdp_soc_t *soc_hdl,
 			struct cdp_peer_deter_stats *stats);
 
 /**
+ * dp_get_peer_stats_deter() - API to get peer deterministic stats
+ * @soc_hdl: soc handle
+ * @vdev_id: id of vdev handle
+ * @addr: peer mac
+ *
+ * Return: Pointer to cdp_peer_deter_stats
+ */
+struct cdp_peer_deter_stats*
+dp_get_peer_stats_deter(struct cdp_soc_t *soc_hdl,
+			uint8_t vdev_id,
+			uint8_t *addr);
+
+/**
+ * dp_get_pdev_stats_deter() - API to get pdev deterministic stats
+ * @soc_hdl: soc handle
+ * @pdev_id: id of pdev handle
+ *
+ * Return: Pointer to cdp_pdev_deter_stats.
+ */
+struct cdp_pdev_deter_stats*
+dp_get_pdev_stats_deter(struct cdp_soc_t *soc_hdl, uint8_t pdev_id);
+
+/**
  * dp_get_pdev_deter_stats() - API to get pdev deterministic stats
  * @soc_hdl: soc handle
  * @pdev_id: id of pdev handle
@@ -5344,6 +5393,19 @@ dp_get_pdev_deter_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 QDF_STATUS
 dp_update_pdev_chan_util_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 			       struct cdp_pdev_chan_util_stats *ch_util);
+
+/**
+ * dp_get_pdev_erp_stats() - API to get pdev deterministic stats
+ * @soc_hdl: soc handle
+ * @pdev_id: id of pdev handle
+ * @stats: pointer to erp stats
+ *
+ * Return: QDF_STATUS_SUCCESS: Success
+ *         QDF_STATUS_E_FAILURE: Error
+ */
+QDF_STATUS
+dp_get_pdev_erp_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
+		      struct cdp_pdev_erp_stats *stats);
 #endif /* WLAN_CONFIG_TELEMETRY_AGENT */
 
 #ifdef CONNECTIVITY_PKTLOG
@@ -5563,7 +5625,8 @@ dp_cfg_event_record_vdev_evt(struct dp_soc *soc, enum dp_cfg_event_type event,
 
 	if (qdf_unlikely(event != DP_CFG_EVENT_VDEV_ATTACH &&
 			 event != DP_CFG_EVENT_VDEV_UNREF_DEL &&
-			 event != DP_CFG_EVENT_VDEV_DETACH)) {
+			 event != DP_CFG_EVENT_VDEV_DETACH &&
+			 event != DP_CFG_EVENT_VDEV_REGISTER)) {
 		qdf_assert_always(0);
 		return;
 	}
@@ -5572,6 +5635,7 @@ dp_cfg_event_record_vdev_evt(struct dp_soc *soc, enum dp_cfg_event_type event,
 	vdev_evt->vdev_id = vdev->vdev_id;
 	vdev_evt->ref_count = qdf_atomic_read(&vdev->ref_cnt);
 	vdev_evt->mac_addr = vdev->mac_addr;
+	vdev_evt->osif_vdev = vdev->osif_vdev;
 
 	dp_cfg_event_record(soc, event, &cfg_evt_desc);
 }
@@ -5811,6 +5875,7 @@ QDF_STATUS dp_get_per_link_peer_stats(struct dp_peer *peer,
  *
  * Return: link_id
  */
+#ifdef QCA_ENHANCED_STATS_SUPPORT
 static inline int
 dp_get_peer_hw_link_id(struct dp_soc *soc,
 		       struct dp_pdev *pdev)
@@ -5820,6 +5885,14 @@ dp_get_peer_hw_link_id(struct dp_soc *soc,
 
 	return 0;
 }
+#else
+static inline int
+dp_get_peer_hw_link_id(struct dp_soc *soc,
+		       struct dp_pdev *pdev)
+{
+	return 0;
+}
+#endif /* QCA_ENHANCED_STATS_SUPPORT */
 
 #ifdef QCA_MULTIPASS_SUPPORT
 /**

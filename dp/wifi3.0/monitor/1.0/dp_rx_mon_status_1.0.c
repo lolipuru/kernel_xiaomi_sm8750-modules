@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -435,6 +435,7 @@ dp_rx_mon_status_process_tlv(struct dp_soc *soc, struct dp_intr *int_ctx,
 	uint32_t rx_enh_capture_mode;
 	struct dp_mon_soc *mon_soc = soc->monitor_soc;
 	struct dp_mon_pdev *mon_pdev;
+	struct dp_mon_mac *mon_mac;
 
 	if (qdf_unlikely(!pdev)) {
 		dp_rx_mon_status_debug("%pK: pdev is null for mac_id = %d", soc,
@@ -442,6 +443,7 @@ dp_rx_mon_status_process_tlv(struct dp_soc *soc, struct dp_intr *int_ctx,
 		return;
 	}
 
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
 	mon_pdev = pdev->monitor_pdev;
 	ppdu_info = &mon_pdev->ppdu_info;
 	rx_mon_stats = &mon_pdev->rx_mon_stats;
@@ -451,9 +453,9 @@ dp_rx_mon_status_process_tlv(struct dp_soc *soc, struct dp_intr *int_ctx,
 
 	rx_enh_capture_mode = mon_pdev->rx_enh_capture_mode;
 
-	while (!qdf_nbuf_is_queue_empty(&mon_pdev->rx_status_q)) {
+	while (!qdf_nbuf_is_queue_empty(&mon_mac->rx_status_q)) {
 
-		status_nbuf = qdf_nbuf_queue_remove(&mon_pdev->rx_status_q);
+		status_nbuf = qdf_nbuf_queue_remove(&mon_mac->rx_status_q);
 		dp_rx_mon_status_ring_record_entry(soc,
 						   DP_MON_STATUS_BUF_DEQUEUE,
 						   NULL, NULL, status_nbuf);
@@ -585,14 +587,14 @@ dp_rx_mon_status_process_tlv(struct dp_soc *soc, struct dp_intr *int_ctx,
 			 */
 			if (qdf_unlikely(mon_pdev->ppdu_info.rx_status.chan_num == 0))
 				mon_pdev->ppdu_info.rx_status.chan_num =
-							mon_pdev->mon_chan_num;
+							mon_mac->mon_chan_num;
 			/*
 			 * if chan_freq is not fetched correctly from ppdu RX TLV,
 			 * get it from pdev saved.
 			 */
 			if (qdf_unlikely(mon_pdev->ppdu_info.rx_status.chan_freq == 0)) {
 				mon_pdev->ppdu_info.rx_status.chan_freq =
-					mon_pdev->mon_chan_freq;
+					mon_mac->mon_chan_freq;
 			}
 
 			if (!mon_soc->full_mon_mode)
@@ -633,6 +635,7 @@ dp_rx_mon_status_srng_process(struct dp_soc *soc, struct dp_intr *int_ctx,
 	enum dp_mon_reap_status reap_status;
 	uint32_t work_done = 0;
 	struct dp_mon_pdev *mon_pdev;
+	struct dp_mon_mac *mon_mac;
 
 	if (qdf_unlikely(!pdev)) {
 		dp_rx_mon_status_debug("%pK: pdev is null for mac_id = %d",
@@ -641,6 +644,7 @@ dp_rx_mon_status_srng_process(struct dp_soc *soc, struct dp_intr *int_ctx,
 	}
 
 	mon_pdev = pdev->monitor_pdev;
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
 
 	mon_status_srng = soc->rxdma_mon_status_ring[mac_id].hal_srng;
 
@@ -760,7 +764,7 @@ dp_rx_mon_status_srng_process(struct dp_soc *soc, struct dp_intr *int_ctx,
 			}
 
 			/* Put the status_nbuf to queue */
-			qdf_nbuf_queue_add(&mon_pdev->rx_status_q, status_nbuf);
+			qdf_nbuf_queue_add(&mon_mac->rx_status_q, status_nbuf);
 			dp_rx_mon_status_ring_record_entry(soc, DP_MON_STATUS_BUF_ENQUEUE,
 						rxdma_mon_status_ring_entry,
 						rx_desc, status_nbuf);
@@ -910,6 +914,7 @@ dp_rx_pdev_mon_status_desc_pool_init(struct dp_pdev *pdev, uint32_t mac_id)
 	uint32_t num_entries;
 	struct rx_desc_pool *rx_desc_pool;
 	struct dp_mon_pdev *mon_pdev = pdev->monitor_pdev;
+	struct dp_mon_mac *mon_mac = dp_get_mon_mac(pdev, mac_id);
 
 	mon_status_ring = &soc->rxdma_mon_status_ring[mac_id];
 
@@ -928,7 +933,7 @@ dp_rx_pdev_mon_status_desc_pool_init(struct dp_pdev *pdev, uint32_t mac_id)
 
 	dp_rx_desc_pool_init(soc, mac_id, num_entries + 1, rx_desc_pool);
 
-	qdf_nbuf_queue_init(&mon_pdev->rx_status_q);
+	qdf_nbuf_queue_init(&mon_mac->rx_status_q);
 
 	mon_pdev->mon_ppdu_status = DP_PPDU_STATUS_START;
 

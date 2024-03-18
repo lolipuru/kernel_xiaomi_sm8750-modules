@@ -285,8 +285,8 @@ util_parse_prv_multi_link_ctrl(uint8_t *mlieseqpayload,
 	qdf_size_t parsed_payload_len;
 	uint16_t mlcontrol;
 	uint16_t presence_bm;
-	uint16_t cinfo_len = 0;
-	uint16_t exp_cinfo_len = 0;
+	uint16_t cinfo_len;
+	qdf_size_t parsed_cinfo_len;
 
 	/* This helper returns the location(s) and length(s) of (sub)field(s)
 	 * inferable after parsing the Multi Link element Control field. These
@@ -337,6 +337,7 @@ util_parse_prv_multi_link_ctrl(uint8_t *mlieseqpayload,
 
 	cinfo_len = *(mlieseqpayload + parsed_payload_len);
 	parsed_payload_len += WLAN_ML_PRV_CINFO_LENGTH_SIZE;
+	parsed_cinfo_len = WLAN_ML_PRV_CINFO_LENGTH_SIZE;
 
 	/* Check if MLD ID is present */
 	if (presence_bm & WLAN_ML_PRV_CTRL_PBM_MLDID_P) {
@@ -350,14 +351,49 @@ util_parse_prv_multi_link_ctrl(uint8_t *mlieseqpayload,
 			return QDF_STATUS_E_PROTO;
 		}
 
+		if (cinfo_len <
+				(parsed_cinfo_len +
+				 WLAN_ML_PRV_CINFO_MLDID_SIZE)) {
+			mlo_err_rl("Indicated ML Common Info len %u insufficient for MLD ID size %u after parsed ML Common Info len %zu.",
+				   cinfo_len,
+				   WLAN_ML_PRV_CINFO_MLDID_SIZE,
+				   parsed_cinfo_len);
+			return QDF_STATUS_E_PROTO;
+		}
+
 		parsed_payload_len += WLAN_ML_PRV_CINFO_MLDID_SIZE;
+		parsed_cinfo_len += WLAN_ML_PRV_CINFO_MLDID_SIZE;
 	}
 
-	exp_cinfo_len = parsed_payload_len - WLAN_ML_CTRL_SIZE;
-	if (cinfo_len != exp_cinfo_len) {
-		mlo_err_rl("ML seq common info len %u doesn't match with expected common info len %u",
-			   cinfo_len, exp_cinfo_len);
-		return QDF_STATUS_E_PROTO;
+	/* If the value in the Common Info Length subfield is greater than
+	 * expected, then this indicates that the sender has included some
+	 * additional subfield(s) in Common Info that the parsing implementation
+	 * does not yet recognize. This could happen in case the sender
+	 * implements a higher standards draft or a new standard that the
+	 * parsing implementation does not yet implement. In this case, skip
+	 * over these unrecognized subfield(s) after verifying that there is
+	 * sufficient space in the element to accommodate the unrecognized
+	 * subfield(s). This is in line with the purpose of the Common Info
+	 * Length subfield.
+	 */
+	if (cinfo_len > parsed_cinfo_len) {
+		mlo_debug_rl("Indicated ML Common Info len %u > expected ML Common Info len %zu.",
+			   cinfo_len, parsed_cinfo_len);
+
+		if (mlieseqpayloadlen <
+				(parsed_payload_len +
+				 (cinfo_len - parsed_cinfo_len))) {
+			mlo_err_rl("ML seq payload len %zu octets insufficient for unrecognized ML Common Info subfield(s) len %zu after parsed payload len %zu.",
+				   mlieseqpayloadlen,
+				   cinfo_len - parsed_cinfo_len,
+				   parsed_payload_len);
+			return QDF_STATUS_E_PROTO;
+		}
+
+		mlo_debug_rl("Skipping unrecognized ML Common Info subfield(s) len %zu.",
+			     cinfo_len - parsed_cinfo_len);
+
+		parsed_payload_len += (cinfo_len - parsed_cinfo_len);
 	}
 
 	if (link_info_len) {
@@ -1691,8 +1727,12 @@ util_add_mlie_for_prb_rsp_gen(const uint8_t *reportingsta_ie,
 	status = util_get_mlie_common_info_len((uint8_t *)reportingsta_ie,
 					       reportingsta_ie_len,
 					       &common_info_len);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		mlo_err("Failed while parsing the common info length");
+	if (QDF_IS_STATUS_ERROR(status) ||
+	    common_info_len > reportingsta_ie_len ||
+	    (reportingsta_ie_len - common_info_len <
+	     sizeof(struct wlan_ie_multilink))) {
+		mlo_err("Failed to parse common info, mlie len %d common info len %d",
+			reportingsta_ie_len, common_info_len);
 		return status;
 	}
 
@@ -1745,9 +1785,9 @@ util_add_mlie_for_prb_rsp_gen(const uint8_t *reportingsta_ie,
 		     reportingsta_ie + sizeof(struct wlan_ie_multilink),
 		     mlie_len - sizeof(struct wlan_ie_multilink));
 
-	if (linkid == 0xFF) {
+	if (linkid == 0xFF || mlie_len <= link_id_offset) {
 		qdf_mem_free(mlie_frame);
-		mlo_err("Link id is invalid");
+		mlo_err("Failed to process link id, link_id %d", linkid);
 		return QDF_STATUS_E_INVAL;
 	}
 	mlie_frame[link_id_offset] = (mlie_frame[link_id_offset] & ~0x0f) |
@@ -4160,6 +4200,27 @@ util_find_mlie(uint8_t *buf, qdf_size_t buflen, uint8_t **mlieseq,
 	return QDF_STATUS_SUCCESS;
 }
 
+static inline QDF_STATUS
+util_validate_bv_mlie_min_seq_len(qdf_size_t mlieseqlen)
+{
+	qdf_size_t parsed_len = sizeof(struct wlan_ie_multilink);
+
+	if (mlieseqlen < parsed_len + WLAN_ML_BV_CINFO_LENGTH_SIZE) {
+		mlo_err_rl("ML seq payload of len %zu doesn't accommodate the mandatory BV ML IE Common info len field",
+			   mlieseqlen);
+		return QDF_STATUS_E_PROTO;
+	}
+	parsed_len += WLAN_ML_BV_CINFO_LENGTH_SIZE;
+
+	if (mlieseqlen < parsed_len + QDF_MAC_ADDR_SIZE) {
+		mlo_err_rl("ML seq payload of len %zu doesn't accommodate the mandatory MLD addr",
+			   mlieseqlen);
+		return QDF_STATUS_E_PROTO;
+	}
+
+	return QDF_STATUS_SUCCESS;
+}
+
 QDF_STATUS
 util_find_mlie_by_variant(uint8_t *buf, qdf_size_t buflen, uint8_t **mlieseq,
 			  qdf_size_t *mlieseqlen, int variant)
@@ -4297,6 +4358,9 @@ util_get_bvmlie_bssparamchangecnt(uint8_t *mlieseq, qdf_size_t mlieseqlen,
 
 	presencebitmap = QDF_GET_BITS(mlcontrol, WLAN_ML_CTRL_PBM_IDX,
 				      WLAN_ML_CTRL_PBM_BITS);
+
+	if (QDF_IS_STATUS_ERROR(util_validate_bv_mlie_min_seq_len(mlieseqlen)))
+		return QDF_STATUS_E_INVAL;
 
 	commoninfo = mlieseq + sizeof(struct wlan_ie_multilink);
 	commoninfolen = *(mlieseq + sizeof(struct wlan_ie_multilink));
@@ -4686,6 +4750,9 @@ util_get_bvmlie_mldcap(uint8_t *mlieseq, qdf_size_t mlieseqlen,
 
 	presencebitmap = QDF_GET_BITS(mlcontrol, WLAN_ML_CTRL_PBM_IDX,
 				      WLAN_ML_CTRL_PBM_BITS);
+
+	if (QDF_IS_STATUS_ERROR(util_validate_bv_mlie_min_seq_len(mlieseqlen)))
+		return QDF_STATUS_E_INVAL;
 
 	commoninfo = mlieseq + sizeof(struct wlan_ie_multilink);
 	commoninfo_len = *(mlieseq + sizeof(struct wlan_ie_multilink));
@@ -5950,6 +6017,8 @@ util_parse_pa_multi_link_ctrl(uint8_t *mlieseqpayload,
 			      qdf_size_t *link_info_len)
 {
 	qdf_size_t parsed_payload_len;
+	uint16_t cinfo_len;
+	qdf_size_t parsed_cinfo_len;
 
 	/* This helper returns the location(s) and length(s) of (sub)field(s)
 	 * inferable after parsing the Multi Link element Control field. These
@@ -5984,16 +6053,66 @@ util_parse_pa_multi_link_ctrl(uint8_t *mlieseqpayload,
 	parsed_payload_len += WLAN_ML_CTRL_SIZE;
 
 	if (mlieseqpayloadlen <
-		(parsed_payload_len +
-		WLAN_ML_PAV_CINFO_LENGTH_MAX)) {
-		mlo_err_rl("ML seq payload len %zu insufficient for MLD cmn size %u after parsed payload len %zu.",
+		(parsed_payload_len + WLAN_ML_PAV_CINFO_LENGTH_SIZE)) {
+		mlo_err_rl("ML seq payload len %zu insufficient for common info length size %u after parsed payload len %zu.",
 			   mlieseqpayloadlen,
-			   WLAN_ML_PAV_CINFO_LENGTH_MAX,
+			   WLAN_ML_PAV_CINFO_LENGTH_SIZE,
 			   parsed_payload_len);
 		return QDF_STATUS_E_PROTO;
 	}
 
-	parsed_payload_len += QDF_MAC_ADDR_SIZE + WLAN_ML_PAV_CINFO_LENGTH_SIZE;
+	cinfo_len = *(mlieseqpayload + parsed_payload_len);
+	parsed_payload_len += WLAN_ML_PAV_CINFO_LENGTH_SIZE;
+	parsed_cinfo_len = WLAN_ML_PAV_CINFO_LENGTH_SIZE;
+
+	if (mlieseqpayloadlen < (parsed_payload_len + QDF_MAC_ADDR_SIZE)) {
+		mlo_err_rl("ML seq payload len %zu insufficient for AP MLD MAC addr size %u after parsed payload len %zu.",
+			   mlieseqpayloadlen,
+			   QDF_MAC_ADDR_SIZE,
+			   parsed_payload_len);
+		return QDF_STATUS_E_PROTO;
+	}
+
+	if (cinfo_len < (parsed_cinfo_len + QDF_MAC_ADDR_SIZE)) {
+		mlo_err_rl("Indicated ML Common Info len %u insufficient for AP MLD MAC addr size %u after parsed ML Common Info len %zu.",
+			   cinfo_len,
+			   QDF_MAC_ADDR_SIZE,
+			   parsed_cinfo_len);
+		return QDF_STATUS_E_PROTO;
+	}
+
+	parsed_payload_len += QDF_MAC_ADDR_SIZE;
+	parsed_cinfo_len += QDF_MAC_ADDR_SIZE;
+
+	/* If the value in the Common Info Length subfield is greater than
+	 * expected, then this indicates that the sender has included some
+	 * additional subfield(s) in Common Info that the parsing implementation
+	 * does not yet recognize. This could happen in case the sender
+	 * implements a higher standards draft or a new standard that the
+	 * parsing implementation does not yet implement. In this case, skip
+	 * over these unrecognized subfield(s) after verifying that there is
+	 * sufficient space in the element to accommodate the unrecognized
+	 * subfield(s). This is in line with the purpose of the Common Info
+	 * Length subfield.
+	 */
+	if (cinfo_len > parsed_cinfo_len) {
+		mlo_debug_rl("Indicated ML Common Info len %u > expected ML Common Info len %zu.",
+			   cinfo_len, parsed_cinfo_len);
+
+		if (mlieseqpayloadlen <
+			(parsed_payload_len + (cinfo_len - parsed_cinfo_len))) {
+			mlo_err_rl("ML seq payload len %zu octets insufficient for unrecognized ML Common Info subfield(s) len %zu after parsed payload len %zu.",
+				   mlieseqpayloadlen,
+				   cinfo_len - parsed_cinfo_len,
+				   parsed_payload_len);
+			return QDF_STATUS_E_PROTO;
+		}
+
+		mlo_debug_rl("Skipping unrecognized ML Common Info subfield(s) len %zu.",
+			     cinfo_len - parsed_cinfo_len);
+
+		parsed_payload_len += (cinfo_len - parsed_cinfo_len);
+	}
 
 	if (link_info_len) {
 		*link_info_len = mlieseqpayloadlen - parsed_payload_len;
@@ -6110,7 +6229,7 @@ util_parse_pamlie_perstaprofile_stactrl(uint8_t *subelempayload,
 					     subelempayload,
 					     sizeof(struct edca_ie));
 			} else {
-				epcs_debug("Invalid edca length %d in PAV IE",
+				mlo_err("Invalid edca length %d in PAV IE",
 					   ie->ie_len);
 			}
 			break;
@@ -6120,11 +6239,11 @@ util_parse_pamlie_perstaprofile_stactrl(uint8_t *subelempayload,
 				pa_link_info->ven_wme_ie_present = true;
 				qdf_mem_copy(&pa_link_info->ven_wme_ie_bytes,
 					     subelempayload,
-					     sizeof(WLAN_VENDOR_WME_IE_LEN +
-						    sizeof(struct ie_header)));
+					     (WLAN_VENDOR_WME_IE_LEN +
+					      sizeof(struct ie_header)));
 				pa_link_info->edca_ie_present = false;
 			} else {
-				epcs_debug("Unrelated Venfor IE reecived ie_id %d ie_len %d",
+				mlo_err("Unrelated Venfor IE reecived ie_id %d ie_len %d",
 					   ie->ie_id,
 					   ie->ie_len);
 			}
@@ -6139,12 +6258,12 @@ util_parse_pamlie_perstaprofile_stactrl(uint8_t *subelempayload,
 						     subelempayload,
 						     sizeof(struct muedca_ie));
 				} else {
-					epcs_debug("Invalid muedca length %d in PAV IE",
+					mlo_err("Invalid muedca length %d in PAV IE",
 						   ie->ie_len);
 				}
 				break;
 			default:
-				epcs_debug("Unrelated Extn IE reecived ie_id %d ie_len %d extid %d IN PAV IE",
+				mlo_err("Unrelated Extn IE reecived ie_id %d ie_len %d extid %d IN PAV IE",
 					   ie->ie_id,
 					   ie->ie_len,
 					   extn_ie->ie_extn_id);
@@ -6152,7 +6271,7 @@ util_parse_pamlie_perstaprofile_stactrl(uint8_t *subelempayload,
 			}
 			break;
 		default:
-			epcs_debug("Unrelated IE reecived ie_id %d ie_len %d in PAV IE",
+			mlo_err("Unrelated IE reecived ie_id %d ie_len %d in PAV IE",
 				   ie->ie_id,
 				   ie->ie_len);
 			break;
@@ -6162,11 +6281,11 @@ util_parse_pamlie_perstaprofile_stactrl(uint8_t *subelempayload,
 	} while (parsed_payload_len < subelempayloadlen);
 
 	if (parsed_payload_len != subelempayloadlen)
-		epcs_debug("Error in processing per sta profile of PA ML IE %zu %zu",
+		mlo_err("Error in processing per sta profile of PA ML IE %zu %zu",
 			   parsed_payload_len,
 			   subelempayloadlen);
 
-	epcs_debug("Link id %d presence of edca %d muedca %d wme %d",
+	mlo_debug("Link id %d presence of edca %d muedca %d wme %d",
 		   pa_link_info->link_id,
 		   pa_link_info->edca_ie_present,
 		   pa_link_info->muedca_ie_present,

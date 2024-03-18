@@ -54,6 +54,11 @@
 #define MAX_MCS (14 + 1)
 #endif
 
+/* Needs to reflect HTT_TX_FW2WBM_TX_STATUS_MAX
+ * defined in FW
+ */
+#define MAX_EAPOL_TX_COMP_STATUS 7
+
 #define MCS_INVALID_ARRAY_INDEX MAX_MCS
 #define MAX_MCS_11A 8
 #define MAX_MCS_11B 7
@@ -1569,6 +1574,8 @@ struct protocol_trace_count {
  * @tx_ucast_total: Total tx unicast count
  * @tx_ucast_success: Total tx unicast success count
  * @fragment_count: Fragment packet count
+ * @eapol_tx_comp_failures: Eapol Tx completion count
+ * @rekey_tx_comp_failures: GroupRekey Tx completion count
  */
 struct cdp_tx_stats {
 	struct cdp_pkt_info comp_pkt;
@@ -1695,6 +1702,8 @@ struct cdp_tx_stats {
 	struct cdp_pkt_info tx_ucast_total;
 	struct cdp_pkt_info tx_ucast_success;
 	uint32_t fragment_count;
+	uint32_t eapol_tx_comp_failures[MAX_EAPOL_TX_COMP_STATUS];
+	uint32_t rekey_tx_comp_failures[MAX_EAPOL_TX_COMP_STATUS];
 };
 
 /**
@@ -3009,12 +3018,16 @@ struct cdp_soc_stats {
  * struct cdp_pdev_telemetry_stats- Structure to hold pdev telemetry stats
  * @tx_mpdu_failed: Tx mpdu failed
  * @tx_mpdu_total: Total tx mpdus
- * @link_airtime: pdev airtime usage per ac per sec
+ * @link_airtime: pdev total airtime usage per ac per sec
+ * @tx_link_airtime: pdev tx airtime usage per ac per sec
+ * @rx_link_airtime: pdev rx airtime usage per ac per sec
  */
 struct cdp_pdev_telemetry_stats {
 	uint32_t tx_mpdu_failed[WME_AC_MAX];
 	uint32_t tx_mpdu_total[WME_AC_MAX];
 	uint32_t link_airtime[WME_AC_MAX];
+	uint32_t tx_link_airtime[WME_AC_MAX];
+	uint32_t rx_link_airtime[WME_AC_MAX];
 };
 
 /**
@@ -3130,6 +3143,20 @@ struct cdp_pdev_deter_stats {
 	struct cdp_pdev_chan_util_stats ch_util;
 	struct cdp_pdev_ul_trigger_status ts[TX_MODE_UL_MAX];
 };
+
+/**
+ * struct cdp_pdev_erp_stats - Structure to hold pdve erp stats
+ * @tx_data_mpdu_cnt: total tx mpdu data count
+ * @rx_data_mpdu_cnt: total rx mpdu data count
+ * @tx_max_avg_data_rate: Max avg tx data rate among all peer of pdev
+ * @rx_max_avg_data_rate: Max avg rx data rate among all peer of pdev
+ */
+struct cdp_pdev_erp_stats {
+	uint64_t tx_data_mpdu_cnt;
+	uint64_t rx_data_mpdu_cnt;
+	uint32_t tx_max_avg_data_rate;
+	uint32_t rx_max_avg_data_rate;
+};
 #endif
 
 /**
@@ -3207,6 +3234,7 @@ struct cdp_pdev_deter_stats {
  * @peer_unauth_rx_pkt_drop: stats counter for drops due to unauthorized peer
  * @telemetry_stats: pdev telemetry stats
  * @deter_stats:
+ * @erp_stats: ERP stats for the pdev
  * @invalid_msdu_cnt: Invalid MSDU count received counter
  */
 struct cdp_pdev_stats {
@@ -3305,6 +3333,7 @@ struct cdp_pdev_stats {
 #ifdef WLAN_CONFIG_TELEMETRY_AGENT
 	struct cdp_pdev_telemetry_stats telemetry_stats;
 	struct cdp_pdev_deter_stats deter_stats;
+	struct cdp_pdev_erp_stats erp_stats;
 #endif
 	uint32_t invalid_msdu_cnt;
 };

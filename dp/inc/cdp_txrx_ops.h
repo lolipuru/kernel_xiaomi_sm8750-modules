@@ -1211,8 +1211,11 @@ struct cdp_mon_ops {
  * @txrx_pdev_telemetry_stats:
  * @txrx_peer_telemetry_stats:
  * @txrx_pdev_deter_stats:
+ * @txrx_pdev_stats_deter:
  * @txrx_peer_deter_stats:
+ * @txrx_peer_stats_deter:
  * @txrx_update_pdev_chan_util_stats:
+ * @txrx_pdev_erp_stats: fetch erp stats for all links in pdevs
  * @txrx_get_peer_extd_rate_link_stats:
  * @get_pdev_obss_stats:
  * @clear_pdev_obss_pd_stats:
@@ -1404,17 +1407,31 @@ struct cdp_host_stats_ops {
 				struct cdp_soc_t *soc,
 				uint8_t pdev_id,
 				struct cdp_pdev_deter_stats *stats);
+	struct cdp_pdev_deter_stats *
+		(*txrx_pdev_stats_deter)(
+				struct cdp_soc_t *soc,
+				uint8_t pdev_id);
 	QDF_STATUS
 		(*txrx_peer_deter_stats)(
 				struct cdp_soc_t *soc,
 				uint8_t vdev_id,
 				uint8_t *addr,
 				struct cdp_peer_deter_stats *stats);
+	struct cdp_peer_deter_stats*
+		(*txrx_peer_stats_deter)(
+				struct cdp_soc_t *soc,
+				uint8_t vdev_id,
+				uint8_t *addr);
 	QDF_STATUS
 		(*txrx_update_pdev_chan_util_stats)(
 				struct cdp_soc_t *soc,
 				uint8_t pdev_id,
 				struct cdp_pdev_chan_util_stats *ch_util);
+	QDF_STATUS
+		(*txrx_pdev_erp_stats)(
+				struct cdp_soc_t *soc,
+				uint8_t pdev_id,
+				struct cdp_pdev_erp_stats *stats);
 #endif
 	QDF_STATUS
 		(*txrx_get_peer_extd_rate_link_stats)
@@ -1704,6 +1721,10 @@ struct ol_if_ops {
 	void (*send_wakeup_trigger)(struct cdp_ctrl_objmgr_psoc *soc,
 				    uint8_t vdev_id);
 #endif
+	void (*notify_eapol_tx_compl_status)(struct cdp_ctrl_objmgr_psoc *soc,
+					     qdf_nbuf_t nbuf,
+					     uint8_t vdev_id,
+					     uint8_t tx_status);
 #ifdef QCA_SUPPORT_WDS_EXTENDED
 	void (*rx_wds_ext_peer_learn)(struct cdp_ctrl_objmgr_psoc *ctrl_psoc,
 				      uint16_t peer_id, uint8_t vdev_id,
@@ -1777,6 +1798,11 @@ void (*peer_send_wds_disconnect)(struct cdp_ctrl_objmgr_psoc *psoc,
 	int (*disable_sawf_svc)(uint8_t svc_id);
 #endif
 	void (*dp_print_fisa_stats)(enum cdp_fisa_stats_id stats_id);
+#if defined(IPA_OFFLOAD) && defined(IPA_OFFLOAD_LOW_MEM)
+	uint16_t (*pdev_get_num_buff)(struct cdp_ctrl_objmgr_psoc *psoc,
+				      uint8_t pdev_id,
+				      enum qdf_buff_type_tx_rx buff_type);
+#endif
 };
 
 #ifdef DP_PEER_EXTENDED_API
@@ -2238,6 +2264,7 @@ struct cdp_throttle_ops {
  * @ipa_rx_wdsext_iface: Forward RX exception packets to wdsext interface
  * @ipa_rx_super_rule_setup: Setup cce super rules based on filter tuple
  * @ipa_tx_super_rule_setup: Setup tx super rules based on filter tuple
+ * @ipa_tx_opt_dp_ctrl_pkt: handle opt_dp_ctrl tx pkt
  * @ipa_ast_create: Create/Update ast entry
  * @ipa_get_wdi_version: Get WDI version
  */
@@ -2351,6 +2378,9 @@ struct cdp_ipa_ops {
 					      void *flt_params);
 	QDF_STATUS (*ipa_tx_super_rule_setup)(struct cdp_soc_t *soc_hdl,
 					      void *flt_params);
+	QDF_STATUS (*ipa_tx_opt_dp_ctrl_pkt)(struct cdp_soc_t *soc_hdl,
+					     uint8_t vdev_id,
+					     qdf_nbuf_t nbuf);
 #endif
 #ifdef IPA_WDS_EASYMESH_FEATURE
 	QDF_STATUS (*ipa_ast_create)(struct cdp_soc_t *soc_hdl,
@@ -2497,6 +2527,9 @@ struct cdp_sawf_ops {
 				       uint32_t svc_id, uint8_t *mac,
 				       void *data);
 	QDF_STATUS
+	(*txrx_get_peer_sawf_msduq_svc_params)(struct cdp_soc_t *soc,
+					       uint8_t *mac, void *data);
+	QDF_STATUS
 	(*sawf_mpdu_stats_req)(struct cdp_soc_t *soc, uint8_t enable);
 	QDF_STATUS
 	(*sawf_mpdu_details_stats_req)(struct cdp_soc_t *soc, uint8_t enable);
@@ -2533,7 +2566,7 @@ struct cdp_sawf_ops {
 	(*sawf_peer_flow_count)(struct cdp_soc_t *hdl, uint8_t *mac_addr,
 				uint8_t svc_id, uint8_t direction,
 				uint8_t start_or_stop, uint8_t *peer_mac,
-				uint16_t peer_id);
+				uint16_t peer_id, uint16_t flow_count);
 #endif
 #ifdef WLAN_FEATURE_11BE_MLO_3_LINK_TX
 	uint16_t
@@ -2584,7 +2617,8 @@ struct cdp_fse_ops {
 			uint32_t *src_ip, uint32_t src_port,
 			uint32_t *dest_ip, uint32_t dest_port,
 			uint8_t protocol, uint8_t version, uint32_t svc_id,
-			uint8_t tid, uint8_t *dest_mac, uint8_t pdev_id);
+			uint8_t tid, uint8_t *dest_mac, uint8_t pdev_id,
+			bool drop, uint8_t ring_id);
 	QDF_STATUS
 	(*fse_rule_delete)(struct cdp_soc_t *soc,
 			   uint32_t *src_ip, uint32_t src_port,

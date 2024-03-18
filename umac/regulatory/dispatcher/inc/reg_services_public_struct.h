@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -95,6 +95,21 @@
 
 #ifdef CONFIG_REG_CLIENT
 #define MAX_NUM_FCC_RULES 2
+/*
+ * As per spec valid range is range –64 dBm to 63 dBm.
+ * Powers in range of 64 - 191 will be invalid.
+ */
+#define INVALID_TPE_POWER 100
+/* 802.11ax-2021 Table 9-276 Meaning of Local Maximum Transmit Power Count
+ * subfield if the Maximum Transmit Power Interpretation subfield is 0 or 2
+ */
+#define MAX_TX_PWR_COUNT_FOR_160MHZ 3
+/* 802.11ax-2021 Table 9-277 Meaning of Maximum Transmit Power Count subfield
+ * if Maximum Transmit Power Interpretation subfield is 1 or 3
+ */
+#define MAX_TX_PWR_COUNT_FOR_160MHZ_PSD 4
+#define MAX_NUM_TX_POWER_FOR_320MHZ 5
+#define PUNCTURED_CHAN_POWER 128
 #endif
 
 /* no subchannels punctured */
@@ -570,6 +585,7 @@ enum channel_state {
  * standard.
  * @REG_MAX_AP_TYPE: Maximum value possible for (3 bits) regulatory info
  * sub-field in the 6G HE Operation IE
+ * @REG_INDOOR_SP_AP: Composite AP (Supports LPI and SP)
  */
 enum reg_6g_ap_type {
 	REG_INDOOR_AP = 0,
@@ -577,7 +593,8 @@ enum reg_6g_ap_type {
 	REG_VERY_LOW_POWER_AP = 2,
 	REG_CURRENT_MAX_AP_TYPE,
 	REG_MAX_SUPP_AP_TYPE = REG_VERY_LOW_POWER_AP,
-	REG_MAX_AP_TYPE = 7,
+	REG_INDOOR_SP_AP = 8,
+	REG_MAX_AP_TYPE = 9
 };
 
 /**

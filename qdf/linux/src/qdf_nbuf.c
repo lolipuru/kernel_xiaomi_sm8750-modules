@@ -585,18 +585,8 @@ struct sk_buff *__qdf_nbuf_alloc(qdf_device_t osdev, size_t size, int reserve,
 	if (align)
 		size += (align - 1);
 
-	if (in_interrupt() || irqs_disabled() || in_atomic()) {
+	if (in_interrupt() || irqs_disabled() || in_atomic())
 		flags = GFP_ATOMIC;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)
-		/*
-		 * Observed that kcompactd burns out CPU to make order-3 page.
-		 *__netdev_alloc_skb has 4k page fallback option just in case of
-		 * failing high order page allocation so we don't need to be
-		 * hard. Make kcompactd rest in piece.
-		 */
-		flags = flags & ~__GFP_KSWAPD_RECLAIM;
-#endif
-	}
 
 	skb =  alloc_skb(size, flags);
 
@@ -1502,6 +1492,7 @@ __qdf_nbuf_data_get_dhcp_subtype(uint8_t *data)
 	return subtype;
 }
 
+#define EAPOL_WPA_KEY_INFO_KEY_TYPE BIT(3)
 #define EAPOL_WPA_KEY_INFO_ACK BIT(7)
 #define EAPOL_WPA_KEY_INFO_MIC BIT(8)
 #define EAPOL_WPA_KEY_INFO_ENCR_KEY_DATA BIT(12) /* IEEE 802.11i/RSN only */
@@ -1530,6 +1521,7 @@ __qdf_nbuf_data_get_eapol_key(uint8_t *data)
 	uint16_t key_info, key_data_length;
 	enum qdf_proto_subtype subtype;
 	uint64_t *key_nonce;
+	bool pairwise;
 
 	key_info = qdf_ntohs((uint16_t)(*(uint16_t *)
 			(data + EAPOL_KEY_INFO_OFFSET)));
@@ -1537,18 +1529,21 @@ __qdf_nbuf_data_get_eapol_key(uint8_t *data)
 	key_data_length = qdf_ntohs((uint16_t)(*(uint16_t *)
 				(data + EAPOL_KEY_DATA_LENGTH_OFFSET)));
 	key_nonce = (uint64_t *)(data + EAPOL_WPA_KEY_NONCE_OFFSET);
+	pairwise = key_info & EAPOL_WPA_KEY_INFO_KEY_TYPE;
 
 	if (key_info & EAPOL_WPA_KEY_INFO_ACK)
 		if (key_info &
 		    (EAPOL_WPA_KEY_INFO_MIC | EAPOL_WPA_KEY_INFO_ENCR_KEY_DATA))
-			subtype = QDF_PROTO_EAPOL_M3;
+			subtype = pairwise ?
+				  QDF_PROTO_EAPOL_M3 : QDF_PROTO_EAPOL_G1;
 		else
 			subtype = QDF_PROTO_EAPOL_M1;
 	else
 		if (key_data_length == 0 ||
 		    !((*key_nonce) || (*(key_nonce + 1)) ||
 		      (*(key_nonce + 2)) || (*(key_nonce + 3))))
-			subtype = QDF_PROTO_EAPOL_M4;
+			subtype = pairwise ?
+				  QDF_PROTO_EAPOL_M4 : QDF_PROTO_EAPOL_G2;
 		else
 			subtype = QDF_PROTO_EAPOL_M2;
 
@@ -3717,6 +3712,12 @@ free_buf:
 }
 qdf_export_symbol(qdf_nbuf_free_debug);
 
+#ifdef QCA_DP_NBUF_FAST_RECYCLE_CHECK
+#define __qdf_nbuf_netdev_alloc(d, s, f) __netdev_alloc_skb_fast(d, s, f)
+#else
+#define __qdf_nbuf_netdev_alloc(d, s, f) __netdev_alloc_skb(d, s, f)
+#endif
+
 struct sk_buff *__qdf_nbuf_alloc_simple(qdf_device_t osdev, size_t size,
 					const char *func, uint32_t line)
 {
@@ -3736,8 +3737,7 @@ struct sk_buff *__qdf_nbuf_alloc_simple(qdf_device_t osdev, size_t size,
 #endif
 	}
 
-	skb = __netdev_alloc_skb(NULL, size, flags);
-
+	skb = __qdf_nbuf_netdev_alloc(NULL, size, flags);
 
 	if (qdf_likely(is_initial_mem_debug_disabled)) {
 		if (qdf_likely(skb))
@@ -5553,6 +5553,9 @@ unsigned int qdf_nbuf_update_radiotap(struct mon_rx_status *rx_status,
 
 	if (rx_status->rs_fcs_err)
 		rx_status->rtap_flags |= IEEE80211_RADIOTAP_F_BADFCS;
+
+	if (rx_status->mon_fcs_cap)
+		rx_status->rtap_flags |= IEEE80211_RADIOTAP_F_FCS;
 
 	rtap_buf[rtap_len] = rx_status->rtap_flags;
 	rtap_len += 1;

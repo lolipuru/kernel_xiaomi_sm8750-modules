@@ -173,6 +173,33 @@ cdp_get_peer_sawf_tx_stats(ol_txrx_soc_handle soc, uint32_t svc_id,
 }
 
 /**
+ * cdp_get_peer_sawf_msduq_svc_params() - Call to get Peer MSDUQ SVC Info
+ * @soc: soc handle
+ * @mac: peer mac address
+ * @data: opaque pointer
+ *
+ * return: status Success/Failure
+ */
+static inline QDF_STATUS
+cdp_get_peer_sawf_msduq_svc_params(ol_txrx_soc_handle soc, uint8_t *mac,
+				   void *data)
+{
+	if (!soc || !soc->ops) {
+		dp_cdp_debug("Invalid Instance");
+		QDF_BUG(0);
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	if (!soc->ops->sawf_ops ||
+	    !soc->ops->sawf_ops->txrx_get_peer_sawf_msduq_svc_params)
+		return QDF_STATUS_E_FAILURE;
+
+	return soc->ops->sawf_ops->txrx_get_peer_sawf_msduq_svc_params(soc,
+								       mac,
+								       data);
+}
+
+/**
  * cdp_sawf_mpdu_stats_req() - Call to subscribe to MPDU stats TLV
  * @soc: soc handle
  * @enable: 1: enable 0: disable
@@ -398,6 +425,7 @@ cdp_sawf_peer_config_ul(ol_txrx_soc_handle soc, uint8_t *mac_addr, uint8_t tid,
  * @start_or_stop: Indication of start or stop
  * @peer_mac: Peer MAC address
  * @peer_id: peer id
+ * @flow_count: flow count
  *
  * Return: QDF_STATUS
  */
@@ -405,7 +433,7 @@ static inline QDF_STATUS
 cdp_sawf_peer_flow_count(ol_txrx_soc_handle soc, uint8_t *mac_addr,
 			 uint8_t svc_id, uint8_t direction,
 			 uint8_t start_or_stop, uint8_t *peer_mac,
-			 uint16_t peer_id)
+			 uint16_t peer_id, uint16_t flow_count)
 {
 	if (!soc || !soc->ops || !soc->ops->sawf_ops ||
 	    !soc->ops->sawf_ops->sawf_peer_flow_count) {
@@ -416,7 +444,7 @@ cdp_sawf_peer_flow_count(ol_txrx_soc_handle soc, uint8_t *mac_addr,
 
 	return soc->ops->sawf_ops->sawf_peer_flow_count
 		(soc, mac_addr, svc_id, direction, start_or_stop, peer_mac,
-								peer_id);
+		 peer_id, flow_count);
 }
 
 /**

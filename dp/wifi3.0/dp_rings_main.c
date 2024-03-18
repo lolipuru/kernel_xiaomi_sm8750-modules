@@ -89,12 +89,12 @@ static QDF_STATUS dp_alloc_tx_ring_pair_by_index(struct dp_soc *soc,
  */
 static uint8_t default_dscp_tid_map[DSCP_TID_MAP_MAX] = {
 	0, 0, 0, 0, 0, 0, 0, 0,
-	1, 1, 1, 1, 1, 1, 1, 1,
-	2, 2, 2, 2, 2, 2, 2, 2,
-	3, 3, 3, 3, 3, 3, 3, 3,
+	1, 1, 0, 1, 0, 1, 0, 1,
+	0, 2, 3, 2, 3, 2, 3, 2,
+	4, 3, 4, 3, 4, 3, 4, 3,
 	4, 4, 4, 4, 4, 4, 4, 4,
-	5, 5, 5, 5, 5, 5, 5, 5,
-	6, 6, 6, 6, 6, 6, 6, 6,
+	5, 5, 5, 5, 6, 5, 6, 5,
+	7, 6, 6, 6, 6, 6, 6, 6,
 	7, 7, 7, 7, 7, 7, 7, 7,
 };
 
@@ -2355,7 +2355,18 @@ void dp_soc_rx_buf_map_lock_deinit(struct dp_soc *soc)
 {
 }
 #endif
-
+#ifdef IPA_OPT_WIFI_DP_CTRL
+static inline
+void dp_ipa_rx_desc_freelist_destroy(struct dp_soc *soc)
+{
+	qdf_spinlock_destroy(&soc->ipa_rx_desc_freelist.lock);
+}
+#else
+static inline
+void dp_ipa_rx_desc_freelist_destroy(struct dp_soc *soc)
+{
+}
+#endif
 /**
  * dp_soc_deinit() - Deinitialize txrx SOC
  * @txrx_soc: Opaque DP SOC handle
@@ -2414,6 +2425,8 @@ void dp_soc_deinit(void *txrx_soc)
 	dp_soc_print_inactive_objects(soc);
 	qdf_spinlock_destroy(&soc->inactive_peer_list_lock);
 	qdf_spinlock_destroy(&soc->inactive_vdev_list_lock);
+
+	dp_ipa_rx_desc_freelist_destroy(soc);
 
 	htt_soc_htc_dealloc(soc->htt_handle);
 
@@ -3578,6 +3591,22 @@ void dp_soc_hw_txrx_stats_init(struct dp_soc *soc)
 }
 #endif
 
+#ifdef IPA_OPT_WIFI_DP_CTRL
+static inline
+void dp_ipa_rx_desc_freelist_create(struct dp_soc *soc)
+{
+	soc->ipa_rx_desc_freelist.head = NULL;
+	soc->ipa_rx_desc_freelist.tail = NULL;
+	qdf_spinlock_create(&soc->ipa_rx_desc_freelist.lock);
+	soc->ipa_rx_desc_freelist.list_size = 0;
+}
+#else
+static inline
+void dp_ipa_rx_desc_freelist_create(struct dp_soc *soc)
+{
+}
+#endif
+
 /**
  * dp_soc_init() - Initialize txrx SOC
  * @soc: Opaque DP SOC handle
@@ -3758,6 +3787,8 @@ void *dp_soc_init(struct dp_soc *soc, HTC_HANDLE htc_handle,
 	qdf_create_work(0, &soc->htt_stats.work, htt_t2h_stats_handler, soc);
 
 	dp_reo_desc_deferred_freelist_create(soc);
+
+	dp_ipa_rx_desc_freelist_create(soc);
 
 	dp_info("Mem stats: DMA = %u HEAP = %u SKB = %u",
 		qdf_dma_mem_stats_read(),

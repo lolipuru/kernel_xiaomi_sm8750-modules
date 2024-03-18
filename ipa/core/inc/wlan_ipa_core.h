@@ -978,6 +978,73 @@ int wlan_ipa_wdi_opt_dpath_flt_rsrv_rel_cb(void *ipa_ctx);
  */
 void wlan_ipa_wdi_opt_dpath_notify_flt_rlsd(int result0, int result1);
 
+#ifdef IPA_OPT_WIFI_DP_CTRL
+/**
+ * wlan_ipa_wdi_opt_dpath_ctrl_flt_add_cb - Add filter tuple to lce filter
+ * @ipa_ctx: IPA context
+ * @in_out: filter tuple info
+ *
+ * Return: 0 on success, negative on failure
+ */
+int wlan_ipa_wdi_opt_dpath_ctrl_flt_add_cb(
+			    void *ipa_ctx,
+			    struct ipa_wdi_opt_dpath_flt_add_cb_params *in_out);
+/**
+ * wlan_ipa_wdi_opt_dpath_ctrl_flt_rem_cb -remove filter tuple from lce filter
+ * @ipa_ctx: IPA context
+ * @in: filter tuple info
+ *
+ * Return: 0 on success, negative on failure
+ */
+int wlan_ipa_wdi_opt_dpath_ctrl_flt_rem_cb(
+			   void *ipa_ctx,
+			   struct ipa_wdi_opt_dpath_flt_rem_cb_params *in);
+/**
+ * wlan_ipa_wdi_opt_dpath_clk_status_cb - notify clock enable
+ * @ipa_ctx: IPA context
+ * @status: status of clock
+ *
+ * Return: 0 on success, negative on failure
+ */
+int wlan_ipa_wdi_opt_dpath_clk_status_cb(void *ipa_ctx, bool status);
+
+/**
+ * wlan_ipa_wdi_opt_dpath_enable_clk_req() - send clock enable request
+ *			to ipa
+ * @ipa_ctx: IPA context
+ *
+ */
+void wlan_ipa_wdi_opt_dpath_enable_clk_req(void *ipa_ctx);
+
+/**
+ * wlan_ipa_tx_pkt_opt_dp_ctrl() - handle opt_dp_ctrl tx pkt
+ * @vdev_id: vdev id
+ * @nbuf: nbuf
+ */
+void wlan_ipa_tx_pkt_opt_dp_ctrl(uint8_t vdev_id, qdf_nbuf_t nbuf);
+
+/**
+ * wlan_ipa_wdi_opt_dpath_ctrl_notify_flt_install()- send tx super rule filter
+ * add result to ipa
+ *
+ * @flt_resp_params : array of filter parameters
+ *
+ * Return: void
+ */
+void wlan_ipa_wdi_opt_dpath_ctrl_notify_flt_install(struct filter_response
+						    *flt_resp_params);
+
+/**
+ * wlan_ipa_wdi_opt_dpath_ctrl_notify_flt_delete()- send tx super rule filter
+ * delete result to ipa
+ *
+ * @flt_resp_params : array of filter parameters
+ *
+ * Return: void
+ */
+void wlan_ipa_wdi_opt_dpath_ctrl_notify_flt_delete(struct filter_response
+						   *flt_resp_params);
+#endif
 #endif /* IPA_OPT_WIFI_DP */
 
 #ifdef IPA_WDI3_TX_TWO_PIPES

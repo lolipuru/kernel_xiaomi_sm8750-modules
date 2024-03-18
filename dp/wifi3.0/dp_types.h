@@ -47,6 +47,8 @@
 #include "hal_rx.h"
 #include <qdf_hrtimer.h>
 
+struct dp_tx_queue;
+
 #define dp_init_alert(params...) QDF_TRACE_FATAL(QDF_MODULE_ID_DP_INIT, params)
 #define dp_init_err(params...) QDF_TRACE_ERROR(QDF_MODULE_ID_DP_INIT, params)
 #define dp_init_warn(params...) QDF_TRACE_WARN(QDF_MODULE_ID_DP_INIT, params)
@@ -175,10 +177,12 @@
 #define DP_RX_FSE_FLOW_VP_NUM_MASK	0x00FF
 #define DP_RX_FSE_FLOW_TID_MASK		0x0F00
 #define DP_RX_FSE_FLOW_EVT_REQ_MASK	0x1000
+#define DP_RX_FSE_FLOW_DROP_BIT_MASK		0x2000
 
 #define DP_RX_FSE_FLOW_VP_NUM_SHIFT	0
 #define DP_RX_FSE_FLOW_TID_SHIFT	8
 #define DP_RX_FSE_FLOW_EVT_REQ_SHIFT	12
+#define DP_RX_FSE_FLOW_DROP_BIT_SHIFT	13
 
 #define DP_RX_FSE_FLOW_UPDATE(mask, meta, val, shift) \
 		(((meta) & ~(mask)) | (((val) << (shift)) & (mask)))
@@ -209,6 +213,14 @@
 #define DP_RX_FSE_FLOW_EXTRACT_EVT_REQ(meta) \
 	DP_RX_FSE_FLOW_EXTRACT(DP_RX_FSE_FLOW_EVT_REQ_MASK, meta, \
 				DP_RX_FSE_FLOW_EVT_REQ_SHIFT)
+
+#define DP_RX_FSE_FLOW_UPDATE_DROP_BIT(meta, val) \
+	DP_RX_FSE_FLOW_UPDATE(DP_RX_FSE_FLOW_DROP_BIT_MASK, \
+				meta, val, DP_RX_FSE_FLOW_DROP_BIT_SHIFT)
+
+#define DP_RX_FSE_FLOW_EXTRACT_DROP_BIT(meta) \
+	DP_RX_FSE_FLOW_EXTRACT(DP_RX_FSE_FLOW_DROP_BIT_MASK, meta, \
+				DP_RX_FSE_FLOW_DROP_BIT_SHIFT)
 
 #endif
 
@@ -863,6 +875,7 @@ struct dp_tx_tso_num_seg_pool_s {
  * @flow_pool_lock:
  * @pool_create_cnt:
  * @pool_owner_ctx:
+ * @ref_cnt: reference count of the pool
  * @elem_count:
  * @num_free: Number of free descriptors
  * @lock: Lock for descriptor allocation/free from/to the pool
@@ -892,6 +905,7 @@ struct dp_tx_desc_pool_s {
 	qdf_spinlock_t flow_pool_lock;
 	uint8_t pool_create_cnt;
 	void *pool_owner_ctx;
+	qdf_atomic_t ref_cnt;
 #else
 	uint16_t elem_count;
 	uint32_t num_free;
@@ -1795,6 +1809,7 @@ struct dp_rx_refill_history {
  * @DP_CFG_EVENT_PEER_UNMAP: peer unmap
  * @DP_CFG_EVENT_MLO_PEER_MAP: MLD peer map
  * @DP_CFG_EVENT_MLO_PEER_UNMAP: MLD peer unmap
+ * @DP_CFG_EVENT_VDEV_REGISTER: vdev register
  */
 enum dp_cfg_event_type {
 	DP_CFG_EVENT_VDEV_ATTACH,
@@ -1812,6 +1827,7 @@ enum dp_cfg_event_type {
 	DP_CFG_EVENT_PEER_UNMAP,
 	DP_CFG_EVENT_MLO_PEER_MAP,
 	DP_CFG_EVENT_MLO_PEER_UNMAP,
+	DP_CFG_EVENT_VDEV_REGISTER,
 };
 
 #ifdef WLAN_FEATURE_DP_CFG_EVENT_HISTORY
@@ -1827,12 +1843,14 @@ enum dp_cfg_event_type {
  * @mac_addr: vdev mac address
  * @vdev_id: vdev id
  * @ref_count: vdev ref count
+ * @osif_vdev: OSIF vdev handle
  */
 struct dp_vdev_attach_detach_desc {
 	struct dp_vdev *vdev;
 	union dp_align_mac_addr mac_addr;
 	uint8_t vdev_id;
 	int32_t ref_count;
+	ol_osif_vdev_handle osif_vdev;
 };
 
 /**
@@ -2350,6 +2368,7 @@ enum dp_context_type {
  * @dp_partner_chips_unmap:
  * @ipa_get_bank_id: Get TCL bank id used by IPA
  * @ipa_get_wdi_ver: Get WDI version
+ * @dp_tx_ipa_opt_dp_ctrl: Handle opt_dp_ctrl tx pkt
  * @dp_txrx_ppeds_rings_status:
  * @dp_tx_ppeds_inuse_desc:
  * @dp_ppeds_clear_stats: Clear ppeds related stats
@@ -2381,6 +2400,9 @@ enum dp_context_type {
  * @dp_soc_attach_poll: DP poll attach
  * @dp_soc_interrupt_detach: DP interrupt detach
  * @dp_service_srngs: Service DP interrupts
+ * @dp_mlo_tx_pool_map: TX desc pool map
+ * @dp_mlo_tx_pool_unmap: TX desc pool unmap
+ * @dp_tx_override_flow_pool_id: flow pool id override
  */
 struct dp_arch_ops {
 	/* INIT/DEINIT Arch Ops */
@@ -2593,6 +2615,10 @@ struct dp_arch_ops {
 	int8_t (*ipa_get_bank_id)(struct dp_soc *soc);
 	void (*ipa_get_wdi_ver)(uint8_t *wdi_ver);
 #endif
+#ifdef IPA_OPT_WIFI_DP_CTRL
+	void (*dp_tx_ipa_opt_dp_ctrl)(struct dp_soc *soc, uint8_t vdev_id,
+				      qdf_nbuf_t nbuf);
+#endif
 #ifdef WLAN_SUPPORT_PPEDS
 	void (*dp_txrx_ppeds_rings_status)(struct dp_soc *soc);
 	void (*dp_tx_ppeds_inuse_desc)(struct dp_soc *soc);
@@ -2657,6 +2683,13 @@ struct dp_arch_ops {
 	QDF_STATUS (*dp_soc_attach_poll)(struct cdp_soc_t *txrx_soc);
 	void (*dp_soc_interrupt_detach)(struct cdp_soc_t *txrx_soc);
 	uint32_t (*dp_service_srngs)(void *dp_ctx, uint32_t dp_budget, int cpu);
+	bool (*dp_mlo_tx_pool_map)(struct dp_soc *soc, uint8_t vdev_id,
+				   enum dp_mod_id mod_id);
+	bool (*dp_mlo_tx_pool_unmap)(struct dp_soc *soc, uint8_t vdev_id,
+				     uint8_t *new_id,
+				     enum dp_mod_id mod_id);
+	void (*dp_tx_override_flow_pool_id)(struct dp_vdev *vdev,
+					    struct dp_tx_queue *queue);
 };
 
 /**
@@ -2773,6 +2806,19 @@ struct dp_rx_msdu_done_fail_desc_list {
 	struct dp_rx_desc *msdu_done_fail_descs[DP_MSDU_DONE_FAIL_DESCS_MAX];
 };
 #endif
+
+/* struct dp_ipa_rx_desc_list: free desc list for ipa in opt_dp_ctrl
+ * @head: head pointer
+ * @tail: tail pointer
+ * @lock: spin lock
+ * @list_size: size of list
+ */
+struct dp_ipa_rx_desc_list {
+	union dp_rx_desc_list_elem_t *head;
+	union dp_rx_desc_list_elem_t *tail;
+	qdf_spinlock_t lock;
+	uint16_t list_size;
+};
 
 /* SOC level structure for data path */
 struct dp_soc {
@@ -3105,7 +3151,9 @@ struct dp_soc {
 
 	qdf_list_t reo_desc_freelist;
 	qdf_spinlock_t reo_desc_freelist_lock;
-
+#ifdef IPA_OPT_WIFI_DP_CTRL
+	struct dp_ipa_rx_desc_list ipa_rx_desc_freelist;
+#endif
 	/* htt stats */
 	struct htt_t2h_stats htt_stats;
 
@@ -4672,6 +4720,8 @@ typedef void *dp_txrx_ref_handle;
  * @release_src_not_tqm: Counter to keep track of release source is not TQM
  *			 in TX completion status processing
  * @inval_link_id_pkt_cnt: Counter to capture Invalid Link Id
+ * @eapol_tx_comp_failures: Eapol Tx completion count
+ * @rekey_tx_comp_failures: GroupRekey Tx completion count
  */
 struct dp_peer_per_pkt_tx_stats {
 	struct cdp_pkt_info ucast;
@@ -4724,6 +4774,8 @@ struct dp_peer_per_pkt_tx_stats {
 #endif
 	uint32_t release_src_not_tqm;
 	uint32_t inval_link_id_pkt_cnt;
+	uint32_t eapol_tx_comp_failures[MAX_EAPOL_TX_COMP_STATUS];
+	uint32_t rekey_tx_comp_failures[MAX_EAPOL_TX_COMP_STATUS];
 };
 
 /**

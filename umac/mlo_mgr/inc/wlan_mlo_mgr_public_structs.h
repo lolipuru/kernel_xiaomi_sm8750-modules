@@ -575,6 +575,7 @@ struct mlo_sta_quiet_status {
  *  Cancel the force operation of specific links, allow firmware to decide
  * @MLO_LINK_FORCE_MODE_ACTIVE_INACTIVE: Force specific links active and
  *  force specific links inactive
+ * @MLO_LINK_FORCE_MODE_NON_FORCE_UPDATE: Only update mlo disallow mode
  */
 enum mlo_link_force_mode {
 	MLO_LINK_FORCE_MODE_ACTIVE       = 1,
@@ -583,6 +584,7 @@ enum mlo_link_force_mode {
 	MLO_LINK_FORCE_MODE_INACTIVE_NUM = 4,
 	MLO_LINK_FORCE_MODE_NO_FORCE     = 5,
 	MLO_LINK_FORCE_MODE_ACTIVE_INACTIVE = 6,
+	MLO_LINK_FORCE_MODE_NON_FORCE_UPDATE = 7,
 };
 
 /**
@@ -606,14 +608,16 @@ enum mlo_link_force_reason {
 /**
  * enum set_link_source - set link source
  * @SET_LINK_FROM_CONCURRENCY: concurrent connection request
+ * @SET_LINK_FROM_EMLSR_DOWNGRADE: concurrent start and eMLSR downgrade
  * @SET_LINK_FROM_VENDOR_CMD: vendor command request
  * @SET_LINK_FROM_TDLS: tdls command request
  * @SET_LINK_SOURCE_MAX: max num of source
  */
 enum set_link_source {
-	SET_LINK_FROM_CONCURRENCY = 0,
-	SET_LINK_FROM_VENDOR_CMD = 1,
-	SET_LINK_FROM_TDLS = 2,
+	SET_LINK_FROM_CONCURRENCY,
+	SET_LINK_FROM_EMLSR_DOWNGRADE,
+	SET_LINK_FROM_VENDOR_CMD,
+	SET_LINK_FROM_TDLS,
 	SET_LINK_SOURCE_MAX,
 };
 
@@ -706,6 +710,7 @@ struct mlnawds_config {
  * @link_status_flags: Current status of link
  * @ap_link_addr: Associated link BSSID
  * @link_chan_info: Associated link channel info
+ * @is_link_active: link state
  */
 struct mlo_link_info {
 	struct qdf_mac_addr link_addr;
@@ -724,6 +729,7 @@ struct mlo_link_info {
 	struct qdf_mac_addr ap_link_addr;
 	struct wlan_channel *link_chan_info;
 #endif
+	bool is_link_active;
 };
 
 /**
@@ -1207,6 +1213,7 @@ struct ml_rv_info {
  * @emlmr_support: indicate if eMLMR supported
  * @msd_cap_support: indicate if MSD supported
  * @mlo_bridge_peer: indicate if it is bridge peer
+ * @ieee_link_id: IEEE link ID of the link peer
  * @unused: spare bits
  * @logical_link_index: Unique index for links of the mlo. Starts with Zero
  */
@@ -1223,7 +1230,8 @@ struct mlo_tgt_link_info {
 		 emlmr_support:1,
 		 msd_cap_support:1,
 		 mlo_bridge_peer:1,
-		 unused:22;
+		 ieee_link_id:4,
+		 unused:18;
 	uint32_t logical_link_index;
 
 };
@@ -1409,12 +1417,15 @@ struct mlo_link_num_param {
  * force link bitmaps
  * @post_re_evaluate: run link state check again after command response event
  * handled
+ * @post_re_evaluate_loops: current re-evaluate count if this set link is
+ * from set link event respone handler
  */
 struct mlo_control_flags {
 	bool overwrite_force_active_bitmap;
 	bool overwrite_force_inactive_bitmap;
 	bool dynamic_force_link_num;
 	bool post_re_evaluate;
+	uint8_t post_re_evaluate_loops;
 };
 
 /* struct ml_link_force_cmd - force command for links

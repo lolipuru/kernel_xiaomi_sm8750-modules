@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -39,6 +39,25 @@
 
 #ifndef IEEE80211_FCO_SUBTYPE_ACTION_NO_ACK
 #define IEEE80211_FCO_SUBTYPE_ACTION_NO_ACK 0xe0
+#endif
+
+#ifdef QCA_SUPPORT_MON_FCS_CAP_DBG
+void dp_rx_mon_fcs_cap_debug(struct dp_mon_pdev *mon_pdev,
+			     qdf_nbuf_t mpdu)
+{
+	void *ptr;
+	uint32_t size;
+
+	ptr = qdf_nbuf_get_frag_addr(mpdu, qdf_nbuf_get_nr_frags(mpdu) - 1);
+	size = qdf_nbuf_get_frag_size_by_idx(mpdu,
+					     qdf_nbuf_get_nr_frags(mpdu) - 1);
+	print_hex_dump(KERN_ERR, "pkt: ", DUMP_PREFIX_NONE,
+		       32, 2, ptr, size, false);
+
+	ptr += (size - HAL_RX_FCS_LEN);
+	print_hex_dump(KERN_ERR, "FCS: ", DUMP_PREFIX_NONE,
+		       32, 2, ptr, HAL_RX_FCS_LEN, false);
+}
 #endif
 
 #if defined(WLAN_CFR_ENABLE) && defined(WLAN_ENH_CFR_ENABLE)
@@ -876,6 +895,22 @@ void dp_rx_mon_update_pdev_deter_stats(struct dp_pdev *pdev,
 		     deter_stats.rx_su_cnt,
 		     1);
 }
+
+/**
+ * dp_rx_mon_update_pdev_erp_stats() - Update pdev erp rx stats
+ * @pdev: Datapath pdev handle
+ * @user: Per user RX stats
+ *
+ * Return: None
+ */
+static inline
+void dp_rx_mon_update_pdev_erp_stats(struct dp_pdev *pdev,
+				     struct cdp_rx_stats_ppdu_user *user)
+{
+	DP_STATS_INC(pdev,
+		     erp_stats.rx_data_mpdu_cnt,
+		     (user->mpdu_cnt_fcs_ok + user->mpdu_cnt_fcs_err));
+}
 #else
 static inline void
 dp_ppdu_desc_user_rx_time_update(struct dp_pdev *pdev,
@@ -895,6 +930,12 @@ static inline
 void dp_rx_mon_update_pdev_deter_stats(struct dp_pdev *pdev,
 				       struct cdp_rx_indication_ppdu *ppdu)
 { }
+
+static inline
+void dp_rx_mon_update_pdev_erp_stats(struct dp_pdev *pdev,
+				     struct cdp_rx_stats_ppdu_user *user)
+{
+}
 #endif
 
 static void dp_rx_stats_update(struct dp_pdev *pdev,
@@ -1078,8 +1119,10 @@ static void dp_rx_stats_update(struct dp_pdev *pdev,
 
 		dp_peer_qos_stats_notify(pdev, ppdu_user);
 
-		if (dp_is_subtype_data(ppdu->frame_ctrl))
+		if (dp_is_subtype_data(ppdu->frame_ctrl)) {
 			dp_rx_rate_stats_update(peer, ppdu, i);
+			dp_rx_mon_update_pdev_erp_stats(pdev, ppdu_user);
+		}
 
 		dp_send_stats_event(pdev, peer, ppdu_user->peer_id);
 

@@ -33,6 +33,7 @@
 #include "hal_api.h"
 #include "dp_types.h"
 #include <qdf_module.h>
+#include "wlan_utility.h"
 
 /*
  * The max allowed size for tx comp ring is 8191.
@@ -4088,6 +4089,24 @@ bool wlan_cfg_is_lapb_enabled(struct wlan_cfg_dp_soc_ctxt *cfg)
 }
 #endif
 
+#ifdef FEATURE_DIRECT_LINK
+static inline void
+wlan_soc_direct_link_cfg_attach(struct cdp_ctrl_objmgr_psoc *psoc,
+				struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx)
+{
+	qdf_device_t qdf_dev = wlan_psoc_get_qdf_dev((void *)psoc);
+
+	wlan_cfg_ctx->is_audio_shared_iommu_group =
+			pld_is_audio_shared_iommu_group(qdf_dev->dev);
+}
+#else
+static inline void
+wlan_soc_direct_link_cfg_attach(struct cdp_ctrl_objmgr_psoc *psoc,
+				struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx)
+{
+}
+#endif
+
 #ifdef WLAN_SOFTUMAC_SUPPORT
 struct wlan_cfg_dp_soc_ctxt *
 wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
@@ -4099,6 +4118,8 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 	if (!wlan_cfg_ctx)
 		return NULL;
 
+	wlan_minidump_log(wlan_cfg_ctx, sizeof(*wlan_cfg_ctx), psoc,
+			  WLAN_MD_DP_CFG_SOC_CTXT, "wlan_cfg_dp_soc_ctxt");
 	wlan_cfg_ctx->rxdma1_enable = WLAN_CFG_RXDMA1_ENABLE;
 	wlan_cfg_ctx->num_int_ctxts = WLAN_CFG_INT_NUM_CONTEXTS;
 	wlan_cfg_ctx->max_clients = cfg_get(psoc, CFG_DP_MAX_CLIENTS);
@@ -4208,6 +4229,8 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 	wlan_cfg_ctx->rx_flow_max_search = WLAN_CFG_RX_FST_MAX_SEARCH;
 	wlan_cfg_ctx->is_rx_flow_tag_enabled =
 			cfg_get(psoc, CFG_DP_RX_FLOW_TAG_ENABLE);
+	wlan_cfg_ctx->fse_3_tuple_enable =
+			cfg_get(psoc, CFG_DP_FSE3_TUPLE_ENABLE);
 	wlan_cfg_ctx->is_rx_flow_search_table_per_pdev =
 			cfg_get(psoc, CFG_DP_RX_FLOW_SEARCH_TABLE_PER_PDEV);
 	wlan_cfg_ctx->rx_flow_search_table_size =
@@ -4282,6 +4305,8 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 		cfg_get(psoc, CFG_DP_STATS_AVG_RATE_FILTER);
 	wlan_soc_ast_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_soc_sawf_mcast_attach(psoc, wlan_cfg_ctx);
+	wlan_soc_direct_link_cfg_attach(psoc, wlan_cfg_ctx);
+
 	return wlan_cfg_ctx;
 }
 
@@ -4297,6 +4322,8 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 	if (!wlan_cfg_ctx)
 		return NULL;
 
+	wlan_minidump_log(wlan_cfg_ctx, sizeof(*wlan_cfg_ctx), psoc,
+			  WLAN_MD_DP_CFG_SOC_CTXT, "wlan_cfg_dp_soc_ctxt");
 	wlan_cfg_ctx->rxdma1_enable = WLAN_CFG_RXDMA1_ENABLE;
 	wlan_cfg_ctx->num_int_ctxts = WLAN_CFG_INT_NUM_CONTEXTS;
 	wlan_cfg_ctx->max_clients = cfg_get(psoc, CFG_DP_MAX_CLIENTS);
@@ -4449,6 +4476,8 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 	wlan_cfg_ctx->rx_flow_max_search = WLAN_CFG_RX_FST_MAX_SEARCH;
 	wlan_cfg_ctx->is_rx_flow_tag_enabled =
 			cfg_get(psoc, CFG_DP_RX_FLOW_TAG_ENABLE);
+	wlan_cfg_ctx->fse_3_tuple_enable =
+			cfg_get(psoc, CFG_DP_FSE3_TUPLE_ENABLE);
 	wlan_cfg_ctx->is_rx_flow_search_table_per_pdev =
 			cfg_get(psoc, CFG_DP_RX_FLOW_SEARCH_TABLE_PER_PDEV);
 	wlan_cfg_ctx->rx_flow_search_table_size =
@@ -4545,6 +4574,8 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 		cfg_get(psoc, CFG_DP_STATS_AVG_RATE_FILTER);
 	wlan_soc_ast_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_soc_sawf_mcast_attach(psoc, wlan_cfg_ctx);
+	wlan_soc_direct_link_cfg_attach(psoc, wlan_cfg_ctx);
+
 	return wlan_cfg_ctx;
 }
 #endif
@@ -4563,6 +4594,9 @@ wlan_cfg_pdev_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 	if (!wlan_cfg_ctx)
 		return NULL;
 
+	wlan_minidump_log(wlan_cfg_ctx, sizeof(*wlan_cfg_ctx), psoc,
+			  WLAN_MD_DP_CFG_PDEV_CTXT, "wlan_cfg_dp_pdev_ctxt");
+
 	wlan_cfg_ctx->rx_dma_buf_ring_size = cfg_get(psoc,
 					CFG_DP_RXDMA_BUF_RING);
 	wlan_cfg_ctx->dma_mon_buf_ring_size = cfg_get(psoc,
@@ -4578,7 +4612,6 @@ wlan_cfg_pdev_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 	wlan_cfg_ctx->num_mac_rings = NUM_RXDMA_RINGS_PER_PDEV;
 	wlan_cfg_ctx->sw2rxdma_link_ring_size = cfg_get(psoc,
 					CFG_DP_SW2RXDMA_LINK_RING);
-
 	return wlan_cfg_ctx;
 }
 
@@ -5538,6 +5571,11 @@ bool wlan_cfg_is_rx_flow_tag_enabled(struct wlan_cfg_dp_soc_ctxt *cfg)
 }
 
 qdf_export_symbol(wlan_cfg_is_rx_flow_tag_enabled);
+
+bool wlan_cfg_get_fse_3_tuple_enable(struct wlan_cfg_dp_soc_ctxt *cfg)
+{
+	return cfg->fse_3_tuple_enable;
+}
 
 bool wlan_cfg_is_poll_mode_enabled(struct wlan_cfg_dp_soc_ctxt *cfg)
 {

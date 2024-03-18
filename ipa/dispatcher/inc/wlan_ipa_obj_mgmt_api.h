@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018, 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -70,6 +70,24 @@ static inline bool wlan_ipa_config_is_enabled(void)
 	return ipa_config_is_enabled();
 }
 
+#ifdef IPA_OPT_WIFI_DP_CTRL
+/**
+ * ipa_tx_pkt_opt_dp_ctrl() - Handle opt_dp_ctrl tx pkt
+ * @vdev_id: vdev id
+ * @nbuf: nbuf
+ */
+void ipa_tx_pkt_opt_dp_ctrl(uint8_t vdev_id,
+			    qdf_nbuf_t nbuf);
+
+/**
+ * ipa_opt_dpath_enable_clk_req() - send clock enable request io ipa
+ * @soc: soc
+ * @pdev_id: pdev id
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS ipa_opt_dpath_enable_clk_req(void *soc, uint8_t pdev_id);
+#endif
 /**
  * wlan_ipa_get_hdl() - Get ipa hdl set by IPA driver
  * @soc: void psoc object

@@ -26,6 +26,7 @@
 #include <dp_internal.h>
 #include "htt_ppdu_stats.h"
 #include "dp_cal_client_api.h"
+#include "wlan_utility.h"
 #if defined(DP_CON_MON)
 #ifndef REMOVE_PKT_LOG
 #include <pktlog_ac_api.h>
@@ -2150,8 +2151,10 @@ void dp_pdev_clear_link_airtime_stats(struct dp_pdev *pdev)
 {
 	uint8_t ac;
 
-	for (ac = 0; ac < WME_AC_MAX; ac++)
-		pdev->stats.telemetry_stats.link_airtime[ac] = 0;
+	for (ac = 0; ac < WME_AC_MAX; ac++) {
+		pdev->stats.telemetry_stats.tx_link_airtime[ac] = 0;
+		pdev->stats.telemetry_stats.rx_link_airtime[ac] = 0;
+	}
 }
 
 /**
@@ -2204,11 +2207,11 @@ void dp_peer_update_telemetry_stats(struct dp_soc *soc,
 			}
 			consump->avg_consumption_per_sec = usage_per_sec;
 			/* Store each peer airtime consumption in pdev
-			 * link_airtime to calculate pdev's total airtime
+			 * tx_link_airtime to calculate pdev's total tx airtime
 			 * consumption
 			 */
 			DP_STATS_INC(pdev,
-				     telemetry_stats.link_airtime[ac],
+				     telemetry_stats.tx_link_airtime[ac],
 				     consump->consumption);
 			consump->consumption = 0;
 
@@ -2227,11 +2230,11 @@ void dp_peer_update_telemetry_stats(struct dp_soc *soc,
 			}
 			consump->avg_consumption_per_sec = usage_per_sec;
 			/* Store each peer airtime consumption in pdev
-			 * link_airtime to calculate pdev's total airtime
+			 * rx_link_airtime to calculate pdev's total rx airtime
 			 * consumption
 			 */
 			DP_STATS_INC(pdev,
-				     telemetry_stats.link_airtime[ac],
+				     telemetry_stats.rx_link_airtime[ac],
 				     consump->consumption);
 			consump->consumption = 0;
 		}
@@ -3205,6 +3208,22 @@ dp_ppdu_desc_user_deter_stats_update(struct dp_pdev *pdev,
 		}
 	}
 }
+
+/**
+ * dp_pdev_update_erp_tx_stats - Update pdev erp tx stats
+ * @pdev: Datapath pdev handle
+ * @ppdu: PPDU descriptor
+ *
+ * Return: None
+ */
+static inline void
+dp_pdev_update_erp_tx_stats(
+		struct dp_pdev *pdev,
+		struct cdp_tx_completion_ppdu_user *ppdu)
+{
+	DP_STATS_INC(pdev, erp_stats.tx_data_mpdu_cnt,
+		     (ppdu->mpdu_tried_ucast + ppdu->mpdu_tried_mcast));
+}
 #else
 static inline
 void dp_ppdu_desc_get_txmode(struct cdp_tx_completion_ppdu *ppdu)
@@ -3233,6 +3252,12 @@ dp_pdev_telemetry_stats_update(
 static inline void
 dp_pdev_update_deter_stats(struct dp_pdev *pdev,
 			   struct cdp_tx_completion_ppdu *ppdu)
+{ }
+
+static inline void
+dp_pdev_update_erp_tx_stats(
+		struct dp_pdev *pdev,
+		struct cdp_tx_completion_ppdu_user *ppdu)
 { }
 #endif
 
@@ -3297,6 +3322,7 @@ dp_tx_stats_update(struct dp_pdev *pdev, struct dp_peer *peer,
 		 */
 		DP_STATS_INC(mon_peer, tx.retries, mpdu_failed);
 		dp_pdev_telemetry_stats_update(pdev, ppdu);
+		dp_pdev_update_erp_tx_stats(pdev, ppdu);
 		return;
 	}
 
@@ -3407,6 +3433,8 @@ dp_tx_stats_update(struct dp_pdev *pdev, struct dp_peer *peer,
 		dp_tx_rate_stats_update(peer, ppdu);
 
 	dp_pdev_telemetry_stats_update(pdev, ppdu);
+
+	dp_pdev_update_erp_tx_stats(pdev, ppdu);
 
 	dp_peer_stats_notify(pdev, peer);
 
@@ -5803,6 +5831,11 @@ QDF_STATUS dp_mon_pdev_attach(struct dp_pdev *pdev)
 		goto fail0;
 	}
 
+	wlan_minidump_log(mon_pdev, sizeof(*mon_pdev), soc->ctrl_psoc,
+			  WLAN_MD_DP_MON_PDEV, "dp_mon_pdev");
+	wlan_minidump_log(soc->monitor_soc, sizeof(*soc->monitor_soc),
+			  soc->ctrl_psoc, WLAN_MD_DP_MON_SOC, "dp_mon_soc");
+
 	pdev->monitor_pdev = mon_pdev;
 	mon_ops = dp_mon_ops_get(pdev->soc);
 	if (!mon_ops) {
@@ -5859,12 +5892,14 @@ QDF_STATUS dp_mon_pdev_detach(struct dp_pdev *pdev)
 {
 	struct dp_mon_pdev *mon_pdev;
 	struct dp_mon_ops *mon_ops = NULL;
+	struct dp_soc *soc;
 
 	if (!pdev) {
 		dp_mon_err("pdev is NULL");
 		return QDF_STATUS_E_FAILURE;
 	}
 
+	soc = pdev->soc;
 	mon_pdev = pdev->monitor_pdev;
 	if (!mon_pdev) {
 		dp_mon_err("Monitor pdev is NULL");
@@ -5877,6 +5912,11 @@ QDF_STATUS dp_mon_pdev_detach(struct dp_pdev *pdev)
 		return QDF_STATUS_E_FAILURE;
 	}
 
+	wlan_minidump_remove(mon_pdev, sizeof(*mon_pdev), pdev->soc->ctrl_psoc,
+			     WLAN_MD_DP_MON_PDEV, "dp_mon_pdev");
+	wlan_minidump_remove(soc->monitor_soc, sizeof(*soc->monitor_soc),
+			     soc->ctrl_psoc, WLAN_MD_DP_MON_SOC, "dp_mon_soc");
+
 	if (mon_ops->mon_rx_ppdu_info_cache_destroy)
 		mon_ops->mon_rx_ppdu_info_cache_destroy(pdev);
 	if (mon_ops->rx_mon_desc_pool_free)
@@ -5888,20 +5928,6 @@ QDF_STATUS dp_mon_pdev_detach(struct dp_pdev *pdev)
 	dp_context_free_mem(pdev->soc, DP_MON_PDEV_TYPE, mon_pdev);
 	pdev->monitor_pdev = NULL;
 	return QDF_STATUS_SUCCESS;
-}
-
-static void dp_mon_pdev_filter_init(struct dp_mon_pdev *mon_pdev)
-{
-	if (!mon_pdev)
-		return;
-
-	mon_pdev->mon_filter_mode = MON_FILTER_ALL;
-	mon_pdev->fp_mgmt_filter = FILTER_MGMT_ALL;
-	mon_pdev->fp_ctrl_filter = FILTER_CTRL_ALL;
-	mon_pdev->fp_data_filter = FILTER_DATA_ALL;
-	mon_pdev->mo_mgmt_filter = FILTER_MGMT_ALL;
-	mon_pdev->mo_ctrl_filter = FILTER_CTRL_ALL;
-	mon_pdev->mo_data_filter = FILTER_DATA_ALL;
 }
 
 #ifdef WLAN_TX_PKT_CAPTURE_ENH
@@ -6052,6 +6078,23 @@ dp_ch_band_lmac_id_mapping_init(struct dp_pdev *pdev)
 	}
 }
 
+#ifdef FEATURE_ML_MONITOR_MODE_SUPPORT
+static inline void
+dp_init_mon_chan_band(struct dp_mon_pdev *mon_pdev)
+{
+	uint8_t mac_id;
+
+	for (mac_id = 0; mac_id < MAX_NUM_LMAC_HW; mac_id++)
+		mon_pdev->mon_mac[mac_id].mon_chan_band = REG_BAND_UNKNOWN;
+}
+#else
+static inline void
+dp_init_mon_chan_band(struct dp_mon_pdev *mon_pdev)
+{
+	mon_pdev->mon_mac.mon_chan_band = REG_BAND_UNKNOWN;
+}
+#endif
+
 QDF_STATUS dp_mon_pdev_init(struct dp_pdev *pdev)
 {
 	struct dp_mon_pdev *mon_pdev;
@@ -6095,7 +6138,7 @@ QDF_STATUS dp_mon_pdev_init(struct dp_pdev *pdev)
 	qdf_spinlock_create(&mon_pdev->ppdu_stats_lock);
 	qdf_spinlock_create(&mon_pdev->neighbour_peer_mutex);
 	mon_pdev->monitor_configured = false;
-	mon_pdev->mon_chan_band = REG_BAND_UNKNOWN;
+	dp_init_mon_chan_band(mon_pdev);
 
 	TAILQ_INIT(&mon_pdev->neighbour_peers_list);
 	mon_pdev->neighbour_peers_added = false;
@@ -6248,6 +6291,9 @@ QDF_STATUS dp_mon_vdev_attach(struct dp_vdev *vdev)
 
 	vdev->monitor_vdev = mon_vdev;
 
+	wlan_minidump_log(mon_vdev, sizeof(*mon_vdev), pdev->soc->ctrl_psoc,
+			  WLAN_MD_DP_MON_VDEV, "dp_mon_vdev");
+
 	return QDF_STATUS_SUCCESS;
 }
 
@@ -6266,8 +6312,11 @@ QDF_STATUS dp_mon_vdev_detach(struct dp_vdev *vdev)
 	if (pdev->monitor_pdev->scan_spcl_vap_configured)
 		dp_scan_spcl_vap_stats_detach(mon_vdev);
 
+	wlan_minidump_remove(mon_vdev, sizeof(*mon_vdev), pdev->soc->ctrl_psoc,
+			     WLAN_MD_DP_MON_VDEV, "dp_mon_vdev");
 	qdf_mem_free(mon_vdev);
 	vdev->monitor_vdev = NULL;
+	pdev->monitor_pdev->mon_fcs_cap = 0;
 	/* set mvdev to NULL only if detach is called for monitor/special vap
 	 */
 	if (pdev->monitor_pdev->mvdev == vdev)
@@ -7279,4 +7328,17 @@ dump_mon_destination_ring:
 unlock_monitor:
 	if (!war)
 		qdf_spin_unlock_bh(&mon_pdev->mon_lock);
+}
+
+QDF_STATUS dp_rx_mon_config_fcs_cap(struct dp_pdev *pdev, uint8_t value)
+{
+	struct dp_mon_pdev *mon_pdev = pdev->monitor_pdev;
+
+	if (!mon_pdev->mvdev)
+		return QDF_STATUS_E_NOSUPPORT;
+
+	qdf_err("mon_fcs_cap: %d ", value);
+	mon_pdev->mon_fcs_cap = value;
+
+	return QDF_STATUS_SUCCESS;
 }

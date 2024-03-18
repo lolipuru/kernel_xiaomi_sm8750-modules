@@ -120,6 +120,8 @@
  * @WLAN_IPA_FILTER_REL_NOTIFY: OPT WIFI DP filter release notification
  * @WLAN_IPA_SMMU_MAP: IPA SMMU map call
  * @WLAN_IPA_SMMU_UNMAP: IPA SMMU unmap call
+ * @WLAN_IPA_CTRL_TX_REINJECT: REINJECT TO TX
+ * @WLAN_IPA_CTRL_FILTER_DEL_NOTIFY: OPT WIFI DP CTRL filter delete notification
  * @WLAN_IPA_UC_OPCODE_MAX: IPA UC max operation code
  */
 enum wlan_ipa_uc_op_code {
@@ -138,6 +140,8 @@ enum wlan_ipa_uc_op_code {
 	WLAN_IPA_FILTER_REL_NOTIFY = 10,
 	WLAN_IPA_SMMU_MAP = 11,
 	WLAN_IPA_SMMU_UNMAP = 12,
+	WLAN_IPA_CTRL_TX_REINJECT = 13,
+	WLAN_IPA_CTRL_FILTER_DEL_NOTIFY = 14,
 	/* keep this last */
 	WLAN_IPA_UC_OPCODE_MAX
 };
@@ -449,6 +453,8 @@ struct ipa_uc_stas_map {
  * @op_code: IPA Operation type
  * @len: IPA message length
  * @rsvd_snd: Reserved
+ * @vdev_id: vdev id
+ * @nbuf: tx nbuf
  */
 struct op_msg_type {
 	uint8_t msg_t;
@@ -456,6 +462,8 @@ struct op_msg_type {
 	uint16_t op_code;
 	uint16_t len;
 	uint16_t rsvd_snd;
+	uint8_t vdev_id;
+	qdf_nbuf_t nbuf;
 };
 
 /**
@@ -767,6 +775,7 @@ struct wlan_ipa_priv {
 	bool is_smmu_enabled;	/* IPA caps returned from ipa_wdi_init */
 	/* Flag to notify whether optional wifi dp feature is enabled or not */
 	bool opt_wifi_datapath;
+	bool opt_wifi_datapath_ctrl;
 	qdf_atomic_t stats_quota;
 	uint8_t curr_bw_level;
 	qdf_atomic_t deinit_in_prog;
@@ -775,7 +784,9 @@ struct wlan_ipa_priv {
 	qdf_ipa_wdi_hdl_t hdl;
 #ifdef IPA_OPT_WIFI_DP
 	struct wifi_dp_flt_setup dp_cce_super_rule_flt_param;
+	struct wifi_dp_tx_flt_setup dp_tx_super_rule_flt_param;
 	qdf_event_t ipa_flt_evnt;
+	qdf_event_t ipa_opt_dp_ctrl_clk_evt;
 	qdf_wake_lock_t opt_dp_wake_lock;
 #endif
 };

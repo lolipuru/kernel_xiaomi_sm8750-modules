@@ -28,9 +28,11 @@
 #include "wlan_ipa_ucfg_api.h"
 #include "qdf_platform.h"
 #include "qdf_module.h"
+#include "wlan_ipa_core.h"
 
 /* This is as per IPA capbility */
 #define MAX_INSTANCES_SUPPORTED 2
+#define IPA_CLK_ENABLE_WAIT_TIME_MS 500
 
 uint8_t g_instances_added;
 static bool g_ipa_is_ready;
@@ -331,6 +333,41 @@ QDF_STATUS ipa_deinit(void)
 
 	return status;
 }
+
+#ifdef IPA_OPT_WIFI_DP_CTRL
+void ipa_tx_pkt_opt_dp_ctrl(uint8_t vdev_id,
+			    qdf_nbuf_t nbuf)
+{
+	wlan_ipa_tx_pkt_opt_dp_ctrl(vdev_id, nbuf);
+}
+
+QDF_STATUS ipa_opt_dpath_enable_clk_req(void *soc, uint8_t pdev_id)
+{
+	struct wlan_objmgr_psoc *psoc = (struct wlan_objmgr_psoc *)soc;
+	struct wlan_objmgr_pdev *pdev;
+	struct wlan_ipa_priv *ipa_obj;
+	QDF_STATUS status;
+
+	pdev = wlan_objmgr_get_pdev_by_id(psoc, pdev_id, WLAN_IPA_ID);
+	if (!pdev) {
+		ipa_err("Failed to get pdev handle");
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	ipa_obj = ipa_pdev_get_priv_obj(pdev);
+	if (!ipa_obj) {
+		ipa_err("IPA object is NULL for pdev_id[%d]", pdev_id);
+		wlan_objmgr_pdev_release_ref(pdev, WLAN_IPA_ID);
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	wlan_ipa_wdi_opt_dpath_enable_clk_req(ipa_obj);
+	status = qdf_wait_for_event_completion(&ipa_obj->ipa_opt_dp_ctrl_clk_evt,
+					       IPA_CLK_ENABLE_WAIT_TIME_MS);
+	wlan_objmgr_pdev_release_ref(pdev, WLAN_IPA_ID);
+	return status;
+}
+#endif
 
 qdf_ipa_wdi_hdl_t wlan_ipa_get_hdl(void *soc, uint8_t pdev_id)
 {

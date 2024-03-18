@@ -278,7 +278,9 @@ bool dp_rx_is_special_frame(qdf_nbuf_t nbuf, uint32_t frame_mask)
 	    ((frame_mask & FRAME_MASK_DNS_QUERY) &&
 	     qdf_nbuf_data_is_dns_query(nbuf)) ||
 	    ((frame_mask & FRAME_MASK_DNS_RESP) &&
-	     qdf_nbuf_data_is_dns_response(nbuf)))
+	     qdf_nbuf_data_is_dns_response(nbuf)) ||
+	    ((frame_mask & FRAME_MASK_IPV4_WAPI) &&
+	     qdf_nbuf_is_ipv4_wapi_pkt(nbuf)))
 		return true;
 
 	return false;
@@ -1540,7 +1542,8 @@ static inline void
 dp_rx_ipa_wds_srcport_learn(struct dp_soc *soc,
 			    struct dp_peer *ta_peer, qdf_nbuf_t nbuf,
 			    struct hal_rx_msdu_metadata msdu_end_info,
-			    bool ad4_valid, bool chfrag_start)
+			    bool ad4_valid, bool chfrag_start,
+			    bool sa_valid)
 {
 }
 #endif
@@ -2552,7 +2555,8 @@ static inline
 QDF_STATUS dp_audio_smmu_map(struct dp_soc *soc, qdf_nbuf_t nbuf,
 			     qdf_size_t size)
 {
-	if (!qdf_atomic_read(&soc->direct_link_active))
+	if (!qdf_atomic_read(&soc->direct_link_active) ||
+	    soc->wlan_cfg_ctx->is_audio_shared_iommu_group)
 		return QDF_STATUS_SUCCESS;
 
 	if (qdf_unlikely(qdf_nbuf_get_rx_audio_smmu_map(nbuf))) {
@@ -2583,6 +2587,9 @@ QDF_STATUS dp_audio_smmu_unmap(struct dp_soc *soc, qdf_nbuf_t nbuf,
 			       qdf_size_t size)
 {
 	bool mapped = qdf_nbuf_get_rx_audio_smmu_map(nbuf);
+
+	if (soc->wlan_cfg_ctx->is_audio_shared_iommu_group)
+		return QDF_STATUS_SUCCESS;
 
 	if (!qdf_atomic_read(&soc->direct_link_active)) {
 		if (mapped) {
@@ -2696,6 +2703,38 @@ dp_reo_ctx_buf_mapping_lock(struct dp_soc *soc,	uint32_t reo_ring_num)
 static inline void
 dp_reo_ctx_buf_mapping_unlock(struct dp_soc *soc, uint32_t reo_ring_num)
 {
+}
+#endif
+
+/**
+ * dp_get_num_entries - Get tx,rx num of buffers
+ * @pdev: pdev object
+ * @num_entries: number of entries in ring
+ * @buff_type: buffer type
+ */
+#if defined(IPA_OFFLOAD) && defined(IPA_OFFLOAD_LOW_MEM)
+static inline uint32_t
+dp_get_num_entries(struct dp_pdev *pdev, uint32_t num_entries,
+		   enum qddf_buff_type_tx_rx buff_type)
+{
+	struct dp_soc *soc = pdev->soc;
+	uint32_t num_buff = num_entries;
+
+	if (soc->cdp_soc.ol_ops->pdev_get_num_buff)
+		num_buff =  soc->cdp_soc.ol_ops->pdev_get_num_buff(soc->ctrl_psoc,
+								   pdev->pdev_id,
+								   buff_type);
+	if (num_buff > num_entries)
+		num_buff = num_entries;
+
+	return num_buff;
+}
+#else
+static inline uint32_t dp_get_num_entries(struct dp_pdev *pdev,
+					  uint32_t num_entries,
+					  enum qdf_buff_type_tx_rx buff_type)
+{
+	return num_entries;
 }
 #endif
 

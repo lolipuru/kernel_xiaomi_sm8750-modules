@@ -74,6 +74,10 @@
 #include <wmi_unified_cfr_param.h>
 #endif
 
+#ifdef WLAN_WIFI_RADAR_ENABLE
+#include <wmi_unified_wifi_radar_param.h>
+#endif
+
 #ifdef DCS_INTERFERENCE_DETECTION
 #include <wlan_dcs_public_structs.h>
 #endif
@@ -1576,6 +1580,9 @@ QDF_STATUS (*send_wmm_update_cmd)(wmi_unified_t wmi_handle,
 
 QDF_STATUS (*extract_mgmt_tx_compl_param)(wmi_unified_t wmi_handle,
 		void *evt_buf, wmi_host_mgmt_tx_compl_event *param);
+
+QDF_STATUS (*extract_sched_mode_probe_resp_event)(wmi_unified_t wmi_handle,
+	     void *evt_buf, struct wlan_host_sched_mode_probe_resp_event *resp);
 
 QDF_STATUS (*extract_chan_info_event)(wmi_unified_t wmi_handle, void *evt_buf,
 				   wmi_host_chan_info_event *chan_info);
@@ -3160,6 +3167,11 @@ QDF_STATUS
 			(wmi_unified_t wmi_handle,
 			 void *evt_buf,
 			 struct wmi_wifi_radar_cal_status_param *param);
+
+QDF_STATUS
+(*wifi_radar_send_command)(wmi_unified_t wmi_handle,
+			   struct wmi_wifi_radar_command_params *param);
+
 #endif
 
 QDF_STATUS (*send_set_halphy_cal)(wmi_unified_t wmi_handle,
@@ -3321,6 +3333,10 @@ QDF_STATUS
 QDF_STATUS
 (*send_vdev_pn_mgmt_rxfilter_cmd)(wmi_unified_t wmi_handle,
 				  struct vdev_pn_mgmt_rxfilter_params *params);
+
+QDF_STATUS
+(*send_mu_on_off_cmd)(wmi_unified_t wmi_handle,
+		      struct wmi_host_mu_on_off_params *params);
 
 #ifdef WLAN_FEATURE_11BE
 QDF_STATUS (*send_mlo_peer_tid_to_link_map)(
@@ -3491,9 +3507,7 @@ QDF_STATUS (*extract_oob_connect_response_event)(
 			uint8_t *event, uint32_t data_len,
 			struct wmi_oob_connect_response_event *response);
 
-#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
 QDF_STATUS (*get_tsf_stats_for_csa)(wmi_unified_t wmi_handle, uint8_t vdev_id);
-#endif
 #endif /* WLAN_FEATURE_LL_LT_SAP */
 #endif /* QCA_TARGET_IF_MLME */
 
@@ -3515,13 +3529,13 @@ QDF_STATUS (*send_vendor_pdev_cmd)(wmi_unified_t wmi_handle,
 
 QDF_STATUS (*extract_vendor_peer_event)(wmi_unified_t wmi_handle,
 					uint8_t *evt_buf,
-					struct wmi_vendor_peer_event *param);
+					void *param, void *subtype);
 QDF_STATUS (*extract_vendor_vdev_event)(wmi_unified_t wmi_handle,
 					uint8_t *evt_buf,
-					struct wmi_vendor_vdev_event *param);
+					void *param, void *subtype);
 QDF_STATUS (*extract_vendor_pdev_event)(wmi_unified_t wmi_handle,
 					uint8_t *evt_buf,
-					struct wmi_vendor_pdev_event *param);
+					void *param, void *subtype);
 #endif /* WLAN_VENDOR_EXTN */
 };
 

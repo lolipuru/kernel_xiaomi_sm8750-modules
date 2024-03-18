@@ -6807,30 +6807,74 @@ static void dp_print_nss(char *nss, uint32_t *pnss, uint32_t ss_count)
 static void dp_print_jitter_stats(struct dp_peer *peer, struct dp_pdev *pdev)
 {
 	uint8_t tid = 0;
+	struct dp_txrx_peer *txrx_peer = NULL;
+	struct cdp_peer_tid_stats *rx_tid = NULL;
+	struct cdp_peer_tid_stats *jitter_stats = NULL;
+	uint32_t tx_avg_jitter, tx_avg_delay;
+	uint64_t tx_avg_err, tx_total_success, tx_drop;
+	uint8_t ring_id;
 
-	if (!pdev || !wlan_cfg_get_dp_pdev_nss_enabled(pdev->wlan_cfg_ctx))
+	if (!pdev)
 		return;
 
-	if (!peer->txrx_peer || !peer->txrx_peer->jitter_stats)
+	if (!wlan_cfg_is_peer_jitter_stats_enabled(pdev->soc->wlan_cfg_ctx))
+		return;
+
+	txrx_peer = dp_get_txrx_peer(peer);
+	if (!txrx_peer || !txrx_peer->jitter_stats)
 		return;
 
 	DP_PRINT_STATS("Per TID Tx HW Enqueue-Comp Jitter Stats:\n");
-	for (tid = 0; tid < qdf_min(CDP_DATA_TID_MAX, DP_MAX_TIDS); tid++) {
-		struct cdp_peer_tid_stats *rx_tid =
-					&peer->txrx_peer->jitter_stats[tid];
+	if (wlan_cfg_get_dp_pdev_nss_enabled(pdev->wlan_cfg_ctx)) {
+		for (tid = 0; tid < qdf_min(CDP_DATA_TID_MAX, DP_MAX_TIDS); tid++) {
+			rx_tid =
+				&txrx_peer->jitter_stats[tid];
+			DP_PRINT_STATS("Node tid = %d\n"
+				       "Average Jiiter            : %u (us)\n"
+				       "Average Delay             : %u (us)\n"
+				       "Total Average error count : %llu\n"
+				       "Total Success Count       : %llu\n"
+				       "Total Drop                : %llu\n",
+				       tid,
+				       rx_tid->tx_avg_jitter,
+				       rx_tid->tx_avg_delay,
+				       rx_tid->tx_avg_err,
+				       rx_tid->tx_total_success,
+				       rx_tid->tx_drop);
+		}
 
-		DP_PRINT_STATS("Node tid = %d\n"
-				"Average Jiiter            : %u (us)\n"
-				"Average Delay             : %u (us)\n"
-				"Total Average error count : %llu\n"
-				"Total Success Count       : %llu\n"
-				"Total Drop                : %llu\n",
-				tid,
-				rx_tid->tx_avg_jitter,
-				rx_tid->tx_avg_delay,
-				rx_tid->tx_avg_err,
-				rx_tid->tx_total_success,
-				rx_tid->tx_drop);
+	} else {
+		jitter_stats = txrx_peer->jitter_stats;
+		for (tid = 0; tid < qdf_min(CDP_DATA_TID_MAX, DP_MAX_TIDS); tid++) {
+			tx_avg_jitter = 0, tx_avg_delay = 0;
+			tx_avg_err = 0, tx_total_success = 0, tx_drop = 0;
+			for (ring_id = 0; ring_id < CDP_MAX_TXRX_CTX; ring_id++) {
+				rx_tid = &jitter_stats[tid *
+						CDP_MAX_TXRX_CTX + ring_id];
+				tx_avg_jitter = (rx_tid->tx_avg_jitter +
+						tx_avg_jitter) >> 1;
+				tx_avg_delay = (rx_tid->tx_avg_delay +
+						tx_avg_delay) >> 1;
+				tx_avg_err = (rx_tid->tx_avg_err +
+						tx_avg_err) >> 1;
+				tx_total_success += rx_tid->tx_total_success;
+				tx_drop += rx_tid->tx_drop;
+			}
+
+			DP_PRINT_STATS("Node tid = %d\n"
+				       "Average Jiiter            : %u (us)\n"
+				       "Average Delay             : %u (us)\n"
+				       "Total Average error count : %llu\n"
+				       "Total Success Count       : %llu\n"
+				       "Total Drop                : %llu\n",
+				       tid,
+				       tx_avg_jitter,
+				       tx_avg_delay,
+				       tx_avg_err,
+				       tx_total_success,
+				       tx_drop);
+		}
+
 	}
 }
 #else
@@ -7493,6 +7537,40 @@ void dp_print_peer_stats(struct dp_peer *peer,
 		       peer_stats->tx.tx_byte_rate);
 	DP_PRINT_STATS("	Data transmitted in last sec: %d",
 		       peer_stats->tx.tx_data_rate);
+
+	DP_PRINT_STATS("EAPOL Tx comp Success = %d",
+		       peer_stats->tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_OK]);
+
+	DP_PRINT_STATS("EAPOL Tx comp Failures:");
+	DP_PRINT_STATS("	Fail reason:DROP = %d",
+		       peer_stats->tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_DROP]);
+	DP_PRINT_STATS("	Fail reason:TTL = %d",
+		       peer_stats->tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_TTL]);
+	DP_PRINT_STATS("	Fail reason:REINJECT = %d",
+		       peer_stats->tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_REINJECT]);
+	DP_PRINT_STATS("	Fail reason:INSPECT = %d",
+		       peer_stats->tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_INSPECT]);
+	DP_PRINT_STATS("	Fail reason:MEC NOTIFY = %d",
+		       peer_stats->tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_MEC_NOTIFY]);
+	DP_PRINT_STATS("	Fail reason:VDEVID MISMATCH = %d",
+		       peer_stats->tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_VDEVID_MISMATCH]);
+
+	DP_PRINT_STATS("Rekey EAPOL Tx comp Success = %d",
+		       peer_stats->tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_OK]);
+
+	DP_PRINT_STATS("Rekey EAPOL Tx comp Failures:");
+	DP_PRINT_STATS("	Fail reason:DROP = %d",
+		       peer_stats->tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_DROP]);
+	DP_PRINT_STATS("	Fail reason:TTL = %d",
+		       peer_stats->tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_TTL]);
+	DP_PRINT_STATS("	Fail reason:REINJECT = %d",
+		       peer_stats->tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_REINJECT]);
+	DP_PRINT_STATS("	Fail reason:INSPECT = %d",
+		       peer_stats->tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_INSPECT]);
+	DP_PRINT_STATS("	Fail reason:MEC NOTIFY = %d",
+		       peer_stats->tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_MEC_NOTIFY]);
+	DP_PRINT_STATS("	Fail reason:VDEVID MISMATCH = %d",
+		       peer_stats->tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_VDEVID_MISMATCH]);
 
 	if (pdev && pdev->soc->arch_ops.txrx_print_peer_stats)
 		pdev->soc->arch_ops.txrx_print_peer_stats(peer_stats,
@@ -8186,6 +8264,40 @@ dp_print_pdev_tx_stats(struct dp_pdev *pdev)
 	}
 
 	dp_monitor_print_pdev_tx_capture_stats(pdev);
+
+	DP_PRINT_STATS("EAPOL Tx comp Success = %d",
+		       pdev->stats.tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_OK]);
+
+	DP_PRINT_STATS("EAPOL Tx comp Failures:");
+	DP_PRINT_STATS("	Fail reason:DROP = %d",
+		       pdev->stats.tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_DROP]);
+	DP_PRINT_STATS("	Fail reason:TTL = %d",
+		       pdev->stats.tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_TTL]);
+	DP_PRINT_STATS("	Fail reason:REINJECT = %d",
+		       pdev->stats.tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_REINJECT]);
+	DP_PRINT_STATS("	Fail reason:INSPECT = %d",
+		       pdev->stats.tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_INSPECT]);
+	DP_PRINT_STATS("	Fail reason:MEC NOTIFY = %d",
+		       pdev->stats.tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_MEC_NOTIFY]);
+	DP_PRINT_STATS("	Fail reason:VDEVID MISMATCH = %d",
+		       pdev->stats.tx.eapol_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_VDEVID_MISMATCH]);
+
+	DP_PRINT_STATS("Rekey EAPOL Tx comp Success = %d",
+		       pdev->stats.tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_OK]);
+
+	DP_PRINT_STATS("Rekey EAPOL Tx comp Failures:");
+	DP_PRINT_STATS("	Fail reason:DROP = %d",
+		       pdev->stats.tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_DROP]);
+	DP_PRINT_STATS("	Fail reason:TTL = %d",
+		       pdev->stats.tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_TTL]);
+	DP_PRINT_STATS("	Fail reason:REINJECT = %d",
+		       pdev->stats.tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_REINJECT]);
+	DP_PRINT_STATS("	Fail reason:INSPECT = %d",
+		       pdev->stats.tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_INSPECT]);
+	DP_PRINT_STATS("	Fail reason:MEC NOTIFY = %d",
+		       pdev->stats.tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_MEC_NOTIFY]);
+	DP_PRINT_STATS("	Fail reason:VDEVID MISMATCH = %d",
+		       pdev->stats.tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_VDEVID_MISMATCH]);
 }
 
 #if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_MCAST_MLO)
@@ -9266,6 +9378,14 @@ void dp_update_pdev_stats(struct dp_pdev *tgtobj,
 	tgtobj->stats.tx.dropped.invalid_rr +=
 				srcobj->tx.dropped.invalid_rr;
 	tgtobj->stats.tx.dropped.age_out += srcobj->tx.dropped.age_out;
+	for (i = 0; i < MAX_EAPOL_TX_COMP_STATUS; i++) {\
+		tgtobj->stats.tx.eapol_tx_comp_failures[i] += \
+				srcobj->tx.eapol_tx_comp_failures[i];\
+	} \
+	for (i = 0; i < MAX_EAPOL_TX_COMP_STATUS; i++) {\
+		tgtobj->stats.tx.rekey_tx_comp_failures[i] += \
+				srcobj->tx.rekey_tx_comp_failures[i];\
+	} \
 	tgtobj->stats.rx.err.mic_err += srcobj->rx.err.mic_err;
 	tgtobj->stats.rx.err.decrypt_err += srcobj->rx.err.decrypt_err;
 	tgtobj->stats.rx.err.fcserr += srcobj->rx.err.fcserr;
@@ -9886,8 +10006,12 @@ dp_get_pdev_telemetry_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 	 * then calculate %age per sec
 	 */
 	for (ac = 0; ac < WME_AC_MAX; ac++) {
+		stats->tx_link_airtime[ac] =
+			((pdev->stats.telemetry_stats.tx_link_airtime[ac] * 100) / 1000000);
+		stats->rx_link_airtime[ac] =
+			((pdev->stats.telemetry_stats.rx_link_airtime[ac] * 100) / 1000000);
 		stats->link_airtime[ac] =
-			((pdev->stats.telemetry_stats.link_airtime[ac] * 100) / 1000000);
+			(((pdev->stats.telemetry_stats.tx_link_airtime[ac] + pdev->stats.telemetry_stats.rx_link_airtime[ac]) * 100) / 1000000);
 		stats->tx_mpdu_failed[ac] = pdev->stats.telemetry_stats.tx_mpdu_failed[ac];
 		stats->tx_mpdu_total[ac] = pdev->stats.telemetry_stats.tx_mpdu_total[ac];
 	}
@@ -9909,6 +10033,17 @@ dp_get_peer_telemetry_stats(struct cdp_soc_t *soc_hdl, uint8_t *addr,
 	dp_peer_unref_delete(peer, DP_MOD_ID_MISC);
 
 	return QDF_STATUS_SUCCESS;
+}
+
+struct cdp_pdev_deter_stats *
+dp_get_pdev_stats_deter(struct cdp_soc_t *soc_hdl, uint8_t pdev_id)
+{
+	struct dp_soc *soc = (struct dp_soc *)soc_hdl;
+	struct dp_pdev *pdev = dp_get_pdev_from_soc_pdev_id_wifi3(soc, pdev_id);
+
+	if (!pdev)
+		return NULL;
+	return &pdev->stats.deter_stats;
 }
 
 QDF_STATUS
@@ -9951,6 +10086,32 @@ dp_get_pdev_deter_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 	return QDF_STATUS_SUCCESS;
 }
 
+struct cdp_peer_deter_stats*
+dp_get_peer_stats_deter(struct cdp_soc_t *soc_hdl,
+			uint8_t vdev_id,
+			uint8_t *addr)
+{
+	struct dp_soc *soc = (struct dp_soc *)soc_hdl;
+	struct dp_mon_peer_stats *mon_peer_stats = NULL;
+	struct cdp_peer_deter_stats *deter_stats = NULL;
+
+	struct dp_peer *peer = dp_peer_find_hash_find(soc, addr, 0, vdev_id,
+						      DP_MOD_ID_MISC);
+	if (!peer)
+		return NULL;
+
+	if (qdf_unlikely(!peer->monitor_peer)) {
+		dp_peer_unref_delete(peer, DP_MOD_ID_MISC);
+		return NULL;
+	}
+
+	mon_peer_stats = &peer->monitor_peer->stats;
+	deter_stats = &mon_peer_stats->deter_stats.deter[0];
+	dp_peer_unref_delete(peer, DP_MOD_ID_MISC);
+
+	return deter_stats;
+}
+
 QDF_STATUS
 dp_get_peer_deter_stats(struct cdp_soc_t *soc_hdl,
 			uint8_t vdev_id,
@@ -9983,6 +10144,60 @@ dp_update_pdev_chan_util_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 	pdev->stats.deter_stats.ch_util.ap_tx_util = ch_util->ap_tx_util;
 	pdev->stats.deter_stats.ch_util.ap_rx_util = ch_util->ap_rx_util;
 	pdev->stats.deter_stats.ch_util.ap_chan_util = ch_util->ap_chan_util;
+
+	return QDF_STATUS_SUCCESS;
+}
+
+void dp_update_pdev_erp_stats(struct dp_soc *soc, struct dp_peer *srcobj,
+			      void *arg)
+{
+	struct dp_pdev *pdev = srcobj->vdev->pdev;
+	struct dp_mon_peer *mon_peer = srcobj->monitor_peer;
+
+	if (srcobj->bss_peer) {
+		/* Excluding self peer for stats calculation*/
+		return;
+	}
+
+	if (qdf_unlikely(!mon_peer))
+		return;
+
+	if (mon_peer->stats.tx.rnd_avg_tx_rate >
+		pdev->stats.erp_stats.tx_max_avg_data_rate)
+		pdev->stats.erp_stats.tx_max_avg_data_rate =
+				mon_peer->stats.tx.rnd_avg_tx_rate;
+
+	if (mon_peer->stats.rx.rnd_avg_rx_rate >
+		pdev->stats.erp_stats.rx_max_avg_data_rate)
+		pdev->stats.erp_stats.rx_max_avg_data_rate =
+				mon_peer->stats.rx.rnd_avg_rx_rate;
+}
+
+QDF_STATUS
+dp_get_pdev_erp_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
+		      struct cdp_pdev_erp_stats *stats)
+{
+	struct dp_soc *soc = (struct dp_soc *)soc_hdl;
+	struct dp_pdev *pdev = dp_get_pdev_from_soc_pdev_id_wifi3(soc, pdev_id);
+
+	if (!pdev)
+		return QDF_STATUS_E_FAILURE;
+
+	dp_pdev_iterate_peer(pdev, dp_update_pdev_erp_stats,
+			     NULL, DP_MOD_ID_MISC);
+
+	stats->tx_data_mpdu_cnt = pdev->stats.erp_stats.tx_data_mpdu_cnt;
+	stats->rx_data_mpdu_cnt = pdev->stats.erp_stats.rx_data_mpdu_cnt;
+	stats->tx_max_avg_data_rate =
+			pdev->stats.erp_stats.tx_max_avg_data_rate;
+	stats->rx_max_avg_data_rate =
+			pdev->stats.erp_stats.rx_max_avg_data_rate;
+
+	/* reset for next iteration */
+	pdev->stats.erp_stats.tx_data_mpdu_cnt = 0;
+	pdev->stats.erp_stats.rx_data_mpdu_cnt = 0;
+	pdev->stats.erp_stats.tx_max_avg_data_rate = 0;
+	pdev->stats.erp_stats.rx_max_avg_data_rate = 0;
 
 	return QDF_STATUS_SUCCESS;
 }

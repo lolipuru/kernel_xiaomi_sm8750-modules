@@ -1437,6 +1437,20 @@ struct wlan_lmac_if_reg_tx_ops *reg_get_psoc_tx_ops(
 	return &tx_ops->reg_ops;
 }
 
+struct wlan_lmac_if_afc_tx_ops *afc_get_psoc_tx_ops(
+		struct wlan_objmgr_psoc *psoc)
+{
+	struct wlan_lmac_if_tx_ops *tx_ops;
+
+	tx_ops = wlan_psoc_get_lmac_if_txops(psoc);
+	if (!tx_ops) {
+		reg_err("tx_ops is NULL");
+		return NULL;
+	}
+
+	return &tx_ops->afc_ops;
+}
+
 /**
  * reg_combine_channel_states() - Get minimum of channel state1 and state2
  * @chan_state1: Channel state1
@@ -9706,31 +9720,6 @@ reg_is_chan_punc(uint16_t in_punc_pattern, uint16_t bw)
 #endif
 
 /**
- * reg_find_non_punctured_bw() - Given the input puncture pattern and the
- * total BW of the channel, find the non-punctured bandwidth.
- * @bw: Total bandwidth of the channel
- * @in_punc_pattern: Input puncture pattern
- *
- * Return: non-punctured bw in MHz
- */
-static uint16_t
-reg_find_non_punctured_bw(uint16_t bw,  uint16_t in_punc_pattern)
-{
-	uint8_t num_punc_bw = 0;
-
-	while (in_punc_pattern) {
-		if (in_punc_pattern & 1)
-			++num_punc_bw;
-		in_punc_pattern >>= 1;
-	}
-
-	if (bw <= num_punc_bw * 20)
-		return 0;
-
-	return (bw - num_punc_bw * 20);
-}
-
-/**
  * reg_get_sp_eirp_for_punc_chans() - Find the standard EIRP power for
  * punctured channels.
  * @pdev: Pointer to struct wlan_objmgr_pdev
@@ -9940,7 +9929,9 @@ static int16_t reg_get_sp_eirp(struct wlan_objmgr_pdev *pdev,
 						       sp_master_chan_list,
 						       freq, bw,
 						       &reg_sp_eirp_pwr);
-
+	if (is_client_list_lookup_needed)
+		return QDF_MIN(afc_eirp_pwr - SP_AP_AND_CLIENT_POWER_DIFF_IN_DBM,
+			       reg_sp_eirp_pwr);
 	if (afc_eirp_pwr)
 		return QDF_MIN(afc_eirp_pwr, reg_sp_eirp_pwr);
 
@@ -10269,5 +10260,24 @@ bool reg_is_dev_supports_80p80(struct wlan_objmgr_pdev *pdev)
 		return reg_tx_ops->is_80p80_supported(pdev);
 
 	return false;
+}
+#endif
+
+#ifdef WLAN_FEATURE_11BE
+uint16_t
+reg_find_non_punctured_bw(uint16_t bw,  uint16_t in_punc_pattern)
+{
+	uint8_t num_punc_bw = 0;
+
+	while (in_punc_pattern) {
+		if (in_punc_pattern & 1)
+			++num_punc_bw;
+		in_punc_pattern >>= 1;
+	}
+
+	if (bw <= num_punc_bw * 20)
+		return 0;
+
+	return (bw - num_punc_bw * 20);
 }
 #endif

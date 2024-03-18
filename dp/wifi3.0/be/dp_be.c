@@ -176,6 +176,29 @@ static void dp_ppeds_clear_rings_stats(struct dp_soc *soc)
 	       sizeof(struct ring_util_stats));
 	memset(&be_soc->ppe2tcl_ring.stats, 0, sizeof(struct ring_util_stats));
 }
+
+static inline
+void dp_vdev_detach_vp_profiles(struct dp_soc_be *be_soc,
+				struct dp_vdev_be *be_vdev)
+{
+	/* Upper layers will be storing vp profiles info, During recovery
+	 * netdevs will be retained, so there won't be any changes to the
+	 * associated VP, once recovery is done same vp profiles will be
+	 * configured back.
+	 * Hence will be avoiding the freeing the VP profile during recovery.
+	 */
+	if (hif_get_target_status(be_soc->soc.hif_handle) ==
+	    TARGET_STATUS_RESET)
+		return;
+
+	dp_ppeds_detach_vp_profile(be_soc, be_vdev);
+}
+#else
+static inline
+void dp_vdev_detach_vp_profiles(struct dp_soc_be *be_soc,
+				struct dp_vdev_be *be_vdev)
+{
+}
 #endif
 
 static void dp_soc_cfg_attach_be(struct dp_soc *soc)
@@ -883,6 +906,8 @@ static void dp_soc_tx_cookie_detach_be(struct dp_soc *soc)
 			qdf_mem_free(dp_global->spcl_tx_cc_ctx[i]);
 		}
 	}
+	wlan_minidump_remove(dp_global, sizeof(*dp_global), soc->ctrl_psoc,
+			     WLAN_MD_DP_GLOBAL_CTX, "dp_global_context");
 }
 
 static QDF_STATUS dp_soc_tx_cookie_attach_be(struct dp_soc *soc)
@@ -935,6 +960,9 @@ static QDF_STATUS dp_soc_tx_cookie_attach_be(struct dp_soc *soc)
 		}
 	}
 	dp_global->spcl_tx_cookie_ctx_alloc_cnt++;
+	wlan_minidump_log(dp_global, sizeof(*dp_global), soc->ctrl_psoc,
+			  WLAN_MD_DP_GLOBAL_CTX, "dp_global_context");
+
 	return QDF_STATUS_SUCCESS;
 }
 
@@ -1566,6 +1594,7 @@ static QDF_STATUS dp_vdev_detach_be(struct dp_soc *soc, struct dp_vdev *vdev)
 		dp_mlo_mcast_deinit(soc, vdev);
 
 	dp_tx_put_bank_profile(be_soc, be_vdev);
+	dp_vdev_detach_vp_profiles(be_soc, be_vdev);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -2667,6 +2696,15 @@ void dp_mlo_dev_ctxt_list_attach_wrapper(dp_mlo_dev_obj_t mlo_dev_obj)
 void dp_mlo_dev_ctxt_list_detach_wrapper(dp_mlo_dev_obj_t mlo_dev_obj)
 {
 }
+
+static uint8_t
+dp_get_hw_link_id_be(struct dp_pdev *pdev)
+{
+	struct dp_pdev_be *be_pdev = dp_get_be_pdev_from_dp_pdev(pdev);
+
+	return be_pdev->mlo_link_id;
+}
+
 #else
 static QDF_STATUS dp_mlo_peer_find_hash_attach_wrapper(struct dp_soc *soc)
 {
@@ -2701,23 +2739,13 @@ void dp_mlo_dev_ctxt_list_detach_wrapper(dp_mlo_dev_obj_t mlo_dev_obj)
 {
 	dp_mlo_dev_ctxt_list_detach(mlo_dev_obj);
 }
-#endif
 
-#ifdef QCA_ENHANCED_STATS_SUPPORT
-static uint8_t
-dp_get_hw_link_id_be(struct dp_pdev *pdev)
-{
-	struct dp_pdev_be *be_pdev = dp_get_be_pdev_from_dp_pdev(pdev);
-
-	return be_pdev->mlo_link_id;
-}
-#else
 static uint8_t
 dp_get_hw_link_id_be(struct dp_pdev *pdev)
 {
 	return 0;
 }
-#endif /* QCA_ENHANCED_STATS_SUPPORT */
+#endif
 
 static struct dp_peer *
 dp_mlo_peer_find_hash_find_be(struct dp_soc *soc,
@@ -3368,6 +3396,8 @@ QDF_STATUS dp_mlo_dev_ctxt_create(struct cdp_soc_t *soc_hdl,
 		return QDF_STATUS_E_NOMEM;
 	}
 
+	wlan_minidump_log(mlo_dev_ctxt, sizeof(*mlo_dev_ctxt), soc->ctrl_psoc,
+			  WLAN_MD_DP_MLO_DEV_CTX, "dp_mlo_dev_ctxt");
 	qdf_copy_macaddr((struct qdf_mac_addr *)&mlo_dev_ctxt->mld_mac_addr.raw[0],
 			 (struct qdf_mac_addr *)mld_mac_addr);
 
@@ -3428,6 +3458,9 @@ QDF_STATUS dp_mlo_dev_ctxt_destroy(struct cdp_soc_t *soc_hdl,
 	if (mlo_dev_ctxt->vdev_count)
 		dp_alert("deleting MLO dev ctxt with non zero vdev count");
 
+	wlan_minidump_remove(mlo_dev_ctxt, sizeof(*mlo_dev_ctxt),
+			     soc->ctrl_psoc, WLAN_MD_DP_MLO_DEV_CTX,
+			     "dp_mlo_dev_ctxt");
 	qdf_spin_lock_bh(&mlo_dev_obj->mlo_dev_list_lock);
 	TAILQ_REMOVE(&mlo_dev_obj->mlo_dev_list,
 		     mlo_dev_ctxt, ml_dev_list_elem);
@@ -3794,6 +3827,26 @@ static inline void dp_initialize_arch_ops_be_ipa(struct dp_arch_ops *arch_ops)
 }
 #endif /* IPA_OFFLOAD */
 
+#ifdef IPA_OPT_WIFI_DP_CTRL
+static inline
+void dp_tx_ipa_opt_dp_ctrl_be(struct dp_soc *soc, uint8_t vdev_id,
+			      qdf_nbuf_t nbuf)
+{
+	dp_ipa_tx_pkt_opt_dp_ctrl(soc, vdev_id, nbuf);
+}
+
+static inline
+void dp_initialize_arch_ops_be_ipa_opt_dp_ctrl(struct dp_arch_ops *arch_ops)
+{
+	arch_ops->dp_tx_ipa_opt_dp_ctrl = dp_tx_ipa_opt_dp_ctrl_be;
+}
+#else
+static inline
+void dp_initialize_arch_ops_be_ipa_opt_dp_ctrl(struct dp_arch_ops *arch_ops)
+{
+}
+#endif
+
 void dp_initialize_arch_ops_be(struct dp_arch_ops *arch_ops)
 {
 #ifndef QCA_HOST_MODE_WIFI_DISABLED
@@ -3905,9 +3958,15 @@ void dp_initialize_arch_ops_be(struct dp_arch_ops *arch_ops)
 	arch_ops->dp_soc_attach_poll = dp_soc_attach_poll_be;
 	arch_ops->dp_soc_interrupt_detach = dp_soc_interrupt_detach_be;
 	arch_ops->dp_service_srngs = dp_service_srngs_be;
+
+	arch_ops->dp_mlo_tx_pool_map = dp_mlo_tx_pool_map_be;
+	arch_ops->dp_mlo_tx_pool_unmap = dp_mlo_tx_pool_unmap_be;
+	arch_ops->dp_tx_override_flow_pool_id = dp_tx_override_flow_pool_id_be;
+
 	dp_initialize_arch_ops_be_ipa(arch_ops);
 	dp_initialize_arch_ops_be_single_dev(arch_ops);
 	dp_initialize_arch_ops_be_fisa(arch_ops);
+	dp_initialize_arch_ops_be_ipa_opt_dp_ctrl(arch_ops);
 }
 
 #ifdef QCA_SUPPORT_PRIMARY_LINK_MIGRATE
