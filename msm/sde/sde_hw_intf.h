@@ -395,6 +395,11 @@ struct sde_hw_intf_ops {
 	 * Update the vsync_count for interface tear check
 	 */
 	void (*update_tearcheck_vsync_count)(struct sde_hw_intf *intf, u32 val);
+
+	/**
+	 * Setup flush snapshot value for HW flush synchronisation
+	 */
+	void (*setup_flush_snapshot)(struct sde_hw_intf *intf, u32 snapshot_val, bool enable);
 };
 
 struct sde_hw_intf {

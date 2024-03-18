@@ -1381,7 +1381,8 @@ static int sde_encoder_virt_atomic_check(
 	SDE_EVT32(DRMID(drm_enc), adj_mode->flags,
 		sde_conn_state->msm_mode.private_flags,
 		old_top, drm_mode_vrefresh(adj_mode), adj_mode->hdisplay,
-		adj_mode->vdisplay, adj_mode->htotal, adj_mode->vtotal, ret);
+		adj_mode->vdisplay, adj_mode->htotal, adj_mode->vtotal, ret,
+		DPUID(drm_enc->dev));
 
 	return ret;
 }
@@ -3653,13 +3654,32 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 				sde_kms->catalog);
 
 	/* Timing engine enable output to Slave DPU */
-	if (sde_encoder_has_dpu_ctl_op_sync(drm_enc) && sde_enc->cur_master->hw_mdptop &&
-			sde_encoder_phys_has_role_master_dpu_master_intf(sde_enc->cur_master) &&
-			sde_enc->cur_master->hw_mdptop->ops.dpu_sync_intf_mux) {
-		sde_enc->cur_master->hw_mdptop->ops.dpu_sync_intf_mux(
-				sde_enc->cur_master->hw_mdptop,
-				sde_enc->cur_master->hw_intf->idx - INTF_0);
+	if (sde_encoder_has_dpu_ctl_op_sync(drm_enc)) {
+		if (sde_encoder_phys_has_role_master_dpu_master_intf(sde_enc->cur_master)) {
+			if (sde_enc->cur_master->hw_mdptop &&
+					sde_enc->cur_master->hw_mdptop->ops.dpu_sync_intf_mux)
+				sde_enc->cur_master->hw_mdptop->ops.dpu_sync_intf_mux(
+					sde_enc->cur_master->hw_mdptop,
+					sde_enc->cur_master->hw_intf->idx - INTF_0);
+
+			if (sde_enc->cur_master->hw_mdptop &&
+					sde_enc->cur_master->hw_mdptop->ops.flush_sync_intf_mux)
+				sde_enc->cur_master->hw_mdptop->ops.flush_sync_intf_mux(
+					sde_enc->cur_master->hw_mdptop,
+					sde_enc->cur_master->hw_intf->idx - INTF_0);
+
+			if (sde_enc->cur_master->hw_ctl &&
+					sde_enc->cur_master->hw_ctl->ops.setup_flush_sync)
+				sde_enc->cur_master->hw_ctl->ops.setup_flush_sync(
+					sde_enc->cur_master->hw_ctl, true, true);
+		} else if (sde_encoder_phys_has_role_slave_dpu_master_intf(sde_enc->cur_master)) {
+			if (sde_enc->cur_master->hw_ctl &&
+				sde_enc->cur_master->hw_ctl->ops.setup_flush_sync)
+				sde_enc->cur_master->hw_ctl->ops.setup_flush_sync(
+					sde_enc->cur_master->hw_ctl, false, true);
+		}
 	}
+
 
 	if (sde_enc->cur_master->hw_ctl &&
 			sde_enc->cur_master->hw_ctl->ops.setup_intf_cfg_v1 &&
@@ -6302,6 +6322,29 @@ void _sde_encoder_delay_kickoff_processing(struct sde_encoder_virt *sde_enc)
 		ktime_to_us(current_ts), ktime_to_us(ept_ts), timeout_us, SDE_EVTLOG_FUNC_CASE3);
 }
 
+static void sde_encoder_set_flush_sync_mode(struct sde_encoder_virt *sde_enc)
+{
+	struct sde_crtc_state *cstate;
+	struct sde_encoder_phys *cur_master;
+	bool async_flush_en = false, flush_sync_override = false;
+
+	cstate = to_sde_crtc_state(sde_enc->crtc->state);
+	cur_master = sde_enc->cur_master;
+
+	if (!cur_master || !cur_master->hw_ctl ||
+		!cur_master->hw_ctl->ops.enable_sync_mode)
+		return;
+
+	flush_sync_override = sde_crtc_get_property(cstate,
+					CRTC_PROP_OVERRIDE_FLUSH_SYNC);
+
+	if (flush_sync_override || sde_enc->crtc->state->active_changed ||
+		cur_master->cont_splash_enabled)
+		async_flush_en = true;
+
+	cur_master->hw_ctl->ops.enable_sync_mode(cur_master->hw_ctl, async_flush_en);
+}
+
 int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 		struct sde_encoder_kickoff_params *params)
 {
@@ -6369,6 +6412,9 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 				_helper_flush_qsync(phys);
 		}
 	}
+
+	if (sde_encoder_has_dpu_ctl_op_sync(drm_enc))
+		sde_encoder_set_flush_sync_mode(sde_enc);
 
 	if (is_cmd_mode && sde_enc->cur_master &&
 			 (sde_connector_is_qsync_updated(sde_enc->cur_master->connector) ||

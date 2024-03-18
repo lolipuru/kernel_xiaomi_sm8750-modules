@@ -1235,4 +1235,10 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, u32 c
  */
 void sde_crtc_mdnie_art_event_notify(struct drm_crtc *crtc);
 
+/**
+ * sde_crtc_force_async_mode - force hw flush sync mode to async
+ * @enc:Pointer to drm_encoder
+ * @crtc_state: Pointer to DRM crtc state object
+ */
+void sde_crtc_force_async_mode(struct drm_encoder *enc, struct drm_crtc_state *crtc_state);
 #endif /* _SDE_CRTC_H_ */

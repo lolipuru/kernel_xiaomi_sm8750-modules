@@ -350,6 +350,18 @@ static void _update_vsync_source(struct sde_hw_mdp *mdp,
 	}
 }
 
+static void sde_hw_setup_flush_sync_intf_mux(struct sde_hw_mdp *mdp, int intf_idx)
+{
+	struct sde_hw_blk_reg_map *c;
+
+	if (!mdp)
+		return;
+
+	c = &mdp->hw;
+
+	SDE_REG_WRITE(c, MDP_FLUSH_SYNC_INTF_MUX, intf_idx);
+}
+
 static void sde_hw_setup_vsync_source(struct sde_hw_mdp *mdp,
 		struct sde_vsync_source_cfg *cfg)
 {
@@ -950,6 +962,9 @@ static void _setup_mdp_ops(struct sde_hw_mdp_ops *ops, unsigned long cap, u32 hw
 
 	if (cap & BIT(SDE_MDP_DUAL_DPU_SYNC))
 		ops->dpu_sync_intf_mux = sde_hw_setup_dpu_sync_intf_mux;
+
+	if (cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
+		ops->flush_sync_intf_mux = sde_hw_setup_flush_sync_intf_mux;
 }
 
 static const struct sde_mdp_cfg *_top_offset(enum sde_mdp mdp,

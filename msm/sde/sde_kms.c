@@ -2697,6 +2697,7 @@ static int sde_kms_set_crtc_for_conn(struct drm_device *dev,
 		return ret;
 	}
 
+	sde_crtc_force_async_mode(enc, crtc_state);
 	crtc_state->active = true;
 	crtc_state->enable = true;
 	ret = drm_atomic_set_crtc_for_connector(conn_state, enc->crtc);

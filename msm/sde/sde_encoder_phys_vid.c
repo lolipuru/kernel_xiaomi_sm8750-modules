@@ -467,6 +467,41 @@ static void _sde_encoder_phys_vid_set_num_avr_step(struct sde_encoder_phys *phys
 			ktime_to_us(delta_ts), info->avr_step_fps, cur_avr_step, num_avr_step);
 }
 
+static void _sde_encoder_phys_flush_snapshot_setup(struct sde_encoder_phys *phys_enc, bool enable)
+{
+	struct sde_mdss_cfg *m;
+	struct intf_timing_params *timing;
+	struct sde_encoder_phys_vid *vid_enc;
+	u32 snapshot_val = 0, vfp_fetch_lines = 0, snapshot_lines = 0;
+	u32 vtotal = 0, htotal = 0;
+
+	m = phys_enc->sde_kms->catalog;
+	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	timing = &vid_enc->timing_params;
+
+	if (!phys_enc->hw_intf->ops.setup_flush_snapshot)
+		return;
+
+	if (phys_enc->hw_intf->cap->type == INTF_DSI) {
+		vfp_fetch_lines = programmable_fetch_get_num_lines(vid_enc, timing);
+		if (vfp_fetch_lines && test_bit(SDE_FEATURE_DELAY_PRG_FETCH, m->features))
+			vfp_fetch_lines = vfp_fetch_lines - 1;
+	}
+
+	vtotal = get_vertical_total(timing);
+	htotal = get_horizontal_total(timing);
+	snapshot_lines = vtotal - vfp_fetch_lines - phys_enc->hw_intf->cap->hw_flush_sync_val;
+
+	if (snapshot_lines <= 0) {
+		SDE_DEBUG("flush snapshot should be set before mdp vsync\n");
+		phys_enc->hw_intf->ops.setup_flush_snapshot(phys_enc->hw_intf,
+					snapshot_val, false);
+	}
+
+	snapshot_val = snapshot_lines * htotal;
+	phys_enc->hw_intf->ops.setup_flush_snapshot(phys_enc->hw_intf, snapshot_val, enable);
+}
+
 static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 {
 	struct intf_avr_params avr_params;
@@ -659,6 +694,10 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 	if (phys_enc->hw_intf->cap->type == INTF_DSI)
 		programmable_fetch_config(phys_enc, &timing_params);
+
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
+		sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc))
+		_sde_encoder_phys_flush_snapshot_setup(phys_enc, true);
 
 exit:
 	if (sde_encoder_get_cesta_client(phys_enc->parent)) {
@@ -2080,6 +2119,20 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 		goto exit;
 
 	sde_encoder_phys_vid_timing_engine_disable_wait(phys_enc);
+
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent)) {
+		if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc)) {
+			if (phys_enc->hw_ctl &&
+					phys_enc->hw_ctl->ops.setup_flush_sync)
+				phys_enc->hw_ctl->ops.setup_flush_sync(
+					phys_enc->hw_ctl, true, false);
+		} else if (sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)) {
+			if (phys_enc->hw_ctl &&
+				phys_enc->hw_ctl->ops.setup_flush_sync)
+				phys_enc->hw_ctl->ops.setup_flush_sync(
+					phys_enc->hw_ctl, false, false);
+		}
+	}
 
 	if (phys_enc->hw_intf->ops.enable_esync && info->esync_enabled)
 		phys_enc->hw_intf->ops.enable_esync(phys_enc->hw_intf, false);

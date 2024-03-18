@@ -69,6 +69,7 @@
 #define INTF_MISR_CTRL                  0x180
 #define INTF_MISR_SIGNATURE             0x184
 
+#define INTF_PROG_FLUSH_SNAPSHOT        0x1B0
 #define INTF_WD_TIMER_0_LTJ_CTL         0x200
 #define INTF_WD_TIMER_0_LTJ_CTL1        0x204
 
@@ -1307,6 +1308,26 @@ static void sde_hw_intf_vsync_sel(struct sde_hw_intf *intf,
 	SDE_REG_WRITE(c, INTF_TEAR_MDP_VSYNC_SEL, (vsync_source & 0xf));
 }
 
+static void sde_hw_intf_flush_snapshot_setup(struct sde_hw_intf *intf, u32 value, bool enable)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 intf_cfg;
+
+	if (!intf)
+		return;
+
+	c = &intf->hw;
+	intf_cfg = SDE_REG_READ(c, INTF_CONFIG);
+
+	if (enable)
+		intf_cfg |= BIT(14);
+	else
+		intf_cfg &= BIT(14);
+
+	SDE_REG_WRITE(c, INTF_PROG_FLUSH_SNAPSHOT, value);
+	SDE_REG_WRITE(c, INTF_CONFIG, intf_cfg);
+}
+
 static void sde_hw_intf_enable_compressed_input(struct sde_hw_intf *intf,
 		bool compression_en, bool dsc_4hs_merge)
 {
@@ -1482,6 +1503,9 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 
 	if (cap & BIT(SDE_INTF_WD_LTJ_CTL))
 		ops->get_wd_ltj_status = sde_hw_intf_read_wd_ltj_ctl;
+
+	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
+		ops->setup_flush_snapshot =  sde_hw_intf_flush_snapshot_setup;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,
