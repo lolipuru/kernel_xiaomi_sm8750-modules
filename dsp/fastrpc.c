@@ -249,7 +249,7 @@ static bool fastrpc_get_persistent_buf(struct fastrpc_user *fl,
 
 static void __fastrpc_buf_free(struct fastrpc_buf *buf)
 {
-	trace_fastrpc_dma_free(buf->fl->cctx->domain_id, buf->phys, buf->size);
+	trace_fastrpc_dma_free(buf->domain_id, buf->phys, buf->size);
 	dma_free_coherent(buf->dev, buf->size, buf->virt,
 			  FASTRPC_PHYS(buf->phys));
 	kfree(buf);
@@ -370,6 +370,7 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 	buf->dev = dev;
 	buf->raddr = 0;
 	buf->type = buf_type;
+	buf->domain_id = fl->cctx->domain_id;
 
 	mutex_lock(&fl->sctx->map_mutex);
 	if (fl->sctx->dev)
@@ -2699,6 +2700,20 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	kfree(fl->hdr_bufs);
 
 	fastrpc_cached_buf_list_free(fl);
+
+	/*
+	 * Audio remote-heap buffers won't be freed as part of "fastrpc_user" object
+	 * cleanup. Instead, they will be freed after SSR dump collection.
+	 * Reset "fl" pointer in the buffer objects if it is the object getting
+	 * freed here.
+	 */
+	spin_lock_irqsave(&cctx->lock, flags);
+	list_for_each_entry_safe(buf, b, &cctx->gmaps, node) {
+		if (buf->fl == fl)
+			buf->fl = NULL;
+	}
+	spin_unlock_irqrestore(&cctx->lock, flags);
+
 	if (fl->qos_request && fl->dev_pm_qos_req) {
 		for (i = 0; i < cctx->lowest_capacity_core_count; i++) {
 			if (!dev_pm_qos_request_active(&fl->dev_pm_qos_req[i]))
