@@ -195,14 +195,16 @@ struct hdd_apf_context {
 #define HDD_IS_RATE_LIMIT_REQ(flag, rate)\
 	do {\
 		static ulong __last_ticks;\
+		static bool __first_time = true;\
 		ulong __ticks = jiffies;\
 		flag = false; \
-		if (!time_after(__ticks,\
+		if (!__first_time && !time_after(__ticks,\
 		    __last_ticks + rate * HZ)) {\
 			flag = true; \
 		} \
 		else { \
 			__last_ticks = __ticks;\
+			__first_time = false; \
 		} \
 	} while (0)
 
@@ -1075,6 +1077,40 @@ enum udp_qos_upgrade {
 	UDP_QOS_UPGRADE_MAX
 };
 
+/**
+ * enum chan_change_notify_type - channel change notify type
+ * @CHAN_SWITCH_START_NOTIFY: Notify CSA during start
+ * @CHAN_SWITCH_COMPLETE_NOTIFY: Notify CSA after complete
+ */
+enum chan_change_notify_type {
+	CHAN_SWITCH_START_NOTIFY,
+	CHAN_SWITCH_COMPLETE_NOTIFY
+};
+
+/**
+ * struct freq_change_info - Frequency change notify
+ * @freq: Frequency
+ * @ch_params: channel params
+ * @ch_chng_type: Channel change notify type
+ * @chan_change_notify_work: Channel change notify work
+ */
+struct freq_change_info {
+	qdf_freq_t freq;
+	struct ch_params ch_params;
+	enum chan_change_notify_type ch_chng_type;
+	qdf_work_t chan_change_notify_work;
+};
+
+/**
+ * struct hdd_monitor_ctx - Monitor specific information
+ * @freq: Monitor Frequency
+ * @bandwidth: Monitor bandwidth
+ */
+struct hdd_monitor_ctx {
+	qdf_freq_t freq;
+	enum phy_ch_width bandwidth;
+};
+
 #define WLAN_HDD_DEFLINK_IDX	0
 
 /**
@@ -1115,7 +1151,7 @@ enum udp_qos_upgrade {
  * @mscs_prev_tx_vo_pkts: count of prev VO AC packets transmitted
  * @mscs_counter: Counter on MSCS action frames sent
  * @link_flags: a bitmap of hdd_link_flags
- * @chan_change_notify_work: Channel change notify work
+ * @ch_chng_info: Channel change info
  */
 struct wlan_hdd_link_info {
 	struct hdd_adapter *adapter;
@@ -1128,6 +1164,7 @@ struct wlan_hdd_link_info {
 	union {
 		struct hdd_station_ctx station;
 		struct hdd_ap_ctx ap;
+		struct hdd_monitor_ctx monitor;
 	} session;
 
 	qdf_event_t acs_complete_event;
@@ -1156,7 +1193,7 @@ struct wlan_hdd_link_info {
 #endif /* WLAN_FEATURE_MSCS */
 
 	unsigned long link_flags;
-	qdf_work_t chan_change_notify_work;
+	struct freq_change_info ch_chng_info;
 };
 
 /**
@@ -1246,8 +1283,6 @@ struct wlan_hdd_tx_power {
  * @debugfs_phy: debugfs entry
  * @lfr_fw_status:
  * @active_ac:
- * @mon_chan_freq:
- * @mon_bandwidth:
  * @latency_level: 0 - normal, 1 - xr, 2 - low, 3 - ultralow
  * @multi_client_ll_support: to check multi client ll support in driver
  * @client_info: To store multi client id information
@@ -1420,8 +1455,6 @@ struct hdd_adapter {
 	struct dentry *debugfs_phy;
 	struct lfr_firmware_status lfr_fw_status;
 	uint8_t active_ac;
-	uint32_t mon_chan_freq;
-	uint32_t mon_bandwidth;
 	uint16_t latency_level;
 #ifdef MULTI_CLIENT_LL_SUPPORT
 	bool multi_client_ll_support;
@@ -1497,6 +1530,7 @@ struct hdd_adapter {
 
 #define WLAN_HDD_GET_STATION_CTX_PTR(link_info) (&(link_info)->session.station)
 #define WLAN_HDD_GET_AP_CTX_PTR(link_info) (&(link_info)->session.ap)
+#define WLAN_HDD_GET_MONITOR_CTX_PTR(link_info) (&(link_info)->session.monitor)
 #define WLAN_HDD_GET_CTX(adapter) ((adapter)->hdd_ctx)
 #define WLAN_HDD_GET_HOSTAP_STATE_PTR(link_info) \
 		(&(WLAN_HDD_GET_AP_CTX_PTR((link_info))->hostapd_state))
@@ -2043,6 +2077,7 @@ enum wlan_state_ctrl_str_id {
  * @num_mlo_peers: Total number of MLO peers
  * @more_peer_data: more mlo peer data in peer stats
  * @lpc_info: Local packet capture info
+ * @combination: interface combination register to wiphy
  */
 struct hdd_context {
 	struct wlan_objmgr_psoc *psoc;
@@ -2327,6 +2362,8 @@ struct hdd_context {
 #ifdef WLAN_FEATURE_LOCAL_PKT_CAPTURE
 	struct hdd_lpc_info lpc_info;
 #endif
+
+	struct ieee80211_iface_combination *combination;
 };
 
 /**
@@ -3003,6 +3040,17 @@ void hdd_adapter_update_mlo_mgr_mac_addr(struct hdd_adapter *adapter);
  * Return: True/false
  */
 bool hdd_is_vdev_in_conn_state(struct wlan_hdd_link_info *link_info);
+
+/**
+ * hdd_vdev_configure_rtt_params() - config rtt parameters
+ *
+ * @vdev: obj of vdev
+ *
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+hdd_vdev_configure_rtt_params(struct wlan_objmgr_vdev *vdev);
 
 /**
  * hdd_adapter_deregister_fc() - Deregisters flow control
@@ -4763,17 +4811,31 @@ static inline void hdd_driver_mem_cleanup(void)
 /**
  * wlan_hdd_set_mon_chan() - Set capture channel on the monitor mode interface.
  * @adapter: Handle to adapter
+ *
+ * Return: 0 on success else error code.
+ */
+int wlan_hdd_set_mon_chan(struct hdd_adapter *adapter);
+
+/**
+ * wlan_hdd_validate_mon_params() - Validate freq and bw for monitor interface.
+ * @adapter: Handle to adapter
  * @freq: Monitor mode frequency (MHz)
  * @bandwidth: Capture channel bandwidth
  *
  * Return: 0 on success else error code.
  */
-int wlan_hdd_set_mon_chan(struct hdd_adapter *adapter, qdf_freq_t freq,
-			  uint32_t bandwidth);
+int wlan_hdd_validate_mon_params(struct hdd_adapter *adapter, qdf_freq_t freq,
+				 uint32_t bandwidth);
 #else
 static inline
-int wlan_hdd_set_mon_chan(struct hdd_adapter *adapter, qdf_freq_t freq,
-			  uint32_t bandwidth)
+int wlan_hdd_set_mon_chan(struct hdd_adapter *adapter)
+{
+	return 0;
+}
+
+static inline
+int wlan_hdd_validate_mon_params(struct hdd_adapter *adapter, qdf_freq_t freq,
+				 uint32_t bandwidth)
 {
 	return 0;
 }
@@ -5563,5 +5625,23 @@ hdd_lpc_is_work_scheduled(struct hdd_context *hdd_ctx)
 	return false;
 }
 #endif
+
+/**
+ * wlan_hdd_alloc_iface_combination_mem() - This API will allocate memory for
+ * interface combinations
+ * @hdd_ctx: HDD context
+ *
+ * Return: 0 on success and -ENOMEM on failure
+ */
+int wlan_hdd_alloc_iface_combination_mem(struct hdd_context *hdd_ctx);
+
+/**
+ * wlan_hdd_free_iface_combination_mem() - This API will free memory for
+ * interface combinations
+ * @hdd_ctx: HDD context
+ *
+ * Return: none
+ */
+void wlan_hdd_free_iface_combination_mem(struct hdd_context *hdd_ctx);
 
 #endif /* end #if !defined(WLAN_HDD_MAIN_H) */

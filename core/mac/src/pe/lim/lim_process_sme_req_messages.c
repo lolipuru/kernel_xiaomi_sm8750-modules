@@ -6383,9 +6383,13 @@ void lim_calculate_tpc(struct mac_context *mac,
 			} else {
 				max_tx_power = QDF_MIN(reg_max,
 						       local_constraint);
+				if (!max_tx_power)
+					max_tx_power = reg_max;
 			}
 		} else {
-			max_tx_power = reg_max - local_constraint;
+			max_tx_power = QDF_MIN(reg_max, local_constraint);
+			if (!max_tx_power)
+				max_tx_power = reg_max;
 		}
 
 		/* If TPE is present */
@@ -6421,6 +6425,10 @@ void lim_calculate_tpc(struct mac_context *mac,
 	mlme_obj->reg_tpc_obj.eirp_power = reg_max;
 	mlme_obj->reg_tpc_obj.power_type_6g = ap_power_type_6g;
 	mlme_obj->reg_tpc_obj.is_psd_power = is_psd_power;
+
+	if (LIM_IS_AP_ROLE(session) && is_psd_power)
+		wlan_mlme_set_sap_psd_for_20mhz(session->vdev,
+						(uint8_t)psd_power);
 
 	pe_debug("num_pwr_levels: %d, is_psd_power: %d, total eirp_power: %d, ap_pwr_type: %d",
 		 num_pwr_levels, is_psd_power, reg_max, ap_power_type_6g);
@@ -9594,6 +9602,30 @@ static void lim_abort_channel_change(struct mac_context *mac_ctx,
 	lim_sys_process_mmh_msg_api(mac_ctx, &sch_msg);
 }
 
+#ifdef WLAN_FEATURE_11AX
+static inline void
+lim_update_he_capable(struct pe_session *session, uint8_t dot11mode)
+{
+	session->he_capable = IS_DOT11_MODE_HE(dot11mode);
+}
+#else
+static inline void
+lim_update_he_capable(struct pe_session *session, uint8_t dot11mode)
+{}
+#endif
+#ifdef WLAN_FEATURE_11BE
+static inline void
+lim_update_eht_capable(struct pe_session *session, uint8_t dot11mode)
+{
+	session->eht_capable = IS_DOT11_MODE_EHT(dot11mode);
+}
+#else
+static inline void
+lim_update_eht_capable(struct pe_session *session, uint8_t dot11mode)
+{}
+#endif
+
+
 /**
  * lim_process_sme_channel_change_request() - process sme ch change req
  *
@@ -9675,10 +9707,20 @@ static void lim_process_sme_channel_change_request(struct mac_context *mac_ctx,
 		session_entry->channelChangeReasonCode =
 			LIM_SWITCH_CHANNEL_MONITOR;
 
-	pe_nofl_debug("SAP CSA: %d ---> %d, ch_bw %d, nw_type %d, dot11mode %d",
+	pe_nofl_debug("SAP CSA: %d ---> %d, ch_bw %d, nw_type %d, dot11mode %d, old dot11mode %d",
 		      session_entry->curr_op_freq, target_freq,
 		      ch_change_req->ch_width, ch_change_req->nw_type,
-		      ch_change_req->dot11mode);
+		      ch_change_req->dot11mode, session_entry->dot11mode);
+
+	/* Update ht/vht/he/eht capability as per the new dot11mode */
+	if (ch_change_req->dot11mode != session_entry->dot11mode) {
+		session_entry->htCapability =
+			IS_DOT11_MODE_HT(ch_change_req->dot11mode);
+		session_entry->vhtCapability =
+			IS_DOT11_MODE_VHT(ch_change_req->dot11mode);
+		lim_update_he_capable(session_entry, ch_change_req->dot11mode);
+		lim_update_eht_capable(session_entry, ch_change_req->dot11mode);
+	}
 
 	if (wlan_reg_is_6ghz_chan_freq(target_freq) &&
 	    IS_DOT11_MODE_HT(session_entry->dot11mode) &&

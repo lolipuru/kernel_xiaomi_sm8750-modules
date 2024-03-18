@@ -648,6 +648,17 @@ lim_fill_pe_session(struct mac_context *mac_ctx,
 		    struct pe_session *session,
 		    struct bss_description *bss_desc);
 
+/**
+ * lim_update_omn_ie_ch_width() - update omn_ie_ch_width in struct
+ * assoc_channel_info while processing bcn/probe resp/assoc resp/re-assoc resp
+ * @vdev: VDEV object manager
+ * @ch_width: ch_width present in OMN IE
+ *
+ * Return: none
+ */
+void lim_update_omn_ie_ch_width(struct wlan_objmgr_vdev *vdev,
+				enum phy_ch_width ch_width);
+
 #ifdef WLAN_FEATURE_11BE_MLO
 /*
  * lim_add_bcn_probe() - Add the generated probe resp to scan DB
@@ -979,7 +990,7 @@ lim_get_connected_akm(struct pe_session *session, int32_t ucast_cipher,
  */
 tAniEdType lim_get_encrypt_ed_type(int32_t ucast_cipher);
 
-#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
+#ifdef WLAN_FEATURE_LL_LT_SAP
 /**
  * lim_ll_sap_send_ecsa_action_frame() - Send ECSA action frame
  * for LL_LT_SAP

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -133,13 +133,32 @@ enum sap_csa_reason_code {
  * MLO_LINK_FORCE_MODE_INACTIVE_NUM, MLO_LINK_FORCE_MODE_NO_FORCE.
  * @link_ctrl_f_post_re_evaluate: run link state check again after command
  * response handled.
+ * @link_ctrl_f_sync_set_link: wait response for set link command
  */
 enum link_control_flags {
 	link_ctrl_f_overwrite_active_bitmap =   1 << 0,
 	link_ctrl_f_overwrite_inactive_bitmap = 1 << 1,
 	link_ctrl_f_dynamic_force_link_num =    1 << 2,
 	link_ctrl_f_post_re_evaluate =          1 << 3,
+	link_ctrl_f_sync_set_link =             1 << 4,
 };
+
+/* Define the max number of consecutive re-evaluate number. usually, we have
+ * to update force active_inactive bitmap, force active number, force inactive
+ * number to target, so post re-evaluate should not exceed 3.
+ */
+#define MAX_RE_EVALUATE_LOOPS 3
+#define link_ctrl_f_loop_count_pos          30
+#define link_ctrl_f_loop_count_bits          2
+
+#define SET_POST_RE_EVALUATE_LOOPS(_FLAGS_, _COUNT_) \
+	QDF_SET_BITS(_FLAGS_, link_ctrl_f_loop_count_pos, \
+		     link_ctrl_f_loop_count_bits, \
+		     _COUNT_)
+
+#define GET_POST_RE_EVALUATE_LOOPS(_FLAGS_) \
+	QDF_GET_BITS(_FLAGS_, link_ctrl_f_loop_count_pos, \
+		     link_ctrl_f_loop_count_bits)
 
 /**
  * enum hw_mode_ss_config - Possible spatial stream configuration
@@ -220,6 +239,22 @@ enum hw_mode_mac_band_cap {
 	HW_MODE_MAC_BAND_NONE = 0,
 	HW_MODE_MAC_BAND_2G = WLAN_2G_CAPABILITY,
 	HW_MODE_MAC_BAND_5G = WLAN_5G_CAPABILITY,
+};
+
+/**
+ * enum pm_rd_type - rd type
+ * @pm_rd_none: unknown
+ * @pm_rd_dbs: dbs only
+ * @pm_rd_sbs_low_share: sbs lower shared
+ * @pm_rd_sbs_upper_share: sbs upper shared
+ * @pm_rd_sbs_switchable: sbs switchable
+ */
+enum pm_rd_type {
+	pm_rd_none,
+	pm_rd_dbs,
+	pm_rd_sbs_low_share,
+	pm_rd_sbs_upper_share,
+	pm_rd_sbs_switchable,
 };
 
 /**

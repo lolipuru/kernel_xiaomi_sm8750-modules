@@ -27,15 +27,57 @@
 
 bool ll_lt_sap_is_supported(struct wlan_objmgr_psoc *psoc)
 {
+	struct ll_sap_psoc_priv_obj *psoc_ll_sap_obj;
+
+	psoc_ll_sap_obj =
+		wlan_objmgr_psoc_get_comp_private_obj(psoc,
+						      WLAN_UMAC_COMP_LL_SAP);
+	if (!psoc_ll_sap_obj) {
+		ll_sap_err("Invalid psoc ll sap priv obj");
+		return false;
+	}
+
+	return psoc_ll_sap_obj->is_ll_lt_sap_supported;
+}
+
+void ll_lt_sap_extract_ll_sap_cap(struct wlan_objmgr_psoc *psoc)
+{
 	struct wmi_unified *wmi_handle;
+	struct ll_sap_psoc_priv_obj *psoc_ll_sap_obj;
 
 	wmi_handle = get_wmi_unified_hdl_from_psoc(psoc);
 	if (!wmi_handle) {
 		ll_sap_err("Invalid WMI handle");
+		return;
+	}
+
+	psoc_ll_sap_obj =
+		wlan_objmgr_psoc_get_comp_private_obj(psoc,
+						      WLAN_UMAC_COMP_LL_SAP);
+	if (!psoc_ll_sap_obj) {
+		ll_sap_err("Invalid psoc ll sap priv obj");
+		return;
+	}
+
+	psoc_ll_sap_obj->is_ll_lt_sap_supported =
+		wmi_service_enabled(wmi_handle, wmi_service_xpan_support);
+
+}
+
+bool ll_lt_sap_get_bearer_switch_cap_for_csa(struct wlan_objmgr_psoc *psoc)
+{
+	struct ll_sap_psoc_priv_obj *psoc_ll_sap_obj;
+
+	psoc_ll_sap_obj =
+		wlan_objmgr_psoc_get_comp_private_obj(psoc,
+						      WLAN_UMAC_COMP_LL_SAP);
+
+	if (!psoc_ll_sap_obj) {
+		ll_sap_err("Invalid psoc ll sap priv obj");
 		return false;
 	}
 
-	return wmi_service_enabled(wmi_handle, wmi_service_xpan_support);
+	return psoc_ll_sap_obj->is_beared_switch_required;
 }
 
 /**
@@ -73,7 +115,13 @@ QDF_STATUS ll_lt_sap_get_sorted_user_config_acs_ch_list(
 	if (!filter)
 		goto rel_ref;
 
-	wlan_sap_get_user_config_acs_ch_list(vdev_id, filter);
+	status = wlan_sap_get_user_config_acs_ch_list(vdev_id, filter);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		ll_sap_err("vdev %d failed to get user config acs ch_list",
+			   vdev_id);
+		qdf_mem_free(filter);
+		goto rel_ref;
+	}
 
 	list = wlan_scan_get_result(pdev, filter);
 
@@ -83,6 +131,11 @@ QDF_STATUS ll_lt_sap_get_sorted_user_config_acs_ch_list(
 		goto rel_ref;
 
 	status = wlan_ll_sap_sort_channel_list(vdev_id, list, ch_info);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		ll_sap_err("vdev %d failed to sort sap channel list",
+			   vdev_id);
+		goto rel_ref;
+	}
 
 	wlan_scan_purge_results(list);
 
@@ -540,7 +593,6 @@ ll_lt_sap_high_ap_availability(struct wlan_objmgr_vdev *vdev,
 	return QDF_STATUS_SUCCESS;
 }
 
-#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
 QDF_STATUS ll_lt_sap_get_tsf_stats_for_csa(
 				struct wlan_objmgr_psoc *psoc,
 				uint8_t vdev_id)
@@ -593,12 +645,14 @@ static void ll_lt_sap_get_vdev_peer_entries(struct wlan_objmgr_vdev *vdev,
  * LL_LT_SAP
  * @psoc: pointer to psoc object
  * @vdev: pointer to vdev object
+ * @twt_target_tsf: TWT target tsf
  *
  * Return: QDF_STATUS
  */
 static
 QDF_STATUS ll_lt_sap_sent_ecsa_and_vdev_restart(struct wlan_objmgr_psoc *psoc,
-						struct wlan_objmgr_vdev *vdev)
+						struct wlan_objmgr_vdev *vdev,
+						uint64_t twt_target_tsf)
 {
 	struct ll_sap_vdev_peer_entry peer_entry;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
@@ -611,7 +665,8 @@ QDF_STATUS ll_lt_sap_sent_ecsa_and_vdev_restart(struct wlan_objmgr_psoc *psoc,
 
 	for (i = 1; i <= peer_entry.num_peer; i++) {
 		if (wlan_is_twt_session_present(
-				psoc, peer_entry.macaddr[i].bytes))
+				psoc, peer_entry.macaddr[i].bytes) &&
+				twt_target_tsf)
 			wlan_ll_sap_send_action_frame(
 				vdev, peer_entry.macaddr[i].bytes);
 	}
@@ -767,10 +822,11 @@ QDF_STATUS ll_lt_sap_continue_csa_after_tsf_rsp(struct ll_sap_csa_tsf_rsp *rsp)
 		     ll_sap_vdev_obj->target_tsf.non_twt_target_tsf);
 
 	/* send csa param via action frame */
-	ll_lt_sap_sent_ecsa_and_vdev_restart(rsp->psoc, vdev);
+	ll_lt_sap_sent_ecsa_and_vdev_restart(
+				rsp->psoc, vdev,
+				ll_sap_vdev_obj->target_tsf.twt_target_tsf);
 
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_LL_SAP_ID);
 
 	return QDF_STATUS_SUCCESS;
 }
-#endif

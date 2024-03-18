@@ -541,7 +541,7 @@ static inline void lim_nan_register_callbacks(struct mac_context *mac_ctx)
 }
 #endif
 
-#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
+#ifdef WLAN_FEATURE_LL_LT_SAP
 QDF_STATUS lim_ll_sap_continue_vdev_restart(struct wlan_objmgr_vdev *vdev)
 {
 	struct mac_context *mac_ctx;
@@ -2935,9 +2935,7 @@ pe_roam_synch_callback(struct mac_context *mac_ctx,
 		pe_err("LFR3:roam_sync_ind_ptr is NULL");
 		return status;
 	}
-	session_ptr = pe_find_session_by_vdev_id(mac_ctx,
-				vdev_id);
-
+	session_ptr = pe_find_session_by_vdev_id(mac_ctx, vdev_id);
 	if (!session_ptr) {
 		pe_err("LFR3:Unable to find session");
 		return status;
@@ -3209,6 +3207,7 @@ pe_roam_synch_callback(struct mac_context *mac_ctx,
 	}
 
 	pe_delete_session(mac_ctx, session_ptr);
+
 	return QDF_STATUS_SUCCESS;
 
 roam_sync_fail:
@@ -3900,6 +3899,20 @@ lim_update_cuflag_bpcc_each_link(struct mlo_mgmt_ml_info *cu_params)
 	}
 }
 #endif
+
+void lim_update_omn_ie_ch_width(struct wlan_objmgr_vdev *vdev,
+				enum phy_ch_width ch_width)
+{
+	struct mlme_legacy_priv *mlme_priv;
+
+	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
+	if (!mlme_priv) {
+		mlme_legacy_err("vdev legacy private object is NULL");
+		return;
+	}
+
+	mlme_priv->connect_info.assoc_chan_info.omn_ie_ch_width = ch_width;
+}
 
 #ifdef WLAN_FEATURE_11BE_MLO
 static bool

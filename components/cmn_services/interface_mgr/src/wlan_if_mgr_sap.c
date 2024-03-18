@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -33,6 +33,9 @@
 #include "wlan_vdev_mgr_utils_api.h"
 #include "wlan_tdls_tgt_api.h"
 #include "wlan_policy_mgr_ll_sap.h"
+#include "wlan_mlme_api.h"
+#include "wlan_mlo_link_force.h"
+#include "wlan_ll_sap_api.h"
 
 QDF_STATUS if_mgr_ap_start_bss(struct wlan_objmgr_vdev *vdev,
 			       struct if_mgr_event_data *event_data)
@@ -52,8 +55,14 @@ QDF_STATUS if_mgr_ap_start_bss(struct wlan_objmgr_vdev *vdev,
 	wlan_tdls_notify_start_bss(psoc, vdev);
 
 	if (wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE ||
-	    wlan_vdev_mlme_get_opmode(vdev) == QDF_P2P_GO_MODE)
-		wlan_handle_emlsr_sta_concurrency(psoc, true, false);
+	    wlan_vdev_mlme_get_opmode(vdev) == QDF_P2P_GO_MODE) {
+		if (wlan_mlme_is_aux_emlsr_support(psoc))
+			ml_nlink_conn_change_notify(
+					psoc, wlan_vdev_get_id(vdev),
+					ml_nlink_ap_start_evt, NULL);
+		else
+			wlan_handle_emlsr_sta_concurrency(psoc, true, false);
+	}
 
 	if (policy_mgr_is_hw_mode_change_in_progress(psoc)) {
 		if (!QDF_IS_STATUS_SUCCESS(
@@ -94,6 +103,14 @@ if_mgr_ap_start_bss_complete(struct wlan_objmgr_vdev *vdev,
 	psoc = wlan_pdev_get_psoc(pdev);
 	if (!psoc)
 		return QDF_STATUS_E_FAILURE;
+
+	if (event_data &&
+	    event_data->status != QDF_STATUS_SUCCESS &&
+	    (wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE ||
+	     wlan_vdev_mlme_get_opmode(vdev) == QDF_P2P_GO_MODE) &&
+	    wlan_mlme_is_aux_emlsr_support(psoc))
+		ml_nlink_conn_change_notify(psoc, wlan_vdev_get_id(vdev),
+					    ml_nlink_ap_start_failed_evt, NULL);
 
 	/*
 	 * Due to audio share glitch with P2P GO caused by
@@ -151,8 +168,9 @@ if_mgr_ap_stop_bss_complete(struct wlan_objmgr_vdev *vdev,
 	if (!psoc)
 		return QDF_STATUS_E_FAILURE;
 
-	if (wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE ||
-	    wlan_vdev_mlme_get_opmode(vdev) == QDF_P2P_GO_MODE)
+	if ((wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE ||
+	     wlan_vdev_mlme_get_opmode(vdev) == QDF_P2P_GO_MODE) &&
+	    !wlan_mlme_is_aux_emlsr_support(psoc))
 		wlan_handle_emlsr_sta_concurrency(psoc, false, true);
 	/*
 	 * Due to audio share glitch with P2P GO caused by
@@ -188,6 +206,7 @@ if_mgr_ap_csa_complete(struct wlan_objmgr_vdev *vdev,
 	struct wlan_objmgr_psoc *psoc;
 	struct wlan_objmgr_pdev *pdev;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	uint8_t vdev_id;
 
 	pdev = wlan_vdev_get_pdev(vdev);
 	if (!pdev)
@@ -197,11 +216,17 @@ if_mgr_ap_csa_complete(struct wlan_objmgr_vdev *vdev,
 	if (!psoc)
 		return QDF_STATUS_E_FAILURE;
 
+	vdev_id = wlan_vdev_get_id(vdev);
+
 	status = wlan_p2p_check_and_force_scc_go_plus_go(psoc, vdev);
 	if (QDF_IS_STATUS_ERROR(status))
 		ifmgr_err("force scc failure with status: %d", status);
 
-	wlan_tdls_notify_channel_switch_complete(psoc, wlan_vdev_get_id(vdev));
+	wlan_tdls_notify_channel_switch_complete(psoc, vdev_id);
+
+	if (wlan_ll_sap_is_bearer_switch_req_on_csa(psoc, vdev_id))
+		wlan_ll_sap_switch_bearer_on_ll_sap_csa_complete(
+							psoc, vdev_id);
 
 	return status;
 }
@@ -213,10 +238,12 @@ if_mgr_ap_csa_start(struct wlan_objmgr_vdev *vdev,
 	struct wlan_objmgr_psoc *psoc;
 	struct wlan_objmgr_pdev *pdev;
 	enum QDF_OPMODE op_mode;
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	uint8_t vdev_id;
 
 	op_mode = wlan_vdev_mlme_get_opmode(vdev);
 	if (op_mode != QDF_SAP_MODE && op_mode != QDF_P2P_GO_MODE)
-		return QDF_STATUS_SUCCESS;
+		return status;
 
 	pdev = wlan_vdev_get_pdev(vdev);
 	if (!pdev)
@@ -226,10 +253,15 @@ if_mgr_ap_csa_start(struct wlan_objmgr_vdev *vdev,
 	if (!psoc)
 		return QDF_STATUS_E_FAILURE;
 
+	vdev_id = wlan_vdev_get_id(vdev);
+
 	/*
 	 * Disable TDLS off-channel before VDEV restart
 	 */
 	wlan_tdls_notify_channel_switch_start(psoc, vdev);
 
-	return QDF_STATUS_SUCCESS;
+	if (wlan_ll_sap_is_bearer_switch_req_on_csa(psoc, vdev_id))
+		status = wlan_ll_sap_switch_bearer_on_ll_sap_csa(psoc, vdev_id);
+
+	return status;
 }

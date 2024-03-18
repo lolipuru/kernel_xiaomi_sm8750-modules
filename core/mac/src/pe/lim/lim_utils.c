@@ -39,6 +39,8 @@
 #include "dot11fdefs.h"
 #include "wmm_apsd.h"
 #include "lim_trace.h"
+#include "wlan_vdev_mlme_api.h"
+#include "../../core/src/vdev_mgr_ops.h"
 
 #ifdef FEATURE_WLAN_DIAG_SUPPORT
 #include "host_diag_core_event.h"
@@ -10024,6 +10026,42 @@ void lim_send_csa_tx_complete(uint8_t vdev_id)
 		qdf_mem_free(chan_switch_tx_rsp);
 }
 
+/**
+ * lim_update_ap_csa_info() - Updates timestamp for last csa beacon time
+ * stamp and max channel switch time.
+ *
+ * @session: pointer to pe_session
+ *
+ * Return: None
+ */
+static void
+lim_update_ap_csa_info(struct pe_session *session)
+{
+	struct wlan_objmgr_vdev *vdev = NULL;
+	struct vdev_mlme_obj *vdev_mlme = NULL;
+	unsigned long current_time = qdf_mc_timer_get_system_time();
+	uint32_t max_stime = 0;
+
+	vdev = session->vdev;
+	if (!vdev) {
+		pe_err("VDEV is NULL");
+		return;
+	}
+
+	vdev_mlme = wlan_vdev_mlme_get_cmpt_obj(vdev);
+	if (!vdev_mlme) {
+		pe_err("VDEV_%d: VDEV_MLME is NULL", session->vdev_id);
+		return;
+	}
+
+	if (session->gLimChannelSwitch.switchCount == 0)
+		vdev_mlme->mgmt.ap.last_bcn_ts_ms = current_time;
+
+	wlan_util_vdev_mgr_compute_max_channel_switch_time(session->vdev,
+							   &max_stime);
+	vdev_mlme->mgmt.ap.max_chan_switch_time = max_stime;
+}
+
 void lim_process_ap_ecsa_timeout(void *data)
 {
 	struct pe_session *session = (struct pe_session *)data;
@@ -10079,6 +10117,8 @@ void lim_process_ap_ecsa_timeout(void *data)
 	if (session->gLimChannelSwitch.switchCount)
 		/* Decrement the beacon switch count */
 		session->gLimChannelSwitch.switchCount--;
+
+	lim_update_ap_csa_info(session);
 
 	/*
 	 * Send only g_sap_chanswitch_beacon_cnt beacons with CSA IE Set in
@@ -10460,6 +10500,8 @@ QDF_STATUS lim_ap_mlme_vdev_up_send(struct vdev_mlme_obj *vdev_mlme,
 	if (LIM_IS_NDI_ROLE(session))
 		return QDF_STATUS_SUCCESS;
 
+	if (!wlan_vdev_mlme_is_mlo_ap(vdev_mlme->vdev))
+		lim_configure_fd_for_existing_6ghz_sap(session, true);
 
 	msg.type = SIR_HAL_SEND_AP_VDEV_UP;
 	msg.bodyval = session->smeSessionId;
@@ -10624,7 +10666,9 @@ QDF_STATUS lim_ap_mlme_vdev_stop_send(struct vdev_mlme_obj *vdev_mlme,
 	if (!wlan_vdev_mlme_is_mlo_ap(vdev_mlme->vdev)) {
 		mlme_set_notify_co_located_ap_update_rnr(vdev_mlme->vdev, true);
 		lim_ap_mlme_vdev_rnr_notify(session);
+		lim_configure_fd_for_existing_6ghz_sap(session, false);
 	}
+
 	status =  lim_send_vdev_stop(session);
 
 	return status;
@@ -10710,7 +10754,7 @@ void lim_send_start_bss_confirm(struct mac_context *mac_ctx,
 	}
 }
 
-#if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_FEATURE_MLO_SAP)
+#if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_FEATURE_MULTI_LINK_SAP)
 void lim_update_cu_flag(tSirMacCapabilityInfo *pcap_info,
 			struct pe_session *pe_session)
 {
@@ -11739,4 +11783,110 @@ lim_convert_vht_chwidth_to_phy_chwidth(uint8_t ch_width, bool is_40)
 			break;
 	}
 	return CH_WIDTH_20MHZ;
+}
+
+void
+lim_configure_fd_for_existing_6ghz_sap(struct pe_session *session,
+				       bool is_sap_starting)
+{
+	uint8_t vdev_id_list[MAX_NUMBER_OF_CONC_CONNECTIONS];
+	qdf_freq_t freq_list[MAX_NUMBER_OF_CONC_CONNECTIONS];
+	struct wlan_objmgr_vdev *vdev;
+	struct vdev_mlme_obj *mlme_obj;
+	uint8_t vdev_num, i;
+	bool is_legacy_sap_present = false;
+
+	if (session->opmode != QDF_SAP_MODE)
+		return;
+
+	vdev_num = policy_mgr_get_sap_mode_info(session->mac_ctx->psoc,
+						freq_list, vdev_id_list);
+
+	for (i = 0; i < vdev_num; i++) {
+		if (vdev_id_list[i] ==  session->vdev_id)
+			continue;
+
+		if (!wlan_reg_is_6ghz_chan_freq(freq_list[i])) {
+			is_legacy_sap_present = true;
+			break;
+		}
+	}
+
+	if (is_sap_starting) {
+		/*
+		 * The SAP which is coming up is also in 6 GHz, therefore do not
+		 * modify the FD config for other 6 GHz SAPs.
+		 * vdev start will enable/disable the FD config for this SAP.
+		 */
+		if (wlan_reg_is_6ghz_chan_freq(session->curr_op_freq)) {
+			wlan_mlme_disable_fd_in_6ghz_band(session->vdev,
+							  is_legacy_sap_present);
+			return;
+		}
+
+		/*
+		 * Atleast one legacy SAP is present, disable FD for all the
+		 * existing 6 GHz SAPs.
+		 */
+		for (i = 0; i < vdev_num; i++) {
+			if (!wlan_reg_is_6ghz_chan_freq(freq_list[i]))
+				continue;
+			vdev = wlan_objmgr_get_vdev_by_id_from_psoc(
+							session->mac_ctx->psoc,
+							vdev_id_list[i],
+							WLAN_LEGACY_MAC_ID);
+			if (!vdev)
+				continue;
+
+			mlme_obj = wlan_vdev_mlme_get_cmpt_obj(vdev);
+			if (!mlme_obj) {
+				pe_err("Unable to get mlme obj for vdev %d",
+				       vdev_id_list[i]);
+				goto rel;
+			}
+
+			if (!wlan_mlme_is_fd_disabled_in_6ghz_band(vdev))  {
+				wlan_mlme_disable_fd_in_6ghz_band(vdev, true);
+				vdev_mgr_configure_fd_for_sap(mlme_obj);
+			}
+rel:
+			wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
+		}
+	} else {
+		if (wlan_reg_is_6ghz_chan_freq(session->curr_op_freq)) {
+			wlan_mlme_disable_fd_in_6ghz_band(session->vdev, false);
+			return;
+		}
+
+		if (is_legacy_sap_present)
+			return;
+		/*
+		 * If no other legacy SAP is present, and the last legacy SAP
+		 * is going down, re-enable FD for all the 6 GHz SAP.
+		 */
+		for (i = 0; i < vdev_num; i++) {
+			if (!wlan_reg_is_6ghz_chan_freq(freq_list[i]))
+				continue;
+			vdev = wlan_objmgr_get_vdev_by_id_from_psoc(
+							session->mac_ctx->psoc,
+							vdev_id_list[i],
+							WLAN_LEGACY_MAC_ID);
+			if (!vdev)
+				continue;
+
+			mlme_obj = wlan_vdev_mlme_get_cmpt_obj(vdev);
+			if (!mlme_obj) {
+				pe_err("Unable to get mlme obj for vdev %d",
+				       vdev_id_list[i]);
+				goto rel_vdev;
+			}
+
+			if (wlan_mlme_is_fd_disabled_in_6ghz_band(vdev)) {
+				wlan_mlme_disable_fd_in_6ghz_band(vdev, false);
+				vdev_mgr_configure_fd_for_sap(mlme_obj);
+			}
+rel_vdev:
+			wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
+		}
+	}
 }

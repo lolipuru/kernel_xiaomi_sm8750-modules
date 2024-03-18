@@ -79,6 +79,30 @@ QDF_STATUS wlan_ll_sap_switch_bearer_on_sta_connect_complete(
 						uint8_t vdev_id);
 
 /**
+ * wlan_ll_sap_switch_bearer_on_ll_sap_csa() - Switch bearer when LL_LT_SAP
+ * csa starts
+ * @psoc: Pointer to psoc
+ * @vdev_id: vdev id
+ * Return: QDF_STATUS_SUCCESS on successful bearer switch
+ *	   else failure
+ */
+QDF_STATUS wlan_ll_sap_switch_bearer_on_ll_sap_csa(
+					struct wlan_objmgr_psoc *psoc,
+					uint8_t vdev_id);
+
+/**
+ * wlan_ll_sap_switch_bearer_on_ll_sap_csa_complete() - Switch bearer
+ * when LL_LT_SAP csa completes
+ * @psoc: Pointer to psoc
+ * @vdev_id: vdev id
+ * Return: QDF_STATUS_SUCCESS on successful bearer switch
+ *         else failure
+ */
+QDF_STATUS wlan_ll_sap_switch_bearer_on_ll_sap_csa_complete(
+						struct wlan_objmgr_psoc *psoc,
+						uint8_t vdev_id);
+
+/**
  * wlan_ll_lt_sap_get_freq_list() - Get frequency list for LL_LT_SAP
  * @psoc: Pointer to psoc object
  * @freq_list: Pointer to wlan_ll_lt_sap_freq_list structure
@@ -107,6 +131,13 @@ QDF_STATUS wlan_ll_lt_sap_get_freq_list(
 qdf_freq_t wlan_ll_lt_sap_override_freq(struct wlan_objmgr_psoc *psoc,
 					uint32_t vdev_id,
 					qdf_freq_t chan_freq);
+
+/**
+ * wlan_ll_lt_sap_extract_ll_sap_cap() - Extract LL LT SAP capability
+ * @psoc: Pointer to psoc object
+ *
+ */
+void wlan_ll_lt_sap_extract_ll_sap_cap(struct wlan_objmgr_psoc *psoc);
 
 /**
  * wlan_get_ll_lt_sap_restart_freq() - Get restart frequency on which LL_LT_SAP
@@ -161,7 +192,6 @@ QDF_STATUS wlan_ll_sap_oob_connect_response(
 void wlan_ll_lt_sap_get_mcs(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
 			    uint8_t *mcs_set);
 
-#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
 /**
  * wlan_ll_lt_sap_continue_csa_after_tsf_rsp() - ll_sap process command function
  * @msg: scheduler msg
@@ -210,41 +240,15 @@ uint64_t wlan_ll_sap_get_target_tsf(struct wlan_objmgr_vdev *vdev,
  */
 uint64_t
 wlan_ll_sap_get_target_tsf_for_vdev_restart(struct wlan_objmgr_vdev *vdev);
-#else
-static inline
-QDF_STATUS wlan_ll_lt_sap_continue_csa_after_tsf_rsp(struct scheduler_msg *msg)
-{
-	return QDF_STATUS_E_NOSUPPORT;
-}
 
-static inline
-QDF_STATUS wlan_ll_sap_get_tsf_stats_before_csa(struct wlan_objmgr_psoc *psoc,
-						struct wlan_objmgr_vdev *vdev)
-{
-	return QDF_STATUS_E_NOSUPPORT;
-}
-
-static inline
-QDF_STATUS wlan_ll_sap_reset_target_tsf_before_csa(
-					struct wlan_objmgr_psoc *psoc,
-					struct wlan_objmgr_vdev *vdev)
-{
-	return QDF_STATUS_E_NOSUPPORT;
-}
-
-static inline
-uint64_t wlan_ll_sap_get_target_tsf(struct wlan_objmgr_vdev *vdev,
-				    enum ll_sap_get_target_tsf get_tsf)
-{
-	return 0;
-}
-
-static inline uint64_t
-wlan_ll_sap_get_target_tsf_for_vdev_restart(struct wlan_objmgr_vdev *vdev)
-{
-	return 0;
-}
-#endif
+/**
+ * wlan_ll_sap_is_bearer_switch_req_on_csa() - Check whether bearer switch
+ * is required for LL_LT_SAP CSA or not
+ * @psoc: psoc pointer
+ * @vdev_id: vdev id
+ */
+bool wlan_ll_sap_is_bearer_switch_req_on_csa(struct wlan_objmgr_psoc *psoc,
+					     uint8_t vdev_id);
 #else
 static inline wlan_bs_req_id
 wlan_ll_lt_sap_bearer_switch_get_id(struct wlan_objmgr_vdev *vdev)
@@ -258,6 +262,11 @@ wlan_ll_lt_sap_switch_bearer_to_ble(
 				struct wlan_bearer_switch_request *bs_request)
 {
 	return QDF_STATUS_E_FAILURE;
+}
+
+static inline void
+wlan_ll_lt_sap_extract_ll_sap_cap(struct wlan_objmgr_psoc *psoc)
+{
 }
 
 static inline QDF_STATUS
@@ -275,6 +284,22 @@ wlan_ll_sap_switch_bearer_on_sta_connect_complete(struct wlan_objmgr_psoc *psoc,
 						  uint8_t vdev_id)
 {
 	return QDF_STATUS_SUCCESS;
+}
+
+static inline
+QDF_STATUS wlan_ll_sap_switch_bearer_on_ll_sap_csa(
+					struct wlan_objmgr_psoc *psoc,
+					uint8_t vdev_id)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline
+QDF_STATUS wlan_ll_sap_switch_bearer_on_ll_sap_csa_complete(
+						struct wlan_objmgr_psoc *psoc,
+						uint8_t vdev_id)
+{
+	return QDF_STATUS_E_NOSUPPORT;
 }
 
 static inline
@@ -341,6 +366,13 @@ static inline uint64_t
 wlan_ll_sap_get_target_tsf_for_vdev_restart(struct wlan_objmgr_vdev *vdev)
 {
 	return 0;
+}
+
+static inline
+bool wlan_ll_sap_is_bearer_switch_req_on_csa(struct wlan_objmgr_psoc *psoc,
+					     uint8_t vdev_id)
+{
+	return false;
 }
 #endif /* WLAN_FEATURE_LL_LT_SAP */
 #endif /* _WLAN_LL_LT_SAP_API_H_ */

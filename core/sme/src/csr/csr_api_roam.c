@@ -86,6 +86,7 @@
 #include <wlan_vdev_mlme_ser_if.h>
 #include "wlan_mlo_mgr_sta.h"
 #include "wlan_mlo_mgr_roam.h"
+#include "wlan_ll_sap_api.h"
 
 #define MAX_PWR_FCC_CHAN_12 8
 #define MAX_PWR_FCC_CHAN_13 2
@@ -3329,6 +3330,8 @@ void csr_roam_joined_state_msg_processor(struct mac_context *mac, void *msg_buf)
 				eCSR_ASSOC_STATE_TYPE_INFRA_CONNECTED;
 			roam_info->fReassocReq =
 				pUpperLayerAssocCnf->reassocReq;
+			roam_info->is_fils_connection =
+				pUpperLayerAssocCnf->is_fils_connection;
 			status = csr_roam_call_callback(mac, sessionId,
 						       roam_info,
 						       eCSR_ROAM_INFRA_IND,
@@ -3860,7 +3863,7 @@ csr_send_assoc_ind_to_upper_layer_cnf_msg(struct mac_context *mac,
 			sme_err("Assoc Ie length is too long");
 		}
 	}
-
+	cnf->is_fils_connection = ind->is_fils_connection;
 	msg.type = eWNI_SME_UPPER_LAYER_ASSOC_CNF;
 	msg.bodyptr = cnf;
 	sys_process_mmh_msg(mac, &msg);
@@ -7224,11 +7227,27 @@ QDF_STATUS csr_send_ext_change_freq(struct mac_context *mac_ctx,
 	return status;
 }
 
+QDF_STATUS csr_send_csa_restart_req(uint8_t vdev_id)
+{
+	struct scheduler_msg message = {0};
+	QDF_STATUS status;
+
+	/* Serialize the req through MC thread */
+	message.bodyval = vdev_id;
+	message.type    = eWNI_SME_CSA_RESTART_REQ;
+	status = scheduler_post_message(QDF_MODULE_ID_SME, QDF_MODULE_ID_PE,
+					QDF_MODULE_ID_PE, &message);
+
+	if (QDF_IS_STATUS_ERROR(status))
+		sme_err("scheduler_post_msg failed!(err=%d)", status);
+
+	return status;
+}
+
 QDF_STATUS csr_csa_restart(struct mac_context *mac_ctx, uint8_t vdev_id)
 {
 	QDF_STATUS status;
 	struct wlan_objmgr_vdev *vdev;
-	struct scheduler_msg message = {0};
 
 	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(mac_ctx->psoc, vdev_id,
 						    WLAN_LEGACY_MAC_ID);
@@ -7237,20 +7256,14 @@ QDF_STATUS csr_csa_restart(struct mac_context *mac_ctx, uint8_t vdev_id)
 		return QDF_STATUS_E_FAILURE;
 	}
 
-	if_mgr_deliver_event(vdev, WLAN_IF_MGR_EV_AP_CSA_START, NULL);
+	status = if_mgr_deliver_event(vdev, WLAN_IF_MGR_EV_AP_CSA_START, NULL);
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
 
-	/* Serialize the req through MC thread */
-	message.bodyval = vdev_id;
-	message.type    = eWNI_SME_CSA_RESTART_REQ;
-	status = scheduler_post_message(QDF_MODULE_ID_SME, QDF_MODULE_ID_PE,
-					QDF_MODULE_ID_PE, &message);
-	if (!QDF_IS_STATUS_SUCCESS(status)) {
-		sme_err("scheduler_post_msg failed!(err=%d)", status);
-		status = QDF_STATUS_E_FAILURE;
-	}
+	if (QDF_IS_STATUS_SUCCESS(status) &&
+	    wlan_ll_sap_is_bearer_switch_req_on_csa(mac_ctx->psoc, vdev_id))
+		return status;
 
-	return status;
+	return csr_send_csa_restart_req(vdev_id);
 }
 
 QDF_STATUS csr_roam_send_chan_sw_ie_request(struct mac_context *mac_ctx,

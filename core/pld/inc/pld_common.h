@@ -1230,6 +1230,15 @@ bool pld_is_direct_link_supported(struct device *dev);
  */
 bool pld_audio_is_direct_link_supported(struct device *dev);
 
+/**
+ * pld_is_audio_shared_iommu_group() - whether iommu group is shared with
+ *  audio or not
+ * @dev: device
+ *
+ * Return: true if supported
+ *         false on failure or if not supported
+ */
+bool pld_is_audio_shared_iommu_group(struct device *dev);
 
 /**
  * pld_force_wake_request_sync() - Request to awake MHI synchronously
@@ -2144,50 +2153,24 @@ int pld_get_fw_lpass_shared_mem(struct device *dev, dma_addr_t *iova,
 }
 #endif
 
-#ifdef FEATURE_OEM_DATA
-
-/**
- * pld_oem_event_smem_start()- Start communication channel to smem DLKM
- * @name: name of client
- *
- * Return: negative on error or ID on success
- */
-int pld_oem_event_smem_start(char *name);
-
-/**
- * pld_oem_event_smem_stop()- Stop communication channel to smem DLKM
- * @id: smem ID
- *
- * Return: 0 on success else failure code
- */
-int pld_oem_event_smem_stop(int id);
-
+#ifdef FEATURE_SMEM_MAILBOX
 /**
  * pld_oem_event_smem_write()- Write to smem DLKM
- * @id: smem ID
+ * @dev: pointer to device id
  * @flags: flags for message
  * @data: payload to send
+ * @len: length of payload
  *
  * Return: 0 on success else failure code
  */
-int pld_oem_event_smem_write(int id, int flags, const __u8 *data);
+int pld_oem_event_smem_write(struct device *dev, int flags, const __u8 *data,
+			     uint32_t len);
 
 #else
 
 static inline
-int pld_oem_event_smem_start(char *name)
-{
-	return 0;
-}
-
-static inline
-int pld_oem_event_smem_stop(int id)
-{
-	return 0;
-}
-
-static inline
-int pld_oem_event_smem_write(int id, int flags, const __u8 *data)
+int pld_oem_event_smem_write(struct device *dev, int flags, const __u8 *data,
+			     uint32_t len)
 {
 	return 0;
 }

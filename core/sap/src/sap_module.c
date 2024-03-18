@@ -209,7 +209,7 @@ void wlansap_context_put(struct sap_context *ctx)
 	qdf_mutex_release(&sap_context_lock);
 }
 
-struct sap_context *sap_create_ctx(void)
+struct sap_context *sap_create_ctx(void *link_info)
 {
 	struct sap_context *sap_ctx;
 	QDF_STATUS status;
@@ -226,6 +226,8 @@ struct sap_context *sap_create_ctx(void)
 		qdf_mem_free(sap_ctx);
 		return NULL;
 	}
+
+	sap_ctx->user_context = link_info;
 	sap_debug("Exit");
 
 	return sap_ctx;
@@ -451,6 +453,9 @@ QDF_STATUS sap_destroy_ctx(struct sap_context *sap_ctx)
 		sap_err("Invalid SAP pointer");
 		return QDF_STATUS_E_FAULT;
 	}
+
+	sap_ctx->user_context = NULL;
+
 	/* Cleanup SAP control block */
 	/*
 	 * wlansap_context_put will release actual sap_ctx memory
@@ -535,8 +540,6 @@ uint16_t wlansap_check_cc_intf(struct sap_context *sap_ctx)
   * wlansap_set_scan_acs_channel_params() - Config scan and channel parameters.
   * config:                                Pointer to the SAP config
   * psap_ctx:                               Pointer to the SAP Context.
-  * pusr_context:                           Parameter that will be passed
-  *                                         back in all the SAP callback events.
   *
   * This api function is used to copy Scan and Channel parameters from sap
   * config to sap context.
@@ -546,8 +549,7 @@ uint16_t wlansap_check_cc_intf(struct sap_context *sap_ctx)
   */
 static QDF_STATUS
 wlansap_set_scan_acs_channel_params(struct sap_config *config,
-				    struct sap_context *psap_ctx,
-				    void *pusr_context)
+				    struct sap_context *psap_ctx)
 {
 	struct mac_context *mac;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
@@ -583,10 +585,6 @@ wlansap_set_scan_acs_channel_params(struct sap_config *config,
 		sap_err("get_auto_channel_weight failed");
 
 	psap_ctx->auto_channel_select_weight = auto_channel_select_weight;
-	sap_debug("auto_channel_select_weight %d",
-		  psap_ctx->auto_channel_select_weight);
-
-	psap_ctx->user_context = pusr_context;
 	psap_ctx->enableOverLapCh = config->enOverLapCh;
 	psap_ctx->acs_cfg = &config->acs_cfg;
 	psap_ctx->ch_width_orig = config->acs_cfg.ch_width;
@@ -786,7 +784,7 @@ void wlan_sap_set_sap_ctx_acs_cfg(struct sap_context *sap_ctx,
 
 QDF_STATUS wlansap_start_bss(struct sap_context *sap_ctx,
 			     sap_event_cb sap_event_cb,
-			     struct sap_config *config, void *user_context)
+			     struct sap_config *config)
 {
 	struct sap_sm_event sap_event;        /* State machine event */
 	QDF_STATUS qdf_status = QDF_STATUS_SUCCESS;
@@ -836,7 +834,6 @@ QDF_STATUS wlansap_start_bss(struct sap_context *sap_ctx,
 
 	sap_ctx->auto_channel_select_weight = auto_channel_select_weight;
 
-	sap_ctx->user_context = user_context;
 	sap_ctx->enableOverLapCh = config->enOverLapCh;
 	sap_ctx->acs_cfg = &config->acs_cfg;
 	sap_ctx->sec_ch_freq = config->sec_ch_freq;
@@ -2828,8 +2825,7 @@ void sap_undo_acs(struct sap_context *sap_ctx, struct sap_config *sap_cfg)
 
 QDF_STATUS wlansap_acs_chselect(struct sap_context *sap_context,
 				sap_event_cb acs_event_callback,
-				struct sap_config *config,
-				void *pusr_context)
+				struct sap_config *config)
 {
 	QDF_STATUS qdf_status = QDF_STATUS_E_FAILURE;
 	struct mac_context *mac;
@@ -2848,14 +2844,14 @@ QDF_STATUS wlansap_acs_chselect(struct sap_context *sap_context,
 
 	sap_context->acs_cfg = &config->acs_cfg;
 	sap_context->ch_width_orig = config->acs_cfg.ch_width;
-	sap_context->phyMode = config->acs_cfg.hw_mode;
+	if (sap_context->fsm_state != SAP_STARTED)
+		sap_context->phyMode = config->acs_cfg.hw_mode;
 
 	/*
 	 * Now, configure the scan and ACS channel params
 	 * to issue a scan request.
 	 */
-	wlansap_set_scan_acs_channel_params(config, sap_context,
-					    pusr_context);
+	wlansap_set_scan_acs_channel_params(config, sap_context);
 
 	/*
 	 * Copy the HDD callback function to report the
@@ -3832,7 +3828,7 @@ int wlansap_update_sap_chan_list(struct sap_config *sap_config,
 	uint32_t *acs_cfg_freq_list;
 	uint32_t *master_freq_list;
 	uint32_t i;
-	bool old_acs_2g_only = true, acs_2g_only_new = true;
+	bool old_acs_2g_only = false, acs_2g_only_new = true;
 
 	acs_cfg_freq_list = qdf_mem_malloc(count * sizeof(uint32_t));
 	if (!acs_cfg_freq_list)
@@ -3849,6 +3845,7 @@ int wlansap_update_sap_chan_list(struct sap_config *sap_config,
 		return -ENOMEM;
 
 	if (sap_config->acs_cfg.master_ch_list_count) {
+		old_acs_2g_only = true;
 		for (i = 0; i < sap_config->acs_cfg.master_ch_list_count; i++)
 			if (sap_config->acs_cfg.master_freq_list &&
 			    !WLAN_REG_IS_24GHZ_CH_FREQ(
@@ -4298,9 +4295,9 @@ void wlansap_dump_acs_ch_freq(struct sap_context *sap_context)
 	}
 
 	if (sap_context->fsm_state == SAP_STARTED)
-		sap_info("ACS dump DCS freq=%d", sap_context->dcs_ch_freq);
+		sap_info("DCS freq %d", sap_context->dcs_ch_freq);
 	else
-		sap_info("ACS dump ch_freq=%d", sap_context->chan_freq);
+		sap_info("ACS freq %d", sap_context->chan_freq);
 }
 
 void wlansap_set_acs_ch_freq(struct sap_context *sap_context,
@@ -4313,12 +4310,10 @@ void wlansap_set_acs_ch_freq(struct sap_context *sap_context,
 
 	if (sap_context->fsm_state == SAP_STARTED) {
 		sap_context->dcs_ch_freq = ch_freq;
-		sap_debug("ACS configuring dcs_ch_freq=%d",
-			  sap_context->dcs_ch_freq);
+		sap_debug("Configuring DCS freq %d", sap_context->dcs_ch_freq);
 	} else {
 		sap_context->chan_freq = ch_freq;
-		sap_debug("ACS configuring ch_freq=%d",
-			  sap_context->chan_freq);
+		sap_debug("configuring ACS freq %d", sap_context->chan_freq);
 	}
 }
 #else
@@ -4341,7 +4336,7 @@ void wlansap_set_acs_ch_freq(struct sap_context *sap_context,
 	}
 
 	sap_context->chan_freq = ch_freq;
-	sap_debug("ACS configuring ch_freq=%d", sap_context->chan_freq);
+	sap_debug("Configuring freq %d", sap_context->chan_freq);
 }
 #endif
 
@@ -4413,15 +4408,21 @@ QDF_STATUS wlansap_sort_channel_list(uint8_t vdev_id, qdf_list_t *list,
 				     struct sap_sel_ch_info *ch_info)
 {
 	struct mac_context *mac_ctx;
+	QDF_STATUS status;
 
 	mac_ctx = sap_get_mac_context();
 	if (!mac_ctx) {
 		sap_err("Invalid MAC context");
-		return QDF_STATUS_E_FAILURE;
+		return QDF_STATUS_E_NULL_VALUE;
 	}
 
-	sap_sort_channel_list(mac_ctx, vdev_id, list,
-			      ch_info, NULL, NULL);
+	status = sap_sort_channel_list(mac_ctx, vdev_id, list,
+				       ch_info, NULL, NULL);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		sap_err("vdev %d failed to sort sap channel list",
+			vdev_id);
+		return QDF_STATUS_E_FAILURE;
+	}
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -4431,8 +4432,8 @@ void wlansap_free_chan_info(struct sap_sel_ch_info *ch_param)
 	sap_chan_sel_exit(ch_param);
 }
 
-void wlansap_get_user_config_acs_ch_list(uint8_t vdev_id,
-					 struct scan_filter *filter)
+QDF_STATUS wlansap_get_user_config_acs_ch_list(uint8_t vdev_id,
+					       struct scan_filter *filter)
 {
 	struct mac_context *mac_ctx;
 	struct sap_context *sap_ctx;
@@ -4441,31 +4442,33 @@ void wlansap_get_user_config_acs_ch_list(uint8_t vdev_id,
 	mac_ctx = sap_get_mac_context();
 	if (!mac_ctx) {
 		sap_err("Invalid MAC context");
-		return;
+		return QDF_STATUS_E_NULL_VALUE;
 	}
 
 	if (vdev_id >= SAP_MAX_NUM_SESSION)
-		return;
+		return QDF_STATUS_E_INVAL;
 
 	sap_ctx = mac_ctx->sap.sapCtxList[vdev_id].sap_context;
 
 	if (!sap_ctx) {
 		sap_err("vdev %d sap_ctx is NULL", vdev_id);
-		return;
+		return QDF_STATUS_E_NULL_VALUE;
 	}
 
 	if (!sap_ctx->acs_cfg) {
 		sap_err("vdev %d acs_cfg is NULL", vdev_id);
-		return;
+		return QDF_STATUS_E_NULL_VALUE;
 	}
 
 	ch_count = sap_ctx->acs_cfg->master_ch_list_count;
 
 	if (!ch_count || ch_count > NUM_CHANNELS)
-		return;
+		return QDF_STATUS_E_INVAL;
 
 	filter->num_of_channels = ch_count;
 	qdf_mem_copy(filter->chan_freq_list, sap_ctx->acs_cfg->master_freq_list,
 		     filter->num_of_channels *
 		     sizeof(filter->chan_freq_list[0]));
+
+	return QDF_STATUS_SUCCESS;
 }

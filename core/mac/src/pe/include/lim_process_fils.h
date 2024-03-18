@@ -364,20 +364,166 @@ static inline QDF_STATUS aead_encrypt_assoc_req(struct mac_context *mac_ctx,
 }
 
 static inline QDF_STATUS aead_decrypt_assoc_rsp(struct mac_context *mac_ctx,
-				  struct pe_session *session,
-				  tDot11fAssocResponse *ar,
-				  uint8_t *p_frame, uint32_t *n_frame)
+						struct pe_session *session,
+						tDot11fAssocResponse *ar,
+						uint8_t *p_frame,
+						uint32_t *n_frame)
 {
 	return QDF_STATUS_SUCCESS;
 }
 
-static inline bool lim_verify_fils_params_assoc_rsp(struct mac_context *mac_ctx,
-			struct pe_session *session_entry,
-			tpSirAssocRsp assoc_rsp,
-			tLimMlmAssocCnf *assoc_cnf)
+static inline bool
+lim_verify_fils_params_assoc_rsp(struct mac_context *mac_ctx,
+				 struct pe_session *session_entry,
+				 tpSirAssocRsp assoc_rsp,
+				 tLimMlmAssocCnf *assoc_cnf)
 
 {
 	return true;
 }
-#endif
+#endif /* WLAN_FEATURE_FILS_SK */
+
+#ifdef WLAN_FEATURE_FILS_SK_SAP
+/**
+ * lim_cache_fils_key() - Cache FILS temporal key for FILS connection.
+ * @pe_session: PE Session
+ * @unicast: 1 for unicast, 0 for broadcast.
+ * @key_id: Index on which key needs to cached.
+ * @key_length: Length of temporal key to be cached.
+ * @key: Key to be cached.
+ * @mac_addr: MAC Address for peer.
+ *
+ * Return: QDF_STATUS
+ */
+
+QDF_STATUS lim_cache_fils_key(struct pe_session *pe_session, bool unicast,
+			      uint8_t key_id, uint16_t key_length,
+			      uint8_t *key, struct qdf_mac_addr *mac_addr);
+
+/**
+ * lim_set_fils_key() - Set FILS temporal key for FILS connection.
+ * @pe_session: PE Session
+ * @unicast: 1 for unicast, 0 for broadcast.
+ * @key_idx: Index on which key needs to cached.
+ * @mac_addr: MAC Address for peer.
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS lim_set_fils_key(struct pe_session *pe_session, bool unicast,
+			    uint8_t key_idx);
+
+/**
+ * lim_install_fils_key() - Install FILS temporal key for FILS connection.
+ * @pe_session: PE Session
+ * @mac_addr: MAC Address for peer.
+ *
+ * Return: QDF_STATUS
+ */
+
+QDF_STATUS lim_install_fils_key(struct pe_session *pe_session,
+				const void *mac_addr);
+/**
+ * aead_encrypt_assoc_rsp() - Encrypt FILS IE's in Assoc Response
+ * @mac_ctx: mac context
+ * @pe_session: PE session
+ * @frame: packed frame buffer
+ * @payload: length of @frame
+ * @peer_addr Peer Mac Address of STA
+ *
+ * This API is used to encrypt all the IEs present after FILS session IE
+ * in Association response frame
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS aead_encrypt_assoc_rsp(struct mac_context *mac_ctx,
+				  struct pe_session *pe_session,
+				  uint8_t *frame, uint32_t *payload,
+				  tSirMacAddr peer_addr);
+
+/**
+ * aead_decrypt_assoc_req() - API for AEAD decryption in FILS connection
+ * @mac_ctx: MAC context
+ * @session: PE session
+ * @assoc_req: Assoc Request frame structure
+ * @p_frame: frame buffer received
+ * @n_frame: length of @p_frame
+ * @peer_addr Peer Mac Address of STA
+ *
+ * This API is used to decrypt the AEAD encrypted part of FILS Assoc Request
+ * and populate the decrypted FILS IE's to Assoc request frame structure.
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS aead_decrypt_assoc_req(struct mac_context *mac_ctx,
+				  struct pe_session *session,
+				  tDot11fAssocRequest *assoc_req,
+				  uint8_t *p_frame, uint32_t *n_frame,
+				  tSirMacAddr peer_mac_addr);
+/**
+ * lim_verify_fils_params_assoc_req() - Verify FILS params in assoc request
+ * @mac_ctx: Mac context
+ * @session_entry: PE session
+ * @assoc_req: Assoc request received
+ * @peer_mac_addr: Peer Mac Address
+ *
+ * This API is used to match FILS params received in Assoc request
+ * with Assoc params received/derived at the Authentication stage
+ *
+ * Return: True, if successfully matches. False, otherwise
+ */
+bool lim_verify_fils_params_assoc_req(struct mac_context *mac_ctx,
+				      struct pe_session *session_entry,
+				      tpSirAssocReq assoc_req,
+				      tSirMacAddr peer_mac_addr);
+
+#else
+static inline QDF_STATUS lim_cache_fils_key(struct pe_session *pe_session,
+					    bool unicast, uint8_t key_id,
+					    uint16_t key_length, uint8_t *key,
+					    struct qdf_mac_addr *mac_addr)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline QDF_STATUS lim_set_fils_key(struct pe_session *pe_session,
+					  bool unicast, uint8_t key_idx)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline QDF_STATUS lim_install_fils_key(struct pe_session *pe_session,
+					       const void *mac_addr)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline QDF_STATUS aead_encrypt_assoc_rsp(struct mac_context *mac_ctx,
+						struct pe_session *pe_session,
+						uint8_t *frame,
+						uint32_t *payload,
+						tSirMacAddr peer_addr)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline QDF_STATUS aead_decrypt_assoc_req(struct mac_context *mac_ctx,
+						struct pe_session *session,
+						tDot11fAssocRequest *assoc_req,
+						uint8_t *p_frame,
+						uint32_t *n_frame,
+						tSirMacAddr peer_addr)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline bool
+lim_verify_fils_params_assoc_req(struct mac_context *mac_ctx,
+				 struct pe_session *session_entry,
+				 tpSirAssocReq assoc_req,
+				 tSirMacAddr peer_mac_addr)
+
+{
+	return true;
+}
+#endif /* WLAN_FEATURE_FILS_SK_SAP */
 #endif

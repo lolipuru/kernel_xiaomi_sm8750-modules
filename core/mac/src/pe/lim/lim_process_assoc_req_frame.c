@@ -45,6 +45,7 @@
 #include "wlan_utility.h"
 #include "wlan_crypto_global_api.h"
 #include "lim_mlo.h"
+#include "lim_process_fils.h"
 #include <son_api.h>
 
 /**
@@ -258,9 +259,12 @@ static bool lim_chk_assoc_req_parse_error(struct mac_context *mac_ctx,
 	enum wlan_status_code wlan_status;
 
 	if (sub_type == LIM_ASSOC)
-		wlan_status = sir_convert_assoc_req_frame2_struct(mac_ctx, frm_body,
-							     frame_len,
-							     assoc_req);
+		wlan_status = sir_convert_assoc_req_frame2_struct(mac_ctx,
+								  session,
+								  frm_body,
+								  frame_len,
+								  assoc_req,
+								  sa);
 	else
 		wlan_status = sir_convert_reassoc_req_frame2_struct(mac_ctx,
 						frm_body, frame_len, assoc_req);
@@ -1282,7 +1286,13 @@ static bool lim_process_assoc_req_no_sta_ctx(struct mac_context *mac_ctx,
 		*auth_type = sta_pre_auth_ctx->authType;
 		if (sta_pre_auth_ctx->authType == eSIR_AUTH_TYPE_SAE)
 			assoc_req->is_sae_authenticated = true;
-		lim_delete_pre_auth_node(mac_ctx, sa);
+
+		/* For FILS Connection we need pre auth node for anonce snonce
+		 * and key installation so keeping it here and freeing
+		 * it once connection is complete
+		 */
+		if (sta_pre_auth_ctx->authType != SIR_FILS_SK_WITHOUT_PFS)
+			lim_delete_pre_auth_node(mac_ctx, sa);
 	}
 	/* All is well. Assign AID (after else part) */
 	return true;
@@ -2512,6 +2522,46 @@ static void lim_update_ap_ext_cap(struct pe_session *session,
 	lim_set_sap_peer_twt_cap(session, ext_cap);
 }
 
+static bool lim_check_multi_ap(struct mac_context *mac_ctx, tSirMacAddr sa,
+			       struct pe_session *session, uint8_t *frm_body,
+			       uint32_t frame_len, uint8_t sub_type)
+{
+	const u8 *multi_ap_ie = NULL;
+	u8 multi_ap_value = 0;
+	uint32_t map_cap = 0;
+
+	map_cap = wlan_get_multi_ap_cap(session->vdev);
+
+	if (!map_cap || map_cap & SIR_MULTI_AP_FRONTHAUL_BSS) {
+		pe_err("ignore multi-ap ie check map_cap :%u", map_cap);
+		return true;
+	}
+
+	multi_ap_ie = wlan_get_vendor_ie_ptr_from_oui(SIR_MAC_MULTI_AP_OUI,
+						      SIR_MAC_MULTI_AP_OUI_SIZE,
+						      frm_body + LIM_ASSOC_REQ_IE_OFFSET,
+						      frame_len - LIM_ASSOC_REQ_IE_OFFSET);
+
+	if (multi_ap_ie) {
+		if (multi_ap_ie[1] >= SIR_MULTI_AP_OUI_R1_LEN &&
+		    multi_ap_ie[6] == SIR_MULTI_AP_EXT_SUB_TYPE &&
+		    multi_ap_ie[7] == SIR_MULTI_AP_EXT_SUB_LEN)
+			multi_ap_value = multi_ap_ie[8];
+		else
+			pe_err("Multi-AP IE missed or invalid subelement");
+	}
+
+	if (!(multi_ap_value & SIR_MULTI_AP_BACKHAUL_STA)) {
+		lim_send_assoc_rsp_mgmt_frame(mac_ctx,
+					      STATUS_ASSOC_DENIED_UNSPEC,
+					      1, sa, sub_type, 0,
+					      session, false);
+		pe_err("SOFTAP send denied status assoc rsp");
+		return false;
+	}
+	return true;
+}
+
 QDF_STATUS lim_proc_assoc_req_frm_cmn(struct mac_context *mac_ctx,
 				      uint8_t sub_type,
 				      struct pe_session *session,
@@ -2640,8 +2690,23 @@ QDF_STATUS lim_proc_assoc_req_frm_cmn(struct mac_context *mac_ctx,
 					  &akm_type))
 		goto error;
 
+	/* If it is FILS connection, check is FILS params are matching
+	 * with Authentication stage.
+	 */
+	if (!lim_verify_fils_params_assoc_req(mac_ctx, session,
+					      assoc_req, sa)) {
+		pe_err("FILS params does not match for sta:" QDF_MAC_ADDR_FMT,
+		       QDF_MAC_ADDR_REF(sa));
+		goto error;
+	}
 	/* Update ap ext cap */
 	lim_update_ap_ext_cap(session, assoc_req);
+
+	if (!lim_check_multi_ap(mac_ctx, sa, session,
+				frm_body, frame_len, sub_type)) {
+		pe_debug("Backhal BSS reject client connect it");
+		goto error;
+	}
 
 	/* Extract pre-auth context for the STA, if any. */
 	sta_pre_auth_ctx = lim_search_pre_auth_list(mac_ctx, sa);
@@ -3058,10 +3123,8 @@ static void fill_mlm_assoc_ind_vht(tpSirAssocReq assocreq,
 		assocind->rx_stbc = assocreq->VHTCaps.rxSTBC;
 
 		/* ch width */
-		assocind->ch_width = stads->vhtSupportedChannelWidthSet ?
-			eHT_CHANNEL_WIDTH_80MHZ :
-			stads->htSupportedChannelWidthSet ?
-			eHT_CHANNEL_WIDTH_40MHZ : eHT_CHANNEL_WIDTH_20MHZ;
+		assocind->ch_width = lim_convert_channel_width_enum(
+							stads->ch_width);
 
 		/* mode */
 		assocind->mode = SIR_SME_PHY_MODE_VHT;
@@ -3070,13 +3133,7 @@ static void fill_mlm_assoc_ind_vht(tpSirAssocReq assocreq,
 	}
 }
 
-/**
- *lim_convert_channel_width_enum() - map between two channel width enums
- *@ch_width: channel width of enum type phy_ch_width
- *
- *Return: channel width of enum type tSirMacHTChannelWidth
- */
-static tSirMacHTChannelWidth
+tSirMacHTChannelWidth
 lim_convert_channel_width_enum(enum phy_ch_width ch_width)
 {
 	switch (ch_width) {
@@ -3115,7 +3172,32 @@ lim_convert_channel_width_enum(enum phy_ch_width ch_width)
 static uint32_t lim_convert_rate_flags_enum(uint32_t rate_flags,
 					    enum phy_ch_width ch_width)
 {
-	if (rate_flags & (TX_RATE_HE160 |
+	if (rate_flags & (TX_RATE_EHT320 |
+			  TX_RATE_EHT160 |
+			  TX_RATE_EHT80 |
+			  TX_RATE_EHT40 |
+			  TX_RATE_EHT20)) {
+		switch (ch_width) {
+		case CH_WIDTH_20MHZ:
+			rate_flags |= TX_RATE_EHT20;
+			break;
+		case CH_WIDTH_40MHZ:
+			rate_flags |= TX_RATE_EHT40;
+			break;
+		case CH_WIDTH_80MHZ:
+			rate_flags |= TX_RATE_EHT80;
+			break;
+		case CH_WIDTH_160MHZ:
+		case CH_WIDTH_80P80MHZ:
+			rate_flags |= TX_RATE_EHT160;
+			break;
+		case CH_WIDTH_320MHZ:
+			rate_flags |= TX_RATE_EHT320;
+			break;
+		default:
+			break;
+		}
+	} else if (rate_flags & (TX_RATE_HE160 |
 			  TX_RATE_HE80 |
 			  TX_RATE_HE40 |
 			  TX_RATE_HE20)) {

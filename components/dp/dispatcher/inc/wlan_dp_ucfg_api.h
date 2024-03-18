@@ -76,6 +76,17 @@ QDF_STATUS ucfg_dp_update_link_mac_addr(struct wlan_objmgr_vdev *vdev,
 					bool is_link_switch);
 
 /**
+ * ucfg_dp_update_def_link() - update DP interface default link
+ * @psoc: psoc handle
+ * @intf_mac: interface MAC address
+ * @vdev: objmgr vdev handle to set the def_link in dp_intf
+ *
+ */
+void ucfg_dp_update_def_link(struct wlan_objmgr_psoc *psoc,
+			     struct qdf_mac_addr *intf_mac,
+			     struct wlan_objmgr_vdev *vdev);
+
+/**
  * ucfg_dp_update_intf_mac() - update DP interface MAC address
  * @psoc: psoc handle
  * @cur_mac: Current MAC address
@@ -1929,4 +1940,8 @@ QDF_STATUS ucfg_dp_lapb_handle_app_ind(qdf_nbuf_t nbuf)
  * Return: Return true if ML mon mode supported
  */
 bool ucfg_dp_ml_mon_supported(void);
+#ifdef WLAN_FEATURE_FILS_SK_SAP
+QDF_STATUS ucfg_dp_hlp_state_update(struct wlan_objmgr_vdev *vdev,
+				    struct qdf_mac_addr *peer_addr);
+#endif
 #endif /* _WLAN_DP_UCFG_API_H_ */

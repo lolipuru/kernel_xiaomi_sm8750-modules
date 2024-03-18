@@ -130,6 +130,8 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 		session->mlo_link_info.bss_param_change = true;
 		pe_debug("vdev id %d DSParams changed, critical update",
 			 wlan_vdev_get_id(session->vdev));
+		wlan_vdev_mlme_op_flags_set(session->vdev,
+					    WLAN_VDEV_OP_CU_CAT2);
 	}
 
 	qdf_mem_copy(&link_ie->link_wmm_params, &bcn_2->WMMParams,
@@ -145,6 +147,8 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 		session->mlo_link_info.bss_param_change = true;
 		pe_debug("vdev id %d EDCAParamSet changed, critical update",
 			 wlan_vdev_get_id(session->vdev));
+		wlan_vdev_mlme_op_flags_set(session->vdev,
+					    WLAN_VDEV_OP_CU_CAT2);
 	}
 
 	if (qdf_mem_cmp(&link_ie->link_csa, &bcn_2->ChanSwitchAnn,
@@ -155,6 +159,8 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 		session->mlo_link_info.bss_param_change = true;
 		pe_debug("vdev id %d csa added, critical update",
 			 wlan_vdev_get_id(session->vdev));
+		wlan_vdev_mlme_op_flags_set(session->vdev,
+					    WLAN_VDEV_OP_CU_CAT1);
 	}
 
 	if (qdf_mem_cmp(&link_ie->link_ecsa, &bcn_2->ext_chan_switch_ann,
@@ -165,6 +171,8 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 		session->mlo_link_info.bss_param_change = true;
 		pe_debug("vdev id %d ecsa added, critical update",
 			 wlan_vdev_get_id(session->vdev));
+		wlan_vdev_mlme_op_flags_set(session->vdev,
+					    WLAN_VDEV_OP_CU_CAT1);
 	}
 
 	if (qdf_mem_cmp(&link_ie->link_swt_time, &bcn_2->max_chan_switch_time,
@@ -175,6 +183,8 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 			     sizeof(bcn_2->max_chan_switch_time));
 		pe_debug("vdev id %d max channel switch time added",
 			 wlan_vdev_get_id(session->vdev));
+		wlan_vdev_mlme_op_flags_set(session->vdev,
+					    WLAN_VDEV_OP_CU_CAT1);
 	}
 
 	if (qdf_mem_cmp(&link_ie->link_quiet, &bcn_2->Quiet,
@@ -185,6 +195,8 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 		session->mlo_link_info.bss_param_change = true;
 		pe_debug("vdev id %d quiet added, critical update",
 			 wlan_vdev_get_id(session->vdev));
+		wlan_vdev_mlme_op_flags_set(session->vdev,
+					    WLAN_VDEV_OP_CU_CAT1);
 	}
 
 	if (qdf_mem_cmp(&link_ie->link_ht_info, &bcn_2->HTInfo,
@@ -194,6 +206,8 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 		session->mlo_link_info.bss_param_change = true;
 		pe_debug("vdev id %d HTInfo changed, critical update",
 			 wlan_vdev_get_id(session->vdev));
+		wlan_vdev_mlme_op_flags_set(session->vdev,
+					    WLAN_VDEV_OP_CU_CAT2);
 	}
 
 	if (qdf_mem_cmp(&link_ie->link_vht_op, &bcn_2->VHTOperation,
@@ -203,6 +217,8 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 		session->mlo_link_info.bss_param_change = true;
 		pe_debug("vdev id %d VHTOperation changed, critical update",
 			 wlan_vdev_get_id(session->vdev));
+		wlan_vdev_mlme_op_flags_set(session->vdev,
+					    WLAN_VDEV_OP_CU_CAT2);
 	}
 
 	if (qdf_mem_cmp(&link_ie->link_he_op, &bcn_2->he_op,
@@ -212,6 +228,8 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 		session->mlo_link_info.bss_param_change = true;
 		pe_debug("vdev id %d he_op changed, critical update",
 			 wlan_vdev_get_id(session->vdev));
+		wlan_vdev_mlme_op_flags_set(session->vdev,
+					    WLAN_VDEV_OP_CU_CAT2);
 	}
 
 	if (qdf_mem_cmp(&link_ie->link_eht_op, &bcn_2->eht_op,
@@ -221,6 +239,8 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 		session->mlo_link_info.bss_param_change = true;
 		pe_debug("vdev id %d eht_op changed, critical update",
 			 wlan_vdev_get_id(session->vdev));
+		wlan_vdev_mlme_op_flags_set(session->vdev,
+					    WLAN_VDEV_OP_CU_CAT2);
 	}
 
 	/*
@@ -238,6 +258,16 @@ static void lim_update_link_info(struct mac_context *mac_ctx,
 		    bcn_2->OperatingMode.present ||
 		    bcn_2->bss_color_change.present)
 			session->mlo_link_info.bss_param_change = true;
+
+		if (bcn_2->ChanSwitchAnn.present ||
+		    bcn_2->ext_chan_switch_ann.present ||
+		    bcn_2->Quiet.present)
+			wlan_vdev_mlme_op_flags_set(session->vdev,
+						    WLAN_VDEV_OP_CU_CAT1);
+		else
+			wlan_vdev_mlme_op_flags_set(session->vdev,
+						    WLAN_VDEV_OP_CU_CAT2);
+
 		if (session->mlo_link_info.bss_param_change) {
 			link_ie->bss_param_change_cnt++;
 			offset = sizeof(tAniBeaconStruct);
@@ -839,7 +869,8 @@ sch_set_fixed_beacon_fields(struct mac_context *mac_ctx, struct pe_session *sess
 			mlo_ie_len = lim_send_bcn_frame_mlo(mac_ctx, session);
 			populate_dot11f_mlo_rnr(
 				mac_ctx, session,
-				&bcn_2->reduced_neighbor_report);
+				&bcn_2->reduced_neighbor_report[0],
+				&bcn_2->num_reduced_neighbor_report);
 		} else if (!wlan_reg_is_6ghz_chan_freq(session->curr_op_freq)) {
 			/*
 			 * TD: If current AP is MLO, RNR IE is already populated
@@ -847,7 +878,7 @@ sch_set_fixed_beacon_fields(struct mac_context *mac_ctx, struct pe_session *sess
 			 *     MLO SAP + 6G legacy SAP
 			 */
 			populate_dot11f_6g_rnr(mac_ctx, session,
-					       &bcn_2->reduced_neighbor_report);
+					       &bcn_2->reduced_neighbor_report[0]);
 		}
 		/*
 		 * Can be efficiently updated whenever new IE added  in Probe
@@ -1150,6 +1181,7 @@ void lim_update_probe_rsp_template_ie_bitmap_beacon2(struct mac_context *mac,
 {
 	uint8_t i;
 	uint16_t num_tpe = beacon2->num_transmit_power_env;
+	uint16_t num_rnr = beacon2->num_reduced_neighbor_report;
 
 	if (beacon2->Country.present) {
 		set_probe_rsp_ie_bitmap(DefProbeRspIeBitmap, WLAN_ELEMID_COUNTRY);
@@ -1186,6 +1218,14 @@ void lim_update_probe_rsp_template_ie_bitmap_beacon2(struct mac_context *mac,
 			sizeof(beacon2->ext_chan_switch_ann));
 	}
 
+	/* Max Channel Switch Time DOT11F_EID_MAX_CHAN_SWITCH_TIME */
+	if (beacon2->max_chan_switch_time.present) {
+		set_probe_rsp_ie_bitmap(DefProbeRspIeBitmap,
+					DOT11F_EID_MAX_CHAN_SWITCH_TIME);
+		qdf_mem_copy((void *)&prb_rsp->max_chan_switch_time,
+			     (void *)&beacon2->max_chan_switch_time,
+			     sizeof(beacon2->max_chan_switch_time));
+	}
 	/* Supported operating class */
 	if (beacon2->SuppOperatingClasses.present) {
 		set_probe_rsp_ie_bitmap(DefProbeRspIeBitmap,
@@ -1391,13 +1431,17 @@ void lim_update_probe_rsp_template_ie_bitmap_beacon2(struct mac_context *mac,
 			     sizeof(beacon2->mlo_ie));
 	}
 
-	if (beacon2->reduced_neighbor_report.present) {
+	for (i = 0; i < num_rnr; i++) {
+		if (!beacon2->reduced_neighbor_report[i].present)
+			continue;
+
 		set_probe_rsp_ie_bitmap(DefProbeRspIeBitmap,
 					DOT11F_EID_REDUCED_NEIGHBOR_REPORT);
-		qdf_mem_copy((void *)&prb_rsp->reduced_neighbor_report,
-			     (void *)&beacon2->reduced_neighbor_report,
-			     sizeof(beacon2->reduced_neighbor_report));
+		qdf_mem_copy(&prb_rsp->reduced_neighbor_report[i],
+			     &beacon2->reduced_neighbor_report[i],
+			     sizeof(beacon2->reduced_neighbor_report[i]));
 	}
+	prb_rsp->num_reduced_neighbor_report = num_rnr;
 
 	if (beacon2->TPCReport.present) {
 		set_probe_rsp_ie_bitmap(DefProbeRspIeBitmap,

@@ -231,16 +231,34 @@ hdd_translate_wpa_to_csr_auth_type(uint8_t auth_suite[4]);
 eCsrEncryptionType
 hdd_translate_wpa_to_csr_encryption_type(uint8_t cipher_suite[4]);
 
-QDF_STATUS hdd_softap_sta_deauth(struct hdd_adapter *adapter,
+/**
+ * hdd_softap_sta_deauth() - handle deauth req from HDD
+ * @link_info: Pointer to hdd link info
+ * @param: Params to the operation
+ *
+ * This to take counter measure to handle deauth req from HDD
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS hdd_softap_sta_deauth(struct wlan_hdd_link_info *link_info,
 				 struct csr_del_sta_params *param);
 void hdd_softap_sta_disassoc(struct hdd_adapter *adapter,
 			     struct csr_del_sta_params *param);
 
-QDF_STATUS hdd_hostapd_sap_event_cb(struct sap_event *sap_event,
-				    void *context);
+/**
+ * hdd_hostapd_sap_event_cb() - callback to process sap event
+ * @sap_ctx: SAP context
+ * @sap_event: SAP event buffer
+ *
+ * Function for HDD to process event notification from sap
+ * module
+ * return: QDF_STATUS
+ */
+QDF_STATUS hdd_hostapd_sap_event_cb(struct sap_context *sap_ctx,
+				    struct sap_event *sap_event);
 /**
  * hdd_init_ap_mode() - to init the AP adaptor
- * @adapter: SAP/GO adapter
+ * @link_info: pointer of link_info
  * @reinit: true if re-init, otherwise initial init
  * @rtnl_held: true if rtnl lock is taken, otherwise false
  *
@@ -248,9 +266,20 @@ QDF_STATUS hdd_hostapd_sap_event_cb(struct sap_event *sap_event,
  * to create and store the vdev object. It also initializes necessary
  * SAP adapter related params.
  */
-QDF_STATUS hdd_init_ap_mode(struct hdd_adapter *adapter,
+QDF_STATUS hdd_init_ap_mode(struct wlan_hdd_link_info *link_info,
 			    bool reinit,
 			    bool rtnl_held);
+
+/**
+ * hdd_indicate_peers_deleted() - indicate peer delete for vdev
+ * @psoc: PSOC object information
+ * @vdev_id: vdev id
+ *
+ * This is callback for PE to call deauth from HDD layer.
+ * return: void
+ */
+void
+hdd_indicate_peers_deleted(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id);
 
 /**
  * hdd_deinit_ap_mode() - to deinit the AP adaptor

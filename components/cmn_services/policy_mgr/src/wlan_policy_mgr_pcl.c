@@ -1510,6 +1510,18 @@ static QDF_STATUS policy_mgr_pcl_modification_for_p2p_go(
 	return QDF_STATUS_SUCCESS;
 }
 
+static bool policy_mgr_is_dynamic_sbs_enabled(struct wlan_objmgr_psoc *psoc)
+{
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx)
+		return false;
+
+	return (policy_mgr_is_hw_sbs_capable(psoc) &&
+		policy_mgr_can_2ghz_share_low_high_5ghz_sbs(pm_ctx));
+}
+
 #ifdef WLAN_FEATURE_LL_LT_SAP
 #ifdef WLAN_FEATURE_LL_LT_SAP_6G_SUPPORT
 static bool policy_mgr_is_6G_chan_valid_for_ll_sap(qdf_freq_t freq)
@@ -1532,18 +1544,6 @@ static inline bool policy_mgr_is_6G_chan_valid_for_ll_sap(qdf_freq_t freq)
 	return false;
 }
 #endif
-
-static bool policy_mgr_is_dynamic_sbs_enabled(struct wlan_objmgr_psoc *psoc)
-{
-	struct policy_mgr_psoc_priv_obj *pm_ctx;
-
-	pm_ctx = policy_mgr_get_context(psoc);
-	if (!pm_ctx)
-		return false;
-
-	return (policy_mgr_is_hw_sbs_capable(psoc) &&
-		policy_mgr_can_2ghz_share_low_high_5ghz_sbs(pm_ctx));
-}
 
 /**
  * policy_mgr_is_sbs_mac0_freq() - Check if the given frequency is
@@ -4970,166 +4970,6 @@ policy_mgr_is_vdev_ll_lt_sap(struct wlan_objmgr_psoc *psoc,
 	return _policy_mgr_is_vdev_ll_sap(psoc, vdev_id, LL_AP_TYPE_LT);
 }
 
-#ifndef WLAN_FEATURE_LL_LT_SAP
-QDF_STATUS
-policy_mgr_get_pcl_chlist_for_ll_sap(struct wlan_objmgr_psoc *psoc,
-				     uint32_t *len, uint32_t *pcl_channels,
-				     uint8_t *pcl_weight)
-{
-	struct policy_mgr_psoc_priv_obj *pm_ctx;
-	uint32_t pcl_len = 0, i, conn_idx = 0;
-	uint32_t pcl_list[NUM_CHANNELS], total_connection = 0;
-	uint8_t weight_list[NUM_CHANNELS];
-	qdf_freq_t freq;
-
-	pm_ctx = policy_mgr_get_context(psoc);
-	if (!pm_ctx) {
-		policy_mgr_err("pm_ctx is null");
-		return QDF_STATUS_E_FAILURE;
-	}
-
-	total_connection = policy_mgr_get_connection_count(psoc);
-	if (!total_connection) {
-		for (i = 0; i < *len; i++) {
-			if (WLAN_REG_IS_24GHZ_CH_FREQ(pcl_channels[i]))
-				continue;
-
-			pcl_list[pcl_len] = pcl_channels[i];
-			weight_list[pcl_len++] = pcl_weight[i];
-		}
-		qdf_mem_zero(pcl_channels, *len * sizeof(*pcl_channels));
-		qdf_mem_copy(pcl_channels, pcl_list,
-			     pcl_len * sizeof(*pcl_channels));
-	} else {
-		qdf_mutex_acquire(&pm_ctx->qdf_conc_list_lock);
-		for (conn_idx = 0; conn_idx < MAX_NUMBER_OF_CONC_CONNECTIONS;
-		     conn_idx++) {
-			if (!pm_conc_connection_list[conn_idx].in_use)
-				continue;
-
-			freq = pm_conc_connection_list[conn_idx].freq;
-
-			for (i = 0; i < *len; i++) {
-				if (policy_mgr_2_freq_always_on_same_mac(
-								psoc,
-								pcl_channels[i],
-								freq) ||
-				    WLAN_REG_IS_24GHZ_CH_FREQ(pcl_channels[i]))
-					continue;
-				pcl_list[pcl_len] = pcl_channels[i];
-				weight_list[pcl_len++] = pcl_weight[i];
-			}
-			*len = pcl_len;
-			qdf_mem_zero(pcl_channels,
-				     *len * sizeof(*pcl_channels));
-			qdf_mem_copy(pcl_channels, pcl_list,
-				     pcl_len * sizeof(*pcl_channels));
-		}
-		qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
-	}
-
-	qdf_mem_zero(pcl_weight, *len * sizeof(*pcl_weight));
-	qdf_mem_copy(pcl_weight, weight_list, pcl_len);
-	*len = pcl_len;
-
-	return QDF_STATUS_SUCCESS;
-}
-
-QDF_STATUS
-policy_mgr_get_pcl_ch_for_sap_go_with_ll_sap_present(
-					struct wlan_objmgr_psoc *psoc,
-					uint32_t *len, uint32_t *pcl_channels,
-					uint8_t *pcl_weight)
-{
-	struct policy_mgr_psoc_priv_obj *pm_ctx;
-	uint32_t pcl_len = 0, i, conn_idx = 0;
-	uint32_t pcl_list[NUM_CHANNELS];
-	uint8_t weight_list[NUM_CHANNELS];
-	qdf_freq_t freq;
-	uint32_t vdev_id;
-	bool is_ll_sap = 0;
-
-	pm_ctx = policy_mgr_get_context(psoc);
-	if (!pm_ctx) {
-		policy_mgr_err("pm_ctx is null");
-		return QDF_STATUS_E_FAILURE;
-	}
-
-	qdf_mutex_acquire(&pm_ctx->qdf_conc_list_lock);
-	for (conn_idx = 0; conn_idx < MAX_NUMBER_OF_CONC_CONNECTIONS;
-	     conn_idx++) {
-		if (!pm_conc_connection_list[conn_idx].in_use)
-			continue;
-
-		freq = pm_conc_connection_list[conn_idx].freq;
-		vdev_id = pm_conc_connection_list[conn_idx].vdev_id;
-		if (!policy_mgr_is_vdev_ll_sap(psoc, vdev_id))
-			continue;
-
-		is_ll_sap = 1;
-		for (i = 0; i < *len; i++) {
-			if (policy_mgr_2_freq_always_on_same_mac(
-								psoc,
-								pcl_channels[i],
-								freq))
-				continue;
-			pcl_list[pcl_len] = pcl_channels[i];
-			weight_list[pcl_len++] = pcl_weight[i];
-		}
-		*len = pcl_len;
-		qdf_mem_zero(pcl_channels,
-			     *len * sizeof(*pcl_channels));
-		qdf_mem_copy(pcl_channels, pcl_list,
-			     pcl_len * sizeof(*pcl_channels));
-	}
-	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
-
-	if (!is_ll_sap)
-		return QDF_STATUS_SUCCESS;
-
-	qdf_mem_zero(pcl_weight, *len * sizeof(*pcl_weight));
-	qdf_mem_copy(pcl_weight, weight_list, pcl_len);
-	*len = pcl_len;
-
-	return QDF_STATUS_SUCCESS;
-}
-
-QDF_STATUS
-policy_mgr_get_pcl_channel_for_ll_sap_concurrency(
-					struct wlan_objmgr_psoc *psoc,
-					uint32_t vdev_id,
-					uint32_t *pcl_channels,
-					uint8_t *pcl_weight, uint32_t *len)
-{
-	uint32_t orig_len = *len;
-
-	if (policy_mgr_is_vdev_ll_sap(psoc, vdev_id)) {
-		/* Scenario: If there is some existing interface present and
-		 * LL SAP is coming up.
-		 * Filter pcl channel for LL SAP
-		 */
-		policy_mgr_get_pcl_chlist_for_ll_sap(psoc, len, pcl_channels,
-						     pcl_weight);
-	} else {
-		/* Scenario: If there is LL SAP and GO/SAP is coming up.
-		 * Filter pcl channel for GO/SAP
-		 */
-		policy_mgr_get_pcl_ch_for_sap_go_with_ll_sap_present(
-								psoc,
-								len,
-								pcl_channels,
-								pcl_weight);
-	}
-
-	if (orig_len != *len) {
-		policy_mgr_debug("PCL after ll sap modification");
-		policy_mgr_dump_channel_list(*len, pcl_channels, pcl_weight);
-	}
-
-	return QDF_STATUS_SUCCESS;
-}
-#endif
-
 #ifdef WLAN_FEATURE_LL_LT_SAP
 QDF_STATUS policy_mgr_get_pcl_ch_list_for_ll_sap(
 					struct wlan_objmgr_psoc *psoc,
@@ -5183,3 +5023,29 @@ QDF_STATUS policy_mgr_get_pcl_ch_list_for_ll_sap(
 	return status;
 }
 #endif
+
+bool policy_mgr_mon_sbs_mac0_freq(struct wlan_objmgr_psoc *psoc,
+				  qdf_freq_t freq)
+{
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	struct policy_mgr_freq_range *freq_range;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx)
+		return false;
+
+	/*
+	 * For dynamic sbs enable case API assumes that MAC0 will be
+	 * on SBS Low share.
+	 */
+	if (policy_mgr_is_dynamic_sbs_enabled(psoc))
+		freq_range =
+			pm_ctx->hw_mode.freq_range_caps[MODE_SBS_LOWER_SHARE];
+	else
+		freq_range = pm_ctx->hw_mode.freq_range_caps[MODE_SBS];
+
+	if (policy_mgr_is_freq_on_mac_id(freq_range, freq, 0))
+		return true;
+
+	return false;
+}

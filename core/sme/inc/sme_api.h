@@ -762,14 +762,16 @@ QDF_STATUS sme_neighbor_report_request(mac_handle_t mac_handle,
 		tpRrmNeighborRspCallbackInfo callbackInfo);
 
 /**
- * sme_register_ssr_on_pagefault_cb() - Register cb to trigger SSR on pagefault
+ * sme_register_pagefault_cb() - Register cb to handle host action on pagefault
  * @mac_handle: Opaque handle to the global MAC context.
- * @hdd_ssr_on_pagefault_cb: Callback which needs to be registered
+ * @hdd_pagefault_action_cb: Callback which needs to be registered
  *
  * Return: None
  */
-void sme_register_ssr_on_pagefault_cb(mac_handle_t mac_handle,
-				      void (*hdd_ssr_on_pagefault_cb)(void));
+void
+sme_register_pagefault_cb(mac_handle_t mac_handle,
+			  QDF_STATUS (*hdd_pagefault_action_cb)(void *buf,
+								uint32_t buf_len));
 
 /**
  * sme_deregister_ssr_on_pagefault_cb() - Deregister cb to trigger SSR on
@@ -823,26 +825,6 @@ void sme_async_oem_event_init(mac_handle_t mac_handle,
  */
 void sme_async_oem_event_deinit(mac_handle_t mac_handle);
 
-/**
- * sme_smem_oem_event_init() - function to register cb for smem oem event
- * @mac_handle: Opaque handle to the global MAC context
- * @oem_data_smem_event_handler_cb: callback to be registered
- *
- * Return: None
- */
-void sme_smem_oem_event_init(mac_handle_t mac_handle,
-			     void (*oem_data_smem_event_handler_cb)
-			     (const struct oem_data *oem_event_data,
-			     int smem_id));
-
-/**
- * sme_smem_oem_event_deinit() - function to deregister cb for smem oem event
- * @mac_handle: Opaque handle to the global MAC context
- *
- * Return: None
- */
-void sme_smem_oem_event_deinit(mac_handle_t mac_handle);
-
 #else
 static inline
 void sme_async_oem_event_init(mac_handle_t mac_handle,
@@ -856,10 +838,33 @@ void sme_async_oem_event_deinit(mac_handle_t mac_handle)
 {
 }
 
+#endif
+
+#ifdef FEATURE_SMEM_MAILBOX
+/**
+ * sme_smem_oem_event_init() - function to register cb for smem oem event
+ * @mac_handle: Opaque handle to the global MAC context
+ * @oem_data_smem_event_handler_cb: callback to be registered
+ *
+ * Return: None
+ */
+void sme_smem_oem_event_init(mac_handle_t mac_handle,
+			     void (*oem_data_smem_event_handler_cb)
+			     (const struct oem_data *oem_event_data));
+
+/**
+ * sme_smem_oem_event_deinit() - function to deregister cb for smem oem event
+ * @mac_handle: Opaque handle to the global MAC context
+ *
+ * Return: None
+ */
+void sme_smem_oem_event_deinit(mac_handle_t mac_handle);
+
+#else
 static inline
 void sme_smem_oem_event_init(mac_handle_t mac_handle,
 			     void (*oem_data_smem_event_handler_cb)
-			     (void *oem_event_data, int smem_id))
+			     (void *oem_event_data))
 {
 }
 

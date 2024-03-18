@@ -2353,7 +2353,6 @@ bool wlan_ll_sap_freq_present_in_pcl(struct policy_mgr_pcl_list *pcl,
 	return false;
 }
 
-#ifdef WLAN_FEATURE_LL_LT_SAP_CSA
 void wlan_ll_sap_send_continue_vdev_restart(struct wlan_objmgr_vdev *vdev)
 {
 	lim_ll_sap_continue_vdev_restart(vdev);
@@ -2369,14 +2368,18 @@ void wlan_ll_sap_notify_chan_switch_started(struct wlan_objmgr_vdev *vdev)
 {
 	lim_ll_sap_notify_chan_switch_started(vdev);
 }
-#endif
+
+void wlan_ll_sap_csa_bearer_switch_rsp(uint8_t vdev_id)
+{
+	csr_send_csa_restart_req(vdev_id);
+}
 #endif
 
-void
+QDF_STATUS
 wlan_sap_get_user_config_acs_ch_list(uint8_t vdev_id,
 				     struct scan_filter *filter)
 {
-	wlansap_get_user_config_acs_ch_list(vdev_id, filter);
+	return wlansap_get_user_config_acs_ch_list(vdev_id, filter);
 }
 
 static struct vdev_mlme_ops sta_mlme_ops = {

@@ -738,7 +738,6 @@ static const struct ieee80211_iface_limit
 	},
 };
 
-#ifndef WLAN_FEATURE_NO_P2P_CONCURRENCY
 /* P2P limit */
 static const struct ieee80211_iface_limit
 	wlan_hdd_p2p_iface_limit[] = {
@@ -779,12 +778,10 @@ wlan_hdd_sta_ap_p2p_iface_limit[] = {
 	   .max = 1,
 	   .types = BIT(NL80211_IFTYPE_P2P_GO) | BIT(NL80211_IFTYPE_P2P_CLIENT)
 	},
-#ifndef WLAN_FEATURE_NO_STA_SAP_CONCURRENCY
 	{
 	   .max = 1,
 	   .types = BIT(NL80211_IFTYPE_AP)
 	},
-#endif /* WLAN_FEATURE_NO_STA_SAP_CONCURRENCY */
 };
 
 /* SAP + P2P combination */
@@ -815,28 +812,22 @@ wlan_hdd_p2p_p2p_iface_limit[] = {
 	   .types = BIT(NL80211_IFTYPE_P2P_GO) | BIT(NL80211_IFTYPE_P2P_CLIENT)
 	},
 };
-#elif defined(WLAN_FEATURE_STA_SAP_P2P_CONCURRENCY)
-/* STA + AP + P2P combination */
+
+/* STA + AP + AP combination */
+#ifdef WLAN_FEATURE_LL_LT_SAP
 static const struct ieee80211_iface_limit
-wlan_hdd_sta_ap_p2p_iface_limit[] = {
+wlan_hdd_sta_ap_ap_iface_limit[] = {
 	{
 	   .max = 1,
 	   .types = BIT(NL80211_IFTYPE_STATION)
 	},
 	{
-	   .max = 1,
-	   .types = BIT(NL80211_IFTYPE_P2P_GO) | BIT(NL80211_IFTYPE_P2P_CLIENT)
-	},
-#ifndef WLAN_FEATURE_NO_STA_SAP_CONCURRENCY
-	{
-	   .max = 1,
+	   .max = 2,
 	   .types = BIT(NL80211_IFTYPE_AP)
 	},
-#endif /* WLAN_FEATURE_NO_STA_SAP_CONCURRENCY */
 };
-#endif
+#endif /* WLAN_FEATURE_LL_LT_SAP */
 
-#ifndef WLAN_FEATURE_NO_STA_SAP_CONCURRENCY
 /* STA + AP combination */
 static const struct ieee80211_iface_limit
 wlan_hdd_sta_ap_iface_limit[] = {
@@ -844,19 +835,11 @@ wlan_hdd_sta_ap_iface_limit[] = {
 	   .max = 1,
 	   .types = BIT(NL80211_IFTYPE_STATION)
 	},
-#ifdef WLAN_FEATURE_LL_LT_SAP
-	{
-	   .max = 2,
-	   .types = BIT(NL80211_IFTYPE_AP)
-	},
-#else
 	{
 	   .max = 1,
 	   .types = BIT(NL80211_IFTYPE_AP)
 	},
-#endif /* WLAN_FEATURE_LL_LT_SAP */
 };
-#endif /* WLAN_FEATURE_NO_STA_SAP_CONCURRENCY */
 
 /* STA + P2P combination */
 static const struct ieee80211_iface_limit
@@ -883,7 +866,6 @@ static const struct ieee80211_iface_limit
 
 #if defined(WLAN_FEATURE_NAN) && \
 	   (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0))
-#ifndef WLAN_FEATURE_NO_STA_NAN_CONCURRENCY
 /* STA + NAN disc combination */
 static const struct ieee80211_iface_limit
 	wlan_hdd_sta_nan_iface_limit[] = {
@@ -898,9 +880,7 @@ static const struct ieee80211_iface_limit
 		.types = BIT(NL80211_IFTYPE_NAN),
 	},
 };
-#endif /* WLAN_FEATURE_NO_STA_NAN_CONCURRENCY */
 
-#ifndef WLAN_FEATURE_NO_SAP_NAN_CONCURRENCY
 /* SAP + NAN disc combination */
 static const struct ieee80211_iface_limit
 	wlan_hdd_sap_nan_iface_limit[] = {
@@ -915,7 +895,6 @@ static const struct ieee80211_iface_limit
 		.types = BIT(NL80211_IFTYPE_NAN),
 	},
 };
-#endif /* !WLAN_FEATURE_NO_SAP_NAN_CONCURRENCY */
 #endif /* WLAN_FEATURE_NAN */
 
 static struct ieee80211_iface_combination
@@ -938,7 +917,6 @@ static struct ieee80211_iface_combination
 		.beacon_int_min_gcd = 1,
 #endif
 	},
-#ifndef WLAN_FEATURE_NO_P2P_CONCURRENCY
 	/* P2P */
 	{
 		.limits = wlan_hdd_p2p_iface_limit,
@@ -961,11 +939,7 @@ static struct ieee80211_iface_combination
 		 * but due to firmware limitation, allow max 2 concrnt channels.
 		 */
 		.num_different_channels = 2,
-#ifndef WLAN_FEATURE_NO_STA_SAP_CONCURRENCY
 		.max_interfaces = 3,
-#else
-		.max_interfaces = 2,
-#endif /* WLAN_FEATURE_NO_STA_SAP_CONCURRENCY */
 		.n_limits = ARRAY_SIZE(wlan_hdd_sta_ap_p2p_iface_limit),
 		.beacon_int_infra_match = true,
 	},
@@ -987,23 +961,6 @@ static struct ieee80211_iface_combination
 		.n_limits = ARRAY_SIZE(wlan_hdd_p2p_p2p_iface_limit),
 		.beacon_int_infra_match = true,
 	},
-#elif defined(WLAN_FEATURE_STA_SAP_P2P_CONCURRENCY)
-	/* STA + P2P + SAP */
-	{
-		.limits = wlan_hdd_sta_ap_p2p_iface_limit,
-		/* we can allow 3 channels for three different persona
-		 * but due to firmware limitation, allow max 2 concrnt channels.
-		 */
-		.num_different_channels = 2,
-#ifndef WLAN_FEATURE_NO_STA_SAP_CONCURRENCY
-		.max_interfaces = 3,
-#else
-		.max_interfaces = 2,
-#endif /* WLAN_FEATURE_NO_STA_SAP_CONCURRENCY */
-		.n_limits = ARRAY_SIZE(wlan_hdd_sta_ap_p2p_iface_limit),
-		.beacon_int_infra_match = true,
-	},
-#endif /* WLAN_FEATURE_NO_P2P_CONCURRENCY */
 	/* STA + P2P */
 	{
 		.limits = wlan_hdd_sta_p2p_iface_limit,
@@ -1012,109 +969,17 @@ static struct ieee80211_iface_combination
 		.n_limits = ARRAY_SIZE(wlan_hdd_sta_p2p_iface_limit),
 		.beacon_int_infra_match = true,
 	},
-#ifndef WLAN_FEATURE_NO_STA_SAP_CONCURRENCY
-	/* STA + SAP */
-	{
-		.limits = wlan_hdd_sta_ap_iface_limit,
-		.num_different_channels = 2,
+
 #ifdef WLAN_FEATURE_LL_LT_SAP
+	/* STA + SAP + SAP */
+	{
+		.limits = wlan_hdd_sta_ap_ap_iface_limit,
+		.num_different_channels = 2,
 		.max_interfaces = 3,
-#else
-		.max_interfaces = 2,
-#endif
-		.n_limits = ARRAY_SIZE(wlan_hdd_sta_ap_iface_limit),
-		.beacon_int_infra_match = true,
-	},
-#endif /* WLAN_FEATURE_NO_STA_SAP_CONCURRENCY */
-	/* Monitor */
-	{
-		.limits = wlan_hdd_mon_iface_limit,
-		.max_interfaces = 2,
-		.num_different_channels = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_mon_iface_limit),
-	},
-#if defined(WLAN_FEATURE_NAN) && \
-	   (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0))
-#ifndef WLAN_FEATURE_NO_STA_NAN_CONCURRENCY
-	/* NAN + STA */
-	{
-		.limits = wlan_hdd_sta_nan_iface_limit,
-		.max_interfaces = 2,
-		.num_different_channels = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sta_nan_iface_limit),
-	},
-#endif /* WLAN_FEATURE_NO_STA_NAN_CONCURRENCY */
-#ifndef WLAN_FEATURE_NO_SAP_NAN_CONCURRENCY
-	/* NAN + SAP */
-	{
-		.limits = wlan_hdd_sap_nan_iface_limit,
-		.num_different_channels = 2,
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sap_nan_iface_limit),
-		.beacon_int_infra_match = true,
-	},
-#endif /* !WLAN_FEATURE_NO_SAP_NAN_CONCURRENCY */
-#endif /* WLAN_FEATURE_NAN */
-};
-
-/* 1 and 2 port concurrencies */
-static struct ieee80211_iface_combination
-	wlan_hdd_derived_combination[] = {
-	/* STA */
-	{
-		.limits = wlan_hdd_sta_iface_limit,
-		.num_different_channels = 2,
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sta_iface_limit),
-	},
-	/* AP */
-	{
-		.limits = wlan_hdd_ap_iface_limit,
-		.num_different_channels = 2,
-		.max_interfaces = (QDF_MAX_NO_OF_SAP_MODE),
-		.n_limits = ARRAY_SIZE(wlan_hdd_ap_iface_limit),
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)) || \
-	defined(CFG80211_BEACON_INTERVAL_BACKPORT)
-		.beacon_int_min_gcd = 1,
-#endif
-	},
-#ifndef WLAN_FEATURE_NO_P2P_CONCURRENCY
-	/* P2P */
-	{
-		.limits = wlan_hdd_p2p_iface_limit,
-		.num_different_channels = 2,
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_p2p_iface_limit),
-	},
-
-	/* SAP + P2P */
-	{
-		.limits = wlan_hdd_sap_p2p_iface_limit,
-		.num_different_channels = 2,
-		/* 1-SAP + 1-P2P */
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sap_p2p_iface_limit),
-		.beacon_int_infra_match = true,
-	},
-	/* P2P + P2P */
-	{
-		.limits = wlan_hdd_p2p_p2p_iface_limit,
-		.num_different_channels = 2,
-		/* 2-P2P */
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_p2p_p2p_iface_limit),
+		.n_limits = ARRAY_SIZE(wlan_hdd_sta_ap_ap_iface_limit),
 		.beacon_int_infra_match = true,
 	},
 #endif
-	/* STA + P2P */
-	{
-		.limits = wlan_hdd_sta_p2p_iface_limit,
-		.num_different_channels = 2,
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sta_p2p_iface_limit),
-		.beacon_int_infra_match = true,
-	},
-#ifndef WLAN_FEATURE_NO_STA_SAP_CONCURRENCY
 	/* STA + SAP */
 	{
 		.limits = wlan_hdd_sta_ap_iface_limit,
@@ -1123,7 +988,6 @@ static struct ieee80211_iface_combination
 		.n_limits = ARRAY_SIZE(wlan_hdd_sta_ap_iface_limit),
 		.beacon_int_infra_match = true,
 	},
-#endif /* WLAN_FEATURE_NO_STA_SAP_CONCURRENCY */
 	/* Monitor */
 	{
 		.limits = wlan_hdd_mon_iface_limit,
@@ -1133,7 +997,6 @@ static struct ieee80211_iface_combination
 	},
 #if defined(WLAN_FEATURE_NAN) && \
 	   (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0))
-#ifndef WLAN_FEATURE_NO_STA_NAN_CONCURRENCY
 	/* NAN + STA */
 	{
 		.limits = wlan_hdd_sta_nan_iface_limit,
@@ -1141,8 +1004,6 @@ static struct ieee80211_iface_combination
 		.num_different_channels = 2,
 		.n_limits = ARRAY_SIZE(wlan_hdd_sta_nan_iface_limit),
 	},
-#endif /* WLAN_FEATURE_NO_STA_NAN_CONCURRENCY */
-#ifndef WLAN_FEATURE_NO_SAP_NAN_CONCURRENCY
 	/* NAN + SAP */
 	{
 		.limits = wlan_hdd_sap_nan_iface_limit,
@@ -1151,88 +1012,9 @@ static struct ieee80211_iface_combination
 		.n_limits = ARRAY_SIZE(wlan_hdd_sap_nan_iface_limit),
 		.beacon_int_infra_match = true,
 	},
-#endif /* !WLAN_FEATURE_NO_SAP_NAN_CONCURRENCY */
 #endif /* WLAN_FEATURE_NAN */
 };
 
-static struct ieee80211_iface_combination
-	wlan_hdd_non_dbs_iface_combination[] = {
-#ifndef WLAN_FEATURE_NO_P2P_CONCURRENCY
-	/* P2P */
-	{
-		.limits = wlan_hdd_p2p_iface_limit,
-		.num_different_channels = 2,
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_p2p_iface_limit),
-	},
-
-	/* SAP + P2P */
-	{
-		.limits = wlan_hdd_sap_p2p_iface_limit,
-		.num_different_channels = 2,
-		/* 1-SAP + 1-P2P */
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sap_p2p_iface_limit),
-		.beacon_int_infra_match = true,
-	},
-	/* P2P + P2P */
-	{
-		.limits = wlan_hdd_p2p_p2p_iface_limit,
-		.num_different_channels = 2,
-		/* 2-P2P */
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_p2p_p2p_iface_limit),
-		.beacon_int_infra_match = true,
-	},
-#endif
-	/* STA + P2P */
-	{
-		.limits = wlan_hdd_sta_p2p_iface_limit,
-		.num_different_channels = 2,
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sta_p2p_iface_limit),
-		.beacon_int_infra_match = true,
-	},
-#ifndef WLAN_FEATURE_NO_STA_SAP_CONCURRENCY
-	/* STA + SAP */
-	{
-		.limits = wlan_hdd_sta_ap_iface_limit,
-		.num_different_channels = 2,
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sta_ap_iface_limit),
-		.beacon_int_infra_match = true,
-	},
-#endif /* WLAN_FEATURE_NO_STA_SAP_CONCURRENCY */
-	/* Monitor */
-	{
-		.limits = wlan_hdd_mon_iface_limit,
-		.max_interfaces = 2,
-		.num_different_channels = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_mon_iface_limit),
-	},
-#if defined(WLAN_FEATURE_NAN) && \
-	   (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0))
-#ifndef WLAN_FEATURE_NO_STA_NAN_CONCURRENCY
-	/* NAN + STA */
-	{
-		.limits = wlan_hdd_sta_nan_iface_limit,
-		.max_interfaces = 2,
-		.num_different_channels = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sta_nan_iface_limit),
-	},
-#endif /* WLAN_FEATURE_NO_STA_NAN_CONCURRENCY */
-#ifndef WLAN_FEATURE_NO_SAP_NAN_CONCURRENCY
-	/* NAN + SAP */
-	{
-		.limits = wlan_hdd_sap_nan_iface_limit,
-		.num_different_channels = 2,
-		.max_interfaces = 2,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sap_nan_iface_limit),
-		.beacon_int_infra_match = true,
-	},
-#endif /* !WLAN_FEATURE_NO_SAP_NAN_CONCURRENCY */
-#endif /* WLAN_FEATURE_NAN */
-};
 static struct cfg80211_ops wlan_hdd_cfg80211_ops;
 
 #ifdef WLAN_NL80211_TESTMODE
@@ -2277,6 +2059,10 @@ static const struct nl80211_vendor_cmd_info wlan_hdd_cfg80211_vendor_events[] = 
 		.vendor_id = QCA_NL80211_VENDOR_ID,
 		.subcmd = QCA_NL80211_VENDOR_SUBCMD_HIGH_AP_AVAILABILITY,
 	},
+	[QCA_NL80211_VENDOR_SUBCMD_FW_PAGE_FAULT_REPORT_INDEX] = {
+		.vendor_id = QCA_NL80211_VENDOR_ID,
+		.subcmd = QCA_NL80211_VENDOR_SUBCMD_FW_PAGE_FAULT_REPORT,
+	},
 };
 
 /**
@@ -2680,7 +2466,7 @@ int wlan_hdd_cfg80211_start_acs(struct wlan_hdd_link_info *link_info)
 		adapter->mac_addr.bytes, sizeof(struct qdf_mac_addr));
 
 	qdf_status = wlansap_acs_chselect(sap_ctx, acs_event_callback,
-					  sap_config, adapter->dev);
+					  sap_config);
 
 	if (QDF_IS_STATUS_ERROR(qdf_status)) {
 		hdd_err("ACS channel select failed");
@@ -3800,7 +3586,7 @@ static uint16_t wlan_hdd_update_bw_from_mlme(struct hdd_context *hdd_ctx,
 /**
  *  wlan_hdd_check_is_acs_request_same() - API to compare ongoing ACS and
  *					current received ACS request
- * @adapter: hdd adapter
+ * @link_info: pointer of hdd link info
  * @data: ACS data
  * @data_len: ACS data length
  *
@@ -3809,8 +3595,9 @@ static uint16_t wlan_hdd_update_bw_from_mlme(struct hdd_context *hdd_ctx,
  *
  * Return: true only if ACS request received is same as ongoing ACS
  */
-static bool wlan_hdd_check_is_acs_request_same(struct hdd_adapter *adapter,
-					       const void *data, int data_len)
+static bool
+wlan_hdd_check_is_acs_request_same(struct wlan_hdd_link_info *link_info,
+				   const void *data, int data_len)
 {
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_ACS_MAX + 1];
 	uint8_t hw_mode, ht_enabled, ht40_enabled, vht_enabled, eht_enabled;
@@ -3820,6 +3607,8 @@ static bool wlan_hdd_check_is_acs_request_same(struct hdd_adapter *adapter,
 	uint16_t ch_width;
 	int ret, i, j;
 	struct wlan_objmgr_psoc *psoc;
+	struct hdd_adapter *adapter = link_info->adapter;
+
 
 	ret = wlan_cfg80211_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_ACS_MAX, data,
 				      data_len,
@@ -3832,7 +3621,7 @@ static bool wlan_hdd_check_is_acs_request_same(struct hdd_adapter *adapter,
 	if (!tb[QCA_WLAN_VENDOR_ATTR_ACS_HW_MODE])
 		return false;
 
-	sap_config = &adapter->deflink->session.ap.sap_config;
+	sap_config = &link_info->session.ap.sap_config;
 
 	hw_mode = nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_ACS_HW_MODE]);
 	if (sap_config->acs_cfg.master_acs_cfg.hw_mode != hw_mode)
@@ -3865,7 +3654,7 @@ static bool wlan_hdd_check_is_acs_request_same(struct hdd_adapter *adapter,
 		last_scan_ageout_time =
 		nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_ACS_LAST_SCAN_AGEOUT_TIME]);
 	} else {
-		psoc = wlan_vdev_get_psoc(adapter->deflink->vdev);
+		psoc = wlan_vdev_get_psoc(link_info->vdev);
 		if (psoc)
 			wlan_scan_get_last_scan_ageout_time(
 							psoc,
@@ -3912,59 +3701,6 @@ static bool wlan_hdd_check_is_acs_request_same(struct hdd_adapter *adapter,
 
 	return true;
 }
-
-#ifndef WLAN_FEATURE_LL_LT_SAP
-/**
- * hdd_remove_passive_dfs_acs_channel_for_ll_sap(): Remove passive/dfs channel
- * for LL SAP
- * @sap_config: Pointer to sap_config
- * @psoc: Pointer to psoc
- * @pdev: Pointer to pdev
- * @vdev_id: Vdev Id
- *
- * This function will remove passive/dfs acs channel for low latency SAP
- * which are configured through userspace.
- *
- * Return: void
- */
-static void hdd_remove_passive_dfs_acs_channel_for_ll_sap(
-					struct sap_config *sap_config,
-					struct wlan_objmgr_psoc *psoc,
-					struct wlan_objmgr_pdev *pdev,
-					uint8_t vdev_id)
-{
-	uint32_t i, ch_cnt = 0;
-	uint32_t freq = 0;
-
-	if (!policy_mgr_is_vdev_ll_sap(psoc, vdev_id))
-		return;
-
-	for (i = 0; i < sap_config->acs_cfg.ch_list_count; i++) {
-		freq = sap_config->acs_cfg.freq_list[i];
-
-		/* Remove passive/dfs channel for LL SAP */
-		if (wlan_reg_is_passive_for_freq(pdev, freq) ||
-		    wlan_reg_is_dfs_for_freq(pdev, freq))
-			continue;
-
-		sap_config->acs_cfg.freq_list[ch_cnt++] = freq;
-	}
-
-	if (ch_cnt != sap_config->acs_cfg.ch_list_count) {
-		hdd_debug("New count after modification %d", ch_cnt);
-		sap_config->acs_cfg.ch_list_count = ch_cnt;
-		sap_dump_acs_channel(&sap_config->acs_cfg);
-	}
-}
-#else
-static inline void
-hdd_remove_passive_dfs_acs_channel_for_ll_sap(struct sap_config *sap_config,
-					      struct wlan_objmgr_psoc *psoc,
-					      struct wlan_objmgr_pdev *pdev,
-					      uint8_t vdev_id)
-{
-}
-#endif
 
 /* Stored ACS Frequency timeout in msec */
 #define STORED_ACS_FREQ_TIMEOUT 5000
@@ -4232,6 +3968,8 @@ static int __wlan_hdd_cfg80211_do_acs(struct wiphy *wiphy,
 	 * config shall be set only from start_acs.
 	 */
 
+	hdd_enter_dev(wdev->netdev);
+
 	if (QDF_GLOBAL_FTM_MODE == hdd_get_conparam()) {
 		hdd_err("Command not allowed in FTM mode");
 		return -EPERM;
@@ -4271,7 +4009,7 @@ static int __wlan_hdd_cfg80211_do_acs(struct wiphy *wiphy,
 	ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(link_info);
 
 	if (qdf_atomic_read(&ap_ctx->acs_in_progress) > 0) {
-		if (wlan_hdd_check_is_acs_request_same(adapter,
+		if (wlan_hdd_check_is_acs_request_same(adapter->link_info,
 						       data, data_len)) {
 			hdd_debug("Same ACS req as ongoing is received, return success");
 			ret = 0;
@@ -4462,12 +4200,6 @@ static int __wlan_hdd_cfg80211_do_acs(struct wiphy *wiphy,
 						     adapter->device_mode,
 						     adapter->deflink->vdev_id);
 
-	/* Remove passive/dfs acs channel for ll sap */
-	hdd_remove_passive_dfs_acs_channel_for_ll_sap(
-						sap_config, hdd_ctx->psoc,
-						hdd_ctx->pdev,
-						link_info->vdev_id);
-
 	/* consult policy manager to get PCL */
 	qdf_status = policy_mgr_get_pcl(hdd_ctx->psoc, pm_mode,
 					sap_config->acs_cfg.pcl_chan_freq,
@@ -4476,13 +4208,6 @@ static int __wlan_hdd_cfg80211_do_acs(struct wiphy *wiphy,
 					pcl_channels_weight_list,
 					NUM_CHANNELS,
 					link_info->vdev_id);
-
-	policy_mgr_get_pcl_channel_for_ll_sap_concurrency(
-				hdd_ctx->psoc,
-				link_info->vdev_id,
-				sap_config->acs_cfg.pcl_chan_freq,
-				sap_config->acs_cfg.pcl_channels_weight_list,
-				&sap_config->acs_cfg.pcl_ch_count);
 
 	sap_config->acs_cfg.band = hw_mode;
 
@@ -9253,6 +8978,8 @@ int hdd_set_phy_mode(struct hdd_adapter *adapter,
 	uint8_t supported_band;
 	uint32_t bonding_mode;
 	int ret = 0;
+	wlan_net_dev_ref_dbgid dbgid = NET_DEV_HOLD_GET_ADAPTER_BY_VDEV;
+	struct hdd_adapter *curr_adapter, *next_adapter;
 
 	if (!psoc) {
 		hdd_err("psoc is NULL");
@@ -9272,8 +8999,21 @@ int hdd_set_phy_mode(struct hdd_adapter *adapter,
 	if (ret < 0)
 		return ret;
 
-	return hdd_update_phymode(adapter, phymode, supported_band,
-				  bonding_mode);
+	ret = hdd_update_phymode(adapter, phymode, supported_band,
+				 bonding_mode);
+	if (ret)
+		return ret;
+
+	hdd_for_each_adapter_dev_held_safe(hdd_ctx, curr_adapter, next_adapter,
+					   dbgid) {
+		if (curr_adapter->device_mode == QDF_STA_MODE &&
+		    !hdd_cm_is_vdev_connected(curr_adapter->deflink))
+			hdd_set_vdev_phy_mode(curr_adapter, vendor_phy_mode);
+
+		hdd_adapter_dev_put_debug(curr_adapter, dbgid);
+	}
+
+	return 0;
 }
 
 /**
@@ -11299,13 +11039,23 @@ static int hdd_set_channel_width(struct wlan_hdd_link_info *link_info,
 	struct nlattr *mlo_link_id;
 	enum eSirMacHTChannelWidth chwidth;
 	struct wlan_objmgr_psoc *psoc;
+	struct wlan_objmgr_vdev *vdev;
 	bool update_cw_allowed;
+
+	vdev = hdd_objmgr_get_vdev_by_user(link_info, WLAN_OSIF_ID);
+	if (!vdev) {
+		hdd_err("vdev is NULL");
+		return -EINVAL;
+	}
 
 	psoc = wlan_vdev_get_psoc(link_info->vdev);
 	if (!psoc) {
 		hdd_debug("psoc is null");
+		hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
 		return -EINVAL;
 	}
+
+	hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
 
 	ucfg_mlme_get_update_chan_width_allowed(psoc, &update_cw_allowed);
 	if (!update_cw_allowed) {
@@ -22242,6 +21992,314 @@ static void wlan_hdd_dump_iface_combinations(uint32_t num,
 	}
 }
 
+/**
+ * wlan_hdd_is_iface_sta_sta() - This API checks whether STA + STA present
+ * in the interface combination
+ * @idx: index for interface combination array
+ *
+ * Return: true if STA interface is present otherwise false
+ */
+static bool wlan_hdd_is_iface_sta_sta(uint8_t idx)
+{
+	if (wlan_hdd_iface_combination[idx].limits[0].types ==
+	    BIT(NL80211_IFTYPE_STATION) &&
+	    wlan_hdd_iface_combination[idx].limits[0].max == 2)
+		return true;
+
+	return false;
+}
+
+/**
+ * wlan_hdd_is_iface_sap_sap() - This API checks whether SAP + SAP present
+ * in the interface combination
+ * @idx: index for interface combination array
+ *
+ * Return: true if SAP interface is present otherwise false
+ */
+static bool wlan_hdd_is_iface_sap_sap(uint8_t idx)
+{
+	if (wlan_hdd_iface_combination[idx].limits[0].types ==
+	    BIT(NL80211_IFTYPE_AP) &&
+	    wlan_hdd_iface_combination[idx].limits[0].max == 2)
+		return true;
+
+	return false;
+}
+
+/**
+ * wlan_hdd_is_sta_sap_concurrency_present() - This API checks whether STA and
+ * SAP present in the interface combination
+ * @idx: index for interface combination array
+ *
+ * Return: true if STA and SAP interface is present otherwise false
+ */
+static bool wlan_hdd_is_sta_sap_concurrency_present(uint8_t idx)
+{
+	int j = 0;
+	bool sta_present = false;
+	bool sap_present = false;
+
+	for (j = 0; j < wlan_hdd_iface_combination[idx].n_limits; j++) {
+		if (wlan_hdd_iface_combination[idx].limits[j].types ==
+		    BIT(NL80211_IFTYPE_STATION))
+			sta_present = true;
+		else if (wlan_hdd_iface_combination[idx].limits[j].types ==
+			 BIT(NL80211_IFTYPE_AP))
+			sap_present = true;
+	}
+
+	return (sta_present && sap_present);
+}
+
+/**
+ * wlan_hdd_is_sta_nan_concurrency_present() - This API checks whether STA and
+ * NAN present in the interface combination
+ * @idx: index for interface combination array
+ *
+ * Return: true if STA and NAN interface is present otherwise false
+ */
+static bool wlan_hdd_is_sta_nan_concurrency_present(uint8_t idx)
+{
+	int j = 0;
+	bool nan_present = false;
+	bool sta_present = false;
+
+	for (j = 0; j < wlan_hdd_iface_combination[idx].n_limits; j++) {
+		if (wlan_hdd_iface_combination[idx].limits[j].types ==
+		    BIT(NL80211_IFTYPE_NAN))
+			nan_present = true;
+		else if (wlan_hdd_iface_combination[idx].limits[j].types ==
+			 BIT(NL80211_IFTYPE_STATION))
+			sta_present = true;
+	}
+
+	return (nan_present && sta_present);
+}
+
+/**
+ * wlan_hdd_is_sap_nan_concurrency_present() - This API checks whether SAP and
+ * NAN present in the interface combination
+ * @idx: index for interface combination array
+ *
+ * Return: true if SAP and NAN interface is present otherwise false
+ */
+static bool wlan_hdd_is_sap_nan_concurrency_present(uint8_t idx)
+{
+	int j = 0;
+	bool nan_present = false;
+	bool sap_present = false;
+
+	for (j = 0; j < wlan_hdd_iface_combination[idx].n_limits; j++) {
+		if (wlan_hdd_iface_combination[idx].limits[j].types ==
+		    BIT(NL80211_IFTYPE_NAN))
+			nan_present = true;
+		else if (wlan_hdd_iface_combination[idx].limits[j].types ==
+			 BIT(NL80211_IFTYPE_AP))
+			sap_present = true;
+	}
+
+	return (nan_present && sap_present);
+}
+
+/**
+ * wlan_hdd_is_p2p_iface_present() - This API checks whether P2P present
+ * in the interface combination
+ * @idx: index for interface combination array
+ *
+ * Return: true if SAP interface is present otherwise false
+ */
+static bool wlan_hdd_is_p2p_iface_present(uint8_t idx)
+{
+	int j = 0;
+	bool p2p_present = false;
+
+	for (j = 0; j < wlan_hdd_iface_combination[idx].n_limits; j++) {
+		if (wlan_hdd_iface_combination[idx].limits[j].types ==
+		    BIT(NL80211_IFTYPE_P2P_CLIENT) ||
+		    wlan_hdd_iface_combination[idx].limits[j].types ==
+		    BIT(NL80211_IFTYPE_P2P_GO) ||
+		    (wlan_hdd_iface_combination[idx].limits[j].types ==
+		     (BIT(NL80211_IFTYPE_P2P_CLIENT) |
+		      BIT(NL80211_IFTYPE_P2P_GO))))
+			p2p_present = true;
+	}
+
+	return p2p_present;
+}
+
+/**
+ * wlan_hdd_is_sta_p2p_concurrency_present() - This API checks whether STA + P2P
+ * only present in the interface combination
+ * @idx: index for interface combination array
+ *
+ * Return: true if STA and P2P interface is present otherwise false
+ */
+static bool wlan_hdd_is_sta_p2p_concurrency_present(uint8_t idx)
+{
+	int j = 0;
+	bool p2p_present = false;
+	bool sta_present = false;
+
+	if (wlan_hdd_iface_combination[idx].max_interfaces != 2)
+		return false;
+
+	for (j = 0; j < wlan_hdd_iface_combination[idx].n_limits; j++) {
+		if (wlan_hdd_iface_combination[idx].limits[j].types ==
+		    (BIT(NL80211_IFTYPE_P2P_CLIENT) |
+		     BIT(NL80211_IFTYPE_P2P_GO)))
+			p2p_present = true;
+		else if (wlan_hdd_iface_combination[idx].limits[j].types ==
+			 BIT(NL80211_IFTYPE_STATION))
+			sta_present = true;
+	}
+
+	return (p2p_present && sta_present);
+}
+
+/**
+ * wlan_hdd_is_p2p_concurrency_present() - This API checks whether P2P
+ * concurrency is present in the interface combination
+ * @sta_sap_p2p_concurrency: flag to check STA-SAP-P2P concurrency
+ * @idx: index for interface combination array
+ *
+ * This API will allow the P2P concurrencies with following exception:
+ * a) STA-P2P
+ * b) STA-SAP-P2P when g_sta_sap_p2p INI is enabled
+ *
+ * Return: true if P2P allowed otherwise false
+ */
+static bool wlan_hdd_is_p2p_concurrency_present(bool sta_sap_p2p_concurrency,
+						uint8_t idx)
+{
+	if (wlan_hdd_is_sta_p2p_concurrency_present(idx))
+		return false;
+
+	if (!wlan_hdd_is_p2p_iface_present(idx))
+		return false;
+
+	if (sta_sap_p2p_concurrency &&
+	    wlan_hdd_is_sta_sap_concurrency_present(idx))
+		return false;
+
+	return true;
+}
+
+int wlan_hdd_alloc_iface_combination_mem(struct hdd_context *hdd_ctx)
+{
+	uint8_t num = ARRAY_SIZE(wlan_hdd_iface_combination);
+
+	hdd_ctx->combination =
+		qdf_mem_malloc(num * sizeof(wlan_hdd_iface_combination));
+
+	if (!hdd_ctx->combination)
+		return -ENOMEM;
+
+	return 0;
+}
+
+void wlan_hdd_free_iface_combination_mem(struct hdd_context *hdd_ctx)
+{
+	if (hdd_ctx->combination) {
+		qdf_mem_free(hdd_ctx->combination);
+		hdd_ctx->combination = NULL;
+	}
+}
+
+/**
+ * wlan_hdd_update_iface_combination() - This API updates interface combination
+ * @hdd_ctx: HDD context
+ * @wiphy: WIPHY structure pointer
+ * @allow_mcc_go_diff_bi: allow MCC go different beacon interval
+ * @enable_mcc: enable MCC feature
+ *
+ * Return: none
+ */
+static void wlan_hdd_update_iface_combination(struct hdd_context *hdd_ctx,
+					      struct wiphy *wiphy,
+					      uint8_t allow_mcc_go_diff_bi,
+					      uint8_t enable_mcc)
+{
+	uint8_t i, j = 0;
+	bool dbs_one_by_one, dbs_two_by_two;
+	struct wlan_objmgr_psoc *psoc = hdd_ctx->psoc;
+	bool no_p2p_concurrency, no_sap_nan_concurrency, no_sta_sap_concurrency;
+	bool no_sta_nan_concurrency, sta_sap_p2p_concurrency;
+	uint8_t num;
+	QDF_STATUS status;
+
+	if (!hdd_ctx->config->advertise_concurrent_operation)
+		return;
+
+	status = ucfg_policy_mgr_get_dbs_hw_modes(psoc, &dbs_one_by_one,
+						  &dbs_two_by_two);
+
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("HW mode failure");
+		return;
+	}
+
+	no_p2p_concurrency = cfg_get(psoc, CFG_NO_P2P_CONCURRENCY);
+	no_sta_nan_concurrency = cfg_get(psoc, CFG_NO_STA_NAN_CONCURRENCY);
+	no_sap_nan_concurrency = cfg_get(psoc, CFG_NO_SAP_NAN_CONCURRENCY);
+	no_sta_sap_concurrency = cfg_get(psoc, CFG_NO_STA_SAP_CONCURRENCY);
+	sta_sap_p2p_concurrency = cfg_get(psoc, CFG_STA_SAP_P2P_CONCURRENCY);
+
+	num = ARRAY_SIZE(wlan_hdd_iface_combination);
+
+	for (i = 0; i < num; i++) {
+		/* Filter for non-DBS targets */
+		if (!ucfg_policy_mgr_is_fw_supports_dbs(psoc) &&
+		    (wlan_hdd_iface_combination[i].max_interfaces > 2 ||
+		     wlan_hdd_is_iface_sta_sta(i) ||
+		     wlan_hdd_is_iface_sap_sap(i)))
+			continue;
+
+		/* Filter for 1x1 DBS targets */
+		if ((dbs_one_by_one && !dbs_two_by_two) &&
+		    wlan_hdd_iface_combination[i].max_interfaces > 2)
+			continue;
+
+		/*
+		 * remove P2P concurrencies with following exception:
+		 * a) STA-P2P
+		 * b) STA-SAP-P2P when g_sta_sap_p2p INI is enabled
+		 */
+		if (no_p2p_concurrency &&
+		    wlan_hdd_is_p2p_concurrency_present(sta_sap_p2p_concurrency,
+							i))
+			continue;
+
+		/* remove STA NAN concurrency */
+		if (no_sta_nan_concurrency &&
+		    wlan_hdd_is_sta_nan_concurrency_present(i))
+			continue;
+
+		/* remove SAP NAN concurrency */
+		if (no_sap_nan_concurrency &&
+		    wlan_hdd_is_sap_nan_concurrency_present(i))
+			continue;
+
+		/* remove STA SAP concurrency */
+		if (no_sta_sap_concurrency &&
+		    wlan_hdd_is_sta_sap_concurrency_present(i))
+			continue;
+
+		hdd_ctx->combination[j] = wlan_hdd_iface_combination[i];
+
+		if (enable_mcc && !allow_mcc_go_diff_bi)
+			hdd_ctx->combination[j].beacon_int_infra_match = true;
+
+		j++;
+	}
+
+	wiphy->iface_combinations = hdd_ctx->combination;
+
+	wiphy->n_iface_combinations = j;
+
+	wlan_hdd_dump_iface_combinations(wiphy->n_iface_combinations,
+					 wiphy->iface_combinations);
+}
+
 /*
  * In this function, wiphy structure is updated after QDF
  * initialization. In wlan_hdd_cfg80211_init, only the
@@ -22258,8 +22316,6 @@ void wlan_hdd_update_wiphy(struct hdd_context *hdd_ctx)
 	uint8_t allow_mcc_go_diff_bi = 0, enable_mcc = 0;
 	bool is_bigtk_supported;
 	bool is_ocv_supported;
-	uint8_t iface_num;
-	bool dbs_one_by_one, dbs_two_by_two;
 
 	if (!wiphy) {
 		hdd_err("Invalid wiphy");
@@ -22311,50 +22367,8 @@ void wlan_hdd_update_wiphy(struct hdd_context *hdd_ctx)
 	    ucfg_mlme_get_mcc_feature(hdd_ctx->psoc, &enable_mcc))
 		hdd_err("can't get enable_mcc value, use default");
 
-	if (hdd_ctx->config->advertise_concurrent_operation) {
-		if (enable_mcc) {
-			int i;
-
-			for (i = 0;
-			     i < ARRAY_SIZE(wlan_hdd_iface_combination);
-			     i++) {
-				if (!allow_mcc_go_diff_bi)
-					wlan_hdd_iface_combination[i].
-					beacon_int_infra_match = true;
-			}
-		}
-
-		status = ucfg_policy_mgr_get_dbs_hw_modes(hdd_ctx->psoc,
-							  &dbs_one_by_one,
-							  &dbs_two_by_two);
-
-		if (QDF_IS_STATUS_ERROR(status)) {
-			hdd_err("HW mode failure");
-			return;
-		}
-
-		if (!ucfg_policy_mgr_is_fw_supports_dbs(hdd_ctx->psoc)) {
-			/* Update IFACE combination for non-DBS target */
-			wiphy->iface_combinations =
-					wlan_hdd_non_dbs_iface_combination;
-			iface_num =
-				ARRAY_SIZE(wlan_hdd_non_dbs_iface_combination);
-		} else if (dbs_one_by_one && !dbs_two_by_two) {
-			/* Update IFACE combination for 1x1 DBS target */
-			wiphy->iface_combinations =
-						wlan_hdd_derived_combination;
-			iface_num = ARRAY_SIZE(wlan_hdd_derived_combination);
-		} else {
-			/* Update IFACE combination for DBS target */
-			wiphy->iface_combinations = wlan_hdd_iface_combination;
-			iface_num = ARRAY_SIZE(wlan_hdd_iface_combination);
-		}
-
-		wiphy->n_iface_combinations = iface_num;
-
-		wlan_hdd_dump_iface_combinations(wiphy->n_iface_combinations,
-						 wiphy->iface_combinations);
-	}
+	wlan_hdd_update_iface_combination(hdd_ctx, wiphy, allow_mcc_go_diff_bi,
+					  enable_mcc);
 
 	mac_spoofing_enabled = ucfg_scan_is_mac_spoofing_enabled(hdd_ctx->psoc);
 	if (mac_spoofing_enabled)
@@ -25603,7 +25617,7 @@ static int wlan_hdd_set_txq_params(struct wiphy *wiphy,
 
 /**
  * hdd_softap_deauth_current_sta() - Deauth current sta
- * @adapter: pointer to adapter structure
+ * @link_info: pointer to hdd link info
  * @sta_info: pointer to the current station info structure
  * @hapd_state: pointer to hostapd state structure
  * @param: pointer to del sta params
@@ -25611,7 +25625,7 @@ static int wlan_hdd_set_txq_params(struct wiphy *wiphy,
  * Return: QDF_STATUS on success, corresponding QDF failure status on failure
  */
 static
-QDF_STATUS hdd_softap_deauth_current_sta(struct hdd_adapter *adapter,
+QDF_STATUS hdd_softap_deauth_current_sta(struct wlan_hdd_link_info *link_info,
 					 struct hdd_station_info *sta_info,
 					 struct hdd_hostapd_state *hapd_state,
 					 struct csr_del_sta_params *param)
@@ -25620,7 +25634,14 @@ QDF_STATUS hdd_softap_deauth_current_sta(struct hdd_adapter *adapter,
 	struct hdd_context *hdd_ctx;
 	QDF_STATUS qdf_status;
 	struct hdd_station_info *tmp = NULL;
+	struct hdd_adapter *adapter;
 
+	if (!link_info) {
+		hdd_err("link_info is NULL");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	adapter = link_info->adapter;
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	if (!hdd_ctx) {
 		hdd_err("hdd_ctx is NULL");
@@ -25631,11 +25652,11 @@ QDF_STATUS hdd_softap_deauth_current_sta(struct hdd_adapter *adapter,
 
 	if (!qdf_is_macaddr_broadcast(&param->peerMacAddr))
 		sme_send_disassoc_req_frame(hdd_ctx->mac_handle,
-					    adapter->deflink->vdev_id,
+					    link_info->vdev_id,
 					    (uint8_t *)&param->peerMacAddr,
 					    param->reason_code, 0);
 
-	qdf_status = hdd_softap_sta_deauth(adapter, param);
+	qdf_status = hdd_softap_sta_deauth(link_info, param);
 
 	if (QDF_IS_STATUS_SUCCESS(qdf_status)) {
 		if (qdf_is_macaddr_broadcast(&sta_info->sta_mac)) {
@@ -25690,7 +25711,8 @@ QDF_STATUS hdd_softap_deauth_all_sta(struct hdd_adapter *adapter,
 		struct hdd_station_info bcast_sta_info;
 
 		qdf_set_macaddr_broadcast(&bcast_sta_info.sta_mac);
-		return hdd_softap_deauth_current_sta(adapter, &bcast_sta_info,
+		return hdd_softap_deauth_current_sta(adapter->link_info,
+						     &bcast_sta_info,
 						     hapd_state, param);
 	}
 
@@ -25711,7 +25733,8 @@ QDF_STATUS hdd_softap_deauth_all_sta(struct hdd_adapter *adapter,
 				     sta_info->sta_mac.bytes,
 				     QDF_MAC_ADDR_SIZE);
 			status =
-			    hdd_softap_deauth_current_sta(adapter, sta_info,
+			    hdd_softap_deauth_current_sta(sta_info->link_info,
+							  sta_info,
 							  hapd_state, param);
 			if (QDF_IS_STATUS_ERROR(status)) {
 				hdd_put_sta_info_ref(
@@ -25751,6 +25774,7 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 	struct hdd_hostapd_state *hapd_state;
 	uint8_t *mac;
 	struct hdd_station_info *sta_info;
+	struct wlan_hdd_link_info *link_info;
 
 	hdd_enter();
 
@@ -25790,18 +25814,6 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 								     param)))
 			goto fn_end;
 	} else {
-		if (param->reason_code == REASON_1X_AUTH_FAILURE) {
-			struct wlan_objmgr_vdev *vdev;
-
-			vdev = hdd_objmgr_get_vdev_by_user(adapter->deflink,
-							   WLAN_DP_ID);
-			if (vdev) {
-				ucfg_dp_softap_check_wait_for_tx_eap_pkt(vdev,
-						(struct qdf_mac_addr *)mac);
-				hdd_objmgr_put_vdev_by_user(vdev, WLAN_DP_ID);
-			}
-		}
-
 		sta_info = hdd_get_sta_info_by_mac(
 						&adapter->sta_info_list,
 						mac,
@@ -25824,9 +25836,32 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 			return -ENOENT;
 		}
 
+		link_info = sta_info->link_info;
+		if (!link_info) {
+			hdd_debug("invalid link info" QDF_MAC_ADDR_FMT,
+				  QDF_MAC_ADDR_REF(mac));
+			hdd_put_sta_info_ref(&adapter->sta_info_list, &sta_info,
+					     true,
+					     STA_INFO_CFG80211_DEL_STATION);
+			return -ENOENT;
+		}
+
+		if (param->reason_code == REASON_1X_AUTH_FAILURE) {
+			struct wlan_objmgr_vdev *vdev;
+
+			vdev = hdd_objmgr_get_vdev_by_user(link_info,
+							   WLAN_DP_ID);
+			if (vdev) {
+				ucfg_dp_softap_check_wait_for_tx_eap_pkt(
+						vdev,
+						(struct qdf_mac_addr *)mac);
+				hdd_objmgr_put_vdev_by_user(vdev, WLAN_DP_ID);
+			}
+		}
+
 		hdd_debug("ucast, Delete STA with MAC:" QDF_MAC_ADDR_FMT,
 			  QDF_MAC_ADDR_REF(mac));
-		hdd_softap_deauth_current_sta(adapter, sta_info, hapd_state,
+		hdd_softap_deauth_current_sta(link_info, sta_info, hapd_state,
 					      param);
 		hdd_put_sta_info_ref(&adapter->sta_info_list, &sta_info, true,
 				     STA_INFO_CFG80211_DEL_STATION);
@@ -28331,16 +28366,8 @@ static void wlan_hdd_chan_info_cb(struct scan_chan_info *info)
 		if (chan[idx].freq == info->freq) {
 			hdd_update_chan_info(hdd_ctx, &chan[idx], info,
 				info->cmd_flag);
-			hdd_debug("cmd:%d freq:%u nf:%d cc:%u rcc:%u clk:%u cmd:%d tfc:%d index:%d",
-				  chan[idx].cmd_flag, chan[idx].freq,
-				  chan[idx].noise_floor,
-				  chan[idx].cycle_count,
-				  chan[idx].rx_clear_count,
-				  chan[idx].clock_freq, chan[idx].cmd_flag,
-				  chan[idx].tx_frame_count, idx);
 			if (chan[idx].freq == 0)
 				break;
-
 		}
 	}
 }
@@ -28918,7 +28945,7 @@ static int wlan_hdd_cfg80211_get_vdev_chan_info(struct hdd_context *hdd_ctx,
 	des_chan = wlan_vdev_mlme_get_des_chan(vdev);
 	chan_info->ch_freq = des_chan->ch_freq;
 	chan_info->ch_cfreq1 = des_chan->ch_cfreq1;
-	chan_info->ch_cfreq2 = 0;
+	chan_info->ch_cfreq2 = des_chan->ch_cfreq2;
 	chan_info->ch_width = des_chan->ch_width;
 
 	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(link_info);
@@ -28935,6 +28962,7 @@ static int wlan_hdd_cfg80211_get_vdev_chan_info(struct hdd_context *hdd_ctx,
 						&ch_params,
 						REG_CURRENT_PWR_MODE);
 	chan_info->ch_cfreq1 = ch_params.mhz_freq_seg0;
+	chan_info->ch_cfreq2 = ch_params.mhz_freq_seg1;
 
 	hdd_debug("vdev: %d, freq: %d, freq1: %d, freq2: %d, ch_width: %d",
 		  vdev_id, chan_info->ch_freq, chan_info->ch_cfreq1,
@@ -28953,6 +28981,7 @@ wlan_hdd_cfg80211_get_channel_sta(struct wiphy *wiphy,
 	bool is_legacy_phymode = false;
 	struct wlan_channel chan_info;
 	int ret = 0;
+	struct ch_params ch_params = {0};
 
 	if (!hdd_cm_is_vdev_associated(adapter->deflink)) {
 		hdd_debug("vdev not associated");
@@ -28973,6 +29002,15 @@ wlan_hdd_cfg80211_get_channel_sta(struct wiphy *wiphy,
 		ret = mlo_mgr_get_per_link_chan_info(vdev, link_id, &chan_info);
 		if (ret != 0)
 			goto release;
+
+		ch_params.ch_width = chan_info.ch_width;
+		ch_params.center_freq_seg1 = chan_info.ch_cfreq2;
+		wlan_reg_set_channel_params_for_pwrmode(hdd_ctx->pdev,
+							chan_info.ch_freq, 0,
+							&ch_params,
+							REG_CURRENT_PWR_MODE);
+		chan_info.ch_cfreq1 = ch_params.mhz_freq_seg0;
+		chan_info.ch_cfreq2 = ch_params.mhz_freq_seg1;
 	} else {
 		ret = wlan_hdd_cfg80211_get_vdev_chan_info(hdd_ctx, vdev,
 							   link_id,

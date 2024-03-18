@@ -814,7 +814,8 @@ lim_send_probe_rsp_mgmt_frame(struct mac_context *mac_ctx,
 	if (wlan_vdev_mlme_is_mlo_ap(pe_session->vdev)) {
 		mlo_ie_len = lim_send_bcn_frame_mlo(mac_ctx, pe_session);
 		populate_dot11f_mlo_rnr(mac_ctx, pe_session,
-					&frm->reduced_neighbor_report);
+					&frm->reduced_neighbor_report[0],
+					&frm->num_reduced_neighbor_report);
 	}
 	if (lim_is_session_eht_capable(pe_session)) {
 		pe_debug("Populate EHT IEs");
@@ -1450,6 +1451,8 @@ static QDF_STATUS lim_assoc_rsp_tx_complete(
 
 	qdf_mem_free(lim_assoc_ind);
 
+	lim_install_fils_key(session_entry, mac_hdr->da);
+
 free_buffers:
 	lim_free_assoc_req_frm_buf(assoc_req);
 	qdf_mem_free(session_entry->parsedAssocReq[sta_ds->assocId]);
@@ -1529,6 +1532,8 @@ lim_send_assoc_rsp_mgmt_frame(struct mac_context *mac_ctx,
 	uint16_t ie_buf_size;
 	uint16_t mlo_ie_len = 0;
 	struct element_info ie;
+	uint32_t aes_block_size_len = 0;
+	struct pe_fils_session *fils_info;
 
 	if (!pe_session) {
 		pe_err("pe_session is NULL");
@@ -1800,6 +1805,15 @@ lim_send_assoc_rsp_mgmt_frame(struct mac_context *mac_ctx,
 							       sta, &frm);
 	}
 
+	fils_info = lim_get_fils_info(pe_session, peer_addr);
+
+	if (fils_info && fils_info->is_fils_connection &&
+	    status_code == QDF_STATUS_SUCCESS) {
+		populate_dot11f_fils_params_assoc_rsp(mac_ctx, &frm, pe_session,
+						      peer_addr);
+		aes_block_size_len = AES_BLOCK_SIZE;
+	}
+
 	/* Allocate a buffer for this frame: */
 	status = dot11f_get_packed_assoc_response_size(mac_ctx, &frm, &payload);
 	if (DOT11F_FAILED(status)) {
@@ -1811,7 +1825,8 @@ lim_send_assoc_rsp_mgmt_frame(struct mac_context *mac_ctx,
 			status);
 	}
 
-	bytes += sizeof(tSirMacMgmtHdr) + payload + mlo_ie_len;
+	bytes += sizeof(tSirMacMgmtHdr) + payload + mlo_ie_len +
+		 aes_block_size_len;
 
 	if (sta) {
 		bytes += sta->mlmStaContext.owe_ie_len;
@@ -1951,6 +1966,17 @@ lim_send_assoc_rsp_mgmt_frame(struct mac_context *mac_ctx,
 			mlo_ie_len = 0;
 		}
 		payload += mlo_ie_len;
+	}
+
+	if (fils_info && fils_info->is_fils_connection) {
+		qdf_status = aead_encrypt_assoc_rsp(mac_ctx, pe_session,
+						    frame, &payload,
+						    mac_hdr->da);
+		if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
+			pe_err("Failed to encrypt Assoc Req");
+			cds_packet_free((void *)packet);
+			goto error;
+		}
 	}
 
 	pe_nofl_debug("Assoc rsp TX: vdev %d subtype %d to "QDF_MAC_ADDR_FMT" seq num %d status %d aid %d addn_ie_len %d ht %d vht %d vendor vht %d he %d eht %d",
@@ -5660,6 +5686,7 @@ lim_send_radio_measure_report_action_frame(struct mac_context *mac,
 				struct pe_session *pe_session)
 {
 	QDF_STATUS status_code = QDF_STATUS_SUCCESS;
+	tDot11fRadioMeasurementReport *frm;
 	uint8_t *pFrame;
 	tpSirMacMgmtHdr pMacHdr;
 	uint32_t nBytes, nPayload, nStatus;
@@ -5670,12 +5697,7 @@ lim_send_radio_measure_report_action_frame(struct mac_context *mac,
 	uint8_t smeSessionId = 0;
 	bool is_last_report = false;
 
-	/* Malloc size of (tDot11fIEMeasurementReport) * (num_report - 1)
-	 * as memory for one Dot11fIEMeasurementReport is already calculated.
-	 */
-	tDot11fRadioMeasurementReport *frm =
-		qdf_mem_malloc(sizeof(tDot11fRadioMeasurementReport) +
-		(sizeof(tDot11fIEMeasurementReport) * (num_report - 1)));
+	frm = qdf_mem_malloc(sizeof(tDot11fRadioMeasurementReport));
 	if (!frm)
 		return QDF_STATUS_E_NOMEM;
 
@@ -6222,9 +6244,10 @@ bool lim_tdls_peer_support_he(tpDphHashNode sta_ds)
 
 #ifdef WLAN_FEATURE_11BE_MLO
 static
-void lim_prepare_tdls_with_mlo(struct pe_session *session,
-			       tSirMacAddr peer_mac, tSirMacAddr self_mac,
-			       uint16_t *action)
+void lim_update_addba_resp_mlo_params(struct pe_session *session,
+				      tSirMacAddr peer_mac,
+				      tSirMacAddr self_mac,
+				      uint16_t *action)
 {
 	uint8_t *mld_addr;
 
@@ -6233,6 +6256,9 @@ void lim_prepare_tdls_with_mlo(struct pe_session *session,
 		mld_addr = wlan_vdev_mlme_get_mldaddr(session->vdev);
 		sir_copy_mac_addr(self_mac, mld_addr);
 		*action = ACTION_CATEGORY_BACK << 8 | ADDBA_RESPONSE;
+	} else if (wlan_vdev_mlme_is_mlo_ap(session->vdev)) {
+		sir_copy_mac_addr(self_mac, session->self_mac_addr);
+		*action = ACTION_CATEGORY_BACK << 8 | ADDBA_RESPONSE;
 	} else {
 		sir_copy_mac_addr(self_mac, session->self_mac_addr);
 		*action = 0;
@@ -6240,9 +6266,10 @@ void lim_prepare_tdls_with_mlo(struct pe_session *session,
 }
 #else
 static
-void lim_prepare_tdls_with_mlo(struct pe_session *session,
-			       tSirMacAddr peer_mac, tSirMacAddr self_mac,
-			       uint16_t *action)
+void lim_update_addba_resp_mlo_params(struct pe_session *session,
+				      tSirMacAddr peer_mac,
+				      tSirMacAddr self_mac,
+				      uint16_t *action)
 {
 	sir_copy_mac_addr(self_mac, session->self_mac_addr);
 	*action = 0;
@@ -6396,7 +6423,7 @@ QDF_STATUS lim_send_addba_response_frame(struct mac_context *mac_ctx,
 	 * for TDLS MLO case, it needs to use MLD mac address for TA and
 	 * set action code to send out from specific vdev in fw.
 	 */
-	lim_prepare_tdls_with_mlo(session, peer_mac, self_mac, &action);
+	lim_update_addba_resp_mlo_params(session, peer_mac, self_mac, &action);
 	pe_debug("Sending a ADDBA Response from "QDF_MAC_ADDR_FMT" to "QDF_MAC_ADDR_FMT,
 		 QDF_MAC_ADDR_REF(self_mac),
 		 QDF_MAC_ADDR_REF(peer_mac));
@@ -6599,6 +6626,7 @@ lim_send_epcs_action_rsp_frame(struct wlan_objmgr_vdev *vdev,
 
 	/* Update A3 with the BSSID */
 	mgmt_hdr = (tpSirMacMgmtHdr)frame_ptr;
+	mgmt_hdr->fc.moreFrag = 0;
 	sir_copy_mac_addr(mgmt_hdr->bssId, session->bssId);
 
 	lim_set_protected_bit(mac_ctx, session, peer_mac, mgmt_hdr);

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1881,6 +1881,14 @@ QDF_STATUS hdd_wlan_shutdown(void)
 	if (!hdd_ctx)
 		return QDF_STATUS_E_FAILURE;
 
+	if (ucfg_ipa_is_enabled()) {
+		ucfg_ipa_uc_force_pipe_shutdown(hdd_ctx->pdev);
+
+		if (pld_is_fw_rejuvenate(hdd_ctx->parent_dev) ||
+		    pld_is_pdr(hdd_ctx->parent_dev))
+			ucfg_ipa_fw_rejuvenate_send_msg(hdd_ctx->pdev);
+	}
+
 	hdd_set_connection_in_progress(false);
 
 	hdd_debug("Invoking packetdump deregistration API");
@@ -3040,6 +3048,11 @@ static int __wlan_hdd_cfg80211_set_txpower(struct wiphy *wiphy,
 	int dbm;
 
 	hdd_enter();
+
+	if (mbm < 0) {
+		hdd_err("tx power < 0, not supported");
+		return -EINVAL;
+	}
 
 	if (!wdev) {
 		hdd_err("wdev is null, set tx power failed");

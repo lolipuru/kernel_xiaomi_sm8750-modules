@@ -138,6 +138,7 @@ struct dp_rtpm_tput_policy_context {
  * @gro_enable: Enable/Disable gro
  * @is_rx_fisa_enabled: flag to enable/disable FISA Rx
  * @is_rx_fisa_lru_del_enabled: flag to enable/disable FST entry delete
+ * @is_direct_link_enabled: indicates whether direct link is enabled or not
  */
 struct wlan_dp_psoc_cfg {
 	bool tx_orphan_enable;
@@ -208,6 +209,9 @@ struct wlan_dp_psoc_cfg {
 #ifdef WLAN_SUPPORT_RX_FISA
 	bool is_rx_fisa_enabled;
 	bool is_rx_fisa_lru_del_enabled;
+#endif
+#ifdef FEATURE_DIRECT_LINK
+	bool is_direct_link_enabled;
 #endif
 };
 
@@ -336,6 +340,12 @@ struct link_monitoring {
 struct direct_link_info {
 	bool config_set;
 	bool low_latency;
+};
+
+struct fils_peer_hlp_node {
+	qdf_list_node_t node;
+	bool is_processing;
+	struct qdf_mac_addr peer_mac;
 };
 
 /**
@@ -626,6 +636,8 @@ struct dp_rx_fst {
  * @dp_link_list: List of dp_links for this DP interface
  * @fpm_ctx: Flow policy manager context
  * @fim_ctx: Flow identification manager context
+ * @hlp_list_lock: Lock to protect hlp link_list operation
+ * @hlp_list: List of HLP peers for HLP response handling
  */
 struct wlan_dp_intf {
 	struct wlan_dp_psoc_context *dp_ctx;
@@ -698,11 +710,18 @@ struct wlan_dp_intf {
 	struct fpm_table *fpm_ctx;
 	struct fim_vdev_ctx *fim_ctx;
 #endif
+#ifdef WLAN_FEATURE_FILS_SK_SAP
+	qdf_spinlock_t hlp_list_lock;
+	qdf_list_t hlp_list;
+#endif
 };
+
+#define WLAN_DP_LINK_MAGIC 0x5F44505F4C494E4B	/* "_DP_LINK" in ASCII */
 
 /**
  * struct wlan_dp_link - DP link (corresponds to objmgr vdev)
  * @node: list node for membership in the DP links list
+ * @magic: magic number to identify validity of dp_link
  * @link_id: ID for this DP link (Same as vdev_id)
  * @mac_addr: mac address of this link
  * @dp_intf: Parent DP interface for this DP link
@@ -717,6 +736,7 @@ struct wlan_dp_intf {
  */
 struct wlan_dp_link {
 	qdf_list_node_t node;
+	uint64_t magic;
 	uint8_t link_id;
 	struct qdf_mac_addr mac_addr;
 	struct wlan_dp_intf *dp_intf;

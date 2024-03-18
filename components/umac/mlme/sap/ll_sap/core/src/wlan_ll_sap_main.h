@@ -48,12 +48,17 @@
  * @tsf_timer: TSF timer
  * @timer_vdev_id: vdev id for which tsf timer needs to
  * started
+ * @is_ll_lt_sap_supported: Flag to check whether LL SAP is supported
+ * @is_beared_switch_required: Flag to check whether bearer switch
+ * is required or not
  */
 struct ll_sap_psoc_priv_obj {
 	struct wlan_ll_sap_tx_ops tx_ops;
 	struct wlan_ll_sap_rx_ops rx_ops;
 	qdf_mc_timer_t tsf_timer;
 	uint8_t timer_vdev_id;
+	bool is_ll_lt_sap_supported;
+	bool is_beared_switch_required;
 };
 
 /**
