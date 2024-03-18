@@ -193,6 +193,15 @@ SND_SOC_DAILINK_DEFS(tx_dma_tx4,
 			   COMP_CODEC("swr-dmic.04", "swr_dmic_tx3")),
 	DAILINK_COMP_ARRAY(COMP_PLATFORM("snd-soc-dummy")));
 
+SND_SOC_DAILINK_DEFS(tx_dma_qmp_normal,
+		DAILINK_COMP_ARRAY(COMP_CPU("snd-soc-dummy-dai")),
+		DAILINK_COMP_ARRAY(COMP_CODEC("lpass-cdc", "tx_macro_tx1"),
+			COMP_CODEC("qmp-dmic.01", "qmp_dmic_normal_tx1"),
+			COMP_CODEC("qmp-dmic.02", "qmp_dmic_normal_tx2"),
+			COMP_CODEC("qmp-dmic.03", "qmp_dmic_normal_tx3"),
+			COMP_CODEC("qmp-dmic.04", "qmp_dmic_normal_tx4")),
+		DAILINK_COMP_ARRAY(COMP_PLATFORM("snd-soc-dummy")));
+
 SND_SOC_DAILINK_DEFS(va_dma_tx0,
 	DAILINK_COMP_ARRAY(COMP_CPU("snd-soc-dummy-dai")),
 	DAILINK_COMP_ARRAY(COMP_CODEC("lpass-cdc", "va_macro_tx1")),
@@ -207,6 +216,24 @@ SND_SOC_DAILINK_DEFS(va_dma_tx2,
 	DAILINK_COMP_ARRAY(COMP_CPU("snd-soc-dummy-dai")),
 	DAILINK_COMP_ARRAY(COMP_CODEC("lpass-cdc", "va_macro_tx3")),
 	DAILINK_COMP_ARRAY(COMP_PLATFORM("snd-soc-dummy")));
+
+SND_SOC_DAILINK_DEFS(va_dma_qmp_normal,
+		DAILINK_COMP_ARRAY(COMP_CPU("snd-soc-dummy-dai")),
+		DAILINK_COMP_ARRAY(COMP_CODEC("lpass-cdc", "va_macro_tx1"),
+			COMP_CODEC("qmp-dmic.01", "qmp_dmic_va_normal_tx1"),
+			COMP_CODEC("qmp-dmic.02", "qmp_dmic_va_normal_tx2"),
+			COMP_CODEC("qmp-dmic.03", "qmp_dmic_va_normal_tx3"),
+			COMP_CODEC("qmp-dmic.04", "qmp_dmic_va_normal_tx4")),
+		DAILINK_COMP_ARRAY(COMP_PLATFORM("snd-soc-dummy")));
+
+SND_SOC_DAILINK_DEFS(va_dma_qmp_lp,
+		DAILINK_COMP_ARRAY(COMP_CPU("snd-soc-dummy-dai")),
+		DAILINK_COMP_ARRAY(COMP_CODEC("lpass-cdc", "va_macro_tx2"),
+			COMP_CODEC("qmp-dmic.01", "qmp_dmic_lp_tx1"),
+			COMP_CODEC("qmp-dmic.02", "qmp_dmic_lp_tx2"),
+			COMP_CODEC("qmp-dmic.03", "qmp_dmic_lp_tx3"),
+			COMP_CODEC("qmp-dmic.04", "qmp_dmic_lp_tx4")),
+		DAILINK_COMP_ARRAY(COMP_PLATFORM("snd-soc-dummy")));
 
 SND_SOC_DAILINK_DEFS(proxy_tx,
 	DAILINK_COMP_ARRAY(COMP_CPU("snd-soc-dummy-dai")),
