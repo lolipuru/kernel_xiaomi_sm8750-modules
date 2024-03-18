@@ -228,7 +228,6 @@ void sde_crtc_get_mixer_resolution(struct drm_crtc *crtc, struct drm_crtc_state 
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
 	struct sde_connector_state *virt_cstate;
-	struct sde_io_res ai_scaler_res = {0, };
 
 	*width = 0;
 	*height = 0;
@@ -240,14 +239,14 @@ void sde_crtc_get_mixer_resolution(struct drm_crtc *crtc, struct drm_crtc_state 
 	cstate = to_sde_crtc_state(crtc_state);
 	virt_conn_state = _sde_crtc_get_virt_conn_state(crtc, crtc_state);
 	virt_cstate = virt_conn_state ? to_sde_connector_state(virt_conn_state) : NULL;
-	sde_crtc_get_ai_scaler_io_res(crtc_state, &ai_scaler_res);
+	sde_crtc_get_ai_scaler_io_res(crtc_state);
 
 	if (cstate->num_ds_enabled) {
 		*width = cstate->ds_cfg[0].lm_width;
 		*height = cstate->ds_cfg[0].lm_height;
-	} else if (ai_scaler_res.enabled) {
-		*width = ai_scaler_res.src_w / sde_crtc->num_mixers;
-		*height = ai_scaler_res.src_h;
+	} else if (sde_crtc->ai_scaler_res.enabled) {
+		*width = sde_crtc->ai_scaler_res.src_w / sde_crtc->num_mixers;
+		*height = sde_crtc->ai_scaler_res.src_h;
 	} else if (virt_cstate && virt_cstate->dnsc_blur_count) {
 		*width = (virt_cstate->dnsc_blur_cfg[0].src_width
 				* virt_cstate->dnsc_blur_count) / sde_crtc->num_mixers;
@@ -265,7 +264,6 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
 	struct sde_connector_state *virt_cstate;
-	struct sde_io_res ai_scaler_res = {0, };
 
 	*width = 0;
 	*height = 0;
@@ -273,7 +271,7 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	if (!crtc || !crtc_state || !mode)
 		return;
 
-	sde_crtc_get_ai_scaler_io_res(crtc_state, &ai_scaler_res);
+	sde_crtc_get_ai_scaler_io_res(crtc_state);
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(crtc_state);
 	virt_conn_state = _sde_crtc_get_virt_conn_state(crtc, crtc_state);
@@ -282,9 +280,9 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	if (cstate->num_ds_enabled) {
 		*width = cstate->ds_cfg[0].lm_width * cstate->num_ds_enabled;
 		*height = cstate->ds_cfg[0].lm_height;
-	} else if (ai_scaler_res.enabled) {
-		*width = ai_scaler_res.src_w;
-		*height = ai_scaler_res.src_h;
+	} else if (sde_crtc->ai_scaler_res.enabled) {
+		*width = sde_crtc->ai_scaler_res.src_w;
+		*height = sde_crtc->ai_scaler_res.src_h;
 	} else if (virt_cstate && virt_cstate->dnsc_blur_count) {
 		*width = virt_cstate->dnsc_blur_cfg[0].src_width * virt_cstate->dnsc_blur_count;
 		*height = virt_cstate->dnsc_blur_cfg[0].src_height;
@@ -789,8 +787,13 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 
 	bg_alpha = max_alpha - fg_alpha;
 
-	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA))
+	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA)) {
 		bg_alpha = sde_plane_get_property(pstate, PLANE_PROP_BG_ALPHA);
+		/* scale down background alpha */
+		if (test_bit(SDE_MIXER_10_BITS_ALPHA, &lm->cap->features))
+			bg_alpha = bg_alpha >> 6;
+	}
+
 	blend_op = SDE_BLEND_FG_ALPHA_FG_CONST | SDE_BLEND_BG_ALPHA_BG_CONST;
 	blend_type = sde_plane_get_property(pstate, PLANE_PROP_BLEND_OP);
 
@@ -2000,7 +2003,12 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			skip_blend_plane.plane = sde_plane_pipe(plane);
 			skip_blend_plane.height = plane_crtc_roi.h;
 			skip_blend_plane.width = plane_crtc_roi.w;
+			skip_blend_plane.is_virtual = is_sde_plane_virtual(plane);
 			sde_cp_set_skip_blend_plane_info(crtc, &skip_blend_plane);
+			SDE_EVT32(DRMID(crtc), DRMID(plane), state->src_x >> 16,
+				state->src_y >> 16, state->src_w >> 16, state->src_h >> 16,
+				state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h,
+				pstate->rotation);
 		}
 
 		if (blend_type != SDE_DRM_BLEND_OP_SKIP) {
@@ -3949,7 +3957,7 @@ static struct sde_hw_ctl *_sde_crtc_get_hw_ctl(struct drm_crtc *drm_crtc)
 
 static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 {
-#ifdef CONFIG_QTI_HW_FENCE
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 	struct dma_fence *fence;
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
@@ -4017,7 +4025,7 @@ exit:
 	return input_hw_fence;
 #else
 	return NULL;
-#endif
+#endif /* CONFIG_QTI_HW_FENCE */
 }
 
 /**
@@ -6975,6 +6983,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		if (catalog->ai_scaler_count)
 			sde_kms_info_add_keyint(info, "ai_scaler_count",
 					catalog->ai_scaler_count);
+
+		if (catalog->abc_count)
+			sde_kms_info_add_keyint(info, "abc_count",
+					catalog->abc_count);
 	}
 
 	sde_kms_info_add_keyint(info, "dsc_block_count", catalog->dsc_count);
@@ -8816,6 +8828,8 @@ static int _sde_crtc_set_noise_layer(struct sde_crtc *sde_crtc,
 				void __user *usr_ptr)
 {
 	int ret;
+	struct sde_kms *kms;
+	int alpha_attn_max = DRM_NOISE_ATTN_MAX;
 
 	if (!sde_crtc || !cstate) {
 		SDE_ERROR("invalid sde_crtc/state\n");
@@ -8836,13 +8850,23 @@ static int _sde_crtc_set_noise_layer(struct sde_crtc *sde_crtc,
 		SDE_ERROR("failed to copy noise layer %d\n", ret);
 		return -EFAULT;
 	}
+	kms = _sde_crtc_get_kms(&sde_crtc->base);
+	if (!kms || !kms->catalog) {
+		SDE_ERROR("Invalid kms\n");
+		return -EINVAL;
+	}
+
+	/* Alpha attenuation max is 65535 for 10 bit alpha */
+	if (test_bit(SDE_FEATURE_10_BITS_COMPONENTS, kms->catalog->features))
+		alpha_attn_max = DRM_NOISE_ATTN_MAX_10_BIT_ALPHA;
+
 	if (cstate->layer_cfg.zposn != cstate->layer_cfg.zposattn - 1 ||
 		cstate->layer_cfg.zposattn >= SDE_STAGE_MAX ||
 		!cstate->layer_cfg.attn_factor ||
-		cstate->layer_cfg.attn_factor > DRM_NOISE_ATTN_MAX ||
+		cstate->layer_cfg.attn_factor > alpha_attn_max ||
 		cstate->layer_cfg.strength > DRM_NOISE_STREN_MAX ||
 		!cstate->layer_cfg.alpha_noise ||
-		cstate->layer_cfg.alpha_noise > DRM_NOISE_ATTN_MAX) {
+		cstate->layer_cfg.alpha_noise > alpha_attn_max) {
 		SDE_ERROR("invalid param zposn %d zposattn %d attn_factor %d \
 			   strength %d alpha noise %d\n", cstate->layer_cfg.zposn,
 			   cstate->layer_cfg.zposattn, cstate->layer_cfg.attn_factor,
@@ -8891,8 +8915,8 @@ static void sde_cp_crtc_apply_noise(struct drm_crtc *crtc,
 			break;
 
 		if (test_bit(SDE_MIXER_10_BITS_COLOR, &lm->cap->features)) {
-			cfg.alpha_noise = cfg.alpha_noise >> 6;
-			cfg.attn_factor = cfg.attn_factor >> 6;
+			cfg.alpha_noise = cstate->layer_cfg.alpha_noise >> 6;
+			cfg.attn_factor = cstate->layer_cfg.attn_factor >> 6;
 		}
 
 		if (!cstate->noise_layer_en)

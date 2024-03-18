@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -56,6 +56,7 @@
 #include "sde_connector.h"
 #include "sde_vm.h"
 #include "sde_fence.h"
+#include "sde_aiqe_common.h"
 
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <linux/firmware/qcom/qcom_scm.h>
@@ -2484,6 +2485,10 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		msm_iounmap(pdev, sde_kms->reg_dma);
 	sde_kms->reg_dma = NULL;
 
+	if (sde_kms->disp_cc)
+		msm_iounmap(pdev, sde_kms->disp_cc);
+	sde_kms->disp_cc = NULL;
+
 	if (sde_kms->vbif[VBIF_NRT])
 		msm_iounmap(pdev, sde_kms->vbif[VBIF_NRT]);
 	sde_kms->vbif[VBIF_NRT] = NULL;
@@ -2499,6 +2504,8 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 	if (sde_kms->dev->primary)
 		sde_reg_dma_deinit(sde_kms->dev->primary->index);
 
+	sde_hw_disp_cc_destroy(sde_kms->hw_disp_cc);
+	sde_kms->hw_disp_cc = NULL;
 	_sde_kms_mmu_destroy(sde_kms);
 }
 
@@ -4620,6 +4627,31 @@ static void sde_kms_irq_affinity_notify(
 
 static void sde_kms_irq_affinity_release(struct kref *ref) {}
 
+static void _sde_kms_handle_lut_retention(struct sde_kms *sde_kms)
+{
+	size_t crtc_index = 0;
+	bool retention_enable = false;
+	struct msm_drm_private *dev_private = NULL;
+
+	if (!sde_kms->dev || !sde_kms->dev->num_crtcs || !sde_kms->dev->dev_private ||
+			!sde_kms->hw_disp_cc || !sde_kms->hw_disp_cc->ops.setup_lut_retention)
+		return;
+
+	dev_private = sde_kms->dev->dev_private;
+	for (crtc_index = 0; crtc_index < sde_kms->dev->num_crtcs; crtc_index++) {
+		struct sde_crtc *scrtc = to_sde_crtc(dev_private->crtcs[crtc_index]);
+
+		retention_enable =
+			aiqe_is_client_registered(FEATURE_MDNIE, &scrtc->aiqe_top_level) ||
+			aiqe_is_client_registered(FEATURE_SSRC, &scrtc->aiqe_top_level);
+		if (retention_enable)
+			break;
+	}
+
+	SDE_EVT32(retention_enable);
+	sde_kms->hw_disp_cc->ops.setup_lut_retention(sde_kms->hw_disp_cc, retention_enable);
+}
+
 static void sde_kms_handle_power_event(u32 event_type, void *usr)
 {
 	struct sde_kms *sde_kms = usr;
@@ -4657,6 +4689,7 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 
 		_sde_kms_active_override(sde_kms, true);
 		sde_vbif_axi_halt_request(sde_kms);
+		_sde_kms_handle_lut_retention(sde_kms);
 	}
 }
 
@@ -4926,6 +4959,20 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 			SDE_ERROR("dbg base register sid failed: %d\n", rc);
 	}
 
+	sde_kms->disp_cc = msm_ioremap(platformdev, "disp_cc", "disp_cc");
+	if (IS_ERR(sde_kms->disp_cc)) {
+		sde_kms->disp_cc = NULL;
+		SDE_DEBUG("DISP_CC is not defined");
+	} else {
+		sde_kms->disp_cc_len = msm_iomap_size(platformdev, "disp_cc");
+		rc =  sde_dbg_reg_register_base("disp_cc", sde_kms->disp_cc,
+				sde_kms->disp_cc_len,
+				msm_get_phys_addr(platformdev, "disp_cc"),
+				SDE_DBG_DISP_CC);
+		if (rc)
+			SDE_ERROR("dbg base register disp_cc failed: %d\n", rc);
+	}
+
 error:
 	return rc;
 }
@@ -5002,6 +5049,16 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (rc) {
 		SDE_ERROR("failed: reg dma init failed\n");
 		goto power_error;
+	}
+
+	if (sde_kms->disp_cc) {
+		sde_kms->hw_disp_cc = sde_hw_disp_cc_init(sde_kms->disp_cc,
+				sde_kms->disp_cc_len, sde_kms->catalog);
+		if (IS_ERR_OR_NULL(sde_kms->hw_disp_cc)) {
+			rc = PTR_ERR(sde_kms->hw_disp_cc);
+			SDE_ERROR("sde_hw_disp_cc_init failed: %d\n", rc);
+			goto power_error;
+		}
 	}
 
 	sde_dbg_init_dbg_buses(sde_kms->core_rev);
@@ -5123,6 +5180,22 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		SDE_ERROR("modeset init failed: %d\n", rc);
 		goto drm_obj_init_err;
 	}
+
+	/**
+	 * Note: If sde_kms->catalog->hw_fence_rev is true but CONFIG_QTI_HW_FENCE is not enabled,
+	 * the hw_fence_rev field will be set to zero when hw-fence initialization process fails
+	 */
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+	if (sde_kms->catalog->hw_fence_rev) {
+		priv->phandle.rproc = rproc_get_by_phandle(sde_kms->catalog->soccp_ph);
+		if (IS_ERR_OR_NULL(priv->phandle.rproc)) {
+			SDE_ERROR("failed to find rproc for phandle:%u, disabling hw-fencing\n",
+				sde_kms->catalog->soccp_ph);
+			sde_kms->catalog->hw_fence_rev = 0;
+			priv->phandle.rproc = NULL;
+		}
+	}
+#endif /* CONFIG_QTI_HW_FENCE */
 
 	return 0;
 

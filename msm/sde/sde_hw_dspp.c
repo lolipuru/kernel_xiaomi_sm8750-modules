@@ -434,7 +434,20 @@ static void dspp_demura(struct sde_hw_dspp *c)
 			c->ops.setup_demura_pu_config = sde_demura_pu_cfg;
 			c->ops.setup_demura_cfg0_param2 = reg_dmav1_setup_demura_cfg0_param2;
 		} else {
-			SDE_ERROR("Regdma init dspp op failed for DemuraV2");
+			SDE_ERROR("Regdma init dspp op failed for DemuraV2\n");
+		}
+	} else if (c->cap->sblk->demura.version == SDE_COLOR_PROCESS_VER(0x3, 0x0)) {
+		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_DEMURA, c);
+		if (!ret)
+			ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_DEMURA_CFG0_PARAM2, c);
+		if (!ret) {
+			c->ops.setup_demura_cfg = reg_dmav1_setup_demurav3;
+			c->ops.setup_demura_backlight_cfg = sde_demura_backlight_cfgv3;
+			c->ops.demura_read_plane_status = sde_demura_read_plane_status;
+			c->ops.setup_demura_pu_config = sde_demura_pu_cfg;
+			c->ops.setup_demura_cfg0_param2 = reg_dmav1_setup_demura_cfg0_param2;
+		} else {
+			SDE_ERROR("Regdma init dspp op failed for Demura v3\n");
 		}
 	}
 }
@@ -458,6 +471,8 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 	c->ops.validate_aiqe_ssrc_data = NULL;
 	c->ops.setup_aiqe_ssrc_config = NULL;
 	c->ops.setup_aiqe_ssrc_data = NULL;
+	c->ops.setup_aiqe_abc = NULL;
+
 
 	if (!c->sde_kms || !c->sde_kms->catalog)
 		return;
@@ -489,6 +504,9 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 				c->ops.setup_copr = sde_setup_copr_v1;
 				c->ops.read_copr_status = sde_read_copr_status;
 			}
+
+			if (c->cap->sblk->aiqe.abc_supported)
+				c->ops.setup_aiqe_abc = sde_setup_aiqe_abc_v1;
 		}
 	}
 }
@@ -631,23 +649,26 @@ struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 				cfg->sblk->demura.len, c->hw.xin_id);
 	}
 
-	if (cfg->sblk->aiqe.id == SDE_DSPP_AIQE && cfg->sblk->aiqe.base
-			&& cfg->sblk->aiqe.base != 0xffffffff) {
-		snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "aiqe", c->idx - DSPP_0);
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
-				c->hw.blk_off + cfg->sblk->aiqe.base,
-				c->hw.blk_off + cfg->sblk->aiqe.base +
-				cfg->sblk->aiqe.len, c->hw.xin_id);
-	}
+	if (c->sde_kms->catalog && c->sde_kms->catalog->ssip_allowed) {
+		if (cfg->sblk->aiqe.id == SDE_DSPP_AIQE && cfg->sblk->aiqe.base
+				&& cfg->sblk->aiqe.base != 0xffffffff) {
+			snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "aiqe", c->idx - DSPP_0);
+			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
+					c->hw.blk_off + cfg->sblk->aiqe.base,
+					c->hw.blk_off + cfg->sblk->aiqe.base +
+					cfg->sblk->aiqe.len, c->hw.xin_id);
+		}
 
-	if ((cfg->sblk->ai_scaler.id == SDE_DSPP_AI_SCALER) &&
-			cfg->sblk->ai_scaler.base) {
-		snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "ai_scaler",
-				c->idx - DSPP_0);
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
-				c->hw.blk_off + cfg->sblk->ai_scaler.base,
-				c->hw.blk_off + cfg->sblk->ai_scaler.base +
-				cfg->sblk->ai_scaler.len, c->hw.xin_id);
+		if ((cfg->sblk->ai_scaler.id == SDE_DSPP_AI_SCALER) &&
+				cfg->sblk->ai_scaler.base
+				&& cfg->sblk->ai_scaler.base != 0xffffffff) {
+			snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "ai_scaler",
+					c->idx - DSPP_0);
+			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
+					c->hw.blk_off + cfg->sblk->ai_scaler.base,
+					c->hw.blk_off + cfg->sblk->ai_scaler.base +
+					cfg->sblk->ai_scaler.len, c->hw.xin_id);
+		}
 	}
 
 	return &c->hw;

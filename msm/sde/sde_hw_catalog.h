@@ -847,6 +847,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_UCSC_SUPPORTED  UCSC pipe format supported
  * @SDE_FEATURE_10_BITS_COMPONENTS Support for 10 bits components
  * @SDE_FEATURE_UBWC_LOSSY	Support UBWC Lossy
+ * @SDE_FEATURE_LUT_RETENTION   Indicates LUT retention support
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -897,6 +898,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_UCSC_SUPPORTED,
 	SDE_FEATURE_10_BITS_COMPONENTS,
 	SDE_FEATURE_UBWC_LOSSY,
+	SDE_FEATURE_LUT_RETENTION,
 	SDE_FEATURE_MAX
 };
 
@@ -1365,6 +1367,8 @@ struct sde_clk_ctrl_reg {
  * @ubwc_swizzle:      ubwc default swizzle setting
  * @has_dest_scaler:   indicates support of destination scaler
  * @smart_panel_align_mode: split display smart panel align modes
+ * @hw_fence_mdp_offset: address for mdp hw-fence reg block
+ * @has_soccp:         true if dpu hw supports signaling to/from soccp
  * @clk_ctrls          clock control register definition
  * @clk_status         clock status register definition
  */
@@ -1375,6 +1379,8 @@ struct sde_mdp_cfg {
 	u32 ubwc_swizzle;
 	bool has_dest_scaler;
 	u32 smart_panel_align_mode;
+	u32 hw_fence_mdp_offset;
+	bool has_soccp;
 	struct sde_clk_ctrl_reg clk_ctrls[SDE_CLK_CTRL_MAX];
 	struct sde_clk_ctrl_reg clk_status[SDE_CLK_CTRL_MAX];
 };
@@ -2005,6 +2011,7 @@ struct sde_perf_cfg {
  * @aiqe_count          number of aiqe hardware instances
  * @ai_scaler_count     number of ai scaler hardware instances
  * @ssip_allowed        indicates if ssip register access is allowed
+ * @abc_count           number of aiqe hardware instances
  * @trusted_vm_env      true if the driver is executing in the trusted VM
  * @tvm_reg_count	number of sub-driver register ranges that need to be included
  *					for trusted vm for accepting the resources
@@ -2053,6 +2060,7 @@ struct sde_perf_cfg {
  * @rgb_lossy_formats	supported formats for UBWC lossy
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
+ * @soccp_ph            if soccp is supported, soccp phandle needed to get rproc to set power vote
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
  */
@@ -2125,6 +2133,7 @@ struct sde_mdss_cfg {
 	u32 aiqe_count;
 	u32 ai_scaler_count;
 	bool ssip_allowed;
+	u32 abc_count;
 
 	/* Secure & Trusted UI */
 	bool trusted_vm_env;
@@ -2182,6 +2191,7 @@ struct sde_mdss_cfg {
 
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;
+	phandle soccp_ph;
 
 	enum sde_ppb_size_option ppb_sz_program;
 	u32 ppb_buf_max_lines;

@@ -176,6 +176,8 @@
 #define SSPP_GET_REGDMA_BASE(blk_base, top_off) ((blk_base) >= (top_off) ?\
 		(blk_base) - (top_off) : (blk_base))
 
+#define HW_FENCE_DEFAULT_MDP_OFFSET 0x140000
+
 /*************************************************************
  *  DTSI PROPERTY INDEX
  *************************************************************/
@@ -229,6 +231,8 @@ enum sde_prop {
 	SDE_EMULATED_ENV,
 	IPCC_CLIENT_DPU_PHYS_ID,
 	LINE_INSERTION,
+	SOCCP_PH,
+	HW_FENCE_MDP_OFFSET,
 	SDE_PROP_MAX,
 };
 
@@ -670,6 +674,8 @@ static struct sde_prop_type sde_prop[] = {
 	{SDE_EMULATED_ENV, "qcom,sde-emulated-env", false, PROP_TYPE_BOOL},
 	{IPCC_CLIENT_DPU_PHYS_ID, "qcom,sde-ipcc-client-dpu-phys-id", false, PROP_TYPE_U32},
 	{LINE_INSERTION, "qcom,sde-has-line-insertion", false, PROP_TYPE_BOOL},
+	{SOCCP_PH, "qcom,sde-soccp-controller", false, PROP_TYPE_U32},
+	{HW_FENCE_MDP_OFFSET, "qcom,sde-hw-fence-mdp-ctl-offset", false, PROP_TYPE_U32}
 };
 
 static struct sde_prop_type sde_perf_prop[] = {
@@ -3091,6 +3097,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 {
 	int off_count, i;
 	struct sde_dt_props *props;
+	sde_cfg->abc_count = 0;
 
 	props = sde_get_dt_props(np, AIQE_PROP_MAX, aiqe_prop,
 			ARRAY_SIZE(aiqe_prop), &off_count);
@@ -3125,8 +3132,10 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 					AIQE_LEN, 0);
 			if (PROP_VALUE_ACCESS(props->values, MDNIE, 0))
 				sblk->aiqe.mdnie_supported = true;
-			if (PROP_VALUE_ACCESS(props->values, ABC, 0))
+			if (PROP_VALUE_ACCESS(props->values, ABC, 0)) {
+				sde_cfg->abc_count++;
 				sblk->aiqe.abc_supported = true;
+			}
 			if (PROP_VALUE_ACCESS(props->values, SSRC, 0))
 				sblk->aiqe.ssrc_supported = true;
 			if (PROP_VALUE_ACCESS(props->values, COPR, 0))
@@ -4415,8 +4424,14 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 
 	cfg->ipcc_protocol_id = PROP_VALUE_ACCESS(props->values, IPCC_PROTOCOL_ID, 0);
 	cfg->ipcc_client_phys_id = PROP_VALUE_ACCESS(props->values, IPCC_CLIENT_DPU_PHYS_ID, 0);
+	cfg->mdp[0].hw_fence_mdp_offset = PROP_VALUE_ACCESS(props->values, HW_FENCE_MDP_OFFSET, 0);
+	if (!cfg->mdp[0].hw_fence_mdp_offset)
+		cfg->mdp[0].hw_fence_mdp_offset = HW_FENCE_DEFAULT_MDP_OFFSET;
 	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id)
 		cfg->hw_fence_rev = 0; /* disable hw fences*/
+
+	cfg->soccp_ph = PROP_VALUE_ACCESS(props->values, SOCCP_PH, 0);
+	cfg->mdp[0].has_soccp = (cfg->soccp_ph != 0);
 
 	if (props->exists[SEC_SID_MASK]) {
 		cfg->sec_sid_mask_count = props->counts[SEC_SID_MASK];
@@ -5776,6 +5791,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features);
 		set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
 		set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
+		set_bit(SDE_FEATURE_LUT_RETENTION, sde_cfg->features);
 		sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
 		sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
 		sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;

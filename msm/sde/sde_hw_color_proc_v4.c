@@ -8,8 +8,8 @@
 #include "sde_hw_color_proc_v4.h"
 #include "sde_dbg.h"
 
-#define DEMURAV1_CFG0_PARAM4_MASK 5
-#define DEMURAV2_CFG0_PARAM4_MASK 7
+#define DEMURAV1_CFG0_PARAM4_MASK 6
+#define DEMURAV2_CFG0_PARAM4_MASK 8
 
 static int sde_write_3d_gamut(struct sde_hw_blk_reg_map *hw,
 		struct drm_msm_3d_gamut *payload, u32 base,
@@ -541,6 +541,25 @@ void sde_demura_backlight_cfg(struct sde_hw_dspp *ctx, u64 val, struct sde_hw_cp
 	}
 	SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->demura.base + 0x4c, gain[0]);
 	SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->demura.base + 0x50, gain[1]);
+}
+
+void sde_demura_backlight_cfgv3(struct sde_hw_dspp *ctx, u64 val, struct sde_hw_cp_cfg *hw_cfg)
+{
+	u32 backlight;
+
+	if (!ctx || !hw_cfg) {
+		DRM_ERROR("invalid parameter ctx %pK hw_cfg %pK\n", ctx, hw_cfg);
+		return;
+	}
+
+	if (!hw_cfg->payload) {
+		DRM_DEBUG_DRIVER("disable demura backlight feature\n");
+		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->demura.base + 0x8, 0);
+		return;
+	}
+
+	backlight = (val & REG_MASK(32));
+	SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->demura.base + 0x8, backlight);
 }
 
 void sde_setup_fp16_cscv1(struct sde_hw_pipe *ctx,
