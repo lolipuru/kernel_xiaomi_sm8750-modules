@@ -50,6 +50,7 @@
 #define DEFAULT_PHY_UCODE_FILE_NAME	"phy_ucode.elf"
 #define TME_PATCH_FILE_NAME_1_0		"tmel_peach_10.elf"
 #define TME_PATCH_FILE_NAME_2_0		"tmel_peach_20.elf"
+#define SOFT_SKU_LICENSE_FILENAME	"cnss_softsku_peach.pfm"
 #define PHY_UCODE_V2_FILE_NAME		"phy_ucode20.elf"
 #define DEFAULT_FW_FILE_NAME		"amss.bin"
 #define FW_V2_FILE_NAME			"amss20.bin"
@@ -1099,13 +1100,34 @@ static void cnss_pci_smmu_fault_handler_irq(struct iommu_domain *domain,
 	cnss_record_smmu_fault_timestamp(pci_priv, SMMU_CB_EXIT);
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
+void cnss_register_iommu_fault_handler_irq(struct cnss_pci_data *pci_priv)
+{
+	qcom_iommu_register_device_fault_handler_irq(&pci_priv->pci_dev->dev,
+						     cnss_pci_smmu_fault_handler_irq,
+						     pci_priv);
+}
+#else
 void cnss_register_iommu_fault_handler_irq(struct cnss_pci_data *pci_priv)
 {
 	qcom_iommu_set_fault_handler_irq(pci_priv->iommu_domain,
 					 cnss_pci_smmu_fault_handler_irq, pci_priv);
 }
+#endif
 #else
 void cnss_register_iommu_fault_handler_irq(struct cnss_pci_data *pci_priv)
+{
+}
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
+void cnss_unregister_iommu_fault_handler(struct cnss_pci_data *pci_priv)
+{
+	iommu_unregister_device_fault_handler(&pci_priv->pci_dev->dev);
+}
+#else
+static inline
+void cnss_unregister_iommu_fault_handler(struct cnss_pci_data *pci_priv)
 {
 }
 #endif
@@ -2303,13 +2325,13 @@ retry_mhi_suspend:
 	case CNSS_MHI_RESUME:
 		mutex_lock(&pci_priv->mhi_ctrl->pm_mutex);
 		if (pci_priv->drv_connected_last) {
-			ret = cnss_pci_prevent_l1(&pci_priv->pci_dev->dev);
+			ret = __cnss_pci_prevent_l1(&pci_priv->pci_dev->dev);
 			if (ret) {
 				mutex_unlock(&pci_priv->mhi_ctrl->pm_mutex);
 				break;
 			}
 			ret = cnss_mhi_pm_fast_resume(pci_priv, true);
-			cnss_pci_allow_l1(&pci_priv->pci_dev->dev);
+			__cnss_pci_allow_l1(&pci_priv->pci_dev->dev);
 		} else {
 			if (pci_priv->device_id == QCA6390_DEVICE_ID)
 				ret = cnss_mhi_pm_force_resume(pci_priv);
@@ -2816,7 +2838,7 @@ static int cnss_pci_update_timestamp(struct cnss_pci_data *pci_priv)
 	u32 low, high;
 	int ret;
 
-	ret = cnss_pci_prevent_l1(dev);
+	ret = __cnss_pci_prevent_l1(dev);
 	if (ret)
 		goto out;
 
@@ -2853,7 +2875,7 @@ static int cnss_pci_update_timestamp(struct cnss_pci_data *pci_priv)
 force_wake_put:
 	cnss_pci_force_wake_put(pci_priv);
 allow_l1:
-	cnss_pci_allow_l1(dev);
+	__cnss_pci_allow_l1(dev);
 out:
 	return ret;
 }
@@ -3490,6 +3512,7 @@ static int cnss_qca6290_shutdown(struct cnss_pci_data *pci_priv)
 	if (plat_priv->ramdump_info_v2.dump_data_valid)
 		goto skip_power_off;
 
+	set_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state);
 	cnss_pci_power_off_mhi(pci_priv);
 	ret = cnss_suspend_pci_link(pci_priv);
 	if (ret)
@@ -4968,6 +4991,60 @@ void cnss_pci_free_qdss_mem(struct cnss_pci_data *pci_priv)
 	plat_priv->qdss_mem_seg_len = 0;
 }
 
+int cnss_pci_load_sku_license(struct cnss_pci_data *pci_priv)
+{
+	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
+	struct cnss_fw_mem *sku_license_mem = &plat_priv->sku_license_mem;
+	char filename[MAX_FIRMWARE_NAME_LEN];
+	char *soft_sku_filename = NULL;
+	const struct firmware *fw_entry;
+	int ret = 0;
+
+	switch (pci_priv->device_id) {
+	case PEACH_DEVICE_ID:
+		soft_sku_filename = SOFT_SKU_LICENSE_FILENAME;
+		break;
+	case QCA6174_DEVICE_ID:
+	case QCA6290_DEVICE_ID:
+	case QCA6390_DEVICE_ID:
+	case QCA6490_DEVICE_ID:
+	case KIWI_DEVICE_ID:
+	case MANGO_DEVICE_ID:
+	default:
+		cnss_pr_dbg("Soft SKU not supported for device ID: (0x%x)\n",
+			    pci_priv->device_id);
+		return 0;
+	}
+
+	if (!sku_license_mem->va && !sku_license_mem->size) {
+		scnprintf(filename, MAX_FIRMWARE_NAME_LEN, "%s", soft_sku_filename);
+
+		ret = firmware_request_nowarn(&fw_entry, filename,
+					      &pci_priv->pci_dev->dev);
+		if (ret) {
+			cnss_pr_err("Failed to load Soft SKU License: %s, ret: %d\n",
+				    filename, ret);
+			return ret;
+		}
+
+		sku_license_mem->va = dma_alloc_coherent(&pci_priv->pci_dev->dev,
+						fw_entry->size, &sku_license_mem->pa,
+						GFP_KERNEL);
+		if (!sku_license_mem->va) {
+			cnss_pr_err("Failed to allocate memory for SKU License, size: 0x%zx\n",
+				    fw_entry->size);
+			release_firmware(fw_entry);
+			return -ENOMEM;
+		}
+
+		memcpy(sku_license_mem->va, fw_entry->data, fw_entry->size);
+		sku_license_mem->size = fw_entry->size;
+		release_firmware(fw_entry);
+	}
+
+	return 0;
+}
+
 int cnss_pci_load_tme_patch(struct cnss_pci_data *pci_priv)
 {
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
@@ -5011,7 +5088,7 @@ int cnss_pci_load_tme_patch(struct cnss_pci_data *pci_priv)
 						fw_entry->size, &tme_lite_mem->pa,
 						GFP_KERNEL);
 		if (!tme_lite_mem->va) {
-			cnss_pr_err("Failed to allocate memory for M3, size: 0x%zx\n",
+			cnss_pr_err("Failed to allocate memory for TME Lite Patch, size: 0x%zx\n",
 				    fw_entry->size);
 			release_firmware(fw_entry);
 			return -ENOMEM;
@@ -5303,6 +5380,7 @@ void cnss_pci_fw_boot_timeout_hdlr(struct cnss_pci_data *pci_priv)
 
 static void cnss_pci_deinit_smmu(struct cnss_pci_data *pci_priv)
 {
+	cnss_unregister_iommu_fault_handler(pci_priv);
 	pci_priv->iommu_domain = NULL;
 }
 
@@ -6028,16 +6106,21 @@ int cnss_pci_recover_link_down(struct cnss_pci_data *pci_priv)
 	if (!ret)
 		cnss_pr_err("Timeout waiting for wake event after link down\n");
 
+	mutex_lock(&pci_priv->bus_lock);
 	ret = cnss_suspend_pci_link(pci_priv);
 	if (ret)
 		cnss_pr_err("Failed to suspend PCI link, err = %d\n", ret);
+	mutex_unlock(&pci_priv->bus_lock);
 
+	mutex_lock(&pci_priv->bus_lock);
 	ret = cnss_resume_pci_link(pci_priv);
 	if (ret) {
 		cnss_pr_err("Failed to resume PCI link, err = %d\n", ret);
 		del_timer(&pci_priv->dev_rddm_timer);
+		mutex_unlock(&pci_priv->bus_lock);
 		return ret;
 	}
+	mutex_unlock(&pci_priv->bus_lock);
 
 retry:
 	/*

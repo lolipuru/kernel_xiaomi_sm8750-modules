@@ -363,6 +363,7 @@ enum cnss_driver_state {
 	CNSS_DRIVER_REGISTERED,
 	CNSS_DMS_DEL_SERVER,
 	CNSS_POWER_OFF,
+	CNSS_SHUTDOWN_DEVICE,
 };
 
 struct cnss_recovery_data {
@@ -556,6 +557,7 @@ struct cnss_plat_data {
 	u32 fw_mem_seg_len;
 	struct cnss_fw_mem fw_mem[QMI_WLFW_MAX_NUM_MEM_SEG_V01];
 	struct cnss_fw_mem m3_mem;
+	struct cnss_fw_mem sku_license_mem;
 	struct cnss_fw_mem tme_lite_mem;
 	struct cnss_fw_mem tme_opt_file_mem[QMI_WLFW_MAX_TME_OPT_FILE_NUM];
 	struct cnss_fw_mem *cal_mem;
@@ -613,6 +615,7 @@ struct cnss_plat_data {
 	u64 fw_caps;
 	u8 pcie_gen_speed;
 	struct iommu_domain *audio_iommu_domain;
+	bool is_audio_shared_iommu_group;
 	struct cnss_dms_data dms;
 	int power_up_error;
 	u32 hw_trc_override;

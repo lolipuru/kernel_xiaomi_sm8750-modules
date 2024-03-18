@@ -32,6 +32,7 @@
 #define QCA6750_PATH_PREFIX    "qca6750/"
 #define ADRASTEA_PATH_PREFIX   "adrastea/"
 #define WCN6450_PATH_PREFIX    "wcn6450/"
+#define WCN7750_PATH_PREFIX    "wcn7750/"
 #define ICNSS_MAX_FILE_NAME      35
 #define ICNSS_PCI_EP_WAKE_OFFSET 4
 #define ICNSS_DISABLE_M3_SSR 0
@@ -433,6 +434,7 @@ struct icnss_priv {
 	uint32_t nr_mem_region;
 	struct icnss_mem_region_info
 		mem_region[WLFW_MAX_NUM_MEMORY_REGIONS];
+	struct icnss_dev_mem_info dev_mem_info[ICNSS_MAX_DEV_MEM_NUM];
 	struct dentry *root_dentry;
 	spinlock_t on_off_lock;
 	struct icnss_stats stats;
@@ -474,6 +476,9 @@ struct icnss_priv {
 	atomic_t is_shutdown;
 	u32 qdss_mem_seg_len;
 	struct icnss_fw_mem qdss_mem[QMI_WLFW_MAX_NUM_MEM_SEG_V01];
+	struct icnss_fw_mem phy_ucode_mem;
+	struct icnss_fw_mem aux_mem;
+	bool fw_aux_uc_support;
 	void *get_info_cb_ctx;
 	int (*get_info_cb)(void *ctx, void *event, int event_len);
 	atomic_t soc_wake_ref_count;
@@ -530,6 +535,7 @@ struct icnss_priv {
 	enum icnss_phy_he_channel_width_cap phy_he_channel_width_cap;
 	enum icnss_phy_qam_cap phy_qam_cap;
 	bool rproc_fw_download;
+	u64 feature_list;
 };
 
 struct icnss_reg_info {

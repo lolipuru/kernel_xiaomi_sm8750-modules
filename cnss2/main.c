@@ -62,6 +62,7 @@
 #define FW_ASSERT_TIMEOUT		5000
 #define CNSS_EVENT_PENDING		2989
 #define POWER_RESET_MIN_DELAY_MS	100
+#define MAX_NAME_LEN			12
 
 #define CNSS_QUIRKS_DEFAULT		0
 #ifdef CONFIG_CNSS_EMULATION
@@ -442,6 +443,51 @@ static int cnss_get_audio_iommu_domain(struct cnss_plat_data *plat_priv)
 	return 0;
 }
 
+bool cnss_get_audio_shared_iommu_group_cap(struct device *dev)
+{
+	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
+	struct device_node *audio_ion_node;
+	struct device_node *cnss_iommu_group_node;
+	struct device_node *audio_iommu_group_node;
+
+	if (!plat_priv)
+		return false;
+
+	audio_ion_node = of_find_compatible_node(NULL, NULL,
+						 "qcom,msm-audio-ion");
+	if (!audio_ion_node) {
+		cnss_pr_err("Unable to get Audio ion node");
+		return false;
+	}
+
+	audio_iommu_group_node = of_parse_phandle(audio_ion_node,
+						  "qcom,iommu-group", 0);
+	of_node_put(audio_ion_node);
+	if (!audio_iommu_group_node) {
+		cnss_pr_err("Unable to get audio iommu group phandle");
+		return false;
+	}
+	of_node_put(audio_iommu_group_node);
+
+	cnss_iommu_group_node = of_parse_phandle(dev->of_node,
+						 "qcom,iommu-group", 0);
+	if (!cnss_iommu_group_node) {
+		cnss_pr_err("Unable to get cnss iommu group phandle");
+		return false;
+	}
+	of_node_put(cnss_iommu_group_node);
+
+	if (cnss_iommu_group_node == audio_iommu_group_node) {
+		plat_priv->is_audio_shared_iommu_group = true;
+		cnss_pr_info("CNSS and Audio share IOMMU group");
+	} else {
+		cnss_pr_info("CNSS and Audio do not share IOMMU group");
+	}
+
+	return plat_priv->is_audio_shared_iommu_group;
+}
+EXPORT_SYMBOL(cnss_get_audio_shared_iommu_group_cap);
+
 int cnss_set_feature_list(struct cnss_plat_data *plat_priv,
 			  enum cnss_feature_v01 feature)
 {
@@ -751,6 +797,9 @@ int cnss_audio_smmu_map(struct device *dev, phys_addr_t paddr,
 	if (!plat_priv->audio_iommu_domain)
 		return -EINVAL;
 
+	if (plat_priv->is_audio_shared_iommu_group)
+		return 0;
+
 	page_offset = iova & (PAGE_SIZE - 1);
 	if (page_offset + size > PAGE_SIZE)
 		size += PAGE_SIZE;
@@ -769,10 +818,8 @@ void cnss_audio_smmu_unmap(struct device *dev, dma_addr_t iova, size_t size)
 	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
 	uint32_t page_offset;
 
-	if (!plat_priv)
-		return;
-
-	if (!plat_priv->audio_iommu_domain)
+	if (!plat_priv || !plat_priv->audio_iommu_domain ||
+	    plat_priv->is_audio_shared_iommu_group)
 		return;
 
 	page_offset = iova & (PAGE_SIZE - 1);
@@ -942,6 +989,10 @@ static int cnss_fw_mem_ready_hdlr(struct cnss_plat_data *plat_priv)
 
 	cnss_wlfw_tme_patch_dnld_send_sync(plat_priv,
 					   WLFW_TME_LITE_PATCH_FILE_V01);
+
+	ret = cnss_bus_load_sku_license(plat_priv);
+	if (!ret)
+		cnss_wlfw_soft_sku_dnld_send_sync(plat_priv);
 
 	if (plat_priv->hds_enabled)
 		cnss_wlfw_bdf_dnld_send_sync(plat_priv, CNSS_BDF_HDS);
@@ -1755,7 +1806,8 @@ static irqreturn_t cnss_dev_sol_handler(int irq, void *data)
 	struct cnss_plat_data *plat_priv = data;
 	struct cnss_sol_gpio *sol_gpio = &plat_priv->sol_gpio;
 
-	if (test_bit(CNSS_POWER_OFF, &plat_priv->driver_state)) {
+	if (test_bit(CNSS_POWER_OFF, &plat_priv->driver_state) ||
+	    test_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state)) {
 		cnss_pr_dbg("Ignore Dev SOL during device power off");
 		return IRQ_HANDLED;
 	}
@@ -3797,7 +3849,6 @@ void cnss_unregister_ramdump(struct cnss_plat_data *plat_priv)
 }
 #endif /* CONFIG_QCOM_MEMORY_DUMP_V2 */
 
-#if IS_ENABLED(CONFIG_QCOM_MINIDUMP)
 int cnss_va_to_pa(struct device *dev, size_t size, void *va, dma_addr_t dma,
 		  phys_addr_t *pa, unsigned long attrs)
 {
@@ -3817,6 +3868,7 @@ int cnss_va_to_pa(struct device *dev, size_t size, void *va, dma_addr_t dma,
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_QCOM_MINIDUMP)
 int cnss_minidump_add_region(struct cnss_plat_data *plat_priv,
 			     enum cnss_fw_dump_type type, int seg_no,
 			     void *va, phys_addr_t pa, size_t size)
@@ -3898,16 +3950,29 @@ int cnss_minidump_remove_region(struct cnss_plat_data *plat_priv,
 	return ret;
 }
 #else
-int cnss_va_to_pa(struct device *dev, size_t size, void *va, dma_addr_t dma,
-		  phys_addr_t *pa, unsigned long attrs)
-{
-	return 0;
-}
-
 int cnss_minidump_add_region(struct cnss_plat_data *plat_priv,
 			     enum cnss_fw_dump_type type, int seg_no,
 			     void *va, phys_addr_t pa, size_t size)
 {
+	char name[MAX_NAME_LEN];
+
+	switch (type) {
+	case CNSS_FW_IMAGE:
+		snprintf(name, MAX_NAME_LEN, "FBC_%X", seg_no);
+		break;
+	case CNSS_FW_RDDM:
+		snprintf(name, MAX_NAME_LEN, "RDDM_%X", seg_no);
+		break;
+	case CNSS_FW_REMOTE_HEAP:
+		snprintf(name, MAX_NAME_LEN, "RHEAP_%X", seg_no);
+		break;
+	default:
+		cnss_pr_err("Unknown dump type ID: %d\n", type);
+		return -EINVAL;
+	}
+
+	cnss_pr_dbg("Dump region: %s, va: %pK, pa: %pa, size: 0x%zx\n",
+		    name, va, &pa, size);
 	return 0;
 }
 

@@ -193,6 +193,12 @@ def _define_modules_for_target_variant(target, variant):
     )
 
     module = "cnss_utils"
+    cnss_utils_dep_list = [
+        "//msm-kernel:all_headers",
+        ":wlan-platform-headers",
+    ]
+    if target == "sun":
+        cnss_utils_dep_list = cnss_utils_dep_list + ["//vendor/qcom/opensource/data-kernel/drivers/smem-mailbox:{}_smem_mailbox".format(tv),]
     _define_platform_config_rule(module, target, variant)
     defconfig = ":{}/{}_defconfig_generate_{}".format(module, tv, variant)
     ddk_module(
@@ -205,10 +211,7 @@ def _define_modules_for_target_variant(target, variant):
         defconfig = defconfig,
         out = "cnss_utils.ko",
         kernel_build = "//msm-kernel:{}".format(tv),
-        deps = [
-            "//msm-kernel:all_headers",
-            ":wlan-platform-headers",
-        ],
+        deps = cnss_utils_dep_list,
     )
 
     module = "cnss_utils"

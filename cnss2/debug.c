@@ -177,6 +177,9 @@ static int cnss_stats_show_state(struct seq_file *s,
 		case CNSS_POWER_OFF:
 			seq_puts(s, "POWER OFF");
 			continue;
+		case CNSS_SHUTDOWN_DEVICE:
+			seq_puts(s, "SHUTDOWN DEVICE");
+			continue;
 		}
 
 		seq_printf(s, "UNKNOWN-%d", i);
