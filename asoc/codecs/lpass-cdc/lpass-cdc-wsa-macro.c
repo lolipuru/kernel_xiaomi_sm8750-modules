@@ -1365,18 +1365,21 @@ static int lpass_cdc_wsa_macro_enable_mix_path(struct snd_soc_dapm_widget *w,
 
 	if (!(strcmp(w->name, "WSA_RX0 MIX INP"))) {
 		gain_reg = LPASS_CDC_WSA_RX0_RX_VOL_MIX_CTL;
+		reg = LPASS_CDC_WSA_RX0_RX_PATH_CTL +
+			(LPASS_CDC_WSA_MACRO_RX_PATH_OFFSET *  w->shift);
+		mix_reg = LPASS_CDC_WSA_RX0_RX_PATH_MIX_CTL +
+			LPASS_CDC_WSA_MACRO_RX_PATH_OFFSET * w->shift;
 	} else if (!(strcmp(w->name, "WSA_RX1 MIX INP"))) {
 		gain_reg = LPASS_CDC_WSA_RX1_RX_VOL_MIX_CTL;
+		reg = LPASS_CDC_WSA_RX1_RX_PATH_CTL +
+			(LPASS_CDC_WSA_MACRO_RX_PATH_OFFSET *  w->shift);
+		mix_reg = LPASS_CDC_WSA_RX1_RX_PATH_MIX_CTL +
+			LPASS_CDC_WSA_MACRO_RX_PATH_OFFSET * w->shift;
 	} else {
 		dev_err_ratelimited(component->dev, "%s: No gain register avail for %s\n",
 			__func__, w->name);
 		return 0;
 	}
-
-	reg = LPASS_CDC_WSA_RX0_RX_PATH_CTL +
-			(LPASS_CDC_WSA_MACRO_RX_PATH_OFFSET *  w->shift);
-	mix_reg = LPASS_CDC_WSA_RX0_RX_PATH_MIX_CTL +
-			LPASS_CDC_WSA_MACRO_RX_PATH_OFFSET * w->shift;
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
