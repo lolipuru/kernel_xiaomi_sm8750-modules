@@ -1066,6 +1066,19 @@ void cnss_mhi_controller_set_base(struct cnss_pci_data *pci_priv,
 }
 #endif /* CONFIG_MHI_BUS_MISC */
 
+void cnss_pci_controller_set_base(struct cnss_pci_data *pci_priv)
+{
+	switch (pci_priv->device_id) {
+	case PEACH_DEVICE_ID:
+	case KIWI_DEVICE_ID:
+		break;
+	default:
+		return;
+	}
+
+	cnss_pr_dbg("Remove MHI satellite configuration\n");
+	return cnss_mhi_controller_set_base(pci_priv, 0);
+}
 #ifdef CONFIG_CNSS2_SMMU_DB_SUPPORT
 #define CNSS_MHI_WAKE_TIMEOUT		500000
 

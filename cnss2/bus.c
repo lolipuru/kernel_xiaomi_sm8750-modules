@@ -783,38 +783,16 @@ int cnss_bus_get_msi_assignment(struct cnss_plat_data *plat_priv,
 	}
 }
 
-#if IS_ENABLED(CONFIG_MHI_BUS_MISC)
 void cnss_bus_disable_mhi_satellite_cfg(struct cnss_plat_data *plat_priv)
 {
-	struct cnss_pci_data *pci_priv;
-
-	pci_priv = plat_priv->bus_priv;
-	if (!pci_priv) {
-		cnss_pr_err("mhi satellite could not be disabled since pci_priv is NULL\n");
+	if (!plat_priv)
 		return;
-	}
 
 	switch (plat_priv->bus_type) {
 	case CNSS_BUS_PCI:
-		/* MHI satellite configuration is only for KIWI V2 and
-		 * that too only in DRV mode.
-		 */
-		if (plat_priv->device_id == KIWI_DEVICE_ID &&
-		    plat_priv->device_version.major_version == FW_V2_NUMBER) {
-			cnss_pr_dbg("Remove MHI satellite configuration\n");
-			return cnss_mhi_controller_set_base(pci_priv, 0);
-		}
+		cnss_pci_controller_set_base(plat_priv->bus_priv);
 		break;
 	default:
-		cnss_pr_dbg("Unsupported bus type: %d, ignore disable mhi satellite cfg\n",
-			    plat_priv->bus_type);
-		return;
+		cnss_pr_dbg("Unsupported bus type: %d\n", plat_priv->bus_type);
 	}
-
-	return;
 }
-#else
-void cnss_bus_disable_mhi_satellite_cfg(struct cnss_plat_data *pci_priv)
-{
-}
-#endif
