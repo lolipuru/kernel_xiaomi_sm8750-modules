@@ -166,8 +166,8 @@ int cam_tfe_put_evt_payload(void             *core_info,
 		return -EINVAL;
 	}
 
+	CAM_COMMON_SANITIZE_LIST_ENTRY((*evt_payload), struct cam_tfe_irq_evt_payload);
 	spin_lock_irqsave(&tfe_core_info->spin_lock, flags);
-	(*evt_payload)->error_type = 0;
 	list_add_tail(&(*evt_payload)->list, &tfe_core_info->free_payload_list);
 	*evt_payload = NULL;
 	spin_unlock_irqrestore(&tfe_core_info->spin_lock, flags);

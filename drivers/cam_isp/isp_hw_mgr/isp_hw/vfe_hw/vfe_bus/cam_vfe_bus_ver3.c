@@ -328,12 +328,12 @@ static int cam_vfe_bus_ver3_put_evt_payload(
 		return -EINVAL;
 	}
 
+	CAM_COMMON_SANITIZE_LIST_ENTRY((*evt_payload), struct cam_vfe_bus_irq_evt_payload);
 	spin_lock_irqsave(&common_data->spin_lock, flags);
 	if (common_data->hw_init)
-		list_add_tail(&(*evt_payload)->list,
-			&common_data->free_payload_list);
-	spin_unlock_irqrestore(&common_data->spin_lock, flags);
+		list_add_tail(&(*evt_payload)->list, &common_data->free_payload_list);
 
+	spin_unlock_irqrestore(&common_data->spin_lock, flags);
 	*evt_payload = NULL;
 
 	CAM_DBG(CAM_ISP, "VFE:%u Done", common_data->core_index);

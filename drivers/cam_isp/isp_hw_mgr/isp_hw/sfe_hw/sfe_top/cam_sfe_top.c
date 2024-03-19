@@ -1645,9 +1645,9 @@ static int cam_sfe_top_put_evt_payload(
 		return -EINVAL;
 	}
 
+	CAM_COMMON_SANITIZE_LIST_ENTRY((*evt_payload), struct cam_sfe_top_irq_evt_payload);
 	spin_lock_irqsave(&top_priv->spin_lock, flags);
-	list_add_tail(&(*evt_payload)->list,
-		&top_priv->common_data.free_payload_list);
+	list_add_tail(&(*evt_payload)->list, &top_priv->common_data.free_payload_list);
 	*evt_payload = NULL;
 	spin_unlock_irqrestore(&top_priv->spin_lock, flags);
 

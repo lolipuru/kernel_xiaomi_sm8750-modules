@@ -512,9 +512,10 @@ static int cam_ife_csid_ver2_put_evt_payload(
 			csid_hw->hw_intf->hw_idx);
 		return -EINVAL;
 	}
+
+	CAM_COMMON_SANITIZE_LIST_ENTRY((*evt_payload), struct cam_ife_csid_ver2_evt_payload);
 	spin_lock_irqsave(lock, flags);
-	list_add_tail(&(*evt_payload)->list,
-		payload_list);
+	list_add_tail(&(*evt_payload)->list, payload_list);
 	*evt_payload = NULL;
 	spin_unlock_irqrestore(lock, flags);
 

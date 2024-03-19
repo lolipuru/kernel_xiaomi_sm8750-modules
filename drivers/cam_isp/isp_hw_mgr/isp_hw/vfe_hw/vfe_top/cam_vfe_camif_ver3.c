@@ -102,6 +102,7 @@ static int cam_vfe_camif_ver3_put_evt_payload(
 		return -EINVAL;
 	}
 
+	CAM_COMMON_SANITIZE_LIST_ENTRY((*evt_payload), struct cam_vfe_top_irq_evt_payload);
 	spin_lock_irqsave(&camif_priv->spin_lock, flags);
 	list_add_tail(&(*evt_payload)->list, &camif_priv->free_payload_list);
 	*evt_payload = NULL;

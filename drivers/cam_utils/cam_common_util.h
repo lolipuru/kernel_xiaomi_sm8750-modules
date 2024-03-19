@@ -84,6 +84,14 @@
 	rem_jiffies;                                                                         \
 })
 
+/*
+ * Sanitizes the linked list entry for event payload
+ */
+#define CAM_COMMON_SANITIZE_LIST_ENTRY(evt_payload, payload_struct_type)                      \
+({                                                                                            \
+	memset(evt_payload, 0, sizeof(payload_struct_type));                               \
+})
+
 typedef unsigned long (*cam_common_mini_dump_cb) (void *dst,
 	unsigned long len, void *priv_data);
 

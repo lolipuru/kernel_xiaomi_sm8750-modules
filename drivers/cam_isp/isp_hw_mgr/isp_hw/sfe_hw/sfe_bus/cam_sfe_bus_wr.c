@@ -1470,10 +1470,11 @@ static int cam_sfe_bus_wr_put_evt_payload(
 		return -EINVAL;
 	}
 
+	CAM_COMMON_SANITIZE_LIST_ENTRY((*evt_payload), struct cam_sfe_bus_wr_irq_evt_payload);
 	spin_lock_irqsave(&common_data->spin_lock, flags);
 	if (common_data->err_irq_subscribe)
-		list_add_tail(&(*evt_payload)->list,
-			&common_data->free_payload_list);
+		list_add_tail(&(*evt_payload)->list, &common_data->free_payload_list);
+
 	spin_unlock_irqrestore(&common_data->spin_lock, flags);
 
 	*evt_payload = NULL;

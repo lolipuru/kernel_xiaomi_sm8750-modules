@@ -3259,9 +3259,10 @@ static int cam_tfe_csid_put_evt_payload(
 			csid_hw->hw_intf->hw_idx);
 		return -EINVAL;
 	}
+
+	CAM_COMMON_SANITIZE_LIST_ENTRY((*evt_payload), struct cam_csid_evt_payload);
 	spin_lock_irqsave(&csid_hw->spin_lock, flags);
-	list_add_tail(&(*evt_payload)->list,
-		&csid_hw->free_payload_list);
+	list_add_tail(&(*evt_payload)->list, &csid_hw->free_payload_list);
 	*evt_payload = NULL;
 	spin_unlock_irqrestore(&csid_hw->spin_lock, flags);
 
