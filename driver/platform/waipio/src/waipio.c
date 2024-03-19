@@ -512,7 +512,8 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 	{CSC, ENC, CODECS_ALL,
 		0, 1, 1, 0,
 		0,
-		HFI_PROP_CSC},
+		HFI_PROP_CSC,
+		CAP_FLAG_OUTPUT_PORT},
 
 	{LOWLATENCY_MODE, ENC, H264 | HEVC,
 		0, 1, 1, 0,
@@ -981,7 +982,7 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_2) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1)|
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2),
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1,
 		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
@@ -1283,12 +1284,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 		NULL,
 		msm_vidc_set_req_sync_frame},
 
-	{BIT_RATE, ENC, H264,
-		{PEAK_BITRATE, L0_BR},
-		msm_vidc_adjust_bitrate,
-		msm_vidc_set_bitrate},
-
-	{BIT_RATE, ENC, HEVC,
+	{BIT_RATE, ENC, H264 | HEVC,
 		{PEAK_BITRATE, L0_BR},
 		msm_vidc_adjust_bitrate,
 		msm_vidc_set_bitrate},
@@ -1562,17 +1558,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 		msm_vidc_adjust_input_buf_host_max_count,
 		msm_vidc_set_u32},
 
-	{INPUT_BUF_HOST_MAX_COUNT, ENC, H264 | HEVC,
-		{0},
-		msm_vidc_adjust_input_buf_host_max_count,
-		msm_vidc_set_u32},
-
 	{OUTPUT_BUF_HOST_MAX_COUNT, ENC | DEC, CODECS_ALL,
-		{0},
-		msm_vidc_adjust_output_buf_host_max_count,
-		msm_vidc_set_u32},
-
-	{OUTPUT_BUF_HOST_MAX_COUNT, ENC, H264 | HEVC,
 		{0},
 		msm_vidc_adjust_output_buf_host_max_count,
 		msm_vidc_set_u32},
@@ -1588,16 +1574,6 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 		msm_vidc_set_u32_packed},
 
 	{STAGE, ENC | DEC, CODECS_ALL,
-		{0},
-		NULL,
-		msm_vidc_set_stage},
-
-	{STAGE, ENC, H264 | HEVC,
-		{0},
-		NULL,
-		msm_vidc_set_stage},
-
-	{STAGE, DEC, H264 | HEVC | VP9,
 		{0},
 		NULL,
 		msm_vidc_set_stage},
