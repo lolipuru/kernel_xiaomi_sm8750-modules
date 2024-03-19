@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s:[%s][%d]: " fmt, KBUILD_MODNAME, __func__, __LINE__
@@ -1237,7 +1237,7 @@ static int _disp_tme_log_stats(size_t count)
 
 	log_start.size -= log_len;
 	log_start.offset += log_len;
-	pr_debug("log_len: %d, log_start.offset: %#x, log_start.size: %#x\n",
+	pr_debug("log_len: %d, log_start.offset: %#x, log_start.size: %zu\n",
 			log_len, log_start.offset, log_start.size);
 
 	if (log_start.size)

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "smcinvoke: %s: " fmt, __func__
@@ -438,6 +438,7 @@ static int marshal_out_req(union smcinvoke_arg args[], struct si_arg u[])
 		if (!err) {
 			void __user *u_addr = u64_to_user_ptr(args[i].b.addr);
 
+			args[i].b.size = u[i].b.size;
 			if (copy_to_user(u_addr, u[i].b.addr, u[i].b.size))
 				err = -1;
 		}
@@ -816,8 +817,11 @@ static struct cb_txn *get_txn_for_state_transition_locked(struct server_info *si
 				break;
 			}
 
-		} else
+		} else {
 			pr_err("invalid state transition %d\n", state);
+
+			break;
+		}
 	}
 
 	if (cb_txn && !kref_get_unless_zero(&cb_txn->refcount))
@@ -1072,18 +1076,22 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 		if (!cb_txn)
 			return -EINVAL;
 
-		/* Only copy arguments that we expect, i.e. 'u_args_sz'. */
-		if (copy_from_user(cb_txn->u_args,
-			(void __user *)accept->buf_addr, cb_txn->u_args_sz)) {
+		errno = accept->result;
+		if (!errno) {
+			/* Only parse arguments on SUCCESS. */
 
-			errno = -EFAULT;
-		} else {
-			if (marshal_out_cb_req(cb_txn->args, cb_txn->u_args))
-				errno = -EINVAL;
+			/* Only copy arguments that we expect, i.e. 'u_args_sz'. */
+			if (copy_from_user(cb_txn->u_args,
+				(void __user *)accept->buf_addr, cb_txn->u_args_sz)) {
+
+				errno = -EFAULT;
+			} else {
+				if (marshal_out_cb_req(cb_txn->args, cb_txn->u_args))
+					errno = -EINVAL;
+			}
 		}
 
-		/* Override result if we can not parse the response; return 'errno' to user. */
-		cb_txn->errno = errno ?: accept->result;
+		cb_txn->errno = errno;
 
 		/* Try to notify the invoke thread. */
 		/* If 'set_txn_state' fails, e.g. invoke thread TIMEDOUT
@@ -1123,7 +1131,7 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 
 		put_txn(cb_txn);
 
-		if (errno)
+		if (errno && !accept->result)
 			return errno;
 
 		/* SUCCESS submitting the response. */
