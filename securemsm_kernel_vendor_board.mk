@@ -39,12 +39,14 @@ ifeq ($(TARGET_USES_GY), true)
   ENABLE_QSEECOM_DLKM := false
 endif #TARGET_USES_GY
 
-#enable QCEDEV_FE driver only on Automotive Lemans LA GVM.
-#ifeq ($(CONFIG_ARCH_LEMANS), y)
-ifeq ($(CONFIG_QTI_QUIN_GVM), y)
-  ENABLE_QCEDEV_FE := true
-endif # CONFIG_QTI_QUIN_GVM
-#endif # CONFIG_ARCH_LEMANS
+#enable QCEDEV_FE driver only on Automotive Lemans HQX LA GVM.
+ifeq ($(ENABLE_HYP),true)
+  ifeq ($(TARGET_BOARD_PLATFORM),gen4)
+    ifneq ($(TARGET_USES_GY), true)
+      ENABLE_QCEDEV_FE := true
+    endif #TARGET_USES_GY
+  endif #TARGET_BOARD_PLATFORM
+endif #ENABLE_HYP
 
 ifeq ($(ENABLE_QCRYPTO_DLKM), true)
 BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/qcedev-mod_dlkm.ko \
