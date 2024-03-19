@@ -27,9 +27,6 @@
 #define CAM_SET_BIT(mask, bit)     ((mask) |= CAM_TO_MASK(bit))
 #define CAM_CLEAR_BIT(mask, bit)   ((mask) &= ~CAM_TO_MASK(bit))
 
-#define CAM_SS_START_PRESIL 0x08c00000
-#define CAM_SS_START        0x0ac00000
-
 #define CAM_CLK_DIRNAME "clk"
 
 #define CAM_MAX_CLK_NAME_LEN 128
@@ -3417,7 +3414,7 @@ disable_rgltr:
 
 static bool cam_soc_util_is_presil_address_space(unsigned long mem_block_start)
 {
-	if(mem_block_start >= CAM_SS_START_PRESIL && mem_block_start < CAM_SS_START)
+	if (mem_block_start >= CAM_SS_START_PRESIL && mem_block_start < CAM_SS_END_PRESIL)
 		return true;
 
 	return false;

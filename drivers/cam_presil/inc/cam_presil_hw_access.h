@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_PRESIL_HW_ACCESS_H_
@@ -11,6 +11,11 @@
 
 #define CAM_PRESIL_CLIENT_ID_CAMERA 0x1
 #define CAM_PRESIL_CLIENT_ID_EVA    0x2
+
+#define CAM_SS_START_PRESIL    0x08000000
+#define CAM_SS_END_PRESIL      0x09000000
+#define CVP_SS_START_PRESIL    0x06c00000
+#define CAM_EVENT_START_PRESIL 0x20000000
 
 /* presil events to carry shared values from HW-KMD to PC-HOST CSim Wrapper */
 #define CAM_PRESIL_EVENT_HFI_REG_BASE                                0x600
