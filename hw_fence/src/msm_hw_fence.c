@@ -130,6 +130,8 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 		ret = -EINVAL;
 		goto error;
 	}
+	hw_fence_client->skip_fctl_ref = hw_fence_utils_get_skip_fctl_ref(hw_fence_drv_data,
+		client_id);
 
 	/* Alloc Client HFI Headers and Queues */
 	ret = hw_fence_alloc_client_resources(hw_fence_drv_data,

@@ -174,4 +174,15 @@ enum hw_fence_client_id hw_fence_utils_get_client_id_priv(struct hw_fence_driver
  */
 int hw_fence_utils_get_queues_num(struct hw_fence_driver_data *drv_data, int client_id);
 
+/**
+ * hw_fence_utils_get_skip_fctl_ref() - Returns if client avoids creating fences with fctl
+ *                                      refcount initialized.
+ *
+ * @drv_data: driver data
+ * @client_id: hw fence driver client id
+ *
+ * Returns: number of client queues
+ */
+int hw_fence_utils_get_skip_fctl_ref(struct hw_fence_driver_data *drv_data, int client_id);
+
 #endif /* __HW_FENCE_DRV_UTILS_H */
