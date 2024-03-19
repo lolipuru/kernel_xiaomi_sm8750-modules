@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -53,6 +53,7 @@ int cam_bps_init_hw(void *device_priv,
 	struct cam_hw_soc_info *soc_info = NULL;
 	struct cam_bps_device_core_info *core_info = NULL;
 	struct cam_icp_cpas_vote cpas_vote;
+	unsigned long flags;
 	int rc = 0;
 
 	if (!device_priv) {
@@ -68,6 +69,16 @@ int cam_bps_init_hw(void *device_priv,
 			soc_info, core_info);
 		return -EINVAL;
 	}
+
+	spin_lock_irqsave(&bps_dev->hw_lock, flags);
+	if (bps_dev->hw_state == CAM_HW_STATE_POWER_UP) {
+		core_info->power_on_cnt++;
+		spin_unlock_irqrestore(&bps_dev->hw_lock, flags);
+		CAM_DBG(CAM_ICP, "BPS%u powered on (refcnt: %u)",
+			soc_info->index, core_info->power_on_cnt);
+		return 0;
+	}
+	spin_unlock_irqrestore(&bps_dev->hw_lock, flags);
 
 	cpas_vote.ahb_vote.type = CAM_VOTE_ABSOLUTE;
 	cpas_vote.ahb_vote.vote.level = CAM_LOWSVS_D1_VOTE;
@@ -102,6 +113,13 @@ int cam_bps_init_hw(void *device_priv,
 		core_info->clk_enable = true;
 	}
 
+	spin_lock_irqsave(&bps_dev->hw_lock, flags);
+	bps_dev->hw_state = CAM_HW_STATE_POWER_UP;
+	core_info->power_on_cnt++;
+	spin_unlock_irqrestore(&bps_dev->hw_lock, flags);
+	CAM_DBG(CAM_ICP, "BPS%u powered on (refcnt: %u)",
+		soc_info->index, core_info->power_on_cnt);
+
 error:
 	return rc;
 }
@@ -112,6 +130,7 @@ int cam_bps_deinit_hw(void *device_priv,
 	struct cam_hw_info *bps_dev = device_priv;
 	struct cam_hw_soc_info *soc_info = NULL;
 	struct cam_bps_device_core_info *core_info = NULL;
+	unsigned long flags;
 	int rc = 0;
 
 	if (!device_priv) {
@@ -127,6 +146,21 @@ int cam_bps_deinit_hw(void *device_priv,
 		return -EINVAL;
 	}
 
+	spin_lock_irqsave(&bps_dev->hw_lock, flags);
+	if (bps_dev->hw_state == CAM_HW_STATE_POWER_DOWN) {
+		spin_unlock_irqrestore(&bps_dev->hw_lock, flags);
+		return 0;
+	}
+
+	core_info->power_on_cnt--;
+	if (core_info->power_on_cnt) {
+		spin_unlock_irqrestore(&bps_dev->hw_lock, flags);
+		CAM_DBG(CAM_ICP, "BPS%u power on reference still held %u",
+			soc_info->index, core_info->power_on_cnt);
+		return 0;
+	}
+	spin_unlock_irqrestore(&bps_dev->hw_lock, flags);
+
 	rc = cam_bps_disable_soc_resources(soc_info, core_info->clk_enable);
 	if (rc)
 		CAM_ERR(CAM_ICP, "soc disable is failed: %d", rc);
@@ -138,6 +172,12 @@ int cam_bps_deinit_hw(void *device_priv,
 		else
 			core_info->cpas_start = false;
 	}
+
+	spin_lock_irqsave(&bps_dev->hw_lock, flags);
+	bps_dev->hw_state = CAM_HW_STATE_POWER_DOWN;
+	spin_unlock_irqrestore(&bps_dev->hw_lock, flags);
+	CAM_DBG(CAM_ICP, "BPS%u powered off (refcnt: %u)",
+		soc_info->index, core_info->power_on_cnt);
 
 	return rc;
 }
@@ -273,89 +313,6 @@ static int cam_bps_handle_resume(struct cam_hw_info *bps_dev)
 	return rc;
 }
 
-static int cam_bps_cmd_reset(struct cam_hw_soc_info *soc_info,
-	struct cam_bps_device_core_info *core_info)
-{
-	uint32_t retry_cnt = 0;
-	uint32_t status = 0;
-	int pwr_ctrl, pwr_status, rc = 0;
-	bool reset_bps_cdm_fail = false;
-	bool reset_bps_top_fail = false;
-	struct cam_bps_device_hw_info *hw_info = NULL;
-
-	CAM_DBG(CAM_ICP, "CAM_ICP_BPS_CMD_RESET");
-
-	if (!core_info->clk_enable || !core_info->cpas_start) {
-		CAM_DBG(CAM_ICP, "BPS not powered on clk_en %d cpas_start %d",
-			core_info->clk_enable, core_info->cpas_start);
-		return 0;
-	}
-
-	hw_info = core_info->bps_hw_info;
-
-	/* Reset BPS CDM core*/
-	cam_io_w_mb(hw_info->cdm_rst_val,
-		soc_info->reg_map[0].mem_base + hw_info->cdm_rst_cmd);
-	while (retry_cnt < HFI_MAX_POLL_TRY) {
-		cam_common_read_poll_timeout((soc_info->reg_map[0].mem_base +
-			hw_info->cdm_irq_status),
-			PC_POLL_DELAY_US, PC_POLL_TIMEOUT_US,
-			BPS_RST_DONE_IRQ_STATUS_BIT, BPS_RST_DONE_IRQ_STATUS_BIT,
-			&status);
-
-		CAM_DBG(CAM_ICP, "bps_cdm_irq_status = %u", status);
-
-		if ((status & BPS_RST_DONE_IRQ_STATUS_BIT) == 0x1)
-			break;
-		retry_cnt++;
-	}
-
-	if (retry_cnt == HFI_MAX_POLL_TRY) {
-		CAM_ERR(CAM_ICP, "BPS CDM rst failed status 0x%x", status);
-		reset_bps_cdm_fail = true;
-	}
-
-	/* Reset BPS core*/
-	status = 0;
-	retry_cnt = 0;
-	cam_io_w_mb((uint32_t)0x3,
-		soc_info->reg_map[0].mem_base + hw_info->top_rst_cmd);
-	while (retry_cnt < HFI_MAX_POLL_TRY) {
-		cam_common_read_poll_timeout((soc_info->reg_map[0].mem_base +
-			hw_info->top_irq_status),
-			PC_POLL_DELAY_US, PC_POLL_TIMEOUT_US,
-			BPS_RST_DONE_IRQ_STATUS_BIT, BPS_RST_DONE_IRQ_STATUS_BIT,
-			&status);
-
-		CAM_DBG(CAM_ICP, "bps_top_irq_status = %u", status);
-
-		if ((status & BPS_RST_DONE_IRQ_STATUS_BIT) == 0x1)
-			break;
-		retry_cnt++;
-	}
-
-	if (retry_cnt == HFI_MAX_POLL_TRY) {
-		CAM_ERR(CAM_ICP, "BPS top rst failed status 0x%x", status);
-		reset_bps_top_fail = true;
-	}
-
-	cam_cpas_reg_read(core_info->cpas_handle,
-		CAM_CPAS_REGBASE_CPASTOP, core_info->bps_hw_info->pwr_ctrl,
-		true, &pwr_ctrl);
-	cam_cpas_reg_read(core_info->cpas_handle,
-		CAM_CPAS_REGBASE_CPASTOP, core_info->bps_hw_info->pwr_status,
-		true, &pwr_status);
-	CAM_DBG(CAM_ICP, "(After) pwr_ctrl = %x pwr_status = %x",
-		pwr_ctrl, pwr_status);
-
-	if (reset_bps_cdm_fail || reset_bps_top_fail)
-		rc = -EAGAIN;
-	else
-		CAM_DBG(CAM_ICP, "BPS cdm and BPS top reset success");
-
-	return rc;
-}
-
 int cam_bps_process_cmd(void *device_priv, uint32_t cmd_type,
 	void *cmd_args, uint32_t arg_size)
 {
@@ -481,9 +438,6 @@ int cam_bps_process_cmd(void *device_priv, uint32_t cmd_type,
 		if (core_info->clk_enable == true)
 			cam_bps_toggle_clk(soc_info, false);
 		core_info->clk_enable = false;
-		break;
-	case CAM_ICP_DEV_CMD_RESET:
-		rc = cam_bps_cmd_reset(soc_info, core_info);
 		break;
 	default:
 		CAM_ERR(CAM_ICP, "Invalid Cmd Type:%u", cmd_type);

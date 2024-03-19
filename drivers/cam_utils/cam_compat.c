@@ -167,27 +167,29 @@ int cam_reserve_icp_fw(struct cam_fw_alloc_info *icp_fw, size_t fw_length)
 	struct resource     res;
 
 	of_node = (icp_fw->fw_dev)->of_node;
-	mem_node = of_parse_phandle(of_node, "memory-region", 0);
+	mem_node = of_parse_phandle(of_node, "memory-region", icp_fw->fw_id);
 	if (!mem_node) {
 		rc = -ENOMEM;
-		CAM_ERR(CAM_SMMU, "FW memory carveout not found");
+		CAM_ERR(CAM_SMMU, "FW memory carveout of ICP%d not found", icp_fw->fw_id);
 		goto end;
 	}
+
 	rc = of_address_to_resource(mem_node, 0, &res);
 	of_node_put(mem_node);
 	if (rc < 0) {
-		CAM_ERR(CAM_SMMU, "Unable to get start of FW mem carveout");
+		CAM_ERR(CAM_SMMU, "Unable to get start of FW mem carveout of ICP%u", icp_fw->fw_id);
 		goto end;
 	}
+
 	icp_fw->fw_hdl = res.start;
 	icp_fw->fw_kva = ioremap_wc(icp_fw->fw_hdl, fw_length);
 	if (!icp_fw->fw_kva) {
-		CAM_ERR(CAM_SMMU, "Failed to map the FW.");
+		CAM_ERR(CAM_SMMU, "Failed to map the FW of ICP%d", icp_fw->fw_id);
 		rc = -ENOMEM;
 		goto end;
 	}
-	memset_io(icp_fw->fw_kva, 0, fw_length);
 
+	memset_io(icp_fw->fw_kva, 0, fw_length);
 end:
 	return rc;
 }
@@ -248,7 +250,7 @@ int cam_reserve_icp_fw(struct cam_fw_alloc_info *icp_fw, size_t fw_length)
 		&icp_fw->fw_hdl, GFP_KERNEL);
 
 	if (!icp_fw->fw_kva) {
-		CAM_ERR(CAM_SMMU, "FW memory alloc failed");
+		CAM_ERR(CAM_SMMU, "FW memory of ICP%u alloc failed", icp_fw->fw_id);
 		rc = -ENOMEM;
 	}
 

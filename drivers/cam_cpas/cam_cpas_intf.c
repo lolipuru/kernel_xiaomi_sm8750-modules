@@ -525,6 +525,42 @@ static inline enum cam_cpas_reg_base __cam_cpas_get_internal_reg_base(
 	}
 }
 
+int cam_cpas_set_addr_trans(uint32_t client_handle,
+	struct cam_cpas_addr_trans_data *addr_trans_data)
+{
+	int rc;
+
+	if (!CAM_CPAS_INTF_INITIALIZED()) {
+		CAM_ERR(CAM_CPAS, "cpas intf not initialized");
+		return -ENODEV;
+	}
+
+	if (!addr_trans_data) {
+		CAM_ERR(CAM_CPAS, "Invalid addr_trans_data");
+		return -EINVAL;
+	}
+
+	if (g_cpas_intf->hw_intf->hw_ops.process_cmd) {
+		struct cam_cpas_hw_addr_trans_data cmd_add_trans;
+
+		cmd_add_trans.client_handle = client_handle;
+		cmd_add_trans.addr_trans_data = addr_trans_data;
+
+		rc = g_cpas_intf->hw_intf->hw_ops.process_cmd(
+			g_cpas_intf->hw_intf->hw_priv,
+			CAM_CPAS_HW_CMD_SET_ADDR_TRANS, &cmd_add_trans,
+			sizeof(struct cam_cpas_hw_addr_trans_data));
+		if (rc)
+			CAM_ERR(CAM_CPAS, "Failed in process_cmd, rc=%d", rc);
+	} else {
+		CAM_ERR(CAM_CPAS, "Invalid process_cmd ops");
+		rc = -EINVAL;
+	}
+
+	return rc;
+}
+EXPORT_SYMBOL(cam_cpas_set_addr_trans);
+
 int cam_cpas_reg_write(uint32_t client_handle, enum cam_cpas_regbase_types reg_base,
 	uint32_t offset, bool mb, uint32_t value)
 {

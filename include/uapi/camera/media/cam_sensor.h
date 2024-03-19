@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __UAPI_CAM_SENSOR_H__
@@ -40,6 +40,7 @@
 
 /* SENSOR blob types */
 #define CAM_SENSOR_GENERIC_BLOB_RES_INFO           0
+#define CAM_SENSOR_GENERIC_BLOB_FRAME_INFO         1
 
 enum camera_sensor_cmd_type {
 	CAMERA_SENSOR_CMD_TYPE_INVALID,
@@ -389,6 +390,29 @@ struct cam_sensor_res_info {
 } __attribute__((packed));
 
 /**
+ * struct cam_sensor_frame_info - Contains sensor frame related info
+ *
+ * @frame_sync_shift  : Indicates how far the frame synchronization
+ *                      reference point from SOF, this is used to
+ *                      align with userland and kernel frame sync offset.
+ * @frame_duration    : Frame duration
+ * @blanking_duration : Vertical blanking duration for a request, and it
+ *                      is representing the blanking durations before the
+ *                      frame for this request.
+ * @num_valid_params  : Number of valid params
+ * @valid_param_mask  : Valid param mask
+ * @params            : params
+ */
+struct cam_sensor_frame_info {
+	__u64 frame_sync_shift;
+	__u64 frame_duration;
+	__u64 blanking_duration;
+	__u32 num_valid_params;
+	__u32 valid_param_mask;
+	__u64 params[4];
+} __attribute__((packed));
+
+/**
  * struct cam_ois_opcode - Contains OIS opcode
  *
  * @prog            :    OIS FW prog register address
@@ -575,7 +599,10 @@ struct cam_cmd_power {
 	__u8                        reserved;
 	__u8                        cmd_type;
 	__u16                       more_reserved;
-	struct cam_power_settings   power_settings[1];
+	union {
+		struct cam_power_settings   power_settings[1];
+		__DECLARE_FLEX_ARRAY(struct cam_power_settings, power_settings_flex);
+	};
 } __attribute__((packed));
 
 /**
@@ -615,7 +642,10 @@ struct i2c_random_wr_payload {
  */
 struct cam_cmd_i2c_random_wr {
 	struct i2c_rdwr_header       header;
-	struct i2c_random_wr_payload random_wr_payload[1];
+	union {
+		struct i2c_random_wr_payload random_wr_payload[1];
+		__DECLARE_FLEX_ARRAY(struct i2c_random_wr_payload, random_wr_payload_flex);
+	};
 } __attribute__((packed));
 
 /**
@@ -637,7 +667,10 @@ struct cam_cmd_read {
 struct cam_cmd_i2c_continuous_wr {
 	struct i2c_rdwr_header header;
 	__u32                  reg_addr;
-	struct cam_cmd_read    data_read[1];
+	union {
+		struct cam_cmd_read    data_read[1];
+		__DECLARE_FLEX_ARRAY(struct cam_cmd_read, data_read_flex);
+	};
 } __attribute__((packed));
 
 /**
@@ -647,7 +680,10 @@ struct cam_cmd_i2c_continuous_wr {
  */
 struct cam_cmd_i2c_random_rd {
 	struct i2c_rdwr_header header;
-	struct cam_cmd_read    data_read[1];
+	union {
+		struct cam_cmd_read    data_read[1];
+		__DECLARE_FLEX_ARRAY(struct cam_cmd_read, data_read_flex);
+	};
 } __attribute__((packed));
 
 /**

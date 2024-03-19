@@ -262,6 +262,7 @@ static const struct cam_ife_csid_irq_desc cam_ife_csid_980_path_irq_desc[] = {
 		.bitmask = BIT(26),
 		.desc = "UNBOUNDED_FRAME",
 	},
+	{0},
 	{
 		.bitmask = BIT(28),
 		.desc = "SENSOR_SWITCH_OUT_OF_SYNC_FRAME_DROP",
@@ -319,6 +320,7 @@ static struct cam_irq_register_set cam_ife_csid_980_irq_reg_set[CAM_IFE_CSID_IRQ
 		.set_reg_offset    = 0x00000090,
 		.test_set_val      = BIT(0),
 		.test_sub_val      = BIT(0),
+		.force_rd_mask     = BIT(31), /* force read due to hw errata */
 	},
 	/* RX_1 */
 	{
@@ -1772,6 +1774,7 @@ static struct cam_ife_csid_ver2_common_reg_info
 	.frame_id_decode_en_shift_val            = 1,
 	.multi_vcdt_vc1_shift_val                = 2,
 	.multi_vcdt_dt1_shift_val                = 7,
+	.multi_vcdt_ts_combo_en_shift_val        = 13,
 	.multi_vcdt_en_shift_val                 = 0,
 	.timestamp_stb_sel_shift_val             = 8,
 	.vfr_en_shift_val                        = 0,
@@ -1786,6 +1789,8 @@ static struct cam_ife_csid_ver2_common_reg_info
 	.early_eof_supported                     = 1,
 	.vfr_supported                           = 1,
 	.multi_vcdt_supported                    = 1,
+	.ts_comb_vcdt_en                         = true,
+	.ts_comb_vcdt_mask                       = 3,
 	.frame_id_dec_supported                  = 1,
 	.measure_en_hbi_vbi_cnt_mask             = 0xc,
 	.measure_pixel_line_en_mask              = 0x3,

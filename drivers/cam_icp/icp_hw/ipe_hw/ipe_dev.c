@@ -26,11 +26,6 @@ static struct cam_ipe_device_hw_info cam_ipe_hw_info[] = {
 		.hw_idx = 0,
 		.pwr_ctrl = 0x40,
 		.pwr_status = 0x3C,
-		.top_rst_cmd = 0x1008,
-		.top_irq_status = 0x100C,
-		.cdm_rst_cmd = 0x10,
-		.cdm_irq_status = 0x44,
-		.cdm_rst_val = 0xF,
 	},
 };
 
@@ -39,11 +34,6 @@ static struct cam_ipe_device_hw_info cam_ipe680_hw_info[] = {
 		.hw_idx = 0,
 		.pwr_ctrl = 0x40,
 		.pwr_status = 0x3C,
-		.top_rst_cmd = 0x1008,
-		.top_irq_status = 0x100C,
-		.cdm_rst_cmd = 0x10,
-		.cdm_irq_status = 0x44,
-		.cdm_rst_val = 0x7F,
 	},
 };
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_CPASTOP_HW_H_
@@ -457,6 +457,45 @@ struct cam_cpas_hw_cap_info {
 };
 
 /**
+ * struct cam_camnoc_addr_trans_client_reg_info : CPAS Address translator supported client
+ *                                                register information
+ *
+ * @client_name: Name of the client
+ * @reg_enable: Register offset to enable address translator
+ * @reg_offset0: Register offset for offset 0
+ * @reg_base1: Register offset for base 1
+ * @reg_offset1: Register offset for offset 1
+ * @reg_base2: Register offset for base 2
+ * @reg_offset2: Register offset for offset 2
+ * @reg_base3: Register offset for base 3
+ * @reg_offset3: Register offset for offset 3
+ *
+ */
+struct cam_camnoc_addr_trans_client_info {
+	const char *client_name;
+	uint32_t reg_enable;
+	uint32_t reg_offset0;
+	uint32_t reg_base1;
+	uint32_t reg_offset1;
+	uint32_t reg_base2;
+	uint32_t reg_offset2;
+	uint32_t reg_base3;
+	uint32_t reg_offset3;
+};
+
+/**
+ * struct cam_camnoc_addr_trans_info : CPAS Address translator generic info
+ *
+ * @num_supported_clients: Number of clients that support address translator
+ * @addr_trans_client_info: Client information with address translator supported
+ *
+ */
+struct cam_camnoc_addr_trans_info {
+	uint8_t num_supported_clients;
+	struct cam_camnoc_addr_trans_client_info *addr_trans_client_info;
+};
+
+/**
  * struct cam_camnoc_info : Overall CAMNOC settings info
  *
  * @camnoc_type: type of camnoc (RT/NRT/COMBINED)
@@ -471,6 +510,7 @@ struct cam_cpas_hw_cap_info {
  * @errata_wa_list: HW Errata workaround info
  * @test_irq_info: CAMNOC Test IRQ info
  * @cesta_info: cpas cesta reg info
+ * @addr_trans_info: CAMNOC address translator info
  *
  */
 struct cam_camnoc_info {
@@ -489,6 +529,7 @@ struct cam_camnoc_info {
 	struct cam_cpas_hw_errata_wa_list *errata_wa_list;
 	struct cam_cpas_test_irq_info test_irq_info;
 	struct cam_cpas_cesta_info *cesta_info;
+	struct cam_camnoc_addr_trans_info *addr_trans_info;
 };
 
 /**

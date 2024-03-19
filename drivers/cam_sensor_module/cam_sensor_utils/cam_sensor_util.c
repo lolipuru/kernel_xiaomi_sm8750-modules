@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -299,9 +299,9 @@ int32_t cam_sensor_handle_random_write(
 	for (cnt = 0; cnt < (cam_cmd_i2c_random_wr->header.count);
 		cnt++) {
 		i2c_list->i2c_settings.reg_setting[cnt].reg_addr =
-			cam_cmd_i2c_random_wr->random_wr_payload[cnt].reg_addr;
+			cam_cmd_i2c_random_wr->random_wr_payload_flex[cnt].reg_addr;
 		i2c_list->i2c_settings.reg_setting[cnt].reg_data =
-			cam_cmd_i2c_random_wr->random_wr_payload[cnt].reg_data;
+			cam_cmd_i2c_random_wr->random_wr_payload_flex[cnt].reg_data;
 		i2c_list->i2c_settings.reg_setting[cnt].data_mask = 0;
 	}
 	*offset = cnt;
@@ -352,7 +352,7 @@ int32_t cam_sensor_handle_continuous_write(
 		i2c_list->i2c_settings.reg_setting[cnt].reg_addr =
 			cam_cmd_i2c_continuous_wr->reg_addr;
 		i2c_list->i2c_settings.reg_setting[cnt].reg_data =
-			cam_cmd_i2c_continuous_wr->data_read[cnt].reg_data;
+			cam_cmd_i2c_continuous_wr->data_read_flex[cnt].reg_data;
 		i2c_list->i2c_settings.reg_setting[cnt].data_mask = 0;
 	}
 	*offset = cnt;
@@ -501,7 +501,7 @@ int32_t cam_sensor_handle_random_read(
 		for (cnt = 0; cnt < (cmd_i2c_random_rd->header.count);
 			cnt++) {
 			i2c_list->i2c_settings.reg_setting[cnt].reg_addr =
-				cmd_i2c_random_rd->data_read[cnt].reg_data;
+				cmd_i2c_random_rd->data_read_flex[cnt].reg_data;
 		}
 		*offset = cnt;
 		*list = &(i2c_list->list);
@@ -1406,22 +1406,29 @@ int32_t cam_sensor_update_power_settings(void *cmd_buf,
 	int32_t i = 0, pwr_up = 0, pwr_down = 0;
 	struct cam_sensor_power_setting *pwr_settings;
 	void *ptr = cmd_buf, *scr;
-	struct cam_cmd_power *pwr_cmd = (struct cam_cmd_power *)cmd_buf;
 	struct common_header *cmm_hdr = (struct common_header *)cmd_buf;
+	struct cam_cmd_power *pwr_cmd =
+		kzalloc(sizeof(struct cam_cmd_power), GFP_KERNEL);
+	if (!pwr_cmd)
+		return -ENOMEM;
+	memcpy(pwr_cmd, cmd_buf, sizeof(struct cam_cmd_power));
 
 	if (!pwr_cmd || !cmd_length || cmd_buf_len < (size_t)cmd_length ||
 		cam_sensor_validate(cmd_buf, cmd_buf_len)) {
 		CAM_ERR(CAM_SENSOR_UTIL, "Invalid Args: pwr_cmd %pK, cmd_length: %d",
 			pwr_cmd, cmd_length);
-		return -EINVAL;
+		rc = -EINVAL;
+		goto free_power_command;
 	}
 
 	power_info->power_setting_size = 0;
 	power_info->power_setting =
 		kzalloc(sizeof(struct cam_sensor_power_setting) *
 			MAX_POWER_CONFIG, GFP_KERNEL);
-	if (!power_info->power_setting)
-		return -ENOMEM;
+	if (!power_info->power_setting) {
+		rc = -ENOMEM;
+		goto free_power_command;
+	}
 
 	power_info->power_down_setting_size = 0;
 	power_info->power_down_setting =
@@ -1431,7 +1438,8 @@ int32_t cam_sensor_update_power_settings(void *cmd_buf,
 		kfree(power_info->power_setting);
 		power_info->power_setting = NULL;
 		power_info->power_setting_size = 0;
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto free_power_command;
 	}
 
 	while (tot_size < cmd_length) {
@@ -1469,9 +1477,9 @@ int32_t cam_sensor_update_power_settings(void *cmd_buf,
 
 			for (i = 0; i < pwr_cmd->count; i++, pwr_up++) {
 				power_info->power_setting[pwr_up].seq_type =
-				pwr_cmd->power_settings[i].power_seq_type;
+				pwr_cmd->power_settings_flex[i].power_seq_type;
 				power_info->power_setting[pwr_up].config_val =
-				pwr_cmd->power_settings[i].config_val_low;
+				pwr_cmd->power_settings_flex[i].config_val_low;
 				power_info->power_setting[pwr_up].delay = 0;
 				if (i) {
 					scr = scr +
@@ -1578,9 +1586,9 @@ int32_t cam_sensor_update_power_settings(void *cmd_buf,
 				pwr_settings =
 				&power_info->power_down_setting[pwr_down];
 				pwr_settings->seq_type =
-				pwr_cmd->power_settings[i].power_seq_type;
+				pwr_cmd->power_settings_flex[i].power_seq_type;
 				pwr_settings->config_val =
-				pwr_cmd->power_settings[i].config_val_low;
+				pwr_cmd->power_settings_flex[i].config_val_low;
 				power_info->power_down_setting[pwr_down].delay
 					= 0;
 				if (i) {
@@ -1615,7 +1623,7 @@ int32_t cam_sensor_update_power_settings(void *cmd_buf,
 		}
 	}
 
-	return rc;
+	goto free_power_command;
 free_power_settings:
 	kfree(power_info->power_down_setting);
 	kfree(power_info->power_setting);
@@ -1623,6 +1631,9 @@ free_power_settings:
 	power_info->power_setting = NULL;
 	power_info->power_down_setting_size = 0;
 	power_info->power_setting_size = 0;
+free_power_command:
+	kfree(pwr_cmd);
+	pwr_cmd = NULL;
 	return rc;
 }
 
@@ -2332,7 +2343,7 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 			msleep(power_setting->delay);
 		else if (power_setting->delay)
 			usleep_range(power_setting->delay * 1000,
-				(power_setting->delay * 1000) + 1000);
+				(power_setting->delay * 1000) + 5);
 	}
 
 	if (i3c_probe_status) {
@@ -2442,7 +2453,7 @@ power_up_failed:
 			msleep(power_setting->delay);
 		} else if (power_setting->delay) {
 			usleep_range(power_setting->delay * 1000,
-				(power_setting->delay * 1000) + 1000);
+				(power_setting->delay * 1000) + 5);
 		}
 	}
 
@@ -2628,7 +2639,7 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
 			msleep(pd->delay);
 		else if (pd->delay)
 			usleep_range(pd->delay * 1000,
-				(pd->delay * 1000) + 1000);
+				(pd->delay * 1000) + 5);
 	}
 
 	if (ctrl->cam_pinctrl_status) {
