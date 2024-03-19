@@ -1,1 +1,4 @@
-#Build nothing
+SMEM_MAILBOX_DLKM_BOARD_PLATFORMS_LIST := sun
+ifneq (,$(call is-board-platform-in-list2,$(SMEM_MAILBOX_DLKM_BOARD_PLATFORMS_LIST)))
+BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/smem-mailbox.ko
+endif
