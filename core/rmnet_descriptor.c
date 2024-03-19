@@ -1,5 +1,5 @@
 /* Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -28,6 +28,7 @@
 #include "rmnet_qmi.h"
 #include "rmnet_trace.h"
 #include "qmi_rmnet.h"
+#include "rmnet_mem.h"
 
 #define RMNET_FRAG_DESCRIPTOR_POOL_SIZE 64
 #define RMNET_DL_IND_HDR_SIZE (sizeof(struct rmnet_map_dl_ind_hdr) + \
@@ -482,8 +483,10 @@ rmnet_frag_process_pb_ind(struct rmnet_frag_descriptor *frag_desc,
 	/* If a target is taking frag path, we can assume DL marker v2 is in
 	 * play
 	 */
-	if (is_dl_mark_v2)
+	if (is_dl_mark_v2) {
 		rmnet_map_pb_ind_notify(port, pbhdr);
+		rmnet_mem_pb_ind();
+	}
 }
 
 static void
