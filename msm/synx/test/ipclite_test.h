@@ -27,6 +27,19 @@ struct handle_t {
 #define IPCLITE_TEST_START 2
 #define IPCLITE_TEST_STOP 1
 
+#define IPCLITE_TEST_CREATE 3
+#define IPCLITE_TEST_DESTROY 4
+
+#define SEC_DELAY 1000
+
+#define RETRY_DELAY 50
+#define REFRESH_DELAY 500
+#define WAIT_DELAY 2000
+#define CORE_DELAY 5000
+
+#define SSR_DELAY 30000
+#define CRASH_DELAY 45000
+
 /* List of Cases Available for Testing */
 enum ipclite_test_type {
 	PING		= 1,
@@ -35,17 +48,13 @@ enum ipclite_test_type {
 	DEBUG		= 4,
 	SSR		= 5,
 	HW_MUTEX	= 6,
+	NUM_TESTS	= 6,
 };
 
 /* List of sysfs parameters */
 enum ipclite_test_param {
 	TEST_CASE	= 1,
-	SENDER_LIST	= 2,
-	RECEIVER_LIST	= 3,
-	NUM_PINGS	= 4,
-	WAIT		= 5,
-	NUM_ITR		= 6,
-	NUM_THREADS	= 7,
+	PARAM	= 2,
 	ENABLED_CORES	= 8,
 };
 
@@ -86,33 +95,36 @@ static char core_name[IPCMEM_NUM_HOSTS][13] = {
 					"IPCMEM_VPU"
 };
 
-struct ipclite_test_params {
-	int wait;
-	int num_pings;
-	int num_itr;
-	int selected_senders;
-	int selected_receivers;
-	int selected_test_case;
-	int enabled_cores;
-	int num_thread;
-	int num_senders;
-	int num_receivers;
+static char test_name[NUM_TESTS][14] = {
+					"PING",
+					"NEGATIVE",
+					"GLOBAL_ATOMIC",
+					"DEBUG",
+					"SSR",
+					"HW_MUTEX",
 };
 
-struct ipclite_test_data {
-	int pings_sent[IPCMEM_NUM_HOSTS];
-	int pings_received[IPCMEM_NUM_HOSTS];
-	int client_id;
-	struct global_region_info *global_memory;
-	struct ipclite_test_params test_params;
-	int ssr_client;
+struct ipclite_test_params {
+	unsigned int wait;
+	unsigned int num_pings;
+	unsigned int num_itr;
+	unsigned int selected_senders;
+	unsigned int selected_receivers;
+	unsigned int selected_test_case;
+	unsigned int enabled_cores;
+	unsigned int num_thread;
+	unsigned int num_senders;
+	unsigned int num_receivers;
 };
 
 struct ipclite_thread_data {
 	struct task_struct *thread;
-	void *data;
+	int t_id;
+	int num_pings;
+	int pings_sent[IPCMEM_NUM_HOSTS];
+	int pings_received[IPCMEM_NUM_HOSTS];
 	wait_queue_head_t wq;
 	bool run;
 };
 
-static int ipclite_test_callback_fn(unsigned int client_id, long long  msg, void *d);
+static int ipclite_test_callback_fn(uint32_t client_id, int64_t msg, void *data);
