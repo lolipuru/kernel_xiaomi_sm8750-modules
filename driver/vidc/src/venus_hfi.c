@@ -211,6 +211,7 @@ exit:
 
 	return rc;
 }
+
 static int __sys_set_power_control(struct msm_vidc_core *core, bool enable)
 {
 	int rc = 0;
@@ -294,6 +295,7 @@ skip_power_off:
 	d_vpr_e("%s: skipped\n", __func__);
 	return -EAGAIN;
 }
+
 static int __release_subcaches(struct msm_vidc_core *core)
 {
 	int rc = 0;
@@ -920,11 +922,29 @@ int venus_hfi_suspend(struct msm_vidc_core *core)
 	return rc;
 }
 
+bool is_ssr_type_allowed(struct msm_vidc_core *core, u32 type)
+{
+	u32 i;
+	const u32 *ssr_type = core->platform->data.msm_vidc_ssr_type;
+	u32 ssr_type_size = core->platform->data.msm_vidc_ssr_type_size;
+
+	for (i = 0; i < ssr_type_size; i++) {
+		if (type == ssr_type[i])
+			return true;
+	}
+	return false;
+}
+
 int venus_hfi_trigger_ssr(struct msm_vidc_core *core, u32 type,
 	u32 client_id, u32 addr)
 {
 	int rc = 0;
 	u32 payload[2];
+
+	if (!is_ssr_type_allowed(core, type)) {
+		d_vpr_h("SSR Type %d is not allowed\n", type);
+		return rc;
+	}
 
 	/*
 	 * call resume before preparing ssr hfi packet in core->packet

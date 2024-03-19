@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2022, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-#include <dt-bindings/clock/qcom,gcc-pineapple.h>
-#include <dt-bindings/clock/qcom,videocc-pineapple.h>
+#include <dt-bindings/clock/qcom,gcc-volcano.h>
+#include <dt-bindings/clock/qcom,videocc-volcano.h>
 
 #include <linux/soc/qcom/llcc-qcom.h>
 #include <soc/qcom/of_common.h>
 
 #include <media/v4l2_vidc_extensions.h>
-#include "msm_vidc_pineapple.h"
+#include "msm_vidc_volcano.h"
 #include "msm_vidc_platform.h"
 #include "msm_vidc_debug.h"
 #include "msm_vidc_internal.h"
@@ -19,7 +19,7 @@
 #include "msm_vidc_memory_ext.h"
 #include "msm_vidc_synx.h"
 #include "resources_ext.h"
-#include "msm_vidc_iris33.h"
+#include "msm_vidc_iris2.h"
 #include "hfi_property.h"
 #include "hfi_command.h"
 #include "venus_hfi.h"
@@ -29,31 +29,33 @@
 #define DEFAULT_VIDEO_CONCEAL_COLOR_BLACK 0x8020010
 #define MAX_BASE_LAYER_PRIORITY_ID 63
 #define MAX_OP_POINT            31
-#define MAX_BITRATE             245000000
+#define MAX_BITRATE             160000000
+#define MAX_BITRATE_V1          100000000
 #define DEFAULT_BITRATE         20000000
 #define MINIMUM_FPS             1
 #define MAXIMUM_FPS             480
-#define MAXIMUM_DEC_FPS         960
 #define MAX_QP                  51
 #define DEFAULT_QP              20
 #define MAX_CONSTANT_QUALITY    100
 #define MIN_SLICE_BYTE_SIZE     512
 #define MAX_SLICE_BYTE_SIZE       \
 	((MAX_BITRATE) >> 3)
+#define MAX_SLICE_BYTE_SIZE_V1    \
+	((MAX_BITRATE_V1) >> 3)
 #define MAX_SLICE_MB_SIZE         \
-	(((4096 + 15) >> 4) * ((2304 + 15) >> 4))
+	(((4096 + 15) >> 4) * ((2160 + 15) >> 4))
+#define MAX_LTR_FRAME_COUNT     2
 
 #define ENC     MSM_VIDC_ENCODER
 #define DEC     MSM_VIDC_DECODER
 #define H264    MSM_VIDC_H264
 #define HEVC    MSM_VIDC_HEVC
 #define VP9     MSM_VIDC_VP9
-#define AV1     MSM_VIDC_AV1
 #define HEIC    MSM_VIDC_HEIC
-#define CODECS_ALL     (H264 | HEVC | VP9 | HEIC | AV1)
+#define CODECS_ALL    (H264 | HEVC | VP9 | HEIC)
 #define MAXIMUM_OVERRIDE_VP9_FPS 200
 
-static struct codec_info codec_data_pineapple[] = {
+static struct codec_info codec_data_volcano[] = {
 	{
 		.v4l2_codec  = V4L2_PIX_FMT_H264,
 		.vidc_codec  = MSM_VIDC_H264,
@@ -70,18 +72,13 @@ static struct codec_info codec_data_pineapple[] = {
 		.pixfmt_name = "VP9",
 	},
 	{
-		.v4l2_codec  = V4L2_PIX_FMT_AV1,
-		.vidc_codec  = MSM_VIDC_AV1,
-		.pixfmt_name = "AV1",
-	},
-	{
 		.v4l2_codec  = V4L2_PIX_FMT_VIDC_HEIC,
 		.vidc_codec  = MSM_VIDC_HEIC,
 		.pixfmt_name = "HEIC",
 	},
 };
 
-static struct color_format_info color_format_data_pineapple[] = {
+static struct color_format_info color_format_data_volcano[] = {
 	{
 		.v4l2_color_format = V4L2_PIX_FMT_NV12,
 		.vidc_color_format = MSM_VIDC_FMT_NV12,
@@ -119,7 +116,7 @@ static struct color_format_info color_format_data_pineapple[] = {
 	},
 };
 
-static struct color_primaries_info color_primaries_data_pineapple[] = {
+static struct color_primaries_info color_primaries_data_volcano[] = {
 	{
 		.v4l2_color_primaries  = V4L2_COLORSPACE_DEFAULT,
 		.vidc_color_primaries  = MSM_VIDC_PRIMARIES_RESERVED,
@@ -170,7 +167,7 @@ static struct color_primaries_info color_primaries_data_pineapple[] = {
 	},
 };
 
-static struct transfer_char_info transfer_char_data_pineapple[] = {
+static struct transfer_char_info transfer_char_data_volcano[] = {
 	{
 		.v4l2_transfer_char  = V4L2_XFER_FUNC_DEFAULT,
 		.vidc_transfer_char  = MSM_VIDC_TRANSFER_RESERVED,
@@ -233,7 +230,7 @@ static struct transfer_char_info transfer_char_data_pineapple[] = {
 	},
 };
 
-static struct matrix_coeff_info matrix_coeff_data_pineapple[] = {
+static struct matrix_coeff_info matrix_coeff_data_volcano[] = {
 	{
 		.v4l2_matrix_coeff  = V4L2_YCBCR_ENC_DEFAULT,
 		.vidc_matrix_coeff  = MSM_VIDC_MATRIX_COEFF_RESERVED,
@@ -280,32 +277,28 @@ static struct matrix_coeff_info matrix_coeff_data_pineapple[] = {
 	},
 };
 
-static struct msm_platform_core_capability core_data_pineapple[] = {
+static struct msm_platform_core_capability core_data_volcano_v0[] = {
 	/* {type, value} */
 	{ENC_CODECS, H264 | HEVC | HEIC},
-	{DEC_CODECS, H264 | HEVC | VP9 | AV1 | HEIC},
+	{DEC_CODECS, H264 | HEVC | VP9 | HEIC},
 	{MAX_SESSION_COUNT, 16},
 	{MAX_NUM_720P_SESSIONS, 16},
 	{MAX_NUM_1080P_SESSIONS, 16},
-	{MAX_NUM_4K_SESSIONS, 8},
-	{MAX_NUM_8K_SESSIONS, 2},
+	{MAX_NUM_4K_SESSIONS, 4},
 	{MAX_SECURE_SESSION_COUNT, 3},
-	{MAX_RT_MBPF, 259200},	/* ((7680x4320)/256) * 2)*/
-	{MAX_MBPF, 278528}, /* ((8192x4352)/256) * 2 */
-	{MAX_MBPS, 7833600},
-	/* max_load
-	 * 7680x4320@60fps or 3840x2176@240fps
-	 * which is greater than 4096x2176@120fps,
-	 * 8192x4320@48fps
-	 */
-	{MAX_IMAGE_MBPF, 1048576},  /* (16384x16384)/256 */
+	{MAX_RT_MBPF, 130560}, /* (4 * ((3840*2176)/256)) */
+	{MAX_MBPF, 139264}, /* (4 * ((4096*2176)/256)) */
+	/* max_load 3840x2176@120fps*/
+	/* Concurrency: UHD@30 decode + UHD@30 encode */
+	{MAX_MBPS, 3916800},
+	{MAX_IMAGE_MBPF, 1048576}, /* (16384x16384)/256 */
 	{MAX_MBPF_HQ, 8160}, /* ((1920x1088)/256) */
-	{MAX_MBPS_HQ, 489600}, /* ((1920x1088)/256)@60fps */
+	{MAX_MBPS_HQ, 244800}, /* ((1920x1088)/256)@30fps */
 	{MAX_MBPF_B_FRAME, 32640}, /* 3840x2176/256 */
-	{MAX_MBPS_B_FRAME, 1958400}, /* 3840x2176/256 MBs@60fps */
-	{MAX_MBPS_ALL_INTRA, 1044480}, /* 4096x2176/256 MBs@30fps */
+	{MAX_MBPS_B_FRAME, 979200}, /* 3840x2176/256 MBs@30fps */
+	{MAX_MBPS_ALL_INTRA, 489600}, /* ((1920x1088)/256)@60fps */
 	{MAX_ENH_LAYER_COUNT, 5},
-	{NUM_VPP_PIPE, 4},
+	{NUM_VPP_PIPE, 2},
 	{SW_PC, 1},
 	{FW_UNLOAD, 0},
 	{HW_RESPONSE_TIMEOUT, HW_RESPONSE_TIMEOUT_VALUE}, /* 1000 ms */
@@ -319,127 +312,47 @@ static struct msm_platform_core_capability core_data_pineapple[] = {
 	{STATS_TIMEOUT_MS, 2000},
 	{AV_SYNC_WINDOW_SIZE, 40},
 	{NON_FATAL_FAULTS, 1},
-	{ENC_AUTO_FRAMERATE, 1},
+	{ENC_AUTO_FRAMERATE, 0},
 	{DEVICE_CAPS, V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_META_CAPTURE |
 		V4L2_CAP_STREAMING},
 	{SUPPORTS_SYNX_FENCE, 1},
 	{SUPPORTS_REQUESTS, 0},
 };
 
-static int msm_vidc_set_ring_buffer_count_pineapple(void *instance,
-	enum msm_vidc_inst_capability_type cap_id)
-{
-	int rc = 0;
-	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	struct v4l2_format *output_fmt, *input_fmt;
-	struct msm_vidc_core *core;
-	u32 count = 0, data_size = 0, pixel_count = 0, fps = 0;
-	u32 frame_rate = 0, operating_rate = 0;
-
-	core = inst->core;
-	output_fmt = &inst->fmts[OUTPUT_PORT];
-	input_fmt = &inst->fmts[INPUT_PORT];
-
-	frame_rate = inst->capabilities[FRAME_RATE].value >> 16;
-	operating_rate = inst->capabilities[OPERATING_RATE].value >> 16;
-	fps = max(frame_rate, operating_rate);
-	pixel_count = output_fmt->fmt.pix_mp.width *
-		output_fmt->fmt.pix_mp.height;
-
-	/*
-	 * try to enable ring buffer feature if
-	 * resolution >= 8k and fps >= 30fps and
-	 * resolution >= 4k and fps >= 120fps and
-	 * resolution >= 1080p and fps >= 480fps and
-	 * resolution >= 720p and fps >= 960fps
-	 */
-	if ((pixel_count >= 7680 * 4320 && fps >= 30) ||
-	    (pixel_count >= 3840 * 2160 && fps >= 120) ||
-	    (pixel_count >= 1920 * 1080 && fps >= 480) ||
-	    (pixel_count >= 1280 * 720 && fps >= 960)) {
-		data_size = input_fmt->fmt.pix_mp.plane_fmt[0].sizeimage;
-		i_vpr_h(inst, "%s: calculate ring buffer count\n", __func__);
-		rc = call_session_op(core, ring_buf_count, inst, data_size);
-		if (rc) {
-			i_vpr_e(inst, "%s: failed to calculate ring buffer count\n",
-				__func__);
-			/* ignore error */
-			rc = 0;
-			inst->capabilities[cap_id].value = 0;
-		}
-	} else {
-		i_vpr_h(inst,
-			"%s: session %ux%u@%u fps does not support ring buffer\n",
-			__func__, output_fmt->fmt.pix_mp.width,
-			output_fmt->fmt.pix_mp.height, fps);
-		inst->capabilities[cap_id].value = 0;
-	}
-
-	count = inst->capabilities[cap_id].value;
-	i_vpr_h(inst, "%s: ring buffer count: %u\n", __func__, count);
-	rc = venus_hfi_session_property(inst,
-			HFI_PROP_ENC_RING_BIN_BUF,
-			HFI_HOST_FLAGS_NONE,
-			HFI_PORT_BITSTREAM,
-			HFI_PAYLOAD_U32,
-			&count,
-			sizeof(u32));
-	if (rc)
-		return rc;
-
-	return rc;
-}
-
-static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
+static struct msm_platform_inst_capability instance_cap_data_volcano_v0[] = {
 	/* {cap, domain, codec,
 	 *      min, max, step_or_mask, value,
 	 *      v4l2_id,
 	 *      hfi_id,
 	 *      flags}
 	 */
-	{DRV_VERSION, DEC | ENC, CODECS_ALL,
+	{DRV_VERSION, DEC|ENC, CODECS_ALL,
 		0, INT_MAX, 1, DRIVER_VERSION,
 		V4L2_CID_MPEG_VIDC_DRIVER_VERSION},
 
-	{FRAME_WIDTH, DEC, CODECS_ALL, 96, 8192, 1, 1920},
+	{FRAME_WIDTH, DEC, CODECS_ALL, 96, 4096, 1, 1920},
 
-	{FRAME_WIDTH, DEC, VP9, 96, 4096, 1, 1920},
-
-	{FRAME_WIDTH, ENC, CODECS_ALL, 128, 8192, 1, 1920},
-
-	{FRAME_WIDTH, ENC, HEVC, 96, 8192, 1, 1920},
+	{FRAME_WIDTH, ENC, CODECS_ALL, 128, 4096, 1, 1920},
 
 	{FRAME_WIDTH, ENC, HEIC, 128, 16384, 1, 16384},
 
-	{LOSSLESS_FRAME_WIDTH, ENC, CODECS_ALL, 128, 4096, 1, 1920},
-
-	{LOSSLESS_FRAME_WIDTH, ENC, HEVC, 96, 4096, 1, 1920},
+	{LOSSLESS_FRAME_WIDTH, ENC, H264 | HEVC, 128, 4096, 1, 1920},
 
 	{SECURE_FRAME_WIDTH, DEC, CODECS_ALL, 96, 4096, 1, 1920},
 
 	{SECURE_FRAME_WIDTH, ENC, CODECS_ALL, 128, 4096, 1, 1920},
 
-	{SECURE_FRAME_WIDTH, ENC, HEVC, 96, 4096, 1, 1920},
+	{FRAME_HEIGHT, DEC, CODECS_ALL, 96, 4096, 1, 1080},
 
-	{FRAME_HEIGHT, DEC, CODECS_ALL, 96, 8192, 1, 1080},
-
-	{FRAME_HEIGHT, DEC, VP9, 96, 4096, 1, 1080},
-
-	{FRAME_HEIGHT, ENC, CODECS_ALL, 128, 8192, 1, 1080},
-
-	{FRAME_HEIGHT, ENC, HEVC, 96, 8192, 1, 1080},
+	{FRAME_HEIGHT, ENC, CODECS_ALL, 128, 4096, 1, 1080},
 
 	{FRAME_HEIGHT, ENC, HEIC, 128, 16384, 1, 16384},
 
 	{LOSSLESS_FRAME_HEIGHT, ENC, CODECS_ALL, 128, 4096, 1, 1080},
 
-	{LOSSLESS_FRAME_HEIGHT, ENC, HEVC, 96, 4096, 1, 1080},
-
 	{SECURE_FRAME_HEIGHT, DEC, CODECS_ALL, 96, 4096, 1, 1080},
 
 	{SECURE_FRAME_HEIGHT, ENC, CODECS_ALL, 128, 4096, 1, 1080},
-
-	{SECURE_FRAME_HEIGHT, ENC, HEVC, 96, 4096, 1, 1080},
 
 	{PIX_FMTS, ENC | DEC, H264,
 		MSM_VIDC_FMT_NV12,
@@ -447,7 +360,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		MSM_VIDC_FMT_NV12 | MSM_VIDC_FMT_NV21 | MSM_VIDC_FMT_NV12C,
 		MSM_VIDC_FMT_NV12C},
 
-	{PIX_FMTS, ENC | DEC, HEVC | VP9 | AV1,
+	{PIX_FMTS, ENC | DEC, HEVC,
 		MSM_VIDC_FMT_NV12,
 		MSM_VIDC_FMT_TP10C,
 		MSM_VIDC_FMT_NV12 | MSM_VIDC_FMT_NV21 | MSM_VIDC_FMT_NV12C |
@@ -461,6 +374,13 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		MSM_VIDC_FMT_NV12},
 
 	{PIX_FMTS, DEC, HEIC,
+		MSM_VIDC_FMT_NV12,
+		MSM_VIDC_FMT_TP10C,
+		MSM_VIDC_FMT_NV12 | MSM_VIDC_FMT_NV21 | MSM_VIDC_FMT_NV12C |
+		MSM_VIDC_FMT_P010 | MSM_VIDC_FMT_TP10C,
+		MSM_VIDC_FMT_NV12C},
+
+	{PIX_FMTS, DEC, VP9,
 		MSM_VIDC_FMT_NV12,
 		MSM_VIDC_FMT_TP10C,
 		MSM_VIDC_FMT_NV12 | MSM_VIDC_FMT_NV21 | MSM_VIDC_FMT_NV12C |
@@ -483,35 +403,37 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_BUFFER_FW_MIN_OUTPUT_COUNT,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_VOLATILE},
 
-	/* (8192 * 4320) / 256 */
-	{MBPF, ENC, CODECS_ALL, 64, 138240, 1, 138240},
-
-	{MBPF, ENC, HEVC, 36, 138240, 1, 138240},
+	/* (4096 * 2176) / 256 */
+	{MBPF, ENC, CODECS_ALL, 64, 34816, 1, 34816},
 
 	/* ((16384x16384)/256) */
-	{MBPF, ENC, HEIC, 36, 1048576, 1, 1048576},
+	{MBPF, ENC, HEIC, 64, 1048576, 1, 1048576},
 
-	{MBPF, DEC, CODECS_ALL, 36, 138240, 1, 138240},
+	/* (4 * ((4096 * 2176)/256) */
+	{MBPF, DEC, CODECS_ALL, 36, 139264, 1, 139264},
 
-	/* (4096 * 2304) / 256 */
-	{MBPF, DEC, VP9, 36, 36864, 1, 36864},
+	/* (4096 * 2176) / 256 */
+	{MBPF, DEC, VP9, 36, 34816, 1, 34816},
 
 	/* ((8192x8192)/256) */
 	{MBPF, DEC, HEIC, 64, 262144,  1, 262144 },
 
-	/* (4096 * 2304) / 256 */
-	{LOSSLESS_MBPF, ENC, H264 | HEVC, 64, 36864, 1, 36864},
+	/* (4096 * 2176) / 256 */
+	{LOSSLESS_MBPF, ENC, H264 | HEVC, 64, 34816, 1, 34816},
 
 	/* Batch Mode Decode */
-	/* TODO: update with new values based on updated voltage corner */
-	{BATCH_MBPF, DEC, H264 | HEVC | VP9 | AV1, 64, 34816, 1, 34816},
+	/* BATCH_MBPF + 2 is done for chipsets other than lanai
+	 * due to timeline constraints since msm_vidc_allow_decode_batch
+	 * has checks to allow batching for less than BATCH_MBPF.
+	 * Same applies for BATCH_FPS.
+	 */
+	/* (1920 * 1088) / 256 */
+	{BATCH_MBPF, DEC, H264 | HEVC | VP9, 64, 8162, 1, 8162},
 
-	/* (4096 * 2304) / 256 */
-	{BATCH_FPS, DEC, H264 | HEVC | VP9 | AV1, 1, 120, 1, 120},
+	{BATCH_FPS, DEC, H264 | HEVC | VP9, 1, 61, 1, 61},
 
-	{SECURE_MBPF, ENC | DEC, H264 | HEVC | VP9 | AV1, 64, 36864, 1, 36864},
-
-	{SECURE_MBPF, ENC, HEVC, 36, 36864, 1, 36864},
+    /* (4096 * 2176) / 256 */
+	{SECURE_MBPF, ENC | DEC, H264 | HEVC | VP9, 64, 34816, 1, 34816},
 
 	{FRAME_RATE, ENC, CODECS_ALL,
 		(MINIMUM_FPS << 16), (MAXIMUM_FPS << 16),
@@ -528,7 +450,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		CAP_FLAG_OUTPUT_PORT},
 
 	{FRAME_RATE, DEC, CODECS_ALL,
-		(MINIMUM_FPS << 16), (MAXIMUM_DEC_FPS << 16),
+		(MINIMUM_FPS << 16), (MAXIMUM_FPS << 16),
 		1, (DEFAULT_FPS << 16),
 		V4L2_CID_MPEG_VIDC_FRAME_RATE,
 		0,
@@ -569,7 +491,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 
 	{MB_CYCLES_VSP, DEC, CODECS_ALL, 25, 25, 1, 25},
 
-	{MB_CYCLES_VSP, DEC, VP9 | AV1, 60, 60, 1, 60},
+	{MB_CYCLES_VSP, DEC, VP9, 60, 60, 1, 60},
 
 	{MB_CYCLES_VPP, ENC, CODECS_ALL, 675, 675, 1, 675},
 
@@ -579,20 +501,18 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 
 	{MB_CYCLES_LP, DEC, CODECS_ALL, 200, 200, 1, 200},
 
-	{MB_CYCLES_FW, ENC | DEC, CODECS_ALL, 489583, 489583, 1, 489583},
+	{MB_CYCLES_FW, ENC | DEC, CODECS_ALL, 326389, 326389, 1, 326389},
 
-	{MB_CYCLES_FW_VPP, ENC, CODECS_ALL, 48405, 48405, 1, 48405},
-
-	{MB_CYCLES_FW_VPP, DEC, CODECS_ALL, 66234, 66234, 1, 66234},
+	{MB_CYCLES_FW_VPP, ENC | DEC, CODECS_ALL, 44156, 44156, 1, 44156},
 
 	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
-		0, MAX_ENC_RING_BUF_COUNT, 1, 0},
+		0, 0, 1, 0},
 
 	{CLIENT_ID, ENC | DEC, CODECS_ALL,
 		INVALID_CLIENT_ID, INT_MAX, 1, INVALID_CLIENT_ID,
 		V4L2_CID_MPEG_VIDC_CLIENT_ID},
 
-	{SECURE_MODE, ENC | DEC, H264 | HEVC | VP9 | AV1,
+	{SECURE_MODE, ENC | DEC, H264 | HEVC | VP9,
 		0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDC_SECURE,
 		HFI_PROP_SECURE,
@@ -602,7 +522,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 	 * Client will enable V4L2_CID_MPEG_VIDC_METADATA_OUTBUF_FENCE
 	 * to get fence_id in input metadata buffer done.
 	 */
-	{META_OUTBUF_FENCE, DEC, H264 | HEVC | VP9 | AV1,
+	{META_OUTBUF_FENCE, DEC, H264 | HEVC | VP9,
 		MSM_VIDC_META_DISABLE,
 		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_INPUT,
 		0, MSM_VIDC_META_DISABLE,
@@ -626,47 +546,6 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		V4L2_CID_MPEG_VIDC_SW_FENCE_FD,
 		0,
 		CAP_FLAG_VOLATILE},
-
-	/* Fence type for input buffer. Currently unused */
-	{INBUF_FENCE_TYPE, DEC, H264 | HEVC | VP9 | AV1,
-		MSM_VIDC_FENCE_NONE, MSM_VIDC_FENCE_NONE,
-		BIT(MSM_VIDC_FENCE_NONE),
-		MSM_VIDC_FENCE_NONE,
-		0,
-		HFI_PROP_FENCE_TYPE,
-		CAP_FLAG_MENU | CAP_FLAG_INPUT_PORT},
-
-	{OUTBUF_FENCE_TYPE, DEC, H264 | HEVC | VP9 | AV1,
-		MSM_VIDC_FENCE_NONE, MSM_VIDC_SYNX_V2_FENCE,
-		BIT(MSM_VIDC_FENCE_NONE) | BIT(MSM_VIDC_SW_FENCE) |
-			BIT(MSM_VIDC_SYNX_V2_FENCE),
-		MSM_VIDC_FENCE_NONE,
-		0,
-		HFI_PROP_FENCE_TYPE,
-		CAP_FLAG_MENU | CAP_FLAG_OUTPUT_PORT},
-
-	/* Fence direction for input buffer. Currently unused */
-	{INBUF_FENCE_DIRECTION, DEC, H264 | HEVC | VP9 | AV1,
-		MSM_VIDC_FENCE_DIR_NONE, MSM_VIDC_FENCE_DIR_NONE,
-		BIT(MSM_VIDC_FENCE_DIR_NONE),
-		MSM_VIDC_FENCE_DIR_NONE,
-		0,
-		HFI_PROP_FENCE_DIRECTION,
-		CAP_FLAG_MENU | CAP_FLAG_INPUT_PORT},
-
-	{OUTBUF_FENCE_DIRECTION, DEC, H264 | HEVC | VP9 | AV1,
-		MSM_VIDC_FENCE_DIR_NONE, MSM_VIDC_FENCE_DIR_RX,
-		BIT(MSM_VIDC_FENCE_DIR_NONE) | BIT(MSM_VIDC_FENCE_DIR_TX) |
-			BIT(MSM_VIDC_FENCE_DIR_RX),
-		MSM_VIDC_FENCE_DIR_NONE,
-		0,
-		HFI_PROP_FENCE_DIRECTION,
-		CAP_FLAG_MENU | CAP_FLAG_OUTPUT_PORT},
-
-	{FENCE_ERROR_DATA_CORRUPT, DEC, H264 | HEVC | VP9 | AV1,
-		0, 1, 1, 0,
-		0,
-		HFI_PROP_FENCE_ERROR_DATA_CORRUPT},
 
 	{TS_REORDER, DEC, H264 | HEVC,
 		0, 1, 1, 0,
@@ -697,7 +576,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		V4L2_CID_MPEG_VIDC_SUPERFRAME, 0,
 		CAP_FLAG_DYNAMIC_ALLOWED},
 
-	{SLICE_DECODE, DEC, H264 | HEVC | AV1,
+	{SLICE_DECODE, DEC, H264 | HEVC,
 		V4L2_MPEG_MSM_VIDC_DISABLE,
 		V4L2_MPEG_MSM_VIDC_DISABLE,
 		0,
@@ -732,12 +611,6 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		V4L2_CID_MPEG_VIDEO_HEVC_WITHOUT_STARTCODE,
 		HFI_PROP_NAL_LENGTH_FIELD,
 		CAP_FLAG_OUTPUT_PORT},
-
-	{WITHOUT_STARTCODE, DEC, AV1,
-		0, 0, 1, 0,
-		V4L2_CID_MPEG_VIDEO_HEVC_WITHOUT_STARTCODE,
-		HFI_PROP_NAL_LENGTH_FIELD,
-		CAP_FLAG_INPUT_PORT},
 
 	{NAL_LENGTH_FIELD, ENC, CODECS_ALL,
 		V4L2_MPEG_VIDEO_HEVC_SIZE_0,
@@ -802,10 +675,10 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		160000000, 1, 160000000},
 
 	{CAVLC_MAX_BITRATE, ENC, H264, 0,
-		220000000, 1, 220000000},
+		160000000, 1, 160000000},
 
 	{ALLINTRA_MAX_BITRATE, ENC, H264 | HEVC, 0,
-		245000000, 1, 245000000},
+		160000000, 1, 160000000},
 
 	{LOWLATENCY_MAX_BITRATE, ENC, H264 | HEVC, 0,
 		70000000, 1, 70000000},
@@ -910,21 +783,21 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		0,
 		CAP_FLAG_NONE},
 
-	{LOWLATENCY_MODE, DEC, H264 | HEVC | VP9 | AV1,
+	{LOWLATENCY_MODE, DEC, H264 | HEVC | VP9,
 		0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDC_LOWLATENCY_REQUEST,
 		HFI_PROP_SEQ_CHANGE_AT_SYNC_FRAME,
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
 
 	{LTR_COUNT, ENC, H264 | HEVC,
-		0, MAX_LTR_FRAME_COUNT_5, 1, 0,
+		0, MAX_LTR_FRAME_COUNT, 1, 0,
 		V4L2_CID_MPEG_VIDEO_LTR_COUNT,
 		HFI_PROP_LTR_COUNT,
 		CAP_FLAG_OUTPUT_PORT},
 
 	{USE_LTR, ENC, H264 | HEVC,
 		0,
-		((1 << MAX_LTR_FRAME_COUNT_5) - 1),
+		((1 << MAX_LTR_FRAME_COUNT) - 1),
 		0, 0,
 		V4L2_CID_MPEG_VIDEO_USE_LTR_FRAMES,
 		HFI_PROP_LTR_USE,
@@ -932,7 +805,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 
 	{MARK_LTR, ENC, H264 | HEVC,
 		INVALID_DEFAULT_MARK_OR_USE_LTR,
-		(MAX_LTR_FRAME_COUNT_5 - 1),
+		(MAX_LTR_FRAME_COUNT - 1),
 		1, INVALID_DEFAULT_MARK_OR_USE_LTR,
 		V4L2_CID_MPEG_VIDEO_FRAME_LTR_INDEX,
 		HFI_PROP_LTR_MARK,
@@ -987,9 +860,8 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 
 	{REQUEST_PREPROCESS, ENC, H264 | HEVC,
 		MSM_VIDC_PREPROCESS_NONE,
-		MSM_VIDC_PREPROCESS_TYPE0,
-		BIT(MSM_VIDC_PREPROCESS_NONE) |
-		BIT(MSM_VIDC_PREPROCESS_TYPE0),
+		MSM_VIDC_PREPROCESS_NONE,
+		BIT(MSM_VIDC_PREPROCESS_NONE),
 		MSM_VIDC_PREPROCESS_NONE,
 		0, HFI_PROP_REQUEST_PREPROCESS,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
@@ -1179,13 +1051,6 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_LAYER_COUNT,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_INPUT_PORT |
 			CAP_FLAG_DYNAMIC_ALLOWED},
-
-	{ENH_LAYER_COUNT, DEC, AV1,
-		0, MAX_OP_POINT, 1, 0,
-		0,
-		HFI_PROP_AV1_OP_POINT,
-		CAP_FLAG_INPUT_PORT},
-
 	{L0_BR, ENC, H264,
 		1, MAX_BITRATE, 1, DEFAULT_BITRATE,
 		V4L2_CID_MPEG_VIDEO_H264_HIER_CODING_L0_BR,
@@ -1279,7 +1144,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_CABAC_SESSION,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
 
-	{ENTROPY_MODE, DEC, H264 | HEVC | VP9 | AV1,
+	{ENTROPY_MODE, DEC, H264 | HEVC | VP9,
 		V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CAVLC,
 		V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CABAC,
 		BIT(V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CAVLC) |
@@ -1322,17 +1187,49 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
 		HFI_PROP_PROFILE,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
-
-	{PROFILE, DEC, AV1,
-		V4L2_MPEG_VIDC_AV1_PROFILE_MAIN,
-		V4L2_MPEG_VIDC_AV1_PROFILE_MAIN,
-		BIT(V4L2_MPEG_VIDC_AV1_PROFILE_MAIN),
-		V4L2_MPEG_VIDC_AV1_PROFILE_MAIN,
-		V4L2_CID_MPEG_VIDC_AV1_PROFILE,
-		HFI_PROP_PROFILE,
+	{LEVEL, ENC, H264,
+		V4L2_MPEG_VIDEO_H264_LEVEL_1_0,
+		V4L2_MPEG_VIDEO_H264_LEVEL_5_2,
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_0) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1B) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_1) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_2) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_3) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_0) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_1) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_2) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_0) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_1) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_2) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_0) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_1) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_2) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_5_0) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_5_1) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_5_2),
+		V4L2_MPEG_VIDEO_H264_LEVEL_5_2,
+		V4L2_CID_MPEG_VIDEO_H264_LEVEL,
+		HFI_PROP_LEVEL,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
 
-	{LEVEL, ENC, H264,
+	{LEVEL, ENC, HEVC | HEIC,
+		V4L2_MPEG_VIDEO_HEVC_LEVEL_1,
+		V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1,
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_1) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2_1) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_3) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_3_1) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_4) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_4_1) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1),
+		V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1,
+		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
+		HFI_PROP_LEVEL,
+		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
+
+	{LEVEL, DEC, H264,
 		V4L2_MPEG_VIDEO_H264_LEVEL_1_0,
 		V4L2_MPEG_VIDEO_H264_LEVEL_6_0,
 		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_0) |
@@ -1353,63 +1250,14 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_5_1) |
 		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_5_2) |
 		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_6_0),
-		V4L2_MPEG_VIDEO_H264_LEVEL_5_0,
-		V4L2_CID_MPEG_VIDEO_H264_LEVEL,
-		HFI_PROP_LEVEL,
-		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
-
-	{LEVEL, ENC, HEVC | HEIC,
-		V4L2_MPEG_VIDEO_HEVC_LEVEL_1,
-		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2,
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_1) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2_1) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_3) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_3_1) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_4) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_4_1) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_2) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2),
-		V4L2_MPEG_VIDEO_HEVC_LEVEL_5,
-		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
-		HFI_PROP_LEVEL,
-		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
-
-	{LEVEL, DEC, H264,
-		V4L2_MPEG_VIDEO_H264_LEVEL_1_0,
-		V4L2_MPEG_VIDEO_H264_LEVEL_6_2,
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_0) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1B) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_1) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_2) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_3) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_0) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_1) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_2) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_0) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_1) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_2) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_0) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_1) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_2) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_5_0) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_5_1) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_5_2) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_6_0) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_6_1) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_6_2),
-		V4L2_MPEG_VIDEO_H264_LEVEL_6_1,
+		V4L2_MPEG_VIDEO_H264_LEVEL_6_0,
 		V4L2_CID_MPEG_VIDEO_H264_LEVEL,
 		HFI_PROP_LEVEL,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
 
 	{LEVEL, DEC, HEVC | HEIC,
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_1,
-		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2,
+		V4L2_MPEG_VIDEO_HEVC_LEVEL_6,
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2_1) |
@@ -1420,17 +1268,15 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_2) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2),
-		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1,
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6),
+		V4L2_MPEG_VIDEO_HEVC_LEVEL_6,
 		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
 		HFI_PROP_LEVEL,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
 
 	{LEVEL, DEC, VP9,
 		V4L2_MPEG_VIDEO_VP9_LEVEL_1_0,
-		V4L2_MPEG_VIDEO_VP9_LEVEL_6_0,
+		V4L2_MPEG_VIDEO_VP9_LEVEL_5_2,
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_1_0) |
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_1_1) |
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_2_0) |
@@ -1441,49 +1287,11 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_4_1) |
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_5_0) |
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_5_1) |
-		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_5_2) |
-		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_6_0),
-		V4L2_MPEG_VIDEO_VP9_LEVEL_6_0,
+		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_5_2),
+		V4L2_MPEG_VIDEO_VP9_LEVEL_5_2,
 		V4L2_CID_MPEG_VIDEO_VP9_LEVEL,
 		HFI_PROP_LEVEL,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
-
-	{LEVEL, DEC, AV1,
-		V4L2_MPEG_VIDC_AV1_LEVEL_2_0,
-		V4L2_MPEG_VIDC_AV1_LEVEL_6_1,
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_2_0) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_2_1) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_2_2) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_2_3) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_3_0) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_3_1) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_3_2) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_3_3) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_4_0) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_4_1) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_4_2) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_4_3) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_5_0) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_5_1) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_5_2) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_5_3) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_6_0) |
-		BIT(V4L2_MPEG_VIDC_AV1_LEVEL_6_1),
-		V4L2_MPEG_VIDC_AV1_LEVEL_6_1,
-		V4L2_CID_MPEG_VIDC_AV1_LEVEL,
-		HFI_PROP_LEVEL,
-		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
-
-	{AV1_TIER, DEC, AV1,
-		V4L2_MPEG_VIDC_AV1_TIER_MAIN,
-		V4L2_MPEG_VIDC_AV1_TIER_HIGH,
-		BIT(V4L2_MPEG_VIDC_AV1_TIER_MAIN) |
-		BIT(V4L2_MPEG_VIDC_AV1_TIER_HIGH),
-		V4L2_MPEG_VIDC_AV1_TIER_HIGH,
-		V4L2_CID_MPEG_VIDC_AV1_TIER,
-		HFI_PROP_TIER,
-		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
-
 	{HEVC_TIER, ENC | DEC, HEVC,
 		V4L2_MPEG_VIDEO_HEVC_TIER_MAIN,
 		V4L2_MPEG_VIDEO_HEVC_TIER_HIGH,
@@ -1593,19 +1401,19 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_CHROMA_QP_OFFSET,
 		CAP_FLAG_OUTPUT_PORT},
 
-	{DISPLAY_DELAY_ENABLE, DEC, H264 | HEVC | VP9 | AV1,
+	{DISPLAY_DELAY_ENABLE, DEC, H264 | HEVC | VP9,
 		0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY_ENABLE,
 		HFI_PROP_DECODE_ORDER_OUTPUT,
 		CAP_FLAG_INPUT_PORT},
 
-	{DISPLAY_DELAY, DEC, H264 | HEVC | VP9 | AV1,
+	{DISPLAY_DELAY, DEC, H264 | HEVC | VP9,
 		0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY,
 		HFI_PROP_DECODE_ORDER_OUTPUT,
 		CAP_FLAG_INPUT_PORT},
 
-	{OUTPUT_ORDER, DEC, H264 | HEVC | VP9 | AV1,
+	{OUTPUT_ORDER, DEC, H264 | HEVC | VP9,
 		0, 1, 1, 0,
 		0,
 		HFI_PROP_DECODE_ORDER_OUTPUT,
@@ -1637,17 +1445,17 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_CONCEAL_COLOR_10BIT,
 		CAP_FLAG_INPUT_PORT},
 
-	{STAGE, DEC | ENC, CODECS_ALL,
+	{STAGE, DEC|ENC, CODECS_ALL,
 		MSM_VIDC_STAGE_1,
 		MSM_VIDC_STAGE_2, 1,
 		MSM_VIDC_STAGE_2,
 		0,
 		HFI_PROP_STAGE},
 
-	{PIPE, DEC | ENC, CODECS_ALL,
+	{PIPE, DEC|ENC, CODECS_ALL,
 		MSM_VIDC_PIPE_1,
-		MSM_VIDC_PIPE_4, 1,
-		MSM_VIDC_PIPE_4,
+		MSM_VIDC_PIPE_2, 1,
+		MSM_VIDC_PIPE_2,
 		0,
 		HFI_PROP_PIPE},
 
@@ -1683,7 +1491,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		0,
 		HFI_PROP_LUMA_CHROMA_BIT_DEPTH},
 
-	{CODEC_CONFIG, DEC, H264 | HEVC | HEIC | AV1, 0, 1, 1, 0,
+	{CODEC_CONFIG, DEC, H264 | HEVC | HEIC, 0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDC_CODEC_CONFIG, 0,
 		CAP_FLAG_DYNAMIC_ALLOWED},
 
@@ -1713,69 +1521,19 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_SEQ_CHANGE_AT_SYNC_FRAME,
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
 
-	{PRIORITY, DEC | ENC, CODECS_ALL,
+	{PRIORITY, DEC|ENC, CODECS_ALL,
 		0, 4, 1, 4,
 		V4L2_CID_MPEG_VIDC_PRIORITY,
 		HFI_PROP_SESSION_PRIORITY,
-		CAP_FLAG_DYNAMIC_ALLOWED},
-
-	{FIRMWARE_PRIORITY_OFFSET, DEC | ENC, CODECS_ALL,
-		1, 1, 1, 1},
-
-	{CRITICAL_PRIORITY, ENC, CODECS_ALL,
-		0, 1, 1, 0,
-		V4L2_CID_MPEG_VIDC_CRITICAL_PRIORITY},
-
-	{RESERVE_DURATION, ENC, CODECS_ALL,
-		0, INT_MAX, 1, 0,
-		V4L2_CID_MPEG_VIDC_RESERVE_DURATION,
-		HFI_CMD_RESERVE,
 		CAP_FLAG_DYNAMIC_ALLOWED},
 
 	{ENC_IP_CR, ENC, CODECS_ALL,
 		0, S32_MAX, 1, 0,
 		V4L2_CID_MPEG_VIDC_ENC_INPUT_COMPRESSION_RATIO,
 		0, CAP_FLAG_DYNAMIC_ALLOWED},
-
-	{FILM_GRAIN, DEC, AV1,
-		0, 1, 1, 0,
-		V4L2_CID_MPEG_VIDC_AV1D_FILM_GRAIN_PRESENT,
-		HFI_PROP_AV1_FILM_GRAIN_PRESENT,
-		CAP_FLAG_VOLATILE},
-
-	{SUPER_BLOCK, DEC, AV1,
-		0, 1, 1, 0,
-		0,
-		HFI_PROP_AV1_SUPER_BLOCK_ENABLED},
-
-	{DRAP, DEC, AV1,
-		0, S32_MAX, 1, 0,
-		0,
-		HFI_PROP_AV1_DRAP_CONFIG,
-		CAP_FLAG_INPUT_PORT},
-
-	{LAST_FLAG_EVENT_ENABLE, DEC | ENC, CODECS_ALL,
+	{LAST_FLAG_EVENT_ENABLE, DEC|ENC, CODECS_ALL,
 		0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDC_LAST_FLAG_EVENT_ENABLE},
-
-	{META_BITSTREAM_RESOLUTION, DEC, AV1,
-		MSM_VIDC_META_DISABLE,
-		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_INPUT |
-			MSM_VIDC_META_RX_OUTPUT,
-		0, MSM_VIDC_META_DISABLE,
-		V4L2_CID_MPEG_VIDC_METADATA_BITSTREAM_RESOLUTION,
-		HFI_PROP_BITSTREAM_RESOLUTION,
-		CAP_FLAG_BITMASK | CAP_FLAG_META},
-
-	{META_CROP_OFFSETS, DEC, AV1,
-		MSM_VIDC_META_DISABLE,
-		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_INPUT |
-			MSM_VIDC_META_RX_OUTPUT,
-		0, MSM_VIDC_META_DISABLE,
-		V4L2_CID_MPEG_VIDC_METADATA_CROP_OFFSETS,
-		HFI_PROP_CROP_OFFSETS,
-		CAP_FLAG_BITMASK | CAP_FLAG_META},
-
 	{ALL_INTRA, ENC, H264 | HEVC,
 		0, 1, 1, 0,
 		0,
@@ -1838,7 +1596,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_CONEALED_MB_COUNT,
 		CAP_FLAG_BITMASK | CAP_FLAG_META},
 
-	{META_HIST_INFO, DEC, HEVC | AV1 | VP9,
+	{META_HIST_INFO, DEC, HEVC | VP9,
 		MSM_VIDC_META_DISABLE,
 		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_OUTPUT,
 		0, MSM_VIDC_META_DISABLE,
@@ -1879,7 +1637,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_SEI_MASTERING_DISPLAY_COLOUR,
 		CAP_FLAG_BITMASK | CAP_FLAG_META},
 
-	{META_SEI_MASTERING_DISP, DEC, HEVC | HEIC | AV1,
+	{META_SEI_MASTERING_DISP, DEC, HEVC | HEIC,
 		MSM_VIDC_META_DISABLE,
 		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_INPUT |
 			MSM_VIDC_META_RX_OUTPUT,
@@ -1897,7 +1655,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_SEI_CONTENT_LIGHT_LEVEL,
 		CAP_FLAG_BITMASK | CAP_FLAG_META},
 
-	{META_SEI_CLL, DEC, HEVC | HEIC | AV1,
+	{META_SEI_CLL, DEC, HEVC | HEIC,
 		MSM_VIDC_META_DISABLE,
 		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_INPUT |
 			MSM_VIDC_META_RX_OUTPUT,
@@ -1915,7 +1673,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_SEI_HDR10PLUS_USERDATA,
 		CAP_FLAG_BITMASK | CAP_FLAG_META},
 
-	{META_HDR10PLUS, DEC, HEVC | HEIC | AV1,
+	{META_HDR10PLUS, DEC, HEVC | HEIC,
 		MSM_VIDC_META_DISABLE,
 		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_INPUT |
 			MSM_VIDC_META_RX_OUTPUT,
@@ -2012,14 +1770,6 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_ROI_INFO,
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_BITMASK | CAP_FLAG_META},
 
-	{META_SALIENCY_INFO, ENC, H264 | HEVC,
-		MSM_VIDC_META_DISABLE,
-		MSM_VIDC_META_ENABLE | MSM_VIDC_META_TX_INPUT,
-		0, MSM_VIDC_META_DISABLE,
-		V4L2_CID_MPEG_VIDC_METADATA_SALIENCY_INFO,
-		HFI_PROP_ROI_AS_SALIENCY_INFO,
-		CAP_FLAG_INPUT_PORT | CAP_FLAG_BITMASK | CAP_FLAG_META},
-
 	{META_DEC_QP_METADATA, DEC, CODECS_ALL,
 		MSM_VIDC_META_DISABLE,
 		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_OUTPUT,
@@ -2044,18 +1794,6 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		1, DEFAULT_COMPLEXITY,
 		V4L2_CID_MPEG_VIDC_VENC_COMPLEXITY},
 
-	{DELIVERY_MODE, ENC, HEVC,
-		0, 1, 1, 0,
-		V4L2_CID_MPEG_VIDC_HEVC_ENCODE_DELIVERY_MODE,
-		HFI_PROP_ENABLE_SLICE_DELIVERY,
-		CAP_FLAG_OUTPUT_PORT},
-
-	{DELIVERY_MODE, ENC, H264,
-		0, 1, 1, 0,
-		V4L2_CID_MPEG_VIDC_H264_ENCODE_DELIVERY_MODE,
-		HFI_PROP_ENABLE_SLICE_DELIVERY,
-		CAP_FLAG_OUTPUT_PORT},
-
 	{SIGNAL_COLOR_INFO, ENC, CODECS_ALL,
 		0, INT_MAX, 1, 0,
 		V4L2_CID_MPEG_VIDC_SIGNAL_COLOR_INFO,
@@ -2063,7 +1801,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
 };
 
-static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pineapple[] = {
+static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_volcano_v0[] = {
 	/* {cap, domain, codec,
 	 *      parents,
 	 *      children,
@@ -2100,42 +1838,17 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
 		{0},
 		NULL,
-		msm_vidc_set_ring_buffer_count_pineapple},
+		NULL},
 
-	{SECURE_MODE, ENC | DEC, H264 | HEVC | VP9 | AV1,
+	{SECURE_MODE, ENC | DEC, H264 | HEVC | VP9,
 		{0},
 		NULL,
 		msm_vidc_set_u32},
 
-	{META_OUTBUF_FENCE, DEC, H264 | HEVC | AV1 | VP9,
-		{LOWLATENCY_MODE, OUTBUF_FENCE_TYPE, OUTBUF_FENCE_DIRECTION},
+	{META_OUTBUF_FENCE, DEC, H264 | HEVC | VP9,
+		{LOWLATENCY_MODE},
 		NULL,
 		NULL},
-
-	{INBUF_FENCE_TYPE, DEC, H264 | HEVC | VP9 | AV1,
-		{0},
-		NULL,
-		NULL},
-
-	{OUTBUF_FENCE_TYPE, DEC, H264 | HEVC | VP9 | AV1,
-		{0},
-		msm_vidc_adjust_dec_outbuf_fence_type,
-		msm_vidc_set_outbuf_fence_type},
-
-	{INBUF_FENCE_DIRECTION, DEC, H264 | HEVC | VP9 | AV1,
-		{0},
-		NULL,
-		NULL},
-
-	{OUTBUF_FENCE_DIRECTION, DEC, H264 | HEVC | VP9 | AV1,
-		{0},
-		msm_vidc_adjust_dec_outbuf_fence_direction,
-		msm_vidc_set_outbuf_fence_direction},
-
-	{FENCE_ERROR_DATA_CORRUPT, DEC, H264 | HEVC | VP9 | AV1,
-		{0},
-		NULL,
-		msm_vidc_set_u32},
 
 	{HFLIP, ENC, CODECS_ALL,
 		{0},
@@ -2157,7 +1870,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		NULL,
 		NULL},
 
-	{SLICE_DECODE, DEC, H264 | HEVC | AV1,
+	{SLICE_DECODE, DEC, H264 | HEVC,
 		{0},
 		NULL,
 		NULL},
@@ -2171,11 +1884,6 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		{0},
 		NULL,
 		msm_vidc_set_nal_length},
-
-	{WITHOUT_STARTCODE, DEC, AV1,
-		{0},
-		NULL,
-		msm_vidc_set_u32},
 
 	{REQUEST_I_FRAME, ENC, H264 | HEVC,
 		{0},
@@ -2265,12 +1973,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		msm_vidc_adjust_enc_lowlatency_mode,
 		NULL},
 
-	{LOWLATENCY_MODE, DEC, H264 | HEVC | AV1,
-		{STAGE},
-		msm_vidc_adjust_dec_lowlatency_mode,
-		NULL},
-
-	{LOWLATENCY_MODE, DEC, VP9,
+	{LOWLATENCY_MODE, DEC, H264 | HEVC | VP9,
 		{STAGE},
 		msm_vidc_adjust_dec_lowlatency_mode,
 		NULL},
@@ -2322,11 +2025,11 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 
 	{BITRATE_BOOST, ENC, H264 | HEVC,
 		{0},
-		msm_vidc_adjust_bitrate_boost_iris33,
+		msm_vidc_adjust_bitrate_boost,
 		msm_vidc_set_vbr_related_properties},
 
 	{MIN_QUALITY, ENC, H264 | HEVC,
-		{BLUR_TYPES},
+		{BLUR_TYPES, BITRATE_BOOST},
 		msm_vidc_adjust_min_quality,
 		msm_vidc_set_u32},
 
@@ -2401,11 +2104,6 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		msm_vidc_adjust_layer_count,
 		msm_vidc_set_layer_count_and_type},
 
-	{ENH_LAYER_COUNT, DEC, AV1,
-		{0},
-		NULL,
-		msm_vidc_set_u32},
-
 	{L0_BR, ENC, H264 | HEVC,
 		{L1_BR},
 		msm_vidc_adjust_layer_bitrate,
@@ -2461,7 +2159,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		msm_vidc_adjust_profile,
 		msm_vidc_set_u32_enum},
 
-	{PROFILE, DEC, VP9 | AV1,
+	{PROFILE, DEC, VP9,
 		{0},
 		NULL,
 		msm_vidc_set_u32_enum},
@@ -2476,11 +2174,6 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		NULL,
 		msm_vidc_set_level},
 
-	{AV1_TIER, DEC, AV1,
-		{0},
-		NULL,
-		msm_vidc_set_u32_enum},
-
 	{HEVC_TIER, ENC | DEC, HEVC | HEIC,
 		{0},
 		NULL,
@@ -2492,7 +2185,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		msm_vidc_set_deblock_mode},
 
 	{SLICE_MODE, ENC, H264 | HEVC,
-		{STAGE, DELIVERY_MODE},
+		{STAGE},
 		msm_vidc_adjust_slice_count,
 		msm_vidc_set_slice_count},
 
@@ -2511,17 +2204,17 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		msm_vidc_adjust_chroma_qp_index_offset,
 		msm_vidc_set_chroma_qp_index_offset},
 
-	{DISPLAY_DELAY_ENABLE, DEC, H264 | HEVC | VP9 | AV1,
+	{DISPLAY_DELAY_ENABLE, DEC, H264 | HEVC | VP9,
 		{OUTPUT_ORDER},
 		NULL,
 		NULL},
 
-	{DISPLAY_DELAY, DEC, H264 | HEVC | VP9 | AV1,
+	{DISPLAY_DELAY, DEC, H264 | HEVC | VP9,
 		{OUTPUT_ORDER},
 		NULL,
 		NULL},
 
-	{OUTPUT_ORDER, DEC, H264 | HEVC | AV1 | VP9,
+	{OUTPUT_ORDER, DEC, H264 | HEVC | VP9,
 		{0},
 		msm_vidc_adjust_output_order,
 		msm_vidc_set_u32},
@@ -2566,17 +2259,17 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		NULL,
 		msm_vidc_set_stage},
 
-	{STAGE, DEC, H264 | HEVC | VP9 | AV1,
+	{STAGE, DEC, H264 | HEVC | VP9,
 		{0},
 		NULL,
 		msm_vidc_set_stage},
 
-	{PIPE, DEC | ENC, CODECS_ALL,
+	{PIPE, DEC|ENC, CODECS_ALL,
 		{0},
 		NULL,
 		msm_vidc_set_pipe},
 
-	{THUMBNAIL_MODE, DEC, H264 | HEVC | VP9 | AV1,
+	{THUMBNAIL_MODE, DEC, H264 | HEVC | VP9,
 		{OUTPUT_ORDER},
 		NULL,
 		msm_vidc_set_u32},
@@ -2591,30 +2284,10 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		NULL,
 		msm_vidc_set_u32},
 
-	{PRIORITY, DEC | ENC, CODECS_ALL,
+	{PRIORITY, DEC|ENC, CODECS_ALL,
 		{0},
 		msm_vidc_adjust_session_priority,
 		msm_vidc_set_session_priority},
-
-	{FIRMWARE_PRIORITY_OFFSET, DEC | ENC, CODECS_ALL,
-		{0},
-		NULL,
-		NULL},
-
-	{CRITICAL_PRIORITY, ENC, CODECS_ALL,
-		{0},
-		NULL,
-		NULL},
-
-	{RESERVE_DURATION, ENC, CODECS_ALL,
-		{0},
-		NULL,
-		msm_vidc_set_reserve_duration},
-
-	{DRAP, DEC, AV1,
-		{0},
-		NULL,
-		msm_vidc_set_u32},
 
 	{ALL_INTRA, ENC, H264 | HEVC,
 		{LTR_COUNT, IR_PERIOD, SLICE_MODE, BIT_RATE},
@@ -2634,11 +2307,6 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 	{GRID_ENABLE, ENC, HEIC,
 		{0},
 		NULL,
-		msm_vidc_set_u32},
-
-	{DELIVERY_MODE, ENC, H264 | HEVC,
-		{LOWLATENCY_MODE, OUTPUT_BUF_HOST_MAX_COUNT},
-		msm_vidc_adjust_delivery_mode,
 		msm_vidc_set_u32},
 
 	{VUI_TIMING_INFO, ENC, CODECS_ALL,
@@ -2673,38 +2341,37 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 };
 
 /* Default UBWC config for LPDDR5 */
-static struct msm_vidc_ubwc_config_data ubwc_config_pineapple[] = {
-	UBWC_CONFIG(8, 32, 16, 0, 1, 1, 1),
+static struct msm_vidc_ubwc_config_data ubwc_config_volcano[] = {
+	UBWC_CONFIG(8, 32, 15, 0, 1, 1, 1),
 };
 
-static struct msm_vidc_format_capability format_data_pineapple = {
-	.codec_info = codec_data_pineapple,
-	.codec_info_size = ARRAY_SIZE(codec_data_pineapple),
-	.color_format_info = color_format_data_pineapple,
-	.color_format_info_size = ARRAY_SIZE(color_format_data_pineapple),
-	.color_prim_info = color_primaries_data_pineapple,
-	.color_prim_info_size = ARRAY_SIZE(color_primaries_data_pineapple),
-	.transfer_char_info = transfer_char_data_pineapple,
-	.transfer_char_info_size = ARRAY_SIZE(transfer_char_data_pineapple),
-	.matrix_coeff_info = matrix_coeff_data_pineapple,
-	.matrix_coeff_info_size = ARRAY_SIZE(matrix_coeff_data_pineapple),
+static struct msm_vidc_format_capability format_data_volcano = {
+	.codec_info = codec_data_volcano,
+	.codec_info_size = ARRAY_SIZE(codec_data_volcano),
+	.color_format_info = color_format_data_volcano,
+	.color_format_info_size = ARRAY_SIZE(color_format_data_volcano),
+	.color_prim_info = color_primaries_data_volcano,
+	.color_prim_info_size = ARRAY_SIZE(color_primaries_data_volcano),
+	.transfer_char_info = transfer_char_data_volcano,
+	.transfer_char_info_size = ARRAY_SIZE(transfer_char_data_volcano),
+	.matrix_coeff_info = matrix_coeff_data_volcano,
+	.matrix_coeff_info_size = ARRAY_SIZE(matrix_coeff_data_volcano),
 };
 
 /* name, min_kbps, max_kbps */
-static const struct bw_table pineapple_bw_table[] = {
+static const struct bw_table volcano_bw_table[] = {
 	{ "venus-cnoc",  1000, 1000     },
-	{ "venus-ddr",   1000, 15000000 },
-	{ "venus-llcc",  1000, 15000000 },
+	{ "venus-ddr",   1000, 10000000 }
 };
 
 /* name, hw_trigger */
-static const struct regulator_table pineapple_regulator_table[] = {
+static const struct regulator_table volcano_regulator_table[] = {
 	{ "iris-ctl", 0 },
 	{ "vcodec",   1 },
 };
 
 /* name, clock id, scaling */
-static const struct clk_table pineapple_clk_table[] = {
+static const struct clk_table volcano_clk_table[] = {
 	{ "gcc_video_axi0_clk",     GCC_VIDEO_AXI0_CLK,     0 },
 	{ "video_cc_mvs0c_clk",     VIDEO_CC_MVS0C_CLK,     0 },
 	{ "video_cc_mvs0_clk",      VIDEO_CC_MVS0_CLK,      0 },
@@ -2712,73 +2379,37 @@ static const struct clk_table pineapple_clk_table[] = {
 };
 
 /* name, exclusive_release */
-static const struct clk_rst_table pineapple_clk_reset_table[] = {
+static const struct clk_rst_table volcano_clk_reset_table[] = {
 	{ "video_axi_reset",        0  },
-	{ "video_xo_reset",         1  },
 	{ "video_mvs0c_reset",      0  },
 };
 
-/* name, llcc_id */
-static const struct subcache_table pineapple_subcache_table[] = {
-	{ "vidsc0",     LLCC_VIDSC0 },
-	{ "vidvsp",     LLCC_VIDVSP },
-};
-
 /* name, start, size, secure, dma_coherant, region, dma_mask */
-const struct context_bank_table pineapple_context_bank_table[] = {
-	{"qcom,vidc,cb-ns", 0x25800000, 0xba800000, 0, 1, MSM_VIDC_NON_SECURE, 0},
-	{"qcom,vidc,cb-ns-pxl", 0x00100000, 0xdff00000, 0, 1, MSM_VIDC_NON_SECURE_PIXEL, 0},
-	{"qcom,vidc,cb-sec-pxl", 0x00500000, 0xdfb00000, 1, 0, MSM_VIDC_SECURE_PIXEL, 0},
-	{"qcom,vidc,cb-sec-non-pxl", 0x01000000, 0x24800000, 1, 0, MSM_VIDC_SECURE_NONPIXEL, 0},
-	{"qcom,vidc,cb-sec-bitstream", 0x00500000, 0xdfb00000, 1, 0, MSM_VIDC_SECURE_BITSTREAM, 0},
+const struct context_bank_table volcano_context_bank_table[] = {
+	{"qcom,vidc,cb-ns",
+		0x25800000, 0xba800000, 0, 1, MSM_VIDC_NON_SECURE,       0 },
+	{"qcom,vidc,cb-ns-pxl",
+		0x00100000, 0xdff00000, 0, 1, MSM_VIDC_NON_SECURE_PIXEL, 0 },
+	{"qcom,vidc,cb-sec-pxl",
+		0x00500000, 0xdfb00000, 1, 0, MSM_VIDC_SECURE_PIXEL,     0 },
+	{"qcom,vidc,cb-sec-non-pxl",
+		0x01000000, 0x24800000, 1, 0, MSM_VIDC_SECURE_NONPIXEL,  0 },
+	{"qcom,vidc,cb-sec-bitstream",
+		0x00500000, 0xdfb00000, 1, 0, MSM_VIDC_SECURE_BITSTREAM, 0 },
 };
 
 /* freq */
-static struct freq_table pineapple_freq_table[] = {
-	{533333333}, {480000000}, {435000000}, {380000000}, {280000000}, {196000000}
-};
-
-static struct freq_table pineapple_freq_table_v2[] = {
-	{533333333}, {480000000}, {435000000}, {380000000}, {300000000}, {196000000}
+static struct freq_table volcano_freq_table_sku0[] = {
+	{444000000}, {366000000}, {338000000}, {240000000}
 };
 
 /* register, value, mask */
-static const struct reg_preset_table pineapple_reg_preset_table[] = {
+static const struct reg_preset_table volcano_reg_preset_table[] = {
 	{ 0xB0088, 0x0,        0x11      },
-	{ 0x13030, 0x33332222, 0xFFFFFFFF},
-	{ 0x13034, 0x44444444, 0xFFFFFFFF},
-	{ 0x13038, 0x1022,     0xFFFFFFFF},
-	{ 0x13040, 0x0,        0xFFFFFFFF},
-	{ 0x13048, 0xFFFF,     0xFFFFFFFF},
-	{ 0x13430, 0x33332222, 0xFFFFFFFF},
-	{ 0x13434, 0x44444444, 0xFFFFFFFF},
-	{ 0x13438, 0x1022,     0xFFFFFFFF},
-	{ 0x13440, 0x0,        0xFFFFFFFF},
-	{ 0x13448, 0xFFFF,     0xFFFFFFFF},
-	{ 0xA013C, 0x99,       0xFFFFFFFF},
-};
-
-/* name, phys_addr, size, device_addr, device region type */
-static const struct device_region_table pineapple_device_region_table[] = {
-	{
-		"aon-registers",
-		0x0AAE0000, 0x1000, 0xFFAE0000,
-		MSM_VIDC_AON
-	},
-	{
-		"ipc_protocol4_client8_version-registers",
-		0x00508000, 0x1000, 0xFFADF000,
-		MSM_VIDC_PROTOCOL_FENCE_CLIENT_VPU
-	},
-	{
-		"qtimer_f0v1_qtmr_v1_cntpct_lo",
-		0x17421000, 0x1000, 0xFFADE000,
-		MSM_VIDC_QTIMER
-	},
 };
 
 /* decoder properties */
-static const u32 pineapple_vdec_psc_avc[] = {
+static const u32 volcano_vdec_psc_avc[] = {
 	HFI_PROP_BITSTREAM_RESOLUTION,
 	HFI_PROP_CROP_OFFSETS,
 	HFI_PROP_CODED_FRAMES,
@@ -2790,7 +2421,7 @@ static const u32 pineapple_vdec_psc_avc[] = {
 	HFI_PROP_MAX_NUM_REORDER_FRAMES,
 };
 
-static const u32 pineapple_vdec_psc_hevc[] = {
+static const u32 volcano_vdec_psc_hevc[] = {
 	HFI_PROP_BITSTREAM_RESOLUTION,
 	HFI_PROP_CROP_OFFSETS,
 	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
@@ -2802,7 +2433,7 @@ static const u32 pineapple_vdec_psc_hevc[] = {
 	HFI_PROP_MAX_NUM_REORDER_FRAMES,
 };
 
-static const u32 pineapple_vdec_psc_vp9[] = {
+static const u32 volcano_vdec_psc_vp9[] = {
 	HFI_PROP_BITSTREAM_RESOLUTION,
 	HFI_PROP_CROP_OFFSETS,
 	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
@@ -2811,46 +2442,25 @@ static const u32 pineapple_vdec_psc_vp9[] = {
 	HFI_PROP_LEVEL,
 };
 
-static const u32 pineapple_vdec_psc_av1[] = {
-	HFI_PROP_BITSTREAM_RESOLUTION,
-	HFI_PROP_CROP_OFFSETS,
-	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
-	HFI_PROP_BUFFER_FW_MIN_OUTPUT_COUNT,
-	HFI_PROP_AV1_FILM_GRAIN_PRESENT,
-	HFI_PROP_AV1_SUPER_BLOCK_ENABLED,
-	HFI_PROP_PROFILE,
-	HFI_PROP_LEVEL,
-	HFI_PROP_TIER,
-	HFI_PROP_SIGNAL_COLOR_INFO,
-};
-
-static const u32 pineapple_vdec_input_properties_avc[] = {
+static const u32 volcano_vdec_input_properties_avc[] = {
 	HFI_PROP_NO_OUTPUT,
 	HFI_PROP_SUBFRAME_INPUT,
 	HFI_PROP_DPB_LIST,
 };
 
-static const u32 pineapple_vdec_input_properties_hevc[] = {
+static const u32 volcano_vdec_input_properties_hevc[] = {
 	HFI_PROP_NO_OUTPUT,
 	HFI_PROP_SUBFRAME_INPUT,
 	HFI_PROP_DPB_LIST,
 };
 
-static const u32 pineapple_vdec_input_properties_vp9[] = {
+static const u32 volcano_vdec_input_properties_vp9[] = {
 	HFI_PROP_NO_OUTPUT,
 	HFI_PROP_SUBFRAME_INPUT,
 	HFI_PROP_DPB_LIST,
 };
 
-static const u32 pineapple_vdec_input_properties_av1[] = {
-	HFI_PROP_NO_OUTPUT,
-	HFI_PROP_SUBFRAME_INPUT,
-	HFI_PROP_DPB_LIST,
-	HFI_PROP_AV1_TILE_ROWS_COLUMNS,
-	HFI_PROP_AV1_UNIFORM_TILE_SPACING,
-};
-
-static const u32 pineapple_vdec_output_properties_avc[] = {
+static const u32 volcano_vdec_output_properties_avc[] = {
 	HFI_PROP_WORST_COMPRESSION_RATIO,
 	HFI_PROP_WORST_COMPLEXITY_FACTOR,
 	HFI_PROP_PICTURE_TYPE,
@@ -2858,116 +2468,104 @@ static const u32 pineapple_vdec_output_properties_avc[] = {
 	HFI_PROP_FENCE,
 };
 
-static const u32 pineapple_vdec_output_properties_hevc[] = {
+static const u32 volcano_vdec_output_properties_hevc[] = {
 	HFI_PROP_WORST_COMPRESSION_RATIO,
 	HFI_PROP_WORST_COMPLEXITY_FACTOR,
 	HFI_PROP_PICTURE_TYPE,
 	HFI_PROP_FENCE,
 };
 
-static const u32 pineapple_vdec_output_properties_vp9[] = {
+static const u32 volcano_vdec_output_properties_vp9[] = {
 	HFI_PROP_WORST_COMPRESSION_RATIO,
 	HFI_PROP_WORST_COMPLEXITY_FACTOR,
 	HFI_PROP_PICTURE_TYPE,
 	HFI_PROP_FENCE,
 };
 
-static const u32 pineapple_vdec_output_properties_av1[] = {
-	HFI_PROP_WORST_COMPRESSION_RATIO,
-	HFI_PROP_WORST_COMPLEXITY_FACTOR,
-	HFI_PROP_PICTURE_TYPE,
-	HFI_PROP_FENCE,
-};
-
-static const u32 pineapple_msm_vidc_ssr_type[] = {
-	HFI_SSR_TYPE_SW_ERR_FATAL,
-};
-
-static const struct msm_vidc_platform_data pineapple_data = {
+static const struct msm_vidc_platform_data volcano_data_v0 = {
 	/* resources dependent on other module */
-	.bw_tbl = pineapple_bw_table,
-	.bw_tbl_size = ARRAY_SIZE(pineapple_bw_table),
-	.regulator_tbl = pineapple_regulator_table,
-	.regulator_tbl_size = ARRAY_SIZE(pineapple_regulator_table),
-	.clk_tbl = pineapple_clk_table,
-	.clk_tbl_size = ARRAY_SIZE(pineapple_clk_table),
-	.clk_rst_tbl = pineapple_clk_reset_table,
-	.clk_rst_tbl_size = ARRAY_SIZE(pineapple_clk_reset_table),
-	.subcache_tbl = pineapple_subcache_table,
-	.subcache_tbl_size = ARRAY_SIZE(pineapple_subcache_table),
+	.bw_tbl = volcano_bw_table,
+	.bw_tbl_size = ARRAY_SIZE(volcano_bw_table),
+	.regulator_tbl = volcano_regulator_table,
+	.regulator_tbl_size = ARRAY_SIZE(volcano_regulator_table),
+	.clk_tbl = volcano_clk_table,
+	.clk_tbl_size = ARRAY_SIZE(volcano_clk_table),
+	.clk_rst_tbl = volcano_clk_reset_table,
+	.clk_rst_tbl_size = ARRAY_SIZE(volcano_clk_reset_table),
 
 	/* populate context bank */
-	.context_bank_tbl = pineapple_context_bank_table,
-	.context_bank_tbl_size = ARRAY_SIZE(pineapple_context_bank_table),
+	.context_bank_tbl = volcano_context_bank_table,
+	.context_bank_tbl_size = ARRAY_SIZE(volcano_context_bank_table),
 
 	/* platform specific resources */
-	.freq_tbl = pineapple_freq_table,
-	.freq_tbl_size = ARRAY_SIZE(pineapple_freq_table),
-	.reg_prst_tbl = pineapple_reg_preset_table,
-	.reg_prst_tbl_size = ARRAY_SIZE(pineapple_reg_preset_table),
-	.dev_reg_tbl = pineapple_device_region_table,
-	.dev_reg_tbl_size = ARRAY_SIZE(pineapple_device_region_table),
-	.fwname = "vpu33_4v",
+	.freq_tbl = volcano_freq_table_sku0,
+	.freq_tbl_size = ARRAY_SIZE(volcano_freq_table_sku0),
+	.reg_prst_tbl = volcano_reg_preset_table,
+	.reg_prst_tbl_size = ARRAY_SIZE(volcano_reg_preset_table),
+	.fwname = "vpu20_4v",
 	.pas_id = 9,
-	.supports_mmrm = 1,
-	.vpu_ver = VPU_VERSION_IRIS33,
+	.supports_mmrm = 0,
+	.vpu_ver = VPU_VERSION_IRIS2_2P,
 
 	/* caps related resorces */
-	.core_data = core_data_pineapple,
-	.core_data_size = ARRAY_SIZE(core_data_pineapple),
-	.inst_cap_data = instance_cap_data_pineapple,
-	.inst_cap_data_size = ARRAY_SIZE(instance_cap_data_pineapple),
-	.inst_cap_dependency_data = instance_cap_dependency_data_pineapple,
-	.inst_cap_dependency_data_size = ARRAY_SIZE(instance_cap_dependency_data_pineapple),
+	.core_data = core_data_volcano_v0,
+	.core_data_size = ARRAY_SIZE(core_data_volcano_v0),
+	.inst_cap_data = instance_cap_data_volcano_v0,
+	.inst_cap_data_size = ARRAY_SIZE(instance_cap_data_volcano_v0),
+	.inst_cap_dependency_data = instance_cap_dependency_data_volcano_v0,
+	.inst_cap_dependency_data_size = ARRAY_SIZE(instance_cap_dependency_data_volcano_v0),
 	.csc_data.vpe_csc_custom_bias_coeff = vpe_csc_custom_bias_coeff,
 	.csc_data.vpe_csc_custom_matrix_coeff = vpe_csc_custom_matrix_coeff,
 	.csc_data.vpe_csc_custom_limit_coeff = vpe_csc_custom_limit_coeff,
-	.ubwc_config = ubwc_config_pineapple,
-	.format_data = &format_data_pineapple,
+	.ubwc_config = ubwc_config_volcano,
+	.format_data = &format_data_volcano,
 
 	/* decoder properties related*/
-	.psc_avc_tbl = pineapple_vdec_psc_avc,
-	.psc_avc_tbl_size = ARRAY_SIZE(pineapple_vdec_psc_avc),
-	.psc_hevc_tbl = pineapple_vdec_psc_hevc,
-	.psc_hevc_tbl_size = ARRAY_SIZE(pineapple_vdec_psc_hevc),
-	.psc_vp9_tbl = pineapple_vdec_psc_vp9,
-	.psc_vp9_tbl_size = ARRAY_SIZE(pineapple_vdec_psc_vp9),
-	.psc_av1_tbl = pineapple_vdec_psc_av1,
-	.psc_av1_tbl_size = ARRAY_SIZE(pineapple_vdec_psc_av1),
-	.dec_input_prop_avc = pineapple_vdec_input_properties_avc,
-	.dec_input_prop_hevc = pineapple_vdec_input_properties_hevc,
-	.dec_input_prop_vp9 = pineapple_vdec_input_properties_vp9,
-	.dec_input_prop_av1 = pineapple_vdec_input_properties_av1,
-	.dec_input_prop_size_avc = ARRAY_SIZE(pineapple_vdec_input_properties_avc),
-	.dec_input_prop_size_hevc = ARRAY_SIZE(pineapple_vdec_input_properties_hevc),
-	.dec_input_prop_size_vp9 = ARRAY_SIZE(pineapple_vdec_input_properties_vp9),
-	.dec_input_prop_size_av1 = ARRAY_SIZE(pineapple_vdec_input_properties_av1),
-	.dec_output_prop_avc = pineapple_vdec_output_properties_avc,
-	.dec_output_prop_hevc = pineapple_vdec_output_properties_hevc,
-	.dec_output_prop_vp9 = pineapple_vdec_output_properties_vp9,
-	.dec_output_prop_av1 = pineapple_vdec_output_properties_av1,
-	.dec_output_prop_size_avc = ARRAY_SIZE(pineapple_vdec_output_properties_avc),
-	.dec_output_prop_size_hevc = ARRAY_SIZE(pineapple_vdec_output_properties_hevc),
-	.dec_output_prop_size_vp9 = ARRAY_SIZE(pineapple_vdec_output_properties_vp9),
-	.dec_output_prop_size_av1 = ARRAY_SIZE(pineapple_vdec_output_properties_av1),
+	.psc_avc_tbl = volcano_vdec_psc_avc,
+	.psc_avc_tbl_size = ARRAY_SIZE(volcano_vdec_psc_avc),
+	.psc_hevc_tbl = volcano_vdec_psc_hevc,
+	.psc_hevc_tbl_size = ARRAY_SIZE(volcano_vdec_psc_hevc),
+	.psc_vp9_tbl = volcano_vdec_psc_vp9,
+	.psc_vp9_tbl_size = ARRAY_SIZE(volcano_vdec_psc_vp9),
+	.dec_input_prop_avc = volcano_vdec_input_properties_avc,
+	.dec_input_prop_hevc = volcano_vdec_input_properties_hevc,
+	.dec_input_prop_vp9 = volcano_vdec_input_properties_vp9,
+	.dec_input_prop_size_avc = ARRAY_SIZE(volcano_vdec_input_properties_avc),
+	.dec_input_prop_size_hevc = ARRAY_SIZE(volcano_vdec_input_properties_hevc),
+	.dec_input_prop_size_vp9 = ARRAY_SIZE(volcano_vdec_input_properties_vp9),
+	.dec_output_prop_avc = volcano_vdec_output_properties_avc,
+	.dec_output_prop_hevc = volcano_vdec_output_properties_hevc,
+	.dec_output_prop_vp9 = volcano_vdec_output_properties_vp9,
+	.dec_output_prop_size_avc = ARRAY_SIZE(volcano_vdec_output_properties_avc),
+	.dec_output_prop_size_hevc = ARRAY_SIZE(volcano_vdec_output_properties_hevc),
+	.dec_output_prop_size_vp9 = ARRAY_SIZE(volcano_vdec_output_properties_vp9),
 
-	.msm_vidc_ssr_type = pineapple_msm_vidc_ssr_type,
-	.msm_vidc_ssr_type_size = ARRAY_SIZE(pineapple_msm_vidc_ssr_type),
-
+	.sku_version = SKU_VERSION_0,
 };
 
-int msm_vidc_pineapple_check_ddr_type(void)
+int msm_vidc_volcano_check_ddr_type(struct msm_vidc_platform_data *platform_data,
+				    u32 hbb_override_val)
 {
-	u32 ddr_type;
+	u32 ddr_type = DDR_TYPE_LPDDR5;
+
+	if (!platform_data || !platform_data->ubwc_config) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 
 	ddr_type = of_fdt_get_ddrtype();
-	if (ddr_type != DDR_TYPE_LPDDR5 &&
-		ddr_type != DDR_TYPE_LPDDR5X) {
-		d_vpr_e("%s: wrong ddr type %d\n", __func__, ddr_type);
-		return -EINVAL;
-	} else {
-		d_vpr_h("%s: ddr type %d\n", __func__, ddr_type);
-	}
+	if (ddr_type == -ENOENT)
+		d_vpr_e("Failed to get ddr type, use LPDDR5\n");
+
+	if (platform_data->ubwc_config &&
+	    (ddr_type == DDR_TYPE_LPDDR4 ||
+	     ddr_type == DDR_TYPE_LPDDR4X))
+		platform_data->ubwc_config->highest_bank_bit = hbb_override_val;
+
+	d_vpr_h("DDR Type 0x%x hbb 0x%x\n",
+		ddr_type, platform_data->ubwc_config ?
+		platform_data->ubwc_config->highest_bank_bit : -1);
+
 	return 0;
 }
 
@@ -2978,14 +2576,20 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 
 	dev = &core->pdev->dev;
 
-	d_vpr_h("%s: initialize pineapple data\n", __func__);
+	d_vpr_h("%s: initialize volcano data\n", __func__);
 
-	core->platform->data = pineapple_data;
-	if (of_device_is_compatible(dev->of_node, "qcom,sm8650-vidc-v2")) {
-		d_vpr_h("%s: update frequency table for pineapple v2\n", __func__);
-		core->platform->data.freq_tbl = pineapple_freq_table_v2;
-		core->platform->data.freq_tbl_size = ARRAY_SIZE(pineapple_freq_table_v2);
+	core->platform->data = volcano_data_v0;
+
+	/* Check for sku version */
+	rc = msm_vidc_read_efuse(core);
+	if (rc) {
+		d_vpr_e("%s: Failed to read efuse\n", __func__);
+		return rc;
 	}
+/*
+	if (core->platform->data.sku_version == SKU_VERSION_1)
+		core->platform->data = volcano_data_v1;
+*/
 
 	core->mem_ops = get_mem_ops_ext();
 	if (!core->mem_ops) {
@@ -3003,14 +2607,14 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 		return -EINVAL;
 	}
 
-	rc = msm_vidc_pineapple_check_ddr_type();
+	rc = msm_vidc_volcano_check_ddr_type(&core->platform->data, 0xe);
 	if (rc)
 		return rc;
 
 	return rc;
 }
 
-int msm_vidc_init_platform_pineapple(struct msm_vidc_core *core)
+int msm_vidc_init_platform_volcano(struct msm_vidc_core *core)
 {
 	int rc = 0;
 

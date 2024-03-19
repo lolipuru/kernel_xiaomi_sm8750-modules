@@ -177,14 +177,18 @@ u32 get_compression_factors(struct compression_factors *compression_factor,
 		 */
 		if (frame_width < 3840) {
 			compression_factor->ipb_cr =
-				ipblossless_ubwc30_cr_table_cratio_iris33[cr_index_entry][cr_index_uni];
+				ipblossless_ubwc30_cr_table_cratio_iris33[cr_index_entry]
+					[cr_index_uni];
 			compression_factor->ipb_cr_y =
-				ipblossless_ubwc30_cr_table_cratio_iris33[cr_index_entry][cr_index_y];
+				ipblossless_ubwc30_cr_table_cratio_iris33[cr_index_entry]
+					[cr_index_y];
 		} else {
 			compression_factor->ipb_cr =
-				ipblossy_ubwc30_cr_table_cratio_iris33[cr_index_entry][cr_index_uni];
+				ipblossy_ubwc30_cr_table_cratio_iris33[cr_index_entry]
+					[cr_index_uni];
 			compression_factor->ipb_cr_y =
-				ipblossy_ubwc30_cr_table_cratio_iris33[cr_index_entry][cr_index_y];
+				ipblossy_ubwc30_cr_table_cratio_iris33[cr_index_entry]
+					[cr_index_y];
 		}
 
 		compression_factor->dpb_cf_y =
@@ -239,9 +243,10 @@ static int calculate_bandwidth_decoder_iris33(
 
 	u32 dpb_to_opb_ratios_ds = 1;
 
-	u8 llc_enabled_ref_y_rd = 1;
-	u8 llc_enable_ref_crcb_rd = 1;
-	u8 llc_enabled_bse_tlb = 1;
+	u8 llc_enabled_ref_y_rd;
+	u8 llc_enable_ref_crcb_rd;
+	u8 llc_enabled_bse_tlb;
+
 	/* this is for 2pipe and 1pipe LLC */
 	u8 llc_enable_probtable_av1d_21pipe = 0;
 
@@ -260,6 +265,16 @@ static int calculate_bandwidth_decoder_iris33(
 	u32 bse_tlb_byte_per_lcu = 0;
 
 	u32 large_bw_calculation_fp = 0;
+
+	if (codec_input.pipe_num == 4) {
+		llc_enabled_ref_y_rd = 1;
+		llc_enable_ref_crcb_rd = 1;
+		llc_enabled_bse_tlb = 1;
+	} else if (codec_input.pipe_num == 2) {
+		llc_enabled_ref_y_rd = 0; // llc 128kb for palawan
+		llc_enable_ref_crcb_rd = 0;
+		llc_enabled_bse_tlb = (codec_input.status_llc_onoff == 1) ? 1 : 0;
+	}
 
 	llc_enabled_ref_y_rd = (codec_input.status_llc_onoff) ? 1 : 0;
 	llc_enable_ref_crcb_rd = (codec_input.status_llc_onoff) ? 1 : 0;
@@ -657,8 +672,8 @@ static int calculate_bandwidth_encoder_iris33(
 	u32 reference_y_read_bw_factor;
 	u32 reference_crcb_read_bw_factor;
 
-	/* encoder control parameters */
 	u32 en_vertical_tiles_width = 960;
+	u32 en_search_windows_size_horizontal = 96;
 
 	u8 en_rotation_90_270 = 0;
 	/* TODO Can we use (codec_input.status_llc_onoff) for enc_llc_*? */
@@ -667,7 +682,6 @@ static int calculate_bandwidth_encoder_iris33(
 	u8 en_llc_enable_ref_rd_y_overlap = 0;
 
 	u32 en_bins_to_bits_factor = 4;
-	u32 en_search_windows_size_horizontal = 96;
 
 	u32 en_tile_number;
 	u32 ipb_compression_factor_y;
@@ -681,6 +695,17 @@ static int calculate_bandwidth_encoder_iris33(
 
 	/*H265D BSE tlb in LLC will be pored in Kailua */
 	llc_enabled_bse_tlb = (codec_input.status_llc_onoff) ? 1 : 0;
+
+	/* encoder control parameters
+	 * iris3 2pipe uses 768 vertical tile width for IPP GoP
+	 */
+	if (codec_input.pipe_num == 2) {
+		en_vertical_tiles_width =
+		(codec_input.hierachical_layer == CODEC_GOP_IPP) ? 768 : 576;
+		// search ranges for iris3 2pipe
+		en_search_windows_size_horizontal =
+		(codec_input.hierachical_layer == CODEC_GOP_IPP) ? 192 : 96;
+	}
 
 	frame_width = codec_input.frame_width;
 	frame_height = codec_input.frame_height;
@@ -715,7 +740,7 @@ static int calculate_bandwidth_encoder_iris33(
 	} else { /* RGBA */
 		frame420_y_bw_linear_8bpp =
 			((calculate_number_ubwctiles_iris33(frame_width, frame_height,
-			6, 4) * 256 * codec_input.frame_rate + 999) / 1000 + 999) / 1000;
+			16, 4) * 256 * codec_input.frame_rate + 999) / 1000 + 999) / 1000;
 	}
 
 	frame420_y_bw_no_ubwc_tile_10bpp =
@@ -854,12 +879,13 @@ static int calculate_bandwidth_encoder_iris33(
 	/*
 	 * Summary:
 	 * by default (for both HFR and HSR cases) :
-	 * 	-Any resolution and fps >= 120, enable layering.
+	 *      -Any resolution and fps >= 120, enable layering.
 	 * (120 -> 3, 240 -> 4, 480 -> 5)
-	 * 	- (once we enable layering) : 50 per cent frames are Non - reference
+	 *      - (once we enable layering) : 50 per cent frames are Non - reference
 	 *  frames.recon write is disable by Venus firmware
-	 * 	- Customer has ability to enable / disable layering.
-	 *  Hence, recon write savings would not be there if customer explicitly disables layer encoding.
+	 *      - Customer has ability to enable / disable layering.
+	 *  Hence, recon write savings would not be there if
+	 *  customer explicitly disables layer encoding.
 	 */
 
 	/*HFR Cases use alternating rec write if not PWC*/
@@ -924,7 +950,8 @@ static int calculate_bandwidth_encoder_iris33(
 			codec_output->ipb_rd_total_noc = large_bw_calculation_fp;
 			if (codec_input.linear_ipb == 0) {
 				codec_output->ipb_rd_total_noc =
-					(large_bw_calculation_fp * 100 + ipb_compression_factor - 1) /
+					(large_bw_calculation_fp * 100 +
+					 ipb_compression_factor - 1) /
 					ipb_compression_factor;
 			}
 		} else { /* rgb */
@@ -934,7 +961,8 @@ static int calculate_bandwidth_encoder_iris33(
 				if (codec_input.complexity_setting == 0) /* pwc */
 					codec_output->ipb_rd_total_noc =
 						(large_bw_calculation_fp * 100 +
-						en_original_compression_factor_rgba_pwd_iris33 - 1) /
+						 en_original_compression_factor_rgba_pwd_iris33
+						 - 1) /
 						en_original_compression_factor_rgba_pwd_iris33;
 				else
 					codec_output->ipb_rd_total_noc =

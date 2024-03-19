@@ -42,6 +42,13 @@ module_entry(
             "driver/variant/iris33/src/msm_vidc_power_iris33.c",
             "driver/variant/iris33/src/msm_vidc_iris33.c",
             "driver/platform/pineapple/src/msm_vidc_pineapple.c",
+            "driver/platform/cliffs/src/msm_vidc_cliffs.c",
+        ],
+        "CONFIG_MSM_VIDC_VOLCANO" : [
+            "driver/variant/iris2/src/msm_vidc_buffer_iris2.c",
+            "driver/variant/iris2/src/msm_vidc_iris2.c",
+            "driver/variant/iris2/src/msm_vidc_power_iris2.c",
+            "driver/platform/volcano/src/msm_vidc_volcano.c",
         ],
     },
     deps = [
@@ -79,11 +86,18 @@ module_entry(
     config_srcs = {
         "CONFIG_MSM_VIDC_PINEAPPLE" : [
             "driver/platform/pineapple/src/pineapple.c",
+            "driver/platform/cliffs/src/cliffs.c",
             "driver/variant/iris33/src/msm_vidc_buffer_iris33.c",
             "driver/variant/iris33/src/msm_vidc_power_iris33.c",
             "driver/variant/iris33/src/msm_vidc_bus_iris33.c",
             "driver/variant/iris33/src/msm_vidc_clock_iris33.c",
             "driver/variant/iris33/src/msm_vidc_iris33.c",
+        ],
+        "CONFIG_MSM_VIDC_VOLCANO" : [
+            "driver/variant/iris2/src/msm_vidc_buffer_iris2.c",
+            "driver/variant/iris2/src/msm_vidc_iris2.c",
+            "driver/variant/iris2/src/msm_vidc_power_iris2.c",
+            "driver/platform/volcano/src/volcano.c",
         ],
     }
 )

@@ -3,26 +3,24 @@
  * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-#include <linux/of.h>
-#include <dt-bindings/clock/qcom,gcc-sm8450.h>
-#include <dt-bindings/clock/qcom,videocc-sm8450.h>
+#include <soc/qcom/of_common.h>
 
 #include "msm_vidc_control.h"
+#include "msm_vidc_cliffs.h"
 #include "msm_vidc_platform.h"
-#include "msm_vidc_waipio.h"
 #include "msm_vidc_debug.h"
+#include "msm_vidc_iris33.h"
 #include "hfi_property.h"
 #include "hfi_command.h"
+#include "venus_hfi.h"
 
 #define DEFAULT_VIDEO_CONCEAL_COLOR_BLACK 0x8020010
-#define MAX_LTR_FRAME_COUNT     2
 #define MAX_BASE_LAYER_PRIORITY_ID 63
 #define MAX_OP_POINT            31
-#define MAX_BITRATE             220000000
+#define MAX_BITRATE             245000000
 #define DEFAULT_BITRATE         20000000
 #define MINIMUM_FPS             1
 #define MAXIMUM_FPS             480
-#define MAXIMUM_DEC_FPS         960
 #define MAX_QP                  51
 #define DEFAULT_QP              20
 #define MAX_CONSTANT_QUALITY    100
@@ -38,7 +36,7 @@
 #define HEVC    MSM_VIDC_HEVC
 #define VP9     MSM_VIDC_VP9
 #define CODECS_ALL     (H264 | HEVC | VP9)
-#define MAXIMUM_OVERRIDE_VP9_FPS 200
+#define MAXIMUM_OVERRIDE_VP9_FPS 180
 
 #ifndef V4L2_PIX_FMT_QC08C
 #define V4L2_PIX_FMT_QC08C    v4l2_fourcc('Q', '0', '8', 'C')
@@ -48,7 +46,7 @@
 #define V4L2_PIX_FMT_QC10C    v4l2_fourcc('Q', '1', '0', 'C')
 #endif
 
-static struct codec_info codec_data_waipio[] = {
+static struct codec_info codec_data_cliffs[] = {
 	{
 		.v4l2_codec  = V4L2_PIX_FMT_H264,
 		.vidc_codec  = MSM_VIDC_H264,
@@ -66,7 +64,7 @@ static struct codec_info codec_data_waipio[] = {
 	},
 };
 
-static struct color_format_info color_format_data_waipio[] = {
+static struct color_format_info color_format_data_cliffs[] = {
 	{
 		.v4l2_color_format = V4L2_PIX_FMT_NV12,
 		.vidc_color_format = MSM_VIDC_FMT_NV12,
@@ -94,7 +92,7 @@ static struct color_format_info color_format_data_waipio[] = {
 	},
 };
 
-static struct color_primaries_info color_primaries_data_waipio[] = {
+static struct color_primaries_info color_primaries_data_cliffs[] = {
 	{
 		.v4l2_color_primaries  = V4L2_COLORSPACE_DEFAULT,
 		.vidc_color_primaries  = MSM_VIDC_PRIMARIES_RESERVED,
@@ -129,7 +127,7 @@ static struct color_primaries_info color_primaries_data_waipio[] = {
 	},
 };
 
-static struct transfer_char_info transfer_char_data_waipio[] = {
+static struct transfer_char_info transfer_char_data_cliffs[] = {
 	{
 		.v4l2_transfer_char  = V4L2_XFER_FUNC_DEFAULT,
 		.vidc_transfer_char  = MSM_VIDC_TRANSFER_RESERVED,
@@ -152,7 +150,7 @@ static struct transfer_char_info transfer_char_data_waipio[] = {
 	},
 };
 
-static struct matrix_coeff_info matrix_coeff_data_waipio[] = {
+static struct matrix_coeff_info matrix_coeff_data_cliffs[] = {
 	{
 		.v4l2_matrix_coeff  = V4L2_YCBCR_ENC_DEFAULT,
 		.vidc_matrix_coeff  = MSM_VIDC_MATRIX_COEFF_RESERVED,
@@ -187,7 +185,7 @@ static struct matrix_coeff_info matrix_coeff_data_waipio[] = {
 	},
 };
 
-static struct msm_platform_core_capability core_data_waipio[] = {
+static struct msm_platform_core_capability core_data_cliffs[] = {
 	/* {type, value} */
 	{ENC_CODECS, H264 | HEVC},
 	{DEC_CODECS, H264 | HEVC | VP9},
@@ -198,11 +196,12 @@ static struct msm_platform_core_capability core_data_waipio[] = {
 	{MAX_NUM_8K_SESSIONS, 2},
 	{MAX_RT_MBPF, 174080},	/* (8192x4352)/256 + (4096x2176)/256*/
 	{MAX_MBPF, 278528}, /* ((8192x4352)/256) * 2 */
-	{MAX_MBPS, 7833600},	/* max_load
-				 * 7680x4320@60fps or 3840x2176@240fps
-				 * which is greater than 4096x2176@120fps,
-				 * 8192x4320@48fps
-				 */
+	{MAX_MBPS, 7833600},
+	/* max_load
+	 * 7680x4320@60fps or 3840x2176@240fps
+	 * which is greater than 4096x2176@120fps,
+	 * 8192x4320@48fps
+	 */
 	{MAX_MBPF_HQ, 8160}, /* ((1920x1088)/256) */
 	{MAX_MBPS_HQ, 489600}, /* ((1920x1088)/256)@60fps */
 	{MAX_MBPF_B_FRAME, 32640}, /* 3840x2176/256 */
@@ -226,7 +225,71 @@ static struct msm_platform_core_capability core_data_waipio[] = {
 	{SUPPORTS_REQUESTS, 0},
 };
 
-static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
+static int msm_vidc_set_ring_buffer_count_cliffs(void *instance,
+	enum msm_vidc_inst_capability_type cap_id)
+{
+	int rc = 0;
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+	struct v4l2_format *output_fmt, *input_fmt;
+	struct msm_vidc_core *core;
+	u32 count = 0, data_size = 0, pixel_count = 0, fps = 0;
+	u32 frame_rate = 0, operating_rate = 0;
+
+	core = inst->core;
+	output_fmt = &inst->fmts[OUTPUT_PORT];
+	input_fmt = &inst->fmts[INPUT_PORT];
+
+	frame_rate = inst->capabilities[FRAME_RATE].value >> 16;
+	operating_rate = inst->capabilities[OPERATING_RATE].value >> 16;
+	fps = max(frame_rate, operating_rate);
+	pixel_count = output_fmt->fmt.pix_mp.width *
+		output_fmt->fmt.pix_mp.height;
+
+	/*
+	 * try to enable ring buffer feature if
+	 * resolution >= 8k and fps >= 30fps and
+	 * resolution >= 4k and fps >= 120fps and
+	 * resolution >= 1080p and fps >= 480fps and
+	 * resolution >= 720p and fps >= 960fps
+	 */
+	if ((pixel_count >= 7680 * 4320 && fps >= 30) &&
+	    (pixel_count >= 3840 * 2160 && fps >= 120) &&
+	    (pixel_count >= 1920 * 1080 && fps >= 480) &&
+	    (pixel_count >= 1280 * 720 && fps >= 960)) {
+		data_size = input_fmt->fmt.pix_mp.plane_fmt[0].sizeimage;
+		i_vpr_h(inst, "%s: calculate ring buffer count\n", __func__);
+		rc = call_session_op(core, ring_buf_count, inst, data_size);
+		if (rc) {
+			i_vpr_e(inst, "%s: failed to calculate ring buf count\n",
+				__func__);
+			/* ignore error */
+			rc = 0;
+			inst->capabilities[cap_id].value = 0;
+		}
+	} else {
+		i_vpr_h(inst,
+			"%s: session %ux%u@%u fps does not support ring buffer\n",
+			__func__, output_fmt->fmt.pix_mp.width,
+			output_fmt->fmt.pix_mp.height, fps);
+		inst->capabilities[cap_id].value = 0;
+	}
+
+	count = inst->capabilities[cap_id].value;
+	i_vpr_h(inst, "%s: ring buffer count: %u\n", __func__, count);
+	rc = venus_hfi_session_property(inst,
+			HFI_PROP_ENC_RING_BIN_BUF,
+			HFI_HOST_FLAGS_NONE,
+			HFI_PORT_BITSTREAM,
+			HFI_PAYLOAD_U32,
+			&count,
+			sizeof(u32));
+	if (rc)
+		return rc;
+
+	return rc;
+}
+
+static struct msm_platform_inst_capability instance_cap_data_cliffs[] = {
 	/* {cap, domain, codec,
 	 *      min, max, step_or_mask, value,
 	 *      v4l2_id,
@@ -303,14 +366,14 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 	/* (4096 * 2304) / 256 */
 	{BATCH_FPS, DEC, H264 | HEVC | VP9, 1, 120, 1, 120},
 
-	{FRAME_RATE, ENC | DEC, CODECS_ALL,
+	{FRAME_RATE, ENC, CODECS_ALL,
 		(MINIMUM_FPS << 16), (MAXIMUM_FPS << 16),
 		1, (DEFAULT_FPS << 16),
 		0,
 		HFI_PROP_FRAME_RATE,
 		CAP_FLAG_OUTPUT_PORT},
 
-	{OPERATING_RATE, ENC | DEC, CODECS_ALL,
+	{OPERATING_RATE, ENC, CODECS_ALL,
 		(MINIMUM_FPS << 16), (MAXIMUM_FPS << 16),
 		1, (DEFAULT_FPS << 16)},
 
@@ -338,11 +401,14 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 
 	{MB_CYCLES_LP, DEC, CODECS_ALL, 200, 200, 1, 200},
 
-	{MB_CYCLES_FW, ENC | DEC, CODECS_ALL, 326389, 326389, 1, 326389},
+	{MB_CYCLES_FW, ENC | DEC, CODECS_ALL, 489583, 489583, 1, 489583},
 
-	{MB_CYCLES_FW_VPP, ENC | DEC, CODECS_ALL, 44156, 44156, 1, 44156},
+	{MB_CYCLES_FW_VPP, ENC, CODECS_ALL, 48405, 48405, 1, 48405},
 
 	{MB_CYCLES_FW_VPP, DEC, CODECS_ALL, 66234, 66234, 1, 66234},
+
+	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
+		0, MAX_ENC_RING_BUF_COUNT, 1, 0},
 
 	{CLIENT_ID, ENC | DEC, CODECS_ALL,
 		INVALID_CLIENT_ID, INT_MAX, 1, INVALID_CLIENT_ID,
@@ -372,6 +438,11 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 		0, 32, 1, 0,
 		0, 0,
 		CAP_FLAG_NONE},
+
+	{SLICE_DECODE, DEC, CODECS_ALL,
+		0, 0, 0, 0,
+		V4L2_CID_MPEG_VIDEO_DECODER_SLICE_INTERFACE,
+		0},
 
 	{HEADER_MODE, ENC, CODECS_ALL,
 		V4L2_MPEG_VIDEO_HEADER_MODE_SEPARATE,
@@ -455,9 +526,6 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 	{LOWLATENCY_MAX_BITRATE, ENC, H264 | HEVC, 0,
 		70000000, 1, 70000000},
 
-	{NUM_COMV, DEC, CODECS_ALL,
-		0, INT_MAX, 1, 0},
-
 	{LOSSLESS, ENC, HEVC,
 		0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDEO_HEVC_LOSSLESS_CU},
@@ -529,14 +597,14 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
 
 	{LTR_COUNT, ENC, H264 | HEVC,
-		0, 2, 1, 0,
+		0, MAX_LTR_FRAME_COUNT_5, 1, 0,
 		V4L2_CID_MPEG_VIDEO_LTR_COUNT,
 		HFI_PROP_LTR_COUNT,
 		CAP_FLAG_OUTPUT_PORT},
 
 	{USE_LTR, ENC, H264 | HEVC,
 		0,
-		((1 << MAX_LTR_FRAME_COUNT) - 1),
+		((1 << MAX_LTR_FRAME_COUNT_5) - 1),
 		0, 0,
 		V4L2_CID_MPEG_VIDEO_USE_LTR_FRAMES,
 		HFI_PROP_LTR_USE,
@@ -544,7 +612,7 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 
 	{MARK_LTR, ENC, H264 | HEVC,
 		INVALID_DEFAULT_MARK_OR_USE_LTR,
-		(MAX_LTR_FRAME_COUNT - 1),
+		(MAX_LTR_FRAME_COUNT_5 - 1),
 		1, INVALID_DEFAULT_MARK_OR_USE_LTR,
 		V4L2_CID_MPEG_VIDEO_FRAME_LTR_INDEX,
 		HFI_PROP_LTR_MARK,
@@ -554,7 +622,7 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 		0, MAX_BASE_LAYER_PRIORITY_ID, 1, 0,
 		V4L2_CID_MPEG_VIDEO_BASELAYER_PRIORITY_ID,
 		HFI_PROP_BASELAYER_PRIORITYID,
-		CAP_FLAG_OUTPUT_PORT},
+		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
 
 	{AU_DELIMITER, ENC, H264 | HEVC,
 		0, 1, 1, 0,
@@ -922,7 +990,7 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 
 	{LEVEL, ENC, HEVC,
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_1,
-		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2,
+		V4L2_MPEG_VIDEO_HEVC_LEVEL_6,
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2_1) |
@@ -933,9 +1001,7 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_2) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2),
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6),
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_5,
 		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
 		HFI_PROP_LEVEL,
@@ -983,7 +1049,7 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_2) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1)|
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2),
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1,
 		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
@@ -1208,12 +1274,6 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 		HFI_PROP_SEQ_CHANGE_AT_SYNC_FRAME,
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
 
-	{PRIORITY, DEC | ENC, CODECS_ALL,
-		0, 4, 1, 4,
-		0,
-		HFI_PROP_SESSION_PRIORITY,
-		CAP_FLAG_DYNAMIC_ALLOWED},
-
 	{FIRMWARE_PRIORITY_OFFSET, DEC | ENC, CODECS_ALL,
 		1, 1, 1, 1},
 
@@ -1229,18 +1289,16 @@ static struct msm_platform_inst_capability instance_cap_data_waipio[] = {
 		0},
 };
 
-static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waipio[] = {
+static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cliffs[] = {
 	/* {cap, domain, codec,
+	 *      parents,
 	 *      children,
 	 *      adjust, set}
 	 */
 
-	{PIX_FMTS, ENC, H264,
-		{0}},
-
 	{PIX_FMTS, ENC, HEVC,
 		{PROFILE, MIN_FRAME_QP, MAX_FRAME_QP, I_FRAME_QP, P_FRAME_QP,
-			B_FRAME_QP, MIN_QUALITY, BLUR_TYPES}},
+			B_FRAME_QP, MIN_QUALITY, BLUR_TYPES, LTR_COUNT}},
 
 	{PIX_FMTS, DEC, HEVC,
 		{PROFILE}},
@@ -1249,6 +1307,11 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 		{0},
 		NULL,
 		msm_vidc_set_q16},
+
+	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
+		{0},
+		NULL,
+		msm_vidc_set_ring_buffer_count_cliffs},
 
 	{HFLIP, ENC, CODECS_ALL,
 		{0},
@@ -1285,7 +1348,12 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 		NULL,
 		msm_vidc_set_req_sync_frame},
 
-	{BIT_RATE, ENC, H264 | HEVC,
+	{BIT_RATE, ENC, H264,
+		{PEAK_BITRATE, L0_BR},
+		msm_vidc_adjust_bitrate,
+		msm_vidc_set_bitrate},
+
+	{BIT_RATE, ENC, HEVC,
 		{PEAK_BITRATE, L0_BR},
 		msm_vidc_adjust_bitrate,
 		msm_vidc_set_bitrate},
@@ -1325,7 +1393,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 
 	{BLUR_TYPES, ENC, H264 | HEVC,
 		{0},
-		msm_vidc_adjust_blur_type_iris2,
+		msm_vidc_adjust_blur_type,
 		msm_vidc_set_u32_enum},
 
 	{LOWLATENCY_MODE, ENC, H264 | HEVC,
@@ -1438,14 +1506,14 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 		NULL,
 		msm_vidc_set_frame_qp},
 
-	{LAYER_TYPE, ENC, H264,
-		{CONTENT_ADAPTIVE_CODING}},
+	{LAYER_TYPE, ENC, H264 | HEVC,
+		{CONTENT_ADAPTIVE_CODING, LTR_COUNT}},
 
 	{LAYER_ENABLE, ENC, H264 | HEVC,
 		{CONTENT_ADAPTIVE_CODING}},
 
 	{ENH_LAYER_COUNT, ENC, H264 | HEVC,
-		{GOP_SIZE, B_FRAME, BIT_RATE, MIN_QUALITY, SLICE_MODE},
+		{GOP_SIZE, B_FRAME, BIT_RATE, MIN_QUALITY, LTR_COUNT},
 		msm_vidc_adjust_layer_count,
 		msm_vidc_set_layer_count_and_type},
 
@@ -1525,7 +1593,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 		msm_vidc_set_deblock_mode},
 
 	{SLICE_MODE, ENC, H264 | HEVC,
-		{STAGE},
+		{STAGE, DELIVERY_MODE},
 		msm_vidc_adjust_slice_count,
 		msm_vidc_set_slice_count},
 
@@ -1559,7 +1627,17 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 		msm_vidc_adjust_input_buf_host_max_count,
 		msm_vidc_set_u32},
 
+	{INPUT_BUF_HOST_MAX_COUNT, ENC, H264 | HEVC,
+		{0},
+		msm_vidc_adjust_input_buf_host_max_count,
+		msm_vidc_set_u32},
+
 	{OUTPUT_BUF_HOST_MAX_COUNT, ENC | DEC, CODECS_ALL,
+		{0},
+		msm_vidc_adjust_output_buf_host_max_count,
+		msm_vidc_set_u32},
+
+	{OUTPUT_BUF_HOST_MAX_COUNT, ENC, H264 | HEVC,
 		{0},
 		msm_vidc_adjust_output_buf_host_max_count,
 		msm_vidc_set_u32},
@@ -1579,6 +1657,16 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 		NULL,
 		msm_vidc_set_stage},
 
+	{STAGE, ENC, H264 | HEVC,
+		{0},
+		NULL,
+		msm_vidc_set_stage},
+
+	{STAGE, DEC, H264 | HEVC | VP9,
+		{0},
+		NULL,
+		msm_vidc_set_stage},
+
 	{PIPE, DEC | ENC, CODECS_ALL,
 		{0},
 		NULL,
@@ -1594,11 +1682,6 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 		NULL,
 		msm_vidc_set_u32},
 
-	{PRIORITY, DEC | ENC, CODECS_ALL,
-		{0},
-		msm_vidc_adjust_session_priority,
-		msm_vidc_set_session_priority},
-
 	{FIRMWARE_PRIORITY_OFFSET, DEC | ENC, CODECS_ALL,
 		{0},
 		NULL,
@@ -1611,215 +1694,68 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_waip
 };
 
 /* Default UBWC config for LPDDR5 */
-static struct msm_vidc_ubwc_config_data ubwc_config_waipio[] = {
+static struct msm_vidc_ubwc_config_data ubwc_config_cliffs[] = {
 	UBWC_CONFIG(8, 32, 16, 0, 1, 1, 1),
 };
 
-static struct msm_vidc_format_capability format_data_waipio = {
-	.codec_info = codec_data_waipio,
-	.codec_info_size = ARRAY_SIZE(codec_data_waipio),
-	.color_format_info = color_format_data_waipio,
-	.color_format_info_size = ARRAY_SIZE(color_format_data_waipio),
-	.color_prim_info = color_primaries_data_waipio,
-	.color_prim_info_size = ARRAY_SIZE(color_primaries_data_waipio),
-	.transfer_char_info = transfer_char_data_waipio,
-	.transfer_char_info_size = ARRAY_SIZE(transfer_char_data_waipio),
-	.matrix_coeff_info = matrix_coeff_data_waipio,
-	.matrix_coeff_info_size = ARRAY_SIZE(matrix_coeff_data_waipio),
+static struct msm_vidc_format_capability format_data_cliffs = {
+	.codec_info = codec_data_cliffs,
+	.codec_info_size = ARRAY_SIZE(codec_data_cliffs),
+	.color_format_info = color_format_data_cliffs,
+	.color_format_info_size = ARRAY_SIZE(color_format_data_cliffs),
+	.color_prim_info = color_primaries_data_cliffs,
+	.color_prim_info_size = ARRAY_SIZE(color_primaries_data_cliffs),
+	.transfer_char_info = transfer_char_data_cliffs,
+	.transfer_char_info_size = ARRAY_SIZE(transfer_char_data_cliffs),
+	.matrix_coeff_info = matrix_coeff_data_cliffs,
+	.matrix_coeff_info_size = ARRAY_SIZE(matrix_coeff_data_cliffs),
 };
 
-/* name, min_kbps, max_kbps */
-static const struct bw_table waipio_bw_table[] = {
-	{ "venus-cnoc",  1000, 1000     },
-	{ "venus-ddr",   1000, 15000000 },
-};
-
-/* name */
-static const struct pd_table waipio_pd_table[] = {
-	{ "iris-ctl" },
-	{ "vcodec"   },
-};
-
-/* name */
-static const char * const waipio_opp_table[] = { "mx", "mmcx", NULL };
-
-/* name, clock id, scaling */
-static const struct clk_table waipio_clk_table[] = {
-	{ "gcc_video_axi0",         GCC_VIDEO_AXI0_CLK,     0 },
-	{ "core_clk",               VIDEO_CC_MVS0C_CLK,     0 },
-	{ "vcodec_clk",             VIDEO_CC_MVS0_CLK,      1 },
-};
-
-/* name */
-static const struct clk_rst_table waipio_clk_reset_table[] = {
-	{ "video_axi_reset"  },
-	{ "video_core_reset" },
-};
-
-/* name, start, size, secure, dma_coherant */
-const struct context_bank_table waipio_context_bank_table[] = {
-	{"qcom,vidc,cb-ns", 0x25800000, 0xba800000, 0, 1, MSM_VIDC_NON_SECURE, 0xe0000000 - 1},
-	{"qcom,vidc,cb-sec-non-pxl",   0x01000000, 0x24800000, 1, 0, MSM_VIDC_SECURE_NONPIXEL,  0 },
-};
-
-/* freq */
-static struct freq_table waipio_freq_table[] = {
-	{444000000}, {366000000}, {338000000}, {240000000}
-};
-
-/* register, value, mask */
-static const struct reg_preset_table waipio_reg_preset_table[] = {
-	{ 0xB0088, 0x0, 0x11 },
-};
-
-/* decoder properties */
-static const u32 waipio_vdec_psc_avc[] = {
-	HFI_PROP_BITSTREAM_RESOLUTION,
-	HFI_PROP_CROP_OFFSETS,
-	HFI_PROP_CODED_FRAMES,
-	HFI_PROP_BUFFER_FW_MIN_OUTPUT_COUNT,
-	HFI_PROP_PIC_ORDER_CNT_TYPE,
-	HFI_PROP_PROFILE,
-	HFI_PROP_LEVEL,
-	HFI_PROP_SIGNAL_COLOR_INFO,
-};
-
-static const u32 waipio_vdec_psc_hevc[] = {
-	HFI_PROP_BITSTREAM_RESOLUTION,
-	HFI_PROP_CROP_OFFSETS,
-	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
-	HFI_PROP_BUFFER_FW_MIN_OUTPUT_COUNT,
-	HFI_PROP_PROFILE,
-	HFI_PROP_LEVEL,
-	HFI_PROP_TIER,
-	HFI_PROP_SIGNAL_COLOR_INFO,
-};
-
-static const u32 waipio_vdec_psc_vp9[] = {
-	HFI_PROP_BITSTREAM_RESOLUTION,
-	HFI_PROP_CROP_OFFSETS,
-	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
-	HFI_PROP_BUFFER_FW_MIN_OUTPUT_COUNT,
-	HFI_PROP_PROFILE,
-	HFI_PROP_LEVEL,
-};
-
-static const u32 waipio_vdec_input_properties_avc[] = {
-	HFI_PROP_NO_OUTPUT,
-	HFI_PROP_SUBFRAME_INPUT,
-};
-
-static const u32 waipio_vdec_input_properties_hevc[] = {
-	HFI_PROP_NO_OUTPUT,
-	HFI_PROP_SUBFRAME_INPUT,
-};
-
-static const u32 waipio_vdec_input_properties_vp9[] = {
-	HFI_PROP_NO_OUTPUT,
-	HFI_PROP_SUBFRAME_INPUT,
-};
-
-static const u32 waipio_vdec_output_properties_avc[] = {
-	HFI_PROP_WORST_COMPRESSION_RATIO,
-	HFI_PROP_WORST_COMPLEXITY_FACTOR,
-	HFI_PROP_PICTURE_TYPE,
-	HFI_PROP_DPB_LIST,
-	HFI_PROP_CABAC_SESSION,
-	HFI_PROP_FENCE,
-};
-
-static const u32 waipio_vdec_output_properties_hevc[] = {
-	HFI_PROP_WORST_COMPRESSION_RATIO,
-	HFI_PROP_WORST_COMPLEXITY_FACTOR,
-	HFI_PROP_PICTURE_TYPE,
-	HFI_PROP_DPB_LIST,
-	HFI_PROP_FENCE,
-};
-
-static const u32 waipio_vdec_output_properties_vp9[] = {
-	HFI_PROP_WORST_COMPRESSION_RATIO,
-	HFI_PROP_WORST_COMPLEXITY_FACTOR,
-	HFI_PROP_PICTURE_TYPE,
-	HFI_PROP_DPB_LIST,
-	HFI_PROP_FENCE,
-};
-
-static const struct msm_vidc_platform_data waipio_data = {
-	/* resources dependent on other module */
-	.bw_tbl = waipio_bw_table,
-	.bw_tbl_size = ARRAY_SIZE(waipio_bw_table),
-	.clk_tbl = waipio_clk_table,
-	.clk_tbl_size = ARRAY_SIZE(waipio_clk_table),
-	.clk_rst_tbl = waipio_clk_reset_table,
-	.clk_rst_tbl_size = ARRAY_SIZE(waipio_clk_reset_table),
-	.subcache_tbl = NULL,
-	.subcache_tbl_size = 0,
-
-	/* populate context bank */
-	.context_bank_tbl = waipio_context_bank_table,
-	.context_bank_tbl_size = ARRAY_SIZE(waipio_context_bank_table),
-
-	/* populate power domain and opp table */
-	.pd_tbl = waipio_pd_table,
-	.pd_tbl_size = ARRAY_SIZE(waipio_pd_table),
-	.opp_tbl = waipio_opp_table,
-	.opp_tbl_size = ARRAY_SIZE(waipio_opp_table),
-
-	/* platform specific resources */
-	.freq_tbl = waipio_freq_table,
-	.freq_tbl_size = ARRAY_SIZE(waipio_freq_table),
-	.reg_prst_tbl = waipio_reg_preset_table,
-	.reg_prst_tbl_size = ARRAY_SIZE(waipio_reg_preset_table),
-	.fwname = "vpu20_4v",
-	.pas_id = 9,
-	.supports_mmrm = 0,
-
-	/* caps related resorces */
-	.core_data = core_data_waipio,
-	.core_data_size = ARRAY_SIZE(core_data_waipio),
-	.inst_cap_data = instance_cap_data_waipio,
-	.inst_cap_data_size = ARRAY_SIZE(instance_cap_data_waipio),
-	.inst_cap_dependency_data = instance_cap_dependency_data_waipio,
-	.inst_cap_dependency_data_size = ARRAY_SIZE(instance_cap_dependency_data_waipio),
+static const struct msm_vidc_platform_data cliffs_data = {
+	.core_data = core_data_cliffs,
+	.core_data_size = ARRAY_SIZE(core_data_cliffs),
+	.inst_cap_data = instance_cap_data_cliffs,
+	.inst_cap_data_size = ARRAY_SIZE(instance_cap_data_cliffs),
+	.inst_cap_dependency_data = instance_cap_dependency_data_cliffs,
+	.inst_cap_dependency_data_size = ARRAY_SIZE(instance_cap_dependency_data_cliffs),
 	.csc_data.vpe_csc_custom_bias_coeff = vpe_csc_custom_bias_coeff,
 	.csc_data.vpe_csc_custom_matrix_coeff = vpe_csc_custom_matrix_coeff,
 	.csc_data.vpe_csc_custom_limit_coeff = vpe_csc_custom_limit_coeff,
-	.ubwc_config = ubwc_config_waipio,
-	.format_data = &format_data_waipio,
-
-	/* decoder properties related*/
-	.psc_avc_tbl = waipio_vdec_psc_avc,
-	.psc_avc_tbl_size = ARRAY_SIZE(waipio_vdec_psc_avc),
-	.psc_hevc_tbl = waipio_vdec_psc_hevc,
-	.psc_hevc_tbl_size = ARRAY_SIZE(waipio_vdec_psc_hevc),
-	.psc_vp9_tbl = waipio_vdec_psc_vp9,
-	.psc_vp9_tbl_size = ARRAY_SIZE(waipio_vdec_psc_vp9),
-	.dec_input_prop_avc = waipio_vdec_input_properties_avc,
-	.dec_input_prop_hevc = waipio_vdec_input_properties_hevc,
-	.dec_input_prop_vp9 = waipio_vdec_input_properties_vp9,
-	.dec_input_prop_size_avc = ARRAY_SIZE(waipio_vdec_input_properties_avc),
-	.dec_input_prop_size_hevc = ARRAY_SIZE(waipio_vdec_input_properties_hevc),
-	.dec_input_prop_size_vp9 = ARRAY_SIZE(waipio_vdec_input_properties_vp9),
-	.dec_output_prop_avc = waipio_vdec_output_properties_avc,
-	.dec_output_prop_hevc = waipio_vdec_output_properties_hevc,
-	.dec_output_prop_vp9 = waipio_vdec_output_properties_vp9,
-	.dec_output_prop_size_avc = ARRAY_SIZE(waipio_vdec_output_properties_avc),
-	.dec_output_prop_size_hevc = ARRAY_SIZE(waipio_vdec_output_properties_hevc),
-	.dec_output_prop_size_vp9 = ARRAY_SIZE(waipio_vdec_output_properties_vp9),
+	.ubwc_config = ubwc_config_cliffs,
+	.format_data = &format_data_cliffs,
 };
+
+int msm_vidc_cliffs_check_ddr_type(void)
+{
+	u32 ddr_type;
+
+	ddr_type = of_fdt_get_ddrtype();
+	if (ddr_type != DDR_TYPE_LPDDR5 &&
+		ddr_type != DDR_TYPE_LPDDR5X) {
+		d_vpr_e("%s: wrong ddr type %d\n", __func__, ddr_type);
+		return -EINVAL;
+	}
+
+	d_vpr_h("%s: ddr type %d\n", __func__, ddr_type);
+	return 0;
+}
 
 static int msm_vidc_init_data(struct msm_vidc_core *core)
 {
 	int rc = 0;
 
-	d_vpr_h("%s: initialize waipio data\n", __func__);
+	d_vpr_h("%s: initialize cliffs data\n", __func__);
 
-	core->platform->data = waipio_data;
+	core->platform->data = cliffs_data;
+
+	rc = msm_vidc_cliffs_check_ddr_type();
+	if (rc)
+		return rc;
 
 	return rc;
 }
 
-int msm_vidc_init_platform_waipio(struct msm_vidc_core *core)
+int msm_vidc_init_platform_cliffs(struct msm_vidc_core *core)
 {
 	int rc = 0;
 

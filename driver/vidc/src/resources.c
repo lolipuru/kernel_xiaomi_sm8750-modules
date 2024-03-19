@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/sort.h>
@@ -1224,7 +1224,8 @@ static int __update_residency_stats(struct msm_vidc_core *core,
 	prev_residency = get_residency_stats(cl, cl->prev);
 	if (prev_residency) {
 		if (prev_residency->start_time_us)
-			prev_residency->total_time_us += cur_time_us - prev_residency->start_time_us;
+			prev_residency->total_time_us += cur_time_us -
+			    prev_residency->start_time_us;
 
 		/* reset start time us */
 		prev_residency->start_time_us = 0;
@@ -1444,7 +1445,7 @@ static int __reset_control_acquire_name(struct msm_vidc_core *core,
 		const char *name)
 {
 	struct reset_info *rcinfo = NULL;
-	int rc = 0;
+	int rc = 0, count = 0;
 	bool found = false;
 
 	venus_hfi_for_each_reset_clock(core, rcinfo) {
@@ -1461,7 +1462,22 @@ static int __reset_control_acquire_name(struct msm_vidc_core *core,
 		found = true;
 		/* reset_control_acquire is exposed in kernel version 6 */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
-		rc = reset_control_acquire(rcinfo->rst);
+		do {
+			rc = reset_control_acquire(rcinfo->rst);
+			if (!rc)
+				break;
+
+			d_vpr_e("%s: failed to acquire video_xo_reset control, count %d\n",
+				__func__, count);
+			count++;
+			usleep_range(1000, 1500);
+		} while (count < 1000);
+
+		if (count >= 1000) {
+			d_vpr_e("%s: timeout acquiring video_xo_reset\n", __func__);
+			rc = -EINVAL;
+			MSM_VIDC_FATAL(true);
+		}
 #else
 		rc = -EINVAL;
 #endif
@@ -1473,9 +1489,13 @@ static int __reset_control_acquire_name(struct msm_vidc_core *core,
 				__func__, rcinfo->name);
 		break;
 	}
+	/* Faced this issue for volcano which doesn't support xo_reset
+	 * skip this check and return success
+	 */
 	if (!found) {
-		d_vpr_e("%s: reset control (%s) not found\n", __func__, name);
-		rc = -EINVAL;
+		d_vpr_e("%s: reset control (%s) not found but returning success\n",
+			__func__, name);
+		rc = 0;
 	}
 
 	return rc;
@@ -1514,9 +1534,13 @@ static int __reset_control_release_name(struct msm_vidc_core *core,
 				__func__, rcinfo->name);
 		break;
 	}
+	/* Faced this issue for volcano which doesn't support xo_reset
+	 * skip this check and return success
+	 */
 	if (!found) {
-		d_vpr_e("%s: reset control (%s) not found\n", __func__, name);
-		rc = -EINVAL;
+		d_vpr_e("%s: reset control (%s) not found but returning success\n",
+			__func__, name);
+		rc = 0;
 	}
 
 	return rc;

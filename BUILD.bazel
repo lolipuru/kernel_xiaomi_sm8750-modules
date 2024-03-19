@@ -22,11 +22,35 @@ ddk_headers(
 )
 
 ddk_headers(
+    name = "cliffs_headers",
+    hdrs = glob([
+      "driver/platform/cliffs/inc/*.h",
+    ]),
+    includes = ["driver/platform/cliffs/inc"]
+)
+
+ddk_headers(
     name = "iris33_headers",
     hdrs = glob([
       "driver/variant/iris33/inc/*.h",
     ]),
     includes = ["driver/variant/iris33/inc"]
+)
+
+ddk_headers(
+    name = "iris2_headers",
+    hdrs = glob([
+      "driver/variant/iris2/inc/*.h",
+    ]),
+    includes = ["driver/variant/iris2/inc"]
+)
+
+ddk_headers(
+    name = "volcano_headers",
+    hdrs = glob([
+      "driver/platform/volcano/inc/*.h",
+    ]),
+    includes = ["driver/platform/volcano/inc"]
 )
 
 ddk_headers(
@@ -42,8 +66,8 @@ ddk_headers(
 ddk_headers(
     name = "video_driver_headers",
     # hdrs = [":pineapple_configs", "uapi_headers", "pineapple_headers", "iris33_headers", "vidc_headers"]
-    hdrs = [":uapi_headers", "pineapple_headers", "iris33_headers", "vidc_headers"]
+    hdrs = [":uapi_headers", "pineapple_headers", "cliffs_headers", "iris33_headers", "volcano_headers", "iris2_headers", "vidc_headers"]
 )
 
-load(":target.bzl", "define_pineapple")
-define_pineapple()
+load(":target.bzl", "define_target_modules")
+define_target_modules()
