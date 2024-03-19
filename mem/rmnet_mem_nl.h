@@ -1,4 +1,4 @@
-/* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+/* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: GPL-2.0-only
  */
 
@@ -42,6 +42,7 @@ DATARMNETe87b937bb6[(0xd11+230-0xdf3)];unsigned DATARMNET855b934a37;};int
 rmnet_mem_nl_register(void);void rmnet_mem_nl_unregister(void);int 
 DATARMNET291f036d31(struct sk_buff*skb,struct genl_info*DATARMNET54338da2ff);int
  DATARMNET8e48a951e4(struct sk_buff*skb,struct genl_info*DATARMNET54338da2ff);
-int DATARMNETe85d734d4f(int val,struct genl_info*DATARMNET54338da2ff);
+int DATARMNET803d42739e(struct sk_buff*skb,struct genl_info*DATARMNET54338da2ff)
+;int DATARMNETe85d734d4f(int val,struct genl_info*DATARMNET54338da2ff);
 #endif 
 
