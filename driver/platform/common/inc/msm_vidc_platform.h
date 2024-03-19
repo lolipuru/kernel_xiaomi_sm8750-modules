@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_VIDC_PLATFORM_H_
@@ -262,6 +262,9 @@ struct msm_vidc_platform_data {
 	unsigned int dec_output_prop_size_vp9;
 	const u32 *dec_output_prop_av1;
 	unsigned int dec_output_prop_size_av1;
+	const u32  *msm_vidc_ssr_type;
+	unsigned int msm_vidc_ssr_type_size;
+
 };
 
 struct msm_vidc_platform {
@@ -331,7 +334,6 @@ int msm_vidc_adjust_brs(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_bitrate_boost(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_min_quality(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_enc_lowlatency_mode(void *instance, struct v4l2_ctrl *ctrl);
-int msm_vidc_adjust_dec_lowlatency_mode(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_session_priority(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_roi_info(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_all_intra(void *instance, struct v4l2_ctrl *ctrl);
@@ -345,6 +347,7 @@ int msm_vidc_adjust_sei_mastering_disp(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_sei_cll(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_hdr10plus(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_transcoding_stats(void *instance, struct v4l2_ctrl *ctrl);
+int msm_vidc_adjust_open_gop(void *instance, struct v4l2_ctrl *ctrl);
 
 int msm_vidc_set_header_mode(void *instance,
 	enum msm_vidc_inst_capability_type cap_id);

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_VIDC_PLATFORM_EXT_H_
@@ -252,6 +252,9 @@ enum v4l2_mpeg_vidc_av1_tier {
 
 #define V4L2_CID_MPEG_VIDC_INTERLACE                                          \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x4B)
+
+#define V4L2_CID_MPEG_VIDC_OPEN_GOP_ENABLE                                    \
+	(V4L2_CID_MPEG_VIDC_BASE + 0x4C)
 
 int msm_vidc_adjust_ir_period(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_dec_frame_rate(void *instance, struct v4l2_ctrl *ctrl);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2022, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <dt-bindings/clock/qcom,gcc-pineapple.h>
@@ -583,7 +583,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 
 	{MB_CYCLES_FW_VPP, DEC, CODECS_ALL, 66234, 66234, 1, 66234},
 
-	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
+	{ENC_RING_BUFFER_COUNT, ENC, H264,
 		0, MAX_ENC_RING_BUF_COUNT, 1, 0},
 
 	{CLIENT_ID, ENC | DEC, CODECS_ALL,
@@ -2094,7 +2094,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		{0},
 		msm_vidc_adjust_dec_operating_rate},
 
-	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
+	{ENC_RING_BUFFER_COUNT, ENC, H264,
 		{0},
 		NULL,
 		msm_vidc_set_ring_buffer_count_pineapple},
@@ -2105,7 +2105,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		msm_vidc_set_u32},
 
 	{META_OUTBUF_FENCE, DEC, H264 | HEVC | AV1 | VP9,
-		{LOWLATENCY_MODE, OUTBUF_FENCE_TYPE, OUTBUF_FENCE_DIRECTION},
+		{OUTBUF_FENCE_TYPE, OUTBUF_FENCE_DIRECTION},
 		NULL,
 		NULL},
 
@@ -2262,14 +2262,9 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		msm_vidc_adjust_enc_lowlatency_mode,
 		NULL},
 
-	{LOWLATENCY_MODE, DEC, H264 | HEVC | AV1,
+	{LOWLATENCY_MODE, DEC, H264 | HEVC | VP9 | AV1,
 		{STAGE},
-		msm_vidc_adjust_dec_lowlatency_mode,
-		NULL},
-
-	{LOWLATENCY_MODE, DEC, VP9,
-		{STAGE},
-		msm_vidc_adjust_dec_lowlatency_mode,
+		NULL,
 		NULL},
 
 	{LTR_COUNT, ENC, H264 | HEVC,
@@ -2876,6 +2871,10 @@ static const u32 pineapple_vdec_output_properties_av1[] = {
 	HFI_PROP_FENCE,
 };
 
+static const u32 pineapple_msm_vidc_ssr_type[] = {
+	HFI_SSR_TYPE_SW_ERR_FATAL,
+};
+
 static const struct msm_vidc_platform_data pineapple_data = {
 	/* resources dependent on other module */
 	.bw_tbl = pineapple_bw_table,
@@ -2942,6 +2941,9 @@ static const struct msm_vidc_platform_data pineapple_data = {
 	.dec_output_prop_size_hevc = ARRAY_SIZE(pineapple_vdec_output_properties_hevc),
 	.dec_output_prop_size_vp9 = ARRAY_SIZE(pineapple_vdec_output_properties_vp9),
 	.dec_output_prop_size_av1 = ARRAY_SIZE(pineapple_vdec_output_properties_av1),
+
+	.msm_vidc_ssr_type = pineapple_msm_vidc_ssr_type,
+	.msm_vidc_ssr_type_size = ARRAY_SIZE(pineapple_msm_vidc_ssr_type),
 };
 
 int msm_vidc_pineapple_check_ddr_type(void)

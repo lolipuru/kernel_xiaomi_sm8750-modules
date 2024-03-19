@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <soc/qcom/of_common.h>
@@ -406,7 +406,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 
 	{MB_CYCLES_FW_VPP, DEC, CODECS_ALL, 66234, 66234, 1, 66234},
 
-	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
+	{ENC_RING_BUFFER_COUNT, ENC, H264,
 		0, MAX_ENC_RING_BUF_COUNT, 1, 0},
 
 	{CLIENT_ID, ENC | DEC, CODECS_ALL,
@@ -1306,7 +1306,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		NULL,
 		msm_vidc_set_q16},
 
-	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
+	{ENC_RING_BUFFER_COUNT, ENC, H264,
 		{0},
 		NULL,
 		msm_vidc_set_ring_buffer_count_pineapple},
@@ -1401,7 +1401,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 
 	{LOWLATENCY_MODE, DEC, H264 | HEVC | VP9,
 		{STAGE},
-		msm_vidc_adjust_dec_lowlatency_mode,
+		NULL,
 		NULL},
 
 	{LTR_COUNT, ENC, H264 | HEVC,

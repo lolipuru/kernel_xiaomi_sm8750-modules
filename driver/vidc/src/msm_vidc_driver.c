@@ -1114,7 +1114,8 @@ int msm_vidc_process_streamon_input(struct msm_vidc_inst *inst)
 	 * input port will be resumed.
 	 */
 	if (is_sub_state(inst, MSM_VIDC_DRC) ||
-		is_sub_state(inst, MSM_VIDC_DRAIN)) {
+		is_sub_state(inst, MSM_VIDC_DRAIN) ||
+		is_sub_state(inst, MSM_VIDC_FIRST_IPSC)) {
 		if (!is_sub_state(inst, MSM_VIDC_INPUT_PAUSE)) {
 			rc = venus_hfi_session_pause(inst, INPUT_PORT);
 			if (rc)
@@ -1200,6 +1201,9 @@ int msm_vidc_process_streamon_output(struct msm_vidc_inst *inst)
 			clear_sub_state |= MSM_VIDC_INPUT_PAUSE;
 		}
 	}
+
+	if (is_sub_state(inst, MSM_VIDC_FIRST_IPSC))
+		clear_sub_state |= MSM_VIDC_FIRST_IPSC;
 
 	rc = venus_hfi_start(inst, OUTPUT_PORT);
 	if (rc)
@@ -1330,7 +1334,7 @@ int msm_vidc_state_change_input_psc(struct msm_vidc_inst *inst)
 	 */
 	if (is_state(inst, MSM_VIDC_INPUT_STREAMING) ||
 		is_state(inst, MSM_VIDC_OPEN))
-		set_sub_state = MSM_VIDC_INPUT_PAUSE;
+		set_sub_state = MSM_VIDC_INPUT_PAUSE | MSM_VIDC_FIRST_IPSC;
 	else
 		set_sub_state = MSM_VIDC_DRC | MSM_VIDC_INPUT_PAUSE;
 
@@ -2553,8 +2557,10 @@ int msm_vidc_alloc_and_queue_input_internal_buffers(struct msm_vidc_inst *inst)
 
 int msm_vidc_queue_deferred_buffers(struct msm_vidc_inst *inst, enum msm_vidc_buffer_type buf_type)
 {
+	struct msm_vidc_fence *fence = NULL;
 	struct msm_vidc_buffers *buffers;
 	struct msm_vidc_buffer *buf;
+	bool create_fence = false;
 	int rc = 0;
 
 	buffers = msm_vidc_get_buffers(inst, buf_type, __func__);
@@ -2563,9 +2569,20 @@ int msm_vidc_queue_deferred_buffers(struct msm_vidc_inst *inst, enum msm_vidc_bu
 
 	msm_vidc_scale_power(inst, true);
 
+	create_fence = is_meta_rx_inp_enabled(inst, META_OUTBUF_FENCE) &&
+			is_output_buffer(buf_type);
+
 	list_for_each_entry(buf, &buffers->list, list) {
 		if (!(buf->attr & MSM_VIDC_ATTR_DEFERRED))
 			continue;
+
+		if (create_fence) {
+			fence = msm_vidc_fence_create(inst);
+			if (!fence)
+				return -EINVAL;
+			buf->fence_id = fence->dma_fence.seqno;
+		}
+
 		rc = msm_vidc_queue_buffer(inst, buf);
 		if (rc)
 			return rc;
@@ -2693,8 +2710,12 @@ int msm_vidc_get_internal_buffers(struct msm_vidc_inst *inst,
 	 * To ensure buffers->reuse is set to false, add check to detect
 	 * if buf_size has become zero. Do the same for buf_count as well.
 	 */
-	if (buf_size && buf_size <= buffers->size &&
-	    buf_count && buf_count <= buffers->min_count) {
+	if (is_split_mode_enabled(inst) && is_sub_state(inst, MSM_VIDC_FIRST_IPSC)) {
+		buffers->reuse = false;
+		buffers->size = buf_size;
+		buffers->min_count = buf_count;
+	} else if (buf_size && buf_size <= buffers->size &&
+		buf_count && buf_count <= buffers->min_count) {
 		buffers->reuse = true;
 	} else {
 		buffers->reuse = false;
@@ -4036,6 +4057,19 @@ int msm_vidc_smmu_fault_handler(struct iommu_domain *domain,
 	return -ENOSYS;
 }
 
+bool is_ssr_type_allowed(struct msm_vidc_core *core, u32 type)
+{
+	u32 i;
+	const u32 *ssr_type = core->platform->data.msm_vidc_ssr_type;
+	u32 ssr_type_size = core->platform->data.msm_vidc_ssr_type_size;
+
+	for (i = 0; i < ssr_type_size; i++) {
+		if (type == ssr_type[i])
+			return true;
+	}
+	return false;
+}
+
 int msm_vidc_trigger_ssr(struct msm_vidc_core *core,
 		u64 trigger_ssr_val)
 {
@@ -4051,6 +4085,12 @@ int msm_vidc_trigger_ssr(struct msm_vidc_core *core,
 	 */
 	d_vpr_e("%s: trigger ssr is called. trigger ssr val: %#llx\n",
 		__func__, trigger_ssr_val);
+
+	if (!is_ssr_type_allowed(core, trigger_ssr_val)) {
+		d_vpr_h("SSR Type %#llx is not allowed\n", trigger_ssr_val);
+		return 0;
+	}
+
 	ssr->ssr_type = (trigger_ssr_val &
 			(unsigned long)SSR_TYPE) >> SSR_TYPE_SHIFT;
 	ssr->sub_client_id = (trigger_ssr_val &
