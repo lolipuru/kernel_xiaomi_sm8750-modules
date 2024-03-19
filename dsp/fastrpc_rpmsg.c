@@ -45,6 +45,8 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	bool secure_dsp;
 	unsigned int vmids[FASTRPC_MAX_VMIDS];
 
+	dev_info(rdev, "%s started\n", __func__);
+
 	err = of_property_read_string(rdev->of_node, "label", &domain);
 	if (err) {
 		dev_info(rdev, "FastRPC Domain not specified in DT\n");
@@ -185,6 +187,7 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 
 	fastrpc_update_gctx(data, 1);
 
+	dev_info(rdev, "Opened rpmsg channel for %s", domain);
 	return 0;
 
 fdev_error:
@@ -204,6 +207,8 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 	struct fastrpc_channel_ctx *cctx = dev_get_drvdata(&rpdev->dev);
 	struct fastrpc_user *user;
 	unsigned long flags;
+
+	dev_info(cctx->dev, "%s started", __func__);
 
 	/* No invocations past this point */
 	spin_lock_irqsave(&cctx->lock, flags);
@@ -239,6 +244,7 @@ static void fastrpc_rpmsg_remove(struct rpmsg_device *rpdev)
 	}
 	mutex_unlock(&cctx->wake_mutex);
 
+	dev_info(cctx->dev, "Closing rpmsg channel for %s", domains[cctx->domain_id]);
 	kfree(cctx->gidlist.gids);
 	of_platform_depopulate(&rpdev->dev);
 	fastrpc_mmap_remove_ssr(cctx);
