@@ -180,7 +180,6 @@ ifeq ($(CONFIG_TOUCHSCREEN_ST), y)
 
 	st_fts-y := \
 		 ./st/fts.o \
-		 ./st/fts_proc.o \
 		 ./st/fts_lib/ftsCompensation.o \
 		 ./st/fts_lib/ftsCore.o \
 		 ./st/fts_lib/ftsError.o \

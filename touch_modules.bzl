@@ -24,7 +24,6 @@ module_entry(
     config_option = "CONFIG_TOUCHSCREEN_ST",
     srcs = [
             "st/fts.c",
-            "st/fts_proc.c",
             "st/fts_lib/ftsCompensation.c",
             "st/fts_lib/ftsCore.c",
             "st/fts_lib/ftsError.c",
