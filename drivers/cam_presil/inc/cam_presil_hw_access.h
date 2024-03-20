@@ -28,6 +28,8 @@
 #define CAM_PRESIL_EVENT_HFI_REG_ON_FIRST_REG_START_FW_DOWNLOAD      0x638   /* write FF to start */
 #define CAM_PRESIL_EVENT_IFE_FRAME_RUN                               0x123   /* write FF to start */
 
+typedef int (*CAM_PRESIL_IRQ_HANDLER_BOTTOM_HALF)(void *handler_priv,
+	void *evt_payload_priv);
 
 /*
  * enum cam_presil_err - return code from presil apis
@@ -230,4 +232,18 @@ bool cam_presil_mode_enabled(void);
  */
 int cam_presil_send_event(uint32_t event_id, uint32_t value);
 
+/*
+ *  cam_presil_enqueue_presil_irq_tasklet()
+ *
+ * @brief   :  enqueue workqueue cb for bottom half of irq in presil mode.
+ *
+ * @bh_handler   :  Bottom half handler func
+ * @handler_priv :  Handler private data
+ * @payload      :  Payload
+ *
+ * @return:  Success or Failure
+ */
+int cam_presil_enqueue_presil_irq_tasklet(CAM_PRESIL_IRQ_HANDLER_BOTTOM_HALF bh_handler,
+	void *handler_priv,
+	void *payload);
 #endif /* _CAM_PRESIL_HW_ACCESS_H_ */

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -9,6 +9,7 @@
 #include <linux/interrupt.h>
 #include <linux/list.h>
 #include <linux/ratelimit.h>
+
 #include "cam_tasklet_util.h"
 #include "cam_irq_controller.h"
 #include "cam_debug_util.h"
@@ -217,15 +218,21 @@ void cam_tasklet_enqueue_cmd(
 	}
 
 	CAM_DBG(CAM_ISP, "Enqueue tasklet cmd idx:%d", tasklet->index);
-	tasklet_cmd->bottom_half_handler = bottom_half_handler;
-	tasklet_cmd->payload = evt_payload_priv;
-	tasklet_cmd->handler_priv = handler_priv;
-	tasklet_cmd->tasklet_enqueue_ts = ktime_get();
-	spin_lock_irqsave(&tasklet->tasklet_lock, flags);
-	list_add_tail(&tasklet_cmd->list,
-		&tasklet->used_cmd_list);
-	spin_unlock_irqrestore(&tasklet->tasklet_lock, flags);
-	tasklet_hi_schedule(&tasklet->tasklet);
+	if (!cam_presil_mode_enabled()) {
+		tasklet_cmd->bottom_half_handler = bottom_half_handler;
+		tasklet_cmd->payload = evt_payload_priv;
+		tasklet_cmd->handler_priv = handler_priv;
+		tasklet_cmd->tasklet_enqueue_ts = ktime_get();
+		spin_lock_irqsave(&tasklet->tasklet_lock, flags);
+		list_add_tail(&tasklet_cmd->list,
+			&tasklet->used_cmd_list);
+		spin_unlock_irqrestore(&tasklet->tasklet_lock, flags);
+		tasklet_hi_schedule(&tasklet->tasklet);
+	} else {
+		cam_presil_enqueue_presil_irq_tasklet(bottom_half_handler,
+			handler_priv,
+			evt_payload_priv);
+	}
 }
 
 int cam_tasklet_init(
