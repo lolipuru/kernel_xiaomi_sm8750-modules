@@ -4868,6 +4868,10 @@ void sde_encoder_trigger_kickoff_pending(struct drm_encoder *drm_enc)
 	}
 	sde_enc = to_sde_encoder_virt(drm_enc);
 
+	/* avoid ctl-prepare, when cesta is enabled */
+	if (sde_enc->cesta_client)
+		goto end;
+
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		phys = sde_enc->phys_encs[i];
 
@@ -4880,6 +4884,7 @@ void sde_encoder_trigger_kickoff_pending(struct drm_encoder *drm_enc)
 				ctl->ops.trigger_pending(ctl);
 		}
 	}
+end:
 	sde_enc->idle_pc_restore = false;
 }
 
