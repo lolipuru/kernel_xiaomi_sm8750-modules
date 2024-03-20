@@ -1421,6 +1421,11 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 				continue;
 
 			apply_req.trigger_point = trigger;
+			apply_req.last_applied_done_timestamp = 0;
+			if ((dev->dev_info.dev_id == CAM_REQ_MGR_DEVICE_IFE) &&
+				(in_q->slot[idx].mismatched_frame_mode == CRM_NOTIFY_MISMATCHED_FRMAE))
+				apply_req.last_applied_done_timestamp = link->last_applied_done_timestamp;
+
 			CAM_DBG(CAM_REQ,
 				"SEND: link_hdl %x dev %s pd %d req_id %lld",
 				link->link_hdl, dev->dev_info.name,
@@ -1432,6 +1437,13 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 					break;
 				} else
 					slot->req_apply_map |= BIT(dev->dev_bit);
+			}
+
+			if (dev->dev_info.dev_id == CAM_REQ_MGR_DEVICE_SENSOR) {
+				link->last_applied_done_timestamp = apply_req.last_applied_done_timestamp;
+				CAM_DBG(CAM_REQ,
+					"Apply req:%lld done with last_applied_done_timestamp:0x%llx",
+					apply_req.request_id, link->last_applied_done_timestamp);
 			}
 
 			state.req_state = CAM_CRM_SEND_REQ;
@@ -3165,6 +3177,10 @@ int cam_req_mgr_process_sched_req(void *priv, void *data)
 	slot->skip_idx = 0;
 	slot->recover = sched_req->bubble_enable;
 
+	if ((sched_req->num_valid_params > 0) &&
+		(sched_req->param_mask & CAM_CRM_MISMATCHED_FRAME_MODE_MASK))
+		slot->mismatched_frame_mode = sched_req->params[0];
+
 	if (sched_req->additional_timeout < 0) {
 		CAM_WARN(CAM_CRM,
 			"Requested timeout is invalid [%dms]",
@@ -3192,9 +3208,8 @@ int cam_req_mgr_process_sched_req(void *priv, void *data)
 	slot->num_sync_links = sync_idx;
 
 	link->open_req_cnt++;
-	CAM_DBG(CAM_REQ, "Open_req_cnt: %u after scheduling req: %d",
-		link->open_req_cnt,
-		sched_req->req_id);
+	CAM_DBG(CAM_REQ, "Open_req_cnt:%u after scheduling req:%d mismatched_frame_mode:%d",
+		link->open_req_cnt, sched_req->req_id, slot->mismatched_frame_mode);
 	__cam_req_mgr_inc_idx(&in_q->wr_idx, 1, in_q->num_slots);
 
 	if (slot->sync_mode == CAM_REQ_MGR_SYNC_MODE_SYNC) {
@@ -4312,6 +4327,17 @@ static int cam_req_mgr_cb_notify_trigger(
 	if (trigger_data->trigger == CAM_TRIGGER_POINT_SOF)
 		crm_timer_reset(link->watchdog);
 
+	if ((in_q->slot[in_q->rd_idx].mismatched_frame_mode == CRM_DROP_MISMATCHED_FRMAE) &&
+		link->last_applied_done_timestamp &&
+		((trigger_data->boot_timestamp - CAM_CRM_SENSOR_APPLIY_DELAY_THRESHOLD) <
+		link->last_applied_done_timestamp)) {
+		CAM_WARN(CAM_REQ,
+			"Apply delayed req:%lld, link:0x%x, timestamp boot:0x%llx applied:0x%llx",
+			in_q->slot[in_q->rd_idx].req_id, trigger_data->link_hdl,
+			trigger_data->boot_timestamp, link->last_applied_done_timestamp);
+		spin_unlock_bh(&link->link_state_spin_lock);
+		goto end;
+	}
 	spin_unlock_bh(&link->link_state_spin_lock);
 
 	task = cam_req_mgr_workq_get_task(link->workq);
@@ -5122,6 +5148,9 @@ int cam_req_mgr_schedule_request_v2(
 	sched->sync_mode = sched_req->sync_mode;
 	sched->link_hdl = sched_req->link_hdl;
 	sched->additional_timeout = sched_req->additional_timeout;
+	sched->num_valid_params = sched_req->num_valid_params;
+	sched->param_mask = sched_req->param_mask;
+	sched->params[0] = sched_req->params[0];
 
 	if (session->force_err_recovery == AUTO_RECOVERY) {
 		sched->bubble_enable = sched_req->bubble_enable;

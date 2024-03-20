@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_REQ_MGR_INTERFACE_H
@@ -242,14 +242,15 @@ enum cam_req_mgr_link_evt_type {
 
 /**
  * struct cam_req_mgr_trigger_notify
- * @link_hdl : link identifier
- * @dev_hdl  : device handle which has sent this req id
- * @frame_id : frame id for internal tracking
- * @trigger  : trigger point of this notification, CRM will send apply
- *             only to the devices which subscribe to this point.
- * @sof_timestamp_val: Captured time stamp value at sof hw event
- * @req_id   : req id which returned buf_done
- * @trigger_id: ID to differentiate between the trigger devices
+ * @link_hdl          : link identifier
+ * @dev_hdl           : device handle which has sent this req id
+ * @frame_id          : frame id for internal tracking
+ * @trigger           : trigger point of this notification, CRM will send apply
+ *                      only to the devices which subscribe to this point.
+ * @sof_timestamp_val : Captured time stamp value at sof hw event
+ * @req_id            : req id which returned buf_done
+ * @trigger_id        : ID to differentiate between the trigger devices
+ * @boot_timestamp    : Captured boot time stamp value at sof hw event
  */
 struct cam_req_mgr_trigger_notify {
 	int32_t  link_hdl;
@@ -259,6 +260,7 @@ struct cam_req_mgr_trigger_notify {
 	uint64_t sof_timestamp_val;
 	uint64_t req_id;
 	int32_t  trigger_id;
+	uint64_t boot_timestamp;
 };
 
 /**
@@ -367,15 +369,16 @@ struct cam_req_mgr_core_dev_link_setup {
 
 /**
  * struct cam_req_mgr_apply_request
- * @link_hdl                 : link identifier
- * @dev_hdl                  : device handle for cross check
- * @request_id               : request id settings to apply
- * @last_applied_max_pd_req  : Last applied request on highest pd device
- *                             -1 is considered invalid
- * @report_if_bubble         : report to crm if failure in applying
- * @trigger_point            : the trigger point of this apply
- * @re_apply                 : to skip re_apply for buf_done request
- * @recovery                 : Indicate if it is recovery req
+ * @link_hdl                    : link identifier
+ * @dev_hdl                     : device handle for cross check
+ * @request_id                  : request id settings to apply
+ * @last_applied_max_pd_req     : Last applied request on highest pd device
+ *                                -1 is considered invalid
+ * @report_if_bubble            : report to crm if failure in applying
+ * @trigger_point               : the trigger point of this apply
+ * @re_apply                    : to skip re_apply for buf_done request
+ * @recovery                    : Indicate if it is recovery req
+ * @last_applied_done_timestamp : Last setting apply done timestamp value
  *
  */
 struct cam_req_mgr_apply_request {
@@ -387,6 +390,7 @@ struct cam_req_mgr_apply_request {
 	uint32_t   trigger_point;
 	bool       re_apply;
 	bool       recovery;
+	uint64_t   last_applied_done_timestamp;
 };
 
 /**

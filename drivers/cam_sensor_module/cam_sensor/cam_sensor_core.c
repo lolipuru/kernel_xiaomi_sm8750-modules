@@ -1305,6 +1305,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		s_ctrl->last_updated_req = 0;
 		s_ctrl->last_applied_req = 0;
 		s_ctrl->num_batched_frames = 0;
+		s_ctrl->last_applied_done_timestamp = 0;
 		memset(s_ctrl->sensor_res, 0, sizeof(s_ctrl->sensor_res));
 		CAM_INFO(CAM_SENSOR,
 			"CAM_ACQUIRE_DEV Success for %s sensor_id:0x%x,sensor_slave_addr:0x%x",
@@ -1373,6 +1374,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		s_ctrl->streamon_count = 0;
 		s_ctrl->streamoff_count = 0;
 		s_ctrl->last_flush_req = 0;
+		s_ctrl->last_applied_done_timestamp = 0;
 	}
 		break;
 	case CAM_QUERY_CAP: {
@@ -1809,6 +1811,8 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 	uint64_t top = 0, del_req_id = 0;
 	struct i2c_settings_array *i2c_set = NULL;
 	struct i2c_settings_list *i2c_list;
+	ktime_t current_time;
+	struct timespec64 current_ts;
 
 	if (req_id == 0) {
 		switch (opcode) {
@@ -1893,6 +1897,16 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 			CAM_DBG(CAM_SENSOR,
 				"Invalid/NOP request to apply: %lld", req_id);
 		}
+
+		/* Record the sensor setting applied done timestamp */
+		current_time = ktime_get();
+		current_ts = ktime_to_timespec64(current_time);
+		s_ctrl->last_applied_done_timestamp = current_ts.tv_sec * NSEC_PER_SEC +
+			current_ts.tv_nsec;
+		CAM_DBG(CAM_REQ,
+			"Apply req:%lld done on %ld:%06ld last_applied_done_timestamp:0x%llx",
+			req_id, current_ts.tv_sec,
+			current_ts.tv_nsec/NSEC_PER_USEC, s_ctrl->last_applied_done_timestamp);
 
 		s_ctrl->last_applied_req = req_id;
 		CAM_DBG(CAM_REQ,
@@ -2017,6 +2031,7 @@ int32_t cam_sensor_apply_request(struct cam_req_mgr_apply_request *apply)
 	mutex_lock(&(s_ctrl->cam_sensor_mutex));
 	rc = cam_sensor_apply_settings(s_ctrl, apply->request_id,
 		opcode);
+	apply->last_applied_done_timestamp = s_ctrl->last_applied_done_timestamp;
 	mutex_unlock(&(s_ctrl->cam_sensor_mutex));
 	return rc;
 }

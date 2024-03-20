@@ -116,6 +116,7 @@ struct cam_sensor_dev_res_info {
  * @is_stopped_by_user: Indicate if sensor has been stopped by userland
  * @stream_off_after_eof: Indicates if sensor needs to stream off after eof
  * @is_res_info_updated: Indicate if resolution info is updated
+ * @last_applied_done_timestamp : Last applied done timestamp value
  */
 struct cam_sensor_ctrl_t {
 	char                           device_name[CAM_CTX_DEV_NAME_MAX_LENGTH];
@@ -154,6 +155,7 @@ struct cam_sensor_ctrl_t {
 	bool                           is_stopped_by_user;
 	bool                           stream_off_after_eof;
 	bool                           is_res_info_updated;
+	uint64_t                       last_applied_done_timestamp;
 };
 
 /**
