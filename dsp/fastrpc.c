@@ -2622,12 +2622,16 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	}
 	fl->file_close = 1;
 	list_for_each_entry_safe(frpc_drv, d, &fl->fastrpc_drivers, hn){
+		/*
+		 * Registered driver can free driver object in callback.
+		 * So, delete object from list first.
+		 */
+		list_del(&frpc_drv->hn);
 		if(frpc_drv->callback) {
 			spin_unlock_irqrestore(&cctx->lock, flags);
 			frpc_drv->callback(fl->device, FASTRPC_PROC_DOWN);
 			spin_lock_irqsave(&cctx->lock, flags);
 		}
-		list_del(&frpc_drv->hn);
 		is_driver_registered = true;
 	}
 	spin_unlock_irqrestore(&cctx->lock, flags);
