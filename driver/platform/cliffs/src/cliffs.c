@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <soc/qcom/of_common.h>
 
 #include "msm_vidc_control.h"
-#include "msm_vidc_pineapple.h"
+#include "msm_vidc_cliffs.h"
 #include "msm_vidc_platform.h"
 #include "msm_vidc_debug.h"
 #include "msm_vidc_iris33.h"
@@ -46,7 +46,7 @@
 #define V4L2_PIX_FMT_QC10C    v4l2_fourcc('Q', '1', '0', 'C')
 #endif
 
-static struct codec_info codec_data_pineapple[] = {
+static struct codec_info codec_data_cliffs[] = {
 	{
 		.v4l2_codec  = V4L2_PIX_FMT_H264,
 		.vidc_codec  = MSM_VIDC_H264,
@@ -64,7 +64,7 @@ static struct codec_info codec_data_pineapple[] = {
 	},
 };
 
-static struct color_format_info color_format_data_pineapple[] = {
+static struct color_format_info color_format_data_cliffs[] = {
 	{
 		.v4l2_color_format = V4L2_PIX_FMT_NV12,
 		.vidc_color_format = MSM_VIDC_FMT_NV12,
@@ -92,7 +92,7 @@ static struct color_format_info color_format_data_pineapple[] = {
 	},
 };
 
-static struct color_primaries_info color_primaries_data_pineapple[] = {
+static struct color_primaries_info color_primaries_data_cliffs[] = {
 	{
 		.v4l2_color_primaries  = V4L2_COLORSPACE_DEFAULT,
 		.vidc_color_primaries  = MSM_VIDC_PRIMARIES_RESERVED,
@@ -127,7 +127,7 @@ static struct color_primaries_info color_primaries_data_pineapple[] = {
 	},
 };
 
-static struct transfer_char_info transfer_char_data_pineapple[] = {
+static struct transfer_char_info transfer_char_data_cliffs[] = {
 	{
 		.v4l2_transfer_char  = V4L2_XFER_FUNC_DEFAULT,
 		.vidc_transfer_char  = MSM_VIDC_TRANSFER_RESERVED,
@@ -150,7 +150,7 @@ static struct transfer_char_info transfer_char_data_pineapple[] = {
 	},
 };
 
-static struct matrix_coeff_info matrix_coeff_data_pineapple[] = {
+static struct matrix_coeff_info matrix_coeff_data_cliffs[] = {
 	{
 		.v4l2_matrix_coeff  = V4L2_YCBCR_ENC_DEFAULT,
 		.vidc_matrix_coeff  = MSM_VIDC_MATRIX_COEFF_RESERVED,
@@ -185,7 +185,7 @@ static struct matrix_coeff_info matrix_coeff_data_pineapple[] = {
 	},
 };
 
-static struct msm_platform_core_capability core_data_pineapple[] = {
+static struct msm_platform_core_capability core_data_cliffs[] = {
 	/* {type, value} */
 	{ENC_CODECS, H264 | HEVC},
 	{DEC_CODECS, H264 | HEVC | VP9},
@@ -221,10 +221,11 @@ static struct msm_platform_core_capability core_data_pineapple[] = {
 	{NON_FATAL_FAULTS, 1},
 	{ENC_AUTO_FRAMERATE, 1},
 	{DEVICE_CAPS, V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING},
+	{SUPPORTS_SYNX_FENCE, 0},
 	{SUPPORTS_REQUESTS, 0},
 };
 
-static int msm_vidc_set_ring_buffer_count_pineapple(void *instance,
+static int msm_vidc_set_ring_buffer_count_cliffs(void *instance,
 	enum msm_vidc_inst_capability_type cap_id)
 {
 	int rc = 0;
@@ -288,7 +289,7 @@ static int msm_vidc_set_ring_buffer_count_pineapple(void *instance,
 	return rc;
 }
 
-static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
+static struct msm_platform_inst_capability instance_cap_data_cliffs[] = {
 	/* {cap, domain, codec,
 	 *      min, max, step_or_mask, value,
 	 *      v4l2_id,
@@ -406,7 +407,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 
 	{MB_CYCLES_FW_VPP, DEC, CODECS_ALL, 66234, 66234, 1, 66234},
 
-	{ENC_RING_BUFFER_COUNT, ENC, H264,
+	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
 		0, MAX_ENC_RING_BUF_COUNT, 1, 0},
 
 	{CLIENT_ID, ENC | DEC, CODECS_ALL,
@@ -1048,7 +1049,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_2) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1)|
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2),
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1,
 		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
@@ -1288,7 +1289,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		0},
 };
 
-static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pineapple[] = {
+static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cliffs[] = {
 	/* {cap, domain, codec,
 	 *      parents,
 	 *      children,
@@ -1307,10 +1308,10 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		NULL,
 		msm_vidc_set_q16},
 
-	{ENC_RING_BUFFER_COUNT, ENC, H264,
+	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
 		{0},
 		NULL,
-		msm_vidc_set_ring_buffer_count_pineapple},
+		msm_vidc_set_ring_buffer_count_cliffs},
 
 	{HFLIP, ENC, CODECS_ALL,
 		{0},
@@ -1402,7 +1403,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 
 	{LOWLATENCY_MODE, DEC, H264 | HEVC | VP9,
 		{STAGE},
-		NULL,
+		msm_vidc_adjust_dec_lowlatency_mode,
 		NULL},
 
 	{LTR_COUNT, ENC, H264 | HEVC,
@@ -1693,38 +1694,38 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 };
 
 /* Default UBWC config for LPDDR5 */
-static struct msm_vidc_ubwc_config_data ubwc_config_pineapple[] = {
+static struct msm_vidc_ubwc_config_data ubwc_config_cliffs[] = {
 	UBWC_CONFIG(8, 32, 16, 0, 1, 1, 1),
 };
 
-static struct msm_vidc_format_capability format_data_pineapple = {
-	.codec_info = codec_data_pineapple,
-	.codec_info_size = ARRAY_SIZE(codec_data_pineapple),
-	.color_format_info = color_format_data_pineapple,
-	.color_format_info_size = ARRAY_SIZE(color_format_data_pineapple),
-	.color_prim_info = color_primaries_data_pineapple,
-	.color_prim_info_size = ARRAY_SIZE(color_primaries_data_pineapple),
-	.transfer_char_info = transfer_char_data_pineapple,
-	.transfer_char_info_size = ARRAY_SIZE(transfer_char_data_pineapple),
-	.matrix_coeff_info = matrix_coeff_data_pineapple,
-	.matrix_coeff_info_size = ARRAY_SIZE(matrix_coeff_data_pineapple),
+static struct msm_vidc_format_capability format_data_cliffs = {
+	.codec_info = codec_data_cliffs,
+	.codec_info_size = ARRAY_SIZE(codec_data_cliffs),
+	.color_format_info = color_format_data_cliffs,
+	.color_format_info_size = ARRAY_SIZE(color_format_data_cliffs),
+	.color_prim_info = color_primaries_data_cliffs,
+	.color_prim_info_size = ARRAY_SIZE(color_primaries_data_cliffs),
+	.transfer_char_info = transfer_char_data_cliffs,
+	.transfer_char_info_size = ARRAY_SIZE(transfer_char_data_cliffs),
+	.matrix_coeff_info = matrix_coeff_data_cliffs,
+	.matrix_coeff_info_size = ARRAY_SIZE(matrix_coeff_data_cliffs),
 };
 
-static const struct msm_vidc_platform_data pineapple_data = {
-	.core_data = core_data_pineapple,
-	.core_data_size = ARRAY_SIZE(core_data_pineapple),
-	.inst_cap_data = instance_cap_data_pineapple,
-	.inst_cap_data_size = ARRAY_SIZE(instance_cap_data_pineapple),
-	.inst_cap_dependency_data = instance_cap_dependency_data_pineapple,
-	.inst_cap_dependency_data_size = ARRAY_SIZE(instance_cap_dependency_data_pineapple),
+static const struct msm_vidc_platform_data cliffs_data = {
+	.core_data = core_data_cliffs,
+	.core_data_size = ARRAY_SIZE(core_data_cliffs),
+	.inst_cap_data = instance_cap_data_cliffs,
+	.inst_cap_data_size = ARRAY_SIZE(instance_cap_data_cliffs),
+	.inst_cap_dependency_data = instance_cap_dependency_data_cliffs,
+	.inst_cap_dependency_data_size = ARRAY_SIZE(instance_cap_dependency_data_cliffs),
 	.csc_data.vpe_csc_custom_bias_coeff = vpe_csc_custom_bias_coeff,
 	.csc_data.vpe_csc_custom_matrix_coeff = vpe_csc_custom_matrix_coeff,
 	.csc_data.vpe_csc_custom_limit_coeff = vpe_csc_custom_limit_coeff,
-	.ubwc_config = ubwc_config_pineapple,
-	.format_data = &format_data_pineapple,
+	.ubwc_config = ubwc_config_cliffs,
+	.format_data = &format_data_cliffs,
 };
 
-int msm_vidc_pineapple_check_ddr_type(void)
+int msm_vidc_cliffs_check_ddr_type(void)
 {
 	u32 ddr_type;
 
@@ -1733,9 +1734,9 @@ int msm_vidc_pineapple_check_ddr_type(void)
 		ddr_type != DDR_TYPE_LPDDR5X) {
 		d_vpr_e("%s: wrong ddr type %d\n", __func__, ddr_type);
 		return -EINVAL;
-	} else {
-		d_vpr_h("%s: ddr type %d\n", __func__, ddr_type);
 	}
+
+	d_vpr_h("%s: ddr type %d\n", __func__, ddr_type);
 	return 0;
 }
 
@@ -1743,18 +1744,18 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 {
 	int rc = 0;
 
-	d_vpr_h("%s: initialize pineapple data\n", __func__);
+	d_vpr_h("%s: initialize cliffs data\n", __func__);
 
-	core->platform->data = pineapple_data;
+	core->platform->data = cliffs_data;
 
-	rc = msm_vidc_pineapple_check_ddr_type();
+	rc = msm_vidc_cliffs_check_ddr_type();
 	if (rc)
 		return rc;
 
 	return rc;
 }
 
-int msm_vidc_init_platform_pineapple(struct msm_vidc_core *core)
+int msm_vidc_init_platform_cliffs(struct msm_vidc_core *core)
 {
 	int rc = 0;
 

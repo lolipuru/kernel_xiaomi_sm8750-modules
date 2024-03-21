@@ -122,17 +122,30 @@ typedef enum {
  * --------------------------------------------------------------------------
  */
 #define NOC_BASE_OFFS   0x00010000
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_MAINCTL_LOW   (NOC_BASE_OFFS + 0xA008)
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRCLR_LOW    (NOC_BASE_OFFS + 0xA018)
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_LOW   (NOC_BASE_OFFS + 0xA020)
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_HIGH  (NOC_BASE_OFFS + 0xA024)
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_LOW   (NOC_BASE_OFFS + 0xA028)
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH   (NOC_BASE_OFFS + 0xA02C)
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_LOW   (NOC_BASE_OFFS + 0xA030)
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_HIGH  (NOC_BASE_OFFS + 0xA034)
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_LOW   (NOC_BASE_OFFS + 0xA038)
-#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH  (NOC_BASE_OFFS + 0xA03C)
-#define NOC_SIDEBANDMANAGER_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW (NOC_BASE_OFFS + 0x7040)
+
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_MAINCTL_LOW_IRIS33   (NOC_BASE_OFFS + 0xA008)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRCLR_LOW_IRIS33    (NOC_BASE_OFFS + 0xA018)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_LOW_IRIS33   (NOC_BASE_OFFS + 0xA020)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_HIGH_IRIS33  (NOC_BASE_OFFS + 0xA024)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_LOW_IRIS33   (NOC_BASE_OFFS + 0xA028)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH_IRIS33  (NOC_BASE_OFFS + 0xA02C)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_LOW_IRIS33   (NOC_BASE_OFFS + 0xA030)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_HIGH_IRIS33  (NOC_BASE_OFFS + 0xA034)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_LOW_IRIS33   (NOC_BASE_OFFS + 0xA038)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH_IRIS33  (NOC_BASE_OFFS + 0xA03C)
+#define NOC_SIDEBANDMANAGER_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW_IRIS33 (NOC_BASE_OFFS + 0x7040)
+
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_MAINCTL_LOW_IRIS33_2P   (NOC_BASE_OFFS + 0x3508)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRCLR_LOW_IRIS33_2P    (NOC_BASE_OFFS + 0x3518)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_LOW_IRIS33_2P   (NOC_BASE_OFFS + 0x3520)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_HIGH_IRIS33_2P  (NOC_BASE_OFFS + 0x3524)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_LOW_IRIS33_2P   (NOC_BASE_OFFS + 0x3528)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH_IRIS33_2P  (NOC_BASE_OFFS + 0x352C)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_LOW_IRIS33_2P   (NOC_BASE_OFFS + 0x3530)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_HIGH_IRIS33_2P  (NOC_BASE_OFFS + 0x3534)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_LOW_IRIS33_2P   (NOC_BASE_OFFS + 0x3538)
+#define NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH_IRIS33_2P  (NOC_BASE_OFFS + 0x353C)
+#define NOC_SIDEBANDMANAGER_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW_IRIS33_2P (NOC_BASE_OFFS + 0x3240)
 
 static int __interrupt_init_iris33(struct msm_vidc_core *core)
 {
@@ -145,7 +158,7 @@ static int __interrupt_init_iris33(struct msm_vidc_core *core)
 		return rc;
 
 	/* Write 0 to unmask CPU and WD interrupts */
-	mask_val &= ~(WRAPPER_INTR_MASK_A2HWD_BMSK_IRIS33|
+	mask_val &= ~(WRAPPER_INTR_MASK_A2HWD_BMSK_IRIS33 |
 			WRAPPER_INTR_MASK_A2HCPU_BMSK_IRIS33);
 	rc = __write_register(core, WRAPPER_INTR_MASK_IRIS33, mask_val);
 	if (rc)
@@ -370,7 +383,6 @@ static int __power_off_iris33_controller(struct msm_vidc_core *core)
 {
 	int rc = 0;
 	int value = 0;
-	u32 count = 0;
 
 	/*
 	 * mask fal10_veto QLPAC error since fal10_veto can go 1
@@ -460,22 +472,9 @@ static int __power_off_iris33_controller(struct msm_vidc_core *core)
 	 * drivers (eva driver) operating on this shared reset clock
 	 * and AON_WRAPPER_SPARE register in parallel.
 	 */
-	count = 0;
-	do {
-		rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
-		if (!rc) {
-			break;
-		} else {
-			d_vpr_e(
-				"%s: failed to acquire video_xo_reset control, count %d\n",
-				__func__, count);
-			count++;
-			usleep_range(1000, 1000);
-		}
-	} while (count < 100);
-
-	if (count >= 100) {
-		d_vpr_e("%s: timeout acquiring video_xo_reset\n", __func__);
+	rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
+	if (rc) {
+		d_vpr_e("%s: failed to acquire video_xo_reset control\n", __func__);
 		goto skip_video_xo_reset;
 	}
 
@@ -488,7 +487,7 @@ static int __power_off_iris33_controller(struct msm_vidc_core *core)
 	/* enable bit(1) to avoid cvp noc xo reset */
 	rc = __write_register(core, AON_WRAPPER_SPARE, value | 0x2);
 	if (rc)
-		return rc;
+		goto exit;
 
 	/* assert video_cc XO reset */
 	rc = call_res_op(core, reset_control_assert, core, "video_xo_reset");
@@ -510,7 +509,7 @@ static int __power_off_iris33_controller(struct msm_vidc_core *core)
 	/* reset AON spare register */
 	rc = __write_register(core, AON_WRAPPER_SPARE, 0x0);
 	if (rc)
-		return rc;
+		goto exit;
 
 	/* release reset control for other consumers */
 	rc = call_res_op(core, reset_control_release, core, "video_xo_reset");
@@ -556,6 +555,10 @@ skip_video_xo_reset:
 		rc = 0;
 	}
 
+	return rc;
+
+exit:
+	call_res_op(core, reset_control_release, core, "video_xo_reset");
 	return rc;
 }
 
@@ -664,7 +667,6 @@ static int __power_on_iris33(struct msm_vidc_core *core)
 	struct frequency_table *freq_tbl;
 	u32 freq = 0;
 	int rc = 0;
-	int count = 0;
 
 	if (is_core_sub_state(core, CORE_SUBSTATE_POWER_ENABLE))
 		return 0;
@@ -715,21 +717,9 @@ static int __power_on_iris33(struct msm_vidc_core *core)
 	 * access failure, so acquire video_xo_reset to ensure EVA module is
 	 * not doing assert or de-assert on video_xo_reset.
 	 */
-	do {
-		rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
-		if (!rc) {
-			break;
-		} else {
-			d_vpr_e(
-				"%s: failed to acquire video_xo_reset control, count %d\n",
-				__func__, count);
-			count++;
-			usleep_range(1000, 1000);
-		}
-	} while (count < 100);
-
-	if (count >= 100) {
-		d_vpr_e("%s: timeout acquiring video_xo_reset\n", __func__);
+	rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
+	if (rc) {
+		d_vpr_e("%s: failed to acquire video_xo_reset control\n", __func__);
 		goto fail_assert_xo_reset;
 	}
 
@@ -739,30 +729,60 @@ static int __power_on_iris33(struct msm_vidc_core *core)
 	 * Programm NOC error registers before releasing xo reset
 	 * Clear error logger registers and then enable StallEn
 	 */
-	rc = __write_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRCLR_LOW, 0x1);
-	if (rc) {
-		d_vpr_e(
-			"%s: error clearing NOC_MAIN_ERRORLOGGER_ERRCLR_LOW\n",
-			__func__);
-		goto fail_program_noc_regs;
-	}
+	if (core->platform->data.vpu_ver == VPU_VERSION_IRIS33) {
+		rc = __write_register(core,
+				NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRCLR_LOW_IRIS33, 0x1);
+		if (rc) {
+			d_vpr_e(
+				"%s: error clearing NOC_MAIN_ERRORLOGGER_ERRCLR_LOW\n",
+				__func__);
+			goto fail_program_noc_regs;
+		}
 
-	rc = __write_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_MAINCTL_LOW, 0x3);
-	if (rc) {
-		d_vpr_e(
-			"%s: failed to set NOC_ERL_MAIN_ERRORLOGGER_MAINCTL_LOW\n",
-			__func__);
-		goto fail_program_noc_regs;
-	}
-	rc = __write_register(core,
-			NOC_SIDEBANDMANAGER_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW, 0x1);
-	if (rc) {
-		d_vpr_e(
-			"%s: failed to set NOC_SIDEBANDMANAGER_FAULTINEN0_LOW\n",
-			__func__);
-		goto fail_program_noc_regs;
+		rc = __write_register(core,
+				NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_MAINCTL_LOW_IRIS33, 0x3);
+		if (rc) {
+			d_vpr_e(
+				"%s: failed to set NOC_ERL_MAIN_ERRORLOGGER_MAINCTL_LOW\n",
+				__func__);
+			goto fail_program_noc_regs;
+		}
+		rc = __write_register(core,
+				NOC_SIDEBANDMANAGER_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW_IRIS33,
+				0x1);
+		if (rc) {
+			d_vpr_e(
+				"%s: failed to set NOC_SIDEBANDMANAGER_FAULTINEN0_LOW\n",
+				__func__);
+			goto fail_program_noc_regs;
+		}
+	} else if (core->platform->data.vpu_ver == VPU_VERSION_IRIS33_2P) {
+		rc = __write_register(core,
+				NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRCLR_LOW_IRIS33_2P, 0x1);
+		if (rc) {
+			d_vpr_e(
+				"%s: error clearing NOC_MAIN_ERRORLOGGER_ERRCLR_LOW\n",
+				__func__);
+			goto fail_program_noc_regs;
+		}
+
+		rc = __write_register(core,
+				NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_MAINCTL_LOW_IRIS33_2P, 0x3);
+		if (rc) {
+			d_vpr_e(
+				"%s: failed to set NOC_ERL_MAIN_ERRORLOGGER_MAINCTL_LOW\n",
+				__func__);
+			goto fail_program_noc_regs;
+		}
+		rc = __write_register(core,
+				NOC_SIDEBANDMANAGER_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW_IRIS33_2P,
+				0x1);
+		if (rc) {
+			d_vpr_e(
+				"%s: failed to set NOC_SIDEBANDMANAGER_FAULTINEN0_LOW\n",
+				__func__);
+			goto fail_program_noc_regs;
+		}
 	}
 
 	/* release reset control for other consumers */
@@ -779,6 +799,7 @@ static int __power_on_iris33(struct msm_vidc_core *core)
 	return rc;
 
 fail_program_noc_regs:
+	call_res_op(core, reset_control_release, core, "video_xo_reset");
 fail_deassert_xo_reset:
 fail_assert_xo_reset:
 fail_power_on_substate:
@@ -877,9 +898,106 @@ static int __watchdog_iris33(struct msm_vidc_core *core, u32 intr_status)
 	return rc;
 }
 
+static int __read_noc_err_register_iris33(struct msm_vidc_core *core)
+{
+	int rc = 0;
+	u32 value;
+
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_LOW_IRIS33, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_LOW:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_HIGH_IRIS33, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_HIGH:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_LOW_IRIS33, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_LOW:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH_IRIS33, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_LOW_IRIS33, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_LOW:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_HIGH_IRIS33, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_HIGH:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_LOW_IRIS33, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_LOW:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH_IRIS33, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH:  %#x\n",
+			__func__, value);
+
+	return rc;
+}
+
+static int __read_noc_err_register_iris33_2p(struct msm_vidc_core *core)
+{
+	int rc = 0;
+	u32 value;
+
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_LOW_IRIS33_2P, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_LOW:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_HIGH_IRIS33_2P, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_HIGH:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_LOW_IRIS33_2P, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_LOW:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH_IRIS33_2P, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_LOW_IRIS33_2P, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_LOW:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_HIGH_IRIS33_2P, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_HIGH:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_LOW_IRIS33_2P, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_LOW:  %#x\n",
+			__func__, value);
+	rc = __read_register(core,
+			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH_IRIS33_2P, &value);
+	if (!rc)
+		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH:  %#x\n",
+			__func__, value);
+
+	return rc;
+}
+
 static int __noc_error_info_iris33(struct msm_vidc_core *core)
 {
-	u32 value, count = 0;
 	int rc = 0;
 
 	/*
@@ -929,64 +1047,17 @@ static int __noc_error_info_iris33(struct msm_vidc_core *core)
 	 * while reading noc registers
 	 */
 	d_vpr_e("%s: read NOC ERR LOG registers\n", __func__);
-	do {
-		rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
-		if (!rc) {
-			break;
-		} else {
-			d_vpr_e(
-				"%s: failed to acquire video_xo_reset control, count %d\n",
-				__func__, count);
-			count++;
-			usleep_range(1000, 1000);
-		}
-	} while (count < 100);
-
-	if (count >= 100) {
-		d_vpr_e("%s: timeout acquiring video_xo_reset\n", __func__);
+	rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
+	if (rc) {
+		d_vpr_e("%s: failed to acquire video_xo_reset control\n", __func__);
 		goto fail_assert_xo_reset;
 	}
 
-	rc = __read_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_LOW, &value);
-	if (!rc)
-		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_LOW:  %#x\n",
-			__func__, value);
-	rc = __read_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_HIGH, &value);
-	if (!rc)
-		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG0_HIGH:  %#x\n",
-			__func__, value);
-	rc = __read_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_LOW, &value);
-	if (!rc)
-		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_LOW:  %#x\n",
-			__func__, value);
-	rc = __read_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH, &value);
-	if (!rc)
-		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG1_HIGH:  %#x\n",
-			__func__, value);
-	rc = __read_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_LOW, &value);
-	if (!rc)
-		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_LOW:  %#x\n",
-			__func__, value);
-	rc = __read_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_HIGH, &value);
-	if (!rc)
-		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG2_HIGH:  %#x\n",
-			__func__, value);
-	rc = __read_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_LOW, &value);
-	if (!rc)
-		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_LOW:  %#x\n",
-			__func__, value);
-	rc = __read_register(core,
-			NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH, &value);
-	if (!rc)
-		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH:  %#x\n",
-			__func__, value);
+	if (core->platform->data.vpu_ver == VPU_VERSION_IRIS33)
+		rc = __read_noc_err_register_iris33(core);
+	else if (core->platform->data.vpu_ver == VPU_VERSION_IRIS33_2P)
+		rc = __read_noc_err_register_iris33_2p(core);
+
 	/* release reset control for other consumers */
 	rc = call_res_op(core, reset_control_release, core, "video_xo_reset");
 	if (rc) {
@@ -1049,6 +1120,10 @@ static int __boot_firmware_iris33(struct msm_vidc_core *core)
 		if (rc)
 			return rc;
 
+		rc = __read_register(core, HFI_CTRL_INIT_IRIS33, &ctrl_init_val);
+		if (rc)
+			return rc;
+
 		if ((ctrl_status & HFI_CTRL_ERROR_FATAL) ||
 			(ctrl_status & HFI_CTRL_ERROR_UC_REGION_NOT_SET) ||
 			(ctrl_status & HFI_CTRL_ERROR_HW_FENCE_QUEUE)) {
@@ -1066,7 +1141,8 @@ static int __boot_firmware_iris33(struct msm_vidc_core *core)
 	}
 
 	if (count >= max_tries) {
-		d_vpr_e("Error booting up vidc firmware, ctrl status %#x\n", ctrl_status);
+		d_vpr_e("Error booting up vidc firmware, ctrl status %#x, ctrl init %#x\n",
+			ctrl_status, ctrl_init_val);
 		return -ETIME;
 	}
 
