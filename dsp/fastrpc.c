@@ -1733,6 +1733,11 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 	PERF_END);
 	trace_fastrpc_msg("invoke_send: end");
 wait:
+	if (fl->poll_mode &&
+	    fl->cctx->domain_id == CDSP_DOMAIN_ID &&
+	    fl->pd == USERPD)
+		ctx->rsp_flags = POLL_MODE;
+
 	fastrpc_wait_for_completion(ctx, &interrupted, kernel);
 	if (interrupted != 0) {
 		err = interrupted;
