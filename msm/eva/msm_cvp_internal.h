@@ -100,14 +100,15 @@ enum vpu_version {
 enum cvp_session_state {
 	SESSION_NORMAL = 0x00,
 	SESSION_ERROR,
-	SECURE_SESSION_ERROR
+	SECURE_SESSION_ERROR,
 };
 
 enum cvp_session_errorcode {
 	NO_ERROR = 0x00,
 	EVA_SYS_ERROR,
 	EVA_SESSION_ERROR,
-	EVA_SECURE_SESSION_ERROR
+	EVA_SECURE_SESSION_ERROR,
+	EVA_SESSION_TIMEOUT
 };
 
 struct msm_cvp_ubwc_config_data {
@@ -253,7 +254,7 @@ struct cvp_session_prop {
 
 enum cvp_event_t {
 	CVP_NO_EVENT,
-	CVP_SSR_EVENT = 1,
+	EVA_EVENT = 1,
 	CVP_SYS_ERROR_EVENT,
 	CVP_MAX_CLIENTS_EVENT,
 	CVP_HW_UNSUPPORTED_EVENT,

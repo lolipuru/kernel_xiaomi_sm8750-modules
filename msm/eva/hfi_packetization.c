@@ -399,6 +399,9 @@ static int get_hfi_ssr_type(enum hal_ssr_trigger_type type)
 	case SSR_SESSION_ERROR:
 		rc = HFI_TEST_SSR_SW_ERR_FATAL;
 		break;
+	case SSR_SESSION_TIMEOUT:
+		rc = HFI_TEST_SSR_SW_ERR_FATAL;
+		break;
 	default:
 		dprintk(CVP_WARN,
 			"SSR trigger type not recognized, using WDOG.\n");
