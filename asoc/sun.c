@@ -1645,6 +1645,19 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 					msm_swr_haptics_be_dai_links,
 					sizeof(msm_swr_haptics_be_dai_links));
 			total_links += ARRAY_SIZE(msm_swr_haptics_be_dai_links);
+
+			if (wsa_max_devs != QUAD_SPEAKER) {
+				if (of_find_property(dev->of_node, "qcom,dedicated-wsa2",
+					NULL)) {
+					memcpy(msm_sun_dai_links + total_links,
+					msm_wsa2_cdc_dma_be_dai_links,
+					sizeof(msm_wsa2_cdc_dma_be_dai_links));
+					total_links += ARRAY_SIZE(msm_wsa2_cdc_dma_be_dai_links);
+				} else {
+					dev_err_ratelimited(dev, "%s:Unable to active haptics path\n",
+						__func__);
+				}
+			}
 		}
 
 		dailink = msm_sun_dai_links;

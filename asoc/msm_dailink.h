@@ -99,9 +99,8 @@ SND_SOC_DAILINK_DEFS(wsa2_dma_rx0,
 
 SND_SOC_DAILINK_DEFS(wsa2_dma_rx1,
 	DAILINK_COMP_ARRAY(COMP_CPU("snd-soc-dummy-dai")),
-	DAILINK_COMP_ARRAY(COMP_CODEC("lpass-cdc", "wsa2_macro_rx_mix"),
-			   COMP_CODEC("wsa-codec3", "wsa_rx3"),
-			   COMP_CODEC("wsa-codec4", "wsa_rx4")),
+	DAILINK_COMP_ARRAY(COMP_CODEC("lpass-cdc", "wsa2_macro_pcm_rx1"),
+			   COMP_CODEC("swr-haptics", "swr_haptics")),
 	DAILINK_COMP_ARRAY(COMP_PLATFORM("snd-soc-dummy")));
 
 SND_SOC_DAILINK_DEFS(wsa2_dma_tx1,
