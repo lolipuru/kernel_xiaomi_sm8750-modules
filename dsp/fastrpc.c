@@ -475,6 +475,7 @@ static void fastrpc_context_free(struct kref *ref)
 
 	kfree(ctx->maps);
 	kfree(ctx->olaps);
+	kfree(ctx->args);
 	kfree(ctx);
 
 	fastrpc_channel_ctx_put(cctx);
@@ -605,7 +606,30 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 			kfree(ctx);
 			return ERR_PTR(-ENOMEM);
 		}
-		ctx->args = (struct fastrpc_invoke_args *)invoke->inv.args;
+		ctx->args = kcalloc(ctx->nscalars,
+				    sizeof(*ctx->args), GFP_KERNEL);
+		if (!ctx->args) {
+			kfree(ctx->olaps);
+			kfree(ctx->maps);
+			kfree(ctx);
+			return ERR_PTR(-ENOMEM);
+		}
+		if (!kernel) {
+			if (copy_from_user((void *)ctx->args,
+					(void __user *)(uintptr_t)invoke->inv.args,
+					ctx->nscalars * sizeof(*ctx->args))) {
+				kfree(ctx->args);
+				kfree(ctx->olaps);
+				kfree(ctx->maps);
+				kfree(ctx);
+				return ERR_PTR(-EFAULT);
+			}
+		} else {
+			memcpy((void *)ctx->args,
+					(void *)(uintptr_t)invoke->inv.args,
+					ctx->nscalars * sizeof(*ctx->args));
+		}
+		invoke->inv.args = (__u64)ctx->args;
 		fastrpc_get_buff_overlaps(ctx);
 	}
 
@@ -657,6 +681,7 @@ err_idr:
 	fastrpc_channel_ctx_put(cctx);
 	kfree(ctx->maps);
 	kfree(ctx->olaps);
+	kfree(ctx->args);
 	kfree(ctx);
 
 	return ERR_PTR(ret);
@@ -2924,34 +2949,16 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 
 static int fastrpc_invoke(struct fastrpc_user *fl, char __user *argp)
 {
-	struct fastrpc_invoke_args *args = NULL;
 	struct fastrpc_enhanced_invoke ioctl;
 	struct fastrpc_invoke inv;
-	u32 nscalars;
 	int err;
 
 	if (copy_from_user(&inv, argp, sizeof(inv)))
 		return -EFAULT;
 
-	/* nscalars is truncated here to max supported value */
-	nscalars = REMOTE_SCALARS_LENGTH(inv.sc);
-	if (nscalars) {
-		args = kcalloc(nscalars, sizeof(*args), GFP_KERNEL);
-		if (!args)
-			return -ENOMEM;
-
-		if (copy_from_user(args, (void __user *)(uintptr_t)inv.args,
-				   nscalars * sizeof(*args))) {
-			kfree(args);
-			return -EFAULT;
-		}
-	}
-
 	ioctl.inv = inv;
-	ioctl.inv.args = (__u64)args;
 
 	err = fastrpc_internal_invoke(fl, false, &ioctl);
-	kfree(args);
 
 	return err;
 }
@@ -3450,14 +3457,12 @@ static int fastrpc_invoke_dspsignal(struct fastrpc_user *fl, struct fastrpc_inte
 static int fastrpc_multimode_invoke(struct fastrpc_user *fl, char __user *argp)
 {
 	struct fastrpc_enhanced_invoke inv2 ;
-	struct fastrpc_invoke_args *args = NULL;
 	struct fastrpc_ioctl_multimode_invoke invoke;
 	struct fastrpc_internal_control cp = {0};
 	struct fastrpc_internal_dspsignal *fsig = NULL;
 	struct fastrpc_internal_notif_rsp notif;
 	struct fastrpc_internal_config config;
 	struct fastrpc_internal_sessinfo sessinfo;
-	u32 nscalars;
 	u32 multisession;
 	u64 *perf_kernel;
 	int err = 0;
@@ -3471,23 +3476,10 @@ static int fastrpc_multimode_invoke(struct fastrpc_user *fl, char __user *argp)
 		if (copy_from_user(&inv2, (void __user *)(uintptr_t)invoke.invparam,
 				   invoke.size))
 			return -EFAULT;
-		nscalars = REMOTE_SCALARS_LENGTH(inv2.inv.sc);
-		if (nscalars) {
-			args = kcalloc(nscalars, sizeof(*args), GFP_KERNEL);
-			if (!args)
-				return -ENOMEM;
-			if (copy_from_user(args, (void __user *)(uintptr_t)inv2.inv.args,
-					   nscalars * sizeof(*args))) {
-				kfree(args);
-				return -EFAULT;
-			}
-		}
-		inv2.inv.args = (__u64)args;
 		perf_kernel = (u64 *)(uintptr_t)inv2.perf_kernel;
 		if (perf_kernel)
 			fl->profile = true;
 		err = fastrpc_internal_invoke(fl, false, &inv2);
-		kfree(args);
 		break;
 	case FASTRPC_INVOKE_CONTROL:
 		if (copy_from_user(&cp, (void __user *)(uintptr_t)invoke.invparam, sizeof(cp)))
