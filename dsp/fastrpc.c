@@ -2217,7 +2217,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 					      char __user *argp)
 {
 	struct fastrpc_init_create_static init;
-	struct fastrpc_invoke_args *args;
+	struct fastrpc_invoke_args args[FASTRPC_CREATE_STATIC_PROCESS_NARGS] = {0};
 	struct fastrpc_enhanced_invoke ioctl;
 	struct fastrpc_phy_page pages[1];
 	struct fastrpc_buf *buf = NULL;
@@ -2238,25 +2238,15 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		return -EACCES;
 	}
 
-	args = kcalloc(FASTRPC_CREATE_STATIC_PROCESS_NARGS, sizeof(*args), GFP_KERNEL);
-	if (!args)
-		return -ENOMEM;
+	if (copy_from_user(&init, argp, sizeof(init)))
+		return -EFAULT;
 
-	if (copy_from_user(&init, argp, sizeof(init))) {
-		err = -EFAULT;
-		goto err;
-	}
-
-	if (init.namelen > INIT_FILE_NAMELEN_MAX) {
-		err = -EINVAL;
-		goto err;
-	}
+	if (init.namelen > INIT_FILE_NAMELEN_MAX)
+		return -EINVAL;
 
 	name = kzalloc(init.namelen, GFP_KERNEL);
-	if (!name) {
-		err = -ENOMEM;
-		goto err;
-	}
+	if (!name)
+		return -ENOMEM;
 
 	if (copy_from_user(name, (void __user *)(uintptr_t)init.name, init.namelen)) {
 		err = -EFAULT;
@@ -2285,7 +2275,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	} else {
 		dev_err(fl->sctx->dev, "Create static process is failed for proc_name %s", name);
 		err = -EINVAL;
-		goto err;
+		goto err_name;
 	}
 
 	if (!fl->cctx->staticpd_status && !is_oispd) {
@@ -2347,8 +2337,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	if (fl != NULL)
 		fastrpc_create_session_debugfs(fl);
 #endif
-	kfree(args);
-
+	kfree(name);
 	return 0;
 err_invoke:
 	if (fl->cctx->vmcount && scm_done) {
@@ -2377,9 +2366,6 @@ err_map:
 	}
 err_name:
 	kfree(name);
-err:
-	kfree(args);
-
 	return err;
 }
 
@@ -2402,13 +2388,13 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 					char __user *argp)
 {
 	struct fastrpc_init_create init;
-	struct fastrpc_invoke_args *args;
+	struct fastrpc_invoke_args args[FASTRPC_CREATE_PROCESS_NARGS] = {0};
 	struct fastrpc_enhanced_invoke ioctl;
-	struct fastrpc_phy_page pages[2];
-	struct fastrpc_map *map = NULL;
+	struct fastrpc_phy_page pages[NUM_PAGES_WITH_SHARED_BUF] = {0};
+	struct fastrpc_map *map = NULL, *configmap = NULL;
 	struct fastrpc_buf *imem = NULL;
 	int memlen;
-	int err;
+	int err = 0;
 	struct {
 		int pgid;
 		u32 namelen;
@@ -2418,14 +2404,8 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		u32 siglen;
 	} inbuf;
 
-	args = kcalloc(FASTRPC_CREATE_PROCESS_NARGS, sizeof(*args), GFP_KERNEL);
-	if (!args)
-		return -ENOMEM;
-
-	if (copy_from_user(&init, argp, sizeof(init))) {
-		err = -EFAULT;
-		goto err;
-	}
+	if (copy_from_user(&init, argp, sizeof(init)))
+		return -EFAULT;
 
 	/*
 	 * Third-party apps don't have permission to open the fastrpc device, so
@@ -2441,25 +2421,20 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	/* Disregard any system unsigned PD attribute from userspace */
 	init.attrs &= (~FASTRPC_MODE_SYSTEM_UNSIGNED_PD);
 
-	if (is_session_rejected(fl, fl->is_unsigned_pd)) {
-		err = -EACCES;
-		goto err;
-	}
+	if (is_session_rejected(fl, fl->is_unsigned_pd))
+		return -EACCES;
 
 	/* Trusted apps will be launched as system unsigned PDs */
 	if (!fl->untrusted_process && fl->is_unsigned_pd)
 		init.attrs |= FASTRPC_MODE_SYSTEM_UNSIGNED_PD;
 
-	if (init.filelen > INIT_FILELEN_MAX) {
-		err = -EINVAL;
-		goto err;
-	}
+	if (init.filelen > INIT_FILELEN_MAX)
+		return -EINVAL;
 
 	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, fl->pd, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
-		err = -EBUSY;
-		goto err;
+		return -EBUSY;
 	}
 
 	fastrpc_get_process_gids(&fl->gidlist);
@@ -2473,23 +2448,25 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	fl->pd = USERPD;
 
 	if(fl->config.init_fd != -1 && fl->config.init_size > 0) {
-		struct fastrpc_map *configmap = NULL;
 		mutex_lock(&fl->map_mutex);
-		err = fastrpc_map_create(fl, fl->config.init_fd, 0, NULL, fl->config.init_size, 0, 0, &configmap, true); //TODO: Where should this memory be unmaped?
+		err = fastrpc_map_create(fl, fl->config.init_fd, 0, NULL,
+				fl->config.init_size, 0, 0, &configmap, true);
 		mutex_unlock(&fl->map_mutex);
 		if (err)
-			goto err;
-		inbuf.pageslen = 2;
-		pages[1].addr = configmap->phys;
-		pages[1].size = configmap->size;
+			return err;
+		fl->proc_attrs_map = configmap;
+		inbuf.pageslen = NUM_PAGES_WITH_SHARED_BUF;
+		pages[NUM_PAGES_WITH_SHARED_BUF - 1].addr = configmap->phys;
+		pages[NUM_PAGES_WITH_SHARED_BUF - 1].size = configmap->size;
 	}
 
 	if (init.filelen && init.filefd) {
 		mutex_lock(&fl->map_mutex);
-		err = fastrpc_map_create(fl, init.filefd, init.file, NULL, init.filelen, 0, 0, &map, true);
+		err = fastrpc_map_create(fl, init.filefd, init.file, NULL,
+					init.filelen, 0, 0, &map, true);
 		mutex_unlock(&fl->map_mutex);
 		if (err)
-			goto err;
+			goto err_filemap_fail;
 	}
 
 	fastrpc_check_privileged_process(fl, &init);
@@ -2542,8 +2519,6 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	if (fl->cctx->domain_id == CDSP_DOMAIN_ID) {
 		fastrpc_create_persistent_headers(fl);
 	}
-
-	kfree(args);
 	mutex_lock(&fl->map_mutex);
 	fastrpc_map_put(map);
 	mutex_unlock(&fl->map_mutex);
@@ -2561,9 +2536,13 @@ err_alloc:
 	mutex_lock(&fl->map_mutex);
 	fastrpc_map_put(map);
 	mutex_unlock(&fl->map_mutex);
-err:
-	kfree(args);
-
+err_filemap_fail:
+	if (configmap) {
+		fl->proc_attrs_map = NULL;
+		mutex_lock(&fl->map_mutex);
+		fastrpc_map_put(configmap);
+		mutex_unlock(&fl->map_mutex);
+	}
 	return err;
 }
 
@@ -2677,6 +2656,8 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	mutex_lock(&fl->map_mutex);
 	list_for_each_entry_safe(map, m, &fl->maps, node)
 		fastrpc_map_put(map);
+	if (fl->proc_attrs_map)
+		fastrpc_map_put(fl->proc_attrs_map);
 	mutex_unlock(&fl->map_mutex);
 	mutex_unlock(&fl->remote_map_mutex);
 
