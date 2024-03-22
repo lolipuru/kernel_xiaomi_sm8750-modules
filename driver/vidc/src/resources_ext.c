@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -102,6 +102,12 @@ static int __acquire_regulator(struct msm_vidc_core *core,
 			goto exit;
 		}
 
+		if (!is_core_sub_state(core, CORE_SUBSTATE_GDSC_HANDOFF)) {
+			d_vpr_l("%s: regulator (%s) is already in software ctrl\n",
+				__func__, rinfo->name);
+			return rc;
+		}
+
 		if (regulator_get_mode(rinfo->regulator) ==
 				REGULATOR_MODE_NORMAL) {
 			/* clear handoff from core sub_state */
@@ -161,6 +167,12 @@ static int __hand_off_regulator(struct msm_vidc_core *core,
 		if (!rinfo->regulator) {
 			d_vpr_e("%s: invalid regulator\n", __func__);
 			goto exit;
+		}
+
+		if (is_core_sub_state(core, CORE_SUBSTATE_GDSC_HANDOFF)) {
+			d_vpr_l("%s: regulator (%s) is already in Hardware ctrl\n",
+				__func__, rinfo->name);
+			return rc;
 		}
 
 		rc = regulator_set_mode(rinfo->regulator,
@@ -511,17 +523,25 @@ static int __clock_set_flag_ext(struct msm_vidc_core *core,
 	return 0;
 }
 
-const struct msm_vidc_resources_ops *get_res_ops_ext(void)
+const struct msm_vidc_resources_ops *get_res_ops_ext(struct msm_vidc_core *core)
 {
 	const struct msm_vidc_resources_ops *res_ops = get_resources_ops();
 	static struct msm_vidc_resources_ops res_ops_ext;
+	const struct regulator_table *regulator_tbl;
+	u32 regulator_count = 0;
+
+	regulator_tbl = core->platform->data.regulator_tbl;
+	regulator_count = core->platform->data.regulator_tbl_size;
 
 	memcpy(&res_ops_ext, res_ops, sizeof(struct msm_vidc_resources_ops));
-	res_ops_ext.gdsc_init        = __init_regulators;
-	res_ops_ext.gdsc_on          = __enable_regulator;
-	res_ops_ext.gdsc_off         = __disable_regulator;
-	res_ops_ext.gdsc_hw_ctrl     = __hand_off_regulators;
-	res_ops_ext.gdsc_sw_ctrl     = __acquire_regulators;
+	if (regulator_tbl && regulator_count) {
+		res_ops_ext.gdsc_init        = __init_regulators;
+		res_ops_ext.gdsc_on          = __enable_regulator;
+		res_ops_ext.gdsc_off         = __disable_regulator;
+		res_ops_ext.gdsc_hw_ctrl     = __hand_off_regulators;
+		res_ops_ext.gdsc_sw_ctrl     = __acquire_regulators;
+	}
+
 	res_ops_ext.set_clks         = __set_clocks_ext;
 	res_ops_ext.clk_set_flag     = __clock_set_flag_ext;
 
