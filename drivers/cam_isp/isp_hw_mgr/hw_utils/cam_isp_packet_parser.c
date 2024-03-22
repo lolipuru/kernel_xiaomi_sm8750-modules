@@ -884,6 +884,11 @@ static int cam_isp_add_io_buffers_util(
 		return -EINVAL;
 	}
 
+	if (res->res_state < CAM_ISP_RESOURCE_STATE_RESERVED) {
+		CAM_ERR(CAM_ISP, "Inactive res ID: 0x%x state: %d", res->res_id, res->res_state);
+		return -EINVAL;
+	}
+
 	if (res->res_id != io_cfg->resource_type) {
 		CAM_ERR(CAM_ISP, "err res id:%d io res id:%d",
 			res->res_id, io_cfg->resource_type);
@@ -896,6 +901,11 @@ static int cam_isp_add_io_buffers_util(
 	secure_mode.cmd_type = secure_mode_cmd;
 	secure_mode.res = res;
 	secure_mode.data = (void *)&mode;
+	if (!res->hw_intf) {
+		CAM_ERR(CAM_ISP, "Invalid hw intf for res: 0x%x", res->res_id);
+		return -EINVAL;
+	}
+
 	rc = res->hw_intf->hw_ops.process_cmd(
 		res->hw_intf->hw_priv, secure_mode_cmd,
 		&secure_mode, sizeof(struct cam_isp_hw_get_cmd_update));
