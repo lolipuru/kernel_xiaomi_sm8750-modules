@@ -2992,7 +2992,7 @@ static int __power_collapse(struct iris_hfi_device *device, bool force)
 	}
 
 	rc = __dsp_suspend(device, force);
-	if (rc == -EBUSY)
+	if (rc == -EBUSY || rc == -EINVAL)
 		goto exit;
 	else if (rc)
 		goto skip_power_off;
