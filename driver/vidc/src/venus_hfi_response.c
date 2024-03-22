@@ -205,7 +205,7 @@ int validate_packet(u8 *response_pkt, u8 *core_resp_pkt,
 	return 0;
 }
 
-static int validate_hdr_packet(struct msm_vidc_core *core,
+int validate_hdr_packet(struct msm_vidc_core *core,
 	struct hfi_header *hdr, const char *function)
 {
 	struct hfi_packet *packet;
@@ -1869,7 +1869,7 @@ static int handle_system_property(struct msm_vidc_core *core,
 	return rc;
 }
 
-static int handle_system_response(struct msm_vidc_core *core,
+int handle_system_response(struct msm_vidc_core *core,
 				  struct hfi_header *hdr)
 {
 	int rc = 0;
@@ -1962,22 +1962,14 @@ static int __handle_session_response(struct msm_vidc_inst *inst,
 	return rc;
 }
 
-static int handle_session_response(struct msm_vidc_core *core,
+int handle_session_response(struct msm_vidc_inst *inst,
 				   struct hfi_header *hdr)
 {
-	struct msm_vidc_inst *inst;
 	struct hfi_packet *packet;
 	u8 *pkt;
 	int i, rc = 0;
 	bool found_ipsc = false;
 
-	inst = get_inst(core, hdr->session_id);
-	if (!inst) {
-		d_vpr_e("%s: Invalid inst\n", __func__);
-		return -EINVAL;
-	}
-
-	inst_lock(inst, __func__);
 	/* search for cmd settings change pkt */
 	pkt = (u8 *)((u8 *)hdr + sizeof(struct hfi_header));
 	for (i = 0; i < hdr->num_packets; i++) {
@@ -2000,27 +1992,5 @@ static int handle_session_response(struct msm_vidc_core *core,
 		goto exit;
 
 exit:
-	inst_unlock(inst, __func__);
-	put_inst(inst);
 	return rc;
-}
-
-int handle_response(struct msm_vidc_core *core, void *response)
-{
-	struct hfi_header *hdr;
-	int rc = 0;
-
-	hdr = (struct hfi_header *)response;
-	rc = validate_hdr_packet(core, hdr, __func__);
-	if (rc) {
-		d_vpr_e("%s: hdr pkt validation failed\n", __func__);
-		return handle_system_error(core, NULL);
-	}
-
-	if (!hdr->session_id)
-		return handle_system_response(core, hdr);
-	else
-		return handle_session_response(core, hdr);
-
-	return 0;
 }

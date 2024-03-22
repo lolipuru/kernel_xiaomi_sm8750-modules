@@ -4547,6 +4547,11 @@ static void msm_vidc_close_helper(struct kref *kref)
 	vfree(inst);
 }
 
+struct msm_vidc_inst *get_inst_ref_locked(struct msm_vidc_inst *inst)
+{
+	return kref_get_unless_zero(&inst->kref) ? inst : NULL;
+}
+
 struct msm_vidc_inst *get_inst_ref(struct msm_vidc_core *core,
 		struct msm_vidc_inst *instance)
 {
@@ -4560,25 +4565,7 @@ struct msm_vidc_inst *get_inst_ref(struct msm_vidc_core *core,
 			break;
 		}
 	}
-	inst = (matches && kref_get_unless_zero(&inst->kref)) ? inst : NULL;
-	mutex_unlock(&core->lock);
-	return inst;
-}
-
-struct msm_vidc_inst *get_inst(struct msm_vidc_core *core,
-		u32 session_id)
-{
-	struct msm_vidc_inst *inst = NULL;
-	bool matches = false;
-
-	mutex_lock(&core->lock);
-	list_for_each_entry(inst, &core->instances, list) {
-		if (inst->session_id == session_id) {
-			matches = true;
-			break;
-		}
-	}
-	inst = (matches && kref_get_unless_zero(&inst->kref)) ? inst : NULL;
+	inst = matches ? get_inst_ref_locked(inst) : NULL;
 	mutex_unlock(&core->lock);
 	return inst;
 }
