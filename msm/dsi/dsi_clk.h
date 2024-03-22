@@ -325,6 +325,18 @@ int dsi_display_clk_ctrl(void *handle, u32 clk_type, u32 clk_state);
 int dsi_display_clk_ctrl_nolock(void *handle, u32 clk_type, u32 clk_state);
 
 /**
+ * dsi_display_clk_mngr_get_clk_rate() - retrieve clock rate
+ * @handle:     Handle of desired DSI clock client.
+ * @idx:        Index of desired DSI controller.
+ * @clk_type:   Clock whose rate is being retrieved.
+ * @clk_rate:   Pointer to which the rate will be written on success
+ *
+ * return: error code in case of failure or 0 for success.
+ */
+int dsi_display_clk_mngr_get_clk_rate(void *handle, u32 idx,
+		enum dsi_clk_type clk_type, u64 *clk_rate);
+
+/**
  * dsi_clk_set_link_frequencies() - set frequencies for link clks
  * @client:     DSI clock client pointer.
  * @freq:       Structure containing link clock frequencies.

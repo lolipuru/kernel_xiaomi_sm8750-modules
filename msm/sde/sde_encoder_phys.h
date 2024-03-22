@@ -424,6 +424,7 @@ struct sde_encoder_phys {
 	bool autorefresh_disable_trans;
 	enum sde_sim_qsync_frame sim_qsync_frame;
 	u32 prog_fetch_start;
+	bool esync_pc_exit;
 };
 
 static inline int sde_encoder_phys_inc_pending(struct sde_encoder_phys *phys)

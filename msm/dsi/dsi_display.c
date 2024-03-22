@@ -7592,6 +7592,18 @@ int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state)
 	return dsi_display_clk_ctrl(disp->mdp_clk_handle, clk_type, clk_state);
 }
 
+int dsi_display_get_clk_rate(void *display, u32 idx, u32 clk_type, u64 *clk_rate)
+{
+	struct dsi_display *disp = (struct dsi_display *)display;
+
+	if (!disp || !disp->mdp_clk_handle) {
+		DSI_ERR("Invalid arg\n");
+		return -EINVAL;
+	}
+
+	return dsi_display_clk_mngr_get_clk_rate(disp->mdp_clk_handle, idx, clk_type, clk_rate);
+}
+
 void dsi_display_set_idle_pc_state(void *display, bool idle_pc)
 {
 	struct dsi_display *disp = (struct dsi_display *)display;
@@ -8969,7 +8981,8 @@ int dsi_display_post_enable(struct dsi_display *display)
 	}
 
 	/* remove the clk vote for CMD mode panels */
-	if (display->config.panel_mode == DSI_OP_CMD_MODE)
+	if (display->config.panel_mode == DSI_OP_CMD_MODE ||
+			display->config.video_timing.esync_enabled)
 		dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 
@@ -8999,7 +9012,8 @@ int dsi_display_pre_disable(struct dsi_display *display)
 	}
 
 	/* enable the clk vote for CMD mode panels */
-	if (display->config.panel_mode == DSI_OP_CMD_MODE)
+	if (display->config.panel_mode == DSI_OP_CMD_MODE ||
+			display->config.video_timing.esync_enabled)
 		dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 	if (display->poms_pending) {

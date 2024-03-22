@@ -10,6 +10,7 @@
 #include <linux/pm_runtime.h>
 #include "dsi_clk.h"
 #include "dsi_defs.h"
+#include "sde_dbg.h"
 
 struct dsi_core_clks {
 	struct dsi_core_clk_info clks;
@@ -1461,6 +1462,7 @@ int dsi_clk_req_state(void *client, enum dsi_clk_type clk,
 			c->esync_refcount, c->esync_clk_state,
 			c->osc_refcount, c->osc_clk_state);
 
+	SDE_EVT32(client, c->core_refcount, c->link_refcount, changed);
 	if (changed) {
 		rc = dsi_recheck_clk_state(mngr);
 		if (rc)
@@ -1567,6 +1569,33 @@ int dsi_display_clk_ctrl_nolock(void *handle,
 		DSI_ERR("failed set clk state, rc = %d\n", rc);
 
 	return rc;
+}
+
+int dsi_display_clk_mngr_get_clk_rate(void *handle, u32 idx,
+		enum dsi_clk_type clk_type, u64 *clk_rate)
+{
+	struct dsi_clk_client_info *client = handle;
+	struct dsi_clk_mngr *mngr;
+
+	if (!client) {
+		DSI_ERR("invalid client\n");
+		return -EINVAL;
+	}
+
+	mngr = client->mngr;
+	if (!mngr) {
+		DSI_ERR("invalid manager\n");
+		return -EINVAL;
+	}
+
+	if (clk_type == DSI_ESYNC_CLK) {
+		*clk_rate = clk_get_rate(mngr->esync_clks[idx].clks.clk);
+	} else {
+		DSI_ERR("getting clock rate not supported for clk_type %d", clk_type);
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 void *dsi_register_clk_handle(void *clk_mngr, char *client)

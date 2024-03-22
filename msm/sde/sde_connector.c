@@ -1302,6 +1302,37 @@ int sde_connector_osc_clk_ctrl(struct drm_connector *connector, bool enable)
 	return rc;
 }
 
+int sde_connector_clk_get_rate_esync(struct drm_connector *connector,
+		enum sde_intf intf_idx, u64 *rate)
+{
+	struct sde_connector *c_conn;
+	struct dsi_display *display;
+	u32 dsi_idx = INTF_MAX;
+	int rc = 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+	display = (struct dsi_display *) c_conn->display;
+
+	if (intf_idx == INTF_1) {
+		dsi_idx = 0;
+	} else if (intf_idx == INTF_2) {
+		dsi_idx = 1;
+	} else {
+		SDE_ERROR("invalid interface index %d", intf_idx-INTF_0);
+		return -EINVAL;
+	}
+
+	if (display && c_conn->ops.clk_get_rate)
+		rc = c_conn->ops.clk_get_rate(display, dsi_idx, DSI_ESYNC_CLK, rate);
+
+	return rc;
+}
+
 void sde_connector_destroy(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;

@@ -952,6 +952,17 @@ bool is_skip_op_required(struct dsi_display *display);
 int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state);
 
 /**
+ * dsi_display_get_clk_rate() - get clk rate
+ * @display:    Handle to display
+ * @idx:        DSI controller index
+ * @clk_type:   Clock which whose rate is being retrieved
+ * @clk_state:  Pointer to which clock rate will be written on success
+ *
+ * return: error code in case of failure or 0 for success.
+ */
+int dsi_display_get_clk_rate(void *display, u32 idx, u32 clk_type, u64 *clk_rate);
+
+/**
  * dsi_display_set_idle_pc_state() - set idle pc state
  * @display:    Handle to display
  * @idle_pc:    Idle power collapse status

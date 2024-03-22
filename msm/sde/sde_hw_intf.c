@@ -287,7 +287,7 @@ static void sde_hw_intf_prepare_esync(struct sde_hw_intf *ctx, struct intf_esync
 	u32 val;
 	u32 mask = BIT(16)-1;
 
-	val = (params->avr_step_lines & mask) << 16;
+	val = (params->avr_step_lines & mask) << 16 | (0x8);
 	SDE_REG_WRITE(c, INTF_ESYNC_VSYNC_CTL, val);
 
 	val = ((params->emsync_period_lines & mask) << 16) | (params->emsync_pulse_width & mask);
@@ -309,6 +309,9 @@ static void sde_hw_intf_prepare_esync(struct sde_hw_intf *ctx, struct intf_esync
 	if (params->align_backup)
 		val |= 0x7 << 8; /* COND1 backup esync rising edge */
 	SDE_REG_WRITE(c, INTF_ESYNC_CTRL, val);
+
+	val = 0x0;
+	SDE_REG_WRITE(c, INTF_ESYNC_HYBRID_CTRL, val);
 }
 
 static void sde_hw_intf_enable_esync(struct sde_hw_intf *ctx, bool enable)
@@ -326,7 +329,7 @@ static void sde_hw_intf_prepare_backup_esync(struct sde_hw_intf *ctx,
 	u32 val;
 	u32 mask = BIT(16)-1;
 
-	val = (params->avr_step_lines & mask) << 16;
+	val = (params->avr_step_lines & mask) << 16 | (0x8);
 	SDE_REG_WRITE(c, INTF_BKUP_ESYNC_VSYNC_CTL, val);
 
 	val = (params->emsync_pulse_width & mask) | ((params->emsync_period_lines & mask) << 16);
@@ -360,7 +363,7 @@ static int sde_hw_intf_wait_for_esync_src_switch(struct sde_hw_intf *ctx, bool b
 
 	return readx_poll_timeout(readl_relaxed,
 			c->base_off + c->blk_off + INTF_ESYNC_HYBRID_CTRL,
-			val, val == target, 10, 1000);
+			val, val == target, 100, 5000);
 }
 
 static void sde_hw_intf_enable_infinite_vfp(struct sde_hw_intf *ctx, bool enable)
@@ -567,11 +570,13 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 			&& p->poms_align_vsync)
 		intf_cfg2 |= BIT(16);
 
+	alignment = 0x1; /* COND0 timing engine enable register */
 	if (align_esync) {
 		if (align_avr)
-			alignment = 0x6 | (0x4 << 4);
-		else
-			alignment = 0x4;
+			alignment = 0x6; /* COND0 HW AVR trigger */
+		alignment |= 0x4 << 4; /* COND1 esync_mdp_vsync */
+
+		intf_cfg2 |= BIT(23);
 	}
 
 	if (ctx->cfg.split_link_en)

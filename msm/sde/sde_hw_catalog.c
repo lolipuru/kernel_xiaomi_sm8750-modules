@@ -5820,6 +5820,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
 		sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
 		sde_cfg->has_line_insertion = true;
+		sde_cfg->osc_clk_rate = 38400000;
 	} else {
 		SDE_ERROR("unsupported chipset id:%X\n", hw_rev);
 		sde_cfg->perf.min_prefill_lines = 0xffff;

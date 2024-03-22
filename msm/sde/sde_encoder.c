@@ -2098,6 +2098,12 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 				if (phys_enc->ops.idle_pc_exit)
 					phys_enc->ops.idle_pc_exit(phys_enc);
 			}
+
+			if (sde_enc->cur_master->hw_ctl &&
+				sde_enc->cur_master->hw_ctl->ops.setup_intf_cfg_v1)
+				sde_enc->cur_master->hw_ctl->ops.setup_intf_cfg_v1(
+					sde_enc->cur_master->hw_ctl,
+					&sde_enc->cur_master->intf_cfg_v1);
 		}
 
 		/* enable all the irq */

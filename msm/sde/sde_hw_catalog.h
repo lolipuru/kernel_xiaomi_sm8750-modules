@@ -2053,6 +2053,7 @@ struct sde_perf_cfg {
  * @uidle_cfg           settings for uidle feature
  * @irq_offset_list     list of sde_intr_irq_offsets to initialize irq table
  * @has_line_insertion  line insertion support status
+ * @osc_clk_rate        oscillator clock rate
  * @features            bitmap of supported SDE_FEATUREs
  * @dma_formats         supported formats for dma pipe
  * @vig_formats         supported formats for vig pipe
@@ -2183,6 +2184,7 @@ struct sde_mdss_cfg {
 	struct list_head irq_offset_list;
 	DECLARE_BITMAP(features, SDE_FEATURE_MAX);
 	bool has_line_insertion;
+	u64 osc_clk_rate;
 
 	/* Supported Pixel Format Lists */
 	struct sde_format_extended *dma_formats;

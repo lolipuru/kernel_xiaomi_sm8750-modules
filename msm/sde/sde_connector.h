@@ -222,6 +222,16 @@ struct sde_connector_ops {
 	int (*clk_ctrl)(void *handle, u32 type, u32 state);
 
 	/**
+	 * clk_get_rate - get DSI managed clock's rate by type and interface index
+	 * @handle: Pointer to DSI display
+	 * @idx: Interface index
+	 * @clk_type: Type of clock
+	 * @clk_rate: Clock rate is placed here
+	 * Returns: Zero on success
+	 */
+	int (*clk_get_rate)(void *handle, u32 idx, u32 clk_type, u64 *clk_rate);
+
+	/**
 	 * idle_pc_ctrl - inform DSI of the idle PC status
 	 * @display: Pointer to display struct
 	 * @idle_pc: Idle power collapse status
@@ -1035,6 +1045,16 @@ int sde_connector_esync_clk_ctrl(struct drm_connector *connector, bool enable);
  * Returns: Zero on success
  */
 int sde_connector_osc_clk_ctrl(struct drm_connector *connector, bool enable);
+
+/**
+ * sde_connector_clk_get_rate_esync - retrieves esync clk rate
+ * @connector: Pointer to drm connector object
+ * @intf_idx: index of interface whose esync clk rate is requested
+ * @rate: pointer at which the rate will be written on success
+ * Returns: Zero on success
+ */
+int sde_connector_clk_get_rate_esync(struct drm_connector *connector,
+		enum sde_intf intf_idx, u64 *rate);
 
 /**
  * sde_connector_get_dpms - query dpms setting

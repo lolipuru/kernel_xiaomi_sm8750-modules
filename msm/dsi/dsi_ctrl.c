@@ -506,8 +506,14 @@ static int dsi_ctrl_check_state(struct dsi_ctrl *dsi_ctrl,
 {
 	int rc = 0;
 	struct dsi_ctrl_state_info *state = &dsi_ctrl->current_state;
+	bool esync_enabled = false;
+	struct dsi_mode_info *host_mode;
 
-	SDE_EVT32_VERBOSE(dsi_ctrl->cell_index, op, op_state);
+	host_mode = &dsi_ctrl->host_config.video_timing;
+
+	if (host_mode)
+		esync_enabled = host_mode->esync_enabled;
+	SDE_EVT32(esync_enabled, dsi_ctrl->cell_index, op, op_state);
 
 	switch (op) {
 	case DSI_CTRL_OP_POWER_STATE_CHANGE:
@@ -516,7 +522,7 @@ static int dsi_ctrl_check_state(struct dsi_ctrl *dsi_ctrl,
 					op_state);
 			rc = -EINVAL;
 		} else if (state->power_state == DSI_CTRL_POWER_VREG_ON) {
-			if (state->vid_engine_state == DSI_CTRL_ENGINE_ON) {
+			if (state->vid_engine_state == DSI_CTRL_ENGINE_ON && !esync_enabled) {
 				DSI_CTRL_ERR(dsi_ctrl, "State error: op=%d: %d\n",
 				       op_state,
 				       state->vid_engine_state);
@@ -543,8 +549,8 @@ static int dsi_ctrl_check_state(struct dsi_ctrl *dsi_ctrl,
 			DSI_CTRL_ERR(dsi_ctrl, "No change in state, cmd_state=%d\n",
 			       op_state);
 			rc = -EINVAL;
-		} else if ((state->power_state != DSI_CTRL_POWER_VREG_ON) ||
-			   (state->controller_state != DSI_CTRL_ENGINE_ON)) {
+		} else if (!esync_enabled && ((state->power_state != DSI_CTRL_POWER_VREG_ON) ||
+			   (state->controller_state != DSI_CTRL_ENGINE_ON))) {
 			DSI_CTRL_ERR(dsi_ctrl, "State error: op=%d: %d, %d\n",
 			       op,
 			       state->power_state,
@@ -1178,6 +1184,13 @@ static int dsi_ctrl_aoss_update(struct dsi_ctrl *dsi_ctrl, bool enable)
 {
 	int rc;
 	u32 cp_level;
+	bool esync_enabled = false;
+	struct dsi_mode_info *host_mode;
+
+	host_mode = &dsi_ctrl->host_config.video_timing;
+
+	if (host_mode)
+		esync_enabled = host_mode->esync_enabled;
 
 	if (enable) {
 		rc = pm_runtime_resume_and_get(dsi_ctrl->drm_dev->dev);
@@ -1194,8 +1207,9 @@ static int dsi_ctrl_aoss_update(struct dsi_ctrl *dsi_ctrl, bool enable)
 		}
 
 	} else {
-		cp_level = dsi_ctrl->idle_pc ? SDE_CESTA_AOSS_CP_LEVEL_1
+		cp_level = (dsi_ctrl->idle_pc || esync_enabled) ? SDE_CESTA_AOSS_CP_LEVEL_1
 							: SDE_CESTA_AOSS_CP_LEVEL_0;
+		SDE_EVT32(esync_enabled, dsi_ctrl->idle_pc, cp_level);
 		rc = sde_cesta_aoss_update(dsi_ctrl->cesta_client, cp_level);
 		if (rc) {
 			DSI_CTRL_ERR(dsi_ctrl,
