@@ -25,22 +25,9 @@
 #include "msm_vidc_sun.h"
 #include "msm_vidc_iris35.h"
 #endif
-#if defined(CONFIG_MSM_VIDC_VOLCANO)
-#include "msm_vidc_volcano.h"
-#include "msm_vidc_iris2.h"
-#endif
 #if defined(CONFIG_MSM_VIDC_PINEAPPLE)
 #include "msm_vidc_pineapple.h"
-#include "msm_vidc_cliffs.h"
 #include "msm_vidc_iris33.h"
-#endif
-#if defined(CONFIG_MSM_VIDC_KALAMA)
-#include "msm_vidc_kalama.h"
-#include "msm_vidc_iris3.h"
-#endif
-#if defined(CONFIG_MSM_VIDC_WAIPIO)
-#include "msm_vidc_waipio.h"
-#include "msm_vidc_iris2.h"
 #endif
 
 #define CAP_TO_8BIT_QP(a) {          \
@@ -225,43 +212,12 @@ static const struct msm_vidc_compat_handle compat_handle[] = {
 		.init_platform              = msm_vidc_init_platform_pineapple,
 		.init_iris                  = msm_vidc_init_iris33,
 	},
-	{
-		.compat                     = "qcom,cliffs-vidc",
-		.init_platform              = msm_vidc_init_platform_cliffs,
-		.init_iris                  = msm_vidc_init_iris33,
-	},
-#endif
-#if defined(CONFIG_MSM_VIDC_KALAMA)
-	{
-		.compat                     = "qcom,sm8550-vidc",
-		.init_platform              = msm_vidc_init_platform_kalama,
-		.init_iris                  = msm_vidc_init_iris3,
-	},
-	{
-		.compat                     = "qcom,sm8550-vidc-v2",
-		.init_platform              = msm_vidc_init_platform_kalama,
-		.init_iris                  = msm_vidc_init_iris3,
-	},
-#endif
-#if defined(CONFIG_MSM_VIDC_WAIPIO)
-	{
-		.compat                     = "qcom,sm8450-vidc",
-		.init_platform              = msm_vidc_init_platform_waipio,
-		.init_iris                  = msm_vidc_init_iris2,
-	},
 #endif
 #if defined(CONFIG_MSM_VIDC_SUN)
 	{
 		.compat                     = "qcom,sm8750-vidc",
 		.init_platform              = msm_vidc_init_platform_sun,
 		.init_iris                  = msm_vidc_init_iris35,
-	},
-#endif
-#if defined(CONFIG_MSM_VIDC_VOLCANO)
-	{
-		.compat                     = "qcom,volcano-vidc",
-		.init_platform              = msm_vidc_init_platform_volcano,
-		.init_iris                  = msm_vidc_init_iris2,
 	},
 #endif
 };
