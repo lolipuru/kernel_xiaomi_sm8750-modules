@@ -1998,7 +1998,7 @@ struct data_rate_settings_t data_rate_delta_table_2_3_0 = {
 };
 
 struct csiphy_reg_parms_t csiphy_v2_3_0 = {
-	.mipi_csiphy_interrupt_status0_addr = 0x10B0,
+	.mipi_csiphy_interrupt_status0_addr = 0x1138,
 	.mipi_csiphy_interrupt_clear0_addr = 0x1058,
 	.mipi_csiphy_glbl_irq_cmd_addr = 0x1028,
 	.size_offset_betn_lanes = 0x400,
