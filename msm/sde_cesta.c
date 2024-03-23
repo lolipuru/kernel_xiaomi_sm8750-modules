@@ -6,6 +6,8 @@
 #define pr_fmt(fmt)	"[sde_cesta:%s:%d]: " fmt, __func__, __LINE__
 
 #include <linux/clk/qcom.h>
+#include <linux/pm_domain.h>
+#include <linux/pm_runtime.h>
 #include <soc/qcom/crm.h>
 
 #include "sde_cesta.h"
@@ -460,7 +462,7 @@ int sde_cesta_resource_disable(u32 cesta_index)
 
 	cesta = cesta_list[cesta_index];
 
-	if (cesta->sw_fs_enabled) {
+	if (cesta->sw_fs_enabled && cesta->fs) {
 		ret = regulator_set_mode(cesta->fs, REGULATOR_MODE_FAST);
 		if (ret) {
 			SDE_ERROR_CESTA("vdd reg fast mode set failed, ret:%d\n", ret);
@@ -485,8 +487,11 @@ int sde_cesta_resource_disable(u32 cesta_index)
 	msm_dss_enable_clk(mp->clk_config, mp->num_clk, false);
 
 	/* avoid regulator disable, once gdsc is put to hw-ctrl mode */
-	if (cesta->sw_fs_enabled)
+	if (cesta->sw_fs_enabled) {
+		if (cesta->pd_fs)
+			pm_runtime_put_sync(cesta->pd_fs);
 		cesta->sw_fs_enabled = false;
+	}
 
 	return 0;
 }
@@ -582,8 +587,15 @@ static void sde_cesta_deinit(struct platform_device *pdev, struct sde_cesta *ces
 	if (!cesta)
 		return;
 
-	if (cesta->sw_fs_enabled)
-		regulator_disable(cesta->fs);
+	if (cesta->sw_fs_enabled) {
+		if (cesta->pd_fs)
+			pm_runtime_put_sync(cesta->pd_fs);
+		else if (cesta->fs)
+			regulator_disable(cesta->fs);
+	}
+
+	if (cesta->pd_fs)
+		dev_pm_domain_detach(cesta->pd_fs, false);
 
 	if (cesta->wrapper_io.base)
 		msm_dss_iounmap(&cesta->wrapper_io);
@@ -675,13 +687,17 @@ static int sde_cesta_probe(struct platform_device *pdev)
 
 	cesta->fs = devm_regulator_get(&pdev->dev, "vdd");
 	if (IS_ERR_OR_NULL(cesta->fs)) {
-		ret = PTR_ERR(cesta->fs);
-		SDE_ERROR_CESTA("regulator get failed, ret:%d\n", ret);
+		SDE_DEBUG_CESTA("regulator get failed, ret:%d\n", ret);
 		cesta->fs = NULL;
-		goto fail;
+
+		pm_runtime_enable(&pdev->dev);
+		cesta->pd_fs = &pdev->dev;
 	}
 
-	ret = regulator_enable(cesta->fs);
+	if (cesta->pd_fs)
+		ret = pm_runtime_get_sync(cesta->pd_fs);
+	else if (cesta->fs)
+		ret = regulator_enable(cesta->fs);
 	if (ret) {
 		SDE_ERROR_CESTA("regulator enabled failed, ret:%d\n", ret);
 		goto fail;

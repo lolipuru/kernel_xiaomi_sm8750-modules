@@ -56,6 +56,7 @@
 #include "msm_drv.h"
 #include "sde_vm.h"
 #include "sde_color_processing_aiqe.h"
+#include "sde_cesta.h"
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
@@ -4499,6 +4500,9 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		if (encoder->crtc != crtc)
 			continue;
 
+		if (!sde_crtc->cesta_client)
+			sde_crtc->cesta_client = sde_encoder_get_cesta_client(encoder);
+
 		/* encoder will trigger pending mask now */
 		sde_encoder_trigger_kickoff_pending(encoder);
 	}
@@ -5541,6 +5545,8 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 		}
 	}
 
+	sde_crtc->cesta_client = NULL;
+
 	/* avoid clk/bw downvote if cont-splash is enabled */
 	if (!in_cont_splash)
 		sde_core_perf_crtc_update(crtc, 0, true);
@@ -5683,13 +5689,10 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 		return;
 	}
 
-	drm_for_each_encoder_mask(encoder, crtc->dev,
-			crtc->state->encoder_mask) {
-		sde_encoder_register_frame_event_callback(encoder,
-				sde_crtc_frame_event_cb, crtc);
+	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+		sde_encoder_register_frame_event_callback(encoder, sde_crtc_frame_event_cb, crtc);
 		sde_crtc_static_img_control(crtc, CACHE_STATE_NORMAL,
-				sde_encoder_check_curr_mode(encoder,
-				MSM_DISPLAY_VIDEO_MODE));
+				sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE));
 	}
 
 	sde_crtc->enabled = true;
@@ -6707,6 +6710,12 @@ static void sde_crtc_install_perf_properties(struct sde_crtc *sde_crtc,
 			"rot_clk", 0, 0, U64_MAX,
 			sde_kms->perf.max_core_clk_rate,
 			CRTC_PROP_ROT_CLK);
+
+	if (sde_cesta_is_enabled(DPUID(sde_kms->dev)))
+		msm_property_install_range(&sde_crtc->property_info,
+			"ubwc_clk", 0x0, 0, U64_MAX,
+			sde_kms->perf.max_core_clk_rate,
+			CRTC_PROP_UBWC_CLK);
 
 	if (catalog->perf.max_bw_low)
 		sde_kms_info_add_keyint(info, "max_bandwidth_low",

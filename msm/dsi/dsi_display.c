@@ -2672,8 +2672,15 @@ static int dsi_display_phy_power_on(struct dsi_display *display)
 	/* Sequence does not matter for split dsi usecases */
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
-		if (!ctrl->ctrl)
+		if (!ctrl->ctrl || !ctrl->phy)
 			continue;
+
+		/*
+		 * 0p9, 1p2 & refgen rails are voted through cesta in dsi_ctrl.
+		 * Skip the regulator vote here & just update the software states.
+		 */
+		if (ctrl->ctrl->cesta_client)
+			return 0;
 
 		rc = dsi_phy_set_power_state(ctrl->phy, true);
 		if (rc) {
@@ -2703,8 +2710,15 @@ static int dsi_display_phy_power_off(struct dsi_display *display)
 	/* Sequence does not matter for split dsi usecases */
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
-		if (!ctrl->phy)
+		if (!ctrl->ctrl || !ctrl->phy)
 			continue;
+
+		/*
+		 * 0p9, 1p2 & refgen rails are voted through cesta in dsi_ctrl.
+		 * Skip the regulator vote here & just update the software states.
+		 */
+		if (ctrl->ctrl->cesta_client)
+			return 0;
 
 		rc = dsi_phy_set_power_state(ctrl->phy, false);
 		if (rc) {
@@ -7531,6 +7545,29 @@ end:
 	return rc;
 }
 
+int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state, bool idle_pc)
+{
+	struct dsi_display *disp = (struct dsi_display *)display;
+	struct dsi_display_ctrl *ctrl;
+	int i;
+
+	if (!disp || !disp->mdp_clk_handle) {
+		DSI_ERR("Invalid arg\n");
+		return -EINVAL;
+	}
+
+	/* update idle power collpase status in ctrl */
+	display_for_each_ctrl(i, disp) {
+		ctrl = &disp->ctrl[i];
+		if (!ctrl->ctrl)
+			continue;
+
+		ctrl->ctrl->idle_pc = idle_pc;
+	}
+
+	return dsi_display_clk_ctrl(disp->mdp_clk_handle, clk_type, clk_state);
+}
+
 static bool dsi_display_match_timings(const struct dsi_display_mode *mode1,
 		struct dsi_display_mode *mode2, unsigned int match_flags)
 {
@@ -8857,7 +8894,8 @@ int dsi_display_post_enable(struct dsi_display *display)
 
 int dsi_display_pre_disable(struct dsi_display *display)
 {
-	int rc = 0;
+	struct dsi_display_ctrl *ctrl;
+	int rc = 0, i;
 
 	if (!display) {
 		DSI_ERR("Invalid params\n");
@@ -8865,6 +8903,15 @@ int dsi_display_pre_disable(struct dsi_display *display)
 	}
 
 	mutex_lock(&display->display_lock);
+
+	/* update idle power collpase status in ctrl to false to allow OFF */
+	display_for_each_ctrl(i, display) {
+		ctrl = &display->ctrl[i];
+		if (!ctrl->ctrl)
+			continue;
+
+		ctrl->ctrl->idle_pc = false;
+	}
 
 	/* enable the clk vote for CMD mode panels */
 	if (display->config.panel_mode == DSI_OP_CMD_MODE)

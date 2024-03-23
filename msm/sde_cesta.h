@@ -156,6 +156,7 @@ struct sde_cesta_hw_ops {
  * @dev: cesta device
  * @phandle: power handle object to control the resources
  * @fs: MDSS GDSC regulator handle
+ * @pd_fs: MDSS GDSC power domain handle
  * @scc_io: scc instances io data mapping
  * @scc_index: stores the SCC index
  * @scc_count: number of SCC instances
@@ -172,6 +173,7 @@ struct sde_cesta {
 	struct device *dev;
 	struct sde_power_handle phandle;
 	struct regulator *fs;
+	struct device *pd_fs;
 
 	struct dss_io_data scc_io[MAX_SCC_BLOCK];
 	u32 scc_index[MAX_SCC_BLOCK];

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -35,12 +35,14 @@
  * @max_per_pipe_ib: maximum instantaneous bandwidth request
  * @bw_ctl: arbitrated bandwidth request
  * @core_clk_rate: core clock rate request
+ * @ubwc_clk_rate: current ubwc clock rate
  * @llcc_active: request to activate/deactivate the llcc
  */
 struct sde_core_perf_params {
 	u64 max_per_pipe_ib[SDE_POWER_HANDLE_DBUS_ID_MAX];
 	u64 bw_ctl[SDE_POWER_HANDLE_DBUS_ID_MAX];
 	u64 core_clk_rate;
+	u64 ubwc_clk_rate;
 	bool llcc_active[SDE_SYS_CACHE_MAX];
 };
 

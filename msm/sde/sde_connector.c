@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1234,7 +1234,7 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 	}
 }
 
-int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable)
+int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable, bool idle_pc)
 {
 	struct sde_connector *c_conn;
 	struct dsi_display *display;
@@ -1252,8 +1252,7 @@ int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable)
 		return 0;
 
 	if (display && c_conn->ops.clk_ctrl)
-		rc = c_conn->ops.clk_ctrl(display->mdp_clk_handle,
-				DSI_ALL_CLKS, state);
+		rc = c_conn->ops.clk_ctrl(display, DSI_ALL_CLKS, state, idle_pc);
 
 	return rc;
 }

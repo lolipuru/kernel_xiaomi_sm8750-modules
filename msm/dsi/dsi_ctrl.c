@@ -22,6 +22,7 @@
 #include "dsi_panel.h"
 
 #include "sde_dbg.h"
+#include "sde_cesta.h"
 
 #define DSI_CTRL_DEFAULT_LABEL "MDSS DSI CTRL"
 
@@ -1128,9 +1129,61 @@ static int dsi_ctrl_update_link_freqs(struct dsi_ctrl *dsi_ctrl,
 	return rc;
 }
 
+static int dsi_ctrl_aoss_update(struct dsi_ctrl *dsi_ctrl, bool enable)
+{
+	int rc;
+	u32 cp_level;
+
+	if (enable) {
+		rc = pm_runtime_resume_and_get(dsi_ctrl->drm_dev->dev);
+		if (rc < 0) {
+			DSI_CTRL_ERR(dsi_ctrl, "failed to enable power resource %d\n", rc);
+			SDE_EVT32(rc, SDE_EVTLOG_ERROR);
+			goto error;
+		}
+
+		rc = sde_cesta_aoss_update(dsi_ctrl->cesta_client, SDE_CESTA_AOSS_CP_LEVEL_4);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "failed to disable AOSS VCD, rc:%d\n", rc);
+			goto error_get_sync;
+		}
+
+	} else {
+		cp_level = dsi_ctrl->idle_pc ? SDE_CESTA_AOSS_CP_LEVEL_1
+							: SDE_CESTA_AOSS_CP_LEVEL_0;
+		rc = sde_cesta_aoss_update(dsi_ctrl->cesta_client, cp_level);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl,
+					"failed to update AOSS VCD, cp:%d, idle_pc:%d, rc:%d\n",
+					cp_level, dsi_ctrl->idle_pc, rc);
+			goto error;
+		}
+
+		pm_runtime_put_sync(dsi_ctrl->drm_dev->dev);
+	}
+
+	return 0;
+
+error_get_sync:
+	pm_runtime_put_sync(dsi_ctrl->drm_dev->dev);
+error:
+	return rc;
+
+}
+
 static int dsi_ctrl_enable_supplies(struct dsi_ctrl *dsi_ctrl, bool enable)
 {
 	int rc = 0;
+
+	/*
+	 * 0p9, 1p2 & refgen rails are voted through cesta in dsi_ctrl.
+	 * Skip the regulator vote here & just update the software states.
+	 */
+	if (dsi_ctrl->cesta_client) {
+		DSI_CTRL_DEBUG(dsi_ctrl,
+				"skip phy regulator voting; AOSS voted w/CESTA, en:%d\n", enable);
+		return dsi_ctrl_aoss_update(dsi_ctrl, enable);
+	}
 
 	if (enable) {
 		rc = pm_runtime_resume_and_get(dsi_ctrl->drm_dev->dev);

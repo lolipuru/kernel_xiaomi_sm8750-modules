@@ -1928,14 +1928,13 @@ struct sde_rsc_client *sde_encoder_get_rsc_client(struct drm_encoder *drm_enc)
 	return sde_enc->rsc_client;
 }
 
-static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
-		bool enable)
+static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, bool enable)
 {
 	struct sde_kms *sde_kms;
-	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_virt *sde_enc =  to_sde_encoder_virt(drm_enc);
 	int rc;
+	bool enter_idle = false;
 
-	sde_enc = to_sde_encoder_virt(drm_enc);
 	sde_kms = sde_encoder_get_kms(drm_enc);
 	if (!sde_kms)
 		return -EINVAL;
@@ -1959,8 +1958,7 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 
 		sde_enc->elevated_ahb_vote = true;
 		/* enable DSI clks */
-		rc = sde_connector_clk_ctrl(sde_enc->cur_master->connector,
-				true);
+		rc = sde_connector_clk_ctrl(sde_enc->cur_master->connector, true, false);
 		if (rc) {
 			SDE_ERROR("failed to enable clk control %d\n", rc);
 			pm_runtime_put_sync(drm_enc->dev->dev);
@@ -1979,7 +1977,8 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 		sde_encoder_irq_control(drm_enc, false);
 
 		/* disable DSI clks */
-		sde_connector_clk_ctrl(sde_enc->cur_master->connector, false);
+		enter_idle = (sde_enc->rc_state == SDE_ENC_RC_STATE_ON) ? true : false;
+		sde_connector_clk_ctrl(sde_enc->cur_master->connector, false, enter_idle);
 
 		/* disable SDE core clks */
 		pm_runtime_put_sync(drm_enc->dev->dev);
@@ -4440,6 +4439,37 @@ void sde_encoder_helper_update_out_fence_txq(struct sde_encoder_virt *sde_enc, b
 	SDE_EVT32(DRMID(sde_enc->crtc), is_vid);
 	sde_fence_update_hw_fences_txq(sde_crtc->output_fence, is_vid, 0, sde_kms ?
 		sde_kms->debugfs_hw_fence : 0);
+}
+
+u32 sde_encoder_helper_get_bw_update_time_lines(struct sde_encoder_virt *sde_enc)
+{
+	struct msm_mode_info *mode_info = &sde_enc->mode_info;
+	struct drm_display_mode *mode;
+	struct sde_kms *sde_kms;
+	u32 fps, height;
+	u64 line_time_ns;
+
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return 0;
+	}
+
+	mode = &sde_enc->crtc->state->mode;
+	fps = sde_encoder_get_fps(&sde_enc->base);
+	if (!fps) {
+		SDE_ERROR("fps not set\n");
+		return 0;
+	}
+
+	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_CMD_MODE))
+		height = mode->vdisplay;
+	else
+		height = mode_info->vtotal;
+
+	line_time_ns = DIV_ROUND_UP(NSEC_PER_SEC, fps * height);
+
+	return DIV_ROUND_UP(sde_kms->catalog->max_bw_upvote_threshold_ns, line_time_ns);
 }
 
 /**

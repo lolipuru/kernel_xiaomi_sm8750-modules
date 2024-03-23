@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -461,8 +461,48 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 			sde_enc->disp_info.is_te_using_watchdog_timer);
 }
 
-static void sde_encoder_phys_vid_setup_timing_engine(
-		struct sde_encoder_phys *phys_enc)
+void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_phys_vid *vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	struct msm_mode_info *info = &sde_enc->mode_info;
+	struct intf_panic_ctrl_cfg cfg = {0, };
+	struct intf_status intf_status = {0};
+	u32 bw_update_time_lines, avr_cutoff, vrefresh, max_fps, prefill_lines;
+
+	if (!info->qsync_min_fps)
+		goto end;
+
+	vrefresh = vid_enc->timing_params.vrefresh;
+	max_fps = sde_encoder_get_dfps_maxfps(phys_enc->parent);
+	vrefresh = (max_fps > vrefresh) ? max_fps : vrefresh;
+
+	prefill_lines = phys_enc->hw_intf->cap->prog_fetch_lines_worst_case;
+	prefill_lines = (vrefresh > DEFAULT_FPS) ?
+				DIV_ROUND_UP(prefill_lines * vrefresh, DEFAULT_FPS) : prefill_lines;
+
+	cfg.enable = true;
+	cfg.ext_vfp_start = phys_enc->cached_mode.vtotal;
+
+	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_status)
+		phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &intf_status);
+
+	bw_update_time_lines = sde_encoder_helper_get_bw_update_time_lines(sde_enc);
+	avr_cutoff = intf_status.is_prog_fetch_en ? 1 : 3;
+
+	/* panic level = vsync_period_slow - prog_fetch_start - bw-vote - AVR cutoff */
+	cfg.panic_level = phys_enc->cached_mode.vtotal - info->prefill_lines
+				- bw_update_time_lines - avr_cutoff;
+
+	SDE_EVT32(phys_enc->hw_intf->idx - INTF_0, cfg.enable, cfg.panic_level, cfg.ext_vfp_start,
+				bw_update_time_lines, max_fps, vrefresh, prefill_lines,
+				phys_enc->hw_intf->cap->prog_fetch_lines_worst_case, avr_cutoff);
+
+end:
+	phys_enc->hw_intf->ops.setup_intf_panic_ctrl(phys_enc->hw_intf, &cfg);
+}
+
+static void sde_encoder_phys_vid_setup_timing_engine(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_vid *vid_enc;
 	struct drm_display_mode mode;
@@ -547,6 +587,9 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 		programmable_fetch_config(phys_enc, &timing_params);
 
 exit:
+	if (sde_encoder_get_cesta_client(phys_enc->parent))
+		_sde_encoder_phys_vid_setup_panic_ctrl(phys_enc);
+
 	if (phys_enc->parent_ops.get_qsync_fps)
 		phys_enc->parent_ops.get_qsync_fps(
 			phys_enc->parent, &qsync_min_fps, phys_enc->connector->state);
