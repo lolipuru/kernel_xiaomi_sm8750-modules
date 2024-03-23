@@ -16,6 +16,18 @@
 
 #define MAX_CESTA_CLIENT_NAME_LEN	32
 
+/* SDE CESTA resources */
+#define SDE_CESTA_RESOURCE_GDSC_INIT	BIT(0)
+#define SDE_CESTA_RESOURCE_GDSC_ENABLE	BIT(1)
+#define SDE_CESTA_RESOURCE_GDSC_DISABLE	BIT(2)
+#define SDE_CESTA_RESOURCE_GDSC_HW_CTRL BIT(3)
+#define SDE_CESTA_RESOURCE_AOSS_USED	BIT(4)
+#define SDE_CESTA_RESOURCE_CRMB_USED	BIT(5)
+#define SDE_CESTA_RESOURCE_CRMB_PT_USED BIT(6)
+#define SDE_CESTA_RESOURCE_ALL_USED (SDE_CESTA_RESOURCE_AOSS_USED \
+					| SDE_CESTA_RESOURCE_CRMB_USED \
+					| SDE_CESTA_RESOURCE_CRMB_PT_USED)
+
 struct sde_cesta;
 
 /**
@@ -168,6 +180,7 @@ struct sde_cesta_hw_ops {
  * @crm_dev: CRM device pointer, used to communicate with CRM driver
  * @perf_cfg: object to store all the performance params set by sde_kms during bootup
  * @debug_mode: enables the logging for each register read/write
+ * @debugfs_root: pointer to cesta debugfs root
  */
 struct sde_cesta {
 	struct device *dev;
@@ -186,13 +199,14 @@ struct sde_cesta {
 
 	struct sde_cesta_hw_ops hw_ops;
 
-	bool sw_fs_enabled;
+	u32 resource_used;
 
 	struct icc_path *bus_hdl[MAX_SCC_BLOCK];
 	const struct device *crm_dev;
 
 	struct sde_cesta_perf_cfg perf_cfg;
 	u32 debug_mode;
+	struct dentry *debugfs_root;
 };
 
 /**
@@ -299,6 +313,18 @@ void sde_cesta_ctrl_setup(struct sde_cesta_client *client, struct sde_cesta_ctrl
  */
 void sde_cesta_get_status(struct sde_cesta_client *client, struct sde_cesta_scc_status *status);
 
+/**
+ * sde_cesta_get_phandle - retrieves the power handle context for the requested cesta instance
+ * @cesta_index: cesta instance used
+ */
+struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index);
+
+/**
+ * sde_cesta_splash_release - release the cesta related resources used for cont-splash
+ * @cesta_index: cesta instance used
+ */
+void sde_cesta_splash_release(u32 cesta_index);
+
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
 {
@@ -352,6 +378,15 @@ static inline void sde_cesta_ctrl_setup(struct sde_cesta_client *client,
 
 static inline void sde_cesta_get_status(struct sde_cesta_client *client,
 		struct sde_cesta_scc_status *status)
+{
+}
+
+static inline struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index)
+{
+	return NULL;
+}
+
+static inline void sde_cesta_splash_release(u32 cesta_index)
 {
 }
 

@@ -30,6 +30,18 @@ bool sde_cesta_is_enabled(u32 cesta_index)
 	return cesta_list[cesta_index] ? true : false;
 }
 
+struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index)
+{
+	struct sde_cesta *cesta;
+
+	if ((cesta_index >= MAX_CESTA_COUNT) || !sde_cesta_is_enabled(cesta_index))
+		return NULL;
+
+	cesta = cesta_list[cesta_index];
+
+	return &cesta->phandle;
+}
+
 void sde_cesta_update_perf_config(u32 cesta_index, struct sde_cesta_perf_cfg *cfg)
 {
 	struct sde_cesta *cesta;
@@ -44,6 +56,47 @@ void sde_cesta_update_perf_config(u32 cesta_index, struct sde_cesta_perf_cfg *cf
 	cesta = cesta_list[cesta_index];
 
 	memcpy(&cesta->perf_cfg, cfg, sizeof(struct sde_cesta_perf_cfg));
+}
+
+static struct clk *_sde_cesta_get_core_clk(struct sde_cesta *cesta)
+{
+	struct sde_power_handle *phandle;
+	struct dss_module_power *mp;
+	struct clk *core_clk = NULL;
+	int i;
+
+	phandle = &cesta->phandle;
+	mp = &phandle->mp;
+
+	for (i = 0; i < mp->num_clk; i++) {
+		if (!strcmp(mp->clk_config[i].clk_name, "core_clk")) {
+			core_clk = mp->clk_config[i].clk;
+			break;
+		}
+	}
+
+	return core_clk;
+}
+
+void sde_cesta_splash_release(u32 cesta_index)
+{
+	struct sde_cesta *cesta;
+	struct clk *core_clk;
+
+	if (!sde_cesta_is_enabled(cesta_index))
+		return;
+
+	cesta = cesta_list[cesta_index];
+
+	core_clk = _sde_cesta_get_core_clk(cesta);
+	if (!core_clk) {
+		SDE_ERROR_CESTA("core_clk not found\n");
+		return;
+	}
+
+	clk_set_rate(core_clk, 19200000);
+
+	SDE_EVT32(cesta_index);
 }
 
 void sde_cesta_ctrl_setup(struct sde_cesta_client *client, struct sde_cesta_ctrl_cfg *cfg)
@@ -88,8 +141,9 @@ int sde_cesta_clk_bw_check(struct sde_cesta_client *client, struct sde_cesta_par
 	struct sde_cesta *cesta;
 	struct sde_cesta_client *c;
 	struct sde_cesta_client_data *client_data;
-	u64 bw_ab, bw_ib = 0, core_clk_ab, core_clk_ib;
-	int ret = 0;
+	struct dss_module_power *mp;
+	u64 bw_ab, bw_ib = 0, core_clk_ab, core_clk_ib, core_clk_rate;
+	int i, ret = 0;
 
 	if (!client || !params || (client->cesta_index >= MAX_CESTA_COUNT)) {
 		SDE_DEBUG_CESTA("invalid values - client:%d, param:%d, cesta_index:%d\n",
@@ -134,12 +188,30 @@ int sde_cesta_clk_bw_check(struct sde_cesta_client *client, struct sde_cesta_par
 	}
 
 	/* Clk validation */
-	if (max(core_clk_ab, core_clk_ib) > cesta->perf_cfg.max_core_clk_rate) {
+	core_clk_rate = max(core_clk_ab, core_clk_ib);
+	if (core_clk_rate > cesta->perf_cfg.max_core_clk_rate) {
 		SDE_ERROR_CESTA("Clk exceeded - ab:%llu, ib:%llu, c_ab:%llu, c_ib:%llu, max:%llu\n",
 				core_clk_ab, core_clk_ib, params->data.core_clk_rate_ab,
 				params->data.core_clk_rate_ib, cesta->perf_cfg.max_core_clk_rate);
 		ret = -E2BIG;
 		goto end;
+	}
+
+	/* reserve core_clk in MMRM based on the consolidated clk value */
+	mp = &cesta->phandle.mp;
+	for (i = 0; i < mp->num_clk; i++) {
+		if (mp->clk_config[i].type != DSS_CLK_MMRM)
+			continue;
+
+		core_clk_rate = clk_round_rate(mp->clk_config[i].clk, core_clk_rate);
+		ret = sde_power_clk_set_rate(&cesta->phandle, mp->clk_config[i].clk_name,
+				core_clk_rate, MMRM_CLIENT_DATA_FLAG_RESERVE_ONLY);
+		if (ret) {
+			SDE_ERROR_CESTA("cannot reserve core clk rate:%llu, ret:%d\n",
+					core_clk_rate, ret);
+			ret = -E2BIG;
+			goto end;
+		}
 	}
 
 end:
@@ -343,6 +415,8 @@ skip_calc:
 				params->data.bw_ab, params->data.bw_ib);
 	}
 
+	cesta->resource_used |= SDE_CESTA_RESOURCE_CRMB_USED | SDE_CESTA_RESOURCE_CRMB_PT_USED;
+
 	/* update the client vote values */
 	memcpy(client_data, &params->data, sizeof(struct sde_cesta_client_data));
 
@@ -397,6 +471,8 @@ int sde_cesta_aoss_update(struct sde_cesta_client *client, enum sde_cesta_aoss_c
 				client->client_index, client->scc_index, cp_level, ret);
 	else
 		client->aoss_cp_level = cp_level;
+
+	cesta->resource_used |= SDE_CESTA_RESOURCE_AOSS_USED;
 
 	SDE_EVT32(client->client_index, client->scc_index, cp_level, ret);
 
@@ -455,42 +531,48 @@ int sde_cesta_resource_disable(u32 cesta_index)
 	struct sde_power_handle *phandle;
 	struct dss_module_power *mp;
 	struct clk *core_clk = NULL;
-	int ret, i;
+	int ret;
 
 	if (!sde_cesta_is_enabled(cesta_index))
 		return 0;
 
 	cesta = cesta_list[cesta_index];
 
-	if (cesta->sw_fs_enabled && cesta->fs) {
+	if (cesta->fs && (cesta->resource_used & SDE_CESTA_RESOURCE_ALL_USED)
+			&& !(cesta->resource_used & SDE_CESTA_RESOURCE_GDSC_HW_CTRL)) {
 		ret = regulator_set_mode(cesta->fs, REGULATOR_MODE_FAST);
 		if (ret) {
 			SDE_ERROR_CESTA("vdd reg fast mode set failed, ret:%d\n", ret);
 			return ret;
 		}
+		cesta->resource_used |= SDE_CESTA_RESOURCE_GDSC_HW_CTRL;
+		SDE_EVT32(cesta_index, cesta->resource_used);
 	}
 
 	phandle = &cesta->phandle;
 	mp = &phandle->mp;
 
-	for (i = 0; i < mp->num_clk; i++) {
-		if (!strcmp(mp->clk_config[i].clk_name, "core_clk")) {
-			core_clk = mp->clk_config[i].clk;
-			break;
-		}
+	core_clk = _sde_cesta_get_core_clk(cesta);
+	if (!core_clk) {
+		SDE_ERROR_CESTA("core_clk not found\n");
+		return -EINVAL;
 	}
 
 	ret = qcom_clk_crmb_set_rate(core_clk, CRM_SW_DRV, 0, 0, CRM_PWR_STATE0, 0, 0);
 	if (ret)
 		SDE_ERROR_CESTA("sw-client-0 vote for core-clk failed in disable, ret:%d\n", ret);
 
+	sde_power_mmrm_reserve(phandle);
 	msm_dss_enable_clk(mp->clk_config, mp->num_clk, false);
 
 	/* avoid regulator disable, once gdsc is put to hw-ctrl mode */
-	if (cesta->sw_fs_enabled) {
+	if (!(cesta->resource_used & SDE_CESTA_RESOURCE_GDSC_HW_CTRL)) {
 		if (cesta->pd_fs)
 			pm_runtime_put_sync(cesta->pd_fs);
-		cesta->sw_fs_enabled = false;
+		else if (cesta->fs)
+			regulator_disable(cesta->fs);
+		cesta->resource_used |= SDE_CESTA_RESOURCE_GDSC_DISABLE;
+		SDE_EVT32(cesta_index, cesta->resource_used);
 	}
 
 	return 0;
@@ -507,6 +589,25 @@ int sde_cesta_resource_enable(u32 cesta_index)
 		return 0;
 
 	cesta = cesta_list[cesta_index];
+
+	/*
+	 * skip after GDSC is put to HW_CTRL.
+	 * skip on the first enable as probe handles it
+	 */
+	if (!(cesta->resource_used & SDE_CESTA_RESOURCE_GDSC_HW_CTRL)
+			&& (cesta->resource_used & SDE_CESTA_RESOURCE_GDSC_DISABLE)) {
+		if (cesta->pd_fs)
+			ret = pm_runtime_get_sync(cesta->pd_fs);
+		else if (cesta->fs)
+			ret = regulator_enable(cesta->fs);
+		if (ret) {
+			SDE_ERROR_CESTA("regulator enabled failed, ret:%d\n", ret);
+			return ret;
+		}
+		cesta->resource_used |= SDE_CESTA_RESOURCE_GDSC_ENABLE;
+		SDE_EVT32(cesta_index, cesta->resource_used);
+	}
+
 	phandle = &cesta->phandle;
 	mp = &phandle->mp;
 	ret = msm_dss_enable_clk(mp->clk_config, mp->num_clk, true);
@@ -515,6 +616,87 @@ int sde_cesta_resource_enable(u32 cesta_index)
 
 	return ret;
 }
+
+#if defined(CONFIG_DEBUG_FS)
+static int _sde_debugfs_status_show(struct seq_file *s, void *data)
+{
+	struct sde_cesta *cesta;
+	struct sde_cesta_client *client;
+	struct sde_cesta_client_data *hw_data;
+	struct sde_cesta_scc_status status = {0, };
+	bool enabled = false;
+	u32 pwr_event;
+
+	if (!s || !s->private)
+		return -EINVAL;
+
+	cesta = s->private;
+
+	mutex_lock(&cesta->client_lock);
+
+	list_for_each_entry(client, &cesta->client_list, list) {
+
+		hw_data = &client->hw;
+		enabled |= client->enabled;
+
+		seq_printf(s, "client%d:%s en:%d\n", client->client_index, client->name,
+				client->enabled);
+		seq_printf(s, "\t pwr_override:%d vote_state:%d aoss_cp_level:%d\n",
+				client->pwr_st_override, client->vote_state, client->aoss_cp_level);
+
+		seq_printf(s, "\t HW-Client - core_clk[ab,ib]:%llu,%llu ",
+				hw_data->core_clk_rate_ab, hw_data->core_clk_rate_ib);
+		seq_printf(s, "bw[ab,ib]:%llu,%llu ", hw_data->bw_ab, hw_data->bw_ib);
+		seq_puts(s, "\n\n");
+	}
+
+	if (enabled && cesta->hw_ops.get_status && cesta->hw_ops.get_pwr_event) {
+		pwr_event = cesta->hw_ops.get_pwr_event(cesta);
+		seq_printf(s, "PWR_event:%d\n", pwr_event);
+
+		list_for_each_entry(client, &cesta->client_list, list) {
+			cesta->hw_ops.get_status(cesta, client->client_index, &status);
+
+			seq_printf(s, "SCC[%d] status - ", client->client_index);
+			seq_printf(s, "frame_region:%d scc_hshake:%d fsm_st:%d flush_miss_cnt:%d\n",
+					status.frame_region, status.sch_handshake, status.fsm_state,
+					status.flush_missed_counter);
+		}
+	}
+
+	seq_puts(s, "\n");
+	mutex_unlock(&cesta->client_lock);
+
+	return 0;
+}
+
+static int _sde_debugfs_status_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, _sde_debugfs_status_show, inode->i_private);
+}
+
+static const struct file_operations debugfs_status_fops = {
+	.open =		_sde_debugfs_status_open,
+	.read =		seq_read,
+	.llseek =	seq_lseek,
+	.release =	single_release,
+};
+
+static void _sde_cesta_init_debugfs(struct sde_cesta *cesta, char *name)
+{
+	cesta->debugfs_root = debugfs_create_dir(name, NULL);
+	if (!cesta->debugfs_root)
+		return;
+
+	debugfs_create_file("status", 0400, cesta->debugfs_root, cesta, &debugfs_status_fops);
+	debugfs_create_x32("debug_mode", 0600, cesta->debugfs_root, &cesta->debug_mode);
+}
+
+#else
+static void _sde_cesta_init_debugfs(struct sde_cesta *cesta, char *name)
+{
+}
+#endif /* defined(CONFIG_DEBUG_FS) */
 
 static int sde_cesta_get_io_resources(struct msm_io_res *io_res, void *data)
 {
@@ -535,7 +717,7 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sde_cesta *cesta;
-
+	int i;
 	struct msm_vm_ops vm_event_ops = {
 		.vm_get_io_resources = sde_cesta_get_io_resources,
 	};
@@ -549,6 +731,17 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 	if (!cesta) {
 		SDE_ERROR_CESTA("invalid sde cesta\n");
 		return -EINVAL;
+	}
+
+	sde_dbg_reg_register_base("sde_rsc_wrapper", cesta->wrapper_io.base,
+			cesta->wrapper_io.len, msm_get_phys_addr(pdev, "wrapper"), SDE_DBG_RSC);
+
+	for (i = 0; i < cesta->scc_count; i++) {
+		char blk_name[32];
+
+		snprintf(blk_name, sizeof(blk_name), "scc_%u", cesta->scc_index[i]);
+		sde_dbg_reg_register_base(blk_name, cesta->scc_io[i].base,
+			cesta->scc_io[i].len, msm_get_phys_addr(pdev, blk_name), SDE_DBG_RSC);
 	}
 
 	msm_register_vm_event(master, dev, &vm_event_ops, (void *)cesta);
@@ -587,7 +780,7 @@ static void sde_cesta_deinit(struct platform_device *pdev, struct sde_cesta *ces
 	if (!cesta)
 		return;
 
-	if (cesta->sw_fs_enabled) {
+	if (!(cesta->resource_used & SDE_CESTA_RESOURCE_GDSC_HW_CTRL)) {
 		if (cesta->pd_fs)
 			pm_runtime_put_sync(cesta->pd_fs);
 		else if (cesta->fs)
@@ -613,6 +806,7 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	struct sde_cesta *cesta;
 	int ret, i, index;
 	struct icc_path *path;
+	char name[MAX_CESTA_CLIENT_NAME_LEN];
 
 	cesta = devm_kzalloc(&pdev->dev, sizeof(struct sde_cesta), GFP_KERNEL);
 	if (!cesta)
@@ -702,7 +896,7 @@ static int sde_cesta_probe(struct platform_device *pdev)
 		SDE_ERROR_CESTA("regulator enabled failed, ret:%d\n", ret);
 		goto fail;
 	}
-	cesta->sw_fs_enabled = true;
+	cesta->resource_used = SDE_CESTA_RESOURCE_GDSC_INIT;
 
 	INIT_LIST_HEAD(&cesta->client_list);
 	mutex_init(&cesta->client_lock);
@@ -711,6 +905,9 @@ static int sde_cesta_probe(struct platform_device *pdev)
 
 	sde_cesta_hw_init(cesta);
 	cesta->hw_ops.init(cesta);
+
+	snprintf(name, MAX_CESTA_CLIENT_NAME_LEN, "%s%d", "sde_cesta_", index);
+	_sde_cesta_init_debugfs(cesta, name);
 
 	pr_info("sde cesta index:%d probed successfully\n", index);
 

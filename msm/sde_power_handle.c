@@ -821,7 +821,7 @@ void sde_power_resource_deinit(struct platform_device *pdev,
 		sde_rsc_client_destroy(phandle->rsc_client);
 }
 
-static void sde_power_mmrm_reserve(struct sde_power_handle *phandle)
+void sde_power_mmrm_reserve(struct sde_power_handle *phandle)
 {
 	int i;
 	struct dss_module_power *mp = &phandle->mp;
