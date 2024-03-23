@@ -16,18 +16,6 @@
 
 #define MAX_CESTA_CLIENT_NAME_LEN	32
 
-/* SDE CESTA resources */
-#define SDE_CESTA_RESOURCE_GDSC_INIT	BIT(0)
-#define SDE_CESTA_RESOURCE_GDSC_ENABLE	BIT(1)
-#define SDE_CESTA_RESOURCE_GDSC_DISABLE	BIT(2)
-#define SDE_CESTA_RESOURCE_GDSC_HW_CTRL BIT(3)
-#define SDE_CESTA_RESOURCE_AOSS_USED	BIT(4)
-#define SDE_CESTA_RESOURCE_CRMB_USED	BIT(5)
-#define SDE_CESTA_RESOURCE_CRMB_PT_USED BIT(6)
-#define SDE_CESTA_RESOURCE_ALL_USED (SDE_CESTA_RESOURCE_AOSS_USED \
-					| SDE_CESTA_RESOURCE_CRMB_USED \
-					| SDE_CESTA_RESOURCE_CRMB_PT_USED)
-
 struct sde_cesta;
 
 /**
@@ -122,6 +110,7 @@ enum sde_cesta_ctrl_pwr_req_mode {
  * @dual_dsi: indicate if the interface is of type dual-dsi
  * @avr_enable: avr freature is enabled
  * @auto_active_on_panic: set auto active signal on panic signal from INTF
+ * @hw_sleep_enable: enable hardware sleep during idle
  * req_mode: mode based on which scc initiates the voting
  */
 struct sde_cesta_ctrl_cfg {
@@ -131,6 +120,7 @@ struct sde_cesta_ctrl_cfg {
 	bool dual_dsi;
 	bool avr_enable;
 	bool auto_active_on_panic;
+	bool hw_sleep_enable;
 	enum sde_cesta_ctrl_pwr_req_mode req_mode;
 };
 
@@ -199,7 +189,7 @@ struct sde_cesta {
 
 	struct sde_cesta_hw_ops hw_ops;
 
-	u32 resource_used;
+	bool sw_fs_enabled;
 
 	struct icc_path *bus_hdl[MAX_SCC_BLOCK];
 	const struct device *crm_dev;

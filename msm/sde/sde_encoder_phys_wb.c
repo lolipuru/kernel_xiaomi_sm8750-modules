@@ -1825,6 +1825,8 @@ static void _sde_encoder_phys_wb_frame_done_helper(void *arg, bool frame_error)
 {
 	struct sde_encoder_phys_wb *wb_enc = arg;
 	struct sde_encoder_phys *phys_enc = &wb_enc->base;
+	struct sde_cesta_scc_status scc_status = {0, };
+	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 	u32 event = frame_error ? SDE_ENCODER_FRAME_EVENT_ERROR : 0;
 	u32 ubwc_error = 0, frame_count = 0;
 
@@ -1872,6 +1874,8 @@ end:
 			phys_enc->enable_state, event, atomic_read(&phys_enc->pending_kickoff_cnt),
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
 			ubwc_error, frame_error, frame_count, DPUID(phys_enc->parent->dev));
+	if (cesta_client)
+		sde_cesta_get_status(cesta_client, &scc_status);
 
 	wake_up_all(&phys_enc->pending_kickoff_wq);
 }
@@ -2688,6 +2692,7 @@ void sde_encoder_phys_wb_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	cfg->enable = true;
 	cfg->wb = true;
 	cfg->req_mode = SDE_CESTA_CTRL_REQ_IMMEDIATE;
+	cfg->hw_sleep_enable = false;
 	*req_flush = true;
 }
 

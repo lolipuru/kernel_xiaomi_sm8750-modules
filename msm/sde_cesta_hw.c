@@ -61,7 +61,8 @@ void _sde_cesta_hw_ctrl_setup(struct sde_cesta *cesta, u32 idx, struct sde_cesta
 	if (cfg->auto_active_on_panic)
 		val |= BIT(3);
 
-	val |= BIT(0);
+	if (cfg->hw_sleep_enable)
+		val |= BIT(0);
 
 	dss_reg_w(&cesta->scc_io[idx], SCC_CTRL, val, cesta->debug_mode);
 }

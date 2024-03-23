@@ -2310,6 +2310,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	struct sde_hw_ctl *ctl = NULL;
 	struct sde_ctl_cesta_cfg cfg = {0,};
 	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
+	enum sde_crtc_vm_req vm_req;
 	bool req_flush = false, req_scc = false;
 
 	if (!cesta_client || !sde_enc->crtc)
@@ -2330,6 +2331,23 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 	/* SCC configs */
 	cur_master->ops.cesta_ctrl_cfg(cur_master, &ctrl_cfg, &req_flush, &req_scc);
+
+	/*
+	 * Move to auto active on panic setting while releasing the VM & update
+	 * cesta ctrl/cesta flush. Update cesta_ctrl/cesta flush on acquing the VM
+	 * to set the older state.
+	 */
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+				CRTC_PROP_VM_REQ_STATE);
+	if ((vm_req == VM_REQ_RELEASE) && !ctrl_cfg.auto_active_on_panic) {
+		ctrl_cfg.auto_active_on_panic = true;
+		req_scc = true;
+		req_flush = true;
+	} else if ((vm_req == VM_REQ_ACQUIRE) && !ctrl_cfg.auto_active_on_panic) {
+		req_scc = true;
+		req_flush = true;
+	}
+
 	if (commit_state == SDE_PERF_DISABLE_COMMIT) {
 		sde_cesta_ctrl_setup(cesta_client, NULL);
 		sde_enc->cesta_enable_frame = true;
@@ -2355,7 +2373,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 		ctl->ops.cesta_flush(ctl, &cfg);
 
 	SDE_EVT32(DRMID(drm_enc), commit_state, cfg.index, cfg.vote_state, cfg.flags, req_flush,
-			req_scc, sde_enc->cesta_enable_frame);
+			req_scc, sde_enc->cesta_enable_frame, vm_req);
 }
 
 void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
