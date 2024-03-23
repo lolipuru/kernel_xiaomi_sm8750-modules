@@ -6776,6 +6776,7 @@ void ipa3_disable_clks(void)
 			IPAERR("unexpected gsi irq type: %d\n", type);
 			/* increase ipa3_active_clients for smp2p response */
 			atomic_inc(&ipa3_ctx->ipa3_active_clients.cnt);
+			atomic_set(&ipa3_ctx->ipa_clk_vote, 1);
 			ipa_assert();
 		}
 	}
