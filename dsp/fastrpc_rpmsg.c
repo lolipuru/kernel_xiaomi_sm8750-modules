@@ -110,6 +110,7 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	dma_set_mask_and_coherent(rdev, DMA_BIT_MASK(32));
 	INIT_LIST_HEAD(&data->users);
 	INIT_LIST_HEAD(&data->gmaps);
+	INIT_LIST_HEAD(&data->rootheap_bufs.list);
 	mutex_init(&data->wake_mutex);
 	spin_lock_init(&data->lock);
 	spin_lock_init(&(data->gmsg_log[domain_id].tx_lock));
