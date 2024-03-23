@@ -6138,14 +6138,15 @@ static const struct drm_encoder_funcs sde_encoder_funcs = {
 		.early_unregister = sde_encoder_early_unregister,
 };
 
-struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_info *disp_info)
+struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_info *disp_info,
+		struct sde_cesta_client *cesta_client)
 {
-	return sde_encoder_init_with_ops(dev, disp_info, NULL);
+	return sde_encoder_init_with_ops(dev, disp_info, NULL, cesta_client);
 }
 
 struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
-					      struct msm_display_info *disp_info,
-					      const struct sde_encoder_ops *ops)
+		struct msm_display_info *disp_info, const struct sde_encoder_ops *ops,
+		struct sde_cesta_client *cesta_client)
 {
 	struct msm_drm_private *priv = dev->dev_private;
 	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
@@ -6234,6 +6235,8 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 			sde_encoder_esd_trigger_work_handler);
 
 	memcpy(&sde_enc->disp_info, disp_info, sizeof(*disp_info));
+
+	sde_enc->cesta_client = cesta_client;
 
 	SDE_DEBUG_ENC(sde_enc, "created\n");
 

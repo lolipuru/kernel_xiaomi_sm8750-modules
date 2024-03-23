@@ -6196,11 +6196,12 @@ void dsi_display_set_active_state(struct dsi_display *display, bool is_active)
 }
 
 int dsi_display_drm_bridge_init(struct dsi_display *display,
-		struct drm_encoder *enc)
+		struct drm_encoder *enc, struct sde_cesta_client *cesta_client)
 {
-	int rc = 0;
+	int rc = 0, i;
 	struct dsi_bridge *bridge;
 	struct msm_drm_private *priv = NULL;
+	struct dsi_display_ctrl *ctrl;
 
 	if (!display || !display->drm_dev || !enc) {
 		DSI_ERR("invalid param(s)\n");
@@ -6235,6 +6236,15 @@ int dsi_display_drm_bridge_init(struct dsi_display *display,
 		rc = dsi_host_alloc_cmd_tx_buffer(display);
 		if (rc)
 			DSI_ERR("failed to allocate cmd tx buffer memory\n");
+	}
+
+	/* cache SDE CESTA client with ctrl for AOSS VCD voting */
+	display_for_each_ctrl(i, display) {
+		ctrl = &display->ctrl[i];
+		if (!ctrl->ctrl)
+			continue;
+
+		ctrl->ctrl->cesta_client = cesta_client;
 	}
 
 error:
