@@ -2672,8 +2672,15 @@ static int dsi_display_phy_power_on(struct dsi_display *display)
 	/* Sequence does not matter for split dsi usecases */
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
-		if (!ctrl->ctrl)
+		if (!ctrl->ctrl || !ctrl->phy)
 			continue;
+
+		/*
+		 * 0p9, 1p2 & refgen rails are voted through cesta in dsi_ctrl.
+		 * Skip the regulator vote here & just update the software states.
+		 */
+		if (ctrl->ctrl->cesta_client)
+			return 0;
 
 		rc = dsi_phy_set_power_state(ctrl->phy, true);
 		if (rc) {
@@ -2703,8 +2710,15 @@ static int dsi_display_phy_power_off(struct dsi_display *display)
 	/* Sequence does not matter for split dsi usecases */
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
-		if (!ctrl->phy)
+		if (!ctrl->ctrl || !ctrl->phy)
 			continue;
+
+		/*
+		 * 0p9, 1p2 & refgen rails are voted through cesta in dsi_ctrl.
+		 * Skip the regulator vote here & just update the software states.
+		 */
+		if (ctrl->ctrl->cesta_client)
+			return 0;
 
 		rc = dsi_phy_set_power_state(ctrl->phy, false);
 		if (rc) {
@@ -6196,11 +6210,12 @@ void dsi_display_set_active_state(struct dsi_display *display, bool is_active)
 }
 
 int dsi_display_drm_bridge_init(struct dsi_display *display,
-		struct drm_encoder *enc)
+		struct drm_encoder *enc, struct sde_cesta_client *cesta_client)
 {
-	int rc = 0;
+	int rc = 0, i;
 	struct dsi_bridge *bridge;
 	struct msm_drm_private *priv = NULL;
+	struct dsi_display_ctrl *ctrl;
 
 	if (!display || !display->drm_dev || !enc) {
 		DSI_ERR("invalid param(s)\n");
@@ -6235,6 +6250,15 @@ int dsi_display_drm_bridge_init(struct dsi_display *display,
 		rc = dsi_host_alloc_cmd_tx_buffer(display);
 		if (rc)
 			DSI_ERR("failed to allocate cmd tx buffer memory\n");
+	}
+
+	/* cache SDE CESTA client with ctrl for AOSS VCD voting */
+	display_for_each_ctrl(i, display) {
+		ctrl = &display->ctrl[i];
+		if (!ctrl->ctrl)
+			continue;
+
+		ctrl->ctrl->cesta_client = cesta_client;
 	}
 
 error:
@@ -7519,6 +7543,29 @@ end:
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, rx_len, rx_buffer[0], rx_buffer[1],
 			ktime_us_delta(ktime_get(), ts));
 	return rc;
+}
+
+int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state, bool idle_pc)
+{
+	struct dsi_display *disp = (struct dsi_display *)display;
+	struct dsi_display_ctrl *ctrl;
+	int i;
+
+	if (!disp || !disp->mdp_clk_handle) {
+		DSI_ERR("Invalid arg\n");
+		return -EINVAL;
+	}
+
+	/* update idle power collpase status in ctrl */
+	display_for_each_ctrl(i, disp) {
+		ctrl = &disp->ctrl[i];
+		if (!ctrl->ctrl)
+			continue;
+
+		ctrl->ctrl->idle_pc = idle_pc;
+	}
+
+	return dsi_display_clk_ctrl(disp->mdp_clk_handle, clk_type, clk_state);
 }
 
 static bool dsi_display_match_timings(const struct dsi_display_mode *mode1,
@@ -8847,7 +8894,8 @@ int dsi_display_post_enable(struct dsi_display *display)
 
 int dsi_display_pre_disable(struct dsi_display *display)
 {
-	int rc = 0;
+	struct dsi_display_ctrl *ctrl;
+	int rc = 0, i;
 
 	if (!display) {
 		DSI_ERR("Invalid params\n");
@@ -8855,6 +8903,15 @@ int dsi_display_pre_disable(struct dsi_display *display)
 	}
 
 	mutex_lock(&display->display_lock);
+
+	/* update idle power collpase status in ctrl to false to allow OFF */
+	display_for_each_ctrl(i, display) {
+		ctrl = &display->ctrl[i];
+		if (!ctrl->ctrl)
+			continue;
+
+		ctrl->ctrl->idle_pc = false;
+	}
 
 	/* enable the clk vote for CMD mode panels */
 	if (display->config.panel_mode == DSI_OP_CMD_MODE)

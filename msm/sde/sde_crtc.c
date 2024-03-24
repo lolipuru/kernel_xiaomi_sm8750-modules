@@ -56,6 +56,7 @@
 #include "msm_drv.h"
 #include "sde_vm.h"
 #include "sde_color_processing_aiqe.h"
+#include "sde_cesta.h"
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
@@ -3435,6 +3436,7 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc;
 	struct sde_splash_display *splash_display = NULL;
 	struct sde_kms *sde_kms;
+	struct drm_encoder *encoder;
 	bool cont_splash_enabled = false;
 	int i;
 	u32 power_on = 1;
@@ -3458,10 +3460,20 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 			cont_splash_enabled = true;
 	}
 
+	/* with cesta, clk & bw voting happens through encoder */
+	if (sde_crtc->cesta_client) {
+		drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			sde_encoder_complete_commit(encoder);
+		}
+	} else {
+		sde_core_perf_crtc_update(crtc, SDE_PERF_COMPLETE_COMMIT);
+	}
+
 	if ((crtc->state->active_changed || cont_splash_enabled) && crtc->state->active)
 		sde_crtc_event_notify(crtc, DRM_EVENT_CRTC_POWER, &power_on, sizeof(u32));
-
-	sde_core_perf_crtc_update(crtc, 0, false);
 }
 
 /**
@@ -4499,6 +4511,9 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		if (encoder->crtc != crtc)
 			continue;
 
+		if (!sde_crtc->cesta_client)
+			sde_crtc->cesta_client = sde_encoder_get_cesta_client(encoder);
+
 		/* encoder will trigger pending mask now */
 		sde_encoder_trigger_kickoff_pending(encoder);
 	}
@@ -4509,8 +4524,18 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		cstate->rsc_update = true;
 	}
 
-	/* update performance setting */
-	sde_core_perf_crtc_update(crtc, 1, false);
+	/* with cesta, clk & bw voting happens through encoder */
+	if (sde_crtc->cesta_client) {
+		encoder = NULL;
+		drm_for_each_encoder_mask(encoder, dev, crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			sde_encoder_begin_commit(encoder);
+		}
+	} else {
+		sde_core_perf_crtc_update(crtc, SDE_PERF_BEGIN_COMMIT);
+	}
 
 	/*
 	 * If no mixers have been allocated in sde_crtc_atomic_check(),
@@ -5542,8 +5567,10 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	}
 
 	/* avoid clk/bw downvote if cont-splash is enabled */
-	if (!in_cont_splash)
-		sde_core_perf_crtc_update(crtc, 0, true);
+	if (!in_cont_splash && !sde_crtc->cesta_client)
+		sde_core_perf_crtc_update(crtc, SDE_PERF_DISABLE_COMMIT);
+
+	sde_crtc->cesta_client = NULL;
 
 	drm_for_each_encoder_mask(encoder, crtc->dev,
 			crtc->state->encoder_mask) {
@@ -5683,13 +5710,10 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 		return;
 	}
 
-	drm_for_each_encoder_mask(encoder, crtc->dev,
-			crtc->state->encoder_mask) {
-		sde_encoder_register_frame_event_callback(encoder,
-				sde_crtc_frame_event_cb, crtc);
+	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+		sde_encoder_register_frame_event_callback(encoder, sde_crtc_frame_event_cb, crtc);
 		sde_crtc_static_img_control(crtc, CACHE_STATE_NORMAL,
-				sde_encoder_check_curr_mode(encoder,
-				MSM_DISPLAY_VIDEO_MODE));
+				sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE));
 	}
 
 	sde_crtc->enabled = true;
@@ -6707,6 +6731,12 @@ static void sde_crtc_install_perf_properties(struct sde_crtc *sde_crtc,
 			"rot_clk", 0, 0, U64_MAX,
 			sde_kms->perf.max_core_clk_rate,
 			CRTC_PROP_ROT_CLK);
+
+	if (sde_cesta_is_enabled(DPUID(sde_kms->dev)))
+		msm_property_install_range(&sde_crtc->property_info,
+			"ubwc_clk", 0x0, 0, U64_MAX,
+			sde_kms->perf.max_core_clk_rate,
+			CRTC_PROP_UBWC_CLK);
 
 	if (catalog->perf.max_bw_low)
 		sde_kms_info_add_keyint(info, "max_bandwidth_low",

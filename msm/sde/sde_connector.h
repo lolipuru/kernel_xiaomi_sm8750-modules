@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -217,8 +217,9 @@ struct sde_connector_ops {
 	 * @handle: Pointer to clk handle
 	 * @type: Type of clks
 	 * @enable: State of clks
+	 * @idle_pc: Idle power collapse status
 	 */
-	int (*clk_ctrl)(void *handle, u32 type, u32 state);
+	int (*clk_ctrl)(void *handle, u32 type, u32 state, bool idle_pc);
 
 	/**
 	 * set_power - update dpms setting
@@ -999,9 +1000,10 @@ int sde_connector_get_info(struct drm_connector *connector,
  * sde_connector_clk_ctrl - enables/disables the connector clks
  * @connector: Pointer to drm connector object
  * @enable: true/false to enable/disable
+ * @idle_pc: Idle power collapse status
  * Returns: Zero on success
  */
-int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable);
+int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable, bool idle_pc);
 
 /**
  * sde_connector_get_dpms - query dpms setting

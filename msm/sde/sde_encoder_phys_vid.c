@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -461,8 +461,48 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 			sde_enc->disp_info.is_te_using_watchdog_timer);
 }
 
-static void sde_encoder_phys_vid_setup_timing_engine(
-		struct sde_encoder_phys *phys_enc)
+void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_phys_vid *vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	struct msm_mode_info *info = &sde_enc->mode_info;
+	struct intf_panic_ctrl_cfg cfg = {0, };
+	struct intf_status intf_status = {0};
+	u32 bw_update_time_lines, avr_cutoff, vrefresh, max_fps, prefill_lines;
+
+	if (!info->qsync_min_fps)
+		goto end;
+
+	vrefresh = vid_enc->timing_params.vrefresh;
+	max_fps = sde_encoder_get_dfps_maxfps(phys_enc->parent);
+	vrefresh = (max_fps > vrefresh) ? max_fps : vrefresh;
+
+	prefill_lines = phys_enc->hw_intf->cap->prog_fetch_lines_worst_case;
+	prefill_lines = (vrefresh > DEFAULT_FPS) ?
+				DIV_ROUND_UP(prefill_lines * vrefresh, DEFAULT_FPS) : prefill_lines;
+
+	cfg.enable = true;
+	cfg.ext_vfp_start = phys_enc->cached_mode.vtotal;
+
+	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_status)
+		phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &intf_status);
+
+	bw_update_time_lines = sde_encoder_helper_get_bw_update_time_lines(sde_enc);
+	avr_cutoff = intf_status.is_prog_fetch_en ? 1 : 3;
+
+	/* panic level = vsync_period_slow - prog_fetch_start - bw-vote - AVR cutoff */
+	cfg.panic_level = phys_enc->cached_mode.vtotal - info->prefill_lines
+				- bw_update_time_lines - avr_cutoff;
+
+	SDE_EVT32(phys_enc->hw_intf->idx - INTF_0, cfg.enable, cfg.panic_level, cfg.ext_vfp_start,
+				bw_update_time_lines, max_fps, vrefresh, prefill_lines,
+				phys_enc->hw_intf->cap->prog_fetch_lines_worst_case, avr_cutoff);
+
+end:
+	phys_enc->hw_intf->ops.setup_intf_panic_ctrl(phys_enc->hw_intf, &cfg);
+}
+
+static void sde_encoder_phys_vid_setup_timing_engine(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_vid *vid_enc;
 	struct drm_display_mode mode;
@@ -547,6 +587,9 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 		programmable_fetch_config(phys_enc, &timing_params);
 
 exit:
+	if (sde_encoder_get_cesta_client(phys_enc->parent))
+		_sde_encoder_phys_vid_setup_panic_ctrl(phys_enc);
+
 	if (phys_enc->parent_ops.get_qsync_fps)
 		phys_enc->parent_ops.get_qsync_fps(
 			phys_enc->parent, &qsync_min_fps, phys_enc->connector->state);
@@ -563,6 +606,8 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 	struct sde_encoder_phys *phys_enc = arg;
 	struct sde_hw_ctl *hw_ctl;
 	struct intf_status intf_status = {0};
+	struct sde_cesta_scc_status scc_status = {0, };
+	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 	unsigned long lock_flags;
 	u32 flush_register = ~0;
 	u32 reset_status = 0;
@@ -634,6 +679,8 @@ not_flushed:
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
 			intf_status.frame_count, intf_status.line_count,
 			fence_ready, DPUID(phys_enc->parent->dev));
+	if (cesta_client)
+		sde_cesta_get_status(cesta_client, &scc_status);
 
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&phys_enc->pending_kickoff_wq);
@@ -1522,6 +1569,27 @@ void sde_encoder_phys_vid_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 	sde_mini_dump_add_va_region("sde_enc_phys_vid", sizeof(*vid_enc), vid_enc);
 }
 
+void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
+		struct sde_cesta_ctrl_cfg *cfg, bool *req_flush, bool *req_scc)
+{
+	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
+
+	cfg->enable = true;
+	cfg->avr_enable = qsync_en;
+	cfg->intf = phys_enc->intf_idx - INTF_0;
+	cfg->auto_active_on_panic = true;
+	cfg->req_mode = qsync_en ? SDE_CESTA_CTRL_REQ_PANIC_REGION :
+					SDE_CESTA_CTRL_REQ_IMMEDIATE;
+	cfg->hw_sleep_enable = true;
+
+	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)
+			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))
+		cfg->dual_dsi = true;
+
+	*req_flush = qsync_en;
+	*req_scc = sde_connector_is_qsync_updated(phys_enc->connector);
+}
+
 static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops)
 {
 	ops->is_master = sde_encoder_phys_vid_is_master;
@@ -1551,6 +1619,7 @@ static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops)
 	ops->get_underrun_line_count =
 		sde_encoder_phys_vid_get_underrun_line_count;
 	ops->add_to_minidump = sde_encoder_phys_vid_add_enc_to_minidump;
+	ops->cesta_ctrl_cfg = sde_encoder_phys_vid_cesta_ctrl_cfg;
 }
 
 struct sde_encoder_phys *sde_encoder_phys_vid_init(

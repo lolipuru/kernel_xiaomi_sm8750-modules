@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -43,6 +43,9 @@
 #define INTF_MDP_FRAME_COUNT            0x0A4
 #define INTF_FRAME_COUNT                0x0AC
 #define INTF_LINE_COUNT                 0x0B0
+#define INTF_RSCC_PANIC_CTRL            0x0D0
+#define INTF_RSCC_PANIC_LEVEL           0x0D4
+#define INTF_RSCC_PANIC_EXT_VFP_START   0x0D8
 
 #define INTF_DEFLICKER_CONFIG           0x0F0
 #define INTF_DEFLICKER_STRNG_COEFF      0x0F4
@@ -114,6 +117,10 @@
 #define INTF_TEAR_SYNC_WRCOUNT_EXT      0x2E4
 #define MDP_INTF_NUM_AVR_STEP		0x460
 #define MDP_INTF_CURRENT_AVR_STEP	0x464
+#define INTF_TEAR_PANIC_START           0x2E8
+#define INTF_TEAR_PANIC_WINDOW          0x2EC
+#define INTF_TEAR_WAKEUP_START          0x2F0
+#define INTF_TEAR_WAKEUP_WINDOW         0x2F4
 
 static struct sde_intf_cfg *_intf_offset(enum sde_intf intf,
 		struct sde_mdss_cfg *m,
@@ -1135,6 +1142,43 @@ static bool sde_hw_intf_is_te_32bit_supported(struct sde_hw_intf *intf)
 	return (intf->cap->features & BIT(SDE_INTF_TE_32BIT));
 }
 
+static void sde_hw_intf_setup_panic_wakeup(struct sde_hw_intf *intf,
+		struct intf_panic_wakeup_cfg *cfg)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 val;
+
+	if (!intf || !cfg)
+		return;
+
+	c = &intf->hw;
+
+	SDE_REG_WRITE(c, INTF_TEAR_PANIC_START, cfg->panic_start);
+	SDE_REG_WRITE(c, INTF_TEAR_PANIC_WINDOW, cfg->panic_window);
+	SDE_REG_WRITE(c, INTF_TEAR_WAKEUP_START, cfg->wakeup_start);
+	SDE_REG_WRITE(c, INTF_TEAR_WAKEUP_WINDOW, cfg->wakeup_window);
+
+	val = SDE_REG_READ(c, INTF_TEAR_TEAR_CHECK_EN);
+	val |= BIT(4) | BIT(5);
+	SDE_REG_WRITE(c, INTF_TEAR_TEAR_CHECK_EN, val);
+}
+
+static void sde_hw_intf_setup_panic_ctrl(struct sde_hw_intf *intf,
+		struct intf_panic_ctrl_cfg *cfg)
+{
+	struct sde_hw_blk_reg_map *c;
+
+	if (!intf || !cfg)
+		return;
+
+	c = &intf->hw;
+
+	SDE_REG_WRITE(c, INTF_RSCC_PANIC_CTRL, cfg->enable ? BIT(0) : 0);
+	SDE_REG_WRITE(c, INTF_RSCC_PANIC_LEVEL, cfg->panic_level);
+	SDE_REG_WRITE(c, INTF_RSCC_PANIC_EXT_VFP_START,
+			cfg->enable ? cfg->ext_vfp_start : 0xFFFFFFFF);
+}
+
 static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		unsigned long cap, unsigned long mdss_cap)
 {
@@ -1152,6 +1196,9 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 	ops->enable_compressed_input = sde_hw_intf_enable_compressed_input;
 	ops->enable_wide_bus = sde_hw_intf_enable_wide_bus;
 	ops->is_te_32bit_supported = sde_hw_intf_is_te_32bit_supported;
+
+	if (cap & BIT(SDE_INTF_PANIC_CTRL))
+		ops->setup_intf_panic_ctrl = sde_hw_intf_setup_panic_ctrl;
 
 	if (cap & BIT(SDE_INTF_STATUS))
 		ops->get_status = sde_hw_intf_v1_get_status;
@@ -1184,6 +1231,9 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->vsync_sel = sde_hw_intf_vsync_sel;
 		ops->check_and_reset_tearcheck = sde_hw_intf_v1_check_and_reset_tearcheck;
 		ops->override_tear_rd_ptr_val = sde_hw_intf_override_tear_rd_ptr_val;
+
+		if (cap & BIT(SDE_INTF_PANIC_CTRL))
+			ops->setup_te_panic_wakeup = sde_hw_intf_setup_panic_wakeup;
 
 		if (cap & BIT(SDE_INTF_TEAR_TE_LEVEL_MODE))
 			ops->enable_te_level_trigger = sde_hw_intf_enable_te_level_mode;

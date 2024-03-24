@@ -630,6 +630,7 @@ enum {
  * @SDE_CTL_HW_FENCE_DIR_WRITE  CTL support hw fencing dir writes
  * @SDE_CTL_NO_LAYER_EXT        CTL removal of CTL_LAYER_EXTx registers and addition
  *                              of active bits for pipes and layer mixers
+ * @SDE_CTL_CESTA_FLUSH         CTL supports display cesta flush programming
  * @SDE_CTL_MAX
  */
 enum {
@@ -643,6 +644,7 @@ enum {
 	SDE_CTL_HW_FENCE_TRIGGER_SEL,
 	SDE_CTL_HW_FENCE_DIR_WRITE,
 	SDE_CTL_NO_LAYER_EXT,
+	SDE_CTL_CESTA_FLUSH,
 	SDE_CTL_MAX
 };
 
@@ -668,6 +670,7 @@ enum {
  * @SDE_INTF_TE_LEVEL_TRIGGER   INTF block has TE Level trigger gating support
  * @SDE_INTF_TEAR_TE_LEVEL_MODE	INTF block has TE Level mode support
  * @SDE_INTF_NUM_AVR_STEP       INTF block has NUM_AVR_STEP support
+ * @SDE_INTF_PANIC_CTRL         INTF block has panic in vid mode & panic/wakup control in cmd mode
  * @SDE_INTF_MAX
  */
 enum {
@@ -690,6 +693,7 @@ enum {
 	SDE_INTF_TE_LEVEL_TRIGGER,
 	SDE_INTF_TEAR_TE_LEVEL_MODE,
 	SDE_INTF_NUM_AVR_STEP,
+	SDE_INTF_PANIC_CTRL,
 	SDE_INTF_MAX
 };
 
@@ -2034,6 +2038,7 @@ struct sde_perf_cfg {
  * @max_mixer_width     max layer mixer line width
  * @max_mixer_blendstages       max layer mixer blend stages (z orders)
  * @max_cwb             max number of dcwb/cwb supported
+ * @max_bw_upvote_threshold_ns bandwidth upvote threshold with cesta/rscc
  * @vbif_qos_nlvl       number of vbif QoS priority levels
  * @qos_target_time_ns  normalized qos target time for line-based qos
  * @macrotile_mode      UBWC parameter for macro tile channel distribution
@@ -2159,6 +2164,7 @@ struct sde_mdss_cfg {
 	u32 max_mixer_width;
 	u32 max_mixer_blendstages;
 	u32 max_cwb;
+	u32 max_bw_upvote_threshold_ns;
 
 	/* Configs */
 	u32 vbif_qos_nlvl;
