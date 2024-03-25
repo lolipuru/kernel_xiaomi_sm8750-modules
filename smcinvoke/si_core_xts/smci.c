@@ -1073,8 +1073,16 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 			goto wait_on_request;
 
 		cb_txn = get_txn_for_state_transition(si, accept->txn_id, XST_PROCESSED);
-		if (!cb_txn)
-			return -EINVAL;
+		if (!cb_txn) {
+
+			/* We get here, if the invoke thread goes away, e.g. timed out or killed. */
+			/* In correct implementation we should return to userspace for the callback
+			 * server to cleanup. However, the libMinkDescriptor will kill the thread
+			 * if returns error. We stick to the wrong design :(.
+			 */
+
+			goto wait_on_request;
+		}
 
 		errno = accept->result;
 		if (!errno) {
@@ -1210,12 +1218,35 @@ static long server_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return -EFAULT;
 
 		ret = process_accept_req(si, &accept);
-		if (!ret) {
+		if (ret == -ERESTARTSYS) {
+			struct smcinvoke_accept __user *a = (struct smcinvoke_accept __user *)arg;
 
-			/* TODO. We need to do some cleanup for 'process_accept_req'. */
+			/* BAD IOCTL UAPI DESIGN! */
 
-			if (copy_to_user((void __user *)arg, &accept, sizeof(accept)))
+			/* We do this because same IOCTL command has been used for two different
+			 * purposes (submit response + pick request). 'ERESTARTSYS' means we were
+			 * handling second part of the IOCTL when signal arrived.
+			 */
+
+			/* We need to reset 'has_resp' so if the IOCTL call restarted we
+			 * resume from second half of the IOCTL. I did not use an state for 'si'
+			 * as restart is not guaranteed.
+			 */
+
+			if (put_user(0, &a->has_resp))
 				return -EFAULT;
+
+		} else if (!ret) {
+
+			/* We picked a request; and submitted any pending response.*/
+			accept.has_resp = 0;
+
+			if (copy_to_user((void __user *)arg, &accept, sizeof(accept))) {
+
+				/* TODO. We need to do some cleanup for 'process_accept_req'. */
+
+				return -EFAULT;
+			}
 		}
 
 		break;
@@ -1425,6 +1456,8 @@ static int qtee_release(struct inode *nodp, struct file *filp)
 	struct si_object *object = filp->private_data;
 
 	/* The matching 'get_si_object' is in 'get_u_handle_from_si_object'. */
+
+	pr_info("%s released.\n", si_object_name(object));
 
 	put_si_object(object);
 
