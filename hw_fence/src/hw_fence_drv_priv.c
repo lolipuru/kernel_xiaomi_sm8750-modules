@@ -872,7 +872,11 @@ int hw_fence_init_controller_signal(struct hw_fence_driver_data *drv_data,
 			MSM_HW_FENCE_MAX_SIGNAL_PER_CLIENT - 1:
 		/* nothing to initialize for VPU client */
 		break;
-	case HW_FENCE_CLIENT_ID_IFE0 ... HW_FENCE_CLIENT_ID_IFE7 +
+	case HW_FENCE_CLIENT_ID_IPA ... HW_FENCE_CLIENT_ID_IPA +
+			MSM_HW_FENCE_MAX_SIGNAL_PER_CLIENT - 1:
+		/* nothing to initialize for IPA clients */
+		break;
+	case HW_FENCE_CLIENT_ID_IFE0 ... HW_FENCE_CLIENT_ID_IFE11 +
 			MSM_HW_FENCE_MAX_SIGNAL_PER_CLIENT - 1:
 		/* nothing to initialize for IFE clients */
 		break;
@@ -1532,7 +1536,6 @@ int hw_fence_create(struct hw_fence_driver_data *drv_data,
 {
 	u32 client_id = hw_fence_client->client_id;
 	struct msm_hw_fence *hw_fences_tbl = drv_data->hw_fences_tbl;
-
 	int ret = 0;
 
 	/* allocate hw fence in table */
@@ -1541,6 +1544,13 @@ int hw_fence_create(struct hw_fence_driver_data *drv_data,
 		HWFNC_ERR("Fail to create fence client:%u ctx:%llu seqno:%llu\n",
 			client_id, context, seqno);
 		ret = -EINVAL;
+	}
+
+	if (hw_fence_client->skip_fctl_ref) {
+		ret = hw_fence_destroy_refcount(drv_data, *hash, HW_FENCE_FCTL_REFCOUNT);
+		if (ret)
+			HWFNC_ERR("Can't remove fctl ref client:%u ctx:%llu seqno:%llu hash:%llu\n",
+				client_id, context, seqno, *hash);
 	}
 
 	return ret;

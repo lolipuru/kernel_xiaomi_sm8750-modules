@@ -14,9 +14,9 @@
 
 /**
  * HW_FENCE_MAX_CLIENT_TYPE_CONFIGURABLE:
- * Maximum number of client types with configurable number of sub-clients (e.g. IPE, VPU, IFE)
+ * Maximum number of client types with configurable number of sub-clients (e.g. IPE, VPU, IFE, IPA)
  */
-#define HW_FENCE_MAX_CLIENT_TYPE_CONFIGURABLE 10
+#define HW_FENCE_MAX_CLIENT_TYPE_CONFIGURABLE 15
 
 /**
  * HW_FENCE_MAX_STATIC_CLIENTS_INDEX:
@@ -173,5 +173,16 @@ enum hw_fence_client_id hw_fence_utils_get_client_id_priv(struct hw_fence_driver
  * Returns: number of client queues
  */
 int hw_fence_utils_get_queues_num(struct hw_fence_driver_data *drv_data, int client_id);
+
+/**
+ * hw_fence_utils_get_skip_fctl_ref() - Returns if client avoids creating fences with fctl
+ *                                      refcount initialized.
+ *
+ * @drv_data: driver data
+ * @client_id: hw fence driver client id
+ *
+ * Returns: number of client queues
+ */
+int hw_fence_utils_get_skip_fctl_ref(struct hw_fence_driver_data *drv_data, int client_id);
 
 #endif /* __HW_FENCE_DRV_UTILS_H */
