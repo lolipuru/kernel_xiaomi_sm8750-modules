@@ -47,6 +47,7 @@
 #define LPASS_CDC_TX_MACRO_AMIC_UNMUTE_DELAY_MS	100
 #define LPASS_CDC_TX_MACRO_DMIC_HPF_DELAY_MS	300
 #define LPASS_CDC_TX_MACRO_AMIC_HPF_DELAY_MS	300
+#define LPASS_CDC_TX_MACRO_DEC_UNMUTE_DELAY_MS  10
 
 static int tx_unmute_delay = LPASS_CDC_TX_MACRO_DMIC_UNMUTE_DELAY_MS;
 module_param(tx_unmute_delay, int, 0664);
@@ -116,6 +117,12 @@ struct tx_mute_work {
 	struct delayed_work dwork;
 };
 
+struct tx_dec_unmute_work {
+	struct lpass_cdc_tx_macro_priv *tx_priv;
+	int dai_id;
+	struct delayed_work dwork;
+};
+
 struct hpf_work {
 	struct lpass_cdc_tx_macro_priv *tx_priv;
 	u8 decimator;
@@ -131,6 +138,7 @@ struct lpass_cdc_tx_macro_priv {
 	struct mutex mclk_lock;
 	struct mutex wlock;
 	struct snd_soc_component *component;
+	struct tx_dec_unmute_work tx_dec_unmute_work;
 	struct hpf_work tx_hpf_work[NUM_DECIMATORS];
 	struct tx_mute_work tx_mute_dwork[NUM_DECIMATORS];
 	u16 dmic_clk_div;
@@ -507,6 +515,30 @@ static void lpass_cdc_tx_macro_mute_update_callback(struct work_struct *work)
 	dev_dbg(tx_priv->dev, "%s: decimator %u unmute\n",
 		__func__, decimator);
 	lpass_cdc_tx_macro_wake_enable(tx_priv, 0);
+}
+
+static void mute_stream_dec_unmute(struct work_struct *work)
+{
+	struct delayed_work *unmute_delayed_work = NULL;
+	struct tx_dec_unmute_work *tx_dec_unmute_work = NULL;
+	struct lpass_cdc_tx_macro_priv *tx_priv = NULL;
+	struct snd_soc_component *component = NULL;
+	int dai_id = 0;
+	u16 tx_mute_ctl_reg = 0;
+	u32 decimator = 0;
+
+	unmute_delayed_work = to_delayed_work(work);
+	tx_dec_unmute_work = container_of(unmute_delayed_work, struct tx_dec_unmute_work, dwork);
+	tx_priv = tx_dec_unmute_work->tx_priv;
+	component = tx_priv->component;
+	dai_id = tx_dec_unmute_work->dai_id;
+
+	for_each_set_bit(decimator, &tx_priv->active_ch_mask[dai_id],
+		LPASS_CDC_TX_MACRO_DEC_MAX) {
+		tx_mute_ctl_reg = LPASS_CDC_TX0_TX_PATH_CTL +
+			LPASS_CDC_TX_MACRO_TX_PATH_OFFSET * decimator;
+		snd_soc_component_update_bits(component, tx_mute_ctl_reg, 0x10, 0x00);
+	}
 }
 
 static int lpass_cdc_tx_macro_put_dec_enum(struct snd_kcontrol *kcontrol,
@@ -1256,6 +1288,7 @@ static int lpass_cdc_tx_mute_stream(struct snd_soc_dai *dai, int mute, int strea
 	struct device *tx_dev = NULL;
 	u16 tx_mute_ctl_reg = 0;
 	u16 adc_mux_reg = 0;
+	bool work_scheduled = false;
 
 	if (!lpass_cdc_tx_macro_get_data(component, &tx_dev, &tx_priv, __func__))
 		return -EINVAL;
@@ -1276,8 +1309,16 @@ static int lpass_cdc_tx_mute_stream(struct snd_soc_dai *dai, int mute, int strea
 			snd_soc_component_update_bits(component, tx_mute_ctl_reg, 0x40, 0x40);
 			usleep_range(2000, 2100);
 			snd_soc_component_update_bits(component, tx_mute_ctl_reg, 0x40, 0x00);
-			usleep_range(10000, 10100);
-			snd_soc_component_update_bits(component, tx_mute_ctl_reg, 0x10, 0x00);
+			tx_priv->tx_dec_unmute_work.dai_id = dai->id;
+			/*
+			 * Schedule dwork after 10MS to unmute the dec to unblock the main thread
+			 */
+			if (!work_scheduled) {
+				queue_delayed_work(system_freezable_wq,
+					&tx_priv->tx_dec_unmute_work.dwork,
+					msecs_to_jiffies(LPASS_CDC_TX_MACRO_DEC_UNMUTE_DELAY_MS));
+				work_scheduled = true;
+			}
 		}
 		dev_dbg(component->dev, "capture: TX decimator %d %s\n", decimator,
 				(mute ? "muted" : "unmuted"));
@@ -2088,6 +2129,10 @@ static int lpass_cdc_tx_macro_init(struct snd_soc_component *component)
 		INIT_DELAYED_WORK(&tx_priv->tx_mute_dwork[i].dwork,
 			  lpass_cdc_tx_macro_mute_update_callback);
 	}
+
+	tx_priv->tx_dec_unmute_work.tx_priv = tx_priv;
+	INIT_DELAYED_WORK(&tx_priv->tx_dec_unmute_work.dwork,
+		mute_stream_dec_unmute);
 	tx_priv->component = component;
 
 	for (i = 0; i < ARRAY_SIZE(lpass_cdc_tx_macro_reg_init); i++)
@@ -2211,6 +2256,8 @@ static int lpass_cdc_tx_macro_remove(struct platform_device *pdev)
 	if (!tx_priv)
 		return -EINVAL;
 
+	cancel_delayed_work_sync(
+		&tx_priv->tx_dec_unmute_work.dwork);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	mutex_destroy(&tx_priv->mclk_lock);
