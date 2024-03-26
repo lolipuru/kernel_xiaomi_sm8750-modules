@@ -402,12 +402,6 @@ int msm_hw_fence_wait_update_v2(void *client_handle,
 		return -EINVAL;
 	}
 
-	if (hw_fence_client->client_id > hw_fence_drv_data->rxq_clients_num) {
-		HWFNC_ERR("Transmit-only client client_id:%d client_id_ext:%d register for wait\n",
-			hw_fence_client->client_id, hw_fence_client->client_id_ext);
-		return -EINVAL;
-	}
-
 	HWFNC_DBG_H("+\n");
 
 	/* Process all the list of fences */
