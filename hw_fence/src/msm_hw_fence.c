@@ -9,7 +9,7 @@
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/version.h>
-#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
 #include <linux/remoteproc/qcom_rproc.h>
 #endif
 #include <linux/kthread.h>
@@ -32,7 +32,7 @@ static int _set_power_vote_if_needed(struct hw_fence_driver_data *drv_data,
 	if (drv_data->has_soccp &&
 			hw_fence_client->client_id_ext >= HW_FENCE_CLIENT_ID_VAL0 &&
 			hw_fence_client->client_id_ext <= HW_FENCE_CLIENT_ID_VAL6) {
-#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
 		ret = rproc_set_state(drv_data->soccp_rproc, state);
 #else
 		ret = -EINVAL;
