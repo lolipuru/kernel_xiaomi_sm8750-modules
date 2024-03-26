@@ -430,6 +430,7 @@ struct cam_icp_hw_ctx_data {
 	void *context_priv;
 	void *hw_mgr_priv;
 	struct cam_icp_hw_device_info *device_info;
+	struct mutex ctx_mutex;
 	uint32_t fw_handle;
 	uint32_t scratch_mem_size;
 	struct cam_icp_acquire_dev_info *icp_dev_acquire_info;

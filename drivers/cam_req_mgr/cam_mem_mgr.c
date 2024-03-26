@@ -1158,7 +1158,9 @@ static int cam_mem_util_get_dma_buf(size_t len,
 			goto release_heap;
 		}
 
-		*buf = dma_heap_buffer_alloc(heap, len, O_RDWR, 0);
+		if (heap)
+			*buf = dma_heap_buffer_alloc(heap, len, O_RDWR, 0);
+
 		if (IS_ERR(*buf)) {
 			rc = PTR_ERR(*buf);
 			CAM_ERR(CAM_MEM,

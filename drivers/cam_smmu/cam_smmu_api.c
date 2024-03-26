@@ -2722,6 +2722,12 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 			goto err_detach;
 		}
 
+		if (!table->sgl) {
+			rc = -EINVAL;
+			CAM_ERR(CAM_SMMU, "Error: table sgl is null");
+			goto err_unmap_sg;
+		}
+
 		domain = iommu_cb_set.cb_info[idx].domain;
 		if (!domain) {
 			CAM_ERR(CAM_SMMU, "CB has no domain set");
@@ -2729,7 +2735,6 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 		}
 
 		rc = cam_smmu_alloc_iova(*len_ptr, iommu_cb_set.cb_info[idx].handle, &iova);
-
 		if (rc < 0) {
 			CAM_ERR(CAM_SMMU,
 				"IOVA alloc failed for shared memory, size=%zu, idx=%d, handle=%d",
@@ -2744,7 +2749,6 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 
 		size = cam_iommu_map_sg(domain, iova, table->sgl, table->orig_nents,
 				prot);
-
 		if (size < 0) {
 			CAM_ERR(CAM_SMMU, "IOMMU mapping failed");
 			rc = cam_smmu_free_iova(iova,
@@ -2783,6 +2787,14 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 	}
 
 	CAM_DBG(CAM_SMMU,
+		"DMA buf: %pK, device: %pK, attach: %pK, table: %pK",
+		(void *)buf,
+		(void *)iommu_cb_set.cb_info[idx].dev,
+		(void *)attach, (void *)table);
+	CAM_DBG(CAM_SMMU, "table sgl: %pK, rc: %d, dma_address: 0x%x",
+		(void *)table->sgl, rc,
+		(unsigned int)table->sgl->dma_address);
+	CAM_DBG(CAM_SMMU,
 		"iova=%pK, region_id=%d, paddr=0x%llx, len=%zu, dma_map_attrs=%d",
 		iova, region_id, *paddr_ptr, *len_ptr, attach->dma_map_attrs);
 
@@ -2791,21 +2803,6 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 		CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts1, ts2, microsec);
 		trace_cam_log_event("SMMUMapProfile", "size and time in micro",
 			*len_ptr, microsec);
-	}
-
-	if (table->sgl) {
-		CAM_DBG(CAM_SMMU,
-			"DMA buf: %pK, device: %pK, attach: %pK, table: %pK",
-			(void *)buf,
-			(void *)iommu_cb_set.cb_info[idx].dev,
-			(void *)attach, (void *)table);
-		CAM_DBG(CAM_SMMU, "table sgl: %pK, rc: %d, dma_address: 0x%x",
-			(void *)table->sgl, rc,
-			(unsigned int)table->sgl->dma_address);
-	} else {
-		rc = -EINVAL;
-		CAM_ERR(CAM_SMMU, "Error: table sgl is null");
-		goto err_unmap_sg;
 	}
 
 	/* fill up mapping_info */
@@ -2873,7 +2870,6 @@ static int cam_smmu_map_buffer_and_add_to_list(int idx, int ion_fd,
 
 	rc = cam_smmu_map_buffer_validate(buf, idx, dma_dir, paddr_ptr, len_ptr,
 		region_id, dis_delayed_unmap, &mapping_info);
-
 	if (rc) {
 		CAM_ERR(CAM_SMMU, "buffer validation failure");
 		return rc;
