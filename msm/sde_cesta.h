@@ -344,6 +344,12 @@ void sde_cesta_splash_release(u32 cesta_index);
 int sde_cesta_sw_client_update(u32 cesta_index, struct sde_cesta_sw_client_data *data,
 			enum sde_cesta_sw_client_update_flag flag);
 
+/**
+ * sde_cesta_get_core_clk_rate - get the consolidated core-clk rate
+ * @cesta_index: cesta instance used
+ */
+u64 sde_cesta_get_core_clk_rate(u32 cesta_index);
+
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
 {
@@ -411,6 +417,11 @@ static inline void sde_cesta_splash_release(u32 cesta_index)
 
 static inline int sde_cesta_sw_client_update(u32 cesta_index,
 		struct sde_cesta_sw_client_data *data, enum sde_cesta_sw_client_update_flag flag)
+{
+	return 0;
+}
+
+static inline u64 sde_cesta_get_core_clk_rate(u32 cesta_index)
 {
 	return 0;
 }

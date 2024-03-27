@@ -183,8 +183,10 @@ int sde_cesta_clk_bw_check(struct sde_cesta_client *client, struct sde_cesta_par
 
 	/* BW validation */
 	if (max(bw_ab, bw_ib) > (cesta->perf_cfg.max_bw_kbps * 1000ULL)) {
-		SDE_ERROR_CESTA("BW exceeded - ab:%llu, ib:%llu, c_ab:%llu, max_kbps:%llu\n",
-				bw_ab, bw_ib, params->data.bw_ab, cesta->perf_cfg.max_bw_kbps);
+		SDE_ERROR_CESTA(
+		  "client:%d/%d, BW exceeded - ab:%llu, ib:%llu, c_ab:%llu, max_kbps:%llu\n",
+				client->client_index, client->scc_index, bw_ab, bw_ib,
+				params->data.bw_ab, cesta->perf_cfg.max_bw_kbps);
 		ret = -E2BIG;
 		goto end;
 	}
@@ -192,9 +194,11 @@ int sde_cesta_clk_bw_check(struct sde_cesta_client *client, struct sde_cesta_par
 	/* Clk validation */
 	core_clk_rate = max(core_clk_ab, core_clk_ib);
 	if (core_clk_rate > cesta->perf_cfg.max_core_clk_rate) {
-		SDE_ERROR_CESTA("Clk exceeded - ab:%llu, ib:%llu, c_ab:%llu, c_ib:%llu, max:%llu\n",
-				core_clk_ab, core_clk_ib, params->data.core_clk_rate_ab,
-				params->data.core_clk_rate_ib, cesta->perf_cfg.max_core_clk_rate);
+		SDE_ERROR_CESTA(
+		  "client:%d/%d, Clk exceeded - ab:%llu, ib:%llu, c_ab:%llu, c_ib:%llu, max:%llu\n",
+				client->client_index, client->scc_index, core_clk_ab, core_clk_ib,
+				params->data.core_clk_rate_ab, params->data.core_clk_rate_ib,
+				cesta->perf_cfg.max_core_clk_rate);
 		ret = -E2BIG;
 		goto end;
 	}
@@ -209,7 +213,8 @@ int sde_cesta_clk_bw_check(struct sde_cesta_client *client, struct sde_cesta_par
 		ret = sde_power_clk_set_rate(&cesta->phandle, mp->clk_config[i].clk_name,
 				core_clk_rate, MMRM_CLIENT_DATA_FLAG_RESERVE_ONLY);
 		if (ret) {
-			SDE_ERROR_CESTA("cannot reserve core clk rate:%llu, ret:%d\n",
+			SDE_ERROR_CESTA("client:%d/%d, cannot reserve core clk rate:%llu, ret:%d\n",
+					client->client_index, client->scc_index,
 					core_clk_rate, ret);
 			ret = -E2BIG;
 			goto end;
@@ -217,6 +222,21 @@ int sde_cesta_clk_bw_check(struct sde_cesta_client *client, struct sde_cesta_par
 	}
 
 end:
+	if (ret) {
+		list_for_each_entry(c, &cesta->client_list, list) {
+			client_data = &c->hw;
+			SDE_EVT32(c->client_index, c->scc_index, c->enabled, c->pwr_st_override,
+				client_data->core_clk_rate_ab, client_data->core_clk_rate_ib,
+				client_data->bw_ab, client_data->bw_ib, SDE_EVTLOG_ERROR);
+
+			SDE_ERROR_CESTA(
+				"client:%d/%d, en:%d, ab:%llu, ib:%llu, c_ab:%llu, c_ib:%llu\n",
+				       c->client_index, c->scc_index, c->enabled,
+				       client_data->bw_ab, client_data->bw_ib,
+				       client_data->core_clk_rate_ab,
+				       client_data->core_clk_rate_ib);
+		}
+	}
 	mutex_unlock(&cesta->client_lock);
 
 	return ret;
@@ -355,7 +375,7 @@ void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_p
 	}
 
 	/* IB vote calculation */
-	if (!params->max_vote
+	if (!params->max_vote && params->enable
 			&& cesta->perf_cfg.num_ddr_channels && cesta->perf_cfg.dram_efficiency) {
 		bw_ib = div_u64(div_u64(bw_ab, cesta->perf_cfg.num_ddr_channels) * 100,
 				cesta->perf_cfg.dram_efficiency);
@@ -545,6 +565,46 @@ int sde_cesta_aoss_update(struct sde_cesta_client *client, enum sde_cesta_aoss_c
 	SDE_EVT32(client->client_index, client->scc_index, cp_level, ret);
 
 	return ret;
+}
+
+u64 sde_cesta_get_core_clk_rate(u32 cesta_index)
+{
+	struct sde_cesta *cesta;
+	struct sde_cesta_client *c;
+	struct sde_cesta_client_data *client_data;
+	struct clk *core_clk = NULL;
+	u64 core_clk_ab = 0, core_clk_ib = 0, core_clk_rate = 0;
+
+	if (!sde_cesta_is_enabled(cesta_index))
+		return 0;
+
+	cesta = cesta_list[cesta_index];
+
+	core_clk = _sde_cesta_get_core_clk(cesta);
+	if (!core_clk) {
+		SDE_ERROR_CESTA("core_clk not found\n");
+		return 0;
+	}
+
+	mutex_lock(&cesta->client_lock);
+
+	list_for_each_entry(c, &cesta->client_list, list) {
+		if (!c->enabled)
+			continue;
+
+		client_data = &c->hw;
+
+		core_clk_ab += client_data->core_clk_rate_ab;
+		core_clk_ib = max(core_clk_ib, client_data->core_clk_rate_ib);
+	}
+	core_clk_rate = max(core_clk_ab, core_clk_ib);
+	core_clk_rate = clk_round_rate(core_clk, core_clk_rate);
+
+	mutex_unlock(&cesta->client_lock);
+
+	SDE_EVT32(cesta_index, core_clk_rate, core_clk_ab, core_clk_ib);
+
+	return core_clk_rate;
 }
 
 struct sde_cesta_client *sde_cesta_create_client(u32 cesta_index, char *client_name)
