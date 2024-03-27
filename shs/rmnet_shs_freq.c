@@ -1,5 +1,5 @@
 /* Copyright (c) 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -21,7 +21,7 @@
 #include <linux/pm_qos.h>
 #define DATARMNET81fe789d21 INT_MAX
 #define MIN_FREQ (0xd2d+202-0xdf7)
-#define DATARMNET59b491fbc9 DATARMNET81fe789d21
+#define DATARMNET59b491fbc9 1651200
 #define DATARMNET03d51cb126 (0xd1f+216-0xdf5)
 struct cpu_freq{unsigned int DATARMNET103c8d34fe;unsigned int 
 DATARMNET1159aa2cb6;};unsigned int DATARMNET666c9ff35e __read_mostly=
