@@ -132,9 +132,11 @@
  *     Page 1 : init-mem buf
  *     Page 2 : proc attrs debug buf
  *     Page 3 : rootheap buf
+ *     Page 4 : proc_init shared buf
  */
 #define NUM_PAGES_WITH_SHARED_BUF 2
 #define NUM_PAGES_WITH_ROOTHEAP_BUF 3
+#define NUM_PAGES_WITH_PROC_INIT_SHAREDBUF 4
 
 #define miscdev_to_fdevice(d) container_of(d, struct fastrpc_device_node, miscdev)
 
@@ -620,8 +622,10 @@ struct fastrpc_device_node {
 };
 
 struct fastrpc_internal_config {
-	int init_fd;
-	int init_size;
+	int user_fd;
+	int user_size;
+	u64 root_addr;
+	u32 root_size;
 };
 
 /* FastRPC ioctl structure to set session related info */
@@ -670,6 +674,8 @@ struct fastrpc_user {
 	struct fastrpc_buf *init_mem;
 	/* Pre-allocated header buffer */
 	struct fastrpc_buf *pers_hdr_buf;
+	/* proc_init shared buffer */
+	struct fastrpc_buf *proc_init_sharedbuf;
 	struct fastrpc_static_pd *spd;
 	/* Pre-allocated buffer divided into N chunks */
 	struct fastrpc_buf *hdr_bufs;

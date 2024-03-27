@@ -2635,13 +2635,63 @@ static int get_unique_hlos_process_id(struct fastrpc_channel_ctx *cctx)
 	return tgid_frpc;
 }
 
+/**
+ * fastrpc_pack_root_sharedpage()- Packs shared page for rootPD.
+ * @fl: fastrpc user instance.
+ * @pages: pages to be packed for DSP.
+ * @pageslen: Number of pages.
+ *
+ * fastrpc_pack_root_sharedpage packs root shared page during
+ * creation of a dynamic process.
+ *
+ * Return: 0 on success.
+ */
+static int fastrpc_pack_root_sharedpage(struct fastrpc_user *fl,
+	struct fastrpc_phy_page *pages, u32 *pageslen)
+{
+	int err = 0;
+
+	/* Allocate kernel buffer for rootPD shared page */
+	if (fl->config.root_addr &&
+			fl->config.root_size) {
+		err = fastrpc_buf_alloc(fl, fl->sctx->dev,
+				fl->config.root_size, USER_BUF, &fl->proc_init_sharedbuf);
+		if (err) {
+			dev_err(fl->sctx->dev, "failed to allocate buffer\n");
+			return err;
+		}
+		/* Copy contents from userspace buffer containing data for rootPD */
+		if (copy_from_user(fl->proc_init_sharedbuf->virt,
+				(void __user *)(uintptr_t) fl->config.root_addr,
+				fl->config.root_size)) {
+			err = -EFAULT;
+			goto err_sharedbuf_fail;
+		}
+		/* Update paramaters of process-spawn with buffer info */
+		*pageslen = NUM_PAGES_WITH_PROC_INIT_SHAREDBUF;
+		pages[NUM_PAGES_WITH_PROC_INIT_SHAREDBUF-1].addr =
+			fl->proc_init_sharedbuf->phys;
+		pages[NUM_PAGES_WITH_PROC_INIT_SHAREDBUF-1].size =
+			fl->proc_init_sharedbuf->size;
+	}
+
+	return 0;
+
+err_sharedbuf_fail:
+	if (fl->proc_init_sharedbuf) {
+		fastrpc_buf_free(fl->proc_init_sharedbuf, false);
+		fl->proc_init_sharedbuf = NULL;
+	}
+	return err;
+}
+
 static int fastrpc_init_create_process(struct fastrpc_user *fl,
 					char __user *argp)
 {
 	struct fastrpc_init_create init;
 	struct fastrpc_invoke_args args[FASTRPC_CREATE_PROCESS_NARGS] = {0};
 	struct fastrpc_enhanced_invoke ioctl;
-	struct fastrpc_phy_page pages[NUM_PAGES_WITH_ROOTHEAP_BUF] = {0};
+	struct fastrpc_phy_page pages[NUM_PAGES_WITH_PROC_INIT_SHAREDBUF] = {0};
 	struct fastrpc_map *configmap = NULL;
 	struct fastrpc_buf *imem = NULL;
 	int memlen;
@@ -2698,10 +2748,10 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	inbuf.siglen = init.siglen;
 	fl->pd = USERPD;
 
-	if(fl->config.init_fd != -1 && fl->config.init_size > 0) {
+	if(fl->config.user_fd != -1 && fl->config.user_size > 0) {
 		mutex_lock(&fl->map_mutex);
-		err = fastrpc_map_create(fl, fl->config.init_fd, 0, NULL,
-				fl->config.init_size, 0, 0, &configmap, true);
+		err = fastrpc_map_create(fl, fl->config.user_fd, 0, NULL,
+				fl->config.user_size, 0, 0, &configmap, true);
 		mutex_unlock(&fl->map_mutex);
 		if (err)
 			return err;
@@ -2712,6 +2762,9 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 
 	/* Process spawn should not fail if unable to alloc rootheap buffer */
 	fastrpc_alloc_rootheap_buf(fl->cctx, pages, &inbuf.pageslen);
+
+	/* Process spawn should not fail if unable to pack root buffer */
+	fastrpc_pack_root_sharedpage(fl, pages, &inbuf.pageslen);
 
 	fastrpc_check_privileged_process(fl, &init);
 
@@ -2768,12 +2821,22 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	if (fl != NULL)
 		fastrpc_create_session_debugfs(fl);
 #endif
+	/* remove buffer on success as no longer required */
+	if (fl->proc_init_sharedbuf) {
+		fastrpc_buf_free(fl->proc_init_sharedbuf, false);
+		fl->proc_init_sharedbuf = NULL;
+	}
+
 	return 0;
 
 err_invoke:
 	fl->init_mem = NULL;
 	fastrpc_buf_free(imem, false);
 err_alloc:
+	if (fl->proc_init_sharedbuf) {
+		fastrpc_buf_free(fl->proc_init_sharedbuf, false);
+		fl->proc_init_sharedbuf = NULL;
+	}
 	if (configmap) {
 		mutex_lock(&fl->map_mutex);
 		fastrpc_map_put(configmap);
@@ -3007,7 +3070,7 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 			fl->tgid, fl->cctx->domain_id, fl->tgid_frpc);
 	fl->is_secure_dev = fdevice->secure;
 	fl->sessionid = 0;
-	fl->config.init_fd = -1;
+	fl->config.user_fd = -1;
 	fl->pd = DEFAULT_UNUSED;
 	fl->multi_session_support = false;
 	fl->set_session_info = false;
@@ -3668,7 +3731,7 @@ static int fastrpc_multimode_invoke(struct fastrpc_user *fl, char __user *argp)
 	struct fastrpc_internal_notif_rsp notif;
 	struct fastrpc_internal_config config;
 	struct fastrpc_internal_sessinfo sessinfo;
-	u32 multisession;
+	u32 multisession, size = 0;
 	u64 *perf_kernel;
 	int err = 0;
 
@@ -3717,18 +3780,21 @@ static int fastrpc_multimode_invoke(struct fastrpc_user *fl, char __user *argp)
 			fl->sessionid = 1;
 		break;
 	case FASTRPC_INVOKE_CONFIG:
-
-		if (copy_from_user(&config, (void __user *)(uintptr_t)invoke.invparam, 
-								sizeof(struct fastrpc_internal_config)))
+		size = sizeof(struct fastrpc_internal_config);
+		/* Copy with which ever is miminum size, ensures backward compatibility */
+		if (invoke.size < size )
+			size = invoke.size; 
+		if (copy_from_user(&config, (void __user *)(uintptr_t)invoke.invparam,
+			size))
 			return -EFAULT;
-
-		fl->config.init_fd = config.init_fd;
-		fl->config.init_size = config.init_size;
-
+		fl->config.user_fd = config.user_fd;
+		fl->config.user_size = config.user_size;
+		fl->config.root_addr = config.root_addr;
+		fl->config.root_size = config.root_size;
 		break;
 	case FASTRPC_INVOKE_SESSIONINFO:
-		if(copy_from_user(&sessinfo,(void __user *)(uintptr_t)invoke.invparam, 
-								sizeof(struct fastrpc_internal_sessinfo)))
+		if(copy_from_user(&sessinfo,(void __user *)(uintptr_t)invoke.invparam,
+			sizeof(struct fastrpc_internal_sessinfo)))
 			return -EFAULT;
 		err = fastrpc_set_session_info(fl, &sessinfo);
 		break;
