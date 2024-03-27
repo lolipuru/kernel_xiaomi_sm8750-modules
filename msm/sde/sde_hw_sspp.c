@@ -1592,12 +1592,13 @@ static void sde_hw_sspp_setup_cac(struct sde_hw_pipe *ctx, u32 cac_mode)
 	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
+	opmode = SDE_REG_READ(&ctx->hw, SSPP_CAC_CTRL + idx);
 	if (cac_mode == SDE_CAC_UNPACK)
-		opmode = BIT(8);
+		opmode |= BIT(8);
 	else if (cac_mode == SDE_CAC_FETCH)
-		opmode = BIT(0) | BIT(8);
+		opmode |= BIT(0) | BIT(8);
 	else
-		opmode = 0;
+		opmode &= ~(BIT(0) | BIT(8));
 
 	SDE_REG_WRITE(&ctx->hw, SSPP_CAC_CTRL + idx, opmode);
 }
