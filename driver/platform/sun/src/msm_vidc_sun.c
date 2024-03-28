@@ -2780,11 +2780,6 @@ static const struct reg_preset_table sun_reg_preset_table[] = {
 /* name, phys_addr, size, device_addr, device region type */
 static const struct device_region_table sun_device_region_table[] = {
 	{
-		"aon-registers",
-		0x0AAE0000, 0x1000, 0xFFAE0000,
-		MSM_VIDC_AON
-	},
-	{
 		"ipc_protocol4_client8_version-registers",
 		0x00508000, 0x1000, 0xFFADF000,
 		MSM_VIDC_PROTOCOL_FENCE_CLIENT_VPU
