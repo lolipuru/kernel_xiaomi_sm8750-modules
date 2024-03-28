@@ -109,12 +109,12 @@ static int dma_buf_map_attachment_wrap(struct fastrpc_map *map)
 	return 0;
 }
 
-static void fastrpc_free_map(struct kref *ref)
+static void __fastrpc_free_map(struct fastrpc_map *map)
 {
-	struct fastrpc_map *map;
-	struct fastrpc_user *fl;
+	struct fastrpc_user *fl = NULL;
 
-	map = container_of(ref, struct fastrpc_map, refcount);
+	if (!map)
+		return;
 
 	fl = map->fl;
 	if (!fl)
@@ -156,6 +156,15 @@ static void fastrpc_free_map(struct kref *ref)
 	}
 
 	kfree(map);
+}
+
+
+static void fastrpc_free_map(struct kref *ref)
+{
+	struct fastrpc_map *map = NULL;
+
+	map = container_of(ref, struct fastrpc_map, refcount);
+	__fastrpc_free_map(map);
 }
 
 static void fastrpc_map_put(struct fastrpc_map *map)
@@ -2683,8 +2692,10 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 
 	mutex_lock(&fl->remote_map_mutex);
 	mutex_lock(&fl->map_mutex);
+
+	// During process tear down free the map, even if refcount is non-zero
 	list_for_each_entry_safe(map, m, &fl->maps, node)
-		fastrpc_map_put(map);
+		__fastrpc_free_map(map);
 	if (fl->proc_attrs_map)
 		fastrpc_map_put(fl->proc_attrs_map);
 	mutex_unlock(&fl->map_mutex);
