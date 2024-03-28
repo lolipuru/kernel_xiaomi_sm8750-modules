@@ -336,9 +336,9 @@ static void sde_hw_sspp_setup_ubwc(struct sde_hw_pipe *ctx, struct sde_hw_blk_re
 		ubwc_ctrl_off = SSPP_UBWC_STATIC_CTRL_REC1;
 
 	if (SDE_HW_MAJOR(ctx->catalog->ubwc_rev) >= SDE_HW_MAJOR(SDE_HW_UBWC_VER_50)) {
-		ctrl_val |= SDE_FORMAT_IS_YUV(fmt) ? 0 : BIT(30);
-		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_2_1(fmt) ? ((0x3 << 16) | BIT(31)) : 0;
-		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_8_5(fmt) ? (BIT(16) | BIT(31)) : 0;
+		ctrl_val |= SDE_FORMAT_IS_YUV(fmt) ? 0 : (BIT(31) | BIT(30));
+		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_2_1(fmt) ? (0x3 << 16) : 0;
+		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_8_5(fmt) ? BIT(16) : 0;
 		SDE_REG_WRITE(c, ubwc_ctrl_off, ctrl_val);
 	} else if (IS_UBWC_40_SUPPORTED(ctx->catalog->ubwc_rev)) {
 		SDE_REG_WRITE(c, ubwc_ctrl_off, SDE_FORMAT_IS_YUV(fmt) ? 0 : BIT(30));
