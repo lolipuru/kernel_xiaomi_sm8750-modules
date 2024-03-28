@@ -44,7 +44,7 @@
 #define SYS_MSG_INDEX(__msg) (__msg - SYS_MSG_START)
 #define SESSION_MSG_INDEX(__msg) (__msg - SESSION_MSG_START)
 
-#define SESSION_NAME_MAX_LEN 64
+#define SESSION_NAME_MAX_LEN 512
 
 #define ARP_BUF_SIZE 0x300000
 
