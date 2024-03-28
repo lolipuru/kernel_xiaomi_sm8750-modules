@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2022, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_vidc_buffer_iris35.h"
@@ -381,20 +381,21 @@ static u32 msm_vidc_encoder_non_comv_size_iris35(struct msm_vidc_inst *inst)
 {
 	struct msm_vidc_core *core;
 	u32 size = 0;
-	u32 width, height, num_vpp_pipes;
+	u32 width, height, num_vpp_pipes, profile;
 	struct v4l2_format *f;
 
 	core = inst->core;
 
 	num_vpp_pipes = core->capabilities[NUM_VPP_PIPE].value;
+	profile = inst->capabilities[PROFILE].value;
 	f = &inst->fmts[OUTPUT_PORT];
 	width = f->fmt.pix_mp.width;
 	height = f->fmt.pix_mp.height;
 
 	if (inst->codec == MSM_VIDC_H264)
-		HFI_BUFFER_NON_COMV_H264E(size, width, height, num_vpp_pipes);
+		HFI_BUFFER_NON_COMV_H264E(size, width, height, num_vpp_pipes, profile);
 	else if (inst->codec == MSM_VIDC_HEVC || inst->codec == MSM_VIDC_HEIC)
-		HFI_BUFFER_NON_COMV_H265E(size, width, height, num_vpp_pipes);
+		HFI_BUFFER_NON_COMV_H265E(size, width, height, num_vpp_pipes, profile);
 
 	i_vpr_l(inst, "%s: size %d\n", __func__, size);
 	return size;
