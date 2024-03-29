@@ -6918,9 +6918,12 @@ static void __cam_isp_ctx_free_mem_hw_entries(struct cam_context *ctx)
 
 	/* Free memory for FCG channel/context */
 	ctx_isp = (struct cam_isp_context *)ctx->ctx_priv;
-	for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-		req_isp = &ctx_isp->req_isp[i];
-		__cam_isp_ctx_free_fcg_config(ctx_isp, req_isp);
+
+	if (ctx_isp && ctx_isp->fcg_tracker.fcg_caps) {
+		for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
+			req_isp = &ctx_isp->req_isp[i];
+			__cam_isp_ctx_free_fcg_config(ctx_isp, req_isp);
+		}
 	}
 }
 
