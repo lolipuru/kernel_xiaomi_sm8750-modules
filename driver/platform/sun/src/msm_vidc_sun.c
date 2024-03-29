@@ -2083,6 +2083,12 @@ static struct msm_platform_inst_capability instance_cap_data_sun[] = {
 		V4L2_CID_MPEG_VIDC_SIGNAL_COLOR_INFO,
 		HFI_PROP_SIGNAL_COLOR_INFO,
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
+
+	{CAPTURE_DATA_OFFSET, ENC, HEVC,
+		0, 256, 1, 0,
+		V4L2_CID_MPEG_VIDC_CAPTURE_DATA_OFFSET,
+		0,
+		CAP_FLAG_NONE},
 };
 
 static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[] = {
