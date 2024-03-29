@@ -204,6 +204,38 @@ static int cam_sensor_handle_res_info(struct cam_sensor_res_info *res_info,
 	return rc;
 }
 
+static int cam_sensor_handle_frame_info(struct cam_sensor_ctrl_t *s_ctrl,
+	struct cam_sensor_frame_info *frame_info)
+{
+	int rc = 0;
+	struct cam_req_mgr_notify_msg msg = {0};
+
+	msg.link_hdl = s_ctrl->bridge_intf.link_hdl;
+	msg.req_id = s_ctrl->last_updated_req;
+	msg.dev_hdl = s_ctrl->bridge_intf.device_hdl;
+	msg.msg_type = CAM_REQ_MGR_MSG_FRAME_SYNC_SHIFT;
+	msg.u.frame_sync_shift = frame_info->frame_sync_shift;
+
+	CAM_DBG(CAM_SENSOR,
+		"sensor:%d req:%llu frame info: frame sync shift:%llu frame duration:%llu blanking duration:%llu",
+		s_ctrl->soc_info.index, s_ctrl->last_updated_req,
+		frame_info->frame_sync_shift, frame_info->frame_duration,
+		frame_info->blanking_duration);
+
+	if (s_ctrl->bridge_intf.crm_cb &&
+		s_ctrl->bridge_intf.crm_cb->notify_msg) {
+		rc = s_ctrl->bridge_intf.crm_cb->notify_msg(&msg);
+		if (rc) {
+			CAM_ERR(CAM_SENSOR,
+				"Failed to notify msg FRAME_SYNC_SHIFT to CRM at req:%llu, rc:%d",
+				s_ctrl->last_updated_req, rc);
+			return rc;
+		}
+	}
+
+	return rc;
+}
+
 static int32_t cam_sensor_generic_blob_handler(void *user_data,
 	uint32_t blob_type, uint32_t blob_size, uint8_t *blob_data)
 {
@@ -223,12 +255,25 @@ static int32_t cam_sensor_generic_blob_handler(void *user_data,
 			(struct cam_sensor_res_info *) blob_data;
 
 		if (blob_size < sizeof(struct cam_sensor_res_info)) {
-			CAM_ERR(CAM_SENSOR, "Invalid blob size expected: 0x%x actual: 0x%x",
+			CAM_ERR(CAM_SENSOR, "RES_INFO: Invalid blob size expected: 0x%x actual: 0x%x",
 				sizeof(struct cam_sensor_res_info), blob_size);
 			return -EINVAL;
 		}
 
 		rc = cam_sensor_handle_res_info(res_info, s_ctrl);
+		break;
+	}
+	case CAM_SENSOR_GENERIC_BLOB_FRAME_INFO: {
+		struct cam_sensor_frame_info *frame_info =
+			(struct cam_sensor_frame_info *) blob_data;
+
+		if (blob_size < sizeof(struct cam_sensor_frame_info)) {
+			CAM_ERR(CAM_SENSOR, "FRAME_INFO: Invalid blob size expected: 0x%x actual: 0x%x",
+				sizeof(struct cam_sensor_frame_info), blob_size);
+			return -EINVAL;
+		}
+
+		rc = cam_sensor_handle_frame_info(s_ctrl, frame_info);
 		break;
 	}
 	default:
@@ -242,7 +287,7 @@ static int32_t cam_sensor_generic_blob_handler(void *user_data,
 static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 	void *arg)
 {
-	int32_t rc = 0;
+	int32_t i, rc = 0;
 	uintptr_t generic_ptr;
 	struct cam_control *ioctl_ctrl = NULL;
 	struct cam_packet *csl_packet = NULL;
@@ -251,7 +296,6 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 	struct i2c_settings_array *i2c_reg_settings = NULL;
 	size_t len_of_buff = 0;
 	size_t remain_len = 0;
-	uint32_t *offset = NULL;
 	int64_t prev_updated_req;
 	uint32_t cmd_buf_type, idx;
 	struct cam_config_dev_cmd config;
@@ -462,7 +506,7 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 		if (rc)
 			CAM_ERR(CAM_SENSOR,
 				"Failed in adding request to req_mgr");
-		goto end;
+		break;
 	}
 	default:
 		CAM_ERR(CAM_SENSOR, "Invalid Packet Header opcode: %d",
@@ -471,50 +515,56 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 		goto end;
 	}
 
-	offset = (uint32_t *)&csl_packet->payload_flex;
-	offset += csl_packet->cmd_buf_offset / 4;
-	cmd_desc = (struct cam_cmd_buf_desc *)(offset);
-	cmd_buf_type = cmd_desc->meta_data;
+	cmd_desc = (struct cam_cmd_buf_desc *)
+		((uint8_t *)&csl_packet->payload +
+		csl_packet->cmd_buf_offset);
 
-	switch (cmd_buf_type) {
-	case CAM_SENSOR_PACKET_I2C_COMMANDS:
-		rc = cam_sensor_i2c_command_parser(&s_ctrl->io_master_info,
-				i2c_reg_settings, cmd_desc, 1, io_cfg);
-		if (rc < 0) {
-			CAM_ERR(CAM_SENSOR, "Fail parsing I2C Pkt: %d", rc);
-			goto end;
-		}
-		break;
-	case CAM_SENSOR_PACKET_GENERIC_BLOB:
-		if ((csl_packet->header.op_code & 0xFFFFFF) !=
-			CAM_SENSOR_PACKET_OPCODE_SENSOR_CONFIG) {
-			rc = -EINVAL;
-			CAM_ERR(CAM_SENSOR, "Wrong packet opcode sent with blob: %u",
-				csl_packet->header.op_code & 0xFFFFFF);
-			goto end;
+	CAM_DBG(CAM_SENSOR, "cam:%d req:%llu number of command buffers:%d",
+		s_ctrl->soc_info.index, csl_packet->header.request_id,
+		csl_packet->num_cmd_buf);
+
+	for (i = 0; i < csl_packet->num_cmd_buf; i++) {
+		if (!cmd_desc[i].length)
+			continue;
+
+		rc = cam_packet_util_validate_cmd_desc(&cmd_desc[i]);
+		if (rc) {
+			CAM_ERR(CAM_SENSOR, "invalud cmd[%d] buf", i);
+			return -EINVAL;
 		}
 
-		s_ctrl->last_updated_req = csl_packet->header.request_id;
-		idx = s_ctrl->last_updated_req % MAX_PER_FRAME_ARRAY;
-		s_ctrl->sensor_res[idx].request_id = csl_packet->header.request_id;
+		cmd_buf_type = cmd_desc[i].meta_data;
+		CAM_DBG(CAM_SENSOR, "cam:%d cmd_buf_type:%d",
+			s_ctrl->soc_info.index, cmd_buf_type);
 
-		/**
-		 * is_settings_valid is set to false for this case, as generic
-		 * blobs are meant to be used to send debugging information
-		 * alongside actual configuration settings. As these are sent
-		 * as separate packets at present, while sharing the same CONFIG
-		 * opcode, setting this to false prevents sensor driver from
-		 * applying non-existent configuration and changing s_ctrl
-		 * state to CAM_SENSOR_CONFIG
-		 */
-		i2c_reg_settings->is_settings_valid = 0;
+		switch (cmd_buf_type) {
+		case CAM_SENSOR_PACKET_I2C_COMMANDS: {
+			rc = cam_sensor_i2c_command_parser(&s_ctrl->io_master_info,
+				i2c_reg_settings, &cmd_desc[i], 1, io_cfg);
+			if (rc < 0) {
+				CAM_ERR(CAM_SENSOR, "Fail parsing I2C Pkt: %d", rc);
+				goto end;
+			}
+			break;
+		}
+		case CAM_SENSOR_PACKET_GENERIC_BLOB: {
+			s_ctrl->last_updated_req = csl_packet->header.request_id;
+			idx = s_ctrl->last_updated_req % MAX_PER_FRAME_ARRAY;
 
-		rc = cam_packet_util_process_generic_cmd_buffer(cmd_desc,
-			cam_sensor_generic_blob_handler, s_ctrl);
-		if (rc)
-			s_ctrl->sensor_res[idx].request_id = 0;
+			rc = cam_packet_util_process_generic_cmd_buffer(&cmd_desc[i],
+				cam_sensor_generic_blob_handler, s_ctrl);
+			if (rc)
+				s_ctrl->sensor_res[idx].request_id = 0;
 
-		break;
+			if (s_ctrl->is_res_info_updated)
+				s_ctrl->sensor_res[idx].request_id = csl_packet->header.request_id;
+			break;
+		}
+		default:
+			CAM_ERR(CAM_ISP, "invalid cmd buf type %d",
+				cmd_buf_type);
+			return -EINVAL;
+		}
 	}
 
 	/*

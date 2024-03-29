@@ -977,6 +977,7 @@ static void __cam_req_mgr_reset_req_slot(struct cam_req_mgr_core_link *link,
 	slot->sync_mode = CAM_REQ_MGR_SYNC_MODE_NO_SYNC;
 	slot->status = CRM_SLOT_STATUS_NO_REQ;
 	slot->num_sync_links = 0;
+	slot->frame_sync_shift = 0;
 	for (i = 0; i < MAXIMUM_LINKS_PER_SESSION - 1; i++)
 		slot->sync_link_hdls[i] = 0;
 
@@ -1785,6 +1786,7 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 	uint64_t sync_frame_duration = 0;
 	uint64_t sof_timestamp_delta = 0;
 	uint64_t master_slave_diff = 0;
+	uint64_t ref_timestamp, sync_ref_timestamp;
 	bool ready = true, sync_ready = true;
 	int slot_idx_diff = 0;
 
@@ -1825,21 +1827,24 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 	else
 		sync_frame_duration = DEFAULT_FRAME_DURATION;
 
+	ref_timestamp = link->sof_timestamp + slot->frame_sync_shift;
+	sync_ref_timestamp = sync_link->sof_timestamp + sync_rd_slot->frame_sync_shift;
+
 	sof_timestamp_delta =
-		link->sof_timestamp >= sync_link->sof_timestamp
-		? link->sof_timestamp - sync_link->sof_timestamp
-		: sync_link->sof_timestamp - link->sof_timestamp;
+		(ref_timestamp >= sync_ref_timestamp)
+		? (ref_timestamp - sync_ref_timestamp)
+		: (sync_ref_timestamp - ref_timestamp);
 
 	CAM_DBG(CAM_CRM,
-		"sync link %x last frame_duration is %d ns",
-		sync_link->link_hdl, sync_frame_duration);
+		"sync link %x last frame_duration is %d ns sof_timestamp_delta:%llu ns",
+		sync_link->link_hdl, sync_frame_duration, sof_timestamp_delta);
 
 	if (link->initial_skip) {
 		link->initial_skip = false;
 
-		if ((link->sof_timestamp > sync_link->sof_timestamp) &&
-			(sync_link->sof_timestamp > 0) &&
-			(link->sof_timestamp - sync_link->sof_timestamp) <
+		if ((ref_timestamp > sync_ref_timestamp) &&
+			(sync_ref_timestamp > 0) &&
+			(ref_timestamp - sync_ref_timestamp) <
 			(sync_frame_duration / 2)) {
 			/*
 			 * If this frame sync with the previous frame of sync
@@ -1850,7 +1855,7 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 				"This frame sync with previous sync_link %x frame",
 				sync_link->link_hdl);
 			return -EAGAIN;
-		} else if (link->sof_timestamp <= sync_link->sof_timestamp) {
+		} else if (ref_timestamp <= sync_ref_timestamp) {
 			/*
 			 * Sometimes, link receives the SOF event is eariler
 			 * than sync link in IFE CSID side, but link's SOF
@@ -1950,7 +1955,7 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 	master_slave_diff = sync_frame_duration;
 	do_div(master_slave_diff, 5);
 	if ((trigger == CAM_TRIGGER_POINT_SOF) &&
-		(sync_link->sof_timestamp > 0) &&
+		(sync_ref_timestamp > 0) &&
 		(sof_timestamp_delta < master_slave_diff) &&
 		(sync_rd_slot->sync_mode == CAM_REQ_MGR_SYNC_MODE_SYNC) &&
 		(req_id >= link->initial_sync_req) &&
@@ -4368,12 +4373,71 @@ end:
 	return rc;
 }
 
+static int cam_req_mgr_cb_notify_msg(
+	struct cam_req_mgr_notify_msg *msg)
+{
+	int                           slot_idx, rc = 0;
+	struct cam_req_mgr_slot      *slot;
+	struct cam_req_mgr_core_link *link = NULL;
+	struct cam_req_mgr_req_queue *in_q = NULL;
+
+	if (!msg) {
+		CAM_ERR(CAM_CRM, "msg is NULL");
+		return -EINVAL;
+	}
+
+	link = cam_get_link_priv(msg->link_hdl);
+	if (!link) {
+		CAM_DBG(CAM_CRM, "link ptr NULL %x", msg->link_hdl);
+		return -EINVAL;
+	}
+
+	CAM_DBG(CAM_REQ, "link_hdl 0x%x request id:%llu msg type:%d",
+		link->link_hdl, msg->req_id, msg->msg_type);
+
+	spin_lock_bh(&link->req.reset_link_spin_lock);
+	in_q = link->req.in_q;
+	if (!in_q) {
+		CAM_ERR(CAM_CRM, "in_q ptr NULL, link_hdl %x", msg->link_hdl);
+		spin_unlock_bh(&link->req.reset_link_spin_lock);
+		return -EINVAL;
+	}
+
+	slot_idx = __cam_req_mgr_find_slot_for_req(
+		in_q, msg->req_id);
+	if (slot_idx == -1) {
+		CAM_ERR(CAM_CRM, "Req: %lld not found on link: 0x%x",
+			msg->req_id, link->link_hdl);
+		spin_unlock_bh(&link->req.reset_link_spin_lock);
+		return -EINVAL;
+	}
+
+	slot = &in_q->slot[slot_idx];
+
+	switch (msg->msg_type) {
+	case CAM_REQ_MGR_MSG_FRAME_SYNC_SHIFT:
+		slot->frame_sync_shift = msg->u.frame_sync_shift;
+		break;
+	default:
+		rc = -EINVAL;
+		CAM_ERR(CAM_CRM,
+			"link:0x%x gets an invalid msg:%d from dev:0x%x at req:%llu",
+			link->link_hdl, msg->msg_type,
+			msg->dev_hdl, msg->req_id);
+		break;
+	}
+	spin_unlock_bh(&link->req.reset_link_spin_lock);
+
+	return rc;
+}
+
 static struct cam_req_mgr_crm_cb cam_req_mgr_ops = {
 	.notify_trigger = cam_req_mgr_cb_notify_trigger,
 	.notify_err     = cam_req_mgr_cb_notify_err,
 	.add_req        = cam_req_mgr_cb_add_req,
 	.notify_timer   = cam_req_mgr_cb_notify_timer,
 	.notify_stop    = cam_req_mgr_cb_notify_stop,
+	.notify_msg     = cam_req_mgr_cb_notify_msg,
 };
 
 /**

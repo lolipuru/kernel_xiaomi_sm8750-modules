@@ -23,6 +23,7 @@ struct cam_req_mgr_apply_request;
 struct cam_req_mgr_flush_request;
 struct cam_req_mgr_link_evt_data;
 struct cam_req_mgr_dump_info;
+struct cam_req_mgr_notify_msg;
 
 /* Request Manager -- camera device driver interface */
 /**
@@ -33,12 +34,14 @@ struct cam_req_mgr_dump_info;
  * @cam_req_mgr_add_req       : to info CRM about new rqeuest received from
  *                              userspace
  * @cam_req_mgr_notify_timer  : start the timer
+ * @cam_req_mgr_notify_msg    : notify the message
  */
 typedef int (*cam_req_mgr_notify_trigger)(struct cam_req_mgr_trigger_notify *);
 typedef int (*cam_req_mgr_notify_err)(struct cam_req_mgr_error_notify *);
 typedef int (*cam_req_mgr_add_req)(struct cam_req_mgr_add_request *);
 typedef int (*cam_req_mgr_notify_timer)(struct cam_req_mgr_timer_notify *);
 typedef int (*cam_req_mgr_notify_stop)(struct cam_req_mgr_notify_stop *);
+typedef int (*cam_req_mgr_notify_msg)(struct cam_req_mgr_notify_msg *);
 
 /**
  * @brief: cam req mgr to camera device drivers
@@ -69,6 +72,7 @@ typedef int (*cam_req_mgr_dump_req)(struct cam_req_mgr_dump_info *);
  * @add_req        : payload to inform which device and what request is received
  * @notify_timer   : payload for timer start event
  * @notify_stop    : payload to inform stop event
+ * @notify_msg     : payload to inform a message
  */
 struct cam_req_mgr_crm_cb {
 	cam_req_mgr_notify_trigger  notify_trigger;
@@ -76,6 +80,7 @@ struct cam_req_mgr_crm_cb {
 	cam_req_mgr_add_req         add_req;
 	cam_req_mgr_notify_timer    notify_timer;
 	cam_req_mgr_notify_stop     notify_stop;
+	cam_req_mgr_notify_msg      notify_msg;
 };
 
 /**
@@ -241,6 +246,16 @@ enum cam_req_mgr_link_evt_type {
 };
 
 /**
+ * enum cam_req_mgr_msg_type
+ * @CAM_REQ_MGR_MSG_FRAME_SYNC_SHIFT : frame sync shift value
+ * @CAM_REQ_MGR_MSG_MAX              : invalid msg type
+*/
+enum cam_req_mgr_msg_type {
+	CAM_REQ_MGR_MSG_FRAME_SYNC_SHIFT,
+	CAM_REQ_MGR_MSG_MAX,
+};
+
+/**
  * struct cam_req_mgr_trigger_notify
  * @link_hdl          : link identifier
  * @dev_hdl           : device handle which has sent this req id
@@ -325,6 +340,19 @@ struct cam_req_mgr_notify_stop {
 	int32_t  link_hdl;
 };
 
+/**
+ * struct cam_req_mgr_notify_msg
+ * @
+ */
+struct cam_req_mgr_notify_msg {
+	int32_t  link_hdl;
+	int32_t  dev_hdl;
+	uint64_t req_id;
+	enum cam_req_mgr_msg_type msg_type;
+	union {
+		uint64_t frame_sync_shift;
+	} u;
+};
 
 /* CRM to KMD devices */
 /**

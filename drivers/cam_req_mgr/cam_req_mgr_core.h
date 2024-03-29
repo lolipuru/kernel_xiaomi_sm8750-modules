@@ -329,6 +329,8 @@ struct cam_req_mgr_req_tbl {
  * @num_sync_links        : Num of sync links
  * @sync_link_hdls        : Array of sync link handles
  * @bubble_times          : times of bubbles the req happended
+ * @frame_sync_shift      : frame sync shift value, frame sync may not do SOF sync,
+ *                          so we need to know the shift value in KMD, the unit is ns.
  * @internal_recovered    : indicate if internal recover is already done for request
  * @mismatched_frame_mode : Mismatched frame mode to notify or drop setting mismatched frame
  * of this slot
@@ -345,6 +347,7 @@ struct cam_req_mgr_slot {
 	int32_t               num_sync_links;
 	int32_t               sync_link_hdls[MAXIMUM_LINKS_PER_SESSION - 1];
 	uint32_t              bubble_times;
+	uint64_t              frame_sync_shift;
 	bool                  internal_recovered;
 	int32_t               mismatched_frame_mode;
 };
