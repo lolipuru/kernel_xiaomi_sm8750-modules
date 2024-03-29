@@ -737,7 +737,7 @@ static struct cam_ife_csid_ver2_path_reg_info
 		.rup_mask                         = 0x2,
 		.aup_mask                         = 0x2,
 		.rup_aup_set_mask                 = 0x1,
-		.top_irq_mask                     = {0x100,},
+		.top_irq_mask                     = {0x200,},
 		.disable_sof_retime_default       = true,
 };
 
@@ -842,7 +842,7 @@ static struct cam_ife_csid_ver2_path_reg_info
 		.rup_mask                         = 0x4,
 		.aup_mask                         = 0x4,
 		.rup_aup_set_mask                 = 0x1,
-		.top_irq_mask                     = {0x100,},
+		.top_irq_mask                     = {0x400,},
 		.disable_sof_retime_default       = true,
 };
 

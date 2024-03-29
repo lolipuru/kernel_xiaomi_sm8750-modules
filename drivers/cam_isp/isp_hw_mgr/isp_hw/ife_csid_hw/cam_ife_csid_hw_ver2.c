@@ -6496,14 +6496,14 @@ static void cam_ife_csid_ver2_maskout_all_irqs(
 	cam_io_w_mb(0x0, mem_base +
 		csid_reg->cmn_reg->buf_done_irq_mask_addr);
 
-	/* Disable top except rst_done */
-	cam_io_w_mb(csid_reg->cmn_reg->top_reset_irq_mask[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0],
-		mem_base + csid_reg->cmn_reg->top_irq_mask_addr[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0]);
-
 	if (csid_reg->num_top_regs > 1) {
 		cam_io_w_mb(0x0, (mem_base +
 			csid_reg->cmn_reg->top_irq_mask_addr[CAM_IFE_CSID_TOP2_IRQ_STATUS_REG1]));
 	}
+
+	/* Disable top except rst_done */
+	cam_io_w_mb(csid_reg->cmn_reg->top_reset_irq_mask[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0],
+		mem_base + csid_reg->cmn_reg->top_irq_mask_addr[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0]);
 }
 
 int cam_ife_csid_ver2_stop(void *hw_priv,
@@ -6613,7 +6613,7 @@ int cam_ife_csid_ver2_stop(void *hw_priv,
 	}
 
 	if (csid_reg->num_top_regs > 1 && csid_hw->top_top2_irq_handle) {
-		rc = cam_irq_controller_unsubscribe_irq(
+		rc = cam_irq_controller_unsubscribe_irq_evt(
 			csid_hw->top_irq_controller[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0],
 			csid_hw->top_top2_irq_handle);
 		csid_hw->top_top2_irq_handle = 0;
