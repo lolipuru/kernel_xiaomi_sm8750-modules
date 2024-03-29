@@ -291,6 +291,7 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 	uintptr_t generic_ptr;
 	struct cam_control *ioctl_ctrl = NULL;
 	struct cam_packet *csl_packet = NULL;
+	struct cam_packet *csl_packet_u = NULL;
 	struct cam_cmd_buf_desc *cmd_desc = NULL;
 	struct cam_buf_io_cfg *io_cfg = NULL;
 	struct i2c_settings_array *i2c_reg_settings = NULL;
@@ -300,6 +301,7 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 	uint32_t cmd_buf_type, idx;
 	struct cam_config_dev_cmd config;
 	struct i2c_data_settings *i2c_data = NULL;
+	size_t packet_size = 0;
 
 	ioctl_ctrl = (struct cam_control *)arg;
 
@@ -330,12 +332,26 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 			"Inval cam_packet strut size: %zu, len_of_buff: %zu",
 			 sizeof(struct cam_packet), len_of_buff);
 		rc = -EINVAL;
-		goto end;
+		goto put_ref;
 	}
 
 	remain_len -= (size_t)config.offset;
-	csl_packet = (struct cam_packet *)(generic_ptr +
+	csl_packet_u = (struct cam_packet *)(generic_ptr +
 		(uint32_t)config.offset);
+	packet_size = csl_packet_u->header.size;
+	if (packet_size <= remain_len) {
+		rc = cam_common_mem_kdup((void **)&csl_packet,
+			csl_packet_u, packet_size);
+		if (rc) {
+			CAM_ERR(CAM_SENSOR, "Alloc and copy request: %lld packet fail",
+				csl_packet_u->header.request_id);
+			goto put_ref;
+		}
+	} else {
+		CAM_ERR(CAM_SENSOR, "Invalid packet header size %u",
+			packet_size);
+		goto put_ref;
+	}
 
 	if (cam_packet_util_validate_packet(csl_packet,
 		remain_len)) {
@@ -610,6 +626,8 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 	}
 
 end:
+	cam_common_mem_free(csl_packet);
+put_ref:
 	cam_mem_put_cpu_buf(config.packet_handle);
 	return rc;
 }
@@ -870,11 +888,13 @@ int32_t cam_handle_mem_ptr(uint64_t handle, uint32_t cmd,
 	void *ptr;
 	size_t len;
 	struct cam_packet *pkt = NULL;
+	struct cam_packet *pkt_u = NULL;
 	struct cam_cmd_buf_desc *cmd_desc = NULL;
 	uintptr_t cmd_buf1 = 0;
 	uintptr_t packet = 0;
 	size_t    remain_len = 0;
-	uint32_t probe_ver = 0;
+	uint32_t  probe_ver = 0;
+	size_t    packet_size = 0;
 
 	rc = cam_mem_get_cpu_buf(handle,
 		&packet, &len);
@@ -883,9 +903,31 @@ int32_t cam_handle_mem_ptr(uint64_t handle, uint32_t cmd,
 		return -EINVAL;
 	}
 
-	pkt = (struct cam_packet *)packet;
-	if (pkt == NULL) {
+	pkt_u = (struct cam_packet *)packet;
+	if (pkt_u == NULL) {
 		CAM_ERR(CAM_SENSOR, "packet pos is invalid");
+		rc = -EINVAL;
+		goto put_ref;
+	}
+
+	packet_size = pkt_u->header.size;
+	if (packet_size <= len) {
+		rc = cam_common_mem_kdup((void **)&pkt, pkt_u,
+			packet_size);
+		if (rc) {
+			CAM_ERR(CAM_SENSOR, "Alloc and copy local pkt fail");
+			goto put_ref;
+		}
+	} else {
+		CAM_ERR(CAM_SENSOR, "Invalid packet header size %u",
+			packet_size);
+		rc = -EINVAL;
+		goto put_ref;
+	}
+
+	if (cam_packet_util_validate_packet(pkt,
+		len)) {
+		CAM_ERR(CAM_SENSOR, "Invalid packet params");
 		rc = -EINVAL;
 		goto end;
 	}
@@ -911,7 +953,7 @@ int32_t cam_handle_mem_ptr(uint64_t handle, uint32_t cmd,
 	for (i = 0; i < pkt->num_cmd_buf; i++) {
 		rc = cam_packet_util_validate_cmd_desc(&cmd_desc[i]);
 		if (rc)
-			return rc;
+			goto end;
 
 		if (!(cmd_desc[i].length))
 			continue;
@@ -954,6 +996,8 @@ int32_t cam_handle_mem_ptr(uint64_t handle, uint32_t cmd,
 	}
 
 end:
+	cam_common_mem_free(pkt);
+put_ref:
 	cam_mem_put_cpu_buf(handle);
 	return rc;
 }

@@ -831,3 +831,36 @@ static const struct kernel_param_ops cam_common_evt_inject = {
 };
 
 module_param_cb(cam_event_inject, &cam_common_evt_inject, NULL, 0644);
+
+int cam_common_mem_kdup(void **dst,
+	void *src, size_t size)
+{
+	if (!src || !dst || !size) {
+		CAM_ERR(CAM_UTIL, "Invalid params src: %pK dst: %pK size: %u",
+			src, dst, size);
+		return -EINVAL;
+	}
+
+	if (in_atomic()) {
+		CAM_ERR(CAM_UTIL, "Operation not permitted from atomic context");
+		return -EPERM;
+	}
+
+	*dst = kvzalloc(size, GFP_KERNEL);
+	if (!*dst) {
+		CAM_ERR(CAM_UTIL, "Failed to allocate memory with size: %u", size);
+		return -ENOMEM;
+	}
+
+	memcpy(*dst, src, size);
+	CAM_DBG(CAM_UTIL, "Allocate and copy memory with size: %u", size);
+
+	return 0;
+}
+EXPORT_SYMBOL(cam_common_mem_kdup);
+
+void cam_common_mem_free(void *memory)
+{
+	kvfree(memory);
+}
+EXPORT_SYMBOL(cam_common_mem_free);
