@@ -886,37 +886,83 @@ static int synx_match_payload(struct synx_kernel_payload *cb_payload,
 	return rc;
 }
 
-/* Timer Callback function. This will be called when timer expires */
-void synx_timer_cb(struct timer_list *data)
+/**
+ * This function checks if the callback still exist in the reg_cbs_list
+ * and queues the callback to kernel payload for dispatching it to client.
+ */
+void synx_timer_handler(struct work_struct *cb_dispatch)
 {
+	struct synx_timer_cb_data *synx_timer_cb =
+		container_of(cb_dispatch, struct synx_timer_cb_data, cb_dispatch);
+	struct synx_cb_data *synx_cb = NULL;
+	struct synx_cb_data *cur, *synx_cb_temp;
 	struct synx_client *client;
 	struct synx_handle_coredata *synx_data;
 	struct synx_coredata *synx_obj;
-	struct synx_cb_data *synx_cb = container_of(data, struct synx_cb_data, synx_timer);
+
+	synx_cb = (struct synx_cb_data *)synx_timer_cb->data;
 
 	client = synx_get_client(synx_cb->session);
 	if (IS_ERR_OR_NULL(client)) {
 		dprintk(SYNX_ERR,
-			"invalid session data %p in cb payload\n",
-			synx_cb->session);
-		return;
+			"invalid session data %pK in synx_cb %pK\n",
+			synx_cb->session, synx_cb);
+		goto free;
 	}
 	synx_data = synx_util_acquire_handle(client, synx_cb->h_synx);
 	synx_obj = synx_util_obtain_object(synx_data);
 	if (IS_ERR_OR_NULL(synx_obj)) {
 		dprintk(SYNX_ERR,
-			"[sess :%p] invalid handle access 0x%x\n",
+			"[sess : %pK] invalid handle access 0x%x\n",
 			synx_cb->session, synx_cb->h_synx);
+		goto fail;
+	}
+	dprintk(SYNX_VERB, "Timer callback expired for synx_cb %pK\n", synx_cb);
+
+	mutex_lock(&synx_obj->obj_lock);
+	list_for_each_entry_safe(cur,
+		synx_cb_temp, &synx_obj->reg_cbs_list, node) {
+		if (cur == synx_cb) {
+			dprintk(SYNX_VERB, "Deleting timer synx_cb %pK\n", synx_cb);
+			synx_cb->status = SYNX_STATE_TIMEOUT;
+			del_timer(&synx_cb->synx_timer);
+			list_del_init(&synx_cb->node);
+			queue_work(synx_dev->wq_cb, &synx_cb->cb_dispatch);
+			break;
+		}
+	}
+
+	mutex_unlock(&synx_obj->obj_lock);
+	synx_util_release_handle(synx_data);
+fail:
+	synx_put_client(client);
+free:
+	kfree(synx_timer_cb);
+}
+
+
+/* Timer Callback function. This will be called when timer expires */
+void synx_timer_cb(struct timer_list *data)
+{
+	struct synx_cb_data *synx_cb =
+		container_of(data, struct synx_cb_data, synx_timer);
+
+	struct synx_timer_cb_data *synx_timer_cb;
+
+	synx_timer_cb = kzalloc(sizeof(*synx_timer_cb), GFP_ATOMIC);
+	if (IS_ERR_OR_NULL(synx_timer_cb)) {
+		dprintk(SYNX_ERR, "Cannot allocate memory\n");
 		return;
 	}
-	dprintk(SYNX_VERB,
-		"Timer expired for synx_cb %p timeout 0x%llx. Deleting the timer.\n",
-		synx_cb, synx_cb->timeout);
 
-	synx_cb->status = SYNX_STATE_TIMEOUT;
-	del_timer(&synx_cb->synx_timer);
-	list_del_init(&synx_cb->node);
-	queue_work(synx_dev->wq_cb, &synx_cb->cb_dispatch);
+	synx_timer_cb->data = (void *)synx_cb;
+
+	/*
+	 * since the timer is waited upon during signal dispatch,
+	 * the synx_cb has to be active.
+	 */
+	INIT_WORK(&synx_timer_cb->cb_dispatch, synx_timer_handler);
+	queue_work(synx_dev->wq_cb, &synx_timer_cb->cb_dispatch);
 }
 
 static int synx_start_timer(struct synx_cb_data *synx_cb)
@@ -1004,6 +1050,7 @@ int synx_internal_async_wait(struct synx_session *session,
 
 	/* add callback if object still ACTIVE, dispatch if SIGNALED */
 	if (status == SYNX_STATE_ACTIVE) {
+		list_add(&synx_cb->node, &synx_obj->reg_cbs_list);
 		dprintk(SYNX_VERB,
 			"[sess :%llu] callback added for handle %u\n",
 			client->id, params->h_synx);
@@ -1018,7 +1065,6 @@ int synx_internal_async_wait(struct synx_session *session,
 				goto release;
 			}
 		}
-		list_add(&synx_cb->node, &synx_obj->reg_cbs_list);
 	} else {
 		synx_cb->status = status;
 		dprintk(SYNX_VERB,
