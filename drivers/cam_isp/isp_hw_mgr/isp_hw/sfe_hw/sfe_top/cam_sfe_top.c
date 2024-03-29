@@ -14,6 +14,7 @@
 #include "cam_sfe_soc.h"
 #include "cam_sfe_core.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 struct cam_sfe_core_cfg {
 	uint32_t   mode_sel;
@@ -363,7 +364,7 @@ static void cam_sfe_top_print_debug_reg_info(
 	soc_info = common_data->soc_info;
 	num_reg = common_data->common_reg->num_debug_registers;
 	mem_base = soc_info->reg_map[SFE_CORE_BASE_IDX].mem_base;
-	reg_val    = kcalloc(num_reg, sizeof(uint32_t), GFP_KERNEL);
+	reg_val    = CAM_MEM_ZALLOC_ARRAY(num_reg, sizeof(uint32_t), GFP_KERNEL);
 	if (!reg_val)
 		return;
 
@@ -384,7 +385,7 @@ static void cam_sfe_top_print_debug_reg_info(
 		top_priv->cc_testbus_sel_cfg)
 		cam_sfe_top_print_cc_test_bus(top_priv);
 
-	kfree(reg_val);
+	CAM_MEM_FREE(reg_val);
 
 	cam_sfe_top_dump_perf_counters("ERROR", "", top_priv);
 }
@@ -1182,8 +1183,9 @@ static int cam_sfe_top_apply_fcg_update(
 		return -EINVAL;
 	}
 
-	reg_val_pair = kcalloc(fcg_module_info->max_reg_val_pair_size, sizeof(uint32_t),
-		GFP_KERNEL);
+	reg_val_pair = CAM_MEM_ZALLOC_ARRAY(fcg_module_info->max_reg_val_pair_size,
+				sizeof(uint32_t),
+				GFP_KERNEL);
 	if (!reg_val_pair) {
 		CAM_ERR(CAM_SFE, "Failed allocating memory for reg val pair");
 		return -ENOMEM;
@@ -1195,14 +1197,14 @@ static int cam_sfe_top_apply_fcg_update(
 			CAM_ERR(CAM_SFE, "reg_val_pair %d exceeds the array limit %u",
 				j, fcg_module_info->max_reg_val_pair_size);
 			rc = -ENOMEM;
-			goto kfree;
+			goto free_mem;
 		}
 
 		fcg_ch_ctx = &fcg_config->ch_ctx_fcg_configs[i];
 		if (!fcg_ch_ctx) {
 			CAM_ERR(CAM_SFE, "Failed in FCG channel/context dereference");
 			rc = -EINVAL;
-			goto kfree;
+			goto free_mem;
 		}
 
 		fcg_pr = &fcg_ch_ctx->predicted_fcg_configs[
@@ -1247,7 +1249,7 @@ static int cam_sfe_top_apply_fcg_update(
 				CAM_ERR(CAM_SFE, "Unsupported channel id: 0x%x",
 					fcg_ch_ctx->fcg_ch_ctx_id);
 				rc = -EINVAL;
-				goto kfree;
+				goto free_mem;
 			}
 		}
 
@@ -1291,7 +1293,7 @@ static int cam_sfe_top_apply_fcg_update(
 				CAM_ERR(CAM_SFE, "Unsupported channel id: 0x%x",
 					fcg_ch_ctx->fcg_ch_ctx_id);
 				rc = -EINVAL;
-				goto kfree;
+				goto free_mem;
 			}
 		}
 	}
@@ -1307,7 +1309,7 @@ static int cam_sfe_top_apply_fcg_update(
 				"Failed! Buf size:%d is wrong, expected size: %d",
 				fcg_update->cmd_size, size * 4);
 			rc = -ENOMEM;
-			goto kfree;
+			goto free_mem;
 		}
 
 		cdm_util_ops->cdm_write_regrandom(
@@ -1317,8 +1319,8 @@ static int cam_sfe_top_apply_fcg_update(
 		CAM_WARN(CAM_SFE, "No reg val pairs");
 	}
 
-kfree:
-	kfree(reg_val_pair);
+free_mem:
+	CAM_MEM_FREE(reg_val_pair);
 	return rc;
 }
 
@@ -2249,14 +2251,14 @@ int cam_sfe_top_init(
 	struct cam_sfe_top_hw_info        *sfe_top_hw_info =
 		(struct cam_sfe_top_hw_info *)top_hw_info;
 
-	sfe_top = kzalloc(sizeof(struct cam_sfe_top), GFP_KERNEL);
+	sfe_top = CAM_MEM_ZALLOC(sizeof(struct cam_sfe_top), GFP_KERNEL);
 	if (!sfe_top) {
 		CAM_DBG(CAM_SFE, "Error, Failed to alloc for sfe_top");
 		rc = -ENOMEM;
 		goto end;
 	}
 
-	top_priv = kzalloc(sizeof(struct cam_sfe_top_priv),
+	top_priv = CAM_MEM_ZALLOC(sizeof(struct cam_sfe_top_priv),
 		GFP_KERNEL);
 	if (!top_priv) {
 		rc = -ENOMEM;
@@ -2293,7 +2295,7 @@ int cam_sfe_top_init(
 			top_priv->in_rsrc[i].res_id =
 				CAM_ISP_HW_SFE_IN_PIX;
 
-			path_data = kzalloc(sizeof(struct cam_sfe_path_data),
+			path_data = CAM_MEM_ZALLOC(sizeof(struct cam_sfe_path_data),
 				GFP_KERNEL);
 			if (!path_data) {
 				CAM_DBG(CAM_SFE,
@@ -2321,7 +2323,7 @@ int cam_sfe_top_init(
 			top_priv->in_rsrc[i].res_id =
 				CAM_ISP_HW_SFE_IN_RDI0 + j;
 
-			path_data = kzalloc(sizeof(struct cam_sfe_path_data),
+			path_data = CAM_MEM_ZALLOC(sizeof(struct cam_sfe_path_data),
 					GFP_KERNEL);
 			if (!path_data) {
 				CAM_DBG(CAM_SFE,
@@ -2396,16 +2398,16 @@ deinit_resources:
 		if (!top_priv->in_rsrc[i].res_priv)
 			continue;
 
-		kfree(top_priv->in_rsrc[i].res_priv);
+		CAM_MEM_FREE(top_priv->in_rsrc[i].res_priv);
 		top_priv->in_rsrc[i].res_priv = NULL;
 		top_priv->in_rsrc[i].res_state =
 			CAM_ISP_RESOURCE_STATE_UNAVAILABLE;
 	}
 free_top_priv:
-	kfree(sfe_top->top_priv);
+	CAM_MEM_FREE(sfe_top->top_priv);
 	sfe_top->top_priv = NULL;
 free_sfe_top:
-	kfree(sfe_top);
+	CAM_MEM_FREE(sfe_top);
 end:
 	*sfe_top_ptr = NULL;
 	return rc;
@@ -2465,14 +2467,14 @@ int cam_sfe_top_deinit(
 			continue;
 		}
 
-		kfree(top_priv->in_rsrc[i].res_priv);
+		CAM_MEM_FREE(top_priv->in_rsrc[i].res_priv);
 		top_priv->in_rsrc[i].res_priv = NULL;
 	}
 
-	kfree(sfe_top->top_priv);
+	CAM_MEM_FREE(sfe_top->top_priv);
 
 free_sfe_top:
-	kfree(sfe_top);
+	CAM_MEM_FREE(sfe_top);
 	*sfe_top_ptr = NULL;
 
 	return rc;

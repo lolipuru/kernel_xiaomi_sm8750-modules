@@ -16,6 +16,7 @@
 #include "cam_presil_hw_access.h"
 #include "cam_compat.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 #if (IS_ENABLED(CONFIG_QCOM_CRM) || IS_ENABLED(CONFIG_QCOM_CRM_V2))
 #include <soc/qcom/crm.h>
@@ -954,7 +955,7 @@ static int cam_soc_util_clk_wrapper_register_entry(
 
 	if (!clock_found) {
 		CAM_DBG(CAM_UTIL, "Adding new entry for clk id %d", clk_id);
-		wrapper_clk = kzalloc(sizeof(struct cam_clk_wrapper_clk),
+		wrapper_clk = CAM_MEM_ZALLOC(sizeof(struct cam_clk_wrapper_clk),
 			GFP_KERNEL);
 		if (!wrapper_clk) {
 			CAM_ERR(CAM_UTIL,
@@ -970,7 +971,7 @@ static int cam_soc_util_clk_wrapper_register_entry(
 		INIT_LIST_HEAD(&wrapper_clk->client_list);
 		list_add_tail(&wrapper_clk->list, &wrapper_clk_list);
 	}
-	wrapper_client = kzalloc(sizeof(struct cam_clk_wrapper_client),
+	wrapper_client = CAM_MEM_ZALLOC(sizeof(struct cam_clk_wrapper_client),
 		GFP_KERNEL);
 	if (!wrapper_client) {
 		CAM_ERR(CAM_UTIL, "Failed in allocating new client entry %d",
@@ -994,7 +995,7 @@ static int cam_soc_util_clk_wrapper_register_entry(
 			CAM_ERR(CAM_UTIL,
 				"Failed in register mmrm client Dev %s clk id %d",
 				soc_info->dev_name, clk_id);
-			kfree(wrapper_client);
+			CAM_MEM_FREE(wrapper_client);
 			goto end;
 		}
 	}
@@ -1065,14 +1066,14 @@ static int cam_soc_util_clk_wrapper_unregister_entry(
 	}
 
 	list_del_init(&wrapper_client->list);
-	kfree(wrapper_client);
+	CAM_MEM_FREE(wrapper_client);
 
 	CAM_DBG(CAM_UTIL, "Unregister client %s for clk id %d, num clients %d",
 		soc_info->dev_name, clk_id, wrapper_clk->num_clients);
 
 	if (!wrapper_clk->num_clients) {
 		list_del_init(&wrapper_clk->list);
-		kfree(wrapper_clk);
+		CAM_MEM_FREE(wrapper_clk);
 	}
 end:
 	mutex_unlock(&wrapper_lock);
@@ -2633,11 +2634,11 @@ static int cam_soc_util_get_dt_gpio_req_tbl(struct device_node *of_node,
 		return 0;
 	}
 
-	val_array = kcalloc(count, sizeof(uint32_t), GFP_KERNEL);
+	val_array = CAM_MEM_ZALLOC_ARRAY(count, sizeof(uint32_t), GFP_KERNEL);
 	if (!val_array)
 		return -ENOMEM;
 
-	gconf->cam_gpio_req_tbl = kcalloc(count, sizeof(struct gpio),
+	gconf->cam_gpio_req_tbl = CAM_MEM_ZALLOC_ARRAY(count, sizeof(struct gpio),
 		GFP_KERNEL);
 	if (!gconf->cam_gpio_req_tbl) {
 		rc = -ENOMEM;
@@ -2689,14 +2690,14 @@ static int cam_soc_util_get_dt_gpio_req_tbl(struct device_node *of_node,
 			gconf->cam_gpio_req_tbl[i].label);
 	}
 
-	kfree(val_array);
+	CAM_MEM_FREE(val_array);
 
 	return rc;
 
 free_gpio_req_tbl:
-	kfree(gconf->cam_gpio_req_tbl);
+	CAM_MEM_FREE(gconf->cam_gpio_req_tbl);
 free_val_array:
-	kfree(val_array);
+	CAM_MEM_FREE(val_array);
 	gconf->cam_gpio_req_tbl_size = 0;
 
 	return rc;
@@ -2728,7 +2729,7 @@ static int cam_soc_util_get_gpio_info(struct cam_hw_soc_info *soc_info)
 
 	CAM_DBG(CAM_UTIL, "gpio count %d", gpio_array_size);
 
-	gpio_array = kcalloc(gpio_array_size, sizeof(uint16_t), GFP_KERNEL);
+	gpio_array = CAM_MEM_ZALLOC_ARRAY(gpio_array_size, sizeof(uint16_t), GFP_KERNEL);
 	if (!gpio_array) {
 		rc = -ENOMEM;
 		goto err;
@@ -2739,7 +2740,7 @@ static int cam_soc_util_get_gpio_info(struct cam_hw_soc_info *soc_info)
 		CAM_DBG(CAM_UTIL, "gpio_array[%d] = %d", i, gpio_array[i]);
 	}
 
-	gconf = kzalloc(sizeof(*gconf), GFP_KERNEL);
+	gconf = CAM_MEM_ZALLOC(sizeof(*gconf), GFP_KERNEL);
 	if (!gconf) {
 		rc = -ENOMEM;
 		goto free_gpio_array;
@@ -2752,7 +2753,7 @@ static int cam_soc_util_get_gpio_info(struct cam_hw_soc_info *soc_info)
 		goto free_gpio_conf;
 	}
 
-	gconf->cam_gpio_common_tbl = kcalloc(gpio_array_size,
+	gconf->cam_gpio_common_tbl = CAM_MEM_ZALLOC_ARRAY(gpio_array_size,
 				sizeof(struct gpio), GFP_KERNEL);
 	if (!gconf->cam_gpio_common_tbl) {
 		rc = -ENOMEM;
@@ -2770,14 +2771,14 @@ static int cam_soc_util_get_gpio_info(struct cam_hw_soc_info *soc_info)
 	CAM_DBG(CAM_UTIL, "dev name %s gpio_for_vmrm_purpose %d", soc_info->dev_name,
 		soc_info->gpio_data->gpio_for_vmrm_purpose);
 
-	kfree(gpio_array);
+	CAM_MEM_FREE(gpio_array);
 
 	return rc;
 
 free_gpio_conf:
-	kfree(gconf);
+	CAM_MEM_FREE(gconf);
 free_gpio_array:
-	kfree(gpio_array);
+	CAM_MEM_FREE(gpio_array);
 err:
 	soc_info->gpio_data = NULL;
 

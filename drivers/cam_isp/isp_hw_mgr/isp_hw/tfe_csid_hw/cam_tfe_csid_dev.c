@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -12,6 +12,7 @@
 #include "cam_tfe_csid_hw_intf.h"
 #include "cam_debug_util.h"
 #include "camera_main.h"
+#include "cam_mem_mgr_api.h"
 
 static struct cam_hw_intf *cam_tfe_csid_hw_list[CAM_TFE_CSID_HW_NUM_MAX] = {
 	0, 0, 0};
@@ -31,19 +32,19 @@ static int cam_tfe_csid_component_bind(struct device *dev,
 
 	CAM_DBG(CAM_ISP, "probe called");
 
-	csid_hw_intf = kzalloc(sizeof(*csid_hw_intf), GFP_KERNEL);
+	csid_hw_intf = CAM_MEM_ZALLOC(sizeof(*csid_hw_intf), GFP_KERNEL);
 	if (!csid_hw_intf) {
 		rc = -ENOMEM;
 		goto err;
 	}
 
-	csid_hw_info = kzalloc(sizeof(struct cam_hw_info), GFP_KERNEL);
+	csid_hw_info = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!csid_hw_info) {
 		rc = -ENOMEM;
 		goto free_hw_intf;
 	}
 
-	csid_dev = kzalloc(sizeof(struct cam_tfe_csid_hw), GFP_KERNEL);
+	csid_dev = CAM_MEM_ZALLOC(sizeof(struct cam_tfe_csid_hw), GFP_KERNEL);
 	if (!csid_dev) {
 		rc = -ENOMEM;
 		goto free_hw_info;
@@ -90,11 +91,11 @@ static int cam_tfe_csid_component_bind(struct device *dev,
 	return 0;
 
 free_dev:
-	kfree(csid_dev);
+	CAM_MEM_FREE(csid_dev);
 free_hw_info:
-	kfree(csid_hw_info);
+	CAM_MEM_FREE(csid_hw_info);
 free_hw_intf:
-	kfree(csid_hw_intf);
+	CAM_MEM_FREE(csid_hw_intf);
 err:
 	return rc;
 }
@@ -123,9 +124,9 @@ void cam_tfe_csid_component_unbind(struct device *dev,
 	cam_tfe_csid_hw_deinit(csid_dev);
 
 	/*release the csid device memory */
-	kfree(csid_dev);
-	kfree(csid_hw_info);
-	kfree(csid_hw_intf);
+	CAM_MEM_FREE(csid_dev);
+	CAM_MEM_FREE(csid_hw_info);
+	CAM_MEM_FREE(csid_hw_intf);
 }
 
 const static struct component_ops cam_tfe_csid_component_ops = {

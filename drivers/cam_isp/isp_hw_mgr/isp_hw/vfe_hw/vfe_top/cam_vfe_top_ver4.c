@@ -18,6 +18,7 @@
 #include "cam_tasklet_util.h"
 #include "cam_cdm_intf_api.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 #define CAM_SHIFT_TOP_CORE_VER_4_CFG_DSP_EN            8
 #define CAM_VFE_CAMIF_IRQ_SOF_DEBUG_CNT_MAX            2
@@ -1147,8 +1148,9 @@ static int cam_vfe_top_apply_fcg_update(
 		return -EINVAL;
 	}
 
-	reg_val_pair = kcalloc(fcg_module_info->max_reg_val_pair_size, sizeof(uint32_t),
-		GFP_KERNEL);
+	reg_val_pair = CAM_MEM_ZALLOC_ARRAY(fcg_module_info->max_reg_val_pair_size,
+				sizeof(uint32_t),
+				GFP_KERNEL);
 	if (!reg_val_pair) {
 		CAM_ERR(CAM_ISP, "Failed allocating memory for reg val pair");
 		return -ENOMEM;
@@ -1160,14 +1162,14 @@ static int cam_vfe_top_apply_fcg_update(
 			CAM_ERR(CAM_ISP, "reg_val_pair %d exceeds the array limit %u",
 				j, fcg_module_info->max_reg_val_pair_size);
 			rc = -ENOMEM;
-			goto kfree;
+			goto free_mem;
 		}
 
 		fcg_ch_ctx = &fcg_config->ch_ctx_fcg_configs[i];
 		if (!fcg_ch_ctx) {
 			CAM_ERR(CAM_ISP, "Failed in FCG channel/context dereference");
 			rc = -EINVAL;
-			goto kfree;
+			goto free_mem;
 		}
 
 		fcg_pr = &fcg_ch_ctx->predicted_fcg_configs[
@@ -1215,7 +1217,7 @@ static int cam_vfe_top_apply_fcg_update(
 						"No support for multi context for FCG on ch_ctx_id: 0x%x",
 						fcg_ch_ctx->fcg_ch_ctx_id);
 					rc = -EINVAL;
-					goto kfree;
+					goto free_mem;
 				}
 
 				CAM_ISP_ADD_REG_VAL_PAIR(reg_val_pair,
@@ -1251,7 +1253,7 @@ static int cam_vfe_top_apply_fcg_update(
 				CAM_ERR(CAM_ISP, "Unsupported ch_ctx_id: 0x%x",
 					fcg_ch_ctx->fcg_ch_ctx_id);
 				rc = -EINVAL;
-				goto kfree;
+				goto free_mem;
 			}
 		}
 	}
@@ -1267,7 +1269,7 @@ static int cam_vfe_top_apply_fcg_update(
 				"Failed! Buf size:%d is wrong, expected size: %d",
 				fcg_update->cmd_size, size * 4);
 			rc = -ENOMEM;
-			goto kfree;
+			goto free_mem;
 		}
 
 		cdm_util_ops->cdm_write_regrandom(
@@ -1277,8 +1279,8 @@ static int cam_vfe_top_apply_fcg_update(
 		CAM_WARN(CAM_ISP, "No reg val pairs");
 	}
 
-kfree:
-	kfree(reg_val_pair);
+free_mem:
+	CAM_MEM_FREE(reg_val_pair);
 	return rc;
 }
 
@@ -2274,7 +2276,7 @@ int cam_vfe_res_mux_init(
 	struct cam_vfe_soc_private    *soc_priv = soc_info->soc_private;
 	int i;
 
-	vfe_priv = kzalloc(sizeof(struct cam_vfe_mux_ver4_data),
+	vfe_priv = CAM_MEM_ZALLOC(sizeof(struct cam_vfe_mux_ver4_data),
 		GFP_KERNEL);
 	if (!vfe_priv)
 		return -ENOMEM;
@@ -2337,7 +2339,7 @@ int cam_vfe_res_mux_deinit(
 	INIT_LIST_HEAD(&vfe_priv->free_payload_list);
 	for (i = 0; i < CAM_VFE_CAMIF_EVT_MAX; i++)
 		INIT_LIST_HEAD(&vfe_priv->evt_payload[i].list);
-	kfree(vfe_priv);
+	CAM_MEM_FREE(vfe_priv);
 
 	return 0;
 }
@@ -2354,14 +2356,14 @@ int cam_vfe_top_ver4_init(
 	struct cam_vfe_top_ver4_hw_info        *hw_info = top_hw_info;
 	struct cam_vfe_top                     *vfe_top;
 
-	vfe_top = kzalloc(sizeof(struct cam_vfe_top), GFP_KERNEL);
+	vfe_top = CAM_MEM_ZALLOC(sizeof(struct cam_vfe_top), GFP_KERNEL);
 	if (!vfe_top) {
 		CAM_DBG(CAM_ISP, "VFE:%u Error, Failed to alloc for vfe_top", hw_intf->hw_idx);
 		rc = -ENOMEM;
 		goto end;
 	}
 
-	top_priv = kzalloc(sizeof(struct cam_vfe_top_ver4_priv),
+	top_priv = CAM_MEM_ZALLOC(sizeof(struct cam_vfe_top_ver4_priv),
 		GFP_KERNEL);
 	if (!top_priv) {
 		CAM_DBG(CAM_ISP, "VFE:%u Error, Failed to alloc for vfe_top_priv", hw_intf->hw_idx);
@@ -2484,9 +2486,9 @@ deinit_resources:
 
 
 free_top_priv:
-	kfree(vfe_top->top_priv);
+	CAM_MEM_FREE(vfe_top->top_priv);
 free_vfe_top:
-	kfree(vfe_top);
+	CAM_MEM_FREE(vfe_top);
 end:
 	return rc;
 }
@@ -2524,10 +2526,10 @@ int cam_vfe_top_ver4_deinit(struct cam_vfe_top  **vfe_top_ptr)
 				top_priv->common_data.hw_intf->hw_idx, i, rc);
 	}
 
-	kfree(vfe_top->top_priv);
+	CAM_MEM_FREE(vfe_top->top_priv);
 
 free_vfe_top:
-	kfree(vfe_top);
+	CAM_MEM_FREE(vfe_top);
 	*vfe_top_ptr = NULL;
 
 	return rc;

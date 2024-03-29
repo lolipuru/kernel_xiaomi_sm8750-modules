@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "tpg_hw.h"
+#include "cam_mem_mgr_api.h"
 
 #define BYTES_PER_REGISTER           4
 #define NUM_REGISTER_PER_LINE        4
@@ -326,21 +327,21 @@ static int tpg_hw_release_vc_slots_locked(struct tpg_hw *hw,
 			list_for_each_safe(pos, pos_next, &req->vc_slots[i].head) {
 				entry = list_entry(pos, struct tpg_hw_stream, list);
 				list_del(pos);
-				kfree(entry);
+				CAM_MEM_FREE(entry);
 			}
 		} else if (hw->stream_version == 3) {
 			list_for_each_safe(pos, pos_next, &req->vc_slots[i].head) {
 				entry_v3 = list_entry(pos, struct tpg_hw_stream_v3, list);
 				list_del(pos);
-				kfree(entry_v3);
+				CAM_MEM_FREE(entry_v3);
 			}
 		}
 		INIT_LIST_HEAD(&(req->vc_slots[i].head));
 	}
 
 	hw->vc_count = 0;
-	kfree(req->vc_slots);
-	kfree(req);
+	CAM_MEM_FREE(req->vc_slots);
+	CAM_MEM_FREE(req);
 
 	return 0;
 }
@@ -1079,7 +1080,7 @@ int tpg_hw_copy_settings_config(
 	}
 
 	hw->register_settings =
-		kzalloc(sizeof(struct tpg_reg_settings) *
+		CAM_MEM_ZALLOC(sizeof(struct tpg_reg_settings) *
 		settings->settings_array_size, GFP_KERNEL);
 
 	if (hw->register_settings == NULL) {
@@ -1290,7 +1291,7 @@ int tpg_hw_add_stream(
 
 	hw->stream_version = 1;
 	mutex_lock(&hw->mutex);
-	stream = kzalloc(sizeof(struct tpg_hw_stream), GFP_KERNEL);
+	stream = CAM_MEM_ZALLOC(sizeof(struct tpg_hw_stream), GFP_KERNEL);
 	if (!stream) {
 		CAM_ERR(CAM_TPG, "TPG[%d] stream allocation failed",
 			hw->hw_idx);
@@ -1340,7 +1341,7 @@ struct tpg_hw_request *tpg_hw_create_request(
 	}
 
 	/* Allocate request */
-	req = kzalloc(sizeof(struct tpg_hw_request),
+	req = CAM_MEM_ZALLOC(sizeof(struct tpg_hw_request),
 			GFP_KERNEL);
 	if (!req) {
 		CAM_ERR(CAM_TPG, "TPG[%d] request allocation failed",
@@ -1349,7 +1350,7 @@ struct tpg_hw_request *tpg_hw_create_request(
 	}
 	req->request_id = request_id;
 	/* Allocate Vc slots in request */
-	req->vc_slots = kcalloc(num_vc_channels, sizeof(struct tpg_vc_slot_info),
+	req->vc_slots = CAM_MEM_ZALLOC_ARRAY(num_vc_channels, sizeof(struct tpg_vc_slot_info),
 			GFP_KERNEL);
 
 	req->vc_count = 0;
@@ -1371,7 +1372,7 @@ struct tpg_hw_request *tpg_hw_create_request(
 			hw->hw_idx, request_id);
 	return req;
 err_exit_1:
-	kfree(req);
+	CAM_MEM_FREE(req);
 	return NULL;
 }
 
@@ -1435,7 +1436,7 @@ int tpg_hw_add_stream_v3(
 
 	hw->stream_version = 3;
 	mutex_lock(&hw->mutex);
-	stream = kzalloc(sizeof(struct tpg_hw_stream_v3), GFP_KERNEL);
+	stream = CAM_MEM_ZALLOC(sizeof(struct tpg_hw_stream_v3), GFP_KERNEL);
 	if (!stream) {
 		CAM_ERR(CAM_TPG, "TPG[%d] stream allocation failed",
 			hw->hw_idx);

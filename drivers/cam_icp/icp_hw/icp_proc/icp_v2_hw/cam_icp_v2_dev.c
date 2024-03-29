@@ -16,6 +16,7 @@
 #include "cam_icp_v2_core.h"
 #include "cam_icp_soc_common.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 static int max_icp_v2_hw_idx = -1;
 
@@ -53,7 +54,7 @@ static int cam_icp_v2_soc_info_init(struct cam_hw_soc_info *soc_info,
 {
 	struct cam_icp_soc_info *icp_soc_info = NULL;
 
-	icp_soc_info = kzalloc(sizeof(*icp_soc_info), GFP_KERNEL);
+	icp_soc_info = CAM_MEM_ZALLOC(sizeof(*icp_soc_info), GFP_KERNEL);
 	if (!icp_soc_info)
 		return -ENOMEM;
 
@@ -69,7 +70,7 @@ static int cam_icp_v2_soc_info_init(struct cam_hw_soc_info *soc_info,
 
 static inline void cam_icp_v2_soc_info_deinit(struct cam_hw_soc_info *soc_info)
 {
-	kfree(soc_info->soc_private);
+	CAM_MEM_FREE(soc_info->soc_private);
 }
 
 static int cam_icp_v2_component_bind(struct device *dev,
@@ -89,17 +90,17 @@ static int cam_icp_v2_component_bind(struct device *dev,
 		return -EINVAL;
 	}
 
-	icp_v2_intf = kzalloc(sizeof(*icp_v2_intf), GFP_KERNEL);
+	icp_v2_intf = CAM_MEM_ZALLOC(sizeof(*icp_v2_intf), GFP_KERNEL);
 	if (!icp_v2_intf)
 		return -ENOMEM;
 
-	icp_v2_info = kzalloc(sizeof(*icp_v2_info), GFP_KERNEL);
+	icp_v2_info = CAM_MEM_ZALLOC(sizeof(*icp_v2_info), GFP_KERNEL);
 	if (!icp_v2_info) {
 		rc = -ENOMEM;
 		goto free_hw_intf;
 	}
 
-	core_info = kzalloc(sizeof(*core_info), GFP_KERNEL);
+	core_info = CAM_MEM_ZALLOC(sizeof(*core_info), GFP_KERNEL);
 	if (!core_info) {
 		rc = -ENOMEM;
 		goto free_hw_info;
@@ -160,11 +161,11 @@ res_deinit:
 free_soc_info:
 	cam_icp_v2_soc_info_deinit(&icp_v2_info->soc_info);
 free_core_info:
-	kfree(core_info);
+	CAM_MEM_FREE(core_info);
 free_hw_info:
-	kfree(icp_v2_info);
+	CAM_MEM_FREE(icp_v2_info);
 free_hw_intf:
-	kfree(icp_v2_intf);
+	CAM_MEM_FREE(icp_v2_intf);
 
 	return rc;
 }
@@ -191,9 +192,9 @@ static void cam_icp_v2_component_unbind(struct device *dev,
 
 	max_icp_v2_hw_idx = -1;
 
-	kfree(icp_v2_info->core_info);
-	kfree(icp_v2_info);
-	kfree(icp_v2_intf);
+	CAM_MEM_FREE(icp_v2_info->core_info);
+	CAM_MEM_FREE(icp_v2_info);
+	CAM_MEM_FREE(icp_v2_intf);
 }
 
 static const struct component_ops cam_icp_v2_component_ops = {

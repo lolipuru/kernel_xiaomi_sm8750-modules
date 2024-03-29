@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_csiphy_soc.h"
@@ -13,6 +13,7 @@
 #include "include/cam_csiphy_2_2_0_hwreg.h"
 #include "include/cam_csiphy_2_2_1_hwreg.h"
 #include "include/cam_csiphy_2_3_0_hwreg.h"
+#include "cam_mem_mgr_api.h"
 
 /* Clock divide factor for CPHY spec v1.0 */
 #define CSIPHY_DIVISOR_16                    16
@@ -37,7 +38,7 @@ static int cam_csiphy_io_dump(void __iomem *base_addr, uint16_t num_regs, int cs
 		return -EINVAL;
 	}
 
-	buffer = kzalloc(CSIPHY_LOG_BUFFER_SIZE_IN_BYTES, GFP_KERNEL);
+	buffer = CAM_MEM_ZALLOC(CSIPHY_LOG_BUFFER_SIZE_IN_BYTES, GFP_KERNEL);
 	if (!buffer) {
 		CAM_ERR(CAM_CSIPHY, "Could not allocate the memory for buffer");
 		return -ENOMEM;
@@ -65,7 +66,7 @@ static int cam_csiphy_io_dump(void __iomem *base_addr, uint16_t num_regs, int cs
 		pr_info("%s\n", buffer);
 	}
 
-	kfree(buffer);
+	CAM_MEM_FREE(buffer);
 
 	return 0;
 }

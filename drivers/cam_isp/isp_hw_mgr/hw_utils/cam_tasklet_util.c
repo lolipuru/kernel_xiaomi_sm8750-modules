@@ -14,7 +14,7 @@
 #include "cam_irq_controller.h"
 #include "cam_debug_util.h"
 #include "cam_common_util.h"
-
+#include "cam_mem_mgr_api.h"
 
 /* Threshold for scheduling delay in ms */
 #define CAM_TASKLET_SCHED_TIME_THRESHOLD        5
@@ -243,7 +243,7 @@ int cam_tasklet_init(
 	int i;
 	struct cam_tasklet_info  *tasklet = NULL;
 
-	tasklet = kzalloc(sizeof(struct cam_tasklet_info), GFP_KERNEL);
+	tasklet = CAM_MEM_ZALLOC(sizeof(struct cam_tasklet_info), GFP_KERNEL);
 	if (!tasklet) {
 		CAM_DBG(CAM_ISP,
 			"Error! Unable to allocate memory for tasklet");
@@ -280,7 +280,7 @@ void cam_tasklet_deinit(void    **tasklet_info)
 		tasklet_kill(&tasklet->tasklet);
 		tasklet_disable(&tasklet->tasklet);
 	}
-	kfree(tasklet);
+	CAM_MEM_FREE(tasklet);
 	*tasklet_info = NULL;
 }
 

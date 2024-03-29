@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/ratelimit.h>
@@ -21,6 +21,7 @@
 #include "cam_debug_util.h"
 #include "cam_cpas_api.h"
 #include "cam_common_util.h"
+#include "cam_mem_mgr_api.h"
 
 static const char drv_name[] = "sfe_bus_rd";
 
@@ -623,7 +624,7 @@ static int cam_sfe_bus_init_rm_resource(uint32_t index,
 	struct cam_sfe_bus_rd_rm_resource_data *rsrc_data;
 	uint8_t *name;
 
-	rsrc_data = kzalloc(sizeof(struct cam_sfe_bus_rd_rm_resource_data),
+	rsrc_data = CAM_MEM_ZALLOC(sizeof(struct cam_sfe_bus_rd_rm_resource_data),
 		GFP_KERNEL);
 	if (!rsrc_data) {
 		CAM_DBG(CAM_SFE, "Failed to alloc SFE:%d RM res priv",
@@ -668,7 +669,7 @@ static int cam_sfe_bus_deinit_rm_resource(
 	rm_res->res_priv = NULL;
 	if (!rsrc_data)
 		return -ENOMEM;
-	kfree(rsrc_data);
+	CAM_MEM_FREE(rsrc_data);
 
 	return 0;
 }
@@ -1296,7 +1297,7 @@ static int cam_sfe_bus_init_sfe_bus_read_resource(
 		return -EFAULT;
 	}
 
-	rsrc_data = kzalloc(sizeof(struct cam_sfe_bus_rd_data),
+	rsrc_data = CAM_MEM_ZALLOC(sizeof(struct cam_sfe_bus_rd_data),
 		GFP_KERNEL);
 	if (!rsrc_data) {
 		rc = -ENOMEM;
@@ -1350,7 +1351,7 @@ static int cam_sfe_bus_deinit_sfe_bus_rd_resource(
 
 	if (!rsrc_data)
 		return -ENOMEM;
-	kfree(rsrc_data);
+	CAM_MEM_FREE(rsrc_data);
 
 	return 0;
 }
@@ -2092,14 +2093,14 @@ int cam_sfe_bus_rd_init(
 		goto end;
 	}
 
-	sfe_bus_local = kzalloc(sizeof(struct cam_sfe_bus), GFP_KERNEL);
+	sfe_bus_local = CAM_MEM_ZALLOC(sizeof(struct cam_sfe_bus), GFP_KERNEL);
 	if (!sfe_bus_local) {
 		CAM_DBG(CAM_SFE, "Failed to alloc for sfe_bus");
 		rc = -ENOMEM;
 		goto end;
 	}
 
-	bus_priv = kzalloc(sizeof(struct cam_sfe_bus_rd_priv),
+	bus_priv = CAM_MEM_ZALLOC(sizeof(struct cam_sfe_bus_rd_priv),
 		GFP_KERNEL);
 	if (!bus_priv) {
 		CAM_DBG(CAM_SFE, "Failed to alloc for sfe_bus_priv");
@@ -2191,10 +2192,10 @@ deinit_rm:
 		cam_sfe_bus_deinit_rm_resource(&bus_priv->bus_client[i]);
 
 free_bus_priv:
-	kfree(sfe_bus_local->bus_priv);
+	CAM_MEM_FREE(sfe_bus_local->bus_priv);
 
 free_bus_local:
-	kfree(sfe_bus_local);
+	CAM_MEM_FREE(sfe_bus_local);
 
 end:
 	return rc;
@@ -2248,10 +2249,10 @@ int cam_sfe_bus_rd_deinit(
 		CAM_ERR(CAM_SFE,
 			"Deinit IRQ Controller failed rc=%d", rc);
 
-	kfree(sfe_bus_local->bus_priv);
+	CAM_MEM_FREE(sfe_bus_local->bus_priv);
 
 free_bus_local:
-	kfree(sfe_bus_local);
+	CAM_MEM_FREE(sfe_bus_local);
 	*sfe_bus = NULL;
 
 	return rc;

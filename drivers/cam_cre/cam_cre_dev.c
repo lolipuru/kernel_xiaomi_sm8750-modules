@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -18,6 +18,7 @@
 #include "cam_smmu_api.h"
 #include "camera_main.h"
 #include "cam_context_utils.h"
+#include "cam_mem_mgr_api.h"
 
 #define CAM_CRE_DEV_NAME "cam-cre"
 
@@ -143,7 +144,7 @@ static int cam_cre_subdev_component_bind(struct device *dev,
 	}
 	node = (struct cam_node *)g_cre_dev.sd.token;
 
-	hw_mgr_intf = kzalloc(sizeof(*hw_mgr_intf), GFP_KERNEL);
+	hw_mgr_intf = CAM_MEM_ZALLOC(sizeof(*hw_mgr_intf), GFP_KERNEL);
 	if (!hw_mgr_intf) {
 		CAM_ERR(CAM_CRE, "Error allocating memory");
 		rc = -ENOMEM;
@@ -192,7 +193,7 @@ ctx_init_fail:
 		if (cam_cre_context_deinit(&g_cre_dev.ctx_cre[i]))
 			CAM_ERR(CAM_CRE, "deinit fail %d %d", i, rc);
 hw_init_fail:
-	kfree(hw_mgr_intf);
+	CAM_MEM_FREE(hw_mgr_intf);
 hw_alloc_fail:
 	if (cam_subdev_remove(&g_cre_dev.sd))
 		CAM_ERR(CAM_CRE, "remove fail %d", rc);

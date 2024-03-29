@@ -30,6 +30,7 @@
 #include "cam_compat.h"
 #include "camera_main.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 #define CAM_REQ_MGR_EVENT_MAX 30
 #define CAM_I3C_MASTER_COMPAT "qcom,geni-i3c"
@@ -56,7 +57,7 @@ static int cam_media_device_setup(struct device *dev)
 {
 	int rc;
 
-	g_dev.v4l2_dev->mdev = kzalloc(sizeof(*g_dev.v4l2_dev->mdev),
+	g_dev.v4l2_dev->mdev = CAM_MEM_ZALLOC(sizeof(*g_dev.v4l2_dev->mdev),
 		GFP_KERNEL);
 	if (!g_dev.v4l2_dev->mdev) {
 		rc = -ENOMEM;
@@ -75,7 +76,7 @@ static int cam_media_device_setup(struct device *dev)
 	return rc;
 
 media_fail:
-	kfree(g_dev.v4l2_dev->mdev);
+	CAM_MEM_FREE(g_dev.v4l2_dev->mdev);
 	g_dev.v4l2_dev->mdev = NULL;
 mdev_fail:
 	return rc;
@@ -85,7 +86,7 @@ static void cam_media_device_cleanup(void)
 {
 	media_device_unregister(g_dev.v4l2_dev->mdev);
 	media_device_cleanup(g_dev.v4l2_dev->mdev);
-	kfree(g_dev.v4l2_dev->mdev);
+	CAM_MEM_FREE(g_dev.v4l2_dev->mdev);
 	g_dev.v4l2_dev->mdev = NULL;
 }
 
@@ -93,7 +94,7 @@ static int cam_v4l2_device_setup(struct device *dev)
 {
 	int rc;
 
-	g_dev.v4l2_dev = kzalloc(sizeof(*g_dev.v4l2_dev),
+	g_dev.v4l2_dev = CAM_MEM_ZALLOC(sizeof(*g_dev.v4l2_dev),
 		GFP_KERNEL);
 	if (!g_dev.v4l2_dev)
 		return -ENOMEM;
@@ -105,7 +106,7 @@ static int cam_v4l2_device_setup(struct device *dev)
 	return rc;
 
 reg_fail:
-	kfree(g_dev.v4l2_dev);
+	CAM_MEM_FREE(g_dev.v4l2_dev);
 	g_dev.v4l2_dev = NULL;
 	return rc;
 }
@@ -113,7 +114,7 @@ reg_fail:
 static void cam_v4l2_device_cleanup(void)
 {
 	v4l2_device_unregister(g_dev.v4l2_dev);
-	kfree(g_dev.v4l2_dev);
+	CAM_MEM_FREE(g_dev.v4l2_dev);
 	g_dev.v4l2_dev = NULL;
 }
 

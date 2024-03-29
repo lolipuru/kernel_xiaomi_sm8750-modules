@@ -33,7 +33,7 @@
 #include "camera_main.h"
 #include "cam_common_util.h"
 #include "cam_context_utils.h"
-
+#include "cam_mem_mgr_api.h"
 
 #define CAM_ICP_IS_DEV_IDX_INVALID(dev_idx)                   \
 ({                                                            \
@@ -251,7 +251,7 @@ const struct v4l2_subdev_internal_ops cam_icp_subdev_internal_ops = {
 
 static inline void cam_icp_subdev_clean_up(uint32_t device_idx)
 {
-	kfree(g_icp_dev[device_idx]);
+	CAM_MEM_FREE(g_icp_dev[device_idx]);
 	g_icp_dev[device_idx] = NULL;
 }
 
@@ -304,7 +304,7 @@ static int cam_icp_component_bind(struct device *dev,
 	}
 	mutex_unlock(&g_dev_lock);
 
-	icp_dev = kzalloc(sizeof(struct cam_icp_subdev), GFP_KERNEL);
+	icp_dev = CAM_MEM_ZALLOC(sizeof(struct cam_icp_subdev), GFP_KERNEL);
 	if (!icp_dev) {
 		CAM_ERR(CAM_ICP,
 			"Unable to allocate memory for icp device:%s size:%llu",

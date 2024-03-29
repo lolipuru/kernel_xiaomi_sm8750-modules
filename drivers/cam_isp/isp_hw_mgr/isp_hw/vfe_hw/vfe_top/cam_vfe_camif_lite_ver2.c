@@ -18,6 +18,7 @@
 #include "cam_vfe_camif_lite_ver2.h"
 #include "cam_debug_util.h"
 #include "cam_cdm_util.h"
+#include "cam_mem_mgr_api.h"
 
 struct cam_vfe_mux_camif_lite_data {
 	void __iomem                                *mem_base;
@@ -528,7 +529,7 @@ int cam_vfe_camif_lite_ver2_init(
 		camif_lite_hw_info;
 	int                                       i = 0;
 
-	camif_lite_priv = kzalloc(sizeof(*camif_lite_priv),
+	camif_lite_priv = CAM_MEM_ZALLOC(sizeof(*camif_lite_priv),
 		GFP_KERNEL);
 	if (!camif_lite_priv)
 		return -ENOMEM;
@@ -588,7 +589,7 @@ int cam_vfe_camif_lite_ver2_deinit(
 	camif_lite_node->bottom_half_handler = NULL;
 	camif_lite_node->res_priv = NULL;
 
-	kfree(camif_lite_priv);
+	CAM_MEM_FREE(camif_lite_priv);
 
 	return 0;
 }

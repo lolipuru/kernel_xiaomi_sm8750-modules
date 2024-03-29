@@ -24,6 +24,7 @@
 #include "cam_trace.h"
 #include "cam_common_util.h"
 #include "cam_presil_hw_access.h"
+#include "cam_mem_mgr_api.h"
 
 #define CAM_MEM_SHARED_BUFFER_PAD_4K (4 * 1024)
 
@@ -355,7 +356,7 @@ int cam_mem_mgr_init(void)
 #endif
 
 	bitmap_size = BITS_TO_LONGS(CAM_MEM_BUFQ_MAX) * sizeof(long);
-	tbl.bitmap = kzalloc(bitmap_size, GFP_KERNEL);
+	tbl.bitmap = CAM_MEM_ZALLOC(bitmap_size, GFP_KERNEL);
 	if (!tbl.bitmap) {
 		rc = -ENOMEM;
 		goto put_heaps;
@@ -394,7 +395,7 @@ int cam_mem_mgr_init(void)
 
 	/* Index 0 is reserved as invalid slot */
 	for (i = 1; i < CAM_MEM_BUFQ_MAX; i++) {
-		tbl.bufq[i].hdls_info = kzalloc(tbl.max_hdls_info_size, GFP_KERNEL);
+		tbl.bufq[i].hdls_info = CAM_MEM_ZALLOC(tbl.max_hdls_info_size, GFP_KERNEL);
 
 		if (!tbl.bufq[i].hdls_info) {
 			CAM_ERR(CAM_MEM, "Failed to allocate hdls array queue idx: %d", i);
@@ -407,12 +408,12 @@ int cam_mem_mgr_init(void)
 
 free_hdls_info:
 	for (--i; i > 0; i--) {
-		kfree(tbl.bufq[i].hdls_info);
+		CAM_MEM_FREE(tbl.bufq[i].hdls_info);
 		tbl.bufq[i].hdls_info = NULL;
 	}
 
 clean_bitmap_and_mutex:
-	kfree(tbl.bitmap);
+	CAM_MEM_FREE(tbl.bitmap);
 	tbl.bitmap = NULL;
 	mutex_destroy(&tbl.m_lock);
 	atomic_set(&cam_mem_mgr_state, CAM_MEM_MGR_UNINITIALIZED);
@@ -1968,13 +1969,13 @@ void cam_mem_mgr_deinit(void)
 	cam_smmu_driver_deinit();
 	mutex_lock(&tbl.m_lock);
 	bitmap_zero(tbl.bitmap, tbl.bits);
-	kfree(tbl.bitmap);
+	CAM_MEM_FREE(tbl.bitmap);
 	tbl.bitmap = NULL;
 	tbl.dbg_buf_idx = -1;
 
 	/* index 0 is reserved */
 	for (i = 1; i < CAM_MEM_BUFQ_MAX; i++) {
-		kfree(tbl.bufq[i].hdls_info);
+		CAM_MEM_FREE(tbl.bufq[i].hdls_info);
 		tbl.bufq[i].hdls_info = NULL;
 	}
 

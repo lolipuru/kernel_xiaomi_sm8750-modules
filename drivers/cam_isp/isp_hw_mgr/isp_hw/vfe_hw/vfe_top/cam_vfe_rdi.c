@@ -15,6 +15,7 @@
 #include "cam_cdm_util.h"
 #include "cam_irq_controller.h"
 #include "cam_tasklet_util.h"
+#include "cam_mem_mgr_api.h"
 
 struct cam_vfe_mux_rdi_data {
 	void __iomem                                *mem_base;
@@ -526,7 +527,7 @@ int cam_vfe_rdi_ver2_init(
 	struct cam_vfe_rdi_ver2_hw_info *rdi_info = rdi_hw_info;
 	int                              i = 0;
 
-	rdi_priv = kzalloc(sizeof(struct cam_vfe_mux_rdi_data),
+	rdi_priv = CAM_MEM_ZALLOC(sizeof(struct cam_vfe_mux_rdi_data),
 			GFP_KERNEL);
 	if (!rdi_priv) {
 		CAM_DBG(CAM_ISP, "Error! Failed to alloc for rdi_priv");
@@ -583,7 +584,7 @@ int cam_vfe_rdi_ver2_init(
 
 	return 0;
 err_init:
-	kfree(rdi_priv);
+	CAM_MEM_FREE(rdi_priv);
 	return -EINVAL;
 }
 
@@ -610,7 +611,7 @@ int cam_vfe_rdi_ver2_deinit(
 
 	rdi_node->res_priv = NULL;
 
-	kfree(rdi_priv);
+	CAM_MEM_FREE(rdi_priv);
 
 	return 0;
 }

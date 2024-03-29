@@ -41,6 +41,7 @@
 #include "cam_req_mgr_workq.h"
 #include "cam_common_util.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 struct cam_camnoc_info *camnoc_info[CAM_CAMNOC_HW_TYPE_MAX];
 struct cam_cpas_info *cpas_info;
@@ -916,7 +917,7 @@ static void cam_cpastop_work(struct work_struct *work)
 		CAM_ERR(CAM_CPAS, "%s IRQ not handled irq_status=0x%x",
 			camnoc_info[camnoc_idx]->camnoc_name, payload->irq_status);
 
-	kfree(payload);
+	CAM_MEM_FREE(payload);
 }
 
 static irqreturn_t cam_cpastop_handle_irq(int irq_num, void *data)
@@ -947,7 +948,7 @@ static irqreturn_t cam_cpastop_handle_irq(int irq_num, void *data)
 		goto done;
 	}
 
-	payload = kzalloc(sizeof(struct cam_cpas_work_payload), GFP_ATOMIC);
+	payload = CAM_MEM_ZALLOC(sizeof(struct cam_cpas_work_payload), GFP_ATOMIC);
 	if (!payload)
 		goto done;
 
@@ -995,7 +996,7 @@ static irqreturn_t cam_cpastop_handle_irq(int irq_num, void *data)
 			payload->irq_status &=
 				~camnoc_info[camnoc_idx]->irq_err[slave_err_irq_idx].sbm_port;
 			if (!payload->irq_status) {
-				kfree(payload);
+				CAM_MEM_FREE(payload);
 				goto done;
 			}
 		}

@@ -25,9 +25,8 @@
 #include "cam_jpeg_hw_mgr_intf.h"
 #include "cam_jpeg_hw_mgr.h"
 #include "cam_smmu_api.h"
-#include "cam_mem_mgr.h"
+#include "cam_mem_mgr_api.h"
 #include "cam_req_mgr_workq.h"
-#include "cam_mem_mgr.h"
 #include "cam_cdm_intf_api.h"
 #include "cam_debug_util.h"
 #include "cam_common_util.h"
@@ -1397,13 +1396,13 @@ static int cam_jpeg_mgr_release_hw(void *hw_mgr_priv, void *release_hw_args)
 	if (rc) {
 		mutex_unlock(&hw_mgr->hw_mgr_mutex);
 		CAM_ERR(CAM_JPEG, "JPEG release ctx failed");
-		kfree(ctx_data->cdm_cmd);
+		CAM_MEM_FREE(ctx_data->cdm_cmd);
 		ctx_data->cdm_cmd = NULL;
 
 		return -EINVAL;
 	}
 
-	kfree(ctx_data->cdm_cmd);
+	CAM_MEM_FREE(ctx_data->cdm_cmd);
 	ctx_data->cdm_cmd = NULL;
 	CAM_DBG(CAM_JPEG, "handle %llu", ctx_data);
 
@@ -1452,7 +1451,7 @@ static int cam_jpeg_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	ctx_data = &hw_mgr->ctx_data[ctx_id];
 
 	ctx_data->cdm_cmd =
-		kzalloc(((sizeof(struct cam_cdm_bl_request)) +
+		CAM_MEM_ZALLOC(((sizeof(struct cam_cdm_bl_request)) +
 			((CAM_JPEG_HW_ENTRIES_MAX - 1) *
 			sizeof(struct cam_cdm_bl_cmd))), GFP_KERNEL);
 	if (!ctx_data->cdm_cmd) {
@@ -1546,7 +1545,7 @@ start_cdm_hdl_failed:
 		cam_cdm_release(hw_mgr->cdm_info[dev_type][0].cdm_handle);
 	hw_mgr->cdm_info[dev_type][0].ref_cnt--;
 acq_cdm_hdl_failed:
-	kfree(ctx_data->cdm_cmd);
+	CAM_MEM_FREE(ctx_data->cdm_cmd);
 jpeg_release_ctx:
 	cam_jpeg_mgr_release_ctx(hw_mgr, ctx_data);
 	mutex_unlock(&hw_mgr->hw_mgr_mutex);
@@ -1629,7 +1628,7 @@ static int cam_jpeg_setup_workqs(void)
 	}
 
 	g_jpeg_hw_mgr.process_frame_work_data =
-		kzalloc(sizeof(struct cam_jpeg_process_frame_work_data_t) *
+		CAM_MEM_ZALLOC(sizeof(struct cam_jpeg_process_frame_work_data_t) *
 			CAM_JPEG_WORKQ_NUM_TASK, GFP_KERNEL);
 	if (!g_jpeg_hw_mgr.process_frame_work_data) {
 		rc = -ENOMEM;
@@ -1637,7 +1636,7 @@ static int cam_jpeg_setup_workqs(void)
 	}
 
 	g_jpeg_hw_mgr.process_irq_cb_work_data =
-		kzalloc(sizeof(struct cam_jpeg_process_irq_work_data_t) *
+		CAM_MEM_ZALLOC(sizeof(struct cam_jpeg_process_irq_work_data_t) *
 			CAM_JPEG_WORKQ_NUM_TASK, GFP_KERNEL);
 	if (!g_jpeg_hw_mgr.process_irq_cb_work_data) {
 		rc = -ENOMEM;
@@ -1663,7 +1662,7 @@ static int cam_jpeg_setup_workqs(void)
 	return rc;
 
 work_process_irq_cb_data_failed:
-	kfree(g_jpeg_hw_mgr.process_frame_work_data);
+	CAM_MEM_FREE(g_jpeg_hw_mgr.process_frame_work_data);
 work_process_frame_data_failed:
 	cam_req_mgr_workq_destroy(&g_jpeg_hw_mgr.work_process_irq_cb);
 work_process_irq_cb_failed:
@@ -1707,7 +1706,7 @@ static int cam_jpeg_init_devices(struct device_node *of_node,
 		CAM_ERR(CAM_JPEG, "read num enc devices failed %d", rc);
 		goto num_enc_failed;
 	}
-	g_jpeg_hw_mgr.devices[CAM_JPEG_DEV_ENC] = kzalloc(
+	g_jpeg_hw_mgr.devices[CAM_JPEG_DEV_ENC] = CAM_MEM_ZALLOC(
 		sizeof(struct cam_hw_intf *) * num_dev, GFP_KERNEL);
 	if (!g_jpeg_hw_mgr.devices[CAM_JPEG_DEV_ENC]) {
 		rc = -ENOMEM;
@@ -1721,7 +1720,7 @@ static int cam_jpeg_init_devices(struct device_node *of_node,
 		goto num_dma_failed;
 	}
 
-	g_jpeg_hw_mgr.devices[CAM_JPEG_DEV_DMA] = kzalloc(
+	g_jpeg_hw_mgr.devices[CAM_JPEG_DEV_DMA] = CAM_MEM_ZALLOC(
 		sizeof(struct cam_hw_intf *) * num_dma_dev, GFP_KERNEL);
 	if (!g_jpeg_hw_mgr.devices[CAM_JPEG_DEV_DMA]) {
 		rc = -ENOMEM;
@@ -1809,9 +1808,9 @@ static int cam_jpeg_init_devices(struct device_node *of_node,
 	return rc;
 
 compat_hw_name_failed:
-	kfree(g_jpeg_hw_mgr.devices[CAM_JPEG_DEV_DMA]);
+	CAM_MEM_FREE(g_jpeg_hw_mgr.devices[CAM_JPEG_DEV_DMA]);
 num_dma_failed:
-	kfree(g_jpeg_hw_mgr.devices[CAM_JPEG_DEV_ENC]);
+	CAM_MEM_FREE(g_jpeg_hw_mgr.devices[CAM_JPEG_DEV_ENC]);
 num_enc_failed:
 num_dev_failed:
 

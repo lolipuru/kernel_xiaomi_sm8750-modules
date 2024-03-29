@@ -14,6 +14,7 @@
 #include "camera_main.h"
 #include "cam_cpas_api.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 #include <dt-bindings/msm-camera.h>
 
 static struct cam_hw_intf *cam_ife_csid_hw_list[CAM_IFE_CSID_HW_NUM_MAX] = {
@@ -46,13 +47,13 @@ static int cam_ife_csid_component_bind(struct device *dev,
 		goto err;
 	}
 
-	hw_intf = kzalloc(sizeof(*hw_intf), GFP_KERNEL);
+	hw_intf = CAM_MEM_ZALLOC(sizeof(*hw_intf), GFP_KERNEL);
 	if (!hw_intf) {
 		rc = -ENOMEM;
 		goto err;
 	}
 
-	hw_info = kzalloc(sizeof(struct cam_hw_info), GFP_KERNEL);
+	hw_info = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!hw_info) {
 		rc = -ENOMEM;
 		goto free_hw_intf;
@@ -108,9 +109,9 @@ static int cam_ife_csid_component_bind(struct device *dev,
 	return 0;
 
 free_hw_info:
-	kfree(hw_info);
+	CAM_MEM_FREE(hw_info);
 free_hw_intf:
-	kfree(hw_intf);
+	CAM_MEM_FREE(hw_intf);
 err:
 	return rc;
 }
@@ -149,8 +150,8 @@ static void cam_ife_csid_component_unbind(struct device *dev,
 
 free_mem:
 	/*release the csid device memory */
-	kfree(hw_info);
-	kfree(hw_intf);
+	CAM_MEM_FREE(hw_info);
+	CAM_MEM_FREE(hw_intf);
 }
 
 const static struct component_ops cam_ife_csid_component_ops = {

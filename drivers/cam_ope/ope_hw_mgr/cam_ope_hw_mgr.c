@@ -42,6 +42,7 @@
 #include "cam_cdm.h"
 #include "ope_dev_intf.h"
 #include "cam_compat.h"
+#include "cam_mem_mgr_api.h"
 
 static struct cam_ope_hw_mgr *ope_hw_mgr;
 
@@ -3937,7 +3938,7 @@ static int cam_ope_mgr_create_wq(void)
 	}
 
 	ope_hw_mgr->cmd_work_data =
-		kzalloc(sizeof(struct ope_cmd_work_data) * OPE_WORKQ_NUM_TASK,
+		CAM_MEM_ZALLOC(sizeof(struct ope_cmd_work_data) * OPE_WORKQ_NUM_TASK,
 		GFP_KERNEL);
 	if (!ope_hw_mgr->cmd_work_data) {
 		rc = -ENOMEM;
@@ -3945,7 +3946,7 @@ static int cam_ope_mgr_create_wq(void)
 	}
 
 	ope_hw_mgr->msg_work_data =
-		kzalloc(sizeof(struct ope_msg_work_data) * OPE_WORKQ_NUM_TASK,
+		CAM_MEM_ZALLOC(sizeof(struct ope_msg_work_data) * OPE_WORKQ_NUM_TASK,
 		GFP_KERNEL);
 	if (!ope_hw_mgr->msg_work_data) {
 		rc = -ENOMEM;
@@ -3953,7 +3954,7 @@ static int cam_ope_mgr_create_wq(void)
 	}
 
 	ope_hw_mgr->timer_work_data =
-		kzalloc(sizeof(struct ope_clk_work_data) * OPE_WORKQ_NUM_TASK,
+		CAM_MEM_ZALLOC(sizeof(struct ope_clk_work_data) * OPE_WORKQ_NUM_TASK,
 		GFP_KERNEL);
 	if (!ope_hw_mgr->timer_work_data) {
 		rc = -ENOMEM;
@@ -3975,9 +3976,9 @@ static int cam_ope_mgr_create_wq(void)
 
 
 timer_work_data_failed:
-	kfree(ope_hw_mgr->msg_work_data);
+	CAM_MEM_FREE(ope_hw_mgr->msg_work_data);
 msg_work_data_failed:
-	kfree(ope_hw_mgr->cmd_work_data);
+	CAM_MEM_FREE(ope_hw_mgr->cmd_work_data);
 cmd_work_data_failed:
 	cam_req_mgr_workq_destroy(&ope_hw_mgr->timer_work);
 timer_work_failed:

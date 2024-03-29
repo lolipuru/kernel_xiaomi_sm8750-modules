@@ -22,6 +22,7 @@
 #include "cam_debug_util.h"
 #include "cam_cpas_api.h"
 #include "cam_packet_util.h"
+#include "cam_mem_mgr_api.h"
 
 static uint cam_debug_ctx_req_list;
 module_param(cam_debug_ctx_req_list, uint, 0644);
@@ -41,31 +42,31 @@ static void cam_context_free_mem_hw_entries(struct cam_context *ctx)
 
 	if (ctx->out_map_entries) {
 		for (i = 0; i < ctx->req_size; i++) {
-			kfree(ctx->out_map_entries[i]);
+			CAM_MEM_FREE(ctx->out_map_entries[i]);
 			ctx->out_map_entries[i] = NULL;
 		}
 
-		kfree(ctx->out_map_entries);
+		CAM_MEM_FREE(ctx->out_map_entries);
 		ctx->out_map_entries = NULL;
 	}
 
 	if (ctx->in_map_entries) {
 		for (i = 0; i < ctx->req_size; i++) {
-			kfree(ctx->in_map_entries[i]);
+			CAM_MEM_FREE(ctx->in_map_entries[i]);
 			ctx->in_map_entries[i] = NULL;
 		}
 
-		kfree(ctx->in_map_entries);
+		CAM_MEM_FREE(ctx->in_map_entries);
 		ctx->in_map_entries = NULL;
 	}
 
 	if (ctx->hw_update_entry) {
 		for (i = 0; i < ctx->req_size; i++) {
-			kfree(ctx->hw_update_entry[i]);
+			CAM_MEM_FREE(ctx->hw_update_entry[i]);
 			ctx->hw_update_entry[i] = NULL;
 		}
 
-		kfree(ctx->hw_update_entry);
+		CAM_MEM_FREE(ctx->hw_update_entry);
 		ctx->hw_update_entry = NULL;
 	}
 }
@@ -86,7 +87,7 @@ static int cam_context_allocate_mem_hw_entries(struct cam_context *ctx)
 		ctx->max_out_map_entries,
 		ctx->req_size);
 
-	ctx->hw_update_entry = kcalloc(ctx->req_size,
+	ctx->hw_update_entry = CAM_MEM_ZALLOC_ARRAY(ctx->req_size,
 		sizeof(struct cam_hw_update_entry *), GFP_KERNEL);
 
 	if (!ctx->hw_update_entry) {
@@ -96,7 +97,7 @@ static int cam_context_allocate_mem_hw_entries(struct cam_context *ctx)
 	}
 
 	for (i = 0; i < ctx->req_size; i++) {
-		ctx->hw_update_entry[i] = kcalloc(ctx->max_hw_update_entries,
+		ctx->hw_update_entry[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_hw_update_entries,
 			sizeof(struct cam_hw_update_entry), GFP_KERNEL);
 
 		if (!ctx->hw_update_entry[i]) {
@@ -107,8 +108,9 @@ static int cam_context_allocate_mem_hw_entries(struct cam_context *ctx)
 		}
 	}
 
-	ctx->in_map_entries = kcalloc(ctx->req_size, sizeof(struct cam_hw_fence_map_entry *),
-		GFP_KERNEL);
+	ctx->in_map_entries = CAM_MEM_ZALLOC_ARRAY(ctx->req_size,
+				sizeof(struct cam_hw_fence_map_entry *),
+				GFP_KERNEL);
 
 	if (!ctx->in_map_entries) {
 		CAM_ERR(CAM_CTXT, "%s[%d] no memory for in_map_entries",
@@ -118,7 +120,7 @@ static int cam_context_allocate_mem_hw_entries(struct cam_context *ctx)
 	}
 
 	for (i = 0; i < ctx->req_size; i++) {
-		ctx->in_map_entries[i] = kcalloc(ctx->max_in_map_entries,
+		ctx->in_map_entries[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_in_map_entries,
 			sizeof(struct cam_hw_fence_map_entry), GFP_KERNEL);
 
 		if (!ctx->in_map_entries[i]) {
@@ -129,8 +131,9 @@ static int cam_context_allocate_mem_hw_entries(struct cam_context *ctx)
 		}
 	}
 
-	ctx->out_map_entries = kcalloc(ctx->req_size, sizeof(struct cam_hw_fence_map_entry *),
-		GFP_KERNEL);
+	ctx->out_map_entries = CAM_MEM_ZALLOC_ARRAY(ctx->req_size,
+				sizeof(struct cam_hw_fence_map_entry *),
+				GFP_KERNEL);
 
 	if (!ctx->out_map_entries) {
 		CAM_ERR(CAM_CTXT, "%s[%d] no memory for out_map_entries",
@@ -140,7 +143,7 @@ static int cam_context_allocate_mem_hw_entries(struct cam_context *ctx)
 	}
 
 	for (i = 0; i < ctx->req_size; i++) {
-		ctx->out_map_entries[i] = kcalloc(ctx->max_out_map_entries,
+		ctx->out_map_entries[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_out_map_entries,
 			sizeof(struct cam_hw_fence_map_entry), GFP_KERNEL);
 
 		if (!ctx->out_map_entries[i]) {
@@ -890,7 +893,7 @@ int32_t cam_context_flush_ctx_to_hw(struct cam_context *ctx)
 	}
 	if (num_entries) {
 		flush_args.flush_req_pending =
-			kcalloc(num_entries, sizeof(void *), GFP_KERNEL);
+			CAM_MEM_ZALLOC_ARRAY(num_entries, sizeof(void *), GFP_KERNEL);
 		if (!flush_args.flush_req_pending) {
 			CAM_ERR(CAM_CTXT, "[%s][%d] : Flush array memory alloc fail",
 				ctx->dev_name, ctx->ctx_id);
@@ -985,7 +988,7 @@ int32_t cam_context_flush_ctx_to_hw(struct cam_context *ctx)
 
 		if (num_entries) {
 			flush_args.flush_req_active =
-				kcalloc(num_entries, sizeof(void *), GFP_ATOMIC);
+				CAM_MEM_ZALLOC_ARRAY(num_entries, sizeof(void *), GFP_ATOMIC);
 			if (!flush_args.flush_req_active) {
 				spin_unlock(&ctx->lock);
 				CAM_ERR(CAM_CTXT, "[%s][%d] : Flush array memory alloc fail",
@@ -1066,8 +1069,8 @@ int32_t cam_context_flush_ctx_to_hw(struct cam_context *ctx)
 	CAM_DBG(CAM_CTXT, "[%s] X: NRT flush ctx", ctx->dev_name);
 
 end:
-	kfree(flush_args.flush_req_active);
-	kfree(flush_args.flush_req_pending);
+	CAM_MEM_FREE(flush_args.flush_req_active);
+	CAM_MEM_FREE(flush_args.flush_req_pending);
 	return rc;
 }
 
@@ -1084,7 +1087,7 @@ int32_t cam_context_flush_req_to_hw(struct cam_context *ctx,
 
 	CAM_DBG(CAM_CTXT, "[%s] E: NRT flush req", ctx->dev_name);
 
-	flush_args.flush_req_pending = kzalloc(sizeof(void *), GFP_KERNEL);
+	flush_args.flush_req_pending = CAM_MEM_ZALLOC(sizeof(void *), GFP_KERNEL);
 	if (!flush_args.flush_req_pending) {
 		CAM_ERR(CAM_CTXT, "[%s][%d] : Flush array memory alloc fail",
 			ctx->dev_name, ctx->ctx_id);
@@ -1114,7 +1117,7 @@ int32_t cam_context_flush_req_to_hw(struct cam_context *ctx,
 
 	if (ctx->hw_mgr_intf->hw_flush) {
 		if (!flush_args.num_req_pending) {
-			flush_args.flush_req_active = kzalloc(sizeof(void *), GFP_KERNEL);
+			flush_args.flush_req_active = CAM_MEM_ZALLOC(sizeof(void *), GFP_KERNEL);
 			if (!flush_args.flush_req_active) {
 				CAM_ERR(CAM_CTXT, "[%s][%d] : Flush array memory alloc fail",
 					ctx->dev_name, ctx->ctx_id);
@@ -1221,8 +1224,8 @@ int32_t cam_context_flush_req_to_hw(struct cam_context *ctx,
 	CAM_DBG(CAM_CTXT, "[%s] X: NRT flush req", ctx->dev_name);
 
 end:
-	kfree(flush_args.flush_req_active);
-	kfree(flush_args.flush_req_pending);
+	CAM_MEM_FREE(flush_args.flush_req_active);
+	CAM_MEM_FREE(flush_args.flush_req_pending);
 	return rc;
 }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -16,6 +16,7 @@
 #include "cam_custom_csid480.h"
 #include "cam_debug_util.h"
 #include "camera_main.h"
+#include "cam_mem_mgr_api.h"
 
 #define CAM_CUSTOM_CSID_DRV_NAME  "custom_csid"
 
@@ -38,13 +39,13 @@ static int cam_custom_csid_component_bind(struct device *dev,
 	int				rc = 0;
 	struct platform_device *pdev = to_platform_device(dev);
 
-	csid_hw_intf = kzalloc(sizeof(*csid_hw_intf), GFP_KERNEL);
+	csid_hw_intf = CAM_MEM_ZALLOC(sizeof(*csid_hw_intf), GFP_KERNEL);
 	if (!csid_hw_intf) {
 		rc = -ENOMEM;
 		goto err;
 	}
 
-	csid_hw_info = kzalloc(sizeof(struct cam_hw_info), GFP_KERNEL);
+	csid_hw_info = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 
 	if (!csid_hw_info) {
 		rc = -ENOMEM;
@@ -98,9 +99,9 @@ static int cam_custom_csid_component_bind(struct device *dev,
 	return 0;
 
 free_hw_info:
-	kfree(csid_hw_info);
+	CAM_MEM_FREE(csid_hw_info);
 free_hw_intf:
-	kfree(csid_hw_intf);
+	CAM_MEM_FREE(csid_hw_intf);
 err:
 	return rc;
 }
@@ -139,8 +140,8 @@ static void cam_custom_csid_component_unbind(struct device *dev,
 
 free_mem:
 	/*release the csid device memory */
-	kfree(csid_hw_info);
-	kfree(csid_hw_intf);
+	CAM_MEM_FREE(csid_hw_info);
+	CAM_MEM_FREE(csid_hw_intf);
 }
 
 const static struct component_ops cam_custom_csid_component_ops = {

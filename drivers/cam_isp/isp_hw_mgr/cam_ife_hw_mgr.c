@@ -586,7 +586,7 @@ static inline int cam_ife_mgr_allocate_cdm_cmd(
 	if (is_sfe_en)
 		cfg_max = CAM_ISP_SFE_CTX_CFG_MAX;
 
-	*cdm_cmd = kzalloc(((sizeof(struct cam_cdm_bl_request)) +
+	*cdm_cmd = CAM_MEM_ZALLOC(((sizeof(struct cam_cdm_bl_request)) +
 		((cfg_max - 1) *
 		sizeof(struct cam_cdm_bl_cmd))), GFP_KERNEL);
 
@@ -601,7 +601,7 @@ static inline int cam_ife_mgr_allocate_cdm_cmd(
 static inline void cam_ife_mgr_free_cdm_cmd(
 	struct cam_cdm_bl_request **cdm_cmd)
 {
-	kfree(*cdm_cmd);
+	CAM_MEM_FREE(*cdm_cmd);
 	*cdm_cmd = NULL;
 }
 
@@ -5341,7 +5341,7 @@ static int cam_ife_mgr_acquire_get_unified_structure_v0(
 	in_port->qcfa_bin        =  0;
 	in_port->num_out_res     =  in->num_out_res;
 
-	in_port->data = kcalloc(in->num_out_res,
+	in_port->data = CAM_MEM_ZALLOC_ARRAY(in->num_out_res,
 		sizeof(struct cam_isp_out_port_generic_info),
 		GFP_KERNEL);
 	if (in_port->data == NULL) {
@@ -5462,8 +5462,9 @@ static int cam_ife_mgr_acquire_get_unified_structure_v3(
 
 	cam_ife_mgr_acquire_get_feature_flag_params_v3(in, in_port);
 
-	in_port->data = kcalloc(in->num_out_res, sizeof(struct cam_isp_out_port_generic_info),
-		GFP_KERNEL);
+	in_port->data = CAM_MEM_ZALLOC_ARRAY(in->num_out_res,
+				sizeof(struct cam_isp_out_port_generic_info),
+				GFP_KERNEL);
 	if (in_port->data == NULL) {
 		rc = -ENOMEM;
 		goto err;
@@ -5583,7 +5584,7 @@ static int cam_ife_mgr_acquire_get_unified_structure_v2(
 
 	cam_ife_mgr_acquire_get_feature_flag_params(in, in_port);
 
-	in_port->data = kcalloc(in->num_out_res,
+	in_port->data = CAM_MEM_ZALLOC_ARRAY(in->num_out_res,
 		sizeof(struct cam_isp_out_port_generic_info),
 		GFP_KERNEL);
 	if (in_port->data == NULL) {
@@ -5732,7 +5733,8 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		goto free_ctx;
 	}
 
-	in_port = kcalloc(acquire_hw_info->num_inputs, sizeof(struct cam_isp_in_port_generic_info),
+	in_port = CAM_MEM_ZALLOC_ARRAY(acquire_hw_info->num_inputs,
+			sizeof(struct cam_isp_in_port_generic_info),
 			GFP_KERNEL);
 
 	if (!in_port) {
@@ -5741,7 +5743,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		goto free_ctx;
 	}
 
-	ife_ctx->vfe_bus_comp_grp = kcalloc(CAM_IFE_BUS_COMP_NUM_MAX,
+	ife_ctx->vfe_bus_comp_grp = CAM_MEM_ZALLOC_ARRAY(CAM_IFE_BUS_COMP_NUM_MAX,
 		sizeof(struct cam_isp_context_comp_record), GFP_KERNEL);
 	if (!ife_ctx->vfe_bus_comp_grp) {
 		CAM_ERR(CAM_CTXT, "No memory for vfe_bus_comp_grp");
@@ -5749,7 +5751,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		goto free_mem;
 	}
 
-	ife_ctx->sfe_bus_comp_grp = kcalloc(CAM_SFE_BUS_COMP_NUM_MAX,
+	ife_ctx->sfe_bus_comp_grp = CAM_MEM_ZALLOC_ARRAY(CAM_SFE_BUS_COMP_NUM_MAX,
 		sizeof(struct cam_isp_context_comp_record), GFP_KERNEL);
 	if (!ife_ctx->sfe_bus_comp_grp) {
 		CAM_ERR(CAM_CTXT, "No memory for sfe_bus_comp_grp");
@@ -5804,7 +5806,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	}
 
 	total_ports = total_pix_port + total_rdi_port + total_pd_port;
-	ife_ctx->res_list_ife_out = kcalloc(total_ports,
+	ife_ctx->res_list_ife_out = CAM_MEM_ZALLOC_ARRAY(total_ports,
 		sizeof(struct cam_isp_hw_mgr_res), GFP_KERNEL);
 	memset(ife_ctx->vfe_out_map, 0xff, sizeof(uint8_t) * max_ife_out_res);
 
@@ -5832,7 +5834,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		ife_ctx->flags.is_lite_context = true;
 
 	if (total_sfe_ports) {
-		ife_ctx->res_list_sfe_out = kcalloc(total_sfe_ports,
+		ife_ctx->res_list_sfe_out = CAM_MEM_ZALLOC_ARRAY(total_sfe_ports,
 			sizeof(struct cam_isp_hw_mgr_res), GFP_KERNEL);
 		memset(ife_ctx->sfe_out_map, 0xff, sizeof(uint8_t) * max_sfe_out_res);
 		if (!ife_ctx->res_list_sfe_out) {
@@ -5891,11 +5893,11 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 			goto free_res;
 		}
 
-		kfree(in_port[i].data);
+		CAM_MEM_FREE(in_port[i].data);
 		in_port[i].data = NULL;
 	}
 
-	kfree(in_port);
+	CAM_MEM_FREE(in_port);
 	in_port = NULL;
 
 	/* Process base info */
@@ -5971,7 +5973,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		acquire_args->op_flags |=
 			CAM_IFE_CTX_APPLY_DEFAULT_CFG;
 		ife_ctx->scratch_buf_info.sfe_scratch_config =
-			kzalloc(sizeof(struct cam_sfe_scratch_buf_cfg), GFP_KERNEL);
+			CAM_MEM_ZALLOC(sizeof(struct cam_sfe_scratch_buf_cfg), GFP_KERNEL);
 		if (!ife_ctx->scratch_buf_info.sfe_scratch_config) {
 			CAM_ERR(CAM_ISP, "Failed to allocate SFE scratch config, ctx_idx: %u",
 				ife_ctx->ctx_index);
@@ -5980,12 +5982,12 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		}
 
 		ife_ctx->scratch_buf_info.ife_scratch_config =
-			kzalloc(sizeof(struct cam_ife_scratch_buf_cfg), GFP_KERNEL);
+			CAM_MEM_ZALLOC(sizeof(struct cam_ife_scratch_buf_cfg), GFP_KERNEL);
 		if (!ife_ctx->scratch_buf_info.ife_scratch_config) {
 			CAM_ERR(CAM_ISP, "Failed to allocate IFE scratch config, ctx_idx: %u",
 				ife_ctx->ctx_index);
 			rc = -ENOMEM;
-			kfree(ife_ctx->scratch_buf_info.sfe_scratch_config);
+			CAM_MEM_FREE(ife_ctx->scratch_buf_info.sfe_scratch_config);
 			goto free_cdm_cmd;
 		}
 
@@ -6038,22 +6040,22 @@ free_res:
 free_mem:
 	if (in_port) {
 		for (i = 0; i < acquire_hw_info->num_inputs; i++) {
-			kfree(in_port[i].data);
+			CAM_MEM_FREE(in_port[i].data);
 			in_port[i].data = NULL;
 		}
 
-		kfree(in_port);
+		CAM_MEM_FREE(in_port);
 		in_port = NULL;
 	}
 
-	kfree(ife_ctx->vfe_bus_comp_grp);
-	kfree(ife_ctx->sfe_bus_comp_grp);
+	CAM_MEM_FREE(ife_ctx->vfe_bus_comp_grp);
+	CAM_MEM_FREE(ife_ctx->sfe_bus_comp_grp);
 	ife_ctx->vfe_bus_comp_grp = NULL;
 	ife_ctx->sfe_bus_comp_grp = NULL;
 
-	kfree(ife_ctx->res_list_sfe_out);
+	CAM_MEM_FREE(ife_ctx->res_list_sfe_out);
 	ife_ctx->res_list_sfe_out = NULL;
-	kfree(ife_ctx->res_list_ife_out);
+	CAM_MEM_FREE(ife_ctx->res_list_ife_out);
 	ife_ctx->res_list_ife_out = NULL;
 free_ctx:
 	cam_ife_hw_mgr_put_ctx(&ife_hw_mgr->free_ctx_list, &ife_ctx);
@@ -6147,7 +6149,7 @@ static int cam_ife_mgr_acquire_dev(void *hw_mgr_priv, void *acquire_hw_args)
 
 	isp_resource = (struct cam_isp_resource *)acquire_args->acquire_info;
 
-	gen_port_info = kcalloc(acquire_args->num_acq,
+	gen_port_info = CAM_MEM_ZALLOC_ARRAY(acquire_args->num_acq,
 			    sizeof(struct cam_isp_in_port_generic_info),
 			    GFP_KERNEL);
 
@@ -6185,7 +6187,7 @@ static int cam_ife_mgr_acquire_dev(void *hw_mgr_priv, void *acquire_hw_args)
 				CAM_ERR(CAM_ISP, "too many output res %d, ctx_idx: %u",
 					in_port->num_out_res, ife_ctx->ctx_index);
 				rc = -EINVAL;
-				kfree(in_port);
+				CAM_MEM_FREE(in_port);
 				goto free_res;
 			}
 
@@ -6196,11 +6198,11 @@ static int cam_ife_mgr_acquire_dev(void *hw_mgr_priv, void *acquire_hw_args)
 				CAM_ERR(CAM_ISP, "buffer size is not enough, ctx_idx: %u",
 					ife_ctx->ctx_index);
 				rc = -EINVAL;
-				kfree(in_port);
+				CAM_MEM_FREE(in_port);
 				goto free_res;
 			}
 
-			gen_port_info[i].data = kcalloc(
+			gen_port_info[i].data = CAM_MEM_ZALLOC_ARRAY(
 				in_port->num_out_res,
 				sizeof(struct cam_isp_out_port_generic_info),
 				GFP_KERNEL);
@@ -6220,7 +6222,7 @@ static int cam_ife_mgr_acquire_dev(void *hw_mgr_priv, void *acquire_hw_args)
 			total_rdi_port += gen_port_info[i].rdi_count;
 			total_pd_port += gen_port_info[i].ppp_count;
 
-			kfree(in_port);
+			CAM_MEM_FREE(in_port);
 		} else {
 			CAM_ERR(CAM_ISP,
 				"Copy from user failed with in_port = %pK, ctx_idx: %u",
@@ -6262,11 +6264,11 @@ static int cam_ife_mgr_acquire_dev(void *hw_mgr_priv, void *acquire_hw_args)
 			goto free_res;
 		}
 
-		kfree(gen_port_info[i].data);
+		CAM_MEM_FREE(gen_port_info[i].data);
 		gen_port_info[i].data = NULL;
 	}
 
-	kfree(gen_port_info);
+	CAM_MEM_FREE(gen_port_info);
 	gen_port_info = NULL;
 
 	/* Process base info */
@@ -6342,10 +6344,10 @@ free_res:
 free_mem:
 	if (gen_port_info) {
 		for (i = 0; i < acquire_args->num_acq; i++) {
-			kfree(gen_port_info[i].data);
+			CAM_MEM_FREE(gen_port_info[i].data);
 			gen_port_info[i].data = NULL;
 		}
-		kfree(gen_port_info);
+		CAM_MEM_FREE(gen_port_info);
 		gen_port_info = NULL;
 	}
 err:
@@ -6858,7 +6860,7 @@ static int cam_ife_hw_mgr_sfe_irq_inject_or_dump_desc(
 	char *line_buf = NULL;
 	struct cam_hw_intf *hw_intf = NULL;
 
-	line_buf = kzalloc(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
+	line_buf = CAM_MEM_ZALLOC(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
 	if (!line_buf)
 		return -ENOMEM;
 
@@ -6896,7 +6898,7 @@ clear_param:
 
 	/* Clear the param injected */
 	cam_isp_irq_inject_clear_params(params);
-	kfree(line_buf);
+	CAM_MEM_FREE(line_buf);
 	return rc;
 }
 
@@ -6909,7 +6911,7 @@ static int cam_ife_hw_mgr_vfe_irq_inject_or_dump_desc(
 	char *line_buf = NULL;
 	struct cam_hw_intf *hw_intf = NULL;
 
-	line_buf = kzalloc(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
+	line_buf = CAM_MEM_ZALLOC(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
 	if (!line_buf)
 		return -ENOMEM;
 
@@ -6947,7 +6949,7 @@ clear_param:
 
 	/* Clear the param injected */
 	cam_isp_irq_inject_clear_params(params);
-	kfree(line_buf);
+	CAM_MEM_FREE(line_buf);
 	return rc;
 }
 
@@ -6960,7 +6962,7 @@ static int cam_ife_hw_mgr_csid_irq_inject_or_dump_desc(
 	char *line_buf = NULL;
 	struct cam_hw_intf *hw_intf = NULL;
 
-	line_buf = kzalloc(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
+	line_buf = CAM_MEM_ZALLOC(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
 	if (!line_buf)
 		return -ENOMEM;
 
@@ -6998,7 +7000,7 @@ clear_param:
 
 	/* Clear the param injected */
 	cam_isp_irq_inject_clear_params(params);
-	kfree(line_buf);
+	CAM_MEM_FREE(line_buf);
 	return rc;
 }
 
@@ -8523,13 +8525,13 @@ static int cam_ife_mgr_release_hw(void *hw_mgr_priv,
 	ctx->scratch_buf_info.num_fetches = 0;
 	ctx->num_acq_vfe_out = 0;
 	ctx->num_acq_sfe_out = 0;
-	kfree(ctx->res_list_ife_out);
+	CAM_MEM_FREE(ctx->res_list_ife_out);
 	ctx->res_list_ife_out = NULL;
 	ctx->pri_rdi_out_res = g_ife_hw_mgr.isp_caps.max_vfe_out_res_type;
 	memset(ctx->vfe_out_map, 0xff, sizeof(uint8_t) * max_ife_out_res);
 
 	if (ctx->ctx_type == CAM_IFE_CTX_TYPE_SFE) {
-		kfree(ctx->res_list_sfe_out);
+		CAM_MEM_FREE(ctx->res_list_sfe_out);
 		ctx->res_list_sfe_out = NULL;
 		memset(ctx->sfe_out_map, 0xff, sizeof(uint8_t) * max_sfe_out_res);
 	}
@@ -8537,15 +8539,15 @@ static int cam_ife_mgr_release_hw(void *hw_mgr_priv,
 	ctx->ctx_type = CAM_IFE_CTX_TYPE_NONE;
 	ctx->buf_done_controller = NULL;
 	ctx->mc_comp_buf_done_controller = NULL;
-	kfree(ctx->scratch_buf_info.sfe_scratch_config);
-	kfree(ctx->scratch_buf_info.ife_scratch_config);
+	CAM_MEM_FREE(ctx->scratch_buf_info.sfe_scratch_config);
+	CAM_MEM_FREE(ctx->scratch_buf_info.ife_scratch_config);
 	ctx->scratch_buf_info.sfe_scratch_config = NULL;
 	ctx->scratch_buf_info.ife_scratch_config = NULL;
 	ctx->try_recovery_cnt = 0;
 	ctx->recovery_req_id = 0;
 	ctx->drv_path_idle_en = 0;
-	kfree(ctx->vfe_bus_comp_grp);
-	kfree(ctx->sfe_bus_comp_grp);
+	CAM_MEM_FREE(ctx->vfe_bus_comp_grp);
+	CAM_MEM_FREE(ctx->sfe_bus_comp_grp);
 	ctx->vfe_bus_comp_grp = NULL;
 	ctx->sfe_bus_comp_grp = NULL;
 
@@ -17236,7 +17238,7 @@ static int cam_isp_irq_inject_parse_common_params(
 	int i, rc = 0, offset = 0;
 	char *line_buf = NULL;
 
-	line_buf = kzalloc(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
+	line_buf = CAM_MEM_ZALLOC(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
 	if (!line_buf)
 		return -ENOMEM;
 
@@ -17382,7 +17384,7 @@ static int cam_isp_irq_inject_parse_common_params(
 	if (offset <= LINE_BUFFER_LEN)
 		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
 
-	kfree(line_buf);
+	CAM_MEM_FREE(line_buf);
 	return rc;
 }
 
@@ -17396,7 +17398,7 @@ static int cam_isp_irq_inject_command_parser(
 	char *line_buf = NULL;
 	int rc, param_index = 0, offset = 0;
 
-	line_buf = kzalloc(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
+	line_buf = CAM_MEM_ZALLOC(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
 	if (!line_buf)
 		return -ENOMEM;
 
@@ -17428,7 +17430,7 @@ static int cam_isp_irq_inject_command_parser(
 
 	rc = param_index;
 end:
-	kfree(line_buf);
+	CAM_MEM_FREE(line_buf);
 	return rc;
 }
 
@@ -17441,14 +17443,14 @@ static ssize_t cam_isp_irq_injection_read(struct file *file,
 	uint32_t hw_type = 0;
 	char *line_buf = NULL;
 
-	line_buf = kzalloc(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
+	line_buf = CAM_MEM_ZALLOC(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
 	if (!line_buf)
 		return -ENOMEM;
 
 	if (!(*ppos) && strlen(irq_inject_display_buf))
 		goto end;
 	else if ((*ppos) && (strlen(irq_inject_display_buf) == 0)) {
-		kfree(line_buf);
+		CAM_MEM_FREE(line_buf);
 		return 0;
 	}
 
@@ -17474,14 +17476,14 @@ static ssize_t cam_isp_irq_injection_read(struct file *file,
 
 end:
 	if (clear_user(ubuf, size)) {
-		kfree(line_buf);
+		CAM_MEM_FREE(line_buf);
 		return -EIO;
 	}
 	count = simple_read_from_buffer(ubuf, size, ppos, irq_inject_display_buf,
 		strlen(irq_inject_display_buf));
 
 	memset(irq_inject_display_buf, '\0', IRQ_INJECT_DISPLAY_BUF_LEN);
-	kfree(line_buf);
+	CAM_MEM_FREE(line_buf);
 	return count;
 }
 
@@ -17496,7 +17498,7 @@ static ssize_t cam_isp_irq_injection_write(struct file *file,
 	char *line_buf = NULL;
 	char input_buf[LINE_BUFFER_LEN] = {'\0'};
 
-	line_buf = kzalloc(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
+	line_buf = CAM_MEM_ZALLOC(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
 	if (!line_buf)
 		return -ENOMEM;
 
@@ -17541,7 +17543,7 @@ static ssize_t cam_isp_irq_injection_write(struct file *file,
 
 	rc = size;
 end:
-	kfree(line_buf);
+	CAM_MEM_FREE(line_buf);
 	return rc;
 }
 
@@ -18099,7 +18101,7 @@ int cam_ife_hw_mgr_init(struct cam_hw_mgr_intf *hw_mgr_intf, int *iommu_hdl,
 		INIT_LIST_HEAD(&g_ife_hw_mgr.ctx_pool[i].res_list_ife_in_rd);
 		ctx_pool = &g_ife_hw_mgr.ctx_pool[i];
 
-		ctx_pool->vfe_out_map = kzalloc((max_ife_out_res *
+		ctx_pool->vfe_out_map = CAM_MEM_ZALLOC((max_ife_out_res *
 			sizeof(uint8_t)), GFP_KERNEL);
 		if (!ctx_pool->vfe_out_map) {
 			rc = -ENOMEM;
@@ -18109,7 +18111,7 @@ int cam_ife_hw_mgr_init(struct cam_hw_mgr_intf *hw_mgr_intf, int *iommu_hdl,
 		}
 
 		if (max_sfe_out_res) {
-			ctx_pool->sfe_out_map = kzalloc((max_sfe_out_res *
+			ctx_pool->sfe_out_map = CAM_MEM_ZALLOC((max_sfe_out_res *
 				sizeof(uint8_t)), GFP_KERNEL);
 			if (!ctx_pool->sfe_out_map) {
 				rc = -ENOMEM;
@@ -18208,13 +18210,13 @@ int cam_ife_hw_mgr_init(struct cam_hw_mgr_intf *hw_mgr_intf, int *iommu_hdl,
 
 	/* Allocate memory for perf counters */
 	if (g_ife_hw_mgr.isp_caps.num_ife_perf_counters) {
-		g_ife_hw_mgr.debug_cfg.ife_perf_counter_val = kcalloc(
+		g_ife_hw_mgr.debug_cfg.ife_perf_counter_val = CAM_MEM_ZALLOC_ARRAY(
 			g_ife_hw_mgr.isp_caps.num_ife_perf_counters,
 			sizeof(uint32_t), GFP_KERNEL);
 	}
 
 	if (g_ife_hw_mgr.isp_caps.num_sfe_perf_counters) {
-		g_ife_hw_mgr.debug_cfg.sfe_perf_counter_val = kcalloc(
+		g_ife_hw_mgr.debug_cfg.sfe_perf_counter_val = CAM_MEM_ZALLOC_ARRAY(
 			g_ife_hw_mgr.isp_caps.num_sfe_perf_counters,
 			sizeof(uint32_t), GFP_KERNEL);
 	}
@@ -18228,8 +18230,8 @@ end:
 			cam_tasklet_deinit(
 				&g_ife_hw_mgr.mgr_common.tasklet_pool[i]);
 			g_ife_hw_mgr.ctx_pool[i].cdm_cmd = NULL;
-			kfree(g_ife_hw_mgr.ctx_pool[i].vfe_out_map);
-			kfree(g_ife_hw_mgr.ctx_pool[i].sfe_out_map);
+			CAM_MEM_FREE(g_ife_hw_mgr.ctx_pool[i].vfe_out_map);
+			CAM_MEM_FREE(g_ife_hw_mgr.ctx_pool[i].sfe_out_map);
 			g_ife_hw_mgr.ctx_pool[i].vfe_out_map = NULL;
 			g_ife_hw_mgr.ctx_pool[i].sfe_out_map = NULL;
 			g_ife_hw_mgr.ctx_pool[i].common.tasklet_info = NULL;
@@ -18250,15 +18252,15 @@ void cam_ife_hw_mgr_deinit(void)
 
 	cam_req_mgr_workq_destroy(&g_ife_hw_mgr.workq);
 	g_ife_hw_mgr.debug_cfg.dentry = NULL;
-	kfree(g_ife_hw_mgr.debug_cfg.sfe_perf_counter_val);
-	kfree(g_ife_hw_mgr.debug_cfg.ife_perf_counter_val);
+	CAM_MEM_FREE(g_ife_hw_mgr.debug_cfg.sfe_perf_counter_val);
+	CAM_MEM_FREE(g_ife_hw_mgr.debug_cfg.ife_perf_counter_val);
 
 	for (i = 0; i < CAM_IFE_CTX_MAX; i++) {
 		cam_tasklet_deinit(
 			&g_ife_hw_mgr.mgr_common.tasklet_pool[i]);
 		g_ife_hw_mgr.ctx_pool[i].cdm_cmd = NULL;
-		kfree(g_ife_hw_mgr.ctx_pool[i].vfe_out_map);
-		kfree(g_ife_hw_mgr.ctx_pool[i].sfe_out_map);
+		CAM_MEM_FREE(g_ife_hw_mgr.ctx_pool[i].vfe_out_map);
+		CAM_MEM_FREE(g_ife_hw_mgr.ctx_pool[i].sfe_out_map);
 		g_ife_hw_mgr.ctx_pool[i].vfe_out_map = NULL;
 		g_ife_hw_mgr.ctx_pool[i].sfe_out_map = NULL;
 		g_ife_hw_mgr.ctx_pool[i].common.tasklet_info = NULL;

@@ -19,6 +19,7 @@
 #include "cam_cpas_api.h"
 #include "cam_debug_util.h"
 #include "camera_main.h"
+#include "cam_mem_mgr_api.h"
 
 static struct cam_ofe_device_hw_info cam_ofe_hw_info = {
 	.hw_idx         = 0x0,
@@ -97,14 +98,14 @@ static int cam_ofe_component_bind(struct device *dev,
 	int                                rc           = 0;
 	struct platform_device *pdev = to_platform_device(dev);
 
-	ofe_dev_intf = kzalloc(sizeof(struct cam_hw_intf), GFP_KERNEL);
+	ofe_dev_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!ofe_dev_intf)
 		return -ENOMEM;
 
 	of_property_read_u32(pdev->dev.of_node,
 		"cell-index", &ofe_dev_intf->hw_idx);
 
-	ofe_dev = kzalloc(sizeof(struct cam_hw_info), GFP_KERNEL);
+	ofe_dev = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!ofe_dev) {
 		rc = -ENOMEM;
 		goto free_dev_intf;
@@ -119,7 +120,7 @@ static int cam_ofe_component_bind(struct device *dev,
 	ofe_dev_intf->hw_ops.process_cmd = cam_ofe_process_cmd;
 	ofe_dev_intf->hw_type = CAM_ICP_DEV_OFE;
 	platform_set_drvdata(pdev, ofe_dev_intf);
-	ofe_dev->core_info = kzalloc(sizeof(struct cam_ofe_device_core_info), GFP_KERNEL);
+	ofe_dev->core_info = CAM_MEM_ZALLOC(sizeof(struct cam_ofe_device_core_info), GFP_KERNEL);
 	if (!ofe_dev->core_info) {
 		rc = -ENOMEM;
 		goto free_dev;
@@ -159,11 +160,11 @@ static int cam_ofe_component_bind(struct device *dev,
 free_soc_resources:
 	cam_ofe_deinit_soc_resources(&ofe_dev->soc_info);
 free_core_info:
-	kfree(ofe_dev->core_info);
+	CAM_MEM_FREE(ofe_dev->core_info);
 free_dev:
-	kfree(ofe_dev);
+	CAM_MEM_FREE(ofe_dev);
 free_dev_intf:
-	kfree(ofe_dev_intf);
+	CAM_MEM_FREE(ofe_dev_intf);
 
 	return rc;
 }
@@ -189,9 +190,9 @@ static void cam_ofe_component_unbind(struct device *dev,
 	cam_cpas_unregister_client(core_info->cpas_handle);
 	cam_ofe_deinit_soc_resources(&ofe_dev->soc_info);
 
-	kfree(ofe_dev->core_info);
-	kfree(ofe_dev);
-	kfree(ofe_dev_intf);
+	CAM_MEM_FREE(ofe_dev->core_info);
+	CAM_MEM_FREE(ofe_dev);
+	CAM_MEM_FREE(ofe_dev_intf);
 }
 
 static const struct component_ops cam_ofe_component_ops = {

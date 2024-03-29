@@ -16,6 +16,7 @@
 #include "cam_debug_util.h"
 #include "cam_presil_hw_access.h"
 #include "cam_hw.h"
+#include "cam_mem_mgr_api.h"
 #if IS_REACHABLE(CONFIG_QCOM_VA_MINIDUMP)
 #include <soc/qcom/minidump.h>
 static struct cam_common_mini_dump_dev_info g_minidump_dev_info;
@@ -389,7 +390,7 @@ void cam_common_release_evt_params(int32_t dev_hdl)
 		if (inject_params->dev_hdl == dev_hdl) {
 			CAM_INFO(CAM_UTIL, "entry deleted for %d dev hdl", dev_hdl);
 			list_del(pos);
-			kfree(inject_params);
+			CAM_MEM_FREE(inject_params);
 		}
 	}
 }
@@ -626,7 +627,7 @@ static int cam_common_evt_inject_set(const char *kmessage,
 	char    *msg                                          = NULL;
 	uint32_t param_output                                 = 0;
 
-	inject_params = kzalloc(sizeof(struct cam_common_inject_evt_param), GFP_KERNEL);
+	inject_params = CAM_MEM_ZALLOC(sizeof(struct cam_common_inject_evt_param), GFP_KERNEL);
 	if (!inject_params) {
 		CAM_ERR(CAM_UTIL, "no free memory");
 		return -ENOMEM;
@@ -714,7 +715,7 @@ static int cam_common_evt_inject_set(const char *kmessage,
 	return rc;
 
 free:
-	kfree(inject_params);
+	CAM_MEM_FREE(inject_params);
 	return rc;
 }
 

@@ -13,6 +13,7 @@
 #include "cam_debug_util.h"
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
+#include "cam_mem_mgr_api.h"
 
 #define MAX_READ_SIZE  0x7FFFF
 
@@ -561,7 +562,7 @@ static struct i2c_settings_list*
 {
 	struct i2c_settings_list *tmp;
 
-	tmp = kzalloc(sizeof(struct i2c_settings_list), GFP_KERNEL);
+	tmp = CAM_MEM_ZALLOC(sizeof(struct i2c_settings_list), GFP_KERNEL);
 
 	if (tmp != NULL)
 		list_add_tail(&(tmp->list),
@@ -570,10 +571,10 @@ static struct i2c_settings_list*
 		return NULL;
 
 	tmp->seq_settings.reg_data =
-		kcalloc(size, sizeof(uint8_t), GFP_KERNEL);
+		CAM_MEM_ZALLOC_ARRAY(size, sizeof(uint8_t), GFP_KERNEL);
 	if (tmp->seq_settings.reg_data == NULL) {
 		list_del(&(tmp->list));
-		kfree(tmp);
+		CAM_MEM_FREE(tmp);
 		tmp = NULL;
 		return NULL;
 	}
@@ -601,7 +602,7 @@ static int32_t cam_eeprom_handle_continuous_write(
 	if (i2c_list == NULL ||
 		i2c_list->seq_settings.reg_data == NULL) {
 		CAM_ERR(CAM_SENSOR, "Failed in allocating i2c_list");
-		kfree(i2c_list);
+		CAM_MEM_FREE(i2c_list);
 		return -ENOMEM;
 	}
 
@@ -644,8 +645,8 @@ static int32_t cam_eeprom_handle_continuous_write(
 	*list = &(i2c_list->list);
 	return rc;
 deallocate_i2c_list:
-	kfree(i2c_list->seq_settings.reg_data);
-	kfree(i2c_list);
+	CAM_MEM_FREE(i2c_list->seq_settings.reg_data);
+	CAM_MEM_FREE(i2c_list);
 	return rc;
 }
 
@@ -1165,9 +1166,9 @@ static int32_t delete_eeprom_request(struct i2c_settings_array *i2c_array)
 
 	list_for_each_entry_safe(i2c_list, i2c_next,
 		&(i2c_array->list_head), list) {
-		kfree(i2c_list->seq_settings.reg_data);
+		CAM_MEM_FREE(i2c_list->seq_settings.reg_data);
 		list_del(&(i2c_list->list));
-		kfree(i2c_list);
+		CAM_MEM_FREE(i2c_list);
 	}
 	INIT_LIST_HEAD(&(i2c_array->list_head));
 	i2c_array->is_settings_valid = 0;
@@ -1351,8 +1352,8 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 		e_ctrl->cam_eeprom_state = CAM_EEPROM_ACQUIRE;
 		vfree(e_ctrl->cal_data.mapdata);
 		vfree(e_ctrl->cal_data.map);
-		kfree(power_info->power_setting);
-		kfree(power_info->power_down_setting);
+		CAM_MEM_FREE(power_info->power_setting);
+		CAM_MEM_FREE(power_info->power_down_setting);
 		power_info->power_setting = NULL;
 		power_info->power_down_setting = NULL;
 		power_info->power_setting_size = 0;
@@ -1428,8 +1429,8 @@ memdata_free:
 	vfree(e_ctrl->cal_data.mapdata);
 error:
 	cam_mem_put_cpu_buf(dev_config.packet_handle);
-	kfree(power_info->power_setting);
-	kfree(power_info->power_down_setting);
+	CAM_MEM_FREE(power_info->power_setting);
+	CAM_MEM_FREE(power_info->power_down_setting);
 	power_info->power_setting = NULL;
 	power_info->power_down_setting = NULL;
 	vfree(e_ctrl->cal_data.map);
@@ -1467,8 +1468,8 @@ void cam_eeprom_shutdown(struct cam_eeprom_ctrl_t *e_ctrl)
 		e_ctrl->bridge_intf.link_hdl = -1;
 		e_ctrl->bridge_intf.session_hdl = -1;
 
-		kfree(power_info->power_setting);
-		kfree(power_info->power_down_setting);
+		CAM_MEM_FREE(power_info->power_setting);
+		CAM_MEM_FREE(power_info->power_down_setting);
 		power_info->power_setting = NULL;
 		power_info->power_down_setting = NULL;
 		power_info->power_setting_size = 0;

@@ -24,6 +24,7 @@
 #include "cam_cpas_api.h"
 #include "cam_ife_hw_mgr.h"
 #include "cam_subdev.h"
+#include "cam_mem_mgr_api.h"
 
 static const char isp_dev_name[] = "cam-isp";
 
@@ -6853,11 +6854,11 @@ static inline void __cam_isp_ctx_free_fcg_config(
 	fcg_ch_ctx_internal = fcg_info->ife_fcg_config.ch_ctx_fcg_configs;
 	if (fcg_ch_ctx_internal) {
 		for (i = 0; i < max_fcg_ch_ctx; i++) {
-			kfree(fcg_ch_ctx_internal[i].predicted_fcg_configs);
+			CAM_MEM_FREE(fcg_ch_ctx_internal[i].predicted_fcg_configs);
 			fcg_ch_ctx_internal[i].predicted_fcg_configs = NULL;
 		}
 
-		kfree(fcg_info->ife_fcg_config.ch_ctx_fcg_configs);
+		CAM_MEM_FREE(fcg_info->ife_fcg_config.ch_ctx_fcg_configs);
 		fcg_info->ife_fcg_config.ch_ctx_fcg_configs = NULL;
 	}
 
@@ -6867,11 +6868,11 @@ static inline void __cam_isp_ctx_free_fcg_config(
 	fcg_ch_ctx_internal = fcg_info->sfe_fcg_config.ch_ctx_fcg_configs;
 	if (fcg_ch_ctx_internal) {
 		for (i = 0; i < max_fcg_ch_ctx; i++) {
-			kfree(fcg_ch_ctx_internal[i].predicted_fcg_configs);
+			CAM_MEM_FREE(fcg_ch_ctx_internal[i].predicted_fcg_configs);
 			fcg_ch_ctx_internal[i].predicted_fcg_configs = NULL;
 		}
 
-		kfree(fcg_info->sfe_fcg_config.ch_ctx_fcg_configs);
+		CAM_MEM_FREE(fcg_info->sfe_fcg_config.ch_ctx_fcg_configs);
 		fcg_info->sfe_fcg_config.ch_ctx_fcg_configs = NULL;
 	}
 }
@@ -6884,31 +6885,31 @@ static void __cam_isp_ctx_free_mem_hw_entries(struct cam_context *ctx)
 
 	if (ctx->out_map_entries) {
 		for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-			kfree(ctx->out_map_entries[i]);
+			CAM_MEM_FREE(ctx->out_map_entries[i]);
 			ctx->out_map_entries[i] = NULL;
 		}
 
-		kfree(ctx->out_map_entries);
+		CAM_MEM_FREE(ctx->out_map_entries);
 		ctx->out_map_entries = NULL;
 	}
 
 	if (ctx->in_map_entries) {
 		for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-			kfree(ctx->in_map_entries[i]);
+			CAM_MEM_FREE(ctx->in_map_entries[i]);
 			ctx->in_map_entries[i] = NULL;
 		}
 
-		kfree(ctx->in_map_entries);
+		CAM_MEM_FREE(ctx->in_map_entries);
 		ctx->in_map_entries = NULL;
 	}
 
 	if (ctx->hw_update_entry) {
 		for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-			kfree(ctx->hw_update_entry[i]);
+			CAM_MEM_FREE(ctx->hw_update_entry[i]);
 			ctx->hw_update_entry[i] = NULL;
 		}
 
-		kfree(ctx->hw_update_entry);
+		CAM_MEM_FREE(ctx->hw_update_entry);
 		ctx->hw_update_entry = NULL;
 	}
 
@@ -6962,8 +6963,8 @@ static int __cam_isp_ctx_release_hw_in_top_state(struct cam_context *ctx,
 	ctx_isp->sfe_en = false;
 	ctx_isp->bubble_recover_dis = false;
 	ctx_isp->req_info.last_bufdone_req_id = 0;
-	kfree(ctx_isp->vfe_bus_comp_grp);
-	kfree(ctx_isp->sfe_bus_comp_grp);
+	CAM_MEM_FREE(ctx_isp->vfe_bus_comp_grp);
+	CAM_MEM_FREE(ctx_isp->sfe_bus_comp_grp);
 	ctx_isp->vfe_bus_comp_grp = NULL;
 	ctx_isp->sfe_bus_comp_grp = NULL;
 
@@ -7356,7 +7357,7 @@ static inline int __cam_isp_ctx_allocate_mem_fcg_config(
 		max_fcg_predictions = fcg_caps->max_ife_fcg_predictions;
 
 		fcg_info->ife_fcg_config.ch_ctx_fcg_configs =
-			kcalloc(max_fcg_ch_ctx,
+			CAM_MEM_ZALLOC_ARRAY(max_fcg_ch_ctx,
 				sizeof(struct cam_isp_ch_ctx_fcg_config_internal),
 				GFP_KERNEL);
 		if (!fcg_info->ife_fcg_config.ch_ctx_fcg_configs)
@@ -7365,7 +7366,7 @@ static inline int __cam_isp_ctx_allocate_mem_fcg_config(
 		fcg_ch_ctx_internal = fcg_info->ife_fcg_config.ch_ctx_fcg_configs;
 		for (i = 0; i < max_fcg_ch_ctx; i++) {
 			fcg_ch_ctx_internal[i].predicted_fcg_configs =
-				kcalloc(max_fcg_predictions,
+				CAM_MEM_ZALLOC_ARRAY(max_fcg_predictions,
 					sizeof(struct cam_isp_predict_fcg_config_internal),
 					GFP_KERNEL);
 			if (!fcg_ch_ctx_internal[i].predicted_fcg_configs)
@@ -7378,7 +7379,7 @@ static inline int __cam_isp_ctx_allocate_mem_fcg_config(
 		max_fcg_predictions = fcg_caps->max_sfe_fcg_predictions;
 
 		fcg_info->sfe_fcg_config.ch_ctx_fcg_configs =
-			kcalloc(max_fcg_ch_ctx,
+			CAM_MEM_ZALLOC_ARRAY(max_fcg_ch_ctx,
 				sizeof(struct cam_isp_ch_ctx_fcg_config_internal),
 				GFP_KERNEL);
 		if (!fcg_info->sfe_fcg_config.ch_ctx_fcg_configs)
@@ -7387,7 +7388,7 @@ static inline int __cam_isp_ctx_allocate_mem_fcg_config(
 		fcg_ch_ctx_internal = fcg_info->sfe_fcg_config.ch_ctx_fcg_configs;
 		for (i = 0; i < max_fcg_ch_ctx; i++) {
 			fcg_ch_ctx_internal[i].predicted_fcg_configs =
-				kcalloc(max_fcg_predictions,
+				CAM_MEM_ZALLOC_ARRAY(max_fcg_predictions,
 					sizeof(struct cam_isp_predict_fcg_config_internal),
 					GFP_KERNEL);
 			if (!fcg_ch_ctx_internal[i].predicted_fcg_configs)
@@ -7430,8 +7431,9 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		max_hw_upd_entries, max_res, (param->op_flags & CAM_IFE_CTX_SFE_EN),
 		ctx->ctx_id, ctx->link_hdl);
 
-	ctx->hw_update_entry = kcalloc(CAM_ISP_CTX_REQ_MAX, sizeof(struct cam_hw_update_entry *),
-		GFP_KERNEL);
+	ctx->hw_update_entry = CAM_MEM_ZALLOC_ARRAY(CAM_ISP_CTX_REQ_MAX,
+					sizeof(struct cam_hw_update_entry *),
+					GFP_KERNEL);
 
 	if (!ctx->hw_update_entry) {
 		CAM_ERR(CAM_CTXT, "%s[%u] no memory, link: 0x%x",
@@ -7440,7 +7442,7 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 	}
 
 	for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-		ctx->hw_update_entry[i] = kcalloc(ctx->max_hw_update_entries,
+		ctx->hw_update_entry[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_hw_update_entries,
 			sizeof(struct cam_hw_update_entry), GFP_KERNEL);
 		if (!ctx->hw_update_entry[i]) {
 			CAM_ERR(CAM_CTXT, "%s[%u] no memory for hw_update_entry: %u, link: 0x%x",
@@ -7449,8 +7451,9 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		}
 	}
 
-	ctx->in_map_entries = kcalloc(CAM_ISP_CTX_REQ_MAX, sizeof(struct cam_hw_fence_map_entry *),
-		GFP_KERNEL);
+	ctx->in_map_entries = CAM_MEM_ZALLOC_ARRAY(CAM_ISP_CTX_REQ_MAX,
+				sizeof(struct cam_hw_fence_map_entry *),
+				GFP_KERNEL);
 
 	if (!ctx->in_map_entries) {
 		CAM_ERR(CAM_CTXT, "%s[%u] no memory for in_map_entries, link: 0x%x",
@@ -7460,7 +7463,7 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 	}
 
 	for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-		ctx->in_map_entries[i] = kcalloc(ctx->max_in_map_entries,
+		ctx->in_map_entries[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_in_map_entries,
 			sizeof(struct cam_hw_fence_map_entry),
 			GFP_KERNEL);
 
@@ -7472,8 +7475,9 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		}
 	}
 
-	ctx->out_map_entries = kcalloc(CAM_ISP_CTX_REQ_MAX, sizeof(struct cam_hw_fence_map_entry *),
-			GFP_KERNEL);
+	ctx->out_map_entries = CAM_MEM_ZALLOC_ARRAY(CAM_ISP_CTX_REQ_MAX,
+					sizeof(struct cam_hw_fence_map_entry *),
+					GFP_KERNEL);
 
 	if (!ctx->out_map_entries) {
 		CAM_ERR(CAM_CTXT, "%s[%u] no memory for out_map_entries, link: 0x%x",
@@ -7483,7 +7487,7 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 	}
 
 	for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-		ctx->out_map_entries[i] = kcalloc(ctx->max_out_map_entries,
+		ctx->out_map_entries[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_out_map_entries,
 			sizeof(struct cam_hw_fence_map_entry),
 			GFP_KERNEL);
 
@@ -7585,7 +7589,7 @@ static int __cam_isp_ctx_acquire_dev_in_available(struct cam_context *ctx,
 		goto end;
 	}
 
-	isp_res = kzalloc(
+	isp_res = CAM_MEM_ZALLOC(
 		sizeof(*isp_res)*cmd->num_resources, GFP_KERNEL);
 	if (!isp_res) {
 		rc = -ENOMEM;
@@ -7686,7 +7690,7 @@ static int __cam_isp_ctx_acquire_dev_in_available(struct cam_context *ctx,
 	CAM_INFO(CAM_ISP, "Ctx_type: %u, ctx_id: %u, hw_mgr_ctx: %u bubble_recover %d",
 		isp_hw_cmd_args.u.ctx_info.type, ctx->ctx_id, param.hw_mgr_ctx_id,
 		isp_hw_cmd_args.u.ctx_info.bubble_recover_dis);
-	kfree(isp_res);
+	CAM_MEM_FREE(isp_res);
 	isp_res = NULL;
 
 get_dev_handle:
@@ -7728,7 +7732,7 @@ free_hw:
 	ctx_isp->hw_ctx = NULL;
 	ctx_isp->hw_acquired = false;
 free_res:
-	kfree(isp_res);
+	CAM_MEM_FREE(isp_res);
 end:
 	return rc;
 }
@@ -7774,7 +7778,7 @@ static int __cam_isp_ctx_acquire_hw_v1(struct cam_context *ctx,
 		goto end;
 	}
 
-	acquire_hw_info = kzalloc(cmd->data_size, GFP_KERNEL);
+	acquire_hw_info = CAM_MEM_ZALLOC(cmd->data_size, GFP_KERNEL);
 	if (!acquire_hw_info) {
 		rc = -ENOMEM;
 		goto end;
@@ -7881,7 +7885,7 @@ static int __cam_isp_ctx_acquire_hw_v1(struct cam_context *ctx,
 		"Acquire success:session_hdl 0x%xs ctx_type %d ctx %u link: 0x%x hw_mgr_ctx: %u",
 		ctx->session_hdl, isp_hw_cmd_args.u.ctx_info.type, ctx->ctx_id, ctx->link_hdl,
 		param.hw_mgr_ctx_id);
-	kfree(acquire_hw_info);
+	CAM_MEM_FREE(acquire_hw_info);
 	return rc;
 
 free_hw:
@@ -7890,7 +7894,7 @@ free_hw:
 	ctx_isp->hw_ctx = NULL;
 	ctx_isp->hw_acquired = false;
 free_res:
-	kfree(acquire_hw_info);
+	CAM_MEM_FREE(acquire_hw_info);
 end:
 	return rc;
 }
@@ -7941,7 +7945,7 @@ static int __cam_isp_ctx_acquire_hw_v2(struct cam_context *ctx,
 		goto end;
 	}
 
-	acquire_hw_info = kzalloc(cmd->data_size, GFP_KERNEL);
+	acquire_hw_info = CAM_MEM_ZALLOC(cmd->data_size, GFP_KERNEL);
 	if (!acquire_hw_info) {
 		rc = -ENOMEM;
 		goto end;
@@ -8011,7 +8015,7 @@ static int __cam_isp_ctx_acquire_hw_v2(struct cam_context *ctx,
 		(param.op_flags & CAM_IFE_CTX_SFE_EN);
 
 	/* Query the context bus comp group information */
-	ctx_isp->vfe_bus_comp_grp = kcalloc(CAM_IFE_BUS_COMP_NUM_MAX,
+	ctx_isp->vfe_bus_comp_grp = CAM_MEM_ZALLOC_ARRAY(CAM_IFE_BUS_COMP_NUM_MAX,
 		sizeof(struct cam_isp_context_comp_record), GFP_KERNEL);
 	if (!ctx_isp->vfe_bus_comp_grp) {
 		CAM_ERR(CAM_CTXT, "%s[%d] no memory for vfe_bus_comp_grp",
@@ -8021,7 +8025,7 @@ static int __cam_isp_ctx_acquire_hw_v2(struct cam_context *ctx,
 	}
 
 	if (param.op_flags & CAM_IFE_CTX_SFE_EN) {
-		ctx_isp->sfe_bus_comp_grp = kcalloc(CAM_SFE_BUS_COMP_NUM_MAX,
+		ctx_isp->sfe_bus_comp_grp = CAM_MEM_ZALLOC_ARRAY(CAM_SFE_BUS_COMP_NUM_MAX,
 			sizeof(struct cam_isp_context_comp_record), GFP_KERNEL);
 		if (!ctx_isp->sfe_bus_comp_grp) {
 			CAM_ERR(CAM_CTXT, "%s[%d] no memory for sfe_bus_comp_grp",
@@ -8142,7 +8146,7 @@ static int __cam_isp_ctx_acquire_hw_v2(struct cam_context *ctx,
 		"Acquire success: session_hdl 0x%xs ctx_type %d ctx %u link: 0x%x hw_mgr_ctx: %u",
 		ctx->session_hdl, isp_hw_cmd_args.u.ctx_info.type, ctx->ctx_id, ctx->link_hdl,
 		param.hw_mgr_ctx_id);
-	kfree(acquire_hw_info);
+	CAM_MEM_FREE(acquire_hw_info);
 	return rc;
 
 free_hw:
@@ -8151,7 +8155,7 @@ free_hw:
 	ctx_isp->hw_ctx = NULL;
 	ctx_isp->hw_acquired = false;
 free_res:
-	kfree(acquire_hw_info);
+	CAM_MEM_FREE(acquire_hw_info);
 end:
 	return rc;
 }
@@ -9690,13 +9694,13 @@ int cam_isp_context_init(struct cam_isp_context *ctx,
 	/* FCG related struct setup */
 	INIT_LIST_HEAD(&ctx->fcg_tracker.skipped_list);
 	for (i = 0; i < CAM_ISP_AFD_PIPELINE_DELAY; i++) {
-		skip_info = kzalloc(sizeof(struct cam_isp_skip_frame_info), GFP_KERNEL);
+		skip_info = CAM_MEM_ZALLOC(sizeof(struct cam_isp_skip_frame_info), GFP_KERNEL);
 		if (!skip_info) {
 			CAM_ERR(CAM_ISP,
 				"Failed to allocate memory for FCG struct, ctx_idx: %u, link: %x",
 				ctx_base->ctx_id, ctx_base->link_hdl);
 			rc = -ENOMEM;
-			goto kfree;
+			goto free_mem;
 		}
 
 		list_add_tail(&skip_info->list, &ctx->fcg_tracker.skipped_list);
@@ -9723,11 +9727,11 @@ int cam_isp_context_init(struct cam_isp_context *ctx,
 
 	return rc;
 
-kfree:
+free_mem:
 	list_for_each_entry_safe(skip_info, temp,
 		&ctx->fcg_tracker.skipped_list, list) {
 		list_del(&skip_info->list);
-		kfree(skip_info);
+		CAM_MEM_FREE(skip_info);
 		skip_info = NULL;
 	}
 err:
@@ -9741,7 +9745,7 @@ int cam_isp_context_deinit(struct cam_isp_context *ctx)
 	list_for_each_entry_safe(skip_info, temp,
 		&ctx->fcg_tracker.skipped_list, list) {
 		list_del(&skip_info->list);
-		kfree(skip_info);
+		CAM_MEM_FREE(skip_info);
 		skip_info = NULL;
 	}
 

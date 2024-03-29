@@ -14,6 +14,7 @@
 #include "cam_vfe_soc.h"
 #include "cam_debug_util.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 #include <dt-bindings/msm-camera.h>
 
 static  struct cam_isp_hw_intf_data cam_vfe_hw_list[CAM_VFE_HW_NUM_MAX];
@@ -46,13 +47,13 @@ static int cam_vfe_component_bind(struct device *dev,
 		goto end;
 	}
 
-	vfe_hw_intf = kzalloc(sizeof(struct cam_hw_intf), GFP_KERNEL);
+	vfe_hw_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!vfe_hw_intf) {
 		rc = -ENOMEM;
 		goto end;
 	}
 
-	vfe_hw = kzalloc(sizeof(struct cam_hw_info), GFP_KERNEL);
+	vfe_hw = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!vfe_hw) {
 		rc = -ENOMEM;
 		goto free_vfe_hw_intf;
@@ -82,7 +83,7 @@ static int cam_vfe_component_bind(struct device *dev,
 
 	platform_set_drvdata(pdev, vfe_hw_intf);
 
-	vfe_hw->core_info = kzalloc(sizeof(struct cam_vfe_hw_core_info),
+	vfe_hw->core_info = CAM_MEM_ZALLOC(sizeof(struct cam_vfe_hw_core_info),
 		GFP_KERNEL);
 	if (!vfe_hw->core_info) {
 		CAM_DBG(CAM_ISP, "Failed to alloc for core");
@@ -144,11 +145,11 @@ deinit_soc:
 	if (cam_vfe_deinit_soc_resources(&vfe_hw->soc_info))
 		CAM_ERR(CAM_ISP, "Failed to deinit soc");
 free_core_info:
-	kfree(vfe_hw->core_info);
+	CAM_MEM_FREE(vfe_hw->core_info);
 free_vfe_hw:
-	kfree(vfe_hw);
+	CAM_MEM_FREE(vfe_hw);
 free_vfe_hw_intf:
-	kfree(vfe_hw_intf);
+	CAM_MEM_FREE(vfe_hw_intf);
 end:
 	return rc;
 }
@@ -190,7 +191,7 @@ static void cam_vfe_component_unbind(struct device *dev,
 	if (rc < 0)
 		CAM_ERR(CAM_ISP, "Failed to deinit core rc=%d", rc);
 
-	kfree(vfe_hw->core_info);
+	CAM_MEM_FREE(vfe_hw->core_info);
 
 deinit_soc:
 	rc = cam_vfe_deinit_soc_resources(&vfe_hw->soc_info);
@@ -198,12 +199,12 @@ deinit_soc:
 		CAM_ERR(CAM_ISP, "Failed to deinit soc rc=%d", rc);
 
 	mutex_destroy(&vfe_hw->hw_mutex);
-	kfree(vfe_hw);
+	CAM_MEM_FREE(vfe_hw);
 
 	CAM_DBG(CAM_ISP, "VFE%d component unbound", vfe_hw_intf->hw_idx);
 
 free_vfe_hw_intf:
-	kfree(vfe_hw_intf);
+	CAM_MEM_FREE(vfe_hw_intf);
 }
 
 const static struct component_ops cam_vfe_component_ops = {

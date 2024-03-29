@@ -23,6 +23,7 @@
 #include "cam_common_util.h"
 #include "cam_context_utils.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 static struct cam_isp_dev g_isp_dev;
 
@@ -219,7 +220,7 @@ static int cam_isp_dev_component_bind(struct device *dev,
 	node = (struct cam_node *) g_isp_dev.sd.token;
 
 	memset(&hw_mgr_intf, 0, sizeof(hw_mgr_intf));
-	g_isp_dev.ctx = kcalloc(g_isp_dev.max_context,
+	g_isp_dev.ctx = CAM_MEM_ZALLOC_ARRAY(g_isp_dev.max_context,
 		sizeof(struct cam_context),
 		GFP_KERNEL);
 	if (!g_isp_dev.ctx) {
@@ -228,13 +229,13 @@ static int cam_isp_dev_component_bind(struct device *dev,
 		goto unregister;
 	}
 
-	g_isp_dev.ctx_isp = kcalloc(g_isp_dev.max_context,
+	g_isp_dev.ctx_isp = CAM_MEM_ZALLOC_ARRAY(g_isp_dev.max_context,
 		sizeof(struct cam_isp_context),
 		GFP_KERNEL);
 	if (!g_isp_dev.ctx_isp) {
 		CAM_ERR(CAM_ISP,
 			"Mem Allocation failed for Isp private context");
-		kfree(g_isp_dev.ctx);
+		CAM_MEM_FREE(g_isp_dev.ctx);
 		g_isp_dev.ctx = NULL;
 		goto unregister;
 	}
@@ -243,7 +244,7 @@ static int cam_isp_dev_component_bind(struct device *dev,
 		g_isp_dev.isp_device_type);
 	if (rc != 0) {
 		CAM_ERR(CAM_ISP, "Can not initialized ISP HW manager!");
-		goto kfree;
+		goto free_mem;
 	}
 
 	for (i = 0; i < g_isp_dev.max_context; i++) {
@@ -255,7 +256,7 @@ static int cam_isp_dev_component_bind(struct device *dev,
 			g_isp_dev.isp_device_type, iommu_hdl);
 		if (rc) {
 			CAM_ERR(CAM_ISP, "ISP context init failed!");
-			goto kfree;
+			goto free_mem;
 		}
 	}
 
@@ -267,7 +268,7 @@ static int cam_isp_dev_component_bind(struct device *dev,
 
 	if (rc) {
 		CAM_ERR(CAM_ISP, "ISP node init failed!");
-		goto kfree;
+		goto free_mem;
 	}
 
 	node->sd_handler = cam_isp_subdev_close_internal;
@@ -285,17 +286,17 @@ static int cam_isp_dev_component_bind(struct device *dev,
 	rc = cam_vmrm_populate_driver_node_info(&driver_node);
 	if (rc) {
 		CAM_ERR(CAM_VMRM, " isp driver node populate failed: %d", rc);
-		goto kfree;
+		goto free_mem;
 	}
 
 	CAM_DBG(CAM_ISP, "Component bound successfully");
 
 	return 0;
 
-kfree:
-	kfree(g_isp_dev.ctx);
+free_mem:
+	CAM_MEM_FREE(g_isp_dev.ctx);
 	g_isp_dev.ctx = NULL;
-	kfree(g_isp_dev.ctx_isp);
+	CAM_MEM_FREE(g_isp_dev.ctx_isp);
 	g_isp_dev.ctx_isp = NULL;
 
 unregister:
@@ -324,9 +325,9 @@ static void cam_isp_dev_component_unbind(struct device *dev,
 				 i);
 	}
 
-	kfree(g_isp_dev.ctx);
+	CAM_MEM_FREE(g_isp_dev.ctx);
 	g_isp_dev.ctx = NULL;
-	kfree(g_isp_dev.ctx_isp);
+	CAM_MEM_FREE(g_isp_dev.ctx_isp);
 	g_isp_dev.ctx_isp = NULL;
 
 	rc = cam_subdev_remove(&g_isp_dev.sd);
