@@ -1680,12 +1680,18 @@ static void qts_panel_notifier_callback(enum panel_event_notifier_tag tag,
 		break;
 	case DRM_PANEL_EVENT_BLANK:
 		if (notification->notif_data.early_trigger) {
+#ifdef CONFIG_ARCH_QTI_VM
+			if ((qts_trusted_touch_get_vm_state(qts_data) != TRUSTED_TOUCH_TVM_INIT) &&
+				qts_handle_trusted_touch_tvm(qts_data, 0))
+				pr_err("Failed to handle trusted touch in tvm\n");
+#else
 			if (qts_data->schedule_resume)
 				cancel_work_sync(&qts_data->resume_work);
 			if (qts_data->schedule_suspend)
 				queue_work(qts_data->ts_workqueue, &qts_data->suspend_work);
 			else
 				qts_ts_suspend(qts_data);
+#endif
 		} else {
 			pr_debug("suspend notification post commit\n");
 		}
@@ -1788,6 +1794,7 @@ int qts_client_register(struct qts_vendor_data qts_vendor_data)
 		qts_create_sysfs(qts_data);
 
 	mutex_init(&qts_data->transition_lock);
+	qts_ts_register_for_panel_events(qts_data);
 
 #ifdef CONFIG_ARCH_QTI_VM
 	atomic_set(&qts_data->delayed_tvm_probe_pending, 1);
@@ -1807,8 +1814,6 @@ int qts_client_register(struct qts_vendor_data qts_vendor_data)
 
 	if (qts_data->ts_workqueue && qts_data->schedule_suspend)
 		INIT_WORK(&qts_data->suspend_work, qts_suspend_work);
-
-	qts_ts_register_for_panel_events(qts_data);
 
 qts_register_end:
 	pr_debug("client register end\n");
