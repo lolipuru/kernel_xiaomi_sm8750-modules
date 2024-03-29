@@ -4470,10 +4470,6 @@ skip_to_fw_update:
 		goto ProbeErrorExit_7;
 	}
 
-	retval = fts_proc_init();
-	if (retval)
-		logError(1, "%s Error: can not create /proc file!\n", tag);
-
 #ifndef FW_UPDATE_ON_PROBE
 	queue_delayed_work(info->fwu_workqueue, &info->fwu_work,
 			   msecs_to_jiffies(EXP_FN_WORK_DELAY_MS));
@@ -4630,8 +4626,6 @@ static int st_fts_spi_probe(struct spi_device *spi)
   */
 static void st_fts_remove_entry(struct fts_ts_info *info)
 {
-	fts_proc_remove();
-
 	/* sysfs stuff */
 	sysfs_remove_group(&info->dev->kobj, &info->attrs);
 
