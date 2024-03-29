@@ -204,10 +204,13 @@ enum payload_type {
  *                     wait on an already signaled fence
  * @signaled_send_ipc: bool to indicate if client requires ipc interrupt for already signaled fences
  * @txq_update_send_ipc: bool to indicate if client requires ipc interrupt for txq updates
+ * @skip_fctl_ref: bool to indicate if client-created fences should not have fctl refcount during
+ *                 initial creation; this refcount is instead set during synx_import call
  * @context_id: context id for fences created internally
  * @seqno: sequence no for fences created internally
  * @wait_queue: wait queue for the validation clients
  * @val_signal: doorbell flag to signal the validation clients in the wait queue
+ * @kref: number of active references to this client
  */
 struct msm_hw_fence_client {
 	enum hw_fence_client_id client_id;
@@ -225,8 +228,10 @@ struct msm_hw_fence_client {
 	bool signaled_update_rxq;
 	bool signaled_send_ipc;
 	bool txq_update_send_ipc;
+	bool skip_fctl_ref;
 	u64 context_id;
 	atomic_t seqno;
+	struct kref kref;
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	wait_queue_head_t wait_queue;
 	atomic_t val_signal;
@@ -291,6 +296,8 @@ struct msm_hw_fence_dbg_data {
  * @txq_idx_factor: factor to multiply custom TxQ idx to get index in dwords (one by default)
  * @skip_txq_wr_idx: bool to indicate if update to tx queue write_index is skipped within hw fence
  *                   driver and hfi_header->tx_wm is updated instead
+ * @skip_fctl_ref: bool to indicate if client-created fences should not have fctl refcount during
+ *                 initial creation; this refcount is instead set during synx_import call
  */
 struct hw_fence_client_type_desc {
 	char *name;
@@ -305,6 +312,7 @@ struct hw_fence_client_type_desc {
 	u32 txq_idx_start;
 	u32 txq_idx_factor;
 	bool skip_txq_wr_idx;
+	bool skip_fctl_ref;
 };
 
 /**

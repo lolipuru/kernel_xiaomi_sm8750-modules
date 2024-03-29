@@ -12,6 +12,11 @@
 #include "hw_fence_drv_ipc.h"
 #include "hw_fence_drv_debug.h"
 #include "hw_fence_drv_fence.h"
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE_USE_SYNX)
+#include <synx_interop.h>
+#else
+#define SYNX_HW_FENCE_HANDLE_FLAG 0
+#endif /* CONFIG_QTI_HW_FENCE_USE_SYNX */
 
 /* Global atomic lock */
 #define GLOBAL_ATOMIC_STORE(drv_data, lock, val) global_atomic_store(drv_data, lock, val)
@@ -471,7 +476,7 @@ int hw_fence_update_queue(struct hw_fence_driver_data *drv_data,
 	writew_relaxed(HW_FENCE_PAYLOAD_REV(1, 0), &write_ptr_payload->version);
 	writeq_relaxed(ctxt_id, &write_ptr_payload->ctxt_id);
 	writeq_relaxed(seqno, &write_ptr_payload->seqno);
-	writeq_relaxed(hash, &write_ptr_payload->hash);
+	writeq_relaxed(hash | SYNX_HW_FENCE_HANDLE_FLAG, &write_ptr_payload->hash);
 	writeq_relaxed(flags, &write_ptr_payload->flags);
 	writeq_relaxed(client_data, &write_ptr_payload->client_data);
 	writel_relaxed(error, &write_ptr_payload->error);
@@ -872,7 +877,11 @@ int hw_fence_init_controller_signal(struct hw_fence_driver_data *drv_data,
 			MSM_HW_FENCE_MAX_SIGNAL_PER_CLIENT - 1:
 		/* nothing to initialize for VPU client */
 		break;
-	case HW_FENCE_CLIENT_ID_IFE0 ... HW_FENCE_CLIENT_ID_IFE7 +
+	case HW_FENCE_CLIENT_ID_IPA ... HW_FENCE_CLIENT_ID_IPA +
+			MSM_HW_FENCE_MAX_SIGNAL_PER_CLIENT - 1:
+		/* nothing to initialize for IPA clients */
+		break;
+	case HW_FENCE_CLIENT_ID_IFE0 ... HW_FENCE_CLIENT_ID_IFE11 +
 			MSM_HW_FENCE_MAX_SIGNAL_PER_CLIENT - 1:
 		/* nothing to initialize for IFE clients */
 		break;
@@ -1532,7 +1541,6 @@ int hw_fence_create(struct hw_fence_driver_data *drv_data,
 {
 	u32 client_id = hw_fence_client->client_id;
 	struct msm_hw_fence *hw_fences_tbl = drv_data->hw_fences_tbl;
-
 	int ret = 0;
 
 	/* allocate hw fence in table */
@@ -1541,6 +1549,13 @@ int hw_fence_create(struct hw_fence_driver_data *drv_data,
 		HWFNC_ERR("Fail to create fence client:%u ctx:%llu seqno:%llu\n",
 			client_id, context, seqno);
 		ret = -EINVAL;
+	}
+
+	if (hw_fence_client->skip_fctl_ref) {
+		ret = hw_fence_destroy_refcount(drv_data, *hash, HW_FENCE_FCTL_REFCOUNT);
+		if (ret)
+			HWFNC_ERR("Can't remove fctl ref client:%u ctx:%llu seqno:%llu hash:%llu\n",
+				client_id, context, seqno, *hash);
 	}
 
 	return ret;
@@ -1713,17 +1728,20 @@ static void _fence_ctl_signal(struct hw_fence_driver_data *drv_data,
 				hw_fence->seq_id, hash, flags, client_data, error,
 				HW_FENCE_RX_QUEUE - 1);
 
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+		/* signal validation clients on targets with vm through custom mechanism */
+		if (!drv_data->has_soccp && hw_fence_client->client_id >= HW_FENCE_CLIENT_ID_VAL0 &&
+				hw_fence_client->client_id <= HW_FENCE_CLIENT_ID_VAL6) {
+			process_validation_client_loopback(drv_data, hw_fence_client->client_id);
+			return;
+		}
+#endif /* CONFIG_DEBUG_FS */
+
 		/* Signal the hw fence now */
 		if (hw_fence_client->signaled_send_ipc || !signal_from_import)
 			hw_fence_ipcc_trigger_signal(drv_data, tx_client_id, rx_client_id,
 				hw_fence_client->ipc_signal_id);
 	}
-
-#if IS_ENABLED(CONFIG_DEBUG_FS)
-	if (hw_fence_client->client_id >= HW_FENCE_CLIENT_ID_VAL0
-			&& hw_fence_client->client_id <= HW_FENCE_CLIENT_ID_VAL6)
-		process_validation_client_loopback(drv_data, hw_fence_client->client_id);
-#endif /* CONFIG_DEBUG_FS */
 }
 
 static void _cleanup_join_and_child_fences(struct hw_fence_driver_data *drv_data,
@@ -1971,6 +1989,7 @@ error_array:
  * Registers the hw-fence client for wait on a hw-fence and keeps a reference on that hw-fence.
  * The hw-fence must be explicitly dereferenced following this function, e.g. by client
  * synx_release call.
+ * This function does not register the fence_allocator as a waiting client.
  *
  * Note: This is the only place where the hw-fence refcount is retained for the client to release.
  * In all other places, the HW Fence Driver releases the refcount held for processing.
@@ -1981,7 +2000,7 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 {
 	struct msm_hw_fence *hw_fence;
 	enum hw_fence_client_data_id data_id;
-	bool is_signaled;
+	bool is_signaled = false;
 
 	if (client_data) {
 		data_id = hw_fence_get_client_data_id(hw_fence_client->client_id_ext);
@@ -2005,12 +2024,20 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 
 	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 1); /* lock */
 
-	/* register client in the hw fence */
-	is_signaled = hw_fence->flags & MSM_HW_FENCE_FLAG_SIGNAL;
-	hw_fence->wait_client_mask |= BIT(hw_fence_client->client_id);
-	hw_fence->fence_wait_time = hw_fence_get_qtime(drv_data);
-	if (client_data)
-		hw_fence->client_data[data_id] = client_data;
+	/*
+	 * If a creating client calls synx_import, then an additional hlos refcount is taken and a
+	 * refcount is set for processing this fence in FenceCTL
+	 */
+	if (hw_fence->fence_allocator == hw_fence_client->client_id) {
+		hw_fence->refcount |= HW_FENCE_FCTL_REFCOUNT;
+	} else {
+		/* register client in the hw fence */
+		is_signaled = hw_fence->flags & MSM_HW_FENCE_FLAG_SIGNAL;
+		hw_fence->wait_client_mask |= BIT(hw_fence_client->client_id);
+		hw_fence->fence_wait_time = hw_fence_get_qtime(drv_data);
+		if (client_data)
+			hw_fence->client_data[data_id] = client_data;
+	}
 
 	/* update memory for the table update */
 	wmb();

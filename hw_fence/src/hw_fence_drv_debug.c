@@ -1176,7 +1176,7 @@ int process_validation_client_loopback(struct hw_fence_driver_data *drv_data,
 
 static long _process_val_signal(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client,
-	struct dma_fence *fence, u64 hash, u32 *error)
+	struct dma_fence *fence, u64 hash, u64 mask, u32 *error)
 {
 	struct msm_hw_fence_queue_payload payload;
 	int read = 1, queue_type = HW_FENCE_RX_QUEUE - 1;  /* rx queue index */
@@ -1198,7 +1198,7 @@ static long _process_val_signal(struct hw_fence_driver_data *drv_data,
 		HWFNC_DBG_L("rxq read: hash:%llu, flags:%llu, error:%u\n",
 			payload.hash, payload.flags, payload.error);
 		if ((fence && payload.ctxt_id == context && payload.seqno == seqno) ||
-				hash == payload.hash) {
+				(mask && ((mask & hash) == (mask & payload.hash)))) {
 			*error = payload.error;
 			return 0;
 		}
@@ -1212,7 +1212,7 @@ static long _process_val_signal(struct hw_fence_driver_data *drv_data,
 }
 
 int hw_fence_debug_wait_val(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence, u64 hash,
+	struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence, u64 hash, u64 mask,
 	u64 timeout_ms, u32 *error)
 {
 	ktime_t cur_ktime, exp_ktime;
@@ -1239,7 +1239,7 @@ int hw_fence_debug_wait_val(struct hw_fence_driver_data *drv_data,
 			dma_fence_put(fence);
 			return -ETIMEDOUT;
 		}
-		ret = _process_val_signal(drv_data, hw_fence_client, fence, hash, error);
+		ret = _process_val_signal(drv_data, hw_fence_client, fence, hash, mask, error);
 		/* if val client fails to find expected fence, keep waiting until timeout */
 	}
 

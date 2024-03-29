@@ -8,19 +8,23 @@ def _define_module(target, variant):
         name = "{}_msm_hw_fence".format(tv),
         srcs = [
             "src/hw_fence_drv_debug.c",
-            "src/hw_fence_drv_interop.c",
             "src/hw_fence_drv_ipc.c",
             "src/hw_fence_drv_priv.c",
             "src/hw_fence_drv_utils.c",
             "src/msm_hw_fence.c",
-            "src/msm_hw_fence_synx_translation.c",
         ],
         out = "msm_hw_fence.ko",
-        defconfig = "defconfig",
+        defconfig = "{}_defconfig".format(target),
         kconfig = "Kconfig",
         conditional_srcs = {
             "CONFIG_DEBUG_FS": {
                 True: ["src/hw_fence_ioctl.c"],
+            },
+            "CONFIG_QTI_HW_FENCE_USE_SYNX" : {
+                True: [
+                    "src/msm_hw_fence_synx_translation.c",
+                    "src/hw_fence_drv_interop.c",
+                ]
             },
         },
         deps = [

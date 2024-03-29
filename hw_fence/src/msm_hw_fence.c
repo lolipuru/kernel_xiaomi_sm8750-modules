@@ -9,7 +9,7 @@
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/version.h>
-#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
 #include <linux/remoteproc/qcom_rproc.h>
 #endif
 #include <linux/kthread.h>
@@ -24,15 +24,14 @@ struct hw_fence_driver_data *hw_fence_drv_data;
 bool hw_fence_driver_enable;
 
 static int _set_power_vote_if_needed(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client, bool state)
+	u32 client_id, bool state)
 {
 	int ret = 0;
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
-	if (drv_data->has_soccp &&
-			hw_fence_client->client_id_ext >= HW_FENCE_CLIENT_ID_VAL0 &&
-			hw_fence_client->client_id_ext <= HW_FENCE_CLIENT_ID_VAL6) {
-#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
+	if (drv_data->has_soccp && client_id >= HW_FENCE_CLIENT_ID_VAL0 &&
+			client_id <= HW_FENCE_CLIENT_ID_VAL6) {
+#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
 		ret = rproc_set_state(drv_data->soccp_rproc, state);
 #else
 		ret = -EINVAL;
@@ -41,6 +40,13 @@ static int _set_power_vote_if_needed(struct hw_fence_driver_data *drv_data,
 #endif /* CONFIG_DEBUG_FS */
 
 	return ret;
+}
+
+static void msm_hw_fence_client_destroy(struct kref *kref)
+{
+	struct msm_hw_fence_client *hw_fence_client = container_of(kref,
+		struct msm_hw_fence_client, kref);
+	hw_fence_cleanup_client(hw_fence_drv_data, hw_fence_client);
 }
 
 void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
@@ -76,14 +82,27 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	hw_fence_client =  kzalloc(sizeof(*hw_fence_client), GFP_KERNEL);
 	if (!hw_fence_client)
 		return ERR_PTR(-ENOMEM);
+	kref_init(&hw_fence_client->kref);
 
 	/* Avoid race condition if multiple-threads request same client at same time */
 	mutex_lock(&hw_fence_drv_data->clients_register_lock);
 	if (hw_fence_drv_data->clients[client_id]) {
-		HWFNC_ERR("client with id %d already registered\n", client_id);
+		kref_get(&hw_fence_drv_data->clients[client_id]->kref);
 		mutex_unlock(&hw_fence_drv_data->clients_register_lock);
+		HWFNC_DBG_INIT("client with id %d already registered\n", client_id);
 		kfree(hw_fence_client);
-		return ERR_PTR(-EINVAL);
+
+		/* Client already exists, return the pointer to the client and populate mem desc */
+		hw_fence_client = hw_fence_drv_data->clients[client_id];
+
+		/* Init client memory descriptor */
+		if (!IS_ERR_OR_NULL(mem_descriptor))
+			memcpy(mem_descriptor, &hw_fence_client->mem_descriptor,
+				sizeof(struct msm_hw_fence_mem_addr));
+		else
+			HWFNC_DBG_L("null mem descriptor, skipping copy\n");
+
+		return hw_fence_client;
 	}
 
 	/* Mark client as registered */
@@ -130,6 +149,8 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 		ret = -EINVAL;
 		goto error;
 	}
+	hw_fence_client->skip_fctl_ref = hw_fence_utils_get_skip_fctl_ref(hw_fence_drv_data,
+		client_id);
 
 	/* Alloc Client HFI Headers and Queues */
 	ret = hw_fence_alloc_client_resources(hw_fence_drv_data,
@@ -162,7 +183,7 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 	init_waitqueue_head(&hw_fence_client->wait_queue);
 #endif /* CONFIG_DEBUG_FS */
 
-	ret = _set_power_vote_if_needed(hw_fence_drv_data, hw_fence_client, true);
+	ret = _set_power_vote_if_needed(hw_fence_drv_data, hw_fence_client->client_id_ext, true);
 	if (ret) {
 		HWFNC_ERR("set soccp power vote failed, fail client:%u registration ret:%d\n",
 			hw_fence_client->client_id_ext, ret);
@@ -173,7 +194,7 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 error:
 
 	/* Free all the allocated resources */
-	hw_fence_cleanup_client(hw_fence_drv_data, hw_fence_client);
+	kref_put(&hw_fence_client->kref, msm_hw_fence_client_destroy);
 
 	HWFNC_ERR("failed with error:%d\n", ret);
 	return ERR_PTR(ret);
@@ -183,13 +204,16 @@ EXPORT_SYMBOL_GPL(msm_hw_fence_register);
 int msm_hw_fence_deregister(void *client_handle)
 {
 	struct msm_hw_fence_client *hw_fence_client;
-	int ret;
+	bool destroyed_client;
+	u32 client_id;
+	int ret = 0;
 
 	if (IS_ERR_OR_NULL(client_handle)) {
 		HWFNC_ERR("Invalid client handle\n");
 		return -EINVAL;
 	}
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
+	client_id = hw_fence_client->client_id_ext;
 
 	if (hw_fence_client->client_id >= hw_fence_drv_data->clients_num) {
 		HWFNC_ERR("Invalid client_id:%d\n", hw_fence_client->client_id);
@@ -198,13 +222,14 @@ int msm_hw_fence_deregister(void *client_handle)
 
 	HWFNC_DBG_H("+\n");
 
-	ret = _set_power_vote_if_needed(hw_fence_drv_data, hw_fence_client, false);
+	/* Free all the allocated resources */
+	destroyed_client = kref_put(&hw_fence_client->kref, msm_hw_fence_client_destroy);
+
+	if (destroyed_client)
+		ret = _set_power_vote_if_needed(hw_fence_drv_data, client_id, false);
 	if (ret)
 		HWFNC_ERR("remove soccp power vote failed, fail client:%u deregistration ret:%d\n",
 			hw_fence_client->client_id_ext, ret);
-
-	/* Free all the allocated resources */
-	hw_fence_cleanup_client(hw_fence_drv_data, hw_fence_client);
 
 	HWFNC_DBG_H("-\n");
 
@@ -397,12 +422,6 @@ int msm_hw_fence_wait_update_v2(void *client_handle,
 	if (client_data_list && data_id >= HW_FENCE_MAX_CLIENTS_WITH_DATA) {
 		HWFNC_ERR("Populating non-NULL client_data_list with invalid client_id_ext:%d\n",
 			hw_fence_client->client_id_ext);
-		return -EINVAL;
-	}
-
-	if (hw_fence_client->client_id > hw_fence_drv_data->rxq_clients_num) {
-		HWFNC_ERR("Transmit-only client client_id:%d client_id_ext:%d register for wait\n",
-			hw_fence_client->client_id, hw_fence_client->client_id_ext);
 		return -EINVAL;
 	}
 
