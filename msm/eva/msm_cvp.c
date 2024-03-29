@@ -775,16 +775,16 @@ int msm_cvp_secure_sess_check(struct msm_cvp_inst *inst)
 		}
 
 		if (rc == 0) {
-			dprintk(CVP_ERR, "Calling TZ SID begin with secure flag %d",
+			dprintk(CVP_CORE, "Calling TZ SID begin with secure flag %d",
 				inst->prop.is_secure);
 			if (inst->prop.type == HFI_SESSION_CV) {
-				dprintk(CVP_ERR, "Calling TZ SID for OF");
+				dprintk(CVP_CORE, "Calling TZ SID for OF");
 				__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_EVA);
 			} else if (inst->prop.type == HFI_SESSION_DMM) {
-				dprintk(CVP_ERR, "Calling TZ SID for DMM ");
+				dprintk(CVP_CORE, "Calling TZ SID for DMM ");
 				__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_CAMERA);
 			}
-			dprintk(CVP_ERR, "Calling TZ SID end ");
+			dprintk(CVP_CORE, "Calling TZ SID end ");
 		}
 
 		mutex_unlock(&core->lock);
