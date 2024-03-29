@@ -669,16 +669,37 @@ struct sde_connector_state *_sde_crtc_get_sde_connector_state(struct drm_crtc *c
 {
 	struct drm_connector *conn;
 	struct drm_connector_state *conn_state;
+	struct drm_connector_list_iter conn_iter;
+	struct sde_connector_state *c_conn_state = NULL;
 	int i;
 
-	for_each_new_connector_in_state(state, conn, conn_state, i) {
-		if (!conn_state || conn_state->crtc != crtc)
-			continue;
+	if (state) {
+		for_each_new_connector_in_state(state, conn, conn_state, i) {
+			if (!conn_state || conn_state->crtc != crtc)
+				continue;
 
-		return to_sde_connector_state(conn_state);
+			if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+				continue;
+
+			c_conn_state = to_sde_connector_state(conn_state);
+			break;
+		}
+	} else {
+		drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+		drm_for_each_connector_iter(conn, &conn_iter) {
+			if (conn->state && (conn->state->crtc != crtc))
+				continue;
+
+			if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+				continue;
+
+			c_conn_state = to_sde_connector_state(conn->state);
+			break;
+		}
+		drm_connector_list_iter_end(&conn_iter);
 	}
 
-	return NULL;
+	return c_conn_state;
 }
 
 struct msm_display_mode *sde_crtc_get_msm_mode(struct drm_crtc_state *c_state)
@@ -1065,6 +1086,7 @@ static int _sde_crtc_set_roi_v1(struct drm_crtc_state *state,
 static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 		struct drm_crtc_state *state)
 {
+	struct sde_kms *sde_kms;
 	struct drm_connector *conn;
 	struct drm_connector_state *conn_state;
 	struct sde_crtc *sde_crtc;
@@ -1078,6 +1100,12 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 
 	if (!crtc || !state)
 		return -EINVAL;
+
+	sde_kms = _sde_crtc_get_kms(crtc);
+	if (!sde_kms || !sde_kms->catalog) {
+		SDE_ERROR("invalid parameters\n");
+		return -EINVAL;
+	}
 
 	sde_crtc = to_sde_crtc(crtc);
 	crtc_state = to_sde_crtc_state(state);
@@ -1119,6 +1147,15 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 
 		if (!mode_info.roi_caps.enabled)
 			continue;
+
+		if (is_conn_roi_dirty && test_bit(SDE_CRTC_DIRTY_DEST_SCALER,
+			crtc_state->dirty) && test_bit(SDE_FEATURE_DS_PU_SUPPORTED,
+			sde_kms->catalog->features) && !(crtc_state->user_roi_list.roi_feature_flags
+			& SDE_DRM_ROI_SPR_FLAG_EN)) {
+			SDE_DEBUG("%s: crtc -> conn roi scaling DS + PU enabled case\n",
+			sde_crtc->name);
+			continue;
+		}
 
 		/*
 		 * When enable spr 2D filter in PU, it require over fetch lines.
@@ -1235,11 +1272,15 @@ static int _sde_crtc_set_lm_roi(struct drm_crtc *crtc,
 	 * partial update is not supported with 3dmux dsc or dest scaler.
 	 * hence, crtc roi must match the mixer dimensions.
 	 */
-	if (crtc_state->num_ds_enabled ||
+	if ((crtc_state->num_ds_enabled && !(crtc_state->ds_cfg[0].flags
+		& SDE_DRM_DESTSCALER_PU_ENABLE)) ||
 		sde_rm_topology_is_group(&sde_kms->rm, state,
 				SDE_RM_TOPOLOGY_GROUP_3DMERGE_DSC)) {
 		if (memcmp(lm_roi, lm_bounds, sizeof(struct sde_rect))) {
-			SDE_ERROR("Unsupported: Dest scaler/3d mux DSC + PU\n");
+			SDE_ERROR("Unsupported: 3d mux DSC + PU feature :%ld num_ds:%d top:%d\n",
+				sde_kms->catalog->features[0], crtc_state->num_ds_enabled,
+				sde_rm_topology_is_group(&sde_kms->rm, state,
+				SDE_RM_TOPOLOGY_GROUP_3DMERGE_DSC));
 			return -EINVAL;
 		}
 	}
@@ -3711,34 +3752,53 @@ static int _sde_crtc_check_dest_scaler_lm(struct drm_crtc *crtc,
 }
 
 static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
-	struct sde_crtc *sde_crtc, struct drm_display_mode *mode,
+	struct sde_crtc_state *cstate, struct drm_display_mode *mode,
 	struct sde_hw_ds *hw_ds, struct sde_hw_ds_cfg *cfg, u32 hdisplay,
 	u32 max_in_width, u32 max_out_width)
 {
+	struct drm_crtc_state *crtc_state;
+	struct sde_connector_state *c_conn_state;
+	struct sde_crtc *sde_crtc;
+	struct sde_rect roi = {0};
+
+	sde_crtc = to_sde_crtc(crtc);
+	crtc_state = &cstate->base;
+
+	c_conn_state = _sde_crtc_get_sde_connector_state(crtc, crtc_state->state);
+
+	if (c_conn_state->rois.num_rects)
+		sde_kms_rect_merge_rectangles(&c_conn_state->rois, &roi);
+
 	if (cfg->flags & SDE_DRM_DESTSCALER_SCALE_UPDATE ||
 		cfg->flags & SDE_DRM_DESTSCALER_ENHANCER_UPDATE) {
+		bool pu_enable = cfg->flags & SDE_DRM_DESTSCALER_PU_ENABLE;
 
 		/**
 		 * Scaler src and dst width shouldn't exceed the maximum
-		 * width limitation. Also, if there is no partial update
+		 * width limitation.
+		 * If there is no partial update :
 		 * dst width and height must match display resolution.
+		 * If there is partial update :
+		 * Only Full width is allowed.
 		 */
 		if (cfg->scl3_cfg.src_width[0] > max_in_width ||
 			cfg->scl3_cfg.dst_width > max_out_width ||
 			!cfg->scl3_cfg.src_width[0] ||
 			!cfg->scl3_cfg.dst_width ||
-			(!(cfg->flags & SDE_DRM_DESTSCALER_PU_ENABLE)
-			 && (cfg->scl3_cfg.dst_width != hdisplay ||
-			 cfg->scl3_cfg.dst_height != mode->vdisplay))) {
+			(pu_enable && cfg->scl3_cfg.dst_width != hdisplay) ||
+			(pu_enable && roi.h != 0 && cfg->scl3_cfg.dst_height != roi.h) ||
+			(!pu_enable &&
+			(cfg->scl3_cfg.dst_width != hdisplay ||
+			cfg->scl3_cfg.dst_height != mode->vdisplay))) {
 			SDE_ERROR("crtc%d: ", crtc->base.id);
 			SDE_ERROR("src_w(%d) dst(%dx%d) display(%dx%d)",
 				cfg->scl3_cfg.src_width[0],
 				cfg->scl3_cfg.dst_width,
 				cfg->scl3_cfg.dst_height,
 				hdisplay, mode->vdisplay);
-			SDE_ERROR("num_mixers(%d) flags(%d) ds-%d:\n",
+			SDE_ERROR("num_mixers(%d) flags(%d) ds-%d: roi(%dx%d)\n",
 				sde_crtc->num_mixers, cfg->flags,
-				hw_ds->idx - DS_0);
+				hw_ds->idx - DS_0, roi.w, roi.h);
 			SDE_ERROR("scale_en = %d, DE_en =%d\n",
 				cfg->scl3_cfg.enable,
 				cfg->scl3_cfg.de.enable);
@@ -3750,6 +3810,7 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 				cfg->scl3_cfg.dst_width,
 				cfg->scl3_cfg.dst_height, hdisplay,
 				mode->vdisplay, sde_crtc->num_mixers,
+				roi.w, roi.h,
 				SDE_EVTLOG_ERROR);
 
 			cfg->flags &=
@@ -3780,10 +3841,9 @@ static int _sde_crtc_check_dest_scaler_validate_ds(struct drm_crtc *crtc,
 		/**
 		 * Validate against topology
 		 * No of dest scalers should match the num of mixers
-		 * unless it is partial update left only/right only use case
+		 * Destination scaler Partial update is restricted for full width
 		 */
-		if (lm_idx >= sde_crtc->num_mixers || (i != lm_idx &&
-			!(cfg->flags & SDE_DRM_DESTSCALER_PU_ENABLE))) {
+		if (lm_idx >= sde_crtc->num_mixers || i != lm_idx) {
 			SDE_ERROR("crtc%d: ds_cfg id(%d):idx(%d), flags(%d)\n",
 				crtc->base.id, i, lm_idx, cfg->flags);
 			SDE_EVT32(DRMID(crtc), i, lm_idx, cfg->flags,
@@ -3811,7 +3871,7 @@ static int _sde_crtc_check_dest_scaler_validate_ds(struct drm_crtc *crtc,
 			return ret;
 
 		/* Check scaler data */
-		ret = _sde_crtc_check_dest_scaler_cfg(crtc, sde_crtc, mode,
+		ret = _sde_crtc_check_dest_scaler_cfg(crtc, cstate, mode,
 				hw_ds, cfg, hdisplay,
 				max_in_width, max_out_width);
 		if (ret)
@@ -3913,11 +3973,11 @@ static int _sde_crtc_check_dest_scaler_data(struct drm_crtc *crtc,
 	/**
 	 * No of dest scalers shouldn't exceed hw ds block count and
 	 * also, match the num of mixers unless it is partial update
-	 * left only/right only use case - currently PU + DS is not supported
+	 * currently PU + DS is supported - Partial width is not allowed.
 	 */
 	if (cstate->num_ds > kms->catalog->ds_count ||
 		((cstate->num_ds != sde_crtc->num_mixers) &&
-		!(cstate->ds_cfg[0].flags & SDE_DRM_DESTSCALER_PU_ENABLE))) {
+		 (cstate->ds_cfg[0].flags & SDE_DRM_DESTSCALER_ENABLE))) {
 		SDE_ERROR("crtc%d: num_ds(%d), hw_ds_cnt(%d) flags(%d)\n",
 			crtc->base.id, cstate->num_ds, kms->catalog->ds_count,
 			cstate->ds_cfg[0].flags);
