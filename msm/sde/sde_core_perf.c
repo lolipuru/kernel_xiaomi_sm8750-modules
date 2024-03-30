@@ -111,8 +111,8 @@ static int _sde_core_perf_crtc_cesta_update(struct sde_kms *sde_kms, struct sde_
 			params.data.bw_ab = 0;
 			params.data.bw_ib = sde_kms->catalog->perf.max_bw_high * 1000ull;
 		} else {
-			params.data.core_clk_rate_ab = perf->core_clk_rate;
-			params.data.core_clk_rate_ib = perf->ubwc_clk_rate;
+			params.data.core_clk_rate_ab = perf->ubwc_clk_rate;
+			params.data.core_clk_rate_ib = perf->core_clk_rate;
 			params.data.bw_ab = perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_MNOC];
 			params.data.bw_ib = perf->max_per_pipe_ib[SDE_POWER_HANDLE_DBUS_ID_MNOC];
 		}
