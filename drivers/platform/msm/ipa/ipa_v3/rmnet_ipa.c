@@ -32,6 +32,8 @@
 #include "ipa_qmi_service.h"
 #include <linux/rmnet_ipa_fd_ioctl.h>
 #include "ipa.h"
+#include "ipa_elf_dump.h"
+
 #include <uapi/linux/ip.h>
 #include <uapi/linux/msm_rmnet.h>
 #include <net/ipv6.h>
@@ -3944,6 +3946,16 @@ static void rmnet_ipa_send_ssr_notification(bool ssr_done)
 	}
 }
 
+static void ipa3_handle_modem_minidump(void)
+{
+	if (ipa_minidump_enabled()) {
+		if (ipa_retrieve_and_dump())
+			IPADBG("IPA ELF DUMP Failed");
+		else
+			IPADBG("IPA ELF DUMP Success");
+	}
+}
+
 static int ipa3_lcl_mdm_ssr_notifier_cb(struct notifier_block *this,
 			   unsigned long code,
 			   void *data)
@@ -3975,6 +3987,7 @@ static int ipa3_lcl_mdm_ssr_notifier_cb(struct notifier_block *this,
 		/* hold a proxy vote for the modem. */
 		ipa3_proxy_clk_vote(atomic_read(&rmnet_ipa3_ctx->is_ssr));
 		/* send SSR before-shutdown notification to IPACM */
+		ipa3_handle_modem_minidump();
 		ipa3_set_modem_up(false);
 		rmnet_ipa_send_ssr_notification(false);
 		atomic_set(&rmnet_ipa3_ctx->is_ssr, 1);

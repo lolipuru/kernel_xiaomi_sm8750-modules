@@ -33,6 +33,7 @@ ipam-y += \
 	ipa_v3/ipahal/ipahal_hw_stats.o \
 	ipa_v3/ipahal/ipahal_nat.o \
 	ipa_v3/ipa_eth_i.o \
+	ipa_v3/ipa_elf_dump.o \
 	ipa_v3/ipa_stats.o
 
 ipam-$(CONFIG_IPA_TSP) += ipa_v3/ipa_tsp.o \
