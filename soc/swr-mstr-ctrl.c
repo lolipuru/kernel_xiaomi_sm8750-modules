@@ -98,12 +98,14 @@
 #define SAMPLING_RATE_192KHZ  192000
 #define SAMPLING_RATE_384KHZ  384000
 
+#define SWR_BASECLK_VAL_1_FOR_19P2MHZ  (0x1)
 
 /* pm runtime auto suspend timer in msecs */
 static int auto_suspend_timer = 500;
 module_param(auto_suspend_timer, int, 0664);
 MODULE_PARM_DESC(auto_suspend_timer, "timer for auto suspend");
 
+static DEFINE_MUTEX(enumeration_lock);
 enum {
 	SWR_NOT_PRESENT, /* Device is detached/not present on the bus */
 	SWR_ATTACHED_OK, /* Device is attached */
@@ -1204,6 +1206,10 @@ static u8 get_inactive_bank_num(struct swr_mstr_ctrl *swrm)
 	return (swr_master_read(swrm, SWRM_MCP_STATUS) & 0x01) ? 0 : 1;
 }
 
+static u8 get_active_bank_num(struct swr_mstr_ctrl *swrm)
+{
+	return (swr_master_read(swrm, SWRM_MCP_STATUS) & 0x01) ? 1 : 0;
+}
 static void enable_bank_switch(struct swr_mstr_ctrl *swrm, u8 bank,
 				u8 row, u8 col)
 {
@@ -1570,7 +1576,6 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 		return;
 	}
 
-	memset(dev_offset, 0xff, SWRM_NUM_AUTO_ENUM_SLAVES);
 	dev_dbg(swrm->dev, "%s: master num_port: %d\n", __func__,
 		master->num_port);
 
@@ -1579,6 +1584,7 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 		if (!mport->port_en)
 			continue;
 
+		memset(dev_offset, 0xff, SWRM_NUM_AUTO_ENUM_SLAVES);
 		swrm_pcm_port_config(swrm, (i + 1), mport, true);
 
 		j = 0;
@@ -1757,13 +1763,15 @@ static void swrm_copy_data_port_config(struct swr_master *master, u8 bank)
 								SWRS_DP_PORT_CONTROL(slv_id));
 				}
 
-				if (len < SWRM_MAX_PORT_REG) {
+				if (len < SWRM_MAX_PORT_REG &&
+					(swrm->master_id == MASTER_ID_BT)) {
 					reg[len] = SWRM_CMD_FIFO_WR_CMD(swrm->ee_val);
 					val[len++] = SWR_REG_VAL_PACK(0, port_req->dev_num,
-								get_cmd_id(swrm),
-								SWRS_DPn_FEATURE_EN(
-									port_req->slave_port_id));
+							get_cmd_id(swrm),
+							SWRS_DPn_FEATURE_EN(
+								port_req->slave_port_id));
 				}
+
 			}
 
 			port_req->ch_en = port_req->req_ch;
@@ -1868,6 +1876,78 @@ static void swrm_apply_port_config(struct swr_master *master)
 				SWRS_SCP_HOST_CLK_DIV2_CTL_BANK(bank));
 
 	swrm_copy_data_port_config(master, bank);
+}
+
+/* called with enumeration lock held */
+/* for class devices clk scale and base are to be initializezd */
+/* also, if the device enumerates on the bus when active bank is 1, issue bank switch */
+static void swrm_initialize_clk_base_scale(struct swr_mstr_ctrl *swrm, u8 dev_num)
+{
+	int clk_scale, n_row, n_col;
+	int cls_id;
+	int frame_shape;
+	u8 active_bank;
+
+	if (dev_num == 0)
+		return;
+
+	cls_id = swr_master_read(swrm, SWRM_ENUMERATOR_SLAVE_DEV_ID_2(dev_num));
+	if (cls_id & 0xFF00) {
+
+		active_bank = get_active_bank_num(swrm);
+		if (active_bank != 0) {
+			frame_shape = swr_master_read(swrm, SWRM_MCP_FRAME_CTRL_BANK(active_bank));
+			n_row = ((frame_shape & SWRM_ROW_CTRL_MASK) >>
+						SWRM_MCP_FRAME_CTRL_BANK_ROW_CTRL_SHFT);
+			n_col = ((frame_shape & SWRM_COL_CTRL_MASK) >>
+						SWRM_MCP_FRAME_CTRL_BANK_COL_CTRL_SHFT);
+			enable_bank_switch(swrm, active_bank, n_row, n_col);
+		}
+
+		swrm_cmd_fifo_wr_cmd(swrm, SWR_BASECLK_VAL_1_FOR_19P2MHZ,
+				dev_num, get_cmd_id(swrm), SWRS_SCP_BASE_CLK_BASE);
+
+		clk_scale = ffs((swrm->mclk_freq * 2)/swrm->bus_clk);
+
+		swrm_cmd_fifo_wr_cmd(swrm, clk_scale, dev_num,
+				get_cmd_id(swrm), SWRS_SCP_BUSCLOCK_SCALE(0));
+
+		swrm_cmd_fifo_wr_cmd(swrm, clk_scale, dev_num,
+				get_cmd_id(swrm), SWRS_SCP_BUSCLOCK_SCALE(1));
+	}
+}
+
+#define SLAVE_DEV_CLASS_ID  GENMASK(45, 40)
+static int swrm_update_clk_base_and_scale(struct swr_master *master, u8 inactive_bank)
+{
+	struct swr_device *swr_dev;
+	struct swr_mstr_ctrl *swrm = swr_get_ctrl_data(master);
+	u32 status = 0, val;
+	int clk_scale = 1; /* DIV2 */
+
+	val = swr_master_read(swrm, SWRM_MCP_SLV_STATUS);
+	list_for_each_entry(swr_dev, &master->devices, dev_list) {
+		if (swr_dev->dev_num == 0)
+			continue;
+
+		/* check class_id if 1 */
+		if (!(swr_dev->addr & SLAVE_DEV_CLASS_ID))
+			continue;
+
+		/* v1.2 slave could be attached to the bus */
+		status = (val >> (2 * swr_dev->dev_num)) & SWRM_MCP_SLV_STATUS_MASK;
+		if ((status == 0x01) || (status == 0x02)) { /* ATTACHED OK */
+			swrm_cmd_fifo_wr_cmd(swrm, SWR_BASECLK_VAL_1_FOR_19P2MHZ,
+					swr_dev->dev_num,
+					get_cmd_id(swrm), SWRS_SCP_BASE_CLK_BASE);
+			clk_scale = ffs((swrm->mclk_freq * 2)/swrm->bus_clk);
+			swrm_cmd_fifo_wr_cmd(swrm, clk_scale, swr_dev->dev_num,
+					get_cmd_id(swrm), SWRS_SCP_BUSCLOCK_SCALE(inactive_bank));
+			dev_dbg(swrm->dev, "v1.2 slave(%d), addr:0x%llx, clk_scale: %d",
+					swr_dev->dev_num, swr_dev->addr, clk_scale);
+		}
+	}
+	return 0;
 }
 
 static int swrm_slvdev_datapath_control(struct swr_master *master, bool enable)
@@ -1996,6 +2076,7 @@ static int swrm_slvdev_datapath_control(struct swr_master *master, bool enable)
 	dev_dbg(swrm->dev, "%s: regaddr: 0x%x, value: 0x%x\n", __func__,
 		SWRM_MCP_FRAME_CTRL_BANK(bank), value);
 
+	swrm_update_clk_base_and_scale(master, bank);
 	enable_bank_switch(swrm, bank, n_row, n_col);
 	inactive_bank = bank ? 0 : 1;
 
@@ -2067,15 +2148,15 @@ static int swrm_connect_port(struct swr_master *master,
 		port_req = swrm_get_port_req(mport, portinfo->port_id[i],
 					portinfo->dev_num);
 		if (!port_req) {
-			dev_dbg(&master->dev, "%s: new req:port id %d dev %d\n",
-						 __func__, portinfo->port_id[i],
-						portinfo->dev_num);
 			port_req = kzalloc(sizeof(struct swr_port_info),
 					GFP_KERNEL);
 			if (!port_req) {
 				ret = -ENOMEM;
 				goto mem_fail;
 			}
+			dev_dbg(&master->dev, "%s: new req:port id %d dev_num %d\n",
+						 __func__, (portinfo->port_id[i] + 1),
+						portinfo->dev_num);
 			port_req->dev_num = portinfo->dev_num;
 			port_req->slave_port_id = portinfo->port_id[i];
 			port_req->num_ch = portinfo->num_ch[i];
@@ -2091,8 +2172,8 @@ static int swrm_connect_port(struct swr_master *master,
 
 		dev_dbg(&master->dev,
 			"%s: mstr port %d, slv port %d ch_rate %d num_ch %d req_ch_rate %d\n",
-			__func__, port_req->master_port_id,
-			port_req->slave_port_id, port_req->ch_rate,
+			__func__, (port_req->master_port_id + 1),
+			(port_req->slave_port_id + 1), port_req->ch_rate,
 			port_req->num_ch, port_req->req_ch_rate);
 		/* Put the port req on master port */
 		mport = &(swrm->mport_cfg[mstr_port_id]);
@@ -2179,6 +2260,9 @@ static int swrm_disconnect_port(struct swr_master *master,
 				!mport->req_ch) {
 			mport->ch_rate = 0;
 			swrm_update_bus_clk(swrm);
+		} else {
+			mport->ch_rate -= port_req->ch_rate;
+			swrm_update_bus_clk(swrm);
 		}
 		num_port++;
 	}
@@ -2248,26 +2332,83 @@ static void swrm_enable_slave_irq(struct swr_mstr_ctrl *swrm)
 }
 
 static int swrm_check_slave_change_status(struct swr_mstr_ctrl *swrm,
-					int status, u8 *devnum)
+					u8 (*devnum)[2], u8 *len)
 {
 	int i;
-	int new_sts = status;
+	int new_sts, status;
 	int ret = SWR_NOT_PRESENT;
+	u8 dev_idx = 0;
 
+	status = swr_master_read(swrm, SWRM_MCP_SLV_STATUS);
+	new_sts = status;
 	if (status != swrm->slave_status) {
 		for (i = 0; i < (swrm->num_dev + 1); i++) {
 			if ((status & SWRM_MCP_SLV_STATUS_MASK) !=
 			    (swrm->slave_status & SWRM_MCP_SLV_STATUS_MASK)) {
 				ret = (status & SWRM_MCP_SLV_STATUS_MASK);
-				*devnum = i;
-				break;
+				devnum[dev_idx][0] = i;
+				devnum[dev_idx++][1] = ret;
 			}
 			status >>= 2;
 			swrm->slave_status >>= 2;
 		}
 		swrm->slave_status = new_sts;
 	}
+	*len = dev_idx;
 	return ret;
+}
+
+static void swrm_process_change_enum_slave_status(struct swr_mstr_ctrl *swrm)
+{
+	u32 status, chg_sts, i;
+	u8 num_enum_devs = 0;
+	u8 enum_devnum[SWR_MAX_DEV_NUM][2];
+	u8 devnum = 0;
+
+	status = swr_master_read(swrm, SWRM_MCP_SLV_STATUS);
+	if (status == swrm->slave_status) {
+		dev_dbg(swrm->dev,
+				"%s: No change in slave status: 0x%x\n",
+				__func__, status);
+		return;
+	}
+
+	num_enum_devs = 0;
+	memset(enum_devnum, 0, sizeof(SWR_MAX_DEV_NUM * 2 * sizeof(u8)));
+	chg_sts = swrm_check_slave_change_status(swrm, enum_devnum, &num_enum_devs);
+
+	if (num_enum_devs == 0)
+		return;
+
+	for (i = 0; i < num_enum_devs; ++i) {
+		chg_sts = enum_devnum[i][1];
+		devnum = enum_devnum[i][0];
+		switch (chg_sts) {
+		case SWR_NOT_PRESENT:
+			dev_dbg(swrm->dev,
+					"%s: device %d got detached\n", __func__, devnum);
+			if (devnum == 0) {
+				/*
+				 * enable host irq if device 0 detached
+				 * as hw will mask host_irq at slave
+				 * but will not unmask it afterwards.
+				 */
+				swrm->enable_slave_irq = true;
+			}
+			break;
+		case SWR_ATTACHED_OK:
+			dev_dbg(swrm->dev,
+					"%s: device %d got attached\n", __func__, devnum);
+			swrm_initialize_clk_base_scale(swrm, devnum);
+			/* enable host irq from slave device*/
+			swrm->enable_slave_irq = true;
+			break;
+		case SWR_ALERT:
+			dev_dbg(swrm->dev, "%s: device %d has pending interrupt\n",
+					__func__, devnum);
+			break;
+		}
+	}
 }
 
 static irqreturn_t swr_mstr_interrupt(int irq, void *dev)
@@ -2275,7 +2416,7 @@ static irqreturn_t swr_mstr_interrupt(int irq, void *dev)
 	struct swr_mstr_ctrl *swrm = dev;
 	u32 value, intr_sts, intr_sts_masked;
 	u32 temp = 0;
-	u32 status, chg_sts, i;
+	u32 status, i;
 	u8 devnum = 0;
 	int ret = IRQ_HANDLED;
 	struct swr_device *swr_dev;
@@ -2356,43 +2497,10 @@ handle_irq:
 				__func__);
 			break;
 		case SWRM_INTERRUPT_STATUS_CHANGE_ENUM_SLAVE_STATUS:
-			status = swr_master_read(swrm, SWRM_MCP_SLV_STATUS);
 			swrm_enable_slave_irq(swrm);
-			if (status == swrm->slave_status) {
-				dev_dbg(swrm->dev,
-					"%s: No change in slave status: 0x%x\n",
-					__func__, status);
-				break;
-			}
-			chg_sts = swrm_check_slave_change_status(swrm, status,
-								&devnum);
-			switch (chg_sts) {
-			case SWR_NOT_PRESENT:
-				dev_dbg(swrm->dev,
-					"%s: device %d got detached\n",
-					__func__, devnum);
-				if (devnum == 0) {
-					/*
-					 * enable host irq if device 0 detached
-					 * as hw will mask host_irq at slave
-					 * but will not unmask it afterwards.
-					 */
-					swrm->enable_slave_irq = true;
-				}
-				break;
-			case SWR_ATTACHED_OK:
-				dev_dbg(swrm->dev,
-					"%s: device %d got attached\n",
-					__func__, devnum);
-				/* enable host irq from slave device*/
-				swrm->enable_slave_irq = true;
-				break;
-			case SWR_ALERT:
-				dev_dbg(swrm->dev,
-					"%s: device %d has pending interrupt\n",
-					__func__, devnum);
-				break;
-			}
+			mutex_lock(&enumeration_lock);
+			swrm_process_change_enum_slave_status(swrm);
+			mutex_unlock(&enumeration_lock);
 			break;
 		case SWRM_INTERRUPT_STATUS_MASTER_CLASH_DET:
 			dev_err_ratelimited(swrm->dev,
@@ -2636,7 +2744,7 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 	u64 id = 0;
 	int ret = -EINVAL;
 	struct swr_mstr_ctrl *swrm = swr_get_ctrl_data(mstr);
-	struct swr_device *swr_dev;
+	struct swr_device *swr_dev, *sdev = NULL;
 	u32 num_dev = 0;
 
 	if (!swrm) {
@@ -2654,12 +2762,14 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 	mutex_unlock(&swrm->devlock);
 
 	pm_runtime_get_sync(swrm->dev);
+	mutex_lock(&enumeration_lock);
 	for (i = 1; i < (num_dev + 1); i++) {
 		id = ((u64)(swr_master_read(swrm,
 			    SWRM_ENUMERATOR_SLAVE_DEV_ID_2(i))) << 32);
 		id |= swr_master_read(swrm,
 					SWRM_ENUMERATOR_SLAVE_DEV_ID_1(i));
 
+		dev_dbg(swrm->dev, "%s: dev (num, address) (%d, 0x%llx)\n", __func__, i, id);
 		/*
 		 * As pm_runtime_get_sync() brings all slaves out of reset
 		 * update logical device number for all slaves.
@@ -2672,6 +2782,7 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 					swr_dev->dev_num = i;
 					if ((id & SWR_DEV_ID_MASK) == dev_id) {
 						*dev_num = i;
+						sdev = swr_dev;
 						ret = 0;
 						dev_info(swrm->dev,
 							"%s: devnum %d assigned for dev %llx\n",
@@ -2682,10 +2793,16 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 			}
 		}
 	}
+	dev_dbg(swrm->dev, "%s: mcp slv status:0x%x\n", __func__, swrm->slave_status);
+	if ((ret == 0) && (sdev != NULL)) {
+		if (!sdev->clk_scale_initialized)
+			swrm_initialize_clk_base_scale(swrm, *dev_num);
+	}
 	if (ret)
 		dev_err(swrm->dev,
 				"%s: device 0x%llx is not ready\n",
 				__func__, dev_id);
+	mutex_unlock(&enumeration_lock);
 
 	pm_runtime_mark_last_busy(swrm->dev);
 	pm_runtime_put_autosuspend(swrm->dev);

@@ -36,6 +36,7 @@ PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/swr_dmic_dlkm.ko \
 endif
 ifeq ($(call is-board-platform-in-list,sun), true)
 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/lpass_bt_swr_dlkm.ko
+PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/qmp_dlkm.ko
 endif
 ifeq ($(call is-board-platform-in-list,bengal holi blair), true)
 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/bolero_cdc_dlkm.ko \
