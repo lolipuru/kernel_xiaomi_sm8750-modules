@@ -7,6 +7,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d]: " fmt, __func__, __LINE__
 
 #include <linux/clk.h>
+#include <linux/clk/qcom.h>
 #include <linux/kernel.h>
 #include <linux/of.h>
 #include <linux/string.h>
@@ -1150,6 +1151,30 @@ struct clk *sde_power_clk_get_clk(struct sde_power_handle *phandle,
 	}
 
 	return clk;
+}
+
+void sde_power_set_clk_retention(struct sde_power_handle *phandle,
+		char *clock_name, bool enable)
+{
+	struct clk *clk = NULL;
+
+	if (!phandle) {
+		pr_err("invalid input power handle\n");
+		return;
+	}
+
+	if (!clock_name) {
+		pr_err("invalid clock\n");
+		return;
+	}
+
+	clk = sde_power_clk_get_clk(phandle, clock_name);
+	if (!clk) {
+		pr_err("invalid clock handle\n");
+		return;
+	}
+
+	qcom_clk_set_flags(clk, enable ? CLKFLAG_RETAIN_MEM : CLKFLAG_NORETAIN_MEM);
 }
 
 struct sde_power_event *sde_power_handle_register_event(

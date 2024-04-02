@@ -336,6 +336,17 @@ void sde_power_data_bus_bandwidth_ctrl(struct sde_power_handle *phandle,
 		int enable);
 
 /**
+ * sde_power_set_clk_retention() - enable/disable clock retention
+ * @phandle:  power handle containing the resources
+ * @clock_name: clock name
+ * @enable: true to enable clock retention
+ *
+ * Return: none
+ */
+void sde_power_set_clk_retention(struct sde_power_handle *phandle,
+		char *clock_name, bool enable);
+
+/**
  * sde_power_handle_register_event - register a callback function for an event.
  *	Clients can register for multiple events with a single register.
  *	Any block with access to phandle can register for the event
