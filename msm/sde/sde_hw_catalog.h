@@ -851,7 +851,6 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_UCSC_SUPPORTED  UCSC pipe format supported
  * @SDE_FEATURE_10_BITS_COMPONENTS Support for 10 bits components
  * @SDE_FEATURE_UBWC_LOSSY	Support UBWC Lossy
- * @SDE_FEATURE_LUT_RETENTION   Indicates LUT retention support
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
  * @SDE_FEATURE_MAX:             MAX features value
  */
@@ -903,7 +902,6 @@ enum sde_mdss_features {
 	SDE_FEATURE_UCSC_SUPPORTED,
 	SDE_FEATURE_10_BITS_COMPONENTS,
 	SDE_FEATURE_UBWC_LOSSY,
-	SDE_FEATURE_LUT_RETENTION,
 	SDE_FEATURE_DS_PU_SUPPORTED,
 	SDE_FEATURE_MAX
 };
