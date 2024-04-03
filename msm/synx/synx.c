@@ -2026,7 +2026,7 @@ retry:
 			dprintk(SYNX_ERR,
 				"[sess :%llu] failed to register synx handle %u with hw fence with err %d\n",
 				client->id, *params->new_h_synx, rc);
-			goto release;
+			goto fail;
 		}
 	}
 
