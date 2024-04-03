@@ -1786,7 +1786,7 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 		}
 
 		if ((evt_bitmap[rx_idx] & BIT_ULL(CAM_IFE_CSID_RX_CPHY_EOT_RECEPTION)) &&
-			(irq_status & (bit_pos[CAM_IFE_CSID_RX_CPHY_EOT_RECEPTION]))) {
+			(irq_status & (BIT(bit_pos[CAM_IFE_CSID_RX_CPHY_EOT_RECEPTION])))) {
 			event_type |= CAM_ISP_HW_ERROR_CSID_MISSING_EOT;
 			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
 				"CPHY_EOT_RECEPTION: No EOT on lane/s, is_EPD: %c, PHY_Type: %s(%u)",
