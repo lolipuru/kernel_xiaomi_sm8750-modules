@@ -415,6 +415,8 @@ struct fastrpc_buf_overlap {
 };
 
 struct fastrpc_buf {
+	/* Node for adding to buffer lists */
+	struct list_head node;
 	struct fastrpc_user *fl;
 	struct dma_buf *dmabuf;
 	struct device *dev;
@@ -425,8 +427,6 @@ struct fastrpc_buf {
 	/* Lock for dma buf attachments */
 	struct mutex lock;
 	struct list_head attachments;
-	/* mmap support */
-	struct list_head node; /* list of user requested mmaps */
 	uintptr_t raddr;
 	bool in_use;
 	u32 domain_id;
@@ -548,6 +548,8 @@ struct fastrpc_channel_ctx {
 };
 
 struct fastrpc_invoke_ctx {
+	/* Node for adding to context list */
+	struct list_head node;
 	int nscalars;
 	int nbufs;
 	int retval;
@@ -566,7 +568,6 @@ struct fastrpc_invoke_ctx {
 	/* response flags from remote processor */
 	enum fastrpc_response_flags rsp_flags;
 	struct kref refcount;
-	struct list_head node; /* list of ctxs */
 	struct completion work;
 	// struct work_struct put_work;
 	struct fastrpc_msg msg;

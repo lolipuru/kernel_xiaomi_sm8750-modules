@@ -351,6 +351,7 @@ static void fastrpc_cached_buf_list_free(struct fastrpc_user *fl)
 }
 
 static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
+			     struct fastrpc_session_ctx *sess, u32 domain_id,
 			     u64 size, struct fastrpc_buf **obuf, u32 buf_type)
 {
 	struct fastrpc_buf *buf;
@@ -370,13 +371,13 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 	buf->dev = dev;
 	buf->raddr = 0;
 	buf->type = buf_type;
-	buf->domain_id = fl->cctx->domain_id;
+	buf->domain_id = domain_id;
 
-	mutex_lock(&fl->sctx->map_mutex);
-	if (fl->sctx->dev)
+	mutex_lock(&sess->map_mutex);
+	if (dev)
 		buf->virt = dma_alloc_coherent(dev, buf->size, (dma_addr_t *)&buf->phys,
 						GFP_KERNEL);
-	mutex_unlock(&fl->sctx->map_mutex);
+	mutex_unlock(&sess->map_mutex);
 	if (!buf->virt) {
 		mutex_destroy(&buf->lock);
 		kfree(buf);
@@ -385,7 +386,7 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 
 	*obuf = buf;
 
-	trace_fastrpc_dma_alloc(fl->cctx->domain_id, (uint64_t)buf->phys, buf->size,
+	trace_fastrpc_dma_alloc(domain_id, (uint64_t)buf->phys, buf->size,
 								(unsigned long)buf->type, 0);
 	return 0;
 }
@@ -400,10 +401,12 @@ static int fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 		return 0;
 	if (fastrpc_get_cached_buf(fl, size, buf_type, obuf))
 		return 0;
-	ret = __fastrpc_buf_alloc(fl, dev, size, obuf, buf_type);
+	ret = __fastrpc_buf_alloc(fl, dev, fl->sctx, fl->cctx->domain_id,
+					size, obuf, buf_type);
 	if (ret == -ENOMEM) {
 		fastrpc_cached_buf_list_free(fl);
-		ret = __fastrpc_buf_alloc(fl, dev, size, obuf, buf_type);
+		ret = __fastrpc_buf_alloc(fl, dev, fl->sctx, fl->cctx->domain_id,
+					size, obuf, buf_type);
 		if (ret)
 			return ret;
 	}
@@ -420,7 +423,8 @@ static int fastrpc_remote_heap_alloc(struct fastrpc_user *fl, struct device *dev
 {
 	struct device *rdev = fl->cctx->dev;
 
-	return __fastrpc_buf_alloc(fl, rdev, size, obuf, buf_type);
+	return __fastrpc_buf_alloc(fl, rdev, fl->sctx, fl->cctx->domain_id,
+				size, obuf, buf_type);
 }
 
 static void fastrpc_channel_ctx_free(struct kref *ref)
