@@ -241,7 +241,7 @@ static struct cam_vfe_top_ver4_hw_info vfe68x_top_hw_info = {
 		CAM_VFE_RDI_VER_1_0,
 	},
 	.num_rdi        = ARRAY_SIZE(vfe68x_rdi_hw_info),
-	.debug_reg_info = &vfe68x_dbg_reg_info,
+	.top_debug_reg_info = &vfe68x_dbg_reg_info,
 };
 
 static struct cam_irq_register_set vfe680x_bus_irq_reg[2] = {

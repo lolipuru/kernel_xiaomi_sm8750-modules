@@ -58,6 +58,8 @@ static const struct cam_ife_csid_irq_desc cam_ife_csid_980_rx_irq_desc[][32] = {
 			.bitmask = BIT(9),
 			.desc = "SENSOR_MODE_ID_CHANGE",
 		},
+		{0},
+		{0},
 		{
 			.bitmask = BIT(12),
 			.desc = "ERROR_DL0_EOT_LOST",
@@ -130,6 +132,7 @@ static const struct cam_ife_csid_irq_desc cam_ife_csid_980_rx_irq_desc[][32] = {
 			.bitmask = BIT(29),
 			.desc = "ERROR_STREAM_UNDERFLOW",
 		},
+		{0},
 		{
 			.bitmask = BIT(31),
 			.desc = "CSI2_RX_IRQ_STATUS_2",

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_VFE680_110_H_
@@ -122,7 +122,7 @@ static struct cam_vfe_top_ver4_hw_info vfe680_110_top_hw_info = {
 	.top_err_desc                    = vfe680_top_irq_err_desc,
 	.num_pdaf_violation_errors       = ARRAY_SIZE(vfe680_pdaf_violation_desc),
 	.pdaf_violation_desc             = vfe680_pdaf_violation_desc,
-	.debug_reg_info                  = &vfe680_dbg_reg_info,
+	.top_debug_reg_info              = &vfe680_dbg_reg_info,
 };
 
 static struct cam_vfe_hw_info cam_vfe680_110_hw_info = {

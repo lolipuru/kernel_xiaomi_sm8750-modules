@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_VFE_TOP_VER4_H_
@@ -13,7 +13,7 @@
 
 #define CAM_VFE_RDI_VER2_MAX                           4
 #define CAM_VFE_CAMIF_LITE_EVT_MAX                     256
-#define CAM_VFE_TOP_DBG_REG_MAX                        35
+#define CAM_VFE_TOP_DBG_REG_MAX                        19
 
 struct cam_vfe_top_ver4_perf_count_reg_offset {
 	uint32_t perf_count_cfg;
@@ -92,7 +92,9 @@ struct cam_vfe_top_ver4_reg_offset_common {
 	uint32_t pdaf_input_cfg_0;
 	uint32_t pdaf_input_cfg_1;
 	uint32_t num_top_debug_reg;
+	uint32_t num_bayer_debug_reg;
 	uint32_t *top_debug;
+	uint32_t *bayer_debug;
 	uint32_t frame_timing_irq_reg_idx;
 	uint32_t capabilities;
 };
@@ -178,7 +180,8 @@ struct cam_vfe_top_ver4_hw_info {
 	struct cam_vfe_top_ver4_module_desc            *ipp_module_desc;
 	struct cam_vfe_bayer_ver4_module_desc          *bayer_module_desc;
 	uint32_t                                        num_reg;
-	struct cam_vfe_top_ver4_debug_reg_info        (*debug_reg_info)[][8];
+	struct cam_vfe_top_ver4_debug_reg_info        (*top_debug_reg_info)[][8];
+	struct cam_vfe_top_ver4_debug_reg_info        (*bayer_debug_reg_info)[][8];
 	uint32_t                                        num_mux;
 	uint32_t                                        num_path_port_map;
 	uint32_t mux_type[CAM_VFE_TOP_MUX_MAX];
