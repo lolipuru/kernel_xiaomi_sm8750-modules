@@ -271,6 +271,7 @@ struct dsi_panel {
 	struct dsi_qsync_capabilities qsync_caps;
 	struct dsi_avr_capabilities avr_caps;
 	struct dsi_esync_capabilities esync_caps;
+	struct msm_vrr_capabilities vrr_caps;
 
 	char dce_pps_cmd[DSI_CMD_PPS_SIZE];
 	enum dsi_dms_mode dms_mode;
@@ -427,4 +428,10 @@ int dsi_panel_create_cmd_packets(const char *data, u32 length, u32 count,
 void dsi_panel_destroy_cmd_packets(struct dsi_panel_cmd_set *set);
 
 void dsi_panel_dealloc_cmd_packets(struct dsi_panel_cmd_set *set);
+
+int dsi_panel_send_vrr_cmd(struct dsi_panel *panel,
+		struct msm_display_conn_params *params, u64 idx, bool last_command);
+
+int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
+				struct dsi_parser_utils *utils);
 #endif /* _DSI_PANEL_H_ */

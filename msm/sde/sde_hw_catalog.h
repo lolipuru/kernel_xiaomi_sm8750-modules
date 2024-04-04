@@ -2073,6 +2073,8 @@ struct sde_perf_cfg {
  * @soccp_ph            if soccp is supported, soccp phandle needed to get rproc to set power vote
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
+ * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
+ *                      If not set it is immediate self refresh
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -2207,6 +2209,7 @@ struct sde_mdss_cfg {
 
 	enum sde_ppb_size_option ppb_sz_program;
 	u32 ppb_buf_max_lines;
+	u32 controlled_SR;
 };
 
 struct sde_mdss_hw_cfg_handler {

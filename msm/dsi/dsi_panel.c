@@ -1401,9 +1401,9 @@ static int dsi_panel_parse_avr_caps(struct dsi_panel *panel,
 	struct dsi_parser_utils *utils = &panel->utils;
 	int val, rc = 0;
 
-	rc = of_property_read_u32(of_node, "qcom,dsi-qsync-avr-step-fps", &val);
+	rc = utils->read_u32(utils->data, "qcom,dsi-qsync-avr-step-fps", &val);
 	if (rc)
-		DSI_DEBUG("[%s] avr step fps not defined rc:%d\n", panel->name, rc);
+		DSI_DEBUG("[%s] avr step fps not defined dt%d rc:%d\n", panel->name, !of_node, rc);
 	avr_caps->avr_step_fps = rc ? 0 : val;
 
 	val = utils->count_u32_elems(utils->data, "qcom,dsi-qsync-avr-step-list");
@@ -1453,12 +1453,12 @@ static int dsi_panel_parse_qsync_caps(struct dsi_panel *panel,
 	 * "mdss-dsi-qsync-min-refresh-rate" is defined in cmd mode and
 	 *  video mode when there is only one qsync min fps present.
 	 */
-	rc = of_property_read_u32(of_node,
+	rc = utils->read_u32(utils->data,
 				  "qcom,mdss-dsi-qsync-min-refresh-rate",
 				  &val);
 	if (rc)
-		DSI_DEBUG("[%s] qsync min fps not defined rc:%d\n",
-			panel->name, rc);
+		DSI_DEBUG("[%s] qsync min fps not defined dt%d rc:%d\n",
+			panel->name, !of_node, rc);
 
 	qsync_caps->qsync_min_fps = val;
 
@@ -1532,6 +1532,206 @@ error:
 	if (rc < 0) {
 		qsync_caps->qsync_min_fps = 0;
 		qsync_caps->qsync_min_fps_list_len = 0;
+	}
+	return rc;
+}
+
+int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
+				struct dsi_parser_utils *utils)
+{
+	u32 *freq_patterrn_arr32;
+	u32 *freq_interval_arr32;
+	u32 *freq_stepping_seq;
+	const u32 *arr;
+	int i, j, k, rc = 0;
+	u32 length, size, prop_length = 0, freq_pattern_count = 0;
+	u32 freq_pattern_length, freq_interval_length;
+	struct msm_freq_step_pattern *freq_pattern;
+	struct msm_freq_step_list *freq_step_list;
+
+	if (!mode || !mode->priv_info) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+	freq_step_list = &mode->priv_info->freq_step_list;
+
+	/* Parse "qcom,mdss-dsi-qsync-freq-step-sequence" to temp freq_patterrn_arr32 */
+	arr = utils->get_property(utils->data,
+			"qcom,mdss-dsi-qsync-freq-step-sequence", &freq_pattern_length);
+	if (!arr || (freq_pattern_length & 0x1)) {
+		DSI_ERR("qsync-freq-step-sequence error data %d length\n",
+			freq_pattern_length);
+		rc = -EINVAL;
+		goto error;
+	}
+	freq_pattern_length = freq_pattern_length / sizeof(u32);
+	size = freq_pattern_length * sizeof(u32);
+	freq_patterrn_arr32 = kzalloc(size, GFP_KERNEL);
+	if (!freq_patterrn_arr32) {
+		rc = -ENOMEM;
+		DSI_ERR("Error allocating memory for freq_patterrn_arr32\n");
+		goto error;
+	}
+	rc = utils->read_u32_array(utils->data, "qcom,mdss-dsi-qsync-freq-step-sequence",
+				freq_patterrn_arr32, freq_pattern_length);
+	if (rc) {
+		DSI_ERR("cannot read dsi freq steps %d\n", rc);
+		goto error_free;
+	}
+
+	/* Parse "qcom,mdss-dsi-qsync-freq-step-sequence-interval" to temp freq_interval_arr32 */
+	arr = utils->get_property(utils->data,
+		"qcom,mdss-dsi-qsync-freq-step-sequence-interval", &freq_interval_length);
+	if (!arr || (freq_interval_length & 0x1)) {
+		DSI_ERR("qsync-freq-step-sequence-interval error data %d length\n",
+				 freq_interval_length);
+		rc = -EINVAL;
+		goto error;
+	}
+	freq_interval_length = freq_interval_length / sizeof(u32);
+	size = freq_interval_length * sizeof(u32);
+	freq_interval_arr32 = kzalloc(size, GFP_KERNEL);
+	if (!freq_interval_arr32) {
+		rc = -ENOMEM;
+		DSI_ERR("Error allocating memory for property\n");
+		goto error;
+	}
+	rc = utils->read_u32_array(utils->data,
+		"qcom,qcom,mdss-dsi-qsync-freq-step-sequence-interval",
+				freq_interval_arr32, freq_interval_length);
+
+	if (rc) {
+		DSI_ERR("cannot read dsi freq steps %d\n", rc);
+		goto error_free_frame_interval;
+	}
+
+	/* Allocate the frequency stepping pattern table
+	 * with frame interval number of entries.
+	 */
+	if (freq_interval_length % 3) {
+		DSI_ERR("Frame interval length mismatch %d\n", freq_interval_length);
+		goto error_free;
+	}
+	freq_interval_length = freq_interval_length/3;
+	freq_step_list->count = freq_interval_length;
+	freq_pattern = kcalloc(freq_step_list->count, sizeof(*freq_pattern), GFP_KERNEL);
+	if (!freq_pattern) {
+		rc = -ENOMEM;
+		goto error_free_frame_interval;
+	}
+	freq_step_list->freq_pattern = freq_pattern;
+
+	/* Safety check for mismatch of pattern count in
+	 * mdss-dsi-qsync-freq-step-sequence-interval and
+	 * mdss-dsi-qsync-freq-step-sequence.
+	 */
+	for (i = 0; i < freq_interval_length; i++)
+		freq_pattern_count += freq_interval_arr32[i*3+2];
+
+	if (freq_pattern_count != (freq_pattern_length/2)) {
+		DSI_ERR("Mismatch detected in pattern count %d From step seq:%d.\n",
+			freq_pattern_count, freq_pattern_length/2);
+		goto error_free_frame_interval;
+	}
+
+	/* Parse through the complete mdss-dsi-qsync-freq-step-sequence
+	 * and store freq_pattern for each frame interval.
+	 * For given pattern - <60000 2>, <40000 2>;
+	 * freq_stepping_seq = [60000, 60000, 40000, 40000]
+	 */
+	prop_length = 0;
+	for (i = 0; i < freq_interval_length; i++) {
+		freq_pattern[i].frame_interval = freq_interval_arr32[i*3+1];
+		freq_pattern[i].num_freq_steps = freq_interval_arr32[i*3+2];
+		freq_pattern[i].usecase_idx = freq_interval_arr32[i*3];
+
+		/* Count total number of steps in the pattern */
+		length = 0;
+		for (j = 0; j < freq_pattern[i].num_freq_steps; j++)
+			length += freq_patterrn_arr32[prop_length + j*2 + 1];
+
+		freq_pattern[i].length = length;
+
+		freq_stepping_seq = kcalloc(length, sizeof(u32), GFP_KERNEL);
+		if (!freq_stepping_seq) {
+			DSI_ERR("Failed to create frequency stepping array.\n");
+			rc = -ENOMEM;
+			goto error_free_frame_interval;
+		}
+
+		length = 0;
+		for (j = 0; j < freq_pattern[i].num_freq_steps; j++) {
+			/* Convert for each freq_step <60000 2> -> [60000, 60000] */
+			for (k = 0; k < freq_patterrn_arr32[prop_length + j*2 + 1]; k++) {
+				freq_stepping_seq[length] = freq_patterrn_arr32[prop_length + j*2];
+				length++;
+			}
+		}
+		prop_length += (freq_pattern[i].num_freq_steps * 2);
+		freq_pattern[i].freq_stepping_seq = freq_stepping_seq;
+	}
+
+	for (i = 0; i < freq_step_list->count; i++) {
+		DSI_DEBUG("usecaseIdx:%d FrameInterval:%d, Num freq steps:%d Total steps:%d %p\n",
+			freq_step_list->freq_pattern[i].usecase_idx,
+			freq_step_list->freq_pattern[i].frame_interval,
+			freq_step_list->freq_pattern[i].num_freq_steps,
+			freq_step_list->freq_pattern[i].length, &freq_step_list->freq_pattern[i]);
+		for (j = 0; j < freq_step_list->freq_pattern[i].length; j++)
+			DSI_DEBUG(" %d\n", freq_step_list->freq_pattern[i].freq_stepping_seq[j]);
+	}
+
+
+error_free_frame_interval:
+	kfree(freq_interval_arr32);
+error_free:
+	kfree(freq_patterrn_arr32);
+error:
+	return rc;
+}
+
+static int dsi_panel_parse_vrr_caps(struct dsi_panel *panel,
+				struct device_node *of_node)
+{
+	int rc = 0;
+	struct dsi_parser_utils *utils = &panel->utils;
+
+	/* "qcom,has-vrr-enable" is true for CMD mode panels
+	 * that has AVR-step/EM pulse, ARP Panel, Video PSR Panel
+	 */
+	panel->vrr_caps.vrr_support = utils->read_bool(utils->data, "qcom,vrr-enable");
+	if (!panel->vrr_caps.vrr_support) {
+		DSI_DEBUG("VRR feature not enabled\n");
+		goto error;
+	}
+
+	panel->vrr_caps.arp_support = utils->read_bool(utils->data, "qcom,arp-enable");
+
+	panel->vrr_caps.video_psr_support = utils->read_bool(utils->data, "qcom,video-psr-enable");
+
+	if ((panel->vrr_caps.arp_support || panel->vrr_caps.video_psr_support) &&
+		(!panel->qsync_caps.qsync_support || !panel->qsync_caps.qsync_min_fps)) {
+		rc = -EINVAL;
+		DSI_ERR("ARP/Video PSR can't be supported without qsync\n");
+		goto error;
+	}
+
+	if ((panel->vrr_caps.arp_support || panel->vrr_caps.video_psr_support) &&
+			panel->dfps_caps.dfps_support) {
+		DSI_ERR("disabling dfps as it can't be supported with ARP/Video PSR\n");
+		panel->dfps_caps.dfps_support = false;
+	}
+
+	if ((panel->vrr_caps.arp_support || panel->vrr_caps.video_psr_support) &&
+			panel->panel_mode_switch_enabled) {
+		DSI_ERR("disabling poms as it can't be supported with ARP/Video PSR\n");
+		panel->panel_mode_switch_enabled = false;
+	}
+
+error:
+	if (rc < 0) {
+		panel->vrr_caps.arp_support = false;
+		panel->vrr_caps.video_psr_support = false;
 	}
 	return rc;
 }
@@ -1991,6 +2191,13 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-qsync-off-commands",
 	"qcom,mdss-dsi-esync-post-on-commands",
 	"qcom,mdss-dsi-still-indication-commands",
+	"qcom,mdss-dsi-arp_mode3_hw_te_on-command",
+	"qcom,mdss-dsi-arp_mode1_hw_te_off-command",
+	"FI not parsed from DTSI, generated dynamically",
+	"qcom,mdss-dsi-sticky_still_en-command",
+	"qcom,mdss-dsi-sticky_still_disable-command",
+	"qcom,mdss-dsi-sticky_on_fly-command",
+	"qcom,mdss-dsi-trigger_self_refresh-command",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -2021,6 +2228,13 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-qsync-off-commands-state",
 	"qcom,mdss-dsi-esync-post-on-commands-state",
 	"qcom,mdss-dsi-still-indication-commands-state",
+	"qcom,mdss-dsi-arp_mode3_hw_te_on-command-state",
+	"qcom,mdss-dsi-arp_mode1_hw_te_off-command-state",
+	"FI not parsed from DTSI, generated dynamically",
+	"qcom,mdss-dsi-sticky_still_en-command-state",
+	"qcom,mdss-dsi-sticky_still_disable-command-state",
+	"qcom,mdss-dsi-sticky_on_fly-command-state",
+	"qcom,mdss-dsi-trigger_self_refresh-command-state",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -3872,6 +4086,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (rc)
 		DSI_ERR("failed to parse esync features, rc=%d\n", rc);
 
+	rc = dsi_panel_parse_vrr_caps(panel, of_node);
+	if (rc)
+		DSI_DEBUG("failed to parse VRR features, rc=%d\n", rc);
+
 	rc = dsi_panel_parse_dyn_clk_caps(panel);
 	if (rc)
 		DSI_ERR("failed to parse dynamic clk config, rc=%d\n", rc);
@@ -4481,6 +4699,12 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 			goto parse_fail;
 		}
 
+		if (panel->vrr_caps.vrr_support) {
+			rc = dsi_panel_parse_freq_step_table(mode, utils);
+			if (rc)
+				DSI_ERR("Frequency stepping parsing failed, rc=%d\n", rc);
+		}
+
 		rc = dsi_panel_parse_partial_update_caps(mode, utils);
 		if (rc)
 			DSI_ERR("failed to partial update caps, rc=%d\n", rc);
@@ -4846,6 +5070,60 @@ int dsi_panel_send_qsync_off_dcs(struct dsi_panel *panel,
 		       panel->name, rc);
 
 	mutex_unlock(&panel->panel_lock);
+
+	return rc;
+}
+
+static int dsi_panel_prepare_vrr_cmd(struct dsi_panel *panel,
+		struct msm_display_conn_params *params, u64 idx, bool last_command)
+{
+	int i;
+	struct dsi_panel_cmd_set *set;
+	struct dsi_display_mode_priv_info *priv_info;
+
+	if (!panel || !panel->cur_mode) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	priv_info = panel->cur_mode->priv_info;
+	set = &priv_info->cmd_sets[BIT(idx)];
+
+	if (!set->cmds) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < set->count; i++)
+		set->cmds[i].last_command = last_command;
+
+	return 0;
+}
+
+/* VRR command modes */
+int dsi_panel_send_vrr_cmd(struct dsi_panel *panel,
+		struct msm_display_conn_params *params, u64 idx, bool last_command)
+{
+	int rc = 0;
+
+	if (!panel) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	DSI_DEBUG("Send VRR command %llx\n", idx);
+	mutex_lock(&panel->panel_lock);
+
+	dsi_panel_prepare_vrr_cmd(panel, params, idx, last_command);
+
+	rc = dsi_panel_tx_cmd_set(panel, BIT(idx), true);
+
+	if (rc)
+		DSI_ERR("[%s] failed to send VRR cmd idx %llx rc=%d\n",
+		       panel->name, idx, rc);
+
+	mutex_unlock(&panel->panel_lock);
+
 	return rc;
 }
 

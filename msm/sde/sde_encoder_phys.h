@@ -232,6 +232,7 @@ struct sde_encoder_phys_ops {
  * @INTR_IDX_VSYNC:    Vsync interrupt for video mode panel
  * @INTR_IDX_PINGPONG: Pingpong done interrupt for cmd mode panel
  * @INTR_IDX_UNDERRUN: Underrun interrupt for video and cmd mode panel
+ * @INTR_IDX_WD_TIMER: Watchdog interrupt
  * @INTR_IDX_CTL_START:Control start interrupt to indicate the frame start
  * @INTR_IDX_CTL_DONE: Control done interrupt indicating the control path being idle
  * @INTR_IDX_RDPTR:    Readpointer done interrupt for cmd mode panel
@@ -255,6 +256,7 @@ enum sde_intr_idx {
 	INTR_IDX_VSYNC,
 	INTR_IDX_PINGPONG,
 	INTR_IDX_UNDERRUN,
+	INTR_IDX_WD_TIMER,
 	INTR_IDX_CTL_START,
 	INTR_IDX_CTL_DONE,
 	INTR_IDX_RDPTR,
@@ -292,6 +294,32 @@ struct sde_encoder_irq {
 	int hw_idx;
 	int irq_idx;
 	struct sde_irq_callback cb;
+};
+
+enum sde_transition_state {
+	ARP_MODE_NONE,
+	ARP_MODE3_HW_TE_ON,
+	ARM_MODE3_TO_MODE1,
+	ARP_MODE1_ACTIVE,
+	ARP_MODE1_IDLE,
+};
+
+struct sde_encoder_vrr_cfg {
+	bool arp_mode_hw_te;
+	bool arp_mode_sw_timer_mode;
+	bool is_freq_pattern_altered;
+	u16 arp_transition_state;
+	u32 curr_index;
+	u32 curr_frame_interval_fps;
+	u64 curr_image_ts_in_ns;
+	u64 last_commit_ept_in_ns;
+	u64 last_image_ts_in_ns;
+	u64 arp_mode_off_time_ns;
+	u64 freq_step_timer_val_ns;
+	struct msm_freq_step_pattern *curr_freq_pattern;
+	struct hrtimer freq_step_timer;
+	struct hrtimer arp_transition_timer;
+	struct hrtimer self_refresh_timer;
 };
 
 /**
@@ -368,6 +396,7 @@ struct sde_encoder_irq {
  * @autorefresh_disable_trans:   flag set to true during autorefresh disable transition
  * @sim_qsync_frame:            Current simulated qsync frame type
  * @prog_fetch_start:           current programmable fetch value
+ * @sde_vrr_cfg:      VRR configuration information
  */
 struct sde_encoder_phys {
 	struct drm_encoder *parent;
@@ -425,6 +454,7 @@ struct sde_encoder_phys {
 	enum sde_sim_qsync_frame sim_qsync_frame;
 	u32 prog_fetch_start;
 	bool esync_pc_exit;
+	struct sde_encoder_vrr_cfg sde_vrr_cfg;
 };
 
 static inline int sde_encoder_phys_inc_pending(struct sde_encoder_phys *phys)

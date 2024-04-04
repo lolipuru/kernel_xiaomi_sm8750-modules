@@ -40,6 +40,9 @@
 
 #define SEC_PANEL_NAME_MAX_LEN  256
 
+#define MIPI_DCS_SET_ARP_OFF 0x60
+#define MIPI_DCS_SET_ARP_ON 0x61
+
 u8 dbgfs_tx_cmd_buf[SZ_4K];
 static char dsi_display_primary[MAX_CMDLINE_PARAM_LEN];
 static char dsi_display_secondary[MAX_CMDLINE_PARAM_LEN];
@@ -6864,6 +6867,9 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->esync_hsync_milli_pulse_width = display->panel->esync_caps.hsync_milli_pulse_width;
 	info->esync_emsync_fps = display->panel->esync_caps.emsync_fps;
 	info->esync_emsync_milli_pulse_width = display->panel->esync_caps.emsync_milli_pulse_width;
+	info->vrr_caps.vrr_support = display->panel->vrr_caps.vrr_support;
+	info->vrr_caps.video_psr_support = display->panel->vrr_caps.video_psr_support;
+	info->vrr_caps.arp_support = display->panel->vrr_caps.arp_support;
 	info->poms_align_vsync = display->panel->poms_align_vsync;
 	info->is_te_using_watchdog_timer = is_sim_panel(display);
 
@@ -7301,6 +7307,7 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			 * in dsi_panel_get_mode function.
 			 */
 			display_mode.priv_info->qsync_min_fps = sub_mode->timing.qsync_min_fps;
+			display_mode.priv_info->avr_step_fps = sub_mode->timing.avr_step_fps;
 			if (!dfps_caps.dfps_support || !support_video_mode)
 				continue;
 
@@ -8654,6 +8661,106 @@ exit:
 	return rc;
 }
 
+static int dsi_display_vrr(struct dsi_display *display, struct msm_display_conn_params *params)
+{
+	u64 idx;
+	int rc = 0;
+	bool last_command = false;
+
+	mutex_lock(&display->display_lock);
+
+	for (idx = 0; idx < sizeof(params->cmd_bit_mask) * 8; idx++) {
+		if (params->cmd_bit_mask & BIT(idx)) {
+			if (fls64(params->cmd_bit_mask) == idx)
+				last_command = true;
+
+			SDE_EVT32(idx, last_command);
+			rc = dsi_panel_send_vrr_cmd(display->panel, params, idx, last_command);
+			if (rc) {
+				DSI_ERR("fail VRR cmd idx:%llx rc:%d\n", idx, rc);
+				goto exit;
+			}
+		}
+	}
+exit:
+	mutex_unlock(&display->display_lock);
+	return rc;
+}
+
+/**
+ * mipi_dsi_dcs_set_arp_on() - send panel command to enable ARP
+ * @dsi: DSI peripheral device
+ * @T2: time relative to next frame update deadline(T1) when TE shall be asserted
+ *
+ * Return: 0 on success or a negative error code on failure.
+ */
+static int mipi_dsi_dcs_set_arp_on(struct mipi_dsi_device *dsi, u16 T2)
+{
+	int rc = 0;
+	u8 payload[2] = { T2 >> 8, T2 & 0xff };
+
+	rc = mipi_dsi_dcs_write(dsi, MIPI_DCS_SET_ARP_ON, payload, sizeof(payload));
+	if (rc < 0)
+		DSI_ERR("failed to send arp on command, rc =%d\n", rc);
+
+	return rc;
+}
+
+/**
+ * mipi_dsi_dcs_set_arp_off() - send panel command to disable ARP
+ * @dsi: DSI peripheral device
+ *
+ * Return: 0 on success or a negative error code on failure.
+ */
+static int mipi_dsi_dcs_set_arp_off(struct mipi_dsi_device *dsi)
+{
+	int rc = 0;
+
+	rc = mipi_dsi_dcs_write(dsi, MIPI_DCS_SET_ARP_OFF, NULL, 0);
+	if (rc < 0)
+		DSI_ERR("failed to send arp off command, rc =%d\n", rc);
+
+	return rc;
+}
+
+static int dsi_display_arp(struct dsi_display *display, bool enable, u16 arp_t2_in_us)
+{
+	int i;
+	int rc = 0;
+	struct dsi_panel *panel = display->panel;
+	struct mipi_dsi_device *dsi = NULL;
+
+	mutex_lock(&display->display_lock);
+	mutex_lock(&panel->panel_lock);
+
+	dsi = &panel->mipi_device;
+	display->queue_cmd_waits = true;
+
+	if (enable) {
+		rc = mipi_dsi_dcs_set_arp_on(dsi, arp_t2_in_us);
+		if (rc) {
+			DSI_ERR("failed to enable arp, rc=%d\n", rc);
+			goto exit;
+		}
+	} else {
+		rc = mipi_dsi_dcs_set_arp_off(dsi);
+		if (rc) {
+			DSI_ERR("failed to disable arp, rc=%d\n", rc);
+			goto exit;
+		}
+	}
+
+	display_for_each_ctrl(i, display)
+		dsi_ctrl_setup_avr(display->ctrl[i].ctrl, enable);
+
+exit:
+	display->queue_cmd_waits = false;
+	SDE_EVT32(enable, arp_t2_in_us);
+	mutex_unlock(&panel->panel_lock);
+	mutex_unlock(&display->display_lock);
+	return rc;
+}
+
 static int dsi_display_set_roi(struct dsi_display *display,
 		struct msm_roi_list *rois)
 {
@@ -8814,21 +8921,38 @@ int dsi_display_pre_commit(void *display,
 {
 	bool enable = false;
 	int rc = 0;
+	struct dsi_display *dsi_display = display;
 
 	if (!display || !params) {
 		pr_err("Invalid params\n");
 		return -EINVAL;
 	}
 
+	if (params->cmd_bit_mask)
+		dsi_display_vrr(display, params);
+
 	if (params->qsync_update) {
 		enable = (params->qsync_mode > 0) ? true : false;
-		rc = dsi_display_qsync(display, enable);
-		if (rc)
-			pr_err("%s failed to send qsync commands\n",
-				__func__);
-		SDE_EVT32(params->qsync_mode, rc);
+
+		if (!params->cmd_bit_mask && dsi_display->panel &&
+			dsi_display->panel->vrr_caps.arp_support) {
+			rc = dsi_display_arp(display, enable, params->arp_t2_in_us);
+			if (rc) {
+				DSI_ERR("%s failed to send arp commands\n",
+					__func__);
+				goto error;
+			}
+		} else {
+			rc = dsi_display_qsync(display, enable);
+			if (rc) {
+				DSI_ERR("%s failed to send qsync commands\n",
+					__func__);
+				goto error;
+			}
+		}
 	}
 
+error:
 	return rc;
 }
 

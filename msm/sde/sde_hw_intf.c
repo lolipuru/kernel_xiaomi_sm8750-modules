@@ -242,6 +242,24 @@ static void sde_hw_intf_avr_ctrl(struct sde_hw_intf *ctx,
 	SDE_REG_WRITE(c, INTF_AVR_MODE, avr_mode);
 }
 
+static void sde_hw_intf_raw_te_setup(struct sde_hw_intf *ctx, bool enabled)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 raw_te = 0;
+
+	if (!ctx)
+		return;
+
+	c = &ctx->hw;
+
+	if (enabled)
+		raw_te |= BIT(1);
+	else
+		raw_te &= ~BIT(1);
+
+	SDE_REG_WRITE(c, INTF_RSCC_PANIC_CTRL, raw_te);
+}
+
 static u32 sde_hw_intf_get_avr_status(struct sde_hw_intf *ctx)
 {
 	struct sde_hw_blk_reg_map *c;
@@ -573,7 +591,7 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 	alignment = 0x1; /* COND0 timing engine enable register */
 	if (align_esync) {
 		if (align_avr)
-			alignment = 0x6; /* COND0 HW AVR trigger */
+			alignment = 0x1; /* COND0 HW AVR trigger */
 		alignment |= 0x4 << 4; /* COND1 esync_mdp_vsync */
 
 		intf_cfg2 |= BIT(23);
@@ -1336,8 +1354,10 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 	ops->enable_wide_bus = sde_hw_intf_enable_wide_bus;
 	ops->is_te_32bit_supported = sde_hw_intf_is_te_32bit_supported;
 
-	if (cap & BIT(SDE_INTF_PANIC_CTRL))
+	if (cap & BIT(SDE_INTF_PANIC_CTRL)) {
+		ops->raw_te_setup = sde_hw_intf_raw_te_setup;
 		ops->setup_intf_panic_ctrl = sde_hw_intf_setup_panic_ctrl;
+	}
 
 	if (cap & BIT(SDE_INTF_STATUS))
 		ops->get_status = sde_hw_intf_v1_get_status;

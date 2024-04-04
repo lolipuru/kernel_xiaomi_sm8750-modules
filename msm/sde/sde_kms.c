@@ -180,7 +180,8 @@ static int _sde_debugfs_init(struct sde_kms *sde_kms)
 			(u32 *)&sde_kms->pm_suspend_clk_dump);
 	debugfs_create_u32("hw_fence_status", 0600, debugfs_root,
 			(u32 *)&sde_kms->debugfs_hw_fence);
-
+	debugfs_create_u32("disable_early_EPT_handling", 0600, debugfs_root,
+			(u32 *)&sde_kms->debugfs_early_ept_handling);
 	return 0;
 }
 
@@ -4068,6 +4069,42 @@ void sde_kms_display_early_wakeup(struct drm_device *dev,
 
 	drm_connector_list_iter_end(&conn_iter);
 }
+
+void sde_kms_display_early_ept_hint(struct drm_device *dev,
+	const int32_t connector_id, u64 frame_interval, u64 ept_ns)
+{
+	struct drm_connector_list_iter conn_iter;
+	struct drm_connector *conn;
+	struct drm_encoder *drm_enc;
+	struct sde_connector *c_conn;
+
+	SDE_ATRACE_BEGIN("early_ept_hint");
+	SDE_EVT32(connector_id, frame_interval, ept_ns, ept_ns>>32);
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		if (connector_id != DRM_MSM_WAKE_UP_ALL_DISPLAYS &&
+			connector_id != conn->base.id)
+			continue;
+
+		c_conn = to_sde_connector(conn);
+		if (!c_conn ||
+			c_conn->connector_type != DRM_MODE_CONNECTOR_DSI)
+			continue;
+
+		if (conn->state && conn->state->best_encoder)
+			drm_enc = conn->state->best_encoder;
+		else
+			drm_enc = conn->encoder;
+
+		sde_encoder_early_ept_hint(drm_enc, frame_interval, ept_ns);
+	}
+
+	drm_connector_list_iter_end(&conn_iter);
+	SDE_ATRACE_END("early_ept_hint");
+}
+
 static int sde_kms_trigger_null_flush(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
@@ -4423,6 +4460,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_format      = sde_get_msm_format,
 	.round_pixclk    = sde_kms_round_pixclk,
 	.display_early_wakeup = sde_kms_display_early_wakeup,
+	.display_early_ept_hint = sde_kms_display_early_ept_hint,
 	.pm_suspend      = sde_kms_pm_suspend,
 	.pm_resume       = sde_kms_pm_resume,
 	.destroy         = sde_kms_destroy,

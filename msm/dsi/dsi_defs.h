@@ -272,6 +272,15 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_QSYNC_OFF                  Disable qsync mode
  * @DSI_CMD_SET_ESYNC_POST_ON:             Panel exit sleep
  * @DSI_CMD_SET_STILL_INDICATION_ON:       Panel still indication
+ * @DSI_CMD_SET_ARP_MODE3_HW_TE_ON:        ARP panel HW TE to drive frequnecy stepping
+ * @DSI_CMD_SET_ARP_MODE1_HW_TE_OFF:       ARP panel HW TE mode is turned off.
+ *                                         SW to drive any frequnecy stepping
+ * @DSI_CMD_SET_FI_PATTAREN_CHANGE:        Pattern change command for given frame intreval
+ * @DSI_CMD_SET_STICKY_STILL_EN            This would enable still indication(copy frame to GRAM)
+ *                                         for all the frames until disable.
+ * @DSI_CMD_SET_STICKY_STILL_DISABLE       Still indiaction disable command
+ * @DSI_CMD_SET_STICKY_ON_FLY:             Still indication enable for only one frame
+ * @DSI_CMD_SET_TRIGGER_SELF_REFRESH:      Trigger self refresh from Gram
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -302,6 +311,13 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_QSYNC_OFF,
 	DSI_CMD_SET_ESYNC_POST_ON,
 	DSI_CMD_SET_STILL_INDICATION_ON,
+	DSI_CMD_SET_ARP_MODE3_HW_TE_ON,
+	DSI_CMD_SET_ARP_MODE1_HW_TE_OFF,
+	DSI_CMD_SET_FI_PATTAREN_CHANGE,
+	DSI_CMD_SET_STICKY_STILL_EN,
+	DSI_CMD_SET_STICKY_STILL_DISABLE,
+	DSI_CMD_SET_STICKY_ON_FLY,
+	DSI_CMD_SET_TRIGGER_SELF_REFRESH,
 	DSI_CMD_SET_MAX
 };
 
@@ -641,6 +657,7 @@ struct dsi_host_config {
  * @clk_rate_hz:          DSI bit clock per lane in hz.
  * @min_dsi_clk_hz:       Min dsi clk per lane to transfer frame in vsync time.
  * @bit_clk_list:         List of dynamic bit clock rates supported.
+ * @freq_step_list:       List of frequency scaling patterns
  * @topology:             Topology selected for the panel
  * @dsc:                  DSC compression info
  * @vdc:                  VDC compression info
@@ -671,6 +688,7 @@ struct dsi_display_mode_priv_info {
 	u64 clk_rate_hz;
 	u64 min_dsi_clk_hz;
 	struct msm_dyn_clk_list bit_clk_list;
+	struct msm_freq_step_list freq_step_list;
 
 	struct msm_display_topology topology;
 	struct msm_display_dsc_info dsc;

@@ -53,6 +53,7 @@
 #include "sde_vm.h"
 #include "sde_fence.h"
 #include "sde_aiqe_common.h"
+#include "dsi_display.h"
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -79,6 +80,8 @@
 #define IDLE_SHORT_TIMEOUT	1
 
 #define EVT_TIME_OUT_SPLIT 2
+
+#define MAX_FREQ_SEQ_SIZE 5
 
 /* worst case poll time for delay_kickoff to be cleared */
 #define DELAY_KICKOFF_POLL_TIMEOUT_US 100000
@@ -1218,7 +1221,7 @@ static int _sde_encoder_avr_step_check(struct sde_connector *sde_conn,
 	u32 avr_step_state = sde_connector_get_property(&sde_conn_state->base,
 			CONNECTOR_PROP_AVR_STEP_STATE);
 
-	if ((avr_step_state == AVR_STEP_NONE) || !sde_conn->ops.get_avr_step_fps)
+	if ((avr_step_state != AVR_STEP_ENABLE) || !sde_conn->ops.get_avr_step_fps)
 		return 0;
 
 	if (!qsync_mode && avr_step_state) {
@@ -1572,7 +1575,9 @@ static void _sde_encoder_update_vsync_source(struct sde_encoder_virt *sde_enc,
 
 	sde_conn = to_sde_connector(sde_enc->cur_master->connector);
 
-	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_CMD_MODE)) {
+	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_CMD_MODE) ||
+			disp_info->vrr_caps.arp_support) {
+
 		if (disp_info->is_te_using_watchdog_timer || sde_conn->panel_dead)
 			vsync_source = SDE_VSYNC_SOURCE_WD_TIMER_4 + sde_enc->te_source;
 		else
@@ -3503,6 +3508,8 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 		sde_fence_output_hw_fence_dir_write_init(sde_enc->cur_master->hw_ctl);
 
 	_sde_encoder_update_vsync_source(sde_enc, &sde_enc->disp_info);
+	if (sde_enc->disp_info.vrr_caps.arp_support)
+		sde_encoder_control_te(sde_enc, true);
 
 	if (!sde_encoder_in_cont_splash(drm_enc))
 		_sde_encoder_update_ppb_size(drm_enc);
@@ -3810,6 +3817,24 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	sde_rm_release(&sde_kms->rm, drm_enc, false);
 }
 
+void sde_encoder_cancel_vrr_timers(struct drm_encoder *encoder)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *phys_enc;
+
+	if (!encoder)
+		return;
+
+	sde_enc = to_sde_encoder_virt(encoder);
+	if (sde_enc && sde_enc->cur_master &&
+			sde_enc->disp_info.vrr_caps.vrr_support) {
+		phys_enc = sde_enc->cur_master;
+		hrtimer_cancel(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+		SDE_EVT32(DRMID(encoder));
+	}
+
+}
+
 static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
@@ -3865,6 +3890,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 
 	_sde_encoder_input_handler_unregister(drm_enc);
 
+	sde_encoder_cancel_vrr_timers(drm_enc);
 	flush_delayed_work(&sde_conn->status_work);
 	/*
 	 * For primary command mode and video mode encoders, execute the
@@ -5075,6 +5101,19 @@ static void sde_encoder_esd_trigger_work_handler(struct kthread_work *work)
 			SDE_ENC_RC_EVENT_KICKOFF);
 }
 
+static void sde_encoder_cmd_self_refresh(struct kthread_work *work)
+{
+	struct sde_encoder_virt *sde_enc = container_of(work,
+				struct sde_encoder_virt, self_refresh_cmd_work);
+
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+
+	sde_connector_trigger_cmd_self_refresh(sde_enc->cur_master->connector);
+}
+
 static void sde_encoder_input_event_work_handler(struct kthread_work *work)
 {
 	struct sde_encoder_virt *sde_enc = container_of(work,
@@ -5111,6 +5150,396 @@ static void sde_encoder_early_wakeup_work_handler(struct kthread_work *work)
 			SDE_ENC_RC_EVENT_EARLY_WAKEUP);
 	SDE_ATRACE_END("encoder_early_wakeup");
 	sde_vm_unlock(sde_kms);
+}
+
+static bool _is_sde_encoder_vrr_supported(struct sde_encoder_phys *phys_enc)
+{
+	struct drm_connector *conn = phys_enc->connector;
+	struct sde_connector *c_conn;
+
+	c_conn = to_sde_connector(conn);
+	return !!c_conn->frame_interval;
+}
+
+struct msm_freq_step_pattern *sde_encoder_get_freq_pattern(struct drm_encoder *drm_enc,
+		u32 frame_interval, u32 usecase_idx)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct msm_freq_step_list *freq_step_list;
+	int i, min_cnt = -1;
+
+	if (!drm_enc) {
+		SDE_ERROR("Invalid Drm Encoder\n");
+		return NULL;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	freq_step_list = sde_enc->mode_info.freq_step_list;
+
+	if (!freq_step_list) {
+		SDE_ERROR("Invalid freq_step_list\n");
+		return NULL;
+	}
+
+	for (i = 0; i < freq_step_list->count; i++) {
+		if (freq_step_list->freq_pattern[i].usecase_idx == usecase_idx) {
+			if (freq_step_list->freq_pattern[i].frame_interval == frame_interval) {
+				min_cnt = i;
+				break;
+			}
+			/*
+			 * Find the frequency pattern with minimum frame interval from
+			 * available list of frequency patterns.
+			 * For example:
+			 *  Given list has 3 patterns corresponding to
+			 *  Frame intervals - pattern_120fps, patten_60fps, pattern_48fps.
+			 *  Pattern chosen for FI: 30 = pattern_48fps.
+			 *  Pattern chosen for FI: 80 = pattern_120fps.
+			 */
+			if (min_cnt < 0)
+				min_cnt = i;
+			if ((freq_step_list->freq_pattern[i].frame_interval > frame_interval) &&
+				(freq_step_list->freq_pattern[i].frame_interval <
+				freq_step_list->freq_pattern[min_cnt].frame_interval))
+				min_cnt = i;
+		}
+	}
+
+	if (min_cnt < 0) {
+		SDE_ERROR("No pattern for given FI:%d and usecase_idx:%d\n",
+			frame_interval, usecase_idx);
+		return NULL;
+	}
+
+	return &freq_step_list->freq_pattern[min_cnt];
+}
+
+int sde_encoder_check_collision(struct sde_encoder_phys *phys_enc, u64 present_time_ns)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct msm_mode_info *info = &sde_enc->mode_info;
+	struct sde_encoder_vrr_cfg *vrr_cfg = &phys_enc->sde_vrr_cfg;
+	struct msm_freq_step_pattern *curr_freq_pattern;
+	u64 interval_ns, self_refresh_in_ns, mdp_transfer_time_ns;
+	u32 qsync_min_fps = 0;
+	int i = 0;
+	bool collision_detected = false;
+
+	if (!phys_enc || !phys_enc->parent || !phys_enc->connector || !phys_enc->connector->state) {
+		SDE_ERROR("Invalid encoder state\n");
+		return 0;
+	}
+
+	vrr_cfg = &phys_enc->sde_vrr_cfg;
+	self_refresh_in_ns = vrr_cfg->last_image_ts_in_ns;
+	curr_freq_pattern = vrr_cfg->curr_freq_pattern;
+
+	if (!curr_freq_pattern) {
+		SDE_DEBUG("curr_freq_pattern is not valid\n");
+		SDE_EVT32(SDE_EVTLOG_ERROR);
+		return 0;
+	}
+
+	phys_enc->parent_ops.get_qsync_fps(
+			phys_enc->parent, &qsync_min_fps, phys_enc->connector->state);
+	mdp_transfer_time_ns = info->mdp_transfer_time_us * 1000;
+
+	SDE_EVT32(self_refresh_in_ns, present_time_ns,
+		mdp_transfer_time_ns, curr_freq_pattern->length);
+	while (self_refresh_in_ns < present_time_ns - DEVIATION_NS) {
+		if (i < curr_freq_pattern->length)
+			interval_ns = (SEC_TO_NS/curr_freq_pattern->freq_stepping_seq[i])*1000;
+		else
+			interval_ns = SEC_TO_NS/qsync_min_fps;
+
+		SDE_EVT32(interval_ns, interval_ns>>32);
+		i++;
+		self_refresh_in_ns += interval_ns;
+
+		if (present_time_ns > (self_refresh_in_ns + DEVIATION_NS) &&
+			present_time_ns <
+			(self_refresh_in_ns + mdp_transfer_time_ns - DEVIATION_NS)) {
+			collision_detected = true;
+			break;
+		}
+	}
+
+	SDE_EVT32(collision_detected);
+	return collision_detected;
+}
+
+void sde_encoder_early_ept_hint(struct drm_encoder *drm_enc, u64 frame_interval,
+		u64 ept_ns)
+{
+	struct sde_encoder_virt *sde_enc = NULL;
+	struct msm_drm_private *priv = NULL;
+	struct sde_encoder_phys *phys_enc;
+	struct sde_encoder_vrr_cfg *vrr_cfg;
+	struct sde_kms *sde_kms;
+	u64 curr_time, collision_prevention_trigger = 0;
+	u64 nominal_vsync_ns, avr_step_in_ns;
+	bool collision_detected = false;
+	bool scheduled_timer = false;
+	bool program_timer = false;
+	struct sde_crtc *sde_crtc;
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (!sde_enc || !sde_enc->phys_encs[0]) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde_kms\n");
+		return;
+	}
+
+	if (sde_kms->debugfs_early_ept_handling) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		return;
+	}
+
+	phys_enc = sde_enc->phys_encs[0];
+	priv = drm_enc->dev->dev_private;
+	vrr_cfg = &phys_enc->sde_vrr_cfg;
+
+	if (!sde_enc->crtc || (sde_enc->crtc->index
+			>= ARRAY_SIZE(priv->event_thread))) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
+		SDE_ERROR("invalid CRTC: %d or crtc index: %d\n",
+			sde_enc->crtc == NULL,
+			sde_enc->crtc ? sde_enc->crtc->index : -EINVAL);
+		return;
+	}
+
+	sde_encoder_early_wakeup(drm_enc);
+	if (vrr_cfg->arp_transition_state == ARP_MODE1_IDLE ||
+		vrr_cfg->arp_transition_state == ARP_MODE1_ACTIVE) {
+		hrtimer_cancel(&phys_enc->sde_vrr_cfg.arp_transition_timer);
+		if (ept_ns < phys_enc->sde_vrr_cfg.freq_step_timer_val_ns)
+			hrtimer_cancel(&phys_enc->sde_vrr_cfg.freq_step_timer);
+	}
+
+	if (vrr_cfg->arp_transition_state == ARP_MODE1_ACTIVE)
+		vrr_cfg->arp_transition_state = ARP_MODE1_IDLE;
+
+	if (sde_kms->catalog->controlled_SR)
+		collision_detected = sde_encoder_check_collision(phys_enc, ept_ns);
+
+	if (!sde_kms->catalog->controlled_SR || collision_detected) {
+		nominal_vsync_ns = SEC_TO_NS/sde_enc->mode_info.frame_rate;
+		avr_step_in_ns = SEC_TO_NS/sde_enc->mode_info.avr_step_fps;
+		curr_time = ktime_get();
+
+		if (ktime_compare(hrtimer_get_expires(&phys_enc->sde_vrr_cfg.self_refresh_timer),
+			curr_time) > 0) {
+			hrtimer_cancel(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+			SDE_EVT32(SDE_EVTLOG_FUNC_CASE3);
+			scheduled_timer = true;
+		}
+
+		sde_crtc = to_sde_crtc(sde_enc->crtc);
+		if (curr_time - vrr_cfg->last_commit_ept_in_ns < EPT_TIMEOUT_NS ||
+				sde_crtc->kickoff_in_progress) {
+			SDE_ERROR("Invalid last_commit_ept_in_ns %llu ,EPt %llu, curr_time %llu\n",
+				vrr_cfg->last_commit_ept_in_ns, ept_ns, curr_time);
+			program_timer = false;
+			SDE_EVT32(vrr_cfg->last_commit_ept_in_ns>>32,
+				vrr_cfg->last_commit_ept_in_ns);
+			goto bypass_srtimer;
+		}
+		if (ept_ns > nominal_vsync_ns + avr_step_in_ns + 2*DEVIATION_NS + curr_time) {
+			program_timer = true;
+			collision_prevention_trigger = ept_ns - nominal_vsync_ns
+				- avr_step_in_ns - 2*DEVIATION_NS - curr_time;
+		} else if (ept_ns > nominal_vsync_ns + 2*DEVIATION_NS + curr_time) {
+			program_timer = true;
+			collision_prevention_trigger = 0;
+		} else {
+			SDE_ERROR("Invalid EPT %llu, curr_time %llu\n", ept_ns, curr_time);
+			program_timer = false;
+		}
+
+		if (program_timer)
+			hrtimer_start(&phys_enc->sde_vrr_cfg.self_refresh_timer,
+				ns_to_ktime(collision_prevention_trigger),
+				HRTIMER_MODE_REL);
+bypass_srtimer:
+		SDE_EVT32(program_timer, sde_enc->mode_info.frame_rate,
+			sde_enc->mode_info.avr_step_fps,
+			collision_prevention_trigger>>32, collision_prevention_trigger, ept_ns>>32,
+			ept_ns, curr_time>>32, curr_time);
+	}
+}
+
+void sde_encoder_phys_arp_sw_timer_frequency_stepping(struct sde_encoder_phys *phys_enc,
+	u32 new_commit)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_vrr_cfg *vrr_cfg = &phys_enc->sde_vrr_cfg;
+	struct msm_freq_step_pattern *freq_pattern;
+	u64 interval_ns;
+	u32 qsync_min_fps = 0, avr_step_fps = 0;
+
+	freq_pattern = vrr_cfg->curr_freq_pattern;
+	avr_step_fps = sde_enc->mode_info.avr_step_fps;
+	qsync_min_fps = sde_enc->mode_info.qsync_min_fps;
+
+	if (!qsync_min_fps) {
+		SDE_ERROR("Invalid qsync_min_fps\n");
+		return;
+	}
+
+	if (new_commit) {
+		vrr_cfg->curr_index = 0;
+		interval_ns = SEC_TO_NS/freq_pattern->freq_stepping_seq[vrr_cfg->curr_index]
+			- SEC_TO_NS/avr_step_fps;
+		vrr_cfg->curr_index++;
+	} else {
+		if (vrr_cfg->curr_index < freq_pattern->length) {
+			interval_ns = SEC_TO_NS/freq_pattern->freq_stepping_seq[vrr_cfg->curr_index]
+				- SEC_TO_NS/avr_step_fps;
+			vrr_cfg->curr_index++;
+		} else
+			interval_ns = SEC_TO_NS/qsync_min_fps - SEC_TO_NS/avr_step_fps;
+	}
+
+	hrtimer_start(&vrr_cfg->freq_step_timer, ns_to_ktime(interval_ns), HRTIMER_MODE_REL);
+
+	SDE_EVT32_IRQ(new_commit, interval_ns, vrr_cfg->curr_index, qsync_min_fps, avr_step_fps);
+}
+
+static void sde_encoder_phys_update_last_image(struct sde_encoder_phys *phys_enc, u32 new_commit)
+{
+	struct sde_encoder_vrr_cfg *vrr_cfg = &phys_enc->sde_vrr_cfg;
+	u64 mdp_ts_in_ns;
+
+	mdp_ts_in_ns = sde_encoder_calc_last_vsync_timestamp(phys_enc->parent);
+	vrr_cfg->curr_image_ts_in_ns = mdp_ts_in_ns;
+
+	if (new_commit || vrr_cfg->is_freq_pattern_altered)
+		vrr_cfg->last_image_ts_in_ns = mdp_ts_in_ns;
+
+	SDE_EVT32(vrr_cfg->last_image_ts_in_ns);
+	vrr_cfg->is_freq_pattern_altered = false;
+}
+
+static void sde_encoder_phys_update_curr_freq_pattern(struct sde_encoder_phys *phys_enc,
+	u32 new_commit)
+{
+	struct drm_connector *conn = phys_enc->connector;
+	struct sde_connector *c_conn;
+	struct sde_encoder_vrr_cfg *vrr_cfg = &phys_enc->sde_vrr_cfg;
+	struct msm_freq_step_pattern *new_freq_pattern, *old_freq_pattern;
+
+	c_conn = to_sde_connector(conn);
+	vrr_cfg->curr_frame_interval_fps = c_conn->frame_interval;
+	new_freq_pattern = c_conn->freq_pattern;
+	old_freq_pattern = vrr_cfg->curr_freq_pattern;
+
+	if (new_commit && new_freq_pattern && old_freq_pattern &&
+		(new_freq_pattern->frame_interval != old_freq_pattern->frame_interval ||
+				new_freq_pattern->usecase_idx != old_freq_pattern->usecase_idx)) {
+		vrr_cfg->curr_freq_pattern = new_freq_pattern;
+		SDE_EVT32(DRMID(phys_enc->parent), new_freq_pattern->frame_interval,
+			old_freq_pattern->frame_interval,
+			new_freq_pattern->usecase_idx, old_freq_pattern->usecase_idx);
+	}
+
+	if (!old_freq_pattern)
+		vrr_cfg->curr_freq_pattern = new_freq_pattern;
+
+	SDE_EVT32(vrr_cfg->curr_frame_interval_fps);
+}
+
+static void sde_encoder_handle_collision_prior_EPT(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_vrr_cfg *vrr_cfg = &phys_enc->sde_vrr_cfg;
+	u64 next_frame_inteval_ts_in_ns, curr_time, collision_prevention_trigger;
+	u64 frame_inteval_in_ns, nominal_vsync_ns, avr_step_in_ns;
+	bool collision_detected = false;
+
+	frame_inteval_in_ns = (SEC_TO_NS/vrr_cfg->curr_frame_interval_fps) * 1000;
+	nominal_vsync_ns = SEC_TO_NS/sde_enc->mode_info.frame_rate;
+	avr_step_in_ns = SEC_TO_NS/sde_enc->mode_info.avr_step_fps;
+	curr_time = ktime_get();
+
+	SDE_DEBUG("frame_inteval %llu nom %llu avrstep %llu curr %llu last_commit_ept %llu\n",
+		frame_inteval_in_ns, nominal_vsync_ns,
+		avr_step_in_ns, curr_time, vrr_cfg->last_commit_ept_in_ns);
+	SDE_EVT32(frame_inteval_in_ns, nominal_vsync_ns,
+		avr_step_in_ns, curr_time, vrr_cfg->last_commit_ept_in_ns);
+	if (curr_time > vrr_cfg->last_commit_ept_in_ns + EPT_TIMEOUT_NS)
+		return;
+
+	next_frame_inteval_ts_in_ns = vrr_cfg->last_commit_ept_in_ns;
+	SDE_EVT32(vrr_cfg->last_commit_ept_in_ns, vrr_cfg->last_commit_ept_in_ns>>32);
+	while (next_frame_inteval_ts_in_ns - vrr_cfg->last_commit_ept_in_ns < EPT_TIMEOUT_NS) {
+		next_frame_inteval_ts_in_ns += frame_inteval_in_ns;
+		if (next_frame_inteval_ts_in_ns > curr_time)
+			collision_detected = sde_encoder_check_collision(phys_enc,
+				next_frame_inteval_ts_in_ns);
+	}
+
+	if  (collision_detected) {
+		SDE_ATRACE_BEGIN("cmd_self_refresh_avoid_collision");
+		collision_prevention_trigger = next_frame_inteval_ts_in_ns - nominal_vsync_ns
+			- avr_step_in_ns - 2*DEVIATION_NS - curr_time;
+		SDE_EVT32(collision_detected, collision_prevention_trigger>>32,
+			collision_prevention_trigger);
+		hrtimer_start(&phys_enc->sde_vrr_cfg.self_refresh_timer,
+			ns_to_ktime(collision_prevention_trigger), HRTIMER_MODE_REL);
+		SDE_ATRACE_END("cmd_self_refresh_avoid_collision");
+	} else  {
+		hrtimer_cancel(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+	}
+
+}
+
+void sde_encoder_handle_frequency_stepping(struct sde_encoder_phys *phys_enc, u32 new_commit)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_vrr_cfg *vrr_cfg = &phys_enc->sde_vrr_cfg;
+	u64 nominal_vsync_ns;
+
+	if (!_is_sde_encoder_vrr_supported(phys_enc) ||
+		(phys_enc != sde_enc->cur_master))
+		return;
+
+	SDE_EVT32(sde_enc->mode_info.frame_rate);
+
+	nominal_vsync_ns = SEC_TO_NS/sde_enc->mode_info.frame_rate;
+	if (new_commit)
+		vrr_cfg->last_commit_ept_in_ns = ktime_get();
+	sde_encoder_phys_update_last_image(phys_enc, new_commit);
+	sde_encoder_phys_update_curr_freq_pattern(phys_enc, new_commit);
+
+	if (sde_enc->disp_info.vrr_caps.arp_support) {
+		if (vrr_cfg->arp_mode_hw_te) {
+			if (new_commit && vrr_cfg->arp_transition_state == ARP_MODE3_HW_TE_ON) {
+				sde_encoder_handle_collision_prior_EPT(phys_enc);
+				hrtimer_start(&phys_enc->sde_vrr_cfg.arp_transition_timer,
+					ns_to_ktime(vrr_cfg->arp_mode_off_time_ns),
+					HRTIMER_MODE_REL);
+			}
+			if (vrr_cfg->arp_transition_state == ARM_MODE3_TO_MODE1)
+				vrr_cfg->arp_transition_state = ARP_MODE1_ACTIVE;
+
+			if (vrr_cfg->arp_transition_state == ARP_MODE1_ACTIVE) {
+				sde_encoder_phys_arp_sw_timer_frequency_stepping(phys_enc, 0);
+				hrtimer_start(&phys_enc->sde_vrr_cfg.arp_transition_timer,
+					ns_to_ktime(nominal_vsync_ns),
+					HRTIMER_MODE_REL);
+			}
+		} else if (vrr_cfg->arp_mode_sw_timer_mode) {
+			sde_encoder_phys_arp_sw_timer_frequency_stepping(phys_enc, new_commit);
+		}
+	} else if (sde_enc->disp_info.vrr_caps.vrr_support) {
+		sde_encoder_handle_collision_prior_EPT(phys_enc);
+	}
 }
 
 void sde_encoder_early_wakeup(struct drm_encoder *drm_enc)
@@ -5542,6 +5971,13 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 		params->recovery_events_enabled =
 					sde_enc->recovery_events_enabled;
 		if (phys) {
+			if (sde_enc->disp_info.vrr_caps.vrr_support &&
+				(ktime_compare(hrtimer_get_expires(
+			  &phys->sde_vrr_cfg.self_refresh_timer), ktime_get()) > 0)) {
+				hrtimer_cancel(&phys->sde_vrr_cfg.self_refresh_timer);
+				SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+			}
+
 			if (phys->ops.prepare_for_kickoff) {
 				rc = phys->ops.prepare_for_kickoff(
 						phys, params);
@@ -5833,10 +6269,11 @@ int sde_encoder_prepare_commit(struct drm_encoder *drm_enc)
 	}
 	sde_enc = to_sde_encoder_virt(drm_enc);
 
-	/* update the qsync parameters for the current frame */
-	if (sde_enc->cur_master)
-		sde_connector_set_qsync_params(
-				sde_enc->cur_master->connector);
+	/* update the qsync and vrr parameters for the current frame */
+	if (sde_enc->cur_master) {
+		sde_connector_set_qsync_params(sde_enc->cur_master->connector);
+		sde_connector_set_vrr_params(sde_enc->cur_master->connector);
+	}
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		phys = sde_enc->phys_encs[i];
@@ -6549,6 +6986,9 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 
 	kthread_init_work(&sde_enc->esd_trigger_work,
 			sde_encoder_esd_trigger_work_handler);
+
+	kthread_init_work(&sde_enc->self_refresh_cmd_work,
+			sde_encoder_cmd_self_refresh);
 
 	memcpy(&sde_enc->disp_info, disp_info, sizeof(*disp_info));
 

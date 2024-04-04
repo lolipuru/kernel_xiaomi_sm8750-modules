@@ -595,6 +595,9 @@ struct sde_misr_sign {
  * @qsync_mode: Cached Qsync mode, 0=disabled, 1=continuous mode
  * @qsync_updated: Qsync settings were updated
  * @ept_fps: ept fps is updated, 0 means ept_fps is disabled
+ * @frame_interval: Current frame interval
+ * @usecase_idx: Current usecase_idx
+ * @freq_pattern: Current frequency pattern to be used
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
  * @hdr_capable: external hdr support present
@@ -672,6 +675,10 @@ struct sde_connector {
 	u32 qsync_mode;
 	bool qsync_updated;
 	u32 ept_fps;
+
+	u32 frame_interval;
+	u32 usecase_idx;
+	struct msm_freq_step_pattern *freq_pattern;
 
 	bool colorspace_updated;
 
@@ -1076,6 +1083,18 @@ int sde_connector_get_dpms(struct drm_connector *connector);
 void sde_connector_set_qsync_params(struct drm_connector *connector);
 
 /**
+ * sde_connector_set_vrr_params - set status of vrr params
+ * @connector: pointer to drm connector
+ */
+void sde_connector_set_vrr_params(struct drm_connector *connector);
+
+/**
+ * sde_connector_trigger_cmd_self_refresh - set status of vrr params
+ * @connector: pointer to drm connector
+ */
+int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector);
+
+/**
  * sde_connector_complete_qsync_commit - callback signalling completion
  *			of qsync, if modified for the current commit
  * @conn   - Pointer to drm connector object
@@ -1449,5 +1468,14 @@ bool sde_connector_is_line_insertion_supported(struct sde_connector *sde_conn);
  * @Return: pointer to dsi display
  */
 struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn);
+
+/**
+ * sde_connector_update_cmd - send the commands listed in cmd_bit_mask
+ * @connector: Pointer to sde connector struct
+ * @cmd_bit_mask: Bit mask of commands to be sent
+ * @peripheral_flush: True if command needs to sent at flush
+ */
+int sde_connector_update_cmd(struct drm_connector *connector,
+		u64 cmd_bit_mask, bool peripheral_flush);
 
 #endif /* _SDE_CONNECTOR_H_ */

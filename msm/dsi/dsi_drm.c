@@ -680,7 +680,7 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 			return rc;
 		}
 	}
-
+	mode_info->freq_step_list = &dsi_mode->priv_info->freq_step_list;
 	mode_info->clk_rate = dsi_mode->timing.clk_rate_hz;
 
 	if (dsi_mode->priv_info->dsc_enabled) {

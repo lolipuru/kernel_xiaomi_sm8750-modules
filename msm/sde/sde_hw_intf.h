@@ -259,6 +259,11 @@ struct sde_hw_intf_ops {
 	void (*avr_trigger)(struct sde_hw_intf *ctx);
 
 	/**
+	 * Program DPU RSCC panic logic to listen to TE
+	 */
+	void (*raw_te_setup)(struct sde_hw_intf *ctx, bool enabled);
+
+	/**
 	 * Enable AVR and select the mode
 	 */
 	void (*avr_ctrl)(struct sde_hw_intf *intf,
