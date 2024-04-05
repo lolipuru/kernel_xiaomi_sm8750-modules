@@ -2261,8 +2261,10 @@ static int swrm_disconnect_port(struct swr_master *master,
 			mport->ch_rate = 0;
 			swrm_update_bus_clk(swrm);
 		} else {
-			mport->ch_rate -= port_req->ch_rate;
-			swrm_update_bus_clk(swrm);
+			if (mport->ch_rate > 0) {
+				mport->ch_rate -= port_req->ch_rate;
+				swrm_update_bus_clk(swrm);
+			}
 		}
 		num_port++;
 	}
