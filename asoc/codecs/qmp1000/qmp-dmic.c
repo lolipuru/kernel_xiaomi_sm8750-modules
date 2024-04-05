@@ -99,6 +99,16 @@ struct qmp_sdca_dmic_priv {
 static bool qmp_sdca_dmic_readable_register(struct device *dev, unsigned int reg)
 {
 	switch (reg) {
+	case SDW_SDCA_CTL(FUNC_NUM_BERL_DIG, QMP_SDCA_ENT_DATAPATH_REG2, QMP_SDCA_CTL_SENS_ADJ,
+			QMP_SDCA_CTL_NUM0):
+	case SDW_SDCA_CTL(FUNC_NUM_BERL_DIG, QMP_SDCA_ENT_DATAPATH_REG2, QMP_SDCA_CTL_SENS_ADJ,
+			QMP_SDCA_CTL_NUM1):
+	case SDW_SDCA_CTL(FUNC_NUM_BERL_DIG, QMP_SDCA_ENT_DATAPATH_REG2, QMP_SDCA_CTL_SENS_ADJ,
+			QMP_SDCA_CTL_NUM2):
+	case SDW_SDCA_CTL(FUNC_NUM_BERL_DIG, QMP_SDCA_ENT_DATAPATH_REG2, QMP_SDCA_CTL_SENS_ADJ,
+			QMP_SDCA_CTL_NUM3):
+	case SDW_SDCA_CTL(FUNC_NUM_BERL_DIG, QMP_SDCA_ENT_DATAPATH_REG2, QMP_SDCA_CTL_LP_SENS_ADJ,
+			QMP_SDCA_CTL_NUM0):
 	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC1, QMP_SDCA_ENT_IT11, QMP_SDCA_CTL_IT_USAGE,
 			QMP_SDCA_CTL_NUM0):
 	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC1, QMP_SDCA_ENT_PDE11, QMP_SDCA_CTL_PDE_REQ_PS,
@@ -136,6 +146,16 @@ static bool qmp_sdca_dmic_readable_register(struct device *dev, unsigned int reg
 static bool qmp_sdca_dmic_writeable_register(struct device *dev, unsigned int reg)
 {
 	switch (reg) {
+	case SDW_SDCA_CTL(FUNC_NUM_BERL_DIG, QMP_SDCA_ENT_DATAPATH_REG2, QMP_SDCA_CTL_SENS_ADJ,
+			QMP_SDCA_CTL_NUM0):
+	case SDW_SDCA_CTL(FUNC_NUM_BERL_DIG, QMP_SDCA_ENT_DATAPATH_REG2, QMP_SDCA_CTL_SENS_ADJ,
+			QMP_SDCA_CTL_NUM1):
+	case SDW_SDCA_CTL(FUNC_NUM_BERL_DIG, QMP_SDCA_ENT_DATAPATH_REG2, QMP_SDCA_CTL_SENS_ADJ,
+			QMP_SDCA_CTL_NUM2):
+	case SDW_SDCA_CTL(FUNC_NUM_BERL_DIG, QMP_SDCA_ENT_DATAPATH_REG2, QMP_SDCA_CTL_SENS_ADJ,
+			QMP_SDCA_CTL_NUM3):
+	case SDW_SDCA_CTL(FUNC_NUM_BERL_DIG, QMP_SDCA_ENT_DATAPATH_REG2, QMP_SDCA_CTL_LP_SENS_ADJ,
+			QMP_SDCA_CTL_NUM0):
 	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC1, QMP_SDCA_ENT_IT11, QMP_SDCA_CTL_IT_USAGE,
 			QMP_SDCA_CTL_NUM0):
 	case SDW_SDCA_CTL(FUNC_NUM_SMP_MIC1, QMP_SDCA_ENT_PDE11, QMP_SDCA_CTL_PDE_REQ_PS,
@@ -402,7 +422,7 @@ static int qmp_sdca_dmic_hw_params(struct snd_pcm_substream *substream,
 	port_type = qmp->master_port_map_cached[dai->id];
 	ch_rate = qmp_get_channel_rate(qmp, dai_id_to_port_id(dai->id));
 
-	rc = stream_agg_add_channel_v2((void *)substream, params_channels(params),
+	rc = stream_agg_add_channel((void *)substream, params_channels(params),
 			ch_rate, port_type, dai_id_to_port_id(dai->id),
 			qmp->swr_slave->dev_num, qmp, qmp->swr_slave, qmp_update_offset1);
 	if (rc)
@@ -439,7 +459,7 @@ static int qmp_sdca_dmic_prepare(struct snd_pcm_substream *substream,
 	dev_dbg(qmp->dev, "slv port id %d, master port_type: %s\n",
 		(slv_port_id + 1), master_port_type_to_str(port_type));
 
-	ret = stream_agg_prepare_channel_v2((void *)substream, port_type,
+	ret = stream_agg_prepare_channel((void *)substream, port_type,
 			dai_id_to_port_id(dai->id),
 			qmp->swr_slave->dev_num);
 	return ret;
@@ -494,7 +514,7 @@ static int qmp_sdca_dmic_hw_free(struct snd_pcm_substream *substream,
 	dev_dbg(qmp->dev, "%s(): dai_name = %s, stream = %d\n", __func__,
 		 dai->name, substream->stream);
 	port_type = qmp->master_port_map_cached[dai->id];
-	ret = stream_agg_remove_channel_v2((void *)substream, port_type,
+	ret = stream_agg_remove_channel((void *)substream, port_type,
 				dai_id_to_port_id(dai->id), qmp->swr_slave->dev_num);
 
 	return 0;
@@ -863,12 +883,6 @@ static int wait_for_pde_state(struct qmp_sdca_dmic_priv *qmp, int ps, int func_n
 
 }
 
-static int qmp_dmic_port_enable(struct snd_soc_dapm_widget *w,
-	struct snd_kcontrol *kcontrol, int event)
-{
-	return 0;
-}
-
 static int qmp_dmic_pde11_event(struct snd_soc_dapm_widget *w,
 		struct snd_kcontrol *kcontrol, int event)
 {
@@ -957,14 +971,6 @@ static const struct snd_soc_dapm_widget qmp_dmic_dapm_widgets[] = {
 			qmp_dmic_lp_switch, ARRAY_SIZE(qmp_dmic_lp_switch),
 			qmp_dmic_pde11_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 
-	SND_SOC_DAPM_OUT_DRV_E("Normal Port Enable", SND_SOC_NOPM,
-					QMP_SDCA_NORMAL_PORT, 0, NULL, 0, qmp_dmic_port_enable,
-					SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD),
-
-	SND_SOC_DAPM_OUT_DRV_E("LP Port Enable", SND_SOC_NOPM,
-					QMP_SDCA_LP_PORT, 0, NULL, 0, qmp_dmic_port_enable,
-					SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD),
-
 	SND_SOC_DAPM_OUTPUT("NORMAL_OUTPUT"),
 	SND_SOC_DAPM_OUTPUT("VA_NORMAL_OUTPUT"),
 	SND_SOC_DAPM_OUTPUT("LP_OUTPUT"),
@@ -978,12 +984,10 @@ static const struct snd_soc_dapm_route qmp_dmic_audio_map[] = {
 	{"QMP_DMIC Function2", NULL, "QMP Digital Mic"},
 	{"FU1 PDE11", "Enable", "QMP_DMIC Function1"},
 	{"FU1 PDE11 VA", "Enable", "QMP_DMIC VA Function1"},
-	{"Normal Port Enable", NULL, "FU1 PDE11"},
+	{"NORMAL_OUTPUT", NULL, "FU1 PDE11"},
 	{"VA_NORMAL_OUTPUT", NULL, "FU1 PDE11 VA"},
-	{"NORMAL_OUTPUT", NULL, "Normal Port Enable"},
 	{"FU2 PDE11", "Enable", "QMP_DMIC Function2"},
-	{"LP Port Enable", NULL, "FU2 PDE11"},
-	{"LP_OUTPUT", NULL, "LP Port Enable"},
+	{"LP_OUTPUT", NULL, "FU2 PDE11"},
 };
 
 static int qmp_dmic_component_probe(struct snd_soc_component *component)
