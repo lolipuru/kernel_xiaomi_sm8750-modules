@@ -866,7 +866,8 @@ static int msm_hw_fence_probe(struct platform_device *pdev)
 	return 0;
 
 err_exit:
-	HWFNC_ERR_ONCE("error %d\n", rc);
+	if (rc != -EPROBE_DEFER)
+		HWFNC_ERR_ONCE("error %d\n", rc);
 	return rc;
 }
 
