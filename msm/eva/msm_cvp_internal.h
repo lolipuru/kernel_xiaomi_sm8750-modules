@@ -99,13 +99,15 @@ enum vpu_version {
 
 enum cvp_session_state {
 	SESSION_NORMAL = 0x00,
-	SESSION_ERROR
+	SESSION_ERROR,
+	SECURE_SESSION_ERROR
 };
 
 enum cvp_session_errorcode {
 	NO_ERROR = 0x00,
 	EVA_SYS_ERROR,
-	EVA_SESSION_ERROR
+	EVA_SESSION_ERROR,
+	EVA_SECURE_SESSION_ERROR
 };
 
 struct msm_cvp_ubwc_config_data {
