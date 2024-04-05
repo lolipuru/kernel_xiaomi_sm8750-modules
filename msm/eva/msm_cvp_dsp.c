@@ -67,6 +67,9 @@ static int cvp_dsp_send_cmd(struct cvp_dsp_cmd_msg *cmd, uint32_t len)
 	if (rc) {
 		dprintk(CVP_ERR, "%s: DSP rpmsg_send failed rc=%d\n",
 			__func__, rc);
+		dprintk(CVP_ERR, "%s: CDSP SSR received\n",
+			__func__);
+		rc = -EINVAL;
 		goto exit;
 	}
 
