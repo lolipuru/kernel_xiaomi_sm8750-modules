@@ -1023,6 +1023,7 @@ static void _cleanup_hw_fence(struct msm_hw_fence *hw_fence)
 	hw_fence->refcount = 0;
 	hw_fence->parents_cnt = 0;
 	hw_fence->pending_child_cnt = 0;
+	hw_fence->h_synx = 0;
 
 	for (i = 0; i < MSM_HW_FENCE_MAX_JOIN_PARENTS; i++)
 		hw_fence->parent_list[i] = HW_FENCE_INVALID_PARENT_FENCE;
