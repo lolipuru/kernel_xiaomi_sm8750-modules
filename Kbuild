@@ -22,6 +22,10 @@ ifeq ($(CONFIG_ICNSS2_QMI),y)
 KBUILD_CPPFLAGS += -DCONFIG_ICNSS2_QMI
 endif
 
+ifeq ($(CONFIG_CNSS2_SMMU_DB_SUPPORT),y)
+KBUILD_CPPFLAGS += -DCONFIG_CNSS2_SMMU_DB_SUPPORT
+endif
+
 # CONFIG_WCNSS_MEM_PRE_ALLOC should never be "y" here since it
 # can be only compiled as a module from out-of-kernel-tree source.
 ifeq ($(CONFIG_WCNSS_MEM_PRE_ALLOC),m)
