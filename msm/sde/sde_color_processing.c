@@ -3685,6 +3685,14 @@ static void _sde_cp_ad_set_prop(struct sde_crtc *sde_crtc,
 void sde_cp_crtc_pre_ipc(struct drm_crtc *drm_crtc)
 {
 	struct sde_crtc *sde_crtc;
+	struct msm_drm_private *dev_private = NULL;
+	bool aiqe_enable = false;
+
+	if (!drm_crtc || !drm_crtc->dev || !drm_crtc->dev->dev_private) {
+		DRM_ERROR("invalid drm_crtc %pK dev %pK\n",
+		       drm_crtc, ((drm_crtc) ? drm_crtc->dev : NULL));
+		return;
+	}
 
 	sde_crtc = to_sde_crtc(drm_crtc);
 	if (!sde_crtc) {
@@ -3693,11 +3701,30 @@ void sde_cp_crtc_pre_ipc(struct drm_crtc *drm_crtc)
 	}
 
 	_sde_cp_ad_set_prop(sde_crtc, AD_IPC_SUSPEND);
+
+	/* enable clock retention if AIQE features are enabled */
+	aiqe_enable =
+		aiqe_is_client_registered(FEATURE_MDNIE, &sde_crtc->aiqe_top_level) ||
+		aiqe_is_client_registered(FEATURE_SSRC, &sde_crtc->aiqe_top_level);
+
+	SDE_EVT32(aiqe_enable);
+	if (aiqe_enable) {
+		dev_private = drm_crtc->dev->dev_private;
+		sde_power_set_clk_retention(&dev_private->phandle, "lut_clk", true);
+	}
 }
 
 void sde_cp_crtc_post_ipc(struct drm_crtc *drm_crtc)
 {
 	struct sde_crtc *sde_crtc;
+	struct msm_drm_private *dev_private = NULL;
+	bool aiqe_enable = false;
+
+	if (!drm_crtc || !drm_crtc->dev || !drm_crtc->dev->dev_private) {
+		DRM_ERROR("invalid drm_crtc %pK dev %pK\n",
+		       drm_crtc, ((drm_crtc) ? drm_crtc->dev : NULL));
+		return;
+	}
 
 	sde_crtc = to_sde_crtc(drm_crtc);
 	if (!sde_crtc) {
@@ -3707,6 +3734,17 @@ void sde_cp_crtc_post_ipc(struct drm_crtc *drm_crtc)
 
 	_sde_cp_ad_set_prop(sde_crtc, AD_IPC_RESUME);
 	sde_set_mdnie_psr(sde_crtc);
+
+	/* disable clock retention if AIQE features are enabled */
+	aiqe_enable =
+		aiqe_is_client_registered(FEATURE_MDNIE, &sde_crtc->aiqe_top_level) ||
+		aiqe_is_client_registered(FEATURE_SSRC, &sde_crtc->aiqe_top_level);
+
+	SDE_EVT32(aiqe_enable);
+	if (aiqe_enable) {
+		dev_private = drm_crtc->dev->dev_private;
+		sde_power_set_clk_retention(&dev_private->phandle, "lut_clk", false);
+	}
 }
 
 static void _sde_cp_hist_interrupt_cb(void *arg, int irq_idx)
