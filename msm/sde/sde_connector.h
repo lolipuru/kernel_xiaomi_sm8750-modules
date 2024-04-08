@@ -598,6 +598,7 @@ struct sde_misr_sign {
  * @frame_interval: Current frame interval
  * @usecase_idx: Current usecase_idx
  * @freq_pattern: Current frequency pattern to be used
+ * @vrr_caps: defines capabilities of vrr
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
  * @hdr_capable: external hdr support present
@@ -679,6 +680,7 @@ struct sde_connector {
 	u32 frame_interval;
 	u32 usecase_idx;
 	struct msm_freq_step_pattern *freq_pattern;
+	struct msm_vrr_capabilities vrr_caps;
 
 	bool colorspace_updated;
 

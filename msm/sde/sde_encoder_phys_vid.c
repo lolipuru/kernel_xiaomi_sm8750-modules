@@ -466,6 +466,10 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 
 	avr_step_state = sde_connector_get_property(conn->state, CONNECTOR_PROP_AVR_STEP_STATE);
 
+	if (sde_enc->disp_info.vrr_caps.arp_support ||
+			sde_enc->disp_info.vrr_caps.video_psr_support)
+		avr_step_state = AVR_STEP_ENABLE;
+
 	memset(&avr_params, 0, sizeof(avr_params));
 	avr_params.avr_mode = sde_connector_get_qsync_mode(phys_enc->connector);
 
@@ -652,7 +656,7 @@ exit:
 
 	if (phys_enc->parent_ops.get_qsync_fps)
 		phys_enc->parent_ops.get_qsync_fps(
-			phys_enc->parent, &qsync_min_fps, phys_enc->connector->state);
+			phys_enc->parent, &qsync_min_fps, phys_enc->connector->state, NULL);
 
 	/* only panels which support qsync will have a non-zero min fps */
 	if (qsync_min_fps) {

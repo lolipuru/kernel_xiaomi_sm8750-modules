@@ -1176,11 +1176,10 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 }
 
 static void _sde_encoder_get_qsync_fps_callback(struct drm_encoder *drm_enc,
-			u32 *qsync_fps, struct drm_connector_state *conn_state)
+	u32 *qsync_fps, struct drm_connector_state *conn_state, struct sde_connector *sde_conn)
 {
 	struct sde_encoder_virt *sde_enc;
 	int rc = 0;
-	struct sde_connector *sde_conn;
 
 	if (!qsync_fps)
 		return;
@@ -1193,13 +1192,16 @@ static void _sde_encoder_get_qsync_fps_callback(struct drm_encoder *drm_enc,
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
 
-	if (!sde_enc->cur_master) {
-		SDE_ERROR("invalid qsync settings %d\n", !sde_enc->cur_master);
+	if (!sde_enc->cur_master && !sde_conn) {
+		SDE_ERROR("invalid qsync settings %d %d\n", !sde_enc->cur_master,
+			!sde_conn);
 		return;
 	}
 
-	sde_conn = to_sde_connector(sde_enc->cur_master->connector);
-	if (sde_conn->ops.get_qsync_min_fps)
+	if (!sde_conn)
+		sde_conn = to_sde_connector(sde_enc->cur_master->connector);
+
+	if (sde_conn && sde_conn->ops.get_qsync_min_fps)
 		rc = sde_conn->ops.get_qsync_min_fps(conn_state);
 
 	if (rc < 0) {
@@ -1221,6 +1223,12 @@ static int _sde_encoder_avr_step_check(struct sde_connector *sde_conn,
 	u32 avr_step_state = sde_connector_get_property(&sde_conn_state->base,
 			CONNECTOR_PROP_AVR_STEP_STATE);
 
+	if (sde_conn->vrr_caps.arp_support ||
+		sde_conn->vrr_caps.video_psr_support) {
+		avr_step_state = AVR_STEP_ENABLE;
+		qsync_mode = SDE_RM_QSYNC_CONTINUOUS_MODE;
+	}
+
 	if ((avr_step_state != AVR_STEP_ENABLE) || !sde_conn->ops.get_avr_step_fps)
 		return 0;
 
@@ -1232,7 +1240,7 @@ static int _sde_encoder_avr_step_check(struct sde_connector *sde_conn,
 	step_fps = sde_conn->ops.get_avr_step_fps(&sde_conn_state->base);
 
 	_sde_encoder_get_qsync_fps_callback(sde_conn_state->base.best_encoder, &min_fps,
-		&sde_conn_state->base);
+		&sde_conn_state->base, sde_conn);
 	if (!min_fps || !nom_fps || step_fps % nom_fps || step_fps % min_fps
 			|| step_fps < nom_fps || (vtotal * nom_fps) % step_fps) {
 		SDE_ERROR("invalid avr_step rate! nom:%u min:%u step:%u vtotal:%u\n", nom_fps,
@@ -1266,6 +1274,11 @@ static int _sde_encoder_atomic_check_qsync(struct sde_connector *sde_conn,
 	}
 
 	qsync_mode = sde_connector_get_property(conn_state, CONNECTOR_PROP_QSYNC_MODE);
+
+	if ((sde_conn->vrr_caps.arp_support || sde_conn->vrr_caps.video_psr_support)
+			&& (qsync_mode != SDE_RM_QSYNC_CONTINUOUS_MODE))
+		qsync_dirty = true;
+
 	if (qsync_dirty || (qsync_mode && has_modeset))
 		rc =  _sde_encoder_avr_step_check(sde_conn, sde_conn_state);
 
@@ -5241,7 +5254,7 @@ int sde_encoder_check_collision(struct sde_encoder_phys *phys_enc, u64 present_t
 	}
 
 	phys_enc->parent_ops.get_qsync_fps(
-			phys_enc->parent, &qsync_min_fps, phys_enc->connector->state);
+			phys_enc->parent, &qsync_min_fps, phys_enc->connector->state, NULL);
 	mdp_transfer_time_ns = info->mdp_transfer_time_us * 1000;
 
 	SDE_EVT32(self_refresh_in_ns, present_time_ns,
@@ -5853,8 +5866,10 @@ void _sde_encoder_delay_kickoff_processing(struct sde_encoder_virt *sde_enc)
 		return;
 
 	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);
-	if (qsync_mode)
-		_sde_encoder_get_qsync_fps_callback(&sde_enc->base, &min_fps, drm_conn->state);
+	if (qsync_mode || sde_enc->disp_info.vrr_caps.arp_support ||
+			sde_enc->disp_info.vrr_caps.video_psr_support)
+		_sde_encoder_get_qsync_fps_callback(&sde_enc->base, &min_fps,
+			drm_conn->state, NULL);
 	/* use min qsync fps, if feature is enabled; otherwise min default fps */
 	min_fps = min_fps ? min_fps : DEFAULT_MIN_FPS;
 	fps = sde_encoder_get_fps(&sde_enc->base);

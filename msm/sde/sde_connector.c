@@ -1022,6 +1022,13 @@ void sde_connector_set_qsync_params(struct drm_connector *connector)
 			c_conn->ept_fps = ept_fps;
 		}
 	}
+
+	if ((c_conn->vrr_caps.arp_support || c_conn->vrr_caps.video_psr_support) &&
+			(c_conn->qsync_mode != SDE_RM_QSYNC_CONTINUOUS_MODE)) {
+		c_conn->qsync_mode = SDE_RM_QSYNC_CONTINUOUS_MODE;
+		c_conn->qsync_updated = true;
+	}
+
 }
 
 void sde_connector_complete_qsync_commit(struct drm_connector *conn,
@@ -1311,6 +1318,8 @@ void sde_connector_helper_bridge_disable(struct drm_connector *connector)
 	}
 
 	c_conn->allow_bl_update = false;
+	if (c_conn->vrr_caps.video_psr_support || c_conn->vrr_caps.arp_support)
+		c_conn->qsync_mode = SDE_RM_QSYNC_DISABLED;
 }
 
 void sde_connector_helper_bridge_post_disable(struct drm_connector *connector)

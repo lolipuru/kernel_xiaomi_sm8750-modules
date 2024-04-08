@@ -1362,7 +1362,8 @@ static void _get_tearcheck_cfg(struct sde_encoder_phys *phys_enc,
 		goto exit;
 
 	if (phys_enc->parent_ops.get_qsync_fps)
-		phys_enc->parent_ops.get_qsync_fps(phys_enc->parent, &qsync_min_fps, conn->state);
+		phys_enc->parent_ops.get_qsync_fps(phys_enc->parent, &qsync_min_fps,
+			conn->state, NULL);
 
 	if (!qsync_min_fps || !default_fps || !yres) {
 		SDE_ERROR_CMDENC(cmd_enc, "wrong qsync params %d %d %d\n",
