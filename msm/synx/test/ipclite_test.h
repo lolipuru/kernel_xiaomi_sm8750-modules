@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include "../ipclite_client.h"
 #include "../ipclite.h"
@@ -35,7 +35,6 @@ struct handle_t {
 #define RETRY_DELAY 50
 #define REFRESH_DELAY 500
 #define WAIT_DELAY 2000
-#define CORE_DELAY 5000
 
 #define SSR_DELAY 30000
 #define CRASH_DELAY 45000
@@ -55,7 +54,6 @@ enum ipclite_test_type {
 enum ipclite_test_param {
 	TEST_CASE	= 1,
 	PARAM	= 2,
-	ENABLED_CORES	= 8,
 };
 
 /* List of subtests for HW Mutex Test */
@@ -81,6 +79,7 @@ enum ipclite_test_global_atomics_subtest {
 enum ipclite_test_ping {
 	PING_SEND	= 10,
 	PING_REPLY	= 11,
+	BASIC_PING	= 12,
 };
 
 static char core_name[IPCMEM_NUM_HOSTS][13] = {
