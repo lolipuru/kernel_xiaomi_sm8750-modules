@@ -4,6 +4,11 @@ load("//msm-kernel:target_variants.bzl", "get_all_variants")
 
 def _define_module(target, variant):
     tv = "{}_{}".format(target, variant)
+    if target in [ "pineapple" ]:
+        target_config = "defconfig"
+    else:
+        target_config = "{}_defconfig".format(target)
+
     ddk_module(
         name = "{}_msm_hw_fence".format(tv),
         srcs = [
@@ -14,7 +19,7 @@ def _define_module(target, variant):
             "src/msm_hw_fence.c",
         ],
         out = "msm_hw_fence.ko",
-        defconfig = "{}_defconfig".format(target),
+        defconfig = target_config,
         kconfig = "Kconfig",
         conditional_srcs = {
             "CONFIG_DEBUG_FS": {
