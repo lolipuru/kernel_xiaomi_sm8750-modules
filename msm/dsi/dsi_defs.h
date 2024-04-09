@@ -271,11 +271,14 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_QSYNC_ON                   Enable qsync mode
  * @DSI_CMD_SET_QSYNC_OFF                  Disable qsync mode
  * @DSI_CMD_SET_ESYNC_POST_ON:             Panel exit sleep
- * @DSI_CMD_SET_STILL_INDICATION_ON:       Panel still indication
  * @DSI_CMD_SET_ARP_MODE3_HW_TE_ON:        ARP panel HW TE to drive frequnecy stepping
  * @DSI_CMD_SET_ARP_MODE1_HW_TE_OFF:       ARP panel HW TE mode is turned off.
  *                                         SW to drive any frequnecy stepping
- * @DSI_CMD_SET_FI_PATTAREN_CHANGE:        Pattern change command for given frame intreval
+ * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern1
+ * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern2
+ * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern3
+ * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern4
+ * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern5
  * @DSI_CMD_SET_STICKY_STILL_EN            This would enable still indication(copy frame to GRAM)
  *                                         for all the frames until disable.
  * @DSI_CMD_SET_STICKY_STILL_DISABLE       Still indiaction disable command
@@ -310,10 +313,13 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_QSYNC_ON,
 	DSI_CMD_SET_QSYNC_OFF,
 	DSI_CMD_SET_ESYNC_POST_ON,
-	DSI_CMD_SET_STILL_INDICATION_ON,
 	DSI_CMD_SET_ARP_MODE3_HW_TE_ON,
 	DSI_CMD_SET_ARP_MODE1_HW_TE_OFF,
-	DSI_CMD_SET_FI_PATTAREN_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN1_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN2_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN3_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN4_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN5_CHANGE,
 	DSI_CMD_SET_STICKY_STILL_EN,
 	DSI_CMD_SET_STICKY_STILL_DISABLE,
 	DSI_CMD_SET_STICKY_ON_FLY,

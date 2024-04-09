@@ -2756,41 +2756,6 @@ static void _sde_encoder_phys_cmd_init_irqs(struct sde_encoder_phys *phys_enc)
 	}
 }
 
-static enum hrtimer_restart sde_encoder_phys_cmd_self_refresh(struct hrtimer *timer)
-{
-	struct sde_encoder_vrr_cfg *vrr_cfg = container_of(timer, struct sde_encoder_vrr_cfg,
-		self_refresh_timer);
-	struct sde_encoder_phys *phys_enc = container_of(vrr_cfg, struct sde_encoder_phys,
-		sde_vrr_cfg);
-	struct msm_drm_thread *disp_thread = NULL;
-	struct msm_drm_private *priv = NULL;
-	struct sde_encoder_virt *sde_enc = NULL;
-
-	if (!phys_enc || !phys_enc->parent || !phys_enc->parent->dev
-			|| !phys_enc->parent->dev->dev_private) {
-		SDE_ERROR("invalid parameters\n");
-		return HRTIMER_NORESTART;
-	}
-
-	SDE_EVT32_IRQ(DRMID(phys_enc->parent));
-	priv = phys_enc->parent->dev->dev_private;
-	sde_enc = to_sde_encoder_virt(phys_enc->parent);
-	if (!sde_enc->crtc || (sde_enc->crtc->index
-			>= ARRAY_SIZE(priv->disp_thread))) {
-		pr_err("invalid cached CRTC: %d or crtc index: %d\n",
-			sde_enc->crtc == NULL,
-			sde_enc->crtc ? sde_enc->crtc->index : -EINVAL);
-		return HRTIMER_NORESTART;
-	}
-
-	disp_thread = &priv->disp_thread[sde_enc->crtc->index];
-
-	kthread_queue_work(&disp_thread->worker,
-				   &sde_enc->self_refresh_cmd_work);
-
-	return HRTIMER_NORESTART;
-}
-
 struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 		struct sde_enc_phys_init_params *p)
 {
@@ -2852,7 +2817,7 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 	hrtimer_init(&phys_enc->sde_vrr_cfg.self_refresh_timer,
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.self_refresh_timer.function =
-		sde_encoder_phys_cmd_self_refresh;
+		sde_encoder_phys_phys_self_refresh_helper;
 
 	SDE_DEBUG_CMDENC(cmd_enc, "created\n");
 

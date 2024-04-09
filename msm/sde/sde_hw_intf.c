@@ -238,6 +238,12 @@ static void sde_hw_intf_avr_ctrl(struct sde_hw_intf *ctx,
 			avr_mode |= avr_params->avr_step_lines << 16;
 	}
 
+	if (avr_params->infinite_mode)
+		avr_mode = avr_mode | BIT(9);
+
+	if (avr_params->hw_avr_trigger)
+		avr_mode = avr_mode | BIT(10);
+
 	SDE_REG_WRITE(c, INTF_AVR_CONTROL, avr_ctrl);
 	SDE_REG_WRITE(c, INTF_AVR_MODE, avr_mode);
 }

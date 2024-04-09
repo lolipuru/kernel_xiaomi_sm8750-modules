@@ -8661,23 +8661,30 @@ exit:
 	return rc;
 }
 
-static int dsi_display_vrr(struct dsi_display *display, struct msm_display_conn_params *params)
+static int dsi_display_send_pre_commit_cmd(struct dsi_display *display,
+	struct msm_display_conn_params *params)
 {
-	u64 idx;
+	u32 idx;
 	int rc = 0;
 	bool last_command = false;
+
+	if (!params || !display) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
 
 	mutex_lock(&display->display_lock);
 
 	for (idx = 0; idx < sizeof(params->cmd_bit_mask) * 8; idx++) {
 		if (params->cmd_bit_mask & BIT(idx)) {
-			if (fls64(params->cmd_bit_mask) == idx)
+			if ((fls64(params->cmd_bit_mask)-1) == idx)
 				last_command = true;
 
-			SDE_EVT32(idx, last_command);
-			rc = dsi_panel_send_vrr_cmd(display->panel, params, idx, last_command);
+			SDE_EVT32(idx, last_command, params->cmd_bit_mask>>32,
+				params->cmd_bit_mask, fls64(params->cmd_bit_mask));
+			rc = dsi_panel_send_cmd(display->panel, params, idx, last_command);
 			if (rc) {
-				DSI_ERR("fail VRR cmd idx:%llx rc:%d\n", idx, rc);
+				DSI_ERR("fail cmd idx:%d rc:%d\n", idx, rc);
 				goto exit;
 			}
 		}
@@ -8929,12 +8936,12 @@ int dsi_display_pre_commit(void *display,
 	}
 
 	if (params->cmd_bit_mask)
-		dsi_display_vrr(display, params);
+		dsi_display_send_pre_commit_cmd(display, params);
 
-	if (params->qsync_update) {
+	if (!params->cmd_bit_mask && params->qsync_update) {
 		enable = (params->qsync_mode > 0) ? true : false;
 
-		if (!params->cmd_bit_mask && dsi_display->panel &&
+		if (dsi_display->panel &&
 			dsi_display->panel->vrr_caps.arp_support) {
 			rc = dsi_display_arp(display, enable, params->arp_t2_in_us);
 			if (rc) {

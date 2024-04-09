@@ -796,6 +796,8 @@ struct msm_display_topology {
  * @num_freq_steps:    Number of frequency steps
  * @usecase_idx:       Usecase for given pattern.
  *                     Pattern can be differet for video playback.
+ * @frame_pattern_seq_idx: Sequential pattern index. Example: 0, 1, 2, 3 etc.
+ * @needs_ap_refresh:  If the refresh pattern needs first refresh from AP.
  */
 struct msm_freq_step_pattern {
 	u32 *freq_stepping_seq;
@@ -803,6 +805,8 @@ struct msm_freq_step_pattern {
 	u32 frame_interval;
 	u32 num_freq_steps;
 	u32 usecase_idx;
+	u32 frame_pattern_seq_idx;
+	bool needs_ap_refresh;
 };
 
 /**

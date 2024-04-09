@@ -429,8 +429,9 @@ void dsi_panel_destroy_cmd_packets(struct dsi_panel_cmd_set *set);
 
 void dsi_panel_dealloc_cmd_packets(struct dsi_panel_cmd_set *set);
 
-int dsi_panel_send_vrr_cmd(struct dsi_panel *panel,
-		struct msm_display_conn_params *params, u64 idx, bool last_command);
+int dsi_panel_send_cmd(struct dsi_panel *panel,
+		struct msm_display_conn_params *params, enum dsi_cmd_set_type type,
+		bool last_command);
 
 int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 				struct dsi_parser_utils *utils);

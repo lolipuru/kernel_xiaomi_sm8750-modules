@@ -2210,6 +2210,7 @@ struct sde_mdss_cfg {
 	enum sde_ppb_size_option ppb_sz_program;
 	u32 ppb_buf_max_lines;
 	u32 controlled_SR;
+	u32 early_EPT_handling;
 };
 
 struct sde_mdss_hw_cfg_handler {

@@ -264,8 +264,8 @@ enum sde_sim_qsync_event {
  *				clks and resources after IDLE_TIMEOUT time.
  * @early_wakeup_work:		worker to handle early wakeup event
  * @input_event_work:		worker to handle input device touch events
- * @esd_trigger_work:		worker to handle esd trigger events
- * @self_refresh_cmd_work:  worker to handle self refresh
+ * @esd_trigger_work:		worker to handle esd trigger
+ * @self_refresh_work:		worker to handle self refresh
  * @input_handler:			handler for input device events
  * @topology:                   topology of the display
  * @vblank_enabled:		boolean to track userspace vblank vote
@@ -353,7 +353,7 @@ struct sde_encoder_virt {
 	struct kthread_work early_wakeup_work;
 	struct kthread_work input_event_work;
 	struct kthread_work esd_trigger_work;
-	struct kthread_work self_refresh_cmd_work;
+	struct kthread_work self_refresh_work;
 	struct input_handler *input_handler;
 	bool vblank_enabled;
 	bool idle_pc_restore;
@@ -919,6 +919,12 @@ int sde_encoder_check_collision(struct sde_encoder_phys *phys_enc, u64 present_t
 void sde_encoder_handle_frequency_stepping(struct sde_encoder_phys *phys_enc, u32 new_commit);
 
 /**
+ * sde_encoder_phys_phys_self_refresh_helper - Handle self refresh pattern requirement
+ * @timer: pointer to self refresh timer
+ */
+enum hrtimer_restart sde_encoder_phys_phys_self_refresh_helper(struct hrtimer *timer);
+
+/**
  * sde_encoder_get_freq_pattern - Get the frequency pattern for
  *                               given frame interval and usecase
  * @drm_enc: pointer to drm encoder
@@ -940,6 +946,12 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 int sde_encoder_handle_dma_fence_out_of_order(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_update_periph_flush - update peripheral flush event
+ * @drm_enc: pointer to drm encoder
+ */
+int sde_encoder_update_periph_flush(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_begin_commit - handles begin commit operations in encoder

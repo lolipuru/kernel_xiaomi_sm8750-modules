@@ -469,9 +469,6 @@ static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 	for (i = 0; i < count; i++) {
 		cmds->ctrl_flags = 0;
 
-		if (do_peripheral_flush && (i < (count - 1)))
-			cmds->msg.flags |= MIPI_DSI_MSG_BATCH_COMMAND;
-
 		if (state == DSI_CMD_SET_STATE_LP)
 			cmds->msg.flags |= MIPI_DSI_MSG_USE_LPM;
 
@@ -1597,7 +1594,7 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 		goto error;
 	}
 	rc = utils->read_u32_array(utils->data,
-		"qcom,qcom,mdss-dsi-qsync-freq-step-sequence-interval",
+		"qcom,mdss-dsi-qsync-freq-step-sequence-interval",
 				freq_interval_arr32, freq_interval_length);
 
 	if (rc) {
@@ -1644,6 +1641,7 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 		freq_pattern[i].frame_interval = freq_interval_arr32[i*3+1];
 		freq_pattern[i].num_freq_steps = freq_interval_arr32[i*3+2];
 		freq_pattern[i].usecase_idx = freq_interval_arr32[i*3];
+		freq_pattern[i].frame_pattern_seq_idx = i;
 
 		/* Count total number of steps in the pattern */
 		length = 0;
@@ -1669,6 +1667,9 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 		}
 		prop_length += (freq_pattern[i].num_freq_steps * 2);
 		freq_pattern[i].freq_stepping_seq = freq_stepping_seq;
+
+		if (freq_pattern[i].frame_interval >= freq_pattern[i].freq_stepping_seq[0])
+			freq_pattern[i].needs_ap_refresh = true;
 	}
 
 	for (i = 0; i < freq_step_list->count; i++) {
@@ -2190,10 +2191,13 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-qsync-on-commands",
 	"qcom,mdss-dsi-qsync-off-commands",
 	"qcom,mdss-dsi-esync-post-on-commands",
-	"qcom,mdss-dsi-still-indication-commands",
 	"qcom,mdss-dsi-arp_mode3_hw_te_on-command",
 	"qcom,mdss-dsi-arp_mode1_hw_te_off-command",
-	"FI not parsed from DTSI, generated dynamically",
+	"qcom,mdss-dsi-freq-step-pattern1-command",
+	"qcom,mdss-dsi-freq-step-pattern2-command",
+	"qcom,mdss-dsi-freq-step-pattern3-command",
+	"qcom,mdss-dsi-freq-step-pattern4-command",
+	"qcom,mdss-dsi-freq-step-pattern5-command",
 	"qcom,mdss-dsi-sticky_still_en-command",
 	"qcom,mdss-dsi-sticky_still_disable-command",
 	"qcom,mdss-dsi-sticky_on_fly-command",
@@ -2227,10 +2231,13 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-qsync-on-commands-state",
 	"qcom,mdss-dsi-qsync-off-commands-state",
 	"qcom,mdss-dsi-esync-post-on-commands-state",
-	"qcom,mdss-dsi-still-indication-commands-state",
 	"qcom,mdss-dsi-arp_mode3_hw_te_on-command-state",
 	"qcom,mdss-dsi-arp_mode1_hw_te_off-command-state",
-	"FI not parsed from DTSI, generated dynamically",
+	"qcom,mdss-dsi-freq-step-pattern1-command-state",
+	"qcom,mdss-dsi-freq-step-pattern2-command-state",
+	"qcom,mdss-dsi-freq-step-pattern3-command-state",
+	"qcom,mdss-dsi-freq-step-pattern4-command-state",
+	"qcom,mdss-dsi-freq-step-pattern5-command-state",
 	"qcom,mdss-dsi-sticky_still_en-command-state",
 	"qcom,mdss-dsi-sticky_still_disable-command-state",
 	"qcom,mdss-dsi-sticky_on_fly-command-state",
@@ -5074,8 +5081,10 @@ int dsi_panel_send_qsync_off_dcs(struct dsi_panel *panel,
 	return rc;
 }
 
-static int dsi_panel_prepare_vrr_cmd(struct dsi_panel *panel,
-		struct msm_display_conn_params *params, u64 idx, bool last_command)
+static int dsi_panel_prepare_cmd(struct dsi_panel *panel,
+		struct msm_display_conn_params *params, enum dsi_cmd_set_type type,
+		bool last_command)
+
 {
 	int i;
 	struct dsi_panel_cmd_set *set;
@@ -5087,40 +5096,50 @@ static int dsi_panel_prepare_vrr_cmd(struct dsi_panel *panel,
 	}
 
 	priv_info = panel->cur_mode->priv_info;
-	set = &priv_info->cmd_sets[BIT(idx)];
+	set = &priv_info->cmd_sets[type];
 
 	if (!set->cmds) {
 		DSI_ERR("Invalid params\n");
 		return -EINVAL;
 	}
 
-	for (i = 0; i < set->count; i++)
+	SDE_EVT32(set->count, type,  last_command);
+	for (i = 0; i < set->count; i++) {
 		set->cmds[i].last_command = last_command;
+		if (!last_command || (i < (set->count - 1)))
+			set->cmds[i].msg.flags |= MIPI_DSI_MSG_BATCH_COMMAND;
+	}
 
 	return 0;
 }
 
 /* VRR command modes */
-int dsi_panel_send_vrr_cmd(struct dsi_panel *panel,
-		struct msm_display_conn_params *params, u64 idx, bool last_command)
+int dsi_panel_send_cmd(struct dsi_panel *panel,
+		struct msm_display_conn_params *params, enum dsi_cmd_set_type type,
+		bool last_command)
 {
 	int rc = 0;
+	bool peripheral_flush = false;
 
 	if (!panel) {
-		DSI_ERR("invalid params\n");
+		DSI_ERR("invalid params panel NULL\n");
 		return -EINVAL;
 	}
 
-	DSI_DEBUG("Send VRR command %llx\n", idx);
+	DSI_DEBUG("Send command %x\n", type);
 	mutex_lock(&panel->panel_lock);
 
-	dsi_panel_prepare_vrr_cmd(panel, params, idx, last_command);
+	if (params && params->peripheral_flush)
+		peripheral_flush = true;
 
-	rc = dsi_panel_tx_cmd_set(panel, BIT(idx), true);
+	dsi_panel_prepare_cmd(panel, params, type, last_command);
 
+	rc = dsi_panel_tx_cmd_set(panel, type, peripheral_flush);
+
+	SDE_EVT32(peripheral_flush, type, rc);
 	if (rc)
-		DSI_ERR("[%s] failed to send VRR cmd idx %llx rc=%d\n",
-		       panel->name, idx, rc);
+		DSI_ERR("[%s] failed to send cmd type %x rc=%d\n",
+		       panel->name, type, rc);
 
 	mutex_unlock(&panel->panel_lock);
 

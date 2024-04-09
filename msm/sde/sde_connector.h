@@ -476,6 +476,24 @@ struct sde_connector_ops {
 };
 
 /**
+ * enum sde_conn_vrr_cmd_state: states of vrr commands
+ * @VRR_CMD_STATE_NONE: no-op
+ * @VRR_CMD_POWER_ON: handle vrr commands at power on
+ * @VRR_CMD_POWER_OFF: handle vrr commands at power off
+ * @VRR_CMD_IDLE_ENTRY: handle vrr commands at idle pc enter
+ * @VRR_CMD_IDLE_EXIT: handle vrr commands at idle pc exit
+ * @VRR_CMD_FIRST_SELF_REFRESH: handle vrr commands at first SR
+ */
+enum sde_conn_vrr_cmd_state {
+	VRR_CMD_STATE_NONE,
+	VRR_CMD_POWER_ON,
+	VRR_CMD_POWER_OFF,
+	VRR_CMD_IDLE_ENTRY,
+	VRR_CMD_IDLE_EXIT,
+	VRR_CMD_FIRST_SELF_REFRESH
+};
+
+/**
  * enum sde_connector_avr_step_state: states of avr step fps
  * @AVR_STEP_NONE: no-op
  * @AVR_STEP_ENABLE: enable AVR step
@@ -599,6 +617,9 @@ struct sde_misr_sign {
  * @usecase_idx: Current usecase_idx
  * @freq_pattern: Current frequency pattern to be used
  * @vrr_caps: defines capabilities of vrr
+ * @freq_pattern_updated: True if frequency pattern is updated
+ * @freq_pattern_type_changed: True if frequency pattern type is updated
+ * @vrr_cmd_state: Scenario in which VRR cmd is sent
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
  * @hdr_capable: external hdr support present
@@ -681,6 +702,9 @@ struct sde_connector {
 	u32 usecase_idx;
 	struct msm_freq_step_pattern *freq_pattern;
 	struct msm_vrr_capabilities vrr_caps;
+	bool freq_pattern_updated;
+	bool freq_pattern_type_changed;
+	enum sde_conn_vrr_cmd_state vrr_cmd_state;
 
 	bool colorspace_updated;
 

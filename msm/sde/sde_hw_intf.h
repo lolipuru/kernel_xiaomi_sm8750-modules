@@ -79,8 +79,10 @@ struct intf_panic_ctrl_cfg {
 struct intf_avr_params {
 	u32 default_fps;
 	u32 min_fps;
-	u32 avr_mode; /* one of enum @sde_rm_qsync_modes */
-	u32 avr_step_lines; /* 0 or 1 means disabled */
+	u32 avr_mode;
+	u32 avr_step_lines;
+	bool infinite_mode;
+	bool hw_avr_trigger;
 };
 /**
  * struct intf_wd_jitter_params : Interface to the INTF WD Jitter params.
