@@ -2598,21 +2598,21 @@ void sde_encoder_phys_cmd_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 		struct sde_cesta_ctrl_cfg *cfg, bool *req_flush, bool *req_scc)
 {
 	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
-	bool autorefresh_en = sde_encoder_phys_cmd_is_autorefresh_enabled(phys_enc);
+	bool autorefresh_en = _sde_encoder_phys_cmd_get_autorefresh_property(phys_enc);
 
 	cfg->enable = true;
 	cfg->avr_enable = qsync_en;
 	cfg->intf = phys_enc->intf_idx - INTF_0;
 	cfg->auto_active_on_panic = autorefresh_en;
 	cfg->req_mode = SDE_CESTA_CTRL_REQ_PANIC_REGION;
-	cfg->hw_sleep_enable = true;
+	cfg->hw_sleep_enable = !autorefresh_en;
 
 	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)
 			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))
 		cfg->dual_dsi = true;
 
-	*req_flush = !autorefresh_en;
-	*req_scc = sde_connector_is_qsync_updated(phys_enc->connector);
+	*req_flush = true;
+	*req_scc = sde_connector_is_qsync_updated(phys_enc->connector) || autorefresh_en;
 }
 
 static void sde_encoder_phys_cmd_init_ops(struct sde_encoder_phys_ops *ops)

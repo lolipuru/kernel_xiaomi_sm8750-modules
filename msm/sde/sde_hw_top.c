@@ -123,8 +123,6 @@
 #define HW_FENCE_INPUT_FENCE_ID_MASK_ALL 0xFFFFFFFF
 #define HW_FENCE_INPUT_FENCE_ID_MASK_SIGNAL 0xFFFF
 
-#define MDP_DISP_CC_LUT_CBCR 0x20
-
 static int ppb_offset_map[PINGPONG_MAX] = {1, 0, 3, 2, 5, 4, 7, 7, 6, 6, -1, -1};
 
 static void sde_hw_setup_split_pipe(struct sde_hw_mdp *mdp,
@@ -916,11 +914,6 @@ static void sde_hw_setup_hw_fences_config_with_dir_write(struct sde_hw_mdp *mdp,
 	SDE_REG_WRITE(&c, offset, val);
 }
 
-static void sde_hw_setup_lut_retention(struct sde_hw_disp_cc *disp_cc, bool enable)
-{
-	SDE_REG_WRITE(&disp_cc->hw, disp_cc->lut_retention_offset, enable ? BIT(14) : 0);
-}
-
 static void _setup_mdp_ops(struct sde_hw_mdp_ops *ops, unsigned long cap, u32 hw_fence_rev)
 {
 	ops->setup_split_pipe = sde_hw_setup_split_pipe;
@@ -981,39 +974,6 @@ static const struct sde_mdp_cfg *_top_offset(enum sde_mdp mdp,
 	}
 
 	return ERR_PTR(-EINVAL);
-}
-
-struct sde_hw_disp_cc *sde_hw_disp_cc_init(void __iomem *addr,
-		u32 disp_cc_len, const struct sde_mdss_cfg *m)
-{
-	struct sde_hw_disp_cc *disp_cc;
-
-	if (!addr || !m)
-		return ERR_PTR(-EINVAL);
-
-	disp_cc = kzalloc(sizeof(*disp_cc), GFP_KERNEL);
-	if (!disp_cc)
-		return ERR_PTR(-ENOMEM);
-
-	disp_cc->hw.base_off = addr;
-	disp_cc->hw.blk_off = 0;
-	disp_cc->hw.length = disp_cc_len;
-
-	disp_cc->ops.setup_lut_retention = NULL;
-	disp_cc->lut_retention_offset = 0;
-	if (test_bit(SDE_FEATURE_LUT_RETENTION, m->features)) {
-		if (IS_SUN_TARGET(m->hw_rev)) {
-			disp_cc->ops.setup_lut_retention = sde_hw_setup_lut_retention;
-			disp_cc->lut_retention_offset = MDP_DISP_CC_LUT_CBCR;
-		}
-	}
-
-	return disp_cc;
-}
-
-void sde_hw_disp_cc_destroy(struct sde_hw_disp_cc *disp_cc)
-{
-	kfree(disp_cc);
 }
 
 struct sde_hw_mdp *sde_hw_mdptop_init(enum sde_mdp idx,

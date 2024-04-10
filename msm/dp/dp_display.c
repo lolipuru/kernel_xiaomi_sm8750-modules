@@ -3364,7 +3364,10 @@ static int dp_display_config_hdr(struct dp_display *dp_display, void *panel,
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
 	sde_conn =  to_sde_connector(dp_panel->connector);
 
-	core_clk_rate = dp->power->clk_get_rate(dp->power, "core_clk");
+	if (sde_cesta_is_enabled(DPUID(dp_display->drm_dev)))
+		core_clk_rate = sde_cesta_get_core_clk_rate(DPUID(dp_display->drm_dev));
+	else
+		core_clk_rate = dp->power->clk_get_rate(dp->power, "core_clk");
 	if (!core_clk_rate) {
 		DP_ERR("invalid rate for core_clk\n");
 		return -EINVAL;

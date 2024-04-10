@@ -3783,8 +3783,6 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 
 		/* wait for idle */
 		sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
-
-		_sde_encoder_cesta_update(drm_enc, SDE_PERF_DISABLE_COMMIT);
 	}
 
 	_sde_encoder_input_handler_unregister(drm_enc);
@@ -3862,10 +3860,13 @@ void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
 	struct sde_hw_dsc *hw_dsc = NULL;
 	int i;
 
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+
+	if (phys_enc->ops.is_master && phys_enc->ops.is_master(phys_enc))
+		_sde_encoder_cesta_update(&sde_enc->base, SDE_PERF_DISABLE_COMMIT);
+
 	ctl->ops.reset(ctl);
 	sde_encoder_helper_reset_mixers(phys_enc, NULL);
-
-	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	if (wb_enc) {
 		if (wb_enc->hw_wb->ops.bind_pingpong_blk) {
@@ -6380,6 +6381,7 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 	memcpy(&sde_enc->disp_info, disp_info, sizeof(*disp_info));
 
 	sde_enc->cesta_client = cesta_client;
+	sde_enc->cesta_enable_frame = true;
 
 	SDE_DEBUG_ENC(sde_enc, "created\n");
 
