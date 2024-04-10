@@ -200,13 +200,17 @@ struct cam_ife_csid_rx_debug_mask {
  *
  * @bitmask    :     Bitmask of the IRQ
  * @err_type   :     Error type for ISP hardware event
- * @irq_desc   :     String to describe the IRQ bit
+ * @irq_name   :     IRQ name
+ * @desc       :     String to describe the IRQ bit
+ * @debug      :     Debug guidance for the error
  * @err_handler:     Error handler which gets invoked if error IRQ bit set
  */
 struct cam_ife_csid_irq_desc {
 	uint32_t    bitmask;
 	uint32_t    err_type;
-	uint8_t    *desc;
+	char       *irq_name;
+	char       *desc;
+	char       *debug;
 	void       (*err_handler)(void *csid_hw, void *res);
 };
 
@@ -217,6 +221,7 @@ struct cam_ife_csid_irq_desc {
  * @err_type   :        Error type for ISP hardware event
  * @err_name   :        IRQ name
  * @desc       :        String to describe about the IRQ
+ * @debug      :        Debug guidance for the error
  * @err_handler:        Error handler which gets invoked if error IRQ bit set
  */
 struct cam_ife_csid_top_irq_desc {
@@ -224,6 +229,7 @@ struct cam_ife_csid_top_irq_desc {
 	uint32_t    err_type;
 	char       *err_name;
 	char       *desc;
+	char       *debug;
 	void       (*err_handler)(void *csid_hw);
 };
 

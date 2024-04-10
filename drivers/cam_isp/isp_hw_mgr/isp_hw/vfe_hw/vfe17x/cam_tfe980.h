@@ -307,27 +307,29 @@ static struct cam_vfe_top_ver4_top_err_irq_desc tfe980_top_irq_err_desc[] = {
 	{
 		.bitmask = BIT(2),
 		.err_name = "BAYER_HM violation",
-		.desc = "",
+		.desc = "CLC CCIF Violation",
 	},
 	{
 		.bitmask = BIT(24),
 		.err_name = "DYNAMIC PDAF SWITCH VIOLATION",
-		.desc = "PD exposure changes dynamically and the sensor gap is not large enough",
+		.desc =
+			"HAF RDI exposure select changes dynamically, the common vbi is insufficient",
 	},
 	{
 		.bitmask = BIT(25),
 		.err_name  = "HAF violation",
-		.desc = "",
+		.desc = "CLC_HAF Violation",
 	},
 	{
 		.bitmask = BIT(26),
 		.err_name = "PP VIOLATION",
-		.desc = "",
+		.desc = "CCIF protocol violation",
 	},
 	{
 		.bitmask  = BIT(27),
 		.err_name = "DIAG VIOLATION",
-		.desc = "HBI is less than the minimum required HBI",
+		.desc = "Sensor: The HBI at TFE input is less than the spec (64 cycles)",
+		.debug = "Check sensor config",
 	},
 };
 

@@ -384,16 +384,11 @@ static void cam_sfe_bus_wr_print_constraint_errors(
 	struct cam_sfe_bus_wr_constraint_error_info *constraint_err_info;
 	uint32_t i;
 
-	CAM_ERR(CAM_ISP, "Constraint violation bitflags: 0x%X",
-		constraint_errors);
-
 	constraint_err_info = bus_priv->constraint_error_info;
 	for (i = 0; i < constraint_err_info->num_cons_err; i++) {
-		if (constraint_err_info->constraint_error_list[i].bitmask &
-			constraint_errors) {
-			CAM_ERR(CAM_SFE, "WM: %s Error_desc: %s", wm_name,
+		if (constraint_err_info->constraint_error_list[i].bitmask & constraint_errors)
+			CAM_ERR(CAM_SFE, "Write Master: %s, Error_desc: %s", wm_name,
 				constraint_err_info->constraint_error_list[i].error_description);
-		}
 	}
 }
 
@@ -1927,7 +1922,7 @@ static inline void __cam_sfe_bus_wr_print_wm_info(
 		wm_data->acquired_height, wm_data->pack_fmt);
 
 	CAM_INFO(CAM_SFE,
-		"SFE:%u WM:%u last_consumed_image_addr:0x%x last_consumed_frame_header:0x%x fifo_word_cnt:0x%x [FH + Image] current_image_addr:0x%x",
+		"SFE:%u WM:%u last_consumed_image_addr:0x%x last_consumed_frame_header:0x%x fifo_word_cnt:%d [FH + Image] current_image_addr:0x%x",
 		wm_data->common_data->hw_intf->hw_idx, wm_data->index,
 		addr_status0, addr_status1, addr_status2, addr_status3);
 }
@@ -2188,6 +2183,7 @@ static int cam_sfe_bus_wr_handle_err_irq_top_half(uint32_t evt_id,
 		bus_priv->common_data.mem_base +
 		bus_priv->common_data.common_reg->image_size_violation_status);
 
+	cam_isp_hw_get_timestamp(&evt_payload->ts);
 	th_payload->evt_payload_priv = evt_payload;
 
 	return rc;
@@ -2265,19 +2261,33 @@ static int cam_sfe_bus_wr_handle_err_irq_bottom_half(
 
 	status = evt_payload->irq_reg_val[CAM_SFE_IRQ_BUS_WR_REG_STATUS0];
 
-	if (status & CAM_SFE_BUS_WR_IRQ_CCIF_VIOLATION)
-		CAM_ERR(CAM_SFE, "SFE:%d status0 0x%x CCIF Violation status 0x%x",
-			bus_priv->common_data.core_index, status,
-			evt_payload->ccif_violation_status);
+	if (status & CAM_SFE_BUS_WR_IRQ_CCIF_VIOLATION) {
+		CAM_ERR(CAM_SFE, "SFE[%u] CCIF protocol violation occurred at [%llu: %09llu]",
+			bus_priv->common_data.core_index,
+			evt_payload->ts.mono_time.tv_sec,
+			evt_payload->ts.mono_time.tv_nsec);
+		CAM_ERR(CAM_SFE, "Violation status: 0x%x", evt_payload->ccif_violation_status);
+	}
 
-	if (status & CAM_SFE_BUS_WR_IRQ_IMAGE_SIZE_VIOLATION)
-		CAM_ERR(CAM_SFE, "SFE:%d status0 0x%x Image Size Violation status 0x%x",
-			bus_priv->common_data.core_index, status,
+	if (status & CAM_SFE_BUS_WR_IRQ_IMAGE_SIZE_VIOLATION) {
+		CAM_ERR(CAM_SFE,
+			"SFE[%d] IMAGE_SIZE_VIOLATION occurred at [%llu: %09llu]",
+			bus_priv->common_data.core_index,
+			evt_payload->ts.mono_time.tv_sec,
+			evt_payload->ts.mono_time.tv_nsec);
+		CAM_ERR(CAM_SFE,
+			"Sensor: Programmed image size is not same as actual image size from input");
+		CAM_ERR(CAM_SFE, "Debug: Check SW programming/sensor config");
+		CAM_ERR(CAM_SFE, "Violation status: 0x%x",
 			evt_payload->image_size_violation_status);
+	}
 
 	if (status & CAM_SFE_BUS_WR_IRQ_CONS_VIOLATION) {
-		CAM_ERR(CAM_SFE, "SFE:%d status0 0x%x Constraint Violation",
-			bus_priv->common_data.core_index, status);
+		CAM_ERR(CAM_SFE,
+			"SFE[%u] CONSTRAINT_VIOLATION occurred at [%llu: %09llu]",
+			bus_priv->common_data.core_index,
+			evt_payload->ts.mono_time.tv_sec,
+			evt_payload->ts.mono_time.tv_nsec);
 		cam_sfe_bus_wr_get_constraint_errors(&skip_err_notify, bus_priv,
 			&constraint_errors_status);
 	}

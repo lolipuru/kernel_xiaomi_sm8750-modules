@@ -9188,7 +9188,7 @@ static int cam_isp_scratch_buf_update_util(
 	port_info->config_done = true;
 
 	CAM_DBG(CAM_ISP,
-		"res_id: 0x%x w: 0x%x h: 0x%x s: 0x%x sh: 0x%x addr: 0x%x",
+		"res_id: 0x%x w: %d h: %d s: %d sh: %d addr: 0x%x",
 		port_info->res_id, port_info->width,
 		port_info->height, port_info->stride,
 		port_info->slice_height, port_info->io_addr);

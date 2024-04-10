@@ -420,22 +420,23 @@ static struct cam_vfe_top_ver4_top_err_irq_desc vfe880_top_irq_err_desc[] = {
 	{
 		.bitmask = BIT(4),
 		.err_name = "PP VIOLATION",
-		.desc = "",
+		.desc = "CLC CCIF violation",
 	},
 	{
 		.bitmask = BIT(6),
 		.err_name = "PDAF VIOLATION",
-		.desc = "",
+		.desc = "CLC PDAF violation",
 	},
 	{
 		.bitmask = BIT(7),
 		.err_name = "DYNAMIC PDAF SWITCH VIOLATION",
-		.desc = "PD exposure changes dynamically and the sensor gap is not large enough",
+		.desc = "PD exposure select changes dynamically, the common vbi is insufficient",
 	},
 	{
 		.bitmask = BIT(8),
 		.err_name = "LCR PD INPUT TIMING PROTOCOL VIOLATION",
-		.desc = "Input timing protocol on the LCR  and PD path is not met",
+		.desc =
+			"Sensor/SW: Input protocol timing on the LCR and PD path is not met, protocol expects SOF of LCR data to come before PD SOF, and LCR payload should only come after PD SOF",
 	},
 	{
 		.bitmask = BIT(12),
@@ -470,7 +471,8 @@ static struct cam_vfe_top_ver4_top_err_irq_desc vfe880_top_irq_err_desc[] = {
 	{
 		.bitmask = BIT(18),
 		.err_name = "DIAG VIOLATION",
-		.desc = "HBI is less than the minimum required HBI",
+		.desc = "Sensor: The HBI at IFE input is less than the spec",
+		.debug = "Check sensor config",
 	},
 };
 

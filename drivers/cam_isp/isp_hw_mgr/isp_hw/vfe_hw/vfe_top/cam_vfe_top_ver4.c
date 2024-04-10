@@ -472,7 +472,8 @@ static inline void cam_vfe_top_ver4_print_debug_regs(
 }
 
 static void cam_vfe_top_ver4_print_pdaf_violation_info(
-	struct cam_vfe_mux_ver4_data *vfe_priv)
+	struct cam_vfe_mux_ver4_data *vfe_priv,
+	struct cam_vfe_top_irq_evt_payload *payload, uint32_t desc_idx)
 {
 	struct cam_vfe_top_ver4_priv        *top_priv;
 	struct cam_hw_soc_info              *soc_info;
@@ -488,21 +489,25 @@ static void cam_vfe_top_ver4_print_pdaf_violation_info(
 	val         =  cam_io_r(base +
 			    common_data->common_reg->pdaf_violation_status),
 
-	CAM_INFO(CAM_ISP, "VFE[%u] PDAF HW Violation status 0x%x",
-	     soc_info->index, val);
+	CAM_DBG(CAM_ISP, "VFE[%u] PDAF HW Violation status 0x%x", soc_info->index, val);
 
 	for (i = 0; i < common_data->hw_info->num_pdaf_violation_errors; i++) {
-		if (common_data->hw_info->pdaf_violation_desc[i].bitmask &
-			val) {
-			CAM_ERR(CAM_ISP, "%s",
+		if (common_data->hw_info->pdaf_violation_desc[i].bitmask & val) {
+			CAM_ERR(CAM_ISP, "VFE[%u] %s occurred at [%llu: %09llu]",
+				soc_info->index,
+				common_data->hw_info->top_err_desc[desc_idx].err_name,
+				payload->ts.mono_time.tv_sec,
+				payload->ts.mono_time.tv_nsec);
+			CAM_ERR(CAM_ISP, "%s", common_data->hw_info->top_err_desc[desc_idx].desc);
+			CAM_ERR(CAM_ISP, "PDAF violation description: %s",
 				common_data->hw_info->pdaf_violation_desc[i].desc);
-
 		}
 	}
 }
 
 static void cam_vfe_top_ver4_print_ipp_violation_info(
-	struct cam_vfe_top_ver4_priv *top_priv)
+	struct cam_vfe_top_ver4_priv *top_priv,
+	struct cam_vfe_top_irq_evt_payload *payload, uint32_t desc_idx)
 {
 	struct cam_hw_soc_info              *soc_info;
 	struct cam_vfe_top_ver4_common_data *common_data;
@@ -515,19 +520,24 @@ static void cam_vfe_top_ver4_print_ipp_violation_info(
 	val         =  cam_io_r(base +
 			    common_data->common_reg->ipp_violation_status);
 
-	CAM_INFO(CAM_ISP, "VFE[%u] IPP Violation status 0x%x",
-	     soc_info->index, val);
+	CAM_ERR(CAM_ISP, "VFE[%u] %s occurred at [%llu: %09llu]",
+		soc_info->index,
+		common_data->hw_info->top_err_desc[desc_idx].err_name,
+		payload->ts.mono_time.tv_sec,
+		payload->ts.mono_time.tv_nsec);
+	CAM_ERR(CAM_ISP, "%s", common_data->hw_info->top_err_desc[desc_idx].desc);
 
 	if (common_data->hw_info->ipp_module_desc)
-		CAM_ERR(CAM_ISP, "VFE[%u] IPP Violation Module id: [%u %s]",
-			soc_info->index,
+		CAM_ERR(CAM_ISP, "IPP Violation Module id: [%u %s]",
 			common_data->hw_info->ipp_module_desc[val].id,
 			common_data->hw_info->ipp_module_desc[val].desc);
-
+	else
+		CAM_ERR(CAM_ISP, "IPP Violation status 0x%x", val);
 }
 
 static void cam_vfe_top_ver4_print_bayer_violation_info(
-	struct cam_vfe_top_ver4_priv *top_priv)
+	struct cam_vfe_top_ver4_priv *top_priv,
+	struct cam_vfe_top_irq_evt_payload *payload, uint32_t desc_idx)
 {
 	struct cam_hw_soc_info              *soc_info;
 	struct cam_vfe_top_ver4_common_data *common_data;
@@ -540,19 +550,24 @@ static void cam_vfe_top_ver4_print_bayer_violation_info(
 	val         =  cam_io_r(base +
 			    common_data->common_reg->bayer_violation_status);
 
-	CAM_INFO(CAM_ISP, "VFE[%u] Bayer Violation status 0x%x",
-	     soc_info->index, val);
+	CAM_ERR(CAM_ISP, "VFE[%u] %s occurred at [%llu: %09llu]",
+		soc_info->index,
+		common_data->hw_info->top_err_desc[desc_idx].err_name,
+		payload->ts.mono_time.tv_sec,
+		payload->ts.mono_time.tv_nsec);
+	CAM_ERR(CAM_ISP, "%s", common_data->hw_info->top_err_desc[desc_idx].desc);
 
 	if (common_data->hw_info->bayer_module_desc)
-		CAM_ERR(CAM_ISP, "VFE[%u] Bayer Violation Module id: [%u %s]",
-			soc_info->index,
+		CAM_ERR(CAM_ISP, "Bayer Violation Module id: [%u %s]",
 			common_data->hw_info->bayer_module_desc[val].id,
 			common_data->hw_info->bayer_module_desc[val].desc);
-
+	else
+		CAM_ERR(CAM_ISP, "Bayer Violation status 0x%x", val);
 }
 
 static void cam_vfe_top_ver4_print_top_irq_error(
 	struct cam_vfe_mux_ver4_data *vfe_priv,
+	struct cam_vfe_top_irq_evt_payload *payload,
 	uint32_t irq_status)
 {
 	uint32_t                                    i = 0;
@@ -563,23 +578,33 @@ static void cam_vfe_top_ver4_print_top_irq_error(
 	common_data = &top_priv->common_data;
 
 	for (i = 0; i < common_data->hw_info->num_top_errors; i++) {
-		if (common_data->hw_info->top_err_desc[i].bitmask &
-			irq_status) {
-			CAM_ERR(CAM_ISP, "%s %s",
-				common_data->hw_info->top_err_desc[i].err_name,
-				common_data->hw_info->top_err_desc[i].desc);
+		if (common_data->hw_info->top_err_desc[i].bitmask & irq_status) {
+			if (irq_status & vfe_priv->reg_data->ipp_violation_mask) {
+				cam_vfe_top_ver4_print_ipp_violation_info(top_priv, payload, i);
+				continue;
+			}
 
+			if (irq_status & vfe_priv->reg_data->pdaf_violation_mask) {
+				cam_vfe_top_ver4_print_pdaf_violation_info(vfe_priv, payload, i);
+				continue;
+			}
+
+			if (irq_status & vfe_priv->reg_data->bayer_violation_mask) {
+				cam_vfe_top_ver4_print_bayer_violation_info(top_priv, payload, i);
+				continue;
+			}
+
+			/* Other errors without specific handler */
+			CAM_ERR(CAM_ISP, "%s occurred at [%llu: %09llu]",
+				common_data->hw_info->top_err_desc[i].err_name,
+				payload->ts.mono_time.tv_sec,
+				payload->ts.mono_time.tv_nsec);
+			CAM_ERR(CAM_ISP, "%s", common_data->hw_info->top_err_desc[i].desc);
+			if (common_data->hw_info->top_err_desc[i].debug)
+				CAM_ERR(CAM_ISP, "Debug: %s",
+					common_data->hw_info->top_err_desc[i].debug);
 		}
 	}
-
-	if (irq_status & vfe_priv->reg_data->ipp_violation_mask)
-		cam_vfe_top_ver4_print_ipp_violation_info(top_priv);
-
-	if (irq_status & vfe_priv->reg_data->bayer_violation_mask)
-		cam_vfe_top_ver4_print_bayer_violation_info(top_priv);
-
-	if (irq_status & vfe_priv->reg_data->pdaf_violation_mask)
-		cam_vfe_top_ver4_print_pdaf_violation_info(vfe_priv);
 }
 
 int cam_vfe_top_ver4_dump_timestamps(struct cam_vfe_top_ver4_priv *top_priv, int  res_id)
@@ -1888,7 +1913,6 @@ static int cam_vfe_handle_irq_bottom_half(void *handler_priv,
 	struct cam_isp_hw_error_event_info err_evt_info;
 	struct cam_isp_sof_ts_data sof_and_boot_time;
 	uint32_t irq_status[CAM_IFE_IRQ_REGISTERS_MAX] = {0}, frame_timing_mask;
-	struct timespec64 ts;
 	int i = 0;
 
 	if (!handler_priv || !evt_payload_priv) {
@@ -1936,23 +1960,18 @@ static int cam_vfe_handle_irq_bottom_half(void *handler_priv,
 
 	if (irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS0]
 		& vfe_priv->reg_data->error_irq_mask) {
-		CAM_ERR(CAM_ISP, "VFE:%u Error", evt_info.hw_idx);
-
 		err_evt_info.err_type = CAM_VFE_IRQ_STATUS_VIOLATION;
 		evt_info.event_data = (void *)&err_evt_info;
-		ktime_get_boottime_ts64(&ts);
-		CAM_INFO(CAM_ISP,
-			"VFE:%u current monotonic timestamp:[%lld.%09lld]",
-			evt_info.hw_idx, ts.tv_sec, ts.tv_nsec);
 
 		if (vfe_priv->event_cb)
 			vfe_priv->event_cb(vfe_priv->priv,
 				CAM_ISP_HW_EVENT_ERROR, (void *)&evt_info);
 
-		cam_vfe_top_ver4_print_debug_regs(vfe_priv->top_priv);
 
-		cam_vfe_top_ver4_print_top_irq_error(vfe_priv,
+		cam_vfe_top_ver4_print_top_irq_error(vfe_priv, payload,
 			irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS0]);
+
+		cam_vfe_top_ver4_print_debug_regs(vfe_priv->top_priv);
 
 		ret = CAM_VFE_IRQ_STATUS_ERR;
 	}

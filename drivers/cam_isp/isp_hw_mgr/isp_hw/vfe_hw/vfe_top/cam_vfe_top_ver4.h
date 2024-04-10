@@ -129,6 +129,7 @@ struct cam_vfe_top_ver4_top_err_irq_desc {
 	uint32_t  bitmask;
 	char     *err_name;
 	char     *desc;
+	char     *debug;
 };
 
 struct cam_vfe_top_ver4_pdaf_violation_desc {

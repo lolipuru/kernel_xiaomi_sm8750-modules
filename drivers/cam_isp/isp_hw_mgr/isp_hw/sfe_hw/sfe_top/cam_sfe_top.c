@@ -1793,9 +1793,6 @@ static void cam_sfe_top_print_ipp_violation_info(
 	struct cam_hw_soc_info         *soc_info = common_data->soc_info;
 	uint32_t val = violation_status;
 
-	CAM_INFO(CAM_SFE, "SFE[%u] IPP Violation status 0x%x",
-	     soc_info->index, val);
-
 	if (top_priv->hw_info->ipp_module_desc)
 		CAM_ERR(CAM_SFE, "SFE[%u] IPP Violation Module id: [%u %s]",
 			soc_info->index,
@@ -1806,17 +1803,23 @@ static void cam_sfe_top_print_ipp_violation_info(
 
 static void cam_sfe_top_print_top_irq_error(
 	struct cam_sfe_top_priv *top_priv,
+	struct cam_sfe_top_irq_evt_payload *payload,
 	uint32_t irq_status,
 	uint32_t violation_status)
 {
 	uint32_t i = 0;
 
 	for (i = 0; i < top_priv->hw_info->num_top_errors; i++) {
-		if (top_priv->hw_info->top_err_desc[i].bitmask &
-			irq_status) {
-			CAM_ERR(CAM_SFE, "%s %s",
+		if (top_priv->hw_info->top_err_desc[i].bitmask & irq_status) {
+			CAM_ERR(CAM_SFE, "SFE[%u] %s occurred at [%llu: %09llu]",
+				top_priv->common_data.soc_info->index,
 				top_priv->hw_info->top_err_desc[i].err_name,
-				top_priv->hw_info->top_err_desc[i].desc);
+				payload->ts.mono_time.tv_sec,
+				payload->ts.mono_time.tv_nsec);
+			CAM_ERR(CAM_SFE, "%s", top_priv->hw_info->top_err_desc[i].desc);
+			if (top_priv->hw_info->top_err_desc[i].debug)
+				CAM_ERR(CAM_SFE, "Debug: %s",
+					top_priv->hw_info->top_err_desc[i].debug);
 		}
 	}
 
@@ -1844,14 +1847,12 @@ static int cam_sfe_top_handle_err_irq_bottom_half(
 	evt_info.res_type = CAM_ISP_RESOURCE_SFE_IN;
 	evt_info.reg_val = 0;
 
-	if (irq_status[0] &
-		top_priv->common_data.common_reg_data->error_irq_mask) {
+	if (irq_status[0] & top_priv->common_data.common_reg_data->error_irq_mask) {
 		struct cam_isp_hw_error_event_info err_evt_info;
 
 		viol_sts = payload->violation_status;
-		CAM_INFO(CAM_SFE, "Violation status 0x%x",
-			viol_sts);
-		cam_sfe_top_print_top_irq_error(top_priv,
+		CAM_INFO(CAM_SFE, "Violation status 0x%x", viol_sts);
+		cam_sfe_top_print_top_irq_error(top_priv, payload,
 			irq_status[0], viol_sts);
 		err_evt_info.err_type = CAM_SFE_IRQ_STATUS_VIOLATION;
 		evt_info.event_data = (void *)&err_evt_info;

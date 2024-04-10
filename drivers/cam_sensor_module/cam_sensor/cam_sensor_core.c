@@ -194,7 +194,7 @@ static int cam_sensor_handle_res_info(struct cam_sensor_res_info *res_info,
 
 	/* If request id is 0, it will be during an initial config/acquire */
 	CAM_INFO(CAM_SENSOR,
-		"Sensor[%s-%d] Feature: 0x%x updated for request id: %lu, res index: %u, width: 0x%x, height: 0x%x, capability: %s, fps: %u",
+		"Sensor[%s-%d] Feature: 0x%x updated for request id: %lu, res index: %u, width: %d, height: %d, capability: %s, fps: %u",
 		s_ctrl->sensor_name, s_ctrl->soc_info.index,
 		s_ctrl->sensor_res[idx].feature_mask,
 		s_ctrl->sensor_res[idx].request_id, s_ctrl->sensor_res[idx].res_index,
