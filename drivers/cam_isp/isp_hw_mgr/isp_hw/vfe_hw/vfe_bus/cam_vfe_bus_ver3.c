@@ -1308,8 +1308,6 @@ static int cam_vfe_bus_ver3_start_wm_util(
 	ubwc_regs = (struct cam_vfe_bus_ver3_reg_offset_ubwc_client *)
 		rsrc_data->hw_regs->ubwc_regs;
 
-	cam_io_w((rsrc_data->cfg.height << 16) | rsrc_data->cfg.width,
-		common_data->mem_base + rsrc_data->hw_regs->image_cfg_0);
 	cam_io_w(rsrc_data->cfg.pack_fmt,
 		common_data->mem_base + rsrc_data->hw_regs->packer_cfg);
 
