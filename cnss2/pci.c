@@ -47,6 +47,7 @@
 #define PEACH_PATH_PREFIX		"peach/"
 #define DEFAULT_PHY_M3_FILE_NAME	"m3.bin"
 #define DEFAULT_AUX_FILE_NAME		"aux_ucode.elf"
+#define AUX_V2_FILE_NAME		"aux_ucode20.elf"
 #define DEFAULT_PHY_UCODE_FILE_NAME	"phy_ucode.elf"
 #define TME_PATCH_FILE_NAME_1_0		"tmel_peach_10.elf"
 #define TME_PATCH_FILE_NAME_2_0		"tmel_peach_20.elf"
@@ -5327,13 +5328,17 @@ int cnss_pci_load_aux(struct cnss_pci_data *pci_priv)
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
 	struct cnss_fw_mem *aux_mem = &plat_priv->aux_mem;
 	char filename[MAX_FIRMWARE_NAME_LEN];
-	char *aux_filename = DEFAULT_AUX_FILE_NAME;
 	const struct firmware *fw_entry;
 	int ret = 0;
 
 	if (!aux_mem->va && !aux_mem->size) {
-		cnss_pci_add_fw_prefix_name(pci_priv, filename,
-					    aux_filename);
+		if (plat_priv->device_version.major_version == FW_V2_NUMBER) {
+			cnss_pci_add_fw_prefix_name(pci_priv, filename,
+						    AUX_V2_FILE_NAME);
+		} else {
+			cnss_pci_add_fw_prefix_name(pci_priv, filename,
+						    DEFAULT_AUX_FILE_NAME);
+		}
 
 		ret = firmware_request_nowarn(&fw_entry, filename,
 					      &pci_priv->pci_dev->dev);
