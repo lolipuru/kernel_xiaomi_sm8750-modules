@@ -173,7 +173,7 @@ struct hw_fence_client_type_desc hw_fence_client_types[HW_FENCE_MAX_CLIENT_TYPE]
 		true, false},
 };
 
-static void _lock_vm(uint64_t *wait)
+static void _lock(uint64_t *wait)
 {
 #if defined(__aarch64__)
 	__asm__(
@@ -232,25 +232,6 @@ static void _unlock_vm(struct hw_fence_driver_data *drv_data, uint64_t *lock)
 	}
 }
 
-static void _lock_soccp(uint64_t *wait)
-{
-	/* Wait (without WFE) */
-#if defined(__aarch64__)
-	__asm__("SEVL\n\t"
-		"PRFM PSTL1KEEP, [%x[i_lock]]\n\t"
-		"1:\n\t"
-		"LDAXR W5, [%x[i_lock]]\n\t"
-		"CBNZ W5, 1b\n\t"
-		"STXR W5, W0, [%x[i_lock]]\n\t"
-		"CBNZ W5, 1b\n"
-		:
-		: [i_lock] "r" (wait)
-		: "memory");
-#elif
-	HWFNC_ERR("cannot lock\n");
-#endif
-}
-
 static void _unlock_soccp(uint64_t *lock)
 {
 	/* Signal Client */
@@ -269,10 +250,7 @@ void global_atomic_store(struct hw_fence_driver_data *drv_data, uint64_t *lock, 
 {
 	if (val) {
 		preempt_disable();
-		if (drv_data->has_soccp)
-			_lock_soccp(lock);
-		else
-			_lock_vm(lock);
+		_lock(lock);
 	} else {
 		if (drv_data->has_soccp)
 			_unlock_soccp(lock);
