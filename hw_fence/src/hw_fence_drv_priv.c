@@ -16,6 +16,7 @@
 #include <synx_interop.h>
 #else
 #define SYNX_HW_FENCE_HANDLE_FLAG 0
+#define SYNX_STATE_SIGNALED_CANCEL 4
 #endif /* CONFIG_QTI_HW_FENCE_USE_SYNX */
 
 /* Global atomic lock */
@@ -1023,6 +1024,7 @@ static void _cleanup_hw_fence(struct msm_hw_fence *hw_fence)
 	hw_fence->refcount = 0;
 	hw_fence->parents_cnt = 0;
 	hw_fence->pending_child_cnt = 0;
+	hw_fence->h_synx = 0;
 
 	for (i = 0; i < MSM_HW_FENCE_MAX_JOIN_PARENTS; i++)
 		hw_fence->parent_list[i] = HW_FENCE_INVALID_PARENT_FENCE;
@@ -1500,11 +1502,12 @@ struct dma_fence *hw_fence_dma_fence_find(struct hw_fence_driver_data *drv_data,
 	return fence;
 }
 
-static int hw_fence_dma_fence_table_del(struct hw_fence_driver_data *drv_data, u64 hash)
+static int hw_fence_dma_fence_table_del(struct hw_fence_driver_data *drv_data, u64 hash,
+	u64 flags, u32 error)
 {
 	struct hw_dma_fence *hw_dma_fence;
 	struct dma_fence *fence;
-	unsigned long flags;
+	unsigned long lock_flags;
 	int ret = 0;
 
 	fence = hw_fence_dma_fence_find(drv_data, hash, false);
@@ -1517,19 +1520,30 @@ static int hw_fence_dma_fence_table_del(struct hw_fence_driver_data *drv_data, u
 		fence->context, fence->seqno, hw_dma_fence->dma_fence_key,
 		kref_read(&fence->refcount));
 
-	spin_lock_irqsave(&drv_data->dma_fence_table_lock, flags);
+	spin_lock_irqsave(&drv_data->dma_fence_table_lock, lock_flags);
 	/* remove dma-fence from the internal hash table */
 	if (hash_hashed(&hw_dma_fence->node))
 		hash_del(&hw_dma_fence->node);
 	else
 		ret = -EINVAL;
-	spin_unlock_irqrestore(&drv_data->dma_fence_table_lock, flags);
+	spin_unlock_irqrestore(&drv_data->dma_fence_table_lock, lock_flags);
 
 	if (ret)
 		HWFNC_ERR("internally owned dma-fence is not in table ctx:%llu seqno:%llu key:%u\n",
 			fence->context, fence->seqno, hw_dma_fence->dma_fence_key);
 
+	/* avoid signaling hw-fence when releasing hlos ref */
 	dma_fence_remove_callback(fence, &hw_dma_fence->signal_cb.fence_cb);
+
+	spin_lock_irqsave(fence->lock, lock_flags);
+	if (!dma_fence_is_signaled(fence)) {
+		if (!(flags & MSM_HW_FENCE_FLAG_SIGNAL))
+			error = SYNX_STATE_SIGNALED_CANCEL;
+		if (error)
+			dma_fence_set_error(fence, -error);
+		dma_fence_signal_locked(fence);
+	}
+	spin_unlock_irqrestore(fence->lock, lock_flags);
 	dma_fence_put(fence);
 
 	return ret;
@@ -1590,6 +1604,8 @@ static int hw_fence_put_and_unlock(struct hw_fence_driver_data *drv_data, u32 cl
 {
 	bool release_dma = false;
 	int ret = 0;
+	u64 flags;
+	u32 error;
 
 	if (hw_fence->refcount & HW_FENCE_HLOS_REFCOUNT_MASK) {
 		hw_fence->refcount--;
@@ -1602,6 +1618,8 @@ static int hw_fence_put_and_unlock(struct hw_fence_driver_data *drv_data, u32 cl
 			!(hw_fence->refcount & HW_FENCE_HLOS_REFCOUNT_MASK)) {
 		hw_fence->flags &= ~MSM_HW_FENCE_FLAG_INTERNAL_OWNED;
 		release_dma = true;
+		flags = hw_fence->flags;
+		error = hw_fence->error;
 	}
 
 	if (!hw_fence->refcount) {
@@ -1621,7 +1639,7 @@ end:
 	}
 
 	if (release_dma) {
-		ret = hw_fence_dma_fence_table_del(drv_data, hash);
+		ret = hw_fence_dma_fence_table_del(drv_data, hash, flags, error);
 		if (ret)
 			HWFNC_ERR("Failed to delete internal dma-fence for hw-fence hash:%llu\n",
 				hash);
