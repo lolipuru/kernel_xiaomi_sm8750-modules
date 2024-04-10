@@ -2763,8 +2763,8 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 	}
 	mutex_unlock(&swrm->devlock);
 
-	pm_runtime_get_sync(swrm->dev);
 	mutex_lock(&enumeration_lock);
+	pm_runtime_get_sync(swrm->dev);
 	for (i = 1; i < (num_dev + 1); i++) {
 		id = ((u64)(swr_master_read(swrm,
 			    SWRM_ENUMERATOR_SLAVE_DEV_ID_2(i))) << 32);
@@ -2804,10 +2804,11 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 		dev_err(swrm->dev,
 				"%s: device 0x%llx is not ready\n",
 				__func__, dev_id);
-	mutex_unlock(&enumeration_lock);
 
 	pm_runtime_mark_last_busy(swrm->dev);
 	pm_runtime_put_autosuspend(swrm->dev);
+	mutex_unlock(&enumeration_lock);
+
 	return ret;
 }
 
