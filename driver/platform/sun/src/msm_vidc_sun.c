@@ -232,6 +232,10 @@ static struct transfer_char_info transfer_char_data_sun[] = {
 		.v4l2_transfer_char  = V4L2_XFER_FUNC_VIDC_HLG,
 		.vidc_transfer_char  = MSM_VIDC_TRANSFER_BT2100_2_HLG,
 	},
+	{
+		.v4l2_transfer_char  = V4L2_XFER_FUNC_VIDC_CUSTLOG,
+		.vidc_transfer_char  = MSM_VIDC_TRANSFER_CUSTLOG,
+	},
 };
 
 static struct matrix_coeff_info matrix_coeff_data_sun[] = {
