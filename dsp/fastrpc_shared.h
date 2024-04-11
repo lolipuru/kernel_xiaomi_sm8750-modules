@@ -130,8 +130,10 @@
  * Num of pages shared with process spawn call.
  *     Page 1 : init-mem buf
  *     Page 2 : proc attrs debug buf
+ *     Page 3 : rootheap buf
  */
 #define NUM_PAGES_WITH_SHARED_BUF 2
+#define NUM_PAGES_WITH_ROOTHEAP_BUF 3
 
 #define miscdev_to_fdevice(d) container_of(d, struct fastrpc_device_node, miscdev)
 
@@ -250,6 +252,7 @@
 enum fastrpc_internal_attributes {
 	/* DMA handle reverse RPC support */
 	DMA_HANDLE_REVERSE_RPC_CAP = 129,
+	ROOTPD_RPC_HEAP_SUPPORT = 132,
 };
 
 enum fastrpc_remote_domains_id {
@@ -501,6 +504,13 @@ struct fastrpc_static_pd {
 	struct fastrpc_channel_ctx *cctx;
 };
 
+struct heap_bufs {
+	/* List of bufs */
+	struct list_head list;
+	/* Number of bufs */
+	unsigned int num;
+};
+
 struct fastrpc_channel_ctx {
 	int domain_id;
 	int sesscount;
@@ -545,6 +555,8 @@ struct fastrpc_channel_ctx {
 	bool pd_type;
 	/* Set teardown flag when remoteproc is shutting down */
 	atomic_t teardown;
+	/* Buffers donated to grow rootheap on DSP */
+	struct heap_bufs rootheap_bufs;
 };
 
 struct fastrpc_invoke_ctx {

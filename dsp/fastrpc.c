@@ -359,6 +359,42 @@ static void fastrpc_cached_buf_list_free(struct fastrpc_user *fl)
 	} while (free);
 }
 
+/*
+ * Free list of buffers donated for rootheap
+ * @arg1: channel context.
+ * @arg2: rootpd session context
+ *
+ * Returns void
+ */
+static void fastrpc_rootheap_buf_list_free(struct fastrpc_channel_ctx *cctx,
+	struct fastrpc_session_ctx *sess)
+{
+	struct fastrpc_buf *buf = NULL, *n = NULL, *free = NULL;
+	unsigned long flags = 0;
+
+	/* Return if no rootheap buffers were donated */
+	if (!cctx->rootheap_bufs.num)
+		return;
+
+	do {
+		free = NULL;
+		spin_lock_irqsave(&cctx->lock, flags);
+		list_for_each_entry_safe(buf, n, &cctx->rootheap_bufs.list, node) {
+			list_del(&buf->node);
+			cctx->rootheap_bufs.num--;
+			free = buf;
+			break;
+		}
+		spin_unlock_irqrestore(&cctx->lock, flags);
+
+		if (free) {
+			mutex_lock(&sess->map_mutex);
+			__fastrpc_buf_free(free);
+			mutex_unlock(&sess->map_mutex);
+		}
+	} while (free);
+}
+
 static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 			     struct fastrpc_session_ctx *sess, u32 domain_id,
 			     u64 size, struct fastrpc_buf **obuf, u32 buf_type)
@@ -2412,6 +2448,84 @@ err_name:
 	return err;
 }
 
+/*
+ * Find context bank / session with root PD type
+ * @arg1: channel context.
+ * @arg2: session context.
+ *
+ * The function searches for the session reserved for root pd from
+ * the list of available sessions in a channel.
+ *
+ * Returns 0 if there is a session reserved for root pd.
+ */
+static int fastrpc_get_root_session(struct fastrpc_channel_ctx *cctx,
+	struct fastrpc_session_ctx **sess)
+{
+	int i = 0, err = -ENOSR;
+	struct fastrpc_session_ctx *s = NULL;
+	unsigned long flags = 0;
+
+	spin_lock_irqsave(&cctx->lock, flags);
+	for (i = 0; i < cctx->sesscount; i++) {
+		s = &cctx->session[i];
+		if (s->valid && s->pd_type == ROOT_PD) {
+			*sess = s;
+			err = 0;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&cctx->lock, flags);
+	return err;
+}
+
+/*
+ * Allocate buffer for growing rootheap on DSP
+ * @arg1: channel context.
+ * @arg2: page array to be sent with process spawn msg
+ * @arg3: number of pages
+ *
+ * Returns 0 on success
+ */
+static int fastrpc_alloc_rootheap_buf(struct fastrpc_channel_ctx *cctx,
+	struct fastrpc_phy_page *pages, u32 *pageslen)
+{
+	struct fastrpc_buf *buf = NULL;
+	struct fastrpc_session_ctx *sess = NULL;
+	const unsigned int ROOTHEAP_BUF_SIZE = (1024 * 1024),
+			NUM_ROOTHEAP_BUFS = 3;
+	int err = 0;
+	unsigned long flags = 0;
+
+	/* Allocate buffer only if DSP supports growing of rootheap */
+	if (!cctx->dsp_attributes[ROOTPD_RPC_HEAP_SUPPORT] ||
+		cctx->rootheap_bufs.num >= NUM_ROOTHEAP_BUFS)
+		return err;
+
+	/* Get context bank / session reserved for rootPD */
+	err = fastrpc_get_root_session(cctx, &sess);
+	if (err)
+		goto bail;
+
+	err = __fastrpc_buf_alloc(NULL, sess->dev, sess, cctx->domain_id,
+			ROOTHEAP_BUF_SIZE, &buf, ROOTHEAP_BUF);
+	if (err)
+		goto bail;
+
+	/* Update paramaters of process-spawn with buffer info */
+	buf->phys += ((u64)sess->sid << 32);
+	*pageslen = NUM_PAGES_WITH_ROOTHEAP_BUF;
+	pages[NUM_PAGES_WITH_ROOTHEAP_BUF - 1].addr = buf->phys;
+	pages[NUM_PAGES_WITH_ROOTHEAP_BUF - 1].size = buf->size;
+
+	/* Add buf to channel's rootheap buf-list and increment count */
+	spin_lock_irqsave(&cctx->lock, flags);
+	list_add_tail(&buf->node, &cctx->rootheap_bufs.list);
+	cctx->rootheap_bufs.num++;
+	spin_unlock_irqrestore(&cctx->lock, flags);
+bail:
+	return err;
+}
+
 static int get_unique_hlos_process_id(struct fastrpc_channel_ctx *cctx)
 {
 	int tgid_frpc = -1;
@@ -2433,7 +2547,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	struct fastrpc_init_create init;
 	struct fastrpc_invoke_args args[FASTRPC_CREATE_PROCESS_NARGS] = {0};
 	struct fastrpc_enhanced_invoke ioctl;
-	struct fastrpc_phy_page pages[NUM_PAGES_WITH_SHARED_BUF] = {0};
+	struct fastrpc_phy_page pages[NUM_PAGES_WITH_ROOTHEAP_BUF] = {0};
 	struct fastrpc_map *map = NULL, *configmap = NULL;
 	struct fastrpc_buf *imem = NULL;
 	int memlen;
@@ -2502,6 +2616,9 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		pages[NUM_PAGES_WITH_SHARED_BUF - 1].addr = configmap->phys;
 		pages[NUM_PAGES_WITH_SHARED_BUF - 1].size = configmap->size;
 	}
+
+	/* Process spawn should not fail if unable to alloc rootheap buffer */
+	fastrpc_alloc_rootheap_buf(fl->cctx, pages, &inbuf.pageslen);
 
 	if (init.filelen && init.filefd) {
 		mutex_lock(&fl->map_mutex);
@@ -4879,6 +4996,9 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 	struct fastrpc_session_ctx *sess = dev_get_drvdata(&pdev->dev);
 	unsigned long flags;
 	int i;
+
+	if (sess->pd_type == ROOT_PD)
+		fastrpc_rootheap_buf_list_free(cctx, sess);
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++) {

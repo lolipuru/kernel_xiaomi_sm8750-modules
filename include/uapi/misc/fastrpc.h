@@ -74,6 +74,7 @@ enum fastrpc_proc_attr {
 	INITMEM_BUF,
 	USER_BUF,
 	REMOTEHEAP_BUF,
+	ROOTHEAP_BUF,
 };
 
 /* Fastrpc attribute for memory protection of buffers */
