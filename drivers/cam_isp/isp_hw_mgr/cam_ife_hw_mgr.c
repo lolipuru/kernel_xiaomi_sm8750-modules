@@ -8688,7 +8688,7 @@ static int cam_isp_blob_ubwc_update(
 
 		kmd_buf_info = blob_info->kmd_buf_info;
 		for (i = 0; i < ubwc_config->num_ports; i++) {
-			ubwc_plane_cfg = &ubwc_config->ubwc_plane_cfg[i][0];
+			ubwc_plane_cfg = &ubwc_config->ubwc_plane_cfg_array_flex[i][0];
 			res_id_out = ubwc_plane_cfg->port_type & 0xFF;
 
 			CAM_DBG(CAM_ISP, "UBWC config idx %d, port_type=%d ctx_idx: %u", i,
@@ -8869,7 +8869,7 @@ static int cam_isp_blob_ubwc_update_v2(
 
 	kmd_buf_info = blob_info->kmd_buf_info;
 	for (i = 0; i < ubwc_config->num_ports; i++) {
-		ubwc_plane_cfg = &ubwc_config->ubwc_plane_cfg[i][0];
+		ubwc_plane_cfg = &ubwc_config->ubwc_plane_cfg_array_flex[i][0];
 		res_id_out = ubwc_plane_cfg->port_type & 0xFF;
 
 		CAM_DBG(CAM_ISP, "UBWC config idx %d, port_type=%d ctx_idx: %u", i,
@@ -9051,7 +9051,7 @@ static int cam_isp_blob_ubwc_update_v3(
 
 	kmd_buf_info = blob_info->kmd_buf_info;
 	for (i = 0; i < ubwc_config->num_ports; i++) {
-		ubwc_plane_cfg = &ubwc_config->ubwc_plane_cfg[i][0];
+		ubwc_plane_cfg = &ubwc_config->ubwc_plane_cfg_array_flex[i][0];
 		res_id_out = ubwc_plane_cfg->port_type & 0xFF;
 
 		CAM_DBG(CAM_ISP, "UBWC config idx %d, port_type=%d ctx_idx: %u", i,
