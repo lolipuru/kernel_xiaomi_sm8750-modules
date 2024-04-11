@@ -2845,6 +2845,9 @@ static int fastrpc_dmabuf_alloc(struct fastrpc_user *fl, char __user *argp)
 	if (copy_from_user(&bp, argp, sizeof(bp)))
 		return -EFAULT;
 
+	if (!fl->sctx)
+		return -EINVAL;
+
 	err = fastrpc_buf_alloc(fl, fl->sctx->dev, bp.size, USER_BUF, &buf);
 	if (err)
 		return err;
