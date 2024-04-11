@@ -1395,23 +1395,33 @@ int cnss_wlfw_qdss_data_send_sync(struct cnss_plat_data *plat_priv, char *file_n
 	cnss_pr_dbg("%s\n", __func__);
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
-	if (!req)
+	if (!req) {
+		cnss_pr_err("%s: failed to allocate req mem: %zu\n",
+			    __func__, sizeof(*req));
 		return -ENOMEM;
+	}
 
 	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
 	if (!resp) {
+		cnss_pr_err("%s: failed to allocate resp mem: %zu\n",
+			    __func__, sizeof(*resp));
 		kfree(req);
 		return -ENOMEM;
 	}
 
 	p_qdss_trace_data = kzalloc(total_size, GFP_KERNEL);
 	if (!p_qdss_trace_data) {
+		cnss_pr_err("%s: failed to allocate qdss trace data: %zu\n",
+			    __func__, total_size);
 		ret = ENOMEM;
 		goto end;
 	}
 
 	remaining = total_size;
 	p_qdss_trace_data_temp = p_qdss_trace_data;
+
+	cnss_pr_dbg("qdss trace data of total size %u and response end at %u\n",
+		    remaining, resp->end);
 	while (remaining && resp->end == 0) {
 		ret = qmi_txn_init(&plat_priv->qmi_wlfw, &txn,
 				   wlfw_qdss_trace_data_resp_msg_v01_ei, resp);
@@ -1421,6 +1431,8 @@ int cnss_wlfw_qdss_data_send_sync(struct cnss_plat_data *plat_priv, char *file_n
 				    ret);
 			goto fail;
 		}
+
+		cnss_pr_dbg("sending qdss trace qmi data req\n");
 
 		ret = qmi_send_request
 			(&plat_priv->qmi_wlfw, NULL, &txn,
