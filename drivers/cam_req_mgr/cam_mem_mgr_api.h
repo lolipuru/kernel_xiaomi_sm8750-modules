@@ -65,7 +65,10 @@
  * @size   : size of the data object
  */
 #define CAM_MEM_ZFREE(addr, size) \
-	kvfree_sensitive(addr, size)
+	if (likely(!ZERO_OR_NULL_PTR(addr))) { \
+		memset((void *)addr, 0x0,  size); \
+		kvfree(addr); \
+	}
 
 /**
  * struct cam_mem_mgr_request_desc
