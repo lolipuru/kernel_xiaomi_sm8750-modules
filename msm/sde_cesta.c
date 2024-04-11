@@ -1043,13 +1043,17 @@ static int sde_cesta_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	cesta->fs = devm_regulator_get(&pdev->dev, "vdd");
-	if (IS_ERR_OR_NULL(cesta->fs)) {
-		SDE_DEBUG_CESTA("regulator get failed, ret:%d\n", ret);
-		cesta->fs = NULL;
-
+	if (pdev->dev.pm_domain) {
 		pm_runtime_enable(&pdev->dev);
 		cesta->pd_fs = &pdev->dev;
+		cesta->fs = NULL;
+	} else {
+		cesta->fs = devm_regulator_get(&pdev->dev, "vdd");
+		if (IS_ERR_OR_NULL(cesta->fs)) {
+			SDE_ERROR_CESTA("regulator get failed, ret:%d\n", ret);
+			cesta->fs = NULL;
+		}
+		cesta->pd_fs = NULL;
 	}
 
 	if (cesta->pd_fs)
