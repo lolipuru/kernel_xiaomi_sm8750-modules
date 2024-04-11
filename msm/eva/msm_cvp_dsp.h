@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef MSM_CVP_DSP_H
@@ -100,7 +100,8 @@ enum CVP_DSP_COMMAND {
 	DSP2CPU_MEM_FREE = 20,
 	DSP2CPU_START_SESSION = 21,
 	DSP2CPU_STOP_SESSION = 22,
-	CVP_DSP_MAX_CMD = 23,
+	DSP2CPU_SET_SESSION_NAME = 23,
+	CVP_DSP_MAX_CMD = 24,
 };
 
 struct eva_power_req {
@@ -195,6 +196,7 @@ struct cvp_dsp2cpu_cmd {
 	int32_t pid;
 	struct eva_power_req power_req;
 	struct eva_mem_remote sbuf;
+	char session_name[SESSION_NAME_MAX_LEN];
 
 	uint32_t data[CVP_DSP2CPU_RESERVED];
 };

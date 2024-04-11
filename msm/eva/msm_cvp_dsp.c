@@ -478,8 +478,10 @@ static int cvp_dsp_rpmsg_callback(struct rpmsg_device *rpdev,
 					me->pending_dsp2cpu_rsp.type);
 			goto exit;
 		}
-	} else if (rsp->type < CVP_DSP_MAX_CMD &&
-			len == sizeof(struct cvp_dsp2cpu_cmd)) {
+	} else if (rsp->type < CVP_DSP_MAX_CMD
+			/* Restore below size check after dsp change released */
+			/*  && len == sizeof(struct cvp_dsp2cpu_cmd) */
+			) {
 		if (me->pending_dsp2cpu_cmd.type != CVP_INVALID_RPMSG_TYPE) {
 			dprintk(CVP_ERR,
 				"%s: DSP2CPU cmd:%d pending %d %d expect %d\n",
@@ -2016,6 +2018,36 @@ void __dsp_cvp_sess_stop(struct cvp_dsp_cmd_msg *cmd)
 	dprintk(CVP_DSP, "%s session stoppd\n", __func__);
 }
 
+void __dsp_cvp_set_session_name(struct cvp_dsp_cmd_msg *cmd)
+{
+	struct cvp_dsp_apps *me = &gfa_cv;
+	struct msm_cvp_inst *inst;
+	struct cvp_dsp2cpu_cmd *dsp2cpu_cmd = &me->pending_dsp2cpu_cmd;
+	struct cvp_session_prop *session_prop;
+
+	cmd->ret = 0;
+
+	dprintk(CVP_DSP,
+		"%s sess id 0x%x, low 0x%x, high 0x%x, pid 0x%x\n",
+		__func__, dsp2cpu_cmd->session_id,
+		dsp2cpu_cmd->session_cpu_low,
+		dsp2cpu_cmd->session_cpu_high,
+		dsp2cpu_cmd->pid);
+
+	inst = (struct msm_cvp_inst *)get_inst_from_dsp(
+			dsp2cpu_cmd->session_cpu_high,
+			dsp2cpu_cmd->session_cpu_low);
+
+	if (!inst || !is_cvp_inst_valid(inst)) {
+		dprintk(CVP_ERR, "%s incorrect session ID %llx\n", __func__, inst);
+		cmd->ret = -1;
+		return;
+	}
+	session_prop = &inst->prop;
+	memcpy(session_prop->session_name, dsp2cpu_cmd->session_name, SESSION_NAME_MAX_LEN);
+
+}
+
 static int cvp_dsp_thread(void *data)
 {
 	int rc = 0, old_state;
@@ -2150,6 +2182,13 @@ wait_dsp:
 
 			break;
 		}
+		case DSP2CPU_SET_SESSION_NAME:
+		{
+			__dsp_cvp_set_session_name(&cmd);
+
+			break;
+		}
+
 		default:
 			dprintk(CVP_ERR, "unrecognaized dsp cmds: %d\n",
 					me->pending_dsp2cpu_cmd.type);
