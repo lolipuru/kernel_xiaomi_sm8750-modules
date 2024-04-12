@@ -21,7 +21,7 @@
 #define QMP_MAX_REGISTER 0x40900070
 #define MCLK_12P288MHZ 12288000
 #define MCLK_9P6MHZ 9600000
-
+#define MAX_INIT_REGS 32
 enum {
 	QMP_SDCA_NORMAL_PORT,
 	QMP_SDCA_LP_PORT,
@@ -93,6 +93,7 @@ struct qmp_sdca_dmic_priv {
 	unsigned long clk_freq;
 	int dai_status_mask;
 	u8 master_port_map_cached[QMP_MAX_DAIS];
+	u8 initialized;
 };
 
 static bool qmp_sdca_dmic_readable_register(struct device *dev, unsigned int reg)
@@ -297,6 +298,33 @@ static int dai_id_to_port_id(int dai_id)
 		return QMP_SDCA_NORMAL_PORT;
 }
 
+static int qmp_init(struct qmp_sdca_dmic_priv *qmp)
+{
+	u32 reg_values[MAX_INIT_REGS * 2];
+	int num_regs, rc, i;
+
+	if (qmp->initialized)
+		return 0;
+
+	rc = of_property_read_variable_u32_array(qmp->dev->of_node,
+			"reg-values", reg_values, 0, ARRAY_SIZE(reg_values));
+
+	if (rc == -EOVERFLOW) {
+		dev_err(qmp->dev, "num of DT entries exceed expected\n");
+		return -EINVAL;
+	}
+	if (rc < 0)
+		return -EINVAL;
+
+	num_regs = rc;
+
+	for (i = 0; i < num_regs; i += 2)
+		regmap_write(qmp->regmap, reg_values[i], reg_values[i + 1]);
+
+	qmp->initialized = 1;
+	return 0;
+}
+
 static int qmp_sdca_dmic_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
@@ -335,6 +363,11 @@ static int qmp_sdca_dmic_startup(struct snd_pcm_substream *substream,
 	qmp->swr_slave->dev_num = dev_num;
 	qmp->swr_slave->g_scp1_val = 0;
 	qmp->swr_slave->g_scp2_val = 0;
+
+	ret = qmp_init(qmp);
+	if (ret)
+		dev_err(qmp->dev, "failed to set qmp initialization blob\n");
+
 	swr_init_port_params(qmp->swr_slave, QMP_SDCA_DMIC_MAX_PORTS,
 			qmp->swr_tx_port_params);
 	 /* status mask indicate if this dai opened */
@@ -438,6 +471,7 @@ static void qmp_sdca_dmic_shutdown(struct snd_pcm_substream *substream,
 		qmp->swr_slave->clk_scale_initialized = 0;
 		dev_dbg(qmp->dev, "Set dev_num to 0\n");
 		qmp->master_port_map_cached[dai->id] = 0;
+		qmp->initialized = 0;
 	}
 }
 
