@@ -33,9 +33,6 @@
 #include <soc/qcom/secure_buffer.h>
 #include "fastrpc_shared.h"
 
-#define CREATE_TRACE_POINTS
-#include "fastrpc_trace.h"
-
 /* global copy of channel context */
 struct fastrpc_channel_ctx *gctx[FASTRPC_DEV_MAX];
 /* global lock  to access channel context */
@@ -73,7 +70,6 @@ void fastrpc_update_gctx(struct fastrpc_channel_ctx *cctx, int flag)
 
 static void dma_buf_unmap_attachment_wrap(struct fastrpc_map *map)
 {
-	trace_fastrpc_dma_unmap(map->fl->cctx->domain_id, map->phys, map->size);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0))
 	dma_buf_unmap_attachment_unlocked(map->attach, map->table,
 		DMA_BIDIRECTIONAL);
@@ -103,10 +99,7 @@ static int dma_buf_map_attachment_wrap(struct fastrpc_map *map)
 	}
 #endif
 	map->table = table;
-	trace_fastrpc_dma_map(map->fl->cctx->domain_id, map->fd, map->phys,
-		map->size, map->len, map->attach->dma_map_attrs, map->flags);
-
-	return 0;
+	return err;
 }
 
 static void fastrpc_free_map(struct kref *ref)
@@ -249,7 +242,6 @@ static bool fastrpc_get_persistent_buf(struct fastrpc_user *fl,
 
 static void __fastrpc_buf_free(struct fastrpc_buf *buf)
 {
-	trace_fastrpc_dma_free(buf->fl->cctx->domain_id, buf->phys, buf->size);
 	dma_free_coherent(buf->dev, buf->size, buf->virt,
 			  FASTRPC_PHYS(buf->phys));
 	kfree(buf);
@@ -384,8 +376,6 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 
 	*obuf = buf;
 
-	trace_fastrpc_dma_alloc(fl->cctx->domain_id, (uint64_t)buf->phys, buf->size,
-								(unsigned long)buf->type, 0);
 	return 0;
 }
 
@@ -468,9 +458,6 @@ static void fastrpc_context_free(struct kref *ref)
 	spin_lock_irqsave(&cctx->lock, flags);
 	idr_remove(&cctx->ctx_idr, ctx->ctxid >> 4);
 	spin_unlock_irqrestore(&cctx->lock, flags);
-
-	trace_fastrpc_context_free((uint64_t)ctx,
-		ctx->ctxid, ctx->pid, ctx->sc);
 
 	kfree(ctx->maps);
 	kfree(ctx->olaps);
@@ -644,8 +631,6 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 	ctx->ctxid = ret << 4;
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
-	trace_fastrpc_context_alloc((uint64_t)ctx,
-				ctx->ctxid, ctx->pid, ctx->sc);
 	kref_init(&ctx->refcount);
 
 	return ctx;
@@ -690,8 +675,6 @@ static struct fastrpc_invoke_ctx *fastrpc_context_restore_interrupted(
 static void fastrpc_context_save_interrupted(
 			struct fastrpc_invoke_ctx *ctx)
 {
-	trace_fastrpc_context_interrupt(ctx->cctx->domain_id, (uint64_t)ctx,
-					ctx->msg.ctx, ctx->msg.handle, ctx->msg.sc);
 	spin_lock(&ctx->fl->lock);
 	list_del(&ctx->node);
 	list_add_tail(&ctx->node, &ctx->fl->interrupted);
@@ -984,7 +967,6 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 	map->fl = fl;
 	map->fd = fd;
 	map->flags = mflags;
-	map->len = len;
 
 	if(mflags == ADSP_MMAP_DMA_BUFFER) {
 		if (!buf) {
@@ -1052,6 +1034,7 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 			sgl_index)
 			map->size += sg_dma_len(sgl);
 		map->va = (void *) (uintptr_t) va;
+		map->len = len;
 	} else if (attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP){
 
 		map->phys = sg_dma_address(map->table->sgl);
@@ -1065,6 +1048,7 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 			sgl_index)
 			map->size += sg_dma_len(sgl);
 		map->va = (void *) (uintptr_t) va;
+		map->len = len;
 	}
 	mutex_unlock(&fl->sctx->map_mutex);
 
@@ -1508,8 +1492,6 @@ static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 	// fastrpc_context_get(ctx);
 
 	ret = fastrpc_transport_send(cctx, (void *)msg, sizeof(*msg));
-	trace_fastrpc_transport_send(cctx->domain_id, (uint64_t)ctx, msg->ctx,
-			msg->handle, msg->sc, msg->addr, msg->size);
 
 	// if (ret)
 		// fastrpc_context_put(ctx);
@@ -1606,7 +1588,6 @@ static void fastrpc_wait_for_completion(struct fastrpc_invoke_ctx *ctx,
 			break;
 		/* busy poll on memory for actual job done */
 		case EARLY_RESPONSE:
-			trace_fastrpc_msg("early_response: poll_begin");
 			err = poll_for_remote_response(ctx, FASTRPC_POLL_TIME);
 			/* Mark job done if poll on memory successful */
 			/* Wait for completion if poll on memory timeout */
@@ -1614,7 +1595,6 @@ static void fastrpc_wait_for_completion(struct fastrpc_invoke_ctx *ctx,
 				ctx->is_work_done = true;
 				return;
 			}
-			trace_fastrpc_msg("early_response: poll_timeout");
 			if (!ctx->is_work_done) {
 				*ptr_interrupted = fastrpc_wait_for_response(ctx, kernel);
 				if (*ptr_interrupted || ctx->is_work_done)
@@ -1628,16 +1608,13 @@ static void fastrpc_wait_for_completion(struct fastrpc_invoke_ctx *ctx,
 				return;
 			break;
 		case POLL_MODE:
-			trace_fastrpc_msg("poll_mode: begin");
 			err = poll_for_remote_response(ctx, ctx->fl->poll_timeout);
 
 			/* If polling timed out, move to normal response state */
-			if (err) {
-				trace_fastrpc_msg("poll_mode: timeout");
+			if (err)
 				ctx->rsp_flags = NORMAL_RESPONSE;
-			} else {
+			else
 				*ptr_interrupted = 0;
-			}
 			break;
 		default:
 			*ptr_interrupted = -EBADR;
@@ -1693,16 +1670,11 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 		ctx = fastrpc_context_restore_interrupted(fl, inv);
 		if (IS_ERR(ctx))
 			return PTR_ERR(ctx);
-		if (ctx) {
-			trace_fastrpc_context_restore(ctx->cctx->domain_id, (uint64_t)ctx,
-					ctx->msg.ctx, ctx->msg.handle, ctx->msg.sc);
+		if (ctx)
 			goto wait;
-		}
 	}
 
-	trace_fastrpc_msg("context_alloc: begin");
 	ctx = fastrpc_context_alloc(fl, kernel, sc, invoke);
-	trace_fastrpc_msg("context_alloc: end");
 	if (IS_ERR(ctx))
 		return PTR_ERR(ctx);
 
@@ -1713,7 +1685,7 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 	if (err)
 		goto bail;
 	PERF_END);
-	trace_fastrpc_msg("get_args: end");
+
 	/* make sure that all CPU memory writes are seen by DSP */
 	dma_wmb();
 	/* Send invoke buffer to remote dsp */
@@ -1722,14 +1694,13 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 	if (err)
 		goto bail;
 	PERF_END);
-	trace_fastrpc_msg("invoke_send: end");
+
 wait:
 	fastrpc_wait_for_completion(ctx, &interrupted, kernel);
 	if (interrupted != 0) {
 		err = interrupted;
 		goto bail;
 	}
-	trace_fastrpc_msg("wait_for_completion: end");
 	if (!ctx->is_work_done) {
 		err = -ETIMEDOUT;
 		dev_err(fl->sctx->dev, "Error: Invalid workdone state for handle 0x%x, sc 0x%x\n",
@@ -1745,7 +1716,7 @@ wait:
 	if (err)
 		goto bail;
 	PERF_END);
-	trace_fastrpc_msg("put_args: end");
+
 	/* Check the response from remote dsp */
 	err = ctx->retval;
 	if (err)
@@ -1757,22 +1728,15 @@ bail:
 	} else if (ctx) {
 		if (fl->profile && !interrupted)
 			fastrpc_update_invoke_count(handle, perf_counter, &invoket);
-		if (fl->profile && ctx->perf && handle > FASTRPC_RMID_INIT_MAX) {
-			trace_fastrpc_perf_counters(handle, ctx->sc,
-			ctx->perf->count, ctx->perf->flush, ctx->perf->map,
-			ctx->perf->copy, ctx->perf->link, ctx->perf->getargs,
-			ctx->perf->putargs, ctx->perf->invargs,
-			ctx->perf->invoke, ctx->perf->tid);
-			if (fl->profile && ctx->perf && ctx->perf_kernel)
-				if (0 != (perferr = copy_to_user((void __user *)ctx->perf_kernel, ctx->perf, FASTRPC_KERNEL_PERF_LIST * sizeof(u64)))) {
-					pr_warn("failed to copy perf data err 0x%x\n", perferr);
-				}
+		if (fl->profile && ctx->perf && ctx->perf_kernel) {
+			if (0 != (perferr = copy_to_user((void __user *)ctx->perf_kernel, ctx->perf, FASTRPC_KERNEL_PERF_LIST * sizeof(u64)))) {
+				pr_warn("failed to copy perf data err 0x%x\n", perferr);
+			}
 		}
 		spin_lock(&fl->lock);
 		list_del(&ctx->node);
 		spin_unlock(&fl->lock);
 		fastrpc_context_put(ctx);
-		trace_fastrpc_msg("context_free: end");
 	}
 
 	if (err)
@@ -3246,7 +3210,6 @@ static int fastrpc_dspsignal_signal(struct fastrpc_user *fl,
 
 	msg = (((uint64_t)fl->tgid_frpc) << 32) | ((uint64_t)fsig->signal_id);
 	err = fastrpc_transport_send(cctx, (void *)&msg, sizeof(msg));
-	trace_fastrpc_dspsignal("signal", signal_id, 0, 0);
 
 	return err;
 }
@@ -3288,12 +3251,11 @@ int fastrpc_dspsignal_wait(struct fastrpc_user *fl,
 		return err;
 	}
 	spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
-	trace_fastrpc_dspsignal("wait", signal_id, s->state, fsig->timeout_usec);
+
 	if (timeout != 0xffffffff)
 		ret = wait_for_completion_interruptible_timeout(&s->comp, timeout);
 	else
 		ret = wait_for_completion_interruptible(&s->comp);
-	trace_fastrpc_dspsignal("wakeup", signal_id, s->state, fsig->timeout_usec);
 
 	if (ret == 0) {
 		dev_dbg(fl->cctx->dev, "Wait for signal %u timed out\n", signal_id);
@@ -3431,7 +3393,6 @@ static int fastrpc_dspsignal_cancel_wait(struct fastrpc_user *fl,
 
 	if (s->state != DSPSIGNAL_STATE_CANCELED) {
 		s->state = DSPSIGNAL_STATE_CANCELED;
-		trace_fastrpc_dspsignal("cancel", signal_id, s->state, 0);
 		complete_all(&s->comp);
 	}
 
@@ -4077,9 +4038,7 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int cmd,
 	fastrpc_channel_ctx_get(fl->cctx);
 	switch (cmd) {
 	case FASTRPC_IOCTL_INVOKE:
-		trace_fastrpc_msg("invoke: begin");
 		err = fastrpc_invoke(fl, argp);
-		trace_fastrpc_msg("invoke: end");
 		break;
 	case FASTRPC_IOCTL_MULTIMODE_INVOKE:
 		err = fastrpc_multimode_invoke(fl, argp);
@@ -4639,15 +4598,11 @@ void fastrpc_notify_users(struct fastrpc_user *user)
 	list_for_each_entry(ctx, &user->pending, node) {
 		ctx->retval = -EPIPE;
 		ctx->is_work_done = true;
-		trace_fastrpc_context_complete(ctx->fl->cctx->domain_id, (uint64_t)ctx,
-			ctx->retval, ctx->pid, ctx->pid, ctx->sc);
 		complete(&ctx->work);
 	}
 	list_for_each_entry(ctx, &user->interrupted, node) {
 		ctx->retval = -EPIPE;
 		ctx->is_work_done = true;
-		trace_fastrpc_context_complete(ctx->fl->cctx->domain_id, (uint64_t)ctx,
-			ctx->retval, ctx->pid, ctx->pid, ctx->sc);
 		complete(&ctx->work);
 	}
 	spin_unlock(&user->lock);
@@ -5033,16 +4988,12 @@ static void fastrpc_notify_user_ctx(struct fastrpc_invoke_ctx *ctx, int retval,
 {
 	ctx->retval = retval;
 	ctx->rsp_flags = (enum fastrpc_response_flags)rsp_flags;
-	trace_fastrpc_context_complete(ctx->cctx->domain_id, (uint64_t)ctx,
-			retval, ctx->ctxid, ctx->pid, ctx->sc);
 	switch (rsp_flags) {
 	case NORMAL_RESPONSE:
 	case COMPLETE_SIGNAL:
 		/* normal and complete response with return value */
 		ctx->is_work_done = true;
-		trace_fastrpc_msg("wakeup_task: begin");
 		complete(&ctx->work);
-		trace_fastrpc_msg("wakeup_task: end");
 		break;
 	case USER_EARLY_SIGNAL:
 		/* user hint of approximate time of completion */
@@ -5050,9 +5001,7 @@ static void fastrpc_notify_user_ctx(struct fastrpc_invoke_ctx *ctx, int retval,
 		break;
 	case EARLY_RESPONSE:
 		/* rpc framework early response with return value */
-		trace_fastrpc_msg("wakeup_task: begin");
 		complete(&ctx->work);
-		trace_fastrpc_msg("wakeup_task: end");
 		break;
 	default:
 		break;
@@ -5082,7 +5031,6 @@ static void fastrpc_handle_signal_rpmsg(uint64_t msg, struct fastrpc_channel_ctx
 			&group[signal_id %FASTRPC_DSPSIGNAL_GROUP_SIZE];
 		if ((sig->state == DSPSIGNAL_STATE_PENDING) ||
 			(sig->state == DSPSIGNAL_STATE_SIGNALED)) {
-			trace_fastrpc_dspsignal("complete", signal_id, sig->state, 0);
 			complete(&sig->comp);
 			sig->state = DSPSIGNAL_STATE_SIGNALED;
 		} else if (sig->state == DSPSIGNAL_STATE_UNUSED) {
@@ -5108,7 +5056,6 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 	u32 early_wake_time = 0;
 
 	if (len == sizeof(uint64_t)) {
-		trace_fastrpc_transport_response(cctx->domain_id, *((uint64_t *)data), 0, 0, 0);
 		fastrpc_handle_signal_rpmsg(*((uint64_t *)data), cctx);
 		return 0;
 	}
@@ -5134,9 +5081,6 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 		}
 	}
 	ctxid = ((rsp->ctx & FASTRPC_CTXID_MASK) >> 4);
-
-	trace_fastrpc_transport_response(cctx->domain_id, rsp->ctx,
-			rsp->retval, rsp_flags, early_wake_time);
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	ctx = idr_find(&cctx->ctx_idr, ctxid);
