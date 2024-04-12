@@ -417,7 +417,6 @@ struct fastrpc_buf {
 	struct list_head node; /* list of user requested mmaps */
 	uintptr_t raddr;
 	bool in_use;
-	u32 domain_id;
 };
 
 struct fastrpc_dma_buf_attachment {
