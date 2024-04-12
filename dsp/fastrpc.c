@@ -1747,6 +1747,13 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 		dev_warn_ratelimited(fl->sctx->dev, "user app trying to send a kernel RPC message (%d)\n",  handle);
 		return -EPERM;
 	}
+
+	// For static PDs, validate and throw failure on PDR
+	if (fl->spd && fl->spd->pdrcount != fl->spd->prevpdrcount) {
+		err = -EPIPE;
+		return err;
+	}
+
 	if (!kernel) {
 		ctx = fastrpc_context_restore_interrupted(fl, inv);
 		if (IS_ERR(ctx))
@@ -2051,9 +2058,13 @@ int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx)
 	return 0;
 }
 
-static int fastrpc_mmap_remove_pdr(struct fastrpc_user *fl)
+/*
+ * Function to get static PD for process trying to attach,
+ * by comparing service locator
+ */
+static int fastrpc_get_static_pd_session(struct fastrpc_user *fl, u32 *session)
 {
-	int i, err = 0, session = -1;
+	int i, err = 0;
 
 	if (!fl)
 		return -EBADF;
@@ -2062,7 +2073,7 @@ static int fastrpc_mmap_remove_pdr(struct fastrpc_user *fl)
 		if (!fl->cctx->spd[i].servloc_name)
 			continue;
 		if (!strcmp(fl->servloc_name, fl->cctx->spd[i].servloc_name)) {
-			session = i;
+			*session = i;
 			break;
 		}
 	}
@@ -2070,24 +2081,75 @@ static int fastrpc_mmap_remove_pdr(struct fastrpc_user *fl)
 	if (i >= FASTRPC_MAX_SPD)
 		return -EUSERS;
 
-	if (atomic_read(&fl->cctx->spd[session].ispdup) == 0)
+	if (atomic_read(&fl->cctx->spd[i].ispdup) == 0)
 		return -ENOTCONN;
 
+	return err;
+}
+
+/* Function to check if static PD is up on remote subsystem */
+static int fastrpc_check_static_pd_status(struct fastrpc_user *fl, u32 session)
+{
+	if (atomic_read(&fl->cctx->spd[session].ispdup) == 0)
+		return -ENOTCONN;
+	return 0;
+}
+
+/*
+ * Function to get static PD to attach to and check its status.
+ * Only one application can attach to Audio & OIS PD.
+ */
+static int fastrpc_init_static_pd_status(struct fastrpc_user *fl)
+{
+	int err = 0;
+	u32 session = 0;
+
+	if (!fl)
+		return -EBADF;
+
+	err = fastrpc_get_static_pd_session(fl, &session);
+	if (err)
+		return err;
+
+	err = fastrpc_check_static_pd_status(fl, session);
+	if (err)
+		return err;
+
+	// Allow only one application to connect to audio & OIS PD
 	if (atomic_add_unless(&fl->cctx->spd[session].is_attached, 1, 1)) {
 		fl->spd = &fl->cctx->spd[session];
 	} else {
 		dev_err(fl->cctx->dev,"Application already attached to audio PD\n");
 		return -ECONNREFUSED;
 	}
-	if (fl->spd->pdrcount !=
-		fl->spd->prevpdrcount) {
-		err = fastrpc_mmap_remove_ssr(fl->cctx);
-		if (err)
-			pr_warn("failed to unmap remote heap (err %d)\n",
-					err);
-		fl->spd->prevpdrcount =
-				fl->spd->pdrcount;
-	}
+
+	return err;
+}
+
+/*
+ * Function to get static PD to attach to and check its status.
+ * Multiple applications can attach to sensors PD
+ */
+static int fastrpc_init_sensor_static_pd_status(struct fastrpc_user *fl)
+{
+	int err = 0;
+	u32 session = 0;
+
+	if (!fl)
+		return -EBADF;
+
+	err = fastrpc_get_static_pd_session(fl, &session);
+	if (err)
+		return err;
+
+	err = fastrpc_check_static_pd_status(fl, session);
+	if (err)
+		return err;
+
+	fl->spd = &fl->cctx->spd[session];
+
+	// Update PDR count, to check for any PDR.
+	fl->spd->prevpdrcount = fl->spd->pdrcount;
 
 	return err;
 }
@@ -2304,7 +2366,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	char *name;
 	int err;
 	bool scm_done = false;
-	bool is_oispd = false;
+	bool is_oispd = false, is_audiopd = false;
 	unsigned long flags;
 	struct {
 		int pgid;
@@ -2340,15 +2402,9 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	}
 
 	is_oispd = !strcmp(name, "oispd");
-	if (!strcmp(name, "audiopd")) {
+	is_audiopd = !strcmp(name, "audiopd");
+	if (is_audiopd) {
 		fl->servloc_name = AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME;
-		/*
-		 * Remove any previous mappings in case process is trying
-		 * to reconnect after a PD restart on remote subsystem.
-		 */
-		err = fastrpc_mmap_remove_pdr(fl);
-		if (err)
-			goto err_name;
 	} else if (is_oispd) {
 		fl->servloc_name = OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME;
 	} else {
@@ -2357,6 +2413,23 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		goto err_name;
 	}
 
+	err = fastrpc_init_static_pd_status(fl);
+	if (err)
+		goto err_name;
+	if (is_audiopd && fl->spd->pdrcount != fl->spd->prevpdrcount) {
+		/*
+		 * Remove any previous mappings in case process is trying
+		 * to reconnect after a PD restart on remote subsystem.
+		 */
+		err = fastrpc_mmap_remove_ssr(fl->cctx);
+		if (err)
+			pr_warn("%s: %s: failed to unmap remote heap (err %d)\n",
+				current->comm, __func__, err);
+	}
+	// Update PDR count, to check for any PDR.
+	fl->spd->prevpdrcount =	fl->spd->pdrcount;
+
+	// Remote heap feature is available only for audio static PD
 	if (!fl->cctx->staticpd_status && !is_oispd) {
 		err = fastrpc_remote_heap_alloc(fl, fl->sctx->dev, init.memlen, REMOTEHEAP_BUF, &buf);
 		if (err)
@@ -3046,16 +3119,22 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 		dev_err(fl->cctx->dev, "No session available\n");
 		return -EBUSY;
 	}
-	args[0].ptr = (u64)(uintptr_t) &tgid;
-	args[0].length = sizeof(tgid);
-	args[0].fd = -1;
-	fl->pd = pd;
+
 	if (pd == SENSORS_STATICPD) {
 		if (fl->cctx->domain_id == ADSP_DOMAIN_ID)
 			fl->servloc_name = SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME;
 		else if (fl->cctx->domain_id == SDSP_DOMAIN_ID)
 			fl->servloc_name = SENSORS_PDR_SLPI_SERVICE_LOCATION_CLIENT_NAME;
+
+		err = fastrpc_init_sensor_static_pd_status(fl);
+		if (err)
+			return err;
 	}
+
+	args[0].ptr = (u64)(uintptr_t) &tgid;
+	args[0].length = sizeof(tgid);
+	args[0].fd = -1;
+	fl->pd = pd;
 
 	ioctl.inv.handle = FASTRPC_INIT_HANDLE;
 	ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_ATTACH, 1, 0);
