@@ -88,6 +88,7 @@ typedef enum {
 #define WRAPPER_DEBUG_BRIDGE_LPI_STATUS_IRIS35        (WRAPPER_BASE_OFFS_IRIS35 + 0x58)
 #define WRAPPER_IRIS_CPU_NOC_LPI_CONTROL              (WRAPPER_BASE_OFFS_IRIS35 + 0x5C)
 #define WRAPPER_IRIS_CPU_NOC_LPI_STATUS               (WRAPPER_BASE_OFFS_IRIS35 + 0x60)
+#define WRAPPER_IRIS_VCODEC_VPU_WRAPPER_SPARE_0       (WRAPPER_BASE_OFFS_IRIS35 + 0x78)
 #define WRAPPER_CORE_POWER_STATUS                     (WRAPPER_BASE_OFFS_IRIS35 + 0x80)
 #define WRAPPER_CORE_POWER_CONTROL                    (WRAPPER_BASE_OFFS_IRIS35 + 0x84)
 #define WRAPPER_CORE_CLOCK_CONFIG_IRIS35              (WRAPPER_BASE_OFFS_IRIS35 + 0x88)
@@ -239,8 +240,11 @@ static int __get_device_region_info(struct msm_vidc_core *core,
 static int __program_bootup_registers_iris35(struct msm_vidc_core *core)
 {
 	u32 min_dev_reg_addr = 0, dev_reg_size = 0;
+	struct device *dev = NULL;
 	u32 value;
 	int rc = 0;
+
+	dev = &core->pdev->dev;
 
 	value = (u32)core->iface_q_table.align_device_addr;
 	rc = __write_register(core, HFI_UC_REGION_ADDR_IRIS35, value);
@@ -293,6 +297,17 @@ static int __program_bootup_registers_iris35(struct msm_vidc_core *core)
 	if (core->sfr.align_device_addr) {
 		value = (u32)core->sfr.align_device_addr + VIDEO_ARCH_LX;
 		rc = __write_register(core, HFI_SFR_ADDR_IRIS35, value);
+		if (rc)
+			return rc;
+	}
+
+	/* Based on below register programming, firmware WA for sm8750-v2 would be enabled */
+	if (of_device_is_compatible(dev->of_node, "qcom,sm8750-vidc-v2")) {
+		rc = __write_register(core, WRAPPER_IRIS_VCODEC_VPU_WRAPPER_SPARE_0, 0x1);
+		if (rc)
+			return rc;
+	} else {
+		rc = __write_register(core, WRAPPER_IRIS_VCODEC_VPU_WRAPPER_SPARE_0, 0x0);
 		if (rc)
 			return rc;
 	}
