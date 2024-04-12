@@ -535,7 +535,7 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 		for (i = 0; i < csl_packet->num_cmd_buf; i++) {
 			rc = cam_packet_util_validate_cmd_desc(&cmd_desc[i]);
 			if (rc)
-				return rc;
+				goto end;
 
 			total_cmd_buf_in_bytes = cmd_desc[i].length;
 			if (!total_cmd_buf_in_bytes)
