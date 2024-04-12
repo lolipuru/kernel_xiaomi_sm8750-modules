@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -46,7 +46,7 @@ bool msm_cvp_mmrm_enabled = !true;
 bool msm_cvp_dcvs_disable = !true;
 int msm_cvp_minidump_enable = !1;
 int cvp_kernel_fence_enabled = 2;
-int msm_cvp_hw_wd_recovery = !1;
+int msm_cvp_hw_wd_recovery = 1;
 
 #define MAX_DBG_BUF_SIZE 4096
 
