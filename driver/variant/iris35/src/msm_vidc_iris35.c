@@ -457,10 +457,8 @@ static int __power_off_iris35_hardware(struct msm_vidc_core *core)
 
 	rc = __read_register_with_poll_timeout(core, AON_WRAPPER_MVP_NOC_LPI_STATUS,
 					       0x1, 0x1, 200, 2000);
-	if (rc) {
+	if (rc)
 		d_vpr_e("%s: AON_WRAPPER_MVP_NOC_LPI_CONTROL failed1\n", __func__);
-		MSM_VIDC_FATAL(true);
-	}
 
 	rc = __write_register_masked(core, AON_WRAPPER_MVP_NOC_LPI_CONTROL,
 					0x0, BIT(0));
@@ -563,10 +561,8 @@ static int __power_off_iris35_controller(struct msm_vidc_core *core)
 
 	rc = __read_register_with_poll_timeout(core, AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_STATUS,
 					       0x1, 0x1, 200, 2000);
-	if (rc) {
+	if (rc)
 		d_vpr_e("%s: AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_CONTROL failed\n", __func__);
-		MSM_VIDC_FATAL(true);
-	}
 
 	rc = __write_register_masked(core, AON_WRAPPER_MVP_VIDEO_CTL_NOC_LPI_CONTROL,
 				     0x0, BIT(0));
