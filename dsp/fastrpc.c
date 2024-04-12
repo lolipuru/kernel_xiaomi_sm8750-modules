@@ -4682,7 +4682,6 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 	sess->dev = dev;
 	sess->secure = of_property_read_bool(dev->of_node, "qcom,secure-context-bank");
 	init_completion(&sess->cleanup);
-	mutex_init(&sess->map_mutex);
 	dev_set_drvdata(dev, sess);
 
 	if (of_property_read_u32(dev->of_node, "reg", &sess->sid))
@@ -4706,7 +4705,6 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 				break;
 			dup_sess = &cctx->session[cctx->sesscount++];
 			memcpy(dup_sess, sess, sizeof(*dup_sess));
-			mutex_init(&dup_sess->map_mutex);
 			init_completion(&dup_sess->cleanup);
 		}
 	}
