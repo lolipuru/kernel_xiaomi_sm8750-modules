@@ -1742,8 +1742,10 @@ static void  set_pwr_srcs_status(struct vreg_data *handle,
 {
 	int power_src_state;
 
-	if (!handle)
+	if (!handle) {
 		pr_err("%s: invalid handler received\n", __func__);
+		return;
+	}
 
 	if (handle->is_enabled)
 		power_src_state = (int)regulator_get_voltage(handle->reg);
