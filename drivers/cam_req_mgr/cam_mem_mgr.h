@@ -108,7 +108,6 @@ enum cam_dma_heap_type {
  * @dma_heap_type:       Indicating memory heap type
  * @urefcount:           Reference counter to track whether the buffer is
  *                       mapped and in use by umd
- * @ref_lock:            Mutex lock for refcount
  */
 struct cam_mem_buf_queue {
 	struct dma_buf *dma_buf;
@@ -135,7 +134,6 @@ struct cam_mem_buf_queue {
 #endif
 	enum cam_dma_heap_type dma_heap_type;
 	struct kref urefcount;
-	struct mutex ref_lock;
 };
 
 /**
