@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015, 2018-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SWR_SLAVE_REGISTERS_H
@@ -71,5 +72,7 @@
 #define SWRS_DPn_FEATURE_EN(n)		(SWRS_BASE+0x000001D4+0x100*n)
 #define SWRS_DPn_FLOW_CTRL_N_REPEAT_PERIOD(n)		(SWRS_BASE+0x000001CC+0x100*n)
 #define SWRS_DPn_FLOW_CTRL_M_VALID_SAMPLE(n)		(SWRS_BASE+0x000001C4+0x100*n)
+#define SWRS_SCP_BASE_CLK_BASE                      (SWRS_BASE+0x4d)
+#define SWRS_SCP_BUSCLOCK_SCALE(m)                  (SWRS_BASE+0x062+0x10*m)
 
 #endif /* _SWR_SLAVE_REGISTERS_H */

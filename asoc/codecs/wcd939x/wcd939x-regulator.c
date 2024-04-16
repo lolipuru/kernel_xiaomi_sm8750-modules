@@ -18,8 +18,6 @@ struct wcd_reg_priv {
 	bool mb_enabled_count[WCD939X_MAX_MICBIAS];
 };
 
-struct wcd_reg_priv *wcd_regulator;
-
 static inline bool is_valid_micb(int micb)
 {
 	if ((micb == MIC_BIAS_1) || (micb == MIC_BIAS_2) ||
@@ -146,12 +144,10 @@ int wcd_init_mb_regulator(struct device *dev)
 			rc = PTR_ERR(wcd_regltr->wcd_reg_rdev[i]);
 			wcd_regltr->wcd_reg_rdev[i] = NULL;
 		}
-		if (rc != -EPROBE_DEFER)
+		if (rc && rc != -EPROBE_DEFER)
 			dev_err(dev, "register wcd-reg-mb%d regulator failed, rc=%d\n",
-					rc, i + 1);
+					i + 1, rc);
 	}
-
-	wcd_regulator = wcd_regltr;
 
 	return rc;
 }

@@ -225,7 +225,7 @@ static int lpass_cdc_clk_rsc_mux1_clk_request(struct lpass_cdc_clk_rsc *priv,
 	u32 muxsel = 0;
 
 	clk_muxsel = lpass_cdc_clk_rsc_get_clk_muxsel(priv, clk_id);
-	if (!clk_muxsel) {
+	if (!clk_muxsel && (clk_id != VA_CORE_CLK)) {
 		ret = -EINVAL;
 		goto done;
 	}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -622,16 +622,27 @@ static struct snd_soc_dai_link msm_wcn_be_dai_links[] = {
 };
 #endif
 static struct snd_soc_dai_link ext_disp_be_dai_link[] = {
-	/* DISP PORT BACK END DAI Link */
+	/* DISP PORT BACK END DAI Link for DP0*/
 	{
-		.name = LPASS_BE_DISPLAY_PORT_RX,
-		.stream_name = LPASS_BE_DISPLAY_PORT_RX,
+		.name = LPASS_BE_DISPLAY_PORT_RX_0,
+		.stream_name = LPASS_BE_DISPLAY_PORT_RX_0,
 		.playback_only = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
 			SND_SOC_DPCM_TRIGGER_POST},
 		.ignore_pmdown_time = 1,
 		.ignore_suspend = 1,
 		SND_SOC_DAILINK_REG(display_port),
+	},
+	/* DISP PORT BACK END DAI Link for DP1*/
+	{
+		.name = LPASS_BE_DISPLAY_PORT_RX_1,
+		.stream_name = LPASS_BE_DISPLAY_PORT_RX_1,
+		.playback_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+		SND_SOC_DAILINK_REG(display_port1),
 	},
 };
 

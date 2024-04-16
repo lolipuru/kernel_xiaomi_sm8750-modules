@@ -235,6 +235,7 @@ struct lpass_cdc_wsa2_macro_swr_ctrl_platform_data {
 enum {
 	LPASS_CDC_WSA2_MACRO_AIF_INVALID = 0,
 	LPASS_CDC_WSA2_MACRO_AIF1_PB,
+	LPASS_CDC_WSA2_MACRO_AIF1_PCM_PB,
 	LPASS_CDC_WSA2_MACRO_AIF_MIX1_PB,
 	LPASS_CDC_WSA2_MACRO_AIF_VI,
 	LPASS_CDC_WSA2_MACRO_AIF_ECHO,
@@ -467,6 +468,20 @@ static struct snd_soc_dai_driver lpass_cdc_wsa2_macro_dai[] = {
 			.rates = LPASS_CDC_WSA2_MACRO_RX_RATES,
 			.formats = LPASS_CDC_WSA2_MACRO_RX_FORMATS,
 			.rate_max = 384000,
+			.rate_min = 8000,
+			.channels_min = 1,
+			.channels_max = 2,
+		},
+		.ops = &lpass_cdc_wsa2_macro_dai_ops,
+	},
+	{
+		.name = "wsa2_macro_pcm_rx1",
+		.id = LPASS_CDC_WSA2_MACRO_AIF1_PCM_PB,
+		.playback = {
+			.stream_name = "WSA2_AIF1_PCM Playback",
+			.rates = LPASS_CDC_WSA2_MACRO_RX_RATES,
+			.formats = LPASS_CDC_WSA2_MACRO_RX_FORMATS,
+			.rate_max = 192000,
 			.rate_min = 8000,
 			.channels_min = 1,
 			.channels_max = 2,
@@ -867,6 +882,10 @@ static int lpass_cdc_wsa2_macro_get_channel_map(struct snd_soc_dai *dai,
 		*rx_slot = mask;
 		*rx_num = cnt;
 		break;
+	case LPASS_CDC_WSA2_MACRO_AIF1_PCM_PB:
+		*rx_slot = 0x1;
+		*rx_num = 0x01;
+		break;
 	case LPASS_CDC_WSA2_MACRO_AIF_ECHO:
 		val = snd_soc_component_read(component,
 			LPASS_CDC_WSA2_RX_INP_MUX_RX_MIX_CFG0);
@@ -885,6 +904,9 @@ static int lpass_cdc_wsa2_macro_get_channel_map(struct snd_soc_dai *dai,
 		dev_err(wsa2_dev, "%s: Invalid AIF\n", __func__);
 		break;
 	}
+	dev_dbg(wsa2_priv->dev,
+		"%s: dai->id:%d, rx_mask:%d, rx_ch_cnt:%d, tx_mask:%d, tx_ch_cnt:%d\n",
+		__func__, dai->id, *rx_slot, *rx_num, *tx_slot, *tx_num);
 	return 0;
 }
 
@@ -3027,6 +3049,9 @@ static const struct snd_soc_dapm_widget lpass_cdc_wsa2_macro_dapm_widgets[] = {
 	SND_SOC_DAPM_AIF_IN("WSA2 AIF_MIX1 PB", "WSA2_AIF_MIX1 Playback", 0,
 		SND_SOC_NOPM, 0, 0),
 
+	SND_SOC_DAPM_AIF_IN("WSA2 AIF_PCM PB", "WSA2_AIF1_PCM Playback", 0,
+		SND_SOC_NOPM, 0, 0),
+
 	SND_SOC_DAPM_AIF_OUT_E("WSA2 AIF_VI", "WSA2_AIF_VI Capture", 0,
 		SND_SOC_NOPM, LPASS_CDC_WSA2_MACRO_AIF_VI, 0,
 		lpass_cdc_wsa2_macro_disable_vi_feedback,
@@ -3148,6 +3173,7 @@ static const struct snd_soc_dapm_widget lpass_cdc_wsa2_macro_dapm_widgets[] = {
 
 	SND_SOC_DAPM_OUTPUT("WSA2_SPK1 OUT"),
 	SND_SOC_DAPM_OUTPUT("WSA2_SPK2 OUT"),
+	SND_SOC_DAPM_OUTPUT("WSA2_HAPT OUT"),
 
 	SND_SOC_DAPM_SUPPLY_S("WSA2_MCLK", 0, SND_SOC_NOPM, 0, 0,
 	lpass_cdc_wsa2_macro_mclk_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
@@ -3173,6 +3199,9 @@ static const struct snd_soc_dapm_route wsa2_audio_map[] = {
 	{"WSA2 AIF_ECHO", NULL, "WSA2 RX_MIX EC0_MUX"},
 	{"WSA2 AIF_ECHO", NULL, "WSA2 RX_MIX EC1_MUX"},
 	{"WSA2 AIF_ECHO", NULL, "WSA2_MCLK"},
+
+	{"WSA2 AIF_PCM PB", NULL, "WSA2_MCLK"},
+	{"WSA2_HAPT OUT", NULL, "WSA2 AIF_PCM PB"},
 
 	{"WSA2 AIF1 PB", NULL, "WSA2_MCLK"},
 	{"WSA2 AIF_MIX1 PB", NULL, "WSA2_MCLK"},
@@ -3717,6 +3746,9 @@ static int lpass_cdc_wsa2_macro_init(struct snd_soc_component *component)
 		dev_err(wsa2_dev, "%s: Failed to add snd_ctls\n", __func__);
 		return ret;
 	}
+
+	snd_soc_dapm_ignore_suspend(dapm, "WSA2_AIF1_PCM Playback");
+	snd_soc_dapm_ignore_suspend(dapm, "WSA2_HAPT OUT");
 	snd_soc_dapm_ignore_suspend(dapm, "WSA2_AIF1 Playback");
 	snd_soc_dapm_ignore_suspend(dapm, "WSA2_AIF_MIX1 Playback");
 	snd_soc_dapm_ignore_suspend(dapm, "WSA2_AIF_VI Capture");

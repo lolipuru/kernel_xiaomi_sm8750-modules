@@ -479,6 +479,16 @@ static struct snd_soc_dai_link msm_common_be_dai_links[] = {
 		.ops = &msm_common_be_ops,
 		SND_SOC_DAILINK_REG(proxy_tx),
 	},
+	{
+		.name = LPASS_BE_RT_PROXY_PCM_TX_2,
+		.stream_name = LPASS_BE_RT_PROXY_PCM_TX_2,
+		.capture_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		.ops = &msm_common_be_ops,
+		SND_SOC_DAILINK_REG(proxy_tx2),
+	},
 	/* Proxy Rx BACK END DAI Link */
 	{
 		.name = LPASS_BE_RT_PROXY_PCM_RX,
@@ -501,6 +511,17 @@ static struct snd_soc_dai_link msm_common_be_dai_links[] = {
 		.ignore_suspend = 1,
 		.ops = &msm_common_be_ops,
 		SND_SOC_DAILINK_REG(usb_audio_rx),
+	},
+	{
+		.name = LPASS_BE_RT_PROXY_PCM_RX_2,
+		.stream_name = LPASS_BE_RT_PROXY_PCM_RX_2,
+		.playback_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+		.ops = &msm_common_be_ops,
+		SND_SOC_DAILINK_REG(proxy_rx2),
 	},
 	{
 		.name = LPASS_BE_USB_AUDIO_TX,
@@ -625,16 +646,27 @@ static struct snd_soc_dai_link msm_wcn_be_dai_links[] = {
 };
 #endif
 static struct snd_soc_dai_link ext_disp_be_dai_link[] = {
-	/* DISP PORT BACK END DAI Link */
+	/* DISP PORT BACK END DAI Link for DP0 */
 	{
-		.name = LPASS_BE_DISPLAY_PORT_RX,
-		.stream_name = LPASS_BE_DISPLAY_PORT_RX,
+		.name = LPASS_BE_DISPLAY_PORT_RX_0,
+		.stream_name = LPASS_BE_DISPLAY_PORT_RX_0,
 		.playback_only = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
 			SND_SOC_DPCM_TRIGGER_POST},
 		.ignore_pmdown_time = 1,
 		.ignore_suspend = 1,
 		SND_SOC_DAILINK_REG(display_port),
+	},
+	/* DISP PORT BACK END DAI Link for DP1*/
+	{
+		.name = LPASS_BE_DISPLAY_PORT_RX_1,
+		.stream_name = LPASS_BE_DISPLAY_PORT_RX_1,
+		.playback_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+		SND_SOC_DAILINK_REG(display_port1),
 	},
 };
 
@@ -875,16 +907,6 @@ static struct snd_soc_dai_link msm_rx_tx_cdc_dma_be_dai_links[] = {
 	},
 	/* TX CDC DMA Backend DAI Links */
 	{
-		.name = LPASS_BE_TX_CDC_DMA_TX_3,
-		.stream_name = LPASS_BE_TX_CDC_DMA_TX_3,
-		.capture_only = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
-			SND_SOC_DPCM_TRIGGER_POST},
-		.ignore_suspend = 1,
-		.ops = &msm_common_be_ops,
-		SND_SOC_DAILINK_REG(tx_dma_tx3),
-	},
-	{
 		.name = LPASS_BE_TX_CDC_DMA_TX_4,
 		.stream_name = LPASS_BE_TX_CDC_DMA_TX_4,
 		.capture_only = 1,
@@ -896,7 +918,17 @@ static struct snd_soc_dai_link msm_rx_tx_cdc_dma_be_dai_links[] = {
 	},
 };
 
-static struct snd_soc_dai_link msm_va_cdc_dma_be_dai_links[] = {
+static struct snd_soc_dai_link msm_cdc_tx_va_dma_be_dai_links[] = {
+	{
+		.name = LPASS_BE_TX_CDC_DMA_TX_3,
+		.stream_name = LPASS_BE_TX_CDC_DMA_TX_3,
+		.capture_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		.ops = &msm_common_be_ops,
+		SND_SOC_DAILINK_REG(tx_dma_tx3),
+	},
 	{
 		.name = LPASS_BE_VA_CDC_DMA_TX_0,
 		.stream_name = LPASS_BE_VA_CDC_DMA_TX_0,
@@ -907,6 +939,32 @@ static struct snd_soc_dai_link msm_va_cdc_dma_be_dai_links[] = {
 		.ops = &msm_common_be_ops,
 		SND_SOC_DAILINK_REG(va_dma_tx0),
 	},
+};
+
+static struct snd_soc_dai_link msm_cdc_qmp_dma_be_dai_links[] = {
+	{
+		.name = LPASS_BE_TX_CDC_DMA_TX_3,
+		.stream_name = LPASS_BE_TX_CDC_DMA_TX_3,
+		.capture_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		.ops = &msm_common_be_ops,
+		SND_SOC_DAILINK_REG(tx_dma_qmp_normal),
+	},
+	{
+		.name = LPASS_BE_VA_CDC_DMA_TX_0,
+		.stream_name = LPASS_BE_VA_CDC_DMA_TX_0,
+		.capture_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		.ops = &msm_common_be_ops,
+		SND_SOC_DAILINK_REG(va_dma_qmp_normal),
+	},
+};
+
+static struct snd_soc_dai_link msm_va_cdc_dma_be_dai_links[] = {
 	{
 		.name = LPASS_BE_VA_CDC_DMA_TX_1,
 		.stream_name = LPASS_BE_VA_CDC_DMA_TX_1,
@@ -1246,6 +1304,8 @@ static struct snd_soc_dai_link msm_sun_dai_links[
 			ARRAY_SIZE(msm_wsa_wsa2_cdc_dma_be_dai_links) +
 			ARRAY_SIZE(msm_rx_tx_cdc_dma_be_dai_links) +
 			ARRAY_SIZE(msm_va_cdc_dma_be_dai_links) +
+			ARRAY_SIZE(msm_cdc_tx_va_dma_be_dai_links) +
+			ARRAY_SIZE(msm_cdc_qmp_dma_be_dai_links) +
 			ARRAY_SIZE(ext_disp_be_dai_link) +
 			ARRAY_SIZE(msm_common_be_dai_links) +
 			ARRAY_SIZE(msm_wcn_be_dai_links) +
@@ -1573,6 +1633,21 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 			total_links += ARRAY_SIZE(msm_wcn_be_dai_links);
 		}
 
+		rc = of_property_read_u32(dev->of_node, "qcom,qmp-mic", &val);
+		if (!rc && val) {
+			dev_dbg(dev, "%s(): QMP MIC support present\n",
+				__func__);
+			memcpy(msm_sun_dai_links + total_links,
+			       msm_cdc_qmp_dma_be_dai_links,
+			       sizeof(msm_cdc_qmp_dma_be_dai_links));
+			total_links += ARRAY_SIZE(msm_cdc_qmp_dma_be_dai_links);
+		} else {
+			memcpy(msm_sun_dai_links + total_links,
+			       msm_cdc_tx_va_dma_be_dai_links,
+			       sizeof(msm_cdc_tx_va_dma_be_dai_links));
+			total_links += ARRAY_SIZE(msm_cdc_tx_va_dma_be_dai_links);
+		}
+
 		if (of_find_property(dev->of_node, "swr-haptics-unsupported",
 			NULL)) {
 			dev_dbg(dev, "%s(): swr haptics support not present\n", __func__);
@@ -1581,6 +1656,19 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 					msm_swr_haptics_be_dai_links,
 					sizeof(msm_swr_haptics_be_dai_links));
 			total_links += ARRAY_SIZE(msm_swr_haptics_be_dai_links);
+
+			if (wsa_max_devs != QUAD_SPEAKER) {
+				if (of_find_property(dev->of_node, "qcom,dedicated-wsa2",
+					NULL)) {
+					memcpy(msm_sun_dai_links + total_links,
+					msm_wsa2_cdc_dma_be_dai_links,
+					sizeof(msm_wsa2_cdc_dma_be_dai_links));
+					total_links += ARRAY_SIZE(msm_wsa2_cdc_dma_be_dai_links);
+				} else {
+					dev_err_ratelimited(dev, "%s:Unable to active haptics path\n",
+						__func__);
+				}
+			}
 		}
 
 		dailink = msm_sun_dai_links;
