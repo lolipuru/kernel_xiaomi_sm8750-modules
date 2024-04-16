@@ -3366,7 +3366,6 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
 	struct sde_kms *sde_kms;
-	struct msm_display_mode *msm_mode;
 	struct sde_connector_state *c_state;
 
 	if (!drm_enc || !drm_enc->dev || !drm_enc->dev->dev_private) {
@@ -3430,14 +3429,6 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 		SDE_ERROR("invalid connector state\n");
 		return;
 	}
-
-	/* avoid cesta_enable_frame setting for seamless switches */
-	msm_mode = &c_state->msm_mode;
-	if (sde_enc->cesta_client && !sde_enc->cur_master->cont_splash_enabled &&
-			!(msm_is_mode_seamless_vrr(msm_mode)
-				|| msm_is_mode_seamless_dms(msm_mode)
-				|| msm_is_mode_seamless_dyn_clk(msm_mode)))
-		sde_enc->cesta_enable_frame = true;
 }
 
 static void _sde_encoder_setup_dither(struct sde_encoder_phys *phys)
@@ -6759,9 +6750,6 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 		if (phys->ops.is_master && phys->ops.is_master(phys))
 			sde_enc->cur_master = phys;
 	}
-
-	if (sde_enc->cesta_client)
-		sde_enc->cesta_enable_frame = true;
 
 	return ret;
 }
