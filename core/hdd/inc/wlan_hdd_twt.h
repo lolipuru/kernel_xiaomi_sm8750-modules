@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -160,49 +160,41 @@ void hdd_update_tgt_twt_cap(struct hdd_context *hdd_ctx,
  * hdd_send_twt_requestor_enable_cmd() - Send TWT requestor enable command to
  * target
  * @hdd_ctx: HDD Context
- * @vdev_id: Vdev id on which requester needs to be enabled
  *
  * Return: QDF_STATUS
  */
-QDF_STATUS hdd_send_twt_requestor_enable_cmd(struct hdd_context *hdd_ctx,
-					     uint8_t vdev_id);
+QDF_STATUS hdd_send_twt_requestor_enable_cmd(struct hdd_context *hdd_ctx);
 
 /**
  * hdd_send_twt_responder_enable_cmd() - Send TWT responder enable command to
  * target
  * @hdd_ctx: HDD Context
- * @vdev_id: Vdev id on which responder needs to be enabled
  *
  * Return: QDF_STATUS
  */
-QDF_STATUS hdd_send_twt_responder_enable_cmd(struct hdd_context *hdd_ctx,
-					     uint8_t vdev_id);
+QDF_STATUS hdd_send_twt_responder_enable_cmd(struct hdd_context *hdd_ctx);
 
 /**
  * hdd_send_twt_requestor_disable_cmd() - Send TWT requestor disable command
  * to target
  * @hdd_ctx: HDD Context
  * @reason: Disable reason code
- * @vdev_id: Vdev id on which requester needs to be disabled
  *
  * Return: QDF_STATUS
  */
 QDF_STATUS hdd_send_twt_requestor_disable_cmd(struct hdd_context *hdd_ctx,
-					      uint32_t reason,
-					      uint8_t vdev_id);
+					      uint32_t reason);
 
 /**
  * hdd_send_twt_responder_disable_cmd() - Send TWT responder disable command
  * to target
  * @hdd_ctx: HDD Context
  * @reason: Disable reason code
- * @vdev_id: Vdev id on which responder needs to be disabled
  *
  * Return: QDF_STATUS
  */
 QDF_STATUS hdd_send_twt_responder_disable_cmd(struct hdd_context *hdd_ctx,
-					      uint32_t reason,
-					      uint8_t vdev_id);
+					      uint32_t reason);
 
 /**
  * wlan_hdd_twt_init() - Initialize TWT
@@ -258,12 +250,11 @@ int hdd_test_config_twt_terminate_session(struct hdd_adapter *adapter,
  * disable to firmware
  * @hdd_ctx: hdd context pointer
  * @role : TWT role to be disabled
- * @vdev_id: Vdev id
  *
  * Return: None
  */
 void hdd_send_twt_role_disable_cmd(struct hdd_context *hdd_ctx,
-				   enum twt_role role, uint8_t vdev_id);
+				   enum twt_role role);
 
 /**
  * hdd_send_twt_del_all_sessions_to_userspace() - Terminate all TWT sessions
@@ -410,31 +401,27 @@ static inline void hdd_update_tgt_twt_cap(struct hdd_context *hdd_ctx,
 }
 
 static inline
-QDF_STATUS hdd_send_twt_requestor_enable_cmd(struct hdd_context *hdd_ctx,
-					     uint8_t vdev_id)
+QDF_STATUS hdd_send_twt_requestor_enable_cmd(struct hdd_context *hdd_ctx)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
 
 static inline
-QDF_STATUS hdd_send_twt_responder_enable_cmd(struct hdd_context *hdd_ctx,
-					     uint8_t vdev_id)
+QDF_STATUS hdd_send_twt_responder_enable_cmd(struct hdd_context *hdd_ctx)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
 
 static inline
 QDF_STATUS hdd_send_twt_requestor_disable_cmd(struct hdd_context *hdd_ctx,
-					      uint32_t reason,
-					      uint8_t vdev_id)
+					      uint32_t reason)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
 
 static inline
 QDF_STATUS hdd_send_twt_responder_disable_cmd(struct hdd_context *hdd_ctx,
-					      uint32_t reason,
-					      uint8_t vdev_id)
+					      uint32_t reason)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
@@ -463,7 +450,7 @@ int hdd_test_config_twt_terminate_session(struct hdd_adapter *adapter,
 
 static inline
 void hdd_send_twt_role_disable_cmd(struct hdd_context *hdd_ctx,
-				   enum twt_role role, uint8_t vdev_id)
+				   enum twt_role role)
 {
 }
 
