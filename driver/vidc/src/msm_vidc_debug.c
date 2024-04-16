@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define CREATE_TRACE_POINTS
@@ -584,7 +584,7 @@ static ssize_t inst_info_read(struct file *file, char __user *buf,
 	core = idata->core;
 	inst = idata->inst;
 
-	inst = get_inst(core, inst->session_id);
+	inst = get_inst_ref(core, inst);
 	if (!inst) {
 		d_vpr_h("%s: instance has become obsolete", __func__);
 		return 0;

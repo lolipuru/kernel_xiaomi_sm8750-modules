@@ -161,22 +161,18 @@ static int msm_vidc_set_buses(struct msm_vidc_inst *inst)
 	struct msm_vidc_core *core;
 	struct msm_vidc_inst *temp;
 	u64 total_bw_ddr = 0, total_bw_llcc = 0;
-	u64 curr_time_ns;
 
 	core = inst->core;
 
 	mutex_lock(&core->lock);
-	curr_time_ns = ktime_get_ns();
 	list_for_each_entry(temp, &core->instances, list) {
 		/* skip for session where no input is there to process */
 		if (!temp->max_input_data_size)
 			continue;
 
 		/* skip inactive session bus bandwidth */
-		if (!is_active_session(temp->last_qbuf_time_ns, curr_time_ns)) {
-			temp->active = false;
+		if (!temp->active)
 			continue;
-		}
 
 		if (temp->power.power_mode == VIDC_POWER_TURBO) {
 			total_bw_ddr = total_bw_llcc = INT_MAX;
@@ -338,7 +334,6 @@ int msm_vidc_set_clocks(struct msm_vidc_inst *inst)
 	u64 freq;
 	u64 rate = 0;
 	bool increment, decrement;
-	u64 curr_time_ns;
 	int i = 0;
 
 	core = inst->core;
@@ -353,17 +348,15 @@ int msm_vidc_set_clocks(struct msm_vidc_inst *inst)
 	increment = false;
 	decrement = true;
 	freq = 0;
-	curr_time_ns = ktime_get_ns();
 	list_for_each_entry(temp, &core->instances, list) {
 		/* skip for session where no input is there to process */
 		if (!temp->max_input_data_size)
 			continue;
 
 		/* skip inactive session clock rate */
-		if (!is_active_session(temp->last_qbuf_time_ns, curr_time_ns)) {
-			temp->active = false;
+		if (!temp->active)
 			continue;
-		}
+
 		freq += temp->power.min_freq;
 
 		if (msm_vidc_clock_voting) {
@@ -518,8 +511,11 @@ int msm_vidc_scale_power(struct msm_vidc_inst *inst, bool scale_buses)
 	u32 fps;
 	u32 frame_rate, operating_rate;
 	u32 timestamp_rate = 0, input_rate = 0;
+	struct msm_vidc_inst *temp;
+	u64 curr_time_ns;
 
 	core = inst->core;
+	curr_time_ns = ktime_get_ns();
 
 	if (!inst->active) {
 		/* scale buses for inactive -> active session */
@@ -582,9 +578,24 @@ int msm_vidc_scale_power(struct msm_vidc_inst *inst, bool scale_buses)
 	}
 	inst->max_rate = fps;
 
+	/* update current session last active ts */
+	inst->last_active_time_ns = curr_time_ns;
+
 	/* no pending inputs - skip scale power */
 	if (!inst->max_input_data_size)
 		return 0;
+
+	core_lock(core, __func__);
+	/* detect inactive session */
+	list_for_each_entry(temp, &core->instances, list) {
+		/* skip current(active) session  */
+		if (temp == inst)
+			continue;
+
+		if (!is_active_session(temp->last_active_time_ns, curr_time_ns))
+			temp->active = false;
+	}
+	core_unlock(core, __func__);
 
 	if (msm_vidc_scale_clocks(inst))
 		i_vpr_e(inst, "failed to scale clock\n");

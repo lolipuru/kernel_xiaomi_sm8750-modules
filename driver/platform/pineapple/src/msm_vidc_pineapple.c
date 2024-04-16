@@ -289,7 +289,7 @@ static struct msm_platform_core_capability core_data_pineapple[] = {
 	{MAX_NUM_4K_SESSIONS, 8},
 	{MAX_NUM_8K_SESSIONS, 2},
 	{MAX_SECURE_SESSION_COUNT, 3},
-	{MAX_RT_MBPF, 174080},	/* (8192x4352)/256 + (4096x2176)/256*/
+	{MAX_RT_MBPF, 259200},	/* ((7680x4320)/256) * 2)*/
 	{MAX_MBPF, 278528}, /* ((8192x4352)/256) * 2 */
 	{MAX_MBPS, 7833600},
 	/* max_load
@@ -395,7 +395,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 	 *      hfi_id,
 	 *      flags}
 	 */
-	{DRV_VERSION, DEC|ENC, CODECS_ALL,
+	{DRV_VERSION, DEC | ENC, CODECS_ALL,
 		0, INT_MAX, 1, DRIVER_VERSION,
 		V4L2_CID_MPEG_VIDC_DRIVER_VERSION},
 
@@ -893,7 +893,8 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 	{CSC, ENC, CODECS_ALL,
 		0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDC_CSC,
-		HFI_PROP_CSC},
+		HFI_PROP_CSC,
+		CAP_FLAG_OUTPUT_PORT},
 
 	{CSC_CUSTOM_MATRIX, ENC, CODECS_ALL,
 		0, 1, 1, 0,
@@ -1418,7 +1419,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_2) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1)|
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2),
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1,
 		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
@@ -1634,14 +1635,14 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_CONCEAL_COLOR_10BIT,
 		CAP_FLAG_INPUT_PORT},
 
-	{STAGE, DEC|ENC, CODECS_ALL,
+	{STAGE, DEC | ENC, CODECS_ALL,
 		MSM_VIDC_STAGE_1,
 		MSM_VIDC_STAGE_2, 1,
 		MSM_VIDC_STAGE_2,
 		0,
 		HFI_PROP_STAGE},
 
-	{PIPE, DEC|ENC, CODECS_ALL,
+	{PIPE, DEC | ENC, CODECS_ALL,
 		MSM_VIDC_PIPE_1,
 		MSM_VIDC_PIPE_4, 1,
 		MSM_VIDC_PIPE_4,
@@ -1710,7 +1711,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_SEQ_CHANGE_AT_SYNC_FRAME,
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
 
-	{PRIORITY, DEC|ENC, CODECS_ALL,
+	{PRIORITY, DEC | ENC, CODECS_ALL,
 		0, 4, 1, 4,
 		V4L2_CID_MPEG_VIDC_PRIORITY,
 		HFI_PROP_SESSION_PRIORITY,
@@ -1751,7 +1752,7 @@ static struct msm_platform_inst_capability instance_cap_data_pineapple[] = {
 		HFI_PROP_AV1_DRAP_CONFIG,
 		CAP_FLAG_INPUT_PORT},
 
-	{LAST_FLAG_EVENT_ENABLE, DEC|ENC, CODECS_ALL,
+	{LAST_FLAG_EVENT_ENABLE, DEC | ENC, CODECS_ALL,
 		0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDC_LAST_FLAG_EVENT_ENABLE},
 
@@ -2563,7 +2564,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		NULL,
 		msm_vidc_set_stage},
 
-	{PIPE, DEC|ENC, CODECS_ALL,
+	{PIPE, DEC | ENC, CODECS_ALL,
 		{0},
 		NULL,
 		msm_vidc_set_pipe},
@@ -2583,7 +2584,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 		NULL,
 		msm_vidc_set_u32},
 
-	{PRIORITY, DEC|ENC, CODECS_ALL,
+	{PRIORITY, DEC | ENC, CODECS_ALL,
 		{0},
 		msm_vidc_adjust_session_priority,
 		msm_vidc_set_session_priority},
@@ -2718,11 +2719,11 @@ static const struct subcache_table pineapple_subcache_table[] = {
 
 /* name, start, size, secure, dma_coherant, region, dma_mask */
 const struct context_bank_table pineapple_context_bank_table[] = {
-	{"qcom,vidc,cb-ns",             0x25800000, 0xba800000, 0, 1, MSM_VIDC_NON_SECURE,       0 },
-	{"qcom,vidc,cb-ns-pxl",         0x00100000, 0xdff00000, 0, 1, MSM_VIDC_NON_SECURE_PIXEL, 0 },
-	{"qcom,vidc,cb-sec-pxl",        0x00500000, 0xdfb00000, 1, 0, MSM_VIDC_SECURE_PIXEL,     0 },
-	{"qcom,vidc,cb-sec-non-pxl",    0x01000000, 0x24800000, 1, 0, MSM_VIDC_SECURE_NONPIXEL,  0 },
-	{"qcom,vidc,cb-sec-bitstream",  0x00500000, 0xdfb00000, 1, 0, MSM_VIDC_SECURE_BITSTREAM, 0 },
+	{"qcom,vidc,cb-ns", 0x25800000, 0xba800000, 0, 1, MSM_VIDC_NON_SECURE, 0},
+	{"qcom,vidc,cb-ns-pxl", 0x00100000, 0xdff00000, 0, 1, MSM_VIDC_NON_SECURE_PIXEL, 0},
+	{"qcom,vidc,cb-sec-pxl", 0x00500000, 0xdfb00000, 1, 0, MSM_VIDC_SECURE_PIXEL, 0},
+	{"qcom,vidc,cb-sec-non-pxl", 0x01000000, 0x24800000, 1, 0, MSM_VIDC_SECURE_NONPIXEL, 0},
+	{"qcom,vidc,cb-sec-bitstream", 0x00500000, 0xdfb00000, 1, 0, MSM_VIDC_SECURE_BITSTREAM, 0},
 };
 
 /* freq */
@@ -2902,6 +2903,7 @@ static const struct msm_vidc_platform_data pineapple_data = {
 	.fwname = "vpu33_4v",
 	.pas_id = 9,
 	.supports_mmrm = 1,
+	.vpu_ver = VPU_VERSION_IRIS33,
 
 	/* caps related resorces */
 	.core_data = core_data_pineapple,
@@ -2982,7 +2984,7 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 		d_vpr_e("%s: invalid memory ext ops\n", __func__);
 		return -EINVAL;
 	}
-	core->res_ops = get_res_ops_ext();
+	core->res_ops = get_res_ops_ext(core);
 	if (!core->res_ops) {
 		d_vpr_e("%s: invalid resource ext ops\n", __func__);
 		return -EINVAL;

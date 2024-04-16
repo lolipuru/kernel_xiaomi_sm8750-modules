@@ -161,10 +161,8 @@ struct msm_platform_inst_cap_dependency {
 	enum msm_vidc_domain_type domain;
 	enum msm_vidc_codec_type codec;
 	enum msm_vidc_inst_capability_type children[MAX_CAP_CHILDREN];
-	int (*adjust)(void *inst,
-		struct v4l2_ctrl *ctrl);
-	int (*set)(void *inst,
-		enum msm_vidc_inst_capability_type cap_id);
+	int (*adjust)(void *inst, struct v4l2_ctrl *ctrl);
+	int (*set)(void *inst, enum msm_vidc_inst_capability_type cap_id);
 };
 
 struct msm_vidc_compat_handle {
@@ -198,6 +196,12 @@ struct msm_vidc_format_capability {
 	u32 transfer_char_info_size;
 	struct matrix_coeff_info *matrix_coeff_info;
 	u32 matrix_coeff_info_size;
+};
+
+enum vpu_version {
+	VPU_VERSION_IRIS33 = 1,
+	VPU_VERSION_IRIS33_2P, // IRIS3 2 PIPE
+	VPU_VERSION_IRIS2_2P, // IRIS2 2 PIPE
 };
 
 struct msm_vidc_platform_data {
@@ -237,6 +241,7 @@ struct msm_vidc_platform_data {
 	struct msm_vidc_efuse_data *efuse_data;
 	unsigned int efuse_data_size;
 	unsigned int sku_version;
+	unsigned int vpu_ver;
 	struct msm_vidc_format_capability *format_data;
 	const u32 *psc_avc_tbl;
 	unsigned int psc_avc_tbl_size;
@@ -282,27 +287,26 @@ static inline bool is_mmrm_supported(struct msm_vidc_core *core)
 }
 
 int msm_vidc_init_platform(struct msm_vidc_core *core);
+int msm_vidc_read_efuse(struct msm_vidc_core *core);
 
 /* control framework support functions */
 
-enum msm_vidc_inst_capability_type msm_vidc_get_cap_id(
-	struct msm_vidc_inst *inst, u32 id);
+enum msm_vidc_inst_capability_type msm_vidc_get_cap_id(struct msm_vidc_inst *inst, u32 id);
 int msm_vidc_update_cap_value(struct msm_vidc_inst *inst, u32 cap,
-	s32 adjusted_val, const char *func);
-bool is_parent_available(struct msm_vidc_inst *inst,
-	u32 cap_id, u32 check_parent, const char *func);
+			      s32 adjusted_val, const char *func);
+bool is_parent_available(struct msm_vidc_inst *inst, u32 cap_id,
+			 u32 check_parent, const char *func);
 int msm_vidc_get_parent_value(struct msm_vidc_inst *inst, u32 cap, u32 parent,
-	s32 *value, const char *func);
+			      s32 *value, const char *func);
 u32 msm_vidc_get_port_info(struct msm_vidc_inst *inst,
-	enum msm_vidc_inst_capability_type cap_id);
+			   enum msm_vidc_inst_capability_type cap_id);
 int msm_vidc_v4l2_menu_to_hfi(struct msm_vidc_inst *inst,
-	enum msm_vidc_inst_capability_type cap_id, u32 *value);
+			      enum msm_vidc_inst_capability_type cap_id, u32 *value);
 int msm_vidc_v4l2_to_hfi_enum(struct msm_vidc_inst *inst,
-	enum msm_vidc_inst_capability_type cap_id, u32 *value);
+			      enum msm_vidc_inst_capability_type cap_id, u32 *value);
 int msm_vidc_packetize_control(struct msm_vidc_inst *inst,
-	enum msm_vidc_inst_capability_type cap_id, u32 payload_type,
-	void *hfi_val, u32 payload_size, const char *func);
-
+			       enum msm_vidc_inst_capability_type cap_id, u32 payload_type,
+			       void *hfi_val, u32 payload_size, const char *func);
 int msm_vidc_adjust_bitrate(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_layer_bitrate(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_bitrate_mode(void *instance, struct v4l2_ctrl *ctrl);
@@ -316,8 +320,7 @@ int msm_vidc_adjust_output_order(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_input_buf_host_max_count(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_output_buf_host_max_count(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_transform_8x8(void *instance, struct v4l2_ctrl *ctrl);
-int msm_vidc_adjust_chroma_qp_index_offset(void *instance,
-	struct v4l2_ctrl *ctrl);
+int msm_vidc_adjust_chroma_qp_index_offset(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_slice_count(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_layer_count(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_gop_size(void *instance, struct v4l2_ctrl *ctrl);
@@ -338,8 +341,7 @@ int msm_vidc_adjust_session_priority(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_roi_info(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_all_intra(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_dec_outbuf_fence_type(void *instance, struct v4l2_ctrl *ctrl);
-int msm_vidc_adjust_dec_outbuf_fence_direction(void *instance,
-	struct v4l2_ctrl *ctrl);
+int msm_vidc_adjust_dec_outbuf_fence_direction(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_dec_slice_mode(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_preprocess(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_eva_stats(void *instance, struct v4l2_ctrl *ctrl);
@@ -348,74 +350,39 @@ int msm_vidc_adjust_sei_cll(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_hdr10plus(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_transcoding_stats(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_open_gop(void *instance, struct v4l2_ctrl *ctrl);
-
-int msm_vidc_set_header_mode(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_deblock_mode(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_min_qp(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_max_qp(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_frame_qp(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_req_sync_frame(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_chroma_qp_index_offset(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_slice_count(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_layer_count_and_type(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_gop_size(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_bitrate(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_layer_bitrate(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_u32(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_u32_packed(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_u32_enum(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_constant_quality(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_vbr_related_properties(
-	void *instance, enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_cbr_related_properties(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_use_and_mark_ltr(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_nal_length(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_session_priority(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_flip(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_rotation(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_blur_resolution(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_stage(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_pipe(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_csc_custom_matrix(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_level(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_preprocess(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_reserve_duration(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_q16(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_vui_timing_info(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_outbuf_fence_type(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
-int msm_vidc_set_outbuf_fence_direction(void *instance,
-	enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_header_mode(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_deblock_mode(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_min_qp(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_max_qp(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_frame_qp(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_req_sync_frame(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_chroma_qp_index_offset(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_slice_count(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_layer_count_and_type(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_gop_size(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_bitrate(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_layer_bitrate(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_u32(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_u32_packed(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_u32_enum(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_constant_quality(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_vbr_related_properties(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_cbr_related_properties(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_use_and_mark_ltr(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_nal_length(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_session_priority(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_flip(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_rotation(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_blur_resolution(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_stage(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_pipe(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_csc_custom_matrix(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_level(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_preprocess(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_reserve_duration(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_q16(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_vui_timing_info(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_outbuf_fence_type(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_outbuf_fence_direction(void *instance, enum msm_vidc_inst_capability_type cap_id);
 
 #endif // _MSM_VIDC_PLATFORM_H_

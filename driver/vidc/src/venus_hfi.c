@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/iommu.h>
@@ -210,6 +210,7 @@ exit:
 
 	return rc;
 }
+
 static int __sys_set_power_control(struct msm_vidc_core *core, bool enable)
 {
 	int rc = 0;
@@ -293,6 +294,7 @@ skip_power_off:
 	d_vpr_e("%s: skipped\n", __func__);
 	return -EAGAIN;
 }
+
 static int __release_subcaches(struct msm_vidc_core *core)
 {
 	int rc = 0;
@@ -623,8 +625,30 @@ void __unload_fw(struct msm_vidc_core *core)
 	d_vpr_h("%s unloaded video firmware\n", __func__);
 }
 
+static inline struct msm_vidc_inst *get_inst(
+	struct msm_vidc_inst **instances, const s32 count, u32 session_id)
+{
+	struct msm_vidc_inst *inst = NULL;
+	bool found = false;
+	int i;
+
+	for (i = 0; i < count; i++) {
+		if (instances[i]->session_id == session_id) {
+			inst = instances[i];
+			found = true;
+			break;
+		}
+	}
+
+	return found ? inst : NULL;
+}
+
 static int __response_handler(struct msm_vidc_core *core)
 {
+	struct msm_vidc_inst *instances[MAX_SUPPORTED_INSTANCES];
+	struct msm_vidc_inst *dummy, *inst = NULL;
+	struct hfi_header *hdr = NULL;
+	s32 num_instances = 0;
 	int rc = 0;
 
 	if (call_venus_op(core, watchdog, core, core->intr_status)) {
@@ -641,19 +665,54 @@ static int __response_handler(struct msm_vidc_core *core)
 		return handle_system_error(core, &pkt);
 	}
 
+	core_lock(core, __func__);
+	list_for_each_entry_safe(inst, dummy, &core->instances, list) {
+		inst = get_inst_ref_locked(inst);
+		if (inst)
+			instances[num_instances++] = inst;
+	}
+	core_unlock(core, __func__);
+
 	memset(core->response_packet, 0, core->packet_size);
 	while (!venus_hfi_queue_msg_read(core, core->response_packet)) {
-		rc = handle_response(core, core->response_packet);
+		hdr = (struct hfi_header *)core->response_packet;
+
+		rc = validate_hdr_packet(core, hdr, __func__);
+		if (rc) {
+			d_vpr_e("%s: hdr pkt validation failed\n", __func__);
+			handle_system_error(core, NULL);
+			goto error;
+		}
+
+		if (!hdr->session_id) {
+			rc = handle_system_response(core, hdr);
+		} else {
+			inst = get_inst(instances, num_instances, hdr->session_id);
+			if (!inst) {
+				d_vpr_e("%s: Invalid inst - %#x\n", __func__, hdr->session_id);
+				rc = -EINVAL;
+				goto error;
+			}
+			inst_lock(inst, __func__);
+			rc = handle_session_response(inst, hdr);
+			inst_unlock(inst, __func__);
+		}
+error:
 		if (rc)
 			continue;
+
 		/* check for system error */
 		if (core->state != MSM_VIDC_CORE_INIT)
 			break;
+
 		memset(core->response_packet, 0, core->packet_size);
 	}
 
 	__schedule_power_collapse_work(core);
 	__flush_debug_queue(core, core->response_packet, core->packet_size);
+
+	while (num_instances--)
+		put_inst(instances[num_instances]);
 
 	return rc;
 }

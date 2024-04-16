@@ -49,6 +49,7 @@ video-objs +=     $(VIDEO_DRIVER_REL_PATH)/platform/sun/src/sun.o \
                   $(VIDEO_DRIVER_REL_PATH)/variant/iris35/src/msm_vidc_clock_iris35.o \
                   $(VIDEO_DRIVER_REL_PATH)/variant/iris35/src/msm_vidc_iris35.o
 endif
+
 video-objs +=     $(VIDEO_DRIVER_REL_PATH)/platform/common/src/msm_vidc_platform.o \
                   $(VIDEO_DRIVER_REL_PATH)/variant/common/src/msm_vidc_variant.o \
                   $(VIDEO_DRIVER_REL_PATH)/vidc/src/msm_vidc_v4l2.o \

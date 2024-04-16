@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -89,11 +89,23 @@ static int __acquire_regulator(struct msm_vidc_core *core,
 {
 	int rc = 0;
 
+	rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
+	if (rc) {
+		d_vpr_e("%s: failed to acquire video_xo_reset control\n", __func__);
+		goto fail_assert_xo_reset;
+	}
+
 	if (rinfo->hw_power_collapse) {
 		if (!rinfo->regulator) {
 			d_vpr_e("%s: invalid regulator\n", __func__);
 			rc = -EINVAL;
 			goto exit;
+		}
+
+		if (!is_core_sub_state(core, CORE_SUBSTATE_GDSC_HANDOFF)) {
+			d_vpr_l("%s: regulator (%s) is already in software ctrl\n",
+				__func__, rinfo->name);
+			return rc;
 		}
 
 		if (regulator_get_mode(rinfo->regulator) ==
@@ -133,6 +145,10 @@ static int __acquire_regulator(struct msm_vidc_core *core,
 	}
 
 exit:
+	rc = call_res_op(core, reset_control_release, core, "video_xo_reset");
+	if (rc)
+		d_vpr_e("%s: failed to release video_xo_reset reset\n", __func__);
+fail_assert_xo_reset:
 	return rc;
 }
 
@@ -141,10 +157,22 @@ static int __hand_off_regulator(struct msm_vidc_core *core,
 {
 	int rc = 0;
 
+	rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
+	if (rc) {
+		d_vpr_e("%s: failed to acquire video_xo_reset control\n", __func__);
+		goto fail_assert_xo_reset;
+	}
+
 	if (rinfo->hw_power_collapse) {
 		if (!rinfo->regulator) {
 			d_vpr_e("%s: invalid regulator\n", __func__);
-			return -EINVAL;
+			goto exit;
+		}
+
+		if (is_core_sub_state(core, CORE_SUBSTATE_GDSC_HANDOFF)) {
+			d_vpr_l("%s: regulator (%s) is already in Hardware ctrl\n",
+				__func__, rinfo->name);
+			return rc;
 		}
 
 		rc = regulator_set_mode(rinfo->regulator,
@@ -152,7 +180,7 @@ static int __hand_off_regulator(struct msm_vidc_core *core,
 		if (rc) {
 			d_vpr_e("Failed to hand off regulator control: %s\n",
 				rinfo->name);
-			return rc;
+			goto exit;
 		} else {
 			/* set handoff done in core sub_state */
 			msm_vidc_change_core_sub_state(core,
@@ -168,6 +196,11 @@ static int __hand_off_regulator(struct msm_vidc_core *core,
 		}
 	}
 
+exit:
+	rc = call_res_op(core, reset_control_release, core, "video_xo_reset");
+	if (rc)
+		d_vpr_e("%s: failed to release video_xo_reset reset\n", __func__);
+fail_assert_xo_reset:
 	return rc;
 }
 
@@ -188,18 +221,30 @@ static int __enable_regulator(struct msm_vidc_core *core, const char *reg_name)
 			continue;
 		found = true;
 
+		rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
+		if (rc) {
+			d_vpr_e("%s: failed to acquire video_xo_reset control\n", __func__);
+			goto fail_assert_xo_reset;
+		}
+
 		rc = regulator_enable(rinfo->regulator);
 		if (rc) {
 			d_vpr_e("%s: failed to enable %s, rc = %d\n",
 				__func__, rinfo->name, rc);
-			return rc;
+			goto fail_regulator_enable;
 		}
 		if (!regulator_is_enabled(rinfo->regulator)) {
 			d_vpr_e("%s: regulator %s not enabled\n",
 				__func__, rinfo->name);
 			regulator_disable(rinfo->regulator);
-			return -EINVAL;
+			rc = -EINVAL;
+			goto fail_regulator_enable;
 		}
+
+		rc = call_res_op(core, reset_control_release, core, "video_xo_reset");
+		if (rc)
+			d_vpr_e("%s: failed to release video_xo_reset reset\n", __func__);
+
 		d_vpr_h("%s: enabled regulator %s\n", __func__, rinfo->name);
 		break;
 	}
@@ -208,6 +253,11 @@ static int __enable_regulator(struct msm_vidc_core *core, const char *reg_name)
 		return -EINVAL;
 	}
 
+	return rc;
+
+fail_regulator_enable:
+	call_res_op(core, reset_control_release, core, "video_xo_reset");
+fail_assert_xo_reset:
 	return rc;
 }
 
@@ -239,12 +289,23 @@ static int __disable_regulator(struct msm_vidc_core *core, const char *reg_name)
 		/* reset handoff done from core sub_state */
 		msm_vidc_change_core_sub_state(core, CORE_SUBSTATE_GDSC_HANDOFF, 0, __func__);
 
+		rc = call_res_op(core, reset_control_acquire, core, "video_xo_reset");
+		if (rc) {
+			d_vpr_e("%s: failed to acquire video_xo_reset control\n", __func__);
+			goto fail_assert_xo_reset;
+		}
+
 		rc = regulator_disable(rinfo->regulator);
 		if (rc) {
 			d_vpr_e("%s: failed to disable %s, rc = %d\n",
 				__func__, rinfo->name, rc);
-			return rc;
+			goto fail_regulator_disable;
 		}
+
+		rc = call_res_op(core, reset_control_release, core, "video_xo_reset");
+		if (rc)
+			d_vpr_e("%s: failed to release video_xo_reset reset\n", __func__);
+
 		d_vpr_h("%s: disabled regulator %s\n", __func__, rinfo->name);
 		break;
 	}
@@ -253,6 +314,11 @@ static int __disable_regulator(struct msm_vidc_core *core, const char *reg_name)
 		return -EINVAL;
 	}
 
+	return rc;
+
+fail_regulator_disable:
+	call_res_op(core, reset_control_release, core, "video_xo_reset");
+fail_assert_xo_reset:
 	return rc;
 }
 
@@ -457,17 +523,25 @@ static int __clock_set_flag_ext(struct msm_vidc_core *core,
 	return 0;
 }
 
-const struct msm_vidc_resources_ops *get_res_ops_ext(void)
+const struct msm_vidc_resources_ops *get_res_ops_ext(struct msm_vidc_core *core)
 {
 	const struct msm_vidc_resources_ops *res_ops = get_resources_ops();
 	static struct msm_vidc_resources_ops res_ops_ext;
+	const struct regulator_table *regulator_tbl;
+	u32 regulator_count = 0;
+
+	regulator_tbl = core->platform->data.regulator_tbl;
+	regulator_count = core->platform->data.regulator_tbl_size;
 
 	memcpy(&res_ops_ext, res_ops, sizeof(struct msm_vidc_resources_ops));
-	res_ops_ext.gdsc_init        = __init_regulators;
-	res_ops_ext.gdsc_on          = __enable_regulator;
-	res_ops_ext.gdsc_off         = __disable_regulator;
-	res_ops_ext.gdsc_hw_ctrl     = __hand_off_regulators;
-	res_ops_ext.gdsc_sw_ctrl     = __acquire_regulators;
+	if (regulator_tbl && regulator_count) {
+		res_ops_ext.gdsc_init        = __init_regulators;
+		res_ops_ext.gdsc_on          = __enable_regulator;
+		res_ops_ext.gdsc_off         = __disable_regulator;
+		res_ops_ext.gdsc_hw_ctrl     = __hand_off_regulators;
+		res_ops_ext.gdsc_sw_ctrl     = __acquire_regulators;
+	}
+
 	res_ops_ext.set_clks         = __set_clocks_ext;
 	res_ops_ext.clk_set_flag     = __clock_set_flag_ext;
 

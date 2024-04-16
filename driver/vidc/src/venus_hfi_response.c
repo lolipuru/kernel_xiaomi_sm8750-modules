@@ -66,12 +66,12 @@ static void print_sfr_message(struct msm_vidc_core *core)
 
 	vsfr = (struct msm_vidc_sfr *)core->sfr.align_virtual_addr;
 	if (vsfr) {
-		if (vsfr->bufSize != core->sfr.mem_size) {
+		if (vsfr->buf_size != core->sfr.mem_size) {
 			d_vpr_e("Invalid SFR buf size %d actual %d\n",
-				vsfr->bufSize, core->sfr.mem_size);
+				vsfr->buf_size, core->sfr.mem_size);
 			return;
 		}
-		vsfr_size = vsfr->bufSize - sizeof(u32);
+		vsfr_size = vsfr->buf_size - sizeof(u32);
 		p = memchr(vsfr->rg_data, '\0', vsfr_size);
 		/* SFR isn't guaranteed to be NULL terminated */
 		if (p == NULL)
@@ -205,7 +205,7 @@ int validate_packet(u8 *response_pkt, u8 *core_resp_pkt,
 	return 0;
 }
 
-static int validate_hdr_packet(struct msm_vidc_core *core,
+int validate_hdr_packet(struct msm_vidc_core *core,
 	struct hfi_header *hdr, const char *function)
 {
 	struct hfi_packet *packet;
@@ -503,7 +503,7 @@ static int handle_session_stop(struct msm_vidc_inst *inst,
 }
 
 static int handle_session_drain(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+				struct hfi_packet *pkt)
 {
 	int rc = 0;
 
@@ -568,7 +568,7 @@ static int get_driver_buffer_flags(struct msm_vidc_inst *inst, u32 hfi_flags)
 }
 
 static int handle_read_only_buffer(struct msm_vidc_inst *inst,
-	struct msm_vidc_buffer *buf)
+				   struct msm_vidc_buffer *buf)
 {
 	struct msm_vidc_buffer *ro_buf;
 	struct msm_vidc_core *core;
@@ -619,7 +619,7 @@ static int handle_read_only_buffer(struct msm_vidc_inst *inst,
 }
 
 static int handle_non_read_only_buffer(struct msm_vidc_inst *inst,
-	struct hfi_buffer *buffer)
+				       struct hfi_buffer *buffer)
 {
 	struct msm_vidc_buffer *ro_buf;
 
@@ -640,7 +640,7 @@ static int handle_non_read_only_buffer(struct msm_vidc_inst *inst,
 }
 
 static int handle_psc_last_flag_buffer(struct msm_vidc_inst *inst,
-		struct hfi_buffer *buffer)
+				       struct hfi_buffer *buffer)
 {
 	int rc = 0;
 
@@ -658,7 +658,7 @@ static int handle_psc_last_flag_buffer(struct msm_vidc_inst *inst,
 }
 
 static int handle_drain_last_flag_buffer(struct msm_vidc_inst *inst,
-		struct hfi_buffer *buffer)
+					 struct hfi_buffer *buffer)
 {
 	int rc = 0;
 
@@ -676,7 +676,7 @@ static int handle_drain_last_flag_buffer(struct msm_vidc_inst *inst,
 }
 
 static int handle_input_buffer(struct msm_vidc_inst *inst,
-	struct hfi_buffer *buffer)
+			       struct hfi_buffer *buffer)
 {
 	int rc = 0;
 	struct msm_vidc_buffers *buffers;
@@ -728,10 +728,12 @@ static int handle_input_buffer(struct msm_vidc_inst *inst,
 	}
 
 	if (is_decode_session(inst) && inst->codec == MSM_VIDC_AV1) {
-		inst->power.fw_av1_tile_rows =
-			inst->hfi_frame_info.av1_tile_rows_columns >> 16;
-		inst->power.fw_av1_tile_columns =
-			inst->hfi_frame_info.av1_tile_rows_columns & 0x0000FFFF;
+		if (inst->hfi_frame_info.av1_tile_rows_columns) {
+			inst->power.fw_av1_tile_rows =
+				inst->hfi_frame_info.av1_tile_rows_columns >> 16;
+			inst->power.fw_av1_tile_columns =
+				inst->hfi_frame_info.av1_tile_rows_columns & 0x0000FFFF;
+		}
 
 		if (inst->hfi_frame_info.av1_non_uniform_tile_spacing)
 			i_vpr_l(inst, "%s: av1_non_uniform_tile_spacing %d\n",
@@ -761,8 +763,77 @@ static int handle_input_buffer(struct msm_vidc_inst *inst,
 	return rc;
 }
 
+static int msm_vidc_handle_fence_signal(struct msm_vidc_inst *inst,
+					struct msm_vidc_buffer *buf)
+{
+	int rc = 0;
+	bool signal_error = false;
+	struct msm_vidc_core *core = inst->core;
+
+	if (inst->capabilities[OUTBUF_FENCE_TYPE].value ==
+		MSM_VIDC_FENCE_NONE)
+		return 0;
+
+	if (is_meta_rx_inp_enabled(inst, META_OUTBUF_FENCE)) {
+		if (!inst->hfi_frame_info.fence_id) {
+			i_vpr_e(inst,
+				"%s: fence id is not received although fencing is enabled\n",
+				__func__);
+			return -EINVAL;
+		}
+	} else {
+		if (!inst->hfi_frame_info.fence_id) {
+			return 0;
+		}
+		i_vpr_e(inst,
+			"%s: fence id: %d is received although fencing is not enabled\n",
+			__func__, inst->hfi_frame_info.fence_id);
+		signal_error = true;
+		goto signal;
+	}
+
+	if (inst->capabilities[OUTBUF_FENCE_TYPE].value ==
+		MSM_VIDC_SYNX_V2_FENCE) {
+		if (inst->hfi_frame_info.fence_error)
+			signal_error = true;
+	} else if (inst->capabilities[OUTBUF_FENCE_TYPE].value ==
+		MSM_VIDC_SW_FENCE) {
+		if (!buf->data_size)
+			signal_error = true;
+
+		if (inst->hfi_frame_info.fence_error)
+			i_vpr_e(inst,
+				"%s: fence error info received for SW fence\n",
+				__func__);
+	} else {
+		i_vpr_e(inst, "%s: invalid fence type\n", __func__);
+		return -EINVAL;
+	}
+
+signal:
+	/* fence signalling */
+	if (signal_error) {
+		/* signal fence error */
+		i_vpr_l(inst,
+			"%s: signalling fence error for buf idx %d daddr %#llx\n",
+			__func__, buf->index, buf->device_addr);
+		call_fence_op(core, fence_destroy, inst,
+			      inst->hfi_frame_info.fence_id);
+	} else {
+		/* signal fence success*/
+		rc = call_fence_op(core, fence_signal, inst,
+				   inst->hfi_frame_info.fence_id);
+		if (rc) {
+			i_vpr_e(inst, "%s: failed to signal fence\n", __func__);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
 static int handle_output_buffer(struct msm_vidc_inst *inst,
-	struct hfi_buffer *buffer)
+				struct hfi_buffer *buffer)
 {
 	int rc = 0;
 	struct msm_vidc_buffers *buffers;
@@ -896,18 +967,9 @@ static int handle_output_buffer(struct msm_vidc_inst *inst,
 	buf->flags = 0;
 	buf->flags = get_driver_buffer_flags(inst, buffer->flags);
 
-	/* fence signalling */
-	if (inst->hfi_frame_info.fence_id) {
-		if (buf->data_size) {
-			/* signal fence */
-			msm_vidc_fence_signal(inst,
-				inst->hfi_frame_info.fence_id);
-		} else {
-			/* destroy fence */
-			msm_vidc_fence_destroy(inst,
-				inst->hfi_frame_info.fence_id);
-		}
-	}
+	rc = msm_vidc_handle_fence_signal(inst, buf);
+	if (rc)
+		msm_vidc_change_state(inst, MSM_VIDC_ERROR, __func__);
 
 	if (is_decode_session(inst)) {
 		inst->power.fw_cr = inst->hfi_frame_info.cr;
@@ -933,7 +995,7 @@ static int handle_output_buffer(struct msm_vidc_inst *inst,
 }
 
 static int handle_input_metadata_buffer(struct msm_vidc_inst *inst,
-	struct hfi_buffer *buffer)
+					struct hfi_buffer *buffer)
 {
 	int rc = 0;
 	struct msm_vidc_buffers *buffers;
@@ -1001,7 +1063,7 @@ static int handle_input_metadata_buffer(struct msm_vidc_inst *inst,
 }
 
 static int handle_output_metadata_buffer(struct msm_vidc_inst *inst,
-	struct hfi_buffer *buffer)
+					 struct hfi_buffer *buffer)
 {
 	int rc = 0;
 	struct msm_vidc_buffers *buffers;
@@ -1051,7 +1113,7 @@ static int handle_output_metadata_buffer(struct msm_vidc_inst *inst,
 }
 
 static bool is_metabuffer_dequeued(struct msm_vidc_inst *inst,
-	struct msm_vidc_buffer *buf)
+				   struct msm_vidc_buffer *buf)
 {
 	bool found = false;
 	struct msm_vidc_buffers *buffers;
@@ -1167,15 +1229,17 @@ static int handle_dequeue_buffers(struct msm_vidc_inst *inst)
 }
 
 static int handle_release_internal_buffer(struct msm_vidc_inst *inst,
-	struct hfi_buffer *buffer)
+					  struct hfi_buffer *buffer)
 {
 	int rc = 0;
 	struct msm_vidc_buffers *buffers;
 	struct msm_vidc_buffer *buf;
 	bool found;
 
-	buffers = msm_vidc_get_buffers(inst, hfi_buf_type_to_driver(inst->domain,
-		buffer->type, HFI_PORT_NONE), __func__);
+	buffers = msm_vidc_get_buffers(inst,
+				       hfi_buf_type_to_driver(inst->domain,
+							      buffer->type, HFI_PORT_NONE),
+				       __func__);
 	if (!buffers)
 		return -EINVAL;
 
@@ -1213,7 +1277,7 @@ static int handle_release_internal_buffer(struct msm_vidc_inst *inst,
 }
 
 int handle_release_output_buffer(struct msm_vidc_inst *inst,
-	struct hfi_buffer *buffer)
+				 struct hfi_buffer *buffer)
 {
 	int rc = 0;
 	struct msm_vidc_buffer *buf;
@@ -1240,7 +1304,7 @@ int handle_release_output_buffer(struct msm_vidc_inst *inst,
 }
 
 static int handle_session_buffer(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+				 struct hfi_packet *pkt)
 {
 	int i, rc = 0;
 	struct hfi_buffer *buffer;
@@ -1377,7 +1441,7 @@ static int handle_output_port_settings_change(struct msm_vidc_inst *inst)
 }
 
 static int handle_port_settings_change(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+				       struct hfi_packet *pkt)
 {
 	int rc = 0;
 
@@ -1406,7 +1470,7 @@ exit:
 }
 
 static int handle_session_subscribe_mode(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+					 struct hfi_packet *pkt)
 {
 	if (pkt->flags & HFI_FW_FLAGS_SUCCESS)
 		i_vpr_h(inst, "%s: successful\n", __func__);
@@ -1414,7 +1478,7 @@ static int handle_session_subscribe_mode(struct msm_vidc_inst *inst,
 }
 
 static int handle_session_delivery_mode(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+					struct hfi_packet *pkt)
 {
 	if (pkt->flags & HFI_FW_FLAGS_SUCCESS)
 		i_vpr_h(inst, "%s: successful\n", __func__);
@@ -1422,7 +1486,7 @@ static int handle_session_delivery_mode(struct msm_vidc_inst *inst,
 }
 
 static int handle_session_pause(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+				struct hfi_packet *pkt)
 {
 	if (pkt->flags & HFI_FW_FLAGS_SUCCESS)
 		i_vpr_h(inst, "%s: successful\n", __func__);
@@ -1430,7 +1494,7 @@ static int handle_session_pause(struct msm_vidc_inst *inst,
 }
 
 static int handle_session_resume(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+				 struct hfi_packet *pkt)
 {
 	if (pkt->flags & HFI_FW_FLAGS_SUCCESS)
 		i_vpr_h(inst, "%s: successful\n", __func__);
@@ -1438,7 +1502,7 @@ static int handle_session_resume(struct msm_vidc_inst *inst,
 }
 
 static int handle_session_stability(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+				    struct hfi_packet *pkt)
 {
 	if (pkt->flags & HFI_FW_FLAGS_SUCCESS)
 		i_vpr_h(inst, "%s: successful\n", __func__);
@@ -1446,7 +1510,7 @@ static int handle_session_stability(struct msm_vidc_inst *inst,
 }
 
 static int handle_session_command(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+				  struct hfi_packet *pkt)
 {
 	int i, rc;
 	static const struct msm_vidc_hfi_packet_handle hfi_pkt_handle[] = {
@@ -1484,7 +1548,7 @@ static int handle_session_command(struct msm_vidc_inst *inst,
 }
 
 static int handle_dpb_list_property(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+				    struct hfi_packet *pkt)
 {
 	u32 payload_size, num_words_in_payload;
 	u8 *payload_start;
@@ -1556,7 +1620,7 @@ static int handle_dpb_list_property(struct msm_vidc_inst *inst,
 }
 
 static int handle_property_with_payload(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt, u32 port)
+					struct hfi_packet *pkt, u32 port)
 {
 	int rc = 0;
 	u32 *payload_ptr = NULL;
@@ -1644,12 +1708,12 @@ static int handle_property_with_payload(struct msm_vidc_inst *inst,
 	case HFI_PROP_CABAC_SESSION:
 		if (payload_ptr[0] == 1)
 			msm_vidc_update_cap_value(inst, ENTROPY_MODE,
-				V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CABAC,
-				__func__);
+						  V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CABAC,
+						  __func__);
 		else
 			msm_vidc_update_cap_value(inst, ENTROPY_MODE,
-				V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CAVLC,
-				__func__);
+						  V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CAVLC,
+						  __func__);
 		break;
 	case HFI_PROP_DPB_LIST:
 		rc = handle_dpb_list_property(inst, pkt);
@@ -1688,7 +1752,8 @@ static int handle_property_with_payload(struct msm_vidc_inst *inst,
 }
 
 static int handle_property_without_payload(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt, u32 port)
+					   struct hfi_packet *pkt,
+					   u32 port)
 {
 	int rc = 0;
 
@@ -1722,7 +1787,7 @@ static int handle_property_without_payload(struct msm_vidc_inst *inst,
 }
 
 static int handle_session_property(struct msm_vidc_inst *inst,
-	struct hfi_packet *pkt)
+				   struct hfi_packet *pkt)
 {
 	int rc = 0;
 	u32 port;
@@ -1788,7 +1853,7 @@ static int handle_image_version_property(struct msm_vidc_core *core,
 }
 
 static int handle_system_property(struct msm_vidc_core *core,
-	struct hfi_packet *pkt)
+				  struct hfi_packet *pkt)
 {
 	int rc = 0;
 
@@ -1804,8 +1869,8 @@ static int handle_system_property(struct msm_vidc_core *core,
 	return rc;
 }
 
-static int handle_system_response(struct msm_vidc_core *core,
-	struct hfi_header *hdr)
+int handle_system_response(struct msm_vidc_core *core,
+				  struct hfi_header *hdr)
 {
 	int rc = 0;
 	struct hfi_packet *packet;
@@ -1851,7 +1916,7 @@ exit:
 }
 
 static int __handle_session_response(struct msm_vidc_inst *inst,
-	struct hfi_header *hdr)
+				     struct hfi_header *hdr)
 {
 	int rc = 0;
 	struct hfi_packet *packet;
@@ -1897,22 +1962,14 @@ static int __handle_session_response(struct msm_vidc_inst *inst,
 	return rc;
 }
 
-static int handle_session_response(struct msm_vidc_core *core,
-	struct hfi_header *hdr)
+int handle_session_response(struct msm_vidc_inst *inst,
+				   struct hfi_header *hdr)
 {
-	struct msm_vidc_inst *inst;
 	struct hfi_packet *packet;
 	u8 *pkt;
 	int i, rc = 0;
 	bool found_ipsc = false;
 
-	inst = get_inst(core, hdr->session_id);
-	if (!inst) {
-		d_vpr_e("%s: Invalid inst\n", __func__);
-		return -EINVAL;
-	}
-
-	inst_lock(inst, __func__);
 	/* search for cmd settings change pkt */
 	pkt = (u8 *)((u8 *)hdr + sizeof(struct hfi_header));
 	for (i = 0; i < hdr->num_packets; i++) {
@@ -1935,27 +1992,5 @@ static int handle_session_response(struct msm_vidc_core *core,
 		goto exit;
 
 exit:
-	inst_unlock(inst, __func__);
-	put_inst(inst);
 	return rc;
-}
-
-int handle_response(struct msm_vidc_core *core, void *response)
-{
-	struct hfi_header *hdr;
-	int rc = 0;
-
-	hdr = (struct hfi_header *)response;
-	rc = validate_hdr_packet(core, hdr, __func__);
-	if (rc) {
-		d_vpr_e("%s: hdr pkt validation failed\n", __func__);
-		return handle_system_error(core, NULL);
-	}
-
-	if (!hdr->session_id)
-		return handle_system_response(core, hdr);
-	else
-		return handle_session_response(core, hdr);
-
-	return 0;
 }

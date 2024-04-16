@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_vidc_vb2.h"
@@ -133,7 +133,8 @@ void msm_vb2_detach_dmabuf(void *buf_priv)
 	if (is_decode_session(inst) && is_output_buffer(vbuf->type)) {
 		list_for_each_entry_safe(ro_buf, dummy, &inst->buffers.read_only.list, list) {
 			if (ro_buf->dmabuf == vbuf->dmabuf) {
-				print_vidc_buffer(VIDC_LOW, "low ", "detach: found ro buf", inst, ro_buf);
+				print_vidc_buffer(VIDC_LOW, "low ", "detach: found ro buf",
+						  inst, ro_buf);
 				ro_buf->attach = vbuf->attach;
 				vbuf->attach = NULL;
 				goto exit;
@@ -210,7 +211,8 @@ void msm_vb2_unmap_dmabuf(void *buf_priv)
 	if (is_decode_session(inst) && is_output_buffer(vbuf->type)) {
 		list_for_each_entry_safe(ro_buf, dummy, &inst->buffers.read_only.list, list) {
 			if (ro_buf->dmabuf == vbuf->dmabuf) {
-				print_vidc_buffer(VIDC_LOW, "low ", "unmap: found ro buf", inst, ro_buf);
+				print_vidc_buffer(VIDC_LOW, "low ", "unmap: found ro buf",
+						  inst, ro_buf);
 				ro_buf->sg_table = vbuf->sg_table;
 				ro_buf->attach = vbuf->attach;
 				vbuf->sg_table = NULL;
@@ -632,7 +634,6 @@ void msm_vb2_buf_queue(struct vb2_buffer *vb2)
 		timestamp_us = div_u64(vb2->timestamp, 1000);
 		msm_vidc_set_auto_framerate(inst, timestamp_us);
 	}
-	inst->last_qbuf_time_ns = ktime_ns;
 
 	if (vb2->type == INPUT_MPLANE) {
 		rc = msm_vidc_update_input_rate(inst, div_u64(ktime_ns, 1000));

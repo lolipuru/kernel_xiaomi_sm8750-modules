@@ -57,7 +57,6 @@ ddk_headers(
 
 ddk_headers(
     name = "video_driver_headers",
-    # hdrs = [":pineapple_configs", "uapi_headers", "pineapple_headers", "iris33_headers", "vidc_headers"]
     hdrs = [":uapi_headers", "pineapple_headers", "sun_headers", "iris33_headers", "iris35_headers", "vidc_headers"]
 )
 

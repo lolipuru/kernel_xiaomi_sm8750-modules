@@ -2712,10 +2712,10 @@ static const struct bw_table sun_bw_table[] = {
 	{ "venus-llcc",  1000, 15000000 },
 };
 
-/* name, hw_trigger */
-static const struct regulator_table sun_regulator_table[] = {
-	{ "iris-ctl", 0 },
-	{ "vcodec",   1 },
+/* name */
+static const struct pd_table sun_pd_table[] = {
+	{ "iris-ctl" },
+	{ "vcodec"   },
 };
 
 /* name, clock id, scaling */
@@ -2779,11 +2779,6 @@ static const struct reg_preset_table sun_reg_preset_table[] = {
 
 /* name, phys_addr, size, device_addr, device region type */
 static const struct device_region_table sun_device_region_table[] = {
-	{
-		"aon-registers",
-		0x0AAE0000, 0x1000, 0xFFAE0000,
-		MSM_VIDC_AON
-	},
 	{
 		"ipc_protocol4_client8_version-registers",
 		0x00508000, 0x1000, 0xFFADF000,
@@ -2906,8 +2901,8 @@ static const struct msm_vidc_platform_data sun_data = {
 	/* resources dependent on other module */
 	.bw_tbl = sun_bw_table,
 	.bw_tbl_size = ARRAY_SIZE(sun_bw_table),
-	.regulator_tbl = sun_regulator_table,
-	.regulator_tbl_size = ARRAY_SIZE(sun_regulator_table),
+	.pd_tbl = sun_pd_table,
+	.pd_tbl_size = ARRAY_SIZE(sun_pd_table),
 	.clk_tbl = sun_clk_table,
 	.clk_tbl_size = ARRAY_SIZE(sun_clk_table),
 	.clk_rst_tbl = sun_clk_reset_table,
@@ -3009,7 +3004,7 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 		d_vpr_e("%s: invalid memory ext ops\n", __func__);
 		return -EINVAL;
 	}
-	core->res_ops = get_res_ops_ext();
+	core->res_ops = get_res_ops_ext(core);
 	if (!core->res_ops) {
 		d_vpr_e("%s: invalid resource ext ops\n", __func__);
 		return -EINVAL;
