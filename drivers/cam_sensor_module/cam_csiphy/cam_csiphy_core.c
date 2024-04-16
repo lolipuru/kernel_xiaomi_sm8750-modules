@@ -1051,9 +1051,11 @@ int32_t cam_cmd_buf_parser(struct csiphy_device *csiphy_dev,
 	int                      rc = 0, i;
 	uintptr_t                generic_pkt_ptr;
 	struct cam_packet       *csl_packet = NULL;
+	struct cam_packet       *csl_packet_u = NULL;
 	struct cam_cmd_buf_desc *cmd_desc = NULL;
 	size_t                   len, remain_len;
 	uint32_t                 cmd_buf_type;
+	size_t                   packet_size = 0;
 
 
 	if (!cfg_dev || !csiphy_dev) {
@@ -1076,19 +1078,33 @@ int32_t cam_cmd_buf_parser(struct csiphy_device *csiphy_dev,
 			 sizeof(struct cam_packet), len);
 		cam_mem_put_cpu_buf(cfg_dev->packet_handle);
 		rc = -EINVAL;
-		return rc;
+		goto put_buf;
 	}
 
 	remain_len -= (size_t)cfg_dev->offset;
-	csl_packet = (struct cam_packet *)
+	csl_packet_u = (struct cam_packet *)
 		(generic_pkt_ptr + (uint32_t)cfg_dev->offset);
+	packet_size = csl_packet_u->header.size;
+	if (packet_size <= remain_len) {
+		rc = cam_common_mem_kdup((void **)&csl_packet,
+			csl_packet_u, packet_size);
+		if (rc) {
+			CAM_ERR(CAM_CSIPHY, "Alloc and copy request: %lld packet fail",
+				csl_packet_u->header.request_id);
+			goto put_buf;
+		}
+	} else {
+		CAM_ERR(CAM_CSIPHY, "Invalid packet header size %u",
+			packet_size);
+		rc = -EINVAL;
+		goto put_buf;
+	}
 
 	if (cam_packet_util_validate_packet(csl_packet,
 		remain_len)) {
 		CAM_ERR(CAM_CSIPHY, "Invalid packet params");
-		cam_mem_put_cpu_buf(cfg_dev->packet_handle);
 		rc = -EINVAL;
-		return rc;
+		goto end;
 	}
 
 	if (csl_packet->num_cmd_buf)
@@ -1097,9 +1113,8 @@ int32_t cam_cmd_buf_parser(struct csiphy_device *csiphy_dev,
 			csl_packet->cmd_buf_offset / 4);
 	else {
 		CAM_ERR(CAM_CSIPHY, "num_cmd_buffer = %d", csl_packet->num_cmd_buf);
-		cam_mem_put_cpu_buf(cfg_dev->packet_handle);
 		rc = -EINVAL;
-		return rc;
+		goto end;
 	}
 
 	CAM_DBG(CAM_CSIPHY, "CSIPHY:%u num cmd buffers received: %u",
@@ -1107,10 +1122,8 @@ int32_t cam_cmd_buf_parser(struct csiphy_device *csiphy_dev,
 
 	for (i = 0; i < csl_packet->num_cmd_buf; i++) {
 		rc = cam_packet_util_validate_cmd_desc(&cmd_desc[i]);
-		if (rc) {
-			cam_mem_put_cpu_buf(cfg_dev->packet_handle);
-			return rc;
-		}
+		if (rc)
+			goto end;
 
 		cmd_buf_type = cmd_desc[i].meta_data;
 
@@ -1139,6 +1152,10 @@ int32_t cam_cmd_buf_parser(struct csiphy_device *csiphy_dev,
 		if (rc)
 			break;
 	}
+
+end:
+	cam_common_mem_free(csl_packet);
+put_buf:
 	cam_mem_put_cpu_buf(cfg_dev->packet_handle);
 	return rc;
 }

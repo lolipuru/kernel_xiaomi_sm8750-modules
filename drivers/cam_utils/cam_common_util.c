@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/string.h>
@@ -16,6 +16,7 @@
 #include "cam_debug_util.h"
 #include "cam_presil_hw_access.h"
 #include "cam_hw.h"
+#include "cam_mem_mgr_api.h"
 #if IS_REACHABLE(CONFIG_QCOM_VA_MINIDUMP)
 #include <soc/qcom/minidump.h>
 static struct cam_common_mini_dump_dev_info g_minidump_dev_info;
@@ -389,7 +390,7 @@ void cam_common_release_evt_params(int32_t dev_hdl)
 		if (inject_params->dev_hdl == dev_hdl) {
 			CAM_INFO(CAM_UTIL, "entry deleted for %d dev hdl", dev_hdl);
 			list_del(pos);
-			kfree(inject_params);
+			CAM_MEM_FREE(inject_params);
 		}
 	}
 }
@@ -626,7 +627,7 @@ static int cam_common_evt_inject_set(const char *kmessage,
 	char    *msg                                          = NULL;
 	uint32_t param_output                                 = 0;
 
-	inject_params = kzalloc(sizeof(struct cam_common_inject_evt_param), GFP_KERNEL);
+	inject_params = CAM_MEM_ZALLOC(sizeof(struct cam_common_inject_evt_param), GFP_KERNEL);
 	if (!inject_params) {
 		CAM_ERR(CAM_UTIL, "no free memory");
 		return -ENOMEM;
@@ -684,6 +685,9 @@ static int cam_common_evt_inject_set(const char *kmessage,
 		CAM_ERR(CAM_UTIL, "Invalid Injection id: %u", hw_evt_params->inject_id);
 	}
 
+	if (!parse_handler)
+		goto free;
+
 	rc = cam_common_evt_inject_generic_command_parser(inject_params, &msg,
 		param_output, parse_handler);
 	if (rc) {
@@ -711,7 +715,7 @@ static int cam_common_evt_inject_set(const char *kmessage,
 	return rc;
 
 free:
-	kfree(inject_params);
+	CAM_MEM_FREE(inject_params);
 	return rc;
 }
 
@@ -828,3 +832,36 @@ static const struct kernel_param_ops cam_common_evt_inject = {
 };
 
 module_param_cb(cam_event_inject, &cam_common_evt_inject, NULL, 0644);
+
+int cam_common_mem_kdup(void **dst,
+	void *src, size_t size)
+{
+	if (!src || !dst || !size) {
+		CAM_ERR(CAM_UTIL, "Invalid params src: %pK dst: %pK size: %u",
+			src, dst, size);
+		return -EINVAL;
+	}
+
+	if (in_atomic()) {
+		CAM_ERR(CAM_UTIL, "Operation not permitted from atomic context");
+		return -EPERM;
+	}
+
+	*dst = kvzalloc(size, GFP_KERNEL);
+	if (!*dst) {
+		CAM_ERR(CAM_UTIL, "Failed to allocate memory with size: %u", size);
+		return -ENOMEM;
+	}
+
+	memcpy(*dst, src, size);
+	CAM_DBG(CAM_UTIL, "Allocate and copy memory with size: %u", size);
+
+	return 0;
+}
+EXPORT_SYMBOL(cam_common_mem_kdup);
+
+void cam_common_mem_free(void *memory)
+{
+	kvfree(memory);
+}
+EXPORT_SYMBOL(cam_common_mem_free);

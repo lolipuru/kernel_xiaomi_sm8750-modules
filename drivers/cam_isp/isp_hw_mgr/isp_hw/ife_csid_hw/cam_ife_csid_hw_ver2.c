@@ -28,6 +28,7 @@
 #include "cam_subdev.h"
 #include "cam_compat.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 /* CSIPHY TPG VC/DT values */
 #define CAM_IFE_CPHY_TPG_VC_VAL                         0x0
@@ -208,7 +209,7 @@ static void cam_ife_csid_ver2_print_camif_timestamps(
 		}
 
 		CAM_INFO(CAM_ISP,
-			"qtimer current [SOF: 0x%llx EOF: 0x%llx] prev [SOF: 0x%llx EOF: 0x%llx]",
+			"qtimer current [SOF: %lld EOF: %lld] prev [SOF: %lld EOF: %lld]",
 			__cam_ife_csid_ver2_get_time_stamp(
 				soc_info->reg_map[0].mem_base,
 				path_reg->timestamp_curr0_sof_addr,
@@ -512,9 +513,10 @@ static int cam_ife_csid_ver2_put_evt_payload(
 			csid_hw->hw_intf->hw_idx);
 		return -EINVAL;
 	}
+
+	CAM_COMMON_SANITIZE_LIST_ENTRY((*evt_payload), struct cam_ife_csid_ver2_evt_payload);
 	spin_lock_irqsave(lock, flags);
-	list_add_tail(&(*evt_payload)->list,
-		payload_list);
+	list_add_tail(&(*evt_payload)->list, payload_list);
 	*evt_payload = NULL;
 	spin_unlock_irqrestore(lock, flags);
 
@@ -1313,11 +1315,12 @@ static inline int cam_ife_csid_ver2_rx_err_process_top_half(
 		if ((evt_bitmap[rx_idx] & BIT_ULL(CAM_IFE_CSID_RX_ERROR_CRC)) &&
 			(*status & BIT(bit_pos[CAM_IFE_CSID_RX_ERROR_CRC]))) {
 			csid_hw->counters.crc_error_irq_count++;
-			CAM_DBG(CAM_ISP,
-				"CSID[%u] Recoverable CRC Error Count:%u, CRC Error threshold: %u",
-				csid_hw->hw_intf->hw_idx,
-				csid_hw->counters.crc_error_irq_count,
-				csid_hw->crc_error_threshold);
+			if (csid_hw->counters.crc_error_irq_count > csid_hw->crc_error_threshold)
+				CAM_DBG(CAM_ISP,
+					"CSID[%u] Recoverable CRC Error Count: %u, CRC Error threshold: %u",
+					csid_hw->hw_intf->hw_idx,
+					csid_hw->counters.crc_error_irq_count,
+					csid_hw->crc_error_threshold);
 		}
 
 		if ((csid_hw->counters.error_irq_count > CAM_IFE_CSID_MAX_ERR_COUNT) ||
@@ -1361,6 +1364,7 @@ static int cam_ife_csid_ver2_rx_err_top_half(
 			th_payload->evt_status_arr[0]);
 	} else {
 		evt_payload->irq_reg_val = status;
+		ktime_get_boottime_ts64(&evt_payload->timestamp);
 		th_payload->evt_payload_priv = evt_payload;
 	}
 	return rc;
@@ -1398,9 +1402,31 @@ static int cam_ife_csid_ver2_rx2_err_top_half(
 			th_payload->evt_status_arr[0]);
 	} else {
 		evt_payload->irq_reg_val = status;
+		ktime_get_boottime_ts64(&evt_payload->timestamp);
 		th_payload->evt_payload_priv = evt_payload;
 	}
 	return rc;
+}
+
+static const char *__cam_ife_csid_ver2_parse_short_pkt_type(uint32_t data_type)
+{
+	switch (data_type) {
+	case 0:
+		return "Frame Start Code";
+	case 1:
+		return "Frame End Code";
+	case 2:
+		return "Line Start Code";
+	case 3:
+		return "Line End Code";
+	case 4:
+	case 5:
+	case 6:
+	case 7:
+		return "Reserved";
+	default:
+		return "Invalid";
+	}
 }
 
 static int cam_ife_csid_ver2_handle_rx_debug_event(
@@ -1412,63 +1438,55 @@ static int cam_ife_csid_ver2_handle_rx_debug_event(
 	struct cam_hw_soc_info                           *soc_info;
 	struct cam_ife_csid_ver2_reg_info                *csid_reg;
 	const struct cam_ife_csid_ver2_csi2_rx_reg_info  *csi2_reg;
-	uint32_t                                          mask, val;
+	uint32_t                                          mask, val, val2;
 	const uint8_t                                    *dbg_bit_pos = NULL;
 	const uint64_t                                   *evt_bitmap = NULL;
+	struct timespec64                                 ts;
 
 
-	csid_reg = (struct cam_ife_csid_ver2_reg_info *)
-			csid_hw->core_info->csid_reg;
+	csid_reg = (struct cam_ife_csid_ver2_reg_info *) csid_hw->core_info->csid_reg;
 	csi2_reg = csid_reg->csi2_reg;
 	soc_info = &csid_hw->hw_info->soc_info;
 	mask = BIT(bit_pos);
 	dbg_bit_pos = csid_reg->rx_debug_mask->bit_pos;
 	evt_bitmap = csid_reg->rx_debug_mask->evt_bitmap;
 
+	ktime_get_boottime_ts64(&ts);
+
 	if ((evt_bitmap[rx_idx] & BIT_ULL(CAM_IFE_CSID_RX_LONG_PKT_CAPTURED))
 		&& (mask == BIT(dbg_bit_pos[CAM_IFE_CSID_RX_LONG_PKT_CAPTURED]))) {
 		val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
 			csi2_reg->captured_long_pkt_0_addr);
+		val2 = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+			csi2_reg->captured_long_pkt_1_addr);
+		CAM_INFO(CAM_ISP, "CSID[%u] LONG_PKT_CAPTURED occurred at [%llu: %09llu]",
+			csid_hw->hw_intf->hw_idx, ts.tv_sec, ts.tv_nsec);
 		CAM_INFO(CAM_ISP,
-			"CSID :%u Long pkt VC: %u DT: %u WC: %u",
-			csid_hw->hw_intf->hw_idx,
+			"The header of the first long pkt matching the configured vc-dt has been captured");
+		CAM_INFO(CAM_ISP,
+			"Virtual Channel: %u, Data Type: %u, Word Count: %u, Error Correction Code: %u",
 			((val & csi2_reg->vc_mask) >> csi2_reg->vc_shift),
 			((val & csi2_reg->dt_mask) >> csi2_reg->dt_shift),
-			((val & csi2_reg->wc_mask) >> csi2_reg->wc_shift));
-
-		val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
-			csi2_reg->captured_long_pkt_1_addr);
-		CAM_INFO(CAM_ISP,
-			"CSID :%u Long pkt ECC: %u",
-			csid_hw->hw_intf->hw_idx, val);
-
-		val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
-			csi2_reg->captured_long_pkt_ftr_addr);
-		CAM_INFO(CAM_ISP,
-			"CSID :%u Long pkt cal CRC: %u expected CRC: %u",
-			csid_hw->hw_intf->hw_idx,
-			((val >> csi2_reg->calc_crc_shift) & csi2_reg->calc_crc_mask),
-			(val & csi2_reg->expected_crc_mask));
+			((val & csi2_reg->wc_mask) >> csi2_reg->wc_shift), val2);
 
 		/* Update reset long pkt strobe */
 		*rst_strobe_val |= (1 << csi2_reg->long_pkt_strobe_rst_shift);
-
 	} else if ((evt_bitmap[rx_idx] & BIT_ULL(CAM_IFE_CSID_RX_SHORT_PKT_CAPTURED)) &&
 			(mask == BIT(dbg_bit_pos[CAM_IFE_CSID_RX_SHORT_PKT_CAPTURED]))) {
 		val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
 			csi2_reg->captured_short_pkt_0_addr);
-		CAM_INFO(CAM_ISP,
-			"CSID :%u Short pkt VC: %u DT: %u LC: %u",
-			csid_hw->hw_intf->hw_idx,
-			((val & csi2_reg->vc_mask) >> csi2_reg->vc_shift),
-			((val & csi2_reg->dt_mask) >> csi2_reg->dt_shift),
-			((val & csi2_reg->wc_mask) >> csi2_reg->wc_shift));
-
-		val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+		val2 = cam_io_r_mb(soc_info->reg_map[0].mem_base +
 			csi2_reg->captured_short_pkt_1_addr);
+		CAM_INFO(CAM_ISP, "CSID[%u] SHORT_PKT_CAPTURED occurred at [%llu: %09llu]",
+			csid_hw->hw_intf->hw_idx, ts.tv_sec, ts.tv_nsec);
 		CAM_INFO(CAM_ISP,
-			"CSID :%u Short pkt ECC: %u",
-			csid_hw->hw_intf->hw_idx, val);
+			"The header of the first short pkt matching the configured vc-dt has been captured");
+		CAM_INFO(CAM_ISP,
+			"Virtual Channel: %u, Data Type: %s, Frame Line Count: %u, Error Correction Code: %u",
+			((val & csi2_reg->vc_mask) >> csi2_reg->vc_shift),
+			__cam_ife_csid_ver2_parse_short_pkt_type(
+			(val & csi2_reg->dt_mask) >> csi2_reg->dt_shift),
+			((val & csi2_reg->wc_mask) >> csi2_reg->wc_shift), val2);
 
 		/* Update reset short pkt strobe */
 		*rst_strobe_val |= (1 << csi2_reg->short_pkt_strobe_rst_shift);
@@ -1476,9 +1494,12 @@ static int cam_ife_csid_ver2_handle_rx_debug_event(
 			(mask == BIT(dbg_bit_pos[CAM_IFE_CSID_RX_CPHY_PKT_HDR_CAPTURED]))) {
 		val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
 			csi2_reg->captured_cphy_pkt_hdr_addr);
+		CAM_INFO(CAM_ISP, "CSID[%u] CPHY_PKT_HDR_CAPTURED occurred at [%llu: %09llu]",
+			csid_hw->hw_intf->hw_idx, ts.tv_sec, ts.tv_nsec);
 		CAM_INFO(CAM_ISP,
-			"CSID :%u CPHY pkt VC: %u DT: %u WC: %u",
-			csid_hw->hw_intf->hw_idx,
+			"The header of the first cphy pkt matching the configured vc-dt has been captured");
+		CAM_INFO(CAM_ISP,
+			"Virtual Channel: %u, Data Type: %u, Word Count: %u",
 			((val & csi2_reg->vc_mask) >> csi2_reg->vc_shift),
 			((val & csi2_reg->dt_mask) >> csi2_reg->dt_shift),
 			((val & csi2_reg->wc_mask) >> csi2_reg->wc_shift));
@@ -1491,11 +1512,17 @@ static int cam_ife_csid_ver2_handle_rx_debug_event(
 			csi2_reg->cap_unmap_long_pkt_hdr_0_addr);
 
 		CAM_ERR(CAM_ISP,
-			"CSID:%u UNMAPPED_VC_DT: VC: %u DT: %u WC: %u not mapped to any csid paths",
-			csid_hw->hw_intf->hw_idx,
+			"CSID[%u] UNMAPPED_VC_DT occurred at [%llu: %09llu]",
+			csid_hw->hw_intf->hw_idx, ts.tv_sec, ts.tv_nsec);
+		CAM_ERR(CAM_ISP,
+			"Sensor: A long packet has a VC_DT combination that is not configured for IPP or RDIs");
+		CAM_ERR(CAM_ISP,
+			"Virtual Channel: %u, Data Type: %u, Word Count: %u",
 			((val & csi2_reg->vc_mask) >> csi2_reg->vc_shift),
 			((val & csi2_reg->dt_mask) >> csi2_reg->dt_shift),
 			((val & csi2_reg->wc_mask) >> csi2_reg->wc_shift));
+		CAM_ERR(CAM_ISP,
+			"SW Programming: Populate or Disable the VC DT in sensor driver XML");
 
 		csid_hw->counters.error_irq_count++;
 
@@ -1654,7 +1681,7 @@ static int cam_ife_csid_ver2_handle_event_err(
 			path_cfg = (struct cam_ife_csid_ver2_path_cfg *)res->res_priv;
 			evt.res_id   = res->res_id;
 			CAM_ERR(CAM_ISP,
-				"csid[%u] Res:%s Err 0x%x status 0x%x time_stamp: %lld.%09lld",
+				"csid[%u] Res:%s Err 0x%x status 0x%x time_stamp: %lld:%09lld",
 				csid_hw->hw_intf->hw_idx, res->res_name, err_type,
 				irq_status, path_cfg->error_ts.tv_sec,
 				path_cfg->error_ts.tv_nsec);
@@ -1676,11 +1703,10 @@ static int cam_ife_csid_ver2_handle_event_err(
 }
 
 static int cam_ife_csid_ver2_rx_err_process_bottom_half(
-	struct cam_ife_csid_ver2_hw        *csid_hw,
-	uint32_t                            irq_reg_val,
-	enum                                cam_ife_csid_rx_irq_regs rx_idx)
+	struct cam_ife_csid_ver2_hw          *csid_hw,
+	struct cam_ife_csid_ver2_evt_payload *payload,
+	enum cam_ife_csid_rx_irq_regs         rx_idx)
 {
-
 	const struct cam_ife_csid_ver2_csi2_rx_reg_info *csi2_reg = NULL;
 	struct cam_ife_csid_ver2_reg_info               *csid_reg = NULL;
 	uint32_t                                         irq_status = 0;
@@ -1695,7 +1721,7 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 	uint32_t                                         val = 0;
 	const uint64_t                                  *evt_bitmap = NULL;
 	const uint8_t                                   *bit_pos = NULL;
-
+	uint32_t                                         irq_reg_val = payload->irq_reg_val;
 
 	soc_info = &csid_hw->hw_info->soc_info;
 
@@ -1728,6 +1754,8 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 
 	if (irq_status) {
 		bool lane_overflow = false;
+		bool lane_sot_lost = false;
+		bool lane_eot_lost = false;
 		char tmp_buf[10];
 		int tmp_len = 0;
 
@@ -1744,15 +1772,74 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 		if (lane_overflow) {
 			event_type |= CAM_ISP_HW_ERROR_CSID_LANE_FIFO_OVERFLOW;
 			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
-				"INPUT_FIFO_OVERFLOW [Lanes:%s]: Skew/Less Data on lanes/ Slow csid clock:%luHz",
-				tmp_buf, cam_soc_util_get_applied_src_clk(soc_info, true));
+				"DLn_FIFO_OVERFLOW, Lanes:%s, occurred at [%llu: %09llu]",
+				tmp_buf, payload->timestamp.tv_sec, payload->timestamp.tv_nsec);
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"System: Data has been lost when transferring from PHY to CSID");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Debug: Check PHY clock, CSID clock and possible skew among the data lanes");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"DPHY: Enable skew calibration for datarate > 1.5Gbps/lane");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"CPHY: Perform CDR tuning");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Current CSID clock rate: %lluHz", csid_hw->clk_rate);
+		}
+
+		tmp_len = 0;
+		for (i = 0; i < 4; i++) {
+			/* NOTE: Hardware specific bits */
+			if ((evt_bitmap[rx_idx] &
+				(BIT_ULL(CAM_IFE_CSID_RX_DL0_SOT_LOST)<<i)) && (irq_status &
+				(BIT(bit_pos[CAM_IFE_CSID_RX_DL0_SOT_LOST]) << i))) {
+				tmp_len += scnprintf(tmp_buf + tmp_len, 10 - tmp_len, " %zu", i);
+				lane_sot_lost = true;
+			}
+		}
+
+		if (lane_sot_lost) {
+			event_type |= CAM_ISP_HW_ERROR_CSID_MISSING_SOT;
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"DLn_SOT_LOST, Lanes:%s, occurred at [%llu: %09llu]",
+				tmp_buf, payload->timestamp.tv_sec, payload->timestamp.tv_nsec);
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Sensor: Timing signals are missed received in the CPHY packet");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Debug: Check PHY/sensor config");
+		}
+
+		tmp_len = 0;
+		for (i = 0; i < 4; i++) {
+			/* NOTE: Hardware specific bits */
+			if ((evt_bitmap[rx_idx] &
+				(BIT_ULL(CAM_IFE_CSID_RX_DL0_EOT_LOST)<<i)) && (irq_status &
+				(BIT(bit_pos[CAM_IFE_CSID_RX_DL0_EOT_LOST]) << i))) {
+				tmp_len += scnprintf(tmp_buf + tmp_len, 10 - tmp_len, " %zu", i);
+				lane_eot_lost = true;
+			}
+		}
+
+		if (lane_eot_lost) {
+			event_type |= CAM_ISP_HW_ERROR_CSID_MISSING_EOT;
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"DLn_EOT_LOST, Lanes:%s, occurred at [%llu: %09llu]",
+				tmp_buf, payload->timestamp.tv_sec, payload->timestamp.tv_nsec);
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Sensor: Timing signals are missed received in the CPHY packet");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Debug: Check PHY/sensor config");
 		}
 
 		if ((evt_bitmap[rx_idx] & BIT_ULL(CAM_IFE_CSID_RX_ERROR_CPHY_PH_CRC)) &&
 			(irq_status & BIT(bit_pos[CAM_IFE_CSID_RX_ERROR_CPHY_PH_CRC]))) {
 			event_type |= CAM_ISP_HW_ERROR_CSID_PKT_HDR_CORRUPTED;
 			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
-				"CPHY_PH_CRC: Pkt Hdr CRC mismatch");
+				"CPHY_PACKET_HEADER_CRC occurred at [%llu: %09llu]",
+				payload->timestamp.tv_sec, payload->timestamp.tv_nsec);
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Sensor: All CPHY packet headers received are corrupted");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Debug: Check sensor data rate in output pixel clock in XML for proper PHY configuration");
 		}
 
 		if ((evt_bitmap[rx_idx] & BIT_ULL(CAM_IFE_CSID_RX_STREAM_UNDERFLOW)) &&
@@ -1762,17 +1849,29 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 				csi2_reg->captured_long_pkt_0_addr);
 
 			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
-				"STREAM_UNDERFLOW: Fewer bytes rcvd than WC:%d in pkt hdr",
-				val & 0xFFFF);
+				"STREAM_UNDERFLOW occurred at [%llu: %09llu]",
+				payload->timestamp.tv_sec, payload->timestamp.tv_nsec);
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Sensor: Long packet payload size is less than payload header size, resulting a corrupted frame");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Debug: Perform PHY Tuning/Check sensor limitations");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Word Count: %u", val & 0xFFFF);
 		}
 
 		if ((evt_bitmap[rx_idx] & BIT_ULL(CAM_IFE_CSID_RX_ERROR_ECC)) && (irq_status &
 			BIT(bit_pos[CAM_IFE_CSID_RX_ERROR_ECC]))) {
 			event_type |= CAM_ISP_HW_ERROR_CSID_PKT_HDR_CORRUPTED;
-			CAM_ERR_BUF(CAM_ISP, log_buf,
-				CAM_IFE_CSID_LOG_BUF_LEN, &len,
-				"DPHY_ERROR_ECC: Pkt hdr errors unrecoverable. ECC: 0x%x",
-				 cam_io_r_mb(soc_info->reg_map[0].mem_base +
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"DPHY_PACKET_HEADER_ECC_DETECTED occurred on [%llu: %09llu]",
+				payload->timestamp.tv_sec, payload->timestamp.tv_nsec);
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Sensor: A short or long packet is corrupted and cannot be recovered");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Debug: Check sensor datarate in output pixel clock in XML for proper PHY configuration");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Error Correction Code: 0x%x",
+					cam_io_r_mb(soc_info->reg_map[0].mem_base +
 					csi2_reg->captured_long_pkt_1_addr));
 		}
 
@@ -1784,7 +1883,7 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 		}
 
 		if ((evt_bitmap[rx_idx] & BIT_ULL(CAM_IFE_CSID_RX_CPHY_EOT_RECEPTION)) &&
-			(irq_status & (bit_pos[CAM_IFE_CSID_RX_CPHY_EOT_RECEPTION]))) {
+			(irq_status & (BIT(bit_pos[CAM_IFE_CSID_RX_CPHY_EOT_RECEPTION])))) {
 			event_type |= CAM_ISP_HW_ERROR_CSID_MISSING_EOT;
 			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
 				"CPHY_EOT_RECEPTION: No EOT on lane/s, is_EPD: %c, PHY_Type: %s(%u)",
@@ -1806,21 +1905,24 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 			total_crc = cam_io_r_mb(soc_info->reg_map[0].mem_base +
 				csi2_reg->total_crc_err_addr);
 
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"LONG_PACKET_PAYLOAD_CRC occurred at [%llu: %09llu]",
+				payload->timestamp.tv_sec, payload->timestamp.tv_nsec);
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Sensor: The calculated CRC of a long packet does not match the transmitted (expected) CRC, possible corruption");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Debug: First frame CRC: Check sensor data rate / settle count in XML for proper PHY configuration; Streaming state: Check sensor constraints for exposure control else perform PHY CDR-EQ Tuning");
+
 			if (csid_hw->rx_cfg.lane_type == CAM_ISP_LANE_TYPE_CPHY) {
 				val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
 					csi2_reg->captured_cphy_pkt_hdr_addr);
 
 				CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
-					"PHY_CRC_ERROR: Long pkt payload CRC mismatch. Totl CRC Errs: %u, Rcvd CRC: 0x%x Caltd CRC: 0x%x, VC:%d DT:%d WC:%d",
-					total_crc, long_pkt_ftr_val & 0xffff,
-					long_pkt_ftr_val >> 16, val >> 22,
-					(val >> 16) & 0x3F, val & 0xFFFF);
+					"Total CRC Errors: %u, Virtual Channel: %u, Data Type: %u, Word Count: %u",
+					total_crc, val >> 22, (val >> 16) & 0x3F, val & 0xFFFF);
 			} else {
-				CAM_ERR_BUF(CAM_ISP, log_buf,
-					CAM_IFE_CSID_LOG_BUF_LEN, &len,
-					"PHY_CRC_ERROR: Long pkt payload CRC mismatch. Totl CRC Errs: %u, Rcvd CRC: 0x%x Caltd CRC: 0x%x",
-					total_crc, long_pkt_ftr_val & 0xffff,
-					long_pkt_ftr_val >> 16);
+				CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+					"Total CRC Errors: %u", total_crc);
 			}
 		}
 
@@ -1838,37 +1940,50 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 		if ((evt_bitmap[rx_idx] & BIT_ULL(CAM_IFE_CSID_RX_CPHY_SOT_RECEPTION)) &&
 			(irq_status & BIT(bit_pos[CAM_IFE_CSID_RX_CPHY_SOT_RECEPTION]))) {
 			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
-					"CPHY_SOT_RECEPTION: Less SOTs on lane/s");
+				"CPHY_SOT_RECEPTION: Less SOTs on lane/s");
+			CAM_ERR(CAM_ISP, "CSID[%u] Partly fatal errors: %s",
+				csid_hw->hw_intf->hw_idx, log_buf);
 		}
 
+		len = 0;
 		if ((evt_bitmap[rx_idx] & BIT_ULL(CAM_IFE_CSID_RX_ERROR_CRC)) &&
 			(irq_status & BIT(bit_pos[CAM_IFE_CSID_RX_ERROR_CRC]))) {
 			event_type |= CAM_ISP_HW_ERROR_CSID_PKT_PAYLOAD_CORRUPTED;
-			long_pkt_ftr_val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
-				csi2_reg->captured_long_pkt_ftr_addr);
-			total_crc = cam_io_r_mb(soc_info->reg_map[0].mem_base +
-				csi2_reg->total_crc_err_addr);
 
-			if (csid_hw->rx_cfg.lane_type == CAM_ISP_LANE_TYPE_CPHY) {
-				val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
-					csi2_reg->captured_cphy_pkt_hdr_addr);
-
+			/* Only print the CRC error logs when reaching the threshold */
+			if (csid_hw->counters.crc_error_irq_count > csid_hw->crc_error_threshold) {
+				long_pkt_ftr_val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+					csi2_reg->captured_long_pkt_ftr_addr);
+				total_crc = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+					csi2_reg->total_crc_err_addr);
 				CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
-					"PHY_CRC_ERROR: Long pkt payload CRC mismatch. Totl CRC Errs: %u, Rcvd CRC: 0x%x Caltd CRC: 0x%x, VC:%d DT:%d WC:%d",
-					total_crc, long_pkt_ftr_val & 0xffff,
-					long_pkt_ftr_val >> 16, val >> 22,
-					(val >> 16) & 0x3F, val & 0xFFFF);
-			} else {
-				CAM_ERR_BUF(CAM_ISP, log_buf,
-					CAM_IFE_CSID_LOG_BUF_LEN, &len,
-					"PHY_CRC_ERROR: Long pkt payload CRC mismatch. Totl CRC Errs: %u, Rcvd CRC: 0x%x Caltd CRC: 0x%x",
-					total_crc, long_pkt_ftr_val & 0xffff,
-					long_pkt_ftr_val >> 16);
+					"LONG_PACKET_PAYLOAD_CRC occurred at [%llu: %09llu]",
+					payload->timestamp.tv_sec, payload->timestamp.tv_nsec);
+				CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+					"Sensor: The calculated CRC of a long packet does not match the transmitted (expected) CRC, possible corruption");
+				CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+					"Debug: First frame CRC: Check sensor data rate / settle count in XML for proper PHY configuration; Streaming state: Check sensor constraints for exposure control else perform PHY CDR-EQ Tuning");
+
+				if (csid_hw->rx_cfg.lane_type == CAM_ISP_LANE_TYPE_CPHY) {
+					val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+						csi2_reg->captured_cphy_pkt_hdr_addr);
+
+					CAM_ERR_BUF(CAM_ISP, log_buf,
+						CAM_IFE_CSID_LOG_BUF_LEN, &len,
+						"Total CRC Errors: %u, Virtual Channel: %u, Data Type: %u, Word Count: %u",
+						total_crc, val >> 22, (val >> 16) & 0x3F,
+						val & 0xFFFF);
+				} else {
+					CAM_ERR_BUF(CAM_ISP, log_buf,
+						CAM_IFE_CSID_LOG_BUF_LEN, &len,
+						"Total CRC Errors: %u", total_crc);
+				}
+
+				CAM_ERR(CAM_ISP, "CSID[%u] Partly fatal errors: %s",
+					csid_hw->hw_intf->hw_idx, log_buf);
 			}
 		}
 
-		CAM_ERR(CAM_ISP, "CSID[%u] Partly fatal errors: %s",
-			csid_hw->hw_intf->hw_idx, log_buf);
 		rx_irq_status |= irq_status;
 	}
 
@@ -1883,7 +1998,12 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 				csi2_reg->captured_long_pkt_0_addr);
 
 			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
-				"MMAPPED_VC_DT: VC:%d DT:%d mapped to more than 1 csid paths",
+				"MMAPPED_VC_DT occurred at [%llu: %09llu]",
+				payload->timestamp.tv_sec, payload->timestamp.tv_nsec);
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"SW: A long packet has a VC_DT combination that is configured for more than one IPP or RDIs");
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"Virtual Channel: %u, Data Type: %u",
 				(val >> 22), ((val >> 16) & 0x3F));
 		}
 
@@ -1934,7 +2054,7 @@ static int cam_ife_csid_ver2_rx_err_bottom_half(
 	csid_hw = handler_priv;
 
 	rc = cam_ife_csid_ver2_rx_err_process_bottom_half(csid_hw,
-		payload->irq_reg_val, CAM_IFE_CSID_RX_IRQ_STATUS_REG0);
+		payload, CAM_IFE_CSID_RX_IRQ_STATUS_REG0);
 
 	cam_ife_csid_ver2_put_evt_payload(csid_hw, &payload,
 		&csid_hw->rx_free_payload_list,
@@ -1960,7 +2080,7 @@ static int cam_ife_csid_ver2_rx2_err_bottom_half(
 	csid_hw = handler_priv;
 
 	rc = cam_ife_csid_ver2_rx_err_process_bottom_half(csid_hw,
-		payload->irq_reg_val, CAM_IFE_CSID_RX2_IRQ_STATUS_REG1);
+		payload, CAM_IFE_CSID_RX2_IRQ_STATUS_REG1);
 
 	cam_ife_csid_ver2_put_evt_payload(csid_hw, &payload, &csid_hw->rx_free_payload_list,
 		&csid_hw->rx_payload_lock);
@@ -2038,7 +2158,7 @@ void cam_ife_csid_hw_ver2_mup_mismatch_handler(
 	struct cam_ife_csid_ver2_reg_info *csid_reg = NULL;
 	const struct cam_ife_csid_ver2_path_reg_info *path_reg = NULL;
 
-	CAM_INFO(CAM_ISP, "CSID:%u Last MUP value 0x%x programmed for res [id: %d name: %s]",
+	CAM_INFO(CAM_ISP, "CSID[%u] Last MUP value 0x%x programmed for res [id: %d name: %s]",
 		csid_hw->hw_intf->hw_idx, csid_hw->rx_cfg.mup, res->res_id, res->res_name);
 
 	csid_reg = (struct cam_ife_csid_ver2_reg_info *)
@@ -2046,7 +2166,7 @@ void cam_ife_csid_hw_ver2_mup_mismatch_handler(
 	path_reg = csid_reg->path_reg[res->res_id];
 
 	if (cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].valid) {
-		CAM_INFO(CAM_ISP, "CSID:%u vc0 %d vc1 %d",
+		CAM_INFO(CAM_ISP, "CSID[%u] Virtual channel 0: %u, Virtual Channel 1: %u",
 			csid_hw->hw_intf->hw_idx,
 			cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].vc,
 			cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].vc);
@@ -2059,19 +2179,19 @@ void cam_ife_csid_hw_ver2_mup_mismatch_handler(
 				csid_reg->cmn_reg->ts_comb_vcdt_mask;
 
 			if (idx < CAM_IFE_CSID_MULTI_VC_DT_GRP_MAX)
-				CAM_INFO(CAM_ISP,
-					"CSID:%d Received frame with vc:%d on [id: %d name: %s] timestamp: %lld.%09lld",
-					csid_hw->hw_intf->hw_idx, cid_data->vc_dt[idx].vc,
+				CAM_DBG(CAM_ISP,
+					"CSID[%d] Received frame on [id: %d name: %s] timestamp: [%llu:%09llu]",
+					csid_hw->hw_intf->hw_idx,
 					res->res_id, res->res_name, current_ts.tv_sec,
 					current_ts.tv_nsec);
 			else
 				CAM_ERR(CAM_ISP,
-					"CSID:%d Get invalid vc index: %d on [id: %d name: %s] timestamp: %lld.%09lld",
+					"CSID[%d] Get invalid virtual channel index: %d on [id: %d name: %s] timestamp: [%llu:%09llu]",
 					csid_hw->hw_intf->hw_idx, idx, res->res_id,
 					res->res_name, current_ts.tv_sec, current_ts.tv_nsec);
 		}
 	} else {
-		CAM_ERR(CAM_ISP, "CSID:%u Multi-VCDT is not enabled, vc0 %d",
+		CAM_ERR(CAM_ISP, "CSID[%u] Multi-VCDT is not enabled, virtual channel 0: %d",
 			csid_hw->hw_intf->hw_idx,
 			cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].vc);
 	}
@@ -2180,7 +2300,7 @@ static void cam_ife_csid_ver2_print_debug_reg_status(
 	struct cam_hw_soc_info                   *soc_info;
 	void __iomem *mem_base;
 	const struct cam_ife_csid_ver2_path_reg_info *path_reg = NULL;
-	uint32_t val0 = 0, val1 = 0, val2 = 0, val3 = 0;
+	uint32_t val0, val1, val2, val3 = 0;
 
 	soc_info = &csid_hw->hw_info->soc_info;
 	csid_reg = (struct cam_ife_csid_ver2_reg_info *)
@@ -2224,6 +2344,7 @@ static int cam_ife_csid_ver2_parse_path_irq_status(
 	uint32_t                                 sof_irq_debug_en = 0;
 	size_t                                   len = 0;
 	uint8_t                                 *log_buf = NULL;
+	struct cam_ife_csid_ver2_path_cfg       *path_cfg = res->res_priv;
 
 	csid_reg = (struct cam_ife_csid_ver2_reg_info *)
 		csid_hw->core_info->csid_reg;
@@ -2240,10 +2361,32 @@ static int cam_ife_csid_ver2_parse_path_irq_status(
 		}
 
 		if ((csid_reg->path_irq_desc[bit_pos].bitmask != 0) && (status & 0x1)) {
-			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len, "%s",
-				csid_reg->path_irq_desc[bit_pos].desc);
-			if (csid_reg->path_irq_desc[bit_pos].err_type)
+			CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+				"CSID[%u] %s occurred at [%llu: %09llu]",
+				csid_hw->hw_intf->hw_idx, csid_reg->path_irq_desc[bit_pos].irq_name,
+				path_cfg->error_ts.tv_sec, path_cfg->error_ts.tv_nsec);
+			if (csid_reg->path_irq_desc[bit_pos].desc)
+				CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+					"%s", csid_reg->path_irq_desc[bit_pos].desc);
+			if (csid_reg->path_irq_desc[bit_pos].debug)
+				CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN, &len,
+					"Debug: %s", csid_reg->path_irq_desc[bit_pos].debug);
+
+			/* List possbilities for illegal programming */
+			if (csid_reg->path_irq_desc[bit_pos].err_type) {
+				if (csid_reg->path_irq_desc[bit_pos].err_type ==
+					CAM_ISP_HW_ERROR_CSID_FATAL) {
+					CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN,
+						&len, "1. MUP programmed without RUP");
+					CAM_ERR_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN,
+						&len, "2. Early EOF enabled with vCrop disabled");
+					CAM_ERR_BUF(CAM_ISP, log_buf,
+						CAM_IFE_CSID_LOG_BUF_LEN, &len,
+						"3. Mismatch in the decode formats configured for multi vc-dt");
+				}
+
 				err_type |=  csid_reg->path_irq_desc[bit_pos].err_type;
+			}
 
 			if (csid_reg->path_irq_desc[bit_pos].err_handler)
 				csid_reg->path_irq_desc[bit_pos].err_handler(csid_hw, res);
@@ -2267,9 +2410,9 @@ static int cam_ife_csid_ver2_parse_path_irq_status(
 		}
 
 		if ((csid_reg->path_irq_desc[bit_pos].bitmask != 0) && (status & 0x1))
-			CAM_INFO(CAM_ISP, "CSID[%u] IRQ %s %s timestamp:(%lld.%09lld)",
+			CAM_INFO(CAM_ISP, "CSID[%u] IRQ %s %s timestamp: [%lld:%09lld]",
 				csid_hw->hw_intf->hw_idx, irq_reg_tag[index],
-				csid_reg->path_irq_desc[bit_pos].desc,
+				csid_reg->path_irq_desc[bit_pos].irq_name,
 				evt_payload->timestamp.tv_sec,
 				evt_payload->timestamp.tv_nsec);
 
@@ -2294,17 +2437,16 @@ static int cam_ife_csid_ver2_parse_path_irq_status(
 
 static void cam_ife_csid_ver2_top_err_process_bottom_half(
 	struct cam_ife_csid_ver2_hw                  *csid_hw,
-	uint32_t                                      irq_reg_val,
+	struct cam_ife_csid_ver2_evt_payload         *payload,
 	enum cam_ife_csid_top_irq_regs                top_idx)
 {
 	struct cam_ife_csid_ver2_reg_info          *csid_reg;
 	uint32_t                                    irq_status;
 	uint32_t                                    event_type = 0;
 	uint32_t                                    i = 0;
+	uint32_t                                    irq_reg_val = payload->irq_reg_val;
 
-	csid_reg = (struct cam_ife_csid_ver2_reg_info *)
-			csid_hw->core_info->csid_reg;
-
+	csid_reg = (struct cam_ife_csid_ver2_reg_info *) csid_hw->core_info->csid_reg;
 
 	irq_status = irq_reg_val & csid_reg->cmn_reg->top_err_irq_mask[top_idx];
 
@@ -2321,11 +2463,15 @@ static void cam_ife_csid_ver2_top_err_process_bottom_half(
 			break;
 		}
 
-		if ((*csid_reg->top_irq_desc)[top_idx][i].bitmask &
-			irq_status) {
-			CAM_ERR(CAM_ISP, "%s %s",
+		if ((*csid_reg->top_irq_desc)[top_idx][i].bitmask & irq_status) {
+			CAM_ERR(CAM_ISP, "CSID[%u] %s occurred at [%llu: %09llu]",
+				csid_hw->hw_intf->hw_idx,
 				(*csid_reg->top_irq_desc)[top_idx][i].err_name,
-				(*csid_reg->top_irq_desc)[top_idx][i].desc);
+				payload->timestamp.tv_sec, payload->timestamp.tv_nsec);
+			CAM_ERR(CAM_ISP, "%s", (*csid_reg->top_irq_desc)[top_idx][i].desc);
+			if ((*csid_reg->top_irq_desc)[top_idx][i].debug)
+				CAM_ERR(CAM_ISP, "Debug: %s",
+					(*csid_reg->top_irq_desc)[top_idx][i].debug);
 
 			if ((*csid_reg->top_irq_desc)[top_idx][i].err_handler)
 				(*csid_reg->top_irq_desc)[top_idx][i].err_handler(csid_hw);
@@ -2365,7 +2511,7 @@ static int cam_ife_csid_ver2_top2_err_irq_bottom_half(
 		return 0;
 	}
 
-	cam_ife_csid_ver2_top_err_process_bottom_half(csid_hw, payload->irq_reg_val,
+	cam_ife_csid_ver2_top_err_process_bottom_half(csid_hw, payload,
 		CAM_IFE_CSID_TOP2_IRQ_STATUS_REG1);
 
 	cam_ife_csid_ver2_put_evt_payload(csid_hw, &payload,
@@ -2501,7 +2647,7 @@ static int cam_ife_csid_ver2_top_err_irq_bottom_half(
 		return 0;
 	}
 
-	cam_ife_csid_ver2_top_err_process_bottom_half(csid_hw, payload->irq_reg_val,
+	cam_ife_csid_ver2_top_err_process_bottom_half(csid_hw, payload,
 		CAM_IFE_CSID_TOP_IRQ_STATUS_REG0);
 
 	cam_ife_csid_ver2_put_evt_payload(csid_hw, &payload,
@@ -2528,9 +2674,8 @@ void cam_ife_csid_ver2_print_format_measure_info(
 	expected_frame = cam_io_r_mb(base + path_reg->format_measure_cfg1_addr);
 	format_measure_cfg0 = cam_io_r_mb(base + path_reg->format_measure_cfg0_addr);
 
-	CAM_INFO(CAM_ISP, "CSID[%u] res [id :%d name : %s] format_measure_cfg0:0x%x",
-		csid_hw->hw_intf->hw_idx, res->res_id, res->res_name,
-		format_measure_cfg0);
+	CAM_INFO(CAM_ISP, "CSID[%u] res [id: %d name: %s] format_measure_cfg0: 0x%x",
+		csid_hw->hw_intf->hw_idx, res->res_id, res->res_name, format_measure_cfg0);
 	CAM_ERR(CAM_ISP, "CSID[%u] Frame Size Error Expected[h: %u w: %u] Actual[h: %u w: %u]",
 		csid_hw->hw_intf->hw_idx, ((expected_frame >>
 		csid_reg->cmn_reg->format_measure_height_shift_val) &
@@ -6495,14 +6640,14 @@ static void cam_ife_csid_ver2_maskout_all_irqs(
 	cam_io_w_mb(0x0, mem_base +
 		csid_reg->cmn_reg->buf_done_irq_mask_addr);
 
-	/* Disable top except rst_done */
-	cam_io_w_mb(csid_reg->cmn_reg->top_reset_irq_mask[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0],
-		mem_base + csid_reg->cmn_reg->top_irq_mask_addr[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0]);
-
 	if (csid_reg->num_top_regs > 1) {
 		cam_io_w_mb(0x0, (mem_base +
 			csid_reg->cmn_reg->top_irq_mask_addr[CAM_IFE_CSID_TOP2_IRQ_STATUS_REG1]));
 	}
+
+	/* Disable top except rst_done */
+	cam_io_w_mb(csid_reg->cmn_reg->top_reset_irq_mask[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0],
+		mem_base + csid_reg->cmn_reg->top_irq_mask_addr[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0]);
 }
 
 int cam_ife_csid_ver2_stop(void *hw_priv,
@@ -6612,7 +6757,7 @@ int cam_ife_csid_ver2_stop(void *hw_priv,
 	}
 
 	if (csid_reg->num_top_regs > 1 && csid_hw->top_top2_irq_handle) {
-		rc = cam_irq_controller_unsubscribe_irq(
+		rc = cam_irq_controller_unsubscribe_irq_evt(
 			csid_hw->top_irq_controller[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0],
 			csid_hw->top_top2_irq_handle);
 		csid_hw->top_top2_irq_handle = 0;
@@ -7126,7 +7271,7 @@ static int cam_ife_csid_ver2_print_hbi_vbi(
 		path_reg->format_measure2_addr);
 
 	CAM_INFO_RATE_LIMIT(CAM_ISP,
-		"CSID[%u] Resource[id:%d name:%s hbi 0x%x vbi 0x%x]",
+		"CSID[%u] Resource[id:%d, name:%s, hbi: %d cycles, vbi: %d cycles]",
 		csid_hw->hw_intf->hw_idx, res->res_id, res->res_name, hbi, vbi);
 
 	return 0;
@@ -8073,7 +8218,7 @@ static void cam_ife_csid_ver2_free_res(struct cam_ife_csid_ver2_hw *csid_hw)
 
 	for (i = 0; i < num_paths; i++) {
 		res = &csid_hw->path_res[CAM_IFE_PIX_PATH_RES_UDI_0 + i];
-		kfree(res->res_priv);
+		CAM_MEM_FREE(res->res_priv);
 		res->res_priv = NULL;
 	}
 
@@ -8081,17 +8226,17 @@ static void cam_ife_csid_ver2_free_res(struct cam_ife_csid_ver2_hw *csid_hw)
 
 	for (i = 0; i < num_paths; i++) {
 		res = &csid_hw->path_res[CAM_IFE_PIX_PATH_RES_RDI_0 + i];
-		kfree(res->res_priv);
+		CAM_MEM_FREE(res->res_priv);
 		res->res_priv = NULL;
 	}
 
-	kfree(csid_hw->path_res[CAM_IFE_PIX_PATH_RES_IPP].res_priv);
+	CAM_MEM_FREE(csid_hw->path_res[CAM_IFE_PIX_PATH_RES_IPP].res_priv);
 	csid_hw->path_res[CAM_IFE_PIX_PATH_RES_IPP].res_priv = NULL;
-	kfree(csid_hw->path_res[CAM_IFE_PIX_PATH_RES_IPP_1].res_priv);
+	CAM_MEM_FREE(csid_hw->path_res[CAM_IFE_PIX_PATH_RES_IPP_1].res_priv);
 	csid_hw->path_res[CAM_IFE_PIX_PATH_RES_IPP_1].res_priv = NULL;
-	kfree(csid_hw->path_res[CAM_IFE_PIX_PATH_RES_IPP_2].res_priv);
+	CAM_MEM_FREE(csid_hw->path_res[CAM_IFE_PIX_PATH_RES_IPP_2].res_priv);
 	csid_hw->path_res[CAM_IFE_PIX_PATH_RES_IPP_2].res_priv = NULL;
-	kfree(csid_hw->path_res[CAM_IFE_PIX_PATH_RES_PPP].res_priv);
+	CAM_MEM_FREE(csid_hw->path_res[CAM_IFE_PIX_PATH_RES_PPP].res_priv);
 	csid_hw->path_res[CAM_IFE_PIX_PATH_RES_PPP].res_priv = NULL;
 }
 
@@ -8104,7 +8249,7 @@ static int cam_ife_ver2_hw_alloc_res(
 {
 	struct cam_ife_csid_ver2_path_cfg *path_cfg = NULL;
 
-	path_cfg = kzalloc(sizeof(*path_cfg), GFP_KERNEL);
+	path_cfg = CAM_MEM_ZALLOC(sizeof(*path_cfg), GFP_KERNEL);
 
 	if (!path_cfg)
 		return -ENOMEM;
@@ -8449,7 +8594,7 @@ int cam_ife_csid_hw_ver2_init(struct cam_hw_intf *hw_intf,
 
 	hw_info = (struct cam_hw_info  *)hw_intf->hw_priv;
 
-	csid_hw = kzalloc(sizeof(struct cam_ife_csid_ver2_hw), GFP_KERNEL);
+	csid_hw = CAM_MEM_ZALLOC(sizeof(struct cam_ife_csid_ver2_hw), GFP_KERNEL);
 
 	if (!csid_hw) {
 		CAM_ERR(CAM_ISP, "Csid core %d hw allocation fails",

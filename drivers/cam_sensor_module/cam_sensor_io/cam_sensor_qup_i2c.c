@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_sensor_cmn_header.h"
 #include "cam_sensor_i2c.h"
 #include "cam_sensor_io.h"
+#include "cam_mem_mgr_api.h"
 
 #define I2C_REG_MAX_BUF_SIZE   8
 
@@ -403,7 +404,7 @@ int32_t cam_qup_i2c_write_table(struct camera_io_master *client,
 	if (!client || !write_setting)
 		return rc;
 
-	msgs = kcalloc(write_setting->size, sizeof(struct i2c_msg), GFP_KERNEL);
+	msgs = CAM_MEM_ZALLOC_ARRAY(write_setting->size, sizeof(struct i2c_msg), GFP_KERNEL);
 	if (!msgs) {
 		CAM_ERR(CAM_SENSOR, "Message Buffer memory allocation failed");
 		return -ENOMEM;
@@ -412,7 +413,7 @@ int32_t cam_qup_i2c_write_table(struct camera_io_master *client,
 	buf = kzalloc(write_setting->size*I2C_REG_MAX_BUF_SIZE, GFP_KERNEL|GFP_DMA);
 	if (!buf) {
 		CAM_ERR(CAM_SENSOR, "Buffer memory allocation failed");
-		kfree(msgs);
+		CAM_MEM_FREE(msgs);
 		return -ENOMEM;
 	}
 
@@ -447,7 +448,7 @@ int32_t cam_qup_i2c_write_table(struct camera_io_master *client,
 
 deallocate_buffer:
 	kfree(buf);
-	kfree(msgs);
+	CAM_MEM_FREE(msgs);
 
 	return rc;
 }

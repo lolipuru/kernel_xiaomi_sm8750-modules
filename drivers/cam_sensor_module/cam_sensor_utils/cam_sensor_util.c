@@ -9,6 +9,7 @@
 #include "cam_sensor_util.h"
 #include "cam_mem_mgr.h"
 #include "cam_res_mgr_api.h"
+#include "cam_mem_mgr_api.h"
 
 #define CAM_SENSOR_PINCTRL_STATE_SLEEP "cam_suspend"
 #define CAM_SENSOR_PINCTRL_STATE_DEFAULT "cam_default"
@@ -119,7 +120,7 @@ static struct i2c_settings_list*
 {
 	struct i2c_settings_list *tmp;
 
-	tmp = kzalloc(sizeof(struct i2c_settings_list), GFP_KERNEL);
+	tmp = CAM_MEM_ZALLOC(sizeof(struct i2c_settings_list), GFP_KERNEL);
 
 	if (tmp != NULL)
 		list_add_tail(&(tmp->list),
@@ -131,7 +132,7 @@ static struct i2c_settings_list*
 		vzalloc(size * sizeof(struct cam_sensor_i2c_reg_array));
 	if (tmp->i2c_settings.reg_setting == NULL) {
 		list_del(&(tmp->list));
-		kfree(tmp);
+		CAM_MEM_FREE(tmp);
 		return NULL;
 	}
 	tmp->i2c_settings.size = size;
@@ -176,7 +177,7 @@ int32_t delete_request(struct i2c_settings_array *i2c_array)
 		&(i2c_array->list_head), list) {
 		vfree(i2c_list->i2c_settings.reg_setting);
 		list_del(&(i2c_list->list));
-		kfree(i2c_list);
+		CAM_MEM_FREE(i2c_list);
 	}
 	INIT_LIST_HEAD(&(i2c_array->list_head));
 	i2c_array->is_settings_valid = 0;
@@ -277,10 +278,11 @@ int32_t cam_sensor_handle_random_write(
 	struct list_head **list)
 {
 	struct i2c_settings_list  *i2c_list;
-	int32_t rc = 0, cnt;
+	int32_t rc = 0, cnt, payload_count;
 
+	payload_count = cam_cmd_i2c_random_wr->header.count;
 	i2c_list = cam_sensor_get_i2c_ptr(i2c_reg_settings,
-		cam_cmd_i2c_random_wr->header.count);
+						payload_count);
 	if (i2c_list == NULL ||
 		i2c_list->i2c_settings.reg_setting == NULL) {
 		CAM_ERR(CAM_SENSOR_UTIL, "Failed in allocating i2c_list");
@@ -289,15 +291,14 @@ int32_t cam_sensor_handle_random_write(
 
 	*cmd_length_in_bytes = (sizeof(struct i2c_rdwr_header) +
 		sizeof(struct i2c_random_wr_payload) *
-		(cam_cmd_i2c_random_wr->header.count));
+		payload_count);
 	i2c_list->op_code = CAM_SENSOR_I2C_WRITE_RANDOM;
 	i2c_list->i2c_settings.addr_type =
 		cam_cmd_i2c_random_wr->header.addr_type;
 	i2c_list->i2c_settings.data_type =
 		cam_cmd_i2c_random_wr->header.data_type;
 
-	for (cnt = 0; cnt < (cam_cmd_i2c_random_wr->header.count);
-		cnt++) {
+	for (cnt = 0; cnt < payload_count; cnt++) {
 		i2c_list->i2c_settings.reg_setting[cnt].reg_addr =
 			cam_cmd_i2c_random_wr->random_wr_payload_flex[cnt].reg_addr;
 		i2c_list->i2c_settings.reg_setting[cnt].reg_data =
@@ -317,10 +318,11 @@ int32_t cam_sensor_handle_continuous_write(
 	struct list_head **list)
 {
 	struct i2c_settings_list *i2c_list;
-	int32_t rc = 0, cnt;
+	int32_t rc = 0, cnt, payload_count;
 
+	payload_count = cam_cmd_i2c_continuous_wr->header.count;
 	i2c_list = cam_sensor_get_i2c_ptr(i2c_reg_settings,
-		cam_cmd_i2c_continuous_wr->header.count);
+						payload_count);
 	if (i2c_list == NULL ||
 		i2c_list->i2c_settings.reg_setting == NULL) {
 		CAM_ERR(CAM_SENSOR_UTIL, "Failed in allocating i2c_list");
@@ -330,7 +332,7 @@ int32_t cam_sensor_handle_continuous_write(
 	*cmd_length_in_bytes = (sizeof(struct i2c_rdwr_header) +
 		sizeof(cam_cmd_i2c_continuous_wr->reg_addr) +
 		sizeof(struct cam_cmd_read) *
-		(cam_cmd_i2c_continuous_wr->header.count));
+		(payload_count));
 	if (cam_cmd_i2c_continuous_wr->header.op_code ==
 		CAMERA_SENSOR_I2C_OP_CONT_WR_BRST)
 		i2c_list->op_code = CAM_SENSOR_I2C_WRITE_BURST;
@@ -347,8 +349,7 @@ int32_t cam_sensor_handle_continuous_write(
 	i2c_list->i2c_settings.size =
 		cam_cmd_i2c_continuous_wr->header.count;
 
-	for (cnt = 0; cnt < (cam_cmd_i2c_continuous_wr->header.count);
-		cnt++) {
+	for (cnt = 0; cnt < payload_count; cnt++) {
 		i2c_list->i2c_settings.reg_setting[cnt].reg_addr =
 			cam_cmd_i2c_continuous_wr->reg_addr;
 		i2c_list->i2c_settings.reg_setting[cnt].reg_data =
@@ -1408,7 +1409,7 @@ int32_t cam_sensor_update_power_settings(void *cmd_buf,
 	void *ptr = cmd_buf, *scr;
 	struct common_header *cmm_hdr = (struct common_header *)cmd_buf;
 	struct cam_cmd_power *pwr_cmd =
-		kzalloc(sizeof(struct cam_cmd_power), GFP_KERNEL);
+		CAM_MEM_ZALLOC(sizeof(struct cam_cmd_power), GFP_KERNEL);
 	if (!pwr_cmd)
 		return -ENOMEM;
 	memcpy(pwr_cmd, cmd_buf, sizeof(struct cam_cmd_power));
@@ -1423,7 +1424,7 @@ int32_t cam_sensor_update_power_settings(void *cmd_buf,
 
 	power_info->power_setting_size = 0;
 	power_info->power_setting =
-		kzalloc(sizeof(struct cam_sensor_power_setting) *
+		CAM_MEM_ZALLOC(sizeof(struct cam_sensor_power_setting) *
 			MAX_POWER_CONFIG, GFP_KERNEL);
 	if (!power_info->power_setting) {
 		rc = -ENOMEM;
@@ -1432,10 +1433,10 @@ int32_t cam_sensor_update_power_settings(void *cmd_buf,
 
 	power_info->power_down_setting_size = 0;
 	power_info->power_down_setting =
-		kzalloc(sizeof(struct cam_sensor_power_setting) *
+		CAM_MEM_ZALLOC(sizeof(struct cam_sensor_power_setting) *
 			MAX_POWER_CONFIG, GFP_KERNEL);
 	if (!power_info->power_down_setting) {
-		kfree(power_info->power_setting);
+		CAM_MEM_FREE(power_info->power_setting);
 		power_info->power_setting = NULL;
 		power_info->power_setting_size = 0;
 		rc = -ENOMEM;
@@ -1625,14 +1626,14 @@ int32_t cam_sensor_update_power_settings(void *cmd_buf,
 
 	goto free_power_command;
 free_power_settings:
-	kfree(power_info->power_down_setting);
-	kfree(power_info->power_setting);
+	CAM_MEM_FREE(power_info->power_down_setting);
+	CAM_MEM_FREE(power_info->power_setting);
 	power_info->power_down_setting = NULL;
 	power_info->power_setting = NULL;
 	power_info->power_down_setting_size = 0;
 	power_info->power_setting_size = 0;
 free_power_command:
-	kfree(pwr_cmd);
+	CAM_MEM_FREE(pwr_cmd);
 	pwr_cmd = NULL;
 	return rc;
 }
@@ -1659,7 +1660,7 @@ int cam_get_dt_power_setting_data(struct device_node *of_node,
 	if (count <= 0)
 		return 0;
 
-	ps = kcalloc(count, sizeof(*ps), GFP_KERNEL);
+	ps = CAM_MEM_ZALLOC_ARRAY(count, sizeof(*ps), GFP_KERNEL);
 	if (!ps)
 		return -ENOMEM;
 	power_info->power_setting = ps;
@@ -1689,7 +1690,7 @@ int cam_get_dt_power_setting_data(struct device_node *of_node,
 		CAM_DBG(CAM_SENSOR_UTIL, "seq_type[%d] %d", i, ps[i].seq_type);
 	}
 
-	array = kcalloc(count, sizeof(uint32_t), GFP_KERNEL);
+	array = CAM_MEM_ZALLOC_ARRAY(count, sizeof(uint32_t), GFP_KERNEL);
 	if (!array) {
 		rc = -ENOMEM;
 		goto ERROR1;
@@ -1719,10 +1720,10 @@ int cam_get_dt_power_setting_data(struct device_node *of_node,
 		CAM_DBG(CAM_SENSOR_UTIL, "power_setting[%d].delay = %d", i,
 			ps[i].delay);
 	}
-	kfree(array);
+	CAM_MEM_FREE(array);
 
 	power_info->power_down_setting =
-		kcalloc(count, sizeof(*ps), GFP_KERNEL);
+		CAM_MEM_ZALLOC_ARRAY(count, sizeof(*ps), GFP_KERNEL);
 
 	if (!power_info->power_down_setting) {
 		CAM_ERR(CAM_SENSOR_UTIL, "failed");
@@ -1740,9 +1741,9 @@ int cam_get_dt_power_setting_data(struct device_node *of_node,
 	}
 	return rc;
 ERROR2:
-	kfree(array);
+	CAM_MEM_FREE(array);
 ERROR1:
-	kfree(ps);
+	CAM_MEM_FREE(ps);
 	return rc;
 }
 
@@ -1781,7 +1782,7 @@ int cam_sensor_util_init_gpio_pin_tbl(
 		return -EINVAL;
 	}
 
-	*pgpio_num_info = kzalloc(sizeof(struct msm_camera_gpio_num_info),
+	*pgpio_num_info = CAM_MEM_ZALLOC(sizeof(struct msm_camera_gpio_num_info),
 		GFP_KERNEL);
 	if (!*pgpio_num_info)
 		return -ENOMEM;
@@ -1975,7 +1976,7 @@ int cam_sensor_util_init_gpio_pin_tbl(
 	return rc;
 
 free_gpio_info:
-	kfree(gpio_num_info);
+	CAM_MEM_FREE(gpio_num_info);
 	gpio_num_info = NULL;
 	return rc;
 }

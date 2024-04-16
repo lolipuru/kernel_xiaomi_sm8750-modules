@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -21,6 +21,7 @@
 #include "ope_hw_100.h"
 #include "ope_dev_intf.h"
 #include "camera_main.h"
+#include "cam_mem_mgr_api.h"
 
 static struct cam_ope_hw_intf_data cam_ope_dev_list[OPE_DEV_MAX];
 static struct cam_ope_device_hw_info ope_hw_info;
@@ -127,13 +128,13 @@ static int cam_ope_component_bind(struct device *dev,
 	of_property_read_u32(pdev->dev.of_node,
 		"cell-index", &hw_idx);
 
-	ope_dev_intf = kzalloc(sizeof(struct cam_hw_intf), GFP_KERNEL);
+	ope_dev_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!ope_dev_intf)
 		return -ENOMEM;
 
 	ope_dev_intf->hw_idx = hw_idx;
 	ope_dev_intf->hw_type = OPE_DEV_OPE;
-	ope_dev = kzalloc(sizeof(struct cam_hw_info), GFP_KERNEL);
+	ope_dev = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!ope_dev) {
 		rc = -ENOMEM;
 		goto ope_dev_alloc_failed;
@@ -162,7 +163,7 @@ static int cam_ope_component_bind(struct device *dev,
 	platform_set_drvdata(pdev, ope_dev_intf);
 
 
-	ope_dev->core_info = kzalloc(sizeof(struct cam_ope_device_core_info),
+	ope_dev->core_info = CAM_MEM_ZALLOC(sizeof(struct cam_ope_device_core_info),
 		GFP_KERNEL);
 	if (!ope_dev->core_info) {
 		rc = -ENOMEM;
@@ -251,11 +252,11 @@ enable_soc_failed:
 register_cpas_failed:
 init_soc_failed:
 ope_match_dev_failed:
-	kfree(ope_dev->core_info);
+	CAM_MEM_FREE(ope_dev->core_info);
 ope_core_alloc_failed:
-	kfree(ope_dev);
+	CAM_MEM_FREE(ope_dev);
 ope_dev_alloc_failed:
-	kfree(ope_dev_intf);
+	CAM_MEM_FREE(ope_dev_intf);
 	return rc;
 }
 

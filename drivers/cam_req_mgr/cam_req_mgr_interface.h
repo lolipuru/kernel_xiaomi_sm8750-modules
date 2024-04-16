@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_REQ_MGR_INTERFACE_H
@@ -23,6 +23,7 @@ struct cam_req_mgr_apply_request;
 struct cam_req_mgr_flush_request;
 struct cam_req_mgr_link_evt_data;
 struct cam_req_mgr_dump_info;
+struct cam_req_mgr_notify_msg;
 
 /* Request Manager -- camera device driver interface */
 /**
@@ -33,12 +34,14 @@ struct cam_req_mgr_dump_info;
  * @cam_req_mgr_add_req       : to info CRM about new rqeuest received from
  *                              userspace
  * @cam_req_mgr_notify_timer  : start the timer
+ * @cam_req_mgr_notify_msg    : notify the message
  */
 typedef int (*cam_req_mgr_notify_trigger)(struct cam_req_mgr_trigger_notify *);
 typedef int (*cam_req_mgr_notify_err)(struct cam_req_mgr_error_notify *);
 typedef int (*cam_req_mgr_add_req)(struct cam_req_mgr_add_request *);
 typedef int (*cam_req_mgr_notify_timer)(struct cam_req_mgr_timer_notify *);
 typedef int (*cam_req_mgr_notify_stop)(struct cam_req_mgr_notify_stop *);
+typedef int (*cam_req_mgr_notify_msg)(struct cam_req_mgr_notify_msg *);
 
 /**
  * @brief: cam req mgr to camera device drivers
@@ -69,6 +72,7 @@ typedef int (*cam_req_mgr_dump_req)(struct cam_req_mgr_dump_info *);
  * @add_req        : payload to inform which device and what request is received
  * @notify_timer   : payload for timer start event
  * @notify_stop    : payload to inform stop event
+ * @notify_msg     : payload to inform a message
  */
 struct cam_req_mgr_crm_cb {
 	cam_req_mgr_notify_trigger  notify_trigger;
@@ -76,6 +80,7 @@ struct cam_req_mgr_crm_cb {
 	cam_req_mgr_add_req         add_req;
 	cam_req_mgr_notify_timer    notify_timer;
 	cam_req_mgr_notify_stop     notify_stop;
+	cam_req_mgr_notify_msg      notify_msg;
 };
 
 /**
@@ -241,15 +246,26 @@ enum cam_req_mgr_link_evt_type {
 };
 
 /**
+ * enum cam_req_mgr_msg_type
+ * @CAM_REQ_MGR_MSG_FRAME_SYNC_SHIFT : frame sync shift value
+ * @CAM_REQ_MGR_MSG_MAX              : invalid msg type
+*/
+enum cam_req_mgr_msg_type {
+	CAM_REQ_MGR_MSG_FRAME_SYNC_SHIFT,
+	CAM_REQ_MGR_MSG_MAX,
+};
+
+/**
  * struct cam_req_mgr_trigger_notify
- * @link_hdl : link identifier
- * @dev_hdl  : device handle which has sent this req id
- * @frame_id : frame id for internal tracking
- * @trigger  : trigger point of this notification, CRM will send apply
- *             only to the devices which subscribe to this point.
- * @sof_timestamp_val: Captured time stamp value at sof hw event
- * @req_id   : req id which returned buf_done
- * @trigger_id: ID to differentiate between the trigger devices
+ * @link_hdl          : link identifier
+ * @dev_hdl           : device handle which has sent this req id
+ * @frame_id          : frame id for internal tracking
+ * @trigger           : trigger point of this notification, CRM will send apply
+ *                      only to the devices which subscribe to this point.
+ * @sof_timestamp_val : Captured time stamp value at sof hw event
+ * @req_id            : req id which returned buf_done
+ * @trigger_id        : ID to differentiate between the trigger devices
+ * @boot_timestamp    : Captured boot time stamp value at sof hw event
  */
 struct cam_req_mgr_trigger_notify {
 	int32_t  link_hdl;
@@ -259,6 +275,7 @@ struct cam_req_mgr_trigger_notify {
 	uint64_t sof_timestamp_val;
 	uint64_t req_id;
 	int32_t  trigger_id;
+	uint64_t boot_timestamp;
 };
 
 /**
@@ -323,6 +340,19 @@ struct cam_req_mgr_notify_stop {
 	int32_t  link_hdl;
 };
 
+/**
+ * struct cam_req_mgr_notify_msg
+ * @
+ */
+struct cam_req_mgr_notify_msg {
+	int32_t  link_hdl;
+	int32_t  dev_hdl;
+	uint64_t req_id;
+	enum cam_req_mgr_msg_type msg_type;
+	union {
+		uint64_t frame_sync_shift;
+	} u;
+};
 
 /* CRM to KMD devices */
 /**
@@ -367,15 +397,16 @@ struct cam_req_mgr_core_dev_link_setup {
 
 /**
  * struct cam_req_mgr_apply_request
- * @link_hdl                 : link identifier
- * @dev_hdl                  : device handle for cross check
- * @request_id               : request id settings to apply
- * @last_applied_max_pd_req  : Last applied request on highest pd device
- *                             -1 is considered invalid
- * @report_if_bubble         : report to crm if failure in applying
- * @trigger_point            : the trigger point of this apply
- * @re_apply                 : to skip re_apply for buf_done request
- * @recovery                 : Indicate if it is recovery req
+ * @link_hdl                    : link identifier
+ * @dev_hdl                     : device handle for cross check
+ * @request_id                  : request id settings to apply
+ * @last_applied_max_pd_req     : Last applied request on highest pd device
+ *                                -1 is considered invalid
+ * @report_if_bubble            : report to crm if failure in applying
+ * @trigger_point               : the trigger point of this apply
+ * @re_apply                    : to skip re_apply for buf_done request
+ * @recovery                    : Indicate if it is recovery req
+ * @last_applied_done_timestamp : Last setting apply done timestamp value
  *
  */
 struct cam_req_mgr_apply_request {
@@ -387,6 +418,7 @@ struct cam_req_mgr_apply_request {
 	uint32_t   trigger_point;
 	bool       re_apply;
 	bool       recovery;
+	uint64_t   last_applied_done_timestamp;
 };
 
 /**

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_actuator_dev.h"
@@ -11,6 +11,7 @@
 #include "cam_trace.h"
 #include "camera_main.h"
 #include "cam_compat.h"
+#include "cam_mem_mgr_api.h"
 
 static struct cam_i3c_actuator_data {
 	struct cam_actuator_ctrl_t                  *a_ctrl;
@@ -196,13 +197,13 @@ static int cam_actuator_i2c_component_bind(struct device *dev,
 	}
 
 	/* Create sensor control structure */
-	a_ctrl = kzalloc(sizeof(*a_ctrl), GFP_KERNEL);
+	a_ctrl = CAM_MEM_ZALLOC(sizeof(*a_ctrl), GFP_KERNEL);
 	if (!a_ctrl)
 		return -ENOMEM;
 
 	i2c_set_clientdata(client, a_ctrl);
 
-	soc_private = kzalloc(sizeof(struct cam_actuator_soc_private),
+	soc_private = CAM_MEM_ZALLOC(sizeof(struct cam_actuator_soc_private),
 		GFP_KERNEL);
 	if (!soc_private) {
 		rc = -ENOMEM;
@@ -231,7 +232,7 @@ static int cam_actuator_i2c_component_bind(struct device *dev,
 			soc_private->i2c_info.slave_addr;
 
 	a_ctrl->i2c_data.per_frame =
-		kzalloc(sizeof(struct i2c_settings_array) *
+		CAM_MEM_ZALLOC(sizeof(struct i2c_settings_array) *
 		MAX_PER_FRAME_ARRAY, GFP_KERNEL);
 	if (a_ctrl->i2c_data.per_frame == NULL) {
 		rc = -ENOMEM;
@@ -261,9 +262,9 @@ static int cam_actuator_i2c_component_bind(struct device *dev,
 unreg_subdev:
 	cam_unregister_subdev(&(a_ctrl->v4l2_dev_str));
 free_soc:
-	kfree(soc_private);
+	CAM_MEM_FREE(soc_private);
 free_ctrl:
-	kfree(a_ctrl);
+	CAM_MEM_FREE(a_ctrl);
 	return rc;
 }
 
@@ -294,11 +295,11 @@ static void cam_actuator_i2c_component_unbind(struct device *dev,
 	cam_unregister_subdev(&(a_ctrl->v4l2_dev_str));
 
 	/*Free Allocated Mem */
-	kfree(a_ctrl->i2c_data.per_frame);
+	CAM_MEM_FREE(a_ctrl->i2c_data.per_frame);
 	a_ctrl->i2c_data.per_frame = NULL;
 	a_ctrl->soc_info.soc_private = NULL;
 	v4l2_set_subdevdata(&a_ctrl->v4l2_dev_str.sd, NULL);
-	kfree(a_ctrl);
+	CAM_MEM_FREE(a_ctrl);
 }
 
 const static struct component_ops cam_actuator_i2c_component_ops = {
@@ -399,14 +400,14 @@ static int cam_actuator_platform_component_bind(struct device *dev,
 	a_ctrl->soc_info.dev_name = pdev->name;
 	a_ctrl->io_master_info.master_type = CCI_MASTER;
 
-	a_ctrl->io_master_info.cci_client = kzalloc(sizeof(
+	a_ctrl->io_master_info.cci_client = CAM_MEM_ZALLOC(sizeof(
 		struct cam_sensor_cci_client), GFP_KERNEL);
 	if (!(a_ctrl->io_master_info.cci_client)) {
 		rc = -ENOMEM;
 		goto free_ctrl;
 	}
 
-	soc_private = kzalloc(sizeof(struct cam_actuator_soc_private),
+	soc_private = CAM_MEM_ZALLOC(sizeof(struct cam_actuator_soc_private),
 		GFP_KERNEL);
 	if (!soc_private) {
 		rc = -ENOMEM;
@@ -416,7 +417,7 @@ static int cam_actuator_platform_component_bind(struct device *dev,
 	soc_private->power_info.dev = &pdev->dev;
 
 	a_ctrl->i2c_data.per_frame =
-		kzalloc(sizeof(struct i2c_settings_array) *
+		CAM_MEM_ZALLOC(sizeof(struct i2c_settings_array) *
 		MAX_PER_FRAME_ARRAY, GFP_KERNEL);
 	if (a_ctrl->i2c_data.per_frame == NULL) {
 		rc = -ENOMEM;
@@ -466,11 +467,11 @@ static int cam_actuator_platform_component_bind(struct device *dev,
 	return rc;
 
 free_mem:
-	kfree(a_ctrl->i2c_data.per_frame);
+	CAM_MEM_FREE(a_ctrl->i2c_data.per_frame);
 free_soc:
-	kfree(soc_private);
+	CAM_MEM_FREE(soc_private);
 free_cci_client:
-	kfree(a_ctrl->io_master_info.cci_client);
+	CAM_MEM_FREE(a_ctrl->io_master_info.cci_client);
 free_ctrl:
 	devm_kfree(&pdev->dev, a_ctrl);
 	return rc;
@@ -498,11 +499,11 @@ static void cam_actuator_platform_component_unbind(struct device *dev,
 	mutex_unlock(&(a_ctrl->actuator_mutex));
 	cam_unregister_subdev(&(a_ctrl->v4l2_dev_str));
 
-	kfree(a_ctrl->io_master_info.cci_client);
+	CAM_MEM_FREE(a_ctrl->io_master_info.cci_client);
 	a_ctrl->io_master_info.cci_client = NULL;
-	kfree(a_ctrl->soc_info.soc_private);
+	CAM_MEM_FREE(a_ctrl->soc_info.soc_private);
 	a_ctrl->soc_info.soc_private = NULL;
-	kfree(a_ctrl->i2c_data.per_frame);
+	CAM_MEM_FREE(a_ctrl->i2c_data.per_frame);
 	a_ctrl->i2c_data.per_frame = NULL;
 	v4l2_set_subdevdata(&a_ctrl->v4l2_dev_str.sd, NULL);
 	platform_set_drvdata(pdev, NULL);

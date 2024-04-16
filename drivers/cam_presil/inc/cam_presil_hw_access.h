@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_PRESIL_HW_ACCESS_H_
@@ -11,6 +11,11 @@
 
 #define CAM_PRESIL_CLIENT_ID_CAMERA 0x1
 #define CAM_PRESIL_CLIENT_ID_EVA    0x2
+
+#define CAM_SS_START_PRESIL    0x08000000
+#define CAM_SS_END_PRESIL      0x09000000
+#define CVP_SS_START_PRESIL    0x06c00000
+#define CAM_EVENT_START_PRESIL 0x20000000
 
 /* presil events to carry shared values from HW-KMD to PC-HOST CSim Wrapper */
 #define CAM_PRESIL_EVENT_HFI_REG_BASE                                0x600
@@ -23,6 +28,8 @@
 #define CAM_PRESIL_EVENT_HFI_REG_ON_FIRST_REG_START_FW_DOWNLOAD      0x638   /* write FF to start */
 #define CAM_PRESIL_EVENT_IFE_FRAME_RUN                               0x123   /* write FF to start */
 
+typedef int (*CAM_PRESIL_IRQ_HANDLER_BOTTOM_HALF)(void *handler_priv,
+	void *evt_payload_priv);
 
 /*
  * enum cam_presil_err - return code from presil apis
@@ -225,4 +232,18 @@ bool cam_presil_mode_enabled(void);
  */
 int cam_presil_send_event(uint32_t event_id, uint32_t value);
 
+/*
+ *  cam_presil_enqueue_presil_irq_tasklet()
+ *
+ * @brief   :  enqueue workqueue cb for bottom half of irq in presil mode.
+ *
+ * @bh_handler   :  Bottom half handler func
+ * @handler_priv :  Handler private data
+ * @payload      :  Payload
+ *
+ * @return:  Success or Failure
+ */
+int cam_presil_enqueue_presil_irq_tasklet(CAM_PRESIL_IRQ_HANDLER_BOTTOM_HALF bh_handler,
+	void *handler_priv,
+	void *payload);
 #endif /* _CAM_PRESIL_HW_ACCESS_H_ */

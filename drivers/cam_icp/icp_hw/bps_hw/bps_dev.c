@@ -20,6 +20,7 @@
 #include "cam_debug_util.h"
 #include "camera_main.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 static struct cam_bps_device_hw_info cam_bps_hw_info = {
 	.hw_idx = 0,
@@ -107,16 +108,16 @@ static int cam_bps_component_bind(struct device *dev,
 	int                                rc = 0;
 	struct platform_device *pdev = to_platform_device(dev);
 
-	bps_dev_intf = kzalloc(sizeof(struct cam_hw_intf), GFP_KERNEL);
+	bps_dev_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!bps_dev_intf)
 		return -ENOMEM;
 
 	of_property_read_u32(pdev->dev.of_node,
 		"cell-index", &bps_dev_intf->hw_idx);
 
-	bps_dev = kzalloc(sizeof(struct cam_hw_info), GFP_KERNEL);
+	bps_dev = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!bps_dev) {
-		kfree(bps_dev_intf);
+		CAM_MEM_FREE(bps_dev_intf);
 		return -ENOMEM;
 	}
 
@@ -129,11 +130,11 @@ static int cam_bps_component_bind(struct device *dev,
 	bps_dev_intf->hw_ops.process_cmd = cam_bps_process_cmd;
 	bps_dev_intf->hw_type = CAM_ICP_DEV_BPS;
 	platform_set_drvdata(pdev, bps_dev_intf);
-	bps_dev->core_info = kzalloc(sizeof(struct cam_bps_device_core_info),
+	bps_dev->core_info = CAM_MEM_ZALLOC(sizeof(struct cam_bps_device_core_info),
 					GFP_KERNEL);
 	if (!bps_dev->core_info) {
-		kfree(bps_dev);
-		kfree(bps_dev_intf);
+		CAM_MEM_FREE(bps_dev);
+		CAM_MEM_FREE(bps_dev_intf);
 		return -ENOMEM;
 	}
 	core_info = (struct cam_bps_device_core_info *)bps_dev->core_info;
@@ -142,9 +143,9 @@ static int cam_bps_component_bind(struct device *dev,
 		&pdev->dev);
 	if (!match_dev) {
 		CAM_ERR(CAM_ICP, "No bps hardware info");
-		kfree(bps_dev->core_info);
-		kfree(bps_dev);
-		kfree(bps_dev_intf);
+		CAM_MEM_FREE(bps_dev->core_info);
+		CAM_MEM_FREE(bps_dev);
+		CAM_MEM_FREE(bps_dev_intf);
 		rc = -EINVAL;
 		return rc;
 	}
@@ -155,9 +156,9 @@ static int cam_bps_component_bind(struct device *dev,
 		bps_dev);
 	if (rc < 0) {
 		CAM_ERR(CAM_ICP, "failed to init_soc");
-		kfree(bps_dev->core_info);
-		kfree(bps_dev);
-		kfree(bps_dev_intf);
+		CAM_MEM_FREE(bps_dev->core_info);
+		CAM_MEM_FREE(bps_dev);
+		CAM_MEM_FREE(bps_dev_intf);
 		return rc;
 	}
 
@@ -168,18 +169,18 @@ static int cam_bps_component_bind(struct device *dev,
 	rc = cam_vmvm_populate_hw_instance_info(&bps_dev->soc_info, NULL, NULL);
 	if (rc) {
 		CAM_ERR(CAM_ICP, " hw instance populate failed: %d", rc);
-		kfree(bps_dev->core_info);
-		kfree(bps_dev);
-		kfree(bps_dev_intf);
+		CAM_MEM_FREE(bps_dev->core_info);
+		CAM_MEM_FREE(bps_dev);
+		CAM_MEM_FREE(bps_dev_intf);
 		return rc;
 	}
 
 	rc = cam_bps_register_cpas(&bps_dev->soc_info,
 			core_info, bps_dev_intf->hw_idx);
 	if (rc < 0) {
-		kfree(bps_dev->core_info);
-		kfree(bps_dev);
-		kfree(bps_dev_intf);
+		CAM_MEM_FREE(bps_dev->core_info);
+		CAM_MEM_FREE(bps_dev);
+		CAM_MEM_FREE(bps_dev_intf);
 		return rc;
 	}
 	bps_dev->hw_state = CAM_HW_STATE_POWER_DOWN;
@@ -213,9 +214,9 @@ static void cam_bps_component_unbind(struct device *dev,
 	cam_cpas_unregister_client(core_info->cpas_handle);
 	cam_bps_deinit_soc_resources(&bps_dev->soc_info);
 
-	kfree(bps_dev->core_info);
-	kfree(bps_dev);
-	kfree(bps_dev_intf);
+	CAM_MEM_FREE(bps_dev->core_info);
+	CAM_MEM_FREE(bps_dev);
+	CAM_MEM_FREE(bps_dev_intf);
 }
 
 const static struct component_ops cam_bps_component_ops = {

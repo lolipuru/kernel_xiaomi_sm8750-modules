@@ -524,7 +524,7 @@ static int cam_tpg_cmd_buf_parse(
 		rc = cam_tpg_validate_cmd_descriptor(cmd_desc,
 				&cmd_type, &cmd_addr);
 		if (rc < 0) {
-			kfree(req);
+			CAM_MEM_FREE(req);
 			goto end;
 		}
 
@@ -581,7 +581,7 @@ end:
 free_request:
 	/* free the request and return the failure */
 	tpg_hw_free_request(&tpg_dev->tpg_hw, req);
-	kfree(req);
+	CAM_MEM_FREE(req);
 	return rc;
 }
 

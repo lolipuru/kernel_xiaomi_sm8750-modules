@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_debug_util.h"
@@ -66,3 +67,9 @@ int cam_presil_send_event(uint32_t event_id, uint32_t value)
 	return CAM_PRESIL_SUCCESS;
 }
 
+int cam_presil_enqueue_presil_irq_tasklet(CAM_PRESIL_IRQ_HANDLER_BOTTOM_HALF bh_handler,
+	void *handler_priv,
+	void *payload)
+{
+	return CAM_PRESIL_SUCCESS;
+}

@@ -750,18 +750,18 @@ void cam_eeprom_spi_driver_remove(struct spi_device *sdev)
 	mutex_unlock(&(e_ctrl->eeprom_mutex));
 	mutex_destroy(&(e_ctrl->eeprom_mutex));
 	cam_unregister_subdev(&(e_ctrl->v4l2_dev_str));
-	kfree(e_ctrl->io_master_info.spi_client);
+	CAM_MEM_FREE(e_ctrl->io_master_info.spi_client);
 	e_ctrl->io_master_info.spi_client = NULL;
 	soc_private =
 		(struct cam_eeprom_soc_private *)e_ctrl->soc_info.soc_private;
 	if (soc_private) {
-		kfree(soc_private->power_info.gpio_num_info);
+		CAM_MEM_FREE(soc_private->power_info.gpio_num_info);
 		soc_private->power_info.gpio_num_info = NULL;
-		kfree(soc_private);
+		CAM_MEM_FREE(soc_private);
 		soc_private = NULL;
 	}
 	v4l2_set_subdevdata(&e_ctrl->v4l2_dev_str.sd, NULL);
-	kfree(e_ctrl);
+	CAM_MEM_FREE(e_ctrl);
 }
 
 int cam_compat_util_get_irq(struct cam_hw_soc_info *soc_info)
@@ -816,18 +816,18 @@ int cam_eeprom_spi_driver_remove(struct spi_device *sdev)
 	mutex_unlock(&(e_ctrl->eeprom_mutex));
 	mutex_destroy(&(e_ctrl->eeprom_mutex));
 	cam_unregister_subdev(&(e_ctrl->v4l2_dev_str));
-	kfree(e_ctrl->io_master_info.spi_client);
+	CAM_MEM_FREE(e_ctrl->io_master_info.spi_client);
 	e_ctrl->io_master_info.spi_client = NULL;
 	soc_private =
 		(struct cam_eeprom_soc_private *)e_ctrl->soc_info.soc_private;
 	if (soc_private) {
-		kfree(soc_private->power_info.gpio_num_info);
+		CAM_MEM_FREE(soc_private->power_info.gpio_num_info);
 		soc_private->power_info.gpio_num_info = NULL;
-		kfree(soc_private);
+		CAM_MEM_FREE(soc_private);
 		soc_private = NULL;
 	}
 	v4l2_set_subdevdata(&e_ctrl->v4l2_dev_str.sd, NULL);
-	kfree(e_ctrl);
+	CAM_MEM_FREE(e_ctrl);
 
 	return 0;
 }

@@ -42,6 +42,7 @@
 #include "cam_cdm.h"
 #include "ope_dev_intf.h"
 #include "cam_compat.h"
+#include "cam_mem_mgr_api.h"
 
 static struct cam_ope_hw_mgr *ope_hw_mgr;
 
@@ -431,6 +432,7 @@ end:
 static int cam_ope_mgr_put_cmd_buf(struct cam_packet *packet)
 {
 	int i = 0;
+	int rc;
 	struct cam_cmd_buf_desc *cmd_desc = NULL;
 
 	cmd_desc = (struct cam_cmd_buf_desc *)
@@ -3936,7 +3938,7 @@ static int cam_ope_mgr_create_wq(void)
 	}
 
 	ope_hw_mgr->cmd_work_data =
-		kzalloc(sizeof(struct ope_cmd_work_data) * OPE_WORKQ_NUM_TASK,
+		CAM_MEM_ZALLOC(sizeof(struct ope_cmd_work_data) * OPE_WORKQ_NUM_TASK,
 		GFP_KERNEL);
 	if (!ope_hw_mgr->cmd_work_data) {
 		rc = -ENOMEM;
@@ -3944,7 +3946,7 @@ static int cam_ope_mgr_create_wq(void)
 	}
 
 	ope_hw_mgr->msg_work_data =
-		kzalloc(sizeof(struct ope_msg_work_data) * OPE_WORKQ_NUM_TASK,
+		CAM_MEM_ZALLOC(sizeof(struct ope_msg_work_data) * OPE_WORKQ_NUM_TASK,
 		GFP_KERNEL);
 	if (!ope_hw_mgr->msg_work_data) {
 		rc = -ENOMEM;
@@ -3952,7 +3954,7 @@ static int cam_ope_mgr_create_wq(void)
 	}
 
 	ope_hw_mgr->timer_work_data =
-		kzalloc(sizeof(struct ope_clk_work_data) * OPE_WORKQ_NUM_TASK,
+		CAM_MEM_ZALLOC(sizeof(struct ope_clk_work_data) * OPE_WORKQ_NUM_TASK,
 		GFP_KERNEL);
 	if (!ope_hw_mgr->timer_work_data) {
 		rc = -ENOMEM;
@@ -3974,9 +3976,9 @@ static int cam_ope_mgr_create_wq(void)
 
 
 timer_work_data_failed:
-	kfree(ope_hw_mgr->msg_work_data);
+	CAM_MEM_FREE(ope_hw_mgr->msg_work_data);
 msg_work_data_failed:
-	kfree(ope_hw_mgr->cmd_work_data);
+	CAM_MEM_FREE(ope_hw_mgr->cmd_work_data);
 cmd_work_data_failed:
 	cam_req_mgr_workq_destroy(&ope_hw_mgr->timer_work);
 timer_work_failed:
@@ -4171,7 +4173,7 @@ static void cam_ope_mgr_dump_pf_data(
 	struct ope_io_buf                 *io_buf = NULL;
 	struct cam_ope_match_pid_args      ope_pid_mid_args;
 	struct cam_hw_dump_pf_args        *pf_args;
-	struct cam_hw_mgr_pf_request_info *pf_req_info;
+	struct cam_ctx_request            *req_pf;
 
 	int          device_idx;
 	bool         *ctx_found;
@@ -4183,14 +4185,12 @@ static void cam_ope_mgr_dump_pf_data(
 	int          stripe_num;
 	int          rc = 0;
 
-	ctx_data    = (struct cam_ope_ctx *)hw_cmd_args->ctxt_to_hw_map;
+	ctx_data = (struct cam_ope_ctx *)hw_cmd_args->ctxt_to_hw_map;
 	pf_args = hw_cmd_args->u.pf_cmd_args->pf_args;
-	pf_req_info = hw_cmd_args->u.pf_cmd_args->pf_req_info;
-	rc = cam_packet_util_get_packet_addr(&packet, pf_req_info->packet_handle,
-		pf_req_info->packet_offset);
-	if (rc)
-		return rc;
-	ope_request = pf_req_info->req;
+	req_pf = (struct cam_ctx_request *)
+		hw_cmd_args->u.pf_cmd_args->pf_req_info->req;
+	packet = (struct cam_packet *)req_pf->packet;
+	ope_request = hw_cmd_args->u.pf_cmd_args->pf_req_info->req;
 
 	ope_pid_mid_args.fault_mid =  pf_args->pf_smmu_info->mid;
 	ope_pid_mid_args.fault_pid = pf_args->pf_smmu_info->pid;

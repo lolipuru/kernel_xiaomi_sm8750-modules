@@ -20,6 +20,7 @@
 #include "cam_debug_util.h"
 #include "camera_main.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 static struct cam_ipe_device_hw_info cam_ipe_hw_info[] = {
 	{
@@ -90,14 +91,14 @@ static int cam_ipe_component_bind(struct device *dev,
 		return -EINVAL;
 	}
 
-	ipe_dev_intf = kzalloc(sizeof(struct cam_hw_intf), GFP_KERNEL);
+	ipe_dev_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!ipe_dev_intf)
 		return -ENOMEM;
 
 	ipe_dev_intf->hw_idx = hw_idx;
-	ipe_dev = kzalloc(sizeof(struct cam_hw_info), GFP_KERNEL);
+	ipe_dev = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!ipe_dev) {
-		kfree(ipe_dev_intf);
+		CAM_MEM_FREE(ipe_dev_intf);
 		return -ENOMEM;
 	}
 
@@ -116,11 +117,11 @@ static int cam_ipe_component_bind(struct device *dev,
 
 	platform_set_drvdata(pdev, ipe_dev_intf);
 
-	ipe_dev->core_info = kzalloc(sizeof(struct cam_ipe_device_core_info),
+	ipe_dev->core_info = CAM_MEM_ZALLOC(sizeof(struct cam_ipe_device_core_info),
 		GFP_KERNEL);
 	if (!ipe_dev->core_info) {
-		kfree(ipe_dev);
-		kfree(ipe_dev_intf);
+		CAM_MEM_FREE(ipe_dev);
+		CAM_MEM_FREE(ipe_dev_intf);
 		return -ENOMEM;
 	}
 	core_info = (struct cam_ipe_device_core_info *)ipe_dev->core_info;
@@ -129,9 +130,9 @@ static int cam_ipe_component_bind(struct device *dev,
 		&pdev->dev);
 	if (!match_dev) {
 		CAM_DBG(CAM_ICP, "No ipe hardware info");
-		kfree(ipe_dev->core_info);
-		kfree(ipe_dev);
-		kfree(ipe_dev_intf);
+		CAM_MEM_FREE(ipe_dev->core_info);
+		CAM_MEM_FREE(ipe_dev);
+		CAM_MEM_FREE(ipe_dev_intf);
 		rc = -EINVAL;
 		return rc;
 	}
@@ -142,9 +143,9 @@ static int cam_ipe_component_bind(struct device *dev,
 		ipe_dev);
 	if (rc < 0) {
 		CAM_ERR(CAM_ICP, "failed to init_soc");
-		kfree(ipe_dev->core_info);
-		kfree(ipe_dev);
-		kfree(ipe_dev_intf);
+		CAM_MEM_FREE(ipe_dev->core_info);
+		CAM_MEM_FREE(ipe_dev);
+		CAM_MEM_FREE(ipe_dev_intf);
 		return rc;
 	}
 
@@ -161,9 +162,9 @@ static int cam_ipe_component_bind(struct device *dev,
 	rc = cam_ipe_register_cpas(&ipe_dev->soc_info,
 		core_info, ipe_dev_intf->hw_idx);
 	if (rc < 0) {
-		kfree(ipe_dev->core_info);
-		kfree(ipe_dev);
-		kfree(ipe_dev_intf);
+		CAM_MEM_FREE(ipe_dev->core_info);
+		CAM_MEM_FREE(ipe_dev);
+		CAM_MEM_FREE(ipe_dev_intf);
 		return rc;
 	}
 	ipe_dev->hw_state = CAM_HW_STATE_POWER_DOWN;
@@ -197,9 +198,9 @@ static void cam_ipe_component_unbind(struct device *dev,
 	core_info = (struct cam_ipe_device_core_info *)ipe_dev->core_info;
 	cam_cpas_unregister_client(core_info->cpas_handle);
 	cam_ipe_deinit_soc_resources(&ipe_dev->soc_info);
-	kfree(ipe_dev->core_info);
-	kfree(ipe_dev);
-	kfree(ipe_dev_intf);
+	CAM_MEM_FREE(ipe_dev->core_info);
+	CAM_MEM_FREE(ipe_dev);
+	CAM_MEM_FREE(ipe_dev_intf);
 }
 
 

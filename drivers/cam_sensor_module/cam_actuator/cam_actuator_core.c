@@ -11,6 +11,7 @@
 #include "cam_trace.h"
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
+#include "cam_mem_mgr_api.h"
 
 int32_t cam_actuator_construct_default_power_setting(
 	struct cam_sensor_power_ctrl_t *power_info)
@@ -19,7 +20,7 @@ int32_t cam_actuator_construct_default_power_setting(
 
 	power_info->power_setting_size = 1;
 	power_info->power_setting =
-		kzalloc(sizeof(struct cam_sensor_power_setting),
+		CAM_MEM_ZALLOC(sizeof(struct cam_sensor_power_setting),
 			GFP_KERNEL);
 	if (!power_info->power_setting)
 		return -ENOMEM;
@@ -31,7 +32,7 @@ int32_t cam_actuator_construct_default_power_setting(
 
 	power_info->power_down_setting_size = 1;
 	power_info->power_down_setting =
-		kzalloc(sizeof(struct cam_sensor_power_setting),
+		CAM_MEM_ZALLOC(sizeof(struct cam_sensor_power_setting),
 			GFP_KERNEL);
 	if (!power_info->power_down_setting) {
 		rc = -ENOMEM;
@@ -45,7 +46,7 @@ int32_t cam_actuator_construct_default_power_setting(
 	return rc;
 
 free_power_settings:
-	kfree(power_info->power_setting);
+	CAM_MEM_FREE(power_info->power_setting);
 	power_info->power_setting = NULL;
 	power_info->power_setting_size = 0;
 	return rc;
@@ -439,12 +440,14 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 	struct common_header      *cmm_hdr = NULL;
 	struct cam_control        *ioctl_ctrl = NULL;
 	struct cam_packet         *csl_packet = NULL;
+	struct cam_packet         *csl_packet_u = NULL;
 	struct cam_config_dev_cmd config;
 	struct i2c_data_settings  *i2c_data = NULL;
 	struct i2c_settings_array *i2c_reg_settings = NULL;
 	struct cam_cmd_buf_desc   *cmd_desc = NULL;
 	struct cam_actuator_soc_private *soc_private = NULL;
 	struct cam_sensor_power_ctrl_t  *power_info = NULL;
+	size_t                           packet_size = 0;
 
 	if (!a_ctrl || !arg) {
 		CAM_ERR(CAM_ACTUATOR, "Invalid Args");
@@ -477,12 +480,27 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 			"Inval cam_packet strut size: %zu, len_of_buff: %zu",
 			 sizeof(struct cam_packet), len_of_buff);
 		rc = -EINVAL;
-		goto end;
+		goto put_buf;
 	}
 
 	remain_len -= (size_t)config.offset;
-	csl_packet = (struct cam_packet *)
-			(generic_pkt_ptr + (uint32_t)config.offset);
+	csl_packet_u = (struct cam_packet *)
+		(generic_pkt_ptr + (uint32_t)config.offset);
+	packet_size = csl_packet_u->header.size;
+	if (packet_size <= remain_len) {
+		rc = cam_common_mem_kdup((void **)&csl_packet,
+			csl_packet_u, packet_size);
+		if (rc) {
+			CAM_ERR(CAM_ACTUATOR, "Alloc and copy request: %lld packet fail",
+				csl_packet_u->header.request_id);
+			goto put_buf;
+		}
+	} else {
+		CAM_ERR(CAM_ACTUATOR, "Invalid packet header size %u",
+			packet_size);
+		rc = -EINVAL;
+		goto put_buf;
+	}
 
 	if (cam_packet_util_validate_packet(csl_packet,
 		remain_len)) {
@@ -517,7 +535,7 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 		for (i = 0; i < csl_packet->num_cmd_buf; i++) {
 			rc = cam_packet_util_validate_cmd_desc(&cmd_desc[i]);
 			if (rc)
-				return rc;
+				goto end;
 
 			total_cmd_buf_in_bytes = cmd_desc[i].length;
 			if (!total_cmd_buf_in_bytes)
@@ -774,7 +792,7 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 			if (rc < 0) {
 				CAM_ERR(CAM_SENSOR, "failed to get qtimer rc:%d");
 				delete_request(&i2c_read_settings);
-				return rc;
+				goto end;
 			}
 
 			rc = cam_sensor_util_write_qtimer_to_io_buffer(
@@ -783,7 +801,7 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 				CAM_ERR(CAM_ACTUATOR,
 					"write qtimer failed rc: %d", rc);
 				delete_request(&i2c_read_settings);
-				return rc;
+				goto end;
 			}
 		}
 
@@ -803,6 +821,8 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 	}
 
 end:
+	cam_common_mem_free(csl_packet);
+put_buf:
 	cam_mem_put_cpu_buf(config.packet_handle);
 	return rc;
 }
@@ -834,8 +854,8 @@ void cam_actuator_shutdown(struct cam_actuator_ctrl_t *a_ctrl)
 		a_ctrl->bridge_intf.session_hdl = -1;
 	}
 
-	kfree(power_info->power_setting);
-	kfree(power_info->power_down_setting);
+	CAM_MEM_FREE(power_info->power_setting);
+	CAM_MEM_FREE(power_info->power_down_setting);
 	power_info->power_setting = NULL;
 	power_info->power_down_setting = NULL;
 	power_info->power_setting_size = 0;
@@ -963,8 +983,8 @@ int32_t cam_actuator_driver_cmd(struct cam_actuator_ctrl_t *a_ctrl,
 		a_ctrl->bridge_intf.session_hdl = -1;
 		a_ctrl->cam_act_state = CAM_ACTUATOR_INIT;
 		a_ctrl->last_flush_req = 0;
-		kfree(power_info->power_setting);
-		kfree(power_info->power_down_setting);
+		CAM_MEM_FREE(power_info->power_setting);
+		CAM_MEM_FREE(power_info->power_down_setting);
 		power_info->power_setting = NULL;
 		power_info->power_down_setting = NULL;
 		power_info->power_down_setting_size = 0;

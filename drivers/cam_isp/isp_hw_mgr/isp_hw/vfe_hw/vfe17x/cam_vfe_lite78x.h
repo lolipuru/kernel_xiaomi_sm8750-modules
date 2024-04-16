@@ -240,7 +240,7 @@ static struct cam_vfe_top_ver4_hw_info vfe_lite78x_top_hw_info = {
 		CAM_VFE_RDI_VER_1_0,
 		CAM_VFE_RDI_VER_1_0,
 	},
-	.debug_reg_info = &vfe78x_dbg_reg_info,
+	.top_debug_reg_info = &vfe78x_dbg_reg_info,
 	.num_rdi        = ARRAY_SIZE(vfe_lite78x_rdi_hw_info),
 };
 

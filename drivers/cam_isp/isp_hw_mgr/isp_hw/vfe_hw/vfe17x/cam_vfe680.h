@@ -816,7 +816,7 @@ static struct cam_vfe_top_ver4_hw_info vfe680_top_hw_info = {
 	.top_err_desc                    = vfe680_top_irq_err_desc,
 	.num_pdaf_violation_errors       = ARRAY_SIZE(vfe680_pdaf_violation_desc),
 	.pdaf_violation_desc             = vfe680_pdaf_violation_desc,
-	.debug_reg_info                  = &vfe680_dbg_reg_info,
+	.top_debug_reg_info              = &vfe680_dbg_reg_info,
 };
 
 static struct cam_irq_register_set vfe680_bus_irq_reg[2] = {

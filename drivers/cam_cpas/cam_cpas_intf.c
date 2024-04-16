@@ -28,6 +28,7 @@
 #include <linux/soc/qcom/llcc-qcom.h>
 #include "cam_req_mgr_interface.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 #ifdef CONFIG_DYNAMIC_FD_PORT_CONFIG
 #include <linux/IClientEnv.h>
@@ -1605,13 +1606,13 @@ int cam_cpas_subdev_cmd(struct cam_cpas_intf *cpas_intf,
 		break;
 	}
 	case CAM_QUERY_CAP_GENERIC_BLOB: {
-		void *blob_data = kzalloc(cmd->size, GFP_KERNEL);
+		void *blob_data = CAM_MEM_ZALLOC(cmd->size, GFP_KERNEL);
 
 		if (blob_data) {
 			rc = copy_from_user(blob_data, u64_to_user_ptr(cmd->handle),
 				cmd->size);
 			if (rc) {
-				kfree(blob_data);
+				CAM_MEM_FREE(blob_data);
 				CAM_ERR(CAM_CPAS, "Failed in copy from user, rc=%d",
 					rc);
 				break;
@@ -1620,14 +1621,14 @@ int cam_cpas_subdev_cmd(struct cam_cpas_intf *cpas_intf,
 			rc = cam_packet_util_process_generic_blob(cmd->size, blob_data,
 					 cam_cpas_handle_generic_query_blob, NULL);
 			if (rc) {
-				kfree(blob_data);
+				CAM_MEM_FREE(blob_data);
 				break;
 			}
 			rc = copy_to_user(u64_to_user_ptr(cmd->handle), blob_data,
 				cmd->size);
 			if (rc)
 				CAM_ERR(CAM_CPAS, "Failed in copy to user, rc=%d", rc);
-			kfree(blob_data);
+			CAM_MEM_FREE(blob_data);
 		} else {
 			rc = -ENOMEM;
 			CAM_ERR(CAM_CPAS, "memory allocation is failed rc = %d", rc);
@@ -1831,7 +1832,7 @@ static int cam_cpas_dev_component_bind(struct device *dev,
 		return -EALREADY;
 	}
 
-	g_cpas_intf = kzalloc(sizeof(*g_cpas_intf), GFP_KERNEL);
+	g_cpas_intf = CAM_MEM_ZALLOC(sizeof(*g_cpas_intf), GFP_KERNEL);
 	if (!g_cpas_intf)
 		return -ENOMEM;
 
@@ -1886,7 +1887,7 @@ error_hw_remove:
 	cam_cpas_hw_remove(g_cpas_intf->hw_intf);
 error_destroy_mem:
 	mutex_destroy(&g_cpas_intf->intf_lock);
-	kfree(g_cpas_intf);
+	CAM_MEM_FREE(g_cpas_intf);
 	g_cpas_intf = NULL;
 	CAM_ERR(CAM_CPAS, "CPAS component bind failed");
 	return rc;
@@ -1906,7 +1907,7 @@ static void cam_cpas_dev_component_unbind(struct device *dev,
 	cam_cpas_hw_remove(g_cpas_intf->hw_intf);
 	mutex_unlock(&g_cpas_intf->intf_lock);
 	mutex_destroy(&g_cpas_intf->intf_lock);
-	kfree(g_cpas_intf);
+	CAM_MEM_FREE(g_cpas_intf);
 	g_cpas_intf = NULL;
 }
 

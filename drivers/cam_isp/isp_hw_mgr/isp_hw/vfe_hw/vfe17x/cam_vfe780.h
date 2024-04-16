@@ -860,7 +860,7 @@ static struct cam_vfe_top_ver4_hw_info vfe780_top_hw_info = {
 	.top_err_desc                    = vfe780_top_irq_err_desc,
 	.num_pdaf_violation_errors       = ARRAY_SIZE(vfe780_pdaf_violation_desc),
 	.pdaf_violation_desc             = vfe780_pdaf_violation_desc,
-	.debug_reg_info                  = &vfe780_dbg_reg_info,
+	.top_debug_reg_info              = &vfe780_dbg_reg_info,
 	.pdaf_lcr_res_mask               = vfe780_pdaf_lcr_res_mask,
 	.num_pdaf_lcr_res                = ARRAY_SIZE(vfe780_pdaf_lcr_res_mask),
 };

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2018, 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_sync_util.h"
 #include "cam_req_mgr_workq.h"
 #include "cam_common_util.h"
+#include "cam_mem_mgr_api.h"
 
 extern unsigned long cam_sync_monitor_mask;
 
@@ -18,7 +19,7 @@ static int cam_generic_expand_monitor_table(int idx, struct mutex *lock,
 	mutex_lock(lock);
 	row_mon_data = mon_data[(idx / CAM_GENERIC_MONITOR_TABLE_ENTRY_SZ)];
 	if (!row_mon_data) {
-		row_mon_data = kzalloc(
+		row_mon_data = CAM_MEM_ZALLOC(
 			sizeof(struct cam_generic_fence_monitor_data) *
 			CAM_GENERIC_MONITOR_TABLE_ENTRY_SZ, GFP_KERNEL);
 		mon_data[(idx / CAM_GENERIC_MONITOR_TABLE_ENTRY_SZ)] = row_mon_data;
@@ -397,7 +398,7 @@ int cam_sync_init_group_object(struct sync_table_row *table,
 		row->remaining++;
 
 		/* Add child info */
-		child_info = kzalloc(sizeof(*child_info), GFP_ATOMIC);
+		child_info = CAM_MEM_ZALLOC(sizeof(*child_info), GFP_ATOMIC);
 		if (!child_info) {
 			spin_unlock_bh(&sync_dev->row_spinlocks[sync_objs[i]]);
 			rc = -ENOMEM;
@@ -407,7 +408,7 @@ int cam_sync_init_group_object(struct sync_table_row *table,
 		list_add_tail(&child_info->list, &row->children_list);
 
 		/* Add parent info */
-		parent_info = kzalloc(sizeof(*parent_info), GFP_ATOMIC);
+		parent_info = CAM_MEM_ZALLOC(sizeof(*parent_info), GFP_ATOMIC);
 		if (!parent_info) {
 			spin_unlock_bh(&sync_dev->row_spinlocks[sync_objs[i]]);
 			rc = -ENOMEM;
@@ -522,7 +523,7 @@ int cam_sync_deinit_object(struct sync_table_row *table, uint32_t idx,
 			list_del_init(&child_info->list);
 			spin_unlock_bh(&sync_dev->row_spinlocks[
 				child_info->sync_id]);
-			kfree(child_info);
+			CAM_MEM_FREE(child_info);
 			continue;
 		}
 
@@ -537,7 +538,7 @@ int cam_sync_deinit_object(struct sync_table_row *table, uint32_t idx,
 
 		list_del_init(&child_info->list);
 		spin_unlock_bh(&sync_dev->row_spinlocks[child_info->sync_id]);
-		kfree(child_info);
+		CAM_MEM_FREE(child_info);
 	}
 
 	/* Cleanup the parent to child link */
@@ -552,7 +553,7 @@ int cam_sync_deinit_object(struct sync_table_row *table, uint32_t idx,
 			list_del_init(&parent_info->list);
 			spin_unlock_bh(&sync_dev->row_spinlocks[
 				parent_info->sync_id]);
-			kfree(parent_info);
+			CAM_MEM_FREE(parent_info);
 			continue;
 		}
 
@@ -567,20 +568,20 @@ int cam_sync_deinit_object(struct sync_table_row *table, uint32_t idx,
 
 		list_del_init(&parent_info->list);
 		spin_unlock_bh(&sync_dev->row_spinlocks[parent_info->sync_id]);
-		kfree(parent_info);
+		CAM_MEM_FREE(parent_info);
 	}
 
 	spin_lock_bh(&sync_dev->row_spinlocks[idx]);
 	list_for_each_entry_safe(upayload_info, temp_upayload,
 			&row->user_payload_list, list) {
 		list_del_init(&upayload_info->list);
-		kfree(upayload_info);
+		CAM_MEM_FREE(upayload_info);
 	}
 
 	list_for_each_entry_safe(sync_cb, temp_cb,
 			&row->callback_list, list) {
 		list_del_init(&sync_cb->list);
-		kfree(sync_cb);
+		CAM_MEM_FREE(sync_cb);
 	}
 
 	/* Decrement ref cnt for imported dma fence */
@@ -637,7 +638,7 @@ void cam_sync_util_cb_dispatch(struct work_struct *cb_dispatch_work)
 		CAM_WORKQ_SCHEDULE_TIME_THRESHOLD);
 	sync_data(cb_info->sync_obj, cb_info->status, cb_info->cb_data);
 
-	kfree(cb_info);
+	CAM_MEM_FREE(cb_info);
 }
 
 void cam_sync_util_dispatch_signaled_cb(int32_t sync_obj,
@@ -701,7 +702,7 @@ void cam_sync_util_dispatch_signaled_cb(int32_t sync_obj,
 		 * sending V4L event will make a deep copy
 		 * anyway
 		 */
-		kfree(payload_info);
+		CAM_MEM_FREE(payload_info);
 	}
 
 	/*
@@ -791,7 +792,7 @@ void cam_sync_util_cleanup_children_list(struct sync_table_row *row,
 
 		curr_sync_obj = child_info->sync_id;
 		list_del_init(&child_info->list);
-		kfree(child_info);
+		CAM_MEM_FREE(child_info);
 
 		if ((list_clean_type == SYNC_LIST_CLEAN_ONE) &&
 			(curr_sync_obj == sync_obj))
@@ -814,7 +815,7 @@ void cam_sync_util_cleanup_parents_list(struct sync_table_row *row,
 
 		curr_sync_obj = parent_info->sync_id;
 		list_del_init(&parent_info->list);
-		kfree(parent_info);
+		CAM_MEM_FREE(parent_info);
 
 		if ((list_clean_type == SYNC_LIST_CLEAN_ONE) &&
 			(curr_sync_obj == sync_obj))

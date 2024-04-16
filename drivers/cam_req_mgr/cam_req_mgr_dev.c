@@ -30,6 +30,7 @@
 #include "cam_compat.h"
 #include "camera_main.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 #define CAM_REQ_MGR_EVENT_MAX 30
 #define CAM_I3C_MASTER_COMPAT "qcom,geni-i3c"
@@ -56,7 +57,7 @@ static int cam_media_device_setup(struct device *dev)
 {
 	int rc;
 
-	g_dev.v4l2_dev->mdev = kzalloc(sizeof(*g_dev.v4l2_dev->mdev),
+	g_dev.v4l2_dev->mdev = CAM_MEM_ZALLOC(sizeof(*g_dev.v4l2_dev->mdev),
 		GFP_KERNEL);
 	if (!g_dev.v4l2_dev->mdev) {
 		rc = -ENOMEM;
@@ -75,7 +76,7 @@ static int cam_media_device_setup(struct device *dev)
 	return rc;
 
 media_fail:
-	kfree(g_dev.v4l2_dev->mdev);
+	CAM_MEM_FREE(g_dev.v4l2_dev->mdev);
 	g_dev.v4l2_dev->mdev = NULL;
 mdev_fail:
 	return rc;
@@ -85,7 +86,7 @@ static void cam_media_device_cleanup(void)
 {
 	media_device_unregister(g_dev.v4l2_dev->mdev);
 	media_device_cleanup(g_dev.v4l2_dev->mdev);
-	kfree(g_dev.v4l2_dev->mdev);
+	CAM_MEM_FREE(g_dev.v4l2_dev->mdev);
 	g_dev.v4l2_dev->mdev = NULL;
 }
 
@@ -93,7 +94,7 @@ static int cam_v4l2_device_setup(struct device *dev)
 {
 	int rc;
 
-	g_dev.v4l2_dev = kzalloc(sizeof(*g_dev.v4l2_dev),
+	g_dev.v4l2_dev = CAM_MEM_ZALLOC(sizeof(*g_dev.v4l2_dev),
 		GFP_KERNEL);
 	if (!g_dev.v4l2_dev)
 		return -ENOMEM;
@@ -105,7 +106,7 @@ static int cam_v4l2_device_setup(struct device *dev)
 	return rc;
 
 reg_fail:
-	kfree(g_dev.v4l2_dev);
+	CAM_MEM_FREE(g_dev.v4l2_dev);
 	g_dev.v4l2_dev = NULL;
 	return rc;
 }
@@ -113,7 +114,7 @@ reg_fail:
 static void cam_v4l2_device_cleanup(void)
 {
 	v4l2_device_unregister(g_dev.v4l2_dev);
-	kfree(g_dev.v4l2_dev);
+	CAM_MEM_FREE(g_dev.v4l2_dev);
 	g_dev.v4l2_dev = NULL;
 }
 
@@ -483,6 +484,45 @@ static long cam_private_ioctl(struct file *file, void *fh,
 		}
 
 		rc = cam_req_mgr_schedule_request_v2(&sched_req);
+		}
+		break;
+
+	case CAM_REQ_MGR_SCHED_REQ_V3: {
+		struct cam_req_mgr_sched_request_v3 *sched_req;
+		struct cam_req_mgr_sched_request_v3 crm_sched_req;
+		int sched_req_size;
+
+		if (k_ioctl->size < 0)
+			return -EINVAL;
+
+		if (copy_from_user(&crm_sched_req,
+			u64_to_user_ptr(k_ioctl->handle),
+			sizeof(struct cam_req_mgr_sched_request_v3))) {
+			return -EFAULT;
+		}
+
+		if (crm_sched_req.num_links > MAXIMUM_LINKS_PER_SESSION)
+			return -EINVAL;
+
+		sched_req_size = sizeof(struct cam_req_mgr_sched_request_v3) +
+			((crm_sched_req.num_links) * sizeof(__signed__ int));
+
+		if (k_ioctl->size != sched_req_size)
+			return -EINVAL;
+
+		sched_req = kzalloc(sched_req_size, GFP_KERNEL);
+		if (!sched_req) {
+			return -ENOMEM;
+		}
+
+		if (copy_from_user(sched_req, u64_to_user_ptr(k_ioctl->handle), sched_req_size)) {
+			kfree(sched_req);
+			sched_req = NULL;
+			return -EFAULT;
+		}
+
+		rc = cam_req_mgr_schedule_request_v3(sched_req);
+		kfree(sched_req);
 		}
 		break;
 

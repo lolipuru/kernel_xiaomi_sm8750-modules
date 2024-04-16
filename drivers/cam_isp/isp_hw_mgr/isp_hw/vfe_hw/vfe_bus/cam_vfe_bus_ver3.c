@@ -28,6 +28,7 @@
 #include "cam_common_util.h"
 #include "cam_compat.h"
 #include "cam_vmrm_interface.h"
+#include "cam_mem_mgr_api.h"
 
 static const char drv_name[] = "vfe_bus";
 
@@ -328,12 +329,12 @@ static int cam_vfe_bus_ver3_put_evt_payload(
 		return -EINVAL;
 	}
 
+	CAM_COMMON_SANITIZE_LIST_ENTRY((*evt_payload), struct cam_vfe_bus_irq_evt_payload);
 	spin_lock_irqsave(&common_data->spin_lock, flags);
 	if (common_data->hw_init)
-		list_add_tail(&(*evt_payload)->list,
-			&common_data->free_payload_list);
-	spin_unlock_irqrestore(&common_data->spin_lock, flags);
+		list_add_tail(&(*evt_payload)->list, &common_data->free_payload_list);
 
+	spin_unlock_irqrestore(&common_data->spin_lock, flags);
 	*evt_payload = NULL;
 
 	CAM_DBG(CAM_ISP, "VFE:%u Done", common_data->core_index);
@@ -651,15 +652,15 @@ static void cam_vfe_bus_ver3_print_constraint_errors(
 {
 	uint32_t i;
 
-	CAM_INFO(CAM_ISP, "VFE:%u Constraint violation bitflags: 0x%X",
+	CAM_DBG(CAM_ISP, "VFE[%u] Constraint violation bitflags: 0x%X",
 		bus_priv->common_data.core_index, constraint_errors);
 
 	for (i = 0; i < bus_priv->num_cons_err; i++) {
-		if (bus_priv->constraint_error_list[i].bitmask &
-			constraint_errors) {
-			CAM_INFO(CAM_ISP, "VFE:%u WM:%s %s",
-				bus_priv->common_data.core_index, wm_name,
-				bus_priv->constraint_error_list[i].error_description);
+		if (bus_priv->constraint_error_list[i].bitmask & constraint_errors) {
+			CAM_ERR(CAM_ISP, "SW: Constraint Violation");
+			CAM_ERR(CAM_ISP,
+				"Write master name: %s, violated constraint description: %s",
+				wm_name, bus_priv->constraint_error_list[i].error_description);
 		}
 	}
 }
@@ -1307,8 +1308,6 @@ static int cam_vfe_bus_ver3_start_wm_util(
 	ubwc_regs = (struct cam_vfe_bus_ver3_reg_offset_ubwc_client *)
 		rsrc_data->hw_regs->ubwc_regs;
 
-	cam_io_w((rsrc_data->cfg.height << 16) | rsrc_data->cfg.width,
-		common_data->mem_base + rsrc_data->hw_regs->image_cfg_0);
 	cam_io_w(rsrc_data->cfg.pack_fmt,
 		common_data->mem_base + rsrc_data->hw_regs->packer_cfg);
 
@@ -1493,7 +1492,7 @@ static int cam_vfe_bus_ver3_init_wm_resource(uint32_t index,
 {
 	struct cam_vfe_bus_ver3_wm_resource_data *rsrc_data;
 
-	rsrc_data = kzalloc(sizeof(struct cam_vfe_bus_ver3_wm_resource_data),
+	rsrc_data = CAM_MEM_ZALLOC(sizeof(struct cam_vfe_bus_ver3_wm_resource_data),
 		GFP_KERNEL);
 	if (!rsrc_data) {
 		CAM_DBG(CAM_ISP, "VFE:%u Failed to alloc for WM res priv",
@@ -1502,7 +1501,7 @@ static int cam_vfe_bus_ver3_init_wm_resource(uint32_t index,
 	}
 
 	if (out_rsrc_data->mc_based || out_rsrc_data->cntxt_cfg_except) {
-		rsrc_data->mc_data = kcalloc(CAM_ISP_MULTI_CTXT_MAX,
+		rsrc_data->mc_data = CAM_MEM_ZALLOC_ARRAY(CAM_ISP_MULTI_CTXT_MAX,
 			sizeof(struct cam_vfe_bus_ver3_wm_mc_data), GFP_KERNEL);
 		if (!rsrc_data->mc_data) {
 			CAM_ERR(CAM_ISP, "VFE:%u Failed to alloc for WM res mc data",
@@ -1556,11 +1555,11 @@ static int cam_vfe_bus_ver3_deinit_wm_resource(
 		return -ENOMEM;
 
 	if (rsrc_data->out_rsrc_data->mc_based || rsrc_data->out_rsrc_data->cntxt_cfg_except) {
-		kfree(rsrc_data->mc_data);
+		CAM_MEM_FREE(rsrc_data->mc_data);
 		rsrc_data->mc_data = NULL;
 	}
 
-	kfree(rsrc_data);
+	CAM_MEM_FREE(rsrc_data);
 
 	return 0;
 }
@@ -1808,7 +1807,7 @@ static int cam_vfe_bus_ver3_init_comp_grp(uint32_t index,
 	struct cam_vfe_soc_private *vfe_soc_private = soc_info->soc_private;
 	int ddr_type = 0;
 
-	rsrc_data = kzalloc(sizeof(struct cam_vfe_bus_ver3_comp_grp_data),
+	rsrc_data = CAM_MEM_ZALLOC(sizeof(struct cam_vfe_bus_ver3_comp_grp_data),
 		GFP_KERNEL);
 	if (!rsrc_data)
 		return -ENOMEM;
@@ -1864,7 +1863,7 @@ static int cam_vfe_bus_ver3_deinit_comp_grp(
 		CAM_ERR(CAM_ISP, "comp_grp_priv is NULL");
 		return -ENODEV;
 	}
-	kfree(rsrc_data);
+	CAM_MEM_FREE(rsrc_data);
 
 	return 0;
 }
@@ -2562,7 +2561,7 @@ static int cam_vfe_bus_ver3_init_vfe_out_resource(uint32_t  index,
 		return -EFAULT;
 	}
 
-	rsrc_data = kzalloc(sizeof(struct cam_vfe_bus_ver3_vfe_out_data),
+	rsrc_data = CAM_MEM_ZALLOC(sizeof(struct cam_vfe_bus_ver3_vfe_out_data),
 		GFP_KERNEL);
 	if (!rsrc_data) {
 		rc = -ENOMEM;
@@ -2589,7 +2588,7 @@ static int cam_vfe_bus_ver3_init_vfe_out_resource(uint32_t  index,
 	rsrc_data->mc_based = ver3_hw_info->vfe_out_hw_info[index].mc_based;
 	rsrc_data->cntxt_cfg_except = ver3_hw_info->vfe_out_hw_info[index].cntxt_cfg_except;
 
-	rsrc_data->wm_res = kzalloc((sizeof(struct cam_isp_resource_node) *
+	rsrc_data->wm_res = CAM_MEM_ZALLOC((sizeof(struct cam_isp_resource_node) *
 		rsrc_data->num_wm), GFP_KERNEL);
 	if (!rsrc_data->wm_res) {
 		CAM_ERR(CAM_ISP, "Failed to alloc for wm_res");
@@ -2668,7 +2667,7 @@ static int cam_vfe_bus_ver3_deinit_vfe_out_resource(
 	rsrc_data->wm_res = NULL;
 	rsrc_data->comp_grp = NULL;
 	rsrc_data->mc_comp_irq_handle = 0;
-	kfree(rsrc_data);
+	CAM_MEM_FREE(rsrc_data);
 
 	return 0;
 }
@@ -2991,6 +2990,7 @@ static int cam_vfe_bus_ver3_handle_err_irq_top_half(uint32_t evt_id,
 		bus_priv->common_data.mem_base +
 		bus_priv->common_data.common_reg->image_size_violation_status);
 
+	cam_isp_hw_get_timestamp(&evt_payload->ts);
 	th_payload->evt_payload_priv = evt_payload;
 
 	return rc;
@@ -3030,8 +3030,6 @@ static void cam_vfe_check_violations(
 			wm_name = rsrc_data->wm_res[j].res_name;
 
 			if (status & BIT(wm_data->index)) {
-				CAM_INFO(CAM_ISP, "VFE:%u, %s Violation",
-					bus_priv->common_data.core_index, error_type);
 				cam_vfe_bus_ver3_print_wm_info(wm_data,
 					common_data, wm_name);
 				*out_port |= BIT_ULL(rsrc_node->res_id & 0xFF);
@@ -3075,13 +3073,9 @@ static int cam_vfe_bus_ver3_handle_err_irq_bottom_half(
 	constraint_violation = (status >> 28) & 0x1;
 
 	CAM_ERR(CAM_ISP,
-		"VFE:%u BUS error image size violation %d CCIF violation %d constraint violation %d",
-		bus_priv->common_data.core_index, image_size_violation,
-		ccif_violation, constraint_violation);
-	CAM_INFO(CAM_ISP,
-		"VFE:%u Image Size violation status 0x%X CCIF violation status 0x%X",
-		bus_priv->common_data.core_index, evt_payload->image_size_violation_status,
-		evt_payload->ccif_violation_status);
+		"VFE[%u] BUS error image size violation: %s, CCIF violation: %s, Constraint violation: %s",
+		bus_priv->common_data.core_index, CAM_BOOL_TO_YESNO(image_size_violation),
+		CAM_BOOL_TO_YESNO(ccif_violation), CAM_BOOL_TO_YESNO(constraint_violation));
 
 	memset(&evt_info, 0, sizeof(evt_info));
 	memset(&err_evt_info, 0, sizeof(err_evt_info));
@@ -3089,9 +3083,22 @@ static int cam_vfe_bus_ver3_handle_err_irq_bottom_half(
 
 	if (image_size_violation || constraint_violation) {
 		status = evt_payload->image_size_violation_status;
-		if (!status)
+		if (!status) {
+			CAM_ERR(CAM_ISP,
+				"VFE[%u] CONSTRAINT_VIOLATION occurred at [%llu: %09llu]",
+				bus_priv->common_data.core_index,
+				evt_payload->ts.mono_time.tv_sec,
+				evt_payload->ts.mono_time.tv_nsec);
 			cam_vfe_bus_ver3_get_constraint_errors(bus_priv);
-		else {
+		} else {
+			CAM_ERR(CAM_ISP,
+				"VFE[%u] IMAGE_SIZE_VIOLATION occurred at [%llu: %09llu]",
+				bus_priv->common_data.core_index,
+				evt_payload->ts.mono_time.tv_sec,
+				evt_payload->ts.mono_time.tv_nsec);
+			CAM_ERR(CAM_ISP,
+				"Sensor: Programmed image size is different as actual image size from input");
+			CAM_ERR(CAM_ISP, "Debug: Check SW programming/sensor config");
 			cam_vfe_check_violations("Image Size", status, bus_priv,
 				&out_port_mask, &violation_type);
 		}
@@ -3099,6 +3106,11 @@ static int cam_vfe_bus_ver3_handle_err_irq_bottom_half(
 
 	if (ccif_violation) {
 		status = evt_payload->ccif_violation_status;
+		CAM_ERR(CAM_ISP, "VFE[%u] CCIF protocol violation occurred at [%llu: %09llu]",
+			bus_priv->common_data.core_index,
+			evt_payload->ts.mono_time.tv_sec,
+			evt_payload->ts.mono_time.tv_nsec);
+		CAM_ERR(CAM_ISP, "Violation status: 0x%x", status);
 		cam_vfe_check_violations("CCIF", status, bus_priv,
 			&out_port_mask, &violation_type);
 	}
@@ -5075,14 +5087,14 @@ int cam_vfe_bus_ver3_init(
 		goto end;
 	}
 
-	vfe_bus_local = kzalloc(sizeof(struct cam_vfe_bus), GFP_KERNEL);
+	vfe_bus_local = CAM_MEM_ZALLOC(sizeof(struct cam_vfe_bus), GFP_KERNEL);
 	if (!vfe_bus_local) {
 		CAM_DBG(CAM_ISP, "Failed to alloc for vfe_bus");
 		rc = -ENOMEM;
 		goto end;
 	}
 
-	bus_priv = kzalloc(sizeof(struct cam_vfe_bus_ver3_priv),
+	bus_priv = CAM_MEM_ZALLOC(sizeof(struct cam_vfe_bus_ver3_priv),
 		GFP_KERNEL);
 	if (!bus_priv) {
 		CAM_DBG(CAM_ISP, "Failed to alloc for vfe_bus_priv");
@@ -5134,7 +5146,7 @@ int cam_vfe_bus_ver3_init(
 		goto free_bus_priv;
 	}
 
-	bus_priv->comp_grp = kzalloc((sizeof(struct cam_isp_resource_node) *
+	bus_priv->comp_grp = CAM_MEM_ZALLOC((sizeof(struct cam_isp_resource_node) *
 		bus_priv->num_comp_grp), GFP_KERNEL);
 	if (!bus_priv->comp_grp) {
 		CAM_ERR(CAM_ISP, "VFE:%u Failed to alloc for bus comp groups",
@@ -5143,7 +5155,7 @@ int cam_vfe_bus_ver3_init(
 		goto free_bus_priv;
 	}
 
-	bus_priv->vfe_out = kzalloc((sizeof(struct cam_isp_resource_node) *
+	bus_priv->vfe_out = CAM_MEM_ZALLOC((sizeof(struct cam_isp_resource_node) *
 		bus_priv->num_out), GFP_KERNEL);
 	if (!bus_priv->vfe_out) {
 		CAM_ERR(CAM_ISP, "VFE:%u Failed to alloc for bus out res",
@@ -5226,16 +5238,16 @@ deinit_comp_grp:
 		cam_vfe_bus_ver3_deinit_comp_grp(&bus_priv->comp_grp[i]);
 
 free_vfe_out:
-	kfree(bus_priv->vfe_out);
+	CAM_MEM_FREE(bus_priv->vfe_out);
 
 free_comp_grp:
-	kfree(bus_priv->comp_grp);
+	CAM_MEM_FREE(bus_priv->comp_grp);
 
 free_bus_priv:
-	kfree(vfe_bus_local->bus_priv);
+	CAM_MEM_FREE(vfe_bus_local->bus_priv);
 
 free_bus_local:
-	kfree(vfe_bus_local);
+	CAM_MEM_FREE(vfe_bus_local);
 
 end:
 	return rc;
@@ -5295,14 +5307,14 @@ int cam_vfe_bus_ver3_deinit(
 			"VFE:%u Deinit BUS IRQ Controller failed rc=%d",
 			bus_priv->common_data.core_index, rc);
 
-	kfree(bus_priv->comp_grp);
-	kfree(bus_priv->vfe_out);
+	CAM_MEM_FREE(bus_priv->comp_grp);
+	CAM_MEM_FREE(bus_priv->vfe_out);
 
 	mutex_destroy(&bus_priv->common_data.bus_mutex);
-	kfree(vfe_bus_local->bus_priv);
+	CAM_MEM_FREE(vfe_bus_local->bus_priv);
 
 free_bus_local:
-	kfree(vfe_bus_local);
+	CAM_MEM_FREE(vfe_bus_local);
 
 	*vfe_bus = NULL;
 
