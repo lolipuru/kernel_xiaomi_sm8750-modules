@@ -2117,6 +2117,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			priv->num_encoders < max_encoders; ++i) {
 		int idx;
 		struct dp_display_info dp_info = {0};
+		struct sde_cesta_client *sst_cesta_client;
 
 		display = sde_kms->dp_displays[i];
 		encoder = NULL;
@@ -2138,6 +2139,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 		snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u", i);
 		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+		sst_cesta_client = cesta_client;
 
 		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
@@ -2176,8 +2178,18 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 				priv->num_encoders < max_encoders; idx++) {
 			info.h_tile_instance[0] = dp_info.intf_idx[idx];
 
-			snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u.%u", i, idx);
-			cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+			/*
+			 * use same sst cesta client for first mst encoder as sst/mst are
+			 * mutually exclusive and can use the same cesta client
+			 */
+			if (idx == 0) {
+				cesta_client = sst_cesta_client;
+			} else {
+				snprintf(cesta_client_name, sizeof(cesta_client_name),
+						"dp%u.%u", i, idx);
+				cesta_client = sde_cesta_create_client(DPUID(dev),
+						cesta_client_name);
+			}
 
 			encoder = sde_encoder_init(dev, &info, cesta_client);
 			if (IS_ERR_OR_NULL(encoder)) {
