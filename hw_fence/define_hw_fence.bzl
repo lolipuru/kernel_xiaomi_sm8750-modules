@@ -4,23 +4,32 @@ load("//msm-kernel:target_variants.bzl", "get_all_variants")
 
 def _define_module(target, variant):
     tv = "{}_{}".format(target, variant)
+    if target in [ "pineapple" ]:
+        target_config = "defconfig"
+    else:
+        target_config = "{}_defconfig".format(target)
+
     ddk_module(
         name = "{}_msm_hw_fence".format(tv),
         srcs = [
             "src/hw_fence_drv_debug.c",
-            "src/hw_fence_drv_interop.c",
             "src/hw_fence_drv_ipc.c",
             "src/hw_fence_drv_priv.c",
             "src/hw_fence_drv_utils.c",
             "src/msm_hw_fence.c",
-            "src/msm_hw_fence_synx_translation.c",
         ],
         out = "msm_hw_fence.ko",
-        defconfig = "defconfig",
+        defconfig = target_config,
         kconfig = "Kconfig",
         conditional_srcs = {
             "CONFIG_DEBUG_FS": {
                 True: ["src/hw_fence_ioctl.c"],
+            },
+            "CONFIG_QTI_HW_FENCE_USE_SYNX" : {
+                True: [
+                    "src/msm_hw_fence_synx_translation.c",
+                    "src/hw_fence_drv_interop.c",
+                ]
             },
         },
         deps = [
