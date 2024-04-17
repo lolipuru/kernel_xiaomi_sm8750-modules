@@ -489,6 +489,8 @@ hal_txmon_parse_peer_entry(void *tx_tlv,
 				peer_entry->mac_addr_b_47_16;
 	TXMON_HAL_USER(tx_ppdu_info, user_id, sw_peer_id) =
 				peer_entry->sw_peer_id;
+	TXMON_HAL_USER(tx_ppdu_info, user_id, sw_peer_id) =
+				peer_entry->key_type;
 }
 
 /**
@@ -640,11 +642,11 @@ hal_txmon_parse_fw2sw(void *tx_tlv, uint8_t type,
 	switch (type) {
 	case TXMON_FW2SW_TYPE_FES_SETUP:
 	{
-		uint32_t schedule_id;
+		uint32_t schedule_id, cookie = 0;
 		uint16_t c_freq1;
 		uint16_t c_freq2;
-		uint16_t freq_mhz;
-		uint8_t phy_mode;
+		uint16_t freq_mhz, seq_no = 0;
+		uint8_t phy_mode, pkt_id = 0, is_valid = 0, hw_link = 0;
 
 		c_freq1 = TXMON_FW2SW_MON_FES_SETUP_BAND_CENTER_FREQ1_GET(*msg);
 		c_freq2 = TXMON_FW2SW_MON_FES_SETUP_BAND_CENTER_FREQ2_GET(*msg);
@@ -656,12 +658,24 @@ hal_txmon_parse_fw2sw(void *tx_tlv, uint8_t type,
 		msg++;
 		schedule_id = TXMON_FW2SW_MON_FES_SETUP_SCHEDULE_ID_GET(*msg);
 
+		msg++;
+		cookie = TXMON_FW2SW_MON_FES_SETUP_FW_COOKIE_GET(*msg);
+		pkt_id = TXMON_FW2SW_MON_FES_SETUP_FW_COOKIE_PACKET_ID_GET(cookie);
+		is_valid = TXMON_FW2SW_MON_FES_SETUP_FW_COOKIE_VALID_GET(cookie);
+		seq_no = TXMON_FW2SW_MON_FES_SETUP_FW_COOKIE_SEQ_NUM_GET(cookie);
+		hw_link = TXMON_FW2SW_MON_FES_SETUP_FW_COOKIE_HW_LINK_ID_GET(cookie);
+
 		TXMON_STATUS_INFO(status_info, band_center_freq1) = c_freq1;
 		TXMON_STATUS_INFO(status_info, band_center_freq2) = c_freq2;
 		TXMON_STATUS_INFO(status_info, freq) = freq_mhz;
 		TXMON_STATUS_INFO(status_info, phy_mode) = phy_mode;
 		TXMON_STATUS_INFO(status_info, schedule_id) = schedule_id;
-
+		if (is_valid) {
+			if (pkt_id < CDP_TX_PKT_TYPE_MAX)
+				status_info->dp_tx_pkt_cap_cookie[pkt_id]++;
+			else
+				status_info->dp_tx_pkt_cap_cookie[0]++;
+		}
 		break;
 	}
 	case TXMON_FW2SW_TYPE_FES_SETUP_USER:
@@ -1299,7 +1313,7 @@ hal_txmon_status_get_num_users_generic_be(void *tx_tlv_hdr, uint8_t *num_users)
 	user_id = HAL_RX_GET_USER_TLV32_USERID(tx_tlv_hdr);
 	tlv_len = HAL_RX_GET_USER_TLV32_LEN(tx_tlv_hdr);
 
-	tx_tlv = (uint8_t *)tx_tlv_hdr + HAL_RX_TLV64_HDR_SIZE;
+	tx_tlv = (uint8_t *)tx_tlv_hdr + HAL_RX_TLV_HDR_SIZE;
 	/* window starts with either initiator or response */
 	switch (tlv_tag) {
 	case WIFITX_FES_SETUP_E:
@@ -1505,7 +1519,7 @@ hal_txmon_status_parse_tlv_generic_be(void *data_ppdu_info,
 	tlv_user_id = HAL_RX_GET_USER_TLV32_USERID(tx_tlv_hdr);
 	tlv_len = HAL_RX_GET_USER_TLV32_LEN(tx_tlv_hdr);
 
-	tx_tlv = (uint8_t *)tx_tlv_hdr + HAL_RX_TLV64_HDR_SIZE;
+	tx_tlv = (uint8_t *)tx_tlv_hdr + HAL_RX_TLV_HDR_SIZE;
 
 	/* parse tlv and populate tx_ppdu_info */
 	ppdu_info = hal_tx_get_ppdu_info(data_ppdu_info,

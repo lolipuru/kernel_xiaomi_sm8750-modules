@@ -1011,29 +1011,6 @@ void mlo_sta_link_disconn_notify(struct wlan_objmgr_vdev *vdev,
 				 struct wlan_cm_discon_rsp *resp)
 { }
 
-#ifdef ENABLE_CFG80211_BACKPORTS_MLO
-static inline struct mlo_link_info
-*mlo_mgr_get_ap_link_by_link_id(struct wlan_mlo_dev_context *mlo_dev_ctx,
-				int link_id)
-{
-	struct mlo_link_info *link_info;
-	uint8_t link_info_iter;
-
-	if (!mlo_dev_ctx || link_id < 0 || link_id >= MAX_MLO_LINK_ID)
-		return NULL;
-
-	link_info = &mlo_dev_ctx->link_ctx->links_info[0];
-	for (link_info_iter = 0; link_info_iter < WLAN_MAX_ML_BSS_LINKS;
-			link_info_iter++) {
-		if (link_info->link_id == link_id)
-			return link_info;
-		link_info++;
-	}
-
-	return NULL;
-}
-#endif
-
 #ifndef WLAN_FEATURE_11BE_MLO_ADV_FEATURE
 static inline
 bool ucfg_mlo_is_mld_connected(struct wlan_objmgr_vdev *vdev)
@@ -1176,6 +1153,13 @@ void wlan_mlo_send_vdev_pause(struct wlan_objmgr_psoc *psoc,
 			      uint16_t session_id,
 			      uint16_t vdev_pause_dur)
 {}
+#endif
+
+#ifdef WLAN_FEATURE_11BE_MLO_TTLM
+QDF_STATUS
+ttlm_get_ttlm_send_cmd_context(struct wlan_objmgr_psoc *psoc,
+			       get_ttlm_send_ind_cb *resp_cb, void **context,
+			       uint8_t vdev_id);
 #endif
 
 #if defined(WLAN_FEATURE_11BE_MLO_ADV_FEATURE) && defined(WLAN_FEATURE_11BE_MLO)

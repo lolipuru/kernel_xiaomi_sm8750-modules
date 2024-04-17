@@ -1518,8 +1518,9 @@ dp_umac_reset_handle_action_cb(struct dp_soc *soc,
 		struct hif_umac_reset_ctx *hif_umac_reset_ctx;
 
 		if (!hif_sc) {
+			qdf_spin_unlock_bh(&grp_umac_reset_ctx->grp_ctx_lock);
 			hif_err("scn is null");
-			qdf_assert_always(0);
+
 			return QDF_STATUS_E_FAILURE;
 		}
 

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -50,7 +50,7 @@
 			    + (DP_RX_MON_TLV_HDR_MARKER_LEN)\
 			    + (DP_RX_MON_TLV_TOTAL_LEN))
 
-#define DP_RX_MON_MAX_RX_HEADER_LEN 128
+#define DP_RX_MON_MAX_RX_HEADER_LEN (128 + DP_RX_MON_RX_HDR_OFFSET)
 
 #ifdef WLAN_PKT_CAPTURE_RX_2_0
 QDF_STATUS dp_mon_pdev_ext_init_2_0(struct dp_pdev *pdev);
@@ -60,7 +60,7 @@ QDF_STATUS dp_mon_pdev_ext_deinit_2_0(struct dp_pdev *pdev);
 QDF_STATUS dp_rx_mon_ppdu_info_cache_create(struct dp_pdev *pdev);
 void dp_rx_mon_ppdu_info_cache_destroy(struct dp_pdev *pdev);
 struct hal_rx_ppdu_info*
-dp_rx_mon_get_ppdu_info(struct dp_mon_pdev *mon_pdev);
+dp_rx_mon_get_ppdu_info(struct dp_pdev *pdev);
 void
 dp_rx_mon_free_ppdu_info(struct dp_pdev *pdev,
 			 struct hal_rx_ppdu_info *ppdu_info);
@@ -78,10 +78,14 @@ static inline void dp_rx_mon_ppdu_info_cache_destroy(struct dp_pdev *pdev)
 }
 
 static inline struct hal_rx_ppdu_info*
-dp_rx_mon_get_ppdu_info(struct dp_mon_pdev *mon_pdev)
+dp_rx_mon_get_ppdu_info(struct dp_pdev *pdev)
 {
-	qdf_mem_zero(&mon_pdev->ppdu_info, sizeof(struct hal_rx_ppdu_info));
-	return &mon_pdev->ppdu_info;
+	uint8_t mac_id = 0;
+	struct dp_mon_mac *mon_mac = dp_get_mon_mac(pdev, mac_id);
+
+	qdf_mem_zero(&mon_mac->ppdu_info, sizeof(struct hal_rx_ppdu_info));
+	return &mon_mac->ppdu_info;
+
 }
 
 static inline void
@@ -302,7 +306,7 @@ static inline void dp_rx_mon_ppdu_info_cache_destroy(struct dp_pdev *pdev)
 }
 
 static inline struct hal_rx_ppdu_info*
-dp_rx_mon_get_ppdu_info(struct dp_mon_pdev *mon_pdev)
+dp_rx_mon_get_ppdu_info(struct dp_pdev *pdev)
 {
 	return NULL;
 }
@@ -484,12 +488,12 @@ void dp_rx_mon_drain_wq(struct dp_pdev *pdev);
 /**
  * dp_mon_free_parent_nbuf() - Free parent SKB
  *
- * @mon_pdev: monitor pdev
+ * @pdev: dp pdev handle
  * @nbuf: SKB to be freed
  *
  * Return: void
  */
-void dp_mon_free_parent_nbuf(struct dp_mon_pdev *mon_pdev,
+void dp_mon_free_parent_nbuf(struct dp_pdev *pdev,
 			qdf_nbuf_t nbuf);
 
 #ifdef QCA_ENHANCED_STATS_SUPPORT

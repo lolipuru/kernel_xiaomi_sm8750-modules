@@ -566,6 +566,25 @@ wlan_mlo_get_pdev_by_hw_link_id(uint16_t hw_link_id, uint8_t ml_grp_id,
 }
 
 qdf_export_symbol(wlan_mlo_get_pdev_by_hw_link_id);
+
+bool wlan_mlo_is_wsi_remap_in_progress(uint8_t grp_id)
+{
+	struct mlo_mgr_context *mlo_ctx;
+
+	mlo_ctx = wlan_objmgr_get_mlo_ctx();
+	if (!mlo_ctx)
+		return false;
+
+	if (grp_id >= mlo_ctx->total_grp) {
+		mlo_err("Invalid grp id %d, total no of groups %d",
+			grp_id, mlo_ctx->total_grp);
+		return false;
+	}
+
+	return mlo_ctx->setup_info[grp_id].wsi_remap_in_progress;
+}
+
+qdf_export_symbol(wlan_mlo_is_wsi_remap_in_progress);
 #endif /*WLAN_MLO_MULTI_CHIP*/
 
 void mlo_get_ml_vdev_list(struct wlan_objmgr_vdev *vdev,
@@ -1045,3 +1064,35 @@ next:
 	return is_allow;
 }
 
+#ifdef WLAN_FEATURE_11BE_MLO_TTLM
+QDF_STATUS
+mlo_ttlm_send_cmd_register_resp_cb(struct wlan_objmgr_vdev *vdev,
+				   struct ttlm_send_cmd_info *req)
+{
+	struct wlan_mlo_dev_context *mlo_ctx;
+	struct wlan_mlo_sta *sta_ctx = NULL;
+
+	if (!vdev || !wlan_vdev_mlme_is_mlo_vdev(vdev))
+		return QDF_STATUS_E_NULL_VALUE;
+	mlo_ctx = vdev->mlo_dev_ctx;
+
+	if (!mlo_ctx) {
+		mlo_err("null mlo_dev_ctx");
+		return QDF_STATUS_E_NULL_VALUE;
+	}
+
+	sta_ctx = mlo_ctx->sta_ctx;
+
+	if (!sta_ctx)
+		return QDF_STATUS_E_INVAL;
+
+	mlo_dev_lock_acquire(mlo_ctx);
+
+	sta_ctx->ttlm_send_info.ttlm_send_cmd_resp_cb =
+		req->ttlm_send_cmd_resp_cb;
+	sta_ctx->ttlm_send_info.context = req->cookie;
+	mlo_dev_lock_release(mlo_ctx);
+
+	return QDF_STATUS_SUCCESS;
+}
+#endif

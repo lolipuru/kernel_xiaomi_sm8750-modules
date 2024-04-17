@@ -416,8 +416,8 @@ tgt_spectral_register_buffer_cb(
 	return psptrl_tx_ops->sptrlto_register_buffer_cb(pdev, spectral_buf_cb);
 }
 
-bool
-tgt_spectral_use_nl_bcast(struct wlan_objmgr_pdev *pdev)
+QDF_STATUS
+tgt_spectral_use_broadcast(struct wlan_objmgr_pdev *pdev, bool use_bcast)
 {
 	struct wlan_objmgr_psoc *psoc = NULL;
 	struct wlan_lmac_if_sptrl_tx_ops *psptrl_tx_ops = NULL;
@@ -432,7 +432,7 @@ tgt_spectral_use_nl_bcast(struct wlan_objmgr_pdev *pdev)
 
 	psptrl_tx_ops = &tx_ops->sptrl_tx_ops;
 
-	return psptrl_tx_ops->sptrlto_use_nl_bcast(pdev);
+	return psptrl_tx_ops->sptrlto_use_broadcast(pdev, use_bcast);
 }
 
 void tgt_spectral_deregister_buffer_cb(struct wlan_objmgr_pdev *pdev)
@@ -679,4 +679,23 @@ tgt_spectral_init_pdev_feature_caps(struct wlan_objmgr_pdev *pdev)
 	}
 
 	return spectral_tx_ops->sptrlto_init_pdev_feature_caps(pdev);
+}
+
+QDF_STATUS
+tgt_spectral_scan_complete_event(struct wlan_objmgr_pdev *pdev,
+				 struct spectral_scan_event *sptrl_event)
+{
+	struct spectral_context *sc;
+
+	if (!pdev) {
+		spectral_err("PDEV is NULL!");
+		return -EPERM;
+	}
+	sc = spectral_get_spectral_ctx_from_pdev(pdev);
+	if (!sc) {
+		spectral_err("spectral context is NULL!");
+		return -EPERM;
+	}
+
+	return sc->sptrlc_scan_complete_event(pdev, sptrl_event);
 }

@@ -100,6 +100,20 @@ struct ieee80211_ctlframe_addr2 {
 	uint8_t i_addr2[QDF_NET_MAC_ADDR_MAX_LEN];
 } __packed;
 
+static const uint8_t encrypt_map[11] = {
+	cdp_sec_type_wep40,
+	cdp_sec_type_wep104,
+	cdp_sec_type_tkip_nomic,
+	cdp_sec_type_wep128,
+	cdp_sec_type_tkip,
+	cdp_sec_type_wapi,
+	cdp_sec_type_aes_ccmp,
+	cdp_sec_type_none,
+	cdp_sec_type_aes_ccmp_256,
+	cdp_sec_type_aes_gcmp,
+	cdp_sec_type_aes_gcmp_256
+};
+
 #ifndef WLAN_TX_PKT_CAPTURE_ENH
 static inline void
 dp_process_ppdu_stats_update_failed_bitmap(struct dp_pdev *pdev,
@@ -648,7 +662,7 @@ struct dp_mon_ops {
 					       enum cdp_peer_stats_type type,
 					       cdp_peer_stats_param_t *buf);
 	QDF_STATUS (*mon_config_debug_sniffer)(struct dp_pdev *pdev, int val);
-	void (*mon_flush_rings)(struct dp_soc *soc);
+	void (*mon_flush_rings)(struct dp_soc *soc, struct dp_vdev *vdev);
 #if !defined(DISABLE_MON_CONFIG)
 	mon_pdev_htt_srng_setup_fp mon_pdev_htt_srng_setup[2];
 	QDF_STATUS (*mon_soc_htt_srng_setup)(struct dp_soc *soc);
@@ -1123,20 +1137,6 @@ struct  dp_mon_pdev {
 	/* tx packet capture enhancement */
 	enum cdp_tx_enh_capture_mode tx_capture_enabled;
 
-	/* monitor mode lock */
-	qdf_spinlock_t mon_lock;
-
-	uint32_t mon_ppdu_status;
-	/* monitor mode status/destination ring PPDU and MPDU count */
-	struct cdp_pdev_mon_stats rx_mon_stats;
-	/* Monitor mode interface and status storage */
-	struct dp_vdev *mvdev;
-	struct cdp_mon_status rx_mon_recv_status;
-	/* to track duplicate link descriptor indications by HW for a WAR */
-	uint64_t mon_last_linkdesc_paddr;
-	/* to track duplicate buffer indications by HW for a WAR */
-	uint32_t mon_last_buf_cookie;
-
 #ifdef QCA_SUPPORT_FULL_MON
 	/* List to maintain all MPDUs for a PPDU in monitor mode */
 	TAILQ_HEAD(, dp_mon_mpdu) mon_mpdu_q;
@@ -1223,7 +1223,6 @@ struct  dp_mon_pdev {
 
 	/* Maintains first status buffer's paddr of a PPDU */
 	uint64_t status_buf_addr;
-	struct hal_rx_ppdu_info ppdu_info;
 
 	/* ppdu_id of last received HTT TX stats */
 	uint32_t last_ppdu_id;
@@ -1630,27 +1629,28 @@ static inline QDF_STATUS dp_monitor_check_com_info_ppdu_id(struct dp_pdev *pdev,
 							   void *rx_desc)
 {
 	struct cdp_mon_status *rs;
-	struct dp_mon_pdev *mon_pdev;
 	uint32_t msdu_ppdu_id = 0;
+	struct dp_mon_mac *mon_mac;
+	uint8_t mac_id = 0;
 
 	if (qdf_unlikely(!pdev || !pdev->monitor_pdev))
 		return QDF_STATUS_E_FAILURE;
 
-	mon_pdev = pdev->monitor_pdev;
-	if (qdf_likely(1 != mon_pdev->ppdu_info.rx_status.rxpcu_filter_pass))
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
+	if (qdf_likely(1 != mon_mac->ppdu_info.rx_status.rxpcu_filter_pass))
 		return QDF_STATUS_E_FAILURE;
 
-	rs = &pdev->monitor_pdev->rx_mon_recv_status;
+	rs = &mon_mac->rx_mon_recv_status;
 	if (!rs || rs->cdp_rs_rxdma_err)
 		return QDF_STATUS_E_FAILURE;
 
 	msdu_ppdu_id = hal_rx_get_ppdu_id(pdev->soc->hal_soc, rx_desc);
-	if (msdu_ppdu_id != mon_pdev->ppdu_info.com_info.ppdu_id) {
+	if (msdu_ppdu_id != mon_mac->ppdu_info.com_info.ppdu_id) {
 		QDF_TRACE(QDF_MODULE_ID_DP,
 			  QDF_TRACE_LEVEL_ERROR,
 			  "msdu_ppdu_id=%x,com_info.ppdu_id=%x",
 			  msdu_ppdu_id,
-			  mon_pdev->ppdu_info.com_info.ppdu_id);
+			  mon_mac->ppdu_info.com_info.ppdu_id);
 		return QDF_STATUS_E_FAILURE;
 	}
 
@@ -1666,10 +1666,15 @@ static inline QDF_STATUS dp_monitor_check_com_info_ppdu_id(struct dp_pdev *pdev,
 static inline struct mon_rx_status*
 dp_monitor_get_rx_status(struct dp_pdev *pdev)
 {
+	struct dp_mon_mac *mon_mac;
+	uint8_t mac_id = 0;
+
 	if (qdf_unlikely(!pdev || !pdev->monitor_pdev))
 		return NULL;
 
-	return &pdev->monitor_pdev->ppdu_info.rx_status;
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
+
+	return &mon_mac->ppdu_info.rx_status;
 }
 
 /**
@@ -1853,20 +1858,22 @@ dp_monitor_set_chan_band(struct dp_vdev *vdev, enum reg_wifi_band chan_band)
  * @pdev: point to dp pdev
  * @soc: point to dp soc
  * @rx_tlv_hdr: point to rx tlv header
+ * @mac_id: mac id
  *
  */
 static inline void dp_monitor_get_mpdu_status(struct dp_pdev *pdev,
 					      struct dp_soc *soc,
-					      uint8_t *rx_tlv_hdr)
+					      uint8_t *rx_tlv_hdr,
+					      uint8_t mac_id)
 {
-	struct dp_mon_pdev *mon_pdev;
+	struct dp_mon_mac *mon_mac;
 
 	if (qdf_unlikely(!pdev || !pdev->monitor_pdev))
 		return;
 
-	mon_pdev = pdev->monitor_pdev;
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
 	hal_rx_mon_hw_desc_get_mpdu_status(soc->hal_soc, rx_tlv_hdr,
-					   &mon_pdev->ppdu_info.rx_status);
+					   &mon_mac->ppdu_info.rx_status);
 }
 
 #ifdef FEATURE_NAC_RSSI
@@ -1948,10 +1955,18 @@ static inline void dp_monitor_vdev_register_osif(struct dp_vdev *vdev,
 static inline struct dp_vdev*
 dp_monitor_get_monitor_vdev_from_pdev(struct dp_pdev *pdev)
 {
-	if (!pdev || !pdev->monitor_pdev || !pdev->monitor_pdev->mvdev)
+	uint8_t mac_id = 0;
+	struct dp_mon_mac *mon_mac;
+
+	if (!pdev || !pdev->monitor_pdev)
 		return NULL;
 
-	return pdev->monitor_pdev->mvdev;
+	/* return 1st monitor vdev */
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
+	if (!mon_mac->mvdev)
+		return NULL;
+
+	return mon_mac->mvdev;
 }
 
 /**
@@ -2440,10 +2455,12 @@ static inline QDF_STATUS dp_monitor_config_debug_sniffer(struct dp_pdev *pdev,
 /**
  * dp_monitor_flush_rings() - Flush monitor rings
  * @soc: point to soc
+ * @vdev: dp vdev handle
  *
  * Return: None
  */
-static inline void dp_monitor_flush_rings(struct dp_soc *soc)
+static inline void
+dp_monitor_flush_rings(struct dp_soc *soc, struct dp_vdev *vdev)
 {
 	struct dp_mon_ops *monitor_ops;
 	struct dp_mon_soc *mon_soc = soc->monitor_soc;
@@ -2459,7 +2476,7 @@ static inline void dp_monitor_flush_rings(struct dp_soc *soc)
 		return;
 	}
 
-	return monitor_ops->mon_flush_rings(soc);
+	return monitor_ops->mon_flush_rings(soc, vdev);
 }
 
 /**
@@ -3998,10 +4015,10 @@ static inline void dp_monitor_vdev_delete(struct dp_soc *soc,
 {
 	if (soc->intr_mode == DP_INTR_POLL) {
 		qdf_timer_sync_cancel(&soc->int_timer);
-		dp_monitor_flush_rings(soc);
+		dp_monitor_flush_rings(soc, vdev);
 	} else if (soc->intr_mode == DP_INTR_MSI) {
 		dp_monitor_vdev_timer_stop(soc);
-		dp_monitor_flush_rings(soc);
+		dp_monitor_flush_rings(soc, vdev);
 	}
 
 	dp_monitor_vdev_detach(vdev);
@@ -4067,10 +4084,23 @@ void dp_monitor_neighbour_peer_list_remove(struct dp_pdev *pdev,
 static inline
 void dp_monitor_pdev_set_mon_vdev(struct dp_vdev *vdev)
 {
+	/* Set mov vdev for 1st vdev only as this is done
+	 * during vdev attach and per vdev mac information
+	 * is not available during this time.
+	 *
+	 * vdev - mac mapping will be updated during vdev start.
+	 **/
+	uint8_t mac_id = 0;
+	struct dp_mon_mac *mon_mac;
+
 	if (!vdev->pdev->monitor_pdev)
 		return;
 
-	vdev->pdev->monitor_pdev->mvdev = vdev;
+	mon_mac = dp_get_mon_mac(vdev->pdev, mac_id);
+	if (!mon_mac->mvdev)
+		mon_mac->mvdev = vdev;
+	else
+		dp_info("set mvdev skipped for vdev_id: %u", vdev->vdev_id);
 }
 
 static inline
@@ -5070,11 +5100,43 @@ void dp_mon_register_tx_pkt_enh_ops_1_0(struct dp_mon_ops *mon_ops);
  * Return: QDF_STATUS
  */
 QDF_STATUS dp_local_pkt_capture_tx_config(struct dp_pdev *pdev);
+
+/*
+ * dp_mon_mode_local_pkt_capture() - Check if in LPC mode
+ * @soc: DP SOC handle
+ *
+ * Return: True in case of LPC mode else false
+ *
+ */
+static inline bool
+dp_mon_mode_local_pkt_capture(struct dp_soc *soc)
+{
+	/* Currently there is no way to distinguish between
+	 * Local Packet Capture and STA+Mon mode as both mode
+	 * uses same monitor interface. So to distinguish between
+	 * two mode in local_packet_capture enable case use
+	 * mon_flags which can be passed during monitor interface
+	 * add time. If "flags otherbss" is passed during
+	 * monitor interface add driver will consider current mode
+	 * as STA+MON mode, LPC otherwise.
+	 */
+	if (wlan_cfg_get_local_pkt_capture(soc->wlan_cfg_ctx) &&
+	    !(soc->mon_flags & QDF_MONITOR_FLAG_OTHER_BSS))
+		return true;
+
+	return false;
+}
 #else
 static inline
 QDF_STATUS dp_local_pkt_capture_tx_config(struct dp_pdev *pdev)
 {
 	return QDF_STATUS_SUCCESS;
+}
+
+static inline bool
+dp_mon_mode_local_pkt_capture(struct dp_soc *soc)
+{
+	return false;
 }
 #endif
 
@@ -5085,17 +5147,19 @@ dp_check_and_dump_full_mon_info(struct dp_soc *soc, struct dp_pdev *pdev,
 
 /**
  * dp_mon_rx_ppdu_status_reset() - reset and clear ppdu rx status
- * @mon_pdev: monitor pdev
+ * @mon_mac: monitor mac
  *
  * Return: none
  */
 static inline void
-dp_mon_rx_ppdu_status_reset(struct dp_mon_pdev *mon_pdev)
+dp_mon_rx_ppdu_status_reset(struct dp_mon_mac *mon_mac)
 {
-	mon_pdev->mon_ppdu_status = DP_PPDU_STATUS_START;
-	qdf_mem_zero(&mon_pdev->ppdu_info.rx_status,
-		     sizeof(mon_pdev->ppdu_info.rx_status));
+	mon_mac->mon_ppdu_status = DP_PPDU_STATUS_START;
+	mon_mac->ppdu_info.com_info.num_users = 0;
+	qdf_mem_zero(&mon_mac->ppdu_info.rx_status,
+		     sizeof(mon_mac->ppdu_info.rx_status));
 }
+
 #else
 void
 dp_check_and_dump_full_mon_info(struct dp_soc *soc, struct dp_pdev *pdev,
@@ -5105,7 +5169,7 @@ dp_check_and_dump_full_mon_info(struct dp_soc *soc, struct dp_pdev *pdev,
 }
 
 static inline void
-dp_mon_rx_ppdu_status_reset(struct dp_mon_pdev *mon_pdev)
+dp_mon_rx_ppdu_status_reset(struct dp_mon_mac *mon_mac)
 {
 }
 #endif
@@ -5123,5 +5187,27 @@ dp_mon_pdev_filter_init(struct dp_mon_pdev *mon_pdev)
 	mon_pdev->mo_mgmt_filter = FILTER_MGMT_ALL;
 	mon_pdev->mo_ctrl_filter = FILTER_CTRL_ALL;
 	mon_pdev->mo_data_filter = FILTER_DATA_ALL;
+}
+
+/*
+ * dp_convert_enc_to_cdp_enc() - convert encryption type to cdp format
+ *
+ *@ppdu_info: ppdu information
+ *
+ * This API is used to update the encryption type to cdp format
+ *
+ * Return: void
+ */
+static inline void
+dp_convert_enc_to_cdp_enc(struct hal_rx_ppdu_info *ppdu_info)
+{
+	uint8_t idx;
+
+	if (!ppdu_info)
+		return;
+
+	idx = ppdu_info->rx_user_status[ppdu_info->user_id].enc_type;
+	ppdu_info->rx_user_status[ppdu_info->user_id].enc_type =
+							encrypt_map[idx];
 }
 #endif /* _DP_MON_H_ */

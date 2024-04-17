@@ -1000,6 +1000,8 @@ struct cdp_ctrl_ops {
 	enum cdp_umac_reset_state (*get_umac_reset_in_progress_state)(
 				   struct cdp_soc_t *psoc);
 #endif
+	uint64_t (*txrx_get_pdev_mlo_timestamp_offset)(struct cdp_soc_t *soc,
+						       uint8_t pdev_id);
 };
 
 struct cdp_me_ops {
@@ -1746,6 +1748,8 @@ struct ol_if_ops {
 				      uint32_t service_interval,
 				      uint32_t burst_size, uint32_t min_tput,
 				      uint32_t max_latency, uint8_t add_sub);
+	int (*notify_deactivate_msduq)(void *psoc, uint8_t pdev_id,
+				       bool is_mlo, void *result_params);
 #endif
 	uint32_t (*dp_get_tx_inqueue)(ol_txrx_soc_handle soc);
 	QDF_STATUS(*dp_send_unit_test_cmd)(uint32_t vdev_id,
@@ -2335,7 +2339,8 @@ struct cdp_ipa_ops {
 				  uint32_t tx_pipe_handle,
 				  uint32_t rx_pipe_handle,
 				  qdf_ipa_wdi_hdl_t hdl);
-	QDF_STATUS (*ipa_setup_iface)(char *ifname, uint8_t *mac_addr,
+	QDF_STATUS (*ipa_setup_iface)(struct cdp_soc_t *soc_hdl, char *ifname,
+				      uint8_t *mac_addr,
 				      qdf_ipa_client_type_t prod_client,
 				      qdf_ipa_client_type_t cons_client,
 				      uint8_t session_id, bool is_ipv6_enabled,
@@ -2587,9 +2592,15 @@ struct cdp_ppeds_txrx_ops {
 	(*ppeds_vp_setup_recovery)(struct cdp_soc_t *soc,
 				   uint8_t vdev_id, uint16_t profile_idx);
 	QDF_STATUS
+	(*ppeds_entry_alloc)(struct cdp_soc_t *soc,
+			     void *vpai,
+			     int32_t *ppe_vp_num,
+			     struct cdp_ds_vp_params *vp_params);
+	void (*ppeds_entry_free)(struct cdp_soc_t *soc, int32_t vp_num);
+	QDF_STATUS
 	(*ppeds_entry_attach)(struct cdp_soc_t *soc,
 			      uint8_t vdev_id, void *vpai,
-			      int32_t *ppe_vp_num,
+			      int32_t vp_num,
 			      struct cdp_ds_vp_params *vp_params);
 	QDF_STATUS
 	(*ppeds_enable_pri2tid)(struct cdp_soc_t *soc,
@@ -2607,6 +2618,7 @@ struct cdp_ppeds_txrx_ops {
 			    uint16_t vdev_id,
 			    struct cdp_ds_vp_params *vp_params,
 			    void *stats);
+	uint32_t (*ppeds_get_node_id)(struct cdp_soc_t *soc);
 };
 #endif /* WLAN_SUPPORT_PPEDS */
 

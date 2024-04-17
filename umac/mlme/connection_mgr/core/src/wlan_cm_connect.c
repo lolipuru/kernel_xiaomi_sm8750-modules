@@ -25,6 +25,7 @@
 #include "wlan_cm_sm.h"
 #ifdef WLAN_POLICY_MGR_ENABLE
 #include "wlan_policy_mgr_api.h"
+#include "wlan_policy_mgr_ucfg.h"
 #endif
 #include <wlan_serialization_api.h>
 #ifdef CONN_MGR_ADV_FEATURE
@@ -247,6 +248,17 @@ static QDF_STATUS cm_ser_connect_req(struct wlan_objmgr_pdev *pdev,
 	enum wlan_serialization_status ser_cmd_status;
 	QDF_STATUS status;
 	uint8_t vdev_id = wlan_vdev_get_id(cm_ctx->vdev);
+
+	if (cm_is_link_switch_connect_req(cm_req)) {
+		/*
+		 * For link switch, connect serialization is not required as
+		 * link switch is already serialized.
+		 */
+		return cm_sm_deliver_event_sync(cm_ctx,
+						WLAN_CM_SM_EV_CONNECT_ACTIVE,
+						sizeof(wlan_cm_id),
+						&cm_req->cm_id);
+	}
 
 	status = wlan_objmgr_vdev_try_get_ref(cm_ctx->vdev, WLAN_MLME_CM_ID);
 	if (QDF_IS_STATUS_ERROR(status)) {
@@ -1865,17 +1877,7 @@ QDF_STATUS cm_connect_start(struct cnx_mgr *cm_ctx,
 		return QDF_STATUS_SUCCESS;
 	}
 
-	if (cm_is_link_switch_connect_req(cm_req)) {
-		/* The error handling has to be different here.not corresponds
-		 * to connect req serialization now.
-		 */
-		status = cm_sm_deliver_event_sync(cm_ctx,
-						  WLAN_CM_SM_EV_CONNECT_ACTIVE,
-						  sizeof(wlan_cm_id),
-						  &cm_req->cm_id);
-	} else {
-		status = cm_ser_connect_req(pdev, cm_ctx, cm_req);
-	}
+	status = cm_ser_connect_req(pdev, cm_ctx, cm_req);
 
 	if (QDF_IS_STATUS_ERROR(status)) {
 		reason = CM_SER_FAILURE;
@@ -2477,7 +2479,6 @@ void cm_update_ml_partner_info(struct wlan_objmgr_vdev *vdev,
 }
 #endif
 
-static
 void cm_update_per_peer_key_mgmt_crypto_params(struct wlan_objmgr_vdev *vdev,
 					struct security_info *neg_sec_info)
 {
@@ -2504,7 +2505,6 @@ void cm_update_per_peer_key_mgmt_crypto_params(struct wlan_objmgr_vdev *vdev,
 	neg_sec_info->key_mgmt = key_mgmt;
 }
 
-static
 void cm_update_per_peer_ucastcipher_crypto_params(struct wlan_objmgr_vdev *vdev,
 					struct security_info *neg_sec_info)
 {
@@ -2937,6 +2937,7 @@ QDF_STATUS cm_notify_connect_complete(struct cnx_mgr *cm_ctx,
 		if (acquire_lock)
 			cm_req_lock_release(cm_ctx);
 	}
+
 	cm_osif_connect_complete(cm_ctx, resp);
 	cm_if_mgr_inform_connect_complete(cm_ctx->vdev,
 					  resp->connect_status);
@@ -3391,6 +3392,9 @@ QDF_STATUS cm_connect_start_req(struct wlan_objmgr_vdev *vdev,
 		goto err;
 
 	cm_set_crypto_params_from_ie(&connect_req->req);
+
+	ucfg_cm_handle_legacy_conn_pre_start(wlan_vdev_get_psoc(vdev),
+					     wlan_vdev_get_id(vdev));
 
 	cm_handle_connect_start_req(vdev, req);
 

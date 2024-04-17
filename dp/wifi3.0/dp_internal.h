@@ -217,7 +217,7 @@ static inline bool __dp_assert_always_internal(bool expr)
 {
 	qdf_assert_always(expr);
 
-	return false;
+	return !expr;
 }
 
 #define dp_assert_always_internal(_expr) __dp_assert_always_internal(_expr)
@@ -453,7 +453,8 @@ static inline QDF_STATUS dp_monitor_config_debug_sniffer(struct dp_pdev *pdev,
 	return QDF_STATUS_E_FAILURE;
 }
 
-static inline void dp_monitor_flush_rings(struct dp_soc *soc)
+static inline void
+dp_monitor_flush_rings(struct dp_soc *soc, struct dp_vdev *vdev)
 {
 }
 
@@ -819,7 +820,8 @@ dp_monitor_get_chan_freq(struct dp_pdev *vdev)
 
 static inline void dp_monitor_get_mpdu_status(struct dp_pdev *pdev,
 					      struct dp_soc *soc,
-					      uint8_t *rx_tlv_hdr)
+					      uint8_t *rx_tlv_hdr
+					      uint8_t mac_id)
 {
 }
 
@@ -3565,7 +3567,8 @@ void dp_print_peer_stats(struct dp_peer *peer,
 void
 dp_print_pdev_tx_stats(struct dp_pdev *pdev);
 
-#if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_MCAST_MLO)
+#if defined(WLAN_FEATURE_11BE_MLO) && (defined(WLAN_MCAST_MLO) || \
+	defined(WLAN_MCAST_MLO_SAP))
 /**
  * dp_print_vdev_mlo_mcast_tx_stats(): Print vdev level mlo mcast tx stats
  * @vdev: DP_VDEV Handle
@@ -6147,13 +6150,15 @@ void dp_ssr_dump_pdev_unregister(uint8_t pdev_id)
 #ifdef WLAN_SUPPORT_RX_FLOW_TAG
 /**
  * dp_rx_flow_find_entry_by_flowid() - Find DP FSE matching a given flow index
+ * @soc: soc handle
  * @fst: Rx FST Handle
  * @flow_id: Flow index of the requested flow
  *
  * Return: Pointer to the DP FSE entry
  */
 struct dp_rx_fse *
-dp_rx_flow_find_entry_by_flowid(struct dp_rx_fst *fst, uint32_t flow_id);
+dp_rx_flow_find_entry_by_flowid(struct dp_soc *soc, struct dp_rx_fst *fst,
+				uint32_t flow_id);
 
 /**
  * dp_rx_flow_write_entry_metadata() - Update fse metadata

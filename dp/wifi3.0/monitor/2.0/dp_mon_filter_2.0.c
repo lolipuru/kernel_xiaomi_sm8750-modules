@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1022,13 +1022,15 @@ dp_htt_h2t_send_complete_free_netbuf(
  * @hal_ring_type:	SRNG ring type
  * @ring_buf_size:	SRNG buffer size
  * @htt_tlv_filter:	Rx SRNG TLV and filter setting
+ * @tx_cap_custom_classify: flag for custom packet capture mode
  * Return: 0 on success; error code on failure
  */
 static
 int htt_h2t_tx_ring_cfg(struct htt_soc *htt_soc, int pdev_id,
 			hal_ring_handle_t hal_ring_hdl,
 			int hal_ring_type, int ring_buf_size,
-			struct htt_tx_ring_tlv_filter *htt_tlv_filter)
+			struct htt_tx_ring_tlv_filter *htt_tlv_filter,
+			uint8_t tx_cap_custom_classify)
 {
 	struct htt_soc *soc = (struct htt_soc *)htt_soc;
 	struct dp_htt_htc_pkt *pkt;
@@ -1103,6 +1105,9 @@ int htt_h2t_tx_ring_cfg(struct htt_soc *htt_soc, int pdev_id,
 
 	HTT_TX_MONITOR_CFG_TX_MON_GLOBAL_EN_SET(*msg_word,
 						htt_tlv_filter->enable);
+
+	if (tx_cap_custom_classify)
+		HTT_TX_MONITOR_CFG_MAC_ADDR_FILTER_EN_SET(*msg_word, 1);
 
 	/* word 1 */
 	msg_word++;
@@ -2972,6 +2977,15 @@ dp_tx_mon_ht2_ring_cfg(struct dp_soc *soc,
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	struct dp_mon_soc *mon_soc = soc->monitor_soc;
 	struct dp_mon_soc_be *mon_soc_be = dp_get_be_mon_soc_from_dp_mon_soc(mon_soc);
+	struct dp_mon_pdev *mon_pdev = pdev->monitor_pdev;
+	struct dp_mon_pdev_be *mon_pdev_be =
+				dp_get_be_mon_pdev_from_dp_mon_pdev(mon_pdev);
+	struct dp_pdev_tx_monitor_be *tx_mon_be =
+				&mon_pdev_be->tx_monitor_be;
+	uint8_t tx_cap_custom_classify = 0;
+
+	if (tx_mon_be->mode == TX_MON_BE_PKT_CAP_CUSTOM)
+		tx_cap_custom_classify = 1;
 
 	dp_mon_filter_info("%pK: srng type %d Max_mac_rings %d ",
 			   soc, srng_type, max_mac_rings);
@@ -2991,7 +3005,8 @@ dp_tx_mon_ht2_ring_cfg(struct dp_soc *soc,
 		status = htt_h2t_tx_ring_cfg(soc->htt_handle, mac_for_pdev,
 					     hal_ring_hdl, hal_ring_type,
 					     ring_buf_size,
-					     tlv_filter);
+					     tlv_filter,
+					     tx_cap_custom_classify);
 		if (status != QDF_STATUS_SUCCESS)
 			return status;
 	}
@@ -3369,9 +3384,11 @@ static void dp_cfr_filter_2_0(struct cdp_soc_t *soc_hdl,
 	struct dp_pdev *pdev = NULL;
 	struct htt_rx_ring_tlv_filter *htt_tlv_filter;
 	struct dp_mon_pdev *mon_pdev;
+	struct dp_mon_mac *mon_mac;
 	struct dp_mon_filter_be filter = {0};
 	enum dp_mon_filter_srng_type srng_type =
 		DP_MON_FILTER_SRNG_TYPE_RXMON_DEST;
+	uint8_t mac_id = 0;
 
 	pdev = dp_get_pdev_from_soc_pdev_id_wifi3(soc, pdev_id);
 	if (!pdev) {
@@ -3380,8 +3397,9 @@ static void dp_cfr_filter_2_0(struct cdp_soc_t *soc_hdl,
 	}
 
 	mon_pdev = pdev->monitor_pdev;
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
 
-	if (mon_pdev->mvdev) {
+	if (mon_mac->mvdev) {
 		if (enable && cfr_enable_monitor_mode)
 			pdev->cfr_rcc_mode = true;
 		else

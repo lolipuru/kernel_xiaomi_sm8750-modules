@@ -19,7 +19,8 @@
 #define _DP_IPA_H_
 
 #include "wlan_ipa_public_struct.h"
-#if defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2)
+#if defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2) || \
+    defined(QCA_WIFI_WCN7750)
 /* Index into soc->tcl_data_ring[] */
 #define IPA_TCL_DATA_RING_IDX	3
 #else
@@ -44,7 +45,8 @@
 #define TX_COMP_DRAIN_WAIT_TIMEOUT_MS	100
 
 #ifdef IPA_WDI3_TX_TWO_PIPES
-#if defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2)
+#if defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2) || \
+    defined(QCA_WIFI_WCN7750)
 /* Index into soc->tcl_data_ring[] and soc->tx_comp_ring[] */
 #define IPA_TX_ALT_RING_IDX 4
 #define IPA_TX_ALT_COMP_RING_IDX IPA_TX_ALT_RING_IDX
@@ -102,6 +104,7 @@ struct dp_ipa_uc_rx_hdr {
 #define DP_IPA_HDL_FIRST	0
 #define DP_IPA_HDL_SECOND	1
 #define DP_IPA_HDL_THIRD	2
+#define IPA_DEF_PDEV_ID 0
 /**
  * wlan_ipa_get_hdl() - Get ipa handle from IPA component
  * @psoc: control psoc object
@@ -298,6 +301,7 @@ QDF_STATUS dp_ipa_cleanup(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 
 /**
  * dp_ipa_setup_iface() - Setup IPA header and register interface
+ * @soc_hdl: dp soc handle
  * @ifname: Interface name
  * @mac_addr: Interface MAC address
  * @prod_client: IPA prod client type
@@ -308,7 +312,8 @@ QDF_STATUS dp_ipa_cleanup(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
  *
  * Return: QDF_STATUS
  */
-QDF_STATUS dp_ipa_setup_iface(char *ifname, uint8_t *mac_addr,
+QDF_STATUS dp_ipa_setup_iface(struct cdp_soc_t *soc_hdl, char *ifname,
+			      uint8_t *mac_addr,
 			      qdf_ipa_client_type_t prod_client,
 			      qdf_ipa_client_type_t cons_client,
 			      uint8_t session_id, bool is_ipv6_enabled,
@@ -438,17 +443,15 @@ bool dp_ipa_rx_intrabss_fwd(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 			    qdf_nbuf_t nbuf, bool *fwd_success);
 int dp_ipa_uc_detach(struct dp_soc *soc, struct dp_pdev *pdev);
 int dp_ipa_uc_attach(struct dp_soc *soc, struct dp_pdev *pdev);
+int dp_ipa_uc_alt_attach(struct dp_soc *soc, struct dp_pdev *pdev);
 
 /**
  * dp_ipa_ring_resource_setup() - setup IPA ring resources
  * @soc: data path SoC handle
- * @pdev:
  *
  * Return: status
  */
-int dp_ipa_ring_resource_setup(struct dp_soc *soc,
-			       struct dp_pdev *pdev);
-
+int dp_ipa_ring_resource_setup(struct dp_soc *soc);
 bool dp_reo_remap_config(struct dp_soc *soc, uint32_t *remap0,
 			 uint32_t *remap1, uint32_t *remap2);
 bool dp_ipa_is_mdm_platform(void);
@@ -668,8 +671,12 @@ static inline int dp_ipa_uc_attach(struct dp_soc *soc, struct dp_pdev *pdev)
 	return QDF_STATUS_SUCCESS;
 }
 
-static inline int dp_ipa_ring_resource_setup(struct dp_soc *soc,
-					     struct dp_pdev *pdev)
+static inline int dp_ipa_uc_alt_attach(struct dp_soc *soc, struct dp_pdev *pdev)
+{
+	return 0;
+}
+
+static inline int dp_ipa_ring_resource_setup(struct dp_soc *soc)
 {
 	return 0;
 }

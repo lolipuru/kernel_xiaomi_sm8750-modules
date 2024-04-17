@@ -111,7 +111,9 @@ bool dp_rx_mcast_echo_check(struct dp_soc *soc,
 		    (sa_idx >= wlan_cfg_get_max_ast_idx(soc->wlan_cfg_ctx))) {
 			QDF_TRACE(QDF_MODULE_ID_TXRX, QDF_TRACE_LEVEL_ERROR,
 				  "invalid sa_idx: %d", sa_idx);
-			qdf_assert_always(0);
+			if (dp_assert_always_internal_stat(0, soc,
+						rx.err.mec_drop_sa_invld))
+				goto drop;
 		}
 
 		qdf_spin_lock_bh(&soc->ast_lock);
@@ -835,7 +837,8 @@ free_nbuf:
 }
 
 #if defined(QCA_WIFI_QCA6390) || defined(QCA_WIFI_QCA6490) || \
-    defined(QCA_WIFI_QCA6750) || defined(QCA_WIFI_KIWI)
+    defined(QCA_WIFI_QCA6750) || defined(QCA_WIFI_KIWI) || \
+    defined(QCA_WIFI_WCN7750)
 bool
 dp_rx_null_q_handle_invalid_peer_id_exception(struct dp_soc *soc,
 					      uint8_t pool_id,
@@ -2146,6 +2149,8 @@ dp_rx_err_process(struct dp_intr *int_ctx, struct dp_soc *soc,
 	uint16_t peer_id;
 	struct dp_txrx_peer *txrx_peer = NULL;
 	dp_txrx_ref_handle txrx_ref_handle = NULL;
+	uint32_t num_pending, num_entries;
+	bool near_full;
 
 	/* Debug -- Remove later */
 	qdf_assert(soc && hal_ring_hdl);
@@ -2154,7 +2159,9 @@ dp_rx_err_process(struct dp_intr *int_ctx, struct dp_soc *soc,
 
 	/* Debug -- Remove later */
 	qdf_assert(hal_soc);
+	num_entries = hal_srng_get_num_entries(hal_soc, hal_ring_hdl);
 
+more_data:
 	if (qdf_unlikely(dp_srng_access_start(int_ctx, soc, hal_ring_hdl))) {
 
 		/* TODO */
@@ -2442,13 +2449,39 @@ done:
 			dp_rxdma_srng = &soc->rx_refill_buf_ring[mac_id];
 			rx_desc_pool = &soc->rx_desc_buf[mac_id];
 
-			dp_rx_buffers_replenish(soc, mac_id, dp_rxdma_srng,
-						rx_desc_pool,
-						rx_bufs_reaped[mac_id],
-						&dp_pdev->free_list_head,
-						&dp_pdev->free_list_tail,
-						false);
-			rx_bufs_used += rx_bufs_reaped[mac_id];
+			if (dp_pdev) {
+				dp_rx_buffers_replenish(soc, mac_id, dp_rxdma_srng,
+							rx_desc_pool,
+							rx_bufs_reaped[mac_id],
+							&dp_pdev->free_list_head,
+							&dp_pdev->free_list_tail,
+							false);
+				rx_bufs_used += rx_bufs_reaped[mac_id];
+			}
+		}
+		rx_bufs_reaped[mac_id] = 0;
+	}
+
+	if (dp_rx_enable_eol_data_check(soc) && rx_bufs_used) {
+		if (quota) {
+			num_pending =
+				dp_rx_srng_get_num_pending(hal_soc,
+							   hal_ring_hdl,
+							   num_entries,
+							   &near_full);
+
+			if (num_pending) {
+				DP_STATS_INC(soc, rx.err.hp_oos2, 1);
+
+				if (!hif_exec_should_yield(soc->hif_handle,
+							   int_ctx->dp_intr_id))
+					goto more_data;
+
+				if (qdf_unlikely(near_full)) {
+					DP_STATS_INC(soc, rx.err.near_full, 1);
+					goto more_data;
+				}
+			}
 		}
 	}
 

@@ -5992,6 +5992,7 @@ void dp_print_mon_ring_stat_from_hal(struct dp_pdev *pdev, uint8_t mac_id)
 }
 
 #if defined(IPA_OFFLOAD) && defined(QCA_WIFI_QCN9224)
+#ifdef IPA_WDI3_TX_TWO_PIPES
 /**
  * dp_print_wbm2sw_ring_stats_from_hal() - Print ring stats from hal for ipa
  *                                         use case
@@ -6005,12 +6006,27 @@ dp_print_wbm2sw_ring_stats_from_hal(struct dp_pdev *pdev)
 	uint8_t i = 0;
 
 	for (i = 0; i < pdev->soc->num_tcl_data_rings; i++) {
+		if ((i != IPA_TX_COMP_RING_IDX) &&
+		    (i != IPA_TX_ALT_COMP_RING_IDX))
+			dp_print_ring_stat_from_hal(pdev->soc,
+						    &pdev->soc->tx_comp_ring[i],
+						    WBM2SW_RELEASE);
+	}
+}
+#else
+static inline void
+dp_print_wbm2sw_ring_stats_from_hal(struct dp_pdev *pdev)
+{
+	uint8_t i = 0;
+
+	for (i = 0; i < pdev->soc->num_tcl_data_rings; i++) {
 		if (i != IPA_TX_COMP_RING_IDX)
 			dp_print_ring_stat_from_hal(pdev->soc,
 						    &pdev->soc->tx_comp_ring[i],
 						    WBM2SW_RELEASE);
 	}
 }
+#endif
 #else
 static inline void
 dp_print_wbm2sw_ring_stats_from_hal(struct dp_pdev *pdev)
@@ -6234,6 +6250,20 @@ dp_print_rx_err_stats(struct dp_soc *soc, struct dp_pdev *pdev)
 	}
 }
 
+#ifdef GLOBAL_ASSERT_AVOIDANCE
+static void dp_print_assert_war_tx_stats(struct dp_soc *soc)
+{
+	DP_PRINT_STATS("Tx WAR stats: [%d] [%d] [%d]",
+		       soc->stats.tx.invld_encap_type,
+		       soc->stats.tx.invld_sec_type,
+		       soc->stats.tx.invld_tso_params);
+}
+#else
+static void dp_print_assert_war_tx_stats(struct dp_soc *soc)
+{
+}
+#endif
+
 void dp_print_soc_tx_stats(struct dp_soc *soc)
 {
 	uint8_t desc_pool_id;
@@ -6283,6 +6313,7 @@ void dp_print_soc_tx_stats(struct dp_soc *soc)
 	DP_PRINT_STATS("Tx comp HP out of sync2 = %d",
 		       soc->stats.tx.hp_oos2);
 	dp_print_tx_ppeds_stats(soc);
+	dp_print_assert_war_tx_stats(soc);
 }
 
 #define DP_INT_CTX_STATS_STRING_LEN 512
@@ -6501,7 +6532,7 @@ dp_print_ring_stats(struct dp_pdev *pdev)
 	}
 
 	dp_print_ring_stat_from_hal(pdev->soc,
-				    &pdev->rx_refill_buf_ring2,
+				    &pdev->soc->rx_refill_buf_ring2,
 				    RXDMA_BUF);
 
 	for (i = 0; i < MAX_RX_MAC_RINGS; i++)
@@ -7303,6 +7334,7 @@ static void dp_peer_print_reo_qref_table(struct dp_peer *peer)
 	int i;
 	uint64_t *reo_qref_addr;
 	uint32_t peer_idx;
+	uint16_t peer_id;
 
 	hal = (struct hal_soc *)peer->vdev->pdev->soc->hal_soc;
 
@@ -7316,22 +7348,30 @@ static void dp_peer_print_reo_qref_table(struct dp_peer *peer)
 		return;
 	}
 
+	DP_PRINT_STATS("Reo Qref table for peer_id: %d\n", peer->peer_id);
+	peer_id = peer->peer_id;
+	if (peer_id == HTT_INVALID_PEER)
+		return;
+
 	if (IS_MLO_DP_LINK_PEER(peer))
 		return;
 
 	if (IS_MLO_DP_MLD_PEER(peer)) {
 		hal = (struct hal_soc *)
 			  peer->vdev->pdev->soc->hal_soc;
-		peer_idx = (peer->peer_id - HAL_ML_PEER_ID_START) *
+		peer_idx = (peer_id - HAL_ML_PEER_ID_START) *
 			    DP_MAX_TIDS;
+		if (peer_idx >= REO_QUEUE_REF_ML_TABLE_SIZE)
+			return;
 		reo_qref_addr =
 			&hal->reo_qref.mlo_reo_qref_table_vaddr[peer_idx];
 	} else {
-		peer_idx = (peer->peer_id * DP_MAX_TIDS);
+		peer_idx = (peer_id * DP_MAX_TIDS);
+		if (peer_idx >= REO_QUEUE_REF_NON_ML_TABLE_SIZE)
+			return;
 		reo_qref_addr =
 			&hal->reo_qref.non_mlo_reo_qref_table_vaddr[peer_idx];
 	}
-	DP_PRINT_STATS("Reo Qref table for peer_id: %d\n", peer->peer_id);
 
 	for (i = 0; i < DP_MAX_TIDS; i++)
 		DP_PRINT_STATS("    Tid [%d]  :%llx", i, reo_qref_addr[i]);
@@ -8300,7 +8340,8 @@ dp_print_pdev_tx_stats(struct dp_pdev *pdev)
 		       pdev->stats.tx.rekey_tx_comp_failures[HTT_TX_FW2WBM_TX_STATUS_VDEVID_MISMATCH]);
 }
 
-#if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_MCAST_MLO)
+#if defined(WLAN_FEATURE_11BE_MLO) && (defined(WLAN_MCAST_MLO) || \
+	defined(WLAN_MCAST_MLO_SAP))
 void dp_print_vdev_mlo_mcast_tx_stats(struct dp_vdev *vdev)
 {
 	uint8_t idx;
@@ -8505,16 +8546,21 @@ void dp_dump_srng_high_wm_stats(struct dp_soc *soc, uint64_t srng_mask)
 #endif
 
 #ifdef GLOBAL_ASSERT_AVOIDANCE
-static void dp_print_assert_war_stats(struct dp_soc *soc)
+static void dp_print_assert_war_rx_stats(struct dp_soc *soc)
 {
-	DP_PRINT_STATS("Rx WAR stats: [%d] [%d] [%d] [%d]",
+	DP_PRINT_STATS("Rx WAR stats: [%d] [%d] [%d] [%d] [%d] [%d] [%d] [%d] [%d]",
 		       soc->stats.rx.err.rx_desc_null,
 		       soc->stats.rx.err.wbm_err_buf_rel_type,
 		       soc->stats.rx.err.reo_err_rx_desc_null,
-		       soc->stats.rx.err.intra_bss_bad_chipid);
+		       soc->stats.rx.err.intra_bss_bad_chipid,
+		       soc->stats.rx.err.invalid_fse_flow_id,
+		       soc->stats.rx.err.hw_fst_del_failed,
+		       soc->stats.rx.err.rx_desc_in_use,
+		       soc->stats.rx.err.cache_invl_fail_no_fst,
+		       soc->stats.rx.err.mec_drop_sa_invld);
 }
 #else
-static void dp_print_assert_war_stats(struct dp_soc *soc)
+static void dp_print_assert_war_rx_stats(struct dp_soc *soc)
 {
 }
 #endif
@@ -8659,7 +8705,7 @@ dp_print_soc_rx_stats(struct dp_soc *soc)
 		       soc->stats.rx.err.defrag_ad1_invalid);
 	DP_PRINT_STATS("Rx decrypt error frame for valid peer:%d",
 		       soc->stats.rx.err.decrypt_err_drop);
-	dp_print_assert_war_stats(soc);
+	dp_print_assert_war_rx_stats(soc);
 }
 
 #ifdef FEATURE_TSO_STATS
@@ -10148,31 +10194,6 @@ dp_update_pdev_chan_util_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 	return QDF_STATUS_SUCCESS;
 }
 
-void dp_update_pdev_erp_stats(struct dp_soc *soc, struct dp_peer *srcobj,
-			      void *arg)
-{
-	struct dp_pdev *pdev = srcobj->vdev->pdev;
-	struct dp_mon_peer *mon_peer = srcobj->monitor_peer;
-
-	if (srcobj->bss_peer) {
-		/* Excluding self peer for stats calculation*/
-		return;
-	}
-
-	if (qdf_unlikely(!mon_peer))
-		return;
-
-	if (mon_peer->stats.tx.rnd_avg_tx_rate >
-		pdev->stats.erp_stats.tx_max_avg_data_rate)
-		pdev->stats.erp_stats.tx_max_avg_data_rate =
-				mon_peer->stats.tx.rnd_avg_tx_rate;
-
-	if (mon_peer->stats.rx.rnd_avg_rx_rate >
-		pdev->stats.erp_stats.rx_max_avg_data_rate)
-		pdev->stats.erp_stats.rx_max_avg_data_rate =
-				mon_peer->stats.rx.rnd_avg_rx_rate;
-}
-
 QDF_STATUS
 dp_get_pdev_erp_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 		      struct cdp_pdev_erp_stats *stats)
@@ -10183,21 +10204,16 @@ dp_get_pdev_erp_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 	if (!pdev)
 		return QDF_STATUS_E_FAILURE;
 
-	dp_pdev_iterate_peer(pdev, dp_update_pdev_erp_stats,
-			     NULL, DP_MOD_ID_MISC);
-
-	stats->tx_data_mpdu_cnt = pdev->stats.erp_stats.tx_data_mpdu_cnt;
-	stats->rx_data_mpdu_cnt = pdev->stats.erp_stats.rx_data_mpdu_cnt;
-	stats->tx_max_avg_data_rate =
-			pdev->stats.erp_stats.tx_max_avg_data_rate;
-	stats->rx_max_avg_data_rate =
-			pdev->stats.erp_stats.rx_max_avg_data_rate;
+	stats->tx_data_msdu_cnt = pdev->stats.erp_stats.tx_data_msdu_cnt;
+	stats->rx_data_msdu_cnt = pdev->stats.erp_stats.rx_data_msdu_cnt;
+	stats->total_tx_data_bytes = pdev->stats.erp_stats.total_tx_data_bytes;
+	stats->total_rx_data_bytes = pdev->stats.erp_stats.total_rx_data_bytes;
 
 	/* reset for next iteration */
-	pdev->stats.erp_stats.tx_data_mpdu_cnt = 0;
-	pdev->stats.erp_stats.rx_data_mpdu_cnt = 0;
-	pdev->stats.erp_stats.tx_max_avg_data_rate = 0;
-	pdev->stats.erp_stats.rx_max_avg_data_rate = 0;
+	pdev->stats.erp_stats.tx_data_msdu_cnt = 0;
+	pdev->stats.erp_stats.rx_data_msdu_cnt = 0;
+	pdev->stats.erp_stats.total_tx_data_bytes = 0;
+	pdev->stats.erp_stats.total_rx_data_bytes = 0;
 
 	return QDF_STATUS_SUCCESS;
 }

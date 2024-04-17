@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -34,6 +34,7 @@
 #include <spectral_ioctl.h>
 #include <wlan_objmgr_vdev_obj.h>
 #include "wlan_osif_features.h"
+#include <spectral_defs_i.h>
 
 const struct nla_policy spectral_scan_policy[
 		QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_MAX + 1] = {
@@ -97,6 +98,10 @@ const struct nla_policy spectral_scan_policy[
 							.type = NLA_U8},
 	[QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_FFT_RECAPTURE] = {
 							.type = NLA_U32},
+	[QCA_WLAN_VENDOR_ATTR_SPECTRAL_DATA_TRANSPORT_MODE] = {
+							.type = NLA_U32},
+	[QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETION_TIMEOUT] = {
+							.type = NLA_U32},
 };
 
 const struct nla_policy spectral_scan_get_status_policy[
@@ -134,6 +139,7 @@ static void wlan_spectral_intit_config(struct spectral_config *config_req)
 	config_req->ss_frequency.cfreq1 = SPECTRAL_PHYERR_PARAM_NOVAL;
 	config_req->ss_frequency.cfreq2 = SPECTRAL_PHYERR_PARAM_NOVAL;
 	config_req->ss_bandwidth = SPECTRAL_PHYERR_PARAM_NOVAL;
+	config_req->ss_completion_timeout = SPECTRAL_PHYERR_PARAM_NOVAL;
 }
 
 /**
@@ -200,6 +206,67 @@ convert_spectral_err_code_internal_to_nl
 
 	default:
 		osif_err("Invalid spectral error code %u", spectral_err_code);
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	return QDF_STATUS_SUCCESS;
+}
+
+/**
+ * convert_to_spectral_data_transport_mode_internal_to_nl() - Get spectral
+ * data transport mode
+ * @transport_mode: Spectral transport mode used internally
+ * @nl_transport_mode: Spectral transport mode for cfg80211
+ *
+ * Return: QDF_STATUS_SUCCESS on success, else QDF_STATUS_E_FAILURE
+ */
+static QDF_STATUS
+convert_to_spectral_data_transport_mode_internal_to_nl
+	(enum spectral_data_transport_mode transport_mode,
+	 enum qca_wlan_vendor_spectral_data_transport_mode *nl_transport_mode)
+{
+	switch (transport_mode) {
+	case SPECTRAL_DATA_TRANSPORT_NETLINK:
+		*nl_transport_mode =
+			QCA_WLAN_VENDOR_SPECTRAL_DATA_TRANSPORT_NETLINK;
+		break;
+	case SPECTRAL_DATA_TRANSPORT_RELAY:
+		*nl_transport_mode =
+			QCA_WLAN_VENDOR_SPECTRAL_DATA_TRANSPORT_RELAY;
+		break;
+	default:
+		osif_err("Invalid Spectral transport mode %u", transport_mode);
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	return QDF_STATUS_SUCCESS;
+}
+
+/**
+ * convert_spectral_scan_completion_status_internal_to_nl() - Get spectral
+ * scan completion status
+ * @completion_status: Spectral scan completion status used internally
+ * @nl_cmpl_status: Spectral scan completion status for cfg80211
+ *
+ * Return: QDF_STATUS_SUCCESS on success, else QDF_STATUS_E_FAILURE
+ */
+static QDF_STATUS
+convert_spectral_scan_completion_status_internal_to_nl
+	(enum spectral_scan_complete_status completion_status,
+	 enum qca_wlan_vendor_spectral_scan_complete_status *nl_cmpl_status)
+{
+	switch (completion_status) {
+	case SPECTRAL_SCAN_COMPLETE_SUCCESS:
+		*nl_cmpl_status =
+		QCA_WLAN_VENDOR_SPECTRAL_SCAN_COMPLETE_STATUS_SUCCESSFUL;
+		break;
+	case SPECTRAL_SCAN_COMPLETE_TIMEOUT:
+		*nl_cmpl_status =
+		QCA_WLAN_VENDOR_SPECTRAL_SCAN_COMPLETE_STATUS_TIMEOUT;
+		break;
+	default:
+		osif_err("Invalid Spectral scan completion status %u",
+			 completion_status);
 		return QDF_STATUS_E_FAILURE;
 	}
 
@@ -506,6 +573,10 @@ int wlan_cfg80211_spectral_scan_config_and_start(struct wiphy *wiphy,
 			return -EINVAL;
 	}
 
+	if (tb[QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETION_TIMEOUT])
+		config_req.ss_completion_timeout = nla_get_u32(tb
+		   [QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETION_TIMEOUT]);
+
 	if (tb[QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_DEBUG_LEVEL]) {
 		spectral_dbg_level = nla_get_u32(tb
 		   [QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_DEBUG_LEVEL]);
@@ -708,6 +779,9 @@ int wlan_cfg80211_spectral_scan_get_config(struct wiphy *wiphy,
 	enum spectral_scan_mode sscan_mode = SPECTRAL_SCAN_MODE_NORMAL;
 	QDF_STATUS status;
 	int sscan_bw_nl;
+	struct pdev_spectral *ps;
+	enum qca_wlan_vendor_spectral_data_transport_mode
+					nl_transport_mode;
 
 	if (wlan_cfg80211_nla_parse(
 			tb,
@@ -725,6 +799,14 @@ int wlan_cfg80211_spectral_scan_get_config(struct wiphy *wiphy,
 
 		if (QDF_IS_STATUS_ERROR(status))
 			return -EINVAL;
+	}
+
+	ps = wlan_objmgr_pdev_get_comp_private_obj(pdev,
+						   WLAN_UMAC_COMP_SPECTRAL);
+
+	if (!ps) {
+		osif_err("PDEV SPECTRAL object is NULL!");
+		return -EINVAL;
 	}
 
 	skb = wlan_cfg80211_vendor_cmd_alloc_reply_skb(wiphy,
@@ -819,6 +901,21 @@ int wlan_cfg80211_spectral_scan_get_config(struct wiphy *wiphy,
 	    nla_put_u32(skb,
 			QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_FFT_RECAPTURE,
 			sconfig->ss_recapture))
+		goto fail;
+
+	status = convert_to_spectral_data_transport_mode_internal_to_nl
+			(ps->transport_mode,
+			 &nl_transport_mode);
+
+	if (QDF_IS_STATUS_ERROR(status))
+		goto fail;
+
+	if (nla_put_u32(skb,
+			QCA_WLAN_VENDOR_ATTR_SPECTRAL_DATA_TRANSPORT_MODE,
+			nl_transport_mode) ||
+	    nla_put_u32(skb,
+			QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETION_TIMEOUT,
+			sconfig->ss_completion_timeout))
 
 		goto fail;
 
@@ -836,6 +933,71 @@ int wlan_cfg80211_spectral_scan_get_config(struct wiphy *wiphy,
 fail:
 	wlan_cfg80211_vendor_free_skb(skb);
 	return -EINVAL;
+}
+
+QDF_STATUS wlan_cfg80211_spectral_scan_complete_event(
+			struct wlan_objmgr_pdev *pdev,
+			struct spectral_scan_event *sptrl_event)
+{
+	struct sk_buff *vendor_event;
+	struct pdev_osif_priv *osif_priv;
+	struct spectral_scan_complete_event *cmpl_event;
+	QDF_STATUS status;
+	enum qca_wlan_vendor_spectral_scan_complete_status nl_cmpl_status;
+
+	osif_priv = wlan_pdev_get_ospriv(pdev);
+	if (!osif_priv) {
+		qdf_err("PDEV OS private structure is NULL");
+		return QDF_STATUS_E_NULL_VALUE;
+	}
+
+	if (!sptrl_event) {
+		qdf_err("Spectral event is NULL");
+		return QDF_STATUS_E_NULL_VALUE;
+	}
+
+	cmpl_event = &sptrl_event->complete_event;
+
+	/* Allocate vendor event */
+	vendor_event = wlan_cfg80211_vendor_event_alloc(
+			osif_priv->wiphy,
+			NULL,
+			(sizeof(u32) + NLA_HDRLEN) *
+			QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_MAX +
+			NLMSG_HDRLEN,
+			QCA_NL80211_VENDOR_SUBCMD_SPECTRAL_SCAN_COMPLETE_INDEX,
+			GFP_ATOMIC);
+
+	if (!vendor_event) {
+		qdf_err("cfg80211_vendor_event_alloc failed");
+		return QDF_STATUS_E_NOMEM;
+	}
+
+	status = convert_spectral_scan_completion_status_internal_to_nl
+			(cmpl_event->completion_status, &nl_cmpl_status);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		status = QDF_STATUS_E_INVAL;
+		goto fail;
+	}
+
+	if (nla_put_u32(
+		vendor_event,
+		QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_STATUS,
+		nl_cmpl_status) ||
+	    nla_put_u32(
+		vendor_event,
+		QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_COMPLETE_RECEIVED_SAMPLES,
+		cmpl_event->num_received_samples))
+		goto fail;
+
+	/* Send spectral scan completion event to user space application */
+	wlan_cfg80211_vendor_event(vendor_event, GFP_ATOMIC);
+
+	return QDF_STATUS_SUCCESS;
+
+fail:
+	wlan_cfg80211_vendor_free_skb(vendor_event);
+	return status;
 }
 
 int wlan_cfg80211_spectral_scan_get_cap(struct wiphy *wiphy,

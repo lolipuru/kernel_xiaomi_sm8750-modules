@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2015,2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -323,6 +323,7 @@ struct wlan_cm_vdev_connect_req {
  * @bssid: bssid given
  * @prev_bssid: prev AP bssid, given in case supplican want to roam to new BSSID
  * @chan_freq: channel of the AP
+ * @crypto: crypto related info
  */
 struct wlan_cm_roam_req {
 	uint8_t forced_roaming:1;
@@ -331,6 +332,7 @@ struct wlan_cm_roam_req {
 	struct qdf_mac_addr bssid;
 	struct qdf_mac_addr prev_bssid;
 	uint32_t chan_freq;
+	struct wlan_cm_connect_crypto_info crypto;
 };
 
 /**
@@ -480,6 +482,7 @@ struct wlan_connect_rsp_ies {
  * struct wlan_roam_sync_info - roam sync information populated
  * from roam sync indication struct
  * @auth_status: roam auth status (authenticated or connected)
+ * @num_setup_links: Number of links from FW roam sync event
  * @kck_len: kck length
  * @kck: kck info in roam sync
  * @kek_len: kek length
@@ -498,6 +501,9 @@ struct wlan_connect_rsp_ies {
  */
 struct wlan_roam_sync_info {
 	uint8_t auth_status;
+#ifdef WLAN_FEATURE_11BE
+	uint8_t num_setup_links;
+#endif
 	uint8_t kck_len;
 	uint8_t kck[MAX_KCK_LEN];
 	uint8_t kek_len;

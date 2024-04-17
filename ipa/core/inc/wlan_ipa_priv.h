@@ -122,6 +122,8 @@
  * @WLAN_IPA_SMMU_UNMAP: IPA SMMU unmap call
  * @WLAN_IPA_CTRL_TX_REINJECT: REINJECT TO TX
  * @WLAN_IPA_CTRL_FILTER_DEL_NOTIFY: OPT WIFI DP CTRL filter delete notification
+ * @WLAN_IPA_CTRL_FILTER_HIGH_TPUT_NOTIFY: OPT WIFI DP CTRL filter
+ * delete notification in high TPUT
  * @WLAN_IPA_UC_OPCODE_MAX: IPA UC max operation code
  */
 enum wlan_ipa_uc_op_code {
@@ -142,6 +144,7 @@ enum wlan_ipa_uc_op_code {
 	WLAN_IPA_SMMU_UNMAP = 12,
 	WLAN_IPA_CTRL_TX_REINJECT = 13,
 	WLAN_IPA_CTRL_FILTER_DEL_NOTIFY = 14,
+	WLAN_IPA_CTRL_FILTER_HIGH_TPUT_NOTIFY = 15,
 	/* keep this last */
 	WLAN_IPA_UC_OPCODE_MAX
 };
@@ -210,7 +213,8 @@ struct wlan_ipa_tx_hdr {
 #if defined(QCA_WIFI_QCA6290) || defined(QCA_WIFI_QCA6390) || \
     defined(QCA_WIFI_QCA6490) || defined(QCA_WIFI_QCA6750) || \
     defined(QCA_WIFI_WCN7850) || defined(QCA_WIFI_QCN9000) || \
-    defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2)
+    defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2) || \
+    defined(QCA_WIFI_WCN7750)
 /**
  * struct frag_header - fragment header type registered to IPA hardware
  * @length:    fragment length
@@ -232,6 +236,12 @@ struct frag_header {
 	uint32_t reserved2;
 } qdf_packed;
 #else
+/**
+ * struct frag_header - fragment header type registered to IPA hardware
+ * @length:    fragment length
+ * @reserved16: Reserved not used
+ * @reserved2: Reserved not used
+ */
 struct frag_header {
 	uint32_t
 		length:16,
@@ -243,7 +253,8 @@ struct frag_header {
 #if defined(QCA_WIFI_QCA6290) || defined(QCA_WIFI_QCA6390) || \
     defined(QCA_WIFI_QCA6490) || defined(QCA_WIFI_QCA6750) || \
     defined(QCA_WIFI_WCN7850) || defined(QCA_WIFI_QCN9000) || \
-    defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2)
+    defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2) || \
+    defined(QCA_WIFI_WCN7750)
 /**
  * struct ipa_header - ipa header type registered to IPA hardware
  * @reserved: Reserved not used
@@ -455,6 +466,7 @@ struct ipa_uc_stas_map {
  * @rsvd_snd: Reserved
  * @vdev_id: vdev id
  * @nbuf: tx nbuf
+ * @flt_del_hdl: flt handle deleted in opt_dp_ctrl
  */
 struct op_msg_type {
 	uint8_t msg_t;
@@ -464,6 +476,7 @@ struct op_msg_type {
 	uint16_t rsvd_snd;
 	uint8_t vdev_id;
 	qdf_nbuf_t nbuf;
+	uint32_t flt_del_hdl[TX_SUPER_RULE_SETUP_NUM];
 };
 
 /**
@@ -657,14 +670,82 @@ typedef bool (*wlan_ipa_driver_unloading)(void);
  */
 typedef void (*wlan_ipa_rps_enable)(uint8_t vdev_id, bool enable);
 
+#if defined(IPA_OFFLOAD) && defined(QCA_IPA_LL_TX_FLOW_CONTROL)
+/**
+ * struct wlan_ipa_evt_wq_args - IPA Workqueue arguments
+ * @pdev_obj:           Pdev object
+ * @net_dev:            Network Device
+ * @vdev:               Vdev object
+ * @device_mode:        Device mode type
+ * @ch_freq:            Channel frequency
+ * @vdev_id:            Vdev Id
+ * @mac_addr:           Peer Mac Address
+ * @event:              IPA wlan event
+ * @list_elem:          WQ list elem
+ */
+struct wlan_ipa_evt_wq_args {
+	struct wlan_objmgr_pdev *pdev_obj;
+	struct net_device *net_dev;
+	struct wlan_objmgr_vdev *vdev;
+	enum QDF_OPMODE device_mode;
+	uint16_t ch_freq;
+	uint8_t vdev_id;
+	u_int8_t mac_addr[QDF_MAC_ADDR_SIZE]; /* MAC address */
+	enum wlan_ipa_wlan_event event;
+
+	TAILQ_ENTRY(wlan_ipa_evt_wq_args) list_elem;
+};
+
+/*
+ * NB: not using kernel-doc format since the kernel-doc script doesn't
+ *     handle the TAILQ_HEAD() macro
+ *
+ * struct wlan_ipa_evt_wq - IPA Workqueue structure
+ * @work:               Instance of work
+ * @work_queue:         Wrapper around the real task func
+ * @list_lock:          Lock on WQ
+ * @list:               Queue of IPA event
+ */
+struct wlan_ipa_evt_wq {
+	qdf_work_t work;
+	qdf_workqueue_t *work_queue;
+	qdf_spinlock_t list_lock;
+
+	TAILQ_HEAD(, wlan_ipa_evt_wq_args) list;
+};
+#endif
+
+/**
+ * struct opt_dp_ctrl_stats - stats for opt_dp_ctrl
+ * @flt_add_req_cnt: cnt of filter add requested by ipa
+ * @flt_rm_req_cnt: cnt of filters rm requested by ipa
+ * @active_filter: total active filters
+ * @add_fail_cnt: cnt of filter add failed
+ * @rm_fail_cnt: cnt of filter rm failed
+ * @clk_resp_cnt: cnt of clock vote response received
+ * @clk_vote_cnt: cnt of clock vote
+ * @clk_unvote_req_cnt: cnt of clock unvote
+ * @tput_del_cnt: cnt of filters deleted due to high tput
+ */
+struct opt_dp_ctrl_stats {
+	int flt_add_req_cnt;
+	int flt_rm_req_cnt;
+	int active_filter;
+	int add_fail_cnt;
+	int rm_fail_cnt;
+	int clk_resp_cnt;
+	int clk_vote_cnt;
+	int clk_unvote_req_cnt;
+	int tput_del_cnt;
+};
+
 /* IPA private context structure definition */
 struct wlan_ipa_priv {
-	struct wlan_objmgr_pdev *pdev;
+	struct wlan_objmgr_psoc *psoc;
 	struct wlan_ipa_sys_pipe sys_pipe[WLAN_IPA_MAX_SYSBAM_PIPE];
 	struct wlan_ipa_iface_context iface_context[WLAN_IPA_MAX_IFACE];
 	uint8_t num_iface;
 	void *dp_soc;
-	uint8_t dp_pdev_id;
 	struct wlan_ipa_config *config;
 	enum wlan_ipa_rm_state rm_state;
 	/*
@@ -776,6 +857,7 @@ struct wlan_ipa_priv {
 	/* Flag to notify whether optional wifi dp feature is enabled or not */
 	bool opt_wifi_datapath;
 	bool opt_wifi_datapath_ctrl;
+	bool fw_cap_opt_dp_ctrl;
 	qdf_atomic_t stats_quota;
 	uint8_t curr_bw_level;
 	qdf_atomic_t deinit_in_prog;
@@ -786,8 +868,13 @@ struct wlan_ipa_priv {
 	struct wifi_dp_flt_setup dp_cce_super_rule_flt_param;
 	struct wifi_dp_tx_flt_setup dp_tx_super_rule_flt_param;
 	qdf_event_t ipa_flt_evnt;
+	qdf_event_t ipa_ctrl_flt_evnt;
 	qdf_event_t ipa_opt_dp_ctrl_clk_evt;
 	qdf_wake_lock_t opt_dp_wake_lock;
+	struct opt_dp_ctrl_stats ctrl_stats;
+#endif
+#if defined(QCA_IPA_LL_TX_FLOW_CONTROL)
+	struct wlan_ipa_evt_wq *ipa_evt_wq;
 #endif
 };
 

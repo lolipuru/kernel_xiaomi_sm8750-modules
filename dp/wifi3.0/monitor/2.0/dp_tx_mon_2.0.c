@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -113,6 +113,7 @@ dp_tx_mon_srng_process_2_0(struct dp_soc *soc, struct dp_intr *int_ctx,
 	struct dp_mon_desc_pool *tx_mon_desc_pool = &mon_soc_be->tx_desc_mon;
 	struct dp_tx_mon_desc_list mon_desc_list;
 	uint32_t replenish_cnt = 0;
+	struct dp_mon_mac *mon_mac;
 
 	if (!pdev) {
 		dp_mon_err("%pK: pdev is null for mac_id = %d", soc, mac_id);
@@ -120,6 +121,7 @@ dp_tx_mon_srng_process_2_0(struct dp_soc *soc, struct dp_intr *int_ctx,
 	}
 
 	mon_pdev = pdev->monitor_pdev;
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
 	mon_dst_srng = mon_soc_be->tx_mon_dst_ring[mac_id].hal_srng;
 
 	if (!mon_dst_srng || !hal_srng_initialized(mon_dst_srng)) {
@@ -137,7 +139,7 @@ dp_tx_mon_srng_process_2_0(struct dp_soc *soc, struct dp_intr *int_ctx,
 
 	qdf_assert((hal_soc && pdev));
 
-	qdf_spin_lock_bh(&mon_pdev->mon_lock);
+	qdf_spin_lock_bh(&mon_mac->mon_lock);
 	mon_desc_list.desc_list = NULL;
 	mon_desc_list.tail = NULL;
 	mon_desc_list.tx_mon_reap_cnt = 0;
@@ -145,7 +147,7 @@ dp_tx_mon_srng_process_2_0(struct dp_soc *soc, struct dp_intr *int_ctx,
 	if (qdf_unlikely(dp_srng_access_start(int_ctx, soc, mon_dst_srng))) {
 		dp_mon_err("%s %d : HAL Mon Dest Ring access Failed -- %pK",
 			   __func__, __LINE__, mon_dst_srng);
-		qdf_spin_unlock_bh(&mon_pdev->mon_lock);
+		qdf_spin_unlock_bh(&mon_mac->mon_lock);
 		return work_done;
 	}
 
@@ -290,7 +292,7 @@ dp_tx_mon_srng_process_2_0(struct dp_soc *soc, struct dp_intr *int_ctx,
 					 &mon_desc_list.tail,
 					 &replenish_cnt);
 	}
-	qdf_spin_unlock_bh(&mon_pdev->mon_lock);
+	qdf_spin_unlock_bh(&mon_mac->mon_lock);
 	dp_mon_debug("mac_id: %d, work_done:%d tx_monitor_reap_cnt:%d",
 		     mac_id, work_done, mon_desc_list.tx_mon_reap_cnt);
 
@@ -632,6 +634,19 @@ void dp_print_pdev_tx_monitor_stats_2_0(struct dp_pdev *pdev)
 	DP_PRINT_STATS("\t\tppdu drop : %llu", stats.ppdu_drop_cnt);
 	DP_PRINT_STATS("\t\tmpdu drop : %llu", stats.mpdu_drop_cnt);
 	DP_PRINT_STATS("\t\ttlv drop : %llu", stats.tlv_drop_cnt);
+	DP_PRINT_STATS("\tPacket Classification");
+	DP_PRINT_STATS("\t\t ARP    : %u",
+			tx_mon_be->dp_tx_pkt_cap_stats[CDP_TX_PKT_TYPE_ARP]);
+	DP_PRINT_STATS("\t\t EAPOL  : %u",
+			tx_mon_be->dp_tx_pkt_cap_stats[CDP_TX_PKT_TYPE_EAPOL]);
+	DP_PRINT_STATS("\t\t DHCP   : %u",
+			tx_mon_be->dp_tx_pkt_cap_stats[CDP_TX_PKT_TYPE_DHCP]);
+	DP_PRINT_STATS("\t\t DNS    : %u",
+			tx_mon_be->dp_tx_pkt_cap_stats[CDP_TX_PKT_TYPE_DNS]);
+	DP_PRINT_STATS("\t\t ICMP   : %u",
+			tx_mon_be->dp_tx_pkt_cap_stats[CDP_TX_PKT_TYPE_ICMP]);
+	DP_PRINT_STATS("\t\t Invalid Pkt id: %u",
+			tx_mon_be->dp_tx_pkt_cap_stats[0]);
 }
 
 #ifdef QCA_SUPPORT_LITE_MONITOR
@@ -684,6 +699,7 @@ dp_config_enh_tx_monitor_2_0(struct dp_pdev *pdev, uint8_t val)
 		dp_lite_mon_free_tx_peers(pdev);
 		break;
 	}
+	case TX_MON_BE_PKT_CAP_CUSTOM:
 	case TX_MON_BE_FULL_CAPTURE:
 	{
 		num_of_buffers = wlan_cfg_get_dp_soc_tx_mon_buf_ring_size(soc_cfg_ctx);
@@ -719,6 +735,11 @@ dp_config_enh_tx_monitor_2_0(struct dp_pdev *pdev, uint8_t val)
 	{
 		return QDF_STATUS_E_INVAL;
 	}
+	}
+
+	if (val == TX_MON_BE_PKT_CAP_CUSTOM) {
+		tx_mon_be->mode = TX_MON_BE_PKT_CAP_CUSTOM;
+		mon_pdev_be->tx_mon_mode = 3;
 	}
 
 	dp_mon_info("Tx monitor mode:%d mon_mode_flag:%d config_length:%d",
@@ -1014,18 +1035,24 @@ dp_tx_mon_lpc_type_filtering(struct dp_pdev *pdev,
 static int
 dp_tx_handle_local_pkt_capture(struct dp_pdev *pdev, qdf_nbuf_t nbuf)
 {
+	/*
+	 * mac_id value is required in case where per MAC mon_mac handle
+	 * is required in single pdev multiple MAC case.
+	 */
+	uint8_t mac_id = 0;
 	struct dp_mon_vdev *mon_vdev;
-	struct dp_mon_pdev *mon_pdev = pdev->monitor_pdev;
+	struct dp_mon_mac *mon_mac = dp_get_mon_mac(pdev, mac_id);
+	struct dp_vdev *mvdev = mon_mac->mvdev;
 
-	if (!mon_pdev->mvdev) {
+	if (!mvdev) {
 		dp_mon_err("Monitor vdev is NULL !!");
 		return 1;
 	}
 
-	mon_vdev = mon_pdev->mvdev->monitor_vdev;
+	mon_vdev = mvdev->monitor_vdev;
 
 	if (mon_vdev && mon_vdev->osif_rx_mon)
-		mon_vdev->osif_rx_mon(mon_pdev->mvdev->osif_vdev, nbuf, NULL);
+		mon_vdev->osif_rx_mon(mvdev->osif_vdev, nbuf, NULL);
 
 	return 0;
 }

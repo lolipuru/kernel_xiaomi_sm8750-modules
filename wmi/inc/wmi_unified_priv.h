@@ -126,6 +126,10 @@
 #include "wmi_unified_ll_sap_api.h"
 #endif
 
+#ifdef FEATURE_SAR_LIMITS
+#include <wma_sar_public_structs.h>
+#endif
+
 #define WMI_UNIFIED_MAX_EVENT 0x100
 
 #ifdef WMI_EXT_DBG
@@ -1272,6 +1276,9 @@ QDF_STATUS (*send_get_link_speed_cmd)(wmi_unified_t wmi_handle,
 QDF_STATUS (*send_wlm_latency_level_cmd)(wmi_unified_t wmi_handle,
 				struct wlm_latency_level_param *param);
 
+QDF_STATUS (*send_tx_power_per_mcs_cmd)(wmi_unified_t wmi_handle,
+					struct tx_power_per_mcs_rate *params);
+
 QDF_STATUS (*send_sar_limit_cmd)(wmi_unified_t wmi_handle,
 				struct sar_limit_cmd_params *params);
 
@@ -1557,6 +1564,11 @@ QDF_STATUS
 QDF_STATUS (*set_rx_pkt_type_routing_tag_cmd)(
 	wmi_unified_t wmi_hdl, struct wmi_rx_pkt_protocol_routing_info *param);
 #endif /* WLAN_SUPPORT_RX_PROTOCOL_TYPE_TAG */
+
+#ifdef WLAN_SUPPORT_TX_PKT_CAP_CUSTOM_CLASSIFY
+QDF_STATUS (*set_tx_pkt_cap_custom_classify)(
+	wmi_unified_t wmi_hdl, struct wmi_tx_pkt_cap_custom_classify_info *param);
+#endif /* WLAN_SUPPORT_TX_PKT_CAP_CUSTOM_CLASSIFY */
 
 #ifdef WLAN_SUPPORT_FILS
 QDF_STATUS (*extract_swfda_vdev_id)(wmi_unified_t wmi_handle, void *evt_buf,
@@ -2346,6 +2358,11 @@ QDF_STATUS (*extract_sar_cap_service_ready_ext)(
 		wmi_unified_t wmi_handle,
 		uint8_t *evt_buf,
 		struct wlan_psoc_host_service_ext_param *ext_param);
+
+QDF_STATUS (*extract_sar_cap_service_ready_ext2)(
+		wmi_unified_t wmi_handle,
+		uint8_t *evt_buf,
+		struct wlan_psoc_host_service_ext2_param *ext2_param);
 
 #ifdef WLAN_SUPPORT_TWT
 QDF_STATUS (*extract_twt_cap_service_ready_ext2)(

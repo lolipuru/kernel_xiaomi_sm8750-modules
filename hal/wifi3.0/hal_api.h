@@ -79,7 +79,7 @@ struct ring_util_stats {
 #define SHADOW_REGISTER_END_ADDRESS_OFFSET \
 	((SHADOW_REGISTER_START_ADDRESS_OFFSET) + (4 * (MAX_SHADOW_REGISTERS)))
 #define SHADOW_REGISTER(x) ((SHADOW_REGISTER_START_ADDRESS_OFFSET) + (4 * (x)))
-#elif defined(QCA_WIFI_QCA6750)
+#elif defined(QCA_WIFI_QCA6750) || defined(QCA_WIFI_WCN7750)
 #define SHADOW_REGISTER_START_ADDRESS_OFFSET 0x00000504
 #define SHADOW_REGISTER_END_ADDRESS_OFFSET \
 	((SHADOW_REGISTER_START_ADDRESS_OFFSET) + (4 * (MAX_SHADOW_REGISTERS)))
@@ -272,7 +272,7 @@ static inline void hal_tx_init_cmd_credit_ring(hal_soc_handle_t hal_soc_hdl,
  */
 #if !defined(QCA_WIFI_QCA6390) && !defined(QCA_WIFI_QCA6490) && \
     !defined(QCA_WIFI_QCA6750) && !defined(QCA_WIFI_KIWI) && \
-    !defined(QCA_WIFI_WCN6450)
+    !defined(QCA_WIFI_WCN6450) && !defined(QCA_WIFI_WCN7750)
 static inline void hal_write32_mb(struct hal_soc *hal_soc, uint32_t offset,
 				  uint32_t value)
 {
@@ -529,7 +529,7 @@ static inline void hal_srng_write_address_32_mb(struct hal_soc *hal_soc,
 
 #if !defined(QCA_WIFI_QCA6390) && !defined(QCA_WIFI_QCA6490) && \
     !defined(QCA_WIFI_QCA6750) && !defined(QCA_WIFI_KIWI) && \
-    !defined(QCA_WIFI_WCN6450)
+    !defined(QCA_WIFI_WCN6450) && !defined(QCA_WIFI_WCN7750)
 /**
  * hal_read32_mb() - Access registers to read configuration
  * @hal_soc: hal soc handle
@@ -874,6 +874,27 @@ static inline void hal_dump_reg_write_stats(hal_soc_handle_t hal_soc_hdl)
 static inline int hal_get_reg_write_pending_work(void *hal_soc)
 {
 	return 0;
+}
+#endif
+
+#if defined(FEATURE_HAL_DELAYED_REG_WRITE) && defined(QCA_WIFI_QCA6750)
+/**
+ * hal_srng_check_and_update_hptp() - Check and force update HP/TP
+ *		to the hardware
+ * @hal_soc: HAL soc handle
+ * @srng: SRNG handle
+ * @update: Whether or not update is needed
+ *
+ * Returns: void
+ */
+void hal_srng_check_and_update_hptp(struct hal_soc *hal_soc,
+				    struct hal_srng *srng,
+				    bool update);
+#else
+static inline void
+hal_srng_check_and_update_hptp(struct hal_soc *hal_soc, struct hal_srng *srng,
+			       bool update)
+{
 }
 #endif
 

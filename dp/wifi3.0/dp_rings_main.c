@@ -57,6 +57,9 @@
 #include <dp_mon.h>
 #endif
 #include "qdf_ssr_driver_dump.h"
+#ifdef IPA_OFFLOAD
+#include "dp_ipa.h"
+#endif
 
 #ifdef WLAN_FEATURE_STATS_EXT
 #define INIT_RX_HW_STATS_LOCK(_soc) \
@@ -826,7 +829,7 @@ static inline bool dp_skip_rx_mon_ring_mask_set(struct dp_soc *soc)
 {
 	return !!(soc->cdp_soc.ol_ops->get_con_mode() !=
 		 QDF_GLOBAL_MONITOR_MODE &&
-		 !wlan_cfg_get_local_pkt_capture(soc->wlan_cfg_ctx));
+		 !dp_mon_mode_local_pkt_capture(soc));
 }
 #else
 static inline bool dp_skip_rx_mon_ring_mask_set(struct dp_soc *soc)
@@ -2420,6 +2423,10 @@ void dp_soc_deinit(void *txrx_soc)
 
 	dp_soc_srng_deinit(soc);
 
+	dp_ipa_uc_detach(soc, NULL);
+	dp_deinit_ipa_rx_alt_refill_buf_ring(soc);
+	dp_deinit_ipa_rx_refill_buf_ring(soc);
+
 	dp_hw_link_desc_ring_deinit(soc);
 
 	dp_soc_print_inactive_objects(soc);
@@ -3448,6 +3455,7 @@ static void dp_soc_cfg_init(struct dp_soc *soc)
 	case TARGET_TYPE_KIWI:
 	case TARGET_TYPE_MANGO:
 	case TARGET_TYPE_PEACH:
+	case TARGET_TYPE_WCN7750:
 		soc->ast_override_support = 1;
 		soc->per_tid_basize_max_tid = 8;
 
@@ -3675,7 +3683,7 @@ void *dp_soc_init(struct dp_soc *soc, HTC_HANDLE htc_handle,
 		goto fail3;
 	}
 
-	dp_link_desc_ring_replenish(soc, WLAN_INVALID_PDEV_ID);
+	dp_link_desc_ring_replenish(soc, WLAN_INVALID_PDEV_ID, true);
 
 	if (dp_soc_srng_init(soc)) {
 		dp_init_err("%pK: dp_soc_srng_init failed", soc);
@@ -3704,6 +3712,15 @@ void *dp_soc_init(struct dp_soc *soc, HTC_HANDLE htc_handle,
 			goto fail7;
 		}
 	}
+
+	if (dp_init_ipa_rx_refill_buf_ring(soc))
+		goto fail8;
+
+	if (dp_ipa_ring_resource_setup(soc))
+		goto fail9;
+
+	if (dp_ipa_uc_attach(soc, NULL) != QDF_STATUS_SUCCESS)
+		dp_init_err("%pK: dp_ipa_uc_attach failed", soc);
 
 	wlan_cfg_set_rx_hash(soc->wlan_cfg_ctx,
 			     cfg_get(soc->ctrl_psoc, CFG_DP_RX_HASH));
@@ -3803,6 +3820,11 @@ void *dp_soc_init(struct dp_soc *soc, HTC_HANDLE htc_handle,
 	dp_soc_rx_buf_map_lock_init(soc);
 
 	return soc;
+fail9:
+	dp_deinit_ipa_rx_refill_buf_ring(soc);
+fail8:
+	if (soc->arch_ops.txrx_soc_ppeds_stop)
+		soc->arch_ops.txrx_soc_ppeds_stop(soc);
 fail7:
 	dp_soc_tx_desc_sw_pools_deinit(soc);
 fail6:
@@ -4403,6 +4425,7 @@ void dp_soc_cfg_attach(struct dp_soc *soc)
 	case TARGET_TYPE_KIWI:
 	case TARGET_TYPE_MANGO:
 	case TARGET_TYPE_PEACH:
+	case TARGET_TYPE_WCN7750:
 		soc->wlan_cfg_ctx->rxdma1_enable = 0;
 		break;
 	case TARGET_TYPE_QCA8074:

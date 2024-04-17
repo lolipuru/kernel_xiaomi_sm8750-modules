@@ -410,6 +410,11 @@ static const struct qwlan_hw qwlan_hw_list[] = {
 		.name = "WCN6750_V2",
 	},
 	{
+		.id = WCN7750_V1,
+		.subid = 0,
+		.name = "WCN7750_V1",
+	},
+	{
 		.id = WCN6450_V1,
 		.subid = 0,
 		.name = "WCN6450_V1",
@@ -1400,7 +1405,8 @@ static inline int hif_get_num_active_grp_tasklets(struct hif_softc *scn)
 	defined(QCA_WIFI_QCA6750) || defined(QCA_WIFI_QCA5018) || \
 	defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_QCN9224) || \
 	defined(QCA_WIFI_QCN6432) || \
-	defined(QCA_WIFI_QCA9574)) || defined(QCA_WIFI_QCA5332)
+	defined(QCA_WIFI_QCA9574)) || defined(QCA_WIFI_QCA5332) || \
+	defined(QCA_WIFI_WCN7750)
 /**
  * hif_get_num_pending_work() - get the number of entries in
  *		the workqueue pending to be completed.
@@ -1537,10 +1543,11 @@ QDF_STATUS hif_try_prevent_ep_vote_access(struct hif_opaque_softc *hif_ctx)
 	return QDF_STATUS_SUCCESS;
 }
 
-void hif_set_ep_intermediate_vote_access(struct hif_opaque_softc *hif_ctx)
+QDF_STATUS hif_set_ep_intermediate_vote_access(struct hif_opaque_softc *hif_ctx)
 {
 	struct hif_softc *scn = HIF_GET_SOFTC(hif_ctx);
 	uint8_t vote_access;
+	QDF_STATUS status;
 
 	vote_access = qdf_atomic_read(&scn->ep_vote_access);
 
@@ -1548,11 +1555,12 @@ void hif_set_ep_intermediate_vote_access(struct hif_opaque_softc *hif_ctx)
 		hif_info("EP vote changed from:%u to intermediate state",
 			 vote_access);
 
-	if (QDF_IS_STATUS_ERROR(hif_try_prevent_ep_vote_access(hif_ctx)))
-		QDF_BUG(0);
+	status = hif_try_prevent_ep_vote_access(hif_ctx);
+	if (QDF_IS_STATUS_SUCCESS(status))
+		qdf_atomic_set(&scn->ep_vote_access,
+			       HIF_EP_VOTE_INTERMEDIATE_ACCESS);
 
-	qdf_atomic_set(&scn->ep_vote_access,
-		       HIF_EP_VOTE_INTERMEDIATE_ACCESS);
+	return status;
 }
 
 void hif_allow_ep_vote_access(struct hif_opaque_softc *hif_ctx)
@@ -1960,7 +1968,8 @@ static QDF_STATUS hif_hal_detach(struct hif_softc *scn)
 	defined(QCA_WIFI_QCN9000) || defined(QCA_WIFI_QCA6490) || \
 	defined(QCA_WIFI_QCA6750) || defined(QCA_WIFI_QCA5018) || \
 	defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_QCN9224) || \
-	defined(QCA_WIFI_QCA9574)) || defined(QCA_WIFI_QCA5332)
+	defined(QCA_WIFI_QCA9574)) || defined(QCA_WIFI_QCA5332) || \
+	defined(QCA_WIFI_WCN7750)
 static QDF_STATUS hif_hal_attach(struct hif_softc *scn)
 {
 	if (ce_srng_based(scn)) {
@@ -2384,6 +2393,12 @@ int hif_get_device_type(uint32_t device_id,
 		*hif_type = HIF_TYPE_QCA6750;
 		*target_type = TARGET_TYPE_QCA6750;
 		hif_info(" *********** QCA6750 *************");
+		break;
+
+	case WCN7750_DEVICE_ID:
+		*hif_type = HIF_TYPE_WCN7750;
+		*target_type = TARGET_TYPE_WCN7750;
+		hif_info(" *********** WCN7750 *************");
 		break;
 
 	case KIWI_DEVICE_ID:

@@ -1407,6 +1407,25 @@ QDF_STATUS wlan_reg_modify_pdev_chan_range(struct wlan_objmgr_pdev *pdev);
 QDF_STATUS wlan_reg_get_phybitmap(struct wlan_objmgr_pdev *pdev,
 				  uint16_t *phybitmap);
 
+#ifdef WLAN_FEATURE_11BE
+/**
+ * wlan_reg_phybitmap_support_11be() - API to check if current reg domain
+ * supports 11be
+ * @pdev: PDEV object manager pointer
+ *
+ * If the max supported phy mode of current reg domain equals 11be then
+ * return true else return false.
+ * Return: bool
+ */
+bool wlan_reg_phybitmap_support_11be(struct wlan_objmgr_pdev *pdev);
+#else
+static inline bool
+wlan_reg_phybitmap_support_11be(struct wlan_objmgr_pdev *pdev)
+{
+	return false;
+}
+#endif
+
 /**
  * wlan_reg_update_pdev_wireless_modes() - Update the wireless_modes in the
  * pdev_priv_obj with the input wireless_modes
@@ -2861,6 +2880,23 @@ wlan_reg_get_afc_freq_range_and_psd_limits(struct wlan_objmgr_pdev *pdev,
 QDF_STATUS
 wlan_reg_get_num_afc_freq_obj(struct wlan_objmgr_pdev *pdev,
 			      uint8_t *num_freq_obj);
+
+/**
+ * wlan_reg_validate_freq_in_afc_chan_obj() - Check if the AFC power info
+ * channel object has the input frequency's bw opclass.
+ *
+ * @pdev: Pointer to pdev
+ * @primary_freq: Input primary frequency
+ * @center_320: Center frequency of 320 MHz BW
+ * @bw: Bandwidth
+ *
+ * Return: True, if the frequency center is found in AFC response.
+ */
+bool
+wlan_reg_validate_freq_in_afc_chan_obj(struct wlan_objmgr_pdev *pdev,
+				       qdf_freq_t primary_freq,
+				       qdf_freq_t center_320,
+				       uint16_t bw);
 
 /**
  * wlan_reg_set_afc_power_event_received() - Set power event received flag with

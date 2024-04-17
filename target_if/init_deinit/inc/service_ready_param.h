@@ -559,6 +559,8 @@ struct wlan_psoc_host_service_ext_param {
  * @low_5ghz_chan_ext: 5 GHz channel ext low
  * @high_5ghz_chan_ext: 5 GHz channel ext High
  * @fw_support_ml_mon: FW support ML monitor mode
+ * @sar_flag: SAR flag info
+ * @fw_support_opt_dp_ctrl: FW support OPT_DP_CTRL
  */
 struct wlan_psoc_host_service_ext2_param {
 	uint8_t reg_db_version_major;
@@ -602,6 +604,8 @@ struct wlan_psoc_host_service_ext2_param {
 	uint32_t low_5ghz_chan_ext;
 	uint32_t high_5ghz_chan_ext;
 	bool fw_support_ml_mon;
+	uint32_t sar_flag;
+	bool fw_support_opt_dp_ctrl;
 };
 
 #endif /* _SERVICE_READY_PARAM_H_*/

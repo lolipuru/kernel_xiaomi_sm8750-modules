@@ -71,6 +71,9 @@ void hal_kiwi_attach(struct hal_soc *hal);
 #ifdef INCLUDE_HAL_PEACH
 void hal_peach_attach(struct hal_soc *hal);
 #endif
+#ifdef QCA_WIFI_WCN7750
+void hal_wcn7750_attach(struct hal_soc *hal);
+#endif
 
 #ifdef ENABLE_VERBOSE_DEBUG
 bool is_hal_verbose_debug_enabled;
@@ -446,6 +449,13 @@ static void hal_target_based_configure(struct hal_soc *hal)
 			hal_qca6750_attach(hal);
 		break;
 #endif
+#ifdef QCA_WIFI_WCN7750
+		case TARGET_TYPE_WCN7750:
+			hal->use_register_windowing = true;
+			hal->static_window_map = true;
+			hal_wcn7750_attach(hal);
+		break;
+#endif
 #ifdef INCLUDE_HAL_KIWI
 	case TARGET_TYPE_KIWI:
 	case TARGET_TYPE_MANGO:
@@ -681,6 +691,72 @@ int hal_get_reg_write_pending_work(void *hal_soc)
 #define HAL_REG_WRITE_QUEUE_LEN 32
 #endif
 
+#ifdef QCA_WIFI_QCA6750
+
+#define HAL_DEL_WRITE_FORCE_UPDATE_THRES 5
+
+static inline void hal_srng_update_last_hptp(struct hal_srng *srng)
+{
+	if (srng->ring_dir == HAL_SRNG_SRC_RING)
+		srng->updated_hp = srng->u.src_ring.hp;
+	else
+		srng->updated_tp = srng->u.dst_ring.tp;
+
+	srng->force_cnt = 0;
+}
+
+/* If HP/TP register updates are delayed due to delayed reg
+ * write work not getting scheduled, hardware would see HP/TP
+ * delta and will fire interrupts until the HP/TP updates reach
+ * the hardware.
+ *
+ * When system is heavily stressed, this delay in HP/TP updates
+ * would result in IRQ storm further stressing the system. Force
+ * update HP/TP to the hardware under such scenarios to avoid this.
+ */
+void hal_srng_check_and_update_hptp(struct hal_soc *hal_soc,
+				    struct hal_srng *srng, bool update)
+{
+	uint32_t value;
+
+	if (!update)
+		return;
+
+	SRNG_LOCK(&srng->lock);
+	if (srng->ring_dir == HAL_SRNG_SRC_RING) {
+		value = srng->u.src_ring.hp;
+
+		if (value == srng->updated_hp ||
+		    srng->force_cnt++ < HAL_DEL_WRITE_FORCE_UPDATE_THRES)
+			goto out_unlock;
+
+		hal_write_address_32_mb(hal_soc, srng->u.src_ring.hp_addr,
+					value, false);
+	} else {
+		value = srng->u.dst_ring.tp;
+
+		if (value == srng->updated_tp ||
+		    srng->force_cnt++ < HAL_DEL_WRITE_FORCE_UPDATE_THRES)
+			goto out_unlock;
+
+		hal_write_address_32_mb(hal_soc, srng->u.dst_ring.tp_addr,
+					value, false);
+	}
+
+	hal_srng_update_last_hptp(srng);
+	hal_srng_reg_his_add(srng, value);
+	qdf_atomic_inc(&hal_soc->stats.wstats.direct);
+	srng->wstats.direct++;
+
+out_unlock:
+	SRNG_UNLOCK(&srng->lock);
+}
+#else
+static inline void hal_srng_update_last_hptp(struct hal_srng *srng)
+{
+}
+#endif /* QCA_WIFI_QCA6750 */
+
 /**
  * hal_process_reg_write_q_elem() - process a register write queue element
  * @hal: hal_soc pointer
@@ -713,6 +789,8 @@ hal_process_reg_write_q_elem(struct hal_soc *hal,
 					srng->u.dst_ring.tp, false);
 		write_val = srng->u.dst_ring.tp;
 	}
+
+	hal_srng_update_last_hptp(srng);
 	hal_srng_reg_his_add(srng, write_val);
 
 	q_elem->valid = 0;
@@ -1089,7 +1167,7 @@ void hal_record_suspend_write(uint8_t ring_id, uint32_t value, uint32_t count)
 }
 #endif
 
-#ifdef QCA_WIFI_QCA6750
+#if defined(QCA_WIFI_QCA6750) || defined(QCA_WIFI_WCN7750)
 void hal_delayed_reg_write(struct hal_soc *hal_soc,
 			   struct hal_srng *srng,
 			   void __iomem *addr,
@@ -1108,6 +1186,7 @@ void hal_delayed_reg_write(struct hal_soc *hal_soc,
 		     PLD_MHI_STATE_L0 ==
 		     pld_get_mhi_state(hal_soc->qdf_dev->dev))) {
 			hal_write_address_32_mb(hal_soc, addr, value, false);
+			hal_srng_update_last_hptp(srng);
 			hal_srng_reg_his_add(srng, value);
 			qdf_atomic_inc(&hal_soc->stats.wstats.direct);
 			srng->wstats.direct++;
@@ -1144,6 +1223,7 @@ void hal_delayed_reg_write(struct hal_soc *hal_soc,
 		qdf_atomic_inc(&hal_soc->stats.wstats.direct);
 		srng->wstats.direct++;
 		hal_write_address_32_mb(hal_soc, addr, value, false);
+		hal_srng_update_last_hptp(srng);
 		hal_srng_reg_his_add(srng, value);
 	} else {
 		hal_reg_write_enqueue(hal_soc, srng, addr, value);

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -295,8 +295,15 @@ wlan_mld_get_best_primary_umac_w_rssi(struct wlan_mlo_peer_context *ml_peer,
 
 			bw = wlan_reg_get_bw_value(mld_ch_width[i]);
 			cap = bw * (100 - cong);
+			ml_sta_count++;
 			grp_size = (ml_sta_count) * ((cap * 100) / total_cap);
 			group_size[i] = grp_size / 100;
+			if (grp_size % 100)
+				group_size[i]++;
+
+			if (group_size[i] == 0)
+				group_size[i] = 1;
+
 			if (group_size[i] <=  mld_ml_sta_count[i]) {
 				group_full[i] = true;
 				group_full_count++;
@@ -799,9 +806,15 @@ static QDF_STATUS mlo_set_3_link_primary_umac(
 {
 	uint8_t psoc_ids[WLAN_UMAC_MLO_MAX_VDEVS];
 	int8_t central_umac_id;
+	uint8_t i;
 
 	if (ml_peer->max_links != 3)
 		return QDF_STATUS_E_FAILURE;
+
+	for (i = 0; i < WLAN_UMAC_MLO_MAX_VDEVS; i++) {
+		if (!link_vdevs[i] && (i < ml_peer->max_links))
+			return QDF_STATUS_E_FAILURE;
+	}
 
 	/* Some 3 link RDPs have restriction on the primary umac.
 	 * Only the link that is adjacent to both the links can be
@@ -850,17 +863,6 @@ QDF_STATUS mlo_peer_allocate_primary_umac(
 	assoc_peer = peer_entry->link_peer;
 	if (!assoc_peer)
 		return QDF_STATUS_E_FAILURE;
-
-	/* For Station mode, assign assoc peer as primary umac */
-	if (wlan_peer_get_peer_type(assoc_peer) == WLAN_PEER_AP) {
-		mlo_peer_assign_primary_umac(ml_peer, peer_entry);
-		mlo_info("MLD ID %d ML Peer " QDF_MAC_ADDR_FMT " primary umac soc %d ",
-			 ml_dev->mld_id,
-			 QDF_MAC_ADDR_REF(ml_peer->peer_mld_addr.bytes),
-			 ml_peer->primary_umac_psoc_id);
-
-		return QDF_STATUS_SUCCESS;
-	}
 
 	/* Select assoc peer's PSOC as primary UMAC in Multi-chip solution,
 	 * 1) for single link MLO connection

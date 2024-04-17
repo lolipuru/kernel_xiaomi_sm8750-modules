@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -870,6 +870,12 @@ struct hal_srng {
 
 	/* srng specific delayed write stats */
 	struct hal_reg_write_srng_stats wstats;
+
+	union {
+		uint32_t updated_hp;
+		uint32_t updated_tp;
+	};
+	uint32_t force_cnt;
 #endif
 #ifdef WLAN_DP_SRNG_USAGE_WM_TRACKING
 	struct hal_srng_high_wm_info high_wm;
@@ -1468,6 +1474,9 @@ struct hal_hw_txrx_ops {
 					hal_soc_handle_t hal_soc_hdl);
 	uint32_t (*hal_tx_ring_halt_get)(hal_soc_handle_t hal_soc_hdl);
 	bool (*hal_rx_en_mcast_fp_data_filter)(void);
+	void (*hal_rx_parse_eht_sig_hdr)(struct hal_soc *hal_soc,
+					 uint8_t *tlv,
+					 void *ppdu_info_handle);
 };
 
 /**
@@ -1687,6 +1696,7 @@ void hal_peach_attach(struct hal_soc *hal_soc);
 
 void hal_qcn9224v2_attach(struct hal_soc *hal_soc);
 void hal_wcn6450_attach(struct hal_soc *hal_soc);
+void hal_wcn7750_attach(struct hal_soc *hal_soc);
 
 /**
  * hal_soc_to_hal_soc_handle() - API to convert hal_soc to opaque

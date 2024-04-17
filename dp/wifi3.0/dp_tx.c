@@ -483,11 +483,22 @@ static void dp_tx_opt_dp_wifi_ctrl_process(struct dp_tx_msdu_info_s *msdu_info,
 	if (msdu_info->is_opt_dp_ctrl)
 		HTT_TX_TCL_METADATA_OPT_DP_CTRL_SET(*htt_tcl_metadata, 1);
 }
+
+static bool is_msdu_opt_dp_ctrl(struct dp_tx_msdu_info_s *msdu_info)
+{
+	return msdu_info->is_opt_dp_ctrl;
+}
 #else
 static void dp_tx_opt_dp_wifi_ctrl_process(struct dp_tx_msdu_info_s *msdu_info,
 					   uint16_t *htt_tcl_metadata)
 {
 }
+
+static bool is_msdu_opt_dp_ctrl(struct dp_tx_msdu_info_s *msdu_info)
+{
+	return false;
+}
+
 #endif
 
 /**
@@ -565,14 +576,16 @@ static uint8_t dp_tx_prepare_htt_metadata(struct dp_vdev *vdev, qdf_nbuf_t nbuf,
 
 /**
  * dp_tx_prepare_tso_ext_desc() - Prepare MSDU extension descriptor for TSO
+ * @soc: soc handle
  * @tso_seg: TSO segment to process
  * @ext_desc: Pointer to MSDU extension descriptor
  *
  * Return: void
  */
 #if defined(FEATURE_TSO)
-static void dp_tx_prepare_tso_ext_desc(struct qdf_tso_seg_t *tso_seg,
-		void *ext_desc)
+static void dp_tx_prepare_tso_ext_desc(struct dp_soc *soc,
+				       struct qdf_tso_seg_t *tso_seg,
+				       void *ext_desc)
 {
 	uint8_t num_frag;
 	uint32_t tso_flags;
@@ -598,8 +611,11 @@ static void dp_tx_prepare_tso_ext_desc(struct qdf_tso_seg_t *tso_seg,
 		uint32_t lo = 0;
 		uint32_t hi = 0;
 
-		qdf_assert_always((tso_seg->tso_frags[num_frag].paddr) &&
-				  (tso_seg->tso_frags[num_frag].length));
+		if (dp_assert_always_internal_stat(
+			((tso_seg->tso_frags[num_frag].paddr) &&
+				(tso_seg->tso_frags[num_frag].length)),
+				soc, tx.invld_tso_params))
+			break;
 
 		qdf_dmaaddr_to_32s(
 			tso_seg->tso_frags[num_frag].paddr, &lo, &hi);
@@ -610,8 +626,9 @@ static void dp_tx_prepare_tso_ext_desc(struct qdf_tso_seg_t *tso_seg,
 	return;
 }
 #else
-static void dp_tx_prepare_tso_ext_desc(struct qdf_tso_seg_t *tso_seg,
-		void *ext_desc)
+static void dp_tx_prepare_tso_ext_desc(struct dp_soc *soc,
+				       struct qdf_tso_seg_t *tso_seg,
+				       void *ext_desc)
 {
 	return;
 }
@@ -902,8 +919,9 @@ struct dp_tx_ext_desc_elem_s *dp_tx_prepare_ext_desc(struct dp_vdev *vdev,
 		break;
 
 	case dp_tx_frm_tso:
-		dp_tx_prepare_tso_ext_desc(&msdu_info->u.tso_info.curr_seg->seg,
-				&cached_ext_desc[0]);
+		dp_tx_prepare_tso_ext_desc(soc,
+					   &msdu_info->u.tso_info.curr_seg->seg,
+					   &cached_ext_desc[0]);
 		break;
 
 
@@ -1351,6 +1369,9 @@ struct dp_tx_desc_s *dp_tx_prepare_desc_single(struct dp_vdev *vdev,
 		is_exception = 1;
 		tx_desc->length -= tx_desc->pkt_offset;
 	}
+
+	if (qdf_unlikely(is_msdu_opt_dp_ctrl(msdu_info)))
+		tx_desc->flags |= DP_TX_DESC_FLAG_OPT_DP_CTRL;
 
 #if !TQM_BYPASS_WAR
 	if (is_exception || tx_exc_metadata)
@@ -4794,11 +4815,12 @@ void dp_tx_reinject_handler(struct dp_soc *soc,
 			 ((is_mcast && txrx_peer->wds_ecm.wds_tx_mcast_4addr) ||
 			 (is_ucast &&
 			 txrx_peer->wds_ecm.wds_tx_ucast_4addr))))) {
+				peer_id = txrx_peer->peer_id;
 #else
 			(txrx_peer->bss_peer &&
 			 (dp_tx_proxy_arp(vdev, nbuf) == QDF_STATUS_SUCCESS))) {
-#endif
 				peer_id = DP_INVALID_PEER;
+#endif
 
 				nbuf_copy = qdf_nbuf_copy(nbuf);
 
@@ -5517,7 +5539,8 @@ dp_tx_update_peer_stats(struct dp_tx_desc_s *tx_desc,
 	tid_stats = &pdev->stats.tid_stats.tid_tx_stats[ring_id][tid];
 
 	if (ts->release_src != HAL_TX_COMP_RELEASE_SOURCE_TQM) {
-		dp_err_rl("Release source:%d is not from TQM", ts->release_src);
+		dp_debug_rl("Release source:%d is not from TQM",
+			    ts->release_src);
 		DP_PEER_PER_PKT_STATS_INC(txrx_peer, tx.release_src_not_tqm, 1,
 					  link_id);
 		return;

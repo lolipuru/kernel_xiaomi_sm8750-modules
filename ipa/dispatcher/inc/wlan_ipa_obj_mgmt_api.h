@@ -82,12 +82,30 @@ void ipa_tx_pkt_opt_dp_ctrl(uint8_t vdev_id,
 /**
  * ipa_opt_dpath_enable_clk_req() - send clock enable request io ipa
  * @soc: soc
- * @pdev_id: pdev id
  *
  * Return: QDF_STATUS
  */
-QDF_STATUS ipa_opt_dpath_enable_clk_req(void *soc, uint8_t pdev_id);
+QDF_STATUS ipa_opt_dpath_enable_clk_req(void *soc);
+
+/**
+ * ipa_opt_dpath_disable_clk_req() - send clock enable request io ipa
+ * @soc: soc
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS ipa_opt_dpath_disable_clk_req(void *soc);
+
+/**
+ * wlan_ipa_set_fw_cap_opt_dp_ctrl() - set fw capability of
+ *              opt_dp_ctrl
+ * @psoc: psoc object
+ * @fw_cap: flag for fw capability in opt_dp_ctrl
+ *
+ */
+QDF_STATUS wlan_ipa_set_fw_cap_opt_dp_ctrl(struct wlan_objmgr_psoc *psoc,
+					   bool fw_cap);
 #endif
+
 /**
  * wlan_ipa_get_hdl() - Get ipa hdl set by IPA driver
  * @soc: void psoc object
@@ -142,4 +160,15 @@ static inline bool wlan_ipa_is_vlan_enabled(void)
 }
 #endif /* IPA_OFFLOAD */
 
+#ifndef IPA_OPT_WIFI_DP_CTRL
+static inline QDF_STATUS ipa_opt_dpath_disable_clk_req(void *soc)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS wlan_ipa_set_fw_cap_opt_dp_ctrl(void *soc, bool fw_cap)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+#endif
 #endif /* _WLAN_IPA_OBJ_MGMT_H_ */

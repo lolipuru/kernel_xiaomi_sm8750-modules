@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -249,9 +249,12 @@ uint32_t dp_rx_process_li(struct dp_intr *int_ctx,
 
 	DP_HIST_INIT();
 
-	qdf_assert_always(soc && hal_ring_hdl);
+	if (!soc || !hal_ring_hdl)
+		return 0;
+
 	hal_soc = soc->hal_soc;
-	qdf_assert_always(hal_soc);
+	if (!hal_soc)
+		return 0;
 
 	buf_size = wlan_cfg_rx_buffer_size(soc->wlan_cfg_ctx);
 
@@ -1061,7 +1064,7 @@ bool dp_rx_chain_msdus_li(struct dp_soc *soc, qdf_nbuf_t nbuf,
 		dp_pdev->invalid_peer_head_msdu = NULL;
 		dp_pdev->invalid_peer_tail_msdu = NULL;
 
-		dp_monitor_get_mpdu_status(dp_pdev, soc, rx_tlv_hdr);
+		dp_monitor_get_mpdu_status(dp_pdev, soc, rx_tlv_hdr, mac_id);
 	}
 
 	if (dp_pdev->ppdu_id == hal_rx_attn_phy_ppdu_id_get(soc->hal_soc,
@@ -1461,8 +1464,7 @@ dp_rx_null_q_desc_handle_li(struct dp_soc *soc, qdf_nbuf_t nbuf,
 	if (hal_rx_msdu_end_sa_is_valid_get(soc->hal_soc, rx_tlv_hdr)) {
 		sa_idx = hal_rx_msdu_end_sa_idx_get(soc->hal_soc, rx_tlv_hdr);
 
-		if ((sa_idx < 0) ||
-		    (sa_idx >= wlan_cfg_get_max_ast_idx(soc->wlan_cfg_ctx))) {
+		if (sa_idx >= wlan_cfg_get_max_ast_idx(soc->wlan_cfg_ctx)) {
 			DP_STATS_INC(soc, rx.err.invalid_sa_da_idx, 1);
 			goto drop_nbuf;
 		}

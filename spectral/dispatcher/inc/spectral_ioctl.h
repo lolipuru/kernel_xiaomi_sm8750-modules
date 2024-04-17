@@ -57,6 +57,7 @@
 #define SPECTRAL_GET_NOMINAL_NOISEFLOOR  (DFS_LAST_IOCTL + 22)
 #define SPECTRAL_GET_DEBUG_LEVEL         (DFS_LAST_IOCTL + 23)
 #define SPECTRAL_SET_DMA_DEBUG           (DFS_LAST_IOCTL + 24)
+#define SPECTRAL_SCAN_COMPLETE           (DFS_LAST_IOCTL + 25)
 
 /*
  * Increase spectral sub version if struct spectral_samp_msg updated.
@@ -95,6 +96,7 @@ enum spectral_params {
 	SPECTRAL_PARAM_FREQUENCY,
 	SPECTRAL_PARAM_CHAN_FREQUENCY,
 	SPECTRAL_PARAM_CHAN_WIDTH,
+	SPECTRAL_PARAM_COMPLETION_TIMEOUT,
 	SPECTRAL_PARAM_MAX,
 };
 
@@ -231,6 +233,20 @@ enum spectral_cap_hw_gen {
 };
 
 /**
+ * enum spectral_data_transport_mode - Spectral data transport mode
+ * @SPECTRAL_DATA_TRANSPORT_NETLINK: Use netlink
+ * @SPECTRAL_DATA_TRANSPORT_RELAY: Use relay interface
+ * @SPECTRAL_DATA_TRANSPORT_MAX: Max number of Spectral data transport modes
+ * @SPECTRAL_DATA_TRANSPORT_INVALID: Invalid Spectral data transport mode
+ */
+enum spectral_data_transport_mode {
+	SPECTRAL_DATA_TRANSPORT_NETLINK,
+	SPECTRAL_DATA_TRANSPORT_RELAY,
+	SPECTRAL_DATA_TRANSPORT_MAX,
+	SPECTRAL_DATA_TRANSPORT_INVALID = 0xff,
+};
+
+/**
  * struct spectral_config_frequency - Spectral scan frequency
  * @cfreq1: Center frequency (in MHz) of the span of interest(primary 80 MHz
  *          span for 80 + 80 agile scan request) or center frequency (in MHz)
@@ -321,6 +337,8 @@ struct spectral_config_frequency {
  *                          any WLAN channel in the secondary 80 MHz span of
  *                          interest.
  * @ss_bandwidth: Spectral scan bandwidth
+ * @transport_mode: Spectral data transport mode
+ * @ss_completion_timeout: Spectral scan completion timeout value
  */
 struct spectral_config {
 	uint16_t ss_fft_period;
@@ -350,6 +368,8 @@ struct spectral_config {
 	int32_t ss_nf_temp_data;
 	struct spectral_config_frequency ss_frequency;
 	uint16_t ss_bandwidth;
+	enum spectral_data_transport_mode transport_mode;
+	uint32_t ss_completion_timeout;
 };
 
 /**

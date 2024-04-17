@@ -90,8 +90,8 @@ struct mlo_all_link_rssi;
 /* Max LINK PEER support */
 #define MAX_MLO_LINK_PEERS WLAN_UMAC_MLO_MAX_VDEVS
 
-/* MAX MLO peer_id supported by FW is 128 */
-#define MAX_MLO_PEER_ID 128
+/* MAX MLO peer_id supported by FW is 1024 */
+#define MAX_MLO_PEER_ID 1024
 #define MLO_INVALID_PEER_ID 0xFFFF
 
 /* IE nomenclature */
@@ -193,6 +193,8 @@ struct mlo_chip_info {
  * @chip_info: chip specific info of the soc
  * @tsf_sync_enabled: MLO TSF sync is enabled at FW or not
  * @wsi_stats_info_support: WSI stats support at FW or not
+ * @wsi_remap_in_progress: Dynamic WSI remap in progress
+ * @wsi_remap_support: WSI remap support at FW or not
  */
 struct mlo_setup_info {
 	uint8_t ml_grp_id;
@@ -214,6 +216,8 @@ struct mlo_setup_info {
 	struct mlo_chip_info chip_info;
 	bool tsf_sync_enabled;
 	uint8_t wsi_stats_info_support;
+	bool wsi_remap_in_progress;
+	uint8_t wsi_remap_support;
 };
 
 /**
@@ -515,6 +519,42 @@ struct ml_link_state_cmd_info {
 	void *ml_link_state_req_context;
 };
 #endif
+
+#ifdef WLAN_FEATURE_11BE_MLO_TTLM
+/**
+ * struct ttlm_comp_priv - TTLM completion private info
+ * @ml_peer: ML Peer objmgr
+ * @dialog_token: TTLM Dialog token
+ * @status: TTLM command status
+ */
+struct ttlm_comp_priv {
+	struct wlan_mlo_peer_context *ml_peer;
+	uint8_t dialog_token;
+	QDF_STATUS status;
+};
+
+/**
+ * ttlm_rsp_info - TTLM response frame info
+ * @t2lm_info: TTLM mapping
+ * @t2lm_resp_type: TTLM status corresponds to TTL response frame
+ */
+struct ttlm_rsp_info {
+	struct wlan_t2lm_info *t2lm_info;
+	enum wlan_t2lm_resp_frm_type t2lm_resp_type;
+};
+
+/**
+ * struct ttlm_send_cmd_info - TTLM send command info
+ * @cookie: request cookie
+ * @ttlm_send_cmd_resp_cb: Callback function to handle response
+ * @context: request cookie
+ */
+struct ttlm_send_cmd_info {
+	void *cookie;
+	void (*ttlm_send_cmd_resp_cb)(struct ttlm_comp_priv *ev, void *cookie);
+	void *context;
+};
+#endif
 /**
  * struct mlo_sta_csa_params - CSA request parameters in mlo mgr
  * @csa_param: csa parameters
@@ -559,6 +599,45 @@ struct mlo_sta_quiet_status {
 	uint8_t link_id;
 	bool quiet_status;
 	bool valid_status;
+};
+
+/* MLO invalid link bitmap for upto 4 links*/
+#define MLO_INVALID_LINK_BMAP 0xFFFFFFFF
+
+/* Max number of disallowed bitmap combination sent to FW */
+#define MAX_DISALLOW_BMAP_COMB 4
+
+/**
+ * enum mlo_disallowed_mode: MLO disallowed mode reasons
+ * @MLO_DISALLOWED_MODE_NO_RESTRICTION:
+ *  Set disallowed mode has no restrictions(any mode allowed).
+ * @MLO_DISALLOWED_MODE_NO_MLMR:
+ *  Set disallowed mode has restriction set to no MLMR.
+ * @MLO_DISALLOWED_MODE_NO_EMLSR:
+ *  Set disallowed mode has restriction set to no EMLSR.
+ * @MLO_DISALLOWED_MODE_NO_MLMR_EMLSR:
+ *  Set disallowed mode has restriction set to no MLMR or EMLSR
+ */
+enum mlo_disallowed_mode {
+	MLO_DISALLOWED_MODE_NO_RESTRICTION = 0,
+	MLO_DISALLOWED_MODE_NO_MLMR = 1,
+	MLO_DISALLOWED_MODE_NO_EMLSR = 2,
+	MLO_DISALLOWED_MODE_NO_MLMR_EMLSR = 3,
+};
+
+/**
+ * struct ml_link_disallow_mode_bitmap: MLO link disallow mode bitmap params
+ * @disallowed_mode: Bitmap of MLO Modes like MLMR, eMLSR which are not allowed.
+ * @ieee_link_id_comb: MLO IEEE Link Ids for which above,
+ * disallowed_mode_bitmap is applicable.
+ * @ieee_link_id: Each 8-bits in ieee_link_id_comb represents one link ID.
+ **/
+struct ml_link_disallow_mode_bitmap {
+	uint32_t disallowed_mode;
+	union {
+		uint32_t ieee_link_id_comb;
+		uint8_t ieee_link_id[4];
+	};
 };
 
 /**
@@ -672,10 +751,17 @@ struct ml_link_force_state {
  * @force_state: current force active/inactive states which
  * have been sent to target
  * @reqs: request of set link
+ * @emlsr_disable_req_flags: emlsr disable requests
+ * @num_disallow_mode_comb: number of disallowed mode combinations
+ * @disallow_mode_link_bmap: disallow mode link bitmap
  */
 struct wlan_link_force_context {
 	struct ml_link_force_state force_state;
 	struct set_link_req reqs[SET_LINK_SOURCE_MAX];
+	uint32_t emlsr_disable_req_flags;
+	uint32_t num_disallow_mode_comb;
+	struct ml_link_disallow_mode_bitmap
+		disallow_mode_link_bmap[MAX_DISALLOW_BMAP_COMB];
 };
 
 #if defined(UMAC_SUPPORT_MLNAWDS) || defined(MESH_MODE_SUPPORT)
@@ -757,6 +843,7 @@ struct mlo_nstr_info {
  * @t2lm_enable_val: enum wlan_t2lm_enable
  * @nstr_info: NSTR Capability info
  * @num_nstr_info_links: No. of links for which NSTR info is present
+ * @primary_link_id: Link id of primary TQM
  */
 struct mlo_partner_info {
 	uint8_t num_partner_links;
@@ -766,6 +853,7 @@ struct mlo_partner_info {
 	struct mlo_nstr_info nstr_info[WLAN_UMAC_MLO_MAX_VDEVS];
 	uint8_t num_nstr_info_links;
 #endif
+	uint8_t primary_link_id;
 };
 
 #ifdef WLAN_FEATURE_11BE_MLO
@@ -814,6 +902,7 @@ struct wlan_mlo_sta_assoc_pending_list {
  * @emlsr_mode_req: store requested emlsr mode
  * @ml_link_control_mode: link control mode configured via user space
  * @ml_chan_switch_in_progress: Flag to track CSA at MLD level
+ * @ttlm_send_info: TTLM send command into
  */
 struct wlan_mlo_sta {
 	qdf_bitmap(wlan_connect_req_links, WLAN_UMAC_MLO_MAX_VDEVS);
@@ -846,6 +935,9 @@ struct wlan_mlo_sta {
 #endif
 	uint8_t ml_link_control_mode;
 	bool ml_chan_switch_in_progress;
+#ifdef WLAN_FEATURE_11BE_MLO_TTLM
+	struct ttlm_send_cmd_info ttlm_send_info;
+#endif
 };
 
 /**
@@ -856,6 +948,7 @@ struct wlan_mlo_sta {
  * @mlo_vdev_quiet_bmap: Bitmap of vdevs for which quiet ie needs to enabled
  * @mlo_vdev_up_bmap: Bitmap of vdevs for which sync complete can be dispatched
  * @assoc_list: MLO sta assoc pending list entry (for FT-over-DS)
+ * @mlo_link_reject: Flag to indicate if MLO link rejection is enabled
  */
 struct wlan_mlo_ap {
 	uint8_t num_ml_vdevs;
@@ -868,6 +961,7 @@ struct wlan_mlo_ap {
 	qdf_bitmap(mlo_vdev_quiet_bmap, WLAN_UMAC_MLO_MAX_VDEVS);
 	qdf_bitmap(mlo_vdev_up_bmap, WLAN_UMAC_MLO_MAX_VDEVS);
 	struct wlan_mlo_sta_assoc_pending_list assoc_list;
+	bool mlo_link_reject;
 };
 
 /**
@@ -1077,6 +1171,22 @@ struct wlan_mlo_mld_cap {
 		 reserved:3;
 };
 
+#ifdef WLAN_FEATURE_11BE_MLO_TTLM
+/**
+ * struct ttlm_state_sm - TTLM state machine
+ * @ttlm_sm_lock: SM lock
+ * @sm_hdl: SM handlers
+ * @ttlm_state: Current state
+ * @ttlm_substate: Current substate
+ */
+struct ttlm_state_sm {
+	qdf_mutex_t ttlm_sm_lock;
+	struct wlan_sm *sm_hdl;
+	enum wlan_ttlm_sm_state ttlm_state;
+	enum wlan_ttlm_sm_state ttlm_substate;
+};
+#endif
+
 /**
  * struct wlan_mlo_peer_context - MLO peer context
  *
@@ -1111,6 +1221,7 @@ struct wlan_mlo_mld_cap {
  * migration
  * @primary_umac_migration_in_progress: flag to indicate primary umac migration
  * in progress
+ * @ttlm_sm: TTLM state machine
  */
 struct wlan_mlo_peer_context {
 	qdf_list_node_t peer_node;
@@ -1154,6 +1265,9 @@ struct wlan_mlo_peer_context {
 	struct mlo_nstr_info mlpeer_nstrinfo[WLAN_UMAC_MLO_MAX_VDEVS];
 	uint8_t migrate_primary_umac_psoc_id;
 	bool primary_umac_migration_in_progress;
+#ifdef WLAN_FEATURE_11BE_MLO_TTLM
+	struct ttlm_state_sm ttlm_sm;
+#endif
 };
 
 /**
@@ -1419,6 +1533,8 @@ struct mlo_link_num_param {
  * handled
  * @post_re_evaluate_loops: current re-evaluate count if this set link is
  * from set link event respone handler
+ * @dont_reschedule_workqueue: don't reschedule force scc workqueue
+ * after set link response
  */
 struct mlo_control_flags {
 	bool overwrite_force_active_bitmap;
@@ -1426,6 +1542,7 @@ struct mlo_control_flags {
 	bool dynamic_force_link_num;
 	bool post_re_evaluate;
 	uint8_t post_re_evaluate_loops;
+	bool dont_reschedule_workqueue;
 };
 
 /* struct ml_link_force_cmd - force command for links
@@ -1445,45 +1562,6 @@ struct ml_link_force_cmd {
 	uint16_t ieee_link_id_bitmap;
 	uint16_t ieee_link_id_bitmap2;
 	uint8_t link_num;
-};
-
-/* MLO invalid link bitmap for upto 4 links*/
-#define MLO_INVALID_LINK_BMAP 0xFFFFFFFF
-
-/* Max number of disallowed bitmap combination sent to FW */
-#define MAX_DISALLOW_BMAP_COMB 4
-
-/**
- * enum mlo_disallowed_mode: MLO disallowed mode reasons
- * @MLO_DISALLOWED_MODE_NO_RESTRICTION:
- *  Set disallowed mode has no restrictions(any mode allowed).
- * @MLO_DISALLOWED_MODE_NO_MLMR:
- *  Set disallowed mode has restriction set to no MLMR.
- * @MLO_DISALLOWED_MODE_NO_EMLSR:
- *  Set disallowed mode has restriction set to no EMLSR.
- * @MLO_DISALLOWED_MODE_NO_MLMR_EMLSR:
- *  Set disallowed mode has restriction set to no MLMR or EMLSR
- */
-enum mlo_disallowed_mode {
-	MLO_DISALLOWED_MODE_NO_RESTRICTION = 0,
-	MLO_DISALLOWED_MODE_NO_MLMR = 1,
-	MLO_DISALLOWED_MODE_NO_EMLSR = 2,
-	MLO_DISALLOWED_MODE_NO_MLMR_EMLSR = 3,
-};
-
-/**
- * struct ml_link_disallow_mode_bitmap: MLO link disallow mode bitmap params
- * @disallowed_mode: Bitmap of MLO Modes like MLMR, eMLSR which are not allowed.
- * @ieee_link_id_comb: MLO IEEE Link Ids for which above,
- * disallowed_mode_bitmap is applicable.
- * @ieee_link_id: Each 8-bits in ieee_link_id_comb represents one link ID.
- **/
-struct ml_link_disallow_mode_bitmap {
-	uint32_t disallowed_mode;
-	union {
-		uint32_t ieee_link_id_comb;
-		uint8_t ieee_link_id[4];
-	};
 };
 
 /**
@@ -1562,11 +1640,15 @@ struct mlo_link_set_active_req {
  * enum mlo_chip_recovery_type - MLO chip recovery types
  * @MLO_RECOVERY_MODE_0: CRASH_PARTNER_CHIPS & recover all chips
  * @MLO_RECOVERY_MODE_1: Crash & recover asserted chip alone
+ * with SLO and legacy peers on Non-asserted chips
+ * @MLO_RECOVERY_MODE_2: Crash & recover asserted chip alone with
+ * with SLO/legacy and MLO peers on Non-asserted chips
  * @MLO_RECOVERY_MODE_MAX: Max limit for recovery types
  */
 enum mlo_chip_recovery_type {
 	MLO_RECOVERY_MODE_0 = 1,
 	MLO_RECOVERY_MODE_1 = 2,
+	MLO_RECOVERY_MODE_2 = 3,
 
 	/* Add new types above */
 	MLO_RECOVERY_MODE_MAX = 0xf

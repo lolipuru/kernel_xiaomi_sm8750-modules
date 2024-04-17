@@ -691,6 +691,7 @@ static const uint32_t vdev_param_tlv[] = {
 		  VDEV_PARAM_MAX_LI_OF_MODDTIM),
 	PARAM_MAP(vdev_param_moddtim_cnt, VDEV_PARAM_MODDTIM_CNT),
 	PARAM_MAP(vdev_param_telesdtim_cnt, VDEV_PARAM_TELESDTIM_CNT),
+	PARAM_MAP(vdev_param_min_teles_dtim_lvl, VDEV_PARAM_MIN_TELES_DTIM_LVL),
 	PARAM_MAP(vdev_param_max_li_of_moddtim_ms,
 		  VDEV_PARAM_MAX_LI_OF_MODDTIM_MS),
 	PARAM_MAP(vdev_param_dyndtim_cnt, VDEV_PARAM_DYNDTIM_CNT),
@@ -10594,6 +10595,8 @@ static inline void copy_feature_set_info(uint32_t *feature_set_bitmap,
 	WMI_SET_HOST_BAND_CAP(feature_set_bitmap, band_capability);
 	WMI_SET_STA_DUMP_SUPPORT(feature_set_bitmap,
 				 feature_set->sta_dump_support);
+	WMI_SET_NAN_EHT_SUPPORT(feature_set_bitmap,
+				feature_set->is_nan_eht_cap_enable);
 }
 
 /**
@@ -15359,6 +15362,9 @@ extract_service_ready_ext2_tlv(wmi_unified_t wmi_handle, uint8_t *event,
 	param->fw_support_ml_mon =
 	       WMI_TARGET_CAP_ML_MONITOR_MODE_SUPPORT_GET(ev->target_cap_flags);
 
+	param->fw_support_opt_dp_ctrl =
+	   WMI_TARGET_CAP_QDATA_TX_LCE_FILTER_SUPPORT_GET(ev->target_cap_flags);
+
 	extract_svc_rdy_ext2_afc_tlv(ev, param);
 
 	extract_hw_bdf_status(ev);
@@ -15430,6 +15436,67 @@ static QDF_STATUS extract_sar_cap_service_ready_ext_tlv(
 		ext_param->sar_version = sar_caps->active_version;
 	else
 		ext_param->sar_version = 0;
+
+	return QDF_STATUS_SUCCESS;
+}
+
+#ifdef FEATURE_SAR_LIMITS
+/**
+ * wlan_convert_sar_flag() - Convert FW enum to Host enum
+ * @wmi_sar_flag: sar flag enum
+ *
+ * Return: host equivalent sar flag
+ */
+static enum sar_flag wlan_convert_sar_flag(uint32_t wmi_sar_flag)
+{
+	switch (wmi_sar_flag) {
+	case WMI_SAR_SET_CTL_GROUPING_DISABLE:
+		return SAR_SET_CTL_GROUPING_DISABLE;
+	case WMI_SAR_DBS_WITH_BT_DISABLE:
+		return SAR_DBS_WITH_BT_DISABLE;
+	default:
+		return SAR_FLAG_NONE;
+	}
+}
+#else
+static inline
+uint32_t wlan_convert_sar_flag(uint32_t wmi_sar_flag)
+{
+	return 0;
+}
+#endif
+
+/**
+ * extract_sar_cap_service_ready_ext2_tlv() -
+ *       extract SAR cap - flag from service ready event
+ * @wmi_handle: wmi handle
+ * @event: pointer to event buffer
+ * @ext2_param: extended target info
+ *
+ * Return: QDF_STATUS_SUCCESS for success or error code
+ */
+static QDF_STATUS extract_sar_cap_service_ready_ext2_tlv(
+			wmi_unified_t wmi_handle,
+			uint8_t *event,
+			struct wlan_psoc_host_service_ext2_param *ext2_param)
+{
+	WMI_SERVICE_READY_EXT2_EVENTID_param_tlvs *param_buf;
+	wmi_sar_flag_tlv_param *sar_flag_tlv;
+
+	param_buf = (WMI_SERVICE_READY_EXT2_EVENTID_param_tlvs *)event;
+
+	if (!param_buf)
+		return QDF_STATUS_E_INVAL;
+
+	if (!param_buf->num_sar_flags)
+		return QDF_STATUS_E_INVAL;
+
+	sar_flag_tlv = param_buf->sar_flags;
+	if (sar_flag_tlv)
+		ext2_param->sar_flag =
+			wlan_convert_sar_flag(sar_flag_tlv->sar_flags);
+	else
+		ext2_param->sar_flag = 0;
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -22319,6 +22386,8 @@ struct wmi_ops tlv_ops =  {
 				extract_aux_dev_cap_service_ready_ext2_tlv,
 	.extract_sar_cap_service_ready_ext =
 				extract_sar_cap_service_ready_ext_tlv,
+	.extract_sar_cap_service_ready_ext2 =
+				extract_sar_cap_service_ready_ext2_tlv,
 	.extract_pdev_utf_event = extract_pdev_utf_event_tlv,
 	.wmi_set_htc_tx_tag = wmi_set_htc_tx_tag_tlv,
 	.extract_fips_event_data = extract_fips_event_data_tlv,
@@ -23772,6 +23841,15 @@ static void populate_tlv_service(uint32_t *wmi_service)
 				WMI_SERVICE_VDEV_DCS_STATS_SUPPORT;
 	wmi_service[wmi_service_smem_mailbox_dlkm_support] =
 			WMI_SERVICE_SMEM_MAILBOX_SUPPORT;
+	wmi_service[wmi_service_mlo_mode2_recovery_supported] =
+			WMI_SERVICE_MLO_MODE2_RECOVERY_SUPPORTED;
+	wmi_service[wmi_service_dynamic_wsi_remap_support] =
+			WMI_SERVICE_DYNAMIC_WSI_REMAP_SUPPORT;
+
+#ifdef WLAN_FEATURE_NAN
+	wmi_service[wmi_service_nan_pairing_peer_create] =
+				WMI_SERVICE_NAN_PAIRING_PEER_CREATE_BY_HOST;
+#endif
 }
 
 /**

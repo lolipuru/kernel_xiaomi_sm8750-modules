@@ -47,6 +47,7 @@
 #include <target_if_twt.h>
 #include <target_if_scan.h>
 #include "cdp_txrx_ctrl.h"
+#include "wlan_ipa_obj_mgmt_api.h"
 
 static void init_deinit_set_send_init_cmd(struct wlan_objmgr_psoc *psoc,
 					  struct target_psoc_info *tgt_hdl)
@@ -234,6 +235,9 @@ init_deinit_pdev_wsi_stats_info_support(struct wmi_unified *wmi_handle,
 
 static void init_deinit_mlo_tsf_sync_support(struct wmi_unified *wmi_handle,
 					     struct wlan_objmgr_psoc *psoc);
+
+static void init_deinit_pdev_wsi_remap_support(struct wmi_unified *wmi_handle,
+					       struct wlan_objmgr_psoc *psoc);
 
 static int init_deinit_service_ready_event_handler(ol_scn_t scn_handle,
 							uint8_t *event,
@@ -484,6 +488,8 @@ static int init_deinit_service_ready_event_handler(ol_scn_t scn_handle,
 		cdp_soc_set_param(wlan_psoc_get_dp_handle(psoc),
 			DP_SOC_PARAM_MULTI_RX_REORDER_SETUP_SUPPORT, 1);
 
+	init_deinit_pdev_wsi_remap_support(wmi_handle, psoc);
+
 exit:
 	return err_code;
 }
@@ -642,6 +648,9 @@ static int init_deinit_service_ext2_ready_event_handler(ol_scn_t scn_handle,
 					 CDP_FW_SUPPORT_ML_MON, val);
 	if (QDF_IS_STATUS_ERROR(status))
 		target_if_err("Failed to set fw_support_ml_mon");
+
+	wlan_ipa_set_fw_cap_opt_dp_ctrl(
+			psoc, info->service_ext2_param.fw_support_opt_dp_ctrl);
 
 	target_if_regulatory_set_ext_tpc(psoc);
 
@@ -864,7 +873,7 @@ static bool init_deinit_mlo_get_group_id(struct wlan_objmgr_psoc *psoc,
 	return false;
 }
 
-static void init_deinit_mlo_update_soc_ready(struct wlan_objmgr_psoc *psoc)
+void init_deinit_mlo_update_soc_ready(struct wlan_objmgr_psoc *psoc)
 {
 	uint8_t grp_id = 0;
 
@@ -873,9 +882,17 @@ static void init_deinit_mlo_update_soc_ready(struct wlan_objmgr_psoc *psoc)
 			target_if_err("Invalid MLD group id");
 			return;
 		}
+		/* Skip the mlo setup here during fw up phase
+		 * of wsi remap as it will be done later during
+		 * wsi_remap_mlo_setup
+		 */
+		if (psoc->wsi_remap_fw_up_in_progress)
+			return;
 		mlo_setup_update_soc_ready(psoc, grp_id);
 	}
 }
+
+qdf_export_symbol(init_deinit_mlo_update_soc_ready);
 
 static void init_deinit_send_ml_link_ready(struct wlan_objmgr_psoc *psoc,
 					   void *object, void *arg)
@@ -895,16 +912,25 @@ static void init_deinit_send_ml_link_ready(struct wlan_objmgr_psoc *psoc,
 	mlo_setup_link_ready(pdev, grp_id);
 }
 
-static void init_deinit_mlo_update_pdev_ready(struct wlan_objmgr_psoc *psoc,
-					      uint8_t num_radios)
+void init_deinit_mlo_update_pdev_ready(struct wlan_objmgr_psoc *psoc,
+				       uint8_t num_radios)
 {
 	if (!init_deinit_mlo_capable(psoc))
+		return;
+
+	/* Skip the update pdev ready during fw up phase
+	 * of wsi remap, it will be done later during
+	 * wsi_remap_mlo_setup
+	 */
+	if (psoc->wsi_remap_fw_up_in_progress)
 		return;
 
 	wlan_objmgr_iterate_obj_list(psoc, WLAN_PDEV_OP,
 				     init_deinit_send_ml_link_ready,
 				     NULL, 0, WLAN_INIT_DEINIT_ID);
 }
+
+qdf_export_symbol(init_deinit_mlo_update_pdev_ready);
 
 static void
 init_deinit_pdev_wsi_stats_info_support(struct wmi_unified *wmi_handle,
@@ -935,6 +961,22 @@ static void init_deinit_mlo_tsf_sync_support(struct wmi_unified *wmi_handle,
 
 	mlo_update_tsf_sync_support(psoc, mlo_tsf_sync_enab);
 }
+
+static void
+init_deinit_pdev_wsi_remap_support(struct wmi_unified *wmi_handle,
+				   struct wlan_objmgr_psoc *psoc)
+{
+	bool wsi_remap_support = false;
+
+	if (!init_deinit_mlo_capable(psoc))
+		return;
+
+	if (wmi_service_enabled(wmi_handle,
+				wmi_service_dynamic_wsi_remap_support))
+		wsi_remap_support = true;
+
+	mlo_update_wsi_remap_support(psoc, wsi_remap_support);
+}
 #elif defined(WLAN_FEATURE_11BE_MLO) && !defined(WLAN_MLO_MULTI_CHIP)
 static void init_deinit_mlo_update_soc_ready(struct wlan_objmgr_psoc *psoc)
 {}
@@ -957,6 +999,10 @@ static void init_deinit_mlo_tsf_sync_support(struct wmi_unified *wmi_handle,
 	mlo_update_tsf_sync_support(psoc, mlo_tsf_sync_enab);
 }
 
+static void
+init_deinit_pdev_wsi_remap_support(struct wmi_unified *wmi_handle,
+				   struct wlan_objmgr_psoc *psoc)
+{}
 #else
 static void init_deinit_mlo_update_soc_ready(struct wlan_objmgr_psoc *psoc)
 {}
@@ -969,6 +1015,10 @@ init_deinit_pdev_wsi_stats_info_support(struct wmi_unified *wmi_handle,
 {}
 static void init_deinit_mlo_tsf_sync_support(struct wmi_unified *wmi_handle,
 					     struct wlan_objmgr_psoc *psoc)
+{}
+static void
+init_deinit_pdev_wsi_remap_support(struct wmi_unified *wmi_handle,
+				   struct wlan_objmgr_psoc *psoc)
 {}
 #endif /*WLAN_FEATURE_11BE_MLO && WLAN_MLO_MULTI_CHIP*/
 

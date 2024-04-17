@@ -890,7 +890,8 @@ struct spectral_tgt_ops;
  * @sptrlto_register_spectral_wmi_ops: Register Spectral WMI operations
  * @sptrlto_register_spectral_tgt_ops: Register Spectral target operations
  * @sptrlto_register_buffer_cb: Register Spectral buffer callbacks
- * @sptrlto_use_nl_bcast: Get whether to use Netlink broadcast/unicast
+ * @sptrlto_use_broadcast: Set whether to use broadcast/unicast while
+ *                         sending messages to the application layer
  * @sptrlto_deregister_buffer_cb: De-register Spectral buffer callbacks
  * @sptrlto_process_spectral_report: Process spectral report
  * @sptrlto_set_dma_debug: Set DMA debug for Spectral
@@ -948,7 +949,8 @@ struct wlan_lmac_if_sptrl_tx_ops {
 	void (*sptrlto_register_buffer_cb)(
 		struct wlan_objmgr_pdev *pdev,
 		struct spectral_buffer_cb *spectral_buf_cb);
-	bool (*sptrlto_use_nl_bcast)(struct wlan_objmgr_pdev *pdev);
+	QDF_STATUS (*sptrlto_use_broadcast)(struct wlan_objmgr_pdev *pdev,
+					    bool use_bcast);
 	void (*sptrlto_deregister_buffer_cb)(struct wlan_objmgr_pdev *pdev);
 	int (*sptrlto_process_spectral_report)(
 		struct wlan_objmgr_pdev *pdev,
@@ -1646,7 +1648,6 @@ struct wlan_lmac_if_mlo_tx_ops {
 	QDF_STATUS (*send_link_set_bss_params_cmd)(
 			struct wlan_objmgr_psoc *psoc,
 			struct mlo_link_bss_params *param);
-
 #ifdef WLAN_MLO_GLOBAL_SHMEM_SUPPORT
 	struct wlan_lmac_if_global_shmem_local_ops shmem_local_ops;
 #endif
@@ -2440,6 +2441,7 @@ struct wlan_lmac_if_cfr_rx_ops {
  * disabled for a given pdev
  * @sptrlro_spectral_is_feature_disabled_psoc: Check if spectral feature is
  * disabled for a given psoc
+ * @sptrlro_scan_complete_event: Trigger spectral scan complete event
  */
 struct wlan_lmac_if_sptrl_rx_ops {
 	void * (*sptrlro_get_pdev_target_handle)(struct wlan_objmgr_pdev *pdev);
@@ -2456,6 +2458,9 @@ struct wlan_lmac_if_sptrl_rx_ops {
 			struct wlan_objmgr_pdev *pdev);
 	bool (*sptrlro_spectral_is_feature_disabled_psoc)(
 			struct wlan_objmgr_psoc *psoc);
+	QDF_STATUS (*sptrlro_scan_complete_event)
+				(struct wlan_objmgr_pdev *pdev,
+				 struct spectral_scan_event *sptrl_event);
 };
 #endif /* WLAN_CONV_SPECTRAL_ENABLE */
 
@@ -2637,7 +2642,7 @@ struct wlan_lmac_if_dfs_rx_ops {
 			struct wlan_objmgr_pdev *pdev,
 			int precac_timeout);
 	QDF_STATUS (*dfs_set_precac_enable)(struct wlan_objmgr_pdev *pdev,
-			uint32_t value);
+			bool precac_en);
 	QDF_STATUS (*dfs_get_agile_precac_enable)(struct wlan_objmgr_pdev *pdev,
 						  bool *buff);
 #ifdef WLAN_DFS_PRECAC_AUTO_CHAN_SUPPORT

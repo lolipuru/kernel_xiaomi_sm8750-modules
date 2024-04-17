@@ -286,18 +286,18 @@ void dp_mon_filter_h2t_setup(struct dp_soc *soc, struct dp_pdev *pdev,
 }
 
 /**
- * dp_mon_is_lpc_mode() - Check if it's local packets capturing mode
+ * dp_mon_skip_filter_config() - Check if filter config need to be skipped
  * @soc: DP soc context
  *
  * Return: true if yes, false if not
  */
 static inline
-bool dp_mon_is_lpc_mode(struct dp_soc *soc)
+bool dp_mon_skip_filter_config(struct dp_soc *soc)
 {
 	if (soc->cdp_soc.ol_ops->get_con_mode &&
 	    soc->cdp_soc.ol_ops->get_con_mode() ==
 	    QDF_GLOBAL_MISSION_MODE &&
-	    wlan_cfg_get_local_pkt_capture(soc->wlan_cfg_ctx))
+	    !(QDF_MONITOR_FLAG_OTHER_BSS & soc->mon_flags))
 		return true;
 	else
 		return false;
@@ -315,7 +315,7 @@ dp_mon_ht2_rx_ring_cfg(struct dp_soc *soc,
 	uint32_t target_type = hal_get_target_type(soc->hal_soc);
 
 	if (srng_type == DP_MON_FILTER_SRNG_TYPE_RXDMA_BUF &&
-	    dp_mon_is_lpc_mode(soc)) {
+	    dp_mon_skip_filter_config(soc)) {
 		dp_mon_filter_info("skip rxdma_buf filter cfg for lpc mode");
 		return QDF_STATUS_SUCCESS;
 	}
@@ -719,6 +719,7 @@ void dp_mon_filter_adjust(struct dp_pdev *pdev, struct dp_mon_filter *filter)
 	case TARGET_TYPE_KIWI:
 	case TARGET_TYPE_MANGO:
 	case TARGET_TYPE_PEACH:
+	case TARGET_TYPE_WCN7750:
 		filter->tlv_filter.msdu_start = 0;
 		filter->tlv_filter.mpdu_end = 0;
 		filter->tlv_filter.packet_header = 0;
@@ -1011,7 +1012,9 @@ QDF_STATUS dp_mon_start_local_pkt_capture(struct cdp_soc_t *cdp_soc,
 	struct dp_soc *soc = cdp_soc_t_to_dp_soc(cdp_soc);
 	struct dp_pdev *pdev = dp_get_pdev_from_soc_pdev_id_wifi3(soc, pdev_id);
 	struct dp_mon_pdev *mon_pdev;
+	struct dp_mon_mac *mon_mac;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	uint8_t mac_id = 0;
 
 	if (!pdev) {
 		dp_mon_filter_err("pdev Context is null");
@@ -1019,6 +1022,7 @@ QDF_STATUS dp_mon_start_local_pkt_capture(struct cdp_soc_t *cdp_soc,
 	}
 
 	mon_pdev = pdev->monitor_pdev;
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
 	local_pkt_capture_running =
 		dp_mon_get_is_local_pkt_capture_running(cdp_soc, pdev_id);
 	if (local_pkt_capture_running) {
@@ -1031,12 +1035,12 @@ QDF_STATUS dp_mon_start_local_pkt_capture(struct cdp_soc_t *cdp_soc,
 	mon_pdev->fp_ctrl_filter = filter->fp_ctrl;
 	mon_pdev->fp_data_filter = filter->fp_data;
 
-	qdf_spin_lock_bh(&mon_pdev->mon_lock);
+	qdf_spin_lock_bh(&mon_mac->mon_lock);
 	dp_mon_set_local_pkt_capture_rx_filter(pdev, filter);
 	status = dp_mon_filter_update(pdev);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		dp_mon_clear_local_pkt_capture_rx_filter(pdev);
-		qdf_spin_unlock_bh(&mon_pdev->mon_lock);
+		qdf_spin_unlock_bh(&mon_mac->mon_lock);
 		dp_mon_filter_err("local pkt capture set rx filter failed");
 		return status;
 	}
@@ -1044,11 +1048,11 @@ QDF_STATUS dp_mon_start_local_pkt_capture(struct cdp_soc_t *cdp_soc,
 	dp_mon_filter_setup_tx_mon_mode(pdev);
 	status = dp_tx_mon_filter_update(pdev);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		qdf_spin_unlock_bh(&mon_pdev->mon_lock);
+		qdf_spin_unlock_bh(&mon_mac->mon_lock);
 		dp_mon_filter_err("local pkt capture set tx filter failed");
 		return status;
 	}
-	qdf_spin_unlock_bh(&mon_pdev->mon_lock);
+	qdf_spin_unlock_bh(&mon_mac->mon_lock);
 
 	dp_mon_filter_debug("local pkt capture tx filter set");
 
@@ -1064,6 +1068,8 @@ QDF_STATUS dp_mon_stop_local_pkt_capture(struct cdp_soc_t *cdp_soc,
 	struct dp_pdev *pdev = dp_get_pdev_from_soc_pdev_id_wifi3(soc, pdev_id);
 	struct dp_mon_pdev *mon_pdev;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	struct dp_mon_mac *mon_mac;
+	uint8_t mac_id = 0;
 
 	if (!pdev) {
 		dp_mon_filter_err("pdev Context is null");
@@ -1071,6 +1077,7 @@ QDF_STATUS dp_mon_stop_local_pkt_capture(struct cdp_soc_t *cdp_soc,
 	}
 
 	mon_pdev = pdev->monitor_pdev;
+	mon_mac = dp_get_mon_mac(pdev, mac_id);
 	local_pkt_capture_running =
 			dp_mon_get_is_local_pkt_capture_running(cdp_soc, pdev_id);
 	if (!local_pkt_capture_running) {
@@ -1078,20 +1085,20 @@ QDF_STATUS dp_mon_stop_local_pkt_capture(struct cdp_soc_t *cdp_soc,
 		return QDF_STATUS_SUCCESS;
 	}
 
-	qdf_spin_lock_bh(&mon_pdev->mon_lock);
+	qdf_spin_lock_bh(&mon_mac->mon_lock);
 	dp_mon_reset_local_pkt_capture_rx_filter(pdev);
 	status = dp_mon_filter_update(pdev);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		dp_mon_filter_err("local pkt capture set rx filter failed");
-		qdf_spin_unlock_bh(&mon_pdev->mon_lock);
+		qdf_spin_unlock_bh(&mon_mac->mon_lock);
 		return status;
 	}
-	qdf_spin_unlock_bh(&mon_pdev->mon_lock);
+	qdf_spin_unlock_bh(&mon_mac->mon_lock);
 
-	qdf_spin_lock_bh(&mon_pdev->mon_lock);
+	qdf_spin_lock_bh(&mon_mac->mon_lock);
 	dp_mon_filter_reset_tx_mon_mode(pdev);
 	dp_tx_mon_filter_update(pdev);
-	qdf_spin_unlock_bh(&mon_pdev->mon_lock);
+	qdf_spin_unlock_bh(&mon_mac->mon_lock);
 	dp_mon_filter_debug("local pkt capture stopped");
 
 	dp_mon_set_local_pkt_capture_running(mon_pdev, false);

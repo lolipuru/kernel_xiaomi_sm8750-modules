@@ -30,6 +30,7 @@
 #ifdef FEATURE_WDS
 #include "dp_txrx_wds.h"
 #endif
+#include "wlan_ipa_obj_mgmt_api.h"
 
 #if defined(WLAN_MAX_PDEVS) && (WLAN_MAX_PDEVS == 1)
 #define DP_TX_BANK_LOCK_CREATE(lock) qdf_mutex_create(lock)
@@ -385,8 +386,14 @@ void dp_tx_process_htt_completion_be(struct dp_soc *soc,
 					  DP_MOD_ID_HTT_COMP);
 	}
 	switch (tx_status) {
-	case HTT_TX_FW2WBM_TX_STATUS_OK:
 	case HTT_TX_FW2WBM_TX_STATUS_DROP:
+		if (tx_desc->flags & DP_TX_DESC_FLAG_OPT_DP_CTRL) {
+			dp_info("opt_dp_ctrl: pkt dropped in fw, unvote clk");
+			ipa_opt_dpath_disable_clk_req(soc->ctrl_psoc);
+		}
+		fallthrough;
+	case HTT_TX_FW2WBM_TX_STATUS_OK:
+		fallthrough;
 	case HTT_TX_FW2WBM_TX_STATUS_TTL:
 	{
 		uint8_t tid;
@@ -897,10 +904,6 @@ dp_tx_vdev_id_set_hal_tx_desc(uint32_t *hal_tx_desc_cached,
 }
 
 #if defined(WLAN_MCAST_MLO_SAP) && defined(WLAN_DP_MLO_DEV_CTX)
-typedef void dp_ptnr_vdev_iter_func(struct dp_vdev_be *be_vdev,
-					 struct dp_vdev *ptnr_vdev,
-					 void *arg);
-
 /**
  * dp_mlo_iter_ptnr_vdev() - API to iterate through ptnr vdev list
  * @be_soc: dp_soc_be pointer
@@ -913,7 +916,7 @@ typedef void dp_ptnr_vdev_iter_func(struct dp_vdev_be *be_vdev,
  *
  * Return: None
  */
-static void
+void
 dp_mlo_iter_ptnr_vdev(struct dp_soc_be *be_soc,
 		      struct dp_vdev_be *be_vdev,
 		      dp_ptnr_vdev_iter_func func,
@@ -987,21 +990,13 @@ void dp_tx_mlo_mcast_handler_be(struct dp_soc *soc,
 	/* send frame on mcast primary vdev */
 	dp_tx_mlo_mcast_pkt_send(be_vdev, vdev, nbuf);
 
-	if (qdf_unlikely(qdf_atomic_read(&be_vdev->mlo_dev_ctxt->seq_num) >
+	if (qdf_unlikely(qdf_atomic_read(&be_vdev->mlo_dev_ctxt->seq_num) >=
 			 MAX_GSN_NUM))
 		qdf_atomic_set(&be_vdev->mlo_dev_ctxt->seq_num, 0);
 	else
 		qdf_atomic_inc(&be_vdev->mlo_dev_ctxt->seq_num);
 }
 
-#if defined(WLAN_MCAST_MLO_SAP)
-bool dp_tx_mlo_is_mcast_primary_be(struct dp_soc *soc,
-				   struct dp_vdev *vdev)
-{
-	return true;
-}
-
-#else
 bool dp_tx_mlo_is_mcast_primary_be(struct dp_soc *soc,
 				   struct dp_vdev *vdev)
 {
@@ -1012,7 +1007,6 @@ bool dp_tx_mlo_is_mcast_primary_be(struct dp_soc *soc,
 
 	return false;
 }
-#endif
 
 #if defined(CONFIG_MLO_SINGLE_DEV) || defined(WLAN_MCAST_MLO_SAP)
 #if defined(CONFIG_MLO_SINGLE_DEV)
@@ -1172,12 +1166,63 @@ uint8_t dp_sawf_config_be(struct dp_soc *soc, uint32_t *hal_tx_desc_cached,
 	return tid;
 }
 
+#define SAWF_SERVICE_CLASS_SHIFT 0x10
+#define SAWF_SERVICE_CLASS_MASK 0xff
+#define SAWF_MSDUQ_MASK 0x3f
+
+uint8_t dp_sawf_config_fast_send_be(struct dp_soc *soc,
+				    uint32_t *hal_tx_desc_cached,
+				    qdf_nbuf_t nbuf)
+{
+	uint32_t mark = nbuf->mark;
+	uint16_t fw_metadata = 0;
+	uint8_t q_id;
+	uint8_t tid;
+	uint8_t service_id;
+
+	q_id = mark & SAWF_MSDUQ_MASK;
+
+	if (q_id == SAWF_MSDUQ_MASK)
+		return HTT_TX_EXT_TID_INVALID;
+
+	tid = (q_id & (CDP_DATA_TID_MAX - 1));
+
+	if ((q_id >= DP_SAWF_DEFAULT_QUEUE_MIN) &&
+	    (q_id < DP_SAWF_DEFAULT_QUEUE_MAX))
+		return tid;
+
+	service_id = (mark >> SAWF_SERVICE_CLASS_SHIFT) &
+				SAWF_SERVICE_CLASS_MASK;
+
+	HTT_TX_TCL_METADATA_TYPE_V2_SET
+		(fw_metadata, HTT_TCL_METADATA_V2_TYPE_SVC_ID_BASED);
+	HTT_TX_FLOW_METADATA_TID_OVERRIDE_SET(fw_metadata, 1);
+	HTT_TX_TCL_METADATA_SVC_CLASS_ID_SET(fw_metadata, service_id - 1);
+
+	hal_tx_desc_cached[3] = fw_metadata << TCL_DATA_CMD_TCL_CMD_NUMBER_LSB;
+
+	hal_tx_desc_cached[5] |= 1 << TCL_DATA_CMD_FLOW_OVERRIDE_ENABLE_LSB;
+	hal_tx_desc_cached[5] |= DP_TX_FLOW_OVERRIDE_GET(q_id) <<
+		TCL_DATA_CMD_FLOW_OVERRIDE_LSB;
+	hal_tx_desc_cached[5] |= DP_TX_WHO_CLFY_INF_SEL_GET(q_id) <<
+		TCL_DATA_CMD_WHO_CLASSIFY_INFO_SEL_LSB;
+
+	return tid;
+}
 #else
 
 static inline
 uint8_t dp_sawf_config_be(struct dp_soc *soc, uint32_t *hal_tx_desc_cached,
 			  uint16_t *fw_metadata, qdf_nbuf_t nbuf,
 			  struct dp_tx_msdu_info_s *msdu_info)
+{
+	return HTT_TX_EXT_TID_INVALID;
+}
+
+static inline
+uint8_t dp_sawf_config_fast_send_be(struct dp_soc *soc,
+				    uint32_t *hal_tx_desc_cached,
+				    qdf_nbuf_t nbuf)
 {
 	return HTT_TX_EXT_TID_INVALID;
 }
@@ -1508,16 +1553,23 @@ dp_tx_hw_enqueue_be(struct dp_soc *soc, struct dp_vdev *vdev,
 	}
 
 	if (qdf_unlikely(tx_exc_metadata)) {
-		qdf_assert_always((tx_exc_metadata->tx_encap_type ==
-				   CDP_INVALID_TX_ENCAP_TYPE) ||
-				   (tx_exc_metadata->tx_encap_type ==
-				    vdev->tx_encap_type));
+		if (dp_assert_always_internal_stat(
+			(tx_exc_metadata->tx_encap_type ==
+				CDP_INVALID_TX_ENCAP_TYPE) ||
+				(tx_exc_metadata->tx_encap_type ==
+					vdev->tx_encap_type), soc,
+						tx.invld_encap_type))
+			return QDF_STATUS_E_INVAL;
 
 		if (tx_exc_metadata->tx_encap_type == htt_cmn_pkt_type_raw)
-			qdf_assert_always((tx_exc_metadata->sec_type ==
-					   CDP_INVALID_SEC_TYPE) ||
-					   tx_exc_metadata->sec_type ==
-					   vdev->sec_type);
+			if (dp_assert_always_internal_stat(
+				((tx_exc_metadata->sec_type ==
+					CDP_INVALID_SEC_TYPE) ||
+					tx_exc_metadata->sec_type ==
+						vdev->sec_type), soc,
+							tx.invld_sec_type))
+			return QDF_STATUS_E_INVAL;
+
 		dp_get_peer_from_tx_exc_meta(soc, (void *)cached_desc,
 					     tx_exc_metadata,
 					     &ast_idx, &ast_hash);
@@ -2151,8 +2203,8 @@ qdf_nbuf_t dp_tx_fast_send_be(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	hal_tx_desc_cached[5] |= vdev->vdev_id << TCL_DATA_CMD_VDEV_ID_LSB;
 
 	if (qdf_unlikely(dp_sawf_tag_valid_get(nbuf))) {
-		sawf_tid = dp_sawf_config_be(soc, hal_tx_desc_cached,
-					     NULL, nbuf, NULL);
+		sawf_tid = dp_sawf_config_fast_send_be(soc, hal_tx_desc_cached,
+						       nbuf);
 		if (sawf_tid != HTT_TX_EXT_TID_INVALID)
 			tid = sawf_tid;
 	}

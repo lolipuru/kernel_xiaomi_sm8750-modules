@@ -6140,6 +6140,8 @@ typedef enum {
 		   VDEV_PARAM_RATE_DROPDOWN_BMAP),
 	VDEV_PARAM(vdev_param_moddtim_cnt, VDEV_PARAM_MODDTIM_CNT),
 	VDEV_PARAM(vdev_param_telesdtim_cnt, VDEV_PARAM_TELESDTIM_CNT),
+	VDEV_PARAM(vdev_param_min_teles_dtim_lvl,
+		   VDEV_PARAM_MIN_TELES_DTIM_LVL),
 	VDEV_PARAM(vdev_param_max_li_of_moddtim, VDEV_PARAM_MAX_LI_OF_MODDTIM),
 	VDEV_PARAM(vdev_param_dyndtim_cnt, VDEV_PARAM_DYNDTIM_CNT),
 	VDEV_PARAM(vdev_param_enable_disable_rtt_responder_role,
@@ -6698,6 +6700,11 @@ typedef enum {
 	wmi_service_dcs_obss_int_support,
 	wmi_service_vdev_dcs_stats_support,
 	wmi_service_smem_mailbox_dlkm_support,
+	wmi_service_mlo_mode2_recovery_supported,
+	wmi_service_dynamic_wsi_remap_support,
+#ifdef WLAN_FEATURE_NAN
+	wmi_service_nan_pairing_peer_create,
+#endif
 	wmi_services_max,
 } wmi_conv_service_ids;
 #define WMI_SERVICE_UNAVAILABLE 0xFFFF
@@ -6881,6 +6888,7 @@ typedef enum {
  * @num_antennas: Indicates number of antennas supported
  * @sta_dump_support: Indicates sta dump info support
  * @iface_combinations: Iface combination bit map
+ * @is_nan_eht_cap_enable: Indicates if nan eht capability enabled
  */
 struct target_feature_set {
 	WMI_HOST_WIFI_STANDARD wifi_standard;
@@ -6941,6 +6949,7 @@ struct target_feature_set {
 	WMI_HOST_NUM_ANTENNAS num_antennas;
 	bool sta_dump_support;
 	uint32_t iface_combinations;
+	bool is_nan_eht_cap_enable;
 };
 #endif
 

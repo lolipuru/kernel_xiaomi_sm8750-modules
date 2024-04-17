@@ -106,16 +106,6 @@ void ucfg_ipa_set_dp_handle(struct wlan_objmgr_psoc *psoc,
 			       void *dp_soc);
 
 /**
- * ucfg_ipa_set_pdev_id() - register pdev id
- * @psoc: psoc handle
- * @pdev_id: data path txrx pdev id
- *
- * Return: None
- */
-void ucfg_ipa_set_pdev_id(struct wlan_objmgr_psoc *psoc,
-			  uint8_t pdev_id);
-
-/**
  * ucfg_ipa_set_perf_level() - Set IPA perf level
  * @pdev: pdev obj
  * @tx_packets: Number of packets transmitted in the last sample period
@@ -292,12 +282,12 @@ QDF_STATUS ucfg_ipa_resume(struct wlan_objmgr_pdev *pdev);
 
 /**
  * ucfg_ipa_uc_ol_init() - Initialize IPA uC offload
- * @pdev: pdev obj
+ * @psoc: psoc obj
  * @osdev: OS dev
  *
  * Return: QDF STATUS
  */
-QDF_STATUS ucfg_ipa_uc_ol_init(struct wlan_objmgr_pdev *pdev,
+QDF_STATUS ucfg_ipa_uc_ol_init(struct wlan_objmgr_psoc *psoc,
 			       qdf_device_t osdev);
 
 /**
@@ -519,6 +509,21 @@ void ucfg_ipa_set_perf_level_bw(struct wlan_objmgr_pdev *pdev,
  */
 bool ucfg_ipa_is_two_tx_pipes_enabled(void);
 
+#if defined(IPA_OFFLOAD) && defined(QCA_IPA_LL_TX_FLOW_CONTROL)
+/**
+ * ucfg_ipa_event_wq() - Queue WLAN IPA event for later processing
+ * @psoc: psoc handle
+ * @peer_mac_addr: peer mac address
+ * @vdev: vdev object
+ * @wlan_event: wlan event
+ *
+ * Return: None
+ */
+void ucfg_ipa_event_wq(struct wlan_objmgr_psoc *psoc,
+		       uint8_t *peer_mac_addr,
+		       struct wlan_objmgr_vdev *vdev,
+		       enum wlan_ipa_wlan_event wlan_event);
+#endif
 #else
 static inline void ucfg_ipa_set_pld_enable(bool flag)
 {
@@ -561,13 +566,6 @@ static inline bool ucfg_ipa_is_vlan_enabled(void)
 static inline
 QDF_STATUS ucfg_ipa_set_dp_handle(struct wlan_objmgr_psoc *psoc,
 				     void *dp_soc)
-{
-	return QDF_STATUS_SUCCESS;
-}
-
-static inline
-QDF_STATUS ucfg_ipa_set_pdev_id(struct wlan_objmgr_psoc *psoc,
-				uint8_t pdev_id)
 {
 	return QDF_STATUS_SUCCESS;
 }
@@ -674,7 +672,7 @@ QDF_STATUS ucfg_ipa_resume(struct wlan_objmgr_pdev *pdev)
 }
 
 static inline
-QDF_STATUS ucfg_ipa_uc_ol_init(struct wlan_objmgr_pdev *pdev,
+QDF_STATUS ucfg_ipa_uc_ol_init(struct wlan_objmgr_psoc *psoc,
 			       qdf_device_t osdev)
 {
 	return QDF_STATUS_SUCCESS;

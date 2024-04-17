@@ -77,6 +77,19 @@ wifi_radar_validate_common_params(struct pdev_wifi_radar *pwr,
 		return 0;
 	}
 
+	if (params->bandwidth == WIFI_RADAR_PKT_WIDTH320) {
+		wifi_radar_err("320MHz pkt BW not supported");
+		return 0;
+	}
+
+	qdf_spin_lock_bh(&pwr->cal_status_lock);
+	if (params->bandwidth > pwr->channel_bw) {
+		qdf_spin_unlock_bh(&pwr->cal_status_lock);
+		wifi_radar_err("BW configured exceeds channel BW used for cal");
+		return 0;
+	}
+	qdf_spin_unlock_bh(&pwr->cal_status_lock);
+
 	if (params->num_ltf_tx > pwr->max_num_ltf_tx) {
 		wifi_radar_err("Invalid num_ltf_tx, max value %d",
 			       pwr->max_num_ltf_tx);
@@ -103,8 +116,8 @@ wifi_radar_validate_common_params(struct pdev_wifi_radar *pwr,
 		return 0;
 	}
 
-	if (pow2_ltf > (params->num_ltf_tx + params->num_skip_ltf_rx)) {
-		wifi_radar_err("2^ltf_accumulation exceeds skip_ltf + ltf_rx");
+	if ((pow2_ltf + params->num_skip_ltf_rx) >= params->num_ltf_tx) {
+		wifi_radar_err("2^ltf_accum + skip_ltf_rx exceeds ltf_tx");
 		return 0;
 	}
 

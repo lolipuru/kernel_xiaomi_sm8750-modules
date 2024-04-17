@@ -264,7 +264,7 @@ static inline bool dp_skip_msi_cfg(struct dp_soc *soc, int ring_type)
 		if (ring_type != RXDMA_MONITOR_STATUS)
 			return true;
 	} else if (ring_type == RXDMA_MONITOR_STATUS &&
-		   !wlan_cfg_get_local_pkt_capture(soc->wlan_cfg_ctx)) {
+		   !dp_mon_mode_local_pkt_capture(soc)) {
 		return true;
 	}
 
@@ -278,7 +278,7 @@ static inline bool dp_skip_msi_cfg(struct dp_soc *soc, int ring_type)
 		if (ring_type == REO_DST || ring_type == RXDMA_DST)
 			return true;
 	} else if (ring_type == RXDMA_MONITOR_STATUS &&
-		  !wlan_cfg_get_local_pkt_capture(soc->wlan_cfg_ctx)) {
+		  !dp_mon_mode_local_pkt_capture(soc)) {
 		return true;
 	}
 
@@ -885,4 +885,30 @@ void dp_soc_reset_dpdk_intr_mask(struct dp_soc *soc);
 static inline void dp_soc_reset_dpdk_intr_mask(struct dp_soc *soc)
 { }
 #endif
+
+/**
+ * dp_deinit_ipa_rx_alt_refill_buf_ring() - deinit IPA Rx alt refill buffer ring
+ * @soc: DP soc context
+ *
+ * Return: None
+ */
+void dp_deinit_ipa_rx_alt_refill_buf_ring(struct dp_soc *soc);
+
+/**
+ * dp_init_ipa_rx_refill_buf_ring() - init Second Rx refill buffer ring
+ * @soc: DP soc context
+ *
+ * Return: QDF_STATUS_SUCCESS: success
+ *         QDF_STATUS_E_RESOURCES: Error return
+ */
+QDF_STATUS dp_init_ipa_rx_refill_buf_ring(struct dp_soc *soc);
+
+/**
+ * dp_deinit_ipa_rx_refill_buf_ring - deinit second Rx refill buffer ring
+ * @soc: DP soc context
+ *
+ * Return: None
+ */
+void dp_deinit_ipa_rx_refill_buf_ring(struct dp_soc *soc);
+
 #endif /* _DP_RINGS_H_ */

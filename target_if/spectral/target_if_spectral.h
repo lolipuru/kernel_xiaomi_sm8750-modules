@@ -42,6 +42,7 @@
 
 #include <spectral_defs_i.h>
 #include <wmi_unified_param.h>
+#include <qdf_hrtimer.h>
 
 #define FREQ_OFFSET_10MHZ (10)
 #define FREQ_OFFSET_40MHZ (40)
@@ -84,6 +85,10 @@
 #define OFFSET_CH_WIDTH_40	62
 #define OFFSET_CH_WIDTH_80	56
 #define OFFSET_CH_WIDTH_160	50
+
+/* Update SPECTRAL_MAX_FFT_SIZE/SPECTRAL_MIN_FFT_SIZE when target_if
+ * definitions are modified
+ */
 
 /* Min and max for relevant Spectral params */
 #define SPECTRAL_PARAM_FFT_SIZE_MIN_GEN2          (1)
@@ -1045,10 +1050,15 @@ struct spectral_param_properties {
  * @finite_spectral_scan: Indicates the Spectrl scan is finite/infinite
  * @num_reports_expected: Number of Spectral reports expected from target for a
  * finite Spectral scan
+ * @num_reports_requested: Number of Spectral reports requested from target
+ * for a finite Spectral scan
+ * @is_scan_complete: Indicates if spectral scan is completed or not
  */
 struct target_if_finite_spectral_scan_params {
 	bool finite_spectral_scan;
 	uint32_t num_reports_expected;
+	uint32_t num_reports_requested;
+	bool is_scan_complete;
 };
 
 /**
@@ -1189,6 +1199,16 @@ struct spectral_supported_bws {
 int get_supported_sscan_bw_pos(enum phy_ch_width sscan_bw);
 
 /**
+ * struct target_if_spectral_scan_timer - spectral wrapper timer object
+ * @smode: spectral scan mode
+ * @scan_completion_timer: HR timer obj for scan completion timeout
+ */
+struct target_if_spectral_scan_timer {
+	enum spectral_scan_mode smode;
+	qdf_hrtimer_data_t scan_completion_timer;
+};
+
+/**
  * struct target_if_spectral - main spectral structure
  * @pdev_obj: Pointer to pdev
  * @spectral_ops: Target if internal Spectral low level operations table
@@ -1275,7 +1295,8 @@ int get_supported_sscan_bw_pos(enum phy_ch_width sscan_bw);
  * @tlvhdr_size: Expected PHYERR TLV header size, for the given hardware
  * generation
  * @spectral_buf_cb: Spectral buffer callbacks
- * @use_nl_bcast: Whether to use Netlink broadcast/unicast
+ * @use_bcast: Inidication to use broadcast/unicast while
+ *             sending messages to the application layer
  * @send_phy_data: Send data to the application layer for a particular msg type
  * @len_adj_swar: Spectral fft bin length adjustment SWAR related info
  * @timestamp_war: Spectral time stamp WAR related info
@@ -1300,6 +1321,7 @@ int get_supported_sscan_bw_pos(enum phy_ch_width sscan_bw);
  * operating widths
  * @supported_sscan_bw_list: List of supported sscan widths for all sscan modes
  * @data_stats: stats in Spectral data path
+ * @spectral_timer: spectral timer obj wrapper
  */
 struct target_if_spectral {
 	struct wlan_objmgr_pdev *pdev_obj;
@@ -1403,7 +1425,7 @@ struct target_if_spectral {
 	uint8_t                                tag_sscan_fft_exp;
 	uint8_t                                tlvhdr_size;
 	struct spectral_buffer_cb spectral_buf_cb;
-	bool use_nl_bcast;
+	bool use_bcast;
 	int (*send_phy_data)(struct wlan_objmgr_pdev *pdev,
 			     enum spectral_msg_type smsg_type);
 	struct spectral_fft_bin_len_adj_swar len_adj_swar;
@@ -1434,6 +1456,8 @@ struct target_if_spectral {
 	/* Whether a given sscan BW is supported on a given smode */
 	bool supported_sscan_bw_list[SPECTRAL_SCAN_MODE_MAX][CH_WIDTH_MAX];
 	struct spectral_data_stats data_stats;
+	struct target_if_spectral_scan_timer
+				spectral_timer[SPECTRAL_SCAN_MODE_MAX];
 };
 
 /**
@@ -2801,7 +2825,6 @@ target_if_160mhz_delivery_state_change(struct target_if_spectral *spectral,
 				       enum spectral_scan_mode smode,
 				       uint8_t detector_id);
 
-#ifdef OPTIMIZED_SAMP_MESSAGE
 /**
  * target_if_spectral_get_num_fft_bins() - Get number of FFT bins from FFT size
  * according to the Spectral report mode.
@@ -2829,7 +2852,6 @@ target_if_spectral_get_num_fft_bins(uint32_t fft_size,
 		return -EINVAL;
 	}
 }
-#endif /* OPTIMIZED_SAMP_MESSAGE */
 
 #ifdef OPTIMIZED_SAMP_MESSAGE
 /**
@@ -2936,6 +2958,38 @@ QDF_STATUS
 target_if_spectral_is_finite_scan(struct target_if_spectral *spectral,
 				  enum spectral_scan_mode smode,
 				  bool *finite_spectral_scan);
+
+/**
+ * target_if_spectral_scan_complete_event() - API to trigger spectral
+ * scan completion event
+ * @spectral: Pointer to spectral object
+ * @sptrl_event: Pointer to spectral scan event
+ *
+ * Triggers spectral scan completion event to userspace application.
+ *
+ * Return: QDF_STATUS_SUCCESS on success, QDF_STATUS_E_FAILURE on failure
+ */
+QDF_STATUS
+target_if_spectral_scan_complete_event(
+		struct target_if_spectral *spectral,
+		struct spectral_scan_event *sptrl_event);
+
+/**
+ * target_if_spectral_is_scan_complete() - API to check if spectral
+ * scan completed
+ * @spectral: Pointer to Spectral target_if internal private data
+ * @smode: Spectral scan mode
+ * @is_scan_complete: location to store result
+ *
+ * API to check whether spectral scan is completed in case of a finite
+ * scan.
+ *
+ * Return: QDF_STATUS_SUCCESS on success, QDF_STATUS_E_FAILURE on failure
+ */
+QDF_STATUS
+target_if_spectral_is_scan_complete(struct target_if_spectral *spectral,
+				    enum spectral_scan_mode smode,
+				    bool *is_scan_complete);
 
 #ifdef BIG_ENDIAN_HOST
 /**
