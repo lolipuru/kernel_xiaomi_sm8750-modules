@@ -56,7 +56,7 @@
 #include "sde_connector.h"
 #include "sde_vm.h"
 #include "sde_fence.h"
-#include "sde_aiqe_common.h"
+#include "sde_cesta.h"
 
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <linux/firmware/qcom/qcom_scm.h>
@@ -1418,6 +1418,7 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 				priv->phandle.ib_quota[i] ? priv->phandle.ib_quota[i] :
 				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
 
+		sde_cesta_splash_release(DPUID(sde_kms->dev));
 		pm_runtime_put_sync(sde_kms->dev->dev);
 	}
 }
@@ -1509,6 +1510,11 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	vm_ops = sde_vm_get_ops(sde_kms);
 
 	crtc = sde_kms_vm_get_vm_crtc(state);
+
+	if (sde_kms->vm->lastclose_in_progress && !crtc) {
+		sde_dbg_set_hw_ownership_status(false);
+		goto relase_vm;
+	}
 	if (!crtc)
 		return 0;
 
@@ -1518,6 +1524,7 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	if (vm_req != VM_REQ_RELEASE)
 		return 0;
 
+relase_vm:
 	sde_kms_vm_pre_release(sde_kms, state, false);
 	sde_kms_vm_set_sid(sde_kms, 0);
 
@@ -1892,7 +1899,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.set_backlight = dsi_display_set_backlight,
 		.soft_reset   = dsi_display_soft_reset,
 		.pre_kickoff  = dsi_conn_pre_kickoff,
-		.clk_ctrl = dsi_display_clk_ctrl,
+		.clk_ctrl = dsi_display_set_clk_state,
 		.set_power = dsi_display_set_power,
 		.get_mode_info = dsi_conn_get_mode_info,
 		.get_dst_format = dsi_display_get_dst_format,
@@ -1964,10 +1971,12 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 	struct msm_display_info info;
 	struct drm_encoder *encoder;
 	void *display, *connector;
+	struct sde_cesta_client *cesta_client;
 	int i, max_encoders;
 	int rc = 0;
 	u32 dsc_count = 0, mixer_count = 0;
 	u32 max_dp_dsc_count, max_dp_mixer_count;
+	char cesta_client_name[32];
 
 	if (!dev || !priv || !sde_kms) {
 		SDE_ERROR("invalid argument(s)\n");
@@ -1995,7 +2004,10 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
-		encoder = sde_encoder_init(dev, &info);
+		snprintf(cesta_client_name, sizeof(cesta_client_name), "wb%u", i);
+		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+
+		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
 			SDE_ERROR("encoder init failed for wb %d\n", i);
 			continue;
@@ -2037,14 +2049,16 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			SDE_ERROR("dsi get_info %d failed\n", i);
 			continue;
 		}
+		snprintf(cesta_client_name, sizeof(cesta_client_name), "dsi%u", i);
+		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
 
-		encoder = sde_encoder_init(dev, &info);
+		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
 			SDE_ERROR("encoder init failed for dsi %d\n", i);
 			continue;
 		}
 
-		rc = dsi_display_drm_bridge_init(display, encoder);
+		rc = dsi_display_drm_bridge_init(display, encoder, cesta_client);
 		if (rc) {
 			SDE_ERROR("dsi bridge %d init failed, %d\n", i, rc);
 			sde_encoder_destroy(encoder);
@@ -2121,7 +2135,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		}
 
 		info.h_tile_instance[0] = dp_info.intf_idx[0];
-		encoder = sde_encoder_init(dev, &info);
+
+		snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u", i);
+		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+
+		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
 			SDE_ERROR("dp encoder init failed %d\n", i);
 			continue;
@@ -2157,7 +2175,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		for (idx = 0; idx < dp_info.stream_cnt &&
 				priv->num_encoders < max_encoders; idx++) {
 			info.h_tile_instance[0] = dp_info.intf_idx[idx];
-			encoder = sde_encoder_init(dev, &info);
+
+			snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u.%u", i, idx);
+			cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+
+			encoder = sde_encoder_init(dev, &info, cesta_client);
 			if (IS_ERR_OR_NULL(encoder)) {
 				SDE_ERROR("dp mst encoder init failed %d\n", i);
 				continue;
@@ -2400,6 +2422,7 @@ static int sde_kms_postinit(struct msm_kms *kms)
 				SDE_POWER_HANDLE_ENABLE_BUS_AB_QUOTA,
 				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
 
+		sde_cesta_splash_release(DPUID(sde_kms->dev));
 		pm_runtime_put_sync(sde_kms->dev->dev);
 	}
 
@@ -2485,10 +2508,6 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		msm_iounmap(pdev, sde_kms->reg_dma);
 	sde_kms->reg_dma = NULL;
 
-	if (sde_kms->disp_cc)
-		msm_iounmap(pdev, sde_kms->disp_cc);
-	sde_kms->disp_cc = NULL;
-
 	if (sde_kms->vbif[VBIF_NRT])
 		msm_iounmap(pdev, sde_kms->vbif[VBIF_NRT]);
 	sde_kms->vbif[VBIF_NRT] = NULL;
@@ -2504,8 +2523,6 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 	if (sde_kms->dev->primary)
 		sde_reg_dma_deinit(sde_kms->dev->primary->index);
 
-	sde_hw_disp_cc_destroy(sde_kms->hw_disp_cc);
-	sde_kms->hw_disp_cc = NULL;
 	_sde_kms_mmu_destroy(sde_kms);
 }
 
@@ -2939,6 +2956,10 @@ static void sde_kms_lastclose(struct msm_kms *kms)
 
 	sde_kms = to_sde_kms(kms);
 	dev = sde_kms->dev;
+
+	if (sde_kms && sde_kms->vm)
+		sde_kms->vm->lastclose_in_progress = true;
+
 	drm_modeset_acquire_init(&ctx, 0);
 
 	state = drm_atomic_state_alloc(dev);
@@ -2973,6 +2994,9 @@ out_ctx:
 		SDE_ERROR("kms lastclose failed: %d\n", ret);
 
 	SDE_EVT32(ret, SDE_EVTLOG_FUNC_EXIT);
+
+	if (sde_kms && sde_kms->vm)
+		sde_kms->vm->lastclose_in_progress = false;
 	return;
 
 backoff:
@@ -4627,31 +4651,6 @@ static void sde_kms_irq_affinity_notify(
 
 static void sde_kms_irq_affinity_release(struct kref *ref) {}
 
-static void _sde_kms_handle_lut_retention(struct sde_kms *sde_kms)
-{
-	size_t crtc_index = 0;
-	bool retention_enable = false;
-	struct msm_drm_private *dev_private = NULL;
-
-	if (!sde_kms->dev || !sde_kms->dev->num_crtcs || !sde_kms->dev->dev_private ||
-			!sde_kms->hw_disp_cc || !sde_kms->hw_disp_cc->ops.setup_lut_retention)
-		return;
-
-	dev_private = sde_kms->dev->dev_private;
-	for (crtc_index = 0; crtc_index < sde_kms->dev->num_crtcs; crtc_index++) {
-		struct sde_crtc *scrtc = to_sde_crtc(dev_private->crtcs[crtc_index]);
-
-		retention_enable =
-			aiqe_is_client_registered(FEATURE_MDNIE, &scrtc->aiqe_top_level) ||
-			aiqe_is_client_registered(FEATURE_SSRC, &scrtc->aiqe_top_level);
-		if (retention_enable)
-			break;
-	}
-
-	SDE_EVT32(retention_enable);
-	sde_kms->hw_disp_cc->ops.setup_lut_retention(sde_kms->hw_disp_cc, retention_enable);
-}
-
 static void sde_kms_handle_power_event(u32 event_type, void *usr)
 {
 	struct sde_kms *sde_kms = usr;
@@ -4689,7 +4688,6 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 
 		_sde_kms_active_override(sde_kms, true);
 		sde_vbif_axi_halt_request(sde_kms);
-		_sde_kms_handle_lut_retention(sde_kms);
 	}
 }
 
@@ -4959,20 +4957,6 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 			SDE_ERROR("dbg base register sid failed: %d\n", rc);
 	}
 
-	sde_kms->disp_cc = msm_ioremap(platformdev, "disp_cc", "disp_cc");
-	if (IS_ERR(sde_kms->disp_cc)) {
-		sde_kms->disp_cc = NULL;
-		SDE_DEBUG("DISP_CC is not defined");
-	} else {
-		sde_kms->disp_cc_len = msm_iomap_size(platformdev, "disp_cc");
-		rc =  sde_dbg_reg_register_base("disp_cc", sde_kms->disp_cc,
-				sde_kms->disp_cc_len,
-				msm_get_phys_addr(platformdev, "disp_cc"),
-				SDE_DBG_DISP_CC);
-		if (rc)
-			SDE_ERROR("dbg base register disp_cc failed: %d\n", rc);
-	}
-
 error:
 	return rc;
 }
@@ -5049,16 +5033,6 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (rc) {
 		SDE_ERROR("failed: reg dma init failed\n");
 		goto power_error;
-	}
-
-	if (sde_kms->disp_cc) {
-		sde_kms->hw_disp_cc = sde_hw_disp_cc_init(sde_kms->disp_cc,
-				sde_kms->disp_cc_len, sde_kms->catalog);
-		if (IS_ERR_OR_NULL(sde_kms->hw_disp_cc)) {
-			rc = PTR_ERR(sde_kms->hw_disp_cc);
-			SDE_ERROR("sde_hw_disp_cc_init failed: %d\n", rc);
-			goto power_error;
-		}
 	}
 
 	sde_dbg_init_dbg_buses(sde_kms->core_rev);
@@ -5280,6 +5254,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	struct drm_device *dev;
 	struct msm_drm_private *priv;
 	struct platform_device *platformdev;
+	struct sde_cesta_perf_cfg perf_cfg = {0, };
 	int irq_num, rc = -EINVAL;
 
 	if (!kms) {
@@ -5337,6 +5312,14 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	irq_num = platform_get_irq(to_platform_device(sde_kms->dev->dev), 0);
 	SDE_DEBUG("Registering for notification of irq_num: %d\n", irq_num);
 	irq_set_affinity_notifier(irq_num, &sde_kms->affinity_notify);
+
+	perf_cfg.min_bw_kbps = sde_kms->catalog->perf.max_bw_low;
+	perf_cfg.max_bw_kbps = sde_kms->catalog->perf.max_bw_high;
+	perf_cfg.max_core_clk_rate = sde_kms->perf.max_core_clk_rate;
+	perf_cfg.num_ddr_channels = sde_kms->catalog->perf.num_ddr_channels;
+	perf_cfg.dram_efficiency = sde_kms->catalog->perf.dram_efficiency;
+
+	sde_cesta_update_perf_config(DPUID(dev), &perf_cfg);
 
 	if (sde_in_trusted_vm(sde_kms)) {
 		rc = sde_vm_trusted_init(sde_kms);

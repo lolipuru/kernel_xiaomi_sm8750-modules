@@ -21,6 +21,7 @@
 #include <linux/sde_io_util.h>
 #include <linux/interconnect.h>
 #include <linux/remoteproc.h>
+#include <dt-bindings/interconnect/qcom,icc.h>
 
 /* event will be triggered before power handler disable */
 #define SDE_POWER_EVENT_PRE_DISABLE	0x1
@@ -38,22 +39,6 @@
 #define SDE_POWER_EVENT_MMRM_CALLBACK	0x10
 
 #define DATA_BUS_PATH_MAX	0x2
-
-/*
- * The AMC bucket denotes constraints that are applied to hardware when
- * icc_set_bw() completes, whereas the WAKE and SLEEP constraints are applied
- * when the execution environment transitions between active and low power mode.
- */
-#define QCOM_ICC_BUCKET_AMC            0
-#define QCOM_ICC_BUCKET_WAKE           1
-#define QCOM_ICC_BUCKET_SLEEP          2
-#define QCOM_ICC_NUM_BUCKETS           3
-#define QCOM_ICC_TAG_AMC               BIT(QCOM_ICC_BUCKET_AMC)
-#define QCOM_ICC_TAG_WAKE              BIT(QCOM_ICC_BUCKET_WAKE)
-#define QCOM_ICC_TAG_SLEEP             BIT(QCOM_ICC_BUCKET_SLEEP)
-#define QCOM_ICC_TAG_ACTIVE_ONLY       (QCOM_ICC_TAG_AMC | QCOM_ICC_TAG_WAKE)
-#define QCOM_ICC_TAG_ALWAYS            (QCOM_ICC_TAG_AMC | QCOM_ICC_TAG_WAKE |\
-                                        QCOM_ICC_TAG_SLEEP)
 
 /**
  * mdss_bus_vote_type: register bus vote type
@@ -351,6 +336,17 @@ void sde_power_data_bus_bandwidth_ctrl(struct sde_power_handle *phandle,
 		int enable);
 
 /**
+ * sde_power_set_clk_retention() - enable/disable clock retention
+ * @phandle:  power handle containing the resources
+ * @clock_name: clock name
+ * @enable: true to enable clock retention
+ *
+ * Return: none
+ */
+void sde_power_set_clk_retention(struct sde_power_handle *phandle,
+		char *clock_name, bool enable);
+
+/**
  * sde_power_handle_register_event - register a callback function for an event.
  *	Clients can register for multiple events with a single register.
  *	Any block with access to phandle can register for the event
@@ -380,5 +376,11 @@ void sde_power_handle_unregister_event(struct sde_power_handle *phandle,
  * Return:	Pointer to name string if success; NULL otherwise
  */
 const char *sde_power_handle_get_dbus_name(u32 bus_id);
+
+/**
+ * sde_power_mmrm_reserve - requests the mmrm supported clk reservation
+ * @phandle:	pointer to power handle
+ */
+void sde_power_mmrm_reserve(struct sde_power_handle *phandle);
 
 #endif /* _SDE_POWER_HANDLE_H_ */

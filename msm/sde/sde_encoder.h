@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -29,6 +29,7 @@
 #include "sde_kms.h"
 #include "sde_connector.h"
 #include "sde_power_handle.h"
+#include "sde_cesta.h"
 
 /*
  * Two to anticipate panels that can do cmd/vid dynamic switching
@@ -111,11 +112,12 @@ struct sde_encoder_ops {
  * @dev:        Pointer to drm device structure
  * @disp_info:  Pointer to display information structure
  * @ops:        Pointer to encoder ops structure
+ * @cesta_client: Pointer to sde cesta client
  * Returns:     Pointer to newly created drm encoder
  */
 struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
-					      struct msm_display_info *disp_info,
-					      const struct sde_encoder_ops *ops);
+		struct msm_display_info *disp_info, const struct sde_encoder_ops *ops,
+		struct sde_cesta_client *cesta_client);
 
 /*
  * enum sde_enc_rc_states - states that the resource control maintains
@@ -247,6 +249,9 @@ enum sde_sim_qsync_event {
  * @dynamic_irqs_config         bitmask config to enable encoder dynamic irqs
  * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  * @ops:                        Encoder ops from init function
+ * @sde_cesta_client:           Point to sde_cesta client for the encoder.
+ * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
+ *				which requires special handling for cesta.
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -322,6 +327,8 @@ struct sde_encoder_virt {
 
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
+	struct sde_cesta_client *cesta_client;
+	bool cesta_enable_frame;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -510,11 +517,11 @@ bool sde_encoder_check_curr_mode(struct drm_encoder *drm_enc, u32 mode);
  * sde_encoder_init - initialize virtual encoder object
  * @dev:        Pointer to drm device structure
  * @disp_info:  Pointer to display information structure
+ * @cesta_client: Pointer to display cesta client
  * Returns:     Pointer to newly created drm encoder
  */
-struct drm_encoder *sde_encoder_init(
-		struct drm_device *dev,
-		struct msm_display_info *disp_info);
+struct drm_encoder *sde_encoder_init(struct drm_device *dev,
+		struct msm_display_info *disp_info, struct sde_cesta_client *cesta_client);
 
 /**
  * sde_encoder_destroy - destroy previously initialized virtual encoder
@@ -841,6 +848,34 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 int sde_encoder_handle_dma_fence_out_of_order(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_begin_commit - handles begin commit operations in encoder
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_begin_commit(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_complete_commit - handles complete commit operations in encoder
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_complete_commit(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_get_cesta_client - return the SDE CESTA client
+ * @drm_enc: pointer to drm encoder
+ */
+static inline struct sde_cesta_client *sde_encoder_get_cesta_client(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = NULL;
+
+	if (!drm_enc || sde_encoder_in_clone_mode(drm_enc))
+		return NULL;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc->cesta_client;
+}
 
 /**
  * sde_encoder_register_misr_event - register or deregister MISR event

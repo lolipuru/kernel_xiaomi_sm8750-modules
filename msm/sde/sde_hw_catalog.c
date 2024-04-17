@@ -149,6 +149,7 @@
 #define DEFAULT_CPU_MASK			0
 #define DEFAULT_CPU_DMA_LATENCY			PM_QOS_DEFAULT_VALUE
 #define DEFAULT_PPB_BUF_MAX_LINES		4
+#define DEFAULT_BW_UPVOTE_THRESHOLD_NS		600000
 
 /* Uidle values */
 #define SDE_UIDLE_FAL10_EXIT_CNT 128
@@ -2239,8 +2240,10 @@ static int sde_ctl_parse_dt(struct device_node *np,
 			set_bit(SDE_CTL_UIDLE, &ctl->features);
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_700))
 			set_bit(SDE_CTL_UNIFIED_DSPP_FLUSH, &ctl->features);
-		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00)) {
 			set_bit(SDE_CTL_NO_LAYER_EXT, &ctl->features);
+			set_bit(SDE_CTL_CESTA_FLUSH, &ctl->features);
+		}
 	}
 
 	sde_put_dt_props(props);
@@ -2605,6 +2608,9 @@ static int sde_intf_parse_dt(struct device_node *np,
 			set_bit(SDE_INTF_VSYNC_TS_SRC_EN, &intf->features);
 			set_bit(SDE_INTF_TE_LEVEL_TRIGGER, &intf->features);
 		}
+
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_A00))
+			set_bit(SDE_INTF_PANIC_CTRL, &intf->features);
 	}
 
 end:
@@ -5791,7 +5797,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features);
 		set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
 		set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
-		set_bit(SDE_FEATURE_LUT_RETENTION, sde_cfg->features);
+		set_bit(SDE_FEATURE_DS_PU_SUPPORTED, sde_cfg->features);
 		sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
 		sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
 		sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;
@@ -5804,6 +5810,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_4;
 		sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
 		sde_cfg->mdss_hw_block_size = 0x15c;
+		sde_cfg->max_bw_upvote_threshold_ns = DEFAULT_BW_UPVOTE_THRESHOLD_NS;
 		sde_cfg->demura_supported[SSPP_DMA1][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
 		sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
 		sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) | BIT(DEMURA_2);

@@ -123,6 +123,10 @@ module_entry(
             "msm/sde_rsc_hw.c",
             "msm/sde_rsc_hw_v3.c",
          ],
+         "CONFIG_DRM_SDE_CESTA" : [
+            "msm/sde_cesta.c",
+            "msm/sde_cesta_hw.c",
+         ],
          "CONFIG_DRM_MSM_DSI" : [
             "msm/dsi/dsi_phy.c",
             "msm/dsi/dsi_pwr.c",

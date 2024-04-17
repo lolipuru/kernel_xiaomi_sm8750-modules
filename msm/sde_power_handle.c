@@ -7,6 +7,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d]: " fmt, __func__, __LINE__
 
 #include <linux/clk.h>
+#include <linux/clk/qcom.h>
 #include <linux/kernel.h>
 #include <linux/of.h>
 #include <linux/string.h>
@@ -25,6 +26,7 @@
 #include "sde_power_handle.h"
 #include "sde_trace.h"
 #include "sde_dbg.h"
+#include "sde_cesta.h"
 
 #define KBPS2BPS(x) ((x) * 1000ULL)
 
@@ -820,7 +822,7 @@ void sde_power_resource_deinit(struct platform_device *pdev,
 		sde_rsc_client_destroy(phandle->rsc_client);
 }
 
-static void sde_power_mmrm_reserve(struct sde_power_handle *phandle)
+void sde_power_mmrm_reserve(struct sde_power_handle *phandle)
 {
 	int i;
 	struct dss_module_power *mp = &phandle->mp;
@@ -903,15 +905,22 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 				if (rc) {
 					pr_err("failed to set data bus vote id=%d rc=%d\n",
 							i, rc);
-					goto vreg_err;
+					goto bus_err;
 				}
 			}
 		}
+
 		rc = msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg,
 				enable);
 		if (rc) {
 			pr_err("failed to enable vregs rc=%d\n", rc);
-			goto vreg_err;
+			goto bus_err;
+		}
+
+		rc = sde_cesta_resource_enable(SDE_CESTA_INDEX);
+		if (rc) {
+			pr_err("failed to enable sde cesta\n");
+			goto cesta_err;
 		}
 
 		rc = sde_power_scale_reg_bus(phandle, VOTE_INDEX_LOW, true);
@@ -958,9 +967,12 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 		sde_power_rsc_update(phandle, false);
 
 		sde_power_mmrm_reserve(phandle);
+
 		msm_dss_enable_clk(mp->clk_config, mp->num_clk, enable);
 
 		sde_power_scale_reg_bus(phandle, VOTE_INDEX_DISABLE, true);
+
+		sde_cesta_resource_disable(SDE_CESTA_INDEX);
 
 		msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, enable);
 
@@ -985,13 +997,16 @@ clk_err:
 rsc_err:
 	sde_power_scale_reg_bus(phandle, VOTE_INDEX_DISABLE, true);
 reg_bus_hdl_err:
+	sde_cesta_resource_disable(SDE_CESTA_INDEX);
+cesta_err:
 	msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, 0);
-vreg_err:
+bus_err:
 	for (i-- ; i >= 0 && phandle->data_bus_handle[i].data_paths_cnt > 0; i--)
 		_sde_power_data_bus_set_quota(
 			&phandle->data_bus_handle[i],
 			SDE_POWER_HANDLE_DISABLE_BUS_AB_QUOTA,
 			SDE_POWER_HANDLE_DISABLE_BUS_IB_QUOTA);
+
 	SDE_ATRACE_END("sde_power_resource_enable");
 	mutex_unlock(&phandle->phandle_lock);
 	return rc;
@@ -1136,6 +1151,30 @@ struct clk *sde_power_clk_get_clk(struct sde_power_handle *phandle,
 	}
 
 	return clk;
+}
+
+void sde_power_set_clk_retention(struct sde_power_handle *phandle,
+		char *clock_name, bool enable)
+{
+	struct clk *clk = NULL;
+
+	if (!phandle) {
+		pr_err("invalid input power handle\n");
+		return;
+	}
+
+	if (!clock_name) {
+		pr_err("invalid clock\n");
+		return;
+	}
+
+	clk = sde_power_clk_get_clk(phandle, clock_name);
+	if (!clk) {
+		pr_err("invalid clock handle\n");
+		return;
+	}
+
+	qcom_clk_set_flags(clk, enable ? CLKFLAG_RETAIN_MEM : CLKFLAG_NORETAIN_MEM);
 }
 
 struct sde_power_event *sde_power_handle_register_event(

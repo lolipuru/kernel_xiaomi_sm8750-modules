@@ -161,6 +161,7 @@ struct sde_encoder_virt_ops {
  * @add_to_minidump:		Add this phys_enc data to minidumps
  * @disable_autorefresh:	Disable autorefresh
  * @idle_pc_cache_display_status:	caches display status at idle power collapse
+ * @cesta_ctrl_cfg:		Cesta control configuration
  */
 
 struct sde_encoder_phys_ops {
@@ -218,6 +219,8 @@ struct sde_encoder_phys_ops {
 	void (*add_to_minidump)(struct sde_encoder_phys *phys);
 	void (*disable_autorefresh)(struct sde_encoder_phys *phys);
 	void (*idle_pc_cache_display_status)(struct sde_encoder_phys *phys);
+	void (*cesta_ctrl_cfg)(struct sde_encoder_phys *phys, struct sde_cesta_ctrl_cfg *cfg,
+			bool *req_flush, bool *req_scc);
 };
 
 /**
@@ -688,6 +691,12 @@ void sde_encoder_helper_get_jitter_bounds_ns(uint32_t frame_rate,
  */
 int sde_encoder_helper_switch_vsync(struct drm_encoder *drm_enc,
 		bool watchdog_te);
+
+/**
+ * sde_encoder_helper_get_bw_update_time_lines - gets the bandwidth update time in lines
+ * @sde_enc: Pointer to sde encoder structure
+ */
+u32 sde_encoder_helper_get_bw_update_time_lines(struct sde_encoder_virt *sde_enc);
 
 /**
  * sde_encoder_phys_has_role_master_dpu_master_intf - check if role of physical

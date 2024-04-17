@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -61,6 +61,19 @@ struct intf_tear_status {
 	u32 read_line_count;	/* line count for tear init value */
 	u32 write_frame_count;	/* frame count for tear write */
 	u32 write_line_count;	/* line count for tear write */
+};
+
+struct intf_panic_wakeup_cfg {
+	u32 panic_start;
+	u32 panic_window;
+	u32 wakeup_start;
+	u32 wakeup_window;
+};
+
+struct intf_panic_ctrl_cfg {
+	bool enable;
+	u32 panic_level;
+	u32 ext_vfp_start;
 };
 
 struct intf_avr_params {
@@ -162,8 +175,7 @@ struct sde_hw_intf_ops {
 	/**
 	 * enables tear check block
 	 */
-	int (*enable_tearcheck)(struct sde_hw_intf *intf,
-			bool enable);
+	int (*enable_tearcheck)(struct sde_hw_intf *intf, bool enable);
 
 	/**
 	 * updates tearcheck configuration
@@ -303,6 +315,18 @@ struct sde_hw_intf_ops {
 	 */
 	void (*enable_dpu_sync_ctrl)(struct sde_hw_intf *intf,
 			u32 timing_en_mux_sel);
+
+	/**
+	 * Setup the panic & wakup window for cmd-mode CESTA HW clients.
+	 */
+	void (*setup_te_panic_wakeup)(struct sde_hw_intf *intf,
+			struct intf_panic_wakeup_cfg *cfg);
+
+	/**
+	 * Setup the panic ctrl/level for vid-mode CESTA HW clients.
+	 */
+	void (*setup_intf_panic_ctrl)(struct sde_hw_intf *intf,
+			struct intf_panic_ctrl_cfg *cfg);
 };
 
 struct sde_hw_intf {

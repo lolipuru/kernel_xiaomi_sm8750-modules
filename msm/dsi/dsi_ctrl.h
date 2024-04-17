@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -203,12 +203,14 @@ struct dsi_ctrl_interrupts {
  * @hw:                  DSI controller hardware object.
  * @current_state:       Current driver and hardware state.
  * @clk_cb:		 Callback for DSI clock control.
+ * @idle_pc:             Caching the power-collapse state of DPU.
  * @irq_info:            Interrupt information.
  * @recovery_cb:         Recovery call back to SDE.
  * @panel_id_cb:         Callback for reporting panel id.
  * @clk_info:            Clock information.
  * @clk_freq:            DSi Link clock frequency information.
  * @pwr_info:            Power information.
+ * cesta_client:         Cesta client pointer for the display
  * @host_config:         Current host configuration.
  * @mode_bounds:         Boundaries of the default mode ROI.
  *                       Origin is at top left of all CTRLs.
@@ -272,6 +274,7 @@ struct dsi_ctrl {
 	/* Current state */
 	struct dsi_ctrl_state_info current_state;
 	struct clk_ctrl_cb clk_cb;
+	bool idle_pc;
 
 	struct dsi_ctrl_interrupts irq_info;
 	struct dsi_event_cb_info recovery_cb;
@@ -281,6 +284,7 @@ struct dsi_ctrl {
 	struct dsi_ctrl_clk_info clk_info;
 	struct link_clk_freq clk_freq;
 	struct dsi_ctrl_power_info pwr_info;
+	struct sde_cesta_client *cesta_client;
 
 	struct dsi_host_config host_config;
 	struct dsi_rect mode_bounds;

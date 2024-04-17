@@ -15,7 +15,6 @@
 
 struct sde_hw_mdp;
 struct sde_hw_sid;
-struct sde_hw_disp_cc;
 
 /**
  * struct traffic_shaper_cfg: traffic shaper configuration
@@ -283,23 +282,6 @@ struct sde_hw_sid {
 	struct sde_hw_sid_ops ops;
 };
 
-struct sde_hw_disp_cc_ops {
-	/**
-	 * setup_lut_retention - enable or disable LUT retention functionality
-	 * @disp_cc: disp cc hw context
-	 * @enable:  indicates whether LUT retention hardware should be enabled or disabled
-	 */
-	void (*setup_lut_retention)(struct sde_hw_disp_cc *disp_cc, bool enable);
-};
-
-struct sde_hw_disp_cc {
-	/* disp cc base */
-	struct sde_hw_blk_reg_map hw;
-	/* disp cc related control ops */
-	struct sde_hw_disp_cc_ops ops;
-	uint32_t lut_retention_offset;
-};
-
 /**
  * sde_hw_sid_init - initialize the sid blk reg map
  * @addr: Mapped register io address
@@ -323,17 +305,6 @@ void sde_hw_set_rotator_sid(struct sde_hw_sid *sid);
  * @m: Pointer to mdss catalog data
  */
 void sde_hw_set_sspp_sid(struct sde_hw_sid *sid, u32 pipe, u32 vm, struct sde_mdss_cfg *m);
-
-/**
- * sde_hw_disp_cc_init - initialize the disp cc reg map
- * @addr: Mapped register io address
- * @disp_cc_len: Length of block
- * @m: Pointer to mdss catalog data
- */
-struct sde_hw_disp_cc *sde_hw_disp_cc_init(void __iomem *addr,
-		u32 disp_cc_len, const struct sde_mdss_cfg *m);
-
-void sde_hw_disp_cc_destroy(struct sde_hw_disp_cc *disp_cc);
 
 /**
  * sde_hw_mdptop_init - initializes the top driver for the passed idx
