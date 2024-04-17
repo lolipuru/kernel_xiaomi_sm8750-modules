@@ -633,8 +633,8 @@ bool cnss_get_fw_cap(struct device *dev, enum cnss_fw_caps fw_cap)
 
 	switch (fw_cap) {
 	case CNSS_FW_CAP_DIRECT_LINK_SUPPORT:
-		is_supported = !!(plat_priv->fw_caps &
-				  QMI_WLFW_DIRECT_LINK_SUPPORT_V01);
+		is_supported = !!(plat_priv->sku_features &
+				  QMI_WLFW_DIRECT_LINK_SKU_SUPPORT_V01);
 		break;
 	case CNSS_FW_CAP_CALDB_SEG_DDR_SUPPORT:
 		is_supported = !!(plat_priv->fw_caps &

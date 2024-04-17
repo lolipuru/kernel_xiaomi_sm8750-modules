@@ -2924,6 +2924,7 @@ static void cnss_wlfw_fw_init_done_ind_cb(struct qmi_handle *qmi_wlfw,
 {
 	struct cnss_plat_data *plat_priv =
 		container_of(qmi_wlfw, struct cnss_plat_data, qmi_wlfw);
+	const struct wlfw_fw_init_done_ind_msg_v01 *ind_msg = data;
 
 	cnss_pr_dbg("Received QMI WLFW FW initialization done indication\n");
 
@@ -2931,7 +2932,11 @@ static void cnss_wlfw_fw_init_done_ind_cb(struct qmi_handle *qmi_wlfw,
 		cnss_pr_err("Spurious indication\n");
 		return;
 	}
-
+	if (ind_msg->soft_sku_features_valid) {
+		plat_priv->sku_features = ind_msg->soft_sku_features;
+		cnss_pr_dbg("SKU features enabled: %llu",
+			    plat_priv->sku_features);
+	}
 	cnss_driver_event_post(plat_priv, CNSS_DRIVER_EVENT_FW_READY, 0, NULL);
 }
 
