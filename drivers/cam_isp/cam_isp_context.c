@@ -7252,6 +7252,9 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 	if (rc)
 		goto put_ref;
 
+	if (isp_ctx_debug.enable_cdm_cmd_buff_dump)
+		cam_isp_ctx_dump_req(req_isp, 0, 0, NULL, false);
+
 	CAM_DBG(CAM_REQ,
 		"Preprocessing Config req_id %lld successful on ctx %u, link: 0x%x",
 		req->request_id, ctx->ctx_id, ctx->link_hdl);

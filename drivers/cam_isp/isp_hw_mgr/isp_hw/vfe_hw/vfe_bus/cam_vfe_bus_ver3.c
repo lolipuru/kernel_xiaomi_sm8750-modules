@@ -4643,6 +4643,9 @@ static int cam_vfe_bus_ver3_mc_ctxt_sel(
 	reg_val[0] = common_reg->ctxt_sel;
 	reg_val[1] = (ctxt_id << common_reg->mc_write_sel_shift);
 
+	CAM_DBG(CAM_ISP, "CTXT_SEL updated with ctxt_id: %u, val: 0x%x",
+		ctxt_id, reg_val[1]);
+
 	cdm_util_ops = bus_priv->common_data.cdm_util_ops;
 	size = cdm_util_ops->cdm_required_size_reg_random(1);
 
