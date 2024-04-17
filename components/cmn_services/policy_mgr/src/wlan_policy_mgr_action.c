@@ -563,6 +563,11 @@ QDF_STATUS policy_mgr_update_connection_info(struct wlan_objmgr_psoc *psoc,
 	policy_mgr_dump_current_concurrency(psoc);
 	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
 
+	if (mode == QDF_SAP_MODE || mode == QDF_P2P_GO_MODE ||
+	    mode == QDF_STA_MODE || mode == QDF_P2P_CLIENT_MODE)
+		policy_mgr_update_dfs_master_dynamic_enabled(psoc,
+							     false);
+
 	/* do we need to change the HW mode */
 	policy_mgr_check_n_start_opportunistic_timer(psoc);
 
@@ -1791,7 +1796,8 @@ bool policy_mgr_is_safe_channel(struct wlan_objmgr_psoc *psoc,
 	for (j = 0; j < pm_ctx->unsafe_channel_count; j++) {
 		if ((ch_freq == pm_ctx->unsafe_channel_list[j]) &&
 		    (qdf_test_bit(QDF_SAP_MODE, &restriction_mask) ||
-		     !wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(psoc))) {
+		     !wlan_mlme_get_coex_unsafe_chan_nb_user_prefer_for_sap(
+								     psoc))) {
 			is_safe = false;
 			policy_mgr_warn("Freq %d is not safe, restriction mask %lu", ch_freq, restriction_mask);
 			break;
@@ -1846,11 +1852,18 @@ bool policy_mgr_is_safe_channel(struct wlan_objmgr_psoc *psoc,
 #endif
 
 bool policy_mgr_is_sap_freq_allowed(struct wlan_objmgr_psoc *psoc,
+				    enum QDF_OPMODE opmode,
 				    uint32_t sap_freq)
 {
 	uint32_t nan_2g_freq, nan_5g_freq;
 
-	if (policy_mgr_is_safe_channel(psoc, sap_freq))
+	/*
+	 * Ignore safe channel validation when the mode is P2P_GO and user
+	 * configures the corresponding bit in ini coex_unsafe_chan_nb_user_prefer.
+	 */
+	if ((opmode == QDF_P2P_GO_MODE &&
+	     wlan_mlme_get_coex_unsafe_chan_nb_user_prefer_for_p2p_go(psoc)) ||
+	    policy_mgr_is_safe_channel(psoc, sap_freq))
 		return true;
 
 	/*
@@ -2757,6 +2770,253 @@ policy_mgr_is_any_conn_in_transition(struct wlan_objmgr_psoc *psoc)
 	return non_connected || in_link_switch;
 }
 
+#ifdef WLAN_FEATURE_11BE_MLO
+QDF_STATUS
+policy_mgr_ap_csa_request(struct wlan_objmgr_psoc *psoc,
+			  uint8_t vdev_id,
+			  uint32_t curr_ch_freq,
+			  enum sap_csa_reason_code csa_reason,
+			  uint32_t target_chan_freq,
+			  enum phy_ch_width target_bw,
+			  bool forced,
+			  bool always_wait_set_link)
+{
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	struct defer_csa_request *defer_request;
+	QDF_STATUS status;
+	struct ml_nlink_change_event data;
+	struct sta_ap_intf_check_work_ctx *work_info;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx) {
+		policy_mgr_err("Invalid context");
+		return QDF_STATUS_E_INVAL;
+	}
+	work_info = pm_ctx->sta_ap_intf_check_work_info;
+	if (!work_info) {
+		policy_mgr_err("Invalid work_info context");
+		return QDF_STATUS_E_INVAL;
+	}
+	if (!wlan_mlme_is_aux_emlsr_support(psoc))
+		return QDF_STATUS_SUCCESS;
+
+	qdf_mutex_acquire(&pm_ctx->qdf_conc_list_lock);
+	defer_request = &work_info->defer_csa_request;
+	if (defer_request->target_chan_freq) {
+		policy_mgr_debug("has pending csa vdev %d reason %d %d to %d forced %d",
+				 defer_request->vdev_id,
+				 defer_request->csa_reason,
+				 defer_request->curr_ch_freq,
+				 defer_request->target_chan_freq,
+				 defer_request->forced);
+		qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
+		return QDF_STATUS_E_BUSY;
+	}
+
+	if (pm_ctx->defer_thread == qdf_get_current_task())
+		always_wait_set_link = true;
+	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
+
+	qdf_mem_zero(&data, sizeof(data));
+	data.evt.csa_start.curr_ch_freq = curr_ch_freq;
+	data.evt.csa_start.tgt_ch_freq = target_chan_freq;
+	data.evt.csa_start.wait_set_link = always_wait_set_link;
+	status =
+	ml_nlink_conn_change_notify(psoc, vdev_id,
+				    ml_nlink_ap_csa_start_evt, &data);
+	/* If always_wait_set_link is true, the set link request
+	 * will be executed in same thread context, no need to
+	 * defer the CSA request.
+	 */
+	if (status != QDF_STATUS_E_PENDING || always_wait_set_link)
+		return status;
+
+	/* If status is QDF_STATUS_E_PENDING, set link request is
+	 * needed to disable EMLSR, then csa request needs to
+	 * be executed in workthread.
+	 */
+	qdf_mutex_acquire(&pm_ctx->qdf_conc_list_lock);
+	defer_request = &work_info->defer_csa_request;
+	defer_request->vdev_id = vdev_id;
+	defer_request->csa_reason = csa_reason;
+	defer_request->curr_ch_freq = curr_ch_freq;
+	defer_request->target_chan_freq = target_chan_freq;
+	defer_request->target_bw = target_bw;
+	defer_request->forced = forced;
+	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
+
+	policy_mgr_debug("defer csa for vdev %d reason %d %d to %d forced %d",
+			 defer_request->vdev_id,
+			 defer_request->csa_reason,
+			 defer_request->curr_ch_freq,
+			 defer_request->target_chan_freq,
+			 defer_request->forced);
+
+	if (!qdf_delayed_work_start(&pm_ctx->sta_ap_intf_check_work, 0))
+		policy_mgr_debug("sta_ap check_work already queued");
+
+	return QDF_STATUS_E_PENDING;
+}
+
+void policy_mgr_ap_csa_end(struct wlan_objmgr_psoc *psoc,
+			   uint8_t vdev_id,
+			   bool failed,
+			   bool update_target)
+{
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	struct ml_nlink_change_event data;
+	struct sta_ap_intf_check_work_ctx *work_info;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx) {
+		policy_mgr_err("Invalid context");
+		return;
+	}
+	work_info = pm_ctx->sta_ap_intf_check_work_info;
+	if (!work_info) {
+		policy_mgr_err("Invalid work_info context");
+		return;
+	}
+	if (!wlan_mlme_is_aux_emlsr_support(psoc))
+		return;
+
+	qdf_mutex_acquire(&pm_ctx->qdf_conc_list_lock);
+	qdf_mem_zero(&work_info->defer_csa_request,
+		     sizeof(struct defer_csa_request));
+	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
+
+	qdf_mem_zero(&data, sizeof(data));
+	data.evt.csa_end.csa_failed = failed;
+	data.evt.csa_end.update_target = update_target;
+	status =
+	ml_nlink_conn_change_notify(psoc, vdev_id,
+				    ml_nlink_ap_csa_end_evt, &data);
+}
+
+void
+policy_mgr_flush_deferred_csa(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id)
+{
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	struct sta_ap_intf_check_work_ctx *work_info;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx) {
+		policy_mgr_err("Invalid context");
+		return;
+	}
+	work_info = pm_ctx->sta_ap_intf_check_work_info;
+	if (!work_info) {
+		policy_mgr_err("Invalid work_info context");
+		return;
+	}
+	if (!wlan_mlme_is_aux_emlsr_support(psoc))
+		return;
+
+	qdf_mutex_acquire(&pm_ctx->qdf_conc_list_lock);
+	if (work_info->defer_csa_request.target_chan_freq &&
+	    (vdev_id == WLAN_INVALID_VDEV_ID ||
+	     vdev_id == work_info->defer_csa_request.vdev_id))
+		qdf_mem_zero(&work_info->defer_csa_request,
+			     sizeof(struct defer_csa_request));
+	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
+}
+
+static QDF_STATUS
+policy_mgr_proc_deferred_csa(struct wlan_objmgr_psoc *psoc, bool *handled)
+{
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	QDF_STATUS status;
+	struct wlan_objmgr_vdev *vdev;
+	struct defer_csa_request defer_request;
+	struct sta_ap_intf_check_work_ctx *work_info;
+	uint8_t conn_idx;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx) {
+		policy_mgr_err("Invalid context");
+		return QDF_STATUS_E_INVAL;
+	}
+	work_info = pm_ctx->sta_ap_intf_check_work_info;
+	if (!work_info) {
+		policy_mgr_err("Invalid work_info context");
+		return QDF_STATUS_E_INVAL;
+	}
+	if (!wlan_mlme_is_aux_emlsr_support(psoc))
+		return QDF_STATUS_SUCCESS;
+
+	qdf_mutex_acquire(&pm_ctx->qdf_conc_list_lock);
+	if (!work_info->defer_csa_request.target_chan_freq) {
+		qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
+		return QDF_STATUS_SUCCESS;
+	}
+	qdf_mem_copy(&defer_request, &work_info->defer_csa_request,
+		     sizeof(struct defer_csa_request));
+	qdf_mem_zero(&work_info->defer_csa_request,
+		     sizeof(struct defer_csa_request));
+	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
+
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(
+			psoc, defer_request.vdev_id,
+			WLAN_POLICY_MGR_ID);
+	if (!vdev) {
+		policy_mgr_err("vdev %d: not found",
+			       defer_request.vdev_id);
+		status = QDF_STATUS_E_INVAL;
+		goto end;
+	}
+	conn_idx =
+	policy_mgr_get_connection_for_vdev_id(psoc,
+					      defer_request.vdev_id);
+	if (conn_idx == MAX_NUMBER_OF_CONC_CONNECTIONS) {
+		policy_mgr_err("vdev %d not in conn tbl",
+			       defer_request.vdev_id);
+		status = QDF_STATUS_E_INVAL;
+		goto end;
+	}
+
+	policy_mgr_debug("proc deferred csa vdev %d reason %d tgt %d bw %d forced %d",
+			 defer_request.vdev_id,
+			 defer_request.csa_reason,
+			 defer_request.target_chan_freq,
+			 defer_request.target_bw,
+			 defer_request.forced);
+
+	if (pm_ctx->hdd_cbacks.wlan_hdd_set_sap_csa_reason)
+		pm_ctx->hdd_cbacks.wlan_hdd_set_sap_csa_reason(
+					psoc,
+					defer_request.vdev_id,
+					defer_request.csa_reason);
+	status = policy_mgr_change_sap_channel_with_csa(
+				psoc,
+				defer_request.vdev_id,
+				defer_request.target_chan_freq,
+				defer_request.target_bw,
+				defer_request.forced);
+
+	if (QDF_IS_STATUS_SUCCESS(status)) {
+		*handled = true;
+	} else {
+		policy_mgr_debug("status %d vdev %d",
+				 status, defer_request.vdev_id);
+		policy_mgr_ap_csa_end(psoc, defer_request.vdev_id,
+				      true, true);
+	}
+
+end:
+	if (vdev)
+		wlan_objmgr_vdev_release_ref(vdev, WLAN_POLICY_MGR_ID);
+
+	return status;
+}
+#else
+static QDF_STATUS
+policy_mgr_proc_deferred_csa(struct wlan_objmgr_psoc *psoc, bool *handled)
+{
+	return QDF_STATUS_SUCCESS;
+}
+#endif
+
 static void __policy_mgr_check_sta_ap_concurrent_ch_intf(
 				struct policy_mgr_psoc_priv_obj *pm_ctx)
 {
@@ -2766,16 +3026,33 @@ static void __policy_mgr_check_sta_ap_concurrent_ch_intf(
 	uint32_t op_ch_freq_list[MAX_NUMBER_OF_CONC_CONNECTIONS];
 	uint8_t vdev_id[MAX_NUMBER_OF_CONC_CONNECTIONS];
 	struct sta_ap_intf_check_work_ctx *work_info;
+	bool handled = false;
 
 	if (!pm_ctx) {
 		policy_mgr_err("Invalid context");
 		return;
 	}
 	work_info = pm_ctx->sta_ap_intf_check_work_info;
+	if (!work_info) {
+		policy_mgr_err("Invalid work_info context");
+		return;
+	}
+
+	pm_ctx->defer_thread = qdf_get_current_task();
+	if (work_info->defer_csa_request.target_chan_freq) {
+		status = policy_mgr_proc_deferred_csa(pm_ctx->psoc, &handled);
+		if (status == QDF_STATUS_SUCCESS && handled) {
+			policy_mgr_debug("deferred csa is handled");
+			goto end;
+		} else if (QDF_IS_STATUS_ERROR(status)) {
+			policy_mgr_debug("deferred csa failed %d", status);
+			goto end;
+		}
+	}
 
 	if (work_info->nan_force_scc_in_progress) {
 		policy_mgr_nan_sap_post_enable_conc_check(pm_ctx->psoc);
-		return;
+		goto end;
 	}
 	/*
 	 * Check if force scc is required for GO + GO case. vdev id will be
@@ -2881,6 +3158,7 @@ static void __policy_mgr_check_sta_ap_concurrent_ch_intf(
 
 end:
 	pm_ctx->last_disconn_sta_freq = 0;
+	pm_ctx->defer_thread = NULL;
 }
 
 void policy_mgr_check_sta_ap_concurrent_ch_intf(void *data)
@@ -3211,14 +3489,14 @@ void policy_mgr_check_concurrent_intf_and_restart_sap(
 	}
 
 	/*
+	 * This is to check the cases where STA got disconnected or
+	 * sta is present on some valid channel where SAP evaluation/restart
+	 * might be needed.
 	 * force SCC with STA+STA+SAP will need some additional logic
 	 */
 	cc_count = policy_mgr_get_mode_specific_conn_info(
 				psoc, &op_ch_freq_list[cc_count],
 				&vdev_id[cc_count], PM_STA_MODE);
-	if (!cc_count) {
-		policy_mgr_debug("Could not get STA operating channel&vdevid");
-	}
 
 	sta_check = !cc_count ||
 		    policy_mgr_valid_sta_channel_check(psoc, op_ch_freq_list[0]);
@@ -3227,16 +3505,30 @@ void policy_mgr_check_concurrent_intf_and_restart_sap(
 	cc_count = policy_mgr_get_mode_specific_conn_info(
 				psoc, &op_ch_freq_list[cc_count],
 				&vdev_id[cc_count], PM_P2P_CLIENT_MODE);
-	if (!cc_count)
-		policy_mgr_debug("Could not get GC operating channel&vdevid");
 
 	gc_check = !!cc_count;
-	policy_mgr_debug("gc_check: %d", gc_check);
 
 	mcc_to_scc_switch =
 		policy_mgr_get_mcc_to_scc_switch_mode(psoc);
-	policy_mgr_debug("MCC to SCC switch: %d chan: %d",
-			 mcc_to_scc_switch, op_ch_freq_list[0]);
+	policy_mgr_debug("MCC to SCC switch: %d chan: %d sta_check: %d, gc_check: %d",
+			 mcc_to_scc_switch, op_ch_freq_list[0],
+			 sta_check, gc_check);
+
+	cc_count = 0;
+	cc_count = policy_mgr_get_mode_specific_conn_info(
+				psoc, &op_ch_freq_list[cc_count],
+				&vdev_id[cc_count], PM_SAP_MODE);
+
+	/* SAP + SAP case needs additional handling */
+	if (cc_count == 1 && !is_acs_mode &&
+	    target_psoc_get_sap_coex_fixed_chan_cap(
+			wlan_psoc_get_tgt_if_handle(psoc)) &&
+	    !policy_mgr_is_safe_channel(psoc, op_ch_freq_list[0])) {
+		policy_mgr_debug("Avoid channel switch as it's allowed to operate on unsafe channel: %d",
+				 op_ch_freq_list[0]);
+		return;
+	}
+
 sap_restart:
 	/*
 	 * If sta_sap_scc_on_dfs_chan is true then standalone SAP is not

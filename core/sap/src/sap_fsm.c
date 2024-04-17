@@ -165,6 +165,10 @@ static uint8_t *sap_hdd_event_to_string(eSapHddEvent event)
 #endif
 	CASE_RETURN_STRING(eSAP_ACS_CHANNEL_SELECTED);
 	CASE_RETURN_STRING(eSAP_ECSA_CHANGE_CHAN_IND);
+	CASE_RETURN_STRING(eSAP_CHANNEL_CHANGE_RESP);
+	CASE_RETURN_STRING(eSAP_DFS_NEXT_CHANNEL_REQ);
+	CASE_RETURN_STRING(eSAP_STOP_BSS_DUE_TO_NO_CHNL);
+	CASE_RETURN_STRING(eSAP_CHANNEL_SWITCH_STARTED_NOTIFY);
 	default:
 		return "eSAP_HDD_EVENT_UNKNOWN";
 	}
@@ -914,10 +918,11 @@ sap_chan_bond_dfs_sub_chan(struct sap_context *sap_context,
 }
 
 uint32_t sap_select_default_oper_chan(struct mac_context *mac_ctx,
-				      struct sap_acs_cfg *acs_cfg)
+				      struct sap_context *sap_ctx)
 {
 	uint16_t i;
 	uint32_t freq0 = 0, freq1 = 0, freq2 = 0, default_freq;
+	struct sap_acs_cfg *acs_cfg = sap_ctx->acs_cfg;
 
 	if (!acs_cfg)
 		return 0;
@@ -926,7 +931,8 @@ uint32_t sap_select_default_oper_chan(struct mac_context *mac_ctx,
 		if (mac_ctx->mlme_cfg->acs.force_sap_start) {
 			sap_debug("SAP forced, freq selected %d",
 				  acs_cfg->master_freq_list[0]);
-			return acs_cfg->master_freq_list[0];
+			default_freq = acs_cfg->master_freq_list[0];
+			goto selected_default_freq;
 		} else {
 			sap_debug("No channel left for operation");
 			return 0;
@@ -969,6 +975,16 @@ uint32_t sap_select_default_oper_chan(struct mac_context *mac_ctx,
 
 	sap_debug("default freq %d chosen from %d %d %d %d", default_freq,
 		  freq0, freq1, freq2, acs_cfg->freq_list[0]);
+
+selected_default_freq:
+
+	/*
+	 * Check if the selected frequency is valid for ll_lt sap or not,
+	 * If it is not valid for ll_lt_sap, then overwrite this frequency
+	 */
+	default_freq = wlan_ll_lt_sap_override_freq(mac_ctx->psoc,
+						    sap_ctx->vdev_id,
+						    default_freq);
 
 	return default_freq;
 }
@@ -1291,7 +1307,8 @@ validation_done:
 	if ((sap_context->acs_cfg->acs_mode ||
 	     policy_mgr_restrict_sap_on_unsafe_chan(mac_ctx->psoc)) &&
 	    !policy_mgr_is_sap_freq_allowed(mac_ctx->psoc,
-					    sap_context->chan_freq)) {
+			wlan_vdev_mlme_get_opmode(sap_context->vdev),
+			sap_context->chan_freq)) {
 		sap_warn("Abort SAP start due to unsafe channel");
 		return QDF_STATUS_E_ABORTED;
 	}
@@ -1598,7 +1615,7 @@ QDF_STATUS sap_channel_sel(struct sap_context *sap_context)
 			sap_info("scan request fail %d SAP Configuring default ch, Ch_freq=%d",
 				 qdf_ret_status, sap_context->chan_freq);
 			default_op_freq = sap_select_default_oper_chan(
-						mac_ctx, sap_context->acs_cfg);
+						mac_ctx, sap_context);
 			wlansap_set_acs_ch_freq(sap_context, default_op_freq);
 
 			if (sap_context->freq_list) {
@@ -2472,8 +2489,8 @@ QDF_STATUS sap_signal_hdd_event(struct sap_context *sap_ctx,
 	if (!sap_ap_event)
 		return QDF_STATUS_E_NOMEM;
 
-	sap_debug("SAP event callback event = %s",
-		  sap_hdd_event_to_string(sap_hddevent));
+	sap_debug("SAP event callback event = %s(%d)",
+		  sap_hdd_event_to_string(sap_hddevent), sap_hddevent);
 
 	switch (sap_hddevent) {
 	case eSAP_STA_ASSOC_IND:
@@ -2825,15 +2842,11 @@ QDF_STATUS sap_signal_hdd_event(struct sap_context *sap_ctx,
 			qdf_mem_free(sap_ap_event);
 			return QDF_STATUS_E_INVAL;
 		}
-		sap_debug("SAP event callback event = %s",
-			  "eSAP_ECSA_CHANGE_CHAN_IND");
 		sap_ap_event->sapHddEventCode = eSAP_ECSA_CHANGE_CHAN_IND;
 		sap_ap_event->sapevt.sap_chan_cng_ind.new_chan_freq =
 					   csr_roaminfo->target_chan_freq;
 		break;
 	case eSAP_DFS_NEXT_CHANNEL_REQ:
-		sap_debug("SAP event callback event = %s",
-			  "eSAP_DFS_NEXT_CHANNEL_REQ");
 		sap_ap_event->sapHddEventCode = eSAP_DFS_NEXT_CHANNEL_REQ;
 		break;
 	case eSAP_STOP_BSS_DUE_TO_NO_CHNL:
@@ -2860,8 +2873,6 @@ QDF_STATUS sap_signal_hdd_event(struct sap_context *sap_ctx,
 				sap_ctx->ch_params.mhz_freq_seg1;
 		sap_update_cac_history(mac_ctx, sap_ctx,
 				       sap_hddevent);
-		sap_debug("SAP event callback event = %s",
-			  "eSAP_CHANNEL_CHANGE_RESP");
 		break;
 
 	case eSAP_CHANNEL_SWITCH_STARTED_NOTIFY:
@@ -3772,7 +3783,9 @@ bool wlansap_validate_channel_post_csa(mac_handle_t mac_handle,
 	     (!policy_mgr_restrict_sap_on_unsafe_chan(mac_ctx->psoc) ||
 	      target_psoc_get_sap_coex_fixed_chan_cap(
 		      wlan_psoc_get_tgt_if_handle(mac_ctx->psoc)))) ||
-	    (policy_mgr_is_sap_freq_allowed(mac_ctx->psoc, sap_ctx->chan_freq) &&
+	    (policy_mgr_is_sap_freq_allowed(mac_ctx->psoc,
+				wlan_vdev_mlme_get_opmode(sap_ctx->vdev),
+				sap_ctx->chan_freq) &&
 	     !wlan_reg_is_disable_for_pwrmode(mac_ctx->pdev, sap_ctx->chan_freq,
 					      REG_CURRENT_PWR_MODE)))
 		return true;

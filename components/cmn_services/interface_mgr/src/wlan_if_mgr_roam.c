@@ -814,7 +814,8 @@ static void if_mgr_update_candidate(struct wlan_objmgr_psoc *psoc,
 
 	if (!mlme_get_bss_11be_allowed(psoc, &candidate_info->peer_addr,
 				       attr.ie_data, attr.ie_length) ||
-	    wlan_vdev_mlme_get_user_dis_eht_flag(vdev)) {
+	    wlan_vdev_mlme_get_user_dis_eht_flag(vdev) ||
+	    !wlan_reg_phybitmap_support_11be(wlan_vdev_get_pdev(vdev))) {
 		scan_entry->ie_list.multi_link_bv = NULL;
 		scan_entry->ie_list.ehtcap = NULL;
 		scan_entry->ie_list.ehtop = NULL;
@@ -900,15 +901,6 @@ QDF_STATUS if_mgr_validate_candidate(struct wlan_objmgr_vdev *vdev,
 		return QDF_STATUS_E_INVAL;
 	}
 
-	/*
-	 * This is a temporary check and will be removed once ll_lt_sap CSA
-	 * support is added.
-	 */
-	if (policy_mgr_get_ll_lt_sap_freq(psoc) == chan_freq) {
-		ifmgr_debug("STA connection not allowed on LL_LT_SAP freq %d",
-			    chan_freq);
-		return QDF_STATUS_E_INVAL;
-	}
 	/*
 	 * Ignore the BSS if any other vdev is already connected to it.
 	 */

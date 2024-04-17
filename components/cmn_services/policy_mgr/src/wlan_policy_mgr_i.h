@@ -25,10 +25,12 @@
 #include "qdf_mc_timer.h"
 #include "qdf_lock.h"
 #include "qdf_defer.h"
+#include "qdf_threads.h"
 #include "wlan_reg_services_api.h"
 #include "cds_ieee80211_common_i.h"
 #include "qdf_delayed_work.h"
 #define DBS_OPPORTUNISTIC_TIME   5
+#define EMLSR_OPPORTUNISTIC_TIME   5
 
 #define POLICY_MGR_SER_CMD_TIMEOUT 4000
 
@@ -371,6 +373,7 @@ struct policy_mgr_cfg {
  * @user_cfg:
  * @unsafe_channel_list: LTE coex channel freq avoidance list
  * @unsafe_channel_count: LTE coex channel avoidance list count
+ * @defer_thread: the current sta_ap_intf_check_work thread object ptr
  * @sta_ap_intf_check_work_info: Info related to sta_ap_intf_check_work
  * @cur_conc_system_pref:
  * @opportunistic_update_done_evt: qdf event to synchronize host
@@ -384,6 +387,8 @@ struct policy_mgr_cfg {
  * @dynamic_dfs_master_disabled: current state of dynamic dfs master
  * @link_in_progress: To track if set link is in progress
  * @set_link_update_done_evt: qdf event to synchronize set link
+ * @emlsr_opportunistic_timer: Timer to restore eMLSR mode
+ * which were previously disabled by AP start/STA start/CSA.
  * @active_vdev_bitmap: Active vdev id bitmap
  * @inactive_vdev_bitmap: Inactive vdev id bitmap
  * @restriction_mask:
@@ -422,6 +427,7 @@ struct policy_mgr_psoc_priv_obj {
 	struct policy_mgr_user_cfg user_cfg;
 	uint32_t unsafe_channel_list[NUM_CHANNELS];
 	uint16_t unsafe_channel_count;
+	qdf_thread_t *defer_thread;
 	struct sta_ap_intf_check_work_ctx *sta_ap_intf_check_work_info;
 	uint8_t cur_conc_system_pref;
 	qdf_event_t opportunistic_update_done_evt;
@@ -435,6 +441,7 @@ struct policy_mgr_psoc_priv_obj {
 #ifdef WLAN_FEATURE_11BE_MLO
 	qdf_atomic_t link_in_progress;
 	qdf_event_t set_link_update_done_evt;
+	qdf_mc_timer_t emlsr_opportunistic_timer;
 #endif
 	uint32_t active_vdev_bitmap;
 	uint32_t inactive_vdev_bitmap;
@@ -792,6 +799,25 @@ void policy_mgr_pdev_set_hw_mode_cb(uint32_t status,
 				uint32_t request_id);
 
 #ifdef WLAN_FEATURE_11BE_MLO
+/**
+ * policy_mgr_allow_non_force_link_bitmap() - Check non force
+ * link bitmap are allowed or not.
+ * @psoc: PSOC object information
+ * @vdev: vdev object
+ * @no_forced_bitmap: no force link bitmap
+ * @force_inactive_bitmap: force inactive link bimap
+ *
+ * Check the non force link bitmap are allowed or not.
+ *
+ * Return: true if allow to "no force" and force inactive links.
+ */
+bool
+policy_mgr_allow_non_force_link_bitmap(
+		struct wlan_objmgr_psoc *psoc,
+		struct wlan_objmgr_vdev *vdev,
+		uint16_t no_forced_bitmap,
+		uint16_t force_inactive_bitmap);
+
 void
 policy_mgr_dump_disabled_ml_links(struct policy_mgr_psoc_priv_obj *pm_ctx);
 

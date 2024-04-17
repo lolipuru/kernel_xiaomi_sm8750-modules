@@ -923,6 +923,7 @@ struct wma_pf_sym_hist {
  * @sta_max_li_mod_dtim_ms: station max listen interval in ms
  * @staModDtim: station mode DTIM
  * @staTelesDtim: station tetescopic DTIM
+ * @minTelesDtimlvl: minimum telescopic DTIM level
  * @staDynamicDtim: station dynamic DTIM
  * @hw_bd_id: hardware board id
  * @hw_bd_info: hardware board info
@@ -1048,6 +1049,7 @@ typedef struct {
 	uint16_t sta_max_li_mod_dtim_ms;
 	uint8_t staModDtim;
 	uint8_t staTelesDtim;
+	uint8_t minTelesDtimlvl;
 	uint8_t staDynamicDtim;
 	uint32_t hw_bd_id;
 	uint32_t hw_bd_info[HW_BD_INFO_SIZE];
@@ -1766,6 +1768,29 @@ QDF_STATUS wma_peer_unmap_conf_cb(uint8_t vdev_id,
 
 bool wma_objmgr_peer_exist(tp_wma_handle wma,
 			   uint8_t *peer_addr, uint8_t *peer_vdev_id);
+
+#ifdef WLAN_FEATURE_PEER_TRANS_HIST
+/**
+ * wma_peer_tbl_trans_add_entry() - Add peer transition to peer history
+ * @peer: Object manager peer pointer
+ * @is_create: Set to %true if @peer is getting created
+ * @peer_info: Info of peer setup on @peer create,
+ *               %NULL if @is_create is %false.
+ *
+ * Adds new entry to peer history about the transition of peer in the system.
+ * The APIs has to be called to keep record of create and delete of peer.
+ *
+ * Returns: void
+ */
+void wma_peer_tbl_trans_add_entry(struct wlan_objmgr_peer *peer, bool is_create,
+				  struct cdp_peer_setup_info *peer_info);
+#else
+static inline void
+wma_peer_tbl_trans_add_entry(struct wlan_objmgr_peer *peer, bool is_create,
+			     struct cdp_peer_setup_info *peer_info)
+{
+}
+#endif
 
 /**
  * wma_get_cca_stats() - send request to fw to get CCA

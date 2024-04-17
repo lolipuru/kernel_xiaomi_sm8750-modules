@@ -37,12 +37,13 @@
 #ifdef WLAN_FEATURE_11BE_MLO
 #include "wlan_mlo_mgr_cmn.h"
 #endif
-#include "wlan_policy_mgr_ll_sap.h"
 #include "wlan_cm_ucfg_api.h"
 #include "wlan_cm_roam_api.h"
 #include "wlan_scan_api.h"
 #include "wlan_nan_api.h"
 #include "wlan_mlo_link_force.h"
+#include "wlan_ll_sap_api.h"
+#include "wlan_policy_mgr_ll_sap.h"
 
 /*
  * first_connection_pcl_table - table which provides PCL for the
@@ -1220,6 +1221,41 @@ static bool policy_mgr_channel_mcc_with_non_sap(struct wlan_objmgr_psoc *psoc,
 }
 
 /**
+ * policy_mgr_channel_mcc_with_ll_lt_sap_in_static_sbs() - Helper function to
+ * check if channel is MCC with LL_LT_SAP in static sbs case.
+ * @psoc: pointer to SOC
+ * @chan_freq: channel frequency to check
+ *
+ * Return: true if MCC with LL_LT_SAP in static sbs case, otherwise false.
+ */
+static bool policy_mgr_channel_mcc_with_ll_lt_sap_in_static_sbs(
+						struct wlan_objmgr_psoc *psoc,
+						qdf_freq_t chan_freq)
+{
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx) {
+		policy_mgr_err("Invalid Context");
+		return false;
+	}
+
+	if (policy_mgr_is_dynamic_sbs_enabled(psoc))
+		return false;
+
+	/*
+	 * If dynamic SBS is not enabled then if current frequency is 5 GHz
+	 * or 6Ghz it will always result in MCC with LL_LT_SAP as LL_LT_SAP
+	 * will always be allowed on 5 GHz or 6GHz
+	 */
+	if (wlan_reg_is_5ghz_ch_freq(chan_freq) ||
+	    wlan_reg_is_6ghz_chan_freq(chan_freq))
+		return true;
+
+	return false;
+}
+
+/**
  * policy_mgr_modify_sap_pcl_filter_mcc() - API to filter out MCC channel with
  * existing non-SAP connection frequency from SAP PCL list.
  * @psoc: pointer to SOC
@@ -1239,6 +1275,7 @@ policy_mgr_modify_sap_pcl_filter_mcc(struct wlan_objmgr_psoc *psoc,
 {
 	uint32_t i, pcl_len = 0;
 	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	uint8_t ll_lt_sap_vdev_id;
 
 	if (mode == PM_LL_LT_SAP_MODE)
 		return QDF_STATUS_SUCCESS;
@@ -1259,8 +1296,18 @@ policy_mgr_modify_sap_pcl_filter_mcc(struct wlan_objmgr_psoc *psoc,
 		return QDF_STATUS_SUCCESS;
 	}
 
+	ll_lt_sap_vdev_id =
+			wlan_policy_mgr_get_ll_lt_sap_vdev_id(psoc);
+
 	for (i = 0; i < *pcl_len_org; i++) {
 		if (policy_mgr_channel_mcc_with_non_sap(psoc, pcl_list_org[i]))
+			continue;
+
+		/* Filter MCC with LL_LT_SAP */
+		if (ll_lt_sap_vdev_id != WLAN_INVALID_VDEV_ID &&
+		    (policy_mgr_channel_mcc_with_ll_lt_sap_in_static_sbs(
+							psoc,
+							pcl_list_org[i])))
 			continue;
 
 		pcl_list_org[pcl_len] = pcl_list_org[i];
@@ -1510,7 +1557,7 @@ static QDF_STATUS policy_mgr_pcl_modification_for_p2p_go(
 	return QDF_STATUS_SUCCESS;
 }
 
-static bool policy_mgr_is_dynamic_sbs_enabled(struct wlan_objmgr_psoc *psoc)
+bool policy_mgr_is_dynamic_sbs_enabled(struct wlan_objmgr_psoc *psoc)
 {
 	struct policy_mgr_psoc_priv_obj *pm_ctx;
 
@@ -1546,35 +1593,6 @@ static inline bool policy_mgr_is_6G_chan_valid_for_ll_sap(qdf_freq_t freq)
 #endif
 
 /**
- * policy_mgr_is_sbs_mac0_freq() - Check if the given frequency is
- * sbs frequency on mac0 for static sbs case.
- * @psoc: psoc pointer
- * @freq: Frequency which needs to be checked.
- *
- * Return: true/false.
- */
-static bool policy_mgr_is_sbs_mac0_freq(struct wlan_objmgr_psoc *psoc,
-					qdf_freq_t freq)
-{
-	struct policy_mgr_psoc_priv_obj *pm_ctx;
-	struct policy_mgr_freq_range *freq_range;
-
-	if (policy_mgr_is_dynamic_sbs_enabled(psoc))
-		return false;
-
-	pm_ctx = policy_mgr_get_context(psoc);
-	if (!pm_ctx)
-		return false;
-
-	freq_range = pm_ctx->hw_mode.freq_range_caps[MODE_SBS];
-
-	if (policy_mgr_is_freq_on_mac_id(freq_range, freq, 0))
-		return true;
-
-	return false;
-}
-
-/**
  * policy_mgr_pcl_modification_for_ll_lt_sap() - Modify LL LT SAPs PCL
  * @psoc: PSOC object information
  * @pcl_channels: Pointer to the preferred channel freq list to be modify
@@ -1594,8 +1612,8 @@ static QDF_STATUS policy_mgr_pcl_modification_for_ll_lt_sap(
 	uint32_t pcl_list[NUM_CHANNELS], orig_len = *len;
 	uint8_t weight_list[NUM_CHANNELS];
 	uint32_t i, pcl_len = 0;
-	bool sbs_mac0_modified_pcl = false;
 	bool modified_pcl_6_ghz = false;
+	bool avoid_list_modified_pcl = false;
 
 	pm_ctx = policy_mgr_get_context(psoc);
 	if (!pm_ctx) {
@@ -1622,9 +1640,10 @@ static QDF_STATUS policy_mgr_pcl_modification_for_ll_lt_sap(
 			modified_pcl_6_ghz = true;
 			continue;
 		}
-		/* Remove mac0 frequencies for static SBS case */
-		if (policy_mgr_is_sbs_mac0_freq(psoc, pcl_channels[i])) {
-			sbs_mac0_modified_pcl = true;
+
+		if (wlan_ll_lt_sap_is_freq_in_avoid_list(psoc,
+							 pcl_channels[i])) {
+			avoid_list_modified_pcl = true;
 			continue;
 		}
 
@@ -1641,8 +1660,8 @@ static QDF_STATUS policy_mgr_pcl_modification_for_ll_lt_sap(
 	qdf_mem_copy(pcl_weight, weight_list, pcl_len);
 	*len = pcl_len;
 
-	policy_mgr_debug("Modified PCL: sbs_mac0 %d 6Ghz %d",
-			 sbs_mac0_modified_pcl, modified_pcl_6_ghz);
+	policy_mgr_debug("Modified PCL: 6Ghz %d avoid_list %d",
+			 modified_pcl_6_ghz, avoid_list_modified_pcl);
 	policy_mgr_dump_channel_list(*len, pcl_channels, pcl_weight);
 
 	return QDF_STATUS_SUCCESS;
@@ -3537,13 +3556,34 @@ policy_mgr_get_index_for_ml_sta_sap(
 			qdf_freq_t sap_freq, qdf_freq_t *sta_freq_list,
 			uint8_t *ml_sta_idx)
 {
+	bool emlsr_links_with_aux = false;
+
+	if (sta_freq_list[ml_sta_idx[0]] &&
+	    !WLAN_REG_IS_24GHZ_CH_FREQ(sta_freq_list[ml_sta_idx[0]]) &&
+	    sta_freq_list[ml_sta_idx[1]] &&
+	    !WLAN_REG_IS_24GHZ_CH_FREQ(sta_freq_list[ml_sta_idx[1]]) &&
+	    policy_mgr_is_mlo_in_mode_emlsr(pm_ctx->psoc, NULL, NULL) &&
+	    wlan_mlme_is_aux_emlsr_support(pm_ctx->psoc))
+		emlsr_links_with_aux = true;
+
 	/*
 	 * P2P GO/P2P CLI are treated as SAP to optimize as pcl
 	 * table is same for all three.
 	 */
-	policy_mgr_debug("channel: sap0: %d, ML STA link0: %d, ML STA link1: %d",
+	policy_mgr_debug("channel: sap0: %d, ML STA link0: %d, ML STA link1: %d aux emlsr %d",
 			 sap_freq, sta_freq_list[ml_sta_idx[0]],
-			 sta_freq_list[ml_sta_idx[1]]);
+			 sta_freq_list[ml_sta_idx[1]],
+			 emlsr_links_with_aux);
+	if (emlsr_links_with_aux) {
+		/* eMLSR STA 2 links on 5/6 GHz, 2nd conn on 2.4 GHz,
+		 * 3th conn can be 2.4 GHz to keep eMLSR support on ML STA.
+		 */
+		if (WLAN_REG_IS_24GHZ_CH_FREQ(sap_freq)) {
+			*index = PM_5_SCC_MCC_PLUS_24_DBS;
+			return;
+		}
+	}
+
 	if (policy_mgr_is_current_hwmode_sbs(pm_ctx->psoc) ||
 	    policy_mgr_are_sbs_chan(pm_ctx->psoc, sta_freq_list[ml_sta_idx[0]],
 				    sta_freq_list[ml_sta_idx[1]])) {
@@ -4484,16 +4524,6 @@ QDF_STATUS policy_mgr_get_valid_chan_weights(struct wlan_objmgr_psoc *psoc,
 		     policy_mgr_mode_specific_connection_count(
 					psoc, PM_P2P_CLIENT_MODE, NULL)))
 			strict_follow_pcl = true;
-
-		/*
-		 * This is a temporary check and will be removed once ll_lt_sap
-		 * CSA support is added.
-		 */
-		if (wlan_policy_mgr_get_ll_lt_sap_vdev_id(psoc) !=
-							WLAN_INVALID_VDEV_ID) {
-			policy_mgr_debug("LL_LT_SAP present, strict follow PCL");
-			strict_follow_pcl = true;
-		}
 
 		/*
 		 * There is a small window between releasing the above lock

@@ -1508,11 +1508,15 @@ static void cm_update_score_params(struct wlan_objmgr_psoc *psoc,
 		weight_config->beamforming_cap_weightage;
 
 	/*
-	 * Don’t consider pcl weightage for STA connection,
-	 * if primary interface is configured.
+	 * Don’t consider pcl weightage if:
+	 * a) primary interface is configured (or)
+	 * b) HW is non-DBS
 	 */
-	if (policy_mgr_is_pcl_weightage_required(psoc))
+	if (policy_mgr_is_pcl_weightage_required(psoc) &&
+	    policy_mgr_is_hw_dbs_capable(psoc))
 		req_score_params->pcl_weightage = weight_config->pcl_weightage;
+	else
+		req_score_params->pcl_weightage = 0;
 
 	req_score_params->oce_wan_weightage = weight_config->oce_wan_weightage;
 	req_score_params->oce_ap_tx_pwr_weightage =
@@ -3021,8 +3025,8 @@ cm_update_btm_offload_config(struct wlan_objmgr_psoc *psoc,
 	struct wlan_mlme_btm *btm_cfg;
 	bool is_hs_20_ap, is_hs_20_btm_offload_disabled;
 	struct cm_roam_values_copy temp;
-	uint8_t vdev_id;
-	bool abridge_flag;
+	uint8_t vdev_id = wlan_vdev_get_id(vdev);
+	bool abridge_flag, is_disable_btm, assoc_btm_cap;
 
 	mlme_obj = mlme_get_psoc_ext_obj(psoc);
 	if (!mlme_obj)
@@ -3030,18 +3034,20 @@ cm_update_btm_offload_config(struct wlan_objmgr_psoc *psoc,
 
 	btm_cfg = &mlme_obj->cfg.btm;
 	*btm_offload_config = btm_cfg->btm_offload_config;
-
 	/* Return if INI is disabled */
 	if (!(*btm_offload_config))
 		return;
 
-	if (!wlan_cm_get_assoc_btm_cap(vdev)) {
-		mlme_debug("BTM not supported, disable BTM offload");
+	wlan_cm_roam_cfg_get_value(psoc, vdev_id, IS_DISABLE_BTM, &temp);
+	is_disable_btm = temp.bool_value;
+	assoc_btm_cap = wlan_cm_get_assoc_btm_cap(psoc, vdev_id);
+	if (!assoc_btm_cap || is_disable_btm) {
+		mlme_debug("disable btm offload vdev:%d btm_cap: %d is_btm: %d",
+			   vdev_id, assoc_btm_cap, is_disable_btm);
 		*btm_offload_config = 0;
 		return;
 	}
 
-	vdev_id = wlan_vdev_get_id(vdev);
 	wlan_cm_roam_cfg_get_value(psoc, vdev_id, HS_20_AP, &temp);
 	is_hs_20_ap = temp.bool_value;
 	wlan_mlme_is_hs_20_btm_offload_disabled(psoc,
@@ -3522,7 +3528,8 @@ static void cm_fill_stop_reason(struct wlan_roam_stop_config *stop_req,
 {
 	if (reason == REASON_ROAM_SYNCH_FAILED)
 		stop_req->reason = REASON_ROAM_SYNCH_FAILED;
-	else if (reason == REASON_DRIVER_DISABLED)
+	else if (reason == REASON_DRIVER_DISABLED ||
+		 reason == REASON_VDEV_RESTART_FROM_HOST)
 		stop_req->reason = REASON_ROAM_STOP_ALL;
 	else if (reason == REASON_SUPPLICANT_DISABLED_ROAMING)
 		stop_req->reason = REASON_SUPPLICANT_DISABLED_ROAMING;
@@ -4928,6 +4935,21 @@ cm_handle_mlo_rso_state_change(struct wlan_objmgr_pdev *pdev, uint8_t *vdev_id,
 		}
 	}
 
+	/*
+	 * Send RSO STOP before triggering a vdev restart on an MLO vdev
+	 * Send RSO START after CSA is completed on an MLO vdev
+	 */
+	if (wlan_vdev_mlme_is_mlo_vdev(vdev) &&
+	    mlo_check_if_all_vdev_up(vdev) &&
+	    reason == REASON_VDEV_RESTART_FROM_HOST) {
+		assoc_vdev = wlan_mlo_get_assoc_link_vdev(vdev);
+
+		*is_rso_skip = false;
+		*vdev_id = wlan_vdev_get_id(assoc_vdev);
+		mlme_debug("MLO_CSA: Send RSO on assoc vdev %d", *vdev_id);
+		goto end;
+	}
+
 	if (!wlan_vdev_mlme_get_is_mlo_link(wlan_pdev_get_psoc(pdev),
 					    *vdev_id))
 		goto end;
@@ -4990,7 +5012,8 @@ cm_roam_state_change(struct wlan_objmgr_pdev *pdev,
 		is_up = QDF_IS_STATUS_SUCCESS(wlan_vdev_is_up(vdev));
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_NB_ID);
 
-	if (requested_state != WLAN_ROAM_DEINIT && !is_up) {
+	if ((requested_state != WLAN_ROAM_DEINIT &&
+	     requested_state != WLAN_ROAM_RSO_STOPPED) && !is_up) {
 		mlme_debug("ROAM: roam state(%d) change requested in non-connected state",
 			   requested_state);
 		goto end;
@@ -5548,6 +5571,41 @@ bool cm_lookup_pmkid_using_bssid(struct wlan_objmgr_psoc *psoc,
 	return true;
 }
 
+/**
+ * cm_roam_clear_is_disable_btm_flag - API to clear is_disable_btm flag
+ * @pdev: pdev pointer
+ * @vdev_id: dvev ID
+ *
+ * Return: None
+ */
+static void cm_roam_clear_is_disable_btm_flag(struct wlan_objmgr_pdev *pdev,
+					      uint8_t vdev_id)
+{
+	struct rso_config *rso_cfg;
+	struct wlan_objmgr_vdev *vdev;
+
+	vdev = wlan_objmgr_get_vdev_by_id_from_pdev(pdev, vdev_id,
+						    WLAN_MLME_CM_ID);
+	if (!vdev) {
+		mlme_err("vdev object is NULL for vdev %d", vdev_id);
+		return;
+	}
+
+	rso_cfg = wlan_cm_get_rso_config(vdev);
+	if (!rso_cfg) {
+		mlme_debug("vdev: %d rso_cfg is NULL", vdev_id);
+		goto release_ref;
+	}
+
+	if (rso_cfg->is_disable_btm) {
+		mlme_debug("vdev: %d clear is_disable_btm flag", vdev_id);
+		rso_cfg->is_disable_btm = false;
+	}
+
+release_ref:
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_CM_ID);
+}
+
 void cm_roam_restore_default_config(struct wlan_objmgr_pdev *pdev,
 				    uint8_t vdev_id)
 {
@@ -5563,6 +5621,8 @@ void cm_roam_restore_default_config(struct wlan_objmgr_pdev *pdev,
 	mlme_obj = mlme_get_psoc_ext_obj(psoc);
 	if (!mlme_obj)
 		return;
+
+	cm_roam_clear_is_disable_btm_flag(pdev, vdev_id);
 
 	if (mlme_obj->cfg.lfr.roam_scan_offload_enabled) {
 		/*
@@ -6022,6 +6082,7 @@ QDF_STATUS cm_start_roam_invoke(struct wlan_objmgr_psoc *psoc,
 	/* Ignore BSSID and channel validation for FW host roam */
 	if (source == CM_ROAMING_FW)
 		goto send_evt;
+
 	if (source == CM_ROAMING_LINK_REMOVAL) {
 		cm_req->roam_req.req.forced_roaming = true;
 		goto send_evt;
@@ -6409,6 +6470,12 @@ void cm_roam_trigger_info_event(struct wmi_roam_trigger_info *data,
 				break;
 			}
 		}
+	} else if (data->current_rssi) {
+		/* Reassoc reject case */
+		wlan_diag_event.rssi = (-1) * data->current_rssi;
+		wlan_diag_event.rssi_thresh =
+				(-1) * data->rssi_trig_data.threshold;
+		wlan_diag_event.cu = scan_data->ap[0].cu_load;
 	}
 
 	if (data->trigger_reason == ROAM_TRIGGER_REASON_PERIODIC ||
@@ -6750,6 +6817,103 @@ cm_find_roam_candidate(struct wlan_objmgr_pdev *pdev,
 	return QDF_STATUS_SUCCESS;
 }
 
+#if (defined(CONNECTIVITY_DIAG_EVENT) && defined(WLAN_FEATURE_ROAM_OFFLOAD))
+/**
+ * cm_roam_reject_reassoc_event() - Send connectivity diag log
+ * event while rejecting reassoc request to connected BSSID
+ * @psoc: Pointer to PSOC object
+ * @vdev: Pointer to vdev object
+ * @bssid: connected BSSID
+ *
+ * Return: None
+ */
+static inline void
+cm_roam_reject_reassoc_event(struct wlan_objmgr_psoc *psoc,
+			     struct wlan_objmgr_vdev *vdev,
+			     struct qdf_mac_addr *bssid)
+{
+	uint8_t vdev_id;
+	struct wmi_roam_trigger_info *trigger_data;
+	struct wmi_roam_scan_data *scan_data;
+	struct cm_roam_values_copy rssi_threshold = {0};
+	struct wlan_channel *bss_chan;
+	struct scan_cache_entry *entry;
+	int8_t rssi = 0;
+
+	vdev_id = wlan_vdev_get_id(vdev);
+
+	/*
+	 * Send roam scan start and roam cancelled for rejecting
+	 * reassoc command received for roaming to already
+	 * connected bssid.
+	 */
+	trigger_data = qdf_mem_malloc(sizeof(*trigger_data));
+	if (!trigger_data)
+		return;
+
+	scan_data = qdf_mem_malloc(sizeof(*scan_data));
+	if (!scan_data) {
+		qdf_mem_free(trigger_data);
+		return;
+	}
+
+	/*
+	 * Parameters to be sent:
+	 * -> Roam scan start event:
+	 *    1. Reason = User triggered
+	 *    2. RSSI
+	 *    3. CU
+	 *    4. full_scan
+	 *    5. RSSI Threshold
+	 *
+	 * -> Roam cancel Event:
+	 *  1. vdev_id
+	 *  2. Reason code value
+	 *  3. Reason code string
+	 */
+	trigger_data->present = true;
+	trigger_data->trigger_reason = ROAM_TRIGGER_REASON_FORCED;
+
+	/* Get RSSI from scan entry */
+	cm_get_rssi_snr_by_bssid(wlan_vdev_get_pdev(vdev), bssid, &rssi, NULL);
+	trigger_data->current_rssi = qdf_abs(rssi);
+
+	/* Get RSSI threshold configuration from RSO config */
+	wlan_cm_roam_cfg_get_value(psoc, vdev_id, NEIGHBOUR_LOOKUP_THRESHOLD,
+				   &rssi_threshold);
+	trigger_data->rssi_trig_data.threshold = rssi_threshold.uint_value;
+
+	/* Get CU load info from QBSS Load IE in scan entry */
+	entry = wlan_scan_get_entry_by_bssid(wlan_vdev_get_pdev(vdev), bssid);
+	if (entry)
+		scan_data->ap[0].cu_load = entry->qbss_chan_load;
+	else
+		scan_data->ap[0].cu_load = 0;
+	util_scan_free_cache_entry(entry);
+
+	/* Fill the band info from operating channel */
+	bss_chan = wlan_vdev_mlme_get_bss_chan(vdev);
+	if (bss_chan)
+		scan_data->band =
+			wlan_convert_freq_to_diag_band(bss_chan->ch_freq);
+	else
+		mlme_debug("vdev:%d bss_chan is null", vdev_id);
+
+	cm_roam_trigger_info_event(trigger_data, scan_data, vdev_id, false);
+
+	qdf_mem_free(trigger_data);
+	qdf_mem_free(scan_data);
+
+	cm_roam_cancel_event(vdev_id, ROAM_FAIL_REASON_REASSOC_TO_SAME_AP, 0);
+}
+#else
+static inline void
+cm_roam_reject_reassoc_event(struct wlan_objmgr_psoc *psoc,
+			     struct wlan_objmgr_vdev *vdev,
+			     struct qdf_mac_addr *bssid)
+{}
+#endif
+
 QDF_STATUS
 cm_send_roam_invoke_req(struct cnx_mgr *cm_ctx, struct cm_req *req)
 {
@@ -6794,10 +6958,21 @@ cm_send_roam_invoke_req(struct cnx_mgr *cm_ctx, struct cm_req *req)
 
 	wlan_vdev_get_bss_peer_mac(cm_ctx->vdev, &connected_bssid);
 	wlan_mlme_get_self_bss_roam(psoc, &enable_self_bss_roam);
-	if (!enable_self_bss_roam &&
-	    qdf_is_macaddr_equal(&roam_req->req.bssid, &connected_bssid)) {
-		mlme_err(CM_PREFIX_FMT "self bss roam disabled",
-			 CM_PREFIX_REF(vdev_id, cm_id));
+	if ((!enable_self_bss_roam ||
+	     cm_roam_get_roam_score_algo(psoc) == VENDOR_ROAM_SCORE_ALGORITHM_1) &&
+	     qdf_is_macaddr_equal(&roam_req->req.bssid, &connected_bssid)) {
+		mlme_err(CM_PREFIX_FMT "self bss roam disabled. invoke_src:%d",
+			 CM_PREFIX_REF(vdev_id, cm_id),
+			 req->roam_req.req.source);
+		/*
+		 * Send roam cancel event when roam invoke triggered by
+		 * userspace reassoc command is rejected
+		 */
+		if (req->roam_req.req.source == CM_ROAMING_USER ||
+		    req->roam_req.req.source == CM_ROAMING_HOST)
+			cm_roam_reject_reassoc_event(psoc, cm_ctx->vdev,
+						     &connected_bssid);
+
 		status = QDF_STATUS_E_FAILURE;
 		goto roam_err;
 	}

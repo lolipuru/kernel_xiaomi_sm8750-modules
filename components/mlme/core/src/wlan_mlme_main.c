@@ -1712,6 +1712,7 @@ static void mlme_init_ht_cap_in_cfg(struct wlan_objmgr_psoc *psoc,
 				cfg_get(psoc, CFG_SHORT_GI_20MHZ);
 	u1.ht_cap_info.short_gi_40_mhz =
 				cfg_get(psoc, CFG_SHORT_GI_40MHZ);
+	u1.ht_cap_info.mimo_power_save = cfg_get(psoc, CFG_HT_SMPS_MODE);
 	ht_caps->ht_cap_info = u1.ht_cap_info;
 
 	/* HT Capapabilties - AMPDU Params */
@@ -2034,7 +2035,7 @@ static void mlme_init_he_cap_in_cfg(struct wlan_objmgr_psoc *psoc,
 	 */
 	he_caps->dot11_he_cap.broadcast_twt = 0;
 
-	is_twt_enabled = wlan_twt_cfg_is_twt_enabled(psoc);
+	is_twt_enabled = cfg_get(psoc, CFG_ENABLE_TWT);
 
 	if (is_twt_enabled)
 		he_caps->dot11_he_cap.flex_twt_sched =
@@ -2312,14 +2313,16 @@ static bool is_sae_sap_enabled(struct wlan_objmgr_psoc *psoc)
 
 bool wlan_vdev_is_sae_auth_type(struct wlan_objmgr_vdev *vdev)
 {
-	int32_t auth_mode;
+	int32_t auth_mode, key_mgmt;
 
 	auth_mode = wlan_crypto_get_param(vdev, WLAN_CRYPTO_PARAM_AUTH_MODE);
+	key_mgmt = wlan_crypto_get_param(vdev, WLAN_CRYPTO_PARAM_KEY_MGMT);
 
-	if (auth_mode == -1)
+	if (auth_mode == -1 || key_mgmt == -1)
 		return false;
 
-	if (QDF_HAS_PARAM(auth_mode, WLAN_CRYPTO_AUTH_SAE))
+	if (QDF_HAS_PARAM(auth_mode, WLAN_CRYPTO_AUTH_SAE) ||
+	    WLAN_CRYPTO_IS_AKM_SAE(key_mgmt))
 		return true;
 
 	return false;

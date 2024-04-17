@@ -3326,16 +3326,19 @@ static QDF_STATUS wlan_hdd_stats_request_needed(struct hdd_adapter *adapter)
 		hdd_err("Invalid hdd config");
 		return QDF_STATUS_E_INVAL;
 	}
+
 	if (adapter->hdd_ctx->is_get_station_clubbed_in_ll_stats_req) {
 		uint32_t stats_cached_duration;
 
 		stats_cached_duration =
 				qdf_system_ticks_to_msecs(qdf_system_ticks()) -
 				adapter->sta_stats_cached_timestamp;
-		if (stats_cached_duration <=
-			adapter->hdd_ctx->config->sta_stats_cache_expiry_time)
+		if (qdf_atomic_read(&adapter->is_ll_stats_req_pending) ||
+		    (stats_cached_duration <=
+			adapter->hdd_ctx->config->sta_stats_cache_expiry_time))
 			return QDF_STATUS_E_ALREADY;
 	}
+
 	return QDF_STATUS_SUCCESS;
 }
 
@@ -10107,6 +10110,7 @@ hdd_convert_roam_failures_reason(enum wlan_roam_failure_reason_code fail)
 	case ROAM_FAIL_REASON_SCAN_CANCEL:
 	case ROAM_FAIL_REASON_SCREEN_ACTIVITY:
 	case ROAM_FAIL_REASON_OTHER_PRIORITY_ROAM_SCAN:
+	case ROAM_FAIL_REASON_REASSOC_TO_SAME_AP:
 	case ROAM_FAIL_REASON_UNKNOWN:
 		hdd_err("Invalid roam failures reason");
 		break;

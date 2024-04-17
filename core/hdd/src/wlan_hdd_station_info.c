@@ -456,7 +456,7 @@ static int32_t hdd_add_tx_bitrate(struct sk_buff *skb,
 	}
 
 	if (nla_put_u8(skb, NL80211_RATE_INFO_VHT_NSS,
-		      sta_ctx->cache_conn_info.txrate.nss)) {
+		      sta_ctx->cache_conn_info.ap_nss)) {
 		hdd_err("put fail");
 		goto fail;
 	}
@@ -465,7 +465,7 @@ static int32_t hdd_add_tx_bitrate(struct sk_buff *skb,
 	hdd_nofl_debug(
 		"STA Tx rate info:: bitrate:%d, bitrate_compat:%d, NSS:%d",
 		bitrate, bitrate_compat,
-		sta_ctx->cache_conn_info.txrate.nss);
+		sta_ctx->cache_conn_info.ap_nss);
 
 	return 0;
 fail:
@@ -813,12 +813,13 @@ static uint32_t hdd_add_prev_connected_bss_ies(
 					struct hdd_station_ctx *hdd_sta_ctx)
 {
 	struct element_info *bcn_ie = &hdd_sta_ctx->conn_info.prev_ap_bcn_ie;
+	int status = 0;
 
 	if (bcn_ie->len) {
 		if (nla_put(skb, BEACON_IES, bcn_ie->len, bcn_ie->ptr)) {
 			hdd_err("Failed to put beacon IEs: bytes left: %d, ie_len: %u ",
 				skb_tailroom(skb), bcn_ie->len);
-			return -EINVAL;
+			status = -EINVAL;
 		}
 
 		hdd_nofl_debug("Beacon IEs len: %u", bcn_ie->len);
@@ -828,7 +829,7 @@ static uint32_t hdd_add_prev_connected_bss_ies(
 		bcn_ie->len = 0;
 	}
 
-	return 0;
+	return status;
 }
 
 /**
@@ -1678,6 +1679,34 @@ static int hdd_get_station_remote(struct wlan_hdd_link_info *link_info,
 }
 
 /**
+ * hdd_get_link_info_disconnect_receive() - get link_info on which disconnect
+ * received.
+ * @adapter: hostapd interface
+ *
+ * This function loop through the vdev's and get on which vdev disconnect
+ * received OTA.
+ *
+ * Return: link_info pointer on success, otherwise NULL
+ */
+static struct wlan_hdd_link_info
+*hdd_get_link_info_disconnect_receive(struct hdd_adapter *adapter)
+{
+	struct wlan_hdd_link_info *link_info = NULL;
+	uint8_t i;
+
+	for (i = 0; i < WLAN_MAX_ML_BSS_LINKS; i++) {
+		link_info = &adapter->link_info[i];
+		if (link_info && link_info->vdev) {
+			if (wlan_mlme_get_is_disconnect_receive(
+							link_info->vdev))
+				return link_info;
+		}
+	}
+
+	return NULL;
+}
+
+/**
  * __hdd_cfg80211_get_station_cmd() - Handle get station vendor cmd
  * @wiphy: corestack handler
  * @wdev: wireless device
@@ -1700,6 +1729,7 @@ __hdd_cfg80211_get_station_cmd(struct wiphy *wiphy,
 	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_GET_STATION_MAX + 1];
 	int32_t status;
+	struct wlan_hdd_link_info *link_info;
 
 	hdd_enter_dev(dev);
 	if (hdd_get_conparam() == QDF_GLOBAL_FTM_MODE) {
@@ -1723,7 +1753,12 @@ __hdd_cfg80211_get_station_cmd(struct wiphy *wiphy,
 
 	/* Parse and fetch Command Type*/
 	if (tb[STATION_INFO]) {
-		status = hdd_get_station_info(adapter->deflink);
+		link_info = hdd_get_link_info_disconnect_receive(adapter);
+		if (!link_info) {
+			hdd_debug("Populate stats on Assoc vdev");
+			link_info = adapter->deflink;
+		}
+		status = hdd_get_station_info(link_info);
 	} else if (tb[STATION_ASSOC_FAIL_REASON]) {
 		status = hdd_get_station_assoc_fail(adapter->deflink);
 	} else if (tb[STATION_REMOTE]) {

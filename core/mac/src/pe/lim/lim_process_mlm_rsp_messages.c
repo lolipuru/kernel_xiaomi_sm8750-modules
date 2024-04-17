@@ -768,7 +768,7 @@ lim_fill_sme_assoc_ind_params(
 	tpLimMlmAssocInd assoc_ind, struct assoc_ind *sme_assoc_ind,
 	struct pe_session *session_entry, bool assoc_req_alloc)
 {
-	struct tLimPreAuthNode *sta_pre_auth_ctx;
+	struct pe_fils_session *fils_info;
 	sme_assoc_ind->length = sizeof(struct assoc_ind);
 	sme_assoc_ind->sessionId = session_entry->smeSessionId;
 
@@ -859,13 +859,10 @@ lim_fill_sme_assoc_ind_params(
 	sme_assoc_ind->eht_caps_present = assoc_ind->eht_caps_present;
 	sme_assoc_ind->is_sae_authenticated = assoc_ind->is_sae_authenticated;
 
-	sta_pre_auth_ctx = lim_search_pre_auth_list(mac_ctx,
-						    assoc_ind->peerMacAddr);
-	if (sta_pre_auth_ctx)
+	fils_info = lim_get_fils_info(session_entry, assoc_ind->peerMacAddr);
+	if (fils_info)
 		sme_assoc_ind->is_fils_connection =
-			sta_pre_auth_ctx->fils_info->is_fils_connection;
-	else
-		sme_assoc_ind->is_fils_connection = false;
+			fils_info->is_fils_connection;
 }
 
 /**
@@ -3441,6 +3438,8 @@ void lim_process_switch_channel_rsp(struct mac_context *mac,
 		/* If MCC upgrade/DBS downgrade happened during channel switch,
 		 * the policy manager connection table needs to be updated.
 		 */
+		policy_mgr_ap_csa_end(mac->psoc, pe_session->smeSessionId,
+				      QDF_IS_STATUS_ERROR(status), false);
 		policy_mgr_update_connection_info(mac->psoc,
 						pe_session->smeSessionId);
 		lim_check_conc_power_for_csa(mac, pe_session);

@@ -1820,7 +1820,7 @@ enum station_prefer_bw {
  * @single_tid:                     Set replay counter for all TID
  * @allow_tpc_from_ap:              Support for AP power constraint
  * @sta_keepalive_method:           STA keepalive method
- * @usr_disabled_roaming:           User config for roaming disable
+ * @usr_disabled_roaming:           User disable roaming for current connection
  * @usr_scan_probe_unicast_ra:      User config unicast probe req in scan
  * @event_payload:                  Diagnostic event payload
  * @max_li_modulated_dtim_time_ms:  Max modulated DTIM time in ms.
@@ -2770,7 +2770,7 @@ struct wlan_mlme_reg {
 	bool is_afc_reg_noaction;
 #endif
 #ifdef FEATURE_WLAN_CH_AVOID_EXT
-	bool coex_unsafe_chan_nb_user_prefer;
+	uint32_t coex_unsafe_chan_nb_user_prefer;
 	bool coex_unsafe_chan_reg_disable;
 #endif
 };

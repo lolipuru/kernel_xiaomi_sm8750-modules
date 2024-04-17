@@ -122,7 +122,7 @@ static QDF_STATUS hdd_dcs_switch_chan_cb(struct wlan_objmgr_vdev *vdev,
 
 		/* stop sap if got invalid freq or width */
 		if (tgt_freq == 0 || tgt_width == CH_WIDTH_INVALID) {
-			schedule_work(&adapter->sap_stop_bss_work);
+			schedule_work(&link_info->sap_stop_bss_work);
 			return QDF_STATUS_SUCCESS;
 		}
 
@@ -132,8 +132,9 @@ static QDF_STATUS hdd_dcs_switch_chan_cb(struct wlan_objmgr_vdev *vdev,
 
 		wlan_hdd_set_sap_csa_reason(psoc, link_info->vdev_id,
 					    CSA_REASON_DCS);
-		ret = hdd_softap_set_channel_change(adapter->dev, tgt_freq,
-						    tgt_width, true);
+
+		ret = hdd_softap_set_channel_change(link_info, tgt_freq,
+						    tgt_width, true, false);
 		status = qdf_status_from_os_return(ret);
 		break;
 	default:
@@ -268,7 +269,8 @@ hdd_dcs_trigger_csa_for_ll_lt_sap(struct wlan_objmgr_psoc *psoc,
 	 * dcs overall time for LL_LT_SAP.
 	 */
 	restart_freq = ucfg_ll_sap_get_valid_freq_for_csa(psoc, vdev_id,
-							  curr_freq);
+							  curr_freq,
+							  LL_SAP_CSA_DCS);
 
 	hdd_debug("vdev_id %d freq %d selected for LL_LT_SAP DCS",
 		  vdev_id, restart_freq);

@@ -220,7 +220,7 @@ static int __wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 			      struct ieee80211_channel *chan, bool offchan,
 			      unsigned int wait,
 			      const u8 *buf, size_t len, bool no_cck,
-			      bool dont_wait_for_ack, u64 *cookie)
+			      bool dont_wait_for_ack, u64 *cookie, int link_id)
 {
 	QDF_STATUS status;
 	struct net_device *dev = wdev->netdev;
@@ -235,13 +235,20 @@ static int __wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 	const uint8_t  *assoc_resp;
 	void *ft_info;
 	struct hdd_ap_ctx *ap_ctx;
+	struct wlan_hdd_link_info *link_info;
 
 	if (QDF_GLOBAL_FTM_MODE == hdd_get_conparam()) {
 		hdd_err("Command not allowed in FTM mode");
 		return -EINVAL;
 	}
 
-	if (wlan_hdd_validate_vdev_id(adapter->deflink->vdev_id))
+	link_info = hdd_get_link_info_by_link_id(adapter, link_id);
+	if (!link_info) {
+		hdd_err("invalid link_info");
+		return -EINVAL;
+	}
+
+	if (wlan_hdd_validate_vdev_id(link_info->vdev_id))
 		return -EINVAL;
 
 	ret = wlan_hdd_validate_context(hdd_ctx);
@@ -250,7 +257,8 @@ static int __wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 
 	type = WLAN_HDD_GET_TYPE_FRM_FC(buf[0]);
 	sub_type = WLAN_HDD_GET_SUBTYPE_FRM_FC(buf[0]);
-	hdd_debug("type %d, sub_type %d", type, sub_type);
+	hdd_debug("vdev_id %d, type %d, sub_type %d",
+		  link_info->vdev_id, type, sub_type);
 
 	/* When frame to be transmitted is auth mgmt, then trigger
 	 * sme_send_mgmt_tx to send auth frame without need for policy manager.
@@ -275,17 +283,17 @@ static int __wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 			if ((auth_algo == eSIR_FT_AUTH) &&
 			    (adapter->device_mode == QDF_SAP_MODE ||
 			     adapter->device_mode == QDF_P2P_GO_MODE)) {
-				ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(adapter->deflink);
+				ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(link_info);
 				ap_ctx->during_auth_offload = false;
 			}
 		}
 
 		qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_SME,
 			   TRACE_CODE_HDD_SEND_MGMT_TX,
-			   adapter->deflink->vdev_id, 0);
+			   link_info->vdev_id, 0);
 
 		qdf_status = sme_send_mgmt_tx(hdd_ctx->mac_handle,
-					      adapter->deflink->vdev_id,
+					      link_info->vdev_id,
 					      buf, len);
 
 		if (QDF_IS_STATUS_SUCCESS(qdf_status))
@@ -314,7 +322,7 @@ static int __wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 		if (!ft_info || !ft_info_len)
 			return -EINVAL;
 		hdd_debug("get ft_info_len from Assoc rsp :%d", ft_info_len);
-		ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(adapter->deflink);
+		ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(link_info);
 		qdf_status = wlansap_update_ft_info(ap_ctx->sap_context,
 						    ((struct ieee80211_mgmt *)buf)->da,
 						    ft_info, ft_info_len, 0);
@@ -327,7 +335,7 @@ static int __wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 	}
 
 off_chan_tx:
-	vdev = hdd_objmgr_get_vdev_by_user(adapter->deflink, WLAN_OSIF_P2P_ID);
+	vdev = hdd_objmgr_get_vdev_by_user(link_info, WLAN_OSIF_P2P_ID);
 	if (!vdev) {
 		hdd_err("vdev is NULL");
 		return -EINVAL;
@@ -361,20 +369,27 @@ int wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 {
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
-
+	int link_id = -1;
 	errno = osif_vdev_sync_op_start(wdev->netdev, &vdev_sync);
 	if (errno)
 		return errno;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)) || \
+	(defined(WLAN_FEATURE_MULTI_LINK_SAP))
+	link_id = hdd_nb_get_link_id_from_params((void *)params, NB_MGMT_TX);
 	errno = __wlan_hdd_mgmt_tx(wiphy, wdev, params->chan, params->offchan,
 				   params->wait, params->buf, params->len,
 				   params->no_cck, params->dont_wait_for_ack,
-				   cookie);
+				   cookie, link_id);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0))
+	errno = __wlan_hdd_mgmt_tx(wiphy, wdev, params->chan, params->offchan,
+				   params->wait, params->buf, params->len,
+				   params->no_cck, params->dont_wait_for_ack,
+				   cookie, link_id);
 #else
 	errno = __wlan_hdd_mgmt_tx(wiphy, wdev, chan, offchan,
 				   wait, buf, len, no_cck,
-				   dont_wait_for_ack, cookie);
+				   dont_wait_for_ack, cookie, link_id);
 #endif /* LINUX_VERSION_CODE */
 
 	osif_vdev_sync_op_stop(vdev_sync);
@@ -685,7 +700,7 @@ static bool hdd_allow_new_intf(struct hdd_context *hdd_ctx,
  * @name: User-visible name of the interface
  * @name_assign_type: the name of assign type of the netdev
  * @type: (virtual) interface types
- * @flags: monitor configuration flags (not used)
+ * @flags: monitor configuration flags
  * @params: virtual interface parameters (not used)
  *
  * Return: the pointer of wireless dev, otherwise ERR_PTR.
@@ -729,6 +744,7 @@ struct wireless_dev *__wlan_hdd_add_virtual_intf(struct wiphy *wiphy,
 		return ERR_PTR(qdf_status_to_os_return(status));
 
 	if (mode == QDF_MONITOR_MODE &&
+	    !(QDF_MONITOR_FLAG_OTHER_BSS & *flags) &&
 	    !os_if_lpc_mon_intf_creation_allowed(hdd_ctx->psoc))
 		return ERR_PTR(-EOPNOTSUPP);
 
@@ -781,8 +797,17 @@ struct wireless_dev *__wlan_hdd_add_virtual_intf(struct wiphy *wiphy,
 
 	adapter = NULL;
 	if (type == NL80211_IFTYPE_MONITOR) {
-		if (ucfg_dp_is_local_pkt_capture_enabled(hdd_ctx->psoc) ||
-		    ucfg_mlme_is_sta_mon_conc_supported(hdd_ctx->psoc) ||
+		/*
+		 * if QDF_MONITOR_FLAG_OTHER_BSS bit is set in monitor flags
+		 * driver will assume current mode as STA + Monitor Mode.
+		 * So if QDF_MONITOR_FLAG_OTHER_BSS bit is set in monitor
+		 * interface flag STA+MON concurrency is not supported
+		 * reject the request.
+		 **/
+		if ((ucfg_dp_is_local_pkt_capture_enabled(hdd_ctx->psoc) &&
+		     !(QDF_MONITOR_FLAG_OTHER_BSS & *flags)) ||
+		    (ucfg_mlme_is_sta_mon_conc_supported(hdd_ctx->psoc) &&
+		     (QDF_MONITOR_FLAG_OTHER_BSS & *flags)) ||
 		    ucfg_pkt_capture_get_mode(hdd_ctx->psoc) !=
 						PACKET_CAPTURE_MODE_DISABLE) {
 			ret = wlan_hdd_add_monitor_check(hdd_ctx,
@@ -790,6 +815,8 @@ struct wireless_dev *__wlan_hdd_add_virtual_intf(struct wiphy *wiphy,
 							 name_assign_type);
 			if (ret)
 				return ERR_PTR(-EINVAL);
+
+			ucfg_dp_set_mon_conf_flags(hdd_ctx->psoc, *flags);
 
 			if (adapter) {
 				hdd_exit();
@@ -1018,6 +1045,9 @@ int __wlan_hdd_del_virtual_intf(struct wiphy *wiphy, struct wireless_dev *wdev)
 	if (errno)
 		return errno;
 
+	if (wlan_hdd_is_session_type_monitor(adapter->device_mode))
+		ucfg_dp_set_mon_conf_flags(hdd_ctx->psoc, 0);
+
 	if (adapter->device_mode == QDF_SAP_MODE &&
 	    ucfg_pre_cac_is_active(hdd_ctx->psoc)) {
 		ucfg_pre_cac_clean_up(hdd_ctx->psoc);
@@ -1120,8 +1150,47 @@ wlan_hdd_cfg80211_convert_rxmgmt_flags(enum rxmgmt_flags flag,
 
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
+/**
+ * wlan_cfg80211_rx_mgmt_ext() - send rx mgmt to kernel
+ * @wdev: wireless device receiving the frame
+ * @link_info: pointer of link info
+ * @rx_freq: rx freq
+ * @rx_rssi: rx rssi
+ * @pb_frames: pointer of frame
+ * @frm_len: length of frame
+ * @nl80211_flag: rx mgmt flag
+ *
+ * Return: void
+ */
+static inline void
+wlan_cfg80211_rx_mgmt_ext(struct wireless_dev *wdev,
+			  struct wlan_hdd_link_info *link_info,
+			  uint32_t rx_freq,
+			  int8_t rx_rssi,
+			  uint8_t *pb_frames,
+			  uint32_t frm_len,
+			  enum nl80211_rxmgmt_flags nl80211_flag)
+{
+	struct cfg80211_rx_info info;
+
+	info.freq = MHZ_TO_KHZ(rx_freq);
+	info.sig_dbm = rx_rssi * 100;
+	info.buf = pb_frames;
+	info.len = frm_len;
+	info.flags = NL80211_RXMGMT_FLAG_ANSWERED | nl80211_flag;
+
+	if (wlan_vdev_mlme_is_mlo_ap(link_info->vdev)) {
+		info.have_link_id = true;
+		info.link_id = wlan_vdev_get_link_id(link_info->vdev);
+	}
+
+	cfg80211_rx_mgmt_ext(wdev, &info);
+}
+#endif
+
 static void
-__hdd_indicate_mgmt_frame_to_user(struct hdd_adapter *adapter,
+__hdd_indicate_mgmt_frame_to_user(struct wlan_hdd_link_info *link_info,
 				  uint32_t frm_len, uint8_t *pb_frames,
 				  uint8_t frame_type, uint32_t rx_freq,
 				  int8_t rx_rssi, enum rxmgmt_flags rx_flags)
@@ -1134,6 +1203,7 @@ __hdd_indicate_mgmt_frame_to_user(struct hdd_adapter *adapter,
 	enum nl80211_rxmgmt_flags nl80211_flag = 0;
 	bool is_pasn_auth_frame = false;
 	struct hdd_adapter *assoc_adapter;
+	struct hdd_adapter *adapter = link_info->adapter;
 	bool eht_capab;
 	struct hdd_ap_ctx *ap_ctx;
 	struct action_frm_hdr *action_hdr;
@@ -1171,7 +1241,7 @@ __hdd_indicate_mgmt_frame_to_user(struct hdd_adapter *adapter,
 		} else if (auth_algo == eSIR_FT_AUTH &&
 			   (adapter->device_mode == QDF_SAP_MODE ||
 			    adapter->device_mode == QDF_P2P_GO_MODE)) {
-			ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(adapter->deflink);
+			ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(link_info);
 			ap_ctx->during_auth_offload = true;
 		}
 	}
@@ -1261,12 +1331,15 @@ check_adapter:
 
 	/* Indicate Frame Over Normal Interface */
 	hdd_debug("vdev %d (if_idx %d): Indicate Frame type %d len %d freq %d over NL80211",
-		  assoc_adapter->deflink->vdev_id, assoc_adapter->dev->ifindex,
+		  link_info->vdev_id, assoc_adapter->dev->ifindex,
 		  frame_type, frm_len, rx_freq);
 
 	wlan_hdd_cfg80211_convert_rxmgmt_flags(rx_flags, &nl80211_flag);
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
+	wlan_cfg80211_rx_mgmt_ext(assoc_adapter->dev->ieee80211_ptr,
+				  link_info, rx_freq, rx_rssi, pb_frames,
+				  frm_len, nl80211_flag);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
 	cfg80211_rx_mgmt(assoc_adapter->dev->ieee80211_ptr,
 			 rx_freq, rx_rssi * 100, pb_frames,
 			 frm_len, NL80211_RXMGMT_FLAG_ANSWERED | nl80211_flag);
@@ -1282,19 +1355,31 @@ check_adapter:
 #endif /* LINUX_VERSION_CODE */
 }
 
-void hdd_indicate_mgmt_frame_to_user(struct hdd_adapter *adapter,
+void hdd_indicate_mgmt_frame_to_user(struct wlan_hdd_link_info *link_info,
 				     uint32_t frm_len, uint8_t *pb_frames,
 				     uint8_t frame_type, uint32_t rx_freq,
 				     int8_t rx_rssi, enum rxmgmt_flags rx_flags)
 {
+	struct hdd_adapter *adapter;
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
+
+	if (!link_info) {
+		hdd_err("link info is null");
+		return;
+	}
+
+	adapter = link_info->adapter;
+	if (WLAN_HDD_ADAPTER_MAGIC != adapter->magic) {
+		hdd_err("invalid adapter");
+		return;
+	}
 
 	errno = osif_vdev_sync_op_start(adapter->dev, &vdev_sync);
 	if (errno)
 		return;
 
-	__hdd_indicate_mgmt_frame_to_user(adapter, frm_len, pb_frames,
+	__hdd_indicate_mgmt_frame_to_user(link_info, frm_len, pb_frames,
 					  frame_type, rx_freq,
 					  rx_rssi, rx_flags);
 	osif_vdev_sync_op_stop(vdev_sync);
@@ -1332,10 +1417,13 @@ int wlan_hdd_set_power_save(struct hdd_adapter *adapter,
 
 	/* P2P-GO-NOA and TWT do not go hand in hand */
 	if (ps_config->duration) {
-		hdd_send_twt_role_disable_cmd(hdd_ctx, TWT_RESPONDER);
+		hdd_send_twt_role_disable_cmd(hdd_ctx, TWT_RESPONDER,
+					      adapter->deflink->vdev_id);
 	} else {
-		hdd_send_twt_requestor_enable_cmd(hdd_ctx);
-		hdd_send_twt_responder_enable_cmd(hdd_ctx);
+		hdd_send_twt_requestor_enable_cmd(hdd_ctx,
+						  adapter->deflink->vdev_id);
+		hdd_send_twt_responder_enable_cmd(hdd_ctx,
+						  adapter->deflink->vdev_id);
 	}
 
 	return qdf_status_to_os_return(status);

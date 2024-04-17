@@ -89,7 +89,6 @@
  * MCL platform.
  */
 #define WMA_SET_VDEV_IE_SOURCE_HOST 0x0
-#define CH_WR_IE_MAX_LEN 29
 
 /*
  * Max AMPDU Tx Aggr supported size
@@ -1222,9 +1221,7 @@ wma_parse_ch_switch_wrapper_ie(uint8_t *ch_wr_ie, uint8_t sub_ele_id,
 	struct extn_ie_header *extn_ie;
 
 	ele = (struct ie_header *)ch_wr_ie;
-	if (ele->ie_id != WLAN_ELEMID_CHAN_SWITCH_WRAP ||
-	    ele->ie_len == 0 || ele->ie_len > (CH_WR_IE_MAX_LEN -
-					       sizeof(struct ie_header))) {
+	if (ele->ie_id != WLAN_ELEMID_CHAN_SWITCH_WRAP || ele->ie_len == 0) {
 		wma_debug("Invalid len: %d", ele->ie_len);
 		return NULL;
 	}
@@ -3233,6 +3230,11 @@ static void wma_wake_event_log_reason(t_wma_handle *wma,
 static QDF_STATUS wma_wow_pagefault_action_cb(void *buf)
 {
 	struct mac_context *mac = cds_get_context(QDF_MODULE_ID_PE);
+
+	if (!mac) {
+		wma_err("NULL mac ptr");
+		return QDF_STATUS_E_INVAL;
+	}
 
 	return mac->sme.pagefault_action_cb(buf, WLAN_WMA_PF_APPS_NOTIFY_BUF_LEN);
 }
@@ -5490,6 +5492,27 @@ QDF_STATUS wma_set_sar_limit(WMA_HANDLE handle,
 
 	ret = wmi_unified_send_sar_limit_cmd(wmi_handle,
 				sar_limit_params);
+
+	return ret;
+}
+
+QDF_STATUS wma_set_tx_power_per_mcs(
+			   WMA_HANDLE handle,
+			   struct tx_power_per_mcs_rate *txpower_adjust_params)
+{
+	int ret;
+	tp_wma_handle wma = (tp_wma_handle) handle;
+	struct wmi_unified *wmi_handle;
+
+	if (wma_validate_handle(wma))
+		return QDF_STATUS_E_INVAL;
+
+	wmi_handle = wma->wmi_handle;
+	if (wmi_validate_handle(wmi_handle))
+		return QDF_STATUS_E_INVAL;
+
+	ret = wmi_unified_send_tx_power_per_mcs_cmd(wmi_handle,
+						    txpower_adjust_params);
 
 	return ret;
 }

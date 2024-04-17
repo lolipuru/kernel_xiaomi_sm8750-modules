@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -652,6 +652,11 @@ void dp_reset_tcp_delack(struct wlan_objmgr_psoc *psoc)
 
 	enum wlan_tp_level next_level = WLAN_SVC_TP_LOW;
 	struct wlan_rx_tp_data rx_tp_data = {0};
+
+	if (!dp_ctx) {
+		dp_err("Unable to get DP context");
+		return;
+	}
 
 	if (!dp_ctx->en_tcp_delack_no_lro)
 		return;
@@ -1723,6 +1728,34 @@ static void dp_pld_request_bus_bandwidth(struct wlan_dp_psoc_context *dp_ctx,
 
 #ifdef WLAN_FEATURE_DYNAMIC_RX_AGGREGATION
 /**
+ * wlan_dp_dynamic_rx_aggregation_ctrl() - Control Rx aggregation Enable/Disable
+ * @dp_intf: pointer to DP interface context
+ *
+ * Return: None
+ */
+static void
+wlan_dp_dynamic_rx_aggregation_ctrl(struct wlan_dp_intf *dp_intf)
+{
+	int id;
+
+	for (id = 0; id < CTRL_RX_AGGR_ID_MAX; id++) {
+		if (dp_intf->disable_rx_aggr[id]) {
+			if (qdf_atomic_read(&dp_intf->gro_disallowed))
+				return;
+
+			dp_info("disable Rx aggregation");
+			qdf_atomic_set(&dp_intf->gro_disallowed, 1);
+			return;
+		}
+	}
+
+	if (qdf_atomic_read(&dp_intf->gro_disallowed)) {
+		dp_info("enable Rx aggregation");
+		qdf_atomic_set(&dp_intf->gro_disallowed, 0);
+	}
+}
+
+/**
  * dp_rx_check_qdisc_for_intf() - Check if any ingress qdisc is configured
  *  for given adapter
  * @dp_intf: pointer to DP interface context
@@ -1742,22 +1775,19 @@ dp_rx_check_qdisc_for_intf(struct wlan_dp_intf *dp_intf)
 	status = dp_ops->dp_rx_check_qdisc_configured(dp_intf->dev,
 				 dp_intf->dp_ctx->dp_agg_param.tc_ingress_prio);
 	if (QDF_IS_STATUS_SUCCESS(status)) {
-		if (qdf_likely(qdf_atomic_read(&dp_intf->gro_disallowed)))
-			return;
-
-		dp_debug("ingress qdisc/filter configured disable GRO");
-		qdf_atomic_set(&dp_intf->gro_disallowed, 1);
-
-		return;
+		wlan_dp_rx_aggr_dis_req(dp_intf, CTRL_RX_AGGR_ID_QDISK, true);
 	} else if (status == QDF_STATUS_E_NOSUPPORT) {
-		if (qdf_unlikely(qdf_atomic_read(&dp_intf->gro_disallowed))) {
-			dp_debug("ingress qdisc/filter removed enable GRO");
-			qdf_atomic_set(&dp_intf->gro_disallowed, 0);
-		}
+		wlan_dp_rx_aggr_dis_req(dp_intf, CTRL_RX_AGGR_ID_QDISK, false);
 	}
 }
 #else
-static void
+static inline void
+wlan_dp_dynamic_rx_aggregation_ctrl(struct wlan_dp_intf *dp_intf)
+
+{
+}
+
+static inline void
 dp_rx_check_qdisc_for_intf(struct wlan_dp_intf *dp_intf)
 {
 }
@@ -1930,6 +1960,8 @@ static void __dp_bus_bw_work_handler(struct wlan_dp_psoc_context *dp_ctx)
 		if (dp_ctx->dp_agg_param.tc_based_dyn_gro)
 			dp_rx_check_qdisc_for_intf(dp_intf);
 
+		wlan_dp_dynamic_rx_aggregation_ctrl(dp_intf);
+
 		tx_packets += DP_BW_GET_DIFF(
 			qdf_net_stats_get_tx_pkts(&dp_intf->stats),
 			dp_intf->prev_tx_packets);
@@ -2063,6 +2095,11 @@ static void dp_bus_bw_work_handler(void *context)
 	struct wlan_dp_psoc_context *dp_ctx = context;
 	struct qdf_op_sync *op_sync;
 
+	if (!dp_ctx) {
+		dp_err("Unable to get DP context");
+		return;
+	}
+
 	if (qdf_op_protect(&op_sync))
 		return;
 
@@ -2099,7 +2136,14 @@ int dp_bus_bandwidth_init(struct wlan_objmgr_psoc *psoc)
 void dp_bus_bandwidth_deinit(struct wlan_objmgr_psoc *psoc)
 {
 	struct wlan_dp_psoc_context *dp_ctx = dp_psoc_get_priv(psoc);
-	hdd_cb_handle ctx = dp_ctx->dp_ops.callback_ctx;
+	hdd_cb_handle ctx;
+
+	if (!dp_ctx) {
+		dp_err("Unable to get DP context");
+		return;
+	}
+
+	ctx = dp_ctx->dp_ops.callback_ctx;
 
 	if (QDF_GLOBAL_FTM_MODE == cds_get_conparam())
 		return;
@@ -2129,6 +2173,11 @@ static void __dp_bus_bw_compute_timer_start(struct wlan_objmgr_psoc *psoc)
 {
 	struct wlan_dp_psoc_context *dp_ctx = dp_psoc_get_priv(psoc);
 
+	if (!dp_ctx) {
+		dp_err("Unable to get DP context");
+		return;
+	}
+
 	if (QDF_GLOBAL_FTM_MODE == cds_get_conparam())
 		return;
 
@@ -2152,9 +2201,16 @@ void dp_bus_bw_compute_timer_start(struct wlan_objmgr_psoc *psoc)
 void dp_bus_bw_compute_timer_try_start(struct wlan_objmgr_psoc *psoc)
 {
 	struct wlan_dp_psoc_context *dp_ctx = dp_psoc_get_priv(psoc);
-	hdd_cb_handle ctx = dp_ctx->dp_ops.callback_ctx;
+	hdd_cb_handle ctx;
 
 	dp_enter();
+
+	if (!dp_ctx) {
+		dp_err("Unable to get DP context");
+		return;
+	}
+
+	ctx = dp_ctx->dp_ops.callback_ctx;
 
 	if (dp_ctx->dp_ops.dp_any_adapter_connected(ctx))
 		__dp_bus_bw_compute_timer_start(psoc);
@@ -2236,9 +2292,16 @@ void dp_bus_bw_compute_timer_stop(struct wlan_objmgr_psoc *psoc)
 void dp_bus_bw_compute_timer_try_stop(struct wlan_objmgr_psoc *psoc)
 {
 	struct wlan_dp_psoc_context *dp_ctx = dp_psoc_get_priv(psoc);
-	hdd_cb_handle ctx = dp_ctx->dp_ops.callback_ctx;
+	hdd_cb_handle ctx;
 
 	dp_enter();
+
+	if (!dp_ctx) {
+		dp_err("Unable to get DP context");
+		return;
+	}
+
+	ctx = dp_ctx->dp_ops.callback_ctx;
 
 	if (!dp_ctx->dp_ops.dp_any_adapter_connected(ctx))
 		__dp_bus_bw_compute_timer_stop(psoc);

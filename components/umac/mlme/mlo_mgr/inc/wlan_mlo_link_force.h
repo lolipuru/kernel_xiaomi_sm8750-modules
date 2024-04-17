@@ -30,37 +30,69 @@
  * @ml_nlink_link_switch_pre_completion_evt: link switch pre-completion
  * @ml_nlink_roam_sync_start_evt: roam sync start
  * @ml_nlink_roam_sync_completion_evt: roam sync completion
+ * @ml_nlink_connect_pre_start_evt: STA/CLI pre connect start
  * @ml_nlink_connect_start_evt: STA/CLI connect start
  * @ml_nlink_connect_completion_evt: STA/CLI connect completion
+ * @ml_nlink_connect_failed_evt: STA/CLI connect failed
  * @ml_nlink_disconnect_start_evt: STA/CLI disconnect start
  * @ml_nlink_disconnect_completion_evt: STA/CLI disconnect completion
  * @ml_nlink_ap_start_evt: SAP/GO bss going to start event
  * @ml_nlink_ap_start_failed_evt: SAP/GO bss start failed event
  * @ml_nlink_ap_started_evt: SAP/GO bss started
  * @ml_nlink_ap_stopped_evt: SAP/GO bss stopped
+ * @ml_nlink_ap_csa_start_evt: SAP/GO CSA start event
+ * @ml_nlink_ap_csa_end_evt: SAP/GO CSA end event
  * @ml_nlink_connection_updated_evt: connection home channel changed
  * @ml_nlink_tdls_request_evt: tdls request link enable/disable
  * @ml_nlink_vendor_cmd_request_evt: vendor command request
  * @ml_nlink_post_set_link_evt: re-schedule event to update link state
+ * @ml_nlink_emlsr_timeout_evt: emlsr opportunistic timeout
  */
 enum ml_nlink_change_event_type {
 	ml_nlink_link_switch_start_evt,
 	ml_nlink_link_switch_pre_completion_evt,
 	ml_nlink_roam_sync_start_evt,
 	ml_nlink_roam_sync_completion_evt,
+	ml_nlink_connect_pre_start_evt,
 	ml_nlink_connect_start_evt,
 	ml_nlink_connect_completion_evt,
+	ml_nlink_connect_failed_evt,
 	ml_nlink_disconnect_start_evt,
 	ml_nlink_disconnect_completion_evt,
 	ml_nlink_ap_start_evt,
 	ml_nlink_ap_start_failed_evt,
 	ml_nlink_ap_started_evt,
 	ml_nlink_ap_stopped_evt,
+	ml_nlink_ap_csa_start_evt,
+	ml_nlink_ap_csa_end_evt,
 	ml_nlink_connection_updated_evt,
 	ml_nlink_tdls_request_evt,
 	ml_nlink_vendor_cmd_request_evt,
 	ml_nlink_post_set_link_evt,
+	ml_nlink_emlsr_timeout_evt,
 };
+
+enum ml_emlsr_disable_request {
+	ML_EMLSR_DISALLOW_BY_CONCURENCY = 1 << 0,
+	ML_EMLSR_DISALLOW_BY_AP_CSA = 1 << 1,
+	ML_EMLSR_DOWNGRADE_BY_AP_CSA = 1 << 2,
+	ML_EMLSR_DOWNGRADE_BY_AP_START = 1 << 3,
+	ML_EMLSR_DOWNGRADE_BY_STA_START = 1 << 4,
+	ML_EMLSR_DISALLOW_BY_OPP_TIMER = 1 << 5,
+	ML_EMLSR_DOWNGRADE_BY_OPP_TIMER = 1 << 6,
+};
+
+#define ML_EMLSR_DISALLOW_MASK_ALL (ML_EMLSR_DISALLOW_BY_CONCURENCY | \
+				    ML_EMLSR_DISALLOW_BY_AP_CSA | \
+				    ML_EMLSR_DISALLOW_BY_OPP_TIMER)
+
+#define ML_EMLSR_DOWNGRADE_MASK_ALL (ML_EMLSR_DOWNGRADE_BY_AP_CSA | \
+				     ML_EMLSR_DOWNGRADE_BY_AP_START | \
+				     ML_EMLSR_DOWNGRADE_BY_STA_START | \
+				     ML_EMLSR_DOWNGRADE_BY_OPP_TIMER)
+
+#define ML_EMLSR_DISABLE_MASK_ALL (ML_EMLSR_DISALLOW_MASK_ALL | \
+				   ML_EMLSR_DOWNGRADE_MASK_ALL)
 
 /**
  * enum link_control_modes - the types of MLO links state
@@ -115,6 +147,15 @@ struct ml_nlink_change_event {
 		struct {
 			uint8_t post_re_evaluate_loops;
 		} post_set_link;
+		struct {
+			uint32_t curr_ch_freq;
+			uint32_t tgt_ch_freq;
+			bool wait_set_link;
+		} csa_start;
+		struct {
+			bool csa_failed;
+			bool update_target;
+		} csa_end;
 	} evt;
 };
 
@@ -152,18 +193,23 @@ static inline const char *link_evt_to_string(uint32_t evt)
 	CASE_RETURN_STRING(ml_nlink_link_switch_pre_completion_evt);
 	CASE_RETURN_STRING(ml_nlink_roam_sync_start_evt);
 	CASE_RETURN_STRING(ml_nlink_roam_sync_completion_evt);
+	CASE_RETURN_STRING(ml_nlink_connect_pre_start_evt);
 	CASE_RETURN_STRING(ml_nlink_connect_start_evt);
 	CASE_RETURN_STRING(ml_nlink_connect_completion_evt);
+	CASE_RETURN_STRING(ml_nlink_connect_failed_evt);
 	CASE_RETURN_STRING(ml_nlink_disconnect_start_evt);
 	CASE_RETURN_STRING(ml_nlink_disconnect_completion_evt);
 	CASE_RETURN_STRING(ml_nlink_ap_start_evt);
 	CASE_RETURN_STRING(ml_nlink_ap_start_failed_evt);
 	CASE_RETURN_STRING(ml_nlink_ap_started_evt);
 	CASE_RETURN_STRING(ml_nlink_ap_stopped_evt);
+	CASE_RETURN_STRING(ml_nlink_ap_csa_start_evt);
+	CASE_RETURN_STRING(ml_nlink_ap_csa_end_evt);
 	CASE_RETURN_STRING(ml_nlink_connection_updated_evt);
 	CASE_RETURN_STRING(ml_nlink_tdls_request_evt);
 	CASE_RETURN_STRING(ml_nlink_vendor_cmd_request_evt);
 	CASE_RETURN_STRING(ml_nlink_post_set_link_evt);
+	CASE_RETURN_STRING(ml_nlink_emlsr_timeout_evt);
 	default:
 		return "Unknown";
 	}
@@ -453,13 +499,15 @@ ml_nlink_vendor_command_set_link(struct wlan_objmgr_psoc *psoc,
  * @psoc: psoc object
  * @vdev: vdev object
  * @req: set link request
+ * @link_control_flags: set link control flags
  *
  * Return: void
  */
 void
 ml_nlink_populate_disallow_modes(struct wlan_objmgr_psoc *psoc,
 				 struct wlan_objmgr_vdev *vdev,
-				 struct mlo_link_set_active_req *req);
+				 struct mlo_link_set_active_req *req,
+				 uint32_t link_control_flags);
 
 /**
  * ml_is_nlink_service_supported() - support nlink or not
@@ -510,6 +558,15 @@ ml_nlink_update_force_link_request(struct wlan_objmgr_psoc *psoc,
 				   struct wlan_objmgr_vdev *vdev,
 				   struct set_link_req *req,
 				   enum set_link_source source);
+
+uint32_t
+ml_nlink_clr_emlsr_mode_disable_req(struct wlan_objmgr_psoc *psoc,
+				    struct wlan_objmgr_vdev *vdev,
+				    enum ml_emlsr_disable_request req_source);
+
+uint32_t
+ml_nlink_get_emlsr_mode_disable_req(struct wlan_objmgr_psoc *psoc,
+				    struct wlan_objmgr_vdev *vdev);
 #else
 static inline QDF_STATUS
 ml_nlink_conn_change_notify(struct wlan_objmgr_psoc *psoc,

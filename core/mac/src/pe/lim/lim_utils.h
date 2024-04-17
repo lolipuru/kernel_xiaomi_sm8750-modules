@@ -1032,7 +1032,7 @@ QDF_STATUS lim_send_ext_cap_ie(struct mac_context *mac_ctx, uint32_t session_id,
  * wma
  * @mac_ctx: global mac context
  * @vdev_id: vdev for which IE is targeted
- * @dot11_mode: vdev dot11 mode
+ * @dot11_mode: mlme dot11 mode
  * @device_mode: device mode
  *
  * This function gets ht and vht capability and send to firmware via wma
@@ -1041,7 +1041,7 @@ QDF_STATUS lim_send_ext_cap_ie(struct mac_context *mac_ctx, uint32_t session_id,
  */
 QDF_STATUS lim_send_ies_per_band(struct mac_context *mac_ctx,
 				 uint8_t vdev_id,
-				 enum csr_cfgdot11mode dot11_mode,
+				 enum mlme_dot11_mode dot11_mode,
 				 enum QDF_OPMODE device_mode);
 
 /**
@@ -1809,6 +1809,21 @@ static inline bool lim_is_sta_eht_capable(tpDphHashNode sta_ds)
 	return sta_ds->mlmStaContext.eht_capable;
 }
 
+/**
+ * lim_get_punc_chan_bit_map() - get session eht puncture bitmap
+ * @session: pe session
+ *
+ * Return: puncture bitmap
+ */
+static inline uint16_t
+lim_get_punc_chan_bit_map(struct pe_session *session)
+{
+	if (session->eht_op.disabled_sub_chan_bitmap_present)
+		return *(uint16_t *)session->eht_op.disabled_sub_chan_bitmap;
+
+	return 0;
+}
+
 QDF_STATUS lim_strip_eht_op_ie(struct mac_context *mac_ctx,
 			       uint8_t *frame_ies,
 			       uint16_t *ie_buf_size,
@@ -2177,6 +2192,11 @@ static inline bool lim_is_session_eht_capable(struct pe_session *session)
 static inline bool lim_is_sta_eht_capable(tpDphHashNode sta_ds)
 {
 	return false;
+}
+
+static inline uint16_t lim_get_punc_chan_bit_map(struct pe_session *session)
+{
+	return 0;
 }
 
 static inline
@@ -3410,4 +3430,14 @@ uint32_t lim_cmp_ssid(tSirMacSSid *ssid, struct pe_session *pe_session);
 void
 lim_configure_fd_for_existing_6ghz_sap(struct pe_session *session,
 				       bool is_sap_starting);
+
+/**
+ * lim_update_disconnect_vdev_id() - Update the disconnect received on vdev id
+ * in vdev objmgr.
+ * @mac: pointer to global mac context
+ * @vdev_id: VDEV ID on which disconnect was received
+ *
+ * Return: None
+ */
+void lim_update_disconnect_vdev_id(struct mac_context *mac,  uint8_t vdev_id);
 #endif /* __LIM_UTILS_H */

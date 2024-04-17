@@ -2083,6 +2083,11 @@ fail:
 	return QDF_STATUS_E_FAILURE;
 }
 
+static void
+wma_critical_update_set_notify_probe_rsp_tmpl(struct wlan_objmgr_pdev *pdev,
+					      uint8_t vdev_id,
+					      struct wmi_probe_resp_params *prb_tmpl_param);
+
 /**
  * wmi_unified_probe_rsp_tmpl_send() - send probe response template to fw
  * @wma: wma handle
@@ -2111,6 +2116,11 @@ static int wmi_unified_probe_rsp_tmpl_send(tp_wma_handle wma,
 
 	params.prb_rsp_template_len = probe_rsp_info->probeRespTemplateLen;
 	params.prb_rsp_template_frm = probe_rsp_info->probeRespTemplate;
+
+	/* will be clear in the wma_unified_bcn_tmpl_send() */
+	wma_critical_update_set_notify_probe_rsp_tmpl(wma->pdev,
+						      vdev_id,
+						      &params);
 
 	return wmi_unified_probe_rsp_tmpl_send_cmd(wma->wmi_handle, vdev_id,
 						   &params);
@@ -2224,7 +2234,8 @@ static void wma_cu_bitmap_clear(struct wlan_objmgr_pdev *pdev,
 }
 
 /**
- * wma_cu_bitmap_set() - Update cu flag for vdev in the beacon template
+ * wma_critical_update_set_notify_bcn_tmpl() - Update cu flag for vdev in
+ * the beacon template
  * @pdev: objmgr pdev
  * @vdev_id: vdev id
  * @bcn_tmpl_param: beacon template parameter
@@ -2232,9 +2243,9 @@ static void wma_cu_bitmap_clear(struct wlan_objmgr_pdev *pdev,
  * Return: None
  */
 static void
-wma_critical_update_set_notify(struct wlan_objmgr_pdev *pdev,
-			       uint8_t vdev_id,
-			       struct beacon_tmpl_params *bcn_tmpl_param)
+wma_critical_update_set_notify_bcn_tmpl(struct wlan_objmgr_pdev *pdev,
+					uint8_t vdev_id,
+					struct beacon_tmpl_params *bcn_tmpl_param)
 {
 	unsigned long vdev_bmap_cu_cat1 = 0;
 	unsigned long vdev_bmap_cu_cat2 = 0;
@@ -2261,6 +2272,47 @@ wma_critical_update_set_notify(struct wlan_objmgr_pdev *pdev,
 			  bcn_tmpl_param->cu_ml_info.cu_vdev_map_cat2_hi);
 	}
 }
+
+/**
+ * wma_critical_update_set_notify_probe_rsp_tmpl() - Update cu flag for vdev
+ * in the probe response template
+ * @pdev: objmgr pdev
+ * @vdev_id: vdev id
+ * @prb_tmpl_param: probe response template parameter
+ *
+ * Return: None
+ */
+static void
+wma_critical_update_set_notify_probe_rsp_tmpl(struct wlan_objmgr_pdev *pdev,
+					      uint8_t vdev_id,
+					      struct wmi_probe_resp_params *prb_tmpl_param)
+{
+	unsigned long vdev_bmap_cu_cat1 = 0;
+	unsigned long vdev_bmap_cu_cat2 = 0;
+
+	wma_cu_bitmap_set(pdev, vdev_id,
+			  &vdev_bmap_cu_cat1,
+			  &vdev_bmap_cu_cat2);
+
+	if (vdev_bmap_cu_cat1 || vdev_bmap_cu_cat2) {
+		prb_tmpl_param->cu_ml_info.cu_vdev_map_cat1_lo =
+			CU_VDEV_BITMAP_LOWER32(vdev_bmap_cu_cat1);
+		prb_tmpl_param->cu_ml_info.cu_vdev_map_cat1_hi =
+			CU_VDEV_BITMAP_UPPER32(vdev_bmap_cu_cat1);
+		prb_tmpl_param->cu_ml_info.cu_vdev_map_cat2_lo =
+			CU_VDEV_BITMAP_LOWER32(vdev_bmap_cu_cat2);
+		prb_tmpl_param->cu_ml_info.cu_vdev_map_cat2_hi =
+			CU_VDEV_BITMAP_UPPER32(vdev_bmap_cu_cat2);
+
+		wma_debug("hw_link_id:%d cat1 lo:0x%x hi:0x%x cat2 lo:0x%x hi:0x%x",
+			  prb_tmpl_param->cu_ml_info.hw_link_id,
+			  prb_tmpl_param->cu_ml_info.cu_vdev_map_cat1_lo,
+			  prb_tmpl_param->cu_ml_info.cu_vdev_map_cat1_hi,
+			  prb_tmpl_param->cu_ml_info.cu_vdev_map_cat2_lo,
+			  prb_tmpl_param->cu_ml_info.cu_vdev_map_cat2_hi);
+	}
+}
+
 #else
 static void wma_cu_bitmap_clear(struct wlan_objmgr_pdev *pdev,
 				uint8_t vdev_id)
@@ -2268,9 +2320,16 @@ static void wma_cu_bitmap_clear(struct wlan_objmgr_pdev *pdev,
 }
 
 static void
-wma_critical_update_set_notify(struct wlan_objmgr_pdev *pdev,
-			       uint8_t vdev_id,
-			       struct beacon_tmpl_params *bcn_tmpl_param)
+wma_critical_update_set_notify_bcn_tmpl(struct wlan_objmgr_pdev *pdev,
+					uint8_t vdev_id,
+					struct beacon_tmpl_params *bcn_tmpl_param)
+{
+}
+
+static void
+wma_critical_update_set_notify_probe_rsp_tmpl(struct wlan_objmgr_pdev *pdev,
+					      uint8_t vdev_id,
+					      struct wmi_probe_resp_params *prb_tmpl_param)
 {
 }
 #endif
@@ -2368,7 +2427,7 @@ static QDF_STATUS wma_unified_bcn_tmpl_send(tp_wma_handle wma,
 			bcn_info->ecsa_count_offset - bytes_to_strip;
 
 	wma_upt_mlo_partner_info(&params, bcn_info, bytes_to_strip);
-	wma_critical_update_set_notify(wma->pdev, vdev_id, &params);
+	wma_critical_update_set_notify_bcn_tmpl(wma->pdev, vdev_id, &params);
 
 	ret = wmi_unified_beacon_tmpl_send_cmd(wma->wmi_handle,
 				 &params);
@@ -2877,16 +2936,17 @@ static inline void wma_mgmt_pktdump_rx_handler(
  * @wma_handle: wma handle
  * @desc_id: descriptor id
  * @status: status
+ * @vdev_id: vdev id
  *
  * Return: 0 for success or error code
  */
 static int wma_process_mgmt_tx_completion(tp_wma_handle wma_handle,
-					  uint32_t desc_id, uint32_t status)
+					  uint32_t desc_id, uint32_t status,
+					  uint32_t vdev_id)
 {
 	struct wlan_objmgr_pdev *pdev;
 	qdf_nbuf_t buf = NULL;
 	QDF_STATUS ret;
-	uint8_t vdev_id = 0;
 	struct wmi_mgmt_params mgmt_params = {};
 
 	if (wma_validate_handle(wma_handle))
@@ -2907,10 +2967,13 @@ static int wma_process_mgmt_tx_completion(tp_wma_handle wma_handle,
 	if (buf)
 		wma_mgmt_unmap_buf(wma_handle, buf);
 
-	vdev_id = mgmt_txrx_get_vdev_id(pdev, desc_id);
-	mgmt_params.vdev_id = vdev_id;
+	if (vdev_id == INVALID_VDEV_ID)
+		mgmt_params.vdev_id = mgmt_txrx_get_vdev_id(pdev, desc_id);
+	else
+		mgmt_params.vdev_id = vdev_id;
 
-	wma_mgmt_pktdump_tx_handler(wma_handle, buf, vdev_id, status);
+	wma_mgmt_pktdump_tx_handler(wma_handle, buf, mgmt_params.vdev_id,
+				    status);
 	ret = mgmt_txrx_tx_completion_handler(pdev, desc_id, status,
 					      &mgmt_params);
 
@@ -2957,6 +3020,7 @@ int wma_mgmt_tx_completion_handler(void *handle, uint8_t *cmpl_event_params,
 	tp_wma_handle wma_handle = (tp_wma_handle)handle;
 	WMI_MGMT_TX_COMPLETION_EVENTID_param_tlvs *param_buf;
 	wmi_mgmt_tx_compl_event_fixed_param *cmpl_params;
+	uint32_t vdev_id = INVALID_VDEV_ID;
 
 	param_buf = (WMI_MGMT_TX_COMPLETION_EVENTID_param_tlvs *)
 		cmpl_event_params;
@@ -2978,9 +3042,11 @@ int wma_mgmt_tx_completion_handler(void *handle, uint8_t *cmpl_event_params,
 						    cmpl_params->status,
 						    &params);
 	}
+	if (WMI_VDEV_ID_VALID_FROM_INFO_GET(cmpl_params->info))
+		vdev_id = WMI_VDEV_ID_FROM_INFO_GET(cmpl_params->info);
 
 	wma_process_mgmt_tx_completion(wma_handle, cmpl_params->desc_id,
-				       cmpl_params->status);
+				       cmpl_params->status, vdev_id);
 
 	return 0;
 }
@@ -3054,7 +3120,8 @@ int wma_mgmt_tx_bundle_completion_handler(void *handle, uint8_t *buf,
 		}
 
 		wma_process_mgmt_tx_completion(wma_handle,
-					       desc_ids[i], status[i]);
+					       desc_ids[i], status[i],
+					       INVALID_VDEV_ID);
 	}
 	return 0;
 }

@@ -380,10 +380,22 @@ policy_mgr_get_dfs_sta_sap_go_scc_movement(struct wlan_objmgr_psoc *psoc,
 uint32_t policy_mgr_get_connected_vdev_band_mask(struct wlan_objmgr_vdev *vdev);
 
 /**
- * policy_mgr_get_dfs_master_dynamic_enabled() - support dfs master or not
- * on AP interface when STA+SAP(GO) concurrency
+ * policy_mgr_get_dfs_master_dynamic_enabled() - query current
+ * dfs master support when STA+SAP(GO) concurrency
  * @psoc: pointer to psoc
  * @vdev_id: sap vdev id
+ *
+ * Return: true if dfs master functionality should be enabled.
+ */
+bool
+policy_mgr_get_dfs_master_dynamic_enabled(struct wlan_objmgr_psoc *psoc,
+					  uint8_t vdev_id);
+
+/**
+ * policy_mgr_update_dfs_master_dynamic_enabled() - update dfs master support
+ * or not on AP interface when STA+SAP(GO) concurrency
+ * @psoc: pointer to psoc
+ * @always_update_target: force update the setting to target
  *
  * This API is used to check AP dfs master functionality enabled or not when
  * STA+SAP(GO) concurrency.
@@ -402,8 +414,8 @@ uint32_t policy_mgr_get_connected_vdev_band_mask(struct wlan_objmgr_vdev *vdev);
  * Return: true if dfs master functionality should be enabled.
  */
 bool
-policy_mgr_get_dfs_master_dynamic_enabled(struct wlan_objmgr_psoc *psoc,
-					  uint8_t vdev_id);
+policy_mgr_update_dfs_master_dynamic_enabled(struct wlan_objmgr_psoc *psoc,
+					     bool always_update_target);
 
 /**
  * policy_mgr_get_can_skip_radar_event - Can skip DFS Radar event or not
@@ -1326,6 +1338,7 @@ bool policy_mgr_is_emlsr_sta_concurrency_present(struct wlan_objmgr_psoc *psoc);
  * @psoc: PSOC object information
  * @vdev: Vdev object pointer
  * @req: Pointer to mlo link set active
+ * @link_control_flags: set link control flags
  *
  * This API is to update the disallowed mode bitmap. It conveys which mode
  * the HW can operate for links. This helps FW to understand the
@@ -1336,7 +1349,8 @@ bool policy_mgr_is_emlsr_sta_concurrency_present(struct wlan_objmgr_psoc *psoc);
 bool
 policy_mgr_update_disallowed_mode_bitmap(struct wlan_objmgr_psoc *psoc,
 					 struct wlan_objmgr_vdev *vdev,
-					 struct mlo_link_set_active_req *req);
+					 struct mlo_link_set_active_req *req,
+					 uint32_t link_control_flags);
 
 /**
  * policy_mgr_init_disallow_mode_bmap() - Initialize the disallowed
@@ -1355,7 +1369,8 @@ policy_mgr_init_disallow_mode_bmap(struct mlo_link_set_active_req *req);
 static inline bool
 policy_mgr_update_disallowed_mode_bitmap(struct wlan_objmgr_psoc *psoc,
 					 struct wlan_objmgr_vdev *vdev,
-					 struct mlo_link_set_active_req *req)
+					 struct mlo_link_set_active_req *req,
+					 uint32_t link_control_flags)
 {
 	return false;
 }
@@ -4042,6 +4057,7 @@ policy_mgr_restrict_sap_on_unsafe_chan(struct wlan_objmgr_psoc *psoc)
 /**
  * policy_mgr_is_sap_freq_allowed - Check if the channel is allowed for sap
  * @psoc: PSOC object information
+ * @opmode: Current op_mode, helps to check whether it's P2P_GO/SAP
  * @sap_freq: channel frequency to be checked
  *
  * Check the factors as below to decide whether the channel is allowed or not:
@@ -4052,6 +4068,7 @@ policy_mgr_restrict_sap_on_unsafe_chan(struct wlan_objmgr_psoc *psoc)
  * Return: true for allowed, else false
  */
 bool policy_mgr_is_sap_freq_allowed(struct wlan_objmgr_psoc *psoc,
+				    enum QDF_OPMODE opmode,
 				    uint32_t sap_freq);
 
 /**
@@ -4818,6 +4835,82 @@ bool policy_mgr_is_mlo_sta_disconnected(struct wlan_objmgr_psoc *psoc,
 
 #ifdef WLAN_FEATURE_11BE_MLO
 /**
+ * policy_mgr_restart_emlsr_opportunistic_timer() - restart
+ * emlsr opopportunistic timer
+ * @psoc: psoc object
+ *
+ * Return: QDF_STATUS_SUCCESS if start timer successfully.
+ */
+QDF_STATUS policy_mgr_restart_emlsr_opportunistic_timer(
+		struct wlan_objmgr_psoc *psoc);
+
+/**
+ * policy_mgr_stop_emlsr_opportunistic_timer() - stop
+ * emlsr opopportunistic timer
+ * @psoc: psoc object
+ *
+ * Return: QDF_STATUS_SUCCESS if start timer successfully.
+ */
+QDF_STATUS policy_mgr_stop_emlsr_opportunistic_timer(
+		struct wlan_objmgr_psoc *psoc);
+
+/**
+ * policy_mgr_ap_csa_request() - Defer SAP/GO csa if eMLSR STA present
+ * @psoc: psoc ctx
+ * @vdev_id: SAP or GO vdev id
+ * @curr_ch_freq: current home channel frequency
+ * @csa_reason: CSA reason
+ * @target_chan_freq: target channel frequency
+ * @target_bw: target bandwidth
+ * @forced: force or not
+ * @always_wait_set_link: force wait for set link response
+ *
+ * As requirement for ML STA eMLSR concurrency, eMLSR ML STA needs to
+ * exit eMLSR mode by set link wmi command before SAP/GO CSA issue vdev
+ * restart.
+ * The API may queue the CSA request to run the CSA in workqueue thread.
+ * If always_wait_set_link flag is true, the API will only set link and
+ * wait for respone, it will not queue the CSA request.
+ *
+ * Return: QDF_STATUS_E_PENDING - CSA is postponed to work thread.
+ * QDF_STATUS_SUCCESS - CSA can execute as normal.
+ * other QDFS_* - CSA can't proceed due to error
+ */
+QDF_STATUS
+policy_mgr_ap_csa_request(struct wlan_objmgr_psoc *psoc,
+			  uint8_t vdev_id,
+			  uint32_t curr_ch_freq,
+			  enum sap_csa_reason_code csa_reason,
+			  uint32_t target_chan_freq,
+			  enum phy_ch_width target_bw,
+			  bool forced,
+			  bool always_wait_set_link);
+
+/**
+ * policy_mgr_ap_csa_end() - SAP or GO CSA end
+ * @psoc: pointer to psoc object
+ * @vdev_id: vdev id
+ * @failed: CSA failed or not
+ * @update_target: update force command to target
+ *
+ * Return: void
+ */
+void policy_mgr_ap_csa_end(struct wlan_objmgr_psoc *psoc,
+			   uint8_t vdev_id,
+			   bool failed,
+			   bool update_target);
+
+/**
+ * policy_mgr_flush_deferred_csa() - Flush pending CSA
+ * @psoc: pointer to psoc object
+ * @vdev_id: vdev id
+ *
+ * Return: void
+ */
+void
+policy_mgr_flush_deferred_csa(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id);
+
+/*
  * policy_mgr_is_ml_sta_links_in_mcc() - Check ML links are in MCC or not
  * @psoc: psoc ctx
  * @ml_freq_lst: ML STA freq list
@@ -5252,6 +5345,32 @@ policy_mgr_update_active_mlo_num_nlink(struct wlan_objmgr_psoc *psoc,
 				       uint8_t force_active_cnt);
 
 #else
+static inline QDF_STATUS
+policy_mgr_ap_csa_request(struct wlan_objmgr_psoc *psoc,
+			  uint8_t vdev_id,
+			  uint32_t curr_ch_freq,
+			  enum sap_csa_reason_code csa_reason,
+			  uint32_t target_chan_freq,
+			  enum phy_ch_width target_bw,
+			  bool forced,
+			  bool always_wait_set_link)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline
+void policy_mgr_ap_csa_end(struct wlan_objmgr_psoc *psoc,
+			   uint8_t vdev_id,
+			   bool failed,
+			   bool update_target)
+{
+}
+
+static inline void
+policy_mgr_flush_deferred_csa(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id)
+{
+}
+
 static inline bool
 policy_mgr_vdev_is_force_inactive(struct wlan_objmgr_psoc *psoc,
 				  uint8_t vdev_id)
@@ -5765,5 +5884,13 @@ QDF_STATUS policy_mgr_get_pcl_ch_list_for_ll_sap(
  */
 bool policy_mgr_mon_sbs_mac0_freq(struct wlan_objmgr_psoc *psoc,
 				  qdf_freq_t freq);
+
+/**
+ * policy_mgr_is_dynamic_sbs_enabled() - Check if dynamic sbs is enabled
+ * @psoc: psoc pointer
+ *
+ * Return: true/false.
+ */
+bool policy_mgr_is_dynamic_sbs_enabled(struct wlan_objmgr_psoc *psoc);
 
 #endif /* __WLAN_POLICY_MGR_API_H */

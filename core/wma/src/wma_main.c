@@ -341,12 +341,14 @@ wma_get_concurrency_support(struct wlan_objmgr_psoc *psoc)
  * Version 4 - WMI_HOST_VENDOR1_REQ1_VERSION_3_40 updated.
  * Version 5 - INI based 11BE support updated
  * Version 6 - sta dump info updated
+ * Version 7 - NAN standard plus feature support updated
+ * Version 8 - INI based NAN EHT capability support updated
  *
  * Return: None
  */
 static void wma_update_set_feature_version(struct target_feature_set *fs)
 {
-	fs->feature_set_version = 6;
+	fs->feature_set_version = 8;
 }
 
 /**
@@ -506,6 +508,7 @@ static void wma_set_feature_set_info(tp_wma_handle wma_handle,
 	feature_set->peer_bigdata_assocreject_info_support = true;
 	feature_set->peer_getstainfo_support = true;
 	feature_set->sta_dump_support = true;
+	feature_set->is_nan_eht_cap_enable = cfg_nan_is_eht_cap_enable(psoc);
 	wma_update_set_feature_version(feature_set);
 }
 
@@ -577,23 +580,15 @@ static bool wma_is_feature_set_supported(tp_wma_handle wma_handle)
 #ifdef FEATURE_SMEM_MAILBOX
 static bool wma_is_smem_mailbox_supported(tp_wma_handle wma_handle)
 {
-	bool is_feature_enabled_from_fw;
 	bool is_feature_enabled_from_cfg;
-
-	is_feature_enabled_from_fw =
-		wmi_service_enabled(wma_handle->wmi_handle,
-				    wmi_service_smem_mailbox_dlkm_support);
 
 	is_feature_enabled_from_cfg =
 		cfg_get(wma_handle->psoc, CFG_ENABLE_SMEM_MAILBOX);
 
-	if (!is_feature_enabled_from_fw)
-		wma_debug("SMEM mailbox feature is disabled from fw");
-
 	wma_debug("SMEM mailbox feature cfg value: %d",
 		  is_feature_enabled_from_cfg);
 
-	return is_feature_enabled_from_fw && is_feature_enabled_from_cfg;
+	return is_feature_enabled_from_cfg;
 }
 
 static void wma_set_smem_mailbox_feature(tp_wma_handle wma_handle,
@@ -3938,6 +3933,8 @@ QDF_STATUS wma_open(struct wlan_objmgr_psoc *psoc,
 	wma_handle->sta_max_li_mod_dtim_ms = cds_cfg->sta_maxlimod_dtim_ms;
 	wma_handle->staModDtim = ucfg_pmo_get_sta_mod_dtim(wma_handle->psoc);
 	wma_handle->staTelesDtim = ucfg_pmo_get_sta_teles_dtim(wma_handle->psoc);
+	wma_handle->minTelesDtimlvl =
+			ucfg_pmo_get_sta_min_teles_dtim(wma_handle->psoc);
 	wma_handle->staDynamicDtim =
 			ucfg_pmo_get_sta_dynamic_dtim(wma_handle->psoc);
 
@@ -5589,16 +5586,18 @@ wma_update_target_ht_cap(struct target_psoc_info *tgt_hdl,
 
 	cfg->ht_sgi_40 = !!(ht_cap_info & WMI_HT_CAP_HT40_SGI);
 
+	cfg->dynamic_smps = !!(ht_cap_info & WMI_HT_CAP_DYNAMIC_SMPS);
+
 	/* RF chains */
 	cfg->num_rf_chains = target_if_get_num_rf_chains(tgt_hdl);
 
 	wma_nofl_debug("ht_cap_info - %x ht_rx_stbc - %d, ht_tx_stbc - %d\n"
 		 "mpdu_density - %d ht_rx_ldpc - %d ht_sgi_20 - %d\n"
-		 "ht_sgi_40 - %d num_rf_chains - %d",
+		 "ht_sgi_40 - %d num_rf_chains - %d dynamic_smps - %d",
 		 ht_cap_info,
 		 cfg->ht_rx_stbc, cfg->ht_tx_stbc, cfg->mpdu_density,
 		 cfg->ht_rx_ldpc, cfg->ht_sgi_20, cfg->ht_sgi_40,
-		 cfg->num_rf_chains);
+		 cfg->num_rf_chains, cfg->dynamic_smps);
 
 }
 
@@ -5733,6 +5732,7 @@ static void wma_derive_ext_ht_cap(
 		ht_cap->ht_rx_ldpc = (!!(value & WMI_HT_CAP_RX_LDPC));
 		ht_cap->ht_sgi_20 = (!!(value & WMI_HT_CAP_HT20_SGI));
 		ht_cap->ht_sgi_40 = (!!(value & WMI_HT_CAP_HT40_SGI));
+		ht_cap->dynamic_smps = (!!(value & WMI_HT_CAP_DYNAMIC_SMPS));
 		ht_cap->num_rf_chains =
 			QDF_MAX(wma_get_num_of_setbits_from_bitmask(tx_chain),
 				wma_get_num_of_setbits_from_bitmask(rx_chain));
@@ -5749,6 +5749,9 @@ static void wma_derive_ext_ht_cap(
 					(!!(value & WMI_HT_CAP_HT20_SGI)));
 		ht_cap->ht_sgi_40 = QDF_MIN(ht_cap->ht_sgi_40,
 					(!!(value & WMI_HT_CAP_HT40_SGI)));
+		ht_cap->dynamic_smps = QDF_MIN(ht_cap->dynamic_smps,
+					(!!(value & WMI_HT_CAP_DYNAMIC_SMPS)));
+
 		ht_cap->num_rf_chains =
 			QDF_MAX(ht_cap->num_rf_chains,
 				QDF_MAX(wma_get_num_of_setbits_from_bitmask(
@@ -5820,11 +5823,11 @@ static void wma_update_target_ext_ht_cap(struct target_psoc_info *tgt_hdl,
 
 	wma_nofl_debug("[ext ht cap] ht_rx_stbc - %d, ht_tx_stbc - %d\n"
 			"mpdu_density - %d ht_rx_ldpc - %d ht_sgi_20 - %d\n"
-			"ht_sgi_40 - %d num_rf_chains - %d",
+			"ht_sgi_40 - %d num_rf_chains - %d dynamic_smps - %d",
 			ht_cap->ht_rx_stbc, ht_cap->ht_tx_stbc,
 			ht_cap->mpdu_density, ht_cap->ht_rx_ldpc,
 			ht_cap->ht_sgi_20, ht_cap->ht_sgi_40,
-			ht_cap->num_rf_chains);
+			ht_cap->num_rf_chains, ht_cap->dynamic_smps);
 }
 
 /**
@@ -6013,6 +6016,13 @@ wma_update_sar_version(struct wlan_psoc_host_service_ext_param *param,
 		       struct wma_tgt_cfg *cfg)
 {
 	cfg->sar_version = param ? param->sar_version : SAR_VERSION_1;
+}
+
+static void
+wma_update_sar_flag(struct wlan_psoc_host_service_ext2_param *param,
+		    struct wma_tgt_cfg *cfg)
+{
+	cfg->sar_flag = param ? param->sar_flag : SAR_SET_CTL_GROUPING_DISABLE;
 }
 
 /**
@@ -6408,6 +6418,7 @@ static int wma_update_hdd_cfg(tp_wma_handle wma_handle)
 	void *hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
 	target_resource_config *wlan_res_cfg;
 	struct wlan_psoc_host_service_ext_param *service_ext_param;
+	struct wlan_psoc_host_service_ext2_param *service_ext2_param;
 	struct target_psoc_info *tgt_hdl;
 	struct wmi_unified *wmi_handle;
 	uint8_t i;
@@ -6429,6 +6440,8 @@ static int wma_update_hdd_cfg(tp_wma_handle wma_handle)
 
 	service_ext_param =
 			target_psoc_get_service_ext_param(tgt_hdl);
+	service_ext2_param =
+			target_psoc_get_service_ext2_param(tgt_hdl);
 	wmi_handle = get_wmi_unified_hdl_from_psoc(wma_handle->psoc);
 	if (wmi_validate_handle(wmi_handle))
 		return -EINVAL;
@@ -6489,6 +6502,7 @@ static int wma_update_hdd_cfg(tp_wma_handle wma_handle)
 	wma_update_hdd_band_cap(target_if_get_phy_capability(tgt_hdl),
 				&tgt_cfg, wma_handle->psoc);
 	wma_update_sar_version(service_ext_param, &tgt_cfg);
+	wma_update_sar_flag(service_ext2_param, &tgt_cfg);
 	tgt_cfg.fine_time_measurement_cap =
 		target_if_get_wmi_fw_sub_feat_caps(tgt_hdl);
 	tgt_cfg.wmi_max_len = wmi_get_max_msg_len(wma_handle->wmi_handle)
@@ -8136,7 +8150,7 @@ static void wma_set_wifi_start_packet_stats(void *wma_handle,
 		ATH_PKTLOG_TEXT | ATH_PKTLOG_SW_EVENT;
 #elif defined(QCA_WIFI_QCA6390) || defined(QCA_WIFI_QCA6490) || \
       defined(QCA_WIFI_QCA6750) || defined(QCA_WIFI_KIWI) || \
-      defined(QCA_WIFI_WCN6450)
+      defined(QCA_WIFI_WCN6450) || defined(QCA_WIFI_WCN7750)
 	log_state = ATH_PKTLOG_RCFIND | ATH_PKTLOG_RCUPDATE |
 		    ATH_PKTLOG_TX | ATH_PKTLOG_LITE_T2H |
 		    ATH_PKTLOG_SW_EVENT | ATH_PKTLOG_RX;

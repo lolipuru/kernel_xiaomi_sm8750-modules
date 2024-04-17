@@ -763,6 +763,10 @@ const char *hdd_reason_type_to_string(enum netif_reason_type reason)
 	CASE_RETURN_STRING(WLAN_PEER_UNAUTHORISED);
 	CASE_RETURN_STRING(WLAN_THERMAL_MITIGATION);
 	CASE_RETURN_STRING(WLAN_DATA_FLOW_CONTROL_PRIORITY);
+	CASE_RETURN_STRING(WLAN_DATA_FLOW_CTRL_BE_BK);
+	CASE_RETURN_STRING(WLAN_DATA_FLOW_CTRL_VI);
+	CASE_RETURN_STRING(WLAN_DATA_FLOW_CTRL_VO);
+	CASE_RETURN_STRING(WLAN_DATA_FLOW_CTRL_PRI);
 	default:
 		return "Invalid";
 	}
@@ -1305,7 +1309,6 @@ void hdd_print_netdev_txq_status(struct net_device *dev)
 }
 
 #ifdef FEATURE_MONITOR_MODE_SUPPORT
-static
 QDF_STATUS wlan_hdd_init_mon_link(struct hdd_context *hdd_ctx,
 				  struct wlan_hdd_link_info *link_info)
 {

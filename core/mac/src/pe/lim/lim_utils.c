@@ -5794,103 +5794,11 @@ end:
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_SB_ID);
 }
 
-/**
- * is_dot11mode_support_ht_cap() - Check dot11mode supports HT capability
- * @dot11mode: dot11mode
- *
- * This function checks whether dot11mode support HT capability or not
- *
- * Return: True, if supports. False otherwise
- */
-static bool is_dot11mode_support_ht_cap(enum csr_cfgdot11mode dot11mode)
-{
-	if ((dot11mode == eCSR_CFG_DOT11_MODE_AUTO) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11N) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11AC) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11N_ONLY) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11AC_ONLY) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11AX) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11AX_ONLY) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11BE) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11BE_ONLY)) {
-		return true;
-	}
-
-	return false;
-}
-
-/**
- * is_dot11mode_support_vht_cap() - Check dot11mode supports VHT capability
- * @dot11mode: dot11mode
- *
- * This function checks whether dot11mode support VHT capability or not
- *
- * Return: True, if supports. False otherwise
- */
-static bool is_dot11mode_support_vht_cap(enum csr_cfgdot11mode dot11mode)
-{
-	if ((dot11mode == eCSR_CFG_DOT11_MODE_AUTO) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11AC) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11AC_ONLY) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11AX) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11AX_ONLY) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11BE) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11BE_ONLY)) {
-		return true;
-	}
-
-	return false;
-}
-
-/**
- * is_dot11mode_support_he_cap() - Check dot11mode supports HE capability
- * @dot11mode: dot11mode
- *
- * This function checks whether dot11mode support HE capability or not
- *
- * Return: True, if supports. False otherwise
- */
-static bool is_dot11mode_support_he_cap(enum csr_cfgdot11mode dot11mode)
-{
-	if ((dot11mode == eCSR_CFG_DOT11_MODE_AUTO) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11AX) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11AX_ONLY) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11BE) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11BE_ONLY)) {
-		return true;
-	}
-
-	return false;
-}
 
 #ifdef WLAN_FEATURE_11BE
-/**
- * is_dot11mode_support_eht_cap() - Check dot11mode supports EHT capability
- * @dot11mode: dot11mode
- *
- * This function checks whether dot11mode support EHT capability or not
- *
- * Return: True, if supports. False otherwise
- */
-static bool is_dot11mode_support_eht_cap(enum csr_cfgdot11mode dot11mode)
-{
-	if ((dot11mode == eCSR_CFG_DOT11_MODE_AUTO) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11BE) ||
-	    (dot11mode == eCSR_CFG_DOT11_MODE_11BE_ONLY)) {
-		return true;
-	}
-
-	return false;
-}
-
 bool lim_is_session_chwidth_320mhz(struct pe_session *session)
 {
 	return session->ch_width == CH_WIDTH_320MHZ;
-}
-#else
-static bool is_dot11mode_support_eht_cap(enum csr_cfgdot11mode dot11mode)
-{
-	return false;
 }
 #endif
 
@@ -6042,7 +5950,7 @@ static QDF_STATUS lim_send_vht_caps_ie(struct mac_context *mac_ctx,
 }
 
 QDF_STATUS lim_send_ies_per_band(struct mac_context *mac_ctx, uint8_t vdev_id,
-				 enum csr_cfgdot11mode dot11_mode,
+				 enum mlme_dot11_mode dot11_mode,
 				 enum QDF_OPMODE device_mode)
 {
 	QDF_STATUS status_ht = QDF_STATUS_SUCCESS;
@@ -6055,13 +5963,13 @@ QDF_STATUS lim_send_ies_per_band(struct mac_context *mac_ctx, uint8_t vdev_id,
 	 * it is causing weird padding errors. Instead use Sir Mac VHT struct
 	 * to send IE to wma.
 	 */
-	if (is_dot11mode_support_ht_cap(dot11_mode))
+	if (IS_DOT11_MODE_HT(dot11_mode))
 		status_ht = lim_send_ht_caps_ie(mac_ctx, device_mode, vdev_id);
 
-	if (is_dot11mode_support_vht_cap(dot11_mode))
+	if (IS_DOT11_MODE_VHT(dot11_mode))
 		status_vht = lim_send_vht_caps_ie(mac_ctx, device_mode, vdev_id);
 
-	if (is_dot11mode_support_he_cap(dot11_mode)) {
+	if (IS_DOT11_MODE_HE(dot11_mode)) {
 		status_he = lim_send_he_caps_ie(mac_ctx, device_mode, vdev_id);
 
 		if (QDF_IS_STATUS_SUCCESS(status_he))
@@ -6069,7 +5977,7 @@ QDF_STATUS lim_send_ies_per_band(struct mac_context *mac_ctx, uint8_t vdev_id,
 								vdev_id);
 	}
 
-	if (is_dot11mode_support_eht_cap(dot11_mode)) {
+	if (IS_DOT11_MODE_EHT(dot11_mode)) {
 		if ((device_mode == QDF_NAN_DISC_MODE ||
 		     device_mode == QDF_NDI_MODE) &&
 		    !wlan_nan_is_eht_capable(mac_ctx->psoc))
@@ -6187,6 +6095,7 @@ QDF_STATUS lim_send_ext_cap_ie(struct mac_context *mac_ctx,
 	struct vdev_ie_info *vdev_ie;
 	struct scheduler_msg msg = {0};
 	QDF_STATUS status;
+	struct pe_session *session_entry;
 
 	dot11mode = mac_ctx->mlme_cfg->dot11_mode.dot11_mode;
 	if (IS_DOT11_MODE_VHT(dot11mode))
@@ -6207,6 +6116,12 @@ QDF_STATUS lim_send_ext_cap_ie(struct mac_context *mac_ctx,
 			num_bytes = extra_extcap->num_bytes;
 		lim_merge_extcap_struct(&ext_cap_data, extra_extcap, true);
 	}
+
+	/* After merging extcap, check whether disable btm bit require or not */
+	session_entry = pe_find_session_by_vdev_id(mac_ctx, vdev_id);
+	if (session_entry)
+		populate_dot11f_btm_extended_caps(mac_ctx, session_entry,
+						  &ext_cap_data);
 
 	/* Allocate memory for the WMI request, and copy the parameter */
 	vdev_ie = qdf_mem_malloc(sizeof(*vdev_ie) + num_bytes);
@@ -7761,9 +7676,12 @@ void lim_update_session_he_capable(struct mac_context *mac, struct pe_session *s
 		session->vhtCapability = 0;
 		session->he_6ghz_band = 1;
 	}
-	if (wlan_reg_is_24ghz_ch_freq(session->curr_op_freq) &&
-	    !mac->mlme_cfg->vht_caps.vht_cap_info.b24ghz_band)
-		session->vhtCapability = 0;
+
+	if (wlan_reg_is_24ghz_ch_freq(session->curr_op_freq)) {
+		session->he_config.ul_mu = mac->he_cap_2g.ul_mu;
+		if (!mac->mlme_cfg->vht_caps.vht_cap_info.b24ghz_band)
+			session->vhtCapability = 0;
+	}
 
 	if (!wlan_reg_is_24ghz_ch_freq(session->curr_op_freq)) {
 		session->he_config.ul_mu = mac->he_cap_5g.ul_mu;
@@ -8300,14 +8218,17 @@ void lim_update_sta_mlo_info(struct pe_session *session,
 			     tpAddStaParams add_sta_params,
 			     tpDphHashNode sta_ds)
 {
-	if (lim_is_mlo_conn(session, sta_ds)) {
+	if (lim_is_add_sta_params_eht_capable(add_sta_params) &&
+	    lim_is_mlo_conn(session, sta_ds)) {
 		WLAN_ADDR_COPY(add_sta_params->mld_mac_addr, sta_ds->mld_addr);
 		add_sta_params->is_assoc_peer = lim_is_mlo_recv_assoc(sta_ds);
+		pe_debug("mld mac " QDF_MAC_ADDR_FMT " assoc peer %d",
+			 QDF_MAC_ADDR_REF(add_sta_params->mld_mac_addr),
+			 add_sta_params->is_assoc_peer);
+		return;
 	}
-	pe_debug("is mlo connection: %d mld mac " QDF_MAC_ADDR_FMT " assoc peer %d",
-		 lim_is_mlo_conn(session, sta_ds),
-		 QDF_MAC_ADDR_REF(add_sta_params->mld_mac_addr),
-		 add_sta_params->is_assoc_peer);
+
+	pe_debug("is not mlo capable");
 }
 
 void lim_set_mlo_caps(struct mac_context *mac, struct pe_session *session,
@@ -11101,7 +11022,6 @@ void lim_overwrite_sta_puncture(struct pe_session *session,
 	ch_param->reg_punc_bitmap = new_punc;
 	session->puncture_bitmap = new_punc;
 }
-
 #else
 static void lim_update_ap_puncture(struct pe_session *session,
 				   struct ch_params *ch_params)
@@ -11149,7 +11069,8 @@ QDF_STATUS lim_pre_vdev_start(struct mac_context *mac,
 				       session->curr_op_freq,
 				       wlan_vdev_get_id(session->vdev));
 
-	if (IS_DOT11_MODE_EHT(session->dot11mode))
+	if (IS_DOT11_MODE_EHT(session->dot11mode) &&
+	    !(LIM_IS_STA_ROLE(session) && !lim_get_punc_chan_bit_map(session)))
 		wlan_reg_set_create_punc_bitmap(&ch_params, true);
 
 	wlan_reg_set_channel_params_for_pwrmode(mac->pdev,
@@ -11227,11 +11148,8 @@ QDF_STATUS lim_pre_vdev_start(struct mac_context *mac,
 	mlme_obj->proto.vht_info.allow_vht = !!session->vhtCapability;
 	mlme_obj->ext_vdev_ptr->connect_info.uapsd_per_ac_bitmask =
 						session->gUapsdPerAcBitmask;
-
-	if (cds_is_5_mhz_enabled())
-		mlme_obj->mgmt.rate_info.quarter_rate = 1;
-	else if (cds_is_10_mhz_enabled())
-		mlme_obj->mgmt.rate_info.half_rate = 1;
+	mlme_obj->mgmt.rate_info.quarter_rate = cds_is_5_mhz_enabled();
+	mlme_obj->mgmt.rate_info.half_rate = cds_is_10_mhz_enabled();
 
 	if (session->nss == 2) {
 		mlme_obj->mgmt.chainmask_info.num_rx_chain = 2;
@@ -11888,5 +11806,21 @@ rel:
 rel_vdev:
 			wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
 		}
+	}
+}
+
+void lim_update_disconnect_vdev_id(struct mac_context *mac,  uint8_t vdev_id)
+{
+	struct pe_session *session;
+
+	session = pe_find_session_by_vdev_id(mac, vdev_id);
+	if (!session) {
+		pe_err("Session is NULL");
+		return;
+	}
+
+	if (session->vdev) {
+		wlan_mlme_set_disconnect_receive(session->vdev, true);
+		pe_debug("disconnect received on vdev id %d", vdev_id);
 	}
 }

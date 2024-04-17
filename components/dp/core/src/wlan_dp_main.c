@@ -95,6 +95,7 @@ void dp_free_ctx(void)
 
 	dp_ctx =  dp_get_context();
 
+	qdf_spinlock_destroy(&dp_ctx->dp_link_del_lock);
 	qdf_spinlock_destroy(&dp_ctx->intf_list_lock);
 	qdf_list_destroy(&dp_ctx->intf_list);
 	dp_detach_ctx();
@@ -1349,13 +1350,18 @@ dp_vdev_obj_create_notification(struct wlan_objmgr_vdev *vdev, void *arg)
 		return status;
 	}
 
+	dp_intf->device_mode = wlan_vdev_mlme_get_opmode(vdev);
+
+	if (dp_intf->device_mode == QDF_SAP_MODE ||
+	    dp_intf->device_mode == QDF_P2P_GO_MODE)
+		dp_link->sap_tx_block_mask = DP_TX_FN_CLR |
+					     DP_TX_SAP_STOP;
 	if (dp_intf->num_links == 1) {
 		/*
 		 * Interface level operations to be done only
 		 * when the first link is created
 		 */
 		dp_intf->def_link = dp_link;
-		dp_intf->device_mode = wlan_vdev_mlme_get_opmode(vdev);
 		qdf_atomic_init(&dp_intf->num_active_task);
 		dp_nud_ignore_tracking(dp_intf, false);
 		dp_mic_enable_work(dp_intf);
@@ -1363,9 +1369,7 @@ dp_vdev_obj_create_notification(struct wlan_objmgr_vdev *vdev, void *arg)
 
 		if (dp_intf->device_mode == QDF_SAP_MODE ||
 		    dp_intf->device_mode == QDF_P2P_GO_MODE) {
-			dp_intf->sap_tx_block_mask = DP_TX_FN_CLR |
-						     DP_TX_SAP_STOP;
-
+			dp_intf->sap_tx_block_mask = true;
 			status = qdf_event_create(&dp_intf->qdf_sta_eap_frm_done_event);
 			if (!QDF_IS_STATUS_SUCCESS(status)) {
 				dp_err("eap frm done event init failed!!");
@@ -1383,6 +1387,10 @@ static void dp_link_handle_cdp_vdev_delete(struct wlan_dp_psoc_context *dp_ctx,
 					   struct wlan_dp_link *dp_link)
 {
 	qdf_spin_lock_bh(&dp_ctx->dp_link_del_lock);
+
+	dp_info("CDP vdev registered %d, vdev deleted %d",
+		dp_link->cdp_vdev_registered,
+		dp_link->cdp_vdev_deleted);
 
 	if (!dp_link->cdp_vdev_registered || dp_link->cdp_vdev_deleted) {
 		/* CDP vdev is not created/registered or already deleted */
@@ -1433,6 +1441,9 @@ dp_vdev_obj_destroy_notification(struct wlan_objmgr_vdev *vdev, void *arg)
 	qdf_list_remove_node(&dp_intf->dp_link_list, &dp_link->node);
 	dp_intf->num_links--;
 	qdf_spin_unlock_bh(&dp_intf->dp_link_list_lock);
+	if (dp_intf->device_mode == QDF_SAP_MODE ||
+	    dp_intf->device_mode == QDF_P2P_GO_MODE)
+		dp_link->sap_tx_block_mask |= DP_TX_FN_CLR;
 
 	if (dp_intf->num_links == 0) {
 		/*
@@ -1453,7 +1464,7 @@ dp_vdev_obj_destroy_notification(struct wlan_objmgr_vdev *vdev, void *arg)
 				return status;
 			}
 			dp_intf->txrx_ops.tx.tx = NULL;
-			dp_intf->sap_tx_block_mask |= DP_TX_FN_CLR;
+			dp_intf->sap_tx_block_mask = true;
 		}
 	}
 
@@ -2153,7 +2164,7 @@ void wlan_dp_link_cdp_vdev_delete_notification(void *context)
 	uint8_t found = 0;
 
 	/* dp_link will not be freed before this point. */
-	if (!is_dp_link_valid(dp_link))
+	if (!dp_link)
 		return;
 
 	dp_info("dp_link %pK id %d", dp_link, dp_link->link_id);
@@ -2293,7 +2304,8 @@ void *wlan_dp_txrx_soc_attach(struct dp_txrx_soc_attach_params *params,
 		*is_wifi3_0_target = true;
 	} else if (params->target_type == TARGET_TYPE_KIWI ||
 		   params->target_type == TARGET_TYPE_MANGO ||
-		   params->target_type == TARGET_TYPE_PEACH) {
+		   params->target_type == TARGET_TYPE_PEACH ||
+		   params->target_type == TARGET_TYPE_WCN7750) {
 		dp_soc = cdp_soc_attach(BERYLLIUM_DP, hif_context,
 					params->target_psoc,
 					htc_ctx, qdf_ctx,
@@ -2337,11 +2349,24 @@ err_soc_detach:
 	return dp_soc;
 }
 
+static inline
+void wlan_dp_check_inactive_dp_links(struct wlan_dp_psoc_context *dp_ctx)
+{
+	if (TAILQ_EMPTY(&dp_ctx->inactive_dp_link_list))
+		return;
+
+	dp_err("Inactive dp links still present!");
+	qdf_assert(0);
+}
+
 void wlan_dp_txrx_soc_detach(ol_txrx_soc_handle soc)
 {
+	struct wlan_dp_psoc_context *dp_ctx = dp_get_context();
+
 	cdp_soc_deinit(soc);
+	wlan_dp_check_inactive_dp_links(dp_ctx);
 	cdp_soc_detach(soc);
-	wlan_dp_svc_deinit(dp_get_context());
+	wlan_dp_svc_deinit(dp_ctx);
 }
 
 QDF_STATUS wlan_dp_txrx_attach_target(ol_txrx_soc_handle soc, uint8_t pdev_id)
@@ -2999,3 +3024,26 @@ void __wlan_dp_update_def_link(struct wlan_objmgr_psoc *psoc,
 				QDF_MAC_ADDR_REF(zero_addr.bytes),
 		dp_link ? dp_link->link_id : WLAN_INVALID_LINK_ID);
 }
+
+#ifdef WLAN_FEATURE_DYNAMIC_RX_AGGREGATION
+void wlan_dp_rx_aggr_dis_req(struct wlan_dp_intf *dp_intf,
+			     enum ctrl_rx_aggr_client_id id, bool disable)
+{
+	if (id >= CTRL_RX_AGGR_ID_MAX) {
+		dp_err("Invalid client id: %u", id);
+		return;
+	}
+
+	if (id == CTRL_RX_AGGR_ID_WLM &&
+	    !dp_intf->dp_ctx->dp_cfg.wlm_rx_aggr_control) {
+		dp_info("wlm rx aggregation control feature not enabled");
+		return;
+	}
+
+	if (dp_intf->disable_rx_aggr[id] == disable)
+		return;
+
+	dp_intf->disable_rx_aggr[id] = disable;
+	dp_info("Module: %u disable: %u", id, disable);
+}
+#endif

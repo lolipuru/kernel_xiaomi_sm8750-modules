@@ -276,12 +276,14 @@ enum hdd_adapter_flags {
  * @SOFTAP_BSS_STARTED: Software Access Point (SAP) is running
  * @SOFTAP_INIT_DONE: Software Access Point (SAP) is initialized
  * @VENDOR_ACS_RESPONSE_PENDING: Waiting for event for vendor acs
+ * @SOFTAP_ADD_INTF_LINK: add_intf_link is set for multi link SAP
  */
 enum hdd_link_flags {
 	SME_SESSION_OPENED,
 	SOFTAP_BSS_STARTED,
 	SOFTAP_INIT_DONE,
 	VENDOR_ACS_RESPONSE_PENDING,
+	SOFTAP_ADD_INTF_LINK,
 };
 
 /**
@@ -730,26 +732,11 @@ struct hdd_beacon_data {
 };
 
 /**
- * struct hdd_mon_set_ch_info - Holds monitor mode channel switch params
- * @freq: Channel frequency.
- * @cb_mode: Channel bonding
- * @channel_width: Channel width 0/1/2 for 20/40/80MHz respectively.
- * @phy_mode: PHY mode
- */
-struct hdd_mon_set_ch_info {
-	uint32_t freq;
-	uint8_t cb_mode;
-	uint32_t channel_width;
-	eCsrPhyMode phy_mode;
-};
-
-/**
  * struct hdd_station_ctx -- STA-specific information
  * @roam_profile: current roaming profile
  * @conn_info: current connection information
  * @cache_conn_info: prev connection info
  * @reg_phymode: reg phymode
- * @ch_info: monitor mode channel information
  * @ap_supports_immediate_power_save: Does the current AP allow our STA
  *    to immediately go into power save?
  * @user_cfg_chn_width: max channel bandwidth set by user space
@@ -759,7 +746,6 @@ struct hdd_station_ctx {
 	struct csr_roam_profile roam_profile;
 	struct hdd_connection_info conn_info;
 	struct hdd_connection_info cache_conn_info;
-	struct hdd_mon_set_ch_info ch_info;
 	bool ap_supports_immediate_power_save;
 	uint8_t user_cfg_chn_width;
 };
@@ -1105,10 +1091,14 @@ struct freq_change_info {
  * struct hdd_monitor_ctx - Monitor specific information
  * @freq: Monitor Frequency
  * @bandwidth: Monitor bandwidth
+ * @cb_mode: Channel bonding
+ * @phy_mode: PHY mode
  */
 struct hdd_monitor_ctx {
 	qdf_freq_t freq;
 	enum phy_ch_width bandwidth;
+	uint8_t cb_mode;
+	eCsrPhyMode phy_mode;
 };
 
 #define WLAN_HDD_DEFLINK_IDX	0
@@ -1152,6 +1142,7 @@ struct hdd_monitor_ctx {
  * @mscs_counter: Counter on MSCS action frames sent
  * @link_flags: a bitmap of hdd_link_flags
  * @ch_chng_info: Channel change info
+ * @sap_stop_bss_work: stop sap work
  */
 struct wlan_hdd_link_info {
 	struct hdd_adapter *adapter;
@@ -1194,6 +1185,7 @@ struct wlan_hdd_link_info {
 
 	unsigned long link_flags;
 	struct freq_change_info ch_chng_info;
+	struct work_struct  sap_stop_bss_work;
 };
 
 /**
@@ -1245,7 +1237,6 @@ struct wlan_hdd_tx_power {
  * @cache_sta_info_list:
  * @cache_sta_count: number of currently cached stations
  * @wapi_info:
- * @sap_stop_bss_work:
  * @tsf: structure containing tsf related information
  * @mc_addr_list: multicast address list
  * @mc_list_lock: spin lock for multicast list
@@ -1395,8 +1386,6 @@ struct hdd_adapter {
 	struct hdd_wapi_info wapi_info;
 #endif
 
-	struct work_struct  sap_stop_bss_work;
-
 #ifdef WLAN_FEATURE_TSF
 	struct hdd_vdev_tsf tsf;
 #endif
@@ -1536,6 +1525,9 @@ struct hdd_adapter {
 		(&(WLAN_HDD_GET_AP_CTX_PTR((link_info))->hostapd_state))
 #define WLAN_HDD_GET_SAP_CTX_PTR(link_info) \
 		(WLAN_HDD_GET_AP_CTX_PTR((link_info))->sap_context)
+#define WLAN_HDD_IS_DEFLINK(link_info) \
+		((link_info) ? \
+		((link_info) == (link_info)->adapter->deflink) : false)
 
 #ifdef WLAN_FEATURE_NAN
 #define WLAN_HDD_IS_NDP_ENABLED(hdd_ctx) ((hdd_ctx)->nan_datapath_enabled)
@@ -1883,6 +1875,7 @@ enum wlan_state_ctrl_str_id {
 };
 
 #define MAX_TGT_HW_NAME_LEN 32
+#define HDD_MAX_IFACE_TYPE 2
 
 /**
  * struct hdd_context - hdd shared driver and psoc/device context
@@ -2024,6 +2017,7 @@ enum wlan_state_ctrl_str_id {
  * @original_channels:
  * @cache_channel_lock:
  * @sar_version:
+ * @sar_flag: SAR flags supported by firmware
  * @dynamic_mac_list:
  * @dynamic_nss_chains_support: Per vdev dynamic nss chains update capability
  * @hw_macaddr:
@@ -2078,6 +2072,9 @@ enum wlan_state_ctrl_str_id {
  * @more_peer_data: more mlo peer data in peer stats
  * @lpc_info: Local packet capture info
  * @combination: interface combination register to wiphy
+ * @wlan_hdd_akm_suites: Supported AKM suites for various interfaces
+ * @sta_akms: Station mode supported AKMs
+ * @ap_akms: AP mode supported AKMs
  */
 struct hdd_context {
 	struct wlan_objmgr_psoc *psoc;
@@ -2282,6 +2279,7 @@ struct hdd_context {
 	qdf_mutex_t cache_channel_lock;
 #endif
 	enum sar_version sar_version;
+	enum sar_flag sar_flag;
 	struct hdd_dynamic_mac dynamic_mac_list[QDF_MAX_CONCURRENCY_PERSONA];
 	bool dynamic_nss_chains_support;
 	struct qdf_mac_addr hw_macaddr;
@@ -2364,6 +2362,12 @@ struct hdd_context {
 #endif
 
 	struct ieee80211_iface_combination *combination;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)) || \
+	defined(CFG80211_IFTYPE_AKM_SUITES_SUPPORT)
+	struct wiphy_iftype_akm_suites wlan_hdd_akm_suites[HDD_MAX_IFACE_TYPE];
+	uint32_t *sta_akms;
+	uint32_t *ap_akms;
+#endif
 };
 
 /**
@@ -2454,6 +2458,26 @@ struct hdd_chwidth_info {
 };
 
 /**
+ * enum hdd_nb_params_id - North bound parameter id
+ * @NB_NO_ID: non-use id
+ * @NB_START_AP: parameter from start ap
+ * @NB_MGMT_TX: parameter from mgmt tx
+ * @NB_CHANNEL_SWITCH: parameter from channel switch
+ * @NB_CHANGE_BSS: parameter from change bss
+ * @NB_CHANGE_BEACON: parameter from change beacon
+ * @NB_SET_TXQ: parameter from set txq
+ */
+enum hdd_nb_params_id {
+	NB_NO_ID,
+	NB_START_AP,
+	NB_MGMT_TX,
+	NB_CHANNEL_SWITCH,
+	NB_CHANGE_BSS,
+	NB_CHANGE_BEACON,
+	NB_SET_TXQ,
+};
+
+/**
  * struct mac_addr_set_priv: Set MAC addr private context
  * @fw_resp_status: F/W response status
  * @pending_rsp_cnt: Pending response count
@@ -2461,6 +2485,16 @@ struct hdd_chwidth_info {
 struct mac_addr_set_priv {
 	uint32_t fw_resp_status;
 	qdf_atomic_t pending_rsp_cnt;
+};
+
+/**
+ * struct mlo_ulmu_config: Set ULMU MLO config
+ * @vdev_id: vdev id calculated from link info
+ * @ulmu: ulmu value from command params
+ */
+struct mlo_ulmu_config {
+	uint8_t vdev_id;
+	uint8_t ulmu;
 };
 
 /*
@@ -3753,7 +3787,16 @@ QDF_STATUS hdd_post_cds_enable_config(struct hdd_context *hdd_ctx);
 
 QDF_STATUS hdd_abort_mac_scan_all_adapters(struct hdd_context *hdd_ctx);
 
-void wlan_hdd_stop_sap(struct hdd_adapter *ap_adapter);
+/**
+ * wlan_hdd_stop_sap() - This function stops bss of SAP.
+ * @link_info: pointer of hdd link info
+ *
+ * This function will stop the sap of current link. and it will notify
+ * kernel that sap stopped.
+ *
+ * Return: None
+ */
+void wlan_hdd_stop_sap(struct wlan_hdd_link_info *link_info);
 
 /**
  * wlan_hdd_start_sap() - this function starts bss of SAP.
@@ -4244,6 +4287,26 @@ void hdd_adapter_reset_station_ctx(struct hdd_adapter *adapter);
  * Return: 0 on success or errno on failure.
  */
 int hdd_start_station_adapter(struct hdd_adapter *adapter);
+
+/**
+ * hdd_stop_ap_link()- Stop link of AP
+ * @link_info: pointer of hdd link info
+ *
+ * This function destroy vdev and deinit ap mode for each link.
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS hdd_stop_ap_link(struct wlan_hdd_link_info *link_info);
+
+/**
+ * hdd_start_ap_link()- Start link of AP
+ * @link_info: pointer of hdd link info
+ *
+ * This function create vdev and init ap mode for each link.
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS hdd_start_ap_link(struct wlan_hdd_link_info *link_info);
 
 /**
  * hdd_start_ap_adapter()- Start AP Adapter
@@ -4819,13 +4882,14 @@ int wlan_hdd_set_mon_chan(struct hdd_adapter *adapter);
 /**
  * wlan_hdd_validate_mon_params() - Validate freq and bw for monitor interface.
  * @adapter: Handle to adapter
- * @freq: Monitor mode frequency (MHz)
- * @bandwidth: Capture channel bandwidth
+ * @mon_params: Monitor input parameters
+ * @num_params: Number of input params
  *
  * Return: 0 on success else error code.
  */
-int wlan_hdd_validate_mon_params(struct hdd_adapter *adapter, qdf_freq_t freq,
-				 uint32_t bandwidth);
+int wlan_hdd_validate_mon_params(struct hdd_adapter *adapter,
+				 struct hdd_monitor_ctx *mon_params,
+				 uint8_t num_params);
 #else
 static inline
 int wlan_hdd_set_mon_chan(struct hdd_adapter *adapter)
@@ -4834,8 +4898,9 @@ int wlan_hdd_set_mon_chan(struct hdd_adapter *adapter)
 }
 
 static inline
-int wlan_hdd_validate_mon_params(struct hdd_adapter *adapter, qdf_freq_t freq,
-				 uint32_t bandwidth)
+int wlan_hdd_validate_mon_params(struct hdd_adapter *adapter,
+				 struct hdd_monitor_ctx *mon_params,
+				 uint8_t num_params)
 {
 	return 0;
 }
@@ -5644,4 +5709,41 @@ int wlan_hdd_alloc_iface_combination_mem(struct hdd_context *hdd_ctx);
  */
 void wlan_hdd_free_iface_combination_mem(struct hdd_context *hdd_ctx);
 
+#ifdef WLAN_FEATURE_MULTI_LINK_SAP
+/**
+ * hdd_get_link_info_by_link_id() - get wlan_hdd_link_info by link id
+ * @adapter: pointer to adapter
+ * @link_id: link id
+ * get link_info by link_id, for multi link sap, it has been configured
+ * with add_inft_link, so loop active link to match link_id, if it doesn't
+ * match, then return NULL.
+ * For other case, always return deflink.
+ *
+ * Return: wlan_hdd_link_info
+ */
+struct wlan_hdd_link_info *
+hdd_get_link_info_by_link_id(struct hdd_adapter *adapter, int link_id);
+
+/**
+ * hdd_nb_get_link_id_from_params() - to parse link id from northbound params
+ * @params: params from kernel
+ * @id: id to identify where is the parameter from.
+ *
+ * Return: link id
+ */
+int hdd_nb_get_link_id_from_params(void *params, enum hdd_nb_params_id id);
+#else
+static inline struct wlan_hdd_link_info *
+hdd_get_link_info_by_link_id(struct hdd_adapter *adapter, int link_id)
+{
+	return adapter->deflink;
+}
+
+static inline int
+hdd_nb_get_link_id_from_params(void *params, enum hdd_nb_params_id id)
+{
+	int link_id = -1;
+	return link_id;
+}
+#endif
 #endif /* end #if !defined(WLAN_HDD_MAIN_H) */

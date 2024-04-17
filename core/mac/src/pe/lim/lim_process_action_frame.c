@@ -1590,10 +1590,16 @@ static void lim_process_addba_req(struct mac_context *mac_ctx, uint8_t *rx_pkt_i
 
 	sta_ds = dph_lookup_hash_entry(mac_ctx, mac_hdr->sa, &aid,
 				       &session->dph.dphHashTable);
-	if (sta_ds && lim_is_session_he_capable(session))
+	if (sta_ds &&
+	    (lim_is_session_he_capable(session) ||
+	     sta_ds->staType == STA_ENTRY_TDLS_PEER))
 		he_cap = lim_is_sta_he_capable(sta_ds);
-	if (sta_ds && lim_is_session_eht_capable(session))
+
+	if (sta_ds &&
+	    (lim_is_session_eht_capable(session) ||
+	     sta_ds->staType == STA_ENTRY_TDLS_PEER))
 		eht_cap = lim_is_sta_eht_capable(sta_ds);
+
 	if (sta_ds && sta_ds->staType == STA_ENTRY_NDI_PEER)
 		he_cap = lim_is_session_he_capable(session);
 
@@ -2225,10 +2231,9 @@ void lim_process_action_frame(struct mac_context *mac_ctx,
 			}
 			break;
 		case EHT_T2LM_RESPONSE:
-			wlan_t2lm_deliver_event(
-					session->vdev, peer,
-					WLAN_T2LM_EV_ACTION_FRAME_RX_RESP,
-					(void *)body_ptr, frame_len, &token);
+			wlan_t2lm_deliver_event(session->vdev, peer,
+						WLAN_T2LM_EV_ACTION_FRAME_RX_RESP,
+						(void *)body_ptr, frame_len, &token);
 			break;
 		case EHT_T2LM_TEARDOWN:
 			wlan_t2lm_deliver_event(
@@ -2260,8 +2265,8 @@ void lim_process_action_frame(struct mac_context *mac_ctx,
 		}
 		break;
 	default:
-		pe_warn_rl("Action category: %d not handled",
-			action_hdr->category);
+		pe_debug_rl("Action category: %d not handled",
+			    action_hdr->category);
 		break;
 	}
 

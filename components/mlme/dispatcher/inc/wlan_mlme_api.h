@@ -355,11 +355,29 @@ wlan_mlme_get_wlm_multi_client_ll_caps(struct wlan_objmgr_psoc *psoc)
  *
  * Return: coex_unsafe_chan_nb_user_prefer
  */
-bool wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(
+uint32_t wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(
+		struct wlan_objmgr_psoc *psoc);
+bool wlan_mlme_get_coex_unsafe_chan_nb_user_prefer_for_p2p_go(
+		struct wlan_objmgr_psoc *psoc);
+bool wlan_mlme_get_coex_unsafe_chan_nb_user_prefer_for_sap(
 		struct wlan_objmgr_psoc *psoc);
 #else
 static inline
-bool wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(
+uint32_t wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(
+		struct wlan_objmgr_psoc *psoc)
+{
+	return false;
+}
+
+static inline
+bool wlan_mlme_get_coex_unsafe_chan_nb_user_prefer_for_sap(
+		struct wlan_objmgr_psoc *psoc)
+{
+	return false;
+}
+
+static inline
+bool wlan_mlme_get_coex_unsafe_chan_nb_user_prefer_for_p2p_go(
 		struct wlan_objmgr_psoc *psoc)
 {
 	return false;
@@ -4987,6 +5005,25 @@ enum phy_ch_width
 wlan_mlme_get_ap_oper_ch_width(struct wlan_objmgr_vdev *vdev);
 
 /**
+ * wlan_mlme_set_ap_nss() - Set AP advertised NSS
+ * @vdev: VDEV object
+ * @ap_nss: AP advertised NSS
+ *
+ * Return: None
+ */
+void wlan_mlme_set_ap_nss(struct wlan_objmgr_vdev *vdev, uint8_t ap_nss);
+
+/**
+ * wlan_mlme_get_ap_nss() - Get AP advertised NSS
+ * @vdev: VDEV object
+ *
+ * API to get the Number of Spatial Streams advertised by AP
+ *
+ * Return: ap nss value
+ */
+uint8_t wlan_mlme_get_ap_nss(struct wlan_objmgr_vdev *vdev);
+
+/**
  * wlan_mlme_send_csa_event_status_ind() - send csa event status ind
  * @vdev: vdev obj
  * @csa_status: csa status
@@ -5007,4 +5044,25 @@ wlan_mlme_send_csa_event_status_ind(struct wlan_objmgr_vdev *vdev,
 QDF_STATUS
 wlan_mlme_is_hs_20_btm_offload_disabled(struct wlan_objmgr_psoc *psoc,
 					bool *val);
+/**
+ * wlan_mlme_set_disconnect_receive() - set disconnect receive on vdev
+ * @vdev: vdev obj
+ * @set_disconnect_receive: set disconnect receive
+ *
+ * Return: QDF Status
+ */
+QDF_STATUS wlan_mlme_set_disconnect_receive(struct wlan_objmgr_vdev *vdev,
+					    bool set_disconnect_receive);
+
+/**
+ * wlan_mlme_get_is_disconnect_receive() - Get disconnect received or not
+ * on vdev
+ * @vdev: VDEV object
+ *
+ * API to get the disconnect received on vdev
+ *
+ * Return: true/false
+ */
+
+bool wlan_mlme_get_is_disconnect_receive(struct wlan_objmgr_vdev *vdev);
 #endif /* _WLAN_MLME_API_H_ */

@@ -223,7 +223,7 @@ bool wlan_mlme_get_wlm_multi_client_ll_caps(struct wlan_objmgr_psoc *psoc)
 #endif
 
 #ifdef FEATURE_WLAN_CH_AVOID_EXT
-bool wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(
+uint32_t wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(
 		struct wlan_objmgr_psoc *psoc)
 {
 	struct wlan_mlme_psoc_ext_obj *mlme_obj;
@@ -233,7 +233,22 @@ bool wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(
 		mlme_legacy_err("Failed to get MLME Obj");
 		return cfg_default(CFG_COEX_UNSAFE_CHAN_NB_USER_PREFER);
 	}
+
 	return mlme_obj->cfg.reg.coex_unsafe_chan_nb_user_prefer;
+}
+
+bool wlan_mlme_get_coex_unsafe_chan_nb_user_prefer_for_sap(
+		struct wlan_objmgr_psoc *psoc)
+{
+	return !!(wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(psoc) &
+					IGNORE_FW_COEX_INFO_ON_SAP_MODE);
+}
+
+bool wlan_mlme_get_coex_unsafe_chan_nb_user_prefer_for_p2p_go(
+		struct wlan_objmgr_psoc *psoc)
+{
+	return !!(wlan_mlme_get_coex_unsafe_chan_nb_user_prefer(psoc) &
+					IGNORE_FW_COEX_INFO_ON_P2P_GO_MODE);
 }
 #endif
 
@@ -977,6 +992,12 @@ QDF_STATUS mlme_update_tgt_he_caps_in_cfg(struct wlan_objmgr_psoc *psoc,
 	 * is set/enabled.
 	 */
 	value = QDF_MIN(he_cap->flex_twt_sched, (twt_req || twt_resp));
+	/*
+	 * mlme obj will have intersected flex_twt_sched value
+	 * taken from ini value, FW capability and twt req/resp
+	 */
+	value = QDF_MIN(value,
+			mlme_obj->cfg.he_caps.dot11_he_cap.flex_twt_sched);
 	mlme_obj->cfg.he_caps.dot11_he_cap.flex_twt_sched = value;
 
 	mlme_obj->cfg.he_caps.dot11_he_cap.ba_32bit_bitmap =
@@ -1117,7 +1138,15 @@ QDF_STATUS mlme_update_tgt_he_caps_in_cfg(struct wlan_objmgr_psoc *psoc,
 		mlme_obj->cfg.he_caps.dot11_he_cap.bfee_sts_lt_80 = 0;
 		mlme_obj->cfg.he_caps.dot11_he_cap.bfee_sts_gt_80 = 0;
 	}
-	mlme_obj->cfg.he_caps.dot11_he_cap.ul_mu = he_cap->ul_mu;
+
+	if (!mlme_obj->cfg.he_caps.enable_ul_mimo) {
+		mlme_debug("UL MIMO feature is disabled via ini, fw caps :%d",
+			   he_cap->ul_mu);
+		mlme_obj->cfg.he_caps.dot11_he_cap.ul_mu = 0;
+	} else {
+		mlme_obj->cfg.he_caps.dot11_he_cap.ul_mu = he_cap->ul_mu;
+	}
+
 	mlme_obj->cfg.he_caps.dot11_he_cap.su_feedback_tone16 =
 					he_cap->su_feedback_tone16;
 	mlme_obj->cfg.he_caps.dot11_he_cap.mu_feedback_tone16 =
@@ -3360,10 +3389,13 @@ QDF_STATUS wlan_mlme_get_fils_enabled_info(struct wlan_objmgr_psoc *psoc,
 {
 	struct wlan_mlme_psoc_ext_obj *mlme_obj = mlme_get_psoc_ext_obj(psoc);
 
-	if (!mlme_obj)
+	if (!mlme_obj) {
+		*value = cfg_get(psoc, CFG_IS_FILS_ENABLED);
 		return QDF_STATUS_E_FAILURE;
+	}
 
 	*value = mlme_obj->cfg.oce.fils_enabled;
+
 	return QDF_STATUS_SUCCESS;
 }
 
@@ -8360,6 +8392,32 @@ wlan_mlme_get_ap_oper_ch_width(struct wlan_objmgr_vdev *vdev)
 	return mlme_priv->mlme_ap.oper_ch_width;
 }
 
+void wlan_mlme_set_ap_nss(struct wlan_objmgr_vdev *vdev, uint8_t ap_nss)
+{
+	struct mlme_legacy_priv *mlme_priv;
+
+	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
+	if (!mlme_priv) {
+		mlme_err("vdev legacy private object is NULL");
+		return;
+	}
+
+	mlme_priv->ap_nss = ap_nss;
+}
+
+uint8_t wlan_mlme_get_ap_nss(struct wlan_objmgr_vdev *vdev)
+{
+	struct mlme_legacy_priv *mlme_priv;
+
+	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
+	if (!mlme_priv) {
+		mlme_err("vdev legacy private object is NULL");
+		return 0;
+	}
+
+	return mlme_priv->ap_nss;
+}
+
 QDF_STATUS
 wlan_mlme_send_csa_event_status_ind(struct wlan_objmgr_vdev *vdev,
 				    uint8_t csa_status)
@@ -8478,5 +8536,34 @@ wlan_mlme_is_hs_20_btm_offload_disabled(struct wlan_objmgr_psoc *psoc,
 	*val = mlme_obj->cfg.lfr.hs20_btm_offload_disable;
 
 	return QDF_STATUS_SUCCESS;
+}
+
+QDF_STATUS wlan_mlme_set_disconnect_receive(struct wlan_objmgr_vdev *vdev,
+					    bool set_disconnect_receive)
+{
+	struct mlme_legacy_priv *mlme_priv;
+
+	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
+	if (!mlme_priv) {
+		mlme_err("vdev legacy private object is NULL");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	mlme_priv->is_disconnect_received = set_disconnect_receive;
+
+	return QDF_STATUS_SUCCESS;
+}
+
+bool wlan_mlme_get_is_disconnect_receive(struct wlan_objmgr_vdev *vdev)
+{
+	struct mlme_legacy_priv *mlme_priv;
+
+	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
+	if (!mlme_priv) {
+		mlme_err("vdev legacy private object is NULL");
+		return false;
+	}
+
+	return mlme_priv->is_disconnect_received;
 }
 

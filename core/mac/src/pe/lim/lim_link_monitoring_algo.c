@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -46,6 +46,7 @@
 #include "lim_session.h"
 #include "lim_ser_des_utils.h"
 #include "wlan_dlm_api.h"
+#include <lim_mlo.h>
 
 /**
  * lim_delete_sta_util - utility function for deleting station context
@@ -403,14 +404,20 @@ lim_tear_down_link_with_ap(struct mac_context *mac, uint8_t sessionId,
 	 */
 	pe_session->pmmOffloadInfo.bcnmiss = false;
 
+	/* Delete all TDLS peers connected before leaving BSS */
+	lim_delete_tdls_peers(mac, pe_session);
+
 	/* Announce loss of link to Roaming algorithm */
 	/* and cleanup by sending SME_DISASSOC_REQ to SME */
 
 	sta = dph_get_hash_entry(mac, DPH_STA_HASH_INDEX_PEER,
 				 &pe_session->dph.dphHashTable);
-
-	if (!sta)
+	if (!sta) {
+		pe_debug("vdev:%d no sta hash entry for peer:" QDF_MAC_ADDR_FMT,
+			 pe_session->vdev_id,
+			 QDF_MAC_ADDR_REF(pe_session->bssId));
 		return;
+	}
 
 	if ((sta->mlmStaContext.disassocReason ==
 	    REASON_DEAUTH_NETWORK_LEAVING) ||
@@ -419,11 +426,6 @@ lim_tear_down_link_with_ap(struct mac_context *mac, uint8_t sessionId,
 		pe_err("Host already issued deauth, do nothing");
 		return;
 	}
-
-#ifdef FEATURE_WLAN_TDLS
-	/* Delete all TDLS peers connected before leaving BSS */
-	lim_delete_tdls_peers(mac, pe_session);
-#endif
 
 	sta->mlmStaContext.disassocReason = reasonCode;
 	sta->mlmStaContext.cleanupTrigger = trigger;
@@ -460,6 +462,8 @@ lim_tear_down_link_with_ap(struct mac_context *mac, uint8_t sessionId,
 		sta->mlmStaContext.cleanupTrigger;
 
 	if (LIM_IS_STA_ROLE(pe_session)) {
+		lim_mlo_sta_notify_peer_disconn(pe_session);
+
 		lim_connectivity_bmiss_disconn_event(sta, mac->psoc, reasonCode,
 						     pe_session->vdev_id);
 

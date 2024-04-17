@@ -6004,30 +6004,7 @@ static bool hdd_is_supported_chain_mask_1x1(struct hdd_context *hdd_ctx)
 
 QDF_STATUS hdd_update_smps_antenna_mode(struct hdd_context *hdd_ctx, int mode)
 {
-	QDF_STATUS status;
-	uint8_t smps_mode;
-	uint8_t smps_enable;
-	mac_handle_t mac_handle;
-
-	/* Update SME SMPS config */
-	if (HDD_ANTENNA_MODE_1X1 == mode) {
-		smps_enable = true;
-		smps_mode = HDD_SMPS_MODE_STATIC;
-	} else {
-		smps_enable = false;
-		smps_mode = HDD_SMPS_MODE_DISABLED;
-	}
-
-	hdd_debug("Update SME SMPS enable: %d mode: %d",
-		 smps_enable, smps_mode);
-	mac_handle = hdd_ctx->mac_handle;
-	status = sme_update_mimo_power_save(mac_handle, smps_enable,
-					    smps_mode, false);
-	if (QDF_STATUS_SUCCESS != status) {
-		hdd_err("Update SMPS config failed enable: %d mode: %d status: %d",
-			smps_enable, smps_mode, status);
-		return QDF_STATUS_E_FAILURE;
-	}
+	mac_handle_t mac_handle = hdd_ctx->mac_handle;
 
 	hdd_ctx->current_antenna_mode = mode;
 	/*
@@ -6570,7 +6547,6 @@ static int drv_cmd_set_channel_switch(struct wlan_hdd_link_info *link_info,
 				      struct hdd_priv_data *priv_data)
 {
 	struct hdd_adapter *adapter = link_info->adapter;
-	struct net_device *dev = adapter->dev;
 	int status;
 	uint32_t chan_number = 0, chan_bw = 0;
 	uint8_t *value = command;
@@ -6619,7 +6595,8 @@ static int drv_cmd_set_channel_switch(struct wlan_hdd_link_info *link_info,
 		chan_number = wlan_reg_legacy_chan_to_freq(hdd_ctx->pdev,
 							   chan_number);
 
-	status = hdd_softap_set_channel_change(dev, chan_number, width, false);
+	status = hdd_softap_set_channel_change(link_info, chan_number,
+					       width, false, true);
 	if (status) {
 		hdd_err("Set channel change fail");
 		return status;
@@ -6747,7 +6724,7 @@ static void disconnect_sta_and_restart_sap(struct hdd_context *hdd_ctx,
 
 		ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(adapter->deflink);
 		if (!is_valid_chan_present)
-			wlan_hdd_stop_sap(adapter);
+			wlan_hdd_stop_sap(adapter->deflink);
 		else if (check_disable_channels(hdd_ctx,
 						ap_ctx->operating_chan_freq))
 			policy_mgr_check_sap_restart(hdd_ctx->psoc,

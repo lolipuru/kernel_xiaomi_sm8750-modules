@@ -4752,6 +4752,11 @@ sir_convert_reassoc_req_frame2_struct(struct mac_context *mac,
 	sir_convert_reassoc_req_frame2_eht_struct(ar, pAssocReq);
 	sir_convert_reassoc_req_frame2_mlo_struct(pFrame, nFrame,
 						  ar, pAssocReq);
+	pe_debug("ht %d vht %d opmode %d vendor vht %d he %d he 6ghband %d eht %d",
+		 ar->HTCaps.present, ar->VHTCaps.present,
+		 ar->OperatingMode.present, ar->vendor_vht_ie.VHTCaps.present,
+		 ar->he_cap.present, ar->he_6ghz_band_cap.present,
+		 ar->eht_cap.present);
 	qdf_mem_free(ar);
 
 	return STATUS_SUCCESS;
@@ -9785,8 +9790,10 @@ static void
 populate_dot11f_revise_eht_caps(struct pe_session *session,
 				tDot11fIEeht_cap *eht_cap)
 {
-	if (session->ch_width != CH_WIDTH_320MHZ)
+	if (session->ch_width != CH_WIDTH_320MHZ) {
 		eht_cap->support_320mhz_6ghz = 0;
+		eht_cap->bfee_ss_320mhz = 0;
+	}
 
 	if (wlan_epcs_get_config(session->vdev))
 		eht_cap->epcs_pri_access = 1;
@@ -9809,6 +9816,7 @@ QDF_STATUS populate_dot11f_eht_caps(struct mac_context *mac_ctx,
 
 	/** TODO: String items needs attention. **/
 	qdf_mem_copy(eht_cap, &session->eht_config, sizeof(*eht_cap));
+
 	populate_dot11f_revise_eht_caps(session, eht_cap);
 
 	populate_dot11f_rtwt_eht_cap(mac_ctx, eht_cap);
@@ -10886,11 +10894,16 @@ QDF_STATUS populate_dot11f_assoc_rsp_mlo_ie(struct mac_context *mac_ctx,
 		/*
 		 * 1 Bytes for STA Info Length + 6 bytes for STA MAC Address +
 		 * 2 Bytes for Becon Interval + 2 Bytes for DTIM Info +
-		 * 8 Bytes for TSF Offset + 1 byte BPCC
+		 * 8 Bytes for TSF Offset[optional] + 1 byte BPCC
 		 */
 		len = WLAN_ML_BV_LINFO_PERSTAPROF_STAINFO_LENGTH_SIZE +
 		      QDF_MAC_ADDR_SIZE + WLAN_BEACONINTERVAL_LEN +
-		      sizeof(struct wlan_ml_bv_linfo_perstaprof_stainfo_dtiminfo);
+		      sizeof(struct wlan_ml_bv_linfo_perstaprof_stainfo_dtiminfo) +
+		      WLAN_ML_BSSPARAMCHNGCNT_SIZE;
+
+		if (mlo_get_tsf_sync_support())
+			len += WLAN_TIMESTAMP_LEN;
+
 		*sta_data = len;
 
 		/* STA Info Length */
@@ -12913,6 +12926,8 @@ QDF_STATUS populate_dot11f_btm_extended_caps(struct mac_context *mac_ctx,
 {
 	struct s_ext_cap *p_ext_cap;
 	QDF_STATUS  status;
+	bool is_disable_btm;
+	struct cm_roam_values_copy temp;
 
 	dot11f->num_bytes = DOT11F_IE_EXTCAP_MAX_LEN;
 	p_ext_cap = (struct s_ext_cap *)dot11f->bytes;
@@ -12921,7 +12936,17 @@ QDF_STATUS populate_dot11f_btm_extended_caps(struct mac_context *mac_ctx,
 	status = cm_akm_roam_allowed(mac_ctx->psoc, pe_session->vdev);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		p_ext_cap->bss_transition = 0;
-		pe_debug("Disable btm for roaming not suppprted");
+		pe_debug("vdev:%d, Disable btm for roaming not suppprted",
+			 pe_session->vdev_id);
+	}
+
+	wlan_cm_roam_cfg_get_value(mac_ctx->psoc, pe_session->vdev_id,
+				   IS_DISABLE_BTM, &temp);
+	is_disable_btm = temp.bool_value;
+	if (is_disable_btm) {
+		pe_debug("vdev:%d, Disable BTM as BTM roam disabled by user",
+			 pe_session->vdev_id);
+		p_ext_cap->bss_transition = 0;
 	}
 
 	if (!pe_session->lim_join_req)
@@ -12930,7 +12955,8 @@ QDF_STATUS populate_dot11f_btm_extended_caps(struct mac_context *mac_ctx,
 	if (p_ext_cap->bss_transition && !cm_is_open_mode(pe_session->vdev) &&
 	    pe_session->lim_join_req->bssDescription.mbo_oce_enabled_ap &&
 	    !pe_session->limRmfEnabled) {
-		pe_debug("Disable BTM as the MBO AP doesn't support PMF");
+		pe_debug("vdev:%d, Disable BTM as MBO AP doesn't support PMF",
+			 pe_session->vdev_id);
 		p_ext_cap->bss_transition = 0;
 	}
 
@@ -13159,7 +13185,8 @@ QDF_STATUS populate_dot11f_assoc_req_mlo_ie(struct mac_context *mac_ctx,
 		mlo_ie->mld_capab_and_op_info.aar_support = 0;
 	}
 
-	if (wlan_mlme_get_sta_mlo_conn_max_num(psoc) == 3) {
+	if (partner_info->num_partner_links == 2 &&
+	    wlan_mlme_is_aux_emlsr_support(psoc)) {
 		wlan_vdev_mlme_cap_clear(pe_session->vdev,
 					 WLAN_VDEV_C_EMLSR_CAP);
 		pe_debug("EMLSR is not supported for 3-link association until FW support is added");

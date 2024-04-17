@@ -2311,30 +2311,24 @@ bool lim_process_sae_preauth_frame(struct mac_context *mac, uint8_t *rx_pkt)
 		 ((dot11_hdr->seqControl.seqNumHi << 8) |
 		  (dot11_hdr->seqControl.seqNumLo << 4) |
 		  (dot11_hdr->seqControl.fragNum)), *(uint16_t *)(frm_body + 2));
+
 	pdev_id = wlan_objmgr_pdev_get_pdev_id(mac->pdev);
-	vdev = wlan_objmgr_get_vdev_by_macaddr_from_psoc(
-			mac->psoc, pdev_id, dot11_hdr->da, WLAN_LEGACY_MAC_ID);
-
-	if (vdev) {
-		vdev_id = wlan_vdev_get_id(vdev);
-		lim_sae_auth_cleanup_retry(mac, vdev_id);
-		status = lim_update_link_to_mld_address(mac, vdev, dot11_hdr);
-
-		wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
-	} else {
+	vdev = wlan_objmgr_get_vdev_by_macaddr_from_psoc(mac->psoc, pdev_id,
+							 dot11_hdr->da,
+							 WLAN_LEGACY_MAC_ID);
+	if (!vdev) {
 		vdev = wlan_objmgr_pdev_get_roam_vdev(mac->pdev,
 						      WLAN_LEGACY_MAC_ID);
 		if (!vdev) {
 			pe_err("not able to find roaming vdev");
 			return false;
 		}
-
-		vdev_id = wlan_vdev_get_id(vdev);
-		status = lim_update_link_to_mld_address(mac, vdev, dot11_hdr);
-
-		wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
 	}
 
+	vdev_id = wlan_vdev_get_id(vdev);
+	lim_sae_auth_cleanup_retry(mac, vdev_id);
+	status = lim_update_link_to_mld_address(mac, vdev, dot11_hdr);
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_MAC_ID);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		pe_err("vdev:%d dropping auth frame BSSID: " QDF_MAC_ADDR_FMT ", SAE address conversion failure",
 		       vdev_id, QDF_MAC_ADDR_REF(dot11_hdr->bssId));
@@ -2384,12 +2378,16 @@ static void lim_process_ft_sae_auth_frame(struct mac_context *mac,
 
 	if (!pe_session || !pe_session->ftPEContext.pFTPreAuthReq) {
 		pe_debug("cannot find session or FT in FT pre-auth phase");
+		if (pe_session)
+			pe_session->ftPEContext.ftPreAuthSession = false;
 		return;
 	}
 
-	if (auth->authTransactionSeqNumber == SIR_MAC_AUTH_FRAME_2)
+	if (auth->authTransactionSeqNumber == SIR_MAC_AUTH_FRAME_2) {
 		lim_handle_ft_pre_auth_rsp(mac, QDF_STATUS_SUCCESS, body,
 					   frame_len, pe_session);
+		pe_session->ftPEContext.ftPreAuthSession = false;
+	}
 }
 #endif
 
@@ -2440,12 +2438,8 @@ QDF_STATUS lim_process_auth_frame_no_session(struct mac_context *mac,
 		/* Find first free room in session table */
 		if (mac->lim.gpSession[i].valid == true &&
 		    mac->lim.gpSession[i].ftPEContext.ftPreAuthSession ==
-		    true) {
-			/* Found the session */
+		    true)
 			pe_session = &mac->lim.gpSession[i];
-			mac->lim.gpSession[i].ftPEContext.ftPreAuthSession =
-				false;
-		}
 	}
 
 	sae_auth_frame = lim_process_sae_preauth_frame(mac, pBd);
@@ -2476,7 +2470,8 @@ QDF_STATUS lim_process_auth_frame_no_session(struct mac_context *mac,
 	if (!pe_session) {
 		pe_debug("cannot find session id in FT pre-auth phase");
 		return QDF_STATUS_E_FAILURE;
-	}
+	} else
+		pe_session->ftPEContext.ftPreAuthSession = false;
 
 	if (!pe_session->ftPEContext.pFTPreAuthReq) {
 		pe_err("Error: No FT");

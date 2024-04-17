@@ -63,23 +63,26 @@ void *hdd_filter_ft_info(const uint8_t *frame,
  * This function to support SAP channel change with CSA IE
  * set in the beacons.
  *
- * @dev: pointer to the net device.
+ * @link_info: pointer to hdd link info.
  * @target_chan_freq: target channel frequency.
  * @target_bw: Target bandwidth to move.
  * If no bandwidth is specified, the value is CH_WIDTH_MAX
  * @forced: Force to switch channel, ignore SCC/MCC check
+ * @allow_blocking: the calling thread allows be blocked
  *
  * Return: 0 for success, non zero for failure
  */
-int hdd_softap_set_channel_change(struct net_device *dev,
-					int target_chan_freq,
-					enum phy_ch_width target_bw,
-					bool forced);
+int hdd_softap_set_channel_change(struct wlan_hdd_link_info *link_info,
+				  int target_chan_freq,
+				  enum phy_ch_width target_bw,
+				  bool forced,
+				  bool allow_blocking);
+
 /**
  * hdd_stop_sap_set_tx_power() - Function to set tx power
  * for unsafe channel if restriction bit mask is set else stop the SAP.
  * @psoc: PSOC object information
- * @adapter: AP/SAP adapter
+ * @link_info: pointer of link info
  *
  * This function set tx power/stop the SAP interface
  *
@@ -87,13 +90,13 @@ int hdd_softap_set_channel_change(struct net_device *dev,
  *
  */
 void hdd_stop_sap_set_tx_power(struct wlan_objmgr_psoc *psoc,
-			       struct hdd_adapter *adapter);
+			       struct wlan_hdd_link_info *link_info);
 
 #ifdef FEATURE_WLAN_MCC_TO_SCC_SWITCH
 /**
  * hdd_sap_restart_with_channel_switch() - SAP channel change with E/CSA
  * @psoc: psoc common object
- * @ap_adapter: HDD adapter
+ * @link_info: hdd link info
  * @target_chan_freq: Channel frequency to which switch must happen
  * @target_bw: Bandwidth of the target channel
  * @forced: Force to switch channel, ignore SCC/MCC check
@@ -103,10 +106,10 @@ void hdd_stop_sap_set_tx_power(struct wlan_objmgr_psoc *psoc,
  * Return: QDF_STATUS_SUCCESS if successfully
  */
 QDF_STATUS hdd_sap_restart_with_channel_switch(struct wlan_objmgr_psoc *psoc,
-					       struct hdd_adapter *ap_adapter,
-					       uint32_t target_chan_freq,
-					       uint32_t target_bw,
-					       bool forced);
+					struct wlan_hdd_link_info *link_info,
+					uint32_t target_chan_freq,
+					uint32_t target_bw,
+					bool forced);
 
 /**
  * hdd_sap_restart_chan_switch_cb() - Function to restart SAP with
@@ -260,15 +263,13 @@ QDF_STATUS hdd_hostapd_sap_event_cb(struct sap_context *sap_ctx,
  * hdd_init_ap_mode() - to init the AP adaptor
  * @link_info: pointer of link_info
  * @reinit: true if re-init, otherwise initial init
- * @rtnl_held: true if rtnl lock is taken, otherwise false
  *
  * This API can be called to open the SAP session as well as
  * to create and store the vdev object. It also initializes necessary
  * SAP adapter related params.
  */
 QDF_STATUS hdd_init_ap_mode(struct wlan_hdd_link_info *link_info,
-			    bool reinit,
-			    bool rtnl_held);
+			    bool reinit);
 
 /**
  * hdd_indicate_peers_deleted() - indicate peer delete for vdev
@@ -498,13 +499,34 @@ bool hdd_is_any_sta_connecting(struct hdd_context *hdd_ctx);
  * wlan_hdd_configure_twt_responder() - configure twt responder in sap_config
  * @hdd_ctx: Pointer to hdd context
  * @twt_responder: twt responder configure value
+ * @vdev_id: Vdev id
  *
  * Return: none
  */
 void
 wlan_hdd_configure_twt_responder(struct hdd_context *hdd_ctx,
-				 bool twt_responder);
+				 bool twt_responder, uint8_t vdev_id);
 #ifdef WLAN_FEATURE_11BE_MLO
+#ifdef WLAN_FEATURE_MULTI_LINK_SAP
+/**
+ * hdd_multi_link_sap_vdev_attach() - attach vdev with link_id
+ * update multi link parameter to vdev and sap_config.
+ * @link_info: Pointer to wlan_hdd_link_info
+ * @link_id: link id
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS hdd_multi_link_sap_vdev_attach(struct wlan_hdd_link_info *link_info,
+					  unsigned int link_id);
+#else
+static inline QDF_STATUS
+hdd_multi_link_sap_vdev_attach(struct wlan_hdd_link_info *link_info,
+			       unsigned int link_id)
+{
+	return QDF_STATUS_SUCCESS;
+}
+#endif
+
 /**
  * wlan_hdd_mlo_reset() - reset mlo configuration if start bss fails
  * @link_info: Pointer to link_info in hostapd adapter
@@ -532,5 +554,15 @@ bool hdd_sap_is_acs_in_progress(struct wlan_objmgr_vdev *vdev)
 {
 	return false;
 }
+#endif
+
+#ifdef WLAN_FEATURE_MULTI_LINK_SAP
+/**
+ * hdd_mlosap_check_support_link_num() - mlo sap to check if link
+ *                               number exceed max support link number
+ * @adapter: pointer to adapter
+ * Return: true if not exceed max support num.
+ */
+bool hdd_mlosap_check_support_link_num(struct hdd_adapter *adapter);
 #endif
 #endif /* end #if !defined(WLAN_HDD_HOSTAPD_H) */

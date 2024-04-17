@@ -804,6 +804,9 @@ struct dp_traffic_end_indication {
 #define DP_SVC_FLAGS_APP_IND_DEF_DSCP           BIT(1)
 #define DP_SVC_FLAGS_APP_IND_SPL_DSCP           BIT(2)
 #define DP_SVC_FLAGS_SVC_ID			BIT(3)
+#define DP_SVC_FLAGS_TID                        BIT(4)
+#define DP_SVC_FLAGS_MSDU_LOSS_RATE             BIT(5)
+
 
 /* struct dp_svc_data - service class node
  * @node: list node
@@ -821,6 +824,11 @@ struct dp_svc_data {
 	uint8_t app_ind_default_dscp;
 	uint8_t app_ind_special_dscp;
 	uint32_t flags;
+#ifdef WLAN_FEATURE_SAWFISH
+	uint8_t tid;
+	uint32_t msdu_loss_rate;
+#endif
+
 };
 
 #define DP_FLOW_PRIO_MAX 8
@@ -910,6 +918,17 @@ struct fpm_table {
 	uint32_t policy_id_bitmap;
 	uint8_t policy_count;
 	qdf_atomic_notif_head fpm_policy_event_notif_head;
+};
+
+/* enum ctrl_rx_aggr_client_id - Rx aggregation control client ID
+ * @CTRL_RX_AGGR_ID_WLM: WLM Mode
+ * @CTRL_RX_AGGR_ID_QDISK: QDISK Filter configuration
+ * @CTRL_RX_AGGR_ID_MAX: Max ID
+ */
+enum ctrl_rx_aggr_client_id {
+	CTRL_RX_AGGR_ID_WLM,
+	CTRL_RX_AGGR_ID_QDISK,
+	CTRL_RX_AGGR_ID_MAX
 };
 
 #endif /* end  of _WLAN_DP_PUBLIC_STRUCT_H_ */

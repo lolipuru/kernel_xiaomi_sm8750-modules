@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -41,6 +41,7 @@
 #include "lim_send_messages.h"
 #include "wlan_connectivity_logging.h"
 #include "cds_ieee80211_common.h"
+#include <lim_mlo.h>
 
 /**
  * lim_process_deauth_frame
@@ -162,10 +163,6 @@ lim_process_deauth_frame(struct mac_context *mac, uint8_t *pRxPacketInfo,
 			pe_session->limSmeState,
 			GET_LIM_SYSTEM_ROLE(pe_session));
 
-	wlan_connectivity_mgmt_event(mac->psoc, (struct wlan_frame_hdr *)pHdr,
-				     pe_session->vdev_id, reasonCode,
-				     0, frame_rssi, 0, 0, 0, 0,
-				     WLAN_DEAUTH_RX);
 	lim_diag_event_report(mac, WLAN_PE_DIAG_DEAUTH_FRAME_EVENT,
 		pe_session, 0, reasonCode);
 
@@ -173,6 +170,10 @@ lim_process_deauth_frame(struct mac_context *mac, uint8_t *pRxPacketInfo,
 		pe_debug("Ignore the Deauth received, while waiting for ack of "
 			"disassoc/deauth");
 		lim_clean_up_disassoc_deauth_req(mac, (uint8_t *) pHdr->sa, 1);
+		wlan_connectivity_mgmt_event(mac->psoc, (struct wlan_frame_hdr *)pHdr,
+					     pe_session->vdev_id, reasonCode,
+					     0, frame_rssi, 0, 0, 0, 0,
+					     WLAN_DEAUTH_RX);
 		return;
 	}
 
@@ -314,8 +315,14 @@ lim_process_deauth_frame(struct mac_context *mac, uint8_t *pRxPacketInfo,
 
 	lim_extract_ies_from_deauth_disassoc(pe_session, (uint8_t *)pHdr,
 					WMA_GET_RX_MPDU_LEN(pRxPacketInfo));
+	wlan_connectivity_mgmt_event(mac->psoc, (struct wlan_frame_hdr *)pHdr,
+				     pe_session->vdev_id, reasonCode,
+				     0, frame_rssi, 0, 0, 0, 0,
+				     WLAN_DEAUTH_RX);
+
 	lim_perform_deauth(mac, pe_session, reasonCode, pHdr->sa,
 			   frame_rssi);
+	lim_update_disconnect_vdev_id(mac, pe_session->vdev_id);
 
 	if (mac->mlme_cfg->gen.fatal_event_trigger &&
 	    (reasonCode != REASON_UNSPEC_FAILURE &&
@@ -626,6 +633,7 @@ void lim_perform_deauth(struct mac_context *mac_ctx, struct pe_session *pe_sessi
 	if (LIM_IS_STA_ROLE(pe_session))
 		wma_tx_abort(pe_session->smeSessionId);
 
+	lim_mlo_sta_notify_peer_disconn(pe_session);
 	lim_update_lost_link_info(mac_ctx, pe_session, frame_rssi);
 
 	/* / Deauthentication from peer MAC entity */

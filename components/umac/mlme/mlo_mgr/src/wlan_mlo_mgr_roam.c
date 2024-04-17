@@ -323,6 +323,25 @@ mlo_mgr_get_link_info_by_self_addr(struct wlan_objmgr_vdev *vdev,
 	return NULL;
 }
 
+#ifdef WLAN_FEATURE_ROAM_OFFLOAD
+uint8_t mlo_mgr_num_roam_links(struct wlan_objmgr_vdev *vdev)
+{
+	struct wlan_cm_connect_resp *reassoc_rsp;
+
+	if (!vdev->mlo_dev_ctx)
+		return 1;
+
+	if (!vdev->mlo_dev_ctx->sta_ctx)
+		return 0;
+
+	reassoc_rsp = vdev->mlo_dev_ctx->sta_ctx->copied_reassoc_rsp;
+	if (!reassoc_rsp || !reassoc_rsp->roaming_info)
+		return 0;
+
+	return reassoc_rsp->roaming_info->num_setup_links;
+}
+#endif
+
 void mlo_mgr_roam_update_ap_link_info(struct wlan_objmgr_vdev *vdev,
 				      struct ml_setup_link_param *src_link_info,
 				      struct wlan_channel *channel)
@@ -885,7 +904,8 @@ mlo_check_if_all_vdev_up(struct wlan_objmgr_vdev *vdev)
 		if (!mlo_dev_ctx->wlan_vdev_list[i])
 			continue;
 
-		if (qdf_test_bit(i, sta_ctx->wlan_connected_links) &&
+		if ((qdf_test_bit(i, sta_ctx->wlan_connected_links) ||
+		     qdf_test_bit(i, sta_ctx->wlan_connect_req_links)) &&
 		    !QDF_IS_STATUS_SUCCESS(wlan_vdev_is_up(mlo_dev_ctx->wlan_vdev_list[i]))) {
 			mlo_debug("Vdev id %d is not in up state",
 				  wlan_vdev_get_id(mlo_dev_ctx->wlan_vdev_list[i]));
@@ -998,10 +1018,6 @@ mlo_roam_copy_reassoc_rsp(struct wlan_objmgr_vdev *vdev,
 	if (!reassoc_rsp)
 		return QDF_STATUS_E_NULL_VALUE;
 
-	/* Store reassoc rsp only if roamed to 2 link AP */
-	if (reassoc_rsp->ml_parnter_info.num_partner_links < 2)
-		return QDF_STATUS_E_INVAL;
-
 	mlo_dev_ctx = vdev->mlo_dev_ctx;
 	if (!mlo_dev_ctx)
 		return QDF_STATUS_E_NULL_VALUE;
@@ -1011,6 +1027,11 @@ mlo_roam_copy_reassoc_rsp(struct wlan_objmgr_vdev *vdev,
 		return QDF_STATUS_E_NULL_VALUE;
 
 	wlan_cm_free_connect_resp(sta_ctx->copied_reassoc_rsp);
+
+	/* Store reassoc rsp only if roamed to 2 link AP */
+	if (reassoc_rsp->ml_parnter_info.num_partner_links < 2)
+		return QDF_STATUS_E_INVAL;
+
 	/* Free assoc rsp, so that reassoc rsp can be used during
 	 * reassociation.
 	 */
@@ -1451,7 +1472,6 @@ mlo_roam_link_connect_notify(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id)
 		}
 
 		if (mlo_check_connect_req_bmap(link_vdev)) {
-			mlo_update_connect_req_links(link_vdev, false);
 			status = mlo_roam_prepare_and_send_link_connect_req(assoc_vdev,
 							link_vdev,
 							rsp,
@@ -1459,8 +1479,10 @@ mlo_roam_link_connect_notify(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id)
 							partner_info.partner_link_info[i].chan_freq);
 			if (QDF_IS_STATUS_ERROR(status))
 				goto err;
-			else
+			else {
+				mlo_update_connect_req_links(link_vdev, false);
 				goto end;
+			}
 		}
 	}
 err:

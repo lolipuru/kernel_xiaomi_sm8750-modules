@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -34,6 +34,46 @@
 
 struct hdd_context;
 struct wlan_hdd_link_info;
+
+#define CONFIG_MAX QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_CONFIG_MAX
+#define RATE_TYPE QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_RATE_TYPE
+#define RATE_VALUE QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_RATE_VALUE
+#define RATE_POWER_VALUE QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_RATE_POWER_VALUE
+
+#define CHAIN_MAX QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_CONFIG_MAX
+#define CHAIN_INDEX QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_CHAIN_INDEX
+#define CHAIN_RATE_CONFIG QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_CHAIN_RATE_CONFIG
+
+#define BAND_MAX QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_BAND_MAX
+#define BAND_INDEX QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_BAND_INDEX
+#define BAND_CHAIN_CONFIG QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_BAND_CHAIN_CONFIG
+
+#define ADJUST_TX_POWER_MAX QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_MAX
+#define BAND_CONFIG QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_BAND_CONFIG
+
+#define NUM_LEGACY_RATES_2G 4
+#define NUM_LEGACY_RATES_5G_6G 8
+
+#define RATE_TYPE_LEGACY 0
+#define RATE_TYPE_MCS 1
+
+/* 2GHz band legacy rates */
+#define RATE_1 1
+#define RATE_2 2
+#define RATE_5_5 5
+#define RATE_11 11
+
+/* 5GHz/6GHz band legacy rates */
+#define RATE_6 6
+#define RATE_9 9
+#define RATE_12 12
+#define RATE_18 18
+#define RATE_24 24
+#define RATE_36 36
+#define RATE_48 48
+#define RATE_54 54
+
+#define INVALID_RATE 255
 
 #ifdef WLAN_FEATURE_11BE_MLO
 #define EHT_OPMODE_SUPPORTED 2
@@ -939,7 +979,7 @@ hdd_convert_phymode_to_80211mode(eCsrPhyMode mode);
 
 /**
  * hdd_send_update_owe_info_event - Send update OWE info event
- * @adapter: Pointer to adapter
+ * @link_info: Pointer to link info
  * @sta_addr: MAC address of peer STA
  * @owe_ie: OWE IE
  * @owe_ie_len: Length of OWE IE
@@ -950,15 +990,17 @@ hdd_convert_phymode_to_80211mode(eCsrPhyMode mode);
  */
 #if defined(CFG80211_EXTERNAL_DH_UPDATE_SUPPORT) || \
 (LINUX_VERSION_CODE > KERNEL_VERSION(5, 2, 0))
-void hdd_send_update_owe_info_event(struct hdd_adapter *adapter,
-				    uint8_t sta_addr[],
-				    uint8_t *owe_ie,
-				    uint32_t owe_ie_len);
+void
+hdd_send_update_owe_info_event(struct wlan_hdd_link_info *link_info,
+			       uint8_t sta_addr[],
+			       uint8_t *owe_ie,
+			       uint32_t owe_ie_len);
 #else
-static inline void hdd_send_update_owe_info_event(struct hdd_adapter *adapter,
-						  uint8_t sta_addr[],
-						  uint8_t *owe_ie,
-						  uint32_t owe_ie_len)
+static inline void
+hdd_send_update_owe_info_event(struct wlan_hdd_link_info *link_info,
+			       uint8_t sta_addr[],
+			       uint8_t *owe_ie,
+			       uint32_t owe_ie_len)
 {
 }
 #endif
@@ -999,13 +1041,11 @@ struct hdd_hostapd_state;
 /**
  * hdd_softap_deauth_all_sta() - Deauth all sta in the sta list
  * @adapter: pointer to adapter structure
- * @hapd_state: pointer to hostapd state structure
  * @param: pointer to del sta params
  *
  * Return: QDF_STATUS on success, corresponding QDF failure status on failure
  */
 QDF_STATUS hdd_softap_deauth_all_sta(struct hdd_adapter *adapter,
-				     struct hdd_hostapd_state *hapd_state,
 				     struct csr_del_sta_params *param);
 
 /**

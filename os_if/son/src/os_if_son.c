@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -975,6 +975,7 @@ QDF_STATUS os_if_son_vdev_ops(struct wlan_objmgr_vdev *vdev,
 {
 	union wlan_mlme_vdev_data *in = (union wlan_mlme_vdev_data *)data;
 	union wlan_mlme_vdev_data *out = (union wlan_mlme_vdev_data *)ret;
+	struct wlan_channel *chan;
 
 	if (!vdev)
 		return QDF_STATUS_E_INVAL;
@@ -1006,9 +1007,14 @@ QDF_STATUS os_if_son_vdev_ops(struct wlan_objmgr_vdev *vdev,
 	case VDEV_GET_CHAN:
 		if (!out)
 			return QDF_STATUS_E_INVAL;
-		qdf_mem_copy(&out->chan,
-			     wlan_vdev_get_active_channel(vdev),
-			     sizeof(out->chan));
+		chan = wlan_vdev_get_active_channel(vdev);
+		if (!chan) {
+			osif_err("failed to get active chan");
+			return QDF_STATUS_E_INVAL;
+		}
+		out->chan.ic_freq = chan->ch_freq;
+		out->chan.ic_ieee = chan->ch_ieee;
+		out->chan.ic_flags = chan->ch_flags;
 		break;
 	case VDEV_GET_CHAN_WIDTH:
 		break;
@@ -1774,25 +1780,14 @@ QDF_STATUS os_if_son_get_node_datarate_info(struct wlan_objmgr_vdev *vdev,
 					    uint8_t *mac_addr,
 					    wlan_node_info *node_info)
 {
-	int8_t max_tx_power;
-	int8_t min_tx_power;
-	struct wlan_objmgr_psoc *psoc;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
-
-	psoc = wlan_vdev_get_psoc(vdev);
-	if (!psoc) {
-		osif_err("null posc");
-		return QDF_STATUS_E_INVAL;
-	}
 
 	if (WLAN_ADDR_EQ(wlan_vdev_mlme_get_macaddr(vdev), mac_addr) ==
 							   QDF_STATUS_SUCCESS) {
 		node_info->max_chwidth = os_if_son_get_chwidth(vdev);
 		node_info->phymode = os_if_son_get_phymode(vdev);
 		node_info->num_streams = os_if_son_get_rx_streams(vdev);
-		ucfg_son_get_min_and_max_power(psoc, &max_tx_power,
-					       &min_tx_power);
-		node_info->max_txpower = max_tx_power;
+		node_info->max_txpower = 0;
 		node_info->max_MCS = ucfg_mlme_get_vdev_max_mcs_idx(vdev);
 		if (node_info->max_MCS == INVALID_MCS_NSS_INDEX) {
 			osif_err("invalid mcs index");
@@ -1834,3 +1829,19 @@ int os_if_son_get_sta_stats(struct wlan_objmgr_vdev *vdev, uint8_t *mac_addr,
 	return 0;
 }
 qdf_export_symbol(os_if_son_get_sta_stats);
+
+int os_if_son_del_ast(struct wlan_objmgr_vdev *vdev,
+		      struct qdf_mac_addr *wds_macaddr,
+		      struct qdf_mac_addr *peer_macaddr)
+{
+	if (!vdev || !wds_macaddr || !peer_macaddr) {
+		osif_err("invalid param");
+		return -EINVAL;
+	}
+
+	wlan_son_del_ast(vdev, wds_macaddr, peer_macaddr);
+
+	return 0;
+}
+
+qdf_export_symbol(os_if_son_del_ast);

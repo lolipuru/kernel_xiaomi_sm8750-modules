@@ -43,7 +43,7 @@ static void wlan_hdd_pre_cac_failure(struct hdd_adapter *adapter)
 	if (wlan_hdd_validate_context(hdd_ctx))
 		return;
 
-	wlan_hdd_stop_sap(adapter);
+	wlan_hdd_stop_sap(adapter->deflink);
 	hdd_stop_adapter(hdd_ctx, adapter);
 
 	hdd_exit();
@@ -95,9 +95,9 @@ static void wlan_hdd_pre_cac_success(struct hdd_adapter *adapter)
 	wlan_hdd_set_sap_csa_reason(hdd_ctx->psoc, ap_adapter->deflink->vdev_id,
 				    CSA_REASON_PRE_CAC_SUCCESS);
 	chan_freq = ucfg_pre_cac_get_freq(ap_adapter->deflink->vdev);
-	i = hdd_softap_set_channel_change(ap_adapter->dev,
+	i = hdd_softap_set_channel_change(ap_adapter->deflink,
 					  chan_freq,
-					  pre_cac_ch_width, false);
+					  pre_cac_ch_width, false, false);
 	if (i) {
 		hdd_err("failed to change channel");
 		ucfg_pre_cac_complete_set(ap_adapter->deflink->vdev, false);
@@ -392,7 +392,7 @@ static int __wlan_hdd_request_pre_cac(struct hdd_context *hdd_ctx,
 		goto stop_close_pre_cac_adapter;
 	}
 
-	ret = wlan_hdd_set_channel(link_info, wiphy, dev,
+	ret = wlan_hdd_set_channel(pre_cac_link_info, wiphy, dev,
 				   &chandef, channel_type);
 	if (ret != 0) {
 		hdd_err("failed to set channel");

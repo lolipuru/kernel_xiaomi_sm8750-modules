@@ -1542,9 +1542,6 @@ void hdd_disable_mc_addr_filtering(struct hdd_adapter *adapter,
 	if (wlan_hdd_validate_context(hdd_ctx))
 		return;
 
-	if (!hdd_cm_is_vdev_associated(adapter->deflink))
-		return;
-
 	status = ucfg_pmo_disable_mc_addr_filtering_in_fwr(
 						hdd_ctx->psoc,
 						adapter->deflink->vdev_id,
@@ -1568,9 +1565,6 @@ void hdd_disable_and_flush_mc_addr_list(struct hdd_adapter *adapter,
 	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	QDF_STATUS status;
 
-	if (!hdd_cm_is_vdev_associated(adapter->deflink))
-		goto flush_mc_list;
-
 	/* disable mc list first because the mc list is cached in PMO */
 	status = ucfg_pmo_disable_mc_addr_filtering_in_fwr(
 						hdd_ctx->psoc,
@@ -1579,12 +1573,10 @@ void hdd_disable_and_flush_mc_addr_list(struct hdd_adapter *adapter,
 	if (QDF_IS_STATUS_ERROR(status))
 		hdd_debug("failed to disable mc list; status:%d", status);
 
-flush_mc_list:
 	status = ucfg_pmo_flush_mc_addr_list(hdd_ctx->psoc,
 					     adapter->deflink->vdev_id);
 	if (QDF_IS_STATUS_ERROR(status))
 		hdd_debug("failed to flush mc list; status:%d", status);
-
 }
 
 /**
@@ -1825,7 +1817,8 @@ static void wlan_hdd_set_twt_responder(struct hdd_context *hdd_ctx,
 
 	twt_responder =
 		adapter->deflink->session.ap.sap_config.cfg80211_twt_responder;
-	wlan_hdd_configure_twt_responder(hdd_ctx, twt_responder);
+	wlan_hdd_configure_twt_responder(hdd_ctx, twt_responder,
+					 adapter->deflink->vdev_id);
 }
 #else
 static inline void wlan_hdd_set_twt_responder(struct hdd_context *hdd_ctx,
@@ -2553,7 +2546,6 @@ static int __wlan_hdd_cfg80211_suspend_wlan(struct wiphy *wiphy,
 				} else if (ucfg_pmo_get_disconnect_sap_tdls_in_wow(
 					   hdd_ctx->psoc)) {
 					hdd_softap_deauth_all_sta(adapter,
-								  hapd_state,
 								  &params);
 				}
 			} else if (QDF_P2P_GO_MODE == adapter->device_mode) {
@@ -2575,7 +2567,6 @@ static int __wlan_hdd_cfg80211_suspend_wlan(struct wiphy *wiphy,
 				} else if (ucfg_pmo_get_disconnect_sap_tdls_in_wow(
 					   hdd_ctx->psoc)) {
 					hdd_softap_deauth_all_sta(adapter,
-								  hapd_state,
 								  &params);
 				}
 			} else if (QDF_TDLS_MODE == adapter->device_mode &&
