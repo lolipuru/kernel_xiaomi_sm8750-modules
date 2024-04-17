@@ -856,6 +856,9 @@ int msm_cvp_session_create(struct msm_cvp_inst *inst)
 		return -EINVAL;
 	}
 
+	if (msm_cvp_check_for_inst_overload(inst->core, &rc))
+		return -ENOSPC;
+
 	rc = msm_cvp_comm_try_state(inst, MSM_CVP_OPEN_DONE);
 	if (rc) {
 		dprintk(CVP_ERR,

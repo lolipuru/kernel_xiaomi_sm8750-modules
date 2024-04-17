@@ -27,6 +27,8 @@
 #include "cvp_hfi_helper.h"
 
 #define MAX_SUPPORTED_INSTANCES 16
+#define MAX_CV_INSTANCES 8
+#define MAX_DMM_INSTANCES 8
 #define MAX_DEBUGFS_NAME 50
 #define MAX_DSP_INIT_ATTEMPTS 16
 #define FENCE_WAIT_SIGNAL_TIMEOUT 100
@@ -423,4 +425,5 @@ int msm_cvp_destroy(struct msm_cvp_inst *inst);
 void *cvp_get_drv_data(struct device *dev);
 void *cvp_kmem_cache_zalloc(struct cvp_kmem_cache *k, gfp_t flags);
 void cvp_kmem_cache_free(struct cvp_kmem_cache *k, void *obj);
+bool msm_cvp_check_for_inst_overload(struct msm_cvp_core *core, u32 *instance_count);
 #endif
