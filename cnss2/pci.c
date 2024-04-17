@@ -47,6 +47,7 @@
 #define PEACH_PATH_PREFIX		"peach/"
 #define DEFAULT_PHY_M3_FILE_NAME	"m3.bin"
 #define DEFAULT_AUX_FILE_NAME		"aux_ucode.elf"
+#define AUX_V2_FILE_NAME		"aux_ucode20.elf"
 #define DEFAULT_PHY_UCODE_FILE_NAME	"phy_ucode.elf"
 #define TME_PATCH_FILE_NAME_1_0		"tmel_peach_10.elf"
 #define TME_PATCH_FILE_NAME_2_0		"tmel_peach_20.elf"
@@ -1066,6 +1067,19 @@ void cnss_mhi_controller_set_base(struct cnss_pci_data *pci_priv,
 }
 #endif /* CONFIG_MHI_BUS_MISC */
 
+void cnss_pci_controller_set_base(struct cnss_pci_data *pci_priv)
+{
+	switch (pci_priv->device_id) {
+	case PEACH_DEVICE_ID:
+	case KIWI_DEVICE_ID:
+		break;
+	default:
+		return;
+	}
+
+	cnss_pr_dbg("Remove MHI satellite configuration\n");
+	return cnss_mhi_controller_set_base(pci_priv, 0);
+}
 #ifdef CONFIG_CNSS2_SMMU_DB_SUPPORT
 #define CNSS_MHI_WAKE_TIMEOUT		500000
 
@@ -4319,10 +4333,18 @@ static int cnss_pci_runtime_resume(struct device *dev)
 
 	driver_ops = pci_priv->driver_ops;
 	if (driver_ops && driver_ops->runtime_ops &&
-	    driver_ops->runtime_ops->runtime_resume)
+	    driver_ops->runtime_ops->runtime_resume) {
 		ret = driver_ops->runtime_ops->runtime_resume(pci_dev);
-	else
+		/*
+		 * In some scenarios, runtime_ops->runtime_resume()
+		 * might not resume PCI bus and return dummy success.
+		 * For those cases do auto resume from CNSS.
+		 */
+		if (!ret && cnss_pci_get_auto_suspended(pci_priv))
+			cnss_auto_resume(dev);
+	} else {
 		ret = cnss_auto_resume(dev);
+	}
 
 	cnss_pr_vdbg("Runtime resume status: %d\n", ret);
 
@@ -5306,13 +5328,17 @@ int cnss_pci_load_aux(struct cnss_pci_data *pci_priv)
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
 	struct cnss_fw_mem *aux_mem = &plat_priv->aux_mem;
 	char filename[MAX_FIRMWARE_NAME_LEN];
-	char *aux_filename = DEFAULT_AUX_FILE_NAME;
 	const struct firmware *fw_entry;
 	int ret = 0;
 
 	if (!aux_mem->va && !aux_mem->size) {
-		cnss_pci_add_fw_prefix_name(pci_priv, filename,
-					    aux_filename);
+		if (plat_priv->device_version.major_version == FW_V2_NUMBER) {
+			cnss_pci_add_fw_prefix_name(pci_priv, filename,
+						    AUX_V2_FILE_NAME);
+		} else {
+			cnss_pci_add_fw_prefix_name(pci_priv, filename,
+						    DEFAULT_AUX_FILE_NAME);
+		}
 
 		ret = firmware_request_nowarn(&fw_entry, filename,
 					      &pci_priv->pci_dev->dev);
@@ -5629,7 +5655,7 @@ static int cnss_pci_enable_msi(struct cnss_pci_data *pci_priv)
 	num_vectors = pci_alloc_irq_vectors(pci_dev,
 					    msi_config->total_vectors,
 					    msi_config->total_vectors,
-					    PCI_IRQ_MSI | PCI_IRQ_MSIX);
+					    PCI_IRQ_MSI);
 	if ((num_vectors != msi_config->total_vectors) &&
 	    !cnss_pci_fallback_one_msi(pci_priv, &num_vectors)) {
 		cnss_pr_err("Failed to get enough MSI vectors (%d), available vectors = %d",
@@ -6173,11 +6199,6 @@ int cnss_pci_force_fw_assert_hdlr(struct cnss_pci_data *pci_priv)
 	ret = cnss_pci_pm_runtime_get_sync(pci_priv, RTPM_ID_CNSS);
 	if (ret < 0)
 		goto runtime_pm_put;
-	/*
-	 * In some scenarios, cnss_pci_pm_runtime_get_sync
-	 * might not resume PCI bus. For those cases do auto resume.
-	 */
-	cnss_auto_resume(&pci_priv->pci_dev->dev);
 
 	if (!pci_priv->is_smmu_fault)
 		cnss_pci_mhi_reg_dump(pci_priv);
@@ -6790,6 +6811,9 @@ static void cnss_dev_rddm_timeout_hdlr(struct timer_list *t)
 
 	cnss_fatal_err("Timeout waiting for RDDM notification\n");
 
+	if (cnss_pci_check_link_status(pci_priv))
+		return;
+
 	mhi_ee = mhi_get_exec_env(pci_priv->mhi_ctrl);
 	if (mhi_ee == MHI_EE_PBL)
 		cnss_pr_err("Device MHI EE is PBL, unable to collect dump\n");
@@ -7019,14 +7043,61 @@ static void cnss_mhi_write_reg(struct mhi_controller *mhi_ctrl,
 	writel_relaxed(val, addr);
 }
 
+#if IS_ENABLED(CONFIG_MHI_BUS_MISC)
+/**
+ * __cnss_get_mhi_soc_info - Get SoC info before registering mhi controller
+ * @mhi_ctrl: MHI controller
+ *
+ * Return: 0 for success, error code on failure
+ */
+static inline int __cnss_get_mhi_soc_info(struct mhi_controller *mhi_ctrl)
+{
+	return mhi_get_soc_info(mhi_ctrl);
+}
+#else
+#define SOC_HW_VERSION_OFFS (0x224)
+#define SOC_HW_VERSION_FAM_NUM_BMSK (0xF0000000)
+#define SOC_HW_VERSION_FAM_NUM_SHFT (28)
+#define SOC_HW_VERSION_DEV_NUM_BMSK (0x0FFF0000)
+#define SOC_HW_VERSION_DEV_NUM_SHFT (16)
+#define SOC_HW_VERSION_MAJOR_VER_BMSK (0x0000FF00)
+#define SOC_HW_VERSION_MAJOR_VER_SHFT (8)
+#define SOC_HW_VERSION_MINOR_VER_BMSK (0x000000FF)
+#define SOC_HW_VERSION_MINOR_VER_SHFT (0)
+
+static int __cnss_get_mhi_soc_info(struct mhi_controller *mhi_ctrl)
+{
+	u32 soc_info;
+	int ret;
+
+	ret = mhi_ctrl->read_reg(mhi_ctrl,
+				 mhi_ctrl->regs + SOC_HW_VERSION_OFFS,
+				 &soc_info);
+	if (ret)
+		return ret;
+
+	mhi_ctrl->family_number = (soc_info & SOC_HW_VERSION_FAM_NUM_BMSK) >>
+		SOC_HW_VERSION_FAM_NUM_SHFT;
+	mhi_ctrl->device_number = (soc_info & SOC_HW_VERSION_DEV_NUM_BMSK) >>
+		SOC_HW_VERSION_DEV_NUM_SHFT;
+	mhi_ctrl->major_version = (soc_info & SOC_HW_VERSION_MAJOR_VER_BMSK) >>
+		SOC_HW_VERSION_MAJOR_VER_SHFT;
+	mhi_ctrl->minor_version = (soc_info & SOC_HW_VERSION_MINOR_VER_BMSK) >>
+		SOC_HW_VERSION_MINOR_VER_SHFT;
+	return 0;
+}
+#endif
+
 static int cnss_get_mhi_soc_info(struct cnss_plat_data *plat_priv,
 				 struct mhi_controller *mhi_ctrl)
 {
 	int ret = 0;
 
-	ret = mhi_get_soc_info(mhi_ctrl);
-	if (ret)
+	ret = __cnss_get_mhi_soc_info(mhi_ctrl);
+	if (ret) {
+		cnss_pr_err("failed to get mhi soc info, ret %d\n", ret);
 		goto exit;
+	}
 
 	plat_priv->device_version.family_number = mhi_ctrl->family_number;
 	plat_priv->device_version.device_number = mhi_ctrl->device_number;

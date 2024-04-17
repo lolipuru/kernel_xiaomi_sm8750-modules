@@ -649,6 +649,13 @@ int cnss_wlfw_tgt_cap_send_sync(struct cnss_plat_data *plat_priv)
 		}
 	}
 
+	if (resp->serial_id_valid) {
+		plat_priv->serial_id = resp->serial_id;
+		cnss_pr_info("serial id  0x%x 0x%x\n",
+			     resp->serial_id.serial_id_msb,
+			     resp->serial_id.serial_id_lsb);
+	}
+
 	cnss_pr_dbg("Target capability: chip_id: 0x%x, chip_family: 0x%x, board_id: 0x%x, soc_id: 0x%x, otp_version: 0x%x\n",
 		    plat_priv->chip_info.chip_id,
 		    plat_priv->chip_info.chip_family,
@@ -1388,23 +1395,33 @@ int cnss_wlfw_qdss_data_send_sync(struct cnss_plat_data *plat_priv, char *file_n
 	cnss_pr_dbg("%s\n", __func__);
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
-	if (!req)
+	if (!req) {
+		cnss_pr_err("%s: failed to allocate req mem: %zu\n",
+			    __func__, sizeof(*req));
 		return -ENOMEM;
+	}
 
 	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
 	if (!resp) {
+		cnss_pr_err("%s: failed to allocate resp mem: %zu\n",
+			    __func__, sizeof(*resp));
 		kfree(req);
 		return -ENOMEM;
 	}
 
 	p_qdss_trace_data = kzalloc(total_size, GFP_KERNEL);
 	if (!p_qdss_trace_data) {
+		cnss_pr_err("%s: failed to allocate qdss trace data: %zu\n",
+			    __func__, total_size);
 		ret = ENOMEM;
 		goto end;
 	}
 
 	remaining = total_size;
 	p_qdss_trace_data_temp = p_qdss_trace_data;
+
+	cnss_pr_dbg("qdss trace data of total size %u and response end at %u\n",
+		    remaining, resp->end);
 	while (remaining && resp->end == 0) {
 		ret = qmi_txn_init(&plat_priv->qmi_wlfw, &txn,
 				   wlfw_qdss_trace_data_resp_msg_v01_ei, resp);
@@ -1414,6 +1431,8 @@ int cnss_wlfw_qdss_data_send_sync(struct cnss_plat_data *plat_priv, char *file_n
 				    ret);
 			goto fail;
 		}
+
+		cnss_pr_dbg("sending qdss trace qmi data req\n");
 
 		ret = qmi_send_request
 			(&plat_priv->qmi_wlfw, NULL, &txn,
