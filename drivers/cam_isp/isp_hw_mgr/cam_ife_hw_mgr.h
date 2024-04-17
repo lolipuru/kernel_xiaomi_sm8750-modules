@@ -41,6 +41,21 @@ enum cam_ife_ctx_master_type {
 /* Maximum set for irq injection*/
 #define MAX_INJECT_SET 10
 
+/* IFE CSID non recovery errors */
+#define CAM_ISP_NON_RECOVERABLE_CSID_ERRORS          \
+	(CAM_ISP_HW_ERROR_CSID_LANE_FIFO_OVERFLOW    |   \
+	 CAM_ISP_HW_ERROR_CSID_PKT_HDR_CORRUPTED     |   \
+	 CAM_ISP_HW_ERROR_CSID_MISSING_PKT_HDR_DATA  |   \
+	 CAM_ISP_HW_ERROR_CSID_FATAL                 |   \
+	 CAM_ISP_HW_ERROR_CSID_UNBOUNDED_FRAME       |   \
+	 CAM_ISP_HW_ERROR_CSID_MISSING_EOT)
+
+/* IFE CSID recovery errors */
+#define CAM_ISP_RECOVERABLE_CSID_ERRORS              \
+	(CAM_ISP_HW_ERROR_CSID_SENSOR_SWITCH_ERROR   |   \
+	 CAM_ISP_HW_ERROR_CSID_SENSOR_FRAME_DROP     |   \
+	 CAM_ISP_HW_ERROR_CSID_PKT_PAYLOAD_CORRUPTED)
+
 /**
  * struct cam_ife_hw_mgr_debug - contain the debug information
  *

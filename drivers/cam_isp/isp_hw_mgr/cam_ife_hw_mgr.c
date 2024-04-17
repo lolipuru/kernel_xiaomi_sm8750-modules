@@ -71,19 +71,6 @@ typedef int (*cam_isp_irq_inject_cmd_parse_handler)(
 	"Up to 10 sets of inject params are supported.\n"                                   \
 	"######################################################\n"
 
-#define CAM_ISP_NON_RECOVERABLE_CSID_ERRORS          \
-	(CAM_ISP_HW_ERROR_CSID_LANE_FIFO_OVERFLOW    |   \
-	 CAM_ISP_HW_ERROR_CSID_PKT_HDR_CORRUPTED     |   \
-	 CAM_ISP_HW_ERROR_CSID_MISSING_PKT_HDR_DATA  |   \
-	 CAM_ISP_HW_ERROR_CSID_FATAL                 |   \
-	 CAM_ISP_HW_ERROR_CSID_UNBOUNDED_FRAME       |   \
-	 CAM_ISP_HW_ERROR_CSID_MISSING_EOT)
-
-#define CAM_ISP_RECOVERABLE_CSID_ERRORS              \
-	(CAM_ISP_HW_ERROR_CSID_SENSOR_SWITCH_ERROR   |   \
-	 CAM_ISP_HW_ERROR_CSID_SENSOR_FRAME_DROP     |   \
-	 CAM_ISP_HW_ERROR_CSID_PKT_PAYLOAD_CORRUPTED)
-
 static uint32_t blob_type_hw_cmd_map[CAM_ISP_GENERIC_BLOB_TYPE_MAX] = {
 	CAM_ISP_HW_CMD_GET_HFR_UPDATE,
 	CAM_ISP_HW_CMD_CLOCK_UPDATE,
