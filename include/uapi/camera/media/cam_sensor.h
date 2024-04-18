@@ -359,6 +359,9 @@ struct cam_cmd_i2c_info {
 #define CAM_SENSOR_FEATURE_INSENSOR_HDR_3EXP_ON    BIT(3)
 #define CAM_SENSOR_FEATURE_INSENSOR_HDR_3EXP_OFF   BIT(4)
 
+#define CAM_CSIPHY_T3_PREPARE_NS_MASK              BIT(0)
+#define CAM_CSIPHY_T3_PREAMBLE_NS_MASK             BIT(1)
+
 /**
  * struct cam_cmd_sensor_res_info - Contains sensor res info
  *
@@ -821,7 +824,7 @@ struct cam_csiphy_info_v2 {
 	__u64    settle_time;
 	__u64    data_rate;
 	__u32    channel_type;
-	__u32    num_vaild_params;
+	__u32    num_valid_params;
 	__u32    param_mask;
 	__u32    params[5];
 } __attribute__((packed));

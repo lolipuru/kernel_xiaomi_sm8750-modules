@@ -288,8 +288,6 @@ int32_t cam_csiphy_parse_dt_info(struct platform_device *pdev,
 	int32_t   rc = 0, i = 0;
 	uint32_t  clk_cnt = 0;
 	uint32_t   is_regulator_enable_sync;
-	char      *csi_3p_clk_name = "csi_phy_3p_clk";
-	char      *csi_3p_clk_src_name = "csiphy_3p_clk_src";
 	struct cam_hw_soc_info   *soc_info;
 	void *irq_data[CAM_SOC_MAX_IRQ_LINES_PER_DEV] = {0};
 
@@ -359,36 +357,17 @@ int32_t cam_csiphy_parse_dt_info(struct platform_device *pdev,
 
 	for (i = 0; i < soc_info->num_clk; i++) {
 		if (!strcmp(soc_info->clk_name[i],
-			csi_3p_clk_src_name)) {
-			csiphy_dev->csiphy_3p_clk_info[0].clk_name =
-				soc_info->clk_name[i];
-			csiphy_dev->csiphy_3p_clk_info[0].clk_rate =
-				soc_info->clk_rate[0][i];
-			csiphy_dev->csiphy_3p_clk[0] =
-				soc_info->clk[i];
-			continue;
-		} else if (!strcmp(soc_info->clk_name[i],
-				csi_3p_clk_name)) {
-			csiphy_dev->csiphy_3p_clk_info[1].clk_name =
-				soc_info->clk_name[i];
-			csiphy_dev->csiphy_3p_clk_info[1].clk_rate =
-				soc_info->clk_rate[0][i];
-			csiphy_dev->csiphy_3p_clk[1] =
-				soc_info->clk[i];
-			continue;
-		} else if (!strcmp(soc_info->clk_name[i],
 				CAM_CSIPHY_RX_CLK_SRC)) {
 			csiphy_dev->rx_clk_src_idx = i;
-			continue;
+		} else if (strnstr(soc_info->clk_name[i], CAM_CSIPHY_TIMER_CLK_SRC,
+			strlen(soc_info->clk_name[i]))) {
+			csiphy_dev->timer_clk_src_idx = i;
 		}
 
 		CAM_DBG(CAM_CSIPHY, "clk_rate[%d] = %d", clk_cnt,
 			soc_info->clk_rate[0][clk_cnt]);
 		clk_cnt++;
 	}
-
-	csiphy_dev->csiphy_max_clk =
-		soc_info->clk_rate[0][soc_info->src_clk_idx];
 
 	for (i = 0; i < soc_info->irq_count; i++)
 		irq_data[i] = csiphy_dev;
