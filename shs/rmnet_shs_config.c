@@ -1,5 +1,5 @@
 /* Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -38,11 +38,10 @@ MODULE_PARM_DESC(DATARMNETbc8418e817,
 );static const struct rmnet_module_hook_register_info DATARMNETf6217b20b8={.
 hooknum=RMNET_MODULE_HOOK_SHS_SKB_LL_ENTRY,.func=DATARMNETf5821256ad};static int
  DATARMNET2cb9ae589c;int __init DATARMNET163e93649e(void){pr_info(
-"\x25\x73\x28\x29\x3a\x20\x53\x74\x61\x72\x74\x69\x6e\x67\x20\x72\x6d\x6e\x65\x74\x20\x53\x48\x53\x20\x6d\x6f\x64\x75\x6c\x65\x20\x25\x73\x20" "\n"
-,__func__,DATARMNETbc8418e817[(0xd2d+202-0xdf7)]);trace_rmnet_shs_high(
-DATARMNET1790979ccf,DATARMNET72cb00fdc0,(0x16e8+787-0xc0c),(0x16e8+787-0xc0c),
-(0x16e8+787-0xc0c),(0x16e8+787-0xc0c),NULL,NULL);if(DATARMNET0dbc627e8f()){
-rm_err("\x25\x73",
+"\x25\x73\x28\x29\x3a\x20\x4c\x6f\x61\x64\x65\x64\x20\x72\x6d\x6e\x65\x74\x20\x53\x48\x53\x20\x6d\x6f\x64\x75\x6c\x65\x20" "\n"
+,__func__);trace_rmnet_shs_high(DATARMNET1790979ccf,DATARMNET72cb00fdc0,
+(0x16e8+787-0xc0c),(0x16e8+787-0xc0c),(0x16e8+787-0xc0c),(0x16e8+787-0xc0c),NULL
+,NULL);if(DATARMNET0dbc627e8f()){rm_err("\x25\x73",
 "\x53\x48\x53\x5f\x47\x4e\x4c\x3a\x20\x46\x61\x69\x6c\x65\x64\x20\x74\x6f\x20\x69\x6e\x69\x74\x20\x67\x65\x6e\x65\x72\x69\x63\x20\x6e\x65\x74\x6c\x69\x6e\x6b"
 );}return register_netdevice_notifier(&DATARMNET5fc54f7a13);}void __exit 
 DATARMNETf3298dab6f(void){trace_rmnet_shs_high(DATARMNET1790979ccf,
@@ -79,10 +78,9 @@ if(DATARMNET2cb9ae589c&&!DATARMNETecc0627c70.DATARMNETfc89d842ae){pr_info(
 pr_err(
 "\x72\x6d\x6e\x65\x74\x5f\x73\x68\x73\x3a\x20\x69\x6e\x76\x61\x6c\x69\x64\x20\x72\x6d\x6e\x65\x74\x5f\x70\x6f\x72\x74"
 );break;}DATARMNET45d8cdb224(priv->real_dev,dev);DATARMNET3ae0d614d6();
-DATARMNETe1f95274f1();DATARMNETecc0627c70.DATARMNETf5ab31b9b0=(0xd26+209-0xdf6);
-}break;case NETDEV_UP:if(!DATARMNETecc0627c70.DATARMNET9c869c1ec2&&
-DATARMNETecc0627c70.DATARMNETfc89d842ae){port=DATARMNETecc0627c70.port;if(!port)
-{pr_err(
+DATARMNETe1f95274f1();}break;case NETDEV_UP:if(!DATARMNETecc0627c70.
+DATARMNET9c869c1ec2&&DATARMNETecc0627c70.DATARMNETfc89d842ae){port=
+DATARMNETecc0627c70.port;if(!port){pr_err(
 "\x72\x6d\x6e\x65\x74\x5f\x73\x68\x73\x3a\x20\x69\x6e\x76\x61\x6c\x69\x64\x20\x72\x6d\x6e\x65\x74\x5f\x63\x66\x67\x5f\x70\x6f\x72\x74"
 );break;}DATARMNETecc0627c70.DATARMNET08dbb5ab35.priority=RMNET_SHS;
 DATARMNETecc0627c70.DATARMNET6b783c98fe.priority=RMNET_SHS;if(port->data_format&
