@@ -164,20 +164,7 @@ static struct cb_object *cb_object_alloc(s64 server_id)
 	return cb_object;
 }
 
-static void mem_object_release(void *dma_buf)
-{
-	/* What's wrong with userspace!? Technically we do not need this.
-	 * However, userspace do not close the dma_buf after using it and for some reason
-	 * waits for the driver to send back the RELEASE callback request.
-	 */
-
-	/* TODO. Add support for memory object release; so we notify the
-	 * userspace for the release of dma_buf from the QTEE.
-	 */
-
-	pr_err("dma_buf released %p\n", dma_buf);
-}
-
+static void mem_object_release(void *private);
 static int get_si_object_from_u_handle(struct smcinvoke_obj *o, struct si_arg *arg)
 {
 	int ret = 0;
@@ -219,7 +206,26 @@ static int get_si_object_from_u_handle(struct smcinvoke_obj *o, struct si_arg *a
 		dma_buf = dma_buf_get(u_handle);
 		if (!IS_ERR(dma_buf)) {
 
-			object = init_si_mem_object_user(dma_buf, mem_object_release, dma_buf);
+			struct cb_object *x_cb;
+
+			/* This is an effort to simulate the invalid fix propagted deep
+			 * in userspace. See: 'mem_object_release'. If IS_ERR(x_cb), we will
+			 * proceed without the mem-object RELEASE but will print a warning
+			 * for leak in 'mem_object_release'.
+			 */
+
+			/* BUG!!! This assumes only callback server is sending a memory object;
+			 * It assumes memory object ALWAYS should belong to a server, i.e.
+			 * 'cb_server_fd' MUST be valid. I can not fix it.
+			 */
+
+			x_cb = cb_object_alloc(o->cb_server_fd);
+			if (!IS_ERR(x_cb))
+				x_cb->u_handle = u_handle;
+
+			object = init_si_mem_object_user(dma_buf, mem_object_release,
+				IS_ERR(x_cb) ? NULL : x_cb);
+
 			if (!object)
 				ret = -EINVAL;
 
@@ -1038,6 +1044,32 @@ static void cbo_release(struct si_object *object)
 	/* The matching 'kref_get' is in 'cb_object_alloc'. */
 	kref_put(&cb_object->si->refcount, ____destroy_server_info);
 	kfree(cb_object);
+}
+
+
+static void mem_object_release(void *private)
+{
+	/* THIS IS A STUPIDEST IMPLEMENTATION EVER! */
+
+	/* Old smcinvoke driver had a memory leak but rather than fixing it by
+	 * figuring out the root cause they decided it is COOL to send irrelevant
+	 * memory release to userspace to compensate for the leaked memory. Interestingly,
+	 * it has a made up story behind to justify the wrong change, see comments in
+	 * 'process_tzcb_req' this patch:
+	 * https://review-android.quicinc.com/c/platform/vendor/qcom/opensource/securemsm-kernel/+/4382238.
+	 * I WISH I COULD HAVE REVERTED THIS.
+	 */
+
+	struct cb_object *cb_x = private;
+
+	if (cb_x) {
+
+		/* Note 'cb_x->object' has not been isinialized. Do not use it! */
+		pr_info("dma_buf released i.e. cbo-%s%lld\n", cb_x->si->comm, cb_x->u_handle);
+
+		cbo_release(&cb_x->object);
+	} else
+		pr_err("memory leak detected!\n");
 }
 
 static struct si_object_operations cbo_sio_ops = {
