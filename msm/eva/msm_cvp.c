@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_cvp.h"
@@ -742,9 +742,13 @@ int msm_cvp_session_delete(struct msm_cvp_inst *inst)
 
 int msm_cvp_secure_sess_check(struct msm_cvp_inst *inst)
 {
-	int rc = 0;
+	int rc = 0, stop_status = 0;
 	struct msm_cvp_core *core = NULL;
 	struct msm_cvp_inst *active_inst = NULL;
+	unsigned long flags = 0;
+	struct cvp_hfi_ops *ops_tbl;
+	enum cvp_session_state s_state;
+	enum cvp_session_errorcode s_ecode;
 
 	if (!inst || !inst->core)
 		return -EINVAL;
@@ -754,6 +758,15 @@ int msm_cvp_secure_sess_check(struct msm_cvp_inst *inst)
 		mutex_lock(&core->lock);
 		list_for_each_entry(active_inst, &core->instances, list) {
 			if (active_inst->prop.is_secure) {
+				s_state = (0xF0000000 & active_inst->error_code) >> 28;
+				dprintk(CVP_SESS, "%s: s_state is %d\n",
+					__func__, s_state);
+				if (s_state == SECURE_SESSION_ERROR) {
+					dprintk(CVP_SESS,
+						"Invalid secure session");
+					continue;
+				}
+
 				if (inst->prop.type == active_inst->prop.type) {
 					dprintk(CVP_SESS,
 						"Allow new session create, type %d, secure %d\n",
@@ -769,25 +782,55 @@ int msm_cvp_secure_sess_check(struct msm_cvp_inst *inst)
 						&& active_inst->prop.type == HFI_SESSION_CV) {
 					dprintk(CVP_WARN,
 						"Tear EVA secure sess, create secure CAM sess\n");
-					msm_cvp_comm_kill_session(active_inst);
+					if (s_state != SECURE_SESSION_ERROR) {
+						ops_tbl = core->dev_ops;
+						stop_status = call_hfi_op(ops_tbl, session_stop,
+							(void *)active_inst->session);
+					if (stop_status)
+						dprintk(CVP_WARN,
+						"%s: stop session failed\n",
+							__func__, stop_status);
+						mutex_unlock(&core->lock);
+						stop_status = wait_for_sess_signal_receipt(
+							active_inst,
+							HAL_SESSION_STOP_DONE);
+					if (stop_status)
+						dprintk(CVP_WARN,
+							"%s: wait sess_stop fail rc %d\n",
+							__func__, stop_status);
+						mutex_lock(&core->lock);
+						s_state = SECURE_SESSION_ERROR;
+						s_ecode = EVA_SECURE_SESSION_ERROR;
+						active_inst->error_code = (s_state << 28) |
+							(s_ecode << 16);
+						spin_lock_irqsave(&active_inst->event_handler.lock,
+							flags);
+						active_inst->event_handler.event = CVP_SSR_EVENT;
+						spin_unlock_irqrestore(
+							&active_inst->event_handler.lock,
+							flags);
+						wake_up_all(&active_inst->event_handler.wq);
+					} else {
+						dprintk(CVP_SESS,
+							"Session already stopped\n");
+					}
 				}
 			}
 		}
+		mutex_unlock(&core->lock);
 
 		if (rc == 0) {
-			dprintk(CVP_ERR, "Calling TZ SID begin with secure flag %d",
+			dprintk(CVP_CORE, "Calling TZ SID begin with secure flag %d",
 				inst->prop.is_secure);
 			if (inst->prop.type == HFI_SESSION_CV) {
-				dprintk(CVP_ERR, "Calling TZ SID for OF");
+				dprintk(CVP_CORE, "Calling TZ SID for OF");
 				__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_EVA);
 			} else if (inst->prop.type == HFI_SESSION_DMM) {
-				dprintk(CVP_ERR, "Calling TZ SID for DMM ");
+				dprintk(CVP_CORE, "Calling TZ SID for DMM ");
 				__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_CAMERA);
 			}
-			dprintk(CVP_ERR, "Calling TZ SID end ");
+			dprintk(CVP_CORE, "Calling TZ SID end ");
 		}
-
-		mutex_unlock(&core->lock);
 	}
 
 	return rc;

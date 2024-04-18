@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/module.h>
 #include <linux/rpmsg.h>
@@ -67,6 +67,9 @@ static int cvp_dsp_send_cmd(struct cvp_dsp_cmd_msg *cmd, uint32_t len)
 	if (rc) {
 		dprintk(CVP_ERR, "%s: DSP rpmsg_send failed rc=%d\n",
 			__func__, rc);
+		dprintk(CVP_ERR, "%s: CDSP SSR received\n",
+			__func__);
+		rc = -EINVAL;
 		goto exit;
 	}
 
@@ -2050,6 +2053,8 @@ wait_dsp:
 		goto wait_dsp;
 	}
 
+	/* Set the cmd to 0 to avoid sending previous session values in case the command fails*/
+	memset(&cmd, 0, sizeof(struct cvp_dsp_cmd_msg));
 	cmd.type = me->pending_dsp2cpu_cmd.type;
 
 	if (rc == -ERESTARTSYS) {

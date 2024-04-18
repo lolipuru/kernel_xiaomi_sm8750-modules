@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <asm/memory.h>
@@ -66,6 +66,7 @@ const struct msm_cvp_gov_data CVP_DEFAULT_BUS_VOTE = {
 };
 
 const int cvp_max_packets = 32;
+static enum cvp_irq_state cur_irq_state = CVP_IRQ_CLEAR;
 
 static void iris_hfi_pm_handler(struct work_struct *work);
 static DECLARE_DELAYED_WORK(iris_hfi_pm_work, iris_hfi_pm_handler);
@@ -386,7 +387,6 @@ static int __dsp_shutdown(struct iris_hfi_device *device)
 		dprintk(CVP_ERR,
 			"%s: dsp shutdown failed with error %d\n",
 			__func__, rc);
-		WARN_ON(1);
 	}
 
 	dprintk(CVP_DSP, "%s: dsp shutdown successful\n", __func__);
@@ -2992,7 +2992,7 @@ static int __power_collapse(struct iris_hfi_device *device, bool force)
 	}
 
 	rc = __dsp_suspend(device, force);
-	if (rc == -EBUSY)
+	if (rc == -EBUSY || rc == -EINVAL)
 		goto exit;
 	else if (rc)
 		goto skip_power_off;
@@ -3152,7 +3152,7 @@ static void __flush_debug_queue(struct iris_hfi_device *device, u8 *packet)
 			 * line.
 			 */
 			pkt->rg_msg_data[pkt->msg_size-1] = '\0';
-			dprintk(log_level, "%s", &pkt->rg_msg_data[0]);
+			dprintk(log_level, "%s", &pkt->rg_msg_data[1]);
 		}
 	}
 #undef SKIP_INVALID_PKT
@@ -3397,6 +3397,7 @@ exit:
 	return packet_count;
 }
 
+
 irqreturn_t iris_hfi_core_work_handler(int irq, void *data)
 {
 	struct msm_cvp_core *core;
@@ -3406,13 +3407,18 @@ irqreturn_t iris_hfi_core_work_handler(int irq, void *data)
 	static bool warning_on = true;
 	CVPKERNEL_ATRACE_BEGIN("iris_hfi_core_work_handler");
 
+	cur_irq_state = CVP_IRQ_ACCEPTED;
 	core = cvp_driver->cvp_core;
-	if (core)
+	if (core) {
 		device = core->dev_ops->hfi_device_data;
-	else
+	} else {
+		WARN_ONCE(true, "EVA Core is not created\n");
+		cur_irq_state = CVP_IRQ_CLEAR;
 		return IRQ_HANDLED;
+	}
 
 	mutex_lock(&device->lock);
+	cur_irq_state = CVP_IRQ_PROCESSED;
 	if (!__core_in_valid_state(device)) {
 		if (warning_on) {
 			dprintk(CVP_WARN, "%s Core not in init state\n",
@@ -3470,6 +3476,7 @@ err_no_work:
 	/* We need re-enable the irq which was disabled in ISR handler */
 	if (!(intr_status & CVP_WRAPPER_INTR_STATUS_A2HWD_BMSK))
 		enable_irq(device->cvp_hal_data->irq);
+	cur_irq_state = CVP_IRQ_CLEAR;
 	CVPKERNEL_ATRACE_END("iris_hfi_core_work_handler");
 	return IRQ_HANDLED;
 }

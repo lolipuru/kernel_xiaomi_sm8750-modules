@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_CVP_INTERNAL_H_
@@ -44,7 +44,7 @@
 #define SYS_MSG_INDEX(__msg) (__msg - SYS_MSG_START)
 #define SESSION_MSG_INDEX(__msg) (__msg - SESSION_MSG_START)
 
-#define SESSION_NAME_MAX_LEN 64
+#define SESSION_NAME_MAX_LEN 512
 
 #define ARP_BUF_SIZE 0x300000
 
@@ -99,13 +99,15 @@ enum vpu_version {
 
 enum cvp_session_state {
 	SESSION_NORMAL = 0x00,
-	SESSION_ERROR
+	SESSION_ERROR,
+	SECURE_SESSION_ERROR
 };
 
 enum cvp_session_errorcode {
 	NO_ERROR = 0x00,
 	EVA_SYS_ERROR,
-	EVA_SESSION_ERROR
+	EVA_SESSION_ERROR,
+	EVA_SECURE_SESSION_ERROR
 };
 
 struct msm_cvp_ubwc_config_data {
