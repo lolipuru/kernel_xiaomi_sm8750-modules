@@ -2379,8 +2379,15 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	bool autorefresh_en;
 
-	_sde_encoder_cesta_update(drm_enc, sde_enc->cesta_enable_frame ?
+	/*
+	 * When enabling autorefresh - its requires an override cesta flush.
+	 * Fake enable_commit to achieve the configs.
+	 */
+	autorefresh_en = _sde_encoder_is_autorefresh_enabled(sde_enc);
+
+	_sde_encoder_cesta_update(drm_enc, (sde_enc->cesta_enable_frame || autorefresh_en) ?
 					SDE_PERF_ENABLE_COMMIT : SDE_PERF_BEGIN_COMMIT);
 }
 
