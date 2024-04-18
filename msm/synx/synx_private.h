@@ -100,6 +100,11 @@ struct synx_kernel_payload {
 	synx_user_callback_t cancel_cb_func;
 };
 
+struct synx_timer_cb_data {
+	void *data;
+	struct work_struct cb_dispatch;
+};
+
 struct synx_cb_data {
 	struct synx_session *session;
 	u32 idx;
