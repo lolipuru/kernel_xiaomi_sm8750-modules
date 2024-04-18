@@ -103,6 +103,12 @@
 #define HW_FENCE_SOCCP_INIT_TIMEOUT_MS 50
 
 /**
+ * HW_FENCE_FCTL_LOCK_VALUE:
+ * Fence controller sets the hw-fence lock value to this when locking a given fence.
+ */
+#define HW_FENCE_FCTL_LOCK_VALUE BIT(1)
+
+/**
  * HW_FENCE_MAX_EVENTS:
  * Maximum number of HW Fence debug events
  */
@@ -242,7 +248,7 @@ static void _unlock_vm(struct hw_fence_driver_data *drv_data, uint64_t *lock)
 
 	lock_val = *lock; /* Read the lock value */
 	HWFNC_DBG_LOCK("unlock: lock_val after:0x%llx\n", lock_val);
-	if (lock_val & 0x2) { /* check if SVM BIT1 is set*/
+	if (lock_val & HW_FENCE_FCTL_LOCK_VALUE) { /* check if SVM BIT1 is set*/
 		/*
 		 * SVM is in WFI state, since SVM acquire bit is set
 		 * Trigger IRQ to Wake-Up SVM Client
@@ -787,6 +793,10 @@ static int hw_fence_notify_ssr(struct notifier_block *nb, unsigned long action, 
 		soccp_props->rproc = NULL;
 		soccp_props->is_awake = false;
 		mutex_unlock(&soccp_props->rproc_lock);
+		ret = hw_fence_ssr_cleanup_table(drv_data, drv_data->hw_fences_tbl,
+			drv_data->hw_fence_table_entries, HW_FENCE_FCTL_LOCK_VALUE);
+		if (ret)
+			HWFNC_ERR("failed to cleanup hw-fence table for soccp ssr\n");
 		break;
 	default:
 		HWFNC_ERR("received unrecognized event %lu\n", action);
