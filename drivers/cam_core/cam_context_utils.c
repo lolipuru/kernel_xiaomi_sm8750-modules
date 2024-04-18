@@ -261,18 +261,18 @@ int cam_context_buf_done_from_hw(struct cam_context *ctx,
 
 	cam_cpas_notify_event(ctx->ctx_id_string, req->request_id);
 
+	if (req->packet) {
+		cam_common_mem_free(req->packet);
+		req->packet = NULL;
+	}
+	req->ctx = NULL;
+
 	/*
 	 * another thread may be adding/removing from free list,
 	 * so hold the lock
 	 */
 	spin_lock(&ctx->lock);
-	if (req->packet) {
-		cam_common_mem_free(req->packet);
-		req->packet = NULL;
-	}
-
 	list_add_tail(&req->list, &ctx->free_req_list);
-	req->ctx = NULL;
 	spin_unlock(&ctx->lock);
 
 	return 0;
