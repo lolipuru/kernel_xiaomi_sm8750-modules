@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -68,6 +68,7 @@
 #include <linux/ipc_logging.h>
 #include <linux/pm.h>
 #include <linux/string.h>
+#include <linux/version.h>
 
 #define SPCOM_LOG_PAGE_CNT 10
 
@@ -918,7 +919,11 @@ static int modify_dma_buf_addr(struct spcom_channel *ch, void *buf,
 		goto mem_map_table_failed;
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0))
+	sg = dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
+#else
 	sg = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+#endif
 	if (IS_ERR_OR_NULL(sg)) {
 		ret = PTR_ERR(sg);
 		spcom_pr_err("fail to get sg table of dma buf %d\n", ret);
@@ -957,7 +962,11 @@ static int modify_dma_buf_addr(struct spcom_channel *ch, void *buf,
 	return 0;
 
 mem_map_sg_failed:
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0))
+	dma_buf_unmap_attachment_unlocked(attach, sg, DMA_BIDIRECTIONAL);
+#else
 	dma_buf_unmap_attachment(attach, sg, DMA_BIDIRECTIONAL);
+#endif
 mem_map_table_failed:
 	dma_buf_detach(dma_buf, attach);
 	dma_buf_put(dma_buf);
@@ -1203,7 +1212,11 @@ static int spcom_dmabuf_unlock(struct dma_buf_info *info, bool verify_buf_owner)
 	spcom_pr_dbg("unlock dmbuf fd [%d], PID [%u]\n", info->fd, pid);
 
 	if (info->attach) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0))
+		dma_buf_unmap_attachment_unlocked(info->attach, info->sg, DMA_BIDIRECTIONAL);
+#else
 		dma_buf_unmap_attachment(info->attach, info->sg, DMA_BIDIRECTIONAL);
+#endif
 		dma_buf_detach(info->handle, info->attach);
 		info->attach = NULL;
 		info->sg = NULL;
