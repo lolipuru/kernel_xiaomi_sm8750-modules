@@ -2034,6 +2034,8 @@ void ipa3_install_dl_opt_wdi_dpath_flt_rules(u32 ipa_ep_idx, u32 rt_tbl_idx)
 		return;
 	}
 
+	IPADBG("ipa3_install_dl_opt_wdi_dpath_flt_rules: %d\n", ipa_ep_idx);
+
 	memset(&rule, 0, sizeof(rule));
 
 	mutex_lock(&ipa3_ctx->lock);
@@ -2063,6 +2065,8 @@ void ipa3_delete_dl_opt_wdi_dpath_flt_rules(u32 ipa_ep_idx)
 {
 	struct ipa3_ep_context *ep = &ipa3_ctx->ep[ipa_ep_idx];
 	struct ipa3_flt_tbl *tbl;
+
+	IPADBG("ipa3_delete_dl_opt_wdi_dpath_flt_rules: %d\n", ipa_ep_idx);
 
 	mutex_lock(&ipa3_ctx->lock);
 	if (ep->dl_flt4_rule_hdl) {

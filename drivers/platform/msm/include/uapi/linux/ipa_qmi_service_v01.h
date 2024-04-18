@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -2891,6 +2891,69 @@ struct ip_hdr_v6_address_info_v01 {
 	__u32 dest[QMI_IPA_IPV6_WORD_ADDR_LEN_V01];
 };
 
+/** Request Message; Sends QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_CTRL_READY_REQ_V01 */
+struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01 {
+	/* Mandatory */
+	/* WLAN ready */
+	__u8 wlan_ready;
+	/* Mandatory */
+	/* Source WLAN endpoint id */
+	__u32 src_wlan_endp_id;
+	/* Mandatory */
+	/* Destination WLAN endpoint id */
+	__u32 dest_wlan_endp_id;
+	/* Mandatory */
+	/* Destination APPS endpoint id */
+	__u32 dest_apps_endp_id;
+};
+#define IPA_WLAN_OPT_DP_SET_WLAN_CTRL_READY_REQ_MSG_V01_MAX_MSG_LEN 25
+
+/** Response Message; sent for QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_CTRL_READY_RESP */
+struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_resp_msg_v01 {
+	/* Mandatory */
+	/* Result Code */
+	struct ipa_qmi_response_type_v01 resp;
+	/*
+	 * Standard response type.
+	 * Standard response type. Contains the following data members:
+	 * qmi_result_type -- QMI_RESULT_SUCCESS or QMI_RESULT_FAILURE
+	 * qmi_error_type  -- Error code. Possible error code values are
+	 * described in the error codes section of each message definition.
+	 */
+
+	/* Mandatory */
+	/*  Q6 routing table index */
+	__u32 q6_rtng_table_index;
+};
+#define IPA_WLAN_OPT_DP_SET_WLAN_CTRL_READY_RESP_MSG_V01_MAX_MSG_LEN 14
+
+/** Request Message; Sends QMI_IPA_WLAN_OPT_DATAPATH_WLAN_CTRL_PACKET_RCVD_REQ */
+struct ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req_msg_v01 {
+  /* Mandatory */
+  /*  packet count */
+	__u32 packet_count;
+};
+
+/*
+ * Response Message;  Indicates completion of packet decrement
+ * based on num packets sent
+ */
+
+struct ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_resp_msg_v01 {
+
+	/* Mandatory */
+	/* Result Code */
+	struct ipa_qmi_response_type_v01 resp;
+	/*
+	 * Standard response type.
+	 * Standard response type. Contains the following data members:
+	 * qmi_result_type -- QMI_RESULT_SUCCESS or QMI_RESULT_FAILURE
+	 * qmi_error_type  -- Error code. Possible error code values are
+	 * described in the error codes section of each message definition.
+	 */
+};
+#define IPA_WLAN_OPT_DP_WLAN_CTRL_PACKET_RCVD_RESP_MSG_V01_MAX_MSG_LEN 7
+
 /** Request Message; Sends QMI_IPA_WLAN_OPT_DATAPATH_ADD_FILTER_REQ */
 struct ipa_wlan_opt_dp_add_filter_req_msg_v01 {
   /* Mandatory */
@@ -2906,8 +2969,16 @@ struct ipa_wlan_opt_dp_add_filter_req_msg_v01 {
 	__u8 v6_addr_valid;  /**< Must be set to true if v6_addr is being passed */
   /*  IPv6 address */
 	struct ip_hdr_v6_address_info_v01 v6_addr;
+  /* Optional */
+	__u8 src_port_num_valid;  /**< Must be set to true if src_port_num is being passed */
+  /*  Source port number */
+	__u16 src_port_num;
+  /* Optional */
+	__u8 dest_port_num_valid;  /**< Must be set to true if dest_port_num is being passed */
+  /*  Destination port number */
+	__u16 dest_port_num;
 };
-#define IPA_WLAN_OPT_DP_ADD_FILTER_REQ_MSG_V01_MAX_MSG_LEN 60
+#define IPA_WLAN_OPT_DP_ADD_FILTER_REQ_MSG_V01_MAX_MSG_LEN 70
 
 /*
  * Response Message;  Indicates completion of add  filter status
@@ -3059,6 +3130,25 @@ struct ipa_wlan_opt_dp_remove_all_filter_complt_ind_msg_v01 {
 };
 #define IPA_WLAN_OPT_DP_REM_ALL_FILTER_COMPLT_IND_MSG_V01_MAX_MSG_LEN 7
 
+struct ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_v01 {
+
+    /* Mandatory */
+    /*  Filter removal status */
+	struct ipa_qmi_response_type_v01 ctrl_filter_removal_status;
+	/*
+	 * Standard response type.
+	 * Standard response type. Contains the following data members:
+	 * qmi_result_type -- QMI_RESULT_SUCCESS or QMI_RESULT_FAILURE
+	 * qmi_error_type  -- Error code. Possible error code values are
+	 * described in the error codes section of each message definition.
+	 */
+
+	/* Mandatory */
+	/*  filter index */
+	__u32 filter_idx;
+
+};
+#define IPA_WLAN_OPT_DP_REM_CTRL_FILTER_COMPLT_IND_MSG_V01_MAX_MSG_LEN 7
 
 struct ipa_wlan_opt_dp_set_wlan_per_info_req_msg_v01 {
 
@@ -3173,6 +3263,16 @@ struct ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_v01 {
 #define QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_ALL_FILTER_COMPLT_IND_V01 0x004C
 #define QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_PER_INFO_REQ_V01 0x004D
 #define QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_PER_INFO_RESP_V01 0x004D
+#define QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_CTRL_READY_REQ_V01 0x004E
+#define QMI_IPA_WLAN_OPT_DATAPATH_SET_WLAN_CTRL_READY_RESP_V01 0x004E
+#define QMI_IPA_WLAN_OPT_DATAPATH_WLAN_CTRL_PACKET_RCVD_REQ_V01 0x004F
+#define QMI_IPA_WLAN_OPT_DATAPATH_WLAN_CTRL_PACKET_RCVD_RESP_V01 0x004F
+#define QMI_IPA_WLAN_OPT_DATAPATH_ADD_CTRL_FILTER_REQ_V01 0x0050
+#define QMI_IPA_WLAN_OPT_DATAPATH_ADD_CTRL_FILTER_RESP_V01 0x0050
+#define QMI_IPA_WLAN_OPT_DATAPATH_ADD_CTRL_FILTER_COMPLT_IND_V01 0x0050
+#define QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_CTRL_FILTER_REQ_V01 0x0051
+#define QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_CTRL_FILTER_RESP_V01 0x0051
+#define QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_CTRL_FILTER_COMPLT_IND_V01 0x0051
 
 
 /* add for max length*/

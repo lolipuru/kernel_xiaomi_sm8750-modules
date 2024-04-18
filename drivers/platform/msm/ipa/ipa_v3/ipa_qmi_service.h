@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef IPA_QMI_SERVICE_H
@@ -233,8 +233,13 @@ extern struct qmi_elem_info ipa_wlan_opt_dp_remove_filter_complt_ind_msg_data_v0
 extern struct qmi_elem_info ipa_wlan_opt_dp_remove_all_filter_req_msg_data_v01_ei[];
 extern struct qmi_elem_info ipa_wlan_opt_dp_remove_all_filter_resp_msg_data_v01_ei[];
 extern struct qmi_elem_info ipa_wlan_opt_dp_remove_all_filter_complt_ind_msg_data_v01_ei[];
+extern struct qmi_elem_info ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_data_v01_ei[];
 extern struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_per_info_req_msg_data_v01_ei[];
-extern struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_data_v01[];
+extern struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_data_v01_ei[];
+extern struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_data_v01_ei[];
+extern struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_ctrl_ready_resp_msg_data_v01_ei[];
+extern struct qmi_elem_info ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req_msg_data_v01_ei[];
+extern struct qmi_elem_info ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_resp_msg_data_v01_ei[];
 /**
  * struct ipa3_rmnet_context - IPA rmnet context
  * @ipa_rmnet_ssr: support modem SSR
@@ -374,6 +379,9 @@ int ipa3_qmi_send_wdi_opt_dpath_rsrv_flt_ind(
 int ipa3_qmi_send_wdi_opt_dpath_rmv_all_flt_ind(
 	struct ipa_wlan_opt_dp_remove_all_filter_complt_ind_msg_v01 *ind);
 
+int ipa3_qmi_send_wdi_opt_dpath_rmv_ctrl_flt_ind(
+	struct ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_v01 *ind);
+
 int ipa3_qmi_send_wdi_opt_dpath_ep_info(
 	struct ipa_wlan_opt_dp_set_wlan_per_info_req_msg_v01 *req);
 
@@ -381,6 +389,10 @@ int ipa3_qmi_send_endp_desc_indication(
 	struct ipa_endp_desc_indication_msg_v01 *req);
 
 int ipa3_qmi_send_mhi_cleanup_request(struct ipa_mhi_cleanup_req_msg_v01 *req);
+
+int ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req(
+	struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01 *req,
+	uint32_t *q6_rtng_table_index);
 
 /* sending nat table move result indication to modem */
 int rmnet_ipa3_notify_nat_move_res(bool success);
@@ -549,8 +561,21 @@ static int ipa3_qmi_send_wdi_opt_dpath_rmv_all_flt_ind(
 	return -EPERM;
 }
 
+static int ipa3_qmi_send_wdi_opt_dpath_rmv_ctrl_flt_ind(
+	struct ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_v01 *ind)
+{
+	return -EPERM;
+}
+
 static int ipa3_qmi_send_wdi_opt_dpath_ep_info(
 	struct ipa_wlan_opt_dp_set_wlan_per_info_req_msg_v01 *req)
+{
+	return -EPERM;
+}
+
+static int ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req(
+	struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01 *req,
+	uint32_t *q6_rtng_table_index)
 {
 	return -EPERM;
 }

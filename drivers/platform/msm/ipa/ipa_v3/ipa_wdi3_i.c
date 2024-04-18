@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2018 - 2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "ipa_i.h"
@@ -611,6 +611,7 @@ int ipa3_conn_wdi3_pipes(struct ipa_wdi_conn_in_params *in,
 	struct ipa3_ep_context *ep_rx;
 	struct ipa3_ep_context *ep_tx;
 	struct ipa3_ep_context *ep_tx1;
+	struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01 wlan_ctrl_ready_req;
 	int ipa_ep_idx_rx;
 	int ipa_ep_idx_tx;
 	int ipa_ep_idx_tx1 = IPA_EP_NOT_ALLOCATED;
@@ -619,6 +620,7 @@ int ipa3_conn_wdi3_pipes(struct ipa_wdi_conn_in_params *in,
 	void __iomem *db_addr;
 	u32 evt_ring_db_addr_low, evt_ring_db_addr_high, db_val = 0;
 	u8 rx_dir, tx_dir;
+	uint32_t q6_rtng_table_index;
 
 	/* wdi3 only support over gsi */
 	if (ipa_get_wdi_version() < IPA_WDI_3) {
@@ -858,6 +860,21 @@ int ipa3_conn_wdi3_pipes(struct ipa_wdi_conn_in_params *in,
 		evt_ring_db_addr_low,
 		ep_tx->gsi_mem_info.evt_ring_base_addr, db_val);
 
+	if (ipa3_ctx->ipa_wdi_opt_dpath && ipa_wdi_opt_dpath_ctrl_enabled(0)) {
+		/* setup qmi message for ctrl wlan ready*/
+		memset(&wlan_ctrl_ready_req, 0,
+			sizeof(struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01));
+		wlan_ctrl_ready_req.wlan_ready = true;
+		wlan_ctrl_ready_req.dest_wlan_endp_id = ipa_ep_idx_tx;
+		wlan_ctrl_ready_req.src_wlan_endp_id = ipa_ep_idx_rx;
+		wlan_ctrl_ready_req.dest_apps_endp_id =
+			ipa_get_ep_mapping(IPA_CLIENT_APPS_LAN_CONS);
+		ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req(
+			&wlan_ctrl_ready_req, &q6_rtng_table_index);
+		/* Install default filter rules.*/
+		ipa3_install_dl_opt_wdi_dpath_flt_rules(ipa_ep_idx_rx, q6_rtng_table_index);
+	}
+
 	/* setup tx1 ep cfg */
 	if (in->is_tx1_used &&
 		ipa3_ctx->is_wdi3_tx1_needed && (ipa_ep_idx_tx1 !=
@@ -947,6 +964,7 @@ int ipa3_disconn_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 	int ipa_ep_idx_tx1)
 {
 	struct ipa3_ep_context *ep_tx, *ep_rx, *ep_tx1;
+	struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01 wlan_ctrl_ready_req;
 	enum ipa_client_type rx_client;
 	enum ipa_client_type tx_client;
 	int result = 0;
@@ -974,6 +992,15 @@ int ipa3_disconn_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 	rx_client = ipa3_get_client_mapping(ipa_ep_idx_rx);
 	tx_client = ipa3_get_client_mapping(ipa_ep_idx_tx);
 	IPA_ACTIVE_CLIENTS_INC_EP(ipa3_get_client_mapping(ipa_ep_idx_tx));
+
+	if (ipa3_ctx->ipa_wdi_opt_dpath && ipa_wdi_opt_dpath_ctrl_enabled(0)) {
+		/*send disconnect qmi message for ctrl wlan*/
+		memset(&wlan_ctrl_ready_req, 0,
+			sizeof(struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01));
+		wlan_ctrl_ready_req.wlan_ready = false;
+		ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req(&wlan_ctrl_ready_req, NULL);
+	}
+
 	/* tear down tx1 pipe */
 	if (ipa_ep_idx_tx1 >= 0) {
 		ep_tx1 = &ipa3_ctx->ep[ipa_ep_idx_tx1];
@@ -997,7 +1024,6 @@ int ipa3_disconn_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 		memset(ep_tx1, 0, sizeof(struct ipa3_ep_context));
 		IPADBG("tx client (ep: %d) disconnected\n", ipa_ep_idx_tx1);
 	}
-
 	/* tear down tx pipe */
 	result = ipa3_reset_gsi_channel(ipa_ep_idx_tx);
 	if (result != GSI_STATUS_SUCCESS) {
@@ -1022,6 +1048,10 @@ int ipa3_disconn_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 	memset(ep_tx, 0, sizeof(struct ipa3_ep_context));
 	IPADBG("tx client (ep: %d) disconnected\n", ipa_ep_idx_tx);
 
+	/* Delete default filter rules.*/
+	if (ipa3_ctx->ipa_wdi_opt_dpath && ipa_wdi_opt_dpath_ctrl_enabled(0))
+		ipa3_delete_dl_opt_wdi_dpath_flt_rules(ipa_ep_idx_rx);
+
 	/* tear down rx pipe */
 	result = ipa3_reset_gsi_channel(ipa_ep_idx_rx);
 	if (result != GSI_STATUS_SUCCESS) {
@@ -1043,11 +1073,8 @@ int ipa3_disconn_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 	else
 		ipa3_release_wdi3_gsi_smmu_mappings(IPA_WDI3_RX2_DIR);
 
-	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5)
+	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5 && ipa3_ctx->ipa_hw_type != IPA_HW_v5_2)
 		ipa3_uc_debug_stats_dealloc(IPA_HW_PROTOCOL_WDI3);
-
-	if (ipa3_ctx->ipa_wdi_opt_dpath)
-		ipa3_disable_wdi3_opt_dpath(ipa_ep_idx_rx, ipa_ep_idx_tx);
 
 	ipa3_delete_dflt_flt_rules(ipa_ep_idx_rx);
 	memset(ep_rx, 0, sizeof(struct ipa3_ep_context));
@@ -1087,7 +1114,7 @@ int ipa3_enable_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 	IPA_ACTIVE_CLIENTS_INC_EP(ipa3_get_client_mapping(ipa_ep_idx_tx));
 
 	/* start uC event ring */
-	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5) {
+	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5 && ipa3_ctx->ipa_hw_type != IPA_HW_v5_2) {
 		if (ipa3_ctx->uc_ctx.uc_loaded &&
 			!ipa3_ctx->uc_ctx.uc_event_ring_valid) {
 			if (ipa3_uc_setup_event_ring())	{
@@ -1163,7 +1190,7 @@ int ipa3_enable_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 		goto fail_start_channel3;
 	}
 	/* start uC gsi dbg stats monitor */
-	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5) {
+	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5 && ipa3_ctx->ipa_hw_type != IPA_HW_v5_2) {
 		ipa3_ctx->gsi_info[IPA_HW_PROTOCOL_WDI3].ch_id_info[0].ch_id
 			= ep_rx->gsi_chan_hdl;
 		ipa3_ctx->gsi_info[IPA_HW_PROTOCOL_WDI3].ch_id_info[0].dir
@@ -1308,7 +1335,7 @@ int ipa3_disable_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 		}
 	}
 	/* stop uC gsi dbg stats monitor */
-	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5) {
+	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5 && ipa3_ctx->ipa_hw_type != IPA_HW_v5_2) {
 		ipa3_ctx->gsi_info[IPA_HW_PROTOCOL_WDI3].ch_id_info[0].ch_id
 			= 0xff;
 		ipa3_ctx->gsi_info[IPA_HW_PROTOCOL_WDI3].ch_id_info[0].dir
@@ -1435,7 +1462,8 @@ int ipa3_enable_wdi3_opt_dpath(int ipa_ep_idx_rx, int ipa_ep_idx_tx,
 	IPA_ACTIVE_CLIENTS_INC_SIMPLE();
 
 	/* Install default filter rules.*/
-	ipa3_install_dl_opt_wdi_dpath_flt_rules(ipa_ep_idx_rx, rt_tbl_idx);
+	if (!ipa_wdi_opt_dpath_ctrl_enabled(0))
+		ipa3_install_dl_opt_wdi_dpath_flt_rules(ipa_ep_idx_rx, rt_tbl_idx);
 
 	result = ipa3_enable_data_path(ipa_ep_idx_tx);
 	if (result) {
@@ -1470,8 +1498,9 @@ int ipa3_disable_wdi3_opt_dpath(int ipa_ep_idx_rx, int ipa_ep_idx_tx)
 
 	IPADBG("ep_rx = %d, ep_tx = %d\n", ipa_ep_idx_rx, ipa_ep_idx_tx);
 
-	/* Install default filter rules.*/
-	ipa3_delete_dl_opt_wdi_dpath_flt_rules(ipa_ep_idx_rx);
+	/* Delete default filter rules.*/
+	if (!ipa_wdi_opt_dpath_ctrl_enabled(0))
+		ipa3_delete_dl_opt_wdi_dpath_flt_rules(ipa_ep_idx_rx);
 
 	/* disable tx data path */
 	result = ipa3_disable_data_path(ipa_ep_idx_tx);

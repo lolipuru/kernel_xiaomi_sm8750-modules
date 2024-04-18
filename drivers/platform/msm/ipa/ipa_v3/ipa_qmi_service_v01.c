@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2013-2019, 2021 The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/ipa_qmi_service_v01.h>
@@ -5649,6 +5649,46 @@ struct qmi_elem_info ipa_wlan_opt_dp_add_filter_req_msg_data_v01_ei[] = {
 		.ei_array = ip_hdr_v6_address_info_data_v01_ei,
 	},
 	{
+		.data_type	= QMI_OPT_FLAG,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint8_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x12,
+		.offset		= offsetof(
+			struct ipa_wlan_opt_dp_add_filter_req_msg_v01,
+			src_port_num_valid),
+	},
+	{
+		.data_type      = QMI_UNSIGNED_2_BYTE,
+		.elem_len       = 1,
+		.elem_size      = sizeof(uint16_t),
+		.array_type     = NO_ARRAY,
+		.tlv_type       = 0x12,
+		.offset         = offsetof(
+			struct ipa_wlan_opt_dp_add_filter_req_msg_v01,
+			src_port_num),
+	},
+	{
+		.data_type	= QMI_OPT_FLAG,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint8_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x13,
+		.offset		= offsetof(
+			struct ipa_wlan_opt_dp_add_filter_req_msg_v01,
+			dest_port_num_valid),
+	},
+	{
+		.data_type      = QMI_UNSIGNED_2_BYTE,
+		.elem_len       = 1,
+		.elem_size      = sizeof(uint16_t),
+		.array_type     = NO_ARRAY,
+		.tlv_type       = 0x13,
+		.offset         = offsetof(
+			struct ipa_wlan_opt_dp_add_filter_req_msg_v01,
+			dest_port_num),
+	},
+	{
 		.data_type	= QMI_EOTI,
 		.array_type	= NO_ARRAY,
 		.tlv_type	= QMI_COMMON_TLV_TYPE,
@@ -5866,6 +5906,35 @@ struct qmi_elem_info ipa_wlan_opt_dp_remove_all_filter_complt_ind_msg_data_v01_e
 	},
 };
 
+struct qmi_elem_info ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_data_v01_ei[] = {
+	{
+		.data_type      = QMI_STRUCT,
+		.elem_len       = 1,
+		.elem_size      = sizeof(struct qmi_response_type_v01),
+		.array_type     = NO_ARRAY,
+		.tlv_type       = 0x02,
+		.offset         = offsetof(
+			struct ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_v01,
+			ctrl_filter_removal_status),
+		.ei_array      = qmi_response_type_v01_ei,
+	},
+	{
+		.data_type	= QMI_UNSIGNED_4_BYTE,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint32_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x03,
+		.offset		= offsetof(
+			struct ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_v01,
+			filter_idx),
+	},
+	{
+		.data_type	= QMI_EOTI,
+		.array_type	= NO_ARRAY,
+		.tlv_type	= QMI_COMMON_TLV_TYPE,
+	},
+};
+
 struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_per_info_req_msg_data_v01_ei[] = {
 	{
 		.data_type	= QMI_UNSIGNED_4_BYTE,
@@ -5934,7 +6003,7 @@ struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_per_info_req_msg_data_v01_ei[] = {
 	},
 };
 
-struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_data_v01[] = {
+struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_data_v01_ei[] = {
 	{
 		.data_type      = QMI_STRUCT,
 		.elem_len       = 1,
@@ -5943,6 +6012,120 @@ struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_data_v01[] = {
 		.tlv_type       = 0x02,
 		.offset         = offsetof(
 			struct ipa_wlan_opt_dp_set_wlan_per_info_resp_msg_v01,
+			resp),
+		.ei_array      = qmi_response_type_v01_ei,
+	},
+	{
+		.data_type	= QMI_EOTI,
+		.array_type	= NO_ARRAY,
+		.tlv_type	= QMI_COMMON_TLV_TYPE,
+	},
+};
+
+struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_data_v01_ei[] = {
+	{
+		.data_type	= QMI_UNSIGNED_1_BYTE,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint8_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x01,
+		.offset		= offsetof(
+			struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01,
+			wlan_ready),
+	},
+	{
+		.data_type	= QMI_UNSIGNED_4_BYTE,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint32_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x02,
+		.offset		= offsetof(
+			struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01,
+			src_wlan_endp_id),
+	},
+	{
+		.data_type	= QMI_UNSIGNED_4_BYTE,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint32_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x03,
+		.offset		= offsetof(
+			struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01,
+			dest_wlan_endp_id),
+	},
+	{
+		.data_type	= QMI_UNSIGNED_4_BYTE,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint32_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x04,
+		.offset		= offsetof(
+			struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01,
+			dest_apps_endp_id),
+	},
+	{
+		.data_type	= QMI_EOTI,
+		.array_type	= NO_ARRAY,
+		.tlv_type	= QMI_COMMON_TLV_TYPE,
+	},
+};
+
+struct qmi_elem_info ipa_wlan_opt_dp_set_wlan_ctrl_ready_resp_msg_data_v01_ei[] = {
+	{
+		.data_type      = QMI_STRUCT,
+		.elem_len       = 1,
+		.elem_size      = sizeof(struct qmi_response_type_v01),
+		.array_type     = NO_ARRAY,
+		.tlv_type       = 0x02,
+		.offset         = offsetof(
+			struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_resp_msg_v01,
+			resp),
+		.ei_array      = qmi_response_type_v01_ei,
+	},
+	{
+		.data_type      = QMI_UNSIGNED_4_BYTE,
+		.elem_len       = 1,
+		.elem_size      = sizeof(uint32_t),
+		.array_type     = NO_ARRAY,
+		.tlv_type       = 0x03,
+		.offset         = offsetof(
+			struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_resp_msg_v01,
+			q6_rtng_table_index)
+	},
+	{
+		.data_type	= QMI_EOTI,
+		.array_type	= NO_ARRAY,
+		.tlv_type	= QMI_COMMON_TLV_TYPE,
+	},
+};
+
+struct qmi_elem_info ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req_msg_data_v01_ei[] = {
+	{
+		.data_type	= QMI_UNSIGNED_4_BYTE,
+		.elem_len	= 1,
+		.elem_size	= sizeof(uint32_t),
+		.array_type	= NO_ARRAY,
+		.tlv_type	= 0x01,
+		.offset		= offsetof(
+			struct ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req_msg_v01,
+			packet_count),
+	},
+	{
+		.data_type	= QMI_EOTI,
+		.array_type	= NO_ARRAY,
+		.tlv_type	= QMI_COMMON_TLV_TYPE,
+	},
+};
+
+struct qmi_elem_info ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_resp_msg_data_v01_ei[] = {
+	{
+		.data_type      = QMI_STRUCT,
+		.elem_len       = 1,
+		.elem_size      = sizeof(struct qmi_response_type_v01),
+		.array_type     = NO_ARRAY,
+		.tlv_type       = 0x02,
+		.offset         = offsetof(
+			struct ipa_wlan_opt_dp_add_filter_resp_msg_v01,
 			resp),
 		.ei_array      = qmi_response_type_v01_ei,
 	},

@@ -2548,6 +2548,7 @@ struct ipa3_context {
 	u32 ipa_gen_rx_cmn_page_pool_sz_factor;
 	u32 ipa_gen_rx_cmn_temp_pool_sz_factor;
 	u32 ipa_gen_rx_ll_pool_sz_factor;
+	u32 ipa_temp_pool_capacity;
 	struct ipa3_app_clock_vote app_clock_vote;
 	bool clients_registered;
 	bool ipa_gpi_event_rp_ddr;
@@ -3548,6 +3549,7 @@ struct iommu_domain *ipa3_get_smmu_domain_by_type
 int ipa3_iommu_map(struct iommu_domain *domain, unsigned long iova,
 	phys_addr_t paddr, size_t size, int prot);
 int ipa3_ap_suspend(struct device *dev);
+int ipa3_ap_freeze(struct device *dev);
 int ipa3_ap_resume(struct device *dev);
 int ipa3_init_interrupts(void);
 struct iommu_domain *ipa3_get_smmu_domain(void);
