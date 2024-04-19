@@ -2528,6 +2528,56 @@ int msm_vidc_adjust_open_gop(void *instance, struct v4l2_ctrl *ctrl)
 	return 0;
 }
 
+int msm_vidc_adjust_histogram_info(void *instance, struct v4l2_ctrl *ctrl)
+{
+	s32 adjusted_value;
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+	s32 profile = -1;
+
+	adjusted_value = ctrl ? ctrl->val : inst->capabilities[META_HIST_INFO].value;
+
+	if (msm_vidc_get_parent_value(inst, META_HIST_INFO, PROFILE,
+		&profile, __func__))
+		return -EINVAL;
+
+	/* supported only for HEVC 10bit */
+	if (inst->codec != MSM_VIDC_HEVC ||
+		profile != V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10) {
+		adjusted_value = 0;
+		goto adjust;
+	}
+
+adjust:
+	msm_vidc_update_cap_value(inst, META_HIST_INFO, adjusted_value, __func__);
+	return 0;
+}
+
+int msm_vidc_adjust_hdr10_max_rgb_info(void *instance, struct v4l2_ctrl *ctrl)
+{
+	s32 adjusted_value;
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+	s32 profile = -1;
+
+	adjusted_value = ctrl ?
+		ctrl->val : inst->capabilities[META_HDR10_MAX_RGB_INFO].value;
+
+	if (msm_vidc_get_parent_value(inst, META_HDR10_MAX_RGB_INFO, PROFILE,
+		&profile, __func__))
+		return -EINVAL;
+
+	/* supported only for HEVC 10bit */
+	if (inst->codec != MSM_VIDC_HEVC ||
+		profile != V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10) {
+		adjusted_value = 0;
+		goto adjust;
+	}
+
+adjust:
+	msm_vidc_update_cap_value(inst,
+		META_HDR10_MAX_RGB_INFO, adjusted_value, __func__);
+	return 0;
+}
+
 /******************* End of Control Adjust functions *************************/
 
 /************************* Control Set functions *****************************/

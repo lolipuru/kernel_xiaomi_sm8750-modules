@@ -1852,6 +1852,22 @@ static struct msm_platform_inst_capability instance_cap_data_sun[] = {
 		HFI_PROP_HISTOGRAM_INFO,
 		CAP_FLAG_BITMASK | CAP_FLAG_META},
 
+	{META_HIST_INFO, ENC, HEVC,
+		MSM_VIDC_META_DISABLE,
+		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_OUTPUT,
+		0, MSM_VIDC_META_DISABLE,
+		V4L2_CID_MPEG_VIDC_METADATA_HISTOGRAM_INFO,
+		HFI_PROP_HISTOGRAM_INFO,
+		CAP_FLAG_BITMASK | CAP_FLAG_META},
+
+	{META_HDR10_MAX_RGB_INFO, ENC, HEVC,
+		MSM_VIDC_META_DISABLE,
+		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_OUTPUT,
+		0, MSM_VIDC_META_DISABLE,
+		V4L2_CID_MPEG_VIDC_METADATA_HDR10_MAX_RGB_INFO,
+		HFI_PROP_HDR10_MAX_RGB_INFO,
+		CAP_FLAG_BITMASK | CAP_FLAG_META},
+
 	{META_TRANSCODING_STAT_INFO, DEC, HEVC|H264,
 		MSM_VIDC_META_DISABLE,
 		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_OUTPUT,
@@ -2466,8 +2482,14 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		NULL,
 		msm_vidc_set_u32_enum},
 
-	{PROFILE, ENC, HEVC | HEIC,
+	{PROFILE, ENC, HEIC,
 		{META_SEI_MASTERING_DISP, META_SEI_CLL, META_HDR10PLUS},
+		msm_vidc_adjust_profile,
+		msm_vidc_set_u32_enum},
+
+	{PROFILE, ENC, HEVC,
+		{META_SEI_MASTERING_DISP, META_SEI_CLL, META_HDR10PLUS,
+		META_HIST_INFO, META_HDR10_MAX_RGB_INFO},
 		msm_vidc_adjust_profile,
 		msm_vidc_set_u32_enum},
 
@@ -2684,6 +2706,16 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 	{META_TRANSCODING_STAT_INFO, ENC, HEVC|H264,
 		{0},
 		msm_vidc_adjust_transcoding_stats,
+		NULL},
+
+	{META_HIST_INFO, ENC, HEVC,
+		{0},
+		msm_vidc_adjust_histogram_info,
+		NULL},
+
+	{META_HDR10_MAX_RGB_INFO, ENC, HEVC,
+		{0},
+		msm_vidc_adjust_hdr10_max_rgb_info,
 		NULL},
 };
 
