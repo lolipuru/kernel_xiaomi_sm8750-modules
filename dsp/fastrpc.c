@@ -1507,12 +1507,13 @@ static void fastrpc_update_txmsg_buf(struct fastrpc_channel_ctx *chan,
 }
 
 static void fastrpc_update_rxmsg_buf(struct fastrpc_channel_ctx *chan,
-							u64 ctx, int retval, s64 ns)
+							u64 ctx, int retval, u32 rsp_flags,
+							u32 early_wake_time, u32 ver, s64 ns)
 {
 	unsigned long flags = 0;
 	u32 rx_index = 0;
 	struct fastrpc_rx_msg *rx_msg = NULL;
-	struct fastrpc_invoke_rsp *rsp = NULL;
+	struct fastrpc_invoke_rspv2 *rsp = NULL;
 
 	spin_lock_irqsave(&(chan->gmsg_log[chan->domain_id].rx_lock), flags);
 
@@ -1522,6 +1523,9 @@ static void fastrpc_update_rxmsg_buf(struct fastrpc_channel_ctx *chan,
 
 	rsp->ctx = ctx;
 	rsp->retval = retval;
+	rsp->flags = rsp_flags;
+	rsp->early_wake_time = early_wake_time;
+	rsp->version = ver;
 	rx_msg->ns = ns;
 
 	rx_index++;
@@ -1607,6 +1611,8 @@ static int poll_for_remote_response(struct fastrpc_invoke_ctx *ctx, u32 timeout)
 			err = 0;
 			ctx->is_work_done = true;
 			ctx->retval = 0;
+			fastrpc_update_rxmsg_buf(ctx->fl->cctx, ctx->msg.ctx, 0,
+			POLL_MODE, 0, FASTRPC_RSP_VERSION2, get_timestamp_in_ns());
 			break;
 		}
 		if (jj == FASTRPC_POLL_TIME_MEM_UPDATE) {
@@ -1790,12 +1796,14 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 	trace_fastrpc_msg("invoke_send: end");
 wait:
 	if (fl->poll_mode &&
-	    fl->cctx->domain_id == CDSP_DOMAIN_ID &&
-	    fl->pd == USERPD)
+		handle > FASTRPC_MAX_STATIC_HANDLE &&
+		fl->cctx->domain_id == CDSP_DOMAIN_ID &&
+		fl->pd == USERPD)
 		ctx->rsp_flags = POLL_MODE;
 
 	fastrpc_wait_for_completion(ctx, &interrupted, kernel);
 	if (interrupted != 0) {
+		trace_fastrpc_msg("wait_for_completion: interrupted");
 		err = interrupted;
 		goto bail;
 	}
@@ -5276,8 +5284,7 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 	struct fastrpc_invoke_ctx *ctx;
 	unsigned long flags;
 	unsigned long ctxid;
-	u32 rsp_flags = 0;
-	u32 early_wake_time = 0;
+	u32 rsp_flags = 0, early_wake_time = 0, version = 0;
 
 	if (len == sizeof(uint64_t)) {
 		trace_fastrpc_transport_response(cctx->domain_id, *((uint64_t *)data), 0, 0, 0);
@@ -5296,19 +5303,22 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 
 	if (len < sizeof(*rsp))
 		return -EINVAL;
-	fastrpc_update_rxmsg_buf(cctx, rsp->ctx, rsp->retval, get_timestamp_in_ns());
 
 	if (len >= sizeof(*rspv2)) {
 		rspv2 = data;
 		if (rspv2) {
 			early_wake_time = rspv2->early_wake_time;
 			rsp_flags = rspv2->flags;
+			version = rspv2->version;
 		}
 	}
-	ctxid = ((rsp->ctx & FASTRPC_CTXID_MASK) >> 4);
 
+	fastrpc_update_rxmsg_buf(cctx, rsp->ctx, rsp->retval,
+		rsp_flags, early_wake_time, version, get_timestamp_in_ns());
 	trace_fastrpc_transport_response(cctx->domain_id, rsp->ctx,
 			rsp->retval, rsp_flags, early_wake_time);
+
+	ctxid = ((rsp->ctx & FASTRPC_CTXID_MASK) >> 4);
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	ctx = idr_find(&cctx->ctx_idr, ctxid);

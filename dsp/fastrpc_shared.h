@@ -42,6 +42,7 @@
 #define FASTRPC_CTX_MAX (256)
 #define FASTRPC_INIT_HANDLE	1
 #define FASTRPC_DSP_UTILITIES_HANDLE	2
+#define FASTRPC_MAX_STATIC_HANDLE (20)
 #define FASTRPC_CTXID_MASK (0xFF0)
 #define INIT_FILELEN_MAX (5 * 1024 * 1024)
 #define INIT_FILE_NAMELEN_MAX (128)
@@ -399,7 +400,7 @@ struct fastrpc_tx_msg {
 };
 
 struct fastrpc_rx_msg {
-	struct fastrpc_invoke_rsp rsp;	/* Response from remote subsystem */
+	struct fastrpc_invoke_rspv2 rsp; /* Response from remote subsystem */
 	s64 ns;		/* Timestamp (in ns) of response */
 };
 
