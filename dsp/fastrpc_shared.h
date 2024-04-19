@@ -261,6 +261,25 @@ enum fastrpc_remote_domains_id {
 	MAX_REMOTE_ID = SECURE_PD + 1,
 };
 
+ /* Types of fastrpc DMA bufs sent to DSP */
+ enum fastrpc_buf_type {
+	METADATA_BUF,
+	COPYDATA_BUF,
+	INITMEM_BUF,
+	USER_BUF,
+	REMOTEHEAP_BUF,
+	ROOTHEAP_BUF,
+};
+
+enum fastrpc_response_flags {
+	NORMAL_RESPONSE = 0,
+	EARLY_RESPONSE = 1,
+	USER_EARLY_SIGNAL = 2,
+	COMPLETE_SIGNAL = 3,
+	STATUS_RESPONSE = 4,
+	POLL_MODE = 5,
+};
+
 struct fastrpc_socket {
 	struct socket *sock;                   // Socket used to communicate with remote domain
 	struct sockaddr_qrtr local_sock_addr;  // Local socket address on kernel side
