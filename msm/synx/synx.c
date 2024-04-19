@@ -3145,8 +3145,9 @@ static int __init synx_init(void)
 	mutex_init(&synx_dev->vtbl_lock);
 	mutex_init(&synx_dev->error_lock);
 	INIT_LIST_HEAD(&synx_dev->error_list);
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	synx_dev->debugfs_root = synx_init_debugfs_dir(synx_dev);
-
+#endif
 	rc = synx_global_mem_init();
 	if (rc) {
 		dprintk(SYNX_ERR, "shared mem init failed, err=%d\n", rc);

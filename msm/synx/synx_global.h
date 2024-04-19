@@ -330,4 +330,8 @@ int synx_global_test_status_update_coredata(u32 idx,
 	enum synx_core_id id, u32 h_hwfence,
 	bool is_waiter);
 
+
+/* Function to fetch global shared memory entry */
+bool synx_fetch_global_shared_memory_handle_details(u32 synx_handle,
+	struct synx_global_coredata *synx_global_entry);
 #endif /* __SYNX_SHARED_MEM_H__ */
