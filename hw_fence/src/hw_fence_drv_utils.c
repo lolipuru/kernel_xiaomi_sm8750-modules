@@ -21,6 +21,10 @@
 #include <soc/qcom/secure_buffer.h>
 #include <linux/kthread.h>
 #include <uapi/linux/sched/types.h>
+#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
+#include <linux/remoteproc/qcom_rproc.h>
+#endif
+#include <linux/remoteproc.h>
 
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_utils.h"
@@ -541,6 +545,172 @@ int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data)
 	drv_data->soccp_listener_thread = thread;
 
 	return ret;
+}
+
+#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
+/*
+ * This is called to set soccp power vote based off internal counter of soccp power votes.
+ * This must be called with rproc_lock held
+ */
+static int _set_intended_soccp_state(struct hw_fence_soccp *soccp_props)
+{
+	bool intended_state;
+	int ret;
+
+	intended_state = (refcount_read(&soccp_props->usage_cnt) > 1);
+
+	if (intended_state == soccp_props->is_awake)
+		return 0;
+
+	/* cannot call soccp power vote because soccp has crashed */
+	if (IS_ERR_OR_NULL(soccp_props->rproc)) {
+		HWFNC_DBG_SSR("Cannot set power vote before after_powerup notification\n");
+		return -EINVAL;
+	}
+
+	ret = rproc_set_state(soccp_props->rproc, intended_state);
+	if (!ret)
+		soccp_props->is_awake = intended_state;
+
+	return ret;
+}
+
+int hw_fence_utils_set_power_vote(struct hw_fence_driver_data *drv_data, bool state)
+{
+	struct hw_fence_soccp *soccp_props;
+	bool prev_state, cur_state;
+	int ret;
+
+	if (!drv_data || !drv_data->has_soccp) {
+		HWFNC_ERR("invalid params: drv_data:0x%pK has_soccp:%d state:%d\n", drv_data,
+			drv_data ? drv_data->has_soccp : -1, state);
+		return -EINVAL;
+	}
+
+	soccp_props = &drv_data->soccp_props;
+	mutex_lock(&soccp_props->rproc_lock);
+	if (state) {
+		refcount_inc(&soccp_props->usage_cnt);
+	} else {
+		if (refcount_read(&soccp_props->usage_cnt) == 1) {
+			mutex_unlock(&soccp_props->rproc_lock);
+			HWFNC_ERR("removing usage cnt that was never set\n");
+
+			return -EINVAL;
+		}
+		refcount_dec(&soccp_props->usage_cnt);
+	}
+
+	prev_state = soccp_props->is_awake;
+	ret = _set_intended_soccp_state(soccp_props);
+	cur_state = soccp_props->is_awake;
+
+	mutex_unlock(&soccp_props->rproc_lock);
+
+	HWFNC_DBG_L("Set power vote prev:%d curr:%d req_state:%d votes:0x%x ret:%d\n",
+		prev_state, cur_state, state, refcount_read(&soccp_props->usage_cnt), ret);
+
+	return 0; /* do not expose failures of power vote to client */
+}
+#else
+static int _set_intended_soccp_state(struct hw_fence_soccp *soccp_props)
+{
+	HWFNC_ERR("Kernel version does not support SOCCP power votes\n");
+	return -EINVAL;
+}
+
+int hw_fence_utils_set_power_vote(struct hw_fence_soccp *soccp_props, bool state)
+{
+	HWFNC_ERR("Kernel version does not support SOCCP power votes\n");
+	return -EINVAL;
+}
+#endif
+
+static int _set_soccp_rproc(struct hw_fence_soccp *soccp_props, phandle ph)
+{
+	int ret;
+
+	mutex_lock(&soccp_props->rproc_lock);
+	if (IS_ERR_OR_NULL(soccp_props->rproc))
+		soccp_props->rproc = rproc_get_by_phandle(ph);
+	if (IS_ERR_OR_NULL(soccp_props->rproc)) {
+		ret = PTR_ERR(soccp_props->rproc);
+		if (!ret)
+			ret = -EINVAL;
+		soccp_props->rproc = NULL;
+	} else {
+		ret = _set_intended_soccp_state(soccp_props);
+	}
+	mutex_unlock(&soccp_props->rproc_lock);
+
+	return ret;
+}
+
+static int hw_fence_notify_ssr(struct notifier_block *nb, unsigned long action, void *data)
+{
+	struct hw_fence_soccp *soccp_props = container_of(nb, struct hw_fence_soccp, ssr_nb);
+	struct qcom_ssr_notify_data *notify_data = data;
+	int ret;
+
+	switch (action) {
+	case QCOM_SSR_BEFORE_POWERUP:
+		HWFNC_DBG_SSR("received soccp starting event\n");
+		break;
+	case QCOM_SSR_AFTER_POWERUP:
+		HWFNC_DBG_SSR("received soccp running event\n");
+		/* rproc must be available after power up notification */
+		ret = _set_soccp_rproc(soccp_props, soccp_props->rproc_ph);
+		if (ret)
+			HWFNC_ERR("failed getting soccp_rproc:0x%pK ph:%d usage_cnt:0x%x ret:%d\n",
+				soccp_props->rproc, soccp_props->rproc_ph,
+				refcount_read(&soccp_props->usage_cnt), ret);
+		break;
+	case QCOM_SSR_BEFORE_SHUTDOWN:
+		HWFNC_DBG_SSR("received soccp %s event\n", notify_data->crashed ? "crashed" :
+			"stopping");
+		break;
+	case QCOM_SSR_AFTER_SHUTDOWN:
+		HWFNC_DBG_SSR("received soccp offline event\n");
+		mutex_lock(&soccp_props->rproc_lock);
+		if (!IS_ERR_OR_NULL(soccp_props->rproc))
+			rproc_put(soccp_props->rproc);
+		soccp_props->rproc = NULL;
+		soccp_props->is_awake = false;
+		mutex_unlock(&soccp_props->rproc_lock);
+		break;
+	default:
+		HWFNC_ERR("received unrecognized event %lu\n", action);
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+int hw_fence_utils_register_soccp_ssr_notifier(struct hw_fence_driver_data *drv_data)
+{
+	void *notifier;
+	struct hw_fence_soccp *soccp_props;
+
+	if (!drv_data || !drv_data->has_soccp) {
+		HWFNC_ERR("invalid drv_data:0x%pK has_soccp:%d\n", drv_data,
+			drv_data ? drv_data->has_soccp : -1);
+		return -EINVAL;
+	}
+	soccp_props = &drv_data->soccp_props;
+
+	mutex_init(&soccp_props->rproc_lock);
+	refcount_set(&soccp_props->usage_cnt, 1);
+	soccp_props->ssr_nb.priority = 1; /* higher value indicates higher priority */
+	soccp_props->ssr_nb.notifier_call = hw_fence_notify_ssr;
+	notifier = qcom_register_ssr_notifier("soccp", &soccp_props->ssr_nb);
+	if (IS_ERR(notifier)) {
+		HWFNC_ERR("failed to register soccp ssr notifier\n");
+		return PTR_ERR(notifier);
+	}
+	soccp_props->ssr_notifier = notifier;
+	HWFNC_DBG_SSR("registered for soccp ssr notification notifier:0x%pK\n", notifier);
+
+	return 0;
 }
 
 static int hw_fence_gunyah_share_mem(struct hw_fence_driver_data *drv_data,
@@ -1226,15 +1396,17 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 	int ret;
 	size_t size;
 	u32 val = 0;
-	phandle ph;
+	struct hw_fence_soccp *soccp_props = &drv_data->soccp_props;
 
 	/* check presence of soccp */
-	ret = of_property_read_u32(drv_data->dev->of_node, "soccp_controller", &ph);
+	ret = of_property_read_u32(drv_data->dev->of_node, "soccp_controller",
+		&soccp_props->rproc_ph);
 	if (!ret) {
 		drv_data->has_soccp = true;
-		drv_data->soccp_rproc = rproc_get_by_phandle(ph);
-		if (IS_ERR_OR_NULL(drv_data->soccp_rproc)) {
-			HWFNC_DBG_INFO("failed to find rproc for phandle:%u\n", ph);
+		soccp_props->rproc = rproc_get_by_phandle(soccp_props->rproc_ph);
+		if (IS_ERR_OR_NULL(soccp_props->rproc)) {
+			HWFNC_DBG_INFO("failed to find rproc for phandle:%u\n",
+				soccp_props->rproc_ph);
 			return -EPROBE_DEFER;
 		}
 	}

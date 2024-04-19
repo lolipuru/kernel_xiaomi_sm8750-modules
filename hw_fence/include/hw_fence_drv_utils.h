@@ -65,6 +65,14 @@ int hw_fence_utils_init_virq(struct hw_fence_driver_data *drv_data);
 int hw_fence_utils_init_soccp_irq(struct hw_fence_driver_data *drv_data);
 
 /**
+ * hw_fence_utils_register_soccp_ssr_notifier() - registers rproc ssr notifier for soccp
+ * @drv_data: hw fence driver data
+ *
+ * Returns zero if success, otherwise returns negative error code.
+ */
+int hw_fence_utils_register_soccp_ssr_notifier(struct hw_fence_driver_data *drv_data);
+
+/**
  * hw_fence_utils_process_signaled_clients_mask() - Process the mask containing HW Fence client IDs
  *                                                  that HW Fence Driver is responsible for, i.e.
  *                                                  ctrl queue and validation clients.
@@ -185,4 +193,14 @@ int hw_fence_utils_get_queues_num(struct hw_fence_driver_data *drv_data, int cli
  */
 int hw_fence_utils_get_skip_fctl_ref(struct hw_fence_driver_data *drv_data, int client_id);
 
+
+/**
+ * hw_fence_utils_set_power_vote() - Sets the power vote for soccp.
+ *
+ * @drv_data: driver data
+ * @state: power state to set
+ *
+ * Returns: 0 if successful, error if not
+ */
+int hw_fence_utils_set_power_vote(struct hw_fence_driver_data *drv_data, bool state);
 #endif /* __HW_FENCE_DRV_UTILS_H */

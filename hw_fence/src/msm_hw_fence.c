@@ -31,11 +31,7 @@ static int _set_power_vote_if_needed(struct hw_fence_driver_data *drv_data,
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	if (drv_data->has_soccp && client_id >= HW_FENCE_CLIENT_ID_VAL0 &&
 			client_id <= HW_FENCE_CLIENT_ID_VAL6) {
-#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
-		ret = rproc_set_state(drv_data->soccp_rproc, state);
-#else
-		ret = -EINVAL;
-#endif
+		ret = hw_fence_utils_set_power_vote(drv_data, state);
 	}
 #endif /* CONFIG_DEBUG_FS */
 
@@ -879,6 +875,8 @@ err_exit:
 
 static int msm_hw_fence_remove(struct platform_device *pdev)
 {
+	struct hw_fence_soccp *soccp_props;
+
 	HWFNC_DBG_H("+\n");
 
 	if (!pdev) {
@@ -890,6 +888,12 @@ static int msm_hw_fence_remove(struct platform_device *pdev)
 	if (!hw_fence_drv_data) {
 		HWFNC_ERR("null driver data\n");
 		return -EINVAL;
+	}
+	soccp_props = &hw_fence_drv_data->soccp_props;
+	if (soccp_props->ssr_notifier) {
+		if (qcom_unregister_ssr_notifier(soccp_props->ssr_notifier,
+				&soccp_props->ssr_nb))
+			HWFNC_ERR("failed to unregister soccp ssr notifier\n");
 	}
 
 	/* indicate listener thread should stop listening for interrupts from soccp */

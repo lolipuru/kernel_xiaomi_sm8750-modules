@@ -771,6 +771,14 @@ int hw_fence_init(struct hw_fence_driver_data *drv_data)
 		goto exit;
 	}
 
+	if (drv_data->has_soccp) {
+		ret = hw_fence_utils_register_soccp_ssr_notifier(drv_data);
+		if (ret) {
+			HWFNC_ERR("failed to register for soccp ssr notification\n");
+			goto exit;
+		}
+	}
+
 	hw_fence_dma_fence_init_hash_table(drv_data);
 
 	mem = drv_data->io_mem_base;

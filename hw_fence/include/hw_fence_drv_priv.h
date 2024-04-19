@@ -341,6 +341,28 @@ struct hw_fence_signal_cb {
 };
 
 /**
+ * struct hw_fence_soccp - Structure holding hw-fence data specific to soccp
+ * @rproc_ph: phandle for soccp rproc object used to set power vote
+ * @rproc: soccp rproc object used to set power vote
+ * @rproc_lock: lock to synchronization modifications to soccp rproc data structure and state
+ * @is_awake: true if HW Fence Driver has successfully set a power vote on soccp that has not been
+ * removed by SSR; false if soccp has not set a power vote, successfully removed its power vote,
+ * or soccp has crashed
+ * @usage_cnt: independent counter of number of users of SOCCP, 1 if no one is using
+ * @ssr_nb: notifier block used for soccp ssr
+ * @ssr_notifier: soccp ssr notifier
+ */
+struct hw_fence_soccp {
+	phandle rproc_ph;
+	struct rproc *rproc;
+	struct mutex rproc_lock;
+	bool is_awake;
+	refcount_t usage_cnt;
+	struct notifier_block ssr_nb;
+	void *ssr_notifier;
+};
+
+/**
  * struct hw_fence_driver_data - Structure holding internal hw-fence driver data
  *
  * @dev: device driver pointer
@@ -396,11 +418,11 @@ struct hw_fence_signal_cb {
  * @ipcc_val_initialized: flag to indicate if val is initialized
  * @dma_fence_table_lock: lock to synchronize access to dma-fence table
  * @dma_fence_table: table with internal dma-fences for hw-fences
- * @soccp_rproc: soccp rproc object used to set power vote
  * @has_soccp: flag to indicate if soccp is present (otherwise vm is used)
  * @soccp_listener_thread: thread that processes interrupts received from soccp
  * @soccp_wait_queue: wait queue to notify soccp_listener_thread of new interrupts
  * @signaled_clients_mask: mask to track signals received from soccp by hw-fence driver
+ * @soccp_props: soccp-specific properties for ssr and power votes
  */
 struct hw_fence_driver_data {
 
@@ -495,11 +517,11 @@ struct hw_fence_driver_data {
 	DECLARE_HASHTABLE(dma_fence_table, DMA_FENCE_HASH_TABLE_BIT);
 
 	/* soccp is present */
-	struct rproc *soccp_rproc;
 	bool has_soccp;
 	struct task_struct *soccp_listener_thread;
 	wait_queue_head_t soccp_wait_queue;
 	atomic_t signaled_clients_mask;
+	struct hw_fence_soccp soccp_props;
 };
 
 /**
