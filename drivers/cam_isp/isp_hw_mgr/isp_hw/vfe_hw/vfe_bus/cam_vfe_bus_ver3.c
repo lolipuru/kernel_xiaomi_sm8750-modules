@@ -928,9 +928,10 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 
 		break;
 	case CAM_FORMAT_PLAIN8:
-		rsrc_data->cfg.en_cfg = (common_reg->wm_mode_val[CAM_VFE_WM_LINE_BASED_MODE] <<
+		rsrc_data->cfg.en_cfg = (common_reg->wm_mode_val[rsrc_data->wm_mode] <<
 			common_reg->wm_mode_shift) | (1 << common_reg->wm_en_shift);
-		rsrc_data->cfg.stride = rsrc_data->cfg.width * 2;
+		rsrc_data->cfg.stride = rsrc_data->cfg.width;
+		rsrc_data->cfg.width = ALIGNUP(rsrc_data->cfg.width, 16) / 16;
 		break;
 	case CAM_FORMAT_PLAIN16_10:
 	case CAM_FORMAT_PLAIN16_12:
