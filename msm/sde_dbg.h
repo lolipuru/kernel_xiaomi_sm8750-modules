@@ -205,7 +205,7 @@ struct sde_dbg_reglog_log {
 struct sde_dbg_reglog {
 	struct sde_dbg_reglog_log logs[SDE_REGLOG_ENTRY];
 	u32 first;
-	u32 last;
+	atomic64_t last;
 	u32 last_dump;
 	atomic64_t curr;
 	u32 next;
