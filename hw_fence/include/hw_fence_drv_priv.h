@@ -178,11 +178,13 @@ struct msm_hw_fence_queue {
  * HW_FENCE_PAYLOAD_TYPE_1: client queue payload
  * HW_FENCE_PAYLOAD_TYPE_2: ctrl queue payload for fence error; client_data stores client_id
  * HW_FENCE_PAYLOAD_TYPE_3: ctrl queue payload for memory sharing
+ * HW_FENCE_PAYLOAD_TYPE_4: ctrl queue payload for soccp ssr
  */
 enum payload_type {
 	HW_FENCE_PAYLOAD_TYPE_1 = 1,
 	HW_FENCE_PAYLOAD_TYPE_2,
-	HW_FENCE_PAYLOAD_TYPE_3
+	HW_FENCE_PAYLOAD_TYPE_3,
+	HW_FENCE_PAYLOAD_TYPE_4
 };
 
 /**
@@ -353,6 +355,8 @@ struct hw_fence_signal_cb {
  * @usage_cnt: independent counter of number of users of SOCCP, 1 if no one is using
  * @ssr_nb: notifier block used for soccp ssr
  * @ssr_notifier: soccp ssr notifier
+ * @ssr_wait_queue: wait queue to notify ssr callback that a payload has been received from soccp
+ * @ssr_cnt: counts number of times soccp has restarted, zero if initial boot-up
  */
 struct hw_fence_soccp {
 	phandle rproc_ph;
@@ -362,6 +366,8 @@ struct hw_fence_soccp {
 	refcount_t usage_cnt;
 	struct notifier_block ssr_nb;
 	void *ssr_notifier;
+	wait_queue_head_t ssr_wait_queue;
+	u32 ssr_cnt;
 };
 
 /**
