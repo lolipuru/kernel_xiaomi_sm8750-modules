@@ -4092,6 +4092,7 @@ static int st_ts_pre_la_tui_enable(void *data)
 	struct fts_ts_info *info = data;
 
 	mutex_lock(&info->tui_transition_lock);
+	flush_work(&info->work);
 
 	return 0;
 }
