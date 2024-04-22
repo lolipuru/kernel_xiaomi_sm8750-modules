@@ -1261,6 +1261,10 @@ static int __cam_isp_ctx_enqueue_init_request(
 			__cam_isp_ctx_copy_fcg_params(hw_update_data,
 				req_isp_old, req_isp_new);
 
+			memcpy(&req_isp_old->hw_update_data.isp_drv_config,
+				&req_isp_new->hw_update_data.isp_drv_config,
+				sizeof(struct cam_isp_drv_config));
+
 			req_isp_old->num_cfg += req_isp_new->num_cfg;
 			req_old->request_id = req->request_id;
 			list_splice_init(&req->buf_tracker, &req_old->buf_tracker);
