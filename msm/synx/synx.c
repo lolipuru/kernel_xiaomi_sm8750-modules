@@ -2578,6 +2578,8 @@ static int synx_handle_get_fence(struct synx_private_ioctl_arg *k_ioctl,
 		return -EFAULT;
 
 	fence = synx_get_fence(session, fence_fd.synx_obj);
+	if (IS_ERR_OR_NULL(fence))
+		return -SYNX_INVALID;
 	fence_fd.fd = synx_create_sync_fd(fence);
 	/*
 	 * release additional reference taken in synx_get_fence.
