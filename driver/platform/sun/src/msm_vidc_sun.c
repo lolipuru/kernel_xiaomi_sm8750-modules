@@ -2763,7 +2763,7 @@ static struct freq_table sun_freq_table_v2[] = {
 
 /* register, value, mask */
 static const struct reg_preset_table sun_reg_preset_table[] = {
-	{ 0xB0088, 0x0,        0x11      },
+	{ 0xB0088, 0x0,        0xFFFFFFFF},
 	{ 0x13030, 0x33332211, 0xFFFFFFFF},
 	{ 0x13034, 0x44444444, 0xFFFFFFFF},
 	{ 0x13038, 0x1011,     0xFFFFFFFF},
