@@ -65,6 +65,7 @@ void *msm_vb2_attach_dmabuf(struct vb2_buffer *vb, struct device *dev,
 	struct msm_vidc_inst *inst;
 	struct msm_vidc_core *core;
 	struct msm_vidc_buffer *buf = NULL;
+	struct msm_vidc_buffer *ro_buf, *dummy;
 
 	if (!vb || !dev || !dbuf || !vb->vb2_queue) {
 		d_vpr_e("%s: invalid params\n", __func__);
@@ -85,6 +86,18 @@ void *msm_vb2_attach_dmabuf(struct vb2_buffer *vb, struct device *dev,
 		goto exit;
 	}
 	buf->inst = inst;
+	buf->dmabuf = dbuf;
+
+	if (is_decode_session(inst) && is_output_buffer(buf->type)) {
+		list_for_each_entry_safe(ro_buf, dummy, &inst->buffers.read_only.list, list) {
+			if (ro_buf->dmabuf != buf->dmabuf)
+				continue;
+			print_vidc_buffer(VIDC_LOW, "low ", "attach: found ro buf", inst, ro_buf);
+			buf->attach = ro_buf->attach;
+			ro_buf->attach = NULL;
+			goto exit;
+		}
+	}
 
 	buf->attach = call_mem_op(core, dma_buf_attach, core, dbuf, dev);
 	if (!buf->attach) {
@@ -92,7 +105,6 @@ void *msm_vb2_attach_dmabuf(struct vb2_buffer *vb, struct device *dev,
 		buf = NULL;
 		goto exit;
 	}
-	buf->dmabuf = dbuf;
 	print_vidc_buffer(VIDC_LOW, "low ", "attach", inst, buf);
 
 exit:
@@ -132,13 +144,12 @@ void msm_vb2_detach_dmabuf(void *buf_priv)
 
 	if (is_decode_session(inst) && is_output_buffer(vbuf->type)) {
 		list_for_each_entry_safe(ro_buf, dummy, &inst->buffers.read_only.list, list) {
-			if (ro_buf->dmabuf == vbuf->dmabuf) {
-				print_vidc_buffer(VIDC_LOW, "low ", "detach: found ro buf",
-						  inst, ro_buf);
-				ro_buf->attach = vbuf->attach;
-				vbuf->attach = NULL;
-				goto exit;
-			}
+			if (ro_buf->dmabuf != vbuf->dmabuf)
+				continue;
+			print_vidc_buffer(VIDC_LOW, "low ", "detach: found ro buf", inst, ro_buf);
+			ro_buf->attach = vbuf->attach;
+			vbuf->attach = NULL;
+			goto exit;
 		}
 	}
 
@@ -146,12 +157,11 @@ void msm_vb2_detach_dmabuf(void *buf_priv)
 	if (vbuf->attach && vbuf->dmabuf) {
 		call_mem_op(core, dma_buf_detach, core, vbuf->dmabuf, vbuf->attach);
 		vbuf->attach = NULL;
-		vbuf->dmabuf = NULL;
-		vbuf->inst = NULL;
 	}
-	vbuf->inst = NULL;
 
 exit:
+	vbuf->dmabuf = NULL;
+	vbuf->inst = NULL;
 	return;
 }
 
@@ -161,6 +171,7 @@ int msm_vb2_map_dmabuf(void *buf_priv)
 	struct msm_vidc_buffer *buf = buf_priv;
 	struct msm_vidc_core *core;
 	struct msm_vidc_inst *inst;
+	struct msm_vidc_buffer *ro_buf, *dummy;
 
 	if (!buf || !buf->inst) {
 		d_vpr_e("%s: invalid params\n", __func__);
@@ -173,6 +184,18 @@ int msm_vb2_map_dmabuf(void *buf_priv)
 		return -EINVAL;
 	}
 	core = inst->core;
+
+	if (is_decode_session(inst) && is_output_buffer(buf->type)) {
+		list_for_each_entry_safe(ro_buf, dummy, &inst->buffers.read_only.list, list) {
+			if (ro_buf->dmabuf != buf->dmabuf)
+				continue;
+			print_vidc_buffer(VIDC_LOW, "low ", "map: found ro buf", inst, ro_buf);
+			buf->sg_table = ro_buf->sg_table;
+			buf->device_addr = ro_buf->device_addr;
+			ro_buf->sg_table = NULL;
+			goto exit;
+		}
+	}
 
 	buf->sg_table = call_mem_op(core, dma_buf_map_attachment, core, buf->attach);
 	if (!buf->sg_table || !buf->sg_table->sgl) {
@@ -210,15 +233,13 @@ void msm_vb2_unmap_dmabuf(void *buf_priv)
 
 	if (is_decode_session(inst) && is_output_buffer(vbuf->type)) {
 		list_for_each_entry_safe(ro_buf, dummy, &inst->buffers.read_only.list, list) {
-			if (ro_buf->dmabuf == vbuf->dmabuf) {
-				print_vidc_buffer(VIDC_LOW, "low ", "unmap: found ro buf",
-						  inst, ro_buf);
-				ro_buf->sg_table = vbuf->sg_table;
-				ro_buf->attach = vbuf->attach;
-				vbuf->sg_table = NULL;
-				vbuf->device_addr = 0x0;
-				goto exit;
-			}
+			if (ro_buf->dmabuf != vbuf->dmabuf)
+				continue;
+			print_vidc_buffer(VIDC_LOW, "low ", "unmap: found ro buf", inst, ro_buf);
+			ro_buf->sg_table = vbuf->sg_table;
+			vbuf->sg_table = NULL;
+			vbuf->device_addr = 0x0;
+			goto exit;
 		}
 	}
 
