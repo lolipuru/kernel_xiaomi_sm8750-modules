@@ -31,12 +31,11 @@ attrs[DATARMNETb0428b7575];if(nla_memcpy(&mem_info,na,sizeof(mem_info))>
 "\x25\x73\x28\x29\x3a\x20\x6d\x6f\x64\x65\x69\x6e\x66\x6f\x20\x25\x75" "\n",
 __func__,mem_info.DATARMNET855b934a37);}for(i=(0xd2d+202-0xdf7);i<POOL_LEN;i++){
 if(mem_info.DATARMNET855b934a37&(0xd26+209-0xdf6)<<i&&mem_info.
-DATARMNETe87b937bb6[i]!=static_pool_size[i]&&mem_info.DATARMNETe87b937bb6[i]>
-(0xd2d+202-0xdf7)&&mem_info.DATARMNETe87b937bb6[i]<=MAX_STATIC_POOL){
-DATARMNET15e53a8338[i]=mem_info.DATARMNETe87b937bb6[i];max_pool_size[i]=mem_info
-.DATARMNETe87b937bb6[i];DATARMNET205e85dea0=(0xd26+209-0xdf6);if(!
-DATARMNET4f9cb7ce34&&mem_info.DATARMNETe87b937bb6[i]>static_pool_size[i]){
-DATARMNET4f9cb7ce34=(0xd26+209-0xdf6);}}}rm_err(
+DATARMNETe87b937bb6[i]>(0xd2d+202-0xdf7)&&mem_info.DATARMNETe87b937bb6[i]<=
+MAX_STATIC_POOL){DATARMNET15e53a8338[i]=mem_info.DATARMNETe87b937bb6[i];
+max_pool_size[i]=mem_info.DATARMNETe87b937bb6[i];DATARMNET205e85dea0=
+(0xd26+209-0xdf6);if(!DATARMNET4f9cb7ce34&&mem_info.DATARMNETe87b937bb6[i]>
+static_pool_size[i]){DATARMNET4f9cb7ce34=(0xd26+209-0xdf6);}}}rm_err(
 "\x20\x70\x6f\x6f\x6c\x73\x69\x7a\x65\x20\x25\x64\x20\x25\x64" "\n",mem_info.
 DATARMNETe87b937bb6[(0xd1f+216-0xdf5)],mem_info.DATARMNETe87b937bb6[
 (0xd18+223-0xdf4)]);if(DATARMNET205e85dea0&&mem_wq){DATARMNET28085cfd14=
