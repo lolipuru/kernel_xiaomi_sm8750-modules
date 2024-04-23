@@ -953,6 +953,9 @@ static int lpass_cdc_wsa2_macro_mute_stream(struct snd_soc_dai *dai, int mute, i
 		lpass_cdc_wsa2_unmute_interpolator(dai);
 		lpass_cdc_wsa2_macro_enable_vi_decimator(component);
 		break;
+	case LPASS_CDC_WSA2_MACRO_AIF1_PCM_PB:
+		lpass_cdc_wsa2_macro_enable_vi_decimator(component);
+		break;
 	default:
 		break;
 	}
@@ -1193,7 +1196,7 @@ static int lpass_cdc_wsa2_macro_enable_vi_decimator(struct snd_soc_component *co
 
         if (test_bit(LPASS_CDC_WSA2_MACRO_TX0,
 		&wsa2_priv->active_ch_mask[LPASS_CDC_WSA2_MACRO_AIF_VI])) {
-		dev_dbg(wsa2_dev, "%s: spkr1 enabled\n", __func__);
+		dev_dbg(wsa2_dev, "%s: decimator 0/1 enabled\n", __func__);
 		/* Enable V&I sensing */
 		snd_soc_component_update_bits(component,
 			LPASS_CDC_WSA2_TX0_SPKR_PROT_PATH_CTL,
@@ -1223,7 +1226,7 @@ static int lpass_cdc_wsa2_macro_enable_vi_decimator(struct snd_soc_component *co
 
 	if (test_bit(LPASS_CDC_WSA2_MACRO_TX1,
 		&wsa2_priv->active_ch_mask[LPASS_CDC_WSA2_MACRO_AIF_VI])) {
-		dev_dbg(wsa2_dev, "%s: spkr2 enabled\n", __func__);
+		dev_dbg(wsa2_dev, "%s: decimator 2/3 enabled\n", __func__);
 		/* Enable V&I sensing */
 		snd_soc_component_update_bits(component,
 			LPASS_CDC_WSA2_TX2_SPKR_PROT_PATH_CTL,

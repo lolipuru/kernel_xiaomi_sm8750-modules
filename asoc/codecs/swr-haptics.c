@@ -67,6 +67,11 @@ static struct reg_default swr_hap_reg_defaults[] = {
 };
 
 enum {
+	HAPTICS_PCM_PORT_IDX,
+	HAPTICS_VI_PORT_IDX,
+};
+
+enum {
 	PORT_ID_DT_IDX,
 	NUM_CH_DT_IDX,
 	CH_MASK_DT_IDX,
@@ -89,6 +94,7 @@ struct swr_haptics_dev {
 	struct snd_soc_component	*component;
 	struct regmap			*regmap;
 	struct swr_port			port;
+	struct swr_port			vi_port;
 	struct regulator		*slave_vdd;
 	struct regulator		*hpwr_vreg;
 	struct notifier_block		hboost_nb;
@@ -99,7 +105,11 @@ struct swr_haptics_dev {
 	u8				vmax;
 	u8				clamped_vmax;
 	u8				flags;
+	u8				visense_enable;
 };
+
+
+static int vi_sense_supported = 1; /* TODO: read from PMIC registers instead */
 
 static bool swr_hap_volatile_register(struct device *dev, unsigned int reg)
 {
@@ -257,9 +267,9 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 	struct snd_soc_component *swr_hap_comp =
 		snd_soc_dapm_to_component(w->dapm);
 	struct swr_haptics_dev *swr_hap;
-	u8 port_id, ch_mask, num_ch, port_type, num_port;
+	u8 port_id[2], ch_mask[2], num_ch[2], port_type[2], num_port;
 	u8 vmax;
-	u32 ch_rate;
+	u32 ch_rate[2];
 	unsigned int val;
 	int rc;
 
@@ -276,11 +286,21 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 
 	dev_dbg(swr_hap->dev, "%s: %s event %d\n", __func__, w->name, event);
 	num_port = 1;
-	port_id = swr_hap->port.port_id;
-	ch_mask = swr_hap->port.ch_mask;
-	ch_rate = swr_hap->port.ch_rate;
-	num_ch = swr_hap->port.num_ch;
-	port_type = swr_hap->port.port_type;
+	port_id[HAPTICS_PCM_PORT_IDX] = swr_hap->port.port_id;
+	ch_mask[HAPTICS_PCM_PORT_IDX] = swr_hap->port.ch_mask;
+	ch_rate[HAPTICS_PCM_PORT_IDX] = swr_hap->port.ch_rate;
+	num_ch[HAPTICS_PCM_PORT_IDX] = swr_hap->port.num_ch;
+	port_type[HAPTICS_PCM_PORT_IDX] = swr_hap->port.port_type;
+
+	if (swr_hap->visense_enable) {
+		dev_dbg(swr_hap->dev, "%s: visense enable\n", __func__);
+		port_id[HAPTICS_VI_PORT_IDX] = swr_hap->vi_port.port_id;
+		ch_mask[HAPTICS_VI_PORT_IDX] = swr_hap->vi_port.ch_mask;
+		ch_rate[HAPTICS_VI_PORT_IDX] = swr_hap->vi_port.ch_rate;
+		num_ch[HAPTICS_VI_PORT_IDX] = swr_hap->vi_port.num_ch;
+		port_type[HAPTICS_VI_PORT_IDX] = swr_hap->vi_port.port_type;
+		++num_port;
+	}
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
@@ -306,8 +326,8 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 		regmap_read(swr_hap->regmap, SWR_READ_DATA_REG, &val);
 		dev_dbg(swr_hap->dev, "%s: swr_vmax is set to 0x%x\n", __func__, val);
 		swr_device_wakeup_vote(swr_hap->swr_slave);
-		swr_connect_port(swr_hap->swr_slave, &port_id, num_port,
-				&ch_mask, &ch_rate, &num_ch, &port_type);
+		swr_connect_port(swr_hap->swr_slave, port_id, num_port,
+				ch_mask, ch_rate, num_ch, port_type);
 		break;
 	case SND_SOC_DAPM_POST_PMU:
 		rc = swr_hap_enable_hpwr_vreg(swr_hap);
@@ -349,8 +369,8 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 		}
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-		swr_disconnect_port(swr_hap->swr_slave, &port_id, num_port,
-				&ch_mask, &port_type);
+		swr_disconnect_port(swr_hap->swr_slave, port_id, num_port,
+				ch_mask, port_type);
 		swr_slvdev_datapath_control(swr_hap->swr_slave,
 				swr_hap->swr_slave->dev_num, false);
 		swr_device_wakeup_unvote(swr_hap->swr_slave);
@@ -390,9 +410,39 @@ static int haptics_vmax_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int haptics_get_visense(struct snd_kcontrol *kcontrol,
+			       struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component =
+				snd_soc_kcontrol_component(kcontrol);
+	struct swr_haptics_dev *swr_hap =
+			snd_soc_component_get_drvdata(component);
+
+	ucontrol->value.integer.value[0] = swr_hap->visense_enable;
+	return 0;
+}
+
+static int haptics_set_visense(struct snd_kcontrol *kcontrol,
+			       struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component =
+				snd_soc_kcontrol_component(kcontrol);
+	struct swr_haptics_dev *swr_hap =
+			snd_soc_component_get_drvdata(component);
+
+	int value = ucontrol->value.integer.value[0];
+
+	dev_dbg(component->dev, "%s: VIsense enable current %d, new %d\n",
+		 __func__, swr_hap->visense_enable, value);
+	swr_hap->visense_enable = value;
+	return 0;
+}
+
 static const struct snd_kcontrol_new haptics_snd_controls[] = {
 	SOC_SINGLE_EXT("Haptics Amplitude Step", SND_SOC_NOPM, 0, 100, 0,
 		haptics_vmax_get, haptics_vmax_put),
+	SOC_SINGLE_EXT("Haptics VISENSE Switch", SND_SOC_NOPM, 0, 1, 0,
+			haptics_get_visense, haptics_set_visense),
 };
 
 static const struct snd_soc_dapm_widget haptics_comp_dapm_widgets[] = {
@@ -494,6 +544,23 @@ static int swr_haptics_parse_port_mapping(struct swr_device *sdev)
 			__func__, swr_hap->port.port_id,
 			swr_hap->port.ch_mask, swr_hap->port.ch_rate,
 			swr_hap->port.num_ch, swr_hap->port.port_type);
+
+	if (vi_sense_supported) {
+
+		rc = of_property_read_u32_array(sdev->dev.of_node, "qcom,rx_swr_vi_ch_map",
+				port_cfg, NUM_SWR_PORT_DT_PARAMS);
+		if (rc < 0) {
+			dev_err(swr_hap->dev, "%s: Get qcom,rx_swr_vi_ch_map failed, rc=%d\n",
+					__func__, rc);
+			return -EINVAL;
+		}
+
+		swr_hap->vi_port.port_id = (u8) port_cfg[PORT_ID_DT_IDX];
+		swr_hap->vi_port.num_ch = (u8) port_cfg[NUM_CH_DT_IDX];
+		swr_hap->vi_port.ch_mask = (u8) port_cfg[CH_MASK_DT_IDX];
+		swr_hap->vi_port.ch_rate =  port_cfg[CH_RATE_DT_IDX];
+		swr_hap->vi_port.port_type = (u8) port_cfg[PORT_TYPE_DT_IDX];
+	}
 	return 0;
 }
 
