@@ -293,6 +293,7 @@ enum sde_multi_te_states {
  * @input_event_work:		worker to handle input device touch events
  * @esd_trigger_work:		worker to handle esd trigger
  * @self_refresh_work:		worker to handle self refresh
+ * @self_refresh_work:		worker to handle smooth dimming in vrr
  * @input_handler:			handler for input device events
  * @topology:                   topology of the display
  * @vblank_enabled:		boolean to track userspace vblank vote
@@ -388,6 +389,8 @@ struct sde_encoder_virt {
 	struct kthread_work input_event_work;
 	struct kthread_work esd_trigger_work;
 	struct kthread_work self_refresh_work;
+	struct kthread_work backlight_cmd_work;
+
 	struct input_handler *input_handler;
 	bool vblank_enabled;
 	bool idle_pc_restore;
@@ -962,6 +965,12 @@ void sde_encoder_handle_frequency_stepping(struct sde_encoder_phys *phys_enc, u3
 enum hrtimer_restart sde_encoder_phys_phys_self_refresh_helper(struct hrtimer *timer);
 
 /**
+ * sde_encoder_phys_backlight_timer_cb - Handle incremental backlight requirement
+ * @timer: pointer to backlight timer
+ */
+enum hrtimer_restart sde_encoder_phys_backlight_timer_cb(struct hrtimer *timer);
+
+/**
  * sde_encoder_get_freq_pattern - Get the frequency pattern for
  *                               given frame interval and usecase
  * @drm_enc: pointer to drm encoder
@@ -983,6 +992,12 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 int sde_encoder_handle_dma_fence_out_of_order(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_handle_next_backlight_update - handle the consecutive BL update
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_handle_next_backlight_update(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_update_periph_flush - update peripheral flush event

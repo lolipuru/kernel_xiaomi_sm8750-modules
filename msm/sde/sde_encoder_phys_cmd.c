@@ -2883,6 +2883,11 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 	phys_enc->sde_vrr_cfg.self_refresh_timer.function =
 		sde_encoder_phys_phys_self_refresh_helper;
 
+	hrtimer_init(&phys_enc->sde_vrr_cfg.backlight_timer,
+		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	phys_enc->sde_vrr_cfg.backlight_timer.function =
+		sde_encoder_phys_backlight_timer_cb;
+
 	SDE_DEBUG_CMDENC(cmd_enc, "created\n");
 
 	return phys_enc;

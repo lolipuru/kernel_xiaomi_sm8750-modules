@@ -142,13 +142,188 @@ static void sde_dimming_bl_notify(struct sde_connector *conn, struct dsi_backlig
 	msm_mode_object_event_notify(&conn->base.base, conn->base.dev, &event, (u8 *)&bl_info);
 }
 
+static int sde_backlight_set_notify(struct sde_connector *c_conn, int brightness, u32 bl_lvl)
+{
+	struct drm_event event;
+	struct dsi_display *display;
+	int rc = 0;
+
+	if (!c_conn) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	} else if (brightness != 0) {
+		event.type = DRM_EVENT_SYS_BACKLIGHT;
+		event.length = sizeof(u32);
+		msm_mode_object_event_notify(&c_conn->base.base,
+			c_conn->base.dev, &event, (u8 *)&brightness);
+	}
+
+	display = (struct dsi_display *) c_conn->display;
+	rc = c_conn->ops.set_backlight(&c_conn->base, c_conn->display, bl_lvl);
+	if (!rc) {
+		SDE_EVT32(DRMID(&c_conn->base), bl_lvl);
+		if (c_conn->num_bl_frames)
+			display->panel->bl_config.brightness = brightness;
+		sde_dimming_bl_notify(c_conn, &display->panel->bl_config);
+	}
+
+	return rc;
+}
+
+static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
+{
+	int diff_brighness = 0, prev_brightness, updated_brightness, new_brightness;
+	int diff_bl_lvl, prev_bl_lvl, updated_bl_lvl, new_bl_lvl;
+	struct sde_kms *sde_kms;
+	struct drm_encoder *drm_enc;
+	struct drm_connector *connector;
+	int rc = 0;
+
+	if (!c_conn) {
+		pr_err("invalid params\n");
+		return -EINVAL;
+	} else if (!c_conn->bl_vrr.bl_update_in_progress) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		return 0;
+	}
+
+	sde_kms = sde_connector_get_kms(&c_conn->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return -EINVAL;
+	}
+
+	c_conn->bl_vrr.bl_frame_idx++;
+
+	new_brightness = c_conn->bl_vrr.new_brightness;
+	prev_brightness = c_conn->bl_vrr.prev_brightness;
+	new_bl_lvl = c_conn->bl_vrr.new_bl_lvl;
+	prev_bl_lvl = c_conn->bl_vrr.prev_bl_lvl;
+
+	if (c_conn->bl_vrr.bl_frame_idx == c_conn->num_bl_frames) {
+		updated_brightness = new_brightness;
+		updated_bl_lvl = new_bl_lvl;
+	} else if (new_brightness > prev_brightness) {
+		diff_brighness = mult_frac((u32)(new_brightness - prev_brightness),
+			c_conn->bl_vrr.bl_frame_idx, c_conn->num_bl_frames);
+		updated_brightness = prev_brightness + diff_brighness;
+		diff_bl_lvl = mult_frac((u32)(new_bl_lvl - prev_bl_lvl),
+			c_conn->bl_vrr.bl_frame_idx, c_conn->num_bl_frames);
+		updated_bl_lvl = prev_bl_lvl + diff_bl_lvl;
+	} else {
+		diff_brighness = mult_frac((u32)(prev_brightness - new_brightness),
+			c_conn->bl_vrr.bl_frame_idx, c_conn->num_bl_frames);
+		updated_brightness = prev_brightness - diff_brighness;
+		diff_bl_lvl = mult_frac((u32)(prev_bl_lvl - new_bl_lvl),
+			c_conn->bl_vrr.bl_frame_idx, c_conn->num_bl_frames);
+		updated_bl_lvl = prev_bl_lvl - diff_bl_lvl;
+	}
+
+	SDE_EVT32(DRMID(&c_conn->base), new_brightness, prev_brightness, new_bl_lvl, prev_bl_lvl,
+		c_conn->bl_vrr.bl_frame_idx, updated_brightness, updated_bl_lvl, diff_brighness,
+		c_conn->num_bl_frames);
+	rc = sde_backlight_set_notify(c_conn, updated_brightness, updated_bl_lvl);
+	if (rc) {
+		SDE_ERROR("Backlight set notify failed\n");
+		return rc;
+	}
+
+	connector = &c_conn->base;
+	if (connector->state && connector->state->best_encoder)
+		drm_enc = connector->state->best_encoder;
+	else
+		drm_enc = connector->encoder;
+
+	if (c_conn->bl_vrr.bl_frame_idx >= c_conn->num_bl_frames) {
+		c_conn->bl_vrr.bl_frame_idx = 0;
+		c_conn->bl_vrr.bl_update_in_progress = false;
+		c_conn->bl_vrr.prev_brightness = new_brightness;
+		c_conn->bl_vrr.prev_bl_lvl = new_bl_lvl;
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
+	} else {
+		sde_encoder_handle_next_backlight_update(drm_enc);
+	}
+
+	return rc;
+}
+
+static bool sde_connector_is_cont_bl_updates(struct sde_connector *c_conn)
+{
+	bool rc = false;
+	u64 curr_time, nominal_vsync_ns;
+	struct sde_encoder_virt *sde_enc;
+	struct sde_kms *sde_kms;
+
+	sde_enc = to_sde_encoder_virt(c_conn->encoder);
+	curr_time = ktime_get();
+	if (!c_conn->encoder || !sde_enc->mode_info.frame_rate || !c_conn->bl_vrr.prev_bl_time_ns) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, !c_conn->encoder, !sde_enc->mode_info.frame_rate,
+			!c_conn->bl_vrr.prev_bl_time_ns);
+		c_conn->bl_vrr.prev_bl_time_ns = curr_time;
+		return true;
+	}
+
+	sde_kms = sde_connector_get_kms(&c_conn->base);
+	nominal_vsync_ns = SEC_TO_NS / sde_enc->mode_info.frame_rate;
+	if (ktime_sub(curr_time, c_conn->bl_vrr.prev_bl_time_ns) <
+			(c_conn->num_bl_frames * nominal_vsync_ns)) {
+		SDE_EVT32(ktime_to_us(curr_time), ktime_to_us(c_conn->bl_vrr.prev_bl_time_ns),
+			ktime_to_us(nominal_vsync_ns));
+		rc = true;
+	}
+
+	c_conn->bl_vrr.prev_bl_time_ns = curr_time;
+	return rc;
+}
+
+static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int brightness,
+		u32 bl_lvl)
+{
+	int rc = 0;
+	struct drm_encoder *drm_enc;
+	struct drm_connector *connector;
+
+	/* first frame after suspend/init */
+	if (c_conn->bl_vrr.prev_brightness == 0) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		goto skip_incremental_update;
+	} else if (sde_connector_is_cont_bl_updates(c_conn)) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
+		goto skip_incremental_update;
+	}
+	c_conn->bl_vrr.new_brightness = brightness;
+	c_conn->bl_vrr.new_bl_lvl = bl_lvl;
+	c_conn->bl_vrr.bl_update_in_progress = true;
+	c_conn->bl_vrr.bl_frame_idx = 0;
+	SDE_EVT32(bl_lvl, brightness);
+
+	connector = &c_conn->base;
+	if (connector->state && connector->state->best_encoder)
+		drm_enc = connector->state->best_encoder;
+	else
+		drm_enc = connector->encoder;
+	sde_encoder_handle_next_backlight_update(drm_enc);
+
+	return rc;
+
+skip_incremental_update:
+	rc = sde_backlight_set_notify(c_conn, brightness, bl_lvl);
+	if (!rc) {
+		c_conn->bl_vrr.bl_frame_idx = 0;
+		c_conn->bl_vrr.bl_update_in_progress = false;
+		c_conn->bl_vrr.prev_brightness = brightness;
+		c_conn->bl_vrr.prev_bl_lvl = bl_lvl;
+		SDE_EVT32(brightness, bl_lvl);
+	}
+	return rc;
+}
+
 static int sde_backlight_device_update_status(struct backlight_device *bd)
 {
 	int brightness;
 	struct dsi_display *display;
 	struct sde_connector *c_conn = bl_get_data(bd);
 	int bl_lvl;
-	struct drm_event event;
 	int rc = 0;
 	struct sde_kms *sde_kms;
 
@@ -186,6 +361,7 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 		c_conn->unset_bl_level = bl_lvl;
 		return 0;
 	}
+	SDE_EVT32(bl_lvl, brightness);
 
 	sde_vm_lock(sde_kms);
 
@@ -196,16 +372,11 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 
 	if (c_conn->ops.set_backlight) {
 		/* skip notifying user space if bl is 0 */
-		if (brightness != 0) {
-			event.type = DRM_EVENT_SYS_BACKLIGHT;
-			event.length = sizeof(u32);
-			msm_mode_object_event_notify(&c_conn->base.base,
-				c_conn->base.dev, &event, (u8 *)&brightness);
-		}
-		rc = c_conn->ops.set_backlight(&c_conn->base,
-				display, bl_lvl);
-		if (!rc)
-			sde_dimming_bl_notify(c_conn, &display->panel->bl_config);
+		if (c_conn->num_bl_frames && c_conn->frame_interval)
+			sde_connector_begin_incremental_bl(c_conn, brightness, bl_lvl);
+		else
+			sde_backlight_set_notify(c_conn, brightness, bl_lvl);
+
 		c_conn->unset_bl_level = 0;
 	}
 
@@ -1304,18 +1475,51 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector)
 {
 	int rc = 0;
-
-	SDE_EVT32(connector->base.id);
+	struct sde_connector *c_conn;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
 		return -EINVAL;
 	}
 
+	SDE_EVT32(connector->base.id);
+	c_conn = to_sde_connector(connector);
 	SDE_ATRACE_BEGIN("cmd_self_refresh");
-	rc = sde_connector_update_cmd(connector, BIT(DSI_CMD_SET_TRIGGER_SELF_REFRESH), true);
+	if (!c_conn->vrr_caps.video_psr_support)
+		rc = sde_connector_update_cmd(connector,
+			BIT(DSI_CMD_SET_TRIGGER_SELF_REFRESH), true);
 	SDE_ATRACE_END("cmd_self_refresh");
 
+	return rc;
+}
+
+int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn = NULL;
+	int rc = 0;
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	if (!connector) {
+		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
+		return -EINVAL;
+	}
+	c_conn = to_sde_connector(connector);
+
+	/* apply the incremental backlight */
+	rc = sde_connector_apply_incremental_bl(c_conn);
+	if (rc) {
+		SDE_ERROR("Incremental backlight apply failed\n");
+		return rc;
+	}
+
+	/* trigger self refresh if no frame scheduled */
+	if (connector && connector->state && connector->state->crtc &&
+			sde_crtc_no_frame_in_progress(connector->state->crtc)) {
+		rc = sde_connector_trigger_cmd_self_refresh(connector);
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, rc);
+	}
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, DRMID(&c_conn->base));
 	return rc;
 }
 
@@ -2940,6 +3144,10 @@ static int sde_connector_init_debugfs(struct drm_connector *connector)
 			sde_kms->catalog->hw_fence_rev)
 		debugfs_create_bool("wb_hw_fence_enable", 0600, connector->debugfs_entry,
 			&sde_connector->hwfence_wb_retire_fences_enable);
+
+	if (sde_connector->connector_type == DRM_MODE_CONNECTOR_DSI)
+		debugfs_create_u32("num_bl_frames", 0600, connector->debugfs_entry,
+				&sde_connector->num_bl_frames);
 
 	return 0;
 }

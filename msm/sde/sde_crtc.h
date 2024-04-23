@@ -1028,6 +1028,21 @@ static inline void sde_crtc_get_ds_io_res(struct drm_crtc_state *state, struct s
 }
 
 /**
+ * sde_crtc_no_frame_in_progress - Return false in frame pending/in progress
+ * @crtc: pointer to drm crtc
+ */
+static inline bool sde_crtc_no_frame_in_progress(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc = NULL;
+
+	sde_crtc = to_sde_crtc(crtc);
+	if (sde_crtc && !sde_crtc_frame_pending(crtc) && !sde_crtc->kickoff_in_progress)
+		return true;
+
+	return false;
+}
+
+/**
  * sde_crtc_get_ai_scaler_io_res - populates the AI scaler src/dst w/h
  * @state: pointer to drm crtc state
  */
