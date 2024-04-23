@@ -2998,7 +2998,7 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 		dev_err(cctx->dev, "too many fastrpc clients, max %u allowed\n", MAX_FRPC_TGID);
 		return -EUSERS;
 	}
-	dev_info(cctx->dev, "HLOS pid %d, domain %d is mapped to unique sessions pid %d",
+	dev_dbg(cctx->dev, "HLOS pid %d, domain %d is mapped to unique sessions pid %d",
 			fl->tgid, fl->cctx->domain_id, fl->tgid_frpc);
 	fl->is_secure_dev = fdevice->secure;
 	fl->sessionid = 0;
