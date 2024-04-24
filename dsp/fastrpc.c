@@ -876,24 +876,34 @@ static const struct dma_buf_ops fastrpc_dma_buf_ops = {
 };
 
 static struct fastrpc_session_ctx *fastrpc_session_alloc(
-					struct fastrpc_channel_ctx *cctx,
-					bool sharedcb, int pd_type, bool secure)
+				struct fastrpc_user *fl, bool secure)
 {
+
 	struct fastrpc_session_ctx *session = NULL;
+	struct fastrpc_channel_ctx *cctx = fl->cctx;
 	unsigned long flags;
+	bool sharedcb = fl->sharedcb;
+	int pd_type = fl->pd;
 	int i;
 
 	if (!cctx->dev)
 		return session;
 
 	/*
-	 * If PD type is configured for context banks,
-	 * Use CPZ_USERPD, to allocate secure context bank type.
+	 * If PD type is configured for context banks, Use CPZ_USERPD, to allocate
+	 * secure context bank type.
 	 */
 	if (secure && cctx->pd_type) {
 		pd_type = CPZ_USERPD;
 		sharedcb = true;
 	}
+
+	/*
+	 * If session allocated already and PD type is configured for non secure,
+	 * use same session.
+	 */
+	if (fl->sctx && !secure)
+		return fl->sctx;
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 0; i < cctx->sesscount; i++) {
@@ -1063,7 +1073,7 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 
 	if (map->secure && (!(attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP))) {
 		if (!fl->secsctx) {
-			fl->secsctx = fastrpc_session_alloc(fl->cctx, false, fl->pd, true);
+			fl->secsctx = fastrpc_session_alloc(fl, true);
 			if (!fl->secsctx) {
 				dev_err(fl->cctx->dev, "No secure session available\n");
 				err = -EBUSY;
@@ -2402,7 +2412,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		goto err_name;
 	}
 
-	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, fl->pd, false);
+	fl->sctx = fastrpc_session_alloc(fl, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
 		err = -EBUSY;
@@ -2669,7 +2679,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	if (init.filelen > INIT_FILELEN_MAX)
 		return -EINVAL;
 
-	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, fl->pd, false);
+	fl->sctx = fastrpc_session_alloc(fl, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
 		return -EBUSY;
@@ -3118,7 +3128,7 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 		dev_err(fl->cctx->dev, "untrusted app trying to attach to privileged DSP PD\n");
 		return -EACCES;
 	}
-	fl->sctx = fastrpc_session_alloc(fl->cctx, fl->sharedcb, fl->pd, false);
+	fl->sctx = fastrpc_session_alloc(fl, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
 		return -EBUSY;
