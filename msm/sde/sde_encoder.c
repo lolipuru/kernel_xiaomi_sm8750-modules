@@ -3433,7 +3433,7 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 
 	/* avoid cesta_enable_frame setting for seamless switches */
 	msm_mode = &c_state->msm_mode;
-	if (sde_enc->cesta_client && !sde_enc->cur_master->cont_splash_enabled &&
+	if (sde_enc->cesta_client &&
 			!(msm_is_mode_seamless_vrr(msm_mode)
 				|| msm_is_mode_seamless_dms(msm_mode)
 				|| msm_is_mode_seamless_dyn_clk(msm_mode)))
