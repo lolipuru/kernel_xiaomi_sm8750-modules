@@ -1510,11 +1510,6 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	vm_ops = sde_vm_get_ops(sde_kms);
 
 	crtc = sde_kms_vm_get_vm_crtc(state);
-
-	if (sde_kms->vm->lastclose_in_progress && !crtc) {
-		sde_dbg_set_hw_ownership_status(false);
-		goto relase_vm;
-	}
 	if (!crtc)
 		return 0;
 
@@ -1524,7 +1519,6 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	if (vm_req != VM_REQ_RELEASE)
 		return 0;
 
-relase_vm:
 	sde_kms_vm_pre_release(sde_kms, state, false);
 	sde_kms_vm_set_sid(sde_kms, 0);
 
@@ -2117,6 +2111,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			priv->num_encoders < max_encoders; ++i) {
 		int idx;
 		struct dp_display_info dp_info = {0};
+		struct sde_cesta_client *sst_cesta_client;
 
 		display = sde_kms->dp_displays[i];
 		encoder = NULL;
@@ -2138,6 +2133,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 		snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u", i);
 		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+		sst_cesta_client = cesta_client;
 
 		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
@@ -2176,8 +2172,18 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 				priv->num_encoders < max_encoders; idx++) {
 			info.h_tile_instance[0] = dp_info.intf_idx[idx];
 
-			snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u.%u", i, idx);
-			cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+			/*
+			 * use same sst cesta client for first mst encoder as sst/mst are
+			 * mutually exclusive and can use the same cesta client
+			 */
+			if (idx == 0) {
+				cesta_client = sst_cesta_client;
+			} else {
+				snprintf(cesta_client_name, sizeof(cesta_client_name),
+						"dp%u.%u", i, idx);
+				cesta_client = sde_cesta_create_client(DPUID(dev),
+						cesta_client_name);
+			}
 
 			encoder = sde_encoder_init(dev, &info, cesta_client);
 			if (IS_ERR_OR_NULL(encoder)) {
@@ -2956,10 +2962,6 @@ static void sde_kms_lastclose(struct msm_kms *kms)
 
 	sde_kms = to_sde_kms(kms);
 	dev = sde_kms->dev;
-
-	if (sde_kms && sde_kms->vm)
-		sde_kms->vm->lastclose_in_progress = true;
-
 	drm_modeset_acquire_init(&ctx, 0);
 
 	state = drm_atomic_state_alloc(dev);
@@ -2994,9 +2996,6 @@ out_ctx:
 		SDE_ERROR("kms lastclose failed: %d\n", ret);
 
 	SDE_EVT32(ret, SDE_EVTLOG_FUNC_EXIT);
-
-	if (sde_kms && sde_kms->vm)
-		sde_kms->vm->lastclose_in_progress = false;
 	return;
 
 backoff:
