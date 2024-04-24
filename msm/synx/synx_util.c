@@ -1453,8 +1453,9 @@ static void synx_client_cleanup(struct work_struct *dispatch)
 	struct synx_handle_coredata *curr;
 	struct hlist_node *tmp;
 
-	dprintk(SYNX_INFO, "[sess :%llu] session removed %s\n",
-		client->id, client->name);
+	if (__ratelimit(&synx_ratelimit_state))
+		dprintk(SYNX_INFO, "[sess :%llu] session removed %s\n",
+			client->id, client->name);
 	/*
 	 * go over all the remaining synx obj handles
 	 * un-released from this session and remove them.

@@ -11,6 +11,8 @@
 #include "synx_private.h"
 
 extern struct synx_device *synx_dev;
+extern struct ratelimit_state synx_ratelimit_state;
+
 u32 __fence_state(struct dma_fence *fence, bool locked);
 void synx_util_destroy_coredata(struct kref *kref);
 extern void synx_fence_callback(struct dma_fence *fence,
