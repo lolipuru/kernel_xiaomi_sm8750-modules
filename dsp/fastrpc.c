@@ -2629,7 +2629,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	struct fastrpc_invoke_args args[FASTRPC_CREATE_PROCESS_NARGS] = {0};
 	struct fastrpc_enhanced_invoke ioctl;
 	struct fastrpc_phy_page pages[NUM_PAGES_WITH_ROOTHEAP_BUF] = {0};
-	struct fastrpc_map *map = NULL, *configmap = NULL;
+	struct fastrpc_map *configmap = NULL;
 	struct fastrpc_buf *imem = NULL;
 	int memlen;
 	int err = 0;
@@ -2700,15 +2700,6 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	/* Process spawn should not fail if unable to alloc rootheap buffer */
 	fastrpc_alloc_rootheap_buf(fl->cctx, pages, &inbuf.pageslen);
 
-	if (init.filelen && init.filefd) {
-		mutex_lock(&fl->map_mutex);
-		err = fastrpc_map_create(fl, init.filefd, init.file, NULL,
-					init.filelen, 0, 0, &map, true);
-		mutex_unlock(&fl->map_mutex);
-		if (err)
-			goto err_filemap_fail;
-	}
-
 	fastrpc_check_privileged_process(fl, &init);
 
 	memlen = ALIGN(max(INIT_FILELEN_MAX, (int)init.filelen * 4),
@@ -2759,9 +2750,6 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	if (fl->cctx->domain_id == CDSP_DOMAIN_ID) {
 		fastrpc_create_persistent_headers(fl);
 	}
-	mutex_lock(&fl->map_mutex);
-	fastrpc_map_put(map);
-	mutex_unlock(&fl->map_mutex);
 
 #ifdef CONFIG_DEBUG_FS
 	if (fl != NULL)
@@ -2773,10 +2761,6 @@ err_invoke:
 	fl->init_mem = NULL;
 	fastrpc_buf_free(imem, false);
 err_alloc:
-	mutex_lock(&fl->map_mutex);
-	fastrpc_map_put(map);
-	mutex_unlock(&fl->map_mutex);
-err_filemap_fail:
 	if (configmap) {
 		mutex_lock(&fl->map_mutex);
 		fastrpc_map_put(configmap);
