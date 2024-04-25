@@ -257,3 +257,27 @@ int msm_vidc_adjust_csc(void *instance, struct v4l2_ctrl *ctrl)
 
 	return 0;
 }
+
+int msm_vidc_adjust_csc_custom_matrix(void *instance, struct v4l2_ctrl *ctrl)
+{
+	s32 adjusted_value;
+	s64 cscVal = 0;
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+
+	if (is_decode_session(inst))
+		return 0;
+
+	adjusted_value = ctrl ? ctrl->val : inst->capabilities[CSC_CUSTOM_MATRIX].value;
+
+	if (msm_vidc_get_parent_value(inst, CSC_CUSTOM_MATRIX, CSC,
+				      &cscVal, __func__))
+		return -EINVAL;
+
+	/* disable CSC_CUSTOM_MATRIX if CSC is not enabled */
+	if (!cscVal)
+		adjusted_value = 0;
+
+	msm_vidc_update_cap_value(inst, CSC_CUSTOM_MATRIX, adjusted_value, __func__);
+
+	return 0;
+}
