@@ -102,7 +102,7 @@ static int msm_vidc_init_codec_input_freq(struct msm_vidc_inst *inst, u32 data_s
 	} else if (inst->capabilities[STAGE].value == MSM_VIDC_STAGE_2) {
 		codec_input->vsp_vpp_mode = CODEC_VSPVPP_MODE_2S;
 	} else {
-		d_vpr_e("%s: invalid stage %d\n", __func__,
+		d_vpr_e("%s: invalid stage %lld\n", __func__,
 				inst->capabilities[STAGE].value);
 		return -EINVAL;
 	}
