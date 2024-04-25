@@ -268,12 +268,20 @@ static int cam_sensor_i2c_component_bind(struct device *dev,
 		goto free_perframe;
 	}
 
+	s_ctrl->i2c_data.deferred_frame_update =
+		CAM_MEM_ZALLOC(sizeof(struct i2c_settings_array) *
+		MAX_PER_FRAME_ARRAY, GFP_KERNEL);
+	if (s_ctrl->i2c_data.deferred_frame_update == NULL) {
+		rc = -ENOMEM;
+		goto free_frame_skip;
+	}
+
 	s_ctrl->i2c_data.bubble_update =
 		CAM_MEM_ZALLOC(sizeof(struct i2c_settings_array) *
 		MAX_PER_FRAME_ARRAY, GFP_KERNEL);
 	if (s_ctrl->i2c_data.bubble_update == NULL) {
 		rc = -ENOMEM;
-		goto free_frame_skip;
+		goto free_deferred_frame_update;
 	}
 
 	INIT_LIST_HEAD(&(s_ctrl->i2c_data.init_settings.list_head));
@@ -285,6 +293,7 @@ static int cam_sensor_i2c_component_bind(struct device *dev,
 	INIT_LIST_HEAD(&(s_ctrl->i2c_data.read_settings.list_head));
 
 	for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
+		INIT_LIST_HEAD(&(s_ctrl->i2c_data.deferred_frame_update[i].list_head));
 		INIT_LIST_HEAD(&(s_ctrl->i2c_data.per_frame[i].list_head));
 		INIT_LIST_HEAD(&(s_ctrl->i2c_data.frame_skip[i].list_head));
 		INIT_LIST_HEAD(&(s_ctrl->i2c_data.bubble_update[i].list_head));
@@ -306,6 +315,8 @@ static int cam_sensor_i2c_component_bind(struct device *dev,
 
 	return rc;
 
+free_deferred_frame_update:
+	CAM_MEM_FREE(s_ctrl->i2c_data.deferred_frame_update);
 free_frame_skip:
 	CAM_MEM_FREE(s_ctrl->i2c_data.frame_skip);
 free_perframe:
@@ -342,6 +353,7 @@ static void cam_sensor_i2c_component_unbind(struct device *dev,
 	mutex_unlock(&(s_ctrl->cam_sensor_mutex));
 	cam_unregister_subdev(&(s_ctrl->v4l2_dev_str));
 
+	CAM_MEM_FREE(s_ctrl->i2c_data.deferred_frame_update);
 	CAM_MEM_FREE(s_ctrl->i2c_data.per_frame);
 	CAM_MEM_FREE(s_ctrl->i2c_data.frame_skip);
 	CAM_MEM_FREE(s_ctrl->i2c_data.bubble_update);
@@ -485,12 +497,20 @@ static int cam_sensor_component_bind(struct device *dev,
 		goto free_perframe;
 	}
 
+	s_ctrl->i2c_data.deferred_frame_update =
+		CAM_MEM_ZALLOC(sizeof(struct i2c_settings_array) *
+		MAX_PER_FRAME_ARRAY, GFP_KERNEL);
+	if (s_ctrl->i2c_data.deferred_frame_update == NULL) {
+		rc = -ENOMEM;
+		goto free_frame_skip;
+	}
+
 	s_ctrl->i2c_data.bubble_update =
 		CAM_MEM_ZALLOC(sizeof(struct i2c_settings_array) *
 		MAX_PER_FRAME_ARRAY, GFP_KERNEL);
 	if (s_ctrl->i2c_data.bubble_update == NULL) {
 		rc = -ENOMEM;
-		goto free_frame_skip;
+		goto free_deferred_frame_update;
 	}
 
 	INIT_LIST_HEAD(&(s_ctrl->i2c_data.init_settings.list_head));
@@ -502,6 +522,7 @@ static int cam_sensor_component_bind(struct device *dev,
 	INIT_LIST_HEAD(&(s_ctrl->i2c_data.read_settings.list_head));
 
 	for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
+		INIT_LIST_HEAD(&(s_ctrl->i2c_data.deferred_frame_update[i].list_head));
 		INIT_LIST_HEAD(&(s_ctrl->i2c_data.per_frame[i].list_head));
 		INIT_LIST_HEAD(&(s_ctrl->i2c_data.frame_skip[i].list_head));
 		INIT_LIST_HEAD(&(s_ctrl->i2c_data.bubble_update[i].list_head));
@@ -529,6 +550,8 @@ static int cam_sensor_component_bind(struct device *dev,
 
 	return rc;
 
+free_deferred_frame_update:
+	CAM_MEM_FREE(s_ctrl->i2c_data.deferred_frame_update);
 free_frame_skip:
 	CAM_MEM_FREE(s_ctrl->i2c_data.frame_skip);
 free_perframe:
@@ -574,6 +597,7 @@ static void cam_sensor_component_unbind(struct device *dev,
 		devm_clk_put(soc_info->dev, soc_info->clk[i]);
 	}
 
+	CAM_MEM_FREE(s_ctrl->i2c_data.deferred_frame_update);
 	CAM_MEM_FREE(s_ctrl->i2c_data.per_frame);
 	CAM_MEM_FREE(s_ctrl->i2c_data.frame_skip);
 	CAM_MEM_FREE(s_ctrl->i2c_data.bubble_update);

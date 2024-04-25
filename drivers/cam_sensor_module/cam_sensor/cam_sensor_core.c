@@ -116,6 +116,20 @@ static void cam_sensor_release_per_frame_resource(
 	struct i2c_settings_array *i2c_set = NULL;
 	int i, rc;
 
+	if (s_ctrl->i2c_data.deferred_frame_update != NULL) {
+		for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
+			i2c_set = &(s_ctrl->i2c_data.deferred_frame_update[i]);
+			if (i2c_set->is_settings_valid == 1) {
+				i2c_set->is_settings_valid = -1;
+				rc = delete_request(i2c_set);
+				if (rc < 0)
+					CAM_ERR(CAM_SENSOR,
+						"delete deferred frame_update setting for request: %lld rc: %d",
+						i2c_set->request_id, rc);
+			}
+		}
+	}
+
 	if (s_ctrl->i2c_data.per_frame != NULL) {
 		for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
 			i2c_set = &(s_ctrl->i2c_data.per_frame[i]);
@@ -295,6 +309,7 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 	struct cam_cmd_buf_desc *cmd_desc = NULL;
 	struct cam_buf_io_cfg *io_cfg = NULL;
 	struct i2c_settings_array *i2c_reg_settings = NULL;
+	struct i2c_settings_array *i2c_reg_settings_deferred = NULL;
 	size_t len_of_buff = 0;
 	size_t remain_len = 0;
 	int64_t prev_updated_req;
@@ -557,6 +572,19 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 		case CAM_SENSOR_PACKET_I2C_COMMANDS: {
 			rc = cam_sensor_i2c_command_parser(&s_ctrl->io_master_info,
 				i2c_reg_settings, &cmd_desc[i], 1, io_cfg);
+			if (rc < 0) {
+				CAM_ERR(CAM_SENSOR, "Fail parsing I2C Pkt: %d", rc);
+				goto end;
+			}
+			break;
+		}
+		case CAM_SENSOR_PACKET_DEFERRED_I2C_COMMANDS_META: {
+			i2c_reg_settings_deferred =
+				&i2c_data->deferred_frame_update[csl_packet->header.request_id %
+					MAX_PER_FRAME_ARRAY];
+			i2c_reg_settings_deferred->request_id = csl_packet->header.request_id;
+			rc = cam_sensor_i2c_command_parser(&s_ctrl->io_master_info,
+				i2c_reg_settings_deferred, &cmd_desc[i], 1, io_cfg);
 			if (rc < 0) {
 				CAM_ERR(CAM_SENSOR, "Fail parsing I2C Pkt: %d", rc);
 				goto end;
@@ -1969,7 +1997,9 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 			if (!(i2c_set[offset].is_settings_valid == 1) &&
 				(i2c_set[offset].request_id == req_id))
 				i2c_set = s_ctrl->i2c_data.per_frame;
-		} else
+		} else if (opcode == CAM_SENSOR_PACKET_OPCODE_SENSOR_DEFERRED_META)
+			i2c_set = s_ctrl->i2c_data.deferred_frame_update;
+		else
 			i2c_set = s_ctrl->i2c_data.per_frame;
 
 		if (i2c_set[offset].is_settings_valid == 1 &&
@@ -2147,12 +2177,22 @@ int32_t cam_sensor_notify_frame_skip(struct cam_req_mgr_apply_request *apply)
 		return -EINVAL;
 	}
 
-	CAM_DBG(CAM_REQ, " Sensor[%d] handle frame skip for req id: %lld",
+	CAM_DBG(CAM_REQ, "Sensor[%d] handle frame skip for req id: %lld",
 		s_ctrl->soc_info.index, apply->request_id);
 	trace_cam_notify_frame_skip("Sensor", apply->request_id);
 	mutex_lock(&(s_ctrl->cam_sensor_mutex));
 	rc = cam_sensor_apply_settings(s_ctrl, apply->request_id,
 		opcode);
+	/*
+	 * If mode switch delay is 1, and there are no further requests
+	 */
+	if ((s_ctrl->modeswitch_delay == CAM_MODESWITCH_DELAY_1) && (apply->no_further_requests)) {
+		cam_sensor_apply_settings(s_ctrl, apply->request_id,
+			CAM_SENSOR_PACKET_OPCODE_SENSOR_DEFERRED_META);
+		CAM_DBG(CAM_SENSOR, "Sensor[%d] applying deferred settings from req id: %lld",
+			s_ctrl->soc_info.index, apply->request_id);
+	}
+
 	mutex_unlock(&(s_ctrl->cam_sensor_mutex));
 	return rc;
 }
@@ -2181,6 +2221,12 @@ int32_t cam_sensor_flush_request(struct cam_req_mgr_flush_request *flush_req)
 		return rc;
 	}
 
+	if (s_ctrl->i2c_data.deferred_frame_update == NULL) {
+		CAM_ERR(CAM_SENSOR, "i2c frame data is NULL");
+		mutex_unlock(&(s_ctrl->cam_sensor_mutex));
+		return -EINVAL;
+	}
+
 	if (s_ctrl->i2c_data.per_frame == NULL) {
 		CAM_ERR(CAM_SENSOR, "i2c frame data is NULL");
 		mutex_unlock(&(s_ctrl->cam_sensor_mutex));
@@ -2206,6 +2252,28 @@ int32_t cam_sensor_flush_request(struct cam_req_mgr_flush_request *flush_req)
 		if (s_ctrl->stream_off_after_eof) {
 			cam_sensor_stream_off(s_ctrl);
 			s_ctrl->is_stopped_by_user = false;
+		}
+	}
+
+	for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
+		i2c_set = &(s_ctrl->i2c_data.deferred_frame_update[i]);
+
+		if ((flush_req->type == CAM_REQ_MGR_FLUSH_TYPE_CANCEL_REQ)
+				&& (i2c_set->request_id != flush_req->req_id))
+			continue;
+
+		if (i2c_set->is_settings_valid == 1) {
+			rc = delete_request(i2c_set);
+			if (rc < 0)
+				CAM_ERR(CAM_SENSOR,
+					"delete request for no valid deferred req: %lld rc: %d",
+					i2c_set->request_id, rc);
+
+			if (flush_req->type ==
+				CAM_REQ_MGR_FLUSH_TYPE_CANCEL_REQ) {
+				cancel_req_id_found = 1;
+				break;
+			}
 		}
 	}
 
