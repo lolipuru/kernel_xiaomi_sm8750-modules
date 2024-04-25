@@ -156,6 +156,7 @@ static void __fastrpc_free_map(struct fastrpc_map *map)
 	}
 
 	kfree(map);
+	map = NULL;
 }
 
 
@@ -506,8 +507,10 @@ static void fastrpc_context_free(struct kref *ref)
 	ctx = container_of(ref, struct fastrpc_invoke_ctx, refcount);
 	cctx = ctx->cctx;
 
+	mutex_lock(&ctx->fl->map_mutex);
 	for (i = 0; i < ctx->nbufs; i++)
 		fastrpc_map_put(ctx->maps[i]);
+	mutex_unlock(&ctx->fl->map_mutex);
 
 	if (ctx->buf)
 		fastrpc_buf_free(ctx->buf, true);
