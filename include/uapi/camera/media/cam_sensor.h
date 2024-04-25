@@ -35,8 +35,11 @@
 #define CAM_CSIPHY_CDR_SUB_TOLERANCE               2
 
 /* SENSOR driver cmd buffer meta types */
-#define CAM_SENSOR_PACKET_I2C_COMMANDS             0
-#define CAM_SENSOR_PACKET_GENERIC_BLOB             1
+#define CAM_SENSOR_PACKET_I2C_COMMANDS                  0
+#define CAM_SENSOR_PACKET_GENERIC_BLOB                  1
+/* Contains I2C config to be applied on the frame post the regular update */
+#define CAM_SENSOR_PACKET_DEFERRED_I2C_COMMANDS_META    2
+
 
 /* SENSOR blob types */
 #define CAM_SENSOR_GENERIC_BLOB_RES_INFO           0
@@ -126,6 +129,7 @@ enum cam_sensor_packet_opcodes {
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_REG_BANK_UNLOCK,
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_REG_BANK_LOCK,
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_BUBBLE_UPDATE,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_DEFERRED_META,
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_NOP = 127,
 };
 
