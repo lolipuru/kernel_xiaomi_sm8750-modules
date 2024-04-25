@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/iommu.h>
@@ -861,13 +861,21 @@ int cvp_read_platform_resources_from_drv_data(
 }
 
 int cvp_read_platform_resources_from_dt(
-		struct msm_cvp_platform_resources *res)
+		struct msm_cvp_core *core)
 {
-	struct platform_device *pdev = res->pdev;
+	struct msm_cvp_platform_resources *res;
+	struct platform_device *pdev;
 	struct resource *kres = NULL;
 	int rc = 0;
 	uint32_t firmware_base = 0;
 
+	res = &core->resources;
+	if (!res) {
+		dprintk(CVP_ERR, "Resource not allocated\n");
+		return -ENOENT;
+	}
+
+	pdev = res->pdev;
 	if (!pdev->dev.of_node) {
 		dprintk(CVP_ERR, "DT node not found\n");
 		return -ENOENT;
@@ -903,6 +911,14 @@ int cvp_read_platform_resources_from_dt(
 	if (rc) {
 		dprintk(CVP_ERR, "Failed to load reg table: %d\n", rc);
 		goto err_load_reg_table;
+	}
+
+	rc = of_property_read_u32(pdev->dev.of_node, "soc-ver", &core->soc_version);
+	if (rc) {
+		dprintk(CVP_WARN,
+			"%s: %d while reading DT for \"soc-ver\" default to 0x10000\n",
+			__func__, rc);
+		core->soc_version = 0x10000;
 	}
 
 	rc = msm_cvp_load_ipcc_regs(res);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -104,7 +104,7 @@ static int read_platform_resources(struct msm_cvp_core *core,
 	if (pdev->dev.of_node) {
 		/* Target supports DT, parse from it */
 		rc = cvp_read_platform_resources_from_drv_data(core);
-		rc = cvp_read_platform_resources_from_dt(&core->resources);
+		rc = cvp_read_platform_resources_from_dt(core);
 	} else {
 		dprintk(CVP_ERR, "pdev node is NULL\n");
 		rc = -EINVAL;

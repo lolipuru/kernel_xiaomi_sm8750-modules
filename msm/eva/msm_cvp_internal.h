@@ -354,6 +354,7 @@ struct msm_cvp_core {
 	struct delayed_work fw_unload_work;
 	struct work_struct ssr_work;
 	enum hal_ssr_trigger_type ssr_type;
+	u32 soc_version;
 	u32 smmu_fault_count;
 	u32 last_fault_addr;
 	u32 ssr_count;

@@ -1160,6 +1160,7 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 	int rc = 0;
 	u32 ctrl_init_val = 0, ctrl_status = 0, count = 0, max_tries = 5000;
 	CVPKERNEL_ATRACE_BEGIN("__boot_firmware");
+
 	/*
 	 * Hand off control of regulators to h/w _after_ enabling clocks.
 	 * Note that the GDSC will turn off when switching from normal
@@ -4282,6 +4283,7 @@ fail_to_set_ubwc_config:
 
 static int __iris_power_on(struct iris_hfi_device *device)
 {
+	struct msm_cvp_core *core;
 	int rc = 0;
 
 	if (device->power_enabled)
@@ -4298,6 +4300,14 @@ static int __iris_power_on(struct iris_hfi_device *device)
 	rc = call_iris_op(device, power_on_controller, device);
 	if (rc)
 		goto fail_enable_controller;
+
+	/* Remove below 2 register writes after HW_VERSION has valid version */
+	core = cvp_driver->cvp_core;
+	__write_register(device, CVP_WRAPPER_SPARE_0, core->soc_version);
+
+	if (core->soc_version == 0x20000)
+		/* Enable HW ECO, specifically for Pakala EVA */
+		__write_register(device, CVP_CC_SPARE1, 1);
 
 	rc = call_iris_op(device, power_on_core, device);
 	if (rc)
