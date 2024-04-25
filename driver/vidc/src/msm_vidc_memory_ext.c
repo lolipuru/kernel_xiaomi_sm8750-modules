@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-buf.h>
@@ -460,9 +460,9 @@ static int msm_vidc_memory_unmap_free_ext(struct msm_vidc_core *core, struct msm
 	return rc;
 }
 
-struct msm_vidc_memory_ops *get_mem_ops_ext(void)
+const struct msm_vidc_memory_ops *get_mem_ops_ext(void)
 {
-	struct msm_vidc_memory_ops *mem_ops = get_mem_ops();
+	const struct msm_vidc_memory_ops *mem_ops = get_mem_ops();
 	static struct msm_vidc_memory_ops mem_ops_ext;
 
 	memcpy(&mem_ops_ext, mem_ops, sizeof(struct msm_vidc_memory_ops));

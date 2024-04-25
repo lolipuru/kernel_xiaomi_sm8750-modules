@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "venus_hfi_queue.h"
@@ -418,6 +418,10 @@ void venus_hfi_queue_deinit(struct msm_vidc_core *core)
 	call_mem_op(core, iommu_unmap, core, &core->fence_reg.mem);
 	call_mem_op(core, iommu_unmap, core, &core->qtimer_reg.mem);
 	call_mem_op(core, memory_unmap_free, core, &core->mmap_buf.mem);
+	if (core->capabilities[SUPPORTS_SYNX_FENCE].value) {
+		call_mem_op(core, mem_dma_unmap_page, core,
+			    &core->synx_fence_data.queue);
+	}
 
 	for (i = 0; i < VIDC_IFACEQ_NUMQ; i++) {
 		core->iface_queues[i].q_hdr = NULL;
@@ -616,6 +620,20 @@ int venus_hfi_queue_init(struct msm_vidc_core *core)
 	core->sfr.mem_size = ALIGNED_SFR_SIZE;
 	/* write sfr buffer size in first word */
 	*((u32 *)core->sfr.align_virtual_addr) = core->sfr.mem_size;
+
+	/* map synx fence tx/rx queue buffer */
+	if (core->capabilities[SUPPORTS_SYNX_FENCE].value) {
+		/*
+		 * queue memory is already allocated by synx fence
+		 * driver during msm_vidc_synx_fence_register(..) call
+		 */
+		rc = call_mem_op(core, mem_dma_map_page, core,
+				 &core->synx_fence_data.queue);
+		if (rc) {
+			d_vpr_e("%s: synx fence queue buffer map failed\n", __func__);
+			goto fail_alloc_queue;
+		}
+	}
 
 	/* map aon_reg registers */
 	rc = venus_hfi_iommu_map_registers(core, MSM_VIDC_AON,
