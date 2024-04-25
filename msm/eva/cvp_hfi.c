@@ -837,9 +837,6 @@ static int __read_gcc_register(struct iris_hfi_device *device, u32 reg)
 
 	base_addr = device->cvp_hal_data->gcc_reg_base;
 
-	if (true)
-		return rc;
-
 	rc = readl_relaxed(base_addr + reg);
 	/*
 	 * Memory barrier to make sure value is read correctly from the
@@ -1270,6 +1267,7 @@ static void cvp_dump_csr(struct iris_hfi_device *dev)
 		return;
 	if (!dev->power_enabled || dev->reg_dumped)
 		return;
+
 	reg = __read_register(dev, CVP_WRAPPER_CPU_STATUS);
 	dprintk(CVP_ERR, "CVP_WRAPPER_CPU_STATUS: %x\n", reg);
 	reg = __read_register(dev, CVP_CPU_CS_SCIACMDARG0);
@@ -6290,6 +6288,40 @@ int cvp_iris_hfi_initialize(struct cvp_hfi_ops *ops_tbl,
 
 err_iris_hfi_init:
 	return rc;
+}
+
+void cvp_clock_reg_print(struct iris_hfi_device *dev)
+{
+	u32 reg;
+
+	dprintk(CVP_ERR, "%s Clock Controller Debug Prints:\n");
+
+	reg = __read_register(dev, CVP_CC_MVS0C_GDSCR);
+	dprintk(CVP_ERR, "CVP_CC_MVS0C_GDSCR: %x\n", reg);
+	reg = __read_register(dev, CVP_CC_MVS0C_CBCR);
+	dprintk(CVP_ERR, "CVP_CC_MVS0C_CBCR: %x\n", reg);
+	reg = __read_register(dev, CVP_CC_MVS0_GDSCR);
+	dprintk(CVP_ERR, "CVP_CC_MVS0_GDSCR: %x\n", reg);
+	reg = __read_register(dev, CVP_CC_MVS0_CBCR);
+	dprintk(CVP_ERR, "CVP_CC_MVS0_CBCR: %x\n", reg);
+	reg = __read_register(dev, CVP_CC_AHB_CBCR);
+	dprintk(CVP_ERR, "CVP_CC_AHB_CBCR: %x\n", reg);
+	reg = __read_register(dev, CVP_CC_SLEEP_CBCR);
+	dprintk(CVP_ERR, "CVP_CC_SLEEP_CBCR: %x\n", reg);
+
+	reg = __read_register(dev, CVP_CC_MVS0_FREERUN_CBCR);
+	dprintk(CVP_ERR, "CVP_CC_MVS0_FREERUN_CBCR: %x\n", reg);
+	reg = __read_register(dev, CVP_CC_MVS0C_FREERUN_CBCR);
+	dprintk(CVP_ERR, "CVP_CC_MVS0C_FREERUN_CBCR: %x\n", reg);
+
+	reg = __read_gcc_register(dev, CVP_GCC_EVA_AXI0_CBCR);
+	dprintk(CVP_ERR, "CVP_GCC_EVA_AXI0_CBCR: %x\n", reg);
+	reg = __read_gcc_register(dev, CVP_GCC_EVA_AXI0C_CBCR);
+	dprintk(CVP_ERR, "CVP_GCC_EVA_AXI0C_CBCR: %x\n", reg);
+	reg = __read_gcc_register(dev, CVP_GCC_EVA_AHB_CBCR);
+	dprintk(CVP_ERR, "CVP_GCC_EVA_AHB_CBCR: %x\n", reg);
+	reg = __read_gcc_register(dev, CVP_GCC_EVA_XO_CBCR);
+	dprintk(CVP_ERR, "CVP_GCC_EVA_XO_CBCR: %x\n", reg);
 }
 
 

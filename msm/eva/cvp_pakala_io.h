@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __CVP_PAKALA_IO_H__
@@ -309,9 +309,17 @@
 #define CVP_CC_MVS0C_CBCR			(CVP_CC_BASE_OFFS + 0x4C)
 #define CVP_CC_MVS0_GDSCR			(CVP_CC_BASE_OFFS + 0x68)
 #define CVP_CC_MVS0_CBCR			(CVP_CC_BASE_OFFS + 0x7C)
-#define CVP_CC_AHB_CBCR			(CVP_CC_BASE_OFFS + 0xF4)
-#define CVP_CC_SLEEP_CBCR			(CVP_CC_BASE_OFFS + 0x150)
+#define CVP_CC_AHB_CBCR				(CVP_CC_BASE_OFFS + 0xA4)
+#define CVP_CC_SLEEP_CBCR			(CVP_CC_BASE_OFFS + 0xF8)
 
-#define CVP_GCC_EVA_AXI0_CBCR		(0x8F008)
+
+/*Added to debug HW Hang*/
+#define CVP_GCC_EVA_AHB_CBCR			(0x8F004)
+#define CVP_GCC_EVA_AXI0_CBCR			(0x8F008)
+#define CVP_GCC_EVA_AXI0C_CBCR			(0x8F018)
+#define CVP_GCC_EVA_XO_CBCR			(0x8F01C)
+
+#define CVP_CC_MVS0_FREERUN_CBCR		(CVP_CC_BASE_OFFS + 0x8C)
+#define CVP_CC_MVS0C_FREERUN_CBCR		(CVP_CC_BASE_OFFS + 0x5C)
 
 #endif

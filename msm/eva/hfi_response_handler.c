@@ -15,6 +15,7 @@
 #include "msm_cvp_debug.h"
 #include "cvp_hfi.h"
 #include "msm_cvp_common.h"
+#include "cvp_core_hfi.h"
 
 extern struct msm_cvp_drv *cvp_driver;
 
@@ -556,6 +557,7 @@ static int hfi_process_session_cvp_msg(u32 device_id,
 	struct cvp_session_msg *sess_msg;
 	struct msm_cvp_inst *inst = NULL;
 	struct msm_cvp_core *core;
+	struct iris_hfi_device *dev;
 	unsigned int session_id;
 	struct cvp_session_queue *sq;
 
@@ -569,6 +571,7 @@ static int hfi_process_session_cvp_msg(u32 device_id,
 	session_id = get_msg_session_id(pkt);
 	core = cvp_driver->cvp_core;
 	inst = cvp_get_inst_from_id(core, session_id);
+	dev = core->dev_ops->hfi_device_data;
 
 	if (!inst) {
 		dprintk(CVP_ERR, "%s: invalid session\n", __func__);
@@ -601,6 +604,11 @@ static int hfi_process_session_cvp_msg(u32 device_id,
 	list_add_tail(&sess_msg->node, &sq->msgs);
 	sq->msg_count++;
 	spin_unlock(&sq->lock);
+
+	if (get_msg_errorcode(pkt) == HFI_ERR_SESSION_HW_HANG_DETECTED) {
+		dprintk(CVP_ERR, "%s Hardware Hang Observed:\n");
+		cvp_clock_reg_print(dev);
+	}
 
 	wake_up_all(&sq->wq);
 
