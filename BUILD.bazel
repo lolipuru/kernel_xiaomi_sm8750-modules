@@ -13,6 +13,10 @@ define_modules("blair", "consolidate")
 
 define_modules("blair", "perf")
 
+define_modules("parrot", "consolidate")
+
+define_modules("parrot", "perf")
+
 package(
     default_visibility = [
         "//visibility:public",
