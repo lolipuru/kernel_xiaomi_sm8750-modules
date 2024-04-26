@@ -261,7 +261,6 @@ static int qts_irq_registration(struct qts_data *qts_data)
 {
 	int ret = 0;
 
-	qts_data->irq_gpio_flags = IRQF_TRIGGER_RISING;
 	pr_debug("irq:%d, flag:%x\n", qts_data->irq, qts_data->irq_gpio_flags);
 	ret = request_threaded_irq(qts_data->irq, NULL, qts_irq_handler,
 				qts_data->irq_gpio_flags | IRQF_ONESHOT,
@@ -441,7 +440,7 @@ static void qts_trusted_touch_tvm_vm_mode_enable(struct qts_data *qts_data)
 	kfree(acl_desc);
 	kfree(sgl_desc);
 
-	irq = gh_irq_accept(qts_data->vm_info->irq_label, -1, IRQ_TYPE_EDGE_RISING);
+	irq = gh_irq_accept(qts_data->vm_info->irq_label, -1, qts_data->irq_accept_flags);
 	qts_trusted_touch_intr_gpio_toggle(qts_data, false);
 	if (irq < 0) {
 		pr_err("failed to accept irq\n");
@@ -1331,6 +1330,20 @@ static bool qts_ts_is_primary(struct kobject *kobj)
 		return false;
 }
 
+static void qts_adjust_irq_flags(u32 in_irq_flag, u32 *out_irq_flag,
+	u32 *out_irq_accept_flag)
+{
+	if ((in_irq_flag == IRQF_TRIGGER_LOW) ||
+		(in_irq_flag == IRQF_TRIGGER_HIGH)) {
+		*out_irq_flag = IRQF_TRIGGER_HIGH;
+		*out_irq_accept_flag = IRQ_TYPE_LEVEL_HIGH;
+	} else {
+		/* Use rising as default irq flag */
+		*out_irq_flag = IRQF_TRIGGER_RISING;
+		*out_irq_accept_flag = IRQ_TYPE_EDGE_RISING;
+	}
+}
+
 static ssize_t trusted_touch_enable_show(struct kobject *kobj, struct kobj_attribute *attr,
 				char *buf)
 {
@@ -1789,6 +1802,9 @@ int qts_client_register(struct qts_vendor_data qts_vendor_data)
 	qts_data->vendor_ops = qts_vendor_data.qts_vendor_ops;
 	qts_data->schedule_suspend = qts_vendor_data.schedule_suspend;
 	qts_data->schedule_resume = qts_vendor_data.schedule_resume;
+
+	qts_adjust_irq_flags(qts_vendor_data.irq_gpio_flags,
+		&qts_data->irq_gpio_flags, &qts_data->irq_accept_flags);
 
 	qts_trusted_touch_init(qts_data);
 
