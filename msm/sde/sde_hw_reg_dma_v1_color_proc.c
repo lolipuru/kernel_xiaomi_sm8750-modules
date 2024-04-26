@@ -34,7 +34,7 @@
  * When disabling INIT property, we don't want to reset those bits since
  * they are needed for both LTM histogram and VLUT.
  */
-#define REG_DMA_LTM_INIT_ENABLE_OP_MASK 0xFFFF8CAB
+#define REG_DMA_LTM_INIT_ENABLE_OP_MASK 0x1100153
 #define REG_DMA_LTM_INIT_DISABLE_OP_MASK 0xFFFF8CAF
 #define REG_DMA_LTM_ROI_OP_MASK 0xFEFFFFFF
 /**
@@ -144,6 +144,7 @@ enum ltm_vlut_ops_bitmask {
 	ltm_dither = BIT(1),
 	ltm_roi = BIT(2),
 	ltm_vlut = BIT(3),
+	ltm_init = BIT(4),
 	ltm_ops_max = BIT(31),
 };
 
@@ -4380,6 +4381,7 @@ static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 
 		ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] &= ~ltm_dither;
 		ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] &= ~ltm_unsharp;
+		ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] &= ~ltm_init;
 		REG_DMA_SETUP_OPS(dma_write_cfg, 0x04, &opmode, sizeof(opmode),
 			REG_SINGLE_MODIFY, 0, 0,
 			REG_DMA_LTM_INIT_DISABLE_OP_MASK);
@@ -4500,24 +4502,20 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
 		}
 
 		if (init_param->init_param_01) {
-			if (ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] & ltm_vlut)
-				opmode |= BIT(6);
 			ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] |= ltm_dither;
 			opmode |= ((init_param->init_param_02 & 0x7) << 12);
 		} else {
-			opmode &= ~BIT(6);
 			ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] &= ~ltm_dither;
 		}
 
 		if (init_param->init_param_03) {
-			if (ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] & ltm_vlut)
-				opmode |= BIT(4);
 			ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] |= ltm_unsharp;
 			opmode |= ((init_param->init_param_04 & 0x3) << 8);
 		} else {
-			opmode &= ~BIT(4);
 			ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] &= ~ltm_unsharp;
 		}
+
+		ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] |= ltm_init;
 
 		/* broadcast feature is not supported with REG_SINGLE_MODIFY */
 		REG_DMA_SETUP_OPS(dma_write_cfg, 0x04, &opmode, sizeof(opmode),
@@ -4654,8 +4652,6 @@ static void reg_dmav1_setup_ltm_roi_v1_common(
 			return;
 		}
 
-		if (ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] & ltm_vlut)
-			opmode |= BIT(24);
 		ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] |= ltm_roi;
 
 		REG_DMA_SETUP_OPS(dma_write_cfg, 0x04, &opmode, sizeof(opmode),
@@ -4856,6 +4852,13 @@ static int reg_dmav1_setup_ltm_vlutv1_common(struct sde_hw_dspp *ctx, void *cfg,
 	if (rc) {
 		if (rc != -EALREADY)
 			DRM_ERROR("failed to get the blk info\n");
+		return -EINVAL;
+	}
+
+	/* vlut is set before ltm init */
+	if (!(ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] & ltm_init)) {
+		DRM_DEBUG_DRIVER("vlut is set before ltm init\n");
+		SDE_EVT32(ctx->idx, 0x2222);
 		return -EINVAL;
 	}
 
