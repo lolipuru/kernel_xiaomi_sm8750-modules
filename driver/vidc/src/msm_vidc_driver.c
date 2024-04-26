@@ -2488,6 +2488,14 @@ static int msm_vidc_queue_buffer(struct msm_vidc_inst *inst, struct msm_vidc_buf
 			return rc;
 	}
 
+	/**
+	 * v4l2 limitation: during qbuf(on capture port) v4l2 doesn't propagate data_offset
+	 * from v4l2 to vb2 buffer
+	 */
+	if (is_encode_session(inst) && is_output_buffer(buf->type) &&
+		inst->capabilities[CAPTURE_DATA_OFFSET].value)
+		buf->data_offset = inst->capabilities[CAPTURE_DATA_OFFSET].value;
+
 	print_vidc_buffer(VIDC_HIGH, "high", "qbuf", inst, buf);
 	meta = get_meta_buffer(inst, buf);
 	if (meta && meta->attr & MSM_VIDC_ATTR_DEFERRED)
