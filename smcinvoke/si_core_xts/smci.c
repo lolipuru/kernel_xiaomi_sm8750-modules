@@ -1390,11 +1390,20 @@ static long process_invoke_req(struct file *filp, unsigned int cmd, unsigned lon
 
 	if (typeof_si_object(object) == SI_OT_ROOT) {
 		if ((u_req.op == IClientEnv_OP_notifyDomainChange) ||
-			(u_req.op == IClientEnv_OP_registerWithCredentials) ||
 			(u_req.op == IClientEnv_OP_adciAccept) ||
-			(u_req.op == IClientEnv_OP_adciShutdown))
+			(u_req.op == IClientEnv_OP_adciShutdown)) {
+			pr_err("invalid rootenv op\n");
 
 			return -EINVAL;
+		}
+
+		if (u_req.op == IClientEnv_OP_registerWithCredentials) {
+			if (u_req.counts != OBJECT_COUNTS_PACK(0, 0, 1, 1)) {
+				pr_err("IClientEnv_OP_registerWithCredentials: incorrect number of arguments.\n");
+
+				return -EINVAL;
+			}
+		}
 	}
 
 	if (u_req.argsize != sizeof(union smcinvoke_arg))
@@ -1427,6 +1436,17 @@ static long process_invoke_req(struct file *filp, unsigned int cmd, unsigned lon
 		ret = -EFAULT;
 
 		goto out_failed;
+	}
+
+	if (typeof_si_object(object) == SI_OT_ROOT) {
+		if (u_req.op == IClientEnv_OP_registerWithCredentials) {
+			if (U_HANDLE_IS_NULL(u_args[0].o.fd)) {
+				pr_err("IClientEnv_OP_registerWithCredentials: privileged credential.\n");
+
+				ret = -EINVAL;
+				goto out_failed;
+			}
+		}
 	}
 
 	pr_info("%s object invocation with %d arguments (%04x) and op %d.\n",

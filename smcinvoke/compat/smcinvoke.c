@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "smcinvoke: %s: " fmt, __func__
@@ -2821,13 +2821,21 @@ static long process_invoke_req(struct file *filp, unsigned int cmd,
 	}
 
 	if (context_type == SMCINVOKE_OBJ_TYPE_TZ_OBJ &&
-			tzobj->tzhandle == SMCINVOKE_TZ_ROOT_OBJ &&
-			(req.op == IClientEnv_OP_notifyDomainChange ||
-			req.op == IClientEnv_OP_registerWithCredentials ||
+		tzobj->tzhandle == SMCINVOKE_TZ_ROOT_OBJ) {
+
+		if (req.op == IClientEnv_OP_notifyDomainChange ||
 			req.op == IClientEnv_OP_adciAccept ||
-			req.op == IClientEnv_OP_adciShutdown)) {
-		pr_err("invalid rootenv op\n");
-		return -EINVAL;
+			req.op == IClientEnv_OP_adciShutdown) {
+			pr_err("invalid rootenv op\n");
+			return -EINVAL;
+		}
+
+		if (req.op == IClientEnv_OP_registerWithCredentials) {
+			if (req.counts != OBJECT_COUNTS_PACK(0, 0, 1, 1)) {
+				pr_err("Invalid object count in op registerWithCredentials\n");
+				return -EINVAL;
+			}
+		}
 	}
 
 	nr_args = OBJECT_COUNTS_NUM_buffers(req.counts) +
@@ -2848,6 +2856,17 @@ static long process_invoke_req(struct file *filp, unsigned int cmd,
 		} else {
 			memcpy(args_buf, (void *)(req.args),
 					nr_args * req.argsize);
+		}
+	}
+
+	if (context_type == SMCINVOKE_OBJ_TYPE_TZ_OBJ &&
+		tzobj->tzhandle == SMCINVOKE_TZ_ROOT_OBJ) {
+		if (req.op == IClientEnv_OP_registerWithCredentials) {
+			if (UHANDLE_IS_NULL(args_buf[0].o.fd)) {
+				pr_err("Invalid Credential object\n");
+				ret = -EINVAL;
+				goto out;
+			}
 		}
 	}
 
