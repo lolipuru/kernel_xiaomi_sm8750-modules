@@ -1,13 +1,5 @@
-/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #if !defined(__RMNET_HOOKS__) || defined(__RMNET_HOOK_MULTIREAD__)
@@ -154,6 +146,35 @@ RMNET_MODULE_HOOK(wlan_ingress_rx_handler,
 	RMNET_MODULE_HOOK_PROTOCOL(struct sk_buff **pskb),
 	RMNET_MODULE_HOOK_ARGS(pskb),
 	RMNET_MODULE_HOOK_RETURN_TYPE(rx_handler_result_t)
+);
+
+RMNET_MODULE_HOOK(perf_cmd_ingress,
+	RMNET_MODULE_HOOK_NUM(PERF_CMD_INGRESS),
+	RMNET_MODULE_HOOK_PROTOCOL(struct sk_buff *skb),
+	RMNET_MODULE_HOOK_ARGS(skb),
+	RMNET_MODULE_HOOK_RETURN_TYPE(void)
+);
+
+RMNET_MODULE_HOOK(perf_coal_common_stat,
+	RMNET_MODULE_HOOK_NUM(PERF_COAL_COMMON_STAT),
+	RMNET_MODULE_HOOK_PROTOCOL(uint8_t mux_id, uint32_t type),
+	RMNET_MODULE_HOOK_ARGS(mux_id, type),
+	RMNET_MODULE_HOOK_RETURN_TYPE(void)
+);
+
+RMNET_MODULE_HOOK(perf_coal_stat,
+	RMNET_MODULE_HOOK_NUM(PERF_COAL_STAT),
+	RMNET_MODULE_HOOK_PROTOCOL(uint8_t mux_id, uint8_t veid,
+				   uint64_t len, uint32_t type),
+	RMNET_MODULE_HOOK_ARGS(mux_id, veid, len, type),
+	RMNET_MODULE_HOOK_RETURN_TYPE(void)
+);
+
+RMNET_MODULE_HOOK(perf_seg_stat,
+	RMNET_MODULE_HOOK_NUM(PERF_SEG_STAT),
+	RMNET_MODULE_HOOK_PROTOCOL(uint8_t mux_id, struct sk_buff *skb),
+	RMNET_MODULE_HOOK_ARGS(mux_id, skb),
+	RMNET_MODULE_HOOK_RETURN_TYPE(void)
 );
 
 #endif

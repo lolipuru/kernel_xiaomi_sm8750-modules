@@ -1,13 +1,5 @@
-/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __RMNET_MODULE_H__
@@ -35,6 +27,10 @@ enum {
 	RMNET_MODULE_HOOK_APS_DATA_REPORT,
 	RMNET_MODULE_HOOK_PERF_INGRESS_RX_HANDLER,
 	RMNET_MODULE_HOOK_WLAN_INGRESS_RX_HANDLER,
+	RMNET_MODULE_HOOK_PERF_CMD_INGRESS,
+	RMNET_MODULE_HOOK_PERF_COAL_COMMON_STAT,
+	RMNET_MODULE_HOOK_PERF_COAL_STAT,
+	RMNET_MODULE_HOOK_PERF_SEG_STAT,
 	__RMNET_MODULE_NUM_HOOKS,
 };
 

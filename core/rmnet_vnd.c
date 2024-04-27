@@ -1,5 +1,5 @@
 /* Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -114,6 +114,9 @@ static netdev_tx_t rmnet_vnd_start_xmit(struct sk_buff *skb,
 
 		if (RMNET_APS_LLC(skb->priority))
 			low_latency = true;
+
+		if (skb_is_gso(skb))
+			rmnet_module_hook_perf_seg_stat(priv->mux_id, skb);
 
 		if ((low_latency || RMNET_APS_LLB(skb->priority)) &&
 		    skb_is_gso(skb)) {

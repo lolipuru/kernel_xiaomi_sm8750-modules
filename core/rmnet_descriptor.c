@@ -48,6 +48,18 @@
 #define rmnet_descriptor_for_each_frag_safe_reverse(p, tmp, desc) \
 	list_for_each_entry_safe_reverse(p, tmp, &desc->frags, list)
 
+/* These functions are ensure that line doesn't exceed 80 chars */
+static void rmnet_common_coal_stat(uint8_t mux_id, uint32_t type)
+{
+	rmnet_module_hook_perf_coal_common_stat(mux_id, type);
+}
+
+static void rmnet_coal_stat(uint8_t mux_id, uint8_t veid, uint64_t len,
+			    uint32_t type)
+{
+	rmnet_module_hook_perf_coal_stat(mux_id, veid, len, type);
+}
+
 struct rmnet_frag_descriptor *
 rmnet_get_frag_descriptor(struct rmnet_port *port)
 {
@@ -1236,6 +1248,7 @@ static void __rmnet_frag_segment_data(struct rmnet_frag_descriptor *coal_desc,
 
 	new_desc->csum_valid = csum_valid;
 	priv->stats.coal.coal_reconstruct++;
+	rmnet_common_coal_stat(priv->mux_id, 1);
 
 	/* Update meta information to move past the data we just segmented */
 	coal_desc->data_offset += dlen;
@@ -1402,6 +1415,15 @@ rmnet_frag_segment_coal_data(struct rmnet_frag_descriptor *coal_desc,
 		coal_desc->trans_len = th->doff * 4;
 		priv->stats.coal.coal_tcp++;
 		priv->stats.coal.coal_tcp_bytes += coal_desc->len;
+
+		if (coal_desc->ip_proto == 4)
+			rmnet_coal_stat(priv->mux_id,
+					coal_hdr.virtual_channel_id,
+					coal_desc->len, 0);
+		else
+			rmnet_coal_stat(priv->mux_id,
+					coal_hdr.virtual_channel_id,
+					coal_desc->len, 2);
 	} else if (coal_desc->trans_proto == IPPROTO_UDP) {
 		struct udphdr *uh, __uh;
 
@@ -1416,6 +1438,16 @@ rmnet_frag_segment_coal_data(struct rmnet_frag_descriptor *coal_desc,
 		priv->stats.coal.coal_udp_bytes += coal_desc->len;
 		if (coal_desc->ip_proto == 4 && !uh->check)
 			zero_csum = true;
+
+		if (coal_desc->ip_proto == 4)
+			rmnet_coal_stat(priv->mux_id,
+					coal_hdr.virtual_channel_id,
+					coal_desc->len, 1);
+
+		else
+			rmnet_coal_stat(priv->mux_id,
+					coal_hdr.virtual_channel_id,
+					coal_desc->len, 3);
 	} else {
 		priv->stats.coal.coal_trans_invalid++;
 		return;
@@ -1466,8 +1498,11 @@ rmnet_frag_segment_coal_data(struct rmnet_frag_descriptor *coal_desc,
 			 */
 			if (!gro) {
 				coal_desc->gso_segs = 1;
-				if (csum_err)
+				if (csum_err) {
 					priv->stats.coal.coal_csum_err++;
+					rmnet_common_coal_stat(priv->mux_id,
+							       0);
+				}
 
 				__rmnet_frag_segment_data(coal_desc, port,
 							  list, total_pkt,
@@ -1477,6 +1512,7 @@ rmnet_frag_segment_coal_data(struct rmnet_frag_descriptor *coal_desc,
 
 			if (csum_err) {
 				priv->stats.coal.coal_csum_err++;
+				rmnet_common_coal_stat(priv->mux_id, 0);
 
 				/* Segment out the good data */
 				if (coal_desc->gso_segs)
@@ -1515,29 +1551,37 @@ static void rmnet_frag_data_log_close_stats(struct rmnet_priv *priv, u8 type,
 	switch (type) {
 	case RMNET_MAP_COAL_CLOSE_NON_COAL:
 		stats->non_coal++;
+		rmnet_common_coal_stat(priv->mux_id, 2);
 		break;
 	case RMNET_MAP_COAL_CLOSE_IP_MISS:
 		stats->ip_miss++;
+		rmnet_common_coal_stat(priv->mux_id, 3);
 		break;
 	case RMNET_MAP_COAL_CLOSE_TRANS_MISS:
 		stats->trans_miss++;
+		rmnet_common_coal_stat(priv->mux_id, 4);
 		break;
 	case RMNET_MAP_COAL_CLOSE_HW:
 		switch (code) {
 		case RMNET_MAP_COAL_CLOSE_HW_NL:
 			stats->hw_nl++;
+			rmnet_common_coal_stat(priv->mux_id, 5);
 			break;
 		case RMNET_MAP_COAL_CLOSE_HW_PKT:
 			stats->hw_pkt++;
+			rmnet_common_coal_stat(priv->mux_id, 6);
 			break;
 		case RMNET_MAP_COAL_CLOSE_HW_BYTE:
 			stats->hw_byte++;
+			rmnet_common_coal_stat(priv->mux_id, 7);
 			break;
 		case RMNET_MAP_COAL_CLOSE_HW_TIME:
 			stats->hw_time++;
+			rmnet_common_coal_stat(priv->mux_id, 8);
 			break;
 		case RMNET_MAP_COAL_CLOSE_HW_EVICT:
 			stats->hw_evict++;
+			rmnet_common_coal_stat(priv->mux_id, 9);
 			break;
 		default:
 			break;
@@ -1545,6 +1589,7 @@ static void rmnet_frag_data_log_close_stats(struct rmnet_priv *priv, u8 type,
 		break;
 	case RMNET_MAP_COAL_CLOSE_COAL:
 		stats->coal++;
+		rmnet_common_coal_stat(priv->mux_id, 10);
 		break;
 	default:
 		break;
