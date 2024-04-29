@@ -2497,8 +2497,8 @@ handle_irq:
 				__func__);
 			break;
 		case SWRM_INTERRUPT_STATUS_CHANGE_ENUM_SLAVE_STATUS:
-			swrm_enable_slave_irq(swrm);
 			mutex_lock(&enumeration_lock);
+			swrm_enable_slave_irq(swrm);
 			swrm_process_change_enum_slave_status(swrm);
 			mutex_unlock(&enumeration_lock);
 			break;
