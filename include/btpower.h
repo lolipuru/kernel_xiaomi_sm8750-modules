@@ -676,6 +676,7 @@ struct platform_pwr_data {
 	struct work_struct wq_pwr_voting;
 	struct sk_buff_head rxq;
 	struct mutex pwr_mtx;
+	struct mutex pwr_release;
 	bool is_fmd_mode_enable;
 	struct nvmem_cell *nvmem_cell;
 	u32 fmd_clk_gpio_id;
