@@ -4301,14 +4301,6 @@ static int __iris_power_on(struct iris_hfi_device *device)
 	if (rc)
 		goto fail_enable_controller;
 
-	/* Remove below 2 register writes after HW_VERSION has valid version */
-	core = cvp_driver->cvp_core;
-	__write_register(device, CVP_WRAPPER_SPARE_0, core->soc_version);
-
-	if (core->soc_version == 0x20000)
-		/* Enable HW ECO, specifically for Pakala EVA */
-		__write_register(device, CVP_CC_SPARE1, 1);
-
 	rc = call_iris_op(device, power_on_core, device);
 	if (rc)
 		goto fail_enable_core;
@@ -4328,6 +4320,16 @@ static int __iris_power_on(struct iris_hfi_device *device)
 	/* Thomas input to debug CPU NoC hang */
 	__write_register(device, CVP_NOC_SBM_FAULTINEN0_LOW, 0x1);
 	__write_register(device, CVP_NOC_ERR_MAINCTL_LOW_OFFS, 0x3);
+
+	/* Remove below 2 register writes after HW_VERSION has valid version */
+	core = cvp_driver->cvp_core;
+	if (core) {
+		__write_register(device, CVP_WRAPPER_SPARE_0, core->soc_version);
+
+		if (core->soc_version == 0x20000)
+			/* Enable HW ECO, specifically for Pakala EVA */
+			__write_register(device, CVP_CC_SPARE1, 1);
+	}
 
 	/*
 	 * Re-program all of the registers that get reset as a result of
