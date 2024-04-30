@@ -1167,6 +1167,7 @@ static int __cam_isp_ctx_enqueue_init_request(
 {
 	int rc = 0;
 	struct cam_ctx_request                *req_old;
+	struct cam_ctx_request                *req_pf;
 	struct cam_isp_ctx_req                *req_isp_old;
 	struct cam_isp_ctx_req                *req_isp_new;
 	struct cam_isp_prepare_hw_update_data *req_update_old;
@@ -1228,8 +1229,15 @@ static int __cam_isp_ctx_enqueue_init_request(
 				"Enqueue req id: %llu, to old req: %llu,, ctx_idx: %u, link: 0x%x",
 				req->request_id, req_old->request_id, ctx->ctx_id, ctx->link_hdl);
 
-			memcpy(&req_old->pf_data, &req->pf_data,
-				sizeof(struct cam_hw_mgr_pf_request_info));
+			if (req_old->packet) {
+				cam_common_mem_free(req_old->packet);
+				req_old->packet = req->packet;
+				req->packet = NULL;
+			}
+
+			/* Update packet pointer for pf data req */
+			req_pf = (struct cam_ctx_request *)req_old->pf_data.req;
+			req_pf->packet = req_old->packet;
 
 			if (req_isp_new->hw_update_data.num_reg_dump_buf) {
 				req_update_new = &req_isp_new->hw_update_data;
@@ -1268,6 +1276,8 @@ static int __cam_isp_ctx_enqueue_init_request(
 			req_isp_old->num_cfg += req_isp_new->num_cfg;
 			req_old->request_id = req->request_id;
 			list_splice_init(&req->buf_tracker, &req_old->buf_tracker);
+
+			list_add_tail(&req->list, &ctx->free_req_list);
 		}
 	} else {
 		CAM_WARN(CAM_ISP,
@@ -1283,9 +1293,6 @@ end:
 static inline void __cam_isp_ctx_move_req_to_free_list(
 	struct cam_context *ctx, struct cam_ctx_request *req)
 {
-	struct cam_ctx_request *req_pf =
-		(struct cam_ctx_request *)req->pf_data.req;
-
 	CAM_DBG(CAM_ISP,
 		"Free req id: %lld, packet: 0x%x, ctx_idx: %u, link: 0x%x",
 		req->request_id, req->packet, ctx->ctx_id, ctx->link_hdl);
@@ -1295,23 +1302,6 @@ static inline void __cam_isp_ctx_move_req_to_free_list(
 	}
 
 	list_add_tail(&req->list, &ctx->free_req_list);
-
-	/*
-	 * For ePCR we enqueue init request new to old, keep old
-	 * req then copy new pf_data to old, so we also need free
-	 * pf data req packet, and move it to free list.
-	 */
-	if (req_pf && (req_pf != req)) {
-		CAM_DBG(CAM_ISP,
-			"Free enqueued req id: %lld, packet: 0x%x, ctx_idx: %u, link: 0x%x",
-			req_pf->request_id, req_pf->packet, ctx->ctx_id, ctx->link_hdl);
-		if (req_pf->packet) {
-			cam_common_mem_free(req_pf->packet);
-			req_pf->packet = NULL;
-		}
-
-		list_add_tail(&req_pf->list, &ctx->free_req_list);
-	}
 }
 
 static char *__cam_isp_ife_sfe_resource_handle_id_to_type(
