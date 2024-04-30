@@ -561,7 +561,7 @@ struct fastrpc_channel_ctx {
 	struct fastrpc_device_node *fdevice;
 	struct gid_list gidlist;
 	struct list_head gmaps;
-	struct fastrpc_rpmsg_log gmsg_log[FASTRPC_DEV_MAX];
+	struct fastrpc_rpmsg_log gmsg_log;
 	/* Secure subsystems like ADSP/SLPI will use secure client */
 	struct wakeup_source *wake_source_secure;
 	/* Non-secure subsystem like CDSP will use regular client */

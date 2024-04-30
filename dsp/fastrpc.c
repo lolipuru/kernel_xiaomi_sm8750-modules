@@ -1493,20 +1493,20 @@ static void fastrpc_update_txmsg_buf(struct fastrpc_channel_ctx *chan,
 	u32 tx_index = 0;
 	struct fastrpc_tx_msg *tx_msg = NULL;
 
-	spin_lock_irqsave(&(chan->gmsg_log[chan->domain_id].tx_lock), flags);
+	spin_lock_irqsave(&(chan->gmsg_log.tx_lock), flags);
 
-	tx_index = chan->gmsg_log[chan->domain_id].tx_index;
-	tx_msg = &(chan->gmsg_log[chan->domain_id].tx_msgs[tx_index]);
+	tx_index = chan->gmsg_log.tx_index;
+	tx_msg = &(chan->gmsg_log.tx_msgs[tx_index]);
 
 	memcpy(&tx_msg->msg, msg, sizeof(struct fastrpc_msg));
 	tx_msg->rpmsg_send_err = rpmsg_send_err;
 	tx_msg->ns = ns;
 
 	tx_index++;
-	chan->gmsg_log[chan->domain_id].tx_index =
+	chan->gmsg_log.tx_index =
 		(tx_index > (GLINK_MSG_HISTORY_LEN - 1)) ? 0 : tx_index;
 
-	spin_unlock_irqrestore(&(chan->gmsg_log[chan->domain_id].tx_lock), flags);
+	spin_unlock_irqrestore(&(chan->gmsg_log.tx_lock), flags);
 }
 
 static void fastrpc_update_rxmsg_buf(struct fastrpc_channel_ctx *chan,
@@ -1518,10 +1518,10 @@ static void fastrpc_update_rxmsg_buf(struct fastrpc_channel_ctx *chan,
 	struct fastrpc_rx_msg *rx_msg = NULL;
 	struct fastrpc_invoke_rspv2 *rsp = NULL;
 
-	spin_lock_irqsave(&(chan->gmsg_log[chan->domain_id].rx_lock), flags);
+	spin_lock_irqsave(&(chan->gmsg_log.rx_lock), flags);
 
-	rx_index = chan->gmsg_log[chan->domain_id].rx_index;
-	rx_msg = &(chan->gmsg_log[chan->domain_id].rx_msgs[rx_index]);
+	rx_index = chan->gmsg_log.rx_index;
+	rx_msg = &(chan->gmsg_log.rx_msgs[rx_index]);
 	rsp = &rx_msg->rsp;
 
 	rsp->ctx = ctx;
@@ -1532,10 +1532,10 @@ static void fastrpc_update_rxmsg_buf(struct fastrpc_channel_ctx *chan,
 	rx_msg->ns = ns;
 
 	rx_index++;
-	chan->gmsg_log[chan->domain_id].rx_index =
+	chan->gmsg_log.rx_index =
 		(rx_index > (GLINK_MSG_HISTORY_LEN - 1)) ? 0 : rx_index;
 
-	spin_unlock_irqrestore(&(chan->gmsg_log[chan->domain_id].rx_lock), flags);
+	spin_unlock_irqrestore(&(chan->gmsg_log.rx_lock), flags);
 }
 
 static inline int fastrpc_getpd_msgidx (int pd) {
