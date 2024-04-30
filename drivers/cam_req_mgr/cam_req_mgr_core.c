@@ -4384,10 +4384,12 @@ end:
 static int cam_req_mgr_cb_notify_msg(
 	struct cam_req_mgr_notify_msg *msg)
 {
-	int                           slot_idx, rc = 0;
-	struct cam_req_mgr_slot      *slot;
-	struct cam_req_mgr_core_link *link = NULL;
-	struct cam_req_mgr_req_queue *in_q = NULL;
+	int                                  i, slot_idx, rc = 0;
+	struct cam_req_mgr_slot             *slot;
+	struct cam_req_mgr_core_link        *link = NULL;
+	struct cam_req_mgr_req_queue        *in_q = NULL;
+	struct cam_req_mgr_connected_device *dev = NULL;
+	struct cam_req_mgr_link_evt_data     evt_data;
 
 	if (!msg) {
 		CAM_ERR(CAM_CRM, "msg is NULL");
@@ -4421,10 +4423,31 @@ static int cam_req_mgr_cb_notify_msg(
 	}
 
 	slot = &in_q->slot[slot_idx];
+	spin_unlock_bh(&link->req.reset_link_spin_lock);
 
 	switch (msg->msg_type) {
-	case CAM_REQ_MGR_MSG_FRAME_SYNC_SHIFT:
-		slot->frame_sync_shift = msg->u.frame_sync_shift;
+	case CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO:
+		slot->frame_sync_shift = msg->u.frame_info.frame_sync_shift;
+
+		for (i = 0; i < link->num_devs; i++) {
+			dev = &link->l_dev[i];
+			if (msg->dev_hdl == dev->dev_hdl)
+				continue;
+
+			evt_data.req_id = msg->req_id;
+			evt_data.dev_hdl = dev->dev_hdl;
+			evt_data.link_hdl = link->link_hdl;
+			evt_data.evt_type = CAM_REQ_MGR_LINK_EVT_SENSOR_FRAME_INFO;
+			evt_data.u.frame_info = msg->u.frame_info;
+
+			if (dev->ops && dev->ops->process_evt) {
+				rc = dev->ops->process_evt(&evt_data);
+				if (rc)
+					CAM_ERR(CAM_CRM,
+						"Failed to set properties on link 0x%x dev 0x%x",
+						link->link_hdl, dev->dev_hdl);
+			}
+		}
 		break;
 	default:
 		rc = -EINVAL;
@@ -4434,7 +4457,6 @@ static int cam_req_mgr_cb_notify_msg(
 			msg->dev_hdl, msg->req_id);
 		break;
 	}
-	spin_unlock_bh(&link->req.reset_link_spin_lock);
 
 	return rc;
 }

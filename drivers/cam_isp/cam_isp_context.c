@@ -5460,6 +5460,8 @@ static int __cam_isp_ctx_apply_default_req_settings(
 	if (isp_ctx->use_default_apply) {
 		hw_cmd_args.ctxt_to_hw_map = isp_ctx->hw_ctx;
 		hw_cmd_args.cmd_type = CAM_HW_MGR_CMD_INTERNAL;
+		isp_hw_cmd_args.u.default_cfg_params.last_applied_max_pd_req =
+			apply->last_applied_max_pd_req;
 		isp_hw_cmd_args.cmd_type =
 			CAM_ISP_HW_MGR_CMD_PROG_DEFAULT_CFG;
 
@@ -8907,6 +8909,8 @@ static int __cam_isp_ctx_process_evt(struct cam_context *ctx,
 	int rc = 0;
 	struct cam_isp_context *ctx_isp =
 		(struct cam_isp_context *) ctx->ctx_priv;
+	struct cam_hw_cmd_args hw_cmd_args;
+	struct cam_isp_hw_cmd_args isp_hw_cmd_args = {0};
 
 	if ((ctx->state == CAM_CTX_ACQUIRED) &&
 		(link_evt_data->evt_type != CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES)) {
@@ -8959,6 +8963,25 @@ static int __cam_isp_ctx_process_evt(struct cam_context *ctx,
 			ctx_isp->vfps_aux_context = false;
 		CAM_DBG(CAM_ISP, "vfps_aux_context:%s on ctx: %u link: 0x%x",
 			CAM_BOOL_TO_YESNO(ctx_isp->vfps_aux_context), ctx->ctx_id, ctx->link_hdl);
+		break;
+	case CAM_REQ_MGR_LINK_EVT_SENSOR_FRAME_INFO: {
+		hw_cmd_args.ctxt_to_hw_map = ctx->ctxt_to_hw_map;
+		hw_cmd_args.cmd_type = CAM_HW_MGR_CMD_INTERNAL;
+		isp_hw_cmd_args.cmd_type = CAM_ISP_HW_MGR_SET_DRV_INFO;
+		isp_hw_cmd_args.u.drv_info.req_id = link_evt_data->req_id;
+		isp_hw_cmd_args.u.drv_info.frame_duration =
+			link_evt_data->u.frame_info.frame_duration;
+		isp_hw_cmd_args.u.drv_info.blanking_duration =
+			link_evt_data->u.frame_info.blanking_duration;
+		hw_cmd_args.u.internal_args = (void *)&isp_hw_cmd_args;
+
+		rc = ctx->hw_mgr_intf->hw_cmd(ctx->hw_mgr_intf->hw_mgr_priv,
+			&hw_cmd_args);
+		if (rc)
+			CAM_ERR(CAM_ISP,
+				"Failed to process drv info on ctx:%u link:0x%x, req_id:%llu rc:%d",
+				ctx->ctx_id, ctx->link_hdl, link_evt_data->req_id, rc);
+	}
 		break;
 	default:
 		CAM_WARN(CAM_ISP,

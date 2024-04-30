@@ -232,6 +232,7 @@ enum cam_req_mgr_device_id {
  *                                           that we get an EOF
  * @CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES : Notify sub devices of the properties
  *                                           updating
+ * @CAM_REQ_MGR_LINK_EVT_SENSOR_FRAME_INFO : Notify sub devices of the sensor frame info
  * @CAM_REQ_MGR_LINK_EVT_MAX               : invalid event type
  */
 enum cam_req_mgr_link_evt_type {
@@ -242,16 +243,17 @@ enum cam_req_mgr_link_evt_type {
 	CAM_REQ_MGR_LINK_EVT_STALLED,
 	CAM_REQ_MGR_LINK_EVT_EOF,
 	CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES,
+	CAM_REQ_MGR_LINK_EVT_SENSOR_FRAME_INFO,
 	CAM_REQ_MGR_LINK_EVT_MAX,
 };
 
 /**
  * enum cam_req_mgr_msg_type
- * @CAM_REQ_MGR_MSG_FRAME_SYNC_SHIFT : frame sync shift value
- * @CAM_REQ_MGR_MSG_MAX              : invalid msg type
+ * @CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO : sensor frame info message type
+ * @CAM_REQ_MGR_MSG_MAX               : invalid msg type
 */
 enum cam_req_mgr_msg_type {
-	CAM_REQ_MGR_MSG_FRAME_SYNC_SHIFT,
+	CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO,
 	CAM_REQ_MGR_MSG_MAX,
 };
 
@@ -341,8 +343,28 @@ struct cam_req_mgr_notify_stop {
 };
 
 /**
+ * struct cam_req_mgr_sensor_frame_info
+ * @frame_sync_shift  : Indicates how far the frame synchronization
+ *                    : reference point from SOF, this is used to
+ *                    : align with userland and kernel frame sync offset.
+ * @frame_duration    : The sensor frame duration betwwen previous SOF and current SOF
+ * @blanking_duration : The vertical blanking between previous EOF and current SOF
+ *
+ */
+struct cam_req_mgr_sensor_frame_info {
+	uint64_t frame_sync_shift;
+	uint64_t frame_duration;
+	uint64_t blanking_duration;
+};
+
+/**
  * struct cam_req_mgr_notify_msg
- * @
+ * @link_hdl         : link identifier
+ * @dev_hdl          : Indicate which device sends this message
+ * @req_id           : Indicate which req sends this message
+ * @msg_type         : Message type
+ * @frame_info       : Frame info structure includes frame duration and
+ *                   : vertical blanking
  */
 struct cam_req_mgr_notify_msg {
 	int32_t  link_hdl;
@@ -350,7 +372,7 @@ struct cam_req_mgr_notify_msg {
 	uint64_t req_id;
 	enum cam_req_mgr_msg_type msg_type;
 	union {
-		uint64_t frame_sync_shift;
+		struct cam_req_mgr_sensor_frame_info frame_info;
 	} u;
 };
 
@@ -446,6 +468,8 @@ struct cam_req_mgr_flush_request {
  * @evt_type          : link event
  * @error             : error code
  * @properties_mask   : properties mask
+ * @frame_info        : Frame info structure includes frame duration and
+ *                    : vertical blanking
  */
 struct cam_req_mgr_link_evt_data {
 	int32_t  link_hdl;
@@ -456,6 +480,7 @@ struct cam_req_mgr_link_evt_data {
 	union {
 		enum cam_req_mgr_device_error error;
 		uint32_t properties_mask;
+		struct cam_req_mgr_sensor_frame_info frame_info;
 	} u;
 };
 

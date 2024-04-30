@@ -56,6 +56,12 @@ enum cam_ife_ctx_master_type {
 	 CAM_ISP_HW_ERROR_CSID_SENSOR_FRAME_DROP     |   \
 	 CAM_ISP_HW_ERROR_CSID_PKT_PAYLOAD_CORRUPTED)
 
+/* Maximum DRV request depth */
+#define MAX_DRV_REQUEST_DEPTH  8
+
+/* Global Counter has frequency 19.2 Mhz */
+#define GC_FREQUENCY_IN_KHZ  19200
+
 /**
  * struct cam_ife_hw_mgr_debug - contain the debug information
  *
@@ -202,29 +208,30 @@ struct cam_ife_hw_mgr_ctx_scratch_buf_info {
 /**
  * struct cam_ife_hw_mgr_ctx_flags - IFE HW mgr ctx flags
  *
- * @ctx_in_use:          flag to tell whether context is active
- * @init_done:           indicate whether init hw is done
- * @is_fe_enabled:       indicate whether fetch engine\read path is enabled
- * @is_dual:             indicate whether context is in dual VFE mode
- * @is_offline:          indicate whether context is for offline IFE
- * @dsp_enabled:         indicate whether dsp is enabled in this context
- * @internal_cdm:        indicate whether context uses internal CDM
- * @pf_mid_found:        in page fault, mid found for this ctx.
- * @need_csid_top_cfg:   Flag to indicate if CSID top cfg is needed.
- * @is_rdi_only_context: flag to specify the context has only rdi resource
- * @is_lite_context:     flag to specify the context has only uses lite
- *                       resources
- * @is_sfe_shdr:         indicate if stream is for SFE sHDR
- * @is_sfe_fs:           indicate if stream is for inline SFE FS
- * @dump_on_flush:       Set if reg dump triggered on flush
- * @dump_on_error:       Set if reg dump triggered on error
- * @custom_aeb_mode:     Set if custom AEB stream
- * @rdi_lcr_en:          To indicate if RDI LCR is enabled
- * @sys_cache_usage:     Per context sys cache usage
- *                       The corresponding index will be set
- *                       for the cache type
- * @rdi_pd_context:      Flag to specify the context has
- *                       only rdi and PD resource without PIX port.
+ * @ctx_in_use:            Flag to tell whether context is active
+ * @init_done:             Indicate whether init hw is done
+ * @is_fe_enabled:         Indicate whether fetch engine\read path is enabled
+ * @is_dual:               Indicate whether context is in dual VFE mode
+ * @is_offline:            Indicate whether context is for offline IFE
+ * @dsp_enabled:           Indicate whether dsp is enabled in this context
+ * @internal_cdm:          Indicate whether context uses internal CDM
+ * @pf_mid_found:          In page fault, mid found for this ctx.
+ * @need_csid_top_cfg:     Flag to indicate if CSID top cfg is needed.
+ * @is_rdi_only_context:   Flag to specify the context has only rdi resource
+ * @is_lite_context:       Flag to specify the context has only uses lite
+ *                         resources
+ * @is_sfe_shdr:           Indicate if stream is for SFE sHDR
+ * @is_sfe_fs:             Indicate if stream is for inline SFE FS
+ * @dump_on_flush:         Set if reg dump triggered on flush
+ * @dump_on_error:         Set if reg dump triggered on error
+ * @custom_aeb_mode:       Set if custom AEB stream
+ * @rdi_lcr_en:            To indicate if RDI LCR is enabled
+ * @sys_cache_usage:       Per context sys cache usage
+ *                         The corresponding index will be set
+ *                         for the cache type
+ * @rdi_pd_context:        Flag to specify the context has
+ *                         only rdi and PD resource without PIX port.
+ * @dynamic_drv_supported: Indicate if the dynamic drv is supported
  *
  */
 struct cam_ife_hw_mgr_ctx_flags {
@@ -247,6 +254,7 @@ struct cam_ife_hw_mgr_ctx_flags {
 	bool   rdi_lcr_en;
 	bool   sys_cache_usage[CAM_LLCC_LARGE_4 + 1];
 	bool   rdi_pd_context;
+	bool   dynamic_drv_supported;
 };
 
 /**
@@ -357,6 +365,7 @@ struct cam_isp_comp_record_query {
  * @is_hw_ctx_acq:          If acquire for ife ctx is having hw ctx acquired
  * @acq_hw_ctxt_src_dst_map: Src to dst hw ctxt map for acquired pixel paths
  * @pri_rdi_out_res:         Primary RDI res for RDI only cases
+ * @drv_info:                Array to include the per request drv info
  */
 struct cam_ife_hw_mgr_ctx {
 	struct list_head                           list;
@@ -424,6 +433,7 @@ struct cam_ife_hw_mgr_ctx {
 	bool                                       is_hw_ctx_acq;
 	uint32_t                                   acq_hw_ctxt_src_dst_map[CAM_ISP_MULTI_CTXT_MAX];
 	uint32_t                                   pri_rdi_out_res;
+	struct cam_isp_hw_drv_info                 drv_info[MAX_DRV_REQUEST_DEPTH];
 };
 
 /**

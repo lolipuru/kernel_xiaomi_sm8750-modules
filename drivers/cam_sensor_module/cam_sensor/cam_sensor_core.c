@@ -224,27 +224,36 @@ static int cam_sensor_handle_frame_info(struct cam_sensor_ctrl_t *s_ctrl,
 	int rc = 0;
 	struct cam_req_mgr_notify_msg msg = {0};
 
-	msg.link_hdl = s_ctrl->bridge_intf.link_hdl;
-	msg.req_id = s_ctrl->last_updated_req;
-	msg.dev_hdl = s_ctrl->bridge_intf.device_hdl;
-	msg.msg_type = CAM_REQ_MGR_MSG_FRAME_SYNC_SHIFT;
-	msg.u.frame_sync_shift = frame_info->frame_sync_shift;
-
 	CAM_DBG(CAM_SENSOR,
 		"sensor:%d req:%llu frame info: frame sync shift:%llu frame duration:%llu blanking duration:%llu",
 		s_ctrl->soc_info.index, s_ctrl->last_updated_req,
 		frame_info->frame_sync_shift, frame_info->frame_duration,
 		frame_info->blanking_duration);
 
-	if (s_ctrl->bridge_intf.crm_cb &&
-		s_ctrl->bridge_intf.crm_cb->notify_msg) {
-		rc = s_ctrl->bridge_intf.crm_cb->notify_msg(&msg);
-		if (rc) {
-			CAM_ERR(CAM_SENSOR,
-				"Failed to notify msg FRAME_SYNC_SHIFT to CRM at req:%llu, rc:%d",
-				s_ctrl->last_updated_req, rc);
-			return rc;
-		}
+	if (!s_ctrl->bridge_intf.crm_cb ||
+		!s_ctrl->bridge_intf.crm_cb->notify_msg) {
+		CAM_ERR(CAM_SENSOR, "Invalid crm_cb:%p or notify_msg:%p",
+			s_ctrl->bridge_intf.crm_cb,
+			s_ctrl->bridge_intf.crm_cb ?
+			s_ctrl->bridge_intf.crm_cb->notify_msg :
+			NULL);
+		return -EINVAL;
+	}
+
+	msg.link_hdl = s_ctrl->bridge_intf.link_hdl;
+	msg.req_id = s_ctrl->last_updated_req;
+	msg.dev_hdl = s_ctrl->bridge_intf.device_hdl;
+	msg.msg_type = CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO;
+	msg.u.frame_info.frame_sync_shift = frame_info->frame_sync_shift;
+	msg.u.frame_info.frame_duration = frame_info->frame_duration;
+	msg.u.frame_info.blanking_duration = frame_info->blanking_duration;
+
+	rc = s_ctrl->bridge_intf.crm_cb->notify_msg(&msg);
+	if (rc) {
+		CAM_ERR(CAM_SENSOR,
+			"Failed to notify msg SENSOR_FRAME_INFO to CRM at req:%llu, rc:%d",
+			s_ctrl->last_updated_req, rc);
+		return rc;
 	}
 
 	return rc;

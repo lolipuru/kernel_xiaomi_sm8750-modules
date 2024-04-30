@@ -271,6 +271,18 @@ struct cam_isp_irq_comp_cfg {
 } __attribute__((packed));
 
 /**
+ * Below macro definition is the param mask for
+ * cam_isp_drv_config.
+ *
+ * CAM_IFE_DRV_BLANKING_THRESHOLD : DRV decision logic uses this value to check
+ *                                  if current request can enable DRV, if the
+ *                                  vertical blanking is greater than this value,
+ *                                  then DRV can be enabled, otherwises, DRV will
+ *                                  be disabled. The unit of this value is millisecond.
+ */
+#define CAM_IFE_DRV_BLANKING_THRESHOLD       BIT(0)
+
+/**
  * struct cam_isp_drv_config - CSID config for DRV
  *        Enables DRV and provides worst case timeout value in INIT packet,
  *        provides path_idle_en and timeout updates (if any) in UPDATE packet

@@ -210,37 +210,38 @@ struct cam_csid_secondary_evt_config {
 
 /**
  * struct cam_csid_hw_reserve_resource- hw reserve
- * @res_type :           Reource type CID or PATH
- *                       if type is CID, then res_id is not required,
- *                       if type is path then res id need to be filled
- * @res_id  :            Resource id to be reserved
- * @in_port :            Input port resource info
- * @out_port:            Output port resource info, used for RDI path only
- * @sync_mode:           Sync mode
- *                       Sync mode could be master, slave or none
- * @master_idx:          Master device index to be configured in the
- *                       slave path
- *                       for master path, this value is not required.
- *                       only slave need to configure the master index value
- * @dual_core_id:        In case of dual csid, core id of another hw
- *                       reserve
- * @node_res :           Reserved resource structure pointer
- * @sec_evt_config:      Config to enable secondary events for the given resource
- *                       depending on the use-case
- * @crop_enable :        Flag to indicate CSID crop enable
- * @drop_enable :        Flag to indicate CSID drop enable
- * @sfe_inline_shdr:     Flag to indicate if sfe is inline shdr
- * @is_offline :         Flag to indicate offline
- * @need_top_cfg:        Flag to indicate if top cfg is needed
- * @tasklet:             Tasklet to schedule bottom halves
- * @buf_done_controller: IRQ controller for buf done for version 680 hw
- * @cdm_ops:             CDM Ops
- * @event_cb:            Callback function to hw mgr in case of hw events
- * @phy_sel:             Phy selection number if tpg is enabled from userspace
- * @cb_priv:             Private pointer to return to callback
- * @sfe_en:              Flag to indicate if SFE is enabled
- * @use_wm_pack:         [OUT]Flag to indicate if WM packing is to be used for packing
- * @handle_camif_irq:    Flag to indicate if CSID IRQ is enabled
+ * @res_type :             Reource type CID or PATH
+ *                         if type is CID, then res_id is not required,
+ *                         if type is path then res id need to be filled
+ * @res_id  :              Resource id to be reserved
+ * @in_port :              Input port resource info
+ * @out_port:              Output port resource info, used for RDI path only
+ * @sync_mode:             Sync mode
+ *                         Sync mode could be master, slave or none
+ * @master_idx:            Master device index to be configured in the
+ *                         slave path
+ *                         for master path, this value is not required.
+ *                         only slave need to configure the master index value
+ * @dual_core_id:          In case of dual csid, core id of another hw
+ *                         reserve
+ * @node_res :             Reserved resource structure pointer
+ * @sec_evt_config:        Config to enable secondary events for the given resource
+ *                         depending on the use-case
+ * @crop_enable :          Flag to indicate CSID crop enable
+ * @drop_enable :          Flag to indicate CSID drop enable
+ * @sfe_inline_shdr:       Flag to indicate if sfe is inline shdr
+ * @is_offline :           Flag to indicate offline
+ * @need_top_cfg:          Flag to indicate if top cfg is needed
+ * @tasklet:               Tasklet to schedule bottom halves
+ * @buf_done_controller:   IRQ controller for buf done for version 680 hw
+ * @cdm_ops:               CDM Ops
+ * @event_cb:              Callback function to hw mgr in case of hw events
+ * @phy_sel:               Phy selection number if tpg is enabled from userspace
+ * @cb_priv:               Private pointer to return to callback
+ * @sfe_en:                Flag to indicate if SFE is enabled
+ * @use_wm_pack:           [OUT]Flag to indicate if WM packing is to be used for packing
+ * @handle_camif_irq:      Flag to indicate if CSID IRQ is enabled
+ * @dynamic_drv_supported: Flag to indicate if dynamic drv is supported
  *
  */
 struct cam_csid_hw_reserve_resource_args {
@@ -268,6 +269,7 @@ struct cam_csid_hw_reserve_resource_args {
 	bool                                      sfe_en;
 	bool                                      use_wm_pack;
 	bool                                      handle_camif_irq;
+	bool                                      dynamic_drv_supported;
 };
 
 /**

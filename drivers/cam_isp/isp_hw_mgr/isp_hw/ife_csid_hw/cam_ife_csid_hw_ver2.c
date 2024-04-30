@@ -4090,6 +4090,7 @@ int cam_ife_csid_ver2_reserve(void *hw_priv,
 	path_cfg->is_aeb_en = reserve->in_port->aeb_mode;
 	csid_hw->flags.offline_mode = reserve->is_offline;
 	reserve->need_top_cfg = csid_reg->need_top_cfg;
+	reserve->dynamic_drv_supported = csid_reg->dynamic_drv_supported;
 
 	CAM_DBG(CAM_ISP, "CSID[%u] Resource[id: %d name:%s] state %d cid %d",
 		csid_hw->hw_intf->hw_idx, reserve->res_id, res->res_name,

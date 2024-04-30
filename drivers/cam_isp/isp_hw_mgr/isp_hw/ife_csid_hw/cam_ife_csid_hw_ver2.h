@@ -738,6 +738,7 @@ struct cam_ife_csid_ver2_reg_info {
 	const uint32_t                                    num_top_regs;
 	const uint32_t                                    num_rx_regs;
 	bool                                              is_ife_sfe_mapped;
+	bool                                              dynamic_drv_supported;
 };
 
 /*
