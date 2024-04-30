@@ -69,7 +69,7 @@ static unsigned int cvp_poll(struct file *filp, struct poll_table_struct *p)
 	poll_wait(filp, &inst->event_handler.wq, p);
 
 	spin_lock_irqsave(&inst->event_handler.lock, flags);
-	if (inst->event_handler.event == CVP_SSR_EVENT)
+	if (inst->event_handler.event == EVA_EVENT)
 		rc |= POLLPRI;
 	if (inst->event_handler.event == CVP_DUMP_EVENT)
 		rc |= POLLIN;

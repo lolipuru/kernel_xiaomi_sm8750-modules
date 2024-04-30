@@ -75,7 +75,8 @@ enum hal_ssr_trigger_type {
 	SSR_SW_DIV_BY_ZERO,
 	SSR_HW_WDOG_IRQ,
 	SSR_SESSION_ABORT,
-	SSR_SESSION_ERROR
+	SSR_SESSION_ERROR,
+	SSR_SESSION_TIMEOUT = 7
 };
 
 enum hal_intra_refresh_mode {

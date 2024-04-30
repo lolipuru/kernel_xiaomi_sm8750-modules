@@ -106,11 +106,13 @@ static int cvp_wait_process_message(struct msm_cvp_inst *inst,
 	CVPKERNEL_ATRACE_BEGIN("cvp_wait_process_message");
 	if (wait_event_timeout(sq->wq,
 		cvp_msg_pending(sq, &msg, ktid), timeout) == 0) {
-		dprintk(CVP_WARN, "session queue wait timeout\n");
+		dprintk(CVP_WARN, "session queue wait timeout and session_id = %#x\n",
+					hash32_ptr(inst->session));
 		if (inst && inst->core && inst->core->dev_ops &&
 				inst->state != MSM_CVP_CORE_INVALID)
 			print_hfi_queue_info(inst->core->dev_ops);
 		rc = -ETIMEDOUT;
+		handle_session_timeout(inst);
 		goto exit;
 	}
 
@@ -805,7 +807,7 @@ int msm_cvp_secure_sess_check(struct msm_cvp_inst *inst)
 							(s_ecode << 16);
 						spin_lock_irqsave(&active_inst->event_handler.lock,
 							flags);
-						active_inst->event_handler.event = CVP_SSR_EVENT;
+						active_inst->event_handler.event = EVA_EVENT;
 						spin_unlock_irqrestore(
 							&active_inst->event_handler.lock,
 							flags);
@@ -1110,8 +1112,8 @@ int msm_cvp_session_stop(struct msm_cvp_inst *inst,
 	/* Wait for FW response */
 	rc = wait_for_sess_signal_receipt(inst, HAL_SESSION_STOP_DONE);
 	if (rc) {
-		dprintk(CVP_WARN, "%s: wait for signal failed, rc %d\n",
-				__func__, rc);
+		dprintk(CVP_WARN, "%s: wait for signal failed, rc %d and session_id = %#x\n",
+				__func__, rc, hash32_ptr(inst->session));
 		goto stop_thread;
 	}
 
