@@ -419,6 +419,7 @@ int btfm_swr_register_hw_ep(struct btfmswr *btfm_swr)
 	hwep_info->mixer_ctrl = status_controls;
 	/* Register to hardware endpoint */
 	ret = btfmcodec_register_hw_ep(hwep_info);
+	kfree(hwep_info);
 	if (ret) {
 		BTFMSWR_ERR("failed to register with btfmcodec driver hw interface (%d)", ret);
 		goto end;
