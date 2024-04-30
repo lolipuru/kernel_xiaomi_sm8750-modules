@@ -39,11 +39,9 @@
 #define FASTRPC_KERNEL_PERF_LIST (PERF_KEY_MAX)
 #define FASTRPC_DSP_PERF_LIST 12
 #define FASTRPC_PHYS(p)	((p) & 0xffffffff)
-#define FASTRPC_CTX_MAX (256)
 #define FASTRPC_INIT_HANDLE	1
 #define FASTRPC_DSP_UTILITIES_HANDLE	2
 #define FASTRPC_MAX_STATIC_HANDLE (20)
-#define FASTRPC_CTXID_MASK (0xFF0)
 #define INIT_FILELEN_MAX (5 * 1024 * 1024)
 #define INIT_FILE_NAMELEN_MAX (128)
 #define FASTRPC_DEVICE_NAME	"fastrpc"
@@ -51,6 +49,45 @@
 #define SESSION_ID_MASK (1 << SESSION_ID_INDEX)
 #define MAX_FRPC_TGID 64
 #define COPY_BUF_WARN_LIMIT (512*1024)
+
+/*
+ * Fastrpc context ID bit-map:
+ *
+ * bits 0-3   : type of remote PD
+ * bit  4     : type of job (sync/async)
+ * bit  5     : reserved
+ * bits 6-13  : IDR id
+ * bits 14-63 : reserved
+ */
+/* Starting position of idr in context id */
+#define FASTRPC_CTXID_IDR_POS  (6)
+
+/* Number of idr bits in context id */
+#define FASTRPC_CTXID_IDR_BITS (8)
+
+/* Max idr value */
+#define FASTRPC_CTX_MAX (1 << FASTRPC_CTXID_IDR_BITS)
+
+/* Bit-mask for idr */
+#define FASTRPC_CTXID_IDR_MASK (FASTRPC_CTX_MAX - 1)
+
+/* Macro to pack idr into context id  */
+#define FASTRPC_PACK_IDR_IN_CTXID(ctxid, idr) (ctxid | ((idr & \
+	FASTRPC_CTXID_IDR_MASK) << FASTRPC_CTXID_IDR_POS))
+
+/* Macro to extract idr from context id */
+#define FASTRPC_GET_IDR_FROM_CTXID(ctxid) ((ctxid >> FASTRPC_CTXID_IDR_POS) & \
+	FASTRPC_CTXID_IDR_MASK)
+
+/* Number of pd bits in context id (starting pos 0) */
+#define FASTRPC_CTXID_PD_BITS (4)
+
+/* Bit-mask for pd type */
+#define FASTRPC_CTXID_PD_MASK ((1 << FASTRPC_CTXID_PD_BITS) - 1)
+
+/* Macro to pack pd type into context id  */
+#define FASTRPC_PACK_PD_IN_CTXID(ctxid, pd) (ctxid | (pd & \
+		FASTRPC_CTXID_PD_MASK))
 
 /* Maximum buffers cached in cached buffer list */
 #define FASTRPC_MAX_CACHED_BUFS (32)

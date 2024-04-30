@@ -519,7 +519,7 @@ static void fastrpc_context_free(struct kref *ref)
 		kfree(ctx->perf);
 
 	spin_lock_irqsave(&cctx->lock, flags);
-	idr_remove(&cctx->ctx_idr, ctx->ctxid >> 4);
+	idr_remove(&cctx->ctx_idr, FASTRPC_GET_IDR_FROM_CTXID(ctx->ctxid));
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	trace_fastrpc_context_free((uint64_t)ctx,
@@ -718,7 +718,7 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 		spin_unlock_irqrestore(&cctx->lock, flags);
 		goto err_idr;
 	}
-	ctx->ctxid = ret << 4;
+	ctx->ctxid = FASTRPC_PACK_IDR_IN_CTXID(ctx->ctxid, ret);
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	trace_fastrpc_context_alloc((uint64_t)ctx,
@@ -1575,7 +1575,8 @@ static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 	if (kernel)
 		msg->pid = 0;
 
-	msg->ctx = ctx->ctxid | fastrpc_getpd_msgidx(fl->pd);
+	msg->ctx = FASTRPC_PACK_PD_IN_CTXID(ctx->ctxid,
+				fastrpc_getpd_msgidx(fl->pd));
 	msg->handle = handle;
 	msg->sc = ctx->sc;
 	msg->addr = ctx->buf ? ctx->buf->phys : 0;
@@ -5356,8 +5357,7 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 	struct fastrpc_invoke_rspv2 *rspv2 = NULL;
 	struct dsp_notif_rsp *notif = (struct dsp_notif_rsp *)data;
 	struct fastrpc_invoke_ctx *ctx;
-	unsigned long flags;
-	unsigned long ctxid;
+	unsigned long flags = 0, idr = 0;
 	u32 rsp_flags = 0, early_wake_time = 0, version = 0;
 
 	if (len == sizeof(uint64_t)) {
@@ -5392,10 +5392,10 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 	trace_fastrpc_transport_response(cctx->domain_id, rsp->ctx,
 			rsp->retval, rsp_flags, early_wake_time);
 
-	ctxid = ((rsp->ctx & FASTRPC_CTXID_MASK) >> 4);
+	idr = FASTRPC_GET_IDR_FROM_CTXID(rsp->ctx);
 
 	spin_lock_irqsave(&cctx->lock, flags);
-	ctx = idr_find(&cctx->ctx_idr, ctxid);
+	ctx = idr_find(&cctx->ctx_idr, idr);
 
 	if (!ctx) {
 		spin_unlock_irqrestore(&cctx->lock, flags);
