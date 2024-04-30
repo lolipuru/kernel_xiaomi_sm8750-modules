@@ -76,6 +76,7 @@ enum cnss_pci_reg_dev_mask {
 	REG_MASK_KIWI,
 	REG_MASK_MANGO,
 	REG_MASK_PEACH,
+	REG_MASK_COLOGNE,
 };
 
 enum cnss_smmu_fault_time {
