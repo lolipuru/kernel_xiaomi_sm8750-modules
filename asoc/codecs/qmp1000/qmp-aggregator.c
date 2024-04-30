@@ -15,7 +15,6 @@
 #define MAX_CHANNELS 8
 #define MAX_MASTER_PORTS 10
 
-#define AGG_DUMP
 enum {
 	mTX1 = 2,
 	mTX2 = 3,
@@ -53,18 +52,6 @@ static LIST_HEAD(channel_links_list);
 
 static DEFINE_MUTEX(agg_lock);
 static struct stream_agg_instance aggregator_[NUM_AGG_STREAMS];
-
-static struct stream_agg_instance *retrieve_agg_stream_instance(void *substream)
-{
-	int i = 0;
-
-	for (i = 0; i < NUM_AGG_STREAMS; ++i) {
-		if (aggregator_[i].private_data == substream)
-			return &aggregator_[i];
-	}
-
-	return NULL;
-}
 
 static int retrieve_agg_stream_instance_index(void *substream)
 {
@@ -122,19 +109,7 @@ static void get_master_port_info(u8 mport_type, u8 *m_dp, u8 *m_dp_ch)
 	}
 }
 
-static struct ch_link *get_next_avail_link(int sidx)
-{
-	struct stream_agg_instance *agg = &aggregator_[sidx];
-
-	for (int i = 0; i < MAX_CHANNELS; ++i) {
-		if (agg->ch_links[i].m_dp == 0)
-			return &agg->ch_links[i];
-	}
-
-	return NULL;
-}
-
-static bool validate_ch_link_v2(struct stream_agg_instance *agg, u8 m_dp, u8 m_dp_ch)
+static bool validate_ch_link(struct stream_agg_instance *agg, u8 m_dp, u8 m_dp_ch)
 {
 	u8 mask = 0, num_set_bits = 0, fs_bit;
 	bool is_valid = true, found = false;
@@ -177,212 +152,6 @@ exit:
 	return is_valid;
 }
 
-static bool validate_ch_link(struct stream_agg_instance *agg, u8 m_dp, u8 m_dp_ch)
-{
-	u8 mask = 0, num_set_bits = 0, fs_bit;
-	bool is_valid = true, found = false;
-	u8 m_dp_ch_acc = 0;
-
-	for (int i = 0; i < MAX_CHANNELS; ++i) {
-		if (agg->ch_links[i].m_dp == m_dp) {
-			m_dp_ch_acc |= agg->ch_links[i].m_dp_ch;
-			found = true;
-		}
-	}
-	if (!found) /* addig link for the first time */
-		return true;
-
-	/*
-	 * below logic checks if the channels (on master side port) are
-	 * contiguous or not.
-	 * Block packing per port is used on the master and hence
-	 * if the channels are connecting to the same master port,
-	 * they have to be contiguous.
-	 */
-	m_dp_ch_acc |= BIT(m_dp_ch);
-	num_set_bits = hweight8(m_dp_ch_acc);
-	if (num_set_bits == 0) {
-		is_valid = false;
-		goto exit;
-	}
-
-	if (num_set_bits == 1)
-		goto exit;
-
-	fs_bit = ffs(m_dp_ch_acc);
-	mask = ((1 << num_set_bits) - 1) << (fs_bit - 1);
-	if ((m_dp_ch_acc & (~mask)) != 0)
-		is_valid = false;
-
-exit:
-	return is_valid;
-}
-
-#ifdef AGG_DUMP
-static void dump(void)
-{
-	for (int i = 0; i < NUM_AGG_STREAMS; ++i) {
-		if (!aggregator_[i].private_data)
-			continue;
-
-		pr_debug("[stream %d]:substream:%p, ch_rate: %u, num_ch: %d\n",
-				i, aggregator_[i].private_data,
-				aggregator_[i].channel_rate,
-				aggregator_[i].num_channels);
-
-		for (int j = 0; j < MAX_CHANNELS; ++j) {
-			if (aggregator_[i].ch_links[j].m_dp == 0)
-				continue;
-
-			pr_debug("[stream %d][channel %d][m_dp:%d, m_dp_ch:CH%d] <--- [dev_num: %d, s_dp: %d]\n",
-					i, j,
-					aggregator_[i].ch_links[j].m_dp,
-					ffs(aggregator_[i].ch_links[j].m_dp_ch),
-					aggregator_[i].ch_links[j].s_dev_num,
-					aggregator_[i].ch_links[j].s_dp);
-		}
-	}
-}
-#endif
-
-/* called under agg_lock held */
-static void assign_offset1(struct stream_agg_instance *agg)
-{
-	int i, j;
-	u8 m_dp = 0;
-	u8 base_offset1 = 0, bit, mask, max_offset1, min_offset1;
-	u8 acc_ch_masks[MAX_MASTER_PORTS];
-	unsigned long temp_mask = 0;
-	/* assign offset1's for all the slave devices
-	 * compute base_offset1 to be used for this stream/channels
-	 * there may be other streams already running at this time with some offset1's
-	 * Available offset1's depend on the current bus clock frequency, channel rate and
-	 * lane control for bus-clk of 4.8 and channel rate of 2.4Mhz, SI would be 4 so the
-	 * available offset1's are 1, 2, 3.  If the bus clock fequency increases to
-	 * 9.6MHz with same channel rate of 2.4M,
-	 * SI would be 8 and hence possible offset1's are 1, 2, 3, 4, 5, 6, 7
-	 * on the other hand, if the channel rate also increases (send sample on the
-	 * bitslot frequently), then available offset1's would be limited.
-	 */
-	max_offset1 = 0;
-	min_offset1 = 0;
-	for (i = 0; i < NUM_AGG_STREAMS; ++i) {
-		if (!aggregator_[i].private_data ||
-				aggregator_[i].private_data == agg->private_data)
-			continue;
-
-		for (j = 0; j < aggregator_[i].links; ++j) {
-			max_offset1 = max(max_offset1,
-					aggregator_[i].ch_links[j].s_offset1);
-			if (min_offset1 == 0)
-				min_offset1 = aggregator_[i].ch_links[j].s_offset1;
-			else
-				min_offset1 = min(min_offset1,
-						aggregator_[i].ch_links[j].s_offset1);
-		}
-	}
-
-	if ((max_offset1 == 0) || (min_offset1 > agg->num_channels))
-		base_offset1 = 0;
-	else
-		base_offset1 = max_offset1;
-
-	memset(acc_ch_masks, 0, MAX_MASTER_PORTS * sizeof(u8));
-	for (i = 0; i < agg->links; i++) {
-		m_dp = agg->ch_links[i].m_dp;
-		acc_ch_masks[m_dp] |= agg->ch_links[i].m_dp_ch;
-	}
-
-	for (i = 0; i < MAX_MASTER_PORTS; ++i) {
-		if (acc_ch_masks[i] == 0)
-			continue;
-
-		m_dp = i;
-		temp_mask = acc_ch_masks[i];
-		for_each_set_bit(bit, &temp_mask, 8) {
-			mask = BIT(bit);
-			for (j = 0; j < agg->links; ++j) {
-				pr_debug("m_dp_ch_prepared: %d, acc_ch_masks[i]: %d\n",
-						agg->ch_links[j].m_dp_ch_prepared, acc_ch_masks[i]);
-				if (agg->ch_links[j].m_dp_ch_prepared &&
-					(agg->ch_links[j].m_dp == m_dp) &&
-						((acc_ch_masks[i] & mask) ==
-						 agg->ch_links[j].m_dp_ch_prepared)) {
-					agg->ch_links[j].s_offset1 = base_offset1 + 1;
-					base_offset1 += 1;
-					pr_debug("offset1 %d updated for m_dp:%d, m_dp_ch:CH%d, s_dev:%d, s_dp:%d, substream:%pK\n",
-						agg->ch_links[j].s_offset1, agg->ch_links[j].m_dp,
-						ffs(agg->ch_links[j].m_dp_ch),
-						agg->ch_links[j].s_dev_num,
-						agg->ch_links[j].s_dp, agg->private_data);
-				}
-			}
-		}
-	}
-}
-
-int stream_agg_prepare_channel(void *substream, u8 mport_type, u8 slv_port_id, u8 dev_num)
-{
-	struct stream_agg_instance *agg = NULL;
-	int prepare_cnt = 0, i;
-	u8 m_dp = 0, m_dp_ch = 0;
-	int rc;
-
-	get_master_port_info(mport_type, &m_dp, &m_dp_ch);
-	if (m_dp == 0) {
-		pr_debug("unsupported master port type %d\n", mport_type);
-		return -EINVAL;
-	}
-
-	mutex_lock(&agg_lock);
-	agg = retrieve_agg_stream_instance(substream);
-	for (i = 0; i < agg->links; ++i) {
-		if ((agg->ch_links[i].m_dp == m_dp) &&
-				(agg->ch_links[i].m_dp_ch == BIT(m_dp_ch))) {
-
-			agg->ch_links[i].m_dp_ch_prepared |= BIT(m_dp_ch);
-			pr_debug("link: [stream %p, m_dp:%d, m_dp_ch:BIT(%d)] <--- [s_dev:%d s_dp:%d] prepared\n",
-					substream, m_dp, m_dp_ch, agg->ch_links[i].s_dev_num,
-					agg->ch_links[i].s_dp);
-			break;
-		}
-	}
-	if (i == agg->links) {
-		pr_debug("mport_type: %d, m_dp:%d, m_dp_ch: BIT(%d) not found, cannot prepare\n",
-				mport_type, m_dp, m_dp_ch);
-		mutex_unlock(&agg_lock);
-		return -EINVAL;
-	}
-
-	/* check if all channels are prepared */
-	for (i = 0; i < agg->links; ++i) {
-		if (agg->ch_links[i].m_dp_ch_prepared)
-			++prepare_cnt;
-	}
-
-	rc = 0;
-	if (prepare_cnt == agg->num_channels) {
-		pr_debug("all channels in stream %pK are prepared\n", substream);
-		assign_offset1(agg);
-
-		for (i = 0; i < agg->links; ++i) {
-			if (agg->ch_links[i].update_offset1)
-				agg->ch_links[i].update_offset1(agg->ch_links[i].slave_priv_data,
-						agg->ch_links[i].s_dp,
-						agg->ch_links[i].s_offset1);
-		}
-
-		rc = 1; /* all channels prepared */
-	}
-
-#ifdef AGG_DUMP
-	dump();
-#endif
-	mutex_unlock(&agg_lock);
-	return rc;
-}
-EXPORT_SYMBOL_GPL(stream_agg_prepare_channel);
-
 /*
  * stream_agg_add_channel :
  * Inputs: Substream - void *pointer stored in aggregator for stream identification
@@ -415,144 +184,6 @@ EXPORT_SYMBOL_GPL(stream_agg_prepare_channel);
  */
 
 int stream_agg_add_channel(void *substream, uint32_t channels,
-		uint32_t channel_rate, u8 mport_type, u8 slv_port_id, u8 dev_num,
-		void *slave_priv_data,
-		void (*offset1_update)(void *private_data, u8 slv_port_id, u8 offset1))
-{
-	struct ch_link *link = NULL;
-	int sidx;
-	u8 m_dp = 0, m_dp_ch = 0;
-
-	if (!substream)
-		return -EINVAL;
-
-	/* m_dp_ch b/w 0(CH1),1(CH2),2(CH3),3(CH4) */
-	get_master_port_info(mport_type, &m_dp, &m_dp_ch);
-	if (m_dp == 0) {
-		pr_err("unsupported master port type %d\n", mport_type);
-		return -EINVAL;
-	}
-	if (channels > MAX_CHANNELS) {
-		pr_err("unsupported channels %d\n", channels);
-		return -EINVAL;
-	}
-
-	mutex_lock(&agg_lock);
-	/*
-	 * Assign an unused agg stream instance for new stream
-	 * For existing streams, it will lookup and return the index from the agg list
-	 */
-	sidx = get_matching_stream_index_or_first_available(substream);
-	if (sidx < 0) {
-		pr_err("matching stream %pK not found or max streams reached\n", substream);
-		mutex_unlock(&agg_lock);
-		return -EINVAL;
-	}
-
-	aggregator_[sidx].private_data = substream;
-	aggregator_[sidx].num_channels = channels;
-	aggregator_[sidx].channel_rate = channel_rate;
-
-	/* add channel gets called multiple times for the same stream and for each channel
-	 * add the new channel info into the next available ch_link
-	 */
-	link = get_next_avail_link(sidx);  // may be we can use aggregator_[sidx].links ?
-	if (link == NULL) {
-		pr_err("max ch limit reached\n");
-		mutex_unlock(&agg_lock);
-		return -EINVAL;
-	}
-
-	if (!validate_ch_link(&aggregator_[sidx], m_dp, m_dp_ch)) {
-		pr_debug("link: [stream:%pK, m_dp:%d, m_dp_ch:BIT(%d)] <--- [s_dev:%d s_dp:%d] add failed\n",
-				substream, m_dp, m_dp_ch, dev_num, slv_port_id);
-		mutex_unlock(&agg_lock);
-		return -EINVAL;
-	}
-
-	link->m_dp = m_dp;
-	link->m_dp_ch = BIT(m_dp_ch);
-	link->s_dev_num = dev_num;
-	link->s_dp = slv_port_id;
-	link->s_offset1 = 0;
-	link->m_dp_ch_prepared = 0;
-	link->update_offset1 = offset1_update;
-	link->slave_priv_data = slave_priv_data;
-	++aggregator_[sidx].links;
-
-	pr_debug("link: [stream %pK, m_dp:%d, m_dp_ch:BIT(%d)] <--- [s_dev:%d s_dp:%d] added\n",
-			substream, link->m_dp, m_dp_ch, link->s_dev_num, link->s_dp);
-#ifdef AGG_DUMP
-	dump();
-#endif
-	mutex_unlock(&agg_lock);
-	return 0;
-}
-EXPORT_SYMBOL_GPL(stream_agg_add_channel);
-
-int stream_agg_remove_channel(void *substream, u8 mport_type,
-		u8 slv_port_id, u8 dev_num)
-{
-	int i, rc = 0;
-	u8 m_dp = 0, m_dp_ch = 0, ch_cleared_status = 0;
-	struct stream_agg_instance *agg = NULL;
-	bool removed = false;
-
-	get_master_port_info(mport_type, &m_dp, &m_dp_ch);
-	if (m_dp == 0) {
-		pr_err("unsupported master port type %d\n", mport_type);
-		return -EINVAL;
-	}
-
-	mutex_lock(&agg_lock);
-	agg = retrieve_agg_stream_instance(substream);
-	for (i = 0; i < agg->links; ++i) {
-		if ((agg->ch_links[i].m_dp == m_dp) &&
-				(agg->ch_links[i].m_dp_ch == BIT(m_dp_ch))) {
-
-			agg->ch_links[i].m_dp_ch &= ~BIT(m_dp_ch);
-
-			pr_debug("link: [stream %pK, m_dp:%d, m_dp_ch:BIT(%d)] <--- [s_dev:%d s_dp:%d] removed\n",
-					substream, m_dp, m_dp_ch, agg->ch_links[i].s_dev_num,
-					agg->ch_links[i].s_dp);
-
-			if (agg->ch_links[i].m_dp_ch == 0) {
-				agg->ch_links[i].m_dp = 0;
-				agg->ch_links[i].s_dev_num = 0;
-				agg->ch_links[i].s_dp = 0;
-				agg->ch_links[i].s_offset1 = 0;
-				agg->ch_links[i].m_dp_ch_prepared = 0;
-				agg->ch_links[i].update_offset1 = NULL;
-				agg->ch_links[i].slave_priv_data = NULL;
-			}
-			removed = true;
-		}
-	}
-	if (!removed) {
-		pr_err("channel connecting to m_dp:%d, m_dp_ch:BIT(%d), mport_type:%d not found\n",
-				m_dp, m_dp_ch, mport_type);
-	}
-	for (i = 0; i < agg->links; ++i)
-		ch_cleared_status |= agg->ch_links[i].m_dp_ch;
-
-	rc = 0;
-	if (ch_cleared_status == 0) {
-		pr_debug("all channels in stream %pK removed\n", substream);
-		agg->private_data = NULL;
-		agg->channel_rate = 0;
-		agg->num_channels = 0;
-		agg->links = 0;
-		rc = 1;
-	}
-#ifdef AGG_DUMP
-	dump();
-#endif
-	mutex_unlock(&agg_lock);
-	return rc;
-}
-EXPORT_SYMBOL_GPL(stream_agg_remove_channel);
-
-int stream_agg_add_channel_v2(void *substream, uint32_t channels,
 		uint32_t channel_rate, u8 mport_type, u8 slv_port_id, u8 dev_num,
 		void *slave_priv_data, struct swr_device *peripheral,
 		void (*offset1_update)(void *private_data, u8 slv_port_id, u8 offset1))
@@ -596,7 +227,7 @@ int stream_agg_add_channel_v2(void *substream, uint32_t channels,
 	 * packing mode and uses the lowest offset1 among all the  multiple
 	 * slave/channels if connecting to same master
 	 */
-	if (!validate_ch_link_v2(&aggregator_[sidx], m_dp, m_dp_ch)) {
+	if (!validate_ch_link(&aggregator_[sidx], m_dp, m_dp_ch)) {
 		pr_err("link: [stream:%pK, m_dp:%d, m_dp_ch:BIT(%d)] <--- [s_dev:%d s_dp:%d] add failed\n",
 				substream, m_dp, m_dp_ch, dev_num, slv_port_id);
 		mutex_unlock(&agg_lock);
@@ -646,10 +277,10 @@ int stream_agg_add_channel_v2(void *substream, uint32_t channels,
 	mutex_unlock(&agg_lock);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(stream_agg_add_channel_v2);
+EXPORT_SYMBOL_GPL(stream_agg_add_channel);
 
 /* called under agg_lock held */
-static void assign_offset1_v2(int sidx)
+static void assign_offset1(int sidx)
 {
 	int i;
 	u8 m_dp = 0;
@@ -798,7 +429,7 @@ static struct ch_link *get_ch_not_disabled(int sidx)
 	return NULL;
 }
 
-int stream_agg_prepare_channel_v2(void *substream, u8 mport_type,
+int stream_agg_prepare_channel(void *substream, u8 mport_type,
 		u8 slv_port_id, u8 dev_num)
 {
 	struct stream_agg_instance *agg = NULL;
@@ -857,7 +488,7 @@ int stream_agg_prepare_channel_v2(void *substream, u8 mport_type,
 		/* one or more NEW channels might have been prepared, but not enabled */
 		enable_pending_ch = get_ch_not_enabled(sidx);
 		if (enable_pending_ch) {
-			assign_offset1_v2(sidx);
+			assign_offset1(sidx);
 
 			for_each_channel_link(ch, _link) {
 				if (BIT(sidx) & ch->sid) {
@@ -878,9 +509,9 @@ int stream_agg_prepare_channel_v2(void *substream, u8 mport_type,
 	mutex_unlock(&agg_lock);
 	return rc;
 }
-EXPORT_SYMBOL_GPL(stream_agg_prepare_channel_v2);
+EXPORT_SYMBOL_GPL(stream_agg_prepare_channel);
 
-int stream_agg_remove_channel_v2(void *substream, u8 mport_type,
+int stream_agg_remove_channel(void *substream, u8 mport_type,
 		u8 slv_port_id, u8 dev_num)
 {
 	int rc = 0, sidx, unprepare_cnt = 0;
@@ -954,5 +585,5 @@ int stream_agg_remove_channel_v2(void *substream, u8 mport_type,
 	mutex_unlock(&agg_lock);
 	return rc;
 }
-EXPORT_SYMBOL_GPL(stream_agg_remove_channel_v2);
+EXPORT_SYMBOL_GPL(stream_agg_remove_channel);
 
