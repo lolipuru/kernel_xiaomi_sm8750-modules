@@ -35,8 +35,11 @@
 #define CAM_CSIPHY_CDR_SUB_TOLERANCE               2
 
 /* SENSOR driver cmd buffer meta types */
-#define CAM_SENSOR_PACKET_I2C_COMMANDS             0
-#define CAM_SENSOR_PACKET_GENERIC_BLOB             1
+#define CAM_SENSOR_PACKET_I2C_COMMANDS                  0
+#define CAM_SENSOR_PACKET_GENERIC_BLOB                  1
+/* Contains I2C config to be applied on the frame post the regular update */
+#define CAM_SENSOR_PACKET_DEFERRED_I2C_COMMANDS_META    2
+
 
 /* SENSOR blob types */
 #define CAM_SENSOR_GENERIC_BLOB_RES_INFO           0
@@ -126,6 +129,7 @@ enum cam_sensor_packet_opcodes {
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_REG_BANK_UNLOCK,
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_REG_BANK_LOCK,
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_BUBBLE_UPDATE,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_DEFERRED_META,
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_NOP = 127,
 };
 
@@ -358,6 +362,9 @@ struct cam_cmd_i2c_info {
 #define CAM_SENSOR_FEATURE_AEB_OFF                 BIT(2)
 #define CAM_SENSOR_FEATURE_INSENSOR_HDR_3EXP_ON    BIT(3)
 #define CAM_SENSOR_FEATURE_INSENSOR_HDR_3EXP_OFF   BIT(4)
+
+#define CAM_CSIPHY_T3_PREPARE_NS_MASK              BIT(0)
+#define CAM_CSIPHY_T3_PREAMBLE_NS_MASK             BIT(1)
 
 /**
  * struct cam_cmd_sensor_res_info - Contains sensor res info
@@ -821,7 +828,7 @@ struct cam_csiphy_info_v2 {
 	__u64    settle_time;
 	__u64    data_rate;
 	__u32    channel_type;
-	__u32    num_vaild_params;
+	__u32    num_valid_params;
 	__u32    param_mask;
 	__u32    params[5];
 } __attribute__((packed));

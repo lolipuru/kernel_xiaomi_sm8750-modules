@@ -4038,7 +4038,7 @@ static int cam_cpas_configure_staling_cache(
 		break;
 	}
 	staling_params.notify_params.staling_distance
-		= cache_info->staling_distance;
+		= sys_cache_info->staling_distance;
 	rc = llcc_configure_staling_mode(cache_info->slic_desc,
 			&staling_params);
 	if (!rc) {

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_ISP_CONTEXT_H_
@@ -130,6 +130,7 @@ enum cam_isp_state_change_trigger {
 #define CAM_ISP_CTX_DISABLE_RECOVERY_AEB           BIT(0)
 #define CAM_ISP_CTX_DISABLE_RECOVERY_BUS_OVERFLOW  BIT(1)
 #define CAM_ISP_CTX_DISABLE_RECOVERY_BUBBLE        BIT(2)
+#define CAM_ISP_CTX_DISABLE_RECOVERY_CSID          BIT(3)
 
 /**
  * struct cam_isp_ctx_debug -  Contains debug parameters

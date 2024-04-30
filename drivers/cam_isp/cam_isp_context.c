@@ -1261,6 +1261,10 @@ static int __cam_isp_ctx_enqueue_init_request(
 			__cam_isp_ctx_copy_fcg_params(hw_update_data,
 				req_isp_old, req_isp_new);
 
+			memcpy(&req_isp_old->hw_update_data.isp_drv_config,
+				&req_isp_new->hw_update_data.isp_drv_config,
+				sizeof(struct cam_isp_drv_config));
+
 			req_isp_old->num_cfg += req_isp_new->num_cfg;
 			req_old->request_id = req->request_id;
 			list_splice_init(&req->buf_tracker, &req_old->buf_tracker);
@@ -4101,15 +4105,31 @@ static int __cam_isp_ctx_handle_recovery_req_util(
 }
 
 static int __cam_isp_ctx_trigger_error_req_reapply(
-	uint32_t err_type, struct cam_isp_context *ctx_isp)
+	struct cam_isp_hw_error_event_data *err_event_data,
+	struct cam_isp_context *ctx_isp)
 {
 	int rc = 0;
+	uint32_t err_type = err_event_data->error_type;
 	struct cam_context *ctx = ctx_isp->base;
 
 	if ((err_type & CAM_ISP_HW_ERROR_RECOVERY_OVERFLOW) &&
 		(isp_ctx_debug.disable_internal_recovery_mask &
-		CAM_ISP_CTX_DISABLE_RECOVERY_BUS_OVERFLOW))
+		CAM_ISP_CTX_DISABLE_RECOVERY_BUS_OVERFLOW)) {
+		CAM_DBG(CAM_ISP, "Internal recovery for bus overflow is disabled, err_type: 0x%x",
+			err_type);
+		err_event_data->try_internal_recovery = false;
 		return -EINVAL;
+	}
+
+	if ((err_type & CAM_ISP_RECOVERABLE_CSID_ERRORS) &&
+		(isp_ctx_debug.disable_internal_recovery_mask &
+		CAM_ISP_CTX_DISABLE_RECOVERY_CSID)) {
+		CAM_DBG(CAM_ISP,
+			"Internal recovery for CSID recoverable error is disabled, err_type: 0x%x",
+			err_type);
+		err_event_data->try_internal_recovery = false;
+		return -EINVAL;
+	}
 
 	/*
 	 * For errors that can be recoverable within kmd, we
@@ -4158,7 +4178,7 @@ static int __cam_isp_ctx_handle_error(struct cam_isp_context *ctx_isp,
 		error_event_data->error_type, ctx->ctx_id, ctx->link_hdl);
 
 	if (error_event_data->try_internal_recovery) {
-		rc = __cam_isp_ctx_trigger_error_req_reapply(error_event_data->error_type, ctx_isp);
+		rc = __cam_isp_ctx_trigger_error_req_reapply(error_event_data, ctx_isp);
 		if (!rc)
 			goto exit;
 	}
@@ -7251,6 +7271,9 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 	}
 	if (rc)
 		goto put_ref;
+
+	if (isp_ctx_debug.enable_cdm_cmd_buff_dump)
+		cam_isp_ctx_dump_req(req_isp, 0, 0, NULL, false);
 
 	CAM_DBG(CAM_REQ,
 		"Preprocessing Config req_id %lld successful on ctx %u, link: 0x%x",

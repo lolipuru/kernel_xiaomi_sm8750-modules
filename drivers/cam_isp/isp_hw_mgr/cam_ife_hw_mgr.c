@@ -71,19 +71,6 @@ typedef int (*cam_isp_irq_inject_cmd_parse_handler)(
 	"Up to 10 sets of inject params are supported.\n"                                   \
 	"######################################################\n"
 
-#define CAM_ISP_NON_RECOVERABLE_CSID_ERRORS          \
-	(CAM_ISP_HW_ERROR_CSID_LANE_FIFO_OVERFLOW    |   \
-	 CAM_ISP_HW_ERROR_CSID_PKT_HDR_CORRUPTED     |   \
-	 CAM_ISP_HW_ERROR_CSID_MISSING_PKT_HDR_DATA  |   \
-	 CAM_ISP_HW_ERROR_CSID_FATAL                 |   \
-	 CAM_ISP_HW_ERROR_CSID_UNBOUNDED_FRAME       |   \
-	 CAM_ISP_HW_ERROR_CSID_MISSING_EOT)
-
-#define CAM_ISP_RECOVERABLE_CSID_ERRORS              \
-	(CAM_ISP_HW_ERROR_CSID_SENSOR_SWITCH_ERROR   |   \
-	 CAM_ISP_HW_ERROR_CSID_SENSOR_FRAME_DROP     |   \
-	 CAM_ISP_HW_ERROR_CSID_PKT_PAYLOAD_CORRUPTED)
-
 static uint32_t blob_type_hw_cmd_map[CAM_ISP_GENERIC_BLOB_TYPE_MAX] = {
 	CAM_ISP_HW_CMD_GET_HFR_UPDATE,
 	CAM_ISP_HW_CMD_CLOCK_UPDATE,
@@ -486,6 +473,12 @@ static int cam_ife_mgr_handle_reg_dump(struct cam_ife_hw_mgr_ctx *ctx,
 	int rc = 0, i;
 	struct cam_hw_soc_skip_dump_args skip_dump_args;
 
+
+	if (!ctx->flags.init_done) {
+		CAM_WARN(CAM_ISP, "regdump can't possible as HW not initialized, ctx_idx: %u",
+			ctx->ctx_index);
+		return 0;
+	}
 
 	if (cam_presil_mode_enabled()) {
 		if (g_ife_hw_mgr.debug_cfg.enable_presil_reg_dump) {
@@ -15485,7 +15478,8 @@ static bool cam_ife_hw_mgr_is_ctx_affected(
 static int  cam_ife_hw_mgr_find_affected_ctx(
 	struct cam_isp_hw_error_event_data        *error_event_data,
 	uint32_t                                   curr_core_idx,
-	struct cam_ife_hw_event_recovery_data     *recovery_data)
+	struct cam_ife_hw_event_recovery_data     *recovery_data,
+	bool                                       force_recover)
 {
 	uint32_t affected_core[CAM_IFE_HW_NUM_MAX] = {0};
 	struct cam_ife_hw_mgr_ctx   *ife_hwr_mgr_ctx = NULL;
@@ -15512,7 +15506,7 @@ static int  cam_ife_hw_mgr_find_affected_ctx(
 			affected_core, CAM_IFE_HW_NUM_MAX))
 			continue;
 
-		if (atomic_read(&ife_hwr_mgr_ctx->overflow_pending)) {
+		if (!force_recover && atomic_read(&ife_hwr_mgr_ctx->overflow_pending)) {
 			CAM_INFO(CAM_ISP, "CTX:%u already error reported",
 				ife_hwr_mgr_ctx->ctx_index);
 			continue;
@@ -15590,7 +15584,7 @@ static int cam_ife_hw_mgr_handle_csid_error(
 	struct cam_isp_hw_error_event_info      *err_evt_info;
 	struct cam_isp_hw_error_event_data       error_event_data = {0};
 	struct cam_ife_hw_event_recovery_data    recovery_data = {0};
-	bool                                     is_bus_overflow = false;
+	bool                                     is_bus_overflow = false, force_recover = false;
 
 	if (!event_info->event_data) {
 		CAM_ERR(CAM_ISP,
@@ -15655,8 +15649,12 @@ static int cam_ife_hw_mgr_handle_csid_error(
 		recovery_data.error_type = err_type;
 	}
 
+	/* For out of sync continue to try recovery */
+	if ((error_event_data.try_internal_recovery) && (atomic_read(&ctx->overflow_pending)))
+		force_recover = err_type & CAM_ISP_HW_ERROR_CSID_SENSOR_SWITCH_ERROR;
+
 	rc = cam_ife_hw_mgr_find_affected_ctx(&error_event_data,
-			event_info->hw_idx, &recovery_data);
+			event_info->hw_idx, &recovery_data, force_recover);
 	if (rc || !recovery_data.no_of_context)
 		goto end;
 
@@ -16033,7 +16031,7 @@ static int cam_ife_hw_mgr_handle_sfe_hw_err(
 		error_event_data.error_type = CAM_ISP_HW_ERROR_VIOLATION;
 		CAM_DBG(CAM_ISP, "Notify context for SFE error, ctx_idx: %u", ctx->ctx_index);
 		cam_ife_hw_mgr_find_affected_ctx(&error_event_data,
-			event_info->hw_idx, &recovery_data);
+			event_info->hw_idx, &recovery_data, false);
 	}
 	spin_unlock(&g_ife_hw_mgr.ctx_lock);
 
@@ -16093,7 +16091,7 @@ static int cam_ife_hw_mgr_handle_hw_err(
 		error_event_data.enable_req_dump = true;
 
 	rc = cam_ife_hw_mgr_find_affected_ctx(&error_event_data,
-		core_idx, &recovery_data);
+		core_idx, &recovery_data, false);
 
 	if (rc || !recovery_data.no_of_context)
 		goto end;

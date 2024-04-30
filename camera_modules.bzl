@@ -231,7 +231,7 @@ def _define_module(target, variant):
                 True: ["drivers/cam_vmrm/qrtr/cam_qrtr_comms.c"],
             },
         },
-        copts = ["-include", "$(location :camera_banner)", "-fstrict-flex-arrays=0"],
+        copts = ["-include", "$(location :camera_banner)"],
         deps = deps,
         kconfig = "Kconfig",
         defconfig = "{}_defconfig".format(target),

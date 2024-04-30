@@ -928,9 +928,10 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 
 		break;
 	case CAM_FORMAT_PLAIN8:
-		rsrc_data->cfg.en_cfg = (common_reg->wm_mode_val[CAM_VFE_WM_LINE_BASED_MODE] <<
+		rsrc_data->cfg.en_cfg = (common_reg->wm_mode_val[rsrc_data->wm_mode] <<
 			common_reg->wm_mode_shift) | (1 << common_reg->wm_en_shift);
-		rsrc_data->cfg.stride = rsrc_data->cfg.width * 2;
+		rsrc_data->cfg.stride = rsrc_data->cfg.width;
+		rsrc_data->cfg.width = ALIGNUP(rsrc_data->cfg.width, 16) / 16;
 		break;
 	case CAM_FORMAT_PLAIN16_10:
 	case CAM_FORMAT_PLAIN16_12:
@@ -1299,51 +1300,9 @@ static int cam_vfe_bus_ver3_release_wm(void   *bus_priv,
 static int cam_vfe_bus_ver3_start_wm_util(
 	struct cam_vfe_bus_ver3_wm_resource_data   *rsrc_data, int hw_ctxt_id)
 {
-	int val = 0;
-	struct cam_vfe_bus_ver3_common_data        *common_data = rsrc_data->common_data;
-	struct cam_vfe_bus_ver3_reg_offset_ubwc_client *ubwc_regs;
-	bool disable_ubwc_comp = rsrc_data->common_data->disable_ubwc_comp;
-	struct cam_vfe_bus_ver3_wm_ubwc_cfg_data *ubwc_cfg_data = NULL;
+	struct cam_vfe_bus_ver3_common_data *common_data = rsrc_data->common_data;
 
-	ubwc_regs = (struct cam_vfe_bus_ver3_reg_offset_ubwc_client *)
-		rsrc_data->hw_regs->ubwc_regs;
-
-	cam_io_w(rsrc_data->cfg.pack_fmt,
-		common_data->mem_base + rsrc_data->hw_regs->packer_cfg);
-
-	/* enable ubwc if needed*/
-	if (rsrc_data->en_ubwc) {
-		if (!ubwc_regs) {
-			CAM_ERR(CAM_ISP,
-				"ubwc_regs is NULL, VFE:%u WM:%d en_ubwc:%d",
-				rsrc_data->common_data->core_index,
-				rsrc_data->index, rsrc_data->en_ubwc);
-			return -EINVAL;
-		}
-
-		if ((rsrc_data->out_rsrc_data->mc_based ||
-			rsrc_data->out_rsrc_data->cntxt_cfg_except) && rsrc_data->mc_data)
-			ubwc_cfg_data = &rsrc_data->mc_data[hw_ctxt_id].ubwc_cfg_data;
-		else
-			ubwc_cfg_data = &rsrc_data->ubwc_cfg_data;
-
-		if (ubwc_cfg_data->ubwc_updated) {
-			cam_vfe_bus_ver3_config_ubwc_regs(rsrc_data, ubwc_cfg_data);
-			ubwc_cfg_data->ubwc_updated = false;
-		}
-
-		val = cam_io_r_mb(common_data->mem_base + ubwc_regs->mode_cfg);
-		val |= 0x1;
-		if (disable_ubwc_comp) {
-			val &= ~ubwc_regs->ubwc_comp_en_bit;
-			CAM_DBG(CAM_ISP,
-				"Force disable UBWC compression, VFE:%u WM:%d ubwc_mode_cfg: 0x%x",
-				rsrc_data->common_data->core_index,
-				rsrc_data->index, val);
-		}
-
-		cam_io_w_mb(val, common_data->mem_base + ubwc_regs->mode_cfg);
-	}
+	cam_io_w(rsrc_data->cfg.pack_fmt, common_data->mem_base + rsrc_data->hw_regs->packer_cfg);
 
 	/* Validate for debugfs and mmu reg info for targets that don't list it */
 	if (!(common_data->disable_mmu_prefetch) &&
@@ -1383,7 +1342,8 @@ static int cam_vfe_bus_ver3_start_wm(struct cam_isp_resource_node *wm_res)
 				continue;
 
 			/* Program reg context select before programming multibank registers*/
-			cam_io_w_mb(i << common_data->common_reg->mc_write_sel_shift,
+			cam_io_w_mb(((i << common_data->common_reg->mc_write_sel_shift) |
+				(i << common_data->common_reg->mc_read_sel_shift)),
 				common_data->mem_base + common_data->common_reg->ctxt_sel);
 			rc = cam_vfe_bus_ver3_start_wm_util(rsrc_data, i);
 			if (rc) {
@@ -4642,6 +4602,9 @@ static int cam_vfe_bus_ver3_mc_ctxt_sel(
 	common_reg = bus_priv->common_data.common_reg;
 	reg_val[0] = common_reg->ctxt_sel;
 	reg_val[1] = (ctxt_id << common_reg->mc_write_sel_shift);
+
+	CAM_DBG(CAM_ISP, "CTXT_SEL updated with ctxt_id: %u, val: 0x%x",
+		ctxt_id, reg_val[1]);
 
 	cdm_util_ops = bus_priv->common_data.cdm_util_ops;
 	size = cdm_util_ops->cdm_required_size_reg_random(1);

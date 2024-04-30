@@ -404,10 +404,10 @@ struct cam_req_mgr_core_dev_link_setup {
  *                                -1 is considered invalid
  * @report_if_bubble            : report to crm if failure in applying
  * @trigger_point               : the trigger point of this apply
+ * @last_applied_done_timestamp : Last setting apply done timestamp value
  * @re_apply                    : to skip re_apply for buf_done request
  * @recovery                    : Indicate if it is recovery req
- * @last_applied_done_timestamp : Last setting apply done timestamp value
- *
+ * @no_further_requests         : No further requests on link notification
  */
 struct cam_req_mgr_apply_request {
 	int32_t    link_hdl;
@@ -416,9 +416,10 @@ struct cam_req_mgr_apply_request {
 	int64_t    last_applied_max_pd_req;
 	int32_t    report_if_bubble;
 	uint32_t   trigger_point;
+	uint64_t   last_applied_done_timestamp;
 	bool       re_apply;
 	bool       recovery;
-	uint64_t   last_applied_done_timestamp;
+	bool       no_further_requests;
 };
 
 /**
