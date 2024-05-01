@@ -262,8 +262,13 @@ static void dsi_phy_hw_cphy_enable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *c
 	DSI_W32(phy, DSIPHY_CMN_GLBL_CTRL, BIT(6));
 
 	/* Enable LDO */
-	DSI_W32(phy, DSIPHY_CMN_VREG_CTRL_0, 0x57);
-	DSI_W32(phy, DSIPHY_CMN_VREG_CTRL_1, 0x41);
+	if (phy->index) {
+		DSI_W32(phy, DSIPHY_CMN_VREG_CTRL_0, 0x44);
+		DSI_W32(phy, DSIPHY_CMN_VREG_CTRL_1, 0x42);
+	} else {
+		DSI_W32(phy, DSIPHY_CMN_VREG_CTRL_0, 0x57);
+		DSI_W32(phy, DSIPHY_CMN_VREG_CTRL_1, 0x41);
+	}
 	DSI_W32(phy, DSIPHY_CMN_GLBL_STR_SWI_CAL_SEL_CTRL, glbl_str_swi_cal_sel_ctrl);
 	DSI_W32(phy, DSIPHY_CMN_GLBL_HSTX_STR_CTRL_0, glbl_hstx_str_ctrl_0);
 	DSI_W32(phy, DSIPHY_CMN_GLBL_PEMPH_CTRL_0, 0x11);

@@ -2294,14 +2294,14 @@ static int msm_drm_component_dependency_check(struct device *dev)
 		if (!node)
 			break;
 
-		if (of_node_name_eq(node,"qcom,sde_rscc") &&
-				of_device_is_available(node) &&
-				of_node_check_flag(node, OF_POPULATED)) {
-			struct platform_device *pdev =
-					of_find_device_by_node(node);
+		if ((of_node_name_eq(node, "qcom,sde_rscc")
+			|| of_node_name_eq(node, "qcom,sde_cesta"))
+				&& of_device_is_available(node)
+				&& of_node_check_flag(node, OF_POPULATED)) {
+			struct platform_device *pdev = of_find_device_by_node(node);
+
 			if (!platform_get_drvdata(pdev)) {
-				DISP_DEV_ERR(dev,
-					"qcom,sde_rscc not probed yet\n");
+				DISP_DEV_ERR(dev, "qcom,sde_rscc/qcom,sde_cesta not probed yet\n");
 				return -EPROBE_DEFER;
 			} else {
 				return 0;
