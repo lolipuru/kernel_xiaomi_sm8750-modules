@@ -1019,7 +1019,8 @@ bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
 		return false;
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
-	if (sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL)
+	if (sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL ||
+			sde_enc->crtc != crtc)
 		return false;
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
