@@ -684,6 +684,39 @@ static int _set_power_vote(struct rproc *rproc, bool state)
 #endif
 }
 
+static int sde_power_parse_dt_hwfence_soccp(struct platform_device *pdev,
+	struct sde_power_handle *phandle)
+{
+	struct device_node *of_node = NULL;
+	u32 rc, hw_fence_rev, soccp_ph;
+
+	if (!pdev || !phandle) {
+		pr_err("invalid input param pdev:%pK phandle:%pK\n", pdev, phandle);
+		return -EINVAL;
+	}
+
+	of_node = pdev->dev.of_node;
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,hw-fence-sw-version", &hw_fence_rev);
+	if (rc || !hw_fence_rev)
+		return 0; /* hw-fence is disabled */
+
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,sde-soccp-controller", &soccp_ph);
+	if (rc || !soccp_ph)
+		return 0; /* target does not have soccp */
+
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+	phandle->rproc = rproc_get_by_phandle(soccp_ph);
+#endif
+	if (IS_ERR_OR_NULL(phandle->rproc)) {
+		/* this is not an error if hw-fencing is disabled */
+		pr_debug("failed to find rproc for phandle:%u\n", soccp_ph);
+		phandle->rproc = NULL;
+		rc = -EINVAL;
+	}
+
+	return rc;
+}
+
 int sde_power_resource_init(struct platform_device *pdev,
 	struct sde_power_handle *phandle)
 {
@@ -746,10 +779,10 @@ int sde_power_resource_init(struct platform_device *pdev,
 		goto bus_err;
 	}
 
-	if (phandle->rproc) {
-		rc = _set_power_vote(phandle->rproc, true);
-		if (rc)
-			pr_err("soccp power vote enable failed rc:%d\n", rc);
+	rc = sde_power_parse_dt_hwfence_soccp(pdev, phandle);
+	if (rc) {
+		pr_debug("soccp power vote parsing failed rc:%d\n", rc);
+		rc = 0;
 	}
 
 	phandle->rsc_client = NULL;
