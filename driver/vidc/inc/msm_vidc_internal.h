@@ -60,6 +60,9 @@ struct msm_vidc_inst;
 #ifndef V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_STILL_PICTURE
 #define V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_STILL_PICTURE    (3)
 #endif
+#ifndef V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_MULTIVIEW
+#define V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_MULTIVIEW    (4)
+#endif
 
 enum msm_vidc_blur_types {
 	MSM_VIDC_BLUR_NONE               = 0x0,
@@ -269,6 +272,7 @@ enum msm_vidc_metadata_bits {
 	CAP(META_TRANSCODING_STAT_INFO)           \
 	CAP(META_DOLBY_RPU)                       \
 	CAP(META_HDR10_MAX_RGB_INFO)              \
+	CAP(META_VIEW_ID)                         \
 	CAP(DRV_VERSION)                          \
 	CAP(MIN_FRAME_QP)                         \
 	CAP(MAX_FRAME_QP)                         \
