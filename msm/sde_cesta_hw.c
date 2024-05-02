@@ -35,11 +35,31 @@ void _sde_cesta_hw_init(struct sde_cesta *cesta)
 	}
 }
 
+void _sde_cesta_hw_override_ctrl_setup(struct sde_cesta *cesta, u32 idx, u32 force_flags)
+{
+	u32 val = 0;
+
+	if (force_flags & SDE_CESTA_OVERRIDE_FORCE_DB_UPDATE)
+		val |= BIT(0);
+	if (force_flags & SDE_CESTA_OVERRIDE_FORCE_IDLE)
+		val |= BIT(1);
+	if (force_flags & SDE_CESTA_OVERRIDE_FORCE_ACTIVE)
+		val |= BIT(2);
+	if (force_flags & SDE_CESTA_OVERRIDE_FORCE_CHN_UPDATE)
+		val |= BIT(3);
+	if (force_flags & SDE_CESTA_OVERRIDE_RESET)
+		val |= BIT(31);
+
+	dss_reg_w(&cesta->scc_io[idx], SCC_OVERRIDE_CTRL, val, cesta->debug_mode);
+	wmb(); /* for force votes to be applied immediately */
+}
+
 void _sde_cesta_hw_ctrl_setup(struct sde_cesta *cesta, u32 idx, struct sde_cesta_ctrl_cfg *cfg)
 {
 	u32 val = 0;
 
 	if (!cfg || !cfg->enable) {
+		_sde_cesta_hw_override_ctrl_setup(cesta, idx, 0);
 		dss_reg_w(&cesta->scc_io[idx], SCC_CTRL, 0xf0, cesta->debug_mode);
 		return;
 	}
@@ -95,4 +115,5 @@ void sde_cesta_hw_init(struct sde_cesta *cesta)
 	cesta->hw_ops.ctrl_setup = _sde_cesta_hw_ctrl_setup;
 	cesta->hw_ops.get_status = _sde_cesta_hw_get_status;
 	cesta->hw_ops.get_pwr_event = _sde_cesta_hw_get_pwr_event;
+	cesta->hw_ops.override_ctrl_setup = _sde_cesta_hw_override_ctrl_setup;
 }
