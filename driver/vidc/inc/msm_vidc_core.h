@@ -120,7 +120,7 @@ struct msm_vidc_core {
 	struct msm_vidc_venus_ops             *venus_ops;
 	const struct msm_vidc_resources_ops   *res_ops;
 	struct msm_vidc_session_ops           *session_ops;
-	struct msm_vidc_memory_ops            *mem_ops;
+	const struct msm_vidc_memory_ops      *mem_ops;
 	struct media_device_ops               *media_device_ops;
 	const struct msm_vidc_fence_ops       *fence_ops;
 	u32                                    header_id;
