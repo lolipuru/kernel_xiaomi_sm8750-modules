@@ -1804,6 +1804,10 @@ int msm_cvp_unmap_user_persist(struct msm_cvp_inst *inst,
 	if (!offset || !buf_num)
 		return 0;
 
+	if (offset < (sizeof(struct cvp_hfi_cmd_session_hdr)/sizeof(u32))) {
+		dprintk(CVP_ERR, "%s: Incorrect offset in cmd %d\n", __func__, offset);
+		return -EINVAL;
+	}
 	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
 	for (i = 0; i < buf_num; i++) {
 		buf = (struct cvp_buf_type *)&in_pkt->pkt_data[offset];
@@ -1837,6 +1841,10 @@ int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
 
 	if (!offset || !buf_num)
 		return 0;
+	if (offset < (sizeof(struct cvp_hfi_cmd_session_hdr)/sizeof(u32))) {
+		dprintk(CVP_ERR, "%s: Incorrect offset in cmd %d\n", __func__, offset);
+		return -EINVAL;
+	}
 
 	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
 	for (i = 0; i < buf_num; i++) {
@@ -1879,6 +1887,10 @@ int msm_cvp_map_frame(struct msm_cvp_inst *inst,
 
 	if (!offset || !buf_num)
 		return 0;
+	if (offset < (sizeof(struct cvp_hfi_cmd_session_hdr)/sizeof(u32))) {
+		dprintk(CVP_ERR, "%s: Incorrect offset in cmd %d\n", __func__, offset);
+		return -EINVAL;
+	}
 
 	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
 	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
