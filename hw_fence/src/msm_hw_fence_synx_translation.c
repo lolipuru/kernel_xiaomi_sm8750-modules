@@ -18,7 +18,7 @@
  * MAX_SUPPORTED_TEST: Maximum number of validation clients supported
  */
 #define MAX_SUPPORTED_DPU0 (HW_FENCE_CLIENT_ID_CTL5 - HW_FENCE_CLIENT_ID_CTL0)
-#define MAX_SUPPORTED_TEST (HW_FENCE_CLIENT_ID_VAL6 - HW_FENCE_CLIENT_ID_VAL1)
+#define MAX_SUPPORTED_TEST (HW_FENCE_CLIENT_ID_VAL6 - HW_FENCE_CLIENT_ID_VAL0)
 
 static enum hw_fence_client_id _get_hw_fence_client_id(enum synx_client_id synx_client_id)
 {
