@@ -15979,6 +15979,8 @@ static int cam_ife_hw_mgr_handle_csid_camif_sof(
 			}
 		}
 
+		cam_hw_mgr_reset_out_of_sync_cnt(ctx);
+
 		ife_hw_irq_sof_cb(ctx->common.cb_priv,
 			CAM_ISP_HW_EVENT_SOF, (void *)&sof_done_event_data);
 
