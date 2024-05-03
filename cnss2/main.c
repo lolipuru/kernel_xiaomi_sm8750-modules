@@ -4891,6 +4891,15 @@ static void cnss_deinitialize_mem_pool(void)
 }
 #endif
 
+void cnss_fmd_status_update_cb(void *cb_ctx, bool status)
+{
+	struct cnss_plat_data *plat_priv = (struct cnss_plat_data *)cb_ctx;
+
+	cnss_pr_dbg("FMD status update: %d\n", status);
+	if (status)
+		set_bit(CNSS_IN_REBOOT, &plat_priv->driver_state);
+}
+
 static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 {
 	int ret;
@@ -4935,6 +4944,9 @@ static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 		cnss_pr_err("QMI IPC connection call back register failed, err = %d\n",
 			    ret);
 
+	cnss_utils_register_status_notifier(CNSS_UTILS_FMD_STATUS,
+					    cnss_fmd_status_update_cb,
+					    plat_priv);
 	cnss_sram_dump_init(plat_priv);
 
 	if (of_property_read_bool(plat_priv->plat_dev->dev.of_node,

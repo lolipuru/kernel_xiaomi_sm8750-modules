@@ -45,6 +45,14 @@ enum mac_type {
 	CNSS_MAC_DERIVED,
 };
 
+#define CNSS_UTILS_NOTIFIER_MAX_USER	2
+struct cnss_utils_status_notifier {
+	cnss_utils_status_update
+	status_update_cb[CNSS_UTILS_NOTIFIER_MAX_USER];
+	void *cb_ctx[CNSS_UTILS_NOTIFIER_MAX_USER];
+	u32 num_user;
+};
+
 static struct cnss_utils_priv {
 	struct cnss_unsafe_channel_list unsafe_channel_list;
 	struct cnss_dfs_nol_info dfs_nol_info;
@@ -59,6 +67,8 @@ static struct cnss_utils_priv {
 	struct dentry *root_dentry;
 	/* generic mutex for device_id */
 	struct mutex cnss_device_id_lock;
+	struct cnss_utils_status_notifier
+			notifier_ctx[CNSS_UTILS_MAX_STATUS_TYPE];
 	enum cnss_utils_device_type cnss_device_type;
 #ifdef CONFIG_FEATURE_SMEM_MAILBOX
 	bool smem_mailbox_initialized;
@@ -147,6 +157,67 @@ enum cnss_utils_device_type cnss_utils_update_device_type(
 	return priv->cnss_device_type;
 }
 EXPORT_SYMBOL(cnss_utils_update_device_type);
+
+void
+cnss_utils_status_update_user(enum cnss_status_type status_type,
+			      bool status)
+{
+	struct cnss_utils_priv *priv = cnss_utils_priv;
+	struct cnss_utils_status_notifier *notifier_ctx;
+	int i;
+
+	notifier_ctx = &priv->notifier_ctx[status_type];
+	for (i = 0; i < notifier_ctx->num_user; i++) {
+		if (notifier_ctx->status_update_cb[i])
+			notifier_ctx->status_update_cb[i]
+					(notifier_ctx->cb_ctx[i],
+					status);
+	}
+}
+
+int cnss_utils_fmd_status(int is_enabled)
+{
+	pr_info("cnss_utils: FMD status:%d\n", is_enabled);
+
+	if (is_enabled)
+		cnss_utils_status_update_user(CNSS_UTILS_FMD_STATUS,
+					      true);
+	else
+		cnss_utils_status_update_user(CNSS_UTILS_FMD_STATUS,
+					      false);
+
+	return 0;
+}
+EXPORT_SYMBOL(cnss_utils_fmd_status);
+
+int
+cnss_utils_register_status_notifier(enum cnss_status_type status_type,
+				    cnss_utils_status_update status_update_cb,
+				    void *cb_ctx)
+{
+	struct cnss_utils_priv *priv = cnss_utils_priv;
+	struct cnss_utils_status_notifier *notifier_ctx;
+	int num_user;
+
+	if (!priv)
+		return -EINVAL;
+
+	if (status_type >= CNSS_UTILS_MAX_STATUS_TYPE)
+		return -EINVAL;
+
+	notifier_ctx = &priv->notifier_ctx[status_type];
+	num_user = notifier_ctx->num_user;
+
+	if (num_user >= CNSS_UTILS_NOTIFIER_MAX_USER)
+		return -EINVAL;
+
+	notifier_ctx->status_update_cb[num_user] = status_update_cb;
+	notifier_ctx->cb_ctx[num_user] = cb_ctx;
+	notifier_ctx->num_user++;
+
+	return 0;
+}
+EXPORT_SYMBOL(cnss_utils_register_status_notifier);
 
 int cnss_utils_wlan_set_dfs_nol(struct device *dev,
 				const void *info, u16 info_len)
