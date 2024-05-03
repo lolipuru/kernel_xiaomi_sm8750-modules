@@ -1332,6 +1332,7 @@ static int cam_vfe_bus_ver3_start_wm(struct cam_isp_resource_node *wm_res)
 {
 	const uint32_t enable_debug_status_1 = 11 << 8;
 	int i, rc = 0;
+	uint32_t restore_ctxt_sel_val = 0;
 	struct cam_vfe_bus_ver3_wm_resource_data   *rsrc_data = wm_res->res_priv;
 	struct cam_vfe_bus_ver3_common_data        *common_data = rsrc_data->common_data;
 
@@ -1339,6 +1340,8 @@ static int cam_vfe_bus_ver3_start_wm(struct cam_isp_resource_node *wm_res)
 		cam_io_w(0xf, common_data->mem_base + rsrc_data->hw_regs->burst_limit);
 
 	if (rsrc_data->out_rsrc_data->mc_based || rsrc_data->out_rsrc_data->cntxt_cfg_except) {
+		restore_ctxt_sel_val = cam_io_r_mb(common_data->mem_base +
+			common_data->common_reg->ctxt_sel);
 		for (i = 0; i < CAM_ISP_MULTI_CTXT_MAX; i++) {
 			if (!(rsrc_data->out_rsrc_data->dst_hw_ctxt_id_mask & BIT(i)))
 				continue;
@@ -1355,6 +1358,9 @@ static int cam_vfe_bus_ver3_start_wm(struct cam_isp_resource_node *wm_res)
 				goto end;
 			}
 		}
+
+		cam_io_w_mb(restore_ctxt_sel_val, common_data->mem_base +
+			common_data->common_reg->ctxt_sel);
 	} else {
 		rc = cam_vfe_bus_ver3_start_wm_util(rsrc_data, -1);
 		if (rc) {
