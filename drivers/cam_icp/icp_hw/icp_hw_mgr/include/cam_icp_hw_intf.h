@@ -7,6 +7,8 @@
 #ifndef CAM_ICP_HW_INTF_H
 #define CAM_ICP_HW_INTF_H
 
+#include "cam_vmrm_interface.h"
+
 #define CAM_ICP_CMD_BUF_MAX_SIZE     128
 #define CAM_ICP_MSG_BUF_MAX_SIZE     CAM_ICP_CMD_BUF_MAX_SIZE
 
@@ -33,6 +35,12 @@
 
 /* max caps mask is max value of all device caps mask index added by 1 */
 #define MAX_HW_CAPS_MASK 2
+
+/*
+ * icp inter vm commnication timeout must be higher,
+ * as it has to wait for completion of icp power related operations
+ */
+#define CAM_ICP_INTER_VM_COMM_TIMEOUT_US 10000
 
 enum cam_icp_hw_type {
 	CAM_ICP_HW_ICP_V1,

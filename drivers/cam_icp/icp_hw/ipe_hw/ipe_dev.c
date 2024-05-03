@@ -19,7 +19,6 @@
 #include "cam_cpas_api.h"
 #include "cam_debug_util.h"
 #include "camera_main.h"
-#include "cam_vmrm_interface.h"
 #include "cam_mem_mgr_api.h"
 
 static struct cam_ipe_device_hw_info cam_ipe_hw_info[] = {
@@ -152,7 +151,7 @@ static int cam_ipe_component_bind(struct device *dev,
 	CAM_DBG(CAM_ICP, "cam_ipe_init_soc_resources : %pK",
 		(void *)&ipe_dev->soc_info);
 
-	ipe_dev->soc_info.hw_id = CAM_HW_ID_IPE0 + ipe_dev->soc_info.index;
+	ipe_dev->soc_info.hw_id = CAM_HW_ID_IPE + ipe_dev->soc_info.index;
 	rc = cam_vmvm_populate_hw_instance_info(&ipe_dev->soc_info, NULL, NULL);
 	if (rc) {
 		CAM_ERR(CAM_ICP, " hw instance populate failed: %d", rc);

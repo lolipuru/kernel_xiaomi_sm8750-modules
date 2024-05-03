@@ -46,7 +46,6 @@
 #include "cam_mem_mgr_api.h"
 #include "cam_presil_hw_access.h"
 #include "cam_icp_proc.h"
-#include "cam_vmrm_interface.h"
 
 #define ICP_WORKQ_TASK_CMD_TYPE 1
 #define ICP_WORKQ_TASK_MSG_TYPE 2
@@ -63,6 +62,9 @@
 #define ICP_NUM_MEM_REGIONS_FOR_LLCC 1
 
 DECLARE_RWSEM(frame_in_process_sem);
+
+static int cam_icp_vm_send_msg(struct cam_icp_hw_mgr *hw_mgr, uint32_t dest_vm,
+	uint32_t msg_type, bool need_ack);
 
 static struct cam_icp_hw_mgr *g_icp_hw_mgr[CAM_ICP_SUBDEV_MAX];
 
@@ -1755,36 +1757,12 @@ static int cam_icp_mgr_device_resume(struct cam_icp_hw_mgr *hw_mgr,
 	int rc = 0, i;
 	enum cam_icp_hw_type hw_dev_type;
 	uint32_t *prop_ref_data;
-	uint32_t hw_id;
 
 	hw_dev_type = ctx_data->device_info->hw_dev_type;
 	dev_info = ctx_data->device_info;
 
 	if (dev_info->dev_ctx_info.dev_ctxt_cnt++)
 		goto end;
-
-	switch (hw_dev_type) {
-	case CAM_ICP_DEV_BPS:
-		hw_id = CAM_HW_ID_BPS;
-		break;
-	case CAM_ICP_DEV_IPE:
-		hw_id = CAM_HW_ID_IPE0;
-		break;
-	case CAM_ICP_DEV_OFE:
-		hw_id = CAM_HW_ID_OFE;
-		break;
-	default:
-		CAM_ERR(CAM_ICP, "Invalid hw dev type: %d", hw_dev_type);
-		rc = -EINVAL;
-		goto end;
-	}
-
-	/* Acquire ownership */
-	rc = cam_vmrm_soc_acquire_resources(hw_id);
-	if (rc) {
-		CAM_ERR(CAM_ICP, "hw id %x acquire ownership failed", hw_id);
-		goto end;
-	}
 
 	for (i = 0; i < dev_info->hw_dev_cnt; i++) {
 		dev_intf = dev_info->dev_intf[i];
@@ -1900,7 +1878,7 @@ static int cam_icp_mgr_dev_power_collapse(struct cam_icp_hw_mgr *hw_mgr,
 		hw_id = CAM_HW_ID_BPS;
 		break;
 	case CAM_ICP_DEV_IPE:
-		hw_id = CAM_HW_ID_IPE0;
+		hw_id = CAM_HW_ID_IPE;
 		break;
 	case CAM_ICP_DEV_OFE:
 		hw_id = CAM_HW_ID_OFE;
@@ -2072,7 +2050,7 @@ static ssize_t cam_icp_hw_mgr_fw_load_unload(
 	int rc = 0;
 	char input_buf[16];
 	struct cam_icp_hw_mgr *hw_mgr = file->private_data;
-	struct cam_icp_mgr_hw_args power_args;
+	struct cam_icp_mgr_hw_args power_args = {0};
 
 	if (copy_from_user(input_buf, ubuf, sizeof(input_buf)))
 		return -EFAULT;
@@ -2091,6 +2069,8 @@ static ssize_t cam_icp_hw_mgr_fw_load_unload(
 	power_args.hfi_setup = true;
 	power_args.use_proxy_boot_up = CAM_IS_SECONDARY_VM();
 	power_args.icp_pc = hw_mgr->icp_pc_flag;
+
+	CAM_DBG(CAM_ICP, "%s command:%s", hw_mgr->hw_mgr_name, input_buf);
 
 	if (strcmp(input_buf, "load\n") == 0) {
 		rc = cam_mem_mgr_init();
@@ -4269,7 +4249,7 @@ static int cam_icp_device_deint(struct cam_icp_hw_mgr *hw_mgr)
 static int cam_icp_mgr_hw_close_u(void *hw_priv, void *hw_close_args)
 {
 	struct cam_icp_hw_mgr *hw_mgr = hw_priv;
-	struct cam_icp_mgr_hw_args hw_args;
+	struct cam_icp_mgr_hw_args hw_args = {0};
 	struct cam_icp_mgr_hw_args *close_args = hw_close_args;
 	int rc = 0;
 
@@ -4328,10 +4308,21 @@ static int cam_icp_mgr_proc_resume(struct cam_icp_hw_mgr *hw_mgr, bool use_proxy
 		return -EINVAL;
 	}
 
-	if (!(use_proxy_boot_up))
+	CAM_DBG(CAM_ICP, "%s use_proxy_boot_up:%s", hw_mgr->hw_mgr_name,
+		CAM_BOOL_TO_YESNO(use_proxy_boot_up));
+
+	if (!use_proxy_boot_up) {
 		rc = icp_dev_intf->hw_ops.process_cmd(icp_dev_intf->hw_priv,
 			CAM_ICP_CMD_POWER_RESUME, &hw_mgr->icp_jtag_debug,
 			sizeof(hw_mgr->icp_jtag_debug));
+	} else {
+		rc = cam_icp_vm_send_msg(hw_mgr, CAM_PVM, CAM_ICP_POWER_RESUME, true);
+		if (rc) {
+			CAM_ERR(CAM_ICP, "[%s] Failed in sending icp resume command to PVM rc %d",
+				hw_mgr->hw_mgr_name, rc);
+			return rc;
+		}
+	}
 
 	if (!rc)
 		hw_mgr->icp_resumed = true;
@@ -4349,9 +4340,22 @@ static void cam_icp_mgr_proc_suspend(struct cam_icp_hw_mgr *hw_mgr, bool use_pro
 		return;
 	}
 
-	if (!use_proxy_boot_up)
+	CAM_DBG(CAM_ICP, "%s use_proxy_boot_up:%d", hw_mgr->hw_mgr_name,
+		CAM_BOOL_TO_YESNO(use_proxy_boot_up));
+
+	if (!use_proxy_boot_up) {
 		rc = icp_dev_intf->hw_ops.process_cmd(icp_dev_intf->hw_priv,
 			CAM_ICP_CMD_POWER_COLLAPSE, NULL, 0);
+	} else {
+		rc = cam_icp_vm_send_msg(hw_mgr, CAM_PVM, CAM_ICP_POWER_COLLAPSE,
+			true);
+		if (rc) {
+			CAM_ERR(CAM_ICP,
+				"[%s] Failed in sending icp power_collapse command to PVM rc %d",
+				hw_mgr->hw_mgr_name, rc);
+		}
+	}
+
 	if (rc)
 		CAM_ERR(CAM_ICP, "[%s] Fail to suspend processor rc %d",
 			hw_mgr->hw_mgr_name, rc);
@@ -4413,10 +4417,12 @@ static int cam_icp_mgr_icp_power_collapse(
 		CAM_ERR(CAM_ICP, "[%s] Fail to power collapse ICP rc: %d",
 			hw_mgr->hw_mgr_name, rc);
 
-	rc = icp_dev_intf->hw_ops.deinit(icp_dev_intf->hw_priv, &send_freq_info,
-		sizeof(send_freq_info));
-	if (rc)
-		CAM_ERR(CAM_ICP, "[%s] Fail to deinit ICP", hw_mgr->hw_mgr_name);
+	if (!pc_args->skip_icp_init) {
+		rc = icp_dev_intf->hw_ops.deinit(icp_dev_intf->hw_priv, &send_freq_info,
+				sizeof(send_freq_info));
+		if (rc)
+			CAM_ERR(CAM_ICP, "[%s] Fail to deinit ICP", hw_mgr->hw_mgr_name);
+	}
 
 	CAM_DBG(CAM_PERF, "[%s] EXIT", hw_mgr->hw_mgr_name);
 
@@ -4430,7 +4436,6 @@ static int cam_icp_mgr_proc_boot(struct cam_icp_hw_mgr *hw_mgr, bool use_proxy_b
 	int rc = 0;
 	enum cam_icp_cmd_type boot_cmd = ((use_proxy_boot_up) ?
 			CAM_ICP_CMD_PREP_BOOT : CAM_ICP_CMD_PROC_BOOT);
-
 
 	if (!icp_dev_intf) {
 		CAM_ERR(CAM_ICP, "[%s] invalid device interface", hw_mgr->hw_mgr_name);
@@ -4449,7 +4454,6 @@ static int cam_icp_mgr_proc_boot(struct cam_icp_hw_mgr *hw_mgr, bool use_proxy_b
 
 	args.irq_cb.data = hw_mgr;
 	args.irq_cb.cb = cam_icp_hw_mgr_cb;
-
 	args.debug_enabled = hw_mgr->icp_jtag_debug;
 
 	rc = icp_dev_intf->hw_ops.process_cmd(icp_dev_intf->hw_priv, boot_cmd, &args,
@@ -4459,31 +4463,50 @@ static int cam_icp_mgr_proc_boot(struct cam_icp_hw_mgr *hw_mgr, bool use_proxy_b
 		return rc;
 	}
 
+	if (use_proxy_boot_up) {
+		rc = cam_icp_vm_send_msg(hw_mgr, CAM_PVM, CAM_ICP_POWER_RESUME, true);
+		if (rc) {
+			CAM_ERR(CAM_ICP, "[%s] Failed in sending icp boot up command to PVM rc %d",
+					hw_mgr->hw_mgr_name, rc);
+			return rc;
+		}
+	}
+
 	hw_mgr->icp_resumed = true;
 
 	return rc;
 }
 
-static void cam_icp_mgr_proc_shutdown(struct cam_icp_hw_mgr *hw_mgr, bool use_proxy_boot_up)
+static void cam_icp_mgr_proc_shutdown(struct cam_icp_hw_mgr *hw_mgr, bool use_proxy_boot_up,
+		bool skip_icp_init)
 {
 	struct cam_hw_intf *icp_dev_intf = hw_mgr->icp_dev_intf;
 	bool send_freq_info = false, fw_dump = atomic_read(&hw_mgr->recovery);
+	enum cam_icp_cmd_type shutdown_cmd = ((use_proxy_boot_up) ?
+			CAM_ICP_CMD_PREP_SHUTDOWN : CAM_ICP_CMD_PROC_SHUTDOWN);
+	int rc;
 
 	if (!icp_dev_intf) {
 		CAM_ERR(CAM_ICP, "[%s] ICP device interface is NULL", hw_mgr->hw_mgr_name);
 		return;
 	}
+	if (!skip_icp_init)
+		icp_dev_intf->hw_ops.init(icp_dev_intf->hw_priv, &send_freq_info,
+			sizeof(send_freq_info));
 
-	icp_dev_intf->hw_ops.init(icp_dev_intf->hw_priv, &send_freq_info, sizeof(send_freq_info));
+	icp_dev_intf->hw_ops.process_cmd(icp_dev_intf->hw_priv, shutdown_cmd, &fw_dump,
+		sizeof(bool));
 
-	if (use_proxy_boot_up)
-		icp_dev_intf->hw_ops.process_cmd(icp_dev_intf->hw_priv,
-			CAM_ICP_CMD_PREP_SHUTDOWN, NULL, 0);
-	else
-		icp_dev_intf->hw_ops.process_cmd(icp_dev_intf->hw_priv,
-			CAM_ICP_CMD_PROC_SHUTDOWN, &fw_dump, sizeof(bool));
+	if (use_proxy_boot_up) {
+		rc = cam_icp_vm_send_msg(hw_mgr, CAM_PVM, CAM_ICP_SHUTDOWN, true);
+		if (rc) {
+			CAM_ERR(CAM_ICP, "[%s] Failed in sending icp boot up command to PVM rc %d",
+					hw_mgr->hw_mgr_name, rc);
+		}
+	}
 
-	icp_dev_intf->hw_ops.deinit(icp_dev_intf->hw_priv, &send_freq_info,
+	if (!skip_icp_init)
+		icp_dev_intf->hw_ops.deinit(icp_dev_intf->hw_priv, &send_freq_info,
 			sizeof(send_freq_info));
 
 	if (hw_mgr->synx_signaling_en)
@@ -5044,7 +5067,8 @@ static int cam_icp_mgr_hw_close(void *hw_priv, void *hw_close_args)
 		return -EINVAL;
 	}
 
-	cam_icp_mgr_proc_shutdown(hw_mgr, close_args->use_proxy_boot_up);
+	cam_icp_mgr_proc_shutdown(hw_mgr, close_args->use_proxy_boot_up,
+		close_args->skip_icp_init);
 
 	if (close_args->hfi_setup) {
 		cam_hfi_deinit(hw_mgr->hfi_handle);
@@ -5369,28 +5393,6 @@ static int cam_icp_mgr_hw_open_u(void *hw_mgr_priv, void *download_fw_args)
 	return rc;
 }
 
-static int cam_icp_mgr_hw_open_k(void *hw_mgr_priv)
-{
-	struct cam_icp_hw_mgr *hw_mgr = hw_mgr_priv;
-	struct cam_icp_mgr_hw_args open_args = {0};
-	int rc;
-
-	if (!hw_mgr) {
-		CAM_ERR(CAM_ICP, "Null hw mgr");
-		return 0;
-	}
-
-	open_args.icp_pc = false;
-	open_args.hfi_setup = true;
-	open_args.use_proxy_boot_up = CAM_IS_SECONDARY_VM();
-
-	rc = cam_icp_mgr_hw_open(hw_mgr, &open_args);
-	CAM_DBG(CAM_ICP, "[%s] hw_open from kmd done %d",
-		hw_mgr->hw_mgr_name, rc);
-
-	return rc;
-}
-
 static int cam_icp_mgr_icp_resume(
 	struct cam_icp_hw_mgr *hw_mgr,
 	void *resume_args)
@@ -5413,18 +5415,25 @@ static int cam_icp_mgr_icp_resume(
 	}
 
 	if (!hw_mgr->icp_booted) {
+		res_args->icp_pc = false;
 		CAM_DBG(CAM_ICP, "[%s] booting ICP processor", hw_mgr->hw_mgr_name);
-		return cam_icp_mgr_hw_open_k(hw_mgr);
-	}
-
-	send_freq_info = true;
-	rc = icp_dev_intf->hw_ops.init(icp_dev_intf->hw_priv, &send_freq_info,
-		sizeof(send_freq_info));
-	if (rc) {
-		CAM_ERR(CAM_ICP, "[%s] Failed to init ICP hw rc: %d", hw_mgr->hw_mgr_name, rc);
+		rc = cam_icp_mgr_hw_open(hw_mgr, res_args);
+		CAM_DBG(CAM_ICP, "[%s] hw_open from kmd %s %d", hw_mgr->hw_mgr_name,
+				(rc ? "failed":"success"), rc);
 		return rc;
 	}
 
+	send_freq_info = true;
+
+	if (!res_args->skip_icp_init) {
+		rc = icp_dev_intf->hw_ops.init(icp_dev_intf->hw_priv, &send_freq_info,
+				sizeof(send_freq_info));
+		if (rc) {
+			CAM_ERR(CAM_ICP, "[%s] Failed to init ICP hw rc: %d",
+				hw_mgr->hw_mgr_name, rc);
+			return rc;
+		}
+	}
 
 	rc = cam_icp_mgr_proc_resume(hw_mgr, res_args->use_proxy_boot_up);
 	if (rc) {
@@ -5469,7 +5478,7 @@ static int cam_icp_mgr_hw_open(
 		return -EINVAL;
 	}
 
-	if (hw_mgr->icp_booted) {
+	if (hw_mgr->icp_booted && hw_mgr->hfi_init_done) {
 		CAM_DBG(CAM_ICP, "[%s] ICP already booted", hw_mgr->hw_mgr_name);
 		return rc;
 	}
@@ -5496,18 +5505,29 @@ static int cam_icp_mgr_hw_open(
 		}
 	}
 
-	rc = cam_icp_mgr_init_all_cores(hw_mgr);
-	if (rc) {
-		CAM_ERR(CAM_ICP, "[%s] Failed in device init, rc %d",
-			hw_mgr->hw_mgr_name, rc);
-		goto dev_init_fail;
+	if (!open_args->skip_icp_init) {
+		rc = cam_icp_mgr_init_all_cores(hw_mgr);
+		if (rc) {
+			CAM_ERR(CAM_ICP, "[%s] Failed in device init, rc %d",
+					hw_mgr->hw_mgr_name, rc);
+			goto dev_init_fail;
+		}
 	}
 
-	rc = cam_icp_mgr_proc_boot(hw_mgr, open_args->use_proxy_boot_up);
-	if (rc) {
-		CAM_ERR(CAM_ICP, "[%s] Failed in proc boot, rc %d",
-			hw_mgr->hw_mgr_name, rc);
-		goto boot_failed;
+	if (!hw_mgr->icp_booted) {
+		rc = cam_icp_mgr_proc_boot(hw_mgr, open_args->use_proxy_boot_up);
+		if (rc) {
+			CAM_ERR(CAM_ICP, "[%s] Failed in proc boot, rc %d",
+					hw_mgr->hw_mgr_name, rc);
+			goto boot_failed;
+		}
+	} else if (!hw_mgr->icp_resumed) {
+		rc = cam_icp_mgr_proc_resume(hw_mgr, open_args->use_proxy_boot_up);
+		if (rc) {
+			CAM_ERR(CAM_ICP, "[%s] Failed in proc resume, rc %d",
+					hw_mgr->hw_mgr_name, rc);
+			goto boot_failed;
+		}
 	}
 
 	if (open_args->hfi_setup) {
@@ -5545,10 +5565,12 @@ static int cam_icp_mgr_hw_open(
 
 	CAM_INFO(CAM_ICP, "[%s] FW download done successfully", hw_mgr->hw_mgr_name);
 
-	rc = cam_icp_device_deint(hw_mgr);
-	if (rc)
-		CAM_ERR(CAM_ICP, "[%s] Failed in device deinit rc %d",
+	if (!open_args->skip_icp_init) {
+		rc = cam_icp_device_deint(hw_mgr);
+		if (rc)
+			CAM_ERR(CAM_ICP, "[%s] Failed in device deinit rc %d",
 				hw_mgr->hw_mgr_name, rc);
+	}
 
 	if (!(open_args->icp_pc))
 		return rc;
@@ -5565,7 +5587,7 @@ fw_init_failed:
 	cam_hfi_deinit(hw_mgr->hfi_handle);
 	hw_mgr->hfi_init_done = false;
 hfi_init_failed:
-	cam_icp_mgr_proc_shutdown(hw_mgr, open_args->use_proxy_boot_up);
+	cam_icp_mgr_proc_shutdown(hw_mgr, open_args->use_proxy_boot_up, open_args->skip_icp_init);
 boot_failed:
 	cam_icp_mgr_device_deinit(hw_mgr);
 dev_init_fail:
@@ -5583,7 +5605,7 @@ static int cam_icp_mgr_restart_icp(struct cam_icp_hw_mgr *hw_mgr)
 	atomic_set(&hw_mgr->ssr_triggered, 1);
 
 	/* Shutdown processor */
-	cam_icp_mgr_proc_shutdown(hw_mgr, use_proxy_boot_up);
+	cam_icp_mgr_proc_shutdown(hw_mgr, use_proxy_boot_up, !hw_mgr->hfi_init_done);
 
 	/* power on all cores */
 	rc = cam_icp_mgr_device_init(hw_mgr);
@@ -8216,6 +8238,174 @@ end:
 	return rc;
 }
 
+#ifdef CONFIG_SPECTRA_VMRM
+static inline int cam_icp_mgr_pvm_inter_vm_proc_power_collapse(struct cam_icp_hw_mgr *hw_mgr)
+{
+	int rc = 0;
+	struct cam_icp_mgr_hw_args pc_args = {0};
+
+	pc_args.hfi_setup = false;
+	pc_args.use_proxy_boot_up = false;
+	pc_args.icp_pc = true;
+	pc_args.skip_icp_init = true;
+
+	if (!hw_mgr->icp_booted) {
+		CAM_ERR(CAM_ICP, "%s icp is not booted up", hw_mgr->hw_mgr_name);
+		return -EINVAL;
+	}
+
+	rc = cam_icp_mgr_icp_power_collapse(hw_mgr, &pc_args);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "%s icp power_collapse failed", hw_mgr->hw_mgr_name);
+		return rc;
+	}
+
+	return rc;
+}
+
+static inline int cam_icp_mgr_pvm_inter_vm_proc_shutdown(struct cam_icp_hw_mgr *hw_mgr)
+{
+	int rc = 0;
+	struct cam_icp_mgr_hw_args pc_args = {0};
+
+	pc_args.hfi_setup = hw_mgr->hfi_init_done;
+	pc_args.use_proxy_boot_up = false;
+	pc_args.icp_pc = true;
+	pc_args.skip_icp_init = true;
+
+	if (!hw_mgr->icp_booted) {
+		CAM_ERR(CAM_ICP, "%s icp is already closed", hw_mgr->hw_mgr_name);
+		return -EINVAL;
+	}
+
+	rc = cam_icp_mgr_hw_close(hw_mgr, &pc_args);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "%s icp close failed", hw_mgr->hw_mgr_name);
+		return rc;
+	}
+
+	return rc;
+}
+
+static inline int cam_icp_mgr_pvm_inter_vm_proc_resume(struct cam_icp_hw_mgr *hw_mgr)
+{
+	int rc = 0;
+	struct cam_icp_mgr_hw_args hw_args;
+
+	hw_args.icp_pc = false;
+	hw_args.use_proxy_boot_up = false;
+	hw_args.hfi_setup = false;
+	hw_args.skip_icp_init = true;
+
+	if (!hw_mgr->icp_booted) {
+		rc = cam_icp_mgr_hw_open(hw_mgr, &hw_args);
+		if (rc)
+			CAM_ERR(CAM_ICP, "%s icp boot up failed", hw_mgr->hw_mgr_name);
+	} else {
+		hw_args.icp_pc = true;
+		rc = cam_icp_mgr_icp_resume(hw_mgr, &hw_args);
+		if (rc)
+			CAM_ERR(CAM_ICP, "%s icp power_resume failed", hw_mgr->hw_mgr_name);
+	}
+
+	return rc;
+}
+
+static int cam_icp_tvm_rcv_msg(struct cam_icp_hw_mgr *hw_mgr, uint32_t msg_type)
+{
+	CAM_ERR(CAM_ICP, "%s Not Supported", hw_mgr->hw_mgr_name);
+	return -EINVAL;
+}
+
+static int cam_icp_pvm_rcv_msg(struct cam_icp_hw_mgr *hw_mgr, uint32_t msg_type)
+{
+	int rc = 0;
+
+	switch (msg_type) {
+	case CAM_ICP_POWER_COLLAPSE:
+		rc = cam_icp_mgr_pvm_inter_vm_proc_power_collapse(hw_mgr);
+		if (rc)
+			CAM_ERR(CAM_ICP, "%s PVM ICP power collapse failed", hw_mgr->hw_mgr_name);
+		break;
+	case CAM_ICP_POWER_RESUME:
+		rc = cam_icp_mgr_pvm_inter_vm_proc_resume(hw_mgr);
+		if (rc)
+			CAM_ERR(CAM_ICP, "%s PVM ICP resume failed", hw_mgr->hw_mgr_name);
+		break;
+	case CAM_ICP_SHUTDOWN:
+		rc = cam_icp_mgr_pvm_inter_vm_proc_shutdown(hw_mgr);
+		if (rc)
+			CAM_ERR(CAM_ICP, "%s PVM ICP shutdown failed", hw_mgr->hw_mgr_name);
+		break;
+	default:
+		CAM_ERR(CAM_ICP, "%s Invalid destination PVM cmd:%d", hw_mgr->hw_mgr_name,
+			msg_type);
+		rc = -EINVAL;
+	}
+
+	return rc;
+}
+
+static int cam_icp_vm_rcv_msg(void *hw_mgr_priv, void *msg, uint32_t size)
+{
+	struct cam_icp_hw_mgr *hw_mgr = (struct cam_icp_hw_mgr *) hw_mgr_priv;
+	struct cam_vmrm_msg *vm_msg = (struct cam_vmrm_msg *) msg;
+	int rc = 0;
+
+	if (!hw_mgr) {
+		CAM_ERR(CAM_ICP, "%s invalid hw_mgr_priv",  hw_mgr->hw_mgr_name);
+		return -EINVAL;
+	}
+
+	if (!icp_vm_msg) {
+		CAM_ERR(CAM_ICP, "%s invalid icp_vm_data",  hw_mgr->hw_mgr_name);
+		return -EINVAL;
+	}
+
+	switch (vm_msg->des_vmid) {
+	case CAM_PVM:
+		rc = cam_icp_pvm_rcv_msg(hw_mgr, vm_msg->msg_type);
+		break;
+	case CAM_SVM1:
+		rc = cam_icp_tvm_rcv_msg(hw_mgr, vm_msg->msg_type);
+		break;
+	default:
+		CAM_ERR(CAM_ICP, "%s invalid destination vm dest_vm:%d current_vm:%d",
+			hw_mgr->hw_mgr_name, vm_msg->des_vmid, cam_vmrm_intf_get_vmid());
+		return -EINVAL;
+	}
+
+	return rc;
+}
+
+static int cam_icp_vm_send_msg(struct cam_icp_hw_mgr *hw_mgr, uint32_t dest_vm,
+	uint32_t vmrm_msg_type, bool need_ack)
+{
+	struct cam_icp_inter_vm_msg icp_vm_msg = {0};
+	int                         rc = 0;
+
+	icp_vm_msg.skip_icp_init = true;
+
+	rc = cam_vmrm_icp_send_msg(dest_vm, hw_mgr->hw_mgr_id, vmrm_msg_type, need_ack,
+		NULL, 1, CAM_ICP_INTER_VM_COMM_TIMEOUT_US);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "[%s] Failed in sending icp %d command to PVM rc %d",
+				hw_mgr->hw_mgr_name, vmrm_msg_type, rc);
+		return rc;
+	}
+
+	CAM_DBG(CAM_ICP, "ICP%d sent cmd%d to VM:%d", hw_mgr->hw_mgr_id, vmrm_msg_type, dest_vm);
+
+	return rc;
+}
+#else
+static int cam_icp_vm_send_msg(struct cam_icp_hw_mgr *hw_mgr, uint32_t dest_vm,
+	uint32_t vmrm_msg_type, bool need_ack)
+{
+	return -EINVAL;
+}
+#endif
+
 static int cam_icp_mgr_get_hw_caps(void *hw_mgr_priv, void *hw_caps_args)
 {
 	int rc = 0;
@@ -8924,6 +9114,9 @@ int cam_icp_hw_mgr_init(struct device_node *of_node, uint64_t *hw_mgr_hdl,
 	int i, rc = 0;
 	struct cam_icp_hw_mgr  *hw_mgr = NULL;
 	struct cam_hw_mgr_intf *hw_mgr_intf;
+#ifdef CONFIG_SPECTRA_VMRM
+	struct cam_driver_node icp_driver_node;
+#endif
 
 	hw_mgr_intf = (struct cam_hw_mgr_intf *)hw_mgr_hdl;
 	if (!of_node || !hw_mgr_intf) {
@@ -8987,6 +9180,19 @@ int cam_icp_hw_mgr_init(struct device_node *of_node, uint64_t *hw_mgr_hdl,
 	hw_mgr_intf->synx_trigger = cam_icp_mgr_service_synx_test_cmds;
 	hw_mgr->hfi_init_done = false;
 
+#ifdef CONFIG_SPECTRA_VMRM
+	icp_driver_node.driver_id = hw_mgr->hw_mgr_id + CAM_DRIVER_ID_ICP;
+	scnprintf(icp_driver_node.driver_name, sizeof(icp_driver_node.driver_name),
+			"%s", hw_mgr->hw_mgr_name);
+	icp_driver_node.driver_msg_callback = cam_icp_vm_rcv_msg;
+	icp_driver_node.driver_msg_callback_data = hw_mgr;
+
+	rc = cam_vmrm_populate_driver_node_info(&icp_driver_node);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "%s sw node populate failed: %d", hw_mgr->hw_mgr_name, rc);
+		goto free_hw_mgr;
+	}
+#endif
 	mutex_init(&hw_mgr->hw_mgr_mutex);
 	spin_lock_init(&hw_mgr->hw_mgr_lock);
 

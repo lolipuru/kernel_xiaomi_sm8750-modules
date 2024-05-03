@@ -15,7 +15,6 @@
 #include "cam_icp_hw_intf.h"
 #include "cam_icp_v2_core.h"
 #include "cam_icp_soc_common.h"
-#include "cam_vmrm_interface.h"
 #include "cam_mem_mgr_api.h"
 
 static int max_icp_v2_hw_idx = -1;
