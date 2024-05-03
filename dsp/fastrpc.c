@@ -718,6 +718,8 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 		spin_unlock_irqrestore(&cctx->lock, flags);
 		goto err_idr;
 	}
+	cctx->jobid++;
+	ctx->ctxid = FASTRPC_PACK_JOBID_IN_CTXID(ctx->ctxid, cctx->jobid);
 	ctx->ctxid = FASTRPC_PACK_IDR_IN_CTXID(ctx->ctxid, ret);
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
@@ -5358,6 +5360,7 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 	struct dsp_notif_rsp *notif = (struct dsp_notif_rsp *)data;
 	struct fastrpc_invoke_ctx *ctx;
 	unsigned long flags = 0, idr = 0;
+	u64 ctxid = 0;
 	u32 rsp_flags = 0, early_wake_time = 0, version = 0;
 
 	if (len == sizeof(uint64_t)) {
@@ -5393,12 +5396,21 @@ int fastrpc_handle_rpc_response(struct fastrpc_channel_ctx *cctx, void *data, in
 			rsp->retval, rsp_flags, early_wake_time);
 
 	idr = FASTRPC_GET_IDR_FROM_CTXID(rsp->ctx);
+	ctxid = FASTRPC_GET_CTXID_FROM_RSP_CTX(rsp->ctx);
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	ctx = idr_find(&cctx->ctx_idr, idr);
 
 	if (!ctx) {
 		spin_unlock_irqrestore(&cctx->lock, flags);
+		return 0;
+	}
+
+	if (ctx->ctxid != ctxid) {
+		spin_unlock_irqrestore(&cctx->lock, flags);
+		dev_info(cctx->dev,
+			"Warning: rsp ctxid 0x%llx mismatch with local ctxid 0x%llx (full rsp ctx 0x%llx)",
+				ctxid, ctx->ctxid, rsp->ctx);
 		return 0;
 	}
 
