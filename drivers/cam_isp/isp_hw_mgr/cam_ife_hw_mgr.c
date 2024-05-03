@@ -10792,6 +10792,11 @@ static int cam_isp_blob_vfe_out_update_v2(
 			return -EINVAL;
 		}
 
+		if (ctx->vfe_out_map[res_id_out] == 0xff) {
+			CAM_ERR(CAM_ISP, "Invalid index:%d for out_map", res_id_out);
+			return -EINVAL;
+		}
+
 		isp_out_res = &ctx->res_list_ife_out[ctx->vfe_out_map[res_id_out]];
 
 		hw_intf = cam_ife_hw_mgr_get_hw_intf(blob_info->base_info);
