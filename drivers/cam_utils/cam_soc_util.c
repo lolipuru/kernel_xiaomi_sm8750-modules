@@ -1743,6 +1743,16 @@ int cam_soc_util_set_src_clk_rate(struct cam_hw_soc_info *soc_info, int cesta_cl
 	if (clk_level_override_low && clk_rate_low)
 		clk_rate_low = soc_info->clk_rate[clk_level_override_low][src_clk_idx];
 
+	if ((!debug_disable_rt_clk_bw_limit) &&
+		(!strnstr(soc_info->dev_name, "cpas", strlen(soc_info->dev_name))) &&
+		(!soc_info->is_nrt_dev) && (!clk_level_override_high) &&  (clk_rate_high >
+		soc_info->clk_rate[soc_info->highest_clk_level][src_clk_idx]))
+		CAM_WARN(CAM_UTIL,
+			"Requested clk rate: %llu greater than max supported rate: %llu for clk: %s",
+			clk_rate_high,
+			soc_info->clk_rate[soc_info->highest_clk_level][src_clk_idx],
+			soc_info->clk_name[src_clk_idx]);
+
 	clk = soc_info->clk[src_clk_idx];
 	rc = cam_soc_util_get_clk_level(soc_info, clk_rate_high, src_clk_idx,
 		&apply_level);
@@ -2341,6 +2351,7 @@ static int cam_soc_util_get_dt_clk_info(struct cam_hw_soc_info *soc_info)
 	}
 
 	soc_info->lowest_clk_level = CAM_TURBO_VOTE;
+	soc_info->highest_clk_level = CAM_SUSPEND_VOTE;
 
 	for (i = 0; i < num_clk_levels; i++) {
 		rc = of_property_read_string_index(of_node,
@@ -2383,6 +2394,10 @@ static int cam_soc_util_get_dt_clk_info(struct cam_hw_soc_info *soc_info)
 		if ((level > CAM_MINSVS_VOTE) &&
 			(level < soc_info->lowest_clk_level))
 			soc_info->lowest_clk_level = level;
+
+		if ((level < CAM_MAX_VOTE) &&
+			(level > soc_info->highest_clk_level))
+			soc_info->highest_clk_level = level;
 	}
 
 	soc_info->src_clk_idx = -1;
@@ -2418,9 +2433,9 @@ static int cam_soc_util_get_dt_clk_info(struct cam_hw_soc_info *soc_info)
 			soc_info->clk_id[i]);
 	}
 
-	CAM_DBG(CAM_UTIL, "Dev %s src_clk_idx %d, lowest_clk_level %d",
+	CAM_DBG(CAM_UTIL, "Dev %s src_clk_idx %d, lowest_clk_level %d highest_clk_level: %d",
 		soc_info->dev_name, soc_info->src_clk_idx,
-		soc_info->lowest_clk_level);
+		soc_info->lowest_clk_level, soc_info->highest_clk_level);
 
 	soc_info->shared_clk_mask = 0;
 	shared_clk_cnt = of_property_count_u32_elems(of_node, "shared-clks");

@@ -38,6 +38,7 @@ enum cam_cpas_num_subparts_types {
  * @merge_type: Traffic merge type (calculation info) from device tree
  * @bus_width_factor: Factor for accounting bus width in CAMNOC bw calculation
  * @bw_info: AXI BW info for all drv ports
+ * @is_rt_node: Indicates if a tree node is representing a RT bus node/port
  * @camnoc_max_needed: If node is needed for CAMNOC BW calculation then true
  * @constituent_paths: Constituent paths presence info from device tree
  *     Ex: For CAM_CPAS_PATH_DATA_IFE_UBWC_STATS, index corresponding to
@@ -69,6 +70,7 @@ struct cam_cpas_tree_node {
 	uint32_t merge_type;
 	uint32_t bus_width_factor;
 	struct cam_cpas_axi_bw_info *bw_info;
+	bool is_rt_node;
 	bool camnoc_max_needed;
 	bool constituent_paths[CAM_CPAS_PATH_DATA_MAX];
 	struct device_node *tree_dev_node;
@@ -271,6 +273,7 @@ struct cam_cpas_sysfs_info {
  * @camnoc_axi_clk_bw_margin : BW Margin in percentage to add while calculating
  *      camnoc axi clock
  * @camnoc_axi_min_ib_bw: Min camnoc BW which varies based on target
+ * @cam_max_rt_axi_bw: Max axi BW in bytes which varies based on target
  * @fuse_info: fuse information
  * @sysfs_info: Camera subparts sysfs information
  * @rpmh_info: RPMH BCM info
@@ -304,6 +307,7 @@ struct cam_cpas_private_soc {
 	uint32_t camnoc_bus_width;
 	uint32_t camnoc_axi_clk_bw_margin;
 	uint64_t camnoc_axi_min_ib_bw;
+	uint64_t cam_max_rt_axi_bw;
 	struct cam_cpas_fuse_info fuse_info;
 	struct cam_cpas_sysfs_info sysfs_info;
 	uint32_t rpmh_info[CAM_RPMH_BCM_INFO_MAX];
