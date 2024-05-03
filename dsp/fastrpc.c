@@ -1572,7 +1572,7 @@ static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 	msg->pid = fl->tgid_frpc;
 	msg->tid = current->pid;
 
-	if (kernel)
+	if (kernel == KERNEL_MSG_WITH_ZERO_PID)
 		msg->pid = 0;
 
 	msg->ctx = ctx->ctxid | fastrpc_getpd_msgidx(fl->pd);
@@ -1914,7 +1914,7 @@ static int fastrpc_mem_map_to_dsp(struct fastrpc_user *fl, int fd, int offset,
 	ioctl.inv.handle = FASTRPC_INIT_HANDLE;
 	ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_MEM_MAP, 3, 1);
 	ioctl.inv.args = (__u64)args;
-	err = fastrpc_internal_invoke(fl, true, &ioctl);
+	err = fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
 	if (err) {
 		dev_err(dev, "mem mmap error, fd %d, vaddr %x, size %lx, err 0x%x\n",
 			fd, va, size, err);
@@ -2502,7 +2502,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_CREATE_STATIC, 3, 0);
 	ioctl.inv.args = (__u64)args;
 
-	err = fastrpc_internal_invoke(fl, true, &ioctl);
+	err = fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
 	if (err)
 		goto err_invoke;
 
@@ -2756,7 +2756,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_CREATE_ATTR, 4, 0);
 	ioctl.inv.args = (__u64)args;
 
-	err = fastrpc_internal_invoke(fl, true, &ioctl);
+	err = fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
 	if (err)
 		goto err_invoke;
 
@@ -2816,7 +2816,7 @@ static int fastrpc_release_current_dsp_process(struct fastrpc_user *fl)
 	ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_RELEASE, 1, 0);
 	ioctl.inv.args = (__u64)args;
 
-	return fastrpc_internal_invoke(fl, true, &ioctl);
+	return fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_NONZERO_PID, &ioctl);
 }
 
 static int fastrpc_device_release(struct inode *inode, struct file *file)
@@ -3098,7 +3098,7 @@ static int fastrpc_send_cpuinfo_to_dsp(struct fastrpc_user *fl)
 	ioctl.inv.sc = FASTRPC_SCALARS(1, 1, 0);
 	ioctl.inv.args = (__u64)args;
 
-	err = fastrpc_internal_invoke(fl, true, &ioctl);
+	err = fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
 	if (!err)
 		fl->cctx->cpuinfo_status = true;
 
@@ -3141,7 +3141,7 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 	ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_ATTACH, 1, 0);
 	ioctl.inv.args = (__u64)args;
 
-	err = fastrpc_internal_invoke(fl, true, &ioctl);
+	err = fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
 	if (err)
 		return err;
 
@@ -3163,7 +3163,7 @@ static int fastrpc_invoke(struct fastrpc_user *fl, char __user *argp)
 
 	ioctl.inv = inv;
 
-	err = fastrpc_internal_invoke(fl, false, &ioctl);
+	err = fastrpc_internal_invoke(fl, USER_MSG, &ioctl);
 
 	return err;
 }
@@ -3684,7 +3684,7 @@ static int fastrpc_multimode_invoke(struct fastrpc_user *fl, char __user *argp)
 		perf_kernel = (u64 *)(uintptr_t)inv2.perf_kernel;
 		if (perf_kernel)
 			fl->profile = true;
-		err = fastrpc_internal_invoke(fl, false, &inv2);
+		err = fastrpc_internal_invoke(fl, USER_MSG, &inv2);
 		break;
 	case FASTRPC_INVOKE_CONTROL:
 		if (copy_from_user(&cp, (void __user *)(uintptr_t)invoke.invparam, sizeof(cp)))
@@ -3760,7 +3760,7 @@ static int fastrpc_get_info_from_dsp(struct fastrpc_user *fl, uint32_t *dsp_attr
 	ioctl.inv.sc = FASTRPC_SCALARS(0, 1, 1);
 	ioctl.inv.args = (__u64)args;
 
-	return fastrpc_internal_invoke(fl, true, &ioctl);
+	return fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
 }
 
 static int fastrpc_get_info_from_kernel(struct fastrpc_ioctl_capability *cap,
@@ -3862,7 +3862,7 @@ static int fastrpc_req_munmap_dsp(struct fastrpc_user *fl, uintptr_t raddr, u64 
 	ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_MUNMAP, 1, 0);
 	ioctl.inv.args = (__u64)args;
 
-	err = fastrpc_internal_invoke(fl, true, &ioctl);
+	err = fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
 	/* error to be printed by caller function */
 	return err;
 
@@ -4028,7 +4028,7 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 		ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_MMAP, 2, 1);
 		ioctl.inv.args = (__u64)args;
 
-		err = fastrpc_internal_invoke(fl, true, &ioctl);
+		err = fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
 		if (err) {
 			dev_err(dev, "mmap error (len 0x%08llx)\n", buf->size);
 			goto err_invoke;
@@ -4097,7 +4097,7 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 		ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_MMAP, 2, 1);
 		ioctl.inv.args = (__u64)args;
 
-		err = fastrpc_internal_invoke(fl, true, &ioctl);
+		err = fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
 		if (err) {
 			dev_err(dev, "mmap error (len 0x%08llx)\n", map->size);
 			goto err_invoke;
@@ -4174,7 +4174,7 @@ static int fastrpc_req_mem_unmap_impl(struct fastrpc_user *fl, struct fastrpc_me
 	ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_MEM_UNMAP, 1, 0);
 	ioctl.inv.args = (__u64)args;
 
-	err = fastrpc_internal_invoke(fl, true, &ioctl);
+	err = fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_ZERO_PID, &ioctl);
 	if (err) {
 		dev_err(dev, "Unmap on DSP failed for fd:%d, addr:0x%09llx\n",  map->fd, map->raddr);
 		return err;

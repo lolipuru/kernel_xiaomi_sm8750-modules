@@ -272,6 +272,13 @@ enum fastrpc_remote_domains_id {
 	ROOTHEAP_BUF,
 };
 
+/* Types of RPC calls to DSP */
+enum fastrpc_msg_type {
+	USER_MSG = 0,
+	KERNEL_MSG_WITH_ZERO_PID,
+	KERNEL_MSG_WITH_NONZERO_PID,
+};
+
 enum fastrpc_response_flags {
 	NORMAL_RESPONSE = 0,
 	EARLY_RESPONSE = 1,
