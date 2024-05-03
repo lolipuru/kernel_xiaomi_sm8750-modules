@@ -588,6 +588,7 @@ struct fastrpc_invoke_ctx {
 	int pid;
 	int tgid;
 	u32 sc;
+	u32 handle;
 	u32 *crc;
 	/* user hint of completion time in us */
 	u32 early_wake_time;

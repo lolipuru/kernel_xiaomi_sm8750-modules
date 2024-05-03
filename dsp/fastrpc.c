@@ -73,7 +73,8 @@ void fastrpc_update_gctx(struct fastrpc_channel_ctx *cctx, int flag)
 
 static void dma_buf_unmap_attachment_wrap(struct fastrpc_map *map)
 {
-	trace_fastrpc_dma_unmap(map->fl->cctx->domain_id, map->phys, map->size);
+	trace_fastrpc_dma_unmap(map->fl->cctx->domain_id, map->phys,
+		map->size, map->fd);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0))
 	dma_buf_unmap_attachment_unlocked(map->attach, map->table,
 		DMA_BIDIRECTIONAL);
@@ -103,8 +104,6 @@ static int dma_buf_map_attachment_wrap(struct fastrpc_map *map)
 	}
 #endif
 	map->table = table;
-	trace_fastrpc_dma_map(map->fl->cctx->domain_id, map->fd, map->phys,
-		map->size, map->len, map->attach->dma_map_attrs, map->flags);
 
 	return 0;
 }
@@ -523,7 +522,7 @@ static void fastrpc_context_free(struct kref *ref)
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	trace_fastrpc_context_free((uint64_t)ctx,
-		ctx->ctxid, ctx->pid, ctx->sc);
+		ctx->ctxid, ctx->handle, ctx->sc);
 
 	kfree(ctx->maps);
 	kfree(ctx->olaps);
@@ -697,6 +696,7 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 			return ERR_PTR(-ENOMEM);
 		ctx->perf->tid = ctx->fl->tgid;
 	}
+	ctx->handle = invoke->inv.handle;
 	ctx->sc = sc;
 	ctx->retval = -1;
 	ctx->pid = current->pid;
@@ -722,7 +722,7 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	trace_fastrpc_context_alloc((uint64_t)ctx,
-				ctx->ctxid, ctx->pid, ctx->sc);
+				ctx->ctxid, ctx->handle, ctx->sc);
 	kref_init(&ctx->refcount);
 
 	return ctx;
@@ -1134,6 +1134,8 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 			map->size += sg_dma_len(sgl);
 		map->va = (void *) (uintptr_t) va;
 	}
+	trace_fastrpc_dma_map(map->fl->cctx->domain_id, map->fd, map->phys,
+		map->size, map->len, map->attach->dma_map_attrs, map->flags);
 	mutex_unlock(&fl->sctx->map_mutex);
 
 	if (attr & FASTRPC_ATTR_SECUREMAP) {
