@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_HW_MGR_INTF_H_
@@ -108,6 +108,7 @@ struct cam_hw_update_entry {
  * @resrouce_handle:       Resource port id for the buffer
  * @hw_ctxt_id:            Hw ctxt id for multi-context capable targets
  * @sync_id:               Sync id
+ * @sync_id:               Early sync id
  * @image_buf_addr:        Image buffer address array
  * @buffer_tracker:        Some buffers with fences have buf dones come
  *                         separately from each out port, and signalled
@@ -120,6 +121,7 @@ struct cam_hw_fence_map_entry {
 	uint32_t                        resource_handle;
 	uint32_t                        hw_ctxt_id;
 	int32_t                         sync_id;
+	int32_t                         early_sync_id;
 	dma_addr_t                      image_buf_addr[CAM_PACKET_MAX_PLANES];
 	struct cam_smmu_buffer_tracker *buffer_tracker;
 };

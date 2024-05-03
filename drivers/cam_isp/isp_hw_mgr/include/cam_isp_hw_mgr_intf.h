@@ -404,6 +404,7 @@ struct cam_isp_hw_epoch_event_data {
  * @comp_group_id:       Bus comp group id
  * @last_consumed_addr:  Last consumed addr
  * @timestamp:           Timestamp for the buf done event
+ * @is_early_done:       Indicates if its an early done event
  *
  */
 struct cam_isp_hw_done_event_data {
@@ -412,6 +413,7 @@ struct cam_isp_hw_done_event_data {
 	uint32_t             comp_group_id;
 	uint32_t             last_consumed_addr;
 	uint64_t             timestamp;
+	bool                 is_early_done;
 };
 
 /**

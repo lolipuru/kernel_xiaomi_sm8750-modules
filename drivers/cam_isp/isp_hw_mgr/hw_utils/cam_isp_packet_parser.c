@@ -855,6 +855,7 @@ static int cam_isp_io_buf_get_entries_util(
 
 		map_entries->resource_handle = io_cfg->resource_type;
 		map_entries->sync_id = io_cfg->fence;
+		map_entries->early_sync_id = io_cfg->early_fence;
 		if (buf_info->major_version == 3)
 			map_entries->hw_ctxt_id = io_cfg->flag;
 		else

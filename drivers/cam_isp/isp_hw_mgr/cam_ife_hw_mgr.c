@@ -16646,11 +16646,12 @@ static int cam_ife_hw_mgr_handle_hw_buf_done(
 	buf_done_event_data.resource_handle = 0;
 
 	CAM_DBG(CAM_ISP,
-		"Buf done for %s: %d res_id: 0x%x last consumed addr: 0x%x ctx: %u is_hw_ctxt_comp: %s",
+		"Buf done for %s: %d res_id: 0x%x last consumed addr: 0x%x ctx: %u is_hw_ctxt_comp: %s is_early_done: %s",
 		((event_info->hw_type == CAM_ISP_HW_TYPE_SFE) ? "SFE" : "IFE"),
 		event_info->hw_idx, event_info->res_id,
 		bufdone_evt_info->last_consumed_addr, ife_hw_mgr_ctx->ctx_index,
-		CAM_BOOL_TO_YESNO(bufdone_evt_info->is_hw_ctxt_comp));
+		CAM_BOOL_TO_YESNO(bufdone_evt_info->is_hw_ctxt_comp),
+		CAM_BOOL_TO_YESNO(bufdone_evt_info->is_early_done));
 
 	/* Check scratch for sHDR/FS use-cases */
 	if (ife_hw_mgr_ctx->flags.is_sfe_fs || ife_hw_mgr_ctx->flags.is_sfe_shdr) {
@@ -16665,6 +16666,7 @@ static int cam_ife_hw_mgr_handle_hw_buf_done(
 	buf_done_event_data.resource_handle = event_info->res_id;
 	buf_done_event_data.last_consumed_addr = bufdone_evt_info->last_consumed_addr;
 	buf_done_event_data.comp_group_id = bufdone_evt_info->comp_grp_id;
+	buf_done_event_data.is_early_done = bufdone_evt_info->is_early_done;
 
 	if (atomic_read(&ife_hw_mgr_ctx->overflow_pending))
 		return 0;

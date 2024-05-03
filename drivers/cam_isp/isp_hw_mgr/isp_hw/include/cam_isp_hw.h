@@ -366,6 +366,7 @@ struct cam_isp_hw_error_event_info {
  * @comp_grp_id:        Bus comp group id
  * @last_consumed_addr: Last consumed addr for resource ID at that index
  * @is_hw_ctxt_comp:    Indicates if the buf done event is hw context composite
+ * @is_early_done:      Indicates if its an early done event
  *
  */
 struct cam_isp_hw_bufdone_event_info {
@@ -373,6 +374,7 @@ struct cam_isp_hw_bufdone_event_info {
 	uint32_t comp_grp_id;
 	uint32_t last_consumed_addr;
 	bool     is_hw_ctxt_comp;
+	bool     is_early_done;
 };
 
 /*
