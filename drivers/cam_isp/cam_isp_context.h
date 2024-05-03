@@ -137,15 +137,15 @@ enum cam_isp_state_change_trigger {
  *
  * @dentry:                     Debugfs entry
  * @enable_state_monitor_dump:  Enable isp state monitor dump
- * @enable_cdm_cmd_buff_dump:   Enable CDM Command buffer dump
  * @disable_internal_recovery:  Disable internal kernel recovery mask
+ * @enable_cdm_cmd_buff_dump:   Enable CDM Command buffer dump
  *
  */
 struct cam_isp_ctx_debug {
 	struct dentry  *dentry;
 	uint32_t        enable_state_monitor_dump;
-	uint8_t         enable_cdm_cmd_buff_dump;
 	uint32_t        disable_internal_recovery_mask;
+	uint8_t         enable_cdm_cmd_buff_dump;
 };
 
 /**

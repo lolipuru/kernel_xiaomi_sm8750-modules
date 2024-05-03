@@ -92,6 +92,7 @@ typedef int (*cam_ctx_message_cb_func)(void *context,
  * @len:                   Size of the configuration
  * @flags:                 Flags for the config entry(eg. DMI)
  * @addr:                  Address of hardware update entry
+ * @single_apply_only:     If set entry is configured to cdm only once
  *
  */
 struct cam_hw_update_entry {
@@ -100,6 +101,7 @@ struct cam_hw_update_entry {
 	uint32_t           len;
 	uint32_t           flags;
 	uintptr_t          addr;
+	bool               single_apply_only;
 };
 
 /**

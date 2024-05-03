@@ -6950,13 +6950,20 @@ static int cam_ife_csid_ver2_get_mc_reg_val_pair(
 	if (rup_args->reg_write)
 		reg_val_pair[5] |= (rup_args->last_applied_mup <<
 			csid_reg->cmn_reg->mup_shift_val);
-	else
-		reg_val_pair[5] |= (csid_hw->rx_cfg.mup <<
-			csid_reg->cmn_reg->mup_shift_val);
+	else {
+		if (unlikely(rup_args->add_toggled_mup_entry))
+			reg_val_pair[5] |= ((~csid_hw->rx_cfg.mup & 0x1) <<
+				csid_reg->cmn_reg->mup_shift_val);
+		else
+			reg_val_pair[5] |= (csid_hw->rx_cfg.mup <<
+				csid_reg->cmn_reg->mup_shift_val);
+	}
 
-	CAM_DBG(CAM_ISP, "CSID[%d] configure rup: 0x%x, offset: 0x%x, aup: 0x%x, offset: 0x%x",
+	CAM_DBG(CAM_ISP,
+		"CSID[%d] configure rup: 0x%x, offset: 0x%x, aup: 0x%x, offset: 0x%x toggle MUP: %s",
 		csid_hw->hw_intf->hw_idx, reg_val_pair[1], reg_val_pair[0],
-		reg_val_pair[3], reg_val_pair[2]);
+		reg_val_pair[3], reg_val_pair[2],
+		CAM_BOOL_TO_YESNO(rup_args->add_toggled_mup_entry));
 	CAM_DBG(CAM_ISP, "CSID[%d] rup_aup_set reg: 0x%x, offset: 0x%x via %s",
 		csid_hw->hw_intf->hw_idx,reg_val_pair[5], reg_val_pair[4],
 		(rup_args->reg_write ? "AHB" : "CDM"));
@@ -6999,13 +7006,17 @@ static int cam_ife_csid_ver2_get_sc_reg_val_pair(
 	if (rup_args->reg_write)
 		reg_val_pair[1] |= (rup_args->last_applied_mup <<
 			csid_reg->cmn_reg->mup_shift_val);
-	else
-		reg_val_pair[1] |= (csid_hw->rx_cfg.mup <<
-			csid_reg->cmn_reg->mup_shift_val);
+	else {
+		if (unlikely(rup_args->add_toggled_mup_entry))
+			reg_val_pair[1] |= ((~csid_hw->rx_cfg.mup & 0x1) <<
+				csid_reg->cmn_reg->mup_shift_val);
+		else
+			reg_val_pair[1] |= (csid_hw->rx_cfg.mup <<
+				csid_reg->cmn_reg->mup_shift_val);
+	}
 
 	CAM_DBG(CAM_ISP, "CSID[%d] configure rup_aup_mup: 0x%x offset: 0x%x via %s",
-		csid_hw->hw_intf->hw_idx,
-		reg_val_pair[1], reg_val_pair[0],
+		csid_hw->hw_intf->hw_idx, reg_val_pair[1], reg_val_pair[0],
 		(rup_args->reg_write ? "AHB" : "CDM"));
 	return rc;
 }

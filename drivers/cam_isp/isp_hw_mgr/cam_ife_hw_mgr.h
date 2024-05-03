@@ -62,6 +62,9 @@ enum cam_ife_ctx_master_type {
 /* Global Counter has frequency 19.2 Mhz */
 #define GC_FREQUENCY_IN_KHZ  19200
 
+/* Trigger single out of sync debugfs */
+#define CAM_IFE_CTX_TRIGGER_SINGLE_OUT_OF_SYNC_CFG 1
+
 /**
  * struct cam_ife_hw_mgr_debug - contain the debug information
  *
@@ -78,6 +81,7 @@ enum cam_ife_ctx_master_type {
  * @ife_perf_counter_val:      ife perf counter values
  * @sfe_perf_counter_val:      sfe perf counter values
  * @csid_domain_id_value:      Value of domain id to set on CSID
+ * @csid_out_of_sync_simul:    Controls out of sync simulation
  * @enable_req_dump:           Enable request dump on HW errors
  * @per_req_reg_dump:          Enable per request reg dump
  * @disable_ubwc_comp:         Disable UBWC compression
@@ -104,6 +108,7 @@ struct cam_ife_hw_mgr_debug {
 	uint32_t      *ife_perf_counter_val;
 	uint32_t      *sfe_perf_counter_val;
 	uint32_t       csid_domain_id_value;
+	uint32_t       csid_out_of_sync_simul;
 	bool           enable_req_dump;
 	bool           per_req_reg_dump;
 	bool           disable_ubwc_comp;

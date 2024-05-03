@@ -7559,6 +7559,14 @@ skip_bw_clk_update:
 				}
 			}
 
+			if (cmd->single_apply_only) {
+				skip++;
+				continue;
+			}
+
+			if (cmd->flags == CAM_ISP_DEBUG_ENTRY)
+				cmd->single_apply_only = true;
+
 			cdm_cmd->cmd_flex[i - skip].bl_addr.mem_handle = cmd->handle;
 			cdm_cmd->cmd_flex[i - skip].offset = cmd->offset;
 			cdm_cmd->cmd_flex[i - skip].len = cmd->len;
@@ -10045,6 +10053,10 @@ static int cam_isp_blob_csid_dynamic_switch_update(
 			prepare->priv;
 	prepare_hw_data->mup_en = true;
 	prepare_hw_data->mup_val = mup_config->mup;
+
+	/* Check for continuous out of sync */
+	if (ife_hw_mgr->debug_cfg.csid_out_of_sync_simul >> 1)
+		prepare_hw_data->mup_val = ~mup_config->mup & 1;
 
 	/*
 	 * Send MUP to CSID for INIT packets only to be used at stream on and after.
@@ -13565,6 +13577,10 @@ static int cam_ife_mgr_csid_add_reg_update(struct cam_ife_hw_mgr_ctx *ctx,
 				ctx->ctx_index, i, rc);
 			break;
 		}
+
+		if (hw_mgr->debug_cfg.csid_out_of_sync_simul ==
+			CAM_IFE_CTX_TRIGGER_SINGLE_OUT_OF_SYNC_CFG)
+			rup_args[i].add_toggled_mup_entry = true;
 
 		rc = cam_isp_add_csid_reg_update(prepare, kmd_buf,
 			&rup_args[i], true);
@@ -17806,6 +17822,9 @@ static int cam_ife_hw_mgr_debug_register(void)
 	debugfs_create_u32("csid_domain_id_value", 0644,
 		g_ife_hw_mgr.debug_cfg.dentry,
 		&g_ife_hw_mgr.debug_cfg.csid_domain_id_value);
+	debugfs_create_u32("csid_out_of_sync_simul", 0644,
+		g_ife_hw_mgr.debug_cfg.dentry,
+		&g_ife_hw_mgr.debug_cfg.csid_out_of_sync_simul);
 	debugfs_create_bool("per_req_wait_cdm", 0644,
 		g_ife_hw_mgr.debug_cfg.dentry,
 		&g_ife_hw_mgr.debug_cfg.per_req_wait_cdm);
