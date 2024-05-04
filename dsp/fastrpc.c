@@ -5308,13 +5308,24 @@ static void fastrpc_handle_signal_rpmsg(uint64_t msg, struct fastrpc_channel_ctx
 	u32 signal_id = msg & 0xffffffff;
 	struct fastrpc_user *fl ;
 	unsigned long irq_flags = 0;
+	bool process_found = false;
 
 	if (signal_id >=FASTRPC_DSPSIGNAL_NUM_SIGNALS)
 		return;
 
+	spin_lock_irqsave(&cctx->lock, irq_flags);
 	list_for_each_entry(fl, &cctx->users, user) {
-		if(fl->tgid_frpc == pid)
+		if (fl->tgid_frpc == pid && !fl->file_close) {
+			process_found = true;
 			break;
+		}
+	}
+	spin_unlock_irqrestore(&cctx->lock, irq_flags);
+
+	if (!process_found) {
+		pr_warn("Warning: %s: no active processes found for pid %u, signal id %u",
+			__func__, pid, signal_id);
+		return;
 	}
 
 	spin_lock_irqsave(&fl->dspsignals_lock, irq_flags);
