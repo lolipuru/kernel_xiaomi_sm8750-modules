@@ -913,10 +913,10 @@ int cvp_read_platform_resources_from_dt(
 		goto err_load_reg_table;
 	}
 
-	rc = of_property_read_u32(pdev->dev.of_node, "soc-ver", &core->soc_version);
+	rc = of_property_read_u32(pdev->dev.of_node, "soc_ver", &core->soc_version);
 	if (rc) {
 		dprintk(CVP_WARN,
-			"%s: %d while reading DT for \"soc-ver\" default to 0x10000\n",
+			"%s: %d while reading DT for \"soc_ver\" default to 0x10000\n",
 			__func__, rc);
 		core->soc_version = 0x10000;
 	}
