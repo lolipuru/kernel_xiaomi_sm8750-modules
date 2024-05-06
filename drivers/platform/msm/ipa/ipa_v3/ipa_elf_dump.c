@@ -40,6 +40,11 @@ bool ipa_minidump_enabled(void)
 	int ret = true;
 
 	IPADBG("Checking if minidump enabled\n");
+	if (!dump_enabled()) {
+		IPADBG("Dump not enabled\n");
+		return false;
+	}
+
 	/* Get Global minidump ToC*/
 	toc = qcom_smem_get(QCOM_SMEM_HOST_ANY, SBL_MINIDUMP_SMEM_ID, NULL);
 
@@ -425,7 +430,6 @@ skip_host_dump:
 	device_del(new_device);
 put_device:
 	put_device(new_device);
-	kfree(new_device);
 	IPADBG("host ramdump result %d\n", ret);
 	return ret;
 }
