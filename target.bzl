@@ -30,8 +30,8 @@ def define_sun():
              "CONFIG_MSM_BT_POWER",
              "CONFIG_I2C_RTC6226_QCA",
              "CONFIG_SLIM_BTFM_CODEC",
-	     "CONFIG_BTFM_CODEC",
+             "CONFIG_BTFM_CODEC",
            #  "CONFIG_BT_HW_SECURE_DISABLE",
-            "CONFIG_BTFM_SWR",
+             "CONFIG_BTFM_SWR",
         ]
     )

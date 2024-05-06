@@ -30,6 +30,13 @@ enum SubSystem {
 	UWB,
 };
 
+enum FmdOperation {
+	ENABLE_SDAM_BIT_FMD = 0,
+	DISABLE_SDAM_BIT_FMD,
+	UPDATE_SOC_VERSION_1_0_FOR_FMD,
+	UPDATE_SOC_VERSION_2_0_FOR_FMD
+};
+
 enum power_states {
 	IDLE = 0,
 	BT_ON,
@@ -697,10 +704,10 @@ int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata);
 #define BT_CMD_KERNEL_PANIC         0xbfc1
 #define UWB_CMD_KERNEL_PANIC        0xbfc2
 #define UWB_CMD_PWR_CTRL            0xbfe1
-#define BT_CMD_REGISTRATION	    0xbfe2
+#define BT_CMD_REGISTRATION         0xbfe2
 #define UWB_CMD_REGISTRATION        0xbfe3
-#define BT_CMD_ACCESS_CTRL	    0xbfe4
-#define UWB_CMD_ACCESS_CTRL        0xbfe5
+#define BT_CMD_ACCESS_CTRL          0xbfe4
+#define UWB_CMD_ACCESS_CTRL         0xbfe5
 #define SET_FMD_MODE_CTRL           0xbfb2
 
 #ifdef CONFIG_MSM_BT_OOBS
