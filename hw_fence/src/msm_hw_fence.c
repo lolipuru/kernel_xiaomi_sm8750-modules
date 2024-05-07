@@ -21,7 +21,11 @@
 #include "hw_fence_drv_fence.h"
 
 struct hw_fence_driver_data *hw_fence_drv_data;
+#if IS_ENABLED(CONFIG_QTI_ENABLE_HW_FENCE_DEFAULT)
+bool hw_fence_driver_enable = true;
+#else
 bool hw_fence_driver_enable;
+#endif
 
 static int _set_power_vote_if_needed(struct hw_fence_driver_data *drv_data,
 	u32 client_id, bool state)
