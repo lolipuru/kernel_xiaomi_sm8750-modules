@@ -77,6 +77,7 @@ struct cam_vfe_mux_ver4_data {
 	void                                *priv;
 	int                                  irq_err_handle;
 	int                                  frame_irq_handle;
+	int                                  sof_irq_handle;
 	void                                *vfe_irq_controller;
 	struct cam_vfe_top_irq_evt_payload   evt_payload[CAM_VFE_CAMIF_EVT_MAX];
 	struct list_head                     free_payload_list;
@@ -1465,6 +1466,46 @@ static int cam_vfe_top_fcg_config(
 	return rc;
 }
 
+static int cam_vfe_top_ver4_update_sof_debug(
+	void    *cmd_args,
+	uint32_t arg_size)
+{
+	struct cam_vfe_enable_sof_irq_args *sof_irq_args = cmd_args;
+	struct cam_isp_resource_node       *res;
+	struct cam_vfe_mux_ver4_data       *mux_data;
+	bool                                enable_sof_irq;
+	uint32_t                            sof_irq_mask[CAM_IFE_IRQ_REGISTERS_MAX];
+
+	if (arg_size != sizeof(struct cam_vfe_enable_sof_irq_args)) {
+		CAM_ERR(CAM_ISP, "Invalid arg size expected: %zu actual: %zu",
+			sizeof(struct cam_vfe_enable_sof_irq_args), arg_size);
+		return -EINVAL;
+	}
+
+	memset(sof_irq_mask, 0, sizeof(sof_irq_mask));
+
+	res = sof_irq_args->res;
+	enable_sof_irq = sof_irq_args->enable_sof_irq_debug;
+	mux_data = res->res_priv;
+
+	if (mux_data->frame_irq_handle) {
+		CAM_DBG(CAM_ISP,
+			"Frame IRQ (including SOF) is enabled, no SOF IRQ registration is needed");
+		return 0;
+	}
+
+	sof_irq_mask[mux_data->common_reg->frame_timing_irq_reg_idx] =
+		mux_data->reg_data->sof_irq_mask;
+
+	mux_data->enable_sof_irq_debug = enable_sof_irq;
+	if (mux_data->sof_irq_handle)
+		cam_irq_controller_update_irq(
+			mux_data->vfe_irq_controller,
+			mux_data->sof_irq_handle,
+			enable_sof_irq, sof_irq_mask);
+	return 0;
+}
+
 int cam_vfe_top_ver4_process_cmd(void *device_priv, uint32_t cmd_type,
 	void *cmd_args, uint32_t arg_size)
 {
@@ -1587,6 +1628,9 @@ int cam_vfe_top_ver4_process_cmd(void *device_priv, uint32_t cmd_type,
 	case CAM_ISP_HW_CMD_FCG_CONFIG:
 		rc = cam_vfe_top_fcg_config(top_priv, cmd_args, arg_size);
 		break;
+	case CAM_ISP_HW_CMD_SOF_IRQ_DEBUG:
+		rc = cam_vfe_top_ver4_update_sof_debug(cmd_args, arg_size);
+		break;
 	default:
 		rc = -EINVAL;
 		CAM_ERR(CAM_ISP, "VFE:%u Error, Invalid cmd:%d",
@@ -1678,7 +1722,7 @@ static int cam_vfe_handle_irq_top_half(uint32_t evt_id,
 	th_payload->evt_payload_priv = evt_payload;
 
 	if (th_payload->evt_status_arr[vfe_priv->common_reg->frame_timing_irq_reg_idx]
-			& vfe_priv->reg_data->sof_irq_mask) {
+		& vfe_priv->reg_data->sof_irq_mask) {
 		if (vfe_priv->top_priv->sof_ts_reg_addr.curr0_ts_addr &&
 			vfe_priv->top_priv->sof_ts_reg_addr.curr1_ts_addr) {
 			evt_payload->ts.sof_ts =
@@ -1688,22 +1732,22 @@ static int cam_vfe_handle_irq_top_half(uint32_t evt_id,
 		}
 
 		trace_cam_log_event("SOF", "TOP_HALF",
-		th_payload->evt_status_arr[vfe_priv->common_reg->frame_timing_irq_reg_idx],
-		vfe_res->hw_intf->hw_idx);
+			th_payload->evt_status_arr[vfe_priv->common_reg->frame_timing_irq_reg_idx],
+			vfe_res->hw_intf->hw_idx);
 	}
 
 	if (th_payload->evt_status_arr[vfe_priv->common_reg->frame_timing_irq_reg_idx]
-			& vfe_priv->reg_data->epoch0_irq_mask) {
+		& vfe_priv->reg_data->epoch0_irq_mask) {
 		trace_cam_log_event("EPOCH0", "TOP_HALF",
-		th_payload->evt_status_arr[vfe_priv->common_reg->frame_timing_irq_reg_idx],
-		vfe_res->hw_intf->hw_idx);
+			th_payload->evt_status_arr[vfe_priv->common_reg->frame_timing_irq_reg_idx],
+			vfe_res->hw_intf->hw_idx);
 	}
 
 	if (th_payload->evt_status_arr[vfe_priv->common_reg->frame_timing_irq_reg_idx]
-			& vfe_priv->reg_data->eof_irq_mask) {
+		& vfe_priv->reg_data->eof_irq_mask) {
 		trace_cam_log_event("EOF", "TOP_HALF",
-		th_payload->evt_status_arr[vfe_priv->common_reg->frame_timing_irq_reg_idx],
-		vfe_res->hw_intf->hw_idx);
+			th_payload->evt_status_arr[vfe_priv->common_reg->frame_timing_irq_reg_idx],
+			vfe_res->hw_intf->hw_idx);
 	}
 
 	CAM_DBG(CAM_ISP, "VFE:%u Exit", vfe_res->hw_intf->hw_idx);
@@ -1756,16 +1800,23 @@ static int cam_vfe_handle_sof(struct cam_vfe_mux_ver4_data *vfe_priv,
 	struct cam_isp_hw_event_info *evt_info)
 {
 	if ((vfe_priv->enable_sof_irq_debug) &&
-		(vfe_priv->irq_debug_cnt <=
-		CAM_VFE_CAMIF_IRQ_SOF_DEBUG_CNT_MAX)) {
-		CAM_INFO_RATE_LIMIT(CAM_ISP, "VFE:%u Received SOF",
-			vfe_priv->hw_intf->hw_idx);
+		(vfe_priv->irq_debug_cnt <= CAM_VFE_CAMIF_IRQ_SOF_DEBUG_CNT_MAX)) {
+		CAM_INFO(CAM_ISP, "VFE:%u Received SOF at [%lld: %09lld]",
+			vfe_priv->hw_intf->hw_idx,
+			payload->ts.mono_time.tv_sec,
+			payload->ts.mono_time.tv_nsec);
 
 		vfe_priv->irq_debug_cnt++;
-		if (vfe_priv->irq_debug_cnt ==
-			CAM_VFE_CAMIF_IRQ_SOF_DEBUG_CNT_MAX) {
-			vfe_priv->enable_sof_irq_debug = false;
+		if (vfe_priv->irq_debug_cnt == CAM_VFE_CAMIF_IRQ_SOF_DEBUG_CNT_MAX) {
+			struct cam_vfe_enable_sof_irq_args sof_irq_args;
+
 			vfe_priv->irq_debug_cnt = 0;
+			sof_irq_args.res =
+				&vfe_priv->top_priv->top_common.mux_rsrc[evt_info->res_id];
+			sof_irq_args.enable_sof_irq_debug = false;
+
+			cam_vfe_top_ver4_update_sof_debug((void *)(&sof_irq_args),
+				sizeof(sof_irq_args));
 		}
 	} else {
 		uint32_t frm_irq_status =
@@ -2056,6 +2107,7 @@ static int cam_vfe_resource_start(
 	int                             rc = 0;
 	uint32_t                        err_irq_mask[CAM_IFE_IRQ_REGISTERS_MAX];
 	uint32_t                        irq_mask[CAM_IFE_IRQ_REGISTERS_MAX];
+	uint32_t                        sof_irq_mask[CAM_IFE_IRQ_REGISTERS_MAX];
 
 	if (!vfe_res) {
 		CAM_ERR(CAM_ISP, "Error, Invalid input arguments");
@@ -2070,6 +2122,7 @@ static int cam_vfe_resource_start(
 
 	memset(err_irq_mask, 0, sizeof(err_irq_mask));
 	memset(irq_mask, 0, sizeof(irq_mask));
+	memset(sof_irq_mask, 0, sizeof(sof_irq_mask));
 
 	rsrc_data = (struct cam_vfe_mux_ver4_data *)vfe_res->res_priv;
 
@@ -2176,6 +2229,26 @@ skip_core_cfg:
 	}
 
 skip_frame_irq_subscribe:
+	/* Subscribe SOF IRQ only if FRAME IRQs are not subscribed */
+	if (!rsrc_data->frame_irq_handle) {
+		/* SOF IRQ mask is set to 0 intentially at resource start */
+		rsrc_data->sof_irq_handle = cam_irq_controller_subscribe_irq(
+			rsrc_data->vfe_irq_controller,
+			CAM_IRQ_PRIORITY_1,
+			sof_irq_mask,
+			vfe_res,
+			vfe_res->top_half_handler,
+			vfe_res->bottom_half_handler,
+			vfe_res->tasklet_info,
+			&tasklet_bh_api,
+			CAM_IRQ_EVT_GROUP_0);
+		if (rsrc_data->sof_irq_handle < 1) {
+			CAM_ERR(CAM_ISP, "VFE:%u SOF IRQ handle subscribe failed");
+			rsrc_data->sof_irq_handle = 0;
+			return -ENOMEM;
+		}
+	}
+
 	err_irq_mask[CAM_IFE_IRQ_CAMIF_REG_STATUS0] = rsrc_data->reg_data->error_irq_mask;
 
 	if (!rsrc_data->irq_err_handle) {
@@ -2259,6 +2332,13 @@ skip_core_decfg:
 		vfe_priv->frame_irq_handle = 0;
 	}
 	vfe_priv->n_frame_irqs = 0;
+
+	if (vfe_priv->sof_irq_handle) {
+		cam_irq_controller_unsubscribe_irq(
+			vfe_priv->vfe_irq_controller,
+			vfe_priv->sof_irq_handle);
+		vfe_priv->sof_irq_handle = 0;
+	}
 
 	if (vfe_priv->irq_err_handle) {
 		cam_irq_controller_unsubscribe_irq(

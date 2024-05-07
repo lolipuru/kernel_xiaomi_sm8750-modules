@@ -250,10 +250,12 @@ enum cam_req_mgr_link_evt_type {
 /**
  * enum cam_req_mgr_msg_type
  * @CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO : sensor frame info message type
+ * @CAM_REQ_MGR_MSG_UPDATE_IFE_HW_IDX : notify CRM exact IFE hw idx
  * @CAM_REQ_MGR_MSG_MAX               : invalid msg type
-*/
+ */
 enum cam_req_mgr_msg_type {
 	CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO,
+	CAM_REQ_MGR_MSG_UPDATE_IFE_HW_IDX,
 	CAM_REQ_MGR_MSG_MAX,
 };
 
@@ -336,7 +338,6 @@ struct cam_req_mgr_add_request {
 /**
  * struct cam_req_mgr_notify_stop
  * @link_hdl             : link identifier
- *
  */
 struct cam_req_mgr_notify_stop {
 	int32_t  link_hdl;
@@ -365,6 +366,7 @@ struct cam_req_mgr_sensor_frame_info {
  * @msg_type         : Message type
  * @frame_info       : Frame info structure includes frame duration and
  *                   : vertical blanking
+ * @ife_hw_name      : Update acquired IFE/SFE name
  */
 struct cam_req_mgr_notify_msg {
 	int32_t  link_hdl;
@@ -373,6 +375,7 @@ struct cam_req_mgr_notify_msg {
 	enum cam_req_mgr_msg_type msg_type;
 	union {
 		struct cam_req_mgr_sensor_frame_info frame_info;
+		char ife_hw_name[30];
 	} u;
 };
 

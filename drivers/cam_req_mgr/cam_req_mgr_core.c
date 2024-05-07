@@ -4402,6 +4402,21 @@ static int cam_req_mgr_cb_notify_msg(
 		return -EINVAL;
 	}
 
+	/* Update IFE hw idx after hw acquire, no further process is needed */
+	if (msg->msg_type == CAM_REQ_MGR_MSG_UPDATE_IFE_HW_IDX) {
+		for (i = 0; i < link->num_devs; i++) {
+			dev = &link->l_dev[i];
+
+			if (dev->dev_hdl != msg->dev_hdl)
+				continue;
+
+			snprintf(dev->dev_info.name, sizeof(dev->dev_info.name), "%s(%s)",
+				"cam-isp", msg->u.ife_hw_name);
+		}
+
+		return 0;
+	}
+
 	CAM_DBG(CAM_REQ, "link_hdl 0x%x request id:%llu msg type:%d",
 		link->link_hdl, msg->req_id, msg->msg_type);
 
@@ -6026,6 +6041,33 @@ static unsigned long cam_req_mgr_core_mini_dump_cb(void *dst, unsigned long len,
 	}
 end:
 	return dumped_len;
+}
+
+void cam_req_mgr_dump_linked_devices_on_err(int32_t link_hdl)
+{
+	int                                  i, log_buf_size, buf_used = 0;
+	struct cam_req_mgr_connected_device *dev;
+	struct cam_req_mgr_core_link        *link;
+	struct cam_req_mgr_core_session     *session;
+	char                                 log_buf[CAM_CRM_DUMP_LINKED_DEVICES_MAX_LEN];
+
+	link = cam_get_link_priv(link_hdl);
+	if (!link || link->link_hdl != link_hdl) {
+		CAM_DBG(CAM_CRM, "Invalid link hdl 0x%x", link_hdl);
+		return;
+	}
+
+	session = (struct cam_req_mgr_core_session *)link->parent;
+	for (i = 0; i < link->num_devs; i++) {
+		dev = &link->l_dev[i];
+
+		log_buf_size = CAM_CRM_DUMP_LINKED_DEVICES_MAX_LEN - buf_used;
+		buf_used += snprintf(log_buf + buf_used, log_buf_size, " %s",
+			dev->dev_info.name);
+	}
+
+	CAM_INFO(CAM_CRM, "Connected devices on the link 0x%x in session 0x%x:%s",
+		link->link_hdl, session->session_hdl, log_buf);
 }
 
 int cam_req_mgr_core_device_init(void)

@@ -421,6 +421,17 @@ struct cam_vfe_generic_debug_config {
 };
 
 /*
+ * struct cam_vfe_enable_sof_irq_args:
+ *
+ * @enable_sof_irq_debug: Enable IFE/TFE SOF IRQ debug
+ * @res                 : Resource node
+ */
+struct cam_vfe_enable_sof_irq_args {
+	struct cam_isp_resource_node *res;
+	bool                          enable_sof_irq_debug;
+};
+
+/*
  * cam_vfe_get_num_ifes()
  *
  * @brief:         Gets number of IFEs

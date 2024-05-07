@@ -5866,8 +5866,6 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	ife_ctx->res_list_ife_out = NULL;
 	ife_ctx->res_list_sfe_out = NULL;
 	ife_ctx->pri_rdi_out_res = g_ife_hw_mgr.isp_caps.max_vfe_out_res_type;
-	ife_ctx->left_hw_idx = CAM_IFE_CSID_HW_NUM_MAX;
-	ife_ctx->right_hw_idx = CAM_IFE_CSID_HW_NUM_MAX;
 	ife_ctx->ctx_index = acquire_args->ctx_id;
 	ife_ctx->scratch_buf_info.ife_scratch_config = NULL;
 
@@ -14381,7 +14379,7 @@ static int cam_ife_mgr_sof_irq_debug(
 	uint32_t i = 0, hw_idx;
 	struct cam_isp_hw_mgr_res     *hw_mgr_res = NULL;
 	struct cam_isp_resource_node  *rsrc_node = NULL;
-	struct cam_ife_hw_mgr *hw_mgr = ctx->hw_mgr;
+	struct cam_ife_hw_mgr         *hw_mgr = ctx->hw_mgr;
 
 	/* Per CSID enablement will enable for all paths */
 	for (i = 0; i < ctx->num_base; i++) {
@@ -14401,20 +14399,34 @@ static int cam_ife_mgr_sof_irq_debug(
 		}
 	}
 
-	/* legacy IFE CAMIF */
 	list_for_each_entry(hw_mgr_res, &ctx->res_list_ife_src, list) {
 		for (i = 0; i < CAM_ISP_HW_SPLIT_MAX; i++) {
 			if (!hw_mgr_res->hw_res[i])
 				continue;
 
 			rsrc_node = hw_mgr_res->hw_res[i];
-			if (rsrc_node->process_cmd && (rsrc_node->res_id ==
-				CAM_ISP_HW_VFE_IN_CAMIF)) {
-				rc |= hw_mgr_res->hw_res[i]->process_cmd(
-					hw_mgr_res->hw_res[i],
-					CAM_ISP_HW_CMD_SOF_IRQ_DEBUG,
-					&sof_irq_enable,
-					sizeof(sof_irq_enable));
+			if ((rsrc_node->res_id == CAM_ISP_HW_VFE_IN_CAMIF) ||
+				(rsrc_node->res_id == CAM_ISP_HW_VFE_IN_RDI0)) {
+				if (rsrc_node->process_cmd) {
+					rc |= rsrc_node->process_cmd(
+						hw_mgr_res->hw_res[i],
+						CAM_ISP_HW_CMD_SOF_IRQ_DEBUG,
+						&sof_irq_enable,
+						sizeof(sof_irq_enable));
+				} else if (rsrc_node->hw_intf->hw_ops.process_cmd) {
+					struct cam_vfe_enable_sof_irq_args sof_irq_args;
+
+					sof_irq_args.res = rsrc_node;
+					sof_irq_args.enable_sof_irq_debug = true;
+					rc |= rsrc_node->hw_intf->hw_ops.process_cmd(
+						rsrc_node->hw_intf->hw_priv,
+						CAM_ISP_HW_CMD_SOF_IRQ_DEBUG,
+						&sof_irq_args, sizeof(sof_irq_args));
+				}
+				if (rc)
+					CAM_DBG(CAM_ISP,
+						"Failed to set VFE:%u sof irq debug, rc: %d",
+						rsrc_node->hw_intf->hw_idx, rc);
 			}
 		}
 	}

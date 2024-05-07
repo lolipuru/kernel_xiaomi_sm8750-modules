@@ -8119,6 +8119,94 @@ static void cam_req_mgr_process_workq_apply_req_worker(struct work_struct *w)
 	cam_req_mgr_process_workq(w);
 }
 
+static inline void __cam_isp_ctx_convert_hw_id_to_string(
+	struct cam_req_mgr_notify_msg *msg,
+	uint32_t                       hw_idx)
+{
+	int num_hw = 0, len = 0;
+	char tmp_buf[30];
+
+	if (hw_idx & CAM_ISP_IFE0_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"IFE0 ");
+		num_hw++;
+	}
+
+	if (hw_idx & CAM_ISP_IFE1_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"IFE1 ");
+		num_hw++;
+	}
+
+	if (hw_idx & CAM_ISP_IFE2_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"IFE2 ");
+		num_hw++;
+	}
+
+	if (hw_idx & CAM_ISP_IFE0_LITE_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"IFE0_LITE ");
+		num_hw++;
+	}
+
+	if (hw_idx & CAM_ISP_IFE1_LITE_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"IFE1_LITE ");
+		num_hw++;
+	}
+
+	if (hw_idx & CAM_ISP_IFE2_LITE_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"IFE2_LITE ");
+		num_hw++;
+	}
+
+	if (hw_idx & CAM_ISP_IFE3_LITE_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"IFE3_LITE ");
+		num_hw++;
+	}
+
+	if (hw_idx & CAM_ISP_IFE4_LITE_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"IFE4_LITE ");
+		num_hw++;
+	}
+
+	if (hw_idx & CAM_ISP_SFE0_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"SFE0 ");
+		num_hw++;
+	}
+
+	if (hw_idx & CAM_ISP_SFE1_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"SFE1 ");
+		num_hw++;
+	}
+
+	if (hw_idx & CAM_ISP_SFE2_HW) {
+		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+			"SFE2 ");
+		num_hw++;
+	}
+
+	if ((num_hw <= 0) || (num_hw > 2)) {
+		CAM_WARN(CAM_ISP, "Wrong hw id, hw id: 0x%x, num_hw: %d", hw_idx, num_hw);
+		return;
+	}
+
+	if (num_hw == 2) {
+		snprintf(tmp_buf, sizeof(tmp_buf), "Dual: %s", msg->u.ife_hw_name);
+		len = snprintf(msg->u.ife_hw_name, sizeof(msg->u.ife_hw_name), "%s", tmp_buf);
+	}
+
+	/* Remove the last space */
+	if ((len > 0) && (len < sizeof(msg->u.ife_hw_name)))
+		msg->u.ife_hw_name[len - 1] = '\0';
+}
+
 static int __cam_isp_ctx_acquire_hw_v2(struct cam_context *ctx,
 	void *args)
 {
@@ -8133,6 +8221,7 @@ static int __cam_isp_ctx_acquire_hw_v2(struct cam_context *ctx,
 	struct cam_isp_hw_cmd_args       isp_hw_cmd_args;
 	struct cam_isp_acquire_hw_info  *acquire_hw_info = NULL;
 	struct cam_isp_comp_record_query query_cmd;
+	struct cam_req_mgr_notify_msg    msg = {0};
 
 	if (!ctx->hw_mgr_intf) {
 		CAM_ERR(CAM_ISP, "HW interface is not ready, ctx_id %u link: 0x%x",
@@ -8290,6 +8379,20 @@ static int __cam_isp_ctx_acquire_hw_v2(struct cam_context *ctx,
 
 		ctx_isp->hw_idx = param.acquired_hw_id[0];
 	}
+
+	/* Update CRM with the hw idx */
+	if (ctx->ctx_crm_intf && ctx->ctx_crm_intf->notify_msg) {
+		msg.link_hdl = ctx->link_hdl;
+		msg.dev_hdl = ctx->dev_hdl;
+		msg.msg_type = CAM_REQ_MGR_MSG_UPDATE_IFE_HW_IDX;
+		__cam_isp_ctx_convert_hw_id_to_string(&msg, ctx_isp->hw_idx);
+		rc = ctx->ctx_crm_intf->notify_msg(&msg);
+		if (rc) {
+			CAM_WARN(CAM_ISP, "Failed at updating IFE hw idx to CRM");
+			rc = 0;
+		}
+	}
+
 	cmd->hw_info.valid_acquired_hw =
 		param.valid_acquired_hw;
 

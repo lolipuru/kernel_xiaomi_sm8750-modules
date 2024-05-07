@@ -1839,8 +1839,17 @@ put_ref:
 
 int cam_flash_publish_dev_info(struct cam_req_mgr_device_info *info)
 {
+	struct cam_flash_ctrl *fctrl;
+
+	fctrl = (struct cam_flash_ctrl *)cam_get_device_priv(info->dev_hdl);
+	if (!fctrl) {
+		CAM_ERR(CAM_FLASH, " Device data is NULL");
+		return -EINVAL;
+	}
+
 	info->dev_id = CAM_REQ_MGR_DEVICE_FLASH;
-	strlcpy(info->name, CAM_FLASH_NAME, sizeof(info->name));
+	snprintf(info->name, sizeof(info->name), "%s(camera-flash%u)",
+		CAM_FLASH_NAME, fctrl->soc_info.index);
 	info->p_delay = CAM_PIPELINE_DELAY_1;
 	info->m_delay = CAM_MODESWITCH_DELAY_1;
 	info->trigger = CAM_TRIGGER_POINT_SOF;

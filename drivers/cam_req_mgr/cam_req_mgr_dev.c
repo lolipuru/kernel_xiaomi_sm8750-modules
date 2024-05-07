@@ -874,6 +874,13 @@ int cam_req_mgr_notify_message(struct cam_req_mgr_message *msg,
 	if (!msg)
 		return -EINVAL;
 
+	/* Print all connected devices if components meet error or specifically pf error */
+	if (id == V4L_EVENT_CAM_REQ_MGR_ERROR)
+		cam_req_mgr_dump_linked_devices_on_err(msg->u.err_msg.link_hdl);
+
+	if (id == V4L_EVENT_CAM_REQ_MGR_PF_ERROR)
+		cam_req_mgr_dump_linked_devices_on_err(msg->u.pf_err_msg.link_hdl);
+
 	event.id = id;
 	event.type = type;
 	ev_header = CAM_REQ_MGR_GET_PAYLOAD_PTR(event,
