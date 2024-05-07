@@ -72,6 +72,7 @@ static struct dma_buf_attachment *msm_vidc_dma_buf_attach_ext(struct msm_vidc_co
 	 * Get the scatterlist for the given attachment
 	 * Mapping of sg is taken care by map attachment
 	 */
+	attach->dma_map_attrs |= DMA_ATTR_DELAYED_UNMAP;
 	if (is_sys_cache_present(core))
 		attach->dma_map_attrs |= 0UL /*TODO: define DMA_ATTR_IOMMU_USE_UPSTREAM_HINT*/;
 
