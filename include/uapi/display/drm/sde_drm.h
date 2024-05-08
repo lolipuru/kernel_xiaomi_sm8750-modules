@@ -293,6 +293,11 @@ struct sde_drm_de_v1 {
  * @cac_le_inc_skip_y:     LE vertical inc_skip control
  * @cac_re_inc_skip_x:     RE horizontal inc_skip control
  * @cac_re_inc_skip_y:     RE vertical inc_skip control
+ * @fov_mode:              Fovea mode for current configuration
+ * @cac_asym_phase_step_h: Horizontal phase step for fov mode after center region
+ * @cac_asym_phase_step_v: Vertical phase step for fov mode after center region
+ * @cac_re_phase_step_v:   Right eye vertical phase step for fov mode in beginning region
+ * @cac_re_asym_phase_step_v: Right eye vertical phase step for fov mode in ending region
  */
 struct sde_drm_cac {
 	__u32 cac_mode;
@@ -320,6 +325,12 @@ struct sde_drm_cac {
 	__u16 cac_le_inc_skip_y[SDE_MAX_PLANES];
 	__u16 cac_re_inc_skip_x[SDE_MAX_PLANES];
 	__u16 cac_re_inc_skip_y[SDE_MAX_PLANES];
+
+	__u32 fov_mode;
+	__u32 cac_asym_phase_step_h;
+	__u32 cac_asym_phase_step_v;
+	__u32 cac_re_phase_step_v;
+	__u32 cac_re_asym_phase_step_v;
 };
 
 /*
