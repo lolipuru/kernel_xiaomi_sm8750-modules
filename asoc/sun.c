@@ -966,6 +966,16 @@ static struct snd_soc_dai_link msm_cdc_qmp_dma_be_dai_links[] = {
 		SND_SOC_DAILINK_REG(va_dma_qmp_normal),
 	},
 	{
+		.name = LPASS_BE_VA_CDC_DMA_TX_1,
+		.stream_name = LPASS_BE_VA_CDC_DMA_TX_1,
+		.capture_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		.ops = &msm_common_be_ops,
+		SND_SOC_DAILINK_REG(va_dma_qmp_lp),
+	},
+	{
 		.name = LPASS_BE_TX_CDC_DMA_TX_4,
 		.stream_name = LPASS_BE_TX_CDC_DMA_TX_4,
 		.capture_only = 1,
@@ -1599,11 +1609,6 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 		}
 
 		memcpy(msm_sun_dai_links + total_links,
-		       msm_va_cdc_dma_be_dai_links,
-		       sizeof(msm_va_cdc_dma_be_dai_links));
-		total_links += ARRAY_SIZE(msm_va_cdc_dma_be_dai_links);
-
-		memcpy(msm_sun_dai_links + total_links,
 		       msm_common_be_dai_links,
 		       sizeof(msm_common_be_dai_links));
 		total_links += ARRAY_SIZE(msm_common_be_dai_links);
@@ -1664,6 +1669,10 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 			       msm_tx_cdc_dma_be_dai_links,
 			       sizeof(msm_tx_cdc_dma_be_dai_links));
 			total_links += ARRAY_SIZE(msm_tx_cdc_dma_be_dai_links);
+			memcpy(msm_sun_dai_links + total_links,
+				msm_va_cdc_dma_be_dai_links,
+				sizeof(msm_va_cdc_dma_be_dai_links));
+			total_links += ARRAY_SIZE(msm_va_cdc_dma_be_dai_links);
 		}
 
 		if (of_find_property(dev->of_node, "swr-haptics-unsupported",
