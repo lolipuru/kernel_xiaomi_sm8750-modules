@@ -56,14 +56,14 @@
  * bits 0-3   : type of remote PD
  * bit  4     : type of job (sync/async)
  * bit  5     : reserved
- * bits 6-13  : IDR id
- * bits 14-63 : reserved
+ * bits 6-15  : IDR id
+ * bits 16-63 : job id counter
  */
 /* Starting position of idr in context id */
 #define FASTRPC_CTXID_IDR_POS  (6)
 
 /* Number of idr bits in context id */
-#define FASTRPC_CTXID_IDR_BITS (8)
+#define FASTRPC_CTXID_IDR_BITS (10)
 
 /* Max idr value */
 #define FASTRPC_CTX_MAX (1 << FASTRPC_CTXID_IDR_BITS)
@@ -88,6 +88,17 @@
 /* Macro to pack pd type into context id  */
 #define FASTRPC_PACK_PD_IN_CTXID(ctxid, pd) (ctxid | (pd & \
 		FASTRPC_CTXID_PD_MASK))
+
+/* Starting position of job id counter in context id */
+#define FASTRPC_CTXID_JOBID_POS (16)
+
+/* Macro to pack job id counter into context id  */
+#define FASTRPC_PACK_JOBID_IN_CTXID(ctxid, jobid) (ctxid | \
+		(jobid << FASTRPC_CTXID_JOBID_POS))
+
+/* Macro to extract ctxid (mask pd type) from response context */
+#define FASTRPC_GET_CTXID_FROM_RSP_CTX(rsp_ctx) (rsp_ctx & \
+		~FASTRPC_CTXID_PD_MASK)
 
 /* Maximum buffers cached in cached buffer list */
 #define FASTRPC_MAX_CACHED_BUFS (32)
@@ -623,6 +634,8 @@ struct fastrpc_channel_ctx {
 	atomic_t teardown;
 	/* Buffers donated to grow rootheap on DSP */
 	struct heap_bufs rootheap_bufs;
+	/* jobid counter to prepend into ctxid */
+	u64 jobid;
 };
 
 struct fastrpc_invoke_ctx {
