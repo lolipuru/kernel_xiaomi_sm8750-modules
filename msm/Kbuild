@@ -62,6 +62,7 @@ msm-eva-objs := eva/cvp.o \
         eva/msm_cvp_synx.o \
 	eva/cvp_fw_load.o \
 	eva/cvp_power.o \
+	eva/cvp_presil.o \
 	eva/vm/cvp_vm_main.o \
 	eva/vm/cvp_vm_msgq.o \
 	eva/vm/cvp_vm_resource.o

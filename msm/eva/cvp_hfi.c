@@ -39,6 +39,8 @@
 #include "vm/cvp_vm.h"
 #include "cvp_dump.h"
 #include "msm_cvp_events.h"
+#include "cvp_comm_def.h"
+#include "cvp_presil.h"
 
 // ysi - added for debug
 #include <linux/clk/qcom.h>
@@ -70,7 +72,6 @@ static enum cvp_irq_state cur_irq_state = CVP_IRQ_CLEAR;
 
 static void iris_hfi_pm_handler(struct work_struct *work);
 static DECLARE_DELAYED_WORK(iris_hfi_pm_work, iris_hfi_pm_handler);
-static inline int __resume(struct iris_hfi_device *device);
 static inline int __suspend(struct iris_hfi_device *device);
 static int __disable_regulator(struct iris_hfi_device *device,
 		const char *name);
@@ -491,7 +492,6 @@ static int __take_back_regulators(struct iris_hfi_device *device)
 	return rc;
 }
 
-
 static int __write_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 		bool *rx_req_is_set)
 {
@@ -807,6 +807,12 @@ static void __write_register(struct iris_hfi_device *device,
 	dprintk(CVP_REG, "Base addr: %pK, written to: %#x, Value: %#x...\n",
 		base_addr, hwiosymaddr, value);
 	base_addr += hwiosymaddr;
+
+#ifdef USE_PRESIL42
+	presil42_write_register(device, reg, value);
+	return;
+#endif
+
 	writel_relaxed(value, base_addr);
 
 	/*
@@ -870,8 +876,11 @@ static int __read_register(struct iris_hfi_device *device, u32 reg)
 		return -EINVAL;
 	}
 
-	base_addr = device->cvp_hal_data->register_base;
+#ifdef USE_PRESIL42
+	return presil42_read_register(reg);
+#endif
 
+	base_addr = device->cvp_hal_data->register_base;
 	rc = readl_relaxed(base_addr + reg);
 	/*
 	 * Memory barrier to make sure value is read correctly from the
@@ -1182,7 +1191,9 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 		}
 
 #ifdef USE_PRESIL
-		usleep_range(50000, 100000);
+		if (!__read_register(device, CVP_CTRL_INIT))
+			break;
+		usleep_range(5000, 10000);
 #else
 		/* Reduce to 50, 100 on silicon */
 		usleep_range(100, 200);
@@ -1279,12 +1290,14 @@ static void cvp_dump_csr(struct iris_hfi_device *dev)
 	dprintk(CVP_ERR, "CVP_CPU_CS_H2ASOFTINT: %x\n", reg);
 	reg = __read_register(dev, CVP_CPU_CS_A2HSOFTINT);
 	dprintk(CVP_ERR, "CVP_CPU_CS_A2HSOFTINT: %x\n", reg);
+#ifndef USE_PRESIL42
 	if (!call_iris_op(dev, check_ctl_power_on, dev)) {
 		dprintk(CVP_ERR, "CVP control power on\n");
 	} else {
 		dprintk(CVP_ERR, "CVP control power off\n");
 		return;
 	}
+#endif
 	reg = __read_register(dev, CVP_WRAPPER_CPU_CLOCK_CONFIG);
 	dprintk(CVP_ERR, "CVP_WRAPPER_CPU_CLOCK_CONFIG: %x\n", reg);
 	reg = __read_register(dev, CVP_WRAPPER_CORE_CLOCK_CONFIG);
@@ -1366,6 +1379,11 @@ static int __iface_cmdq_write_relaxed(struct iris_hfi_device *device,
 	}
 
 	cmd_packet = (struct cvp_hal_cmd_pkt_hdr *)pkt;
+
+#ifdef USE_PRESIL42
+	return presil42_iface_cmdq_write_relaxed(cmd_packet, pkt);
+#endif
+
 	device->last_packet_type = cmd_packet->packet_type;
 
 	q_info = &device->iface_queues[CVP_IFACEQ_CMDQ_IDX];
@@ -1412,6 +1430,11 @@ static int __iface_cmdq_write(struct iris_hfi_device *device, void *pkt)
 	bool needs_interrupt = false;
 	int rc = __iface_cmdq_write_relaxed(device, pkt, &needs_interrupt);
 
+#ifdef USE_PRESIL42
+	__write_register(device, CVP_CPU_CS_H2ASOFTINT, 1);
+	return rc;
+#endif
+
 	if (!rc && needs_interrupt) {
 		/* Consumer of cmdq prefers that we raise an interrupt */
 		rc = 0;
@@ -1419,7 +1442,6 @@ static int __iface_cmdq_write(struct iris_hfi_device *device, void *pkt)
 			dprintk(CVP_ERR, "%s power off, don't access reg\n", __func__);
 		__write_register(device, CVP_CPU_CS_H2ASOFTINT, 1);
 	}
-
 	return rc;
 }
 
@@ -1441,6 +1463,10 @@ static int __iface_msgq_read(struct iris_hfi_device *device, void *pkt)
 		rc = -EINVAL;
 		goto read_error_null;
 	}
+
+#ifdef USE_PRESIL42
+	return presil42_iface_msgq_read(pkt);
+#endif
 
 	q_info = &device->iface_queues[CVP_IFACEQ_MSGQ_IDX];
 	if (q_info->q_array.align_virtual_addr == NULL) {
@@ -1476,6 +1502,9 @@ static int __iface_dbgq_read(struct iris_hfi_device *device, void *pkt)
 
 	__strict_check(device);
 
+#ifdef USE_PRESIL42
+	return presil42_iface_dbgq_read(pkt);
+#endif
 	q_info = &device->iface_queues[CVP_IFACEQ_DBGQ_IDX];
 	if (q_info->q_array.align_virtual_addr == NULL) {
 		dprintk(CVP_ERR, "cannot read from shared DBG Q's\n");
@@ -1737,6 +1766,10 @@ static int __get_qdss_iommu_virtual_addr(struct iris_hfi_device *dev,
 
 static void __setup_ucregion_memory_map(struct iris_hfi_device *device)
 {
+#ifdef USE_PRESIL42
+	presil42_setup_ucregion_memory_map(device);
+	return;
+#endif
 	__write_register(device, CVP_UC_REGION_ADDR,
 			(u32)device->iface_q_table.align_device_addr);
 	__write_register(device, CVP_UC_REGION_SIZE, SHARED_QSIZE);
@@ -1795,15 +1828,31 @@ static void __hfi_queue_init(struct iris_hfi_device *dev)
 	q_hdr->qhdr_start_addr = iface_q->q_array.align_device_addr;
 	q_hdr->qhdr_type |= HFI_Q_ID_HOST_TO_CTRL_CMD_Q;
 
+#ifdef USE_PRESIL42
+	__write_register(dev, CVP_PRESIL_HFI_REG_CMD_Q_IOVA,
+		(u32)q_hdr->qhdr_start_addr - MAP_ADDR_OFFSET);
+#endif
+
 	iface_q = &dev->iface_queues[CVP_IFACEQ_MSGQ_IDX];
 	q_hdr = iface_q->q_hdr;
 	q_hdr->qhdr_start_addr = iface_q->q_array.align_device_addr;
 	q_hdr->qhdr_type |= HFI_Q_ID_CTRL_TO_HOST_MSG_Q;
 
+#ifdef USE_PRESIL42
+	__write_register(dev, CVP_PRESIL_HFI_REG_MSG_Q_IOVA,
+		(u32)q_hdr->qhdr_start_addr - MAP_ADDR_OFFSET);
+#endif
+
 	iface_q = &dev->iface_queues[CVP_IFACEQ_DBGQ_IDX];
 	q_hdr = iface_q->q_hdr;
 	q_hdr->qhdr_start_addr = iface_q->q_array.align_device_addr;
 	q_hdr->qhdr_type |= HFI_Q_ID_CTRL_TO_HOST_DEBUG_Q;
+
+#ifdef USE_PRESIL42
+	__write_register(dev, CVP_PRESIL_HFI_REG_DBG_Q_IOVA,
+		(u32)q_hdr->qhdr_start_addr - MAP_ADDR_OFFSET);
+#endif
+
 	/*
 	 * Set receive request to zero on debug queue as there is no
 	 * need of interrupt from cvp hardware for debug messages
@@ -2197,7 +2246,9 @@ static int __hwfence_regs_unmap(struct iris_hfi_device *device)
 static int iris_hfi_core_init(void *device)
 {
 	int rc = 0;
+#ifndef USE_PRESIL42
 	u32 ipcc_iova;
+#endif
 	struct cvp_hfi_cmd_sys_init_packet pkt;
 	struct cvp_hfi_cmd_sys_get_property_packet *pversion_pkt;
 	struct iris_hfi_device *dev;
@@ -2269,12 +2320,13 @@ static int iris_hfi_core_init(void *device)
 	add_queue_header_to_va_md_list((void*)dev);
 	add_hfi_queue_to_va_md_list((void*)dev);
 
+#ifndef USE_PRESIL42
 	rc = msm_cvp_map_ipcc_regs(&ipcc_iova);
 	if (!rc) {
 		dprintk(CVP_CORE, "IPCC iova 0x%x\n", ipcc_iova);
 		__write_register(dev, CVP_MMAP_ADDR, ipcc_iova);
 	}
-
+#endif
 	rc = __load_fw(dev);
 	if (rc) {
 		dprintk(CVP_ERR, "Failed to load Iris FW\n");
@@ -2443,6 +2495,11 @@ static void __core_clear_interrupt(struct iris_hfi_device *device)
 		dprintk(CVP_ERR, "%s: NULL device\n", __func__);
 		return;
 	}
+
+#ifdef USE_PRESIL42
+	presil42_core_clear_interrupt(device);
+	return;
+#endif
 
 	intr_status = __read_register(device, CVP_WRAPPER_INTR_STATUS);
 	mask = (CVP_WRAPPER_INTR_MASK_A2HCPU_BMSK | CVP_FATAL_INTR_BMSK);
@@ -3271,7 +3328,7 @@ static void print_msg_hdr(void *hdr)
 			new_hdr->client_data.kdata);
 }
 
-static int __response_handler(struct iris_hfi_device *device)
+int __response_handler(struct iris_hfi_device *device)
 {
 	struct msm_cvp_cb_info *packets;
 	int packet_count = 0;
@@ -3388,6 +3445,9 @@ irqreturn_t iris_hfi_core_work_handler(int irq, void *data)
 
 	cur_irq_state = CVP_IRQ_ACCEPTED;
 	core = cvp_driver->cvp_core;
+#ifdef USE_PRESIL42
+	dprintk(CVP_DBG, "CVP_INFO presil %s: E", __func__);
+#endif
 	if (core) {
 		device = core->dev_ops->hfi_device_data;
 	} else {
@@ -3460,11 +3520,26 @@ err_no_work:
 	return IRQ_HANDLED;
 }
 
+#ifdef USE_PRESIL42
+static DECLARE_WORK(presil_hfi_work, presil42_hfi_core_work_handler);
+#endif
+
 irqreturn_t cvp_hfi_isr(int irq, void *dev)
 {
+
+#ifdef USE_PRESIL42
+	struct iris_hfi_device *device = dev;
+
+	dprintk(CVP_DBG, "CVP_INFO presil %s: E", __func__);
+#endif
 	CVPKERNEL_ATRACE_BEGIN("iris_hfi_isr");
 	disable_irq_nosync(irq);
 	CVPKERNEL_ATRACE_END("iris_hfi_isr");
+
+#ifdef USE_PRESIL42
+	queue_work(device->cvp_workq, &presil_hfi_work);
+#endif
+
 	return IRQ_WAKE_THREAD;
 }
 
@@ -4031,6 +4106,9 @@ static int __disable_regulator(struct iris_hfi_device *device,
 
 static int __enable_subcaches(struct iris_hfi_device *device)
 {
+#ifdef USE_PRESIL42
+	return 0;
+#endif
 	int rc = 0;
 	u32 c = 0;
 	struct subcache_info *sinfo;
@@ -4064,6 +4142,9 @@ err_activate_fail:
 
 static int __set_subcaches(struct iris_hfi_device *device)
 {
+#ifdef USE_PRESIL42
+	return 0;
+#endif
 	int rc = 0;
 	u32 c = 0;
 	struct subcache_info *sinfo;
@@ -4217,6 +4298,10 @@ static void interrupt_init_iris2(struct iris_hfi_device *device)
 static void setup_dsp_uc_memmap_vpu5(struct iris_hfi_device *device)
 {
 	/* initialize DSP QTBL & UCREGION with CPU queues */
+#ifdef USE_PRESIL42
+	presil42_setup_dsp_uc_memmap_vpu5(device);
+	return;
+#endif
 	__write_register(device, HFI_DSP_QTBL_ADDR,
 		(u32)device->dsp_iface_q_table.align_device_addr);
 	__write_register(device, HFI_DSP_UC_REGION_ADDR,
@@ -4321,7 +4406,7 @@ static int __iris_power_on(struct iris_hfi_device *device)
 		goto fail_enable_core;
 
 	dprintk(CVP_CORE, "Done with register set\n");
-
+#ifndef USE_PRESIL42
 	rc = call_iris_op(device, check_core_power_on, device);
 	if (rc) {
 		dprintk(CVP_ERR, "CORE power on failed %d\n", rc);
@@ -4335,7 +4420,7 @@ static int __iris_power_on(struct iris_hfi_device *device)
 		rc = -EINVAL;
 		goto fail_enable_core;
 	}
-
+#endif
 	call_iris_op(device, interrupt_init, device);
 	dprintk(CVP_CORE, "Done with interrupt enabling\n");
 	device->intr_status = 0;
@@ -4410,7 +4495,7 @@ static void power_off_iris2(struct iris_hfi_device *device)
 		current->pid, current->tgid, "pwr");
 }
 
-static inline int __resume(struct iris_hfi_device *device)
+int __resume(struct iris_hfi_device *device)
 {
 	int rc = 0;
 	struct msm_cvp_core *core;
@@ -4465,7 +4550,6 @@ static inline int __resume(struct iris_hfi_device *device)
 
 	__enable_subcaches(device);
 	__set_subcaches(device);
-
 
 	__dsp_resume(device);
 
@@ -4955,7 +5039,12 @@ void cvp_iris_hfi_delete_device(void *device)
 	mutex_destroy(&dev->lock);
 	destroy_workqueue(dev->cvp_workq);
 	destroy_workqueue(dev->iris_pm_workq);
+
+#ifndef USE_PRESIL42
 	free_irq(dev->cvp_hal_data->irq, dev);
+#else
+	presil42_cvp_iris_hfi_delete_device(dev);
+#endif
 	iounmap(dev->cvp_hal_data->register_base);
 	iounmap(dev->cvp_hal_data->gcc_reg_base);
 	kfree(dev->cvp_hal_data);
