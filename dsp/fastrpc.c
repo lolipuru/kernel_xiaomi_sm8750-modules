@@ -3767,7 +3767,7 @@ static int fastrpc_multimode_invoke(struct fastrpc_user *fl, char __user *argp)
 	case FASTRPC_INVOKE_DSPSIGNAL:
 		if (invoke.size > sizeof(*fsig))
 			return -EINVAL;
-		fsig = kzalloc(invoke.size, GFP_KERNEL);
+		fsig = kzalloc(sizeof(*fsig), GFP_KERNEL);
 		if (!fsig)
 			return -ENOMEM;
 		if (copy_from_user(fsig, (void __user *)(uintptr_t)invoke.invparam,
