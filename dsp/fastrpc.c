@@ -2893,9 +2893,10 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	struct fastrpc_map *map, *m;
 	struct fastrpc_buf *buf, *b;
 	int i;
-	unsigned long flags;
+	unsigned long flags, irq_flags;
 	bool locked = false, is_driver_registered = false;
 
+	spin_lock_irqsave(&glock, irq_flags);
 	spin_lock_irqsave(&cctx->lock, flags);
 	if (fl->device) {
 		fl->device->dev_close = true;
@@ -2910,12 +2911,15 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 		list_del(&frpc_drv->hn);
 		if(frpc_drv->callback) {
 			spin_unlock_irqrestore(&cctx->lock, flags);
+			spin_unlock_irqrestore(&glock, irq_flags);
 			frpc_drv->callback(fl->device, FASTRPC_PROC_DOWN);
+			spin_lock_irqsave(&glock, irq_flags);
 			spin_lock_irqsave(&cctx->lock, flags);
 		}
 		is_driver_registered = true;
 	}
 	spin_unlock_irqrestore(&cctx->lock, flags);
+	spin_unlock_irqrestore(&glock, irq_flags);
 
 	/*
 	 * If no driver is registered on the device, free it here.
@@ -4466,18 +4470,9 @@ long fastrpc_dev_map_dma(struct fastrpc_device *dev,
 	}
 	cctx = fl->cctx;
 	fastrpc_channel_ctx_get(cctx);
+	fl->is_dma_invoke_pend = true;
 	spin_unlock_irqrestore(&glock, irq_flags);
 
-	spin_lock_irqsave(&cctx->lock, irq_flags);
-	if (!fl || fl->device->dev_close) {
-		err = -ESRCH;
-		pr_err("%s : bad fl or device is already closed", __func__);
-		spin_unlock_irqrestore(&cctx->lock, irq_flags);
-		fastrpc_channel_ctx_put(cctx);
-		return err;
-	}
-	fl->is_dma_invoke_pend = true;
-    spin_unlock_irqrestore(&cctx->lock, irq_flags);
 	/* Map DMA buffer on SMMU device*/
 	mutex_lock(&fl->remote_map_mutex);
 	mutex_lock(&fl->map_mutex);
@@ -4554,18 +4549,9 @@ long fastrpc_dev_unmap_dma(struct fastrpc_device *dev,
 	}
 	cctx = fl->cctx;
 	fastrpc_channel_ctx_get(cctx);
+	fl->is_dma_invoke_pend = true;
 	spin_unlock_irqrestore(&glock, irq_flags);
 
-	spin_lock_irqsave(&cctx->lock, irq_flags);
-	if (!fl || fl->device->dev_close) {
-		err = -ESRCH;
-		pr_err("%s : bad fl or device is already closed", __func__);
-		spin_unlock_irqrestore(&cctx->lock, irq_flags);
-		fastrpc_channel_ctx_put(cctx);
-		return err;
-	}
-	fl->is_dma_invoke_pend = true;
-	spin_unlock_irqrestore(&cctx->lock, irq_flags);
 	mutex_lock(&fl->remote_map_mutex);
 	mutex_lock(&fl->map_mutex);
 	if (!fastrpc_map_lookup(fl, -1, 0, 0, p.unmap->buf,
@@ -4631,19 +4617,10 @@ long fastrpc_dev_get_hlos_pid(struct fastrpc_device *dev,
 	}
 	cctx = fl->cctx;
 	fastrpc_channel_ctx_get(cctx);
-	spin_unlock_irqrestore(&glock, irq_flags);
 
-	spin_lock_irqsave(&cctx->lock, irq_flags);
-	if (!fl || fl->device->dev_close) {
-		pr_err("%s : bad fl or device is already closed", __func__);
-		err = -ESRCH;
-		spin_unlock_irqrestore(&cctx->lock, irq_flags);
-		fastrpc_channel_ctx_put(cctx);
-		return err;
-	}
 	p.hpid = (struct fastrpc_dev_get_hlos_pid *)invoke_param;
 	p.hpid->hlos_pid = fl->tgid;
-	spin_unlock_irqrestore(&cctx->lock, irq_flags);
+	spin_unlock_irqrestore(&glock, irq_flags);
 	fastrpc_channel_ctx_put(cctx);
 
 	return err;
@@ -4731,7 +4708,7 @@ static int fastrpc_device_create(struct fastrpc_user *fl)
 void fastrpc_driver_unregister(struct fastrpc_driver *frpc_driver){
 
 	struct fastrpc_device *frpc_dev = NULL;
-	unsigned long irq_flags = 0;
+	unsigned long irq_flags = 0, flags = 0;
 	struct fastrpc_channel_ctx * cctx = NULL;
 	struct fastrpc_user *fl = NULL;
 
@@ -4760,12 +4737,12 @@ void fastrpc_driver_unregister(struct fastrpc_driver *frpc_driver){
 	}
 	cctx = frpc_dev->fl->cctx;
 	fastrpc_channel_ctx_get(cctx);
+
+	spin_lock_irqsave(&cctx->lock, flags);
+	list_del_init(&frpc_driver->hn);
+	spin_unlock_irqrestore(&cctx->lock, flags);
 	spin_unlock_irqrestore(&glock, irq_flags);
 
-	spin_lock_irqsave(&cctx->lock, irq_flags);
-	if (fl && !fl->device->dev_close)
-		list_del_init(&frpc_driver->hn);
-	spin_unlock_irqrestore(&cctx->lock, irq_flags);
 	fastrpc_channel_ctx_put(cctx);
 
 	pr_info("Un-registering fastrpc driver with handle 0x%x\n",
