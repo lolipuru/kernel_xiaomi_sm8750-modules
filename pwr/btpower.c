@@ -735,12 +735,13 @@ static int bt_configure_gpios(int on)
 		if (bt_sw_ctrl_gpio >= 0) {
 			power_src.platform_state[BT_SW_CTRL_GPIO] =
 			gpio_get_value(bt_sw_ctrl_gpio);
-			rc = msm_gpio_mpm_wake_set(pwr_data->sw_cntrl_gpio, 1);
-			if (rc < 0) {
-				pr_err("Failed to set msm_gpio_mpm_wake_set for sw_cntrl gpio, ret: %d\n",
+			if (pwr_data->sw_cntrl_gpio >= 0) {
+				rc = msm_gpio_mpm_wake_set(pwr_data->sw_cntrl_gpio, 1);
+				if (rc < 0) {
+					pr_err("Failed to set msm_gpio_mpm_wake_set for sw_cntrl gpio, ret: %d\n",
 						rc);
-				return rc;
-			} else {
+					return rc;
+				}
 				pr_info("Set msm_gpio_mpm_wake_set for sw_cntrl gpio successful\n");
 			}
 			pr_info("BTON:Turn Bt OFF bt-sw-ctrl-gpio(%d) value(%d)\n",
@@ -908,17 +909,6 @@ static int bt_regulators_pwr(int pwr_state)
 			}
 		}
 
-		/* Parse dt_info and check if a target requires clock voting.
-		 * Enable BT clock when BT is on and disable it when BT is off
-		 */
-		if (pwr_data->bt_chip_clk) {
-			rc = bt_clk_enable(pwr_data->bt_chip_clk);
-			if (rc < 0) {
-				pr_err("%s: bt_power gpio config failed\n",
-					__func__);
-				goto clk_fail;
-			}
-		}
 		if (pwr_data->bt_gpio_sys_rst > 0) {
 			power_src.bt_state[BT_RESET_GPIO] = DEFAULT_INVALID_VALUE;
 			power_src.bt_state[BT_SW_CTRL_GPIO] = DEFAULT_INVALID_VALUE;
@@ -946,7 +936,6 @@ gpio_fail:
 			gpio_free(pwr_data->bt_gpio_debug);
 		if (pwr_data->bt_chip_clk)
 			bt_clk_disable(pwr_data->bt_chip_clk);
-clk_fail:
 regulator_fail:
 		for (i = 0; i < bt_num_vregs; i++) {
 			bt_vregs = &pwr_data->bt_vregs[i];
@@ -1346,8 +1335,6 @@ static int get_gpio_dt_pinfo(struct platform_device *pdev)
 	struct device_node *child;
 	struct pinctrl *pinctrl1;
 	struct pinctrl_state *sw_ctrl;
-	u32 gpio_id, i;
-	int gpio_id_n;
 
 	child = pdev->dev.of_node;
 
@@ -1377,25 +1364,10 @@ static int get_gpio_dt_pinfo(struct platform_device *pdev)
 	if (pwr_data->bt_gpio_fmd_clk_ctrl < 0)
 		pr_warn("bt-fmd-clk-gpio not provided in devicetree\n");
 
-		/* Find out and configure all those GPIOs which need to be setup
-		 * for interrupt wakeup capable
-		 *
-		 */
-	gpio_id_n = of_property_count_u32_elems(child, "mpm_wake_set_gpios");
-	if (gpio_id_n > 0) {
-		pr_err("Num of GPIOs to be setup for interrupt wakeup capable: %d\n",
-						gpio_id_n);
-		for (i = 0; i < gpio_id_n; i++) {
-			ret = of_property_read_u32_index(child,
-							"mpm_wake_set_gpios",
-							i, &gpio_id);
-			if (ret) {
-				pr_err("Failed to read gpio_id at index: %d\n", i);
-				continue;
-			}
-		}
-	} else {
-		pr_err("No GPIOs to be setup for interrupt wakeup capable\n");
+	ret = of_property_read_u32(child, "mpm_wake_set_gpios", &pwr_data->sw_cntrl_gpio);
+
+	if (ret) {
+		pr_warn("sw_cntrl-gpio not provided in devicetree\n");
 	}
 
 	if (pinctrl1) {
