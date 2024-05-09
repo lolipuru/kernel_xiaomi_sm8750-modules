@@ -5780,6 +5780,9 @@ void ipa3_q6_handshake_complete(bool ssr_bootup)
 	ipa3_set_modem_up(true);
 	if (ipa3_ctx->ipa_config_is_mhi)
 		ipa_send_mhi_endp_ind_to_modem();
+
+	if (ipa3_ctx->ipa_wdi_opt_dpath && ipa_wdi_opt_dpath_ctrl_enabled(0))
+		ipa3_setup_wlan_ctrl_ready_req();
 }
 
 static inline bool rmnet_ipa3_check_any_client_inited
