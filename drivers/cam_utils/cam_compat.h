@@ -73,6 +73,12 @@ MODULE_IMPORT_NS(DMA_BUF);
 #endif
 #endif
 
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+#define CAM_SUBDEV_NAME_SIZE 32
+#else
+#define CAM_SUBDEV_NAME_SIZE V4L2_SUBDEV_NAME_SIZE
+#endif
+
 #define IS_CSF25(x, y) ((((x) == 2) && ((y) == 5)) ? 1 : 0)
 
 struct cam_fw_alloc_info {
