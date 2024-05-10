@@ -9,7 +9,7 @@ _default_module_enablement_list = [
     "wlan_firmware_service"
 ]
 
-_cnss2_enabled_target = ["niobe", "pineapple", "sun"]
+_cnss2_enabled_target = ["niobe", "pineapple", "sun", "x1e80100"]
 _icnss2_enabled_target = ["blair", "pineapple", "monaco", "pitti", "volcano"]
 
 def _get_module_list(target, variant):
@@ -77,6 +77,20 @@ def _define_modules_for_target_variant(target, variant):
         module = "cnss2"
         _define_platform_config_rule(module, target, variant)
         defconfig = ":{}/{}_defconfig_generate_{}".format(module, tv, variant)
+        deps = [
+            ":{}_cnss_utils".format(tv),
+            ":{}_cnss_prealloc".format(tv),
+            ":{}_wlan_firmware_service".format(tv),
+            ":{}_cnss_plat_ipc_qmi_svc".format(tv),
+            "//msm-kernel:all_headers",
+            ":wlan-platform-headers",
+        ]
+
+        if target != "x1e80100":
+            deps = deps + [
+                "//vendor/qcom/opensource/securemsm-kernel:{}_smcinvoke_dlkm".format(tv),
+            ]
+
         ddk_module(
             name = "{}_cnss2".format(tv),
             srcs = native.glob([
@@ -108,15 +122,7 @@ def _define_modules_for_target_variant(target, variant):
             },
             out = "cnss2.ko",
             kernel_build = "//msm-kernel:{}".format(tv),
-            deps = [
-                "//vendor/qcom/opensource/securemsm-kernel:{}_smcinvoke_dlkm".format(tv),
-                ":{}_cnss_utils".format(tv),
-                ":{}_cnss_prealloc".format(tv),
-                ":{}_wlan_firmware_service".format(tv),
-                ":{}_cnss_plat_ipc_qmi_svc".format(tv),
-                "//msm-kernel:all_headers",
-                ":wlan-platform-headers",
-            ],
+            deps = deps
         )
 
     if icnss2_enabled:
