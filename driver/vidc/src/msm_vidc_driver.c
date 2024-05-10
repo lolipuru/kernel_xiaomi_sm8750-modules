@@ -1632,6 +1632,8 @@ int msm_vidc_set_auto_framerate(struct msm_vidc_inst *inst, u64 timestamp)
 					inst->auto_framerate;
 			if (curr_fr > inst->capabilities[FRAME_RATE].max)
 				curr_fr = inst->capabilities[FRAME_RATE].max;
+			if (curr_fr < inst->capabilities[FRAME_RATE].min)
+				curr_fr = inst->capabilities[FRAME_RATE].min;
 		}
 		prev = ts;
 		counter++;
