@@ -2234,8 +2234,9 @@ static void bt_power_vote(struct work_struct *work)
 			ConvertRetentionModeToString(btpower_get_retenion_mode_state()),
 			ConvertGrantToString(btpower_get_grant_state()),
 			ConvertGrantToString(btpower_get_grant_pending_state()));
-	
+
 		pwr_data->wait_status[request] = ret;
+		kfree_skb(skb);
 		wake_up_interruptible(&pwr_data->rsp_wait_q[request]);
 	}
 }
