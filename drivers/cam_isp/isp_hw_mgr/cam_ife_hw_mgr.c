@@ -216,7 +216,8 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 	next_drv_info = &ctx->drv_info[(request_id + 1) % MAX_DRV_REQUEST_DEPTH];
 
 	if (!is_blob_config_valid && (request_id != drv_info->req_id)) {
-		CAM_DBG(CAM_ISP, "No valid DRV info, req_id:%llu", request_id);
+		CAM_DBG(CAM_ISP, "No valid DRV info, req_id:%llu, ctx:%d",
+			request_id, ctx->ctx_index);
 		return 0;
 	}
 
@@ -255,44 +256,59 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 	if (debug_drv) {
 		if (is_blob_config_valid)
 			CAM_INFO(CAM_PERF,
-				"DRV config blob valid:%s opcode:%u req_id:%llu disable_drv_override:%s ctx_idx:%u drv_en:%s path_idle_en:0x%x timeout_val:%u",
+				"DRV config blob valid:%s opcode:%u req_id:%llu disable_drv_override:%s ctx_idx:%u drv_en:%s path_idle_en:0x%x timeout_val:%u, ctx:%d",
 				CAM_BOOL_TO_YESNO(prepare_hw_data->drv_config_valid),
 				prepare_hw_data->packet_opcode_type, request_id,
 				CAM_BOOL_TO_YESNO(g_ife_hw_mgr.debug_cfg.disable_isp_drv),
 				ctx->ctx_index, CAM_BOOL_TO_YESNO(drv_config->drv_en),
-				drv_config->path_idle_en, drv_config->timeout_val);
+				drv_config->path_idle_en, drv_config->timeout_val,
+				ctx->ctx_index);
 
 		CAM_INFO(CAM_PERF,
-			"DRV per frame info: req:%llu is_valid:%s frame duration:%llu ns, vertical blanking duration:%llu ns",
+			"DRV per frame info: req:%llu is_valid:%s frame duration:%llu ns, vertical blanking duration:%llu ns, ctx:%d",
 			request_id, CAM_BOOL_TO_YESNO(drv_info->req_id == request_id),
-			drv_info->frame_duration, drv_info->blanking_duration);
+			drv_info->frame_duration, drv_info->blanking_duration,
+			ctx->ctx_index);
 	}
 
 	if (is_blob_config_valid)
 		CAM_DBG(CAM_PERF,
-			"DRV config blob valid:%s opcode:%u req_id:%llu disable_drv_override:%s ctx_idx:%u drv_en:%u path_idle_en:0x%x timeout_val:%u",
+			"DRV config blob valid:%s opcode:%u req_id:%llu disable_drv_override:%s ctx_idx:%u drv_en:%u path_idle_en:0x%x timeout_val:%u, ctx:%d",
 			CAM_BOOL_TO_YESNO(prepare_hw_data->drv_config_valid),
 			prepare_hw_data->packet_opcode_type, request_id,
 			CAM_BOOL_TO_YESNO(g_ife_hw_mgr.debug_cfg.disable_isp_drv),
 			ctx->ctx_index, drv_config->drv_en, drv_config->path_idle_en,
-			drv_config->timeout_val);
+			drv_config->timeout_val, ctx->ctx_index);
 
 	CAM_DBG(CAM_PERF,
-		"DRV per frame info: req:%llu is_valid:%s frame duration:%llu ns, vertical blanking duration:%llu ns",
+		"DRV per frame info: req:%llu is_valid:%s frame duration:%llu ns, vertical blanking duration:%llu ns, ctx:%d",
 		request_id, CAM_BOOL_TO_YESNO(drv_info->req_id == request_id),
-		drv_info->frame_duration, drv_info->blanking_duration);
+		drv_info->frame_duration, drv_info->blanking_duration, ctx->ctx_index);
 
 	if (!g_ife_hw_mgr.cam_ddr_drv_support || g_ife_hw_mgr.debug_cfg.disable_isp_drv)
 		return rc;
 
 	if (is_blob_config_valid &&
-		(prepare_hw_data->packet_opcode_type == CAM_ISP_PACKET_INIT_DEV))
+		(prepare_hw_data->packet_opcode_type == CAM_ISP_PACKET_INIT_DEV)) {
 		drv_config_args.is_init_config = true;
+		ctx->is_init_drv_cfg_received = true;
+	}
+
+	if (!ctx->is_init_drv_cfg_received) {
+		CAM_DBG(CAM_PERF, "Init DRV cfg hasn't received, ctx:%d",
+			ctx->ctx_index);
+
+		if (debug_drv)
+			CAM_INFO(CAM_PERF, "Init DRV cfg hasn't received, ctx:%d",
+				ctx->ctx_index);
+
+		return 0;
+	}
 
 	/*
 	 * 2   DRV decision logic and get final drv parameters
 	 */
-	if (drv_info->req_id != request_id) {
+	if ((drv_info->req_id != request_id) || (drv_config_args.is_init_config)) {
 		/*
 		 * 2.1 If no valid per request drv info of current request, then just update drv
 		 *     when there is a valid drv blob data.
@@ -337,18 +353,18 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 
 		if (debug_drv)
 			CAM_INFO(CAM_ISP,
-				"[min:curr:next] frame duration:[%llu:%llu:%llu] blanking:[%llu:%llu:%llu] drv_en:%d timeout:0x%x",
+				"[min:curr:next] frame duration:[%llu:%llu:%llu] blanking:[%llu:%llu:%llu] drv_en:%d timeout:0x%x, ctx:%d",
 				min_frame_duration, drv_info->frame_duration,
 				next_drv_info->frame_duration, min_blanking_duration,
 				drv_info->blanking_duration, next_drv_info->blanking_duration,
-				drv_en, timeout_val);
+				drv_en, timeout_val, ctx->ctx_index);
 
 		CAM_DBG(CAM_ISP,
-			"[min:curr:next] frame duration:[%llu:%llu:%llu] blanking:[%llu:%llu:%llu] drv_en:%d timeout:0x%x",
+			"[min:curr:next] frame duration:[%llu:%llu:%llu] blanking:[%llu:%llu:%llu] drv_en:%d timeout:0x%x, ctx:%d",
 			min_frame_duration, drv_info->frame_duration,
 			next_drv_info->frame_duration, min_blanking_duration,
 			drv_info->blanking_duration, next_drv_info->blanking_duration,
-			drv_en, timeout_val);
+			drv_en, timeout_val, ctx->ctx_index);
 	}
 
 	if (!update_drv) {
@@ -5868,6 +5884,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	ife_ctx->pri_rdi_out_res = g_ife_hw_mgr.isp_caps.max_vfe_out_res_type;
 	ife_ctx->ctx_index = acquire_args->ctx_id;
 	ife_ctx->scratch_buf_info.ife_scratch_config = NULL;
+	ife_ctx->is_init_drv_cfg_received = false;
 
 	acquire_hw_info = (struct cam_isp_acquire_hw_info *) acquire_args->acquire_info;
 
@@ -7922,6 +7939,8 @@ static int cam_ife_mgr_stop_hw(void *hw_mgr_priv, void *stop_hw_args)
 	 */
 	if (stop_isp->is_internal_stop)
 		cam_ife_mgr_finish_clk_bw_update(ctx, 0, true);
+	else
+		ctx->is_init_drv_cfg_received = false;
 
 	/* check to avoid iterating loop */
 	if (ctx->ctx_type == CAM_IFE_CTX_TYPE_SFE) {

@@ -371,6 +371,7 @@ struct cam_isp_comp_record_query {
  * @acq_hw_ctxt_src_dst_map: Src to dst hw ctxt map for acquired pixel paths
  * @pri_rdi_out_res:         Primary RDI res for RDI only cases
  * @drv_info:                Array to include the per request drv info
+ * @is_init_drv_cfg_received: Indicate if init drv config has received
  */
 struct cam_ife_hw_mgr_ctx {
 	struct list_head                           list;
@@ -439,6 +440,7 @@ struct cam_ife_hw_mgr_ctx {
 	uint32_t                                   acq_hw_ctxt_src_dst_map[CAM_ISP_MULTI_CTXT_MAX];
 	uint32_t                                   pri_rdi_out_res;
 	struct cam_isp_hw_drv_info                 drv_info[MAX_DRV_REQUEST_DEPTH];
+	bool                                       is_init_drv_cfg_received;
 };
 
 /**
