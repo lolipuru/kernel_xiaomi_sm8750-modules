@@ -252,6 +252,7 @@ enum sde_sim_qsync_event {
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
+ * @cesta_flush_active:         Boolean indicating cesta override flush_active bit is set
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -329,6 +330,7 @@ struct sde_encoder_virt {
 	struct sde_encoder_ops ops;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
+	bool cesta_force_active;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)

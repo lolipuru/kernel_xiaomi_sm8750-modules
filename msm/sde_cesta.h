@@ -16,6 +16,20 @@
 
 #define MAX_CESTA_CLIENT_NAME_LEN	32
 
+/**
+ * SCC override ctrl flags
+ * SDE_CESTA_OVERRIDE_FORCE_DB_UPDATE: resets the state machines within SCC
+ * SDE_CESTA_OVERRIDE_FORCE_IDLE: forces HW to signal chn_update
+ * SDE_CESTA_OVERRIDE_FORCE_ACTIVE: forces HW to trigger ACTIVE vote and hold the state
+ * SDE_CESTA_OVERRIDE_FORCE_CHN_UPDATE: forces HW to trigger IDLE vote and hold the state
+ * FORCE_DB_UPDATE: force to aimmediately update double-buffered registers
+ */
+#define	SDE_CESTA_OVERRIDE_FORCE_DB_UPDATE	BIT(0)
+#define	SDE_CESTA_OVERRIDE_FORCE_IDLE		BIT(1)
+#define	SDE_CESTA_OVERRIDE_FORCE_ACTIVE		BIT(2)
+#define	SDE_CESTA_OVERRIDE_FORCE_CHN_UPDATE	BIT(3)
+#define	SDE_CESTA_OVERRIDE_RESET		BIT(4)
+
 struct sde_cesta;
 
 /**
@@ -161,12 +175,14 @@ struct sde_cesta_sw_client_data {
  * @ctrl_setup: configure SCC
  * @get_status: get current sde cesta status
  * @get_pwr_event: get all the power states which can used for debugging
+ * @override_ctrl_setup: configure the SCC override ctrl
  */
 struct sde_cesta_hw_ops {
 	void (*init)(struct sde_cesta *cesta);
 	void (*ctrl_setup)(struct sde_cesta *cesta, u32 idx, struct sde_cesta_ctrl_cfg *cfg);
 	void (*get_status)(struct sde_cesta *cesta, u32 idx, struct sde_cesta_scc_status *status);
 	u32 (*get_pwr_event)(struct sde_cesta *cesta);
+	void (*override_ctrl_setup)(struct sde_cesta *cesta, u32 idx, u32 force_flags);
 };
 
 /**
@@ -350,6 +366,12 @@ int sde_cesta_sw_client_update(u32 cesta_index, struct sde_cesta_sw_client_data 
  */
 u64 sde_cesta_get_core_clk_rate(u32 cesta_index);
 
+/**
+ * sde_cesta_override_ctrl - configure the scc override ctrl for the client
+ * @client: pointer to sde cesta client
+ */
+void sde_cesta_override_ctrl(struct sde_cesta_client *client, u32 force_flags);
+
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
 {
@@ -424,6 +446,10 @@ static inline int sde_cesta_sw_client_update(u32 cesta_index,
 static inline u64 sde_cesta_get_core_clk_rate(u32 cesta_index)
 {
 	return 0;
+}
+
+static inline void sde_cesta_override_ctrl(struct sde_cesta_client *client, u32 force_flags)
+{
 }
 
 #endif /* CONFIG_DRM_SDE_CESTA */
