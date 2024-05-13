@@ -1383,11 +1383,15 @@ static int cam_cpas_util_set_camnoc_axi_drv_clk_rate(struct cam_hw_soc_info *soc
 
 	return rc;
 }
+
 static int cam_cpas_util_set_max_camnoc_axi_clk_rate(struct cam_cpas *cpas_core,
 	struct cam_hw_soc_info *soc_info)
 {
 	int rc, highest_level = 0;
 	int64_t applied_rate = 0;
+	const struct camera_debug_settings *cam_debug = NULL;
+	struct cam_cpas_private_soc *soc_private =
+		(struct cam_cpas_private_soc *) soc_info->soc_private;
 
 	CAM_DBG(CAM_CPAS, "Finding max of hlos axi floor lvl: %d and hlos axi lvl: %d",
 		cpas_core->hlos_axi_floor_lvl, cpas_core->hlos_axi_bw_calc_lvl);
@@ -1400,11 +1404,19 @@ static int cam_cpas_util_set_max_camnoc_axi_clk_rate(struct cam_cpas *cpas_core,
 		return rc;
 	}
 
+	cam_debug = cam_debug_get_settings();
+	if (cam_debug && cam_debug->cpas_settings.camnoc_bw) {
+		uint64_t intermediate_hlos_result = 0;
+
+		intermediate_hlos_result = cam_debug->cpas_settings.camnoc_bw;
+		do_div(intermediate_hlos_result, soc_private->camnoc_bus_width);
+		applied_rate = intermediate_hlos_result;
+	}
+
 	CAM_DBG(CAM_CPAS, "Highest valid lvl: %d, applying corresponding rate %lld",
 		highest_level, applied_rate);
 
-	rc = cam_soc_util_set_src_clk_rate(soc_info, CAM_CLK_SW_CLIENT_IDX,
-			applied_rate, 0);
+	rc = cam_soc_util_set_src_clk_rate(soc_info, CAM_CLK_SW_CLIENT_IDX, applied_rate, 0);
 	if (rc) {
 		CAM_ERR(CAM_CPAS,
 			"Failed in setting camnoc axi clk applied rate:[%lld] rc:%d",
@@ -1476,6 +1488,7 @@ static int cam_cpas_util_set_camnoc_axi_hlos_clk_rate(struct cam_hw_soc_info *so
 
 		else
 			req_hlos_camnoc_bw = cam_debug->cpas_settings.camnoc_bw;
+
 		CAM_INFO(CAM_CPAS, "Overriding camnoc bw: %llu", req_hlos_camnoc_bw);
 	}
 
