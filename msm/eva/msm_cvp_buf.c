@@ -151,6 +151,8 @@ static void _log_buf(struct inst_snapshot *snapshot, enum smem_prop prop,
 {
 	struct cvp_buf_data *buf = NULL;
 	u32 index;
+	if (prop == SMEM_CDSP && cbuf->smem->pkt_type == 0)
+		return;
 	print_cvp_buffer(CVP_ERR, "bufdump", inst, cbuf);
 	if (!logging)
 		return;
