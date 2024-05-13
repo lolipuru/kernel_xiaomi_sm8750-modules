@@ -79,6 +79,21 @@ static struct clk *_sde_cesta_get_core_clk(struct sde_cesta *cesta)
 	return core_clk;
 }
 
+void sde_cesta_override_ctrl(struct sde_cesta_client *client, u32 force_flags)
+{
+	struct sde_cesta *cesta;
+
+	if (!client || (client->cesta_index >= MAX_CESTA_COUNT)) {
+		SDE_ERROR_CESTA("invalid param, client:%d, cesta_index:%d\n",
+					!!client, client ? client->cesta_index : -1);
+		return;
+	}
+
+	cesta = cesta_list[client->cesta_index];
+
+	cesta->hw_ops.override_ctrl_setup(cesta, client->client_index, force_flags);
+}
+
 void sde_cesta_splash_release(u32 cesta_index)
 {
 	struct sde_cesta *cesta;
