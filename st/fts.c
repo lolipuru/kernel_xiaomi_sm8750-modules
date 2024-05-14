@@ -3608,7 +3608,7 @@ static void fts_resume_work(struct work_struct *work)
 
 /**
   * Suspend work function which clean all the touches from Linux input system
-  *and prepare the ground to disabling the sensing
+  *and prepare the ground to disabling the sensing or enter in gesture mode
   */
 static void fts_suspend_work(struct work_struct *work)
 {
@@ -3624,7 +3624,7 @@ static void fts_suspend_work(struct work_struct *work)
 
 	info->sensor_sleep = true;
 
-	fts_disableInterrupt();
+	fts_enableInterrupt();
 
 	fts_enable_reg(info, false);
 }
