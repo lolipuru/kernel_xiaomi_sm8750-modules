@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _VENUS_HFI_H_
@@ -54,7 +54,7 @@ int venus_hfi_release_buffer(struct msm_vidc_inst *inst,
 int venus_hfi_start(struct msm_vidc_inst *inst, enum msm_vidc_port_type port);
 int venus_hfi_stop(struct msm_vidc_inst *inst, enum msm_vidc_port_type port);
 int venus_hfi_session_close(struct msm_vidc_inst *inst);
-int venus_hfi_session_open(struct msm_vidc_inst *inst);
+int venus_hfi_session_open_locked(struct msm_vidc_inst *inst);
 int venus_hfi_session_pause(struct msm_vidc_inst *inst, enum msm_vidc_port_type port);
 int venus_hfi_session_resume(struct msm_vidc_inst *inst,
 			     enum msm_vidc_port_type port, u32 payload);

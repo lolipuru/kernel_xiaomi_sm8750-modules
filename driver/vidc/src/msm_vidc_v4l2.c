@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_vidc_v4l2.h"
@@ -93,8 +93,12 @@ int msm_v4l2_querycap(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!cap) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !cap) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -124,8 +128,12 @@ int msm_v4l2_enum_fmt(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!f) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !f) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -154,8 +162,12 @@ int msm_v4l2_try_fmt(struct file *filp, void *fh, struct v4l2_format *f)
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!f) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !f) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -185,8 +197,12 @@ int msm_v4l2_s_fmt(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!f) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !f) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -216,8 +232,12 @@ int msm_v4l2_g_fmt(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!f) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !f) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -247,8 +267,12 @@ int msm_v4l2_s_selection(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!s) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !s) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -278,8 +302,12 @@ int msm_v4l2_g_selection(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!s) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !s) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -309,8 +337,12 @@ int msm_v4l2_s_parm(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!a) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !a) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -340,8 +372,12 @@ int msm_v4l2_g_parm(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!a) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !a) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -371,8 +407,12 @@ int msm_v4l2_reqbufs(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!b) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !b) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -402,8 +442,12 @@ int msm_v4l2_querybuf(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!b) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !b) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -433,8 +477,12 @@ int msm_v4l2_create_bufs(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!b) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !b) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -465,8 +513,12 @@ int msm_v4l2_prepare_buf(struct file *filp, void *fh,
 	struct video_device *vdev = video_devdata(filp);
 	int rc = 0;
 
+	if (!b) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !b) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -497,8 +549,12 @@ int msm_v4l2_qbuf(struct file *filp, void *fh,
 	struct video_device *vdev = video_devdata(filp);
 	int rc = 0;
 
+	if (!b) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !b) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -542,8 +598,12 @@ int msm_v4l2_dqbuf(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!b) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !b) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -625,9 +685,13 @@ int msm_v4l2_subscribe_event(struct v4l2_fh *fh,
 	struct msm_vidc_inst *inst;
 	int rc = 0;
 
+	if (!sub) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = container_of(fh, struct msm_vidc_inst, fh);
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !sub) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -657,9 +721,13 @@ int msm_v4l2_unsubscribe_event(struct v4l2_fh *fh,
 	struct msm_vidc_inst *inst;
 	int rc = 0;
 
+	if (!sub) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = container_of(fh, struct msm_vidc_inst, fh);
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !sub) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -684,8 +752,12 @@ int msm_v4l2_try_decoder_cmd(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!dec) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !dec) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -759,8 +831,12 @@ int msm_v4l2_try_encoder_cmd(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!enc) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !enc) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -834,8 +910,12 @@ int msm_v4l2_enum_framesizes(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!fsize) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !fsize) {
+	if (!inst) {
 		d_vpr_e("%s: invalid params: %pK %pK\n",
 				__func__, inst, fsize);
 		return -EINVAL;
@@ -866,10 +946,13 @@ int msm_v4l2_enum_frameintervals(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!fival) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !fival) {
-		d_vpr_e("%s: invalid params: %pK %pK\n",
-			__func__, inst, fival);
+	if (!inst) {
+		d_vpr_e("%s: invalid inst\n", __func__);
 		return -EINVAL;
 	}
 
@@ -898,8 +981,12 @@ int msm_v4l2_queryctrl(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!ctrl) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !ctrl) {
+	if (!inst) {
 		d_vpr_e("%s: invalid instance\n", __func__);
 		return -EINVAL;
 	}
@@ -929,10 +1016,13 @@ int msm_v4l2_querymenu(struct file *filp, void *fh,
 	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
 	int rc = 0;
 
+	if (!qmenu) {
+		d_vpr_e("%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !qmenu) {
-		d_vpr_e("%s: invalid params %pK %pK\n",
-			__func__, inst, qmenu);
+	if (!inst) {
+		d_vpr_e("%s: invalid inst\n", __func__);
 		return -EINVAL;
 	}
 

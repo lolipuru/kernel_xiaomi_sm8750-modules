@@ -73,8 +73,8 @@ void *msm_vb2_attach_dmabuf(struct vb2_buffer *vb, struct device *dev,
 	}
 	inst = vb->vb2_queue->drv_priv;
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !inst->core) {
-		d_vpr_e("%s: invalid params %pK\n", __func__, inst);
+	if (!inst) {
+		d_vpr_e("%s: invalid inst\n", __func__);
 		return NULL;
 	}
 	core = inst->core;
@@ -182,8 +182,8 @@ int msm_vb2_map_dmabuf(void *buf_priv)
 	}
 	inst = buf->inst;
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !inst->core) {
-		d_vpr_e("%s: invalid params\n", __func__);
+	if (!inst) {
+		d_vpr_e("%s: invalid inst\n", __func__);
 		return -EINVAL;
 	}
 	core = inst->core;

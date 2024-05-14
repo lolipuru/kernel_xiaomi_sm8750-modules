@@ -716,6 +716,14 @@ static int __response_handler(struct msm_vidc_core *core)
 
 	core_lock(core, __func__);
 	list_for_each_entry_safe(inst, dummy, &core->instances, list) {
+		/**
+		 * indicates either hfi session still not opened or closed
+		 * already, so don't include those instances for processing.
+		 */
+		if (!inst->packet) {
+			i_vpr_l(inst, "%s: session not ready\n", __func__);
+			continue;
+		}
 		inst = get_inst_ref_locked(inst);
 		if (inst)
 			instances[num_instances++] = inst;
@@ -1142,22 +1150,13 @@ unlock:
 	return rc;
 }
 
-int venus_hfi_session_open(struct msm_vidc_inst *inst)
+int venus_hfi_session_open_locked(struct msm_vidc_inst *inst)
 {
+	struct msm_vidc_core *core = inst->core;
 	int rc = 0;
-	struct msm_vidc_core *core;
 
-	if (!inst->packet) {
-		d_vpr_e("%s: invalid params\n", __func__);
+	if (!__valdiate_session(core, inst, __func__))
 		return -EINVAL;
-	}
-	core = inst->core;
-	core_lock(core, __func__);
-
-	if (!__valdiate_session(core, inst, __func__)) {
-		rc = -EINVAL;
-		goto unlock;
-	}
 
 	__sys_set_debug(core, (msm_fw_debug & FW_LOGMASK) >> FW_LOGSHIFT);
 
@@ -1171,14 +1170,13 @@ int venus_hfi_session_open(struct msm_vidc_inst *inst)
 				&inst->session_id, /* payload */
 				sizeof(u32));
 	if (rc)
-		goto unlock;
+		goto error;
 
 	rc = __cmdq_write(inst->core, inst->packet);
 	if (rc)
-		goto unlock;
+		goto error;
 
-unlock:
-	core_unlock(core, __func__);
+error:
 	return rc;
 }
 
@@ -2025,8 +2023,11 @@ int venus_hfi_set_ir_period(struct msm_vidc_inst *inst, u32 ir_type,
 	struct msm_vidc_core *core;
 	u32 ir_period, sync_frame_req = 0;
 
+	if (!inst->packet) {
+		i_vpr_e(inst, "%s: invalid session\n", __func__);
+		return -EINVAL;
+	}
 	core = inst->core;
-
 	core_lock(core, __func__);
 
 	ir_period = inst->capabilities[cap_id].value;
