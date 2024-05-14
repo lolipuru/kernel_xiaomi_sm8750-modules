@@ -143,16 +143,16 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 		hw_fence_ipcc_txq_update_needs_ipc_irq(hw_fence_drv_data, client_id);
 
 	hw_fence_client->queues_num = hw_fence_utils_get_queues_num(hw_fence_drv_data, client_id);
-	if (!hw_fence_client->queues_num || (hw_fence_client->update_rxq &&
-			hw_fence_client->queues_num < HW_FENCE_CLIENT_QUEUES) ||
-			(!hw_fence_client->update_rxq && hw_fence_client->signaled_update_rxq)) {
-		HWFNC_ERR("client:%d invalid q_num:%d for updates_rxq:%s signaled_update_rxq:%s\n",
-			client_id, hw_fence_client->queues_num,
-			hw_fence_client->update_rxq ? "true" : "false",
-			hw_fence_client->signaled_update_rxq ? "true" : "false");
+	if (!hw_fence_client->queues_num) {
+		HWFNC_ERR("client:%d invalid q_num:%d\n", client_id, hw_fence_client->queues_num);
 		ret = -EINVAL;
 		goto error;
 	}
+	if (hw_fence_client->queues_num < HW_FENCE_CLIENT_QUEUES) {
+		hw_fence_client->update_rxq = false;
+		hw_fence_client->signaled_update_rxq = false;
+	}
+
 	hw_fence_client->skip_fctl_ref = hw_fence_utils_get_skip_fctl_ref(hw_fence_drv_data,
 		client_id);
 
@@ -182,6 +182,12 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 		hw_fence_client, hw_fence_client->client_id, hw_fence_client->queues_num,
 		hw_fence_client->ipc_signal_id, hw_fence_client->ipc_client_vid,
 		hw_fence_client->ipc_client_pid);
+
+	HWFNC_DBG_INIT("update_rxq:%s signaled update_rxq:%s send_ipc:%s txq_update_send_ipc:%s\n",
+		hw_fence_client->update_rxq ? "true" : "false",
+		hw_fence_client->signaled_update_rxq ? "true" : "false",
+		hw_fence_client->signaled_send_ipc ? "true" : "false",
+		hw_fence_client->txq_update_send_ipc ? "true" : "false");
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	init_waitqueue_head(&hw_fence_client->wait_queue);
