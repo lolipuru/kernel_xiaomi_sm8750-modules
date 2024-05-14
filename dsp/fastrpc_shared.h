@@ -637,6 +637,8 @@ struct fastrpc_user {
 	struct fastrpc_buf *init_mem;
 	/* Pre-allocated header buffer */
 	struct fastrpc_buf *pers_hdr_buf;
+	/* SMMU mapping of process attrs debug buf */
+	struct fastrpc_map *proc_attrs_map;
 	struct fastrpc_static_pd *spd;
 	/* Pre-allocated buffer divided into N chunks */
 	struct fastrpc_buf *hdr_bufs;

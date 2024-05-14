@@ -2488,6 +2488,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 		mutex_unlock(&fl->map_mutex);
 		if (err)
 			return err;
+		fl->proc_attrs_map = configmap;
 		inbuf.pageslen = NUM_PAGES_WITH_SHARED_BUF;
 		pages[NUM_PAGES_WITH_SHARED_BUF - 1].addr = configmap->phys;
 		pages[NUM_PAGES_WITH_SHARED_BUF - 1].size = configmap->size;
@@ -2571,6 +2572,7 @@ err_alloc:
 	mutex_unlock(&fl->map_mutex);
 err_filemap_fail:
 	if (configmap) {
+		fl->proc_attrs_map = NULL;
 		mutex_lock(&fl->map_mutex);
 		fastrpc_map_put(configmap);
 		mutex_unlock(&fl->map_mutex);
@@ -2694,6 +2696,8 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	// During process tear down free the map, even if refcount is non-zero
 	list_for_each_entry_safe(map, m, &fl->maps, node)
 		__fastrpc_free_map(map);
+	if (fl->proc_attrs_map)
+		fastrpc_map_put(fl->proc_attrs_map);
 	mutex_unlock(&fl->map_mutex);
 	mutex_unlock(&fl->remote_map_mutex);
 
