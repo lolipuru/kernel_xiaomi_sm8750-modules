@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _HFI_PACKET_H_
@@ -47,11 +47,6 @@ int hfi_packet_sys_pc_prep(struct msm_vidc_core *core,
 int hfi_packet_sys_debug_config(struct msm_vidc_core *core,
 				u8 *pkt, u32 pkt_size,
 				u32 debug_config);
-int hfi_packet_session_command(struct msm_vidc_inst *inst,
-			       u32 pkt_type, u32 flags,
-			       u32 port, u32 session_id,
-			       u32 payload_type, void *payload,
-			       u32 payload_size);
 int hfi_packet_sys_intraframe_powercollapse(struct msm_vidc_core *core,
 					    u8 *pkt, u32 pkt_size,
 					    u32 enable);

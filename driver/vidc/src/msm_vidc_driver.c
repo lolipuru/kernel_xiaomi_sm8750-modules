@@ -2157,6 +2157,28 @@ static bool is_single_session(struct msm_vidc_inst *inst)
 	return count == 1;
 }
 
+int msm_vidc_session_command(struct msm_vidc_inst *inst,
+	u32 cmd, enum msm_vidc_port_type port, u32 payload_type,
+	void *payload, u32 payload_size, const char *func)
+{
+	int rc = 0;
+
+	rc = venus_hfi_session_command(inst,
+				cmd,
+				(HFI_HOST_FLAGS_RESPONSE_REQUIRED |
+				HFI_HOST_FLAGS_INTR_REQUIRED),
+				get_hfi_port(inst, port),
+				inst->session_id,
+				payload_type,
+				payload,
+				payload_size,
+				func);
+	if (rc)
+		return rc;
+
+	return rc;
+}
+
 void msm_vidc_allow_dcvs(struct msm_vidc_inst *inst)
 {
 	bool allow = false;
