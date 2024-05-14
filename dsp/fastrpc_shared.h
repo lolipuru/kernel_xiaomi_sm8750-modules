@@ -772,6 +772,22 @@ struct fastrpc_notif_rsp {
 	enum fastrpc_status_flags status;
 };
 
+enum fastrpc_process_state {
+	/* Default state */
+	DEFAULT_PROC_STATE = 0,
+	/*
+	 * Process create on DSP initiated.
+	 * This state not being used at present.
+	 */
+	DSP_CREATE_START,
+	/* Process create on DSP complete */
+	DSP_CREATE_COMPLETE,
+	/* Process exit on DSP initiated */
+	DSP_EXIT_START,
+	/* Process exit on DSP complete */
+	DSP_EXIT_COMPLETE,
+};
+
 struct fastrpc_user {
 	struct list_head user;
 	struct list_head maps;
@@ -808,8 +824,6 @@ struct fastrpc_user {
 	int tgid_frpc;
 	/* PD type of remote subsystem process */
 	u32 pd_type;
-	/* Variable to identify process status*/
-	int file_close;
 	/* total cached buffers */
 	u32 num_cached_buf;
 	/* total persistent headers */
@@ -852,6 +866,8 @@ struct fastrpc_user {
 	bool multi_session_support;
 	bool untrusted_process;
 	bool set_session_info;
+	/* Various states throughout process life cycle */
+	enum fastrpc_process_state state;
 };
 
 struct fastrpc_ctrl_latency {
