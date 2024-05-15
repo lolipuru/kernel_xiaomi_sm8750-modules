@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __CVP_LANAI_IO_H__
@@ -298,4 +298,18 @@
 
 #define CVP_GCC_VIDEO_AXI1_CBCR		(0x22024)
 
+/*Added to resolve compilation*/
+#define CVP_GCC_EVA_AHB_CBCR			(CVP_WRAPPER_BASE_OFFS + 0x78)
+#define CVP_GCC_EVA_AXI0_CBCR			(CVP_WRAPPER_BASE_OFFS + 0x78)
+#define CVP_GCC_EVA_AXI0C_CBCR			(CVP_WRAPPER_BASE_OFFS + 0x78)
+#define CVP_GCC_EVA_XO_CBCR			(CVP_WRAPPER_BASE_OFFS + 0x78)
+
+#define CVP_CC_MVS0_FREERUN_CBCR		(CVP_WRAPPER_BASE_OFFS + 0x78)
+#define CVP_CC_MVS0C_FREERUN_CBCR		(CVP_WRAPPER_BASE_OFFS + 0x78)
+#define CVP_WRAPPER_SPARE_0			(CVP_WRAPPER_BASE_OFFS + 0x78)
+#define CVP_CC_SPARE1				(CVP_WRAPPER_BASE_OFFS + 0x78)
+#define CVP_CC_MVS0C_GDSCR			(CVP_WRAPPER_BASE_OFFS + 0x78)
+#define CVP_CC_MVS0C_CBCR			(CVP_WRAPPER_BASE_OFFS + 0x78)
+#define CVP_CC_MVS0_GDSCR			(CVP_WRAPPER_BASE_OFFS + 0x78)
+#define CVP_CC_MVS0_CBCR			(CVP_WRAPPER_BASE_OFFS + 0x78)
 #endif
