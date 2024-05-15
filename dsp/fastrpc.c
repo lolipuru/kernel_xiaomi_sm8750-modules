@@ -1772,8 +1772,9 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 		return -EPERM;
 	}
 
-	// For static PDs, validate and throw failure on PDR
-	if (fl->spd && fl->spd->pdrcount != fl->spd->prevpdrcount) {
+	// For static sensor PDs, validate and throw failure on PDR
+	if (fl->spd && fl->spd->pdrcount != fl->spd->prevpdrcount &&
+			fl->pd_type == SENSORS_STATICPD) {
 		err = -EPIPE;
 		return err;
 	}
