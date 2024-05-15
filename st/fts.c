@@ -3117,7 +3117,7 @@ static int fts_interrupt_install(struct fts_ts_info *info)
 
 	logError(1, "%s Interrupt Mode\n", tag);
 	if (request_irq(info->irq, fts_interrupt_handler,
-			IRQF_TRIGGER_LOW, FTS_TS_DRV_NAME, info)) {
+			info->board->irq_flags, FTS_TS_DRV_NAME, info)) {
 		logError(1, "%s Request irq failed\n", tag);
 		kfree(info->event_dispatch_table);
 		error = -EBUSY;
@@ -3955,6 +3955,13 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 		bdata->reset_gpio = GPIO_NOT_DEFINED;
 #endif
 
+	retval = of_property_read_u32(np, "st,irq-flags", &bdata->irq_flags);
+	if (retval) {
+		bdata->irq_flags = IRQF_TRIGGER_LOW;
+		logError(0, "%s default use low level irq trigger flags:%d\n",
+				tag, bdata->irq_flags);
+	}
+
 	retval = of_property_read_string(np, "st,regulator_dvdd", &name);
 	if (retval == -EINVAL)
 		bdata->vdd_reg_name = NULL;
@@ -4198,6 +4205,7 @@ static void st_ts_fill_qts_vendor_data(struct qts_vendor_data *qts_vendor_data,
 	qts_vendor_data->vendor_data = info;
 	qts_vendor_data->schedule_suspend = false;
 	qts_vendor_data->schedule_resume = false;
+	qts_vendor_data->irq_gpio_flags = info->board->irq_flags;
 	qts_vendor_data->qts_vendor_ops.suspend = st_ts_suspend_helper;
 	qts_vendor_data->qts_vendor_ops.resume = st_ts_resume_helper;
 	qts_vendor_data->qts_vendor_ops.enable_touch_irq = st_ts_enable_touch_irq;
