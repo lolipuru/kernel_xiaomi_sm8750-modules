@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_media_info.h"
@@ -339,62 +339,6 @@ u32 msm_vidc_enc_delivery_mode_based_output_buf_size(struct msm_vidc_inst *inst,
 
 	slice_size = ALIGN(slice_size, SZ_4K);
 	return slice_size;
-}
-
-u32 msm_vidc_encoder_output_size(struct msm_vidc_inst *inst)
-{
-	u32 frame_size;
-	u32 mbs_per_frame;
-	u32 width, height;
-	struct v4l2_format *f;
-	enum msm_vidc_codec_type codec;
-
-	f = &inst->fmts[OUTPUT_PORT];
-	codec = v4l2_codec_to_driver(inst, f->fmt.pix_mp.pixelformat, __func__);
-	/*
-	 * Encoder output size calculation: 32 Align width/height
-	 * For heic session : YUVsize * 2
-	 * For resolution <= 480x360p : YUVsize * 2
-	 * For resolution > 360p & <= 4K : YUVsize / 2
-	 * For resolution > 4k : YUVsize / 4
-	 * Initially frame_size = YUVsize * 2;
-	 */
-
-	width = ALIGN(f->fmt.pix_mp.width, BUFFER_ALIGNMENT_SIZE(32));
-	height = ALIGN(f->fmt.pix_mp.height, BUFFER_ALIGNMENT_SIZE(32));
-	mbs_per_frame = NUM_MBS_PER_FRAME(width, height);
-	frame_size = (width * height * 3);
-
-	/* Image session: 2 x yuv size */
-	if (is_image_session(inst) ||
-		inst->capabilities[BITRATE_MODE].value == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ)
-		goto skip_calc;
-
-	if (mbs_per_frame <= NUM_MBS_360P)
-		(void)frame_size; /* Default frame_size = YUVsize * 2 */
-	else if (mbs_per_frame <= NUM_MBS_4k)
-		frame_size = frame_size >> 2;
-	else
-		frame_size = frame_size >> 3;
-
-	/*if ((inst->rc_type == RATE_CONTROL_OFF) ||
-		(inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ))
-		frame_size = frame_size << 1;
-
-	if (inst->rc_type == RATE_CONTROL_LOSSLESS)
-		frame_size = (width * height * 9) >> 2;
-	 */
-
-skip_calc:
-	/* multiply by 10/8 (1.25) to get size for 10 bit case
-	 */
-	if (codec == MSM_VIDC_HEVC || codec == MSM_VIDC_HEIC)
-		frame_size = frame_size + (frame_size >> 2);
-
-	frame_size = ALIGN(frame_size, SZ_4K);
-	frame_size = msm_vidc_enc_delivery_mode_based_output_buf_size(inst, frame_size);
-
-	return frame_size;
 }
 
 static inline u32 ROI_METADATA_SIZE(
