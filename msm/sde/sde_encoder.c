@@ -2310,6 +2310,8 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	struct sde_hw_ctl *ctl = NULL;
 	struct sde_ctl_cesta_cfg cfg = {0,};
 	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
+	struct sde_connector_state *c_state = NULL;
+	struct msm_display_mode *msm_mode = NULL;
 	enum sde_crtc_vm_req vm_req;
 	bool req_flush = false, req_scc = false;
 
@@ -2319,6 +2321,32 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	cur_master = sde_enc->phys_encs[0];
 	if (!cur_master || !cur_master->hw_ctl)
 		return;
+
+	if (sde_enc->res_switch && sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE)
+			&& (commit_state == SDE_PERF_BEGIN_COMMIT) && sde_enc->cur_master) {
+		c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
+		if (!c_state) {
+			SDE_ERROR("invalid connector state\n");
+			return;
+		}
+		msm_mode = &c_state->msm_mode;
+
+		/*
+		 * In cmd mode with cesta, below sequence is used to avoid 2-frame res-switch.
+		 * - wait for previous frame complete
+		 * - Update cesta votes and issue override cesta flush
+		 * - Send panel cmds to switch
+		 * - Update interface panic & wakeup windows
+		 * - set ctl-op-group
+		 * - ctl-flush/ctl-start
+		 * - reset ctl-op-group as part of complete_commit
+		 */
+		if (msm_is_mode_seamless_dms(msm_mode)) {
+			sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
+			commit_state = SDE_PERF_ENABLE_COMMIT;
+			sde_enc->cesta_op_group_req = true;
+		}
+	}
 
 	sde_core_perf_crtc_update(sde_enc->crtc, commit_state);
 
@@ -2373,7 +2401,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 		ctl->ops.cesta_flush(ctl, &cfg);
 
 	SDE_EVT32(DRMID(drm_enc), commit_state, cfg.index, cfg.vote_state, cfg.flags, req_flush,
-			req_scc, sde_enc->cesta_enable_frame, vm_req);
+			req_scc, sde_enc->cesta_enable_frame, vm_req, sde_enc->cesta_op_group_req);
 }
 
 void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
@@ -3020,7 +3048,7 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 	enum sde_intf_mode intf_mode;
 	struct drm_display_mode *old_adj_mode = NULL;
 	int ret;
-	bool is_cmd_mode = false, res_switch = false;
+	bool is_cmd_mode = false;
 
 	if (sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE))
 		is_cmd_mode = true;
@@ -3029,10 +3057,10 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 		if (sde_enc->cur_master)
 			old_adj_mode = &sde_enc->cur_master->cached_mode;
 		if (old_adj_mode && is_cmd_mode)
-			res_switch = !drm_mode_match(old_adj_mode, adj_mode,
+			sde_enc->res_switch = !drm_mode_match(old_adj_mode, adj_mode,
 					DRM_MODE_MATCH_TIMINGS);
 
-		if ((res_switch && sde_enc->disp_info.is_te_using_watchdog_timer) ||
+		if ((sde_enc->res_switch && sde_enc->disp_info.is_te_using_watchdog_timer) ||
 			sde_encoder_is_cwb_disabling(drm_enc, drm_enc->crtc)) {
 			/*
 			 * add tx wait for sim panel to avoid wd timer getting
@@ -4383,6 +4411,18 @@ void sde_encoder_poll_intf_line_count_reset(struct drm_encoder *drm_enc)
 
 void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 {
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	struct sde_hw_ctl *ctl;
+
+	if (sde_enc->cesta_op_group_req && sde_enc->cur_master) {
+		ctl = sde_enc->cur_master->hw_ctl;
+
+		if (ctl && ctl->ops.update_ctl_top_group)
+			ctl->ops.update_ctl_top_group(ctl, false);
+		sde_enc->cesta_op_group_req = false;
+	}
+
+	sde_enc->res_switch = false;
 	sde_encoder_poll_intf_line_count_reset(drm_enc);
 	_sde_encoder_cesta_update(drm_enc, SDE_PERF_COMPLETE_COMMIT);
 }
@@ -4439,6 +4479,9 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 
 	/* update pending counts and trigger kickoff ctl flush atomically */
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
+
+	if (sde_enc->cesta_op_group_req && ctl->ops.update_ctl_top_group)
+		ctl->ops.update_ctl_top_group(ctl, true);
 
 	if (phys->ops.is_master && phys->ops.is_master(phys) && config_changed) {
 		atomic_inc(&phys->pending_retire_fence_cnt);
