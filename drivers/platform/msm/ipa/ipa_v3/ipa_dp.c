@@ -4471,8 +4471,9 @@ void ipa3_lan_rx_cb(void *priv, enum ipa_dp_evt_type evt, unsigned long data)
 	src_pipe = status.endp_src_idx;
 	metadata = status.metadata;
 	ucp = status.ucp;
-	/* Special handling for opt_dpath_ctrl traffic. */
-	if (ipa3_ctx->ipa_wdi_opt_dpath && ipa_wdi_opt_dpath_ctrl_enabled(0))
+	/* Special handling for opt_dpath_ctrl traffic when not in SSR. */
+	if (ipa3_ctx->ipa_wdi_opt_dpath && ipa_wdi_opt_dpath_ctrl_enabled(0) &&
+		!atomic_read(&ipa3_ctx->is_ssr))
 		if (src_pipe == ipa_get_ep_mapping(IPA_CLIENT_Q6_WAN_PROD))
 			src_pipe = ipa_get_ep_mapping(IPA_CLIENT_WLAN2_PROD);
 	ep = &ipa3_ctx->ep[src_pipe];
