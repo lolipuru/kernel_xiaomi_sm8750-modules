@@ -1495,7 +1495,7 @@ static s64 get_timestamp_in_ns(void)
 	s64 ns = 0;
 	struct timespec64 ts;
 
-	ktime_get_real_ts64(&ts);
+	ktime_get_boottime_ts64(&ts);
 	ns = timespec64_to_ns(&ts);
 	return ns;
 }
