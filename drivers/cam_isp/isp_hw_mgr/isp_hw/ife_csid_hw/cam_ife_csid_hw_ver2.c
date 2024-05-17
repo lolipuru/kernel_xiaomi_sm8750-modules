@@ -1644,6 +1644,68 @@ static inline uint32_t cam_ife_csid_ver2_input_core_to_hw_idx(int core_sel)
 	}
 }
 
+static void cam_ife_csid_ver2_read_debug_err_vectors(
+	struct cam_ife_csid_ver2_hw  *csid_hw)
+{
+	int i, j, k;
+	uint64_t timestamp;
+	uint32_t temp, debug_vec_error_reg[CAM_IFE_CSID_DEBUG_VEC_ERR_REGS] = {0};
+	uint8_t log_buf[CAM_IFE_CSID_LOG_BUF_LEN];
+	size_t len = 0;
+	struct cam_ife_csid_ver2_reg_info  *csid_reg;
+	struct cam_hw_soc_info             *soc_info;
+
+	csid_reg = (struct cam_ife_csid_ver2_reg_info *)
+			csid_hw->core_info->csid_reg;
+	soc_info = &csid_hw->hw_info->soc_info;
+
+	if (!(csid_reg->cmn_reg->capabilities & CAM_IFE_CSID_CAP_DEBUG_ERR_VEC))
+		return;
+
+	for (i = 0; i < CAM_IFE_CSID_DEBUG_VEC_FIFO_SIZE; i++) {
+		cam_io_w_mb((i << CAM_IFE_CSID_DEBUG_TIMESTAMP_IRQ_SEL_SHIFT),
+			soc_info->reg_map[0].mem_base +
+			csid_reg->cmn_reg->debug_err_vec_cfg);
+
+		timestamp = __cam_ife_csid_ver2_get_time_stamp(
+			soc_info->reg_map[0].mem_base,
+			csid_reg->cmn_reg->debug_err_vec_ts_lb,
+			csid_reg->cmn_reg->debug_err_vec_ts_mb,
+			false, 0);
+
+		if (!timestamp) {
+			CAM_DBG(CAM_ISP, "Debug IRQ vectors already read, skip");
+			return;
+		}
+
+		for (j = 0; j < CAM_IFE_CSID_DEBUG_VEC_ERR_REGS; j++) {
+			if (csid_reg->cmn_reg->debug_err_vec_irq[j] == 0)
+				break;
+
+			temp = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+				csid_reg->cmn_reg->debug_err_vec_irq[j]);
+			temp ^= debug_vec_error_reg[j];
+			debug_vec_error_reg[j] |= temp;
+			k = 0;
+
+			while (temp) {
+				if (temp & 0x1) {
+					CAM_INFO_BUF(CAM_ISP, log_buf, CAM_IFE_CSID_LOG_BUF_LEN,
+						&len, "%s ", (*csid_reg->debug_vec_desc)[j][k]);
+				}
+				temp >>= 1;
+				k++;
+			}
+		}
+		CAM_INFO(CAM_ISP, "Error(s) that occurred in time order %d at timestamp %lld: %s",
+			i, timestamp, log_buf);
+		memset(log_buf, 0x0, sizeof(uint8_t) * CAM_IFE_CSID_LOG_BUF_LEN);
+	}
+
+	cam_io_w_mb(0x1, soc_info->reg_map[0].mem_base +
+		csid_reg->cmn_reg->debug_err_vec_cfg);
+}
+
 static int cam_ife_csid_ver2_handle_event_err(
 	struct cam_ife_csid_ver2_hw  *csid_hw,
 	uint32_t                      irq_status,
@@ -1696,6 +1758,8 @@ static int cam_ife_csid_ver2_handle_event_err(
 		cam_ife_csid_ver2_input_core_to_hw_idx(csid_hw->top_cfg.input_core_type);
 
 	cam_ife_csid_ver2_print_camif_timestamps(csid_hw);
+
+	cam_ife_csid_ver2_read_debug_err_vectors(csid_hw);
 
 	csid_hw->event_cb(csid_hw->token, CAM_ISP_HW_EVENT_ERROR, (void *)&evt);
 

@@ -335,6 +335,82 @@ static const uint32_t cam_ife_csid_lite_1080_num_top_irq_desc[] = {
 	ARRAY_SIZE(cam_ife_csid_lite_1080_top_irq_desc[1]),
 };
 
+static const char *cam_ife_csid_lite_1080_debug_vec_desc[][32] = {
+	{
+		"ERROR_UNBOUNDED_FRAME_RDI1",
+		"ERROR_SER_INVALID_CTXT_RDI1",
+		"ERROR_SER_CCIF_VIOLATION_RDI1",
+		"FATAL_SENSOR_SWITCH_OUT_OF_SYNC_FRAME_DROP_RDI1",
+		"ERROR_REC_FRAME_DROP_RDI1",
+		"ERROR_REC_OVERFLOW_RDI0",
+		"ERROR_CAMIF_CCIF_VIOLATION_RDI0",
+		"ERROR_ILLEGAL_BATCH_ID_RDI0",
+		"ERROR_UNBOUNDED_FRAME_RDI0",
+		"ERROR_SER_INVALID_CTXT_RDI0",
+		"ERROR_SER_CCIF_VIOLATION_RDI0",
+		"FATAL_SENSOR_SWITCH_OUT_OF_SYNC_FRAME_DROP_RDI0",
+		"ERROR_REC_FRAME_DROP_RDI0",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"ERROR_DL0_FIFO_OVERFLOW",
+		"ERROR_DL1_FIFO_OVERFLOW",
+		"ERROR_DL2_FIFO_OVERFLOW",
+		"ERROR_DL3_FIFO_OVERFLOW",
+		"ERROR_CPHY_PH_CRC",
+		"ERROR_DPHY_PH_ECC_DED",
+		"ERROR_STREAM_UNDERFLOW",
+		"ERROR_NO_VOTE_DN",
+		"ERROR_VOTE_UP_LATE",
+		"ERROR_RDI_LINE_BUFFER_CONFLICT",
+		"ERROR_SENSOR_HBI"
+	},
+	{
+		"ERROR_UNBOUNDED_FRAME_IPP0",
+		"ERROR_SER_INVALID_CTXT_IPP0",
+		"ERROR_SER_CCIF_VIOLATION_IPP0",
+		"FATAL_SENSOR_SWITCH_OUT_OF_SYNC_FRAME_DROP_IPP0",
+		"ERROR_REC_FRAME_DROP_IPP0",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"",
+		"ERROR_REC_OVERFLOW_RDI3",
+		"ERROR_CAMIF_CCIF_VIOLATION_RDI3",
+		"ERROR_ILLEGAL_BATCH_ID_RDI3",
+		"ERROR_UNBOUNDED_FRAME_RDI3",
+		"ERROR_SER_INVALID_CTXT_RDI3",
+		"ERROR_SER_CCIF_VIOLATION_RDI3",
+		"FATAL_SENSOR_SWITCH_OUT_OF_SYNC_FRAME_DROP_RDI3",
+		"ERROR_REC_FRAME_DROP_RDI3",
+		"ERROR_REC_OVERFLOW_RDI2",
+		"ERROR_CAMIF_CCIF_VIOLATION_RDI2",
+		"ERROR_ILLEGAL_BATCH_ID_RDI2",
+		"ERROR_UNBOUNDED_FRAME_RDI2",
+		"ERROR_SER_INVALID_CTXT_RDI2",
+		"ERROR_SER_CCIF_VIOLATION_RDI2",
+		"FATAL_SENSOR_SWITCH_OUT_OF_SYNC_FRAME_DROP_RDI2",
+		"ERROR_REC_FRAME_DROP_RDI2",
+		"ERROR_REC_OVERFLOW_RDI1",
+		"ERROR_CAMIF_CCIF_VIOLATION_RDI1",
+		"ERROR_ILLEGAL_BATCH_ID_RDI1"
+	},
+	{
+		"ERROR_REC_OVERFLOW_IPP0",
+		"ERROR_CAMIF_CCIF_VIOLATION_IPP0",
+		"ERROR_ILLEGAL_BATCH_ID_IPP0",
+	}
+};
+
 static struct cam_irq_register_set cam_ife_csid_lite_1080_irq_reg_set[CAM_IFE_CSID_IRQ_REG_MAX] = {
 	/* Top */
 	{
@@ -501,6 +577,10 @@ static struct cam_ife_csid_ver2_common_reg_info
 	.debug_sensor_hbi_irq_vcdt_addr               = 0x29C,
 	.debug_violation_addr                         = 0x7E0,
 	.debug_cfg_addr                               = 0x7E4,
+	.debug_err_vec_irq                            = {0x2D4, 0x2D8, 0x2DC},
+	.debug_err_vec_cfg                            = 0x2D0,
+	.debug_err_vec_ts_lb                          = 0x2E0,
+	.debug_err_vec_ts_mb                          = 0x2E4,
 
 	/*configurations */
 	.major_version                                = 10,
@@ -569,7 +649,9 @@ static struct cam_ife_csid_ver2_common_reg_info
 	.camif_irq_support                            = true,
 	.capabilities                                 = CAM_IFE_CSID_CAP_SKIP_PATH_CFG1 |
 								CAM_IFE_CSID_CAP_SPLIT_RUP_AUP |
-								CAM_IFE_CSID_CAP_SKIP_EPOCH_CFG,
+								CAM_IFE_CSID_CAP_SKIP_EPOCH_CFG |
+								CAM_IFE_CSID_CAP_DEBUG_ERR_VEC,
+
 	.top_top2_irq_mask                            = 0x80000000,
 };
 
@@ -1219,6 +1301,7 @@ static struct cam_ife_csid_ver2_reg_info cam_ife_csid_lite_1080_reg_info = {
 	.need_top_cfg = 0,
 	.top_irq_desc       = &cam_ife_csid_lite_1080_top_irq_desc,
 	.rx_irq_desc        = &cam_ife_csid_lite_1080_rx_irq_desc,
+	.debug_vec_desc     = &cam_ife_csid_lite_1080_debug_vec_desc,
 	.path_irq_desc      = cam_ife_csid_lite_1080_path_irq_desc,
 	.num_top_err_irqs   = cam_ife_csid_lite_1080_num_top_irq_desc,
 	.num_rx_err_irqs    = cam_ife_csid_lite_1080_num_rx_irq_desc,

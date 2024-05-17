@@ -552,6 +552,11 @@ struct cam_ife_csid_ver2_common_reg_info {
 	uint32_t debug_sensor_hbi_irq_vcdt_addr;
 	uint32_t debug_violation_addr;
 	uint32_t debug_cfg_addr;
+	uint32_t debug_err_vec_irq[CAM_IFE_CSID_DEBUG_VEC_ERR_REGS];
+	uint32_t debug_err_vec_cfg;
+	uint32_t debug_err_vec_ts_lb;
+	uint32_t debug_err_vec_ts_mb;
+
 	/*Shift Bit Configurations*/
 	uint32_t rst_done_shift_val;
 	uint32_t rst_location_shift_val;
@@ -729,6 +734,7 @@ struct cam_ife_csid_ver2_reg_info {
 		    CAM_IFE_CSID_HW_NUM_MAX][CAM_IFE_CSID_INPUT_CORE_SEL_MAX];
 	const struct cam_ife_csid_top_irq_desc           (*top_irq_desc)[][32];
 	const struct cam_ife_csid_irq_desc               (*rx_irq_desc)[][32];
+	const char*                                      (*debug_vec_desc)[][32];
 	const struct cam_ife_csid_irq_desc               *path_irq_desc;
 	const uint32_t                                   *num_top_err_irqs;
 	const uint32_t                                   *num_rx_err_irqs;
