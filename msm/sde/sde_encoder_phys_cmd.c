@@ -1922,12 +1922,14 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 		phys_enc->recovered = false;
 	}
 
-	/* update cesta wakeup/panic window with cont-splash */
-	if (phys_enc->cont_splash_enabled && sde_encoder_phys_cmd_is_master(phys_enc)
-			&& sde_encoder_get_cesta_client(phys_enc->parent) && phys_enc->hw_ctl) {
+	/* update cesta wakeup/panic window with cont-splash or qsync update */
+	if (sde_enc->cesta_client && sde_encoder_phys_cmd_is_master(phys_enc) &&
+			(phys_enc->cont_splash_enabled ||
+				sde_connector_is_qsync_updated(phys_enc->connector))) {
 		_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
-		phys_enc->hw_ctl->ops.update_bitmask(phys_enc->hw_ctl, SDE_HW_FLUSH_INTF,
-				phys_enc->intf_idx, 1);
+		if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.update_bitmask)
+			phys_enc->hw_ctl->ops.update_bitmask(phys_enc->hw_ctl, SDE_HW_FLUSH_INTF,
+					phys_enc->intf_idx, 1);
 	}
 
 	if (sde_connector_is_qsync_updated(phys_enc->connector)) {
