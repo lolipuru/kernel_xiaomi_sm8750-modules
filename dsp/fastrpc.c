@@ -4772,10 +4772,10 @@ EXPORT_SYMBOL_GPL(fastrpc_driver_unregister);
 
 int fastrpc_driver_register(struct fastrpc_driver *frpc_driver)
 {
-	int err = 0;
+	int err = 0, i = 0;
 	unsigned long irq_flags = 0;
-	struct fastrpc_user *user;
-	int domain_id = -1;
+	struct fastrpc_user *user = NULL;
+	struct fastrpc_channel_ctx *cctx = NULL;
 
 	if(frpc_driver == NULL) {
 		pr_err("%s : invalid registraion request", __func__);
@@ -4786,71 +4786,36 @@ int fastrpc_driver_register(struct fastrpc_driver *frpc_driver)
 	frpc_driver->device = NULL;
 
 	/*
-	 * Iterate through all the channel context to find the process
+	 * Iterate through all channel contexts to find the process
 	 * requested by the client driver.
 	 */
+	for (i = 0; i < FASTRPC_DEV_MAX; i++) {
+		cctx = gctx[i];
+		if (!cctx)
+			continue;
 
-	/* Check through CDSP */
-	if(gctx[CDSP_DOMAIN_ID] != NULL) {
-		spin_lock_irqsave(&gctx[CDSP_DOMAIN_ID]->lock, irq_flags);
-		list_for_each_entry(user, &gctx[CDSP_DOMAIN_ID]->users, user) {
-			if(user->tgid_frpc == frpc_driver->handle) {
-				domain_id = CDSP_DOMAIN_ID;
+		spin_lock_irqsave(&cctx->lock, irq_flags);
+		list_for_each_entry(user, &cctx->users, user) {
+			if (user->tgid_frpc == frpc_driver->handle) {
 				goto process_found;
 			}
 		}
-		spin_unlock_irqrestore(&gctx[CDSP_DOMAIN_ID]->lock, irq_flags);
+		spin_unlock_irqrestore(&cctx->lock, irq_flags);
 	}
-
-	/* Check through ADSP*/
-	if(gctx[ADSP_DOMAIN_ID] != NULL) {
-		spin_lock_irqsave(&gctx[ADSP_DOMAIN_ID]->lock, irq_flags);
-		list_for_each_entry(user, &gctx[ADSP_DOMAIN_ID]->users, user) {
-			if(user->tgid_frpc == frpc_driver->handle) {
-				domain_id = ADSP_DOMAIN_ID;
-				goto process_found;
-			}
-
-		}
-		spin_unlock_irqrestore(&gctx[ADSP_DOMAIN_ID]->lock, irq_flags);
-	}
-
-	/* Check though SLPI*/
-	if(gctx[SDSP_DOMAIN_ID] != NULL) {
-		spin_lock_irqsave(&gctx[SDSP_DOMAIN_ID]->lock, irq_flags);
-		list_for_each_entry(user, &gctx[SDSP_DOMAIN_ID]->users, user) {
-			if(user->tgid_frpc == frpc_driver->handle) {
-				domain_id = SDSP_DOMAIN_ID;
-				goto process_found;
-			}
-		}
-		spin_unlock_irqrestore(&gctx[SDSP_DOMAIN_ID]->lock, irq_flags);
-	}
-
-	/* Check through MODEM*/
-	if(gctx[MDSP_DOMAIN_ID] != NULL) {
-		spin_lock_irqsave(&gctx[MDSP_DOMAIN_ID]->lock, irq_flags);
-		list_for_each_entry(user, &gctx[MDSP_DOMAIN_ID]->users, user) {
-			if(user->tgid_frpc == frpc_driver->handle) {
-				domain_id = MDSP_DOMAIN_ID;
-				goto process_found;
-			}
-		}
-		spin_unlock_irqrestore(&gctx[MDSP_DOMAIN_ID]->lock, irq_flags);
-	}
-	pr_err("%s: no clients found for the given handle", __func__);
+	pr_err("%s: no client found for handle 0x%x",
+		__func__, frpc_driver->handle);
 	return -ESRCH;
 
 process_found:
 	if(user->device->dev_close) {
-		spin_unlock_irqrestore(&gctx[domain_id]->lock, irq_flags);
+		spin_unlock_irqrestore(&cctx->lock, irq_flags);
 		pr_err("%s : process already exited", __func__);
 		return -ESRCH;
 	}
 
 	frpc_driver->device = (struct device *)user->device;
 	list_add_tail(&frpc_driver->hn, &user->fastrpc_drivers);
-	spin_unlock_irqrestore(&gctx[domain_id]->lock, irq_flags);
+	spin_unlock_irqrestore(&cctx->lock, irq_flags);
 	/* Execute the probe fn. of the client driver if matching process found */
 	frpc_driver->probe(user->device);
 	pr_info("fastrpc driver registered with handle 0x%x\n", frpc_driver->handle);
