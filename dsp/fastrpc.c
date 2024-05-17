@@ -108,9 +108,17 @@ static int dma_buf_map_attachment_wrap(struct fastrpc_map *map)
 	return 0;
 }
 
+static inline void __fastrpc_dma_map_free(struct fastrpc_map *map)
+{
+	dma_buf_unmap_attachment_wrap(map);
+	dma_buf_detach(map->buf, map->attach);
+	dma_buf_put(map->buf);
+}
+
 static void __fastrpc_free_map(struct fastrpc_map *map)
 {
 	struct fastrpc_user *fl = NULL;
+	struct fastrpc_smmu *smmucb = NULL;
 
 	if (!map)
 		return;
@@ -131,20 +139,26 @@ static void __fastrpc_free_map(struct fastrpc_map *map)
 			err = qcom_scm_assign_mem(map->phys, map->size,
 				&src_perms, &perm, 1);
 			if (err) {
-				dev_err(fl->sctx->dev, "Failed to assign memory phys 0x%llx size 0x%llx err %d",
-						map->phys, map->size, err);
+				dev_err(fl->cctx->dev,
+					"Failed to assign memory phys 0x%llx size 0x%llx err %d",
+					map->phys, map->size, err);
 				return;
 			}
 		}
-		mutex_lock(&fl->sctx->map_mutex);
-		if (!fl->sctx->dev) {
-			mutex_unlock(&fl->sctx->map_mutex);
-			return;
+		/* FASTRPC_MAP_FD_NOMAP is not mapped on SMMU CB device */
+		if (map->flags == FASTRPC_MAP_FD_NOMAP) {
+			__fastrpc_dma_map_free(map);
+		} else {
+			smmucb = map->smmucb;
+			mutex_lock(&smmucb->map_mutex);
+			if (!smmucb->dev) {
+				mutex_unlock(&smmucb->map_mutex);
+				return;
+			}
+			__fastrpc_dma_map_free(map);
+			smmucb->allocatedbytes -= SMMU_ALIGN(map->size);
+			mutex_unlock(&smmucb->map_mutex);
 		}
-		dma_buf_unmap_attachment_wrap(map);
-		dma_buf_detach(map->buf, map->attach);
-		dma_buf_put(map->buf);
-		mutex_unlock(&fl->sctx->map_mutex);
 	}
 
 	if (map->fl) {
@@ -186,7 +200,7 @@ static int fastrpc_map_lookup(struct fastrpc_user *fl, int fd,
 			    u64 va, u64 len, struct dma_buf *buf, int mflags,
 			    struct fastrpc_map **ppmap, bool take_ref)
 {
-	struct fastrpc_session_ctx *sess = fl->sctx;
+	struct fastrpc_pool_ctx *sess = fl->sctx;
 	struct fastrpc_map *map = NULL;
 	int ret = -ENOENT;
 
@@ -210,7 +224,8 @@ map_found:
 	if (take_ref) {
 		ret = fastrpc_map_get(map);
 		if (ret) {
-			dev_dbg(sess->dev, "%s: Failed to get map fd=%d ret=%d\n",
+			dev_dbg(sess->smmucb[DEFAULT_SMMU_IDX].dev,
+				"%s: Failed to get map fd=%d ret=%d\n",
 				__func__, fd, ret);
 				spin_unlock(&fl->lock);
 				goto error;
@@ -256,12 +271,30 @@ static bool fastrpc_get_persistent_buf(struct fastrpc_user *fl,
 	return found;
 }
 
-static void __fastrpc_buf_free(struct fastrpc_buf *buf)
+static void __fastrpc_dma_buf_free(struct fastrpc_buf *buf)
 {
 	trace_fastrpc_dma_free(buf->domain_id, buf->phys, buf->size);
 	dma_free_coherent(buf->dev, buf->size, buf->virt,
 			  FASTRPC_PHYS(buf->phys));
 	kfree(buf);
+}
+
+static void __fastrpc_buf_free(struct fastrpc_buf *buf)
+{
+	struct fastrpc_smmu *smmucb = NULL;
+
+	/* REMOTEHEAP_BUF is not mapped on SMMU device */
+	if (buf->type == REMOTEHEAP_BUF) {
+		__fastrpc_dma_buf_free(buf);
+	} else {
+		smmucb = buf->smmucb;
+		mutex_lock(&smmucb->map_mutex);
+		if (smmucb->dev) {
+			__fastrpc_dma_buf_free(buf);
+			smmucb->allocatedbytes -= SMMU_ALIGN(buf->size);
+		}
+		mutex_unlock(&smmucb->map_mutex);
+	}
 }
 
 static void fastrpc_cached_buf_list_add(struct fastrpc_buf *buf)
@@ -283,10 +316,7 @@ static void fastrpc_cached_buf_list_add(struct fastrpc_buf *buf)
 	}
 
 skip_buf_cache:
-	mutex_lock(&fl->sctx->map_mutex);
-	if (fl->sctx->dev)
-		__fastrpc_buf_free(buf);
-	mutex_unlock(&fl->sctx->map_mutex);
+	__fastrpc_buf_free(buf);
 	return;
 }
 
@@ -301,14 +331,10 @@ static void fastrpc_buf_free(struct fastrpc_buf *buf, bool cache)
 		spin_unlock(&fl->lock);
 		return;
 	}
-	if (cache) {
+	if (cache)
 		fastrpc_cached_buf_list_add(buf);
-	} else {
-		mutex_lock(&fl->sctx->map_mutex);
-		if (fl->sctx->dev)
-			__fastrpc_buf_free(buf);
-		mutex_unlock(&fl->sctx->map_mutex);
-	}
+	else
+		__fastrpc_buf_free(buf);
 }
 
 static inline bool fastrpc_get_cached_buf(struct fastrpc_user *fl,
@@ -317,7 +343,7 @@ static inline bool fastrpc_get_cached_buf(struct fastrpc_user *fl,
 	bool found = false;
 	struct fastrpc_buf *buf, *n, *cbuf = NULL;
 
-	if (buf_type == USER_BUF)
+	if (buf_type == USER_BUF || buf_type == REMOTEHEAP_BUF)
 		return found;
 
 	/* find the smallest buffer that fits in the cache */
@@ -366,8 +392,7 @@ static void fastrpc_cached_buf_list_free(struct fastrpc_user *fl)
  *
  * Returns void
  */
-static void fastrpc_rootheap_buf_list_free(struct fastrpc_channel_ctx *cctx,
-	struct fastrpc_session_ctx *sess)
+static void fastrpc_rootheap_buf_list_free(struct fastrpc_channel_ctx *cctx)
 {
 	struct fastrpc_buf *buf = NULL, *n = NULL, *free = NULL;
 	unsigned long flags = 0;
@@ -387,17 +412,20 @@ static void fastrpc_rootheap_buf_list_free(struct fastrpc_channel_ctx *cctx,
 		}
 		spin_unlock_irqrestore(&cctx->lock, flags);
 
-		if (free) {
-			mutex_lock(&sess->map_mutex);
+		if (free)
 			__fastrpc_buf_free(free);
-			mutex_unlock(&sess->map_mutex);
-		}
 	} while (free);
 }
 
-static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
-			     struct fastrpc_session_ctx *sess, u32 domain_id,
-			     u64 size, struct fastrpc_buf **obuf, u32 buf_type)
+static inline void __fastrpc_dma_alloc(struct fastrpc_buf *buf)
+{
+	buf->virt = dma_alloc_coherent(buf->dev, buf->size,
+				(dma_addr_t *)&buf->phys, GFP_KERNEL);
+}
+
+static int __fastrpc_buf_alloc(struct fastrpc_user *fl,
+		struct fastrpc_smmu *smmucb, u32 domain_id,
+		u64 size, struct fastrpc_buf **obuf, u32 buf_type)
 {
 	struct fastrpc_buf *buf;
 
@@ -413,16 +441,32 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 	buf->virt = NULL;
 	buf->phys = 0;
 	buf->size = size;
-	buf->dev = dev;
 	buf->raddr = 0;
 	buf->type = buf_type;
 	buf->domain_id = domain_id;
 
-	mutex_lock(&sess->map_mutex);
-	if (dev)
-		buf->virt = dma_alloc_coherent(dev, buf->size, (dma_addr_t *)&buf->phys,
-						GFP_KERNEL);
-	mutex_unlock(&sess->map_mutex);
+	/* REMOTEHEAP_BUF is allocated using cctx device */
+	if (buf_type == REMOTEHEAP_BUF) {
+		buf->dev = fl->cctx->dev;
+		/*
+		 * Do not acquire spinlock with IRQ disabled
+		 * as "dma_alloc_coherent" locks a mutex
+		 */
+		if (fl->cctx->dev)
+			__fastrpc_dma_alloc(buf);
+	} else {
+		buf->dev = smmucb->dev;
+		buf->smmucb = smmucb;
+		mutex_lock(&smmucb->map_mutex);
+		if (smmucb->dev)
+			__fastrpc_dma_alloc(buf);
+		if (buf->virt) {
+			smmucb->allocatedbytes += SMMU_ALIGN(size);
+			buf->phys += ((u64)smmucb->sid << 32);
+		}
+		mutex_unlock(&smmucb->map_mutex);
+	}
+
 	if (!buf->virt) {
 		mutex_destroy(&buf->lock);
 		kfree(buf);
@@ -436,52 +480,118 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
 	return 0;
 }
 
-static int fastrpc_buf_alloc(struct fastrpc_user *fl, struct device *dev,
-			     u64 size, u32 buf_type, struct fastrpc_buf **obuf)
+static int fastrpc_buf_alloc(struct fastrpc_user *fl,
+			struct fastrpc_smmu *smmucb, u64 size,
+			u32 buf_type, struct fastrpc_buf **obuf)
 {
 	int ret;
-	struct fastrpc_buf *buf;
 
 	if (fastrpc_get_persistent_buf(fl, size, buf_type, obuf))
 		return 0;
 	if (fastrpc_get_cached_buf(fl, size, buf_type, obuf))
 		return 0;
-	ret = __fastrpc_buf_alloc(fl, dev, fl->sctx, fl->cctx->domain_id,
-					size, obuf, buf_type);
+	ret = __fastrpc_buf_alloc(fl, smmucb, fl->cctx->domain_id,
+						size, obuf, buf_type);
 	if (ret == -ENOMEM) {
 		fastrpc_cached_buf_list_free(fl);
-		ret = __fastrpc_buf_alloc(fl, dev, fl->sctx, fl->cctx->domain_id,
-					size, obuf, buf_type);
+		ret = __fastrpc_buf_alloc(fl, smmucb, fl->cctx->domain_id,
+						size, obuf, buf_type);
 		if (ret)
 			return ret;
 	}
-	buf = *obuf;
-
-	if (fl->sctx && fl->sctx->sid)
-		buf->phys += ((u64)fl->sctx->sid << 32);
 
 	return 0;
 }
 
-static int fastrpc_remote_heap_alloc(struct fastrpc_user *fl, struct device *dev,
-				     u64 size, int buf_type, struct fastrpc_buf **obuf)
+/**
+ * fastrpc_smmu_device_lookup() -
+ * Function to get IOMMU device index from the session pool
+ * @arg1: Fastrpc pool session
+ * @arg2: Allocation/map buffer size
+ * @arg3: Current IOMMU pool device index
+ *
+ * Starting from current IOMMU pool device index, function
+ * finds a IOMMU CB where there is enough virtual space available
+ * to allocate/map buffer size.
+ *
+ * Return: Returns IOMMU pool device index,
+ *         where virtual space is available
+ */
+static u32 fastrpc_smmu_device_lookup(struct fastrpc_pool_ctx *sess,
+						u64 size, u32 smmuidx)
 {
-	struct device *rdev = fl->cctx->dev;
+	struct fastrpc_smmu *smmucb = NULL;
 
-	return __fastrpc_buf_alloc(fl, rdev, fl->sctx, fl->cctx->domain_id,
-				size, obuf, buf_type);
+	for (; smmuidx < sess->smmucount; smmuidx++) {
+		smmucb = &sess->smmucb[smmuidx];
+		/*
+		 * Use the SMMU index device, if the SMMU pool
+		 * alloc ranges are not defined.
+		 */
+		if (smmucb->maxallocsize == 0)
+			break;
+
+		if (size >= smmucb->minallocsize &&
+			size < (smmucb->totalbytes - smmucb->allocatedbytes))
+			break;
+	}
+
+	return smmuidx;
+}
+
+/**
+ * fastrpc_smmu_buf_alloc() - Allocates memory on IOMMU CB
+ * @arg1: Fastrpc user file pointer
+ * @arg2: Allocation buffer size
+ * @arg3: Allocation buffer type
+ * @arg4: Output argument pointer to the fastrpc_buf
+ *
+ * Return: Returns 0 on success, error code on failure
+ */
+static int fastrpc_smmu_buf_alloc(struct fastrpc_user *fl, u64 size,
+						u32 buf_type, struct fastrpc_buf **obuf)
+{
+	int err = 0;
+	struct fastrpc_pool_ctx *sess = NULL;
+	struct fastrpc_smmu *smmucb = NULL;
+	u32 smmuidx = DEFAULT_SMMU_IDX;
+
+	sess = fl->sctx;
+retry_alloc:
+	smmuidx = fastrpc_smmu_device_lookup(sess, size, smmuidx);
+	if (smmuidx >= sess->smmucount) {
+		dev_err(fl->cctx->dev,
+			"%s: No valid smmu context bank found for size 0x%llx\n",
+			__func__, size);
+		err = -ENOSR;
+		return err;
+	} else {
+		smmucb = &sess->smmucb[smmuidx];
+	}
+
+	err = fastrpc_buf_alloc(fl, smmucb, size, buf_type, obuf);
+	/*
+	 * Retry allocation on next availale IOMMU CB,
+	 * if there is no enough virtual space available on current IOMMU CB
+	 */
+	if (err == -ENOMEM || err == -EINVAL) {
+		smmuidx++;
+		goto retry_alloc;
+	}
+	return err;
 }
 
 static void fastrpc_channel_ctx_free(struct kref *ref)
 {
 	struct fastrpc_channel_ctx *cctx;
-	int i;
+	int i, j;
 
 	cctx = container_of(ref, struct fastrpc_channel_ctx, refcount);
 	mutex_destroy(&cctx->wake_mutex);
 
 	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++)
-		mutex_destroy(&cctx->session[i].map_mutex);
+		for (j = 0; j < cctx->session[i].smmucount; j++)
+			mutex_destroy(&cctx->session[i].smmucb[j].map_mutex);
 	ida_destroy(&cctx->tgid_frpc_ida);
 	kfree(cctx);
 }
@@ -750,7 +860,7 @@ static struct fastrpc_invoke_ctx *fastrpc_context_restore_interrupted(
 	list_for_each_entry_safe(ictx, n, &fl->interrupted, node) {
 		if (ictx->pid == current->pid) {
 			if (inv->sc != ictx->sc || ictx->fl != fl) {
-				dev_err(ictx->fl->sctx->dev,
+				dev_err(ictx->fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev,
 					"interrupted sc (0x%x) or fl (%pK) does not match with invoke sc (0x%x) or fl (%pK)\n",
 					ictx->sc, ictx->fl, inv->sc, fl);
 				spin_unlock(&fl->lock);
@@ -880,28 +990,30 @@ static const struct dma_buf_ops fastrpc_dma_buf_ops = {
 	.release = fastrpc_release,
 };
 
-static struct fastrpc_session_ctx *fastrpc_session_alloc(
+static struct fastrpc_pool_ctx *fastrpc_session_alloc(
 				struct fastrpc_user *fl, bool secure)
 {
 
-	struct fastrpc_session_ctx *session = NULL;
+	struct fastrpc_pool_ctx *session = NULL, *isess = NULL;
 	struct fastrpc_channel_ctx *cctx = fl->cctx;
 	unsigned long flags;
 	bool sharedcb = fl->sharedcb;
-	int pd_type = fl->pd;
+	int pd_type = fl->pd_type;
 	int i;
 
 	if (!cctx->dev)
 		return session;
 
 	/*
-	 * If PD type is configured for context banks, Use CPZ_USERPD, to allocate
-	 * secure context bank type.
+	 * If PD type is configured for context banks in device tree,
+	 * use CPZ_USERPD, to allocate secure context bank type.
 	 */
 	if (secure && cctx->pd_type) {
 		pd_type = CPZ_USERPD;
 		sharedcb = true;
-	}
+	} else if (secure)
+		/* Legacy case, where pd_type is not configured in device tree */
+		pd_type = DEFAULT_UNUSED;
 
 	/*
 	 * If session allocated already and PD type is configured for non secure,
@@ -912,29 +1024,65 @@ static struct fastrpc_session_ctx *fastrpc_session_alloc(
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 0; i < cctx->sesscount; i++) {
-		if (!cctx->session[i].used && cctx->session[i].valid &&
-			cctx->session[i].secure == secure &&
-			cctx->session[i].sharedcb == sharedcb &&
-			(pd_type == DEFAULT_UNUSED || cctx->session[i].pd_type == pd_type || secure)) {
-			reinit_completion(&cctx->session[i].cleanup);
-			cctx->session[i].used = true;
-			session = &cctx->session[i];
+		/*
+		 * Session is chosen based on following conditions:
+		 * 1. If session is SID pooled (smmucount > 1), then any number of applications
+		 *    can use session, else only one application (usecount == 0) is allowed to
+		 *    use session
+		 * AND
+		 * 2. SMMU CB should always be valid, should not have been unregistered.
+		 * AND
+		 * 3. If process is secure usecase (CPZ usecase), then session also
+		 *    should have secure parameter set.
+		 * AND
+		 * 4. If process needs to share CB (sensors usecases share one CB), then
+		 *    session also should have sharedcb parameter set.
+		 * AND
+		 * 5. If pd_type is configured, then process pd_type needs to match with
+		 *    session pd_type, else pd_type check is ignored
+		 */
+		isess = &cctx->session[i];
+		if ((isess->usecount == 0 || isess->smmucount > 1) &&
+			isess->smmucb[DEFAULT_SMMU_IDX].valid &&
+			isess->secure == secure &&
+			isess->sharedcb == sharedcb &&
+			(pd_type == DEFAULT_UNUSED || isess->pd_type == pd_type || secure)) {
+			session = isess;
+			/*
+			 * Increment number of apps using session.
+			 * Will be max 1 for sessions that don't have
+			 * pooled context banks or a shared context bank.
+			 */
+			session->usecount++;
 			break;
 		}
 	}
+
+	/*
+	 * In the case of SID pooling reinit cleanup only for first appplication
+	 * using pool.
+	 */
+	if (session && session->usecount == 1)
+		reinit_completion(&cctx->session[i].cleanup);
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	return session;
 }
 
 static void fastrpc_session_free(struct fastrpc_channel_ctx *cctx,
-				 struct fastrpc_session_ctx *session)
+				 struct fastrpc_pool_ctx *session)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&cctx->lock, flags);
-	complete(&session->cleanup);
-	session->used = false;
+	if (session->usecount > 0)
+		session->usecount--;
+	/*
+	 * After all apps using the cb have released it, unblock any potentially
+	 * waiting "cb remove" callback.
+	 */
+	if (session->usecount == 0)
+		complete(&session->cleanup);
 	spin_unlock_irqrestore(&cctx->lock, flags);
 }
 
@@ -1004,7 +1152,7 @@ static int set_buffer_secure_type(struct fastrpc_map *map)
 {
 	int err = 0;
 	bool exclusive_access = false;
-	struct device *dev = map->fl->sctx->dev;
+	struct device *dev = map->fl->cctx->dev;
 
 	err = get_buffer_attr(map->buf, &exclusive_access);
 	if (err) {
@@ -1035,11 +1183,13 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 			      u32 attr, int mflags, struct fastrpc_map **ppmap,
 				  bool take_ref)
 {
-	struct fastrpc_session_ctx *sess = NULL;
+	struct fastrpc_pool_ctx *sess = NULL;
 	struct fastrpc_map *map = NULL;
 	struct scatterlist *sgl = NULL;
 	int err = 0, sgl_index = 0;
 	struct device *dev = NULL;
+	struct fastrpc_smmu *smmucb = NULL;
+	u32 smmuidx = DEFAULT_SMMU_IDX;
 
 	if (!fastrpc_map_lookup(fl, fd, va, len, buf, mflags, ppmap, take_ref))
 		return 0;
@@ -1090,15 +1240,29 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 		sess = fl->sctx;
 	}
 
-	if (attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP)
-		dev = fl->cctx->dev;
-	else
-		dev =  sess->dev;
+map_retry:
+	smmuidx = fastrpc_smmu_device_lookup(sess, len, smmuidx);
+	if (smmuidx >= sess->smmucount) {
+		dev_err(fl->cctx->dev,
+			"%s: No valid smmu context bank found for len 0x%llx\n",
+			__func__, len);
+		err = -ENOSR;
+		goto attach_err;
+	} else {
+		smmucb = &sess->smmucb[smmuidx];
+	}
 
-	mutex_lock(&fl->sctx->map_mutex);
-	if (!fl->sctx->dev) {
+	if (attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP) {
+		dev = fl->cctx->dev;
+	} else {
+		dev =  smmucb->dev;
+		map->smmucb = smmucb;
+	}
+
+	mutex_lock(&smmucb->map_mutex);
+	if (!smmucb->dev) {
 		err = -ENODEV;
-		mutex_unlock(&fl->sctx->map_mutex);
+		mutex_unlock(&smmucb->map_mutex);
 		goto attach_err;
 	}
 
@@ -1106,14 +1270,21 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 	if (IS_ERR(map->attach)) {
 		dev_err(dev, "Failed to attach dmabuf\n");
 		err = PTR_ERR(map->attach);
-		mutex_unlock(&fl->sctx->map_mutex);
+		mutex_unlock(&smmucb->map_mutex);
 		goto attach_err;
 	}
 
 	err = dma_buf_map_attachment_wrap(map);
-	if (err) {
-		mutex_unlock(&fl->sctx->map_mutex);
-		goto map_err;
+	/*
+	 * Retry allocation on next availale IOMMU CB,
+	 * if there is no enough virtual space available on current IOMMU CB.
+	 * Detach from current IOMMU CB.
+	 */
+	if (err == -ENOMEM || err == -EINVAL) {
+		mutex_unlock(&smmucb->map_mutex);
+		dma_buf_detach(map->buf, map->attach);
+		smmuidx++;
+		goto map_retry;
 	}
 
 	if (attr & FASTRPC_ATTR_SECUREMAP) {
@@ -1122,23 +1293,25 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 			sgl_index)
 			map->size += sg_dma_len(sgl);
 		map->va = (void *) (uintptr_t) va;
+		smmucb->allocatedbytes += SMMU_ALIGN(len);
 	} else if (attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP){
 
 		map->phys = sg_dma_address(map->table->sgl);
 		map->size = len;
-		map->flags = FASTRPC_MAP_FD_DELAYED;
 		map->va = (void *) (uintptr_t) va;
 	} else {
 		map->phys = sg_dma_address(map->table->sgl);
-		map->phys += ((u64)sess->sid << 32);
+		map->phys += ((u64)smmucb->sid << 32);
 		for_each_sg(map->table->sgl, sgl, map->table->nents,
 			sgl_index)
 			map->size += sg_dma_len(sgl);
 		map->va = (void *) (uintptr_t) va;
+		smmucb->allocatedbytes += SMMU_ALIGN(len);
 	}
+
 	trace_fastrpc_dma_map(map->fl->cctx->domain_id, map->fd, map->phys,
 		map->size, map->len, map->attach->dma_map_attrs, map->flags);
-	mutex_unlock(&fl->sctx->map_mutex);
+	mutex_unlock(&smmucb->map_mutex);
 
 	if (attr & FASTRPC_ATTR_SECUREMAP) {
 		/*
@@ -1154,8 +1327,9 @@ static int fastrpc_map_create(struct fastrpc_user *fl, int fd,
 		dst_perms[1].perm = QCOM_SCM_PERM_RWX;
 		err = qcom_scm_assign_mem(map->phys, (u64)map->size, &src_perms, dst_perms, 2);
 		if (err) {
-			dev_err(sess->dev, "Failed to assign memory with phys 0x%llx size 0x%llx err %d",
-					map->phys, map->size, err);
+			dev_err(smmucb->dev,
+			"Failed to assign memory with phys 0x%llx size 0x%llx err %d",
+			map->phys, map->size, err);
 			goto map_err;
 		}
 	}
@@ -1241,7 +1415,7 @@ static u64 fastrpc_get_payload_size(struct fastrpc_invoke_ctx *ctx, int metalen)
 
 static int fastrpc_create_maps(struct fastrpc_invoke_ctx *ctx)
 {
-	struct device *dev = ctx->fl->sctx->dev;
+	struct device *dev = ctx->fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 	struct fastrpc_channel_ctx *cctx = ctx->fl->cctx;
 	int i, err;
 
@@ -1280,7 +1454,7 @@ static struct fastrpc_phy_page *fastrpc_phy_page_start(struct fastrpc_invoke_buf
 
 static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 {
-	struct device *dev = ctx->fl->sctx->dev;
+	struct device *dev = ctx->fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 	union fastrpc_remote_arg *rpra;
 	struct fastrpc_invoke_buf *list;
 	struct fastrpc_phy_page *pages;
@@ -1306,7 +1480,7 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 
 	ctx->msg_sz = metalen;
 
-	err = fastrpc_buf_alloc(ctx->fl, dev, pkt_size, METADATA_BUF, &ctx->buf);
+	err = fastrpc_smmu_buf_alloc(ctx->fl, pkt_size, METADATA_BUF, &ctx->buf);
 	if (err)
 		return err;
 
@@ -1373,7 +1547,7 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 				dev_err(dev, "Error: invalid payload size 0x%x", mlen);
 				return -EFAULT;
 			}
-			
+
 			if (mlen > COPY_BUF_WARN_LIMIT)
 				dev_dbg(dev, "user passed non ion buffer size %u, mend 0x%llx mstart 0x%llx, sc 0x%x",
 					mlen, ctx->olaps[oix].mend, ctx->olaps[oix].mstart, ctx->sc);
@@ -1552,18 +1726,20 @@ static void fastrpc_update_rxmsg_buf(struct fastrpc_channel_ctx *chan,
 	spin_unlock_irqrestore(&(chan->gmsg_log.rx_lock), flags);
 }
 
-static inline int fastrpc_getpd_msgidx (int pd) {
-	if(pd == ROOT_PD)
+/*
+ * fastrpc_getpd_msgidx()
+ * Function returns msg index that is embedded in rpc msg ctx sent to dsp
+ */
+static inline int fastrpc_getpd_msgidx(u32 pd_type) {
+	if (pd_type == ROOT_PD)
 		return 0;
-	else if(pd == USERPD)
-		return 1;
-	else if(pd == SENSORS_STATICPD)
+	else if (pd_type == SENSORS_STATICPD)
 		return 2;
 	else
 		return 1;
 }
 
-static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
+static int fastrpc_invoke_send(struct fastrpc_pool_ctx *sctx,
 			       struct fastrpc_invoke_ctx *ctx,
 			       u32 kernel, uint32_t handle)
 {
@@ -1579,8 +1755,9 @@ static int fastrpc_invoke_send(struct fastrpc_session_ctx *sctx,
 	if (kernel == KERNEL_MSG_WITH_ZERO_PID)
 		msg->pid = 0;
 
+	/* Last 2 ctx ID bits, to route glink msg to appropriate PD type on DSP */
 	msg->ctx = FASTRPC_PACK_PD_IN_CTXID(ctx->ctxid,
-				fastrpc_getpd_msgidx(fl->pd));
+				fastrpc_getpd_msgidx(fl->pd_type));
 	msg->handle = handle;
 	msg->sc = ctx->sc;
 	msg->addr = ctx->buf ? ctx->buf->phys : 0;
@@ -1752,6 +1929,7 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 	int err = 0, perferr = 0, interrupted = 0;
 	u64 *perf_counter = NULL;
 	struct timespec64 invoket = {0};
+	struct device *dev = NULL;
 
 	if (atomic_read(&fl->cctx->teardown))
 		return -EPIPE;
@@ -1762,13 +1940,15 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 	if (!fl->sctx)
 		return -EINVAL;
 
-	if ((!fl->cctx->dev) || (!fl->sctx->dev))
+	dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
+	if ((!fl->cctx->dev) || (!dev))
 		return -EPIPE;
 
 	handle = inv->handle;
 	sc = inv->sc;
 	if (handle == FASTRPC_INIT_HANDLE && !kernel) {
-		dev_warn_ratelimited(fl->sctx->dev, "user app trying to send a kernel RPC message (%d)\n",  handle);
+		dev_warn_ratelimited(dev,
+		"user app trying to send a kernel RPC message (%d)\n",  handle);
 		return -EPERM;
 	}
 
@@ -1816,7 +1996,7 @@ wait:
 	if (fl->poll_mode &&
 		handle > FASTRPC_MAX_STATIC_HANDLE &&
 		fl->cctx->domain_id == CDSP_DOMAIN_ID &&
-		fl->pd == USERPD)
+		fl->pd_type == USERPD)
 		ctx->rsp_flags = POLL_MODE;
 
 	fastrpc_wait_for_completion(ctx, &interrupted, kernel);
@@ -1828,7 +2008,7 @@ wait:
 	trace_fastrpc_msg("wait_for_completion: end");
 	if (!ctx->is_work_done) {
 		err = -ETIMEDOUT;
-		dev_err(fl->sctx->dev, "Error: Invalid workdone state for handle 0x%x, sc 0x%x\n",
+		dev_err(dev, "Error: Invalid workdone state for handle 0x%x, sc 0x%x\n",
 			handle, sc);
 		goto bail;
 	}
@@ -1872,7 +2052,7 @@ bail:
 	}
 
 	if (err)
-		dev_dbg(fl->sctx->dev, "Error: Invoke Failed %d\n", err);
+		dev_dbg(dev, "Error: Invoke Failed %d\n", err);
 
 	return err;
 }
@@ -1886,8 +2066,9 @@ static int fastrpc_mem_map_to_dsp(struct fastrpc_user *fl, int fd, int offset,
 	struct fastrpc_mem_map_req_msg req_msg = { 0 };
 	struct fastrpc_mmap_rsp_msg rsp_msg = { 0 };
 	struct fastrpc_phy_page pages = { 0 };
-	struct device *dev = fl->sctx->dev;
+	struct device *dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 	int err = 0;
+
 	if (!fl) {
 		err = -EBADF;
 		return err;
@@ -1935,7 +2116,7 @@ static int fastrpc_create_persistent_headers(struct fastrpc_user *fl)
 	int err = 0;
 	int i = 0;
 	u64 virtb = 0;
-	struct device *dev = fl->sctx->dev;
+	struct device *dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 	struct fastrpc_buf *hdr_bufs, *buf, *pers_hdr_buf = NULL;
 	u32 num_pers_hdrs = 0;
 	size_t hdr_buf_alloc_len = 0;
@@ -1946,7 +2127,8 @@ static int fastrpc_create_persistent_headers(struct fastrpc_user *fl)
 	 */
 	num_pers_hdrs = FASTRPC_MAX_PERSISTENT_HEADERS;
 	hdr_buf_alloc_len = num_pers_hdrs * PAGE_SIZE;
-	err = fastrpc_buf_alloc(fl, dev, hdr_buf_alloc_len,
+
+	err = fastrpc_smmu_buf_alloc(fl, hdr_buf_alloc_len,
 			METADATA_BUF, &pers_hdr_buf);
 	if (err)
 		return err;
@@ -2208,15 +2390,34 @@ void print_ictx_info(struct seq_file *s_file, struct fastrpc_invoke_ctx *ictx)
 	seq_printf(s_file,"\n %s %9s %llu", "msg_sz", ":", ictx->msg_sz);
 }
 
-void print_sctx_info(struct seq_file *s_file, struct fastrpc_session_ctx *sctx)
+void print_sctx_info(struct seq_file *s_file, struct fastrpc_pool_ctx *sctx)
 {
-	seq_printf(s_file,"%s %13s %d\n", "sid", ":", sctx->sid);
-	seq_printf(s_file,"%s %12s %d\n", "used", ":", sctx->used);
-	seq_printf(s_file,"%s %11s %d\n", "valid", ":", sctx->valid);
+	int i;
+	struct fastrpc_smmu *s = NULL;
+
+	seq_printf(s_file,"%s %9s %d\n", "pd_type", ":", sctx->pd_type);
 	seq_printf(s_file,"%s %10s %d\n", "secure", ":", sctx->secure);
 	seq_printf(s_file,"%s %8s %d\n", "sharedcb", ":", sctx->sharedcb);
-	seq_printf(s_file,"%s %4s %lu\n", "genpool_iova", ":", sctx->genpool_iova);
-	seq_printf(s_file,"%s %4s %zu\n", "genpool_size", ":", sctx->genpool_size);
+	seq_printf(s_file,"%s %7s %d\n", "smmucount", ":", sctx->smmucount);
+	seq_printf(s_file,"%s %8s %d\n", "usecount", ":", sctx->usecount);
+
+	for (i = 0; i < sctx->smmucount; i++) {
+		s = &sctx->smmucb[i];
+		seq_printf(s_file,"\n========== SMMU context bank %d=============\n", i);
+		seq_printf(s_file,"%s %13s %d\n", "sid", ":", s->sid);
+		seq_printf(s_file,"%s %11s %d\n", "valid", ":", s->valid);
+		seq_printf(s_file,"%s %4s %lu\n", "genpool_iova", ":",
+								s->genpool_iova);
+		seq_printf(s_file,"%s %4s %zu\n", "genpool_size", ":",
+								s->genpool_size);
+		seq_printf(s_file,"%s %2s %llx\n", "allocatedbytes", ":",
+								s->allocatedbytes);
+		seq_printf(s_file,"%s %6s %llx\n", "totalbytes", ":", s->totalbytes);
+		seq_printf(s_file,"%s %4s %llx\n", "minallocsize", ":",
+								s->minallocsize);
+		seq_printf(s_file,"%s %4s %llx\n", "maxallocsize", ":",
+								s->maxallocsize);
+	}
 }
 
 void print_ctx_info(struct seq_file *s_file, struct fastrpc_channel_ctx *ctx)
@@ -2249,7 +2450,7 @@ static int fastrpc_debugfs_show(struct seq_file *s_file, void *data)
 	struct fastrpc_user *fl = s_file->private;
 	struct fastrpc_map *map;
 	struct fastrpc_channel_ctx *ctx;
-	struct fastrpc_session_ctx *sctx;
+	struct fastrpc_pool_ctx *sctx = NULL;
 	struct fastrpc_invoke_ctx *ictx, *m;
 	struct fastrpc_buf *buf, *n;
 	int i;
@@ -2263,7 +2464,7 @@ static int fastrpc_debugfs_show(struct seq_file *s_file, void *data)
 		seq_printf(s_file,"%s %5s %d\n", "wake_enable", ":", fl->wake_enable);
 		seq_printf(s_file,"%s %2s %d\n",  "is_unsigned_pd", ":", fl->is_unsigned_pd);
 		seq_printf(s_file,"%s %7s %d\n",  "sessionid", ":", fl->sessionid);
-		seq_printf(s_file,"%s %14s %d\n", "pd", ":", fl->pd);
+		seq_printf(s_file,"%s %9s %d\n", "pd_type", ":", fl->pd_type);
 		seq_printf(s_file,"%s %9s %d\n",  "profile", ":", fl->profile);
 
 		if(fl->cctx) {
@@ -2388,6 +2589,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	struct fastrpc_enhanced_invoke ioctl;
 	struct fastrpc_phy_page pages[1];
 	struct fastrpc_buf *buf = NULL;
+	struct fastrpc_smmu *smmucb = NULL;
 	u64 phys = 0, size = 0;
 	char *name;
 	int err;
@@ -2427,14 +2629,24 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		goto err_name;
 	}
 
+	smmucb = &fl->sctx->smmucb[DEFAULT_SMMU_IDX];
 	is_oispd = !strcmp(name, "oispd");
 	is_audiopd = !strcmp(name, "audiopd");
+
+	/*
+	 * Update the pd_type, to direct the messages to correct PD, when
+	 * fastrpc_getpd_msgidx is queried. Update pd_type only after session
+	 * allocation. Session is allocated based on user configured pd_type
+	 */
 	if (is_audiopd) {
+		fl->pd_type = AUDIO_STATICPD;
 		fl->servloc_name = AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME;
 	} else if (is_oispd) {
+		fl->pd_type = OIS_STATICPD;
 		fl->servloc_name = OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME;
 	} else {
-		dev_err(fl->sctx->dev, "Create static process is failed for proc_name %s", name);
+		dev_err(smmucb->dev,
+		"Create static process is failed for proc_name %s", name);
 		err = -EINVAL;
 		goto err_name;
 	}
@@ -2457,7 +2669,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 
 	// Remote heap feature is available only for audio static PD
 	if (!fl->cctx->staticpd_status && !is_oispd) {
-		err = fastrpc_remote_heap_alloc(fl, fl->sctx->dev, init.memlen, REMOTEHEAP_BUF, &buf);
+		err = fastrpc_buf_alloc(fl, NULL, init.memlen, REMOTEHEAP_BUF, &buf);
 		if (err)
 			goto err_name;
 
@@ -2474,7 +2686,8 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 			err = qcom_scm_assign_mem(phys, (u64)size,
 							&src_perms, fl->cctx->vmperms, fl->cctx->vmcount);
 			if (err) {
-				dev_err(fl->sctx->dev, "%s: Failed to assign memory with phys 0x%llx size 0x%llx err %d",
+				dev_err(smmucb->dev,
+			"%s: Failed to assign memory with phys 0x%llx size 0x%llx err %d",
 					__func__, phys, size, err);
 				goto err_map;
 			}
@@ -2486,7 +2699,6 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	inbuf.pgid = fl->tgid_frpc;
 	inbuf.namelen = init.namelen;
 	inbuf.pageslen = 0;
-	fl->pd = USERPD;
 
 	args[0].ptr = (u64)(uintptr_t)&inbuf;
 	args[0].length = sizeof(inbuf);
@@ -2531,7 +2743,8 @@ err_invoke:
 		err = qcom_scm_assign_mem(phys, (u64)size,
 						&src_perms, &dst_perms, 1);
 		if (err)
-			dev_err(fl->sctx->dev, "%s: Failed to assign memory phys 0x%llx size 0x%llx err %d",
+			dev_err(smmucb->dev,
+			"%s: Failed to assign memory phys 0x%llx size 0x%llx err %d",
 				__func__, phys, size, err);
 	}
 err_map:
@@ -2558,16 +2771,16 @@ err_name:
  * Returns 0 if there is a session reserved for root pd.
  */
 static int fastrpc_get_root_session(struct fastrpc_channel_ctx *cctx,
-	struct fastrpc_session_ctx **sess)
+	struct fastrpc_pool_ctx **sess)
 {
 	int i = 0, err = -ENOSR;
-	struct fastrpc_session_ctx *s = NULL;
+	struct fastrpc_pool_ctx *s = NULL;
 	unsigned long flags = 0;
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 0; i < cctx->sesscount; i++) {
 		s = &cctx->session[i];
-		if (s->valid && s->pd_type == ROOT_PD) {
+		if (s->pd_type == ROOT_PD && s->smmucb[DEFAULT_SMMU_IDX].valid) {
 			*sess = s;
 			err = 0;
 			break;
@@ -2589,7 +2802,8 @@ static int fastrpc_alloc_rootheap_buf(struct fastrpc_channel_ctx *cctx,
 	struct fastrpc_phy_page *pages, u32 *pageslen)
 {
 	struct fastrpc_buf *buf = NULL;
-	struct fastrpc_session_ctx *sess = NULL;
+	struct fastrpc_pool_ctx *sess = NULL;
+	struct fastrpc_smmu *smmucb = NULL;
 	const unsigned int ROOTHEAP_BUF_SIZE = (1024 * 1024),
 			NUM_ROOTHEAP_BUFS = 3;
 	int err = 0;
@@ -2605,13 +2819,13 @@ static int fastrpc_alloc_rootheap_buf(struct fastrpc_channel_ctx *cctx,
 	if (err)
 		goto bail;
 
-	err = __fastrpc_buf_alloc(NULL, sess->dev, sess, cctx->domain_id,
-			ROOTHEAP_BUF_SIZE, &buf, ROOTHEAP_BUF);
+	smmucb = &sess->smmucb[DEFAULT_SMMU_IDX];
+	err = __fastrpc_buf_alloc(NULL, smmucb, cctx->domain_id,
+				ROOTHEAP_BUF_SIZE, &buf, ROOTHEAP_BUF);
 	if (err)
 		goto bail;
 
 	/* Update paramaters of process-spawn with buffer info */
-	buf->phys += ((u64)sess->sid << 32);
 	*pageslen = NUM_PAGES_WITH_ROOTHEAP_BUF;
 	pages[NUM_PAGES_WITH_ROOTHEAP_BUF - 1].addr = buf->phys;
 	pages[NUM_PAGES_WITH_ROOTHEAP_BUF - 1].size = buf->size;
@@ -2655,14 +2869,15 @@ static int fastrpc_pack_root_sharedpage(struct fastrpc_user *fl,
 	struct fastrpc_phy_page *pages, u32 *pageslen)
 {
 	int err = 0;
+	struct fastrpc_smmu *smmucb = &fl->sctx->smmucb[DEFAULT_SMMU_IDX];
 
 	/* Allocate kernel buffer for rootPD shared page */
 	if (fl->config.root_addr &&
 			fl->config.root_size) {
-		err = fastrpc_buf_alloc(fl, fl->sctx->dev,
+		err = fastrpc_buf_alloc(fl, smmucb,
 				fl->config.root_size, USER_BUF, &fl->proc_init_sharedbuf);
 		if (err) {
-			dev_err(fl->sctx->dev, "failed to allocate buffer\n");
+			dev_err(smmucb->dev, "failed to allocate buffer\n");
 			return err;
 		}
 		/* Copy contents from userspace buffer containing data for rootPD */
@@ -2737,6 +2952,13 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	if (init.filelen > INIT_FILELEN_MAX)
 		return -EINVAL;
 
+	/*
+	 * Use SMMU pooled session for unsigned PD,
+	 * if smmucb_pool is set to true
+	 */
+	if (fl->is_unsigned_pd && fl->cctx->smmucb_pool)
+		fl->pd_type = USER_UNSIGNEDPD_POOL;
+
 	fl->sctx = fastrpc_session_alloc(fl, false);
 	if (!fl->sctx) {
 		dev_err(fl->cctx->dev, "No session available\n");
@@ -2751,7 +2973,16 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	inbuf.pageslen = 1;
 	inbuf.attrs = init.attrs;
 	inbuf.siglen = init.siglen;
-	fl->pd = USERPD;
+
+	/*
+	 * Default value at fastrpc_device_open is set as DEFAULT_UNUSED.
+	 * If pd_type is not configured by the process in fastrpc_set_session_info,
+	 * update the pd_type to USERPD, so that messages are directed to
+	 * dynamic process when fastrpc_getpd_msgidx is queried.
+	 * Do this only after session allocation
+	 */
+	if (fl->pd_type == DEFAULT_UNUSED)
+		fl->pd_type = USERPD;
 
 	if(fl->config.user_fd != -1 && fl->config.user_size > 0) {
 		mutex_lock(&fl->map_mutex);
@@ -2775,8 +3006,8 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 
 	memlen = ALIGN(max(INIT_FILELEN_MAX, (int)init.filelen * 4),
 		       1024 * 1024);
-	err = fastrpc_buf_alloc(fl, fl->sctx->dev, memlen,
-				INITMEM_BUF, &imem);
+
+	err = fastrpc_smmu_buf_alloc(fl, memlen, INITMEM_BUF, &imem);
 	if (err)
 		goto err_alloc;
 
@@ -3080,7 +3311,7 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	fl->is_secure_dev = fdevice->secure;
 	fl->sessionid = 0;
 	fl->config.user_fd = -1;
-	fl->pd = DEFAULT_UNUSED;
+	fl->pd_type = DEFAULT_UNUSED;
 	fl->multi_session_support = false;
 	fl->set_session_info = false;
 
@@ -3111,7 +3342,7 @@ static int fastrpc_dmabuf_alloc(struct fastrpc_user *fl, char __user *argp)
 	if (!fl->sctx)
 		return -EINVAL;
 
-	err = fastrpc_buf_alloc(fl, fl->sctx->dev, bp.size, USER_BUF, &buf);
+	err = fastrpc_smmu_buf_alloc(fl, bp.size, USER_BUF, &buf);
 	if (err)
 		return err;
 	exp_info.ops = &fastrpc_dma_buf_ops;
@@ -3193,6 +3424,16 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 		return -EBUSY;
 	}
 
+	/*
+	 * Default value at fastrpc_device_open is set as DEFAULT_UNUSED.
+	 * If pd_type is not configured by the process in fastrpc_set_session_info,
+	 * update the pd_type, so that messages are directed to right process,
+	 * when fastrpc_getpd_msgidx is queried.
+	 * Do this only after session allocation.
+	 */
+	if (fl->pd_type == DEFAULT_UNUSED)
+		fl->pd_type = pd;
+
 	if (pd == SENSORS_STATICPD) {
 		if (fl->cctx->domain_id == ADSP_DOMAIN_ID)
 			fl->servloc_name = SENSORS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME;
@@ -3207,7 +3448,6 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 	args[0].ptr = (u64)(uintptr_t) &tgid;
 	args[0].length = sizeof(tgid);
 	args[0].fd = -1;
-	fl->pd = pd;
 
 	ioctl.inv.handle = FASTRPC_INIT_HANDLE;
 	ioctl.inv.sc = FASTRPC_SCALARS(FASTRPC_RMID_INIT_ATTACH, 1, 0);
@@ -3247,7 +3487,8 @@ void fastrpc_queue_pd_status(struct fastrpc_user *fl, int domain, int status, in
 
 	notif_rsp = kzalloc(sizeof(*notif_rsp), GFP_ATOMIC);
 	if (!notif_rsp) {
-		dev_err(fl->sctx->dev, "Allocation failed for notif");
+		dev_err(fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev,
+							"Allocation failed for notif\n");
 		return;
 	}
 
@@ -3289,6 +3530,7 @@ static int fastrpc_wait_on_notif_queue(
 	int err = 0;
 	unsigned long flags;
 	struct fastrpc_notif_rsp *notif, *inotif, *n;
+	struct device *dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 
 read_notif_status:
 	err = wait_event_interruptible(fl->proc_state_notif.notif_wait_queue,
@@ -3311,7 +3553,7 @@ read_notif_status:
 		notif_rsp->status = notif->status;
 		notif_rsp->domain = notif->domain;
 	} else {// Go back to wait if ctx is invalid
-		dev_err(fl->sctx->dev, "Invalid status notification response\n");
+		dev_err(dev, "Invalid status notification response\n");
 		goto read_notif_status;
 	}
 
@@ -3339,7 +3581,8 @@ static int fastrpc_manage_poll_mode(struct fastrpc_user *fl, u32 enable, u32 tim
 {
 	const unsigned int MAX_POLL_TIMEOUT_US = 10000;
 
-	if ((fl->cctx->domain_id != CDSP_DOMAIN_ID) || (fl->pd != USERPD)) {
+	if ((fl->cctx->domain_id != CDSP_DOMAIN_ID) || (fl->pd_type != USERPD &&
+			fl->pd_type != USER_UNSIGNEDPD_POOL)) {
 		dev_err(fl->cctx->dev,"poll mode only allowed for dynamic CDSP process\n");
 		return -EPERM;
 	}
@@ -3476,7 +3719,7 @@ static int fastrpc_set_session_info(
 	 * ignore PD type passed by the user, leave pd_type set to DEFAULT_UNUSED(0)
 	 */
 	if (fl->cctx->pd_type)
-		fl->pd = sessinfo->pd;
+		fl->pd_type = sessinfo->pd;
 	// Processes attaching to Sensor Static PD, share context bank.
 	if (sessinfo->pd == SENSORS_STATICPD)
 		fl->sharedcb = 1;
@@ -3945,7 +4188,7 @@ static int fastrpc_req_munmap_dsp(struct fastrpc_user *fl, uintptr_t raddr, u64 
 
 static int fastrpc_req_munmap_impl(struct fastrpc_user *fl, struct fastrpc_buf *buf)
 {
-	struct device *dev = fl->sctx->dev;
+	struct device *dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 	int err;
 
 	err = fastrpc_req_munmap_dsp(fl, buf->raddr, buf->size);
@@ -3964,7 +4207,8 @@ static int fastrpc_req_munmap_impl(struct fastrpc_user *fl, struct fastrpc_buf *
 				err = qcom_scm_assign_mem(buf->phys, (u64)buf->size,
 								&src_perms, &dst_perms, 1);
 				if (err) {
-					dev_err(fl->sctx->dev, "%s: Failed to assign memory phys 0x%llx size 0x%llx err %d",
+					dev_err(dev,
+				"%s: Failed to assign memory phys 0x%llx size 0x%llx err %d",
 						__func__, buf->phys, buf->size, err);
 					return err;
 				}
@@ -3987,7 +4231,7 @@ static int fastrpc_req_munmap(struct fastrpc_user *fl, char __user *argp)
 	struct fastrpc_buf *buf = NULL, *iter, *b;
 	struct fastrpc_req_munmap req;
 	struct fastrpc_map *map = NULL, *iterm, *m;
-	struct device *dev = fl->sctx->dev;
+	struct device *dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 	int err = 0;
 	unsigned long flags;
 
@@ -4019,7 +4263,7 @@ static int fastrpc_req_munmap(struct fastrpc_user *fl, char __user *argp)
 	if (buf) {
 		err = fastrpc_req_munmap_impl(fl, buf);
 		return err;
-	} 
+	}
 	spin_lock(&fl->lock);
 	list_for_each_entry_safe(iterm, m, &fl->maps, node) {
 		if (iterm->raddr == req.vaddrout) {
@@ -4055,7 +4299,8 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 	struct fastrpc_phy_page pages;
 	struct fastrpc_req_mmap req;
 	struct fastrpc_map *map = NULL;
-	struct device *dev = fl->sctx->dev;
+	struct fastrpc_smmu *smmucb = &fl->sctx->smmucb[DEFAULT_SMMU_IDX];
+	struct device *dev = smmucb->dev;;
 	int err;
 	unsigned long flags;
 
@@ -4073,15 +4318,23 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 		}
 
 		if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
-			err = fastrpc_remote_heap_alloc(fl, dev, req.size, REMOTEHEAP_BUF, &buf);
+			err = fastrpc_buf_alloc(fl, NULL, req.size, REMOTEHEAP_BUF, &buf);
 		} else {
-			err = fastrpc_buf_alloc(fl, fl->sctx->dev, req.size, USER_BUF, &buf);
+			err = fastrpc_smmu_buf_alloc(fl, req.size, USER_BUF, &buf);
 		}
 
 		if (err) {
 			dev_err(dev, "failed to allocate buffer\n");
 			return err;
 		}
+
+		/*
+		 * Update dev with correct SMMU device,
+		 * on which the memory is allocated.
+		 */
+		if (req.flags == ADSP_MMAP_ADD_PAGES)
+			dev = buf->smmucb->dev;
+
 		req_msg.pgid = fl->tgid_frpc;
 		req_msg.flags = req.flags;
 		req_msg.vaddr = req.vaddrin;
@@ -4122,7 +4375,7 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 			err = qcom_scm_assign_mem(buf->phys,(u64)buf->size,
 				&src_perms, fl->cctx->vmperms, fl->cctx->vmcount);
 			if (err) {
-				dev_err(fl->sctx->dev, "Failed to assign memory phys 0x%llx size 0x%llx err %d",
+				dev_err(dev, "Failed to assign memory phys 0x%llx size 0x%llx err %d",
 						buf->phys, buf->size, err);
 				goto err_assign;
 			}
@@ -4220,7 +4473,7 @@ static int fastrpc_req_mem_unmap_impl(struct fastrpc_user *fl, struct fastrpc_me
 	struct fastrpc_map *map = NULL, *iter, *m;
 	struct fastrpc_mem_unmap_req_msg req_msg = { 0 };
 	int err = 0;
-	struct device *dev = fl->sctx->dev;
+	struct device *dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 
 	spin_lock(&fl->lock);
 	list_for_each_entry_safe(iter, m, &fl->maps, node) {
@@ -4274,7 +4527,7 @@ static int fastrpc_req_mem_map(struct fastrpc_user *fl, char __user *argp)
 {
 	struct fastrpc_mem_unmap req_unmap = { 0 };
 	struct fastrpc_mem_map req = {0};
-	struct device *dev = fl->sctx->dev;
+	struct device *dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 	struct fastrpc_map *map = NULL;
 	int err;
 
@@ -4944,16 +5197,18 @@ static const struct file_operations fastrpc_fops = {
 static int fastrpc_cb_probe(struct platform_device *pdev)
 {
 	struct fastrpc_channel_ctx *cctx;
-	struct fastrpc_session_ctx *sess;
+	struct fastrpc_pool_ctx *sess = NULL;
 	struct device *dev = &pdev->dev;
 	int i, sessions = 0;
 	unsigned long flags;
+	u32 pd_type = DEFAULT_UNUSED, smmuidx = DEFAULT_SMMU_IDX;
 	int rc, err = 0;
 	struct fastrpc_buf *buf = NULL;
 	struct iommu_domain *domain = NULL;
 	struct gen_pool *gen_pool = NULL;
-	int frpc_gen_addr_pool[2] = {0, 0};
+	int frpc_gen_addr_pool[2] = {0, 0}, smmu_alloc_range[2] = {0, 0};
 	struct sg_table sgt;
+	struct fastrpc_smmu *smmucb = NULL;
 
 	cctx = get_current_channel_ctx(dev);
 
@@ -4962,35 +5217,75 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 
 	of_property_read_u32(dev->of_node, "qcom,nsessions", &sessions);
 
-	spin_lock_irqsave(&cctx->lock, flags);
-	if (cctx->sesscount >= FASTRPC_MAX_SESSIONS) {
-		dev_err(&pdev->dev, "too many sessions\n");
-		spin_unlock_irqrestore(&cctx->lock, flags);
-		return -ENOSPC;
-	}
-	sess = &cctx->session[cctx->sesscount++];
-	sess->used = false;
-	sess->valid = true;
-	sess->dev = dev;
-	sess->secure = of_property_read_bool(dev->of_node, "qcom,secure-context-bank");
-	init_completion(&sess->cleanup);
-	mutex_init(&sess->map_mutex);
-	dev_set_drvdata(dev, sess);
-
-	if (of_property_read_u32(dev->of_node, "reg", &sess->sid))
-		dev_info(dev, "FastRPC Session ID not specified in DT\n");
-
 	if (of_get_property(dev->of_node, "pd-type", NULL) != NULL) {
 		err = of_property_read_u32(dev->of_node, "pd-type",
-				&(sess->pd_type));
+				&pd_type);
 		if (err)
 			goto bail;
 		// Set pd_type, if the process type is configured for context banks
 		cctx->pd_type = true;
 	}
 
+	spin_lock_irqsave(&cctx->lock, flags);
+	if (cctx->sesscount >= FASTRPC_MAX_SESSIONS) {
+		dev_err(&pdev->dev, "too many sessions\n");
+		spin_unlock_irqrestore(&cctx->lock, flags);
+		return -ENOSPC;
+	}
+
+	/* Find any existing session for pooling CBs with same PD type */
+	for (i = 0; i < cctx->sesscount; i++) {
+		/* Only USER_UNSIGNEDPD_POOL type is pooled */
+		if (pd_type != USER_UNSIGNEDPD_POOL)
+			break;
+
+		if (cctx->session[i].pd_type == pd_type) {
+			sess = &cctx->session[i];
+			/* Set smmucb_pool to true, if SMMU CB pooling is enabled */
+			cctx->smmucb_pool = true;
+			break;
+		}
+	}
+
+	/* If no existing session was found, prepare new session */
+	if (!sess)
+		sess = &cctx->session[cctx->sesscount++];
+
+	/* Update session info during probe of first CB only */
+	if (sess->smmucount == 0) {
+		sess->usecount = 0;
+		sess->pd_type = pd_type;
+		init_completion(&sess->cleanup);
+	}
+	/* Read secure flag for each context bank, even if part of CB pool */
+	sess->secure = of_property_read_bool(dev->of_node,
+						"qcom,secure-context-bank");
+
+	/* Populate SMMU CB info at next available free SMMU index */
+	smmuidx = sess->smmucount++;
+	smmucb = &sess->smmucb[smmuidx];
+	smmucb->valid = true;
+	smmucb->dev = dev;
+	smmucb->sess = sess;
+	mutex_init(&smmucb->map_mutex);
+
+	if (of_property_read_u32(dev->of_node, "reg", &smmucb->sid))
+		dev_info(dev, "FastRPC Session ID not specified in DT\n");
+
+	/* Set SMMU context bank, min and max allocation range */
+	if (!of_property_read_u32_array(dev->of_node, "alloc-size-range",
+							smmu_alloc_range, 2)) {
+		smmucb->minallocsize = smmu_alloc_range[0];
+		smmucb->maxallocsize = smmu_alloc_range[1];
+	}
+	smmucb->totalbytes = SMMU_4GB_ADDRESS_SPACE;
+
+	/* Set SMMU device private data with fastrpc SMMU CB pointer */
+	dev_set_drvdata(dev, smmucb);
+
+	/* Context bank can be shared by multiple apps. Create duplicate sessions */
 	if (sessions > 0) {
-		struct fastrpc_session_ctx *dup_sess;
+		struct fastrpc_pool_ctx *dup_sess = NULL;
 
 		sess->sharedcb = true;
 		for (i = 1; i < sessions; i++) {
@@ -4998,7 +5293,7 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 				break;
 			dup_sess = &cctx->session[cctx->sesscount++];
 			memcpy(dup_sess, sess, sizeof(*dup_sess));
-			mutex_init(&dup_sess->map_mutex);
+			mutex_init(&dup_sess->smmucb[DEFAULT_SMMU_IDX].map_mutex);
 			init_completion(&dup_sess->cleanup);
 		}
 	}
@@ -5012,8 +5307,8 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 					dev_name(dev), err);
 			goto bail;
 		}
-		sess->genpool_iova = frpc_gen_addr_pool[0];
-		sess->genpool_size = frpc_gen_addr_pool[1];
+		smmucb->genpool_iova = frpc_gen_addr_pool[0];
+		smmucb->genpool_size = frpc_gen_addr_pool[1];
 
 		buf = kzalloc(sizeof(*buf), GFP_KERNEL);
 		if (IS_ERR_OR_NULL(buf)) {
@@ -5027,12 +5322,12 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 		buf->virt = NULL;
 		buf->phys = 0;
 		buf->size = frpc_gen_addr_pool[1];
-		buf->dev = NULL;
+		buf->dev = smmucb->dev;
 		buf->raddr = 0;
 
 
 		/* Allocate memory for adding to genpool */
-		buf->virt = dma_alloc_coherent(sess->dev, buf->size,
+		buf->virt = dma_alloc_coherent(buf->dev, buf->size,
 					(dma_addr_t *)&buf->phys, GFP_KERNEL);
 
 		if (IS_ERR_OR_NULL(buf->virt)) {
@@ -5042,13 +5337,13 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 			goto dma_alloc_bail;
 		}
 
-		err = dma_get_sgtable(sess->dev, &sgt, buf->virt,
+		err = dma_get_sgtable(smmucb->dev, &sgt, buf->virt,
 				buf->phys, buf->size);
 		if (err) {
 			dev_err(&pdev->dev, "dma_get_sgtable_attrs failed with err %d", err);
 				goto iommu_map_bail;
 		}
-		domain = iommu_get_domain_for_dev(sess->dev);
+		domain = iommu_get_domain_for_dev(smmucb->dev);
 		if (!domain) {
 			dev_err(&pdev->dev, "iommu_get_domain_for_dev failed ");
 			goto iommu_map_bail;
@@ -5069,7 +5364,7 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 		}
 
 		/* Create genpool using SMMU device */
-		gen_pool = devm_gen_pool_create(sess->dev, 0, NUMA_NO_NODE, NULL);
+		gen_pool = devm_gen_pool_create(smmucb->dev, 0, NUMA_NO_NODE, NULL);
 		if (IS_ERR(gen_pool)) {
 			err = PTR_ERR(gen_pool);
 			dev_err(&pdev->dev, "devm_gen_pool_create failed with err %d", err);
@@ -5082,8 +5377,8 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 				dev_err(&pdev->dev, "gen_pool_add_virt failed with err %d", err);
 			goto genpool_add_bail;
 		}
-		sess->frpc_genpool = gen_pool;
-		sess->frpc_genpool_buf = buf;
+		smmucb->frpc_genpool = gen_pool;
+		smmucb->frpc_genpool_buf = buf;
 		dev_err(&pdev->dev, "fastrpc_cb_probe qrtr-gen-pool end\n");
 	}
 	rc = dma_set_mask(dev, DMA_BIT_MASK(32));
@@ -5110,35 +5405,73 @@ bail:
 genpool_add_bail:
 	gen_pool_destroy(gen_pool);
 genpool_create_bail:
-	iommu_unmap(domain, sess->genpool_iova, sess->genpool_size);
+	iommu_unmap(domain, smmucb->genpool_iova, smmucb->genpool_size);
 iommu_map_bail:
-	dma_free_coherent(sess->dev, buf->size, buf->virt, FASTRPC_PHYS(buf->phys));
+	dma_free_coherent(smmucb->dev, buf->size, buf->virt, FASTRPC_PHYS(buf->phys));
 dma_alloc_bail:
 	kfree(buf);
 	return err;
 }
 
+/* Function to free fastrpc genpool buffer */
+static void fastrpc_genpool_free(struct fastrpc_smmu *smmucb)
+{
+	struct fastrpc_buf *buf = NULL;
+	struct iommu_domain *domain = NULL;
+
+	if (!smmucb)
+		return;
+	buf = smmucb->frpc_genpool_buf;
+	if (smmucb->frpc_genpool) {
+		gen_pool_destroy(smmucb->frpc_genpool);
+		smmucb->frpc_genpool = NULL;
+	}
+	if (buf && smmucb->dev) {
+		domain = iommu_get_domain_for_dev(smmucb->dev);
+		iommu_unmap(domain, smmucb->genpool_iova,
+					smmucb->genpool_size);
+		if (buf->phys)
+			dma_free_coherent(buf->dev, buf->size, buf->virt,
+									FASTRPC_PHYS(buf->phys));
+		kfree(buf);
+		smmucb->frpc_genpool_buf = NULL;
+	}
+}
+
 static int fastrpc_cb_remove(struct platform_device *pdev)
 {
 	struct fastrpc_channel_ctx *cctx = dev_get_drvdata(pdev->dev.parent);
-	struct fastrpc_session_ctx *sess = dev_get_drvdata(&pdev->dev);
+	struct fastrpc_smmu *smmucb = dev_get_drvdata(&pdev->dev),
+							*ismmucb = NULL;
+	struct fastrpc_pool_ctx *sess = smmucb->sess, *isess = NULL;
 	unsigned long flags;
-	int i;
+	int i = 0, j = 0;
 
 	if (sess->pd_type == ROOT_PD)
-		fastrpc_rootheap_buf_list_free(cctx, sess);
+		fastrpc_rootheap_buf_list_free(cctx);
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++) {
-		if (cctx->session[i].sid == sess->sid) {
+		for (j = 0; j < cctx->session[i].smmucount; j++) {
+			isess = &cctx->session[i];
+			ismmucb = &cctx->session[i].smmucb[j];
+			if (ismmucb->sid != smmucb->sid)
+				continue;
 			spin_unlock_irqrestore(&cctx->lock, flags);
-			if (cctx->session[i].used)
-				wait_for_completion(&cctx->session[i].cleanup);
-			mutex_lock(&cctx->session[i].map_mutex);
-			cctx->session[i].dev = NULL;
-			mutex_unlock(&cctx->session[i].map_mutex);
+
+			/*
+			 * Remove SMMU CB, only after all users using the CB
+			 * have released it.
+			 */
+			if (isess->usecount > 0)
+				wait_for_completion(&isess->cleanup);
+			mutex_lock(&ismmucb->map_mutex);
+			if (ismmucb->frpc_genpool)
+				fastrpc_genpool_free(ismmucb);
+			ismmucb->dev = NULL;
+			mutex_unlock(&ismmucb->map_mutex);
 			spin_lock_irqsave(&cctx->lock, flags);
-			cctx->session[i].valid = false;
+			ismmucb->valid = false;
 			cctx->sesscount--;
 		}
 	}
