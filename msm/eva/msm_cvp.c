@@ -517,10 +517,20 @@ static int cvp_populate_fences( struct eva_kmd_hfi_packet *in_pkt,
 	enum op_mode mode;
 	struct cvp_buf_type *buf;
 	bool override;
+	unsigned int total_fence_count = 0;
 
+	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
 	int rc = 0;
 	CVPKERNEL_ATRACE_BEGIN("cvp_populate_fences");
 
+	if (!offset || !num)
+		return 0;
+
+	if (offset < (sizeof(struct cvp_hfi_cmd_session_hdr)/sizeof(u32))) {
+		dprintk(CVP_ERR, "%s: Incorrect offset in cmd %d\n", __func__, offset);
+		rc = -EINVAL;
+		goto exit;
+	}
 	override = get_pkt_fenceoverride((struct cvp_hal_session_cmd_pkt*)in_pkt);
 
 	dprintk(CVP_SYNX, "%s:Fence Override is %d\n",__func__, override);
@@ -538,7 +548,6 @@ static int cvp_populate_fences( struct eva_kmd_hfi_packet *in_pkt,
 		goto exit;
 	}
 
-	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
 	rc = cvp_alloc_fence_data((&f), cmd_hdr->size);
 	if (rc) {
 		dprintk(CVP_ERR,"%s: Failed to alloc fence data", __func__);
@@ -610,7 +619,15 @@ kernel_fence:
 			f->num_fences++;
 			buf->fence_type &= ~INPUT_FENCE_BITMASK;
 			buf->input_handle = 0;
+			total_fence_count++;
 		}
+		if (buf->output_handle)
+			total_fence_count++;
+	}
+	if (total_fence_count > MAX_HFI_FENCE_SIZE) {
+		dprintk(CVP_ERR, "Invalid total_fence_count %d\n", total_fence_count);
+		rc = -EINVAL;
+		goto free_exit;
 	}
 	f->output_index = f->num_fences;
 
