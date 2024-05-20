@@ -528,6 +528,12 @@ void dsi_ctrl_hw_cmn_set_video_timing(struct dsi_ctrl_hw *ctrl,
 	DSI_W32(ctrl, DSI_DSI_TIMING_FLUSH, 0x1);
 	DSI_CTRL_HW_DBG(ctrl, "ctrl video parameters updated\n");
 	SDE_EVT32(v_total, h_total);
+
+	if (mode->esync_enabled) {
+		/* Skip extended VFP blanking lines over DSI lanes */
+		DSI_W32(ctrl, DSI_VIDEO_MODE_CTRL5, v_total);
+		DSI_W32(ctrl, DSI_VIDEO_MODE_CTRL4, 1);
+	}
 }
 
 /**

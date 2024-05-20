@@ -212,6 +212,7 @@ static u32 programmable_fetch_get_num_lines(
 {
 	struct sde_encoder_phys *phys_enc = &vid_enc->base;
 	struct sde_mdss_cfg *m;
+	struct sde_connector *sde_conn = to_sde_connector(phys_enc->connector);
 
 	u32 needed_prefill_lines, needed_vfp_lines, actual_vfp_lines;
 	const u32 fixed_prefill_fps = DEFAULT_FPS;
@@ -220,7 +221,16 @@ static u32 programmable_fetch_get_num_lines(
 	u32 start_of_frame_lines =
 	    timing->v_back_porch + timing->vsync_pulse_width;
 	u32 v_front_porch = timing->v_front_porch;
+	u32 allowed_vfp = v_front_porch;
 	u32 vrefresh, max_fps;
+
+	/*
+	 * In case of level TE, MDP will use prog fetch start as the decision point
+	 * for checking TE level and determining whether to send out a frame. This
+	 * extra line gives time for TE to come up after active.
+	 */
+	if (sde_conn->vrr_caps.video_psr_support)
+		allowed_vfp = v_front_porch - 2;
 
 	m = phys_enc->sde_kms->catalog;
 	max_fps = sde_encoder_get_dfps_maxfps(phys_enc->parent);
@@ -237,13 +247,13 @@ static u32 programmable_fetch_get_num_lines(
 		SDE_DEBUG_VIDENC(vid_enc,
 				"prog fetch always enabled case\n");
 		actual_vfp_lines = (test_bit(SDE_FEATURE_DELAY_PRG_FETCH, m->features)) ? 2 : 1;
-	} else if (v_front_porch < needed_vfp_lines) {
+	} else if (allowed_vfp < needed_vfp_lines) {
 		/* Warn fetch needed, but not enough porch in panel config */
 		pr_warn_once
 			("low vbp+vfp may lead to perf issues in some cases\n");
 		SDE_DEBUG_VIDENC(vid_enc,
 				"less vfp than fetch req, using entire vfp\n");
-		actual_vfp_lines = v_front_porch;
+		actual_vfp_lines = allowed_vfp;
 	} else {
 		SDE_DEBUG_VIDENC(vid_enc, "room in vfp for needed prefetch\n");
 		actual_vfp_lines = needed_vfp_lines;
@@ -254,8 +264,8 @@ static u32 programmable_fetch_get_num_lines(
 		vrefresh, v_front_porch, timing->v_back_porch,
 		timing->vsync_pulse_width);
 	SDE_DEBUG_VIDENC(vid_enc,
-		"prefill_lines:%u needed_vfp_lines:%u actual_vfp_lines:%u\n",
-		needed_prefill_lines, needed_vfp_lines, actual_vfp_lines);
+		"prefill_lines:%u needed_vfp_lines:%u actual_vfp_lines:%u allowed_vfp:%u\n",
+		needed_prefill_lines, needed_vfp_lines, actual_vfp_lines, allowed_vfp);
 
 	return actual_vfp_lines;
 }
