@@ -23,6 +23,7 @@
 )
 
 atomic_t cvp_error_count;
+bool trigger_smmu_fault;
 
 static void dump_hfi_queue(struct iris_hfi_device *device)
 {
@@ -1369,6 +1370,12 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 		handle_session_timeout(inst);
 		return;
 	}
+	if (core->ssr_type == SSR_CORE_SMMU_FAULT) {
+		trigger_smmu_fault = true;
+		dprintk(CVP_ERR, "smmu fault triggered\n");
+		return;
+	}
+
 send_again:
 	mutex_lock(&core->lock);
 	if (core->state == CVP_CORE_INIT_DONE) {

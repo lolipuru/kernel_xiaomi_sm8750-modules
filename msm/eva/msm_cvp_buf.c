@@ -19,6 +19,8 @@
 #include "eva_shared_def.h"
 #include "cvp_presil.h"
 
+extern bool trigger_smmu_fault;
+
 void cvp_buf_map_set_vaddr(struct cvp_dma_buf_vmap *vmap, void *vaddr)
 {
 	#if (KERNEL_VERSION(5, 16, 0) > LINUX_VERSION_CODE)
@@ -1648,6 +1650,9 @@ exit:
 	return ret;
 }
 
+/* for trigger smmu fault */
+static u32 frame_count;
+
 static u32 msm_cvp_map_frame_buf(struct msm_cvp_inst *inst,
 			struct cvp_buf_type *buf,
 			struct msm_cvp_frame *frame,
@@ -1692,6 +1697,16 @@ static u32 msm_cvp_map_frame_buf(struct msm_cvp_inst *inst,
 #endif
 
 	iova = smem->device_addr + buf->offset;
+
+	if (trigger_smmu_fault) {
+		frame_count++;
+		if (frame_count % 200 == 0) {
+			iova -= 0x4000000;
+			frame_count = 0;
+			trigger_smmu_fault = false;
+			dprintk(CVP_ERR, "generating fault address %#x", iova);
+		}
+	}
 
 	return iova;
 }
