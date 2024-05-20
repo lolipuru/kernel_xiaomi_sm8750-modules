@@ -21,6 +21,8 @@
 #define DATA_BUS_HW_CLIENT_NAME "qcom,sde-data-bus-hw"
 #define DATA_BUS_SW_CLIENT_0_NAME "qcom,sde-data-bus-sw-0"
 
+#define MDP_CLK_LOWSVS_D1	156000000
+
 static struct sde_cesta *cesta_list[MAX_CESTA_COUNT] = {NULL, };
 
 bool sde_cesta_is_enabled(u32 cesta_index)
@@ -297,7 +299,7 @@ static void _sde_cesta_clk_bw_vote(struct sde_cesta_client *client, bool pwr_st_
 	struct sde_cesta *cesta = cesta_list[client->cesta_index];
 	struct dss_module_power *mp;
 	struct clk *core_clk = NULL;
-	u64 idle_bw_ab = 0, idle_bw_ib = 0;
+	u64 idle_bw_ab = 0, idle_bw_ib = 0, idle_clk_ab = 0, idle_clk_ib = 0;
 	int i, ret;
 
 	mp = &cesta->phandle.mp;
@@ -327,13 +329,20 @@ static void _sde_cesta_clk_bw_vote(struct sde_cesta_client *client, bool pwr_st_
 	if (pwr_st_override) {
 		idle_bw_ab = bw_ab;
 		idle_bw_ib = bw_ib;
+
+		idle_clk_ab = clk_ab;
+		idle_clk_ib = clk_ib;
+	} else {
+		idle_clk_ab = 0;
+		idle_clk_ib = MDP_CLK_LOWSVS_D1;
 	}
 
 	/* mdp-clk voting */
 	ret = qcom_clk_crmb_set_rate(core_clk, CRM_HW_DRV, client->scc_index,
-			0, CRM_PWR_STATE0, clk_ab, clk_ib);
+			0, CRM_PWR_STATE0, idle_clk_ab, idle_clk_ib);
 	if (ret)
 		SDE_ERROR_CESTA("clk active vote failed - ret:%d\n", ret);
+
 	ret = qcom_clk_crmb_set_rate(core_clk, CRM_HW_DRV, client->scc_index,
 			0, CRM_PWR_STATE1, clk_ab, clk_ib);
 	if (ret)
@@ -356,6 +365,8 @@ static void _sde_cesta_clk_bw_vote(struct sde_cesta_client *client, bool pwr_st_
 	if (ret)
 		SDE_ERROR_CESTA("crm_write_pwr_states failed - ret:%d\n", ret);
 
+	SDE_EVT32(client->scc_index, clk_ab, clk_ib, idle_clk_ab, idle_clk_ib, bw_ab, bw_ib,
+			idle_bw_ab, idle_bw_ib);
 }
 
 void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_params *params)
