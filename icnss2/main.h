@@ -25,6 +25,7 @@
 #include "cnss_common.h"
 #include <linux/mailbox_client.h>
 #include <linux/timer.h>
+#include <linux/sched_clock.h>
 
 #define THERMAL_NAME_LENGTH 20
 #define ICNSS_SMEM_VALUE_MASK 0xFFFFFFFF
