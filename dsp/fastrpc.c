@@ -1094,7 +1094,6 @@ static void fastrpc_pm_awake(struct fastrpc_user *fl,
 	 * Vote with PM to abort any suspend in progress and
 	 * keep system awake for specified timeout
 	 */
-	mutex_lock(&cctx->wake_mutex);
 	if (is_secure_channel)
 		wake_source = cctx->wake_source_secure;
 	else
@@ -1102,7 +1101,6 @@ static void fastrpc_pm_awake(struct fastrpc_user *fl,
 
 	if (wake_source)
 		pm_wakeup_ws_event(wake_source, fl->ws_timeout, true);
-	mutex_unlock(&cctx->wake_mutex);
 }
 
 static void fastrpc_pm_relax(struct fastrpc_user *fl,
@@ -3691,7 +3689,9 @@ static int fastrpc_internal_control(struct fastrpc_user *fl,
 			fl->ws_timeout = FASTRPC_MAX_PM_TIMEOUT_MS;
 		else
 			fl->ws_timeout = cp->pm.timeout;
+		mutex_lock(&cctx->wake_mutex);
 		fastrpc_pm_awake(fl, fl->cctx->secure);
+		mutex_unlock(&cctx->wake_mutex);
 		break;
 	case FASTRPC_CONTROL_DSPPROCESS_CLEAN:
 		err = fastrpc_release_current_dsp_process(fl);
@@ -5580,6 +5580,8 @@ void fastrpc_register_wakeup_source(struct device *dev,
 static void fastrpc_notify_user_ctx(struct fastrpc_invoke_ctx *ctx, int retval,
 		u32 rsp_flags, u32 early_wake_time)
 {
+	if (ctx->cctx && !atomic_read(&ctx->cctx->teardown))
+		fastrpc_pm_awake(ctx->fl, ctx->cctx->secure);
 	ctx->retval = retval;
 	ctx->rsp_flags = (enum fastrpc_response_flags)rsp_flags;
 	trace_fastrpc_context_complete(ctx->cctx->domain_id, (uint64_t)ctx,
