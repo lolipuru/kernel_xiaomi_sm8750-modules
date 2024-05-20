@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_CPAS_HW_H_
@@ -399,6 +399,7 @@ struct cam_cpas_monitor {
  * @dentry: debugfs file entry
  * @ahb_bus_scaling_disable: ahb scaling based on src clk corner for bus
  * @applied_camnoc_axi_rate: applied camnoc axi clock rate through sw, hw clients
+ * @applied_hlos_rt_camnoc_axi_rate: applied hlos RT camnoc axi clock rate
  * @monitor_head: Monitor array head
  * @monitor_entries: cpas monitor array
  * @camnoc_info: array of camnoc info pointer
@@ -440,6 +441,7 @@ struct cam_cpas {
 	struct dentry *dentry;
 	bool ahb_bus_scaling_disable;
 	struct cam_soc_util_clk_rates applied_camnoc_axi_rate;
+	unsigned long applied_hlos_rt_camnoc_axi_rate;
 	atomic64_t  monitor_head;
 	struct cam_cpas_monitor monitor_entries[CAM_CPAS_MONITOR_MAX_ENTRIES];
 	void *camnoc_info[CAM_CAMNOC_HW_TYPE_MAX];

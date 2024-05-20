@@ -855,6 +855,7 @@ static int cam_isp_io_buf_get_entries_util(
 
 		map_entries->resource_handle = io_cfg->resource_type;
 		map_entries->sync_id = io_cfg->fence;
+		map_entries->early_sync_id = io_cfg->early_fence;
 		if (buf_info->major_version == 3)
 			map_entries->hw_ctxt_id = io_cfg->flag;
 		else
@@ -1816,6 +1817,7 @@ int cam_isp_add_csid_reg_update(
 	bool                                  combine)
 {
 	int rc;
+	bool add_toggled_entry;
 	struct cam_isp_resource_node         *res;
 	uint32_t kmd_buf_remain_size, reg_update_size = 0;
 	struct cam_isp_csid_reg_update_args *rup_args = NULL;
@@ -1829,7 +1831,7 @@ int cam_isp_add_csid_reg_update(
 	}
 
 	rup_args = (struct cam_isp_csid_reg_update_args *)args;
-
+	add_toggled_entry = rup_args->add_toggled_mup_entry;
 	if (!rup_args->num_res) {
 		CAM_ERR(CAM_ISP, "No Res for Reg Update");
 		return -EINVAL;
@@ -1847,13 +1849,13 @@ int cam_isp_add_csid_reg_update(
 	kmd_buf_remain_size = kmd_buf_info->size -
 		(kmd_buf_info->used_bytes +
 		reg_update_size);
-
 	rup_args->cmd.used_bytes = 0;
 	rup_args->cmd.cmd_buf_addr = kmd_buf_info->cpu_addr +
 		kmd_buf_info->used_bytes/4 +
 		reg_update_size/4;
 	rup_args->cmd.size = kmd_buf_remain_size;
 	rup_args->reg_write = false;
+	rup_args->add_toggled_mup_entry = false;
 	res = rup_args->res[0];
 
 	rc = res->hw_intf->hw_ops.process_cmd(
@@ -1873,6 +1875,38 @@ int cam_isp_add_csid_reg_update(
 		cam_isp_update_hw_entry(CAM_ISP_COMMON_CFG_BL,
 			prepare, kmd_buf_info, reg_update_size,
 			combine);
+
+	if (add_toggled_entry) {
+		kmd_buf_remain_size = kmd_buf_info->size -
+			(kmd_buf_info->used_bytes + reg_update_size);
+		if (kmd_buf_info->size <= (kmd_buf_info->used_bytes +
+			reg_update_size)) {
+			CAM_WARN(CAM_ISP, "no free mem %u %u %u",
+				kmd_buf_info->size, kmd_buf_info->used_bytes +
+				reg_update_size);
+			return 0;
+		}
+		rup_args->cmd.used_bytes = 0;
+		rup_args->cmd.cmd_buf_addr = kmd_buf_info->cpu_addr +
+			kmd_buf_info->used_bytes/4 + reg_update_size/4;
+		rup_args->cmd.size = kmd_buf_remain_size;
+		rup_args->reg_write = false;
+		rup_args->add_toggled_mup_entry = true;
+		res = rup_args->res[0];
+		reg_update_size = 0;
+		rc = res->hw_intf->hw_ops.process_cmd(
+			res->hw_intf->hw_priv,
+			CAM_ISP_HW_CMD_GET_REG_UPDATE, rup_args,
+			sizeof(struct cam_isp_csid_reg_update_args));
+		if (!rc) {
+			reg_update_size += rup_args->cmd.used_bytes;
+			/* Update hw entries */
+			if (reg_update_size)
+				cam_isp_update_hw_entry(CAM_ISP_DEBUG_ENTRY,
+					prepare, kmd_buf_info, reg_update_size, false);
+		}
+	}
+
 	return 0;
 }
 

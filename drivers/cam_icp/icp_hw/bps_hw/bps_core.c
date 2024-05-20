@@ -80,6 +80,13 @@ int cam_bps_init_hw(void *device_priv,
 	}
 	spin_unlock_irqrestore(&bps_dev->hw_lock, flags);
 
+	rc = cam_vmrm_soc_acquire_resources(CAM_HW_ID_BPS + core_info->bps_hw_info->hw_idx);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "BPS hw id %x acquire ownership failed",
+			CAM_HW_ID_BPS + core_info->bps_hw_info->hw_idx);
+		return rc;
+	}
+
 	cpas_vote.ahb_vote.type = CAM_VOTE_ABSOLUTE;
 	cpas_vote.ahb_vote.vote.level = CAM_LOWSVS_D1_VOTE;
 	cpas_vote.axi_vote.num_paths = 1;
@@ -178,6 +185,13 @@ int cam_bps_deinit_hw(void *device_priv,
 	spin_unlock_irqrestore(&bps_dev->hw_lock, flags);
 	CAM_DBG(CAM_ICP, "BPS%u powered off (refcnt: %u)",
 		soc_info->index, core_info->power_on_cnt);
+
+	rc = cam_vmrm_soc_release_resources(CAM_HW_ID_BPS + core_info->bps_hw_info->hw_idx);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "BPS hw id %x release ownership failed",
+			CAM_HW_ID_BPS + core_info->bps_hw_info->hw_idx);
+	}
+
 
 	return rc;
 }

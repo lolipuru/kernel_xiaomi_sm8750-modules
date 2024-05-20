@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_ISP_HW_MGR_INTF_H_
@@ -404,6 +404,7 @@ struct cam_isp_hw_epoch_event_data {
  * @comp_group_id:       Bus comp group id
  * @last_consumed_addr:  Last consumed addr
  * @timestamp:           Timestamp for the buf done event
+ * @is_early_done:       Indicates if its an early done event
  *
  */
 struct cam_isp_hw_done_event_data {
@@ -412,6 +413,7 @@ struct cam_isp_hw_done_event_data {
 	uint32_t             comp_group_id;
 	uint32_t             last_consumed_addr;
 	uint64_t             timestamp;
+	bool                 is_early_done;
 };
 
 /**
@@ -467,6 +469,7 @@ enum cam_isp_hw_mgr_command {
 	CAM_ISP_HW_MGR_GET_BUS_COMP_GROUP,
 	CAM_ISP_HW_MGR_CMD_UPDATE_CLOCK,
 	CAM_ISP_HW_MGR_GET_LAST_CONSUMED_ADDR,
+	CAM_ISP_HW_MGR_SET_DRV_INFO,
 	CAM_ISP_HW_MGR_CMD_MAX,
 };
 
@@ -477,6 +480,26 @@ enum cam_isp_ctx_type {
 	CAM_ISP_CTX_OFFLINE,
 	CAM_ISP_CTX_MAX,
 };
+
+/**
+ * struct cam_isp_hw_drv_info - DRV info
+ *
+ * @req_id:                 Request id
+ * @path_idle_en:           Mask for paths to be considered for consolidated IDLE signal.
+ *                          When paths matching the mask go idle, BW is voted down.
+ * @frame_duration:         Frame duration for a request
+ * @blanking_duration:      Vertical blanking duration for a request, and it is representing
+ *                          the blanking durations before the frame for this request.
+ * @drv_blanking_threshold: DRV blanking threshold
+ */
+struct cam_isp_hw_drv_info {
+	uint64_t req_id;
+	uint32_t path_idle_en;
+	uint64_t frame_duration;
+	uint64_t blanking_duration;
+	uint64_t drv_blanking_threshold;
+};
+
 /**
  * struct cam_isp_hw_cmd_args - Payload for hw manager command
  *
@@ -487,24 +510,30 @@ enum cam_isp_ctx_type {
  * @last_cdm_done:         Last cdm done request
  * @ctx_info:              Gives info about context(RDI, PIX, bubble recovery)
  * @sof_ts:                SOF timestamps (current, boot and previous)
+ * @default_cfg_params:    The params for default config
+ * @drv_info:              DRV info for corresponding req
  * @cdm_done_ts:           CDM callback done timestamp
  */
 struct cam_isp_hw_cmd_args {
 	uint32_t                          cmd_type;
 	void                             *cmd_data;
 	union {
-		uint32_t                         sof_irq_enable;
-		uint32_t                         packet_op_code;
-		uint64_t                         last_cdm_done;
+		uint32_t                      sof_irq_enable;
+		uint32_t                      packet_op_code;
+		uint64_t                      last_cdm_done;
 		struct {
-			uint64_t                 type;
-			bool                     bubble_recover_dis;
+			uint64_t                  type;
+			bool                      bubble_recover_dis;
 		} ctx_info;
 		struct {
-			uint64_t                 curr;
-			uint64_t                 prev;
-			uint64_t                 boot;
+			uint64_t                  curr;
+			uint64_t                  prev;
+			uint64_t                  boot;
 		} sof_ts;
+		struct {
+			int64_t                   last_applied_max_pd_req;
+		} default_cfg_params;
+		struct cam_isp_hw_drv_info    drv_info;
 	} u;
 	struct timespec64 cdm_done_ts;
 };

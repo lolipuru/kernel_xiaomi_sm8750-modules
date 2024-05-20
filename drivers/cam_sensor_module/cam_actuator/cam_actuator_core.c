@@ -411,13 +411,23 @@ static int cam_actuator_update_req_mgr(
 
 int32_t cam_actuator_publish_dev_info(struct cam_req_mgr_device_info *info)
 {
+	struct cam_actuator_ctrl_t *a_ctrl;
+
 	if (!info) {
 		CAM_ERR(CAM_ACTUATOR, "Invalid Args");
 		return -EINVAL;
 	}
 
+	a_ctrl = (struct cam_actuator_ctrl_t *)
+		cam_get_device_priv(info->dev_hdl);
+	if (!a_ctrl) {
+		CAM_ERR(CAM_ACTUATOR, "Device data is NULL");
+		return -EINVAL;
+	}
+
 	info->dev_id = CAM_REQ_MGR_DEVICE_ACTUATOR;
-	strlcpy(info->name, CAM_ACTUATOR_NAME, sizeof(info->name));
+	snprintf(info->name, sizeof(info->name), "%s(camera-actuator%u)",
+		CAM_ACTUATOR_NAME, a_ctrl->soc_info.index);
 	info->p_delay = CAM_PIPELINE_DELAY_1;
 	info->m_delay = CAM_MODESWITCH_DELAY_1;
 	info->trigger = CAM_TRIGGER_POINT_SOF;

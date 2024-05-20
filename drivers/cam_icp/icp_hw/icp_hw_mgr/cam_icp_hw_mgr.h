@@ -678,11 +678,14 @@ struct cam_icp_hw_mini_dump_info {
  *             set true if hfi init needs to be done or was done.
  * @use_proxy_boot_up: Indicate if proxy fw loading is needed,
  *                     set true if proxy firmware loading is needed.
+ *
+ * @skip_icp_init: Indicates if the icp init needs to be done.
  */
 struct cam_icp_mgr_hw_args {
 	bool icp_pc;
 	bool hfi_setup;
 	bool use_proxy_boot_up;
+	bool skip_icp_init;
 };
 
 static int cam_icp_mgr_hw_close(void *hw_priv, void *hw_close_args);

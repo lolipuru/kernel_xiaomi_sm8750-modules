@@ -874,6 +874,13 @@ int cam_req_mgr_notify_message(struct cam_req_mgr_message *msg,
 	if (!msg)
 		return -EINVAL;
 
+	/* Print all connected devices if components meet error or specifically pf error */
+	if (id == V4L_EVENT_CAM_REQ_MGR_ERROR)
+		cam_req_mgr_dump_linked_devices_on_err(msg->u.err_msg.link_hdl);
+
+	if (id == V4L_EVENT_CAM_REQ_MGR_PF_ERROR)
+		cam_req_mgr_dump_linked_devices_on_err(msg->u.pf_err_msg.link_hdl);
+
 	event.id = id;
 	event.type = type;
 	ev_header = CAM_REQ_MGR_GET_PAYLOAD_PTR(event,
@@ -948,7 +955,7 @@ int cam_register_subdev(struct cam_subdev *csd)
 	sd = &csd->sd;
 	v4l2_subdev_init(sd, csd->ops);
 	sd->internal_ops = csd->internal_ops;
-	snprintf(sd->name, V4L2_SUBDEV_NAME_SIZE, "%s", csd->name);
+	snprintf(sd->name, CAM_SUBDEV_NAME_SIZE, "%s", csd->name);
 	v4l2_set_subdevdata(sd, csd->token);
 
 	sd->flags = csd->sd_flags;

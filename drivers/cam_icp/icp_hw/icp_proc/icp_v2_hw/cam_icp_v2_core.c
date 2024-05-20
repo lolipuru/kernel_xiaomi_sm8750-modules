@@ -276,6 +276,13 @@ int cam_icp_v2_hw_init(void *priv, void *args, uint32_t arg_size)
 	}
 	spin_unlock_irqrestore(&icp_v2->hw_lock, flags);
 
+	rc = cam_vmrm_soc_acquire_resources(CAM_HW_ID_ICP + icp_v2->soc_info.index);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "ICP hw id %x acquire ownership failed",
+			CAM_HW_ID_ICP + icp_v2->soc_info.index);
+		return rc;
+	}
+
 	rc = cam_icp_v2_cpas_start(icp_v2->core_info);
 	if (rc)
 		return rc;
@@ -361,6 +368,13 @@ int cam_icp_v2_hw_deinit(void *priv, void *args,
 	spin_lock_irqsave(&icp_v2_info->hw_lock, flags);
 	icp_v2_info->hw_state = CAM_HW_STATE_POWER_DOWN;
 	spin_unlock_irqrestore(&icp_v2_info->hw_lock, flags);
+
+	rc = cam_vmrm_soc_release_resources(CAM_HW_ID_ICP + icp_v2_info->soc_info.index);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "ICP hw id %x release ownership failed",
+			CAM_HW_ID_ICP + icp_v2_info->soc_info.index);
+		return rc;
+	}
 
 	CAM_DBG(CAM_ICP, "ICP%u powered off", icp_v2_info->soc_info.index);
 	return rc;

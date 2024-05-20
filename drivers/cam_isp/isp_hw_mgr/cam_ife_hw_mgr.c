@@ -109,7 +109,7 @@ static int cam_ife_hw_mgr_event_handler(
 	uint32_t                             evt_id,
 	void                                *evt_info);
 
-static int cam_ife_mgr_prog_default_settings(
+static int cam_ife_mgr_prog_default_settings(int64_t last_applied_max_pd_req,
 	bool is_streamon, struct cam_ife_hw_mgr_ctx *ctx);
 
 static int cam_ife_mgr_cmd_get_sof_timestamp(struct cam_ife_hw_mgr_ctx *ife_ctx,
@@ -179,45 +179,211 @@ static int cam_ife_mgr_update_core_info_to_cpas(struct cam_ife_hw_mgr_ctx       
 	return rc;
 }
 
-static int cam_isp_blob_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
+static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 	uint64_t request_id, struct cam_isp_prepare_hw_update_data *prepare_hw_data)
 {
-	struct cam_ife_hw_mgr                  *ife_hw_mgr;
-	struct cam_hw_intf                     *hw_intf;
-	struct cam_isp_drv_config              *drv_config;
-	struct cam_ife_csid_drv_config_args     drv_config_args = {0};
-	int i, rc = 0;
+	bool                                 drv_en = false, update_drv = false;
+	bool                                 is_blob_config_valid = false;
+	int                                  i, rc = 0;
+	uint32_t                             timeout_val = 0, path_idle_en = 0;
+	uint64_t                             min_frame_duration, min_blanking_duration;
+	struct cam_ife_hw_mgr               *ife_hw_mgr;
+	struct cam_hw_intf                  *hw_intf;
+	struct cam_isp_drv_config           *drv_config;
+	struct cam_ife_csid_drv_config_args  drv_config_args = {0};
+	struct cam_isp_hw_drv_info          *prev_drv_info = NULL;
+	struct cam_isp_hw_drv_info          *drv_info = NULL;
+	struct cam_isp_hw_drv_info          *next_drv_info = NULL;
 
 	ife_hw_mgr = ctx->hw_mgr;
-	drv_config = &prepare_hw_data->isp_drv_config;
 
-	if (debug_drv)
+	/*
+	 * The main logic in this function is checking if per request drv info is valid,
+	 * if it is valid then we do the decision logic based on per request drv info.
+	 * Otherwises, configure the drv if the blob config is valid.
+	 */
+
+	/*
+	 * 1   Collect data and fill per request drv info structure
+	 * 1.1 Already check if blob config data is valid or not.
+	 */
+	if (!prepare_hw_data)
+		is_blob_config_valid = false;
+	else
+		is_blob_config_valid = prepare_hw_data->drv_config_valid;
+
+	drv_info = &ctx->drv_info[request_id % MAX_DRV_REQUEST_DEPTH];
+	next_drv_info = &ctx->drv_info[(request_id + 1) % MAX_DRV_REQUEST_DEPTH];
+
+	if (!is_blob_config_valid && (request_id != drv_info->req_id)) {
+		CAM_DBG(CAM_ISP, "No valid DRV info, req_id:%llu, ctx:%d",
+			request_id, ctx->ctx_index);
+		return 0;
+	}
+
+	/* 1.2  If blob config is valid, fill the path idle info and drv blanking
+	 *      threshold of per request from blob config, otherwises, it means
+	 *      the path idle info is not changed from isp userland driver side,
+	 *      so get path idle info of current request from drv info of previous
+	 *      request.
+	 *      The goal in this step is getting all the needed drv info for per
+	 *      request drv info structure.
+	 */
+	if (is_blob_config_valid) {
+		drv_config = &prepare_hw_data->isp_drv_config;
+		drv_info->path_idle_en = drv_config->path_idle_en;
+		if (drv_config->num_valid_params)
+			if (drv_config->valid_param_mask & CAM_IFE_DRV_BLANKING_THRESHOLD)
+				drv_info->drv_blanking_threshold =
+					drv_config->params[ffs(CAM_IFE_DRV_BLANKING_THRESHOLD) - 1] *
+					CAM_COMMON_NS_PER_MS;
+	} else {
+		/* Get path idle en from previous drv info if current req has no drv blob data */
+		if (request_id) {
+			prev_drv_info = &ctx->drv_info[(request_id - 1) % MAX_DRV_REQUEST_DEPTH];
+			if (prev_drv_info->req_id == (request_id - 1)) {
+				drv_info->path_idle_en = prev_drv_info->path_idle_en;
+				drv_info->drv_blanking_threshold =
+					prev_drv_info->drv_blanking_threshold;
+			} else {
+				CAM_DBG(CAM_ISP, "no valid drv info,  req:%llu, ctx:%d",
+					request_id, ctx->ctx_index);
+				return 0;
+			}
+		}
+	}
+
+	if (debug_drv) {
+		if (is_blob_config_valid)
+			CAM_INFO(CAM_PERF,
+				"DRV config blob valid:%s opcode:%u req_id:%llu disable_drv_override:%s ctx_idx:%u drv_en:%s path_idle_en:0x%x timeout_val:%u, ctx:%d",
+				CAM_BOOL_TO_YESNO(prepare_hw_data->drv_config_valid),
+				prepare_hw_data->packet_opcode_type, request_id,
+				CAM_BOOL_TO_YESNO(g_ife_hw_mgr.debug_cfg.disable_isp_drv),
+				ctx->ctx_index, CAM_BOOL_TO_YESNO(drv_config->drv_en),
+				drv_config->path_idle_en, drv_config->timeout_val,
+				ctx->ctx_index);
+
 		CAM_INFO(CAM_PERF,
-			"DRV config blob opcode:%u req_id:%llu disable_drv_override:%s ctx_idx:%u drv_en:%s path_idle_en:0x%x timeout_val:%u",
+			"DRV per frame info: req:%llu is_valid:%s frame duration:%llu ns, vertical blanking duration:%llu ns, ctx:%d",
+			request_id, CAM_BOOL_TO_YESNO(drv_info->req_id == request_id),
+			drv_info->frame_duration, drv_info->blanking_duration,
+			ctx->ctx_index);
+	}
+
+	if (is_blob_config_valid)
+		CAM_DBG(CAM_PERF,
+			"DRV config blob valid:%s opcode:%u req_id:%llu disable_drv_override:%s ctx_idx:%u drv_en:%u path_idle_en:0x%x timeout_val:%u, ctx:%d",
+			CAM_BOOL_TO_YESNO(prepare_hw_data->drv_config_valid),
 			prepare_hw_data->packet_opcode_type, request_id,
 			CAM_BOOL_TO_YESNO(g_ife_hw_mgr.debug_cfg.disable_isp_drv),
-			ctx->ctx_index, CAM_BOOL_TO_YESNO(drv_config->drv_en),
-			drv_config->path_idle_en, drv_config->timeout_val);
+			ctx->ctx_index, drv_config->drv_en, drv_config->path_idle_en,
+			drv_config->timeout_val, ctx->ctx_index);
 
 	CAM_DBG(CAM_PERF,
-		"DRV config blob opcode:%u req_id:%llu disable_drv_override:%s ctx_idx:%u drv_en:%u path_idle_en:0x%x timeout_val:%u",
-		prepare_hw_data->packet_opcode_type, request_id,
-		CAM_BOOL_TO_YESNO(g_ife_hw_mgr.debug_cfg.disable_isp_drv),
-		ctx->ctx_index, drv_config->drv_en, drv_config->path_idle_en,
-		drv_config->timeout_val);
+		"DRV per frame info: req:%llu is_valid:%s frame duration:%llu ns, vertical blanking duration:%llu ns, ctx:%d",
+		request_id, CAM_BOOL_TO_YESNO(drv_info->req_id == request_id),
+		drv_info->frame_duration, drv_info->blanking_duration, ctx->ctx_index);
 
 	if (!g_ife_hw_mgr.cam_ddr_drv_support || g_ife_hw_mgr.debug_cfg.disable_isp_drv)
 		return rc;
 
-	if (prepare_hw_data->packet_opcode_type == CAM_ISP_PACKET_INIT_DEV)
+	if (is_blob_config_valid &&
+		(prepare_hw_data->packet_opcode_type == CAM_ISP_PACKET_INIT_DEV)) {
 		drv_config_args.is_init_config = true;
+		ctx->is_init_drv_cfg_received = true;
+	}
 
-	drv_config_args.drv_en = drv_config->drv_en;
-	drv_config_args.path_idle_en = drv_config->path_idle_en;
-	drv_config_args.timeout_val = drv_config->timeout_val;
+	if (!ctx->is_init_drv_cfg_received) {
+		CAM_DBG(CAM_PERF, "Init DRV cfg hasn't received, ctx:%d",
+			ctx->ctx_index);
 
-	if (drv_config->drv_en)
-		ctx->drv_path_idle_en = drv_config->path_idle_en;
+		if (debug_drv)
+			CAM_INFO(CAM_PERF, "Init DRV cfg hasn't received, ctx:%d",
+				ctx->ctx_index);
+
+		return 0;
+	}
+
+	/*
+	 * 2   DRV decision logic and get final drv parameters
+	 */
+	if ((drv_info->req_id != request_id) || (drv_config_args.is_init_config)) {
+		/*
+		 * 2.1 If no valid per request drv info of current request, then just update drv
+		 *     when there is a valid drv blob data.
+		 */
+		if (is_blob_config_valid) {
+			drv_en = drv_config->drv_en;
+			path_idle_en = drv_config->path_idle_en;
+			timeout_val = drv_config->timeout_val;
+			update_drv = true;
+		}
+	} else if (request_id != 0) {
+		/*
+		 * 2.2 If the per request drv info is valid, then we update the drv based on the
+		 *     per request drv info.
+		 */
+		min_frame_duration = drv_info->frame_duration;
+		min_blanking_duration = drv_info->blanking_duration;
+
+		if (next_drv_info->req_id == (request_id + 1)) {
+			/**
+			 * Since sensor is going to apply the setting of next req and also need
+			 * to consider the isp applying delay issue, so get min duration in betwwen
+			 * the frame duration of current req and next req.
+			 */
+			if (min_frame_duration > next_drv_info->frame_duration)
+				min_frame_duration = next_drv_info->frame_duration;
+
+			if (min_blanking_duration > next_drv_info->blanking_duration)
+				min_blanking_duration = next_drv_info->blanking_duration;
+		}
+
+		path_idle_en = drv_info->path_idle_en;
+
+		if ((min_blanking_duration > drv_info->drv_blanking_threshold) &&
+			(min_frame_duration > CAM_COMMON_NS_PER_MS)) {
+			drv_en = true;
+			timeout_val = (GC_FREQUENCY_IN_KHZ *
+				(min_frame_duration - CAM_COMMON_NS_PER_MS)) / CAM_COMMON_NS_PER_MS;
+		}
+
+		update_drv = true;
+
+		if (debug_drv)
+			CAM_INFO(CAM_ISP,
+				"[min:curr:next] frame duration:[%llu:%llu:%llu] blanking:[%llu:%llu:%llu] drv_en:%d timeout:0x%x, ctx:%d",
+				min_frame_duration, drv_info->frame_duration,
+				next_drv_info->frame_duration, min_blanking_duration,
+				drv_info->blanking_duration, next_drv_info->blanking_duration,
+				drv_en, timeout_val, ctx->ctx_index);
+
+		CAM_DBG(CAM_ISP,
+			"[min:curr:next] frame duration:[%llu:%llu:%llu] blanking:[%llu:%llu:%llu] drv_en:%d timeout:0x%x, ctx:%d",
+			min_frame_duration, drv_info->frame_duration,
+			next_drv_info->frame_duration, min_blanking_duration,
+			drv_info->blanking_duration, next_drv_info->blanking_duration,
+			drv_en, timeout_val, ctx->ctx_index);
+	}
+
+	if (!update_drv) {
+		CAM_DBG(CAM_ISP, "req_id:%llu no need to update drv, ctx:%d",
+			request_id, ctx->ctx_index);
+		return 0;
+	}
+
+	/* sanity check: if no valid idle path configuration, then disable drv */
+	if (!path_idle_en)
+		drv_en = false;
+
+	if (drv_en)
+		ctx->drv_path_idle_en = path_idle_en;
+
+	/* 3. Pass the final drv parameters to CSID */
+	drv_config_args.drv_en = drv_en;
+	drv_config_args.path_idle_en = path_idle_en;
+	drv_config_args.timeout_val = timeout_val;
 
 	for (i = 0; i < ctx->num_base; i++) {
 		if (ctx->base[i].hw_type != CAM_ISP_HW_TYPE_CSID)
@@ -3958,6 +4124,7 @@ static int cam_ife_hw_mgr_acquire_res_ife_csid_pxl(
 		}
 
 		ife_ctx->flags.need_csid_top_cfg = csid_acquire.need_top_cfg;
+		ife_ctx->flags.dynamic_drv_supported = csid_acquire.dynamic_drv_supported;
 
 		CAM_DBG(CAM_ISP,
 			"acquired csid(%s)=%d ctx_idx: %u pxl path rsrc %s successfully, is_secure: %s",
@@ -4143,6 +4310,7 @@ static int cam_ife_hw_mgr_acquire_csid_rdi_util(
 		CAM_BOOL_TO_YESNO(csid_res->is_secure), ife_ctx->ctx_index);
 
 	ife_ctx->flags.need_csid_top_cfg = csid_acquire.need_top_cfg;
+	ife_ctx->flags.dynamic_drv_supported = csid_acquire.dynamic_drv_supported;
 	csid_res->res_type = CAM_ISP_RESOURCE_PIX_PATH;
 	csid_res->res_id = csid_acquire.res_id;
 	csid_res->is_dual_isp = 0;
@@ -4841,6 +5009,7 @@ static int cam_ife_hw_mgr_acquire_offline_res_csid(
 		ife_ctx->buf_done_controller = csid_acquire.buf_done_controller;
 
 	ife_ctx->flags.need_csid_top_cfg = csid_acquire.need_top_cfg;
+	ife_ctx->flags.dynamic_drv_supported = csid_acquire.dynamic_drv_supported;
 	csid_res->res_type = CAM_ISP_RESOURCE_PIX_PATH;
 	csid_res->res_id = csid_acquire.res_id;
 	csid_res->is_dual_isp = 0;
@@ -5713,9 +5882,9 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	ife_ctx->res_list_ife_out = NULL;
 	ife_ctx->res_list_sfe_out = NULL;
 	ife_ctx->pri_rdi_out_res = g_ife_hw_mgr.isp_caps.max_vfe_out_res_type;
-	ife_ctx->left_hw_idx = CAM_IFE_CSID_HW_NUM_MAX;
-	ife_ctx->right_hw_idx = CAM_IFE_CSID_HW_NUM_MAX;
 	ife_ctx->ctx_index = acquire_args->ctx_id;
+	ife_ctx->scratch_buf_info.ife_scratch_config = NULL;
+	ife_ctx->is_init_drv_cfg_received = false;
 
 	acquire_hw_info = (struct cam_isp_acquire_hw_info *) acquire_args->acquire_info;
 
@@ -5962,7 +6131,8 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 			CAM_IFE_CTX_CONSUME_ADDR_EN;
 
 	if ((ife_ctx->flags.is_sfe_shdr) ||
-		(ife_ctx->flags.is_sfe_fs)) {
+		(ife_ctx->flags.is_sfe_fs) ||
+		(ife_ctx->flags.dynamic_drv_supported)) {
 		acquire_args->op_flags |=
 			CAM_IFE_CTX_APPLY_DEFAULT_CFG;
 		ife_ctx->scratch_buf_info.sfe_scratch_config =
@@ -7261,8 +7431,9 @@ static int cam_ife_mgr_config_hw(
 		hw_update_data->bw_clk_config.ife_clock_config_valid,
 		hw_update_data->bw_clk_config.sfe_clock_config_valid);
 
-	if (hw_update_data->drv_config_valid) {
-		rc = cam_isp_blob_drv_config(ctx, cfg->request_id, hw_update_data);
+	if ((ctx->flags.dynamic_drv_supported) ||
+		(hw_update_data->drv_config_valid)) {
+		rc = cam_isp_mgr_drv_config(ctx, cfg->request_id, hw_update_data);
 		if (rc) {
 			CAM_ERR(CAM_ISP, "DRV config failed for req: %llu rc:%d ctx_idx=%u",
 				cfg->request_id,
@@ -7402,6 +7573,14 @@ skip_bw_clk_update:
 					continue;
 				}
 			}
+
+			if (cmd->single_apply_only) {
+				skip++;
+				continue;
+			}
+
+			if (cmd->flags == CAM_ISP_DEBUG_ENTRY)
+				cmd->single_apply_only = true;
 
 			cdm_cmd->cmd_flex[i - skip].bl_addr.mem_handle = cmd->handle;
 			cdm_cmd->cmd_flex[i - skip].offset = cmd->offset;
@@ -7760,6 +7939,8 @@ static int cam_ife_mgr_stop_hw(void *hw_mgr_priv, void *stop_hw_args)
 	 */
 	if (stop_isp->is_internal_stop)
 		cam_ife_mgr_finish_clk_bw_update(ctx, 0, true);
+	else
+		ctx->is_init_drv_cfg_received = false;
 
 	/* check to avoid iterating loop */
 	if (ctx->ctx_type == CAM_IFE_CTX_TYPE_SFE) {
@@ -8359,7 +8540,7 @@ start_only:
 	}
 
 	if ((ctx->flags.is_sfe_fs) || (ctx->flags.is_sfe_shdr)) {
-		rc = cam_ife_mgr_prog_default_settings(true, ctx);
+		rc = cam_ife_mgr_prog_default_settings(0, true, ctx);
 		if (rc)
 			goto err;
 
@@ -9890,6 +10071,10 @@ static int cam_isp_blob_csid_dynamic_switch_update(
 	prepare_hw_data->mup_en = true;
 	prepare_hw_data->mup_val = mup_config->mup;
 
+	/* Check for continuous out of sync */
+	if (ife_hw_mgr->debug_cfg.csid_out_of_sync_simul >> 1)
+		prepare_hw_data->mup_val = ~mup_config->mup & 1;
+
 	/*
 	 * Send MUP to CSID for INIT packets only to be used at stream on and after.
 	 * For update packets with MUP, append the config to the cdm packet
@@ -10621,6 +10806,11 @@ static int cam_isp_blob_vfe_out_update_v2(
 		if (res_id_out >= size_isp_out) {
 			CAM_ERR(CAM_ISP, "Invalid out port:0x%x, ctx_idx: %u",
 				wm_config->port_type, ctx->ctx_index);
+			return -EINVAL;
+		}
+
+		if (ctx->vfe_out_map[res_id_out] == 0xff) {
+			CAM_ERR(CAM_ISP, "Invalid index:%d for out_map", res_id_out);
 			return -EINVAL;
 		}
 
@@ -13410,6 +13600,10 @@ static int cam_ife_mgr_csid_add_reg_update(struct cam_ife_hw_mgr_ctx *ctx,
 			break;
 		}
 
+		if (hw_mgr->debug_cfg.csid_out_of_sync_simul ==
+			CAM_IFE_CTX_TRIGGER_SINGLE_OUT_OF_SYNC_CFG)
+			rup_args[i].add_toggled_mup_entry = true;
+
 		rc = cam_isp_add_csid_reg_update(prepare, kmd_buf,
 			&rup_args[i], true);
 
@@ -14204,7 +14398,7 @@ static int cam_ife_mgr_sof_irq_debug(
 	uint32_t i = 0, hw_idx;
 	struct cam_isp_hw_mgr_res     *hw_mgr_res = NULL;
 	struct cam_isp_resource_node  *rsrc_node = NULL;
-	struct cam_ife_hw_mgr *hw_mgr = ctx->hw_mgr;
+	struct cam_ife_hw_mgr         *hw_mgr = ctx->hw_mgr;
 
 	/* Per CSID enablement will enable for all paths */
 	for (i = 0; i < ctx->num_base; i++) {
@@ -14224,20 +14418,34 @@ static int cam_ife_mgr_sof_irq_debug(
 		}
 	}
 
-	/* legacy IFE CAMIF */
 	list_for_each_entry(hw_mgr_res, &ctx->res_list_ife_src, list) {
 		for (i = 0; i < CAM_ISP_HW_SPLIT_MAX; i++) {
 			if (!hw_mgr_res->hw_res[i])
 				continue;
 
 			rsrc_node = hw_mgr_res->hw_res[i];
-			if (rsrc_node->process_cmd && (rsrc_node->res_id ==
-				CAM_ISP_HW_VFE_IN_CAMIF)) {
-				rc |= hw_mgr_res->hw_res[i]->process_cmd(
-					hw_mgr_res->hw_res[i],
-					CAM_ISP_HW_CMD_SOF_IRQ_DEBUG,
-					&sof_irq_enable,
-					sizeof(sof_irq_enable));
+			if ((rsrc_node->res_id == CAM_ISP_HW_VFE_IN_CAMIF) ||
+				(rsrc_node->res_id == CAM_ISP_HW_VFE_IN_RDI0)) {
+				if (rsrc_node->process_cmd) {
+					rc |= rsrc_node->process_cmd(
+						hw_mgr_res->hw_res[i],
+						CAM_ISP_HW_CMD_SOF_IRQ_DEBUG,
+						&sof_irq_enable,
+						sizeof(sof_irq_enable));
+				} else if (rsrc_node->hw_intf->hw_ops.process_cmd) {
+					struct cam_vfe_enable_sof_irq_args sof_irq_args;
+
+					sof_irq_args.res = rsrc_node;
+					sof_irq_args.enable_sof_irq_debug = true;
+					rc |= rsrc_node->hw_intf->hw_ops.process_cmd(
+						rsrc_node->hw_intf->hw_priv,
+						CAM_ISP_HW_CMD_SOF_IRQ_DEBUG,
+						&sof_irq_args, sizeof(sof_irq_args));
+				}
+				if (rc)
+					CAM_DBG(CAM_ISP,
+						"Failed to set VFE:%u sof irq debug, rc: %d",
+						rsrc_node->hw_intf->hw_idx, rc);
 			}
 		}
 	}
@@ -14693,18 +14901,21 @@ end:
  * using the scratch buffer provided during INIT corresponding
  * to each left RDIs
  */
-static int cam_ife_mgr_prog_default_settings(
+static int cam_ife_mgr_prog_default_settings(int64_t last_applied_max_pd_req,
 	bool is_streamon, struct cam_ife_hw_mgr_ctx *ctx)
 {
 	int rc = 0;
 
-	/* Check for SFE scratch buffers */
-	rc = cam_ife_mgr_configure_scratch_for_sfe(is_streamon, ctx);
-	if (rc)
-		goto end;
+	if (ctx->ctx_type == CAM_IFE_CTX_TYPE_SFE) {
+		/* Check for SFE scratch buffers */
+		rc = cam_ife_mgr_configure_scratch_for_sfe(is_streamon, ctx);
+		if (rc)
+			goto end;
+	}
 
 	/* Check for IFE scratch buffers */
-	if (ctx->scratch_buf_info.ife_scratch_config->num_config) {
+	if (ctx->scratch_buf_info.ife_scratch_config &&
+		ctx->scratch_buf_info.ife_scratch_config->num_config) {
 		rc = cam_ife_mgr_configure_scratch_for_ife(is_streamon, ctx);
 		if (rc)
 			goto end;
@@ -14712,6 +14923,16 @@ static int cam_ife_mgr_prog_default_settings(
 
 	/* Program rup & aup only at run time */
 	if (!is_streamon) {
+		/*
+		 * Sometimes, the sensor applied settings but isp doesn't have
+		 * valid packet, then ife calls apply_default interface, in the
+		 * meanwhile, we also need to update the drv config based on
+		 * previous sensor applied info.
+		 */
+		if ((ctx->flags.dynamic_drv_supported) &&
+			(last_applied_max_pd_req >= 0))
+			cam_isp_mgr_drv_config(ctx, last_applied_max_pd_req, NULL);
+
 		rc = cam_isp_config_csid_rup_aup(ctx);
 		if (rc)
 			CAM_ERR(CAM_ISP,
@@ -14860,6 +15081,7 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 	struct cam_packet          *packet;
 	unsigned long rem_jiffies = 0;
 	struct cam_isp_comp_record_query *query_cmd;
+	struct cam_isp_hw_drv_info *drv_info = NULL;
 
 	if (!hw_mgr_priv || !cmd_args) {
 		CAM_ERR(CAM_ISP, "Invalid arguments");
@@ -14934,7 +15156,9 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 			}
 
 			skip_rup_aup = *((bool *)isp_hw_cmd_args->cmd_data);
-			rc = cam_ife_mgr_prog_default_settings((false || skip_rup_aup), ctx);
+			rc = cam_ife_mgr_prog_default_settings(
+				isp_hw_cmd_args->u.default_cfg_params.last_applied_max_pd_req,
+				skip_rup_aup, ctx);
 		}
 		break;
 		case CAM_ISP_HW_MGR_GET_SOF_TS:
@@ -14963,6 +15187,14 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 		case CAM_ISP_HW_MGR_GET_LAST_CONSUMED_ADDR:
 			rc = cam_ife_mgr_cmd_get_last_consumed_addr(ctx,
 				(struct cam_isp_hw_done_event_data *)(isp_hw_cmd_args->cmd_data));
+			break;
+		case CAM_ISP_HW_MGR_SET_DRV_INFO:
+			drv_info = &ctx->drv_info[
+				isp_hw_cmd_args->u.drv_info.req_id % MAX_DRV_REQUEST_DEPTH];
+			memset(drv_info, 0, sizeof(struct cam_isp_hw_drv_info));
+			drv_info->req_id = isp_hw_cmd_args->u.drv_info.req_id;
+			drv_info->frame_duration = isp_hw_cmd_args->u.drv_info.frame_duration;
+			drv_info->blanking_duration = isp_hw_cmd_args->u.drv_info.blanking_duration;
 			break;
 		default:
 			CAM_ERR(CAM_ISP, "Invalid HW mgr command:0x%x, ctx_idx: %u",
@@ -15799,6 +16031,8 @@ static int cam_ife_hw_mgr_handle_csid_camif_sof(
 			}
 		}
 
+		cam_hw_mgr_reset_out_of_sync_cnt(ctx);
+
 		ife_hw_irq_sof_cb(ctx->common.cb_priv,
 			CAM_ISP_HW_EVENT_SOF, (void *)&sof_done_event_data);
 
@@ -16464,11 +16698,12 @@ static int cam_ife_hw_mgr_handle_hw_buf_done(
 	buf_done_event_data.resource_handle = 0;
 
 	CAM_DBG(CAM_ISP,
-		"Buf done for %s: %d res_id: 0x%x last consumed addr: 0x%x ctx: %u is_hw_ctxt_comp: %s",
+		"Buf done for %s: %d res_id: 0x%x last consumed addr: 0x%x ctx: %u is_hw_ctxt_comp: %s is_early_done: %s",
 		((event_info->hw_type == CAM_ISP_HW_TYPE_SFE) ? "SFE" : "IFE"),
 		event_info->hw_idx, event_info->res_id,
 		bufdone_evt_info->last_consumed_addr, ife_hw_mgr_ctx->ctx_index,
-		CAM_BOOL_TO_YESNO(bufdone_evt_info->is_hw_ctxt_comp));
+		CAM_BOOL_TO_YESNO(bufdone_evt_info->is_hw_ctxt_comp),
+		CAM_BOOL_TO_YESNO(bufdone_evt_info->is_early_done));
 
 	/* Check scratch for sHDR/FS use-cases */
 	if (ife_hw_mgr_ctx->flags.is_sfe_fs || ife_hw_mgr_ctx->flags.is_sfe_shdr) {
@@ -16483,6 +16718,7 @@ static int cam_ife_hw_mgr_handle_hw_buf_done(
 	buf_done_event_data.resource_handle = event_info->res_id;
 	buf_done_event_data.last_consumed_addr = bufdone_evt_info->last_consumed_addr;
 	buf_done_event_data.comp_group_id = bufdone_evt_info->comp_grp_id;
+	buf_done_event_data.is_early_done = bufdone_evt_info->is_early_done;
 
 	if (atomic_read(&ife_hw_mgr_ctx->overflow_pending))
 		return 0;
@@ -17622,6 +17858,9 @@ static int cam_ife_hw_mgr_debug_register(void)
 	debugfs_create_u32("csid_domain_id_value", 0644,
 		g_ife_hw_mgr.debug_cfg.dentry,
 		&g_ife_hw_mgr.debug_cfg.csid_domain_id_value);
+	debugfs_create_u32("csid_out_of_sync_simul", 0644,
+		g_ife_hw_mgr.debug_cfg.dentry,
+		&g_ife_hw_mgr.debug_cfg.csid_out_of_sync_simul);
 	debugfs_create_bool("per_req_wait_cdm", 0644,
 		g_ife_hw_mgr.debug_cfg.dentry,
 		&g_ife_hw_mgr.debug_cfg.per_req_wait_cdm);

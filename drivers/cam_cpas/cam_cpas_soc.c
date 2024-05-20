@@ -338,13 +338,14 @@ static int cam_cpas_parse_mnoc_node(struct cam_cpas *cpas_core,
 	struct device_node *mnoc_node, int *mnoc_idx)
 {
 	int rc = 0, count, i;
-	bool ib_voting_needed = false, is_rt_port = false;
+	bool ib_voting_needed = false;
 	struct of_phandle_args src_args = {0}, dst_args = {0};
 	struct cam_cpas_axi_port *curr_axi_port;
 
 	ib_voting_needed = of_property_read_bool(curr_node_ptr->tree_dev_node,
 		"ib-bw-voting-needed");
-	is_rt_port = of_property_read_bool(curr_node_ptr->tree_dev_node, "rt-axi-port");
+	curr_node_ptr->is_rt_node = of_property_read_bool(curr_node_ptr->tree_dev_node,
+		"rt-axi-port");
 
 	if (soc_private->bus_icc_based) {
 		if (soc_private->use_cam_icc_path_str)
@@ -460,7 +461,7 @@ static int cam_cpas_parse_mnoc_node(struct cam_cpas *cpas_core,
 			 */
 			curr_node_ptr->axi_port_idx_arr[i] = *mnoc_idx;
 			curr_axi_port->ib_bw_voting_needed = ib_voting_needed;
-			curr_axi_port->is_rt = is_rt_port;
+			curr_axi_port->is_rt = curr_node_ptr->is_rt_node;
 			CAM_DBG(CAM_PERF, "Adding Bus Client=[%s] : src=%d, dst=%d mnoc_idx:%d",
 				curr_axi_port->bus_client.common_data.name,
 				curr_axi_port->bus_client.common_data.src_id,
@@ -490,7 +491,7 @@ static int cam_cpas_parse_mnoc_node(struct cam_cpas *cpas_core,
 			curr_axi_port->bus_client.common_data.name;
 		curr_node_ptr->axi_port_idx_arr[0] = *mnoc_idx;
 		curr_axi_port->ib_bw_voting_needed = ib_voting_needed;
-		curr_axi_port->is_rt = is_rt_port;
+		curr_axi_port->is_rt = curr_node_ptr->is_rt_node;
 		(*mnoc_idx)++;
 		cpas_core->num_axi_ports++;
 	}
@@ -812,6 +813,7 @@ static int cam_cpas_parse_node_tree(struct cam_cpas *cpas_core,
 			if (parent_node) {
 				of_property_read_u32(parent_node, "cell-index", &cell_idx);
 				curr_node_ptr->parent_node = soc_private->tree_node[cell_idx];
+				curr_node_ptr->is_rt_node = curr_node_ptr->parent_node->is_rt_node;
 			} else {
 				CAM_DBG(CAM_CPAS, "no parent node at this level");
 			}
@@ -1327,6 +1329,14 @@ int cam_cpas_get_custom_dt_info(struct cam_hw_info *cpas_hw,
 	}
 
 	CAM_DBG(CAM_CPAS, "camnoc-axi-min-ib-bw = %llu", soc_private->camnoc_axi_min_ib_bw);
+
+	rc = of_property_read_u64(of_node, "cam-max-rt-axi-bw", &soc_private->cam_max_rt_axi_bw);
+	if (rc) {
+		CAM_DBG(CAM_CPAS, "failed to read cam-max-rt-axi-bw rc:%d", rc);
+		soc_private->cam_max_rt_axi_bw = 0;
+	}
+
+	CAM_DBG(CAM_CPAS, "cam-max-rt-axi-bw = %llu", soc_private->cam_max_rt_axi_bw);
 
 	soc_private->client_id_based = of_property_read_bool(of_node, "client-id-based");
 	soc_private->bus_icc_based = of_property_read_bool(of_node, "interconnect-names");

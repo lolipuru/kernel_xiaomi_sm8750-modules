@@ -811,7 +811,7 @@ void cam_synx_obj_close(void)
 			if (test_bit(CAM_GENERIC_FENCE_TYPE_SYNX_OBJ,
 				&cam_sync_monitor_mask))
 				cam_generic_fence_update_monitor_array(i,
-					&g_cam_synx_obj_dev->dev_lock,
+					NULL,
 					g_cam_synx_obj_dev->monitor_data,
 					CAM_FENCE_OP_UNREGISTER_CB);
 
@@ -823,7 +823,7 @@ void cam_synx_obj_close(void)
 			if (test_bit(CAM_GENERIC_FENCE_TYPE_SYNX_OBJ,
 				&cam_sync_monitor_mask))
 				cam_generic_fence_update_monitor_array(i,
-					&g_cam_synx_obj_dev->dev_lock,
+					NULL,
 					g_cam_synx_obj_dev->monitor_data,
 					CAM_FENCE_OP_SIGNAL);
 
@@ -833,7 +833,7 @@ void cam_synx_obj_close(void)
 		if (test_bit(CAM_GENERIC_FENCE_TYPE_SYNX_OBJ,
 			&cam_sync_monitor_mask))
 			cam_generic_fence_update_monitor_array(i,
-				&g_cam_synx_obj_dev->dev_lock,
+				NULL,
 				g_cam_synx_obj_dev->monitor_data,
 				CAM_FENCE_OP_DESTROY);
 

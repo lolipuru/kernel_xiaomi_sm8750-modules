@@ -70,6 +70,9 @@
 /* Mismatched frame mode mask */
 #define CAM_CRM_MISMATCHED_FRAME_MODE_MASK BIT(0)
 
+/* Maximum length of log buffer when printing connected devices on error */
+#define CAM_CRM_DUMP_LINKED_DEVICES_MAX_LEN 200
+
 /* Mismatched frame mode to identify notify or drop the mismatchd frame */
 enum crm_mismatched_frame_mode {
 	CRM_NOTIFY_MISMATCHED_FRMAE,
@@ -757,7 +760,6 @@ int cam_req_mgr_destroy_session(struct cam_req_mgr_session_info *ses_info,
 int cam_req_mgr_link(struct cam_req_mgr_ver_info *link_info);
 int cam_req_mgr_link_v2(struct cam_req_mgr_ver_info *link_info);
 
-
 /**
  * cam_req_mgr_unlink()
  * @brief       : destroy a link in a session
@@ -840,5 +842,12 @@ int cam_req_mgr_dump_request(struct cam_dump_req_cmd *dump_req);
  * @properties: Link properties
  */
 int cam_req_mgr_link_properties(struct cam_req_mgr_link_properties *properties);
+
+/**
+ * cam_req_mgr_dump_connected_devices()
+ * @brief:  Dump all connected devices on the link
+ * @link_hdl: Link Handle
+ */
+void cam_req_mgr_dump_linked_devices_on_err(int32_t link_hdl);
 
 #endif

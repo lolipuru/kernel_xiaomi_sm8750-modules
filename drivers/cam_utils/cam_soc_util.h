@@ -258,6 +258,7 @@ struct cam_soc_gpio_data {
  * @applied_src_clk_rates:  Applied src clock rates for SW and HW client
  * @clk_level_valid:        Indicates whether corresponding level is valid
  * @lowest_clk_level:       Lowest clock level that has valid freq info
+ * @highest_clk_level:      Highest clock level that has valid freq info
  * @scl_clk_count:          Number of scalable clocks present
  * @scl_clk_idx:            Index of scalable clocks
  * @optional_clk_name:      Array of clock names
@@ -332,6 +333,7 @@ struct cam_hw_soc_info {
 	struct cam_soc_util_clk_rates   applied_src_clk_rates;
 	bool                            clk_level_valid[CAM_MAX_VOTE];
 	uint32_t                        lowest_clk_level;
+	uint32_t                        highest_clk_level;
 	int32_t                         scl_clk_count;
 	int32_t                         scl_clk_idx[CAM_SOC_MAX_CLK];
 	const char                     *optional_clk_name[CAM_SOC_MAX_OPT_CLK];

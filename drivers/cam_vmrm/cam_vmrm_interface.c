@@ -845,6 +845,24 @@ int cam_vmrm_sensor_power_down(uint32_t hw_id)
 
 	return rc;
 }
+
+int cam_vmrm_icp_send_msg(uint32_t dest_vm, uint32_t hw_mgr_id, uint32_t msg_type, bool need_ack,
+	void *msg, uint32_t msg_size, uint32_t timeout)
+{
+	int rc = 0;
+
+	rc = cam_vmrm_send_driver_msg_wrapper(dest_vm, CAM_DRIVER_ID_ICP + hw_mgr_id,
+		msg_type, false, need_ack, msg, msg_size, timeout);
+	if (rc) {
+		CAM_ERR(CAM_VMRM, "ICP%d Failed in sending msg dest_driver:%d  rc %d",
+			hw_mgr_id, CAM_DRIVER_ID_ICP + hw_mgr_id, rc);
+		return rc;
+	}
+
+
+	return rc;
+}
+
 #else
 bool cam_vmrm_is_supported(void)
 {

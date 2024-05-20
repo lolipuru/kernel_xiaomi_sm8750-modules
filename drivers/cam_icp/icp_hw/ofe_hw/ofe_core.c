@@ -79,6 +79,13 @@ int cam_ofe_init_hw(void *device_priv,
 	}
 	spin_unlock_irqrestore(&ofe_dev->hw_lock, flags);
 
+	rc = cam_vmrm_soc_acquire_resources(CAM_HW_ID_OFE + core_info->ofe_hw_info->hw_idx);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "OFE hw id %x acquire ownership failed",
+			CAM_HW_ID_OFE + core_info->ofe_hw_info->hw_idx);
+		return rc;
+	}
+
 	cpas_vote.ahb_vote.type = CAM_VOTE_ABSOLUTE;
 	cpas_vote.ahb_vote.vote.level = CAM_LOWSVS_D1_VOTE;
 	cpas_vote.axi_vote.num_paths = 1;
@@ -176,6 +183,14 @@ int cam_ofe_deinit_hw(void *device_priv,
 	spin_unlock_irqrestore(&ofe_dev->hw_lock, flags);
 
 	CAM_DBG(CAM_ICP, "OFE%u powered off", soc_info->index);
+
+	rc = cam_vmrm_soc_release_resources(CAM_HW_ID_OFE + core_info->ofe_hw_info->hw_idx);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "OFE hw id %x release ownership failed",
+			CAM_HW_ID_OFE + core_info->ofe_hw_info->hw_idx);
+		return rc;
+	}
+
 	return rc;
 }
 

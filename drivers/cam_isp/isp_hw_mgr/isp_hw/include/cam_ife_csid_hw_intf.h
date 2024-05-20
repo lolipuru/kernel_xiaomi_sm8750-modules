@@ -210,37 +210,38 @@ struct cam_csid_secondary_evt_config {
 
 /**
  * struct cam_csid_hw_reserve_resource- hw reserve
- * @res_type :           Reource type CID or PATH
- *                       if type is CID, then res_id is not required,
- *                       if type is path then res id need to be filled
- * @res_id  :            Resource id to be reserved
- * @in_port :            Input port resource info
- * @out_port:            Output port resource info, used for RDI path only
- * @sync_mode:           Sync mode
- *                       Sync mode could be master, slave or none
- * @master_idx:          Master device index to be configured in the
- *                       slave path
- *                       for master path, this value is not required.
- *                       only slave need to configure the master index value
- * @dual_core_id:        In case of dual csid, core id of another hw
- *                       reserve
- * @node_res :           Reserved resource structure pointer
- * @sec_evt_config:      Config to enable secondary events for the given resource
- *                       depending on the use-case
- * @crop_enable :        Flag to indicate CSID crop enable
- * @drop_enable :        Flag to indicate CSID drop enable
- * @sfe_inline_shdr:     Flag to indicate if sfe is inline shdr
- * @is_offline :         Flag to indicate offline
- * @need_top_cfg:        Flag to indicate if top cfg is needed
- * @tasklet:             Tasklet to schedule bottom halves
- * @buf_done_controller: IRQ controller for buf done for version 680 hw
- * @cdm_ops:             CDM Ops
- * @event_cb:            Callback function to hw mgr in case of hw events
- * @phy_sel:             Phy selection number if tpg is enabled from userspace
- * @cb_priv:             Private pointer to return to callback
- * @sfe_en:              Flag to indicate if SFE is enabled
- * @use_wm_pack:         [OUT]Flag to indicate if WM packing is to be used for packing
- * @handle_camif_irq:    Flag to indicate if CSID IRQ is enabled
+ * @res_type :             Reource type CID or PATH
+ *                         if type is CID, then res_id is not required,
+ *                         if type is path then res id need to be filled
+ * @res_id  :              Resource id to be reserved
+ * @in_port :              Input port resource info
+ * @out_port:              Output port resource info, used for RDI path only
+ * @sync_mode:             Sync mode
+ *                         Sync mode could be master, slave or none
+ * @master_idx:            Master device index to be configured in the
+ *                         slave path
+ *                         for master path, this value is not required.
+ *                         only slave need to configure the master index value
+ * @dual_core_id:          In case of dual csid, core id of another hw
+ *                         reserve
+ * @node_res :             Reserved resource structure pointer
+ * @sec_evt_config:        Config to enable secondary events for the given resource
+ *                         depending on the use-case
+ * @crop_enable :          Flag to indicate CSID crop enable
+ * @drop_enable :          Flag to indicate CSID drop enable
+ * @sfe_inline_shdr:       Flag to indicate if sfe is inline shdr
+ * @is_offline :           Flag to indicate offline
+ * @need_top_cfg:          Flag to indicate if top cfg is needed
+ * @tasklet:               Tasklet to schedule bottom halves
+ * @buf_done_controller:   IRQ controller for buf done for version 680 hw
+ * @cdm_ops:               CDM Ops
+ * @event_cb:              Callback function to hw mgr in case of hw events
+ * @phy_sel:               Phy selection number if tpg is enabled from userspace
+ * @cb_priv:               Private pointer to return to callback
+ * @sfe_en:                Flag to indicate if SFE is enabled
+ * @use_wm_pack:           [OUT]Flag to indicate if WM packing is to be used for packing
+ * @handle_camif_irq:      Flag to indicate if CSID IRQ is enabled
+ * @dynamic_drv_supported: Flag to indicate if dynamic drv is supported
  *
  */
 struct cam_csid_hw_reserve_resource_args {
@@ -268,6 +269,7 @@ struct cam_csid_hw_reserve_resource_args {
 	bool                                      sfe_en;
 	bool                                      use_wm_pack;
 	bool                                      handle_camif_irq;
+	bool                                      dynamic_drv_supported;
 };
 
 /**
@@ -468,22 +470,24 @@ struct cam_ife_csid_dual_sync_args {
 /*
  * struct cam_isp_csid_reg_update_args:
  *
- * @cmd:              cmd buf update args
- * @node_res:         Node res pointer
- * @num_res:          Num of resources
- * @last_applied_mup: last applied MUP
- * @reg_write:        if set use AHB to config rup/aup
- * @mup_val:          MUP value if configured
- * @mup_en:           Flag if dynamic sensor switch is enabled
+ * @cmd:                   cmd buf update args
+ * @node_res:              Node res pointer
+ * @num_res:               Num of resources
+ * @last_applied_mup:      last applied MUP
+ * @mup_val:               MUP value if configured
+ * @mup_en:                Flag if dynamic sensor switch is enabled
+ * @reg_write:             if set use AHB to config rup/aup
+ * @add_toggled_mup_entry: Add toggled mup entry to simulate out of sync
  */
 struct cam_isp_csid_reg_update_args {
 	struct cam_isp_hw_cmd_buf_update  cmd;
 	struct cam_isp_resource_node     *res[CAM_IFE_PIX_PATH_RES_MAX];
 	uint32_t                          num_res;
 	uint32_t                          last_applied_mup;
-	bool                              reg_write;
 	uint32_t                          mup_val;
 	uint32_t                          mup_en;
+	bool                              reg_write;
+	bool                              add_toggled_mup_entry;
 };
 
 /*
@@ -539,8 +543,8 @@ struct cam_ife_csid_mup_update_args {
 /*
  * struct cam_ife_csid_mode_switch_update_args:
  *
- * @mup_args:         MUP related arguments
- * @exp_update_args:  Exposure update arguments
+ * @mup_args:          MUP related arguments
+ * @exp_update_args:   Exposure update arguments
  */
 struct cam_ife_csid_mode_switch_update_args {
 	struct cam_ife_csid_mup_update_args mup_args;

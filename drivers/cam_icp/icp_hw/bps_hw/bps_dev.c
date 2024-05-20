@@ -19,7 +19,6 @@
 #include "cam_cpas_api.h"
 #include "cam_debug_util.h"
 #include "camera_main.h"
-#include "cam_vmrm_interface.h"
 #include "cam_mem_mgr_api.h"
 
 static struct cam_bps_device_hw_info cam_bps_hw_info = {

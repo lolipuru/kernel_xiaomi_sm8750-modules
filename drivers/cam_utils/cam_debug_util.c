@@ -25,6 +25,9 @@ module_param(debug_priority, uint, 0644);
 uint debug_drv;
 module_param(debug_drv, uint, 0644);
 
+uint debug_disable_rt_clk_bw_limit;
+module_param(debug_disable_rt_clk_bw_limit, uint, 0644);
+
 uint debug_bypass_drivers;
 module_param(debug_bypass_drivers, uint, 0644);
 
