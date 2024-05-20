@@ -4900,8 +4900,11 @@ void cnss_fmd_status_update_cb(void *cb_ctx, bool status)
 	struct cnss_plat_data *plat_priv = (struct cnss_plat_data *)cb_ctx;
 
 	cnss_pr_dbg("FMD status update: %d\n", status);
-	if (status)
+	if (status) {
 		set_bit(CNSS_IN_REBOOT, &plat_priv->driver_state);
+		cnss_bus_update_status(plat_priv, CNSS_SYS_REBOOT);
+		cnss_bus_fmd_status(plat_priv, status);
+	}
 }
 
 static int cnss_misc_init(struct cnss_plat_data *plat_priv)

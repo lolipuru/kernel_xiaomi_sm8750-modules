@@ -3175,6 +3175,19 @@ int cnss_pci_call_driver_modem_status(struct cnss_pci_data *pci_priv,
 	return 0;
 }
 
+int cnss_pci_fmd_status(struct cnss_pci_data *pci_priv,
+			int fmd_status)
+{
+	int ret;
+
+	if (fmd_status) {
+		ret = cnss_pci_fmd_enable(pci_priv);
+		cnss_pr_dbg("Update FMD status to PCI: %d\n",
+			    fmd_status, ret);
+	}
+
+	return 0;
+}
 int cnss_pci_update_status(struct cnss_pci_data *pci_priv,
 			   enum cnss_driver_status status)
 {
