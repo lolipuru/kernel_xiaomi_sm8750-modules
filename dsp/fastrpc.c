@@ -124,11 +124,14 @@ static void __fastrpc_free_map(struct fastrpc_map *map)
 		return;
 
 	fl = map->fl;
-	if (!fl)
-		return;
+	if (fl) {
+		spin_lock(&map->fl->lock);
+		list_del(&map->node);
+		spin_unlock(&map->fl->lock);
+	}
 
 	if (map->table) {
-		if (map->attr & FASTRPC_ATTR_SECUREMAP) {
+		if (fl && (map->attr & FASTRPC_ATTR_SECUREMAP)) {
 			struct qcom_scm_vmperm perm;
 			int vmid = fl->cctx->vmperms[0].vmid;
 			u64 src_perms = BIT(QCOM_SCM_VMID_HLOS) | BIT(vmid);
@@ -141,8 +144,8 @@ static void __fastrpc_free_map(struct fastrpc_map *map)
 			if (err) {
 				dev_err(fl->cctx->dev,
 					"Failed to assign memory phys 0x%llx size 0x%llx err %d",
-					map->phys, map->size, err);
-				return;
+						map->phys, map->size, err);
+				goto free_map;
 			}
 		}
 		/* FASTRPC_MAP_FD_NOMAP is not mapped on SMMU CB device */
@@ -153,7 +156,7 @@ static void __fastrpc_free_map(struct fastrpc_map *map)
 			mutex_lock(&smmucb->map_mutex);
 			if (!smmucb->dev) {
 				mutex_unlock(&smmucb->map_mutex);
-				return;
+				goto free_map;
 			}
 			__fastrpc_dma_map_free(map);
 			smmucb->allocatedbytes -= SMMU_ALIGN(map->size);
@@ -161,17 +164,9 @@ static void __fastrpc_free_map(struct fastrpc_map *map)
 		}
 	}
 
-	if (map->fl) {
-		spin_lock(&map->fl->lock);
-		list_del(&map->node);
-		spin_unlock(&map->fl->lock);
-		map->fl = NULL;
-	}
-
+free_map:
 	kfree(map);
-	map = NULL;
 }
-
 
 static void fastrpc_free_map(struct kref *ref)
 {
@@ -213,6 +208,7 @@ static int fastrpc_map_lookup(struct fastrpc_user *fl, int fd,
 	} else {
 		list_for_each_entry(map, &fl->maps, node) {
 			if (map->fd == fd && va >= (u64)map->va &&
+				va + len >= va &&
 				va + len <= (u64)map->va + map->size)
 				goto map_found;
 		}
@@ -1285,6 +1281,8 @@ map_retry:
 		dma_buf_detach(map->buf, map->attach);
 		smmuidx++;
 		goto map_retry;
+	} else if (err) {
+		goto map_err;
 	}
 
 	if (attr & FASTRPC_ATTR_SECUREMAP) {
@@ -1330,7 +1328,7 @@ map_retry:
 			dev_err(smmucb->dev,
 			"Failed to assign memory with phys 0x%llx size 0x%llx err %d",
 			map->phys, map->size, err);
-			goto map_err;
+			goto assign_err;
 		}
 	}
 	map->attr = attr;
@@ -1341,6 +1339,8 @@ map_retry:
 
 	return 0;
 
+assign_err:
+	dma_buf_unmap_attachment_wrap(map);
 map_err:
 	dma_buf_detach(map->buf, map->attach);
 attach_err:
