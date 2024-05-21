@@ -1290,6 +1290,13 @@ struct hal_hw_txrx_ops {
 	void (*hal_cmem_write)(hal_soc_handle_t hal_soc_hdl, uint32_t offset,
 			       uint32_t value);
 
+	void (*hal_umac_reset_intr)(hal_soc_handle_t hal_soc_hdl,
+				    uint32_t offset, uint32_t value,
+				    void __iomem *addr);
+
+	uint32_t (*hal_umac_reset_read)(hal_soc_handle_t hal_soc_hdl,
+					uint32_t offset, void __iomem *addr);
+
 	void (*hal_rx_msdu_get_reo_destination_indication)(uint8_t *buf,
 							   uint32_t *reo_destination_indication);
 	uint8_t (*hal_tx_get_num_tcl_banks)(void);
@@ -1417,7 +1424,8 @@ struct hal_hw_txrx_ops {
 					       void *pkt_info);
 	/* TX MONITOR */
 #ifdef WLAN_PKT_CAPTURE_TX_2_0
-	uint32_t (*hal_txmon_status_parse_tlv)(void *data_ppdu_info,
+	uint32_t (*hal_txmon_status_parse_tlv)(hal_soc_handle_t hal_soc_hdl,
+					       void *data_ppdu_info,
 					       void *prot_ppdu_info,
 					       void *data_status_info,
 					       void *prot_status_info,
@@ -1426,6 +1434,8 @@ struct hal_hw_txrx_ops {
 	uint32_t (*hal_txmon_status_get_num_users)(void *tx_tlv_hdr,
 						   uint8_t *num_users);
 	void (*hal_txmon_get_word_mask)(void *wmask);
+	void (*hal_txmon_get_frame_timestamp)(uint32_t tlv_tag,
+					      void *tx_tlv, void *ppdu_info);
 #endif /* WLAN_PKT_CAPTURE_TX_2_0 */
 	QDF_STATUS (*hal_reo_shared_qaddr_setup)(hal_soc_handle_t hal_soc_hdl,
 						 struct reo_queue_ref_table
@@ -1477,6 +1487,10 @@ struct hal_hw_txrx_ops {
 	void (*hal_rx_parse_eht_sig_hdr)(struct hal_soc *hal_soc,
 					 uint8_t *tlv,
 					 void *ppdu_info_handle);
+	void (*hal_rx_flow_cmem_update_reo_dst_ind)(struct hal_soc *hal_soc,
+						    uint32_t cmem_ba,
+						    uint32_t flow_idx,
+						    uint8_t reo_dest_ind);
 };
 
 /**
@@ -1573,6 +1587,9 @@ struct hal_suspend_write_history {
  * @dev_base_addr: Device base address
  * @dev_base_addr_ce: Device base address for ce - qca5018 target
  * @dev_base_addr_cmem: Device base address for CMEM
+ * @dev_base_addr_pcie0: Device base address for PCIE0
+ * @dev_base_addr_pcie1: Device base address for PCIE1
+ * @dev_base_addr_pcie2: Device base address for PCIE2
  * @dev_base_addr_pmm: Device base address for PMM
  * @srng_list: HAL internal state for all SRNG rings
  * @shadow_rdptr_mem_vaddr: Remote pointer memory for HW/FW updates (virtual)
@@ -1616,6 +1633,9 @@ struct hal_soc {
 	void *dev_base_addr;
 	void *dev_base_addr_ce;
 	void *dev_base_addr_cmem;
+	void *dev_base_addr_pcie0;
+	void *dev_base_addr_pcie1;
+	void *dev_base_addr_pcie2;
 	void *dev_base_addr_pmm;
 	struct hal_srng srng_list[HAL_SRNG_ID_MAX];
 
@@ -1741,8 +1761,8 @@ struct hal_srng *hal_ring_handle_to_hal_srng(hal_ring_handle_t hal_ring)
  * = 278528 bytes
  */
 #define REO_QUEUE_REF_NON_ML_TABLE_SIZE 278528
-/* Calculated based on 512 MLO peers */
-#define REO_QUEUE_REF_ML_TABLE_SIZE 69632
+/* Calculated based on 1024 MLO peers */
+#define REO_QUEUE_REF_ML_TABLE_SIZE 139400
 #define HAL_ML_PEER_ID_START 0x2000
 #define HAL_PEER_ID_IS_MLO(peer_id) ((peer_id) & HAL_ML_PEER_ID_START)
 

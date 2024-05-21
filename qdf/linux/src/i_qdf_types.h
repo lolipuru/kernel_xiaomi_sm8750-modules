@@ -73,6 +73,9 @@
 
 typedef struct sg_table __sgtable_t;
 
+#define __qdf_get_current() get_current()
+#define __qdf_this_cpu_ksoftirqd() this_cpu_ksoftirqd()
+
 /*
  * The IDs of the various system clocks
  */
@@ -204,6 +207,9 @@ typedef __be16 __qdf_be16_t;
 typedef __be32 __qdf_be32_t;
 typedef __be64 __qdf_be64_t;
 typedef struct net_device __qdf_dummy_netdev_t;
+
+typedef int (*__qdf_cmp_func_t)(const void *a, const void *b);
+typedef void (*__qdf_swap_func_t)(void *a, void *b, int size);
 
 #if defined(IPA_OFFLOAD) && defined(__KERNEL__)
 typedef struct ipa_wdi_buffer_info __qdf_mem_info_t;

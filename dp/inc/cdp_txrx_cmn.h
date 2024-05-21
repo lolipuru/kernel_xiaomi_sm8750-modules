@@ -177,7 +177,22 @@ typedef void (*ipa_uc_op_cb_type)(uint8_t *op_msg,
 				  void *osif_ctxt);
 
 #ifdef QCA_SUPPORT_DP_GLOBAL_CTX
-/* Global level structure for win contexts */
+/**
+ * struct dp_global_context - Global level structure for win contexts
+ * @fst_ctx: Rx FST Handle
+ * @tx_desc: flow pool pointer
+ * @tx_cc_ctx: main context for HW cookie conversion
+ * @spcl_tx_desc: flow pool
+ * @spcl_tx_cc_ctx: special context for HW cookie conversion
+ * @rx_fst_ref_cnt: ref cnt for tx descriptors
+ * @global_descriptor_in_use: global descriptors in usage
+ * @tx_cookie_ctx_alloc_cnt: Tx cookie context alloc count
+ * @tx_desc_pool_alloc_cnt: Tx descriptor pool alloc count
+ * @tx_desc_pool_init_cnt: Tx descriptor pool init count
+ * @spcl_tx_cookie_ctx_alloc_cnt: Special tx cookie context alloc count
+ * @spcl_tx_desc_pool_alloc_cnt: Special tx desc pool alloc count
+ * @spcl_tx_desc_pool_init_cnt: special tx desc pool init cnt
+ */
 struct dp_global_context {
 	struct dp_rx_fst *fst_ctx;
 	struct dp_tx_desc_pool_s *tx_desc[2][4];
@@ -1890,8 +1905,11 @@ static inline void cdp_txrx_umac_reset_init(ol_txrx_soc_handle soc)
 /**
  * cdp_txrx_umac_reset_deinit(): De-initialize UMAC HW reset module
  * @soc: soc handle
+ * @recovery_type: Mode0 or mode 1 recovery
  */
-static inline void cdp_txrx_umac_reset_deinit(ol_txrx_soc_handle soc)
+static inline
+void cdp_txrx_umac_reset_deinit(ol_txrx_soc_handle soc,
+				uint8_t recovery_type)
 {
 	if (!soc || !soc->ops) {
 		dp_cdp_debug("Invalid Instance:");
@@ -1903,7 +1921,7 @@ static inline void cdp_txrx_umac_reset_deinit(ol_txrx_soc_handle soc)
 	    !soc->ops->cmn_drv_ops->txrx_umac_reset_deinit)
 		return;
 
-	soc->ops->cmn_drv_ops->txrx_umac_reset_deinit(soc);
+	soc->ops->cmn_drv_ops->txrx_umac_reset_deinit(soc, recovery_type);
 }
 
 /**
@@ -3528,6 +3546,76 @@ int cdp_cfgmgr_get_peer_create_evt_info(struct cdp_soc_t *soc, uint16_t peer_id,
 
 	return soc->ops->cmn_drv_ops->cfgmgr_get_peer_create_evt_info(
 						soc, peer_id, ev_buf);
+}
+#endif
+
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+/**
+ * cdp_calculate_per_ring_pkt_avg() - calculate rx rings pkt average
+ * @soc: Datapath soc handle
+ *
+ * Return: none.
+ */
+static inline void
+cdp_calculate_per_ring_pkt_avg(ol_txrx_soc_handle soc)
+{
+	if (!soc) {
+		dp_cdp_debug("Invalid Instance");
+		return;
+	}
+
+	if (!soc->ops->cmn_drv_ops ||
+	    !soc->ops->cmn_drv_ops->calculate_per_ring_pkt_avg)
+		return;
+
+	soc->ops->cmn_drv_ops->calculate_per_ring_pkt_avg(soc);
+}
+
+/**
+ * cdp_get_per_ring_pkt_avg() - get per rx ring pkt average
+ * @soc: Datapath soc handle
+ * @pkt_avg_cnt: Array of counters to update Rx rings pkt average
+ * @total_avg_pkt_cnt: total average packet count of all rx rings
+ *
+ * Return: None.
+ */
+static inline void
+cdp_get_per_ring_pkt_avg(ol_txrx_soc_handle soc,
+			 uint32_t *pkt_avg_cnt, uint32_t *total_avg_pkt_cnt)
+{
+	if (!soc) {
+		dp_cdp_debug("Invalid Instance");
+		return;
+	}
+
+	if (!soc->ops->cmn_drv_ops ||
+	    !soc->ops->cmn_drv_ops->get_per_ring_pkt_avg)
+		return;
+
+	soc->ops->cmn_drv_ops->get_per_ring_pkt_avg(soc, pkt_avg_cnt,
+						    total_avg_pkt_cnt);
+}
+
+/**
+ * cdp_get_ext_grp_id_from_reo_num() - get ext group id from reo number
+ * @soc: Datapath soc handle
+ * @reo_num: reo ring number
+ *
+ * Return: ext group id
+ */
+static inline int
+cdp_get_ext_grp_id_from_reo_num(ol_txrx_soc_handle soc, uint8_t reo_num)
+{
+	if (!soc) {
+		dp_cdp_debug("Invalid Instance");
+		return -EINVAL;
+	}
+
+	if (!soc->ops->cmn_drv_ops ||
+	    !soc->ops->cmn_drv_ops->get_ext_grp_id_from_reo_num)
+		return -EINVAL;
+
+	return soc->ops->cmn_drv_ops->get_ext_grp_id_from_reo_num(soc, reo_num);
 }
 #endif
 #endif /* _CDP_TXRX_CMN_H_ */

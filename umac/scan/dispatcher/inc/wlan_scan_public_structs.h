@@ -423,7 +423,11 @@ struct non_inheritance_ie {
 	bool non_inh_ie_found;
 };
 
+#define TBTT_BSS_PARAM_MBSSID_BIT      0x04
 #define TBTT_BSS_PARAM_TRANS_BSSID_BIT 0x08
+#define TBTT_BSS_PARAM_MBSSID_TX_MASK  (TBTT_BSS_PARAM_MBSSID_BIT |\
+					TBTT_BSS_PARAM_TRANS_BSSID_BIT)
+#define TBTT_BSS_PARAM_MBSSID_NONTX_MASK TBTT_BSS_PARAM_MBSSID_BIT
 /**
  * struct rnr_bss_info - Reduced Neighbor Report BSS information
  * @neighbor_ap_tbtt_offset: Neighbor AP TBTT offset
@@ -530,8 +534,6 @@ struct reduced_neighbor_report {
  * @ecsa_ie: Pointer to eCSA IE
  * @max_cst_ie: Pointer to Max Channel Switch Time IE
  * @is_valid_link: The partner link can be used if true
- * @is_scan_entry_not_found: If set to true, the partner link scan entry is
- * not present in scan DB (currently using for non-TxMBSSID MLO AP)
  * @op_class: Operating class
  */
 struct partner_link_info {
@@ -543,7 +545,6 @@ struct partner_link_info {
 	const uint8_t *ecsa_ie;
 	const uint8_t *max_cst_ie;
 	bool is_valid_link;
-	bool is_scan_entry_not_found;
 	uint8_t op_class;
 };
 

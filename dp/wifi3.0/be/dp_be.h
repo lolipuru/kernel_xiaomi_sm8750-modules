@@ -275,6 +275,7 @@ struct dp_ppe_vp_profile {
  * @elem_count: Number of descriptors in the pool
  * @num_free: Number of free descriptors
  * @lock: Lock for descriptor allocation/free from/to the pool
+ * @comp: Tx completion status structure
  */
 struct dp_ppeds_tx_desc_pool_s {
 	uint16_t elem_size;
@@ -286,6 +287,9 @@ struct dp_ppeds_tx_desc_pool_s {
 	uint16_t elem_count;
 	uint32_t num_free;
 	qdf_spinlock_t lock;
+#ifdef QCA_DP_OPTIMIZED_TX_DESC
+	struct hal_tx_desc_comp_s *comp;
+#endif
 };
 #endif
 
@@ -371,6 +375,8 @@ struct dp_soc_be {
 	uint8_t num_ppe_vp_search_idx_entries;
 	uint8_t num_ppe_vp_profiles;
 	uint32_t dp_ppeds_node_id;
+	qdf_atomic_t borrow_count;
+	int64_t borrow_limit;
 	char irq_name[DP_PPE_INTR_MAX][DP_PPE_INTR_STRNG_LEN];
 	struct {
 		struct {

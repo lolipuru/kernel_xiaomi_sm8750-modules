@@ -853,6 +853,7 @@ static void mlo_peer_free(struct wlan_mlo_peer_context *ml_peer)
 	mlo_ap_ml_peerid_free(ml_peer->mlo_peer_id);
 	mlo_peer_free_aid(ml_dev, ml_peer);
 	mlo_peer_free_primary_umac(ml_dev, ml_peer);
+	wlan_ptqm_peer_migrate_ctx_free(ml_peer);
 	qdf_mem_free(ml_peer);
 }
 
@@ -925,7 +926,12 @@ static QDF_STATUS mlo_peer_attach_link_peer(
 		peer_entry->link_ix = wlan_vdev_get_link_id(vdev);
 		pdev = wlan_vdev_get_pdev(wlan_peer_get_vdev(link_peer));
 		peer_entry->hw_link_id = wlan_mlo_get_pdev_hw_link_id(pdev);
-		mlo_peer_assign_primary_umac(ml_peer, peer_entry);
+
+		if ((wlan_vdev_mlme_get_opmode(vdev) == QDF_STA_MODE) ||
+		    ((wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE) &&
+		     !vdev->mlo_dev_ctx->ap_ctx->mlo_link_reject))
+			mlo_peer_assign_primary_umac(ml_peer, peer_entry);
+
 		if (frm_buf)
 			peer_entry->assoc_rsp_buf = frm_buf;
 		else
@@ -1555,6 +1561,8 @@ QDF_STATUS wlan_mlo_peer_create(struct wlan_objmgr_vdev *vdev,
 				ml_dev->mld_id,
 				QDF_MAC_ADDR_REF(link_peer->mldaddr),
 				WLAN_UMAC_MLO_ASSOC_MAX_SUPPORTED_LINKS);
+			if (!ml_dev->ap_ctx->mlo_link_reject)
+				return QDF_STATUS_E_RESOURCES;
 		}
 
 		status = mlo_dev_get_link_vdevs(vdev, ml_dev,
@@ -1590,13 +1598,15 @@ QDF_STATUS wlan_mlo_peer_create(struct wlan_objmgr_vdev *vdev,
 			if (vdev_link && (vdev_link != vdev) &&
 			    (wlan_vdev_get_peer_count(vdev_link) >
 			     wlan_vdev_get_max_peer_count(vdev_link))) {
-				mlo_dev_release_link_vdevs(link_vdevs);
 				mlo_err("MLD ID %d ML Peer " QDF_MAC_ADDR_FMT " Max peer count reached on link vdev %d",
 					ml_dev->mld_id,
 					QDF_MAC_ADDR_REF
 						(link_peer->mldaddr),
 					wlan_vdev_get_id(vdev_link));
-				return QDF_STATUS_E_RESOURCES;
+				if (!ml_dev->ap_ctx->mlo_link_reject) {
+					mlo_dev_release_link_vdevs(link_vdevs);
+					return QDF_STATUS_E_RESOURCES;
+				}
 			}
 		}
 	}
@@ -1758,6 +1768,7 @@ QDF_STATUS wlan_mlo_peer_create(struct wlan_objmgr_vdev *vdev,
 	if ((wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE) &&
 	    !ml_dev->ap_ctx->mlo_link_reject)
 		mlo_peer_allocate_primary_umac(ml_dev, ml_peer, tmp_link_vdevs);
+	wlan_ptqm_peer_migrate_ctx_alloc(ml_peer);
 
 	if (wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE)
 		mlo_dev_release_link_vdevs(tmp_link_vdevs);
@@ -2899,7 +2910,7 @@ wlan_mlo_ap_vdev_find_assoc_entry(struct wlan_objmgr_vdev *vdev,
 
 	assoc_list = &mld_ctx->ap_ctx->assoc_list;
 	if (qdf_list_empty(&assoc_list->peer_list)) {
-		mlo_info("list is empty");
+		mlo_debug("list is empty");
 		return NULL;
 	}
 	qdf_spin_lock_bh(&assoc_list->list_lock);

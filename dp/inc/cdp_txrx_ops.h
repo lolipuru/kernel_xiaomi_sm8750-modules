@@ -739,7 +739,8 @@ struct cdp_cmn_ops {
 					       uint8_t vdev_id,
 					       bool mlo_peers_only);
 #endif
-	QDF_STATUS (*txrx_umac_reset_deinit)(ol_txrx_soc_handle soc);
+	QDF_STATUS (*txrx_umac_reset_deinit)(ol_txrx_soc_handle soc,
+					     uint8_t recovery_type);
 	QDF_STATUS (*txrx_umac_reset_init)(ol_txrx_soc_handle soc);
 	void (*txrx_get_tsf_time)(struct cdp_soc_t *soc_hdl, uint32_t tsf_id,
 				  uint32_t mac_id, uint64_t *tsf,
@@ -764,6 +765,14 @@ struct cdp_cmn_ops {
 	int (*cfgmgr_get_peer_create_evt_info)(
 				struct cdp_soc_t *soc_hdl, uint16_t peer_id,
 				struct dpdk_wlan_peer_create_info *ev_buf);
+#endif
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+	void (*calculate_per_ring_pkt_avg)(struct cdp_soc_t *soc_hdl);
+	void (*get_per_ring_pkt_avg)(struct cdp_soc_t *soc_hdl,
+				     uint32_t *pkt_avg,
+				     uint32_t *total_avg_pkt_cnt);
+	int (*get_ext_grp_id_from_reo_num)(struct cdp_soc_t *soc_hdl,
+					   uint8_t reo_num);
 #endif
 };
 
@@ -2271,6 +2280,7 @@ struct cdp_throttle_ops {
  * @ipa_tx_opt_dp_ctrl_pkt: handle opt_dp_ctrl tx pkt
  * @ipa_ast_create: Create/Update ast entry
  * @ipa_get_wdi_version: Get WDI version
+ * @ipa_is_ring_ipa_rx: Check whether the given ring is ipa rx ring or not
  */
 struct cdp_ipa_ops {
 	QDF_STATUS (*ipa_get_resource)(struct cdp_soc_t *soc_hdl,
@@ -2393,6 +2403,7 @@ struct cdp_ipa_ops {
 #endif
 	void (*ipa_get_wdi_version)(struct cdp_soc_t *soc_hdl,
 				    uint8_t *wdi_ver);
+	bool (*ipa_is_ring_ipa_rx)(struct cdp_soc_t *soc_hdl, uint8_t ring_id);
 };
 #endif
 
@@ -2582,6 +2593,11 @@ struct cdp_sawf_ops {
 				       uint8_t *mac_addr,
 				       uint16_t peer_id,
 				       uint32_t mark_metadata);
+	QDF_STATUS
+	(*sawf_3_link_peer_set_tid_weight)(struct cdp_soc_t *hdl,
+					   uint8_t *mac_addr,
+					   uint16_t peer_id,
+					   uint8_t tid_weight[]);
 #endif
 };
 #endif

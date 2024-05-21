@@ -2955,6 +2955,14 @@ hif_affinity_mgr_set_ce_irq_affinity(struct hif_softc *scn, uint32_t irq,
  * Return: None
  */
 void hif_affinity_mgr_affine_irq(struct hif_softc *scn);
+
+/**
+ * hif_affinity_mgr_supported() - checks for affinity mgr support
+ * @hif_ctx: hif opaque handle
+ *
+ * Return: true if affinity mgr supported else return flase
+ */
+bool hif_affinity_mgr_supported(struct hif_opaque_softc *hif_ctx);
 #else
 static inline void
 hif_affinity_mgr_init_ce_irq(struct hif_softc *scn, int id, int irq)
@@ -2986,6 +2994,12 @@ static inline
 void hif_affinity_mgr_affine_irq(struct hif_softc *scn)
 {
 }
+
+static inline bool
+hif_affinity_mgr_supported(struct hif_opaque_softc *hif_ctx)
+{
+	return false;
+}
 #endif
 
 /**
@@ -3010,4 +3024,13 @@ static inline void hif_print_reg_write_stats(struct hif_opaque_softc *hif_ctx)
 }
 #endif
 void hif_ce_print_ring_stats(struct hif_opaque_softc *hif_ctx);
+
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+void hif_set_load_balance_enabled_flag(struct hif_opaque_softc *hif_ctx);
+void hif_get_wlan_rx_time_stats(struct hif_opaque_softc *hif_ctx,
+				uint64_t *wlan_irq_time,
+				uint64_t *wlan_ksoftirqd_time);
+void hif_check_and_apply_irq_affinity(struct hif_opaque_softc *hif_ctx,
+				      uint8_t grp_id, uint32_t cpu_id);
+#endif
 #endif /* _HIF_H_ */

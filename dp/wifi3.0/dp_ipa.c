@@ -4831,7 +4831,8 @@ int dp_ipa_txrx_get_vdev_stats(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 
 QDF_STATUS dp_ipa_txrx_get_peer_stats(struct cdp_soc_t *soc, uint8_t vdev_id,
 				      uint8_t *peer_mac,
-				      struct cdp_peer_stats *peer_stats)
+				      struct cdp_peer_stats *peer_stats,
+				      enum cdp_peer_type peer_type)
 {
 	struct dp_peer *peer = NULL;
 	struct cdp_peer_info peer_info = { 0 };
@@ -4892,4 +4893,23 @@ bool dp_ipa_is_ring_ipa_tx(struct dp_soc *soc, uint8_t ring_id)
 	return (ring_id == IPA_TCL_DATA_RING_IDX);
 }
 #endif /* IPA_WDI3_TX_TWO_PIPES */
+
+/**
+ * dp_ipa_is_ring_ipa_rx() - check if the Rx ring is used by IPA
+ *
+ * @soc_hdl: DP SOC handle
+ * @ring_id: Rx ring id
+ *
+ * Return: true if ring is used by IPA, else return false
+ */
+bool dp_ipa_is_ring_ipa_rx(struct cdp_soc_t *soc_hdl, uint8_t ring_id)
+{
+	struct dp_soc *soc = cdp_soc_t_to_dp_soc(soc_hdl);
+
+	if (!soc->wlan_cfg_ctx->ipa_enabled)
+		return false;
+
+	return (ring_id == IPA_REO_DEST_RING_IDX ||
+		ring_id == IPA_REO_DEST_RING_IDX_2);
+}
 #endif

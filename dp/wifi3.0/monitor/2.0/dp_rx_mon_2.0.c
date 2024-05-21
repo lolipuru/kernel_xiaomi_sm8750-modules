@@ -664,7 +664,7 @@ dp_rx_mon_handle_mpdu_end(struct hal_rx_ppdu_info *ppdu_info)
 	struct hal_rx_mon_mpdu_info *mpdu_info, *mpdu_meta;
 	qdf_nbuf_t nbuf;
 	uint8_t user_id = ppdu_info->user_id;
-	uint8_t mpdu_idx = ppdu_info->mpdu_count[user_id];
+	uint16_t mpdu_idx = ppdu_info->mpdu_count[user_id];
 
 	mpdu_info = &ppdu_info->mpdu_info[user_id];
 	if (qdf_unlikely(!ppdu_info->rx_hdr_rcvd[user_id])) {
@@ -707,7 +707,7 @@ dp_rx_mon_handle_mpdu_start(struct hal_rx_ppdu_info *ppdu_info)
 	struct hal_rx_mon_mpdu_info *mpdu_info, *mpdu_meta;
 	qdf_nbuf_t nbuf;
 	uint8_t user_id = ppdu_info->user_id;
-	uint8_t mpdu_idx = ppdu_info->mpdu_count[user_id];
+	uint16_t mpdu_idx = ppdu_info->mpdu_count[user_id];
 	uint8_t type;
 
 	if (qdf_unlikely(!ppdu_info->rx_hdr_rcvd[user_id])) {
@@ -752,7 +752,7 @@ dp_rx_mon_handle_msdu_end(struct dp_pdev *pdev,
 	struct hal_rx_mon_msdu_info *msdu_info;
 	struct hal_rx_mon_msdu_info *last_buf_info;
 	uint8_t user_id = ppdu_info->user_id;
-	uint8_t mpdu_idx = ppdu_info->mpdu_count[user_id];
+	uint16_t mpdu_idx = ppdu_info->mpdu_count[user_id];
 
 	msdu_info = &ppdu_info->msdu[user_id];
 	/* update msdu metadata at last buffer of msdu in MPDU */
@@ -1266,6 +1266,9 @@ dp_rx_mon_deliver_mpdu(struct dp_pdev *pdev,
 	qdf_nbuf_t nbuf;
 	struct dp_mon_mac *mon_mac = dp_get_mon_mac(pdev, mac_id);
 	struct dp_vdev *mvdev = mon_mac->mvdev;
+	struct dp_soc *soc = pdev->soc;
+	void *hdr_desc;
+	struct ieee80211_frame *wh;
 
 	if (mvdev && mvdev->monitor_vdev->osif_rx_mon) {
 		mon_mac->rx_mon_stats.mpdus_buf_to_stack++;
@@ -1275,9 +1278,21 @@ dp_rx_mon_deliver_mpdu(struct dp_pdev *pdev,
 			mon_mac->rx_mon_stats.mpdus_buf_to_stack++;
 			nbuf = nbuf->next;
 		}
+		/* hdr_desc points to 80211 hdr */
+		hdr_desc = qdf_nbuf_get_frag_addr(mpdu, 0);
+
+		wh = (struct ieee80211_frame *)hdr_desc;
+
+		/* linearize mgmt frames */
+		if ((wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK) == IEEE80211_FC0_TYPE_MGT) {
+			if (qdf_unlikely(wlan_cfg_get_rxmon_mgmt_linearization(soc->wlan_cfg_ctx))) {
+				if (qdf_nbuf_linearize(mpdu) == -ENOMEM)
+					return QDF_STATUS_E_FAILURE;
+			}
+		}
 		mvdev->monitor_vdev->osif_rx_mon(mvdev->osif_vdev,
-							   mpdu,
-							   rx_status);
+						 mpdu,
+						 rx_status);
 	} else {
 		return QDF_STATUS_E_FAILURE;
 	}
@@ -1927,6 +1942,7 @@ end:
 		 (tlv_status == HAL_TLV_STATUS_MPDU_END) ||
 		 (tlv_status == HAL_TLV_STATUS_MSDU_END) ||
 		 (tlv_status == HAL_TLV_STATUS_MON_BUF_ADDR) ||
+		 (tlv_status == HAL_TLV_STATUS_MON_DROP) ||
 		 (tlv_status == HAL_TLV_STATUS_MPDU_START));
 
 	return work_done;
@@ -2236,6 +2252,7 @@ dp_rx_mon_process_status_tlv(struct dp_pdev *pdev)
 			 (tlv_status == HAL_TLV_STATUS_MPDU_END) ||
 			 (tlv_status == HAL_TLV_STATUS_MSDU_END) ||
 			 (tlv_status == HAL_TLV_STATUS_MON_BUF_ADDR) ||
+			 (tlv_status == HAL_TLV_STATUS_MON_DROP) ||
 			 (tlv_status == HAL_TLV_STATUS_MPDU_START));
 
 		/* set status buffer pointer to NULL */
@@ -2925,7 +2942,8 @@ dp_rx_mon_buffers_alloc(struct dp_soc *soc, uint32_t size)
 	return dp_mon_buffers_replenish(soc, mon_buf_ring,
 					rx_mon_desc_pool,
 					size,
-					&desc_list, &tail, NULL);
+					&desc_list, &tail, NULL,
+					RXDMA_MONITOR_BUF);
 }
 
 QDF_STATUS dp_rx_mon_soc_init_2_0(struct dp_soc *soc)

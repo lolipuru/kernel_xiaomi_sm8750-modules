@@ -2902,6 +2902,18 @@ static void dp_reap_timer_deinit(struct dp_soc *soc)
 }
 #endif
 
+#ifndef CONFIG_SAWF
+static inline
+void dp_soc_sawf_msduq_timer_init(struct dp_soc *soc)
+{
+}
+
+static inline
+void dp_soc_sawf_msduq_timer_deinit(struct dp_soc *soc)
+{
+}
+#endif
+
 #if defined(QCA_HOST2FW_RXBUF_RING) && defined(QCA_IPA_LL_TX_FLOW_CONTROL)
 /**
  * dp_rxdma_ring_alloc() - allocate the RXDMA rings
@@ -4197,6 +4209,7 @@ static void dp_soc_detach(struct cdp_soc_t *txrx_soc)
 	dp_soc_srng_free(soc);
 	dp_hw_link_desc_ring_free(soc);
 	dp_hw_link_desc_pool_banks_free(soc, WLAN_INVALID_PDEV_ID);
+	dp_soc_sawf_msduq_timer_deinit(soc);
 	wlan_cfg_soc_detach(soc->wlan_cfg_ctx);
 	dp_soc_tx_hw_desc_history_detach(soc);
 	dp_soc_tx_history_detach(soc);
@@ -4861,6 +4874,25 @@ static inline bool dp_vdev_self_peer_required(struct dp_soc *soc,
 }
 #endif
 
+#ifdef QCA_SUPPORT_WDS_EXTENDED
+static inline void
+dp_wds_ext_ap_bridge_init(struct dp_vdev *vdev)
+{
+	if (wlan_op_mode_sta != vdev->opmode)
+		vdev->wds_ext_ap_bridge = true;
+	else
+		vdev->wds_ext_ap_bridge = false;
+
+	dp_init_info("%pK: wds_ext_ap_bridge %d",
+		     vdev, vdev->wds_ext_ap_bridge);
+}
+#else
+static inline void
+dp_wds_ext_ap_bridge_init(struct dp_vdev *vdev)
+{
+}
+#endif
+
 /**
  * dp_vdev_attach_wifi3() - attach txrx vdev
  * @cdp_soc: CDP SoC context
@@ -4985,6 +5017,7 @@ static QDF_STATUS dp_vdev_attach_wifi3(struct cdp_soc_t *cdp_soc,
 	vdev->prev_tx_enq_tstamp = 0;
 	vdev->prev_rx_deliver_tstamp = 0;
 	vdev->skip_sw_tid_classification = DP_TX_HW_DSCP_TID_MAP_VALID;
+	vdev->eapol_over_control_port_disable = 0;
 	dp_tx_vdev_traffic_end_indication_attach(vdev);
 
 	dp_vdev_pdev_list_add(soc, pdev, vdev);
@@ -4998,6 +5031,7 @@ static QDF_STATUS dp_vdev_attach_wifi3(struct cdp_soc_t *cdp_soc,
 	dp_init_info("%pK: wlan_cfg_ap_bridge_enabled %d",
 		     cdp_soc, vdev->ap_bridge_enabled);
 
+	dp_wds_ext_ap_bridge_init(vdev);
 	dp_tx_vdev_attach(vdev);
 
 	dp_monitor_vdev_attach(vdev);
@@ -5859,6 +5893,7 @@ dp_peer_create_wifi3(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 		dp_local_peer_id_alloc(pdev, peer);
 
 		qdf_spinlock_create(&peer->peer_info_lock);
+		dp_peer_3_link_tx_flow_info_init(peer);
 
 		DP_STATS_INIT(peer);
 
@@ -5955,6 +5990,7 @@ dp_peer_create_wifi3(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	qdf_spinlock_create(&peer->peer_state_lock);
 	dp_peer_add_ast(soc, peer, peer_mac_addr, ast_type, 0);
 	qdf_spinlock_create(&peer->peer_info_lock);
+	dp_peer_3_link_tx_flow_info_init(peer);
 
 	/* reset the ast index to flowid table */
 	dp_peer_reset_flowq_map(peer);
@@ -6167,6 +6203,10 @@ QDF_STATUS dp_peer_mlo_setup(
 				mld_peer->vdev, vdev_id,
 				qdf_atomic_read(&mld_peer->vdev->ref_cnt));
 
+			params.old_vdev_id = mld_peer->vdev->vdev_id;
+			params.old_pdev_id = mld_peer->vdev->pdev->pdev_id;
+			params.old_chip_id =
+				dp_get_chip_id(mld_peer->vdev->pdev->soc);
 			dp_mld_peer_change_vdev(soc, mld_peer, vdev_id);
 
 			params.vdev_id = peer->vdev->vdev_id;
@@ -6744,6 +6784,7 @@ static QDF_STATUS dp_peer_delete_wifi3(struct cdp_soc_t *soc_hdl,
 	dp_clear_peer_internal(soc, peer);
 
 	qdf_spinlock_destroy(&peer->peer_info_lock);
+	dp_peer_3_link_tx_flow_info_deinit(peer);
 	dp_peer_multipass_list_remove(peer);
 
 	/* remove the reference to the peer from the hash table */
@@ -8880,6 +8921,9 @@ static QDF_STATUS dp_get_vdev_param(struct cdp_soc_t *cdp_soc, uint8_t vdev_id,
 	case CDP_DROP_TX_MCAST:
 		val->cdp_drop_tx_mcast = vdev->drop_tx_mcast;
 		break;
+	case CDP_WDS_EXT_AP_BRIDGE:
+		val->cdp_vdev_paran_wds_ext_ap_bridge = vdev->wds_ext_ap_bridge;
+		break;
 #endif
 
 #ifdef MESH_MODE_SUPPORT
@@ -9040,6 +9084,13 @@ dp_set_vdev_param(struct cdp_soc_t *cdp_soc, uint8_t vdev_id,
 			val.cdp_drop_tx_mcast);
 		vdev->drop_tx_mcast = val.cdp_drop_tx_mcast;
 		break;
+	case CDP_WDS_EXT_AP_BRIDGE:
+		dp_info("vdev_id %d wds ext ap bridge :%d", vdev_id,
+			val.cdp_vdev_paran_wds_ext_ap_bridge);
+		if (vdev->opmode == wlan_op_mode_ap)
+			vdev->wds_ext_ap_bridge =
+					val.cdp_vdev_paran_wds_ext_ap_bridge;
+		break;
 #endif
 	case CDP_ENABLE_PEER_AUTHORIZE:
 		vdev->peer_authorize = val.cdp_vdev_param_peer_authorize;
@@ -9100,6 +9151,13 @@ dp_set_vdev_param(struct cdp_soc_t *cdp_soc, uint8_t vdev_id,
 		chan_band = wlan_reg_freq_to_band(val.cdp_vdev_param_mon_freq);
 		dp_monitor_set_chan_freq(vdev, val.cdp_vdev_param_mon_freq);
 		dp_monitor_set_chan_band(vdev, chan_band);
+		break;
+	case CDP_EAPOL_OVER_CONTROL_PORT_DISABLE:
+		dp_cdp_err("%pK: eapol_over_control_port_disable %d for vdev(%pK) id(%d)",
+			   dsoc, val.cdp_eapol_over_control_port_disable,
+			   vdev, vdev->vdev_id);
+		vdev->eapol_over_control_port_disable =
+				val.cdp_eapol_over_control_port_disable;
 		break;
 	default:
 		break;
@@ -9399,6 +9457,9 @@ dp_set_psoc_param(struct cdp_soc_t *cdp_soc,
 		soc->mon_flags = val.cdp_monitor_flag;
 		dp_info("monior interface flags: 0x%x", soc->mon_flags);
 		break;
+	case CDP_SCAN_RADIO_SUPPORT:
+		soc->scan_radio_support = val.cdp_scan_radio_support;
+		break;
 	default:
 		break;
 	}
@@ -9463,7 +9524,9 @@ static QDF_STATUS dp_get_psoc_param(struct cdp_soc_t *cdp_soc,
 		val->hal_soc_hdl = soc->hal_soc;
 		break;
 	case CDP_CFG_TX_DESC_NUM:
-		val->cdp_tx_desc_num = wlan_cfg_get_num_tx_desc(wlan_cfg_ctx);
+		val->cdp_tx_desc_num =
+			wlan_cfg_get_num_tx_desc(wlan_cfg_ctx,
+						 DP_TXDESC_POOL_ANY);
 		break;
 	case CDP_CFG_TX_EXT_DESC_NUM:
 		val->cdp_tx_ext_desc_num =
@@ -9517,6 +9580,10 @@ static QDF_STATUS dp_get_psoc_param(struct cdp_soc_t *cdp_soc,
 	case CDP_FW_SUPPORT_ML_MON:
 		val->cdp_fw_support_ml_mon =
 				soc->features.fw_support_ml_monitor;
+		break;
+	case CDP_CFG_REO_RINGS_MAPPING:
+		val->cdp_reo_rings_mapping =
+			wlan_cfg_get_reo_rings_mapping(soc->wlan_cfg_ctx);
 		break;
 	default:
 		dp_warn("Invalid param: %u", param);
@@ -10467,7 +10534,10 @@ static QDF_STATUS dp_soc_notify_asserted_soc(struct cdp_soc_t *psoc)
 		return QDF_STATUS_E_INVAL;
 	}
 
-	return dp_umac_reset_notify_asserted_soc(soc);
+	if (soc->arch_ops.mlo_umac_reset_notify_asserted_soc)
+		return soc->arch_ops.mlo_umac_reset_notify_asserted_soc(soc);
+
+	return QDF_STATUS_E_INVAL;
 }
 
 /**
@@ -11844,14 +11914,15 @@ static uint32_t dp_tx_flow_ctrl_configure_pdev(struct cdp_soc_t *soc_handle,
 			uint32_t tx_min, tx_max;
 
 			tx_min = wlan_cfg_get_min_tx_desc(soc->wlan_cfg_ctx);
-			tx_max = wlan_cfg_get_num_tx_desc(soc->wlan_cfg_ctx);
+			tx_max = wlan_cfg_get_max_tx_desc_pool(
+							   soc->wlan_cfg_ctx);
 
 			if (!buff) {
 				if ((value >= tx_min) && (value <= tx_max)) {
 					pdev->num_tx_allowed = value;
 				} else {
-					dp_tx_info("%pK: Failed to update num_tx_allowed, Q_min = %d Q_max = %d",
-						   soc, tx_min, tx_max);
+					dp_tx_info("%pK: Failed to update num_tx_allowed,"
+						   "Q_min = %d Q_max = %d",soc, tx_min, tx_max);
 					break;
 				}
 			} else {
@@ -12697,6 +12768,11 @@ static struct cdp_cmn_ops dp_ops_cmn = {
 	.cfgmgr_get_vdev_create_evt_info = dp_cfgmgr_get_vdev_create_evt_info,
 	.cfgmgr_get_peer_create_evt_info = dp_cfgmgr_get_peer_create_evt_info,
 #endif
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+	.calculate_per_ring_pkt_avg = dp_rx_calculate_per_ring_pkt_avg,
+	.get_per_ring_pkt_avg = dp_rx_get_per_ring_pkt_avg,
+	.get_ext_grp_id_from_reo_num = dp_soc_get_ext_grp_id_from_reo_num,
+#endif
 };
 
 static struct cdp_ctrl_ops dp_ops_ctrl = {
@@ -12802,6 +12878,8 @@ static struct cdp_host_stats_ops dp_ops_host_stats = {
 	.txrx_get_peer_stats = dp_ipa_txrx_get_peer_stats,
 	.txrx_get_vdev_stats  = dp_ipa_txrx_get_vdev_stats,
 	.txrx_get_pdev_stats = dp_ipa_txrx_get_pdev_stats,
+	.txrx_get_peer_stats_based_on_peer_type =
+			dp_ipa_txrx_get_peer_stats,
 #endif
 	.txrx_get_ratekbps = dp_txrx_get_ratekbps,
 	.txrx_update_vdev_stats = dp_txrx_update_vdev_host_stats,
@@ -12916,6 +12994,7 @@ static struct cdp_sawf_ops dp_ops_sawf = {
 #ifdef WLAN_FEATURE_11BE_MLO_3_LINK_TX
 	.get_peer_msduq = dp_sawf_get_peer_msduq,
 	.sawf_3_link_peer_flow_count = dp_sawf_3_link_peer_flow_count,
+	.sawf_3_link_peer_set_tid_weight = dp_sawf_3_link_peer_set_tid_weight,
 #endif
 };
 #endif
@@ -13610,6 +13689,7 @@ static struct cdp_ipa_ops dp_ops_ipa = {
 	.ipa_ast_create = dp_ipa_ast_create,
 #endif
 	.ipa_get_wdi_version = dp_ipa_get_wdi_version,
+	.ipa_is_ring_ipa_rx = dp_ipa_is_ring_ipa_rx,
 };
 #endif
 
@@ -13949,6 +14029,7 @@ dp_soc_attach(struct cdp_ctrl_objmgr_psoc *ctrl_psoc,
 			  &soc->cmem_total_size);
 	soc->cmem_avail_size = soc->cmem_total_size;
 	soc->device_id = device_id;
+	soc->pcie_slot = -1;
 	soc->cdp_soc.ops =
 		(struct cdp_ops *)qdf_mem_malloc(sizeof(struct cdp_ops));
 	if (!soc->cdp_soc.ops)
@@ -13987,6 +14068,8 @@ dp_soc_attach(struct cdp_ctrl_objmgr_psoc *ctrl_psoc,
 		dp_err("wlan_cfg_ctx failed");
 		goto fail2;
 	}
+
+	dp_soc_sawf_msduq_timer_init(soc);
 
 	qdf_ssr_driver_dump_register_region("wlan_cfg_ctx", soc->wlan_cfg_ctx,
 					    sizeof(*soc->wlan_cfg_ctx));
@@ -14819,6 +14902,8 @@ static QDF_STATUS dp_pdev_init(struct cdp_soc_t *txrx_soc,
 	struct wlan_cfg_dp_soc_ctxt *soc_cfg_ctx;
 	int nss_cfg;
 	void *sojourn_buf;
+	uint32_t target_type;
+	bool rx_refill_lt_disable = true;
 
 	struct dp_soc *soc = (struct dp_soc *)txrx_soc;
 	struct dp_pdev *pdev = soc->pdev_list[pdev_id];
@@ -14832,6 +14917,12 @@ static QDF_STATUS dp_pdev_init(struct cdp_soc_t *txrx_soc,
 	 * radio detach execution .i.e. in the absence of any vdev.
 	 */
 	pdev->pdev_deinit = 0;
+
+	/* For Pine scan radio, disable RXDMA refill low threshold status */
+	target_type = hal_get_target_type(soc->hal_soc);
+	if (target_type == TARGET_TYPE_QCN9000 && soc->scan_radio_support)
+		wlan_cfg_set_dp_soc_rxdma_refill_lt_disable(soc_cfg_ctx,
+							    rx_refill_lt_disable);
 
 	if (dp_wdi_event_attach(pdev)) {
 		QDF_TRACE(QDF_MODULE_ID_TXRX, QDF_TRACE_LEVEL_ERROR,
@@ -14923,7 +15014,9 @@ static QDF_STATUS dp_pdev_init(struct cdp_soc_t *txrx_soc,
 	qdf_event_create(&pdev->fw_stats_event);
 	qdf_event_create(&pdev->fw_obss_stats_event);
 
-	pdev->num_tx_allowed = wlan_cfg_get_num_tx_desc(soc->wlan_cfg_ctx);
+	pdev->num_tx_allowed = wlan_cfg_get_max_tx_desc_pool(
+							soc->wlan_cfg_ctx);
+
 	pdev->num_tx_spl_allowed =
 		wlan_cfg_get_num_tx_spl_desc(soc->wlan_cfg_ctx);
 	pdev->num_reg_tx_allowed =

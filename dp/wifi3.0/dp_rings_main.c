@@ -2408,6 +2408,8 @@ void dp_soc_deinit(void *txrx_soc)
 
 	dp_peer_mec_spinlock_destroy(soc);
 
+	dp_soc_sawf_deinit(soc);
+
 	qdf_nbuf_queue_free(&soc->htt_stats.msg);
 
 	qdf_nbuf_queue_free(&soc->invalid_buf_queue);
@@ -3786,6 +3788,7 @@ void *dp_soc_init(struct dp_soc *soc, HTC_HANDLE htc_handle,
 
 	qdf_spinlock_create(&soc->ast_lock);
 	dp_peer_mec_spinlock_create(soc);
+	dp_soc_sawf_init(soc);
 
 	qdf_spinlock_create(&soc->reo_desc_freelist_lock);
 	qdf_list_create(&soc->reo_desc_freelist, REO_DESC_FREELIST_SIZE);
@@ -4632,5 +4635,26 @@ void dp_soc_reset_dpdk_intr_mask(struct dp_soc *soc)
 		wlan_cfg_set_rx_err_ring_mask(soc->wlan_cfg_ctx,
 					      group_number, 0);
 	}
+}
+#endif
+
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+int dp_soc_get_ext_grp_id_from_reo_num(struct cdp_soc_t *cdp_soc,
+				       uint8_t reo_num)
+{
+	struct dp_soc *soc = (struct dp_soc *)cdp_soc;
+	struct dp_intr *intr_ctx;
+	int i;
+
+	for (i = 0; i < WLAN_CFG_INT_NUM_CONTEXTS; i++) {
+		intr_ctx = &soc->intr_ctx[i];
+		if (!intr_ctx->rx_ring_mask)
+			continue;
+
+		if (intr_ctx->rx_ring_mask & (1 << reo_num))
+			return i;
+	}
+
+	return -EINVAL;
 }
 #endif

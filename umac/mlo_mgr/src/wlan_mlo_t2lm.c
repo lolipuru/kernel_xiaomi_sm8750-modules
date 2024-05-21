@@ -28,6 +28,7 @@
 #include "wlan_utility.h"
 #if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_FEATURE_11BE_MLO_ADV_FEATURE)
 #include <wlan_t2lm_api.h>
+#include <wlan_mlo_link_force.h>
 #endif
 #include <wlan_mlo_mgr_sta.h>
 #include <wlan_sm_engine.h>
@@ -165,6 +166,8 @@ ttlm_populate_tx_action_req(struct wlan_mlo_peer_context *ml_peer,
 	struct wlan_t2lm_info *ttlm_req_info;
 	uint8_t tid_num;
 	QDF_STATUS status;
+	struct ml_link_force_state curr_force_state = {0};
+	struct wlan_objmgr_psoc *psoc;
 
 	if (!ml_peer) {
 		t2lm_err("ML peer is NULL");
@@ -187,6 +190,32 @@ ttlm_populate_tx_action_req(struct wlan_mlo_peer_context *ml_peer,
 
 	if (!vdev->mlo_dev_ctx) {
 		status = QDF_STATUS_E_NULL_VALUE;
+		goto release_peer;
+	}
+
+	psoc = wlan_vdev_get_psoc(vdev);
+	if (!psoc) {
+		status = QDF_STATUS_E_NULL_VALUE;
+		goto release_peer;
+	}
+
+	ml_nlink_get_curr_force_state(psoc, vdev, &curr_force_state);
+	t2lm_debug("Current force state force_inactive_bitmap: %d force_active_bitmap: %d curr_dynamic_inactive_bitmap: %d curr_active_bitmap: %d curr_inactive_bitmap: %d",
+		   curr_force_state.force_inactive_bitmap,
+		   curr_force_state.force_active_bitmap,
+		   curr_force_state.curr_dynamic_inactive_bitmap,
+		   curr_force_state.curr_active_bitmap,
+		   curr_force_state.curr_inactive_bitmap);
+
+	if (!ttlm_info->default_link_mapping &&
+	    ttlm_info->ieee_link_map_tid[0] &&
+	    ((ttlm_info->ieee_link_map_tid[0] &
+	      curr_force_state.force_inactive_bitmap) ==
+	    ttlm_info->ieee_link_map_tid[0])) {
+		t2lm_err("TTLM req: 0x%x failed due to force_inactive link: 0x%x",
+			 ttlm_info->ieee_link_map_tid[0],
+			 curr_force_state.force_inactive_bitmap);
+		status = QDF_STATUS_E_INVAL;
 		goto release_peer;
 	}
 
@@ -244,6 +273,50 @@ release_vdev:
 }
 
 /**
+ * ttlm_handle_ap_action_req() - Handle AP action req
+ * @ml_peer: ML peer context
+ * @t2lm_req: Ongoing T2LM req
+ *
+ * Return: QDF_STATUS
+ */
+static QDF_STATUS
+ttlm_handle_ap_action_req(struct wlan_mlo_peer_context *ml_peer,
+			  struct wlan_t2lm_onging_negotiation_info *t2lm_req)
+{
+	struct wlan_objmgr_vdev *vdev;
+	struct wlan_objmgr_peer *peer;
+	QDF_STATUS status;
+
+	vdev = mlo_get_first_vdev_by_ml_peer(ml_peer);
+	if (!vdev)
+		return QDF_STATUS_E_NULL_VALUE;
+
+	peer = wlan_objmgr_vdev_try_get_bsspeer(vdev, WLAN_MLO_MGR_ID);
+	if (!peer) {
+		status = QDF_STATUS_E_NULL_VALUE;
+		goto release_vdev;
+	}
+
+	status = ttlm_valid_n_copy_for_rx_req(vdev, peer, t2lm_req);
+
+	wlan_objmgr_peer_release_ref(peer, WLAN_MLO_MGR_ID);
+release_vdev:
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLO_MGR_ID);
+
+	return status;
+}
+
+static QDF_STATUS
+ttlm_send_ttlm_action_rsp(struct wlan_mlo_peer_context *ml_peer,
+			  struct ttlm_rsp_info *t2lm_rsp_info)
+{
+	lim_send_ttlm_action_rsp_frame(t2lm_rsp_info->token,
+				       t2lm_rsp_info->t2lm_resp_type,
+				       (uint8_t *)&t2lm_rsp_info->dest_addr);
+	return QDF_STATUS_SUCCESS;
+}
+
+/**
  * ttlm_state_init_entry() - Entry API for init state for TTLM
  * @ctx: MLO peer ctx
  *
@@ -286,19 +359,32 @@ static bool ttlm_state_init_event(void *ctx, uint16_t event, uint16_t data_len,
 {
 	bool event_handled = true;
 	struct wlan_mlo_peer_context *ml_peer = ctx;
+	QDF_STATUS status;
 
 	switch (event) {
 	case WLAN_TTLM_SM_EV_TX_ACTION_REQ:
 		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_S_INPROGRESS);
-		ttlm_sm_deliver_event_sync(ml_peer,
+		status = ttlm_sm_deliver_event_sync(ml_peer,
 					   WLAN_TTLM_SM_EV_TX_ACTION_REQ_START,
 					   data_len, data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
 		break;
 	case WLAN_TTLM_SM_EV_RX_ACTION_REQ:
+		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_S_INPROGRESS);
+		status = ttlm_sm_deliver_event_sync(ml_peer, event, data_len,
+						    data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
 		break;
 	case WLAN_TTLM_SM_EV_BEACON:
 		break;
 	case WLAN_TTLM_SM_EV_BTM_LINK_DISABLE:
+		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_S_INPROGRESS);
+		status = ttlm_sm_deliver_event_sync(ml_peer, event, data_len,
+						    data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
 		break;
 	default:
 		event_handled = false;
@@ -351,11 +437,30 @@ static bool ttlm_state_inprogress_event(void *ctx, uint16_t event,
 {
 	struct wlan_mlo_peer_context *ml_peer = ctx;
 	bool event_handled = true;
+	QDF_STATUS status;
 
 	switch (event) {
 	case WLAN_TTLM_SM_EV_TX_ACTION_REQ_START:
 		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_SS_STA_INPROGRESS);
-		ttlm_sm_deliver_event_sync(ml_peer, event, data_len, data);
+		status = ttlm_sm_deliver_event_sync(ml_peer, event, data_len,
+						    data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
+		break;
+	case WLAN_TTLM_SM_EV_RX_ACTION_REQ:
+		ttlm_sm_transition_to(ml_peer,
+				      WLAN_TTLM_SS_AP_ACTION_INPROGRESS);
+		status = ttlm_sm_deliver_event_sync(ml_peer, event, data_len,
+						    data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
+		break;
+	case WLAN_TTLM_SM_EV_BTM_LINK_DISABLE:
+		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_SS_AP_BTM_INPROGRESS);
+		status = ttlm_sm_deliver_event_sync(ml_peer, event, data_len,
+						    data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
 		break;
 	default:
 		event_handled = false;
@@ -408,13 +513,30 @@ static bool ttlm_state_negotiated_event(void *ctx, uint16_t event,
 {
 	bool event_handled = true;
 	struct wlan_mlo_peer_context *ml_peer = ctx;
+	QDF_STATUS status;
 
 	switch (event) {
 	case WLAN_TTLM_SM_EV_TX_ACTION_REQ:
 		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_S_INPROGRESS);
-		ttlm_sm_deliver_event_sync(ml_peer,
+		status = ttlm_sm_deliver_event_sync(ml_peer,
 				WLAN_TTLM_SM_EV_TX_ACTION_REQ_START,
 				data_len, data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
+		break;
+	case WLAN_TTLM_SM_EV_RX_ACTION_REQ:
+		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_S_INPROGRESS);
+		status = ttlm_sm_deliver_event_sync(ml_peer, event, data_len,
+						    data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
+		break;
+	case WLAN_TTLM_SM_EV_BTM_LINK_DISABLE:
+		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_S_INPROGRESS);
+		status = ttlm_sm_deliver_event_sync(ml_peer, event, data_len,
+						    data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
 		break;
 	default:
 		event_handled = false;
@@ -510,7 +632,7 @@ ttlm_handle_rx_action_rsp_in_sta_in_progress_state(
 	struct wlan_objmgr_vdev *vdev;
 	struct wlan_objmgr_peer *peer;
 	struct wlan_t2lm_info *t2lm_nego = NULL;
-	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	QDF_STATUS status;
 
 	vdev = mlo_get_first_vdev_by_ml_peer(ml_peer);
 	if (!vdev) {
@@ -531,25 +653,31 @@ ttlm_handle_rx_action_rsp_in_sta_in_progress_state(
 		t2lm_nego = &ml_peer->t2lm_policy.t2lm_negotiated_info.t2lm_info[WLAN_T2LM_BIDI_DIRECTION];
 		qdf_mem_copy(t2lm_nego, t2lm_rsp_info->t2lm_info,
 			     sizeof(struct wlan_t2lm_info));
-		status = wlan_send_tid_to_link_mapping(vdev, t2lm_rsp_info->t2lm_info);
+		status =
+			wlan_send_tid_to_link_mapping(vdev,
+						      t2lm_rsp_info->t2lm_info);
 		if (QDF_IS_STATUS_ERROR(status)) {
 			t2lm_err("sending t2lm wmi failed");
-			goto release;
+			wlan_objmgr_peer_release_ref(peer, WLAN_MLO_MGR_ID);
+			wlan_objmgr_vdev_release_ref(vdev, WLAN_MLO_MGR_ID);
+			return QDF_STATUS_E_NULL_VALUE;
 		}
 
-		wlan_mlo_dev_t2lm_notify_link_update(vdev, t2lm_rsp_info->t2lm_info);
+		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_S_NEGOTIATED);
+
+		wlan_mlo_dev_t2lm_notify_link_update(vdev,
+						     t2lm_rsp_info->t2lm_info);
 	} else {
 		t2lm_debug("T2LM rsp status: %d, clear ongoing tid mapping",
 			   t2lm_rsp_info->t2lm_resp_type);
-
 		wlan_t2lm_clear_ongoing_negotiation(peer);
+		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_S_NEGOTIATED);
 	}
 
-release:
 	wlan_objmgr_peer_release_ref(peer, WLAN_MLO_MGR_ID);
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLO_MGR_ID);
 
-	return status;
+	return QDF_STATUS_SUCCESS;
 }
 
 /**
@@ -581,7 +709,8 @@ static bool ttlm_subst_sta_inprogress_event(void *ctx, uint16_t event,
 
 		break;
 	case WLAN_TTLM_SM_EV_TX_ACTION_REQ_ACTIVE:
-		status = ttlm_populate_tx_action_req(ml_peer, data, &dialog_token);
+		status = ttlm_populate_tx_action_req(ml_peer, ttlm_info,
+						     &dialog_token);
 		if (QDF_IS_STATUS_ERROR(status)) {
 			ttlm_sm_transition_to(ml_peer, WLAN_TTLM_S_NEGOTIATED);
 			event_handled = false;
@@ -654,8 +783,21 @@ static bool ttlm_subst_ap_action_inprogress_event(void *ctx, uint16_t event,
 						  uint16_t data_len, void *data)
 {
 	bool event_handled = true;
+	struct wlan_mlo_peer_context *ml_peer = ctx;
+	QDF_STATUS status;
 
 	switch (event) {
+	case WLAN_TTLM_SM_EV_RX_ACTION_REQ:
+		status = ttlm_handle_ap_action_req(ml_peer, data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
+		break;
+	case WLAN_TTLM_SM_EV_TX_ACTION_RSP:
+		status = ttlm_send_ttlm_action_rsp(ml_peer, data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
+		ttlm_sm_transition_to(ml_peer, WLAN_TTLM_S_NEGOTIATED);
+		break;
 	default:
 		event_handled = false;
 		break;
@@ -754,6 +896,39 @@ static void ttlm_subst_ap_btm_inprogress_exit(void *ctx)
 {
 }
 
+static QDF_STATUS
+ttlm_handle_btm_link_disable_t2lm_frame(struct wlan_mlo_peer_context *ml_peer,
+					struct wlan_t2lm_onging_negotiation_info *t2lm_neg)
+{
+	struct wlan_objmgr_peer *peer;
+	struct wlan_objmgr_vdev *vdev;
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+
+	vdev = mlo_get_first_vdev_by_ml_peer(ml_peer);
+	if (!vdev) {
+		t2lm_err("vdev is null");
+		return QDF_STATUS_E_NULL_VALUE;
+	}
+
+	peer = wlan_objmgr_vdev_try_get_bsspeer(vdev, WLAN_MLO_MGR_ID);
+	if (!peer) {
+		t2lm_err("peer is null");
+		status = QDF_STATUS_E_NULL_VALUE;
+		goto release_vdev;
+	}
+
+	status = t2lm_deliver_event(vdev, peer,
+				    WLAN_T2LM_EV_ACTION_FRAME_TX_REQ,
+				    t2lm_neg, 0, &t2lm_neg->dialog_token);
+
+	wlan_objmgr_peer_release_ref(peer, WLAN_MLO_MGR_ID);
+
+release_vdev:
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLO_MGR_ID);
+
+	return status;
+}
+
 /**
  * ttlm_subst_ap_btm_inprogress_event() - AP BTM INPROGRESS sub-state event
  * handler for TTLM
@@ -770,8 +945,15 @@ static bool ttlm_subst_ap_btm_inprogress_event(void *ctx, uint16_t event,
 					       uint16_t data_len, void *data)
 {
 	bool event_handled = true;
+	QDF_STATUS status;
+	struct wlan_mlo_peer_context *ml_peer = ctx;
 
 	switch (event) {
+	case WLAN_TTLM_SM_EV_BTM_LINK_DISABLE:
+		status = ttlm_handle_btm_link_disable_t2lm_frame(ml_peer, data);
+		if (QDF_IS_STATUS_ERROR(status))
+			event_handled = false;
+		break;
 	default:
 		event_handled = false;
 		break;
@@ -2673,6 +2855,8 @@ QDF_STATUS wlan_mlo_dev_t2lm_notify_link_update(
 			continue;
 
 		handler(vdev, t2lm);
+
+		return QDF_STATUS_SUCCESS;
 	}
 	return QDF_STATUS_SUCCESS;
 }

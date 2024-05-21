@@ -114,7 +114,9 @@
 #define MAX_UTF_EVENT_LENGTH	2048
 #define MAX_WMI_UTF_LEN	252
 #define MAX_WMI_QVIT_LEN	252
-#define THERMAL_LEVELS	4
+#define DEFAULT_THERMAL_LEVELS	4
+#define ENHANCED_THERMAL_LEVELS	5
+#define MAX_THERMAL_LEVELS 5
 #define WMI_HOST_BCN_FLT_MAX_SUPPORTED_IES	256
 #define WMI_HOST_BCN_FLT_MAX_ELEMS_IE_LIST \
 			(WMI_HOST_BCN_FLT_MAX_SUPPORTED_IES/32)
@@ -814,6 +816,8 @@ enum nss_chains_band_info {
  * @num_tx_chains_11a:               number of tx chains in 11a mode
  * @disable_rx_mrc:                  disable 2 rx chains, in rx nss 1 mode
  * @disable_tx_mrc:                  disable 2 tx chains, in tx nss 1 mode
+ * @fast_chain_selection:	     enable fast chain selection config to FW
+ * @better_chain_rssi_threshold:     rssi threshold for better chain selection
  */
 struct vdev_nss_chains {
 	uint32_t num_tx_chains[NSS_CHAINS_BAND_MAX];
@@ -825,6 +829,8 @@ struct vdev_nss_chains {
 	uint32_t num_tx_chains_11a;
 	bool disable_rx_mrc[NSS_CHAINS_BAND_MAX];
 	bool disable_tx_mrc[NSS_CHAINS_BAND_MAX];
+	uint32_t fast_chain_selection;
+	uint32_t better_chain_rssi_threshold;
 };
 
 /**
@@ -994,6 +1000,18 @@ struct peer_set_params {
 	uint32_t param_id;
 	uint32_t param_value;
 	uint32_t vdev_id;
+};
+
+/**
+ * struct peer_active_traffic_map_params - traffic map indication parameters
+ * @vdev_id: VDEV ID
+ * @peer_macaddr: peer mac address
+ * @active_traffic_map: active traffic bitmap on this peer
+ */
+struct peer_active_traffic_map_params {
+	uint32_t vdev_id;
+	struct qdf_mac_addr peer_macaddr;
+	uint32_t active_traffic_map;
 };
 
 /**
@@ -3372,12 +3390,14 @@ struct set_ps_mode_params {
  * @tmphwm: Temperature high water mark
  * @dcoffpercent: dc off percentage
  * @priority: priority
+ * @pout_reduction_db: Pout reduction (0.25 dB scaling factor)
  */
 typedef struct {
 	uint32_t tmplwm;
 	uint32_t tmphwm;
 	uint32_t dcoffpercent;
 	uint32_t priority;
+	uint32_t pout_reduction_db;
 } tt_level_config;
 
 /**
@@ -3399,7 +3419,7 @@ struct thermal_mitigation_params {
 	uint8_t num_thermal_conf;
 	uint8_t client_id;
 	uint8_t priority;
-	tt_level_config levelconf[THERMAL_LEVELS];
+	tt_level_config levelconf[MAX_THERMAL_LEVELS];
 };
 
 /**
@@ -5478,7 +5498,7 @@ typedef enum {
 #ifdef WLAN_MGMT_RX_REO_SUPPORT
 	wmi_mgmt_rx_fw_consumed_eventid,
 #endif
-#if defined(WLAN_FEATURE_MULTI_LINK_SAP) && defined(WLAN_FEATURE_11BE_MLO)
+#if defined(WLAN_FEATURE_11BE_MLO)
 	wmi_mlo_link_info_sync_event_id,
 #endif
 #ifdef WLAN_FEATURE_11BE_MLO
@@ -5962,6 +5982,8 @@ typedef enum {
 		   PDEV_PARAM_ENABLE_LARGE_MRU),
 	PDEV_PARAM(pdev_param_pwr_reduction_in_quarter_db,
 		   PDEV_PARAM_PWR_REDUCTION_IN_QUARTER_DB),
+	PDEV_PARAM(pdev_param_scan_mode,
+		   PDEV_PARAM_SCAN_MODE),
 	pdev_param_max,
 } wmi_conv_pdev_params_id;
 
@@ -6301,6 +6323,8 @@ typedef enum {
 		   VDEV_PARAM_MLO_MAX_RECOM_ACTIVE_LINKS),
 	VDEV_PARAM(vdev_param_dcs,
 		   VDEV_PARAM_DCS),
+	VDEV_PARAM(vdev_param_hwcts2self_ofdma,
+		   VDEV_PARAM_HWCTS2SELF_OFDMA),
 	vdev_param_max,
 } wmi_conv_vdev_param_id;
 
@@ -6704,6 +6728,14 @@ typedef enum {
 	wmi_service_dynamic_wsi_remap_support,
 #ifdef WLAN_FEATURE_NAN
 	wmi_service_nan_pairing_peer_create,
+	wmi_service_sta_sap_ndp_concurrency_support,
+#endif
+	wmi_service_therm_throt_pout_reduction,
+#ifdef WLAN_CHIPSET_STATS
+	wmi_service_chipset_logging_support,
+#endif
+#ifdef WLAN_DP_FEATURE_STC
+	wmi_service_traffic_context_support,
 #endif
 	wmi_services_max,
 } wmi_conv_service_ids;

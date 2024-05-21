@@ -107,7 +107,8 @@
 
 #define WLAN_MAX_MLO_LINKS_PER_SOC 2
 
-#define UMAC_RESET_IPC 451
+#define UMAC_RESET_IPC_5332 451
+#define UMAC_RESET_IPC_6432 7
 
 struct wlan_cfg_dp_pdev_ctxt;
 
@@ -246,6 +247,7 @@ struct wlan_srng_cfg {
  * @reo_status_ring: reo status ting size
  * @rxdma_refill_ring: rxdma refill ring size
  * @rxdma_refill_lt_disable: rxdma refill low threshold disable
+ * @rxdma_scan_radio_refill_ring: rxdma scan radio refill ring size
  * @rxdma_err_dst_ring: rxdma error destination ring size
  * @per_pkt_trace:
  * @raw_mode_war: enable/disable raw mode war
@@ -323,9 +325,11 @@ struct wlan_srng_cfg {
  * @ppeds_num_tx_desc: Number of tx descs for PPE DS
  * @ppeds_tx_comp_napi_budget: Napi budget for tx completions
  * @ppeds_tx_desc_hotlist_len: PPE DS tx desc hotlist max length
+ * @ppeds_borrow_limit: PPE DS desc borrow limit
  * @pkt_capture_mode: Packet capture mode config
  * @rx_mon_buf_ring_size: Rx monitor buf ring size
  * @tx_mon_buf_ring_size: Tx monitor buf ring size
+ * @tx_mon_ring_fill_level: Tx monitor ring fill level
  * @rx_rel_wbm2sw_ring_id: Rx WBM2SW ring id
  * @tx_rings_grp_bitmap: bitmap of group intr contexts which have
  *                       non-zero tx ring mask
@@ -335,10 +339,12 @@ struct wlan_srng_cfg {
  * @num_rxdma_dst_rings_per_pdev: Number of Rx DMA rings per pdev
  * @txmon_hw_support: TxMON HW support
  * @txmon_sw_peer_filtering: TxMON sw peer filtering support
+ * @txmon_disable_hw_filter: TXMON disable filtering support in hw
  * @num_rxdma_status_rings_per_pdev: Num RXDMA status rings
  * @tx_capt_max_mem_allowed: Max memory for Tx packet capture
  * @tx_capt_rbm_id: Return Buffer Manager ID to be used for Tx packet capture
  * @sawf_enabled:  Is SAWF enabled
+ * @sawf_msduq_reclaim_enabled: SAWF MSDUQ reclaim feature enable/disable
  * @sawf_mcast_enabled : SAWF for multicast enable/disable
  * @sawf_stats: SAWF Statistics
  * @mpdu_retry_threshold_1: MPDU retry threshold 1 to increment tx bad count
@@ -364,6 +370,7 @@ struct wlan_srng_cfg {
  * @is_lapb_enabled: LAPB feature enable flag.
  * @is_audio_shared_iommu_group: flag to indicate if iommu group is shared with
  *  audio
+ * @rxmon_mgmt_linearization: Linearize paged rxmon mgmt frame
  */
 struct wlan_cfg_dp_soc_ctxt {
 	int num_int_ctxts;
@@ -381,7 +388,11 @@ struct wlan_cfg_dp_soc_ctxt {
 	int num_tx_ext_desc_pool;
 	int num_global_tx_desc;
 	int num_global_spcl_tx_desc;
+#ifdef WLAN_SUPPORT_TX_DESC_PER_POOL
+	int num_tx_desc[WLAN_CFG_NUM_POOL];
+#else
 	int num_tx_desc;
+#endif
 	int num_tx_spl_desc;
 	int min_tx_desc;
 	int num_tx_ext_desc;
@@ -459,6 +470,7 @@ struct wlan_cfg_dp_soc_ctxt {
 	int reo_status_ring;
 	int rxdma_refill_ring;
 	bool rxdma_refill_lt_disable;
+	int rxdma_scan_radio_refill_ring;
 	int rxdma_err_dst_ring;
 	uint32_t per_pkt_trace;
 	bool raw_mode_war;
@@ -531,12 +543,14 @@ struct wlan_cfg_dp_soc_ctxt {
 	int ppeds_num_tx_desc;
 	int ppeds_tx_comp_napi_budget;
 	int ppeds_tx_desc_hotlist_len;
+	int ppeds_borrow_limit;
 #endif
 #ifdef WLAN_FEATURE_PKT_CAPTURE_V2
 	uint32_t pkt_capture_mode;
 #endif
 	uint32_t rx_mon_buf_ring_size;
 	uint32_t tx_mon_buf_ring_size;
+	uint32_t tx_mon_ring_fill_level;
 	uint8_t rx_rel_wbm2sw_ring_id;
 	uint32_t tx_rings_grp_bitmap;
 #if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_MLO_MULTI_CHIP)
@@ -549,6 +563,7 @@ struct wlan_cfg_dp_soc_ctxt {
 	uint8_t num_rxdma_dst_rings_per_pdev;
 	bool txmon_hw_support;
 	bool txmon_sw_peer_filtering;
+	bool txmon_disable_hw_filter;
 	uint8_t num_rxdma_status_rings_per_pdev;
 #ifdef WLAN_TX_PKT_CAPTURE_ENH
 	uint32_t tx_capt_max_mem_allowed;
@@ -556,6 +571,7 @@ struct wlan_cfg_dp_soc_ctxt {
 #endif
 #ifdef CONFIG_SAWF
 	bool sawf_enabled;
+	bool sawf_msduq_reclaim_enabled;
 	bool sawf_mcast_enabled;
 #endif
 #ifdef CONFIG_SAWF_STATS
@@ -591,6 +607,7 @@ struct wlan_cfg_dp_soc_ctxt {
 #ifdef FEATURE_DIRECT_LINK
 	bool is_audio_shared_iommu_group;
 #endif
+	bool rxmon_mgmt_linearization;
 };
 
 /**
@@ -1284,10 +1301,12 @@ int wlan_cfg_get_num_global_spcl_tx_desc(struct wlan_cfg_dp_soc_ctxt *wlan_cfg_c
 /**
  * wlan_cfg_get_num_tx_desc() - Number of Tx Descriptors per pool
  * @wlan_cfg_ctx: Configuration Handle
+ * @pool_num: pool number
  *
  * Return: num_tx_desc
  */
-int wlan_cfg_get_num_tx_desc(struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx);
+int wlan_cfg_get_num_tx_desc(struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx,
+			     int pool_num);
 
 /**
  * wlan_cfg_set_num_tx_spl_desc() - Set the number of special Tx Descriptors
@@ -1315,6 +1334,14 @@ int wlan_cfg_get_num_tx_spl_desc(struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx);
  * Return: num_tx_desc
  */
 int wlan_cfg_get_min_tx_desc(struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx);
+
+/**
+ * wlan_cfg_get_max_tx_desc_pool() - Max number of Tx Descriptors for all pools
+ * @cfg: Configuration Handle
+ *
+ * Return: num_tx_desc
+ */
+int wlan_cfg_get_max_tx_desc_pool(struct wlan_cfg_dp_soc_ctxt *cfg);
 
 /**
  * wlan_cfg_set_num_tx_desc() - Set the number of Tx Descriptors per pool
@@ -1715,6 +1742,28 @@ int
 wlan_cfg_get_dp_soc_reo_reinject_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg);
 
 /**
+ * wlan_cfg_get_dp_soc_rxdma_scan_radio_refill_ring_size - Get rxdma scan radio
+ * ring size
+ * @cfg: soc configuration context
+ *
+ * Return: rxdma scan radio refill ring size
+ */
+int
+wlan_cfg_get_dp_soc_rxdma_scan_radio_refill_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
+ * wlan_cfg_set_dp_soc_rxdma_scan_radio_refill_ring_size - Set rxdma scan radio
+ * refill ring size
+ * @ctrl_psoc: PSOC object
+ * @cfg: cfg ctx where values will be populated
+ *
+ * Return: None
+ */
+void
+wlan_cfg_set_dp_soc_rxdma_scan_radio_refill_ring_size(struct cdp_ctrl_objmgr_psoc *ctrl_psoc,
+						      struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
  * wlan_cfg_get_dp_soc_rx_release_ring_size - Get rx_release_ring size
  * @cfg: soc configuration context
  *
@@ -1833,6 +1882,17 @@ wlan_cfg_set_dp_soc_rxdma_refill_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg,
  */
 bool
 wlan_cfg_get_dp_soc_rxdma_refill_lt_disable(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
+ * wlan_cfg_set_dp_soc_rxdma_refill_lt_disable - Set RxDMA refill LT stats
+ * @cfg: soc configuration context
+ * @rx_refill_lt_disable: Enable/Disable low interrupt threshold
+ *
+ * Return: None
+ */
+void
+wlan_cfg_set_dp_soc_rxdma_refill_lt_disable(struct wlan_cfg_dp_soc_ctxt *cfg,
+					    bool rx_refill_lt_disable);
 
 /**
  * wlan_cfg_get_dp_soc_rxdma_err_dst_ring_size - Get rxdma dst ring size
@@ -2403,6 +2463,15 @@ wlan_cfg_get_dp_soc_ppeds_tx_desc_hotlist_len(struct wlan_cfg_dp_soc_ctxt *cfg);
  */
 int
 wlan_cfg_get_dp_soc_ppeds_tx_comp_napi_budget(struct wlan_cfg_dp_soc_ctxt *cfg);
+/**
+ * wlan_cfg_get_dp_soc_ppeds_tx_desc_borrow_limit() - ppeds tx desc borrow limit
+ * @cfg: Configuration Handle
+ *
+ * Return: tx desc borrow limit
+ */
+int
+wlan_cfg_get_dp_soc_ppeds_tx_desc_borrow_limit(
+					struct wlan_cfg_dp_soc_ctxt *cfg);
 #else
 static inline bool
 wlan_cfg_get_dp_soc_ppeds_enable(struct wlan_cfg_dp_soc_ctxt *cfg)
@@ -2436,6 +2505,12 @@ wlan_cfg_get_dp_soc_ppeds_tx_comp_napi_budget(struct wlan_cfg_dp_soc_ctxt *cfg)
 
 static inline int
 wlan_cfg_get_dp_soc_ppeds_tx_desc_hotlist_len(struct wlan_cfg_dp_soc_ctxt *cfg)
+{
+	return 0;
+}
+
+static inline int
+wlan_cfg_get_dp_soc_ppeds_tx_desc_borrow_limit(struct wlan_cfg_dp_soc_ctxt *cfg)
 {
 	return 0;
 }
@@ -2579,6 +2654,16 @@ bool
 wlan_cfg_get_sawf_config(struct wlan_cfg_dp_soc_ctxt *cfg);
 
 /**
+ * wlan_cfg_get_sawf_msduq_reclaim_config() - Get SAWF MSDUQ reclaim config
+ * enable/disable
+ * @cfg: config context
+ *
+ * Return: true or false
+ */
+bool
+wlan_cfg_get_sawf_msduq_reclaim_config(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
  * wlan_cfg_get_sawf_mc_config() - get SAWF - Multicast config enable/disable
  * @cfg: config context
  *
@@ -2658,6 +2743,19 @@ bool wlan_cfg_get_txmon_hw_support(struct wlan_cfg_dp_soc_ctxt *cfg);
 void wlan_cfg_set_txmon_sw_peer_filtering(struct wlan_cfg_dp_soc_ctxt *cfg,
 					  bool txmon_sw_peer_filtering);
 bool wlan_cfg_get_txmon_sw_peer_filtering(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+void wlan_cfg_set_txmon_disable_hw_filter(struct wlan_cfg_dp_soc_ctxt *cfg,
+					  bool txmon_disable_hw_filter);
+bool wlan_cfg_get_txmon_disable_hw_filter(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
+ * wlan_cfg_get_dp_soc_tx_mon_ring_fill_level () - get txmon ring fill level
+ * @cfg:  Configuration Handle
+ *
+ * Return: txmon ring fill level
+ */
+uint32_t
+wlan_cfg_get_dp_soc_tx_mon_ring_fill_level(struct wlan_cfg_dp_soc_ctxt *cfg);
 
 #ifdef WLAN_TX_PKT_CAPTURE_ENH
 /**
@@ -2860,4 +2958,13 @@ uint8_t wlan_cfg_get_rx_mon_wq_threshold(struct wlan_cfg_dp_soc_ctxt *cfg);
  * Return: uint8_t
  */
 uint8_t wlan_cfg_get_rx_mon_wq_depth(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
+ * wlan_cfg_get_rxmon_mgmt_linearization () - Get rxmon mgmt linearization
+ *
+ * @cfg: soc configuration context
+ *
+ * Return: uint8_t
+ */
+bool wlan_cfg_get_rxmon_mgmt_linearization(struct wlan_cfg_dp_soc_ctxt *cfg);
 #endif /*__WLAN_CFG_H*/

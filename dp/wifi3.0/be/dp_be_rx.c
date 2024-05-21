@@ -1555,6 +1555,35 @@ dp_rx_intrabss_fwd_mlo_allow(struct dp_txrx_peer *ta_peer,
 #endif
 
 #ifdef INTRA_BSS_FWD_OFFLOAD
+#ifdef QCA_SUPPORT_WDS_EXTENDED
+static bool
+dp_rx_intrabss_wds_ext_ap_bridge_check_be(struct dp_txrx_peer *ta_peer,
+					  struct dp_txrx_peer *da_peer)
+{
+	if (!ta_peer->vdev->wds_ext_enabled ||
+	    ta_peer->vdev->wds_ext_ap_bridge)
+		return false;
+
+	/* either ta peer or da peer is wds ext capable,
+	 * perform wds ext ap bridging.
+	 */
+	if ((ta_peer && qdf_atomic_test_bit(WDS_EXT_PEER_INIT_BIT,
+					    &ta_peer->wds_ext.init)) ||
+	    (da_peer && qdf_atomic_test_bit(WDS_EXT_PEER_INIT_BIT,
+					    &da_peer->wds_ext.init)))
+		return true;
+
+	return false;
+}
+#else
+static bool
+dp_rx_intrabss_wds_ext_ap_bridge_check_be(struct dp_txrx_peer *ta_peer,
+					  struct dp_txrx_peer *da_peer)
+{
+	return false;
+}
+#endif
+
 /**
  * dp_rx_intrabss_ucast_check_be() - Check if intrabss is allowed
  *				     for unicast frame
@@ -1612,6 +1641,14 @@ dp_rx_intrabss_ucast_check_be(qdf_nbuf_t nbuf,
 			dp_peer_unref_delete(da_peer, DP_MOD_ID_RX);
 			return false;
 		}
+
+		if (dp_rx_intrabss_wds_ext_ap_bridge_check_be(
+							ta_peer,
+							da_peer->txrx_peer)) {
+			dp_peer_unref_delete(da_peer, DP_MOD_ID_RX);
+			return false;
+		}
+
 		dp_peer_unref_delete(da_peer, DP_MOD_ID_RX);
 	}
 
@@ -2565,7 +2602,9 @@ dp_rx_null_q_desc_handle_be(struct dp_soc *soc, qdf_nbuf_t nbuf,
 
 	if (qdf_unlikely(txrx_peer->nawds_enabled &&
 			 hal_rx_msdu_end_da_is_mcbc_get(soc->hal_soc,
-							rx_tlv_hdr))) {
+			 rx_tlv_hdr) &&
+			 (hal_rx_get_mpdu_mac_ad4_valid(soc->hal_soc,
+			 rx_tlv_hdr) == false))) {
 		dp_err_rl("free buffer for multicast packet");
 		DP_PEER_PER_PKT_STATS_INC(txrx_peer, rx.nawds_mcast_drop, 1,
 					  link_id);

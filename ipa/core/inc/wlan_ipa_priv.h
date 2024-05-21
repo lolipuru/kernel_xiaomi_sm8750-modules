@@ -89,7 +89,9 @@
 /* With CONFIG_IPA_WDI3_TX_TWO_PIPES=y, this bitmask is added to support
  * runtime IPA two tx pipes feature enablement.
  */
-#define WLAN_IPA_TWO_TX_PIPES_ENABLE_MASK   BIT(10)
+#define WLAN_IPA_TWO_TX_PIPES_ENABLE_MASK    BIT(10)
+#define WLAN_IPA_SET_PORT_IN_CCE_CONFIG_MASK BIT(11)
+#define WLAN_IPA_LOW_POWER_MODE_ENABLE_MASK  BIT(12)
 
 #ifdef QCA_IPA_LL_TX_FLOW_CONTROL
 #define WLAN_IPA_MAX_BANDWIDTH              4800
@@ -564,17 +566,47 @@ struct uc_rm_work_struct {
 };
 
 /**
+ * struct msg_elem
+ * @vdev_id: vdev id
+ * @nbuf: nbuf
+ * @op_code: IPA Operation type
+ */
+struct msg_elem {
+	uint8_t vdev_id;
+	qdf_nbuf_t nbuf;
+	uint8_t op_code;
+};
+
+/**
+ * struct op_msg_list
+ * @hp: hp of list
+ * @tp: tp of list
+ * @entries: list of messages
+ * @list_size: max list size
+ */
+struct op_msg_list {
+	uint16_t hp;
+	uint16_t tp;
+	struct msg_elem *entries;
+	uint16_t list_size;
+};
+
+/**
  * struct uc_op_work_struct
  * @work: uC OP work
  * @msg: OP message
  * @osdev: pointer to qdf net device, used by osif_psoc_sync_trans_start_wait
  * @ipa_priv_bp: back pointer to ipa_obj
+ * @msg_list: list of messages, to be used in case of parallel msgs
+ * @flag: flag to be set when msg list is required
  */
 struct uc_op_work_struct {
 	qdf_work_t work;
 	struct op_msg_type *msg;
 	qdf_device_t osdev;
 	struct wlan_ipa_priv *ipa_priv_bp;
+	struct op_msg_list *msg_list;
+	uint16_t flag;
 };
 
 /**
@@ -726,6 +758,8 @@ struct wlan_ipa_evt_wq {
  * @clk_vote_cnt: cnt of clock vote
  * @clk_unvote_req_cnt: cnt of clock unvote
  * @tput_del_cnt: cnt of filters deleted due to high tput
+ * @reinject_pkt_enq_fail_cnt: cnt of pkts failed to enqueue
+ * in WQ after reinjection
  */
 struct opt_dp_ctrl_stats {
 	int flt_add_req_cnt;
@@ -737,6 +771,7 @@ struct opt_dp_ctrl_stats {
 	int clk_vote_cnt;
 	int clk_unvote_req_cnt;
 	int tput_del_cnt;
+	int reinject_pkt_enq_fail_cnt;
 };
 
 /* IPA private context structure definition */
@@ -856,6 +891,7 @@ struct wlan_ipa_priv {
 	bool is_smmu_enabled;	/* IPA caps returned from ipa_wdi_init */
 	/* Flag to notify whether optional wifi dp feature is enabled or not */
 	bool opt_wifi_datapath;
+	bool opt_dp_active;
 	bool opt_wifi_datapath_ctrl;
 	bool fw_cap_opt_dp_ctrl;
 	qdf_atomic_t stats_quota;

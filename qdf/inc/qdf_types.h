@@ -60,6 +60,9 @@
 #define CPU_CLUSTER_TYPE_PERF2 2
 #endif
 
+#define qdf_get_current() __qdf_get_current()
+#define qdf_this_cpu_ksoftirqd() __qdf_this_cpu_ksoftirqd()
+
 /**
  * struct qdf_sglist - scatter-gather list
  * @nsegs: total number of segments
@@ -236,6 +239,16 @@ typedef __qdf_net_dev_stats qdf_net_dev_stats;
  * pointer to dummy net device
  */
 typedef __qdf_dummy_netdev_t qdf_dummy_netdev_t;
+
+/*
+ * function pointer to compare function
+ */
+typedef __qdf_cmp_func_t qdf_cmp_func_t;
+
+/*
+ * function pointer to swap function
+ */
+typedef __qdf_swap_func_t qdf_swap_func_t;
 
 /**
  * struct qdf_dma_map_info - Information inside a DMA map.

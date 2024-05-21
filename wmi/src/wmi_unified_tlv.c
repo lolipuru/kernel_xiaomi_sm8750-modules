@@ -471,6 +471,8 @@ static const uint32_t pdev_param_tlv[] = {
 		  PDEV_PARAM_ENABLE_LARGE_MRU),
 	PARAM_MAP(pdev_param_pwr_reduction_in_quarter_db,
 		  PDEV_PARAM_PWR_REDUCTION_IN_QUARTER_DB),
+	PARAM_MAP(pdev_param_scan_mode,
+		  PDEV_PARAM_SCAN_MODE),
 };
 
 /* Populate vdev_param array whose index is host param, value is target param */
@@ -760,6 +762,8 @@ static const uint32_t vdev_param_tlv[] = {
 		  VDEV_PARAM_11AZ_SECURITY_CONFIG),
 	PARAM_MAP(vdev_param_mlo_max_recom_active_links,
 		  VDEV_PARAM_MLO_MAX_RECOM_ACTIVE_LINKS),
+	PARAM_MAP(vdev_param_hwcts2self_ofdma,
+		  VDEV_PARAM_HWCTS2SELF_OFDMA),
 };
 #endif
 
@@ -1165,6 +1169,9 @@ send_vdev_nss_chain_params_cmd_tlv(wmi_unified_t wmi_handle,
 	cmd->num_tx_chains_a = user_cfg->num_tx_chains_11a;
 	cmd->num_tx_chains_b = user_cfg->num_tx_chains_11b;
 	cmd->num_tx_chains_g = user_cfg->num_tx_chains_11g;
+	cmd->fast_chain_selection = user_cfg->fast_chain_selection;
+	cmd->better_chain_rssi_threshold =
+				user_cfg->better_chain_rssi_threshold;
 
 	wmi_mtrace(WMI_VDEV_CHAINMASK_CONFIG_CMDID, cmd->vdev_id, 0);
 	ret = wmi_unified_cmd_send(wmi_handle, buf,
@@ -9606,6 +9613,8 @@ static QDF_STATUS send_thermal_mitigation_param_cmd_tlv(
 	tt_conf->dc = param->dc;
 	tt_conf->dc_per_event = param->dc_per_event;
 	tt_conf->therm_throt_levels = param->num_thermal_conf;
+	wmi_debug("Total thermal throttle levels: %u",
+		  tt_conf->therm_throt_levels);
 	wmi_fill_client_id_priority(tt_conf, param);
 	buf_ptr = (uint8_t *) ++tt_conf;
 	/* init TLV params */
@@ -9622,6 +9631,12 @@ static QDF_STATUS send_thermal_mitigation_param_cmd_tlv(
 		lvl_conf->temp_hwm = param->levelconf[i].tmphwm;
 		lvl_conf->dc_off_percent = param->levelconf[i].dcoffpercent;
 		lvl_conf->prio = param->levelconf[i].priority;
+		lvl_conf->pout_reduction_25db =
+				param->levelconf[i].pout_reduction_db;
+		wmi_debug("Thermal level config:\nLevel %u Low threshold %u High threshold %u\n Duty cycle off %u Priority %u Pout reduction %u",
+			  i, lvl_conf->temp_lwm, lvl_conf->temp_hwm,
+			  lvl_conf->dc_off_percent, lvl_conf->prio,
+			  lvl_conf->pout_reduction_25db);
 		lvl_conf++;
 	}
 
@@ -16324,7 +16339,7 @@ extract_thermal_level_stats_tlv(wmi_unified_t wmi_handle,
 
 	tt_level_info = param_buf->therm_throt_level_stats_info;
 
-	if (idx < THERMAL_LEVELS) {
+	if (idx < MAX_THERMAL_LEVELS) {
 		*levelcount = tt_level_info[idx].level_count;
 		*dccount = tt_level_info[idx].dc_count;
 		return QDF_STATUS_SUCCESS;
@@ -22024,6 +22039,47 @@ static QDF_STATUS extract_tgtr2p_table_event_tlv(wmi_unified_t wmi_handle,
 	return QDF_STATUS_SUCCESS;
 }
 
+static QDF_STATUS
+send_active_traffic_map_cmd_tlv(wmi_unified_t wmi_handle,
+				struct peer_active_traffic_map_params *param)
+{
+	wmi_peer_active_traffic_map_cmd_fixed_param *cmd;
+	int32_t len = sizeof(*cmd);
+	wmi_buf_t buf;
+	int ret;
+
+	buf = wmi_buf_alloc(wmi_handle, len);
+	if (!buf)
+		return QDF_STATUS_E_NOMEM;
+
+	cmd = (wmi_peer_active_traffic_map_cmd_fixed_param *)wmi_buf_data(buf);
+
+	WMITLV_SET_HDR(&cmd->tlv_header,
+		       WMITLV_TAG_STRUC_wmi_peer_active_traffic_map_cmd_fixed_param,
+		       WMITLV_GET_STRUCT_TLVLEN(wmi_peer_active_traffic_map_cmd_fixed_param));
+
+	cmd->vdev_id = param->vdev_id;
+	WMI_CHAR_ARRAY_TO_MAC_ADDR(param->peer_macaddr.bytes,
+				   &cmd->peer_macaddr);
+	cmd->active_traffic_map = param->active_traffic_map;
+
+	wmi_debug("set traffic map 0x%x for peer " QDF_MAC_ADDR_FMT,
+		  param->active_traffic_map,
+		  QDF_MAC_ADDR_REF(param->peer_macaddr.bytes));
+
+	ret = wmi_unified_cmd_send(wmi_handle, buf, len,
+				   WMI_PEER_ACTIVE_TRAFFIC_MAP_CMDID);
+	if (ret) {
+		wmi_err("Failed to send active traffic map, peer: "
+			QDF_MAC_ADDR_FMT,
+			QDF_MAC_ADDR_REF(param->peer_macaddr.bytes));
+		wmi_buf_free(buf);
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	return QDF_STATUS_SUCCESS;
+}
+
 #ifdef WLAN_VENDOR_EXTN
 static QDF_STATUS
 send_vendor_peer_cmd_tlv(wmi_unified_t wmi_handle,
@@ -22663,12 +22719,13 @@ struct wmi_ops tlv_ops =  {
 	.extract_vendor_vdev_event = extract_vendor_vdev_event_tlv,
 	.extract_vendor_pdev_event = extract_vendor_pdev_event_tlv,
 #endif
+	.send_active_traffic_map_cmd = send_active_traffic_map_cmd_tlv,
 };
 
 #ifdef WLAN_FEATURE_11BE_MLO
 static void populate_tlv_events_id_mlo(WMI_EVT_ID *event_ids)
 {
-#if defined(WLAN_FEATURE_MULTI_LINK_SAP) && defined(WLAN_FEATURE_11BE_MLO)
+#if defined(WLAN_FEATURE_11BE_MLO)
 	event_ids[wmi_mlo_link_info_sync_event_id] =
 			WMI_MLO_LINK_INFO_SYNC_EVENTID;
 #endif
@@ -23845,10 +23902,21 @@ static void populate_tlv_service(uint32_t *wmi_service)
 			WMI_SERVICE_MLO_MODE2_RECOVERY_SUPPORTED;
 	wmi_service[wmi_service_dynamic_wsi_remap_support] =
 			WMI_SERVICE_DYNAMIC_WSI_REMAP_SUPPORT;
-
 #ifdef WLAN_FEATURE_NAN
 	wmi_service[wmi_service_nan_pairing_peer_create] =
 				WMI_SERVICE_NAN_PAIRING_PEER_CREATE_BY_HOST;
+	wmi_service[wmi_service_sta_sap_ndp_concurrency_support] =
+				WMI_SERVICE_STA_SAP_NDP_CONCURRENCY_SUPPORT;
+#endif
+	wmi_service[wmi_service_therm_throt_pout_reduction] =
+			WMI_SERVICE_THERM_THROT_POUT_REDUCTION;
+#ifdef WLAN_CHIPSET_STATS
+	wmi_service[wmi_service_chipset_logging_support] =
+				WMI_SERVICE_CHIPSET_LOGGING_SUPPORT;
+#endif
+#ifdef WLAN_DP_FEATURE_STC
+	wmi_service[wmi_service_traffic_context_support] =
+					WMI_SERVICE_TRAFFIC_CONTEXT_SUPPORT;
 #endif
 }
 

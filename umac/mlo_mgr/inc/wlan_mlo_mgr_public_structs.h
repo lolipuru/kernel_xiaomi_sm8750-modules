@@ -86,6 +86,8 @@ struct wlan_t2lm_context;
 struct mlo_link_switch_context;
 struct wlan_mlo_link_switch_req;
 struct mlo_all_link_rssi;
+struct ptqm_migrate_link_context;
+struct ptqm_migrate_peer_context;
 
 /* Max LINK PEER support */
 #define MAX_MLO_LINK_PEERS WLAN_UMAC_MLO_MAX_VDEVS
@@ -233,6 +235,20 @@ struct mlo_state_params {
 };
 
 #endif
+
+/**
+ * enum mlo_link_rej_cfg - Link rejection config
+ * @MLO_LINK_REJ_DISABLED: Disabled
+ * @MLO_LINK_REJ_RANGE: Range config enabled
+ * @MLO_LINK_REJ_THROUGHPUT: Throughput config enabled
+ * @MLO_LINK_REJ_CFG_MAX: Max limit for config
+ */
+enum mlo_link_rej_cfg {
+	MLO_LINK_REJ_DISABLED,
+	MLO_LINK_REJ_RANGE,
+	MLO_LINK_REJ_THROUGHPUT,
+	MLO_LINK_REJ_CFG_MAX,
+};
 
 /**
  * enum wlan_mlo_link_switch_notify_reason - Enum for link switch notifier
@@ -534,13 +550,17 @@ struct ttlm_comp_priv {
 };
 
 /**
- * ttlm_rsp_info - TTLM response frame info
+ * struct ttlm_rsp_info - TTLM response frame info
  * @t2lm_info: TTLM mapping
  * @t2lm_resp_type: TTLM status corresponds to TTL response frame
+ * @token: TTLM request dialog token
+ * @dest_addr: Action resp destination address
  */
 struct ttlm_rsp_info {
 	struct wlan_t2lm_info *t2lm_info;
 	enum wlan_t2lm_resp_frm_type t2lm_resp_type;
+	uint8_t token;
+	struct qdf_mac_addr dest_addr;
 };
 
 /**
@@ -948,7 +968,7 @@ struct wlan_mlo_sta {
  * @mlo_vdev_quiet_bmap: Bitmap of vdevs for which quiet ie needs to enabled
  * @mlo_vdev_up_bmap: Bitmap of vdevs for which sync complete can be dispatched
  * @assoc_list: MLO sta assoc pending list entry (for FT-over-DS)
- * @mlo_link_reject: Flag to indicate if MLO link rejection is enabled
+ * @mlo_link_reject: Enum to indicate if MLO link rejection configuration
  */
 struct wlan_mlo_ap {
 	uint8_t num_ml_vdevs;
@@ -961,7 +981,7 @@ struct wlan_mlo_ap {
 	qdf_bitmap(mlo_vdev_quiet_bmap, WLAN_UMAC_MLO_MAX_VDEVS);
 	qdf_bitmap(mlo_vdev_up_bmap, WLAN_UMAC_MLO_MAX_VDEVS);
 	struct wlan_mlo_sta_assoc_pending_list assoc_list;
-	bool mlo_link_reject;
+	enum mlo_link_rej_cfg mlo_link_reject;
 };
 
 /**
@@ -1024,6 +1044,7 @@ struct wlan_mlo_link_mac_update {
  * @mlo_max_recom_simult_links: Max Recommended Simultaneous Links
  * @mlo_extmld_cap_advertisement: Enable/disable Extended MLD Cap and OP
  *                                advertisement
+ * @link_ptqm_migrate_ctx: PTQM migration link context
  */
 struct wlan_mlo_dev_context {
 	qdf_list_node_t node;
@@ -1054,6 +1075,8 @@ struct wlan_mlo_dev_context {
 #ifdef QCA_SUPPORT_PRIMARY_LINK_MIGRATE
 	qdf_timer_t ptqm_migrate_timer;
 	qdf_bitmap(mlo_peer_id_bmap, MAX_MLO_PEER_ID);
+	struct ptqm_migrate_link_req_context *link_ptqm_migrate_ctx
+		[WLAN_UMAC_MLO_MAX_VDEVS];
 #endif
 	struct mlo_link_switch_context *link_ctx;
 	uint8_t mlo_max_recom_simult_links;
@@ -1222,6 +1245,7 @@ struct ttlm_state_sm {
  * @primary_umac_migration_in_progress: flag to indicate primary umac migration
  * in progress
  * @ttlm_sm: TTLM state machine
+ * @peer_ptqm_migrate_ctx: PTQM migration peer context
  */
 struct wlan_mlo_peer_context {
 	qdf_list_node_t peer_node;
@@ -1267,6 +1291,9 @@ struct wlan_mlo_peer_context {
 	bool primary_umac_migration_in_progress;
 #ifdef WLAN_FEATURE_11BE_MLO_TTLM
 	struct ttlm_state_sm ttlm_sm;
+#endif
+#ifdef QCA_SUPPORT_PRIMARY_LINK_MIGRATE
+	struct ptqm_migrate_peer_context *peer_ptqm_migrate_ctx;
 #endif
 };
 
@@ -1738,6 +1765,18 @@ struct mgmt_rx_mlo_link_removal_info {
 struct mlo_link_disable_request_evt_params {
 	struct qdf_mac_addr mld_addr;
 	uint32_t link_id_bitmap;
+};
+
+#define MAX_INDEX_FOR_LINK_PRIORITY_BITMAP 3
+/**
+ * struct mlo_tlt_selection_evt_params - MLO tlt selection
+ * request params
+ * @mld_addr: mld address
+ * @link_priority: Link priority bitmap
+ */
+struct mlo_tlt_selection_evt_params {
+	struct qdf_mac_addr mld_addr;
+	uint8_t link_priority[MAX_INDEX_FOR_LINK_PRIORITY_BITMAP];
 };
 
 #define MAX_LINK_SWITCH_TLV 5

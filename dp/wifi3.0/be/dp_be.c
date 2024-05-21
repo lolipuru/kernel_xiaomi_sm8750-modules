@@ -24,6 +24,7 @@
 #include "dp_be.h"
 #include "dp_be_tx.h"
 #include "dp_be_rx.h"
+#include "dp_tx_desc.h"
 #ifdef WIFI_MONITOR_SUPPORT
 #if !defined(DISABLE_MON_CONFIG) && (defined(WLAN_PKT_CAPTURE_TX_2_0) || \
 	defined(WLAN_PKT_CAPTURE_RX_2_0))
@@ -131,6 +132,23 @@ static void dp_ppeds_clear_assert_war_stats(struct dp_soc_be *be_soc)
 {
 }
 #endif
+
+static int dp_tx_release_ds_tx_desc(struct dp_soc *soc,
+				    struct dp_tx_desc_s *tx_desc,
+				    uint8_t desc_pool_id)
+{
+	struct dp_soc_be *be_soc = dp_get_be_soc_from_dp_soc(soc);
+
+	if (tx_desc->flags & DP_TX_DESC_FLAG_PPEDS) {
+		__dp_tx_outstanding_dec(soc);
+		qdf_atomic_dec(&be_soc->borrow_count);
+		dp_tx_desc_free(soc, tx_desc, desc_pool_id);
+
+		return 1;
+	}
+
+	return 0;
+}
 
 static void dp_ppeds_inuse_desc(struct dp_soc *soc)
 {
@@ -935,7 +953,7 @@ static QDF_STATUS dp_soc_tx_cookie_attach_be(struct dp_soc *soc)
 				sizeof(struct dp_hw_cookie_conversion_t));
 			cc_ctx = dp_global->tx_cc_ctx[i];
 			num_entries =
-				wlan_cfg_get_num_tx_desc(soc->wlan_cfg_ctx);
+				wlan_cfg_get_num_tx_desc(soc->wlan_cfg_ctx, i);
 			qdf_status =
 				dp_hw_cookie_conversion_attach(
 						be_soc,
@@ -1039,7 +1057,7 @@ static QDF_STATUS dp_soc_tx_cookie_attach_be(struct dp_soc *soc)
 	QDF_STATUS qdf_status;
 
 	for (i = 0; i < MAX_TXDESC_POOLS; i++) {
-		num_entries = wlan_cfg_get_num_tx_desc(soc->wlan_cfg_ctx);
+		num_entries = wlan_cfg_get_num_tx_desc(soc->wlan_cfg_ctx, i);
 		qdf_status =
 			dp_hw_cookie_conversion_attach(
 					be_soc,
@@ -2932,6 +2950,31 @@ static void dp_mlo_mcast_reset_pri_mcast(struct dp_vdev_be *be_vdev,
 
 	be_ptnr_vdev->mcast_primary = false;
 }
+
+/**
+ * dp_txrx_get_vdev_mcast_param_be() - Target specific ops for getting vdev
+ * params related to multicast
+ * @soc: DP soc handle
+ * @vdev: pointer to vdev structure
+ * @val: buffer address
+ *
+ * Return: QDF_STATUS
+ */
+static
+QDF_STATUS dp_txrx_get_vdev_mcast_param_be(struct dp_soc *soc,
+					   struct dp_vdev *vdev,
+					   cdp_config_param_type *val)
+{
+	struct dp_vdev_be *be_vdev = dp_get_be_vdev_from_dp_vdev(vdev);
+
+	if (be_vdev->mcast_primary)
+		val->cdp_vdev_param_mcast_vdev = true;
+	else
+		val->cdp_vdev_param_mcast_vdev = false;
+
+	return QDF_STATUS_SUCCESS;
+}
+
 #endif
 
 #if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_MLO_MULTI_CHIP) && \
@@ -3065,29 +3108,6 @@ static void dp_txrx_reset_mlo_mcast_primary_vdev_param_be(
 				   HAL_TX_MCAST_CTRL_FW_EXCEPTION);
 }
 
-/**
- * dp_txrx_get_vdev_mcast_param_be() - Target specific ops for getting vdev
- *                                      params related to multicast
- * @soc: DP soc handle
- * @vdev: pointer to vdev structure
- * @val: buffer address
- *
- * Return: QDF_STATUS
- */
-static
-QDF_STATUS dp_txrx_get_vdev_mcast_param_be(struct dp_soc *soc,
-					   struct dp_vdev *vdev,
-					   cdp_config_param_type *val)
-{
-	struct dp_vdev_be *be_vdev = dp_get_be_vdev_from_dp_vdev(vdev);
-
-	if (be_vdev->mcast_primary)
-		val->cdp_vdev_param_mcast_vdev = true;
-	else
-		val->cdp_vdev_param_mcast_vdev = false;
-
-	return QDF_STATUS_SUCCESS;
-}
 #else
 
 #if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_MCAST_MLO_SAP)
@@ -3125,13 +3145,6 @@ static void dp_txrx_set_mlo_mcast_primary_vdev_param_be(
 					cdp_config_param_type val)
 {
 }
-#endif
-
-static void dp_txrx_reset_mlo_mcast_primary_vdev_param_be(
-					struct dp_vdev *vdev,
-					cdp_config_param_type val)
-{
-}
 
 static
 QDF_STATUS dp_txrx_get_vdev_mcast_param_be(struct dp_soc *soc,
@@ -3139,6 +3152,14 @@ QDF_STATUS dp_txrx_get_vdev_mcast_param_be(struct dp_soc *soc,
 					   cdp_config_param_type *val)
 {
 	return QDF_STATUS_SUCCESS;
+}
+
+#endif
+
+static void dp_txrx_reset_mlo_mcast_primary_vdev_param_be(
+					struct dp_vdev *vdev,
+					cdp_config_param_type val)
+{
 }
 
 static
@@ -3672,6 +3693,10 @@ dp_initialize_arch_ops_be_mlo(struct dp_arch_ops *arch_ops)
 	arch_ops->mlo_peer_find_hash_remove = dp_mlo_peer_find_hash_remove_be;
 	arch_ops->mlo_peer_find_hash_find = dp_mlo_peer_find_hash_find_be;
 	arch_ops->get_hw_link_id = dp_get_hw_link_id_be;
+#ifdef DP_UMAC_HW_RESET_SUPPORT
+	arch_ops->mlo_umac_reset_notify_asserted_soc =
+					dp_umac_reset_notify_asserted_soc;
+#endif
 }
 
 static struct cdp_cmn_mlo_ops dp_cmn_mlo_ops = {
@@ -3915,6 +3940,9 @@ void dp_initialize_arch_ops_be(struct dp_arch_ops *arch_ops)
 	arch_ops->dp_txrx_ppeds_clear_rings_stats = dp_ppeds_clear_rings_stats;
 	arch_ops->dp_tx_ppeds_cfg_astidx_cache_mapping =
 				dp_tx_ppeds_cfg_astidx_cache_mapping;
+	arch_ops->dp_tx_update_ppeds_tx_comp_stats =
+				dp_update_ppeds_tx_comp_stats;
+	arch_ops->dp_tx_release_ds_tx_desc = dp_tx_release_ds_tx_desc;
 #ifdef DP_UMAC_HW_RESET_SUPPORT
 	arch_ops->txrx_soc_ppeds_interrupt_stop = dp_ppeds_interrupt_stop_be;
 	arch_ops->txrx_soc_ppeds_interrupt_start = dp_ppeds_interrupt_start_be;
@@ -4030,11 +4058,17 @@ dp_primary_link_migration(struct dp_soc *soc, void *cb_ctxt,
 
 	primary_vdev_id = new_primary_peer->vdev->vdev_id;
 
+	/* Update  current params */
+	params.old_vdev_id = mld_peer->vdev->vdev_id;
+	params.old_pdev_id = mld_peer->vdev->pdev->pdev_id;
+	params.old_chip_id = dp_get_chip_id(mld_peer->vdev->pdev->soc);
+
 	dp_vdev_unref_delete(soc, mld_peer->vdev, DP_MOD_ID_CHILD);
 	mld_peer->vdev = dp_vdev_get_ref_by_id(pr_soc, primary_vdev_id,
 			 DP_MOD_ID_CHILD);
 	mld_peer->txrx_peer->vdev = mld_peer->vdev;
 
+	/* Update  new params after update */
 	params.vdev_id = new_primary_peer->vdev->vdev_id;
 	params.peer_mac = mld_peer->mac_addr.raw;
 	params.chip_id = pr_peer_info->chip_id;

@@ -91,6 +91,7 @@ struct dp_tx_queue;
 #else
 #define MAX_TXDESC_POOLS 4
 #endif
+#define DP_TXDESC_POOL_ANY 0xffff
 
 /* Max no of descriptors to handle special frames like EAPOL */
 #define MAX_TX_SPL_DESC 1024
@@ -705,6 +706,7 @@ struct dp_tx_ext_desc_pool_s {
 	qdf_dma_mem_context(memctx);
 };
 
+#ifdef QCA_DP_OPTIMIZED_TX_DESC
 /**
  * struct dp_tx_desc_s - Tx Descriptor
  * @next: Next in the chain of descriptors in freelist or in the completion list
@@ -744,6 +746,38 @@ struct dp_tx_desc_s {
 	uint32_t magic;
 	uint64_t timestamp_tick;
 #endif
+	uint16_t peer_id;
+	uint8_t vdev_id;
+	uint8_t tx_status:5,
+		buffer_src:3;
+	uint8_t frm_type:4,
+		pool_id:4;
+	uint8_t pkt_offset:6,
+		tx_encap_type:2;
+	uint32_t flags;
+	uint32_t id;
+	qdf_dma_addr_t dma_addr;
+	struct dp_pdev *pdev;
+	struct dp_tx_ext_desc_elem_s *msdu_ext_desc;
+	qdf_ktime_t timestamp;
+#ifdef WLAN_FEATURE_TX_LATENCY_STATS
+	qdf_ktime_t driver_egress_ts;
+	qdf_ktime_t driver_ingress_ts;
+#endif
+#ifdef WLAN_SOFTUMAC_SUPPORT
+	void *tcl_cmd_vaddr;
+	qdf_dma_addr_t tcl_cmd_paddr;
+#endif
+};
+#else /* QCA_DP_OPTIMIZED_TX_DESC */
+struct dp_tx_desc_s {
+	struct dp_tx_desc_s *next;
+	qdf_nbuf_t nbuf;
+	uint16_t length;
+#ifdef DP_TX_TRACKING
+	uint32_t magic;
+	uint64_t timestamp_tick;
+#endif
 	uint32_t flags;
 	uint32_t id;
 	qdf_dma_addr_t dma_addr;
@@ -769,6 +803,7 @@ struct dp_tx_desc_s {
 	qdf_dma_addr_t tcl_cmd_paddr;
 #endif
 };
+#endif /* QCA_DP_OPTIMIZED_TX_DESC */
 
 #ifdef QCA_AC_BASED_FLOW_CONTROL
 /**
@@ -879,6 +914,7 @@ struct dp_tx_tso_num_seg_pool_s {
  * @elem_count:
  * @num_free: Number of free descriptors
  * @lock: Lock for descriptor allocation/free from/to the pool
+ * @comp: Tx completion status structure
  */
 struct dp_tx_desc_pool_s {
 	uint16_t elem_size;
@@ -910,6 +946,9 @@ struct dp_tx_desc_pool_s {
 	uint16_t elem_count;
 	uint32_t num_free;
 	qdf_spinlock_t lock;
+#endif
+#ifdef QCA_DP_OPTIMIZED_TX_DESC
+	struct hal_tx_desc_comp_s *comp;
 #endif
 };
 
@@ -1266,6 +1305,22 @@ struct htt_t2h_msg_stats {
 	uint32_t ml_peer_unmap;
 };
 
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+/**
+ * struct dp_rx_pkt_cnt_stats - per ring rx packet count statistics
+ * @pkt_cnt: packet count received on this ring
+ * @pkt_cnt_prev: previous packet count
+ * @avg_pkt_cnt: average packet count per second
+ * @last_avg_cal_ts: timestamp at which last packet average is computed
+ */
+struct dp_rx_pkt_cnt_stats {
+	uint64_t pkt_cnt;
+	uint64_t pkt_cnt_prev;
+	uint64_t avg_pkt_cnt;
+	uint64_t last_avg_cal_ts;
+};
+#endif
+
 /* SoC level data path statistics */
 struct dp_soc_stats {
 	struct {
@@ -1511,6 +1566,10 @@ struct dp_soc_stats {
 
 		/* packet count per core - per ring */
 		uint64_t ring_packets[NR_CPUS][MAX_REO_DEST_RINGS];
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+		/* packet count per ring */
+		struct dp_rx_pkt_cnt_stats rx_pkt_cnt[MAX_REO_DEST_RINGS];
+#endif
 	} rx;
 
 #ifdef WLAN_FEATURE_DP_EVENT_HISTORY
@@ -2359,6 +2418,7 @@ enum dp_context_type {
  * @txrx_get_mon_context_size:
  * @dp_srng_test_and_update_nf_params: Check if the srng is in near full state
  *				and set the near-full params.
+ * @mlo_umac_reset_notify_asserted_soc: Notify asserted soc info to other socs
  * @dp_tx_mcast_handler:
  * @dp_rx_mcast_handler:
  * @dp_tx_is_mcast_primary:
@@ -2398,6 +2458,8 @@ enum dp_context_type {
  * @dp_tx_ppeds_cfg_astidx_cache_mapping:
  * @dp_txrx_ppeds_rings_stats: Printing the util stats of ring
  * @dp_txrx_ppeds_clear_rings_stats: Clearing the ring util stats
+ * @dp_tx_update_ppeds_tx_comp_stats: Update ppeds Tx completion stats
+ * @dp_tx_release_ds_tx_desc: Release the tx desc to pool
  * @txrx_soc_ppeds_start:
  * @txrx_soc_ppeds_stop:
  * @dp_register_ppeds_interrupts:
@@ -2555,6 +2617,8 @@ struct dp_arch_ops {
 						 struct dp_srng *dp_srng,
 						 int *max_reap_limit);
 
+	QDF_STATUS (*mlo_umac_reset_notify_asserted_soc)(struct dp_soc *soc);
+
 	/* MLO ops */
 #ifdef WLAN_FEATURE_11BE_MLO
 #ifdef WLAN_MCAST_MLO
@@ -2646,6 +2710,15 @@ struct dp_arch_ops {
 						     bool peer_map);
 	void (*dp_txrx_ppeds_rings_stats)(struct dp_soc *soc);
 	void (*dp_txrx_ppeds_clear_rings_stats)(struct dp_soc *soc);
+	void (*dp_tx_update_ppeds_tx_comp_stats)(struct dp_soc *soc,
+						 struct dp_txrx_peer *txrx_peer,
+						 struct hal_tx_completion_status *ts,
+						 struct dp_tx_desc_s *desc,
+						 uint8_t ring_id,
+						 uint16_t comp_index);
+	int (*dp_tx_release_ds_tx_desc)(struct dp_soc *soc,
+					struct dp_tx_desc_s *tx_desc,
+					uint8_t desc_pool_id);
 #endif
 	bool (*ppeds_handle_attached)(struct dp_soc *soc);
 	QDF_STATUS (*txrx_soc_ppeds_start)(struct dp_soc *soc);
@@ -3206,6 +3279,16 @@ struct dp_soc {
 	/*Timer for AST entry ageout maintenance */
 	qdf_timer_t ast_aging_timer;
 
+#ifdef CONFIG_SAWF
+	qdf_spinlock_t sawf_flow_sync_lock;
+	/*
+	 * Timer variable for SAWF MSDU Queue state maintenance and HTT
+	 * response timeout
+	 */
+	qdf_timer_t sawf_msduq_timer;
+	bool sawf_msduq_timer_enabled;
+#endif
+
 	/*Timer counter for WDS AST entry ageout*/
 	uint8_t wds_ast_aging_timer_cnt;
 	bool pending_ageout;
@@ -3480,8 +3563,11 @@ struct dp_soc {
 #ifdef FEATURE_DIRECT_LINK
 	qdf_atomic_t direct_link_active;
 #endif
+	/* Placeholder for pcie slot for every radio attached */
+	int8_t pcie_slot;
 	/* monitor interface flags */
 	uint32_t mon_flags;
+	bool scan_radio_support;
 };
 
 #define MAX_RX_MAC_RINGS 2
@@ -4146,6 +4232,7 @@ struct dp_vdev {
 #ifdef QCA_SUPPORT_WDS_EXTENDED
 	bool wds_ext_enabled;
 	bool drop_tx_mcast;
+	bool wds_ext_ap_bridge;
 #endif /* QCA_SUPPORT_WDS_EXTENDED */
 	bool drop_3addr_mcast;
 #ifdef WLAN_VENDOR_SPECIFIC_BAR_UPDATE
@@ -4452,6 +4539,7 @@ struct dp_vdev {
 	/* configuration for tx latency stats */
 	struct dp_tx_latency_config tx_latency_cfg;
 #endif
+	bool eapol_over_control_port_disable;
 };
 
 enum {
@@ -4724,6 +4812,8 @@ typedef void *dp_txrx_ref_handle;
  * @tqm_rr_counter.invalid_drop: Invalid msdu drop
  * @tqm_rr_counter.mcast_vdev_drop: MCAST drop configured for VDEV in HW
  * @tqm_rr_counter.invalid_rr: Invalid TQM release reason
+ * @mpdu_retries: number of mpdu retries
+ * @total_mpdu_retries: total number of mpdu retries
  * @failed_retry_count: packets failed due to retry above 802.11 retry limit
  * @retry_count: packets successfully send after one or more retry
  * @multiple_retry_count: packets successfully sent after more than one retry
@@ -4777,6 +4867,8 @@ struct dp_peer_per_pkt_tx_stats {
 			uint64_t fw_rem_tx_bytes;
 		} tqm_rr_update;
 	} tqm_rr_counter;
+	uint32_t mpdu_retries;
+	uint32_t total_mpdu_retries;
 	uint32_t failed_retry_count;
 	uint32_t retry_count;
 	uint32_t multiple_retry_count;
@@ -5340,7 +5432,9 @@ struct dp_peer {
 	uint8_t num_links;
 	DP_MUTEX_TYPE link_peers_info_lock;
 #ifdef WLAN_FEATURE_11BE_MLO_3_LINK_TX
+	qdf_spinlock_t flow_info_lock;
 	uint32_t flow_cnt[CDP_DATA_TID_MAX];
+	uint8_t tid_weight[CDP_DATA_TID_MAX];
 #endif
 #endif
 #ifdef CONFIG_SAWF_DEF_QUEUES

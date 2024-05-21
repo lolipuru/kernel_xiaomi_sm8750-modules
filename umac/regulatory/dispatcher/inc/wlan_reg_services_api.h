@@ -456,6 +456,8 @@ wlan_reg_get_band_channel_list(struct wlan_objmgr_pdev *pdev,
  * @band_mask: Input bitmap with band set
  * @channel_list: Pointer to Channel List
  * @in_6g_pwr_type: 6g power type which decides 6G channel list lookup.
+ * @treat_nol_as_enabled: Flag to determine whether to treat NOL channels as
+ * disabled or enabled.
  *
  * Get the given channel list and number of channels from the current channel
  * list based on input band bitmap.
@@ -468,7 +470,8 @@ wlan_reg_get_band_channel_list_for_pwrmode(struct wlan_objmgr_pdev *pdev,
 					   struct regulatory_channel
 					   *channel_list,
 					   enum supported_6g_pwr_types
-					   in_6g_pwr_type);
+					   in_6g_pwr_type,
+					   bool treat_nol_as_enabled);
 #endif
 
 #ifdef CONFIG_REG_CLIENT
@@ -2723,6 +2726,7 @@ wlan_reg_get_best_pwr_mode(struct wlan_objmgr_pdev *pdev, qdf_freq_t freq,
  * @is_client_list_lookup_needed: Boolean to indicate if client list lookup is
  * needed
  * @client_type: Client power type
+ * @is_twice_power: Boolean to indicate EIRP in 0.5 dBm
  *
  * Return: EIRP power
  */
@@ -2731,7 +2735,8 @@ int16_t wlan_reg_get_eirp_pwr(struct wlan_objmgr_pdev *pdev, qdf_freq_t freq,
 			      enum reg_6g_ap_type ap_pwr_type,
 			      uint16_t in_punc_pattern,
 			      bool is_client_list_lookup_needed,
-			      enum reg_6g_client_type client_type);
+			      enum reg_6g_client_type client_type,
+			      bool is_twice_power);
 #else
 static inline
 qdf_freq_t wlan_reg_get_thresh_priority_freq(struct wlan_objmgr_pdev *pdev)
@@ -2771,7 +2776,8 @@ wlan_reg_get_eirp_pwr(struct wlan_objmgr_pdev *pdev,
 		      enum reg_6g_ap_type ap_pwr_type,
 		      uint16_t in_punc_pattern,
 		      bool is_client_list_lookup_needed,
-		      enum reg_6g_client_type client_type)
+		      enum reg_6g_client_type client_type,
+		      bool is_twice_power)
 {
 	return 0;
 }

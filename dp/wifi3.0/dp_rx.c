@@ -1864,7 +1864,7 @@ static inline uint32_t dp_get_l3_hdr_pad_len(struct dp_soc *soc,
 
 qdf_nbuf_t dp_rx_sg_create(struct dp_soc *soc, qdf_nbuf_t nbuf)
 {
-	qdf_nbuf_t parent, frag_list, next = NULL;
+	qdf_nbuf_t parent, frag_list, frag_tail, next = NULL;
 	uint16_t frag_list_len = 0;
 	uint16_t mpdu_len;
 	bool last_nbuf;
@@ -1877,6 +1877,19 @@ qdf_nbuf_t dp_rx_sg_create(struct dp_soc *soc, qdf_nbuf_t nbuf)
 	 */
 	mpdu_len = QDF_NBUF_CB_RX_PKT_LEN(nbuf);
 
+	/*
+	 * If MSDU length of the first fragment is zero, need to
+	 * use the length of the last fragment to overwrite.
+	 */
+	if (!mpdu_len) {
+		frag_tail = nbuf;
+		while (frag_tail && qdf_nbuf_is_rx_chfrag_cont(frag_tail))
+			frag_tail = frag_tail->next;
+
+		if (frag_tail)
+			QDF_NBUF_CB_RX_PKT_LEN(nbuf) =
+			    QDF_NBUF_CB_RX_PKT_LEN(frag_tail);
+	}
 	/*
 	 * this is a case where the complete msdu fits in one single nbuf.
 	 * in this case HW sets both start and end bit and we only need to
@@ -3484,14 +3497,22 @@ dp_rx_pdev_buffers_alloc(struct dp_pdev *pdev)
 	int mac_for_pdev = pdev->lmac_id;
 	struct dp_soc *soc = pdev->soc;
 	struct dp_srng *dp_rxdma_srng;
+	struct wlan_cfg_dp_soc_ctxt *soc_cfg_ctx;
 	struct rx_desc_pool *rx_desc_pool;
 	uint32_t rxdma_entries;
 	uint32_t target_type = hal_get_target_type(soc->hal_soc);
 
+	soc_cfg_ctx = soc->wlan_cfg_ctx;
+	wlan_cfg_set_dp_soc_rxdma_scan_radio_refill_ring_size(soc->ctrl_psoc,
+							      soc_cfg_ctx);
 	dp_rxdma_srng = &soc->rx_refill_buf_ring[mac_for_pdev];
+
 	rxdma_entries = dp_get_num_entries(pdev,
 					   dp_rxdma_srng->num_entries,
 					   QDF_BUFF_TYPE_RX);
+	if (soc->scan_radio_support)
+		rxdma_entries = wlan_cfg_get_dp_soc_rxdma_scan_radio_refill_ring_size(soc_cfg_ctx);
+
 	rx_desc_pool = &soc->rx_desc_buf[mac_for_pdev];
 
 	/* Initialize RX buffer pool which will be
@@ -3671,5 +3692,80 @@ QDF_STATUS dp_rx_handle_buf_pool_audio_smmu_mapping(struct dp_soc *soc,
 	dp_rx_set_reo_ctx_mapping_lock_required(soc, false);
 
 	return QDF_STATUS_SUCCESS;
+}
+#endif
+
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+/**
+ * dp_rx_calculate_per_ring_pkt_avg() - calculate per ring packet average
+ * @cdp_soc: cdp soc handle
+ *
+ * Return: none
+ */
+void dp_rx_calculate_per_ring_pkt_avg(struct cdp_soc_t *cdp_soc)
+{
+	struct dp_soc *soc = (struct dp_soc *)cdp_soc;
+	struct dp_rx_pkt_cnt_stats *rx_ring_stats;
+	uint64_t tstamp = qdf_get_log_timestamp();
+	uint64_t time, usecs;
+	uint64_t rx_pkt_cnt;
+	uint64_t delta, pkts_per_sec;
+	int i;
+	int cpu;
+
+	for (i = 0; i < MAX_REO_DEST_RINGS; i++) {
+		rx_pkt_cnt = 0;
+		for (cpu = 0; cpu < num_possible_cpus(); cpu++)
+			rx_pkt_cnt += soc->stats.rx.ring_packets[cpu][i];
+
+		rx_ring_stats = &soc->stats.rx.rx_pkt_cnt[i];
+		rx_ring_stats->pkt_cnt = rx_pkt_cnt;
+
+		if (!rx_ring_stats->pkt_cnt_prev) {
+			rx_ring_stats->pkt_cnt_prev =
+				rx_ring_stats->pkt_cnt;
+			rx_ring_stats->last_avg_cal_ts = tstamp;
+		} else {
+			delta = rx_ring_stats->pkt_cnt -
+				rx_ring_stats->pkt_cnt_prev;
+			rx_ring_stats->pkt_cnt_prev = rx_ring_stats->pkt_cnt;
+			time = tstamp - rx_ring_stats->last_avg_cal_ts;
+			usecs = qdf_log_timestamp_to_usecs(time);
+
+			pkts_per_sec = (delta * 1000000) / usecs;
+
+			if (!rx_ring_stats->avg_pkt_cnt)
+				rx_ring_stats->avg_pkt_cnt = pkts_per_sec;
+			else
+				rx_ring_stats->avg_pkt_cnt =
+				(rx_ring_stats->avg_pkt_cnt * 25) / 100 +
+				(pkts_per_sec * 75) / 100;
+
+			rx_ring_stats->last_avg_cal_ts = tstamp;
+		}
+	}
+}
+
+/**
+ * dp_rx_get_per_ring_pkt_avg() - get per ring packet average count
+ * @cdp_soc: cdp soc handle
+ * @avg_pkt_cnt: Array of MAX_REO_DEST_RINGS to get the per ring packet
+ *		 average count
+ * @total_avg_pkts: total average packets count of all rings
+ *
+ * Return: none
+ */
+void dp_rx_get_per_ring_pkt_avg(struct cdp_soc_t *cdp_soc,
+				uint32_t *avg_pkt_cnt, uint32_t *total_avg_pkts)
+{
+	struct dp_soc *soc = (struct dp_soc *)cdp_soc;
+	struct dp_rx_pkt_cnt_stats *rx_ring_stats;
+	int i;
+
+	for (i = 0; i < MAX_REO_DEST_RINGS; i++) {
+		rx_ring_stats = &soc->stats.rx.rx_pkt_cnt[i];
+		avg_pkt_cnt[i] = rx_ring_stats->avg_pkt_cnt;
+		*total_avg_pkts += rx_ring_stats->avg_pkt_cnt;
+	}
 }
 #endif

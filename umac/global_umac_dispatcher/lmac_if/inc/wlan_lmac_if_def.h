@@ -161,6 +161,7 @@ typedef struct big_data_stats_event stats_big_data_stats_event;
  *                           command to FW
  * @send_req_big_data_stats: Function pointer to send big data stats
  * @send_req_telemetry_cp_stats: API to send stats request to wmi
+ * @send_cstats_enable: Sends Pdev set param command to enable chipset stats
  */
 struct wlan_lmac_if_cp_stats_tx_ops {
 	QDF_STATUS (*cp_stats_attach)(struct wlan_objmgr_psoc *psoc);
@@ -192,6 +193,10 @@ struct wlan_lmac_if_cp_stats_tx_ops {
 	QDF_STATUS (*send_req_telemetry_cp_stats)(
 					struct wlan_objmgr_pdev *pdev,
 					struct infra_cp_stats_cmd_info *req);
+#endif
+#ifdef WLAN_CHIPSET_STATS
+	QDF_STATUS (*send_cstats_enable)(struct wlan_objmgr_psoc *psoc,
+					 uint32_t param_val, uint8_t mac_id);
 #endif
 };
 
@@ -1680,6 +1685,7 @@ struct wlan_lmac_if_mlo_tx_ops {
  * @mlo_link_removal_handler: function pointer for MLO link removal handler
  * @process_mlo_link_state_info_event: function pointer for mlo link state
  * @mlo_link_disable_request_handler: function ptr for mlo link disable request
+ * @mlo_3_link_tlt_selection_handler: function pointer for mlo tlt selection
  * @mlo_link_switch_request_handler: Handler function pointer to deliver link
  * switch request params from FW to host.
  * @mlo_link_state_switch_event_handler: Function pointer to handle link state
@@ -1701,6 +1707,11 @@ struct wlan_lmac_if_mlo_rx_ops {
 	QDF_STATUS (*mlo_link_disable_request_handler)(
 			struct wlan_objmgr_psoc *psoc,
 			void *evt_params);
+#ifdef WLAN_FEATURE_11BE_MLO_3_LINK_TX
+	QDF_STATUS (*mlo_3_link_tlt_selection_handler)(
+			struct wlan_objmgr_psoc *psoc,
+			struct mlo_tlt_selection_evt_params *evt_params);
+#endif
 #ifdef WLAN_FEATURE_11BE_MLO_ADV_FEATURE
 	QDF_STATUS
 	(*mlo_link_switch_request_handler)(struct wlan_objmgr_psoc *psoc,

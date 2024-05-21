@@ -694,6 +694,9 @@ util_scan_copy_beacon_data(struct scan_cache_entry *new_entry,
 	struct ie_list *ie_lst;
 	uint8_t i;
 
+	if (!scan_entry->raw_frame.ptr || !scan_entry->raw_frame.len)
+		return QDF_STATUS_E_EMPTY;
+
 	new_entry->raw_frame.ptr =
 		qdf_mem_malloc_atomic(scan_entry->raw_frame.len);
 	if (!new_entry->raw_frame.ptr)
@@ -1939,4 +1942,27 @@ util_scan_get_6g_oper_channel(uint8_t *he_op_ie)
 	return 0;
 }
 #endif
+
+/**
+ * util_scan_get_phymode() - function to get phy mode
+ * @pdev : pdev object
+ * @scan_params: scan entry
+ *
+ * Return: phy mode.
+ */
+enum wlan_phymode
+util_scan_get_phymode(struct wlan_objmgr_pdev *pdev,
+		      struct scan_cache_entry *scan_params);
 #endif
+
+/*
+ * util_is_bssid_non_tx() - Is the given BSSID a non-tx neighbor
+ * entry in the RNR db
+ * @psoc: psoc
+ * @bssid: bssid
+ * @freq: frequency corresponding to the bssid
+ *
+ * Return: Is bssid non tx
+ */
+bool util_is_bssid_non_tx(struct wlan_objmgr_psoc *psoc,
+			  struct qdf_mac_addr *bssid, qdf_freq_t freq);

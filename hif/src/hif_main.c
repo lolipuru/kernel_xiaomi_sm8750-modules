@@ -430,6 +430,11 @@ static const struct qwlan_hw qwlan_hw_list[] = {
 		.name = "QCA6490",
 	},
 	{
+		.id = QCA6490_V2_2,
+		.subid = 0,
+		.name = "QCA6490",
+	},
+	{
 		.id = WCN3990_TALOS,
 		.subid = 0,
 		.name = "WCN3990",
@@ -1241,6 +1246,13 @@ hif_affinity_mgr_init(struct hif_softc *scn, struct wlan_objmgr_psoc *psoc)
 			qdf_cpumask_set_cpu(cpus, &allowed_mask);
 	qdf_cpumask_copy(&scn->allowed_mask, &allowed_mask);
 }
+
+bool hif_affinity_mgr_supported(struct hif_opaque_softc *hif_ctx)
+{
+	struct hif_softc *scn = HIF_GET_SOFTC(hif_ctx);
+
+	return scn->affinity_mgr_supported;
+}
 #else
 static inline void
 hif_affinity_mgr_init(struct hif_softc *scn, struct wlan_objmgr_psoc *psoc)
@@ -1447,11 +1459,12 @@ QDF_STATUS hif_try_complete_tasks(struct hif_softc *scn)
 			 * There is chance of OOM thread getting scheduled
 			 * continuously or execution get delayed during low
 			 * memory state. So avoid panic and prevent suspend
-			 * only if OOM thread is unable to complete pending
+			 * if OOM thread is unable to complete pending
 			 * work.
 			 */
-			if ((!tasklet) && (!grp_tasklet) && (!work) && oom_work)
-				hif_err("OOM thread is still pending cannot complete the work");
+			if (oom_work)
+				hif_err("OOM thread is still pending %d tasklets %d grp tasklets %d work %d",
+					oom_work, tasklet, grp_tasklet, work);
 			else
 				QDF_DEBUG_PANIC("Complete tasks takes more than %u ms: tasklets %d grp tasklets %d work %d oom_work %d",
 						HIF_TASK_DRAIN_WAIT_CNT * 10,
@@ -3422,4 +3435,13 @@ void hif_config_irq_set_perf_affinity_hint(
 }
 
 qdf_export_symbol(hif_config_irq_set_perf_affinity_hint);
+#endif
+
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+void hif_set_load_balance_enabled_flag(struct hif_opaque_softc *hif_ctx)
+{
+	struct hif_softc *scn = HIF_GET_SOFTC(hif_ctx);
+
+	scn->is_load_balance_enabled = true;
+}
 #endif
