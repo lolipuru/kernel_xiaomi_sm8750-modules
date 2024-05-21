@@ -27,13 +27,16 @@ struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev)
 	}
 
 	scctx->domain_id = CDSP_DOMAIN_ID;
+	atomic_set(&scctx->teardown, 0);
 	scctx->secure = 0;
 	scctx->unsigned_support = false;
 	kref_init(&scctx->refcount);
 	INIT_LIST_HEAD(&scctx->users);
+	INIT_LIST_HEAD(&scctx->gmaps);
+	mutex_init(&scctx->wake_mutex);
 	spin_lock_init(&scctx->lock);
-	spin_lock_init(&(scctx->gmsg_log[scctx->domain_id].tx_lock));
-	spin_lock_init(&(scctx->gmsg_log[scctx->domain_id].rx_lock));
+	spin_lock_init(&(scctx->gmsg_log.tx_lock));
+	spin_lock_init(&(scctx->gmsg_log.rx_lock));
 	idr_init(&scctx->ctx_idr);
 	ida_init(&scctx->tgid_frpc_ida);
 	scctx->max_sess_per_proc = FASTRPC_MAX_SESSIONS_PER_PROCESS;
