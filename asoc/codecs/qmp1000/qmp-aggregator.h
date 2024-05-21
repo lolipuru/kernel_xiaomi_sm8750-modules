@@ -9,19 +9,11 @@
 
 int stream_agg_add_channel(void *substream, uint32_t channels,
 		uint32_t channel_rate, u8 mport_type, u8 slv_port_id, u8 dev_num,
-		void *qmp_private_data,
+		void *qmp_private_data, struct swr_device *sdev,
 		void (*update_offset1)(void *private_data, u8 slv_port_id, u8 offset1));
 int stream_agg_remove_channel(void *substream, u8 mport_type,
 		u8 slv_port_id, u8 dev_num);
 int stream_agg_prepare_channel(void *substream, u8 mport_type,
-		u8 slv_port_id, u8 dev_num);
-int stream_agg_add_channel_v2(void *substream, uint32_t channels,
-		uint32_t channel_rate, u8 mport_type, u8 slv_port_id, u8 dev_num,
-		void *qmp_private_data, struct swr_device *sdev,
-		void (*update_offset1)(void *private_data, u8 slv_port_id, u8 offset1));
-int stream_agg_remove_channel_v2(void *substream, u8 mport_type,
-		u8 slv_port_id, u8 dev_num);
-int stream_agg_prepare_channel_v2(void *substream, u8 mport_type,
 		u8 slv_port_id, u8 dev_num);
 #endif
 

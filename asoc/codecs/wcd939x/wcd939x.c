@@ -4736,7 +4736,7 @@ static int wcd939x_reset(struct device *dev)
 	if (rc) {
 		dev_err_ratelimited(dev, "%s: wcd sleep state request fail!\n",
 				__func__);
-		return rc;
+		return -EPROBE_DEFER;
 	}
 	/* 20us sleep required after pulling the reset gpio to LOW */
 	usleep_range(20, 30);
@@ -4745,7 +4745,7 @@ static int wcd939x_reset(struct device *dev)
 	if (rc) {
 		dev_err_ratelimited(dev, "%s: wcd active state request fail!\n",
 				__func__);
-		return rc;
+		return -EPROBE_DEFER;
 	}
 	/* 20us sleep required after pulling the reset gpio to HIGH */
 	usleep_range(20, 30);
@@ -5537,7 +5537,11 @@ static int wcd939x_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_lock_init;
 
-	wcd939x_reset(dev);
+	ret = wcd939x_reset(dev);
+	if (ret == -EPROBE_DEFER) {
+		dev_err(dev, "%s: wcd reset failed!\n", __func__);
+		goto err_lock_init;
+	}
 
 	wcd939x->wakeup = wcd939x_wakeup;
 

@@ -2090,8 +2090,6 @@ static int swrm_slvdev_datapath_control(struct swr_master *master, bool enable)
 		dev_dbg(&master->dev, "%s: pm_runtime auto suspend triggered\n",
 			__func__);
 		pm_runtime_mark_last_busy(swrm->dev);
-		if (!enable)
-			pm_runtime_set_autosuspend_delay(swrm->dev, 80);
 		pm_runtime_put_autosuspend(swrm->dev);
 	}
 exit:
@@ -2499,8 +2497,8 @@ handle_irq:
 				__func__);
 			break;
 		case SWRM_INTERRUPT_STATUS_CHANGE_ENUM_SLAVE_STATUS:
-			swrm_enable_slave_irq(swrm);
 			mutex_lock(&enumeration_lock);
+			swrm_enable_slave_irq(swrm);
 			swrm_process_change_enum_slave_status(swrm);
 			mutex_unlock(&enumeration_lock);
 			break;
@@ -2763,8 +2761,8 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 	}
 	mutex_unlock(&swrm->devlock);
 
-	pm_runtime_get_sync(swrm->dev);
 	mutex_lock(&enumeration_lock);
+	pm_runtime_get_sync(swrm->dev);
 	for (i = 1; i < (num_dev + 1); i++) {
 		id = ((u64)(swr_master_read(swrm,
 			    SWRM_ENUMERATOR_SLAVE_DEV_ID_2(i))) << 32);
@@ -2804,10 +2802,11 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 		dev_err(swrm->dev,
 				"%s: device 0x%llx is not ready\n",
 				__func__, dev_id);
-	mutex_unlock(&enumeration_lock);
 
 	pm_runtime_mark_last_busy(swrm->dev);
 	pm_runtime_put_autosuspend(swrm->dev);
+	mutex_unlock(&enumeration_lock);
+
 	return ret;
 }
 
@@ -3812,7 +3811,6 @@ exit:
 	mutex_unlock(&swrm->runtime_lock);
 	dev_dbg(dev, "%s: pm_runtime: suspend done state: %d\n",
 		__func__, swrm->state);
-	pm_runtime_set_autosuspend_delay(dev, auto_suspend_timer);
 	return ret;
 }
 #endif /* CONFIG_PM */

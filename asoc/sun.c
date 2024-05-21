@@ -847,7 +847,7 @@ static struct snd_soc_dai_link msm_wsa_wsa2_cdc_dma_be_dai_links[] = {
 	},
 };
 
-static struct snd_soc_dai_link msm_rx_tx_cdc_dma_be_dai_links[] = {
+static struct snd_soc_dai_link msm_rx_cdc_dma_be_dai_links[] = {
 	/* RX CDC DMA Backend DAI Links */
 	{
 		.name = LPASS_BE_RX_CDC_DMA_RX_0,
@@ -905,6 +905,9 @@ static struct snd_soc_dai_link msm_rx_tx_cdc_dma_be_dai_links[] = {
 		.ops = &msm_common_be_ops,
 		SND_SOC_DAILINK_REG(rx_dma_rx5),
 	},
+};
+
+static struct snd_soc_dai_link msm_tx_cdc_dma_be_dai_links[] = {
 	/* TX CDC DMA Backend DAI Links */
 	{
 		.name = LPASS_BE_TX_CDC_DMA_TX_4,
@@ -961,6 +964,16 @@ static struct snd_soc_dai_link msm_cdc_qmp_dma_be_dai_links[] = {
 		.ignore_suspend = 1,
 		.ops = &msm_common_be_ops,
 		SND_SOC_DAILINK_REG(va_dma_qmp_normal),
+	},
+	{
+		.name = LPASS_BE_TX_CDC_DMA_TX_4,
+		.stream_name = LPASS_BE_TX_CDC_DMA_TX_4,
+		.capture_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		.ops = &msm_common_be_ops,
+		SND_SOC_DAILINK_REG(tx_dma_qmp_tx4),
 	},
 };
 
@@ -1302,7 +1315,8 @@ static struct snd_soc_dai_link msm_sun_dai_links[
 			ARRAY_SIZE(msm_wsa_cdc_dma_be_dai_links) +
 			ARRAY_SIZE(msm_wsa2_cdc_dma_be_dai_links) +
 			ARRAY_SIZE(msm_wsa_wsa2_cdc_dma_be_dai_links) +
-			ARRAY_SIZE(msm_rx_tx_cdc_dma_be_dai_links) +
+			ARRAY_SIZE(msm_rx_cdc_dma_be_dai_links) +
+			ARRAY_SIZE(msm_tx_cdc_dma_be_dai_links) +
 			ARRAY_SIZE(msm_va_cdc_dma_be_dai_links) +
 			ARRAY_SIZE(msm_cdc_tx_va_dma_be_dai_links) +
 			ARRAY_SIZE(msm_cdc_qmp_dma_be_dai_links) +
@@ -1540,10 +1554,10 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 
 		/* late probe uses dai link at index '0' to get wcd component */
 		memcpy(msm_sun_dai_links + total_links,
-		       msm_rx_tx_cdc_dma_be_dai_links,
-		       sizeof(msm_rx_tx_cdc_dma_be_dai_links));
+		       msm_rx_cdc_dma_be_dai_links,
+		       sizeof(msm_rx_cdc_dma_be_dai_links));
 		total_links +=
-			ARRAY_SIZE(msm_rx_tx_cdc_dma_be_dai_links);
+			ARRAY_SIZE(msm_rx_cdc_dma_be_dai_links);
 
 		switch (wsa_max_devs) {
 		case MONO_SPEAKER:
@@ -1646,6 +1660,10 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 			       msm_cdc_tx_va_dma_be_dai_links,
 			       sizeof(msm_cdc_tx_va_dma_be_dai_links));
 			total_links += ARRAY_SIZE(msm_cdc_tx_va_dma_be_dai_links);
+			memcpy(msm_sun_dai_links + total_links,
+			       msm_tx_cdc_dma_be_dai_links,
+			       sizeof(msm_tx_cdc_dma_be_dai_links));
+			total_links += ARRAY_SIZE(msm_tx_cdc_dma_be_dai_links);
 		}
 
 		if (of_find_property(dev->of_node, "swr-haptics-unsupported",
@@ -2128,11 +2146,11 @@ static int sun_ssr_enable(struct device *dev, void *data)
 
 	if (pdata->wsa_max_devs > 0) {
 		rtd_wsa = snd_soc_get_pcm_runtime(card,
-			&card->dai_link[ARRAY_SIZE(msm_rx_tx_cdc_dma_be_dai_links) - 1]);
+			&card->dai_link[ARRAY_SIZE(msm_rx_cdc_dma_be_dai_links) - 1]);
 		if (!rtd_wsa) {
 			dev_dbg(dev,
 			"%s: snd_soc_get_pcm_runtime for %s failed!\n",
-			__func__, card->dai_link[ARRAY_SIZE(msm_rx_tx_cdc_dma_be_dai_links) - 1].name);
+			__func__, card->dai_link[ARRAY_SIZE(msm_rx_cdc_dma_be_dai_links) - 1].name);
 		}
 	}
 	/* set UPD configuration */

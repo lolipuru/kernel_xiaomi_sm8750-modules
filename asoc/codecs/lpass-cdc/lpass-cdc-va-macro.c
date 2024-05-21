@@ -57,6 +57,7 @@
 #define MAX_RETRY_ATTEMPTS 500
 #define LPASS_CDC_VA_MACRO_SWR_STRING_LEN 80
 #define LPASS_CDC_VA_MACRO_CHILD_DEVICES_MAX 3
+#define LPASS_CDC_VA_MACRO_DEC_UNMUTE_DELAY_MS     10
 
 static const DECLARE_TLV_DB_SCALE(digital_gain, 0, 1, 0);
 static int va_tx_unmute_delay = LPASS_CDC_VA_TX_DMIC_UNMUTE_DELAY_MS;
@@ -97,6 +98,12 @@ enum {
 enum {
 	TX_MCLK,
 	VA_MCLK,
+};
+
+struct va_dec_unmute_work {
+	struct lpass_cdc_va_macro_priv *va_priv;
+	int dai_id;
+	struct delayed_work dwork;
 };
 
 struct va_mute_work {
@@ -140,6 +147,7 @@ struct lpass_cdc_va_macro_priv {
 	struct mutex swr_clk_lock;
 	struct mutex wlock;
 	struct snd_soc_component *component;
+	struct va_dec_unmute_work va_dec_unmute_work;
 	struct hpf_work va_hpf_work[LPASS_CDC_VA_MACRO_NUM_DECIMATORS];
 	struct va_mute_work va_mute_dwork[LPASS_CDC_VA_MACRO_NUM_DECIMATORS];
 	unsigned long active_ch_mask[LPASS_CDC_VA_MACRO_MAX_DAIS];
@@ -743,6 +751,30 @@ static void lpass_cdc_va_macro_tx_hpf_corner_freq_callback(
 					      0x02, 0x00);
 	}
 	lpass_cdc_va_macro_wake_enable(va_priv, 0);
+}
+
+static void mute_stream_dec_unmute(struct work_struct *work)
+{
+	struct delayed_work *unmute_delayed_work = NULL;
+	struct va_dec_unmute_work *va_dec_unmute_work = NULL;
+	struct lpass_cdc_va_macro_priv *va_priv = NULL;
+	struct snd_soc_component *component = NULL;
+	int dai_id = 0;
+	u16 va_mute_ctl_reg = 0;
+	u32 decimator = 0;
+
+	unmute_delayed_work = to_delayed_work(work);
+	va_dec_unmute_work = container_of(unmute_delayed_work, struct va_dec_unmute_work, dwork);
+	va_priv = va_dec_unmute_work->va_priv;
+	component = va_priv->component;
+	dai_id = va_dec_unmute_work->dai_id;
+
+	for_each_set_bit(decimator, &va_priv->active_ch_mask[dai_id],
+		LPASS_CDC_VA_MACRO_DEC_MAX) {
+		va_mute_ctl_reg = LPASS_CDC_VA_TX0_TX_PATH_CTL +
+			LPASS_CDC_VA_MACRO_TX_PATH_OFFSET * decimator;
+		snd_soc_component_update_bits(component, va_mute_ctl_reg, 0x10, 0x00);
+	}
 }
 
 static void lpass_cdc_va_macro_mute_update_callback(struct work_struct *work)
@@ -1464,6 +1496,7 @@ static int lpass_cdc_va_mute_stream(struct snd_soc_dai *dai, int mute, int strea
 	struct device *va_dev = NULL;
 	u16 va_mute_ctl_reg = 0;
 	u16 adc_mux_reg = 0;
+	bool work_scheduled = false;
 
 	if (!lpass_cdc_va_macro_get_data(component, &va_dev, &va_priv, __func__))
 		return -EINVAL;
@@ -1484,8 +1517,16 @@ static int lpass_cdc_va_mute_stream(struct snd_soc_dai *dai, int mute, int strea
 			snd_soc_component_update_bits(component, va_mute_ctl_reg, 0x40, 0x40);
 			usleep_range(2000, 2100);
 			snd_soc_component_update_bits(component, va_mute_ctl_reg, 0x40, 0x00);
-			usleep_range(10000, 10100);
-			snd_soc_component_update_bits(component, va_mute_ctl_reg, 0x10, 0x00);
+			va_priv->va_dec_unmute_work.dai_id = dai->id;
+			/*
+			 * Schedule dwork after 10MS to unmute the dec to unblock the main thread
+			 */
+			if (!work_scheduled) {
+				queue_delayed_work(system_freezable_wq,
+					&va_priv->va_dec_unmute_work.dwork,
+					msecs_to_jiffies(LPASS_CDC_VA_MACRO_DEC_UNMUTE_DELAY_MS));
+				work_scheduled = true;
+			}
 		}
 		dev_dbg(component->dev, "capture: VA decimator %d %s\n", decimator,
 				(mute ? "muted" : "unmuted"));
@@ -2034,6 +2075,9 @@ static int lpass_cdc_va_macro_init(struct snd_soc_component *component)
 		INIT_DELAYED_WORK(&va_priv->va_mute_dwork[i].dwork,
 			  lpass_cdc_va_macro_mute_update_callback);
 	}
+	va_priv->va_dec_unmute_work.va_priv = va_priv;
+	INIT_DELAYED_WORK(&va_priv->va_dec_unmute_work.dwork,
+		mute_stream_dec_unmute);
 	va_priv->component = component;
 
 	snd_soc_component_update_bits(component,
@@ -2435,6 +2479,8 @@ static int lpass_cdc_va_macro_remove(struct platform_device *pdev)
 				va_priv->pdev_child_devices[count]);
 	}
 
+	cancel_delayed_work_sync(
+		&va_priv->va_dec_unmute_work.dwork);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	lpass_cdc_unregister_macro(&pdev->dev, VA_MACRO);
