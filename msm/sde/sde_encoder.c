@@ -2379,14 +2379,16 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	bool autorefresh_en;
 
-	_sde_encoder_cesta_update(drm_enc, sde_enc->cesta_enable_frame ?
+	/*
+	 * When enabling autorefresh - its requires an override cesta flush.
+	 * Fake enable_commit to achieve the configs.
+	 */
+	autorefresh_en = _sde_encoder_is_autorefresh_enabled(sde_enc);
+
+	_sde_encoder_cesta_update(drm_enc, (sde_enc->cesta_enable_frame || autorefresh_en) ?
 					SDE_PERF_ENABLE_COMMIT : SDE_PERF_BEGIN_COMMIT);
-}
-
-void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
-{
-	_sde_encoder_cesta_update(drm_enc, SDE_PERF_COMPLETE_COMMIT);
 }
 
 static void _sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
@@ -3366,7 +3368,6 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
 	struct sde_kms *sde_kms;
-	struct msm_display_mode *msm_mode;
 	struct sde_connector_state *c_state;
 
 	if (!drm_enc || !drm_enc->dev || !drm_enc->dev->dev_private) {
@@ -3430,14 +3431,6 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 		SDE_ERROR("invalid connector state\n");
 		return;
 	}
-
-	/* avoid cesta_enable_frame setting for seamless switches */
-	msm_mode = &c_state->msm_mode;
-	if (sde_enc->cesta_client && !sde_enc->cur_master->cont_splash_enabled &&
-			!(msm_is_mode_seamless_vrr(msm_mode)
-				|| msm_is_mode_seamless_dms(msm_mode)
-				|| msm_is_mode_seamless_dyn_clk(msm_mode)))
-		sde_enc->cesta_enable_frame = true;
 }
 
 static void _sde_encoder_setup_dither(struct sde_encoder_phys *phys)
@@ -4321,6 +4314,79 @@ static inline void _sde_encoder_update_retire_txq(struct sde_encoder_phys *phys,
 			sde_kms->debugfs_hw_fence);
 }
 
+void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	struct msm_mode_info *mode_info = &sde_enc->mode_info;
+	struct sde_encoder_phys *cur_master = sde_enc->cur_master;
+	struct msm_display_info *disp_info = &sde_enc->disp_info;
+	bool is_vid = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
+	struct intf_status intf_status = {0};
+	u32 u_bound, l_bound, line_count;
+	const u32 porch_margin = 10;
+
+	if ((disp_info->intf_type != DRM_MODE_CONNECTOR_DSI) || !is_vid || !sde_enc->cesta_client
+			|| !cur_master->hw_intf || !cur_master->hw_intf->ops.get_status
+			|| !cur_master->hw_intf->ops.get_line_count)
+		return;
+
+	cur_master->hw_intf->ops.get_status(cur_master->hw_intf, &intf_status);
+
+	if (!intf_status.is_prog_fetch_en)
+		return;
+
+	/* delay flush if it is in the prog-fetch region */
+	l_bound = mode_info->vtotal - cur_master->prog_fetch_start - porch_margin;
+	u_bound = mode_info->vtotal;
+
+	/*
+	 * ctl flush when line-cnt is in prog-fetch region causes issues with cesta idle-vote
+	 * at ext-vfp. As a workaround, override cesta to stay active during this time and remove
+	 * the override at the end of the commit after panel-vsync, but polling the line-count
+	 * for reset.
+	 */
+	line_count = intf_status.line_count;
+	if ((line_count >= l_bound) && (line_count < u_bound)) {
+		sde_enc->cesta_force_active = true;
+		sde_cesta_override_ctrl(sde_enc->cesta_client, SDE_CESTA_OVERRIDE_FORCE_ACTIVE);
+		SDE_EVT32(line_count, l_bound, u_bound, mode_info->vtotal,
+				cur_master->prog_fetch_start);
+	}
+}
+
+void sde_encoder_poll_intf_line_count_reset(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	struct sde_encoder_phys *cur_master = sde_enc->cur_master;
+	u32 line_count, max_trials = 10;
+	int i;
+
+	if (!sde_enc->cesta_force_active)
+		return;
+
+	if (!cur_master->hw_intf || !cur_master->hw_intf->ops.get_line_count)
+		return;
+
+	for (i = 0; i < max_trials; i++) {
+		line_count = cur_master->hw_intf->ops.get_line_count(cur_master->hw_intf);
+		if (line_count < 100)
+			break;
+
+		usleep_range(50, 55);
+	}
+
+	/* remove force active from cesta configs */
+	sde_cesta_override_ctrl(sde_enc->cesta_client, 0);
+	sde_enc->cesta_force_active = false;
+	SDE_EVT32(i, line_count, (i == max_trials) ? SDE_EVTLOG_ERROR : 0);
+}
+
+void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
+{
+	sde_encoder_poll_intf_line_count_reset(drm_enc);
+	_sde_encoder_cesta_update(drm_enc, SDE_PERF_COMPLETE_COMMIT);
+}
+
 /**
  * _sde_encoder_trigger_flush - trigger flush for a physical encoder
  * drm_enc: Pointer to drm encoder structure
@@ -4367,6 +4433,9 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 				ctl->idx - CTL_0);
 		return;
 	}
+
+	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
+		sde_encoder_check_prog_fetch_region(drm_enc);
 
 	/* update pending counts and trigger kickoff ctl flush atomically */
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
@@ -6759,9 +6828,6 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 		if (phys->ops.is_master && phys->ops.is_master(phys))
 			sde_enc->cur_master = phys;
 	}
-
-	if (sde_enc->cesta_client)
-		sde_enc->cesta_enable_frame = true;
 
 	return ret;
 }

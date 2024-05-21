@@ -4244,7 +4244,7 @@ void dsi_panel_calc_dsi_transfer_time(struct dsi_host_common_cfg *config,
 
 	if (timing->clk_rate_hz) {
 		/* adjust the transfer time proportionately for bit clk*/
-		dsi_transfer_time_us = frame_time_us * min_bitclk_hz;
+		dsi_transfer_time_us = frame_time_us * timing->min_dsi_clk_hz;
 		do_div(dsi_transfer_time_us, timing->clk_rate_hz);
 		timing->dsi_transfer_time_us = dsi_transfer_time_us;
 
@@ -4273,7 +4273,7 @@ void dsi_panel_calc_dsi_transfer_time(struct dsi_host_common_cfg *config,
 	}
 
 	/* Calculate pclk_khz to update modeinfo */
-	pclk_rate_hz =  min_bitclk_hz * frame_time_us;
+	pclk_rate_hz =  timing->min_dsi_clk_hz * frame_time_us;
 	do_div(pclk_rate_hz, timing->dsi_transfer_time_us);
 
 	pixel_clk_khz = pclk_rate_hz * config->num_data_lanes;

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[sde-hdcp-2x] %s: " fmt, __func__
@@ -930,6 +929,8 @@ static int sde_hdcp_2x_wakeup(struct sde_hdcp_2x_wakeup_data *data)
 		}
 		break;
 	case HDCP_2X_CMD_MIN_ENC_LEVEL:
+		if (hdcp->min_enc_level != data->min_enc_level)
+			SDE_EVT32_EXTERNAL(data->cmd, hdcp->min_enc_level, data->min_enc_level);
 		hdcp->min_enc_level = data->min_enc_level;
 		if (hdcp->authenticated) {
 			kfifo_put(&hdcp->cmd_q, data->cmd);

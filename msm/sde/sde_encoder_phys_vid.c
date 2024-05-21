@@ -466,23 +466,20 @@ void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct sde_encoder_phys_vid *vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	struct msm_mode_info *info = &sde_enc->mode_info;
+	struct intf_timing_params *timing = &vid_enc->timing_params;
 	struct intf_panic_ctrl_cfg cfg = {0, };
 	struct intf_status intf_status = {0};
-	u32 bw_update_time_lines, avr_cutoff, vrefresh, max_fps, prefill_lines;
+	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
+	u32 bw_update_time_lines, avr_cutoff, fps, min_fps;
+	u32 vsync_slow_period, prefill_lines;
 
-	if (!info->qsync_min_fps)
-		goto end;
-
-	vrefresh = vid_enc->timing_params.vrefresh;
-	max_fps = sde_encoder_get_dfps_maxfps(phys_enc->parent);
-	vrefresh = (max_fps > vrefresh) ? max_fps : vrefresh;
-
-	prefill_lines = phys_enc->hw_intf->cap->prog_fetch_lines_worst_case;
-	prefill_lines = (vrefresh > DEFAULT_FPS) ?
-				DIV_ROUND_UP(prefill_lines * vrefresh, DEFAULT_FPS) : prefill_lines;
+	fps = vid_enc->timing_params.vrefresh;
+	min_fps = info->qsync_min_fps;
 
 	cfg.enable = true;
-	cfg.ext_vfp_start = phys_enc->cached_mode.vtotal;
+	/* set based on fast fps vfp */
+	cfg.ext_vfp_start = phys_enc->cached_mode.vdisplay + phys_enc->vfp_cached
+				+ timing->v_back_porch + timing->vsync_pulse_width;
 
 	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_status)
 		phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &intf_status);
@@ -490,15 +487,29 @@ void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
 	bw_update_time_lines = sde_encoder_helper_get_bw_update_time_lines(sde_enc);
 	avr_cutoff = intf_status.is_prog_fetch_en ? 1 : 3;
 
+	if ((phys_enc->hw_intf->cap->type == INTF_DSI) && intf_status.is_prog_fetch_en) {
+		phys_enc->prog_fetch_start = programmable_fetch_get_num_lines(vid_enc, timing);
+		prefill_lines = phys_enc->prog_fetch_start;
+	} else {
+		phys_enc->prog_fetch_start = 0;
+		prefill_lines = info->prefill_lines;
+	}
+
 	/* panic level = vsync_period_slow - prog_fetch_start - bw-vote - AVR cutoff */
-	cfg.panic_level = phys_enc->cached_mode.vtotal - info->prefill_lines
-				- bw_update_time_lines - avr_cutoff;
+	vsync_slow_period = (qsync_en && min_fps) ?
+			DIV_ROUND_UP(phys_enc->cached_mode.vtotal * fps, min_fps) :
+				phys_enc->cached_mode.vtotal;
+	cfg.panic_level = vsync_slow_period - prefill_lines - bw_update_time_lines - avr_cutoff;
 
-	SDE_EVT32(phys_enc->hw_intf->idx - INTF_0, cfg.enable, cfg.panic_level, cfg.ext_vfp_start,
-				bw_update_time_lines, max_fps, vrefresh, prefill_lines,
-				phys_enc->hw_intf->cap->prog_fetch_lines_worst_case, avr_cutoff);
+	if (cfg.ext_vfp_start >= cfg.panic_level)
+		cfg.ext_vfp_start = 0xFFFFFFFF;
 
-end:
+	SDE_EVT32(phys_enc->hw_intf->idx - INTF_0, cfg.enable, cfg.ext_vfp_start, cfg.panic_level,
+				phys_enc->cached_mode.vdisplay, phys_enc->cached_mode.vtotal, fps,
+				min_fps, bw_update_time_lines, prefill_lines,
+				phys_enc->prog_fetch_start, avr_cutoff, vsync_slow_period, qsync_en,
+				phys_enc->vfp_cached);
+
 	phys_enc->hw_intf->ops.setup_intf_panic_ctrl(phys_enc->hw_intf, &cfg);
 }
 
@@ -587,8 +598,15 @@ static void sde_encoder_phys_vid_setup_timing_engine(struct sde_encoder_phys *ph
 		programmable_fetch_config(phys_enc, &timing_params);
 
 exit:
-	if (sde_encoder_get_cesta_client(phys_enc->parent))
+	if (sde_encoder_get_cesta_client(phys_enc->parent)) {
 		_sde_encoder_phys_vid_setup_panic_ctrl(phys_enc);
+
+		/* update INTF flush for panic_ctrl to take effect with splash enabled */
+		if (phys_enc->cont_splash_enabled && phys_enc->hw_ctl
+				&& phys_enc->hw_ctl->ops.update_bitmask)
+			phys_enc->hw_ctl->ops.update_bitmask(phys_enc->hw_ctl, SDE_HW_FLUSH_INTF,
+					phys_enc->hw_intf->idx, 1);
+	}
 
 	if (phys_enc->parent_ops.get_qsync_fps)
 		phys_enc->parent_ops.get_qsync_fps(
@@ -1361,7 +1379,7 @@ static int sde_encoder_phys_vid_poll_for_active_region(struct sde_encoder_phys *
 		usleep_range(poll_time_us, poll_time_us + 5);
 		line_cnt = phys_enc->hw_intf->ops.get_line_count(phys_enc->hw_intf);
 		trial++;
-	} while ((trial < MAX_POLL_CNT) || (line_cnt < v_inactive));
+	} while ((trial < MAX_POLL_CNT) && (line_cnt < v_inactive));
 
 	return (trial >= MAX_POLL_CNT) ? -ETIMEDOUT : 0;
 }
@@ -1426,6 +1444,8 @@ static void sde_encoder_phys_vid_prepare_for_commit(
 		struct sde_encoder_phys *phys_enc)
 {
 	struct sde_connector_state *c_state;
+	struct sde_ctl_cesta_cfg cfg = {0,};
+	struct sde_cesta_client *cesta_client;
 
 	if (!phys_enc || !phys_enc->parent) {
 		SDE_ERROR("invalid encoder parameters\n");
@@ -1440,8 +1460,30 @@ static void sde_encoder_phys_vid_prepare_for_commit(
 		}
 
 		if (!msm_is_mode_seamless_vrr(&c_state->msm_mode)
-			&& sde_connector_is_qsync_updated(phys_enc->connector))
+			&& sde_connector_is_qsync_updated(phys_enc->connector)) {
+
+			cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+			if (cesta_client) {
+				_sde_encoder_phys_vid_setup_panic_ctrl(phys_enc);
+
+				/*
+				 * If the vsync line-count is in the ext-vfp region, cesta
+				 * already voted for idle and there is no entity to bring it back
+				 * to active once the avr_ctrl is disabled.
+				 * Add a cesta flush to get the votes active during disable of avr.
+				 */
+				if (!sde_connector_get_qsync_mode(phys_enc->connector)) {
+					cfg.index = cesta_client->scc_index;
+					cfg.vote_state = SDE_CESTA_BW_CLK_NOCHANGE;
+
+					if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.cesta_flush)
+						phys_enc->hw_ctl->ops.cesta_flush(
+									phys_enc->hw_ctl, &cfg);
+					SDE_EVT32(DRMID(phys_enc->parent), cfg.index);
+				}
+			}
 			_sde_encoder_phys_vid_avr_ctrl(phys_enc);
+		}
 
 	}
 }
@@ -1578,8 +1620,7 @@ void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	cfg->avr_enable = qsync_en;
 	cfg->intf = phys_enc->intf_idx - INTF_0;
 	cfg->auto_active_on_panic = true;
-	cfg->req_mode = qsync_en ? SDE_CESTA_CTRL_REQ_PANIC_REGION :
-					SDE_CESTA_CTRL_REQ_IMMEDIATE;
+	cfg->req_mode = qsync_en ? SDE_CESTA_CTRL_REQ_IMMEDIATE : SDE_CESTA_CTRL_REQ_PANIC_REGION;
 	cfg->hw_sleep_enable = true;
 
 	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)

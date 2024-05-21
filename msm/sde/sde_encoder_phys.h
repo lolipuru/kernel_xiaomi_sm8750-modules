@@ -363,6 +363,7 @@ struct sde_encoder_irq {
  * @recovered:			flag set to true when recovered from pp timeout
  * @autorefresh_disable_trans:   flag set to true during autorefresh disable transition
  * @sim_qsync_frame:            Current simulated qsync frame type
+ * @prog_fetch_start:           current programmable fetch value
  */
 struct sde_encoder_phys {
 	struct drm_encoder *parent;
@@ -418,6 +419,7 @@ struct sde_encoder_phys {
 	bool recovered;
 	bool autorefresh_disable_trans;
 	enum sde_sim_qsync_frame sim_qsync_frame;
+	u32 prog_fetch_start;
 };
 
 static inline int sde_encoder_phys_inc_pending(struct sde_encoder_phys *phys)
