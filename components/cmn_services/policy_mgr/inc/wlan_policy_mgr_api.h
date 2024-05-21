@@ -368,6 +368,30 @@ QDF_STATUS
 policy_mgr_get_dfs_sta_sap_go_scc_movement(struct wlan_objmgr_psoc *psoc,
 					   bool *move_sap_go_first);
 
+ /**
+  * policy_mgr_nss_update_cb() - callback from SME confirming nss
+  * update
+  * @psoc: psoc handle
+  * @tx_status: tx completion status for updated beacon with new
+  *              nss value
+  * @vdev_id: vdev id for the specific connection
+  * @next_action: next action to happen at policy mgr after
+  *              beacon update
+  * @reason: Reason for nss update
+  * @original_vdev_id: original request hwmode change vdev id
+  * @request_id: request ID
+  *
+  * This function is the callback registered with SME at nss
+  * update request time
+  *
+  * Return: None
+  */
+
+void policy_mgr_nss_update_cb(struct wlan_objmgr_psoc *psoc,
+			      uint8_t tx_status, uint8_t vdev_id,
+			      uint8_t next_action,
+			      enum policy_mgr_conn_update_reason reason,
+			      uint32_t original_vdev_id, uint32_t request_id);
 /*
  * policy_mgr_get_connected_vdev_band_mask() - to get the connected vdev band
  * mask
@@ -1365,6 +1389,14 @@ policy_mgr_update_disallowed_mode_bitmap(struct wlan_objmgr_psoc *psoc,
 bool
 policy_mgr_init_disallow_mode_bmap(struct mlo_link_set_active_req *req);
 
+/**
+ * policy_mgr_find_current_hw_mode() - Find the current hw mode
+ * @psoc: psoc pointer
+ *
+ * Return: policy mgr hw mode enum
+ */
+enum policy_mgr_curr_hw_mode
+policy_mgr_find_current_hw_mode(struct wlan_objmgr_psoc *psoc);
 #else
 static inline bool
 policy_mgr_update_disallowed_mode_bitmap(struct wlan_objmgr_psoc *psoc,
@@ -1379,6 +1411,12 @@ static inline bool
 policy_mgr_init_disallow_mode_bmap(struct mlo_link_set_active_req *req)
 {
 	return false;
+}
+
+static inline enum policy_mgr_curr_hw_mode
+policy_mgr_find_current_hw_mode(struct wlan_objmgr_psoc *psoc)
+{
+	return POLICY_MGR_HW_MODE_INVALID;
 }
 
 static inline bool
@@ -2187,6 +2225,7 @@ struct policy_mgr_sme_cbacks {
  *  based on target channel frequency and concurrent connections.
  * @wlan_get_sap_acs_band: get acs band from sap config
  * @wlan_check_cc_intf_cb: get interference frequency of input SAP/GO interface
+ * @wlan_set_tx_rx_nss_cb: set NSS dynamically for STA
  */
 struct policy_mgr_hdd_cbacks {
 	QDF_STATUS (*sap_restart_chan_switch_cb)(struct wlan_objmgr_psoc *psoc,
@@ -2218,6 +2257,9 @@ struct policy_mgr_hdd_cbacks {
 	QDF_STATUS (*wlan_check_cc_intf_cb)(struct wlan_objmgr_psoc *psoc,
 					    uint8_t vdev_id,
 					    uint32_t *ch_freq);
+	QDF_STATUS (*wlan_set_tx_rx_nss_cb)(struct wlan_objmgr_psoc *psoc,
+					    uint8_t vdev_id, uint8_t tx_nss,
+					    uint8_t rx_nss);
 };
 
 /**

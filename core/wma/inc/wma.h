@@ -187,6 +187,9 @@
 #define WMA_PASN_PEER_DELETE_RESPONSE 0x0b
 #define WMA_PEER_DELETE_RESPONSE_TIMEOUT SIR_DELETE_STA_TIMEOUT
 
+#define WMA_NAN_PASN_PEER_CREATE_RESPONSE 0x0c
+#define WMA_NAN_PASN_PEER_DELETE_RESPONSE 0x0d
+
 /* FW response timeout values in milli seconds */
 #define WMA_VDEV_PLCY_MGR_TIMEOUT        SIR_VDEV_PLCY_MGR_TIMEOUT
 #define WMA_VDEV_HW_MODE_REQUEST_TIMEOUT WMA_VDEV_PLCY_MGR_TIMEOUT
@@ -969,7 +972,6 @@ struct wma_pf_sym_hist {
  * @tx_fail_cnt: Number of TX failures
  * @wlm_data: Data required for WLM req and resp handling
  * @he_cap: 802.11ax capabilities
- * @bandcapability: band capability configured through ini
  * @tx_bfee_8ss_enabled: Is Tx Beamformee support for 8x8 enabled?
  * @in_imps: Is device in Idle Mode Power Save?
  * @dynamic_nss_chains_update: per vdev nss, chains update
@@ -1102,7 +1104,6 @@ typedef struct {
 #ifdef WLAN_FEATURE_11AX
 	struct he_capability he_cap;
 #endif
-	uint8_t bandcapability;
 	bool tx_bfee_8ss_enabled;
 	bool in_imps;
 	bool dynamic_nss_chains_support;
@@ -1769,7 +1770,7 @@ QDF_STATUS wma_peer_unmap_conf_cb(uint8_t vdev_id,
 bool wma_objmgr_peer_exist(tp_wma_handle wma,
 			   uint8_t *peer_addr, uint8_t *peer_vdev_id);
 
-#ifdef WLAN_FEATURE_PEER_TRANS_HIST
+#ifdef WLAN_FEATURE_11BE_MLO_ADV_FEATURE
 /**
  * wma_peer_tbl_trans_add_entry() - Add peer transition to peer history
  * @peer: Object manager peer pointer
@@ -2738,5 +2739,14 @@ QDF_STATUS wma_vdev_detach(struct del_vdev_params *pdel_vdev_req_param);
 
 QDF_STATUS wma_p2p_self_peer_remove(struct wlan_objmgr_vdev *vdev);
 #endif
+
+/**
+ * wma_send_reduce_pwr_scan_mode() - Send reduce power scan mode to FW
+ * @pdev_id: pdev id
+ * @param_val: value
+ *
+ * Return: QDF_STATUS_SUCCESS for success or error code.
+ */
+QDF_STATUS wma_send_reduce_pwr_scan_mode(uint32_t pdev_id, uint32_t param_val);
 #endif
 

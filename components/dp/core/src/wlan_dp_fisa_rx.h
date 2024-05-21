@@ -23,6 +23,7 @@
 #endif
 #include <qdf_status.h>
 #include <wlan_dp_priv.h>
+#include "wlan_dp_flow_balance.h"
 
 //#define FISA_DEBUG_ENABLE
 
@@ -232,6 +233,17 @@ void dp_set_fst_in_cmem(bool fst_in_cmem);
  * Return: None
  */
 void dp_set_fisa_dynamic_aggr_size_support(bool dynamic_aggr_size_support);
+
+static inline void
+dp_fisa_rx_add_tcp_flow_to_fst(struct wlan_dp_psoc_context *dp_ctx)
+{
+	struct dp_rx_fst *rx_fst = dp_ctx->rx_fst;
+
+	if (!rx_fst)
+		return;
+
+	rx_fst->add_tcp_flow_to_fst = true;
+}
 #else
 static inline void
 dp_rx_fst_update_pm_suspend_status(struct wlan_dp_psoc_context *dp_ctx,
@@ -256,5 +268,32 @@ static inline void
 dp_set_fisa_dynamic_aggr_size_support(bool dynamic_aggr_size_support)
 {
 }
+
+static inline void
+dp_fisa_rx_add_tcp_flow_to_fst(struct wlan_dp_psoc_context *dp_ctx)
+{
+}
+#endif
+
+#if defined(WLAN_SUPPORT_RX_FISA) && \
+	defined(WLAN_DP_FLOW_BALANCE_SUPPORT)
+void dp_fisa_calc_flow_stats_avg(struct wlan_dp_psoc_context *dp_ctx);
+#else
+static inline void
+dp_fisa_calc_flow_stats_avg(struct wlan_dp_psoc_context *dp_ctx)
+{
+}
+#endif
+
+#if defined(WLAN_SUPPORT_RX_FISA) && \
+	defined(WLAN_DP_FLOW_BALANCE_SUPPORT)
+void
+dp_fisa_flow_balance_build_flow_map_tbl(struct wlan_dp_psoc_context *dp_ctx,
+					struct wlan_dp_rx_ring_fm_tbl *map_tbl,
+					uint32_t *total_flow_avg_pkts,
+					uint32_t *total_num_flows);
+void dp_fisa_update_fst_table(struct wlan_dp_psoc_context *dp_ctx,
+			      struct wlan_dp_mig_flow *migrate_list,
+			      uint32_t mig_flow_cnt);
 #endif
 #endif

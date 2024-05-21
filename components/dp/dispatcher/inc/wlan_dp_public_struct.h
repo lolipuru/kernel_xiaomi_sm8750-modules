@@ -173,6 +173,18 @@ struct dp_set_arp_stats_params {
 };
 
 /**
+ * struct dp_active_traffic_map_params - active traffic map
+ * @vdev_id: vdev_id for which traffic map is being sent
+ * @mac: mac address of the peer
+ * @active_traffic_map: Active traffic bitmap
+ */
+struct dp_active_traffic_map_params {
+	uint32_t vdev_id;
+	struct qdf_mac_addr mac;
+	uint32_t active_traffic_map;
+};
+
+/**
  * struct dp_get_arp_stats_params - get arp stats from firmware
  * @pkt_type: packet type(1 - ARP)
  * @vdev_id: session id
@@ -588,6 +600,55 @@ union wlan_tp_data {
 	struct wlan_rx_tp_data rx_tp_data;
 };
 
+/*
+ * Flow tuple related flags
+ */
+#define DP_FLOW_TUPLE_FLAGS_IPV4	BIT(0)
+#define DP_FLOW_TUPLE_FLAGS_IPV6	BIT(1)
+#define DP_FLOW_TUPLE_FLAGS_SRC_IP	BIT(2)
+#define DP_FLOW_TUPLE_FLAGS_DST_IP	BIT(3)
+#define DP_FLOW_TUPLE_FLAGS_SRC_PORT	BIT(4)
+#define DP_FLOW_TUPLE_FLAGS_DST_PORT	BIT(5)
+#define DP_FLOW_TUPLE_FLAGS_PROTO	BIT(6)
+
+/*
+ * struct flow_info - Structure used for defining flow
+ * @proto: Flow proto
+ * @src_port: Source port
+ * @dst_port: Destination port
+ * @flags: Flags indicating available attributes of a flow
+ * @src_ip: Source IP (IPv4/IPv6)
+ * @dst_ip: Destination IP (IPv4/IPv6)
+ * @flow_label: Flow label if IPv6 is used for src_ip/dst_ip
+ */
+struct flow_info {
+	uint8_t proto;
+	uint16_t src_port;
+	uint16_t dst_port;
+	uint32_t flags;
+	union {
+		uint32_t ipv4_addr;             /* IPV4 address */
+		uint32_t ipv6_addr[4];          /* IPV6 address */
+	} src_ip;
+	union {
+		uint32_t ipv4_addr;             /* IPV4 address */
+		uint32_t ipv6_addr[4];          /* IPV6 address */
+	} dst_ip;
+	uint32_t flow_label;
+};
+
+/*
+ * struct wlan_dp_stc_flow_classify_result - Flow classification result
+ * @flow_tuple: tuple of the flow which is classified
+ * @cookie: cookie/identifier
+ * @traffic_type: traffic type classified
+ */
+struct wlan_dp_stc_flow_classify_result {
+	struct flow_info flow_tuple;
+	uint32_t cookie;
+	uint8_t traffic_type;
+};
+
 /**
  * struct wlan_dp_psoc_callbacks - struct containing callback
  * to non-converged driver
@@ -639,6 +700,7 @@ union wlan_tp_data {
  * @link_monitoring_cb: Callback API to handle link speed change
  * @dp_register_lpass_ssr_notifier: Callback to register for lpass SSR notif
  * @dp_unregister_lpass_ssr_notifier: Callback to unregister for lpass SSR notif
+ * @wlan_dp_ipa_wds_peer_cb: Callback to handle IPA WDS peer events
  */
 struct wlan_dp_psoc_callbacks {
 	hdd_cb_handle callback_ctx;
@@ -732,6 +794,11 @@ struct wlan_dp_psoc_callbacks {
 	(*dp_register_lpass_ssr_notifier)(struct wlan_objmgr_psoc *psoc);
 	void (*dp_unregister_lpass_ssr_notifier)(struct wlan_objmgr_psoc *psoc);
 #endif
+
+#ifdef IPA_WDS_EASYMESH_FEATURE
+	int (*wlan_dp_ipa_wds_peer_cb)(uint8_t vdev_id, uint16_t peer_id,
+				       uint8_t *wds_macaddr, bool map);
+#endif
 };
 
 /**
@@ -746,6 +813,7 @@ struct wlan_dp_psoc_callbacks {
  * @arp_request_ctx: ARP request context
  * @dp_lro_config_cmd: Callback to  send LRO config command
  * @dp_send_dhcp_ind: Callback to send DHCP indication
+ * @dp_send_active_traffic_map: Callback to send active traffic mapping
  */
 struct wlan_dp_psoc_sb_ops {
 	/*TODO to add target if TX ops*/
@@ -760,6 +828,8 @@ struct wlan_dp_psoc_sb_ops {
 					struct cdp_lro_hash_config *dp_lro_cmd);
 	QDF_STATUS (*dp_send_dhcp_ind)(uint16_t vdev_id,
 				       struct dp_dhcp_ind *dhcp_ind);
+	QDF_STATUS (*dp_send_active_traffic_map)(struct wlan_objmgr_psoc *psoc,
+						 struct dp_active_traffic_map_params *req_buf);
 };
 
 /**
@@ -839,48 +909,11 @@ struct dp_svc_data {
 #define MAX_TID 8
 
 /*
- * Flow tuple related flags
- */
-#define DP_FLOW_TUPLE_FLAGS_IPV4	BIT(0)
-#define DP_FLOW_TUPLE_FLAGS_IPV6	BIT(1)
-#define DP_FLOW_TUPLE_FLAGS_SRC_IP	BIT(2)
-#define DP_FLOW_TUPLE_FLAGS_DST_IP	BIT(3)
-#define DP_FLOW_TUPLE_FLAGS_SRC_PORT	BIT(4)
-#define DP_FLOW_TUPLE_FLAGS_DST_PORT	BIT(5)
-#define DP_FLOW_TUPLE_FLAGS_PROTO	BIT(6)
-
-/*
  * Flow policy related flags
  */
 #define DP_POLICY_TO_TID_MAP	BIT(0)
 #define DP_POLICY_TO_SVC_MAP	BIT(1)
 #define DP_POLICY_UPDATE_PRIO	BIT(2)
-
-/*
- * struct flow_info - Structure used for defining flow
- * @proto: Flow proto
- * @src_port: Source port
- * @dst_port: Destination port
- * @flags: Flags indicating available attributes of a flow
- * @src_ip: Source IP (IPv4/IPv6)
- * @dst_ip: Destination IP (IPv4/IPv6)
- * @flow_label: Flow label if IPv6 is used for src_ip/dst_ip
- */
-struct flow_info {
-	uint8_t proto;
-	uint16_t src_port;
-	uint16_t dst_port;
-	uint32_t flags;
-	union {
-		uint32_t ipv4_addr;             /* IPV4 address */
-		uint32_t ipv6_addr[4];          /* IPV6 address */
-	} src_ip;
-	union {
-		uint32_t ipv4_addr;             /* IPV4 address */
-		uint32_t ipv6_addr[4];          /* IPV6 address */
-	} dst_ip;
-	uint32_t flow_label;
-};
 
 /* struct dp_policy - Structure used for defining flow policy.
  * @node: dp_policy node used in constructing hlist.

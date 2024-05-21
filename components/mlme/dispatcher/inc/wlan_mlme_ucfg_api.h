@@ -576,6 +576,20 @@ QDF_STATUS ucfg_mlme_get_sub_20_chan_width(struct wlan_objmgr_psoc *psoc,
 }
 
 /**
+ * ucfg_mlme_set_sub_20_chan_width() - Set the sub 20 chan width config
+ * @psoc: pointer to psoc object
+ * @sub_20_chan_width: sub 20 chan width to be set
+ *
+ * Return: QDF Status
+ */
+static inline
+QDF_STATUS ucfg_mlme_set_sub_20_chan_width(struct wlan_objmgr_psoc *psoc,
+					   uint8_t sub_20_chan_width)
+{
+	return wlan_mlme_set_sub_20_chan_width(psoc, sub_20_chan_width);
+}
+
+/**
  * ucfg_mlme_get_fw_timeout_crash() - Get the fw timeout crash config
  * @psoc: pointer to psoc object
  * @fw_timeout_crash: Pointer to the variable from caller
@@ -3115,6 +3129,21 @@ ucfg_mlme_is_standard_6ghz_conn_policy_enabled(struct wlan_objmgr_psoc *psoc,
 }
 
 /**
+ * ucfg_mlme_is_relaxed_lpi_conn_policy_enabled() - Get relaxed lpi connection
+ *                                                  policy flag
+ * @psoc: pointer to psoc object
+ * @value: pointer to hold the value of flag
+ *
+ * Return: QDF Status
+ */
+static inline QDF_STATUS
+ucfg_mlme_is_relaxed_lpi_conn_policy_enabled(struct wlan_objmgr_psoc *psoc,
+					     bool *value)
+{
+	return wlan_mlme_is_relaxed_lpi_conn_policy_enabled(psoc, value);
+}
+
+/**
  * ucfg_mlme_set_eht_mode() - Set EHT mode of operation
  * @psoc: pointer to psoc object
  * @value: EHT mode value that needs to be set from the caller
@@ -5435,5 +5464,20 @@ static inline uint32_t
 ucfg_mlme_assemble_rate_code(uint8_t preamble, uint8_t nss, uint8_t rate)
 {
 	return wlan_mlme_assemble_rate_code(preamble, nss, rate);
+}
+
+/**
+ * ucfg_mlme_get_reduce_power_scan_mode() - Get reduce power scan mode
+ * enabled or disabled
+ * @psoc: pointer to psoc object
+ * @scan_mode: pointer to hold value of scan mode
+ *
+ * Return: Success if able to get scan mode of failure
+ */
+static inline QDF_STATUS
+ucfg_mlme_get_reduce_power_scan_mode(struct wlan_objmgr_psoc *psoc,
+				     bool *scan_mode)
+{
+	return wlan_mlme_get_reduce_pwr_scan_mode(psoc, scan_mode);
 }
 #endif /* _WLAN_MLME_UCFG_API_H_ */

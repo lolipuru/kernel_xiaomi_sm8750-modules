@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -64,6 +64,63 @@ bool wlan_nan_is_disc_active(struct wlan_objmgr_psoc *psoc);
  */
 bool wlan_nan_is_eht_capable(struct wlan_objmgr_psoc *psoc);
 
+/**
+ * wlan_nan_vdev_delete_all_pasn_peers: send delete all pasn peers cmd to FW
+ * @vdev: pointer to vdev object
+ *
+ * Return: status of operation
+ */
+QDF_STATUS
+wlan_nan_vdev_delete_all_pasn_peers(struct wlan_objmgr_vdev *vdev);
+
+/*
+ * wlan_nan_handle_pasn_peer_create_rsp: This API is wrapper for function
+ * "nan_handle_pasn_peer_create_rsp"
+ * @psoc: PSOC object
+ * @vdev_id: vdev id
+ * @peer_mac: peer mac address
+ * @peer_create_status: peer create status
+ *
+ * Return: None
+ */
+void wlan_nan_handle_pasn_peer_create_rsp(struct wlan_objmgr_psoc *psoc,
+					  uint8_t vdev_id,
+					  struct qdf_mac_addr *peer_mac,
+					  uint8_t peer_create_status);
+/**
+ * wlan_nan_pasn_peer_handle_del_rsp: wrapper API for
+ *                                    "nan_pasn_peer_handle_del_rsp"
+ * @psoc: pointer to psoc object
+ * @peer_mac: address of peer
+ * @vdev_id: vdev id
+ *
+ * Return: None
+ */
+void wlan_nan_pasn_peer_handle_del_rsp(struct wlan_objmgr_psoc *psoc,
+				       uint8_t *peer_mac, uint8_t vdev_id);
+/**
+ * wlan_nan_handle_delete_all_pasn_peers: This API is wrapper for function
+ * "nan_handle_delete_all_pasn_peers"
+ * @psoc: pointer to psoc object
+ * @vdev_id: vdev id
+ *
+ * Return: Success when handled response, otherwise error
+ */
+QDF_STATUS wlan_nan_handle_delete_all_pasn_peers(struct wlan_objmgr_psoc *psoc,
+						 uint8_t vdev_id);
+
+/**
+ * wlan_ndi_add_pasn_peer_to_nan(): This API is wrapper for function
+ * "ndi_add_pasn_peer_to_nan"
+ * @psoc: pointer to PSOC object
+ * @vdev_id: VDEV id
+ * @peer_mac: address of peer
+ *
+ * Return: QDF status
+ */
+QDF_STATUS
+wlan_ndi_add_pasn_peer_to_nan(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
+			      struct qdf_mac_addr *peer_mac);
 #else
 static inline
 enum nan_datapath_state wlan_nan_get_ndi_state(struct wlan_objmgr_vdev *vdev)
@@ -89,6 +146,40 @@ static inline bool
 wlan_nan_is_eht_capable(struct wlan_objmgr_psoc *psoc)
 {
 	return false;
+}
+
+static inline QDF_STATUS
+wlan_nan_vdev_delete_all_pasn_peers(struct wlan_objmgr_vdev *vdev)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline
+void wlan_nan_handle_pasn_peer_create_rsp(struct wlan_objmgr_psoc *psoc,
+					  uint8_t vdev_id,
+					  struct qdf_mac_addr *peer_mac,
+					  uint8_t peer_create_status)
+{
+}
+
+static inline void
+wlan_nan_pasn_peer_handle_del_rsp(struct wlan_objmgr_psoc *psoc,
+				  uint8_t *peer_mac, uint8_t vdev_id)
+{
+}
+
+static inline QDF_STATUS
+wlan_nan_handle_delete_all_pasn_peers(struct wlan_objmgr_psoc *psoc,
+				      uint8_t vdev_id)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline QDF_STATUS
+wlan_ndi_add_pasn_peer_to_nan(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
+			      struct qdf_mac_addr *peer_mac)
+{
+	return QDF_STATUS_E_NOSUPPORT;
 }
 #endif /*WLAN_FEATURE_NAN */
 #endif /*_WLAN_NAN_API_I_H_ */

@@ -1322,6 +1322,7 @@ struct wlan_hdd_tx_power {
  * @tx_power: Structure to hold connection tx Power info
  * @tx_latency_cfg: configuration for per-link transmit latency statistics
  * @link_state_cached_timestamp: link state cached timestamp
+ * @keep_alive_interval: user configured STA keep alive interval
  */
 struct hdd_adapter {
 	uint32_t magic;
@@ -1515,6 +1516,7 @@ struct hdd_adapter {
 #ifdef WLAN_FEATURE_11BE_MLO
 	qdf_time_t link_state_cached_timestamp;
 #endif
+	uint16_t keep_alive_interval;
 };
 
 #define WLAN_HDD_GET_STATION_CTX_PTR(link_info) (&(link_info)->session.station)
@@ -1687,6 +1689,11 @@ struct suspend_resume_stats {
  * @HDD_STA_SMPS_PARAM_LOWER_BRSSI_THRESH:  Lower threshold for beacon-RSSI.
  * Used to increase RX chainmask.
  * @HDD_STA_SMPS_PARAM_DTIM_1CHRX_ENABLE: Enable/Disable DTIM 1chRx feature
+ * @HDD_STA_SMPS_PARAM_DYNAMIC_BW_SWITCH: Enable/Disable dynamic bandwidth
+ * switch. When host sends this param, firmware downgrades the bandwidth
+ * for those vdev whose bw is greater than 80Mhz(160Mhz/320 Mhz) when
+ * there is no traffic going on. If traffic comes up then fw will restore
+ * the original bandwidth
  */
 enum hdd_sta_smps_param {
 	HDD_STA_SMPS_PARAM_UPPER_RSSI_THRESH = 0,
@@ -1694,7 +1701,8 @@ enum hdd_sta_smps_param {
 	HDD_STA_SMPS_PARAM_LOWER_RSSI_THRESH = 2,
 	HDD_STA_SMPS_PARAM_UPPER_BRSSI_THRESH = 3,
 	HDD_STA_SMPS_PARAM_LOWER_BRSSI_THRESH = 4,
-	HDD_STA_SMPS_PARAM_DTIM_1CHRX_ENABLE = 5
+	HDD_STA_SMPS_PARAM_DTIM_1CHRX_ENABLE = 5,
+	HDD_STA_SMPS_PARAM_DYNAMIC_BW_SWITCH = 6
 };
 
 /**
@@ -5746,4 +5754,16 @@ hdd_nb_get_link_id_from_params(void *params, enum hdd_nb_params_id id)
 	return link_id;
 }
 #endif
+
+/*
+ * hdd_update_sub20_chan_width() - update sub 20 MHz channel width
+ *
+ * @link_info: Link info pointer in HDD adapter
+ * @sub_20_ch_width: sub 20 MHz channel width to set
+ *
+ * Return: 0 on success, else error number
+ */
+QDF_STATUS
+hdd_update_sub20_chan_width(struct wlan_hdd_link_info *link_info,
+			    enum cfg_sub_20_channel_width sub_20_ch_width);
 #endif /* end #if !defined(WLAN_HDD_MAIN_H) */

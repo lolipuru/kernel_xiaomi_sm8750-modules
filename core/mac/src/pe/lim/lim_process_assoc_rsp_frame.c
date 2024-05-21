@@ -47,8 +47,6 @@
 #include "wlan_mlme_ucfg_api.h"
 #include "wlan_connectivity_logging.h"
 #include <lim_mlo.h>
-#include <utils_mlo.h>
-#include <wlan_cm_roam_api.h>
 #include "parser_api.h"
 #include "wlan_twt_cfg_ext_api.h"
 #include "wlan_mlo_mgr_roam.h"
@@ -1061,10 +1059,90 @@ static void lim_cache_emlsr_params(struct pe_session *session_entry,
 end:
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_SB_ID);
 }
+
+#ifdef FEATURE_DENYLIST_MGR
+/**
+ * lim_handle_assoc_failure_in_dlm() - Add candidate entry in deny list
+ * based on failure code send by AP
+ * @status_code: assoc status code
+ *
+ * Return: true/false
+ */
+static bool
+lim_handle_assoc_failure_in_dlm(uint16_t status_code)
+{
+	switch (status_code) {
+	case STATUS_ASSOC_DENIED_RATES:
+		return true;
+	case STATUS_DENIED_STA_AFFILIATED_WITH_MLD_WITH_EXISTING_MLD_ASSOC:
+		return true;
+	case STATUS_DENIED_EHT_NOT_SUPPORTED:
+		return true;
+	case STATUS_DENIED_LINK_ON_WHICH_THE_ASSOC_FRAME_IS_TXED_NOT_ACCEPTED:
+		return true;
+	case STATUS_AP_UNABLE_TO_HANDLE_NEW_STA:
+		return true;
+	case STATUS_ASSOC_DENIED_UNSPEC:
+		return true;
+	}
+	return false;
+}
+
+/**
+ * lim_get_dlm_reject_reason() - Get dlm reject reason
+ * from ap assoc failure code
+ * @status_code: assoc status code
+ *
+ * Return: dlm reject reason
+ */
+static enum dlm_reject_ap_reason
+lim_get_dlm_reject_reason(uint16_t status_code)
+{
+	switch (status_code) {
+	case STATUS_ASSOC_DENIED_RATES:
+		return REASON_BASIC_RATES_MISMATCH;
+	case STATUS_DENIED_STA_AFFILIATED_WITH_MLD_WITH_EXISTING_MLD_ASSOC:
+		return
+			REASON_STA_AFFILIATED_WITH_MLD_WITH_EXISTING_MLD_ASSOCIATION;
+	case STATUS_DENIED_EHT_NOT_SUPPORTED:
+		return REASON_EHT_NOT_SUPPORTED;
+	case STATUS_DENIED_LINK_ON_WHICH_THE_ASSOC_FRAME_IS_TXED_NOT_ACCEPTED:
+		return REASON_TX_LINK_NOT_ACCEPTED;
+	case STATUS_AP_UNABLE_TO_HANDLE_NEW_STA:
+		return REASON_REASSOC_NO_MORE_STAS;
+	case STATUS_ASSOC_DENIED_UNSPEC:
+		return REASON_OTHER;
+	}
+	return REASON_UNKNOWN;
+}
+#else
+static inline bool
+lim_handle_assoc_failure_in_dlm(uint16_t status_code)
+{
+	return false;
+}
+
+static inline enum dlm_reject_ap_reason
+lim_get_dlm_reject_reason(uint16_t status_code)
+{
+	return REASON_UNKNOWN;
+}
+#endif /* FEATURE_DENYLIST_MGR */
 #else
 static inline void lim_cache_emlsr_params(struct pe_session *session_entry,
 					  tpSirAssocRsp assoc_rsp)
+{}
+
+static inline bool
+lim_handle_assoc_failure_in_dlm(uint16_t status_code)
 {
+	return false;
+}
+
+static inline enum dlm_reject_ap_reason
+lim_get_dlm_reject_reason(uint16_t status_code)
+{
+	return REASON_UNKNOWN;
 }
 #endif
 
@@ -1095,133 +1173,6 @@ void lim_send_join_fail_on_vdev(struct mac_context *mac_ctx,
 			mac_ctx, result_code, STATUS_UNSPECIFIED_FAILURE,
 			session_entry);
 }
-
-#ifdef WLAN_FEATURE_11BE_MLO
-static QDF_STATUS
-lim_gen_link_specific_probe_resp_from_assoc_resp(struct mac_context *mac_ctx,
-						 uint8_t *rx_pkt_info,
-						 uint32_t frame_len,
-						 struct pe_session *session)
-{
-	QDF_STATUS status = QDF_STATUS_SUCCESS;
-	struct bss_description *bss;
-	struct scan_cache_entry *scan_entry;
-	struct mlo_partner_info *lim_partner_info;
-	struct partner_link_info *scan_partner_info;
-	struct mlo_link_info *link_info;
-	uint8_t link_id, idx, idx2;
-	struct qdf_mac_addr link_addr;
-	struct element_info link_probe_rsp, probe_rsp;
-	uint8_t *frame = WMA_GET_RX_MPDU_DATA(rx_pkt_info);
-	int8_t rssi = WMA_GET_RX_RSSI_NORMALIZED(rx_pkt_info);
-
-	if (!session->lim_join_req) {
-		pe_debug("Session join req invalid");
-		return QDF_STATUS_E_INVAL;
-	}
-
-	bss = &session->lim_join_req->bssDescription;
-	lim_partner_info = &session->lim_join_req->partner_info;
-
-	/*
-	 * For link VDEV no need to generate again, as during assoc VDEv
-	 * it is already generated.
-	 */
-	if (!bss->mbssid_info.profile_num ||
-	    !lim_partner_info->num_partner_links ||
-	    wlan_vdev_mlme_is_mlo_link_vdev(session->vdev)) {
-		return QDF_STATUS_SUCCESS;
-	}
-
-	link_probe_rsp.ptr = qdf_mem_malloc(MAX_MGMT_MPDU_LEN);
-	if (!link_probe_rsp.ptr) {
-		pe_err("mallloc failed for %u bytes", MAX_MGMT_MPDU_LEN);
-		return QDF_STATUS_E_NOMEM;
-	}
-
-	scan_entry = wlan_cm_get_curr_candidate_entry(session->vdev,
-						      session->cm_id);
-	if (!scan_entry) {
-		pe_err("Curr scan entry NULL");
-		qdf_mem_free(link_probe_rsp.ptr);
-		return QDF_STATUS_E_INVAL;
-	}
-
-	probe_rsp.ptr =
-		util_scan_entry_frame_ptr(scan_entry) + WLAN_MAC_HDR_LEN_3A;
-	probe_rsp.len =
-		util_scan_entry_frame_len(scan_entry) - WLAN_MAC_HDR_LEN_3A;
-
-	qdf_mem_copy(&link_addr, session->self_mac_addr, QDF_MAC_ADDR_SIZE);
-
-	/*
-	 * For each partner entry, check if the corresponding partner link
-	 * is found or not to generate probe resp for the missing link.
-	 */
-	for (idx2 = 0; idx2 < lim_partner_info->num_partner_links; idx2++) {
-		link_info = &lim_partner_info->partner_link_info[idx2];
-		for (idx = 0; idx < scan_entry->ml_info.num_links; idx++) {
-			scan_partner_info = &scan_entry->ml_info.link_info[idx];
-			if (!scan_partner_info->is_scan_entry_not_found)
-				continue;
-
-			if (link_info->link_id != scan_partner_info->link_id)
-				continue;
-
-			link_id = link_info->link_id;
-			link_probe_rsp.len = 0;
-			status = util_gen_link_probe_rsp_from_assoc_rsp(frame,
-									frame_len,
-									link_id,
-									link_addr,
-									link_probe_rsp.ptr,
-									(qdf_size_t)MAX_MGMT_MPDU_LEN,
-									(qdf_size_t *)&link_probe_rsp.len,
-									probe_rsp.ptr,
-									probe_rsp.len);
-
-			if (QDF_IS_STATUS_ERROR(status))
-				goto mem_free;
-
-			status = lim_add_bcn_probe(session->vdev,
-						   link_probe_rsp.ptr,
-						   link_probe_rsp.len,
-						   link_info->chan_freq, rssi);
-			if (QDF_IS_STATUS_ERROR(status)) {
-				pe_debug("Scan entry add failed for %d",
-					 link_id);
-				goto mem_free;
-			}
-		}
-
-		status = lim_update_mlo_mgr_info(mac_ctx,
-						 session->vdev,
-						 &link_info->link_addr,
-						 link_info->link_id,
-						 link_info->chan_freq);
-		if (QDF_IS_STATUS_ERROR(status)) {
-			pe_debug("failed to update mlo_mgr %d for link_id: %d",
-				 status, link_info->link_id);
-			goto mem_free;
-		}
-	}
-
-mem_free:
-	qdf_mem_free(link_probe_rsp.ptr);
-	util_scan_free_cache_entry(scan_entry);
-
-	return status;
-}
-#else /* WLAN_FEATURE_11BE_MLO */
-static inline QDF_STATUS
-lim_gen_link_specific_probe_resp_from_assoc_resp(struct mac_context *mac_ctx,
-						 uint8_t *rx_pkt_info,
-						 uint32_t frame_len,
-						 struct pe_session *session)
-{
-	return QDF_STATUS_SUCCESS;
-}
-#endif /* WLAN_FEATURE_11BE_MLO */
 
 /**
  * lim_process_assoc_rsp_frame() - Processes assoc response
@@ -1398,6 +1349,22 @@ lim_process_assoc_rsp_frame(struct mac_context *mac_ctx, uint8_t *rx_pkt_info,
 		return;
 	}
 
+	if (subtype == LIM_REASSOC) {
+		lim_cp_stats_cstats_log_assoc_resp_evt
+			(session_entry, CSTATS_DIR_RX, assoc_rsp->status_code,
+			 assoc_rsp->aid, hdr->bssId, hdr->da,
+			 assoc_rsp->HTCaps.present,
+			 assoc_rsp->VHTCaps.present, assoc_rsp->he_cap.present,
+			 assoc_rsp->eht_op.present, true);
+	} else if (subtype == LIM_ASSOC) {
+		lim_cp_stats_cstats_log_assoc_resp_evt
+			(session_entry, CSTATS_DIR_RX, assoc_rsp->status_code,
+			 assoc_rsp->aid, hdr->bssId, hdr->da,
+			 assoc_rsp->HTCaps.present,
+			 assoc_rsp->VHTCaps.present, assoc_rsp->he_cap.present,
+			 assoc_rsp->eht_op.present, false);
+	}
+
 	if (subtype != LIM_REASSOC) {
 		aid = assoc_rsp->aid & 0x3FFF;
 		wlan_connectivity_mgmt_event(mac_ctx->psoc,
@@ -1513,9 +1480,23 @@ lim_process_assoc_rsp_frame(struct mac_context *mac_ctx, uint8_t *rx_pkt_info,
 		ap_info.source = ADDED_BY_DRIVER;
 		ap_info.original_timeout = ap_info.retry_delay;
 		ap_info.received_time = qdf_mc_timer_get_system_time();
-		lim_add_bssid_to_reject_list(mac_ctx->pdev, &ap_info);
-	}
+		lim_add_bssid_to_reject_list(mac_ctx->pdev,
+					     session_entry->vdev_id, &ap_info);
+	} else if (assoc_rsp->status_code != STATUS_SUCCESS &&
+		   lim_handle_assoc_failure_in_dlm(assoc_rsp->status_code)) {
+		struct reject_ap_info ap_info;
 
+		qdf_mem_zero(&ap_info, sizeof(struct reject_ap_info));
+		qdf_mem_copy(ap_info.bssid.bytes, hdr->sa, QDF_MAC_ADDR_SIZE);
+		ap_info.reject_ap_type = DRIVER_AVOID_TYPE;
+		ap_info.reject_reason =
+			lim_get_dlm_reject_reason(assoc_rsp->status_code);
+		ap_info.source = ADDED_BY_DRIVER;
+		wlan_update_mlo_reject_ap_info(mac_ctx->pdev,
+					       session_entry->vdev_id,
+					       &ap_info);
+		wlan_dlm_add_bssid_to_reject_list(mac_ctx->pdev, &ap_info);
+	}
 	status = lim_handle_pmfcomeback_timer(session_entry, assoc_rsp);
 	/* return if retry again timer is started and ignore this assoc resp */
 	if (QDF_IS_STATUS_SUCCESS(status)) {
@@ -1881,27 +1862,6 @@ lim_process_assoc_rsp_frame(struct mac_context *mac_ctx, uint8_t *rx_pkt_info,
 			      QDF_STATUS_SUCCESS, QDF_STATUS_SUCCESS);
 #endif
 	lim_update_stads_ext_cap(mac_ctx, session_entry, assoc_rsp, sta_ds);
-
-	/* Try to generate link probe resp from assoc resp for MBSSID AP
-	 * as ML probe is not sent for MBSSID AP.
-	 *
-	 * Any failure during partner link probe resp generation, treat
-	 * it as connect failure and send deauth to AP.
-	 */
-	status = lim_gen_link_specific_probe_resp_from_assoc_resp(mac_ctx,
-								  rx_pkt_info,
-								  frame_body_len,
-								  session_entry);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		assoc_cnf.resultCode = eSIR_SME_RESOURCES_UNAVAILABLE;
-		assoc_cnf.protStatusCode = STATUS_UNSPECIFIED_FAILURE;
-		/* Send advisory Disassociation frame to AP */
-		lim_send_disassoc_mgmt_frame(mac_ctx,
-					     REASON_UNSPEC_FAILURE,
-					     hdr->sa, session_entry,
-					     false);
-		goto assocReject;
-	}
 
 	/* Update the BSS Entry, this entry was added during preassoc. */
 	if (QDF_STATUS_SUCCESS ==

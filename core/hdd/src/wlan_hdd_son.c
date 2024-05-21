@@ -282,6 +282,7 @@ static int hdd_son_set_chan_ext_offset(
 	QDF_STATUS status;
 	int retval = -EINVAL;
 	struct hdd_adapter *adapter;
+	struct wlan_hdd_link_info *link_info;
 
 	if (!vdev) {
 		hdd_err("null vdev");
@@ -290,7 +291,7 @@ static int hdd_son_set_chan_ext_offset(
 
 	link_info = wlan_hdd_get_link_info_from_objmgr(vdev);
 	if (!link_info) {
-		hdd_err("null adapter");
+		hdd_err("null link_info");
 		return retval;
 	}
 
@@ -301,7 +302,7 @@ static int hdd_son_set_chan_ext_offset(
 
 	retval = 0;
 	chan_type = hdd_son_chan_ext_offset_to_chan_type(son_chan_ext_offset);
-	status = hdd_set_sap_ht2040_mode(link_info->adapter, chan_type);
+	status = hdd_set_sap_ht2040_mode(link_info, chan_type);
 	if (status != QDF_STATUS_SUCCESS) {
 		hdd_err("Cannot set SAP HT20/40 mode!");
 		retval = -EINVAL;
@@ -2456,7 +2457,8 @@ static QDF_STATUS hdd_son_get_node_info_sap(struct wlan_objmgr_vdev *vdev,
 
 	adapter = link_info->adapter;
 	sta_info = hdd_get_sta_info_by_mac(&adapter->sta_info_list, mac_addr,
-					   STA_INFO_SON_GET_DATRATE_INFO);
+					   STA_INFO_SON_GET_DATRATE_INFO,
+					   STA_INFO_MATCH_STA_OR_MLD_MAC);
 	if (!sta_info) {
 		hdd_err("Sta info is null");
 		return QDF_STATUS_E_FAILURE;
@@ -2535,7 +2537,8 @@ static QDF_STATUS hdd_son_get_peer_capability(struct wlan_objmgr_vdev *vdev,
 	adapter = link_info->adapter;
 	sta_info = hdd_get_sta_info_by_mac(&adapter->sta_info_list,
 					   peer->macaddr,
-					   STA_INFO_SOFTAP_GET_STA_INFO);
+					   STA_INFO_SOFTAP_GET_STA_INFO,
+					   STA_INFO_MATCH_STA_OR_MLD_MAC);
 	if (!sta_info) {
 		hdd_err("sta_info NULL");
 		return QDF_STATUS_E_FAILURE;
@@ -2590,7 +2593,8 @@ uint32_t hdd_son_get_peer_max_mcs_idx(struct wlan_objmgr_vdev *vdev,
 	adapter = link_info->adapter;
 	sta_info = hdd_get_sta_info_by_mac(&adapter->sta_info_list,
 					   peer->macaddr,
-					   STA_INFO_SOFTAP_GET_STA_INFO);
+					   STA_INFO_SOFTAP_GET_STA_INFO,
+					   STA_INFO_MATCH_STA_OR_MLD_MAC);
 	if (!sta_info) {
 		hdd_err("sta_info NULL");
 		return ret;
@@ -2838,4 +2842,35 @@ int hdd_son_send_get_wifi_generic_command(struct wiphy *wiphy,
 {
 	return os_if_son_parse_generic_nl_cmd(wiphy, wdev, tb,
 					      OS_IF_SON_VENDOR_GET_CMD);
+}
+
+void hdd_son_send_module_status_event(
+	       enum hdd_wlan_module_status_evt_type event_type)
+{
+	enum osif_son_status_evt_type os_if_event;
+
+	switch (event_type) {
+	case HDD_WLAN_STATUS_EVT_UP:
+		os_if_event = OSIF_SON_STATUS_EVT_UP;
+		break;
+	case HDD_WLAN_STATUS_EVT_DOWN:
+		os_if_event = OSIF_SON_STATUS_EVT_DOWN;
+		break;
+	case HDD_WLAN_STATUS_EVT_REINIT_DONE:
+		os_if_event = OSIF_SON_STATUS_EVT_REINIT_DONE;
+		break;
+	case HDD_WLAN_STATUS_EVT_DUMP_READY:
+		os_if_event = OSIF_SON_STATUS_EVT_DUMP_READY;
+		break;
+	case HDD_WLAN_STATUS_EVT_TARGET_ASSERT:
+		os_if_event = OSIF_SON_STATUS_EVT_TARGET_ASSERT;
+		break;
+	default:
+		hdd_err("invalid event type");
+		return;
+	}
+
+	os_if_son_send_status_nlink_msg(OSIF_SON_STATUS_EVENT_ID,
+					os_if_event,
+					OSIF_SON_WLAN_MODULE_NAME);
 }

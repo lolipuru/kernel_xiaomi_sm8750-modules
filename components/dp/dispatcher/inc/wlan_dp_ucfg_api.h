@@ -123,6 +123,15 @@ void ucfg_dp_set_hif_handle(struct wlan_objmgr_psoc *psoc,
 			    struct hif_opaque_softc *hif_handle);
 void ucfg_dp_set_cmn_dp_handle(struct wlan_objmgr_psoc *psoc,
 			       ol_txrx_soc_handle soc);
+#ifdef WLAN_DP_FLOW_BALANCE_SUPPORT
+void ucfg_dp_update_num_rx_rings(struct wlan_objmgr_psoc *psoc);
+#else
+static inline void
+ucfg_dp_update_num_rx_rings(struct wlan_objmgr_psoc *psoc)
+{
+}
+#endif
+
 /**
  * ucfg_dp_init() - DP module initialization API
  *
@@ -1577,6 +1586,15 @@ void *ucfg_dp_txrx_soc_attach(struct dp_txrx_soc_attach_params *params,
 void ucfg_dp_txrx_soc_detach(ol_txrx_soc_handle soc);
 
 /**
+ * ucfg_dp_txrx_set_default_affinity() - Set default affinity for
+ * dp rx interrupts
+ * @psoc: psoc handle
+ *
+ * Return: None
+ */
+void ucfg_dp_txrx_set_default_affinity(struct wlan_objmgr_psoc *psoc);
+
+/**
  * ucfg_dp_txrx_attach_target() - DP target attach
  * @soc: DP SoC handle
  * @pdev_id: DP pdev id
@@ -1965,4 +1983,14 @@ void ucfg_dp_set_mon_conf_flags(struct wlan_objmgr_psoc *psoc, uint32_t flags);
 void
 ucfg_dp_rx_aggr_dis_req(struct wlan_objmgr_vdev *vdev,
 			enum ctrl_rx_aggr_client_id id, bool disable);
+
+#ifdef WLAN_DP_FEATURE_STC
+/**
+ * ucfg_dp_flow_classify_result() - Indicate Flow classify result
+ * @flow_classify_result: Flow classify result
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS ucfg_dp_flow_classify_result(struct wlan_dp_stc_flow_classify_result *flow_classify_result);
+#endif /* WLAN_DP_FEATURE_STC */
 #endif /* _WLAN_DP_UCFG_API_H_ */

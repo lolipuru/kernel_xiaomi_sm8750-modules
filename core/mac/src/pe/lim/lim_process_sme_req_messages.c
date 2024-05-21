@@ -1769,7 +1769,7 @@ static void lim_check_oui_and_update_session(struct mac_context *mac_ctx,
 					     struct pe_session *session,
 					     tDot11fBeaconIEs *ie_struct)
 {
-	struct action_oui_search_attr vendor_ap_search_attr;
+	struct action_oui_search_attr vendor_ap_search_attr = {0};
 	uint16_t ie_len;
 	bool follow_ap_edca;
 	struct bss_description *bss_desc =
@@ -2740,9 +2740,47 @@ lim_verify_dot11_mode_with_crypto(struct pe_session *session)
 		session->mac_ctx->roam.configParam.wep_tkip_in_he;
 }
 
+#if defined(FEATURE_DENYLIST_MGR) && defined(WLAN_FEATURE_11BE_MLO)
+/**
+ * lim_intersect_phy_mode_to_scan_phy_mode: API to intersect phy mode with scan
+ * phy mode
+ * @intersected_dot11_mode: intersected dot11 mode
+ * @scan_phy_mode: scan phy mode
+ *
+ * This API checks the phy mode of scan entry because scan entry mode
+ * may be different based on additional scan entries.
+ *
+ * Return: dot11 mode
+ */
+static enum mlme_dot11_mode
+lim_intersect_phy_mode_to_scan_phy_mode(
+				enum mlme_dot11_mode intersected_dot11_mode,
+				enum wlan_phymode scan_phy_mode)
+{
+	if (intersected_dot11_mode == MLME_DOT11_MODE_11BE &&
+	    IS_WLAN_PHYMODE_HE(scan_phy_mode))
+		return MLME_DOT11_MODE_11AX;
+
+	else
+		return intersected_dot11_mode;
+}
+#else
+static inline enum mlme_dot11_mode
+lim_intersect_phy_mode_to_scan_phy_mode(
+				enum mlme_dot11_mode intersected_dot11_mode,
+				enum wlan_phymode scan_phy_mode)
+{
+	/*
+	 * Keep dot11 mode same as inetrsected mode, so that always intersected
+	 * mode is chosen in case of deny list feature is not enabled.
+	 */
+	return intersected_dot11_mode;
+}
+#endif
+
 static QDF_STATUS
 lim_fill_dot11_mode(struct mac_context *mac_ctx, struct pe_session *session,
-		    tDot11fBeaconIEs *ie_struct)
+		    tDot11fBeaconIEs *ie_struct, enum wlan_phymode phy_mode)
 {
 	struct bss_description *bss_desc =
 					&session->lim_join_req->bssDescription;
@@ -2768,10 +2806,12 @@ lim_fill_dot11_mode(struct mac_context *mac_ctx, struct pe_session *session,
 						       ie_struct, bss_desc);
 	if (QDF_IS_STATUS_ERROR(status))
 		return status;
+	intersected_mode = lim_intersect_phy_mode_to_scan_phy_mode(
+						intersected_mode, phy_mode);
 
-	pe_debug("vdev id %d opmode %d self dot11mode %d bss_dot11 mode %d intersected %d",
+	pe_debug("vdev id %d opmode %d self dot11mode %d bss_dot11 mode %d intersected %d bss phy mode %d",
 		 session->vdev_id, session->opmode, self_dot11_mode,
-		 bss_dot11_mode, intersected_mode);
+		 bss_dot11_mode, intersected_mode, phy_mode);
 
 	if (wlan_vdev_mlme_is_mlo_link_vdev(session->vdev) &&
 	    !IS_DOT11_MODE_EHT(intersected_mode))
@@ -2861,7 +2901,8 @@ lim_update_sae_single_pmk_ap_cap(struct mac_context *mac,
 	akm = wlan_crypto_get_param(session->vdev,
 				    WLAN_CRYPTO_PARAM_KEY_MGMT);
 
-	if (QDF_HAS_PARAM(akm, WLAN_CRYPTO_KEY_MGMT_SAE) &&
+	if ((QDF_HAS_PARAM(akm, WLAN_CRYPTO_KEY_MGMT_SAE) ||
+	     QDF_HAS_PARAM(akm, WLAN_CRYPTO_KEY_MGMT_SAE_EXT_KEY)) &&
 	    mac->mlme_cfg->lfr.sae_single_pmk_feature_enabled)
 		wlan_mlme_set_sae_single_pmk_bss_cap(mac->psoc,
 			session->vdev_id,
@@ -3132,7 +3173,7 @@ bool lim_enable_cts_to_self_for_exempted_iot_ap(
 				       uint8_t *ie_ptr,
 				       uint16_t ie_len)
 {
-	struct action_oui_search_attr vendor_ap_search_attr;
+	struct action_oui_search_attr vendor_ap_search_attr = {0};
 
 	vendor_ap_search_attr.ie_data = ie_ptr;
 	vendor_ap_search_attr.ie_length = ie_len;
@@ -3163,7 +3204,7 @@ lim_disable_bformee_for_iot_ap(struct mac_context *mac_ctx,
 			       struct pe_session *session,
 			       struct bss_description *bss_desc)
 {
-	struct action_oui_search_attr vendor_ap_search_attr;
+	struct action_oui_search_attr vendor_ap_search_attr = {0};
 	uint16_t ie_len;
 
 	ie_len = wlan_get_ielen_from_bss_description(bss_desc);
@@ -3183,7 +3224,8 @@ lim_disable_bformee_for_iot_ap(struct mac_context *mac_ctx,
 
 QDF_STATUS
 lim_fill_pe_session(struct mac_context *mac_ctx, struct pe_session *session,
-		    struct bss_description *bss_desc)
+		    struct bss_description *bss_desc,
+		    enum wlan_phymode phy_mode)
 {
 	uint8_t bss_chan_id;
 	tDot11fBeaconIEs *ie_struct;
@@ -3252,7 +3294,7 @@ lim_fill_pe_session(struct mac_context *mac_ctx, struct pe_session *session,
 
 	session->enable_session_twt_support =
 					lim_enable_twt(mac_ctx, ie_struct);
-	status = lim_fill_dot11_mode(mac_ctx, session, ie_struct);
+	status = lim_fill_dot11_mode(mac_ctx, session, ie_struct, phy_mode);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		status = QDF_STATUS_E_FAILURE;
 		goto send;
@@ -4543,7 +4585,8 @@ lim_fill_session_params(struct mac_context *mac_ctx,
 		     session->ssId.length);
 	session->ssidHidden = req->is_ssid_hidden;
 
-	status = lim_fill_pe_session(mac_ctx, session, bss_desc);
+	status = lim_fill_pe_session(mac_ctx, session, bss_desc,
+				     req->entry->phy_mode);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		pe_err("Failed to fill pe session vdev id %d",
 		       session->vdev_id);
@@ -4796,7 +4839,9 @@ static void lim_prepare_and_send_disassoc(struct mac_context *mac_ctx,
 		     QDF_MAC_ADDR_SIZE);
 	disassoc_req.peer_macaddr = disassoc_req.bssid;
 	disassoc_req.reasonCode = req->req.reason_code;
-	if (req->req.reason_code == REASON_FW_TRIGGERED_ROAM_FAILURE) {
+	if (req->req.source == CM_INTERNAL_DISCONNECT) {
+		disassoc_req.reasonCode = REASON_HOST_TRIGGERED_SILENT_DEAUTH;
+	} else if (req->req.reason_code == REASON_FW_TRIGGERED_ROAM_FAILURE) {
 		disassoc_req.process_ho_fail = true;
 		disassoc_req.doNotSendOverTheAir = 1;
 	} else if (wlan_cm_is_vdev_roam_reassoc_state(pe_session->vdev)) {
@@ -5751,6 +5796,29 @@ static uint8_t lim_get_num_tpe_octets(uint8_t max_transmit_power_count)
 	return 1 << (max_transmit_power_count - 1);
 }
 
+static enum reg_6g_ap_type
+lim_get_ap_power_type_for_tpc_calc(struct mac_context *mac,
+				   struct pe_session *session)
+{
+	bool rf_test_mode = false;
+	bool safe_mode_enable = false;
+	enum reg_6g_ap_type ap_power_type_6g;
+
+	ap_power_type_6g = session->best_6g_power_type;
+	wlan_mlme_get_safe_mode_enable(mac->psoc,
+				       &safe_mode_enable);
+	wlan_mlme_is_rf_test_mode_enabled(mac->psoc,
+					  &rf_test_mode);
+	/*
+	 * set LPI power if safe mode is enabled OR RF test
+	 * mode is enabled.
+	 */
+	if (rf_test_mode || safe_mode_enable)
+		ap_power_type_6g = REG_INDOOR_AP;
+
+	return ap_power_type_6g;
+}
+
 void lim_parse_tpe_ie(struct mac_context *mac, struct pe_session *session,
 		      tDot11fIEtransmit_power_env *tpe_ies, uint8_t num_tpe_ies,
 		      tDot11fIEhe_op *he_op, bool *has_tpe_updated)
@@ -5762,6 +5830,8 @@ void lim_parse_tpe_ie(struct mac_context *mac, struct pe_session *session,
 	uint16_t bw_val, ch_width = 0;
 	qdf_freq_t curr_op_freq, curr_freq = 0;
 	enum reg_6g_client_type client_mobility_type;
+	enum reg_6g_ap_type ap_power_type_6g;
+	uint16_t reg_max = 0, psd_power = 0;
 	struct ch_params ch_params = {0};
 	tDot11fIEtransmit_power_env single_tpe, local_tpe, reg_tpe;
 	/*
@@ -5849,6 +5919,26 @@ void lim_parse_tpe_ie(struct mac_context *mac, struct pe_session *session,
 
 	curr_op_freq = session->curr_op_freq;
 	bw_val = wlan_reg_get_bw_value(session->ch_width);
+
+	if (psd_set) {
+		if (wlan_reg_is_6ghz_chan_freq(curr_op_freq)) {
+			ap_power_type_6g =
+			lim_get_ap_power_type_for_tpc_calc(mac, session);
+
+			wlan_reg_get_client_power_for_connecting_ap(
+				mac->pdev, ap_power_type_6g,
+				curr_op_freq, true, &reg_max, &psd_power);
+
+			/* If reg rules don't support psd power, ignore PSD
+			 * TPE IE
+			 */
+			if (!psd_power) {
+				pe_debug_rl("reg rule doesn't support psd for %d ap type %d",
+					    curr_op_freq, ap_power_type_6g);
+				psd_set = false;
+			}
+		}
+	}
 
 	if (non_psd_set && !psd_set) {
 		single_tpe = tpe_ies[non_psd_index];
@@ -6048,7 +6138,9 @@ non_punctured_psd_update:
 			if (eirp_power != INVALID_TPE_POWER)
 				vdev_mlme->reg_tpc_obj.eirp_power = eirp_power;
 		}
-		vdev_mlme->reg_tpc_obj.is_psd_power = false;
+		pe_debug("eirp_power %d", vdev_mlme->reg_tpc_obj.eirp_power);
+		if (!psd_set)
+			vdev_mlme->reg_tpc_obj.is_psd_power = false;
 	}
 
 	if (both_tpe_present) {
@@ -6228,8 +6320,6 @@ void lim_calculate_tpc(struct mac_context *mac,
 	struct vdev_mlme_obj *mlme_obj;
 	int8_t tpe_power;
 	bool skip_tpe = false;
-	bool rf_test_mode = false;
-	bool safe_mode_enable = false;
 
 	mlme_obj = wlan_vdev_mlme_get_cmpt_obj(session->vdev);
 	if (!mlme_obj) {
@@ -6262,19 +6352,9 @@ void lim_calculate_tpc(struct mac_context *mac,
 	} else {
 		is_6ghz_freq = true;
 		/* Power mode calculation for 6 GHz STA*/
-		if (LIM_IS_STA_ROLE(session)) {
-			ap_power_type_6g = session->best_6g_power_type;
-			wlan_mlme_get_safe_mode_enable(mac->psoc,
-						       &safe_mode_enable);
-			wlan_mlme_is_rf_test_mode_enabled(mac->psoc,
-							  &rf_test_mode);
-			/*
-			 * set LPI power if safe mode is enabled OR RF test
-			 * mode is enabled.
-			 */
-			if (rf_test_mode || safe_mode_enable)
-				ap_power_type_6g = REG_INDOOR_AP;
-		}
+		if (LIM_IS_STA_ROLE(session))
+			ap_power_type_6g =
+			lim_get_ap_power_type_for_tpc_calc(mac, session);
 	}
 
 	if (mlme_obj->reg_tpc_obj.num_pwr_levels) {
@@ -6574,6 +6654,10 @@ static void __lim_process_sme_disassoc_req(struct mac_context *mac,
 
 	pe_session->smeSessionId = smesessionId;
 	pe_session->process_ho_fail = smeDisassocReq.process_ho_fail;
+
+	if (pe_session->limMlmState == eLIM_MLM_LINK_ESTABLISHED_STATE &&
+	    smeDisassocReq.reasonCode == REASON_HOST_TRIGGERED_SILENT_DEAUTH)
+		lim_ft_cleanup_pre_auth_info(mac, pe_session);
 
 	switch (GET_LIM_SYSTEM_ROLE(pe_session)) {
 	case eLIM_STA_ROLE:

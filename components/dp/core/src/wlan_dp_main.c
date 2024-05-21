@@ -46,6 +46,7 @@
 #endif
 #include <cdp_txrx_ctrl.h>
 #include "wlan_dp_svc.h"
+#include "wlan_dp_stc.h"
 
 #ifdef WLAN_DP_PROFILE_SUPPORT
 /* Memory profile table based on supported caps */
@@ -657,6 +658,48 @@ static void dp_ini_tcp_settings(struct wlan_dp_psoc_cfg *config,
 }
 #endif /*WLAN_FEATURE_DP_BUS_BANDWIDTH*/
 
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+/**
+ * dp_ini_load_balance() - Initialize INIs concerned about load balance
+ * @config: pointer to dp config
+ * @psoc: pointer to psoc obj
+ *
+ * Return: none
+ */
+static void dp_ini_load_balance(struct wlan_dp_psoc_cfg *config,
+				struct wlan_objmgr_psoc *psoc)
+{
+	config->is_load_balance_enabled = cfg_get(psoc,
+						  CFG_DP_ENABLE_LOAD_BALANCE);
+}
+#else
+static void dp_ini_load_balance(struct wlan_dp_psoc_cfg *config,
+				struct wlan_objmgr_psoc *psoc)
+{
+}
+#endif
+
+#ifdef WLAN_DP_FLOW_BALANCE_SUPPORT
+/**
+ * dp_ini_flow_balance() - Initialize INIs concerned about flow balance
+ * @config: pointer to dp config
+ * @psoc: pointer to psoc obj
+ *
+ * Return: none
+ */
+static void dp_ini_flow_balance(struct wlan_dp_psoc_cfg *config,
+				struct wlan_objmgr_psoc *psoc)
+{
+	config->is_flow_balance_enabled = cfg_get(psoc,
+						  CFG_DP_ENABLE_FLOW_BALANCE);
+}
+#else
+static void dp_ini_flow_balance(struct wlan_dp_psoc_cfg *config,
+				struct wlan_objmgr_psoc *psoc)
+{
+}
+#endif
+
 #ifdef CONFIG_DP_TRACE
 /**
  * dp_trace_cfg_update() - initialize DP Trace config
@@ -831,6 +874,8 @@ static void dp_cfg_init(struct wlan_dp_psoc_context *ctx)
 		  + 1;
 	dp_ini_bus_bandwidth(config, psoc);
 	dp_ini_tcp_settings(config, psoc);
+	dp_ini_load_balance(config, psoc);
+	dp_ini_flow_balance(config, psoc);
 
 	dp_ini_tcp_del_ack_settings(config, psoc);
 
@@ -2425,10 +2470,23 @@ QDF_STATUS wlan_dp_txrx_pdev_attach(ol_txrx_soc_handle soc)
 		if (qdf_status == QDF_STATUS_E_NOSUPPORT)
 			return QDF_STATUS_SUCCESS;
 
-		wlan_dp_txrx_pdev_detach(cds_get_context(QDF_MODULE_ID_SOC),
-					 OL_TXRX_PDEV_ID, false);
-		return qdf_status;
+		goto fisa_attach_fail;
 	}
+
+	qdf_status = wlan_dp_stc_attach(dp_ctx);
+	if (QDF_IS_STATUS_ERROR(qdf_status)) {
+		dp_err("Failed to attach STC: %d", qdf_status);
+		goto stc_attach_fail;
+	}
+
+	return qdf_status;
+
+stc_attach_fail:
+	wlan_dp_rx_fisa_detach(dp_ctx);
+
+fisa_attach_fail:
+	wlan_dp_txrx_pdev_detach(cds_get_context(QDF_MODULE_ID_SOC),
+				 OL_TXRX_PDEV_ID, false);
 
 	return qdf_status;
 }
@@ -2439,6 +2497,7 @@ QDF_STATUS wlan_dp_txrx_pdev_detach(ol_txrx_soc_handle soc, uint8_t pdev_id,
 	struct wlan_dp_psoc_context *dp_ctx;
 
 	dp_ctx =  dp_get_context();
+	wlan_dp_stc_detach(dp_ctx);
 	wlan_dp_rx_fisa_detach(dp_ctx);
 	return cdp_pdev_detach(soc, pdev_id, force);
 }

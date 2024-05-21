@@ -28,6 +28,9 @@
 #include "wlan_cm_roam_api.h"
 #include "wlan_mlme_api.h"
 #include "wlan_crypto_global_api.h"
+#if defined(FEATURE_DENYLIST_MGR) && defined(WLAN_FEATURE_11BE_MLO)
+#include "wlan_dlm_api.h"
+#endif
 
 #define WMI_MAC_TO_PDEV_MAP(x) ((x) + (1))
 #define WMI_PDEV_TO_MAC_MAP(x) ((x) - (1))
@@ -2867,10 +2870,38 @@ static enum dlm_reject_ap_reason wmi_get_reject_reason(uint32_t reason)
 		return REASON_REASSOC_RSSI_REJECT;
 	case WMI_BL_REASON_REASSOC_NO_MORE_STAS:
 		return REASON_REASSOC_NO_MORE_STAS;
+	case WMI_BL_REASON_BASIC_RATES_MIS_MATCH:
+		return REASON_BASIC_RATES_MISMATCH;
+	case WMI_BL_REASON_EHT_NOT_SUPPORTED:
+		return REASON_EHT_NOT_SUPPORTED;
+	case WMI_BL_REASON_EXISTING_MLD_ASSOCIATION:
+		return REASON_STA_AFFILIATED_WITH_MLD_WITH_EXISTING_MLD_ASSOCIATION;
+	case WMI_BL_REASON_LINK_TRANSMITTED_NOT_ACCEPTED:
+		return REASON_TX_LINK_NOT_ACCEPTED;
+	case WMI_BL_REASON_DENIED_OTHER_REASON:
+		return REASON_OTHER;
 	default:
 		return REASON_UNKNOWN;
 	}
 }
+
+#ifdef WLAN_FEATURE_11BE_MLO
+static void roam_update_mlo_bl_info(struct roam_denylist_timeout *roam_denylist,
+				    wmi_roam_blacklist_with_timeout_tlv_param *src_list)
+{
+	qdf_mem_copy(&roam_denylist->reject_mlo_ap_info.tried_links,
+		     &src_list->ml_failed_links_combo_bitmap,
+		     src_list->ml_failed_link_combo_count * sizeof(uint32_t));
+	roam_denylist->reject_mlo_ap_info.tried_link_count = src_list->ml_failed_link_combo_count;
+	WMI_MAC_ADDR_TO_CHAR_ARRAY(&src_list->mld,
+				   roam_denylist->reject_mlo_ap_info.mld_addr.bytes);
+}
+#else
+static inline void
+roam_update_mlo_bl_info(struct roam_denylist_timeout *roam_denylist,
+			wmi_roam_blacklist_with_timeout_tlv_param *src_list)
+{}
+#endif
 
 static QDF_STATUS
 extract_btm_denylist_event(wmi_unified_t wmi_handle,
@@ -2934,6 +2965,7 @@ extract_btm_denylist_event(wmi_unified_t wmi_handle,
 		roam_denylist->reject_reason =
 				wmi_get_reject_reason(src_list->reason);
 		roam_denylist->source = src_list->source;
+		roam_update_mlo_bl_info(roam_denylist, src_list);
 		roam_denylist++;
 		src_list++;
 	}
@@ -5088,6 +5120,44 @@ static uint32_t convert_support_link_band_to_wmi(uint32_t bands)
 	return target_bands;
 }
 
+#if defined(FEATURE_DENYLIST_MGR) && defined(WLAN_FEATURE_11BE_MLO)
+static void
+cmd_update_max_11be_connection_allowed(wmi_unified_t wmi_handle,
+				       wmi_roam_mlo_config_cmd_fixed_param *cmd,
+				       uint8_t vdev_id)
+{
+	struct wlan_objmgr_psoc *psoc = NULL;
+	struct wlan_objmgr_vdev *vdev = NULL;
+	struct wlan_objmgr_pdev *pdev = NULL;
+
+	psoc = wmi_handle->soc->wmi_psoc;
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, vdev_id,
+						    WLAN_MLME_SB_ID);
+	if (!vdev) {
+		wmi_err("For vdev:%d object is NULL", vdev_id);
+		return;
+	}
+
+	pdev = wlan_vdev_get_pdev(vdev);
+	if (!pdev) {
+		wmi_err("For vdev:%d object is NULL", vdev_id);
+		wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_SB_ID);
+		return;
+	}
+
+	cmd->max_link_combo_count = wlan_dlm_get_max_allowed_11be_failure(pdev);
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_SB_ID);
+}
+#else
+static inline void
+cmd_update_max_11be_connection_allowed(wmi_unified_t wmi_handle,
+				       wmi_roam_mlo_config_cmd_fixed_param *cmd,
+				       uint8_t vdev_id)
+{
+	cmd->max_link_combo_count = 0;
+}
+#endif
+
 /**
  * send_roam_mlo_config_tlv() - send roam mlo config parameters
  * @wmi_handle: wmi handle
@@ -5120,16 +5190,18 @@ send_roam_mlo_config_tlv(wmi_unified_t wmi_handle,
 	cmd->support_link_num = req->support_link_num;
 	cmd->support_link_band = convert_support_link_band_to_wmi(
 						req->support_link_band);
+	cmd_update_max_11be_connection_allowed(wmi_handle, cmd, req->vdev_id);
 	if (!req->mlo_5gl_5gh_mlsr)
 		cmd->disallow_connect_modes |= WMI_ROAM_MLO_CONNECTION_MODE_5GL_5GH_MLSR;
 
 	WMI_CHAR_ARRAY_TO_MAC_ADDR(req->partner_link_addr.bytes,
 				   &cmd->partner_link_addr);
 
-	wmi_debug("RSO_CFG MLO: vdev_id:%d support_link_num:%d support_link_band:0x%0x disallow_connect_mode %d link addr:"QDF_MAC_ADDR_FMT,
+	wmi_debug("RSO_CFG MLO: vdev_id:%d support_link_num:%d support_link_band:0x%0x disallow_connect_mode %d max 11be con allowed %d link addr:"QDF_MAC_ADDR_FMT,
 		  cmd->vdev_id, cmd->support_link_num,
 		  cmd->support_link_band,
 		  cmd->disallow_connect_modes,
+		  cmd->max_link_combo_count,
 		  QDF_MAC_ADDR_REF(req->partner_link_addr.bytes));
 
 	wmi_mtrace(WMI_ROAM_MLO_CONFIG_CMDID, cmd->vdev_id, 0);

@@ -267,13 +267,37 @@ static int __wlan_hdd_request_pre_cac(struct hdd_context *hdd_ctx,
 		return -EINVAL;
 	}
 
-	hdd_debug("channel: %d", chan_freq);
+	cac_ch_width = wlansap_get_max_bw_by_phymode(hdd_ap_ctx->sap_context);
+	if (cac_ch_width > DEFAULT_PRE_CAC_BANDWIDTH)
+		cac_ch_width = DEFAULT_PRE_CAC_BANDWIDTH;
+	if (chan_freq) {
+		qdf_mem_zero(&chandef, sizeof(struct cfg80211_chan_def));
+		if (wlan_set_def_pre_cac_chan(hdd_ctx, chan_freq, &chandef,
+					      &channel_type, &cac_ch_width)) {
+			hdd_err("failed to set pre_cac channel %d", chan_freq);
+			return -EINVAL;
+		}
+	}
+	hdd_debug("channel: %d bw: %d", chan_freq, cac_ch_width);
 
 	ret = ucfg_pre_cac_validate_and_get_freq(hdd_ctx->pdev, chan_freq,
-						 &pre_cac_chan_freq);
+						 &pre_cac_chan_freq,
+						 cac_ch_width);
 	if (ret != 0) {
 		hdd_err("can't validate pre-cac channel");
 		goto release_intf_addr_and_return_failure;
+	}
+
+	pre_cac_adapter = hdd_get_adapter_by_iface_name(hdd_ctx,
+							SAP_PRE_CAC_IFNAME);
+	if (pre_cac_adapter) {
+		hdd_debug("pre cac SAP adapter is present");
+		if (test_bit(SME_SESSION_OPENED,
+			     &pre_cac_adapter->deflink->link_flags)) {
+			hdd_debug("pre cac is on-going");
+			return 0;
+		}
+		goto pre_cac_adapter_created;
 	}
 
 	hdd_debug("starting pre cac SAP  adapter");
@@ -319,6 +343,7 @@ static int __wlan_hdd_request_pre_cac(struct hdd_context *hdd_ctx,
 		goto release_intf_addr_and_return_failure;
 	}
 
+pre_cac_adapter_created:
 	pre_cac_link_info = pre_cac_adapter->deflink;
 	pre_cac_ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(pre_cac_link_info);
 	sap_clear_global_dfs_param(mac_handle, pre_cac_ap_ctx->sap_context);

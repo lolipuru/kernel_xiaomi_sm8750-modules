@@ -341,27 +341,35 @@ int hdd_hostapd_stop(struct net_device *dev);
 int hdd_sap_context_init(struct hdd_context *hdd_ctx);
 void hdd_sap_context_destroy(struct hdd_context *hdd_ctx);
 #ifdef QCA_HT_2040_COEX
-QDF_STATUS hdd_set_sap_ht2040_mode(struct hdd_adapter *adapter,
-				   uint8_t channel_type);
-
 /**
- * hdd_get_sap_ht2040_mode() - get ht2040 mode
- * @adapter: pointer to adapter
+ * hdd_set_sap_ht2040_mode() - set ht2040 mode
+ * @link_info: pointer to link_info
  * @channel_type: given channel type
  *
  * Return: QDF_STATUS_SUCCESS if successfully
  */
-QDF_STATUS hdd_get_sap_ht2040_mode(struct hdd_adapter *adapter,
+QDF_STATUS hdd_set_sap_ht2040_mode(struct wlan_hdd_link_info *link_info,
+				   uint8_t channel_type);
+
+/**
+ * hdd_get_sap_ht2040_mode() - get ht2040 mode
+ * @link_info: pointer to link_info
+ * @channel_type: given channel type
+ *
+ * Return: QDF_STATUS_SUCCESS if successfully
+ */
+QDF_STATUS hdd_get_sap_ht2040_mode(struct wlan_hdd_link_info *link_info,
 				   enum eSirMacHTChannelType *channel_type);
 #else
-static inline QDF_STATUS hdd_set_sap_ht2040_mode(struct hdd_adapter *adapter,
-						 uint8_t channel_type)
+static inline QDF_STATUS
+hdd_set_sap_ht2040_mode(struct wlan_hdd_link_info *link_info,
+			uint8_t channel_type)
 {
 	return QDF_STATUS_SUCCESS;
 }
 
 static inline QDF_STATUS hdd_get_sap_ht2040_mode(
-				struct hdd_adapter *adapter,
+				struct wlan_hdd_link_info *link_info,
 				enum eSirMacHTChannelType *channel_type)
 {
 	return QDF_STATUS_E_FAILURE;
@@ -387,11 +395,15 @@ int wlan_hdd_cfg80211_stop_ap(struct wiphy *wiphy,
 int wlan_hdd_cfg80211_start_ap(struct wiphy *wiphy,
 			       struct net_device *dev,
 			       struct cfg80211_ap_settings *params);
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+int wlan_hdd_cfg80211_change_beacon(struct wiphy *wiphy,
+				    struct net_device *dev,
+				    struct cfg80211_ap_update *params);
+#else
 int wlan_hdd_cfg80211_change_beacon(struct wiphy *wiphy,
 				    struct net_device *dev,
 				    struct cfg80211_beacon_data *params);
-
+#endif
 /**
  * hdd_is_peer_associated - is peer connected to softap
  * @adapter: pointer to softap adapter
@@ -565,4 +577,99 @@ bool hdd_sap_is_acs_in_progress(struct wlan_objmgr_vdev *vdev)
  */
 bool hdd_mlosap_check_support_link_num(struct hdd_adapter *adapter);
 #endif
+
+#ifdef WLAN_CHIPSET_STATS
+/*
+ * hdd_cp_stats_cstats_sap_go_start_event() - chipset stats for sap/go start
+ * event
+ *
+ * @link_info: pointer to link_info object
+ * @sap_event: pointer to sap_event object
+ *
+ * Return : void
+ */
+void
+hdd_cp_stats_cstats_sap_go_start_event(struct wlan_hdd_link_info *link_info,
+				       struct sap_event *sap_event);
+
+/**
+ * hdd_cp_stats_cstats_sap_go_stop_event() - chipset stats for sap/go stop event
+ *
+ * @link_info: pointer to link_info object
+ * @sap_event: pointer to sap_event object
+ *
+ * Return : void
+ */
+void
+hdd_cp_stats_cstats_sap_go_stop_event(struct wlan_hdd_link_info *link_info,
+				      struct sap_event *sap_event);
+
+/**
+ * hdd_cp_stats_cstats_log_sap_go_sta_disassoc_event() - chipset stats for
+ * sap/go STA disconnect event
+ *
+ * @li: pointer to link_info object
+ * @sap_evt: pointer to sap_event object
+ *
+ * Return : void
+ */
+void
+hdd_cp_stats_cstats_log_sap_go_sta_disassoc_event(struct wlan_hdd_link_info *li,
+						  struct sap_event *sap_evt);
+
+/**
+ * hdd_cp_stats_cstats_log_sap_go_sta_assoc_reassoc_event() - chipset stats for
+ * sap/go STA assoc event
+ *
+ * @li: pointer to link_info object
+ * @sap_evt: pointer to sap_event object
+ *
+ * Return : void
+ */
+void
+hdd_cp_stats_cstats_log_sap_go_sta_assoc_reassoc_event
+		     (struct wlan_hdd_link_info *li, struct sap_event *sap_evt);
+
+/**
+ * hdd_cp_stats_cstats_log_sap_go_dfs_event() - chipset stats for
+ * sap/go dfs event
+ *
+ * @li: pointer to link_info object
+ * @event_id: eSapHddEvent event
+ *
+ * Return : void
+ */
+void hdd_cp_stats_cstats_log_sap_go_dfs_event(struct wlan_hdd_link_info *li,
+					      eSapHddEvent event_id);
+#else
+static inline void
+hdd_cp_stats_cstats_sap_go_start_event(struct wlan_hdd_link_info *link_info,
+				       struct sap_event *sap_event)
+{
+}
+
+static inline void
+hdd_cp_stats_cstats_sap_go_stop_event(struct wlan_hdd_link_info *link_info,
+				      struct sap_event *sap_event)
+{
+}
+
+static inline void
+hdd_cp_stats_cstats_log_sap_go_sta_disassoc_event(struct wlan_hdd_link_info *li,
+						  struct sap_event *sap_evt)
+{
+}
+
+static inline void
+hdd_cp_stats_cstats_log_sap_go_sta_assoc_reassoc_event
+		     (struct wlan_hdd_link_info *li, struct sap_event *sap_evt)
+{
+}
+
+static inline void
+hdd_cp_stats_cstats_log_sap_go_dfs_event(struct wlan_hdd_link_info *li,
+					 eSapHddEvent event_id)
+{
+}
+#endif /* WLAN_CHIPSET_STATS */
 #endif /* end #if !defined(WLAN_HDD_HOSTAPD_H) */

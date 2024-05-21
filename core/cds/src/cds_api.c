@@ -124,7 +124,7 @@ cds_send_delba(struct cdp_ctrl_objmgr_psoc *psoc,
 				     reason_code, cdp_reason_code);
 }
 
-static struct ol_if_ops  dp_ol_if_ops = {
+static struct ol_if_ops dp_ol_if_ops = {
 	.peer_set_default_routing = target_if_peer_set_default_routing,
 	.peer_rx_reorder_queue_setup = target_if_peer_rx_reorder_queue_setup,
 	.peer_rx_reorder_queue_remove = target_if_peer_rx_reorder_queue_remove,
@@ -148,13 +148,19 @@ static struct ol_if_ops  dp_ol_if_ops = {
 	.dp_get_tx_inqueue = dp_get_tx_inqueue,
 	.dp_send_unit_test_cmd = wma_form_unit_test_cmd_and_send,
 	.dp_print_fisa_stats = wlan_dp_print_fisa_rx_stats,
-    /* TODO: Add any other control path calls required to OL_IF/WMA layer */
+
+#ifdef IPA_WDS_EASYMESH_FEATURE
+	.peer_map_event = wlan_dp_send_ipa_wds_peer_map_event,
+	.peer_unmap_event = wlan_dp_send_ipa_wds_peer_unmap_event,
+	.peer_send_wds_disconnect = wlan_dp_send_ipa_wds_peer_disconnect,
+#endif
+	/* TODO: Add any other control path calls required to OL_IF/WMA layer */
 };
-#else
-static struct ol_if_ops  dp_ol_if_ops = {
+#else /* !QCA_WIFI_QCA8074 */
+static struct ol_if_ops dp_ol_if_ops = {
 	.dp_rx_get_pending = cds_get_rx_thread_pending,
 };
-#endif
+#endif /* QCA_WIFI_QCA8074 */
 
 static void cds_trigger_recovery_work(void *param);
 
@@ -238,6 +244,20 @@ static QDF_STATUS cds_wmi_send_recv_qmi(void *buf, uint32_t len, void * cb_ctx,
 		return QDF_STATUS_E_INVAL;
 
 	if (pld_qmi_send(qdf_ctx->dev, 0, buf, len, cb_ctx, wmi_rx_cb))
+		return QDF_STATUS_E_INVAL;
+
+	return QDF_STATUS_SUCCESS;
+}
+
+static QDF_STATUS cds_qmi_indication(void *cb_ctx, qdf_qmi_ind_cb qmi_ind_cb)
+{
+	qdf_device_t qdf_ctx;
+
+	qdf_ctx = cds_get_context(QDF_MODULE_ID_QDF_DEVICE);
+	if (!qdf_ctx)
+		return QDF_STATUS_E_INVAL;
+
+	if (pld_qmi_indication(qdf_ctx->dev, cb_ctx, qmi_ind_cb))
 		return QDF_STATUS_E_INVAL;
 
 	return QDF_STATUS_SUCCESS;
@@ -332,6 +352,7 @@ QDF_STATUS cds_init(void)
 	qdf_register_drv_connected_callback(cds_is_drv_connected);
 	qdf_register_drv_supported_callback(cds_is_drv_supported);
 	qdf_register_wmi_send_recv_qmi_callback(cds_wmi_send_recv_qmi);
+	qdf_register_qmi_indication_callback(cds_qmi_indication);
 	qdf_register_recovery_reason_update(cds_update_recovery_reason);
 	qdf_register_get_bus_reg_dump(pld_get_bus_reg_dump);
 
@@ -365,6 +386,7 @@ void cds_deinit(void)
 	qdf_register_is_driver_state_module_stop_callback(NULL);
 	qdf_register_self_recovery_callback(NULL);
 	qdf_register_wmi_send_recv_qmi_callback(NULL);
+	qdf_register_qmi_indication_callback(NULL);
 
 	gp_cds_context->qdf_ctx = NULL;
 	qdf_mem_zero(&g_qdf_ctx, sizeof(g_qdf_ctx));
@@ -888,6 +910,7 @@ QDF_STATUS cds_open(struct wlan_objmgr_psoc *psoc)
 
 	wlan_psoc_set_dp_handle(psoc, gp_cds_context->dp_soc);
 	ucfg_dp_set_cmn_dp_handle(psoc, gp_cds_context->dp_soc);
+	ucfg_dp_update_num_rx_rings(psoc);
 	ucfg_pmo_psoc_update_dp_handle(psoc, gp_cds_context->dp_soc);
 	ucfg_ocb_update_dp_handle(psoc, gp_cds_context->dp_soc);
 
@@ -1016,6 +1039,8 @@ QDF_STATUS cds_dp_open(struct wlan_objmgr_psoc *psoc)
 		cds_alert("Failed to attach interrupts");
 		goto pdev_deinit;
 	}
+
+	ucfg_dp_txrx_set_default_affinity(psoc);
 
 	dp_config.enable_rx_threads =
 		(cds_get_conparam() == QDF_GLOBAL_MONITOR_MODE) ?
@@ -2787,15 +2812,16 @@ QDF_STATUS cds_set_sub_20_support(bool enable)
 
 /**
  * cds_set_sub_20_channel_width() - API to set sub 20 MHz ch width
- * @value: pending sub 20 MHz ch width to set
+ * @sub_20_ch_width: pending sub 20 MHz ch width to set
  *
  * Return: QDF_STATUS
  */
-QDF_STATUS cds_set_sub_20_channel_width(uint32_t value)
+QDF_STATUS
+cds_set_sub_20_channel_width(enum cfg_sub_20_channel_width sub_20_ch_width)
 {
 	struct cds_context *p_cds_context;
 
-	if (value > WLAN_SUB_20_CH_WIDTH_10)
+	if (sub_20_ch_width > WLAN_SUB_20_CH_WIDTH_10)
 		return QDF_STATUS_E_INVAL;
 
 	p_cds_context = cds_get_context(QDF_MODULE_ID_QDF);
@@ -2805,7 +2831,10 @@ QDF_STATUS cds_set_sub_20_channel_width(uint32_t value)
 	if (!p_cds_context->cds_cfg->sub_20_support)
 		return QDF_STATUS_E_NOSUPPORT;
 
-	p_cds_context->cds_cfg->sub_20_channel_width = value;
+	if (sub_20_ch_width == p_cds_context->cds_cfg->sub_20_channel_width)
+		return QDF_STATUS_E_ALREADY;
+
+	p_cds_context->cds_cfg->sub_20_channel_width = sub_20_ch_width;
 	return QDF_STATUS_SUCCESS;
 }
 

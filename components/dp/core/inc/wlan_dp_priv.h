@@ -39,6 +39,7 @@
 #include <qdf_types.h>
 #include "htc_api.h"
 #include "wlan_dp_wfds.h"
+#include "wlan_dp_load_balance.h"
 
 #ifndef NUM_TX_RX_HISTOGRAM
 #define NUM_TX_RX_HISTOGRAM 128
@@ -140,6 +141,8 @@ struct dp_rtpm_tput_policy_context {
  * @is_rx_fisa_lru_del_enabled: flag to enable/disable FST entry delete
  * @is_direct_link_enabled: indicates whether direct link is enabled or not
  * @wlm_rx_aggr_control: Control Rx aggregation based on WLM state
+ * @is_load_balance_enabled: indicates whether load balance is enabled or not
+ * @is_flow_balance_enabled: indicates whether flow balance is enabled or not
  */
 struct wlan_dp_psoc_cfg {
 	bool tx_orphan_enable;
@@ -215,6 +218,12 @@ struct wlan_dp_psoc_cfg {
 	bool is_direct_link_enabled;
 #endif
 	bool wlm_rx_aggr_control;
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+	bool is_load_balance_enabled;
+#endif
+#ifdef WLAN_DP_FLOW_BALANCE_SUPPORT
+	bool is_flow_balance_enabled;
+#endif
 };
 
 /**
@@ -356,11 +365,13 @@ struct fils_peer_hlp_node {
  * @allow_fse_metdata_mismatch: packet allowed since it belongs to same flow,
  *			only fse_metadata is not same.
  * @allow_non_aggr: packet allowed due to any other reason.
+ * @allow_mig_mismatch: packet allowed due to migrated flow
  */
 struct dp_fisa_reo_mismatch_stats {
 	uint32_t allow_cce_match;
 	uint32_t allow_fse_metdata_mismatch;
 	uint32_t allow_non_aggr;
+	uint32_t allow_mig_mismatch;
 };
 
 /**
@@ -426,6 +437,8 @@ struct fisa_pkt_hist {
  * @head_skb_l4_hdr_offset: L4 header offset
  * @rx_flow_tuple_info: RX tuple information
  * @napi_id: NAPI ID (REO ID) on which the flow is being received
+ * @prev_napi_id: previous NAPI ID before flow migration
+ * @is_mig: flag indicating whether flow is migrated or not
  * @vdev: VDEV handle corresponding to the FLOW
  * @dp_intf: DP interface handle corresponding to the flow
  * @bytes_aggregated: Number of bytes currently aggregated
@@ -447,6 +460,12 @@ struct fisa_pkt_hist {
  * @pkt_hist: FISA aggreagtion packets history
  * @same_mld_vdev_mismatch: Packets flushed after vdev_mismatch on same MLD
  * @add_timestamp: FISA entry created timestamp
+ * @num_pkts: number of packets received on this flow
+ * @num_pkts_prev: number of packets received on this flow previously
+ * @avg_pkts_per_sec: average packets per second received on this flow
+ * @last_pkt_rcvd_tstamp: last packet received timestamp on this flow
+ * @last_avg_cal_tstamp: last average calculated timestamp for this flow
+ * @elig_for_balance: flow is eligible for flow balance or not
  */
 struct dp_fisa_rx_sw_ft {
 	void *hw_fse;
@@ -470,6 +489,8 @@ struct dp_fisa_rx_sw_ft {
 	uint32_t head_skb_l4_hdr_offset;
 	struct cdp_rx_flow_tuple_info rx_flow_tuple_info;
 	uint8_t napi_id;
+	uint8_t prev_napi_id;
+	bool is_mig;
 	struct dp_vdev *vdev;
 	struct wlan_dp_intf *dp_intf;
 	uint64_t bytes_aggregated;
@@ -496,6 +517,14 @@ struct dp_fisa_rx_sw_ft {
 #endif
 	uint64_t same_mld_vdev_mismatch;
 	uint64_t add_timestamp;
+#ifdef WLAN_DP_FLOW_BALANCE_SUPPORT
+	uint64_t num_pkts;
+	uint64_t num_pkts_prev;
+	uint32_t avg_pkts_per_sec;
+	qdf_time_t last_pkt_rcvd_tstamp;
+	qdf_time_t last_avg_cal_tstamp;
+	bool elig_for_balance;
+#endif
 };
 
 #define DP_RX_GET_SW_FT_ENTRY_SIZE sizeof(struct dp_fisa_rx_sw_ft)
@@ -546,6 +575,7 @@ struct fse_cache_flush_history {
  * @rx_hash_enabled: Flag to indicate if Hash based routing supported
  * @rx_toeplitz_hash_key: hash key
  * @rx_pkt_tlv_size: RX packet TLV size
+ * @add_tcp_flow_to_fst: Add tcp flow to the FST table
  */
 struct dp_rx_fst {
 	uint8_t *base;
@@ -582,6 +612,7 @@ struct dp_rx_fst {
 	bool rx_hash_enabled;
 	uint8_t *rx_toeplitz_hash_key;
 	uint16_t rx_pkt_tlv_size;
+	bool add_tcp_flow_to_fst;
 };
 
 /**
@@ -785,6 +816,10 @@ struct dp_direct_link_context {
 };
 #endif
 
+#ifdef WLAN_DP_FEATURE_STC
+struct wlan_dp_stc;
+#endif
+
 /**
  * struct wlan_dp_psoc_context - psoc related data required for DP
  * @psoc: object manager psoc context
@@ -855,6 +890,9 @@ struct dp_direct_link_context {
  * @inactive_dp_link_list: inactive DP links list
  * @dp_link_del_lock: DP link delete operation lock
  * @svc_ctx: service class context
+ * @lb_data: wlan load balance data structure
+ * @cpuhp_event_handle: event handle for cpu hotplug
+ * @dp_stc: STC context
  */
 struct wlan_dp_psoc_context {
 	struct wlan_objmgr_psoc *psoc;
@@ -959,6 +997,13 @@ struct wlan_dp_psoc_context {
 	qdf_spinlock_t dp_link_del_lock;
 #ifdef WLAN_SUPPORT_SERVICE_CLASS
 	struct dp_svc_ctx *svc_ctx;
+#endif
+#ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
+	struct wlan_dp_lb_data lb_data;
+	struct qdf_cpuhp_handler *cpuhp_event_handle;
+#endif
+#ifdef WLAN_DP_FEATURE_STC
+	struct wlan_dp_stc *dp_stc;
 #endif
 };
 

@@ -235,6 +235,7 @@ struct mlme_edca_ac_vo {
  * @MLME_DOT11_MODE_11AX_ONLY: vdev just supports 11AX mode
  * @MLME_DOT11_MODE_11BE: vdev supports 11BE mode, and modes above it
  * @MLME_DOT11_MODE_11BE_ONLY: vdev just supports 11BE mode
+ * @MLME_DOT11_MODE_MAX: dot11 mode max
  */
 enum mlme_dot11_mode {
 	MLME_DOT11_MODE_ALL,
@@ -252,6 +253,7 @@ enum mlme_dot11_mode {
 	MLME_DOT11_MODE_11AX_ONLY,
 	MLME_DOT11_MODE_11BE,
 	MLME_DOT11_MODE_11BE_ONLY,
+	MLME_DOT11_MODE_MAX,
 };
 
 /**
@@ -1488,6 +1490,7 @@ struct wlan_mlme_aux_dev_caps {
  * @sr_enable_modes: modes for which SR(Spatial Reuse) is enabled
  * @wlan_mlme_aux0_dev_caps: capability for aux0
  * @bt_profile_con: Bluetooth connection profile
+ * @relaxed_lpi_conn_policy: Relaxed LPI connection policy flag
  */
 struct wlan_mlme_generic {
 	uint32_t band_capability;
@@ -1559,6 +1562,7 @@ struct wlan_mlme_generic {
 	struct wlan_mlme_aux_dev_caps
 		wlan_mlme_aux0_dev_caps[WLAN_MLME_HW_MODE_MAX];
 	bool bt_profile_con;
+	bool relaxed_lpi_conn_policy;
 };
 
 /**
@@ -1753,6 +1757,8 @@ enum dot11p_mode {
  * @enable_dynamic_nss_chains_cfg:   enable the dynamic nss chain config to FW
  * @restart_sap_on_dyn_nss_chains_cfg: restart SAP on dynamic NSS chains
  * update
+ * @fast_chain_selection:	     enable fast chain selection config to FW
+ * @better_chain_rssi_threshold:     rssi threshold for better chain selection
  */
 struct wlan_mlme_nss_chains {
 	uint32_t num_tx_chains[NSS_CHAINS_BAND_MAX];
@@ -1766,6 +1772,8 @@ struct wlan_mlme_nss_chains {
 	bool disable_tx_mrc[NSS_CHAINS_BAND_MAX];
 	bool enable_dynamic_nss_chains_cfg;
 	bool restart_sap_on_dyn_nss_chains_cfg;
+	bool fast_chain_selection;
+	uint32_t better_chain_rssi_threshold;
 };
 
 /**
@@ -2854,6 +2862,7 @@ struct wlan_mlme_iot {
  * @eml_cap: EML capability subfield present in ML IE common info
  * @dynamic_nss_chains_support : intersection of host and fw capability of
  *				 dynamic NSS chain support
+ * @reduce_pwr_scan_mode : reduce power scan mode enable/disable
  */
 struct wlan_mlme_cfg {
 	struct wlan_mlme_chainmask chainmask_cfg;
@@ -2905,6 +2914,7 @@ struct wlan_mlme_cfg {
 	bool connection_roaming_ini_flag;
 	struct wlan_mlme_eml_cap eml_cap;
 	bool dynamic_nss_chains_support;
+	bool reduce_pwr_scan_mode;
 };
 
 /**

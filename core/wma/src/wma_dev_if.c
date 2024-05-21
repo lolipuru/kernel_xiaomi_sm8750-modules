@@ -117,6 +117,7 @@
 #include "wlan_vdev_mgr_utils_api.h"
 #include "target_if.h"
 #include <wlan_psoc_mlme_api.h>
+#include "wlan_objmgr_vdev_obj.h"
 
 /*
  * FW only supports 8 clients in SAP/GO mode for D3 WoW feature
@@ -1681,7 +1682,7 @@ bool wma_objmgr_peer_exist(tp_wma_handle wma,
 	return true;
 }
 
-#ifdef WLAN_FEATURE_PEER_TRANS_HIST
+#ifdef WLAN_FEATURE_11BE_MLO_ADV_FEATURE
 void wma_peer_tbl_trans_add_entry(struct wlan_objmgr_peer *peer, bool is_create,
 				  struct cdp_peer_setup_info *peer_info)
 {
@@ -1914,8 +1915,12 @@ static int wma_get_obj_mgr_peer_type(tp_wma_handle wma, uint8_t vdev_id,
 	if (wma_peer_type == WMI_PEER_TYPE_TDLS)
 		return WLAN_PEER_TDLS;
 
-	if (wma_peer_type == WMI_PEER_TYPE_PASN)
-		return WLAN_PEER_RTT_PASN;
+	if (wma_peer_type == WMI_PEER_TYPE_PASN) {
+		if (wlan_vdev_mlme_get_opmode(vdev) == QDF_NAN_DISC_MODE)
+			return WLAN_PEER_NAN_PASN;
+		else
+			return WLAN_PEER_RTT_PASN;
+	}
 
 	if (!qdf_mem_cmp(addr, peer_addr, QDF_MAC_ADDR_SIZE) ||
 	    !qdf_mem_cmp(mld_addr, peer_addr, QDF_MAC_ADDR_SIZE)) {
@@ -3663,8 +3668,9 @@ int wma_peer_create_confirm_handler(void *handle, uint8_t *evt_param_info,
 	qdf_mem_free(rsp_data);
 	qdf_mem_free(req_msg);
 
-	if (req_msg_type == WMA_PASN_PEER_CREATE_RESPONSE) {
-		wma_pasn_handle_peer_create_conf(wma, &peer_mac,
+	if (req_msg_type == WMA_PASN_PEER_CREATE_RESPONSE ||
+	    req_msg_type == WMA_NAN_PASN_PEER_CREATE_RESPONSE) {
+		wma_pasn_handle_peer_create_conf(wma, &peer_mac, req_msg_type,
 						 peer_create_rsp->status,
 						 peer_create_rsp->vdev_id);
 		wma_release_wakelock(&wma->wmi_cmd_rsp_wake_lock);
@@ -3756,6 +3762,7 @@ int wma_peer_delete_handler(void *handle, uint8_t *cmd_param_info,
 	uint8_t macaddr[QDF_MAC_ADDR_SIZE];
 	int status = 0;
 	struct mac_context *mac = cds_get_context(QDF_MODULE_ID_PE);
+	struct del_sta_self_rsp_params *data;
 
 	if (!mac) {
 		wma_err("mac context is null");
@@ -3791,7 +3798,8 @@ int wma_peer_delete_handler(void *handle, uint8_t *cmd_param_info,
 	qdf_mc_timer_stop(&req_msg->event_timeout);
 	qdf_mc_timer_destroy(&req_msg->event_timeout);
 
-	if (req_msg->type == WMA_DELETE_STA_RSP_START) {
+	switch (req_msg->type) {
+	case WMA_DELETE_STA_RSP_START:
 		del_sta = req_msg->user_data;
 		if (del_sta->respReqd) {
 			wma_debug("Sending peer del rsp to umac");
@@ -3800,24 +3808,32 @@ int wma_peer_delete_handler(void *handle, uint8_t *cmd_param_info,
 		} else {
 			qdf_mem_free(del_sta);
 		}
-	} else if (req_msg->type == WMA_DEL_P2P_SELF_STA_RSP_START) {
-		struct del_sta_self_rsp_params *data;
-
+		break;
+	case WMA_DEL_P2P_SELF_STA_RSP_START:
 		data = (struct del_sta_self_rsp_params *)req_msg->user_data;
 		wma_debug("Calling vdev detach handler");
 		wma_handle_vdev_detach(wma, data->self_sta_param);
 		mlme_vdev_self_peer_delete_resp(data->self_sta_param);
 		qdf_mem_free(data);
-	} else if (req_msg->type == WMA_SET_LINK_PEER_RSP ||
-		   req_msg->type == WMA_DELETE_PEER_RSP) {
+		break;
+	case WMA_SET_LINK_PEER_RSP:
+	case WMA_DELETE_PEER_RSP:
 		wma_send_vdev_down_req(wma, req_msg->user_data);
-	} else if (req_msg->type == WMA_DELETE_STA_CONNECT_RSP) {
+		break;
+	case WMA_DELETE_STA_CONNECT_RSP:
 		wma_debug("wma delete peer completed vdev %d",
 			  req_msg->vdev_id);
 		lim_cm_send_connect_rsp(mac, NULL, req_msg->user_data,
 					CM_GENERIC_FAILURE,
 					QDF_STATUS_E_FAILURE, 0, false);
 		cm_free_join_req(req_msg->user_data);
+		break;
+	case WMA_NAN_PASN_PEER_DELETE_RESPONSE:
+		wma_pasn_peer_delete_handler(wma->psoc, macaddr, event->vdev_id,
+					     req_msg->user_data);
+		break;
+	default:
+		break;
 	}
 
 	wma_cdp_cp_peer_del_response(wma->psoc, macaddr, event->vdev_id);
@@ -4042,9 +4058,9 @@ void wma_hold_req_timer(void *data)
 			(struct peer_create_rsp_params *)tgt_req->user_data;
 		peer_mac = &peer_create_rsp->peer_mac;
 
-		wma_pasn_handle_peer_create_conf(
-				wma, peer_mac, QDF_STATUS_E_TIMEOUT,
-				tgt_req->vdev_id);
+		wma_pasn_handle_peer_create_conf(wma, peer_mac, tgt_req->type,
+						 QDF_STATUS_E_TIMEOUT,
+						 tgt_req->vdev_id);
 		qdf_mem_free(tgt_req->user_data);
 	} else if (tgt_req->msg_type == WMA_PASN_PEER_DELETE_REQUEST &&
 		   tgt_req->type == WMA_PASN_PEER_DELETE_RESPONSE) {

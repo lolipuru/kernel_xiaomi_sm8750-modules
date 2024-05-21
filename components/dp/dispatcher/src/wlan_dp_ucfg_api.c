@@ -48,6 +48,8 @@
 #include "wlan_dp_lapb_flow.h"
 #endif
 #include "cdp_txrx_ctrl.h"
+#include "wlan_dp_load_balance.h"
+#include "wlan_dp_flow_balance.h"
 
 #ifdef FEATURE_DIRECT_LINK
 /**
@@ -335,6 +337,13 @@ void ucfg_dp_set_hif_handle(struct wlan_objmgr_psoc *psoc,
 
 	dp_ctx->hif_handle = hif_handle;
 }
+
+#ifdef WLAN_DP_FLOW_BALANCE_SUPPORT
+void ucfg_dp_update_num_rx_rings(struct wlan_objmgr_psoc *psoc)
+{
+	wlan_dp_fb_update_num_rx_rings(psoc);
+}
+#endif
 
 QDF_STATUS ucfg_dp_init(void)
 {
@@ -682,6 +691,7 @@ QDF_STATUS ucfg_dp_psoc_open(struct wlan_objmgr_psoc *psoc)
 	dp_register_pmo_handler();
 	dp_trace_init(psoc);
 	dp_bus_bandwidth_init(psoc);
+	wlan_dp_load_balancer_init(psoc);
 	qdf_wake_lock_create(&dp_ctx->rx_wake_lock, "qcom_rx_wakelock");
 
 	return QDF_STATUS_SUCCESS;
@@ -699,6 +709,7 @@ QDF_STATUS ucfg_dp_psoc_close(struct wlan_objmgr_psoc *psoc)
 
 	dp_rtpm_tput_policy_deinit(psoc);
 	dp_unregister_pmo_handler();
+	wlan_dp_load_balancer_deinit(psoc);
 	dp_bus_bandwidth_deinit(psoc);
 	qdf_wake_lock_destroy(&dp_ctx->rx_wake_lock);
 
@@ -2307,6 +2318,22 @@ ucfg_dp_register_direct_link_hdd_cbs(struct wlan_dp_psoc_context *dp_ctx,
 }
 #endif
 
+#ifdef IPA_WDS_EASYMESH_FEATURE
+static void
+ucfg_dp_register_ipa_wds_hdd_cbs(struct wlan_dp_psoc_context *dp_ctx,
+				 struct wlan_dp_psoc_callbacks *cb_obj)
+{
+	dp_ctx->dp_ops.wlan_dp_ipa_wds_peer_cb =
+		cb_obj->wlan_dp_ipa_wds_peer_cb;
+}
+#else /* !IPA_WDS_EASYMESH_FEATURE */
+static inline void
+ucfg_dp_register_ipa_wds_hdd_cbs(struct wlan_dp_psoc_context *dp_ctx,
+				 struct wlan_dp_psoc_callbacks *cb_obj)
+{
+}
+#endif /* IPA_WDS_EASYMESH_FEATURE */
+
 void ucfg_dp_register_hdd_callbacks(struct wlan_objmgr_psoc *psoc,
 				    struct wlan_dp_psoc_callbacks *cb_obj)
 {
@@ -2386,6 +2413,7 @@ void ucfg_dp_register_hdd_callbacks(struct wlan_objmgr_psoc *psoc,
 		cb_obj->osif_dp_process_mic_error;
 	dp_ctx->dp_ops.link_monitoring_cb = cb_obj->link_monitoring_cb;
 	ucfg_dp_register_direct_link_hdd_cbs(dp_ctx, cb_obj);
+	ucfg_dp_register_ipa_wds_hdd_cbs(dp_ctx, cb_obj);
 }
 
 void ucfg_dp_register_event_handler(struct wlan_objmgr_psoc *psoc,
@@ -2935,6 +2963,18 @@ void *ucfg_dp_txrx_soc_attach(struct dp_txrx_soc_attach_params *params,
 void ucfg_dp_txrx_soc_detach(ol_txrx_soc_handle soc)
 {
 	return wlan_dp_txrx_soc_detach(soc);
+}
+
+void ucfg_dp_txrx_set_default_affinity(struct wlan_objmgr_psoc *psoc)
+{
+	struct wlan_dp_psoc_context *dp_ctx = dp_psoc_get_priv(psoc);
+
+	if (!dp_ctx) {
+		dp_err("DP context not found");
+		return;
+	}
+
+	wlan_dp_lb_set_default_affinity(dp_ctx);
 }
 
 QDF_STATUS ucfg_dp_txrx_attach_target(ol_txrx_soc_handle soc, uint8_t pdev_id)

@@ -3699,7 +3699,8 @@ lim_cm_fill_link_session(struct mac_context *mac_ctx,
 		goto end;
 	}
 
-	status = lim_fill_pe_session(mac_ctx, pe_session, bss_desc);
+	status = lim_fill_pe_session(mac_ctx, pe_session, bss_desc,
+				     sync_ind->phy_mode);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		pe_err("Failed to fill pe session vdev id %d",
 		       pe_session->vdev_id);
@@ -3877,7 +3878,7 @@ lim_mlo_roam_delete_link_peer(struct pe_session *pe_session,
 }
 #endif
 
-#if defined(WLAN_FEATURE_MULTI_LINK_SAP) && defined(WLAN_FEATURE_11BE_MLO)
+#if defined(WLAN_FEATURE_11BE_MLO)
 void
 lim_update_cuflag_bpcc_each_link(struct mlo_mgmt_ml_info *cu_params)
 {
@@ -3907,6 +3908,8 @@ lim_update_cuflag_bpcc_each_link(struct mlo_mgmt_ml_info *cu_params)
 			cu_flag = cu_params->cu_vdev_map[hw_link_id];
 			if (qdf_test_bit(index, (unsigned long *)&cu_flag))
 				session_entry->mlo_link_info.bss_param_change = true;
+			else
+				session_entry->mlo_link_info.bss_param_change = false;
 
 			bpcc_index = hw_link_id * MAX_AP_MLDS_PER_LINK + index;
 			if (bpcc_index >=
@@ -4087,8 +4090,8 @@ lim_check_scan_db_for_join_req_partner_info(struct pe_session *session_entry,
 	struct wlan_objmgr_pdev *pdev;
 	struct mlo_partner_info *partner_info;
 	struct mlo_link_info *link_info;
-	struct scan_cache_entry *partner_entry;
 	uint8_t i;
+	QDF_STATUS status;
 
 	if (!session_entry) {
 		pe_err("session entry is NULL");
@@ -4115,17 +4118,17 @@ lim_check_scan_db_for_join_req_partner_info(struct pe_session *session_entry,
 	partner_info = &lim_join_req->partner_info;
 	for (i = 0; i < partner_info->num_partner_links; i++) {
 		link_info = &partner_info->partner_link_info[i];
-		partner_entry =
-			wlan_scan_get_entry_by_bssid(pdev,
-						     &link_info->link_addr);
-		if (!partner_entry) {
-			pe_err("Scan entry is not found for partner link %d "
-			       QDF_MAC_ADDR_FMT,
-			       link_info->link_id,
-			       QDF_MAC_ADDR_REF(link_info->link_addr.bytes));
+		status = lim_update_mlo_mgr_info(mac_ctx,
+						 session_entry->vdev,
+						 &link_info->link_addr,
+						 link_info->link_id,
+						 link_info->chan_freq);
+		if (QDF_IS_STATUS_ERROR(status)) {
+			pe_err("failed %d to update mlo_mgr link id %d freq %d",
+			       status, link_info->link_id,
+			       link_info->chan_freq);
 			return QDF_STATUS_E_FAILURE;
 		}
-		util_scan_free_cache_entry(partner_entry);
 	}
 
 	return QDF_STATUS_SUCCESS;

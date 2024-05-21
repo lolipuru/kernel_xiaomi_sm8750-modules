@@ -89,6 +89,7 @@
 #include "wlan_policy_mgr_ll_sap.h"
 #include "wlan_vdev_mgr_ucfg_api.h"
 #include "wlan_vdev_mlme_main.h"
+#include "wlan_tdls_api.h"
 
 static QDF_STATUS init_sme_cmd_list(struct mac_context *mac);
 
@@ -4297,6 +4298,19 @@ static uint8_t sme_get_nss_chain_shift(enum QDF_OPMODE device_mode)
 }
 
 static void
+sme_fill_vdev_chain_ini_params(struct mac_context *mac_ctx,
+			       struct wlan_mlme_nss_chains *vdev_ini_cfg)
+{
+	struct wlan_mlme_nss_chains *nss_chains_ini_cfg =
+					&mac_ctx->mlme_cfg->nss_chains_ini_cfg;
+
+	vdev_ini_cfg->fast_chain_selection =
+				nss_chains_ini_cfg->fast_chain_selection;
+	vdev_ini_cfg->better_chain_rssi_threshold =
+				nss_chains_ini_cfg->better_chain_rssi_threshold;
+}
+
+static void
 sme_check_nss_chain_ini_param(struct wlan_mlme_nss_chains *vdev_ini_cfg,
 			      uint8_t rf_chains_supported,
 			      enum nss_chains_band_info band)
@@ -4395,7 +4409,6 @@ sme_fill_nss_chain_params(struct mac_context *mac_ctx,
 	 */
 	sme_check_nss_chain_ini_param(vdev_ini_cfg, rf_chains_supported,
 				      band);
-
 }
 
 void sme_populate_nss_chain_params(mac_handle_t mac_handle,
@@ -4410,6 +4423,7 @@ void sme_populate_nss_chain_params(mac_handle_t mac_handle,
 		sme_fill_nss_chain_params(mac_ctx, vdev_ini_cfg,
 					  device_mode, band,
 					  rf_chains_supported);
+	sme_fill_vdev_chain_ini_params(mac_ctx, vdev_ini_cfg);
 }
 
 void
@@ -4817,7 +4831,7 @@ sme_nss_chains_update(mac_handle_t mac_handle,
 		      uint8_t vdev_id)
 {
 	struct mac_context *mac_ctx = MAC_CONTEXT(mac_handle);
-	QDF_STATUS status;
+	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 	struct wlan_mlme_nss_chains *dynamic_cfg;
 	struct wlan_objmgr_vdev *vdev =
 		       wlan_objmgr_get_vdev_by_id_from_psoc(mac_ctx->psoc,
@@ -4835,7 +4849,13 @@ sme_nss_chains_update(mac_handle_t mac_handle,
 	if (ll_lt_sap_vdev_id != WLAN_INVALID_VDEV_ID) {
 		sme_info_rl("LL_LT_SAP vdev %d present, chainmask config not allowed",
 			    ll_lt_sap_vdev_id);
-		return QDF_STATUS_E_FAILURE;
+		goto release_ref;
+	}
+
+	if (QDF_STATUS_SUCCESS == wlan_is_tdls_session_present(vdev)) {
+		sme_debug("TDLS session exists");
+		status = QDF_STATUS_E_FAILURE;
+		goto release_ref;
 	}
 
 	status = sme_acquire_global_lock(&mac_ctx->sme);
@@ -4851,6 +4871,8 @@ sme_nss_chains_update(mac_handle_t mac_handle,
 
 	status = sme_validate_nss_chains_config(vdev, user_cfg,
 						dynamic_cfg);
+
+	sme_fill_vdev_chain_ini_params(mac_ctx, user_cfg);
 	sme_debug("dynamic_cfg");
 	sme_dump_nss_cfg(dynamic_cfg);
 	sme_debug("user_cfg");
@@ -16841,7 +16863,6 @@ QDF_STATUS sme_update_vdev_mac_addr(struct wlan_objmgr_vdev *vdev,
 	struct wlan_objmgr_peer *peer;
 	struct vdev_mlme_obj *vdev_mlme;
 	struct wlan_objmgr_psoc *psoc;
-	bool eht_enab = false;
 
 	psoc = wlan_vdev_get_psoc(vdev);
 
@@ -16850,9 +16871,8 @@ QDF_STATUS sme_update_vdev_mac_addr(struct wlan_objmgr_vdev *vdev,
 	if (req_status)
 		goto p2p_self_peer_create;
 
-	ucfg_psoc_mlme_get_11be_capab(psoc, &eht_enab);
 	if (vdev_opmode == QDF_STA_MODE && update_sta_self_peer) {
-		if (eht_enab && update_mld_addr) {
+		if (update_mld_addr) {
 			old_macaddr = wlan_vdev_mlme_get_mldaddr(vdev);
 			new_macaddr = mld_addr.bytes;
 		} else {
@@ -16881,7 +16901,7 @@ QDF_STATUS sme_update_vdev_mac_addr(struct wlan_objmgr_vdev *vdev,
 	}
 
 	/* Update VDEV MAC address */
-	if (eht_enab && update_mld_addr) {
+	if (update_mld_addr) {
 		if (update_sta_self_peer || vdev_opmode == QDF_SAP_MODE) {
 			qdf_ret_status = wlan_mlo_mgr_update_mld_addr(
 					    (struct qdf_mac_addr *)

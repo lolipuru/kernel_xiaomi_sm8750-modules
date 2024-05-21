@@ -1250,6 +1250,28 @@ static void mlme_init_standard_6ghz_conn_policy(struct wlan_objmgr_psoc *psoc,
 }
 #endif
 
+#ifdef CONFIG_BAND_6GHZ
+/**
+ * mlme_init_relaxed_lpi_conn_policy() - initialize relaxed lpi
+ *                                       policy connection flag
+ * @psoc: Pointer to PSOC
+ * @gen: pointer to generic CFG items
+ *
+ * Return: None
+ */
+static void mlme_init_relaxed_lpi_conn_policy(struct wlan_objmgr_psoc *psoc,
+					      struct wlan_mlme_generic *gen)
+{
+	gen->relaxed_lpi_conn_policy =
+		cfg_get(psoc, CFG_RELAXED_LPI_CONNECTION_POLICY);
+}
+#else
+static void mlme_init_relaxed_lpi_conn_policy(struct wlan_objmgr_psoc *psoc,
+					      struct wlan_mlme_generic *gen)
+{
+}
+#endif
+
 /**
  * mlme_init_mgmt_hw_tx_retry_count_cfg() - initialize mgmt hw tx retry count
  * @psoc: Pointer to PSOC
@@ -1423,6 +1445,7 @@ static void mlme_init_generic_cfg(struct wlan_objmgr_psoc *psoc,
 	mlme_init_tl2m_negotiation_support(psoc, gen);
 	mlme_init_standard_6ghz_conn_policy(psoc, gen);
 	mlme_init_disable_vlp_sta_conn_to_sp_ap(psoc, gen);
+	mlme_init_relaxed_lpi_conn_policy(psoc, gen);
 }
 
 static void mlme_init_edca_ani_cfg(struct wlan_objmgr_psoc *psoc,
@@ -2739,27 +2762,56 @@ bool wlan_get_mlo_link_agnostic_flag(struct wlan_objmgr_vdev *vdev,
 				     uint8_t *dest_addr)
 {
 	struct wlan_objmgr_peer *bss_peer = NULL;
+	struct wlan_objmgr_peer *peer = NULL;
+	struct wlan_objmgr_pdev *pdev = vdev->vdev_objmgr.wlan_pdev;
 	bool mlo_link_agnostic = false;
 	uint8_t *peer_mld_addr = NULL;
 
 	if (!wlan_vdev_mlme_is_mlo_vdev(vdev))
 		return mlo_link_agnostic;
 
-	bss_peer = wlan_objmgr_vdev_try_get_bsspeer(vdev, WLAN_MLME_OBJMGR_ID);
-	if (bss_peer) {
+	if (wlan_vdev_mlme_get_opmode(vdev) == QDF_STA_MODE) {
+		bss_peer = wlan_objmgr_vdev_try_get_bsspeer(vdev,
+							    WLAN_MLME_OBJMGR_ID);
+		if (!bss_peer)
+			return mlo_link_agnostic;
+
 		peer_mld_addr = wlan_peer_mlme_get_mldaddr(bss_peer);
-		if (!qdf_mem_cmp(bss_peer->macaddr, dest_addr,
+		if (!qdf_mem_cmp(bss_peer->macaddr,
+				 dest_addr,
 				 QDF_MAC_ADDR_SIZE) ||
-		    (peer_mld_addr && !qdf_mem_cmp(peer_mld_addr, dest_addr,
-						   QDF_MAC_ADDR_SIZE))) {
-			mlme_legacy_debug("dest address" QDF_MAC_ADDR_FMT "bss peer address"
-					  QDF_MAC_ADDR_FMT "mld addr" QDF_MAC_ADDR_FMT,
+		    (peer_mld_addr &&
+		     !qdf_mem_cmp(peer_mld_addr, dest_addr,
+				  QDF_MAC_ADDR_SIZE))) {
+			mlme_legacy_debug("dest address"
+					  QDF_MAC_ADDR_FMT
+					  "bss peer address"
+					  QDF_MAC_ADDR_FMT "mld addr"
+					  QDF_MAC_ADDR_FMT,
 					  QDF_MAC_ADDR_REF(dest_addr),
 					  QDF_MAC_ADDR_REF(bss_peer->macaddr),
 					  QDF_MAC_ADDR_REF(peer_mld_addr));
 			mlo_link_agnostic = true;
 		}
 		wlan_objmgr_peer_release_ref(bss_peer, WLAN_MLME_OBJMGR_ID);
+		return mlo_link_agnostic;
+	} else if (wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE) {
+		/* link peer should be found in the peer list */
+		peer = wlan_objmgr_get_peer_by_mac(wlan_pdev_get_psoc(pdev),
+						   dest_addr, WLAN_MLME_OBJMGR_ID);
+		/* ff:ff:ff:ff:ff:ff will come here */
+		if (!peer)
+			return mlo_link_agnostic;
+
+		peer_mld_addr = wlan_peer_mlme_get_mldaddr(peer);
+		/* if it is mlo peer */
+		if (peer_mld_addr &&
+		    !qdf_is_macaddr_zero((struct qdf_mac_addr *)peer_mld_addr))
+			mlo_link_agnostic = true;
+
+		wlan_objmgr_peer_release_ref(peer, WLAN_MLME_OBJMGR_ID);
+
+		return mlo_link_agnostic;
 	}
 	return mlo_link_agnostic;
 }
@@ -3424,6 +3476,10 @@ static void mlme_init_nss_chains(struct wlan_objmgr_psoc *psoc,
 	nss_chains->restart_sap_on_dyn_nss_chains_cfg =
 			cfg_get(psoc,
 				CFG_RESTART_SAP_ON_DYNAMIC_NSS_CHAINS_CONFIG);
+	nss_chains->fast_chain_selection =
+				cfg_get(psoc, CFG_FAST_CHAIN_SELECTION_CONFIG);
+	nss_chains->better_chain_rssi_threshold =
+			cfg_get(psoc, CFG_BETTER_CHAIN_RSSI_THRESHOLD_CONFIG);
 }
 
 static void mlme_init_wep_cfg(struct wlan_mlme_wep_cfg *wep_params)
@@ -4075,6 +4131,21 @@ mlme_init_user_mcc_quota_config(struct wlan_mlme_generic *gen)
 {
 }
 #endif
+
+/**
+ * mlme_init_is_reduced_pwr_scan_mode - Update INI reduced power scan mode
+ * enable/disable
+ * @psoc: PSOC pointer
+ * @scan_mode: scan mode
+ *
+ * Return: None
+ */
+static void mlme_init_is_reduced_pwr_scan_mode(struct wlan_objmgr_psoc *psoc,
+					       bool *scan_mode)
+{
+	*scan_mode = cfg_get(psoc, CFG_REDUCE_PWR_SCAN_MODE);
+}
+
 QDF_STATUS mlme_cfg_on_psoc_enable(struct wlan_objmgr_psoc *psoc)
 {
 	struct wlan_mlme_psoc_ext_obj *mlme_obj;
@@ -4131,6 +4202,8 @@ QDF_STATUS mlme_cfg_on_psoc_enable(struct wlan_objmgr_psoc *psoc)
 	mlme_init_iot_cfg(psoc, &mlme_cfg->iot);
 	mlme_init_dual_sta_config(&mlme_cfg->gen);
 	mlme_init_user_mcc_quota_config(&mlme_cfg->gen);
+	mlme_init_is_reduced_pwr_scan_mode(psoc,
+					   &mlme_cfg->reduce_pwr_scan_mode);
 
 	return status;
 }

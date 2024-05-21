@@ -553,6 +553,16 @@ QDF_STATUS wlan_mlme_get_sub_20_chan_width(struct wlan_objmgr_psoc *psoc,
 					   uint8_t *sub_20_chan_width);
 
 /**
+ * wlan_mlme_set_sub_20_chan_width() - Set the sub 20 chan width config
+ * @psoc: pointer to psoc object
+ * @sub_20_chan_width: sub 20 chan width to be set
+ *
+ * Return: QDF Status
+ */
+QDF_STATUS wlan_mlme_set_sub_20_chan_width(struct wlan_objmgr_psoc *psoc,
+					   uint8_t sub_20_chan_width);
+
+/**
  * wlan_mlme_get_fw_timeout_crash() - Get the fw timeout crash config
  * @psoc: pointer to psoc object
  * @fw_timeout_crash: Pointer to the variable from caller
@@ -2855,6 +2865,17 @@ QDF_STATUS
 wlan_mlme_is_standard_6ghz_conn_policy_enabled(struct wlan_objmgr_psoc *psoc,
 					       bool *value);
 
+/**
+ * wlan_mlme_is_relaxed_lpi_conn_policy_enabled() - Get relaxed LPI connection
+ *                                                  flag
+ * @psoc: psoc context
+ * @value: Enable/Disable value ptr.
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+wlan_mlme_is_relaxed_lpi_conn_policy_enabled(struct wlan_objmgr_psoc *psoc,
+					     bool *value);
 #else
 static inline QDF_STATUS
 wlan_mlme_is_disable_vlp_sta_conn_to_sp_ap_enabled(
@@ -2868,6 +2889,14 @@ wlan_mlme_is_disable_vlp_sta_conn_to_sp_ap_enabled(
 static inline QDF_STATUS
 wlan_mlme_is_standard_6ghz_conn_policy_enabled(struct wlan_objmgr_psoc *psoc,
 					       bool *value)
+{
+	*value = false;
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline QDF_STATUS
+wlan_mlme_is_relaxed_lpi_conn_policy_enabled(struct wlan_objmgr_psoc *psoc,
+					     bool *value)
 {
 	*value = false;
 	return QDF_STATUS_SUCCESS;
@@ -4546,7 +4575,7 @@ QDF_STATUS wlan_mlme_set_mlo_sap_support_link(struct wlan_objmgr_psoc *psoc,
 static inline uint8_t
 wlan_mlme_get_mlo_sap_support_link(struct wlan_objmgr_psoc *psoc)
 {
-	return 0;
+	return 1;
 }
 
 static inline QDF_STATUS
@@ -5065,4 +5094,16 @@ QDF_STATUS wlan_mlme_set_disconnect_receive(struct wlan_objmgr_vdev *vdev,
  */
 
 bool wlan_mlme_get_is_disconnect_receive(struct wlan_objmgr_vdev *vdev);
+
+/**
+ * wlan_mlme_get_reduce_pwr_scan_mode() - Get reduce power scan mode
+ * enabled or disabled
+ * @psoc: pointer to psoc object
+ * @scan_mode: pointer to hold value of scan mode
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+wlan_mlme_get_reduce_pwr_scan_mode(struct wlan_objmgr_psoc *psoc,
+				   bool *scan_mode);
 #endif /* _WLAN_MLME_API_H_ */

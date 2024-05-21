@@ -2778,13 +2778,48 @@ static inline void hdd_lpc_disable_powersave(struct hdd_context *hdd_ctx)
 }
 #endif
 
+/**
+ * hdd_update_sub_20_config() - Update sub 20 MHz channel width config
+ * @hdd_ctx: Pointer to the HDD context
+ * @sub_20_fw_support: fw support for sub 20 MHz channel width
+ *
+ * Update sub 20 MHz channel width config according to FW capability
+ *
+ * Return: QDF_STATUS
+ */
+static QDF_STATUS
+hdd_update_sub_20_config(struct hdd_context *hdd_ctx, bool sub_20_fw_support)
+{
+	QDF_STATUS status;
+	struct hdd_config *config = hdd_ctx->config;
+
+	status = cds_set_sub_20_support(sub_20_fw_support);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("Failed to set sub20MHz channel width support");
+		return status;
+	}
+
+	if (!sub_20_fw_support)
+		config->sub_20_ch_width = WLAN_SUB_20_CH_WIDTH_NONE;
+
+	hdd_debug("sub20MHz channel width %u (fw support %u)",
+		  config->sub_20_ch_width, sub_20_fw_support);
+	status = ucfg_mlme_set_sub_20_chan_width(hdd_ctx->psoc,
+						 config->sub_20_ch_width);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("Failed to set sub20MHz channel width config");
+		return status;
+	}
+
+	return status;
+}
+
 int hdd_update_tgt_cfg(hdd_handle_t hdd_handle, struct wma_tgt_cfg *cfg)
 {
 	int ret;
 	struct hdd_context *hdd_ctx = hdd_handle_to_context(hdd_handle);
 	uint32_t temp_band_cap, band_capability;
 	uint8_t antenna_mode;
-	uint8_t sub_20_chan_width;
 	QDF_STATUS status;
 	mac_handle_t mac_handle;
 	bool bval = false;
@@ -2832,23 +2867,11 @@ int hdd_update_tgt_cfg(hdd_handle_t hdd_handle, struct wma_tgt_cfg *cfg)
 	ucfg_ipa_set_dp_handle(hdd_ctx->psoc,
 			       cds_get_context(QDF_MODULE_ID_SOC));
 
-	status = cds_set_sub_20_support(cfg->sub_20_support);
+	status = hdd_update_sub_20_config(hdd_ctx, cfg->sub_20_support);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		hdd_err("Failed to set sub20MHz channel width support");
+		hdd_err("Failed to update sub20MHz channel width config");
 		ret = qdf_status_to_os_return(status);
 		goto pdev_close;
-	}
-
-	if (cfg->sub_20_support) {
-		status = ucfg_mlme_get_sub_20_chan_width(hdd_ctx->psoc,
-							 &sub_20_chan_width);
-		if (QDF_IS_STATUS_ERROR(status)) {
-			hdd_err("Failed to get sub20MHz channel width config");
-			ret = qdf_status_to_os_return(status);
-			goto pdev_close;
-		}
-
-		cds_set_sub_20_channel_width(sub_20_chan_width);
 	}
 
 	status = ucfg_mlme_get_band_capability(hdd_ctx->psoc, &band_capability);
@@ -3494,8 +3517,10 @@ wlan_hdd_update_dbs_scan_and_fw_mode_config(void)
 	struct hdd_context *hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
 	uint8_t dual_mac_feature = DISABLE_DBS_CXN_AND_SCAN;
 
-	if (!hdd_ctx)
+	if (!hdd_ctx) {
+		hdd_err("HDD context is null");
 		return QDF_STATUS_E_FAILURE;
+	}
 
 	/*
 	 * ROME platform doesn't support any DBS related commands in FW,
@@ -3504,8 +3529,10 @@ wlan_hdd_update_dbs_scan_and_fw_mode_config(void)
 	 * for response. Check if FW supports DBS to eliminate ROME vs
 	 * NON-ROME platform.
 	 */
-	if (!policy_mgr_find_if_fw_supports_dbs(hdd_ctx->psoc))
+	if (!policy_mgr_find_if_fw_supports_dbs(hdd_ctx->psoc)) {
+		hdd_err("DBS is not supported by HW");
 		return QDF_STATUS_SUCCESS;
+	}
 
 	if (hdd_ctx->is_dual_mac_cfg_updated) {
 		hdd_debug("dual mac config has already been updated, skip");
@@ -4072,6 +4099,21 @@ static bool hdd_is_cac_in_progress(void)
 	return (hdd_ctx->dev_dfs_cac_status == DFS_CAC_IN_PROGRESS);
 }
 
+static QDF_STATUS
+wlan_hdd_set_tx_rx_nss_cb(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
+			  uint8_t tx_nss, uint8_t rx_nss)
+{
+	struct wlan_hdd_link_info *link_info;
+
+	link_info = wlan_hdd_get_link_info_from_vdev(psoc, vdev_id);
+	if (!link_info) {
+		hdd_err("Invalid vdev %d", vdev_id);
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	return hdd_update_nss(link_info, tx_nss, rx_nss);
+}
+
 static void hdd_register_policy_manager_callback(
 			struct wlan_objmgr_psoc *psoc)
 {
@@ -4099,6 +4141,7 @@ static void hdd_register_policy_manager_callback(
 	hdd_cbacks.wlan_get_sap_acs_band =
 			wlan_get_sap_acs_band;
 	hdd_cbacks.wlan_check_cc_intf_cb = wlan_hdd_check_cc_intf_cb;
+	hdd_cbacks.wlan_set_tx_rx_nss_cb = wlan_hdd_set_tx_rx_nss_cb;
 
 	if (QDF_STATUS_SUCCESS !=
 	    policy_mgr_register_hdd_cb(psoc, &hdd_cbacks)) {
@@ -5193,6 +5236,7 @@ int hdd_wlan_start_modules(struct hdd_context *hdd_ctx, bool reinit)
 		hdd_hif_set_enable_detection(hif_ctx, true);
 
 		wlan_hdd_start_connectivity_logging(hdd_ctx);
+		hdd_son_send_module_status_event(HDD_WLAN_STATUS_EVT_UP);
 
 		break;
 
@@ -8566,6 +8610,36 @@ int hdd_send_coex_traffic_shaping_mode(uint8_t vdev_id, uint8_t mode)
 	return 0;
 }
 
+/**
+ * hdd_set_dynamic_bw_param() - Set dynamic bandwidth param to firmware
+ * @adapter: pointer to adapter
+ * @psoc: pointer to psoc
+ *
+ * Return: QDF_STATUS
+ */
+static QDF_STATUS hdd_set_dynamic_bw_param(struct hdd_adapter *adapter,
+					   struct wlan_objmgr_psoc *psoc)
+{
+	struct wlan_hdd_link_info *link_info;
+	bool dynamic_bw_switch;
+	uint8_t vdev_id;
+	QDF_STATUS status;
+
+	status = ucfg_get_dynamic_bw_switch_value(psoc,	&dynamic_bw_switch);
+
+	if (QDF_IS_STATUS_ERROR(status))
+		return QDF_STATUS_E_FAILURE;
+
+	hdd_adapter_for_each_active_link_info(adapter, link_info) {
+		vdev_id = link_info->vdev_id;
+		sme_set_smps_cfg(vdev_id,
+				 HDD_STA_SMPS_PARAM_DYNAMIC_BW_SWITCH,
+				 dynamic_bw_switch);
+	}
+
+	return QDF_STATUS_SUCCESS;
+}
+
 #define MAX_PDEV_SET_FW_PARAMS 7
 /* params being sent:
  * 1.wmi_pdev_param_dtim_synth
@@ -8718,6 +8792,11 @@ int hdd_set_fw_params(struct hdd_adapter *adapter)
 		sme_set_smps_cfg(adapter->deflink->vdev_id,
 				 HDD_STA_SMPS_PARAM_DTIM_1CHRX_ENABLE,
 				 enable_dtim_1chrx);
+
+		status = hdd_set_dynamic_bw_param(adapter, hdd_ctx->psoc);
+
+		if (QDF_IS_STATUS_ERROR(status))
+			return -EINVAL;
 	}
 
 	status = ucfg_mlme_get_vht_enable2x2(hdd_ctx->psoc, &bval);
@@ -8886,6 +8965,13 @@ void hdd_adapter_disable_all_links(struct hdd_adapter *adapter)
 {
 	uint8_t idx_pos;
 	struct wlan_hdd_link_info *link_info;
+
+	/* For multi link sap, active_links is used to restore
+	 * sap in SSR, and clear link info for rmmod. so
+	 * not clear it.
+	 */
+	if (adapter->device_mode == QDF_SAP_MODE)
+		return;
 
 	hdd_adapter_for_each_link_info(adapter, link_info) {
 		qdf_zero_macaddr(&link_info->link_addr);
@@ -9698,10 +9784,13 @@ static void hdd_stop_station_adapter(struct hdd_adapter *adapter)
 						wlan_vdev_get_pdev(vdev),
 						link_info->vdev_id);
 		hdd_objmgr_put_vdev_by_user(vdev, WLAN_INIT_DEINIT_ID);
+
+		if (mode == QDF_NAN_DISC_MODE)
+			hdd_disable_nan_active_disc(adapter);
+
 		hdd_vdev_destroy(link_info);
 	}
 
-	hdd_disable_nan_active_disc(adapter);
 	hdd_adapter_deregister_fc(adapter);
 	hdd_cancel_ip_notifier_work(adapter);
 }
@@ -9772,7 +9861,7 @@ static int hdd_stop_mon_adapter(struct hdd_adapter *adapter)
 	return 0;
 }
 
-static void hdd_stop_sap_go_adapter(struct hdd_adapter *adapter)
+static void hdd_stop_sap_go_per_link(struct wlan_hdd_link_info *link_info)
 {
 	enum QDF_OPMODE mode;
 	struct hdd_ap_ctx *ap_ctx;
@@ -9780,7 +9869,7 @@ static void hdd_stop_sap_go_adapter(struct hdd_adapter *adapter)
 	struct sap_config *sap_config;
 	struct hdd_hostapd_state *hostapd_state;
 	struct wlan_objmgr_vdev *vdev;
-	struct wlan_hdd_link_info *link_info = adapter->deflink;
+	struct hdd_adapter *adapter = link_info->adapter;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	uint8_t link_id;
@@ -9864,13 +9953,9 @@ static void hdd_stop_sap_go_adapter(struct hdd_adapter *adapter)
 							link_id);
 		}
 	}
-	/* Clear all the cached sta info */
-	hdd_clear_cached_sta_info(adapter);
 
 	if (vdev && policy_mgr_is_dnsc_set(vdev))
 		wlan_hdd_send_avoid_freq_for_dnbs(hdd_ctx, 0);
-
-	hdd_cancel_ip_notifier_work(adapter);
 
 	/* to do: sap vdev release moved to deinit ap session,
 	 * but as hdd_hostapd_stop_no_trans call hdd_stop_adapter
@@ -9886,6 +9971,20 @@ static void hdd_stop_sap_go_adapter(struct hdd_adapter *adapter)
 		hdd_objmgr_put_vdev_by_user(vdev, WLAN_INIT_DEINIT_ID);
 	hdd_vdev_destroy(link_info);
 	mutex_unlock(&hdd_ctx->sap_lock);
+}
+
+static void hdd_stop_sap_go_adapter(struct hdd_adapter *adapter)
+{
+	struct wlan_hdd_link_info *link_info;
+	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+
+	hdd_adapter_for_each_active_link_info(adapter, link_info)
+		hdd_stop_sap_go_per_link(link_info);
+
+	/* Clear all the cached sta info */
+	hdd_clear_cached_sta_info(adapter);
+
+	hdd_cancel_ip_notifier_work(adapter);
 	ucfg_ipa_flush(hdd_ctx->pdev);
 }
 
@@ -9903,6 +10002,22 @@ static void hdd_stop_ocb_adapter(struct hdd_adapter *adapter)
 	if (vdev)
 		hdd_objmgr_put_vdev_by_user(vdev, WLAN_INIT_DEINIT_ID);
 	hdd_vdev_destroy(link_info);
+}
+
+static void hdd_flush_scan_block_work(struct hdd_adapter *adapter)
+{
+	struct work_struct *work;
+	char *name = NULL;
+	name = adapter->dev->name;
+
+	work = &adapter->scan_block_work;
+	if (!work->func) {
+		hdd_err("iface: %s Scan block work has been already cleaned up",
+			!name ? "none" : name);
+		return;
+	}
+
+	cds_flush_work(work);
 }
 
 QDF_STATUS hdd_stop_adapter_ext(struct hdd_context *hdd_ctx,
@@ -9925,7 +10040,7 @@ QDF_STATUS hdd_stop_adapter_ext(struct hdd_context *hdd_ctx,
 		wlan_hdd_cfg80211_deregister_frames(adapter);
 
 	hdd_stop_tsf_sync(adapter);
-	cds_flush_work(&adapter->scan_block_work);
+	hdd_flush_scan_block_work(adapter);
 	wlan_hdd_cfg80211_scan_block(adapter);
 	hdd_debug("Disabling queues");
 	wlan_hdd_netif_queue_control(adapter,
@@ -12765,6 +12880,19 @@ void wlan_hdd_link_speed_update(struct wlan_objmgr_psoc *psoc,
 }
 #endif
 
+#ifdef IPA_WDS_EASYMESH_FEATURE
+static void
+hdd_dp_register_ipa_wds_callbacks(struct wlan_dp_psoc_callbacks *cb_obj)
+{
+	cb_obj->wlan_dp_ipa_wds_peer_cb = hdd_ipa_peer_map_unmap_event;
+}
+#else /* !IPA_WDS_EASYMESH_FEATURE */
+static inline void
+hdd_dp_register_ipa_wds_callbacks(struct wlan_dp_psoc_callbacks *cb_obj)
+{
+}
+#endif /* IPA_WDS_EASYMESH_FEATURE */
+
 /**
  * hdd_dp_register_callbacks() - Register DP callbacks with HDD
  * @hdd_ctx: HDD context
@@ -12808,6 +12936,8 @@ static void hdd_dp_register_callbacks(struct hdd_context *hdd_ctx)
 	cb_obj.dp_tsf_timestamp_rx = hdd_tsf_timestamp_rx;
 	cb_obj.dp_gro_rx_legacy_get_napi = hdd_legacy_gro_get_napi;
 	cb_obj.link_monitoring_cb = wlan_hdd_link_speed_update;
+
+	hdd_dp_register_ipa_wds_callbacks(&cb_obj);
 
 	os_if_dp_register_hdd_callbacks(hdd_ctx->psoc, &cb_obj);
 }
@@ -14821,6 +14951,7 @@ static void hdd_cfg_params_init(struct hdd_context *hdd_ctx)
 	config->exclude_selftx_from_cca_busy =
 			cfg_get(psoc, CFG_EXCLUDE_SELFTX_FROM_CCA_BUSY_TIME);
 	hdd_init_link_state_cfg(config, psoc);
+	config->sub_20_ch_width = cfg_get(psoc, CFG_SUB_20_CHANNEL_WIDTH);
 }
 
 #ifdef CONNECTION_ROAMING_CFG
@@ -15127,6 +15258,14 @@ QDF_STATUS hdd_adapter_fill_link_address(struct hdd_adapter *adapter)
 
 	if (opmode == QDF_SAP_MODE) {
 		link_info = adapter->deflink;
+
+		/* For multi link sap, link_addr is from hostapd,
+		 * In SSR, link_addr is needed for recover sap, so
+		 * not to clear it.
+		 */
+		if (cds_is_driver_recovering())
+			return QDF_STATUS_SUCCESS;
+
 		qdf_copy_macaddr(&link_info->link_addr, &adapter->mac_addr);
 		return QDF_STATUS_SUCCESS;
 	}
@@ -15438,13 +15577,13 @@ int hdd_start_ap_adapter(struct hdd_adapter *adapter, bool rtnl_held)
 {
 	QDF_STATUS status;
 	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
-	struct wlan_hdd_link_info *link_info = adapter->deflink;
+	struct wlan_hdd_link_info *link_info;
 
 	hdd_enter();
 
-	if (test_bit(SME_SESSION_OPENED, &link_info->link_flags)) {
+	if (test_bit(SME_SESSION_OPENED, &adapter->deflink->link_flags)) {
 		hdd_err("session is already opened, %d",
-			link_info->vdev_id);
+			adapter->deflink->vdev_id);
 		return qdf_status_to_os_return(QDF_STATUS_SUCCESS);
 	}
 
@@ -15460,10 +15599,12 @@ int hdd_start_ap_adapter(struct hdd_adapter *adapter, bool rtnl_held)
 		return qdf_status_to_os_return(status);
 	}
 
-	status = hdd_start_ap_link(link_info);
-	if (QDF_STATUS_SUCCESS != status) {
-		hdd_err("fail to start ap link %d", status);
-		return qdf_status_to_os_return(status);
+	hdd_adapter_for_each_active_link_info(adapter, link_info) {
+		status = hdd_start_ap_link(link_info);
+		if (QDF_STATUS_SUCCESS != status) {
+			hdd_err("fail to start ap link %d", status);
+			goto stop_ap_link;
+		}
 	}
 
 	hdd_sap_set_acs_with_more_param(hdd_ctx);
@@ -15504,6 +15645,13 @@ int hdd_start_ap_adapter(struct hdd_adapter *adapter, bool rtnl_held)
 
 	hdd_exit();
 	return 0;
+
+stop_ap_link:
+	hdd_adapter_for_each_active_link_info(adapter, link_info) {
+		hdd_stop_ap_link(link_info);
+	}
+
+	return qdf_status_to_os_return(status);
 }
 
 #if defined(QCA_LL_TX_FLOW_CONTROL_V2) || defined(QCA_LL_PDEV_TX_FLOW_CONTROL)
@@ -15544,8 +15692,6 @@ static int hdd_update_cds_config(struct hdd_context *hdd_ctx)
 {
 	struct cds_config_info *cds_cfg;
 	int value;
-	uint8_t band_capability;
-	uint32_t band_bitmap;
 	uint8_t ito_repeat_count;
 	bool crash_inject;
 	bool self_recovery;
@@ -15606,7 +15752,7 @@ static int hdd_update_cds_config(struct hdd_context *hdd_ctx)
 		ucfg_dp_is_rx_common_thread_enabled(hdd_ctx->psoc);
 	ucfg_mlme_get_sap_max_peers(hdd_ctx->psoc, &value);
 	cds_cfg->max_station = value;
-	cds_cfg->sub_20_channel_width = WLAN_SUB_20_CH_WIDTH_NONE;
+	cds_cfg->sub_20_channel_width = hdd_ctx->config->sub_20_ch_width;
 	cds_cfg->max_msdus_per_rxinorderind =
 		cfg_get(hdd_ctx->psoc, CFG_DP_MAX_MSDUS_PER_RXIND);
 	cds_cfg->self_recovery_enabled = self_recovery;
@@ -15614,12 +15760,6 @@ static int hdd_update_cds_config(struct hdd_context *hdd_ctx)
 
 	cds_cfg->ito_repeat_count = ito_repeat_count;
 
-	status = ucfg_mlme_get_band_capability(hdd_ctx->psoc, &band_bitmap);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto exit;
-
-	band_capability = wlan_reg_band_bitmap_to_band_info(band_bitmap);
-	cds_cfg->bandcapability = band_capability;
 	cds_cfg->num_vdevs = hdd_ctx->config->num_vdevs;
 	cds_cfg->enable_tx_compl_tsf64 =
 		hdd_tsf_is_tsf64_tx_set(hdd_ctx);
@@ -16678,7 +16818,7 @@ static int hdd_features_init(struct hdd_context *hdd_ctx)
 	bool rf_test_mode;
 	bool std_6ghz_conn_policy;
 	uint32_t fw_data_stall_evt;
-	bool disable_vlp_sta_conn_sp_ap;
+	bool disable_vlp_sta_conn_sp_ap, relaxed_lpi_conn_policy;
 
 	hdd_enter();
 
@@ -16784,6 +16924,16 @@ static int hdd_features_init(struct hdd_context *hdd_ctx)
 	}
 	if (std_6ghz_conn_policy)
 		wlan_cm_set_standard_6ghz_conn_policy(hdd_ctx->psoc, true);
+
+	status = ucfg_mlme_is_relaxed_lpi_conn_policy_enabled(hdd_ctx->psoc,
+						&relaxed_lpi_conn_policy);
+
+	if (!QDF_IS_STATUS_SUCCESS(status)) {
+		hdd_err("Get relaxed LPI connection policy failed");
+		return QDF_STATUS_E_FAILURE;
+	}
+	if (relaxed_lpi_conn_policy)
+		wlan_cm_set_relaxed_lpi_conn_policy(hdd_ctx->psoc, true);
 
 	status = ucfg_mlme_is_disable_vlp_sta_conn_to_sp_ap_enabled(
 						hdd_ctx->psoc,
@@ -17297,7 +17447,7 @@ int hdd_wlan_stop_modules(struct hdd_context *hdd_ctx, bool ftm_mode)
 		goto done;
 	case DRIVER_MODULES_ENABLED:
 		hdd_debug("Wlan transitioning (CLOSED <- ENABLED)");
-
+		hdd_son_send_module_status_event(HDD_WLAN_STATUS_EVT_DOWN);
 		if (hdd_get_conparam() == QDF_GLOBAL_FTM_MODE) {
 			hdd_disable_power_management(hdd_ctx);
 			break;
@@ -19929,6 +20079,8 @@ static QDF_STATUS hdd_component_init(void)
 	if (QDF_IS_STATUS_ERROR(status))
 		goto ll_sap_deinit;
 
+	hdd_register_cstats_ops();
+
 	return QDF_STATUS_SUCCESS;
 
 ll_sap_deinit:
@@ -22450,6 +22602,74 @@ int hdd_we_set_ch_width(struct wlan_hdd_link_info *link_info, int ch_width)
 
 	hdd_err("Invalid ch_width %d", ch_width);
 	return -EINVAL;
+}
+
+QDF_STATUS
+hdd_update_sub20_chan_width(struct wlan_hdd_link_info *link_info,
+			    enum cfg_sub_20_channel_width sub_20_ch_width)
+{
+	QDF_STATUS status;
+	enum hdd_dot11_mode dot11_mode;
+	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(link_info->adapter);
+
+	if (ucfg_policy_mgr_get_connection_count(hdd_ctx->psoc)) {
+		hdd_info("sub20MHz chan width updating is not allowed when connection is present");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	status = cds_set_sub_20_channel_width(sub_20_ch_width);
+	if (status == QDF_STATUS_E_ALREADY) {
+		hdd_debug("sub20MHz chan width is already %u", sub_20_ch_width);
+		status = QDF_STATUS_SUCCESS;
+		goto out;
+	} else if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("failed to set sub20MHz chan width: %u", status);
+		goto out;
+	}
+
+	hdd_debug("sub20MHz chan width to set: %u", sub_20_ch_width);
+	status = ucfg_mlme_set_sub_20_chan_width(hdd_ctx->psoc,
+						 sub_20_ch_width);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("failed to set mlme sub20MHz chan width: %u", status);
+		goto out;
+	}
+
+	hdd_update_vdev_nss(hdd_ctx);
+	status = hdd_update_score_config(hdd_ctx);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("failed to update score config: %u", status);
+		goto out;
+	}
+
+	dot11_mode = hdd_ctx->config->dot11Mode;
+	status = sme_set_phy_mode(hdd_ctx->mac_handle,
+				  hdd_cfg_xlate_to_csr_phy_mode(dot11_mode));
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("failed to set phy mode: %u", status);
+		goto out;
+	}
+
+	if (!hdd_update_config_cfg(hdd_ctx)) {
+		status = QDF_STATUS_E_FAILURE;
+		goto out;
+	}
+
+	status = hdd_set_policy_mgr_user_cfg(hdd_ctx);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("failed to set policy mgr user config: %u", status);
+		goto out;
+	}
+
+	status = sme_update_channel_list(hdd_ctx->mac_handle);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("failed to update channel list: %u", status);
+		goto out;
+	}
+
+	hdd_ctx->config->sub_20_ch_width = sub_20_ch_width;
+out:
+	return status;
 }
 
 /* Register the module init/exit functions */

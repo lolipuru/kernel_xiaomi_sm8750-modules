@@ -119,6 +119,7 @@ lim_post_msg_to_process_deferred_queue(struct mac_context *mac)
 
 #define SET_LIM_PROCESS_DEFD_MESGS(mac, val) \
 	mac->lim.gLimProcessDefdMsgs = val; \
+	mac->lim.defer_caller = __func__; \
 	pe_debug("Defer LIM msg %d", val); \
 	lim_post_msg_to_process_deferred_queue(mac);
 
@@ -637,6 +638,7 @@ bool lim_enable_cts_to_self_for_exempted_iot_ap(
  * @mac_ctx: Pointer to mac context
  * @session: pe session
  * @bss_desc: Pointer to bss description
+ * @phy_mode: phy mode of scan entry
  *
  * This api will fill lim pe session with info
  * from bss description
@@ -646,7 +648,8 @@ bool lim_enable_cts_to_self_for_exempted_iot_ap(
 QDF_STATUS
 lim_fill_pe_session(struct mac_context *mac_ctx,
 		    struct pe_session *session,
-		    struct bss_description *bss_desc);
+		    struct bss_description *bss_desc,
+		    enum wlan_phymode phy_mode);
 
 /**
  * lim_update_omn_ie_ch_width() - update omn_ie_ch_width in struct
@@ -966,7 +969,7 @@ lim_mlo_roam_delete_link_peer(struct pe_session *pe_session,
 }
 #endif /* WLAN_FEATURE_ROAM_OFFLOAD && WLAN_FEATURE_11BE_MLO */
 
-#if defined(WLAN_FEATURE_MULTI_LINK_SAP) && defined(WLAN_FEATURE_11BE_MLO)
+#if defined(WLAN_FEATURE_11BE_MLO)
 /**
  * lim_update_cuflag_bpcc_each_link() - Update cu flag and bpcc from
  * rx mlo link info sync event to pe session.

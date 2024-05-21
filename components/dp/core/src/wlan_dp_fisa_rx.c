@@ -135,6 +135,213 @@ void dp_fisa_record_pkt(struct dp_fisa_rx_sw_ft *fisa_flow, qdf_nbuf_t nbuf,
 
 #endif
 
+#ifdef WLAN_DP_FLOW_BALANCE_SUPPORT
+/* time in us */
+#define LONG_LIVED_FLOW_TIME_THRESH 1000000
+#define ACTIVE_FLOW_TIME_THRESH 100000
+
+static inline void
+dp_fisa_update_flow_balance_stats(struct dp_fisa_rx_sw_ft *fisa_flow,
+				  struct wlan_dp_psoc_context *dp_ctx)
+{
+	if (!wlan_dp_fb_enabled(dp_ctx))
+		return;
+
+	fisa_flow->num_pkts++;
+	fisa_flow->last_pkt_rcvd_tstamp = qdf_get_log_timestamp();
+}
+
+/**
+ * dp_fisa_calc_flow_stats_avg - API called from dp_lb_compute_stats_average
+ * to calculate the flow stats average for every load balance sample
+ * time threshold(1sec). This average will get used in flow balance.
+ * Iterate through the software FST table and compute the average only for
+ * the long lived active flow.
+ * @dp_ctx: dp context
+ *
+ * Return: None
+ */
+void dp_fisa_calc_flow_stats_avg(struct wlan_dp_psoc_context *dp_ctx)
+{
+	struct dp_rx_fst *rx_fst = dp_ctx->rx_fst;
+	struct dp_fisa_rx_sw_ft *sw_ft_base;
+	struct dp_fisa_rx_sw_ft *sw_ft_entry;
+	qdf_time_t cur_tstamp;
+	uint64_t time_us;
+	uint64_t flow_init_time_us;
+	uint64_t last_pkt_rcvd_time_us;
+	uint64_t pkts_per_sec;
+	uint64_t num_pkts;
+	int i;
+
+	if (!wlan_dp_fb_enabled(dp_ctx) || !rx_fst)
+		return;
+
+	cur_tstamp = qdf_get_log_timestamp();
+
+	qdf_spin_lock_bh(&rx_fst->dp_rx_fst_lock);
+	sw_ft_base = (struct dp_fisa_rx_sw_ft *)rx_fst->base;
+
+	for (i = 0; i < rx_fst->max_entries; i++) {
+		sw_ft_entry = &sw_ft_base[i];
+
+		if (!sw_ft_entry->is_populated)
+			continue;
+
+		flow_init_time_us =
+			qdf_log_timestamp_to_usecs(cur_tstamp -
+						   sw_ft_entry->flow_init_ts);
+		last_pkt_rcvd_time_us =
+		qdf_log_timestamp_to_usecs(qdf_get_log_timestamp() -
+					   sw_ft_entry->last_pkt_rcvd_tstamp);
+
+		/* calculate avg only for the long lived and active flow */
+		if ((flow_init_time_us < LONG_LIVED_FLOW_TIME_THRESH) ||
+		    (last_pkt_rcvd_time_us > ACTIVE_FLOW_TIME_THRESH)) {
+			sw_ft_entry->elig_for_balance = false;
+			sw_ft_entry->num_pkts = sw_ft_entry->num_pkts_prev;
+			sw_ft_entry->last_avg_cal_tstamp = cur_tstamp;
+			continue;
+		}
+
+		sw_ft_entry->elig_for_balance = true;
+
+		if (!sw_ft_entry->num_pkts_prev) {
+			sw_ft_entry->num_pkts_prev = sw_ft_entry->num_pkts;
+			sw_ft_entry->last_avg_cal_tstamp = cur_tstamp;
+			continue;
+		} else {
+			num_pkts = sw_ft_entry->num_pkts -
+					 sw_ft_entry->num_pkts_prev;
+			sw_ft_entry->num_pkts_prev = sw_ft_entry->num_pkts;
+			time_us = cur_tstamp - sw_ft_entry->last_avg_cal_tstamp;
+			pkts_per_sec = (num_pkts * 1000000) /
+					qdf_log_timestamp_to_usecs(time_us);
+
+			if (!sw_ft_entry->avg_pkts_per_sec)
+				sw_ft_entry->avg_pkts_per_sec = pkts_per_sec;
+			else
+				sw_ft_entry->avg_pkts_per_sec =
+				((sw_ft_entry->avg_pkts_per_sec * 25) / 100) +
+				((pkts_per_sec * 75) / 100);
+
+			sw_ft_entry->last_avg_cal_tstamp = cur_tstamp;
+		}
+	}
+
+	qdf_spin_unlock_bh(&rx_fst->dp_rx_fst_lock);
+}
+
+/**
+ * dp_fisa_flow_balance_build_flow_map_tbl - Build per ring flow map table
+ * Iterate over the software fst table and build flow map table which tells
+ * the flows to ring mapping. Also store the flow detils in the flow map
+ * table which will be used in flow balancing.
+ * @dp_ctx: DP context
+ * @map_tbl: per ring flow map table of MAX_REO_DEST_RINGS
+ * @total_flow_avg_pkts: sum of all the flows average packets per second
+ * @total_num_flows: total number of flows eligible for balance
+ *
+ * Return: none
+ */
+void
+dp_fisa_flow_balance_build_flow_map_tbl(struct wlan_dp_psoc_context *dp_ctx,
+					struct wlan_dp_rx_ring_fm_tbl *map_tbl,
+					uint32_t *total_flow_avg_pkts,
+					uint32_t *total_num_flows)
+{
+	struct dp_rx_fst *rx_fst = dp_ctx->rx_fst;
+	struct dp_fisa_rx_sw_ft *sw_ft_base;
+	struct dp_fisa_rx_sw_ft *sw_ft_entry;
+	struct wlan_dp_rx_ring_fm_tbl *ring;
+	struct wlan_dp_flow *flow;
+	int i;
+
+	qdf_spin_lock_bh(&rx_fst->dp_rx_fst_lock);
+	sw_ft_base = (struct dp_fisa_rx_sw_ft *)rx_fst->base;
+
+	for (i = 0; i < rx_fst->max_entries; i++) {
+		sw_ft_entry = &sw_ft_base[i];
+		if (!sw_ft_entry->is_populated ||
+		    !sw_ft_entry->elig_for_balance)
+			continue;
+
+		if (sw_ft_entry->napi_id >= MAX_REO_DEST_RINGS)
+			continue;
+
+		ring = &map_tbl[sw_ft_entry->napi_id];
+		flow = &ring->flow_list[ring->num_flows];
+		flow->flow_id = sw_ft_entry->flow_id;
+		flow->avg_pkt_cnt = sw_ft_entry->avg_pkts_per_sec;
+		ring->total_avg_pkts += sw_ft_entry->avg_pkts_per_sec;
+		ring->ring_id = sw_ft_entry->napi_id;
+		ring->num_flows++;
+
+		*total_flow_avg_pkts += sw_ft_entry->avg_pkts_per_sec;
+		*total_num_flows += 1;
+	}
+
+	qdf_spin_unlock_bh(&rx_fst->dp_rx_fst_lock);
+}
+
+#define DP_RX_HASH_START_VALUE 16
+
+/**
+ * dp_fisa_update_fst_table - Update fst table for the migrated flows
+ * @dp_ctx: dp context
+ * @migrate_list: migrated flows list
+ * @mig_flow_cnt: migrated flows count
+ *
+ * Return: none
+ */
+void dp_fisa_update_fst_table(struct wlan_dp_psoc_context *dp_ctx,
+			      struct wlan_dp_mig_flow *migrate_list,
+			      uint32_t mig_flow_cnt)
+{
+	struct dp_rx_fst *rx_fst = dp_ctx->rx_fst;
+	struct dp_fisa_rx_sw_ft *sw_ft_entry;
+	struct dp_fisa_rx_sw_ft *sw_ft_base;
+	struct wlan_dp_mig_flow *flow_details;
+	int i;
+	uint16_t flow_index;
+
+	sw_ft_base = (struct dp_fisa_rx_sw_ft *)rx_fst->base;
+
+	for (i = 0; i < mig_flow_cnt; i++) {
+		flow_details = &migrate_list[i];
+		flow_index = flow_details->flow_id;
+
+		sw_ft_entry = &sw_ft_base[flow_index];
+		sw_ft_entry->is_mig = true;
+		sw_ft_entry->prev_napi_id = sw_ft_entry->napi_id;
+		sw_ft_entry->napi_id = flow_details->napi_id;
+
+		/* Handle the case of hash based routing enabled/disabled */
+		if (flow_details->napi_id > 3)
+			sw_ft_entry->reo_dest_indication =
+						DP_RX_HASH_START_VALUE + flow_details->napi_id - 1;
+		else
+			sw_ft_entry->reo_dest_indication =
+						DP_RX_HASH_START_VALUE + flow_details->napi_id;
+
+		hal_rx_flow_cmem_update_reo_dst_ind(dp_ctx->hal_soc,
+						    rx_fst->cmem_ba, flow_index,
+						    sw_ft_entry->reo_dest_indication);
+	}
+
+	if (rx_fst->fse_cache_flush_allow &&
+	    qdf_atomic_inc_return(&rx_fst->fse_cache_flush_posted) == 1)
+		qdf_timer_start(&rx_fst->fse_cache_flush_timer,
+				FSE_CACHE_FLUSH_TIME_OUT);
+}
+#else
+static inline void
+dp_fisa_update_flow_balance_stats(struct dp_fisa_rx_sw_ft *fisa_flow,
+				  struct wlan_dp_psoc_context *dp_ctx)
+{
+}
+#endif
+
 /**
  * wlan_dp_nbuf_skip_rx_pkt_tlv() - Function to skip the TLVs and
  *				    mac header from msdu
@@ -226,7 +433,8 @@ wlan_dp_get_flow_tuple_from_nbuf(struct wlan_dp_psoc_context *dp_ctx,
 
 	flow_tuple_info->dest_port = qdf_ntohs(tcph->dest);
 	flow_tuple_info->src_port = qdf_ntohs(tcph->source);
-	if (dp_fisa_is_ipsec_connection(flow_tuple_info))
+	if (dp_fisa_is_ipsec_connection(flow_tuple_info) ||
+	    QDF_NBUF_CB_RX_TCP_PROTO(nbuf))
 		flow_tuple_info->is_exception = 1;
 	else
 		flow_tuple_info->is_exception = 0;
@@ -580,6 +788,8 @@ dp_rx_fisa_add_ft_entry(struct dp_vdev *vdev,
 			sw_ft_entry->is_flow_tcp = proto_params.tcp_proto;
 			sw_ft_entry->is_flow_udp = proto_params.udp_proto;
 			sw_ft_entry->add_timestamp = qdf_get_log_timestamp();
+			if (QDF_NBUF_CB_RX_TCP_PROTO(nbuf))
+				sw_ft_entry->rx_flow_tuple_info.is_exception = true;
 
 			is_fst_updated = true;
 			fisa_hdl->add_flow_count++;
@@ -1221,7 +1431,8 @@ dp_rx_get_fisa_flow(struct dp_rx_fst *fisa_hdl, struct dp_vdev *vdev,
 	hal_soc_handle_t hal_soc_hdl = fisa_hdl->dp_ctx->hal_soc;
 	QDF_STATUS status;
 
-	if (QDF_NBUF_CB_RX_TCP_PROTO(nbuf))
+	if (!fisa_hdl->add_tcp_flow_to_fst &&
+	    QDF_NBUF_CB_RX_TCP_PROTO(nbuf))
 		return sw_ft_entry;
 
 	rx_tlv_hdr = qdf_nbuf_data(nbuf);
@@ -1778,6 +1989,11 @@ static bool dp_fisa_aggregation_should_stop(
 	uint32_t l3_hdr_offset, l4_hdr_offset, l2_l3_hdr_len;
 	uint32_t cumulative_ip_len_delta = hal_cumulative_ip_len -
 					   fisa_flow->hal_cumultive_ip_len;
+	uint32_t ip_csum_err = 0;
+	uint32_t tcp_udp_csum_err = 0;
+
+	hal_rx_tlv_csum_err_get(fisa_flow->dp_ctx->hal_soc, rx_tlv_hdr,
+				&ip_csum_err, &tcp_udp_csum_err);
 
 	hal_rx_get_l3_l4_offsets(fisa_flow->dp_ctx->hal_soc, rx_tlv_hdr,
 				 &l3_hdr_offset, &l4_hdr_offset);
@@ -1785,6 +2001,12 @@ static bool dp_fisa_aggregation_should_stop(
 	l2_l3_hdr_len = l3_hdr_offset + l4_hdr_offset;
 
 	/**
+	 * If l3/l4 checksum validation failed for MSDU, then data
+	 * is not trust worthy to build aggregated skb, so do not
+	 * allow for aggregation. And also in aggregated case it
+	 * is job of driver to make sure checksum is valid before
+	 * computing partial checksum for final aggregated skb.
+	 *
 	 * kernel network panic if UDP data length < 12 bytes get aggregated,
 	 * no solid conclusion currently, as a SW WAR, only allow UDP
 	 * aggregation if UDP data length >= 16 bytes.
@@ -1797,6 +2019,7 @@ static bool dp_fisa_aggregation_should_stop(
 	 * otherwise, current fisa flow aggregation should be stopped.
 	 */
 	if (fisa_flow->do_not_aggregate ||
+	    (ip_csum_err || tcp_udp_csum_err) ||
 	    msdu_len < (l2_l3_hdr_len + FISA_MIN_L4_AND_DATA_LEN) ||
 	    hal_cumulative_ip_len <= fisa_flow->hal_cumultive_ip_len ||
 	    cumulative_ip_len_delta > FISA_MAX_SINGLE_CUMULATIVE_IP_LEN ||
@@ -1838,6 +2061,12 @@ static int dp_add_nbuf_to_fisa_flow(struct dp_rx_fst *fisa_hdl,
 	 * the one configured.
 	 */
 	if (qdf_unlikely(fisa_flow->napi_id != napi_id)) {
+		if (fisa_flow->is_mig && (fisa_flow->prev_napi_id == napi_id)) {
+			DP_STATS_INC(fisa_hdl,
+				     reo_mismatch.allow_mig_mismatch, 1);
+			return FISA_AGGR_NOT_ELIGIBLE;
+		}
+
 		fse_metadata =
 			hal_rx_msdu_fse_metadata_get(hal_soc_hdl, rx_tlv_hdr);
 		cce_match = hal_rx_msdu_cce_match_get(hal_soc_hdl, rx_tlv_hdr);
@@ -1995,13 +2224,16 @@ invalid_fisa_assist:
 /**
  * dp_is_nbuf_bypass_fisa() - FISA bypass check for RX frame
  * @nbuf: RX nbuf pointer
+ * @vdev: vdev pointer
+ * @add_tcp_flow_to_fst: add tcp flow to the fst table
  *
  * Return: true if FISA should be bypassed else false
  */
-static bool dp_is_nbuf_bypass_fisa(qdf_nbuf_t nbuf)
+static bool dp_is_nbuf_bypass_fisa(qdf_nbuf_t nbuf, struct dp_vdev *vdev,
+				   bool add_tcp_flow_to_fst)
 {
 	/* RX frame from non-regular path or DHCP packet */
-	if (QDF_NBUF_CB_RX_TCP_PROTO(nbuf) ||
+	if ((!add_tcp_flow_to_fst && QDF_NBUF_CB_RX_TCP_PROTO(nbuf)) ||
 	    qdf_nbuf_is_exc_frame(nbuf) ||
 	    qdf_nbuf_is_ipv4_dhcp_pkt(nbuf) ||
 	    qdf_nbuf_is_da_mcbc(nbuf))
@@ -2094,7 +2326,8 @@ QDF_STATUS dp_fisa_rx(struct wlan_dp_psoc_context *dp_ctx,
 		qdf_nbuf_set_next(head_nbuf, NULL);
 
 		/* bypass FISA check */
-		if (dp_is_nbuf_bypass_fisa(head_nbuf))
+		if (dp_is_nbuf_bypass_fisa(head_nbuf, vdev,
+					   dp_fisa_rx_hdl->add_tcp_flow_to_fst))
 			goto deliver_nbuf;
 
 		if (dp_fisa_disallowed_for_vdev(soc, vdev, rx_ctx_id))
@@ -2132,6 +2365,9 @@ QDF_STATUS dp_fisa_rx(struct wlan_dp_psoc_context *dp_ctx,
 		/* Add new flow if the there is no ongoing flow */
 		fisa_flow = dp_rx_get_fisa_flow(dp_fisa_rx_hdl, vdev,
 						head_nbuf);
+
+		if (fisa_flow)
+			dp_fisa_update_flow_balance_stats(fisa_flow, dp_ctx);
 
 		/* Do not FISA aggregate IPSec packets */
 		if (fisa_flow &&

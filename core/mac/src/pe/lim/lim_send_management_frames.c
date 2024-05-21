@@ -62,6 +62,7 @@
 #include "wlan_mlo_mgr_sta.h"
 #include "wlan_t2lm_api.h"
 #include "wlan_connectivity_logging.h"
+#include "wlan_mlo_mgr_ap.h"
 
 /**
  *
@@ -711,9 +712,15 @@ lim_send_probe_rsp_mgmt_frame(struct mac_context *mac_ctx,
 		cfg = mac_ctx->mlme_cfg->sap_cfg.beacon_interval;
 		frm->BeaconInterval.interval = (uint16_t) cfg;
 	}
-
+	/*
+	 * set it to true to make it has possible to
+	 * get cu flag from fw side if probe request
+	 * offload to host in the mlo sap case (if probe
+	 * request carry on wps ie or p2p ie, it will
+	 * offload to host).
+	 */
 	populate_dot11f_capabilities(mac_ctx, &frm->Capabilities,
-				     pe_session, false);
+				     pe_session, true);
 	populate_dot11f_ssid(mac_ctx, (tSirMacSSid *) ssid, &frm->SSID);
 	populate_dot11f_supp_rates(mac_ctx, POPULATE_DOT11F_RATES_OPERATIONAL,
 		&frm->SuppRates, pe_session);
@@ -1958,6 +1965,13 @@ lim_send_assoc_rsp_mgmt_frame(struct mac_context *mac_ctx,
 		      frm.vendor_vht_ie.present, frm.he_cap.present,
 		      frm.eht_cap.present);
 
+	lim_cp_stats_cstats_log_assoc_resp_evt(pe_session, CSTATS_DIR_TX,
+					       status_code, aid, mac_hdr->bssId,
+					       mac_hdr->da, frm.HTCaps.present,
+					       frm.VHTCaps.present,
+					       frm.he_cap.present,
+					       frm.eht_cap.present, false);
+
 	if (!wlan_reg_is_24ghz_ch_freq(pe_session->curr_op_freq) ||
 	    pe_session->opmode == QDF_P2P_CLIENT_MODE ||
 	    pe_session->opmode == QDF_P2P_GO_MODE)
@@ -2212,6 +2226,9 @@ static void wlan_send_tx_complete_event(struct mac_context *mac, qdf_nbuf_t buf,
 					mac_hdr, params->vdev_id, status,
 					qdf_tx_complete, mac->lim.bss_rssi,
 					algo, type, seq, 0, WLAN_AUTH_REQ);
+			lim_cp_stats_cstats_log_auth_evt(pe_session,
+							 CSTATS_DIR_TX, algo,
+							 seq, status);
 			return;
 		}
 
@@ -3098,6 +3115,16 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 	pe_nofl_info("Assoc req TX: vdev %d to "QDF_MAC_ADDR_FMT" seq num %d",
 		     pe_session->vdev_id, QDF_MAC_ADDR_REF(pe_session->bssId),
 		     mac_ctx->mgmtSeqNum);
+
+	lim_cp_stats_cstats_log_assoc_req_evt(pe_session, CSTATS_DIR_TX,
+					      pe_session->bssId,
+					      mac_hdr->sa,
+					      frm->SSID.num_ssid,
+					      frm->SSID.ssid,
+					      frm->HTCaps.present,
+					      frm->VHTCaps.present,
+					      frm->he_cap.present,
+					      frm->eht_cap.present, false);
 
 	min_rid = lim_get_min_session_txrate(pe_session, NULL);
 	lim_diag_event_report(mac_ctx, WLAN_PE_DIAG_ASSOC_START_EVENT,
@@ -4443,6 +4470,9 @@ lim_send_disassoc_mgmt_frame(struct mac_context *mac,
 					     mac->lim.bss_rssi, 0, 0, 0, 0,
 					     WLAN_DISASSOC_TX);
 
+		lim_cp_stats_cstats_log_disassoc_evt(pe_session, CSTATS_DIR_TX,
+						     nReason);
+
 		/* Queue Disassociation frame in high priority WQ */
 		qdf_status = wma_tx_frame(mac, pPacket, (uint16_t) nBytes,
 					TXRX_FRM_802_11_MGMT,
@@ -4695,6 +4725,9 @@ lim_send_deauth_mgmt_frame(struct mac_context *mac,
 					     QDF_TX_RX_STATUS_OK,
 					     mac->lim.bss_rssi, 0, 0, 0, 0,
 					     WLAN_DEAUTH_TX);
+
+		lim_cp_stats_cstats_log_deauth_evt(pe_session, CSTATS_DIR_TX,
+						   nReason);
 
 		/* Queue Disassociation frame in high priority WQ */
 		qdf_status =
@@ -7309,6 +7342,67 @@ error_t2lm_req:
 }
 #endif
 
+#ifdef WLAN_FEATURE_11BE_MLO
+QDF_STATUS
+lim_send_ttlm_action_rsp_frame(uint8_t token,
+			       enum wlan_t2lm_resp_frm_type status_code,
+			       tSirMacAddr peer_mac)
+{
+	struct mac_context *mac_ctx;
+	struct pe_session *session;
+	struct wlan_mlo_peer_context *ml_peer;
+	uint8_t vdev_id = 0;
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	struct wlan_objmgr_vdev *vdev;
+	struct wlan_objmgr_peer *peer;
+
+	mac_ctx = cds_get_context(QDF_MODULE_ID_PE);
+	if (!mac_ctx)
+		return QDF_STATUS_E_FAILURE;
+
+	peer = wlan_objmgr_get_peer_by_mac(mac_ctx->psoc, peer_mac,
+					   WLAN_LEGACY_MAC_ID);
+	if (!peer) {
+		pe_err("Peer is null");
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	ml_peer = peer->mlo_peer_ctx;
+	if (!ml_peer) {
+		status = QDF_STATUS_E_FAILURE;
+		goto peer_release;
+	}
+
+	vdev = mlo_get_first_vdev_by_ml_peer(ml_peer);
+	if (!vdev) {
+		status = QDF_STATUS_E_FAILURE;
+		goto peer_release;
+	}
+
+	vdev_id = wlan_vdev_get_id(vdev);
+	session = pe_find_session_by_vdev_id(mac_ctx, vdev_id);
+	if (!session) {
+		pe_err("session not found for given vdev_id %d", vdev_id);
+		goto vdev_release;
+	}
+
+	if (lim_send_t2lm_action_rsp_frame(mac_ctx, peer_mac, session, token,
+					   status_code) != QDF_STATUS_SUCCESS) {
+		pe_err("T2LM action response frame not sent");
+	} else {
+		wlan_send_peer_level_tid_to_link_mapping(vdev, peer);
+		wlan_connectivity_t2lm_status_event(vdev);
+	}
+
+vdev_release:
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLO_MGR_ID);
+peer_release:
+	wlan_objmgr_peer_release_ref(peer, WLAN_LEGACY_MAC_ID);
+
+	return status;
+}
+#endif
+
 /**
  * lim_delba_tx_complete_cnf() - Confirmation for Delba OTA
  * @context: pointer to global mac
@@ -7540,8 +7634,7 @@ static void lim_tx_mgmt_frame(struct mac_context *mac_ctx, uint8_t vdev_id,
 	MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_TX_COMPLETE,
 		session_id, qdf_status));
 	if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
-		pe_err("*** Could not send Auth frame (subType: %d), retCode=%X ***",
-			fc->subType, qdf_status);
+		pe_err("Could not send Auth frame, retCode=%X", qdf_status);
 		mac_ctx->auth_ack_status = LIM_TX_FAILED;
 		auth_ack_status = SENT_FAIL;
 		lim_diag_event_report(mac_ctx, WLAN_PE_DIAG_AUTH_ACK_EVENT,

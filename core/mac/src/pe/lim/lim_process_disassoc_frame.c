@@ -163,6 +163,9 @@ lim_process_disassoc_frame(struct mac_context *mac, uint8_t *pRxPacketInfo,
 	lim_diag_event_report(mac, WLAN_PE_DIAG_DISASSOC_FRAME_EVENT,
 		pe_session, 0, reasonCode);
 
+	lim_cp_stats_cstats_log_disassoc_evt(pe_session, CSTATS_DIR_RX,
+					     reasonCode);
+
 	/**
 	 * Extract 'associated' context for STA, if any.
 	 * This is maintained by DPH and created by LIM.
@@ -321,7 +324,8 @@ lim_process_disassoc_frame(struct mac_context *mac, uint8_t *pRxPacketInfo,
 		ap_info.original_timeout = ap_info.retry_delay;
 		ap_info.received_time = qdf_mc_timer_get_system_time();
 
-		lim_add_bssid_to_reject_list(mac->pdev, &ap_info);
+		lim_add_bssid_to_reject_list(mac->pdev,
+					     pe_session->vdev_id, &ap_info);
 	}
 	lim_extract_ies_from_deauth_disassoc(pe_session, (uint8_t *)pHdr,
 					WMA_GET_RX_MPDU_LEN(pRxPacketInfo));

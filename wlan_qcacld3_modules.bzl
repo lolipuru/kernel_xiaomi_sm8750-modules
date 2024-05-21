@@ -649,6 +649,7 @@ _fixed_srcs = [
     "core/wma/src/wma_power.c",
     "core/wma/src/wma_scan_roam.c",
     "core/wma/src/wma_utils.c",
+    "core/wma/src/wma_pasn_peer_api.c",
     "os_if/dp/src/os_if_dp.c",
     "os_if/dp/src/os_if_dp_txrx.c",
     "os_if/p2p/src/wlan_cfg80211_p2p.c",
@@ -747,6 +748,11 @@ _conditional_srcs = {
             "components/wmi/src/wmi_unified_mc_cp_stats_api.c",
             "components/wmi/src/wmi_unified_mc_cp_stats_tlv.c",
             "os_if/cp_stats/src/wlan_cfg80211_mc_cp_stats.c",
+        ],
+    },
+    "CONFIG_WLAN_CHIPSET_STATS": {
+        True: [
+            "cmn/umac/cp_stats/core/src/wlan_cp_stats_chipset_stats.c",
         ],
     },
     "CONFIG_QCA_TARGET_IF_MLME": {
@@ -1447,7 +1453,6 @@ _conditional_srcs = {
             "cmn/umac/wifi_pos/src/wifi_pos_pasn_api.c",
             "components/wifi_pos/core/src/wlan_wifi_pos_interface.c",
             "core/hdd/src/wlan_hdd_wifi_pos_pasn.c",
-            "core/wma/src/wma_pasn_peer_api.c",
         ],
     },
     "CONFIG_WLAN_BCN_RECV_FEATURE": {
@@ -1676,6 +1681,16 @@ _conditional_srcs = {
     "CONFIG_WLAN_FEATURE_DP_RX_THREADS": {
         True: [
             "components/dp/core/src/wlan_dp_rx_thread.c",
+        ],
+    },
+    "CONFIG_WLAN_DP_LOAD_BALANCE_SUPPORT": {
+        True: [
+            "components/dp/core/src/wlan_dp_load_balance.c",
+        ],
+    },
+    "CONFIG_WLAN_DP_FLOW_BALANCE_SUPPORT": {
+        True: [
+            "components/dp/core/src/wlan_dp_flow_balance.c",
         ],
     },
     "CONFIG_WLAN_FEATURE_DSRC": {
@@ -2303,10 +2318,6 @@ def _define_module_for_target_variant_chipset(target, variant, chipset):
             "//vendor/qcom/opensource/wlan/platform:{}_cnss_nl".format(tv),
             "//msm-kernel:all_headers",
             "//vendor/qcom/opensource/wlan/platform:wlan-platform-headers",
-        ]
-
-    if target != "niobe":
-        deps = deps + [
             "//vendor/qcom/opensource/dataipa:include_headers",
             "//vendor/qcom/opensource/dataipa:{}_{}_ipam".format(target, variant),
         ]

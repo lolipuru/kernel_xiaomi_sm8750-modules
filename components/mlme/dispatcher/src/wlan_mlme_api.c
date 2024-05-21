@@ -541,6 +541,25 @@ QDF_STATUS wlan_mlme_get_sub_20_chan_width(struct wlan_objmgr_psoc *psoc,
 	return QDF_STATUS_SUCCESS;
 }
 
+QDF_STATUS wlan_mlme_set_sub_20_chan_width(struct wlan_objmgr_psoc *psoc,
+					   uint8_t sub_20_chan_width)
+{
+	struct wlan_mlme_psoc_ext_obj *mlme_obj;
+
+	mlme_obj = mlme_get_psoc_ext_obj(psoc);
+	if (!mlme_obj)
+		return QDF_STATUS_E_FAILURE;
+
+	if (!cfg_in_range(CFG_SUB_20_CHANNEL_WIDTH, sub_20_chan_width)) {
+		mlme_legacy_debug("Failed to set CFG_SUB_20_CHANNEL_WIDTH with %d",
+				  sub_20_chan_width);
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	mlme_obj->cfg.gen.sub_20_chan_width = sub_20_chan_width;
+	return QDF_STATUS_SUCCESS;
+}
+
 QDF_STATUS wlan_mlme_get_fw_timeout_crash(struct wlan_objmgr_psoc *psoc,
 					  bool *fw_timeout_crash)
 {
@@ -3960,6 +3979,21 @@ wlan_mlme_is_disable_vlp_sta_conn_to_sp_ap_enabled(
 
 	return QDF_STATUS_SUCCESS;
 }
+
+QDF_STATUS
+wlan_mlme_is_relaxed_lpi_conn_policy_enabled(struct wlan_objmgr_psoc *psoc,
+					     bool *value)
+{
+	struct wlan_mlme_psoc_ext_obj *mlme_obj;
+
+	mlme_obj = mlme_get_psoc_ext_obj(psoc);
+	if (!mlme_obj)
+		return QDF_STATUS_E_FAILURE;
+
+	*value = mlme_obj->cfg.gen.relaxed_lpi_conn_policy;
+
+	return QDF_STATUS_SUCCESS;
+}
 #endif
 
 #ifdef WLAN_FEATURE_11BE_MLO
@@ -5318,7 +5352,8 @@ void wlan_mlme_update_sae_single_pmk(struct wlan_objmgr_vdev *vdev,
 		return;
 	}
 
-	if (keymgmt & (1 << WLAN_CRYPTO_KEY_MGMT_SAE))
+	if (QDF_HAS_PARAM(keymgmt, WLAN_CRYPTO_KEY_MGMT_SAE) ||
+	    QDF_HAS_PARAM(keymgmt, WLAN_CRYPTO_KEY_MGMT_SAE_EXT_KEY))
 		is_sae_connection = true;
 
 	mlme_legacy_debug("SAE_SPMK: single_pmk_ap:%d, is_sae_connection:%d, pmk_len:%d",
@@ -8565,5 +8600,22 @@ bool wlan_mlme_get_is_disconnect_receive(struct wlan_objmgr_vdev *vdev)
 	}
 
 	return mlme_priv->is_disconnect_received;
+}
+
+QDF_STATUS
+wlan_mlme_get_reduce_pwr_scan_mode(struct wlan_objmgr_psoc *psoc,
+				   bool *scan_mode)
+{
+	struct wlan_mlme_psoc_ext_obj *mlme_obj;
+
+	mlme_obj = mlme_get_psoc_ext_obj(psoc);
+	if (!mlme_obj) {
+		*scan_mode =
+			cfg_default(CFG_REDUCE_PWR_SCAN_MODE);
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	*scan_mode = mlme_obj->cfg.reduce_pwr_scan_mode;
+	return QDF_STATUS_SUCCESS;
 }
 
