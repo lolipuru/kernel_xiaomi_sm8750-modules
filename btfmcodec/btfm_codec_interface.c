@@ -102,6 +102,7 @@ static int btfmcodec_codec_probe(struct snd_soc_component *codec)
 			        mixer_ctrl[i].put = btfmcodec_put_mixer_control;
 			}
 			snd_soc_add_component_controls(codec, mixer_ctrl, num_mixer_ctrl);
+			kfree(mixer_ctrl);
 			BTFMCODEC_INFO("CODEC address while registering mixer ctrl:%p", codec);
 		}
 	}
