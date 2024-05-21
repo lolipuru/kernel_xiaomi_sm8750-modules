@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "hfi_packetization.h"
 #include "msm_cvp_debug.h"
+#include "cvp_presil.h"
 
 /* Set up look-up tables to convert HAL_* to HFI_*.
  *
@@ -317,10 +318,18 @@ int cvp_create_pkt_cmd_session_set_buffers(
 	pkt = (struct cvp_hfi_cmd_session_set_buffers_packet *)cmd;
 	pkt->packet_type = HFI_CMD_SESSION_CVP_SET_BUFFERS;
 	pkt->session_id = hash32_ptr(session);
-	pkt->buf_type.iova = iova;
+
 	pkt->buf_type.size = size;
 	pkt->size = sizeof(struct cvp_hfi_cmd_session_set_buffers_packet);
 
+#ifdef USE_PRESIL42
+	presil42_set_buf_iova(pkt, iova);
+	dprintk(CVP_DBG,
+		"%s: arp buffer is %x for HFI\n", __func__, iova);
+	return rc;
+#endif
+
+	pkt->buf_type.iova = iova;
 	return rc;
 }
 
@@ -397,6 +406,9 @@ static int get_hfi_ssr_type(enum hal_ssr_trigger_type type)
 		rc = HFI_TEST_SSR_HW_WDOG_IRQ;
 		break;
 	case SSR_SESSION_ERROR:
+		rc = HFI_TEST_SSR_SW_ERR_FATAL;
+		break;
+	case SSR_SESSION_TIMEOUT:
 		rc = HFI_TEST_SSR_SW_ERR_FATAL;
 		break;
 	default:

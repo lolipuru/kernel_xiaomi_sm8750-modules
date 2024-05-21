@@ -14,6 +14,7 @@ def define_sun():
             "TARGET_DSP_ENABLE",
             "TARGET_MMRM_ENABLE",
             "CONFIG_EVA_SUN",
+            #"TARGET_PRESIL_ENABLE",
             "CONFIG_MSM_MMRM"
         ],
     )

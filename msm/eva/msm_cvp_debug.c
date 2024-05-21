@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -22,15 +22,20 @@ EXPORT_SYMBOL(msm_cvp_debug);
 int msm_cvp_debug_out = CVP_OUT_PRINTK;
 EXPORT_SYMBOL(msm_cvp_debug_out);
 
-int msm_cvp_fw_debug = 0x10018;
-int msm_cvp_fw_debug_mode = 1;
 #ifdef USE_PRESIL
 int msm_cvp_fw_low_power_mode = !1;
 #else
 int msm_cvp_fw_low_power_mode = 1;
 #endif
-bool msm_cvp_fw_coverage = !true;
+#ifdef USE_PRESIL42
+bool msm_cvp_auto_pil = !true;
+int msm_cvp_fw_debug = 0x3F;
+#else
 bool msm_cvp_auto_pil = true;
+int msm_cvp_fw_debug = 0x10018;
+#endif
+int msm_cvp_fw_debug_mode = 1;
+bool msm_cvp_fw_coverage = !true;
 bool msm_cvp_cacheop_enabled = true;
 bool msm_cvp_thermal_mitigation_disabled = !true;
 bool msm_cvp_cacheop_disabled = !true;
@@ -46,7 +51,7 @@ bool msm_cvp_mmrm_enabled = !true;
 bool msm_cvp_dcvs_disable = !true;
 int msm_cvp_minidump_enable = !1;
 int cvp_kernel_fence_enabled = 2;
-int msm_cvp_hw_wd_recovery = !1;
+int msm_cvp_hw_wd_recovery = 1;
 
 #define MAX_DBG_BUF_SIZE 4096
 

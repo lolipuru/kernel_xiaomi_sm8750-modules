@@ -15,6 +15,7 @@ register_eva_module(
         "eva/cvp_fw_load.c",
         "eva/cvp_hfi.c",
         "eva/cvp_power.c",
+        "eva/cvp_presil.c",
         "eva/cvp_smem.c",
         "eva/hfi_packetization.c",
         "eva/hfi_response_handler.c",
@@ -38,6 +39,10 @@ register_eva_module(
           "//vendor/qcom/opensource/synx-kernel:synx_headers",
            "//vendor/qcom/opensource/synx-kernel:%b_modules"
         ],
+	"TARGET_PRESIL_ENABLE": [
+            "//vendor/qcom/opensource/camera-kernel:camera_src_headers",
+	    "//vendor/qcom/opensource/camera-kernel:%b_camera",
+	],
         "TARGET_DSP_ENABLE": [
              "//vendor/qcom/opensource/dsp-kernel:%b_frpc-adsprpc"
         ],

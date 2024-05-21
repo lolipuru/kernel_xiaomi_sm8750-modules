@@ -17,6 +17,7 @@
 #include "msm_cvp_core.h"
 #include "msm_cvp_dsp.h"
 #include "eva_shared_def.h"
+#include "cvp_presil.h"
 
 void cvp_buf_map_set_vaddr(struct cvp_dma_buf_vmap *vmap, void *vaddr)
 {
@@ -522,7 +523,8 @@ int msm_cvp_map_buf_wncc(struct msm_cvp_inst *inst,
 		(u64)(smem->device_addr) - MAP_ADDR_OFFSET, MAP_ADDR_OFFSET);
 	cam_presil_send_buffer((u64)smem->dma_buf, 0,
 		(u32)cbuf->offset, (u32)cbuf->size,
-		(u64)(smem->device_addr) - MAP_ADDR_OFFSET);
+		(u64)(smem->device_addr) - MAP_ADDR_OFFSET,
+		(uintptr_t)NULL, false);
 #endif
 
 	mutex_lock(&inst->cvpwnccbufs.lock);
@@ -1631,6 +1633,10 @@ static int msm_cvp_map_user_persist_buf(struct msm_cvp_inst *inst,
 
 	print_internal_buffer(CVP_MEM, "map persist", inst, pbuf);
 
+#ifdef USE_PRESIL42
+	presil42_send_map_user_persist_buffer(smem, iova, pbuf);
+#endif
+
 	*iova = smem->device_addr + buf->offset;
 
 	return 0;
@@ -1679,6 +1685,10 @@ static u32 msm_cvp_map_frame_buf(struct msm_cvp_inst *inst,
 	type = EVA_KMD_BUFTYPE_INPUT | EVA_KMD_BUFTYPE_OUTPUT;
 	msm_cvp_cache_operations(smem, type, buf->offset, buf->size);
 
+#ifdef USE_PRESIL42
+	presil42_send_map_frame_buffer(smem, iova, buf);
+#endif
+
 	iova = smem->device_addr + buf->offset;
 
 	return iova;
@@ -1698,6 +1708,10 @@ static void msm_cvp_unmap_frame_buf(struct msm_cvp_inst *inst,
 		buf = &frame->bufs[i];
 		smem = buf->smem;
 		msm_cvp_cache_operations(smem, type, buf->offset, buf->size);
+
+#ifdef USE_PRESIL42
+	presil42_unmap_frame_buf(smem, buf);
+#endif
 
 		if (smem->bitmap_index >= MAX_DMABUF_NUMS) {
 			/* smem not in dmamap cache */
@@ -1855,6 +1869,11 @@ int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
 
 			return ret;
 		}
+
+#ifdef USE_PRESIL42
+		presil42_set_buf_fd(buf, iova, "cvp_map_user_persist");
+		return 0;
+#endif
 		buf->fd = iova;
 	}
 	return 0;
@@ -1924,7 +1943,12 @@ int msm_cvp_map_frame(struct msm_cvp_inst *inst,
 			msm_cvp_unmap_frame_buf(inst, frame);
 			return -EINVAL;
 		}
+
+#ifdef USE_PRESIL42
+		presil42_set_buf_fd(buf, iova, "cvp_map_frame");
+#else
 		buf->fd = iova;
+#endif
 	}
 
 	mutex_lock(&inst->frames.lock);
@@ -2057,6 +2081,40 @@ int msm_cvp_session_deinit_buffers(struct msm_cvp_inst *inst)
 	return rc;
 }
 
+void msm_cvp_populate_dsp_buf_info(struct cvp_internal_buf *buf,
+								struct cvp_hal_session *session,
+								u32 session_id,
+								struct msm_cvp_core *core)
+{
+	struct cvp_hfi_ops *dev_ops = (struct cvp_hfi_ops *) core->dev_ops;
+	struct iris_hfi_device *cvp_device = (struct iris_hfi_device *) dev_ops->hfi_device_data;
+	struct cvp_iface_q_info dsp_debugQ_info = cvp_device->dsp_iface_queues[DEBUG_Q];
+	struct cvp_dsp_trace_buf *trace_buf;
+	struct cvp_dsp_trace *dsp_debug_trace;
+
+	dsp_debug_trace = (struct cvp_dsp_trace *) dsp_debugQ_info.q_array.align_virtual_addr;
+
+	if (!dsp_debug_trace) {
+		dprintk(CVP_ERR, "dsp trace is NULL\n");
+		return;
+	}
+	for (int session_idx = 0; session_idx < EVA_TRACE_MAX_SESSION_NUM; session_idx++) {
+		if (dsp_debug_trace->sessions[session_idx].session_id == session_id) {
+			u32 buf_cnt = dsp_debug_trace->sessions[session_idx].buf_cnt;
+
+			for (int buf_idx = 0; buf_idx < buf_cnt; buf_idx++) {
+				trace_buf = &dsp_debug_trace->sessions[session_idx].buf[buf_idx];
+				if (buf->smem->device_addr == trace_buf->iova) {
+					buf->smem->buf_idx = trace_buf->buf_idx;
+					buf->smem->pkt_type = trace_buf->pkt_type;
+					buf->smem->fd = trace_buf->fd;
+					return;
+				}
+			}
+		}
+	}
+}
+
 #define MAX_NUM_FRAMES_DUMP 4
 void msm_cvp_print_inst_bufs(struct msm_cvp_inst *inst, bool log)
 {
@@ -2065,6 +2123,13 @@ void msm_cvp_print_inst_bufs(struct msm_cvp_inst *inst, bool log)
 	struct msm_cvp_core *core;
 	struct inst_snapshot *snap = NULL;
 	int i = 0, c = 0;
+
+	// DSP trace related variables
+	struct cvp_hal_session *session;
+	u32 session_id;
+
+	session = (struct cvp_hal_session *)inst->session;
+	session_id = hash32_ptr(session);
 
 	core = cvp_driver->cvp_core;
 	if (log && core->log.snapshot_index < 16) {
@@ -2110,8 +2175,12 @@ void msm_cvp_print_inst_bufs(struct msm_cvp_inst *inst, bool log)
 
 	mutex_lock(&inst->cvpdspbufs.lock);
 	dprintk(CVP_ERR, "dsp buffer list:\n");
-	list_for_each_entry(buf, &inst->cvpdspbufs.list, list)
+	list_for_each_entry(buf, &inst->cvpdspbufs.list, list) {
+		// Populate DSP buffer info from debug queue to kernel instance
+		msm_cvp_populate_dsp_buf_info(buf, session, session_id, core);
+		// Log print buffer info
 		_log_buf(snap, SMEM_CDSP, inst, buf, log);
+	}
 	mutex_unlock(&inst->cvpdspbufs.lock);
 
 	mutex_lock(&inst->cvpwnccbufs.lock);
@@ -2157,6 +2226,9 @@ struct cvp_internal_buf *cvp_allocate_arp_bufs(struct msm_cvp_inst *inst,
 	if (!buffer_size)
 		return NULL;
 
+#ifdef USE_PRESIL42
+	presil42_set_smem_flags(smem_flags);
+#endif
 	/* If PERSIST buffer requires secure mapping, uncomment
 	 * below flags setting
 	 * smem_flags |= SMEM_SECURE | SMEM_NON_PIXEL;

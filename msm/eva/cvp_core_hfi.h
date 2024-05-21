@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __H_CVP_CORE_HFI_H__
@@ -303,4 +303,5 @@ int cvp_iris_hfi_initialize(struct cvp_hfi_ops *hdev,
 
 int load_cvp_fw_impl(struct iris_hfi_device *device);
 int unload_cvp_fw_impl(struct iris_hfi_device *device);
+void cvp_clock_reg_print(struct iris_hfi_device *dev);
 #endif

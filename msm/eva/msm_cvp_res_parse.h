@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __MSM_CVP_RES_PARSE_H__
@@ -16,7 +17,7 @@ int read_hfi_type(struct platform_device *pdev);
 int cvp_read_platform_resources_from_drv_data(
 		struct msm_cvp_core *core);
 int cvp_read_platform_resources_from_dt(
-		struct msm_cvp_platform_resources *res);
+		struct msm_cvp_core *core);
 
 int cvp_read_context_bank_resources_from_dt(struct platform_device *pdev);
 

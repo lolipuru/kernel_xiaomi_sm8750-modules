@@ -367,6 +367,7 @@ int wait_for_sess_signal_receipt(struct msm_cvp_inst *inst,
 				SESSION_MSG_INDEX(cmd));
 		if (inst->state != MSM_CVP_CORE_INVALID)
 			print_hfi_queue_info(ops_tbl);
+		handle_session_timeout(inst);
 		rc = -ETIMEDOUT;
 	} else if (inst->state == MSM_CVP_CORE_INVALID) {
 		rc = -ECONNRESET;
@@ -564,13 +565,42 @@ void handle_session_error(enum hal_command_response cmd, void *data)
 		for (i = 0; i < ARRAY_SIZE(inst->completions); i++)
 			complete(&inst->completions[i]);
 		spin_lock_irqsave(&inst->event_handler.lock, flags);
-		inst->event_handler.event = CVP_SSR_EVENT;
+		inst->event_handler.event = EVA_EVENT;
 		spin_unlock_irqrestore(
 			&inst->event_handler.lock, flags);
 		wake_up_all(&inst->event_handler.wq);
 	}
 
 	cvp_put_inst(inst);
+}
+
+void handle_session_timeout(struct msm_cvp_inst *inst)
+{
+	struct cvp_session_queue *sq;
+	unsigned long flags = 0;
+	enum cvp_session_state s_state;
+	enum cvp_session_errorcode s_ecode;
+
+	dprintk(CVP_ERR,
+		"timeout occurred for inst %pK sess %x\n", inst, hash32_ptr(inst->session));
+
+	sq = &inst->session_queue;
+	spin_lock(&sq->lock);
+	s_state = SESSION_ERROR;
+	s_ecode = EVA_SESSION_TIMEOUT;
+	if ((atomic_read(&cvp_error_count)) < MAX_CVP_ERROR_COUNT)
+		atomic_inc(&cvp_error_count);
+
+	spin_unlock(&sq->lock);
+
+	inst->error_code = (s_state << 28) | (s_ecode << 16) | atomic_read(&cvp_error_count);
+	cvp_print_inst(CVP_WARN, inst);
+
+	spin_lock_irqsave(&inst->event_handler.lock, flags);
+	inst->event_handler.event = EVA_EVENT;
+	spin_unlock_irqrestore(
+		&inst->event_handler.lock, flags);
+	wake_up_all(&inst->event_handler.wq);
 }
 
 void handle_sys_error(enum hal_command_response cmd, void *data)
@@ -617,11 +647,11 @@ void handle_sys_error(enum hal_command_response cmd, void *data)
 			core, cmd, core->ssr_count);
 	mutex_lock(&core->clk_lock);
 	hfi_device = ops_tbl->hfi_device_data;
+	call_hfi_op(ops_tbl, flush_debug_queue, ops_tbl->hfi_device_data);
 	if (hfi_device->error == CVP_ERR_NOC_ERROR) {
 		dprintk(CVP_WARN, "Got NOC error");
 		msm_cvp_noc_error_info(core);
 	}
-	call_hfi_op(ops_tbl, flush_debug_queue, ops_tbl->hfi_device_data);
 	list_for_each_entry(inst, &core->instances, list) {
 		cvp_print_inst(CVP_ERR, inst);
 		if (inst->state != MSM_CVP_CORE_INVALID) {
@@ -641,7 +671,7 @@ void handle_sys_error(enum hal_command_response cmd, void *data)
 			for (i = 0; i < ARRAY_SIZE(inst->completions); i++)
 				complete(&inst->completions[i]);
 			spin_lock_irqsave(&inst->event_handler.lock, flags);
-			inst->event_handler.event = CVP_SSR_EVENT;
+			inst->event_handler.event = EVA_EVENT;
 			spin_unlock_irqrestore(
 				&inst->event_handler.lock, flags);
 			wake_up_all(&inst->event_handler.wq);
@@ -1310,6 +1340,26 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 		handle_session_error(HAL_SESSION_ERROR, (void *)(&response));
 		return;
 	}
+	if (core->ssr_type == SSR_SESSION_TIMEOUT) {
+		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL;
+
+		list_for_each_entry(inst, &core->instances, list) {
+			if (inst != NULL) {
+				inst_temp = cvp_get_inst_validate(inst->core, inst);
+				if (!inst_temp) {
+					dprintk(CVP_WARN, "%s: Session is not a valid session\n",
+					__func__);
+					continue;
+				}
+				dprintk(CVP_INFO, "Session to be taken for session timeout 0x%x\n",
+					inst);
+				}
+				break;
+		}
+		dprintk(CVP_ERR, "Session timeout triggered\n");
+		handle_session_timeout(inst);
+		return;
+	}
 send_again:
 	mutex_lock(&core->lock);
 	if (core->state == CVP_CORE_INIT_DONE) {
@@ -1387,7 +1437,7 @@ int msm_cvp_comm_kill_session(struct msm_cvp_inst *inst)
 
 	if (inst->state >= MSM_CVP_CORE_UNINIT) {
 		spin_lock_irqsave(&inst->event_handler.lock, flags);
-		inst->event_handler.event = CVP_SSR_EVENT;
+		inst->event_handler.event = EVA_EVENT;
 		spin_unlock_irqrestore(&inst->event_handler.lock, flags);
 		wake_up_all(&inst->event_handler.wq);
 	}

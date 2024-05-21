@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -69,7 +69,7 @@ static unsigned int cvp_poll(struct file *filp, struct poll_table_struct *p)
 	poll_wait(filp, &inst->event_handler.wq, p);
 
 	spin_lock_irqsave(&inst->event_handler.lock, flags);
-	if (inst->event_handler.event == CVP_SSR_EVENT)
+	if (inst->event_handler.event == EVA_EVENT)
 		rc |= POLLPRI;
 	if (inst->event_handler.event == CVP_DUMP_EVENT)
 		rc |= POLLIN;
@@ -104,7 +104,7 @@ static int read_platform_resources(struct msm_cvp_core *core,
 	if (pdev->dev.of_node) {
 		/* Target supports DT, parse from it */
 		rc = cvp_read_platform_resources_from_drv_data(core);
-		rc = cvp_read_platform_resources_from_dt(&core->resources);
+		rc = cvp_read_platform_resources_from_dt(core);
 	} else {
 		dprintk(CVP_ERR, "pdev node is NULL\n");
 		rc = -EINVAL;

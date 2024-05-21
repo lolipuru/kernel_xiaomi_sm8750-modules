@@ -8,6 +8,7 @@ msm-eva-objs := eva/cvp.o \
                 eva/msm_cvp_common.o \
                 eva/msm_cvp_core.o \
                 eva/msm_cvp.o \
+                eva/cvp_presil.o \
                 eva/msm_smem.o \
                 eva/msm_cvp_debug.o \
                 eva/msm_cvp_res_parse.o \
