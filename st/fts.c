@@ -3117,7 +3117,7 @@ static int fts_interrupt_install(struct fts_ts_info *info)
 
 	logError(1, "%s Interrupt Mode\n", tag);
 	if (request_irq(info->irq, fts_interrupt_handler,
-			IRQF_TRIGGER_LOW, FTS_TS_DRV_NAME, info)) {
+			info->board->irq_flags, FTS_TS_DRV_NAME, info)) {
 		logError(1, "%s Request irq failed\n", tag);
 		kfree(info->event_dispatch_table);
 		error = -EBUSY;
@@ -3608,7 +3608,7 @@ static void fts_resume_work(struct work_struct *work)
 
 /**
   * Suspend work function which clean all the touches from Linux input system
-  *and prepare the ground to disabling the sensing or enter in gesture mode
+  *and prepare the ground to disabling the sensing
   */
 static void fts_suspend_work(struct work_struct *work)
 {
@@ -3624,7 +3624,7 @@ static void fts_suspend_work(struct work_struct *work)
 
 	info->sensor_sleep = true;
 
-	fts_enableInterrupt();
+	fts_disableInterrupt();
 
 	fts_enable_reg(info, false);
 }
@@ -3955,6 +3955,13 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 		bdata->reset_gpio = GPIO_NOT_DEFINED;
 #endif
 
+	retval = of_property_read_u32(np, "st,irq-flags", &bdata->irq_flags);
+	if (retval) {
+		bdata->irq_flags = IRQF_TRIGGER_LOW;
+		logError(0, "%s default use low level irq trigger flags:%d\n",
+				tag, bdata->irq_flags);
+	}
+
 	retval = of_property_read_string(np, "st,regulator_dvdd", &name);
 	if (retval == -EINVAL)
 		bdata->vdd_reg_name = NULL;
@@ -4092,6 +4099,8 @@ static int st_ts_pre_la_tui_enable(void *data)
 	struct fts_ts_info *info = data;
 
 	mutex_lock(&info->tui_transition_lock);
+	flush_work(&info->resume_work);
+	flush_work(&info->work);
 
 	return 0;
 }
@@ -4196,6 +4205,7 @@ static void st_ts_fill_qts_vendor_data(struct qts_vendor_data *qts_vendor_data,
 	qts_vendor_data->vendor_data = info;
 	qts_vendor_data->schedule_suspend = false;
 	qts_vendor_data->schedule_resume = false;
+	qts_vendor_data->irq_gpio_flags = info->board->irq_flags;
 	qts_vendor_data->qts_vendor_ops.suspend = st_ts_suspend_helper;
 	qts_vendor_data->qts_vendor_ops.resume = st_ts_resume_helper;
 	qts_vendor_data->qts_vendor_ops.enable_touch_irq = st_ts_enable_touch_irq;

@@ -24,7 +24,7 @@
   *
   * THIS SOFTWARE IS SPECIFICALLY DESIGNED FOR EXCLUSIVE USE WITH ST PARTS.
   *
-  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+  * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
   */
 
 /*!
@@ -209,8 +209,8 @@
   */
 struct fts_hw_platform_data {
 	int (*power)(bool on);
-	int irq_gpio;	/* /< number of the gpio associated to the interrupt pin
-			 * */
+	int irq_gpio;	/* /< number of the gpio associated to the interrupt pin */
+	unsigned int irq_flags; /* /< irq trigger type */
 	int reset_gpio;	/* /< number of the gpio associated to the reset pin */
 	const char *vdd_reg_name;	/* /< name of the VDD regulator */
 	const char *avdd_reg_name;	/* /< name of the AVDD regulator */
