@@ -3148,7 +3148,7 @@ struct ipa_wlan_opt_dp_remove_ctrl_filter_complt_ind_msg_v01 {
 	__u32 filter_idx;
 
 };
-#define IPA_WLAN_OPT_DP_REM_CTRL_FILTER_COMPLT_IND_MSG_V01_MAX_MSG_LEN 7
+#define IPA_WLAN_OPT_DP_REM_CTRL_FILTER_COMPLT_IND_MSG_V01_MAX_MSG_LEN 14
 
 struct ipa_wlan_opt_dp_set_wlan_per_info_req_msg_v01 {
 

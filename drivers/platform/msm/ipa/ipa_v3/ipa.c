@@ -68,6 +68,8 @@
 #endif
 #include "ipahal.h"
 #include "ipahal_fltrt.h"
+#include "ipa_elf_dump.h"
+
 
 #define CREATE_TRACE_POINTS
 #include "ipa_trace.h"
@@ -5569,7 +5571,6 @@ void ipa3_q6_post_shutdown_cleanup(void)
 				 */
 			}
 		}
-
 	IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 	IPADBG_LOW("Exit with success\n");
 }
@@ -8268,6 +8269,12 @@ static int ipa3_post_init(const struct ipa3_plat_drv_res *resource_p,
 
 	if(!ipa_tlpd_stats_init())
 		IPADBG("Fail to init tlpd ipa lnx module");
+
+	ipa_ssr_driver_dump_init();
+	ipa_ssr_driver_dump_register_region("ipa_ctx", ipa3_ctx,
+	 sizeof(struct ipa3_context));
+	ipa_ssr_driver_dump_register_region("ipc_logs", ipa3_ctx->logbuf,
+	((struct ipc_log_context *)(ipa3_ctx->logbuf))->write_avail);
 
 	pr_info("IPA driver initialization was successful.\n");
 #if IS_ENABLED(CONFIG_QCOM_VA_MINIDUMP)
@@ -12482,6 +12489,7 @@ static void __exit ipa_module_exit(void)
 		ipa3_ctx->hw_stats = NULL;
 	}
 	unregister_pm_notifier(&ipa_pm_notifier);
+	ipa_ssr_driver_dump_deinit();
 	kfree(ipa3_ctx);
 	ipa3_ctx = NULL;
 }

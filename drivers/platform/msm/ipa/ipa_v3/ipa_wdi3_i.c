@@ -601,6 +601,43 @@ fail_smmu_mapping:
 	return result;
 }
 
+void ipa3_setup_wlan_ctrl_ready_req(void)
+{
+	struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01 wlan_ctrl_ready_req;
+	int ipa_ep_idx_rx;
+	int ipa_ep_idx_tx;
+	uint32_t q6_rtng_table_index;
+
+	ipa_ep_idx_rx = ipa_get_ep_mapping(IPA_CLIENT_WLAN2_PROD);
+	ipa_ep_idx_tx = ipa_get_ep_mapping(IPA_CLIENT_WLAN2_CONS);
+
+	memset(&wlan_ctrl_ready_req, 0,
+			sizeof(struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01));
+
+	spin_lock(&ipa3_ctx->disconnect_lock);
+	if (ipa3_ctx->ep[ipa_ep_idx_rx].valid && ipa3_ctx->ep[ipa_ep_idx_tx].valid
+		&& !atomic_read(&ipa3_ctx->ep[ipa_ep_idx_rx].disconnect_in_progress)
+		&& !atomic_read(&ipa3_ctx->ep[ipa_ep_idx_tx].disconnect_in_progress)) {
+		/* setup qmi message for ctrl wlan ready*/
+		wlan_ctrl_ready_req.wlan_ready = true;
+		wlan_ctrl_ready_req.dest_wlan_endp_id = ipa_ep_idx_tx;
+		wlan_ctrl_ready_req.src_wlan_endp_id = ipa_ep_idx_rx;
+		wlan_ctrl_ready_req.dest_apps_endp_id =
+			ipa_get_ep_mapping(IPA_CLIENT_APPS_LAN_CONS);
+	}
+	spin_unlock(&ipa3_ctx->disconnect_lock);
+	if (ipa3_ctx->ep[ipa_ep_idx_rx].valid && ipa3_ctx->ep[ipa_ep_idx_tx].valid
+		&& !atomic_read(&ipa3_ctx->ep[ipa_ep_idx_rx].disconnect_in_progress)
+		&& !atomic_read(&ipa3_ctx->ep[ipa_ep_idx_tx].disconnect_in_progress)
+		&& wlan_ctrl_ready_req.wlan_ready) {
+		ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req(
+			&wlan_ctrl_ready_req, &q6_rtng_table_index);
+		/* Install default filter rules.*/
+		ipa3_install_dl_opt_wdi_dpath_flt_rules(ipa_ep_idx_rx, q6_rtng_table_index);
+	}
+}
+EXPORT_SYMBOL_GPL(ipa3_setup_wlan_ctrl_ready_req);
+
 int ipa3_conn_wdi3_pipes(struct ipa_wdi_conn_in_params *in,
 	struct ipa_wdi_conn_out_params *out,
 	ipa_wdi_meter_notifier_cb wdi_notify)
@@ -993,14 +1030,6 @@ int ipa3_disconn_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 	tx_client = ipa3_get_client_mapping(ipa_ep_idx_tx);
 	IPA_ACTIVE_CLIENTS_INC_EP(ipa3_get_client_mapping(ipa_ep_idx_tx));
 
-	if (ipa3_ctx->ipa_wdi_opt_dpath && ipa_wdi_opt_dpath_ctrl_enabled(0)) {
-		/*send disconnect qmi message for ctrl wlan*/
-		memset(&wlan_ctrl_ready_req, 0,
-			sizeof(struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01));
-		wlan_ctrl_ready_req.wlan_ready = false;
-		ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req(&wlan_ctrl_ready_req, NULL);
-	}
-
 	/* tear down tx1 pipe */
 	if (ipa_ep_idx_tx1 >= 0) {
 		ep_tx1 = &ipa3_ctx->ep[ipa_ep_idx_tx1];
@@ -1080,6 +1109,13 @@ int ipa3_disconn_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 	memset(ep_rx, 0, sizeof(struct ipa3_ep_context));
 	IPADBG("rx client (ep: %d) disconnected\n", ipa_ep_idx_rx);
 
+	if (ipa3_ctx->ipa_wdi_opt_dpath && ipa_wdi_opt_dpath_ctrl_enabled(0)) {
+		/*send disconnect qmi message for ctrl wlan*/
+		memset(&wlan_ctrl_ready_req, 0,
+			sizeof(struct ipa_wlan_opt_dp_set_wlan_ctrl_ready_req_msg_v01));
+		wlan_ctrl_ready_req.wlan_ready = false;
+		ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req(&wlan_ctrl_ready_req, NULL);
+	}
 exit:
 	IPA_ACTIVE_CLIENTS_DEC_EP(ipa3_get_client_by_pipe(ipa_ep_idx_tx));
 	return result;

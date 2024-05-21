@@ -468,12 +468,19 @@ static int ipa3_aux_napi_poll_tx_complete(struct napi_struct *napi_tx,
 	if (tx_done < budget) {
 		napi_complete(napi_tx);
 		ret = ipa3_tx_switch_to_intr_mode(sys);
-
+#if (KERNEL_VERSION(6, 7, 0) > LINUX_VERSION_CODE)
 		/* if we got an EOT while we marked NAPI as complete */
 		if (ret == -GSI_STATUS_PENDING_IRQ && napi_reschedule(napi_tx)) {
-			/* rescheduale will perform poll again, don't dec vote twice*/
+			/* reschedule will perform poll again, don't dec vote twice*/
 			napi_rescheduled = true;
 		}
+#else
+		/* if we got an EOT while we marked NAPI as complete */
+		if (ret == -GSI_STATUS_PENDING_IRQ && napi_schedule(napi_tx)) {
+			/* reschedule will perform poll again, don't dec vote twice*/
+			napi_rescheduled = true;
+		}
+#endif
 
 		if(!napi_rescheduled)
 			IPA_ACTIVE_CLIENTS_DEC_EP_NO_BLOCK(sys->ep->client);
@@ -518,13 +525,21 @@ poll_tx:
 	if (tx_done < budget) {
 		napi_complete(napi_tx);
 		atomic_set(&sys->in_napi_context, 0);
-
+#if (KERNEL_VERSION(6, 7, 0) > LINUX_VERSION_CODE)
 		/*if we got an EOT while we marked NAPI as complete*/
 		if (atomic_read(&sys->xmit_eot_cnt) > 0 &&
 		    !atomic_cmpxchg(&sys->in_napi_context, 0, 1)
 		    && napi_reschedule(napi_tx)) {
 			goto poll_tx;
 		}
+#else
+		/*if we got an EOT while we marked NAPI as complete*/
+		if (atomic_read(&sys->xmit_eot_cnt) > 0 &&
+		    !atomic_cmpxchg(&sys->in_napi_context, 0, 1)
+		    && napi_schedule(napi_tx)) {
+			goto poll_tx;
+		}
+#endif
 	}
 	IPADBG_LOW("the number of tx completions is: %d", tx_done);
 	return min(tx_done, budget);
@@ -2033,6 +2048,11 @@ int ipa_teardown_sys_pipe(u32 clnt_hdl)
 			netif_napi_del(&ep->sys->napi_tx);
 	}
 
+	if (IPA_CLIENT_IS_WAN_CONS(ep->client)) {
+		napi_disable(ep->sys->napi_obj);
+		netif_napi_del(ep->sys->napi_obj);
+	}
+
 	if(ep->client == IPA_CLIENT_APPS_WAN_LOW_LAT_DATA_CONS) {
 		napi_disable(&ep->sys->napi_rx);
 		netif_napi_del(&ep->sys->napi_rx);
@@ -2168,6 +2188,10 @@ int ipa_teardown_sys_pipe(u32 clnt_hdl)
 
 	if (ep->sys->repl_hdlr == ipa3_replenish_rx_page_recycle) {
 		cancel_delayed_work_sync(&ep->sys->common_sys->freepage_work);
+
+		if (ep->sys->freepage_wq)
+			flush_workqueue(ep->sys->freepage_wq);
+
 		tasklet_kill(&ep->sys->common_sys->tasklet_find_freepage);
 	}
 
@@ -7201,10 +7225,15 @@ start_poll:
 	if (cnt < weight) {
 		napi_complete(ep->sys->napi_obj);
 		ret = ipa3_rx_switch_to_intr_mode(ep->sys);
+#if (KERNEL_VERSION(6, 7, 0) > LINUX_VERSION_CODE)
 		if (ret == -GSI_STATUS_PENDING_IRQ &&
 				napi_reschedule(ep->sys->napi_obj))
 			goto start_poll;
-
+#else
+		if (ret == -GSI_STATUS_PENDING_IRQ &&
+				napi_schedule(ep->sys->napi_obj))
+			goto start_poll;
+#endif
 		IPA_ACTIVE_CLIENTS_DEC_EP_NO_BLOCK(ep->client);
 	}
 
@@ -7305,9 +7334,15 @@ start_poll:
 		wan_def_sys->len > IPA_DEFAULT_SYS_YELLOW_WM) {
 		napi_complete(ep->sys->napi_obj);
 		ret = ipa3_rx_switch_to_intr_mode(ep->sys);
+#if (KERNEL_VERSION(6, 7, 0) > LINUX_VERSION_CODE)
 		if (ret == -GSI_STATUS_PENDING_IRQ &&
 				napi_reschedule(ep->sys->napi_obj))
 			goto start_poll;
+#else
+		if (ret == -GSI_STATUS_PENDING_IRQ &&
+				napi_schedule(ep->sys->napi_obj))
+			goto start_poll;
+#endif
 		IPA_ACTIVE_CLIENTS_DEC_EP_NO_BLOCK(ep->client);
 	} else {
 		cnt = weight;
@@ -7534,9 +7569,15 @@ start_poll:
 	if (cnt < budget && (sys->len > IPA_DEFAULT_SYS_YELLOW_WM)) {
 		napi_complete(napi_rx);
 		ret = ipa3_rx_switch_to_intr_mode(sys);
+#if (KERNEL_VERSION(6, 7, 0) > LINUX_VERSION_CODE)
 		if (ret == -GSI_STATUS_PENDING_IRQ &&
 				napi_reschedule(napi_rx))
 			goto start_poll;
+#else
+		if (ret == -GSI_STATUS_PENDING_IRQ &&
+				napi_schedule(napi_rx))
+			goto start_poll;
+#endif
 		IPA_ACTIVE_CLIENTS_DEC_EP_NO_BLOCK(sys->ep->client);
 	} else {
 		cnt = budget;

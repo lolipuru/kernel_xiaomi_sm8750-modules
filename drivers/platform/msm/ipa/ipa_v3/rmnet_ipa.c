@@ -32,6 +32,8 @@
 #include "ipa_qmi_service.h"
 #include <linux/rmnet_ipa_fd_ioctl.h>
 #include "ipa.h"
+#include "ipa_elf_dump.h"
+
 #include <uapi/linux/ip.h>
 #include <uapi/linux/msm_rmnet.h>
 #include <net/ipv6.h>
@@ -1397,12 +1399,8 @@ static int __ipa_wwan_close(struct net_device *dev)
  */
 static int ipa3_wwan_stop(struct net_device *dev)
 {
-	struct ipa3_wwan_private *wwan_ptr = netdev_priv(dev);
-
 	IPAWANDBG("[%s]\n", dev->name);
 	__ipa_wwan_close(dev);
-	if (ipa3_rmnet_res.ipa_napi_enable)
-		napi_disable(&(wwan_ptr->napi));
 	netif_stop_queue(dev);
 	return 0;
 }
@@ -3944,6 +3942,16 @@ static void rmnet_ipa_send_ssr_notification(bool ssr_done)
 	}
 }
 
+static void ipa3_handle_modem_minidump(void)
+{
+	if (ipa_minidump_enabled()) {
+		if (ipa_retrieve_and_dump())
+			IPADBG("IPA ELF DUMP Failed");
+		else
+			IPADBG("IPA ELF DUMP Success");
+	}
+}
+
 static int ipa3_lcl_mdm_ssr_notifier_cb(struct notifier_block *this,
 			   unsigned long code,
 			   void *data)
@@ -3975,6 +3983,7 @@ static int ipa3_lcl_mdm_ssr_notifier_cb(struct notifier_block *this,
 		/* hold a proxy vote for the modem. */
 		ipa3_proxy_clk_vote(atomic_read(&rmnet_ipa3_ctx->is_ssr));
 		/* send SSR before-shutdown notification to IPACM */
+		ipa3_handle_modem_minidump();
 		ipa3_set_modem_up(false);
 		rmnet_ipa_send_ssr_notification(false);
 		atomic_set(&rmnet_ipa3_ctx->is_ssr, 1);
@@ -4845,6 +4854,7 @@ static inline int rmnet_ipa3_get_max_wigig_clnt(void)
 	case IPA_HW_v5_5:
 		return MAX_WIGIG_CLIENTS_IPA_5_5;
 	case IPA_HW_v4_11:
+	case IPA_HW_v5_2:
 		return MAX_WIGIG_CLIENTS_IPA_4_11;
 	default:
 		return MAX_WIGIG_CLIENTS;
@@ -5767,6 +5777,9 @@ void ipa3_q6_handshake_complete(bool ssr_bootup)
 	ipa3_set_modem_up(true);
 	if (ipa3_ctx->ipa_config_is_mhi)
 		ipa_send_mhi_endp_ind_to_modem();
+
+	if (ipa3_ctx->ipa_wdi_opt_dpath && ipa_wdi_opt_dpath_ctrl_enabled(0))
+		ipa3_setup_wlan_ctrl_ready_req();
 }
 
 static inline bool rmnet_ipa3_check_any_client_inited
