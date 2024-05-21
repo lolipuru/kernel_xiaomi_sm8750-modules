@@ -3905,12 +3905,18 @@ static int cam_ife_hw_mgr_acquire_csid_hw(
 
 			rc = hw_intf->hw_ops.reserve(hw_intf->hw_priv,
 				csid_acquire, sizeof(*csid_acquire));
-			if (rc) {
+			if (rc == -EBUSY) {
 				CAM_DBG(CAM_ISP,
-					"No ife resource from hw %d, ctx_idx: %u",
+					"Resource not available from hw_idx %d, ctx_idx: %u",
 					hw_intf->hw_idx, ife_ctx->ctx_index);
 				continue;
+			} else if (rc) {
+				CAM_ERR(CAM_ISP,
+					"Failed to acquire from existing hw idx: %u ctx_idx: %u rc: %d",
+					hw_intf->hw_idx, ife_ctx->ctx_index, rc);
+				return rc;
 			}
+
 			CAM_DBG(CAM_ISP,
 				"acquired from old csid(%s)=%d successfully, is_secure: %s, ctx_idx: %u",
 				(i == 0) ? "left" : "right",
@@ -3956,11 +3962,13 @@ static int cam_ife_hw_mgr_acquire_csid_hw(
 		if (!rc)
 			return rc;
 
-		if (rc == -EBUSY)
+		if (rc == -EBUSY) {
 			busy_count++;
-		else
+		} else {
 			CAM_ERR(CAM_ISP, "CSID[%d] acquire failed (rc=%d), ctx_idx: %u",
 				i, rc, ife_ctx->ctx_index);
+			return rc;
+		}
 	}
 
 	if (compat_count == busy_count)

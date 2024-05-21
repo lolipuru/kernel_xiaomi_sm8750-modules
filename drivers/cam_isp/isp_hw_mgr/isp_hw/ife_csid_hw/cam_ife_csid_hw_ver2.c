@@ -81,6 +81,17 @@ static int cam_ife_csid_ver2_print_hbi_vbi(
 	struct cam_ife_csid_ver2_hw  *csid_hw,
 	struct cam_isp_resource_node *res);
 
+
+static void cam_ife_csid_ver2_reset_csid_params(struct cam_ife_csid_ver2_hw *csid_hw)
+{
+	memset(&csid_hw->rx_cfg, 0, sizeof(struct cam_ife_csid_ver2_rx_cfg));
+	memset(&csid_hw->top_cfg, 0, sizeof(struct cam_ife_csid_ver2_top_cfg));
+	memset(&csid_hw->debug_info, 0, sizeof(struct cam_ife_csid_ver2_debug_info));
+	memset(&csid_hw->counters, 0, sizeof(struct cam_ife_csid_hw_counters));
+	csid_hw->flags.pf_err_detected = false;
+	csid_hw->token = NULL;
+}
+
 static bool cam_ife_csid_ver2_cpas_cb(
 	uint32_t handle, void *user_data, struct cam_cpas_irq_data *irq_data)
 {
@@ -4000,10 +4011,11 @@ static int cam_ife_csid_hw_ver2_prepare_config_rx(
 
 	csid_hw->counters.csi2_reserve_cnt++;
 	CAM_DBG(CAM_ISP,
-		"CSID:%u Rx lane param: cfg:%u type:%u num:%u res:%u",
+		"CSID:%u Rx lane param: cfg:%u type:%u num:%u res:%u rx reserve count: %u",
 		csid_hw->hw_intf->hw_idx,
 		reserve->in_port->lane_cfg, reserve->in_port->lane_type,
-		reserve->in_port->lane_num, reserve->in_port->res_type);
+		reserve->in_port->lane_num, reserve->in_port->res_type,
+		csid_hw->counters.csi2_reserve_cnt);
 
 	return 0;
 
@@ -4059,7 +4071,6 @@ int cam_ife_csid_hw_ver2_prepare_hw_cfg(
 	int rc = 0;
 
 	rc = cam_ife_csid_hw_ver2_prepare_config_rx(csid_hw, reserve);
-
 	if (rc) {
 		CAM_ERR(CAM_ISP, "CSID[%u] rx config failed",
 			csid_hw->hw_intf->hw_idx);
@@ -4101,9 +4112,9 @@ static int cam_ife_csid_ver2_in_port_validate(
 
 		if (csid_hw->token != reserve->cb_priv) {
 			CAM_ERR(CAM_ISP,
-				"CSID[%u] different Context for res %d",
+				"CSID[%u] different Context for res %d rx reserve count: %u",
 				csid_hw->hw_intf->hw_idx,
-				reserve->res_id);
+				reserve->res_id, csid_hw->counters.csi2_reserve_cnt);
 			rc = -EINVAL;
 			goto err;
 		}
@@ -4247,9 +4258,8 @@ int cam_ife_csid_ver2_reserve(void *hw_priv,
 	return rc;
 
 release:
-	cam_ife_csid_cid_release(&csid_hw->cid_data[cid],
-		csid_hw->hw_intf->hw_idx,
-		path_cfg->cid);
+	cam_ife_csid_cid_release(&csid_hw->cid_data[cid], csid_hw->hw_intf->hw_idx, path_cfg->cid);
+	cam_ife_csid_ver2_reset_csid_params(csid_hw);
 	return rc;
 }
 
@@ -4300,9 +4310,9 @@ int cam_ife_csid_ver2_release(void *hw_priv,
 		goto end;
 	}
 
-	CAM_DBG(CAM_ISP, "CSID:%u res type :%d Resource [id:%d name:%s]",
+	CAM_DBG(CAM_ISP, "CSID:%u res type :%d Resource [id:%d name:%s] rx reserve count: %u",
 		csid_hw->hw_intf->hw_idx, res->res_type,
-		res->res_id, res->res_name);
+		res->res_id, res->res_name, csid_hw->counters.csi2_reserve_cnt);
 
 	path_cfg = (struct cam_ife_csid_ver2_path_cfg *)res->res_priv;
 
@@ -4317,16 +4327,8 @@ int cam_ife_csid_ver2_release(void *hw_priv,
 	if (csid_hw->counters.csi2_reserve_cnt)
 		csid_hw->counters.csi2_reserve_cnt--;
 
-	if (!csid_hw->counters.csi2_reserve_cnt) {
-		memset(&csid_hw->rx_cfg, 0,
-			sizeof(struct cam_ife_csid_ver2_rx_cfg));
-		memset(&csid_hw->top_cfg, 0,
-			sizeof(struct cam_ife_csid_ver2_top_cfg));
-		memset(&csid_hw->debug_info, 0,
-			sizeof(struct cam_ife_csid_ver2_debug_info));
-		csid_hw->flags.pf_err_detected = false;
-		csid_hw->token = NULL;
-	}
+	if (!csid_hw->counters.csi2_reserve_cnt)
+		cam_ife_csid_ver2_reset_csid_params(csid_hw);
 
 	res->res_state = CAM_ISP_RESOURCE_STATE_AVAILABLE;
 
