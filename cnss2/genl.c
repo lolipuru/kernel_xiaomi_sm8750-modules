@@ -20,6 +20,8 @@
 #define CNSS_GENL_VERSION 1
 #define CNSS_GENL_DATA_LEN_MAX (15 * 1024)
 #define CNSS_GENL_STR_LEN_MAX 16
+#define CNSS_GENL_SEND_RETRY_COUNT 10
+#define CNSS_GENL_SEND_RETRY_DELAY 200
 
 enum {
 	CNSS_GENL_ATTR_MSG_UNSPEC,
@@ -146,8 +148,6 @@ static int cnss_genl_send_data(u8 type, char *file_name, u32 total_size,
 
 	genlmsg_end(skb, msg_header);
 	ret = genlmsg_multicast(&cnss_genl_family, skb, 0, 0, GFP_KERNEL);
-	if (ret < 0)
-		cnss_pr_err("Fail to send genl msg: %d\n", ret);
 
 	return ret;
 fail:
@@ -177,17 +177,21 @@ int cnss_genl_send_msg(void *buff, u8 type, char *file_name, u32 total_size)
 			end = 1;
 		}
 
-		for (retry = 0; retry < 2; retry++) {
+		for (retry = 0; retry < CNSS_GENL_SEND_RETRY_COUNT; retry++) {
 			ret = cnss_genl_send_data(type, file_name, total_size,
 						  seg_id, end, data_len,
 						  msg_buff);
 			if (ret >= 0)
 				break;
-			msleep(100);
+
+			cnss_pr_err("Fail to send genl seg_id %d: %d, try %d\n",
+				    seg_id, ret, retry+1);
+
+			msleep(CNSS_GENL_SEND_RETRY_DELAY);
 		}
 
 		if (ret < 0) {
-			cnss_pr_err("fail to send genl data, ret %d\n", ret);
+			cnss_pr_err("fail to send genl msg, ret %d\n", ret);
 			return ret;
 		}
 
