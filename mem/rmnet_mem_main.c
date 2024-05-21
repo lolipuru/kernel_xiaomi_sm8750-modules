@@ -47,6 +47,9 @@ DATARMNETf85ebffa7a,
 DATARMNETe4e4a9ca82,DATARMNETeb73899668};module_param_array(DATARMNET15e53a8338,
 uint,NULL,(0xcb7+5769-0x221c));MODULE_PARM_DESC(DATARMNET15e53a8338,
 "\x50\x6f\x6f\x6c\x20\x73\x69\x7a\x65\x20\x77\x71\x20\x77\x69\x6c\x6c\x20\x61\x64\x6a\x75\x73\x74\x20\x74\x6f\x20\x6f\x6e\x20\x72\x75\x6e"
+);static char*verinfo[]={"\x32\x30\x30\x33\x62\x61\x65\x33"};module_param_array(
+verinfo,charp,NULL,(0xcb7+5769-0x221c));MODULE_PARM_DESC(verinfo,
+"\x56\x65\x72\x73\x69\x6f\x6e\x20\x6f\x66\x20\x74\x68\x65\x20\x64\x72\x69\x76\x65\x72"
 );struct workqueue_struct*mem_wq;struct delayed_work pool_adjust_work;int 
 DATARMNETb84a1c23e6;struct hrtimer DATARMNET7bbd010c46;struct list_head 
 rmnet_mem_pool[POOL_LEN];struct mem_info{struct page*addr;struct list_head 

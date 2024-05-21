@@ -21,7 +21,7 @@
 #include <linux/pm_qos.h>
 #define DATARMNET81fe789d21 INT_MAX
 #define MIN_FREQ (0xd2d+202-0xdf7)
-#define DATARMNET59b491fbc9 1651200
+#define DATARMNET59b491fbc9 500000
 #define DATARMNET03d51cb126 (0xd1f+216-0xdf5)
 struct cpu_freq{unsigned int DATARMNET103c8d34fe;unsigned int 
 DATARMNET1159aa2cb6;};unsigned int DATARMNET666c9ff35e __read_mostly=
