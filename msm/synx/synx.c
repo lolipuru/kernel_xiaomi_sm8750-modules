@@ -28,6 +28,10 @@ struct synx_hwfence_interops synx_shared_ops = { NULL };
 
 struct synx_device *synx_dev;
 static atomic64_t synx_counter = ATOMIC64_INIT(1);
+struct ratelimit_state synx_ratelimit_state = {
+	.interval = 1 * HZ,
+	.burst = 10,
+};
 
 void synx_external_callback(s32 sync_obj, int status, void *data)
 {
@@ -609,9 +613,9 @@ u32 synx_custom_get_status(struct synx_coredata *synx_obj, u32 status)
 			synx_obj->status = synx_get_child_status(synx_obj);
 		else
 			synx_obj->status = parent_global_status;
+		custom_status = synx_obj->status;
 	}
 
-	custom_status = synx_obj->status;
 	mutex_unlock(&synx_obj->obj_lock);
 
 bail:
@@ -665,9 +669,11 @@ void synx_signal_handler(struct work_struct *cb_dispatch)
 	 * all local clients to have released the handle coredata.
 	 */
 	if (IS_ERR_OR_NULL(synx_obj)) {
-		dprintk(SYNX_WARN,
-			"handle %d has no local clients\n",
-			h_synx);
+		if (__ratelimit(&synx_ratelimit_state)) {
+			dprintk(SYNX_WARN,
+				"handle %d has no local clients\n",
+				h_synx);
+		}
 		dprintk(SYNX_MEM, "signal cb destroyed %pK\n",
 			signal_cb);
 		kfree(signal_cb);
@@ -2026,7 +2032,7 @@ retry:
 			dprintk(SYNX_ERR,
 				"[sess :%llu] failed to register synx handle %u with hw fence with err %d\n",
 				client->id, *params->new_h_synx, rc);
-			goto release;
+			goto fail;
 		}
 	}
 
@@ -2578,6 +2584,8 @@ static int synx_handle_get_fence(struct synx_private_ioctl_arg *k_ioctl,
 		return -EFAULT;
 
 	fence = synx_get_fence(session, fence_fd.synx_obj);
+	if (IS_ERR_OR_NULL(fence))
+		return -SYNX_INVALID;
 	fence_fd.fd = synx_create_sync_fd(fence);
 	/*
 	 * release additional reference taken in synx_get_fence.
@@ -2748,6 +2756,7 @@ static ssize_t synx_read(struct file *filep,
 
 	list_del_init(&cb->node);
 	mutex_unlock(&client->event_q_lock);
+	memset(&data, 0, sizeof(struct synx_userpayload_info_v2));
 
 	rc = size;
 	data.synx_obj = cb->kernel_cb.h_synx;
@@ -2823,8 +2832,9 @@ struct synx_session *synx_internal_initialize(
 		&client->node, (u64)client);
 	spin_unlock_bh(&synx_dev->native->metadata_map_lock);
 
-	dprintk(SYNX_INFO, "[sess :%llu] session created %s\n",
-		client->id, params->name);
+	if (__ratelimit(&synx_ratelimit_state))
+		dprintk(SYNX_INFO, "[sess :%llu] session created %s\n",
+			client->id, params->name);
 
 	return (struct synx_session *)client;
 }
@@ -3145,8 +3155,9 @@ static int __init synx_init(void)
 	mutex_init(&synx_dev->vtbl_lock);
 	mutex_init(&synx_dev->error_lock);
 	INIT_LIST_HEAD(&synx_dev->error_list);
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	synx_dev->debugfs_root = synx_init_debugfs_dir(synx_dev);
-
+#endif
 	rc = synx_global_mem_init();
 	if (rc) {
 		dprintk(SYNX_ERR, "shared mem init failed, err=%d\n", rc);

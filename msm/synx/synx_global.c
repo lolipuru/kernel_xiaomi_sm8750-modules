@@ -78,6 +78,33 @@ static void synx_global_print_data(
 				func, i, synx_g_obj->parents[i]);
 }
 
+bool synx_fetch_global_shared_memory_handle_details(u32 synx_handle,
+		struct synx_global_coredata *synx_global_entry)
+{
+	int rc = SYNX_SUCCESS;
+	u32 idx;
+	unsigned long flags;
+	struct synx_global_coredata *entry;
+
+	if (!synx_gmem.table) {
+		dprintk(SYNX_VERB, "synx_gmem is NULL\n");
+		return false;
+	}
+	idx = synx_handle & SYNX_HANDLE_INDEX_MASK;
+	if (!synx_is_valid_idx(idx))
+		return false;
+	rc = synx_gmem_lock(idx, &flags);
+	if (rc) {
+		dprintk(SYNX_VERB, "Failed to lock entry %d\n", idx);
+		return false;
+	}
+	entry = &synx_gmem.table[idx];
+	memcpy(synx_global_entry, entry, sizeof(struct synx_global_coredata));
+	synx_gmem_unlock(idx, &flags);
+
+	return true;
+}
+
 int synx_global_dump_shared_memory(void)
 {
 	int rc = SYNX_SUCCESS, idx;
