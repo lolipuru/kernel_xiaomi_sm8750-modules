@@ -97,12 +97,11 @@ u64 msm_vidc_max_freq(struct msm_vidc_inst *inst)
 
 	core = inst->core;
 
-	if (!core->resource || !core->resource->freq_set.freq_tbl ||
-		!core->resource->freq_set.count) {
+	if (!core->freq_tbl || !core->freq_tbl_count) {
 		i_vpr_e(inst, "%s: invalid frequency table\n", __func__);
 		return freq;
 	}
-	freq_tbl = core->resource->freq_set.freq_tbl;
+	freq_tbl = core->freq_tbl;
 	freq = freq_tbl[0].freq;
 
 	i_vpr_l(inst, "%s: rate = %llu\n", __func__, freq);
@@ -215,10 +214,6 @@ int msm_vidc_scale_buses(struct msm_vidc_inst *inst)
 	u32 operating_rate, frame_rate;
 
 	core = inst->core;
-	if (!core->resource) {
-		i_vpr_e(inst, "%s: invalid resource params\n", __func__);
-		return -EINVAL;
-	}
 	vote_data = &inst->bus_data;
 
 	vote_data->power_mode = VIDC_POWER_NORMAL;
@@ -295,7 +290,7 @@ int msm_vidc_scale_buses(struct msm_vidc_inst *inst)
 		}
 	}
 	vote_data->work_mode = inst->capabilities[STAGE].value;
-	if (core->resource->subcache_set.set_to_fw)
+	if (core->is_subcache_set_to_fw)
 		vote_data->use_sys_cache = true;
 	vote_data->num_vpp_pipes = core->capabilities[NUM_VPP_PIPE].value;
 	fill_dynamic_stats(inst, vote_data);
@@ -338,8 +333,7 @@ int msm_vidc_set_clocks(struct msm_vidc_inst *inst)
 
 	core = inst->core;
 
-	if (!core->resource || !core->resource->freq_set.freq_tbl ||
-		!core->resource->freq_set.count) {
+	if (!core->freq_tbl || !core->freq_tbl_count) {
 		d_vpr_e("%s: invalid frequency table\n", __func__);
 		return -EINVAL;
 	}
@@ -377,8 +371,8 @@ int msm_vidc_set_clocks(struct msm_vidc_inst *inst)
 	 * keep checking from lowest to highest rate until
 	 * table rate >= requested rate
 	 */
-	for (i = core->resource->freq_set.count - 1; i >= 0; i--) {
-		rate = core->resource->freq_set.freq_tbl[i].freq;
+	for (i = core->freq_tbl_count - 1; i >= 0; i--) {
+		rate = core->freq_tbl[i].freq;
 		if (rate >= freq)
 			break;
 	}
@@ -386,10 +380,10 @@ int msm_vidc_set_clocks(struct msm_vidc_inst *inst)
 		i = 0;
 	if (increment) {
 		if (i > 0)
-			rate = core->resource->freq_set.freq_tbl[i - 1].freq;
+			rate = core->freq_tbl[i - 1].freq;
 	} else if (decrement) {
 		if (i < (int)(core->platform->data.freq_tbl_size - 1))
-			rate = core->resource->freq_set.freq_tbl[i + 1].freq;
+			rate = core->freq_tbl[i + 1].freq;
 	}
 	core->power.clk_freq = (u32)rate;
 

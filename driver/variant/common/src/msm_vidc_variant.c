@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/errno.h>
@@ -30,7 +30,7 @@ int __write_register(struct msm_vidc_core *core, u32 reg, u32 value)
 		return -EINVAL;
 	}
 
-	base_addr = core->resource->register_base_addr;
+	base_addr = core->register_base_addr;
 	d_vpr_l("regwrite(%pK + %#x) = %#x\n", base_addr, hwiosymaddr, value);
 	base_addr += hwiosymaddr;
 	writel_relaxed(value, base_addr);
@@ -63,7 +63,7 @@ int __write_register_masked(struct msm_vidc_core *core, u32 reg, u32 value,
 		return -EINVAL;
 	}
 
-	base_addr = core->resource->register_base_addr;
+	base_addr = core->register_base_addr;
 	base_addr += reg;
 
 	prev_val = readl_relaxed(base_addr);
@@ -95,7 +95,7 @@ int __read_register(struct msm_vidc_core *core, u32 reg, u32 *value)
 		return -EINVAL;
 	}
 
-	base_addr = core->resource->register_base_addr;
+	base_addr = core->register_base_addr;
 
 	*value = readl_relaxed(base_addr + reg);
 	/*
@@ -121,7 +121,7 @@ int __read_register_with_poll_timeout(struct msm_vidc_core *core, u32 reg,
 		return -EINVAL;
 	}
 
-	addr = (u8 *)core->resource->register_base_addr + reg;
+	addr = (u8 *)core->register_base_addr + reg;
 
 	rc = readl_relaxed_poll_timeout(addr, val, ((val & mask) == exp_val), sleep_us, timeout_us);
 	/*
@@ -131,7 +131,7 @@ int __read_register_with_poll_timeout(struct msm_vidc_core *core, u32 reg,
 	rmb();
 	d_vpr_l(
 		"regread(%pK + %#x) = %#x. rc %d, mask %#x, exp_val %#x, cond %u, sleep %u, timeout %u\n",
-		core->resource->register_base_addr, reg, val, rc, mask, exp_val,
+		core->register_base_addr, reg, val, rc, mask, exp_val,
 		((val & mask) == exp_val), sleep_us, timeout_us);
 
 	return rc;

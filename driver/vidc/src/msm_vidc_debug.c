@@ -312,8 +312,8 @@ static ssize_t core_info_read(struct file *file, char __user *buf,
 	cur += write_str(cur, end - cur,
 		"FW version : %s\n", core->fw_version);
 	cur += write_str(cur, end - cur,
-		"register_base: 0x%x\n", core->resource->register_base_addr);
-	cur += write_str(cur, end - cur, "irq: %u\n", core->resource->irq);
+		"register_base: 0x%x\n", core->register_base_addr);
+	cur += write_str(cur, end - cur, "irq: %u\n", core->irq);
 
 	len = simple_read_from_buffer(buf, count, ppos,
 		dbuf, cur - dbuf);

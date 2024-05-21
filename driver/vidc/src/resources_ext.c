@@ -26,12 +26,9 @@ static void __fatal_error(bool fatal)
 static int __init_regulators(struct msm_vidc_core *core)
 {
 	const struct regulator_table *regulator_tbl;
-	struct regulator_set *regulators;
 	struct regulator_info *rinfo = NULL;
 	u32 regulator_count = 0, cnt = 0;
 	int rc = 0;
-
-	regulators = &core->resource->regulator_set;
 
 	regulator_tbl = core->platform->data.regulator_tbl;
 	regulator_count = core->platform->data.regulator_tbl_size;
@@ -49,28 +46,30 @@ static int __init_regulators(struct msm_vidc_core *core)
 	}
 
 	/* allocate regulator_set */
-	regulators->regulator_tbl = devm_kzalloc(&core->pdev->dev,
-			sizeof(*regulators->regulator_tbl) * regulator_count, GFP_KERNEL);
-	if (!regulators->regulator_tbl) {
+	core->regulator_tbl = devm_kzalloc(&core->pdev->dev,
+			sizeof(*core->regulator_tbl) * regulator_count, GFP_KERNEL);
+	if (!core->regulator_tbl) {
 		d_vpr_e("%s: failed to alloc memory for regulator table\n", __func__);
 		return -ENOMEM;
 	}
-	regulators->count = regulator_count;
+	core->regulator_tbl_count = regulator_count;
 
 	/* populate regulator fields */
-	for (cnt = 0; cnt < regulators->count; cnt++) {
-		regulators->regulator_tbl[cnt].name = regulator_tbl[cnt].name;
-		regulators->regulator_tbl[cnt].hw_power_collapse = regulator_tbl[cnt].hw_trigger;
+	for (cnt = 0; cnt < core->regulator_tbl_count; cnt++) {
+		core->regulator_tbl[cnt].name = regulator_tbl[cnt].name;
+		core->regulator_tbl[cnt].hw_power_collapse = regulator_tbl[cnt].hw_trigger;
 	}
 
 	/* print regulator fields */
-	venus_hfi_for_each_regulator(core, rinfo) {
+	for (cnt = 0; cnt < core->regulator_tbl_count; ++cnt) {
+		rinfo = &core->regulator_tbl[cnt];
 		d_vpr_h("%s: name %s hw_power_collapse %d\n",
 			__func__, rinfo->name, rinfo->hw_power_collapse);
 	}
 
 	/* get regulator handle */
-	venus_hfi_for_each_regulator(core, rinfo) {
+	for (cnt = 0; cnt < core->regulator_tbl_count; ++cnt) {
+		rinfo = &core->regulator_tbl[cnt];
 		rinfo->regulator = devm_regulator_get(&core->pdev->dev, rinfo->name);
 		if (IS_ERR_OR_NULL(rinfo->regulator)) {
 			rc = PTR_ERR(rinfo->regulator) ?
@@ -206,12 +205,14 @@ fail_assert_xo_reset:
 
 static int __enable_regulator(struct msm_vidc_core *core, const char *reg_name)
 {
-	int rc = 0;
 	struct regulator_info *rinfo;
 	bool found;
+	u32 cnt = 0;
+	int rc = 0;
 
 	found = false;
-	venus_hfi_for_each_regulator(core, rinfo) {
+	for (cnt = 0; cnt < core->regulator_tbl_count; ++cnt) {
+		rinfo = &core->regulator_tbl[cnt];
 		if (!rinfo->regulator) {
 			d_vpr_e("%s: invalid regulator %s\n",
 				__func__, rinfo->name);
@@ -263,12 +264,14 @@ fail_assert_xo_reset:
 
 static int __disable_regulator(struct msm_vidc_core *core, const char *reg_name)
 {
-	int rc = 0;
 	struct regulator_info *rinfo;
+	u32 cnt = 0;
+	int rc = 0;
 	bool found;
 
 	found = false;
-	venus_hfi_for_each_regulator(core, rinfo) {
+	for (cnt = 0; cnt < core->regulator_tbl_count; ++cnt) {
+		rinfo = &core->regulator_tbl[cnt];
 		if (!rinfo->regulator) {
 			d_vpr_e("%s: invalid regulator %s\n",
 				__func__, rinfo->name);
@@ -325,9 +328,11 @@ fail_assert_xo_reset:
 static int __hand_off_regulators(struct msm_vidc_core *core)
 {
 	struct regulator_info *rinfo;
-	int rc = 0, c = 0;
+	u32 cnt = 0, rcnt = 0;
+	int rc = 0;
 
-	venus_hfi_for_each_regulator(core, rinfo) {
+	for (cnt = 0; cnt < core->regulator_tbl_count; ++cnt) {
+		rinfo = &core->regulator_tbl[cnt];
 		rc = __hand_off_regulator(core, rinfo);
 		/*
 		 * If one regulator hand off failed, driver should take
@@ -335,26 +340,30 @@ static int __hand_off_regulators(struct msm_vidc_core *core)
 		 */
 		if (rc)
 			goto err_reg_handoff_failed;
-		c++;
 	}
 
 	return rc;
+
 err_reg_handoff_failed:
-	venus_hfi_for_each_regulator_reverse_continue(core, rinfo, c)
+	for (rcnt = cnt; rcnt > 0; --rcnt) {
+		rinfo = &core->regulator_tbl[rcnt-1];
 		__acquire_regulator(core, rinfo);
+	}
 
 	return rc;
 }
 
 static int __acquire_regulators(struct msm_vidc_core *core)
 {
-	int rc = 0;
 	struct regulator_info *rinfo;
+	u32 cnt = 0;
 
-	venus_hfi_for_each_regulator(core, rinfo)
+	for (cnt = 0; cnt < core->regulator_tbl_count; ++cnt) {
+		rinfo = &core->regulator_tbl[cnt];
 		__acquire_regulator(core, rinfo);
+	}
 
-	return rc;
+	return 0;
 }
 
 #ifdef CONFIG_MSM_MMRM
@@ -452,10 +461,12 @@ static int __set_clk_rate(struct msm_vidc_core *core, struct clock_info *cl,
 
 static int __set_clocks_ext(struct msm_vidc_core *core, u64 freq)
 {
-	int rc = 0;
 	struct clock_info *cl;
+	u32 cnt = 0;
+	int rc = 0;
 
-	venus_hfi_for_each_clock(core, cl) {
+	for (cnt = 0; cnt < core->clock_tbl_count; ++cnt) {
+		cl = &core->clock_tbl[cnt];
 		if (cl->has_scaling) {
 			rc = __set_clk_rate(core, cl, freq);
 			if (rc)
@@ -498,13 +509,15 @@ static int qcom_clk_get_branch_flag(enum msm_vidc_branch_mem_flags vidc_flag,
 static int __clock_set_flag_ext(struct msm_vidc_core *core,
 	const char *name, enum msm_vidc_branch_mem_flags flag)
 {
-	int rc = 0;
 	struct clock_info *cinfo = NULL;
-	bool found = false;
 	enum branch_mem_flags mem_flag;
+	bool found = false;
+	u32 cnt = 0;
+	int rc = 0;
 
 	/* get clock handle */
-	venus_hfi_for_each_clock(core, cinfo) {
+	for (cnt = 0; cnt < core->clock_tbl_count; ++cnt) {
+		cinfo = &core->clock_tbl[cnt];
 		if (strcmp(cinfo->name, name))
 			continue;
 		found = true;

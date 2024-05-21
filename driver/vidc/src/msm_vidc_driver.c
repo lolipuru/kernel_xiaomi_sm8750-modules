@@ -5590,13 +5590,15 @@ struct context_bank_info *msm_vidc_get_context_bank_for_region(
 	struct msm_vidc_core *core, enum msm_vidc_buffer_region region)
 {
 	struct context_bank_info *cb = NULL, *match = NULL;
+	u32 cnt = 0;
 
 	if (!region || region >= MSM_VIDC_REGION_MAX) {
 		d_vpr_e("Invalid region %#x\n", region);
 		return NULL;
 	}
 
-	venus_hfi_for_each_context_bank(core, cb) {
+	for (cnt = 0; cnt < core->context_bank_tbl_count; ++cnt) {
+		cb = &core->context_bank_tbl[cnt];
 		if (cb->region == region) {
 			match = cb;
 			break;
@@ -5612,8 +5614,10 @@ struct context_bank_info *msm_vidc_get_context_bank_for_device(
 	struct msm_vidc_core *core, struct device *dev)
 {
 	struct context_bank_info *cb = NULL, *match = NULL;
+	u32 cnt = 0;
 
-	venus_hfi_for_each_context_bank(core, cb) {
+	for (cnt = 0; cnt < core->context_bank_tbl_count; ++cnt) {
+		cb = &core->context_bank_tbl[cnt];
 		if (of_device_is_compatible(dev->of_node, cb->name)) {
 			match = cb;
 			break;

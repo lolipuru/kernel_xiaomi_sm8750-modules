@@ -319,9 +319,8 @@ static u64 msm_vidc_calc_freq_iris3_new(struct msm_vidc_inst *inst, u32 data_siz
 		 */
 	} else {
 		/* limit to NOM, index 0 is TURBO, index 1 is NOM clock rate */
-		if (core->resource->freq_set.count >= 2 &&
-			freq > core->resource->freq_set.freq_tbl[1].freq)
-			freq = core->resource->freq_set.freq_tbl[1].freq;
+		if (core->freq_tbl_count >= 2 && freq > core->freq_tbl[1].freq)
+			freq = core->freq_tbl[1].freq;
 	}
 
 	return freq;
@@ -379,8 +378,7 @@ static u64 msm_vidc_calc_freq_iris3_legacy(struct msm_vidc_inst *inst, u32 data_
 
 	core = inst->core;
 
-	if (!core->resource || !core->resource->freq_set.freq_tbl ||
-		!core->resource->freq_set.count) {
+	if (!core->freq_tbl || !core->freq_tbl_count) {
 		d_vpr_e("%s: invalid params\n", __func__);
 		return freq;
 	}
@@ -516,7 +514,7 @@ static u64 msm_vidc_calc_freq_iris3_legacy(struct msm_vidc_inst *inst, u32 data_
 
 			freq_entry = bitrate_entry;
 
-			freq_tbl = core->resource->freq_set.freq_tbl;
+			freq_tbl = core->freq_tbl;
 			freq_tbl_value = freq_tbl[freq_entry].freq / 1000000;
 
 			input_bitrate_mbps = fps * data_size * 8 / (1024 * 1024);
@@ -591,9 +589,8 @@ static u64 msm_vidc_calc_freq_iris3_legacy(struct msm_vidc_inst *inst, u32 data_
 		 */
 	} else {
 		/* limit to NOM, index 0 is TURBO, index 1 is NOM clock rate */
-		if (core->resource->freq_set.count >= 2 &&
-		    freq > core->resource->freq_set.freq_tbl[1].freq)
-			freq = core->resource->freq_set.freq_tbl[1].freq;
+		if (core->freq_tbl_count >= 2 && freq > core->freq_tbl[1].freq)
+			freq = core->freq_tbl[1].freq;
 	}
 
 	i_vpr_p(inst, "%s: filled len %d, required freq %llu, fps %u, mbpf %u\n",

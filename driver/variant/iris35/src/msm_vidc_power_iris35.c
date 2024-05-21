@@ -374,30 +374,25 @@ static bool is_vpp_cycles_close_to_freq_corner(struct msm_vidc_core *core,
 	u32 margin_percent = 0;
 	int i = 0;
 
-	if (!core || !core->resource || !core->resource->freq_set.freq_tbl ||
-		!core->resource->freq_set.count) {
+	if (!core->freq_tbl || !core->freq_tbl_count) {
 		d_vpr_e("%s: invalid params\n", __func__);
 		return false;
 	}
 
 	vpp_min_freq = vpp_min_freq * 1000000; /* convert to hz */
 
-	closest_freq_upper_corner =
-		core->resource->freq_set.freq_tbl[0].freq;
+	closest_freq_upper_corner = core->freq_tbl[0].freq;
 
 	/* return true if vpp_min_freq is more than max frequency */
 	if (vpp_min_freq > closest_freq_upper_corner)
 		return true;
 
 	/* get the closest freq corner for vpp_min_freq */
-	for (i = 0; i < core->resource->freq_set.count; i++) {
-		if (vpp_min_freq <=
-			core->resource->freq_set.freq_tbl[i].freq) {
-			closest_freq_upper_corner =
-				core->resource->freq_set.freq_tbl[i].freq;
-		} else {
+	for (i = 0; i < core->freq_tbl_count; i++) {
+		if (vpp_min_freq <= core->freq_tbl[i].freq)
+			closest_freq_upper_corner = core->freq_tbl[i].freq;
+		else
 			break;
-		}
 	}
 
 	margin_freq = closest_freq_upper_corner - vpp_min_freq;
@@ -473,9 +468,8 @@ static u64 msm_vidc_calc_freq_iris35_new(struct msm_vidc_inst *inst, u32 data_si
 		 */
 	} else {
 		/* limit to NOM, index 0 is TURBO, index 1 is NOM clock rate */
-		if (core->resource->freq_set.count >= 2 &&
-				freq > core->resource->freq_set.freq_tbl[1].freq)
-			freq = core->resource->freq_set.freq_tbl[1].freq;
+		if (core->freq_tbl_count >= 2 && freq > core->freq_tbl[1].freq)
+			freq = core->freq_tbl[1].freq;
 	}
 
 	return freq;
@@ -533,8 +527,7 @@ u64 msm_vidc_calc_freq_iris35_legacy(struct msm_vidc_inst *inst, u32 data_size)
 
 	core = inst->core;
 
-	if (!core->resource || !core->resource->freq_set.freq_tbl ||
-		!core->resource->freq_set.count) {
+	if (!core->freq_tbl || !core->freq_tbl_count) {
 		d_vpr_e("%s: invalid params\n", __func__);
 		return freq;
 	}
@@ -670,7 +663,7 @@ u64 msm_vidc_calc_freq_iris35_legacy(struct msm_vidc_inst *inst, u32 data_size)
 
 			freq_entry = bitrate_entry;
 
-			freq_tbl = core->resource->freq_set.freq_tbl;
+			freq_tbl = core->freq_tbl;
 			freq_tbl_value = freq_tbl[freq_entry].freq / 1000000;
 
 			input_bitrate_mbps = fps * data_size * 8 / (1024 * 1024);
@@ -752,9 +745,8 @@ u64 msm_vidc_calc_freq_iris35_legacy(struct msm_vidc_inst *inst, u32 data_size)
 		 */
 	} else {
 		/* limit to NOM, index 0 is TURBO, index 1 is NOM clock rate */
-		if (core->resource->freq_set.count >= 2 &&
-				freq > core->resource->freq_set.freq_tbl[1].freq)
-			freq = core->resource->freq_set.freq_tbl[1].freq;
+		if (core->freq_tbl_count >= 2 && freq > core->freq_tbl[1].freq)
+			freq = core->freq_tbl[1].freq;
 	}
 
 	return freq;
@@ -1326,8 +1318,7 @@ int msm_vidc_ring_buf_count_iris35(struct msm_vidc_inst *inst, u32 data_size)
 
 	core = inst->core;
 
-	if (!core->resource || !core->resource->freq_set.freq_tbl ||
-		!core->resource->freq_set.count) {
+	if (!core->freq_tbl || !core->freq_tbl_count) {
 		i_vpr_e(inst, "%s: invalid frequency table\n", __func__);
 		return -EINVAL;
 	}

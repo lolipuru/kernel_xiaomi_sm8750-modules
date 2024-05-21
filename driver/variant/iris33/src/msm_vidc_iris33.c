@@ -174,7 +174,7 @@ static int __get_device_region_info(struct msm_vidc_core *core,
 	u32 min_addr, max_addr, count = 0;
 	int rc = 0;
 
-	dev_set = &core->resource->device_region_set;
+	dev_set = &core->device_region_set;
 
 	if (!dev_set->count) {
 		d_vpr_h("%s: device region not available\n", __func__);
@@ -588,7 +588,7 @@ static int __power_off_iris33(struct msm_vidc_core *core)
 		d_vpr_e("%s: failed to unvote buses\n", __func__);
 
 	if (!call_venus_op(core, watchdog, core, core->intr_status))
-		disable_irq_nosync(core->resource->irq);
+		disable_irq_nosync(core->irq);
 
 	msm_vidc_change_core_sub_state(core, CORE_SUBSTATE_POWER_ENABLE, 0, __func__);
 
@@ -700,7 +700,7 @@ static int __power_on_iris33(struct msm_vidc_core *core)
 	if (rc)
 		goto fail_power_on_substate;
 
-	freq_tbl = core->resource->freq_set.freq_tbl;
+	freq_tbl = core->freq_tbl;
 	freq = core->power.clk_freq ? core->power.clk_freq :
 				      freq_tbl[0].freq;
 
@@ -794,7 +794,7 @@ static int __power_on_iris33(struct msm_vidc_core *core)
 
 	__interrupt_init_iris33(core);
 	core->intr_status = 0;
-	enable_irq(core->resource->irq);
+	enable_irq(core->irq);
 
 	return rc;
 
