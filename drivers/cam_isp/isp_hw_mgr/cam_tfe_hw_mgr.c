@@ -2184,6 +2184,7 @@ static int cam_tfe_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		}
 	}
 
+	acquire_args->total_ports_acq = total_pix_port + total_rdi_port;
 	/* Check whether context has only RDI resource */
 	if (!total_pix_port) {
 		tfe_ctx->is_rdi_only_context = 1;

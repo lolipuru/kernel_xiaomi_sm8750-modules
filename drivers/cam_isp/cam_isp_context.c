@@ -7106,12 +7106,18 @@ static void __cam_isp_ctx_free_mem_hw_entries(struct cam_context *ctx)
 		ctx->hw_update_entry = NULL;
 	}
 
+	ctx_isp = (struct cam_isp_context *)ctx->ctx_priv;
+	if (ctx_isp)
+		for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
+			CAM_MEM_FREE(ctx_isp->req_isp[i].deferred_fence_map_index);
+			ctx_isp->req_isp[i].deferred_fence_map_index = NULL;
+		}
+
 	ctx->max_out_map_entries = 0;
 	ctx->max_in_map_entries = 0;
 	ctx->max_hw_update_entries = 0;
 
 	/* Free memory for FCG channel/context */
-	ctx_isp = (struct cam_isp_context *)ctx->ctx_priv;
 
 	if (ctx_isp && ctx_isp->fcg_tracker.fcg_caps) {
 		for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
@@ -7656,16 +7662,6 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		return -ENOMEM;
 	}
 
-	for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-		ctx->hw_update_entry[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_hw_update_entries,
-			sizeof(struct cam_hw_update_entry), GFP_KERNEL);
-		if (!ctx->hw_update_entry[i]) {
-			CAM_ERR(CAM_CTXT, "%s[%u] no memory for hw_update_entry: %u, link: 0x%x",
-				ctx->dev_name, ctx->ctx_id, i, ctx->link_hdl);
-			return -ENOMEM;
-		}
-	}
-
 	ctx->in_map_entries = CAM_MEM_ZALLOC_ARRAY(CAM_ISP_CTX_REQ_MAX,
 				sizeof(struct cam_hw_fence_map_entry *),
 				GFP_KERNEL);
@@ -7675,19 +7671,6 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 			ctx->dev_name, ctx->ctx_id, ctx->link_hdl);
 		rc = -ENOMEM;
 		goto end;
-	}
-
-	for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-		ctx->in_map_entries[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_in_map_entries,
-			sizeof(struct cam_hw_fence_map_entry),
-			GFP_KERNEL);
-
-		if (!ctx->in_map_entries[i]) {
-			CAM_ERR(CAM_CTXT, "%s[%u] no memory for in_map_entries: %u, link: 0x%x",
-				ctx->dev_name, ctx->ctx_id, i, ctx->link_hdl);
-			rc = -ENOMEM;
-			goto end;
-		}
 	}
 
 	ctx->out_map_entries = CAM_MEM_ZALLOC_ARRAY(CAM_ISP_CTX_REQ_MAX,
@@ -7701,7 +7684,28 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		goto end;
 	}
 
+
 	for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
+
+		ctx->hw_update_entry[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_hw_update_entries,
+			sizeof(struct cam_hw_update_entry), GFP_KERNEL);
+		if (!ctx->hw_update_entry[i]) {
+			CAM_ERR(CAM_CTXT, "%s[%u] no memory for hw_update_entry: %u, link: 0x%x",
+				ctx->dev_name, ctx->ctx_id, i, ctx->link_hdl);
+			return -ENOMEM;
+		}
+
+		ctx->in_map_entries[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_in_map_entries,
+			sizeof(struct cam_hw_fence_map_entry),
+			GFP_KERNEL);
+
+		if (!ctx->in_map_entries[i]) {
+			CAM_ERR(CAM_CTXT, "%s[%u] no memory for in_map_entries: %u, link: 0x%x",
+				ctx->dev_name, ctx->ctx_id, i, ctx->link_hdl);
+			rc = -ENOMEM;
+			goto end;
+		}
+
 		ctx->out_map_entries[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_out_map_entries,
 			sizeof(struct cam_hw_fence_map_entry),
 			GFP_KERNEL);
@@ -7709,6 +7713,15 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		if (!ctx->out_map_entries[i]) {
 			CAM_ERR(CAM_CTXT, "%s[%u] no memory for out_map_entries: %u, link: 0x%x",
 				ctx->dev_name, ctx->ctx_id, i, ctx->link_hdl);
+			rc = -ENOMEM;
+			goto end;
+		}
+
+		ctx_isp->req_isp[i].deferred_fence_map_index = kcalloc(param->total_ports_acq,
+			sizeof(uint32_t), GFP_KERNEL);
+		if (!ctx_isp->req_isp[i].deferred_fence_map_index) {
+			CAM_ERR(CAM_ISP, "%s[%d] no memory for defer fence map idx arr, ports:%u",
+				ctx->dev_name, ctx->ctx_id, param->total_ports_acq);
 			rc = -ENOMEM;
 			goto end;
 		}

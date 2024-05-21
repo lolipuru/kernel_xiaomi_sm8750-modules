@@ -5968,6 +5968,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	}
 
 	total_ports = total_pix_port + total_rdi_port + total_pd_port;
+	acquire_args->total_ports_acq = total_ports;
 	ife_ctx->res_list_ife_out = CAM_MEM_ZALLOC_ARRAY(total_ports,
 		sizeof(struct cam_isp_hw_mgr_res), GFP_KERNEL);
 	memset(ife_ctx->vfe_out_map, 0xff, sizeof(uint8_t) * max_ife_out_res);
