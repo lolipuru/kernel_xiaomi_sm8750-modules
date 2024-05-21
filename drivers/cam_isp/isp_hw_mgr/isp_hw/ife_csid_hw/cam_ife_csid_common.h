@@ -111,6 +111,8 @@ enum cam_ife_csid_mem_base_id {
 enum cam_ife_csid_path_multi_vc_dt_grp {
 	CAM_IFE_CSID_MULTI_VC_DT_GRP_0,
 	CAM_IFE_CSID_MULTI_VC_DT_GRP_1,
+	CAM_IFE_CSID_MULTI_VC_DT_GRP_2,
+	CAM_IFE_CSID_MULTI_VC_DT_GRP_3,
 	CAM_IFE_CSID_MULTI_VC_DT_GRP_MAX,
 };
 

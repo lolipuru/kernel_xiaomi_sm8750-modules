@@ -378,6 +378,7 @@ struct cam_ife_csid_ver2_path_reg_info {
 	uint32_t ctrl_addr;
 	uint32_t debug_clr_cmd_addr;
 	uint32_t multi_vcdt_cfg0_addr;
+	uint32_t multi_vcdt_cfg1_addr;
 	uint32_t cfg1_addr;
 	uint32_t bin_cfg0_addr;
 	uint32_t pix_store_cfg0_addr;
@@ -566,6 +567,8 @@ struct cam_ife_csid_ver2_common_reg_info {
 	uint32_t vfr_en_shift_val;
 	uint32_t decode_format_shift_val;
 	uint32_t decode_format1_shift_val;
+	uint32_t decode_format2_shift_val;
+	uint32_t decode_format3_shift_val;
 	bool     decode_format1_supported;
 	uint32_t decode_format_mask;
 	uint32_t start_mode_shift_val;
@@ -606,6 +609,8 @@ struct cam_ife_csid_ver2_common_reg_info {
 	uint32_t stream_id_y_offset_shift_val;
 	uint32_t multi_vcdt_vc1_shift_val;
 	uint32_t multi_vcdt_dt1_shift_val;
+	uint32_t multi_vcdt_dt2_shift_val;
+	uint32_t multi_vcdt_dt3_shift_val;
 	uint32_t multi_vcdt_ts_combo_en_shift_val;
 	uint32_t multi_vcdt_en_shift_val;
 	uint32_t mup_shift_val;
@@ -645,6 +650,7 @@ struct cam_ife_csid_ver2_common_reg_info {
 	uint32_t only_master_rup;
 	uint32_t sfe_ipp_input_rdi_res;
 	uint32_t phy_sel_base_idx;
+	uint32_t num_dt_supported;
 	bool     timestamp_enabled_in_cfg0;
 	bool     camif_irq_support;
 	bool     ts_comb_vcdt_en;

@@ -106,14 +106,129 @@ static bool cam_ife_csid_ver2_cpas_cb(
 	return handled;
 }
 
+static void cam_ife_csid_ver2_decode_format_validate_on_err(
+	struct cam_ife_csid_ver2_hw *csid_hw, uint32_t *vc,
+	uint32_t *dt_arr, uint32_t *decode_fmt_arr, int num_dt)
+{
+	int i, j;
+	bool payload_fmt = false, vc_match;
+	uint32_t decode_fmt;
+	const struct cam_ife_csid_ver2_reg_info *csid_reg =
+		(struct cam_ife_csid_ver2_reg_info *)csid_hw->core_info->csid_reg;
+
+	decode_fmt = csid_reg->cmn_reg->decode_format_payload_only;
+
+	for (i = 0; i < num_dt; i++)
+		payload_fmt |= (decode_fmt == decode_fmt_arr[i]);
+
+	for (i = 0; payload_fmt && (i < num_dt); i++) {
+		if (decode_fmt_arr[i] != decode_fmt) {
+			CAM_ERR(CAM_ISP, "CSID:%u decode_fmt_%d mismatch: 0x%x",
+				csid_hw->hw_intf->hw_idx, i, decode_fmt_arr[i]);
+		}
+	}
+
+	vc_match = (vc[0] == vc[1]);
+
+	for (i = 0; vc_match && (i < num_dt); i++) {
+		for (j = 0; j < i; j++) {
+			if ((dt_arr[i] == dt_arr[j]) && (decode_fmt_arr[i] != decode_fmt_arr[j])) {
+				CAM_ERR(CAM_ISP, "CSID:%u Wrong multi VC-DT configuration",
+					csid_hw->hw_intf->hw_idx);
+
+				CAM_ERR(CAM_ISP,
+					"CSID:%u fmt %d fmt1 %d vc %d vc1 %d dt%d %d dt%d %d",
+					csid_hw->hw_intf->hw_idx,
+					decode_fmt_arr[i], decode_fmt_arr[j],
+					vc[0], vc[1], i, dt_arr[i],
+					j, dt_arr[j]);
+			}
+		}
+	}
+}
+
+static int cam_ife_csid_ver2_decode_format_validate(
+	struct cam_ife_csid_ver2_hw *csid_hw,
+	struct cam_isp_resource_node    *res)
+{
+	int rc = 0, i, j;
+	const struct cam_ife_csid_ver2_reg_info *csid_reg =
+		(struct cam_ife_csid_ver2_reg_info *)csid_hw->core_info->csid_reg;
+	struct cam_ife_csid_ver2_path_cfg *path_cfg =
+		(struct cam_ife_csid_ver2_path_cfg *)res->res_priv;
+	struct cam_ife_csid_cid_data *cid_data = &csid_hw->cid_data[path_cfg->cid];
+	bool payload_fmt = false;
+
+	/* Validation is only required  for multi vc dt use case */
+	if (!cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].valid)
+		return rc;
+
+	/**
+	 * If any of the decode formats are for payload, HW requires all other
+	 * decode formats to be for payload as well, loop over twice to check
+	 */
+	for (i = 0; i < CAM_ISP_VC_DT_CFG; i++) {
+		if (!cid_data->vc_dt[i].valid)
+			break;
+		if (path_cfg->path_format[i].decode_fmt ==
+			csid_reg->cmn_reg->decode_format_payload_only)
+			payload_fmt = true;
+	}
+
+	for (i = 0; payload_fmt && (i < CAM_ISP_VC_DT_CFG); i++) {
+		if (path_cfg->path_format[i].decode_fmt !=
+			csid_reg->cmn_reg->decode_format_payload_only) {
+			CAM_ERR(CAM_ISP, "CSID:%u payload decode_fmt_%d mismatch: 0x%x",
+				csid_hw->hw_intf->hw_idx, i, path_cfg->path_format[i].decode_fmt);
+			rc = -EINVAL;
+			goto err;
+		}
+	}
+
+	for (i = 0; i < CAM_ISP_VC_DT_CFG; i++) {
+		if (!cid_data->vc_dt[i].valid)
+			break;
+		for (j = 0; j < i; j++) {
+			if ((cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].vc ==
+				cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].vc) &&
+				(cid_data->vc_dt[i].dt == cid_data->vc_dt[j].dt)) {
+				if (path_cfg->path_format[i].decode_fmt !=
+					path_cfg->path_format[j].decode_fmt) {
+					CAM_ERR(CAM_ISP,
+						"CSID:%u Wrong multi VC-DT configuration",
+							csid_hw->hw_intf->hw_idx);
+
+					CAM_ERR(CAM_ISP,
+						"CSID:%u fmt %d fmt1 %d vc %d vc1 %d dt%d %d dt%d %d",
+						csid_hw->hw_intf->hw_idx,
+						path_cfg->path_format[i].decode_fmt,
+						path_cfg->path_format[j].decode_fmt,
+						cid_data->vc_dt[0].vc,
+						cid_data->vc_dt[1].vc,
+						i, cid_data->vc_dt[i].dt,
+						j, cid_data->vc_dt[j].dt);
+					rc = -EINVAL;
+					goto err;
+				}
+			}
+		}
+	}
+
+	return rc;
+err:
+	CAM_ERR(CAM_ISP, "Invalid decode fmt cfg CSID[%u] res [id %d name %s] rc %d",
+		csid_hw->hw_intf->hw_idx, res->res_id, res->res_name, rc);
+	return rc;
+}
+
 static bool cam_ife_csid_ver2_disable_sof_retime(
 	struct cam_ife_csid_ver2_hw     *csid_hw,
 	struct cam_isp_resource_node    *res)
 {
 	struct cam_ife_csid_ver2_reg_info  *csid_reg = (struct cam_ife_csid_ver2_reg_info *)
-							    csid_hw->core_info->csid_reg;
+								csid_hw->core_info->csid_reg;
 	struct cam_ife_csid_ver2_path_cfg  *path_cfg = (struct cam_ife_csid_ver2_path_cfg *)
-							    res->res_priv;
+								res->res_priv;
 	const struct cam_ife_csid_ver2_path_reg_info *path_reg = csid_reg->path_reg[res->res_id];
 
 	if (!(path_reg->capabilities & CAM_IFE_CSID_CAP_SOF_RETIME_DIS))
@@ -2235,6 +2350,7 @@ void cam_ife_csid_hw_ver2_drv_err_handler(void *csid)
 void cam_ife_csid_hw_ver2_mup_mismatch_handler(
 	void *csid, void *resource)
 {
+	int                                i;
 	uint32_t                           idx = 0;
 	struct timespec64                  current_ts;
 	struct cam_ife_csid_ver2_hw       *csid_hw = csid;
@@ -2254,10 +2370,13 @@ void cam_ife_csid_hw_ver2_mup_mismatch_handler(
 	path_reg = csid_reg->path_reg[res->res_id];
 
 	if (cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].valid) {
-		CAM_INFO(CAM_ISP, "CSID[%u] Virtual channel 0: %u, Virtual Channel 1: %u",
-			csid_hw->hw_intf->hw_idx,
-			cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].vc,
-			cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].vc);
+		for (i = 0; i < CAM_IFE_CSID_MULTI_VC_DT_GRP_MAX; i++) {
+			if (!cid_data->vc_dt[i].valid)
+				break;
+			CAM_INFO(CAM_ISP, "CSID[%u] Virtual channel %d: %u, DT 0x%x",
+				csid_hw->hw_intf->hw_idx, i, cid_data->vc_dt[i].vc,
+				cid_data->vc_dt[i].dt);
+		}
 
 		if (path_cfg->ts_comb_vcdt_en) {
 			ktime_get_boottime_ts64(&current_ts);
@@ -2268,8 +2387,8 @@ void cam_ife_csid_hw_ver2_mup_mismatch_handler(
 
 			if (idx < CAM_IFE_CSID_MULTI_VC_DT_GRP_MAX)
 				CAM_DBG(CAM_ISP,
-					"CSID[%d] Received frame on [id: %d name: %s] timestamp: [%llu:%09llu]",
-					csid_hw->hw_intf->hw_idx,
+					"CSID[%d] Received frame on VC: %d [id: %d name: %s] timestamp: [%llu:%09llu]",
+					csid_hw->hw_intf->hw_idx, idx,
 					res->res_id, res->res_name, current_ts.tv_sec,
 					current_ts.tv_nsec);
 			else
@@ -2296,9 +2415,12 @@ void cam_ife_csid_ver2_print_illegal_programming_irq_status(
 	struct cam_hw_soc_info                             *soc_info;
 	void __iomem                                       *base;
 	const struct cam_ife_csid_ver2_path_reg_info       *path_reg;
-	uint32_t vcdt_cfg0 = 0, cfg0 = 0, cfg1 = 0;
-	uint32_t decode_fmt = 0, decode_fmt1 = 0;
-	uint32_t vc, dt, vc1, dt1;
+	uint32_t vcdt_cfg0 = 0, vcdt_cfg1 = 0, cfg0 = 0, cfg1 = 0;
+	uint32_t decode_fmt[CAM_IFE_CSID_MULTI_VC_DT_GRP_MAX],
+		vc[CAM_IFE_CSID_MAX_VALID_VC_NUM], dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_MAX];
+	int i;
+	size_t len = 0;
+	uint8_t log_buf[100];
 
 	csid_reg = csid_hw->core_info->csid_reg;
 	path_cfg = (struct cam_ife_csid_ver2_path_cfg *)res->res_priv;
@@ -2321,45 +2443,51 @@ void cam_ife_csid_ver2_print_illegal_programming_irq_status(
 		cfg0, cfg1, vcdt_cfg0, cam_io_r_mb(base + path_reg->vcrop_addr),
 		(cfg1 & BIT(path_reg->early_eof_en_shift_val)));
 
+
 	if (cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].valid) {
-		decode_fmt = ((cfg0 >>
+		decode_fmt[0] = ((cfg0 >>
 			csid_reg->cmn_reg->decode_format_shift_val) &
 			csid_reg->cmn_reg->decode_format_mask);
-		decode_fmt1 = ((vcdt_cfg0 >>
+		decode_fmt[1] = ((vcdt_cfg0 >>
 			csid_reg->cmn_reg->decode_format1_shift_val) &
 			csid_reg->cmn_reg->decode_format_mask);
-		vc = ((cfg0 >> csid_reg->cmn_reg->vc_shift_val) &
+		vc[0] = ((cfg0 >> csid_reg->cmn_reg->vc_shift_val) &
 			csid_reg->cmn_reg->vc_mask);
-		dt = ((cfg0 >> csid_reg->cmn_reg->dt_shift_val) &
+		dt[0] = ((cfg0 >> csid_reg->cmn_reg->dt_shift_val) &
 			csid_reg->cmn_reg->dt_mask);
-		vc1 = ((vcdt_cfg0 >> csid_reg->cmn_reg->multi_vcdt_vc1_shift_val) &
+		vc[1] = ((vcdt_cfg0 >> csid_reg->cmn_reg->multi_vcdt_vc1_shift_val) &
 			csid_reg->cmn_reg->vc_mask);
-		dt1 = ((vcdt_cfg0 >> csid_reg->cmn_reg->multi_vcdt_dt1_shift_val) &
+		dt[1] = ((vcdt_cfg0 >> csid_reg->cmn_reg->multi_vcdt_dt1_shift_val) &
 			csid_reg->cmn_reg->dt_mask);
 
-		if ((decode_fmt == csid_reg->cmn_reg->decode_format_payload_only) ||
-			(decode_fmt1 == csid_reg->cmn_reg->decode_format_payload_only)) {
-			if (decode_fmt1 != decode_fmt) {
-				CAM_ERR(CAM_ISP,
-					"CSID:%u decode_fmt %d decode_fmt1 %d mismatch",
-					csid_hw->hw_intf->hw_idx,
-					decode_fmt,
-					decode_fmt1);
-			}
+		if (cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_2].valid) {
+			vcdt_cfg1 = cam_io_r_mb(base + path_reg->multi_vcdt_cfg1_addr);
+			dt[2] = ((vcdt_cfg1 >> csid_reg->cmn_reg->multi_vcdt_dt2_shift_val) &
+				csid_reg->cmn_reg->dt_mask);
+			dt[3] = ((vcdt_cfg1 >> csid_reg->cmn_reg->multi_vcdt_dt3_shift_val) &
+				csid_reg->cmn_reg->dt_mask);
+			decode_fmt[2] =
+				((vcdt_cfg1 >> csid_reg->cmn_reg->decode_format2_shift_val) &
+				csid_reg->cmn_reg->decode_format_mask);
+			decode_fmt[3] =
+				((vcdt_cfg1 >> csid_reg->cmn_reg->decode_format3_shift_val) &
+				csid_reg->cmn_reg->decode_format_mask);
 		}
 
-		if ((vc == vc1) && (dt == dt1)) {
-			if (decode_fmt != decode_fmt1) {
-				CAM_ERR(CAM_ISP,
-					"CSID:%u Wrong multi VC-DT configuration",
-					csid_hw->hw_intf->hw_idx);
-				CAM_ERR(CAM_ISP,
-					"CSID:%u fmt %d fmt1 %d vc %d vc1 %d dt %d dt1 %d",
-					csid_hw->hw_intf->hw_idx, decode_fmt,
-					decode_fmt, vc, vc1, dt, dt1);
+		for (i = 0; i < CAM_ISP_VC_DT_CFG; i++) {
+			if (!cid_data->vc_dt[i].valid)
+				break;
+			if (i < CAM_IFE_CSID_MAX_VALID_VC_NUM)
+				CAM_INFO_BUF(CAM_ISP, log_buf, 100, &len, "VC%d: 0x%x ", i, vc[i]);
 
-			}
+			CAM_INFO_BUF(CAM_ISP, log_buf, 100, &len, "DT%d: 0x%x, decode_fmt: 0x%x",
+				i, dt[i], decode_fmt[i]);
 		}
+
+		CAM_INFO(CAM_ISP, "%s", log_buf);
+
+		cam_ife_csid_ver2_decode_format_validate_on_err(csid_hw, vc, dt,
+			decode_fmt, cid_data->num_vc_dt);
 	}
 
 	if (!(csid_hw->debug_info.debug_val &
@@ -3366,10 +3494,10 @@ static int cam_ife_csid_ver2_internal_reset(
 	/* Program the reset location */
 	if (rst_location == CAM_IFE_CSID_RESET_LOC_PATH_ONLY)
 		val |= (csid_reg->cmn_reg->rst_loc_path_only_val <<
-		       csid_reg->cmn_reg->rst_location_shift_val);
+			   csid_reg->cmn_reg->rst_location_shift_val);
 	else if (rst_location == CAM_IFE_CSID_RESET_LOC_COMPLETE)
 		val |= (csid_reg->cmn_reg->rst_loc_complete_csid_val <<
-		       csid_reg->cmn_reg->rst_location_shift_val);
+			   csid_reg->cmn_reg->rst_location_shift_val);
 
 	/*Program the mode */
 	if (rst_mode == CAM_CSID_HALT_AT_FRAME_BOUNDARY)
@@ -3620,67 +3748,6 @@ static int cam_ife_csid_ver2_disable_path(
 	return rc;
 }
 
-static int cam_ife_csid_ver2_decode_format1_validate(
-	struct cam_ife_csid_ver2_hw *csid_hw,
-	struct cam_isp_resource_node    *res)
-{
-	int rc = 0;
-	const struct cam_ife_csid_ver2_reg_info *csid_reg =
-		(struct cam_ife_csid_ver2_reg_info *)csid_hw->core_info->csid_reg;
-	struct cam_ife_csid_ver2_path_cfg *path_cfg =
-		(struct cam_ife_csid_ver2_path_cfg *)res->res_priv;
-	struct cam_ife_csid_cid_data *cid_data = &csid_hw->cid_data[path_cfg->cid];
-
-	/* Validation is only required  for multi vc dt use case */
-	if (!cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].valid)
-		return rc;
-
-	if ((path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].decode_fmt ==
-		csid_reg->cmn_reg->decode_format_payload_only) ||
-		(path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].decode_fmt  ==
-		 csid_reg->cmn_reg->decode_format_payload_only)) {
-		if (path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].decode_fmt !=
-			path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].decode_fmt) {
-			CAM_ERR(CAM_ISP,
-				"CSID:%u decode_fmt %d decode_fmt1 %d mismatch",
-				csid_hw->hw_intf->hw_idx,
-				path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].decode_fmt,
-				path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].decode_fmt);
-			rc = -EINVAL;
-			goto err;
-		}
-	}
-
-	if ((cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].vc ==
-		cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].vc) &&
-		(cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].dt ==
-		cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].dt)) {
-		if (path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].decode_fmt !=
-			path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].decode_fmt) {
-			CAM_ERR(CAM_ISP,
-				"CSID:%u Wrong multi VC-DT configuration",
-					csid_hw->hw_intf->hw_idx);
-			CAM_ERR(CAM_ISP,
-				"CSID:%u fmt %d fmt1 %d vc %d vc1 %d dt %d dt1 %d",
-				csid_hw->hw_intf->hw_idx,
-				path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].decode_fmt,
-				path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].decode_fmt,
-				cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].vc,
-				cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].vc,
-				cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].dt,
-				cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].dt);
-			rc = -EINVAL;
-			goto err;
-		}
-	}
-
-	return rc;
-err:
-	CAM_ERR(CAM_ISP, "Invalid decode fmt1 cfg CSID[%u] res [id %d name %s] rc %d",
-		csid_hw->hw_intf->hw_idx, res->res_id, res->res_name, rc);
-	return rc;
-}
-
 static bool cam_ife_csid_hw_ver2_need_unpack_mipi(
 	struct cam_ife_csid_ver2_hw                  *csid_hw,
 	struct cam_csid_hw_reserve_resource_args     *reserve,
@@ -3824,45 +3891,43 @@ static int cam_ife_csid_hw_ver2_prepare_config_path_data(
 			reserve->use_wm_pack = path_cfg->csid_out_unpack_msb;
 		}
 
-		rc = cam_ife_csid_get_format_rdi(
-			path_cfg->in_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_0],
-			path_cfg->out_format,
-			&path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_0],
-			path_reg->mipi_pack_supported, path_cfg->csid_out_unpack_msb);
-		if (rc)
-			goto end;
-
-		if (csid_reg->cmn_reg->decode_format1_supported &&
-			(cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].valid)) {
-
-			rc = cam_ife_csid_get_format_rdi(
-				path_cfg->in_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_1],
-				path_cfg->out_format,
-				&path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_1],
-				path_reg->mipi_pack_supported, path_cfg->csid_out_unpack_msb);
-			if (rc)
-				goto end;
+		for (i = 0; i < CAM_ISP_VC_DT_CFG; i++) {
+			if (cid_data->vc_dt[i].valid) {
+				rc = cam_ife_csid_get_format_rdi(
+					path_cfg->in_format[i], path_cfg->out_format,
+					&path_cfg->path_format[i], path_reg->mipi_pack_supported,
+					path_cfg->csid_out_unpack_msb);
+				if (rc) {
+					CAM_ERR(CAM_ISP,
+						"Invalid format cfg at idx: %d for res_id: 0x%x, in_fmt: 0x%x, out_fmt: 0x%x, mipi_pack_supported: %s, csid_unpack_msb: %s",
+						i, res->res_id, path_cfg->in_format[i],
+						path_cfg->out_format,
+						CAM_BOOL_TO_YESNO(path_reg->mipi_pack_supported),
+						CAM_BOOL_TO_YESNO(path_cfg->csid_out_unpack_msb));
+					goto end;
+				}
+			}
 		}
 		break;
 	case CAM_IFE_PIX_PATH_RES_IPP:
 	case CAM_IFE_PIX_PATH_RES_IPP_1:
 	case CAM_IFE_PIX_PATH_RES_IPP_2:
 	case CAM_IFE_PIX_PATH_RES_PPP:
-		rc = cam_ife_csid_get_format_ipp_ppp(
-			path_cfg->in_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_0],
-			&path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_0]);
-		if (rc)
-			goto end;
 
-		if (csid_reg->cmn_reg->decode_format1_supported &&
-			(cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].valid)) {
-
-			rc = cam_ife_csid_get_format_ipp_ppp(
-				path_cfg->in_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_1],
-				&path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_1]);
-			if (rc)
-				goto end;
+		for (i = 0; i < CAM_ISP_VC_DT_CFG; i++) {
+			if (cid_data->vc_dt[i].valid) {
+				rc = cam_ife_csid_get_format_ipp_ppp(
+					path_cfg->in_format[i],
+					&path_cfg->path_format[i]);
+				if (rc) {
+					CAM_ERR(CAM_ISP,
+						"Invalid format cfg at idx: %d for res_id: 0x%x, in_fmt: 0x%x",
+						i, res->res_id, path_cfg->in_format[i]);
+					goto end;
+				}
+			}
 		}
+
 		break;
 	default:
 		rc = -EINVAL;
@@ -3871,15 +3936,9 @@ static int cam_ife_csid_hw_ver2_prepare_config_path_data(
 		break;
 	}
 
-	if (csid_reg->cmn_reg->decode_format1_supported &&
-		(cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_1].valid)) {
-		rc = cam_ife_csid_ver2_decode_format1_validate(csid_hw, res);
-		if (rc) {
-			CAM_ERR(CAM_ISP, "CSID[%u] res %d decode fmt1 validation failed",
-				csid_hw->hw_intf->hw_idx, res);
-			goto end;
-		}
-	}
+	rc = cam_ife_csid_ver2_decode_format_validate(csid_hw, res);
+	if (rc)
+		goto end;
 
 end:
 	return rc;
@@ -4474,6 +4533,26 @@ static int cam_ife_csid_ver2_init_config_rdi_path(
 			csid_hw->hw_intf->hw_idx, res->res_name, val);
 	}
 
+	if (cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_2].valid) {
+		val = ((cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_2].dt <<
+				 cmn_reg->multi_vcdt_dt2_shift_val)) |
+			((path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_2].decode_fmt <<
+				cmn_reg->decode_format2_shift_val));
+
+		if (cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_3].valid) {
+			val |= ((cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_3].dt <<
+				 cmn_reg->multi_vcdt_dt3_shift_val)) |
+				 ((path_cfg->path_format[
+					CAM_IFE_CSID_MULTI_VC_DT_GRP_3].decode_fmt <<
+					cmn_reg->decode_format3_shift_val));
+		}
+
+		cam_io_w_mb(val, mem_base + path_reg->multi_vcdt_cfg1_addr);
+
+		CAM_DBG(CAM_ISP, "CSID:%u res:%s multi_vcdt_cfg1: 0x%x",
+			csid_hw->hw_intf->hw_idx, res->res_name, val);
+	}
+
 	/* For some targets, cfg1 register is programmed as part of cdm buffer, so skip here */
 	if (!(csid_reg->cmn_reg->capabilities & CAM_IFE_CSID_CAP_SKIP_PATH_CFG1)) {
 
@@ -4644,6 +4723,26 @@ static int cam_ife_csid_ver2_init_config_pxl_path(
 			csid_hw->hw_intf->hw_idx, res->res_name, val);
 	}
 
+	if (cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_2].valid) {
+		val = ((cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_2].dt <<
+				 cmn_reg->multi_vcdt_dt2_shift_val)) |
+			((path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_2].decode_fmt <<
+				cmn_reg->decode_format2_shift_val));
+
+		if (cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_3].valid) {
+			val |= ((cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_3].dt <<
+				 cmn_reg->multi_vcdt_dt3_shift_val)) |
+				 ((path_cfg->path_format[
+					CAM_IFE_CSID_MULTI_VC_DT_GRP_3].decode_fmt <<
+					cmn_reg->decode_format3_shift_val));
+		}
+
+		cam_io_w_mb(val, mem_base + path_reg->multi_vcdt_cfg1_addr);
+
+		CAM_DBG(CAM_ISP, "CSID:%u res:%s multi_vcdt_cfg1: 0x%x",
+			csid_hw->hw_intf->hw_idx, res->res_name, val);
+	}
+
 	/* For some targets, cfg1 register is programmed as part of cdm buffer, so skip here */
 	if (!(csid_reg->cmn_reg->capabilities & CAM_IFE_CSID_CAP_SKIP_PATH_CFG1)) {
 
@@ -4688,7 +4787,7 @@ static int cam_ife_csid_ver2_init_config_pxl_path(
 
 		/*enable early eof based on crop enable */
 		if (!(csid_hw->debug_info.debug_val &
-			    CAM_IFE_CSID_DEBUG_DISABLE_EARLY_EOF) &&
+				CAM_IFE_CSID_DEBUG_DISABLE_EARLY_EOF) &&
 			cmn_reg->early_eof_supported && path_cfg->crop_enable &&
 			!(csid_hw->flags.rdi_lcr_en && res->res_id == CAM_IFE_PIX_PATH_RES_PPP))
 			cfg1 |= (1 << path_reg->early_eof_en_shift_val);
@@ -4984,7 +5083,7 @@ static int cam_ife_csid_ver2_program_rdi_path(
 
 	soc_info = &csid_hw->hw_info->soc_info;
 	csid_reg = (struct cam_ife_csid_ver2_reg_info *)
-		    csid_hw->core_info->csid_reg;
+			csid_hw->core_info->csid_reg;
 
 	path_reg = csid_reg->path_reg[res->res_id];
 
@@ -8162,6 +8261,27 @@ static int cam_ife_csid_ver2_get_primary_sof_timer_reg_addr(
 	return 0;
 }
 
+static int cam_ife_csid_ver2_get_num_dt_supported(
+	struct cam_ife_csid_ver2_hw *csid_hw)
+{
+	struct cam_ife_csid_ver2_reg_info *csid_reg;
+	int num_dt;
+
+	if (unlikely(!csid_hw))
+		return 0;
+
+	csid_reg = (struct cam_ife_csid_ver2_reg_info *)
+			csid_hw->core_info->csid_reg;
+
+	if (!csid_reg->cmn_reg->multi_vcdt_supported)
+		return 1;
+
+	num_dt = csid_reg->cmn_reg->num_dt_supported ?
+		csid_reg->cmn_reg->num_dt_supported : CAM_IFE_CSID_DEFAULT_NUM_DT;
+
+	return num_dt;
+}
+
 static int cam_ife_csid_ver2_process_cmd(void *hw_priv,
 	uint32_t cmd_type, void *cmd_args, uint32_t arg_size)
 {
@@ -8283,6 +8403,15 @@ static int cam_ife_csid_ver2_process_cmd(void *hw_priv,
 		} else
 			rc = cam_ife_csid_ver2_get_primary_sof_timer_reg_addr(csid_hw,
 				sof_addr_args);
+	}
+		break;
+	case CAM_ISP_HW_CMD_QUERY_CAP: {
+		struct cam_isp_hw_cap *csid_cap = (struct cam_isp_hw_cap *) cmd_args;
+
+		csid_cap->max_dt_supported = cam_ife_csid_ver2_get_num_dt_supported(csid_hw);
+
+		if (!csid_cap->max_dt_supported)
+			rc = -EINVAL;
 	}
 		break;
 	default:

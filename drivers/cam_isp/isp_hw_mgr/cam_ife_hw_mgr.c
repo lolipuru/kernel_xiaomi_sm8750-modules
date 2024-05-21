@@ -5575,6 +5575,8 @@ static int cam_ife_mgr_acquire_get_unified_structure_v3(
 	struct cam_isp_in_port_info_v3 *in = NULL;
 	uint32_t in_port_length = 0;
 	int32_t rc = 0, i;
+	size_t len = 0;
+	uint8_t log_buf[200];
 
 	in = (struct cam_isp_in_port_info_v3 *)
 		((uint8_t *)&acquire_hw_info->data +
@@ -5601,15 +5603,32 @@ static int cam_ife_mgr_acquire_get_unified_structure_v3(
 	in_port->num_valid_vc_dt =  in->csid_info.num_valid_vc_dt;
 	in_port->epd_supported   =  in->csid_info.param_mask & CAM_IFE_CSID_EPD_MODE_EN;
 
-	if (in_port->num_valid_vc_dt == 0 || in_port->num_valid_vc_dt >= CAM_ISP_VC_DT_CFG) {
-		CAM_ERR(CAM_ISP, "Invalid i/p arg invalid vc-dt: %d", in_port->num_valid_vc_dt);
+	if (in_port->num_valid_vc_dt == 0 || in_port->num_valid_vc_dt >= CAM_ISP_VC_DT_CFG ||
+		in_port->num_valid_vc_dt > g_ife_hw_mgr.isp_caps.max_dt_supported) {
+		CAM_ERR(CAM_ISP,
+			"Invalid i/p arg invalid vc-dt: %d, arr size %u, max supported by HW: %u",
+			in_port->num_valid_vc_dt, CAM_ISP_VC_DT_CFG,
+			g_ife_hw_mgr.isp_caps.max_dt_supported);
 		rc = -EINVAL;
 		goto err;
 	}
 
 	for (i = 0; i < in_port->num_valid_vc_dt; i++) {
+		if ((i >= CAM_IFE_CSID_MAX_VALID_VC_NUM) &&
+			(in->csid_info.vc[i] != CAM_ISP_INVALID_VC_VALUE))
+			rc = -EINVAL;
+
 		in_port->vc[i]        =  in->csid_info.vc[i];
 		in_port->dt[i]        =  in->csid_info.dt[i];
+
+		CAM_INFO_BUF(CAM_ISP, log_buf, 200, &len, "VC%d: 0x%x, DT%d: 0x%x ",
+			i, in_port->vc[i], i, in_port->dt[i]);
+	}
+
+	if (rc) {
+		CAM_ERR(CAM_ISP, "Invalid VC/DT args, printing given %d args: %s",
+			in_port->num_valid_vc_dt, log_buf);
+		goto err;
 	}
 
 	for (i = 0; i < in_port->num_valid_vc_dt; i++) {
@@ -5668,6 +5687,8 @@ static int cam_ife_mgr_acquire_get_unified_structure_v2(
 	struct cam_isp_in_port_info_v2 *in = NULL;
 	uint32_t in_port_length = 0;
 	int32_t rc = 0, i;
+	size_t len = 0;
+	uint8_t log_buf[200];
 
 	in = (struct cam_isp_in_port_info_v2 *)
 		((uint8_t *)&acquire_hw_info->data +
@@ -5695,19 +5716,31 @@ static int cam_ife_mgr_acquire_get_unified_structure_v2(
 	in_port->lane_cfg        =  in->lane_cfg;
 	in_port->num_valid_vc_dt =  in->num_valid_vc_dt;
 
-	if (in_port->num_valid_vc_dt == 0 ||
-		in_port->num_valid_vc_dt >= CAM_ISP_VC_DT_CFG) {
-		if (cam_ife_mgr_hw_check_in_res_type(in->res_type)) {
-			CAM_ERR(CAM_ISP, "Invalid i/p arg invalid vc-dt: %d",
-				in->num_valid_vc_dt);
-			rc = -EINVAL;
-			goto err;
-		}
+	if (in_port->num_valid_vc_dt == 0 || in_port->num_valid_vc_dt >= CAM_ISP_VC_DT_CFG ||
+		in_port->num_valid_vc_dt > g_ife_hw_mgr.isp_caps.max_dt_supported) {
+		CAM_ERR(CAM_ISP,
+			"Invalid i/p arg invalid vc-dt: %d, arr size %u, max supported by HW: %u",
+			in_port->num_valid_vc_dt, CAM_ISP_VC_DT_CFG,
+			g_ife_hw_mgr.isp_caps.max_dt_supported);
+		rc = -EINVAL;
+		goto err;
 	}
 
 	for (i = 0; i < in_port->num_valid_vc_dt; i++) {
+		if ((i >= CAM_IFE_CSID_MAX_VALID_VC_NUM) && (in->vc[i] != CAM_ISP_INVALID_VC_VALUE))
+			rc = -EINVAL;
+
 		in_port->vc[i]        =  in->vc[i];
 		in_port->dt[i]        =  in->dt[i];
+
+		CAM_INFO_BUF(CAM_ISP, log_buf, 200, &len, "VC%d: 0x%x, DT%d: 0x%x ",
+			i, in_port->vc[i], i, in_port->dt[i]);
+	}
+
+	if (rc) {
+		CAM_ERR(CAM_ISP, "Invalid VC/DT args, printing given %d args: %s",
+			in_port->num_valid_vc_dt, log_buf);
+		goto err;
 	}
 
 	for (i = 0; i < in_port->num_valid_vc_dt; i++) {
@@ -18231,13 +18264,36 @@ int cam_ife_hw_mgr_init(struct cam_hw_mgr_intf *hw_mgr_intf, int *iommu_hdl,
 	/* fill csid hw intf information */
 	for (i = 0, j = 0; i < CAM_IFE_CSID_HW_NUM_MAX; i++) {
 		rc = cam_ife_csid_hw_init(&g_ife_hw_mgr.csid_devices[i], i);
-		if (!rc)
+		if (!rc) {
+			if (j == 0) {
+				struct cam_hw_intf *csid_device = g_ife_hw_mgr.csid_devices[i];
+				struct cam_hw_info *csid_hw =
+					(struct cam_hw_info *) csid_device->hw_priv;
+				rc = csid_device->hw_ops.process_cmd(
+					csid_hw,
+					CAM_ISP_HW_CMD_QUERY_CAP,
+					&isp_cap,
+					sizeof(struct cam_isp_hw_cap));
+				if (!rc) {
+					CAM_DBG(CAM_ISP,
+						"Max DT supported: %u", isp_cap.max_dt_supported);
+					g_ife_hw_mgr.isp_caps.max_dt_supported =
+						isp_cap.max_dt_supported;
+				} else {
+					CAM_ERR(CAM_ISP, "Invalid num of DT supported: %u",
+						isp_cap.max_dt_supported);
+					return -EINVAL;
+				}
+			}
 			j++;
+		}
 	}
 	if (!j) {
 		CAM_ERR(CAM_ISP, "no valid IFE CSID HW");
 		return -EINVAL;
 	}
+
+	memset(&isp_cap, 0x0, sizeof(struct cam_isp_hw_cap));
 
 	/* fill sfe hw intf info */
 	for (i = 0, j = 0; i < CAM_SFE_HW_NUM_MAX; i++) {

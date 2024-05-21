@@ -729,6 +729,7 @@ struct cam_mem_cpu_access_op {
 #define CAM_REQ_MGR_ISP_ERR_VIOLATION                    BIT(19)
 #define CAM_REQ_MGR_ISP_ERR_BUSIF_OVERFLOW               BIT(20)
 #define CAM_REQ_MGR_ISP_ERR_SETTING_MISMATCHED           BIT(21)
+#define CAM_REQ_MGR_ISP_ERR_ILLEGAL_DT_SWITCH            BIT(22)
 
 /**
  * struct cam_req_mgr_error_msg

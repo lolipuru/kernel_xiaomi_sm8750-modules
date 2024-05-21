@@ -4112,6 +4112,11 @@ static void __cam_isp_get_notification_evt_params(
 		err_type = CAM_SYNC_ISP_EVENT_CSID_RX_ERROR;
 		recovery_type_temp |= CAM_REQ_MGR_ERROR_TYPE_FULL_RECOVERY;
 	}
+	if (hw_error & CAM_ISP_HW_ERROR_CSID_ILLEGAL_DT_SWITCH) {
+		err_code |= CAM_REQ_MGR_ISP_ERR_ILLEGAL_DT_SWITCH;
+		err_type = CAM_SYNC_ISP_EVENT_CSID_SENSOR_SWITCH_ERROR;
+		recovery_type_temp |= CAM_REQ_MGR_ERROR_TYPE_FULL_RECOVERY;
+	}
 
 	if (recovery_type_temp == (CAM_REQ_MGR_ERROR_TYPE_FULL_RECOVERY |
 		CAM_REQ_MGR_ERROR_TYPE_RECOVERY))
