@@ -5409,7 +5409,7 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 	struct fastrpc_channel_ctx *cctx = dev_get_drvdata(pdev->dev.parent);
 	struct fastrpc_smmu *smmucb = dev_get_drvdata(&pdev->dev),
 							*ismmucb = NULL;
-	struct fastrpc_pool_ctx *sess = smmucb->sess, *isess = NULL;
+	struct fastrpc_pool_ctx *sess = smmucb->sess;
 	unsigned long flags;
 	int i = 0, j = 0;
 
@@ -5419,7 +5419,6 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 	spin_lock_irqsave(&cctx->lock, flags);
 	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++) {
 		for (j = 0; j < cctx->session[i].smmucount; j++) {
-			isess = &cctx->session[i];
 			ismmucb = &cctx->session[i].smmucb[j];
 			if (ismmucb->sid != smmucb->sid)
 				continue;
@@ -5429,8 +5428,8 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 			 * Remove SMMU CB, only after all users using the CB
 			 * have released it.
 			 */
-			if (isess->usecount > 0)
-				wait_for_completion(&isess->cleanup);
+			if (sess->usecount > 0)
+				wait_for_completion(&sess->cleanup);
 			mutex_lock(&ismmucb->map_mutex);
 			if (ismmucb->frpc_genpool)
 				fastrpc_genpool_free(ismmucb);
