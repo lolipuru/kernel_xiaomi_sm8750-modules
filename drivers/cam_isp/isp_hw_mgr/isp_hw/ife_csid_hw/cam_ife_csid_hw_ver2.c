@@ -4425,9 +4425,11 @@ static int cam_ife_csid_ver2_init_config_rdi_path(
 			cmn_reg->vc_shift_val) |
 		(cid_data->vc_dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].dt <<
 			cmn_reg->dt_shift_val) |
-		(path_cfg->cid << cmn_reg->dt_id_shift_val) |
 		(path_cfg->path_format[CAM_IFE_CSID_MULTI_VC_DT_GRP_0].decode_fmt <<
 		 	cmn_reg->decode_format_shift_val);
+
+	if (!csid_reg->cmn_reg->direct_cid_config)
+		cfg0 |= (path_cfg->cid << cmn_reg->dt_id_shift_val);
 
 	if (csid_reg->cmn_reg->vfr_supported)
 		cfg0 |= path_cfg->vfr_en << cmn_reg->vfr_en_shift_val;

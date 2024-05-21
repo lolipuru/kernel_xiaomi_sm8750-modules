@@ -648,6 +648,7 @@ struct cam_ife_csid_ver2_common_reg_info {
 	bool     timestamp_enabled_in_cfg0;
 	bool     camif_irq_support;
 	bool     ts_comb_vcdt_en;
+	bool     direct_cid_config;
 	uint32_t drv_rup_en_val_map[CAM_IFE_PIX_PATH_RES_MAX];
 	uint32_t drv_path_idle_en_val_map[CAM_ISP_MAX_PATHS];
 	uint32_t path_domain_id_cfg0;
