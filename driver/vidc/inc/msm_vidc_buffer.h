@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __H_MSM_VIDC_BUFFER_H__
@@ -29,7 +29,6 @@ u32 msm_vidc_decoder_output_size(struct msm_vidc_inst *inst);
 u32 msm_vidc_decoder_input_meta_size(struct msm_vidc_inst *inst);
 u32 msm_vidc_decoder_output_meta_size(struct msm_vidc_inst *inst);
 u32 msm_vidc_encoder_input_size(struct msm_vidc_inst *inst);
-u32 msm_vidc_encoder_output_size(struct msm_vidc_inst *inst);
 u32 msm_vidc_encoder_input_meta_size(struct msm_vidc_inst *inst);
 u32 msm_vidc_encoder_output_meta_size(struct msm_vidc_inst *inst);
 u32 msm_vidc_enc_delivery_mode_based_output_buf_size(struct msm_vidc_inst *inst,

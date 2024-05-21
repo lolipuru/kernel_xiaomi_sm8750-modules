@@ -1723,20 +1723,20 @@ static int handle_property_with_payload(struct msm_vidc_inst *inst,
 	case HFI_PROP_QUALITY_MODE:
 		if (inst->capabilities[QUALITY_MODE].value !=  payload_ptr[0])
 			i_vpr_e(inst,
-				"%s: fw quality mode(%d) not matching the capability value(%d)\n",
+				"%s: fw quality mode(%d) not matching the capability value(%lld)\n",
 				__func__,  payload_ptr[0],
 				inst->capabilities[QUALITY_MODE].value);
 		break;
 	case HFI_PROP_STAGE:
 		if (inst->capabilities[STAGE].value !=  payload_ptr[0])
 			i_vpr_e(inst,
-				"%s: fw stage mode(%d) not matching the capability value(%d)\n",
+				"%s: fw stage mode(%d) not matching the capability value(%lld)\n",
 				__func__,  payload_ptr[0], inst->capabilities[STAGE].value);
 		break;
 	case HFI_PROP_PIPE:
 		if (inst->capabilities[PIPE].value !=  payload_ptr[0])
 			i_vpr_e(inst,
-				"%s: fw pipe mode(%d) not matching the capability value(%d)\n",
+				"%s: fw pipe mode(%d) not matching the capability value(%lld)\n",
 				__func__,  payload_ptr[0], inst->capabilities[PIPE].value);
 		break;
 	case HFI_PROP_FENCE:

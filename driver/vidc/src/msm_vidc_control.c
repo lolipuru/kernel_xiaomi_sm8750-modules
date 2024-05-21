@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_vidc_internal.h"
@@ -522,7 +522,7 @@ int msm_vidc_ctrl_handler_init(struct msm_vidc_inst *inst, bool init)
 			goto error;
 		}
 		i_vpr_l(inst,
-			"%s: cap[%d] %24s, value %d min %d max %d step_or_mask %#x flags %#x v4l2_id %#x hfi_id %#x\n",
+			"%s: cap[%d] %24s, value %lld min %lld max %lld step_or_mask %#llx flags %#x v4l2_id %#x hfi_id %#x\n",
 			__func__, idx, cap_name(idx),
 			cap[idx].value,
 			cap[idx].min,
@@ -707,7 +707,7 @@ static int msm_vidc_allow_secure_session(struct msm_vidc_inst *inst)
 
 	if (count > core->capabilities[MAX_SECURE_SESSION_COUNT].value) {
 		i_vpr_e(inst,
-			"%s: total secure sessions %d exceeded max limit %d\n",
+			"%s: total secure sessions %d exceeded max limit %lld\n",
 			__func__, count,
 			core->capabilities[MAX_SECURE_SESSION_COUNT].value);
 		rc = -EINVAL;
@@ -767,7 +767,22 @@ static int msm_vidc_update_static_property(struct msm_vidc_inst *inst,
 	}
 
 	/* update value to db */
-	msm_vidc_update_cap_value(inst, cap_id, ctrl->val, __func__);
+	if (ctrl->type == V4L2_CTRL_TYPE_INTEGER64) {
+		if (cap_id == CONCEAL_COLOR_8BIT || cap_id == CONCEAL_COLOR_10BIT) {
+			// FIXME: same v4l2 contrl id is mapped to different cap_ids. We don't know
+			//        which cap the current control is set to. Hence, update value for
+			//        both as a workaround. Client should ensure vlaue is correct, and
+			//        FW knows which HFI ID to process.
+			msm_vidc_update_cap_value(inst, CONCEAL_COLOR_8BIT, *ctrl->p_new.p_s64,
+					__func__);
+			msm_vidc_update_cap_value(inst, CONCEAL_COLOR_10BIT, *ctrl->p_new.p_s64,
+					__func__);
+		} else {
+			msm_vidc_update_cap_value(inst, cap_id, *ctrl->p_new.p_s64, __func__);
+		}
+	} else {
+		msm_vidc_update_cap_value(inst, cap_id, ctrl->val, __func__);
+	}
 
 	if (cap_id == CLIENT_ID) {
 		rc = msm_vidc_update_debug_str(inst);
@@ -851,7 +866,8 @@ int msm_vidc_s_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 	cap = &inst->capabilities[0];
 
 	i_vpr_h(inst, FMT_STRING_SET_CTRL,
-		__func__, state_name(inst->state), ctrl->name, ctrl->id, ctrl->val);
+		__func__, state_name(inst->state), ctrl->name, ctrl->id, ctrl->val,
+		*ctrl->p_new.p_s64);
 
 	cap_id = msm_vidc_get_cap_id(inst, ctrl->id);
 	if (!is_valid_cap_id(cap_id)) {

@@ -27,7 +27,7 @@
 
 /* version: major[24:31], minor[16:23], revision[0:15] */
 #define DRIVER_VERSION          0x04000000
-#define DEFAULT_VIDEO_CONCEAL_COLOR_BLACK 0x8020010
+#define DEFAULT_VIDEO_CONCEAL_COLOR_BLACK 0x8000800010
 #define MAX_BASE_LAYER_PRIORITY_ID 63
 #define MAX_OP_POINT            31
 #define MAX_BITRATE             245000000
@@ -1631,15 +1631,15 @@ static struct msm_platform_inst_capability instance_cap_data_sun[] = {
 		HFI_PROP_BUFFER_HOST_MAX_COUNT,
 		CAP_FLAG_OUTPUT_PORT},
 
-	{CONCEAL_COLOR_8BIT, DEC, CODECS_ALL, 0x0, 0xff3fcff, 1,
+	{CONCEAL_COLOR_8BIT, DEC, CODECS_ALL, 0x0, 0xFF00FF00FF, 1,
 		DEFAULT_VIDEO_CONCEAL_COLOR_BLACK,
-		V4L2_CID_MPEG_VIDEO_MUTE_YUV,
+		V4L2_CID_MPEG_VIDEO_DEC_CONCEAL_COLOR,
 		HFI_PROP_CONCEAL_COLOR_8BIT,
 		CAP_FLAG_INPUT_PORT},
 
-	{CONCEAL_COLOR_10BIT, DEC, CODECS_ALL, 0x0, 0x3fffffff, 1,
+	{CONCEAL_COLOR_10BIT, DEC, CODECS_ALL, 0x0, 0x3FF03FF03FF, 1,
 		DEFAULT_VIDEO_CONCEAL_COLOR_BLACK,
-		V4L2_CID_MPEG_VIDEO_MUTE_YUV,
+		V4L2_CID_MPEG_VIDEO_DEC_CONCEAL_COLOR,
 		HFI_PROP_CONCEAL_COLOR_10BIT,
 		CAP_FLAG_INPUT_PORT},
 
@@ -1850,6 +1850,22 @@ static struct msm_platform_inst_capability instance_cap_data_sun[] = {
 		0, MSM_VIDC_META_DISABLE,
 		V4L2_CID_MPEG_VIDC_METADATA_HISTOGRAM_INFO,
 		HFI_PROP_HISTOGRAM_INFO,
+		CAP_FLAG_BITMASK | CAP_FLAG_META},
+
+	{META_HIST_INFO, ENC, HEVC,
+		MSM_VIDC_META_DISABLE,
+		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_OUTPUT,
+		0, MSM_VIDC_META_DISABLE,
+		V4L2_CID_MPEG_VIDC_METADATA_HISTOGRAM_INFO,
+		HFI_PROP_HISTOGRAM_INFO,
+		CAP_FLAG_BITMASK | CAP_FLAG_META},
+
+	{META_HDR10_MAX_RGB_INFO, ENC, HEVC,
+		MSM_VIDC_META_DISABLE,
+		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_OUTPUT,
+		0, MSM_VIDC_META_DISABLE,
+		V4L2_CID_MPEG_VIDC_METADATA_HDR10_MAX_RGB_INFO,
+		HFI_PROP_HDR10_MAX_RGB_INFO,
 		CAP_FLAG_BITMASK | CAP_FLAG_META},
 
 	{META_TRANSCODING_STAT_INFO, DEC, HEVC|H264,
@@ -2067,6 +2083,12 @@ static struct msm_platform_inst_capability instance_cap_data_sun[] = {
 		V4L2_CID_MPEG_VIDC_SIGNAL_COLOR_INFO,
 		HFI_PROP_SIGNAL_COLOR_INFO,
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
+
+	{CAPTURE_DATA_OFFSET, ENC, HEVC,
+		0, 256, 1, 0,
+		V4L2_CID_MPEG_VIDC_CAPTURE_DATA_OFFSET,
+		0,
+		CAP_FLAG_NONE},
 };
 
 static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[] = {
@@ -2263,13 +2285,13 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		msm_vidc_set_blur_resolution},
 
 	{CSC, ENC, CODECS_ALL,
-		{0},
+		{CSC_CUSTOM_MATRIX},
 		msm_vidc_adjust_csc,
 		msm_vidc_set_u32},
 
 	{CSC_CUSTOM_MATRIX, ENC, CODECS_ALL,
 		{0},
-		NULL,
+		msm_vidc_adjust_csc_custom_matrix,
 		msm_vidc_set_csc_custom_matrix},
 
 	{LOWLATENCY_MODE, ENC, H264 | HEVC,
@@ -2466,8 +2488,14 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		NULL,
 		msm_vidc_set_u32_enum},
 
-	{PROFILE, ENC, HEVC | HEIC,
+	{PROFILE, ENC, HEIC,
 		{META_SEI_MASTERING_DISP, META_SEI_CLL, META_HDR10PLUS},
+		msm_vidc_adjust_profile,
+		msm_vidc_set_u32_enum},
+
+	{PROFILE, ENC, HEVC,
+		{META_SEI_MASTERING_DISP, META_SEI_CLL, META_HDR10PLUS,
+		META_HIST_INFO, META_HDR10_MAX_RGB_INFO},
 		msm_vidc_adjust_profile,
 		msm_vidc_set_u32_enum},
 
@@ -2564,12 +2592,12 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 	{CONCEAL_COLOR_8BIT, DEC, CODECS_ALL,
 		{0},
 		NULL,
-		msm_vidc_set_u32_packed},
+		msm_vidc_set_conceal_color},
 
 	{CONCEAL_COLOR_10BIT, DEC, CODECS_ALL,
 		{0},
 		NULL,
-		msm_vidc_set_u32_packed},
+		msm_vidc_set_conceal_color},
 
 	{STAGE, ENC | DEC, CODECS_ALL,
 		{0},
@@ -2685,6 +2713,16 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		{0},
 		msm_vidc_adjust_transcoding_stats,
 		NULL},
+
+	{META_HIST_INFO, ENC, HEVC,
+		{0},
+		msm_vidc_adjust_histogram_info,
+		NULL},
+
+	{META_HDR10_MAX_RGB_INFO, ENC, HEVC,
+		{0},
+		msm_vidc_adjust_hdr10_max_rgb_info,
+		NULL},
 };
 
 /* Default UBWC config for LPDDR5 */
@@ -2763,7 +2801,7 @@ static struct freq_table sun_freq_table_v2[] = {
 
 /* register, value, mask */
 static const struct reg_preset_table sun_reg_preset_table[] = {
-	{ 0xB0088, 0x0,        0x11      },
+	{ 0xB0088, 0x0,        0xFFFFFFFF},
 	{ 0x13030, 0x33332211, 0xFFFFFFFF},
 	{ 0x13034, 0x44444444, 0xFFFFFFFF},
 	{ 0x13038, 0x1011,     0xFFFFFFFF},

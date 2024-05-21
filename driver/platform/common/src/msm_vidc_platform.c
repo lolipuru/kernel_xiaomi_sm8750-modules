@@ -17,6 +17,7 @@
 #include "msm_vidc_memory.h"
 #include "msm_vidc_control.h"
 #include "msm_vidc_driver.h"
+#include "msm_vidc_fence.h"
 #include "hfi_packet.h"
 #include "hfi_property.h"
 #include "venus_hfi.h"
@@ -248,6 +249,11 @@ static int msm_vidc_init_ops(struct msm_vidc_core *core)
 		d_vpr_e("%s: invalid resource ops\n", __func__);
 		return -EINVAL;
 	}
+	core->fence_ops = get_dma_fence_ops();
+	if (!core->fence_ops) {
+		d_vpr_e("%s: invalid dma fence ops\n", __func__);
+		return -EINVAL;
+	}
 
 	return 0;
 }
@@ -338,8 +344,6 @@ int msm_vidc_init_platform(struct msm_vidc_core *core)
 		return rc;
 
 	rc = msm_vidc_init_vpu(core);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -407,9 +411,9 @@ enum msm_vidc_inst_capability_type msm_vidc_get_cap_id(struct msm_vidc_inst *ins
 }
 
 int msm_vidc_update_cap_value(struct msm_vidc_inst *inst, u32 cap_id,
-			      s32 adjusted_val, const char *func)
+			      s64 adjusted_val, const char *func)
 {
-	int prev_value = 0;
+	s64 prev_value = 0;
 
 	prev_value = inst->capabilities[cap_id].value;
 
@@ -439,7 +443,7 @@ int msm_vidc_update_cap_value(struct msm_vidc_inst *inst, u32 cap_id,
 
 	if (prev_value != inst->capabilities[cap_id].value) {
 		i_vpr_h(inst,
-			"%s: updated database: name: %s, value: %#x -> %#x\n",
+			"%s: updated database: name: %s, value: %#llx -> %#llx\n",
 			func, cap_name(cap_id),
 			prev_value, inst->capabilities[cap_id].value);
 	}
@@ -471,7 +475,7 @@ bool is_parent_available(struct msm_vidc_inst *inst,
 }
 
 int msm_vidc_get_parent_value(struct msm_vidc_inst *inst,
-			      u32 cap_id, u32 parent, s32 *value, const char *func)
+			      u32 cap_id, u32 parent, s64 *value, const char *func)
 {
 	int rc = 0;
 
@@ -539,7 +543,7 @@ int msm_vidc_v4l2_menu_to_hfi(struct msm_vidc_inst *inst,
 
 set_default:
 	i_vpr_e(inst,
-		"%s: invalid value %d for ctrl id: %#x. Set default: %u\n",
+		"%s: invalid value %lld for ctrl id: %#x. Set default: %u\n",
 		__func__, inst->capabilities[cap_id].value,
 		inst->capabilities[cap_id].v4l2_id, *value);
 	return 0;
@@ -646,7 +650,7 @@ int msm_vidc_v4l2_to_hfi_enum(struct msm_vidc_inst *inst,
 
 set_default:
 	i_vpr_e(inst,
-		"%s: invalid value %d for ctrl id: %#x. Set default: %u\n",
+		"%s: invalid value %lld for ctrl id: %#x. Set default: %u\n",
 		__func__, inst->capabilities[cap_id].value,
 		inst->capabilities[cap_id].v4l2_id, *value);
 	return 0;
@@ -699,7 +703,7 @@ int msm_vidc_adjust_entropy_mode(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 profile = -1;
+	s64 profile = -1;
 
 	/* ctrl is always NULL in streamon case */
 	adjusted_value = ctrl ? ctrl->val :
@@ -769,7 +773,7 @@ int msm_vidc_adjust_profile(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 pix_fmt = -1;
+	s64 pix_fmt = -1;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[PROFILE].value;
 
@@ -804,8 +808,8 @@ int msm_vidc_adjust_ltr_count(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1, all_intra = 0, pix_fmts = MSM_VIDC_FMT_NONE;
-	s32 layer_type = -1, enh_layer_count = -1;
+	s64 rc_type = -1, all_intra = 0, pix_fmts = MSM_VIDC_FMT_NONE;
+	s64 layer_type = -1, enh_layer_count = -1;
 	u32 num_ref_frames = 0, max_exceeding_ref_frames = 0;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[LTR_COUNT].value;
@@ -819,7 +823,7 @@ int msm_vidc_adjust_ltr_count(void *instance, struct v4l2_ctrl *ctrl)
 	     rc_type != HFI_RC_CBR_VFR)) {
 		adjusted_value = 0;
 		i_vpr_h(inst,
-			"%s: ltr count unsupported, rc_type: %#x\n",
+			"%s: ltr count unsupported, rc_type: %#llx\n",
 			__func__, rc_type);
 		goto exit;
 	}
@@ -862,7 +866,7 @@ int msm_vidc_adjust_ltr_count(void *instance, struct v4l2_ctrl *ctrl)
 			}
 		}
 		i_vpr_h(inst,
-			"%s: ltr count %d enh_layers %d layer_type %d\n",
+			"%s: ltr count %d enh_layers %lld layer_type %lld\n",
 			__func__, adjusted_value,
 			inst->capabilities[ENH_LAYER_COUNT].value,
 			layer_type);
@@ -942,7 +946,7 @@ int msm_vidc_adjust_delta_based_rc(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 
 	adjusted_value = ctrl ? ctrl->val :
 		inst->capabilities[TIME_DELTA_BASED_RC].value;
@@ -962,7 +966,7 @@ int msm_vidc_adjust_output_order(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 
-	s32 tn_mode = -1, display_delay = -1, display_delay_enable = -1;
+	s64 tn_mode = -1, display_delay = -1, display_delay_enable = -1;
 	u32 adjusted_value;
 
 	adjusted_value = ctrl ? ctrl->val :
@@ -1030,7 +1034,7 @@ int msm_vidc_adjust_transform_8x8(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 profile = -1;
+	s64 profile = -1;
 
 	adjusted_value = ctrl ? ctrl->val :
 		inst->capabilities[TRANSFORM_8X8].value;
@@ -1142,7 +1146,7 @@ static u32 msm_vidc_get_cumulative_bitrate(struct msm_vidc_inst *inst)
 		if (i >= ARRAY_SIZE(layer_br_caps))
 			break;
 		cap_id = layer_br_caps[i];
-		cumulative_br += inst->capabilities[cap_id].value;
+		cumulative_br += (u32)(inst->capabilities[cap_id].value);
 	}
 
 	return cumulative_br;
@@ -1153,8 +1157,8 @@ int msm_vidc_adjust_slice_count(void *instance, struct v4l2_ctrl *ctrl)
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 
 	struct v4l2_format *output_fmt;
-	s32 adjusted_value, rc_type = -1, slice_mode, all_intra = 0,
-		enh_layer_count = 0;
+	s32 adjusted_value, slice_mode;
+	s64 rc_type = -1, all_intra = 0, enh_layer_count = 0;
 	u32 slice_val, mbpf = 0, mbps = 0, max_mbpf = 0, max_mbps = 0, bitrate = 0;
 	u32 update_cap, max_avg_slicesize, output_width, output_height;
 	u32 min_width, min_height, max_width, max_height, fps;
@@ -1183,7 +1187,7 @@ int msm_vidc_adjust_slice_count(void *instance, struct v4l2_ctrl *ctrl)
 		adjusted_value = V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_SINGLE;
 		update_cap = SLICE_MODE;
 		i_vpr_h(inst,
-			"%s: slice unsupported, fps: %u, rc_type: %#x\n",
+			"%s: slice unsupported, fps: %u, rc_type: %#llx\n",
 			__func__, fps, rc_type);
 		goto exit;
 	}
@@ -1196,7 +1200,8 @@ int msm_vidc_adjust_slice_count(void *instance, struct v4l2_ctrl *ctrl)
 		if (all_intra == 1) {
 			adjusted_value = V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_SINGLE;
 			update_cap = SLICE_MODE;
-			i_vpr_h(inst, "%s: slice unsupported, all_intra %d\n", __func__, all_intra);
+			i_vpr_h(inst, "%s: slice unsupported, all_intra %lld\n", __func__,
+				all_intra);
 			goto exit;
 		}
 	}
@@ -1390,7 +1395,8 @@ exit:
 int msm_vidc_adjust_gop_size(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 adjusted_value, enh_layer_count = -1, enable_opengop = 0;
+	s32 adjusted_value;
+	s64 enh_layer_count = -1, enable_opengop = 0;
 	u32 min_gop_size, num_subgops;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[GOP_SIZE].value;
@@ -1434,7 +1440,7 @@ exit:
 int msm_vidc_adjust_b_frame(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 adjusted_value, enh_layer_count = -1;
+	s64 adjusted_value, enh_layer_count = -1;
 	const u32 max_bframe_size = 7;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[B_FRAME].value;
@@ -1463,7 +1469,7 @@ int msm_vidc_adjust_bitrate(void *instance, struct v4l2_ctrl *ctrl)
 	int i, rc = 0;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 
-	s32 adjusted_value, enh_layer_count;
+	s64 adjusted_value, enh_layer_count;
 	u32 cumulative_bitrate = 0, cap_id = 0, cap_value = 0;
 	u32 layer_br_caps[6] = {L0_BR, L1_BR, L2_BR, L3_BR, L4_BR, L5_BR};
 	u32 max_bitrate = 0;
@@ -1622,7 +1628,7 @@ int msm_vidc_adjust_peak_bitrate(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1, bitrate = -1;
+	s64 rc_type = -1, bitrate = -1;
 
 	adjusted_value = ctrl ? ctrl->val :
 		inst->capabilities[PEAK_BITRATE].value;
@@ -1656,7 +1662,7 @@ int msm_vidc_adjust_peak_bitrate(void *instance, struct v4l2_ctrl *ctrl)
 static int msm_vidc_adjust_hevc_qp(struct msm_vidc_inst *inst,
 				   enum msm_vidc_inst_capability_type cap_id)
 {
-	s32 pix_fmt = -1;
+	s64 pix_fmt = -1;
 
 	if (!(inst->codec == MSM_VIDC_HEVC || inst->codec == MSM_VIDC_HEIC)) {
 		i_vpr_e(inst,
@@ -1726,8 +1732,6 @@ int msm_vidc_adjust_hevc_i_frame_qp(void *instance, struct v4l2_ctrl *ctrl)
 		msm_vidc_update_cap_value(inst, I_FRAME_QP, ctrl->val, __func__);
 
 	rc = msm_vidc_adjust_hevc_qp(inst, I_FRAME_QP);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -1742,8 +1746,6 @@ int msm_vidc_adjust_hevc_p_frame_qp(void *instance, struct v4l2_ctrl *ctrl)
 		msm_vidc_update_cap_value(inst, P_FRAME_QP, ctrl->val, __func__);
 
 	rc = msm_vidc_adjust_hevc_qp(inst, P_FRAME_QP);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -1758,8 +1760,6 @@ int msm_vidc_adjust_hevc_b_frame_qp(void *instance, struct v4l2_ctrl *ctrl)
 		msm_vidc_update_cap_value(inst, B_FRAME_QP, ctrl->val, __func__);
 
 	rc = msm_vidc_adjust_hevc_qp(inst, B_FRAME_QP);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -1768,8 +1768,8 @@ int msm_vidc_adjust_blur_type(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1, roi_enable = -1;
-	s32 pix_fmts = -1, min_quality = -1;
+	s64 rc_type = -1, roi_enable = -1;
+	s64 pix_fmts = -1, min_quality = -1;
 
 	adjusted_value = ctrl ? ctrl->val :
 		inst->capabilities[BLUR_TYPES].value;
@@ -1825,7 +1825,7 @@ int msm_vidc_adjust_all_intra(void *instance, struct v4l2_ctrl *ctrl)
 	s32 adjusted_value;
 	struct msm_vidc_core *core;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 gop_size = -1, bframe = -1;
+	s64 gop_size = -1, bframe = -1;
 	u32 width, height, fps, mbps, max_mbps;
 
 	adjusted_value = inst->capabilities[ALL_INTRA].value;
@@ -1863,7 +1863,7 @@ int msm_vidc_adjust_blur_resolution(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 blur_type = -1;
+	s64 blur_type = -1;
 
 	adjusted_value = ctrl ? ctrl->val :
 		inst->capabilities[BLUR_RESOLUTION].value;
@@ -1885,7 +1885,7 @@ int msm_vidc_adjust_brs(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1, layer_enabled = -1, layer_type = -1;
+	s64 rc_type = -1, layer_enabled = -1, layer_type = -1;
 	bool hp_requested = false;
 
 	adjusted_value = ctrl ? ctrl->val :
@@ -1939,7 +1939,7 @@ int msm_vidc_adjust_bitrate_boost(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 min_quality = -1, rc_type = -1;
+	s64 min_quality = -1, rc_type = -1;
 	u32 max_bitrate = 0, bitrate = 0;
 
 	adjusted_value = ctrl ? ctrl->val :
@@ -1989,7 +1989,7 @@ int msm_vidc_adjust_min_quality(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 roi_enable = -1, rc_type = -1, enh_layer_count = -1, pix_fmts = -1;
+	s64 roi_enable = -1, rc_type = -1, enh_layer_count = -1, pix_fmts = -1;
 	u32 width, height, frame_rate;
 	struct v4l2_format *f;
 
@@ -2096,7 +2096,7 @@ int msm_vidc_adjust_preprocess(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 brs = 0;
+	s64 brs = 0;
 	u32 width, height, frame_rate, operating_rate, max_fps;
 	struct v4l2_format *f;
 
@@ -2147,7 +2147,7 @@ int msm_vidc_adjust_enc_lowlatency_mode(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 
 	adjusted_value = ctrl ? ctrl->val :
 		inst->capabilities[LOWLATENCY_MODE].value;
@@ -2170,7 +2170,7 @@ int msm_vidc_adjust_dec_lowlatency_mode(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 outbuf_fence = MSM_VIDC_META_DISABLE;
+	s64 outbuf_fence = MSM_VIDC_META_DISABLE;
 
 	adjusted_value = ctrl ? ctrl->val :
 		inst->capabilities[LOWLATENCY_MODE].value;
@@ -2228,7 +2228,7 @@ int msm_vidc_adjust_roi_info(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1, pix_fmt = -1;
+	s64 rc_type = -1, pix_fmt = -1;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[META_ROI_INFO].value;
 
@@ -2253,7 +2253,7 @@ int msm_vidc_adjust_roi_info(void *instance, struct v4l2_ctrl *ctrl)
 int msm_vidc_adjust_dec_outbuf_fence_type(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst_cap *capability;
-	s32 adjusted_value, meta_outbuf_fence = 0;
+	s64 adjusted_value, meta_outbuf_fence = 0;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 	struct msm_vidc_core *core;
 
@@ -2286,7 +2286,7 @@ int msm_vidc_adjust_dec_outbuf_fence_type(void *instance, struct v4l2_ctrl *ctrl
 int msm_vidc_adjust_dec_outbuf_fence_direction(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst_cap *capability;
-	s32 adjusted_value, meta_outbuf_fence = 0;
+	s64 adjusted_value, meta_outbuf_fence = 0;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 	struct msm_vidc_core *core;
 
@@ -2314,9 +2314,9 @@ int msm_vidc_adjust_dec_slice_mode(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 	u32 adjusted_value = 0;
-	s32 low_latency = -1;
-	s32 picture_order = -1;
-	s32 outbuf_fence = 0;
+	s64 low_latency = -1;
+	s64 picture_order = -1;
+	s64 outbuf_fence = 0;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[SLICE_DECODE].value;
 
@@ -2341,7 +2341,7 @@ int msm_vidc_adjust_eva_stats(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[META_EVA_STATS].value;
 
@@ -2364,7 +2364,7 @@ int msm_vidc_adjust_sei_mastering_disp(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 profile = -1;
+	s64 profile = -1;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[META_SEI_MASTERING_DISP].value;
 
@@ -2395,7 +2395,7 @@ int msm_vidc_adjust_sei_cll(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 profile = -1;
+	s64 profile = -1;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[META_SEI_CLL].value;
 
@@ -2425,7 +2425,7 @@ int msm_vidc_adjust_hdr10plus(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 profile = -1;
+	s64 profile = -1;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[META_HDR10PLUS].value;
 
@@ -2455,7 +2455,7 @@ int msm_vidc_adjust_transcoding_stats(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 	u32 width, height, fps;
 	struct v4l2_format *f;
 
@@ -2473,7 +2473,7 @@ int msm_vidc_adjust_transcoding_stats(void *instance, struct v4l2_ctrl *ctrl)
 	 * - Resolution <= 4K
 	 */
 	if (rc_type != HFI_RC_VBR_CFR) {
-		i_vpr_h(inst, "%s: unsupported rc_type: %#x\n",
+		i_vpr_h(inst, "%s: unsupported rc_type: %#llx\n",
 			__func__, rc_type);
 		adjusted_value = 0;
 		goto exit;
@@ -2508,7 +2508,7 @@ int msm_vidc_adjust_open_gop(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 enh_layer_count = -1;
+	s64 enh_layer_count = -1;
 
 	adjusted_value = ctrl ? ctrl->val :
 		inst->capabilities[OPEN_GOP].value;
@@ -2525,6 +2525,56 @@ int msm_vidc_adjust_open_gop(void *instance, struct v4l2_ctrl *ctrl)
 
 	msm_vidc_update_cap_value(inst, OPEN_GOP, adjusted_value, __func__);
 
+	return 0;
+}
+
+int msm_vidc_adjust_histogram_info(void *instance, struct v4l2_ctrl *ctrl)
+{
+	s32 adjusted_value;
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+	s64 profile = -1;
+
+	adjusted_value = ctrl ? ctrl->val : inst->capabilities[META_HIST_INFO].value;
+
+	if (msm_vidc_get_parent_value(inst, META_HIST_INFO, PROFILE,
+		&profile, __func__))
+		return -EINVAL;
+
+	/* supported only for HEVC 10bit */
+	if (inst->codec != MSM_VIDC_HEVC ||
+		profile != V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10) {
+		adjusted_value = 0;
+		goto adjust;
+	}
+
+adjust:
+	msm_vidc_update_cap_value(inst, META_HIST_INFO, adjusted_value, __func__);
+	return 0;
+}
+
+int msm_vidc_adjust_hdr10_max_rgb_info(void *instance, struct v4l2_ctrl *ctrl)
+{
+	s32 adjusted_value;
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+	s64 profile = -1;
+
+	adjusted_value = ctrl ?
+		ctrl->val : inst->capabilities[META_HDR10_MAX_RGB_INFO].value;
+
+	if (msm_vidc_get_parent_value(inst, META_HDR10_MAX_RGB_INFO, PROFILE,
+		&profile, __func__))
+		return -EINVAL;
+
+	/* supported only for HEVC 10bit */
+	if (inst->codec != MSM_VIDC_HEVC ||
+		profile != V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10) {
+		adjusted_value = 0;
+		goto adjust;
+	}
+
+adjust:
+	msm_vidc_update_cap_value(inst,
+		META_HDR10_MAX_RGB_INFO, adjusted_value, __func__);
 	return 0;
 }
 
@@ -2556,8 +2606,6 @@ int msm_vidc_set_header_mode(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2580,8 +2628,6 @@ int msm_vidc_set_deblock_mode(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_32_PACKED,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2592,7 +2638,7 @@ int msm_vidc_set_constant_quality(void *instance,
 	int rc = 0;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 	u32 hfi_value = 0;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 
 	if (msm_vidc_get_parent_value(inst, cap_id,
 				      BITRATE_MODE, &rc_type, __func__))
@@ -2605,8 +2651,6 @@ int msm_vidc_set_constant_quality(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2617,7 +2661,7 @@ int msm_vidc_set_vbr_related_properties(void *instance,
 	int rc = 0;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 	u32 hfi_value = 0;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 
 	if (msm_vidc_get_parent_value(inst, cap_id,
 				      BITRATE_MODE, &rc_type, __func__))
@@ -2630,8 +2674,6 @@ int msm_vidc_set_vbr_related_properties(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2642,7 +2684,7 @@ int msm_vidc_set_cbr_related_properties(void *instance,
 	int rc = 0;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 	u32 hfi_value = 0;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 
 	if (msm_vidc_get_parent_value(inst, cap_id,
 				      BITRATE_MODE, &rc_type, __func__))
@@ -2656,8 +2698,6 @@ int msm_vidc_set_cbr_related_properties(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2673,7 +2713,7 @@ int msm_vidc_set_use_and_mark_ltr(void *instance,
 	    inst->capabilities[cap_id].value ==
 	    INVALID_DEFAULT_MARK_OR_USE_LTR) {
 		i_vpr_h(inst,
-			"%s: LTR_COUNT: %d %s: %d, cap %s is not set\n",
+			"%s: LTR_COUNT: %lld %s: %lld, cap %s is not set\n",
 			__func__, inst->capabilities[LTR_COUNT].value,
 			cap_name(cap_id),
 			inst->capabilities[cap_id].value,
@@ -2685,8 +2725,6 @@ int msm_vidc_set_use_and_mark_ltr(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2744,8 +2782,6 @@ int msm_vidc_set_min_qp(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_32_PACKED,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2803,8 +2839,6 @@ int msm_vidc_set_max_qp(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_32_PACKED,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2818,7 +2852,7 @@ int msm_vidc_set_frame_qp(void *instance,
 	s32 i_frame_qp = 0, p_frame_qp = 0, b_frame_qp = 0;
 	u32 i_qp_enable = 0, p_qp_enable = 0, b_qp_enable = 0;
 	u32 client_qp_enable = 0, hfi_value = 0, offset = 0;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 
 	capab = inst->capabilities;
 
@@ -2829,7 +2863,7 @@ int msm_vidc_set_frame_qp(void *instance,
 	if (inst->bufq[OUTPUT_PORT].vb2q->streaming) {
 		if (rc_type != HFI_RC_OFF) {
 			i_vpr_h(inst,
-				"%s: dynamic qp not allowed for rc type %d\n",
+				"%s: dynamic qp not allowed for rc type %lld\n",
 				__func__, rc_type);
 			return 0;
 		}
@@ -2870,8 +2904,6 @@ int msm_vidc_set_frame_qp(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_32_PACKED,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2892,8 +2924,6 @@ int msm_vidc_set_req_sync_frame(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2922,8 +2952,6 @@ int msm_vidc_set_chroma_qp_index_offset(void *instance,
 	hfi_value = chroma_qp_offset_mode | chroma_qp << 8;
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_32_PACKED,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2955,8 +2983,6 @@ int msm_vidc_set_slice_count(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, set_cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -2978,8 +3004,6 @@ int msm_vidc_set_nal_length(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3043,8 +3067,6 @@ int msm_vidc_set_gop_size(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3073,8 +3095,6 @@ set_total_bitrate:
 	hfi_value = inst->capabilities[BIT_RATE].value;
 	rc = msm_vidc_packetize_control(inst, BIT_RATE, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3116,8 +3136,6 @@ int msm_vidc_set_layer_bitrate(void *instance,
 	hfi_value = inst->capabilities[BIT_RATE].value;
 	rc = msm_vidc_packetize_control(inst, BIT_RATE, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3136,8 +3154,6 @@ int msm_vidc_set_session_priority(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3169,8 +3185,6 @@ int msm_vidc_set_flip(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3184,8 +3198,6 @@ int msm_vidc_set_preprocess(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3203,8 +3215,6 @@ int msm_vidc_set_rotation(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3214,7 +3224,7 @@ int msm_vidc_set_blur_resolution(void *instance,
 {
 	int rc = 0;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 blur_type = -1;
+	s64 blur_type = -1;
 	u32 hfi_value, blur_width, blur_height;
 
 	if (msm_vidc_get_parent_value(inst, cap_id,
@@ -3249,8 +3259,6 @@ int msm_vidc_set_blur_resolution(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_32_PACKED,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3298,7 +3306,7 @@ int msm_vidc_set_csc_custom_matrix(void *instance,
 	if (!inst->capabilities[cap_id].value ||
 	    !inst->capabilities[CSC].value) {
 		i_vpr_h(inst,
-			"%s: ignored as custom martix %u, csc %u\n",
+			"%s: ignored as custom martix %llu, csc %llu\n",
 			__func__, inst->capabilities[cap_id].value,
 			inst->capabilities[CSC].value);
 		return 0;
@@ -3361,8 +3369,6 @@ int msm_vidc_set_csc_custom_matrix(void *instance,
 				    HFI_PROP_CSC_LIMIT, &csc_limit_payload[0],
 				    ARRAY_SIZE(csc_limit_payload) * sizeof(s32),
 				    csc_limit_payload[0], csc_limit_payload[1]);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3391,8 +3397,6 @@ int msm_vidc_set_reserve_duration(void *instance,
 	hfi_value = inst->capabilities[cap_id].value;
 
 	rc = venus_hfi_reserve_hardware(inst, hfi_value);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3410,8 +3414,6 @@ int msm_vidc_set_level(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3427,8 +3429,6 @@ int msm_vidc_set_q16(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_Q16,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3450,8 +3450,6 @@ int msm_vidc_set_u32(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3473,8 +3471,6 @@ int msm_vidc_set_u32_packed(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_32_PACKED,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3492,8 +3488,6 @@ int msm_vidc_set_u32_enum(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3509,8 +3503,6 @@ int msm_vidc_set_s32(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_S32,
 					&hfi_value, sizeof(s32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3535,8 +3527,6 @@ int msm_vidc_set_stage(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&stage, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3561,8 +3551,6 @@ int msm_vidc_set_pipe(void *instance,
 	pipe = inst->capabilities[PIPE].value;
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&pipe, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3586,8 +3574,6 @@ int msm_vidc_set_vui_timing_info(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3607,8 +3593,6 @@ int msm_vidc_set_outbuf_fence_type(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }
@@ -3628,8 +3612,30 @@ int msm_vidc_set_outbuf_fence_direction(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
 					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
+
+	return rc;
+}
+
+int msm_vidc_set_conceal_color(void *instance,
+	enum msm_vidc_inst_capability_type cap_id)
+{
+	int rc = 0;
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *) instance;
+	u32 hfi_value = 0;
+
+	if (cap_id == CONCEAL_COLOR_8BIT) {
+		hfi_value |= (u32)(inst->capabilities[cap_id].value & 0xFF);
+		hfi_value |= (u32)((inst->capabilities[cap_id].value & 0xFF0000) >> 6);
+		hfi_value |= (u32)((inst->capabilities[cap_id].value & 0xFF00000000) >> 12);
+	} else if (cap_id == CONCEAL_COLOR_10BIT) {
+		hfi_value |= (u32)(inst->capabilities[cap_id].value & 0x3FF);
+		hfi_value |= (u32)((inst->capabilities[cap_id].value & 0x3FF0000) >> 6);
+		hfi_value |= (u32)((inst->capabilities[cap_id].value & 0x3FF00000000) >> 12);
+	} else {
+		return 0;
+	}
+	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_32_PACKED,
+			&hfi_value, sizeof(u32), __func__);
 
 	return rc;
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_media_info.h"
@@ -734,7 +734,7 @@ static bool msm_vdec_check_outbuf_fence_allowed(struct msm_vidc_inst *inst)
 	if (inst->capabilities[CODED_FRAMES].value == CODED_FRAMES_INTERLACE ||
 		(!inst->capabilities[OUTPUT_ORDER].value && reorder_count)) {
 		i_vpr_e(inst,
-			"%s: outbuf tx fence is unsupported for coded frames %d or output order %d and reorder frames %d\n",
+			"%s: outbuf tx fence is unsupported for coded frames %lld or output order %lld and reorder frames %lld\n",
 			__func__, inst->capabilities[CODED_FRAMES].value,
 			inst->capabilities[OUTPUT_ORDER].value,
 			(inst->capabilities[MAX_NUM_REORDER_FRAMES].value >> 16));

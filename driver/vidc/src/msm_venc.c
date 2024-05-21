@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_media_info.h"
@@ -29,7 +29,6 @@ static const u32 msm_venc_input_set_prop[] = {
 static const u32 msm_venc_output_set_prop[] = {
 	HFI_PROP_BITSTREAM_RESOLUTION,
 	HFI_PROP_CROP_OFFSETS,
-	HFI_PROP_CSC,
 };
 
 static const u32 msm_venc_input_subscribe_for_properties[] = {
@@ -388,32 +387,6 @@ static int msm_venc_set_colorspace(struct msm_vidc_inst *inst,
 	return 0;
 }
 
-static int msm_venc_set_csc(struct msm_vidc_inst *inst,
-	enum msm_vidc_port_type port)
-{
-	int rc = 0;
-	u32 csc = 0;
-
-	if (port != OUTPUT_PORT) {
-		i_vpr_e(inst, "%s: invalid port %d\n", __func__, port);
-		return -EINVAL;
-	}
-
-	csc = inst->capabilities[CSC].value;
-	i_vpr_h(inst, "%s: csc: %u\n", __func__, csc);
-	rc = venus_hfi_session_property(inst,
-		HFI_PROP_CSC,
-		HFI_HOST_FLAGS_NONE,
-		get_hfi_port(inst, port),
-		HFI_PAYLOAD_U32,
-		&csc,
-		sizeof(u32));
-	if (rc)
-		return rc;
-
-	return 0;
-}
-
 static int msm_venc_set_quality_mode(struct msm_vidc_inst *inst)
 {
 	int rc = 0;
@@ -499,7 +472,6 @@ static int msm_venc_set_output_properties(struct msm_vidc_inst *inst)
 	static const struct msm_venc_prop_type_handle prop_type_handle_arr[] = {
 		{HFI_PROP_BITSTREAM_RESOLUTION,       msm_venc_set_bitstream_resolution    },
 		{HFI_PROP_CROP_OFFSETS,               msm_venc_set_crop_offsets            },
-		{HFI_PROP_CSC,                        msm_venc_set_csc                     },
 	};
 
 	i_vpr_h(inst, "%s()\n", __func__);
@@ -830,7 +802,7 @@ static int msm_venc_metadata_subscription(struct msm_vidc_inst *inst,
 			if (is_meta_rx_out_enabled(inst, i)) {
 				if (count + 1 >= sizeof(payload) / sizeof(u32)) {
 					i_vpr_e(inst,
-						"%s: input metadatas (%d) exceeded limit (%lu)\n",
+						"%s: output metadatas (%d) exceeded limit (%lu)\n",
 						__func__, count, sizeof(payload) / sizeof(u32));
 					return -EINVAL;
 				}

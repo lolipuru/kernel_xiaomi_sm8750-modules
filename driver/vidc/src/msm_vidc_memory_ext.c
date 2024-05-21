@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-buf.h>
@@ -72,7 +72,6 @@ static struct dma_buf_attachment *msm_vidc_dma_buf_attach_ext(struct msm_vidc_co
 	 * Get the scatterlist for the given attachment
 	 * Mapping of sg is taken care by map attachment
 	 */
-	attach->dma_map_attrs |= DMA_ATTR_DELAYED_UNMAP;
 	if (is_sys_cache_present(core))
 		attach->dma_map_attrs |= 0UL /*TODO: define DMA_ATTR_IOMMU_USE_UPSTREAM_HINT*/;
 
@@ -460,9 +459,9 @@ static int msm_vidc_memory_unmap_free_ext(struct msm_vidc_core *core, struct msm
 	return rc;
 }
 
-struct msm_vidc_memory_ops *get_mem_ops_ext(void)
+const struct msm_vidc_memory_ops *get_mem_ops_ext(void)
 {
-	struct msm_vidc_memory_ops *mem_ops = get_mem_ops();
+	const struct msm_vidc_memory_ops *mem_ops = get_mem_ops();
 	static struct msm_vidc_memory_ops mem_ops_ext;
 
 	memcpy(&mem_ops_ext, mem_ops, sizeof(struct msm_vidc_memory_ops));

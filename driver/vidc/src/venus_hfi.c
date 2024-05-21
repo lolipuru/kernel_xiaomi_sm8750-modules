@@ -93,7 +93,7 @@ static void __schedule_power_collapse_work(struct msm_vidc_core *core)
 			msecs_to_jiffies(core->capabilities[SW_PC_DELAY].value))) {
 		d_vpr_h("power collapse already scheduled\n");
 	} else {
-		d_vpr_l("power collapse scheduled for %d ms\n",
+		d_vpr_l("power collapse scheduled for %lld ms\n",
 			core->capabilities[SW_PC_DELAY].value);
 	}
 }
@@ -106,19 +106,20 @@ static void __cancel_power_collapse_work(struct msm_vidc_core *core)
 	cancel_delayed_work(&core->pm_work);
 }
 
-static void __flush_debug_queue(struct msm_vidc_core *core,
+static int __flush_debug_queue(struct msm_vidc_core *core,
 	u8 *packet, u32 packet_size)
 {
 	u8 *log;
 	struct hfi_debug_header *pkt;
 	bool local_packet = false;
 	enum vidc_msg_prio_fw log_level_fw = msm_fw_debug;
+	int num_pkts = 0;
 
 	if (!packet || !packet_size) {
 		packet = vzalloc(VIDC_IFACEQ_VAR_HUGE_PKT_SIZE);
 		if (!packet) {
 			d_vpr_e("%s: allocation failed\n", __func__);
-			return;
+			return num_pkts;
 		}
 		packet_size = VIDC_IFACEQ_VAR_HUGE_PKT_SIZE;
 
@@ -133,6 +134,7 @@ static void __flush_debug_queue(struct msm_vidc_core *core,
 
 	while (!venus_hfi_queue_dbg_read(core, packet)) {
 		pkt = (struct hfi_debug_header *)packet;
+		num_pkts++;
 
 		if (pkt->size < sizeof(struct hfi_debug_header)) {
 			d_vpr_e("%s: invalid pkt size %d\n",
@@ -159,6 +161,8 @@ static void __flush_debug_queue(struct msm_vidc_core *core,
 
 	if (local_packet)
 		vfree(packet);
+
+	return num_pkts;
 }
 
 static int __cmdq_write(struct msm_vidc_core *core, void *pkt)
@@ -626,7 +630,7 @@ void __unload_fw(struct msm_vidc_core *core)
 }
 
 static inline struct msm_vidc_inst *get_inst(
-	struct msm_vidc_inst **instances, const s32 count, u32 session_id)
+	struct msm_vidc_inst *const *const instances, const s32 count, u32 session_id)
 {
 	struct msm_vidc_inst *inst = NULL;
 	bool found = false;
@@ -643,39 +647,17 @@ static inline struct msm_vidc_inst *get_inst(
 	return found ? inst : NULL;
 }
 
-static int __response_handler(struct msm_vidc_core *core)
+static int __process_msg_q(struct msm_vidc_core *core,
+	struct msm_vidc_inst *const *const instances, const s32 num_instances)
 {
-	struct msm_vidc_inst *instances[MAX_SUPPORTED_INSTANCES];
-	struct msm_vidc_inst *dummy, *inst = NULL;
+	struct msm_vidc_inst *inst = NULL;
 	struct hfi_header *hdr = NULL;
-	s32 num_instances = 0;
-	int rc = 0;
-
-	if (call_venus_op(core, watchdog, core, core->intr_status)) {
-		struct hfi_packet pkt = {.type = HFI_SYS_ERROR_WD_TIMEOUT};
-
-		core_lock(core, __func__);
-		msm_vidc_change_core_state(core, MSM_VIDC_CORE_ERROR, __func__);
-		/* mark cpu watchdog error */
-		msm_vidc_change_core_sub_state(core,
-			0, CORE_SUBSTATE_CPU_WATCHDOG, __func__);
-		d_vpr_e("%s: CPU WD error received\n", __func__);
-		core_unlock(core, __func__);
-
-		return handle_system_error(core, &pkt);
-	}
-
-	core_lock(core, __func__);
-	list_for_each_entry_safe(inst, dummy, &core->instances, list) {
-		inst = get_inst_ref_locked(inst);
-		if (inst)
-			instances[num_instances++] = inst;
-	}
-	core_unlock(core, __func__);
+	int num_pkts = 0, rc = 0;
 
 	memset(core->response_packet, 0, core->packet_size);
 	while (!venus_hfi_queue_msg_read(core, core->response_packet)) {
 		hdr = (struct hfi_header *)core->response_packet;
+		num_pkts++;
 
 		rc = validate_hdr_packet(core, hdr, __func__);
 		if (rc) {
@@ -708,8 +690,48 @@ error:
 		memset(core->response_packet, 0, core->packet_size);
 	}
 
+	return num_pkts;
+}
+
+static int __response_handler(struct msm_vidc_core *core)
+{
+	struct msm_vidc_inst *instances[MAX_SUPPORTED_INSTANCES];
+	struct msm_vidc_inst *dummy, *inst = NULL;
+	s32 num_instances = 0;
+	int num_msg_pkts = 0, num_debug_pkts = 0, rc = 0;
+
+	if (call_venus_op(core, watchdog, core, core->intr_status)) {
+		struct hfi_packet pkt = {.type = HFI_SYS_ERROR_WD_TIMEOUT};
+
+		core_lock(core, __func__);
+		msm_vidc_change_core_state(core, MSM_VIDC_CORE_ERROR, __func__);
+		/* mark cpu watchdog error */
+		msm_vidc_change_core_sub_state(core,
+			0, CORE_SUBSTATE_CPU_WATCHDOG, __func__);
+		d_vpr_e("%s: CPU WD error received\n", __func__);
+		core_unlock(core, __func__);
+
+		return handle_system_error(core, &pkt);
+	}
+
+	core_lock(core, __func__);
+	list_for_each_entry_safe(inst, dummy, &core->instances, list) {
+		inst = get_inst_ref_locked(inst);
+		if (inst)
+			instances[num_instances++] = inst;
+	}
+	/* PC thread scheduling should be under core lock */
 	__schedule_power_collapse_work(core);
-	__flush_debug_queue(core, core->response_packet, core->packet_size);
+	core_unlock(core, __func__);
+
+	while (1) {
+		num_msg_pkts = __process_msg_q(core, instances, num_instances);
+		num_debug_pkts = __flush_debug_queue(core, core->response_packet,
+			core->packet_size);
+
+		if (!num_msg_pkts && !num_debug_pkts)
+			break;
+	}
 
 	while (num_instances--)
 		put_inst(instances[num_instances]);

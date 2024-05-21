@@ -267,6 +267,7 @@ enum msm_vidc_metadata_bits {
 	CAP(META_SALIENCY_INFO)                   \
 	CAP(META_TRANSCODING_STAT_INFO)           \
 	CAP(META_DOLBY_RPU)                       \
+	CAP(META_HDR10_MAX_RGB_INFO)              \
 	CAP(DRV_VERSION)                          \
 	CAP(MIN_FRAME_QP)                         \
 	CAP(MAX_FRAME_QP)                         \
@@ -417,6 +418,7 @@ enum msm_vidc_metadata_bits {
 	CAP(NUM_COMV)                             \
 	CAP(SIGNAL_COLOR_INFO)                    \
 	CAP(OPEN_GOP)                             \
+	CAP(CAPTURE_DATA_OFFSET)                  \
 	CAP(INST_CAP_MAX)                         \
 }
 
@@ -445,6 +447,16 @@ enum msm_vidc_metadata_bits {
 	ALLOW(MSM_VIDC_DEFER)                     \
 	ALLOW(MSM_VIDC_DISCARD)                   \
 	ALLOW(MSM_VIDC_IGNORE)                    \
+}
+
+#define FOREACH_BUF_REGION(BUF_REGION) {          \
+	BUF_REGION(REGION_NONE)                   \
+	BUF_REGION(NON_SECURE)                    \
+	BUF_REGION(NON_SECURE_PIXEL)              \
+	BUF_REGION(SECURE_PIXEL)                  \
+	BUF_REGION(SECURE_NONPIXEL)               \
+	BUF_REGION(SECURE_BITSTREAM)              \
+	BUF_REGION(REGION_MAX)                    \
 }
 
 enum msm_vidc_domain_type {
@@ -497,15 +509,7 @@ enum msm_vidc_buffer_attributes {
 	MSM_VIDC_ATTR_RELEASE_ELIGIBLE          = BIT(6),
 };
 
-enum msm_vidc_buffer_region {
-	MSM_VIDC_REGION_NONE = 0,
-	MSM_VIDC_NON_SECURE,
-	MSM_VIDC_NON_SECURE_PIXEL,
-	MSM_VIDC_SECURE_PIXEL,
-	MSM_VIDC_SECURE_NONPIXEL,
-	MSM_VIDC_SECURE_BITSTREAM,
-	MSM_VIDC_REGION_MAX,
-};
+enum msm_vidc_buffer_region FOREACH_BUF_REGION(GENERATE_MSM_VIDC_ENUM);
 
 enum msm_vidc_device_region {
 	MSM_VIDC_DEVICE_REGION_NONE = 0,
@@ -666,10 +670,10 @@ enum msm_vidc_inst_capability_flags {
 
 struct msm_vidc_inst_cap {
 	enum msm_vidc_inst_capability_type cap_id;
-	s32 min;
-	s32 max;
-	u32 step_or_mask;
-	s32 value;
+	s64 min;
+	s64 max;
+	u64 step_or_mask;
+	s64 value;
 	u32 v4l2_id;
 	u32 hfi_id;
 	enum msm_vidc_inst_capability_flags flags;
@@ -688,7 +692,7 @@ struct msm_vidc_inst_capability {
 
 struct msm_vidc_core_capability {
 	enum msm_vidc_core_capability_type type;
-	u32 value;
+	s64 value;
 };
 
 struct msm_vidc_inst_cap_entry {
@@ -926,6 +930,8 @@ struct msm_vidc_fence {
 	spinlock_t                  lock;
 	struct sync_file            *sync_file;
 	int                         fd;
+	u64                         fence_id;
+	void                        *session;
 };
 
 struct msm_vidc_mem {
@@ -952,6 +958,7 @@ struct msm_vidc_mem {
 	struct sg_table            *table;
 	struct dma_buf_attachment  *attach;
 	phys_addr_t                 phys_addr;
+	enum dma_data_direction     direction;
 };
 
 struct msm_vidc_mem_list {

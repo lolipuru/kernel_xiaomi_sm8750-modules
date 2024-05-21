@@ -83,6 +83,22 @@ exit:
 	return name;
 }
 
+static const char * const buf_region_name_arr[] =
+	FOREACH_BUF_REGION(GENERATE_STRING);
+
+const char *buf_region_name(enum msm_vidc_buffer_region region)
+{
+	const char *name = "UNKNOWN REGION";
+
+	if (region >= ARRAY_SIZE(buf_region_name_arr))
+		goto exit;
+
+	name = buf_region_name_arr[region];
+
+exit:
+	return name;
+}
+
 static const char * const inst_allow_name_arr[] =
 	FOREACH_ALLOW(GENERATE_STRING);
 
@@ -1377,11 +1393,14 @@ int msm_vidc_get_fence_fd(struct msm_vidc_inst *inst, int *fence_fd)
 {
 	int rc = 0;
 	struct msm_vidc_fence *fence, *dummy_fence;
+	struct msm_vidc_core *core;
 	bool found = false;
 
 	*fence_fd = INVALID_FD;
+	core = inst->core;
+
 	list_for_each_entry_safe(fence, dummy_fence, &inst->fence_list, list) {
-		if (fence->dma_fence.seqno ==
+		if (fence->fence_id ==
 			(u64)inst->capabilities[FENCE_ID].value) {
 			found = true;
 			break;
@@ -1389,13 +1408,13 @@ int msm_vidc_get_fence_fd(struct msm_vidc_inst *inst, int *fence_fd)
 	}
 
 	if (!found) {
-		i_vpr_h(inst, "%s: could not find matching fence for fence id: %d\n",
+		i_vpr_h(inst, "%s: could not find matching fence for fence id: %lld\n",
 			__func__, inst->capabilities[FENCE_ID].value);
 		goto exit;
 	}
 
 	if (fence->fd == INVALID_FD) {
-		rc = msm_vidc_create_fence_fd(inst, fence);
+		rc = call_fence_op(core, fence_create_fd, inst, fence);
 		if (rc)
 			goto exit;
 	}
@@ -2270,7 +2289,7 @@ bool msm_vidc_allow_decode_batch(struct msm_vidc_inst *inst)
 	value = msm_vidc_get_fps(inst);
 	allow = value < cap[BATCH_FPS].value;
 	if (!allow) {
-		i_vpr_h(inst, "%s: unsupported fps %u, max %u\n", __func__,
+		i_vpr_h(inst, "%s: unsupported fps %u, max %llu\n", __func__,
 			value, cap[BATCH_FPS].value);
 		goto exit;
 	}
@@ -2278,7 +2297,7 @@ bool msm_vidc_allow_decode_batch(struct msm_vidc_inst *inst)
 	value = msm_vidc_get_mbs_per_frame(inst);
 	allow = value < cap[BATCH_MBPF].value;
 	if (!allow) {
-		i_vpr_h(inst, "%s: unsupported mbpf %u, max %u\n", __func__,
+		i_vpr_h(inst, "%s: unsupported mbpf %u, max %llu\n", __func__,
 			value, cap[BATCH_MBPF].value);
 		goto exit;
 	}
@@ -2488,6 +2507,14 @@ static int msm_vidc_queue_buffer(struct msm_vidc_inst *inst, struct msm_vidc_buf
 			return rc;
 	}
 
+	/**
+	 * v4l2 limitation: during qbuf(on capture port) v4l2 doesn't propagate data_offset
+	 * from v4l2 to vb2 buffer
+	 */
+	if (is_encode_session(inst) && is_output_buffer(buf->type) &&
+		inst->capabilities[CAPTURE_DATA_OFFSET].value)
+		buf->data_offset = inst->capabilities[CAPTURE_DATA_OFFSET].value;
+
 	print_vidc_buffer(VIDC_HIGH, "high", "qbuf", inst, buf);
 	meta = get_meta_buffer(inst, buf);
 	if (meta && meta->attr & MSM_VIDC_ATTR_DEFERRED)
@@ -2560,10 +2587,13 @@ int msm_vidc_alloc_and_queue_input_internal_buffers(struct msm_vidc_inst *inst)
 int msm_vidc_queue_deferred_buffers(struct msm_vidc_inst *inst, enum msm_vidc_buffer_type buf_type)
 {
 	struct msm_vidc_fence *fence = NULL;
+	struct msm_vidc_core *core = NULL;
 	struct msm_vidc_buffers *buffers;
 	struct msm_vidc_buffer *buf;
 	bool create_fence = false;
 	int rc = 0;
+
+	core = inst->core;
 
 	buffers = msm_vidc_get_buffers(inst, buf_type, __func__);
 	if (!buffers)
@@ -2579,10 +2609,10 @@ int msm_vidc_queue_deferred_buffers(struct msm_vidc_inst *inst, enum msm_vidc_bu
 			continue;
 
 		if (create_fence) {
-			fence = msm_vidc_fence_create(inst);
+			fence = call_fence_op(core, fence_create, inst);
 			if (!fence)
 				return -EINVAL;
-			buf->fence_id = fence->dma_fence.seqno;
+			buf->fence_id = fence->fence_id;
 		}
 
 		rc = msm_vidc_queue_buffer(inst, buf);
@@ -2611,6 +2641,9 @@ int msm_vidc_queue_buffer_single(struct msm_vidc_inst *inst, struct vb2_buffer *
 	int rc = 0;
 	struct msm_vidc_buffer *buf = NULL;
 	struct msm_vidc_fence *fence = NULL;
+	struct msm_vidc_core *core = NULL;
+
+	core = inst->core;
 
 	buf = msm_vidc_get_driver_buf(inst, vb2);
 	if (!buf)
@@ -2618,10 +2651,10 @@ int msm_vidc_queue_buffer_single(struct msm_vidc_inst *inst, struct vb2_buffer *
 
 	if (is_meta_rx_inp_enabled(inst, META_OUTBUF_FENCE) &&
 		is_output_buffer(buf->type)) {
-		fence = msm_vidc_fence_create(inst);
+		fence = call_fence_op(core, fence_create, inst);
 		if (!fence)
-			return rc;
-		buf->fence_id = fence->dma_fence.seqno;
+			return -EINVAL;
+		buf->fence_id = fence->fence_id;
 	}
 
 	rc = inst->event_handle(inst, MSM_VIDC_BUF_QUEUE, buf);
@@ -2632,7 +2665,7 @@ exit:
 	if (rc) {
 		i_vpr_e(inst, "%s: qbuf failed\n", __func__);
 		if (fence)
-			msm_vidc_fence_destroy(inst, (u32)fence->dma_fence.seqno);
+			call_fence_op(core, fence_destroy, inst, fence->fence_id);
 	}
 	return rc;
 }
@@ -2777,8 +2810,23 @@ int msm_vidc_create_internal_buffer(struct msm_vidc_inst *inst,
 	mem->size = buffer->buffer_size;
 	mem->secure = is_secure_region(mem->region);
 	rc = call_mem_op(core, memory_alloc_map, core, mem);
-	if (rc)
+	if (rc) {
+		i_vpr_e(inst, "failed to alloc and map. %s: %s: size %8d\n",
+			buf_name(mem->type), buf_region_name(mem->region),
+			mem->size);
+
+		/* print all active mappings */
+		inst_unlock(inst, __func__);
+		msm_vidc_print_core_info(core);
+		inst_lock(inst, __func__);
+
+		/* enable bugon for map failure cases via debugfs */
+		if (msm_vidc_enable_bugon & MSM_VIDC_BUG_ON_DMA_MAP_FAILURE) {
+			i_vpr_e(inst, "%s: force bugon for alloc and map failure\n", __func__);
+			MSM_VIDC_FATAL(true);
+		}
 		return -ENOMEM;
+	}
 	list_add_tail(&mem->list, &mem_list->list);
 
 	buffer->dmabuf = mem->dmabuf;
@@ -2981,6 +3029,7 @@ int msm_vidc_vb2_buffer_done(struct msm_vidc_inst *inst,
 	vbuf = to_vb2_v4l2_buffer(vb2);
 	vbuf->flags = buf->flags;
 	vb2->timestamp = buf->timestamp;
+	vb2->planes[0].data_offset = buf->data_offset;
 	vb2->planes[0].bytesused = buf->data_size + vb2->planes[0].data_offset;
 	vb2_buffer_done(vb2, state);
 
@@ -3216,7 +3265,7 @@ int msm_vidc_add_session(struct msm_vidc_inst *inst)
 	if (count < core->capabilities[MAX_SESSION_COUNT].value) {
 		list_add_tail(&inst->list, &core->instances);
 	} else {
-		i_vpr_e(inst, "%s: max limit %d already running %d sessions\n",
+		i_vpr_e(inst, "%s: max limit %lld already running %d sessions\n",
 			__func__, core->capabilities[MAX_SESSION_COUNT].value, count);
 		rc = -EAGAIN;
 	}
@@ -3367,7 +3416,7 @@ int msm_vidc_session_streamoff(struct msm_vidc_inst *inst,
 		goto error;
 
 	core = inst->core;
-	i_vpr_h(inst, "%s: wait on port: %d for time: %d ms\n",
+	i_vpr_h(inst, "%s: wait on port: %d for time: %lld ms\n",
 		__func__, port, core->capabilities[HW_RESPONSE_TIMEOUT].value);
 	inst_unlock(inst, __func__);
 	rc = wait_for_completion_timeout(
@@ -3442,7 +3491,7 @@ int msm_vidc_session_close(struct msm_vidc_inst *inst)
 	inst->packet = NULL;
 
 	if (wait_for_response) {
-		i_vpr_h(inst, "%s: wait on close for time: %d ms\n",
+		i_vpr_h(inst, "%s: wait on close for time: %lld ms\n",
 		__func__, core->capabilities[HW_RESPONSE_TIMEOUT].value);
 		inst_unlock(inst, __func__);
 		rc = wait_for_completion_timeout(
@@ -3955,10 +4004,16 @@ int msm_vidc_print_inst_info(struct msm_vidc_inst *inst)
 	u32 bit_depth, bit_rate, frame_rate, width, height;
 	struct dma_buf *dbuf;
 	struct inode *f_inode;
-	unsigned long inode_num = 0;
-	long ref_count = -1;
-	int i = 0;
+	unsigned long inode_num;
+	u64 size_kb_arr[MSM_VIDC_REGION_MAX];
+	char region_size_arr[400];
+	long ref_count;
+	int len = 0, i = 0;
+	u32 map_str_len;
+	char *map_str;
 
+	memset(&size_kb_arr, 0, sizeof(size_kb_arr));
+	memset(&region_size_arr, 0, sizeof(region_size_arr));
 	is_secure = is_secure_session(inst);
 	is_decode = is_decode_session(inst);
 	port = is_decode ? INPUT_PORT : OUTPUT_PORT;
@@ -3988,6 +4043,8 @@ int msm_vidc_print_inst_info(struct msm_vidc_inst *inst)
 			if (!buf->dmabuf)
 				continue;
 			dbuf = (struct dma_buf *)buf->dmabuf;
+			inode_num = 0;
+			ref_count = -1;
 			if (dbuf && dbuf->file) {
 				f_inode = file_inode(dbuf->file);
 				if (f_inode) {
@@ -3995,13 +4052,32 @@ int msm_vidc_print_inst_info(struct msm_vidc_inst *inst)
 					ref_count = file_count(dbuf->file);
 				}
 			}
+			/* capture total mappings of each cb */
+			if (buf->region < MSM_VIDC_REGION_MAX) {
+				if ((buf->attach && buf->sg_table) || is_internal_buffer(buf->type))
+					size_kb_arr[buf->region] += buf->buffer_size;
+			}
+
 			i_vpr_e(inst,
-				"buf: type: %11s, index: %2d, fd: %4d, size: %9u, off: %8u, filled: %9u, daddr: %#llx, inode: %8lu, ref: %2ld, flags: %8x, ts: %16lld, attr: %8x\n",
-				buf_name(i), buf->index, buf->fd, buf->buffer_size,
-				buf->data_offset, buf->data_size, buf->device_addr,
-				inode_num, ref_count, buf->flags, buf->timestamp, buf->attr);
+				"%s: %s: idx %2d fd %3d off %d daddr %#llx inode %8lu ref %2ld size %8d filled %8d flags %#x ts %8lld attr %#x dbuf_get %d attach %d map %d\n",
+				buf_name(i), buf_region_name(buf->region), buf->index, buf->fd,
+				buf->data_offset, buf->device_addr, inode_num, ref_count,
+				buf->buffer_size, buf->data_size, buf->flags, buf->timestamp,
+				buf->attr, buf->dbuf_get, buf->attach ? 1 : 0,
+				buf->sg_table ? 1 : 0);
 		}
 	}
+
+	/* Print mapping details */
+	map_str = region_size_arr;
+	map_str_len = ARRAY_SIZE(region_size_arr);
+	for (i = 1; i < MSM_VIDC_REGION_MAX; i++) {
+		len = scnprintf(map_str, map_str_len, "%s %lld kb ",
+			buf_region_name(i), size_kb_arr[i] / 1024);
+		map_str_len -= len;
+		map_str += len;
+	}
+	i_vpr_e(inst, "mapping: %s\n", region_size_arr);
 
 	return 0;
 }
@@ -4024,6 +4100,7 @@ void msm_vidc_print_core_info(struct msm_vidc_core *core)
 			continue;
 		inst_lock(inst, __func__);
 		msm_vidc_print_inst_info(inst);
+		msm_vidc_print_memory_stats(inst);
 		inst_unlock(inst, __func__);
 		put_inst(inst);
 	}
@@ -4089,13 +4166,14 @@ int msm_vidc_trigger_ssr(struct msm_vidc_core *core,
 	d_vpr_e("%s: trigger ssr is called. trigger ssr val: %#llx\n",
 		__func__, trigger_ssr_val);
 
-	if (!is_ssr_type_allowed(core, trigger_ssr_val)) {
-		d_vpr_h("SSR Type %#llx is not allowed\n", trigger_ssr_val);
+	ssr->ssr_type = (trigger_ssr_val &
+		(unsigned long)SSR_TYPE) >> SSR_TYPE_SHIFT;
+
+	if (!is_ssr_type_allowed(core, ssr->ssr_type)) {
+		d_vpr_h("SSR Type %#x is not allowed\n", ssr->ssr_type);
 		return 0;
 	}
 
-	ssr->ssr_type = (trigger_ssr_val &
-			(unsigned long)SSR_TYPE) >> SSR_TYPE_SHIFT;
 	ssr->sub_client_id = (trigger_ssr_val &
 			(unsigned long)SSR_SUB_CLIENT_ID) >> SSR_SUB_CLIENT_ID_SHIFT;
 	ssr->test_addr = (trigger_ssr_val &
@@ -4505,7 +4583,7 @@ void msm_vidc_destroy_buffers(struct msm_vidc_inst *inst)
 
 	list_for_each_entry_safe(fence, dummy_fence, &inst->fence_list, list) {
 		i_vpr_e(inst, "%s: destroying fence %s\n", __func__, fence->name);
-		msm_vidc_fence_destroy(inst, (u32)fence->dma_fence.seqno);
+		call_fence_op(core, fence_destroy, inst, fence->fence_id);
 	}
 
 	/* destroy buffers from pool */
@@ -4736,7 +4814,7 @@ void msm_vidc_schedule_core_deinit(struct msm_vidc_core *core)
 	schedule_delayed_work(&core->fw_unload_work,
 		msecs_to_jiffies(core->capabilities[FW_UNLOAD_DELAY].value));
 
-	d_vpr_h("firmware unload delayed by %u ms\n",
+	d_vpr_h("firmware unload delayed by %llu ms\n",
 		core->capabilities[FW_UNLOAD_DELAY].value);
 
 	return;
@@ -4901,7 +4979,8 @@ int msm_vidc_check_core_mbps(struct msm_vidc_inst *inst)
 	core_unlock(core, __func__);
 
 	if (critical_mbps > core->capabilities[MAX_MBPS].value) {
-		i_vpr_e(inst, "%s: Hardware overloaded with critical sessions. needed %llu, max %u",
+		i_vpr_e(inst,
+			"%s: Hardware overloaded with critical sessions. needed %llu, max %llu",
 			__func__, critical_mbps, core->capabilities[MAX_MBPS].value);
 		return -ENOMEM;
 	}
@@ -4923,7 +5002,7 @@ int msm_vidc_check_core_mbps(struct msm_vidc_inst *inst)
 	if (is_encode_session(inst)) {
 		/* reject encoder if all encoders mbps is greater than MAX_MBPS */
 		if (enc_mbps > core->capabilities[MAX_MBPS].value) {
-			i_vpr_e(inst, "%s: Hardware overloaded. needed %llu, max %u", __func__,
+			i_vpr_e(inst, "%s: Hardware overloaded. needed %llu, max %llu", __func__,
 				mbps, core->capabilities[MAX_MBPS].value);
 			return -ENOMEM;
 		}
@@ -4955,7 +5034,7 @@ int msm_vidc_check_core_mbps(struct msm_vidc_inst *inst)
 		}
 	}
 
-	i_vpr_h(inst, "%s: HW load needed %llu is within max %u", __func__,
+	i_vpr_h(inst, "%s: HW load needed %llu is within max %llu", __func__,
 			total_mbps, core->capabilities[MAX_MBPS].value);
 
 	return 0;
@@ -4978,7 +5057,7 @@ int msm_vidc_check_core_mbpf(struct msm_vidc_inst *inst)
 	core_unlock(core, __func__);
 
 	if (critical_mbpf > core->capabilities[MAX_MBPF].value) {
-		i_vpr_e(inst, "%s: Hardware overloaded with critical sessions. needed %u, max %u",
+		i_vpr_e(inst, "%s: Hardware overloaded with critical sessions. needed %u, max %llu",
 			__func__, critical_mbpf, core->capabilities[MAX_MBPF].value);
 		return -ENOMEM;
 	}
@@ -4997,13 +5076,13 @@ int msm_vidc_check_core_mbpf(struct msm_vidc_inst *inst)
 	core_unlock(core, __func__);
 
 	if (video_mbpf > core->capabilities[MAX_MBPF].value) {
-		i_vpr_e(inst, "%s: video overloaded. needed %u, max %u", __func__,
+		i_vpr_e(inst, "%s: video overloaded. needed %u, max %llu", __func__,
 			video_mbpf, core->capabilities[MAX_MBPF].value);
 		return -ENOMEM;
 	}
 
 	if (image_mbpf > core->capabilities[MAX_IMAGE_MBPF].value) {
-		i_vpr_e(inst, "%s: image overloaded. needed %u, max %u", __func__,
+		i_vpr_e(inst, "%s: image overloaded. needed %u, max %llu", __func__,
 			image_mbpf, core->capabilities[MAX_IMAGE_MBPF].value);
 		return -ENOMEM;
 	}
@@ -5019,7 +5098,7 @@ int msm_vidc_check_core_mbpf(struct msm_vidc_inst *inst)
 	core_unlock(core, __func__);
 
 	if (video_rt_mbpf > core->capabilities[MAX_RT_MBPF].value) {
-		i_vpr_e(inst, "%s: real-time video overloaded. needed %u, max %u",
+		i_vpr_e(inst, "%s: real-time video overloaded. needed %u, max %llu",
 			__func__, video_rt_mbpf, core->capabilities[MAX_RT_MBPF].value);
 		return -ENOMEM;
 	}
@@ -5134,7 +5213,7 @@ static bool msm_vidc_allow_image_encode_session(struct msm_vidc_inst *inst)
 	/* is bitrate mode CQ */
 	allow = cap[BITRATE_MODE].value == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ;
 	if (!allow) {
-		i_vpr_e(inst, "%s: bitrate mode is not CQ: %#x\n", __func__,
+		i_vpr_e(inst, "%s: bitrate mode is not CQ: %#llx\n", __func__,
 			cap[BITRATE_MODE].value);
 		goto exit;
 	}
@@ -5143,7 +5222,7 @@ static bool msm_vidc_allow_image_encode_session(struct msm_vidc_inst *inst)
 	allow = !cap[GOP_SIZE].value;
 	allow &= !cap[B_FRAME].value;
 	if (!allow) {
-		i_vpr_e(inst, "%s: not all intra: gop: %u, bframe: %u\n", __func__,
+		i_vpr_e(inst, "%s: not all intra: gop: %llu, bframe: %llu\n", __func__,
 			cap[GOP_SIZE].value, cap[B_FRAME].value);
 		goto exit;
 	}
@@ -5151,7 +5230,7 @@ static bool msm_vidc_allow_image_encode_session(struct msm_vidc_inst *inst)
 	/* is time delta based rc disabled */
 	allow = !cap[TIME_DELTA_BASED_RC].value;
 	if (!allow) {
-		i_vpr_e(inst, "%s: time delta based rc not disabled: %#x\n", __func__,
+		i_vpr_e(inst, "%s: time delta based rc not disabled: %#llx\n", __func__,
 			cap[TIME_DELTA_BASED_RC].value);
 		goto exit;
 	}
@@ -5159,7 +5238,7 @@ static bool msm_vidc_allow_image_encode_session(struct msm_vidc_inst *inst)
 	/* is frame skip mode disabled */
 	allow = !cap[FRAME_SKIP_MODE].value;
 	if (!allow) {
-		i_vpr_e(inst, "%s: frame skip mode not disabled: %#x\n", __func__,
+		i_vpr_e(inst, "%s: frame skip mode not disabled: %#llx\n", __func__,
 			cap[FRAME_SKIP_MODE].value);
 		goto exit;
 	}
@@ -5282,21 +5361,21 @@ static int msm_vidc_check_max_sessions(struct msm_vidc_inst *inst)
 	core_unlock(core, __func__);
 
 	if (num_8k_sessions > core->capabilities[MAX_NUM_8K_SESSIONS].value) {
-		i_vpr_e(inst, "%s: total 8k sessions %d, exceeded max limit %d\n",
+		i_vpr_e(inst, "%s: total 8k sessions %d, exceeded max limit %lld\n",
 			__func__, num_8k_sessions,
 			core->capabilities[MAX_NUM_8K_SESSIONS].value);
 		return -ENOMEM;
 	}
 
 	if (num_4k_sessions > core->capabilities[MAX_NUM_4K_SESSIONS].value) {
-		i_vpr_e(inst, "%s: total 4K sessions %d, exceeded max limit %d\n",
+		i_vpr_e(inst, "%s: total 4K sessions %d, exceeded max limit %lld\n",
 			__func__, num_4k_sessions,
 			core->capabilities[MAX_NUM_4K_SESSIONS].value);
 		return -ENOMEM;
 	}
 
 	if (num_1080p_sessions > core->capabilities[MAX_NUM_1080P_SESSIONS].value) {
-		i_vpr_e(inst, "%s: total 1080p sessions %d, exceeded max limit %d\n",
+		i_vpr_e(inst, "%s: total 1080p sessions %d, exceeded max limit %lld\n",
 			__func__, num_1080p_sessions,
 			core->capabilities[MAX_NUM_1080P_SESSIONS].value);
 		return -ENOMEM;
