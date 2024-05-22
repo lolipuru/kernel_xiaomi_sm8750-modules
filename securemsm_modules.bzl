@@ -5,6 +5,7 @@ HDCP_PATH = "hdcp"
 QCEDEV_PATH = "crypto-qti"
 QRNG_PATH = "qrng"
 SMMU_PROXY_PATH = "smmu-proxy"
+QCEDEV_FE_PATH="qcedev_fe"
 
 # This dictionary holds all the securemsm-kernel  modules included by calling register_securemsm_module
 securemsm_modules = {}
@@ -162,4 +163,13 @@ register_securemsm_module(
     path = SMMU_PROXY_PATH,
     srcs = ["qti-smmu-proxy-pvm.c", "qti-smmu-proxy-common.c"],
     deps = ["%b_smcinvoke_dlkm", ":smmu_proxy_headers"],
+)
+
+register_securemsm_module(
+    name = "qcedev_fe_dlkm",
+    path = QCEDEV_FE_PATH,
+    srcs = [
+                "qcedev_fe.c",
+                "qcedev_smmu.c"],
+    deps = [":qcedev_fe_local_headers"],
 )
