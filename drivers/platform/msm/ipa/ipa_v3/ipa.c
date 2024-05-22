@@ -8277,6 +8277,8 @@ static int ipa3_post_init(const struct ipa3_plat_drv_res *resource_p,
 	 sizeof(struct ipa3_context));
 	ipa_ssr_driver_dump_register_region("ipc_logs", ipa3_ctx->logbuf,
 	((struct ipc_log_context *)(ipa3_ctx->logbuf))->write_avail);
+	ipa_ssr_driver_dump_register_region("gsi_ctx", gsi_ctx, sizeof(struct gsi_ctx));
+
 
 	pr_info("IPA driver initialization was successful.\n");
 #if IS_ENABLED(CONFIG_QCOM_VA_MINIDUMP)

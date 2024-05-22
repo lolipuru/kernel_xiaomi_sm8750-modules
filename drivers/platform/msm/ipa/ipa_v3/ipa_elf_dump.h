@@ -33,8 +33,11 @@
 #define MD_SS_ENCR_DONE		('D' << 24 | 'O' << 16 | 'N' << 8 | 'E' << 0)
 #define MD_SS_ENABLED		('E' << 24 | 'N' << 16 | 'B' << 8 | 'L' << 0)
 #define IPA_ELF_PAGE_SIZE 4096
-#define DMESG_BUF_SIZE (20 * IPA_ELF_PAGE_SIZE)
-#define IPC_BUF_SIZE (50 * IPA_ELF_PAGE_SIZE)
+#define IPA_ELF_CHUNK_SIZE (4 * IPA_ELF_PAGE_SIZE)
+#define DMESG_BUF_CHUNKS 8
+#define IPC_BUF_CHUNKS 14
+#define DMESG_BUF_SIZE (DMESG_BUF_CHUNKS * IPA_ELF_CHUNK_SIZE)
+#define IPC_BUF_SIZE (IPC_BUF_CHUNKS * IPA_ELF_CHUNK_SIZE)
 
 
 /* ELF_SSR structures necessary for constructing the elf */
@@ -75,9 +78,10 @@ struct ipa_host_dump_meta_info {
 
 enum ipa_host_dump_type {
 	IPA_HOST_DUMP_IPA_CTX = 0,
-	IPA_HOST_DUMP_IPC_LOGS = 1,
-	IPA_HOST_DUMP_DMESG_LOGS = 2,
-	IPA_HOST_DUMP_MAX = 3
+	IPA_HOST_DUMP_GSI_CTX = 1,
+	IPA_HOST_DUMP_IPC_LOGS = 2,
+	IPA_HOST_DUMP_DMESG_LOGS = 3,
+	IPA_HOST_DUMP_MAX = 4
 };
 
 /** Structures pertaining to ipc logs, and to make the SMC call
@@ -231,8 +235,14 @@ int ipa_do_host_ramdump(
 	size_t num_entries_loaded);
 int ipa_ssr_driver_dump_init(void);
 int ipa_ssr_driver_dump_deinit(void);
+int get_ipc_and_dmesg_logs(void);
+int ipa_dmesg_logs_register_each_page(char *region_name);
+
+int ipa_ipc_logs_register_each_page(char *region_name);
+
 int ipa_ssr_driver_dump_register_region(char *region_name,
 void *region_buffer, size_t region_size);
+
 int ipa_ssr_driver_dump_unregister_region(char *region_name);
 int ipa_ssr_driver_dump_retrieve_regions(
 	struct elf_ssr_driver_dump_entry *input_array,

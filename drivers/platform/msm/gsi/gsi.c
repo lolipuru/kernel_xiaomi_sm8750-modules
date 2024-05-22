@@ -80,6 +80,8 @@ static bool running_emulation;
 #endif
 
 struct gsi_ctx *gsi_ctx;
+EXPORT_SYMBOL_GPL(gsi_ctx);
+
 
 static union __packed gsi_channel_scratch __gsi_update_mhi_channel_scratch(
 	unsigned long chan_hdl, struct __packed gsi_mhi_channel_scratch mscr);
