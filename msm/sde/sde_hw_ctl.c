@@ -966,6 +966,24 @@ static inline u32 sde_hw_ctl_get_intf_v1(struct sde_hw_ctl *ctx)
 	return intf_active;
 }
 
+static inline void sde_hw_ctl_update_top_group(struct sde_hw_ctl *ctx, bool enable)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 val;
+
+	if (!ctx)
+		return;
+
+	c = &ctx->hw;
+	val = SDE_REG_READ(c, CTL_TOP);
+	if (enable)
+		val = val & 0xFFFFFFF;
+	else
+		val = val | 0xF0000000;
+
+	SDE_REG_WRITE(c, CTL_TOP, val);
+}
+
 static inline u32 sde_hw_ctl_get_intf(struct sde_hw_ctl *ctx)
 {
 	struct sde_hw_blk_reg_map *c;
@@ -1613,6 +1631,7 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		ops->update_bitmask = sde_hw_ctl_update_bitmask_v1;
 		ops->update_dnsc_blur_bitmask = sde_hw_ctl_update_dnsc_blur_bitmask;
 		ops->get_ctl_intf = sde_hw_ctl_get_intf_v1;
+		ops->update_ctl_top_group = sde_hw_ctl_update_top_group;
 
 		ops->reset_post_disable = sde_hw_ctl_reset_post_disable;
 		ops->get_scheduler_status = sde_hw_ctl_get_scheduler_status;
