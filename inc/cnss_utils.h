@@ -23,6 +23,13 @@ enum cnss_utils_device_type {
 	CNSS_HSP_DEVICE_TYPE
 };
 
+enum cnss_status_type {
+	CNSS_UTILS_FMD_STATUS,
+	CNSS_UTILS_MAX_STATUS_TYPE
+};
+
+typedef void (*cnss_utils_status_update)(void *cb_ctx, bool status);
+
 extern int cnss_utils_set_wlan_unsafe_channel(struct device *dev,
 					      u16 *unsafe_ch_list,
 					      u16 ch_count);
@@ -31,7 +38,11 @@ extern int cnss_utils_get_wlan_unsafe_channel(struct device *dev,
 					      u16 *ch_count, u16 buf_len);
 extern enum cnss_utils_device_type cnss_utils_update_device_type(
 				enum cnss_utils_device_type device_type);
-
+extern int cnss_utils_fmd_status(int is_enabled);
+extern int
+cnss_utils_register_status_notifier(enum cnss_status_type status_type,
+				    cnss_utils_status_update status_update_cb,
+				    void *cb_ctx);
 extern int cnss_utils_wlan_set_dfs_nol(struct device *dev,
 				       const void *info, u16 info_len);
 extern int cnss_utils_wlan_get_dfs_nol(struct device *dev,
