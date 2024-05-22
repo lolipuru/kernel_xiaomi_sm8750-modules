@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -2248,7 +2248,7 @@ static int wsa884x_swr_probe(struct swr_device *pdev)
 				goto err_mem;
 			}
 
-			sys_gain_length = sys_gain_size / (2 * sizeof(u32));
+			sys_gain_length = sys_gain_size / sizeof(u32);
 			ret = of_property_read_u32_array(
 				wsa884x->macro_dev->dev.of_node,
 				"qcom,wsa-system-gains", wsa884x->sys_gains,
