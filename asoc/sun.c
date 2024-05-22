@@ -2360,7 +2360,8 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "%s: Sound card %s registered\n",
 		 __func__, card->name);
 
-	if (wcd_mbhc_cfg.enable_usbc_analog)
+	if (wcd_mbhc_cfg.enable_usbc_analog ||
+				wcd_mbhc_cfg.usbss_hsj_connect_enable)
 		wcd_mbhc_cfg.swap_gnd_mic = msm_usbc_swap_gnd_mic;
 
 	pdata->wcd_usbss_handle = of_parse_phandle(pdev->dev.of_node,
