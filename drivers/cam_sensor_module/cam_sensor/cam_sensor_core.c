@@ -194,6 +194,7 @@ static int cam_sensor_handle_res_info(struct cam_sensor_res_info *res_info,
 	s_ctrl->sensor_res[idx].width = res_info->width;
 	s_ctrl->sensor_res[idx].height = res_info->height;
 	s_ctrl->sensor_res[idx].fps = res_info->fps;
+	s_ctrl->sensor_res[idx].request_id = s_ctrl->last_updated_req;
 
 	if (res_info->num_valid_params > 0) {
 		if (res_info->valid_param_mask & CAM_SENSOR_FEATURE_MASK)
@@ -609,8 +610,6 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 			if (rc)
 				s_ctrl->sensor_res[idx].request_id = 0;
 
-			if (s_ctrl->is_res_info_updated)
-				s_ctrl->sensor_res[idx].request_id = csl_packet->header.request_id;
 			break;
 		}
 		default:
