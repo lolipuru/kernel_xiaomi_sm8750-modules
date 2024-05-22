@@ -262,8 +262,8 @@
 #define SLPI_SENSORPD_NAME                       "msm/slpi/sensor_pd"
 
 #define OIS_PDR_ADSP_SERVICE_LOCATION_CLIENT_NAME   "ois_pdr_adsprpc"
-#define OIS_PDR_ADSP_SERVICE_NAME              "msm/adsp/ois_pd"
-#define ADSP_OISPD_NAME                        OIS_PDR_ADSP_SERVICE_NAME
+#define OIS_PDR_ADSP_SERVICE_NAME              "tms/servreg"
+#define ADSP_OISPD_NAME                        "msm/adsp/ois_pd"
 
 #define PERF_END ((void)0)
 
