@@ -615,6 +615,7 @@ struct cnss_plat_data {
 	bool fw_pcie_gen_switch;
 	bool fw_aux_uc_support;
 	u64 fw_caps;
+	u64 sku_features;
 	u8 pcie_gen_speed;
 	struct iommu_domain *audio_iommu_domain;
 	bool is_audio_shared_iommu_group;
