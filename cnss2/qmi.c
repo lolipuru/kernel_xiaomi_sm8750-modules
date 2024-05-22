@@ -251,7 +251,8 @@ static void cnss_wlfw_host_cap_parse_mlo(struct cnss_plat_data *plat_priv,
 {
 	if (plat_priv->device_id == KIWI_DEVICE_ID ||
 	    plat_priv->device_id == MANGO_DEVICE_ID ||
-	    plat_priv->device_id == PEACH_DEVICE_ID) {
+	    plat_priv->device_id == PEACH_DEVICE_ID ||
+	    plat_priv->device_id == COLOGNE_DEVICE_ID) {
 		req->mlo_capable_valid = 1;
 		req->mlo_capable = 1;
 		req->mlo_chip_id_valid = 1;
@@ -1897,7 +1898,8 @@ int cnss_wlfw_wlan_cfg_send_sync(struct cnss_plat_data *plat_priv,
 
 	if (plat_priv->device_id != KIWI_DEVICE_ID &&
 	    plat_priv->device_id != MANGO_DEVICE_ID &&
-	    plat_priv->device_id != PEACH_DEVICE_ID) {
+	    plat_priv->device_id != PEACH_DEVICE_ID &&
+	    plat_priv->device_id != COLOGNE_DEVICE_ID) {
 		if (plat_priv->device_id == QCN7605_DEVICE_ID &&
 		    config->num_shadow_reg_cfg) {
 			req->shadow_reg_valid = 1;

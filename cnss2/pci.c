@@ -45,6 +45,7 @@
 #define KIWI_PATH_PREFIX		"kiwi/"
 #define MANGO_PATH_PREFIX		"mango/"
 #define PEACH_PATH_PREFIX		"peach/"
+#define COLOGNE_PATH_PREFIX		"cologne/"
 #define DEFAULT_PHY_M3_FILE_NAME	"m3.bin"
 #define DEFAULT_AUX_FILE_NAME		"aux_ucode.elf"
 #define AUX_V2_FILE_NAME		"aux_ucode20.elf"
@@ -1072,6 +1073,7 @@ void cnss_pci_controller_set_base(struct cnss_pci_data *pci_priv)
 	switch (pci_priv->device_id) {
 	case PEACH_DEVICE_ID:
 	case KIWI_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		break;
 	default:
 		return;
@@ -1186,6 +1188,9 @@ static void cnss_pci_select_window(struct cnss_pci_data *pci_priv, u32 offset)
 	if (plat_priv->device_id == PEACH_DEVICE_ID) {
 		writel_relaxed(window_enable, pci_priv->bar +
 			       PEACH_PCIE_REMAP_BAR_CTRL_OFFSET);
+	} else if (plat_priv->device_id == COLOGNE_DEVICE_ID) {
+		writel_relaxed(window_enable, pci_priv->bar +
+			       COLOGNE_PCIE_REMAP_BAR_CTRL_OFFSET);
 	} else {
 		writel_relaxed(window_enable, pci_priv->bar +
 			       QCA6390_PCIE_REMAP_BAR_CTRL_OFFSET);
@@ -1201,6 +1206,9 @@ static void cnss_pci_select_window(struct cnss_pci_data *pci_priv, u32 offset)
 	if (plat_priv->device_id == PEACH_DEVICE_ID) {
 		val = readl_relaxed(pci_priv->bar +
 			PEACH_PCIE_REMAP_BAR_CTRL_OFFSET);
+	} else if (plat_priv->device_id == COLOGNE_DEVICE_ID) {
+		val = readl_relaxed(pci_priv->bar +
+			COLOGNE_PCIE_REMAP_BAR_CTRL_OFFSET);
 	} else {
 		val = readl_relaxed(pci_priv->bar +
 			QCA6390_PCIE_REMAP_BAR_CTRL_OFFSET);
@@ -1573,6 +1581,7 @@ static void cnss_pci_soc_scratch_reg_dump(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		break;
 	default:
 		return;
@@ -1971,6 +1980,12 @@ static void cnss_pci_dump_bl_sram_mem(struct cnss_pci_data *pci_priv)
 		pbl_log_sram_start = PEACH_DEBUG_PBL_LOG_SRAM_START;
 		pbl_log_max_size = PEACH_DEBUG_PBL_LOG_SRAM_MAX_SIZE;
 		sbl_log_max_size = PEACH_DEBUG_SBL_LOG_SRAM_MAX_SIZE;
+		break;
+	case COLOGNE_DEVICE_ID:
+		pbl_bootstrap_status_reg = COLOGNE_PBL_BOOTSTRAP_STATUS;
+		pbl_log_sram_start = COLOGNE_DEBUG_PBL_LOG_SRAM_START;
+		pbl_log_max_size = COLOGNE_DEBUG_PBL_LOG_SRAM_MAX_SIZE;
+		sbl_log_max_size = COLOGNE_DEBUG_SBL_LOG_SRAM_MAX_SIZE;
 		break;
 	default:
 		return;
@@ -2764,6 +2779,7 @@ static int cnss_pci_get_device_timestamp(struct cnss_pci_data *pci_priv,
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		cnss_pci_reg_read(pci_priv, PCIE_MHI_TIME_LOW, &low);
 		cnss_pci_reg_read(pci_priv, PCIE_MHI_TIME_HIGH, &high);
 		break;
@@ -2786,6 +2802,7 @@ static void cnss_pci_enable_time_sync_counter(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		return;
 	default:
 		break;
@@ -2801,6 +2818,7 @@ static void cnss_pci_clear_time_sync_counter(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		return;
 	default:
 		break;
@@ -2821,6 +2839,7 @@ static void cnss_pci_time_sync_reg_update(struct cnss_pci_data *pci_priv,
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		/* Use the next two shadow registers after host's usage */
 		time_reg_low = PCIE_SHADOW_REG_VALUE_0 +
 				(pci_priv->plat_priv->num_shadow_regs_v3 *
@@ -2939,6 +2958,7 @@ static int cnss_pci_start_time_sync_update(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -2962,6 +2982,7 @@ static void cnss_pci_stop_time_sync_update(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		break;
 	default:
 		return;
@@ -3609,6 +3630,7 @@ int cnss_pci_dev_powerup(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		ret = cnss_qca6290_powerup(pci_priv);
 		break;
 	default:
@@ -3640,6 +3662,7 @@ int cnss_pci_dev_shutdown(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		ret = cnss_qca6290_shutdown(pci_priv);
 		break;
 	default:
@@ -3671,6 +3694,7 @@ int cnss_pci_dev_crash_shutdown(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		cnss_qca6290_crash_shutdown(pci_priv);
 		break;
 	default:
@@ -3702,6 +3726,7 @@ int cnss_pci_dev_ramdump(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		ret = cnss_qca6290_ramdump(pci_priv);
 		break;
 	default:
@@ -4638,6 +4663,7 @@ int cnss_pci_force_wake_request_sync(struct device *dev, int timeout_us)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		break;
 	default:
 		return 0;
@@ -4681,6 +4707,7 @@ int cnss_pci_force_wake_request(struct device *dev)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		break;
 	default:
 		return 0;
@@ -4718,6 +4745,7 @@ int cnss_pci_is_device_awake(struct device *dev)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		break;
 	default:
 		return 0;
@@ -4747,6 +4775,7 @@ int cnss_pci_force_wake_release(struct device *dev)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		break;
 	default:
 		return 0;
@@ -5256,6 +5285,7 @@ int cnss_pci_load_m3(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		switch (plat_priv->device_version.major_version) {
 		case FW_V2_NUMBER:
 			phy_filename = PHY_UCODE_V2_FILE_NAME;
@@ -5908,6 +5938,7 @@ static int cnss_pci_enable_bus(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		pci_priv->dma_bit_mask = PCI_DMA_MASK_36_BIT;
 		break;
 	default:
@@ -6121,6 +6152,7 @@ int cnss_pci_recover_link_down(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -6360,6 +6392,7 @@ static void cnss_pci_send_hang_event(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		offset = plat_priv->hang_data_addr_offset;
 		length = plat_priv->hang_event_data_len;
 		break;
@@ -6717,6 +6750,10 @@ void cnss_pci_add_fw_prefix_name(struct cnss_pci_data *pci_priv,
 		scnprintf(prefix_name, MAX_FIRMWARE_NAME_LEN,
 			  PEACH_PATH_PREFIX "%s", name);
 		break;
+	case COLOGNE_DEVICE_ID:
+		scnprintf(prefix_name, MAX_FIRMWARE_NAME_LEN,
+			  COLOGNE_PATH_PREFIX "%s", name);
+		break;
 	default:
 		scnprintf(prefix_name, MAX_FIRMWARE_NAME_LEN, "%s", name);
 		break;
@@ -6746,6 +6783,7 @@ static int cnss_pci_update_fw_name(struct cnss_pci_data *pci_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		switch (plat_priv->device_version.major_version) {
 		case FW_V2_NUMBER:
 				cnss_pci_add_fw_prefix_name(pci_priv,
@@ -7128,6 +7166,7 @@ static bool cnss_is_tme_supported(struct cnss_pci_data *pci_priv)
 
 	switch (pci_priv->device_id) {
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		return true;
 	default:
 		return false;
@@ -7754,6 +7793,7 @@ static int cnss_pci_probe(struct pci_dev *pci_dev,
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		if ((cnss_is_dual_wlan_enabled() &&
 		     plat_priv->enumerate_done) || !cnss_is_dual_wlan_enabled())
 			cnss_pci_set_wlaon_pwr_ctrl(pci_priv, false, false,
@@ -7831,6 +7871,7 @@ static void cnss_pci_remove(struct pci_dev *pci_dev)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		cnss_pci_wake_gpio_deinit(pci_priv);
 		del_timer(&pci_priv->boot_debug_timer);
 		del_timer(&pci_priv->dev_rddm_timer);
@@ -7862,6 +7903,7 @@ static const struct pci_device_id cnss_pci_id_table[] = {
 	{ KIWI_VENDOR_ID, KIWI_DEVICE_ID, PCI_ANY_ID, PCI_ANY_ID },
 	{ MANGO_VENDOR_ID, MANGO_DEVICE_ID, PCI_ANY_ID, PCI_ANY_ID },
 	{ PEACH_VENDOR_ID, PEACH_DEVICE_ID, PCI_ANY_ID, PCI_ANY_ID },
+	{ COLOGNE_VENDOR_ID, COLOGNE_DEVICE_ID, PCI_ANY_ID, PCI_ANY_ID },
 	{ 0 }
 };
 MODULE_DEVICE_TABLE(pci, cnss_pci_id_table);
