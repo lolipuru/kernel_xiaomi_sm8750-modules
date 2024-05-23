@@ -4431,10 +4431,19 @@ static int cam_req_mgr_cb_notify_msg(
 	slot_idx = __cam_req_mgr_find_slot_for_req(
 		in_q, msg->req_id);
 	if (slot_idx == -1) {
-		CAM_ERR(CAM_CRM, "Req: %lld not found on link: 0x%x",
-			msg->req_id, link->link_hdl);
+		if (((uint32_t)msg->req_id) <= (link->last_flush_id)) {
+			CAM_INFO(CAM_CRM,
+				"req %lld not found in in_q; it has been flushed [last_flush_req %lld] link 0x%x",
+				msg->req_id, link->last_flush_id, link->link_hdl);
+			rc = -EBADR;
+		} else {
+			CAM_ERR(CAM_CRM,
+				"req %lld not found in in_q on link 0x%x [last_flush_req %lld]",
+				msg->req_id, link->link_hdl, link->last_flush_id);
+			rc = -EINVAL;
+		}
 		spin_unlock_bh(&link->req.reset_link_spin_lock);
-		return -EINVAL;
+		return rc;
 	}
 
 	slot = &in_q->slot[slot_idx];
