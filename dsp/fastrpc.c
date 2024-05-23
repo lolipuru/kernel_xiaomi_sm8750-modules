@@ -4382,6 +4382,11 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 			}
 		}
 
+		if (copy_to_user((void __user *)argp, &req, sizeof(req))) {
+			err = -EFAULT;
+			goto err_assign;
+		}
+
 		if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
 			spin_lock_irqsave(&fl->cctx->lock, flags);
 			list_add_tail(&buf->node, &fl->cctx->gmaps);
@@ -4392,10 +4397,6 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 			spin_unlock(&fl->lock);
 		}
 
-		if (copy_to_user((void __user *)argp, &req, sizeof(req))) {
-			err = -EFAULT;
-			goto err_assign;
-		}
 	} else {
 		mutex_lock(&fl->map_mutex);
 		err = fastrpc_map_create(fl, req.fd, req.vaddrin, NULL, req.size, 0, 0, &map, true);
@@ -4447,12 +4448,25 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 
 err_assign:
 	if (req.flags != ADSP_MMAP_ADD_PAGES && req.flags != ADSP_MMAP_REMOTE_HEAP_ADDR) {
-		mutex_lock(&fl->map_mutex);
-		fastrpc_map_put(map);
-		mutex_unlock(&fl->map_mutex);
-	}
-	else {
-		fastrpc_req_munmap_impl(fl, buf);
+		err = fastrpc_req_munmap_dsp(fl, map->raddr, map->size);
+		if (err) {
+			dev_err(dev, "unmmap\tpt fd = %d, 0x%09llx error\n",  map->fd, map->raddr);
+			map = NULL;
+		}
+	} else {
+		err = fastrpc_req_munmap_impl(fl, buf);
+		if (err) {
+			if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
+				spin_lock_irqsave(&fl->cctx->lock, flags);
+				list_add_tail(&buf->node, &fl->cctx->gmaps);
+				spin_unlock_irqrestore(&fl->cctx->lock, flags);
+			} else {
+				spin_lock(&fl->lock);
+				list_add_tail(&buf->node, &fl->mmaps);
+				spin_unlock(&fl->lock);
+			}
+			buf = NULL;
+		}
 	}
 
 err_invoke:
