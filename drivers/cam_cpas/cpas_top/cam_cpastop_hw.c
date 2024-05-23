@@ -884,6 +884,7 @@ static void cam_cpastop_work(struct work_struct *work)
 				break;
 			case CAM_CAMNOC_HW_IRQ_IPE1_BPS_UBWC_DECODE_ERROR:
 			case CAM_CAMNOC_HW_IRQ_IPE0_UBWC_DECODE_ERROR:
+			case CAM_CAMNOC_HW_IRQ_IPE1_UBWC_DECODE_ERROR:
 			case CAM_CAMNOC_HW_IRQ_IPE_BPS_UBWC_DECODE_ERROR:
 			case CAM_CAMNOC_HW_IRQ_OFE_UBWC_READ_DECODE_ERROR:
 				cam_cpastop_handle_ubwc_dec_err(camnoc_idx,
