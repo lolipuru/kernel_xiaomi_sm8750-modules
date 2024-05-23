@@ -271,6 +271,7 @@ struct cam_soc_gpio_data {
  * @gpio_data:              Pointer to gpio info
  * @mmrm_handle:            MMRM Client handle for src clock
  * @is_clk_drv_en:          If clock drv is enabled in hw
+ * @is_crmb_clk:            If clock supports CRMB passthrough when voting
  * @pinctrl_info:           Pointer to pinctrl info
  * @dentry:                 Debugfs entry
  * @clk_level_override_high:Clk level set from debugfs. When cesta is enabled, used to override
@@ -345,6 +346,7 @@ struct cam_hw_soc_info {
 	void                           *mmrm_handle;
 
 	bool                            is_clk_drv_en;
+	bool                            is_crmb_clk;
 
 	struct cam_soc_gpio_data       *gpio_data;
 	struct cam_soc_pinctrl_info     pinctrl_info;
