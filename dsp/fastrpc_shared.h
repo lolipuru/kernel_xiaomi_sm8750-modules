@@ -248,6 +248,8 @@
 #define FASTRPC_DSPSIGNAL_TIMEOUT_NONE 0xffffffff
 #define FASTRPC_DSPSIGNAL_NUM_SIGNALS 1024
 #define FASTRPC_DSPSIGNAL_GROUP_SIZE 256
+/* Macro to return PDR status */
+#define IS_PDR(fl) (fl->spd && fl->spd->pdrcount != fl->spd->prevpdrcount)
 
 #define AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME   "audio_pdr_adsp"
 #define AUDIO_PDR_ADSP_SERVICE_NAME              "avs/audio"

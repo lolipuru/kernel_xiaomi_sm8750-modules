@@ -1954,9 +1954,12 @@ static int fastrpc_internal_invoke(struct fastrpc_user *fl,  u32 kernel,
 		return -EPERM;
 	}
 
-	// For static sensor PDs, validate and throw failure on PDR
-	if (fl->spd && fl->spd->pdrcount != fl->spd->prevpdrcount &&
-			fl->pd_type == SENSORS_STATICPD) {
+	/*
+	 * After PDR, for Audio & OIS PD, kill call is still needed to clean
+	 * the Audio & OIS PD process in root PD. For Sensors PD, no cleanup
+	 * is needed in root PD of DSP.
+	 */
+	if (IS_PDR(fl) && fl->pd_type == SENSORS_STATICPD) {
 		err = -EPIPE;
 		return err;
 	}
@@ -2657,7 +2660,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	err = fastrpc_init_static_pd_status(fl);
 	if (err)
 		goto err_name;
-	if (is_audiopd && fl->spd->pdrcount != fl->spd->prevpdrcount) {
+	if (is_audiopd && IS_PDR(fl)) {
 		/*
 		 * Remove any previous mappings in case process is trying
 		 * to reconnect after a PD restart on remote subsystem.
@@ -5077,9 +5080,19 @@ EXPORT_SYMBOL_GPL(fastrpc_driver_register);
 void fastrpc_notify_users(struct fastrpc_user *user)
 {
 	struct fastrpc_invoke_ctx *ctx;
+	struct fastrpc_user *fl;
 
 	spin_lock(&user->lock);
 	list_for_each_entry(ctx, &user->pending, node) {
+		fl = ctx->fl;
+		/*
+		 * After audio or ois PDR, skip notifying the pending kill call,
+		 * as the DSP guestOS may still be processing and might result
+		 * improper access issues.
+		 */
+		if (fl->file_close && IS_PDR(fl) && fl->pd_type != SENSORS_STATICPD &&
+			ctx->msg.handle == FASTRPC_INIT_HANDLE)
+			continue;
 		ctx->retval = -EPIPE;
 		ctx->is_work_done = true;
 		trace_fastrpc_context_complete(ctx->fl->cctx->domain_id, (uint64_t)ctx,
