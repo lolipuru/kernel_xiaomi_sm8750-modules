@@ -7744,7 +7744,8 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 
 		/* Allocate memory for FCG related hw update data */
 
-		if (!fcg_caps->ife_fcg_supported && !fcg_caps->sfe_fcg_supported)
+		if (!fcg_caps ||
+			(!fcg_caps->ife_fcg_supported && !fcg_caps->sfe_fcg_supported))
 			continue;
 
 		rc = __cam_isp_ctx_allocate_mem_fcg_config(fcg_caps, req_isp,
@@ -7758,11 +7759,12 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		}
 	}
 
-	CAM_DBG(CAM_ISP,
-		"Finish allocating FCG related structure, ctx_id: %u, FCG IFE/MC_TFE supported: %d, FCG SFE supported: %d, SFE_EN: %d",
-		ctx->ctx_id, fcg_caps->ife_fcg_supported,
-		fcg_caps->sfe_fcg_supported,
-		(bool)(param->op_flags & CAM_IFE_CTX_SFE_EN));
+	if (fcg_caps)
+		CAM_DBG(CAM_ISP,
+			"Finish allocating FCG related structure, ctx_id: %u, FCG IFE/MC_TFE supported: %d, FCG SFE supported: %d, SFE_EN: %d",
+			ctx->ctx_id, fcg_caps->ife_fcg_supported,
+			fcg_caps->sfe_fcg_supported,
+			(bool)(param->op_flags & CAM_IFE_CTX_SFE_EN));
 
 	return rc;
 
