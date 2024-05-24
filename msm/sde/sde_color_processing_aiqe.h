@@ -59,14 +59,6 @@ int set_copr_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
 			 struct sde_crtc *hw_crtc);
 
 /**
- * sde_dspp_mdnie_read_art_done - read mdnie art_done
- * @hw_dspp: pointer to dspp hardware description
- * @art_done: pointer to art_done value
- */
-int sde_dspp_mdnie_read_art_done(struct sde_hw_dspp *hw_dspp,
-				    u32 *art_done);
-
-/**
  * sde_dspp_copr_read_status - read copr_status registers
  * @hw_dspp: pointer to dspp hardware description
  * @copr_status: pointer to copr status values

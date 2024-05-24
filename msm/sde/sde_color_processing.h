@@ -432,6 +432,11 @@ void sde_cp_backlight_notification(struct drm_crtc *crtc, u32 bl_val, u32 bl_max
  */
 void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc);
 
+/** _sde_cp_check_mdnie_art_done: check mdnie art done status .
+ * @crtc: pointer to drm crtc.
+ */
+void _sde_cp_check_mdnie_art_done(struct drm_crtc *crtc);
+
 /**
  * sde_cp_get_ai_scaler_io_res - populates the destination scaler src/dst w/h
  * @crtc_state: pointer to drm crtc state
