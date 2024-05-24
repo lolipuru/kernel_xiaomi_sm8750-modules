@@ -1,7 +1,11 @@
 DISPLAY_SELECT := CONFIG_DRM_MSM=m
 
 LOCAL_PATH := $(call my-dir)
+ifeq ($(TARGET_BOARD_PLATFORM), niobe)
+LOCAL_MODULE_DDK_BUILD := false
+else
 LOCAL_MODULE_DDK_BUILD := true
+endif
 include $(CLEAR_VARS)
 
 # This makefile is only for DLKM
@@ -31,6 +35,7 @@ ifneq ($(TARGET_BOARD_PLATFORM), taro)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,sync-fence-module-symvers)/Module.symvers
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,msm-ext-disp-module-symvers)/Module.symvers
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
+	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,synx-driver-symvers)/Module.symvers
 	ifeq ($(CONFIG_HDCP_QSEECOM), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,sec-module-symvers)/Module.symvers
 	endif
