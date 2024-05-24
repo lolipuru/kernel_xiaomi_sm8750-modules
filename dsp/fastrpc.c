@@ -290,8 +290,8 @@ static void __fastrpc_buf_free(struct fastrpc_buf *buf)
 		smmucb = buf->smmucb;
 		mutex_lock(&smmucb->map_mutex);
 		if (smmucb->dev) {
-			__fastrpc_dma_buf_free(buf);
 			smmucb->allocatedbytes -= SMMU_ALIGN(buf->size);
+			__fastrpc_dma_buf_free(buf);
 		}
 		mutex_unlock(&smmucb->map_mutex);
 	}
