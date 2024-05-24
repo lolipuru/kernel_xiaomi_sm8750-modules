@@ -366,16 +366,18 @@ static inline bool fastrpc_get_cached_buf(struct fastrpc_user *fl,
 	return found;
 }
 
-static void fastrpc_cached_buf_list_free(struct fastrpc_user *fl)
+static void fastrpc_buf_list_free(struct fastrpc_user *fl,
+	struct list_head *buf_list, bool is_cached_buf)
 {
-	struct fastrpc_buf *buf, *n, *free;
+	struct fastrpc_buf *buf = NULL, *n = NULL, *free = NULL;
 
 	do {
 		free = NULL;
 		spin_lock(&fl->lock);
-		list_for_each_entry_safe(buf, n, &fl->cached_bufs, node) {
+		list_for_each_entry_safe(buf, n, buf_list, node) {
 			list_del(&buf->node);
-			fl->num_cached_buf--;
+			if (is_cached_buf)
+				fl->num_cached_buf--;
 			free = buf;
 			break;
 		}
@@ -493,9 +495,9 @@ static int fastrpc_buf_alloc(struct fastrpc_user *fl,
 	ret = __fastrpc_buf_alloc(fl, smmucb, fl->cctx->domain_id,
 						size, obuf, buf_type);
 	if (ret == -ENOMEM) {
-		fastrpc_cached_buf_list_free(fl);
+		fastrpc_buf_list_free(fl, &fl->cached_bufs, true);
 		ret = __fastrpc_buf_alloc(fl, smmucb, fl->cctx->domain_id,
-						size, obuf, buf_type);
+					size, obuf, buf_type);
 		if (ret)
 			return ret;
 	}
@@ -3205,18 +3207,13 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	mutex_unlock(&fl->map_mutex);
 	mutex_unlock(&fl->remote_map_mutex);
 
-	list_for_each_entry_safe(buf, b, &fl->mmaps, node) {
-		spin_lock(&fl->lock);
-		list_del(&buf->node);
-		spin_unlock(&fl->lock);
-		fastrpc_buf_free(buf, false);
-	}
+	fastrpc_buf_list_free(fl, &fl->mmaps, false);
 
 	if (fl->pers_hdr_buf)
 		fastrpc_buf_free(fl->pers_hdr_buf, false);
 	kfree(fl->hdr_bufs);
 
-	fastrpc_cached_buf_list_free(fl);
+	fastrpc_buf_list_free(fl, &fl->cached_bufs, true);
 
 	/*
 	 * Audio remote-heap buffers won't be freed as part of "fastrpc_user" object
