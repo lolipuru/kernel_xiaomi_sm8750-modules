@@ -4301,7 +4301,7 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 	struct fastrpc_req_mmap req;
 	struct fastrpc_map *map = NULL;
 	struct fastrpc_smmu *smmucb = &fl->sctx->smmucb[DEFAULT_SMMU_IDX];
-	struct device *dev = smmucb->dev;;
+	struct device *dev = smmucb->dev;
 	int err;
 	unsigned long flags;
 
