@@ -17,6 +17,10 @@ define_modules("parrot", "consolidate")
 
 define_modules("parrot", "perf")
 
+define_modules("monaco", "consolidate")
+
+define_modules("monaco", "gki")
+
 package(
     default_visibility = [
         "//visibility:public",
