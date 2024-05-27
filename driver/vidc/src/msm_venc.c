@@ -666,12 +666,13 @@ static int msm_venc_property_subscription(struct msm_vidc_inst *inst,
 		return -EINVAL;
 	}
 
-	rc = venus_hfi_session_command(inst,
+	rc = msm_vidc_session_command(inst,
 			HFI_CMD_SUBSCRIBE_MODE,
 			port,
 			HFI_PAYLOAD_U32_ARRAY,
 			&payload[0],
-			payload_size);
+			payload_size,
+			__func__);
 	if (rc)
 		return rc;
 
@@ -720,12 +721,13 @@ static int msm_venc_metadata_delivery(struct msm_vidc_inst *inst,
 		return -EINVAL;
 	}
 
-	rc = venus_hfi_session_command(inst,
+	rc = msm_vidc_session_command(inst,
 			HFI_CMD_DELIVERY_MODE,
 			port,
 			HFI_PAYLOAD_U32_ARRAY,
 			&payload[0],
-			(count + 1) * sizeof(u32));
+			(count + 1) * sizeof(u32),
+			__func__);
 	if (rc)
 		return rc;
 
@@ -761,12 +763,13 @@ static int msm_venc_dynamic_metadata_delivery(struct msm_vidc_inst *inst,
 		}
 	}
 
-	rc = venus_hfi_session_command(inst,
+	rc = msm_vidc_session_command(inst,
 			HFI_CMD_DELIVERY_MODE,
 			port,
 			HFI_PAYLOAD_U32_ARRAY,
 			&payload[0],
-			(count + 1) * sizeof(u32));
+			(count + 1) * sizeof(u32),
+			__func__);
 	if (rc)
 		return rc;
 
@@ -815,12 +818,13 @@ static int msm_venc_metadata_subscription(struct msm_vidc_inst *inst,
 		return -EINVAL;
 	}
 
-	rc = venus_hfi_session_command(inst,
+	rc = msm_vidc_session_command(inst,
 			HFI_CMD_SUBSCRIBE_MODE,
 			port,
 			HFI_PAYLOAD_U32_ARRAY,
 			&payload[0],
-			(count + 1) * sizeof(u32));
+			(count + 1) * sizeof(u32),
+			__func__);
 	if (rc)
 		return rc;
 
