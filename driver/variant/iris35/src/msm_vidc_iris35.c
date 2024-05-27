@@ -352,7 +352,8 @@ static int __boot_firmware_iris35(struct msm_vidc_core *core)
 	}
 
 	if (count >= max_tries) {
-		d_vpr_e("Error booting up vidc firmware, ctrl status %#x\n", ctrl_status);
+		d_vpr_e(FMT_STRING_BOOT_FIRMWARE_ERROR,
+			ctrl_status, ctrl_init_val);
 		return -ETIME;
 	}
 
