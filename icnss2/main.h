@@ -26,6 +26,10 @@
 #include <linux/mailbox_client.h>
 #include <linux/timer.h>
 #include <linux/sched_clock.h>
+#include <linux/version.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0))
+#include <linux/sched/clock.h>
+#endif
 
 #define THERMAL_NAME_LENGTH 20
 #define ICNSS_SMEM_VALUE_MASK 0xFFFFFFFF
