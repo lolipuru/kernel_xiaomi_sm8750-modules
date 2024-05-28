@@ -1131,7 +1131,7 @@ static struct cam_ife_csid_ver2_path_reg_info
 		.cfg0_addr                        = 0x5480,
 		.ctrl_addr                        = 0x5488,
 		.debug_clr_cmd_addr               = 0x548C,
-		.multi_vcdt_cfg0_addr             = 0x5090,
+		.multi_vcdt_cfg0_addr             = 0x5490,
 		.multi_vcdt_cfg1_addr             = 0x5484,
 		.cfg1_addr                        = 0x5494,
 		.pix_store_cfg0_addr              = 0x5498,
