@@ -6383,6 +6383,145 @@ static int _sde_encoder_debugfs_status_open(struct inode *inode,
 	return single_open(file, _sde_encoder_status_show, inode->i_private);
 }
 
+static ssize_t _sde_encoder_arp_sim_mode_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct sde_encoder_virt *sde_enc;
+	char buf[MISR_BUFF_SIZE + 1];
+	size_t buff_copy;
+	u32 sim_mode = 0;
+
+	if (!file || !file->private_data)
+		return -EINVAL;
+
+	sde_enc = file->private_data;
+	if (!sde_enc)
+		return -EINVAL;
+
+	buff_copy = min_t(size_t, count, MISR_BUFF_SIZE);
+	if (copy_from_user(buf, user_buf, buff_copy))
+		return -EINVAL;
+
+	buf[buff_copy] = 0; /* end of string */
+
+	if (kstrtouint(buf, 0, &sim_mode))
+		return -EFAULT;
+
+	sde_enc->vrr_info.sim_arp_panel_mode.mode = sim_mode;
+	if (sde_enc->vrr_info.sim_arp_panel_mode.mode >= ARP_SIM_MODE_MAX)
+		return -EFAULT;
+
+	if (sde_enc->vrr_info.sim_arp_panel_mode.mode == ARP_SIM_FIXED)
+		sde_enc->vrr_info.debugfs_arp_te_in_ms =
+			sde_enc->vrr_info.sim_arp_panel_mode.arp_te_time_in_ms;
+
+	return count;
+}
+
+static ssize_t _sde_encoder_parse_freq_step_table(struct sde_encoder_virt *sde_enc)
+{
+	u32 length = 0;
+	u32 count = 0;
+	u32 *freq_pattern_arr32;
+	u32 len = 0;
+	u32 k = 0;
+	int i, j;
+	struct msm_debugfs_freq_pattern *freq_pattern;
+
+	for (i = 0; i < MAX_FREQ_SEQ_SIZE; i++) {
+		if (sde_enc->vrr_info.debugfs_freq_array[i] == 0)
+			break;
+		length++;
+	}
+
+	count = length / 2;
+	if (!sde_enc->vrr_info.debugfs_freq_pattern) {
+		freq_pattern = kcalloc(count, sizeof(*freq_pattern), GFP_KERNEL);
+
+		if (!freq_pattern) {
+			SDE_ERROR("failed to allocate freq_pattern memory\n");
+			return -ENOMEM;
+		}
+		sde_enc->vrr_info.debugfs_freq_pattern = freq_pattern;
+	} else {
+		freq_pattern = sde_enc->vrr_info.debugfs_freq_pattern;
+	}
+
+	sde_enc->mode_info.freq_step_list->count = count;
+	for (i = 0; i < length; i += 2) {
+		freq_pattern->frame_interval = sde_enc->vrr_info.debugfs_freq_array[i];
+		freq_pattern->num_freq_steps = sde_enc->vrr_info.debugfs_freq_array[i+1];
+		len += freq_pattern->num_freq_steps;
+		freq_pattern++;
+	}
+
+	if (!sde_enc->vrr_info.debugfs_freq_pattern->freq_stepping_seq) {
+		freq_pattern_arr32 = kcalloc(len, sizeof(u32), GFP_KERNEL);
+		if (!freq_pattern_arr32) {
+			kfree(freq_pattern);
+			sde_enc->vrr_info.debugfs_freq_pattern = NULL;
+			SDE_ERROR("failed to allocate memory\n");
+			return -ENOMEM;
+		}
+	} else {
+		freq_pattern_arr32 =
+		 sde_enc->vrr_info.debugfs_freq_pattern->freq_stepping_seq;
+	}
+
+	freq_pattern = sde_enc->vrr_info.debugfs_freq_pattern;
+	for (i = 0; i < count; i++) {
+		for (j = 0; j < freq_pattern[i].num_freq_steps; j++) {
+			freq_pattern_arr32[k] = freq_pattern[i].frame_interval;
+			k++;
+		}
+	}
+
+	sde_enc->vrr_info.debugfs_freq_pattern->freq_stepping_seq = freq_pattern_arr32;
+	sde_enc->vrr_info.debugfs_freq_pattern->index = 0;
+	sde_enc->vrr_info.debugfs_freq_pattern->length = len;
+
+	return 0;
+}
+
+static ssize_t _sde_encoder_arp_freq_steps_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct sde_encoder_virt *sde_enc;
+	u32 freq_patterrn_arr32[MAX_FREQ_SEQ_SIZE];
+	char buf[MISR_BUFF_SIZE + 1];
+	size_t buff_copy = 0;
+	int rc = 0;
+
+	buff_copy = min_t(size_t, count, SZ_512);
+
+	if (!file || !file->private_data)
+		return -EINVAL;
+
+	sde_enc = file->private_data;
+	if (!sde_enc)
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, buff_copy))
+		return -EINVAL;
+
+	buf[buff_copy] = 0; /* end of string */
+	if (sscanf(buf, "%u %u %u %u %u",
+		&freq_patterrn_arr32[0],
+		&freq_patterrn_arr32[1],
+		&freq_patterrn_arr32[2],
+		&freq_patterrn_arr32[3],
+		&freq_patterrn_arr32[4]) > MAX_FREQ_SEQ_SIZE) {
+		pr_err("Frequency pattern exceeding count\n");
+		rc = -EFAULT;
+		goto out;
+	}
+	sde_enc->vrr_info.debugfs_freq_array = freq_patterrn_arr32;
+	rc = _sde_encoder_parse_freq_step_table(sde_enc);
+	return count;
+out:
+	return rc;
+}
+
 static ssize_t _sde_encoder_misr_setup(struct file *file,
 		const char __user *user_buf, size_t count, loff_t *ppos)
 {
@@ -6424,6 +6563,68 @@ static ssize_t _sde_encoder_misr_setup(struct file *file,
 	sde_enc->misr_reconfigure = true;
 	sde_enc->misr_frame_count = frame_count;
 	return count;
+}
+
+static ssize_t _sde_encoder_arp_sim_mode_read(struct file *file,
+		char __user *user_buff, size_t count, loff_t *ppos)
+{
+	struct sde_encoder_virt *sde_enc;
+	int len = 0;
+	char buf[MISR_BUFF_SIZE + 1] = {'\0'};
+
+	if (*ppos)
+		return 0;
+
+	if (!file || !file->private_data)
+		return -EINVAL;
+
+	sde_enc = file->private_data;
+	len = scnprintf(buf, sizeof(buf),
+				"mode %d arp_te_time_in_ms %u\n",
+				sde_enc->vrr_info.sim_arp_panel_mode.mode,
+				sde_enc->vrr_info.sim_arp_panel_mode.arp_te_time_in_ms);
+
+	if (len < 0 || len >= sizeof(buf))
+		return 0;
+
+	if ((count < sizeof(buf)) || copy_to_user(user_buff, buf, len))
+		return -EFAULT;
+
+	*ppos += len;   /* increase offset */
+
+	return len;
+}
+
+static ssize_t _sde_encoder_arp_freq_steps_read(struct file *file,
+		char __user *user_buff, size_t count, loff_t *ppos)
+{
+	struct sde_encoder_virt *sde_enc;
+	int len = 0;
+	char buf[MAX_FREQ_SEQ_SIZE * sizeof(u32)  + 1] = {'\0'};
+
+	if (*ppos)
+		return 0;
+
+	if (!file || !file->private_data)
+		return -EINVAL;
+
+	sde_enc = file->private_data;
+	len = scnprintf(buf, sizeof(buf),
+				"%u %u %u %u %u\n",
+				sde_enc->vrr_info.debugfs_freq_array[0],
+				sde_enc->vrr_info.debugfs_freq_array[1],
+				sde_enc->vrr_info.debugfs_freq_array[2],
+				sde_enc->vrr_info.debugfs_freq_array[3],
+				sde_enc->vrr_info.debugfs_freq_array[4]);
+
+	if (len < 0 || len >= sizeof(buf))
+		return 0;
+
+	if (copy_to_user(user_buff, buf, len))
+		return -EFAULT;
+
+	*ppos += len;   /* increase offset */
+	return len;
 }
 
 static ssize_t _sde_encoder_misr_read(struct file *file,
@@ -6532,6 +6733,18 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 		.release =	single_release,
 	};
 
+	static const struct file_operations sde_arp_sim_mode_fops = {
+		.open = simple_open,
+		.read = _sde_encoder_arp_sim_mode_read,
+		.write = _sde_encoder_arp_sim_mode_write,
+	};
+
+	static const struct file_operations debugfs_arp_freq_steps_fops = {
+			.open = simple_open,
+			.read = _sde_encoder_arp_freq_steps_read,
+			.write = _sde_encoder_arp_freq_steps_write,
+	};
+
 	static const struct file_operations debugfs_misr_fops = {
 		.open = simple_open,
 		.read = _sde_encoder_misr_read,
@@ -6563,6 +6776,15 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 	/* don't error check these */
 	debugfs_create_file("status", 0400,
 		sde_enc->debugfs_root, sde_enc, &debugfs_status_fops);
+
+	debugfs_create_file("sim_arp_panel_mode", 0600,
+		sde_enc->debugfs_root, sde_enc, &sde_arp_sim_mode_fops);
+
+	debugfs_create_u32("arp_te_time_in_ms", 0600, sde_enc->debugfs_root,
+		&sde_enc->vrr_info.sim_arp_panel_mode.arp_te_time_in_ms);
+
+	debugfs_create_file("arp_freq_steps", 0600, sde_enc->debugfs_root,
+			sde_enc, &debugfs_arp_freq_steps_fops);
 
 	debugfs_create_file("misr_data", 0600,
 		sde_enc->debugfs_root, sde_enc, &debugfs_misr_fops);
