@@ -14,6 +14,8 @@ ddk_headers(
         "include/linux/IClientE*.h",
         "include/linux/ITrustedCameraDriver.h",
         "include/linux/CTrustedCameraDriver.h",
+        "include/linux/trusted_camera_driver.h",
+        "include/linux/ctrusted_camera_driver.h",
     ]),
     includes = [
         "include",
