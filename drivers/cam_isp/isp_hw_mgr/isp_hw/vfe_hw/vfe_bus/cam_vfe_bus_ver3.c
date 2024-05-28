@@ -830,6 +830,21 @@ static int cam_vfe_bus_ver3_handle_rup_bottom_half(void *handler_priv,
 	return ret;
 }
 
+/* lsb alignemnt needs to be set only if the format has padding bits */
+static inline bool cam_vfe_bus_ver3_needs_lsb_alignment(uint32_t format)
+{
+	switch (format) {
+	case CAM_FORMAT_PLAIN16_8:
+	case CAM_FORMAT_PLAIN16_10:
+	case CAM_FORMAT_PLAIN16_12:
+	case CAM_FORMAT_PLAIN16_14:
+	case CAM_FORMAT_PLAIN32_20:
+		return true;
+	}
+
+	return false;
+}
+
 static inline void cam_vfe_bus_ver3_config_frame_based_rdi_wm(
 	struct cam_vfe_bus_ver3_wm_resource_data  *rsrc_data)
 {
@@ -1123,11 +1138,14 @@ static int cam_vfe_bus_ver3_config_port(
 		rsrc_data->cfg.pack_fmt |= (1 << ver3_bus_priv->common_data.pack_align_shift);
 		break;
 	case CAM_VFE_BUS_VER3_VFE_OUT_RAW_DUMP:
+		if (cam_vfe_bus_ver3_needs_lsb_alignment(rsrc_data->cfg.pack_fmt)) {
+			rsrc_data->cfg.pack_fmt |=
+				(1 << ver3_bus_priv->common_data.pack_align_shift);
+		}
+
 		rsrc_data->cfg.stride = rsrc_data->cfg.width;
 		rsrc_data->cfg.en_cfg = (common_reg->wm_mode_val[CAM_VFE_WM_LINE_BASED_MODE] <<
 			common_reg->wm_mode_shift) | (1 << common_reg->wm_en_shift);
-		/* LSB aligned */
-		rsrc_data->cfg.pack_fmt |= (1 << ver3_bus_priv->common_data.pack_align_shift);
 		break;
 	case CAM_VFE_BUS_VER3_VFE_OUT_SPARSE_PD:
 		rsrc_data->cfg.stride = ALIGNUP(rsrc_data->cfg.width * 2, 8);
