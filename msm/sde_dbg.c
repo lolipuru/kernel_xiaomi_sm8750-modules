@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2009-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2499,6 +2499,82 @@ static const struct file_operations sde_reg_fops = {
 #endif
 };
 
+static ssize_t _sde_dbg_power_wakelock_rd(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct sde_power_handle *phandle;
+	int len = 0;
+	char buf[DUMP_LINE_SIZE + 1] = {'\0'};
+
+	if (*ppos)
+		return 0;
+
+	if (!file || !file->private_data)
+		return -EINVAL;
+
+	phandle = file->private_data;
+
+	if (!phandle->dev) {
+		len = scnprintf(buf + len, DUMP_LINE_SIZE - len, "device not initialized\n");
+		goto buf_check;
+	}
+
+	if (!phandle->dev->power.can_wakeup || !phandle->dev->power.wakeup) {
+		len = scnprintf(buf + len, DUMP_LINE_SIZE - len, "device cannot wakeup\n");
+		goto buf_check;
+	}
+
+	len = scnprintf(buf + len, DUMP_LINE_SIZE - len, "%d\n",
+			atomic_read(&phandle->wakelock_count));
+
+buf_check:
+	if (count <= len) {
+		len = 0;
+		goto end;
+	}
+
+	if (copy_to_user(user_buf, buf, len)) {
+		len = -EFAULT;
+		goto end;
+	}
+
+	*ppos += len;
+end:
+	return len;
+}
+
+static ssize_t _sde_dbg_power_wakelock_wr(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct sde_power_handle *phandle;
+	size_t buf_copy;
+	u32 enable;
+	char buf[DUMP_LINE_SIZE + 1] = {'\0'};
+
+	if (!file || !file->private_data)
+		return -EINVAL;
+
+	phandle = file->private_data;
+	if (!phandle)
+		return -EINVAL;
+
+	buf_copy = min_t(size_t, count, DUMP_LINE_SIZE);
+	if (copy_from_user(buf, user_buf, buf_copy))
+		return -EINVAL;
+
+	buf[buf_copy] = 0;
+
+	if (kstrtouint(buf, 0, &enable))
+		return -EINVAL;
+
+	if (enable)
+		sde_power_wakelock_ctrl(phandle, true);
+	else
+		sde_power_wakelock_ctrl(phandle, false);
+
+	return count;
+}
+
 int sde_dbg_debugfs_register(struct device *dev)
 {
 	static struct sde_dbg_base *dbg = &sde_dbg_base;
@@ -2508,6 +2584,12 @@ int sde_dbg_debugfs_register(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct drm_device *ddev = platform_get_drvdata(pdev);
 	struct msm_drm_private *priv = NULL;
+
+	static const struct file_operations sde_power_wakelock_debugfs_fops = {
+		.open = simple_open,
+		.read = _sde_dbg_power_wakelock_rd,
+		.write = _sde_dbg_power_wakelock_wr,
+	};
 
 	if (!ddev || !ddev->dev_private) {
 		pr_err("Invalid drm device node\n");
@@ -2534,6 +2616,8 @@ int sde_dbg_debugfs_register(struct device *dev)
 	debugfs_create_u32("dump_mode", 0600, debugfs_root, &sde_dbg_base.dump_option);
 	debugfs_create_u64("reg_dump_blk_mask", 0600, debugfs_root, &sde_dbg_base.dump_blk_mask);
 	debugfs_create_u32("evtlog_dump", 0600, debugfs_root, &(sde_dbg_base.evtlog->dump_mode));
+	debugfs_create_file("wakelock", 0600, debugfs_root, &priv->phandle,
+		&sde_power_wakelock_debugfs_fops);
 
 #ifndef CONFIG_DEV_COREDUMP
 	if (dbg->dbgbus_sde.entries)
