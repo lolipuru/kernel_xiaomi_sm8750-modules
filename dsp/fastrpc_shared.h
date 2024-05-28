@@ -544,6 +544,10 @@ struct fastrpc_buf {
 	uintptr_t raddr;
 	bool in_use;
 	u32 domain_id;
+	/* time counter to trace buffer allocation latency */
+	struct timespec64 alloc_time;
+	/* time counter to trace scm assign latency */
+	struct timespec64 scm_assign_time;
 };
 
 struct fastrpc_dma_buf_attachment {

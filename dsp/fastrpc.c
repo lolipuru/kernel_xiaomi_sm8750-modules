@@ -426,6 +426,7 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl,
 		u64 size, struct fastrpc_buf **obuf, u32 buf_type)
 {
 	struct fastrpc_buf *buf;
+	struct timespec64 start_ts, end_ts;
 
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
 	if (!buf)
@@ -442,6 +443,7 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl,
 	buf->raddr = 0;
 	buf->type = buf_type;
 	buf->domain_id = domain_id;
+	ktime_get_boottime_ts64(&start_ts);
 
 	/* REMOTEHEAP_BUF is allocated using cctx device */
 	if (buf_type == REMOTEHEAP_BUF) {
@@ -475,6 +477,8 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl,
 
 	trace_fastrpc_dma_alloc(domain_id, (uint64_t)buf->phys, buf->size,
 								(unsigned long)buf->type, 0);
+	ktime_get_boottime_ts64(&end_ts);
+	buf->alloc_time = timespec64_sub(end_ts, start_ts);
 	return 0;
 }
 
@@ -4340,6 +4344,7 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 	struct fastrpc_map *map = NULL;
 	struct fastrpc_smmu *smmucb = NULL;
 	struct device *dev = NULL;
+	struct timespec64 start_ts, end_ts;
 	int err;
 	unsigned long flags;
 
@@ -4417,8 +4422,11 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 		if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR && fl->cctx->vmcount) {
 			u64 src_perms = BIT(QCOM_SCM_VMID_HLOS);
 
+			ktime_get_boottime_ts64(&start_ts);
 			err = qcom_scm_assign_mem(buf->phys,(u64)buf->size,
 				&src_perms, fl->cctx->vmperms, fl->cctx->vmcount);
+			ktime_get_boottime_ts64(&end_ts);
+			buf->scm_assign_time = timespec64_sub(end_ts, start_ts);
 			if (err) {
 				dev_err(dev, "Failed to assign memory phys 0x%llx size 0x%llx err %d",
 						buf->phys, buf->size, err);
