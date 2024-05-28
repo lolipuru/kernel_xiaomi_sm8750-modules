@@ -36,7 +36,7 @@
 #define CSIPHY_POLL_DELAY_US 500
 #define CSIPHY_POLL_TIMEOUT_US 10000
 #define CSPIHY_REFGEN_STATUS_BIT (1 << 7)
-#define CSIPHY_ONTHEGO_BUFSIZE 30
+#define CSIPHY_ONTHEGO_BUFSIZE 90
 
 #define SETTLE_CNT_ADJUSTMENT_OFFSET 10
 
@@ -100,6 +100,8 @@ static int csiphy_set_onthego_values(const char *val, const struct kernel_param 
 	}
 
 	while ((token = strsep(&p1, ",")) != NULL) {
+		while (token && token[0] == ' ')
+			token++;
 		if (!kstrtoint(token, 0, &onthego_val))
 			onthego_values[onthego_idx++] = onthego_val;
 	}
@@ -139,26 +141,24 @@ MODULE_PARM_DESC(csiphy_onthego_regs, "Functionality to let csiphy registers pro
 
 static int csiphy_onthego_get_set(int *inp, int n_inp, int phy_idx, char *outp)
 {
-	int i, idx, rc = 0;
+	int i, idx = 0, rc = 0;
 	char *p;
-
-	idx = csiphy_onthego_reg_count[phy_idx];
 
 	if (inp && n_inp) {
 		for (i = 0; i < n_inp; i++) {
-			csiphy_onthego_regvals[phy_idx][idx] = (unsigned int) inp[i];
-			if (++idx == CSIPHY_ONTHEGO_BUFSIZE) {
+			if (idx >= CSIPHY_ONTHEGO_BUFSIZE) {
 				CAM_WARN(CAM_CSIPHY,
 					"Onthego input for PHY %d reached end of circular buffer, circling back",
 					phy_idx);
 				idx = idx % CSIPHY_ONTHEGO_BUFSIZE;
 			}
+			csiphy_onthego_regvals[phy_idx][idx++] = (unsigned int) inp[i];
 		}
+		csiphy_onthego_reg_count[phy_idx] = idx;
 	}
 
-	csiphy_onthego_reg_count[phy_idx] = idx;
-
 	if (outp) {
+		idx = csiphy_onthego_reg_count[phy_idx];
 		p = outp;
 		rc += scnprintf(p, PAGE_SIZE, "PHY idx %d: ", phy_idx);
 		for (i = 0; i < idx; i++)
@@ -369,7 +369,6 @@ static inline void cam_csiphy_apply_onthego_reg_values(void __iomem *csiphybase,
 			csiphy_onthego_regvals[csiphy_idx][i+2]);
 	}
 
-	csiphy_onthego_reg_count[csiphy_idx] = 0;
 }
 
 static inline int cam_csiphy_release_from_reset_state(struct csiphy_device *csiphy_dev,
