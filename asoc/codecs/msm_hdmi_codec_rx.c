@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/err.h>
+#include <linux/version.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/soc.h>
@@ -547,7 +548,11 @@ static int msm_ext_disp_audio_codec_rx_dai_startup(
 	struct msm_ext_disp_audio_codec_rx_data *codec_data =
 			dev_get_drvdata(dai->component->dev);
 	int type;
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+#else
 	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+#endif
 
 	if (!codec_data) {
 		dev_err_ratelimited(dai->dev, "%s() codec_data is null\n",

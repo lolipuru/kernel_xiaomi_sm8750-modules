@@ -10,6 +10,7 @@
 #include <linux/slab.h>
 #include <linux/of_device.h>
 #include <linux/arch_topology.h>
+#include <linux/version.h>
 #include <sound/control.h>
 #include <sound/core.h>
 #include <sound/soc.h>
@@ -1177,7 +1178,11 @@ static int msm_register_pm_qos_latency_controls(struct snd_soc_pcm_runtime *rtd)
 
 int msm_common_dai_link_init(struct snd_soc_pcm_runtime *rtd)
 {
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+#else
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
+#endif
 	struct snd_soc_component *component = NULL;
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 	struct device *dev = rtd->card->dev;
