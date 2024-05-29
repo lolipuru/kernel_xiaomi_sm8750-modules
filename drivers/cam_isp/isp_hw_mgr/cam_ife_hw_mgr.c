@@ -90,7 +90,9 @@ static struct cam_ife_hw_mgr g_ife_hw_mgr;
 static uint32_t g_num_ife_available, g_num_ife_lite_available, g_num_sfe_available;
 static uint32_t g_num_ife_functional, g_num_ife_lite_functional, g_num_sfe_functional;
 static uint32_t max_ife_out_res, max_sfe_out_res;
-static char irq_inject_display_buf[IRQ_INJECT_DISPLAY_BUF_LEN];
+
+static char *irq_inject_display_buf;
+
 
 static int cam_ife_mgr_find_core_idx(int split_id, struct cam_ife_hw_mgr_ctx *ctx,
 	enum cam_isp_hw_type hw_type, uint32_t *core_idx);
@@ -7088,18 +7090,20 @@ static int cam_ife_hw_mgr_sfe_irq_inject_or_dump_desc(
 			sizeof(struct cam_isp_irq_inject_param));
 		if (rc)
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"Injecting IRQ %x failed for SFE at req: %lld",
+				"Injecting IRQ %x failed for SFE at req: %lld\n",
 				params->irq_mask, params->req_id);
 		else
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"IRQ %#x injected for SFE at req: %lld",
+				"IRQ %#x injected for SFE at req: %lld\n",
 				params->irq_mask, params->req_id);
 		break;
 	}
 
 clear_param:
-	strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
-	strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	if (irq_inject_display_buf) {
+		strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	}
 
 	/* Clear the param injected */
 	cam_isp_irq_inject_clear_params(params);
@@ -7139,18 +7143,20 @@ static int cam_ife_hw_mgr_vfe_irq_inject_or_dump_desc(
 			sizeof(struct cam_isp_irq_inject_param));
 		if (rc)
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"Injecting IRQ %x failed for IFE at req: %lld",
+				"Injecting IRQ %x failed for IFE at req: %lld\n",
 				params->irq_mask, params->req_id);
 		else
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"IRQ %#x injected for IFE at req: %lld",
+				"IRQ %#x injected for IFE at req: %lld\n",
 				params->irq_mask, params->req_id);
 		break;
 	}
 
 clear_param:
-	strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
-	strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	if (irq_inject_display_buf) {
+		strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	}
 
 	/* Clear the param injected */
 	cam_isp_irq_inject_clear_params(params);
@@ -7190,18 +7196,20 @@ static int cam_ife_hw_mgr_csid_irq_inject_or_dump_desc(
 			sizeof(struct cam_isp_irq_inject_param));
 		if (rc)
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"Injecting IRQ %x failed for CSID at req: %lld",
+				"Injecting IRQ %x failed for CSID at req: %lld\n",
 				params->irq_mask, params->req_id);
 		else
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"IRQ %#x injected for CSID at req: %lld",
+				"IRQ %#x injected for CSID at req: %lld\n",
 				params->irq_mask, params->req_id);
 		break;
 	}
 
 clear_param:
-	strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
-	strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	if (irq_inject_display_buf) {
+		strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	}
 
 	/* Clear the param injected */
 	cam_isp_irq_inject_clear_params(params);
@@ -7234,8 +7242,9 @@ static int cam_ife_hw_mgr_irq_injection(struct cam_ife_hw_mgr *hw_mgr,
 				hw_mgr, &hw_mgr->irq_inject_param[i], false);
 			break;
 		default:
-			strlcat(irq_inject_display_buf, "No matched HW_TYPE\n",
-				IRQ_INJECT_DISPLAY_BUF_LEN);
+			if (irq_inject_display_buf)
+				strlcat(irq_inject_display_buf, "No matched HW_TYPE\n",
+					IRQ_INJECT_DISPLAY_BUF_LEN);
 			rc = -EINVAL;
 			return rc;
 		}
@@ -17372,7 +17381,9 @@ static int cam_ife_hw_mgr_dump_irq_desc(struct cam_ife_hw_mgr *hw_mgr,
 			hw_mgr, param, true);
 		break;
 	default:
-		strlcat(irq_inject_display_buf, "No matched HW_TYPE\n", IRQ_INJECT_DISPLAY_BUF_LEN);
+		if (irq_inject_display_buf)
+			strlcat(irq_inject_display_buf,
+				"No matched HW_TYPE\n", IRQ_INJECT_DISPLAY_BUF_LEN);
 		rc = -EINVAL;
 		return rc;
 	}
@@ -17657,7 +17668,7 @@ static int cam_isp_irq_inject_parse_common_params(
 		 rc = -EINVAL;
 	}
 
-	if (offset <= LINE_BUFFER_LEN)
+	if ((offset <= LINE_BUFFER_LEN) && irq_inject_display_buf)
 		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
 
 	CAM_MEM_FREE(line_buf);
@@ -17701,7 +17712,7 @@ static int cam_isp_irq_inject_command_parser(
 		goto end;
 	}
 
-	if (offset <= LINE_BUFFER_LEN)
+	if ((offset <= LINE_BUFFER_LEN) && irq_inject_display_buf)
 		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
 
 	rc = param_index;
@@ -17718,6 +17729,9 @@ static ssize_t cam_isp_irq_injection_read(struct file *file,
 	int count = 0;
 	uint32_t hw_type = 0;
 	char *line_buf = NULL;
+
+	if (!irq_inject_display_buf)
+		return -EINVAL;
 
 	line_buf = CAM_MEM_ZALLOC(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
 	if (!line_buf)
@@ -17738,7 +17752,7 @@ static ssize_t cam_isp_irq_injection_read(struct file *file,
 
 		hw_type = g_ife_hw_mgr.irq_inject_param[i].hw_type;
 		offset += scnprintf(line_buf + offset, LINE_BUFFER_LEN - offset,
-			"injected param[%d] : hw_type:%s hw_idx:%d reg_unit:%d irq_mask:%#x req_id:%lld",
+			"injected param[%d] : hw_type:%s hw_idx:%d reg_unit:%d irq_mask:%#x req_id:%lld\n",
 			i, __cam_isp_irq_inject_hw_type_to_name(hw_type),
 			g_ife_hw_mgr.irq_inject_param[i].hw_idx,
 			g_ife_hw_mgr.irq_inject_param[i].reg_unit,
@@ -17778,7 +17792,8 @@ static ssize_t cam_isp_irq_injection_write(struct file *file,
 	if (!line_buf)
 		return -ENOMEM;
 
-	memset(irq_inject_display_buf, '\0', IRQ_INJECT_DISPLAY_BUF_LEN);
+	if (irq_inject_display_buf)
+		memset(irq_inject_display_buf, '\0', IRQ_INJECT_DISPLAY_BUF_LEN);
 
 	if (copy_from_user(input_buf, ubuf, sizeof(input_buf))) {
 		rc = -EFAULT;
@@ -17804,7 +17819,7 @@ static ssize_t cam_isp_irq_injection_write(struct file *file,
 			g_ife_hw_mgr.irq_inject_param[i].is_valid = true;
 			hw_type = g_ife_hw_mgr.irq_inject_param[i].hw_type;
 			offset += scnprintf(line_buf + offset, LINE_BUFFER_LEN - offset,
-				"Setting param[%d] : hw_type:%s hw_idx:%d reg_unit:%d irq_mask:%#x req_id:%lld",
+				"Setting param[%d] : hw_type:%s hw_idx:%d reg_unit:%d irq_mask:%#x req_id:%lld\n",
 				i, __cam_isp_irq_inject_hw_type_to_name(hw_type),
 				g_ife_hw_mgr.irq_inject_param[i].hw_idx,
 				g_ife_hw_mgr.irq_inject_param[i].reg_unit,
@@ -17814,7 +17829,7 @@ static ssize_t cam_isp_irq_injection_write(struct file *file,
 		break;
 	}
 
-	if (offset <= LINE_BUFFER_LEN)
+	if ((offset <= LINE_BUFFER_LEN) && irq_inject_display_buf)
 		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
 
 	rc = size;
@@ -17835,6 +17850,8 @@ static int cam_ife_hw_mgr_debug_register(void)
 	int rc = 0;
 	struct dentry *dbgfileptr = NULL;
 
+	irq_inject_display_buf = NULL;
+
 	if (!cam_debugfs_available())
 		return 0;
 
@@ -17844,6 +17861,10 @@ static int cam_ife_hw_mgr_debug_register(void)
 		rc = -ENOENT;
 		goto end;
 	}
+
+	irq_inject_display_buf =
+		CAM_MEM_ZALLOC(sizeof(char) * IRQ_INJECT_DISPLAY_BUF_LEN, GFP_KERNEL);
+
 	/* Store parent inode for cleanup in caller */
 	g_ife_hw_mgr.debug_cfg.dentry = dbgfileptr;
 
@@ -18575,4 +18596,7 @@ void cam_ife_hw_mgr_deinit(void)
 	cam_smmu_destroy_handle(g_ife_hw_mgr.mgr_common.img_iommu_hdl);
 	g_ife_hw_mgr.mgr_common.img_iommu_hdl = -1;
 	g_ife_hw_mgr.num_caches_found = 0;
+
+	if (irq_inject_display_buf)
+		CAM_MEM_FREE(irq_inject_display_buf);
 }
