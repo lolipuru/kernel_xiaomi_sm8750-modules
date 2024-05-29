@@ -4337,13 +4337,11 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 	if (copy_from_user(&req, argp, sizeof(req)))
 		return -EFAULT;
 
-	if (req.flags == ADSP_MMAP_ADD_PAGES || req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
-		if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR && fl->is_unsigned_pd) {
-			dev_err(dev, "secure memory allocation is not supported in unsigned PD\n");
-			return -EINVAL;
-		}
-		if (req.vaddrin && !fl->is_unsigned_pd) {
-			dev_err(dev, "adding user allocated pages is not supported\n");
+	if ((req.flags == ADSP_MMAP_ADD_PAGES ||
+		req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) && !fl->is_unsigned_pd) {
+		if (req.vaddrin) {
+			dev_err(dev,
+			"adding user allocated pages is only supported for unsigned PD\n");
 			return -EINVAL;
 		}
 
@@ -4426,6 +4424,10 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 			goto err_assign;
 		}
 	} else {
+		if ((req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) && fl->is_unsigned_pd) {
+			dev_err(dev, "remote heap is not supported for unsigned PD\n");
+			return -EINVAL;
+		}
 		mutex_lock(&fl->map_mutex);
 		err = fastrpc_map_create(fl, req.fd, req.vaddrin, NULL, req.size, 0, 0, &map, true);
 		mutex_unlock(&fl->map_mutex);
