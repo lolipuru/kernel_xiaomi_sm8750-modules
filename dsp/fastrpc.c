@@ -2240,10 +2240,22 @@ static void fastrpc_check_privileged_process(struct fastrpc_user *fl,
 
 int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx)
 {
-	struct fastrpc_buf *buf, *b;
+	struct fastrpc_buf *buf, *b, *match;
+	unsigned long flags;
 	int err = 0;
 
-	list_for_each_entry_safe(buf, b, &cctx->gmaps, node) {
+	do {
+		match = NULL;
+		spin_lock_irqsave(&cctx->lock, flags);
+		list_for_each_entry_safe(buf, b, &cctx->gmaps, node) {
+			match = buf;
+			list_del(&buf->node);
+			break;
+		}
+		spin_unlock_irqrestore(&cctx->lock, flags);
+		if (!match)
+			return 0;
+
 		if (cctx->vmcount) {
 			u64 src_perms = 0;
 			struct qcom_scm_vmperm dst_perms;
@@ -2254,17 +2266,20 @@ int fastrpc_mmap_remove_ssr(struct fastrpc_channel_ctx *cctx)
 
 			dst_perms.vmid = QCOM_SCM_VMID_HLOS;
 			dst_perms.perm = QCOM_SCM_PERM_RWX;
-			err = qcom_scm_assign_mem(buf->phys, (u64)buf->size,
+			err = qcom_scm_assign_mem(match->phys, (u64)match->size,
 							&src_perms, &dst_perms, 1);
 			if (err) {
 				dev_err(cctx->dev, "%s: Failed to assign memory with phys 0x%llx size 0x%llx err %d",
-					__func__, buf->phys, buf->size, err);
+					__func__, match->phys, match->size, err);
+				spin_lock_irqsave(&cctx->lock, flags);
+				list_add_tail(&match->node, &cctx->gmaps);
+				spin_unlock_irqrestore(&cctx->lock, flags);
 				return err;
 			}
 		}
-		list_del(&buf->node);
-		__fastrpc_buf_free(buf);
-	}
+		__fastrpc_buf_free(match);
+
+	} while (match);
 
 	return 0;
 }
@@ -2595,7 +2610,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	struct fastrpc_smmu *smmucb = NULL;
 	u64 phys = 0, size = 0;
 	char *name;
-	int err;
+	int err = 0;
 	bool scm_done = false;
 	bool is_oispd = false, is_audiopd = false;
 	unsigned long flags;
@@ -2666,6 +2681,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		if (err)
 			pr_warn("%s: %s: failed to unmap remote heap (err %d)\n",
 				current->comm, __func__, err);
+			goto err_name;
 	}
 	// Update PDR count, to check for any PDR.
 	fl->spd->prevpdrcount =	fl->spd->pdrcount;
@@ -2675,10 +2691,6 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		err = fastrpc_buf_alloc(fl, NULL, init.memlen, REMOTEHEAP_BUF, &buf);
 		if (err)
 			goto err_name;
-
-		spin_lock_irqsave(&fl->cctx->lock, flags);
-		list_add_tail(&buf->node, &fl->cctx->gmaps);
-		spin_unlock_irqrestore(&fl->cctx->lock, flags);
 
 		phys = buf->phys;
 		size = buf->size;
@@ -2731,6 +2743,12 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		fastrpc_create_session_debugfs(fl);
 #endif
 	kfree(name);
+
+	if (buf) {
+		spin_lock_irqsave(&fl->cctx->lock, flags);
+		list_add_tail(&buf->node, &fl->cctx->gmaps);
+		spin_unlock_irqrestore(&fl->cctx->lock, flags);
+	}
 	return 0;
 err_invoke:
 	if (fl->cctx->vmcount && scm_done) {
@@ -2753,9 +2771,6 @@ err_invoke:
 err_map:
 	if (buf) {
 		fl->cctx->staticpd_status = false;
-		spin_lock(&fl->lock);
-		list_del(&buf->node);
-		spin_unlock(&fl->lock);
 		fastrpc_buf_free(buf, false);
 	}
 err_name:
@@ -4213,10 +4228,6 @@ static int fastrpc_req_munmap_impl(struct fastrpc_user *fl, struct fastrpc_buf *
 			}
 		}
 		dev_dbg(dev, "unmmap\tpt 0x%09lx OK\n", buf->raddr);
-		spin_lock(&fl->lock);
-		list_del(&buf->node);
-		spin_unlock(&fl->lock);
-		fastrpc_buf_free(buf, false);
 	} else {
 		dev_err(dev, "unmmap\tpt 0x%09lx ERROR\n", buf->raddr);
 	}
@@ -4240,6 +4251,7 @@ static int fastrpc_req_munmap(struct fastrpc_user *fl, char __user *argp)
 	list_for_each_entry_safe(iter, b, &fl->mmaps, node) {
 		if ((iter->raddr == req.vaddrout) && (iter->size == req.size)) {
 			buf = iter;
+			list_del(&buf->node);
 			break;
 		}
 	}
@@ -4247,6 +4259,13 @@ static int fastrpc_req_munmap(struct fastrpc_user *fl, char __user *argp)
 
 	if (buf) {
 		err = fastrpc_req_munmap_impl(fl, buf);
+		if(!err) {
+			fastrpc_buf_free(buf, false);
+		} else {
+			spin_lock(&fl->lock);
+			list_add_tail(&buf->node, &fl->mmaps);
+			spin_unlock(&fl->lock);
+		}
 		return err;
 	}
 
@@ -4254,14 +4273,24 @@ static int fastrpc_req_munmap(struct fastrpc_user *fl, char __user *argp)
 	list_for_each_entry_safe(iter, b, &fl->cctx->gmaps, node) {
 		if ((iter->raddr == req.vaddrout) && (iter->size == req.size)) {
 			buf = iter;
+			list_del(&buf->node);
 			break;
 		}
 	}
 	spin_unlock_irqrestore(&fl->cctx->lock, flags);
+
 	if (buf) {
 		err = fastrpc_req_munmap_impl(fl, buf);
+		if(!err) {
+			fastrpc_buf_free(buf, false);
+		} else {
+			spin_lock_irqsave(&fl->cctx->lock, flags);
+			list_add_tail(&buf->node, &fl->cctx->gmaps);
+			spin_unlock_irqrestore(&fl->cctx->lock, flags);
+		}
 		return err;
 	}
+
 	spin_lock(&fl->lock);
 	list_for_each_entry_safe(iterm, m, &fl->maps, node) {
 		if (iterm->raddr == req.vaddrout) {
