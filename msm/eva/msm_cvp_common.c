@@ -233,6 +233,7 @@ static void handle_session_set_buf_done(enum hal_command_response cmd,
 			"set ARP buffer error from FW : %#x\n",
 			response->status);
 	}
+	inst->error_code = response->status;
 
 	if (IS_HAL_SESSION_CMD(cmd))
 		complete(&inst->completions[SESSION_MSG_INDEX(cmd)]);
@@ -1497,7 +1498,7 @@ int cvp_comm_set_arp_buffers(struct msm_cvp_inst *inst)
 
 	rc = wait_for_sess_signal_receipt(inst, HAL_SESSION_SET_BUFFER_DONE);
 	if (rc) {
-		dprintk(CVP_WARN, "wait for set_buffer_done timeout %d\n", rc);
+		dprintk(CVP_ERR, "set_buffer_done failed %d\n", rc);
 		goto error;
 	}
 
