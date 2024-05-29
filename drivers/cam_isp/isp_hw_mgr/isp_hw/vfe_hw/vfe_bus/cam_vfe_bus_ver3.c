@@ -881,7 +881,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 	case CAM_FORMAT_MIPI_RAW_10:
 		if (rsrc_data->use_wm_pack) {
 			if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
-				rsrc_data->cfg.width = ALIGNUP((rsrc_data->acquired_width), 8);
+				rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width), 8);
 
 			rsrc_data->cfg.pack_fmt = PACKER_FMT_VER3_MIPI10;
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
@@ -902,7 +902,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 	case CAM_FORMAT_MIPI_RAW_12:
 		if (rsrc_data->use_wm_pack) {
 			if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
-				rsrc_data->cfg.width = ALIGNUP((rsrc_data->acquired_width), 8);
+				rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width), 8);
 
 			rsrc_data->cfg.pack_fmt = PACKER_FMT_VER3_MIPI12;
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
@@ -912,7 +912,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 	case CAM_FORMAT_MIPI_RAW_14:
 		if (rsrc_data->use_wm_pack) {
 			if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
-				rsrc_data->cfg.width = ALIGNUP((rsrc_data->acquired_width), 8);
+				rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width), 8);
 
 			rsrc_data->cfg.pack_fmt = PACKER_FMT_VER3_MIPI14;
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
@@ -927,8 +927,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 	case CAM_FORMAT_MIPI_RAW_20:
 		if (rsrc_data->use_wm_pack) {
 			if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
-				rsrc_data->cfg.width =
-					ALIGNUP((rsrc_data->cfg.width * 5) / 2, 16) / 16;
+				rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width), 8);
 			rsrc_data->cfg.pack_fmt = PACKER_FMT_VER3_MIPI20;
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
 			rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width * 5) / 2, 16) / 16;
@@ -961,7 +960,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 			rsrc_data->cfg.pack_fmt |= (1 << rsrc_data->common_data->pack_align_shift);
 
 			if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
-				rsrc_data->cfg.width = ALIGNUP((rsrc_data->acquired_width), 8);
+				rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width), 8);
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
 			rsrc_data->cfg.width = ALIGNUP(rsrc_data->cfg.width * 2, 16) / 16;
 
