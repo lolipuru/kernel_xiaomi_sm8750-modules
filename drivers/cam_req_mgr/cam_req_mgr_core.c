@@ -1917,8 +1917,11 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 	if (sync_link->req.in_q) {
 		rc = __cam_req_mgr_check_link_is_ready(sync_link,
 			sync_slot_idx, true);
-		if (rc && (sync_link->req.in_q->slot[sync_slot_idx].status !=
-				CRM_SLOT_STATUS_REQ_APPLIED)) {
+		if (rc &&
+			(sync_link->req.in_q->slot[sync_slot_idx].status !=
+				CRM_SLOT_STATUS_REQ_APPLIED) &&
+			(sync_link->req.in_q->slot[sync_slot_idx].status !=
+				CRM_SLOT_STATUS_REQ_READY)) {
 			CAM_DBG(CAM_CRM,
 				"Req: %lld not ready on link: %x, rc=%d",
 				req_id, sync_link->link_hdl, rc);
