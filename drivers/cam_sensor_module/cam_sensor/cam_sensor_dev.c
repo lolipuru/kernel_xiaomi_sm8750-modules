@@ -216,7 +216,12 @@ static int cam_sensor_i2c_component_bind(struct device *dev,
 	struct i2c_client        *client = NULL;
 	struct cam_sensor_ctrl_t *s_ctrl = NULL;
 	struct cam_hw_soc_info   *soc_info = NULL;
+	struct timespec64         ts_start, ts_end;
+	long                      microsec = 0;
+	struct device_node       *np = NULL;
+	const char               *drv_name;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	client = container_of(dev, struct i2c_client, dev);
 	if (client == NULL) {
 		CAM_ERR(CAM_SENSOR, "Invalid Args client: %pK",
@@ -241,6 +246,9 @@ static int cam_sensor_i2c_component_bind(struct device *dev,
 	s_ctrl->io_master_info.master_type = I2C_MASTER;
 	s_ctrl->is_probe_succeed = 0;
 	s_ctrl->last_flush_req = 0;
+
+	np = of_node_get(client->dev.of_node);
+	drv_name = of_node_full_name(np);
 
 	rc = cam_sensor_parse_dt(s_ctrl);
 	if (rc < 0) {
@@ -312,6 +320,10 @@ static int cam_sensor_i2c_component_bind(struct device *dev,
 	s_ctrl->bridge_intf.ops.process_evt = cam_sensor_process_evt;
 
 	s_ctrl->sensordata->power_info.dev = soc_info->dev;
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(drv_name, microsec);
+	of_node_put(np);
 
 	return rc;
 
@@ -440,7 +452,10 @@ static int cam_sensor_component_bind(struct device *dev,
 	struct cam_hw_soc_info *soc_info = NULL;
 	bool i3c_i2c_target;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	i3c_i2c_target = of_property_read_bool(pdev->dev.of_node, "i3c-i2c-target");
 	if (i3c_i2c_target)
 		return 0;
@@ -547,6 +562,9 @@ static int cam_sensor_component_bind(struct device *dev,
 
 	g_i3c_sensor_data[soc_info->index].s_ctrl = s_ctrl;
 	init_completion(&g_i3c_sensor_data[soc_info->index].probe_complete);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 

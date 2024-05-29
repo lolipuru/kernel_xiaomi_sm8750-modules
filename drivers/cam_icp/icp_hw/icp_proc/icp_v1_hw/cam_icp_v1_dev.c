@@ -20,6 +20,7 @@
 #include "cam_icp_soc_common.h"
 #include "cam_icp_v1_dev.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 static int max_icp_v1_hw_idx = -1;
 
@@ -117,7 +118,10 @@ static int cam_icp_v1_component_bind(struct device *dev,
 	const struct of_device_id *match_dev = NULL;
 	struct cam_icp_v1_device_core_info *core_info = NULL;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	icp_v1_dev_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!icp_v1_dev_intf)
 		return -ENOMEM;
@@ -187,6 +191,9 @@ static int cam_icp_v1_component_bind(struct device *dev,
 
 	CAM_DBG(CAM_ICP, "ICP_V1:%u component bound successfully",
 		icp_v1_dev_intf->hw_idx);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return 0;
 

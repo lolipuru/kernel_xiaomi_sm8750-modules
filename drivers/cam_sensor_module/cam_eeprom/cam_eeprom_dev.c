@@ -198,7 +198,12 @@ static int cam_eeprom_i2c_component_bind(struct device *dev,
 	struct cam_eeprom_ctrl_t       *e_ctrl = NULL;
 	struct cam_eeprom_soc_private  *soc_private = NULL;
 	struct cam_hw_soc_info         *soc_info = NULL;
+	struct timespec64               ts_start, ts_end;
+	long                            microsec = 0;
+	struct device_node             *np = NULL;
+	const char                     *drv_name;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	client = container_of(dev, struct i2c_client, dev);
 	if (client == NULL) {
 		CAM_ERR(CAM_OIS, "Invalid Args client: %pK",
@@ -234,6 +239,8 @@ static int cam_eeprom_i2c_component_bind(struct device *dev,
 	e_ctrl->cal_data.map = NULL;
 	e_ctrl->userspace_probe = false;
 
+	np = of_node_get(client->dev.of_node);
+	drv_name = of_node_full_name(np);
 	rc = cam_eeprom_parse_dt(e_ctrl);
 	if (rc) {
 		CAM_ERR(CAM_EEPROM, "failed: soc init rc %d", rc);
@@ -261,6 +268,10 @@ static int cam_eeprom_i2c_component_bind(struct device *dev,
 	e_ctrl->bridge_intf.ops.link_setup = NULL;
 	e_ctrl->bridge_intf.ops.apply_req = NULL;
 	e_ctrl->cam_eeprom_state = CAM_EEPROM_INIT;
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(drv_name, microsec);
+	of_node_put(np);
 
 	return rc;
 free_soc:
@@ -500,8 +511,11 @@ static int cam_eeprom_component_bind(struct device *dev,
 	bool                            i3c_i2c_target;
 	struct cam_eeprom_ctrl_t       *e_ctrl = NULL;
 	struct cam_eeprom_soc_private  *soc_private = NULL;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device         *pdev = to_platform_device(dev);
+	struct timespec64               ts_start, ts_end;
+	long                            microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	i3c_i2c_target = of_property_read_bool(pdev->dev.of_node, "i3c-i2c-target");
 	if (i3c_i2c_target)
 		return 0;
@@ -565,6 +579,9 @@ static int cam_eeprom_component_bind(struct device *dev,
 
 	g_i3c_eeprom_data[e_ctrl->soc_info.index].e_ctrl = e_ctrl;
 	init_completion(&g_i3c_eeprom_data[e_ctrl->soc_info.index].probe_complete);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 free_soc:

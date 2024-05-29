@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/gpio.h>
 #include "cam_debug_util.h"
+#include "cam_req_mgr_dev.h"
 #include "cam_res_mgr_api.h"
 #include "cam_res_mgr_private.h"
 #include "camera_main.h"
@@ -890,7 +891,10 @@ static int cam_res_mgr_component_bind(struct device *dev,
 {
 	int rc = 0;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	cam_res = CAM_MEM_ZALLOC(sizeof(*cam_res), GFP_KERNEL);
 	if (!cam_res) {
 		CAM_ERR(CAM_RES, "Not Enough Mem");
@@ -922,6 +926,9 @@ static int cam_res_mgr_component_bind(struct device *dev,
 	INIT_LIST_HEAD(&cam_res->flash_res_list);
 
 	CAM_DBG(CAM_RES, "Component bound successfully");
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return 0;
 }
 

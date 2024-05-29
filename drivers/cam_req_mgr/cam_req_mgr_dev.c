@@ -31,6 +31,7 @@
 #include "camera_main.h"
 #include "cam_vmrm_interface.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_debug.h"
 
 #define CAM_REQ_MGR_EVENT_MAX 30
 #define CAM_I3C_MASTER_COMPAT "qcom,geni-i3c"
@@ -117,6 +118,12 @@ static void cam_v4l2_device_cleanup(void)
 	CAM_MEM_FREE(g_dev.v4l2_dev);
 	g_dev.v4l2_dev = NULL;
 }
+
+void cam_record_bind_latency(const char *driver_name, unsigned long time_in_usec)
+{
+	cam_req_mgr_debug_record_bind_latency(driver_name, time_in_usec);
+}
+EXPORT_SYMBOL(cam_record_bind_latency);
 
 void cam_req_mgr_rwsem_read_op(enum cam_subdev_rwsem lock)
 {
@@ -1018,6 +1025,10 @@ static inline void cam_req_mgr_destroy_timer_slab(void)
 static int cam_req_mgr_component_master_bind(struct device *dev)
 {
 	int rc = 0;
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
+
+	CAM_GET_TIMESTAMP(ts_start);
 
 	CAM_DBG(CAM_CRM, "Master bind called");
 	rc = cam_v4l2_device_setup(dev);
@@ -1071,8 +1082,14 @@ static int cam_req_mgr_component_master_bind(struct device *dev)
 		goto req_mgr_device_deinit;
 	}
 
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	/* Record time taken by Overall camera modules bind completion.*/
+	cam_req_mgr_debug_record_bind_time(microsec);
+
 	CAM_INFO(CAM_CRM,
-		"All components bound successfully, Spectra camera driver initialized");
+		"All components bound successfully, Spectra camera driver initialized, Time taken(usec): %lu",
+		microsec);
 
 	rc = cam_vmrm_populate_io_resource_info();
 	if (rc) {
@@ -1141,6 +1158,7 @@ static void cam_req_mgr_component_master_unbind(struct device *dev)
 	cam_v4l2_device_cleanup();
 	cam_req_mgr_destroy_timer_slab();
 	mutex_destroy(&g_dev.dev_lock);
+	cam_req_mgr_debug_bind_latency_cleanup();
 	g_dev.state = false;
 }
 

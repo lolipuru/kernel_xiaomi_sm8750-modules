@@ -31,6 +31,7 @@
 #include "cam_common_util.h"
 #include "cam_vmrm_interface.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 #define CAM_CDM_BL_FIFO_WAIT_TIMEOUT         2000
 #define CAM_CDM_DBG_GEN_IRQ_USR_DATA         0xff
@@ -2275,7 +2276,10 @@ static int cam_hw_cdm_component_bind(struct device *dev,
 	char cdm_name[128], work_q_name[128];
 	struct platform_device *pdev = to_platform_device(dev);
 	void *irq_data[CAM_SOC_MAX_IRQ_LINES_PER_DEV] = {0};
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	cdm_hw_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!cdm_hw_intf)
 		return -ENOMEM;
@@ -2495,6 +2499,9 @@ static int cam_hw_cdm_component_bind(struct device *dev,
 
 	cam_cdm_test_irq_line_at_probe(cdm_hw);
 	mutex_unlock(&cdm_hw->hw_mutex);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	CAM_DBG(CAM_CDM, "%s component bound successfully", cdm_core->name);
 

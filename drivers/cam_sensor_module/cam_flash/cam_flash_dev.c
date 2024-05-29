@@ -6,6 +6,7 @@
 
 #include <linux/module.h>
 #include "cam_flash_dev.h"
+#include "cam_req_mgr_dev.h"
 #include "cam_flash_soc.h"
 #include "cam_flash_core.h"
 #include "cam_common_util.h"
@@ -419,7 +420,10 @@ static int cam_flash_component_bind(struct device *dev,
 	struct device_node *of_parent = NULL;
 	bool i3c_i2c_target;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	CAM_DBG(CAM_FLASH, "Binding flash component");
 	if (!pdev->dev.of_node) {
 		CAM_ERR(CAM_FLASH, "of_node NULL");
@@ -527,6 +531,9 @@ static int cam_flash_component_bind(struct device *dev,
 
 	fctrl->flash_state = CAM_FLASH_STATE_INIT;
 	CAM_DBG(CAM_FLASH, "Component bound successfully");
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return rc;
 
 free_cci_resource:
@@ -597,11 +604,16 @@ static int32_t cam_flash_platform_probe(struct platform_device *pdev)
 static int cam_flash_i2c_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
 {
-	int32_t rc = 0, i = 0;
-	struct i2c_client      *client = NULL;
-	struct cam_flash_ctrl  *fctrl = NULL;
-	struct cam_hw_soc_info *soc_info = NULL;
+	int32_t                  rc = 0, i = 0;
+	struct i2c_client       *client = NULL;
+	struct cam_flash_ctrl   *fctrl = NULL;
+	struct cam_hw_soc_info  *soc_info = NULL;
+	struct timespec64        ts_start, ts_end;
+	long                     microsec = 0;
+	struct device_node      *np = NULL;
+	const char              *drv_name;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	client = container_of(dev, struct i2c_client, dev);
 	if (client == NULL) {
 		CAM_ERR(CAM_FLASH, "Invalid Args client: %pK",
@@ -621,6 +633,8 @@ static int cam_flash_i2c_component_bind(struct device *dev,
 	fctrl->soc_info.dev_name = client->name;
 	fctrl->io_master_info.master_type = I2C_MASTER;
 
+	np = of_node_get(client->dev.of_node);
+	drv_name = of_node_full_name(np);
 	rc = cam_flash_get_dt_data(fctrl, &fctrl->soc_info);
 	if (rc) {
 		CAM_ERR(CAM_FLASH, "failed: cam_sensor_parse_dt rc %d", rc);
@@ -704,6 +718,10 @@ static int cam_flash_i2c_component_bind(struct device *dev,
 
 	mutex_init(&(fctrl->flash_mutex));
 	fctrl->flash_state = CAM_FLASH_STATE_INIT;
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(drv_name, microsec);
+	of_node_put(np);
 
 	return rc;
 

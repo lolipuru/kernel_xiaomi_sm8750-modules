@@ -28,6 +28,7 @@
 #include "cam_trace.h"
 #include "cam_common_util.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 #define SHARED_MEM_POOL_GRANULARITY 16
 
@@ -5583,7 +5584,10 @@ static int cam_smmu_fw_dev_component_bind(struct device *dev,
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	int i, num_mem_region;
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	num_mem_region = of_count_phandle_with_args(dev->of_node, "memory-region", NULL);
 	if ((num_mem_region < 0) || (num_mem_region > CAM_SMMU_MULTI_REGION_MAX)) {
 		CAM_ERR(CAM_SMMU,
@@ -5605,6 +5609,9 @@ static int cam_smmu_fw_dev_component_bind(struct device *dev,
 	}
 
 	CAM_DBG(CAM_SMMU, "Binding component: %s", pdev->name);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return 0;
 }
 
@@ -5629,7 +5636,10 @@ static int cam_smmu_cb_component_bind(struct device *dev,
 {
 	int rc = 0;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	rc = cam_populate_smmu_context_banks(dev, CAM_ARM_SMMU);
 	if (rc < 0) {
 		CAM_ERR(CAM_SMMU, "Error: populating context banks");
@@ -5638,6 +5648,9 @@ static int cam_smmu_cb_component_bind(struct device *dev,
 	}
 
 	CAM_DBG(CAM_SMMU, "CB component bound successfully");
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return 0;
 }
 
@@ -5658,7 +5671,11 @@ static int cam_smmu_cb_qsmmu_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
 {
 	int rc = 0;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	rc = cam_populate_smmu_context_banks(dev, CAM_QSMMU);
 	if (rc < 0) {
 		CAM_ERR(CAM_SMMU, "Failed in populating context banks");
@@ -5666,6 +5683,9 @@ static int cam_smmu_cb_qsmmu_component_bind(struct device *dev,
 	}
 
 	CAM_DBG(CAM_SMMU, "QSMMU CB component bound successfully");
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return 0;
 }
 
@@ -5686,7 +5706,11 @@ static int cam_smmu_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
 {
 	int rc;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	INIT_WORK(&iommu_cb_set.smmu_work, cam_smmu_page_fault_work);
 	mutex_init(&iommu_cb_set.payload_list_lock);
 	spin_lock_init(&iommu_cb_set.s_lock);
@@ -5710,6 +5734,9 @@ static int cam_smmu_component_bind(struct device *dev,
 	}
 
 	CAM_DBG(CAM_SMMU, "Main component bound successfully");
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return 0;
 }
 

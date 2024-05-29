@@ -193,7 +193,12 @@ static int cam_ois_i2c_component_bind(struct device *dev,
 	struct i2c_client           *client = NULL;
 	struct cam_ois_ctrl_t       *o_ctrl = NULL;
 	struct cam_ois_soc_private  *soc_private = NULL;
+	struct timespec64            ts_start, ts_end;
+	long                         microsec = 0;
+	struct device_node          *np = NULL;
+	const char                  *drv_name;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	client = container_of(dev, struct i2c_client, dev);
 	if (client == NULL) {
 		CAM_ERR(CAM_OIS, "Invalid Args client: %pK",
@@ -215,6 +220,9 @@ static int cam_ois_i2c_component_bind(struct device *dev,
 	o_ctrl->ois_device_type = MSM_CAMERA_I2C_DEVICE;
 	o_ctrl->io_master_info.master_type = I2C_MASTER;
 	o_ctrl->io_master_info.client = client;
+
+	np = of_node_get(client->dev.of_node);
+	drv_name = of_node_full_name(np);
 
 	soc_private = CAM_MEM_ZALLOC(sizeof(struct cam_ois_soc_private),
 		GFP_KERNEL);
@@ -238,6 +246,10 @@ static int cam_ois_i2c_component_bind(struct device *dev,
 
 	mutex_init(&(o_ctrl->ois_mutex));
 	o_ctrl->cam_ois_state = CAM_OIS_INIT;
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(drv_name, microsec);
+	of_node_put(np);
 
 	return rc;
 
@@ -369,8 +381,11 @@ static int cam_ois_component_bind(struct device *dev,
 	struct cam_ois_ctrl_t          *o_ctrl = NULL;
 	struct cam_ois_soc_private     *soc_private = NULL;
 	bool                            i3c_i2c_target;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device         *pdev = to_platform_device(dev);
+	struct timespec64               ts_start, ts_end;
+	long                            microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	i3c_i2c_target = of_property_read_bool(pdev->dev.of_node, "i3c-i2c-target");
 	if (i3c_i2c_target)
 		return 0;
@@ -438,6 +453,9 @@ static int cam_ois_component_bind(struct device *dev,
 
 	g_i3c_ois_data[o_ctrl->soc_info.index].o_ctrl = o_ctrl;
 	init_completion(&g_i3c_ois_data[o_ctrl->soc_info.index].probe_complete);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	CAM_DBG(CAM_OIS, "Component bound successfully");
 	return rc;

@@ -20,6 +20,7 @@
 #include "camera_main.h"
 #include "cam_req_mgr_workq.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 struct sync_device *sync_dev;
 
@@ -2780,7 +2781,10 @@ static int cam_sync_component_bind(struct device *dev,
 {
 	int rc, idx;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	sync_dev = CAM_MEM_ZALLOC(sizeof(*sync_dev), GFP_KERNEL);
 	if (!sync_dev)
 		return -ENOMEM;
@@ -2877,6 +2881,10 @@ static int cam_sync_component_bind(struct device *dev,
 		goto dma_driver_deinit;
 #endif
 	CAM_DBG(CAM_SYNC, "Component bound successfully");
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
+
 	return rc;
 
 #if IS_REACHABLE(CONFIG_MSM_GLOBAL_SYNX) || IS_ENABLED(CONFIG_TARGET_SYNX_ENABLE)

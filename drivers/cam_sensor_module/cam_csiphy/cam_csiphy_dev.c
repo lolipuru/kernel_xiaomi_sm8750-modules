@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_csiphy_dev.h"
@@ -469,11 +469,14 @@ static int cam_csiphy_component_bind(struct device *dev,
 {
 	struct cam_cpas_register_params cpas_parms;
 	struct csiphy_device *new_csiphy_dev;
-	int32_t               rc = 0;
+	int32_t rc = 0;
 	struct platform_device *pdev = to_platform_device(dev);
 	char wq_name[32];
 	int i;
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	new_csiphy_dev = devm_kzalloc(&pdev->dev,
 		sizeof(struct csiphy_device), GFP_KERNEL);
 	if (!new_csiphy_dev)
@@ -589,6 +592,9 @@ static int cam_csiphy_component_bind(struct device *dev,
 		pdev->name);
 
 	cam_csiphy_debug_register(new_csiphy_dev);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 

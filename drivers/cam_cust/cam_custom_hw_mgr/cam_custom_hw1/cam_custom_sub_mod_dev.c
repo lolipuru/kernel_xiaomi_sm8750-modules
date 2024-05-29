@@ -14,6 +14,7 @@
 #include "cam_debug_util.h"
 #include "camera_main.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 static struct cam_hw_intf *cam_custom_hw_sub_mod_list
 	[CAM_CUSTOM_SUB_MOD_MAX_INSTANCES] = {0, 0};
@@ -42,12 +43,15 @@ int cam_custom_hw_sub_mod_init(struct cam_hw_intf **custom_hw, uint32_t hw_idx)
 static int cam_custom_hw_sub_mod_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
 {
-	struct cam_hw_info		    *hw = NULL;
-	struct cam_hw_intf		    *hw_intf = NULL;
+	struct cam_hw_info *hw = NULL;
+	struct cam_hw_intf *hw_intf = NULL;
 	struct cam_custom_sub_mod_core_info *core_info = NULL;
-	int				   rc = 0;
+	int rc = 0;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	hw_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!hw_intf)
 		return -ENOMEM;
@@ -113,6 +117,9 @@ static int cam_custom_hw_sub_mod_component_bind(struct device *dev,
 
 	CAM_DBG(CAM_CUSTOM, "HW idx:%d component bound successfully",
 		hw_intf->hw_idx);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return rc;
 
 free_core_info:

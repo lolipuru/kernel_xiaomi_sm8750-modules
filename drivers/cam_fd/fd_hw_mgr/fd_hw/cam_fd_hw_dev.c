@@ -20,6 +20,7 @@
 #include "cam_fd_hw_v600.h"
 #include "camera_main.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 static int cam_fd_hw_dev_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
@@ -34,7 +35,10 @@ static int cam_fd_hw_dev_component_bind(struct device *dev,
 	struct cam_fd_hw_init_args init_args;
 	struct cam_fd_hw_deinit_args deinit_args;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	fd_hw_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!fd_hw_intf)
 		return -ENOMEM;
@@ -131,6 +135,9 @@ static int cam_fd_hw_dev_component_bind(struct device *dev,
 	platform_set_drvdata(pdev, fd_hw_intf);
 	CAM_DBG(CAM_FD, "FD:%d component bound successfully",
 		fd_hw_intf->hw_idx);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 

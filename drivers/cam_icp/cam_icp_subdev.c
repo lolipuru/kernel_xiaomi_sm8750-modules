@@ -266,7 +266,10 @@ static int cam_icp_component_bind(struct device *dev,
 	struct cam_icp_subdev *icp_dev;
 	char *subdev_name;
 	uint32_t device_idx;
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	if (!pdev) {
 		CAM_ERR(CAM_ICP, "Invalid params: pdev is %s",
 			CAM_IS_NULL_TO_STR(pdev));
@@ -364,6 +367,9 @@ static int cam_icp_component_bind(struct device *dev,
 
 	CAM_DBG(CAM_ICP, "device[%s] id: %u component bound successfully",
 		subdev_name, device_idx);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 

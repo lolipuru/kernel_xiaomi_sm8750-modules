@@ -16,6 +16,7 @@
 #include "cam_vmrm_interface.h"
 #include "cam_mem_mgr_api.h"
 #include <dt-bindings/msm-camera.h>
+#include "cam_req_mgr_dev.h"
 
 static  struct cam_isp_hw_intf_data cam_vfe_hw_list[CAM_VFE_HW_NUM_MAX];
 static uint32_t g_num_ife_hws, g_num_ife_lite_hws;
@@ -29,10 +30,14 @@ static int cam_vfe_component_bind(struct device *dev,
 	struct cam_vfe_hw_core_info       *core_info = NULL;
 	struct cam_vfe_hw_info            *hw_info = NULL;
 	int                                rc = 0;
-	struct platform_device *pdev = to_platform_device(dev);
-	struct cam_vfe_soc_private   *vfe_soc_priv;
-	uint32_t  vfe_dev_idx;
-	uint32_t  i;
+	struct platform_device            *pdev = to_platform_device(dev);
+	struct cam_vfe_soc_private        *vfe_soc_priv;
+	uint32_t                           vfe_dev_idx;
+	uint32_t                           i;
+	struct timespec64                  ts_start, ts_end;
+	long                               microsec = 0;
+
+	CAM_GET_TIMESTAMP(ts_start);
 
 	rc = of_property_read_u32(pdev->dev.of_node, "cell-index", &vfe_dev_idx);
 	if (rc) {
@@ -139,6 +144,9 @@ static int cam_vfe_component_bind(struct device *dev,
 
 	CAM_DBG(CAM_ISP, "VFE:%d component bound successfully",
 		vfe_hw_intf->hw_idx);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return rc;
 
 deinit_soc:

@@ -20,6 +20,7 @@
 #include "cam_debug_util.h"
 #include "camera_main.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 static struct cam_ofe_device_hw_info cam_ofe_hw_info = {
 	.hw_idx         = 0x0,
@@ -96,8 +97,11 @@ static int cam_ofe_component_bind(struct device *dev,
 	struct cam_ofe_device_core_info   *core_info    = NULL;
 	struct cam_ofe_device_hw_info     *hw_info      = NULL;
 	int                                rc           = 0;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device            *pdev = to_platform_device(dev);
+	struct timespec64                  ts_start, ts_end;
+	long                               microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	ofe_dev_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!ofe_dev_intf)
 		return -ENOMEM;
@@ -154,6 +158,9 @@ static int cam_ofe_component_bind(struct device *dev,
 	init_completion(&ofe_dev->hw_complete);
 	CAM_DBG(CAM_ICP, "OFE:%d component bound successfully",
 		ofe_dev_intf->hw_idx);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 

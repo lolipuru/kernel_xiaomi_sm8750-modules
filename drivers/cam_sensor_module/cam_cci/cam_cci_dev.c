@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_cci_dev.h"
@@ -696,7 +696,10 @@ static int cam_cci_component_bind(struct device *dev,
 	struct cam_hw_soc_info *soc_info = NULL;
 	int rc = 0;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	new_cci_dev = devm_kzalloc(&pdev->dev, sizeof(struct cci_device),
 		GFP_KERNEL);
 	if (!new_cci_dev) {
@@ -772,6 +775,9 @@ static int cam_cci_component_bind(struct device *dev,
 	head = 0;
 	tail = 0;
 	CAM_DBG(CAM_CCI, "Component bound successfully");
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return rc;
 
 cci_unregister_subdev:

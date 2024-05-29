@@ -188,6 +188,12 @@ static int cam_actuator_i2c_component_bind(struct device *dev,
 	struct cam_actuator_ctrl_t      *a_ctrl;
 	struct cam_hw_soc_info          *soc_info = NULL;
 	struct cam_actuator_soc_private *soc_private = NULL;
+	struct timespec64                ts_start, ts_end;
+	long                             microsec = 0;
+	struct device_node              *np = NULL;
+	const char                      *drv_name;
+
+	CAM_GET_TIMESTAMP(ts_start);
 
 	client = container_of(dev, struct i2c_client, dev);
 	if (!client) {
@@ -216,6 +222,9 @@ static int cam_actuator_i2c_component_bind(struct device *dev,
 	soc_info->dev = &client->dev;
 	soc_info->dev_name = client->name;
 	a_ctrl->io_master_info.master_type = I2C_MASTER;
+
+	np = of_node_get(client->dev.of_node);
+	drv_name = of_node_full_name(np);
 
 	rc = cam_actuator_parse_dt(a_ctrl, &client->dev);
 	if (rc < 0) {
@@ -256,6 +265,10 @@ static int cam_actuator_i2c_component_bind(struct device *dev,
 		cam_actuator_apply_request;
 	a_ctrl->last_flush_req = 0;
 	a_ctrl->cam_act_state = CAM_ACTUATOR_INIT;
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(drv_name, microsec);
+	of_node_put(np);
 
 	return rc;
 
@@ -376,12 +389,16 @@ static int32_t cam_actuator_driver_i2c_remove(
 static int cam_actuator_platform_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
 {
-	int32_t                          rc = 0;
-	int32_t                          i = 0;
-	bool                             i3c_i2c_target;
+	int32_t                           rc = 0;
+	int32_t                           i = 0;
+	bool                              i3c_i2c_target;
 	struct cam_actuator_ctrl_t       *a_ctrl = NULL;
 	struct cam_actuator_soc_private  *soc_private = NULL;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device           *pdev = to_platform_device(dev);
+	struct timespec64                 ts_start, ts_end;
+	long                              microsec = 0;
+
+	CAM_GET_TIMESTAMP(ts_start);
 
 	i3c_i2c_target = of_property_read_bool(pdev->dev.of_node, "i3c-i2c-target");
 	if (i3c_i2c_target)
@@ -463,6 +480,9 @@ static int cam_actuator_platform_component_bind(struct device *dev,
 
 	g_i3c_actuator_data[a_ctrl->soc_info.index].a_ctrl = a_ctrl;
 	init_completion(&g_i3c_actuator_data[a_ctrl->soc_info.index].probe_complete);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 

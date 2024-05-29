@@ -12,6 +12,7 @@
 #include "cam_common_util.h"
 #include "cam_vmrm_interface.h"
 #include "cam_soc_util.h"
+#include "cam_req_mgr_dev.h"
 
 struct cam_vmrm_intf_dev *g_vmrm_intf_dev;
 
@@ -2667,10 +2668,13 @@ static int cam_vmrm_debugfs_init(struct cam_vmrm_intf_dev *vmrm_dev)
 static int cam_vmrm_intf_bind(struct device *dev,
 	struct device *parent_dev, void *data)
 {
-	int rc = 0;
-	struct platform_device *pdev;
-	bool is_server_vm = false;
+	int                       rc = 0;
+	struct platform_device   *pdev;
+	bool                      is_server_vm = false;
+	struct timespec64         ts_start, ts_end;
+	long                      microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	pdev = to_platform_device(dev);
 
 	g_vmrm_intf_dev = kzalloc(sizeof(struct cam_vmrm_intf_dev), GFP_KERNEL);
@@ -2718,6 +2722,9 @@ static int cam_vmrm_intf_bind(struct device *dev,
 
 	CAM_DBG(CAM_VMRM, "VMRM %d name %s driver bind succeed", g_vmrm_intf_dev->cam_vmid,
 		CAM_GET_VM_NAME());
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 free_ops_table:

@@ -14,6 +14,7 @@
 #include "cam_vmrm.h"
 #include "cam_vmrm_interface.h"
 #include "cam_cpas_api.h"
+#include "cam_req_mgr_dev.h"
 
 #ifdef CONFIG_SPECTRA_VMRM
 extern struct cam_vmrm_intf_dev *g_vmrm_intf_dev;
@@ -75,7 +76,10 @@ bool cam_vmrm_proxy_icc_voting_enable(void)
 bool cam_vmrm_no_register_read_on_bind(void)
 {
 	struct cam_vmrm_intf_dev *vmrm_intf_dev;
+	struct timespec64         ts_start, ts_end;
+	long                      microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	vmrm_intf_dev = cam_vmrm_get_intf_dev();
 	if (!vmrm_intf_dev) {
 		CAM_ERR(CAM_VMRM, "vmrm dev is not ready");
@@ -87,6 +91,9 @@ bool cam_vmrm_no_register_read_on_bind(void)
 		return false;
 	}
 
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return vmrm_intf_dev->no_register_read_on_bind;
 }
 

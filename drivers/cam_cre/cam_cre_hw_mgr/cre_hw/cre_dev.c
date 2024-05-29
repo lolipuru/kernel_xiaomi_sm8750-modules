@@ -112,7 +112,10 @@ static int cam_cre_component_bind(struct device *dev,
 	int rc = 0;
 
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	of_property_read_u32(pdev->dev.of_node,
 		"cell-index", &hw_idx);
 
@@ -233,6 +236,9 @@ static int cam_cre_component_bind(struct device *dev,
 		cam_cre_dev_list[cre_dev_intf->hw_idx].hw_pid[i] =
 			soc_private->pid[i];
 
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return rc;
 
 init_hw_failure:

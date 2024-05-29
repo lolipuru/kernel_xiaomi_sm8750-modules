@@ -24,6 +24,7 @@
 #include "cam_context_utils.h"
 #include "cam_vmrm_interface.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 static struct cam_isp_dev g_isp_dev;
 
@@ -175,16 +176,18 @@ static const struct v4l2_subdev_internal_ops cam_isp_subdev_internal_ops = {
 static int cam_isp_dev_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
 {
-	int rc = -1;
-	int i;
+	int                            rc = -1;
+	int                            i;
 	struct cam_hw_mgr_intf         hw_mgr_intf;
 	struct cam_node               *node;
 	const char                    *compat_str = NULL;
-	struct platform_device *pdev = to_platform_device(dev);
-	struct cam_driver_node driver_node;
+	struct platform_device        *pdev = to_platform_device(dev);
+	struct cam_driver_node         driver_node;
+	int                            iommu_hdl = -1;
+	struct timespec64              ts_start, ts_end;
+	long                           microsec = 0;
 
-	int iommu_hdl = -1;
-
+	CAM_GET_TIMESTAMP(ts_start);
 	of_property_read_string_index(pdev->dev.of_node, "arch-compat", 0,
 		(const char **)&compat_str);
 
@@ -290,6 +293,9 @@ static int cam_isp_dev_component_bind(struct device *dev,
 	}
 
 	CAM_DBG(CAM_ISP, "Component bound successfully");
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return 0;
 
