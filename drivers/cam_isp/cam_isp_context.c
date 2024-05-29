@@ -9337,6 +9337,7 @@ static int __cam_isp_ctx_process_evt(struct cam_context *ctx,
 	struct cam_isp_hw_cmd_args isp_hw_cmd_args = {0};
 
 	if ((ctx->state == CAM_CTX_ACQUIRED) &&
+		(link_evt_data->evt_type != CAM_REQ_MGR_LINK_EVT_PAUSE) &&
 		(link_evt_data->evt_type != CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES)) {
 		CAM_WARN(CAM_ISP,
 			"Get unexpect evt:%d in acquired state, ctx: %u on link: 0x%x",
