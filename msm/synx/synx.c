@@ -28,10 +28,8 @@ struct synx_hwfence_interops synx_shared_ops = { NULL };
 
 struct synx_device *synx_dev;
 static atomic64_t synx_counter = ATOMIC64_INIT(1);
-struct ratelimit_state synx_ratelimit_state = {
-	.interval = 1 * HZ,
-	.burst = 10,
-};
+
+DEFINE_RATELIMIT_STATE(synx_ratelimit_state, 1 * HZ, DEFAULT_RATELIMIT_BURST);
 
 void synx_external_callback(s32 sync_obj, int status, void *data)
 {
