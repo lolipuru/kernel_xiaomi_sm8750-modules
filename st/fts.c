@@ -140,6 +140,8 @@ static int fts_mode_handler(struct fts_ts_info *info, int force);
 static int fts_enable_reg(struct fts_ts_info *info, bool enable);
 
 static int fts_chip_initialization(struct fts_ts_info *info, int init_type);
+static irqreturn_t st_irq_handler(int irq, void *data);
+
 #if defined(CONFIG_DRM)
 static struct drm_panel *active_panel;
 static void st_ts_panel_notifier_callback(enum panel_event_notifier_tag tag,
@@ -3116,7 +3118,7 @@ static int fts_interrupt_install(struct fts_ts_info *info)
 	error = fts_disableInterrupt();
 
 	logError(1, "%s Interrupt Mode\n", tag);
-	if (request_irq(info->irq, fts_interrupt_handler,
+	if (request_irq(info->irq, st_irq_handler,
 			info->board->irq_flags, FTS_TS_DRV_NAME, info)) {
 		logError(1, "%s Request irq failed\n", tag);
 		kfree(info->event_dispatch_table);
@@ -4109,6 +4111,7 @@ static int st_ts_post_la_tui_enable(void *data)
 {
 	struct fts_ts_info *info = data;
 
+	cancel_work_sync(&info->work);
 	release_all_touches(info);
 	mutex_unlock(&info->tui_transition_lock);
 	return 0;
@@ -4134,10 +4137,20 @@ static int st_ts_post_le_tui_enable(void *data)
 	return 0;
 }
 
+static int st_ts_pre_le_tui_disable(void *data)
+{
+	struct fts_ts_info *info = data;
+
+	flush_work(&info->work);
+
+	return 0;
+}
+
 static int st_ts_post_le_tui_disable(void *data)
 {
 	struct fts_ts_info *info = data;
 
+	cancel_work_sync(&info->work);
 	release_all_touches(info);
 	return 0;
 }
@@ -4217,7 +4230,7 @@ static void st_ts_fill_qts_vendor_data(struct qts_vendor_data *qts_vendor_data,
 	qts_vendor_data->qts_vendor_ops.post_la_tui_disable = NULL;
 	qts_vendor_data->qts_vendor_ops.pre_le_tui_enable = NULL;
 	qts_vendor_data->qts_vendor_ops.post_le_tui_enable = st_ts_post_le_tui_enable;
-	qts_vendor_data->qts_vendor_ops.pre_le_tui_disable = NULL;
+	qts_vendor_data->qts_vendor_ops.pre_le_tui_disable = st_ts_pre_le_tui_disable;
 	qts_vendor_data->qts_vendor_ops.post_le_tui_disable = st_ts_post_le_tui_disable;
 	qts_vendor_data->qts_vendor_ops.irq_handler = st_irq_handler;
 }
