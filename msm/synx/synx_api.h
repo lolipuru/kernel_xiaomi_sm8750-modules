@@ -764,4 +764,20 @@ int synx_release(struct synx_session *session, u32 h_synx);
  */
 int synx_recover(enum synx_client_id id);
 
+/**
+ * synx_enable_resources - enable any resources needed
+ * for the synx client
+ *
+ * Function should be called with enable=true when
+ * client is using fences and with enable=false when
+ * client is not using fences, e.g. at use-case boundary.
+ *
+ * @param id : Client ID of core for which resources are enabled
+ * @param resource : type of synx resource to enable
+ * @param enable : true if enabling resources, false to disable resources
+ *
+ * @return Status of operation. Negative in case of error. SYNX_SUCCESS otherwise.
+ */
+int synx_enable_resources(enum synx_client_id id, enum synx_resource_type resource, bool enable);
+
 #endif /* __SYNX_API_H__ */
