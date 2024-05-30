@@ -1582,7 +1582,7 @@ int ipa_wdi_opt_dpath_add_ctrl_filter_req(
 		struct ipa_wlan_opt_dp_add_filter_req_msg_v01 *req,
 		struct ipa_wlan_opt_dp_add_filter_complt_ind_msg_v01 *ind)
 {
-	int ret = 0;
+	int resp = 0;
 
 	struct ipa_wdi_opt_dpath_flt_add_cb_params ctrl_flt_add_req;
 
@@ -1638,11 +1638,11 @@ int ipa_wdi_opt_dpath_add_ctrl_filter_req(
 	IPADBG("Src_port:0x%x, dst_port:0x%x\n",
 		ctrl_flt_add_req.flt_info[0].sport,
 		ctrl_flt_add_req.flt_info[0].dport);
-	ret =
+	resp =
 		opt_dpath_info[0].ctrl_flt_add_cb
 			(opt_dpath_info[0].priv, &ctrl_flt_add_req);
 
-	if (!ret)
+	if (!resp)
 	{
 		int i;
 	    for (i = 0; i < IPA_WDI_MAX_TX_FILTER; i++) {
@@ -1666,17 +1666,18 @@ int ipa_wdi_opt_dpath_add_ctrl_filter_req(
 	ind->filter_idx = req->filter_idx;
 	ind->filter_handle_valid = true;
 	ind->filter_handle = ctrl_flt_add_req.flt_info[0].out_hdl;
-	ind->filter_add_status.result = ret;
-	ind->filter_add_status.error = IPA_QMI_ERR_NONE_V01;
+	ind->filter_add_status.result = (resp == IPA_WDI_OPT_DPATH_RESP_SUCCESS) ?
+		IPA_QMI_RESULT_SUCCESS_V01 : IPA_QMI_RESULT_FAILURE_V01;
+	ind->filter_add_status.error = resp;
 
-	return ret;
+	return resp;
 }
 EXPORT_SYMBOL(ipa_wdi_opt_dpath_add_ctrl_filter_req);
 
 int ipa_wdi_opt_dpath_notify_ctrl_flt_rem_per_inst(
 		ipa_wdi_hdl_t hdl,
 		u32 fltr_hdl,
-		bool is_success)
+		u16 resp)
 {
 	int ret = 0, i = 0;
 
@@ -1699,10 +1700,13 @@ int ipa_wdi_opt_dpath_notify_ctrl_flt_rem_per_inst(
 	}
 
 	ind.ctrl_filter_removal_status.result =
-		(is_success == true) ? IPA_QMI_RESULT_SUCCESS_V01:IPA_QMI_RESULT_FAILURE_V01;
-	ind.ctrl_filter_removal_status.error = IPA_QMI_ERR_NONE_V01;
+		(resp == IPA_WDI_OPT_DPATH_RESP_SUCCESS ||
+		resp == IPA_WDI_OPT_DPATH_RESP_SUCCESS_HIGH_TPUT ||
+		resp == IPA_WDI_OPT_DPATH_RESP_SUCCESS_SSR ||
+		resp == IPA_WDI_OPT_DPATH_RESP_SUCCESS_SHUTDOWN) ?
+		IPA_QMI_RESULT_SUCCESS_V01 : IPA_QMI_RESULT_FAILURE_V01;
+	ind.ctrl_filter_removal_status.error = resp;
 	ret = ipa3_qmi_send_wdi_opt_dpath_rmv_ctrl_flt_ind(&ind);
-
 	return ret;
 }
 EXPORT_SYMBOL(ipa_wdi_opt_dpath_notify_ctrl_flt_rem_per_inst);
@@ -1720,7 +1724,7 @@ int ipa_wdi_opt_dpath_remove_ctrl_filter_req(
 			struct ipa_wlan_opt_dp_remove_filter_req_msg_v01 *req,
 			struct ipa_wlan_opt_dp_remove_filter_complt_ind_msg_v01 *ind)
 {
-	int ret = 0;
+	int resp = 0;
 
 	struct ipa_wdi_opt_dpath_flt_rem_cb_params ctrl_flt_rem_req;
 
@@ -1739,11 +1743,18 @@ int ipa_wdi_opt_dpath_remove_ctrl_filter_req(
 	ctrl_flt_rem_req.num_tuples = 1;
 	ctrl_flt_rem_req.hdl_info[0] = req->filter_handle;
 
-	ret =
+	resp =
 		opt_dpath_info[0].ctrl_flt_rem_cb
 			(opt_dpath_info[0].priv, &ctrl_flt_rem_req);
 
-	return ret;
+	ind->filter_removal_status.result =
+		(resp == IPA_WDI_OPT_DPATH_RESP_SUCCESS ||
+		resp == IPA_WDI_OPT_DPATH_RESP_ERR_INTERNAL) ?
+		IPA_QMI_RESULT_SUCCESS_V01 : IPA_QMI_RESULT_FAILURE_V01;
+	ind->filter_removal_status.error = resp;
+	ind->filter_idx = req->filter_idx;
+
+	return (resp == IPA_WDI_OPT_DPATH_RESP_ERR_TIMEOUT ? -1 : 0);
 }
 EXPORT_SYMBOL(ipa_wdi_opt_dpath_remove_ctrl_filter_req);
 
