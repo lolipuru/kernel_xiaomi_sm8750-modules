@@ -3156,7 +3156,7 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 		fl->device->dev_close = true;
 		fl->device->fl = NULL;
 	}
-	fl->file_close = 1;
+	fl->state = DSP_EXIT_START;
 	list_for_each_entry_safe(frpc_drv, d, &fl->fastrpc_drivers, hn){
 		/*
 		 * Registered driver can free driver object in callback.
@@ -3186,6 +3186,7 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 		atomic_set(&fl->spd->is_attached, 0);
 
 	fastrpc_release_current_dsp_process(fl);
+	fl->state = DSP_EXIT_COMPLETE;
 
 	spin_lock_irqsave(&cctx->lock, flags);
 	locked = true;
@@ -3317,6 +3318,7 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	fl->cctx = cctx;
 	fl->tgid = current->tgid;
 	fl->tgid_frpc = get_unique_hlos_process_id(cctx);
+	fl->state = DEFAULT_PROC_STATE;
 
 	if (fl->tgid_frpc == -1) {
 		dev_err(cctx->dev, "too many fastrpc clients, max %u allowed\n", MAX_FRPC_TGID);
@@ -4243,13 +4245,20 @@ static int fastrpc_req_munmap(struct fastrpc_user *fl, char __user *argp)
 	struct fastrpc_buf *buf = NULL, *iter, *b;
 	struct fastrpc_req_munmap req;
 	struct fastrpc_map *map = NULL, *iterm, *m;
-	struct device *dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
+	struct device *dev = NULL;
 	int err = 0;
 	unsigned long flags;
 
+	if (fl->state != DSP_CREATE_COMPLETE) {
+		dev_err(fl->cctx->dev,
+			" %s: %s: trying to unmap buf before creating remote session\n",
+			__func__, current->comm);
+		return -EHOSTDOWN;
+	}
 	if (copy_from_user(&req, argp, sizeof(req)))
 		return -EFAULT;
 
+	dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 	spin_lock(&fl->lock);
 	list_for_each_entry_safe(iter, b, &fl->mmaps, node) {
 		if ((iter->raddr == req.vaddrout) && (iter->size == req.size)) {
@@ -4329,14 +4338,22 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 	struct fastrpc_phy_page pages;
 	struct fastrpc_req_mmap req;
 	struct fastrpc_map *map = NULL;
-	struct fastrpc_smmu *smmucb = &fl->sctx->smmucb[DEFAULT_SMMU_IDX];
-	struct device *dev = smmucb->dev;
+	struct fastrpc_smmu *smmucb = NULL;
+	struct device *dev = NULL;
 	int err;
 	unsigned long flags;
 
+	if (fl->state != DSP_CREATE_COMPLETE) {
+		dev_err(fl->cctx->dev,
+			"%s: %s: trying to map buf before creating remote session\n",
+			__func__, current->comm);
+		return -EHOSTDOWN;
+	}
 	if (copy_from_user(&req, argp, sizeof(req)))
 		return -EFAULT;
 
+	smmucb = &fl->sctx->smmucb[DEFAULT_SMMU_IDX];
+	dev = smmucb->dev;
 	if ((req.flags == ADSP_MMAP_ADD_PAGES ||
 		req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) && !fl->is_unsigned_pd) {
 		if (req.vaddrin) {
@@ -4563,6 +4580,12 @@ static int fastrpc_req_mem_unmap(struct fastrpc_user *fl, char __user *argp)
 {
 	struct fastrpc_mem_unmap req;
 
+	if (fl->state != DSP_CREATE_COMPLETE) {
+		dev_err(fl->cctx->dev,
+			"%s: %s: trying to unmap buf before creating remote session\n",
+			__func__, current->comm);
+		return -EHOSTDOWN;
+	}
 	if (copy_from_user(&req, argp, sizeof(req)))
 		return -EFAULT;
 
@@ -4573,13 +4596,20 @@ static int fastrpc_req_mem_map(struct fastrpc_user *fl, char __user *argp)
 {
 	struct fastrpc_mem_unmap req_unmap = { 0 };
 	struct fastrpc_mem_map req = {0};
-	struct device *dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
+	struct device *dev = NULL;
 	struct fastrpc_map *map = NULL;
 	int err;
 
+	if (fl->state != DSP_CREATE_COMPLETE) {
+		dev_err(fl->cctx->dev,
+			"%s: %s: trying to map buf before creating remote session\n",
+			__func__, current->comm);
+		return -EHOSTDOWN;
+	}
 	if (copy_from_user(&req, argp, sizeof(req)))
 		return -EFAULT;
 
+	dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 	/* create SMMU mapping */
 	mutex_lock(&fl->map_mutex);
 	err = fastrpc_map_create(fl, req.fd, req.vaddrin, NULL, req.length, req.attrs, req.flags, &map, true);
@@ -4801,8 +4831,13 @@ error:
 
 	spin_lock_irqsave(&cctx->lock, irq_flags);
 	if (fl) {
-		if (fl->file_close && fl->is_dma_invoke_pend)
+		if (fl->state >= DSP_EXIT_START && fl->is_dma_invoke_pend) {
+			/*
+			 * If process exit has already started and is waiting for this invoke
+			 * to complete, then unblock it.
+			 */
 			complete(&fl->dma_invoke);
+		}
 		fl->is_dma_invoke_pend = false;
 	}
 	spin_unlock_irqrestore(&cctx->lock, irq_flags);
@@ -4873,8 +4908,13 @@ long fastrpc_dev_unmap_dma(struct fastrpc_device *dev,
 error:
 	spin_lock_irqsave(&cctx->lock, irq_flags);
 	if (fl) {
-		if (fl->file_close && fl->is_dma_invoke_pend)
+		if (fl->state >= DSP_EXIT_START && fl->is_dma_invoke_pend) {
+			/*
+			 * If process exit has already started and is waiting for this invoke
+			 * to complete, then unblock it.
+			 */
 			complete(&fl->dma_invoke);
+		}
 		fl->is_dma_invoke_pend = false;
 	}
 	spin_unlock_irqrestore(&cctx->lock, irq_flags);
@@ -4990,6 +5030,7 @@ static int fastrpc_device_create(struct fastrpc_user *fl)
 	frpc_dev->fl = fl;
 	frpc_dev->handle = fl->tgid_frpc;
 	fl->device = frpc_dev;
+	fl->state = DSP_CREATE_COMPLETE;
 
 	return err;
 }
@@ -5135,7 +5176,8 @@ void fastrpc_notify_users(struct fastrpc_user *user)
 		 * as the DSP guestOS may still be processing and might result
 		 * improper access issues.
 		 */
-		if (fl->file_close && IS_PDR(fl) && fl->pd_type != SENSORS_STATICPD &&
+		if (fl->state >= DSP_EXIT_START && IS_PDR(fl) &&
+			fl->pd_type != SENSORS_STATICPD &&
 			ctx->msg.handle == FASTRPC_INIT_HANDLE)
 			continue;
 		ctx->retval = -EPIPE;
@@ -5650,7 +5692,7 @@ static void fastrpc_handle_signal_rpmsg(uint64_t msg, struct fastrpc_channel_ctx
 
 	spin_lock_irqsave(&cctx->lock, irq_flags);
 	list_for_each_entry(fl, &cctx->users, user) {
-		if (fl->tgid_frpc == pid && !fl->file_close) {
+		if (fl->tgid_frpc == pid && fl->state < DSP_EXIT_START) {
 			process_found = true;
 			break;
 		}
