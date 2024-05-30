@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_CSIPHY_SOC_H_
@@ -79,16 +79,10 @@ int cam_csiphy_reg_dump(struct cam_hw_soc_info *soc_info);
 
 /**
  * @csiphy_dev: CSIPhy device structure
+ * @dump_to_log: Write dump to kernel log
  *
  * This API dumps memory for the entire status region
  */
-int32_t cam_csiphy_common_status_reg_dump(struct csiphy_device *csiphy_dev);
-
-/**
- * @csiphy_dev: CSIPhy device structure
- * @buffer:     Ptr to buffer to cache common status regs
- * @buf_size:   Size of buffer
- */
-int32_t cam_csiphy_get_common_status_for_qmargin(
-	struct csiphy_device *csiphy_dev, int *buffer, int buf_size);
+int32_t cam_csiphy_common_status_reg_dump(struct csiphy_device *csiphy_dev,
+	bool dump_to_log);
 #endif /* _CAM_CSIPHY_SOC_H_ */

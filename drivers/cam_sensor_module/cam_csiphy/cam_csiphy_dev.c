@@ -17,7 +17,7 @@ static struct dentry *root_dentry;
 
 static inline void cam_csiphy_trigger_reg_dump(struct csiphy_device *csiphy_dev)
 {
-	cam_csiphy_common_status_reg_dump(csiphy_dev);
+	cam_csiphy_common_status_reg_dump(csiphy_dev, true);
 
 	if (csiphy_dev->en_full_phy_reg_dump)
 		cam_csiphy_reg_dump(&csiphy_dev->soc_info);
