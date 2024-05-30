@@ -3,6 +3,7 @@
  * Raydium TouchScreen driver.
  *
  * Copyright (c) 2021  Raydium tech Ltd.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1159,7 +1160,7 @@ static ssize_t raydium_receive_fw_store(struct device *dev,
 		memcpy((p_u8_firmware_data + u32_index), p_i8_buf, count);
 		u32_index += count;
 	} else
-		LOGD(LOG_ERR, "[touch]other case, count=%d\n", count);
+		LOGD(LOG_ERR, "[touch]other case, count=%zu\n", count);
 
 	return count;
 }
