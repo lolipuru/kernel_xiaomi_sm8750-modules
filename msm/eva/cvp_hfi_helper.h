@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cvp_comm_def.h"
@@ -190,6 +190,7 @@ struct cvp_hfi_resource_syscache_info_type {
 #define HFI_TEST_SSR_SW_ERR_FATAL	0x1
 #define HFI_TEST_SSR_SW_DIV_BY_ZERO	0x2
 #define HFI_TEST_SSR_HW_WDOG_IRQ	0x3
+#define HFI_TEST_SSR_XTENSA_NOC	0x6
 
 struct cvp_hal_cmd_pkt_hdr {
 	u32 size;

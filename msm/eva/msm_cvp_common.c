@@ -1254,8 +1254,14 @@ int msm_cvp_noc_error_info(struct msm_cvp_core *core)
 	ops_tbl = core->dev_ops;
 	call_hfi_op(ops_tbl, noc_error_info, ops_tbl->hfi_device_data);
 
-	if (core->smmu_fault_count >= core->resources.max_ssr_allowed)
+	if (core->smmu_fault_count >= core->resources.max_ssr_allowed) {
+		dprintk(CVP_INFO, "msm_cvp_smmu_fault_recovery %d\n",
+				msm_cvp_smmu_fault_recovery);
+		if (msm_cvp_smmu_fault_recovery)
+			core->resources.non_fatal_pagefaults = 1;
+
 		BUG_ON(!core->resources.non_fatal_pagefaults);
+	}
 
 	return 0;
 }
