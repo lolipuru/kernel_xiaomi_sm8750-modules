@@ -2360,7 +2360,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 
 	{MIN_QUALITY, ENC, H264 | HEVC,
 		{BLUR_TYPES},
-		msm_vidc_adjust_min_quality,
+		msm_vidc_adjust_min_quality_iris35,
 		msm_vidc_set_u32},
 
 	{VBV_DELAY, ENC, H264 | HEVC,
@@ -2674,7 +2674,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		NULL},
 
 	{META_ROI_INFO, ENC, H264 | HEVC,
-		{MIN_QUALITY, IR_PERIOD, BLUR_TYPES},
+		{IR_PERIOD, BLUR_TYPES},
 		msm_vidc_adjust_roi_info,
 		NULL},
 
