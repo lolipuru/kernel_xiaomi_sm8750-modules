@@ -1450,6 +1450,8 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 	struct intf_panic_wakeup_cfg cfg = { 0 };
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
+	struct sde_encoder_phys_cmd *cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
+	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
 	u32 bw_update_time_lines, prefill_lines, vrefresh, vsync_vtotal, vsync_count, vsync_hz;
 
 	if (!phys_enc->hw_intf || !phys_enc->hw_intf->ops.setup_te_panic_wakeup)
@@ -1476,7 +1478,8 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 				DIV_ROUND_UP(info->prefill_lines * vrefresh, DEFAULT_FPS)
 					: info->prefill_lines;
 
-	cfg.wakeup_window = DEFAULT_TEARCHECK_SYNC_THRESH_CONTINUE;
+	cfg.wakeup_window = qsync_en ? cmd_enc->qsync_threshold_lines
+				: DEFAULT_TEARCHECK_SYNC_THRESH_START;
 	cfg.wakeup_start =  mode->vdisplay
 				+ (vsync_vtotal
 					- DIV_ROUND_UP(vsync_vtotal * info->jitter_numer,
@@ -1922,16 +1925,6 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 		phys_enc->recovered = false;
 	}
 
-	/* update cesta wakeup/panic window with cont-splash or qsync update */
-	if (sde_enc->cesta_client && sde_encoder_phys_cmd_is_master(phys_enc) &&
-			(phys_enc->cont_splash_enabled ||
-				sde_connector_is_qsync_updated(phys_enc->connector))) {
-		_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
-		if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.update_bitmask)
-			phys_enc->hw_ctl->ops.update_bitmask(phys_enc->hw_ctl, SDE_HW_FLUSH_INTF,
-					phys_enc->intf_idx, 1);
-	}
-
 	if (sde_connector_is_qsync_updated(phys_enc->connector)) {
 		u32 threshold, cfg_height, start_pos;
 
@@ -1958,6 +1951,16 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 		SDE_EVT32(DRMID(phys_enc->parent), tc_cfg.sync_threshold_start, tc_cfg.start_pos,
 				qsync_mode, sde_enc->disp_info.is_te_using_watchdog_timer,
 				panel_dead, SDE_EVTLOG_FUNC_CASE3);
+	}
+
+	/* update cesta wakeup/panic window with cont-splash or qsync update */
+	if (sde_enc->cesta_client && sde_encoder_phys_cmd_is_master(phys_enc) &&
+			(phys_enc->cont_splash_enabled ||
+				sde_connector_is_qsync_updated(phys_enc->connector))) {
+		_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
+		if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.update_bitmask)
+			phys_enc->hw_ctl->ops.update_bitmask(phys_enc->hw_ctl, SDE_HW_FLUSH_INTF,
+					phys_enc->intf_idx, 1);
 	}
 
 	if (sde_enc->restore_te_rd_ptr) {
