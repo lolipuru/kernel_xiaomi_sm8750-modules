@@ -3301,6 +3301,12 @@ static int qseecom_prepare_unload_app(struct qseecom_dev_handle *data)
 	pr_debug("prepare to unload app(%d)(%s), pending %d\n",
 		data->client.app_id, data->client.app_name,
 		data->client.unload_pending);
+
+	if (!memcmp(data->client.app_name, "keymaste", strlen("keymaste"))) {
+		pr_debug("Do not add keymaster app from tz to unload list\n");
+		return 0;
+	}
+
 	if (data->client.unload_pending)
 		return 0;
 	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
