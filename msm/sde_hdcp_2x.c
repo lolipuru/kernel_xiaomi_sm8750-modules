@@ -95,6 +95,7 @@ static const char *sde_hdcp_2x_message_name(int msg_id)
 	case REP_STREAM_MANAGE:     return TO_STR(REP_STREAM_MANAGE);
 	case REP_STREAM_READY:      return TO_STR(REP_STREAM_READY);
 	case SKE_SEND_TYPE_ID:      return TO_STR(SKE_SEND_TYPE_ID);
+	case REP_SEND_ACK:	    return TO_STR(REP_SEND_ACK);
 	default:
 		return "UNKNOWN";
 	}
