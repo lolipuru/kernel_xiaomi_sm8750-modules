@@ -2025,7 +2025,11 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 				PLANE_PROP_FB_TRANSLATION_MODE);
 
 		set_bit(sde_plane_pipe(plane), active_fetch_pipes);
-		set_bit(sde_plane_pipe(plane), active_pipes);
+
+		cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
+		if (cac_mode != SDE_CAC_UNPACK)
+			set_bit(sde_plane_pipe(plane), active_pipes);
+
 		sde_plane_ctl_flush(plane, ctl, true);
 
 		SDE_DEBUG("crtc %d stage:%d - plane %d sspp %d fb %d\n",
@@ -2043,8 +2047,6 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 
 		blend_type = sde_plane_get_property(pstate,
 					PLANE_PROP_BLEND_OP);
-		cac_mode = sde_plane_get_property(pstate,
-					PLANE_PROP_CAC_TYPE);
 
 		if (blend_type == SDE_DRM_BLEND_OP_SKIP) {
 			skip_blend_plane.valid_plane = true;
