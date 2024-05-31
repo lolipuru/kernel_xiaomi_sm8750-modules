@@ -128,6 +128,13 @@ static int _sde_kms_register_events(struct msm_kms *kms,
 		struct drm_mode_object *obj, u32 event, bool en);
 static void sde_kms_handle_power_event(u32 event_type, void *usr);
 
+static inline bool sde_kms_in_loopback_mode(struct drm_crtc_state *crtc_state)
+{
+	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
+
+	return cstate->in_loopback_transition;
+}
+
 bool sde_is_custom_client(void)
 {
 	return sdecustom;
@@ -4567,6 +4574,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_mixer_count = sde_kms_get_mixer_count,
 	.get_dsc_count = sde_kms_get_dsc_count,
 	.in_trusted_vm = sde_kms_in_trusted_vm,
+	.in_loopback_mode = sde_kms_in_loopback_mode,
 };
 
 static int _sde_kms_mmu_destroy(struct sde_kms *sde_kms)
