@@ -196,6 +196,33 @@ enum sde_wb_usage_type sde_crtc_get_wb_usage_type(struct drm_crtc *crtc)
 	return usage_type;
 }
 
+struct sde_hw_ctl *sde_get_primary_ctl_in_lb(struct drm_crtc_state *crtc_state)
+{
+	struct drm_encoder *encoder, *primary_enc = NULL;
+	struct sde_rm_hw_iter ctl_iter;
+	struct sde_kms *kms;
+
+	if (!sde_crtc_state_in_lb_mode(crtc_state))
+		return NULL;
+
+	drm_for_each_encoder_mask(encoder, crtc_state->crtc->dev, crtc_state->encoder_mask) {
+		if (sde_encoder_is_loopback_display(encoder))
+			continue;
+		else
+			primary_enc = encoder;
+	}
+
+	if (!primary_enc)
+		return NULL;
+
+	kms = sde_encoder_get_kms(primary_enc);
+	sde_rm_init_hw_iter(&ctl_iter, primary_enc->base.id, SDE_HW_BLK_CTL);
+	if (sde_rm_get_hw(&kms->rm, &ctl_iter))
+		return to_sde_hw_ctl(ctl_iter.hw);
+
+	return NULL;
+}
+
 static inline struct drm_connector_state *_sde_crtc_get_virt_conn_state(
 		struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
 {
@@ -4392,9 +4419,15 @@ static void _sde_crtc_setup_mixer_for_encoder(
 		if (!sde_rm_get_hw(rm, &lm_iter))
 			break;
 		mixer->hw_lm = to_sde_hw_mixer(lm_iter.hw);
+		mixer->is_lb_mixer = false;
 
 		/* CTL may be <= LMs, if <, multiple LMs controlled by 1 CTL */
-		if (!sde_rm_get_hw(rm, &ctl_iter)) {
+		if (sde_encoder_is_loopback_display(enc)) {
+			mixer->hw_ctl = sde_get_primary_ctl_in_lb(crtc->state);
+			last_valid_ctl = mixer->hw_ctl;
+			sde_crtc->num_ctls++;
+			mixer->is_lb_mixer = true;
+		} else if (!sde_rm_get_hw(rm, &ctl_iter)) {
 			SDE_DEBUG("no ctl assigned to lm %d, using previous\n",
 					mixer->hw_lm->idx - LM_0);
 			mixer->hw_ctl = last_valid_ctl;

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -26,13 +26,15 @@
 		x == SDE_RM_TOPOLOGY_DUALPIPE_DSCMERGE ||\
 		x == SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE ||\
 		x == SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_VDC ||\
-		x == SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC)
+		x == SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC ||\
+		x == SDE_RM_TOPOLOGY_DUALPIPE_LOOPBACK)
 
 #define TOPOLOGY_QUADPIPE_MODE(x) \
 	(x == SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE ||\
 		x == SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC ||\
 		x == SDE_RM_TOPOLOGY_QUADPIPE_DSCMERGE ||\
-		x == SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE)
+		x == SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE ||\
+		x == SDE_RM_TOPOLOGY_QUADPIPE_LOOPBACK)
 
 #define TOPOLOGY_DSC_MODE(x) \
 	(x == SDE_RM_TOPOLOGY_SINGLEPIPE_DSC ||\
@@ -59,6 +61,8 @@
  * @SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC  4 LM, 4 PP, 3DMux, 3 DSC, 2 INTF
  * @SDE_RM_TOPOLOGY_QUADPIPE_DSCMERE      4 LM, 4 PP, 4 DSC Merge, 2 INTF
  * @SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE  4 LM, 4 PP, 4 DSC Merge, 1 INTF
+ * @SDE_RM_TOPOLOGY_DUALPIPE_LOOPBACK     2 LM, 2 PP, 0 INTF
+ * @SDE_RM_TOPOLOGY_QUADPIPE_LOOPBACK     4 LM, 4 PP, 0 INTF
  */
 enum sde_rm_topology_name {
 	SDE_RM_TOPOLOGY_NONE = 0,
@@ -76,6 +80,8 @@ enum sde_rm_topology_name {
 	SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC,
 	SDE_RM_TOPOLOGY_QUADPIPE_DSCMERGE,
 	SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE,
+	SDE_RM_TOPOLOGY_DUALPIPE_LOOPBACK,
+	SDE_RM_TOPOLOGY_QUADPIPE_LOOPBACK,
 	SDE_RM_TOPOLOGY_MAX,
 };
 
@@ -116,6 +122,8 @@ enum sde_rm_topology_group {
  * @SDE_RM_TOPCTL_DCWB : Require layer mixers with DCWB capabilities
  * @SDE_RM_TOPCTL_DNSC_BLUR : Require writeback with downscale blur capabilities
  * @SDE_RM_TOPCTL_CDM : Require writeback with CDM capabilities
+ * @SDE_RM_TOPCTL_CAC_PRIMARY: Require resources for loopback second pass(primary).
+ * @SDE_RM_TOPCTL_CAC_LB: Require resources for loopback first pass(virtual).
  */
 enum sde_rm_topology_control {
 	SDE_RM_TOPCTL_RESERVE_LOCK,
@@ -126,6 +134,8 @@ enum sde_rm_topology_control {
 	SDE_RM_TOPCTL_DCWB,
 	SDE_RM_TOPCTL_DNSC_BLUR,
 	SDE_RM_TOPCTL_CDM,
+	SDE_RM_TOPCTL_CAC_PRIMARY,
+	SDE_RM_TOPCTL_CAC_LB,
 };
 
 /**

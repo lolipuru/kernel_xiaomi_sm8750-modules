@@ -3481,6 +3481,13 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 			if (phys->ops.mode_set)
 				phys->ops.mode_set(phys, mode, adj_mode,
 				&sde_crtc->reinit_crtc_mixers);
+			if (sde_encoder_is_loopback_display(drm_enc)) {
+				phys->hw_ctl = sde_get_primary_ctl_in_lb(crtc_state);
+				if (!phys->hw_ctl) {
+					SDE_ERROR_ENC(sde_enc, "no valid ctl found\n");
+					return;
+				}
+			}
 		}
 	}
 
