@@ -4348,9 +4348,10 @@ void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
 	struct msm_mode_info *mode_info = &sde_enc->mode_info;
 	struct sde_encoder_phys *cur_master = sde_enc->cur_master;
 	struct msm_display_info *disp_info = &sde_enc->disp_info;
+	struct drm_connector *drm_conn;
 	bool is_vid = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 	struct intf_status intf_status = {0};
-	u32 u_bound, l_bound, line_count;
+	u32 u_bound, l_bound, line_count, qsync_mode;
 	const u32 porch_margin = 10;
 
 	if ((disp_info->intf_type != DRM_MODE_CONNECTOR_DSI) || !is_vid || !sde_enc->cesta_client
@@ -4358,9 +4359,11 @@ void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
 			|| !cur_master->hw_intf->ops.get_line_count)
 		return;
 
+	drm_conn = sde_enc->cur_master->connector;
+	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);
 	cur_master->hw_intf->ops.get_status(cur_master->hw_intf, &intf_status);
 
-	if (!intf_status.is_prog_fetch_en)
+	if (!intf_status.is_prog_fetch_en || !qsync_mode)
 		return;
 
 	/* delay flush if it is in the prog-fetch region */

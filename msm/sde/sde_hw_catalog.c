@@ -5302,7 +5302,7 @@ out:
 	return rc;
 }
 
-static void _sde_hw_setup_uidle(struct sde_uidle_cfg *uidle_cfg)
+static void _sde_hw_setup_uidle(struct sde_uidle_cfg *uidle_cfg, u32 hw_rev)
 {
 	if (!uidle_cfg->uidle_rev)
 		return;
@@ -5313,7 +5313,7 @@ static void _sde_hw_setup_uidle(struct sde_uidle_cfg *uidle_cfg)
 	uidle_cfg->fal10_target_idle_time = SDE_UIDLE_FAL10_TARGET_IDLE;
 	uidle_cfg->fal1_target_idle_time = SDE_UIDLE_FAL1_TARGET_IDLE;
 	uidle_cfg->max_dwnscale = SDE_UIDLE_MAX_DWNSCALE;
-	uidle_cfg->debugfs_ctrl = true;
+	uidle_cfg->debugfs_ctrl = IS_SUN_TARGET(hw_rev) ? false : true;
 	uidle_cfg->fal1_max_threshold = SDE_UIDLE_FAL1_MAX_THRESHOLD;
 
 	if (IS_SDE_UIDLE_REV_100(uidle_cfg->uidle_rev)) {
@@ -5826,7 +5826,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 	if (!rc)
 		rc = sde_hardware_format_caps(sde_cfg, hw_rev);
 
-	_sde_hw_setup_uidle(&sde_cfg->uidle_cfg);
+	_sde_hw_setup_uidle(&sde_cfg->uidle_cfg, hw_rev);
 
 	return rc;
 }
