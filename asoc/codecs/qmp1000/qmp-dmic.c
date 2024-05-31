@@ -393,6 +393,7 @@ static int qmp_sdca_dmic_startup(struct snd_pcm_substream *substream,
 	 /* status mask indicate if this dai opened */
 	qmp->dai_status_mask |= BIT(dai->id);
 	qmp->master_port_map_cached[dai->id] = qmp->tx_master_port_map[dai->id];
+	update_ch_per_substream(qmp->dai_status_mask, substream);
 
 err:
 	return 0;

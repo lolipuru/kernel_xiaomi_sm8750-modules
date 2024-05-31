@@ -15,6 +15,8 @@
 #define MAX_CHANNELS 8
 #define MAX_MASTER_PORTS 10
 
+static int num_chs[NUM_AGG_STREAMS];
+
 enum {
 	mTX1 = 2,
 	mTX2 = 3,
@@ -152,6 +154,24 @@ exit:
 	return is_valid;
 }
 
+void update_ch_per_substream(int ch, void *substream)
+{
+	int sidx = get_matching_stream_index_or_first_available(substream);
+
+	if (ch) {
+		num_chs[sidx]++;
+		pr_debug("%s, %d Channel(s) added\n", __func__, num_chs[sidx]);
+	} else {
+		/*
+		 * to remove the channels from the substream we do it in one go, unlike
+		 * the addition where each channel is added one by one
+		 */
+		num_chs[sidx] = 0;
+		pr_debug("%s, Channel(s) reset to %d\n", __func__, num_chs[sidx]);
+	}
+}
+EXPORT_SYMBOL_GPL(update_ch_per_substream);
+
 /*
  * stream_agg_add_channel :
  * Inputs: Substream - void *pointer stored in aggregator for stream identification
@@ -218,7 +238,7 @@ int stream_agg_add_channel(void *substream, uint32_t channels,
 	}
 
 	aggregator_[sidx].private_data = substream;
-	aggregator_[sidx].num_channels = channels;
+	aggregator_[sidx].num_channels = num_chs[sidx];
 	aggregator_[sidx].channel_rate = channel_rate;
 
 	/*
@@ -579,6 +599,7 @@ int stream_agg_remove_channel(void *substream, u8 mport_type,
 		agg->private_data = NULL;
 		agg->channel_rate = 0;
 		agg->num_channels = 0;
+		update_ch_per_substream(agg->num_channels, substream);
 		agg->links = 0;
 	}
 
