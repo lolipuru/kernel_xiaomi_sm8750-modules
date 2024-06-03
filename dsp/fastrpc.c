@@ -5133,8 +5133,8 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 	for (i = 0; i < FASTRPC_MAX_SESSIONS; i++) {
 		if (cctx->session[i].sid == sess->sid) {
 			spin_unlock_irqrestore(&cctx->lock, flags);
-			if (sess->used)
-				wait_for_completion(&sess->cleanup);
+			if (cctx->session[i].used)
+				wait_for_completion(&cctx->session[i].cleanup);
 			mutex_lock(&cctx->session[i].map_mutex);
 			cctx->session[i].dev = NULL;
 			mutex_unlock(&cctx->session[i].map_mutex);
