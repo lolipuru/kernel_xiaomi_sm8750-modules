@@ -2943,10 +2943,8 @@ int msm_vidc_set_chroma_qp_index_offset(void *instance,
 
 	if (inst->capabilities[cap_id].flags & CAP_FLAG_CLIENT_SET)
 		chroma_qp_offset_mode = HFI_FIXED_CHROMAQP_OFFSET;
-	else if (inst->codec == MSM_VIDC_HEVC && (width * height >= (7680 * 4320)))
-		chroma_qp_offset_mode = HFI_ADAPTIVE_CHROMAQP_OFFSET;
 	else
-		chroma_qp_offset_mode = HFI_FIXED_CHROMAQP_OFFSET;
+		chroma_qp_offset_mode = HFI_ADAPTIVE_CHROMAQP_OFFSET;
 
 	chroma_qp = inst->capabilities[cap_id].value;
 	hfi_value = chroma_qp_offset_mode | chroma_qp << 8;
