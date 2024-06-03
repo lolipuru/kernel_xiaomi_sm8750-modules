@@ -6899,6 +6899,8 @@ static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
 		sde_kms_info_add_keystr(info, "qseed_type", "qseed3lite");
 	if (catalog->cac_version == SDE_SSPP_CAC_V2)
 		sde_kms_info_add_keystr(info, "cac_version", "cac_v2");
+	if (catalog->cac_version == SDE_SSPP_CAC_LOOPBACK)
+		sde_kms_info_add_keystr(info, "cac_version", "cac_loopback");
 
 	if (catalog->ubwc_rev) {
 		sde_kms_info_add_keyint(info, "UBWC version", catalog->ubwc_rev);

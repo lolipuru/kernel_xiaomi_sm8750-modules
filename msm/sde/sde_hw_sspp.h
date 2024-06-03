@@ -98,8 +98,10 @@ enum sde_sspp_ucsc_igc {
 
 enum {
 	SDE_CAC_NONE = 0,
-	SDE_CAC_UNPACK,
-	SDE_CAC_FETCH
+	SDE_CAC_UNPACK = BIT(0),
+	SDE_CAC_FETCH = BIT(1),
+	SDE_CAC_LOOPBACK_UNPACK = BIT(2),
+	SDE_CAC_LOOPBACK_FETCH = BIT(3),
 };
 
 struct sde_hw_sharp_cfg {

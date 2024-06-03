@@ -485,6 +485,7 @@ enum {
 	MIXER_DISP,
 	MIXER_CWB,
 	MIXER_DCWB,
+	MIXER_CAC_LB_LM_PAIR_PREF,
 	MIXER_PROP_MAX,
 };
 
@@ -858,6 +859,8 @@ static struct sde_prop_type mixer_prop[] = {
 		PROP_TYPE_STRING_ARRAY},
 	{MIXER_DCWB, "qcom,sde-mixer-dcwb-pref", false,
 		PROP_TYPE_STRING_ARRAY},
+	{MIXER_CAC_LB_LM_PAIR_PREF, "qcom,sde-mixer-cac-lb-lm-pair-pref",
+		false, PROP_TYPE_BIT_OFFSET_ARRAY},
 };
 
 static struct sde_prop_type mixer_blocks_prop[] = {
@@ -1891,7 +1894,7 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 			set_bit(SDE_PERF_SSPP_QOS_8LVL, &sspp->perf_features);
 		dma_count++;
 
-		if (sblk->cac_mode == SDE_CAC_UNPACK)
+		if (sblk->cac_mode & SDE_CAC_UNPACK)
 			sblk->cac_format_list = sde_cfg->cac_formats;
 
 		/* Obtain sub block top, or maintain backwards compatibility */
@@ -2086,7 +2089,7 @@ static void sde_sspp_set_features(struct sde_mdss_cfg *sde_cfg,
 static int _sde_sspp_setup_cmn(struct device_node *np,
 		struct sde_mdss_cfg *sde_cfg)
 {
-	int rc = 0, off_count, i, j;
+	int rc = 0, off_count, i, j, k;
 	struct sde_dt_props *props;
 	struct sde_sspp_cfg *sspp;
 	struct sde_sspp_sub_blks *sblk;
@@ -2162,15 +2165,29 @@ static int _sde_sspp_setup_cmn(struct device_node *np,
 
 		if (sde_cfg->cac_version == SDE_SSPP_CAC_V2 &&
 				props->exists[SSPP_CAC_MODE] &&
-				props->exists[SSPP_CAC_PARENT_REC]) {
+				props->exists[SSPP_CAC_PARENT_REC] &&
+				(props->counts[SSPP_CAC_LM_PREF] == off_count * SDE_CAC_TYPE_MAX)) {
 			sblk->cac_mode = PROP_VALUE_ACCESS(props->values, SSPP_CAC_MODE, i);
 			for (j = 0; j < SSPP_SUBBLK_COUNT_MAX; j++) {
 				sblk->cac_parent_rec[j] = PROP_BITVALUE_ACCESS(props->values,
 							SSPP_CAC_PARENT_REC, i, j);
-				sblk->cac_lm_pref[j] = PROP_BITVALUE_ACCESS(props->values,
-							SSPP_CAC_LM_PREF, i, j);
+				for (k = 0; k < SDE_CAC_TYPE_MAX; k++)
+					sblk->cac_lm_pref[k][j] =
+						PROP_BITVALUE_ACCESS(props->values,
+						SSPP_CAC_LM_PREF, (off_count * k) + i, j);
 			}
 			set_bit(SDE_SSPP_CAC_V2, &sspp->features);
+		} else if (sde_cfg->cac_version == SDE_SSPP_CAC_LOOPBACK &&
+				props->exists[SSPP_CAC_MODE] &&
+				(props->counts[SSPP_CAC_LM_PREF] == off_count * SDE_CAC_TYPE_MAX)) {
+			sblk->cac_mode = PROP_VALUE_ACCESS(props->values, SSPP_CAC_MODE, i);
+			for (j = 0; j < SSPP_SUBBLK_COUNT_MAX; j++) {
+				for (k = 0; k < SDE_CAC_TYPE_MAX; k++)
+					sblk->cac_lm_pref[k][j] =
+						PROP_BITVALUE_ACCESS(props->values,
+						SSPP_CAC_LM_PREF, (off_count * k) + i, j);
+			}
+			 set_bit(SDE_SSPP_CAC_LOOPBACK, &sspp->features);
 		}
 	}
 
@@ -2331,7 +2348,7 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 	struct sde_lm_sub_blks *sblk;
 	int pp_count, dspp_count, ds_count, mixer_count;
 	u32 pp_idx, dspp_idx, ds_idx, merge_3d_idx;
-	u32 mixer_base;
+	u32 mixer_base, mixer_id, parent_lm;
 	struct device_node *snp = NULL;
 	struct sde_dt_props *props, *blend_props, *blocks_props = NULL;
 
@@ -2479,6 +2496,24 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 			set_bit(SDE_MIXER_GC, &mixer->features);
 		}
 	}
+
+	if (sde_cfg->cac_version == SDE_SSPP_CAC_LOOPBACK) {
+		for (i = 0; i < props->counts[MIXER_CAC_LB_LM_PAIR_PREF]; i++) {
+			for (j = 0; j < MAX_BIT_OFFSET; j++) {
+				mixer_id = PROP_BITVALUE_ACCESS(props->values,
+					MIXER_CAC_LB_LM_PAIR_PREF, i, j);
+				mixer = sde_cfg->mixer + mixer_id;
+				if (j) {
+					set_bit(SDE_MIXER_CAC_PRIMARY, &mixer->features);
+					mixer->parent_mixer_id = parent_lm;
+				} else {
+					set_bit(SDE_MIXER_CAC_LB, &mixer->features);
+					parent_lm = mixer_id;
+				}
+			}
+		}
+	}
+
 	sde_cfg->mixer_count = mixer_count;
 	_sde_lm_noise_parse_dt(np, sde_cfg);
 
@@ -5291,7 +5326,7 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 			in_rot_restricted_list_size);
 	}
 
-	if (sde_cfg->cac_version == SDE_SSPP_CAC_V2) {
+	if (is_cac_supported(sde_cfg)) {
 		sde_cfg->cac_formats = kcalloc(ARRAY_SIZE(cac_formats),
 			sizeof(struct sde_format_extended), GFP_KERNEL);
 		if (!sde_cfg->cac_formats) {
