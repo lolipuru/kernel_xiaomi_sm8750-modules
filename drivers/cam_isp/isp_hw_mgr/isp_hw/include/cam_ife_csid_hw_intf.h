@@ -58,7 +58,7 @@ enum cam_ife_csid_input_core_type {
 };
 
 /**
- * enum cam_ife_pix_path_res_id - Specify the csid patch
+ * enum cam_ife_pix_path_res_id - Specify the csid path
  */
 enum cam_ife_pix_path_res_id {
 	CAM_IFE_PIX_PATH_RES_RDI_0,
@@ -598,6 +598,21 @@ struct cam_ife_csid_drv_config_args {
 	bool                               drv_en;
 	uint32_t                           timeout_val;
 	uint32_t                           path_idle_en;
+};
+
+/*
+ * struct cam_ife_csid_exp_info_update_args:
+ *
+ * @num_process_exp:   Number of processed exposures
+ * @num_out_exp:       Number of sensor output exposures
+ * @last_exp_valid:    Indicates if last exposure info is valid
+ * @last_exp_res_id:   Resource id for last exposure
+ */
+struct cam_ife_csid_exp_info_update_args {
+	uint32_t                           num_process_exp;
+	uint32_t                           num_sensor_out_exp;
+	bool                               last_exp_valid;
+	uint32_t                           last_exp_res_id;
 };
 
 #endif /* _CAM_CSID_HW_INTF_H_ */

@@ -94,6 +94,9 @@ static uint32_t max_ife_out_res, max_sfe_out_res;
 static char *irq_inject_display_buf;
 
 
+static int cam_ife_mgr_util_process_csid_path_res(
+	uint32_t path_id, enum cam_ife_pix_path_res_id        *path_res_id);
+
 static int cam_ife_mgr_find_core_idx(int split_id, struct cam_ife_hw_mgr_ctx *ctx,
 	enum cam_isp_hw_type hw_type, uint32_t *core_idx);
 
@@ -174,6 +177,101 @@ static int cam_ife_mgr_update_core_info_to_cpas(struct cam_ife_hw_mgr_ctx       
 					"Failed to update core info to cpas rc:%d,ctx:%u",
 					rc, ctx->ctx_index);
 				return rc;
+			}
+		}
+	}
+
+	return rc;
+}
+
+static int cam_isp_blob_path_exp_order_update(struct cam_ife_hw_mgr_ctx         *ctx,
+	uint64_t request_id, struct cam_isp_prepare_hw_update_data *prepare_hw_data)
+{
+	struct cam_ife_hw_mgr                           *ife_hw_mgr;
+	struct cam_hw_intf                              *hw_intf = NULL;
+	struct cam_isp_path_exp_order_update_internal   *exp_order_update;
+	bool                                             csid_update_valid = false;
+	struct cam_ife_csid_exp_info_update_args         exp_info_update_args = {0};
+	int i, rc = 0;
+
+	ife_hw_mgr = ctx->hw_mgr;
+	exp_order_update = &prepare_hw_data->isp_exp_order_update;
+
+	CAM_DBG(CAM_ISP,
+		"Exp order update blob opcode:%u req_id:%llu ctx_idx:%u num_process_exp:%u num_sensor_out_exp:%u num_path_exp_info:%u",
+		prepare_hw_data->packet_opcode_type, request_id,
+		ctx->ctx_index, exp_order_update->num_process_exp,
+		exp_order_update->num_sensor_out_exp, exp_order_update->num_path_exp_info);
+
+
+	for (i = 0; i < exp_order_update->num_path_exp_info; i++) {
+		if ((exp_order_update->exp_info[i].hw_type <= CAM_ISP_HW_BASE) ||
+			(exp_order_update->exp_info[i].hw_type >= CAM_ISP_HW_MAX)) {
+			CAM_ERR(CAM_ISP,
+				"Invalid hw_type:%u at idx:%d for exp order update req_id:%llu ctx_idx:%u",
+				exp_order_update->exp_info[i].hw_type, i, request_id,
+				ctx->ctx_index);
+			return -EINVAL;
+		}
+
+		CAM_DBG(CAM_ISP,
+			"Per path exp order update idx:%d hw_type:%u res_id:0x%x hw_ctxt_id:0x%x exp_order:0x%x",
+			i, exp_order_update->exp_info[i].hw_type,
+			exp_order_update->exp_info[i].res_id,
+			exp_order_update->exp_info[i].hw_ctxt_id,
+			exp_order_update->exp_info[i].exp_order);
+
+		if (exp_order_update->exp_info[i].hw_type == CAM_ISP_HW_CSID) {
+			enum cam_ife_pix_path_res_id csid_res_id = CAM_IFE_PIX_PATH_RES_MAX;
+
+			if ((!csid_update_valid) &&
+				(exp_order_update->exp_info[i].exp_order ==
+				CAM_ISP_EXP_ORDER_LAST) &&
+				(exp_order_update->exp_info[i].res_id >= CAM_ISP_RDI0_PATH) &&
+				(exp_order_update->exp_info[i].res_id <= CAM_ISP_RDI4_PATH)) {
+				rc = cam_ife_mgr_util_process_csid_path_res(
+					exp_order_update->exp_info[i].res_id,
+					&csid_res_id);
+				if (rc) {
+					CAM_ERR(CAM_ISP,
+						"Invalid csid res_id:%u at idx:%d for exp order update req_id:%llu ctx_idx:%u",
+						exp_order_update->exp_info[i].res_id, i, request_id,
+						ctx->ctx_index);
+					return -EINVAL;
+				}
+
+				exp_info_update_args.last_exp_res_id = csid_res_id;
+				exp_info_update_args.last_exp_valid = true;
+				csid_update_valid = true;
+			}
+		} else {
+			CAM_ERR(CAM_ISP,
+				"hw_type:%u at idx:%d not supported for exp order update req_id:%llu ctx_idx:%u",
+				exp_order_update->exp_info[i].hw_type, i, request_id,
+				ctx->ctx_index);
+			return -ENODEV;
+		}
+	}
+
+	if (csid_update_valid) {
+		exp_info_update_args.num_process_exp = exp_order_update->num_process_exp;
+		exp_info_update_args.num_sensor_out_exp = exp_order_update->num_sensor_out_exp;
+		for (i = 0; i < ctx->num_base; i++) {
+			if (ctx->base[i].hw_type != CAM_ISP_HW_TYPE_CSID)
+				continue;
+
+			hw_intf = ife_hw_mgr->csid_devices[ctx->base[i].idx];
+			if (hw_intf && hw_intf->hw_ops.process_cmd) {
+				rc = hw_intf->hw_ops.process_cmd(hw_intf->hw_priv,
+					CAM_ISP_HW_CMD_EXP_INFO_UPDATE, &exp_info_update_args,
+					sizeof(struct cam_ife_csid_exp_info_update_args));
+				if (rc) {
+					CAM_ERR(CAM_PERF,
+						"Exp info update failed req_id:%d i:%d hw_idx=%d rc:%d ctx_idx: %u",
+						request_id, i, ctx->base[i].idx, rc,
+						ctx->ctx_index);
+					break;
+				}
 			}
 		}
 	}
@@ -431,7 +529,7 @@ static int cam_ife_mgr_finish_clk_bw_update(
 
 	clk_bw_args.request_id = request_id;
 	clk_bw_args.skip_clk_data_rst = skip_clk_data_rst;
-	clk_bw_args.is_drv_config_en = (bool) (ctx->drv_path_idle_en & CAM_ISP_PXL_PATH);
+	clk_bw_args.is_drv_config_en = (bool) (ctx->drv_path_idle_en & BIT(0));
 
 	for (i = 0; i < ctx->num_base; i++) {
 		clk_bw_args.hw_intf = NULL;
@@ -4002,15 +4100,9 @@ static bool cam_ife_hw_mgr_is_need_csid_ipp(
 }
 
 static int cam_ife_mgr_util_process_csid_path_res(
-	struct cam_isp_in_port_generic_info *in_port,
-	enum cam_ife_pix_path_res_id        *path_res_id)
+	uint32_t path_id, enum cam_ife_pix_path_res_id        *path_res_id)
 {
-	if (!in_port) {
-		CAM_ERR(CAM_ISP, "Invalid in_port info");
-		return -EINVAL;
-	}
-
-	switch (in_port->path_id) {
+	switch (path_id) {
 	case CAM_ISP_PXL_PATH:
 		*path_res_id = CAM_IFE_PIX_PATH_RES_IPP;
 		break;
@@ -4020,8 +4112,26 @@ static int cam_ife_mgr_util_process_csid_path_res(
 	case CAM_ISP_PXL2_PATH:
 		*path_res_id = CAM_IFE_PIX_PATH_RES_IPP_2;
 		break;
+	case CAM_ISP_RDI0_PATH:
+		*path_res_id = CAM_IFE_PIX_PATH_RES_RDI_0;
+		break;
+	case CAM_ISP_RDI1_PATH:
+		*path_res_id = CAM_IFE_PIX_PATH_RES_RDI_1;
+		break;
+	case CAM_ISP_RDI2_PATH:
+		*path_res_id = CAM_IFE_PIX_PATH_RES_RDI_2;
+		break;
+	case CAM_ISP_RDI3_PATH:
+		*path_res_id = CAM_IFE_PIX_PATH_RES_RDI_3;
+		break;
+	case CAM_ISP_RDI4_PATH:
+		*path_res_id = CAM_IFE_PIX_PATH_RES_RDI_4;
+		break;
+	case CAM_ISP_PPP_PATH:
+		*path_res_id = CAM_IFE_PIX_PATH_RES_PPP;
+		break;
 	default:
-		CAM_ERR(CAM_ISP, "Invalid csid path ID: 0x%x", in_port->path_id);
+		CAM_ERR(CAM_ISP, "Invalid csid path ID: 0x%x", path_id);
 		return -EINVAL;
 	}
 
@@ -4044,7 +4154,7 @@ static int cam_ife_hw_mgr_acquire_res_ife_csid_pxl(
 
 	if (is_ipp) {
 		if (in_port->major_ver == 3) {
-			rc = cam_ife_mgr_util_process_csid_path_res(in_port, &path_res_id);
+			rc = cam_ife_mgr_util_process_csid_path_res(in_port->path_id, &path_res_id);
 			if (rc) {
 				CAM_ERR(CAM_ISP, "Error in processing csid path resource rc:%d",
 					rc);
@@ -7468,6 +7578,14 @@ static int cam_ife_mgr_config_hw(
 			return -EALREADY;
 		}
 		ctx->last_cdm_done_req = 0;
+	}
+
+	if (hw_update_data->exp_order_update_valid) {
+		rc = cam_isp_blob_path_exp_order_update(ctx, cfg->request_id, hw_update_data);
+		if (rc) {
+			CAM_ERR(CAM_ISP, "Exp order update failed for req: %llu rc:%d ctx_idx=%u",
+				cfg->request_id, rc, ctx->ctx_index);
+		}
 	}
 
 	if (cam_presil_mode_enabled()) {
@@ -12618,6 +12736,66 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 		prepare_hw_data->drv_config_valid = true;
 	}
 		break;
+	case CAM_ISP_GENERIC_BLOB_TYPE_EXP_ORDER_UPDATE: {
+		struct cam_isp_path_exp_order_update *exp_order_update;
+		struct cam_isp_prepare_hw_update_data   *prepare_hw_data;
+
+		if (blob_size < sizeof(struct cam_isp_path_exp_order_update)) {
+			CAM_ERR(CAM_ISP,
+				"Invalid exp order update blob size %u expected %u ctx_idx: %u",
+				blob_size, sizeof(struct cam_isp_path_exp_order_update),
+				ife_mgr_ctx->ctx_index);
+			return -EINVAL;
+		}
+
+		exp_order_update = (struct cam_isp_path_exp_order_update *)blob_data;
+
+		if ((!exp_order_update->num_path_exp_info) ||
+			(exp_order_update->num_path_exp_info > CAM_ISP_MAX_PER_PATH_EXP_INFO) ||
+			(!exp_order_update->num_sensor_out_exp)) {
+			CAM_ERR(CAM_ISP,
+				"Invalid num_path_info:%u sensor_out_exp:%u in exp order update, ctx_idx: %u",
+				exp_order_update->num_path_exp_info,
+				exp_order_update->num_sensor_out_exp, ife_mgr_ctx->ctx_index);
+			return -EINVAL;
+		}
+
+		/* Check for integer overflow */
+		if (sizeof(struct cam_isp_per_path_exp_info) > ((UINT_MAX -
+			sizeof(struct cam_isp_path_exp_order_update)) /
+			(exp_order_update->num_path_exp_info))) {
+			CAM_ERR(CAM_ISP,
+				"Max size exceeded in exp order update num_path_info:%u size per path:%lu, ctx_idx: %u",
+				exp_order_update->num_path_exp_info,
+				sizeof(struct cam_isp_per_path_exp_info),
+				ife_mgr_ctx->ctx_index);
+			return -EINVAL;
+		}
+
+		if (blob_size < (sizeof(struct cam_isp_path_exp_order_update) +
+			(exp_order_update->num_path_exp_info *
+			sizeof(struct cam_isp_per_path_exp_info)))) {
+			CAM_ERR(CAM_ISP, "Invalid blob size %u expected %lu ctx_idx: %u",
+				blob_size, sizeof(struct cam_isp_path_exp_order_update)
+				+ (exp_order_update->num_path_exp_info *
+				sizeof(struct cam_isp_vfe_wm_config_v2)), ife_mgr_ctx->ctx_index);
+			return -EINVAL;
+		}
+
+		prepare_hw_data = (struct cam_isp_prepare_hw_update_data  *) prepare->priv;
+		memcpy(&prepare_hw_data->isp_exp_order_update, exp_order_update,
+			(sizeof(struct cam_isp_path_exp_order_update) +
+			(exp_order_update->num_path_exp_info *
+			sizeof(struct cam_isp_per_path_exp_info))));
+
+		CAM_DBG(CAM_ISP,
+			"Exp order update num_process_exp:%u num_sensor_out_exp:%u num_path_exp_info:%u ctx:%u",
+			exp_order_update->num_process_exp, exp_order_update->num_sensor_out_exp,
+			exp_order_update->num_path_exp_info,
+			ife_mgr_ctx->ctx_index);
+		prepare_hw_data->exp_order_update_valid = true;
+	}
+		break;
 	default:
 		CAM_WARN(CAM_ISP, "Invalid blob type %d, ctx_idx: %u",
 			blob_type, ife_mgr_ctx->ctx_index);
@@ -12783,6 +12961,7 @@ static int cam_csid_packet_generic_blob_handler(void *user_data,
 	case CAM_ISP_GENERIC_BLOB_TYPE_IFE_FCG_CFG:
 	case CAM_ISP_GENERIC_BLOB_TYPE_UBWC_CONFIG_V3:
 	case CAM_ISP_GENERIC_BLOB_TYPE_VFE_OUT_CONFIG_V2:
+	case CAM_ISP_GENERIC_BLOB_TYPE_EXP_ORDER_UPDATE:
 		break;
 	case CAM_ISP_GENERIC_BLOB_TYPE_IRQ_COMP_CFG: {
 		struct cam_isp_irq_comp_cfg *irq_comp_cfg;
@@ -13237,6 +13416,7 @@ static int cam_sfe_packet_generic_blob_handler(void *user_data,
 	case CAM_ISP_GENERIC_BLOB_TYPE_DRV_CONFIG:
 	case CAM_ISP_GENERIC_BLOB_TYPE_UBWC_CONFIG_V3:
 	case CAM_ISP_GENERIC_BLOB_TYPE_VFE_OUT_CONFIG_V2:
+	case CAM_ISP_GENERIC_BLOB_TYPE_EXP_ORDER_UPDATE:
 		break;
 	default:
 		CAM_WARN(CAM_ISP, "Invalid blob type: %u, ctx_idx: %u",
@@ -16132,6 +16312,7 @@ static int cam_ife_hw_mgr_handle_csid_camif_epoch(
 	case CAM_IFE_PIX_PATH_RES_PPP:
 		if (atomic_read(&ctx->overflow_pending))
 			break;
+
 		epoch_done_event_data.frame_id_meta = event_info->reg_val;
 		ife_hw_irq_epoch_cb(ctx->common.cb_priv,
 			CAM_ISP_HW_EVENT_EPOCH, (void *)&epoch_done_event_data);

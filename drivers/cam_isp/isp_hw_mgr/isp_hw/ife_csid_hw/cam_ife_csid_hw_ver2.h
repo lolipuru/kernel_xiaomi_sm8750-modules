@@ -283,6 +283,7 @@ struct cam_ife_csid_ver2_rup_aup_mask {
  * @lcr_en:                 Flag to indicate if path is part can be input to LCR
  * @ts_comb_vcdt_en:        Indicates if Timestamp combined vcdt flag is enabled
  * @is_aeb_en:              Flag to indicate if aeb mode is enabled
+ * @allow_epoch_cb:         Flag to indicate if epoch callback is allowed for last exposure
  *
  */
 struct cam_ife_csid_ver2_path_cfg {
@@ -330,6 +331,7 @@ struct cam_ife_csid_ver2_path_cfg {
 	bool                                 handle_camif_irq;
 	bool                                 ts_comb_vcdt_en;
 	bool                                 is_aeb_en;
+	bool                                 allow_epoch_cb;
 };
 
 struct cam_ife_csid_ver2_top_reg_info {

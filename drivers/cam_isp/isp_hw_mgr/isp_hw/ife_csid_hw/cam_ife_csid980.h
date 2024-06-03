@@ -1886,7 +1886,8 @@ static struct cam_ife_csid_ver2_common_reg_info
 	.camif_irq_support                       = true,
 	.capabilities                            = CAM_IFE_CSID_CAP_SPLIT_RUP_AUP |
 							CAM_IFE_CSID_CAP_SKIP_PATH_CFG1 |
-							CAM_IFE_CSID_CAP_SKIP_EPOCH_CFG,
+							CAM_IFE_CSID_CAP_SKIP_EPOCH_CFG|
+							CAM_IFE_CSID_CAP_MULTI_CTXT,
 	.top_top2_irq_mask                       = 0x80000000,
 	.drv_rup_en_val_map = {
 		2, /*RDI0 */
