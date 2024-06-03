@@ -7290,7 +7290,6 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 	int rc = 0, i;
 	struct cam_ctx_request           *req = NULL;
 	struct cam_isp_ctx_req           *req_isp;
-	struct cam_packet                *packet_u;
 	struct cam_packet                *packet = NULL;
 	size_t                            remain_len = 0;
 	struct cam_hw_prepare_update_args cfg = {0};
@@ -7301,7 +7300,6 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 	struct cam_isp_hw_cmd_args       isp_hw_cmd_args;
 	uint32_t                         packet_opcode = 0;
 	struct cam_isp_ch_ctx_fcg_config_internal *sfe_ch_ctx_fcg, *ife_ch_ctx_fcg;
-	size_t                           packet_size = 0;
 
 	CAM_DBG(CAM_ISP, "get free request object......ctx_idx: %u, link: 0x%x",
 		ctx->ctx_id, ctx->link_hdl);
@@ -7330,25 +7328,9 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 
 	req_isp = (struct cam_isp_ctx_req *) req->req_priv;
 
-	remain_len = cam_context_parse_config_cmd(ctx, cmd, &packet_u);
-	if (IS_ERR_OR_NULL(packet_u)) {
-		rc = PTR_ERR(packet_u);
-		goto free_req;
-	}
-
-	packet_size = packet_u->header.size;
-	if (packet_size <= remain_len) {
-		rc = cam_common_mem_kdup((void **)&packet,
-			packet_u, packet_size);
-		if (rc) {
-			CAM_ERR(CAM_ISP, "Alloc and copy request %lld packet fail",
-				packet_u->header.request_id);
-			goto free_req;
-		}
-	} else {
-		CAM_ERR(CAM_ISP, "Invalid packet header size %u",
-			packet_size);
-		rc = -EINVAL;
+	remain_len = cam_context_parse_config_cmd(ctx, cmd, &packet);
+	if (IS_ERR_OR_NULL(packet)) {
+		rc = PTR_ERR(packet);
 		goto free_req;
 	}
 
