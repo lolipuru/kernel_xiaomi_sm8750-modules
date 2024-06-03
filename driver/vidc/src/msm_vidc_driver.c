@@ -1651,6 +1651,8 @@ int msm_vidc_set_auto_framerate(struct msm_vidc_inst *inst, u64 timestamp)
 					inst->auto_framerate;
 			if (curr_fr > inst->capabilities[FRAME_RATE].max)
 				curr_fr = inst->capabilities[FRAME_RATE].max;
+			if (curr_fr < inst->capabilities[FRAME_RATE].min)
+				curr_fr = inst->capabilities[FRAME_RATE].min;
 		}
 		prev = ts;
 		counter++;
@@ -2157,6 +2159,28 @@ static bool is_single_session(struct msm_vidc_inst *inst)
 	return count == 1;
 }
 
+int msm_vidc_session_command(struct msm_vidc_inst *inst,
+	u32 cmd, enum msm_vidc_port_type port, u32 payload_type,
+	void *payload, u32 payload_size, const char *func)
+{
+	int rc = 0;
+
+	rc = venus_hfi_session_command(inst,
+				cmd,
+				(HFI_HOST_FLAGS_RESPONSE_REQUIRED |
+				HFI_HOST_FLAGS_INTR_REQUIRED),
+				get_hfi_port(inst, port),
+				inst->session_id,
+				payload_type,
+				payload,
+				payload_size,
+				func);
+	if (rc)
+		return rc;
+
+	return rc;
+}
+
 void msm_vidc_allow_dcvs(struct msm_vidc_inst *inst)
 {
 	bool allow = false;
@@ -2469,8 +2493,8 @@ void msm_vidc_stats_handler(struct work_struct *work)
 
 	inst = container_of(work, struct msm_vidc_inst, stats_work.work);
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !inst->packet) {
-		d_vpr_e("%s: invalid params\n", __func__);
+	if (!inst) {
+		d_vpr_e("%s: invalid inst\n", __func__);
 		return;
 	}
 
@@ -2478,7 +2502,6 @@ void msm_vidc_stats_handler(struct work_struct *work)
 	msm_vidc_print_stats(inst);
 	schedule_stats_work(inst);
 	inst_unlock(inst, __func__);
-
 	put_inst(inst);
 }
 
@@ -3329,24 +3352,33 @@ int msm_vidc_remove_dangling_session(struct msm_vidc_inst *inst)
 
 int msm_vidc_session_open(struct msm_vidc_inst *inst)
 {
+	struct msm_vidc_core *core = NULL;
+	const u32 packet_size = 4096;
+	u8 *packet = NULL;
 	int rc = 0;
 
-	inst->packet_size = 4096;
-	inst->packet = vzalloc(inst->packet_size);
-	if (!inst->packet) {
+	packet = vzalloc(packet_size);
+	if (!packet) {
 		i_vpr_e(inst, "%s: allocation failed\n", __func__);
 		return -ENOMEM;
 	}
+	core = inst->core;
 
-	rc = venus_hfi_session_open(inst);
+	core_lock(core, __func__);
+	inst->packet_size = packet_size;
+	inst->packet = packet;
+
+	rc = venus_hfi_session_open_locked(inst);
 	if (rc)
-		goto error;
+		goto unlock;
 
-	return 0;
-error:
-	i_vpr_e(inst, "%s(): session open failed\n", __func__);
-	vfree(inst->packet);
-	inst->packet = NULL;
+unlock:
+	if (rc) {
+		i_vpr_e(inst, "%s(): session open failed\n", __func__);
+		vfree(inst->packet);
+		inst->packet = NULL;
+	}
+	core_unlock(core, __func__);
 	return rc;
 }
 
@@ -3485,11 +3517,6 @@ int msm_vidc_session_close(struct msm_vidc_inst *inst)
 		wait_for_response = false;
 	}
 
-	/* we are not supposed to send any more commands after close */
-	i_vpr_h(inst, "%s: free session packet data\n", __func__);
-	vfree(inst->packet);
-	inst->packet = NULL;
-
 	if (wait_for_response) {
 		i_vpr_h(inst, "%s: wait on close for time: %lld ms\n",
 		__func__, core->capabilities[HW_RESPONSE_TIMEOUT].value);
@@ -3508,6 +3535,15 @@ int msm_vidc_session_close(struct msm_vidc_inst *inst)
 		}
 		inst_lock(inst, __func__);
 	}
+
+	core_lock(core, __func__);
+	if (inst->packet) {
+		/* we are not supposed to send any more commands after close */
+		i_vpr_h(inst, "%s: free session packet data\n", __func__);
+		vfree(inst->packet);
+		inst->packet = NULL;
+	}
+	core_unlock(core, __func__);
 
 	return rc;
 }
@@ -4255,7 +4291,7 @@ void msm_vidc_stability_handler(struct work_struct *work)
 	inst = container_of(work, struct msm_vidc_inst, stability_work);
 	inst = get_inst_ref(g_core, inst);
 	if (!inst) {
-		d_vpr_e("%s: invalid params\n", __func__);
+		d_vpr_e("%s: invalid inst\n", __func__);
 		return;
 	}
 
@@ -4307,12 +4343,12 @@ void msm_vidc_batch_handler(struct work_struct *work)
 
 	inst = container_of(work, struct msm_vidc_inst, decode_batch.work.work);
 	inst = get_inst_ref(g_core, inst);
-	if (!inst || !inst->core) {
-		d_vpr_e("%s: invalid params\n", __func__);
+	if (!inst) {
+		d_vpr_e("%s: invalid inst\n", __func__);
 		return;
 	}
-
 	core = inst->core;
+
 	inst_lock(inst, __func__);
 	if (is_session_error(inst)) {
 		i_vpr_e(inst, "%s: failled. Session error\n", __func__);

@@ -940,13 +940,14 @@ static int msm_vdec_subscribe_input_port_settings_change(struct msm_vidc_inst *i
 	payload[0] = HFI_MODE_PORT_SETTINGS_CHANGE;
 	for (i = 0; i < subscribe_psc_size; i++)
 		payload[i + 1] = psc[i];
-	rc = venus_hfi_session_command(inst,
+	rc = msm_vidc_session_command(inst,
 			HFI_CMD_SUBSCRIBE_MODE,
 			port,
 			HFI_PAYLOAD_U32_ARRAY,
 			&payload[0],
 			((subscribe_psc_size + 1) *
-			sizeof(u32)));
+			sizeof(u32)),
+			__func__);
 
 	for (i = 0; i < subscribe_psc_size; i++) {
 		/* set session properties */
@@ -1052,12 +1053,13 @@ static int msm_vdec_subscribe_property(struct msm_vidc_inst *inst,
 		return -EINVAL;
 	}
 
-	rc = venus_hfi_session_command(inst,
+	rc = msm_vidc_session_command(inst,
 			HFI_CMD_SUBSCRIBE_MODE,
 			port,
 			HFI_PAYLOAD_U32_ARRAY,
 			&payload[0],
-			(count + 1) * sizeof(u32));
+			(count + 1) * sizeof(u32),
+			__func__);
 	if (rc)
 		return rc;
 
@@ -1109,12 +1111,13 @@ int msm_vdec_subscribe_metadata(struct msm_vidc_inst *inst,
 		return -EINVAL;
 	}
 
-	rc = venus_hfi_session_command(inst,
+	rc = msm_vidc_session_command(inst,
 			HFI_CMD_SUBSCRIBE_MODE,
 			port,
 			HFI_PAYLOAD_U32_ARRAY,
 			&payload[0],
-			(count + 1) * sizeof(u32));
+			(count + 1) * sizeof(u32),
+			__func__);
 	if (rc)
 		return rc;
 
@@ -1165,12 +1168,13 @@ static int msm_vdec_set_delivery_mode_metadata(struct msm_vidc_inst *inst,
 		return -EINVAL;
 	}
 
-	rc = venus_hfi_session_command(inst,
+	rc = msm_vidc_session_command(inst,
 			HFI_CMD_DELIVERY_MODE,
 			port,
 			HFI_PAYLOAD_U32_ARRAY,
 			&payload[0],
-			(count + 1) * sizeof(u32));
+			(count + 1) * sizeof(u32),
+			__func__);
 	if (rc)
 		return rc;
 
@@ -1228,12 +1232,13 @@ static int msm_vdec_set_delivery_mode_property(struct msm_vidc_inst *inst,
 		return -EINVAL;
 	}
 
-	rc = venus_hfi_session_command(inst,
+	rc = msm_vidc_session_command(inst,
 			HFI_CMD_DELIVERY_MODE,
 			port,
 			HFI_PAYLOAD_U32_ARRAY,
 			&payload[0],
-			(count + 1) * sizeof(u32));
+			(count + 1) * sizeof(u32),
+			__func__);
 	if (rc)
 		return rc;
 
@@ -1663,13 +1668,14 @@ static int msm_vdec_subscribe_output_port_settings_change(struct msm_vidc_inst *
 	for (i = 0; i < subscribe_psc_size; i++)
 		payload[i + 1] = psc[i];
 
-	rc = venus_hfi_session_command(inst,
+	rc = msm_vidc_session_command(inst,
 			HFI_CMD_SUBSCRIBE_MODE,
 			port,
 			HFI_PAYLOAD_U32_ARRAY,
 			&payload[0],
 			((subscribe_psc_size + 1) *
-			sizeof(u32)));
+			sizeof(u32)),
+			__func__);
 
 	subsc_params = inst->subcr_params[port];
 	for (i = 0; i < subscribe_psc_size; i++) {
