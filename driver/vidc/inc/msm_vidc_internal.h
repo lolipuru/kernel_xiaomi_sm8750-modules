@@ -48,6 +48,7 @@ struct msm_vidc_inst;
 #define V4L2_XFER_FUNC_VIDC_BT2020           207
 #define V4L2_XFER_FUNC_VIDC_ST428            208
 #define V4L2_XFER_FUNC_VIDC_HLG              209
+#define V4L2_XFER_FUNC_VIDC_CUSTLOG          210
 
 /* should be 255 or below due to u8 limitation */
 #define V4L2_YCBCR_VIDC_START                240
@@ -581,6 +582,7 @@ enum msm_vidc_transfer_characteristics {
 	MSM_VIDC_TRANSFER_SMPTE_ST2084_PQ                   = 16,
 	MSM_VIDC_TRANSFER_SMPTE_ST428_1                     = 17,
 	MSM_VIDC_TRANSFER_BT2100_2_HLG                      = 18,
+	MSM_VIDC_TRANSFER_CUSTLOG                           = 254,
 };
 
 enum msm_vidc_matrix_coefficients {
