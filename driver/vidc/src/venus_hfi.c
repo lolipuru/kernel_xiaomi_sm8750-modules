@@ -59,29 +59,6 @@ int __strict_check(struct msm_vidc_core *core, const char *function)
 	return fatal ? -EINVAL : 0;
 }
 
-static bool __validate_instance(struct msm_vidc_core *core,
-		struct msm_vidc_inst *inst, const char *func)
-{
-	bool valid = false;
-	struct msm_vidc_inst *temp;
-	int rc = 0;
-
-	rc = __strict_check(core, func);
-	if (rc)
-		return false;
-
-	list_for_each_entry(temp, &core->instances, list) {
-		if (temp == inst) {
-			valid = true;
-			break;
-		}
-	}
-	if (!valid)
-		i_vpr_e(inst, "%s: invalid inst\n", func);
-
-	return valid;
-}
-
 static void __schedule_power_collapse_work(struct msm_vidc_core *core)
 {
 	if (!core->capabilities[SW_PC].value) {
@@ -1016,13 +993,19 @@ static int venus_hfi_session_command_locked(struct msm_vidc_inst *inst,
 	struct msm_vidc_core *core = inst->core;
 	int rc = 0;
 
+	rc = __strict_check(core, func);
+	if (rc)
+		return rc;
+
+	if (is_session_error(inst)) {
+		i_vpr_e(inst, "%s: failled. Session error\n", func);
+		return -EINVAL;
+	}
+
 	if (!inst->packet) {
 		i_vpr_e(inst, "%s: invalid session\n", func);
 		return -EINVAL;
 	}
-
-	if (!__validate_instance(core, inst, func))
-		return -EINVAL;
 
 	rc = hfi_create_header(inst->packet, inst->packet_size,
 				   session_id,
@@ -1280,13 +1263,14 @@ int venus_hfi_session_property(struct msm_vidc_inst *inst,
 	int rc = 0;
 
 	core_lock(core, __func__);
-	if (!inst->packet) {
-		i_vpr_e(inst, "%s: invalid session\n", __func__);
+	if (is_session_error(inst)) {
+		i_vpr_e(inst, "%s: failled. Session error\n", __func__);
 		rc = -EINVAL;
 		goto unlock;
 	}
 
-	if (!__validate_instance(core, inst, __func__)) {
+	if (!inst->packet) {
+		i_vpr_e(inst, "%s: invalid session\n", __func__);
 		rc = -EINVAL;
 		goto unlock;
 	}
@@ -1481,13 +1465,14 @@ int venus_hfi_queue_super_buffer(struct msm_vidc_inst *inst,
 	int rc = 0;
 
 	core_lock(core, __func__);
-	if (!inst->packet) {
-		i_vpr_e(inst, "%s: invalid session\n", __func__);
+	if (is_session_error(inst)) {
+		i_vpr_e(inst, "%s: failled. Session error\n", __func__);
 		rc = -EINVAL;
 		goto unlock;
 	}
 
-	if (!__validate_instance(core, inst, __func__)) {
+	if (!inst->packet) {
+		i_vpr_e(inst, "%s: invalid session\n", __func__);
 		rc = -EINVAL;
 		goto unlock;
 	}
@@ -1635,13 +1620,14 @@ int venus_hfi_queue_buffer(struct msm_vidc_inst *inst,
 	int rc = 0;
 
 	core_lock(core, __func__);
-	if (!inst->packet) {
-		i_vpr_e(inst, "%s: invalid session\n", __func__);
+	if (is_session_error(inst)) {
+		i_vpr_e(inst, "%s: failled. Session error\n", __func__);
 		rc = -EINVAL;
 		goto unlock;
 	}
 
-	if (!__validate_instance(core, inst, __func__)) {
+	if (!inst->packet) {
+		i_vpr_e(inst, "%s: invalid session\n", __func__);
 		rc = -EINVAL;
 		goto unlock;
 	}
