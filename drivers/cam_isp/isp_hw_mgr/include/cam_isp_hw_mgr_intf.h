@@ -62,6 +62,11 @@
  */
 #define CAM_ISP_SFE_CTX_CFG_MAX                 40
 
+/* Maximum number of channels/contexts for FCG modules */
+#define CAM_ISP_MAX_FCG_CH_CTXS        3
+#define CAM_ISP_IFE_MAX_FCG_CH_CTXS    3
+#define CAM_ISP_SFE_MAX_FCG_CHANNELS   2
+
 /**
  *  enum cam_isp_hw_event_type - Collection of the ISP hardware events
  */

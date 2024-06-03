@@ -1165,7 +1165,7 @@ static int cam_sfe_top_apply_fcg_update(
 	uint32_t                                     num_regval_pairs = 0;
 	int                                          rc = 0, i, j = 0;
 
-	if (!top_priv || (fcg_update->prediction_idx == 0)) {
+	if (!top_priv || !fcg_update || (fcg_update->prediction_idx == 0)) {
 		CAM_ERR(CAM_SFE, "Invalid args");
 		return -EINVAL;
 	}
@@ -1183,6 +1183,12 @@ static int cam_sfe_top_apply_fcg_update(
 		return -EINVAL;
 	}
 
+	if (fcg_config->num_ch_ctx > CAM_ISP_MAX_FCG_CH_CTXS) {
+		CAM_ERR(CAM_SFE, "out of bound %d",
+				fcg_config->num_ch_ctx);
+		return -EINVAL;
+	}
+
 	reg_val_pair = CAM_MEM_ZALLOC_ARRAY(fcg_module_info->max_reg_val_pair_size,
 				sizeof(uint32_t),
 				GFP_KERNEL);
@@ -1192,6 +1198,7 @@ static int cam_sfe_top_apply_fcg_update(
 	}
 
 	fcg_index_shift = fcg_module_info->fcg_index_shift;
+
 	for (i = 0, j = 0; i < fcg_config->num_ch_ctx; i++) {
 		if (j >= fcg_module_info->max_reg_val_pair_size) {
 			CAM_ERR(CAM_SFE, "reg_val_pair %d exceeds the array limit %u",
@@ -1379,7 +1386,7 @@ static int cam_sfe_top_fcg_config(
 	int rc;
 
 	if (arg_size != sizeof(struct cam_isp_hw_fcg_cmd)) {
-		CAM_ERR(CAM_SFE, "Invalid cmd size, arg_size: %d, expected size: %d",
+		CAM_ERR(CAM_SFE, "Invalid cmd size, arg_size: %u, expected size: %u",
 			arg_size, sizeof(struct cam_isp_hw_fcg_cmd));
 		return -EINVAL;
 	}
