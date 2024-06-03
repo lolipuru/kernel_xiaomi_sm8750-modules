@@ -359,17 +359,20 @@ static int __cam_tpg_handle_stop_dev(
 		return -EINVAL;
 	}
 	if (tpg_dev->state != CAM_TPG_STATE_START) {
-		CAM_WARN(CAM_TPG, "TPG[%d] not in right state[%d] to stop",
+		CAM_ERR(CAM_TPG, "TPG[%d] not in right state[%d] to stop",
 				tpg_dev->soc_info.index, tpg_dev->state);
+		rc = -EINVAL;
 	}
-	rc = tpg_hw_stop(&tpg_dev->tpg_hw);
+
+	if (!rc)
+		rc = tpg_hw_stop(&tpg_dev->tpg_hw);
+
 	if (rc) {
 		CAM_ERR(CAM_TPG, "TPG[%d] STOP_DEV failed", tpg_dev->soc_info.index);
 	} else {
 		tpg_dev->state = CAM_TPG_STATE_ACQUIRE;
 		CAM_INFO(CAM_TPG, "TPG[%d] STOP_DEV done.", tpg_dev->soc_info.index);
 	}
-
 	return rc;
 }
 
