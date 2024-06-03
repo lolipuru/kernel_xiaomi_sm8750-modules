@@ -96,7 +96,7 @@ static int u_handle_alloc(const char *name, const struct file_operations *fops,
 	fd_install(fd, file);
 	*u_handle = fd;
 
-	pr_debug("fd %d assigned for %s.\n", fd, name);
+	pr_info("fd %d assigned for %s.\n", fd, name);
 
 	return 0;
 }
@@ -965,7 +965,7 @@ static int cbo_dispatch(unsigned int context_id,
 
 	/* START a Transaction. */
 
-	pr_debug("%s invocation with %d arguments and op %lu (context_id %u).\n",
+	pr_info("%s invocation with %d arguments and op %lu (context_id %u).\n",
 		si_object_name(object), nargs, cb_txn->op, context_id);
 
 	if (queue_txn(cb_object->si, cb_txn)) {
@@ -996,12 +996,12 @@ static int cbo_dispatch(unsigned int context_id,
 
 	errno = set_txn_state(cb_txn, XST_TIMEDOUT) ? cb_txn->errno : -EINVAL;
 
-	pr_debug("%s invocation returned with %d (context_id %u).\n",
+	pr_info("%s invocation returned with %d (context_id %u).\n",
 		si_object_name(object), errno, context_id);
 
 	if (errno) {
-		pr_err("%s invocation returned with %d (context_id %u).\n",
-			si_object_name(object), errno, context_id);
+
+		/* We do not receive any notification; do 'cbo_notify' here. */
 
 		dequeue_and_put_txn(cb_txn);
 	}
@@ -1086,7 +1086,7 @@ static void mem_object_release(void *private)
 	if (cb_x) {
 
 		/* Note 'cb_x->object' has not been isinialized. Do not use it! */
-		pr_debug("dma_buf released i.e. cbo-%s%lld\n", cb_x->si->comm, cb_x->u_handle);
+		pr_info("dma_buf released i.e. cbo-%s%lld\n", cb_x->si->comm, cb_x->u_handle);
 
 		cbo_release(&cb_x->object);
 	} else
@@ -1119,7 +1119,7 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 	if (accept->has_resp) {
 		int i, errno = 0;
 
-		pr_debug("%s submit response (context_id %llu)\n", si->comm, accept->txn_id);
+		pr_info("%s submit response (context_id %llu)\n", si->comm, accept->txn_id);
 
 		/* 'CONTEXT_ID_ANY' context ID?! Ignore. */
 		if (!accept->txn_id)
@@ -1204,7 +1204,7 @@ wait_on_request:
 
 	do {
 		if (wait_for_pending_txn(si, &cb_txn)) {
-			pr_debug("%s received a signal.\n", si->comm);
+			pr_info("%s received a signal.\n", si->comm);
 
 			return -ERESTARTSYS;
 		}
@@ -1222,7 +1222,7 @@ wait_on_request:
 			goto out_failed;
 		}
 
-		pr_debug("%s pick request with arguments (%04x) and op %d (context_id %llu)\n",
+		pr_info("%s pick request with arguments (%04x) and op %d (context_id %llu)\n",
 			si->comm, accept->counts, accept->op, accept->txn_id);
 
 		if (copy_to_user((void __user *)accept->buf_addr,
@@ -1449,7 +1449,7 @@ static long process_invoke_req(struct file *filp, unsigned int cmd, unsigned lon
 		}
 	}
 
-	pr_debug("%s object invocation with %d arguments (%04x) and op %d.\n",
+	pr_info("%s object invocation with %d arguments (%04x) and op %d.\n",
 		si_object_name(object), u_args_nr, u_req.counts, u_req.op);
 
 	/* + INITIATE an invocation. */
@@ -1525,7 +1525,7 @@ static long process_invoke_req(struct file *filp, unsigned int cmd, unsigned lon
 		goto out_failed;
 	}
 
-	pr_debug("%s object invocation returned with %d.\n",
+	pr_info("%s object invocation returned with %d.\n",
 		si_object_name(object), u_req.result);
 
 	ret = 0;
@@ -1564,7 +1564,7 @@ static int qtee_release(struct inode *nodp, struct file *filp)
 
 	/* The matching 'get_si_object' is in 'get_u_handle_from_si_object'. */
 
-	pr_debug("%s released.\n", si_object_name(object));
+	pr_info("%s released.\n", si_object_name(object));
 
 	put_si_object(object);
 
