@@ -20,11 +20,15 @@
 #include "internal.h"
 #include "lpass-cdc-clk-rsc.h"
 #include <linux/qti-regmap-debugfs.h>
+#include <linux/proc_fs.h>
 
 #define DRV_NAME "lpass-cdc"
 
 #define LPASS_CDC_VERSION_ENTRY_SIZE 32
 #define LPASS_CDC_STRING_LEN 80
+
+#define REGDUMP_PRINT_LEN 8
+#define REGDUMP_PRINT_STRIDE 4
 
 static const struct snd_soc_component_driver lpass_cdc;
 
@@ -1292,6 +1296,78 @@ err:
 	return;
 }
 
+static int regdump_read(struct regmap *map, int baseReg, int endReg,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int i = 0, ret = 0;
+	size_t pos = 0;
+	char *buf;
+	unsigned int reg_val = 0, reg_len = 0;
+	unsigned int reg_val_len = 0, regdump_wr_len = 0;
+
+	i  = ((int) *ppos + baseReg);
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	reg_len = scnprintf(buf, count, "%x", endReg);
+	reg_val_len = 2 * DIV_ROUND_UP(REGDUMP_PRINT_LEN, 8);
+	regdump_wr_len = reg_len + reg_val_len + 3;
+
+	for (; i >= 0 && i <= endReg; i += REGDUMP_PRINT_STRIDE) {
+
+		scnprintf(buf+pos, count-pos, "%.*x: ", reg_len, i);
+		pos += reg_len + 2;
+		ret = regmap_read(map, i, &reg_val);
+		if (ret == 0)
+			scnprintf(buf+pos, count-pos, "%.*x", reg_val_len, reg_val);
+		else
+			memset(buf+pos, 'X', reg_val_len);
+
+		pos +=  reg_val_len;
+		buf[pos++] = '\n';
+
+		/*
+		 * Check not to overwrite the buffer, by ensuring we have
+		 * space for writing next register data
+		 *
+		 * this is scalable if we use proc or any other fs interface
+		 * as count would take the buf_size passed from userspace
+		 */
+		if ((pos + regdump_wr_len) >= count)
+			break;
+	}
+
+	*ppos = i;
+	ret = pos;
+	if (copy_to_user(user_buf, buf, pos))
+		ret = -EFAULT;
+
+	kfree(buf);
+	return ret;
+}
+
+static ssize_t lpass_cdc_proc_read(struct file *filep, char __user *buf, size_t size, loff_t *ppos)
+{
+	ssize_t ret = 0;
+	struct lpass_cdc_priv *priv = NULL;
+
+	if (!size || !filep || !ppos || !buf || *ppos < 0)
+		return -EINVAL;
+
+	priv = pde_data(file_inode(filep));
+	if (!priv)
+		return -EINVAL;
+
+	ret = regdump_read(priv->regmap, TX_START_OFFSET, WSA2_MAX_OFFSET, buf, size, ppos);
+	return ret;
+}
+
+static const struct proc_ops lpass_cdc_proc_ops = {
+	.proc_read = lpass_cdc_proc_read,
+};
+
 static int lpass_cdc_probe(struct platform_device *pdev)
 {
 	struct lpass_cdc_priv *priv;
@@ -1299,6 +1375,7 @@ static int lpass_cdc_probe(struct platform_device *pdev)
 	int ret;
 	struct clk *lpass_core_hw_vote = NULL;
 	struct clk *lpass_audio_hw_vote = NULL;
+	struct proc_dir_entry *cdc_proc_regdump_file = NULL;
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(struct lpass_cdc_priv),
 			    GFP_KERNEL);
@@ -1341,6 +1418,21 @@ static int lpass_cdc_probe(struct platform_device *pdev)
 	}
 
 	devm_regmap_qti_debugfs_register(priv->dev, priv->regmap);
+
+	priv->lpass_cdc_proc_entry = proc_mkdir("lpass_cdc_reginfo", NULL);
+	if (priv->lpass_cdc_proc_entry) {
+		cdc_proc_regdump_file = proc_create_data("lpass_cdc_regdump", 0444,
+				priv->lpass_cdc_proc_entry, &lpass_cdc_proc_ops, priv);
+		if (!cdc_proc_regdump_file) {
+			dev_err(&pdev->dev,
+					"%s: error creating proc read file interface\n",
+					__func__);
+			proc_remove(priv->lpass_cdc_proc_entry);
+			priv->lpass_cdc_proc_entry = NULL;
+		}
+	} else {
+		dev_err(&pdev->dev, "%s: error creating proc dir interface\n", __func__);
+	}
 
 	priv->read_dev = __lpass_cdc_reg_read;
 	priv->write_dev = __lpass_cdc_reg_write;
@@ -1392,6 +1484,9 @@ static int lpass_cdc_remove(struct platform_device *pdev)
 
 	if (!priv)
 		return -EINVAL;
+
+	if (priv->lpass_cdc_proc_entry)
+		proc_remove(priv->lpass_cdc_proc_entry);
 
 	of_platform_depopulate(&pdev->dev);
 	mutex_destroy(&priv->macro_lock);

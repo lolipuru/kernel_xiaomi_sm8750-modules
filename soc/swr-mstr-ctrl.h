@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SWR_WCD_CTRL_H
@@ -205,6 +205,7 @@ struct swr_mstr_ctrl {
 	struct dentry *debugfs_reg_dump;
 	unsigned int read_data;
 #endif
+	struct proc_dir_entry *swr_mstr_ctrl_proc_entry;
 };
 
 #endif /* _SWR_WCD_CTRL_H */

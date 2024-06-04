@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _LPASS_CDC_INTERNAL_H
@@ -99,6 +99,7 @@ struct lpass_cdc_priv {
 	u8 dmic_2_3_clk_div;
 	u8 dmic_4_5_clk_div;
 	u8 dmic_6_7_clk_div;
+	struct proc_dir_entry *lpass_cdc_proc_entry;
 };
 
 struct regmap *lpass_cdc_regmap_init(struct device *dev,

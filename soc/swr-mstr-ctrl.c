@@ -27,6 +27,7 @@
 #include "swr-slave-registers.h"
 #include <dsp/digital-cdc-rsc-mgr.h>
 #include "swr-mstr-ctrl.h"
+#include <linux/proc_fs.h>
 
 #define SWR_NUM_PORTS    4 /* TODO - Get this info from DT */
 
@@ -3038,6 +3039,56 @@ static void swrm_notify_work_fn(struct work_struct *work)
 	swrm_wcd_notify(swrm->pdev, SWR_DEVICE_DOWN, NULL);
 }
 
+
+static ssize_t swr_mstr_ctrl_proc_read(struct file *filep, char __user *buf,
+		size_t size, loff_t *ppos)
+{
+	int i, reg_val, len;
+	ssize_t ret = 0;
+	char tmp_buf[SWR_MSTR_MAX_BUF_LEN];
+	struct swr_mstr_ctrl *swrm = NULL;
+
+	if (!size || !filep || !ppos || !buf || *ppos < 0)
+		return -EINVAL;
+
+	swrm = pde_data(file_inode(filep));
+	if (!swrm)
+		return -EINVAL;
+
+	i = ((int) *ppos + SWRM_BASE);
+
+	for (; i <= SWRM_MAX_REGISTER; i += 4) {
+
+		/* No registers between SWRM_REG_GAP_START to SWRM_REG_GAP_END */
+		if (i > SWRM_REG_GAP_START && i < SWRM_REG_GAP_END)
+			continue;
+
+		usleep_range(100, 150);
+		reg_val = swr_master_read(swrm, i);
+		len = scnprintf(tmp_buf, 25, "0x%.3x: 0x%.2x\n", i, reg_val);
+		if (len < 0) {
+			ret = -EFAULT;
+			goto copy_err;
+		}
+		if ((ret + len) >= size - 1)
+			break;
+		if (copy_to_user((buf + ret), tmp_buf, len)) {
+			ret = -EFAULT;
+			goto copy_err;
+		}
+		*ppos += 4;
+		ret += len;
+	}
+
+copy_err:
+	return ret;
+
+
+}
+static const struct proc_ops swr_mstr_ctrl_proc_ops = {
+	.proc_read = swr_mstr_ctrl_proc_read,
+};
+
 static int swrm_probe(struct platform_device *pdev)
 {
 	struct swr_mstr_ctrl *swrm;
@@ -3047,6 +3098,7 @@ static int swrm_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct clk *lpass_core_hw_vote = NULL;
 	struct clk *lpass_core_audio = NULL;
+	struct proc_dir_entry *swr_mstr_ctrl_regdump_file = NULL;
 	u32 swrm_hw_ver = 0;
 
 	/* Allocate soundwire master driver structure */
@@ -3450,6 +3502,24 @@ static int swrm_probe(struct platform_device *pdev)
 				   &swrm_debug_dump_ops);
 	}
 #endif
+
+	/*
+	 * gracefully handle proc dir creation failure
+	 * if creation fails probe shoul not fail.
+	 */
+	swrm->swr_mstr_ctrl_proc_entry = proc_mkdir(dev_name(&pdev->dev), NULL);
+	if (swrm->swr_mstr_ctrl_proc_entry) {
+		swr_mstr_ctrl_regdump_file = proc_create_data("swr_mstr_ctrl_regdump",
+				0444, swrm->swr_mstr_ctrl_proc_entry,
+				&swr_mstr_ctrl_proc_ops, swrm);
+		if (!swr_mstr_ctrl_regdump_file) {
+			dev_err(&pdev->dev, "%s: error creating proc read interface\n",
+					__func__);
+			proc_remove(swrm->swr_mstr_ctrl_proc_entry);
+			swrm->swr_mstr_ctrl_proc_entry = NULL;
+		}
+	}
+
 	pm_runtime_set_autosuspend_delay(&pdev->dev, auto_suspend_timer);
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_set_active(&pdev->dev);
@@ -3497,6 +3567,9 @@ err_memory_fail:
 static int swrm_remove(struct platform_device *pdev)
 {
 	struct swr_mstr_ctrl *swrm = platform_get_drvdata(pdev);
+
+	if (swrm->swr_mstr_ctrl_proc_entry)
+		proc_remove(swrm->swr_mstr_ctrl_proc_entry);
 
 	if (swrm->reg_irq) {
 		swrm->reg_irq(swrm->handle, swr_mstr_interrupt,

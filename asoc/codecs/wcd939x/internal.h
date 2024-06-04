@@ -153,6 +153,7 @@ struct wcd939x_priv {
 	/* wcd to swr dmic notification */
 	bool notify_swr_dmic;
 	struct blocking_notifier_head notifier;
+	struct proc_dir_entry *wcd939x_proc_entry;
 };
 
 struct wcd939x_micbias_setting {

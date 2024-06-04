@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef WSA883X_INTERNAL_H
@@ -127,6 +127,7 @@ struct wsa883x_priv {
 	struct snd_soc_dai_driver *dai_driver;
 	struct snd_soc_component_driver *driver;
 	unsigned long port_status_mask;
+	struct proc_dir_entry *wsa883x_proc_entry;
 };
 
 #endif /* WSA883X_INTERNAL_H */
