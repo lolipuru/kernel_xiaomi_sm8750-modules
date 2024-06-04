@@ -276,6 +276,22 @@ struct msm_vidc_platform {
 	struct msm_vidc_platform_data data;
 };
 
+struct h264_level_table {
+	u64 level;
+	u64 max_mbsps;
+	u64 max_frame_size;
+	u64 max_bit_rate;
+	u64 max_dpb_mbs;
+};
+
+struct h265_level_table {
+	u64 level;
+	u64 max_mbsps;
+	u64 max_frame_size;
+	u64 max_br_main_tier;
+	u64 max_br_high_tier;
+};
+
 static inline bool is_sys_cache_present(struct msm_vidc_core *core)
 {
 	return !!core->platform->data.subcache_tbl_size;
@@ -350,6 +366,7 @@ int msm_vidc_adjust_sei_cll(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_hdr10plus(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_transcoding_stats(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_open_gop(void *instance, struct v4l2_ctrl *ctrl);
+int msm_vidc_adjust_level_tier(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_set_header_mode(void *instance, enum msm_vidc_inst_capability_type cap_id);
 int msm_vidc_set_deblock_mode(void *instance, enum msm_vidc_inst_capability_type cap_id);
 int msm_vidc_set_min_qp(void *instance, enum msm_vidc_inst_capability_type cap_id);
