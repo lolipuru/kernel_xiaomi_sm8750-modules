@@ -966,6 +966,16 @@ static struct snd_soc_dai_link msm_cdc_qmp_dma_be_dai_links[] = {
 		SND_SOC_DAILINK_REG(va_dma_qmp_normal),
 	},
 	{
+		.name = LPASS_BE_VA_CDC_DMA_TX_1,
+		.stream_name = LPASS_BE_VA_CDC_DMA_TX_1,
+		.capture_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		.ops = &msm_common_be_ops,
+		SND_SOC_DAILINK_REG(va_dma_qmp_lp),
+	},
+	{
 		.name = LPASS_BE_TX_CDC_DMA_TX_4,
 		.stream_name = LPASS_BE_TX_CDC_DMA_TX_4,
 		.capture_only = 1,
@@ -1599,11 +1609,6 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 		}
 
 		memcpy(msm_sun_dai_links + total_links,
-		       msm_va_cdc_dma_be_dai_links,
-		       sizeof(msm_va_cdc_dma_be_dai_links));
-		total_links += ARRAY_SIZE(msm_va_cdc_dma_be_dai_links);
-
-		memcpy(msm_sun_dai_links + total_links,
 		       msm_common_be_dai_links,
 		       sizeof(msm_common_be_dai_links));
 		total_links += ARRAY_SIZE(msm_common_be_dai_links);
@@ -1664,6 +1669,10 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 			       msm_tx_cdc_dma_be_dai_links,
 			       sizeof(msm_tx_cdc_dma_be_dai_links));
 			total_links += ARRAY_SIZE(msm_tx_cdc_dma_be_dai_links);
+			memcpy(msm_sun_dai_links + total_links,
+				msm_va_cdc_dma_be_dai_links,
+				sizeof(msm_va_cdc_dma_be_dai_links));
+			total_links += ARRAY_SIZE(msm_va_cdc_dma_be_dai_links);
 		}
 
 		if (of_find_property(dev->of_node, "swr-haptics-unsupported",
@@ -1730,15 +1739,26 @@ static int msm_int_wsa883x_init(struct snd_soc_pcm_runtime *rtd)
 		component = snd_soc_rtdcom_lookup(rtd, "wsa-codec.1");
 		if (!component) {
 			pr_err("%s: wsa-codec.1 component is NULL\n", __func__);
-			return -EINVAL;
+			component = snd_soc_rtdcom_lookup(rtd, "wsa-codec.2");
+			if (!component) {
+				pr_err("%s: wsa-codec.2 component is NULL\n", __func__);
+				return -EINVAL;
+			}
+			wsa883x_set_channel_map(component, &spkright_ports[0],
+					WSA883X_MAX_SWR_PORTS, &ch_mask[0],
+					&ch_rate[0], &spkright_port_types[0]);
+
+			wsa883x_codec_info_create_codec_entry(pdata->codec_root,
+					component);
+		} else {
+
+			wsa883x_set_channel_map(component, &spkleft_ports[0],
+					WSA883X_MAX_SWR_PORTS, &ch_mask[0],
+					&ch_rate[0], &spkleft_port_types[0]);
+
+			wsa883x_codec_info_create_codec_entry(pdata->codec_root,
+					component);
 		}
-
-		wsa883x_set_channel_map(component, &spkleft_ports[0],
-				WSA883X_MAX_SWR_PORTS, &ch_mask[0],
-				&ch_rate[0], &spkleft_port_types[0]);
-
-		wsa883x_codec_info_create_codec_entry(pdata->codec_root,
-				component);
 	}
 
 	/* If current platform has more than one WSA */
@@ -1815,15 +1835,25 @@ static int msm_int_wsa884x_init(struct snd_soc_pcm_runtime *rtd)
 		component = snd_soc_rtdcom_lookup(rtd, "wsa-codec.1");
 		if (!component) {
 			pr_err("%s: wsa-codec.1 component is NULL\n", __func__);
-			return -EINVAL;
+			component = snd_soc_rtdcom_lookup(rtd, "wsa-codec.2");
+			if (!component) {
+				pr_err("%s: wsa-codec.2 component is NULL\n", __func__);
+				return -EINVAL;
+			}
+			wsa884x_set_channel_map(component, &spkright_ports[0],
+					WSA884X_MAX_SWR_PORTS, &ch_mask[0],
+					&ch_rate[0], &spkright_port_types[0]);
+
+			wsa884x_codec_info_create_codec_entry(pdata->codec_root,
+					component);
+		} else {
+			wsa884x_set_channel_map(component, &spkleft_ports[0],
+				WSA884X_MAX_SWR_PORTS, &ch_mask[0],
+				&ch_rate[0], &spkleft_port_types[0]);
+
+			wsa884x_codec_info_create_codec_entry(pdata->codec_root,
+					component);
 		}
-
-		wsa884x_set_channel_map(component, &spkleft_ports[0],
-			WSA884X_MAX_SWR_PORTS, &ch_mask[0],
-			&ch_rate[0], &spkleft_port_types[0]);
-
-		wsa884x_codec_info_create_codec_entry(pdata->codec_root,
-				component);
 	}
 
 	/* If current platform has more than one WSA */
@@ -2351,7 +2381,8 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "%s: Sound card %s registered\n",
 		 __func__, card->name);
 
-	if (wcd_mbhc_cfg.enable_usbc_analog)
+	if (wcd_mbhc_cfg.enable_usbc_analog ||
+				wcd_mbhc_cfg.usbss_hsj_connect_enable)
 		wcd_mbhc_cfg.swap_gnd_mic = msm_usbc_swap_gnd_mic;
 
 	pdata->wcd_usbss_handle = of_parse_phandle(pdev->dev.of_node,

@@ -38,17 +38,17 @@ enum fu1_usage_modes {
 	FU1_NORMAL_DIV_4 = 1,
 	FU1_NORMAL_DIV_3 = 2,
 	FU1_NORMAL_DIV_2 = 3,
-	FU1_HDR_DIV_4 = 8,
-	FU1_HDR_DIV_3 = 9,
-	FU1_HDR_DIV_2 = 10,
-	FU1_SNR_DIV_6 = 16,
-	FU1_SNR_DIV_8 = 17,
-	FU1_SNR_DIV_4 = 18,
-	FU1_SNR_DIV_3 = 19,
-	FU1_SNR_DIV_2 = 20,
-	FU1_AOP_DIV_4 = 24,
-	FU1_AOP_DIV_3 = 25,
-	FU1_AOP_DIV_2 = 26,
+	FU1_RSVD1_DIV_4 = 8,
+	FU1_RSVD1_DIV_3 = 9,
+	FU1_RSVD1_DIV_2 = 10,
+	FU1_RSVD2_DIV_6 = 16,
+	FU1_RSVD2_DIV_8 = 17,
+	FU1_RSVD2_DIV_4 = 18,
+	FU1_RSVD2_DIV_3 = 19,
+	FU1_RSVD2_DIV_2 = 20,
+	FU1_RSVD3_DIV_4 = 24,
+	FU1_RSVD3_DIV_3 = 25,
+	FU1_RSVD3_DIV_2 = 26,
 	FU1_LP_DIV_16 = 32,
 };
 
@@ -673,24 +673,24 @@ static int qmp_fu1_usage_modes_put(struct snd_kcontrol *kcontrol,
 
 	switch (qmp->fu1_usage_mode) {
 	case FU1_NORMAL_DIV_4:
-	case FU1_HDR_DIV_4:
-	case FU1_SNR_DIV_4:
-	case FU1_AOP_DIV_4:
+	case FU1_RSVD1_DIV_4:
+	case FU1_RSVD2_DIV_4:
+	case FU1_RSVD3_DIV_4:
 		qmp->fu1_channel_rate = qmp->clk_freq / 4;
 		break;
 	case FU1_NORMAL_DIV_3:
-	case FU1_HDR_DIV_3:
-	case FU1_SNR_DIV_3:
-	case FU1_AOP_DIV_3:
+	case FU1_RSVD1_DIV_3:
+	case FU1_RSVD2_DIV_3:
+	case FU1_RSVD3_DIV_3:
 		qmp->fu1_channel_rate = qmp->clk_freq / 3;
 		break;
 	case FU1_NORMAL_DIV_2:
-	case FU1_HDR_DIV_2:
-	case FU1_SNR_DIV_2:
-	case FU1_AOP_DIV_2:
+	case FU1_RSVD1_DIV_2:
+	case FU1_RSVD2_DIV_2:
+	case FU1_RSVD3_DIV_2:
 		qmp->fu1_channel_rate = qmp->clk_freq / 2;
 		break;
-	case FU1_SNR_DIV_6:
+	case FU1_RSVD2_DIV_6:
 		if (qmp->clk_freq == MCLK_12P288MHZ) {
 			dev_info(component->dev, "div6 unsupported for MCLK 12.288MHz, setting to div4\n");
 			qmp->fu1_channel_rate = qmp->clk_freq / 4;
@@ -698,7 +698,7 @@ static int qmp_fu1_usage_modes_put(struct snd_kcontrol *kcontrol,
 			qmp->fu1_channel_rate = qmp->clk_freq / 6;
 		}
 		break;
-	case FU1_SNR_DIV_8:
+	case FU1_RSVD2_DIV_8:
 		if (qmp->clk_freq == MCLK_9P6MHZ) {
 			dev_info(component->dev, "div8 unsupported for MCLK 9.288MHz, setting to div4\n");
 			qmp->fu1_channel_rate = qmp->clk_freq / 4;
@@ -792,9 +792,9 @@ SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(tx_master_port_text), tx_master_port_text);
 
 static const char * const fu1_usage_modes_text[] = {
 	"UNDEF0", "NORMAL_DIV_4", "NORMAL_DIV_3", "NORMAL_DIV_2", "UNDEF4", "UNDEF5",
-	"UNDEF6", "UNDEF7", "HDR_DIV_4", "HDR_DIV_3", "HDR_DIV_2", "UNDEF11", "UNDEF12",
-	"UNDEF13", "UNDEF14", "UNDEF15", "SNR_DIV_6", "SNR_DIV_8", "SNR_DIV_4", "SNR_DIV_3",
-	"SNR_DIV_2", "UNDEF21", "UNDEF22", "UNDEF23", "AOP_DIV_4", "AOP_DIV_3", "AOP_DIV_2",
+	"UNDEF6", "UNDEF7", "RSVD1_DIV_4", "RSVD1_DIV_3", "RSVD1_DIV_2", "UNDEF11", "UNDEF12",
+	"UNDEF13", "UNDEF14", "UNDEF15", "RSVD2_DIV_6", "RSVD2_DIV_8", "RSVD2_DIV_4", "RSVD2_DIV_3",
+	"RSVD2_DIV_2", "UNDEF21", "UNDEF22", "UNDEF23", "RSVD3_DIV_4", "RSVD3_DIV_3", "RSVD3_DIV_2",
 	"UNDEF27", "UNDEF28", "UNDEF29", "UNDEF30", "UNDEF31", "LP_DIV_16",
 };
 
