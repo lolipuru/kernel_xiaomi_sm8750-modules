@@ -204,11 +204,20 @@ int cnss_set_pci_link(struct cnss_pci_data *pci_priv, bool link_up)
 	return 0;
 }
 
+static inline int __cnss_pci_prevent_l1(struct device *dev)
+{
+	return 0;
+}
+
 int cnss_pci_prevent_l1(struct device *dev)
 {
 	return 0;
 }
 EXPORT_SYMBOL(cnss_pci_prevent_l1);
+
+static inline void __cnss_pci_allow_l1(struct device *dev)
+{
+}
 
 void cnss_pci_allow_l1(struct device *dev)
 {
