@@ -249,10 +249,13 @@ enum sde_sim_qsync_event {
  * @dynamic_irqs_config         bitmask config to enable encoder dynamic irqs
  * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  * @ops:                        Encoder ops from init function
+ * @res_switch:                 Boolean to indicate its a resolution switch frame.
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
  * @cesta_flush_active:         Boolean indicating cesta override flush_active bit is set
+ * @cesta_op_group_req:		Boolean indicating CTL op_group setting is required for the frame.
+ *				This is required as a workaround for resolution switch cases.
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -328,9 +331,11 @@ struct sde_encoder_virt {
 
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
+	bool res_switch;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
 	bool cesta_force_active;
+	bool cesta_op_group_req;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)

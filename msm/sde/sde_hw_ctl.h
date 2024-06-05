@@ -500,6 +500,13 @@ struct sde_hw_ctl_ops {
 	u32 (*get_ctl_intf)(struct sde_hw_ctl *ctx);
 
 	/**
+	 * control the group setting in ctl_top.
+	 * @ctx		: ctl path ctx pointer
+	 * @enable	: flag to enable/disable group setting
+	 */
+	void (*update_ctl_top_group)(struct sde_hw_ctl *ctx, bool enable);
+
+	/**
 	 * read CTL layers register value and return
 	 * the data.
 	 * @ctx       : ctl path ctx pointer
