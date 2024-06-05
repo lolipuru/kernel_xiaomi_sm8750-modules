@@ -4777,9 +4777,15 @@ void icnss_add_fw_prefix_name(struct icnss_priv *priv, char *prefix_name,
 	if (priv->device_id == ADRASTEA_DEVICE_ID)
 		scnprintf(prefix_name, ICNSS_MAX_FILE_NAME,
 			  ADRASTEA_PATH_PREFIX "%s", name);
-	else if (priv->device_id == WCN6750_DEVICE_ID)
-		scnprintf(prefix_name, ICNSS_MAX_FILE_NAME,
-			  QCA6750_PATH_PREFIX "%s", name);
+	else if (priv->device_id == WCN6750_DEVICE_ID) {
+		if (priv->wcn_hw_version) {
+			scnprintf(prefix_name, ICNSS_MAX_FILE_NAME,
+				  "%s/%s", priv->wcn_hw_version, name);
+		} else {
+			scnprintf(prefix_name, ICNSS_MAX_FILE_NAME,
+				  QCA6750_PATH_PREFIX "%s", name);
+		}
+	}
 	else if (priv->device_id == WCN6450_DEVICE_ID)
 		scnprintf(prefix_name, ICNSS_MAX_FILE_NAME,
 			  WCN6450_PATH_PREFIX "%s", name);
@@ -4817,6 +4823,9 @@ MODULE_DEVICE_TABLE(of, icnss_dt_match);
 
 static void icnss_init_control_params(struct icnss_priv *priv)
 {
+	const char *hw_version;
+	int ret;
+
 	priv->ctrl_params.qmi_timeout = WLFW_TIMEOUT;
 	priv->ctrl_params.quirks = ICNSS_QUIRKS_DEFAULT;
 	priv->ctrl_params.bdf_type = ICNSS_BDF_TYPE_DEFAULT;
@@ -4827,6 +4836,14 @@ static void icnss_init_control_params(struct icnss_priv *priv)
 	    of_property_read_bool(priv->pdev->dev.of_node,
 				  "wpss-support-enable"))
 		priv->wpss_supported = true;
+
+	if (priv->device_id == WCN6750_DEVICE_ID) {
+		ret = of_property_read_string(priv->pdev->dev.of_node,
+					      "wcn-hw-version",
+					      &hw_version);
+		if (!ret)
+			priv->wcn_hw_version = hw_version;
+	}
 
 	if (of_property_read_bool(priv->pdev->dev.of_node,
 				  "bdf-download-support"))

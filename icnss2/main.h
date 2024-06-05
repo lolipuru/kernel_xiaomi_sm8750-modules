@@ -556,6 +556,7 @@ struct icnss_priv {
 	bool rproc_fw_download;
 	u64 feature_list;
 	struct wlchip_serial_id_v01 serial_id;
+	const char *wcn_hw_version;
 };
 
 struct icnss_reg_info {
