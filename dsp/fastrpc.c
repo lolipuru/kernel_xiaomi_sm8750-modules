@@ -4132,7 +4132,7 @@ static int fastrpc_get_info_from_kernel(struct fastrpc_ioctl_capability *cap,
 		kfree(dsp_attributes);
 		return -EOPNOTSUPP;
 	} else if (err) {
-		dev_err(cctx->dev, "Error: dsp information is incorrect err: %d\n", err);
+		dev_dbg(cctx->dev, "Failed to get dsp information err: %d\n", err);
 		kfree(dsp_attributes);
 		return err;
 	}
