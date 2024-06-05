@@ -51,6 +51,7 @@
 #include <linux/soc/qcom/slate_events_bridge_intf.h>
 #include <uapi/linux/slatecom_interface.h>
 #endif
+#include <linux/qcom-iommu-util.h>
 #include "main.h"
 #include "qmi.h"
 #include "debug.h"
@@ -4573,6 +4574,108 @@ static int icnss_smmu_fault_handler(struct iommu_domain *domain,
 	return -ENOSYS;
 }
 
+#ifdef CONFIG_CNSS2_SMMU_DB_SUPPORT
+#define PCIE_LOCAL_REG_APPS_TO_Q6	0x3224
+#define PCIE_LOCAL_REG_WCSS_IE_IRQ	0x3228
+
+static void icnss_record_smmu_fault_timestamp(struct icnss_priv *priv,
+					      enum icnss_smmu_fault_time id)
+{
+	if (id >= SMMU_CB_MAX)
+		return;
+
+	priv->smmu_fault_timestamp[id] = sched_clock();
+}
+
+static inline void icnss_pci_set_suspended(struct icnss_priv *priv, int val)
+{
+	atomic_set(&priv->suspended, val);
+}
+
+static inline int icnss_pci_get_suspended(struct icnss_priv *priv)
+{
+	return atomic_read(&priv->suspended);
+}
+
+static int icnss_ring_doorbell(struct icnss_priv *priv, enum icnss_db_msg msg)
+{
+	if (!icnss_pci_get_suspended(priv)) {
+		iowrite32(msg, priv->mem_base_va + PCIE_LOCAL_REG_APPS_TO_Q6);
+		iowrite32(1, priv->mem_base_va + PCIE_LOCAL_REG_WCSS_IE_IRQ);
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+static void icnss_pci_smmu_fault_handler_irq(struct iommu_domain *domain,
+					     void *handler_token)
+{
+	struct icnss_priv *priv = handler_token;
+	int ret = 0;
+	struct icnss_uevent_fw_down_data fw_down_data = {0};
+
+	icnss_record_smmu_fault_timestamp(priv, SMMU_CB_ENTRY);
+	if (test_bit(ICNSS_FW_READY, &priv->state)) {
+		fw_down_data.crashed = true;
+		icnss_call_driver_uevent(priv, ICNSS_UEVENT_SMMU_FAULT,
+					 &fw_down_data);
+		icnss_call_driver_uevent(priv, ICNSS_UEVENT_FW_DOWN,
+					 &fw_down_data);
+	}
+
+	icnss_record_smmu_fault_timestamp(priv, SMMU_CB_DOORBELL_RING);
+	ret = icnss_ring_doorbell(priv, DB_MSG_SMMU_FAULT);
+	if (!ret)
+		icnss_pr_dbg("Sent SNOC trace stop indication");
+	else
+		icnss_trigger_recovery(&priv->pdev->dev);
+
+	icnss_record_smmu_fault_timestamp(priv, SMMU_CB_EXIT);
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
+void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
+{
+	struct platform_device *pdev = priv->pdev;
+	struct device *dev = &pdev->dev;
+
+	qcom_iommu_register_device_fault_handler_irq(
+				dev, icnss_pci_smmu_fault_handler_irq,
+				priv);
+}
+
+void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
+{
+	struct platform_device *pdev = priv->pdev;
+	struct device *dev = &pdev->dev;
+
+	iommu_unregister_device_fault_handler(dev);
+}
+#else
+void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
+{
+	qcom_iommu_set_fault_handler_irq(priv->iommu_domain,
+					 icnss_pci_smmu_fault_handler_irq,
+					 priv);
+}
+
+static inline
+void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
+{
+}
+#endif
+#else
+void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
+{
+}
+
+static inline
+void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
+{
+}
+#endif
+
 static int icnss_smmu_dt_parse(struct icnss_priv *priv)
 {
 	int ret = 0;
@@ -4610,6 +4713,8 @@ static int icnss_smmu_dt_parse(struct icnss_priv *priv)
 				iommu_set_fault_handler(priv->iommu_domain,
 						icnss_smmu_fault_handler,
 						priv);
+			else if (priv->device_id == WCN7750_DEVICE_ID)
+				icnss_register_iommu_fault_handler_irq(priv);
 		}
 
 		res = platform_get_resource_byname(pdev,
@@ -5078,6 +5183,8 @@ static int icnss_remove(struct platform_device *pdev)
 	if (priv->event_wq)
 		destroy_workqueue(priv->event_wq);
 
+	if (priv->device_id == WCN7750_DEVICE_ID)
+		icnss_unregister_iommu_fault_handler(priv);
 	priv->iommu_domain = NULL;
 
 	icnss_hw_power_off(priv);
@@ -5143,6 +5250,7 @@ static int icnss_pm_suspend(struct device *dev)
 
 			ret = icnss_send_smp2p(priv, ICNSS_POWER_SAVE_ENTER,
 					       ICNSS_SMP2P_OUT_POWER_SAVE);
+			icnss_pci_set_suspended(priv, 1);
 		}
 		priv->stats.pm_suspend++;
 		set_bit(ICNSS_PM_SUSPEND, &priv->state);
@@ -5171,7 +5279,7 @@ static int icnss_pm_resume(struct device *dev)
 		goto out;
 
 	ret = priv->ops->pm_resume(dev);
-
+	icnss_pci_set_suspended(priv, 0);
 out:
 	if (ret == 0) {
 		priv->stats.pm_resume++;
@@ -5269,6 +5377,7 @@ static int icnss_pm_runtime_suspend(struct device *dev)
 
 		ret = icnss_send_smp2p(priv, ICNSS_POWER_SAVE_ENTER,
 				       ICNSS_SMP2P_OUT_POWER_SAVE);
+		icnss_pci_set_suspended(priv, 1);
 	}
 out:
 	return ret;
@@ -5297,7 +5406,7 @@ static int icnss_pm_runtime_resume(struct device *dev)
 	icnss_pr_vdbg("Runtime resume, state: 0x%lx\n", priv->state);
 
 	ret = priv->ops->runtime_resume(dev);
-
+	icnss_pci_set_suspended(priv, 0);
 out:
 	return ret;
 }

@@ -251,7 +251,8 @@ static void cnss_wlfw_host_cap_parse_mlo(struct cnss_plat_data *plat_priv,
 {
 	if (plat_priv->device_id == KIWI_DEVICE_ID ||
 	    plat_priv->device_id == MANGO_DEVICE_ID ||
-	    plat_priv->device_id == PEACH_DEVICE_ID) {
+	    plat_priv->device_id == PEACH_DEVICE_ID ||
+	    plat_priv->device_id == COLOGNE_DEVICE_ID) {
 		req->mlo_capable_valid = 1;
 		req->mlo_capable = 1;
 		req->mlo_chip_id_valid = 1;
@@ -1897,7 +1898,8 @@ int cnss_wlfw_wlan_cfg_send_sync(struct cnss_plat_data *plat_priv,
 
 	if (plat_priv->device_id != KIWI_DEVICE_ID &&
 	    plat_priv->device_id != MANGO_DEVICE_ID &&
-	    plat_priv->device_id != PEACH_DEVICE_ID) {
+	    plat_priv->device_id != PEACH_DEVICE_ID &&
+	    plat_priv->device_id != COLOGNE_DEVICE_ID) {
 		if (plat_priv->device_id == QCN7605_DEVICE_ID &&
 		    config->num_shadow_reg_cfg) {
 			req->shadow_reg_valid = 1;
@@ -2926,6 +2928,7 @@ static void cnss_wlfw_fw_init_done_ind_cb(struct qmi_handle *qmi_wlfw,
 {
 	struct cnss_plat_data *plat_priv =
 		container_of(qmi_wlfw, struct cnss_plat_data, qmi_wlfw);
+	const struct wlfw_fw_init_done_ind_msg_v01 *ind_msg = data;
 
 	cnss_pr_dbg("Received QMI WLFW FW initialization done indication\n");
 
@@ -2933,7 +2936,11 @@ static void cnss_wlfw_fw_init_done_ind_cb(struct qmi_handle *qmi_wlfw,
 		cnss_pr_err("Spurious indication\n");
 		return;
 	}
-
+	if (ind_msg->soft_sku_features_valid) {
+		plat_priv->sku_features = ind_msg->soft_sku_features;
+		cnss_pr_dbg("SKU features enabled: %llu",
+			    plat_priv->sku_features);
+	}
 	cnss_driver_event_post(plat_priv, CNSS_DRIVER_EVENT_FW_READY, 0, NULL);
 }
 

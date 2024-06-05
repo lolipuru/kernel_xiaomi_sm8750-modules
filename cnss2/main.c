@@ -633,8 +633,8 @@ bool cnss_get_fw_cap(struct device *dev, enum cnss_fw_caps fw_cap)
 
 	switch (fw_cap) {
 	case CNSS_FW_CAP_DIRECT_LINK_SUPPORT:
-		is_supported = !!(plat_priv->fw_caps &
-				  QMI_WLFW_DIRECT_LINK_SUPPORT_V01);
+		is_supported = !!(plat_priv->sku_features &
+				  QMI_WLFW_DIRECT_LINK_SKU_SUPPORT_V01);
 		break;
 	case CNSS_FW_CAP_CALDB_SEG_DDR_SUPPORT:
 		is_supported = !!(plat_priv->fw_caps &
@@ -959,6 +959,7 @@ static bool cnss_is_aux_support_enabled(struct cnss_plat_data *plat_priv)
 {
 	switch (plat_priv->device_id) {
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		if (!plat_priv->fw_aux_uc_support) {
 			cnss_pr_dbg("FW does not support aux uc capability\n");
 			return false;
@@ -2538,6 +2539,7 @@ static int cnss_cold_boot_cal_start_hdlr(struct cnss_plat_data *plat_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		break;
 	default:
 		cnss_pr_err("Not supported for device ID 0x%lx\n",
@@ -3797,6 +3799,7 @@ int cnss_register_ramdump(struct cnss_plat_data *plat_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		ret = cnss_register_ramdump_v2(plat_priv);
 		break;
 	default:
@@ -3820,6 +3823,7 @@ void cnss_unregister_ramdump(struct cnss_plat_data *plat_priv)
 	case KIWI_DEVICE_ID:
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
+	case COLOGNE_DEVICE_ID:
 		cnss_unregister_ramdump_v2(plat_priv);
 		break;
 	default:
@@ -4891,6 +4895,15 @@ static void cnss_deinitialize_mem_pool(void)
 }
 #endif
 
+void cnss_fmd_status_update_cb(void *cb_ctx, bool status)
+{
+	struct cnss_plat_data *plat_priv = (struct cnss_plat_data *)cb_ctx;
+
+	cnss_pr_dbg("FMD status update: %d\n", status);
+	if (status)
+		set_bit(CNSS_IN_REBOOT, &plat_priv->driver_state);
+}
+
 static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 {
 	int ret;
@@ -4935,12 +4948,16 @@ static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 		cnss_pr_err("QMI IPC connection call back register failed, err = %d\n",
 			    ret);
 
+	cnss_utils_register_status_notifier(CNSS_UTILS_FMD_STATUS,
+					    cnss_fmd_status_update_cb,
+					    plat_priv);
 	cnss_sram_dump_init(plat_priv);
 
 	if (of_property_read_bool(plat_priv->plat_dev->dev.of_node,
 				  "qcom,rc-ep-short-channel"))
 		cnss_set_feature_list(plat_priv, CNSS_RC_EP_ULTRASHORT_CHANNEL_V01);
-	if (plat_priv->device_id == PEACH_DEVICE_ID)
+	if (plat_priv->device_id == PEACH_DEVICE_ID ||
+	    plat_priv->device_id == COLOGNE_DEVICE_ID)
 		cnss_set_feature_list(plat_priv, CNSS_AUX_UC_SUPPORT_V01);
 
 	return 0;
@@ -5044,6 +5061,7 @@ static const struct platform_device_id cnss_platform_id_table[] = {
 	{ .name = "kiwi", .driver_data = KIWI_DEVICE_ID, },
 	{ .name = "mango", .driver_data = MANGO_DEVICE_ID, },
 	{ .name = "peach", .driver_data = PEACH_DEVICE_ID, },
+	{ .name = "cologne", .driver_data = COLOGNE_DEVICE_ID, },
 	{ .name = "qcaconv", .driver_data = 0, },
 	{ },
 };
@@ -5071,8 +5089,11 @@ static const struct of_device_id cnss_of_match_table[] = {
 		.compatible = "qcom,cnss-peach",
 		.data = (void *)&cnss_platform_id_table[6]},
 	{
-		.compatible = "qcom,cnss-qca-converged",
+		.compatible = "qcom,cnss-cologne",
 		.data = (void *)&cnss_platform_id_table[7]},
+	{
+		.compatible = "qcom,cnss-qca-converged",
+		.data = (void *)&cnss_platform_id_table[8]},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, cnss_of_match_table);

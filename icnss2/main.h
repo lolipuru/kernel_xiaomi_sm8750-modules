@@ -25,6 +25,11 @@
 #include "cnss_common.h"
 #include <linux/mailbox_client.h>
 #include <linux/timer.h>
+#include <linux/sched_clock.h>
+#include <linux/version.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0))
+#include <linux/sched/clock.h>
+#endif
 
 #define THERMAL_NAME_LENGTH 20
 #define ICNSS_SMEM_VALUE_MASK 0xFFFFFFFF
@@ -376,6 +381,18 @@ struct icnss_ramdump_info {
 	struct device *dev;
 };
 
+enum icnss_smmu_fault_time {
+	SMMU_CB_ENTRY,
+	SMMU_CB_DOORBELL_RING,
+	SMMU_CB_EXIT,
+	SMMU_CB_MAX,
+};
+
+enum icnss_db_msg {
+	DB_MSG_INVALID,
+	DB_MSG_SMMU_FAULT,
+};
+
 struct icnss_priv {
 	uint32_t magic;
 	struct platform_device *pdev;
@@ -517,6 +534,8 @@ struct icnss_priv {
 	int last_updated_voltage;
 	struct work_struct soc_update_work;
 	struct workqueue_struct *soc_update_wq;
+	atomic_t suspended;
+	unsigned long long smmu_fault_timestamp[SMMU_CB_MAX];
 	unsigned long device_config;
 	bool wpss_supported;
 	u8 low_power_support;
