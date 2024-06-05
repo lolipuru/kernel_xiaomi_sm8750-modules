@@ -221,6 +221,9 @@
 #endif
 #include "wlan_dlm_api.h"
 #include "os_if_dp_stc.h"
+#ifdef WLAN_FEATURE_TELEMETRY
+#include "os_if_telemetry.h"
+#endif
 
 /*
  * A value of 100 (milliseconds) can be sent to FW.
@@ -292,6 +295,8 @@
 #ifndef WLAN_CIPHER_SUITE_GCMP_256
 #define WLAN_CIPHER_SUITE_GCMP_256 0x000FAC09
 #endif
+
+#define WLAN_MAX_LINK_ID 15
 
 /* Default number of Simultaneous Transmit */
 #define DEFAULT_MAX_STR_LINK_COUNT 1
@@ -2054,6 +2059,10 @@ static const struct nl80211_vendor_cmd_info wlan_hdd_cfg80211_vendor_events[] = 
 		.vendor_id = QCA_NL80211_VENDOR_ID,
 		.subcmd = QCA_NL80211_VENDOR_SUBCMD_FW_PAGE_FAULT_REPORT,
 	},
+#ifdef WLAN_DP_FEATURE_STC
+	FEATURE_FLOW_STATS_EVENTS
+	FEATURE_FLOW_REPORT_EVENTS
+#endif
 };
 
 /**
@@ -4573,6 +4582,7 @@ void wlan_hdd_cfg80211_acs_ch_select_evt(struct wlan_hdd_link_info *link_info,
 	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	struct sap_config *sap_cfg;
 	struct sk_buff *vendor_event;
+	struct wlan_objmgr_vdev *vdev;
 	int ret_val;
 	uint16_t ch_width;
 	uint8_t pri_channel;
@@ -4703,17 +4713,29 @@ void wlan_hdd_cfg80211_acs_ch_select_evt(struct wlan_hdd_link_info *link_info,
 		}
 	}
 
-	if (wlan_vdev_mlme_is_mlo_ap(link_info->vdev)) {
+	vdev = hdd_objmgr_get_vdev_by_user(link_info, WLAN_OSIF_ID);
+	if (!vdev) {
+		hdd_err("Null vdev[%u]. QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID put fail",
+			link_info->vdev_id);
+		wlan_cfg80211_vendor_free_skb(vendor_event);
+		return;
+	}
+
+	if (wlan_vdev_mlme_is_mlo_ap(vdev)) {
 		ret_val = nla_put_u8(vendor_event,
 				     QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID,
-				     wlan_vdev_get_link_id(link_info->vdev));
+				     wlan_vdev_get_link_id(vdev));
 
 		if (ret_val) {
 			hdd_err("QCA_WLAN_VENDOR_ATTR_ACS_LINK_ID put fail");
+			hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
 			wlan_cfg80211_vendor_free_skb(vendor_event);
 			return;
 		}
 	}
+
+	hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
+
 	hdd_debug("ACS result for %s: vdev_id: %d PRI_CH_FREQ: %d SEC_CH_FREQ: %d VHT_SEG0: %d VHT_SEG1: %d ACS_BW: %d punc support: %d punc bitmap: %d",
 		  adapter->dev->name, link_info->vdev_id,
 		  sap_cfg->acs_cfg.pri_ch_freq,
@@ -7224,6 +7246,7 @@ const struct nla_policy wlan_hdd_set_ratemask_param_policy[
 	[QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_TYPE] = {.type = NLA_U8},
 	[QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_BITMAP] = {.type = NLA_BINARY,
 					.len = RATEMASK_PARAMS_BITMAP_MAX},
+	[QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_LINK_ID] = {.type = NLA_U8},
 };
 
 static enum ratemask_param_type
@@ -7245,26 +7268,66 @@ hdd_convert_to_drv_ratemask_type(enum qca_wlan_ratemask_params_type type)
 	}
 }
 
+static int
+hdd_set_ratemask_for_mlo(uint8_t link_id, struct hdd_adapter *adapter,
+			 struct config_ratemask_params *rate_params)
+{
+	int ret;
+	struct wlan_hdd_link_info *link_info;
+	struct wlan_objmgr_vdev *vdev;
+	QDF_STATUS status;
+
+	if (link_id >= WLAN_MAX_LINK_ID) {
+		hdd_err("invalid link_id:%u", link_id);
+		return -EINVAL;
+	}
+
+	link_info = hdd_get_link_info_by_ieee_link_id(adapter, link_id);
+	if (!link_info) {
+		hdd_err("Incorrect link info");
+		return -EINVAL;
+	}
+
+	if (link_info->vdev)
+		vdev = link_info->vdev;
+	else
+		vdev = adapter->deflink->vdev;
+
+	status = wlan_objmgr_vdev_try_get_ref(vdev, WLAN_OSIF_ID);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("Failed to get vdev ref");
+		return -EINVAL;
+	}
+	ret = ucfg_set_ratemask_params(vdev, 1, rate_params);
+	if (ret)
+		hdd_err("ucfg_set_ratemask_params failed");
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_OSIF_ID);
+
+	return ret;
+}
+
 /**
  * hdd_set_ratemask_params() - parse ratemask params
- * @hdd_ctx: HDD context
+ * @adapter: HDD adapter
  * @data: ratemask attribute payload
  * @data_len: length of @data
  * @vdev: vdev to modify
  *
  * Return: 0 on success; error number on failure
  */
-static int hdd_set_ratemask_params(struct hdd_context *hdd_ctx,
+static int hdd_set_ratemask_params(struct hdd_adapter *adapter,
 				   const void *data, int data_len,
 				   struct wlan_objmgr_vdev *vdev)
 {
 	struct nlattr *tb[RATEMASK_PARAMS_MAX + 1];
 	struct nlattr *tb2[RATEMASK_PARAMS_MAX + 1];
-	struct nlattr *curr_attr;
+	struct nlattr *curr_attr, *tmp_attr;
 	int ret, rem;
 	struct config_ratemask_params rate_params[RATEMASK_PARAMS_TYPE_MAX];
 	uint8_t ratemask_type, num_ratemask = 0, len;
 	uint32_t bitmap[RATEMASK_PARAMS_BITMAP_MAX / 4];
+	uint8_t link_id;
+	QDF_STATUS status;
 
 	ret = wlan_cfg80211_nla_parse(tb,
 				      RATEMASK_PARAMS_MAX,
@@ -7332,13 +7395,34 @@ static int hdd_set_ratemask_params(struct hdd_context *hdd_ctx,
 		rate_params[num_ratemask].lower32_2 = bitmap[1];
 		rate_params[num_ratemask].higher32 = bitmap[2];
 		rate_params[num_ratemask].higher32_2 = bitmap[3];
-
+		tmp_attr = tb2[QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_LINK_ID];
+		if (tmp_attr) {
+			link_id = nla_get_u8(tmp_attr);
+			ret = hdd_set_ratemask_for_mlo(link_id, adapter,
+						       rate_params);
+			if (ret) {
+				hdd_err("ucfg_set_ratemask_params failed");
+				return ret;
+			}
+		} else {
+			status = wlan_objmgr_vdev_try_get_ref(vdev,
+							      WLAN_OSIF_ID);
+			if (QDF_IS_STATUS_ERROR(status)) {
+				hdd_err("Failed to get vdev ref");
+				return -EINVAL;
+			}
+			ret = ucfg_set_ratemask_params(vdev, 1, rate_params);
+			if (ret) {
+				hdd_err("ucfg_set_ratemask_params failed");
+				wlan_objmgr_vdev_release_ref(vdev,
+							     WLAN_OSIF_ID);
+				return ret;
+			}
+			wlan_objmgr_vdev_release_ref(vdev, WLAN_OSIF_ID);
+		}
 		num_ratemask += 1;
 	}
 
-	ret = ucfg_set_ratemask_params(vdev, num_ratemask, rate_params);
-	if (ret)
-		hdd_err("ucfg_set_ratemask_params failed");
 	return ret;
 }
 
@@ -7386,7 +7470,7 @@ __wlan_hdd_cfg80211_set_ratemask_config(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	ret = hdd_set_ratemask_params(hdd_ctx, data, data_len, vdev);
+	ret = hdd_set_ratemask_params(adapter, data, data_len, vdev);
 	hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_POWER_ID);
 	if (ret)
 		goto fail;
@@ -8330,7 +8414,7 @@ void hdd_cfr_data_send_nl_event(uint8_t vdev_id, uint32_t pid,
 	vendor_event = wlan_cfg80211_vendor_event_alloc(
 			hdd_ctx->wiphy, &link_info->adapter->wdev, len,
 			QCA_NL80211_VENDOR_SUBCMD_PEER_CFR_CAPTURE_CFG_INDEX,
-			GFP_KERNEL);
+			qdf_mem_malloc_flags());
 
 	if (!vendor_event) {
 		hdd_err("wlan_cfg80211_vendor_event_alloc failed vdev id %d, data len %d",
@@ -8355,7 +8439,7 @@ void hdd_cfr_data_send_nl_event(uint8_t vdev_id, uint32_t pid,
 			hdd_err_rl("nlhdr is null");
 	}
 
-	wlan_cfg80211_vendor_event(vendor_event, GFP_ATOMIC);
+	wlan_cfg80211_vendor_event(vendor_event, qdf_mem_malloc_flags());
 }
 #endif
 
@@ -8609,7 +8693,6 @@ const struct nla_policy wlan_hdd_wifi_config_policy[
 		.type = NLA_U8},
 };
 
-#define WLAN_MAX_LINK_ID 15
 
 static const struct nla_policy
 qca_wlan_vendor_attr_omi_tx_policy [QCA_WLAN_VENDOR_ATTR_OMI_MAX + 1] = {
@@ -12163,6 +12246,67 @@ void wlan_hdd_save_sta_keep_alive_interval(struct hdd_adapter *adapter,
 	adapter->keep_alive_interval = keep_alive_interval;
 }
 
+#ifdef WLAN_FEATURE_11BE_MLO
+/**
+ * hdd_ml_vdev_set_sta_keep_alive_interval() - Set STA KEEPALIVE interval for
+ *                                             all connected ml vdev
+ * @vdev: Pointer to vdev
+ * @hdd_ctx: Pointer to hdd context
+ * @keep_alive_interval: KEEPALIVE interval
+ *
+ * Return: 0 on success, negative on failure
+ */
+static int hdd_ml_vdev_set_sta_keep_alive_interval(
+						struct wlan_objmgr_vdev *vdev,
+						struct hdd_context *hdd_ctx,
+						uint16_t keep_alive_interval)
+{
+	struct wlan_objmgr_vdev *ml_vdev;
+	uint8_t ml_vdev_id;
+	struct wlan_mlo_dev_context *mlo_dev_ctx;
+	struct wlan_hdd_link_info *link_info;
+	int status, i;
+
+	mlo_dev_ctx = vdev->mlo_dev_ctx;
+	if (!mlo_dev_ctx) {
+		hdd_err("MLO dev context null");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < WLAN_UMAC_MLO_MAX_VDEVS ; i++) {
+		ml_vdev = mlo_dev_ctx->wlan_vdev_list[i];
+		if (!ml_vdev)
+			continue;
+
+		ml_vdev_id = ml_vdev->vdev_objmgr.vdev_id;
+		link_info = hdd_get_link_info_by_vdev(hdd_ctx, ml_vdev_id);
+		if (!link_info)
+			continue;
+
+		if (!hdd_is_vdev_in_conn_state(link_info)) {
+			hdd_debug("Vdev (id %d) not in connected/started state",
+				  link_info->vdev_id);
+			continue;
+		}
+
+		status = hdd_vdev_send_sta_keep_alive_interval(link_info,
+							hdd_ctx,
+							keep_alive_interval);
+		if (status)
+			return status;
+	}
+
+	return 0;
+}
+#else
+static inline int hdd_ml_vdev_set_sta_keep_alive_interval(
+						struct wlan_objmgr_vdev *vdev,
+						struct hdd_context *hdd_ctx,
+						uint16_t keep_alive_interval)
+{
+	return -EINVAL;
+}
+#endif
 /**
  * hdd_vdev_set_sta_keep_alive_interval() - Set sta keep alive interval
  * @link_info: Link info pointer.
@@ -12178,6 +12322,7 @@ static int hdd_vdev_set_sta_keep_alive_interval(
 	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	enum QDF_OPMODE device_mode = link_info->adapter->device_mode;
 	uint16_t keep_alive_interval;
+	struct wlan_objmgr_vdev *vdev = link_info->vdev;
 
 	keep_alive_interval = nla_get_u16(attr);
 	if (keep_alive_interval > STA_KEEPALIVE_INTERVAL_MAX ||
@@ -12187,24 +12332,28 @@ static int hdd_vdev_set_sta_keep_alive_interval(
 		return -EINVAL;
 	}
 
-	hdd_debug("sta keep alive interval = %u", keep_alive_interval);
-
 	if (device_mode != QDF_STA_MODE) {
 		hdd_debug("This command is not supported for %s device mode",
 			  device_mode_to_string(device_mode));
 		return -EINVAL;
 	}
 
-	if (!hdd_is_vdev_in_conn_state(link_info)) {
-		hdd_debug("Vdev (id %d) not in connected/started state, cannot accept command",
-			  link_info->vdev_id);
-		return -EINVAL;
-	}
-
+	hdd_debug("sta keep alive interval = %u", keep_alive_interval);
 	wlan_hdd_save_sta_keep_alive_interval(adapter, keep_alive_interval);
 
-	return hdd_vdev_send_sta_keep_alive_interval(link_info, hdd_ctx,
-						     keep_alive_interval);
+	if (!hdd_is_vdev_in_conn_state(link_info)) {
+		hdd_debug("Vdev (id %d) not in connected/started state, configure KEEPALIVE interval after connection",
+			  link_info->vdev_id);
+		return 0;
+	}
+
+	if (!wlan_vdev_mlme_is_mlo_vdev(vdev))
+		return hdd_vdev_send_sta_keep_alive_interval(link_info,
+							hdd_ctx,
+							keep_alive_interval);
+
+	return hdd_ml_vdev_set_sta_keep_alive_interval(vdev, hdd_ctx,
+						       keep_alive_interval);
 }
 
 #ifdef WLAN_FEATURE_11BE_MLO
@@ -13943,6 +14092,166 @@ hdd_set_interdependent_configuration(struct wlan_hdd_link_info *link_info,
 }
 
 /**
+ * __wlan_hdd_cfg80211_sap_suspend_allowed() - API to check suspend SAP can
+ * be allowed or not
+ *
+ * @link_info: MLD link info
+ * @vdev: Pointer to vdev objmgr
+ *
+ * Return: 0 for success, else error.
+ */
+
+static int
+__wlan_hdd_cfg80211_sap_suspend_allowed(struct wlan_hdd_link_info *link_info,
+					struct wlan_objmgr_vdev *vdev)
+{
+	struct hdd_hostapd_state *hapd_state;
+	struct hdd_ap_ctx *ap_ctx;
+
+	if (cds_is_driver_recovering()) {
+		hdd_err("SSR is ongoing");
+		return -EAGAIN;
+	}
+	hapd_state = WLAN_HDD_GET_HOSTAP_STATE_PTR(link_info);
+	ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(link_info);
+	if (hapd_state->bss_state != BSS_START) {
+		hdd_err("SAP not active");
+		return -EAGAIN;
+	}
+	if (qdf_atomic_read(&ap_ctx->ch_switch_in_progress)) {
+		hdd_err("channel switch progress");
+		return -EAGAIN;
+	}
+	if (wlan_vdev_is_dfs_cac_wait(vdev) == QDF_STATUS_SUCCESS) {
+		hdd_err("CAC in progress");
+		return -EAGAIN;
+	}
+
+	return 0;
+}
+
+#ifdef WLAN_FEATURE_11BE_MLO
+struct qdf_mac_addr *
+hdd_get_mld_mac_addr_from_vdev(struct wlan_objmgr_vdev *vdev)
+{
+	if (wlan_vdev_mlme_is_mlo_ap(vdev))
+		return &vdev->mlo_dev_ctx->mld_addr;
+
+	return NULL;
+}
+#else
+struct qdf_mac_addr *
+hdd_get_mld_mac_addr_from_vdev(struct wlan_objmgr_vdev *vdev)
+{
+	return NULL;
+}
+#endif
+
+/**
+ * __wlan_hdd_cfg80211_sap_suspend_resume() - Wifi configuration
+ * vendor command
+ *
+ * @wiphy: wiphy device pointer
+ * @wdev: wireless device pointer
+ * @data: Vendor command data buffer
+ * @data_len: Buffer length
+ *
+ * Handles QCA_WLAN_VENDOR_ATTR_CONFIG_MAX.
+ *
+ * Return: Success or Error code.
+ */
+static int
+__wlan_hdd_cfg80211_sap_suspend_resume(struct wiphy *wiphy,
+				       struct wireless_dev *wdev,
+				       const void *data, int data_len)
+{
+	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
+	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(wdev->netdev);
+	struct wlan_objmgr_vdev *vdev;
+	uint8_t vdev_id;
+	bool vdev_suspend_resume;
+	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_CONFIG_MAX + 1];
+	struct vdev_suspend_param param = {0};
+	int8_t ret;
+	enum QDF_OPMODE dev_mode;
+	struct csr_del_sta_params peer_param = {
+		.peerMacAddr = QDF_MAC_ADDR_BCAST_INIT,
+		.reason_code = REASON_DEAUTH_NETWORK_LEAVING,
+		.subtype = SIR_MAC_MGMT_DEAUTH,
+	};
+	struct qdf_mac_addr *mld_addr;
+
+	ret = wlan_hdd_validate_context(hdd_ctx);
+	if (ret)
+		return ret;
+	dev_mode = hdd_get_device_mode(adapter->deflink->vdev_id);
+
+	if (dev_mode != QDF_SAP_MODE && dev_mode != QDF_P2P_GO_MODE) {
+		hdd_err("Command supported for SAP/GO mode");
+		return -EINVAL;
+	}
+	if (wlan_cfg80211_nla_parse(tb,
+				    QCA_WLAN_VENDOR_ATTR_AP_SUSPEND_MAX,
+				    data, data_len,
+				    wlan_hdd_sap_suspend_policy)) {
+		hdd_err("invalid attr");
+		return -EINVAL;
+	}
+
+	if (!tb[QCA_WLAN_VENDOR_ATTR_AP_SUSPEND_STATE]) {
+		hdd_err("Invalid attr pause resume mode");
+		return -EINVAL;
+	}
+	vdev_suspend_resume =
+		nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_AP_SUSPEND_STATE]);
+
+	vdev = hdd_objmgr_get_vdev_by_user(adapter->deflink,
+					   WLAN_OSIF_ID);
+	if (!vdev)
+		return -EINVAL;
+	if (!ucfg_mlme_is_sap_suspend_supported(vdev)) {
+		hdd_err("Suspend feature not supported");
+		ret = -EOPNOTSUPP;
+		goto end;
+	}
+	if (qdf_atomic_read(&vdev->is_ap_suspend) == vdev_suspend_resume) {
+		hdd_err("SAP already in state: %d", vdev_suspend_resume);
+		ret = 0;
+		goto end;
+	}
+	ret = __wlan_hdd_cfg80211_sap_suspend_allowed(adapter->deflink, vdev);
+	if (ret)
+		goto end;
+
+	mld_addr = hdd_get_mld_mac_addr_from_vdev(vdev);
+	if (mld_addr)
+		qdf_mem_copy(&param.mac_addr, mld_addr, QDF_MAC_ADDR_SIZE);
+	vdev_id = adapter->deflink->vdev_id;
+
+	param.vdev_id = vdev_id;
+	param.suspend = vdev_suspend_resume;
+	qdf_atomic_set(&vdev->is_ap_suspend, vdev_suspend_resume);
+	if (vdev_suspend_resume) {
+		ret = hdd_softap_deauth_all_sta(adapter, &peer_param);
+		if (ret) {
+			hdd_err("Deauth all STA failed");
+			goto reset;
+		}
+	}
+	ret = ucfg_mlme_set_sap_suspend_resume(hdd_ctx->psoc, &param);
+	if (ret) {
+		hdd_err("Suspend SAP failed");
+		goto reset;
+	}
+	goto end;
+reset:
+	qdf_atomic_set(&vdev->is_ap_suspend, !vdev_suspend_resume);
+end:
+	hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
+	return ret;
+}
+
+/**
  * __wlan_hdd_cfg80211_wifi_configuration_set() - Wifi configuration
  * vendor command
  *
@@ -14127,6 +14436,41 @@ static int wlan_hdd_cfg80211_wifi_configuration_get(struct wiphy *wiphy,
 
 	errno = __wlan_hdd_cfg80211_wifi_configuration_get(wiphy, wdev,
 							   data, data_len);
+
+	osif_vdev_sync_op_stop(vdev_sync);
+
+	return errno;
+}
+
+/**
+ * wlan_hdd_cfg80211_set_sap_suspend_resume() - Wifi configuration
+ * vendor command to Set SAP in suspend state and avoid interface deletion
+ * Set SAP in suspend/resume after sending deauth to all connected peers
+ * when feature is supported
+ *
+ * @wiphy: wiphy device pointer
+ * @wdev: wireless device pointer
+ * @data: Vendor command data buffer
+ * @data_len: Buffer length
+ *
+ * Handles QCA_WLAN_VENDOR_ATTR_CONFIG_MAX.
+ *
+ * Return: EOK or other error codes.
+ */
+static int
+wlan_hdd_cfg80211_set_sap_suspend_resume(struct wiphy *wiphy,
+					 struct wireless_dev *wdev,
+					 const void *data, int data_len)
+{
+	int errno;
+	struct osif_vdev_sync *vdev_sync;
+
+	errno = osif_vdev_sync_op_start(wdev->netdev, &vdev_sync);
+	if (errno)
+		return errno;
+
+	errno = __wlan_hdd_cfg80211_sap_suspend_resume(wiphy, wdev, data,
+						       data_len);
 
 	osif_vdev_sync_op_stop(vdev_sync);
 
@@ -16893,6 +17237,11 @@ wlan_hdd_set_acs_dfs_config_policy[QCA_WLAN_VENDOR_ATTR_ACS_DFS_MAX + 1] = {
 	[QCA_WLAN_VENDOR_ATTR_ACS_DFS_MODE] = {.type = NLA_U8},
 	[QCA_WLAN_VENDOR_ATTR_ACS_CHANNEL_HINT] = {.type = NLA_U8},
 	[QCA_WLAN_VENDOR_ATTR_ACS_FREQUENCY_HINT] = {.type = NLA_U32},
+};
+
+const struct nla_policy
+wlan_hdd_sap_suspend_policy[QCA_WLAN_VENDOR_ATTR_AP_SUSPEND_MAX + 1] = {
+	[QCA_WLAN_VENDOR_ATTR_AP_SUSPEND_STATE] = {.type = NLA_U8},
 };
 
 /**
@@ -20529,6 +20878,95 @@ static int wlan_hdd_cfg80211_get_monitor_mode(struct wiphy *wiphy,
 }
 #endif
 
+#if defined(WLAN_FEATURE_TELEMETRY) && defined(WLAN_DP_FEATURE_STC)
+/**
+ * __wlan_hdd_cfg80211_telemetry_stats_service() - Stats service
+ * vendor command
+ * @wiphy: wiphy device pointer
+ * @wdev: wireless device pointer
+ * @data: Vendor command data buffer
+ * @data_len: Buffer length
+ *
+ * Return: 0 for Success and negative value for failure
+ */
+static int
+__wlan_hdd_cfg80211_telemetry_stats_service(struct wiphy *wiphy,
+					    struct wireless_dev *wdev,
+					    const void *data, int data_len)
+{
+	struct net_device *dev = wdev->netdev;
+	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	struct hdd_context *hdd_ctx  = wiphy_priv(wiphy);
+	struct wlan_objmgr_vdev *vdev;
+	int errno;
+	QDF_STATUS status;
+
+	if (hdd_get_conparam() == QDF_GLOBAL_FTM_MODE) {
+		hdd_err_rl("Command not allowed in FTM mode");
+		return -EPERM;
+	}
+
+	errno = wlan_hdd_validate_context(hdd_ctx);
+	if (errno)
+		return errno;
+
+	errno = hdd_validate_adapter(adapter);
+	if (errno)
+		return errno;
+
+	vdev = hdd_objmgr_get_vdev_by_user(adapter->deflink, WLAN_DP_ID);
+	if (!vdev)
+		return -EINVAL;
+
+	if (vdev->vdev_mlme.vdev_opmode != QDF_STA_MODE) {
+		hdd_err_rl("Stats service not supported in device mode: %d",
+			   vdev->vdev_mlme.vdev_opmode);
+		status = QDF_STATUS_E_INVAL;
+		goto end;
+	}
+
+	status = os_if_telemetry_stats_service(vdev, data, data_len);
+
+end:
+	hdd_objmgr_put_vdev_by_user(vdev, WLAN_DP_ID);
+
+	return qdf_status_to_os_return(status);
+}
+
+/**
+ * wlan_hdd_cfg80211_telemetry_stats_service() - Start service
+ * @wiphy: wiphy pointer
+ * @wdev: pointer to struct wireless_dev
+ * @data: pointer to incoming NL vendor data
+ * @data_len: length of @data
+ *
+ * Return: 0 on success; error number otherwise.
+ */
+static int
+wlan_hdd_cfg80211_telemetry_stats_service(struct wiphy *wiphy,
+					  struct wireless_dev *wdev,
+					  const void *data, int data_len)
+{
+	int errno;
+	struct osif_vdev_sync *vdev_sync;
+
+	hdd_enter_dev(wdev->netdev);
+
+	errno = osif_vdev_sync_op_start(wdev->netdev, &vdev_sync);
+	if (errno)
+		return errno;
+
+	errno = __wlan_hdd_cfg80211_telemetry_stats_service(wiphy, wdev,
+							    data, data_len);
+
+	osif_vdev_sync_op_stop(vdev_sync);
+
+	hdd_exit();
+
+	return errno;
+}
+#endif
+
 #ifdef WLAN_SUPPORT_SERVICE_CLASS
 static inline
 int __wlan_hdd_cfg80211_service_class_cmd(struct wiphy *wiphy,
@@ -22032,6 +22470,19 @@ const struct wiphy_vendor_command hdd_wiphy_vendor_commands[] = {
 	FEATURE_TX_LATENCY_STATS_COMMANDS
 	FEATURE_REGULATORY_TPC_INFO_VENDOR_COMMANDS
 	FEATURE_FLOW_CLASSIFY_COMMANDS
+	{
+		.info.vendor_id = QCA_NL80211_VENDOR_ID,
+		.info.subcmd = QCA_NL80211_VENDOR_SUBCMD_AP_SUSPEND,
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
+			WIPHY_VENDOR_CMD_NEED_NETDEV |
+			WIPHY_VENDOR_CMD_NEED_RUNNING,
+		.doit = wlan_hdd_cfg80211_set_sap_suspend_resume,
+		vendor_command_policy(wlan_hdd_sap_suspend_policy,
+				      QCA_WLAN_VENDOR_ATTR_AP_SUSPEND_MAX)
+	}
+#if defined(WLAN_FEATURE_TELEMETRY) && defined(WLAN_DP_FEATURE_STC)
+	FEATURE_ASYNC_STATS_VENDOR_COMMANDS
+#endif
 };
 
 struct hdd_context *hdd_cfg80211_wiphy_alloc(void)

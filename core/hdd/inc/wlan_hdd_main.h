@@ -5532,6 +5532,12 @@ hdd_link_switch_vdev_mac_addr_update(int32_t ieee_old_link_id,
  */
 struct wlan_hdd_link_info *
 hdd_get_link_info_by_ieee_link_id(struct hdd_adapter *adapter, int32_t link_id);
+#else
+static inline struct wlan_hdd_link_info *
+hdd_get_link_info_by_ieee_link_id(struct hdd_adapter *adapter, int32_t link_id)
+{
+	return NULL;
+}
 #endif
 
 #ifdef WLAN_FEATURE_DYNAMIC_MAC_ADDR_UPDATE
@@ -5717,6 +5723,16 @@ int wlan_hdd_alloc_iface_combination_mem(struct hdd_context *hdd_ctx);
  */
 void wlan_hdd_free_iface_combination_mem(struct hdd_context *hdd_ctx);
 
+/**
+ * hdd_get_mld_mac_addr_from_vdev() - This API returns pointer to MLD
+ * mac address when vdev belongs to MLO SAP
+ * @vdev: pointer to VDEV object
+ *
+ * Return: pointer to MLD addr or NULL
+ */
+struct qdf_mac_addr *
+hdd_get_mld_mac_addr_from_vdev(struct wlan_objmgr_vdev *vdev);
+
 #ifdef WLAN_FEATURE_MULTI_LINK_SAP
 /**
  * hdd_get_link_info_by_link_id() - get wlan_hdd_link_info by link id
@@ -5766,4 +5782,14 @@ hdd_nb_get_link_id_from_params(void *params, enum hdd_nb_params_id id)
 QDF_STATUS
 hdd_update_sub20_chan_width(struct wlan_hdd_link_info *link_info,
 			    enum cfg_sub_20_channel_width sub_20_ch_width);
+
+/**
+ * hdd_allow_new_intf() - Allow new intf created or not
+ * @hdd_ctx: hdd context
+ * @mode: qdf opmode of new interface
+ *
+ * Return: true if allowed, otherwise false
+ */
+bool hdd_allow_new_intf(struct hdd_context *hdd_ctx,
+                        enum QDF_OPMODE mode);
 #endif /* end #if !defined(WLAN_HDD_MAIN_H) */

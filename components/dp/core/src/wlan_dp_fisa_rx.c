@@ -22,6 +22,7 @@
 #include "dp_htt.h"
 #include "dp_internal.h"
 #include "hif.h"
+#include <wlan_dp_stc.h>
 
 static void dp_rx_fisa_flush_flow_wrap(struct dp_fisa_rx_sw_ft *sw_ft);
 
@@ -315,6 +316,10 @@ void dp_fisa_update_fst_table(struct wlan_dp_psoc_context *dp_ctx,
 		sw_ft_entry->is_mig = true;
 		sw_ft_entry->prev_napi_id = sw_ft_entry->napi_id;
 		sw_ft_entry->napi_id = flow_details->napi_id;
+
+		dp_info("moving flow %d from napi_id%d to napi_id%d",
+			sw_ft_entry->flow_id, sw_ft_entry->prev_napi_id,
+			sw_ft_entry->napi_id);
 
 		/* Handle the case of hash based routing enabled/disabled */
 		if (flow_details->napi_id > 3)
@@ -699,6 +704,26 @@ static bool is_same_flow(struct cdp_rx_flow_tuple_info *tuple1,
 		return true;
 }
 
+#ifdef WLAN_DP_FEATURE_STC
+static inline uint64_t
+wlan_dp_fisa_get_flow_hash(struct wlan_dp_psoc_context *dp_ctx,
+			   struct cdp_rx_flow_tuple_info *flow_tuple_info)
+{
+	struct flow_info flow_tuple = {0};
+
+	wlan_dp_stc_populate_flow_tuple(&flow_tuple, flow_tuple_info);
+
+	return wlan_dp_get_flow_hash(dp_ctx, &flow_tuple);
+}
+#else
+static inline uint64_t
+wlan_dp_fisa_get_flow_hash(struct wlan_dp_psoc_context *dp_ctx,
+			   struct cdp_rx_flow_tuple_info *flow_tuple_info)
+{
+	return 0;
+}
+#endif
+
 /**
  * dp_rx_fisa_add_ft_entry() - Add new flow to HW and SW FT if it is not added
  * @vdev: Handle DP vdev to save in SW flow table
@@ -779,16 +804,19 @@ dp_rx_fisa_add_ft_entry(struct dp_vdev *vdev,
 			sw_ft_entry->reo_dest_indication = reo_dest_indication;
 			sw_ft_entry->flow_id_toeplitz =
 						QDF_NBUF_CB_RX_FLOW_ID(nbuf);
-			sw_ft_entry->flow_init_ts = qdf_get_log_timestamp();
+			sw_ft_entry->flow_init_ts = qdf_sched_clock();
 
 			qdf_mem_copy(&sw_ft_entry->rx_flow_tuple_info,
 				     &rx_flow_tuple_info,
 				     sizeof(struct cdp_rx_flow_tuple_info));
-
+			sw_ft_entry->flow_tuple_hash =
+				wlan_dp_fisa_get_flow_hash(fisa_hdl->dp_ctx,
+							   &sw_ft_entry->rx_flow_tuple_info);
 			sw_ft_entry->is_flow_tcp = proto_params.tcp_proto;
 			sw_ft_entry->is_flow_udp = proto_params.udp_proto;
 			sw_ft_entry->add_timestamp = qdf_get_log_timestamp();
-			if (QDF_NBUF_CB_RX_TCP_PROTO(nbuf))
+			if (QDF_NBUF_CB_RX_TCP_PROTO(nbuf) ||
+			    vdev->opmode == wlan_op_mode_ap)
 				sw_ft_entry->rx_flow_tuple_info.is_exception = true;
 
 			is_fst_updated = true;
@@ -1061,14 +1089,18 @@ static void dp_fisa_rx_fst_update(struct dp_rx_fst *fisa_hdl,
 			qdf_mem_copy(&sw_ft_entry->rx_flow_tuple_info,
 				     rx_flow_tuple_info,
 				     sizeof(struct cdp_rx_flow_tuple_info));
+			sw_ft_entry->flow_tuple_hash =
+				wlan_dp_fisa_get_flow_hash(fisa_hdl->dp_ctx,
+					&sw_ft_entry->rx_flow_tuple_info);
 
-			sw_ft_entry->flow_init_ts = qdf_get_log_timestamp();
+			sw_ft_entry->flow_init_ts = qdf_sched_clock();
 			sw_ft_entry->is_flow_tcp = elem->is_tcp_flow;
 			sw_ft_entry->is_flow_udp = elem->is_udp_flow;
 
 			sw_ft_entry->add_timestamp = qdf_get_log_timestamp();
 
 			is_fst_updated = true;
+			wlan_dp_indicate_rx_flow_add(dp_ctx);
 			fisa_hdl->add_flow_count++;
 			break;
 		}
@@ -2233,7 +2265,9 @@ static bool dp_is_nbuf_bypass_fisa(qdf_nbuf_t nbuf, struct dp_vdev *vdev,
 				   bool add_tcp_flow_to_fst)
 {
 	/* RX frame from non-regular path or DHCP packet */
-	if ((!add_tcp_flow_to_fst && QDF_NBUF_CB_RX_TCP_PROTO(nbuf)) ||
+	if ((!add_tcp_flow_to_fst &&
+	     (QDF_NBUF_CB_RX_TCP_PROTO(nbuf) ||
+	      vdev->opmode == wlan_op_mode_ap)) ||
 	    qdf_nbuf_is_exc_frame(nbuf) ||
 	    qdf_nbuf_is_ipv4_dhcp_pkt(nbuf) ||
 	    qdf_nbuf_is_da_mcbc(nbuf))
@@ -2305,6 +2339,16 @@ static bool dp_fisa_disallowed_for_vdev(struct dp_soc *soc,
 	return true;
 }
 
+static inline void
+wlan_dp_fisa_nbuf_mark_flow_info(struct dp_fisa_rx_sw_ft *fisa_flow,
+				 qdf_nbuf_t nbuf)
+{
+	QDF_NBUF_CB_EXT_RX_FLOW_ID(nbuf) = fisa_flow->flow_id;
+	QDF_NBUF_CB_RX_FLOW_METADATA(nbuf) = fisa_flow->metadata;
+	if (fisa_flow->track_flow_stats)
+		QDF_NBUF_CB_RX_TRACK_FLOW(nbuf) = 1;
+}
+
 QDF_STATUS dp_fisa_rx(struct wlan_dp_psoc_context *dp_ctx,
 		      struct dp_vdev *vdev,
 		      qdf_nbuf_t nbuf_list)
@@ -2365,6 +2409,8 @@ QDF_STATUS dp_fisa_rx(struct wlan_dp_psoc_context *dp_ctx,
 		/* Add new flow if the there is no ongoing flow */
 		fisa_flow = dp_rx_get_fisa_flow(dp_fisa_rx_hdl, vdev,
 						head_nbuf);
+		if (fisa_flow)
+			wlan_dp_fisa_nbuf_mark_flow_info(fisa_flow, head_nbuf);
 
 		if (fisa_flow)
 			dp_fisa_update_flow_balance_stats(fisa_flow, dp_ctx);

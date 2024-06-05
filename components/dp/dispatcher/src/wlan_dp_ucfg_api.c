@@ -1419,6 +1419,13 @@ QDF_STATUS ucfg_dp_softap_register_txrx_ops(struct wlan_objmgr_vdev *vdev,
 		txrx_ops->rx.rx_flush = NULL;
 	}
 
+	if (wlan_dp_fb_enabled(dp_intf->dp_ctx) &&
+	    wlan_dp_cfg_is_rx_fisa_enabled(&dp_intf->dp_ctx->dp_cfg) &&
+	    dp_intf->device_mode != QDF_MONITOR_MODE) {
+		dp_debug("FISA feature enabled");
+		dp_rx_register_fisa_ops(txrx_ops);
+	}
+
 	txrx_ops->get_tsf_time = wlan_dp_get_tsf_time;
 	txrx_ops->vdev_del_notify = wlan_dp_link_cdp_vdev_delete_notification;
 	cdp_vdev_register(soc,
@@ -2334,6 +2341,22 @@ ucfg_dp_register_ipa_wds_hdd_cbs(struct wlan_dp_psoc_context *dp_ctx,
 }
 #endif /* IPA_WDS_EASYMESH_FEATURE */
 
+#ifdef WLAN_DP_FEATURE_STC
+static inline void
+ucfg_dp_register_stc_hdd_cbs(struct wlan_dp_psoc_context *dp_ctx,
+			     struct wlan_dp_psoc_callbacks *cb_obj)
+{
+	dp_ctx->dp_ops.send_flow_stats_event = cb_obj->send_flow_stats_event;
+	dp_ctx->dp_ops.send_flow_report_event = cb_obj->send_flow_report_event;
+}
+#else
+static inline void
+ucfg_dp_register_stc_hdd_cbs(struct wlan_dp_psoc_context *dp_ctx,
+			     struct wlan_dp_psoc_callbacks *cb_obj)
+{
+}
+#endif
+
 void ucfg_dp_register_hdd_callbacks(struct wlan_objmgr_psoc *psoc,
 				    struct wlan_dp_psoc_callbacks *cb_obj)
 {
@@ -2414,6 +2437,7 @@ void ucfg_dp_register_hdd_callbacks(struct wlan_objmgr_psoc *psoc,
 	dp_ctx->dp_ops.link_monitoring_cb = cb_obj->link_monitoring_cb;
 	ucfg_dp_register_direct_link_hdd_cbs(dp_ctx, cb_obj);
 	ucfg_dp_register_ipa_wds_hdd_cbs(dp_ctx, cb_obj);
+	ucfg_dp_register_stc_hdd_cbs(dp_ctx, cb_obj);
 }
 
 void ucfg_dp_register_event_handler(struct wlan_objmgr_psoc *psoc,

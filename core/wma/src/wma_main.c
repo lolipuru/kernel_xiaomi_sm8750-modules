@@ -6246,6 +6246,10 @@ static void wma_update_nan_target_caps(tp_wma_handle wma_handle,
 	if (wmi_service_enabled(wma_handle->wmi_handle,
 				wmi_service_nan_pairing_peer_create))
 		tgt_cfg->nan_caps.nan_pairing_peer_create_cap = 1;
+
+	if (wmi_service_enabled(wma_handle->wmi_handle,
+				wmi_service_sta_sap_ndp_concurrency_support))
+		tgt_cfg->nan_caps.sta_sap_ndp_support = 1;
 }
 #else
 static void wma_update_nan_target_caps(tp_wma_handle wma_handle,
@@ -9341,7 +9345,7 @@ static QDF_STATUS wma_mc_process_msg(struct scheduler_msg *msg)
 		goto end;
 	}
 
-	wma_nofl_debug("Handle msg %s(0x%x)",
+	wma_nofl_debug("Handle %s(0x%x)",
 		       mac_trace_get_wma_msg_string(msg->type), msg->type);
 
 	wma_handle = cds_get_context(QDF_MODULE_ID_WMA);
@@ -9355,7 +9359,6 @@ static QDF_STATUS wma_mc_process_msg(struct scheduler_msg *msg)
 	switch (msg->type) {
 #ifdef FEATURE_WLAN_ESE
 	case WMA_TSM_STATS_REQ:
-		wma_debug("McThread: WMA_TSM_STATS_REQ");
 		wma_process_tsm_stats_req(wma_handle, (void *)msg->bodyptr);
 		break;
 #endif /* FEATURE_WLAN_ESE */

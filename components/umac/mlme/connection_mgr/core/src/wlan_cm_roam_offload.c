@@ -3543,6 +3543,27 @@ static void cm_fill_stop_reason(struct wlan_roam_stop_config *stop_req,
 		stop_req->reason = REASON_SME_ISSUED;
 }
 
+#ifdef WLAN_FEATURE_11BE
+static void
+cm_roam_enable_btm_offload(struct wlan_objmgr_psoc *psoc,
+			   struct wlan_roam_stop_config *stop_req,
+			   uint8_t reason)
+{
+	if (!stop_req)
+		return;
+
+	if (reason == REASON_SUPPLICANT_DISABLED_ROAMING)
+		MLME_SET_BIT(stop_req->btm_config.btm_offload_config,
+			     BTM_OFFLOAD_CONFIG_BIT_0);
+}
+#else
+static inline void
+cm_roam_enable_btm_offload(struct wlan_objmgr_psoc *psoc,
+			   struct wlan_roam_stop_config *stop_req,
+			   uint8_t reason)
+{}
+#endif
+
 QDF_STATUS
 cm_roam_stop_req(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
 		 uint8_t reason, bool *send_resp, bool start_timer)
@@ -3581,9 +3602,8 @@ cm_roam_stop_req(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
 	mlme_debug("vdev:%d process rso stop for reason: %d", vdev_id, reason);
 
 	stop_req->btm_config.vdev_id = vdev_id;
-	if (reason == REASON_SUPPLICANT_DISABLED_ROAMING)
-		MLME_SET_BIT(stop_req->btm_config.btm_offload_config,
-			     BTM_OFFLOAD_CONFIG_BIT_0);
+	cm_roam_enable_btm_offload(psoc, stop_req, reason);
+
 	stop_req->disconnect_params.vdev_id = vdev_id;
 	stop_req->idle_params.vdev_id = vdev_id;
 	stop_req->roam_triggers.vdev_id = vdev_id;
@@ -4379,13 +4399,13 @@ cm_roam_switch_to_init(struct wlan_objmgr_pdev *pdev,
 	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, vdev_id,
 						    WLAN_MLME_NB_ID);
 	if (!vdev) {
-		mlme_err("CM_RSO: vdev is null");
+		mlme_err("CM_RSO: vdev:%d is null", vdev_id);
 		return QDF_STATUS_E_INVAL;
 	}
 
-	if (cm_is_vdev_disconnecting(vdev) ||
-	    cm_is_vdev_disconnected(vdev)) {
-		mlme_debug("CM_RSO: RSO Init received in disconnected state");
+	if (!cm_is_vdev_connected(vdev)) {
+		mlme_debug("CM_RSO: vdev:%d RSO Init received in non-connected state",
+			   vdev_id);
 		wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_NB_ID);
 		return QDF_STATUS_E_INVAL;
 	}

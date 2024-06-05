@@ -295,7 +295,7 @@ wlan_dp_fb_do_flow_balance(struct wlan_dp_psoc_context *dp_ctx,
 	 */
 	for (i = 0; i < num_rings; i++) {
 get_next_ring:
-		if (ring_idx > MAX_REO_DEST_RINGS)
+		if (ring_idx >= MAX_REO_DEST_RINGS)
 			break;
 
 		ring = &map_tbl[ring_idx];
@@ -507,23 +507,23 @@ wlan_dp_fb_handler(struct wlan_dp_psoc_context *dp_ctx,
 		if (ring->num_flows &&
 		    (ring->total_avg_pkts <
 		     ((per_ring_pkt_avg[i] * FLOW_THRASH_DETECT_THRES) / 100))) {
-			dp_debug("flow thrashing detected on ring %d flows_avg_pkts %u ring_avg_pkts %u",
-				 i, ring->total_avg_pkts, per_ring_pkt_avg[i]);
+			dp_info("flow thrash detected on ring %d FAP %u RAP %u",
+				i, ring->total_avg_pkts, per_ring_pkt_avg[i]);
 			flow_thrash = true;
 			break;
 		}
 
 		if (ring->ring_weightage > RING_OVERLOAD_THRESH) {
-			dp_debug("ring%d is overloaded weightage %u",
-				 i, ring->ring_weightage);
+			dp_info("ring%d is overloaded wtg %u",
+				i, ring->ring_weightage);
 			ring_overloaded = true;
 		}
 	}
 
 	if (flow_thrash || !ring_overloaded) {
-		dp_debug("flow balance is not eligible flow_trash %s ring_overloaded %s",
-			 flow_thrash ? "true" : "false",
-			 ring_overloaded ? "true" : "false");
+		dp_info("fb is not eligible FT %s RO %s",
+			flow_thrash ? "true" : "false",
+			ring_overloaded ? "true" : "false");
 		flow_balance_not_eligible = true;
 		goto free_flow_list;
 	}
@@ -531,8 +531,7 @@ wlan_dp_fb_handler(struct wlan_dp_psoc_context *dp_ctx,
 	num_rings = wlan_dp_fb_get_num_rings_for_flow_balance(total_num_rings,
 							      total_num_flows);
 
-	dp_debug("flow_balance: num_rings %u num_flows %u",
-		 num_rings, total_num_flows);
+	dp_info("fb: num_rings %u num_flows %u", num_rings, total_num_flows);
 
 	wlan_dp_fb_get_per_ring_targeted_weightage(cpu_load,
 						   num_cpus, num_rings,
@@ -561,6 +560,7 @@ void wlan_dp_fb_update_num_rx_rings(struct wlan_objmgr_psoc *psoc)
 	cdp_config_param_type soc_param;
 	QDF_STATUS status;
 	int i;
+	uint8_t num_rx_rings = 0;
 
 	status = cdp_txrx_get_psoc_param(dp_ctx->cdp_soc,
 					 CDP_CFG_REO_RINGS_MAPPING, &soc_param);
@@ -572,6 +572,10 @@ void wlan_dp_fb_update_num_rx_rings(struct wlan_objmgr_psoc *psoc)
 	for (i = 0; i < MAX_REO_DEST_RINGS; i++) {
 		if ((BIT(i) & soc_param.cdp_reo_rings_mapping) &&
 		    !wlan_dp_check_is_ring_ipa_rx(dp_ctx->cdp_soc, i))
-			lb_data->num_wlan_used_rx_rings++;
+			num_rx_rings++;
 	}
+
+	lb_data->num_wlan_used_rx_rings = num_rx_rings;
+	dp_info("fb: num_host_used_rx_rings %d",
+		lb_data->num_wlan_used_rx_rings);
 }

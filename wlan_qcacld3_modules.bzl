@@ -20,6 +20,9 @@ _target_chipset_map = {
     "volcano": [
         "qca6750",
     ],
+    "x1e80100": [
+        "kiwi-v2",
+    ],
 }
 
 _chipset_hw_map = {
@@ -506,6 +509,7 @@ _fixed_srcs = [
     "cmn/wmi/src/wmi_unified_vdev_api.c",
     "cmn/wmi/src/wmi_unified_vdev_tlv.c",
     "components/cmn_services/interface_mgr/src/wlan_if_mgr_roam.c",
+    "components/cmn_services/interface_mgr/src/wlan_if_mgr_nan.c",
     "components/cmn_services/interface_mgr/src/wlan_if_mgr_sap.c",
     "components/cmn_services/interface_mgr/src/wlan_if_mgr_sta.c",
     "components/cmn_services/policy_mgr/src/wlan_policy_mgr_action.c",
@@ -2318,6 +2322,10 @@ def _define_module_for_target_variant_chipset(target, variant, chipset):
             "//vendor/qcom/opensource/wlan/platform:{}_cnss_nl".format(tv),
             "//msm-kernel:all_headers",
             "//vendor/qcom/opensource/wlan/platform:wlan-platform-headers",
+        ]
+
+    if target != "x1e80100":
+        deps = deps + [
             "//vendor/qcom/opensource/dataipa:include_headers",
             "//vendor/qcom/opensource/dataipa:{}_{}_ipam".format(target, variant),
         ]

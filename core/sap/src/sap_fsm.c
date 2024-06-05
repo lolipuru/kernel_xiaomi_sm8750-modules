@@ -2491,7 +2491,7 @@ QDF_STATUS sap_signal_hdd_event(struct sap_context *sap_ctx,
 	if (!sap_ap_event)
 		return QDF_STATUS_E_NOMEM;
 
-	sap_debug("SAP event callback event = %s(%d)",
+	sap_debug("Vdev %d: %s(%d)", sap_ctx->vdev_id,
 		  sap_hdd_event_to_string(sap_hddevent), sap_hddevent);
 
 	switch (sap_hddevent) {
@@ -2853,10 +2853,10 @@ QDF_STATUS sap_signal_hdd_event(struct sap_context *sap_ctx,
 		break;
 	case eSAP_STOP_BSS_DUE_TO_NO_CHNL:
 		sap_ap_event->sapHddEventCode = eSAP_STOP_BSS_DUE_TO_NO_CHNL;
-		sap_debug("stopping session_id:%d, bssid:"QDF_MAC_ADDR_FMT", chan_freq:%d",
-			   sap_ctx->sessionId,
-			   QDF_MAC_ADDR_REF(sap_ctx->self_mac_addr),
-			   sap_ctx->chan_freq);
+		sap_debug("stopping vdev %d, bssid " QDF_MAC_ADDR_FMT " freq %d",
+			  sap_ctx->vdev_id,
+			  QDF_MAC_ADDR_REF(sap_ctx->self_mac_addr),
+			  sap_ctx->chan_freq);
 		break;
 
 	case eSAP_CHANNEL_CHANGE_RESP:
@@ -3004,7 +3004,7 @@ static QDF_STATUS sap_cac_start_notify(mac_handle_t mac_handle)
 {
 	uint8_t intf = 0;
 	struct mac_context *mac = MAC_CONTEXT(mac_handle);
-	QDF_STATUS qdf_status = QDF_STATUS_E_FAILURE;
+	QDF_STATUS qdf_status = QDF_STATUS_SUCCESS;
 
 	for (intf = 0; intf < SAP_MAX_NUM_SESSION; intf++) {
 		struct sap_context *sap_context =

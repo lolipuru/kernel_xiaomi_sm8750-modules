@@ -293,6 +293,10 @@ config DP_WAR_INVALID_FIRST_MSDU_FLAG
 	bool "Enable DP_WAR_INVALID_FIRST_MSDU_FLAG"
 	default n
 
+config TX_NSS_STATS_SUPPORT
+	bool "Enable TX_NSS_STATS_SUPPORT"
+	default n
+
 config DSC_DEBUG
 	bool "Enable DSC_DEBUG"
 	default n
@@ -1714,6 +1718,11 @@ config WLAN_TSF_UPLINK_DELAY
 config WLAN_TX_LATENCY_STATS
 	bool "Enable WLAN_TX_LATENCY_STATS"
 	depends on WLAN_TSF_AUTO_REPORT
+	default n
+
+config WLAN_FEATURE_UL_JITTER
+	bool "Enable WLAN_FEATURE_UL_JITTER"
+	depends on WLAN_TSF_UPLINK_DELAY
 	default n
 
 config WLAN_TWT_CONVERGED

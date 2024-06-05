@@ -436,6 +436,7 @@ struct fisa_pkt_hist {
  * @head_skb_ip_hdr_offset: IP header offset
  * @head_skb_l4_hdr_offset: L4 header offset
  * @rx_flow_tuple_info: RX tuple information
+ * @flow_tuple_hash: flow tuple hash
  * @napi_id: NAPI ID (REO ID) on which the flow is being received
  * @prev_napi_id: previous NAPI ID before flow migration
  * @is_mig: flag indicating whether flow is migrated or not
@@ -466,6 +467,9 @@ struct fisa_pkt_hist {
  * @last_pkt_rcvd_tstamp: last packet received timestamp on this flow
  * @last_avg_cal_tstamp: last average calculated timestamp for this flow
  * @elig_for_balance: flow is eligible for flow balance or not
+ * @track_flow_stats: flag to indicate if this flow is to be tracked
+ * @selected_to_sample: flag to indicate flow has been selected to sample
+ * @classified: flag to indicate flow has been classified
  */
 struct dp_fisa_rx_sw_ft {
 	void *hw_fse;
@@ -488,6 +492,7 @@ struct dp_fisa_rx_sw_ft {
 	uint32_t head_skb_ip_hdr_offset;
 	uint32_t head_skb_l4_hdr_offset;
 	struct cdp_rx_flow_tuple_info rx_flow_tuple_info;
+	uint64_t flow_tuple_hash;
 	uint8_t napi_id;
 	uint8_t prev_napi_id;
 	bool is_mig;
@@ -525,6 +530,9 @@ struct dp_fisa_rx_sw_ft {
 	qdf_time_t last_avg_cal_tstamp;
 	bool elig_for_balance;
 #endif
+	uint8_t track_flow_stats;
+	uint8_t selected_to_sample;
+	uint8_t classified;
 };
 
 #define DP_RX_GET_SW_FT_ENTRY_SIZE sizeof(struct dp_fisa_rx_sw_ft)
@@ -671,6 +679,7 @@ struct dp_rx_fst {
  * @hlp_list_lock: Lock to protect hlp link_list operation
  * @hlp_list: List of HLP peers for HLP response handling
  * @disable_rx_aggr: Disable Rx aggregation
+ * @spm_intf_ctx: SPM interface context
  */
 struct wlan_dp_intf {
 	struct wlan_dp_psoc_context *dp_ctx;
@@ -748,6 +757,9 @@ struct wlan_dp_intf {
 #endif
 #ifdef WLAN_FEATURE_DYNAMIC_RX_AGGREGATION
 	bool disable_rx_aggr[CTRL_RX_AGGR_ID_MAX];
+#endif
+#if defined(WLAN_FEATURE_SAWFISH) || defined(WLAN_FEATURE_MLSTC)
+	struct wlan_dp_spm_intf_context *spm_intf_ctx;
 #endif
 };
 
@@ -893,6 +905,7 @@ struct wlan_dp_stc;
  * @lb_data: wlan load balance data structure
  * @cpuhp_event_handle: event handle for cpu hotplug
  * @dp_stc: STC context
+ * @spm_ctx: Servicy policy manager context
  */
 struct wlan_dp_psoc_context {
 	struct wlan_objmgr_psoc *psoc;
@@ -1004,6 +1017,9 @@ struct wlan_dp_psoc_context {
 #endif
 #ifdef WLAN_DP_FEATURE_STC
 	struct wlan_dp_stc *dp_stc;
+#endif
+#if defined(WLAN_FEATURE_SAWFISH) || defined(WLAN_FEATURE_MLSTC)
+	struct wlan_dp_spm_context *spm_ctx;
 #endif
 };
 
