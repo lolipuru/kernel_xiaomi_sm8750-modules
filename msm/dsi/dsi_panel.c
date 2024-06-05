@@ -3160,6 +3160,9 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 		goto error;
 	}
 
+	priv_info->dsc.rc_override_v1 = utils->read_bool(utils->data,
+		"qcom,mdss-dsc-rc-override_v1");
+
 	rc = sde_dsc_populate_dsc_private_params(&priv_info->dsc, intf_width,
 			priv_info->widebus_support);
 	if (rc) {
