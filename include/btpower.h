@@ -647,10 +647,11 @@ struct platform_pwr_data {
 	struct device *slim_dev;
 	struct vreg_data *bt_vregs;
 	struct vreg_data *uwb_vregs;
+	struct vreg_data *wlan_vregs;
 	struct vreg_data *platform_vregs;
 	struct bt_power_clk_data *bt_chip_clk; /* bluetooth reference clock */
-	int (*power_setup)(int core, int id); /* Bluetooth power setup function */
-	char compatible[32]; /*Bluetooth SoC name */
+	int (*power_setup)(int core, int id);  /* Bluetooth power setup function */
+	char compatible[32];                   /*Bluetooth SoC name */
 	int bt_num_vregs;
 	int uwb_num_vregs;
 	int platform_num_vregs;
