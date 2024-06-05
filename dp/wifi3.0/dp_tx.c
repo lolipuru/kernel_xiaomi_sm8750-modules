@@ -5404,6 +5404,43 @@ dp_tx_get_mpdu_retry_threshold(struct dp_txrx_peer *txrx_peer)
 }
 #endif
 
+#ifdef TX_NSS_STATS_SUPPORT
+/**
+ * dp_update_tx_nss() - Update peer ext stats with tx nss
+ * @ts: Tx completion stats
+ * @txrx_peer: datapath txrx_peer handle
+ * @link_id: Link id
+ *
+ * Return: void
+ */
+static void
+dp_update_tx_nss(struct hal_tx_completion_status *ts,
+		 struct dp_txrx_peer *txrx_peer, uint8_t link_id)
+{
+	uint8_t nss;
+
+	nss = ts->tx_nss;
+	/*
+	 * TRANMSIT_NSS enum received
+	 * <enum 0 1_spatial_stream>Single spatial stream
+	 * <enum 1 2_spatial_streams>2 spatial streams
+	 * <enum 2 3_spatial_streams>3 spatial streams
+	 * <enum 3 4_spatial_streams>4 spatial streams
+	 * <enum 4 5_spatial_streams>5 spatial streams
+	 * <enum 5 6_spatial_streams>6 spatial streams
+	 * <enum 6 7_spatial_streams>7 spatial streams
+	 * <enum 7 8_spatial_streams>8 spatial streams
+	 */
+	DP_PEER_EXTD_STATS_INC(txrx_peer, tx.nss[nss], 1, link_id);
+}
+#else
+static void
+dp_update_tx_nss(struct hal_tx_completion_status *ts,
+		 struct dp_txrx_peer *txrx_peer, uint8_t link_id)
+{
+}
+#endif
+
 /**
  * dp_tx_update_peer_extd_stats()- Update Tx extended path stats for peer
  *
@@ -5443,6 +5480,8 @@ dp_tx_update_peer_extd_stats(struct hal_tx_completion_status *ts,
 	DP_PEER_EXTD_STATS_INCC(txrx_peer, tx.ldpc, 1, ts->ldpc, link_id);
 	DP_PEER_EXTD_STATS_INCC(txrx_peer, tx.retries, 1, ts->transmit_cnt > 1,
 				link_id);
+
+	dp_update_tx_nss(ts, txrx_peer, link_id);
 	if (ts->first_msdu) {
 		DP_PEER_EXTD_STATS_INCC(txrx_peer, tx.retries_mpdu, 1,
 					ts->transmit_cnt > 1, link_id);
@@ -6133,6 +6172,7 @@ void dp_set_delta_tsf(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	dp_vdev_unref_delete(soc, vdev, DP_MOD_ID_CDP);
 }
 #endif
+
 #ifdef WLAN_FEATURE_TSF_UPLINK_DELAY
 QDF_STATUS dp_set_tsf_ul_delay_report(struct cdp_soc_t *soc_hdl,
 				      uint8_t vdev_id, bool enable)
@@ -6190,12 +6230,18 @@ QDF_STATUS dp_get_uplink_delay(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 }
 
 static void dp_tx_update_uplink_delay(struct dp_soc *soc, struct dp_vdev *vdev,
-				      struct hal_tx_completion_status *ts)
+				      struct hal_tx_completion_status *ts,
+				      uint32_t *curr_ul_delay)
 {
 	uint32_t ul_delay;
 
 	if (qdf_unlikely(!vdev)) {
 		dp_info_rl("vdev is null or delete in progress");
+		return;
+	}
+
+	if (qdf_unlikely(!curr_ul_delay)) {
+		dp_info_rl("delay pointer null");
 		return;
 	}
 
@@ -6211,14 +6257,52 @@ static void dp_tx_update_uplink_delay(struct dp_soc *soc, struct dp_vdev *vdev,
 
 	qdf_atomic_add(ul_delay, &vdev->ul_delay_accum);
 	qdf_atomic_inc(&vdev->ul_pkts_accum);
+	*curr_ul_delay = ul_delay;
+
 }
 #else /* !WLAN_FEATURE_TSF_UPLINK_DELAY */
 static inline
 void dp_tx_update_uplink_delay(struct dp_soc *soc, struct dp_vdev *vdev,
-			       struct hal_tx_completion_status *ts)
+			       struct hal_tx_completion_status *ts,
+			       uint32_t *ul_delay)
 {
 }
 #endif /* WLAN_FEATURE_TSF_UPLINK_DELAY */
+
+#ifdef WLAN_FEATURE_UL_JITTER
+static void dp_tx_update_uplink_jitter(struct dp_soc *soc,
+				       struct dp_vdev *vdev,
+				       struct hal_tx_completion_status *ts,
+				       uint32_t curr_ul_delay)
+{
+	uint32_t ul_jitter;
+	uint32_t prev_delay = qdf_atomic_read(&vdev->prev_delay);
+
+	if (qdf_unlikely(!vdev)) {
+		dp_info_rl("vdev is null or delete in progress");
+		return;
+	}
+
+	if (!qdf_atomic_read(&vdev->ul_delay_report))
+		return;
+
+	if (curr_ul_delay > prev_delay)
+		ul_jitter = curr_ul_delay - prev_delay;
+	else
+		ul_jitter = prev_delay - curr_ul_delay;
+
+	qdf_atomic_add(ul_jitter, &vdev->ul_jitter_accum);
+	qdf_atomic_inc(&vdev->ul_jitter_pkts_accum);
+	qdf_atomic_set(&vdev->prev_delay, curr_ul_delay);
+}
+#else
+static inline
+void dp_tx_update_uplink_jitter(struct dp_soc *soc, struct dp_vdev *vdev,
+				struct hal_tx_completion_status *ts,
+				uint32_t ul_delay)
+{
+}
+#endif
 
 #if defined(WLAN_FEATURE_11BE_MLO) && defined(DP_MLO_LINK_STATS_SUPPORT)
 /**
@@ -6284,6 +6368,7 @@ void dp_tx_comp_process_tx_status(struct dp_soc *soc,
 	enum qdf_dp_tx_rx_status dp_status;
 	uint8_t link_id = 0;
 	enum QDF_OPMODE op_mode = QDF_MAX_NO_OF_MODE;
+	uint32_t ul_delay;
 
 	if (!nbuf) {
 		dp_info_rl("invalid tx descriptor. nbuf NULL");
@@ -6352,7 +6437,8 @@ void dp_tx_comp_process_tx_status(struct dp_soc *soc,
 
 	op_mode = vdev->qdf_opmode;
 	dp_tx_update_connectivity_stats(soc, vdev, tx_desc, ts->status);
-	dp_tx_update_uplink_delay(soc, vdev, ts);
+	dp_tx_update_uplink_delay(soc, vdev, ts, &ul_delay);
+	dp_tx_update_uplink_jitter(soc, vdev, ts, ul_delay);
 
 	/* check tx complete notification */
 	if (qdf_nbuf_tx_notify_comp_get(nbuf))

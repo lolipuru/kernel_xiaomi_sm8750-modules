@@ -228,7 +228,8 @@ static const  uint8_t rxdma2host_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
 #endif /* CONFIG_BERYLLIUM */
 
 #ifdef CONFIG_BERYLLIUM
-#ifdef FEATURE_ML_MONITOR_MODE_SUPPORT
+#if defined(FEATURE_ML_MONITOR_MODE_SUPPORT) || \
+	defined(FEATURE_ML_LOCAL_PKT_CAPTURE)
 static const  uint8_t rx_mon_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
 	[13] = WLAN_CFG_RX_MON_RING_MASK_0, [14] = WLAN_CFG_RX_MON_RING_MASK_1};
 #else
@@ -271,10 +272,18 @@ static const  uint8_t reo_status_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
 
 #ifdef CONFIG_BERYLLIUM
 #ifdef WLAN_FEATURE_NEAR_FULL_IRQ
+#ifdef FEATURE_ML_LOCAL_PKT_CAPTURE
+/* msi vector 15, 16 will be used for TX MON */
+static const uint8_t rx_ring_near_full_irq_1_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
+	[17] = WLAN_CFG_RX_NEAR_FULL_IRQ_MASK_1};
+static const uint8_t rx_ring_near_full_irq_2_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
+	[17] = WLAN_CFG_RX_NEAR_FULL_IRQ_MASK_1};
+#else
 static const uint8_t rx_ring_near_full_irq_1_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
 	[15] = WLAN_CFG_RX_NEAR_FULL_IRQ_MASK_1};
 static const uint8_t rx_ring_near_full_irq_2_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
 	[16] = WLAN_CFG_RX_NEAR_FULL_IRQ_MASK_1};
+#endif /* FEATURE_ML_LOCAL_PKT_CAPTURE */
 static const uint8_t tx_ring_near_full_irq_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
 	[17] = WLAN_CFG_TX_RING_NEAR_FULL_IRQ_MASK};
 #else
@@ -296,8 +305,13 @@ static const uint8_t tx_ring_near_full_irq_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] =
 
 #ifdef CONFIG_BERYLLIUM
 #ifdef WLAN_FEATURE_LOCAL_PKT_CAPTURE
+#ifdef FEATURE_ML_LOCAL_PKT_CAPTURE
+static const  uint8_t tx_mon_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
+	[15] = WLAN_CFG_TX_MON_RING_MASK_0, [16] = WLAN_CFG_TX_MON_RING_MASK_1};
+#else
 static const  uint8_t tx_mon_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {
 	[13] = WLAN_CFG_TX_MON_RING_MASK_0 | WLAN_CFG_TX_MON_RING_MASK_1};
+#endif /* FEATURE_ML_LOCAL_PKT_CAPTURE */
 #else
 static const  uint8_t tx_mon_ring_mask_msi[WLAN_CFG_INT_NUM_CONTEXTS] = {0};
 #endif /* WLAN_FEATURE_LOCAL_PKT_CAPTURE */
@@ -4058,24 +4072,10 @@ wlan_soc_sawf_mcast_attach(struct cdp_ctrl_objmgr_psoc *psoc,
 	wlan_cfg_ctx->sawf_mcast_enabled =
 		cfg_get(psoc, CFG_DP_SAWF_MCAST_ENABLE);
 }
-
-static void
-wlan_soc_sawf_msduq_reclaim_attach(struct cdp_ctrl_objmgr_psoc *psoc,
-				   struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx)
-{
-	wlan_cfg_ctx->sawf_msduq_reclaim_enabled =
-		cfg_get(psoc, CFG_DP_SAWF_MSDUQ_RECLAIM_ENABLE);
-}
 #else
 static void
 wlan_soc_sawf_mcast_attach(struct cdp_ctrl_objmgr_psoc *psoc,
 			   struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx)
-{
-}
-
-static void
-wlan_soc_sawf_msduq_reclaim_attach(struct cdp_ctrl_objmgr_psoc *psoc,
-				   struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx)
 {
 }
 #endif
@@ -4332,7 +4332,6 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 		cfg_get(psoc, CFG_DP_STATS_AVG_RATE_FILTER);
 	wlan_soc_ast_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_soc_sawf_mcast_attach(psoc, wlan_cfg_ctx);
-	wlan_soc_sawf_msduq_reclaim_attach(psoc, wlan_cfg_ctx);
 	wlan_soc_direct_link_cfg_attach(psoc, wlan_cfg_ctx);
 
 	return wlan_cfg_ctx;
@@ -4613,7 +4612,6 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 		cfg_get(psoc, CFG_DP_STATS_AVG_RATE_FILTER);
 	wlan_soc_ast_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_soc_sawf_mcast_attach(psoc, wlan_cfg_ctx);
-	wlan_soc_sawf_msduq_reclaim_attach(psoc, wlan_cfg_ctx);
 	wlan_soc_direct_link_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_cfg_ctx->rxmon_mgmt_linearization =
 		cfg_get(psoc, CFG_DP_RXMON_MGMT_LINEARIZATION);
@@ -6093,6 +6091,12 @@ void wlan_cfg_set_sawf_config(struct wlan_cfg_dp_soc_ctxt *cfg, bool val)
 	cfg->sawf_enabled = val;
 }
 
+void wlan_cfg_set_sawf_msduq_reclaim_config(struct wlan_cfg_dp_soc_ctxt *cfg,
+					    bool val)
+{
+	cfg->sawf_msduq_reclaim_enabled = val;
+}
+
 bool wlan_cfg_get_sawf_msduq_reclaim_config(struct wlan_cfg_dp_soc_ctxt *cfg)
 {
 	return cfg->sawf_msduq_reclaim_enabled;
@@ -6112,6 +6116,10 @@ void wlan_cfg_set_sawf_config(struct wlan_cfg_dp_soc_ctxt *cfg, bool val)
 {
 }
 
+void wlan_cfg_set_sawf_msduq_reclaim_config(struct wlan_cfg_dp_soc_ctxt *cfg,
+					    bool val)
+{
+}
 bool wlan_cfg_get_sawf_msduq_reclaim_config(struct wlan_cfg_dp_soc_ctxt *cfg)
 {
 	return false;

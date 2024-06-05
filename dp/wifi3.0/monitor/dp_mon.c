@@ -3414,8 +3414,17 @@ dp_tx_stats_update(struct dp_pdev *pdev, struct dp_peer *peer,
 
 	DP_STATS_INCC(mon_peer, tx.stbc, num_msdu, ppdu->stbc);
 	DP_STATS_INCC(mon_peer, tx.ldpc, num_msdu, ppdu->ldpc);
-	if (!(ppdu->is_mcast) && ppdu->ack_rssi_valid)
+	if (!(ppdu->is_mcast) && ppdu->ack_rssi_valid) {
 		DP_STATS_UPD(mon_peer, tx.last_ack_rssi, ppdu_desc->ack_rssi);
+
+		if (qdf_unlikely(mon_peer->stats.tx.avg_ack_rssi == CDP_INVALID_SNR)) {
+			mon_peer->stats.tx.avg_ack_rssi =
+				CDP_SNR_IN(mon_peer->stats.tx.last_ack_rssi);
+		} else {
+			CDP_SNR_UPDATE_AVG(mon_peer->stats.tx.avg_ack_rssi,
+					mon_peer->stats.tx.last_ack_rssi);
+		}
+	}
 
 	if (!ppdu->is_mcast) {
 		DP_STATS_INC(mon_peer, tx.tx_ucast_success.num, num_msdu);
@@ -6326,14 +6335,17 @@ QDF_STATUS dp_mon_vdev_attach(struct dp_vdev *vdev)
 		return QDF_STATUS_E_NOMEM;
 	}
 
-	if (pdev && pdev->monitor_pdev &&
-	    pdev->monitor_pdev->scan_spcl_vap_configured)
-		dp_scan_spcl_vap_stats_attach(mon_vdev);
+	if (pdev) {
+		if (pdev->monitor_pdev &&
+		    pdev->monitor_pdev->scan_spcl_vap_configured)
+			dp_scan_spcl_vap_stats_attach(mon_vdev);
+
+		wlan_minidump_log(mon_vdev, sizeof(*mon_vdev),
+				  pdev->soc->ctrl_psoc, WLAN_MD_DP_MON_VDEV,
+				  "dp_mon_vdev");
+	}
 
 	vdev->monitor_vdev = mon_vdev;
-
-	wlan_minidump_log(mon_vdev, sizeof(*mon_vdev), pdev->soc->ctrl_psoc,
-			  WLAN_MD_DP_MON_VDEV, "dp_mon_vdev");
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -6488,6 +6500,7 @@ QDF_STATUS dp_mon_peer_attach(struct dp_peer *peer)
 
 	DP_STATS_INIT(mon_peer);
 	DP_STATS_UPD(mon_peer, rx.avg_snr, CDP_INVALID_SNR);
+	DP_STATS_UPD(mon_peer, tx.avg_ack_rssi, CDP_INVALID_SNR);
 
 	dp_mon_peer_attach_notify(peer);
 
@@ -6550,6 +6563,7 @@ void dp_mon_peer_reset_stats(struct dp_peer *peer)
 
 	DP_STATS_CLR(mon_peer);
 	DP_STATS_UPD(mon_peer, rx.avg_snr, CDP_INVALID_SNR);
+	DP_STATS_UPD(mon_peer, tx.avg_ack_rssi, CDP_INVALID_SNR);
 }
 
 void dp_mon_peer_get_stats(struct dp_peer *peer, void *arg,

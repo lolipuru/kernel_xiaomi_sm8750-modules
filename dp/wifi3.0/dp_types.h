@@ -4504,7 +4504,14 @@ struct dp_vdev {
 	/* accumulative number of packets delay has accumulated */
 	qdf_atomic_t ul_pkts_accum;
 #endif /* WLAN_FEATURE_TSF_UPLINK_DELAY */
-
+#ifdef WLAN_FEATURE_UL_JITTER
+	/* accumulative delay jitter for every TX completion */
+	qdf_atomic_t ul_jitter_accum;
+	/* accumulative number of packets jitter has accumulated */
+	qdf_atomic_t ul_jitter_pkts_accum;
+	/* previous delay to calculate jitter */
+	qdf_atomic_t prev_delay;
+#endif /* WLAN_FEATURE_UL_JITTER */
 	/* vdev_stats_id - ID used for stats collection by FW from HW*/
 	uint8_t vdev_stats_id;
 #ifdef HW_TX_DELAY_STATS_ENABLE
@@ -4919,6 +4926,7 @@ struct dp_peer_per_pkt_tx_stats {
  * @transmit_type: pkt info for tx transmit type
  * @mu_group_id: mumimo mu group id
  * @last_ack_rssi: RSSI of last acked packet
+ * @avg_ack_rssi: Averaged RSSI of acked packets
  * @nss_info: NSS 1,2, ...8
  * @mcs_info: MCS index
  * @bw_info: Bandwidth
@@ -4980,6 +4988,7 @@ struct dp_peer_extd_tx_stats {
 	uint32_t mu_group_id[MAX_MU_GROUP_ID];
 
 	uint32_t last_ack_rssi;
+	uint32_t avg_ack_rssi;
 
 	uint32_t nss_info:4,
 		 mcs_info:4,

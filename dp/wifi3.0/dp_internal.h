@@ -795,32 +795,33 @@ void dp_monitor_neighbour_peer_list_remove(struct dp_pdev *pdev,
 {
 }
 
-static inline bool dp_monitor_is_chan_band_known(struct dp_pdev *pdev)
+static inline
+bool dp_monitor_is_chan_band_known(struct dp_pdev *pdev, uint8_t mac_id)
 {
 	return false;
 }
 
 static inline enum reg_wifi_band
-dp_monitor_get_chan_band(struct dp_pdev *pdev)
+dp_monitor_get_chan_band(struct dp_pdev *pdev, uint8_t mac_id)
 {
 	return 0;
 }
 
 static inline int
-dp_monitor_get_chan_num(struct dp_pdev *vdev)
+dp_monitor_get_chan_num(struct dp_vdev *vdev)
 {
 	return 0;
 }
 
 static inline qdf_freq_t
-dp_monitor_get_chan_freq(struct dp_pdev *vdev)
+dp_monitor_get_chan_freq(struct dp_vdev *vdev)
 {
 	return 0;
 }
 
 static inline void dp_monitor_get_mpdu_status(struct dp_pdev *pdev,
 					      struct dp_soc *soc,
-					      uint8_t *rx_tlv_hdr
+					      uint8_t *rx_tlv_hdr,
 					      uint8_t mac_id)
 {
 }
@@ -1038,6 +1039,25 @@ void dp_monitor_peer_deter_stats(struct dp_peer *peer,
 {
 }
 #endif /* WLAN_CONFIG_TELEMETRY_AGENT */
+
+static inline bool
+dp_mon_mode_local_pkt_capture(struct dp_soc *soc)
+{
+	return false;
+}
+
+static inline QDF_STATUS
+dp_mon_config_mon_fcs_cap(struct dp_soc *soc,
+			  struct dp_pdev *pdev,
+			  uint8_t value)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline void
+dp_monitor_update_mac_vdev_map(struct dp_vdev *vdev)
+{
+}
 #endif /* !WIFI_MONITOR_SUPPORT */
 
 /**
@@ -1918,6 +1938,8 @@ void dp_update_vdev_stats_on_peer_unmap(struct dp_vdev *vdev,
 								  \
 		_tgtobj->stats.tx.last_ack_rssi =	\
 			_srcobj->stats.tx.last_ack_rssi; \
+		_tgtobj->stats.tx.avg_ack_rssi =	\
+			_srcobj->stats.tx.avg_ack_rssi; \
 		DP_STATS_AGGR(_tgtobj, _srcobj, rx.multipass_rx_pkt_drop); \
 		DP_STATS_AGGR(_tgtobj, _srcobj, rx.peer_unauth_rx_pkt_drop); \
 		DP_STATS_AGGR(_tgtobj, _srcobj, rx.policy_check_drop); \
@@ -2206,6 +2228,7 @@ void dp_update_vdev_stats_on_peer_unmap(struct dp_vdev *vdev,
 		_tgtobj->tx.ru_start = _srcobj->tx.ru_start; \
 		_tgtobj->tx.ru_tones = _srcobj->tx.ru_tones; \
 		_tgtobj->tx.last_ack_rssi = _srcobj->tx.last_ack_rssi; \
+		_tgtobj->tx.avg_ack_rssi = _srcobj->tx.avg_ack_rssi; \
 		_tgtobj->tx.nss_info = _srcobj->tx.nss_info; \
 		_tgtobj->tx.mcs_info = _srcobj->tx.mcs_info; \
 		_tgtobj->tx.bw_info = _srcobj->tx.bw_info; \

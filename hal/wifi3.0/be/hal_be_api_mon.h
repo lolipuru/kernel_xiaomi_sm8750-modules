@@ -1369,6 +1369,7 @@ struct hal_txmon_user_desc_per_user {
  * @doppler_indication: doppler indication
  * @reserved: reserved
  * @spatial_reuse: spatial reuse
+ * @gi: guard interval
  * @ru_channel_0: RU arrangement for band 0
  * @ru_channel_1: RU arrangement for band 1
  */
@@ -1383,6 +1384,7 @@ struct hal_txmon_usr_desc_common {
 		 doppler_indication	:1,
 		 reserved		:2;
 	uint16_t spatial_reuse;
+	uint8_t  gi;
 	uint16_t ru_channel_0[8];
 	uint16_t ru_channel_1[8];
 };
@@ -3894,7 +3896,8 @@ hal_rx_status_get_tlv_info_generic_be(void *rx_tlv_hdr, void *ppduinfo,
 		ppdu_info->ppdu_msdu_info[ppdu_info->fcs_ok_cnt].first_msdu_payload =
 			rx_tlv;
 		ppdu_info->ppdu_msdu_info[ppdu_info->fcs_ok_cnt].payload_len = tlv_len;
-		ppdu_info->msdu_info.first_msdu_payload = rx_tlv;
+		if (!ppdu_info->msdu_info.first_msdu_payload)
+			ppdu_info->msdu_info.first_msdu_payload = rx_tlv;
 		ppdu_info->msdu_info.payload_len = tlv_len;
 		ppdu_info->user_id = user_id;
 		ppdu_info->hdr_len = tlv_len;

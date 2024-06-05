@@ -457,6 +457,7 @@ struct wlan_objmgr_vdev_objmgr {
  * @vdev_lock:      VDEV lock
  * @mlo_dev_ctx:    MLO device context
  * @twt_work:	    TWT work
+ * @is_ap_suspend:	AP suspend state
  */
 struct wlan_objmgr_vdev {
 	qdf_list_node_t vdev_node;
@@ -473,6 +474,7 @@ struct wlan_objmgr_vdev {
 #ifdef WLAN_SUPPORT_TWT
 	qdf_work_t twt_work;
 #endif
+	qdf_atomic_t is_ap_suspend;
 };
 
 /*
@@ -1785,6 +1787,21 @@ static inline bool wlan_vdev_mlme_is_mlo_ap(struct wlan_objmgr_vdev *vdev)
 		wlan_vdev_mlme_is_mlo_vdev(vdev);
 }
 
+/**
+ * wlan_vdev_is_mlo_ap_with_multi_vdev() - whether it is mlo ap with vdev count
+ * more than 1
+ * @vdev: VDEV object
+ *
+ * Return: True if it is mlo ap and multi vdev, otherwise false.
+ */
+
+static inline
+bool wlan_vdev_is_mlo_ap_with_multi_vdev(struct wlan_objmgr_vdev *vdev)
+{
+	return wlan_vdev_mlme_is_mlo_ap(vdev) &&
+		(vdev->mlo_dev_ctx->wlan_vdev_count > 1);
+}
+
 #ifdef WLAN_FEATURE_MULTI_LINK_SAP
 /**
  * wlan_vdev_mlme_is_mlo_ap_sync_disabled() - check if vdev up sync between
@@ -2045,6 +2062,12 @@ static inline bool wlan_vdev_mlme_is_mlo_ap(struct wlan_objmgr_vdev *vdev)
 
 static inline bool wlan_vdev_mlme_is_mlo_ap_sync_disabled(
 				struct wlan_objmgr_vdev *vdev)
+{
+	return false;
+}
+
+static inline
+bool wlan_vdev_is_mlo_ap_with_multi_vdev(struct wlan_objmgr_vdev *vdev)
 {
 	return false;
 }
