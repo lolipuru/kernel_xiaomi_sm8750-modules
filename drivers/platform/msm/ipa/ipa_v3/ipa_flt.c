@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "ipa_i.h"
@@ -2039,25 +2039,28 @@ void ipa3_install_dl_opt_wdi_dpath_flt_rules(u32 ipa_ep_idx, u32 rt_tbl_idx)
 	memset(&rule, 0, sizeof(rule));
 
 	mutex_lock(&ipa3_ctx->lock);
-	tbl = &ipa3_ctx->flt_tbl[ipa_ep_idx][IPA_IP_v4];
-	rule.eq_attrib_type = true;
-	rule.eq_attrib.rule_eq_bitmap = 1 << 5;
-	rule.eq_attrib.num_offset_meq_32 = 1;
-	rule.action = IPA_PASS_TO_ROUTING;
-	rule.rt_tbl_idx = rt_tbl_idx;
-	__ipa_add_flt_rule(tbl, IPA_IP_v4, &rule, false,
-			&ep->dl_flt4_rule_hdl, false);
-	ipa3_ctx->ctrl->ipa3_commit_flt(IPA_IP_v4);
-
-	tbl = &ipa3_ctx->flt_tbl[ipa_ep_idx][IPA_IP_v6];
-	rule.eq_attrib_type = true;
-	rule.eq_attrib.rule_eq_bitmap = 1 << 5;
-	rule.eq_attrib.num_offset_meq_32 = 1;
-	rule.action = IPA_PASS_TO_ROUTING;
-	rule.rt_tbl_idx = rt_tbl_idx;
-	__ipa_add_flt_rule(tbl, IPA_IP_v6, &rule, false,
-			&ep->dl_flt6_rule_hdl, false);
-	ipa3_ctx->ctrl->ipa3_commit_flt(IPA_IP_v6);
+	if (!ep->dl_flt4_rule_hdl) {
+		tbl = &ipa3_ctx->flt_tbl[ipa_ep_idx][IPA_IP_v4];
+		rule.eq_attrib_type = true;
+		rule.eq_attrib.rule_eq_bitmap = 1 << 5;
+		rule.eq_attrib.num_offset_meq_32 = 1;
+		rule.action = IPA_PASS_TO_ROUTING;
+		rule.rt_tbl_idx = rt_tbl_idx;
+		__ipa_add_flt_rule(tbl, IPA_IP_v4, &rule, false,
+				&ep->dl_flt4_rule_hdl, false);
+		ipa3_ctx->ctrl->ipa3_commit_flt(IPA_IP_v4);
+	}
+	if (!ep->dl_flt6_rule_hdl) {
+		tbl = &ipa3_ctx->flt_tbl[ipa_ep_idx][IPA_IP_v6];
+		rule.eq_attrib_type = true;
+		rule.eq_attrib.rule_eq_bitmap = 1 << 5;
+		rule.eq_attrib.num_offset_meq_32 = 1;
+		rule.action = IPA_PASS_TO_ROUTING;
+		rule.rt_tbl_idx = rt_tbl_idx;
+		__ipa_add_flt_rule(tbl, IPA_IP_v6, &rule, false,
+				&ep->dl_flt6_rule_hdl, false);
+		ipa3_ctx->ctrl->ipa3_commit_flt(IPA_IP_v6);
+	}
 	mutex_unlock(&ipa3_ctx->lock);
 }
 
