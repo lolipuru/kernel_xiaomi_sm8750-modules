@@ -16,6 +16,10 @@
 #define RT_BASE_IDX                                    2
 #define CAM_ISP_MAX_PATHS                              8
 
+/* CSID multi-vcdt config related field */
+#define CAM_IFE_CSID_MAX_VALID_VC_NUM       2
+#define CAM_IFE_CSID_DEFAULT_NUM_DT         2
+
 /**
  * enum cam_ife_csid_hw_irq_regs - Specify the top irq reg
  */

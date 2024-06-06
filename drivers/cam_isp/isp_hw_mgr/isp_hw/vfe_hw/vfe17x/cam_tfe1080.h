@@ -184,7 +184,7 @@ struct cam_vfe_bayer_ver4_module_desc tfe1080_bayer_mod_desc[] = {
 	},
 	{
 		.id = 9,
-		.desc = "CLC_CROP_RND_CLAMP_WIRC",
+		.desc = "CLC_CROP_RND_CLAMP_PIXEL_RAW_OUT",
 	},
 };
 
@@ -226,6 +226,8 @@ static struct cam_vfe_top_ver4_wr_client_desc tfe1080_wr_client_desc[] = {
 		.desc = "FD_C",
 	},
 	{
+		.wm_id = 9,
+		.desc = "PIXEL_RAW",
 	},
 	{
 		.wm_id = 10,
@@ -1495,7 +1497,7 @@ static struct cam_vfe_bus_ver3_hw_info tfe1080_bus_hw_info = {
 				BIT_ULL(CAM_FORMAT_NV21) |
 				BIT_ULL(CAM_FORMAT_NV12),
 		},
-		/* BUS Client 9 RAW_OUT */
+		/* BUS Client 9 PIXEL RAW */
 		{
 			.cfg                      = 0x00001E00,
 			.image_addr               = 0x00001E04,
@@ -2329,20 +2331,21 @@ static struct cam_vfe_bus_ver3_hw_info tfe1080_bus_hw_info = {
 			},
 		},
 		{
-			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_IR,
-			.max_width     = 9312,
-			.max_height    = 8192,
+			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_RAW_DUMP,
+			.max_width     = 4672,
+			.max_height    = 16384,
 			.source_group  = CAM_VFE_BUS_VER3_SRC_GRP_0,
 			.mid           = tfe1080_out_port_mid[10],
 			.num_mid       = 2,
 			.num_wm        = 1,
 			.line_based    = 1,
-			.cntxt_cfg_except = true,
+			.mc_based      = true,
+			.mc_grp_shift  = 0,
 			.wm_idx        = {
 				9,
 			},
 			.name          = {
-				"IR",
+				"PIXEL_RAW",
 			},
 		},
 		{

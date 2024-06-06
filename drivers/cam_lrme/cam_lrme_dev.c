@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/device.h>
@@ -17,6 +17,7 @@
 #include "cam_lrme_hw_mgr_intf.h"
 #include "camera_main.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 #define CAM_LRME_DEV_NAME "cam-lrme"
 
@@ -138,7 +139,10 @@ static int cam_lrme_component_bind(struct device *dev,
 	struct cam_hw_mgr_intf hw_mgr_intf;
 	struct cam_node *node;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	g_lrme_dev = CAM_MEM_ZALLOC(sizeof(struct cam_lrme_dev), GFP_KERNEL);
 	if (!g_lrme_dev) {
 		CAM_ERR(CAM_LRME, "No memory");
@@ -182,6 +186,9 @@ static int cam_lrme_component_bind(struct device *dev,
 
 	node->sd_handler = cam_lrme_dev_close_internal;
 	CAM_DBG(CAM_LRME, "Component bound successfully");
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return 0;
 

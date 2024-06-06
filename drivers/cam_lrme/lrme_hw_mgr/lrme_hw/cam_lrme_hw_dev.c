@@ -22,6 +22,7 @@
 #include "cam_mem_mgr_api.h"
 #include "cam_smmu_api.h"
 #include "camera_main.h"
+#include "cam_req_mgr_dev.h"
 
 static int cam_lrme_hw_dev_util_cdm_acquire(struct cam_lrme_core *lrme_core,
 	struct cam_hw_info *lrme_hw)
@@ -94,7 +95,10 @@ static int cam_lrme_hw_dev_component_bind(struct device *dev,
 	struct cam_lrme_hw_info *hw_info;
 	int rc, i;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	lrme_hw = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!lrme_hw) {
 		CAM_ERR(CAM_LRME, "No memory to create lrme_hw");
@@ -217,6 +221,9 @@ static int cam_lrme_hw_dev_component_bind(struct device *dev,
 	platform_set_drvdata(pdev, lrme_hw);
 	CAM_DBG(CAM_LRME, "HW:%d component bound successfully",
 		lrme_hw_intf.hw_idx);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 

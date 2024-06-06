@@ -90,7 +90,9 @@ static struct cam_ife_hw_mgr g_ife_hw_mgr;
 static uint32_t g_num_ife_available, g_num_ife_lite_available, g_num_sfe_available;
 static uint32_t g_num_ife_functional, g_num_ife_lite_functional, g_num_sfe_functional;
 static uint32_t max_ife_out_res, max_sfe_out_res;
-static char irq_inject_display_buf[IRQ_INJECT_DISPLAY_BUF_LEN];
+
+static char *irq_inject_display_buf;
+
 
 static int cam_ife_mgr_find_core_idx(int split_id, struct cam_ife_hw_mgr_ctx *ctx,
 	enum cam_isp_hw_type hw_type, uint32_t *core_idx);
@@ -3905,12 +3907,18 @@ static int cam_ife_hw_mgr_acquire_csid_hw(
 
 			rc = hw_intf->hw_ops.reserve(hw_intf->hw_priv,
 				csid_acquire, sizeof(*csid_acquire));
-			if (rc) {
+			if (rc == -EBUSY) {
 				CAM_DBG(CAM_ISP,
-					"No ife resource from hw %d, ctx_idx: %u",
+					"Resource not available from hw_idx %d, ctx_idx: %u",
 					hw_intf->hw_idx, ife_ctx->ctx_index);
 				continue;
+			} else if (rc) {
+				CAM_ERR(CAM_ISP,
+					"Failed to acquire from existing hw idx: %u ctx_idx: %u rc: %d",
+					hw_intf->hw_idx, ife_ctx->ctx_index, rc);
+				return rc;
 			}
+
 			CAM_DBG(CAM_ISP,
 				"acquired from old csid(%s)=%d successfully, is_secure: %s, ctx_idx: %u",
 				(i == 0) ? "left" : "right",
@@ -3956,11 +3964,13 @@ static int cam_ife_hw_mgr_acquire_csid_hw(
 		if (!rc)
 			return rc;
 
-		if (rc == -EBUSY)
+		if (rc == -EBUSY) {
 			busy_count++;
-		else
+		} else {
 			CAM_ERR(CAM_ISP, "CSID[%d] acquire failed (rc=%d), ctx_idx: %u",
 				i, rc, ife_ctx->ctx_index);
+			return rc;
+		}
 	}
 
 	if (compat_count == busy_count)
@@ -5575,6 +5585,8 @@ static int cam_ife_mgr_acquire_get_unified_structure_v3(
 	struct cam_isp_in_port_info_v3 *in = NULL;
 	uint32_t in_port_length = 0;
 	int32_t rc = 0, i;
+	size_t len = 0;
+	uint8_t log_buf[200];
 
 	in = (struct cam_isp_in_port_info_v3 *)
 		((uint8_t *)&acquire_hw_info->data +
@@ -5601,15 +5613,32 @@ static int cam_ife_mgr_acquire_get_unified_structure_v3(
 	in_port->num_valid_vc_dt =  in->csid_info.num_valid_vc_dt;
 	in_port->epd_supported   =  in->csid_info.param_mask & CAM_IFE_CSID_EPD_MODE_EN;
 
-	if (in_port->num_valid_vc_dt == 0 || in_port->num_valid_vc_dt >= CAM_ISP_VC_DT_CFG) {
-		CAM_ERR(CAM_ISP, "Invalid i/p arg invalid vc-dt: %d", in_port->num_valid_vc_dt);
+	if (in_port->num_valid_vc_dt == 0 || in_port->num_valid_vc_dt >= CAM_ISP_VC_DT_CFG ||
+		in_port->num_valid_vc_dt > g_ife_hw_mgr.isp_caps.max_dt_supported) {
+		CAM_ERR(CAM_ISP,
+			"Invalid i/p arg invalid vc-dt: %d, arr size %u, max supported by HW: %u",
+			in_port->num_valid_vc_dt, CAM_ISP_VC_DT_CFG,
+			g_ife_hw_mgr.isp_caps.max_dt_supported);
 		rc = -EINVAL;
 		goto err;
 	}
 
 	for (i = 0; i < in_port->num_valid_vc_dt; i++) {
+		if ((i >= CAM_IFE_CSID_MAX_VALID_VC_NUM) &&
+			(in->csid_info.vc[i] != CAM_ISP_INVALID_VC_VALUE))
+			rc = -EINVAL;
+
 		in_port->vc[i]        =  in->csid_info.vc[i];
 		in_port->dt[i]        =  in->csid_info.dt[i];
+
+		CAM_INFO_BUF(CAM_ISP, log_buf, 200, &len, "VC%d: 0x%x, DT%d: 0x%x ",
+			i, in_port->vc[i], i, in_port->dt[i]);
+	}
+
+	if (rc) {
+		CAM_ERR(CAM_ISP, "Invalid VC/DT args, printing given %d args: %s",
+			in_port->num_valid_vc_dt, log_buf);
+		goto err;
 	}
 
 	for (i = 0; i < in_port->num_valid_vc_dt; i++) {
@@ -5668,6 +5697,8 @@ static int cam_ife_mgr_acquire_get_unified_structure_v2(
 	struct cam_isp_in_port_info_v2 *in = NULL;
 	uint32_t in_port_length = 0;
 	int32_t rc = 0, i;
+	size_t len = 0;
+	uint8_t log_buf[200];
 
 	in = (struct cam_isp_in_port_info_v2 *)
 		((uint8_t *)&acquire_hw_info->data +
@@ -5695,19 +5726,31 @@ static int cam_ife_mgr_acquire_get_unified_structure_v2(
 	in_port->lane_cfg        =  in->lane_cfg;
 	in_port->num_valid_vc_dt =  in->num_valid_vc_dt;
 
-	if (in_port->num_valid_vc_dt == 0 ||
-		in_port->num_valid_vc_dt >= CAM_ISP_VC_DT_CFG) {
-		if (cam_ife_mgr_hw_check_in_res_type(in->res_type)) {
-			CAM_ERR(CAM_ISP, "Invalid i/p arg invalid vc-dt: %d",
-				in->num_valid_vc_dt);
-			rc = -EINVAL;
-			goto err;
-		}
+	if (in_port->num_valid_vc_dt == 0 || in_port->num_valid_vc_dt >= CAM_ISP_VC_DT_CFG ||
+		in_port->num_valid_vc_dt > g_ife_hw_mgr.isp_caps.max_dt_supported) {
+		CAM_ERR(CAM_ISP,
+			"Invalid i/p arg invalid vc-dt: %d, arr size %u, max supported by HW: %u",
+			in_port->num_valid_vc_dt, CAM_ISP_VC_DT_CFG,
+			g_ife_hw_mgr.isp_caps.max_dt_supported);
+		rc = -EINVAL;
+		goto err;
 	}
 
 	for (i = 0; i < in_port->num_valid_vc_dt; i++) {
+		if ((i >= CAM_IFE_CSID_MAX_VALID_VC_NUM) && (in->vc[i] != CAM_ISP_INVALID_VC_VALUE))
+			rc = -EINVAL;
+
 		in_port->vc[i]        =  in->vc[i];
 		in_port->dt[i]        =  in->dt[i];
+
+		CAM_INFO_BUF(CAM_ISP, log_buf, 200, &len, "VC%d: 0x%x, DT%d: 0x%x ",
+			i, in_port->vc[i], i, in_port->dt[i]);
+	}
+
+	if (rc) {
+		CAM_ERR(CAM_ISP, "Invalid VC/DT args, printing given %d args: %s",
+			in_port->num_valid_vc_dt, log_buf);
+		goto err;
 	}
 
 	for (i = 0; i < in_port->num_valid_vc_dt; i++) {
@@ -5968,6 +6011,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	}
 
 	total_ports = total_pix_port + total_rdi_port + total_pd_port;
+	acquire_args->total_ports_acq = total_ports;
 	ife_ctx->res_list_ife_out = CAM_MEM_ZALLOC_ARRAY(total_ports,
 		sizeof(struct cam_isp_hw_mgr_res), GFP_KERNEL);
 	memset(ife_ctx->vfe_out_map, 0xff, sizeof(uint8_t) * max_ife_out_res);
@@ -7046,18 +7090,20 @@ static int cam_ife_hw_mgr_sfe_irq_inject_or_dump_desc(
 			sizeof(struct cam_isp_irq_inject_param));
 		if (rc)
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"Injecting IRQ %x failed for SFE at req: %lld",
+				"Injecting IRQ %x failed for SFE at req: %lld\n",
 				params->irq_mask, params->req_id);
 		else
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"IRQ %#x injected for SFE at req: %lld",
+				"IRQ %#x injected for SFE at req: %lld\n",
 				params->irq_mask, params->req_id);
 		break;
 	}
 
 clear_param:
-	strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
-	strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	if (irq_inject_display_buf) {
+		strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	}
 
 	/* Clear the param injected */
 	cam_isp_irq_inject_clear_params(params);
@@ -7097,18 +7143,20 @@ static int cam_ife_hw_mgr_vfe_irq_inject_or_dump_desc(
 			sizeof(struct cam_isp_irq_inject_param));
 		if (rc)
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"Injecting IRQ %x failed for IFE at req: %lld",
+				"Injecting IRQ %x failed for IFE at req: %lld\n",
 				params->irq_mask, params->req_id);
 		else
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"IRQ %#x injected for IFE at req: %lld",
+				"IRQ %#x injected for IFE at req: %lld\n",
 				params->irq_mask, params->req_id);
 		break;
 	}
 
 clear_param:
-	strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
-	strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	if (irq_inject_display_buf) {
+		strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	}
 
 	/* Clear the param injected */
 	cam_isp_irq_inject_clear_params(params);
@@ -7148,18 +7196,20 @@ static int cam_ife_hw_mgr_csid_irq_inject_or_dump_desc(
 			sizeof(struct cam_isp_irq_inject_param));
 		if (rc)
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"Injecting IRQ %x failed for CSID at req: %lld",
+				"Injecting IRQ %x failed for CSID at req: %lld\n",
 				params->irq_mask, params->req_id);
 		else
 			scnprintf(line_buf, LINE_BUFFER_LEN,
-				"IRQ %#x injected for CSID at req: %lld",
+				"IRQ %#x injected for CSID at req: %lld\n",
 				params->irq_mask, params->req_id);
 		break;
 	}
 
 clear_param:
-	strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
-	strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	if (irq_inject_display_buf) {
+		strlcat(irq_inject_display_buf, params->line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
+	}
 
 	/* Clear the param injected */
 	cam_isp_irq_inject_clear_params(params);
@@ -7192,8 +7242,9 @@ static int cam_ife_hw_mgr_irq_injection(struct cam_ife_hw_mgr *hw_mgr,
 				hw_mgr, &hw_mgr->irq_inject_param[i], false);
 			break;
 		default:
-			strlcat(irq_inject_display_buf, "No matched HW_TYPE\n",
-				IRQ_INJECT_DISPLAY_BUF_LEN);
+			if (irq_inject_display_buf)
+				strlcat(irq_inject_display_buf, "No matched HW_TYPE\n",
+					IRQ_INJECT_DISPLAY_BUF_LEN);
 			rc = -EINVAL;
 			return rc;
 		}
@@ -17330,7 +17381,9 @@ static int cam_ife_hw_mgr_dump_irq_desc(struct cam_ife_hw_mgr *hw_mgr,
 			hw_mgr, param, true);
 		break;
 	default:
-		strlcat(irq_inject_display_buf, "No matched HW_TYPE\n", IRQ_INJECT_DISPLAY_BUF_LEN);
+		if (irq_inject_display_buf)
+			strlcat(irq_inject_display_buf,
+				"No matched HW_TYPE\n", IRQ_INJECT_DISPLAY_BUF_LEN);
 		rc = -EINVAL;
 		return rc;
 	}
@@ -17615,7 +17668,7 @@ static int cam_isp_irq_inject_parse_common_params(
 		 rc = -EINVAL;
 	}
 
-	if (offset <= LINE_BUFFER_LEN)
+	if ((offset <= LINE_BUFFER_LEN) && irq_inject_display_buf)
 		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
 
 	CAM_MEM_FREE(line_buf);
@@ -17659,7 +17712,7 @@ static int cam_isp_irq_inject_command_parser(
 		goto end;
 	}
 
-	if (offset <= LINE_BUFFER_LEN)
+	if ((offset <= LINE_BUFFER_LEN) && irq_inject_display_buf)
 		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
 
 	rc = param_index;
@@ -17676,6 +17729,9 @@ static ssize_t cam_isp_irq_injection_read(struct file *file,
 	int count = 0;
 	uint32_t hw_type = 0;
 	char *line_buf = NULL;
+
+	if (!irq_inject_display_buf)
+		return -EINVAL;
 
 	line_buf = CAM_MEM_ZALLOC(sizeof(char) * LINE_BUFFER_LEN, GFP_KERNEL);
 	if (!line_buf)
@@ -17696,7 +17752,7 @@ static ssize_t cam_isp_irq_injection_read(struct file *file,
 
 		hw_type = g_ife_hw_mgr.irq_inject_param[i].hw_type;
 		offset += scnprintf(line_buf + offset, LINE_BUFFER_LEN - offset,
-			"injected param[%d] : hw_type:%s hw_idx:%d reg_unit:%d irq_mask:%#x req_id:%lld",
+			"injected param[%d] : hw_type:%s hw_idx:%d reg_unit:%d irq_mask:%#x req_id:%lld\n",
 			i, __cam_isp_irq_inject_hw_type_to_name(hw_type),
 			g_ife_hw_mgr.irq_inject_param[i].hw_idx,
 			g_ife_hw_mgr.irq_inject_param[i].reg_unit,
@@ -17736,7 +17792,8 @@ static ssize_t cam_isp_irq_injection_write(struct file *file,
 	if (!line_buf)
 		return -ENOMEM;
 
-	memset(irq_inject_display_buf, '\0', IRQ_INJECT_DISPLAY_BUF_LEN);
+	if (irq_inject_display_buf)
+		memset(irq_inject_display_buf, '\0', IRQ_INJECT_DISPLAY_BUF_LEN);
 
 	if (copy_from_user(input_buf, ubuf, sizeof(input_buf))) {
 		rc = -EFAULT;
@@ -17762,7 +17819,7 @@ static ssize_t cam_isp_irq_injection_write(struct file *file,
 			g_ife_hw_mgr.irq_inject_param[i].is_valid = true;
 			hw_type = g_ife_hw_mgr.irq_inject_param[i].hw_type;
 			offset += scnprintf(line_buf + offset, LINE_BUFFER_LEN - offset,
-				"Setting param[%d] : hw_type:%s hw_idx:%d reg_unit:%d irq_mask:%#x req_id:%lld",
+				"Setting param[%d] : hw_type:%s hw_idx:%d reg_unit:%d irq_mask:%#x req_id:%lld\n",
 				i, __cam_isp_irq_inject_hw_type_to_name(hw_type),
 				g_ife_hw_mgr.irq_inject_param[i].hw_idx,
 				g_ife_hw_mgr.irq_inject_param[i].reg_unit,
@@ -17772,7 +17829,7 @@ static ssize_t cam_isp_irq_injection_write(struct file *file,
 		break;
 	}
 
-	if (offset <= LINE_BUFFER_LEN)
+	if ((offset <= LINE_BUFFER_LEN) && irq_inject_display_buf)
 		strlcat(irq_inject_display_buf, line_buf, IRQ_INJECT_DISPLAY_BUF_LEN);
 
 	rc = size;
@@ -17793,6 +17850,8 @@ static int cam_ife_hw_mgr_debug_register(void)
 	int rc = 0;
 	struct dentry *dbgfileptr = NULL;
 
+	irq_inject_display_buf = NULL;
+
 	if (!cam_debugfs_available())
 		return 0;
 
@@ -17802,6 +17861,10 @@ static int cam_ife_hw_mgr_debug_register(void)
 		rc = -ENOENT;
 		goto end;
 	}
+
+	irq_inject_display_buf =
+		CAM_MEM_ZALLOC(sizeof(char) * IRQ_INJECT_DISPLAY_BUF_LEN, GFP_KERNEL);
+
 	/* Store parent inode for cleanup in caller */
 	g_ife_hw_mgr.debug_cfg.dentry = dbgfileptr;
 
@@ -18230,13 +18293,36 @@ int cam_ife_hw_mgr_init(struct cam_hw_mgr_intf *hw_mgr_intf, int *iommu_hdl,
 	/* fill csid hw intf information */
 	for (i = 0, j = 0; i < CAM_IFE_CSID_HW_NUM_MAX; i++) {
 		rc = cam_ife_csid_hw_init(&g_ife_hw_mgr.csid_devices[i], i);
-		if (!rc)
+		if (!rc) {
+			if (j == 0) {
+				struct cam_hw_intf *csid_device = g_ife_hw_mgr.csid_devices[i];
+				struct cam_hw_info *csid_hw =
+					(struct cam_hw_info *) csid_device->hw_priv;
+				rc = csid_device->hw_ops.process_cmd(
+					csid_hw,
+					CAM_ISP_HW_CMD_QUERY_CAP,
+					&isp_cap,
+					sizeof(struct cam_isp_hw_cap));
+				if (!rc) {
+					CAM_DBG(CAM_ISP,
+						"Max DT supported: %u", isp_cap.max_dt_supported);
+					g_ife_hw_mgr.isp_caps.max_dt_supported =
+						isp_cap.max_dt_supported;
+				} else {
+					CAM_ERR(CAM_ISP, "Invalid num of DT supported: %u",
+						isp_cap.max_dt_supported);
+					return -EINVAL;
+				}
+			}
 			j++;
+		}
 	}
 	if (!j) {
 		CAM_ERR(CAM_ISP, "no valid IFE CSID HW");
 		return -EINVAL;
 	}
+
+	memset(&isp_cap, 0x0, sizeof(struct cam_isp_hw_cap));
 
 	/* fill sfe hw intf info */
 	for (i = 0, j = 0; i < CAM_SFE_HW_NUM_MAX; i++) {
@@ -18510,4 +18596,7 @@ void cam_ife_hw_mgr_deinit(void)
 	cam_smmu_destroy_handle(g_ife_hw_mgr.mgr_common.img_iommu_hdl);
 	g_ife_hw_mgr.mgr_common.img_iommu_hdl = -1;
 	g_ife_hw_mgr.num_caches_found = 0;
+
+	if (irq_inject_display_buf)
+		CAM_MEM_FREE(irq_inject_display_buf);
 }

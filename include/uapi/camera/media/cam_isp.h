@@ -144,7 +144,8 @@
 #define CAM_ISP_GENERIC_BLOB_TYPE_UBWC_CONFIG_V3            34
 #define CAM_ISP_GENERIC_BLOB_TYPE_EXP_ORDER_UPDATE          35
 
-#define CAM_ISP_VC_DT_CFG    4
+#define CAM_ISP_VC_DT_CFG                4
+#define CAM_ISP_INVALID_VC_VALUE         0xFFFF
 
 #define CAM_ISP_IFE0_HW          0x1
 #define CAM_ISP_IFE1_HW          0x2

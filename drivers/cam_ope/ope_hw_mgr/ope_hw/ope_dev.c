@@ -22,6 +22,7 @@
 #include "ope_dev_intf.h"
 #include "camera_main.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 static struct cam_ope_hw_intf_data cam_ope_dev_list[OPE_DEV_MAX];
 static struct cam_ope_device_hw_info ope_hw_info;
@@ -119,12 +120,14 @@ static int cam_ope_component_bind(struct device *dev,
 	struct cam_ope_dev_probe           ope_probe;
 	struct cam_ope_cpas_vote           cpas_vote;
 	struct cam_ope_soc_private        *soc_private;
-	int i;
-	uint32_t hw_idx;
-	int rc = 0;
+	int                                i;
+	uint32_t                           hw_idx;
+	int                                rc = 0;
+	struct platform_device            *pdev = to_platform_device(dev);
+	struct timespec64                  ts_start, ts_end;
+	long                               microsec = 0;
 
-	struct platform_device *pdev = to_platform_device(dev);
-
+	CAM_GET_TIMESTAMP(ts_start);
 	of_property_read_u32(pdev->dev.of_node,
 		"cell-index", &hw_idx);
 
@@ -245,6 +248,9 @@ static int cam_ope_component_bind(struct device *dev,
 		cam_ope_dev_list[ope_dev_intf->hw_idx].hw_pid[i] =
 			soc_private->pid[i];
 
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	return rc;
 
 init_hw_failure:

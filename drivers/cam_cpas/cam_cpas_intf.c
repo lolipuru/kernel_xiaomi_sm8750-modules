@@ -29,6 +29,7 @@
 #include "cam_req_mgr_interface.h"
 #include "cam_vmrm_interface.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 #ifdef CONFIG_DYNAMIC_FD_PORT_CONFIG
 #include <linux/IClientEnv.h>
@@ -1826,7 +1827,10 @@ static int cam_cpas_dev_component_bind(struct device *dev,
 	int rc;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct cam_hw_info *cpas_hw = NULL;
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	if (g_cpas_intf) {
 		CAM_ERR(CAM_CPAS, "cpas component already binded");
 		return -EALREADY;
@@ -1874,6 +1878,9 @@ static int cam_cpas_dev_component_bind(struct device *dev,
 		goto error_hw_remove;
 
 	g_cpas_intf->probe_done = true;
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 	CAM_DBG(CAM_CPAS,
 		"Component bound successfully %d, %d.%d.%d, %d.%d.%d, 0x%x",
 		hw_caps->camera_family, hw_caps->camera_version.major,

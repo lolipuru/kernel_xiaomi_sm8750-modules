@@ -180,6 +180,63 @@ static inline int cam_wrapper_qcom_clk_crm_set_rate(struct clk *clk,
 }
 #endif
 
+#if IS_ENABLED(CONFIG_QCOM_CRM_V2)
+static inline int cam_wrapper_qcom_clk_crmb_set_rate(struct clk *clk,
+	enum crm_drv_type client_type, u32 client_idx,
+	u32 nd_idx, u32 pwr_st, unsigned long ab_rate,
+	unsigned long ib_rate, const char *name)
+{
+	struct timespec64 ts1, ts2;
+	long usec = 0;
+	int temp;
+
+	if (debug_bypass_drivers & CAM_BYPASS_CESTA) {
+		CAM_WARN(CAM_UTIL, "Bypass qcom clk crmb set rate");
+		return 0;
+	}
+
+	CAM_SAVE_START_TIMESTAMP_IF(ts1);
+
+	temp = qcom_clk_crmb_set_rate(clk, client_type, client_idx, nd_idx, pwr_st,
+		ab_rate, ib_rate);
+
+	CAM_COMPUTE_TIME_TAKEN_IF(ts1, ts2, usec,
+		"ClkRegBusOpsProfile: qcom_clk_crmb_set_rate (name, time taken in usec)", name);
+
+	return temp;
+}
+
+bool cam_is_crmb_supported(struct cam_hw_soc_info *soc_info)
+{
+	const char *src_clk_name;
+	int32_t src_clk_idx = soc_info->src_clk_idx;
+
+	src_clk_name = soc_info->clk_name[src_clk_idx];
+
+	if (soc_info->is_crmb_clk) {
+		CAM_DBG(CAM_UTIL, "CRMB is supported for clk %s", src_clk_name);
+		return true;
+	}
+	CAM_DBG(CAM_UTIL, "CRMB is NOT supported for clk %s", src_clk_name);
+	return false;
+}
+
+#elif IS_ENABLED(CONFIG_QCOM_CRM)
+static inline int cam_wrapper_qcom_clk_crmb_set_rate(struct clk *clk,
+	enum crm_drv_type client_type, u32 client_idx,
+	u32 nd_idx, u32 pwr_st, unsigned long ab_rate,
+	unsigned long ib_rate, const char *name)
+{
+	CAM_ERR(CAM_UTIL, "CRMB API is NOT Supported");
+	return -EOPNOTSUPP;
+}
+
+bool cam_is_crmb_supported(struct cam_hw_soc_info *soc_info)
+{
+	return false;
+}
+#endif
+
 static inline int cam_wrapper_clk_set_rate(struct clk *clk, unsigned long rate, const char *name)
 {
 	struct timespec64 ts1, ts2;
@@ -646,24 +703,51 @@ static int cam_soc_util_set_cesta_clk_rate(struct cam_hw_soc_info *soc_info,
 	CAM_DBG(CAM_UTIL, "%s Requested clk rate [high low]: [%llu %llu] cesta_client_idx: %d",
 		soc_info->clk_name[src_clk_idx], high_val, low_val, cesta_client_idx);
 
-	rc = cam_wrapper_qcom_clk_crm_set_rate(
-		clk, CRM_HW_DRV, cesta_client_idx, CRM_PWR_STATE1,
-		high_val, soc_info->clk_name[src_clk_idx]);
-	if (rc) {
-		CAM_ERR(CAM_UTIL,
-			"Failed in setting cesta high clk rate, client idx: %u pwr state: %u clk_val: %llu rc: %d",
-			cesta_client_idx, CRM_PWR_STATE1, high_val, rc);
-		return rc;
-	}
+	if (cam_is_crmb_supported(soc_info)) {
 
-	rc = cam_wrapper_qcom_clk_crm_set_rate(
-		clk, CRM_HW_DRV, cesta_client_idx, CRM_PWR_STATE0,
-		low_val, soc_info->clk_name[src_clk_idx]);
-	if (rc) {
-		CAM_ERR(CAM_UTIL,
-			"Failed in setting cesta low clk rate, client idx: %u pwr state: %u clk_val: %llu rc: %d",
-			cesta_client_idx, CRM_PWR_STATE0, low_val, rc);
-		return rc;
+		/* For CRMB, we pass 0 for nd_idx as we only need a single node for CESTA */
+
+		rc = cam_wrapper_qcom_clk_crmb_set_rate(
+			clk, CRM_HW_DRV, cesta_client_idx, 0, CRM_PWR_STATE1,
+			high_val, 0, soc_info->clk_name[src_clk_idx]);
+		if (rc) {
+			CAM_ERR(CAM_UTIL,
+				"Failed in setting cesta crm_B high clk rate, client idx: %u pwr state: %u clk_val: %llu rc: %d",
+				cesta_client_idx, CRM_PWR_STATE1, high_val, rc);
+			return rc;
+		}
+
+		rc = cam_wrapper_qcom_clk_crmb_set_rate(
+			clk, CRM_HW_DRV, cesta_client_idx, 0, CRM_PWR_STATE0,
+			low_val, 0, soc_info->clk_name[src_clk_idx]);
+		if (rc) {
+			CAM_ERR(CAM_UTIL,
+				"Failed in setting cesta crm_B low clk rate, client idx: %u pwr state: %u clk_val: %llu rc: %d",
+				cesta_client_idx, CRM_PWR_STATE0, low_val, rc);
+			return rc;
+		}
+
+	} else {
+
+		rc = cam_wrapper_qcom_clk_crm_set_rate(
+			clk, CRM_HW_DRV, cesta_client_idx, CRM_PWR_STATE1,
+			high_val, soc_info->clk_name[src_clk_idx]);
+		if (rc) {
+			CAM_ERR(CAM_UTIL,
+				"Failed in setting cesta high clk rate, client idx: %u pwr state: %u clk_val: %llu rc: %d",
+				cesta_client_idx, CRM_PWR_STATE1, high_val, rc);
+			return rc;
+		}
+
+		rc = cam_wrapper_qcom_clk_crm_set_rate(
+			clk, CRM_HW_DRV, cesta_client_idx, CRM_PWR_STATE0,
+			low_val, soc_info->clk_name[src_clk_idx]);
+		if (rc) {
+			CAM_ERR(CAM_UTIL,
+				"Failed in setting cesta low clk rate, client idx: %u pwr state: %u clk_val: %llu rc: %d",
+				cesta_client_idx, CRM_PWR_STATE0, low_val, rc);
+			return rc;
+		}
 	}
 
 end:
@@ -3046,8 +3130,13 @@ int cam_soc_util_get_dt_properties(struct cam_hw_soc_info *soc_info)
 	soc_info->is_nrt_dev = false;
 	if (of_property_read_bool(of_node, "nrt-device"))
 		soc_info->is_nrt_dev = true;
-	CAM_DBG(CAM_UTIL, "Dev %s, nrt_dev %d",
-		soc_info->dev_name, soc_info->is_nrt_dev);
+
+	soc_info->is_crmb_clk = false;
+	if (of_property_read_bool(of_node, "cam-crmb-clk"))
+		soc_info->is_crmb_clk = true;
+
+	CAM_DBG(CAM_UTIL, "Dev %s, nrt_dev: %d is_crmb_clk: %d", soc_info->dev_name,
+		soc_info->is_nrt_dev, soc_info->is_crmb_clk);
 
 	rc = cam_soc_util_get_dt_regulator_info(soc_info);
 	if (rc)

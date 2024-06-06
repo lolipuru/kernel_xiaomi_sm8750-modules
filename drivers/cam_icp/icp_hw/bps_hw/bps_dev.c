@@ -20,6 +20,7 @@
 #include "cam_debug_util.h"
 #include "camera_main.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 static struct cam_bps_device_hw_info cam_bps_hw_info = {
 	.hw_idx = 0,
@@ -99,14 +100,17 @@ int cam_bps_register_cpas(struct cam_hw_soc_info *soc_info,
 static int cam_bps_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
 {
-	struct cam_hw_info            *bps_dev = NULL;
-	struct cam_hw_intf            *bps_dev_intf = NULL;
+	struct cam_hw_info                *bps_dev = NULL;
+	struct cam_hw_intf                *bps_dev_intf = NULL;
 	const struct of_device_id         *match_dev = NULL;
 	struct cam_bps_device_core_info   *core_info = NULL;
 	struct cam_bps_device_hw_info     *hw_info = NULL;
 	int                                rc = 0;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device            *pdev = to_platform_device(dev);
+	struct timespec64                  ts_start, ts_end;
+	long                               microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	bps_dev_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!bps_dev_intf)
 		return -ENOMEM;
@@ -188,6 +192,9 @@ static int cam_bps_component_bind(struct device *dev,
 	init_completion(&bps_dev->hw_complete);
 	CAM_DBG(CAM_ICP, "BPS:%d component bound successfully",
 		bps_dev_intf->hw_idx);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 }

@@ -48,7 +48,8 @@ enum cam_ife_ctx_master_type {
 	 CAM_ISP_HW_ERROR_CSID_MISSING_PKT_HDR_DATA  |   \
 	 CAM_ISP_HW_ERROR_CSID_FATAL                 |   \
 	 CAM_ISP_HW_ERROR_CSID_UNBOUNDED_FRAME       |   \
-	 CAM_ISP_HW_ERROR_CSID_MISSING_EOT)
+	 CAM_ISP_HW_ERROR_CSID_MISSING_EOT           |   \
+	 CAM_ISP_HW_ERROR_CSID_ILLEGAL_DT_SWITCH)
 
 /* IFE CSID recovery errors */
 #define CAM_ISP_RECOVERABLE_CSID_ERRORS              \
@@ -469,6 +470,7 @@ struct cam_isp_fcg_caps {
  * @max_sfe_out_res_type  :  max sfe out res type value from hw
  * @num_ife_perf_counters :  max ife perf counters supported
  * @num_sfe_perf_counters :  max sfe perf counters supported
+ * @max_dt_supported      :  max DT CSID can decode
  * @support_consumed_addr :  indicate whether hw supports last consumed address
  */
 struct cam_isp_ife_sfe_hw_caps {
@@ -477,6 +479,7 @@ struct cam_isp_ife_sfe_hw_caps {
 	uint32_t                max_sfe_out_res_type;
 	uint32_t                num_ife_perf_counters;
 	uint32_t                num_sfe_perf_counters;
+	uint32_t                max_dt_supported;
 	bool                    support_consumed_addr;
 	struct cam_isp_hw_regiter_dump_data skip_regdump_data;
 };

@@ -194,6 +194,7 @@ static int cam_sensor_handle_res_info(struct cam_sensor_res_info *res_info,
 	s_ctrl->sensor_res[idx].width = res_info->width;
 	s_ctrl->sensor_res[idx].height = res_info->height;
 	s_ctrl->sensor_res[idx].fps = res_info->fps;
+	s_ctrl->sensor_res[idx].request_id = s_ctrl->last_updated_req;
 
 	if (res_info->num_valid_params > 0) {
 		if (res_info->valid_param_mask & CAM_SENSOR_FEATURE_MASK)
@@ -318,7 +319,6 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 	struct cam_cmd_buf_desc *cmd_desc = NULL;
 	struct cam_buf_io_cfg *io_cfg = NULL;
 	struct i2c_settings_array *i2c_reg_settings = NULL;
-	struct i2c_settings_array *i2c_reg_settings_deferred = NULL;
 	size_t len_of_buff = 0;
 	size_t remain_len = 0;
 	int64_t prev_updated_req;
@@ -588,9 +588,17 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 			break;
 		}
 		case CAM_SENSOR_PACKET_DEFERRED_I2C_COMMANDS_META: {
+			struct i2c_settings_array *i2c_reg_settings_deferred = NULL;
+
 			i2c_reg_settings_deferred =
 				&i2c_data->deferred_frame_update[csl_packet->header.request_id %
 					MAX_PER_FRAME_ARRAY];
+
+			if (i2c_reg_settings_deferred->is_settings_valid)
+				CAM_WARN(CAM_SENSOR,
+					"Sensor[%s] receiving duplicate deferred meta settings for req: %llu",
+					s_ctrl->sensor_name, csl_packet->header.request_id);
+
 			i2c_reg_settings_deferred->request_id = csl_packet->header.request_id;
 			rc = cam_sensor_i2c_command_parser(&s_ctrl->io_master_info,
 				i2c_reg_settings_deferred, &cmd_desc[i], 1, io_cfg);
@@ -609,12 +617,49 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 			if (rc)
 				s_ctrl->sensor_res[idx].request_id = 0;
 
-			if (s_ctrl->is_res_info_updated)
-				s_ctrl->sensor_res[idx].request_id = csl_packet->header.request_id;
+			break;
+		}
+		case CAM_SENSOR_PACKET_BUBBLE_UPD_I2C_COMMANDS_META: {
+			struct i2c_settings_array *i2c_reg_settings_bubble = NULL;
+
+			i2c_reg_settings_bubble =
+				&i2c_data->bubble_update[csl_packet->header.request_id %
+				MAX_PER_FRAME_ARRAY];
+			if (i2c_reg_settings_bubble->is_settings_valid)
+				CAM_WARN(CAM_SENSOR,
+					"Sensor[%s] receiving duplicate bubble meta settings for req: %llu",
+					s_ctrl->sensor_name, csl_packet->header.request_id);
+			i2c_reg_settings_bubble->request_id = csl_packet->header.request_id;
+			rc = cam_sensor_i2c_command_parser(&s_ctrl->io_master_info,
+				i2c_reg_settings_bubble, &cmd_desc[i], 1, io_cfg);
+			if (rc < 0) {
+				CAM_ERR(CAM_SENSOR, "Fail parsing I2C Pkt: %d", rc);
+				goto end;
+			}
+			break;
+		}
+		case CAM_SENSOR_PACKET_FRAME_SKIP_I2C_COMMANDS_META: {
+			struct i2c_settings_array *i2c_reg_settings_frame_skip = NULL;
+
+			i2c_reg_settings_frame_skip =
+				&i2c_data->frame_skip[csl_packet->header.request_id %
+				MAX_PER_FRAME_ARRAY];
+			if (i2c_reg_settings_frame_skip->is_settings_valid)
+				CAM_WARN(CAM_SENSOR,
+					"Sensor[%s] receiving duplicate frame skip meta settings for req: %llu",
+					s_ctrl->sensor_name, csl_packet->header.request_id);
+			i2c_reg_settings_frame_skip->request_id = csl_packet->header.request_id;
+
+			rc = cam_sensor_i2c_command_parser(&s_ctrl->io_master_info,
+				i2c_reg_settings_frame_skip, &cmd_desc[i], 1, io_cfg);
+			if (rc < 0) {
+				CAM_ERR(CAM_SENSOR, "Fail parsing I2C Pkt: %d", rc);
+				goto end;
+			}
 			break;
 		}
 		default:
-			CAM_ERR(CAM_ISP, "invalid cmd buf type %d",
+			CAM_ERR(CAM_SENSOR, "invalid cmd buf type %d",
 				cmd_buf_type);
 			return -EINVAL;
 		}

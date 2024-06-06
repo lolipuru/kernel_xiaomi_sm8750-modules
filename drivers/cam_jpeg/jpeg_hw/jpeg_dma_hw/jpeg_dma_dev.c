@@ -26,6 +26,7 @@
 #include "cam_jpeg_dma_780_hw_info_ver_4_2_0.h"
 #include "camera_main.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 static int cam_jpeg_dma_register_cpas(struct cam_hw_soc_info *soc_info,
 	struct cam_jpeg_dma_device_core_info *core_info,
@@ -75,7 +76,10 @@ static int cam_jpeg_dma_component_bind(struct device *dev,
 	struct cam_jpeg_dma_soc_private  *soc_private;
 	int i, rc;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	jpeg_dma_dev_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
 	if (!jpeg_dma_dev_intf)
 		return -ENOMEM;
@@ -153,6 +157,9 @@ static int cam_jpeg_dma_component_bind(struct device *dev,
 
 	core_info->rd_mid = soc_private->rd_mid;
 	core_info->wr_mid = soc_private->wr_mid;
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 

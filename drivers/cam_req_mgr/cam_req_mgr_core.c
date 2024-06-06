@@ -526,7 +526,7 @@ static int __cam_req_mgr_send_evt(
 	enum cam_req_mgr_device_error  error,
 	struct cam_req_mgr_core_link  *link)
 {
-	int i;
+	int i, rc = 0;
 	struct cam_req_mgr_link_evt_data     evt_data = {0};
 	struct cam_req_mgr_connected_device *device = NULL;
 
@@ -540,21 +540,33 @@ static int __cam_req_mgr_send_evt(
 
 	for (i = 0; i < link->num_devs; i++) {
 		device = &link->l_dev[i];
-		if (device != NULL) {
-			evt_data.dev_hdl = device->dev_hdl;
-			evt_data.evt_type = type;
-			evt_data.link_hdl = link->link_hdl;
-			evt_data.req_id = req_id;
+		if (!device)
+			continue;
+
+		evt_data.dev_hdl = device->dev_hdl;
+		evt_data.link_hdl = link->link_hdl;
+		evt_data.req_id = req_id;
+		evt_data.evt_type = type;
+		if (type == CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES)
+			evt_data.u.properties_mask = link->properties_mask;
+		else
 			evt_data.u.error = error;
-			if (device->ops && device->ops->process_evt)
-				device->ops->process_evt(&evt_data);
+
+		if (device->ops && device->ops->process_evt) {
+			rc = device->ops->process_evt(&evt_data);
+			if (rc) {
+				CAM_ERR(CAM_CRM,
+					"Failed to send evt %d on link 0x%x dev 0x%x req %lld",
+					type, link->link_hdl, device->dev_hdl, req_id);
+				break;
+			}
 		}
 	}
 
 	/* Updated if internal recovery succeeded */
 	link->try_for_internal_recovery = evt_data.try_for_recovery;
 
-	return 0;
+	return rc;
 }
 
 /**
@@ -1917,8 +1929,11 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 	if (sync_link->req.in_q) {
 		rc = __cam_req_mgr_check_link_is_ready(sync_link,
 			sync_slot_idx, true);
-		if (rc && (sync_link->req.in_q->slot[sync_slot_idx].status !=
-				CRM_SLOT_STATUS_REQ_APPLIED)) {
+		if (rc &&
+			(sync_link->req.in_q->slot[sync_slot_idx].status !=
+				CRM_SLOT_STATUS_REQ_APPLIED) &&
+			(sync_link->req.in_q->slot[sync_slot_idx].status !=
+				CRM_SLOT_STATUS_REQ_READY)) {
 			CAM_DBG(CAM_CRM,
 				"Req: %lld not ready on link: %x, rc=%d",
 				req_id, sync_link->link_hdl, rc);
@@ -3759,34 +3774,6 @@ end:
 }
 
 /**
- * cam_req_mgr_notify_eof_event()
- *
- * @brief  : This runs in workqueue thread context. Call core funcs to
- *           notify eof event to sub devices.
- * @link   : link info
- *
- */
-static void cam_req_mgr_notify_eof_event(struct cam_req_mgr_core_link *link)
-{
-	int                                  i;
-	struct cam_req_mgr_connected_device *dev = NULL;
-	struct cam_req_mgr_link_evt_data     evt_data;
-
-	for (i = 0; i < link->num_devs; i++) {
-		dev = &link->l_dev[i];
-		evt_data.dev_hdl = dev->dev_hdl;
-		evt_data.evt_type = CAM_REQ_MGR_LINK_EVT_EOF;
-		evt_data.link_hdl = link->link_hdl;
-
-		if (dev->ops && dev->ops->process_evt)
-			dev->ops->process_evt(&evt_data);
-	}
-
-	CAM_DBG(CAM_CRM, "Notify EOF event done on link:0x%x",
-		link->link_hdl);
-}
-
-/**
  * cam_req_mgr_process_trigger()
  *
  * @brief: This runs in workque thread context. Call core funcs to check
@@ -3861,8 +3848,13 @@ static int cam_req_mgr_process_trigger(void *priv, void *data)
 			__cam_req_mgr_reset_req_slot(link, idx);
 		}
 	} else if (trigger_data->trigger == CAM_TRIGGER_POINT_EOF) {
-		if (link->properties_mask & CAM_LINK_PROPERTY_SENSOR_STANDBY_AFTER_EOF)
-			cam_req_mgr_notify_eof_event(link);
+		if (link->properties_mask & CAM_LINK_PROPERTY_SENSOR_STANDBY_AFTER_EOF) {
+			rc = __cam_req_mgr_send_evt(0, CAM_REQ_MGR_LINK_EVT_EOF,
+				CRM_KMD_ERR_MAX, link);
+			if (!rc)
+				CAM_DBG(CAM_CRM, "Notify EOF event done on link:0x%x",
+					link->link_hdl);
+		}
 	}
 
 	/*
@@ -4431,10 +4423,19 @@ static int cam_req_mgr_cb_notify_msg(
 	slot_idx = __cam_req_mgr_find_slot_for_req(
 		in_q, msg->req_id);
 	if (slot_idx == -1) {
-		CAM_ERR(CAM_CRM, "Req: %lld not found on link: 0x%x",
-			msg->req_id, link->link_hdl);
+		if (((uint32_t)msg->req_id) <= (link->last_flush_id)) {
+			CAM_INFO(CAM_CRM,
+				"req %lld not found in in_q; it has been flushed [last_flush_req %lld] link 0x%x",
+				msg->req_id, link->last_flush_id, link->link_hdl);
+			rc = -EBADR;
+		} else {
+			CAM_ERR(CAM_CRM,
+				"req %lld not found in in_q on link 0x%x [last_flush_req %lld]",
+				msg->req_id, link->link_hdl, link->last_flush_id);
+			rc = -EINVAL;
+		}
 		spin_unlock_bh(&link->req.reset_link_spin_lock);
-		return -EINVAL;
+		return rc;
 	}
 
 	slot = &in_q->slot[slot_idx];
@@ -5686,10 +5687,8 @@ end:
 
 int cam_req_mgr_link_properties(struct cam_req_mgr_link_properties *properties)
 {
-	int                                    i, rc = 0;
+	int                                    rc = 0;
 	struct cam_req_mgr_core_link          *link = NULL;
-	struct cam_req_mgr_connected_device   *dev;
-	struct cam_req_mgr_link_evt_data       evt_data;
 
 	mutex_lock(&g_crm_core_dev->crm_lock);
 	link = cam_get_link_priv(properties->link_hdl);
@@ -5715,30 +5714,16 @@ int cam_req_mgr_link_properties(struct cam_req_mgr_link_properties *properties)
 	mutex_lock(&link->lock);
 	link->properties_mask = properties->properties_mask;
 
-	for (i = 0; i < link->num_devs; i++) {
-		dev = &link->l_dev[i];
-		evt_data.dev_hdl = dev->dev_hdl;
-		evt_data.link_hdl = link->link_hdl;
-		evt_data.evt_type = CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES;
-		evt_data.u.properties_mask = link->properties_mask;
-
-		if (dev->ops && dev->ops->process_evt) {
-			rc = dev->ops->process_evt(&evt_data);
-			if (rc) {
-				CAM_ERR(CAM_CRM,
-					"Failed to set properties on link 0x%x dev 0x%x",
-					link->link_hdl, dev->dev_hdl);
-				mutex_unlock(&link->lock);
-				goto end;
-			}
-		}
-	}
+	rc = __cam_req_mgr_send_evt(0, CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES,
+				CRM_KMD_ERR_MAX, link);
+	if (rc)
+		CAM_ERR(CAM_CRM,
+			"Failed to set properties on link 0x%x", link->link_hdl);
+	else
+		CAM_DBG(CAM_CRM, "link 0x%x set properties mask:0x%x successfully",
+			link->link_hdl, link->properties_mask);
 
 	mutex_unlock(&link->lock);
-
-	CAM_DBG(CAM_CRM, "link 0x%x set properties successfully, properties mask:0x%x",
-		link->link_hdl, link->properties_mask);
-
 end:
 	mutex_unlock(&g_crm_core_dev->crm_lock);
 	return rc;

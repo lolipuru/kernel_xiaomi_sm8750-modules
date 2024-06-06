@@ -16,6 +16,7 @@
 #include "cam_icp_v2_core.h"
 #include "cam_icp_soc_common.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 static int max_icp_v2_hw_idx = -1;
 
@@ -81,7 +82,10 @@ static int cam_icp_v2_component_bind(struct device *dev,
 	struct cam_icp_v2_core_info *core_info = NULL;
 	const struct of_device_id *match_dev = NULL;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	match_dev = of_match_device(
 		pdev->dev.driver->of_match_table, &pdev->dev);
 	if (!match_dev) {
@@ -152,6 +156,9 @@ static int cam_icp_v2_component_bind(struct device *dev,
 		max_icp_v2_hw_idx = icp_v2_intf->hw_idx;
 
 	platform_set_drvdata(pdev, icp_v2_intf);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return 0;
 

@@ -39,7 +39,10 @@
 #define CAM_SENSOR_PACKET_GENERIC_BLOB                  1
 /* Contains I2C config to be applied on the frame post the regular update */
 #define CAM_SENSOR_PACKET_DEFERRED_I2C_COMMANDS_META    2
-
+/* Contains I2C config to be applied on frame skips */
+#define CAM_SENSOR_PACKET_FRAME_SKIP_I2C_COMMANDS_META  3
+/* Contains I2C config to be applied on bubble */
+#define CAM_SENSOR_PACKET_BUBBLE_UPD_I2C_COMMANDS_META  4
 
 /* SENSOR blob types */
 #define CAM_SENSOR_GENERIC_BLOB_RES_INFO           0

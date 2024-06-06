@@ -180,7 +180,10 @@ static int cam_ope_subdev_component_bind(struct device *dev,
 	struct cam_hw_mgr_intf *hw_mgr_intf;
 	int iommu_hdl = -1;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct timespec64 ts_start, ts_end;
+	long microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	CAM_DBG(CAM_OPE, "Binding OPE subdev component");
 	if (!pdev) {
 		CAM_ERR(CAM_OPE, "pdev is NULL");
@@ -237,6 +240,9 @@ static int cam_ope_subdev_component_bind(struct device *dev,
 
 	node->sd_handler = cam_ope_subdev_close_internal;
 	CAM_DBG(CAM_OPE, "Subdev component bound successfully");
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 

@@ -830,6 +830,21 @@ static int cam_vfe_bus_ver3_handle_rup_bottom_half(void *handler_priv,
 	return ret;
 }
 
+/* lsb alignemnt needs to be set only if the format has padding bits */
+static inline bool cam_vfe_bus_ver3_needs_lsb_alignment(uint32_t format)
+{
+	switch (format) {
+	case CAM_FORMAT_PLAIN16_8:
+	case CAM_FORMAT_PLAIN16_10:
+	case CAM_FORMAT_PLAIN16_12:
+	case CAM_FORMAT_PLAIN16_14:
+	case CAM_FORMAT_PLAIN32_20:
+		return true;
+	}
+
+	return false;
+}
+
 static inline void cam_vfe_bus_ver3_config_frame_based_rdi_wm(
 	struct cam_vfe_bus_ver3_wm_resource_data  *rsrc_data)
 {
@@ -866,7 +881,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 	case CAM_FORMAT_MIPI_RAW_10:
 		if (rsrc_data->use_wm_pack) {
 			if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
-				rsrc_data->cfg.width = ALIGNUP((rsrc_data->acquired_width), 8);
+				rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width), 8);
 
 			rsrc_data->cfg.pack_fmt = PACKER_FMT_VER3_MIPI10;
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
@@ -887,7 +902,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 	case CAM_FORMAT_MIPI_RAW_12:
 		if (rsrc_data->use_wm_pack) {
 			if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
-				rsrc_data->cfg.width = ALIGNUP((rsrc_data->acquired_width), 8);
+				rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width), 8);
 
 			rsrc_data->cfg.pack_fmt = PACKER_FMT_VER3_MIPI12;
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
@@ -897,7 +912,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 	case CAM_FORMAT_MIPI_RAW_14:
 		if (rsrc_data->use_wm_pack) {
 			if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
-				rsrc_data->cfg.width = ALIGNUP((rsrc_data->acquired_width), 8);
+				rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width), 8);
 
 			rsrc_data->cfg.pack_fmt = PACKER_FMT_VER3_MIPI14;
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
@@ -912,8 +927,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 	case CAM_FORMAT_MIPI_RAW_20:
 		if (rsrc_data->use_wm_pack) {
 			if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
-				rsrc_data->cfg.width =
-					ALIGNUP((rsrc_data->cfg.width * 5) / 2, 16) / 16;
+				rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width), 8);
 			rsrc_data->cfg.pack_fmt = PACKER_FMT_VER3_MIPI20;
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
 			rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width * 5) / 2, 16) / 16;
@@ -946,7 +960,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 			rsrc_data->cfg.pack_fmt |= (1 << rsrc_data->common_data->pack_align_shift);
 
 			if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
-				rsrc_data->cfg.width = ALIGNUP((rsrc_data->acquired_width), 8);
+				rsrc_data->cfg.width = ALIGNUP((rsrc_data->cfg.width), 8);
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
 			rsrc_data->cfg.width = ALIGNUP(rsrc_data->cfg.width * 2, 16) / 16;
 
@@ -1123,11 +1137,14 @@ static int cam_vfe_bus_ver3_config_port(
 		rsrc_data->cfg.pack_fmt |= (1 << ver3_bus_priv->common_data.pack_align_shift);
 		break;
 	case CAM_VFE_BUS_VER3_VFE_OUT_RAW_DUMP:
+		if (cam_vfe_bus_ver3_needs_lsb_alignment(rsrc_data->cfg.pack_fmt)) {
+			rsrc_data->cfg.pack_fmt |=
+				(1 << ver3_bus_priv->common_data.pack_align_shift);
+		}
+
 		rsrc_data->cfg.stride = rsrc_data->cfg.width;
 		rsrc_data->cfg.en_cfg = (common_reg->wm_mode_val[CAM_VFE_WM_LINE_BASED_MODE] <<
 			common_reg->wm_mode_shift) | (1 << common_reg->wm_en_shift);
-		/* LSB aligned */
-		rsrc_data->cfg.pack_fmt |= (1 << ver3_bus_priv->common_data.pack_align_shift);
 		break;
 	case CAM_VFE_BUS_VER3_VFE_OUT_SPARSE_PD:
 		rsrc_data->cfg.stride = ALIGNUP(rsrc_data->cfg.width * 2, 8);

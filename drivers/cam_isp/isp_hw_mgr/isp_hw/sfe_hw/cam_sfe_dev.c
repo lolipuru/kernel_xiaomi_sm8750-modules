@@ -19,6 +19,7 @@
 #include "camera_main.h"
 #include "cam_vmrm_interface.h"
 #include "cam_mem_mgr_api.h"
+#include "cam_req_mgr_dev.h"
 
 static struct cam_isp_hw_intf_data cam_sfe_hw_list[CAM_SFE_HW_NUM_MAX];
 static uint32_t g_num_sfe_hws;
@@ -36,7 +37,10 @@ static int cam_sfe_component_bind(struct device *dev,
 	struct cam_sfe_soc_private        *soc_priv;
 	uint32_t                           sfe_dev_idx;
 	int                                i, rc = 0;
+	struct timespec64                  ts_start, ts_end;
+	long                               microsec = 0;
 
+	CAM_GET_TIMESTAMP(ts_start);
 	pdev = to_platform_device(dev);
 
 	rc = of_property_read_u32(pdev->dev.of_node, "cell-index", &sfe_dev_idx);
@@ -142,6 +146,9 @@ static int cam_sfe_component_bind(struct device *dev,
 
 	CAM_DBG(CAM_SFE, "SFE%d bound successfully",
 		sfe_hw_intf->hw_idx);
+	CAM_GET_TIMESTAMP(ts_end);
+	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
+	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
 

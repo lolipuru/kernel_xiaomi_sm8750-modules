@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #if !defined(_CAM_TRACE_H) || defined(TRACE_HEADER_MULTI_READ)
@@ -430,6 +430,25 @@ TRACE_EVENT(cam_cci_burst,
 	)
 );
 
+TRACE_EVENT(cam_perf,
+	TP_PROTO(const char *entity,
+	const char *msg, unsigned long val),
+	TP_ARGS(entity, msg, val),
+	TP_STRUCT__entry(
+		__string(entity, entity)
+		__string(msg, msg)
+		__field(unsigned long, value)
+	),
+	TP_fast_assign(
+		__assign_str(entity, entity);
+		__assign_str(msg, msg);
+		__entry->value = val;
+	),
+	TP_printk(
+		"%s: %s: %lu (usec)",
+		__get_str(entity), __get_str(msg), __entry->value
+	)
+);
 #endif /* _CAM_TRACE_H */
 
 /* This part must be outside protection */

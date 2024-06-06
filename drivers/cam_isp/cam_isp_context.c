@@ -4112,6 +4112,11 @@ static void __cam_isp_get_notification_evt_params(
 		err_type = CAM_SYNC_ISP_EVENT_CSID_RX_ERROR;
 		recovery_type_temp |= CAM_REQ_MGR_ERROR_TYPE_FULL_RECOVERY;
 	}
+	if (hw_error & CAM_ISP_HW_ERROR_CSID_ILLEGAL_DT_SWITCH) {
+		err_code |= CAM_REQ_MGR_ISP_ERR_ILLEGAL_DT_SWITCH;
+		err_type = CAM_SYNC_ISP_EVENT_CSID_SENSOR_SWITCH_ERROR;
+		recovery_type_temp |= CAM_REQ_MGR_ERROR_TYPE_FULL_RECOVERY;
+	}
 
 	if (recovery_type_temp == (CAM_REQ_MGR_ERROR_TYPE_FULL_RECOVERY |
 		CAM_REQ_MGR_ERROR_TYPE_RECOVERY))
@@ -7106,12 +7111,18 @@ static void __cam_isp_ctx_free_mem_hw_entries(struct cam_context *ctx)
 		ctx->hw_update_entry = NULL;
 	}
 
+	ctx_isp = (struct cam_isp_context *)ctx->ctx_priv;
+	if (ctx_isp)
+		for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
+			CAM_MEM_FREE(ctx_isp->req_isp[i].deferred_fence_map_index);
+			ctx_isp->req_isp[i].deferred_fence_map_index = NULL;
+		}
+
 	ctx->max_out_map_entries = 0;
 	ctx->max_in_map_entries = 0;
 	ctx->max_hw_update_entries = 0;
 
 	/* Free memory for FCG channel/context */
-	ctx_isp = (struct cam_isp_context *)ctx->ctx_priv;
 
 	if (ctx_isp && ctx_isp->fcg_tracker.fcg_caps) {
 		for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
@@ -7656,16 +7667,6 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		return -ENOMEM;
 	}
 
-	for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-		ctx->hw_update_entry[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_hw_update_entries,
-			sizeof(struct cam_hw_update_entry), GFP_KERNEL);
-		if (!ctx->hw_update_entry[i]) {
-			CAM_ERR(CAM_CTXT, "%s[%u] no memory for hw_update_entry: %u, link: 0x%x",
-				ctx->dev_name, ctx->ctx_id, i, ctx->link_hdl);
-			return -ENOMEM;
-		}
-	}
-
 	ctx->in_map_entries = CAM_MEM_ZALLOC_ARRAY(CAM_ISP_CTX_REQ_MAX,
 				sizeof(struct cam_hw_fence_map_entry *),
 				GFP_KERNEL);
@@ -7675,19 +7676,6 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 			ctx->dev_name, ctx->ctx_id, ctx->link_hdl);
 		rc = -ENOMEM;
 		goto end;
-	}
-
-	for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
-		ctx->in_map_entries[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_in_map_entries,
-			sizeof(struct cam_hw_fence_map_entry),
-			GFP_KERNEL);
-
-		if (!ctx->in_map_entries[i]) {
-			CAM_ERR(CAM_CTXT, "%s[%u] no memory for in_map_entries: %u, link: 0x%x",
-				ctx->dev_name, ctx->ctx_id, i, ctx->link_hdl);
-			rc = -ENOMEM;
-			goto end;
-		}
 	}
 
 	ctx->out_map_entries = CAM_MEM_ZALLOC_ARRAY(CAM_ISP_CTX_REQ_MAX,
@@ -7701,7 +7689,28 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		goto end;
 	}
 
+
 	for (i = 0; i < CAM_ISP_CTX_REQ_MAX; i++) {
+
+		ctx->hw_update_entry[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_hw_update_entries,
+			sizeof(struct cam_hw_update_entry), GFP_KERNEL);
+		if (!ctx->hw_update_entry[i]) {
+			CAM_ERR(CAM_CTXT, "%s[%u] no memory for hw_update_entry: %u, link: 0x%x",
+				ctx->dev_name, ctx->ctx_id, i, ctx->link_hdl);
+			return -ENOMEM;
+		}
+
+		ctx->in_map_entries[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_in_map_entries,
+			sizeof(struct cam_hw_fence_map_entry),
+			GFP_KERNEL);
+
+		if (!ctx->in_map_entries[i]) {
+			CAM_ERR(CAM_CTXT, "%s[%u] no memory for in_map_entries: %u, link: 0x%x",
+				ctx->dev_name, ctx->ctx_id, i, ctx->link_hdl);
+			rc = -ENOMEM;
+			goto end;
+		}
+
 		ctx->out_map_entries[i] = CAM_MEM_ZALLOC_ARRAY(ctx->max_out_map_entries,
 			sizeof(struct cam_hw_fence_map_entry),
 			GFP_KERNEL);
@@ -7709,6 +7718,15 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		if (!ctx->out_map_entries[i]) {
 			CAM_ERR(CAM_CTXT, "%s[%u] no memory for out_map_entries: %u, link: 0x%x",
 				ctx->dev_name, ctx->ctx_id, i, ctx->link_hdl);
+			rc = -ENOMEM;
+			goto end;
+		}
+
+		ctx_isp->req_isp[i].deferred_fence_map_index = kcalloc(param->total_ports_acq,
+			sizeof(uint32_t), GFP_KERNEL);
+		if (!ctx_isp->req_isp[i].deferred_fence_map_index) {
+			CAM_ERR(CAM_ISP, "%s[%d] no memory for defer fence map idx arr, ports:%u",
+				ctx->dev_name, ctx->ctx_id, param->total_ports_acq);
 			rc = -ENOMEM;
 			goto end;
 		}
@@ -7726,7 +7744,8 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 
 		/* Allocate memory for FCG related hw update data */
 
-		if (!fcg_caps->ife_fcg_supported && !fcg_caps->sfe_fcg_supported)
+		if (!fcg_caps ||
+			(!fcg_caps->ife_fcg_supported && !fcg_caps->sfe_fcg_supported))
 			continue;
 
 		rc = __cam_isp_ctx_allocate_mem_fcg_config(fcg_caps, req_isp,
@@ -7740,11 +7759,12 @@ static int __cam_isp_ctx_allocate_mem_hw_entries(
 		}
 	}
 
-	CAM_DBG(CAM_ISP,
-		"Finish allocating FCG related structure, ctx_id: %u, FCG IFE/MC_TFE supported: %d, FCG SFE supported: %d, SFE_EN: %d",
-		ctx->ctx_id, fcg_caps->ife_fcg_supported,
-		fcg_caps->sfe_fcg_supported,
-		(bool)(param->op_flags & CAM_IFE_CTX_SFE_EN));
+	if (fcg_caps)
+		CAM_DBG(CAM_ISP,
+			"Finish allocating FCG related structure, ctx_id: %u, FCG IFE/MC_TFE supported: %d, FCG SFE supported: %d, SFE_EN: %d",
+			ctx->ctx_id, fcg_caps->ife_fcg_supported,
+			fcg_caps->sfe_fcg_supported,
+			(bool)(param->op_flags & CAM_IFE_CTX_SFE_EN));
 
 	return rc;
 
@@ -9317,6 +9337,7 @@ static int __cam_isp_ctx_process_evt(struct cam_context *ctx,
 	struct cam_isp_hw_cmd_args isp_hw_cmd_args = {0};
 
 	if ((ctx->state == CAM_CTX_ACQUIRED) &&
+		(link_evt_data->evt_type != CAM_REQ_MGR_LINK_EVT_PAUSE) &&
 		(link_evt_data->evt_type != CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES)) {
 		CAM_WARN(CAM_ISP,
 			"Get unexpect evt:%d in acquired state, ctx: %u on link: 0x%x",

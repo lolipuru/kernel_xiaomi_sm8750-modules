@@ -197,7 +197,7 @@ struct cam_isp_ctx_req {
 	uint32_t                              num_fence_map_in;
 	uint32_t                              num_acked;
 	uint32_t                              num_deferred_acks;
-	uint32_t                  deferred_fence_map_index[CAM_ISP_CTX_RES_MAX];
+	uint32_t                             *deferred_fence_map_index;
 	int32_t                               bubble_report;
 	struct cam_isp_prepare_hw_update_data hw_update_data;
 	enum cam_hw_config_reapply_type       reapply_type;

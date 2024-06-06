@@ -300,6 +300,7 @@ static const struct cam_ife_csid_irq_desc cam_ife_csid_980_path_irq_desc[] = {
 	},
 	{
 		.bitmask = BIT(26),
+		.err_type = CAM_ISP_HW_ERROR_CSID_UNBOUNDED_FRAME,
 		.irq_name = "UNBOUNDED_FRAME",
 		.desc = "Sensor: Frame end or frame start is missing",
 		.debug = "Check the settle count in sensor driver XML",
