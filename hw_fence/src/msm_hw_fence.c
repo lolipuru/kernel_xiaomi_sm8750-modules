@@ -90,8 +90,8 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 
 	/* Avoid race condition if multiple-threads request same client at same time */
 	mutex_lock(&hw_fence_drv_data->clients_register_lock);
-	if (hw_fence_drv_data->clients[client_id]) {
-		kref_get(&hw_fence_drv_data->clients[client_id]->kref);
+	if (hw_fence_drv_data->clients[client_id] &&
+			kref_get_unless_zero(&hw_fence_drv_data->clients[client_id]->kref)) {
 		mutex_unlock(&hw_fence_drv_data->clients_register_lock);
 		HWFNC_DBG_INIT("client with id %d already registered\n", client_id);
 		kfree(hw_fence_client);
