@@ -4666,12 +4666,17 @@ void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
 }
 #endif
 #else
+static inline
 void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
 {
 }
 
 static inline
 void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
+{
+}
+
+static inline void icnss_pci_set_suspended(struct icnss_priv *priv, int val)
 {
 }
 #endif
