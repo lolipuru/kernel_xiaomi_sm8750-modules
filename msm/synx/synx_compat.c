@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/types.h>
 #include "synx_api.h"
 #include "synx_hwfence.h"
 #include "synx_private.h"
+#include "synx_debugfs.h"
 
 struct synx_ops synx_hwfence_ops = {
 	.uninitialize = NULL,
@@ -107,6 +108,8 @@ EXPORT_SYMBOL(synx_async_wait);
 int synx_recover(enum synx_client_id id)
 {
 	int ret = 0;
+
+	dprintk(SYNX_WARN, "Subsystem restart for core_id: %d\n", id);
 
 	if (is_hw_fence_client(id))
 		ret = synx_hwfence_recover(id);
