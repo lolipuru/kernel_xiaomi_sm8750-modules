@@ -76,6 +76,7 @@ enum hal_ssr_trigger_type {
 	SSR_HW_WDOG_IRQ,
 	SSR_SESSION_ABORT,
 	SSR_SESSION_ERROR,
+	SSR_FW_SMMU_FAULT,
 	SSR_SESSION_TIMEOUT = 7
 };
 
