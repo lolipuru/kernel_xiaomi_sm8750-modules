@@ -11,7 +11,8 @@ def define_parrot():
             "qcedev-mod_dlkm",
             "qrng_dlkm",
             "qcrypto-msm_dlkm",
-            "qseecom_dlkm"
+            "qseecom_dlkm",
+            "smmu_proxy_dlkm"
         ],
         extra_options = [
             "CONFIG_QCOM_SMCINVOKE",
