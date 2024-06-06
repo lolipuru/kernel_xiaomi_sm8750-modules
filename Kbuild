@@ -51,6 +51,11 @@ ifeq ($(CONFIG_ARCH_SUN), y)
 	LINUX_INC += -include $(TOUCH_ROOT)/config/gki_suntouchconf.h
 endif
 
+ifeq ($(CONFIG_ARCH_PARROT), y)
+	include $(TOUCH_ROOT)/config/gki_parrottouch.conf
+	LINUX_INC += -include $(TOUCH_ROOT)/config/gki_parrotconf.h
+endif
+
 
 LINUX_INC +=	-Iinclude/linux \
 		-Iinclude/linux/drm \

@@ -2,7 +2,9 @@ TOUCH_DLKM_ENABLE := true
 ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
         ifeq ($(TARGET_KERNEL_DLKM_TOUCH_OVERRIDE), false)
                 TOUCH_DLKM_ENABLE := false
+                ifneq ($(TARGET_BOARD_PLATFORM), monaco)
                 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/dummy_ts.ko
+                endif
         endif
 endif
 
@@ -39,6 +41,8 @@ ifeq ($(TOUCH_DLKM_ENABLE),  true)
                         $(KERNEL_MODULES_OUT)/nt36xxx-i2c.ko
         else ifeq ($(TARGET_BOARD_PLATFORM), trinket)
                 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/synaptics_tcm_ts.ko
+        else ifeq ($(TARGET_BOARD_PLATFORM), parrot)
+                PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/nt36xxx-i2c.ko \
         else
                 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/nt36xxx-i2c.ko \
                         $(KERNEL_MODULES_OUT)/goodix_ts.ko \

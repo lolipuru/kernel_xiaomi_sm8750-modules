@@ -69,12 +69,28 @@ def define_blair(t,v):
             "CONFIG_TOUCHSCREEN_SYNAPTICS_TCM"
         ],
 )
-
+def define_parrot(t,v):
+    define_target_variant_modules(
+        target = t,
+        variant = v,
+        registry = touch_driver_modules,
+        modules = [
+            "nt36xxx-i2c",
+        ],
+        config_options = [
+            "TOUCH_DLKM_ENABLE",
+            "CONFIG_ARCH_PARROT",
+            "CONFIG_MSM_TOUCH",
+            "CONFIG_TOUCHSCREEN_NT36XXX_I2C",
+        ],
+)
 def define_touch_target():
     for (t, v) in get_all_la_variants() + get_all_le_variants():
         if t == "blair":
             define_blair(t, v)
         elif t == "pineapple":
             define_pineapple(t, v)
+        elif t == "parrot":
+            define_parrot(t, v)
         else:
             define_sun(t, v)
