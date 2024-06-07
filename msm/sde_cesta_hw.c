@@ -35,6 +35,26 @@ void _sde_cesta_hw_init(struct sde_cesta *cesta)
 	}
 }
 
+void _sde_cesta_hw_force_auto_active_db_update(struct sde_cesta *cesta, u32 idx, bool en)
+{
+	u32 ctl_val, override_val;
+
+	ctl_val = dss_reg_r(&cesta->scc_io[idx], SCC_CTRL, cesta->debug_mode);
+	override_val = dss_reg_r(&cesta->scc_io[idx], SCC_OVERRIDE_CTRL, cesta->debug_mode);
+
+	if (en) {
+		ctl_val |= BIT(3); /* set auto-active-on-panic */
+		override_val |= BIT(0); /* set override force-db-update */
+	} else {
+		ctl_val &= ~BIT(3);
+		override_val &= ~BIT(0);
+	}
+
+	dss_reg_w(&cesta->scc_io[idx], SCC_CTRL, ctl_val, cesta->debug_mode);
+	dss_reg_w(&cesta->scc_io[idx], SCC_OVERRIDE_CTRL, override_val, cesta->debug_mode);
+	wmb(); /* for reset to be applied immediately */
+}
+
 void _sde_cesta_hw_reset(struct sde_cesta *cesta, u32 idx, bool en)
 {
 	dss_reg_w(&cesta->scc_io[idx], SCC_OVERRIDE_CTRL, en ? BIT(31) : 0, cesta->debug_mode);
@@ -121,4 +141,5 @@ void sde_cesta_hw_init(struct sde_cesta *cesta)
 	cesta->hw_ops.get_pwr_event = _sde_cesta_hw_get_pwr_event;
 	cesta->hw_ops.override_ctrl_setup = _sde_cesta_hw_override_ctrl_setup;
 	cesta->hw_ops.reset_ctrl = _sde_cesta_hw_reset;
+	cesta->hw_ops.force_auto_active_db_update = _sde_cesta_hw_force_auto_active_db_update;
 }
