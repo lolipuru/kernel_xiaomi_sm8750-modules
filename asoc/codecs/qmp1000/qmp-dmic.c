@@ -22,6 +22,10 @@
 #define MCLK_12P288MHZ 12288000
 #define MCLK_9P6MHZ 9600000
 #define MAX_INIT_REGS 32
+
+#define match_qmp_pdata(kobj) \
+	container_of((kobj), struct qmp_sdca_dmic_priv, qmp_kobj)
+
 enum {
 	QMP_SDCA_NORMAL_PORT,
 	QMP_SDCA_LP_PORT,
@@ -74,6 +78,16 @@ static int qmp_master_channel_map[] = {
 	SWRM_TX_PCM_IN,
 };
 
+static struct attribute device_state_attr = {
+	.name = "state",
+	.mode = 0660,
+};
+
+struct qmp_regval {
+	int32_t reg;
+	int32_t value;
+};
+
 struct qmp_sdca_dmic_priv {
 	struct regmap *regmap;
 	struct device *dev;
@@ -94,6 +108,8 @@ struct qmp_sdca_dmic_priv {
 	int dai_status_mask;
 	u8 master_port_map_cached[QMP_MAX_DAIS];
 	u8 initialized;
+	struct kobject qmp_kobj;
+	struct qmp_regval reg_set;
 };
 
 static bool qmp_sdca_dmic_readable_register(struct device *dev, unsigned int reg)
@@ -914,10 +930,18 @@ static int qmp_dmic_pde11_event(struct snd_soc_dapm_widget *w,
 		}
 		/* Set Usage mode for the Function */
 		usage_mode = qmp_get_usage_mode(qmp, function_number);
-		regmap_write(qmp->regmap,
+		if (!qmp->reg_set.reg) {
+			regmap_write(qmp->regmap,
 				SDW_SDCA_CTL(function_number, QMP_SDCA_ENT_IT11,
 					QMP_SDCA_CTL_IT_USAGE, QMP_SDCA_CTL_NUM0),
 				usage_mode);
+		} else {
+			ret = regmap_write(qmp->regmap, qmp->reg_set.reg, qmp->reg_set.value);
+			if (ret)
+				dev_err(component->dev, "failed to set QMP usage mode\n");
+			qmp->reg_set.reg = 0;
+			qmp->reg_set.value = 0;
+		}
 
 		/* Set PDE11 control */
 		regmap_write(qmp->regmap,
@@ -1098,6 +1122,62 @@ err_port_map:
 	return ret;
 }
 
+static ssize_t qmp_sysfs_show(struct kobject *kobj,
+		struct attribute *attr, char *buf)
+{
+	struct qmp_sdca_dmic_priv *pdata = match_qmp_pdata(kobj);
+
+	return scnprintf(buf, 32, "%d", pdata->reg_set.reg);
+}
+
+static ssize_t qmp_sysfs_store(struct kobject *kobj,
+		struct attribute *attr, const char *buf, size_t count)
+{
+	struct qmp_sdca_dmic_priv *pdata = match_qmp_pdata(kobj);
+	struct qmp_regval *ptr = (struct qmp_regval *)buf;
+
+	pdata->reg_set.reg = ptr->reg;
+	pdata->reg_set.value = ptr->value;
+	return ptr->reg;
+}
+
+static const struct sysfs_ops qmp_sysfs_ops = {
+	.show = qmp_sysfs_show,
+	.store = qmp_sysfs_store,
+};
+
+static struct kobj_type qmp_ktype = {
+	.sysfs_ops = &qmp_sysfs_ops,
+};
+
+static int qmp_sysfs_init(struct qmp_sdca_dmic_priv *qmp_dmic, const char *name)
+{
+	int ret = 0;
+	const char *dir;
+
+	dir = name;
+	ret = kobject_init_and_add(&qmp_dmic->qmp_kobj, &qmp_ktype,
+		      kernel_kobj, dir);
+	if (ret < 0) {
+		pr_err("%s: Failed to add qmp kobject %s, err = %d\n",
+			 __func__, dir, ret);
+		goto fail_create_file;
+	}
+
+	ret = sysfs_create_file(&qmp_dmic->qmp_kobj, &device_state_attr);
+	if (ret < 0) {
+		pr_err("%s: Failed to add wdsp_boot sysfs entry to %s\n",
+			__func__, dir);
+		goto fail_create_file;
+	}
+
+	return ret;
+
+fail_create_file:
+	kobject_put(&qmp_dmic->qmp_kobj);
+	return ret;
+}
+
 static int qmp_sdca_dmic_init(struct device *dev, struct regmap *regmap,
 							  struct swr_device *peripheral)
 {
@@ -1116,6 +1196,8 @@ static int qmp_sdca_dmic_init(struct device *dev, struct regmap *regmap,
 	qmp_dmic->regmap = regmap;
 	qmp_dmic->dev = dev;
 	qmp_dmic->clk_freq = MCLK_9P6MHZ;
+	qmp_dmic->reg_set.reg = 0;
+	qmp_dmic->reg_set.value = 0;
 
 	qmp_dmic->slave_vdd = devm_regulator_get(dev, "qmp-vdd");
 	if (IS_ERR(qmp_dmic->slave_vdd)) {
@@ -1176,7 +1258,7 @@ static int qmp_sdca_dmic_init(struct device *dev, struct regmap *regmap,
 		dev_dbg(dev, "Codec component:dai %s, %s registration success!\n",
 			qmp_dmic->dai_driver[0].name, qmp_dmic->dai_driver[1].name);
 	}
-
+	qmp_sysfs_init(qmp_dmic, component_drv->name);
 err:
 	return ret;
 }
