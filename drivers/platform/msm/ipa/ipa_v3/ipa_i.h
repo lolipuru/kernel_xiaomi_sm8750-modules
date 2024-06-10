@@ -2548,7 +2548,7 @@ struct ipa3_context {
 	u32 ipa_gen_rx_cmn_page_pool_sz_factor;
 	u32 ipa_gen_rx_cmn_temp_pool_sz_factor;
 	u32 ipa_gen_rx_ll_pool_sz_factor;
-	u32 ipa_temp_pool_capacity;
+	atomic_t ipa_temp_pool_capacity;
 	struct ipa3_app_clock_vote app_clock_vote;
 	bool clients_registered;
 	bool ipa_gpi_event_rp_ddr;
