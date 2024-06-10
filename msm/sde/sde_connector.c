@@ -3338,6 +3338,13 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 			}
 		}
 
+		if (c_conn->vrr_caps.video_psr_support)
+			sde_kms_info_add_keyint(info, "has_vhm_support", 1);
+
+		if (c_conn->vrr_caps.vrr_support)
+			sde_kms_info_add_keyint(info, "early_ept_timeout",
+				IDLE_POWERCOLLAPSE_DURATION);
+
 		sde_kms_info_add_keyint(info, "has_cwb_crop", test_bit(SDE_FEATURE_CWB_CROP,
 								       sde_kms->catalog->features));
 		sde_kms_info_add_keyint(info, "has_dedicated_cwb_support",

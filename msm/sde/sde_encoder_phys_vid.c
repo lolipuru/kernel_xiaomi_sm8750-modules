@@ -2081,6 +2081,8 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 		SDE_EVT32(DRMID(phys_enc->parent),
 				phys_enc->hw_intf->idx - INTF_0,
 				SDE_EVTLOG_FUNC_CASE9);
+		if (sde_enc->disp_info.vrr_caps.video_psr_support)
+			SDE_ERROR("HW fence is disabled. Overriding TE monitor VHM case.\n");
 	}
 }
 
