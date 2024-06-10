@@ -2823,6 +2823,7 @@ void sde_dbg_destroy(void)
 	sde_dbg_base_evtlog = NULL;
 	sde_evtlog_destroy(sde_dbg_base.evtlog);
 	sde_dbg_base.evtlog = NULL;
+	sde_dbg_base_reglog = NULL;
 	sde_reglog_destroy(sde_dbg_base.reglog);
 	sde_dbg_base.reglog = NULL;
 	sde_dbg_reg_base_destroy();
