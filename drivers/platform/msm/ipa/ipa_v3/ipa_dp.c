@@ -1446,7 +1446,7 @@ static int ipa3_rmnet_mem_notifier(struct notifier_block *this,
 	unsigned long pool_size, void *ptr)
 {
 	IPADBG("New pool size: %lu\n", pool_size);
-	ipa3_ctx->ipa_temp_pool_capacity = pool_size;
+	atomic_set(&ipa3_ctx->ipa_temp_pool_capacity, pool_size);
 	return NOTIFY_DONE;
 }
 
@@ -1823,10 +1823,12 @@ int ipa_setup_sys_pipe(struct ipa_sys_connect_params *sys_in, u32 *clnt_hdl)
 				sys_in->client == IPA_CLIENT_APPS_WAN_CONS) {
 				pool_capacity =
 					rmnet_mem_get_pool_size(ep->sys->page_order);
-				 ipa3_ctx->ipa_temp_pool_capacity = (pool_capacity > 0) ?
-					pool_capacity : ep->sys->repl->capacity / 2;
+				int temp_pool_capacity = (pool_capacity > 0) ?
+					pool_capacity : (ep->sys->repl->capacity / 2);
+				atomic_set(&ipa3_ctx->ipa_temp_pool_capacity, temp_pool_capacity);
 				IPADBG("Temp pool capacity for client:%d, value:%u\n",
-					   sys_in->client, ipa3_ctx->ipa_temp_pool_capacity);
+						sys_in->client,
+						atomic_read(&ipa3_ctx->ipa_temp_pool_capacity));
 				rmnet_mem_register_notifier(&ipa3_rmnet_mem_blk);
 			}
 			atomic_set(&ep->sys->repl->pending, 0);
@@ -2873,7 +2875,7 @@ begin:
 			sys->ep->client == IPA_CLIENT_APPS_WAN_COAL_CONS) &&
 			((atomic_read(&sys->repl->tail_idx) -
 			atomic_read(&sys->repl->head_idx)) % sys->repl->capacity) >
-			ipa3_ctx->ipa_temp_pool_capacity)
+			atomic_read(&ipa3_ctx->ipa_temp_pool_capacity))
 			break;
 	}
 
@@ -2908,7 +2910,7 @@ static inline void __trigger_repl_work(struct ipa3_sys_context *sys)
 
 	thrshld = (sys->ep->client == IPA_CLIENT_APPS_WAN_CONS ||
 				sys->ep->client == IPA_CLIENT_APPS_WAN_COAL_CONS) ?
-				ipa3_ctx->ipa_temp_pool_capacity / 2 :
+				atomic_read(&ipa3_ctx->ipa_temp_pool_capacity) / 2 :
 				sys->repl->capacity / 2;
 
 	if (avail < thrshld) {
@@ -3812,9 +3814,9 @@ static void free_rx_page(void *chan_user_data, void *xfer_user_data)
 		xfer_user_data;
 
 	if (!rx_pkt->page_data.is_tmp_alloc) {
+		spin_lock_bh(&rx_pkt->sys->common_sys->spinlock);
 		list_del_init(&rx_pkt->link);
 		page_ref_dec(rx_pkt->page_data.page);
-		spin_lock_bh(&rx_pkt->sys->common_sys->spinlock);
 		/* Add the element to head. */
 		list_add(&rx_pkt->link,
 			&rx_pkt->sys->page_recycle_repl->page_repl_head);
