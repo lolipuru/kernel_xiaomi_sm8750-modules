@@ -1854,6 +1854,7 @@ int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
 	struct cvp_hfi_cmd_session_hdr *cmd_hdr;
 	int i, ret;
 	u32 iova;
+	u64 ktid;
 
 	if (!offset || !buf_num)
 		return 0;
@@ -1862,7 +1863,11 @@ int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
 		return -EINVAL;
 	}
 
+	/*Add kernel transaction ID for persist packet*/
+	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+	ktid &= (FENCE_BIT - 1);
 	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
+	cmd_hdr->client_data.kdata = ktid;
 	for (i = 0; i < buf_num; i++) {
 		buf = (struct cvp_buf_type *)&in_pkt->pkt_data[offset];
 		offset += sizeof(*buf) >> 2;
@@ -1906,6 +1911,12 @@ int msm_cvp_map_frame(struct msm_cvp_inst *inst,
 	if (!core)
 		return -EINVAL;
 
+	/*Add kernel transaction ID for config packet*/
+	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+	ktid &= (FENCE_BIT - 1);
+	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
+	cmd_hdr->client_data.kdata = ktid;
+
 	if (!offset || !buf_num)
 		return 0;
 	if (offset < (sizeof(struct cvp_hfi_cmd_session_hdr)/sizeof(u32))) {
@@ -1913,10 +1924,6 @@ int msm_cvp_map_frame(struct msm_cvp_inst *inst,
 		return -EINVAL;
 	}
 
-	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
-	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
-	ktid &= (FENCE_BIT - 1);
-	cmd_hdr->client_data.kdata = ktid;
 
 	dprintk(CVP_CMD, "%s:   "
 		"pkt_type %08x sess_id %08x trans_id %u ktid %llu\n",

@@ -468,7 +468,7 @@ static int hfi_process_session_rel_buf_done(u32 device_id,
 	return 0;
 }
 
-static struct msm_cvp_inst *cvp_get_inst_from_id(struct msm_cvp_core *core,
+struct msm_cvp_inst *cvp_get_inst_from_id(struct msm_cvp_core *core,
 	unsigned int session_id)
 {
 	struct msm_cvp_inst *inst = NULL;
