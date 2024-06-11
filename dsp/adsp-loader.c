@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2014, 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -48,6 +48,7 @@ struct adsp_loader_private {
 	struct kobject *boot_adsp_obj;
 	struct attribute_group *attr_group;
 	char *adsp_fw_name;
+	bool ssr_triggered;
 };
 
 static struct kobj_attribute adsp_boot_attribute =
@@ -101,6 +102,15 @@ static void adsp_load_fw(struct work_struct *adsp_ldr_work)
 	if (rc) {
 		dev_err(&pdev->dev,
 			"%s: ADSP state = %x\n", __func__, adsp_state);
+	}
+
+	if (priv->ssr_triggered) {
+		priv->ssr_triggered = false;
+		if (rc)
+			adsp_state = SPF_SUBSYS_DOWN;
+	} else if (rc) {
+		dev_err(&pdev->dev,
+			"%s: failed to read adsp state\n", __func__);
 		goto fail;
 	}
 
@@ -205,6 +215,7 @@ static ssize_t adsp_ssr_store(struct kobject *kobj,
 
 	dev_err(&pdev->dev, "requesting for ADSP restart\n");
 
+	priv->ssr_triggered = true;
 	rproc_shutdown(adsp_dev);
 	adsp_loader_do(adsp_private);
 
@@ -264,6 +275,7 @@ static int adsp_loader_init_sysfs(struct platform_device *pdev)
 
 	priv->pil_h = NULL;
 	priv->boot_adsp_obj = NULL;
+	priv->ssr_triggered = false;
 	priv->attr_group = devm_kzalloc(&pdev->dev,
 				sizeof(*(priv->attr_group)),
 				GFP_KERNEL);
