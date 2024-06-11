@@ -16,13 +16,13 @@
 #include <linux/string.h>
 #include <linux/file.h>
 #include "dsi_drm.h"
-#include "dsi_display.h"
 #include "sde_crtc.h"
 #include "sde_rm.h"
 #include "sde_vm.h"
 #include <drm/drm_probe_helper.h>
 #include <linux/version.h>
 #include <shd_drm.h>
+#include "sde_trace.h"
 
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
@@ -714,6 +714,11 @@ static int _sde_connector_update_power_locked(struct sde_connector *c_conn)
 	}
 	c_conn->last_panel_power_mode = mode;
 
+	if (mode == SDE_MODE_DPMS_ON)
+		c_conn->vrr_cmd_state = VRR_CMD_POWER_ON;
+	else if (mode == SDE_MODE_DPMS_OFF)
+		c_conn->vrr_cmd_state = VRR_CMD_POWER_OFF;
+
 	mutex_unlock(&c_conn->lock);
 	if (mode != SDE_MODE_DPMS_ON)
 		sde_connector_schedule_status_work(connector, false);
@@ -911,6 +916,90 @@ void sde_connector_set_colorspace(struct sde_connector *c_conn)
 
 }
 
+void sde_connector_set_vrr_params(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn;
+	struct sde_connector_state *c_state;
+	struct drm_encoder *drm_enc;
+	u32 frame_interval = 0, usecase_idx = 0;
+	u64 frame_interval_ns = 0;
+	bool frame_interval_updated = false, usecase_idx_updated = false;
+	struct msm_freq_step_pattern *new_freq_pattern, *old_freq_pattern;
+
+	if (!connector)
+		return;
+
+	c_conn = to_sde_connector(connector);
+	if (!c_conn->vrr_caps.vrr_support)
+		return;
+
+	c_state = to_sde_connector_state(connector->state);
+	if (connector->state && connector->state->best_encoder)
+		drm_enc = connector->state->best_encoder;
+	else
+		drm_enc = connector->encoder;
+
+	frame_interval_ns = sde_connector_get_property(c_conn->base.state,
+			CONNECTOR_PROP_FRAME_INTERVAL);
+
+	if (!frame_interval_ns) {
+		SDE_DEBUG("VRR not supported\n");
+		return;
+	}
+
+	frame_interval = (NSEC_PER_SEC/frame_interval_ns)*1000;
+	SDE_EVT32(frame_interval);
+	if (frame_interval != c_conn->frame_interval) {
+		frame_interval_updated = true;
+		c_conn->frame_interval = frame_interval;
+		SDE_DEBUG("frame_interval%d\n", c_conn->frame_interval);
+	}
+
+	usecase_idx = sde_connector_get_property(c_conn->base.state,
+			CONNECTOR_PROP_USECASE_IDX);
+	if (usecase_idx != c_conn->usecase_idx) {
+		usecase_idx_updated = true;
+		c_conn->usecase_idx = usecase_idx;
+	}
+
+	c_conn->freq_pattern_updated = false;
+	c_conn->freq_pattern_type_changed = false;
+	if (usecase_idx_updated || frame_interval_updated || !c_conn->freq_pattern) {
+		new_freq_pattern = sde_encoder_get_freq_pattern(drm_enc, c_conn->frame_interval,
+				c_conn->usecase_idx);
+		if (!new_freq_pattern) {
+			SDE_EVT32(SDE_EVTLOG_ERROR, frame_interval_ns, frame_interval_ns>>32);
+			return;
+		}
+		old_freq_pattern = c_conn->freq_pattern;
+		if (!old_freq_pattern) {
+			c_conn->freq_pattern = new_freq_pattern;
+			c_conn->freq_pattern_updated = true;
+			c_conn->freq_pattern_type_changed = true;
+		} else if (new_freq_pattern->frame_interval != old_freq_pattern->frame_interval ||
+			new_freq_pattern->usecase_idx != old_freq_pattern->usecase_idx) {
+			c_conn->freq_pattern = new_freq_pattern;
+			c_conn->freq_pattern_updated = true;
+
+			if (new_freq_pattern->needs_ap_refresh !=
+					old_freq_pattern->needs_ap_refresh)
+				c_conn->freq_pattern_type_changed = true;
+
+			SDE_EVT32(new_freq_pattern->frame_interval,
+				old_freq_pattern->frame_interval, new_freq_pattern->usecase_idx,
+				old_freq_pattern->usecase_idx);
+		}
+	}
+	SDE_EVT32(connector->base.id, frame_interval_ns,
+		frame_interval_ns>>32, usecase_idx_updated,
+		frame_interval_updated, c_conn->freq_pattern_updated,
+		c_conn->freq_pattern_type_changed);
+	SDE_DEBUG("usecase_update:%d FI_updated:%d usecase:%d FI:%d pattern_updated %d %d\n",
+			usecase_idx_updated, frame_interval_updated, usecase_idx,
+			frame_interval, c_conn->freq_pattern_updated,
+			c_conn->freq_pattern_type_changed);
+}
+
 void sde_connector_set_qsync_params(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
@@ -953,6 +1042,13 @@ void sde_connector_set_qsync_params(struct drm_connector *connector)
 			c_conn->ept_fps = ept_fps;
 		}
 	}
+
+	if ((c_conn->vrr_caps.arp_support || c_conn->vrr_caps.video_psr_support) &&
+			(c_conn->qsync_mode != SDE_RM_QSYNC_CONTINUOUS_MODE)) {
+		c_conn->qsync_mode = SDE_RM_QSYNC_CONTINUOUS_MODE;
+		c_conn->qsync_updated = true;
+	}
+
 }
 
 void sde_connector_complete_qsync_commit(struct drm_connector *conn,
@@ -998,6 +1094,7 @@ static int _sde_connector_update_dirty_properties(
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
 	int idx;
+	u32 b_lvl;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1020,6 +1117,11 @@ static int _sde_connector_update_dirty_properties(
 			break;
 		case CONNECTOR_PROP_HDR_METADATA:
 			_sde_connector_update_hdr_metadata(c_conn, c_state);
+			break;
+		case CONNECTOR_PROP_BRIGHTNESS:
+			b_lvl = sde_connector_get_property(connector->state,
+						CONNECTOR_PROP_BRIGHTNESS);
+			backlight_device_set_brightness(c_conn->bl_device, b_lvl);
 			break;
 		default:
 			/* nothing to do for most properties */
@@ -1112,6 +1214,59 @@ end:
 	return rc;
 }
 
+int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn;
+	struct msm_freq_step_pattern *freq_pattern;
+	u64 cmd_bit_mask = 0;
+	int rc = 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+
+	if (!c_conn->freq_pattern) {
+		SDE_ERROR("frequency pattern is NULL but update is true\n");
+		return -EINVAL;
+	}
+
+	SDE_EVT32(c_conn->vrr_cmd_state, c_conn->freq_pattern_updated,
+		SDE_EVTLOG_FUNC_CASE1);
+
+	freq_pattern = c_conn->freq_pattern;
+	if (c_conn->vrr_cmd_state == VRR_CMD_POWER_ON ||
+			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT) {
+		c_conn->freq_pattern_updated = true;
+		c_conn->freq_pattern_type_changed = true;
+		c_conn->vrr_cmd_state = VRR_CMD_STATE_NONE;
+	}
+
+	if  (c_conn->freq_pattern_updated)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_FI_PATTAREN1_CHANGE +
+			freq_pattern->frame_pattern_seq_idx);
+
+	if (c_conn->freq_pattern_type_changed && freq_pattern->needs_ap_refresh)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
+	else if (c_conn->freq_pattern_type_changed && !freq_pattern->needs_ap_refresh)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
+
+	if (cmd_bit_mask)
+		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, rc, cmd_bit_mask>>32, cmd_bit_mask,
+		freq_pattern->frame_pattern_seq_idx, freq_pattern->frame_interval,
+		c_conn->freq_pattern_type_changed, freq_pattern->needs_ap_refresh,
+		c_conn->vrr_cmd_state);
+
+	c_conn->freq_pattern_updated = false;
+	c_conn->freq_pattern_type_changed = false;
+
+	return rc;
+}
+
 int sde_connector_prepare_commit(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
@@ -1134,6 +1289,11 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	if (!c_conn->ops.prepare_commit)
 		return 0;
 
+	if (c_conn->vrr_caps.video_psr_support) {
+		rc = sde_connector_check_update_vhm_cmd(connector);
+		return rc;
+	}
+
 	memset(&params, 0, sizeof(params));
 
 	if (c_conn->qsync_updated) {
@@ -1144,7 +1304,67 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
 
 	SDE_EVT32(connector->base.id, params.qsync_mode,
-		  params.qsync_update, rc, DPUID(connector->dev));
+		  params.qsync_update, rc);
+
+	return rc;
+}
+
+int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector)
+{
+	int rc = 0;
+
+	SDE_EVT32(connector->base.id);
+
+	if (!connector) {
+		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
+		return -EINVAL;
+	}
+
+	SDE_ATRACE_BEGIN("cmd_self_refresh");
+	rc = sde_connector_update_cmd(connector, BIT(DSI_CMD_SET_TRIGGER_SELF_REFRESH), true);
+	SDE_ATRACE_END("cmd_self_refresh");
+
+	return rc;
+}
+
+int sde_connector_update_cmd(struct drm_connector *connector,
+	u64 cmd_bit_mask, bool peripheral_flush)
+{
+	struct sde_connector *c_conn;
+	struct sde_connector_state *c_state;
+	struct msm_display_conn_params params;
+	struct drm_encoder *drm_enc;
+	int rc;
+
+	if (!connector) {
+		SDE_ERROR("invalid argument\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+	c_state = to_sde_connector_state(connector->state);
+	drm_enc = c_conn->encoder;
+
+	if (!c_conn->display) {
+		SDE_ERROR("invalid connector display\n");
+		return -EINVAL;
+	}
+
+	if (!c_conn->ops.prepare_commit)
+		return 0;
+
+	memset(&params, 0, sizeof(params));
+
+	if (peripheral_flush)
+		sde_encoder_update_periph_flush(drm_enc);
+
+	params.cmd_bit_mask = cmd_bit_mask;
+	params.peripheral_flush = peripheral_flush;
+
+	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
+
+	SDE_EVT32(connector->base.id, params.cmd_bit_mask >> 32,
+		params.cmd_bit_mask, params.peripheral_flush, rc);
 
 	return rc;
 }
@@ -1189,6 +1409,8 @@ void sde_connector_helper_bridge_disable(struct drm_connector *connector)
 	}
 
 	c_conn->allow_bl_update = false;
+	if (c_conn->vrr_caps.video_psr_support || c_conn->vrr_caps.arp_support)
+		c_conn->qsync_mode = SDE_RM_QSYNC_DISABLED;
 }
 
 void sde_connector_helper_bridge_post_disable(struct drm_connector *connector)
@@ -1248,11 +1470,88 @@ int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable, bool id
 
 	c_conn = to_sde_connector(connector);
 	display = _sde_connector_get_display(c_conn);
-	if (!display)
-		return 0;
+	if (!display) {
+		SDE_ERROR("null display\n");
+		return -EINVAL;
+	}
+
+	if (c_conn->ops.clk_ctrl)
+		rc = c_conn->ops.clk_ctrl(display, DSI_CORE_CLK | DSI_LINK_CLK, state);
+	if (c_conn->ops.idle_pc_ctrl)
+		c_conn->ops.idle_pc_ctrl(display, idle_pc);
+
+	return rc;
+}
+
+int sde_connector_esync_clk_ctrl(struct drm_connector *connector, bool enable)
+{
+	struct sde_connector *c_conn;
+	struct dsi_display *display;
+	u32 state = enable ? DSI_CLK_ON : DSI_CLK_OFF;
+	int rc = 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+	display = (struct dsi_display *) c_conn->display;
 
 	if (display && c_conn->ops.clk_ctrl)
-		rc = c_conn->ops.clk_ctrl(display, DSI_ALL_CLKS, state, idle_pc);
+		rc = c_conn->ops.clk_ctrl(display, DSI_ESYNC_CLK, state);
+
+	return rc;
+}
+
+int sde_connector_osc_clk_ctrl(struct drm_connector *connector, bool enable)
+{
+	struct sde_connector *c_conn;
+	struct dsi_display *display;
+	u32 state = enable ? DSI_CLK_ON : DSI_CLK_OFF;
+	int rc = 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+	display = (struct dsi_display *) c_conn->display;
+
+	if (display && c_conn->ops.clk_ctrl)
+		rc = c_conn->ops.clk_ctrl(display, DSI_OSC_CLK, state);
+
+	return rc;
+}
+
+int sde_connector_clk_get_rate_esync(struct drm_connector *connector,
+		enum sde_intf intf_idx, u64 *rate)
+{
+	struct sde_connector *c_conn;
+	struct dsi_display *display;
+	u32 dsi_idx = INTF_MAX;
+	int rc = 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+	display = (struct dsi_display *) c_conn->display;
+
+	if (intf_idx == INTF_1) {
+		dsi_idx = 0;
+	} else if (intf_idx == INTF_2) {
+		dsi_idx = 1;
+	} else {
+		SDE_ERROR("invalid interface index %d", intf_idx-INTF_0);
+		return -EINVAL;
+	}
+
+	if (display && c_conn->ops.clk_get_rate)
+		rc = c_conn->ops.clk_get_rate(display, dsi_idx, DSI_ESYNC_CLK, rate);
 
 	return rc;
 }
@@ -2396,7 +2695,7 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 
 	mutex_lock(&c_conn->lock);
 	rc = c_conn->ops.cmd_transfer(&c_conn->base, c_conn->display, buffer,
-			buf_size);
+			buf_size, false);
 	c_conn->last_cmd_tx_sts = !rc ? true : false;
 	mutex_unlock(&c_conn->lock);
 
@@ -2992,8 +3291,9 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 	struct sde_connector *c_conn = NULL;
 	struct drm_display_mode *mode;
 	struct msm_mode_info mode_info;
+	struct msm_freq_step_list *freq_step_list;
 	const char *topo_name = NULL;
-	int rc = 0;
+	int rc = 0, i;
 
 	sde_kms = sde_connector_get_kms(conn);
 	if (!sde_kms) {
@@ -3035,6 +3335,20 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 
 		sde_kms_info_add_keyint(info, "qsync_min_fps", mode_info.qsync_min_fps);
 		sde_kms_info_add_keyint(info, "avr_step_fps", mode_info.avr_step_fps);
+
+		if (mode_info.freq_step_list) {
+			freq_step_list = mode_info.freq_step_list;
+			for (i = 0; i < freq_step_list->count; i++) {
+				sde_kms_info_add_keyint(info, "Frame_interval:",
+					freq_step_list->freq_pattern[i].frame_interval);
+				sde_kms_info_add_keyint(info, "usecase:",
+					freq_step_list->freq_pattern[i].usecase_idx);
+				sde_kms_info_add_list(info, "Pattern:",
+						freq_step_list->freq_pattern[i].freq_stepping_seq,
+						freq_step_list->freq_pattern[i].length);
+			}
+		}
+
 		sde_kms_info_add_keyint(info, "has_cwb_crop", test_bit(SDE_FEATURE_CWB_CROP,
 								       sde_kms->catalog->features));
 		sde_kms_info_add_keyint(info, "has_dedicated_cwb_support",
@@ -3176,17 +3490,16 @@ static void _sde_connector_install_qsync_properties(struct sde_kms *sde_kms,
 		msm_property_install_enum(&c_conn->property_info, "qsync_mode", 0, 0, e_qsync_mode,
 				ARRAY_SIZE(e_qsync_mode), 0, CONNECTOR_PROP_QSYNC_MODE);
 
-		if (test_bit(SDE_FEATURE_AVR_STEP, sde_kms->catalog->features) &&
-				(display_info->capabilities & MSM_DISPLAY_CAP_VID_MODE))
-			msm_property_install_enum(&c_conn->property_info, "avr_step_state",
-					0, 0, e_avr_step_state, ARRAY_SIZE(e_avr_step_state), 0,
-					CONNECTOR_PROP_AVR_STEP_STATE);
-
 		if (test_bit(SDE_FEATURE_EPT_FPS, sde_kms->catalog->features) &&
 				(display_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE))
 			msm_property_install_range(&c_conn->property_info,
 					"EPT_FPS", 0x0, 0, U32_MAX, 0, CONNECTOR_PROP_EPT_FPS);
 	}
+
+	if (test_bit(SDE_FEATURE_AVR_STEP, sde_kms->catalog->features))
+		msm_property_install_enum(&c_conn->property_info, "avr_step_state",
+				0, 0, e_avr_step_state, ARRAY_SIZE(e_avr_step_state), 0,
+				CONNECTOR_PROP_AVR_STEP_STATE);
 }
 
 static int _sde_connector_install_properties(struct drm_device *dev,
@@ -3299,6 +3612,16 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			0x0, 0, AUTOREFRESH_MAX_FRAME_CNT, 0,
 			CONNECTOR_PROP_AUTOREFRESH);
 
+	c_conn->vrr_caps = display_info->vrr_caps;
+
+	if (c_conn->vrr_caps.vrr_support) {
+		msm_property_install_range(&c_conn->property_info, "frame_interval", 0x0,
+			0, U64_MAX, 0, CONNECTOR_PROP_FRAME_INTERVAL);
+
+		msm_property_install_range(&c_conn->property_info, "usecase_idx", 0x0,
+			0, U64_MAX, 0, CONNECTOR_PROP_USECASE_IDX);
+	}
+
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
 		_sde_connector_install_qsync_properties(sde_kms, c_conn, dsi_display, display_info);
 
@@ -3371,6 +3694,15 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			0, 0, e_power_mode,
 			ARRAY_SIZE(e_power_mode), 0,
 			CONNECTOR_PROP_LP);
+
+	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
+		dsi_display = (struct dsi_display *)(display);
+		if (dsi_display && dsi_display->panel) {
+			msm_property_install_range(&c_conn->property_info, "brightness",
+			0x0, 0, dsi_display->panel->bl_config.brightness_max_level, 0,
+			CONNECTOR_PROP_BRIGHTNESS);
+		}
+	}
 
 	return 0;
 }

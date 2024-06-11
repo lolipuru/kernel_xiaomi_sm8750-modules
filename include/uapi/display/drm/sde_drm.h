@@ -866,6 +866,20 @@ struct drm_msm_display_hint {
 	__u32 hint_flags;
 };
 
+/**
+ * struct drm_msm_display_early_ept: Payload for display early ept hint
+ * @ept:  Expected present time value in nano seconds.
+ * @frame_interval: Frame interval in nano seconds of vrr.
+ * @connector_id: connector id.
+ * @flags:  operation control flags, for future use
+ */
+struct drm_msm_display_early_ept {
+	__u64 ept_ns;
+	__u64 frame_interval;
+	__u32 connector_id;
+	__u32 flags;
+};
+
 #define DRM_NOISE_LAYER_CFG
 #define DRM_NOISE_TEMPORAL_FLAG (1 << 0)
 #define DRM_NOISE_ATTN_MAX 255
@@ -986,6 +1000,7 @@ struct sde_drm_dnsc_blur_cfg {
 #define DRM_MSM_RMFB2                  0x43
 #define DRM_MSM_POWER_CTRL             0x44
 #define DRM_MSM_DISPLAY_HINT           0x45
+#define DRM_MSM_EARLY_EPT              0x46
 
 /* sde custom events */
 #define DRM_EVENT_HISTOGRAM 0x80000000
@@ -1043,6 +1058,8 @@ struct sde_drm_dnsc_blur_cfg {
 			DRM_MSM_POWER_CTRL), struct drm_msm_power_ctrl)
 #define DRM_IOCTL_MSM_DISPLAY_HINT DRM_IOW((DRM_COMMAND_BASE + \
 			DRM_MSM_DISPLAY_HINT), struct drm_msm_display_hint)
+#define DRM_IOCTL_MSM_EARLY_EPT DRM_IOW((DRM_COMMAND_BASE + \
+			DRM_MSM_EARLY_EPT), struct drm_msm_display_early_ept)
 
 #if defined(__cplusplus)
 }

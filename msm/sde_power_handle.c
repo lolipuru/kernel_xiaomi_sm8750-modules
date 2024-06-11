@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/of_platform.h>
+#include <linux/pm_wakeup.h>
 
 #include <linux/sde_io_util.h>
 #include <linux/sde_rsc.h>
@@ -1224,4 +1225,28 @@ void sde_power_handle_unregister_event(
 		mutex_unlock(&phandle->phandle_lock);
 		kfree(event);
 	}
+}
+
+int sde_power_wakelock_ctrl(struct sde_power_handle *phandle, bool enable)
+{
+	if (!phandle || !phandle->dev) {
+		pr_err("invalid phandle or device");
+		return -EINVAL;
+	}
+
+	if (!phandle->dev->power.can_wakeup || !phandle->dev->power.wakeup) {
+		pr_err("device cannot wakeup");
+		return -EINVAL;
+	}
+
+	if (enable && atomic_inc_return(&phandle->wakelock_count) == 1) {
+		pm_stay_awake(phandle->dev);
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+	} else if (!enable &&
+		atomic_dec_return(&phandle->wakelock_count) == 0) {
+		pm_relax(phandle->dev);
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
+	}
+
+	return 0;
 }

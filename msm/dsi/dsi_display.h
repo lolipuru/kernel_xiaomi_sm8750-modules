@@ -693,14 +693,15 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 
 /**
  * dsi_display_cmd_transfer() - transfer command to the panel
- * @connector:          Pointer to drm connector structure
- * @display:            Handle to display.
- * @cmd_buf:            Command buffer
- * @cmd_buf_len:        Command buffer length in bytes
+ * @connector:           Pointer to drm connector structure
+ * @display:             Handle to display.
+ * @cmd_buf:             Command buffer
+ * @cmd_buf_len:         Command buffer length in bytes
+ * @do_peripheral_flush: Flag for sending this command with peripheral flush
  */
 int dsi_display_cmd_transfer(struct drm_connector *connector,
 		void *display, const char *cmd_buffer,
-		u32 cmd_buf_len);
+		u32 cmd_buf_len, bool do_peripheral_flush);
 
 /**
  * dsi_display_cmd_receive() - receive response from the panel
@@ -744,6 +745,14 @@ int dsi_display_soft_reset(void *display);
  */
 int dsi_display_set_power(struct drm_connector *connector,
 		int power_mode, void *display);
+
+/*
+ * dsi_display_dcs_cmd_tx - send arbitrary DCS command to panel
+ * @display: Pointer to private display structure
+ * @cmd: Enum identifying the command
+ * Returns: Zero on success
+ */
+int dsi_display_dcs_cmd_tx(struct dsi_display *display, enum dsi_cmd_set_type cmd);
 
 /*
  * dsi_display_pre_kickoff - program kickoff-time features
@@ -938,10 +947,27 @@ bool is_skip_op_required(struct dsi_display *display);
  * @display:     Handle to display
  * @clk_type:   Clock which is being controlled.
  * @clk_state:  Desired state of clock
- * @idle_pc:    Idle power collapse status
  *
  * return: error code in case of failure or 0 for success.
  */
-int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state, bool idle_pc);
+int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state);
+
+/**
+ * dsi_display_get_clk_rate() - get clk rate
+ * @display:    Handle to display
+ * @idx:        DSI controller index
+ * @clk_type:   Clock which whose rate is being retrieved
+ * @clk_state:  Pointer to which clock rate will be written on success
+ *
+ * return: error code in case of failure or 0 for success.
+ */
+int dsi_display_get_clk_rate(void *display, u32 idx, u32 clk_type, u64 *clk_rate);
+
+/**
+ * dsi_display_set_idle_pc_state() - set idle pc state
+ * @display:    Handle to display
+ * @idle_pc:    Idle power collapse status
+ */
+void dsi_display_set_idle_pc_state(void *display, bool idle_pc);
 
 #endif /* _DSI_DISPLAY_H_ */

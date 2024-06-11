@@ -663,6 +663,7 @@ enum {
  * @SDE_INTF_MDP_VSYNC_TS       INTF block has mdp vsync timestamp logged
  * @SDE_INTF_MDP_VSYNC_FC       INTF block has mdp vsync frame counter
  * @SDE_INTF_AVR_STATUS         INTF block has AVR_STATUS field in AVR_CONTROL register
+ * @SDE_INTF_ESYNC              INTF block has ESYNC support
  * @SDE_INTF_WD_JITTER          INTF block has WD timer jitter support
  * @SDE_INTF_WD_LTJ_CTL         INTF block has WD long term jitter control support
  * @SDE_INTF_TE_DEASSERT_DETECT INTF block has TE Deassert detect support
@@ -671,6 +672,7 @@ enum {
  * @SDE_INTF_TEAR_TE_LEVEL_MODE	INTF block has TE Level mode support
  * @SDE_INTF_NUM_AVR_STEP       INTF block has NUM_AVR_STEP support
  * @SDE_INTF_PANIC_CTRL         INTF block has panic in vid mode & panic/wakup control in cmd mode
+ * @SDE_INTF_PERIPHERAL_FLUSH   INTF block has peripheral flush support
  * @SDE_INTF_MAX
  */
 enum {
@@ -686,6 +688,7 @@ enum {
 	SDE_INTF_MDP_VSYNC_TS,
 	SDE_INTF_MDP_VSYNC_FC,
 	SDE_INTF_AVR_STATUS,
+	SDE_INTF_ESYNC,
 	SDE_INTF_WD_JITTER,
 	SDE_INTF_WD_LTJ_CTL,
 	SDE_INTF_TE_DEASSERT_DETECT,
@@ -694,6 +697,7 @@ enum {
 	SDE_INTF_TEAR_TE_LEVEL_MODE,
 	SDE_INTF_NUM_AVR_STEP,
 	SDE_INTF_PANIC_CTRL,
+	SDE_INTF_PERIPHERAL_FLUSH,
 	SDE_INTF_MAX
 };
 
@@ -2051,6 +2055,7 @@ struct sde_perf_cfg {
  * @uidle_cfg           settings for uidle feature
  * @irq_offset_list     list of sde_intr_irq_offsets to initialize irq table
  * @has_line_insertion  line insertion support status
+ * @osc_clk_rate        oscillator clock rate
  * @features            bitmap of supported SDE_FEATUREs
  * @dma_formats         supported formats for dma pipe
  * @vig_formats         supported formats for vig pipe
@@ -2068,6 +2073,8 @@ struct sde_perf_cfg {
  * @soccp_ph            if soccp is supported, soccp phandle needed to get rproc to set power vote
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
+ * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
+ *                      If not set it is immediate self refresh
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -2181,6 +2188,7 @@ struct sde_mdss_cfg {
 	struct list_head irq_offset_list;
 	DECLARE_BITMAP(features, SDE_FEATURE_MAX);
 	bool has_line_insertion;
+	u64 osc_clk_rate;
 
 	/* Supported Pixel Format Lists */
 	struct sde_format_extended *dma_formats;
@@ -2201,6 +2209,8 @@ struct sde_mdss_cfg {
 
 	enum sde_ppb_size_option ppb_sz_program;
 	u32 ppb_buf_max_lines;
+	u32 controlled_SR;
+	u32 early_EPT_handling;
 };
 
 struct sde_mdss_hw_cfg_handler {

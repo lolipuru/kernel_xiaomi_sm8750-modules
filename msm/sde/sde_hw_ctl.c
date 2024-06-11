@@ -402,16 +402,25 @@ static inline void sde_hw_ctl_output_fence_dir_wr_data(struct sde_hw_ctl *ctx, u
 }
 
 static inline void sde_hw_ctl_hw_fence_ctrl(struct sde_hw_ctl *ctx, bool sw_override_set,
-	bool  sw_override_clear, u32 mode)
+	bool  sw_override_clear, u32 mode, bool sw_avr_set, bool sw_arp_set)
 {
 	u32 val;
 
 	val = SDE_REG_READ(&ctx->hw, CTL_HW_FENCE_CTRL);
 	val |= (sw_override_set ? BIT(5) : 0) | (sw_override_clear ? BIT(4) : 0);
-	if (!mode)
+	if (!mode) {
 		val &= ~BIT(0);
-	else
+		if (!sw_avr_set)
+			val &= ~BIT(8);
+		if (!sw_arp_set)
+			val &= ~BIT(9);
+	} else {
 		val |= BIT(0);
+		if (sw_avr_set)
+			val |= BIT(8);
+		if (sw_arp_set)
+			val |= BIT(9);
+	}
 
 	SDE_REG_WRITE(&ctx->hw, CTL_HW_FENCE_CTRL, val);
 }

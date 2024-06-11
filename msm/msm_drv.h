@@ -241,6 +241,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_DIMMING_MIN_BL,
 	CONNECTOR_PROP_EARLY_FENCE_LINE,
 	CONNECTOR_PROP_DYN_TRANSFER_TIME,
+	CONNECTOR_PROP_BRIGHTNESS,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -254,6 +255,8 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_AVR_STEP_STATE,
 	CONNECTOR_PROP_EPT,
 	CONNECTOR_PROP_EPT_FPS,
+	CONNECTOR_PROP_FRAME_INTERVAL,
+	CONNECTOR_PROP_USECASE_IDX,
 	CONNECTOR_PROP_CACHE_STATE,
 	CONNECTOR_PROP_DSC_MODE,
 	CONNECTOR_PROP_WB_USAGE_TYPE,
@@ -787,6 +790,65 @@ struct msm_display_topology {
 };
 
 /**
+ * struct msm_freq_step_pattern - Frequency pattern
+ * @freq_stepping_seq: Frequency stepping sequence
+ * @length:            Total number of steps
+ * @frame_interval:    Frame interval for given pattern
+ * @num_freq_steps:    Number of frequency steps
+ * @usecase_idx:       Usecase for given pattern.
+ *                     Pattern can be differet for video playback.
+ * @frame_pattern_seq_idx: Sequential pattern index. Example: 0, 1, 2, 3 etc.
+ * @needs_ap_refresh:  If the refresh pattern needs first refresh from AP.
+ */
+struct msm_freq_step_pattern {
+	u32 *freq_stepping_seq;
+	u32 length;
+	u32 frame_interval;
+	u32 num_freq_steps;
+	u32 usecase_idx;
+	u32 frame_pattern_seq_idx;
+	bool needs_ap_refresh;
+};
+
+/**
+ * struct msm_debugfs_freq_pattern - Debugfs Frequency pattern
+ * @freq_stepping_seq: Frequency stepping sequence
+ * @length:            Total number of steps
+ * @frame_interval:    Frame interval for given pattern
+ * @num_freq_steps:    Number of frequency steps
+ * @index:       index for the given pattern
+ */
+struct msm_debugfs_freq_pattern {
+	u32 *freq_stepping_seq;
+	u32 length;
+	u32 frame_interval;
+	u32 num_freq_steps;
+	u32 index;
+};
+
+/**
+ * struct msm_freq_step_list - List of Frequency patterns
+ * @freq_pattern: Array of frequency patterns
+ * @count:        Total frequency patterns supported
+ */
+struct msm_freq_step_list {
+	struct msm_freq_step_pattern *freq_pattern;
+	u32 count;
+};
+
+/**
+ * struct msm_vrr_capabilities - VRR capabilities
+ * @vrr_support: True for any VRR supported panel
+ * @video_psr_support: True if it is Video hybrid mode panel
+ * @arp_support:    True if it is ARP panel
+ */
+struct msm_vrr_capabilities {
+	bool vrr_support;
+	bool video_psr_support;
+	bool arp_support;
+};
+
+/**
  * struct msm_dyn_clk_list - list of dynamic clock rates.
  * @count: number of supported clock rates
  * @rates: list of supported clock rates
@@ -845,6 +907,7 @@ struct msm_display_wd_jitter_config {
  * @allowed_mode_switches: bit mask to indicate supported mode switch.
  * @disable_rsc_solver: Dynamically disable RSC solver for the timing mode due to lower bitclk rate.
  * @dyn_clk_list: List of dynamic clock rates for RFI.
+ * @freq_step_list: List of Frequency steping pattrerns.
  * @qsync_min_fps: qsync min fps rate
  * @avr_step_fps: AVR step fps rate
  * @wd_jitter:         Info for WD jitter.
@@ -872,6 +935,7 @@ struct msm_mode_info {
 	u32 allowed_mode_switches;
 	bool disable_rsc_solver;
 	struct msm_dyn_clk_list dyn_clk_list;
+	struct msm_freq_step_list *freq_step_list;
 	u32 qsync_min_fps;
 	u32 avr_step_fps;
 	struct msm_display_wd_jitter_config wd_jitter;
@@ -923,6 +987,12 @@ struct msm_resource_caps_info {
  * @qsync_min_fps      Minimum fps supported by Qsync feature
  * @has_qsync_min_fps_list True if dsi-supported-qsync-min-fps-list exits
  * @avr_step_fps        AVR step fps supported
+ * @vrr_caps            Capabilities of VRR panel
+ * @esync_enabled:      esync is supported
+ * @esync_milli_skew:   esync skew, in 1/1000ths of a line
+ * @esync_hsync_milli_pulse_width: esync's hsync pulse width, in 1/1000ths of a line
+ * @esync_emsync_fps:   esync's EM pulse rate in Hz
+ * @esync_emsync_milli_pulse_width: esync's EM pulse width, in 1/1000ths of a line
  * @te_source		vsync source pin information
  * @dsc_count:		max dsc hw blocks used by display (only available
  *			for dsi display)
@@ -955,6 +1025,13 @@ struct msm_display_info {
 	uint32_t qsync_min_fps;
 	bool has_qsync_min_fps_list;
 	uint32_t avr_step_fps;
+	struct msm_vrr_capabilities vrr_caps;
+
+	bool esync_enabled;
+	uint32_t esync_milli_skew;
+	uint32_t esync_hsync_milli_pulse_width;
+	uint32_t esync_emsync_fps;
+	uint32_t esync_emsync_milli_pulse_width;
 
 	uint32_t te_source;
 
@@ -993,10 +1070,19 @@ struct msm_display_kickoff_params {
  * struct - msm_display_conn_params - info of dpu display features
  * @qsync_mode: Qsync mode, where 0: disabled 1: continuous mode 2: oneshot
  * @qsync_update: Qsync settings were changed/updated
+ * @cmd_bit_mask: Bit mask of commands to be sent.
+ * @peripheral_flush: True if peripheral flush needs to be set
+ * @freq_pattern: Frequency pattern to be set
+ * @arp_t2_in_us: Time when TE shall be asserted relative to next frame
+ *		  update deadline(T1) in case of ARP
  */
 struct msm_display_conn_params {
 	uint32_t qsync_mode;
 	bool qsync_update;
+	uint64_t cmd_bit_mask;
+	bool peripheral_flush;
+	struct msm_freq_step_pattern *freq_pattern;
+	uint16_t arp_t2_in_us;
 };
 
 /**
