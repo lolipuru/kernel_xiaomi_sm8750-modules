@@ -117,6 +117,7 @@ struct cam_sensor_dev_res_info {
  * @stream_off_after_eof: Indicates if sensor needs to stream off after eof
  * @is_res_info_updated: Indicate if resolution info is updated
  * @last_applied_done_timestamp : Last applied done timestamp value
+ * @hw_no_ops: To determine whether HW operations need to be disabled
  */
 struct cam_sensor_ctrl_t {
 	char                           device_name[CAM_CTX_DEV_NAME_MAX_LENGTH];
@@ -156,6 +157,7 @@ struct cam_sensor_ctrl_t {
 	bool                           stream_off_after_eof;
 	bool                           is_res_info_updated;
 	uint64_t                       last_applied_done_timestamp;
+	bool                           hw_no_ops;
 };
 
 /**
