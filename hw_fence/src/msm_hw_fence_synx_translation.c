@@ -488,3 +488,10 @@ int synx_hwfence_init_ops(struct synx_ops *hwfence_ops)
 	return SYNX_SUCCESS;
 }
 EXPORT_SYMBOL_GPL(synx_hwfence_init_ops);
+
+int synx_hwfence_enable_resources(enum synx_client_id id, enum synx_resource_type resource,
+	bool enable)
+{
+	return -SYNX_INVALID;
+}
+EXPORT_SYMBOL_GPL(synx_hwfence_enable_resources);
