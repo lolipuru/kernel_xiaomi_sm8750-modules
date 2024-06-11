@@ -570,6 +570,11 @@ struct sde_line_insertion_param {
  * @cont_splash_populated: State was populated as part of cont. splash
  * @param: sde line insertion parameters
  * @hwfence_in_fences_set: input hw fences are configured for the commit
+ * @is_loopback_mode: boolean variable to indicate if crtc is running in loopback mode
+ * @in_loopback_transition: boolean variable to indicate if crtc is transitioning in or out
+				of loopback mode
+ * @cac_mixer_roi: stores the mixer width and height for loopback mixers in crtc
+ * @num_prim_mixers: number of mixers driving the primary display in loopback usecase
  */
 struct sde_crtc_state {
 	struct drm_crtc_state base;
@@ -612,6 +617,10 @@ struct sde_crtc_state {
 	bool cont_splash_populated;
 	struct sde_line_insertion_param line_insertion;
 	bool hwfence_in_fences_set;
+	bool is_loopback_mode;
+	bool in_loopback_transition;
+	struct sde_io_res cac_mixer_roi[MAX_MIXERS_PER_CRTC];
+	uint32_t num_prim_mixers;
 };
 
 enum sde_crtc_irq_state {
