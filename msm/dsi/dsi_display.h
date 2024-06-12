@@ -179,6 +179,7 @@ struct dsi_display_ext_bridge {
  * @ulps_enabled:     ulps state.
  * @clamp_enabled:    clamp state.
  * @phy_idle_power_off:   PHY power state.
+ * @twm_enabled:      Boolean to indicate twm enabled.
  * @host:             DRM MIPI DSI Host.
  * @bridge:           Pointer to DRM bridge object.
  * @cmd_engine_refcount:  Reference count enforcing single instance of cmd eng
@@ -255,6 +256,7 @@ struct dsi_display {
 	bool ulps_enabled;
 	bool clamp_enabled;
 	bool phy_idle_power_off;
+	bool twm_enabled;
 	struct drm_gem_object *tx_cmd_buf;
 	u32 cmd_buffer_size;
 	u64 cmd_buffer_iova;
