@@ -1513,6 +1513,9 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 
 		if (ctx->maps[i]) {
 			struct vm_area_struct *vma = NULL;
+			u64 addr = (u64)ctx->args[i].ptr & PAGE_MASK, vm_start = 0,
+			vm_end = 0;
+
 			PERF(ctx->fl->profile, GET_COUNTER(perf_counter, PERF_MAP),
 
 			rpra[i].buf.pv = (u64) ctx->args[i].ptr;
@@ -1521,19 +1524,26 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 			if (!(ctx->maps[i]->attr & FASTRPC_ATTR_NOVA)) {
 				mmap_read_lock(current->mm);
 				vma = find_vma(current->mm, ctx->args[i].ptr);
-				if (vma)
-					offset = (ctx->args[i].ptr & PAGE_MASK) - vma->vm_start;
+				if (vma) {
+					vm_start = vma->vm_start;
+					vm_end = vma->vm_end;
+				}
 				mmap_read_unlock(current->mm);
-				if ((offset + len) > ctx->maps[i]->size) {
+				if (addr < vm_start || addr + len > vm_end ||
+					(addr - vm_start) + len > ctx->maps[i]->size) {
 					err = -EFAULT;
-					dev_err(dev, "Invalid buffer addr 0x%llx & len 0x%llx",
-						ctx->args[i].ptr, len);
+					dev_err(dev,
+						"Invalid buffer addr 0x%llx len 0x%llx vm start 0x%llx vm end 0x%llx IPA 0x%llx size 0x%llx",
+						ctx->args[i].ptr, len, vm_start, vm_end,
+							ctx->maps[i]->phys, ctx->maps[i]->size);
 					goto bail;
 				}
+				else
+					offset = addr - vm_start;
 				pages[i].addr += offset;
 			}
 
-			pg_start = (ctx->args[i].ptr & PAGE_MASK) >> PAGE_SHIFT;
+			pg_start = addr >> PAGE_SHIFT;
 			pg_end = ((ctx->args[i].ptr + len - 1) & PAGE_MASK) >>
 				  PAGE_SHIFT;
 			pages[i].size = (pg_end - pg_start + 1) * PAGE_SIZE;
