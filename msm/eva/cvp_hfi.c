@@ -3507,10 +3507,11 @@ int __response_handler(struct iris_hfi_device *device)
 
 	if (device->intr_status & CVP_FATAL_INTR_BMSK) {
 		if (device->intr_status & CVP_WRAPPER_INTR_MASK_CPU_NOC_BMSK)
-			dprintk(CVP_ERR, "Received Xtensa NOC error\n");
-
+			pr_err_ratelimited(CVP_PID_TAG "Received Xtensa NOC error\n",
+				current->pid, current->tgid, "err");
 		if (device->intr_status & CVP_WRAPPER_INTR_MASK_CORE_NOC_BMSK)
-			dprintk(CVP_ERR, "Received CVP core NOC error\n");
+			pr_err_ratelimited(CVP_PID_TAG "Received CVP core NOC error\n",
+				current->pid, current->tgid, "err");
 	}
 
 	/* Bleed the msg queue dry of packets */
