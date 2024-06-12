@@ -1362,15 +1362,29 @@ int dsi_display_set_power(struct drm_connector *connector,
 
 	switch (power_mode) {
 	case SDE_MODE_DPMS_LP1:
+		if (display->panel->power_mode == SDE_MODE_DPMS_LP2) {
+			if (dsi_display_set_lp2_load(display, false))
+				DSI_WARN("Failed to remove load of lp2 state\n");
+		}
+
 		rc = dsi_panel_set_lp1(display->panel);
 		break;
 	case SDE_MODE_DPMS_LP2:
 		rc = dsi_panel_set_lp2(display->panel);
+		if (dsi_display_set_lp2_load(display, true))
+			DSI_WARN("Failed to set load for lp2 state\n");
+
 		break;
 	case SDE_MODE_DPMS_ON:
+		if (display->panel->power_mode == SDE_MODE_DPMS_LP2) {
+			if (dsi_display_set_lp2_load(display, false))
+				DSI_WARN("Failed to remove load of lp2 state\n");
+		}
+
 		if ((display->panel->power_mode == SDE_MODE_DPMS_LP1) ||
 			(display->panel->power_mode == SDE_MODE_DPMS_LP2))
 			rc = dsi_panel_set_nolp(display->panel);
+
 		break;
 	case SDE_MODE_DPMS_OFF:
 	default:
@@ -3924,6 +3938,44 @@ int dsi_pre_clkon_cb(void *priv,
 		}
 
 		DSI_DEBUG("%s: Enable DSI core power\n", __func__);
+	}
+
+	return rc;
+}
+
+int dsi_display_set_lp2_load(struct dsi_display *display, bool enable)
+{
+	int i, rc = 0;
+	struct dsi_display_ctrl *display_ctrl;
+	struct dsi_ctrl *ctrl;
+	struct dsi_panel *panel;
+
+	if (!display) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	display_for_each_ctrl(i, display) {
+		display_ctrl = &display->ctrl[i];
+
+		if (!display_ctrl->ctrl)
+			continue;
+
+		ctrl = display_ctrl->ctrl;
+		rc = dsi_ctrl_set_lp2_load(ctrl, enable);
+
+		if (rc) {
+			DSI_ERR("failed to set lp2 load for dsi ctrl, rc = %d\n", rc);
+			return rc;
+		}
+	}
+
+	panel = display->panel;
+	rc = dsi_panel_set_lp2_load(panel, enable);
+
+	if (rc) {
+		DSI_ERR("failed to set lp2 load for dsi panel, rc = %d\n", rc);
+		return rc;
 	}
 
 	return rc;

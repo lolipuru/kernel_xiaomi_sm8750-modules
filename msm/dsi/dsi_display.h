@@ -638,7 +638,18 @@ int dsi_display_set_tpg_state(struct dsi_display *display, bool enable,
 		u32 init_val,
 		enum dsi_ctrl_tpg_pattern pattern);
 
+/**
+ * dsi_display_set_lp2_load() - Add or remove LP2 load on DSI display supplies.
+ * @display:		Handle to display.
+ * @enable:		Boolean to control whether to add or remove
+ * the LP2 load.
+ *
+ * Return: error code.
+ */
+int dsi_display_set_lp2_load(struct dsi_display *display, bool enable);
+
 int dsi_display_clock_gate(struct dsi_display *display, bool enable);
+
 int dsi_dispaly_static_frame(struct dsi_display *display, bool enable);
 
 /**

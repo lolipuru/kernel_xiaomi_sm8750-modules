@@ -4920,6 +4920,29 @@ exit:
 	return rc;
 }
 
+int dsi_panel_set_lp2_load(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+
+	if (!panel) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	if (!panel->panel_initialized)
+		goto exit;
+
+	rc = dsi_pwr_set_lp2_load(&panel->power_info, enable);
+	if (rc)
+		DSI_ERR("[%s] failed to set panel lp2 vreg, rc=%d\n",
+			panel->name, rc);
+
+exit:
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
 int dsi_panel_set_nolp(struct dsi_panel *panel)
 {
 	int rc = 0;
