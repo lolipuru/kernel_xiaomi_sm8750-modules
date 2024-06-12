@@ -39,6 +39,7 @@
 #include <linux/pinctrl/pinctrl.h>
 
 #include "btpower.h"
+#include "cnss_utils.h"
 #if (defined CONFIG_BT_SLIM)
 #include "btfm_slim.h"
 #endif
@@ -121,6 +122,7 @@ enum power_src_pos {
 	BT_VDD_RFA_0p8,
 	BT_VDD_RFACMN,
 	BT_VDD_ANT_LDO,
+
 	// these indexes GPIOs/regs value are fetched during crash.
 	BT_RESET_GPIO_CURRENT,
 	BT_SW_CTRL_GPIO_CURRENT,
@@ -139,6 +141,7 @@ enum power_src_pos {
 	BT_VDD_IPA_2p2,
 	BT_VDD_IPA_2p2_CURRENT,
 	BT_VDD_ANT_LDO_CURRENT,
+
 	/* The below bucks are voted for HW WAR on some platform which supports
 	 * WNC39xx.
 	 */
@@ -2374,10 +2377,9 @@ const char *GetSourceSubsystemString(uint32_t source_subsystem)
 	}
 }
 
-void set_fmd_sdam_bit(void)
+void set_fmd_sdam_bit(unsigned char sdam_bit)
 {
 	int rc = 0;
-	unsigned char sdam_bit = 1;
 
 	rc = nvmem_cell_write(pwr_data->nvmem_cell, &sdam_bit, sizeof(sdam_bit));
 	if (rc < 0) {
@@ -2398,6 +2400,60 @@ void set_fmd_sdam_bit(void)
 		pr_warn("%s: Read SDAM BIT of FMD  %d\n", __func__, buf[0]);
 		kfree(buf);
 	}
+}
+
+int set_fmd_mode(enum FmdOperation operation)
+{
+	int ret = 0;
+
+	switch (operation) {
+		case ENABLE_SDAM_BIT_FMD: {
+			pr_warn("%s: SET_FMD_MODE_CTRL :: ENABLE_SDAM_BIT_FMD\n",
+				__func__);
+			set_fmd_sdam_bit((unsigned char)POWER_ENABLE);
+			break;
+		}
+		case DISABLE_SDAM_BIT_FMD: {
+			pr_warn("%s: SET_FMD_MODE_CTRL :: DISABLE_SDAM_BIT_FMD\n",
+				__func__);
+			set_fmd_sdam_bit((unsigned char)POWER_DISABLE);
+			break;
+		}
+		case UPDATE_SOC_VERSION_1_0_FOR_FMD: {
+			pr_warn("%s: SET_FMD_MODE_CTRL :: UPDATE_SOC_VERSION_1_0_FOR_FMD\n",
+				__func__);
+			pwr_data->is_fmd_mode_enable = true;
+			if (pwr_data->bt_chip_clk) {
+				ret = bt_clk_enable(pwr_data->bt_chip_clk);
+				if (ret < 0) {
+					pr_err("%s: failed to bt_chip_clk\n", __func__);
+					return -EINVAL;
+				}
+			}
+			break;
+		}
+		case UPDATE_SOC_VERSION_2_0_FOR_FMD: {
+			pr_warn("%s: SET_FMD_MODE_CTRL :: UPDATE_SOC_VERSION_2_0_FOR_FMD\n",
+				__func__);
+			pwr_data->is_fmd_mode_enable = true;
+			cnss_utils_fmd_status(true);
+			if (pwr_data->bt_chip_clk) {
+				ret = bt_clk_enable(pwr_data->bt_chip_clk);
+				if (ret < 0) {
+					pr_err("%s: failed to bt_chip_clk\n", __func__);
+					return -EINVAL;
+				}
+			}
+			break;
+		}
+		default: {
+			pr_warn("%s: invalid fmd operation = %d received\n",
+				__func__, operation);
+			ret = -EINVAL;
+			break;
+		}
+	}
+	return ret;
 }
 
 static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
@@ -2470,17 +2526,7 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		break;
 	}
 	case SET_FMD_MODE_CTRL: {
-		pr_warn("%s: SET_FMD_MODE_CTRL\n", __func__);
-		pwr_data->is_fmd_mode_enable = true;
-		ret = btpower_handle_client_request(BT_CMD_PWR_CTRL, (int)POWER_ENABLE);
-		if (pwr_data->bt_chip_clk) {
-			ret = bt_clk_enable(pwr_data->bt_chip_clk);
-			if (ret < 0) {
-				pr_err("%s: bt_power gpio config failed\n", __func__);
-				return -EINVAL;
-			}
-		}
-		set_fmd_sdam_bit();
+		ret = set_fmd_mode((enum FmdOperation)arg);
 		break;
 	}
 	case BT_CMD_REGISTRATION:
