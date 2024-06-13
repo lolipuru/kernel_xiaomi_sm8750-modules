@@ -5404,7 +5404,8 @@ int dsi_display_cont_splash_config(void *dsi_display)
 	}
 
 	if (display->panel->esync_caps.esync_support
-	    && display->config.panel_mode == DSI_OP_VIDEO_MODE) {
+	    && display->panel->panel_mode == DSI_OP_VIDEO_MODE) {
+
 		rc = dsi_display_clk_ctrl(display->mdp_clk_handle,
 			DSI_ESYNC_CLK, DSI_CLK_ON);
 		if (rc) {

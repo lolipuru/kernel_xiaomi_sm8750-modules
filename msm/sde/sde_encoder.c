@@ -3333,6 +3333,9 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	if (ret)
 		return;
 
+	if (sde_enc->disp_info.vrr_caps.video_psr_support && sde_encoder_in_cont_splash(drm_enc))
+		sde_connector_set_vrr_params(sde_enc->cur_master->connector);
+
 	if ((sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL) &&
 			((sde_crtc_state->cached_cwb_enc_mask & drm_encoder_mask(drm_enc)))) {
 		SDE_EVT32(DRMID(drm_enc), sde_crtc_state->cwb_enc_mask,

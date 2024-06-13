@@ -1217,6 +1217,9 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 
 	c_conn = to_sde_connector(connector);
 
+	if (sde_encoder_in_cont_splash(connector->encoder))
+		return 0;
+
 	if (!c_conn->freq_pattern) {
 		SDE_ERROR("frequency pattern is NULL but update is true\n");
 		return -EINVAL;
