@@ -84,6 +84,7 @@
 #define CNSS_CAL_START_PROBE_WAIT_RETRY_MAX 100
 #define CNSS_CAL_START_PROBE_WAIT_MS	500
 #define CNSS_TIME_SYNC_PERIOD_INVALID	0xFFFFFFFF
+#define CPUMASK_ARRAY_SIZE		2
 
 enum cnss_cal_db_op {
 	CNSS_CAL_DB_UPLOAD,
@@ -5465,6 +5466,43 @@ int cnss_get_curr_therm_cdev_state(struct device *dev,
 }
 EXPORT_SYMBOL(cnss_get_curr_therm_cdev_state);
 
+void cnss_get_cpumask_for_wlan_rx_interrupts(struct device *dev,
+					     unsigned int *cpu_mask)
+{
+	struct cnss_plat_data *priv = cnss_get_plat_priv(NULL);
+
+	*cpu_mask = priv->cpumask_for_rx_intrs;
+}
+EXPORT_SYMBOL(cnss_get_cpumask_for_wlan_rx_interrupts);
+
+void cnss_get_cpumask_for_wlan_tx_comp_interrupts(struct device *dev,
+						  unsigned int *cpu_mask)
+{
+	struct cnss_plat_data *priv = cnss_get_plat_priv(NULL);
+
+	*cpu_mask = priv->cpumask_for_tx_comp_intrs;
+}
+EXPORT_SYMBOL(cnss_get_cpumask_for_wlan_tx_comp_interrupts);
+
+static void
+cnss_get_cpumask_for_wlan_txrx_intr(struct cnss_plat_data *plat_priv)
+{
+	struct device *dev = &plat_priv->plat_dev->dev;
+	uint32_t cpumask[CPUMASK_ARRAY_SIZE];
+	int ret;
+
+	ret = of_property_read_u32_array(dev->of_node,
+					 "wlan-txrx-intr-cpumask",
+					 cpumask, CPUMASK_ARRAY_SIZE);
+	if (ret) {
+		cnss_pr_err("Failed to get cpumask for wlan txrx interrupts");
+		return;
+	}
+
+	plat_priv->cpumask_for_rx_intrs = cpumask[0];
+	plat_priv->cpumask_for_tx_comp_intrs = cpumask[1];
+}
+
 static int cnss_probe(struct platform_device *plat_dev)
 {
 	int ret = 0;
@@ -5547,6 +5585,7 @@ static int cnss_probe(struct platform_device *plat_dev)
 	cnss_get_cpr_info(plat_priv);
 	cnss_aop_interface_init(plat_priv);
 	cnss_init_control_params(plat_priv);
+	cnss_get_cpumask_for_wlan_txrx_intr(plat_priv);
 
 	ret = cnss_get_resources(plat_priv);
 	if (ret)

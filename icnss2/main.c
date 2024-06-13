@@ -117,6 +117,7 @@ uint64_t dynamic_feature_mask = ICNSS_DEFAULT_FEATURE_MASK;
 #define WLAN_EN_DELAY			500
 
 #define ICNSS_RPROC_LEN			100
+#define CPUMASK_ARRAY_SIZE		2
 static DEFINE_IDA(rd_minor_id);
 
 enum icnss_pdr_cause_index {
@@ -4948,6 +4949,44 @@ static void unregister_rproc_restart_level_notifier(void)
 	unregister_trace_android_vh_rproc_recovery_set(rproc_restart_level_notifier, NULL);
 }
 
+void icnss_get_cpumask_for_wlan_rx_interrupts(struct device *dev,
+					      unsigned int *cpu_mask)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+
+	*cpu_mask = priv->cpumask_for_rx_intrs;
+}
+EXPORT_SYMBOL(icnss_get_cpumask_for_wlan_rx_interrupts);
+
+void icnss_get_cpumask_for_wlan_tx_comp_interrupts(struct device *dev,
+						   unsigned int *cpu_mask)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+
+	*cpu_mask = priv->cpumask_for_tx_comp_intrs;
+}
+EXPORT_SYMBOL(icnss_get_cpumask_for_wlan_tx_comp_interrupts);
+
+static void
+icnss_get_cpumask_for_wlan_txrx_intr(struct icnss_priv *priv)
+{
+	struct platform_device *pdev = priv->pdev;
+	struct device *dev = &pdev->dev;
+	uint32_t cpumask[CPUMASK_ARRAY_SIZE];
+	int ret = 0;
+
+	ret = of_property_read_u32_array(dev->of_node,
+					 "wlan-txrx-intr-cpumask",
+					 cpumask, CPUMASK_ARRAY_SIZE);
+	if (ret) {
+		icnss_pr_err("Failed to get cpumask for wlan txrx interrupts");
+		return;
+	}
+
+	priv->cpumask_for_rx_intrs = cpumask[0];
+	priv->cpumask_for_tx_comp_intrs = cpumask[1];
+}
+
 static int icnss_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -4986,6 +5025,7 @@ static int icnss_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&priv->vreg_list);
 	INIT_LIST_HEAD(&priv->clk_list);
 	icnss_allow_recursive_recovery(dev);
+	icnss_get_cpumask_for_wlan_txrx_intr(priv);
 
 	if (!prealloc_initialized) {
 		icnss_initialize_mem_pool(priv->device_id);
