@@ -17,6 +17,7 @@ extern struct msm_vidc_core *g_core;
 
 #define MAX_SSR_STRING_LEN         64
 #define MAX_STABILITY_STRING_LEN   64
+#define MAX_CRC_STRING_LEN         64
 #define MAX_DEBUG_LEVEL_STRING_LEN 15
 #define MSM_VIDC_MIN_STATS_DELAY_MS     200
 #define MSM_VIDC_MAX_STATS_DELAY_MS     10000
@@ -429,9 +430,56 @@ exit:
 	return rc;
 }
 
+static ssize_t enable_crc_write(struct file *filp, const char __user *buf,
+	size_t count, loff_t *ppos)
+{
+	unsigned long crc_val = 0;
+	int rc = 0;
+	struct msm_vidc_core *core = filp->private_data;
+	size_t size = MAX_CRC_STRING_LEN;
+	char kbuf[MAX_CRC_STRING_LEN + 1] = { 0 };
+
+	if (!core) {
+		d_vpr_e("%s: invalid params %pK\n", __func__, core);
+		return 0;
+	}
+
+	if (!buf)
+		return -EINVAL;
+
+	if (!count)
+		goto exit;
+
+	if (count < size)
+		size = count;
+
+	if (copy_from_user(kbuf, buf, size)) {
+		d_vpr_e("%s: User memory fault\n", __func__);
+		rc = -EFAULT;
+		goto exit;
+	}
+
+	rc = kstrtoul(kbuf, 0, &crc_val);
+	if (rc) {
+		d_vpr_e("returning error err %d\n", rc);
+		rc = -EINVAL;
+	}
+
+	core->debug_enable_crc = !!crc_val;
+	rc = count;
+
+exit:
+	return rc;
+}
+
 static const struct file_operations ssr_fops = {
 	.open = simple_open,
 	.write = trigger_ssr_write,
+};
+
+static const struct file_operations crc_fops = {
+	.open = simple_open,
+	.write = enable_crc_write,
 };
 
 static ssize_t trigger_stability_write(struct file *filp, const char __user *buf,
@@ -545,6 +593,10 @@ struct dentry *msm_vidc_debugfs_init_core(struct msm_vidc_core *core)
 		goto failed_create_dir;
 	}
 	if (!debugfs_create_file("stats_delay_ms", 0644, dir, core, &stats_delay_fops)) {
+		d_vpr_e("debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_file("enable_crc", 0200, dir, core, &crc_fops)) {
 		d_vpr_e("debugfs_create_file: fail\n");
 		goto failed_create_dir;
 	}

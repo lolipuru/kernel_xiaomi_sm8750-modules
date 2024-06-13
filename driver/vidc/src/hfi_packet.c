@@ -594,7 +594,7 @@ err_sys_pc:
 }
 
 int hfi_packet_sys_debug_config(struct msm_vidc_core *core,
-				 u8 *pkt, u32 pkt_size, u32 debug_config)
+		u8 *pkt, u32 pkt_size, u32 debug_level)
 {
 	int rc = 0;
 	u32 payload = 0;
@@ -606,7 +606,7 @@ int hfi_packet_sys_debug_config(struct msm_vidc_core *core,
 		goto err_debug;
 
 	/* HFI_PROP_DEBUG_CONFIG */
-	payload = 0; /*TODO:Change later*/
+	payload = core->hfi_debug_config;
 	rc = hfi_create_packet(pkt, pkt_size,
 			       HFI_PROP_DEBUG_CONFIG,
 			       HFI_HOST_FLAGS_NONE,
@@ -619,7 +619,7 @@ int hfi_packet_sys_debug_config(struct msm_vidc_core *core,
 		goto err_debug;
 
 	/* HFI_PROP_DEBUG_LOG_LEVEL */
-	payload = debug_config; /*TODO:Change later*/
+	payload = debug_level;
 	rc = hfi_create_packet(pkt, pkt_size,
 			       HFI_PROP_DEBUG_LOG_LEVEL,
 			       HFI_HOST_FLAGS_NONE,
