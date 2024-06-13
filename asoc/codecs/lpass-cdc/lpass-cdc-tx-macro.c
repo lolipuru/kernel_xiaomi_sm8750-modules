@@ -156,6 +156,7 @@ struct lpass_cdc_tx_macro_priv {
 	bool hs_slow_insert_complete;
 	int pcm_rate[NUM_DECIMATORS];
 	bool swr_dmic_enable;
+	bool swr_dmic_gain_disable;
 	int wlock_holders;
 };
 
@@ -525,6 +526,7 @@ static void mute_stream_dec_unmute(struct work_struct *work)
 	struct snd_soc_component *component = NULL;
 	int dai_id = 0;
 	u16 tx_mute_ctl_reg = 0;
+	u16 dec_gain_reg = 0;
 	u32 decimator = 0;
 
 	unmute_delayed_work = to_delayed_work(work);
@@ -538,6 +540,12 @@ static void mute_stream_dec_unmute(struct work_struct *work)
 		tx_mute_ctl_reg = LPASS_CDC_TX0_TX_PATH_CTL +
 			LPASS_CDC_TX_MACRO_TX_PATH_OFFSET * decimator;
 		snd_soc_component_update_bits(component, tx_mute_ctl_reg, 0x10, 0x00);
+
+		if (tx_priv->swr_dmic_gain_disable) {
+			dec_gain_reg = LPASS_CDC_TX0_TX_PATH_CFG1 +
+				LPASS_CDC_TX_MACRO_TX_PATH_OFFSET * decimator;
+			snd_soc_component_update_bits(component, dec_gain_reg, 0x01, 0x00);
+		}
 	}
 }
 
@@ -834,6 +842,40 @@ static int lpass_cdc_tx_macro_swr_dmic_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+
+static int lpass_cdc_tx_macro_get_dec_gain_bypass(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component =
+			snd_soc_kcontrol_component(kcontrol);
+	struct lpass_cdc_tx_macro_priv *tx_priv = NULL;
+	struct device *tx_dev = NULL;
+
+	if (!lpass_cdc_tx_macro_get_data(component, &tx_dev, &tx_priv, __func__))
+	return -EINVAL;
+
+	ucontrol->value.integer.value[0] = tx_priv->swr_dmic_gain_disable;
+
+	return 0;
+}
+
+static int lpass_cdc_tx_macro_put_dec_gain_bypass(struct snd_kcontrol *kcontrol,
+			    struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component =
+			snd_soc_kcontrol_component(kcontrol);
+	struct lpass_cdc_tx_macro_priv *tx_priv = NULL;
+	struct device *tx_dev = NULL;
+	int value = ucontrol->value.integer.value[0];
+
+	if (!lpass_cdc_tx_macro_get_data(component, &tx_dev, &tx_priv, __func__))
+		return -EINVAL;
+
+	tx_priv->swr_dmic_gain_disable = value;
+
+	return 0;
+}
+
 static int lpass_cdc_tx_macro_get_bcs(struct snd_kcontrol *kcontrol,
                             struct snd_ctl_elem_value *ucontrol)
 {
@@ -951,6 +993,7 @@ static int lpass_cdc_tx_macro_enable_dec(struct snd_soc_dapm_widget *w,
 	unsigned int decimator = 0;
 	u16 tx_vol_ctl_reg = 0;
 	u16 dec_cfg_reg = 0;
+	u16 dec_gain_reg = 0;
 	u16 hpf_gate_reg = 0;
 	u16 tx_gain_ctl_reg = 0;
 	u16 tx_fs_reg = 0;
@@ -976,6 +1019,8 @@ static int lpass_cdc_tx_macro_enable_dec(struct snd_soc_dapm_widget *w,
 	hpf_gate_reg = LPASS_CDC_TX0_TX_PATH_SEC2 +
 				LPASS_CDC_TX_MACRO_TX_PATH_OFFSET * decimator;
 	dec_cfg_reg = LPASS_CDC_TX0_TX_PATH_CFG0 +
+				LPASS_CDC_TX_MACRO_TX_PATH_OFFSET * decimator;
+	dec_gain_reg = LPASS_CDC_TX0_TX_PATH_CFG1 +
 				LPASS_CDC_TX_MACRO_TX_PATH_OFFSET * decimator;
 	tx_gain_ctl_reg = LPASS_CDC_TX0_TX_VOL_CTL +
 				LPASS_CDC_TX_MACRO_TX_PATH_OFFSET * decimator;
@@ -1132,6 +1177,11 @@ static int lpass_cdc_tx_macro_enable_dec(struct snd_soc_dapm_widget *w,
 			snd_soc_component_update_bits(component,
 				LPASS_CDC_TX_TOP_CSR_SWR_CTRL,
 				0x01, 0x00);
+
+		if (tx_priv->swr_dmic_gain_disable)
+			snd_soc_component_update_bits(component, dec_gain_reg,
+					0x01, 0x01);
+
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		snd_soc_component_update_bits(component, tx_vol_ctl_reg,
@@ -1989,7 +2039,10 @@ static const struct snd_kcontrol_new lpass_cdc_tx_macro_snd_controls[] = {
 		     lpass_cdc_tx_macro_bcs_ch_get, lpass_cdc_tx_macro_bcs_ch_put),
 
 	SOC_ENUM_EXT("BCS CH_SEL", bcs_ch_sel_mux_enum,
-		     lpass_cdc_tx_macro_get_bcs_ch_sel, lpass_cdc_tx_macro_put_bcs_ch_sel),
+		       lpass_cdc_tx_macro_get_bcs_ch_sel, lpass_cdc_tx_macro_put_bcs_ch_sel),
+
+	SOC_SINGLE_EXT("DEC_GAIN_BYPASS Enable", SND_SOC_NOPM, 0, 1, 0,
+		     lpass_cdc_tx_macro_get_dec_gain_bypass, lpass_cdc_tx_macro_put_dec_gain_bypass),
 };
 
 static int lpass_cdc_tx_macro_clk_div_get(struct snd_soc_component *component)
@@ -2209,6 +2262,7 @@ static int lpass_cdc_tx_macro_probe(struct platform_device *pdev)
 	}
 	tx_priv->tx_io_base = tx_io_base;
 	tx_priv->swr_dmic_enable = false;
+	tx_priv->swr_dmic_gain_disable = false;
 	tx_priv->wlock_holders = 0;
 	ret = of_property_read_u32(pdev->dev.of_node, dmic_sample_rate,
 				   &sample_rate);
