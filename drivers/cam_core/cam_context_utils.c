@@ -534,11 +534,9 @@ int32_t cam_context_prepare_dev_to_hw(struct cam_context *ctx,
 	int rc = 0;
 	struct cam_ctx_request *req = NULL;
 	struct cam_hw_prepare_update_args cfg;
-	struct cam_packet *packet_u;
 	struct cam_packet *packet = NULL;
 	size_t remain_len = 0;
 	int32_t i = 0, j = 0;
-	size_t packet_size = 0;
 
 	if (!ctx || !cmd) {
 		CAM_ERR(CAM_CTXT, "Invalid input params %pK %pK", ctx, cmd);
@@ -585,25 +583,9 @@ int32_t cam_context_prepare_dev_to_hw(struct cam_context *ctx,
 	req->flushed                = 0;
 	atomic_set(&req->num_in_acked, 0);
 
-	remain_len = cam_context_parse_config_cmd(ctx, cmd, &packet_u);
-	if (IS_ERR_OR_NULL(packet_u)) {
-		rc = PTR_ERR(packet_u);
-		goto free_req;
-	}
-
-	packet_size = packet_u->header.size;
-	if (packet_size <= remain_len) {
-		rc = cam_common_mem_kdup((void **)&packet,
-			packet_u, packet_size);
-		if (rc) {
-			CAM_ERR(CAM_CTXT, "Alloc and copy request %lld packet fail",
-				packet_u->header.request_id);
-			goto free_req;
-		}
-	} else {
-		CAM_ERR(CAM_CTXT, "Invalid packet header size %u",
-			packet_size);
-		rc = -EINVAL;
+	remain_len = cam_context_parse_config_cmd(ctx, cmd, &packet);
+	if (IS_ERR_OR_NULL(packet)) {
+		rc = PTR_ERR(packet);
 		goto free_req;
 	}
 
@@ -1848,6 +1830,8 @@ size_t cam_context_parse_config_cmd(struct cam_context *ctx, struct cam_config_d
 	size_t len;
 	uintptr_t packet_addr;
 	int rc = 0;
+	struct cam_packet *packet_u;
+	size_t packet_size = 0, packet_len = 0;
 
 	if (!ctx || !cmd || !packet) {
 		CAM_ERR(CAM_CTXT, "invalid args");
@@ -1873,7 +1857,28 @@ size_t cam_context_parse_config_cmd(struct cam_context *ctx, struct cam_config_d
 		goto put_cpu_buf;
 	}
 
-	*packet = (struct cam_packet *) ((uint8_t *)packet_addr + (uint32_t)cmd->offset);
+	packet_u = (struct cam_packet *) ((uint8_t *)packet_addr + (uint32_t)cmd->offset);
+	if (IS_ERR_OR_NULL(packet_u)) {
+		rc = PTR_ERR(packet_u);
+		goto put_cpu_buf;
+	}
+
+	packet_size = packet_u->header.size;
+	packet_len = len - (size_t)cmd->offset;
+	if (packet_size <= packet_len) {
+		rc = cam_common_mem_kdup((void **)packet,
+			packet_u, packet_size);
+		if (rc) {
+			CAM_ERR(CAM_ISP, "Alloc and copy request %lld packet fail",
+				packet_u->header.request_id);
+			goto put_cpu_buf;
+		}
+	} else {
+		CAM_ERR(CAM_ISP, "Invalid packet header size %u",
+			packet_size);
+		rc = -EINVAL;
+		goto put_cpu_buf;
+	}
 
 	CAM_DBG(CAM_CTXT,
 		"handle:%llx, addr:0x%zx, offset:%0xllx, len:%zu, req:%llu, size:%u, opcode:0x%x",
@@ -1881,7 +1886,7 @@ size_t cam_context_parse_config_cmd(struct cam_context *ctx, struct cam_config_d
 		(*packet)->header.size, (*packet)->header.op_code);
 
 	cam_mem_put_cpu_buf((int32_t) cmd->packet_handle);
-	return (len - (size_t)cmd->offset);
+	return packet_len;
 
 put_cpu_buf:
 	if (cmd)

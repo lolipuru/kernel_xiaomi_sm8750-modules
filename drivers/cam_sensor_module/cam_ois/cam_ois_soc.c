@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -107,7 +107,7 @@ static int cam_ois_get_dt_data(struct cam_ois_ctrl_t *o_ctrl)
  */
 int cam_ois_driver_soc_init(struct cam_ois_ctrl_t *o_ctrl)
 {
-	int                             rc = 0;
+	int                             rc = 0, i = 0;
 	struct cam_hw_soc_info         *soc_info = &o_ctrl->soc_info;
 	struct device_node             *of_node = NULL;
 	struct device_node             *of_parent = NULL;
@@ -144,6 +144,19 @@ int cam_ois_driver_soc_init(struct cam_ois_ctrl_t *o_ctrl)
 	rc = cam_ois_get_dt_data(o_ctrl);
 	if (rc < 0)
 		CAM_DBG(CAM_OIS, "failed: ois get dt data rc %d", rc);
+
+	memset(&o_ctrl->fw_info, 0, sizeof(struct cam_cmd_ois_fw_info));
+
+	INIT_LIST_HEAD(&(o_ctrl->i2c_init_data.list_head));
+	INIT_LIST_HEAD(&(o_ctrl->i2c_calib_data.list_head));
+	INIT_LIST_HEAD(&(o_ctrl->i2c_fwinit_data.list_head));
+	for (i = 0; i < MAX_OIS_FW_COUNT; i++) {
+		INIT_LIST_HEAD(&(o_ctrl->i2c_fw_init_data[i].list_head));
+		INIT_LIST_HEAD(&(o_ctrl->i2c_fw_finalize_data[i].list_head));
+	}
+	INIT_LIST_HEAD(&(o_ctrl->i2c_fw_version_data.list_head));
+	INIT_LIST_HEAD(&(o_ctrl->i2c_mode_data.list_head));
+	INIT_LIST_HEAD(&(o_ctrl->i2c_time_data.list_head));
 
 	return rc;
 }

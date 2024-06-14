@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "tpg_hw_v_1_4.h"
@@ -187,7 +187,10 @@ static int configure_global_configs(
 		(configs->lane_count - 1) << (tpg_reg->num_active_lanes_shift) |
 		(get_tpg_vc_dt_pattern_id(configs->interleaving_format)
 		 << (tpg_reg->vc_dt_pattern_id_shift)) |
-		(phy_type << tpg_reg->phy_sel_shift);
+		(phy_type << tpg_reg->phy_sel_shift) |
+		((tpg_reg->async_mode_min_hbi)<<
+		(tpg_reg->async_mode_min_hbi_shift));
+
 	cam_io_w_mb(val, soc_info->reg_map[0].mem_base + tpg_reg->tpg_ctrl);
 
 	CAM_DBG(CAM_TPG, "tpg[%d] tpg_ctrl=0x%x", hw->hw_idx, val);

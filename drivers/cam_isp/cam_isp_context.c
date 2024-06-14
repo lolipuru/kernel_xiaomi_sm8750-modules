@@ -2859,16 +2859,27 @@ static int __cam_isp_ctx_handle_buf_done(
 }
 
 static void __cam_isp_ctx_buf_done_match_req(
+	struct cam_isp_context *ctx_isp,
 	struct cam_ctx_request *req,
 	struct cam_isp_hw_done_event_data *done,
 	bool *irq_delay_detected)
 {
-	int i;
+	int rc = 0;
+	int i, j, k;
 	uint32_t match_count = 0;
 	struct cam_isp_ctx_req *req_isp;
 	uint32_t cmp_addr = 0;
+	struct cam_isp_context_comp_record *comp_grp = NULL;
+	struct cam_hw_cmd_args hw_cmd_args;
+	struct cam_isp_hw_cmd_args isp_hw_cmd_args;
+	struct cam_context *ctx = ctx_isp->base;
 
 	req_isp = (struct cam_isp_ctx_req *) req->req_priv;
+
+	if (done->hw_type == CAM_ISP_HW_TYPE_SFE)
+		comp_grp = &ctx_isp->sfe_bus_comp_grp[done->comp_group_id];
+	else
+		comp_grp = &ctx_isp->vfe_bus_comp_grp[done->comp_group_id];
 
 	for (i = 0; i < req_isp->num_fence_map_out; i++) {
 		cmp_addr = cam_smmu_is_expanded_memory() ? CAM_36BIT_INTF_GET_IOVA_BASE(
@@ -2882,14 +2893,78 @@ static void __cam_isp_ctx_buf_done_match_req(
 		}
 	}
 
+	if (i == req_isp->num_fence_map_out) {
+		for (j = 0; j < comp_grp->num_res; j++) {
+			/* If the res is same with original res, we don't need to read again  */
+			if (comp_grp->res_id[j] == done->resource_handle)
+				continue;
+
+			/* Check if the res in the requested list */
+			for (k = 0; k < req_isp->num_fence_map_out; k++)
+				if (comp_grp->res_id[j] ==
+					req_isp->fence_map_out[k].resource_handle)
+					break;
+
+			/* If res_id[j] isn't in requested list, then try next res in the group */
+			if (k == req_isp->num_fence_map_out) {
+				if (j != comp_grp->num_res - 1)
+					continue;
+				else {
+					CAM_ERR(CAM_ISP, "not in this group and exit.");
+					break;
+				}
+			}
+
+			/*
+			 * Find out the res from the requested list,
+			 * then we can get last consumed address from this port.
+			 */
+			done->resource_handle = comp_grp->res_id[j];
+			done->last_consumed_addr = 0;
+
+			hw_cmd_args.ctxt_to_hw_map = ctx_isp->hw_ctx;
+			hw_cmd_args.cmd_type = CAM_HW_MGR_CMD_INTERNAL;
+			isp_hw_cmd_args.cmd_type =
+				CAM_ISP_HW_MGR_GET_LAST_CONSUMED_ADDR;
+			isp_hw_cmd_args.cmd_data = done;
+			hw_cmd_args.u.internal_args = (void *)&isp_hw_cmd_args;
+			rc = ctx->hw_mgr_intf->hw_cmd(
+				ctx->hw_mgr_intf->hw_mgr_priv,
+				&hw_cmd_args);
+			if (rc) {
+				CAM_ERR(CAM_ISP, "HW command failed, ctx %u, link: 0x%x",
+					ctx->ctx_id, ctx->link_hdl);
+			}
+
+			cmp_addr = cam_smmu_is_expanded_memory() ?
+				CAM_36BIT_INTF_GET_IOVA_BASE(
+				req_isp->fence_map_out[k].image_buf_addr[0]) :
+				req_isp->fence_map_out[k].image_buf_addr[0];
+			CAM_DBG(CAM_ISP, "Get res %s last_consumed_addr:0x%x, cmp_addr:0x%x",
+				__cam_isp_resource_handle_id_to_type(
+						ctx_isp->isp_device_type, done->resource_handle),
+				cmp_addr, done->last_consumed_addr);
+			if (done->last_consumed_addr == cmp_addr) {
+				CAM_DBG(CAM_ISP, "Consumed addr compare success for res:%s ",
+					__cam_isp_resource_handle_id_to_type(
+				ctx_isp->isp_device_type, done->resource_handle));
+				match_count++;
+				break;
+			}
+		}
+	}
+
 	if (match_count > 0)
 		*irq_delay_detected = true;
 	else
 		*irq_delay_detected = false;
 
 	CAM_DBG(CAM_ISP,
-		"buf done num handles %d match count %d for next req:%lld",
-		done->resource_handle, match_count, req->request_id);
+		"buf done num handles %d [%s] match count %d for next req:%lld",
+		done->resource_handle,
+		__cam_isp_resource_handle_id_to_type(
+				ctx_isp->isp_device_type, done->resource_handle),
+		match_count, req->request_id);
 	CAM_DBG(CAM_ISP,
 		"irq_delay_detected %d", *irq_delay_detected);
 }
@@ -3091,7 +3166,8 @@ static int __cam_isp_ctx_handle_buf_done_verify_addr(
 	if (ctx_isp->active_req_cnt > 1) {
 		next_req = list_last_entry(&ctx->active_req_list, struct cam_ctx_request, list);
 		if (next_req->request_id != req->request_id)
-			__cam_isp_ctx_buf_done_match_req(next_req, done, &irq_delay_detected);
+			__cam_isp_ctx_buf_done_match_req(
+					ctx_isp, next_req, done, &irq_delay_detected);
 		else
 			CAM_WARN(CAM_ISP,
 				"Req %lld only active request, spurious buf_done rxd, ctx: %u link: 0x%x",
@@ -5234,7 +5310,7 @@ static inline int cam_isp_context_apply_evt_injection(struct cam_context *ctx)
 
 static inline void __cam_isp_ctx_update_fcg_prediction_idx(
 	struct cam_context                      *ctx,
-	uint32_t                                 request_id,
+	uint64_t                                 request_id,
 	struct cam_isp_fcg_prediction_tracker   *fcg_tracker,
 	struct cam_isp_fcg_config_info          *fcg_info)
 {
@@ -7290,7 +7366,6 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 	int rc = 0, i;
 	struct cam_ctx_request           *req = NULL;
 	struct cam_isp_ctx_req           *req_isp;
-	struct cam_packet                *packet_u;
 	struct cam_packet                *packet = NULL;
 	size_t                            remain_len = 0;
 	struct cam_hw_prepare_update_args cfg = {0};
@@ -7301,7 +7376,6 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 	struct cam_isp_hw_cmd_args       isp_hw_cmd_args;
 	uint32_t                         packet_opcode = 0;
 	struct cam_isp_ch_ctx_fcg_config_internal *sfe_ch_ctx_fcg, *ife_ch_ctx_fcg;
-	size_t                           packet_size = 0;
 
 	CAM_DBG(CAM_ISP, "get free request object......ctx_idx: %u, link: 0x%x",
 		ctx->ctx_id, ctx->link_hdl);
@@ -7330,25 +7404,9 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 
 	req_isp = (struct cam_isp_ctx_req *) req->req_priv;
 
-	remain_len = cam_context_parse_config_cmd(ctx, cmd, &packet_u);
-	if (IS_ERR_OR_NULL(packet_u)) {
-		rc = PTR_ERR(packet_u);
-		goto free_req;
-	}
-
-	packet_size = packet_u->header.size;
-	if (packet_size <= remain_len) {
-		rc = cam_common_mem_kdup((void **)&packet,
-			packet_u, packet_size);
-		if (rc) {
-			CAM_ERR(CAM_ISP, "Alloc and copy request %lld packet fail",
-				packet_u->header.request_id);
-			goto free_req;
-		}
-	} else {
-		CAM_ERR(CAM_ISP, "Invalid packet header size %u",
-			packet_size);
-		rc = -EINVAL;
+	remain_len = cam_context_parse_config_cmd(ctx, cmd, &packet);
+	if (IS_ERR_OR_NULL(packet)) {
+		rc = PTR_ERR(packet);
 		goto free_req;
 	}
 

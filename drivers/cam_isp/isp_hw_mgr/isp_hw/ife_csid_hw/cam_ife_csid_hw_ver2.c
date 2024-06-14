@@ -3032,8 +3032,12 @@ static int cam_ife_csid_ver2_ipp_bottom_half(
 		csid_hw->event_cb(csid_hw->token, CAM_ISP_HW_EVENT_REG_UPDATE, (void *)&evt_info);
 
 	if (irq_status_ipp & epoch0_irq_mask) {
-		cam_ife_csid_ver2_update_event_ts(&path_cfg->epoch_ts, &payload->timestamp);
-		csid_hw->event_cb(csid_hw->token, CAM_ISP_HW_EVENT_EPOCH, (void *)&evt_info);
+		if ((!csid_hw->flags.last_exp_valid) ||
+			(csid_hw->flags.last_exp_valid && path_cfg->allow_epoch_cb)) {
+			cam_ife_csid_ver2_update_event_ts(&path_cfg->epoch_ts, &payload->timestamp);
+			csid_hw->event_cb(csid_hw->token, CAM_ISP_HW_EVENT_EPOCH,
+				(void *)&evt_info);
+		}
 	}
 
 	if (payload->is_mc) {
@@ -3303,8 +3307,13 @@ static int cam_ife_csid_ver2_rdi_bottom_half(
 			(path_cfg->sec_evt_config.evt_type & CAM_IFE_CSID_EVT_EPOCH)) {
 			evt_info.is_secondary_evt = true;
 		}
-		cam_ife_csid_ver2_update_event_ts(&path_cfg->epoch_ts, &payload->timestamp);
-		csid_hw->event_cb(csid_hw->token, CAM_ISP_HW_EVENT_EPOCH, (void *)&evt_info);
+
+		if ((!csid_hw->flags.last_exp_valid) ||
+			(csid_hw->flags.last_exp_valid && path_cfg->allow_epoch_cb)) {
+			cam_ife_csid_ver2_update_event_ts(&path_cfg->epoch_ts, &payload->timestamp);
+			csid_hw->event_cb(csid_hw->token, CAM_ISP_HW_EVENT_EPOCH,
+				(void *)&evt_info);
+		}
 	}
 end:
 	cam_ife_csid_ver2_put_evt_payload(csid_hw, &payload,
@@ -3755,6 +3764,7 @@ static int cam_ife_csid_ver2_disable_path(
 	path_cfg->skip_discard_frame_cfg = false;
 	path_cfg->num_frames_discard = 0;
 	path_cfg->sof_cnt = 0;
+	path_cfg->allow_epoch_cb = false;
 	atomic_set(&path_cfg->switch_out_of_sync_cnt, 0);
 	return rc;
 }
@@ -5079,8 +5089,8 @@ static int cam_ife_csid_ver2_program_rdi_path(
 	struct cam_hw_soc_info                   *soc_info;
 	const struct cam_ife_csid_ver2_path_reg_info *path_reg;
 	void __iomem *mem_base;
-	uint32_t val = 0;
-	uint32_t irq_mask = 0;
+	uint32_t dbg_frm_irq_mask = 0;
+	uint32_t err_irq_mask = 0;
 	struct cam_ife_csid_ver2_path_cfg *path_cfg;
 
 	rc = cam_ife_csid_ver2_init_config_rdi_path(
@@ -5123,27 +5133,31 @@ static int cam_ife_csid_ver2_program_rdi_path(
 			mem_base + path_reg->epoch_irq_cfg_addr);
 	}
 
-	val = csid_hw->debug_info.path_mask;
+	dbg_frm_irq_mask = csid_hw->debug_info.path_mask;
 
 	if (res->is_rdi_primary_res) {
-		val |= path_reg->rup_irq_mask;
+		dbg_frm_irq_mask |= path_reg->rup_irq_mask;
 		if (path_cfg->handle_camif_irq)
-			val |= path_reg->sof_irq_mask | path_reg->eof_irq_mask |
+			dbg_frm_irq_mask |= path_reg->sof_irq_mask | path_reg->eof_irq_mask |
 				path_reg->epoch0_irq_mask;
 	}
 
 	/* Enable secondary events dictated by HW mgr for RDI paths */
 	if (path_cfg->sec_evt_config.en_secondary_evt) {
 		if (path_cfg->sec_evt_config.evt_type & CAM_IFE_CSID_EVT_SOF)
-			val |= path_reg->sof_irq_mask;
+			dbg_frm_irq_mask |= path_reg->sof_irq_mask;
 
 		if (path_cfg->sec_evt_config.evt_type & CAM_IFE_CSID_EVT_EPOCH)
-			val |= path_reg->epoch0_irq_mask;
+			dbg_frm_irq_mask |= path_reg->epoch0_irq_mask;
 
 		CAM_DBG(CAM_ISP,
 			"CSID:%u Enable camif: %d evt irq for res: %s",
 			csid_hw->hw_intf->hw_idx, path_cfg->sec_evt_config.evt_type, res->res_name);
 	}
+
+	if ((csid_reg->cmn_reg->capabilities & CAM_IFE_CSID_CAP_MULTI_CTXT) &&
+		path_cfg->is_aeb_en && (res->res_id > CAM_IFE_PIX_PATH_RES_RDI_0))
+		dbg_frm_irq_mask |= path_reg->epoch0_irq_mask;
 
 	res->res_state = CAM_ISP_RESOURCE_STATE_STREAMING;
 	path_cfg->irq_reg_idx =  cam_ife_csid_convert_res_to_irq_reg(res->res_id);
@@ -5156,8 +5170,8 @@ static int cam_ife_csid_ver2_program_rdi_path(
 			return rc;
 	}
 
-	irq_mask = path_reg->fatal_err_mask | path_reg->non_fatal_err_mask;
-	rc = cam_ife_csid_ver2_path_irq_subscribe(csid_hw, res, val, irq_mask);
+	err_irq_mask = path_reg->fatal_err_mask | path_reg->non_fatal_err_mask;
+	rc = cam_ife_csid_ver2_path_irq_subscribe(csid_hw, res, dbg_frm_irq_mask, err_irq_mask);
 	if (rc)
 		return rc;
 	cam_ife_csid_ver2_path_rup_aup(csid_hw, res, rup_aup_mask);
@@ -7006,6 +7020,7 @@ int cam_ife_csid_ver2_stop(void *hw_priv,
 	csid_hw->debug_info.test_bus_enabled = false;
 	csid_hw->flags.pf_err_detected = false;
 	csid_hw->flags.rdi_lcr_en = false;
+	csid_hw->flags.last_exp_valid = false;
 	mutex_unlock(&csid_hw->hw_info->hw_mutex);
 
 	return rc;
@@ -8283,7 +8298,7 @@ static int cam_ife_csid_ver2_get_primary_sof_timer_reg_addr(
 	const struct cam_ife_csid_ver2_path_reg_info *path_reg;
 
 	if (!csid_hw || sof_addr->res_id >= CAM_IFE_PIX_PATH_RES_MAX) {
-		CAM_ERR(CAM_ISP, "Invalid params, csid_hw is null: %s, , res_id: %u",
+		CAM_ERR(CAM_ISP, "Invalid params, csid_hw is null: %s, res_id: %u",
 			CAM_IS_NULL_TO_STR(csid_hw), sof_addr->res_id);
 		return -EINVAL;
 	}
@@ -8321,6 +8336,37 @@ static int cam_ife_csid_ver2_get_num_dt_supported(
 		csid_reg->cmn_reg->num_dt_supported : CAM_IFE_CSID_DEFAULT_NUM_DT;
 
 	return num_dt;
+}
+
+static int cam_ife_csid_ver2_path_exp_info_update(
+	struct cam_ife_csid_ver2_hw *csid_hw,
+	struct cam_ife_csid_exp_info_update_args *exp_info)
+{
+	struct cam_ife_csid_ver2_path_cfg *path_cfg = NULL;
+
+	if (!csid_hw || !exp_info) {
+		CAM_ERR(CAM_ISP, "Invalid params, csid_hw is null: %s, exp_info is null: %s",
+			CAM_IS_NULL_TO_STR(csid_hw), CAM_IS_NULL_TO_STR(exp_info));
+		return -EINVAL;
+	}
+
+	if ((exp_info->num_sensor_out_exp > 1) &&
+		(exp_info->num_sensor_out_exp > exp_info->num_process_exp))
+		path_cfg =  (struct cam_ife_csid_ver2_path_cfg *)
+			csid_hw->path_res[exp_info->last_exp_res_id].res_priv;
+	else
+		path_cfg =  (struct cam_ife_csid_ver2_path_cfg *)
+			csid_hw->path_res[CAM_IFE_PIX_PATH_RES_IPP].res_priv;
+
+	if (!path_cfg) {
+		CAM_ERR(CAM_ISP, "NULL path_cfg for exp info update");
+		return -EINVAL;
+	}
+
+	csid_hw->flags.last_exp_valid = exp_info->last_exp_valid;
+	path_cfg->allow_epoch_cb = true;
+
+	return 0;
 }
 
 static int cam_ife_csid_ver2_process_cmd(void *hw_priv,
@@ -8454,6 +8500,9 @@ static int cam_ife_csid_ver2_process_cmd(void *hw_priv,
 		if (!csid_cap->max_dt_supported)
 			rc = -EINVAL;
 	}
+		break;
+	case CAM_ISP_HW_CMD_EXP_INFO_UPDATE:
+		rc = cam_ife_csid_ver2_path_exp_info_update(csid_hw, cmd_args);
 		break;
 	default:
 		CAM_ERR(CAM_ISP, "CSID:%u unsupported cmd:%d",
