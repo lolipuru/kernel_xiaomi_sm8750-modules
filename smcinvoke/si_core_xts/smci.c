@@ -1221,8 +1221,7 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 
 			/* We get here, if the invoke thread goes away, e.g. timed out or killed. */
 			/* In correct implementation we should return to userspace for the callback
-			 * server to cleanup. However, the libMinkDescriptor will kill the thread
-			 * if returns error. We stick to the wrong design :(.
+			 * server to cleanup.
 			 */
 
 			goto wait_on_request;
@@ -1246,18 +1245,21 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 		cb_txn->errno = errno;
 
 		/* Try to notify the invoke thread. */
-		/* If 'set_txn_state' fails, e.g. invoke thread TIMEDOUT
-		 * undo 'marshal_out_cb_req'.
-		 */
+		if (set_txn_state(cb_txn, XST_PROCESSED)) {
 
-		if (set_txn_state(cb_txn, XST_PROCESSED) && !errno) {
-			struct si_arg *u = cb_txn->args;
+			/* If 'set_txn_state' fails, e.g. invoke thread TIMEDOUT
+			 * undo 'marshal_out_cb_req' only on SUCCESS.
+			 */
+			if (!errno) {
+				struct si_arg *u = cb_txn->args;
 
-			/* See comments in 'marshal_out_cb_req'. */
+				/* See comments in 'marshal_out_cb_req'. */
 
-			for (i = 0; u[i].type; i++) {
-				switch (u[i].type) {
-				case SI_AT_OO:
+				for (i = 0; u[i].type; i++) {
+					if (u[i].type != SI_AT_OO)
+						continue;
+
+					/* u[i].type == SI_AT_OO. */
 
 					if (is_cb_object(u[i].o))
 						to_cb_object(u[i].o)->notify_on_release = 0;
@@ -1266,18 +1268,8 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 						put_si_object(u[i].o);
 
 					put_si_object(u[i].o);
-
-					break;
-				case SI_AT_IB:
-				case SI_AT_OB:
-				case SI_AT_IO:
-				default:
-
-					break;
 				}
 			}
-
-			return -EINVAL;
 
 		} else
 			complete(&cb_txn->completion);
@@ -1285,7 +1277,8 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 		put_txn(cb_txn);
 
 		if (errno && !accept->result)
-			return errno;
+			goto wait_on_request;
+
 
 		/* SUCCESS submitting the response. */
 	}
