@@ -2901,6 +2901,9 @@ static int iris_hfi_session_set_buffers(void *sess, u32 iova, u32 size)
 	int rc = 0;
 	struct cvp_hal_session *session = sess;
 	struct iris_hfi_device *device;
+	u64 ktid;
+	struct msm_cvp_core *core;
+	struct msm_cvp_inst *inst = NULL;
 
 	if (!session || !session->device || !iova || !size) {
 		dprintk(CVP_ERR, "Invalid Params\n");
@@ -2914,6 +2917,13 @@ static int iris_hfi_session_set_buffers(void *sess, u32 iova, u32 size)
 		rc = -ECONNRESET;
 		goto err_create_pkt;
 	}
+
+	core = cvp_driver->cvp_core;
+	inst = cvp_get_inst_from_id(core, hash32_ptr(session));
+
+	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+	ktid &= (FENCE_BIT - 1);
+	pkt.client_data.kdata = ktid;
 
 	rc = call_hfi_pkt_op(device, session_set_buffers,
 			&pkt, session, iova, size);
@@ -2936,6 +2946,9 @@ static int iris_hfi_session_release_buffers(void *sess)
 	int rc = 0;
 	struct cvp_hal_session *session = sess;
 	struct iris_hfi_device *device;
+	u64 ktid;
+	struct msm_cvp_core *core;
+	struct msm_cvp_inst *inst = NULL;
 
 	if (!session || !session->device) {
 		dprintk(CVP_ERR, "Invalid Params\n");
@@ -2949,6 +2962,13 @@ static int iris_hfi_session_release_buffers(void *sess)
 		rc = -ECONNRESET;
 		goto err_create_pkt;
 	}
+
+	core = cvp_driver->cvp_core;
+	inst = cvp_get_inst_from_id(core, hash32_ptr(session));
+
+	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+	ktid &= (FENCE_BIT - 1);
+	pkt.client_data.kdata = ktid;
 
 	rc = call_hfi_pkt_op(device, session_release_buffers, &pkt, session);
 	if (rc) {

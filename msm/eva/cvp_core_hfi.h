@@ -304,4 +304,6 @@ int cvp_iris_hfi_initialize(struct cvp_hfi_ops *hdev,
 int load_cvp_fw_impl(struct iris_hfi_device *device);
 int unload_cvp_fw_impl(struct iris_hfi_device *device);
 void cvp_clock_reg_print(struct iris_hfi_device *dev);
+struct msm_cvp_inst *cvp_get_inst_from_id(struct msm_cvp_core *core,
+	unsigned int session_id);
 #endif
