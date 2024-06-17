@@ -4985,6 +4985,12 @@ int sde_crtc_reset_hw(struct drm_crtc *crtc, struct drm_crtc_state *old_state,
 
 		SDE_EVT32(DRMID(crtc), ctl->idx - CTL_0);
 		ctl->ops.hard_reset(ctl, true);
+
+		/* reset cesta SCC ctrl */
+		if (sde_crtc->cesta_client) {
+			sde_cesta_reset_ctrl(sde_crtc->cesta_client, true);
+			sde_cesta_reset_ctrl(sde_crtc->cesta_client, false);
+		}
 	}
 
 	plane_count = 0;
@@ -9076,10 +9082,4 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint3
 		  DRMID(cstate->base.crtc), *padding_y, *padding_start, *padding_height);
 	return 0;
 
-}
-
-void sde_crtc_backlight_notify(struct drm_crtc *crtc, u32 bl_val, u32 bl_max)
-{
-	SDE_EVT32(bl_val, bl_max);
-	sde_cp_backlight_notification(crtc, bl_val, bl_max);
 }

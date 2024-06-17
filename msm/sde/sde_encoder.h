@@ -304,6 +304,10 @@ enum sde_sim_qsync_event {
  * @cesta_flush_active:         Boolean indicating cesta override flush_active bit is set
  * @cesta_op_group_req:		Boolean indicating CTL op_group setting is required for the frame.
  *				This is required as a workaround for resolution switch cases.
+ * @cesta_force_auto_active_db_update:	Boolean indicating auto-active-on-panic is set in SCC
+ *					with force-db-update. This is required as a workaround for
+ *					cmd mode when previous frame ctl-done is very close to
+ *					wakeup/panic windows.
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -386,6 +390,7 @@ struct sde_encoder_virt {
 	bool cesta_enable_frame;
 	bool cesta_force_active;
 	bool cesta_op_group_req;
+	bool cesta_force_auto_active_db_update;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
