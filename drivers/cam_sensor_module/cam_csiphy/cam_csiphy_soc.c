@@ -71,6 +71,59 @@ static int cam_csiphy_io_dump(void __iomem *base_addr, uint16_t num_regs, int cs
 	return 0;
 }
 
+static int cam_csiphy_get_common_status_regs(
+	struct csiphy_device *csiphy_dev, int *buffer, int buf_size)
+{
+	struct csiphy_reg_parms_t *csiphy_reg = NULL;
+	int32_t                    rc = 0;
+	resource_size_t            size = 0;
+	void __iomem              *phy_base = NULL;
+	int                        reg_id = 0;
+	uint32_t                   val, status_reg, clear_reg;
+
+	if (!csiphy_dev) {
+		rc = -EINVAL;
+		CAM_ERR(CAM_CSIPHY, "invalid input %d", rc);
+		return rc;
+	}
+
+	csiphy_reg = csiphy_dev->ctrl_reg->csiphy_reg;
+	phy_base = csiphy_dev->soc_info.reg_map[0].mem_base;
+	status_reg = csiphy_reg->mipi_csiphy_interrupt_status0_addr;
+	clear_reg = csiphy_reg->mipi_csiphy_interrupt_clear0_addr;
+	size = buf_size ? buf_size : csiphy_reg->csiphy_num_common_status_regs;
+
+	if (!buf_size)
+		CAM_INFO(CAM_CSIPHY, "PHY base addr=%pK offset=0x%x size=%d",
+			phy_base, status_reg, size);
+
+	if (unlikely(!phy_base)) {
+		CAM_ERR(CAM_CSIPHY, "phy base is NULL  %s", CAM_BOOL_TO_YESNO(phy_base));
+		return -EINVAL;
+	}
+
+	if (unlikely(buf_size && !buffer)) {
+		CAM_ERR(CAM_CSIPHY, "Common status read buffer is NULL, buf_size: %d",
+			CAM_BOOL_TO_YESNO(buffer), buf_size);
+		return -EINVAL;
+	}
+
+	for (reg_id = 0; reg_id < size; reg_id++) {
+		val = cam_io_r(phy_base + status_reg + (0x4 * reg_id));
+
+		if (reg_id < csiphy_reg->csiphy_interrupt_status_size)
+			cam_io_w_mb(val, phy_base + clear_reg + (0x4 * reg_id));
+
+		if (!buf_size)
+			CAM_INFO(CAM_CSIPHY, "CSIPHY%d_COMMON_STATUS%u = 0x%x",
+				csiphy_dev->soc_info.index, reg_id, val);
+		else if (buffer && (buffer + reg_id))
+			buffer[reg_id] = val;
+	}
+
+	return rc;
+}
+
 int32_t cam_csiphy_reg_dump(struct cam_hw_soc_info *soc_info)
 {
 	int32_t rc = 0;
@@ -92,46 +145,17 @@ int32_t cam_csiphy_reg_dump(struct cam_hw_soc_info *soc_info)
 	return rc;
 }
 
+int32_t cam_csiphy_get_common_status_for_qmargin(
+	struct csiphy_device *csiphy_dev, int *buffer, int buf_size)
+{
+	return cam_csiphy_get_common_status_regs(
+		csiphy_dev, buffer, buf_size);
+}
+
 int32_t cam_csiphy_common_status_reg_dump(struct csiphy_device *csiphy_dev)
 {
-	struct csiphy_reg_parms_t *csiphy_reg = NULL;
-	int32_t                    rc = 0;
-	resource_size_t            size = 0;
-	void __iomem              *phy_base = NULL;
-	int                        reg_id = 0;
-	uint32_t                   val, status_reg, clear_reg;
-
-	if (!csiphy_dev) {
-		rc = -EINVAL;
-		CAM_ERR(CAM_CSIPHY, "invalid input %d", rc);
-		return rc;
-	}
-
-	csiphy_reg = csiphy_dev->ctrl_reg->csiphy_reg;
-	phy_base = csiphy_dev->soc_info.reg_map[0].mem_base;
-	status_reg = csiphy_reg->mipi_csiphy_interrupt_status0_addr;
-	clear_reg = csiphy_reg->mipi_csiphy_interrupt_clear0_addr;
-	size = csiphy_reg->csiphy_num_common_status_regs;
-
-	CAM_INFO(CAM_CSIPHY, "PHY base addr=%pK offset=0x%x size=%d",
-		phy_base, status_reg, size);
-
-	if (phy_base != NULL) {
-		for (reg_id = 0; reg_id < size; reg_id++) {
-			val = cam_io_r(phy_base + status_reg + (0x4 * reg_id));
-
-			if (reg_id < csiphy_reg->csiphy_interrupt_status_size)
-				cam_io_w_mb(val, phy_base + clear_reg + (0x4 * reg_id));
-
-			CAM_INFO(CAM_CSIPHY, "CSIPHY%d_COMMON_STATUS%u = 0x%x",
-				csiphy_dev->soc_info.index, reg_id, val);
-		}
-	} else {
-		rc = -EINVAL;
-		CAM_ERR(CAM_CSIPHY, "phy base is NULL  %d", rc);
-		return rc;
-	}
-	return rc;
+	return cam_csiphy_get_common_status_regs(
+		csiphy_dev, NULL, 0);
 }
 
 enum cam_vote_level get_clk_voting_dynamic(

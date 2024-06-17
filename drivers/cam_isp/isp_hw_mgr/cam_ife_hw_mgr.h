@@ -94,6 +94,8 @@ enum cam_ife_ctx_master_type {
  * @enable_cdm_cmd_check:      Enable invalid command check in cmd_buf
  * @enable_csid_set_domain_id: Enable CSID force set per path domain id
  * @per_req_wait_cdm:          Enable per req wait cdm
+ * @enable_cdr_sweep_debug:    Enable sending some CSID reg values as part
+ *                             of CSIPHY CDR tuning
  */
 struct cam_ife_hw_mgr_debug {
 	struct dentry  *dentry;
@@ -121,6 +123,7 @@ struct cam_ife_hw_mgr_debug {
 	bool           enable_cdm_cmd_check;
 	bool           enable_csid_set_domain_id;
 	bool           per_req_wait_cdm;
+	bool           enable_cdr_sweep_debug;
 };
 
 /**

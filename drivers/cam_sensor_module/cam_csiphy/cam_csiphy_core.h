@@ -77,6 +77,13 @@ int cam_csiphy_util_update_aon_ops(bool get_access, uint32_t phy_idx);
 void cam_csiphy_update_auxiliary_mask(struct csiphy_device *csiphy_dev);
 
 /**
+ * @data:    Qmargin CSID register tuning feedback
+ * @phy_idx: PHY idx
+ *
+ */
+void cam_csiphy_update_qmargin_csid_vals(void *data, int phy_idx);
+
+/**
  * @csiphy_dev: CSIPhy device structure
  *
  * This API allows to print all the cphy/dphy specific status registers

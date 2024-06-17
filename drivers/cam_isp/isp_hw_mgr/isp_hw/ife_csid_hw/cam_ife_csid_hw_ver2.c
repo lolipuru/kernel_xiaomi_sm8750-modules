@@ -370,6 +370,42 @@ static void cam_ife_csid_ver2_update_event_ts(
 	dst_ts->tv_nsec = src_ts->tv_nsec;
 }
 
+static void cam_ife_csid_ver2_send_cdr_sweep_csi2_rx_vals(
+	struct cam_ife_csid_ver2_hw *csid_hw,
+	struct cam_ife_csid_ver2_reg_info *csid_reg,
+	uint32_t csi2_rx_val)
+{
+	struct cam_subdev_msg_cdr_sweep_info csid_cdr_sweep_info;
+	const struct cam_ife_csid_ver2_csi2_rx_reg_info *csi2_reg;
+	struct cam_hw_soc_info *soc_info;
+	void  __iomem *base;
+
+	if (unlikely(!csid_hw || !csid_reg))
+		return;
+
+	if (!csid_hw->debug_info.cdr_sweep_debug_enabled)
+		return;
+
+	csi2_reg = csid_reg->csi2_reg;
+	soc_info = &csid_hw->hw_info->soc_info;
+	base  = soc_info->reg_map[CAM_IFE_CSID_CLC_MEM_BASE_ID].mem_base;
+
+	csid_cdr_sweep_info.phy_idx = (csid_hw->rx_cfg.phy_sel - 1);
+	csid_cdr_sweep_info.csi2_rx_total_crc_err = cam_io_r_mb(base +
+		csi2_reg->total_crc_err_addr);
+	csid_cdr_sweep_info.csi2_rx_total_pkts_rcvd = cam_io_r_mb(base +
+		csi2_reg->total_pkts_rcvd_addr);
+	csid_cdr_sweep_info.csi2_rx_status = csi2_rx_val ? csi2_rx_val :
+		cam_io_r_mb(base + csi2_reg->irq_status_addr[
+			CAM_IFE_CSID_RX_IRQ_STATUS_REG0]);
+	csid_cdr_sweep_info.lane_cfg = csid_hw->rx_cfg.lane_cfg;
+	csid_cdr_sweep_info.epd_enabled = csid_hw->rx_cfg.epd_supported;
+	csid_cdr_sweep_info.csi2_err_seen = (csi2_rx_val != 0);
+
+	cam_subdev_notify_message(CAM_CSIPHY_DEVICE_TYPE, CAM_SUBDEV_MESSAGE_CDR_SWEEP,
+		(void *)&csid_cdr_sweep_info);
+}
+
 static int cam_ife_csid_ver2_set_debug(
 	struct cam_ife_csid_ver2_hw        *csid_hw,
 	struct cam_ife_csid_debug_cfg_args *debug_args)
@@ -388,6 +424,7 @@ static int cam_ife_csid_ver2_set_debug(
 	csid_hw->debug_info.test_bus_val = debug_args->csid_testbus_debug;
 	csid_hw->debug_info.set_domain_id_enabled = debug_args->set_domain_id_enabled;
 	csid_hw->debug_info.domain_id_value = debug_args->domain_id_value;
+	csid_hw->debug_info.cdr_sweep_debug_enabled = debug_args->enable_cdr_sweep_debug;
 
 	evt_bitmap = csid_reg->rx_debug_mask->evt_bitmap;
 	dbg_bit_pos = csid_reg->rx_debug_mask->bit_pos;
@@ -2144,6 +2181,8 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 
 		rx_irq_status |= irq_status;
 		csid_hw->flags.fatal_err_detected = true;
+
+		cam_ife_csid_ver2_send_cdr_sweep_csi2_rx_vals(csid_hw, csid_reg, irq_reg_val);
 	}
 
 	irq_status = irq_reg_val &
@@ -2199,6 +2238,8 @@ static int cam_ife_csid_ver2_rx_err_process_bottom_half(
 		}
 
 		rx_irq_status |= irq_status;
+
+		cam_ife_csid_ver2_send_cdr_sweep_csi2_rx_vals(csid_hw, csid_reg, irq_reg_val);
 	}
 
 	irq_status = irq_reg_val &
@@ -6936,6 +6977,8 @@ int cam_ife_csid_ver2_stop(void *hw_priv,
 		csid_stop->num_res);
 
 	csid_hw->flags.device_enabled = false;
+
+	cam_ife_csid_ver2_send_cdr_sweep_csi2_rx_vals(csid_hw, csid_reg, 0);
 
 	if (csid_hw->hw_info->soc_info.is_clk_drv_en && csid_hw->is_drv_config_en) {
 		halt_resume_info.phy_idx = (csid_hw->rx_cfg.phy_sel - 1);
