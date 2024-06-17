@@ -71,13 +71,14 @@ enum hal_property {
 };
 
 enum hal_ssr_trigger_type {
-	SSR_ERR_FATAL = 1,
+	SSR_ERR_FATAL = 1,   /* FW sends SYS_ERROR event to EVA_KMD */
 	SSR_SW_DIV_BY_ZERO,
-	SSR_HW_WDOG_IRQ,
+	SSR_HW_WDOG_IRQ,     /* FW will go in while loop to miss WDOG timer tapping */
 	SSR_SESSION_ABORT,
-	SSR_SESSION_ERROR,
-	SSR_FW_SMMU_FAULT,
-	SSR_SESSION_TIMEOUT = 7
+	SSR_SESSION_ERROR,   /* No FW involvement, EVA KMD will simulate */
+	SSR_FW_SMMU_FAULT,   /* FW writes 0xFF000000 while programming Xtensa */
+	SSR_CORE_SMMU_FAULT, /* No FW involvement, EVA KMD will simulate */
+	SSR_SESSION_TIMEOUT
 };
 
 enum hal_intra_refresh_mode {
