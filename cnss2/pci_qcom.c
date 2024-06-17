@@ -549,32 +549,6 @@ bool cnss_pci_is_force_one_msi(struct cnss_pci_data *pci_priv)
 
 	return test_bit(FORCE_ONE_MSI, &plat_priv->ctrl_params.quirks);
 }
-#else
-int cnss_pci_get_one_msi_assignment(struct cnss_pci_data *pci_priv)
-{
-	return 0;
-}
-
-bool cnss_pci_fallback_one_msi(struct cnss_pci_data *pci_priv,
-			       int *num_vectors)
-{
-	return false;
-}
-
-bool cnss_pci_is_one_msi(struct cnss_pci_data *pci_priv)
-{
-	return false;
-}
-
-int cnss_pci_get_one_msi_mhi_irq_array_size(struct cnss_pci_data *pci_priv)
-{
-	return 0;
-}
-
-bool cnss_pci_is_force_one_msi(struct cnss_pci_data *pci_priv)
-{
-	return false;
-}
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
