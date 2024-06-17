@@ -2138,6 +2138,9 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 			return rc;
 		}
 
+		/* enable all the irq */
+		sde_encoder_irq_control(drm_enc, true);
+
 		if (req == REQ_EXIT_IDLE && is_video_mode && info->esync_enabled) {
 			for (i = 0; i < sde_enc->num_phys_encs; i++) {
 				struct sde_encoder_phys *phys_enc = sde_enc->phys_encs[i];
@@ -2157,9 +2160,6 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 				sde_conn->vrr_cmd_state = VRR_CMD_IDLE_EXIT;
 			}
 		}
-
-		/* enable all the irq */
-		sde_encoder_irq_control(drm_enc, true);
 
 		_sde_encoder_pm_qos_add_request(drm_enc);
 
@@ -5147,10 +5147,13 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 	struct sde_encoder_phys *phys_enc;
 	struct sde_hw_ctl *ctl;
 	struct sde_ctl_flush_cfg cfg;
+	u32 pf_time_in_us;
+	struct drm_crtc *crtc;
 
 	if (!sde_enc || !sde_enc->cur_master)
 		return;
 
+	crtc = sde_enc->crtc;
 	phys_enc = sde_enc->cur_master;
 	ctl = phys_enc->hw_ctl;
 	ctl->ops.clear_pending_flush(ctl);
@@ -5175,6 +5178,19 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 	if (!phys_enc->sde_kms->catalog->hw_fence_rev &&
 			phys_enc->hw_intf->ops.avr_trigger)
 		phys_enc->hw_intf->ops.avr_trigger(phys_enc->hw_intf);
+
+	drm_crtc_wait_one_vblank(crtc);
+
+	pf_time_in_us = phys_enc->pf_time_in_us;
+	if (pf_time_in_us > 2000) {
+		SDE_ERROR("Programmable fetch time check failed, pf_time_in_us=%u\n",
+				pf_time_in_us);
+		pf_time_in_us = 2000;
+	}
+	/* wait for panel vsync */
+	usleep_range(pf_time_in_us, pf_time_in_us + 10);
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
 }
 
 static void sde_encoder_handle_self_refresh(struct kthread_work *work)

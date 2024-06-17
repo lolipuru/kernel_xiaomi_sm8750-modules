@@ -730,7 +730,7 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 	esync_params.hsync_period_cycles = hsync_period_cycles;
 	esync_params.skew = mult_frac(phys_enc->cached_mode.htotal, info->esync_milli_skew, 1000);
 	esync_params.prog_fetch_start =
-			(phys_enc->prog_fetch_start / esync_params.hsync_period_cycles)
+			(phys_enc->cached_mode.vtotal - phys_enc->prog_fetch_start + 1)
 			% esync_params.avr_step_lines;
 	esync_params.hw_fence_enabled = !!phys_enc->sde_kms->catalog->hw_fence_rev;
 	esync_params.align_backup = exit_idle;
