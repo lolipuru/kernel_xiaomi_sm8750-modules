@@ -712,11 +712,23 @@ static int _register_vm_mem_with_hyp(struct hw_fence_driver_data *drv_data,
 static int _init_soccp_mem(struct hw_fence_driver_data *drv_data)
 {
 	struct iommu_domain *domain;
+	u32 shbuf_soccp_va;
 	int ret;
 
 	if (!drv_data) {
 		HWFNC_ERR("invalid params drv_data:0x%pK\n", drv_data);
 		return -EINVAL;
+	}
+
+	ret = of_property_read_u32(drv_data->dev->of_node, "shbuf_soccp_va", &shbuf_soccp_va);
+	if (ret || !shbuf_soccp_va) {
+		if (drv_data->cpu_addr_cookie) {
+			HWFNC_ERR("non-static mem allocation w/out soccp_va dt ret:%d val:%d\n",
+				ret, shbuf_soccp_va);
+			return -EINVAL;
+		}
+		/* use one to one memory mapping if virtual address is not in dt */
+		shbuf_soccp_va = drv_data->res.start;
 	}
 
 	domain = iommu_get_domain_for_dev(drv_data->dev);
@@ -726,38 +738,37 @@ static int _init_soccp_mem(struct hw_fence_driver_data *drv_data)
 	}
 
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
-	ret = iommu_map(domain, drv_data->res.start, drv_data->res.start, drv_data->size,
+	ret = iommu_map(domain, shbuf_soccp_va, drv_data->res.start, drv_data->size,
 		IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE, GFP_KERNEL);
 #else
-	ret = iommu_map(domain, drv_data->res.start, drv_data->res.start, drv_data->size,
+	ret = iommu_map(domain, shbuf_soccp_va, drv_data->res.start, drv_data->size,
 		IOMMU_READ | IOMMU_WRITE | IOMMU_CACHE);
 #endif
-	if (ret)
-		HWFNC_ERR("failed to one-to-one map for soccp smmu addr:0x%llx sz:%lx ret:%d\n",
-			drv_data->res.start, drv_data->size, ret);
-	else
+	if (ret) {
+		HWFNC_ERR("failed to map for soccp smmu phys_addr:0x%llx va:0x%x sz:%lx ret:%d\n",
+			drv_data->res.start, shbuf_soccp_va, drv_data->size, ret);
+	} else {
 		/*
 		 * HW Fence Driver resources may not be ready at this point (this is separately
 		 * tracked via resources_ready), but we assume soccp is ready once memory mapping
 		 * is done.
 		 */
 		drv_data->fctl_ready = true;
+		HWFNC_DBG_INIT("mapped for soccp smmu phys_addr:0x%llx va:0x%x sz:%lx ret:%d\n",
+			drv_data->res.start, shbuf_soccp_va, drv_data->size, ret);
+	}
 
 	return ret;
 }
 
-/* Allocates carved-out mapped memory */
-int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
+/* Allocates carved-out mapped memory from device-tree */
+static int _alloc_mem_static(struct hw_fence_driver_data *drv_data, struct device_node *node_compat)
 {
-	struct device_node *node = drv_data->dev->of_node;
-	struct device_node *node_compat;
-	const char *compat = "qcom,msm-hw-fence-mem";
 	struct device_node *np;
 	int ret;
 
-	node_compat = of_find_compatible_node(node, NULL, compat);
-	if (!node_compat) {
-		HWFNC_ERR("Failed to find dev node with compat:%s\n", compat);
+	if (!drv_data || !node_compat) {
+		HWFNC_ERR("invalid drv_data:0x%pK node_compat:0x%pK\n", drv_data, node_compat);
 		return -EINVAL;
 	}
 
@@ -772,6 +783,67 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 	if (ret) {
 		HWFNC_ERR("of_address_to_resource failed %d\n", ret);
 		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/* Allocates memory dynamically */
+static int _alloc_mem_dynamic(struct hw_fence_driver_data *drv_data)
+{
+	u32 events_size, size;
+
+	if (!drv_data || !drv_data->has_soccp) {
+		HWFNC_ERR("invalid drv_data:0x%pK has_soccp:%d\n", drv_data,
+			drv_data ? drv_data->has_soccp : -1);
+		return -EINVAL;
+	}
+
+	events_size = HW_FENCE_MAX_EVENTS * sizeof(struct msm_hw_fence_event);
+	if (drv_data->used_mem_size >= U32_MAX - events_size) {
+		HWFNC_ERR("invalid used_mem_size:%u events_size:%u\n", drv_data->used_mem_size,
+			events_size);
+		return -EINVAL;
+	}
+
+	size = PAGE_ALIGN(drv_data->used_mem_size + events_size);
+	drv_data->cpu_addr_cookie = dma_alloc_attrs(drv_data->dev, size, &drv_data->res.start,
+		GFP_KERNEL, DMA_ATTR_NO_KERNEL_MAPPING);
+	if (!drv_data->cpu_addr_cookie) {
+		HWFNC_ERR("memory allocation failed!\n");
+		return -ENOMEM;
+	}
+
+	drv_data->res.end = drv_data->res.start + size - 1;
+	drv_data->res.name = "hwfence_shbuf";
+	HWFNC_DBG_INIT("allocated memory start:0x%llx end:0x%llx size:0x%x\n", drv_data->res.start,
+		drv_data->res.end, size);
+
+	return 0;
+}
+
+/* Allocates carved-out mapped memory */
+int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
+{
+	struct device_node *node = drv_data->dev->of_node;
+	struct device_node *node_compat;
+	const char *compat = "qcom,msm-hw-fence-mem";
+	int ret;
+
+	node_compat = of_find_compatible_node(node, NULL, compat);
+	if (!node_compat && !drv_data->has_soccp) {
+		HWFNC_ERR("Failed to find dev node with compat:%s\n", compat);
+		return -EINVAL;
+	}
+
+	if (node_compat)
+		ret = _alloc_mem_static(drv_data, node_compat);
+	else
+		ret = _alloc_mem_dynamic(drv_data);
+
+	if (ret) {
+		HWFNC_ERR("failed to allocate static or dynamic memory ret:%d\n", ret);
+		return ret;
 	}
 
 	if (drv_data->has_soccp)
@@ -792,11 +864,11 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 		return -ENOMEM;
 	}
 
-	HWFNC_DBG_INIT("io_mem_base:0x%pK start:0x%llx end:0x%llx sz:0x%lx name:%s has_soccp:%s\n",
-		drv_data->io_mem_base, drv_data->res.start, drv_data->res.end, drv_data->size,
-		drv_data->res.name, drv_data->has_soccp ? "true" : "false");
-
 	memset_io(drv_data->io_mem_base, 0x0, drv_data->size);
+
+	HWFNC_DBG_INIT("va:0x%pK start:0x%llx sz:0x%lx name:%s cookie:0x%pK has_soccp:%s\n",
+		drv_data->io_mem_base, drv_data->res.start, drv_data->size, drv_data->res.name,
+		drv_data->cpu_addr_cookie, drv_data->has_soccp ? "true" : "false");
 
 	if (drv_data->has_soccp)
 		ret = _init_soccp_mem(drv_data);
@@ -804,7 +876,7 @@ int hw_fence_utils_alloc_mem(struct hw_fence_driver_data *drv_data)
 		ret = _register_vm_mem_with_hyp(drv_data, node_compat);
 
 	if (ret)
-		HWFNC_ERR("failed to share memory with %s va:0x%pK pa:0x%llx sz:0x%lx name:%s\n",
+		HWFNC_ERR("failed to share mem with %s cpu_va:0x%pK pa:0x%llx sz:0x%lx name:%s\n",
 			drv_data->has_soccp ? "soccp" : "vm", drv_data->io_mem_base,
 			drv_data->res.start, drv_data->size, drv_data->res.name);
 

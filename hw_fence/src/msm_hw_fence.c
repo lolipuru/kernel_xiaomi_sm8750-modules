@@ -90,8 +90,8 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 
 	/* Avoid race condition if multiple-threads request same client at same time */
 	mutex_lock(&hw_fence_drv_data->clients_register_lock);
-	if (hw_fence_drv_data->clients[client_id]) {
-		kref_get(&hw_fence_drv_data->clients[client_id]->kref);
+	if (hw_fence_drv_data->clients[client_id] &&
+			kref_get_unless_zero(&hw_fence_drv_data->clients[client_id]->kref)) {
 		mutex_unlock(&hw_fence_drv_data->clients_register_lock);
 		HWFNC_DBG_INIT("client with id %d already registered\n", client_id);
 		kfree(hw_fence_client);
@@ -847,6 +847,12 @@ static int msm_hw_fence_probe_init(struct platform_device *pdev)
 
 error:
 	dev_set_drvdata(&pdev->dev, NULL);
+	kfree(hw_fence_drv_data->ipc_clients_table);
+	kfree(hw_fence_drv_data->hw_fence_client_queue_size);
+	if (hw_fence_drv_data->cpu_addr_cookie)
+		dma_free_attrs(hw_fence_drv_data->dev, hw_fence_drv_data->size,
+			hw_fence_drv_data->cpu_addr_cookie, hw_fence_drv_data->res.start,
+			DMA_ATTR_NO_KERNEL_MAPPING);
 	kfree(hw_fence_drv_data);
 	hw_fence_drv_data = (void *) -EPROBE_DEFER;
 
@@ -902,6 +908,14 @@ static int msm_hw_fence_remove(struct platform_device *pdev)
 		kthread_stop(hw_fence_drv_data->soccp_listener_thread);
 
 	dev_set_drvdata(&pdev->dev, NULL);
+
+	/* free memory allocations as part of hw_fence_drv_data */
+	kfree(hw_fence_drv_data->ipc_clients_table);
+	kfree(hw_fence_drv_data->hw_fence_client_queue_size);
+	if (hw_fence_drv_data->cpu_addr_cookie)
+		dma_free_attrs(hw_fence_drv_data->dev, hw_fence_drv_data->size,
+			hw_fence_drv_data->cpu_addr_cookie, hw_fence_drv_data->res.start,
+			DMA_ATTR_NO_KERNEL_MAPPING);
 	kfree(hw_fence_drv_data);
 	hw_fence_drv_data = (void *) -EPROBE_DEFER;
 
