@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/device.h>
@@ -358,7 +360,7 @@ static int ipa3_nat_ipv6ct_init_device(
 		goto bail;
 	}
 
-	strlcpy(dev->name, name, IPA_DEV_NAME_MAX_LEN);
+	strscpy(dev->name, name, IPA_DEV_NAME_MAX_LEN);
 
 	dev->class = class_create(name);
 
