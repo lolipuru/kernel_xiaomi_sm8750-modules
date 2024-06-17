@@ -32,6 +32,7 @@
 #include <linux/soc/qcom/pdr.h>
 #include <soc/qcom/secure_buffer.h>
 #include "fastrpc_shared.h"
+#include <linux/platform_device.h>
 
 #define CREATE_TRACE_POINTS
 #include "fastrpc_trace.h"
