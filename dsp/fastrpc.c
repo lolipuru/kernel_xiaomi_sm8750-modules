@@ -2633,17 +2633,13 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	if (copy_from_user(&init, argp, sizeof(init)))
 		return -EFAULT;
 
-	if (init.namelen > INIT_FILE_NAMELEN_MAX)
+	if ((init.namelen > INIT_FILE_NAMELEN_MAX) || (!init.namelen))
 		return -EINVAL;
 
-	name = kzalloc(init.namelen, GFP_KERNEL);
-	if (!name)
-		return -ENOMEM;
-
-	if (copy_from_user(name, (void __user *)(uintptr_t)init.name, init.namelen)) {
-		err = -EFAULT;
-		goto err_name;
-	}
+	name = memdup_user(u64_to_user_ptr(init.name), init.namelen);
+	/* ret -ENOMEM for malloc failure, -EFAULT for copy_from_user failure */
+	if (IS_ERR(name))
+		return PTR_ERR(name);
 
 	fl->sctx = fastrpc_session_alloc(fl, false);
 	if (!fl->sctx) {
