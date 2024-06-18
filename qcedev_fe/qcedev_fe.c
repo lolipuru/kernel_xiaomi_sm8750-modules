@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/version.h>
 #include <linux/init.h>
@@ -297,11 +297,12 @@ static int __init qce_fe_init(void)
 		}
 		pr_err("%s:create hab channels failed, unloading qce_fe\n", __func__);
 		kthread_stop(create_channel_kthread_task);
-		ret = -ETIME;
+		/*termporarily don't set ret value */
+		//ret = -ETIME;
+		ret = 0;
 		goto device_destroy_error;
 	}
 	return 0;
-
 device_destroy_error:
 	device_destroy(class_qce_fe, dev_qce_fe);
 
