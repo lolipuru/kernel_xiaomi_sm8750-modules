@@ -895,9 +895,13 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 	sde_kms_info_add_keyint(info, "max os brightness", panel->bl_config.brightness_max_level);
 	sde_kms_info_add_keyint(info, "max panel backlight", panel->bl_config.bl_max_level);
 
-	if (panel->spr_info.enable)
+	if (panel->spr_info.enable) {
 		sde_kms_info_add_keystr(info, "spr_pack_type",
 			msm_spr_pack_type_str[panel->spr_info.pack_type]);
+
+		sde_kms_info_add_keystr(info, "spr_pack_type_mode",
+			msm_spr_pack_type_mode_str[panel->spr_info.pack_type_mode]);
+	}
 
 	if (mode_info && mode_info->roi_caps.enabled) {
 		sde_kms_info_add_keyint(info, "partial_update_num_roi",
