@@ -104,6 +104,13 @@ enum {
 	SDE_CAC_LOOPBACK_FETCH = BIT(3),
 };
 
+enum {
+	SDE_SSPP_FOV_MODE_DISABLED = 0,
+	SDE_SSPP_FOV_MODE_SINGLE_EYE,
+	SDE_SSPP_FOV_MODE_DUAL_EYE_HORZ,
+	SDE_SSPP_FOV_MODE_DUAL_EYE_VERT,
+};
+
 struct sde_hw_sharp_cfg {
 	u32 strength;
 	u32 edge_thr;
@@ -776,9 +783,11 @@ struct sde_hw_sspp_ops {
 	 * setup_cac_ctrl - set CAC mode for each sspp
 	 * @ctx: Pointer to pipe object
 	 * @cac_mode: cac mode for that particular pipe
+	 * @fov_en: is foveation enabled
 	 * @pp_idx: pp_idx used in cac loopback
 	 */
-	void (*setup_cac_ctrl)(struct sde_hw_pipe *ctx, u32 cac_mode, u32 pp_idx);
+	void (*setup_cac_ctrl)(struct sde_hw_pipe *ctx, u32 cac_mode,
+		bool fov_en, u32 pp_idx);
 
 	/**
 	 * setup_scaler_cac - set CAC scaler params for each sspp
