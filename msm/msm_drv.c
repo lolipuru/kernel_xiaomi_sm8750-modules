@@ -39,6 +39,7 @@
  */
 
 #include <linux/of_address.h>
+#include <linux/of_platform.h>
 #include <linux/kthread.h>
 #include <uapi/linux/sched/types.h>
 #include <drm/drm_of.h>
@@ -76,6 +77,10 @@
 #define MSM_VERSION_PATCHLEVEL	0
 
 #define LASTCLOSE_TIMEOUT_MS	500
+
+#if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
+#define DRM_UNLOCKED 0
+#endif
 
 #define msm_wait_event_timeout(waitq, cond, timeout_ms, ret)		\
 	do {								\
