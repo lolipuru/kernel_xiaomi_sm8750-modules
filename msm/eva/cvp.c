@@ -196,38 +196,6 @@ static ssize_t pwr_collapse_delay_show(struct device *dev,
 
 static DEVICE_ATTR_RW(pwr_collapse_delay);
 
-static ssize_t thermal_level_show(struct device *dev,
-		struct device_attribute *attr,
-		char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%d\n", cvp_driver->thermal_level);
-}
-
-static ssize_t thermal_level_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	int rc = 0, val = 0;
-
-	rc = kstrtoint(buf, 0, &val);
-	if (rc || val < 0) {
-		dprintk(CVP_WARN,
-			"Invalid thermal level value: %s\n", buf);
-		return -EINVAL;
-	}
-	dprintk(CVP_PWR, "Thermal level old %d new %d\n",
-			cvp_driver->thermal_level, val);
-
-	if (val == cvp_driver->thermal_level)
-		return count;
-	cvp_driver->thermal_level = val;
-
-	msm_cvp_comm_handle_thermal_event();
-	return count;
-}
-
-static DEVICE_ATTR_RW(thermal_level);
-
 static ssize_t sku_version_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -294,7 +262,6 @@ static DEVICE_ATTR_WO(boot);
 
 static struct attribute *msm_cvp_core_attrs[] = {
 		&dev_attr_pwr_collapse_delay.attr,
-		&dev_attr_thermal_level.attr,
 		&dev_attr_sku_version.attr,
 		&dev_attr_link_name.attr,
 		&dev_attr_boot.attr,

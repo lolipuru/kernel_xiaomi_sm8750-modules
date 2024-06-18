@@ -233,7 +233,6 @@ struct iris_hfi_device;
 struct cvp_hal_ops {
 	void (*interrupt_init)(struct iris_hfi_device *ptr);
 	void (*setup_dsp_uc_memmap)(struct iris_hfi_device *device);
-	void (*clock_config_on_enable)(struct iris_hfi_device *device);
 	int (*power_off_controller)(struct iris_hfi_device *device);
 	int (*power_off_core)(struct iris_hfi_device *device);
 	int (*power_on_controller)(struct iris_hfi_device *device);

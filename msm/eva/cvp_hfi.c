@@ -97,7 +97,6 @@ static int iris_hfi_noc_error_info(void *dev);
 
 static void interrupt_init_iris2(struct iris_hfi_device *device);
 static void setup_dsp_uc_memmap_vpu5(struct iris_hfi_device *device);
-static void clock_config_on_enable_vpu5(struct iris_hfi_device *device);
 static void power_off_iris2(struct iris_hfi_device *device);
 
 static int __set_ubwc_config(struct iris_hfi_device *device);
@@ -148,7 +147,6 @@ static void __dump_noc_regs(struct iris_hfi_device *device);
 static struct cvp_hal_ops hal_ops = {
 	.interrupt_init = interrupt_init_iris2,
 	.setup_dsp_uc_memmap = setup_dsp_uc_memmap_vpu5,
-	.clock_config_on_enable = clock_config_on_enable_vpu5,
 	.power_off_controller = __power_off_controller,
 	.power_off_core = __power_off_core,
 	.power_on_controller = __power_on_controller,
@@ -182,7 +180,6 @@ static void __dump_noc_regs_v1(struct iris_hfi_device *device);
 static struct cvp_hal_ops hal_ops = {
 	.interrupt_init = interrupt_init_iris2,
 	.setup_dsp_uc_memmap = setup_dsp_uc_memmap_vpu5,
-	.clock_config_on_enable = clock_config_on_enable_vpu5,
 	.power_off_controller = __power_off_controller_v1,
 	.power_off_core = __power_off_core_v1,
 	.power_on_controller = __power_on_controller_v1,
@@ -4466,11 +4463,6 @@ static void setup_dsp_uc_memmap_vpu5(struct iris_hfi_device *device)
 		(u32)device->dsp_iface_q_table.align_device_addr);
 	__write_register(device, HFI_DSP_UC_REGION_SIZE,
 		device->dsp_iface_q_table.mem_data.size);
-}
-
-static void clock_config_on_enable_vpu5(struct iris_hfi_device *device)
-{
-		__write_register(device, CVP_WRAPPER_CPU_CLOCK_CONFIG, 0);
 }
 
 static int __set_ubwc_config(struct iris_hfi_device *device)
