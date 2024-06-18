@@ -48,7 +48,7 @@ struct fastrpc_driver {
 #define HLOS_VM_NUM 1
 #define DSP_VM_NUM 2
 #define CVP_DSP_MAX_RESERVED 5
-#define CVP_DSP2CPU_RESERVED 8
+#define CVP_DSP2CPU_RESERVED 7
 #define CVP_DSP_RESPONSE_TIMEOUT 600
 #define CVP_INVALID_RPMSG_TYPE 0xBADDFACE
 #define MAX_FRAME_BUF_NUM 16
@@ -196,6 +196,8 @@ struct cvp_dsp2cpu_cmd {
 	int32_t pid;
 	struct eva_power_req power_req;
 	struct eva_mem_remote sbuf;
+
+	uint32_t transaction_id;
 	char session_name[SESSION_NAME_MAX_LEN];
 
 	uint32_t data[CVP_DSP2CPU_RESERVED];
