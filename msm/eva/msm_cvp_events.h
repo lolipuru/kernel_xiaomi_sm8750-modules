@@ -41,6 +41,50 @@ TRACE_EVENT(tracing_mark_write,
 #define CVPKERNEL_ATRACE_BEGIN(name) \
 		trace_tracing_mark_write(current->tgid, name, 1)
 
+TRACE_EVENT(tracing_eva_frame_from_sw,
+	TP_PROTO(u64 aon_cycles, const char *name,
+	u32 session_id, u32 stream_id,
+	u32 packet_id, u32 transaction_id),
+	TP_ARGS(aon_cycles, name, session_id, stream_id, packet_id, transaction_id),
+	TP_STRUCT__entry(
+		__field(u64, aon_cycles)
+		__string(trace_name, name)
+		__field(u32, session_id)
+		__field(u32, stream_id)
+		__field(u32, packet_id)
+		__field(u32, transaction_id)
+	),
+	TP_fast_assign(
+		__entry->aon_cycles = aon_cycles;
+		__assign_str(trace_name, name);
+		__entry->session_id = session_id;
+		__entry->stream_id  = stream_id;
+		__entry->packet_id  = packet_id;
+		__entry->transaction_id = transaction_id;
+	),
+	TP_printk("AON_TIMESTAMP: %llu %s session_id = 0x%08x stream_id = 0x%08x packet_id = 0x%08x transaction_id = 0x%08x",
+		__entry->aon_cycles, __get_str(trace_name),
+		__entry->session_id, __entry->stream_id,
+		__entry->packet_id, __entry->transaction_id)
+)
+
+TRACE_EVENT(tracing_eva_frame_from_fw,
+
+	TP_PROTO(char *trace),
+
+	TP_ARGS(trace),
+
+	TP_STRUCT__entry(
+		__string(trace_name, trace)
+	),
+
+	TP_fast_assign(
+		__assign_str(trace_name, trace);
+	),
+
+	TP_printk("%s", __get_str(trace_name))
+);
+
 #endif
 
 #undef TRACE_INCLUDE_PATH

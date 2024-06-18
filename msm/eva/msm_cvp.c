@@ -156,6 +156,7 @@ static int msm_cvp_session_receive_hfi(struct msm_cvp_inst *inst,
 	struct cvp_session_queue *sq;
 	struct msm_cvp_inst *s;
 	int rc = 0;
+	struct cvp_hfi_msg_session_hdr *msg_hdr = NULL;
 	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_receive_hfi");
 
 	if (!inst) {
@@ -172,6 +173,9 @@ static int msm_cvp_session_receive_hfi(struct msm_cvp_inst *inst,
 	sq = &inst->session_queue;
 
 	rc = cvp_wait_process_message(inst, sq, NULL, wait_time, out_pkt);
+
+	msg_hdr = (struct cvp_hfi_msg_session_hdr *)out_pkt;
+	msm_cvp_msg_tracing_from_sw(msg_hdr, "EVA_KMD_REV_END");
 
 	cvp_put_inst(inst);
 	CVPKERNEL_ATRACE_END("msm_cvp_session_receive_hfi");
@@ -191,6 +195,7 @@ static int msm_cvp_session_process_hfi(
 	struct msm_cvp_inst *s;
 	struct cvp_hfi_cmd_session_hdr *pkt_hdr;
 	bool is_config_pkt;
+	struct cvp_hfi_cmd_session_hdr *cmd_hdr = NULL;
 
 	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_process_hfi");
 
@@ -268,6 +273,9 @@ static int msm_cvp_session_process_hfi(
 		dprintk(CVP_ERR, "%s: failed to process OOB buffer", __func__);
 		goto exit;
 	}
+
+	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
+	msm_cvp_cmd_tracing_from_sw(cmd_hdr, "EVA_KMD_FWD_BEGIN");
 
 	rc = cvp_enqueue_pkt(inst, in_pkt, offset, buf_num);
 	if (rc) {

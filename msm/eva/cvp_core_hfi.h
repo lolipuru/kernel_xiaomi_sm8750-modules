@@ -305,4 +305,43 @@ int unload_cvp_fw_impl(struct iris_hfi_device *device);
 void cvp_clock_reg_print(struct iris_hfi_device *dev);
 struct msm_cvp_inst *cvp_get_inst_from_id(struct msm_cvp_core *core,
 	unsigned int session_id);
+
+#define msm_cvp_cmd_tracing_from_sw(cmd_hdr, tag) ({ \
+	if (((msm_cvp_debug & CVP_TRACE) == CVP_TRACE) && \
+			(cmd_hdr->packet_type > HFI_CMD_SESSION_CVP_START) && \
+			(cmd_hdr->size >= sizeof(struct cvp_hfi_cmd_session_hdr))) { \
+		u64 aon_cycles = 0; \
+		u32 sess_id = 0; \
+		u32 pkt_id = 0; \
+		u32 stream_id = 0; \
+		u32 t_id = 0; \
+		sess_id = cmd_hdr->session_id; \
+		pkt_id  = cmd_hdr->packet_type; \
+		stream_id = cmd_hdr->stream_idx; \
+		t_id    = cmd_hdr->client_data.transaction_id; \
+		aon_cycles  = get_aon_time(); \
+		trace_tracing_eva_frame_from_sw(aon_cycles, tag, sess_id, \
+			stream_id, pkt_id, t_id); \
+	} \
+})
+
+#define msm_cvp_msg_tracing_from_sw(msg_hdr, tag) ({ \
+	if (((msm_cvp_debug & CVP_TRACE) == CVP_TRACE) && \
+			(msg_hdr->packet_type > HFI_MSG_SESSION_CVP_START) && \
+			(msg_hdr->size >= sizeof(struct cvp_hfi_msg_session_hdr))) { \
+		u64 aon_cycles = 0; \
+		u32 pkt_id = 0; \
+		u32 stream_id = 0; \
+		u32 t_id = 0; \
+		unsigned int session_id; \
+		session_id   = msg_hdr->session_id; \
+		pkt_id    = msg_hdr->packet_type; \
+		stream_id = msg_hdr->stream_idx; \
+		t_id      = msg_hdr->client_data.transaction_id; \
+		aon_cycles  = get_aon_time(); \
+		trace_tracing_eva_frame_from_sw(aon_cycles, tag, session_id, \
+			stream_id, pkt_id, t_id); \
+	} \
+})
+
 #endif

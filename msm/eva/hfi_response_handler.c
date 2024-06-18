@@ -597,6 +597,8 @@ static int hfi_process_session_cvp_msg(u32 device_id,
 		__func__, pkt->packet_type,
 		hfi_map_err_status(get_msg_errorcode(pkt)), session_id);
 
+	msm_cvp_msg_tracing_from_sw(pkt, "EVA_KMD_REV_BEGIN");
+
 	spin_lock(&sq->lock);
 	if (sq->msg_count >= MAX_NUM_MSGS_PER_SESSION) {
 		dprintk(CVP_ERR, "Reached session queue size limit\n");

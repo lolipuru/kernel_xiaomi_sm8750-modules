@@ -1564,6 +1564,7 @@ err_q_null:
 static int __iface_cmdq_write(struct iris_hfi_device *device, void *pkt)
 {
 	bool needs_interrupt = false;
+	struct cvp_hfi_cmd_session_hdr *cmd_hdr = NULL;
 	int rc = __iface_cmdq_write_relaxed(device, pkt, &needs_interrupt);
 
 #ifdef USE_PRESIL42
@@ -1578,6 +1579,8 @@ static int __iface_cmdq_write(struct iris_hfi_device *device, void *pkt)
 			dprintk(CVP_ERR, "%s power off, don't access reg\n", __func__);
 		__write_register(device, CVP_CPU_CS_H2ASOFTINT, 1);
 	}
+	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)pkt;
+	msm_cvp_cmd_tracing_from_sw(cmd_hdr, "EVA_KMD_FWD_END");
 	return rc;
 }
 
@@ -3365,6 +3368,8 @@ static void __flush_debug_queue(struct iris_hfi_device *device, u8 *packet)
 			 */
 			pkt->rg_msg_data[pkt->msg_size-1] = '\0';
 			dprintk(log_level, "%s", &pkt->rg_msg_data[1]);
+			if ((log_level & CVP_FW) && (pkt->msg_type == HFI_DEBUG_MSG_TIME))
+				trace_tracing_eva_frame_from_fw(&pkt->rg_msg_data[1]);
 		}
 	}
 #undef SKIP_INVALID_PKT
