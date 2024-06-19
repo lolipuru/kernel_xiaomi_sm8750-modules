@@ -606,12 +606,40 @@ static int btfmcodec_notify_usecase_start(struct btfmcodec_data *btfmcodec,
 {
 	struct btfmcodec_char_device *btfmcodec_dev = btfmcodec->btfmcodec_dev;
 	struct btm_usecase_start_ind ind;
+	wait_queue_head_t *rsp_wait_q =
+		&btfmcodec_dev->rsp_wait_q[BTM_PKT_TYPE_USECASE_START_RSP];
+	uint8_t *status = &btfmcodec_dev->status[BTM_PKT_TYPE_USECASE_START_RSP];
+	int ret;
 
-	ind.opcode = BTM_BTFMCODEC_USECASE_START_IND;
+	*status = BTM_WAITING_RSP;
+	ind.opcode = BTM_BTFMCODEC_USECASE_START_REQ;
 	ind.len = BTM_USECASE_START_IND_LEN;
 	ind.transport = transport;
-	return btfmcodec_dev_enqueue_pkt(btfmcodec_dev, &ind, (ind.len +
-					 BTM_HEADER_LEN));
+	ret = btfmcodec_dev_enqueue_pkt(btfmcodec_dev, &ind, (ind.len + BTM_HEADER_LEN));
+
+	if (ret < 0)
+		return ret;
+
+	BTFMCODEC_INFO("waiting for BTM_BTFMCODEC_USECASE_START_RSP");
+	ret = wait_event_interruptible_timeout(*rsp_wait_q,
+		*status != BTM_WAITING_RSP,
+		msecs_to_jiffies(BTM_MASTER_CONFIG_RSP_TIMEOUT));
+
+	if (ret == 0) {
+		BTFMCODEC_ERR("failed to recevie BTM_USECASE_START_IND_RSP");
+		ret = -MSG_INTERNAL_TIMEOUT;
+	} else {
+		if (*status == BTM_RSP_RECV) {
+			ret = 0;
+		} else if (*status == BTM_FAIL_RESP_RECV) {
+			BTFMCODEC_ERR("Rx BTM_USECASE_START_IND_RSP with failure status");
+			ret = -1;
+		} else if (*status == BTM_RSP_NOT_RECV_CLIENT_KILLED) {
+			BTFMCODEC_ERR("client killed so moving further");
+			ret = -1;
+		}
+	}
+	return ret;
 }
 
 static int btfmcodec_dai_prepare(struct snd_pcm_substream *substream,
@@ -637,7 +665,9 @@ static int btfmcodec_dai_prepare(struct snd_pcm_substream *substream,
 	    btfmcodec_get_current_transport(state) != BT_Connected) {
 		BTFMCODEC_WARN("cached required info as state is:%s",
 			coverttostring(btfmcodec_get_current_transport(state)));
-		btfmcodec_notify_usecase_start(btfmcodec, BTADV);
+		if (direction == 0) {
+		  ret = btfmcodec_notify_usecase_start(btfmcodec, BTADV);
+		}
 	} else {
 	        ret = btfmcodec_hwep_prepare(btfmcodec, sampling_rate, direction, id);
 /*		if (ret >= 0) {

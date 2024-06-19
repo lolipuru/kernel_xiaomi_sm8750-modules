@@ -253,6 +253,22 @@ static void btfmcodec_dev_rxwork(struct work_struct *work)
 					log_lvl);
 			wake_up_interruptible(&btfmcodec_dev->rsp_wait_q[idx]);
 			break;
+		case BTM_BTFMCODEC_USECASE_START_RSP:
+			idx = BTM_PKT_TYPE_USECASE_START_RSP;
+			if (len == BTM_USECASE_START_IND_LEN) {
+				status = skb->data[0];
+				if (status == MSG_SUCCESS)
+					btfmcodec_dev->status[idx] = BTM_RSP_RECV;
+				else
+					btfmcodec_dev->status[idx] = BTM_FAIL_RESP_RECV;
+			} else {
+				BTFMCODEC_ERR("wrong packet format with len:%d", len);
+				btfmcodec_dev->status[idx] = BTM_FAIL_RESP_RECV;
+			}
+			BTFMCODEC_INFO("Rx BTM_BTFMCODEC_USECASE_START_RSP status:%d",
+				status);
+			wake_up_interruptible(&btfmcodec_dev->rsp_wait_q[idx]);
+			break;
 		default:
 			BTFMCODEC_ERR("wrong opcode:%08x", opcode);
 		}
