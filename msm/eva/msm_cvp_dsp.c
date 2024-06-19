@@ -479,7 +479,8 @@ static int cvp_dsp_rpmsg_callback(struct rpmsg_device *rpdev,
 			goto exit;
 		}
 	} else if (rsp->type < CVP_DSP_MAX_CMD
-			&& len == sizeof(struct cvp_dsp2cpu_cmd)
+			/* Restore below size check after dsp change released */
+			/*  && len == sizeof(struct cvp_dsp2cpu_cmd) */
 			) {
 		if (me->pending_dsp2cpu_cmd.type != CVP_INVALID_RPMSG_TYPE) {
 			dprintk(CVP_ERR,
