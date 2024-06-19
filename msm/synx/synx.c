@@ -2807,6 +2807,10 @@ struct synx_session *synx_internal_initialize(
 	if (IS_ERR_OR_NULL(params))
 		return ERR_PTR(-SYNX_INVALID);
 
+	if (params->id < SYNX_CLIENT_NATIVE ||
+		params->id >= SYNX_CLIENT_END)
+		return ERR_PTR(-SYNX_NOSUPPORT);
+
 	client = vzalloc(sizeof(*client));
 	if (IS_ERR_OR_NULL(client))
 		return ERR_PTR(-SYNX_NOMEM);
