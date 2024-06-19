@@ -3695,6 +3695,7 @@ static void iris_hfi_wd_work_handler(struct work_struct *work)
 		dprintk(CVP_ERR, "Cleaning up as HW WD recovery is enable %d\n",
 				msm_cvp_hw_wd_recovery);
 		call_iris_op(device, print_sbm_regs, device);
+		return;
 		response.device_id = 0;
 		handle_sys_error(cmd, (void *) &response);
 		enable_irq(device->cvp_hal_data->irq_wd);
@@ -4864,11 +4865,7 @@ static void __print_reg_details_errlog3_low(u32 val)
 {
 	u32 mid, sid;
 
-#ifdef CONFIG_EVA_PINEAPPLE
 	mid = (val >> 5) & 0xF;
-#elif CONFIG_EVA_SUN
-	mid = (val >> 5) & 0x1F;
-#endif
 	sid = (val >> 2) & 0x7;
 	dprintk(CVP_ERR, "CVP_NOC_CORE_ERL_MAIN_ERRLOG3_LOW:     %#x\n", val);
 	dprintk(CVP_ERR, "Sub-client:%s, SID: %d\n", mid_names[mid], sid);
