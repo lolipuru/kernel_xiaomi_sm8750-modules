@@ -4542,6 +4542,8 @@ static int regdump_read(struct regmap *map, int baseReg, int endReg,
 	reg_val_len = 2 * DIV_ROUND_UP(REGDUMP_PRINT_LEN, 8);
 	regdump_wr_len = reg_len + reg_val_len + 3;
 
+	/* Disable reading/writing from regmap-cache */
+	regcache_cache_bypass(map, true);
 	for (; i >= 0 && i <= endReg; i++) {
 
 		scnprintf(buf+pos, count-pos, "%.*x: ", reg_len, i);
@@ -4566,6 +4568,8 @@ static int regdump_read(struct regmap *map, int baseReg, int endReg,
 		if ((pos + regdump_wr_len) >= count)
 			break;
 	}
+	/* Enable reading/writing from regmap-cache */
+	regcache_cache_bypass(map, false);
 
 	ret = pos;
 	if (copy_to_user(user_buf, buf, pos))
