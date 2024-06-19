@@ -523,6 +523,7 @@ struct msm_roi_caps {
  * @half_panel_pu            True for single and dual dsc encoders if partial
  *                           update sets the roi width to half of mode width
  *                           False in all other cases
+ * @rc_override_v1:          Using sde_dsc_rc_range_bpg_override_v1
  */
 struct msm_display_dsc_info {
 	struct drm_dsc_config config;
@@ -546,6 +547,7 @@ struct msm_display_dsc_info {
 	u32 dsc_4hsmerge_padding;
 	u32 dsc_4hsmerge_alignment;
 	bool half_panel_pu;
+	bool rc_override_v1;
 };
 
 
