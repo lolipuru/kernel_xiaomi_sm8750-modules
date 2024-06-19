@@ -57,7 +57,7 @@
 #define OPT_DP_TARGET_RESUME_WAIT_TIMEOUT_MS 50
 #define OPT_DP_TARGET_RESUME_WAIT_COUNT 10
 #endif
-#define WLAN_IPA_MSG_LIST_SIZE_MAX 16
+#define WLAN_IPA_MSG_LIST_SIZE_MAX 8
 #define WLAN_IPA_FLAG_MSG_USES_LIST 0x1
 #define WLAN_IPA_FLAG_MSG_USES_LIST_FLT_DEL 0x2
 
@@ -5330,7 +5330,6 @@ wlan_fw_event_msg_list_enqueue(struct uc_op_work_struct *uc_op_work,
 
 	if (!num_pkt) {
 		ipa_err("list is full");
-		qdf_spin_unlock_bh(&list->lock);
 		return QDF_STATUS_E_FAILURE;
 	}
 
@@ -5373,7 +5372,6 @@ static QDF_STATUS wlan_fw_event_msg_list_enqueue_flt_hdl(
 
 	if (!num_entries) {
 		ipa_err("list is full");
-		qdf_spin_unlock_bh(&list->lock);
 		return QDF_STATUS_E_FAILURE;
 	}
 
@@ -5397,19 +5395,15 @@ wlan_fw_event_msg_list_dequeue(struct uc_op_work_struct *uc_op_work)
 	struct op_msg_list *list = uc_op_work->msg_list;
 	struct msg_elem *msg;
 
-	qdf_spin_lock_bh(&list->lock);
 	tp = list->tp;
 	hp = list->hp;
-	if (tp == hp) {
-		qdf_spin_unlock_bh(&list->lock);
+	if (tp == hp)
 		return NULL;
-	}
 
 	ipa_debug("dequeue msg from the list");
 	msg = &list->entries[tp++];
 	tp &= (list->list_size - 1);
 	list->tp = tp;
-	qdf_spin_unlock_bh(&list->lock);
 	ipa_debug("tp value %d", tp);
 	return msg;
 }
