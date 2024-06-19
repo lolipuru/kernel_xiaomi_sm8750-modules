@@ -403,11 +403,9 @@ struct msm_cvp_inst {
 	struct kref kref;
 	struct cvp_session_prop prop;
 	/* error_code will be cleared after being returned to user mode */
-	u32 hfi_error_code;
+	u32 error_code;
 	/* prev_error_code saves value of error_code before it's cleared */
-	u32 prev_hfi_error_code;
-	/* Stores error codes of enum 'cvp_session_errorcode' queried by UMD using IOCTL  */
-	u32 session_error_code;
+	u32 prev_error_code;
 	struct synx_session *synx_session_id;
 	struct cvp_fence_queue fence_cmd_queue;
 	char proc_name[TASK_COMM_LEN];

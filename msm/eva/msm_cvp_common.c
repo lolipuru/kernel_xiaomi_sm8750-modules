@@ -233,7 +233,7 @@ static void handle_session_set_buf_done(enum hal_command_response cmd,
 			"set ARP buffer error from FW : %#x\n",
 			response->status);
 	}
-	inst->hfi_error_code = response->status;
+	inst->error_code = response->status;
 
 	if (IS_HAL_SESSION_CMD(cmd))
 		complete(&inst->completions[SESSION_MSG_INDEX(cmd)]);
@@ -282,7 +282,7 @@ static void handle_session_release_buf_done(enum hal_command_response cmd,
 	if (response->status)
 		dprintk(CVP_ERR, "HFI release persist buf err 0x%x\n",
 			response->status);
-	inst->hfi_error_code = response->status;
+	inst->error_code = response->status;
 
 	if (IS_HAL_SESSION_CMD(cmd))
 		complete(&inst->completions[SESSION_MSG_INDEX(cmd)]);
@@ -373,9 +373,9 @@ int wait_for_sess_signal_receipt(struct msm_cvp_inst *inst,
 	} else if (inst->state == MSM_CVP_CORE_INVALID) {
 		rc = -ECONNRESET;
 	} else {
-		rc = inst->hfi_error_code;
-		inst->prev_hfi_error_code = inst->hfi_error_code;
-		inst->hfi_error_code = CVP_ERR_NONE;
+		rc = inst->error_code;
+		inst->prev_error_code = inst->error_code;
+		inst->error_code = CVP_ERR_NONE;
 	}
 	return rc;
 }
@@ -431,7 +431,7 @@ static void handle_session_init_done(enum hal_command_response cmd, void *data)
 		dprintk(CVP_SESS, "%s: cvp session %#x\n", __func__,
 			hash32_ptr(inst->session));
 
-	inst->hfi_error_code = response->status;
+	inst->error_code = response->status;
 	signal_session_msg_receipt(cmd, inst);
 	cvp_put_inst(inst);
 	return;
@@ -514,7 +514,7 @@ static void handle_session_ctrl(enum hal_command_response cmd, void *data)
 		dprintk(CVP_ERR, "HFI sess ctrl err 0x%x HAL cmd %d\n",
 			response->status, cmd);
 
-	inst->hfi_error_code = response->status;
+	inst->error_code = response->status;
 	signal_session_msg_receipt(cmd, inst);
 	cvp_put_inst(inst);
 }
@@ -556,8 +556,7 @@ void handle_session_error(enum hal_command_response cmd, void *data)
 
 	spin_unlock(&sq->lock);
 
-	inst->session_error_code = (s_state << 28) | (s_ecode << 16) |
-				atomic_read(&cvp_error_count);
+	inst->error_code = (s_state << 28) | (s_ecode << 16) | atomic_read(&cvp_error_count);
 	cvp_print_inst(CVP_WARN, inst);
 
 	if (inst->state != MSM_CVP_CORE_INVALID) {
@@ -595,8 +594,7 @@ void handle_session_timeout(struct msm_cvp_inst *inst)
 
 	spin_unlock(&sq->lock);
 
-	inst->session_error_code = (s_state << 28) | (s_ecode << 16) |
-				atomic_read(&cvp_error_count);
+	inst->error_code = (s_state << 28) | (s_ecode << 16) | atomic_read(&cvp_error_count);
 	cvp_print_inst(CVP_WARN, inst);
 
 	spin_lock_irqsave(&inst->event_handler.lock, flags);
@@ -665,7 +663,7 @@ void handle_sys_error(enum hal_command_response cmd, void *data)
 			if ((atomic_read(&cvp_error_count)) < MAX_CVP_ERROR_COUNT)
 				atomic_inc(&cvp_error_count);
 
-			inst->session_error_code = (s_state << 28) | (s_ecode << 16) |
+			inst->error_code = (s_state << 28) | (s_ecode << 16) |
 				atomic_read(&cvp_error_count);
 			spin_unlock(&sq->lock);
 			change_cvp_inst_state(inst, MSM_CVP_CORE_INVALID);
@@ -760,7 +758,7 @@ static void handle_session_close(enum hal_command_response cmd, void *data)
 		dprintk(CVP_ERR, "HFI sess close fail 0x%x\n",
 			response->status);
 
-	inst->hfi_error_code = response->status;
+	inst->error_code = response->status;
 	signal_session_msg_receipt(cmd, inst);
 	show_stats(inst);
 	cvp_put_inst(inst);
