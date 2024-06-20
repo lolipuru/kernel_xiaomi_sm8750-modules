@@ -393,7 +393,7 @@ error_hfi_packet:
 
 static int get_hfi_ssr_type(enum hal_ssr_trigger_type type)
 {
-	int rc = HFI_TEST_SSR_HW_WDOG_IRQ;
+	int rc = type;
 
 	switch (type) {
 	case SSR_ERR_FATAL:
@@ -411,9 +411,12 @@ static int get_hfi_ssr_type(enum hal_ssr_trigger_type type)
 	case SSR_SESSION_TIMEOUT:
 		rc = HFI_TEST_SSR_SW_ERR_FATAL;
 		break;
+	case SSR_FW_SMMU_FAULT:
+		rc = HFI_TEST_SSR_XTENSA_NOC;
+		break;
 	default:
 		dprintk(CVP_WARN,
-			"SSR trigger type not recognized, using WDOG.\n");
+			"SSR trigger type not recognized, using %d\n", rc);
 	}
 	return rc;
 }

@@ -151,6 +151,8 @@ static void _log_buf(struct inst_snapshot *snapshot, enum smem_prop prop,
 {
 	struct cvp_buf_data *buf = NULL;
 	u32 index;
+	if (prop == SMEM_CDSP && cbuf->smem->pkt_type == 0)
+		return;
 	print_cvp_buffer(CVP_ERR, "bufdump", inst, cbuf);
 	if (!logging)
 		return;
@@ -540,11 +542,11 @@ int msm_cvp_map_buf_wncc(struct msm_cvp_inst *inst,
 		}
 	}
 
-	list_add_tail(&cbuf->list, &inst->cvpwnccbufs.list);
 	for (i = 0; i < EVA_KMD_WNCC_MAX_SRC_BUFS; i++)
 	{
 		if (inst->cvpwnccbufs_table[i].iova == 0)
 		{
+			list_add_tail(&cbuf->list, &inst->cvpwnccbufs.list);
 			inst->cvpwnccbufs_num++;
 			inst->cvpwnccbufs_table[i].fd = buf->fd;
 			inst->cvpwnccbufs_table[i].iova = smem->device_addr;
