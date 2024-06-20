@@ -7185,8 +7185,10 @@ void ipa3_dec_client_disable_clks_delay_wq(
 	ipa3_active_clients_log_dec(id, true);
 
 	if (!queue_delayed_work(ipa3_ctx->power_mgmt_wq,
-		&ipa_dec_clients_disable_clks_on_suspend_irq_wq_work, delay))
-		IPAERR("Scheduling delayed work failed\n");
+		&ipa_dec_clients_disable_clks_on_suspend_irq_wq_work, delay)) {
+		IPAERR("Scheduling delayed work failed, disable clk\n");
+		__ipa3_dec_client_disable_clks();
+	}
 }
 /**
  * ipa3_inc_acquire_wakelock() - Increase active clients counter, and
@@ -8275,6 +8277,8 @@ static int ipa3_post_init(const struct ipa3_plat_drv_res *resource_p,
 	 sizeof(struct ipa3_context));
 	ipa_ssr_driver_dump_register_region("ipc_logs", ipa3_ctx->logbuf,
 	((struct ipc_log_context *)(ipa3_ctx->logbuf))->write_avail);
+	ipa_ssr_driver_dump_register_region("gsi_ctx", gsi_ctx, sizeof(struct gsi_ctx));
+
 
 	pr_info("IPA driver initialization was successful.\n");
 #if IS_ENABLED(CONFIG_QCOM_VA_MINIDUMP)
@@ -9847,6 +9851,7 @@ static int ipa3_pre_init(const struct ipa3_plat_drv_res *resource_p,
 	ipa3_ctx->free_page_task_scheduled = false;
 
 	mutex_init(&ipa3_ctx->app_clock_vote.mutex);
+	mutex_init(&ipa3_ctx->ssr_lock);
 	ipa3_ctx->is_modem_up = false;
 	ipa3_ctx->mhi_ctrl_state = IPA_MHI_CTRL_NOT_SETUP;
 

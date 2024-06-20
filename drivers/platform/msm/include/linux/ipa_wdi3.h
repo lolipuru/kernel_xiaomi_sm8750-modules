@@ -37,6 +37,19 @@ enum ipa_wdi_version {
 #define IPA_WDI3_RX_DIR 3
 #define IPA_WDI_INST_MAX (2)
 
+enum ipa_wdi_opt_dpath_resp_code {
+	IPA_WDI_OPT_DPATH_RESP_SUCCESS = 0,
+	IPA_WDI_OPT_DPATH_RESP_ERR_FAILURE = 200,
+	IPA_WDI_OPT_DPATH_RESP_ERR_INTERNAL = 201,
+	IPA_WDI_OPT_DPATH_RESP_ERR_TIMEOUT = 202,
+	IPA_WDI_OPT_DPATH_RESP_SUCCESS_HIGH_TPUT = 203,
+	IPA_WDI_OPT_DPATH_RESP_SUCCESS_SHUTDOWN =  204,
+	IPA_WDI_OPT_DPATH_RESP_SUCCESS_SSR = 205,
+	IPA_WDI_OPT_DPATH_RESP_MAX
+};
+
+#define IPA_WDI_OPT_DPATH_CTRL_VER_V2
+
 /**
  * struct ipa_wdi_init_in_params - wdi init input parameters
  *
@@ -506,7 +519,7 @@ int ipa_wdi_opt_dpath_add_ctrl_filter_req(
 int ipa_wdi_opt_dpath_notify_ctrl_flt_rem_per_inst(
 		ipa_wdi_hdl_t hdl,
 		u32 fltr_hdl,
-		bool is_success);
+		u16 resp);
 
 /**
  * ipa_wdi_opt_dpath_remove_ctrl_filter_req_internal() - Sends WLAN DP filter info
@@ -1081,7 +1094,7 @@ static int ipa_wdi_opt_dpath_add_ctrl_filter_req(
 int ipa_wdi_opt_dpath_notify_ctrl_flt_rem_per_inst(
 		ipa_wdi_hdl_t hdl,
 		u32 fltr_hdl,
-		bool is_success)
+		u16 resp)
 {
 	return -EPERM;
 }
