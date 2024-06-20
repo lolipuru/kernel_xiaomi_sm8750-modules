@@ -11,6 +11,8 @@
 #include "sde_cesta.h"
 #include "sde_dbg.h"
 
+#define RSCC_SEQ_PWR_CTRL_STATUS	0x2d0
+
 #define RSCC_WRAPPER_CTRL		0x0
 #define RSCC_WRAPPER_DEBUG_BUS		0x10
 #define RSCC_WRAPPER_DEBUG_BUS_DATA	0x14
@@ -133,6 +135,11 @@ u32 _sde_cesta_hw_get_pwr_event(struct sde_cesta *cesta)
 	return dss_reg_r(&cesta->wrapper_io, RSCC_PWR_CTRL, cesta->debug_mode);
 }
 
+u32 _sde_get_rscc_pwr_ctrl_status(struct sde_cesta *cesta)
+{
+	return dss_reg_r(&cesta->rscc_io, RSCC_SEQ_PWR_CTRL_STATUS, cesta->debug_mode);
+}
+
 void sde_cesta_hw_init(struct sde_cesta *cesta)
 {
 	cesta->hw_ops.init = _sde_cesta_hw_init;
@@ -142,4 +149,5 @@ void sde_cesta_hw_init(struct sde_cesta *cesta)
 	cesta->hw_ops.override_ctrl_setup = _sde_cesta_hw_override_ctrl_setup;
 	cesta->hw_ops.reset_ctrl = _sde_cesta_hw_reset;
 	cesta->hw_ops.force_auto_active_db_update = _sde_cesta_hw_force_auto_active_db_update;
+	cesta->hw_ops.get_rscc_pwr_ctrl_status = _sde_get_rscc_pwr_ctrl_status;
 }
