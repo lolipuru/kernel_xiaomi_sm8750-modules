@@ -33,6 +33,9 @@
 #include "internal.h"
 #include "asoc/bolero-slave-internal.h"
 #include <linux/qti-regmap-debugfs.h>
+#include <linux/proc_fs.h>
+
+#define REGDUMP_PRINT_LEN 8
 
 #define T1_TEMP -10
 #define T2_TEMP 150
@@ -1987,6 +1990,78 @@ static struct snd_soc_dai_driver wsa_dai[] = {
 	},
 };
 
+static int regdump_read(struct regmap *map, int baseReg, int endReg,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int i = 0, ret = 0;
+	size_t pos = 0;
+	char *buf;
+	unsigned int reg_val = 0, reg_len = 0;
+	unsigned int reg_val_len = 0, regdump_wr_len = 0;
+
+	i  = ((int) *ppos + baseReg);
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	reg_len = scnprintf(buf, count, "%x", endReg);
+	reg_val_len = 2 * DIV_ROUND_UP(REGDUMP_PRINT_LEN, 8);
+	regdump_wr_len = reg_len + reg_val_len + 3;
+
+	for (; i >= 0 && i <= endReg; i += 1) {
+
+		scnprintf(buf+pos, count-pos, "%.*x: ", reg_len, i);
+		pos += reg_len + 2;
+		ret = regmap_read(map, i, &reg_val);
+		if (ret == 0)
+			scnprintf(buf+pos, count-pos, "%.*x", reg_val_len, reg_val);
+		else
+			memset(buf+pos, 'X', reg_val_len);
+
+		pos +=  reg_val_len;
+		buf[pos++] = '\n';
+		*ppos += 1;
+
+		/*
+		 * Check not to overwrite the buffer, by ensuring we have
+		 * space for writing next register data
+		 *
+		 * this is scalable if we use proc or any other fs interface
+		 * as count would take the buf_size passed from userspace
+		 */
+		if ((pos + regdump_wr_len) >= count)
+			break;
+	}
+
+	ret = pos;
+	if (copy_to_user(user_buf, buf, pos))
+		ret = -EFAULT;
+
+	kfree(buf);
+	return ret;
+}
+
+static ssize_t wsa884x_proc_read(struct file *filep, char __user *buf, size_t size, loff_t *ppos)
+{
+	ssize_t ret = 0;
+	struct wsa884x_priv *wsa884x = NULL;
+
+	if (!size || !filep || !ppos || !buf || *ppos < 0)
+		return -ENOMEM;
+
+	wsa884x = pde_data(file_inode(filep));
+	if (!wsa884x)
+		return -ENOMEM;
+
+	ret = regdump_read(wsa884x->regmap,  WSA884X_BASE, WSA884X_MAX_REGISTER, buf, size, ppos);
+	return ret;
+}
+
+static const struct proc_ops wsa884x_proc_ops = {
+	.proc_read = wsa884x_proc_read,
+};
+
 static int wsa884x_swr_probe(struct swr_device *pdev)
 {
 	int ret = 0;
@@ -2002,6 +2077,8 @@ static int wsa884x_swr_probe(struct swr_device *pdev)
 	u8 wo0_val;
 	int sys_gain_size, sys_gain_length;
 	int wsa_dev_index;
+	char *proc_entry_name;
+	struct proc_dir_entry *wsa884x_proc_regdump_file = NULL;
 
 
 	wsa884x = devm_kzalloc(&pdev->dev, sizeof(struct wsa884x_priv),
@@ -2059,6 +2136,19 @@ static int wsa884x_swr_probe(struct swr_device *pdev)
 	}
 
 	devm_regmap_qti_debugfs_register(&pdev->dev, wsa884x->regmap);
+
+	proc_entry_name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "wsa884x_reginfo_%d", devnum);
+	wsa884x->wsa884x_proc_entry = proc_mkdir(proc_entry_name, NULL);
+	if (wsa884x->wsa884x_proc_entry) {
+		wsa884x_proc_regdump_file = proc_create_data("wsa884x_regdump", 0444,
+				wsa884x->wsa884x_proc_entry, &wsa884x_proc_ops, wsa884x);
+		if (!wsa884x_proc_regdump_file) {
+			dev_err(&pdev->dev, "%s: error creating proc read interface\n",
+					__func__);
+			proc_remove(wsa884x->wsa884x_proc_entry);
+			wsa884x->wsa884x_proc_entry = NULL;
+		}
+	}
 
 	wsa884x_sub_regmap_irq_chip->irq_drv_data = wsa884x;
 	wsa884x->irq_info.wcd_regmap_irq_chip = wsa884x_sub_regmap_irq_chip;
@@ -2393,6 +2483,9 @@ static int wsa884x_swr_remove(struct swr_device *pdev)
 		dev_err(&pdev->dev, "%s: wsa884x is NULL\n", __func__);
 		return -EINVAL;
 	}
+
+	if (wsa884x->wsa884x_proc_entry)
+		proc_remove(wsa884x->wsa884x_proc_entry);
 
 	if (wsa884x->register_notifier)
 		wsa884x->register_notifier(wsa884x->handle,

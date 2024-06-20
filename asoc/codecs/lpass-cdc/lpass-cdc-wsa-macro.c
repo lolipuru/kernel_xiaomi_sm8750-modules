@@ -46,6 +46,7 @@
 
 #define LPASS_CDC_WSA_MACRO_CPS_RATES (48000)
 #define LPASS_CDC_WSA_MACRO_CPS_FORMATS (SNDRV_PCM_FMTBIT_S32_LE)
+#define LPASS_CDC_WSA_MACRO_VI_DEC_ENABLE_DELAY_MS  5
 
 #define NUM_INTERPOLATORS 2
 
@@ -203,7 +204,7 @@ static int lpass_cdc_wsa_macro_mute_stream(struct snd_soc_dai *dai, int mute, in
 struct lpass_cdc_wsa_macro_swr_ctrl_data {
 	struct platform_device *wsa_swr_pdev;
 };
-static int lpass_cdc_wsa_macro_enable_vi_decimator(struct snd_soc_component *component);
+static void lpass_cdc_wsa_macro_enable_vi_decimator(struct work_struct *work);
 
 #define LPASS_CDC_WSA_MACRO_SET_VOLUME_TLV(xname, xreg, xmin, xmax, tlv_array) \
 {	.iface  = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname), \
@@ -242,6 +243,10 @@ enum {
 	LPASS_CDC_WSA_MACRO_MAX_DAIS,
 };
 
+struct wsa_vi_dec_enable_work {
+	struct lpass_cdc_wsa_macro_priv *wsa_priv;
+	struct delayed_work dwork;
+};
 
 #define LPASS_CDC_WSA_MACRO_CHILD_DEVICES_MAX 3
 
@@ -277,6 +282,7 @@ struct lpass_cdc_wsa_macro_priv {
 	int ec_hq[LPASS_CDC_WSA_MACRO_RX1 + 1];
 	u16 prim_int_users[LPASS_CDC_WSA_MACRO_RX1 + 1];
 	u16 wsa_mclk_users;
+	struct wsa_vi_dec_enable_work wsa_vi_dec_enable_work;
 	u16 swr_clk_users;
 	bool dapm_mclk_enable;
 	bool reset_swr;
@@ -938,7 +944,9 @@ static int lpass_cdc_wsa_macro_mute_stream(struct snd_soc_dai *dai, int mute, in
 	case LPASS_CDC_WSA_MACRO_AIF_MIX1_PB:
 		lpass_cdc_wsa_pa_on(wsa_dev, adie_lb);
 		lpass_cdc_wsa_unmute_interpolator(dai);
-		lpass_cdc_wsa_macro_enable_vi_decimator(component);
+		queue_delayed_work(system_freezable_wq,
+			&wsa_priv->wsa_vi_dec_enable_work.dwork,
+			msecs_to_jiffies(LPASS_CDC_WSA_MACRO_VI_DEC_ENABLE_DELAY_MS));
 		break;
 	default:
 		break;
@@ -1122,14 +1130,22 @@ static int lpass_cdc_wsa_macro_event_handler(struct snd_soc_component *component
 	return 0;
 }
 
-static int lpass_cdc_wsa_macro_enable_vi_decimator(struct snd_soc_component *component)
+static void lpass_cdc_wsa_macro_enable_vi_decimator(struct work_struct *work)
 {
+	struct delayed_work *unmute_delayed_work = NULL;
+	struct wsa_vi_dec_enable_work *wsa_vi_dec_enable_work = NULL;
+	struct snd_soc_component *component = NULL;
 	struct device *wsa_dev = NULL;
 	struct lpass_cdc_wsa_macro_priv *wsa_priv = NULL;
 	u8 val = 0x0;
 
-	if (!lpass_cdc_wsa_macro_get_data(component, &wsa_dev, &wsa_priv, __func__))
-		return -EINVAL;
+	unmute_delayed_work = to_delayed_work(work);
+	wsa_vi_dec_enable_work = container_of(unmute_delayed_work,
+			struct wsa_vi_dec_enable_work, dwork);
+	wsa_priv = wsa_vi_dec_enable_work->wsa_priv;
+	component = wsa_priv->component;
+
+	lpass_cdc_wsa_macro_get_data(component, &wsa_dev, &wsa_priv, __func__);
 
 	usleep_range(5000, 5500);
 	dev_dbg(wsa_dev, "%s: wsa_priv->pcm_rate_vi %d\n", __func__, wsa_priv->pcm_rate_vi);
@@ -1214,7 +1230,6 @@ static int lpass_cdc_wsa_macro_enable_vi_decimator(struct snd_soc_component *com
 			LPASS_CDC_WSA_TX3_SPKR_PROT_PATH_CTL,
 			0x20, 0x00);
 	}
-	return 0;
 }
 
 static int lpass_cdc_wsa_macro_disable_vi_feedback(struct snd_soc_dapm_widget *w,
@@ -3674,6 +3689,9 @@ static int lpass_cdc_wsa_macro_init(struct snd_soc_component *component)
 	snd_soc_dapm_ignore_suspend(dapm, "WSA_TX DEC1_INP");
 	snd_soc_dapm_sync(dapm);
 
+	wsa_priv->wsa_vi_dec_enable_work.wsa_priv = wsa_priv;
+	INIT_DELAYED_WORK(&wsa_priv->wsa_vi_dec_enable_work.dwork,
+		lpass_cdc_wsa_macro_enable_vi_decimator);
 	wsa_priv->component = component;
 	wsa_priv->spkr_gain_offset = LPASS_CDC_WSA_MACRO_GAIN_OFFSET_0_DB;
 	lpass_cdc_wsa_macro_init_reg(component);
@@ -4057,6 +4075,8 @@ static int lpass_cdc_wsa_macro_remove(struct platform_device *pdev)
 	if (!wsa_priv)
 		return -EINVAL;
 
+	cancel_delayed_work_sync(
+			&wsa_priv->wsa_vi_dec_enable_work.dwork);
 	if (wsa_priv->tcdev)
 		thermal_cooling_device_unregister(wsa_priv->tcdev);
 

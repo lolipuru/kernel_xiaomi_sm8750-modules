@@ -31,11 +31,13 @@
 #include "asoc/bolero-slave-internal.h"
 #include "wcd939x-reg-masks.h"
 #include "wcd939x-reg-shifts.h"
+#include <linux/proc_fs.h>
+
 #if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
 #include <linux/soc/qcom/wcd939x-i2c.h>
 #endif
 
-
+#define REGDUMP_PRINT_LEN 8
 #define NUM_SWRS_DT_PARAMS 5
 #define WCD939X_VARIANT_ENTRY_SIZE 32
 
@@ -4521,8 +4523,81 @@ done:
 	return rc;
 }
 
+static int regdump_read(struct regmap *map, int baseReg, int endReg,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int i = 0, ret = 0;
+	size_t pos = 0;
+	char *buf;
+	unsigned int reg_val = 0, reg_len = 0;
+	unsigned int reg_val_len = 0, regdump_wr_len = 0;
+
+	i  = ((int) *ppos + baseReg);
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	reg_len = scnprintf(buf, count, "%x", endReg);
+	reg_val_len = 2 * DIV_ROUND_UP(REGDUMP_PRINT_LEN, 8);
+	regdump_wr_len = reg_len + reg_val_len + 3;
+
+	for (; i >= 0 && i <= endReg; i++) {
+
+		scnprintf(buf+pos, count-pos, "%.*x: ", reg_len, i);
+		pos += reg_len + 2;
+		ret = regmap_read(map, i, &reg_val);
+		if (ret == 0)
+			scnprintf(buf+pos, count-pos, "%.*x", reg_val_len, reg_val);
+		else
+			memset(buf+pos, 'X', reg_val_len);
+
+		pos +=  reg_val_len;
+		buf[pos++] = '\n';
+		*ppos += 1;
+
+		/*
+		 * Check not to overwrite the buffer, by ensuring we have
+		 * space for writing next register data
+		 *
+		 * this is scalable if we use proc or any other fs interface
+		 * as count would take the buf_size passed from userspace
+		 */
+		if ((pos + regdump_wr_len) >= count)
+			break;
+	}
+
+	ret = pos;
+	if (copy_to_user(user_buf, buf, pos))
+		ret = -EFAULT;
+
+	kfree(buf);
+	return ret;
+}
+
+static ssize_t wcd939x_proc_read(struct file *filep, char __user *buf, size_t size, loff_t *ppos)
+{
+	ssize_t ret = 0;
+	struct wcd939x_priv *wcd939x = NULL;
+
+	if (!size || !filep || !ppos || !buf || *ppos < 0)
+		return -EINVAL;
+
+	wcd939x = pde_data(file_inode(filep));
+	if (!wcd939x)
+		return -EINVAL;
+
+	ret = regdump_read(wcd939x->regmap, WCD939X_BASE, WCD939X_MAX_REGISTER, buf, size, ppos);
+	return ret;
+}
+
+static const struct proc_ops wcd939x_proc_ops = {
+	.proc_read = wcd939x_proc_read,
+};
+
 static int wcd939x_soc_codec_probe(struct snd_soc_component *component)
 {
+	struct proc_dir_entry *wcd939x_proc_regdump_file = NULL;
 	struct wcd939x_priv *wcd939x = snd_soc_component_get_drvdata(component);
 	struct snd_soc_dapm_context *dapm =
 			snd_soc_component_get_dapm(component);
@@ -4538,6 +4613,21 @@ static int wcd939x_soc_codec_probe(struct snd_soc_component *component)
 	snd_soc_component_init_regmap(component, wcd939x->regmap);
 
 	devm_regmap_qti_debugfs_register(&wcd939x->tx_swr_dev->dev, wcd939x->regmap);
+
+	wcd939x->wcd939x_proc_entry = proc_mkdir("wcd939x_reginfo", NULL);
+	if (wcd939x->wcd939x_proc_entry) {
+		wcd939x_proc_regdump_file = proc_create_data("wcd939x_regdump", 0444,
+				wcd939x->wcd939x_proc_entry, &wcd939x_proc_ops, wcd939x);
+		if (!wcd939x_proc_regdump_file) {
+			dev_err(component->dev,
+					"%s: error creating proc reg read interface\n",
+					__func__);
+			proc_remove(wcd939x->wcd939x_proc_entry);
+			wcd939x->wcd939x_proc_entry = NULL;
+		}
+	} else {
+		dev_err(component->dev, "%s: error creating proc dir interface\n", __func__);
+	}
 
 	/*Harmonium contains only one variant i.e wcd9395*/
 	wcd939x->variant = WCD9395;
@@ -4647,6 +4737,10 @@ static void wcd939x_soc_codec_remove(struct snd_soc_component *component)
 			__func__);
 		return;
 	}
+
+	if (wcd939x->wcd939x_proc_entry)
+		proc_remove(wcd939x->wcd939x_proc_entry);
+
 	if (wcd939x->register_notifier)
 		wcd939x->register_notifier(wcd939x->handle,
 						&wcd939x->nblock,

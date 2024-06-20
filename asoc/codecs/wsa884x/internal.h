@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef WSA884X_INTERNAL_H
@@ -401,6 +401,7 @@ struct wsa884x_priv {
 	struct snd_soc_dai_driver *dai_driver;
 	struct snd_soc_component_driver *driver;
 	int noise_gate_mode;
+	struct proc_dir_entry *wsa884x_proc_entry;
 };
 
 #endif /* WSA884X_INTERNAL_H */
