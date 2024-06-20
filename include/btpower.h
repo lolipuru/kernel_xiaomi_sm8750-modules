@@ -30,6 +30,13 @@ enum SubSystem {
 	UWB,
 };
 
+enum FmdOperation {
+	ENABLE_SDAM_BIT_FMD = 0,
+	DISABLE_SDAM_BIT_FMD,
+	UPDATE_SOC_VERSION_1_0_FOR_FMD,
+	UPDATE_SOC_VERSION_2_0_FOR_FMD
+};
+
 enum power_states {
 	IDLE = 0,
 	BT_ON,
@@ -640,10 +647,11 @@ struct platform_pwr_data {
 	struct device *slim_dev;
 	struct vreg_data *bt_vregs;
 	struct vreg_data *uwb_vregs;
+	struct vreg_data *wlan_vregs;
 	struct vreg_data *platform_vregs;
 	struct bt_power_clk_data *bt_chip_clk; /* bluetooth reference clock */
-	int (*power_setup)(int core, int id); /* Bluetooth power setup function */
-	char compatible[32]; /*Bluetooth SoC name */
+	int (*power_setup)(int core, int id);  /* Bluetooth power setup function */
+	char compatible[32];                   /*Bluetooth SoC name */
 	int bt_num_vregs;
 	int uwb_num_vregs;
 	int platform_num_vregs;
@@ -697,10 +705,10 @@ int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata);
 #define BT_CMD_KERNEL_PANIC         0xbfc1
 #define UWB_CMD_KERNEL_PANIC        0xbfc2
 #define UWB_CMD_PWR_CTRL            0xbfe1
-#define BT_CMD_REGISTRATION	    0xbfe2
+#define BT_CMD_REGISTRATION         0xbfe2
 #define UWB_CMD_REGISTRATION        0xbfe3
-#define BT_CMD_ACCESS_CTRL	    0xbfe4
-#define UWB_CMD_ACCESS_CTRL        0xbfe5
+#define BT_CMD_ACCESS_CTRL          0xbfe4
+#define UWB_CMD_ACCESS_CTRL         0xbfe5
 #define SET_FMD_MODE_CTRL           0xbfb2
 
 #ifdef CONFIG_MSM_BT_OOBS

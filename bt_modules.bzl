@@ -61,6 +61,10 @@ register_bt_modules(
             "//vendor/qcom/opensource/securemsm-kernel:%b_smcinvoke_dlkm",
         ]
     },
+    deps = [
+        "//vendor/qcom/opensource/wlan/platform:all-wlan-platform-headers",
+        "//vendor/qcom/opensource/wlan/platform:%b_cnss_utils",
+    ],
 )
 
 register_bt_modules(
