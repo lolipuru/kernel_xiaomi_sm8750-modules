@@ -630,14 +630,14 @@ static int marshal_out_cb_req(struct si_arg u[], union smcinvoke_arg args[])
 	while (u[i].type ==  SI_AT_OB) {
 		void __user *u_addr;
 
-		if (!err) {
+		if (args[i].b.size <= u[i].b.size) {
 			u[i].b.size = args[i].b.size;
-
 			u_addr = u64_to_user_ptr(args[i].b.addr);
 
 			if (copy_from_user(u[i].b.addr, u_addr, args[i].b.size))
-				err = -1;
-		}
+				return -1;
+		} else
+			return -1;
 
 		i++;
 	}
