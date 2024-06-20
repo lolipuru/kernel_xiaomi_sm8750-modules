@@ -270,6 +270,20 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_POST_TIMING_SWITCH:        Post timing switch
  * @DSI_CMD_SET_QSYNC_ON                   Enable qsync mode
  * @DSI_CMD_SET_QSYNC_OFF                  Disable qsync mode
+ * @DSI_CMD_SET_ESYNC_POST_ON:             Panel exit sleep
+ * @DSI_CMD_SET_ARP_MODE3_HW_TE_ON:        ARP panel HW TE to drive frequnecy stepping
+ * @DSI_CMD_SET_ARP_MODE1_HW_TE_OFF:       ARP panel HW TE mode is turned off.
+ *                                         SW to drive any frequnecy stepping
+ * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern1
+ * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern2
+ * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern3
+ * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern4
+ * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern5
+ * @DSI_CMD_SET_STICKY_STILL_EN            This would enable still indication(copy frame to GRAM)
+ *                                         for all the frames until disable.
+ * @DSI_CMD_SET_STICKY_STILL_DISABLE       Still indiaction disable command
+ * @DSI_CMD_SET_STICKY_ON_FLY:             Still indication enable for only one frame
+ * @DSI_CMD_SET_TRIGGER_SELF_REFRESH:      Trigger self refresh from Gram
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -298,6 +312,18 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_POST_TIMING_SWITCH,
 	DSI_CMD_SET_QSYNC_ON,
 	DSI_CMD_SET_QSYNC_OFF,
+	DSI_CMD_SET_ESYNC_POST_ON,
+	DSI_CMD_SET_ARP_MODE3_HW_TE_ON,
+	DSI_CMD_SET_ARP_MODE1_HW_TE_OFF,
+	DSI_CMD_SET_FI_PATTAREN1_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN2_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN3_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN4_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN5_CHANGE,
+	DSI_CMD_SET_STICKY_STILL_EN,
+	DSI_CMD_SET_STICKY_STILL_DISABLE,
+	DSI_CMD_SET_STICKY_ON_FLY,
+	DSI_CMD_SET_TRIGGER_SELF_REFRESH,
 	DSI_CMD_SET_MAX
 };
 
@@ -422,6 +448,8 @@ struct dsi_panel_cmd_set {
  * @roi_caps:         Panel ROI capabilities.
  * @qsync_min_fps:    Qsync min fps rate
  * @avr_step_fps:     AVR step fps rate
+ * @esync_enabled:    esync enabled
+ * @esync_emsync_fps: esync EM pulse rate
  */
 struct dsi_mode_info {
 	u32 h_active;
@@ -450,6 +478,8 @@ struct dsi_mode_info {
 	struct msm_roi_caps roi_caps;
 	u32 qsync_min_fps;
 	u32 avr_step_fps;
+	bool esync_enabled;
+	u32 esync_emsync_fps;
 };
 
 /**
@@ -633,6 +663,7 @@ struct dsi_host_config {
  * @clk_rate_hz:          DSI bit clock per lane in hz.
  * @min_dsi_clk_hz:       Min dsi clk per lane to transfer frame in vsync time.
  * @bit_clk_list:         List of dynamic bit clock rates supported.
+ * @freq_step_list:       List of frequency scaling patterns
  * @topology:             Topology selected for the panel
  * @dsc:                  DSC compression info
  * @vdc:                  VDC compression info
@@ -663,6 +694,7 @@ struct dsi_display_mode_priv_info {
 	u64 clk_rate_hz;
 	u64 min_dsi_clk_hz;
 	struct msm_dyn_clk_list bit_clk_list;
+	struct msm_freq_step_list freq_step_list;
 
 	struct msm_display_topology topology;
 	struct msm_display_dsc_info dsc;
@@ -835,11 +867,13 @@ static inline bool dsi_is_type_cphy(struct dsi_host_common_cfg *cfg)
 
 /**
  * dsi_host_transfer_sub() - transfers DSI commands from host to panel
- * @host:    pointer to the DSI mipi host device
- * @cmd:     DSI command to be transferred
+ * @host:                pointer to the DSI mipi host device
+ * @cmd:                 DSI command to be transferred
+ * @do_peripheral_flush: Flag for sending this command with peripheral flush
  *
  * Return: error code.
  */
-int dsi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd);
+int dsi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd,
+			  bool do_peripheral_flush);
 
 #endif /* _DSI_DEFS_H_ */

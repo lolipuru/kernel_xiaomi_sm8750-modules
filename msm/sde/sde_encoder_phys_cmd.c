@@ -612,6 +612,8 @@ static void sde_encoder_phys_cmd_wr_ptr_irq(void *arg, int irq_idx)
 			!test_bit(SDE_INTF_TE_SINGLE_UPDATE, &phys_enc->hw_intf->cap->features))
 		sde_encoder_override_tearcheck_rd_ptr(phys_enc);
 
+	sde_encoder_handle_frequency_stepping(phys_enc, 1);
+
 	/* Signal any waiting wr_ptr start interrupt */
 	wake_up_all(&phys_enc->pending_kickoff_wq);
 	SDE_ATRACE_END("wr_ptr_irq");
@@ -1360,7 +1362,8 @@ static void _get_tearcheck_cfg(struct sde_encoder_phys *phys_enc,
 		goto exit;
 
 	if (phys_enc->parent_ops.get_qsync_fps)
-		phys_enc->parent_ops.get_qsync_fps(phys_enc->parent, &qsync_min_fps, conn->state);
+		phys_enc->parent_ops.get_qsync_fps(phys_enc->parent, &qsync_min_fps,
+			conn->state, NULL);
 
 	if (!qsync_min_fps || !default_fps || !yres) {
 		SDE_ERROR_CMDENC(cmd_enc, "wrong qsync params %d %d %d\n",
@@ -2607,7 +2610,8 @@ void sde_encoder_phys_cmd_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	cfg->intf = phys_enc->intf_idx - INTF_0;
 	cfg->auto_active_on_panic = autorefresh_en;
 	cfg->req_mode = SDE_CESTA_CTRL_REQ_PANIC_REGION;
-	cfg->hw_sleep_enable = !autorefresh_en;
+	cfg->hw_sleep_enable = !(autorefresh_en
+					|| phys_enc->sde_kms->splash_data.num_splash_displays);
 
 	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)
 			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))
@@ -2809,6 +2813,11 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 	for (i = 0; i < MAX_TE_PROFILE_COUNT; i++)
 		list_add(&cmd_enc->te_timestamp[i].list,
 				&cmd_enc->te_timestamp_list);
+
+	hrtimer_init(&phys_enc->sde_vrr_cfg.self_refresh_timer,
+		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	phys_enc->sde_vrr_cfg.self_refresh_timer.function =
+		sde_encoder_phys_phys_self_refresh_helper;
 
 	SDE_DEBUG_CMDENC(cmd_enc, "created\n");
 

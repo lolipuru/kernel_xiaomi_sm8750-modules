@@ -104,6 +104,11 @@ static int sde_crtc_mdnie_art_event_handler(struct drm_crtc *crtc_drm,
 static int sde_crtc_copr_status_event_handler(struct drm_crtc *crtc_drm,
 	bool en, struct sde_irq_callback *irq);
 
+static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
+		struct drm_crtc_state *state,
+		struct drm_property *property,
+		uint64_t val);
+
 static struct sde_crtc_custom_events custom_events[] = {
 	{DRM_EVENT_AD_BACKLIGHT, sde_cp_ad_interrupt},
 	{DRM_EVENT_CRTC_POWER, sde_crtc_power_interrupt_handler},
@@ -3289,31 +3294,15 @@ void sde_crtc_mdnie_art_event_notify(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc;
 	struct drm_msm_mdnie_art_done mdnie_art_done;
-	struct sde_hw_dspp *dspp;
-	u32 current_art_done;
-	int rc;
 	struct drm_event event;
 
 	sde_crtc = to_sde_crtc(crtc);
-	dspp = sde_crtc->mixers[0].hw_dspp;
-	rc = sde_dspp_mdnie_read_art_done(dspp, &current_art_done);
-	if (rc) {
-		SDE_ERROR("failed to collect MDNIE ART rc: %d\n", rc);
-		return;
-	}
 
-	if (current_art_done == 1) {
-		mdnie_art_done.art_done = current_art_done;
-		event.type = DRM_EVENT_MDNIE_ART;
-		event.length = sizeof(mdnie_art_done);
-		msm_mode_object_event_notify(&crtc->base, crtc->dev, &event,
-				(u8 *)&mdnie_art_done);
-
-		// Reset ART_DONE and ART_EN
-		if (dspp->ops.reset_mdnie_art)
-			dspp->ops.reset_mdnie_art(dspp);
-		_sde_cp_mark_mdnie_art_property(crtc);
-	}
+	mdnie_art_done.art_done = 1;
+	event.type = DRM_EVENT_MDNIE_ART;
+	event.length = sizeof(mdnie_art_done);
+	msm_mode_object_event_notify(&crtc->base, crtc->dev, &event,
+			(u8 *)&mdnie_art_done);
 }
 
 void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc)
@@ -3355,9 +3344,6 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 
 	if (sde_crtc->framedone_event_notify_enabled)
 		sde_crtc_event_notify(crtc, DRM_EVENT_FRAME_DONE, &frame_done, sizeof(u32));
-
-	if (sde_crtc->mdnie_art_event_notify_enabled)
-		sde_crtc_mdnie_art_event_notify(crtc);
 
 	if (sde_crtc->copr_status_event_notify_enabled)
 		sde_crtc_copr_status_event_notify(crtc);
@@ -5279,6 +5265,9 @@ static void _sde_crtc_reserve_resource(struct drm_crtc *crtc, struct drm_connect
  */
 static struct drm_crtc_state *sde_crtc_duplicate_state(struct drm_crtc *crtc)
 {
+	struct sde_kms *sde_kms;
+	struct drm_device *dev;
+	struct drm_property *drm_prop;
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate, *old_cstate;
 
@@ -5287,8 +5276,15 @@ static struct drm_crtc_state *sde_crtc_duplicate_state(struct drm_crtc *crtc)
 		return NULL;
 	}
 
+	sde_kms = _sde_crtc_get_kms(crtc);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return NULL;
+	}
+
 	sde_crtc = to_sde_crtc(crtc);
 	old_cstate = to_sde_crtc_state(crtc->state);
+	dev = crtc->dev;
 
 	if (old_cstate->cont_splash_populated) {
 		crtc->state->plane_mask = 0;
@@ -5309,6 +5305,14 @@ static struct drm_crtc_state *sde_crtc_duplicate_state(struct drm_crtc *crtc)
 			old_cstate, cstate,
 			&cstate->property_state, cstate->property_values);
 	sde_cp_duplicate_state_info(&old_cstate->base, &cstate->base);
+
+	if (!atomic_read(&dev->open_count) && sde_vm_owns_hw(sde_kms) &&
+			sde_in_trusted_vm(sde_kms)) {
+		drm_prop = msm_property_index_to_drm_property(
+				&sde_crtc->property_info, CRTC_PROP_VM_REQ_STATE);
+		sde_crtc_atomic_set_property(crtc, &cstate->base,
+				drm_prop, VM_REQ_RELEASE);
+	}
 
 	/* duplicate base helper */
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &cstate->base);

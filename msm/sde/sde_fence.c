@@ -755,7 +755,7 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 	data = &hw_ctl->hwfence_data;
 
 	if (disable) {
-		hw_ctl->ops.hw_fence_ctrl(hw_ctl, false, false, 0);
+		hw_ctl->ops.hw_fence_ctrl(hw_ctl, false, false, 0, false, false);
 		return -EPERM;
 	}
 
@@ -773,7 +773,7 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 	hw_ctl->ops.hw_fence_update_input_fence(hw_ctl, ipcc_client_id, ipcc_signal_id);
 
 	/* Enable hw-fence for this ctrl-path */
-	hw_ctl->ops.hw_fence_ctrl(hw_ctl, true, true, 1);
+	hw_ctl->ops.hw_fence_ctrl(hw_ctl, true, true, 1, false, false);
 
 	qtime = arch_timer_read_counter();
 	SDE_EVT32(ctl_id, ipcc_signal_id, ipcc_client_id, SDE_EVTLOG_H32(qtime),

@@ -180,7 +180,8 @@ static int _sde_debugfs_init(struct sde_kms *sde_kms)
 			(u32 *)&sde_kms->pm_suspend_clk_dump);
 	debugfs_create_u32("hw_fence_status", 0600, debugfs_root,
 			(u32 *)&sde_kms->debugfs_hw_fence);
-
+	debugfs_create_u32("disable_early_EPT_handling", 0600, debugfs_root,
+			(u32 *)&sde_kms->debugfs_early_ept_handling);
 	return 0;
 }
 
@@ -1894,6 +1895,8 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.soft_reset   = dsi_display_soft_reset,
 		.pre_kickoff  = dsi_conn_pre_kickoff,
 		.clk_ctrl = dsi_display_set_clk_state,
+		.clk_get_rate = dsi_display_get_clk_rate,
+		.idle_pc_ctrl = dsi_display_set_idle_pc_state,
 		.set_power = dsi_display_set_power,
 		.get_mode_info = dsi_conn_get_mode_info,
 		.get_dst_format = dsi_display_get_dst_format,
@@ -1911,6 +1914,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.set_dyn_bit_clk = dsi_conn_set_dyn_bit_clk,
 		.get_qsync_min_fps = dsi_conn_get_qsync_min_fps,
 		.get_avr_step_fps = dsi_conn_get_avr_step_fps,
+		.dcs_cmd_tx = dsi_conn_dcs_cmd_tx,
 		.prepare_commit = dsi_conn_prepare_commit,
 		.set_submode_info = dsi_conn_set_submode_blob_info,
 		.get_num_lm_from_mode = dsi_conn_get_lm_from_mode,
@@ -2962,6 +2966,7 @@ static void sde_kms_lastclose(struct msm_kms *kms)
 
 	sde_kms = to_sde_kms(kms);
 	dev = sde_kms->dev;
+
 	drm_modeset_acquire_init(&ctx, 0);
 
 	state = drm_atomic_state_alloc(dev);
@@ -2996,6 +3001,7 @@ out_ctx:
 		SDE_ERROR("kms lastclose failed: %d\n", ret);
 
 	SDE_EVT32(ret, SDE_EVTLOG_FUNC_EXIT);
+
 	return;
 
 backoff:
@@ -4063,6 +4069,42 @@ void sde_kms_display_early_wakeup(struct drm_device *dev,
 
 	drm_connector_list_iter_end(&conn_iter);
 }
+
+void sde_kms_display_early_ept_hint(struct drm_device *dev,
+	const int32_t connector_id, u64 frame_interval, u64 ept_ns)
+{
+	struct drm_connector_list_iter conn_iter;
+	struct drm_connector *conn;
+	struct drm_encoder *drm_enc;
+	struct sde_connector *c_conn;
+
+	SDE_ATRACE_BEGIN("early_ept_hint");
+	SDE_EVT32(connector_id, frame_interval, ept_ns, ept_ns>>32);
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		if (connector_id != DRM_MSM_WAKE_UP_ALL_DISPLAYS &&
+			connector_id != conn->base.id)
+			continue;
+
+		c_conn = to_sde_connector(conn);
+		if (!c_conn ||
+			c_conn->connector_type != DRM_MODE_CONNECTOR_DSI)
+			continue;
+
+		if (conn->state && conn->state->best_encoder)
+			drm_enc = conn->state->best_encoder;
+		else
+			drm_enc = conn->encoder;
+
+		sde_encoder_early_ept_hint(drm_enc, frame_interval, ept_ns);
+	}
+
+	drm_connector_list_iter_end(&conn_iter);
+	SDE_ATRACE_END("early_ept_hint");
+}
+
 static int sde_kms_trigger_null_flush(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
@@ -4418,6 +4460,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_format      = sde_get_msm_format,
 	.round_pixclk    = sde_kms_round_pixclk,
 	.display_early_wakeup = sde_kms_display_early_wakeup,
+	.display_early_ept_hint = sde_kms_display_early_ept_hint,
 	.pm_suspend      = sde_kms_pm_suspend,
 	.pm_resume       = sde_kms_pm_resume,
 	.destroy         = sde_kms_destroy,

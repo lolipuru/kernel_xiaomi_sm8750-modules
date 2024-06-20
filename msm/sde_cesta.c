@@ -329,7 +329,7 @@ void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_p
 	struct sde_cesta *cesta;
 	struct sde_cesta_client *c;
 	struct sde_cesta_client_data *client_data, *hw_data;
-	u64 bw_ab = 0, bw_ib = 0;
+	u64 bw_ab = 0, bw_ib = 0, params_max, client_max;
 
 	enum vote_state {
 		NO_CHANGE,
@@ -372,11 +372,11 @@ void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_p
 		}
 	}
 
-	if ((params->data.core_clk_rate_ab > client_data->core_clk_rate_ab)
-			|| (params->data.core_clk_rate_ib > client_data->core_clk_rate_ib))
+	params_max = max(params->data.core_clk_rate_ab, params->data.core_clk_rate_ib);
+	client_max = max(client_data->core_clk_rate_ab, client_data->core_clk_rate_ib);
+	if (params_max > client_max)
 		clk_vote = UPVOTE;
-	else if ((params->data.core_clk_rate_ab < client_data->core_clk_rate_ab)
-			|| (params->data.core_clk_rate_ib < client_data->core_clk_rate_ib))
+	else if (params_max < client_max)
 		clk_vote = DOWNVOTE;
 
 	bw_ab = params->data.bw_ab;
@@ -397,11 +397,11 @@ void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_p
 		params->data.bw_ib = bw_ib;
 	}
 
-	if ((params->data.bw_ab > client_data->bw_ab)
-			|| (params->data.bw_ib > client_data->bw_ib))
+	params_max = max(params->data.bw_ab, params->data.bw_ib);
+	client_max = max(client_data->bw_ab, client_data->bw_ib);
+	if (params_max > client_max)
 		bw_vote = UPVOTE;
-	else if ((params->data.bw_ab < client_data->bw_ab)
-			|| (params->data.bw_ib < client_data->bw_ib))
+	else if (params_max < client_max)
 		bw_vote = DOWNVOTE;
 
 	if (bw_vote == clk_vote)

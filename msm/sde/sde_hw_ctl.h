@@ -183,9 +183,15 @@ struct sde_ctl_cesta_cfg {
 struct sde_hw_ctl_ops {
 	/**
 	 * hw fence control
-	 * @ctx         : ctl path ctx pointer
+	 * @ctx            : ctl path ctx pointer
+	 * @sw_set         : sw override to be set
+	 * @sw_clear       : sw override to clear
+	 * @mode           : HW fence enable
+	 * @sw_avr_set     : AVR is enabled
+	 * @sw_arp_set     : ARP mode is enabled
 	 */
-	void (*hw_fence_ctrl)(struct sde_hw_ctl *ctx, bool sw_set, bool sw_clear, u32 mode);
+	void (*hw_fence_ctrl)(struct sde_hw_ctl *ctx, bool sw_set, bool sw_clear, u32 mode,
+		bool sw_avr_set, bool sw_arp_set);
 
 	/**
 	 * override to trigger the signal for the output hw-fence

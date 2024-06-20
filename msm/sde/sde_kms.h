@@ -320,6 +320,9 @@ struct sde_kms {
 
 	unsigned long ipcc_base_addr;
 	u32 debugfs_hw_fence;
+	u32 debugfs_early_ept_handling;
+	atomic_t stay_awake_count;
+	struct sde_qtimer sde_qtimer;
 };
 
 struct vsync_info {

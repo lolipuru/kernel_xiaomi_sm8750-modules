@@ -2607,10 +2607,14 @@ static int sde_intf_parse_dt(struct device_node *np,
 			set_bit(SDE_INTF_TE_DEASSERT_DETECT, &intf->features);
 			set_bit(SDE_INTF_VSYNC_TS_SRC_EN, &intf->features);
 			set_bit(SDE_INTF_TE_LEVEL_TRIGGER, &intf->features);
+			set_bit(SDE_INTF_PERIPHERAL_FLUSH, &intf->features);
 		}
 
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_A00))
 			set_bit(SDE_INTF_PANIC_CTRL, &intf->features);
+
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+			set_bit(SDE_INTF_ESYNC, &intf->features);
 	}
 
 end:
@@ -5302,7 +5306,7 @@ out:
 	return rc;
 }
 
-static void _sde_hw_setup_uidle(struct sde_uidle_cfg *uidle_cfg)
+static void _sde_hw_setup_uidle(struct sde_uidle_cfg *uidle_cfg, u32 hw_rev)
 {
 	if (!uidle_cfg->uidle_rev)
 		return;
@@ -5313,7 +5317,7 @@ static void _sde_hw_setup_uidle(struct sde_uidle_cfg *uidle_cfg)
 	uidle_cfg->fal10_target_idle_time = SDE_UIDLE_FAL10_TARGET_IDLE;
 	uidle_cfg->fal1_target_idle_time = SDE_UIDLE_FAL1_TARGET_IDLE;
 	uidle_cfg->max_dwnscale = SDE_UIDLE_MAX_DWNSCALE;
-	uidle_cfg->debugfs_ctrl = true;
+	uidle_cfg->debugfs_ctrl = IS_SUN_TARGET(hw_rev) ? false : true;
 	uidle_cfg->fal1_max_threshold = SDE_UIDLE_FAL1_MAX_THRESHOLD;
 
 	if (IS_SDE_UIDLE_REV_100(uidle_cfg->uidle_rev)) {
@@ -5817,6 +5821,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
 		sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
 		sde_cfg->has_line_insertion = true;
+		sde_cfg->osc_clk_rate = 38400000;
 	} else {
 		SDE_ERROR("unsupported chipset id:%X\n", hw_rev);
 		sde_cfg->perf.min_prefill_lines = 0xffff;
@@ -5826,7 +5831,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 	if (!rc)
 		rc = sde_hardware_format_caps(sde_cfg, hw_rev);
 
-	_sde_hw_setup_uidle(&sde_cfg->uidle_cfg);
+	_sde_hw_setup_uidle(&sde_cfg->uidle_cfg, hw_rev);
 
 	return rc;
 }
