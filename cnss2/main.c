@@ -2197,7 +2197,12 @@ static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 		}
 		break;
 	case CNSS_REASON_RDDM:
-		cnss_bus_collect_dump_info(plat_priv, false);
+		ret = cnss_bus_collect_dump_info(plat_priv, false);
+		/* if EAGAIN is recieved, means we have initiated another rddm
+		 *due to stuck issue and need to return from current one
+		 */
+		if (ret == -EAGAIN)
+			return 0;
 		break;
 	case CNSS_REASON_DEFAULT:
 	case CNSS_REASON_TIMEOUT:

@@ -269,7 +269,7 @@ void cnss_pci_free_blob_mem(struct cnss_pci_data *pci_priv);
 int cnss_pci_load_aux(struct cnss_pci_data *pci_priv);
 int cnss_pci_handle_dev_sol_irq(struct cnss_pci_data *pci_priv);
 int cnss_pci_start_mhi(struct cnss_pci_data *pci_priv);
-void cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic);
+int cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic);
 #ifdef CONFIG_CNSS2_SSR_DRIVER_DUMP
 void cnss_pci_collect_host_dump_info(struct cnss_pci_data *pci_priv);
 #else
