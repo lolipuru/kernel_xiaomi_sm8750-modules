@@ -267,6 +267,9 @@ typedef void dp_ptnr_soc_iter_func(struct dp_soc *ptnr_soc, void *arg,
 #define DP_VDEV_ITERATE_ALL 1
 #endif
 
+#define RX_SIDE 0
+#define TX_SIDE 1
+
 /**
  * enum dp_pkt_xmit_type - The type of ingress stats are being referred
  *
@@ -5260,6 +5263,7 @@ struct dp_local_link_id_peer_map {
  * @bss_peer: set for bss peer
  * @isolation: enable peer isolation for this peer
  * @wds_enabled: WDS peer
+ * @is_dms: DMS enabled peer
  * @wds_ecm:
  * @flush_in_progress:
  * @bufq_info:
@@ -5300,7 +5304,8 @@ struct dp_txrx_peer {
 	uint16_t nawds_enabled:1,
 		bss_peer:1,
 		isolation:1,
-		wds_enabled:1;
+		wds_enabled:1,
+		is_dms:1;
 #ifdef WDS_VENDOR_EXTENSION
 	dp_ecm_policy wds_ecm;
 #endif

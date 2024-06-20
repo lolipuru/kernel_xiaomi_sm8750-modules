@@ -521,7 +521,6 @@ struct mon_rx_status {
 	uint32_t eht_known;
 	uint32_t eht_data[9];
 	uint32_t eht_all_user_num;
-	uint32_t eht_user_info[EHT_USER_INFO_LEN];
 #ifdef QCA_UNDECODED_METADATA_SUPPORT
 	uint32_t phyrx_abort:1,
 		 phyrx_abort_reason:8,
@@ -3424,6 +3423,45 @@ static inline qdf_nbuf_tx_cksum_t qdf_nbuf_get_tx_cksum(qdf_nbuf_t buf)
 static inline void qdf_nbuf_set_tx_ip_cksum(qdf_nbuf_t buf)
 {
 	__qdf_nbuf_set_tx_ip_cksum(buf);
+}
+
+/**
+ * qdf_nbuf_is_ipv4_first_fragment() - check if first fragmented packet
+ * @buf: Network buffer
+ *
+ * Return: true if first frag else false
+ */
+static inline bool qdf_nbuf_is_ipv4_first_fragment(qdf_nbuf_t buf)
+{
+	return __qdf_nbuf_is_ipv4_first_fragment(buf);
+}
+
+/**
+ * qdf_nbuf_get_ipv4_flow_info() - get ipv4 flow info
+ * @buf: Network buffer
+ * @flow_info: pointer to qdf_flow_info
+ *
+ * Return: QDF_STATUS
+ */
+static inline
+QDF_STATUS qdf_nbuf_get_ipv4_flow_info(qdf_nbuf_t buf,
+				       struct qdf_flow_info *flow_info)
+{
+	return __qdf_nbuf_get_ipv4_flow_info(buf, flow_info);
+}
+
+/**
+ * qdf_nbuf_get_ipv6_flow_info() - get ipv6 flow info
+ * @buf: Network buffer
+ * @flow_info: pointer to qdf_flow_info
+ *
+ * Return: QDF_STATUS
+ */
+static inline
+QDF_STATUS qdf_nbuf_get_ipv6_flow_info(qdf_nbuf_t buf,
+				       struct qdf_flow_info *flow_info)
+{
+	return __qdf_nbuf_get_ipv6_flow_info(buf, flow_info);
 }
 
 /**

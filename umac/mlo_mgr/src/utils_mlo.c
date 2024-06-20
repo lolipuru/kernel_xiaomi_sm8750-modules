@@ -1697,7 +1697,6 @@ QDF_STATUS util_validate_sta_prof_ie(const uint8_t *sta_prof_ie,
 	return QDF_STATUS_SUCCESS;
 }
 
-#ifdef CONN_MGR_ADV_FEATURE
 /**
  * util_add_mlie_for_prb_rsp_gen - Add the basic variant Multi-Link element
  * when generating link specific probe response.
@@ -1742,7 +1741,7 @@ util_add_mlie_for_prb_rsp_gen(const uint8_t *reportingsta_ie,
 	    common_info_len > reportingsta_ie_len ||
 	    (reportingsta_ie_len - common_info_len <
 	     sizeof(struct wlan_ie_multilink))) {
-		mlo_err("Failed to parse common info, mlie len %d common info len %d",
+		mlo_err("Failed to parse common info, mlie len %zu common info len %d",
 			reportingsta_ie_len, common_info_len);
 		return status;
 	}
@@ -1819,18 +1818,6 @@ util_add_mlie_for_prb_rsp_gen(const uint8_t *reportingsta_ie,
 
 	return QDF_STATUS_SUCCESS;
 }
-#else
-static QDF_STATUS
-util_add_mlie_for_prb_rsp_gen(const uint8_t *reportingsta_ie,
-			      qdf_size_t reportingsta_ie_len,
-			      uint8_t **plink_frame_currpos,
-			      qdf_size_t *plink_frame_currlen,
-			      qdf_size_t link_frame_maxsize,
-			      uint8_t linkid)
-{
-	return QDF_STATUS_SUCCESS;
-}
-#endif
 
 /**
  * util_find_bvmlie_persta_prof_for_linkid() - get per sta profile per link id
@@ -2009,6 +1996,7 @@ QDF_STATUS util_gen_link_reqrsp_cmn(uint8_t *frame, qdf_size_t frame_len,
 				    uint8_t subtype,
 				    uint8_t req_link_id,
 				    struct qdf_mac_addr link_addr,
+				    struct qdf_mac_addr *ml_probe_mld_addr,
 				    uint8_t *link_frame,
 				    qdf_size_t link_frame_maxsize,
 				    qdf_size_t *link_frame_len)
@@ -2228,8 +2216,14 @@ QDF_STATUS util_gen_link_reqrsp_cmn(uint8_t *frame, qdf_size_t frame_len,
 	mlieseq = NULL;
 	mlieseqlen = 0;
 
-	ret = util_find_mlie(frame_iesection, frame_iesection_len, &mlieseq,
-			     &mlieseqlen);
+	if ((subtype == WLAN_FC0_STYPE_PROBE_RESP) && ml_probe_mld_addr) {
+		ret = util_find_mlie_for_ml_probe_resp_by_mldaddr(
+				frame_iesection, frame_iesection_len,
+				&mlieseq, &mlieseqlen, *ml_probe_mld_addr);
+	} else {
+		ret = util_find_mlie(frame_iesection, frame_iesection_len,
+				     &mlieseq, &mlieseqlen);
+	}
 	if (QDF_IS_STATUS_ERROR(ret))
 		return ret;
 
@@ -2751,8 +2745,15 @@ QDF_STATUS util_gen_link_reqrsp_cmn(uint8_t *frame, qdf_size_t frame_len,
 					frame_iesection) == frame_iesection_len)
 				break;
 
-			/* Add BV ML IE for link specific probe response */
-			if (subtype == WLAN_FC0_STYPE_PROBE_RESP) {
+			/* Add BV ML IE for link specific probe response.
+			 *
+			 * For non-transmitting BSSID, there will be two BV ML
+			 * IEs so add only the link-specific IE with reference
+			 * to the BV ML IE intended for the non-transmitting
+			 * BSSID.
+			 */
+			if (subtype == WLAN_FC0_STYPE_PROBE_RESP &&
+			    (reportingsta_ie == mlieseq)) {
 				ret = util_add_mlie_for_prb_rsp_gen(
 					reportingsta_ie,
 					reportingsta_ie[TAG_LEN_POS],
@@ -2773,6 +2774,28 @@ QDF_STATUS util_gen_link_reqrsp_cmn(uint8_t *frame, qdf_size_t frame_len,
 
 			reportingsta_ie_size = reportingsta_ie[TAG_LEN_POS] +
 				MIN_IE_LEN;
+
+			/* Remove all the Fragment IEs following the ML IE */
+			while ((reportingsta_ie[ID_POS] ==
+					WLAN_ELEMID_FRAGMENT) &&
+				(((reportingsta_ie + reportingsta_ie_size) -
+				  frame_iesection) <= frame_iesection_len)) {
+				if (((reportingsta_ie + reportingsta_ie_size) -
+						frame_iesection) ==
+						frame_iesection_len) {
+					break;
+				}
+				reportingsta_ie += reportingsta_ie_size;
+				ret = util_validate_reportingsta_ie(
+						reportingsta_ie,
+						frame_iesection,
+						frame_iesection_len);
+				if (QDF_IS_STATUS_ERROR(ret))
+					goto mem_free;
+				reportingsta_ie_size =
+					reportingsta_ie[TAG_LEN_POS] +
+					MIN_IE_LEN;
+			}
 
 			continue;
 		}
@@ -3111,7 +3134,7 @@ util_gen_link_assoc_req(uint8_t *frame, qdf_size_t frame_len, bool isreassoc,
 	return util_gen_link_reqrsp_cmn(frame, frame_len,
 			(isreassoc ? WLAN_FC0_STYPE_REASSOC_REQ :
 				WLAN_FC0_STYPE_ASSOC_REQ),
-			link_id, link_addr, link_frame,
+			link_id, link_addr, NULL, link_frame,
 			link_frame_maxsize, link_frame_len);
 }
 
@@ -3126,7 +3149,7 @@ util_gen_link_assoc_rsp(uint8_t *frame, qdf_size_t frame_len, bool isreassoc,
 	return util_gen_link_reqrsp_cmn(frame, frame_len,
 			(isreassoc ?  WLAN_FC0_STYPE_REASSOC_RESP :
 				WLAN_FC0_STYPE_ASSOC_RESP),
-			link_id, link_addr, link_frame,
+			link_id, link_addr, NULL, link_frame,
 			link_frame_maxsize, link_frame_len);
 }
 
@@ -3139,9 +3162,24 @@ util_gen_link_probe_rsp(uint8_t *frame, qdf_size_t frame_len,
 			qdf_size_t *link_frame_len)
 {
 	return util_gen_link_reqrsp_cmn(frame, frame_len,
-			 WLAN_FC0_STYPE_PROBE_RESP, link_id,
-			link_addr, link_frame, link_frame_maxsize,
-			link_frame_len);
+			WLAN_FC0_STYPE_PROBE_RESP, link_id,
+			link_addr, NULL, link_frame,
+			link_frame_maxsize, link_frame_len);
+}
+
+QDF_STATUS
+util_gen_link_probe_rsp_by_mld_addr(uint8_t *frame, qdf_size_t frame_len,
+				    uint8_t link_id,
+				    struct qdf_mac_addr link_addr,
+				    struct qdf_mac_addr ml_probe_mld_addr,
+				    uint8_t *link_frame,
+				    qdf_size_t link_frame_maxsize,
+				    qdf_size_t *link_frame_len)
+{
+	return util_gen_link_reqrsp_cmn(frame, frame_len,
+			WLAN_FC0_STYPE_PROBE_RESP, link_id,
+			link_addr, &ml_probe_mld_addr, link_frame,
+			link_frame_maxsize, link_frame_len);
 }
 
 QDF_STATUS
@@ -3220,6 +3258,76 @@ util_find_mlie(uint8_t *buf, qdf_size_t buflen, uint8_t **mlieseq,
 		currie = successorfrag;
 		successorfrag = util_get_successorfrag(currie, buf, buflen);
 	}
+
+	*mlieseq = ieseq;
+	*mlieseqlen = ieseqlen;
+	return QDF_STATUS_SUCCESS;
+}
+
+QDF_STATUS
+util_find_mlie_for_ml_probe_resp_by_mldaddr(uint8_t *buf, qdf_size_t buflen,
+					    uint8_t **mlieseq,
+					    qdf_size_t *mlieseqlen,
+					    struct qdf_mac_addr mld_addr)
+{
+	uint8_t *ieseq, *bufboundary;
+	qdf_size_t ieseqlen, buf_parsed_len;
+	struct qdf_mac_addr ieseq_mldaddr;
+	QDF_STATUS status;
+
+	if (!buf || !buflen || !mlieseq || !mlieseqlen)
+		return QDF_STATUS_E_NULL_VALUE;
+
+	*mlieseq = NULL;
+	*mlieseqlen = 0;
+	buf_parsed_len = 0;
+	bufboundary = buf + buflen;
+
+	while (buflen > buf_parsed_len) {
+		/* Find a Basic-variant Multi-Link element from the buffer with
+		 * the given MLD mac address.
+		 */
+		status = util_find_mlie_by_variant(buf + buf_parsed_len,
+						   buflen - buf_parsed_len,
+						   &ieseq, &ieseqlen,
+						   WLAN_ML_VARIANT_BASIC);
+		if (QDF_IS_STATUS_ERROR(status))
+			return status;
+
+		if (!ieseq)
+			return QDF_STATUS_SUCCESS;
+
+		status = util_get_bvmlie_mldmacaddr(ieseq, ieseqlen,
+						    &ieseq_mldaddr);
+		if (QDF_IS_STATUS_ERROR(status))
+			return status;
+
+		if (qdf_is_macaddr_equal(&ieseq_mldaddr, &mld_addr)) {
+			mlo_debug("Basic variant Multi-link element with MLD mac addr " QDF_MAC_ADDR_FMT " found",
+				  QDF_MAC_ADDR_REF(ieseq_mldaddr.bytes));
+			break;
+		}
+
+		buf_parsed_len = ieseq + ieseqlen - buf;
+		ieseq = NULL;
+		ieseqlen = 0;
+	}
+
+	/* Even if the element is not found, we have successfully examined the
+	 * buffer. The caller will be provided a NULL value for the starting of
+	 * the Multi-Link element. Hence, we return success.
+	 */
+	if (!ieseq)
+		return QDF_STATUS_SUCCESS;
+
+	if ((ieseq + MIN_IE_LEN) > bufboundary)
+		return QDF_STATUS_E_INVAL;
+
+	if (ieseqlen < sizeof(struct wlan_ie_multilink))
+		return QDF_STATUS_E_PROTO;
+
+	if ((ieseq + ieseqlen) > bufboundary)
+		return QDF_STATUS_E_INVAL;
 
 	*mlieseq = ieseq;
 	*mlieseqlen = ieseqlen;

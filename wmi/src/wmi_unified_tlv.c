@@ -6300,6 +6300,8 @@ static QDF_STATUS send_probe_rsp_tmpl_send_cmd_tlv(wmi_unified_t wmi_handle,
 		       WMITLV_TAG_STRUC_wmi_prb_tmpl_cmd_fixed_param,
 		       WMITLV_GET_STRUCT_TLVLEN(wmi_prb_tmpl_cmd_fixed_param));
 	cmd->vdev_id = vdev_id;
+	cmd->flags = probe_rsp_info->go_ignore_non_p2p_probe_req;
+
 	cmd->buf_len = tmpl_len;
 	buf_ptr += sizeof(wmi_prb_tmpl_cmd_fixed_param);
 
@@ -10061,6 +10063,24 @@ void wmi_copy_smem_mailbox_support(wmi_resource_config *resource_cfg,
 }
 #endif
 
+#ifdef FEATURE_EPM
+static inline
+void wmi_copy_epm_support(wmi_resource_config *resource_cfg,
+			  target_resource_config *tgt_res_cfg)
+{
+	if (tgt_res_cfg->is_epm_supported) {
+		WMI_RSRC_CFG_FLAGS2_EPM_SET(
+			resource_cfg->flags2, 1);
+	}
+}
+#else
+static inline
+void wmi_copy_epm_support(wmi_resource_config *resource_cfg,
+			  target_resource_config *tgt_res_cfg)
+{
+}
+#endif
+
 static
 void wmi_copy_resource_config(wmi_resource_config *resource_cfg,
 				target_resource_config *tgt_res_cfg)
@@ -10156,6 +10176,8 @@ void wmi_copy_resource_config(wmi_resource_config *resource_cfg,
 	resource_cfg->num_max_active_vdevs = tgt_res_cfg->num_max_active_vdevs;
 
 	wmi_copy_smem_mailbox_support(resource_cfg, tgt_res_cfg);
+
+	wmi_copy_epm_support(resource_cfg, tgt_res_cfg);
 
 	resource_cfg->num_max_mlo_link_per_ml_bss =
 				tgt_res_cfg->num_max_mlo_link_per_ml_bss;
@@ -18078,6 +18100,7 @@ static QDF_STATUS extract_dfs_radar_detection_event_tlv(
 
 	radar_event = param_tlv->fixed_param;
 
+	qdf_mem_zero(radar_found, sizeof(struct radar_found_info));
 	radar_found->pdev_id = convert_target_pdev_id_to_host_pdev_id(
 						wmi_handle,
 						radar_event->pdev_id);
@@ -18085,7 +18108,6 @@ static QDF_STATUS extract_dfs_radar_detection_event_tlv(
 	if (radar_found->pdev_id == WMI_HOST_PDEV_ID_INVALID)
 		return QDF_STATUS_E_FAILURE;
 
-	qdf_mem_zero(radar_found, sizeof(struct radar_found_info));
 	radar_found->detection_mode = radar_event->detection_mode;
 	radar_found->chan_freq = radar_event->chan_freq;
 	radar_found->chan_width = radar_event->chan_width;
@@ -24005,6 +24027,8 @@ static void populate_tlv_service(uint32_t *wmi_service)
 				WMI_SERVICE_NAN_PAIRING_PEER_CREATE_BY_HOST;
 	wmi_service[wmi_service_sta_sap_ndp_concurrency_support] =
 				WMI_SERVICE_STA_SAP_NDP_CONCURRENCY_SUPPORT;
+	wmi_service[wmi_service_sta_p2p_ndp_conc] =
+				WMI_SERVICE_STA_P2P_NDP_CONCURRENCY_SUPPORT;
 #endif
 	wmi_service[wmi_service_therm_throt_pout_reduction] =
 			WMI_SERVICE_THERM_THROT_POUT_REDUCTION;
@@ -24018,6 +24042,8 @@ static void populate_tlv_service(uint32_t *wmi_service)
 #endif
 	wmi_service[wmi_service_support_ap_suspend_resume] =
 				WMI_SERVICE_SUPPORT_AP_SUSPEND_RESUME;
+	wmi_service[wmi_service_epm] =
+				WMI_SERVICE_EPM;
 }
 
 /**

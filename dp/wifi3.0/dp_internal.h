@@ -331,11 +331,13 @@ QDF_STATUS dp_mon_soc_detach(struct dp_soc *soc)
  * dp_rx_err_match_dhost() - function to check whether dest-mac is correct
  * @eh: Ethernet header of incoming packet
  * @vdev: dp_vdev object of the VAP on which this data packet is received
+ * @is_ml: Whether the peer is MLD or not
  *
  * Return: 1 if the destination mac is correct,
  *         0 if this frame is not correctly destined to this VAP/MLD
  */
-int dp_rx_err_match_dhost(qdf_ether_header_t *eh, struct dp_vdev *vdev);
+int dp_rx_err_match_dhost(qdf_ether_header_t *eh, struct dp_vdev *vdev,
+			  bool is_ml);
 
 #ifdef MONITOR_MODULARIZED_ENABLE
 static inline bool dp_monitor_modularized_enable(void)
@@ -561,7 +563,8 @@ static inline void dp_monitor_print_pdev_rx_mon_stats(struct dp_pdev *pdev)
 }
 
 static inline QDF_STATUS dp_monitor_config_enh_tx_capture(struct dp_pdev *pdev,
-							  uint32_t val)
+							  uint32_t val,
+							  uint8_t mac_id)
 {
 	return QDF_STATUS_E_INVAL;
 }
@@ -3337,6 +3340,8 @@ uint16_t dp_tx_me_send_convert_ucast(struct cdp_soc_t *soc, uint8_t vdev_id,
 void dp_tx_me_alloc_descriptor(struct cdp_soc_t *soc, uint8_t pdev_id);
 
 void dp_tx_me_free_descriptor(struct cdp_soc_t *soc, uint8_t pdev_id);
+bool dp_peer_check_dms_capable_by_mac(struct cdp_soc_t *soc, uint8_t vdev_id,
+				      uint8_t *mac_addr);
 
 /**
  * dp_h2t_ext_stats_msg_send(): function to construct HTT message to pass to FW

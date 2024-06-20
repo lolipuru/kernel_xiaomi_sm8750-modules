@@ -41,6 +41,10 @@
 
 #ifdef CONFIG_BERYLLIUM
 #define WLAN_CFG_RX_FST_MAX_SEARCH 16
+#ifdef WLAN_FEATURE_LATENCY_SENSITIVE_REO
+#define DP_LSR_RING_INT_TIMER_US 32
+#define DP_LSR_RING_BATCH_THRESHOLD 0
+#endif
 #else
 #define WLAN_CFG_RX_FST_MAX_SEARCH 2
 #endif
@@ -292,6 +296,9 @@ struct wlan_srng_cfg {
  * @reo_rings_mapping:
  * @rx_rings_mapping: DP RX rings mapping mask
  * @pext_stats_enabled: Flag to enable and disabled peer extended stats
+ * @dp_stats_max_window_size: Size of Max window size for non-SAWF stats
+ * @dp_stats_max_pkt_per_window_size: Size of Max packets per window size of
+ * non-SAWF stats
  * @is_rx_buff_pool_enabled: flag to enable/disable emergency RX buffer
  *                           pool support
  * @is_rx_refill_buff_pool_enabled: flag to enable/disable RX refill buffer
@@ -345,7 +352,9 @@ struct wlan_srng_cfg {
  * @tx_capt_rbm_id: Return Buffer Manager ID to be used for Tx packet capture
  * @sawf_enabled:  Is SAWF enabled
  * @sawf_msduq_reclaim_enabled: SAWF MSDUQ reclaim feature enable/disable
+ * @sawf_msduq_reclaim_timer_val: SAWF MSDUQ Reclaim timer value in sec
  * @sawf_mcast_enabled : SAWF for multicast enable/disable
+ * @sawf_msduq_tid_skid_enabled: SAWF MSDUQ low/high TID Skid enable/disable
  * @sawf_stats: SAWF Statistics
  * @mpdu_retry_threshold_1: MPDU retry threshold 1 to increment tx bad count
  * @mpdu_retry_threshold_2: MPDU retry threshold 2 to increment tx bad count
@@ -509,6 +518,10 @@ struct wlan_cfg_dp_soc_ctxt {
 	uint32_t reo_rings_mapping;
 	uint32_t rx_rings_mapping;
 	bool pext_stats_enabled;
+#if (defined(QCA_PEER_EXT_STATS) && defined(WLAN_CONFIG_TX_DELAY))
+	uint32_t dp_stats_max_window_size;
+	uint32_t dp_stats_max_pkt_per_window_size;
+#endif
 	bool is_rx_buff_pool_enabled;
 	bool is_rx_refill_buff_pool_enabled;
 	bool enable_dp_buf_page_frag_alloc;
@@ -572,7 +585,9 @@ struct wlan_cfg_dp_soc_ctxt {
 #ifdef CONFIG_SAWF
 	bool sawf_enabled;
 	bool sawf_msduq_reclaim_enabled;
+	uint8_t sawf_msduq_reclaim_timer_val;
 	bool sawf_mcast_enabled;
+	bool sawf_msduq_tid_skid_enabled;
 #endif
 #ifdef CONFIG_SAWF_STATS
 	uint8_t sawf_stats;
@@ -2114,6 +2129,16 @@ void wlan_cfg_fill_interrupt_mask(struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx,
 				  bool umac_reset_support);
 
 /**
+ * wlan_cfg_get_intr_idx_from_rx_ring_id() - Get interrupt context index from
+ *					     Rx re02sw ring id
+ *
+ * @rx_ring_id: Rx ring id
+ *
+ * Return: interrupt context index for valid rx_ring_id else error code.
+ */
+int wlan_cfg_get_intr_idx_from_rx_ring_id(uint8_t rx_ring_id);
+
+/**
  * wlan_cfg_is_rx_buffer_pool_enabled() - Get RX buffer pool enabled flag
  *
  *
@@ -2203,6 +2228,28 @@ uint32_t wlan_cfg_get_rx_rings_mapping(struct wlan_cfg_dp_soc_ctxt *cfg);
 void
 wlan_cfg_set_peer_ext_stats(struct wlan_cfg_dp_soc_ctxt *cfg,
 			    bool val);
+
+/**
+ * wlan_cfg_get_dp_stats_max_window_size() - Get non-SAWF DP stats maximum
+ * window size
+ *
+ * @cfg: soc configuration context
+ *
+ * Return: Maximum window size
+ */
+uint32_t
+wlan_cfg_get_dp_stats_max_window_size(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
+ * wlan_cfg_get_dp_stats_max_pkt_per_window_size() - Get non-SAWF DP stats
+ * maximum packets per window size
+ *
+ * @cfg: soc configuration context
+ *
+ * Return: Size of maximum packets per window
+ */
+uint32_t
+wlan_cfg_get_dp_stats_max_pkt_per_window_size(struct wlan_cfg_dp_soc_ctxt *cfg);
 
 /**
  * wlan_cfg_set_peer_jitter_stats() - set peer jitter stats
@@ -2664,6 +2711,16 @@ wlan_cfg_get_sawf_config(struct wlan_cfg_dp_soc_ctxt *cfg);
 void
 wlan_cfg_set_sawf_msduq_reclaim_config(struct wlan_cfg_dp_soc_ctxt *cfg,
 				       bool val);
+/**
+ * wlan_cfg_get_sawf_msduq_reclaim_timer_val() - Get SAWF MSDUQ Reclaim timer
+ * value
+ * @cfg: config context
+ *
+ * Return: SAWF MSDUQ Reclaim timer value in milli seconds.
+ *
+ */
+int
+wlan_cfg_get_sawf_msduq_reclaim_timer_val(struct wlan_cfg_dp_soc_ctxt *cfg);
 
 /**
  * wlan_cfg_get_sawf_msduq_reclaim_config() - Get SAWF MSDUQ reclaim config
@@ -2682,6 +2739,16 @@ wlan_cfg_get_sawf_msduq_reclaim_config(struct wlan_cfg_dp_soc_ctxt *cfg);
  * Return: true or false
  */
 bool wlan_cfg_get_sawf_mc_config(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
+ * wlan_cfg_get_sawf_msduq_tid_skid_config() - Get SAWF MSDUQ low/high TID skid
+ * config enable/disable
+ * @cfg: config context
+ *
+ * Return: true or false
+ */
+bool
+wlan_cfg_get_sawf_msduq_tid_skid_config(struct wlan_cfg_dp_soc_ctxt *cfg);
 
 /**
  * wlan_cfg_set_sawf_stats_config() - Set SAWF stats config

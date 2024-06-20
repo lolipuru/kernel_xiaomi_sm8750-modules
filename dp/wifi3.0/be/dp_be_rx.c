@@ -1343,7 +1343,7 @@ QDF_STATUS dp_wbm_get_rx_desc_from_hal_desc_be(struct dp_soc *soc,
 					       struct dp_rx_desc **r_rx_desc)
 {
 	/* SW do cookie conversion */
-	uint32_t cookie = HAL_RX_WBM_COMP_BUF_COOKIE_GET(ring_desc);
+	uint32_t cookie = HAL_RX_BUF_COOKIE_GET(ring_desc);
 
 	*r_rx_desc = (struct dp_rx_desc *)
 			dp_cc_desc_find(soc, cookie);
@@ -1555,35 +1555,6 @@ dp_rx_intrabss_fwd_mlo_allow(struct dp_txrx_peer *ta_peer,
 #endif
 
 #ifdef INTRA_BSS_FWD_OFFLOAD
-#ifdef QCA_SUPPORT_WDS_EXTENDED
-static bool
-dp_rx_intrabss_wds_ext_ap_bridge_check_be(struct dp_txrx_peer *ta_peer,
-					  struct dp_txrx_peer *da_peer)
-{
-	if (!ta_peer->vdev->wds_ext_enabled ||
-	    ta_peer->vdev->wds_ext_ap_bridge)
-		return false;
-
-	/* either ta peer or da peer is wds ext capable,
-	 * perform wds ext ap bridging.
-	 */
-	if ((ta_peer && qdf_atomic_test_bit(WDS_EXT_PEER_INIT_BIT,
-					    &ta_peer->wds_ext.init)) ||
-	    (da_peer && qdf_atomic_test_bit(WDS_EXT_PEER_INIT_BIT,
-					    &da_peer->wds_ext.init)))
-		return true;
-
-	return false;
-}
-#else
-static bool
-dp_rx_intrabss_wds_ext_ap_bridge_check_be(struct dp_txrx_peer *ta_peer,
-					  struct dp_txrx_peer *da_peer)
-{
-	return false;
-}
-#endif
-
 /**
  * dp_rx_intrabss_ucast_check_be() - Check if intrabss is allowed
  *				     for unicast frame
@@ -1642,9 +1613,10 @@ dp_rx_intrabss_ucast_check_be(qdf_nbuf_t nbuf,
 			return false;
 		}
 
-		if (dp_rx_intrabss_wds_ext_ap_bridge_check_be(
+		if (dp_rx_intrabss_wds_ext_ap_bridge_check(
 							ta_peer,
-							da_peer->txrx_peer)) {
+							da_peer->txrx_peer,
+							false)) {
 			dp_peer_unref_delete(da_peer, DP_MOD_ID_RX);
 			return false;
 		}
@@ -2662,7 +2634,8 @@ dp_rx_null_q_desc_handle_be(struct dp_soc *soc, qdf_nbuf_t nbuf,
 		is_eapol = qdf_nbuf_is_ipv4_eapol_pkt(nbuf);
 
 		if (is_eapol || qdf_nbuf_is_ipv4_wapi_pkt(nbuf)) {
-			if (!dp_rx_err_match_dhost(eh, vdev))
+			if (!dp_rx_err_match_dhost(eh, vdev,
+						   txrx_peer->is_mld_peer))
 				goto drop_nbuf;
 		} else {
 			goto drop_nbuf;
@@ -2681,7 +2654,8 @@ dp_rx_null_q_desc_handle_be(struct dp_soc *soc, qdf_nbuf_t nbuf,
 	 *    These packets need to be dropped and should not get delivered
 	 *    to stack.
 	 */
-	if (qdf_unlikely(dp_rx_err_cce_drop(soc, vdev, nbuf, rx_tlv_hdr)))
+	if (qdf_unlikely(dp_rx_err_cce_drop(soc, vdev, nbuf, rx_tlv_hdr,
+					    txrx_peer->is_mld_peer)))
 		goto drop_nbuf;
 
 	/*

@@ -1488,7 +1488,7 @@ dp_rx_mon_add_ppdu_info_to_wq(struct dp_pdev *pdev,
 		}
 		qdf_spin_unlock_bh(&mon_pdev_be->rx_mon_wq_lock);
 
-		if (mon_pdev_be->rx_mon_queue_depth >
+		if (mon_pdev_be->rx_mon_queue_depth >=
 		    wlan_cfg_get_rx_mon_wq_depth(soc->wlan_cfg_ctx)) {
 			qdf_queue_work(0, mon_pdev_be->rx_mon_workqueue,
 				       &mon_pdev_be->rx_mon_work);
@@ -2279,7 +2279,8 @@ dp_rx_mon_process_status_tlv(struct dp_pdev *pdev)
 	}
 
 	/* convert encryption type to cdp enum */
-	dp_convert_enc_to_cdp_enc(ppdu_info);
+	dp_convert_enc_to_cdp_enc(ppdu_info->rx_user_status,
+				  ppdu_info->user_id, RX_SIDE);
 	ppdu_info->rx_status.tsft = ppdu_info->rx_status.tsft +
 				    pdev->timestamp.mlo_offset_lo_us +
 				    ((uint64_t)pdev->timestamp.mlo_offset_hi_us

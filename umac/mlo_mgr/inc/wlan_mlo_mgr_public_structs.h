@@ -1027,6 +1027,7 @@ struct wlan_mlo_link_mac_update {
  * @wlan_bridge_vdev_list: list of bridge vdevs associated with this MLO
  * @wlan_bridge_vdev_count: number of elements in the bridge vdev list
  * @bridge_sta_ctx: bridge sta context
+ * @br_pdev_list: pdev used for bridge vap creation in the MLD
  * @wlan_vdev_count: number of elements in the vdev list
  * @mlo_peer_list: list peers in this MLO connection
  * @wlan_max_mlo_peer_count: peer count across the links of specific MLO
@@ -1054,6 +1055,7 @@ struct wlan_mlo_dev_context {
 #if defined(WLAN_FEATURE_11BE_MLO) && defined(WLAN_MLO_MULTI_CHIP)
 	struct wlan_objmgr_vdev *wlan_bridge_vdev_list[WLAN_UMAC_MLO_MAX_BRIDGE_VDEVS];
 	struct wlan_mlo_bridge_sta *bridge_sta_ctx;
+	struct wlan_objmgr_pdev *br_pdev_list[MLO_MAX_BRIDGE_LINKS_PER_MLD];
 #endif
 	uint16_t wlan_vdev_count;
 	uint16_t wlan_bridge_vdev_count;
@@ -1245,6 +1247,7 @@ struct ttlm_state_sm {
  * @primary_umac_migration_in_progress: flag to indicate primary umac migration
  * in progress
  * @ttlm_sm: TTLM state machine
+ * @ttlm_request_timer: TTLM request timer
  * @peer_ptqm_migrate_ctx: PTQM migration peer context
  */
 struct wlan_mlo_peer_context {
@@ -1291,6 +1294,7 @@ struct wlan_mlo_peer_context {
 	bool primary_umac_migration_in_progress;
 #ifdef WLAN_FEATURE_11BE_MLO_TTLM
 	struct ttlm_state_sm ttlm_sm;
+	qdf_mc_timer_t ttlm_request_timer;
 #endif
 #ifdef QCA_SUPPORT_PRIMARY_LINK_MIGRATE
 	struct ptqm_migrate_peer_context *peer_ptqm_migrate_ctx;

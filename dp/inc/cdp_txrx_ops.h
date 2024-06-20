@@ -1031,6 +1031,9 @@ struct cdp_me_ops {
 					qdf_nbuf_t wbuf, u_int8_t newmac[][6],
 					uint8_t newmaccnt, uint8_t tid,
 					bool is_igmp, bool is_dms_pkt);
+
+	bool (*is_peer_dms_capable)(struct cdp_soc_t *soc, uint8_t vdev_id,
+				    uint8_t *mac_addr);
 };
 
 /**
@@ -1817,11 +1820,20 @@ void (*peer_send_wds_disconnect)(struct cdp_ctrl_objmgr_psoc *psoc,
 #ifdef CONFIG_SAWF_DEF_QUEUES
 	int (*disable_sawf_svc)(uint8_t svc_id);
 #endif
+#if defined(IPA_OFFLOAD) && defined(QCA_IPA_LL_TX_FLOW_CONTROL)
+	uint8_t (*get_mlo_chip_id)(struct cdp_ctrl_objmgr_psoc *psoc);
+#endif
 	void (*dp_print_fisa_stats)(enum cdp_fisa_stats_id stats_id);
 #if defined(IPA_OFFLOAD) && defined(IPA_OFFLOAD_LOW_MEM)
 	uint16_t (*pdev_get_num_buff)(struct cdp_ctrl_objmgr_psoc *psoc,
 				      uint8_t pdev_id,
 				      enum qdf_buff_type_tx_rx buff_type);
+#endif
+#ifdef WLAN_DP_FEATURE_STC
+	QDF_STATUS (*dp_peer_event_notify)(ol_txrx_soc_handle soc,
+					   enum cdp_peer_event event,
+					   uint16_t peer_id, uint8_t vdev_id,
+					   uint8_t *peer_mac_addr);
 #endif
 };
 
@@ -2590,6 +2602,10 @@ struct cdp_sawf_ops {
 				uint8_t svc_id, uint8_t direction,
 				uint8_t start_or_stop, uint8_t *peer_mac,
 				uint16_t peer_id, uint16_t flow_count);
+	QDF_STATUS
+	(*txrx_get_peer_sawf_admctrl_stats)(struct cdp_soc_t *soc, uint8_t *mac,
+					    void *data,
+					    enum cdp_peer_type peer_type);
 #endif
 #ifdef WLAN_FEATURE_11BE_MLO_3_LINK_TX
 	uint16_t

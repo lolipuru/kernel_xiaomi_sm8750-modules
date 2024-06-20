@@ -2731,6 +2731,30 @@ static inline struct dp_peer *dp_peer_find_add_id(struct dp_soc *soc,
 	return NULL;
 }
 
+#ifdef WLAN_DP_FEATURE_STC
+static inline QDF_STATUS
+__dp_peer_event_notify(struct dp_soc *soc, enum cdp_peer_event event,
+		       uint16_t peer_id, uint8_t vdev_id,
+		       uint8_t *peer_mac_addr)
+{
+	if (!soc->cdp_soc.ol_ops->dp_peer_event_notify)
+		return QDF_STATUS_SUCCESS;
+
+	return soc->cdp_soc.ol_ops->dp_peer_event_notify(dp_soc_to_cdp_soc_t(soc),
+							 event, peer_id,
+							 vdev_id,
+							 peer_mac_addr);
+}
+#else
+static inline QDF_STATUS
+__dp_peer_event_notify(struct dp_soc *soc, enum cdp_peer_event event,
+		       uint16_t peer_id, uint8_t vdev_id,
+		       uint8_t *peer_mac_addr)
+{
+	return QDF_STATUS_SUCCESS;
+}
+#endif
+
 #ifdef WLAN_FEATURE_11BE_MLO
 #ifdef DP_USE_REDUCED_PEER_ID_FIELD_WIDTH
 uint16_t dp_gen_ml_peer_id(struct dp_soc *soc, uint16_t peer_id)
@@ -2741,6 +2765,19 @@ uint16_t dp_gen_ml_peer_id(struct dp_soc *soc, uint16_t peer_id)
 uint16_t dp_gen_ml_peer_id(struct dp_soc *soc, uint16_t peer_id)
 {
 	return (peer_id | (1 << HTT_RX_PEER_META_DATA_V1_ML_PEER_VALID_S));
+}
+#endif
+
+#ifdef WLAN_MLO_MULTI_CHIP
+static void dp_rx_mlo_update_ast_idx(struct dp_vdev *vdev, uint16_t hw_peer_id,
+				     uint16_t ast_hash)
+{ }
+#else
+static void dp_rx_mlo_update_ast_idx(struct dp_vdev *vdev, uint16_t hw_peer_id,
+				     uint16_t ast_hash)
+{
+	vdev->bss_ast_hash = ast_hash;
+	vdev->bss_ast_idx = hw_peer_id;
 }
 #endif
 
@@ -2794,10 +2831,9 @@ dp_rx_mlo_peer_map_handler(struct dp_soc *soc, uint16_t peer_id,
 				peer->txrx_peer->bss_peer = 1;
 		}
 
-		if (peer->vdev->opmode == wlan_op_mode_sta) {
-			peer->vdev->bss_ast_hash = ast_hash;
-			peer->vdev->bss_ast_idx = hw_peer_id;
-		}
+		if (peer->vdev->opmode == wlan_op_mode_sta)
+			dp_rx_mlo_update_ast_idx(peer->vdev, hw_peer_id,
+						 ast_hash);
 
 		/* Add ast entry incase self ast entry is
 		 * deleted due to DP CP sync issue
@@ -2836,6 +2872,9 @@ dp_rx_mlo_peer_map_handler(struct dp_soc *soc, uint16_t peer_id,
 						   DP_NON_QOS_TID,
 						   peer->rx_tid[DP_NON_QOS_TID].hw_qdesc_paddr);
 		}
+
+		__dp_peer_event_notify(soc, CDP_PEER_EVENT_MAP, peer->peer_id,
+				       peer->vdev->vdev_id, peer->mac_addr.raw);
 	}
 
 	if (!primary_soc)
@@ -3012,6 +3051,11 @@ dp_rx_peer_map_handler(struct dp_soc *soc, uint16_t peer_id,
 							   DP_NON_QOS_TID,
 							   peer->rx_tid[DP_NON_QOS_TID].hw_qdesc_paddr);
 			}
+
+			__dp_peer_event_notify(soc, CDP_PEER_EVENT_MAP,
+					       peer->peer_id,
+					       peer->vdev->vdev_id,
+					       peer->mac_addr.raw);
 		}
 
 		err = dp_peer_map_ast(soc, peer, peer_mac_addr, hw_peer_id,
@@ -3155,6 +3199,8 @@ dp_rx_peer_unmap_handler(struct dp_soc *soc, uint16_t peer_id,
 
 	dp_update_vdev_stats_on_peer_unmap(vdev, peer);
 
+	__dp_peer_event_notify(soc, CDP_PEER_EVENT_UNMAP, peer_id,
+			       peer->vdev->vdev_id, peer->mac_addr.raw);
 	dp_peer_update_state(soc, peer, DP_PEER_STATE_INACTIVE);
 	dp_peer_unref_delete(peer, DP_MOD_ID_HTT);
 	/*
@@ -3508,6 +3554,12 @@ QDF_STATUS dp_peer_delay_stats_ctx_alloc(struct dp_soc *soc,
 			struct cdp_delay_rx_stats *rx_delay =
 			&txrx_peer->delay_stats->delay_tid_stats[tid][ctx_id].rx_delay;
 
+			tx_delay->max_window_size =
+				wlan_cfg_get_dp_stats_max_window_size(
+							soc->wlan_cfg_ctx);
+			tx_delay->max_pkt_per_window_size =
+				wlan_cfg_get_dp_stats_max_pkt_per_window_size(
+							soc->wlan_cfg_ctx);
 			dp_hist_init(&tx_delay->tx_swq_delay,
 				     CDP_HIST_TYPE_SW_ENQEUE_DELAY);
 			dp_hist_init(&tx_delay->hwtx_delay,
@@ -4123,6 +4175,7 @@ void dp_get_info_by_peer_mac(struct cdp_soc_t *soc_hdl,
 			     struct cdp_peer_output_param *param)
 {
 	param->vdev_id = vdev_id;
+	param->peer_id = 0xFFFF;
 	dp_get_peer_details(soc_hdl, vdev_id, peer_mac, param, false);
 }
 #endif

@@ -45,6 +45,11 @@
 #define RX_DATA_BUFFER_OPT_ALIGNMENT	RX_DATA_BUFFER_ALIGNMENT
 #endif
 
+#ifdef WLAN_FEATURE_LATENCY_SENSITIVE_REO
+#define LSR_DEST_RING_IDX	7	//reo_dest_ring[7] -> REO_REMAP_SW8
+#define LSR_DEST_RING		REO_REMAP_SW8
+#endif
+
 #if defined(WLAN_MAX_PDEVS) && (WLAN_MAX_PDEVS == 1)
 #define DP_WBM2SW_RBM(sw0_bm_id)	HAL_RX_BUF_RBM_SW1_BM(sw0_bm_id)
 /* RBM value used for re-injecting defragmented packets into REO */
@@ -734,6 +739,37 @@ void *dp_rx_cookie_2_va_mon_status(struct dp_soc *soc, uint32_t cookie)
 #endif /* RX_DESC_MULTI_PAGE_ALLOC */
 
 #ifndef QCA_HOST_MODE_WIFI_DISABLED
+
+#ifdef QCA_SUPPORT_WDS_EXTENDED
+static inline bool
+dp_rx_intrabss_wds_ext_ap_bridge_check(struct dp_txrx_peer *ta_peer,
+				       struct dp_txrx_peer *da_peer,
+				       bool is_mcast_pkt)
+{
+	if (!ta_peer->vdev->wds_ext_enabled)
+		return false;
+
+	if (!is_mcast_pkt && ta_peer->vdev->wds_ext_ap_bridge)
+		return false;
+
+	/* either ta peer or da peer is wds ext capable,
+	 * perform wds ext ap bridging.
+	 */
+	if ((ta_peer && dp_peer_is_wds_ext_peer(ta_peer)) ||
+	    (da_peer && dp_peer_is_wds_ext_peer(da_peer)))
+		return true;
+
+	return false;
+}
+#else
+static inline bool
+dp_rx_intrabss_wds_ext_ap_bridge_check(struct dp_txrx_peer *ta_peer,
+				       struct dp_txrx_peer *da_peer,
+				       bool is_mcast_pkt)
+{
+	return false;
+}
+#endif
 
 static inline bool dp_rx_check_ap_bridge(struct dp_vdev *vdev)
 {
@@ -1647,12 +1683,13 @@ dp_rx_update_protocol_tag(struct dp_soc *soc, struct dp_vdev *vdev,
  * @vdev: vdev on which the packet is received
  * @nbuf: QDF pkt buffer on which the protocol tag should be set
  * @rx_tlv_hdr: rBbase address where the RX TLVs starts
+ * @is_mld: Whether the peer is MLD or not
  *
  * Return: bool
  */
 static inline bool
 dp_rx_err_cce_drop(struct dp_soc *soc, struct dp_vdev *vdev,
-		   qdf_nbuf_t nbuf, uint8_t *rx_tlv_hdr)
+		   qdf_nbuf_t nbuf, uint8_t *rx_tlv_hdr, bool is_mld)
 {
 	return false;
 }

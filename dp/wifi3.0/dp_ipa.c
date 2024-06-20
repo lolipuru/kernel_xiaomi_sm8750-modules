@@ -548,7 +548,7 @@ dp_ipa_setup_tx_params_pmac_id(struct dp_soc *soc,
 
 	uint8_t pmac_id = 0;
 
-	if (soc->pdev_count > 1)
+	if ((soc->pdev_count > 1) && (soc->pdev_count < MAX_PDEV_CNT))
 		pmac_id = soc->pdev_list[soc->pdev_count - 1]->lmac_id;
 
 	QDF_IPA_WDI_SETUP_INFO_RX_PMAC_ID(tx, pmac_id);
@@ -560,7 +560,7 @@ dp_ipa_setup_tx_smmu_params_pmac_id(struct dp_soc *soc,
 {
 	uint8_t pmac_id = 0;
 
-	if (soc->pdev_count > 1)
+	if ((soc->pdev_count > 1) && (soc->pdev_count < MAX_PDEV_CNT))
 		pmac_id = soc->pdev_list[soc->pdev_count - 1]->lmac_id;
 
 	QDF_IPA_WDI_SETUP_INFO_SMMU_RX_PMAC_ID(tx_smmu, pmac_id);
@@ -1217,7 +1217,7 @@ static void dp_ipa_setup_iface_session_id(qdf_ipa_wdi_reg_intf_in_params_t *in,
 {
 	dp_debug("session_id %u is_tx1_used %d", session_id, is_tx1_used);
 
-	QDF_IPA_WDI_REG_INTF_IN_PARAMS_META_DATA(in) = htonl(session_id << 16);
+	QDF_IPA_WDI_REG_INTF_IN_PARAMS_META_DATA(in) = htonl(session_id);
 	QDF_IPA_WDI_REG_INTF_IN_PARAMS_IS_TX1_USED(in) = is_tx1_used;
 }
 #elif defined(IPA_WDS_EASYMESH_FEATURE)
@@ -1476,6 +1476,15 @@ static void dp_ipa_setup_iface_session_id(qdf_ipa_wdi_reg_intf_in_params_t *in,
 		QDF_IPA_WDI_REG_INTF_IN_PARAMS_META_DATA(in) = htonl(session_id);
 	else
 		QDF_IPA_WDI_REG_INTF_IN_PARAMS_META_DATA(in) = htonl(session_id << 16);
+}
+#elif defined(QCA_IPA_LL_TX_FLOW_CONTROL)
+static void dp_ipa_setup_iface_session_id(qdf_ipa_wdi_reg_intf_in_params_t *in,
+					  uint8_t session_id, bool is_tx1_used)
+{
+	dp_debug("session_id %u is_tx1_used %d", session_id, is_tx1_used);
+
+	QDF_IPA_WDI_REG_INTF_IN_PARAMS_META_DATA(in) = htonl(session_id);
+	QDF_IPA_WDI_REG_INTF_IN_PARAMS_IS_TX1_USED(in) = is_tx1_used;
 }
 #else
 static void dp_ipa_setup_iface_session_id(qdf_ipa_wdi_reg_intf_in_params_t *in,
@@ -3730,7 +3739,7 @@ QDF_STATUS dp_ipa_enable_pipes(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 	qdf_atomic_set(&soc->ipa_pipes_enabled, 1);
 	DP_IPA_EP_SET_TX_DB_PA(soc, ipa_res);
 
-	if (!ipa_config_is_opt_wifi_dp_enabled()) {
+	if (!wlan_ipa_config_is_opt_wifi_dp_enabled()) {
 		qdf_atomic_set(&soc->ipa_map_allowed, 1);
 		dp_ipa_handle_rx_buf_pool_smmu_mapping(soc, true,
 						       __func__, __LINE__,
@@ -3790,7 +3799,7 @@ QDF_STATUS dp_ipa_disable_pipes(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 
 	qdf_atomic_set(&soc->ipa_pipes_enabled, 0);
 
-	if (!ipa_config_is_opt_wifi_dp_enabled()) {
+	if (!wlan_ipa_config_is_opt_wifi_dp_enabled()) {
 		qdf_atomic_set(&soc->ipa_map_allowed, 0);
 		dp_ipa_handle_rx_buf_pool_smmu_mapping(soc, false,
 						       __func__, __LINE__, 0);
@@ -3842,7 +3851,7 @@ bool dp_ipa_rx_wdsext_iface(struct cdp_soc_t *soc_hdl, uint8_t peer_id,
 
 	if (qdf_likely(txrx_peer)) {
 		if (dp_rx_deliver_to_stack_ext(dp_soc, txrx_peer->vdev,
-					       txrx_peer, skb)
+					       txrx_peer, skb))
 			status =  true;
 		dp_txrx_peer_unref_delete(txrx_ref_handle, DP_MOD_ID_IPA);
 	}
@@ -4829,10 +4838,18 @@ int dp_ipa_txrx_get_vdev_stats(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	return 0;
 }
 
+/**
+ * dp_ipa_txrx_get_peer_stats - fetch peer stats
+ * @soc: soc handle
+ * @vdev_id: id of vdev handle
+ * @peer_mac: peer mac address
+ * @peer_stats: buffer to hold peer stats
+ *
+ * Return: status success/failure
+ */
 QDF_STATUS dp_ipa_txrx_get_peer_stats(struct cdp_soc_t *soc, uint8_t vdev_id,
 				      uint8_t *peer_mac,
-				      struct cdp_peer_stats *peer_stats,
-				      enum cdp_peer_type peer_type)
+				      struct cdp_peer_stats *peer_stats)
 {
 	struct dp_peer *peer = NULL;
 	struct cdp_peer_info peer_info = { 0 };
@@ -4853,6 +4870,45 @@ QDF_STATUS dp_ipa_txrx_get_peer_stats(struct cdp_soc_t *soc, uint8_t vdev_id,
 
 	return QDF_STATUS_SUCCESS;
 }
+
+/**
+ * dp_ipa_txrx_get_peer_stats_based_on_peer_type() - get peer stats based on the
+ * peer type
+ * @soc: soc handle
+ * @vdev_id: id of vdev handle
+ * @peer_mac: peer mac address
+ * @peer_stats: buffer to copy to
+ * @peer_type: type of peer
+ *
+ * Return: status success/failure
+ */
+QDF_STATUS
+dp_ipa_txrx_get_peer_stats_based_on_peer_type(struct cdp_soc_t *soc,
+					      uint8_t vdev_id,
+					      uint8_t *peer_mac,
+					      struct cdp_peer_stats *peer_stats,
+					      enum cdp_peer_type peer_type)
+{
+	struct dp_peer *peer = NULL;
+	struct cdp_peer_info peer_info = { 0 };
+
+	DP_PEER_INFO_PARAMS_INIT(&peer_info, vdev_id, peer_mac, false,
+				 peer_type);
+
+	peer = dp_peer_hash_find_wrapper((struct dp_soc *)soc, &peer_info,
+					 DP_MOD_ID_IPA);
+
+	qdf_mem_zero(peer_stats, sizeof(struct cdp_peer_stats));
+
+	if (!peer)
+		return QDF_STATUS_E_FAILURE;
+
+	dp_ipa_get_peer_stats(peer, peer_stats);
+	dp_peer_unref_delete(peer, DP_MOD_ID_IPA);
+
+	return QDF_STATUS_SUCCESS;
+}
+
 #endif
 
 /**
@@ -4894,6 +4950,7 @@ bool dp_ipa_is_ring_ipa_tx(struct dp_soc *soc, uint8_t ring_id)
 }
 #endif /* IPA_WDI3_TX_TWO_PIPES */
 
+#ifndef WLAN_FEATURE_LATENCY_SENSITIVE_REO
 /**
  * dp_ipa_is_ring_ipa_rx() - check if the Rx ring is used by IPA
  *
@@ -4912,4 +4969,15 @@ bool dp_ipa_is_ring_ipa_rx(struct cdp_soc_t *soc_hdl, uint8_t ring_id)
 	return (ring_id == IPA_REO_DEST_RING_IDX ||
 		ring_id == IPA_REO_DEST_RING_IDX_2);
 }
+#else
+bool dp_ipa_is_ring_ipa_rx(struct cdp_soc_t *soc_hdl, uint8_t ring_id)
+{
+	struct dp_soc *soc = cdp_soc_t_to_dp_soc(soc_hdl);
+
+	if (!soc->wlan_cfg_ctx->ipa_enabled)
+		return false;
+
+	return (ring_id == IPA_REO_DEST_RING_IDX);
+}
+#endif
 #endif

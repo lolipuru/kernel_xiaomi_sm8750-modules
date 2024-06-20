@@ -1250,13 +1250,17 @@ bool dp_rx_intrabss_mcbc_fwd(struct dp_soc *soc, struct dp_txrx_peer *ta_peer,
 	if (dp_get_peer_isolation(ta_peer))
 		return false;
 
+	/* check for wds_ext_ap_bridge */
+	if (dp_rx_intrabss_wds_ext_ap_bridge_check(ta_peer, NULL, true))
+		return false;
+
 	nbuf_copy = qdf_nbuf_copy(nbuf);
 	if (!nbuf_copy)
 		return false;
 
 	len = QDF_NBUF_CB_RX_PKT_LEN(nbuf);
 
-	qdf_mem_set(nbuf_copy->cb, 0x0, sizeof(nbuf_copy->cb));
+	qdf_mem_set(nbuf_copy->cb, sizeof(nbuf_copy->cb), 0x0);
 	dp_classify_critical_pkts(soc, ta_peer->vdev, nbuf_copy);
 
 	if (soc->arch_ops.dp_rx_intrabss_mcast_handler(soc, ta_peer,
@@ -1316,7 +1320,7 @@ bool dp_rx_intrabss_ucast_fwd(struct dp_soc *soc, struct dp_txrx_peer *ta_peer,
 		}
 	}
 
-	qdf_mem_set(nbuf->cb, 0x0, sizeof(nbuf->cb));
+	qdf_mem_set(nbuf->cb, sizeof(nbuf->cb), 0x0);
 	dp_classify_critical_pkts(soc, ta_peer->vdev, nbuf);
 
 	/* Don't send packets if tx is paused */

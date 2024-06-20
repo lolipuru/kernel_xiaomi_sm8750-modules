@@ -1421,7 +1421,7 @@ void *dp_srng_aligned_mem_alloc_consistent(struct dp_soc *soc,
 					       &srng->base_paddr_aligned,
 					       DP_RING_BASE_ALIGN);
 	if (mem)
-		qdf_mem_set(srng->base_vaddr_unaligned, 0, srng->alloc_size);
+		qdf_mem_set(srng->base_vaddr_unaligned, srng->alloc_size, 0);
 
 	return mem;
 }
@@ -1758,6 +1758,36 @@ configure_msi2:
 			   nf_msi_grp_num);
 }
 
+#ifdef WLAN_FEATURE_LATENCY_SENSITIVE_REO
+static void
+dp_srng_reo_intr_timer_thres_set(struct dp_soc *soc,
+				 struct hal_srng_params *ring_params,
+				 int ring_num)
+{
+	if (ring_num == LSR_DEST_RING_IDX) {
+		ring_params->intr_timer_thres_us = DP_LSR_RING_INT_TIMER_US;
+		ring_params->intr_batch_cntr_thres_entries =
+			DP_LSR_RING_BATCH_THRESHOLD;
+	} else {
+		ring_params->intr_timer_thres_us =
+			wlan_cfg_get_int_timer_threshold_rx(soc->wlan_cfg_ctx);
+		ring_params->intr_batch_cntr_thres_entries =
+			wlan_cfg_get_int_batch_threshold_rx(soc->wlan_cfg_ctx);
+	}
+}
+#else
+static void
+dp_srng_reo_intr_timer_thres_set(struct dp_soc *soc,
+				 struct hal_srng_params *ring_params,
+				 int ring_num)
+{
+	ring_params->intr_timer_thres_us =
+		wlan_cfg_get_int_timer_threshold_rx(soc->wlan_cfg_ctx);
+	ring_params->intr_batch_cntr_thres_entries =
+		wlan_cfg_get_int_batch_threshold_rx(soc->wlan_cfg_ctx);
+}
+#endif
+
 #ifdef WLAN_DP_PER_RING_TYPE_CONFIG
 /**
  * dp_srng_configure_interrupt_thresholds() - Retrieve interrupt
@@ -1785,10 +1815,7 @@ dp_srng_configure_interrupt_thresholds(struct dp_soc *soc,
 	wbm2_sw_rx_rel_ring_id = wlan_cfg_get_rx_rel_ring_id(soc->wlan_cfg_ctx);
 
 	if (ring_type == REO_DST) {
-		ring_params->intr_timer_thres_us =
-			wlan_cfg_get_int_timer_threshold_rx(soc->wlan_cfg_ctx);
-		ring_params->intr_batch_cntr_thres_entries =
-			wlan_cfg_get_int_batch_threshold_rx(soc->wlan_cfg_ctx);
+		dp_srng_reo_intr_timer_thres_set(soc, ring_params, ring_num);
 	} else if (ring_type == WBM2SW_RELEASE &&
 		   (ring_num == wbm2_sw_rx_rel_ring_id)) {
 		ring_params->intr_timer_thres_us =
@@ -2980,10 +3007,11 @@ static void dp_rxdma_ring_cleanup(struct dp_soc *soc, struct dp_pdev *pdev)
 
 	if ((pdev->pdev_id == 0) &&
 	    soc->features.dmac_cmn_src_rxbuf_ring_enabled) {
-		for (i = 0; i < MAX_RX_MAC_RINGS; i++)
+		for (i = 0; i < MAX_RX_MAC_RINGS; i++) {
 			dp_ssr_dump_srng_unregister("rx_mac_buf_ring", i);
 			dp_srng_deinit(soc, &pdev->rx_mac_buf_ring[i],
 				       RXDMA_BUF, 1);
+		}
 	}
 	dp_reap_timer_deinit(soc);
 }
@@ -5244,7 +5272,7 @@ static void dp_mlo_link_peer_flush(struct dp_soc *soc, struct dp_peer *peer)
 {
 	int cnt = 0;
 	struct dp_peer *link_peer = NULL;
-	struct dp_mld_link_peers link_peers_info = {NULL};
+	struct dp_mld_link_peers link_peers_info = {0};
 
 	if (!IS_MLO_DP_MLD_PEER(peer))
 		return;
@@ -8457,6 +8485,9 @@ static QDF_STATUS dp_set_peer_param(struct cdp_soc_t *cdp_soc,  uint8_t vdev_id,
 		status =  dp_set_peer_freq(cdp_soc, vdev_id,
 					   peer_mac, param, val);
 		break;
+	case CDP_CONFIG_PEER_DMS:
+		txrx_peer->is_dms = val.cdp_peer_param_dms;
+		break;
 	default:
 		break;
 	}
@@ -8678,7 +8709,8 @@ static QDF_STATUS dp_set_pdev_param(struct cdp_soc_t *cdp_soc, uint8_t pdev_id,
 						val.cdp_pdev_param_en_rx_cap);
 	case CDP_CONFIG_ENH_TX_CAPTURE:
 		return dp_monitor_config_enh_tx_capture(pdev,
-						val.cdp_pdev_param_en_tx_cap);
+						val.cdp_pdev_param_en_tx_cap,
+						0);
 	case CDP_CONFIG_HMMC_TID_OVERRIDE:
 		pdev->hmmc_tid_override_en = val.cdp_pdev_param_hmmc_tid_ovrd;
 		break;
@@ -9169,9 +9201,8 @@ dp_set_vdev_param(struct cdp_soc_t *cdp_soc, uint8_t vdev_id,
  * @param: parameter type for vdev
  * @val: value
  *
- * If TDLS connection is from secondary vdev, then copy osif_vdev from
- * primary vdev to support RX, update TX bank register info for primary
- * vdev as well.
+ * If TDLS connection is from secondary vdev, then update TX bank register
+ * info for primary vdev as well.
  * If TDLS connection is from primary vdev, same as before.
  *
  * Return: None
@@ -9226,11 +9257,9 @@ dp_update_mlo_vdev_for_tdls(struct cdp_soc_t *cdp_soc, uint8_t vdev_id,
 
 	/* If current vdev is not same as primary vdev */
 	if (pri_vdev && pri_vdev != vdev) {
-		dp_info("primary vdev [%d] %pK different with vdev [%d] %pK",
+		dp_info("primary vdev [%d] %pK different from vdev [%d] %pK",
 			pri_vdev->vdev_id, pri_vdev,
 			vdev->vdev_id, vdev);
-		/* update osif_vdev to support RX for vdev */
-		vdev->osif_vdev = pri_vdev->osif_vdev;
 		dp_set_vdev_param(cdp_soc, pri_vdev->vdev_id,
 				  CDP_UPDATE_TDLS_FLAGS, val);
 	}
@@ -9584,6 +9613,9 @@ static QDF_STATUS dp_get_psoc_param(struct cdp_soc_t *cdp_soc,
 	case CDP_CFG_REO_RINGS_MAPPING:
 		val->cdp_reo_rings_mapping =
 			wlan_cfg_get_reo_rings_mapping(soc->wlan_cfg_ctx);
+		break;
+	case CDP_MONITOR_FLAG:
+		val->cdp_monitor_flag = soc->mon_flags;
 		break;
 	default:
 		dp_warn("Invalid param: %u", param);
@@ -12932,6 +12964,7 @@ static struct cdp_me_ops dp_ops_me = {
 	.tx_me_alloc_descriptor = dp_tx_me_alloc_descriptor,
 	.tx_me_free_descriptor = dp_tx_me_free_descriptor,
 	.tx_me_convert_ucast = dp_tx_me_send_convert_ucast,
+	.is_peer_dms_capable = dp_peer_check_dms_capable_by_mac,
 #endif
 #endif
 };
@@ -12955,7 +12988,7 @@ static struct cdp_host_stats_ops dp_ops_host_stats = {
 	.txrx_get_vdev_stats  = dp_ipa_txrx_get_vdev_stats,
 	.txrx_get_pdev_stats = dp_ipa_txrx_get_pdev_stats,
 	.txrx_get_peer_stats_based_on_peer_type =
-			dp_ipa_txrx_get_peer_stats,
+			dp_ipa_txrx_get_peer_stats_based_on_peer_type,
 #endif
 	.txrx_get_ratekbps = dp_txrx_get_ratekbps,
 	.txrx_update_vdev_stats = dp_txrx_update_vdev_host_stats,
@@ -13066,6 +13099,9 @@ static struct cdp_sawf_ops dp_ops_sawf = {
 	.peer_config_ul = dp_sawf_peer_config_ul,
 	.swaf_peer_sla_configuration = dp_swaf_peer_sla_configuration,
 	.sawf_peer_flow_count = dp_sawf_peer_flow_count,
+#ifdef SAWF_ADMISSION_CONTROL
+	.txrx_get_peer_sawf_admctrl_stats = dp_sawf_get_peer_admctrl_stats,
+#endif
 #endif
 #ifdef WLAN_FEATURE_11BE_MLO_3_LINK_TX
 	.get_peer_msduq = dp_sawf_get_peer_msduq,

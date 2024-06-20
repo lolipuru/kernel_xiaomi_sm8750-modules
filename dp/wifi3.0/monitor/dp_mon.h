@@ -728,7 +728,7 @@ struct dp_mon_ops {
 #ifdef WIFI_MONITOR_SUPPORT
 	void (*mon_print_pdev_tx_capture_stats)(struct dp_pdev *pdev);
 	QDF_STATUS (*mon_config_enh_tx_capture)(struct dp_pdev *pdev,
-						uint8_t val);
+						uint8_t val, uint8_t mac_id);
 	QDF_STATUS (*mon_tx_peer_filter)(struct dp_pdev *pdev_handle,
 					 struct dp_peer *peer_handle,
 					 uint8_t is_tx_pkt_cap_enable,
@@ -1805,7 +1805,13 @@ dp_monitor_update_mac_vdev_map(struct dp_vdev *vdev)
 	mon_mac->mon_chan_band = vdev->monitor_vdev->mon_chan_band;
 	mon_mac->mon_chan_freq = vdev->monitor_vdev->mon_chan_freq;
 	mon_mac->mon_chan_num = vdev->monitor_vdev->mon_chan_num;
-	pdev->ch_band_lmac_id_mapping[mon_mac->mon_chan_band] = vdev->lmac_id;
+
+	if (mon_mac->mon_chan_band < REG_BAND_UNKNOWN)
+		pdev->ch_band_lmac_id_mapping[mon_mac->mon_chan_band] =
+			vdev->lmac_id;
+	else
+		dp_err("Band Unknown: %d", mon_mac->mon_chan_band);
+
 	vdev->monitor_vdev->mac_id = vdev->lmac_id;
 
 	dp_info("mac_id %d vdev_id %d ch_num: %d freq: %d band %d",
@@ -3385,11 +3391,13 @@ static inline void dp_monitor_print_pdev_tx_capture_stats(struct dp_pdev *pdev)
  * dp_monitor_config_enh_tx_capture() - configure tx capture
  * @pdev: Datapath PDEV handle
  * @val: mode
+ * @mac_id: LMAC ID
  *
  * Return: status
  */
 static inline QDF_STATUS dp_monitor_config_enh_tx_capture(struct dp_pdev *pdev,
-							  uint32_t val)
+							  uint32_t val,
+							  uint8_t mac_id)
 {
 	struct dp_mon_ops *monitor_ops;
 	struct dp_mon_soc *mon_soc = pdev->soc->monitor_soc;
@@ -3405,7 +3413,7 @@ static inline QDF_STATUS dp_monitor_config_enh_tx_capture(struct dp_pdev *pdev,
 		return QDF_STATUS_E_FAILURE;
 	}
 
-	return monitor_ops->mon_config_enh_tx_capture(pdev, val);
+	return monitor_ops->mon_config_enh_tx_capture(pdev, val, mac_id);
 }
 
 /**
@@ -5200,15 +5208,17 @@ dp_mon_pdev_filter_init(struct dp_mon_pdev *mon_pdev)
  * Return: void
  */
 static inline void
-dp_convert_enc_to_cdp_enc(struct hal_rx_ppdu_info *ppdu_info)
+dp_convert_enc_to_cdp_enc(struct mon_rx_user_status *rx_user_status,
+			  uint8_t user_idx, uint8_t direction)
 {
 	uint8_t idx;
 
-	if (!ppdu_info)
-		return;
+	idx = rx_user_status[user_idx].enc_type;
+	rx_user_status[user_idx].enc_type = encrypt_map[idx];
 
-	idx = ppdu_info->rx_user_status[ppdu_info->user_id].enc_type;
-	ppdu_info->rx_user_status[ppdu_info->user_id].enc_type =
-							encrypt_map[idx];
+	QDF_TRACE(QDF_MODULE_ID_MON,
+		  QDF_TRACE_LEVEL_DEBUG,
+		  "User: %d TLV enc_type = %d map enc_type = %d direction = %d",
+		  user_idx, idx, encrypt_map[idx], direction);
 }
 #endif /* _DP_MON_H_ */

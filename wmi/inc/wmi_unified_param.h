@@ -2141,10 +2141,12 @@ struct mlo_prb_resp_tmpl_ml_info {
  * @prb_rsp_template_frm: pointer to template probe response template
  * @prb_rsp_template_len: length of probe response template
  * @cu_ml_info: Impacted link critical update information
+ * @go_ignore_non_p2p_probe_req: go ignore non-p2p probe req
  */
 struct wmi_probe_resp_params {
 	uint8_t *prb_rsp_template_frm;
 	uint32_t prb_rsp_template_len;
+	bool go_ignore_non_p2p_probe_req;
 #ifdef WLAN_FEATURE_11BE_MLO
 	struct mlo_prb_resp_tmpl_ml_info cu_ml_info;
 #endif
@@ -6732,6 +6734,7 @@ typedef enum {
 #ifdef WLAN_FEATURE_NAN
 	wmi_service_nan_pairing_peer_create,
 	wmi_service_sta_sap_ndp_concurrency_support,
+	wmi_service_sta_p2p_ndp_conc,
 #endif
 	wmi_service_therm_throt_pout_reduction,
 #ifdef WLAN_CHIPSET_STATS
@@ -6741,6 +6744,7 @@ typedef enum {
 	wmi_service_traffic_context_support,
 #endif
 	wmi_service_support_ap_suspend_resume,
+	wmi_service_epm,
 	wmi_services_max,
 } wmi_conv_service_ids;
 #define WMI_SERVICE_UNAVAILABLE 0xFFFF
@@ -7125,6 +7129,7 @@ struct target_feature_set {
  * @fw_ast_indication_disable: Disable AST indication
  * @is_full_bw_nol_supported: Is full bandwidth needed to put to NOL
  * @is_smem_mailbox_supported: Is smem mailbox functionality supported
+ * @is_epm_supported: Is epm functionality supported
  * @con_mode_monitor: Device is in Full monitor mode
  */
 typedef struct {
@@ -7263,6 +7268,9 @@ typedef struct {
 	bool is_full_bw_nol_supported;
 #ifdef FEATURE_SMEM_MAILBOX
 	bool is_smem_mailbox_supported;
+#endif
+#ifdef FEATURE_EPM
+	bool is_epm_supported;
 #endif
 	bool con_mode_monitor;
 } target_resource_config;
