@@ -456,6 +456,15 @@ struct synx_callback_params {
 };
 
 /**
+ * enum synx_resource_type - Synx resource type
+ *
+ * SYNX_RESOURCE_SOCCP : Enable resources for SOCCP
+ */
+enum synx_resource_type {
+	SYNX_RESOURCE_SOCCP = 0x01,
+};
+
+/**
  * struct synx_ops - Synx operations
  *
  * @uninitialize        : destroys the client session
