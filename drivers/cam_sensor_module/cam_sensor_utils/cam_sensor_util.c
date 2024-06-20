@@ -2658,3 +2658,14 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
 
 	return 0;
 }
+
+void cam_sensor_utils_parse_pm_ctrl_flag(struct device_node *of_node,
+	struct camera_io_master *io_master_info)
+{
+	struct device_node *of_parent = of_get_next_parent(of_node);
+
+	if (of_parent != NULL) {
+		io_master_info->pm_ctrl_client_enable =
+			of_property_read_bool(of_parent, "qcom,pm-ctrl-client");
+	}
+}

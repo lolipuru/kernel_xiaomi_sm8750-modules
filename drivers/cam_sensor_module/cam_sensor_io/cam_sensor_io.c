@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_sensor_io.h"
@@ -204,7 +204,8 @@ int32_t camera_io_init(struct camera_io_master *io_master_info)
 	case I2C_MASTER:
 	case I3C_MASTER:
 		if ((io_master_info->client != NULL) &&
-			(io_master_info->client->adapter != NULL)) {
+			(io_master_info->client->adapter != NULL) &&
+			(io_master_info->pm_ctrl_client_enable)) {
 			CAM_DBG(CAM_SENSOR, "%s:%d: Calling get_sync",
 				__func__, __LINE__);
 			rc = pm_runtime_get_sync(io_master_info->client->adapter->dev.parent);
@@ -235,7 +236,8 @@ int32_t camera_io_release(struct camera_io_master *io_master_info)
 	case I2C_MASTER:
 	case I3C_MASTER:
 		if ((io_master_info->client != NULL) &&
-			(io_master_info->client->adapter != NULL)) {
+			(io_master_info->client->adapter != NULL) &&
+			(io_master_info->pm_ctrl_client_enable)) {
 			CAM_DBG(CAM_SENSOR, "%s:%d: Calling put_sync",
 				__func__, __LINE__);
 			pm_runtime_put_sync(io_master_info->client->adapter->dev.parent);

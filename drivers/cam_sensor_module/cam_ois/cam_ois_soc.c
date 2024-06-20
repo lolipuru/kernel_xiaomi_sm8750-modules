@@ -65,6 +65,8 @@ static int cam_ois_get_dt_data(struct cam_ois_ctrl_t *o_ctrl)
 			soc_info->rgltr_name[i]);
 	}
 
+	cam_sensor_utils_parse_pm_ctrl_flag(of_node, &(o_ctrl->io_master_info));
+
 	if (!soc_info->gpio_data) {
 		CAM_INFO(CAM_OIS, "No GPIO found");
 		return 0;
