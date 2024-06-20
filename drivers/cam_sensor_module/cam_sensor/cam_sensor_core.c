@@ -570,7 +570,8 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 		rc = cam_packet_util_validate_cmd_desc(&cmd_desc[i]);
 		if (rc) {
 			CAM_ERR(CAM_SENSOR, "invalud cmd[%d] buf", i);
-			return -EINVAL;
+			rc = -EINVAL;
+			goto end;
 		}
 
 		cmd_buf_type = cmd_desc[i].meta_data;
@@ -661,7 +662,8 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 		default:
 			CAM_ERR(CAM_SENSOR, "invalid cmd buf type %d",
 				cmd_buf_type);
-			return -EINVAL;
+			rc = -EINVAL;
+			goto end;
 		}
 	}
 

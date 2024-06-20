@@ -504,7 +504,7 @@ int32_t cam_context_config_dev_to_hw(
 	if (cam_packet_util_validate_packet(packet, remain_len)) {
 		CAM_ERR(CAM_CTXT, "Invalid packet params");
 		rc = -EINVAL;
-		goto put_ref;
+		goto free_kdup;
 	}
 
 	cfg.packet = packet;
@@ -521,6 +521,7 @@ int32_t cam_context_config_dev_to_hw(
 		rc = -EFAULT;
 	}
 
+free_kdup:
 	cam_common_mem_free(packet);
 	packet = NULL;
 put_ref:

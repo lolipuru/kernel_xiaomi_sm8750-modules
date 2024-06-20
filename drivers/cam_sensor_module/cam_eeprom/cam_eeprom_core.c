@@ -1253,8 +1253,7 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 			"Inval cam_packet strut size: %zu, len_of_buff: %zu",
 			 sizeof(struct cam_packet), pkt_len);
 		rc = -EINVAL;
-		cam_mem_put_cpu_buf(dev_config.packet_handle);
-		return rc;
+		goto put_ref;
 	}
 
 	remain_len -= (size_t)dev_config.offset;
@@ -1391,7 +1390,7 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 			e_ctrl->eebin_info.size);
 		if (rc < 0) {
 			CAM_ERR(CAM_EEPROM, "Failed in erase : %d", rc);
-			goto end;
+			goto memdata_free;
 		}
 
 		/* Buffer time margin */
@@ -1400,7 +1399,7 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 		rc = cam_eeprom_write(e_ctrl);
 		if (rc < 0) {
 			CAM_ERR(CAM_EEPROM, "Failed: rc : %d", rc);
-			goto end;
+			goto memdata_free;
 		}
 
 		rc = cam_eeprom_power_down(e_ctrl);
@@ -1428,7 +1427,6 @@ power_down:
 memdata_free:
 	vfree(e_ctrl->cal_data.mapdata);
 error:
-	cam_mem_put_cpu_buf(dev_config.packet_handle);
 	CAM_MEM_FREE(power_info->power_setting);
 	CAM_MEM_FREE(power_info->power_down_setting);
 	power_info->power_setting = NULL;
@@ -1437,8 +1435,8 @@ error:
 	e_ctrl->cal_data.num_data = 0;
 	e_ctrl->cal_data.num_map = 0;
 	e_ctrl->cam_eeprom_state = CAM_EEPROM_ACQUIRE;
-	cam_mem_put_cpu_buf(dev_config.packet_handle);
 	cam_common_mem_free(csl_packet);
+	cam_mem_put_cpu_buf(dev_config.packet_handle);
 	return rc;
 }
 

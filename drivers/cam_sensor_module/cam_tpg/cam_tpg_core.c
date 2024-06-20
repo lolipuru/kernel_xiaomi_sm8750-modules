@@ -595,7 +595,9 @@ static int cam_tpg_packet_parse(
 	int rc = 0;
 	uintptr_t generic_ptr;
 	size_t len_of_buff = 0, remain_len = 0;
+	struct cam_packet *csl_packet_u = NULL;
 	struct cam_packet *csl_packet = NULL;
+	size_t packet_size;
 
 	rc = cam_mem_get_cpu_buf(config->packet_handle,
 		&generic_ptr, &len_of_buff);
@@ -615,14 +617,29 @@ static int cam_tpg_packet_parse(
 	}
 	remain_len = len_of_buff;
 	remain_len -= (size_t)config->offset;
-	csl_packet = (struct cam_packet *)(generic_ptr +
+	csl_packet_u = (struct cam_packet *)(generic_ptr +
 		(uint32_t)config->offset);
+	packet_size = csl_packet_u->header.size;
+	if (packet_size <= remain_len) {
+		rc = cam_common_mem_kdup((void **)&csl_packet,
+			csl_packet_u, packet_size);
+		if (rc) {
+			CAM_ERR(CAM_TPG, "Alloc and copy request: %lld packet fail",
+				csl_packet_u->header.request_id);
+			goto end;
+		}
+	} else {
+		CAM_ERR(CAM_TPG, "Invalid packet header size %u",
+			packet_size);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	if (cam_packet_util_validate_packet(csl_packet,
 		remain_len)) {
 		CAM_ERR(CAM_TPG, "Invalid packet params");
 		rc = -EINVAL;
-		goto end;
+		goto free_kdup;
 	}
 
 	CAM_DBG(CAM_TPG, "TPG[%d] "
@@ -637,12 +654,12 @@ static int cam_tpg_packet_parse(
 		if (csl_packet->num_cmd_buf <= 0) {
 			CAM_ERR(CAM_TPG, "Expecting atleast one command in Init packet");
 			rc = -EINVAL;
-			goto end;
+			goto free_kdup;
 		}
 		rc = cam_tpg_cmd_buf_parse(tpg_dev, csl_packet);
 		if (rc < 0) {
 			CAM_ERR(CAM_TPG, "CMD buffer parse failed");
-			goto end;
+			goto free_kdup;
 		}
 		tpg_hw_config(&tpg_dev->tpg_hw, TPG_HW_CMD_INIT_CONFIG, NULL);
 		break;
@@ -654,7 +671,7 @@ static int cam_tpg_packet_parse(
 		rc = cam_tpg_cmd_buf_parse(tpg_dev, csl_packet);
 		if (rc < 0) {
 			CAM_ERR(CAM_TPG, "CMD buffer parse failed");
-			goto end;
+			goto free_kdup;
 		}
 
 		CAM_DBG(CAM_TPG, "TPG[%d] packet request id : %llu",
@@ -681,6 +698,9 @@ static int cam_tpg_packet_parse(
 		rc = -EINVAL;
 		break;
 	}
+
+free_kdup:
+	cam_common_mem_free(csl_packet);
 end:
 	cam_mem_put_cpu_buf(config->packet_handle);
 	return rc;
