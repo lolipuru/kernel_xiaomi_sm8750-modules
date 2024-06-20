@@ -81,6 +81,67 @@ static struct clk *_sde_cesta_get_core_clk(struct sde_cesta *cesta)
 	return core_clk;
 }
 
+static void _sde_cesta_log_status(struct sde_cesta *cesta)
+{
+	struct sde_cesta_client *client;
+	struct sde_cesta_scc_status status = {0, };
+	u32 pwr_event, pwr_ctrl_status;
+
+	if (!cesta->hw_ops.get_status || !cesta->hw_ops.get_pwr_event
+			|| !cesta->hw_ops.get_rscc_pwr_ctrl_status)
+		return;
+
+	mutex_lock(&cesta->client_lock);
+	list_for_each_entry(client, &cesta->client_list, list) {
+		cesta->hw_ops.get_status(cesta, client->client_index, &status);
+
+		SDE_DEBUG_CESTA("SCC[%d] status- frame_region:%d scc_hs:%d fsm_st:%d miss_cnt:%d\n",
+				client->client_index, status.frame_region, status.sch_handshake,
+				status.fsm_state, status.flush_missed_counter);
+		SDE_EVT32(client->client_index, status.frame_region, status.sch_handshake,
+				status.fsm_state, status.flush_missed_counter);
+	}
+	mutex_unlock(&cesta->client_lock);
+
+	pwr_event = cesta->hw_ops.get_pwr_event(cesta);
+	pwr_ctrl_status = cesta->hw_ops.get_rscc_pwr_ctrl_status(cesta);
+
+	SDE_DEBUG_CESTA("pwr_event:0x%x, pwr_ctrl_status:0x%x\n", pwr_event, pwr_ctrl_status);
+	SDE_EVT32(pwr_event, pwr_ctrl_status);
+}
+
+static int  _sde_cesta_check_mode2_entry_status(u32 cesta_index)
+{
+	struct sde_cesta *cesta;
+	int pwr_ctrl_status, trial = 0, max_trials = 10;
+
+	cesta = cesta_list[cesta_index];
+
+	if (!cesta->hw_ops.get_rscc_pwr_ctrl_status)
+		return 0;
+
+	while (trial < max_trials) {
+		pwr_ctrl_status = cesta->hw_ops.get_rscc_pwr_ctrl_status(cesta);
+		if (pwr_ctrl_status & BIT(12)) /* GDSC power-collapse success */
+			break;
+		udelay(50);
+		trial++;
+	}
+
+	if (trial == max_trials) {
+		SDE_ERROR_CESTA("cesata:%d mode2 entry failed, trial:%d, status:0x%x\n",
+				cesta_index, trial, pwr_ctrl_status);
+		SDE_EVT32(cesta_index, trial, pwr_ctrl_status, SDE_EVTLOG_ERROR);
+		_sde_cesta_log_status(cesta);
+		return -EBUSY;
+	}
+
+	SDE_EVT32(cesta_index, trial, pwr_ctrl_status);
+	_sde_cesta_log_status(cesta);
+
+	return 0;
+}
+
 void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en)
 {
 	struct sde_cesta *cesta;
@@ -761,6 +822,12 @@ int sde_cesta_resource_disable(u32 cesta_index)
 	sde_power_mmrm_reserve(phandle);
 	msm_dss_enable_clk(mp->clk_config, mp->num_clk, false);
 
+	ret = _sde_cesta_check_mode2_entry_status(cesta_index);
+	if (ret) {
+		SDE_ERROR_CESTA("mode2 entry failed ret:%d\n", ret);
+		return ret;
+	}
+
 	return 0;
 }
 
@@ -933,6 +1000,9 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 		return -EINVAL;
 	}
 
+	sde_dbg_reg_register_base("sde_rsc_rscc", cesta->rscc_io.base,
+			cesta->rscc_io.len, msm_get_phys_addr(pdev, "rscc"), SDE_DBG_RSC);
+
 	sde_dbg_reg_register_base("sde_rsc_wrapper", cesta->wrapper_io.base,
 			cesta->wrapper_io.len, msm_get_phys_addr(pdev, "wrapper"), SDE_DBG_RSC);
 
@@ -1000,6 +1070,9 @@ static void sde_cesta_deinit(struct platform_device *pdev, struct sde_cesta *ces
 	if (cesta->pd_fs)
 		dev_pm_domain_detach(cesta->pd_fs, false);
 
+	if (cesta->rscc_io.base)
+		msm_dss_iounmap(&cesta->rscc_io);
+
 	if (cesta->wrapper_io.base)
 		msm_dss_iounmap(&cesta->wrapper_io);
 
@@ -1038,6 +1111,12 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	ret = sde_power_resource_init(pdev, &cesta->phandle);
 	if (ret) {
 		SDE_ERROR_CESTA("power resource init failed, ret:%d\n", ret);
+		goto fail;
+	}
+
+	ret = msm_dss_ioremap_byname(pdev, &cesta->rscc_io, "rscc");
+	if (ret) {
+		SDE_ERROR_CESTA("rscc io data mapping failed, ret:%d\n", ret);
 		goto fail;
 	}
 
