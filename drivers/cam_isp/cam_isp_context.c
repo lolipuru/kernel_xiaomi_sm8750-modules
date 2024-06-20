@@ -58,6 +58,8 @@ static int __cam_isp_ctx_check_deferred_buf_done(
 	struct cam_isp_hw_done_event_data *done,
 	uint32_t bubble_state);
 
+static int __cam_isp_ctx_print_event_record(struct cam_isp_context *ctx_isp);
+
 static const char *__cam_isp_evt_val_to_type(
 	uint32_t evt_id)
 {
@@ -152,6 +154,7 @@ static int __cam_isp_ctx_handle_sof_freeze_evt(
 	struct cam_isp_hw_cmd_args   isp_hw_cmd_args;
 
 	ctx_isp = (struct cam_isp_context *)ctx->ctx_priv;
+	__cam_isp_ctx_print_event_record(ctx_isp);
 	hw_cmd_args.ctxt_to_hw_map = ctx->ctxt_to_hw_map;
 	hw_cmd_args.cmd_type = CAM_HW_MGR_CMD_INTERNAL;
 	isp_hw_cmd_args.cmd_type = CAM_ISP_HW_MGR_CMD_SOF_DEBUG;
@@ -4413,7 +4416,7 @@ static int __cam_isp_ctx_handle_error(struct cam_isp_context *ctx_isp,
 		__cam_isp_ctx_pause_crm_timer(ctx);
 
 	__cam_isp_ctx_dump_frame_timing_record(ctx_isp);
-
+	__cam_isp_ctx_print_event_record(ctx_isp);
 	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR, ctx);
 
 	__cam_isp_get_notification_evt_params(error_event_data->error_type,
@@ -5976,7 +5979,11 @@ static int __cam_isp_ctx_dump_in_top_state(
 			goto hw_dump;
 		}
 	}
-	goto end;
+	ctx_isp = (struct cam_isp_context *)ctx->ctx_priv;
+	__cam_isp_ctx_print_event_record(ctx_isp);
+	spin_unlock_bh(&ctx->lock);
+	return 0;
+
 hw_dump:
 	rc  = cam_mem_get_cpu_buf(dump_info->buf_handle,
 		&cpu_addr, &buf_len);
@@ -6112,7 +6119,6 @@ hw_dump:
 	}
 	cam_mem_put_cpu_buf(dump_info->buf_handle);
 	return rc;
-
 end:
 	spin_unlock_bh(&ctx->lock);
 	cam_mem_put_cpu_buf(dump_info->buf_handle);
