@@ -47,6 +47,9 @@
 #ifdef WLAN_SUPPORT_LAPB
 #include "wlan_dp_lapb_flow.h"
 #endif
+#ifdef WLAN_SUPPORT_RX_FISA
+#include <wlan_dp_fisa_rx.h>
+#endif
 #include "cdp_txrx_ctrl.h"
 #include "wlan_dp_load_balance.h"
 #include "wlan_dp_flow_balance.h"
@@ -217,6 +220,22 @@ void ucfg_dp_update_intf_mac(struct wlan_objmgr_psoc *psoc,
 	wlan_dp_set_vdev_direct_link_cfg(psoc, dp_intf);
 }
 
+static inline uint8_t
+wlan_dp_get_dp_intf_id(struct wlan_dp_psoc_context *dp_ctx)
+{
+	uint8_t id = 0;
+
+	while (id < WLAN_DP_INTF_MAX) {
+		if (qdf_test_bit(id, dp_ctx->wlan_dp_intf_id_map)) {
+			id++;
+			continue;
+		}
+		break;
+	}
+
+	return id;
+}
+
 QDF_STATUS
 ucfg_dp_create_intf(struct wlan_objmgr_psoc *psoc,
 		    struct qdf_mac_addr *intf_addr,
@@ -224,6 +243,7 @@ ucfg_dp_create_intf(struct wlan_objmgr_psoc *psoc,
 {
 	struct wlan_dp_intf *dp_intf;
 	struct wlan_dp_psoc_context *dp_ctx;
+	uint8_t id;
 
 	dp_ctx =  dp_get_context();
 
@@ -243,6 +263,18 @@ ucfg_dp_create_intf(struct wlan_objmgr_psoc *psoc,
 	qdf_copy_macaddr(&dp_intf->mac_addr, intf_addr);
 
 	qdf_spin_lock_bh(&dp_ctx->intf_list_lock);
+	id = wlan_dp_get_dp_intf_id(dp_ctx);
+	if (id == WLAN_DP_INTF_MAX) {
+		qdf_spin_unlock_bh(&dp_ctx->intf_list_lock);
+		dp_err("Max dp interface already created");
+		__qdf_mem_free(dp_intf);
+		return QDF_STATUS_E_INVAL;
+	}
+
+	dp_intf->id = id;
+	qdf_set_bit(id, dp_ctx->wlan_dp_intf_id_map);
+	dp_intf->guid = ++dp_ctx->intf_guid;
+	dp_ctx->dp_intf_list[id] = dp_intf;
 	qdf_list_insert_front(&dp_ctx->intf_list, &dp_intf->node);
 	qdf_spin_unlock_bh(&dp_ctx->intf_list_lock);
 
@@ -290,6 +322,8 @@ ucfg_dp_destroy_intf(struct wlan_objmgr_psoc *psoc,
 
 	qdf_spin_lock_bh(&dp_ctx->intf_list_lock);
 	qdf_list_remove_node(&dp_ctx->intf_list, &dp_intf->node);
+	qdf_clear_bit(dp_intf->id, dp_ctx->wlan_dp_intf_id_map);
+	dp_ctx->dp_intf_list[dp_intf->id] = NULL;
 	qdf_spin_unlock_bh(&dp_ctx->intf_list_lock);
 	dp_softap_hlp_deinit(dp_intf);
 	__qdf_mem_free(dp_intf);
@@ -846,6 +880,7 @@ void ucfg_dp_update_dhcp_state_on_disassoc(struct wlan_objmgr_vdev *vdev,
 	struct wlan_dp_intf *dp_intf;
 	struct wlan_dp_link *dp_link;
 	struct wlan_objmgr_peer *peer;
+	struct wlan_dp_peer_priv_context *priv_ctx;
 	struct wlan_dp_sta_info *stainfo;
 
 	dp_link = dp_get_vdev_priv_obj(vdev);
@@ -864,11 +899,12 @@ void ucfg_dp_update_dhcp_state_on_disassoc(struct wlan_objmgr_vdev *vdev,
 		return;
 	}
 
-	stainfo = dp_get_peer_priv_obj(peer);
-	if (!stainfo) {
+	priv_ctx = dp_get_peer_priv_obj(peer);
+	if (!priv_ctx) {
 		wlan_objmgr_peer_release_ref(peer, WLAN_DP_ID);
 		return;
 	}
+	stainfo = &priv_ctx->sta_info;
 
 	/* Send DHCP STOP indication to FW */
 	stainfo->dhcp_phase = DHCP_PHASE_ACK;
@@ -1242,6 +1278,7 @@ QDF_STATUS ucfg_dp_sta_register_txrx_ops(struct wlan_objmgr_vdev *vdev)
 		txrx_ops.rx.rx = dp_rx_packet_cbk;
 		txrx_ops.rx.rx_stack = NULL;
 		txrx_ops.rx.rx_flush = NULL;
+		txrx_ops.rx.rx_gro_flush = dp_rx_gro_flush_cbk;
 	}
 
 	if (wlan_dp_cfg_is_rx_fisa_enabled(&dp_intf->dp_ctx->dp_cfg) &&
@@ -1264,6 +1301,9 @@ QDF_STATUS ucfg_dp_sta_register_txrx_ops(struct wlan_objmgr_vdev *vdev)
 	}
 
 	dp_link->cdp_vdev_registered = 1;
+	dp_link->cdp_vdev_deleted = 0;
+	dp_link->destroyed = 0;
+
 	dp_intf->txrx_ops = txrx_ops;
 
 	return QDF_STATUS_SUCCESS;
@@ -1295,6 +1335,7 @@ QDF_STATUS ucfg_dp_tdlsta_register_txrx_ops(struct wlan_objmgr_vdev *vdev)
 		txrx_ops.rx.rx = dp_rx_packet_cbk;
 		txrx_ops.rx.rx_stack = NULL;
 		txrx_ops.rx.rx_flush = NULL;
+		txrx_ops.rx.rx_gro_flush = dp_rx_gro_flush_cbk;
 	}
 
 	if (wlan_dp_cfg_is_rx_fisa_enabled(&dp_intf->dp_ctx->dp_cfg) &&
@@ -1318,6 +1359,8 @@ QDF_STATUS ucfg_dp_tdlsta_register_txrx_ops(struct wlan_objmgr_vdev *vdev)
 	}
 
 	dp_link->cdp_vdev_registered = 1;
+	dp_link->cdp_vdev_deleted = 0;
+	dp_link->destroyed = 0;
 	dp_intf->txrx_ops = txrx_ops;
 
 	return QDF_STATUS_SUCCESS;
@@ -1352,6 +1395,8 @@ QDF_STATUS ucfg_dp_ocb_register_txrx_ops(struct wlan_objmgr_vdev *vdev)
 	}
 
 	dp_link->cdp_vdev_registered = 1;
+	dp_link->cdp_vdev_deleted = 0;
+	dp_link->destroyed = 0;
 	dp_intf->txrx_ops = txrx_ops;
 
 	qdf_copy_macaddr(&dp_link->conn_info.peer_macaddr,
@@ -1384,6 +1429,8 @@ QDF_STATUS ucfg_dp_mon_register_txrx_ops(struct wlan_objmgr_vdev *vdev)
 			  &txrx_ops);
 
 	dp_link->cdp_vdev_registered = 1;
+	dp_link->cdp_vdev_deleted = 0;
+	dp_link->destroyed = 0;
 	dp_intf->txrx_ops = txrx_ops;
 
 	return QDF_STATUS_SUCCESS;
@@ -1417,9 +1464,11 @@ QDF_STATUS ucfg_dp_softap_register_txrx_ops(struct wlan_objmgr_vdev *vdev,
 		txrx_ops->rx.rx = dp_softap_rx_packet_cbk;
 		txrx_ops->rx.rx_stack = NULL;
 		txrx_ops->rx.rx_flush = NULL;
+		txrx_ops->rx.rx_gro_flush = dp_rx_gro_flush_cbk;
 	}
 
-	if (wlan_dp_fb_enabled(dp_intf->dp_ctx) &&
+	if ((wlan_dp_fb_enabled(dp_intf->dp_ctx) ||
+	     wlan_dp_rx_is_latency_sensitive_reo_enabled()) &&
 	    wlan_dp_cfg_is_rx_fisa_enabled(&dp_intf->dp_ctx->dp_cfg) &&
 	    dp_intf->device_mode != QDF_MONITOR_MODE) {
 		dp_debug("FISA feature enabled");
@@ -1438,6 +1487,8 @@ QDF_STATUS ucfg_dp_softap_register_txrx_ops(struct wlan_objmgr_vdev *vdev,
 	}
 
 	dp_link->cdp_vdev_registered = 1;
+	dp_link->cdp_vdev_deleted = 0;
+	dp_link->destroyed = 0;
 	dp_intf->txrx_ops = *txrx_ops;
 	dp_link->sap_tx_block_mask &= ~DP_TX_FN_CLR;
 
@@ -2407,9 +2458,7 @@ void ucfg_dp_register_hdd_callbacks(struct wlan_objmgr_psoc *psoc,
 		cb_obj->dp_get_tx_flow_low_watermark;
 	dp_ctx->dp_ops.dp_get_tsf_time = cb_obj->dp_get_tsf_time;
 	dp_ctx->dp_ops.dp_tsf_timestamp_rx = cb_obj->dp_tsf_timestamp_rx;
-#ifdef WLAN_FEATURE_FILS_SK_SAP
 	dp_ctx->dp_ops.dp_fils_hlp_rx = cb_obj->dp_fils_hlp_rx;
-#endif
 	dp_ctx->dp_ops.dp_gro_rx_legacy_get_napi =
 		cb_obj->dp_gro_rx_legacy_get_napi;
 	dp_ctx->dp_ops.dp_get_netdev_by_vdev_mac =
@@ -2624,6 +2673,98 @@ void ucfg_dp_runtime_disable_rx_thread(struct wlan_objmgr_vdev *vdev,
 				       bool value)
 {
 	struct wlan_dp_link *dp_link = dp_get_vdev_priv_obj(vdev);
+	ol_txrx_soc_handle soc = cds_get_context(QDF_MODULE_ID_SOC);
+	struct wlan_dp_intf *dp_intf;
+	struct wlan_dp_psoc_context *dp_ctx;
+
+	if (!dp_link) {
+		dp_err("Unable to get DP link");
+		return;
+	}
+
+	dp_intf = dp_link->dp_intf;
+	if (qdf_unlikely(!dp_intf))
+		return;
+
+	dp_ctx = dp_intf->dp_ctx;
+	if (qdf_unlikely(!dp_ctx))
+		return;
+
+	if (!dp_ctx->enable_dp_rx_threads) {
+		dp_info("rx_thread is not enabled");
+		return;
+	}
+
+	qdf_atomic_inc(&dp_intf->num_active_task);
+
+	if (dp_intf->runtime_disable_rx_thread != value) {
+		dp_intf->runtime_disable_rx_thread = value;
+		dp_txrx_flush_pkts_by_vdev_id(soc, dp_link->link_id);
+	}
+
+	qdf_atomic_dec(&dp_intf->num_active_task);
+}
+
+#ifdef WLAN_FEATURE_LATENCY_SENSITIVE_REO
+static void dp_flush_fisa_entries_by_vdev(struct wlan_objmgr_vdev *vdev)
+{
+	struct wlan_dp_link *dp_link = dp_get_vdev_priv_obj(vdev);
+	struct wlan_dp_intf *dp_intf = dp_link->dp_intf;
+	struct wlan_dp_psoc_context *dp_ctx;
+	ol_txrx_soc_handle soc = cds_get_context(QDF_MODULE_ID_SOC);
+
+	if (qdf_unlikely(!soc))
+		return;
+
+	dp_ctx = dp_intf->dp_ctx;
+	if (qdf_unlikely(!dp_ctx))
+		return;
+
+	qdf_atomic_inc(&dp_intf->num_active_task);
+
+	/* do fisa flush for this vdev */
+	if (wlan_dp_cfg_is_rx_fisa_enabled(&dp_ctx->dp_cfg))
+		wlan_dp_rx_fisa_flush_by_vdev_id((struct dp_soc *)soc,
+						 dp_link->link_id);
+
+	qdf_atomic_dec(&dp_intf->num_active_task);
+}
+
+void ucfg_dp_fisa_route_to_latency_sensitive_reo(struct wlan_objmgr_vdev *vdev,
+						 bool value)
+{
+	struct wlan_dp_link *dp_link = dp_get_vdev_priv_obj(vdev);
+	struct wlan_dp_intf *dp_intf;
+	struct wlan_dp_psoc_context *dp_ctx;
+
+	if (!dp_link) {
+		dp_err("Unable to get DP link");
+		return;
+	}
+
+	dp_intf = dp_link->dp_intf;
+	if (qdf_unlikely(!dp_intf))
+		return;
+
+	dp_ctx = dp_intf->dp_ctx;
+	if (qdf_unlikely(!dp_ctx))
+		return;
+
+	if (dp_intf->route_to_latency_sensitive_reo != value) {
+		if (!dp_is_fisa_in_cmem(dp_ctx)) {
+			dp_err("lsr feature not supported");
+			return;
+		}
+
+		dp_intf->route_to_latency_sensitive_reo = value;
+		dp_flush_fisa_entries_by_vdev(vdev);
+	}
+}
+
+void ucfg_dp_runtime_disable_rx_fisa_aggr(struct wlan_objmgr_vdev *vdev,
+					  bool value)
+{
+	struct wlan_dp_link *dp_link = dp_get_vdev_priv_obj(vdev);
 	struct wlan_dp_intf *dp_intf;
 
 	if (!dp_link) {
@@ -2632,8 +2773,21 @@ void ucfg_dp_runtime_disable_rx_thread(struct wlan_objmgr_vdev *vdev,
 	}
 
 	dp_intf = dp_link->dp_intf;
-	dp_intf->runtime_disable_rx_thread = value;
+
+	if (dp_intf->runtime_disable_rx_fisa_aggr != value)
+		dp_intf->runtime_disable_rx_fisa_aggr = value;
 }
+#else
+void ucfg_dp_fisa_route_to_latency_sensitive_reo(struct wlan_objmgr_vdev *vdev,
+						 bool value)
+{
+}
+
+void ucfg_dp_runtime_disable_rx_fisa_aggr(struct wlan_objmgr_vdev *vdev,
+					  bool value)
+{
+}
+#endif
 
 bool ucfg_dp_get_napi_enabled(struct wlan_objmgr_psoc *psoc)
 {

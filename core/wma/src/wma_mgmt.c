@@ -883,6 +883,8 @@ void wma_set_sta_keep_alive(tp_wma_handle wma, uint8_t vdev_id,
 			if (method == WMI_KEEP_ALIVE_NULL_PKT)
 				params.method = WMI_KEEP_ALIVE_MGMT_FRAME;
 		}
+
+		wlan_mlme_set_keepalive_period(intr->vdev, params.timeperiod);
 	}
 
 	if (hostv4addr)
@@ -2118,6 +2120,8 @@ static int wmi_unified_probe_rsp_tmpl_send(tp_wma_handle wma,
 
 	params.prb_rsp_template_len = probe_rsp_info->probeRespTemplateLen;
 	params.prb_rsp_template_frm = probe_rsp_info->probeRespTemplate;
+	params.go_ignore_non_p2p_probe_req =
+		probe_rsp_info->go_ignore_non_p2p_probe_req;
 
 	/* will be clear in the wma_unified_bcn_tmpl_send() */
 	wma_critical_update_set_notify_probe_rsp_tmpl(wma->pdev,

@@ -613,19 +613,16 @@ union wlan_tp_data {
 
 /*
  * struct flow_info - Structure used for defining flow
- * @proto: Flow proto
- * @src_port: Source port
- * @dst_port: Destination port
- * @flags: Flags indicating available attributes of a flow
  * @src_ip: Source IP (IPv4/IPv6)
  * @dst_ip: Destination IP (IPv4/IPv6)
+ * @src_port: Source port
+ * @dst_port: Destination port
+ * @proto: Flow proto
+ * @reserved: Padding
+ * @flags: Flags indicating available attributes of a flow
  * @flow_label: Flow label if IPv6 is used for src_ip/dst_ip
  */
 struct flow_info {
-	uint8_t proto;
-	uint16_t src_port;
-	uint16_t dst_port;
-	uint32_t flags;
 	union {
 		uint32_t ipv4_addr;             /* IPV4 address */
 		uint32_t ipv6_addr[4];          /* IPV6 address */
@@ -634,6 +631,11 @@ struct flow_info {
 		uint32_t ipv4_addr;             /* IPV4 address */
 		uint32_t ipv6_addr[4];          /* IPV6 address */
 	} dst_ip;
+	uint16_t src_port;
+	uint16_t dst_port;
+	uint8_t proto;
+	uint8_t reserved[3];
+	uint32_t flags;
 	uint32_t flow_label;
 };
 
@@ -662,8 +664,8 @@ struct wlan_dp_stc_flow_classify_result {
 struct wlan_dp_stc_txrx_min_max_stats {
 	uint32_t pkt_size_min;
 	uint32_t pkt_size_max;
-	uint32_t pkt_iat_min;
-	uint32_t pkt_iat_max;
+	uint64_t pkt_iat_min;
+	uint64_t pkt_iat_max;
 };
 
 /*
@@ -681,9 +683,9 @@ struct wlan_dp_stc_txrx_stats {
 	uint32_t pkts;
 	uint32_t pkt_size_min;
 	uint32_t pkt_size_max;
-	uint32_t pkt_iat_min;
-	uint32_t pkt_iat_max;
-	uint32_t pkt_iat_sum;
+	uint64_t pkt_iat_min;
+	uint64_t pkt_iat_max;
+	uint64_t pkt_iat_sum;
 };
 
 /*
@@ -709,9 +711,9 @@ struct wlan_dp_stc_txrx_samples {
  * @burst_count: Total number of bursts
  */
 struct wlan_dp_stc_burst_stats {
-	uint32_t burst_duration_min;
-	uint32_t burst_duration_max;
-	uint32_t burst_duration_sum;
+	uint64_t burst_duration_min;
+	uint64_t burst_duration_max;
+	uint64_t burst_duration_sum;
 	uint32_t burst_size_min;
 	uint32_t burst_size_max;
 	uint64_t burst_size_sum;
@@ -814,10 +816,10 @@ struct wlan_dp_psoc_callbacks {
 	void (*dp_get_tsf_time)(qdf_netdev_t netdev, uint64_t input_time,
 				uint64_t *tsf_time);
 	void (*dp_tsf_timestamp_rx)(hdd_cb_handle ctx, qdf_nbuf_t nbuf);
-#ifdef WLAN_FEATURE_FILS_SK_SAP
+
 	void (*dp_fils_hlp_rx)(uint8_t intf_id, hdd_cb_handle ctx,
 			       qdf_nbuf_t nbuf);
-#endif
+
 	QDF_STATUS (*dp_nbuf_push_pkt)(qdf_nbuf_t nbuf,
 				       enum dp_nbuf_push_type type);
 
@@ -923,6 +925,7 @@ struct wlan_dp_psoc_callbacks {
  * @dp_lro_config_cmd: Callback to  send LRO config command
  * @dp_send_dhcp_ind: Callback to send DHCP indication
  * @dp_send_active_traffic_map: Callback to send active traffic mapping
+ * @dp_send_opm_stats_cmd: Callback to send OPM stats command
  */
 struct wlan_dp_psoc_sb_ops {
 	/*TODO to add target if TX ops*/
@@ -939,6 +942,10 @@ struct wlan_dp_psoc_sb_ops {
 				       struct dp_dhcp_ind *dhcp_ind);
 	QDF_STATUS (*dp_send_active_traffic_map)(struct wlan_objmgr_psoc *psoc,
 						 struct dp_active_traffic_map_params *req_buf);
+#ifdef WLAN_DP_FEATURE_STC
+	QDF_STATUS (*dp_send_opm_stats_cmd)(struct wlan_objmgr_psoc *psoc,
+					    uint8_t pdev_id);
+#endif
 };
 
 /**

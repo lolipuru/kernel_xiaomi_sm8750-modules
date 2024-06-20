@@ -85,6 +85,7 @@ static QDF_STATUS policy_mgr_init_cfg(struct wlan_objmgr_psoc *psoc)
 		cfg->max_conc_cxns = cfg_get(psoc, CFG_MAX_CONC_CXNS);
 		policy_mgr_err("max_conc_cxns %d non-nan", cfg->max_conc_cxns);
 	}
+
 	cfg->max_conc_cxns = QDF_MIN(cfg->max_conc_cxns,
 				     MAX_NUMBER_OF_CONC_CONNECTIONS);
 	cfg->conc_rule1 = cfg_get(psoc, CFG_ENABLE_CONC_RULE1);

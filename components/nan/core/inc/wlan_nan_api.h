@@ -240,6 +240,27 @@ bool wlan_is_nan_allowed_on_freq(struct wlan_objmgr_pdev *pdev, uint32_t freq);
  */
 void nan_handle_emlsr_concurrency(struct wlan_objmgr_psoc *psoc,
 				  bool nan_enable);
+
+/**
+ * wlan_nan_is_sta_sap_nan_allowed() - Check if STA + SAP + NAN allowed
+ * @psoc: pointer to psoc object
+ *
+ * Return true if STA + SAP + NAN allowed
+ */
+bool wlan_nan_is_sta_sap_nan_allowed(struct wlan_objmgr_psoc *psoc);
+
+/**
+ * wlan_nan_sap_override_freq() - Return frequency of NAN 2GHz channel
+ * @psoc: pointer to psoc object
+ * @vdev_id: Vdev Id
+ * @chan_freq: current frequency
+ *
+ * Return: valid NAN frequency
+ */
+qdf_freq_t wlan_nan_sap_override_freq(struct wlan_objmgr_psoc *psoc,
+				      uint32_t vdev_id,
+				      qdf_freq_t chan_freq);
+
 #else /* WLAN_FEATURE_NAN */
 static inline QDF_STATUS nan_init(void)
 {
@@ -301,6 +322,21 @@ bool wlan_is_nan_allowed_on_freq(struct wlan_objmgr_pdev *pdev, uint32_t freq)
 static inline void
 nan_handle_emlsr_concurrency(struct wlan_objmgr_psoc *psoc, bool nan_enable)
 {}
+
+static inline
+bool wlan_nan_is_sta_sap_nan_allowed(struct wlan_objmgr_psoc *psoc)
+{
+	return false;
+}
+
+static inline
+qdf_freq_t wlan_nan_sap_override_freq(struct wlan_objmgr_psoc *psoc,
+				      uint32_t vdev_id,
+				      qdf_freq_t chan_freq)
+{
+	return chan_freq;
+}
+
 #endif /* WLAN_FEATURE_NAN */
 
 #if defined(WLAN_FEATURE_NAN) && defined(WLAN_FEATURE_11BE_MLO)

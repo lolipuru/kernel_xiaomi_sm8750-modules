@@ -3,6 +3,10 @@ load("//build/kernel/kleaf:kernel.bzl", "ddk_module")
 load("//msm-kernel:target_variants.bzl", "get_all_variants")
 
 _target_chipset_map = {
+    "anorak": [
+	"qca6490",
+	"kiwi-v2",
+    ],
     "niobe": [
 	"kiwi-v2",
     ],
@@ -31,6 +35,7 @@ _chipset_hw_map = {
     "peach-v2": "BERYLLIUM",
     "qca6750": "MOSELLE",
     "wcn7750": "BERYLLIUM",
+    "qca6490": "LITHIUM",
 }
 
 _chipset_header_map = {
@@ -54,6 +59,10 @@ _chipset_header_map = {
         "api/hw/wcn7750/v1",
         "cmn/hal/wifi3.0/wcn7750",
     ],
+    "qca6490": [
+        "api/hw/qca6490/v1",
+        "cmn/hal/wifi3.0/qca6490",
+    ],
 }
 
 _hw_header_map = {
@@ -62,7 +71,10 @@ _hw_header_map = {
     ],
     "MOSELLE" : [
         "cmn/hal/wifi3.0/li",
-	],
+    ],
+    "LITHIUM": [
+        "cmn/hal/wifi3.0/li",
+    ],
 }
 
 _fixed_includes = [
@@ -330,6 +342,7 @@ _fixed_ipaths = [
     "os_if/sync/src",
     "os_if/tdls/inc",
     "os_if/twt/inc",
+    "os_if/telemetry/inc",
     "uapi/linux",
 ]
 
@@ -722,6 +735,12 @@ _conditional_srcs = {
     "CONFIG_INCLUDE_HAL_PEACH": {
         True: [
             "cmn/hal/wifi3.0/peach/hal_peach.c",
+        ],
+    },
+    "CONFIG_QCA6490_HEADERS_DEF": {
+        True: [
+            "cmn/hal/wifi3.0/qca6490/hal_6490.c",
+            "cmn/hif/src/qca6490def.c",
         ],
     },
     "CONFIG_QCA6750_HEADERS_DEF": {
@@ -1803,6 +1822,13 @@ _conditional_srcs = {
             "cmn/target_if/spatial_reuse/src/target_if_spatial_reuse.c",
         ],
     },
+    "CONFIG_WLAN_TELEMETRY": {
+        True: [
+            "os_if/telemetry/src/os_if_telemetry.c",
+            "components/dp/core/src/wlan_dp_telemetry.c",
+            "components/dp/dispatcher/src/wlan_dp_telemetry_ucfg_api.c",
+        ],
+    },
     "CONFIG_WLAN_FEATURE_TWT": {
         True: [
             "cmn/os_if/linux/twt/src/osif_twt_req.c",
@@ -2324,7 +2350,7 @@ def _define_module_for_target_variant_chipset(target, variant, chipset):
             "//vendor/qcom/opensource/wlan/platform:wlan-platform-headers",
         ]
 
-    if target != "x1e80100":
+    if target != "x1e80100" and target != "anorak":
         deps = deps + [
             "//vendor/qcom/opensource/dataipa:include_headers",
             "//vendor/qcom/opensource/dataipa:{}_{}_ipam".format(target, variant),

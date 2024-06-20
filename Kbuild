@@ -2437,6 +2437,18 @@ endif
 
 $(call add-wlan-objs,wifi_pos,$(WIFI_POS_OBJS))
 
+###### Telemetry ########
+TELEMETRY_OSIF_SRC := os_if/telemetry/src
+
+TELEMETRY_INCS := -I$(WLAN_ROOT)/os_if/telemetry/inc
+
+ifeq ($(CONFIG_WLAN_TELEMETRY), y)
+TELEMETRY_OBJS := $(TELEMETRY_OSIF_SRC)/os_if_telemetry.o
+endif
+
+$(call add-wlan-objs,telemetry,$(TELEMETRY_OBJS))
+
+
 ###### TWT CONVERGED ########
 TWT_CONV_CMN_OSIF_SRC := $(WLAN_COMMON_ROOT)/os_if/linux/twt/src
 TWT_CONV_CMN_DISPATCHER_SRC := $(WLAN_COMMON_ROOT)/umac/twt/dispatcher/src
@@ -2619,6 +2631,12 @@ WLAN_DP_COMP_OBJS := $(DP_COMP_CORE_DIR)/wlan_dp_main.o \
 
 ifeq ($(CONFIG_WLAN_LRO), y)
 WLAN_DP_COMP_OBJS += $(DP_COMP_OS_IF_DIR)/os_if_dp_lro.o
+endif
+
+ifeq ($(CONFIG_WLAN_TELEMETRY), y)
+WLAN_DP_COMP_OBJS += $(DP_COMP_CORE_DIR)/wlan_dp_telemetry.o \
+		$(DP_COMP_UCFG_DIR)/wlan_dp_telemetry_api.o \
+		$(DP_COMP_UCFG_DIR)/wlan_dp_telemetry_ucfg_api.o
 endif
 
 ifeq ($(CONFIG_WLAN_NUD_TRACKING), y)
@@ -3278,6 +3296,8 @@ INCS +=		$(CP_MC_STATS_COMPONENT_INC)
 INCS +=		$(CP_STATS_CFG80211_OS_IF_INC)
 ################ TWT CONVERGED ################
 INCS +=		$(TWT_CONV_INCS)
+################ TELEMETR ################
+INCS +=		$(TELEMETRY_INCS)
 ################ Dynamic ACS ####################
 INCS +=		$(DCS_TGT_IF_INC)
 INCS +=		$(DCS_DISP_INC)
@@ -3542,6 +3562,7 @@ ccflags-$(CONFIG_DIRECT_BUF_RX_ENABLE) += -DDBR_MULTI_SRNG_ENABLE
 endif
 ccflags-$(CONFIG_WMI_CMD_STRINGS) += -DWMI_CMD_STRINGS
 ccflags-$(CONFIG_WLAN_FEATURE_TWT) += -DWLAN_SUPPORT_TWT
+ccflags-$(CONFIG_WLAN_TELEMETRY) += -DWLAN_FEATURE_TELEMETRY
 ifeq ($(CONFIG_WLAN_FEATURE_11BE_MLO), y)
 ifeq ($(CONFIG_DP_USE_REDUCED_PEER_ID_FIELD_WIDTH), y)
 ccflags-y += -DDP_USE_REDUCED_PEER_ID_FIELD_WIDTH
@@ -4886,6 +4907,7 @@ ccflags-$(CONFIG_WLAN_FEATURE_AFC_DCS_SKIP_ACS_RANGE) += -DWLAN_FEATURE_AFC_DCS_
 
 ccflags-$(CONFIG_RX_FISA) += -DWLAN_SUPPORT_RX_FISA
 ccflags-$(CONFIG_RX_FISA_HISTORY) += -DWLAN_SUPPORT_RX_FISA_HIST
+ccflags-$(CONFIG_WLAN_FEATURE_LATENCY_SENSITIVE_REO) += -DWLAN_FEATURE_LATENCY_SENSITIVE_REO
 
 ccflags-$(CONFIG_DP_SWLM) += -DWLAN_DP_FEATURE_SW_LATENCY_MGR
 
@@ -4900,6 +4922,7 @@ ccflags-$(CONFIG_HASTINGS_BT_WAR) += -DHASTINGS_BT_WAR
 ccflags-$(CONFIG_HIF_DEBUG) += -DHIF_CONFIG_SLUB_DEBUG_ON
 ccflags-$(CONFIG_HAL_DEBUG) += -DHAL_CONFIG_SLUB_DEBUG_ON
 
+ccflags-$(CONFIG_FIFTH_CONNECTION) += -DFEATURE_FIFTH_CONNECTION
 ccflags-$(CONFIG_FOURTH_CONNECTION) += -DFEATURE_FOURTH_CONNECTION
 ccflags-$(CONFIG_FOURTH_CONNECTION_AUTO) += -DFOURTH_CONNECTION_AUTO
 ccflags-$(CONFIG_WMI_SEND_RECV_QMI) += -DWLAN_FEATURE_WMI_SEND_RECV_QMI

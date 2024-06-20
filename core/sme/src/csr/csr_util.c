@@ -67,6 +67,7 @@ const char *get_e_roam_cmd_status_str(eRoamCmdStatus val)
 		CASE_RETURN_STR(eCSR_ROAM_STA_CHANNEL_SWITCH);
 		CASE_RETURN_STR(eCSR_ROAM_NDP_STATUS_UPDATE);
 		CASE_RETURN_STR(eCSR_ROAM_CHANNEL_COMPLETE_IND);
+		CASE_RETURN_STR(eCSR_ROAM_CAC_COMPLETE_IND);
 		CASE_RETURN_STR(eCSR_ROAM_SAE_COMPUTE);
 		CASE_RETURN_STR(eCSR_ROAM_CHANNEL_INFO_EVENT_IND);
 		CASE_RETURN_STR(eCSR_ROAM_CHANNEL_SWITCH_STARTED_IND);
@@ -80,41 +81,18 @@ const char *get_e_csr_roam_result_str(eCsrRoamResult val)
 	switch (val) {
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_NONE);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_FAILURE);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_ASSOCIATED);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NOT_ASSOCIATED);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_MIC_FAILURE);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_FORCED);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_DISASSOC_IND);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_CAP_CHANGED);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_LOSTLINK);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_MIC_ERROR_UNICAST);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_MIC_ERROR_GROUP);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_AUTHENTICATED);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NEW_RSN_BSS);
- #ifdef FEATURE_WLAN_WAPI
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NEW_WAPI_BSS);
- #endif /* FEATURE_WLAN_WAPI */
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_INFRA_STARTED);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_INFRA_START_FAILED);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_INFRA_STOPPED);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_INFRA_ASSOCIATION_IND);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_INFRA_ASSOCIATION_CNF);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_INFRA_DISASSOCIATED);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_WPS_PBC_PROBE_REQ_IND);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_SEND_ACTION_FAIL);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_MAX_ASSOC_EXCEEDED);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_ASSOC_FAIL_CON_CHANNEL);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_ADD_TDLS_PEER);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_UPDATE_TDLS_PEER);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_DELETE_TDLS_PEER);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_TEARDOWN_TDLS_PEER_IND);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_DELETE_ALL_TDLS_PEER_IND);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_LINK_ESTABLISH_REQ_RSP);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_TDLS_SHOULD_DISCOVER);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_TDLS_SHOULD_TEARDOWN);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_TDLS_SHOULD_PEER_DISCONNECTED);
-		CASE_RETURN_STR
-			(eCSR_ROAM_RESULT_TDLS_CONNECTION_TRACKER_NOTIFICATION);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_DFS_RADAR_FOUND_IND);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_CHANNEL_CHANGE_SUCCESS);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_CHANNEL_CHANGE_FAILURE);
@@ -123,16 +101,7 @@ const char *get_e_csr_roam_result_str(eCsrRoamResult val)
 		CASE_RETURN_STR(eCSR_ROAM_EXT_CHG_CHNL_UPDATE_IND);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDI_CREATE_RSP);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDI_DELETE_RSP);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDP_INITIATOR_RSP);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDP_NEW_PEER_IND);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDP_CONFIRM_IND);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDP_INDICATION);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDP_SCHED_UPDATE_RSP);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDP_RESPONDER_RSP);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDP_END_RSP);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDP_PEER_DEPARTED_IND);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_NDP_END_IND);
-		CASE_RETURN_STR(eCSR_ROAM_RESULT_SCAN_FOR_SSID_FAILURE);
+		CASE_RETURN_STR(eCSR_ROAM_RESULT_CAC_END_IND);
 		CASE_RETURN_STR(eCSR_ROAM_RESULT_CHANNEL_SWITCH_STARTED_NOTIFY);
 	default:
 		return "unknown";
@@ -270,12 +239,7 @@ static bool csr_is_conn_state(struct mac_context *mac_ctx, uint32_t session_id,
 	return mac_ctx->roam.roamSession[session_id].connectState == state;
 }
 
-bool csr_is_conn_state_connected(struct mac_context *mac, uint32_t sessionId)
-{
-	return cm_is_vdevid_connected(mac->pdev, sessionId) ||
-	       csr_is_conn_state_connected_wds(mac, sessionId);
-}
-
+static inline
 bool csr_is_conn_state_connected_wds(struct mac_context *mac_ctx,
 				     uint32_t session_id)
 {
@@ -283,26 +247,10 @@ bool csr_is_conn_state_connected_wds(struct mac_context *mac_ctx,
 				 eCSR_ASSOC_STATE_TYPE_WDS_CONNECTED);
 }
 
-bool csr_is_conn_state_connected_infra_ap(struct mac_context *mac_ctx,
-					  uint32_t session_id)
+bool csr_is_conn_state_connected(struct mac_context *mac, uint32_t sessionId)
 {
-	return csr_is_conn_state(mac_ctx, session_id,
-				 eCSR_ASSOC_STATE_TYPE_INFRA_CONNECTED) ||
-		csr_is_conn_state(mac_ctx, session_id,
-				  eCSR_ASSOC_STATE_TYPE_INFRA_DISCONNECTED);
-}
-
-bool csr_is_conn_state_disconnected_wds(struct mac_context *mac_ctx,
-					uint32_t session_id)
-{
-	return csr_is_conn_state(mac_ctx, session_id,
-				 eCSR_ASSOC_STATE_TYPE_WDS_DISCONNECTED);
-}
-
-bool csr_is_conn_state_wds(struct mac_context *mac, uint32_t sessionId)
-{
-	return csr_is_conn_state_connected_wds(mac, sessionId) ||
-	       csr_is_conn_state_disconnected_wds(mac, sessionId);
+	return cm_is_vdevid_connected(mac->pdev, sessionId) ||
+	       csr_is_conn_state_connected_wds(mac, sessionId);
 }
 
 uint16_t cm_csr_get_vdev_dot11_mode(uint8_t vdev_id)
@@ -803,24 +751,6 @@ bool csr_is_all_session_disconnected(struct mac_context *mac)
 	}
 
 	return fRc;
-}
-
-bool csr_is_infra_ap_started(struct mac_context *mac)
-{
-	uint32_t sessionId;
-	bool fRc = false;
-
-	for (sessionId = 0; sessionId < WLAN_MAX_VDEVS; sessionId++) {
-		if (CSR_IS_SESSION_VALID(mac, sessionId) &&
-				(csr_is_conn_state_connected_infra_ap(mac,
-					sessionId))) {
-			fRc = true;
-			break;
-		}
-	}
-
-	return fRc;
-
 }
 
 bool csr_is_conn_state_disconnected(struct mac_context *mac, uint8_t vdev_id)

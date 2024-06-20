@@ -2841,19 +2841,6 @@ wlan_mlme_set_rf_test_mode_enabled(struct wlan_objmgr_psoc *psoc, bool value);
 
 #ifdef CONFIG_BAND_6GHZ
 /**
- * wlan_mlme_is_disable_vlp_sta_conn_to_sp_ap_enabled() - Get the disable vlp
- *                                                       STA conn to SP AP flag
- * @psoc: psoc context
- * @value: Enable/Disable value ptr.
- *
- * Return: QDF_STATUS
- */
-QDF_STATUS
-wlan_mlme_is_disable_vlp_sta_conn_to_sp_ap_enabled(
-						struct wlan_objmgr_psoc *psoc,
-						bool *value);
-
-/**
  * wlan_mlme_is_standard_6ghz_conn_policy_enabled() - Get the 6 GHz standard
  *                                                    connection policy flag
  * @psoc: psoc context
@@ -2877,15 +2864,6 @@ QDF_STATUS
 wlan_mlme_is_relaxed_lpi_conn_policy_enabled(struct wlan_objmgr_psoc *psoc,
 					     bool *value);
 #else
-static inline QDF_STATUS
-wlan_mlme_is_disable_vlp_sta_conn_to_sp_ap_enabled(
-						struct wlan_objmgr_psoc *psoc,
-						bool *value)
-{
-	*value = false;
-	return QDF_STATUS_SUCCESS;
-}
-
 static inline QDF_STATUS
 wlan_mlme_is_standard_6ghz_conn_policy_enabled(struct wlan_objmgr_psoc *psoc,
 					       bool *value)
@@ -5073,25 +5051,6 @@ wlan_mlme_send_csa_event_status_ind(struct wlan_objmgr_vdev *vdev,
 QDF_STATUS
 wlan_mlme_is_hs_20_btm_offload_disabled(struct wlan_objmgr_psoc *psoc,
 					bool *val);
-/**
- * wlan_mlme_set_disconnect_receive() - set disconnect receive on vdev
- * @vdev: vdev obj
- * @set_disconnect_receive: set disconnect receive
- *
- * Return: QDF Status
- */
-QDF_STATUS wlan_mlme_set_disconnect_receive(struct wlan_objmgr_vdev *vdev,
-					    bool set_disconnect_receive);
-
-/**
- * wlan_mlme_get_is_disconnect_receive() - Get disconnect received or not
- * on vdev
- * @vdev: VDEV object
- *
- * API to get the disconnect received on vdev
- *
- * Return: true/false
- */
 
 bool wlan_mlme_get_is_disconnect_receive(struct wlan_objmgr_vdev *vdev);
 
@@ -5127,4 +5086,21 @@ wlan_mlme_set_sap_suspend_resume(struct wlan_objmgr_psoc *psoc,
 bool
 wlan_mlme_is_sap_suspend_supported(struct wlan_objmgr_vdev *vdev);
 
+/**
+ * wlan_mlme_set_keepalive_period() - Save keep alive period
+ * @vdev: VDEV object
+ * @keep_alive_period: Keep alive period
+ *
+ * Return: None
+ */
+void wlan_mlme_set_keepalive_period(struct wlan_objmgr_vdev *vdev,
+				    uint16_t keep_alive_period);
+
+/**
+ * wlan_mlme_get_keepalive_period() - Get keep alive period
+ * @vdev: VDEV object
+ *
+ * Return: Keep alive period.
+ */
+uint16_t wlan_mlme_get_keepalive_period(struct wlan_objmgr_vdev *vdev);
 #endif /* _WLAN_MLME_API_H_ */

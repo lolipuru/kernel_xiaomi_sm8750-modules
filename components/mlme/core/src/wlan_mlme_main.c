@@ -1206,30 +1206,6 @@ static void mlme_init_wds_config_cfg(struct wlan_objmgr_psoc *psoc,
 
 #ifdef CONFIG_BAND_6GHZ
 /**
- * mlme_init_disable_vlp_sta_conn_to_sp_ap() - initialize disable vlp STA
- *                                             connection to sp AP flag
- * @psoc: Pointer to PSOC
- * @gen: pointer to generic CFG items
- *
- * Return: None
- */
-static void mlme_init_disable_vlp_sta_conn_to_sp_ap(
-						struct wlan_objmgr_psoc *psoc,
-						struct wlan_mlme_generic *gen)
-{
-	gen->disable_vlp_sta_conn_to_sp_ap =
-		cfg_default(CFG_DISABLE_VLP_STA_CONN_TO_SP_AP);
-}
-#else
-static void mlme_init_disable_vlp_sta_conn_to_sp_ap(
-						struct wlan_objmgr_psoc *psoc,
-						struct wlan_mlme_generic *gen)
-{
-}
-#endif
-
-#ifdef CONFIG_BAND_6GHZ
-/**
  * mlme_init_standard_6ghz_conn_policy() - initialize standard 6GHz
  *                                         policy connection flag
  * @psoc: Pointer to PSOC
@@ -1327,6 +1303,7 @@ static void mlme_init_emlsr_mode(struct wlan_objmgr_psoc *psoc,
 				 struct wlan_mlme_generic *gen)
 {
 	gen->enable_emlsr_mode = cfg_default(CFG_EMLSR_MODE_ENABLE);
+	gen->enable_sap_emlsr_mode = cfg_get(psoc, CFG_SAP_EMLSR_MODE_ENABLE);
 }
 
 /**
@@ -1444,7 +1421,6 @@ static void mlme_init_generic_cfg(struct wlan_objmgr_psoc *psoc,
 	mlme_init_emlsr_mode(psoc, gen);
 	mlme_init_tl2m_negotiation_support(psoc, gen);
 	mlme_init_standard_6ghz_conn_policy(psoc, gen);
-	mlme_init_disable_vlp_sta_conn_to_sp_ap(psoc, gen);
 	mlme_init_relaxed_lpi_conn_policy(psoc, gen);
 }
 
@@ -5826,4 +5802,69 @@ wlan_mlme_set_sap_psd_for_20mhz(struct wlan_objmgr_vdev *vdev,
 
 	mlme_priv->mlme_ap.psd_20mhz = psd_power;
 	return QDF_STATUS_SUCCESS;
+}
+
+/**
+ * wlan_peer_find_mld_peer_n_get_mac_info() - This API will find MLD peer from
+ * peer list.
+ * @psoc: Pointer to psoc object
+ * @obj: Pointer to peer object
+ * @args: Pointer to void * argument
+ *
+ * Return: void
+ */
+static void
+wlan_peer_find_mld_peer_n_get_mac_info(struct wlan_objmgr_psoc *psoc,
+				       void *obj, void *args)
+{
+	struct wlan_objmgr_peer *peer = (struct wlan_objmgr_peer *)obj;
+	struct peer_mac_addresses *peer_mac_info =
+				(struct peer_mac_addresses *)args;
+	uint8_t *mld_mac, *peer_mac, *given_mac;
+
+	mld_mac = wlan_peer_mlme_get_mldaddr(peer);
+	peer_mac = wlan_peer_get_macaddr(peer);
+	given_mac = peer_mac_info->mac.bytes;
+
+	if (!mld_mac || WLAN_ADDR_EQ(mld_mac, given_mac) != QDF_STATUS_SUCCESS)
+		return;
+	qdf_copy_macaddr(&peer_mac_info->peer_mac,
+			 (struct qdf_mac_addr *)peer_mac);
+	qdf_copy_macaddr(&peer_mac_info->peer_mld,
+			 (struct qdf_mac_addr *)mld_mac);
+}
+
+QDF_STATUS wlan_find_peer_and_get_mac_and_mld_addr(
+				struct wlan_objmgr_psoc *psoc,
+				struct peer_mac_addresses *peer_mac_info)
+{
+	struct wlan_objmgr_peer *peer;
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+
+	peer = wlan_objmgr_get_peer_by_mac(psoc, peer_mac_info->mac.bytes,
+					   WLAN_LEGACY_MAC_ID);
+	if (peer) {
+		qdf_copy_macaddr(
+			&peer_mac_info->peer_mac,
+			(struct qdf_mac_addr *)wlan_peer_get_macaddr(peer));
+		if (wlan_peer_mlme_get_mldaddr(peer))
+			qdf_copy_macaddr(
+				&peer_mac_info->peer_mld,
+				(struct qdf_mac_addr *)
+				wlan_peer_mlme_get_mldaddr(peer));
+		wlan_objmgr_peer_release_ref(peer, WLAN_LEGACY_MAC_ID);
+		return status;
+	}
+
+	/* if not found with mac address try finding using MLD address */
+	wlan_objmgr_iterate_obj_list(psoc, WLAN_PEER_OP,
+				     wlan_peer_find_mld_peer_n_get_mac_info,
+				     peer_mac_info, 0, WLAN_LEGACY_MAC_ID);
+	if (qdf_is_macaddr_zero(&peer_mac_info->peer_mac)) {
+		mlme_err("peer is null for mac:" QDF_MAC_ADDR_FMT,
+			 QDF_MAC_ADDR_REF(peer_mac_info->mac.bytes));
+		return QDF_STATUS_E_EXISTS;
+	}
+
+	return status;
 }

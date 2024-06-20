@@ -5453,7 +5453,7 @@ end:
 	 * Send Reassoc failure response to host
 	 * (note session_entry may be NULL, but that's OK)
 	 */
-	lim_send_sme_join_reassoc_rsp(mac_ctx, eWNI_SME_REASSOC_RSP,
+	lim_send_sme_join_reassoc_rsp(mac_ctx, true,
 				      ret_code, STATUS_UNSPECIFIED_FAILURE,
 				      session_entry, vdev_id);
 }
@@ -10641,6 +10641,12 @@ skip_vht:
 
 	if (QDF_IS_STATUS_ERROR(status))
 		pe_err("cannot start ap_ecsa_timer");
+
+	lim_cp_stats_cstats_log_csa_evt(
+			session_entry, CSTATS_DIR_TX,
+			session_entry->gLimChannelSwitch.sw_target_freq,
+			session_entry->gLimChannelSwitch.ch_width,
+			session_entry->gLimChannelSwitch.switchMode);
 
 	pe_debug("IE count:%d chan:%d freq %d width:%d wrapper:%d ch_offset:%d",
 		 session_entry->gLimChannelSwitch.switchCount,

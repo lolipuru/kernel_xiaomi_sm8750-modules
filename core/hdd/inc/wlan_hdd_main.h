@@ -540,6 +540,7 @@ typedef enum {
 	NET_DEV_HOLD_IS_ANY_STA_CONNECTED = 61,
 	NET_DEV_HOLD_GET_ADAPTER_BY_BSSID = 62,
 	NET_DEV_HOLD_ALLOW_NEW_INTF = 63,
+	NET_DEV_HOLD_GET_STA_CONNECTIONS = 64,
 
 	/* Keep it at the end */
 	NET_DEV_HOLD_ID_MAX
@@ -1198,6 +1199,18 @@ struct wlan_hdd_tx_power {
 	uint32_t tx_pwr_cached_timestamp;
 };
 
+#define GET_STA_MAX_HOST_CLIENT 5
+/**
+ * struct get_station_client_info - To store get station command port id
+ * information
+ * @port_id: client id coming from upper layer
+ * @in_use: set true for a client when host receives vendor cmd for that client
+ */
+struct get_station_client_info {
+	uint32_t port_id;
+	bool in_use;
+};
+
 /**
  * struct hdd_adapter - hdd vdev/net_device context
  * @magic: Magic cookie for adapter sanity verification.  Note that this
@@ -1323,6 +1336,9 @@ struct wlan_hdd_tx_power {
  * @tx_latency_cfg: configuration for per-link transmit latency statistics
  * @link_state_cached_timestamp: link state cached timestamp
  * @keep_alive_interval: user configured STA keep alive interval
+ * @sta_client_info: To store get station user application port_id's
+ * @disconnect_link_id: cache disconnect link_id, for legacy link_id will
+ *			be @WLAN_INVALID_LINK_ID
  */
 struct hdd_adapter {
 	uint32_t magic;
@@ -1517,6 +1533,8 @@ struct hdd_adapter {
 	qdf_time_t link_state_cached_timestamp;
 #endif
 	uint16_t keep_alive_interval;
+	struct get_station_client_info sta_client_info[GET_STA_MAX_HOST_CLIENT];
+	int32_t disconnect_link_id;
 };
 
 #define WLAN_HDD_GET_STATION_CTX_PTR(link_info) (&(link_info)->session.station)
@@ -1826,6 +1844,22 @@ struct hdd_adapter_ops_history {
 	struct hdd_adapter_ops_record entry[WLAN_HDD_ADAPTER_OPS_HISTORY_MAX];
 };
 
+#ifdef WLAN_FEATURE_FILS_SK_SAP
+/**
+ * struct hdd_hlp_data_node - node for HLP response data
+ * @data: Pointer to HLP response data
+ * @data_len: Length of HLP Response
+ * @vdev_id: VDEV Id on which HLP response is received.
+ * @node: Pointer to node to traverse the HLP node
+ */
+struct hdd_hlp_data_node {
+	uint8_t *data;
+	uint16_t data_len;
+	uint8_t vdev_id;
+	qdf_list_node_t node;
+};
+#endif
+
 /**
  * struct hdd_dual_sta_policy - Concurrent STA policy configuration
  * @dual_sta_policy: Possible values are defined in enum
@@ -2063,6 +2097,8 @@ enum wlan_state_ctrl_str_id {
  * @twt_en_dis_work: work to send twt enable/disable cmd on MCC/SCC concurrency
  * @is_wifi3_0_target:
  * @dump_in_progress: Stores value of dump in progress
+ * @max_chipset_log_size_enable: ini flag to enable/disable max_chipset_log_size
+ * @max_chipset_log_size: Stores max chipset log size value
  * @dual_sta_policy: Concurrent STA policy configuration
  * @is_therm_stats_in_progress:
  * @is_vdev_macaddr_dynamic_update_supported:
@@ -2083,6 +2119,11 @@ enum wlan_state_ctrl_str_id {
  * @wlan_hdd_akm_suites: Supported AKM suites for various interfaces
  * @sta_akms: Station mode supported AKMs
  * @ap_akms: AP mode supported AKMs
+ * @hdd_hlp_data_lock: lock to avoid race condition in handling hlp data
+ * @hdd_hlp_data_list: list to maintain hlp data packets
+ * @hlp_processing_work: work to process hlp data pkt for association
+ * @get_sta_user_notif: Get station notifier callback to handle port_id on
+ *			userspace application close/abort
  */
 struct hdd_context {
 	struct wlan_objmgr_psoc *psoc;
@@ -2340,6 +2381,8 @@ struct hdd_context {
 #endif
 	bool is_wifi3_0_target;
 	bool dump_in_progress;
+	bool max_chipset_log_size_enable;
+	uint16_t max_chipset_log_size;
 	struct hdd_dual_sta_policy dual_sta_policy;
 #ifdef THERMAL_STATS_SUPPORT
 	bool is_therm_stats_in_progress;
@@ -2376,6 +2419,10 @@ struct hdd_context {
 	uint32_t *sta_akms;
 	uint32_t *ap_akms;
 #endif
+	qdf_spinlock_t hdd_hlp_data_lock;
+	qdf_list_t hdd_hlp_data_list;
+	struct work_struct hlp_processing_work;
+	struct notifier_block get_sta_user_notif;
 };
 
 /**
@@ -5237,6 +5284,7 @@ bool wlan_hdd_is_session_type_monitor(uint8_t session_type);
  * @name: name of the interface
  * @rtnl_held: True if RTNL lock is held
  * @name_assign_type: the name of assign type of the netdev
+ * @is_rx_mon: if monitor mode is getting enabled
  *
  * Return: 0 - on success
  *         err code - on failure
@@ -5244,7 +5292,8 @@ bool wlan_hdd_is_session_type_monitor(uint8_t session_type);
 int wlan_hdd_add_monitor_check(struct hdd_context *hdd_ctx,
 			       struct hdd_adapter **adapter,
 			       const char *name, bool rtnl_held,
-			       unsigned char name_assign_type);
+			       unsigned char name_assign_type,
+			       bool is_rx_mon);
 
 #ifdef CONFIG_WLAN_DEBUG_CRASH_INJECT
 /**
@@ -5523,6 +5572,7 @@ hdd_link_switch_vdev_mac_addr_update(int32_t ieee_old_link_id,
  * IEEE link ID.
  * @adapter: HDD adapter
  * @link_id: IEEE link ID to search for.
+ * @is_cache: Set this flag to get the link_id from cache_conn_info
  *
  * Search the station ctx connection info for matching link ID in @adapter and
  * return the link info pointer on match. The IEEE link ID is updated in station
@@ -5531,10 +5581,12 @@ hdd_link_switch_vdev_mac_addr_update(int32_t ieee_old_link_id,
  * Return: link info pointer
  */
 struct wlan_hdd_link_info *
-hdd_get_link_info_by_ieee_link_id(struct hdd_adapter *adapter, int32_t link_id);
+hdd_get_link_info_by_ieee_link_id(struct hdd_adapter *adapter,
+				  int32_t link_id, bool is_cache);
 #else
 static inline struct wlan_hdd_link_info *
-hdd_get_link_info_by_ieee_link_id(struct hdd_adapter *adapter, int32_t link_id)
+hdd_get_link_info_by_ieee_link_id(struct hdd_adapter *adapter,
+				  int32_t link_id, bool is_cache)
 {
 	return NULL;
 }
@@ -5792,4 +5844,13 @@ hdd_update_sub20_chan_width(struct wlan_hdd_link_info *link_info,
  */
 bool hdd_allow_new_intf(struct hdd_context *hdd_ctx,
                         enum QDF_OPMODE mode);
+
+/**
+ *hdd_set_disconnect_link_id_cb() - set STA disconnected link_id
+ *@vdev_id: vdev_id
+ *
+ * Return: None
+ */
+void
+hdd_set_disconnect_link_id_cb(uint8_t vdev_id);
 #endif /* end #if !defined(WLAN_HDD_MAIN_H) */

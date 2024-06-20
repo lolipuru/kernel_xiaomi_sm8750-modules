@@ -35,6 +35,16 @@
 #define FLOW_INFO_PRESENT_IPV6_SRC_IP		BIT(5)
 #define FLOW_INFO_PRESENT_IPV6_DST_IP		BIT(6)
 #define FLOW_INFO_PRESENT_IP_FRAGMENT		BIT(7)
+#define FLOW_INFO_IPV4_PARSE_SUCCESS		(FLOW_INFO_PRESENT_PROTO |\
+						FLOW_INFO_PRESENT_SRC_PORT |\
+						FLOW_INFO_PRESENT_DST_PORT |\
+						FLOW_INFO_PRESENT_IPV4_SRC_IP |\
+						FLOW_INFO_PRESENT_IPV4_DST_IP)
+#define FLOW_INFO_IPV6_PARSE_SUCCESS		(FLOW_INFO_PRESENT_PROTO |\
+						FLOW_INFO_PRESENT_SRC_PORT |\
+						FLOW_INFO_PRESENT_DST_PORT |\
+						FLOW_INFO_PRESENT_IPV6_SRC_IP |\
+						FLOW_INFO_PRESENT_IPV6_DST_IP)
 
 enum fim_delete_type {
 	FIM_DELETE_ALL,
@@ -110,6 +120,15 @@ QDF_STATUS dp_fim_deinit(struct wlan_dp_intf *dp_intf);
 QDF_STATUS dp_fim_update_metadata(struct wlan_dp_intf *dp_intf,
 				  qdf_nbuf_t nbuf);
 
+/**
+ * wlan_dp_sawfish_update_metadata() - Update metadata for received skb flow.
+ * @dp_intf: dp context of interface
+ * @nbuf: Pointer to struct sk_buff
+ *
+ * Return: QDF_STATUS enumeration
+ */
+int wlan_dp_sawfish_update_metadata(struct wlan_dp_intf *dp_intf,
+				    qdf_nbuf_t nbuf);
 /**
  * dp_fim_display_hash_table() - Display fim nodes from hash table
  * @dp_intf: dp context of interface

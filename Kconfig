@@ -137,7 +137,7 @@ config CP_STATS
 	default n
 
 config QCA_TARGET_IF_MLME
-	bool "Enable TARGET_IF MLME"
+	bool "Enable CONFIG_TARGET_IF_MLME"
 	default n
 
 config DCS
@@ -227,6 +227,14 @@ config DP_LFR
 
 config DP_MEM_PRE_ALLOC
 	bool "Enable DP_MEM_PRE_ALLOC"
+	default n
+
+config DBR_HOLD_LARGE_MEM
+	bool "Enable DP_MEM_PRE_ALLOC"
+	default n
+
+config DUMP_REO_QUEUE_INFO_IN_DDR
+	bool "Enable DUMP_REO_QUEUE_INFO_IN_DDR"
 	default n
 
 config DP_PKT_ADD_TIMESTAMP
@@ -430,6 +438,11 @@ config FEATURE_ML_MONITOR_MODE_SUPPORT
 	bool "Enable FEATURE_ML_MONITOR_MODE_SUPPORT"
 	default n
 
+config FEATURE_EPM
+	depends on BUS_AUTO_SUSPEND
+	bool "Enable EPM support"
+	default n
+
 config FEATURE_MSCS
 	bool "Enable FEATURE_MSCS"
 	default n
@@ -556,6 +569,10 @@ config FIX_TXDMA_LIMITATION
 	bool "Enable FIX_TXDMA_LIMITATION"
 	default n
 
+config FIFTH_CONNECTION
+	bool "Enable FIFTH_CONNECTION"
+	default n
+
 config FOURTH_CONNECTION
 	bool "Enable FOURTH_CONNECTION"
 	default n
@@ -661,6 +678,10 @@ config IPA_WDS_EASYMESH
 
 config KIWI_HEADERS_DEF
 	bool "Enable KIWI_HEADERS_DEF"
+	default n
+
+config QCA6490_HEADERS_DEF
+	bool "Enable QCA6490_HEADERS_DEF"
 	default n
 
 config LEAK_DETECTION
@@ -820,6 +841,10 @@ config QCA_WIFI_FTM_NL80211
 
 config QCA_WIFI_KIWI
 	bool "Enable QCA_WIFI_KIWI"
+	default n
+
+config QCA_WIFI_QCA6490
+	bool "Enable QCA_WIFI_QCA6490"
 	default n
 
 config QCA_WIFI_MONITOR_MODE_NO_MSDU_START_TLV_SUPPORT
@@ -986,6 +1011,14 @@ config SHADOW_V3
 
 config SMMU_S1_UNMAP
 	bool "Enable SMMU_S1_UNMAP"
+	default n
+
+config CHANNEL_HOPPING_ALL_BANDS
+	bool "Enable CHANNEL_HOPPING_ALL_BANDS"
+	default n
+
+config HIF_DETECTION_LATENCY_ENABLE
+	bool "Enable HIF_DETECTION_LATENCY_ENABLE"
 	default n
 
 config SMP
@@ -1414,6 +1447,10 @@ config WLAN_FEATURE_SR
 
 config WLAN_FEATURE_TWT
 	bool "Enable WLAN_FEATURE_TWT"
+	default n
+
+config WLAN_TELEMETRY
+	bool "Enable CONFIG_WLAN_TELEMETRY"
 	default n
 
 config WLAN_FEATURE_WMI_DIAG_OVER_CE7
@@ -1856,6 +1893,10 @@ config WLAN_SUPPORT_LAPB
 	bool "enable CONFIG_WLAN_SUPPORT_LAPB"
 	default n
 
+config WLAN_FEATURE_LATENCY_SENSITIVE_REO
+	bool "enable WLAN_FEATURE_LATENCY_SENSITIVE_REO"
+	default n
+
 config WLAN_CTRL_NAME
 	string "Enable CONFIG_WLAN_CTRL_NAME"
 	default \"wlan\"
@@ -1957,6 +1998,10 @@ config DYNAMIC_DEBUG
 
 config WLAN_CHIPSET_STATS
 	bool "enable WLAN_CHIPSET_STATS"
+	default n
+
+config WLAN_CHIPSET_LOG_MAX_SIZE
+	bool "enable WLAN_CHIPSET_LOG_MAX_SIZE"
 	default n
 
 config DP_MLO_LINK_STATS_SUPPORT
@@ -2062,10 +2107,6 @@ config QCA6750_HEADERS_DEF
 	bool "Enable QCA6750_HEADERS_DEF"
 	default n
 
-config QCA_TARGET_IF_MLME
-	bool "Enable QCA_TARGET_IF_MLME"
-	default n
-
 config QCA_WIFI_QCA6750
 	bool "Enable QCA_WIFI_QCA6750"
 	default n
@@ -2160,6 +2201,10 @@ config ROME_IF
 	string "Enable ROME_IF"
 	default pci
 endif
+
+config WLAN_MCC_MIN_CHANNEL_QUOTA
+	int "Enable WLAN_MCC_MIN_CHANNEL_QUOTA"
+	default 20
 
 if CNSS_QCA6750
 config ROME_IF

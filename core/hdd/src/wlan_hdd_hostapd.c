@@ -123,6 +123,7 @@
 #include <wlan_psoc_mlme_ucfg_api.h>
 #include "wlan_ll_sap_api.h"
 #include "wlan_ll_sap_ucfg_api.h"
+#include "wlan_nan_api.h"
 
 #define ACS_SCAN_EXPIRY_TIMEOUT_S 4
 
@@ -2155,7 +2156,7 @@ hdd_hostapd_check_channel_post_csa(struct hdd_context *hdd_ctx,
 				   struct hdd_adapter *adapter)
 {
 	struct hdd_ap_ctx *ap_ctx;
-	uint8_t sta_cnt, sap_cnt;
+	uint8_t sap_cnt;
 	QDF_STATUS qdf_status = QDF_STATUS_SUCCESS;
 	struct sap_context *sap_ctx;
 	bool ch_valid;
@@ -2193,10 +2194,6 @@ hdd_hostapd_check_channel_post_csa(struct hdd_context *hdd_ctx,
 	 * today. But this needs to be re-visited when we start
 	 * supporting this combo.
 	 */
-	sta_cnt = policy_mgr_mode_specific_connection_count(hdd_ctx->psoc,
-							    PM_STA_MODE,
-							    NULL);
-	if (!sta_cnt)
 		qdf_status =
 		policy_mgr_nan_sap_post_enable_conc_check(hdd_ctx->psoc);
 	if (qdf_status == QDF_STATUS_E_PENDING) {
@@ -7055,6 +7052,17 @@ int wlan_hdd_cfg80211_start_bss(struct wlan_hdd_link_info *link_info,
 	config->chan_freq = wlan_ll_lt_sap_override_freq(hdd_ctx->psoc,
 							 link_info->vdev_id,
 							 config->chan_freq);
+
+	/* Override SAP freq to 2GHz channel 6 if NAN interface is present */
+	if (wlan_nan_is_sta_sap_nan_allowed(hdd_ctx->psoc) &&
+	    policy_mgr_mode_specific_connection_count(hdd_ctx->psoc,
+						      PM_NAN_DISC_MODE,
+						      NULL)) {
+		config->chan_freq = wlan_nan_sap_override_freq(
+					hdd_ctx->psoc,
+					link_info->vdev_id,
+					config->chan_freq);
+	}
 	if (!config->chan_freq) {
 		hdd_err("vdev %d invalid ch_freq: %d", link_info->vdev_id,
 			config->chan_freq);
@@ -7491,7 +7499,11 @@ int wlan_hdd_cfg80211_start_bss(struct wlan_hdd_link_info *link_info,
 							   adapter->device_mode,
 							   link_info->vdev_id);
 
-	if (check_for_concurrency) {
+	if (check_for_concurrency &&
+	    !policy_mgr_mode_specific_connection_count(
+				hdd_ctx->psoc,
+				PM_NAN_DISC_MODE,
+				NULL)) {
 		if (!policy_mgr_allow_concurrency(
 				hdd_ctx->psoc,
 				pm_con_mode,
@@ -8604,7 +8616,10 @@ static int __wlan_hdd_cfg80211_start_ap(struct wiphy *wiphy,
 	sap_cnt = policy_mgr_get_sap_mode_info(hdd_ctx->psoc, NULL,
 					       &vdev_id_list[sta_cnt]);
 
-	/* Disable NAN Disc before starting P2P GO or STA+SAP or SAP+SAP */
+	/*
+	 * Check if NAN Disc has to be disabled before starting
+	 * P2P-GO or STA+SAP or SAP+SAP
+	 */
 	if (adapter->device_mode == QDF_P2P_GO_MODE || sta_cnt ||
 	    (sap_cnt > (MAX_SAP_NUM_CONCURRENCY_WITH_NAN - 1))) {
 		hdd_debug("Invalid NAN concurrency. SAP: %d STA: %d P2P_GO: %d",
@@ -8613,21 +8628,37 @@ static int __wlan_hdd_cfg80211_start_ap(struct wiphy *wiphy,
 		for (i = 0; i < sta_cnt + sap_cnt; i++)
 			if (vdev_id_list[i] == link_info->vdev_id)
 				disable_nan = false;
+
+		if ((adapter->device_mode == QDF_P2P_GO_MODE &&
+		     ucfg_nan_is_sta_p2p_ndp_supported(hdd_ctx->psoc)) ||
+		    (adapter->device_mode == QDF_SAP_MODE &&
+		     ucfg_nan_is_sta_sap_ndp_supported(hdd_ctx->psoc)))
+			disable_nan = false;
+
 		if (disable_nan)
 			ucfg_nan_disable_concurrency(hdd_ctx->psoc);
 	}
 
-	/* NDI + SAP conditional supported */
-	hdd_sap_nan_check_and_disable_unsupported_ndi(hdd_ctx->psoc, true);
-
-	if (policy_mgr_mode_specific_connection_count(hdd_ctx->psoc,
-						      PM_NAN_DISC_MODE, NULL) &&
-	    !policy_mgr_nan_sap_pre_enable_conc_check(hdd_ctx->psoc,
-						      PM_SAP_MODE, freq))
-		hdd_debug("NAN disabled due to concurrency constraints");
+	if (adapter->device_mode == QDF_SAP_MODE &&
+	    !ucfg_nan_is_sta_sap_ndp_supported(hdd_ctx->psoc)) {
+		/* NDI + SAP conditional supported */
+		hdd_sap_nan_check_and_disable_unsupported_ndi(hdd_ctx->psoc,
+							      true);
+		if (policy_mgr_mode_specific_connection_count(hdd_ctx->psoc,
+							      PM_NAN_DISC_MODE,
+							      NULL) &&
+		    !policy_mgr_nan_sap_pre_enable_conc_check(hdd_ctx->psoc,
+							      PM_SAP_MODE,
+							      freq))
+			hdd_debug("NAN disabled due to concurrency constraints");
+	}
 
 	/* check if concurrency is allowed */
-	if (!policy_mgr_allow_concurrency(
+	if (!policy_mgr_mode_specific_connection_count(
+			hdd_ctx->psoc,
+			PM_NAN_DISC_MODE,
+			NULL) &&
+			!policy_mgr_allow_concurrency(
 			hdd_ctx->psoc, intf_pm_mode, freq, channel_width,
 			policy_mgr_get_conc_ext_flags(link_info->vdev,
 						      false),
@@ -9363,3 +9394,70 @@ void hdd_cp_stats_cstats_log_sap_go_dfs_event(struct wlan_hdd_link_info *li,
 	wlan_cstats_host_stats(sizeof(struct cstats_sap_go_dfs_evt), &stat);
 }
 #endif /* WLAN_CHIPSET_STATS */
+
+#ifdef WLAN_FEATURE_FILS_SK_SAP
+void hdd_hlp_work_queue(struct work_struct *work)
+{
+	qdf_list_node_t *node;
+	QDF_STATUS status;
+	struct hdd_hlp_data_node *hlp_data_node = NULL;
+	struct hdd_context *hdd_ctx = container_of(work, struct hdd_context,
+						   hlp_processing_work);
+	mac_handle_t mac_handle = hdd_ctx->mac_handle;
+
+	if (!mac_handle) {
+		hdd_err("Failed to get mac handle for fils hlp workqueue");
+		return;
+	}
+
+	status = qdf_list_peek_front(&hdd_ctx->hdd_hlp_data_list, &node);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		hdd_err("Failed to get HLP Data Node from HDD");
+		return;
+	}
+
+	hlp_data_node = qdf_container_of(node, struct hdd_hlp_data_node, node);
+
+	sme_handle_fils_hlp_msg(mac_handle, hlp_data_node->vdev_id,
+				hlp_data_node->data,
+				hlp_data_node->data_len);
+
+	qdf_mem_free(hlp_data_node->data);
+
+	qdf_spin_lock_bh(&hdd_ctx->hdd_hlp_data_lock);
+	qdf_list_remove_node(&hdd_ctx->hdd_hlp_data_list,
+			     &hlp_data_node->node);
+	qdf_spin_unlock_bh(&hdd_ctx->hdd_hlp_data_lock);
+	qdf_mem_free(hlp_data_node);
+}
+
+void hdd_fils_hlp_rx(uint8_t vdev_id, hdd_cb_handle ctx, qdf_nbuf_t nbuf)
+{
+	struct hdd_context *hdd_ctx = hdd_cb_handle_to_context(ctx);
+	struct hdd_hlp_data_node *hlp_data_node =
+		qdf_mem_malloc(sizeof(struct hdd_hlp_data_node));
+
+	if (!hlp_data_node) {
+		hdd_err("Failed to allocate memory for HLP Data Node");
+		return;
+	}
+
+	hlp_data_node->data_len = qdf_nbuf_len(nbuf);
+	hlp_data_node->vdev_id = vdev_id;
+
+	hlp_data_node->data = qdf_mem_malloc(hlp_data_node->data_len);
+	if (!hlp_data_node->data) {
+		qdf_mem_free(hlp_data_node);
+		hdd_err("Failed to allocate memory for HLP Data");
+		return;
+	}
+	qdf_mem_copy(hlp_data_node->data, nbuf->data, qdf_nbuf_len(nbuf));
+	qdf_nbuf_kfree(nbuf);
+
+	qdf_spin_lock_bh(&hdd_ctx->hdd_hlp_data_lock);
+	qdf_list_insert_back(&hdd_ctx->hdd_hlp_data_list,
+			     &hlp_data_node->node);
+	qdf_spin_unlock_bh(&hdd_ctx->hdd_hlp_data_lock);
+	schedule_work(&hdd_ctx->hlp_processing_work);
+}
+#endif

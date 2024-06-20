@@ -104,3 +104,35 @@ QDF_STATUS wlan_ndi_add_pasn_peer_to_nan(struct wlan_objmgr_psoc *psoc,
 {
 	return ndi_add_pasn_peer_to_nan(psoc, vdev_id, peer_mac);
 }
+
+bool wlan_nan_is_sta_p2p_ndp_supp_by_fw(struct wlan_objmgr_psoc *psoc)
+{
+	struct nan_psoc_priv_obj *psoc_nan_obj;
+
+	psoc_nan_obj = nan_get_psoc_priv_obj(psoc);
+	if (!psoc_nan_obj) {
+		nan_err("psoc_nan_obj is null");
+		return false;
+	}
+
+	return psoc_nan_obj->nan_caps.sta_p2p_ndp_conc;
+}
+
+bool wlan_nan_is_sta_p2p_ndp_supported(struct wlan_objmgr_psoc *psoc)
+{
+	return (wlan_nan_is_sta_p2p_ndp_supp_by_fw(psoc) &&
+		cfg_nan_get_support_sta_p2p_ndp(psoc));
+}
+
+qdf_freq_t wlan_nan_get_24ghz_social_ch_freq(struct wlan_objmgr_psoc *psoc)
+{
+	struct nan_psoc_priv_obj *psoc_nan_obj;
+
+	psoc_nan_obj = nan_get_psoc_priv_obj(psoc);
+	if (!psoc_nan_obj) {
+		nan_err("psoc_nan_obj is null");
+		return 0;
+	}
+
+	return psoc_nan_obj->nan_social_ch_2g_freq;
+}

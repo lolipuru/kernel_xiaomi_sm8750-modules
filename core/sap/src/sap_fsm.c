@@ -64,6 +64,7 @@
 #include <wlan_cmn_ieee80211.h>
 #include <target_if.h>
 #include "wlan_ll_sap_api.h"
+#include "wlan_nan_api.h"
 
 /*----------------------------------------------------------------------------
  * Preprocessor Definitions and Constants
@@ -193,6 +194,11 @@ sap_is_chan_change_needed(struct sap_context *sap_ctx)
 	struct ch_params *ch_params;
 	QDF_STATUS status;
 	struct mac_context *mac_ctx;
+
+	if (!sap_phymode_is_eht(sap_ctx->phyMode)) {
+		sap_debug("phy mode: 0x%x", sap_ctx->phyMode);
+		return true;
+	}
 
 	mac_ctx = sap_get_mac_context();
 	if (!mac_ctx) {
@@ -985,6 +991,14 @@ selected_default_freq:
 	default_freq = wlan_ll_lt_sap_override_freq(mac_ctx->psoc,
 						    sap_ctx->vdev_id,
 						    default_freq);
+	if (policy_mgr_mode_specific_connection_count(mac_ctx->psoc,
+						      PM_NAN_DISC_MODE,
+						      NULL) &&
+	    wlan_nan_is_sta_sap_nan_allowed(mac_ctx->psoc)) {
+		default_freq = wlan_nan_sap_override_freq(mac_ctx->psoc,
+							  sap_ctx->vdev_id,
+							  default_freq);
+	}
 
 	return default_freq;
 }
@@ -1178,7 +1192,16 @@ sap_validate_chan(struct sap_context *sap_context,
 							sap_context->chan_freq);
 		return QDF_STATUS_SUCCESS;
 	}
-
+	if (wlan_nan_is_sta_sap_nan_allowed(mac_ctx->psoc) &&
+	    policy_mgr_mode_specific_connection_count(mac_ctx->psoc,
+						      PM_NAN_DISC_MODE,
+						      NULL)) {
+		sap_context->chan_freq = wlan_nan_sap_override_freq(
+						mac_ctx->psoc,
+						sap_context->vdev_id,
+						sap_context->chan_freq);
+		return QDF_STATUS_SUCCESS;
+	}
 	if (sap_context->vdev)
 		opmode = wlan_vdev_mlme_get_opmode(sap_context->vdev);
 
@@ -1529,25 +1552,25 @@ QDF_STATUS sap_channel_sel(struct sap_context *sap_context)
 		sap_context->dfs_ch_disable = true;
 #endif
 	}
+
+	if (sap_context->freq_list) {
+		qdf_mem_free(sap_context->freq_list);
+		sap_context->freq_list = NULL;
+		sap_context->num_of_channel = 0;
+	}
+
+	sap_get_freq_list(sap_context, &freq_list, &num_of_channels);
+	if (!num_of_channels || !freq_list) {
+		sap_err("No freq sutiable for SAP in current list, SAP failed");
+		return QDF_STATUS_E_FAILURE;
+	}
+
 #ifdef FEATURE_WLAN_AP_AP_ACS_OPTIMIZE
 	sap_debug("skip_acs_status = %d",
 		  sap_context->acs_cfg->skip_scan_status);
 	if (sap_context->acs_cfg->skip_scan_status !=
 					eSAP_SKIP_ACS_SCAN) {
 #endif
-
-		if (sap_context->freq_list) {
-			qdf_mem_free(sap_context->freq_list);
-			sap_context->freq_list = NULL;
-			sap_context->num_of_channel = 0;
-		}
-
-		sap_get_freq_list(sap_context, &freq_list, &num_of_channels);
-		if (!num_of_channels || !freq_list) {
-			sap_err("No freq sutiable for SAP in current list, SAP failed");
-			return QDF_STATUS_E_FAILURE;
-		}
-
 		req = qdf_mem_malloc(sizeof(*req));
 		if (!req) {
 			qdf_mem_free(freq_list);
@@ -1640,8 +1663,9 @@ QDF_STATUS sap_channel_sel(struct sap_context *sap_context)
 		}
 
 #ifdef FEATURE_WLAN_AP_AP_ACS_OPTIMIZE
-	} else {
-		sap_context->acs_cfg->skip_scan_status = eSAP_SKIP_ACS_SCAN;
+	} else { /* skip_scan_status == eSAP_SKIP_ACS_SCAN */
+		sap_context->freq_list = freq_list;
+		sap_context->num_of_channel = num_of_channels;
 	}
 
 	if (sap_context->acs_cfg->skip_scan_status == eSAP_SKIP_ACS_SCAN) {
