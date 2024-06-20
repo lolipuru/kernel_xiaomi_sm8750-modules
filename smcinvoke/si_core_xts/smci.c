@@ -237,7 +237,7 @@ static int get_si_object_from_u_handle(struct smcinvoke_obj *o, struct si_arg *a
 			struct file *filp;
 
 			filp = get_qtee_file(u_handle);
-			if (!IS_ERR(filp)) {
+			if (filp) {
 				object = filp->private_data;
 
 				/* We put 'filp' while keeping the instance of object. */
@@ -245,7 +245,7 @@ static int get_si_object_from_u_handle(struct smcinvoke_obj *o, struct si_arg *a
 
 				fput(filp);
 			} else
-				ret = PTR_ERR(filp);
+				ret = -EINVAL;
 		}
 	}
 
@@ -735,6 +735,19 @@ static struct cb_txn *txn_alloc(int u_args_n)
 
 static void txn_free(struct cb_txn *cb_txn)
 {
+	int i;
+	struct si_arg *args = cb_txn->args;
+
+	if (args) {
+		for (i = 0; i < size_of_arg(args); i++) {
+			if (args[i].type == SI_AT_IB ||
+				args[i].type == SI_AT_OB)
+				kfree(args[i].b.addr);
+		}
+
+		kfree(args);
+	}
+
 	kfree(cb_txn->u_args);
 	kfree(cb_txn);
 }
@@ -879,7 +892,6 @@ static int set_txn_state(struct cb_txn *cb_txn, enum state state)
 	return ret;
 }
 
-static void txn_free(struct cb_txn *cb_txn);
 static void __release_txn(struct kref *refcount)
 {
 	struct cb_txn *cb_txn = container_of(refcount, struct cb_txn, refcount);
@@ -944,6 +956,77 @@ static int wait_for_pending_txn(struct server_info *si, struct cb_txn **cb_txn)
 
 static void ____destroy_server_info(struct kref *kref);
 
+/* 'dispatcher_marshal_in' and 'dispatcher_marshal_out'. */
+
+/* The only reason they are here are due to UAPI design. */
+/* The marshaling with 'marshal_in_cb_req' and 'marshal_out_cb_req' should happen
+ * in dispatcher (1) as it's overhead should be attributed to the invoke thread,
+ * (2) marshaling form args to transaction is relevant here. However, the UAPI,
+ * requires addrss (not the offset) which is anly available in 'process_accept_req'.
+ */
+
+static struct si_arg *dispatcher_marshal_in(struct si_arg args[])
+{
+	struct si_arg *cb_txn_args;
+	int i, nargs = size_of_arg(args);
+
+	/* Plus one for 'SI_AT_END'. */
+	cb_txn_args = kcalloc(nargs + 1, sizeof(struct si_arg), GFP_KERNEL);
+	if (!cb_txn_args)
+		return NULL;
+
+	for (i = 0; i < nargs; i++) {
+		cb_txn_args[i].type = args[i].type;
+
+		if (args[i].type == SI_AT_IB) {
+			cb_txn_args[i].b.addr = kzalloc(args[i].b.size, GFP_KERNEL);
+			if (!cb_txn_args[i].b.addr)
+				goto failed;
+
+			cb_txn_args[i].b.size = args[i].b.size;
+
+			memcpy(cb_txn_args[i].b.addr, args[i].b.addr, args[i].b.size);
+		} else if (args[i].type == SI_AT_OB) {
+			cb_txn_args[i].b.addr = kzalloc(args[i].b.size, GFP_KERNEL);
+			if (!cb_txn_args[i].b.addr)
+				goto failed;
+
+			cb_txn_args[i].b.size = args[i].b.size;
+		} else /* 'SI_AT_IO' || 'SI_AT_OO'. */
+			cb_txn_args[i].o = args[i].o;
+
+	}
+
+	return cb_txn_args;
+
+failed:
+
+	for (i = 0; i < nargs; i++) {
+		if (cb_txn_args[i].type == SI_AT_IB ||
+			cb_txn_args[i].type == SI_AT_OB)
+			kfree(cb_txn_args[i].b.addr);
+	}
+
+	kfree(cb_txn_args);
+
+	return NULL;
+}
+
+static void dispatcher_marshal_out(struct si_arg cb_txn_args[], struct si_arg args[])
+{
+	int i, nargs = size_of_arg(args);
+
+	/* See 'marshal_out_cb_req'. */
+	for (i = 0; i < nargs; i++) {
+		if (args[i].type == SI_AT_OB) {
+			args[i].b.size = cb_txn_args[i].b.size;
+
+			memcpy(args[i].b.addr, cb_txn_args[i].b.addr, cb_txn_args[i].b.size);
+		} else if (args[i].type == SI_AT_OO)
+			args[i].o = cb_txn_args[i].o;
+	}
+}
+
 static int cbo_dispatch(unsigned int context_id,
 	struct si_object *object, unsigned long op, struct si_arg args[])
 {
@@ -960,8 +1043,15 @@ static int cbo_dispatch(unsigned int context_id,
 
 	cb_txn->context_id = context_id;
 	cb_txn->op = op;
-	cb_txn->args = args;
 	cb_txn->u_handle = cb_object->u_handle;
+
+	/* TODO. Move this to 'txn_alloc'. */
+	cb_txn->args = dispatcher_marshal_in(args);
+	if (!cb_txn->args) {
+		put_txn(cb_txn);
+
+		return -EINVAL;
+	}
 
 	/* START a Transaction. */
 
@@ -995,11 +1085,12 @@ static int cbo_dispatch(unsigned int context_id,
 	 */
 
 	errno = set_txn_state(cb_txn, XST_TIMEDOUT) ? cb_txn->errno : -EINVAL;
+	if (!errno) {
+		pr_debug("%s invocation returned with %d (context_id %u).\n",
+			si_object_name(object), errno, context_id);
 
-	pr_debug("%s invocation returned with %d (context_id %u).\n",
-		si_object_name(object), errno, context_id);
-
-	if (errno) {
+		dispatcher_marshal_out(cb_txn->args, args);
+	} else {
 		pr_err("%s invocation returned with %d (context_id %u).\n",
 			si_object_name(object), errno, context_id);
 
