@@ -52,7 +52,7 @@
 
 #define REQ_MAXIMUM_BUBBLE_TIMES   2
 
-#define CAM_REQ_MGR_HALF_FRAME_DURATION(frame_duration) (frame_duration / 2)
+#define CAM_REQ_MGR_HALF_FRAME_DURATION(frame_duration) ((frame_duration) / 2)
 #define CAM_REQ_MGR_COMPUTE_TIMEOUT(x) ((x) + (((x) * (x + 25)) / 100))
 
 /* Number of words for dumping req state info */
