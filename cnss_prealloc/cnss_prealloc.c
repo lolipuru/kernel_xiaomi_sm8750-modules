@@ -201,7 +201,7 @@ static void cnss_pool_deinit(void)
 	mempool_initialization_done = false;
 }
 
-void cnss_assign_prealloc_pool(unsigned long device_id)
+static void cnss_assign_prealloc_pool(unsigned long device_id)
 {
 	pr_info("cnss_prealloc: assign cnss pool for device id 0x%lx", device_id);
 
