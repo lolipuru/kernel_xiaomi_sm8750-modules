@@ -39,7 +39,9 @@
 #include <linux/pinctrl/pinctrl.h>
 
 #include "btpower.h"
+#ifdef CONFIG_FMD_ENABLE
 #include "cnss_utils.h"
+#endif
 #if (defined CONFIG_BT_SLIM)
 #include "btfm_slim.h"
 #endif
@@ -1384,8 +1386,9 @@ static int get_gpio_dt_pinfo(struct platform_device *pdev)
 	int ret;
 	struct device_node *child;
 	struct pinctrl *pinctrl1;
+#ifdef CONFIG_FMD_ENABLE
 	struct pinctrl_state *sw_ctrl;
-
+#endif
 	child = pdev->dev.of_node;
 
 	pinctrl1 =  devm_pinctrl_get(&pdev->dev);
@@ -1419,7 +1422,7 @@ static int get_gpio_dt_pinfo(struct platform_device *pdev)
 	if (ret) {
 		pr_warn("sw_cntrl-gpio not provided in devicetree\n");
 	}
-
+#ifdef CONFIG_FMD_ENABLE
 	if (pinctrl1) {
 		sw_ctrl = pinctrl_lookup_state(pinctrl1, "sw_ctrl");
 		if (IS_ERR_OR_NULL(sw_ctrl)) {
@@ -1433,7 +1436,7 @@ static int get_gpio_dt_pinfo(struct platform_device *pdev)
 	} else {
 		pr_err("%s: pinctrl is null\n", __func__);
 	}
-
+#endif
 	pwr_data->bt_gpio_debug  = of_get_named_gpio(child,
 							"qcom,bt-debug-gpio", 0);
 	if (pwr_data->bt_gpio_debug < 0)
@@ -2494,7 +2497,9 @@ int set_fmd_mode(enum FmdOperation operation)
 			pr_warn("%s: SET_FMD_MODE_CTRL :: UPDATE_SOC_VERSION_2_0_FOR_FMD\n",
 				__func__);
 			pwr_data->is_fmd_mode_enable = true;
+#ifdef CONFIG_FMD_ENABLE
 			cnss_utils_fmd_status(true);
+#endif
 			if (vote_wlan_reg_for_fmd() < 0) {
 				pr_err("%s: failed to vote_wlan_reg_for_fmd\n", __func__);
 				return -EINVAL;

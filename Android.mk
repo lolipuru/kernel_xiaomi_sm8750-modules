@@ -17,6 +17,9 @@ ifeq ($(call is-board-platform-in-list, taro kalama pineapple blair sun parrot),
 BT_SELECT := CONFIG_MSM_BT_POWER=m
 BT_SELECT += CONFIG_I2C_RTC6226_QCA=m
 
+ifneq ($(call is-board-platform-in-list, parrot), true)
+BT_SELECT += CONFIG_FMD_ENABLE=y
+endif
 
 ifeq ($(TARGET_KERNEL_DLKM_SECUREMSM_QTEE_OVERRIDE), true)
 ifeq ($(ENABLE_PERIPHERAL_STATE_UTILS), true)
