@@ -2562,10 +2562,26 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 		}
 	}
 
-	pr_debug("%s source side spr packing, pack-type %s\n",
+	// read pentile pack type if spr type is pentile
+	if (panel->spr_info.pack_type == MSM_DISPLAY_SPR_TYPE_PENTILE) {
+		rc = utils->read_string(utils->data, "qcom,spr-pentile-pack-type", &string);
+		if (!rc) {
+			// find match for pentile type string
+			for (i = 0; i < MSM_DISPLAY_SPR_PACK_TYPE_MODE_MAX; i++) {
+				if (msm_spr_pack_type_mode_str[i] &&
+					(!strcmp(string, msm_spr_pack_type_mode_str[i]))) {
+					panel->spr_info.pack_type_mode = i;
+					break;
+				}
+			}
+		}
+	}
+
+	pr_debug("%s source side spr packing, pack-type %s, pack-type mode %s\n",
 		panel->spr_info.enable ? "enable" : "disable",
 		panel->spr_info.enable ?
-		msm_spr_pack_type_str[panel->spr_info.pack_type] : "none");
+		msm_spr_pack_type_str[panel->spr_info.pack_type] : "none",
+		msm_spr_pack_type_mode_str[panel->spr_info.pack_type_mode]);
 
 	return 0;
 }
@@ -3159,6 +3175,9 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 		rc = -EINVAL;
 		goto error;
 	}
+
+	priv_info->dsc.rc_override_v1 = utils->read_bool(utils->data,
+		"qcom,mdss-dsc-rc-override_v1");
 
 	rc = sde_dsc_populate_dsc_private_params(&priv_info->dsc, intf_width,
 			priv_info->widebus_support);
