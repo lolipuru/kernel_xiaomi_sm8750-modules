@@ -2920,6 +2920,11 @@ static int iris_hfi_session_set_buffers(void *sess, u32 iova, u32 size)
 
 	core = cvp_driver->cvp_core;
 	inst = cvp_get_inst_from_id(core, hash32_ptr(session));
+	if (!inst) {
+		dprintk(CVP_ERR, "%s: invalid session\n", __func__);
+		rc = -EINVAL;
+		goto err_create_pkt;
+	}
 
 	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
 	ktid &= (FENCE_BIT - 1);
@@ -2929,12 +2934,14 @@ static int iris_hfi_session_set_buffers(void *sess, u32 iova, u32 size)
 			&pkt, session, iova, size);
 	if (rc) {
 		dprintk(CVP_ERR, "set buffers: failed to create packet\n");
-		goto err_create_pkt;
+		goto err_set_buf;
 	}
 
 	if (__iface_cmdq_write(session->device, &pkt))
 		rc = -ENOTEMPTY;
 
+err_set_buf:
+	cvp_put_inst(inst);
 err_create_pkt:
 	mutex_unlock(&device->lock);
 	return rc;
@@ -2965,6 +2972,11 @@ static int iris_hfi_session_release_buffers(void *sess)
 
 	core = cvp_driver->cvp_core;
 	inst = cvp_get_inst_from_id(core, hash32_ptr(session));
+	if (!inst) {
+		dprintk(CVP_ERR, "%s: invalid session\n", __func__);
+		rc = -EINVAL;
+		goto err_create_pkt;
+	}
 
 	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
 	ktid &= (FENCE_BIT - 1);
@@ -2973,12 +2985,14 @@ static int iris_hfi_session_release_buffers(void *sess)
 	rc = call_hfi_pkt_op(device, session_release_buffers, &pkt, session);
 	if (rc) {
 		dprintk(CVP_ERR, "release buffers: failed to create packet\n");
-		goto err_create_pkt;
+		goto err_release_buf;
 	}
 
 	if (__iface_cmdq_write(session->device, &pkt))
 		rc = -ENOTEMPTY;
 
+err_release_buf:
+	cvp_put_inst(inst);
 err_create_pkt:
 	mutex_unlock(&device->lock);
 	return rc;
