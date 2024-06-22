@@ -349,16 +349,16 @@ static void _sde_cesta_clk_bw_vote(struct sde_cesta_client *client, bool pwr_st_
 		SDE_ERROR_CESTA("clk active vote failed - ret:%d\n", ret);
 
 	/* bw voting */
-	icc_set_tag(cesta->bus_hdl[client->scc_index], QCOM_ICC_TAG_PWR_ST_0);
-	ret = icc_set_bw(cesta->bus_hdl[client->scc_index], Bps_to_icc(bw_ab), Bps_to_icc(bw_ib));
-	if (ret)
-		SDE_ERROR_CESTA("bw active vote failed - ret:%d\n", ret);
-
-	icc_set_tag(cesta->bus_hdl[client->scc_index], QCOM_ICC_TAG_PWR_ST_1);
-	ret = icc_set_bw(cesta->bus_hdl[client->scc_index],
+	icc_set_tag(cesta->bus_hdl_idle[client->scc_index], QCOM_ICC_TAG_PWR_ST_0);
+	ret = icc_set_bw(cesta->bus_hdl_idle[client->scc_index],
 			Bps_to_icc(idle_bw_ab), Bps_to_icc(idle_bw_ib));
 	if (ret)
 		SDE_ERROR_CESTA("bw idle vote failed - ret:%d\n", ret);
+
+	icc_set_tag(cesta->bus_hdl[client->scc_index], QCOM_ICC_TAG_PWR_ST_1);
+	ret = icc_set_bw(cesta->bus_hdl[client->scc_index], Bps_to_icc(bw_ab), Bps_to_icc(bw_ib));
+	if (ret)
+		SDE_ERROR_CESTA("bw active vote failed - ret:%d\n", ret);
 
 	/* pwr_state update for channel switch */
 	ret = crm_write_pwr_states(cesta->crm_dev, client->scc_index);
@@ -545,25 +545,6 @@ int sde_cesta_sw_client_update(u32 cesta_index, struct sde_cesta_sw_client_data 
 
 	mutex_lock(&cesta->client_lock);
 
-	if (flag & SDE_CESTA_SW_CLIENT_CLK_UPDATE) {
-		core_clk = _sde_cesta_get_core_clk(cesta);
-		if (!core_clk) {
-			SDE_ERROR_CESTA("core_clk not found\n");
-			ret = -EINVAL;
-			goto end;
-		}
-
-		ret = qcom_clk_crmb_set_rate(core_clk, CRM_SW_DRV, 0, 0, CRM_PWR_STATE0,
-					data->data.core_clk_rate_ab, data->data.core_clk_rate_ib);
-		if (ret) {
-			SDE_ERROR_CESTA("sw-client-0 Clk vote failed, ab:%llu, ib:%llu, ret:%d\n",
-				data->data.core_clk_rate_ab, data->data.core_clk_rate_ib, ret);
-			goto end;
-		}
-		cesta->sw_client.data.core_clk_rate_ab = data->data.core_clk_rate_ab;
-		cesta->sw_client.data.core_clk_rate_ib = data->data.core_clk_rate_ib;
-	}
-
 	if (flag & SDE_CESTA_SW_CLIENT_BW_UPDATE) {
 		icc_set_tag(cesta->sw_client_bus_hdl, QCOM_ICC_TAG_AMC);
 		ret = icc_set_bw(cesta->sw_client_bus_hdl, Bps_to_icc(data->data.bw_ab),
@@ -590,6 +571,25 @@ int sde_cesta_sw_client_update(u32 cesta_index, struct sde_cesta_sw_client_data 
 			goto end;
 		}
 		cesta->sw_client.aoss_cp_level = data->aoss_cp_level;
+	}
+
+	if (flag & SDE_CESTA_SW_CLIENT_CLK_UPDATE) {
+		core_clk = _sde_cesta_get_core_clk(cesta);
+		if (!core_clk) {
+			SDE_ERROR_CESTA("core_clk not found\n");
+			ret = -EINVAL;
+			goto end;
+		}
+
+		ret = qcom_clk_crmb_set_rate(core_clk, CRM_SW_DRV, 0, 0, CRM_PWR_STATE0,
+					data->data.core_clk_rate_ab, data->data.core_clk_rate_ib);
+		if (ret) {
+			SDE_ERROR_CESTA("sw-client-0 Clk vote failed, ab:%llu, ib:%llu, ret:%d\n",
+				data->data.core_clk_rate_ab, data->data.core_clk_rate_ib, ret);
+			goto end;
+		}
+		cesta->sw_client.data.core_clk_rate_ab = data->data.core_clk_rate_ab;
+		cesta->sw_client.data.core_clk_rate_ib = data->data.core_clk_rate_ib;
 	}
 
 end:
@@ -983,6 +983,8 @@ static void sde_cesta_deinit(struct platform_device *pdev, struct sde_cesta *ces
 	for (i = 0; i < cesta->scc_count; i++) {
 		if (cesta->bus_hdl[i])
 			icc_put(cesta->bus_hdl[i]);
+		if (cesta->bus_hdl_idle[i])
+			icc_put(cesta->bus_hdl_idle[i]);
 	}
 
 	if (cesta->sw_client_bus_hdl)
@@ -1078,6 +1080,15 @@ static int sde_cesta_probe(struct platform_device *pdev)
 			goto fail;
 		}
 		cesta->bus_hdl[i] = path;
+
+		path = of_icc_get(&pdev->dev, bus_name);
+		if (IS_ERR_OR_NULL(path)) {
+			SDE_ERROR_CESTA("of_icc_get for idle failed for %s, ret:%ld\n",
+					bus_name, PTR_ERR(path));
+			goto fail;
+		}
+		cesta->bus_hdl_idle[i] = path;
+
 	}
 
 	ret = of_property_match_string(pdev->dev.of_node, "interconnect-names",
