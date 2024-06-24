@@ -2092,6 +2092,8 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 		REQ_ENTER_IDLE,
 		REQ_EXIT_IDLE
 	} req;
+	struct drm_crtc *drm_crtc;
+	struct msm_drm_private *priv;
 
 	info = &sde_enc->disp_info;
 	sde_kms = sde_encoder_get_kms(drm_enc);
@@ -2104,6 +2106,9 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 		SDE_EVT32(DRMID(drm_enc), enable, sde_enc->rc_state, SDE_EVTLOG_ERROR);
 		return 0;
 	}
+
+	drm_crtc = drm_enc->crtc;
+	priv = drm_crtc->dev->dev_private;
 
 	if (enable)
 		req = sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE ? REQ_EXIT_IDLE : REQ_ON;
@@ -2167,6 +2172,11 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 		_sde_encoder_pm_qos_remove_request(drm_enc);
 
 		if (req == REQ_ENTER_IDLE && is_video_mode && info->esync_enabled) {
+			if (drm_crtc) {
+				drm_crtc_vblank_off(drm_crtc);
+				kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
+			}
+
 			sde_encoder_cancel_vrr_timers(drm_enc);
 			if (sde_enc->cur_master && sde_enc->cur_master->connector) {
 				sde_conn = to_sde_connector(sde_enc->cur_master->connector);
@@ -2197,6 +2207,22 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 
 		/* disable SDE core clks */
 		pm_runtime_put_sync(drm_enc->dev->dev);
+
+		if (req == REQ_ENTER_IDLE && is_video_mode && info->esync_enabled) {
+			if (!pm_runtime_status_suspended(drm_enc->dev->dev)) {
+				/*
+				 * pm_runtime_status_suspended should only be trusted when protected
+				 * by a lock, which we don't have. This could give false positives
+				 * if ESD check or some other thread is running at the same time.
+				 */
+
+				SDE_ERROR("idle entry failed, power vote still held");
+				SDE_EVT32(SDE_EVTLOG_FUNC_CASE8);
+			}
+
+			if (drm_crtc)
+				drm_crtc_vblank_on(drm_crtc);
+		}
 	}
 
 	return 0;
