@@ -4299,6 +4299,123 @@ int icnss_get_irq(struct device *dev, int ce_id)
 }
 EXPORT_SYMBOL(icnss_get_irq);
 
+static int icnss_get_audio_iommu_domain(struct icnss_priv *priv)
+{
+	struct device_node *audio_ion_node;
+	struct platform_device *audio_ion_pdev;
+
+	audio_ion_node = of_find_compatible_node(NULL, NULL,
+						 "qcom,msm-audio-ion");
+	if (!audio_ion_node) {
+		icnss_pr_err("Unable to get Audio ion node");
+		return -EINVAL;
+	}
+
+	audio_ion_pdev = of_find_device_by_node(audio_ion_node);
+	of_node_put(audio_ion_node);
+	if (!audio_ion_pdev) {
+		icnss_pr_err("Unable to get Audio ion platform device");
+		return -EINVAL;
+	}
+
+	priv->audio_iommu_domain =
+				iommu_get_domain_for_dev(&audio_ion_pdev->dev);
+	put_device(&audio_ion_pdev->dev);
+	if (!priv->audio_iommu_domain) {
+		icnss_pr_err("Unable to get Audio ion iommu domain");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+bool icnss_get_audio_shared_iommu_group_cap(struct device *dev)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+	struct device_node *audio_ion_node;
+	struct device_node *icnss_iommu_group_node;
+	struct device_node *audio_iommu_group_node;
+
+	if (!priv)
+		return false;
+
+	audio_ion_node = of_find_compatible_node(NULL, NULL,
+						 "qcom,msm-audio-ion");
+	if (!audio_ion_node) {
+		icnss_pr_err("Unable to get Audio ion node");
+		return false;
+	}
+
+	audio_iommu_group_node = of_parse_phandle(audio_ion_node,
+						  "qcom,iommu-group", 0);
+	of_node_put(audio_ion_node);
+	if (!audio_iommu_group_node) {
+		icnss_pr_err("Unable to get audio iommu group phandle");
+		return false;
+	}
+	of_node_put(audio_iommu_group_node);
+
+	icnss_iommu_group_node = of_parse_phandle(dev->of_node,
+						 "qcom,iommu-group", 0);
+	if (!icnss_iommu_group_node) {
+		icnss_pr_err("Unable to get cnss iommu group phandle");
+		return false;
+	}
+	of_node_put(icnss_iommu_group_node);
+
+	if (icnss_iommu_group_node == audio_iommu_group_node) {
+		priv->is_audio_shared_iommu_group = true;
+		icnss_pr_info("CNSS and Audio share IOMMU group");
+	} else {
+		icnss_pr_info("CNSS and Audio do not share IOMMU group");
+	}
+
+	return priv->is_audio_shared_iommu_group;
+}
+EXPORT_SYMBOL(icnss_get_audio_shared_iommu_group_cap);
+
+
+/**
+ * icnss_get_fw_cap - Check whether FW supports specific capability or not
+ * @dev: Device
+ *
+ * Return: TRUE if supported, FALSE on failure or if not supported
+ */
+bool icnss_get_fw_direct_link_cap(struct device *dev)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+
+	if (!priv)
+		return false;
+
+	return priv->fw_direct_link_support;
+}
+EXPORT_SYMBOL(icnss_get_fw_direct_link_cap);
+
+/**
+ * icnss_audio_is_direct_link_supported - Check whether Audio can be used for
+ *  direct link support
+ * @dev: Device
+ *
+ * Return: TRUE if supported, FALSE on failure or if not supported
+ */
+bool icnss_audio_is_direct_link_supported(struct device *dev)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+	bool is_supported = false;
+
+	if (!priv) {
+		icnss_pr_err("plat_priv not available to check audio direct link cap\n");
+		return is_supported;
+	}
+
+	if (icnss_get_audio_iommu_domain(priv) == 0)
+		is_supported = true;
+
+	return is_supported;
+}
+EXPORT_SYMBOL(icnss_audio_is_direct_link_supported);
+
 struct iommu_domain *icnss_smmu_get_domain(struct device *dev)
 {
 	struct icnss_priv *priv = dev_get_drvdata(dev);
@@ -4324,6 +4441,69 @@ static int icnss_iommu_map(struct iommu_domain *domain,
 		return iommu_map(domain, iova, paddr, size, prot, GFP_KERNEL);
 }
 #endif
+
+int icnss_audio_smmu_map(struct device *dev, phys_addr_t paddr, dma_addr_t iova,
+			 size_t size)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+	uint32_t page_offset;
+
+	if (!priv)
+		return -ENODEV;
+
+	if (!priv->audio_iommu_domain)
+		return -EINVAL;
+
+	if (priv->is_audio_shared_iommu_group)
+		return 0;
+
+	page_offset = iova & (PAGE_SIZE - 1);
+	if (page_offset + size > PAGE_SIZE)
+		size += PAGE_SIZE;
+
+	iova -= page_offset;
+	paddr -= page_offset;
+
+	return icnss_iommu_map(priv->audio_iommu_domain, iova, paddr,
+			       roundup(size, PAGE_SIZE), IOMMU_READ |
+			       IOMMU_WRITE | IOMMU_CACHE);
+}
+EXPORT_SYMBOL(icnss_audio_smmu_map);
+
+void icnss_audio_smmu_unmap(struct device *dev, dma_addr_t iova, size_t size)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+	uint32_t page_offset;
+
+	if (!priv || !priv->audio_iommu_domain ||
+	    priv->is_audio_shared_iommu_group)
+		return;
+
+	page_offset = iova & (PAGE_SIZE - 1);
+	if (page_offset + size > PAGE_SIZE)
+		size += PAGE_SIZE;
+
+	iova -= page_offset;
+
+	iommu_unmap(priv->audio_iommu_domain, iova,
+		    roundup(size, PAGE_SIZE));
+}
+EXPORT_SYMBOL(icnss_audio_smmu_unmap);
+
+int icnss_get_fw_lpass_shared_mem(struct device *dev, dma_addr_t *iova,
+				 size_t *size)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+
+	if (!priv || !priv->fw_lpass_shared_mem_pa)
+		return -EINVAL;
+
+	*iova = priv->fw_lpass_shared_mem_pa;
+	*size = ICNSS_FW_LPASS_SHARED_MEM_SIZE;
+
+	return 0;
+}
+EXPORT_SYMBOL(icnss_get_fw_lpass_shared_mem);
 
 int icnss_smmu_map(struct device *dev,
 		   phys_addr_t paddr, uint32_t *iova_addr, size_t size)
@@ -5182,21 +5362,6 @@ static inline void icnss_pci_set_suspended(struct icnss_priv *priv, int val)
 }
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)) && \
-    (LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0))
-void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
-{
-	struct platform_device *pdev = priv->pdev;
-	struct device *dev = &pdev->dev;
-
-	iommu_unregister_device_fault_handler(dev);
-}
-#else
-void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
-{
-}
-#endif
-
 static int icnss_smmu_dt_parse(struct icnss_priv *priv)
 {
 	int ret = 0;
@@ -5205,11 +5370,22 @@ static int icnss_smmu_dt_parse(struct icnss_priv *priv)
 	const char *iommu_dma_type;
 	struct resource *res;
 	u32 addr_win[2];
+	struct device_node *of_node = dev->of_node;
 
-	ret = of_property_read_u32_array(dev->of_node,
+	ret = of_property_read_u32_array(of_node,
 					 "qcom,iommu-dma-addr-pool",
 					 addr_win,
 					 ARRAY_SIZE(addr_win));
+
+	if (ret) {
+		of_node = of_parse_phandle(dev->of_node,
+					   "qcom,iommu-group", 0);
+		if (of_node)
+			ret = of_property_read_u32_array(of_node,
+							 "qcom,iommu-dma-addr-pool",
+							 addr_win,
+							 ARRAY_SIZE(addr_win));
+	}
 
 	if (ret) {
 		icnss_pr_err("SMMU IOVA base not found\n");
@@ -5223,7 +5399,7 @@ static int icnss_smmu_dt_parse(struct icnss_priv *priv)
 		priv->iommu_domain =
 			iommu_get_domain_for_dev(&pdev->dev);
 
-		ret = of_property_read_string(dev->of_node, "qcom,iommu-dma",
+		ret = of_property_read_string(of_node, "qcom,iommu-dma",
 					      &iommu_dma_type);
 		if (!ret && !strcmp("fastmap", iommu_dma_type)) {
 			icnss_pr_dbg("SMMU S1 stage enabled\n");
@@ -5251,6 +5427,9 @@ static int icnss_smmu_dt_parse(struct icnss_priv *priv)
 				     priv->smmu_iova_ipa_len);
 		}
 	}
+
+	if (of_node != dev->of_node)
+		of_node_put(of_node);
 
 	return 0;
 }
@@ -5789,8 +5968,6 @@ static int icnss_remove(struct platform_device *pdev)
 	if (priv->event_wq)
 		destroy_workqueue(priv->event_wq);
 
-	if (priv->device_id == WCN7750_DEVICE_ID)
-		icnss_unregister_iommu_fault_handler(priv);
 	priv->iommu_domain = NULL;
 
 	icnss_hw_power_off(priv);
