@@ -38,6 +38,7 @@
 #include "cpastop_v640_200.h"
 #include "cpastop_v880_100.h"
 #include "cpastop_v980_100.h"
+#include "cpastop_v1080_100.h"
 #include "cam_req_mgr_workq.h"
 #include "cam_common_util.h"
 #include "cam_vmrm_interface.h"
@@ -202,6 +203,15 @@ static const uint32_t cam_cpas_hw_version_map
 		0,
 		0,
 	},
+	/* for camera_1080 */
+	{
+		CAM_CPAS_TITAN_1080_V100,
+		0,
+		0,
+		0,
+		0,
+		0,
+	},
 };
 
 static char *cam_cpastop_get_camnoc_name(enum cam_camnoc_hw_type type)
@@ -282,6 +292,9 @@ static int cam_cpas_translate_camera_cpas_version_id(
 		break;
 	case CAM_CPAS_CAMERA_VERSION_980:
 		*cam_version_id = CAM_CPAS_CAMERA_VERSION_ID_980;
+		break;
+	case CAM_CPAS_CAMERA_VERSION_1080:
+		*cam_version_id = CAM_CPAS_CAMERA_VERSION_ID_1080;
 		break;
 	default:
 		CAM_ERR(CAM_CPAS, "Invalid cam version %u",
@@ -1549,6 +1562,12 @@ static int cam_cpastop_init_hw_version(struct cam_hw_info *cpas_hw,
 		alloc_camnoc_info[CAM_CAMNOC_HW_NRT] = &cam980_cpas100_camnoc_info_nrt;
 		cpas_info = &cam980_cpas100_cpas_info;
 		cesta_info = &cam_v980_cesta_info;
+		break;
+	case CAM_CPAS_TITAN_1080_V100:
+		alloc_camnoc_info[CAM_CAMNOC_HW_RT] = &cam1080_cpas100_camnoc_info_rt;
+		alloc_camnoc_info[CAM_CAMNOC_HW_NRT] = &cam1080_cpas100_camnoc_info_nrt;
+		cpas_info = &cam1080_cpas100_cpas_info;
+		cesta_info = &cam_v1080_cesta_info;
 		break;
 	default:
 		CAM_ERR(CAM_CPAS, "Camera Version not supported %d.%d.%d",

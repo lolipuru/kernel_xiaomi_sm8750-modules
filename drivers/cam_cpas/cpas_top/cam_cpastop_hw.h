@@ -76,6 +76,9 @@
  * @CAM_CAMNOC_HW_IRQ_TFE_UBWC_ENCODE_ERROR        : Triggered if any error
  *                                                   detected in the TFE
  *                                                   UBWC enconder instance
+ * @CAM_CAMNOC_HW_IRQ_TFE_UBWC_1_ENCODE_ERROR      : Triggered if any error
+ *                                                   detected in the TFE
+ *                                                   UBWC enconder instance
  * @CAM_CAMNOC_HW_IRQ_RESERVED1                    : Reserved
  * @CAM_CAMNOC_HW_IRQ_RESERVED2                    : Reserved
  * @CAM_CAMNOC_HW_IRQ_CAMNOC_TEST                  : To test the IRQ logic
@@ -117,6 +120,8 @@ enum cam_camnoc_hw_irq_type {
 		CAM_CAMNOC_IRQ_OFE_RD_UBWC_DECODE_ERROR,
 	CAM_CAMNOC_HW_IRQ_TFE_UBWC_ENCODE_ERROR =
 		CAM_CAMNOC_IRQ_TFE_UBWC_ENCODE_ERROR,
+	CAM_CAMNOC_HW_IRQ_TFE_UBWC_1_ENCODE_ERROR =
+		CAM_CAMNOC_IRQ_TFE_UBWC_1_ENCODE_ERROR,
 	CAM_CAMNOC_HW_IRQ_AHB_TIMEOUT =
 		CAM_CAMNOC_IRQ_AHB_TIMEOUT,
 	CAM_CAMNOC_HW_IRQ_RESERVED1,
@@ -585,7 +590,7 @@ struct cam_cpas_secure_info {
  * @num_qchannel: Number of qchannel
  */
 struct cam_cpas_info {
-	struct cam_cpas_camnoc_qchannel *qchannel_info[CAM_CAMNOC_HW_TYPE_MAX];
+	struct cam_cpas_camnoc_qchannel *qchannel_info[CAM_CAMNOC_QCHANNEL_MAX];
 	struct cam_cpas_hw_cap_info hw_caps_info;
 	uint8_t num_qchannel;
 	struct cam_cpas_secure_info *hw_caps_secure_info;
