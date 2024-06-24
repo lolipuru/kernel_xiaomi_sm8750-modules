@@ -2536,6 +2536,7 @@ static int cam_icp_mgr_handle_frame_process(
 	if (!test_bit(ctx_info->ctx_id, hw_mgr->active_ctx_info.active_ctx_bitmap)) {
 		CAM_DBG(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
 			ctx_id);
+		mutex_unlock(&hw_mgr->ctx_mutex[ctx_id]);
 		goto end;
 	}
 
@@ -2543,6 +2544,7 @@ static int cam_icp_mgr_handle_frame_process(
 	if (ctx_data->state != CAM_ICP_CTX_STATE_ACQUIRED) {
 		CAM_DBG(CAM_ICP, "%s: is in %d state",
 			ctx_data->ctx_id_string, ctx_data->state);
+		mutex_unlock(&hw_mgr->ctx_mutex[ctx_id]);
 		goto end;
 	}
 
@@ -2559,6 +2561,7 @@ static int cam_icp_mgr_handle_frame_process(
 		CAM_ERR(CAM_ICP, "%s: pkt not found for req_id =%lld",
 			ctx_data->ctx_id_string, request_id);
 		rc = -EINVAL;
+		mutex_unlock(&hw_mgr->ctx_mutex[ctx_id]);
 		goto end;
 	}
 
@@ -2657,7 +2660,6 @@ static int cam_icp_mgr_handle_frame_process(
 	}
 
 end:
-	mutex_unlock(&hw_mgr->ctx_mutex[ctx_id]);
 	CAM_MEM_FREE(ctx_info);
 	ctx_info = NULL;
 	return rc;

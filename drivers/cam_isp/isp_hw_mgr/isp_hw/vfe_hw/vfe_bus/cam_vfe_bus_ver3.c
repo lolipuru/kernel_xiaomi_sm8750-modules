@@ -2401,10 +2401,17 @@ static int cam_vfe_bus_ver3_out_done_top_half_util(uint32_t evt_id,
 	evt_payload->evt_id = evt_id;
 	wm_rsrc_data = out_rsrc_data->wm_res[PLANE_Y].res_priv;
 
-	for (i = 0; i < th_payload->num_registers; i++) {
-		evt_payload->irq_reg_val[i] = th_payload->evt_status_arr[i];
-		CAM_DBG(CAM_ISP, "VFE:%u Bus IRQ status_%d: 0x%X",
-			out_rsrc_data->common_data->core_index, i, th_payload->evt_status_arr[i]);
+	if (th_payload->num_registers <= CAM_IFE_BUS_IRQ_REGISTERS_MAX) {
+		for (i = 0; i < th_payload->num_registers; i++) {
+			evt_payload->irq_reg_val[i] = th_payload->evt_status_arr[i];
+			CAM_DBG(CAM_ISP, "VFE:%u Bus IRQ status_%d: 0x%X",
+				out_rsrc_data->common_data->core_index,
+				i, th_payload->evt_status_arr[i]);
+		}
+	} else {
+		CAM_ERR(CAM_ISP, "Index out of bounds for num of registers %d, max allowed is %d",
+			th_payload->num_registers, CAM_IFE_BUS_IRQ_REGISTERS_MAX);
+		return -EINVAL;
 	}
 
 	th_payload->evt_payload_priv = evt_payload;

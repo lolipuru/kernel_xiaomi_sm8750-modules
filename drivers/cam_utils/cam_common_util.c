@@ -157,7 +157,7 @@ void cam_common_util_thread_switch_delay_detect(char *wq_name, const char *state
 	if (diff > threshold) {
 		scheduled_ts  = ktime_to_timespec64(scheduled_time);
 		cur_ts = ktime_to_timespec64(cur_time);
-		CAM_WARN_RATE_LIMIT_CUSTOM(CAM_UTIL, 1, 1,
+		CAM_WARN_RATE_LIMIT_CUSTOM(CAM_UTIL, 5, 1,
 			"%s cb: %ps delay in %s detected %ld:%06ld cur %ld:%06ld\n"
 			"diff %ld: threshold %d",
 			wq_name, cb, state, scheduled_ts.tv_sec,

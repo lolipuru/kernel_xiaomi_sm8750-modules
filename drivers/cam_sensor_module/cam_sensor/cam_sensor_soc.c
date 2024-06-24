@@ -290,6 +290,12 @@ static int32_t cam_sensor_driver_get_dt_data(struct cam_sensor_ctrl_t *s_ctrl)
 	else
 		s_ctrl->hw_no_ops = true;
 
+	cam_sensor_utils_parse_pm_ctrl_flag(of_node, &(s_ctrl->io_master_info));
+	CAM_INFO(CAM_SENSOR,
+		"master: %d (1-CCI, 2-I2C, 3-SPI, 4-I3C) pm_ctrl_client_enable: %d",
+		s_ctrl->io_master_info.master_type,
+		s_ctrl->io_master_info.pm_ctrl_client_enable);
+
 	return rc;
 
 FREE_SENSOR_DATA:

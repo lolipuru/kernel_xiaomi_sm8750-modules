@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_SENSOR_IO_H_
@@ -22,6 +22,7 @@
  * @i3c_client: I3C client information structure
  * @cci_client: CCI client information structure
  * @spi_client: SPI client information structure
+ * @pm_enable: Power Management Enable flag
  */
 struct camera_io_master {
 	int master_type;
@@ -29,6 +30,7 @@ struct camera_io_master {
 	struct i3c_device *i3c_client;
 	struct cam_sensor_cci_client *cci_client;
 	struct cam_sensor_spi_client *spi_client;
+	bool   pm_ctrl_client_enable;
 };
 
 /**

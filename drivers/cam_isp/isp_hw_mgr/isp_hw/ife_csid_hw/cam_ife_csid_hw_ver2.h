@@ -83,10 +83,11 @@ struct cam_ife_csid_ver2_debug_info {
 	uint32_t                              rx_mask[CAM_IFE_CSID_RX_IRQ_STATUS_REG_MAX];
 	uint32_t                              path_mask;
 	uint32_t                              test_bus_val;
+	uint32_t                              domain_id_value;
 	bool                                  rx_capture_debug_set;
 	bool                                  test_bus_enabled;
 	bool                                  set_domain_id_enabled;
-	uint32_t                              domain_id_value;
+	bool                                  cdr_sweep_debug_enabled;
 };
 
 struct cam_ife_csid_ver2_top_cfg {

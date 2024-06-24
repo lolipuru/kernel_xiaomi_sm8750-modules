@@ -1033,8 +1033,7 @@ int cam_flash_i2c_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 			rc = cam_packet_util_validate_cmd_desc(&cmd_desc[i]);
 			if (rc) {
 				CAM_ERR(CAM_FLASH, "Invalid cmd desc");
-				cam_mem_put_cpu_buf(config.packet_handle);
-				return rc;
+				goto end;
 			}
 
 			total_cmd_buf_in_bytes = cmd_desc[i].length;
