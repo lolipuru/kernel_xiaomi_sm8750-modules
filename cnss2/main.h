@@ -441,6 +441,7 @@ struct cnss_control_params {
 	unsigned int mhi_timeout;
 	unsigned int mhi_m2_timeout;
 	unsigned int qmi_timeout;
+	unsigned int req_fw_timeout;
 	unsigned int bdf_type;
 	unsigned int time_sync_period;
 	unsigned int time_sync_period_vote[TIME_SYNC_VOTE_MAX];
@@ -573,6 +574,7 @@ struct cnss_plat_data {
 	struct dentry *root_dentry;
 	atomic_t pm_count;
 	struct timer_list fw_boot_timer;
+	struct timer_list req_firmware_dbg_timer;
 	struct completion power_up_complete;
 	struct completion cal_complete;
 	struct mutex dev_lock; /* mutex for register access through debugfs */
