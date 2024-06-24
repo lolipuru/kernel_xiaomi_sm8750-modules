@@ -2816,7 +2816,7 @@ struct synx_session *synx_internal_initialize(
 		return ERR_PTR(-SYNX_NOMEM);
 
 	if (params->name)
-		strlcpy(client->name, params->name, sizeof(client->name));
+		strscpy(client->name, params->name, sizeof(client->name));
 
 	client->active = true;
 	client->dma_context = dma_fence_context_alloc(1);
@@ -2913,7 +2913,7 @@ int synx_register_ops(
 		client_ops->valid = true;
 		memcpy(&client_ops->ops, &params->ops,
 			sizeof(client_ops->ops));
-		strlcpy(client_ops->name, params->name,
+		strscpy(client_ops->name, params->name,
 			sizeof(client_ops->name));
 		client_ops->type = params->type;
 		dprintk(SYNX_INFO,
