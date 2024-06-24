@@ -125,10 +125,44 @@ static int cam_tpg_apply_req(
 }
 
 static int cam_tpg_flush_req(
-	struct cam_req_mgr_flush_request *flush)
+	struct cam_req_mgr_flush_request *flush_req)
 {
-	CAM_DBG(CAM_TPG, "Got Flush request from crm");
-	return 0;
+	int rc = 0;
+	struct cam_tpg_device *tpg_dev = NULL;
+
+	if (!flush_req) {
+		CAM_ERR(CAM_TPG, "Invalid flush request handle encountered");
+		return -EINVAL;
+	}
+
+	tpg_dev = (struct cam_tpg_device *)
+		cam_get_device_priv(flush_req->dev_hdl);
+	if (!tpg_dev) {
+		CAM_ERR(CAM_TPG, "Invalid TPG handle encountered during flush req");
+		return -EINVAL;
+	}
+	CAM_DBG(CAM_TPG, "Got flush request from crm. Flush Type: %d Req: %lld",
+		flush_req->type, flush_req->req_id);
+
+	mutex_lock(&tpg_dev->mutex);
+	switch (flush_req->type) {
+	case CAM_REQ_MGR_FLUSH_TYPE_ALL:
+		rc = tpg_hw_flush_requests(&tpg_dev->tpg_hw, flush_req->req_id, true);
+		break;
+
+	case CAM_REQ_MGR_FLUSH_TYPE_CANCEL_REQ:
+		rc = tpg_hw_flush_requests(&tpg_dev->tpg_hw, flush_req->req_id, false);
+		break;
+
+	default:
+		CAM_ERR(CAM_TPG, "Invalid TPG flush type [%d] rcvd", flush_req->type);
+		rc = -EINVAL;
+	}
+	if (rc != 0)
+		CAM_ERR(CAM_TPG, "Flushing active/waiting queue failed");
+
+	mutex_unlock(&tpg_dev->mutex);
+	return rc;
 }
 
 static int cam_tpg_process_crm_evt(
