@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include "cam_tpg_core.h"
@@ -430,9 +430,12 @@ static int cam_tpg_validate_cmd_descriptor(
 {
 	int rc = 0;
 	uintptr_t generic_ptr;
-	size_t len_of_buff = 0;
-	uint32_t                *cmd_buf = NULL;
-	struct tpg_command_header_t *cmd_header = NULL;
+	size_t            len_of_buff                 = 0;
+	size_t            remain_len                  = 0;
+	ssize_t           cmd_header_size             = 0;
+	uint32_t          *cmd_buf                    = NULL;
+	struct tpg_command_header_t *cmd_header_user  = NULL;
+	struct tpg_command_header_t *cmd_header       = NULL;
 
 	if (!cmd_desc || !cmd_type || !cmd_addr)
 		return -EINVAL;
@@ -445,29 +448,65 @@ static int cam_tpg_validate_cmd_descriptor(
 		return rc;
 	}
 
+	if (cmd_desc->offset >= len_of_buff) {
+		CAM_ERR(CAM_TPG, "Buffer Offset: %d past length of buffer %zu",
+			cmd_desc->offset,
+			len_of_buff);
+		rc = -EINVAL;
+		goto end;
+	}
+	remain_len = len_of_buff - cmd_desc->offset;
+
+	if ((cmd_desc->size > remain_len) ||
+		(cmd_desc->length > cmd_desc->size)) {
+		CAM_ERR(CAM_TPG, "Invalid cmd desc, size: %zu remainlen: %zu length: %zu",
+			cmd_desc->size,
+			remain_len,
+			cmd_desc->length);
+		rc = -EINVAL;
+		goto end;
+	}
+
+	if (remain_len < sizeof(struct tpg_command_header_t)) {
+		CAM_ERR(CAM_TPG, "Invalid buf size, remain len: %zu cmd header size: %zu",
+			remain_len,
+			sizeof(struct tpg_command_header_t));
+		rc = -EINVAL;
+		goto end;
+	}
+
 	cmd_buf = (uint32_t *)generic_ptr;
-	if (len_of_buff < sizeof(struct tpg_command_header_t)) {
-		CAM_ERR(CAM_TPG, "Got invalid command descriptor of invalid cmd buffer size");
+	cmd_buf += cmd_desc->offset / sizeof(uint32_t);
+	cmd_header_user = (struct tpg_command_header_t *)cmd_buf;
+
+	cmd_header_size = cmd_header_user->size;
+
+	/* Check for cmd_header_size overflow or underflow condition */
+	if ((cmd_header_size < 0) ||
+		((SIZE_MAX - cmd_header_size) < cmd_desc->offset)) {
+		CAM_ERR(CAM_TPG, "Invalid cmd header size: %zu, offset: %d",
+			cmd_header_size,
+			cmd_desc->offset);
 		rc = -EINVAL;
 		goto end;
 	}
 
-	if ((ssize_t)cmd_desc->offset >= (len_of_buff - sizeof(struct tpg_command_header_t))) {
-		CAM_ERR(CAM_TPG,
-			"Invalid tpg cmd header size: %zu, cmd offset: %u, len of buf: %zu",
-			sizeof(struct tpg_command_header_t), cmd_desc->offset, len_of_buff);
+	if ((cmd_desc->offset + (size_t)cmd_header_size) > len_of_buff) {
+		CAM_ERR(CAM_TPG, "Cmd header offset mismatch, offset: %d size: %zu len: %zu",
+			cmd_desc->offset,
+			cmd_header_size,
+			len_of_buff);
 		rc = -EINVAL;
 		goto end;
 	}
 
-	cmd_buf += cmd_desc->offset / 4;
-	cmd_header = (struct tpg_command_header_t *)cmd_buf;
-
-	if ((ssize_t)cmd_desc->offset > (len_of_buff - cmd_header->size)) {
-		CAM_ERR(CAM_TPG, "cmd header offset mismatch");
-		rc = -EINVAL;
+	cmd_header = kmemdup(cmd_header_user, cmd_header_size, GFP_KERNEL);
+	if (!cmd_header) {
+		CAM_ERR(CAM_TPG, "Local cmd_header mem allocation failed");
+		rc = -ENOMEM;
 		goto end;
 	}
+	cmd_header->size = cmd_header_size;
 
 	switch (cmd_header->cmd_type) {
 	case TPG_CMD_TYPE_GLOBAL_CONFIG: {
@@ -568,6 +607,7 @@ static int cam_tpg_cmd_buf_parse(
 	int rc = 0, i = 0;
 	struct cam_cmd_buf_desc *cmd_desc = NULL;
 	struct tpg_hw_request *req = NULL;
+	uintptr_t cmd_addr = 0;
 
 	if (!tpg_dev || !packet)
 		return -EINVAL;
@@ -590,7 +630,6 @@ static int cam_tpg_cmd_buf_parse(
 
 	for (i = 0; i < packet->num_cmd_buf; i++) {
 		uint32_t cmd_type = TPG_CMD_TYPE_INVALID;
-		uintptr_t cmd_addr;
 		struct tpg_command_header_t *cmd_header = NULL;
 
 		cmd_desc = (struct cam_cmd_buf_desc *)
@@ -600,10 +639,8 @@ static int cam_tpg_cmd_buf_parse(
 
 		rc = cam_tpg_validate_cmd_descriptor(cmd_desc,
 				&cmd_type, &cmd_addr);
-		if (rc < 0) {
-			CAM_MEM_FREE(req);
-			goto end;
-		}
+		if (rc < 0)
+			goto free_request;
 
 		cmd_header = (struct tpg_command_header_t *)cmd_addr;
 
@@ -655,12 +692,17 @@ static int cam_tpg_cmd_buf_parse(
 			goto free_request;
 			break;
 		}
+		CAM_MEM_FREE((void *)cmd_addr);
+		cmd_addr = 0;
 	}
 	if (!tpg_dev->hw_no_ops)
 		tpg_hw_add_request(&tpg_dev->tpg_hw, req);
-end:
 	return rc;
 free_request:
+	if (cmd_addr != 0) {
+		CAM_MEM_FREE((void *)cmd_addr);
+		cmd_addr = 0;
+	}
 	/* free the request and return the failure */
 	tpg_hw_free_request(&tpg_dev->tpg_hw, req);
 	CAM_MEM_FREE(req);
