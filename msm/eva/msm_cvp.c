@@ -884,6 +884,12 @@ int msm_cvp_session_create(struct msm_cvp_inst *inst)
 {
 	int rc = 0, rc1 = 0;
 	struct cvp_session_queue *sq;
+	u32 instance_count;
+
+	struct msm_cvp_core *core = NULL;
+
+	core = cvp_driver->cvp_core;
+
 	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_create");
 
 	if (!inst || !inst->core)
@@ -907,6 +913,13 @@ int msm_cvp_session_create(struct msm_cvp_inst *inst)
 	if (rc) {
 		dprintk(CVP_ERR,
 			"Failed to move instance to open done state\n");
+		if (msm_cvp_check_for_inst_overload(core, &instance_count)) {
+			dprintk(CVP_ERR, "Instance num reached Max, rejecting session");
+			mutex_lock(&core->lock);
+			list_for_each_entry(inst, &core->instances, list)
+				cvp_print_inst(CVP_ERR, inst);
+			mutex_unlock(&core->lock);
+		}
 		goto fail_create;
 	}
 
