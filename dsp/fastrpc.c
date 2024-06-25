@@ -2488,6 +2488,7 @@ static int fastrpc_debugfs_show(struct seq_file *s_file, void *data)
 	struct fastrpc_invoke_ctx *ictx, *m;
 	struct fastrpc_buf *buf, *n;
 	int i;
+	unsigned long irq_flags = 0;
 
 	if (fl != NULL) {
 		seq_printf(s_file,"%s %12s %d\n", "tgid", ":", fl->tgid);
@@ -2517,6 +2518,7 @@ static int fastrpc_debugfs_show(struct seq_file *s_file, void *data)
 			print_sctx_info(s_file, sctx);
 		}
 
+		spin_lock(&fl->lock);
 		if (fl->init_mem) {
 			seq_printf(s_file,"\n=============== Init Mem ===============\n");
 			buf = fl->init_mem;
@@ -2532,15 +2534,21 @@ static int fastrpc_debugfs_show(struct seq_file *s_file, void *data)
 			buf = fl->hdr_bufs;
 			print_buf_info(s_file, buf);
 		}
+		spin_unlock(&fl->lock);
+
 		seq_printf(s_file,"\n=============== Global Maps ===============\n");
+		spin_lock_irqsave(&fl->cctx->lock, irq_flags);
 		list_for_each_entry_safe(buf, n, &fl->cctx->gmaps, node) {
 			print_buf_info(s_file, buf);
 		}
+		spin_unlock_irqrestore(&fl->cctx->lock, irq_flags);
 		seq_printf(s_file,"\n=============== DSP Signal Status ===============\n");
+		spin_lock_irqsave(&fl->dspsignals_lock, irq_flags);
 		for (i = 0; i < FASTRPC_DSPSIGNAL_NUM_SIGNALS/FASTRPC_DSPSIGNAL_GROUP_SIZE; i++) {
 			if (fl->signal_groups[i] != NULL)
 				seq_printf(s_file,"%d : %d ",i, fl->signal_groups[i]->state);
 		}
+		spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
 		seq_printf(s_file,"\n=============== User space maps ===============\n");
 		spin_lock(&fl->lock);
 		list_for_each_entry(map, &fl->maps, node) {
@@ -2557,7 +2565,6 @@ static int fastrpc_debugfs_show(struct seq_file *s_file, void *data)
 			if(buf)
 				print_buf_info(s_file, buf);
 		}
-		spin_unlock(&fl->lock);
 		seq_printf(s_file,"\n=============== Pending contexts ===============\n");
 		list_for_each_entry_safe(ictx, m, &fl->pending, node) {
 			if (ictx)
@@ -2568,6 +2575,7 @@ static int fastrpc_debugfs_show(struct seq_file *s_file, void *data)
 			if (ictx)
 				print_ictx_info(s_file, ictx);
 		}
+		spin_unlock(&fl->lock);
 	}
 	return 0;
 }
@@ -3097,7 +3105,9 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	return 0;
 
 err_invoke:
+	spin_lock(&fl->lock);
 	fl->init_mem = NULL;
+	spin_unlock(&fl->lock);
 	fastrpc_buf_free(imem, false);
 err_alloc:
 	if (fl->proc_init_sharedbuf) {
