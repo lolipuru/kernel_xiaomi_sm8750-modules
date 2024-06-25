@@ -119,7 +119,7 @@ int cam_common_read_poll_timeout(
 			wait_time_us);
 	} else {
 		rc = cam_presil_readl_poll_timeout(addr, mask,
-			wait_time_us/(CAM_PRESIL_POLL_DELAY * 1000), CAM_PRESIL_POLL_DELAY);
+			wait_time_us/(CAM_PRESIL_POLL_DELAY * 600), CAM_PRESIL_POLL_DELAY);
 	}
 
 	return rc;

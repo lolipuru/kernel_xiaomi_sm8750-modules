@@ -1036,6 +1036,11 @@ static int cam_cpas_parse_sys_cache_uids(
 	soc_private->llcc_info = NULL;
 	soc_private->num_caches = 0;
 
+	if (cam_presil_mode_enabled()) {
+		CAM_INFO(CAM_CPAS, "PRESIL parse syscache uids is DISABLED");
+		return 0;
+	}
+
 	num_caches = of_property_count_strings(of_node, "sys-cache-names");
 	if (num_caches <= 0) {
 		CAM_DBG(CAM_CPAS, "no cache-names found");
