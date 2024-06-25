@@ -988,6 +988,11 @@ static int cam_icp_v2_core_control(struct cam_hw_info *icp_v2_info,
 			__cam_icp_v2_core_reg_dump(icp_v2_info, CAM_ICP_DUMP_STATUS_REGISTERS);
 		}
 	} else {
+		if (cam_presil_mode_enabled()) {
+			CAM_INFO(CAM_ICP, "PRESIL-ICP-B2B-HFI-INIT no PC no resume return 0");
+			return 0;
+		}
+
 		if (state == TZ_STATE_RESUME) {
 			rc = __cam_icp_v2_power_resume(icp_v2_info);
 			if (rc)

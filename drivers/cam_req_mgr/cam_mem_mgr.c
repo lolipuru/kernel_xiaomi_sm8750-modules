@@ -1885,6 +1885,11 @@ static int cam_mem_mgr_cleanup_table(void)
 {
 	int i;
 
+	if (cam_presil_mode_enabled()) {
+		CAM_INFO(CAM_MEM, "PRESIL-HACK  not cleaning up table, HFI not free/alloc hack");
+		return 0;
+	}
+
 	mutex_lock(&tbl.m_lock);
 	for (i = 1; i < CAM_MEM_BUFQ_MAX; i++) {
 		if (!tbl.bufq[i].active) {
