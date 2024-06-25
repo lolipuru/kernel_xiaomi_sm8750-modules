@@ -2469,10 +2469,10 @@ int set_fmd_mode(enum FmdOperation operation)
 			set_fmd_sdam_bit((unsigned char)POWER_ENABLE);
 			break;
 		}
-		case DISABLE_SDAM_BIT_FMD: {
-			pr_warn("%s: SET_FMD_MODE_CTRL :: DISABLE_SDAM_BIT_FMD\n",
+		case DISABLE_FMD: {
+			pr_warn("%s: SET_FMD_MODE_CTRL :: DISABLE_FMD\n",
 				__func__);
-			set_fmd_sdam_bit((unsigned char)POWER_DISABLE);
+			pwr_data->is_fmd_mode_enable = false;
 			break;
 		}
 		case UPDATE_SOC_VERSION_1_0_FOR_FMD: {
