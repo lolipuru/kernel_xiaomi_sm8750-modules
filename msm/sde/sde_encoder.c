@@ -2687,7 +2687,7 @@ static int _sde_encoder_rc_pre_stop(struct drm_encoder *drm_enc,
 
 	mutex_lock(&sde_enc->rc_lock);
 
-	if (is_vid_mode &&
+	if ((!sde_enc->disp_info.vrr_caps.video_psr_support && is_vid_mode) &&
 		  sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE) {
 		sde_encoder_irq_control(drm_enc, true);
 	}
@@ -5178,12 +5178,23 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 	struct sde_ctl_flush_cfg cfg;
 	u32 pf_time_in_us;
 	struct drm_crtc *crtc;
+	struct sde_connector *sde_conn;
 
 	if (!sde_enc || !sde_enc->cur_master)
 		return;
 
 	crtc = sde_enc->crtc;
 	phys_enc = sde_enc->cur_master;
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	if (sde_enc->cur_master && sde_enc->cur_master->connector) {
+		sde_conn = to_sde_connector(sde_enc->cur_master->connector);
+		if (sde_conn->vrr_cmd_state == VRR_CMD_IDLE_ENTRY) {
+			SDE_EVT32(SDE_EVTLOG_ERROR);
+			return;
+		}
+	}
+
 	ctl = phys_enc->hw_ctl;
 	ctl->ops.clear_pending_flush(ctl);
 	_sde_encoder_cesta_update(&sde_enc->base, SDE_PERF_BEGIN_COMMIT);
