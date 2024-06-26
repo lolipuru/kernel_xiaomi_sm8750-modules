@@ -1700,10 +1700,14 @@ static void ipa3_handle_ipa_wlan_opt_dp_rsrv_filter_req(struct qmi_handle *qmi_h
 
 	IPAWANDBG("rsrv_filter_req: num_fltrs %d, timeout_val %d, rtng_table %d\n",
 		req->num_filters, req->timeout_val_ms, req->q6_rtng_table_index);
+	IPA_EVENT_LOG("rsrv_filter_req: num_fltrs %d, timeout_val %d, rtng_table %d\n",
+		req->num_filters, req->timeout_val_ms, req->q6_rtng_table_index);
 
 	rc = ipa_wdi_opt_dpath_rsrv_filter_req(req, &resp);
 
 	IPAWANDBG("qmi_snd_rsp: result %d, err %d\n",
+		resp.resp.result, resp.resp.error);
+	IPA_EVENT_LOG("qmi_snd_rsp: result %d, err %d\n",
 		resp.resp.result, resp.resp.error);
 
 	rc1 = qmi_send_response(qmi_handle, sq, txn,
@@ -1712,8 +1716,10 @@ static void ipa3_handle_ipa_wlan_opt_dp_rsrv_filter_req(struct qmi_handle *qmi_h
 		ipa_wlan_opt_dp_rsrv_filter_resp_msg_data_v01_ei,
 		&resp);
 
-	if (rc1 < 0)
+	if (rc1 < 0) {
 		IPAWANERR("Reserve filter rules response failed\n");
+		IPA_EVENT_LOG("Reserve filter rules response failed\n");
+	}
 	else
 		IPAWANDBG("Replied to install filter request\n");
 
@@ -1743,6 +1749,9 @@ static void ipa3_handle_ipa_wlan_opt_dp_remove_all_filter_req(struct qmi_handle 
 
 	IPAWANDBG("qmi_snd_rsp: result %d, err %d\n",
 		resp.resp.result, resp.resp.error);
+	if (resp.resp.error != IPA_QMI_ERR_NONE_V01)
+		IPA_EVENT_LOG("qmi_snd_rsp: result %d, err %d\n",
+		resp.resp.result, resp.resp.error);
 
 	rc1 = qmi_send_response(qmi_handle, sq, txn,
 		QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_ALL_FILTER_RESP_V01,
@@ -1750,8 +1759,10 @@ static void ipa3_handle_ipa_wlan_opt_dp_remove_all_filter_req(struct qmi_handle 
 		ipa_wlan_opt_dp_remove_all_filter_resp_msg_data_v01_ei,
 		&resp);
 
-	if (rc1 < 0)
+	if (rc1 < 0) {
 		IPAWANERR("Remove all filter rules failed\n");
+		IPA_EVENT_LOG("Remove all filter rules failed\n");
+	}
 	else
 		IPAWANDBG("Replied to remove all filter request\n");
 
@@ -1786,16 +1797,22 @@ static void ipa3_handle_ipa_wlan_opt_dp_add_filter_req(struct qmi_handle *qmi_ha
 		ipa_wlan_opt_dp_add_filter_resp_msg_data_v01_ei,
 		&resp);
 
-	IPAWANDBG("add_filter_req: filter_idx %d, iptype %d\n",
+	IPAWANDBG("add_filter_req: filter_idx %x, iptype %d\n",
+		req->filter_idx, req->ip_type);
+	IPA_EVENT_LOG("add_filter_req: filter_idx %x, iptype %d\n",
 		req->filter_idx, req->ip_type);
 
 	rc = ipa_wdi_opt_dpath_add_filter_req(
 		req,&ind);
 
-	IPAWANDBG("qmi_snd_rsp: flt_idx %d, flt_hdl%d\n",
+	IPAWANDBG("qmi_snd_rsp: flt_idx %x, flt_hdl%d\n",
 		ind.filter_idx, ind.filter_handle);
 
 	IPAWANDBG("qmi_snd_rsp: result %d, err %d\n",
+		ind.filter_add_status.result, ind.filter_add_status.error);
+
+	IPA_EVENT_LOG("qmi_snd_rsp: flt_idx %x, flt_hdl%d, result %d, err %d\n",
+		ind.filter_idx, ind.filter_handle,
 		ind.filter_add_status.result, ind.filter_add_status.error);
 
 	rc = qmi_send_indication(qmi_handle,
@@ -1805,8 +1822,10 @@ static void ipa3_handle_ipa_wlan_opt_dp_add_filter_req(struct qmi_handle *qmi_ha
 		ipa_wlan_opt_dp_add_filter_complt_ind_msg_v01_ei,
 		&ind);
 
-	if (rc < 0)
+	if (rc < 0) {
 		IPAWANERR("Add  filter rules failed\n");
+		IPA_EVENT_LOG("Add  filter rules failed\n");
+	}
 	else
 		IPAWANDBG("Replied to add filter request\n");
 }
@@ -1828,7 +1847,9 @@ static void ipa3_handle_ipa_wlan_opt_dp_remove_filter_req(struct qmi_handle *qmi
 	/* cache the client sq */
 	memcpy(&ipa3_qmi_ctx->client_sq, sq, sizeof(*sq));
 
-	IPAWANDBG("remove_filter_req: filter_idx %d, filter_hdl %d\n",
+	IPAWANDBG("remove_filter_req: filter_idx %x, filter_hdl %d\n",
+		req->filter_idx, req->filter_handle);
+	IPA_EVENT_LOG("remove_filter_req: filter_idx %x, filter_hdl %d\n",
 		req->filter_idx, req->filter_handle);
 
 	rc = qmi_send_response(qmi_handle, sq, txn,
@@ -1889,6 +1910,9 @@ int ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req (
 		IPAWANERR("QMI send Req %d failed, rc= %d\n",
 			QMI_IPA_GET_APN_DATA_STATS_REQ_V01,
 			rc);
+		IPA_EVENT_LOG("QMI send Req %d failed, rc= %d\n",
+			QMI_IPA_GET_APN_DATA_STATS_REQ_V01,
+			rc);
 		return rc;
 	}
 
@@ -1896,7 +1920,8 @@ int ipa3_handle_ipa_wlan_opt_dp_set_wlan_ctrl_ready_req (
 
 	if (q6_rtng_table_index != NULL) {
 		*q6_rtng_table_index = resp.q6_rtng_table_index;
-		IPAWANDBG("rt_tbl_idx = %d\n", resp.q6_rtng_table_index);
+		IPAWANDBG("rt_tbl_idx = %x\n", resp.q6_rtng_table_index);
+		IPA_EVENT_LOG("rt_tbl_idx = %x\n", resp.q6_rtng_table_index);
 	}
 
 	return ipa3_check_qmi_response(rc,
@@ -1921,6 +1946,8 @@ static void ipa3_handle_ipa_wlan_opt_dp_wlan_ctrl_pkt_rcvd_req(struct qmi_handle
 	memcpy(&ipa3_qmi_ctx->client_sq, sq, sizeof(*sq));
 
 	IPAWANDBG("wlan_opt_dp_wlan_ctrl_pkt_rcvd_req: packet_count %d\n",
+		req->packet_count);
+	IPA_EVENT_LOG("wlan_opt_dp_wlan_ctrl_pkt_rcvd_req: packet_count %d\n",
 		req->packet_count);
 
 	rc = ipa_wdi_opt_dpath_wlan_ctrl_pkt_rcvd_req(
@@ -1956,16 +1983,22 @@ static void ipa3_handle_ipa_wlan_opt_dp_add_ctrl_filter_req(struct qmi_handle *q
 		ipa_wlan_opt_dp_add_filter_resp_msg_data_v01_ei,
 		&resp);
 
-	IPAWANDBG("add_ctrl_filter_req: filter_idx %d, iptype %d\n",
+	IPAWANDBG("add_ctrl_filter_req: filter_idx %x, iptype %d\n",
+		req->filter_idx, req->ip_type);
+	IPA_EVENT_LOG("add_ctrl_filter_req: filter_idx %x, iptype %d\n",
 		req->filter_idx, req->ip_type);
 
 	rc = ipa_wdi_opt_dpath_add_ctrl_filter_req(
 			req, &ind);
 
-	IPAWANDBG("qmi_snd_rsp: ctrl_flt_idx %d, ctrl_flt_hdl%d\n",
+	IPAWANDBG("qmi_snd_rsp: ctrl_flt_idx %x, ctrl_flt_hdl%d\n",
 		ind.filter_idx, ind.filter_handle);
 
 	IPAWANDBG("qmi_snd_rsp: result %d, err %d\n",
+		ind.filter_add_status.result, ind.filter_add_status.error);
+
+	IPA_EVENT_LOG("qmi_snd_rsp: ctrl_flt_idx %x, ctrl_flt_hdl %d, result %d, err %d\n",
+		ind.filter_idx, ind.filter_handle,
 		ind.filter_add_status.result, ind.filter_add_status.error);
 
 	rc = qmi_send_indication(qmi_handle,
@@ -1975,8 +2008,10 @@ static void ipa3_handle_ipa_wlan_opt_dp_add_ctrl_filter_req(struct qmi_handle *q
 		ipa_wlan_opt_dp_add_filter_complt_ind_msg_v01_ei,
 		&ind);
 
-	if (rc < 0)
+	if (rc < 0) {
 		IPAWANERR("Add  filter rules failed\n");
+		IPA_EVENT_LOG("Add  filter rules failed\n");
+	}
 	else
 		IPAWANDBG("Replied to add filter request\n");
 }
@@ -1998,7 +2033,9 @@ static void ipa3_handle_ipa_wlan_opt_dp_remove_ctrl_filter_req(struct qmi_handle
 	/* cache the client sq */
 	memcpy(&ipa3_qmi_ctx->client_sq, sq, sizeof(*sq));
 
-	IPAWANDBG("remove_filter_req: filter_idx %d, filter_hdl %d\n",
+	IPAWANDBG("remove_filter_req: filter_idx %x, filter_hdl %d\n",
+		req->filter_idx, req->filter_handle);
+	IPA_EVENT_LOG("remove_filter_req: filter_idx %x, filter_hdl %d\n",
 		req->filter_idx, req->filter_handle);
 
 	rc = qmi_send_response(qmi_handle, sq, txn,
@@ -2012,6 +2049,7 @@ static void ipa3_handle_ipa_wlan_opt_dp_remove_ctrl_filter_req(struct qmi_handle
 
 	if (rc < 0) {
 		IPAWANERR("Remove filter rules failed\n");
+		IPA_EVENT_LOG("Remove filter rules failed\n");
 		qmi_send_indication(ipa3_svc_handle,
 			&ipa3_qmi_ctx->client_sq,
 			QMI_IPA_WLAN_OPT_DATAPATH_REMOVE_CTRL_FILTER_COMPLT_IND_V01,
@@ -2894,6 +2932,10 @@ int ipa3_qmi_send_wdi_opt_dpath_rsrv_flt_ind(
 		ind->rsrv_filter_status.result,
 		ind->rsrv_filter_status.error);
 
+	IPA_EVENT_LOG("wdi_opt_dpath_rsrv_flt_ind: result %d, err %d\n",
+		ind->rsrv_filter_status.result,
+		ind->rsrv_filter_status.error);
+
 	return qmi_send_indication(ipa3_svc_handle,
 		&ipa3_qmi_ctx->client_sq,
 		QMI_IPA_WLAN_OPT_DATAPATH_RSRV_FILTER_COMPLT_IND_V01,
@@ -2917,6 +2959,9 @@ int ipa3_qmi_send_wdi_opt_dpath_rmv_all_flt_ind(
 	}
 
 	IPAWANDBG("wdi_opt_dpath_rmv_all_flt_ind: result %d, err %d\n",
+		ind->filter_removal_all_status.result,
+		ind->filter_removal_all_status.error);
+	IPA_EVENT_LOG("wdi_opt_dpath_rmv_all_flt_ind: result %d, err %d\n",
 		ind->filter_removal_all_status.result,
 		ind->filter_removal_all_status.error);
 
@@ -2943,6 +2988,9 @@ int ipa3_qmi_send_wdi_opt_dpath_rmv_ctrl_flt_ind(
 	}
 
 	IPAWANDBG("wdi_opt_dpath_rmv_all_flt_ind: result %d, err %d\n",
+		ind->ctrl_filter_removal_status.result,
+		ind->ctrl_filter_removal_status.error);
+	IPA_EVENT_LOG("wdi_opt_dpath_rmv_all_flt_ind: result %d, err %d\n",
 		ind->ctrl_filter_removal_status.result,
 		ind->ctrl_filter_removal_status.error);
 
@@ -2983,6 +3031,9 @@ int ipa3_qmi_send_wdi_opt_dpath_ep_info(
 
 	if (rc < 0) {
 		IPAWANERR("QMI send Req %d failed, rc= %d\n",
+			QMI_IPA_GET_APN_DATA_STATS_REQ_V01,
+			rc);
+		IPA_EVENT_LOG("QMI send Req %d failed, rc= %d\n",
 			QMI_IPA_GET_APN_DATA_STATS_REQ_V01,
 			rc);
 		return rc;

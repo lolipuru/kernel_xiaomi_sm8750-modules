@@ -74,6 +74,7 @@
 #define CREATE_TRACE_POINTS
 #include "ipa_trace.h"
 #include "ipa_odl.h"
+#include "ipa_opt_log.h"
 
 #define IPA_SUSPEND_BUSY_TIMEOUT (msecs_to_jiffies(10))
 
@@ -9863,6 +9864,14 @@ static int ipa3_pre_init(const struct ipa3_plat_drv_res *resource_p,
 	else
 		IPADBG("ipa mini qcom_va_md_register success\n");
 #endif
+
+	result = ipa_opt_log_init();
+	if (result) {
+		IPADBG("Error: OPT LOG init failed\n");
+		result = -ENODEV;
+		goto fail_rmnet_ll_init;
+	}
+
 	return 0;
 
 fail_rmnet_ll_init:
