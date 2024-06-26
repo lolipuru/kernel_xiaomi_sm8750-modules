@@ -1108,7 +1108,10 @@ int msm_cvp_session_stop(struct msm_cvp_inst *inst,
 	struct eva_kmd_session_control *sc = NULL;
 	struct msm_cvp_inst *s;
 	struct cvp_hfi_ops *ops_tbl;
+	u32 error_event = NO_ERROR;
+	u32 error_state = SESSION_NORMAL;
 	int rc;
+
 	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_stop");
 
 	if (!inst || !inst->core) {
@@ -1132,7 +1135,14 @@ int msm_cvp_session_stop(struct msm_cvp_inst *inst,
 		if (sc)
 			sc->ctrl_data[0] = sq->msg_count;
 		spin_unlock(&sq->lock);
-		rc =  -EUCLEAN;
+		rc = -EUCLEAN;
+		goto exit;
+	}
+	if (sq->state == QUEUE_STOP) {
+		dprintk(CVP_WARN, "Session %llx (%#x) already stopped\n",
+			inst, hash32_ptr(inst->session));
+		spin_unlock(&sq->lock);
+		rc = -EINVAL;
 		goto exit;
 	}
 	sq->state = QUEUE_STOP;
@@ -1143,6 +1153,20 @@ int msm_cvp_session_stop(struct msm_cvp_inst *inst,
 	spin_unlock(&sq->lock);
 
 	ops_tbl = inst->core->dev_ops;
+
+	error_event = (0x0FFF0000 & inst->session_error_code) >> 16;
+	error_state = (0xF0000000 & inst->session_error_code) >> 28;
+	if (error_state == SESSION_ERROR && error_event == EVA_SESSION_TIMEOUT) {
+		/*Flush all pending cmds for the error EVA session*/
+		rc = cvp_session_flush_all(inst);
+		if (rc) {
+			dprintk(CVP_ERR,
+				"%s: cannot flush session %llx (%#x) rc %d, sess stop aborted\n",
+				__func__, inst, hash32_ptr(inst->session), rc);
+			goto stop_thread;
+		}
+	}
+
 	/* Send SESSION_STOP command */
 	rc = call_hfi_op(ops_tbl, session_stop, (void *)inst->session);
 	if (rc) {
@@ -1708,7 +1732,7 @@ int cvp_session_flush_all(struct msm_cvp_inst *inst)
 	/* Send flush to FW */
 	rc = call_hfi_op(ops_tbl, session_flush, (void *)inst->session);
 	if (rc) {
-		dprintk(CVP_WARN, "%s: continue flush without fw. rc %d\n",
+		dprintk(CVP_ERR, "%s: continue flush without fw. rc %d\n",
 		__func__, rc);
 		goto exit;
 	}
@@ -1716,19 +1740,20 @@ int cvp_session_flush_all(struct msm_cvp_inst *inst)
 	/* Wait for FW response */
 	rc = wait_for_sess_signal_receipt(inst, HAL_SESSION_FLUSH_DONE);
 	if (rc)
-		dprintk(CVP_WARN, "%s: wait for signal failed, rc %d\n",
-		__func__, rc);
-
-	dprintk(CVP_SESS, "%s: (%#x) received flush from fw\n",
+		dprintk(CVP_ERR, "%s: wait for signal failed, rc %d\n",
+			__func__, rc);
+	else
+		dprintk(CVP_SESS, "%s: (%#x) received flush from fw\n",
 			__func__, hash32_ptr(inst->session));
 
 exit:
-	rc = cvp_drain_fence_sched_list(inst);
+	if (!rc) {
+		rc = cvp_drain_fence_sched_list(inst);
 
-	mutex_lock(&q->lock);
-	q->mode = OP_NORMAL;
-	mutex_unlock(&q->lock);
-
+		mutex_lock(&q->lock);
+		q->mode = OP_NORMAL;
+		mutex_unlock(&q->lock);
+	}
 	cvp_put_inst(s);
 	CVPKERNEL_ATRACE_END("cvp_session_flush_all");
 	return rc;

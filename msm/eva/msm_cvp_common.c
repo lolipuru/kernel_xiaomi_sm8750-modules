@@ -1557,11 +1557,15 @@ int cvp_print_inst(u32 tag, struct msm_cvp_inst *inst)
 	}
 	session_prop = &inst->prop;
 
-	dprintk(tag, "%s inst stype %d %pK id = %#x ptype %#x prio %#x secure %#x kmask %#x dmask %#x, kref %#x state %#x\n",
+	dprintk(tag,
+		"%s inst stype %d %pK id = %#x ptype %#x prio %#x secure %#x kmask %#x",
 		inst->proc_name, inst->session_type, inst, hash32_ptr(inst->session),
 		inst->prop.type, inst->prop.priority, inst->prop.is_secure,
-		inst->prop.kernel_mask, inst->prop.dsp_mask,
-		kref_read(&inst->kref), inst->state);
+		inst->prop.kernel_mask);
+	dprintk(tag,
+		"dmask %#x, kref %#x state %#x session_error_code 0x%x\n",
+		inst->prop.dsp_mask, kref_read(&inst->kref), inst->state,
+		inst->session_error_code);
 	dprintk(tag, "session name %s", session_prop->session_name);
 
 	return 0;

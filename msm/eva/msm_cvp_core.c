@@ -376,7 +376,7 @@ stop_session:
 
 	error_event = (0x0FFF0000 & inst->session_error_code) >> 16;
 	error_state = (0xF0000000 & inst->session_error_code) >> 28;
-	if (!empty) {
+	if (!empty && inst->session_queue.state != QUEUE_STOP) {
 		if (error_state == SESSION_ERROR && error_event == EVA_SESSION_TIMEOUT) {
 			/*Flush all pending cmds for specific EVA session*/
 			rc = cvp_session_flush_all(inst);
@@ -384,6 +384,7 @@ stop_session:
 				dprintk(CVP_ERR,
 					"%s: cannot flush session %llx (%#x) rc %d\n",
 					__func__, inst, hash32_ptr(inst->session), rc);
+				goto err_timeout;
 			}
 		}
 		/* STOP SESSION to avoid SMMU fault after releasing ARP */
@@ -423,6 +424,9 @@ exit:
 		call_hfi_op(ops_tbl, pm_qos_update, ops_tbl->hfi_device_data);
 	}
 	return 0;
+err_timeout:
+	cvp_put_inst(tmp);
+	return rc;
 }
 
 int msm_cvp_destroy(struct msm_cvp_inst *inst)
@@ -529,8 +533,12 @@ int msm_cvp_close(void *instance)
 
 	if (inst->session_type != MSM_CVP_BOOT) {
 		rc = msm_cvp_cleanup_instance(inst);
-		if (rc)
+		if (rc) {
+			dprintk(CVP_ERR,
+				"%s: cleanup instance failed for session %llx (%#x) rc %d\n",
+				__func__, inst, hash32_ptr(inst->session), rc);
 			return -EINVAL;
+		}
 		msm_cvp_session_deinit(inst);
 	}
 
