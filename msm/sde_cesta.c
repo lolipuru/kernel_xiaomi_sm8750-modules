@@ -809,7 +809,7 @@ int sde_cesta_resource_disable(u32 cesta_index)
 	}
 
 	/* remove last minimum vote for GDSC to enter power-collapse */
-	sw_update_flag |= SDE_CESTA_SW_CLIENT_BW_UPDATE | SDE_CESTA_SW_CLIENT_CLK_UPDATE;
+	sw_update_flag |= SDE_CESTA_SW_CLIENT_BW_UPDATE;
 	ret = sde_cesta_sw_client_update(cesta_index, &sw_data, sw_update_flag);
 	if (ret) {
 		SDE_ERROR_CESTA("sw-client voting failed, ret:%d", ret);
