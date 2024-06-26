@@ -653,6 +653,8 @@ struct cnss_plat_data {
 	bool no_bwscale;
 	bool sleep_clk;
 	struct wlchip_serial_id_v01 serial_id;
+	u32 cpumask_for_rx_intrs;
+	u32 cpumask_for_tx_comp_intrs;
 };
 
 #if IS_ENABLED(CONFIG_ARCH_QCOM)

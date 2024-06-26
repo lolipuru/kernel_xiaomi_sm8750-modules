@@ -246,4 +246,8 @@ extern void icnss_allow_l1(struct device *dev);
 extern int icnss_get_mhi_state(struct device *dev);
 extern int icnss_is_pci_ep_awake(struct device *dev);
 extern unsigned long icnss_get_device_config(void);
+extern void icnss_get_cpumask_for_wlan_rx_interrupts(struct device *dev,
+						     unsigned int *cpu_mask);
+extern void icnss_get_cpumask_for_wlan_tx_comp_interrupts(struct device *dev,
+							unsigned int *cpu_mask);
 #endif /* _ICNSS_WLAN_H_ */

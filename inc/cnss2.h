@@ -467,4 +467,8 @@ extern int cnss_register_driver_async_data_cb(struct device *dev, void *cb_ctx,
 					      int (*cb)(void *ctx,
 					      uint16_t type, void *event,
 					      int event_len));
+extern void cnss_get_cpumask_for_wlan_rx_interrupts(struct device *dev,
+						    unsigned int *cpumask);
+extern void cnss_get_cpumask_for_wlan_tx_comp_interrupts(struct device *dev,
+							 unsigned int *cpumask);
 #endif /* _NET_CNSS2_H */
