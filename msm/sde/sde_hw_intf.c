@@ -597,7 +597,7 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 	alignment = 0x1; /* COND0 timing engine enable register */
 	if (align_esync) {
 		if (align_avr)
-			alignment = 0x1; /* COND0 HW AVR trigger */
+			alignment = 0x6; /* COND0 HW AVR trigger */
 		alignment |= 0x4 << 4; /* COND1 esync_mdp_vsync */
 
 		intf_cfg2 |= BIT(23);

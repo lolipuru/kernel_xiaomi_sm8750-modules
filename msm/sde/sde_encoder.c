@@ -1960,7 +1960,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	enum sde_crtc_vm_req vm_req;
 	bool req_flush = false, req_scc = false, is_cmd = false;
 
-	if (!cesta_client || !sde_enc->crtc)
+	if (!cesta_client || !sde_enc->crtc || sde_encoder_in_clone_mode(drm_enc))
 		return;
 
 	cur_master = sde_enc->phys_encs[0];
@@ -2092,6 +2092,8 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 		REQ_ENTER_IDLE,
 		REQ_EXIT_IDLE
 	} req;
+	struct drm_crtc *drm_crtc;
+	struct msm_drm_private *priv;
 
 	info = &sde_enc->disp_info;
 	sde_kms = sde_encoder_get_kms(drm_enc);
@@ -2104,6 +2106,9 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 		SDE_EVT32(DRMID(drm_enc), enable, sde_enc->rc_state, SDE_EVTLOG_ERROR);
 		return 0;
 	}
+
+	drm_crtc = drm_enc->crtc;
+	priv = drm_crtc->dev->dev_private;
 
 	if (enable)
 		req = sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE ? REQ_EXIT_IDLE : REQ_ON;
@@ -2138,6 +2143,9 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 			return rc;
 		}
 
+		/* enable all the irq */
+		sde_encoder_irq_control(drm_enc, true);
+
 		if (req == REQ_EXIT_IDLE && is_video_mode && info->esync_enabled) {
 			for (i = 0; i < sde_enc->num_phys_encs; i++) {
 				struct sde_encoder_phys *phys_enc = sde_enc->phys_encs[i];
@@ -2158,15 +2166,17 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 			}
 		}
 
-		/* enable all the irq */
-		sde_encoder_irq_control(drm_enc, true);
-
 		_sde_encoder_pm_qos_add_request(drm_enc);
 
 	} else {
 		_sde_encoder_pm_qos_remove_request(drm_enc);
 
 		if (req == REQ_ENTER_IDLE && is_video_mode && info->esync_enabled) {
+			if (drm_crtc) {
+				drm_crtc_vblank_off(drm_crtc);
+				kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
+			}
+
 			sde_encoder_cancel_vrr_timers(drm_enc);
 			if (sde_enc->cur_master && sde_enc->cur_master->connector) {
 				sde_conn = to_sde_connector(sde_enc->cur_master->connector);
@@ -2197,6 +2207,22 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 
 		/* disable SDE core clks */
 		pm_runtime_put_sync(drm_enc->dev->dev);
+
+		if (req == REQ_ENTER_IDLE && is_video_mode && info->esync_enabled) {
+			if (!pm_runtime_status_suspended(drm_enc->dev->dev)) {
+				/*
+				 * pm_runtime_status_suspended should only be trusted when protected
+				 * by a lock, which we don't have. This could give false positives
+				 * if ESD check or some other thread is running at the same time.
+				 */
+
+				SDE_ERROR("idle entry failed, power vote still held");
+				SDE_EVT32(SDE_EVTLOG_FUNC_CASE8);
+			}
+
+			if (drm_crtc)
+				drm_crtc_vblank_on(drm_crtc);
+		}
 	}
 
 	return 0;
@@ -5147,10 +5173,13 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 	struct sde_encoder_phys *phys_enc;
 	struct sde_hw_ctl *ctl;
 	struct sde_ctl_flush_cfg cfg;
+	u32 pf_time_in_us;
+	struct drm_crtc *crtc;
 
 	if (!sde_enc || !sde_enc->cur_master)
 		return;
 
+	crtc = sde_enc->crtc;
 	phys_enc = sde_enc->cur_master;
 	ctl = phys_enc->hw_ctl;
 	ctl->ops.clear_pending_flush(ctl);
@@ -5175,6 +5204,19 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 	if (!phys_enc->sde_kms->catalog->hw_fence_rev &&
 			phys_enc->hw_intf->ops.avr_trigger)
 		phys_enc->hw_intf->ops.avr_trigger(phys_enc->hw_intf);
+
+	drm_crtc_wait_one_vblank(crtc);
+
+	pf_time_in_us = phys_enc->pf_time_in_us;
+	if (pf_time_in_us > 2000) {
+		SDE_ERROR("Programmable fetch time check failed, pf_time_in_us=%u\n",
+				pf_time_in_us);
+		pf_time_in_us = 2000;
+	}
+	/* wait for panel vsync */
+	usleep_range(pf_time_in_us, pf_time_in_us + 10);
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
 }
 
 static void sde_encoder_handle_self_refresh(struct kthread_work *work)
