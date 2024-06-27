@@ -745,7 +745,7 @@ static int bt_configure_gpios(int on)
 		if (bt_sw_ctrl_gpio >= 0) {
 			power_src.platform_state[BT_SW_CTRL_GPIO] =
 			gpio_get_value(bt_sw_ctrl_gpio);
-			if (pwr_data->sw_cntrl_gpio >= 0) {
+			if (pwr_data->sw_cntrl_gpio > 0) {
 				rc = msm_gpio_mpm_wake_set(pwr_data->sw_cntrl_gpio, 1);
 				if (rc < 0) {
 					pr_err("Failed to set msm_gpio_mpm_wake_set for sw_cntrl gpio, ret: %d\n",
