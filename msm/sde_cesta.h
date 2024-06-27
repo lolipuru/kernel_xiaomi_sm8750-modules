@@ -200,7 +200,8 @@ struct sde_cesta_hw_ops {
  * @client_list: link list maintaing all the clients
  * @hw_ops: sde ceseta hardware operations
  * @sw_fs_enabled: track MDSS GDSC sw vote during probe
- * @bus_hdl: context structure for data bus control for each cesta HW client
+ * @bus_hdl: context structure for data bus control for each cesta HW client active path
+ * @bus_hdl_idle: context structure for data bus control for each cesta HW client idle-path
  * @sw_client_bus_hdl: context structure for data bus control for cesta SW client-0
  * @sw_client: object to store the sw-client vote data
  * @crm_dev: CRM device pointer, used to communicate with CRM driver
@@ -228,6 +229,7 @@ struct sde_cesta {
 	bool sw_fs_enabled;
 
 	struct icc_path *bus_hdl[MAX_SCC_BLOCK];
+	struct icc_path *bus_hdl_idle[MAX_SCC_BLOCK];
 	struct icc_path *sw_client_bus_hdl;
 	struct sde_cesta_sw_client_data sw_client;
 	const struct device *crm_dev;

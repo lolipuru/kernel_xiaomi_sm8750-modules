@@ -1960,7 +1960,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	enum sde_crtc_vm_req vm_req;
 	bool req_flush = false, req_scc = false, is_cmd = false;
 
-	if (!cesta_client || !sde_enc->crtc)
+	if (!cesta_client || !sde_enc->crtc || sde_encoder_in_clone_mode(drm_enc))
 		return;
 
 	cur_master = sde_enc->phys_encs[0];
