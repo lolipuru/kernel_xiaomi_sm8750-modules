@@ -61,7 +61,8 @@ struct btm_ctrl_pkt {
 #define BTM_ADSP_STATE_IND_LEN				4
 #define BTM_CODEC_CONFIG_DMA_REQ_LEN			11
 
-#define BTM_BTFMCODEC_USECASE_START_IND			0x58000008
+#define BTM_BTFMCODEC_USECASE_START_REQ			0x58000008
+#define BTM_BTFMCODEC_USECASE_START_RSP			0x58000009
 #define BTM_USECASE_START_IND_LEN                       1
 
 enum rx_status {
