@@ -775,14 +775,17 @@ static void msm_cvp_secure_concurrency_stop(struct msm_cvp_inst *inst,
 	int stop_status = 0;
 	enum cvp_session_errorcode sess_ecode;
 	unsigned long flags = 0;
+	u64 ktid;
 
 	dprintk(CVP_WARN,
 		"Tear EVA secure sess, create secure CAM sess\n");
 	core = inst->core;
 	if (sess_state != SECURE_SESSION_ERROR) {
 		ops_tbl = core->dev_ops;
+		ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+		ktid &= (FENCE_BIT - 1);
 		stop_status = call_hfi_op(ops_tbl, session_stop,
-			(void *)inst->session);
+			(void *)inst->session, ktid);
 		if (stop_status)
 			dprintk(CVP_WARN,
 				"%s: stop session failed\n",
@@ -1032,6 +1035,8 @@ int msm_cvp_session_start(struct msm_cvp_inst *inst,
 	struct cvp_hfi_ops *ops_tbl;
 	int rc;
 	enum queue_state old_state;
+	u64 ktid;
+
 	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_start");
 
 	if (!inst || !inst->core) {
@@ -1070,7 +1075,9 @@ int msm_cvp_session_start(struct msm_cvp_inst *inst,
 		goto restore_state;
 
 	/* Send SESSION_START command */
-	rc = call_hfi_op(ops_tbl, session_start, (void *)inst->session);
+	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+	ktid &= (FENCE_BIT - 1);
+	rc = call_hfi_op(ops_tbl, session_start, (void *)inst->session, ktid);
 	if (rc) {
 		dprintk(CVP_WARN, "%s: session start failed rc %d\n",
 				__func__, rc);
@@ -1110,6 +1117,7 @@ int msm_cvp_session_stop(struct msm_cvp_inst *inst,
 	struct cvp_hfi_ops *ops_tbl;
 	u32 error_event = NO_ERROR;
 	u32 error_state = SESSION_NORMAL;
+	u64 ktid;
 	int rc;
 
 	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_stop");
@@ -1168,7 +1176,9 @@ int msm_cvp_session_stop(struct msm_cvp_inst *inst,
 	}
 
 	/* Send SESSION_STOP command */
-	rc = call_hfi_op(ops_tbl, session_stop, (void *)inst->session);
+	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+	ktid &= (FENCE_BIT - 1);
+	rc = call_hfi_op(ops_tbl, session_stop, (void *)inst->session, ktid);
 	if (rc) {
 		dprintk(CVP_WARN, "%s: session stop failed rc %d\n",
 				__func__, rc);
@@ -1708,6 +1718,8 @@ int cvp_session_flush_all(struct msm_cvp_inst *inst)
 	struct msm_cvp_inst *s;
 	struct cvp_fence_queue *q;
 	struct cvp_hfi_ops *ops_tbl;
+	u64 ktid;
+
 	CVPKERNEL_ATRACE_BEGIN("cvp_session_flush_all");
 
 	if (!inst || !inst->core) {
@@ -1730,7 +1742,9 @@ int cvp_session_flush_all(struct msm_cvp_inst *inst)
 			__func__, hash32_ptr(inst->session));
 
 	/* Send flush to FW */
-	rc = call_hfi_op(ops_tbl, session_flush, (void *)inst->session);
+	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+	ktid &= (FENCE_BIT - 1);
+	rc = call_hfi_op(ops_tbl, session_flush, (void *)inst->session, ktid);
 	if (rc) {
 		dprintk(CVP_ERR, "%s: continue flush without fw. rc %d\n",
 		__func__, rc);

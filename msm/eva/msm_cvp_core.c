@@ -377,6 +377,7 @@ stop_session:
 	error_event = (0x0FFF0000 & inst->session_error_code) >> 16;
 	error_state = (0xF0000000 & inst->session_error_code) >> 28;
 	if (!empty && inst->session_queue.state != QUEUE_STOP) {
+		u64 ktid;
 		if (error_state == SESSION_ERROR && error_event == EVA_SESSION_TIMEOUT) {
 			/*Flush all pending cmds for specific EVA session*/
 			rc = cvp_session_flush_all(inst);
@@ -389,7 +390,9 @@ stop_session:
 		}
 		/* STOP SESSION to avoid SMMU fault after releasing ARP */
 		ops_tbl = inst->core->dev_ops;
-		rc = call_hfi_op(ops_tbl, session_stop, (void *)inst->session);
+		ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+		ktid &= (FENCE_BIT - 1);
+		rc = call_hfi_op(ops_tbl, session_stop, (void *)inst->session, ktid);
 		if (rc) {
 			dprintk(CVP_WARN, "%s: cannot stop session rc %d\n",
 				__func__, rc);
