@@ -1061,7 +1061,7 @@ static int _feature_unsupported(struct sde_hw_dspp *hw_dspp,
 				   struct sde_crtc *sde_crtc)
 {
 	if (!hw_dspp || !hw_cfg || !sde_crtc) {
-		DRM_ERROR("invalid argumets\n");
+		DRM_WARN("invalid arguments\n");
 		return -EINVAL;
 	}
 
