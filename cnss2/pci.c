@@ -1929,6 +1929,117 @@ int cnss_get_pci_slot(struct device *dev)
 }
 EXPORT_SYMBOL(cnss_get_pci_slot);
 
+#define SBL_LINE_LEN_MAX 81
+#define SBL_CONSECUTIVE_ZEROS_MAX 4
+
+/**
+ * cnss_dump_line_buf - dump logs in the buffer
+ * @line_buf: buffer which holds the logs
+ * @data_len: length of the data to be dumped
+ * @dumpall: indicates whether to dump all of the data
+ *
+ * Return: size of data which have not been dumped
+ */
+static u32 cnss_dump_line_buf(char *line_buf, u32 data_len, bool dumpall)
+{
+	char *ptr, *res;
+	const char *delim = "\n";
+	u32 cur = 0;
+
+	ptr = line_buf;
+	while ((res = strsep(&ptr, delim)) != NULL) {
+		if (ptr) {
+			if (strlen(res))
+				cnss_pr_dbg("%s\n", res);
+			continue;
+		}
+
+		/* no delimiter was found */
+		cur = strlen(res);
+		if (cur) {
+			/**
+			 * If dumpall or less than 4 bytes have been dumped,
+			 * dump the data directly;
+			 * otherwise, pass the data to the next print
+			 */
+			if (dumpall || (res - line_buf < 4))
+				cnss_pr_dbg("%s\n", res);
+			else
+				memmove(line_buf, res, cur);
+		}
+
+		break;
+	}
+
+	memset(line_buf + cur, 0, data_len - cur);
+	return cur;
+}
+
+/**
+ * cnss_pci_dump_reg - read debug log from register and dump
+ * @pci_priv: driver PCI bus context pointer
+ * @start_addr: start address
+ * @size: size(in bytes) of the log
+ *
+ * Example of the output:
+ * Dumping SBL log data(@0x182d000[4096]) start
+ * Format: Log Type - Time(microsec) - Message - Optional Info
+ * Log Type: B - Since Boot(Power On Reset), D - Delta, S - Statistic
+ * B -	     110740 - SBL, Start
+ * B -	     111032 - err code is0x302e
+ * B -	     111039 - line number is0x5d
+ * B -	     111044 - file name is
+ * B -	     111050 - boot_stack.c
+ * Dumping SBL log data(@0x182d000[4096]) has been completed
+ *
+ * Return: 0 on success, negative value otherwise.
+ */
+static int cnss_pci_dump_sbl_log(struct cnss_pci_data *pci_priv,
+				 u32 start_addr, u32 size)
+{
+	char line_buf[SBL_LINE_LEN_MAX] = {0};
+	int i, ret = 0;
+	u32 offset, *val, count, consecutive_zeros = 0, cur = 0;
+
+	cnss_pr_dbg("Dumping SBL log data(@0x%x[%u]) start\n",
+		    start_addr, size);
+
+	count = size / sizeof(u32);
+	for (i = 0; i < count; i++) {
+		offset = start_addr + i * sizeof(u32);
+		val = (u32 *)(&line_buf[cur]);
+		ret = cnss_pci_reg_read(pci_priv, offset, val);
+		if (ret) {
+			cnss_pr_err("Failed to read reg 0x%x, ret: %d\n",
+				    offset, ret);
+			break;
+		}
+
+		if (!(*val)) {
+			/* no more data */
+			if (consecutive_zeros++ >= SBL_CONSECUTIVE_ZEROS_MAX)
+				break;
+
+			continue;
+		} else {
+			consecutive_zeros = 0;
+		}
+
+		cur += sizeof(u32);
+
+		/* no more space to read a new u32 */
+		if (cur > SBL_LINE_LEN_MAX - 5)
+			cur = cnss_dump_line_buf(line_buf, cur, false);
+	}
+
+	if (cur)
+		cnss_dump_line_buf(line_buf, cur, true);
+
+	cnss_pr_dbg("Dumping SBL log data(@0x%x[%u]) ret: %d\n",
+		    start_addr, size, ret);
+	return ret;
+}
+
 /**
  * cnss_pci_dump_bl_sram_mem - Dump WLAN device bootloader debug log
  * @pci_priv: driver PCI bus context pointer
@@ -2035,13 +2146,7 @@ static void cnss_pci_dump_bl_sram_mem(struct cnss_pci_data *pci_priv)
 		return;
 	}
 
-	cnss_pr_dbg("Dumping SBL log data\n");
-	for (i = 0; i < sbl_log_size; i += sizeof(val)) {
-		mem_addr = sbl_log_start + i;
-		if (cnss_pci_reg_read(pci_priv, mem_addr, &val))
-			break;
-		cnss_pr_dbg("SRAM[0x%x] = 0x%x\n", mem_addr, val);
-	}
+	cnss_pci_dump_sbl_log(pci_priv, sbl_log_start, sbl_log_size);
 }
 
 #ifdef CONFIG_DISABLE_CNSS_SRAM_DUMP
