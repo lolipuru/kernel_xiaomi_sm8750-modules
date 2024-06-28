@@ -2526,8 +2526,14 @@ static int _sde_connector_lm_preference(struct sde_connector *sde_conn,
 	return ret;
 }
 
-static void _sde_connector_init_hw_fence(struct sde_connector *c_conn, struct sde_kms *sde_kms)
+static void _sde_connector_init_hw_fence(struct sde_connector *c_conn,
+		struct msm_display_info *display_info, struct sde_kms *sde_kms)
 {
+	/* enable hw-fence override if hw-fencing is disabled but vrr is supported */
+	if (display_info->vrr_caps.video_psr_support || display_info->vrr_caps.arp_support ||
+			sde_kms->catalog->hw_fence_rev)
+		sde_kms->catalog->is_vrr_hw_fence_enable = true;
+
 	/* Enable hw-fences for wb retire-fence */
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL && sde_kms->catalog->hw_fence_rev)
 		c_conn->hwfence_wb_retire_fences_enable = true;
@@ -3856,7 +3862,7 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	_sde_connector_lm_preference(c_conn, sde_kms,
 			display_info.display_type);
 
-	_sde_connector_init_hw_fence(c_conn, sde_kms);
+	_sde_connector_init_hw_fence(c_conn, &display_info, sde_kms);
 
 	SDE_DEBUG("connector %d attach encoder %d, wb hwfences:%d\n",
 			DRMID(&c_conn->base), DRMID(encoder),

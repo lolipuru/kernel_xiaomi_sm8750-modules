@@ -2191,7 +2191,8 @@ static int _sde_encoder_phys_wb_wait_for_ctl_start(struct sde_encoder_phys *phys
 	 * if hwfencing enabled, try again to wait for up to the extended timeout time in
 	 * increments as long as fence has not been signaled.
 	 */
-	if (rc == -ETIMEDOUT && phys_enc->sde_kms->catalog->hw_fence_rev && hw_ctl)
+	if (rc == -ETIMEDOUT && (phys_enc->sde_kms->catalog->hw_fence_rev ||
+			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable) && hw_ctl)
 		rc = sde_encoder_helper_hw_fence_extended_wait(phys_enc, hw_ctl,
 			&wait_info, INTR_IDX_CTL_START);
 
@@ -2199,7 +2200,8 @@ static int _sde_encoder_phys_wb_wait_for_ctl_start(struct sde_encoder_phys *phys
 		atomic_add_unless(&phys_enc->pending_ctl_start_cnt, -1, 0);
 
 		/* if we timeout after the extended wait, reset mixers and do sw override */
-		if (phys_enc->sde_kms->catalog->hw_fence_rev)
+		if (phys_enc->sde_kms->catalog->hw_fence_rev ||
+				phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
 			sde_encoder_helper_hw_fence_sw_override(phys_enc, hw_ctl);
 
 		SDE_ERROR("[enc:%d wb:%d] ctl_start timed out\n",

@@ -359,14 +359,14 @@ static void _sde_encoder_phys_vid_raw_te_setup(
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	if (enable) {
-		if (phys_enc->sde_kms->catalog->hw_fence_rev)
+		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
 			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, true,
 				sde_enc->disp_info.vrr_caps.arp_support);
 		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
 			sde_enc->disp_info.vrr_caps.arp_support)
 			vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
 	} else {
-		if (phys_enc->sde_kms->catalog->hw_fence_rev)
+		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
 			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, false,
 				false);
 		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
@@ -502,7 +502,7 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	}
 
 	if (sde_enc->disp_info.vrr_caps.video_psr_support &&
-			phys_enc->sde_kms->catalog->hw_fence_rev)
+			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
 		avr_params.hw_avr_trigger = true;
 
 	if (info->avr_step_fps && (avr_step_state == AVR_STEP_ENABLE))
@@ -732,7 +732,7 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 	esync_params.prog_fetch_start =
 			(phys_enc->cached_mode.vtotal - phys_enc->prog_fetch_start + 1)
 			% esync_params.avr_step_lines;
-	esync_params.hw_fence_enabled = !!phys_enc->sde_kms->catalog->hw_fence_rev;
+	esync_params.hw_fence_enabled = phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable;
 	esync_params.align_backup = exit_idle;
 
 	phys_enc->hw_intf->ops.prepare_esync(phys_enc->hw_intf, &esync_params);
@@ -1197,10 +1197,10 @@ static void sde_encoder_phys_vid_te_irq(void *arg, int irq_idx)
 	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);
 	SDE_EVT32(DRMID(phys_enc->parent), irq_idx, qsync_mode,
 		sde_enc->disp_info.vrr_caps.arp_support,
-		phys_enc->sde_kms->catalog->hw_fence_rev);
+		phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable);
 
 	if (qsync_mode && sde_enc->disp_info.vrr_caps.arp_support &&
-		!phys_enc->sde_kms->catalog->hw_fence_rev) {
+		!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable) {
 		vid_enc = to_sde_encoder_phys_vid(phys_enc);
 		vid_enc->base.hw_intf->ops.avr_trigger(vid_enc->base.hw_intf);
 	}
@@ -1592,7 +1592,8 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 	 * if hwfencing enabled, try again to wait for up to the extended timeout time in
 	 * increments as long as fence has not been signaled.
 	 */
-	if (ret == -ETIMEDOUT && phys_enc->sde_kms->catalog->hw_fence_rev)
+	if (ret == -ETIMEDOUT && (phys_enc->sde_kms->catalog->hw_fence_rev ||
+			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable))
 		ret = sde_encoder_helper_hw_fence_extended_wait(phys_enc, phys_enc->hw_ctl,
 			&wait_info, INTR_IDX_VSYNC);
 
@@ -1610,7 +1611,8 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 			ret = 0;
 
 		/* if we timeout after the extended wait, reset mixers and do sw override */
-		if (ret && phys_enc->sde_kms->catalog->hw_fence_rev)
+		if (ret && (phys_enc->sde_kms->catalog->hw_fence_rev ||
+			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable))
 			sde_encoder_helper_hw_fence_sw_override(phys_enc, hw_ctl);
 
 		SDE_EVT32(DRMID(phys_enc->parent), new_cnt, flush_register, ret,
@@ -2191,7 +2193,7 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 	avr_mode = sde_connector_get_qsync_mode(phys_enc->connector);
 
 	if (avr_mode && vid_enc->base.hw_intf->ops.avr_trigger &&
-			!phys_enc->sde_kms->catalog->hw_fence_rev) {
+			!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable) {
 		vid_enc->base.hw_intf->ops.avr_trigger(vid_enc->base.hw_intf);
 		SDE_EVT32(DRMID(phys_enc->parent),
 				phys_enc->hw_intf->idx - INTF_0,

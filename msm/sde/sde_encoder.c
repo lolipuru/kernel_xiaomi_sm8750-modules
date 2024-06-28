@@ -4015,7 +4015,9 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 static void _trigger_encoder_hw_fences_override(struct sde_kms *sde_kms, struct sde_hw_ctl *ctl)
 {
 	/* trigger hw-fences override signal */
-	if (sde_kms && sde_kms->catalog->hw_fence_rev && ctl->ops.hw_fence_trigger_sw_override)
+	if (sde_kms && (sde_kms->catalog->hw_fence_rev ||
+			sde_kms->catalog->is_vrr_hw_fence_enable) &&
+			ctl->ops.hw_fence_trigger_sw_override)
 		ctl->ops.hw_fence_trigger_sw_override(ctl);
 }
 
@@ -5215,7 +5217,7 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 	ctl->ops.trigger_flush(ctl);
 	ctl->ops.clear_pending_flush(ctl);
 
-	if (!phys_enc->sde_kms->catalog->hw_fence_rev &&
+	if (!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable &&
 			phys_enc->hw_intf->ops.avr_trigger)
 		phys_enc->hw_intf->ops.avr_trigger(phys_enc->hw_intf);
 
