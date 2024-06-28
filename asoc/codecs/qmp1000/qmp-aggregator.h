@@ -15,5 +15,6 @@ int stream_agg_remove_channel(void *substream, u8 mport_type,
 		u8 slv_port_id, u8 dev_num);
 int stream_agg_prepare_channel(void *substream, u8 mport_type,
 		u8 slv_port_id, u8 dev_num);
+void update_ch_per_substream(int ch, void *substream);
 #endif
 
