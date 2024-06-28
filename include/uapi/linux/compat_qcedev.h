@@ -10,7 +10,7 @@
 #include <linux/types.h>
 #include <linux/ioctl.h>
 
-#include <linux/compat.h>
+#include <linux/compat_seckernel.h>
 
 /**
  * struct compat_buf_info - Buffer information
