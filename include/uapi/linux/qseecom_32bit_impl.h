@@ -9,7 +9,7 @@
 #include <linux/types.h>
 #include <linux/ioctl.h>
 
-#include <linux/compat.h>
+#include <asm-generic/posix_types.h>
 
 /*
  * struct qseecom_register_listener_req_32bit -
@@ -20,10 +20,10 @@
  * @sb_size - shared buffer size
  */
 struct qseecom_register_listener_req_32bit {
-	compat_ulong_t listener_id; /* in */
-	compat_long_t ifd_data_fd; /* in */
-	compat_uptr_t virt_sb_base; /* in */
-	compat_ulong_t sb_size; /* in */
+	__kernel_ulong_t listener_id; /* in */
+	__kernel_long_t ifd_data_fd; /* in */
+	__u32 virt_sb_base; /* in */
+	__kernel_ulong_t sb_size; /* in */
 };
 
 /*
@@ -34,10 +34,10 @@ struct qseecom_register_listener_req_32bit {
  * @resp_buf - response buffer
  */
 struct qseecom_send_cmd_req_32bit {
-	compat_uptr_t cmd_req_buf; /* in */
-	compat_uint_t cmd_req_len; /* in */
-	compat_uptr_t resp_buf; /* in/out */
-	compat_uint_t resp_len; /* in/out */
+	__u32 cmd_req_buf; /* in */
+	__u32 cmd_req_len; /* in */
+	__u32 resp_buf; /* in/out */
+	__u32 resp_len; /* in/out */
 };
 
 /*
@@ -46,8 +46,8 @@ struct qseecom_send_cmd_req_32bit {
  * @cmd_buf_offset - command buffer offset
  */
 struct qseecom_ion_fd_info_32bit {
-	compat_long_t fd;
-	compat_ulong_t cmd_buf_offset;
+	__kernel_long_t fd;
+	__kernel_ulong_t cmd_buf_offset;
 };
 /*
  * struct qseecom_send_modfd_cmd_req_32bit - for send command ioctl request
@@ -59,10 +59,10 @@ struct qseecom_ion_fd_info_32bit {
  * @cmd_buf_offset - command buffer offset
  */
 struct qseecom_send_modfd_cmd_req_32bit {
-	compat_uptr_t cmd_req_buf; /* in */
-	compat_uint_t cmd_req_len; /* in */
-	compat_uptr_t resp_buf; /* in/out */
-	compat_uint_t resp_len; /* in/out */
+	__u32 cmd_req_buf; /* in */
+	__u32 cmd_req_len; /* in */
+	__u32 resp_buf; /* in/out */
+	__u32 resp_len; /* in/out */
 	struct qseecom_ion_fd_info_32bit ifd_data[MAX_ION_FD];
 };
 
@@ -76,8 +76,8 @@ struct qseecom_send_modfd_cmd_req_32bit {
  * @resp_buf - Response buffer where the response of the cmd should go.
  */
 struct qseecom_send_resp_req_32bit {
-	compat_uptr_t resp_buf; /* in */
-	compat_uint_t resp_len; /* in */
+	__u32 resp_buf; /* in */
+	__u32 resp_len; /* in */
 };
 
 /*
@@ -92,18 +92,18 @@ struct qseecom_send_resp_req_32bit {
  * @img_name - Name of the image.
  */
 struct qseecom_load_img_req_32bit {
-	compat_ulong_t mdt_len; /* in */
-	compat_ulong_t img_len; /* in */
-	compat_long_t  ifd_data_fd; /* in */
+	__kernel_ulong_t mdt_len; /* in */
+	__kernel_ulong_t img_len; /* in */
+	__kernel_long_t  ifd_data_fd; /* in */
 	char	 img_name[MAX_APP_NAME_SIZE]; /* in */
-	compat_ulong_t app_arch; /* in */
-	compat_uint_t app_id; /* out*/
+	__kernel_ulong_t app_arch; /* in */
+	__u32 app_id; /* out*/
 };
 
 struct qseecom_set_sb_mem_param_req_32bit {
-	compat_long_t ifd_data_fd; /* in */
-	compat_uptr_t virt_sb_base; /* in */
-	compat_ulong_t sb_len; /* in */
+	__kernel_long_t ifd_data_fd; /* in */
+	__u32 virt_sb_base; /* in */
+	__kernel_ulong_t sb_len; /* in */
 };
 
 /*
@@ -111,7 +111,7 @@ struct qseecom_set_sb_mem_param_req_32bit {
  * @qseos_version - version number
  */
 struct qseecom_qseos_version_req_32bit {
-	compat_uint_t qseos_version; /* in */
+	__u32 qseos_version; /* in */
 };
 
 /*
@@ -121,16 +121,16 @@ struct qseecom_qseos_version_req_32bit {
  */
 struct qseecom_qseos_app_load_query_32bit {
 	char app_name[MAX_APP_NAME_SIZE]; /* in */
-	compat_uint_t app_id; /* out */
-	compat_ulong_t app_arch;
+	__u32 app_id; /* out */
+	__kernel_ulong_t app_arch;
 };
 
 struct qseecom_send_svc_cmd_req_32bit {
-	compat_ulong_t cmd_id;
-	compat_uptr_t cmd_req_buf; /* in */
-	compat_uint_t cmd_req_len; /* in */
-	compat_uptr_t resp_buf; /* in/out */
-	compat_uint_t resp_len; /* in/out */
+	__kernel_ulong_t cmd_id;
+	__u32 cmd_req_buf; /* in */
+	__u32 cmd_req_len; /* in */
+	__u32 resp_buf; /* in/out */
+	__u32 resp_len; /* in/out */
 };
 
 struct qseecom_create_key_req_32bit {
@@ -140,7 +140,7 @@ struct qseecom_create_key_req_32bit {
 
 struct qseecom_wipe_key_req_32bit {
 	enum qseecom_key_management_usage_type usage;
-	compat_int_t wipe_key_flag;
+	__s32 wipe_key_flag;
 };
 
 struct qseecom_update_key_userinfo_req_32bit {
@@ -155,7 +155,7 @@ struct qseecom_update_key_userinfo_req_32bit {
  * @hash[SHA256_DIGEST_LENGTH] -  sha256 digest.
  */
 struct qseecom_save_partition_hash_req_32bit {
-	compat_int_t partition_id; /* in */
+	__s32 partition_id; /* in */
 	char digest[SHA256_DIGEST_LENGTH]; /* in */
 };
 
@@ -164,7 +164,7 @@ struct qseecom_save_partition_hash_req_32bit {
  * @is_activated - 1=true , 0=false
  */
 struct qseecom_is_es_activated_req_32bit {
-	compat_int_t is_activated; /* out */
+	__s32 is_activated; /* out */
 };
 
 /*
@@ -176,11 +176,11 @@ struct qseecom_is_es_activated_req_32bit {
  * @direction - 0=encrypt, 1=decrypt
  */
 struct qseecom_mdtp_cipher_dip_req_32bit {
-	compat_uptr_t in_buf;
-	compat_uint_t in_buf_size;
-	compat_uptr_t out_buf;
-	compat_uint_t out_buf_size;
-	compat_uint_t direction;
+	__u32 in_buf;
+	__u32 in_buf_size;
+	__u32 out_buf;
+	__u32 out_buf_size;
+	__u32 direction;
 };
 
 /*
@@ -191,37 +191,37 @@ struct qseecom_mdtp_cipher_dip_req_32bit {
  * @cmd_buf_offset - command buffer offset
  */
 struct qseecom_send_modfd_listener_resp_32bit {
-	compat_uptr_t resp_buf_ptr; /* in */
-	compat_uint_t resp_len; /* in */
+	__u32 resp_buf_ptr; /* in */
+	__u32 resp_len; /* in */
 	struct qseecom_ion_fd_info_32bit ifd_data[MAX_ION_FD]; /* in */
 };
 
 struct qseecom_qteec_req_32bit {
-	compat_uptr_t req_ptr;
-	compat_ulong_t req_len;
-	compat_uptr_t resp_ptr;
-	compat_ulong_t resp_len;
+	__u32 req_ptr;
+	__kernel_ulong_t req_len;
+	__u32 resp_ptr;
+	__kernel_ulong_t resp_len;
 };
 
 struct qseecom_qteec_modfd_req_32bit {
-	compat_uptr_t req_ptr;
-	compat_ulong_t req_len;
-	compat_uptr_t resp_ptr;
-	compat_ulong_t resp_len;
+	__u32 req_ptr;
+	__kernel_ulong_t req_len;
+	__u32 resp_ptr;
+	__kernel_ulong_t resp_len;
 	struct qseecom_ion_fd_info_32bit ifd_data[MAX_ION_FD];
 };
 
 struct qseecom_ce_pipe_entry_32bit {
-	compat_int_t valid;
-	compat_uint_t ce_num;
-	compat_uint_t ce_pipe_pair;
+	__s32 valid;
+	__u32 ce_num;
+	__u32 ce_pipe_pair;
 };
 
 struct ce_info_req_32bit {
 	unsigned char handle[MAX_CE_INFO_HANDLE_SIZE];
-	compat_uint_t usage;
-	compat_uint_t unit_num;
-	compat_uint_t num_ce_pipe_entries;
+	__u32 usage;
+	__u32 unit_num;
+	__u32 num_ce_pipe_entries;
 	struct qseecom_ce_pipe_entry_32bit
 				ce_pipe_entry[MAX_CE_PIPE_PAIR_PER_UNIT];
 };
