@@ -1073,6 +1073,8 @@ struct msm_display_info {
 	uint32_t esync_emsync_fps;
 	uint32_t esync_emsync_milli_pulse_width;
 
+	bool event_notification_disabled;
+
 	uint32_t te_source;
 
 	uint32_t dsc_count;
