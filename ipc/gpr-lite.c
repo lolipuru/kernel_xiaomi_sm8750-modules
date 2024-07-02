@@ -1,10 +1,6 @@
 /* Copyright (c) 2011-2017, 2019-2021 The Linux Foundation. All rights reserved.
  * Copyright (c) 2018, Linaro Limited
-<<<<<<< HEAD   (6fe11a Merge "soc: swr-mstr: update configuration for bt swr slave )
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
-=======
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
->>>>>>> CHANGE (378a3e dsp : Update timeout for spf_apm_ready_check)
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -289,7 +285,7 @@ static int gpr_callback(struct rpmsg_device *rpdev, void *buf,
 	unsigned long flags;
 	//uint32_t opcode_type;
 
-	if (len <= GPR_HDR_SIZE) {
+	if (len < GPR_HDR_SIZE) {
 		dev_err_ratelimited(gpr->dev, "GPR: Improper gpr pkt received:%p %d\n",
 			buf, len);
 		return -EINVAL;
