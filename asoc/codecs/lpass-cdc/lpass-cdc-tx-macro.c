@@ -1044,15 +1044,6 @@ static int lpass_cdc_tx_macro_enable_dec(struct snd_soc_dapm_widget *w,
 			hpf_delay = LPASS_CDC_TX_MACRO_AMIC_HPF_DELAY_MS;
 			unmute_delay = LPASS_CDC_TX_MACRO_AMIC_UNMUTE_DELAY_MS;
 		}
-		if (!(tx_priv->swr_dmic_enable)) {
-			if (tx_unmute_delay < unmute_delay)
-				tx_unmute_delay = unmute_delay;
-			lpass_cdc_tx_macro_wake_enable(tx_priv, 1);
-			/* schedule work queue to Remove Mute */
-			queue_delayed_work(system_freezable_wq,
-					&tx_priv->tx_mute_dwork[decimator].dwork,
-					msecs_to_jiffies(tx_unmute_delay));
-		}
 		if (tx_priv->tx_hpf_work[decimator].hpf_cut_off_freq !=
 							CF_MIN_3DB_150HZ) {
 			lpass_cdc_tx_macro_wake_enable(tx_priv, 1);
@@ -1121,11 +1112,6 @@ static int lpass_cdc_tx_macro_enable_dec(struct snd_soc_dapm_widget *w,
 			}
 		}
 		lpass_cdc_tx_macro_wake_enable(tx_priv, 0);
-		if (!(tx_priv->swr_dmic_enable)) {
-			cancel_delayed_work_sync(
-					&tx_priv->tx_mute_dwork[decimator].dwork);
-			lpass_cdc_tx_macro_wake_enable(tx_priv, 0);
-		}
 
 		if (snd_soc_component_read(component, adc_mux_reg)
 						& SWR_MIC)
@@ -1288,7 +1274,6 @@ static int lpass_cdc_tx_mute_stream(struct snd_soc_dai *dai, int mute, int strea
 	struct device *tx_dev = NULL;
 	u16 tx_mute_ctl_reg = 0;
 	u16 adc_mux_reg = 0;
-	bool work_scheduled = false;
 
 	if (!lpass_cdc_tx_macro_get_data(component, &tx_dev, &tx_priv, __func__))
 		return -EINVAL;
@@ -1306,22 +1291,25 @@ static int lpass_cdc_tx_mute_stream(struct snd_soc_dai *dai, int mute, int strea
 		if (mute) {
 			snd_soc_component_update_bits(component, tx_mute_ctl_reg, 0x10, 0x10);
 		} else {
-			snd_soc_component_update_bits(component, tx_mute_ctl_reg, 0x40, 0x40);
-			usleep_range(2000, 2100);
-			snd_soc_component_update_bits(component, tx_mute_ctl_reg, 0x40, 0x00);
-			tx_priv->tx_dec_unmute_work.dai_id = dai->id;
-			/*
-			 * Schedule dwork after 10MS to unmute the dec to unblock the main thread
-			 */
-			if (!work_scheduled) {
-				queue_delayed_work(system_freezable_wq,
-					&tx_priv->tx_dec_unmute_work.dwork,
-					msecs_to_jiffies(LPASS_CDC_TX_MACRO_DEC_UNMUTE_DELAY_MS));
-				work_scheduled = true;
+			if (!is_msm_dmic_enabled(component, decimator)) {
+				snd_soc_component_update_bits(component, tx_mute_ctl_reg,
+							0x40, 0x40);
+				usleep_range(2000, 2100);
+				snd_soc_component_update_bits(component, tx_mute_ctl_reg,
+							0x40, 0x00);
 			}
 		}
 		dev_dbg(component->dev, "capture: TX decimator %d %s\n", decimator,
 				(mute ? "muted" : "unmuted"));
+	}
+	if (!mute) {
+		/*
+		 * Schedule dwork after 10MS to unmute the dec to unblock the main thread
+		 */
+		tx_priv->tx_dec_unmute_work.dai_id = dai->id;
+		queue_delayed_work(system_freezable_wq,
+			&tx_priv->tx_dec_unmute_work.dwork,
+			msecs_to_jiffies(LPASS_CDC_TX_MACRO_DEC_UNMUTE_DELAY_MS));
 	}
 	return 0;
 }
