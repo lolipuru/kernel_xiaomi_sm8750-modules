@@ -516,7 +516,7 @@ int msm_cvp_close(void *instance)
 	}
 
 	pr_info(CVP_PID_TAG
-		"to close instance: %pK session_id = %d type %d state %d\n",
+		"to close instance: %pK session_id = %#x type %d state %d\n",
 		current->pid, current->tgid, inst->proc_name, inst, hash32_ptr(inst->session),
 		inst->session_type, inst->state);
 
@@ -549,8 +549,8 @@ int msm_cvp_close(void *instance)
 		rc = msm_cvp_deinit_core(inst);
 	}
 
-	msm_cvp_comm_session_clean(inst);
 exit:
+	msm_cvp_comm_session_clean(inst);
 	kref_put(&inst->kref, close_helper);
 	return 0;
 }

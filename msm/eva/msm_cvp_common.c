@@ -426,8 +426,7 @@ static void handle_session_init_done(enum hal_command_response cmd, void *data)
 	if (response->status)
 		dprintk(CVP_ERR,
 			"Session %#x init err response from FW : 0x%x\n",
-			 hash32_ptr(inst->session), response->status);
-
+			hash32_ptr(inst->session), response->status);
 	else
 		dprintk(CVP_SESS, "%s: cvp session %#x\n", __func__,
 			hash32_ptr(inst->session));
@@ -1143,6 +1142,26 @@ static char state_names[MSM_CVP_CORE_INVALID + 1][32] = {
 	"CORE_INVALID"
 };
 
+int msm_cvp_state_result_check(struct msm_cvp_inst *inst, int input, int state)
+{
+	if (input == -ETIMEDOUT) {
+		dprintk(CVP_ERR,
+				"Timedout move from state: %s to %s\n",
+				state_names[inst->state],
+				state_names[state]);
+		if (inst->state != MSM_CVP_CORE_INVALID)
+			msm_cvp_comm_kill_session(inst);
+		return -ETIMEDOUT;
+	}
+	/*Send invalid error code to user mode*/
+	if (input && inst->prev_hfi_error_code) {
+		dprintk(CVP_ERR,
+			"Instance has invalid msg error code from FW");
+		return -EINVAL;
+	}
+	return 0;
+}
+
 int msm_cvp_comm_try_state(struct msm_cvp_inst *inst, int state)
 {
 	int rc = 0;
@@ -1224,14 +1243,8 @@ int msm_cvp_comm_try_state(struct msm_cvp_inst *inst, int state)
 
 	mutex_unlock(&inst->sync_lock);
 
-	if (rc == -ETIMEDOUT) {
-		dprintk(CVP_ERR,
-				"Timedout move from state: %s to %s\n",
-				state_names[inst->state],
-				state_names[state]);
-		if (inst->state != MSM_CVP_CORE_INVALID)
-			msm_cvp_comm_kill_session(inst);
-	}
+	rc = msm_cvp_state_result_check(inst, rc, state);
+
 	CVPKERNEL_ATRACE_END("msm_cvp_comm_try_state");
 	return rc;
 }
