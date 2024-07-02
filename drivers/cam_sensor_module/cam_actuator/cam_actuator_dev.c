@@ -207,17 +207,24 @@ static int cam_actuator_i2c_component_bind(struct device *dev,
 	if (!a_ctrl)
 		return -ENOMEM;
 
+	a_ctrl->io_master_info.qup_client = CAM_MEM_ZALLOC(sizeof(
+		struct cam_sensor_qup_client), GFP_KERNEL);
+	if (!(a_ctrl->io_master_info.qup_client)) {
+		rc = -ENOMEM;
+		goto free_ctrl;
+	}
+
 	i2c_set_clientdata(client, a_ctrl);
 
 	soc_private = CAM_MEM_ZALLOC(sizeof(struct cam_actuator_soc_private),
 		GFP_KERNEL);
 	if (!soc_private) {
 		rc = -ENOMEM;
-		goto free_ctrl;
+		goto free_qup;
 	}
 	a_ctrl->soc_info.soc_private = soc_private;
 
-	a_ctrl->io_master_info.client = client;
+	a_ctrl->io_master_info.qup_client->i2c_client = client;
 	soc_info = &a_ctrl->soc_info;
 	soc_info->dev = &client->dev;
 	soc_info->dev_name = client->name;
@@ -237,7 +244,7 @@ static int cam_actuator_i2c_component_bind(struct device *dev,
 		goto free_soc;
 
 	if (soc_private->i2c_info.slave_addr != 0)
-		a_ctrl->io_master_info.client->addr =
+		a_ctrl->io_master_info.qup_client->i2c_client->addr =
 			soc_private->i2c_info.slave_addr;
 
 	a_ctrl->i2c_data.per_frame =
@@ -276,6 +283,8 @@ unreg_subdev:
 	cam_unregister_subdev(&(a_ctrl->v4l2_dev_str));
 free_soc:
 	CAM_MEM_FREE(soc_private);
+free_qup:
+	CAM_MEM_FREE(a_ctrl->io_master_info.qup_client);
 free_ctrl:
 	CAM_MEM_FREE(a_ctrl);
 	return rc;
@@ -312,6 +321,7 @@ static void cam_actuator_i2c_component_unbind(struct device *dev,
 	a_ctrl->i2c_data.per_frame = NULL;
 	a_ctrl->soc_info.soc_private = NULL;
 	v4l2_set_subdevdata(&a_ctrl->v4l2_dev_str.sd, NULL);
+	CAM_MEM_FREE(a_ctrl->io_master_info.qup_client);
 	CAM_MEM_FREE(a_ctrl);
 }
 
@@ -601,7 +611,7 @@ static struct i3c_device_id actuator_i3c_id[MAX_I3C_DEVICE_ID_ENTRIES + 1];
 
 static int cam_actuator_i3c_driver_probe(struct i3c_device *client)
 {
-	int32_t rc = 0;
+	int32_t                          rc = 0;
 	struct cam_actuator_ctrl_t       *a_ctrl = NULL;
 	uint32_t                          index;
 	struct device                    *dev;
@@ -634,13 +644,97 @@ static int cam_actuator_i3c_driver_probe(struct i3c_device *client)
 		return -EINVAL;
 	}
 
-	a_ctrl->io_master_info.i3c_client = client;
+	a_ctrl->io_master_info.qup_client->i3c_client = client;
+	a_ctrl->io_master_info.qup_client->i3c_wait_for_hotjoin = false;
 
 	complete_all(&g_i3c_actuator_data[index].probe_complete);
 
 	CAM_DBG(CAM_ACTUATOR, "I3C Probe Finished for %s", dev_name(dev));
 	return rc;
 }
+
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static void cam_i3c_driver_remove(struct i3c_device *client)
+{
+	int32_t                        rc = 0;
+	struct cam_actuator_ctrl_t     *a_ctrl = NULL;
+	struct device                  *dev;
+	uint32_t                       index;
+
+	if (!client) {
+		CAM_ERR(CAM_SENSOR, "I3C Driver Remove: Invalid input args");
+		return;
+	}
+
+	dev = &client->dev;
+
+	CAM_DBG(CAM_SENSOR, "driver remove for I3C Slave %s", dev_name(dev));
+
+	rc = of_property_read_u32(dev->of_node, "cell-index", &index);
+	if (rc) {
+		CAM_ERR(CAM_UTIL, "device %s failed to read cell-index", dev_name(dev));
+		return;
+	}
+
+	if (index >= MAX_CAMERAS) {
+		CAM_ERR(CAM_SENSOR, "Invalid Cell-Index: %u for %s", index, dev_name(dev));
+		return;
+	}
+
+	a_ctrl = g_i3c_actuator_data[index].a_ctrl;
+	if (!a_ctrl) {
+		CAM_ERR(CAM_SENSOR, "a_ctrl is null. I3C Probe before platfom driver probe for %s",
+			dev_name(dev));
+		return;
+	}
+
+	CAM_DBG(CAM_SENSOR, "I3C remove invoked for %s",
+		(client ? dev_name(&client->dev) : "none"));
+	CAM_MEM_FREE(a_ctrl->io_master_info.qup_client);
+	a_ctrl->io_master_info.qup_client = NULL;
+}
+
+#else
+static int cam_i3c_driver_remove(struct i3c_device *client)
+{
+	struct cam_actuator_ctrl_t     *a_ctrl = NULL;
+	struct device                  *dev;
+	uint32_t                       index;
+
+	if (!client) {
+		CAM_ERR(CAM_SENSOR, "I3C Driver Remove: Invalid input args");
+		return -EINVAL;
+	}
+
+	dev = &client->dev;
+
+	CAM_DBG(CAM_SENSOR, "driver remove for I3C Slave %s", dev_name(dev));
+
+	rc = of_property_read_u32(dev->of_node, "cell-index", &index);
+	if (rc) {
+		CAM_ERR(CAM_UTIL, "device %s failed to read cell-index", dev_name(dev));
+		return -EINVAL;
+	}
+
+	if (index >= MAX_CAMERAS) {
+		CAM_ERR(CAM_SENSOR, "Invalid Cell-Index: %u for %s", index, dev_name(dev));
+		return -EINVAL;
+	}
+
+	a_ctrl = g_i3c_actuator_data[index].a_ctrl;
+	if (!a_ctrl) {
+		CAM_ERR(CAM_SENSOR, "a_ctrl is null. I3C Probe before platfom driver probe for %s",
+			dev_name(dev));
+		return -EINVAL;
+	}
+
+	CAM_DBG(CAM_SENSOR, "I3C remove invoked for %s",
+		(client ? dev_name(&client->dev) : "none"));
+	CAM_MEM_FREE(a_ctrl->io_master_info.qup_client);
+	a_ctrl->io_master_info.qup_client = NULL;
+	return 0;
+}
+#endif
 
 static struct i3c_driver cam_actuator_i3c_driver = {
 	.id_table = actuator_i3c_id,

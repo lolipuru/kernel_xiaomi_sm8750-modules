@@ -200,13 +200,106 @@ static int cam_sensor_i3c_driver_probe(struct i3c_device *client)
 
 	dev->driver_data = s_ctrl;
 
-	s_ctrl->io_master_info.i3c_client = client;
+	s_ctrl->io_master_info.qup_client = CAM_MEM_ZALLOC(sizeof(
+		struct cam_sensor_qup_client), GFP_KERNEL);
+	if (!(s_ctrl->io_master_info.qup_client)) {
+		CAM_ERR(CAM_SENSOR, "Unable to allocate memory for QUP handle for %s",
+			dev_name(dev));
+		return -ENOMEM;
+	}
+
+	s_ctrl->io_master_info.qup_client->i3c_client = client;
+	s_ctrl->io_master_info.qup_client->i3c_wait_for_hotjoin = false;
 
 	complete_all(&g_i3c_sensor_data[index].probe_complete);
 
 	CAM_DBG(CAM_SENSOR, "I3C Probe Finished for %s", dev_name(dev));
 	return rc;
 }
+
+
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static void cam_i3c_driver_remove(struct i3c_device *client)
+{
+	int32_t                        rc = 0;
+	uint32_t                       index;
+	struct cam_sensor_ctrl_t       *s_ctrl = NULL;
+	struct device                  *dev;
+
+	if (!client) {
+		CAM_ERR(CAM_SENSOR, "I3C Driver Remove: Invalid input args");
+		return;
+	}
+
+	dev = &client->dev;
+
+	CAM_DBG(CAM_SENSOR, "driver remove for I3C Slave %s", dev_name(dev));
+
+	rc = of_property_read_u32(dev->of_node, "cell-index", &index);
+	if (rc) {
+		CAM_ERR(CAM_UTIL, "device %s failed to read cell-index", dev_name(dev));
+		return;
+	}
+
+	if (index >= MAX_CAMERAS) {
+		CAM_ERR(CAM_SENSOR, "Invalid Cell-Index: %u for %s", index, dev_name(dev));
+		return;
+	}
+
+	s_ctrl = g_i3c_sensor_data[index].s_ctrl;
+	if (!s_ctrl) {
+		CAM_ERR(CAM_SENSOR, "S_ctrl is null. I3C Probe before platfom driver probe for %s",
+			dev_name(dev));
+		return;
+	}
+
+	CAM_DBG(CAM_SENSOR, "I3C remove invoked for %s",
+		(client ? dev_name(&client->dev) : "none"));
+	CAM_MEM_FREE(s_ctrl->io_master_info.qup_client);
+	s_ctrl->io_master_info.qup_client = NULL;
+}
+#else
+static int cam_i3c_driver_remove(struct i3c_device *client)
+{
+	int32_t                        rc = 0;
+	uint32_t                       index;
+	struct cam_sensor_ctrl_t       *s_ctrl = NULL;
+	struct device                  *dev;
+
+	if (!client) {
+		CAM_ERR(CAM_SENSOR, "I3C Driver Remove: Invalid input args");
+		return -EINVAL;
+	}
+
+	dev = &client->dev;
+
+	CAM_DBG(CAM_SENSOR, "driver remove for I3C Slave %s", dev_name(dev));
+
+	rc = of_property_read_u32(dev->of_node, "cell-index", &index);
+	if (rc) {
+		CAM_ERR(CAM_UTIL, "device %s failed to read cell-index", dev_name(dev));
+		return -EINVAL;
+	}
+
+	if (index >= MAX_CAMERAS) {
+		CAM_ERR(CAM_SENSOR, "Invalid Cell-Index: %u for %s", index, dev_name(dev));
+		return -EINVAL;
+	}
+
+	s_ctrl = g_i3c_sensor_data[index].s_ctrl;
+	if (!s_ctrl) {
+		CAM_ERR(CAM_SENSOR, "S_ctrl is null. I3C Probe before platfom driver probe for %s",
+			dev_name(dev));
+		return -EINVAL;
+	}
+
+	CAM_DBG(CAM_SENSOR, "I3C remove invoked for %s",
+		(client ? dev_name(&client->dev) : "none"));
+	CAM_MEM_FREE(s_ctrl->io_master_info.qup_client);
+	s_ctrl->io_master_info.qup_client = NULL;
+	return 0;
+}
+#endif
 
 static int cam_sensor_i2c_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
@@ -234,9 +327,16 @@ static int cam_sensor_i2c_component_bind(struct device *dev,
 	if (!s_ctrl)
 		return -ENOMEM;
 
+	s_ctrl->io_master_info.qup_client = CAM_MEM_ZALLOC(sizeof(
+		struct cam_sensor_qup_client), GFP_KERNEL);
+	if (!(s_ctrl->io_master_info.qup_client)) {
+		rc = -ENOMEM;
+		goto free_s_ctrl;
+	}
+
 	i2c_set_clientdata(client, s_ctrl);
 
-	s_ctrl->io_master_info.client = client;
+	s_ctrl->io_master_info.qup_client->i2c_client = client;
 	soc_info = &s_ctrl->soc_info;
 	soc_info->dev = &client->dev;
 	soc_info->dev_name = client->name;
@@ -253,12 +353,12 @@ static int cam_sensor_i2c_component_bind(struct device *dev,
 	rc = cam_sensor_parse_dt(s_ctrl);
 	if (rc < 0) {
 		CAM_ERR(CAM_SENSOR, "cam_sensor_parse_dt rc %d", rc);
-		goto free_s_ctrl;
+		goto free_qup;
 	}
 
 	rc = cam_sensor_init_subdev_params(s_ctrl);
 	if (rc)
-		goto free_s_ctrl;
+		goto free_qup;
 
 	s_ctrl->i2c_data.per_frame =
 		CAM_MEM_ZALLOC(sizeof(struct i2c_settings_array) *
@@ -335,6 +435,8 @@ free_perframe:
 	CAM_MEM_FREE(s_ctrl->i2c_data.per_frame);
 unreg_subdev:
 	cam_unregister_subdev(&(s_ctrl->v4l2_dev_str));
+free_qup:
+	CAM_MEM_FREE(s_ctrl->io_master_info.qup_client);
 free_s_ctrl:
 	CAM_MEM_FREE(s_ctrl);
 	return rc;
@@ -370,6 +472,7 @@ static void cam_sensor_i2c_component_unbind(struct device *dev,
 	CAM_MEM_FREE(s_ctrl->i2c_data.frame_skip);
 	CAM_MEM_FREE(s_ctrl->i2c_data.bubble_update);
 	v4l2_set_subdevdata(&(s_ctrl->v4l2_dev_str.sd), NULL);
+	CAM_MEM_FREE(s_ctrl->io_master_info.qup_client);
 	CAM_MEM_FREE(s_ctrl);
 }
 

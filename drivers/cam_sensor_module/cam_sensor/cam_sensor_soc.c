@@ -116,7 +116,7 @@ static int32_t cam_sensor_init_bus_params(struct cam_sensor_ctrl_t *s_ctrl)
 			return -ENOMEM;
 		}
 	} else if (s_ctrl->io_master_info.master_type == I2C_MASTER) {
-		if (!(s_ctrl->io_master_info.client))
+		if (!(s_ctrl->io_master_info.qup_client))
 			return -EINVAL;
 	} else if (s_ctrl->io_master_info.master_type == I3C_MASTER) {
 		CAM_DBG(CAM_SENSOR, "I3C Master Type");
@@ -294,7 +294,8 @@ static int32_t cam_sensor_driver_get_dt_data(struct cam_sensor_ctrl_t *s_ctrl)
 	CAM_INFO(CAM_SENSOR,
 		"master: %d (1-CCI, 2-I2C, 3-SPI, 4-I3C) pm_ctrl_client_enable: %d",
 		s_ctrl->io_master_info.master_type,
-		s_ctrl->io_master_info.pm_ctrl_client_enable);
+		(!s_ctrl->io_master_info.qup_client) ? 0 :
+			s_ctrl->io_master_info.qup_client->pm_ctrl_client_enable);
 
 	return rc;
 

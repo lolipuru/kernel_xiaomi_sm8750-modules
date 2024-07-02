@@ -121,11 +121,9 @@ int cam_cpas_drv_channel_switch_for_dev(const struct device *dev);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 int cam_req_mgr_ordered_list_cmp(void *priv,
 	const struct list_head *head_1, const struct list_head *head_2);
-void cam_i3c_driver_remove(struct i3c_device *client);
 #else
 int cam_req_mgr_ordered_list_cmp(void *priv,
 	struct list_head *head_1, struct list_head *head_2);
-int cam_i3c_driver_remove(struct i3c_device *client);
 #endif
 
 long cam_dma_buf_set_name(struct dma_buf *dmabuf, const char *name);

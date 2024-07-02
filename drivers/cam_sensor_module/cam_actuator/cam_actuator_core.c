@@ -237,8 +237,9 @@ int32_t cam_actuator_slaveInfo_pkt_parser(struct cam_actuator_ctrl_t *a_ctrl,
 			i2c_info->slave_addr >> 1;
 		CAM_DBG(CAM_ACTUATOR, "Slave addr: 0x%x Freq Mode: %d",
 			i2c_info->slave_addr, i2c_info->i2c_freq_mode);
-	} else if (a_ctrl->io_master_info.master_type == I2C_MASTER) {
-		a_ctrl->io_master_info.client->addr = i2c_info->slave_addr;
+	} else if ((a_ctrl->io_master_info.master_type == I2C_MASTER) &&
+		(a_ctrl->io_master_info.qup_client != NULL)) {
+		a_ctrl->io_master_info.qup_client->i2c_client->addr = i2c_info->slave_addr;
 		CAM_DBG(CAM_ACTUATOR, "Slave addr: 0x%x", i2c_info->slave_addr);
 	} else {
 		CAM_ERR(CAM_ACTUATOR, "Invalid Master type: %d",

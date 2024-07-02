@@ -236,7 +236,7 @@ static int32_t cam_flash_init_default_params(struct cam_flash_ctrl *fctrl)
 		if (!(fctrl->io_master_info.cci_client))
 			return -ENOMEM;
 	} else if (fctrl->io_master_info.master_type == I2C_MASTER) {
-		if (!(fctrl->io_master_info.client))
+		if (!(fctrl->io_master_info.qup_client))
 			return -EINVAL;
 	} else {
 		CAM_ERR(CAM_FLASH,
@@ -626,8 +626,15 @@ static int cam_flash_i2c_component_bind(struct device *dev,
 	if (!fctrl)
 		return -ENOMEM;
 
+	fctrl->io_master_info.qup_client = CAM_MEM_ZALLOC(sizeof(
+		struct cam_sensor_qup_client), GFP_KERNEL);
+	if (!(fctrl->io_master_info.qup_client)) {
+		rc = -ENOMEM;
+		goto free_ctrl;
+	}
+
 	client->dev.driver_data = fctrl;
-	fctrl->io_master_info.client = client;
+	fctrl->io_master_info.qup_client->i2c_client = client;
 	fctrl->of_node = client->dev.of_node;
 	fctrl->soc_info.dev = &client->dev;
 	fctrl->soc_info.dev_name = client->name;
@@ -638,7 +645,7 @@ static int cam_flash_i2c_component_bind(struct device *dev,
 	rc = cam_flash_get_dt_data(fctrl, &fctrl->soc_info);
 	if (rc) {
 		CAM_ERR(CAM_FLASH, "failed: cam_sensor_parse_dt rc %d", rc);
-		goto free_ctrl;
+		goto free_qup;
 	}
 
 	rc = cam_flash_init_default_params(fctrl);
@@ -646,7 +653,7 @@ static int cam_flash_i2c_component_bind(struct device *dev,
 		CAM_ERR(CAM_FLASH,
 				"failed: cam_flash_init_default_params rc %d",
 				rc);
-		goto free_ctrl;
+		goto free_qup;
 	}
 
 	soc_info = &fctrl->soc_info;
@@ -660,7 +667,7 @@ static int cam_flash_i2c_component_bind(struct device *dev,
 			rc  = rc ? rc : -EINVAL;
 			CAM_ERR(CAM_FLASH, "get failed for regulator %s %d",
 				soc_info->rgltr_name[i], rc);
-			goto free_ctrl_cci_client;
+			goto free_qup;
 		}
 		CAM_DBG(CAM_FLASH, "get for regulator %s",
 			soc_info->rgltr_name[i]);
@@ -672,7 +679,7 @@ static int cam_flash_i2c_component_bind(struct device *dev,
 		if (!soc_info->gpio_data->cam_gpio_common_tbl_size) {
 			CAM_DBG(CAM_FLASH, "No GPIO found");
 			rc = -EINVAL;
-			goto free_ctrl_cci_client;
+			goto free_qup;
 		}
 
 		rc = cam_sensor_util_init_gpio_pin_tbl(soc_info,
@@ -680,13 +687,13 @@ static int cam_flash_i2c_component_bind(struct device *dev,
 		if ((rc < 0) || (!fctrl->power_info.gpio_num_info)) {
 			CAM_ERR(CAM_FLASH, "No/Error Flash GPIOs");
 			rc = -EINVAL;
-			goto free_ctrl_cci_client;
+			goto free_qup;
 		}
 	}
 
 	rc = cam_flash_init_subdev(fctrl);
 	if (rc)
-		goto free_ctrl_cci_client;
+		goto free_qup;
 
 	fctrl->i2c_data.per_frame =
 		CAM_MEM_ZALLOC(sizeof(struct i2c_settings_array) *
@@ -727,8 +734,8 @@ static int cam_flash_i2c_component_bind(struct device *dev,
 
 unreg_subdev:
 	cam_unregister_subdev(&(fctrl->v4l2_dev_str));
-free_ctrl_cci_client:
-	CAM_MEM_FREE(fctrl->io_master_info.cci_client);
+free_qup:
+	CAM_MEM_FREE(fctrl->io_master_info.qup_client);
 free_ctrl:
 	CAM_MEM_FREE(fctrl);
 	fctrl = NULL;
@@ -759,6 +766,7 @@ static void cam_flash_i2c_component_unbind(struct device *dev,
 	/*Free Allocated Mem */
 	CAM_MEM_FREE(fctrl->i2c_data.per_frame);
 	fctrl->i2c_data.per_frame = NULL;
+	CAM_MEM_FREE(fctrl->io_master_info.qup_client);
 	CAM_MEM_FREE(fctrl);
 }
 
