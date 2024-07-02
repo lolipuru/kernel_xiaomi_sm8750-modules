@@ -1525,6 +1525,10 @@ int cam_mem_mgr_alloc_and_map(struct cam_mem_mgr_alloc_cmd_v2 *cmd)
 			cmd->len, len);
 	}
 
+	if (cam_presil_mode_enabled()) {
+		cmd->flags |= CAM_MEM_FLAG_KMD_ACCESS;
+		CAM_DBG(CAM_MEM, "PRESIL BUF add KMD_ACCESS, need for bufcopy 0x%08x", cmd->flags);
+	}
 	rc = cam_mem_util_check_alloc_flags(cmd);
 	if (rc) {
 		CAM_ERR(CAM_MEM, "Invalid flags: flags = 0x%X, rc=%d",
@@ -1658,6 +1662,58 @@ slot_fail:
 	return rc;
 }
 
+int cam_mem_mgr_alloc_presil_copy_buf(uint32_t presil_copy_buffer_len,
+	struct dma_buf **p_retrieve_buffer_dma_buf,
+	uint32_t *p_buf_handle,
+	uintptr_t *p_kvaddr)
+{
+	int rc;
+	struct dma_buf *dmabuf = NULL;
+	int fd = -1;
+	uintptr_t kvaddr = 0;
+	size_t klen;
+	unsigned long i_ino = 0;
+	enum cam_dma_heap_type heap_type;
+
+	if (!p_buf_handle || !p_retrieve_buffer_dma_buf || !p_kvaddr) {
+		CAM_ERR(CAM_MEM, "Invalid argument %pK %pK %pK",
+				p_buf_handle, p_retrieve_buffer_dma_buf, p_kvaddr);
+		return -EINVAL;
+	}
+
+	rc = cam_mem_util_buffer_alloc(presil_copy_buffer_len,
+			CAM_MEM_FLAG_UMD_ACCESS|CAM_MEM_FLAG_KMD_ACCESS,
+			&dmabuf,
+			&fd,
+			&i_ino,
+			&heap_type);
+	if (rc) {
+		CAM_ERR(CAM_MEM,
+			"Ion Alloc failed len=%llu flags=0x%x dmabuf=0x%x fd=%d i_no=%d heap_type=0x%x",
+			presil_copy_buffer_len, CAM_MEM_FLAG_UMD_ACCESS|CAM_MEM_FLAG_KMD_ACCESS,
+			dmabuf, fd, i_ino, heap_type);
+		return rc;
+	}
+
+	rc = cam_mem_util_map_cpu_va(dmabuf, &kvaddr, &klen);
+	if (rc) {
+		CAM_ERR(CAM_MEM, "dmabuf: %pK mapping failed: %d", dmabuf, rc);
+		dma_buf_put(dmabuf);
+		return rc;
+	}
+
+	CAM_DBG(CAM_MEM,
+		"Success len=%llu flags=0x%x dmabuf 0x%x fd=%d i_no=%d heap_type=0x%x kvaddr %pK klen %d",
+		presil_copy_buffer_len, CAM_MEM_FLAG_UMD_ACCESS|CAM_MEM_FLAG_KMD_ACCESS,
+		dmabuf, fd, i_ino, heap_type, kvaddr, klen);
+
+	*p_retrieve_buffer_dma_buf = dmabuf;
+	*p_kvaddr = kvaddr;
+	*p_buf_handle = GET_MEM_HANDLE(-1, fd);
+
+	return 0;
+}
+
 static bool cam_mem_util_is_map_internal(int32_t fd, unsigned i_ino)
 {
 	uint32_t i;
@@ -1683,6 +1739,8 @@ int cam_mem_mgr_map(struct cam_mem_mgr_map_cmd_v2 *cmd)
 	size_t len = 0;
 	bool is_internal = false;
 	unsigned long i_ino;
+	uintptr_t kvaddr = 0;
+	size_t klen;
 
 	if (!atomic_read(&cam_mem_mgr_state)) {
 		CAM_ERR(CAM_MEM, "failed. mem_mgr not initialized");
@@ -1698,6 +1756,11 @@ int cam_mem_mgr_map(struct cam_mem_mgr_map_cmd_v2 *cmd)
 		CAM_ERR(CAM_MEM, "Num of mmu hdl %d exceeded maximum(%d)",
 			cmd->num_hdl, tbl.max_hdls_supported);
 		return -EINVAL;
+	}
+
+	if (cam_presil_mode_enabled()) {
+		cmd->flags |= CAM_MEM_FLAG_KMD_ACCESS;
+		CAM_DBG(CAM_MEM, "presil kmd access 0x%08x", cmd->flags);
 	}
 
 	rc = cam_mem_util_check_map_flags(cmd);
@@ -1760,9 +1823,27 @@ int cam_mem_mgr_map(struct cam_mem_mgr_map_cmd_v2 *cmd)
 	tbl.bufq[idx].dma_buf = NULL;
 	tbl.bufq[idx].flags = cmd->flags;
 	tbl.bufq[idx].buf_handle = GET_MEM_HANDLE(idx, cmd->fd);
+
 	if (cmd->flags & CAM_MEM_FLAG_PROTECTED_MODE)
 		CAM_MEM_MGR_SET_SECURE_HDL(tbl.bufq[idx].buf_handle, true);
-	tbl.bufq[idx].kmdvaddr = 0;
+
+	if (cam_presil_mode_enabled()) {
+		if (cmd->flags & CAM_MEM_FLAG_KMD_ACCESS) {
+			rc = cam_mem_util_map_cpu_va(dmabuf, &kvaddr, &klen);
+			if (rc) {
+				CAM_ERR(CAM_MEM, "dmabuf: %pK mapping failed: %d",
+						dmabuf, rc);
+				goto map_kernel_fail;
+			}
+		}
+		tbl.bufq[idx].kmdvaddr = kvaddr;
+		CAM_DBG(CAM_MEM,
+			"mapped presil fd=%dflags=0x%x idx=%d len=%zu klen=%zu i_ino=%lu name:%s",
+			cmd->fd, cmd->flags, idx, len, klen, tbl.bufq[idx].i_ino, cmd->buf_name);
+	} else {
+		tbl.bufq[idx].kmdvaddr = 0;
+	}
+
 	tbl.bufq[idx].dma_buf = dmabuf;
 	tbl.bufq[idx].len = len;
 	tbl.bufq[idx].num_hdls = cmd->num_hdl;
@@ -1784,6 +1865,9 @@ int cam_mem_mgr_map(struct cam_mem_mgr_map_cmd_v2 *cmd)
 		tbl.bufq[idx].len, tbl.bufq[idx].i_ino, cmd->buf_name);
 
 	return rc;
+
+map_kernel_fail:
+	mutex_unlock(&tbl.bufq[idx].q_lock);
 map_fail:
 	cam_mem_put_slot(idx);
 slot_fail:
@@ -2867,6 +2951,8 @@ int cam_mem_mgr_send_buffer_to_presil(int32_t mmu_hdl, int32_t buf_handle)
 	uint8_t *iova_ptr = NULL;
 	uint64_t dmabuf = 0;
 	bool is_mapped_in_cb = false;
+	uintptr_t cpu_vaddr = 0;
+	size_t cpu_len;
 
 	idx = CAM_MEM_MGR_GET_HDL_IDX(buf_handle);
 	iommu_hdl = CAM_SMMU_GET_BASE_HDL(mmu_hdl);
@@ -2936,7 +3022,21 @@ int cam_mem_mgr_send_buffer_to_presil(int32_t mmu_hdl, int32_t buf_handle)
 	CAM_INFO(CAM_PRESIL, "Sending buffer with ioaddr : 0x%x, fd = %d, dmabuf = %pK",
 		io_buf_addr, fd, dmabuf);
 
-	rc = cam_presil_send_buffer(dmabuf, 0, 0, (uint32_t)io_buf_size, (uint64_t)iova_ptr, false);
+	rc = cam_mem_get_cpu_buf(buf_handle, &cpu_vaddr, &cpu_len);
+	if (rc || !cpu_vaddr) {
+		CAM_ERR(CAM_PRESIL, "Unable to get cpu ptr buf_hdl: 0x%0x iommu_hdl: 0x%0x",
+			buf_handle, iommu_hdl);
+		return -EINVAL;
+	}
+
+	if (cpu_len != io_buf_size) {
+		CAM_WARN(CAM_PRESIL,
+			"Size mismatch ioaddr 0x%x offset %d size %d fd = %d dmabuf %pK cpu_len %d",
+			io_buf_addr, 0, io_buf_size, fd, dmabuf, cpu_len);
+	}
+
+	rc = cam_presil_send_buffer(dmabuf, 0, 0, (uint32_t)io_buf_size,
+			(uint64_t)iova_ptr, cpu_vaddr, false);
 
 	return rc;
 }
@@ -3003,7 +3103,8 @@ int cam_mem_mgr_retrieve_buffer_from_presil(int32_t buf_handle, uint32_t buf_siz
 	int fd = 0;
 	uint8_t *iova_ptr = NULL;
 	int idx = 0;
-
+	uintptr_t cpu_vaddr = 0;
+	size_t cpu_len;
 
 	CAM_DBG(CAM_PRESIL, "buf handle 0x%0x ", buf_handle);
 	rc = cam_mem_get_io_buf(buf_handle, iommu_hdl, &io_buf_addr, &io_buf_size,
@@ -3036,15 +3137,28 @@ int cam_mem_mgr_retrieve_buffer_from_presil(int32_t buf_handle, uint32_t buf_siz
 			idx, tbl.bufq[idx].fd, tbl.bufq[idx].buf_handle, tbl.bufq[idx].active);
 	}
 
+	rc = cam_mem_get_cpu_buf(buf_handle, &cpu_vaddr, &cpu_len);
+	if (rc || !cpu_vaddr) {
+		CAM_ERR(CAM_PRESIL, "Unable to get cpu ptr buf_hdl: 0x%0x iommu_hdl: 0x%0x",
+			buf_handle, iommu_hdl);
+		return -EINVAL;
+	}
+
+	if (cpu_len != buf_size) {
+		CAM_WARN(CAM_PRESIL,
+			"Size mismatch ioaddr 0x%x offset %d size %d fd = %d dmabuf %pK cpu_len %d",
+			io_buf_addr, 0, buf_size, fd, dmabuf, cpu_len);
+	}
+
 	CAM_DBG(CAM_PRESIL,
-		"Retrieving buffer with ioaddr : 0x%x, offset = %d, size = %d, fd = %d, dmabuf = %pK",
-		io_buf_addr, offset, buf_size, fd, dmabuf);
+		"Retrieving buffer ioaddr 0x%x offset %d size = %d fd = %d dmabuf = %pK cpuaddr 0x%x",
+		io_buf_addr, offset, buf_size, fd, dmabuf, cpu_vaddr);
 
 	rc = cam_presil_retrieve_buffer(dmabuf, 0, 0, (uint32_t)buf_size, (uint64_t)io_buf_addr,
-		false);
+		cpu_vaddr, false);
 
 	CAM_INFO(CAM_PRESIL,
-		"Retrieved buffer with ioaddr : 0x%x, offset = %d, size = %d, fd = %d, dmabuf = %pK",
+		"Retrieved buffer ioaddr 0x%x offset %d size = %d fd = %d dmabuf = %pK",
 		io_buf_addr, 0, buf_size, fd, dmabuf);
 
 	return rc;
