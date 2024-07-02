@@ -283,6 +283,23 @@ int cvp_create_pkt_cmd_session_cmd(struct cvp_hal_session_cmd_pkt *pkt,
 	return rc;
 }
 
+int cvp_session_cmd_ktid(struct cvp_hfi_cmd_session_hdr *pkt,
+			int pkt_type, struct cvp_hal_session *session,
+			u64 ktid)
+{
+	int rc = 0;
+
+	if (!pkt)
+		return -EINVAL;
+
+	pkt->size = sizeof(struct cvp_hfi_cmd_session_hdr);
+	pkt->packet_type = pkt_type;
+	pkt->session_id = hash32_ptr(session);
+	pkt->client_data.kdata = ktid;
+
+	return rc;
+}
+
 int cvp_create_pkt_cmd_sys_power_control(
 	struct cvp_hfi_cmd_sys_set_property_packet *pkt, u32 enable)
 {
@@ -463,6 +480,7 @@ static struct cvp_hfi_packetization_ops hfi_default = {
 	.ssr_cmd = cvp_create_pkt_ssr_cmd,
 	.session_init = cvp_create_pkt_cmd_sys_session_init,
 	.session_cmd = cvp_create_pkt_cmd_session_cmd,
+	.session_cmd_ktid = cvp_session_cmd_ktid,
 	.session_set_buffers =
 		cvp_create_pkt_cmd_session_set_buffers,
 	.session_release_buffers =
