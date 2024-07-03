@@ -2845,8 +2845,13 @@ struct synx_session *synx_internal_initialize(
 
 int synx_internal_uninitialize(struct synx_session *session)
 {
+	int rc = -SYNX_INVALID;
 	struct synx_client *client = NULL, *curr;
 
+	if (IS_ERR_OR_NULL(session)) {
+		dprintk(SYNX_ERR, "invalid session\n");
+		return rc;
+	}
 	spin_lock_bh(&synx_dev->native->metadata_map_lock);
 	hash_for_each_possible(synx_dev->native->client_metadata_map,
 			curr, node, (u64)session) {
@@ -2854,15 +2859,22 @@ int synx_internal_uninitialize(struct synx_session *session)
 			if (curr->active) {
 				curr->active = false;
 				client = curr;
+				rc = SYNX_SUCCESS;
+			} else {
+				rc = -SYNX_ALREADY;
+				dprintk(SYNX_ERR,
+					"[sess:%llu] already uninitialized rc:%d\n", curr->id, rc);
 			}
 			break;
 		}
 	}
 	spin_unlock_bh(&synx_dev->native->metadata_map_lock);
+	if (rc == -SYNX_INVALID)
+		dprintk(SYNX_ERR, "client not found, rc: %d\n", rc);
 
 	/* release the reference obtained at synx init */
 	synx_put_client(client);
-	return SYNX_SUCCESS;
+	return rc;
 }
 
 static int synx_open(struct inode *inode, struct file *filep)
