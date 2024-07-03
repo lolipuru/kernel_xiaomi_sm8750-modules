@@ -2683,11 +2683,10 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		 * to reconnect after a PD restart on remote subsystem.
 		 */
 		err = fastrpc_mmap_remove_ssr(fl->cctx);
-		if (err) {
+		if (err)
 			pr_warn("%s: %s: failed to unmap remote heap (err %d)\n",
 				current->comm, __func__, err);
 			goto err_name;
-		}
 	}
 	// Update PDR count, to check for any PDR.
 	fl->spd->prevpdrcount =	fl->spd->pdrcount;
