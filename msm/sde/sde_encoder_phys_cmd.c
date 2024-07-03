@@ -2197,8 +2197,6 @@ static int _sde_encoder_phys_cmd_handle_wr_ptr_timeout(
 			spin_unlock_irqrestore(phys_enc->enc_spinlock,
 				lock_flags);
 		}
-
-		phys_enc->enable_state = SDE_ENC_ERR_NEEDS_HW_RESET;
 	}
 
 	cmd_enc->wr_ptr_wait_success = (ret == 0) ? true : false;
@@ -2272,6 +2270,8 @@ wait_for_idle:
 			cmd_enc->wr_ptr_wait_success, scheduler_status, rc);
 		SDE_ERROR("pp:%d failed wait_for_idle: %d\n",
 				phys_enc->hw_pp->idx - PINGPONG_0, rc);
+		if (phys_enc->enable_state == SDE_ENC_ERR_NEEDS_HW_RESET)
+			sde_encoder_needs_hw_reset(phys_enc->parent);
 	}
 
 	return rc;
