@@ -3810,7 +3810,7 @@ static int fts_enable_reg(struct fts_ts_info *info, bool enable)
 
 	if (!enable) {
 		retval = 0;
-		goto set_reset_gpio_input;
+		goto disable_pwr_reg;
 	}
 
 	if (info->vdd_reg) {
@@ -3833,21 +3833,7 @@ static int fts_enable_reg(struct fts_ts_info *info, bool enable)
 		}
 	}
 
-	if (info->board->reset_gpio >= 0) {
-		retval = gpio_direction_output(info->board->reset_gpio, 0);
-		if (retval < 0) {
-			logError(1, "%s %s: Failed to configure reset GPIO\n",
-				 tag,
-				 __func__);
-			goto disable_pwr_reg;
-		}
-	}
-
 	return OK;
-
-set_reset_gpio_input:
-	if (info->board->reset_gpio >= 0)
-		retval = gpio_direction_input(info->board->reset_gpio);
 
 disable_pwr_reg:
 	if (info->avdd_reg)
