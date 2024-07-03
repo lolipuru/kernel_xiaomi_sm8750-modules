@@ -369,7 +369,14 @@ int wait_for_sess_signal_receipt(struct msm_cvp_inst *inst,
 				SESSION_MSG_INDEX(cmd));
 		if (inst->state != MSM_CVP_CORE_INVALID)
 			print_hfi_queue_info(ops_tbl);
-		handle_session_timeout(inst);
+		if (cmd != HAL_SESSION_STOP_DONE &&
+			cmd != HAL_SESSION_FLUSH_DONE &&
+			cmd != HAL_SESSION_SET_BUFFER_DONE &&
+			cmd != HAL_SESSION_INIT_DONE &&
+			cmd != HAL_SESSION_START_DONE)
+			handle_session_timeout(inst, true);
+		else
+			handle_session_timeout(inst, false);
 		rc = -ETIMEDOUT;
 	} else if (inst->state == MSM_CVP_CORE_INVALID) {
 		rc = -ECONNRESET;
@@ -576,7 +583,7 @@ void handle_session_error(enum hal_command_response cmd, void *data)
 	cvp_put_inst(inst);
 }
 
-void handle_session_timeout(struct msm_cvp_inst *inst)
+void handle_session_timeout(struct msm_cvp_inst *inst, bool stop_required)
 {
 	struct cvp_session_queue *sq;
 	unsigned long flags = 0;
@@ -604,6 +611,9 @@ void handle_session_timeout(struct msm_cvp_inst *inst)
 	spin_unlock_irqrestore(
 		&inst->event_handler.lock, flags);
 	wake_up_all(&inst->event_handler.wq);
+
+	if (stop_required)
+		msm_cvp_session_flush_stop(inst);
 }
 
 void handle_sys_error(enum hal_command_response cmd, void *data)
@@ -1380,7 +1390,7 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 				break;
 		}
 		dprintk(CVP_ERR, "Session timeout triggered\n");
-		handle_session_timeout(inst);
+		handle_session_timeout(inst, true);
 		return;
 	}
 	if (core->ssr_type == SSR_CORE_SMMU_FAULT) {
