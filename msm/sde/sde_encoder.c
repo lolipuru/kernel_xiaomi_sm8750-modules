@@ -5345,15 +5345,43 @@ static void sde_encoder_esd_trigger_work_handler(struct kthread_work *work)
 			SDE_ENC_RC_EVENT_KICKOFF);
 }
 
-static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc)
+static void _sde_encoder_avoid_prog_fetch_region(struct sde_encoder_phys *phys_enc,
+	struct sde_encoder_virt *sde_enc)
 {
+	u32 panel_vsync_diff_us, buffer_time_us;
+	u32 line_count, buffer_lines, cut_off_lines;
 
+	buffer_time_us = DEVIATION_NS / 1000;
+	line_count = phys_enc->hw_intf->ops.get_line_count(phys_enc->hw_intf);
+	panel_vsync_diff_us = buffer_time_us + phys_enc->pf_time_in_us;
+	buffer_lines = DIV_ROUND_UP(buffer_time_us *
+		phys_enc->cached_mode.vtotal * sde_enc->mode_info.frame_rate, 1000000);
+	cut_off_lines = phys_enc->cached_mode.vtotal  - buffer_lines - phys_enc->prog_fetch_start;
+
+	if (panel_vsync_diff_us > 2000) {
+		SDE_ERROR("Programmable fetch time check failed, panel_vsync_diff_us=%u\n",
+				panel_vsync_diff_us);
+		panel_vsync_diff_us = 2000;
+	}
+	/* avoid programmable fetch region */
+	if (line_count > cut_off_lines)
+		usleep_range(panel_vsync_diff_us, panel_vsync_diff_us + 10);
+
+	SDE_EVT32(line_count, cut_off_lines, sde_enc->mode_info.frame_rate,
+		phys_enc->pf_time_in_us, panel_vsync_diff_us, buffer_lines,
+		phys_enc->prog_fetch_start);
+}
+
+void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
+		bool send_still_cmd)
+{
 	struct sde_encoder_phys *phys_enc;
 	struct sde_hw_ctl *ctl;
 	struct sde_ctl_flush_cfg cfg;
 	u32 pf_time_in_us;
 	struct drm_crtc *crtc;
 	struct sde_connector *sde_conn;
+	struct sde_crtc *sde_crtc;
 
 	if (!sde_enc || !sde_enc->cur_master)
 		return;
@@ -5361,7 +5389,7 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 	crtc = sde_enc->crtc;
 	phys_enc = sde_enc->cur_master;
 
-	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, send_still_cmd);
 	if (sde_enc->cur_master && sde_enc->cur_master->connector) {
 		sde_conn = to_sde_connector(sde_enc->cur_master->connector);
 		if (sde_conn->vrr_cmd_state == VRR_CMD_IDLE_ENTRY) {
@@ -5370,14 +5398,34 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 		}
 	}
 
+	if (!send_still_cmd) {
+		sde_crtc = to_sde_crtc(crtc);
+		if (ktime_compare(hrtimer_get_expires(
+		  &phys_enc->sde_vrr_cfg.self_refresh_timer), ktime_get()) > 0) {
+			SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+			return;
+		} else if (!sde_crtc || sde_crtc_frame_pending(sde_enc->crtc) ||
+			sde_crtc->kickoff_in_progress) {
+			SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
+			return;
+		}
+
+		_sde_encoder_rc_restart_delayed(sde_enc, SDE_ENC_RC_EVENT_KICKOFF);
+		_sde_encoder_avoid_prog_fetch_region(phys_enc, sde_enc);
+	}
+
 	ctl = phys_enc->hw_ctl;
 	ctl->ops.clear_pending_flush(ctl);
 	_sde_encoder_cesta_update(&sde_enc->base, SDE_PERF_BEGIN_COMMIT);
-	sde_connector_update_cmd(phys_enc->connector, BIT(DSI_CMD_SET_STICKY_STILL_EN), true);
+
+	if (send_still_cmd)
+		sde_connector_update_cmd(phys_enc->connector,
+			BIT(DSI_CMD_SET_STICKY_STILL_EN), true);
 
 	if (ctl->ops.update_bitmask) {
-		ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_PERIPH,
-					phys_enc->hw_intf->idx, true);
+		if (send_still_cmd)
+			ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_PERIPH,
+				phys_enc->hw_intf->idx, true);
 		ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_INTF,
 					phys_enc->hw_intf->idx, true);
 	}
@@ -5387,12 +5435,18 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 	ctl->ops.get_pending_flush(ctl, &cfg);
 	SDE_EVT32(DRMID(phys_enc->parent), cfg.pending_flush_mask);
 	ctl->flush.pending_flush_mask |= BIT(17);
+	sde_cesta_poll_handshake(sde_enc->cesta_client);
 	ctl->ops.trigger_flush(ctl);
 	ctl->ops.clear_pending_flush(ctl);
 
 	if (!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable &&
 			phys_enc->hw_intf->ops.avr_trigger)
 		phys_enc->hw_intf->ops.avr_trigger(phys_enc->hw_intf);
+
+	if (!send_still_cmd) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
+		return;
+	}
 
 	drm_crtc_wait_one_vblank(crtc);
 
@@ -5421,7 +5475,7 @@ static void sde_encoder_handle_self_refresh(struct kthread_work *work)
 	sde_kms = sde_encoder_get_kms(&sde_enc->base);
 
 	if (sde_enc->disp_info.vrr_caps.video_psr_support)
-		sde_encoder_handle_video_psr_self_refresh(sde_enc);
+		sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
 	else
 		sde_connector_trigger_cmd_self_refresh(sde_enc->cur_master->connector);
 }

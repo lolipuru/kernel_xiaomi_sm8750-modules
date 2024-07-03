@@ -1485,18 +1485,29 @@ int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector)
 {
 	int rc = 0;
 	struct sde_connector *c_conn;
+	struct sde_encoder_virt *sde_enc;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
 		return -EINVAL;
 	}
+	c_conn = to_sde_connector(connector);
+	sde_enc = to_sde_encoder_virt(c_conn->encoder);
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid encoder, sde_enc %d\n", sde_enc != NULL);
+		return -EINVAL;
+	}
 
 	SDE_EVT32(connector->base.id);
-	c_conn = to_sde_connector(connector);
 	SDE_ATRACE_BEGIN("cmd_self_refresh");
-	if (!c_conn->vrr_caps.video_psr_support)
+
+	if (c_conn->vrr_caps.video_psr_support)
+		sde_encoder_handle_video_psr_self_refresh(sde_enc, false);
+	else
 		rc = sde_connector_update_cmd(connector,
 			BIT(DSI_CMD_SET_TRIGGER_SELF_REFRESH), true);
+
 	SDE_ATRACE_END("cmd_self_refresh");
 
 	return rc;
