@@ -79,22 +79,6 @@ static struct clk *_sde_cesta_get_core_clk(struct sde_cesta *cesta)
 	return core_clk;
 }
 
-void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en)
-{
-	struct sde_cesta *cesta;
-
-	if (!client || (client->cesta_index >= MAX_CESTA_COUNT)) {
-		SDE_ERROR_CESTA("invalid param, client:%d, cesta_index:%d\n",
-					!!client, client ? client->cesta_index : -1);
-		return;
-	}
-
-	cesta = cesta_list[client->cesta_index];
-
-	if (cesta->hw_ops.force_auto_active_db_update)
-		cesta->hw_ops.force_auto_active_db_update(cesta, client->client_index, en);
-}
-
 void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en)
 {
 	struct sde_cesta *cesta;

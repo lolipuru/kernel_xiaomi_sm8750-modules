@@ -1958,7 +1958,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	struct sde_connector_state *c_state = NULL;
 	struct msm_display_mode *msm_mode = NULL;
 	enum sde_crtc_vm_req vm_req;
-	bool req_flush = false, req_scc = false, is_cmd = false;
+	bool req_flush = false, req_scc = false;
 
 	if (!cesta_client || !sde_enc->crtc)
 		return;
@@ -1967,8 +1967,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	if (!cur_master || !cur_master->hw_ctl)
 		return;
 
-	is_cmd = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE);
-	if (sde_enc->res_switch && is_cmd
+	if (sde_enc->res_switch && sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE)
 			&& (commit_state == SDE_PERF_BEGIN_COMMIT) && sde_enc->cur_master) {
 		c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
 		if (!c_state) {
@@ -2005,17 +2004,6 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 	/* SCC configs */
 	cur_master->ops.cesta_ctrl_cfg(cur_master, &ctrl_cfg, &req_flush, &req_scc);
-
-	/*
-	 * Workaround in cmd mode when upvote/no-change vote is requested while previous frame
-	 * ctl-done is too close the wakeup/panic windows.
-	 * Set auto-active-on-panic and force db update and reset it during complete-commit.
-	 */
-	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT)
-			&& (cesta_client->vote_state != SDE_CESTA_BW_CLK_DOWNVOTE)) {
-		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, true);
-		sde_enc->cesta_force_auto_active_db_update = true;
-	}
 
 	/*
 	 * Move to auto active on panic setting while releasing the VM & update
@@ -4541,11 +4529,6 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 		if (ctl && ctl->ops.update_ctl_top_group)
 			ctl->ops.update_ctl_top_group(ctl, false);
 		sde_enc->cesta_op_group_req = false;
-	}
-
-	if (sde_enc->cesta_client && sde_enc->cesta_force_auto_active_db_update) {
-		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, false);
-		sde_enc->cesta_force_auto_active_db_update = false;
 	}
 
 	sde_enc->res_switch = false;
