@@ -3293,6 +3293,7 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	struct fastrpc_device_node *fdevice;
 	struct fastrpc_user *fl = NULL;
 	unsigned long flags;
+	int err;
 
 	fdevice = miscdev_to_fdevice(filp->private_data);
 	cctx = fdevice->cctx;
@@ -3332,7 +3333,8 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 
 	if (fl->tgid_frpc == -1) {
 		dev_err(cctx->dev, "too many fastrpc clients, max %u allowed\n", MAX_FRPC_TGID);
-		return -EUSERS;
+		err = -EUSERS;
+		goto error;
 	}
 	dev_dbg(cctx->dev, "HLOS pid %d, domain %d is mapped to unique sessions pid %d",
 			fl->tgid, fl->cctx->domain_id, fl->tgid_frpc);
@@ -3346,8 +3348,10 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	if (cctx->lowest_capacity_core_count) {
 		fl->dev_pm_qos_req = kzalloc((cctx->lowest_capacity_core_count) *
 				sizeof(struct dev_pm_qos_request), GFP_KERNEL);
-		if (!fl->dev_pm_qos_req)
-			return -ENOMEM;
+		if (!fl->dev_pm_qos_req) {
+			err = -ENOMEM;
+			goto error;
+		}
 	}
 
 	spin_lock_irqsave(&cctx->lock, flags);
@@ -3355,6 +3359,14 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	return 0;
+error:
+	mutex_destroy(&fl->remote_map_mutex);
+	mutex_destroy(&fl->map_mutex);
+	mutex_destroy(&fl->signal_create_mutex);
+	kfree(fl);
+	fastrpc_channel_ctx_put(cctx);
+
+	return err;
 }
 
 static int fastrpc_dmabuf_alloc(struct fastrpc_user *fl, char __user *argp)
