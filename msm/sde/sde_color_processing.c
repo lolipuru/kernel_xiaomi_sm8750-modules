@@ -25,9 +25,6 @@
 #include "sde_color_processing_aiqe.h"
 #include "sde_aiqe_common.h"
 
-#define DEMURA_BACKLIGHT_MAX 1024
-#define DEMURA_BACKLIGHT_MIN 64
-
 #define ALIGNED_OFFSET (U32_MAX & ~(LTM_GUARD_BYTES))
 
 static void _dspp_pcc_install_property(struct drm_crtc *crtc);
@@ -89,9 +86,6 @@ static void _sde_cp_notify_ltm_wb_pb(struct drm_crtc *crtc_drm, void *arg);
 static void _sde_cp_crtc_update_ltm_roi(struct sde_crtc *sde_crtc,
 		struct sde_hw_cp_cfg *hw_cfg);
 static int _sde_cp_flush_properties(struct drm_crtc *crtc);
-
-static void _sde_cp_mark_bl_properties(struct sde_crtc *crtc);
-
 static int _sde_cp_crtc_cache_property(struct drm_crtc *crtc,
 				struct sde_crtc_state *cstate,
 				struct sde_cp_node *prop_node,
@@ -1016,27 +1010,12 @@ static int _set_demura_backlight(struct sde_hw_dspp *hw_dspp,
 				   struct sde_crtc *sde_crtc)
 {
 	int ret = 0;
-	u64 val = (DEMURA_BACKLIGHT_MAX << 16) | DEMURA_BACKLIGHT_MAX;
-	u32 brightness, inv;
 
-	if (!hw_dspp || !hw_dspp->ops.setup_demura_backlight_cfg) {
+	if (!hw_dspp) {
 		ret = -EINVAL;
 	} else {
-		if (sde_crtc->back_light && sde_crtc->back_light_max) {
-			brightness = sde_crtc->back_light * ((1 << 10));
-			do_div(brightness, sde_crtc->back_light_max);
-			/* Clip the brightness between 64 (min) and 1024 (max) */
-			brightness = clamp_val(brightness, DEMURA_BACKLIGHT_MIN,
-					       DEMURA_BACKLIGHT_MAX);
-			if (brightness) {
-				inv = (1 << 20);
-				do_div(inv, brightness);
-				inv = (inv < ((1 << 14) - 1)) ? inv : ((1 << 14) - 1);
-				val = (inv << 16) | brightness;
-			}
-			sde_crtc->back_light_pending = false;
-		}
-		hw_dspp->ops.setup_demura_backlight_cfg(hw_dspp, val, hw_cfg);
+		if (hw_dspp->ops.setup_demura_backlight_cfg)
+			hw_dspp->ops.setup_demura_backlight_cfg(hw_dspp, hw_cfg);
 	}
 
 	return ret;
@@ -1055,7 +1034,6 @@ static int _set_demura_feature(struct sde_hw_dspp *hw_dspp,
 			hw_dspp->ops.setup_demura_cfg(hw_dspp, hw_cfg);
 			_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_DEMURA_PU,
 				hw_cfg->payload != NULL);
-			_set_demura_backlight(hw_dspp, hw_cfg, sde_crtc);
 		}
 	}
 
@@ -1083,7 +1061,7 @@ static int _feature_unsupported(struct sde_hw_dspp *hw_dspp,
 				   struct sde_crtc *sde_crtc)
 {
 	if (!hw_dspp || !hw_cfg || !sde_crtc) {
-		DRM_ERROR("invalid argumets\n");
+		DRM_WARN("invalid arguments\n");
 		return -EINVAL;
 	}
 
@@ -1154,6 +1132,7 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_INIT] = _set_spr_init_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_UDC] = _set_spr_udc_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_INIT] = _set_demura_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT] = _set_demura_backlight; \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = _set_demura_cfg0_param2; \
 	wrappers[SDE_CP_CRTC_DSPP_MDNIE] = set_mdnie_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_MDNIE_ART] = set_mdnie_art_feature; \
@@ -1420,9 +1399,6 @@ void sde_cp_crtc_init(struct drm_crtc *crtc)
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_free);
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_busy);
 	sde_crtc->disable_pending_cp = false;
-	sde_crtc->back_light = 0;
-	sde_crtc->back_light_max = 0;
-	sde_crtc->back_light_pending = false;
 	sde_cp_crtc_disable(crtc);
 	sde_crtc->ai_scaler_res.enabled = false;
 	sde_crtc->ai_scaler_res.src_w = 0;
@@ -2136,7 +2112,6 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 	}
 
 	_sde_cp_flush_properties(crtc);
-	_sde_cp_mark_bl_properties(sde_crtc);
 	_sde_cp_check_mdnie_art_done(crtc);
 	mutex_lock(&sde_crtc->crtc_cp_lock);
 	_sde_clear_ltm_merge_mode(sde_crtc);
@@ -3358,7 +3333,7 @@ static void _dspp_demura_install_v1_property(struct drm_crtc *crtc)
 {
 	_sde_cp_crtc_install_range_property(crtc, "SDE_DEMURA_BACKLIGHT_V1",
 		SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT,
-		0, 1024, 0);
+		0, U32_MAX, 0);
 	_sde_cp_crtc_install_bitmask_property(crtc, "SDE_DEMURA_BOOT_PLANE_V1",
 		SDE_CP_CRTC_DSPP_DEMURA_BOOT_PLANE, true,
 		sde_demura_fetch_planes,
@@ -5180,44 +5155,6 @@ void _sde_cp_mark_active_dirty_internal(struct sde_crtc *crtc)
 			list_del_init(&prop_node->cp_active_list);
 		}
 	}
-	mutex_unlock(&crtc->crtc_cp_lock);
-}
-
-void sde_cp_backlight_notification(struct drm_crtc *drm_crtc, u32 bl_val, u32 bl_max)
-{
-	struct sde_crtc *crtc;
-
-	crtc = to_sde_crtc(drm_crtc);
-	mutex_lock(&crtc->crtc_cp_lock);
-	if (crtc->back_light != bl_val) {
-		crtc->back_light = bl_val;
-		crtc->back_light_max = bl_max;
-		crtc->back_light_pending = true;
-	}
-	mutex_unlock(&crtc->crtc_cp_lock);
-}
-
-void _sde_cp_mark_bl_properties(struct sde_crtc *crtc)
-{
-	struct sde_cp_node *prop_node;
-
-	mutex_lock(&crtc->crtc_cp_lock);
-	if (!crtc->back_light_pending)
-		goto skip_demura_bl;
-
-	if (_sde_cp_feature_in_dirtylist(SDE_CP_CRTC_DSPP_DEMURA_INIT,
-					&crtc->cp_dirty_list))
-		goto skip_demura_bl;
-
-	prop_node = _sde_cp_feature_getnode_activelist(SDE_CP_CRTC_DSPP_DEMURA_INIT,
-				&crtc->cp_active_list);
-
-	if (prop_node) {
-		_sde_cp_update_list(prop_node, crtc, true);
-		list_del_init(&prop_node->cp_active_list);
-	}
-skip_demura_bl:
-	crtc->back_light_pending = false;
 	mutex_unlock(&crtc->crtc_cp_lock);
 }
 

@@ -597,7 +597,7 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 	alignment = 0x1; /* COND0 timing engine enable register */
 	if (align_esync) {
 		if (align_avr)
-			alignment = 0x1; /* COND0 HW AVR trigger */
+			alignment = 0x6; /* COND0 HW AVR trigger */
 		alignment |= 0x4 << 4; /* COND1 esync_mdp_vsync */
 
 		intf_cfg2 |= BIT(23);
@@ -998,9 +998,6 @@ static int sde_hw_intf_setup_te_config(struct sde_hw_intf *intf,
 	 */
 	spin_lock(&tearcheck_spinlock);
 	val = te->start_pos + te->sync_threshold_start + 1;
-	if (intf->cap->features & BIT(SDE_INTF_TE_32BIT))
-		SDE_REG_WRITE(c, INTF_TEAR_SYNC_WRCOUNT_EXT, (val >> 16));
-	SDE_REG_WRITE(c, INTF_TEAR_SYNC_WRCOUNT, (val & 0xffff));
 	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
 	wmb(); /* disable vsync counter before updating single buffer registers */
 	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_HEIGHT, te->sync_cfg_height);
@@ -1018,6 +1015,11 @@ static int sde_hw_intf_setup_te_config(struct sde_hw_intf *intf,
 			(te->sync_threshold_start & 0xffff)));
 	cfg |= BIT(19); /* VSYNC_COUNTER_EN */
 	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
+	wmb(); /* ensure vsync_counter_en is written */
+
+	if (intf->cap->features & BIT(SDE_INTF_TE_32BIT))
+		SDE_REG_WRITE(c, INTF_TEAR_SYNC_WRCOUNT_EXT, (val >> 16));
+	SDE_REG_WRITE(c, INTF_TEAR_SYNC_WRCOUNT, (val & 0xffff));
 	spin_unlock(&tearcheck_spinlock);
 
 	return 0;

@@ -206,6 +206,7 @@ struct drm_panel_esd_config {
 struct dsi_panel_spr_info {
 	bool enable;
 	enum msm_display_spr_pack_type pack_type;
+	enum msm_display_spr_pack_type_mode pack_type_mode;
 };
 
 struct dsi_panel;

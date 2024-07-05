@@ -1404,6 +1404,17 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 	if (rc == -ETIMEDOUT || rc == -ENOTCONN)
 		goto err_unready;
 
+	/*
+	 * In the PHY layer of a DP connection (cable or/and the sink), often
+	 * "Link Training(LT) tunable PHY repeaters (LTTPR)" are employed. These LTTPRs can operate
+	 * in 2 modes: Transparent & Non-Transparent. Even though the DP 1.4spec suggests
+	 * transparent mode as default for LTTPRs, it is observed that some cables with LTTPRs
+	 * (e.g. apple cable) misbehave if the operating mode isn't set explicitly. Hence set the
+	 * transparent mode if at least 1 LTTPR is present in the path.
+	 */
+	if (drm_dp_lttpr_count(dp->panel->lttpr_common_caps))
+		dp->panel->set_lttpr_mode(dp->panel, true);
+
 	dp->link->process_request(dp->link);
 	dp->panel->handle_sink_request(dp->panel);
 

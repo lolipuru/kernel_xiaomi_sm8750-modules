@@ -328,6 +328,44 @@ static const char *msm_spr_pack_type_str[MSM_DISPLAY_SPR_TYPE_MAX] = {
 };
 
 /**
+ * enum msm_display_spr_pack_type_mode - spr pack type mode supported
+ * @MSM_DISPLAY_SPR_PENTILE_NONE_TYPE:      Bypass, no special packing
+ * @MSM_DISPLAY_SPR_PENTILE_RG_BG_TYPE_A:   RG/BG Type A
+ * @MSM_DISPLAY_SPR_PENTILE_BG_RG_TYPE_A:   BG/RG Type A
+ * @MSM_DISPLAY_SPR_PENTILE_GR_GB_TYPE_A:   GR/GB Type A
+ * @MSM_DISPLAY_SPR_PENTILE_GB_GR_TYPE_A:   GB/GR Type A
+ * @MSM_DISPLAY_SPR_PENTILE_RG_BG_TYPE_B:   RG/BG Type B
+ * @MSM_DISPLAY_SPR_PENTILE_BG_RG_TYPE_B:   BG/RG Type B
+ * @MSM_DISPLAY_SPR_PENTILE_GR_GB_TYPE_B:   GR/GB Type B
+ * @MSM_DISPLAY_SPR_PENTILE_GB_GR_TYPE_B:   GB/GR Type B
+ * @MSM_DISPLAY_SPR_PENTILE_MAX_TYPE:       max and invalid
+ */
+enum msm_display_spr_pack_type_mode {
+	MSM_DISPLAY_SPR_PENTILE_NONE_TYPE,
+	MSM_DISPLAY_SPR_PENTILE_RG_BG_TYPE_A,
+	MSM_DISPLAY_SPR_PENTILE_BG_RG_TYPE_A,
+	MSM_DISPLAY_SPR_PENTILE_GR_GB_TYPE_A,
+	MSM_DISPLAY_SPR_PENTILE_GB_GR_TYPE_A,
+	MSM_DISPLAY_SPR_PENTILE_RG_BG_TYPE_B,
+	MSM_DISPLAY_SPR_PENTILE_BG_RG_TYPE_B,
+	MSM_DISPLAY_SPR_PENTILE_GR_GB_TYPE_B,
+	MSM_DISPLAY_SPR_PENTILE_GB_GR_TYPE_B,
+	MSM_DISPLAY_SPR_PACK_TYPE_MODE_MAX
+};
+
+static const char *msm_spr_pack_type_mode_str[MSM_DISPLAY_SPR_PACK_TYPE_MODE_MAX] = {
+	[MSM_DISPLAY_SPR_PENTILE_NONE_TYPE] = "None",
+	[MSM_DISPLAY_SPR_PENTILE_RG_BG_TYPE_A] = "RG-BG Type A",
+	[MSM_DISPLAY_SPR_PENTILE_BG_RG_TYPE_A] = "BG-RG Type A",
+	[MSM_DISPLAY_SPR_PENTILE_GR_GB_TYPE_A] = "GR-GB Type A",
+	[MSM_DISPLAY_SPR_PENTILE_GB_GR_TYPE_A] = "GB-GR Type A",
+	[MSM_DISPLAY_SPR_PENTILE_RG_BG_TYPE_B] = "RG-BG Type B",
+	[MSM_DISPLAY_SPR_PENTILE_BG_RG_TYPE_B] = "BG-RG Type B",
+	[MSM_DISPLAY_SPR_PENTILE_GR_GB_TYPE_B] = "GR-GB Type B",
+	[MSM_DISPLAY_SPR_PENTILE_GB_GR_TYPE_B] = "GB-GR Type B",
+};
+
+/**
  * enum msm_display_caps - features/capabilities supported by displays
  * @MSM_DISPLAY_CAP_VID_MODE:           Video or "active" mode supported
  * @MSM_DISPLAY_CAP_CMD_MODE:           Command mode supported
@@ -485,6 +523,7 @@ struct msm_roi_caps {
  * @half_panel_pu            True for single and dual dsc encoders if partial
  *                           update sets the roi width to half of mode width
  *                           False in all other cases
+ * @rc_override_v1:          Using sde_dsc_rc_range_bpg_override_v1
  */
 struct msm_display_dsc_info {
 	struct drm_dsc_config config;
@@ -508,6 +547,7 @@ struct msm_display_dsc_info {
 	u32 dsc_4hsmerge_padding;
 	u32 dsc_4hsmerge_alignment;
 	bool half_panel_pu;
+	bool rc_override_v1;
 };
 
 
