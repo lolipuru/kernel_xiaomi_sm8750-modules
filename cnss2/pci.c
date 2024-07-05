@@ -1980,6 +1980,7 @@ static void cnss_pci_dump_bl_sram_mem(struct cnss_pci_data *pci_priv)
 		pbl_log_sram_start = PEACH_DEBUG_PBL_LOG_SRAM_START;
 		pbl_log_max_size = PEACH_DEBUG_PBL_LOG_SRAM_MAX_SIZE;
 		sbl_log_max_size = PEACH_DEBUG_SBL_LOG_SRAM_MAX_SIZE;
+		sbl_log_def_end = PEACH_SRAM_END;
 		break;
 	case COLOGNE_DEVICE_ID:
 		pbl_bootstrap_status_reg = COLOGNE_PBL_BOOTSTRAP_STATUS;
@@ -3528,7 +3529,7 @@ static int cnss_qca6290_shutdown(struct cnss_pci_data *pci_priv)
 	     test_bit(CNSS_IN_COLD_BOOT_CAL, &plat_priv->driver_state)) &&
 	    test_bit(CNSS_DEV_ERR_NOTIFY, &plat_priv->driver_state)) {
 		del_timer(&pci_priv->dev_rddm_timer);
-		cnss_pci_collect_dump_info(pci_priv, false);
+		ret = cnss_pci_collect_dump_info(pci_priv, false);
 
 		if (!plat_priv->recovery_enabled)
 			CNSS_ASSERT(0);
@@ -3577,13 +3578,14 @@ out:
 
 static void cnss_qca6290_crash_shutdown(struct cnss_pci_data *pci_priv)
 {
+	int ret = 0;
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
 
 	set_bit(CNSS_IN_PANIC, &plat_priv->driver_state);
 	cnss_pr_dbg("Crash shutdown with driver_state 0x%lx\n",
 		    plat_priv->driver_state);
 
-	cnss_pci_collect_dump_info(pci_priv, true);
+	ret = cnss_pci_collect_dump_info(pci_priv, true);
 	clear_bit(CNSS_IN_PANIC, &plat_priv->driver_state);
 }
 
@@ -3831,6 +3833,11 @@ int cnss_wlan_register_driver(struct cnss_wlan_driver *driver_ops)
 				if (plat_priv->device_id == KIWI_DEVICE_ID &&
 				    driver_ops->chip_version != 2) {
 					cnss_pr_err("WLAN HW disabled. kiwi_v2 only supported\n");
+					return -ENODEV;
+				}
+				if (plat_priv->device_id == PEACH_DEVICE_ID &&
+				    driver_ops->chip_version != 2) {
+					cnss_pr_err("WLAN HW disabled. peach_v2 only supported\n");
 					return -ENODEV;
 				}
 				cnss_pr_info("WLAN register driver deferred for device ID: 0x%x due to HW disable\n",
@@ -6476,7 +6483,7 @@ void cnss_pci_collect_host_dump_info(struct cnss_pci_data *pci_priv)
 }
 #endif
 
-void cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
+int cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 {
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
 	struct cnss_dump_data *dump_data =
@@ -6485,7 +6492,7 @@ void cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 		plat_priv->ramdump_info_v2.dump_data_vaddr;
 	struct image_info *fw_image, *rddm_image;
 	struct cnss_fw_mem *fw_mem = plat_priv->fw_mem;
-	int ret, i, j;
+	int ret = 0, i, j;
 
 	if (test_bit(CNSS_DEV_ERR_NOTIFY, &plat_priv->driver_state) &&
 	    !test_bit(CNSS_IN_PANIC, &plat_priv->driver_state))
@@ -6493,12 +6500,12 @@ void cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 
 	if (test_bit(CNSS_MHI_RDDM_DONE, &pci_priv->mhi_state)) {
 		cnss_pr_dbg("RAM dump is already collected, skip\n");
-		return;
+		goto out;
 	}
 
 	if (!cnss_is_device_powered_on(plat_priv)) {
 		cnss_pr_dbg("Device is already powered off, skip\n");
-		return;
+		goto out;
 	}
 
 	if (!in_panic) {
@@ -6507,17 +6514,17 @@ void cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 		if (ret) {
 			if (ret != -EACCES) {
 				mutex_unlock(&pci_priv->bus_lock);
-				return;
+				goto out;
 			}
 			if (cnss_pci_resume_bus(pci_priv)) {
 				mutex_unlock(&pci_priv->bus_lock);
-				return;
+				goto out;
 			}
 		}
 		mutex_unlock(&pci_priv->bus_lock);
 	} else {
 		if (cnss_pci_check_link_status(pci_priv))
-			return;
+			goto out;
 		/* Inside panic handler, reduce timeout for RDDM to avoid
 		 * unnecessary hypervisor watchdog bite.
 		 */
@@ -6533,11 +6540,16 @@ void cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 	if (ret) {
 		cnss_fatal_err("Failed to download RDDM image, err = %d\n",
 			       ret);
-		if (!cnss_pci_assert_host_sol(pci_priv))
-			return;
+		cnss_pr_dbg("Sending Host Reset Req\n");
+		cnss_mhi_force_reset(pci_priv);
+		clear_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state);
+		mod_timer(&pci_priv->dev_rddm_timer,
+			jiffies + msecs_to_jiffies(DEV_RDDM_TIMEOUT));
+
 		cnss_rddm_trigger_check(pci_priv);
 		cnss_pci_dump_debug_reg(pci_priv);
-		return;
+		ret =  -EAGAIN;
+		goto out;
 	}
 	cnss_rddm_trigger_check(pci_priv);
 	fw_image = pci_priv->mhi_ctrl->fbc_image;
@@ -6614,6 +6626,8 @@ void cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 
 skip_dump:
 	complete(&plat_priv->rddm_complete);
+out:
+	return ret;
 }
 
 void cnss_pci_clear_dump_info(struct cnss_pci_data *pci_priv)

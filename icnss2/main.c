@@ -117,6 +117,7 @@ uint64_t dynamic_feature_mask = ICNSS_DEFAULT_FEATURE_MASK;
 #define WLAN_EN_DELAY			500
 
 #define ICNSS_RPROC_LEN			100
+#define CPUMASK_ARRAY_SIZE		2
 static DEFINE_IDA(rd_minor_id);
 
 enum icnss_pdr_cause_index {
@@ -283,7 +284,7 @@ int icnss_driver_event_post(struct icnss_priv *priv,
 		return -EINVAL;
 	}
 
-	if (in_interrupt() || irqs_disabled())
+	if (in_interrupt() || !preemptible() || rcu_preempt_depth())
 		gfp = GFP_ATOMIC;
 
 	event = kzalloc(sizeof(*event), gfp);
@@ -4666,12 +4667,17 @@ void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
 }
 #endif
 #else
+static inline
 void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
 {
 }
 
 static inline
 void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
+{
+}
+
+static inline void icnss_pci_set_suspended(struct icnss_priv *priv, int val)
 {
 }
 #endif
@@ -4777,9 +4783,15 @@ void icnss_add_fw_prefix_name(struct icnss_priv *priv, char *prefix_name,
 	if (priv->device_id == ADRASTEA_DEVICE_ID)
 		scnprintf(prefix_name, ICNSS_MAX_FILE_NAME,
 			  ADRASTEA_PATH_PREFIX "%s", name);
-	else if (priv->device_id == WCN6750_DEVICE_ID)
-		scnprintf(prefix_name, ICNSS_MAX_FILE_NAME,
-			  QCA6750_PATH_PREFIX "%s", name);
+	else if (priv->device_id == WCN6750_DEVICE_ID) {
+		if (priv->wcn_hw_version) {
+			scnprintf(prefix_name, ICNSS_MAX_FILE_NAME,
+				  "%s/%s", priv->wcn_hw_version, name);
+		} else {
+			scnprintf(prefix_name, ICNSS_MAX_FILE_NAME,
+				  QCA6750_PATH_PREFIX "%s", name);
+		}
+	}
 	else if (priv->device_id == WCN6450_DEVICE_ID)
 		scnprintf(prefix_name, ICNSS_MAX_FILE_NAME,
 			  WCN6450_PATH_PREFIX "%s", name);
@@ -4817,6 +4829,9 @@ MODULE_DEVICE_TABLE(of, icnss_dt_match);
 
 static void icnss_init_control_params(struct icnss_priv *priv)
 {
+	const char *hw_version;
+	int ret;
+
 	priv->ctrl_params.qmi_timeout = WLFW_TIMEOUT;
 	priv->ctrl_params.quirks = ICNSS_QUIRKS_DEFAULT;
 	priv->ctrl_params.bdf_type = ICNSS_BDF_TYPE_DEFAULT;
@@ -4827,6 +4842,14 @@ static void icnss_init_control_params(struct icnss_priv *priv)
 	    of_property_read_bool(priv->pdev->dev.of_node,
 				  "wpss-support-enable"))
 		priv->wpss_supported = true;
+
+	if (priv->device_id == WCN6750_DEVICE_ID) {
+		ret = of_property_read_string(priv->pdev->dev.of_node,
+					      "wcn-hw-version",
+					      &hw_version);
+		if (!ret)
+			priv->wcn_hw_version = hw_version;
+	}
 
 	if (of_property_read_bool(priv->pdev->dev.of_node,
 				  "bdf-download-support"))
@@ -4926,6 +4949,44 @@ static void unregister_rproc_restart_level_notifier(void)
 	unregister_trace_android_vh_rproc_recovery_set(rproc_restart_level_notifier, NULL);
 }
 
+void icnss_get_cpumask_for_wlan_rx_interrupts(struct device *dev,
+					      unsigned int *cpu_mask)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+
+	*cpu_mask = priv->cpumask_for_rx_intrs;
+}
+EXPORT_SYMBOL(icnss_get_cpumask_for_wlan_rx_interrupts);
+
+void icnss_get_cpumask_for_wlan_tx_comp_interrupts(struct device *dev,
+						   unsigned int *cpu_mask)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+
+	*cpu_mask = priv->cpumask_for_tx_comp_intrs;
+}
+EXPORT_SYMBOL(icnss_get_cpumask_for_wlan_tx_comp_interrupts);
+
+static void
+icnss_get_cpumask_for_wlan_txrx_intr(struct icnss_priv *priv)
+{
+	struct platform_device *pdev = priv->pdev;
+	struct device *dev = &pdev->dev;
+	uint32_t cpumask[CPUMASK_ARRAY_SIZE];
+	int ret = 0;
+
+	ret = of_property_read_u32_array(dev->of_node,
+					 "wlan-txrx-intr-cpumask",
+					 cpumask, CPUMASK_ARRAY_SIZE);
+	if (ret) {
+		icnss_pr_err("Failed to get cpumask for wlan txrx interrupts");
+		return;
+	}
+
+	priv->cpumask_for_rx_intrs = cpumask[0];
+	priv->cpumask_for_tx_comp_intrs = cpumask[1];
+}
+
 static int icnss_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -4964,6 +5025,7 @@ static int icnss_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&priv->vreg_list);
 	INIT_LIST_HEAD(&priv->clk_list);
 	icnss_allow_recursive_recovery(dev);
+	icnss_get_cpumask_for_wlan_txrx_intr(priv);
 
 	if (!prealloc_initialized) {
 		icnss_initialize_mem_pool(priv->device_id);

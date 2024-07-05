@@ -74,6 +74,7 @@
 #define CNSS_MHI_M2_TIMEOUT_DEFAULT	25
 #define CNSS_QMI_TIMEOUT_DEFAULT	10000
 #endif
+#define CNSS_REQ_FW_TIMEOUT_DEFAULT	20000
 #define CNSS_BDF_TYPE_DEFAULT		CNSS_BDF_ELF
 #define CNSS_TIME_SYNC_PERIOD_DEFAULT	900000
 #define CNSS_MIN_TIME_SYNC_PERIOD	2000
@@ -84,6 +85,7 @@
 #define CNSS_CAL_START_PROBE_WAIT_RETRY_MAX 100
 #define CNSS_CAL_START_PROBE_WAIT_MS	500
 #define CNSS_TIME_SYNC_PERIOD_INVALID	0xFFFFFFFF
+#define CPUMASK_ARRAY_SIZE		2
 
 enum cnss_cal_db_op {
 	CNSS_CAL_DB_UPLOAD,
@@ -2197,7 +2199,12 @@ static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 		}
 		break;
 	case CNSS_REASON_RDDM:
-		cnss_bus_collect_dump_info(plat_priv, false);
+		ret = cnss_bus_collect_dump_info(plat_priv, false);
+		/* if EAGAIN is recieved, means we have initiated another rddm
+		 *due to stuck issue and need to return from current one
+		 */
+		if (ret == -EAGAIN)
+			return 0;
 		break;
 	case CNSS_REASON_DEFAULT:
 	case CNSS_REASON_TIMEOUT:
@@ -4904,6 +4911,18 @@ void cnss_fmd_status_update_cb(void *cb_ctx, bool status)
 		set_bit(CNSS_IN_REBOOT, &plat_priv->driver_state);
 }
 
+static void cnss_req_firmware_timeout_handler(struct timer_list *t)
+{
+	struct cnss_plat_data *plat_priv =
+		from_timer(plat_priv, t, req_firmware_dbg_timer);
+
+	cnss_pr_err("request_firmware times out after %d ms, state: 0x%lx\n",
+		    plat_priv->ctrl_params.req_fw_timeout,
+		    plat_priv->driver_state);
+
+	CNSS_ASSERT(0);
+}
+
 static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 {
 	int ret;
@@ -4911,6 +4930,9 @@ static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 	ret = cnss_init_sol_gpio(plat_priv);
 	if (ret)
 		return ret;
+
+	timer_setup(&plat_priv->req_firmware_dbg_timer,
+		    cnss_req_firmware_timeout_handler, 0);
 
 	timer_setup(&plat_priv->fw_boot_timer,
 		    cnss_bus_fw_boot_timeout_hdlr, 0);
@@ -5013,6 +5035,7 @@ static void cnss_init_control_params(struct cnss_plat_data *plat_priv)
 	plat_priv->ctrl_params.mhi_timeout = CNSS_MHI_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.mhi_m2_timeout = CNSS_MHI_M2_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.qmi_timeout = CNSS_QMI_TIMEOUT_DEFAULT;
+	plat_priv->ctrl_params.req_fw_timeout = CNSS_REQ_FW_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.bdf_type = CNSS_BDF_TYPE_DEFAULT;
 	plat_priv->ctrl_params.time_sync_period = CNSS_TIME_SYNC_PERIOD_DEFAULT;
 	cnss_init_time_sync_period_default(plat_priv);
@@ -5465,6 +5488,43 @@ int cnss_get_curr_therm_cdev_state(struct device *dev,
 }
 EXPORT_SYMBOL(cnss_get_curr_therm_cdev_state);
 
+void cnss_get_cpumask_for_wlan_rx_interrupts(struct device *dev,
+					     unsigned int *cpu_mask)
+{
+	struct cnss_plat_data *priv = cnss_get_plat_priv(NULL);
+
+	*cpu_mask = priv->cpumask_for_rx_intrs;
+}
+EXPORT_SYMBOL(cnss_get_cpumask_for_wlan_rx_interrupts);
+
+void cnss_get_cpumask_for_wlan_tx_comp_interrupts(struct device *dev,
+						  unsigned int *cpu_mask)
+{
+	struct cnss_plat_data *priv = cnss_get_plat_priv(NULL);
+
+	*cpu_mask = priv->cpumask_for_tx_comp_intrs;
+}
+EXPORT_SYMBOL(cnss_get_cpumask_for_wlan_tx_comp_interrupts);
+
+static void
+cnss_get_cpumask_for_wlan_txrx_intr(struct cnss_plat_data *plat_priv)
+{
+	struct device *dev = &plat_priv->plat_dev->dev;
+	uint32_t cpumask[CPUMASK_ARRAY_SIZE];
+	int ret;
+
+	ret = of_property_read_u32_array(dev->of_node,
+					 "wlan-txrx-intr-cpumask",
+					 cpumask, CPUMASK_ARRAY_SIZE);
+	if (ret) {
+		cnss_pr_err("Failed to get cpumask for wlan txrx interrupts");
+		return;
+	}
+
+	plat_priv->cpumask_for_rx_intrs = cpumask[0];
+	plat_priv->cpumask_for_tx_comp_intrs = cpumask[1];
+}
+
 static int cnss_probe(struct platform_device *plat_dev)
 {
 	int ret = 0;
@@ -5547,6 +5607,7 @@ static int cnss_probe(struct platform_device *plat_dev)
 	cnss_get_cpr_info(plat_priv);
 	cnss_aop_interface_init(plat_priv);
 	cnss_init_control_params(plat_priv);
+	cnss_get_cpumask_for_wlan_txrx_intr(plat_priv);
 
 	ret = cnss_get_resources(plat_priv);
 	if (ret)

@@ -824,6 +824,13 @@ int wlfw_cap_send_sync_msg(struct icnss_priv *priv)
 		icnss_pr_dbg("FW supports aux uc support capability");
 	}
 
+	if (resp->serial_id_valid) {
+		priv->serial_id = resp->serial_id;
+		icnss_pr_info("serial id  0x%x 0x%x\n",
+			     resp->serial_id.serial_id_msb,
+			     resp->serial_id.serial_id_lsb);
+	}
+
 	icnss_pr_dbg("Capability, chip_id: 0x%x, chip_family: 0x%x, board_id: 0x%x, soc_id: 0x%x",
 		     priv->chip_info.chip_id, priv->chip_info.chip_family,
 		     priv->board_id, priv->soc_id);
@@ -2808,7 +2815,8 @@ static int icnss_wlfw_wfc_call_status_send_sync
 	struct qmi_txn txn;
 	int ret = 0;
 
-	if (!test_bit(ICNSS_FW_READY, &priv->state)) {
+	if (!test_bit(ICNSS_FW_READY, &priv->state) ||
+	    !test_bit(ICNSS_MODE_ON, &priv->state)) {
 		icnss_pr_err("Drop IMS WFC indication as FW not initialized\n");
 		return -EINVAL;
 	}
@@ -3372,6 +3380,31 @@ static inline u32 icnss_get_host_build_type(void)
 }
 #endif
 
+static void icnss_wlfw_host_cap_parse_mlo(struct icnss_priv *priv,
+					 struct wlfw_host_cap_req_msg_v01 *req)
+{
+	if (priv->device_id == WCN7750_DEVICE_ID) {
+		req->mlo_capable_valid = 1;
+		req->mlo_capable = 1;
+		req->mlo_chip_id_valid = 1;
+		req->mlo_chip_id = 0;
+		req->mlo_group_id_valid = 1;
+		req->mlo_group_id = 0;
+		req->max_mlo_peer_valid = 1;
+		/* Max peer number generally won't change for the same device
+		 * but needs to be synced with host driver.
+		 */
+		req->max_mlo_peer = 32;
+		req->mlo_num_chips_valid = 1;
+		req->mlo_num_chips = 1;
+		req->mlo_chip_info_valid = 1;
+		req->mlo_chip_info[0].chip_id = 0;
+		req->mlo_chip_info[0].num_local_links = 1;
+		req->mlo_chip_info[0].hw_link_id[0] = 0;
+		req->mlo_chip_info[0].valid_mlo_link_id[0] = 1;
+	}
+}
+
 int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 {
 	struct wlfw_host_cap_req_msg_v01 *req;
@@ -3423,6 +3456,8 @@ int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 
 	req->host_build_type_valid = 1;
 	req->host_build_type = icnss_get_host_build_type();
+
+	icnss_wlfw_host_cap_parse_mlo(priv, req);
 
 	ret = icnss_get_feature_list(priv, &feature_list);
 	if (!ret) {
