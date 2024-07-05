@@ -6038,6 +6038,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	ife_ctx->ctx_index = acquire_args->ctx_id;
 	ife_ctx->scratch_buf_info.ife_scratch_config = NULL;
 	ife_ctx->is_init_drv_cfg_received = false;
+	memset(ife_ctx->drv_info, 0, sizeof(ife_ctx->drv_info));
 
 	acquire_hw_info = (struct cam_isp_acquire_hw_info *) acquire_args->acquire_info;
 
