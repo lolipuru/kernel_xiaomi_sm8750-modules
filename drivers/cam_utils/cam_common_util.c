@@ -217,7 +217,7 @@ static int cam_common_md_notify_handler(struct notifier_block *this,
 	int rc = 0;
 
 	cbentry.vaddr = 0x0;
-	strlcpy(cbentry.owner, "Camera", sizeof(cbentry.owner));
+	strscpy(cbentry.owner, "Camera", sizeof(cbentry.owner));
 	cbentry.size = CAM_COMMON_MINI_DUMP_SIZE;
 	cbentry.cb = cam_common_mini_dump_handler;
 	rc = qcom_va_md_add_region(&cbentry);
