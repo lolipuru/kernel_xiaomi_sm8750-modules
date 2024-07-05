@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/slab.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator-levels.h>
@@ -622,7 +622,6 @@ static int mmrm_sw_throttle_low_priority_client(
 {
 	int rc = 0, i;
 	u64 start_ts = 0, end_ts = 0;
-	bool found_client_throttle = false;
 	struct mmrm_sw_clk_client_tbl_entry *tbl_entry_throttle_client;
 	struct mmrm_client_notifier_data notifier_data;
 	struct completion timeout;
@@ -637,37 +636,32 @@ static int mmrm_sw_throttle_low_priority_client(
 	for (i = 0; i < sinfo->throttle_clients_data_length ; i++) {
 		tbl_entry_throttle_client =
 			&sinfo->clk_client_tbl[sinfo->throttle_clients_info[i].tbl_entry_id];
-		if (!IS_ERR_OR_NULL(tbl_entry_throttle_client)) {
-			now_cur_ma = tbl_entry_throttle_client->current_ma
-				[tbl_entry_throttle_client->vdd_level]
-				[peak_data->aggreg_level];
-			min_cur_ma = tbl_entry_throttle_client->current_ma[clk_min_level]
-				[peak_data->aggreg_level];
 
-			d_mpr_h("%s:csid(0x%x) name(%s)\n",
-				__func__, tbl_entry_throttle_client->clk_src_id,
-				tbl_entry_throttle_client->name);
-			d_mpr_h("%s:now_cur_ma(%u) min_cur_ma(%u) delta_cur(%d)\n",
-				__func__, now_cur_ma, min_cur_ma, *delta_cur);
+		if (IS_ERR_OR_NULL(tbl_entry_throttle_client))
+			continue;
 
-			if ((now_cur_ma > min_cur_ma)
-				&& (now_cur_ma - min_cur_ma > *delta_cur)) {
-				found_client_throttle = true;
-				d_mpr_h("%s: Throttle client csid(0x%x) name(%s)\n",
-					__func__, tbl_entry_throttle_client->clk_src_id,
-					tbl_entry_throttle_client->name);
-				d_mpr_h("%s:now_cur_ma %u - min_cur_ma %u >delta_cur %d\n",
-					__func__, now_cur_ma, min_cur_ma, *delta_cur);
-				/* found client to throttle, break from here. */
-				break;
-			}
-		}
-	}
+		now_cur_ma = tbl_entry_throttle_client->current_ma
+			[tbl_entry_throttle_client->vdd_level]
+			[peak_data->aggreg_level];
+		min_cur_ma = tbl_entry_throttle_client->current_ma[clk_min_level]
+			[peak_data->aggreg_level];
 
-	/*Client to throttle is found, Throttle this client now to minimum clock rate*/
-	if (found_client_throttle) {
+		d_mpr_h("%s:csid(0x%x) name(%s)\n",
+			__func__, tbl_entry_throttle_client->clk_src_id,
+			tbl_entry_throttle_client->name);
+		d_mpr_h("%s:now_cur_ma(%u) min_cur_ma(%u) delta_cur(%d)\n",
+			__func__, now_cur_ma, min_cur_ma, *delta_cur);
+
+		if ((now_cur_ma <= min_cur_ma) || (now_cur_ma - min_cur_ma <= *delta_cur))
+			continue;
+
+		d_mpr_h("%s: Throttle client csid(0x%x) name(%s)\n",
+			__func__, tbl_entry_throttle_client->clk_src_id,
+			tbl_entry_throttle_client->name);
+		d_mpr_h("%s:now_cur_ma %u-min_cur_ma %u>delta_cur %d\n",
+			__func__, now_cur_ma, min_cur_ma, *delta_cur);
+
 		/* Setup notifier */
-
 		notifier_data.cb_type = MMRM_CLIENT_RESOURCE_VALUE_CHANGE;
 		notifier_data.cb_data.val_chng.old_val =
 			tbl_entry_throttle_client->freq[tbl_entry_throttle_client->vdd_level];
@@ -686,8 +680,8 @@ static int mmrm_sw_throttle_low_priority_client(
 		if (rc) {
 			d_mpr_e("%s: Client failed to send SUCCESS in callback(%d)\n",
 				__func__, tbl_entry_throttle_client->clk_src_id);
-			rc = -EINVAL;
-			goto err_clk_set_fail;
+			rc = 0;
+			continue;
 		}
 
 		if ((end_ts - start_ts) > NOTIFY_TIMEOUT)
@@ -700,8 +694,7 @@ static int mmrm_sw_throttle_low_priority_client(
 			if (rc) {
 				d_mpr_e("%s: Failed to throttle the clk csid(%d)\n",
 					__func__, tbl_entry_throttle_client->clk_src_id);
-				rc = -EINVAL;
-				goto err_clk_set_fail;
+				continue;
 			}
 		}
 
@@ -731,8 +724,10 @@ static int mmrm_sw_throttle_low_priority_client(
 
 		/* Clearing the reserve flag */
 		tbl_entry_throttle_client->reserve = false;
+
+		break;
 	}
-err_clk_set_fail:
+
 	return rc;
 }
 
