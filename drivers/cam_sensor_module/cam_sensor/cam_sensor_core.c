@@ -822,6 +822,7 @@ int32_t cam_sensor_update_slave_info(void *probe_info,
 	struct cam_cmd_probe_v2 *sensor_probe_info_v2;
 
 	memset(s_ctrl->sensor_name, 0, CAM_SENSOR_NAME_MAX_SIZE);
+	memset(s_ctrl->io_master_info.sensor_name, 0, CAM_SENSOR_NAME_MAX_SIZE);
 
 	if (probe_ver == CAM_SENSOR_PACKET_OPCODE_SENSOR_PROBE) {
 		sensor_probe_info = (struct cam_cmd_probe *)probe_info;
@@ -862,6 +863,8 @@ int32_t cam_sensor_update_slave_info(void *probe_info,
 
 		s_ctrl->probe_sensor_slave_addr =
 			sensor_probe_info_v2->reserved[0];
+		memcpy(s_ctrl->io_master_info.sensor_name, sensor_probe_info_v2->sensor_name,
+			CAM_SENSOR_NAME_MAX_SIZE-1);
 	}
 
 	CAM_DBG(CAM_SENSOR,

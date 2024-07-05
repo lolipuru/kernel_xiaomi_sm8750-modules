@@ -235,9 +235,18 @@ int32_t camera_io_init(struct camera_io_master *io_master_info)
 				/* I3C master driver: Wait for HOT JOIN only during ACQUIRE*/
 				if ((parent_dev->of_node != NULL) &&
 					(parent_dev->of_node->data != NULL) &&
-					(io_master_info->qup_client->i3c_wait_for_hotjoin))
+					(io_master_info->qup_client->i3c_wait_for_hotjoin) &&
+					(io_master_info->qup_client->pm_ctrl_client_enable)) {
 					*(uint32_t *)(parent_dev->of_node->data) = 1;
+					CAM_DBG(CAM_SENSOR, "%s:%d: %s: SET of_node->data: %d",
+						__func__, __LINE__, io_master_info->sensor_name,
+						*(uint32_t *)(parent_dev->of_node->data));
+				}
 				if (io_master_info->qup_client->pm_ctrl_client_enable) {
+					CAM_DBG(CAM_SENSOR,
+						"%s:%d: %s: wait_for_hotjoin: %d I3C_MASTER: Calling get_sync",
+						__func__, __LINE__, io_master_info->sensor_name,
+						io_master_info->qup_client->i3c_wait_for_hotjoin);
 					rc = pm_runtime_get_sync(parent_dev);
 					if (rc < 0) {
 						CAM_WARN(CAM_SENSOR,
@@ -248,8 +257,13 @@ int32_t camera_io_init(struct camera_io_master *io_master_info)
 				/* I3C master driver: Dont Wait for HOT JOIN Further-on */
 				if ((parent_dev->of_node != NULL) &&
 					(parent_dev->of_node->data != NULL) &&
-					(io_master_info->qup_client->i3c_wait_for_hotjoin))
+					(io_master_info->qup_client->i3c_wait_for_hotjoin) &&
+					(io_master_info->qup_client->pm_ctrl_client_enable)) {
 					*(uint32_t *)(parent_dev->of_node->data) = 0;
+					CAM_DBG(CAM_SENSOR, "%s:%d: %s: SET of_node->data: %d",
+						__func__, __LINE__, io_master_info->sensor_name,
+						*(uint32_t *)(parent_dev->of_node->data));
+				}
 			}
 		}
 		return 0;
@@ -258,8 +272,8 @@ int32_t camera_io_init(struct camera_io_master *io_master_info)
 			(io_master_info->qup_client->i2c_client != NULL) &&
 			(io_master_info->qup_client->i2c_client->adapter != NULL) &&
 			(io_master_info->qup_client->pm_ctrl_client_enable)) {
-			CAM_DBG(CAM_SENSOR, "%s:%d: Calling get_sync",
-				__func__, __LINE__);
+			CAM_DBG(CAM_SENSOR, "%s:%d: %s: I2C_MASTER: Calling get_sync",
+				__func__, __LINE__, io_master_info->sensor_name);
 			rc = pm_runtime_get_sync(
 				io_master_info->qup_client->i2c_client->adapter->dev.parent);
 			if (rc < 0) {
@@ -292,6 +306,8 @@ int32_t camera_io_release(struct camera_io_master *io_master_info)
 		if ((io_master_info->qup_client != NULL) &&
 			(io_master_info->qup_client->i3c_client != NULL) &&
 			(io_master_info->qup_client->pm_ctrl_client_enable)) {
+			CAM_DBG(CAM_SENSOR, "%s:%d: %s: I3C_MASTER: Calling put_sync",
+				__func__, __LINE__, io_master_info->sensor_name);
 			rc = pm_runtime_put_sync(
 				io_master_info->qup_client->i3c_client->dev.parent);
 			if (rc < 0) {
@@ -307,8 +323,8 @@ int32_t camera_io_release(struct camera_io_master *io_master_info)
 			(io_master_info->qup_client->i2c_client != NULL) &&
 			(io_master_info->qup_client->i2c_client->adapter != NULL) &&
 			(io_master_info->qup_client->pm_ctrl_client_enable)) {
-			CAM_DBG(CAM_SENSOR, "%s:%d: Calling put_sync",
-				__func__, __LINE__);
+			CAM_DBG(CAM_SENSOR, "%s:%d: %s: I2C_MASTER: Calling put_sync",
+				__func__, __LINE__, io_master_info->sensor_name);
 			pm_runtime_put_sync(
 				io_master_info->qup_client->i2c_client->adapter->dev.parent);
 		}
