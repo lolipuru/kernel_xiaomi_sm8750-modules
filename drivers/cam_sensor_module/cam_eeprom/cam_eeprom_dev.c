@@ -302,7 +302,6 @@ static void cam_eeprom_i2c_component_unbind(struct device *dev,
 {
 	int                             i;
 	struct i2c_client              *client = NULL;
-	struct v4l2_subdev             *sd = NULL;
 	struct cam_eeprom_ctrl_t       *e_ctrl;
 	struct cam_eeprom_soc_private  *soc_private;
 	struct cam_hw_soc_info         *soc_info;
@@ -314,13 +313,7 @@ static void cam_eeprom_i2c_component_unbind(struct device *dev,
 		return;
 	}
 
-	sd = i2c_get_clientdata(client);
-	if (!sd) {
-		CAM_ERR(CAM_EEPROM, "Subdevice is NULL");
-		return;
-	}
-
-	e_ctrl = (struct cam_eeprom_ctrl_t *)v4l2_get_subdevdata(sd);
+	e_ctrl = (struct cam_eeprom_ctrl_t *)i2c_get_clientdata(client);
 	if (!e_ctrl) {
 		CAM_ERR(CAM_EEPROM, "eeprom device is NULL");
 		return;
