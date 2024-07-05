@@ -733,7 +733,7 @@ static int32_t cam_icp_ctx_timer(void *priv, void *data)
 
 	mutex_lock(&hw_mgr->ctx_mutex[ctx_id]);
 	if (!test_bit(ctx_id, hw_mgr->active_ctx_info.active_ctx_bitmap)) {
-		CAM_DBG(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
+		CAM_WARN(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
 			ctx_id);
 		goto end;
 	}
@@ -765,12 +765,12 @@ static int32_t cam_icp_ctx_timer(void *priv, void *data)
 end:
 	mutex_unlock(&hw_mgr->ctx_mutex[ctx_id]);
 	CAM_MEM_FREE(ctx_info);
-	ctx_info = NULL;
 	return rc;
 }
 
 static void cam_icp_ctx_timer_cb(struct timer_list *timer_data)
 {
+	int rc;
 	unsigned long flags;
 	struct crm_workq_task *task;
 	struct clk_work_data *task_data;
@@ -793,6 +793,7 @@ static void cam_icp_ctx_timer_cb(struct timer_list *timer_data)
 	task = cam_req_mgr_workq_get_task(hw_mgr->timer_work);
 	if (!task) {
 		CAM_ERR(CAM_ICP, "%s: empty task", ctx_data->ctx_id_string);
+		CAM_MEM_FREE(ctx_info);
 		spin_unlock_irqrestore(&hw_mgr->hw_mgr_lock, flags);
 		return;
 	}
@@ -801,8 +802,13 @@ static void cam_icp_ctx_timer_cb(struct timer_list *timer_data)
 	task_data->data = ctx_info;
 	task_data->type = ICP_WORKQ_TASK_MSG_TYPE;
 	task->process_cb = cam_icp_ctx_timer;
-	cam_req_mgr_workq_enqueue_task(task, hw_mgr,
+	rc = cam_req_mgr_workq_enqueue_task(task, hw_mgr,
 		CRM_TASK_PRIORITY_0);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "Failed at enqueuing task to workq, ctx_id: %d", ctx_info->ctx_id);
+		CAM_MEM_FREE(ctx_info);
+	}
+
 	spin_unlock_irqrestore(&hw_mgr->hw_mgr_lock, flags);
 }
 
@@ -2534,7 +2540,7 @@ static int cam_icp_mgr_handle_frame_process(
 	ctx_id = ctx_info->ctx_id;
 	mutex_lock(&hw_mgr->ctx_mutex[ctx_id]);
 	if (!test_bit(ctx_info->ctx_id, hw_mgr->active_ctx_info.active_ctx_bitmap)) {
-		CAM_DBG(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
+		CAM_WARN(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
 			ctx_id);
 		mutex_unlock(&hw_mgr->ctx_mutex[ctx_id]);
 		goto end;
@@ -2661,7 +2667,6 @@ static int cam_icp_mgr_handle_frame_process(
 
 end:
 	CAM_MEM_FREE(ctx_info);
-	ctx_info = NULL;
 	return rc;
 }
 
@@ -2732,8 +2737,7 @@ static int cam_icp_mgr_process_msg_config_io(
 		mutex_lock(&hw_mgr->ctx_mutex[ctx_id]);
 
 	if (!test_bit(ctx_id, hw_mgr->active_ctx_info.active_ctx_bitmap)) {
-		CAM_DBG(CAM_ICP,
-			"ctx data is released before accessing it, ctx_id: %u",
+		CAM_WARN(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
 			ctx_id);
 		goto end;
 	}
@@ -2796,15 +2800,17 @@ end:
 	if (ctx_info->need_lock)
 		mutex_unlock(&hw_mgr->ctx_mutex[ctx_id]);
 	CAM_MEM_FREE(ctx_info);
-	ctx_info = NULL;
 	return rc;
 }
 
-static int cam_icp_mgr_process_msg_create_handle(uint32_t *msg_ptr)
+static int cam_icp_mgr_process_msg_create_handle(
+	struct cam_icp_hw_mgr *hw_mgr,
+	uint32_t *msg_ptr)
 {
 	struct hfi_msg_create_handle_ack *create_handle_ack = NULL;
-	struct cam_icp_hw_ctx_data *ctx_data = NULL;
-	int rc = 0;
+	struct cam_icp_hw_ctx_data       *ctx_data = NULL;
+	int                               rc = 0;
+	struct cam_icp_hw_ctx_info       *ctx_info;
 
 	create_handle_ack = (struct hfi_msg_create_handle_ack *)msg_ptr;
 	if (!create_handle_ack) {
@@ -2812,12 +2818,24 @@ static int cam_icp_mgr_process_msg_create_handle(uint32_t *msg_ptr)
 		return -EINVAL;
 	}
 
-	ctx_data =
-		(struct cam_icp_hw_ctx_data *)(uintptr_t)
+	ctx_info = (struct cam_icp_hw_ctx_info *)(uintptr_t)
 		create_handle_ack->user_data1;
-	if (!ctx_data) {
-		CAM_ERR(CAM_ICP, "Invalid ctx_data");
+	if (!ctx_info) {
+		CAM_ERR(CAM_ICP, "Invalid ctx_info");
 		return -EINVAL;
+	}
+
+	if (!test_bit(ctx_info->ctx_id, hw_mgr->active_ctx_info.active_ctx_bitmap)) {
+		CAM_WARN(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
+			ctx_info->ctx_id);
+		goto end;
+	}
+
+	ctx_data = ctx_info->ctx_data;
+	if (!ctx_data) {
+		CAM_ERR(CAM_ICP, "Invalid ctx_data, ctx_id: %d", ctx_info->ctx_id);
+		rc = -EINVAL;
+		goto end;
 	}
 
 	if (ctx_data->state == CAM_ICP_CTX_STATE_IN_USE) {
@@ -2832,13 +2850,20 @@ static int cam_icp_mgr_process_msg_create_handle(uint32_t *msg_ptr)
 		rc = -EPERM;
 	}
 	complete(&ctx_data->wait_complete);
+
+end:
+	CAM_MEM_FREE(ctx_info);
 	return rc;
 }
 
-static int cam_icp_mgr_process_msg_ping_ack(uint32_t *msg_ptr)
+static int cam_icp_mgr_process_msg_ping_ack(
+	struct cam_icp_hw_mgr *hw_mgr,
+	uint32_t *msg_ptr)
 {
-	struct hfi_msg_ping_ack *ping_ack = NULL;
+	struct hfi_msg_ping_ack    *ping_ack = NULL;
 	struct cam_icp_hw_ctx_data *ctx_data = NULL;
+	struct cam_icp_hw_ctx_info *ctx_info;
+	int                         rc = 0;
 
 	ping_ack = (struct hfi_msg_ping_ack *)msg_ptr;
 	if (!ping_ack) {
@@ -2846,17 +2871,32 @@ static int cam_icp_mgr_process_msg_ping_ack(uint32_t *msg_ptr)
 		return -EINVAL;
 	}
 
-	ctx_data = (struct cam_icp_hw_ctx_data *)
+	ctx_info = (struct cam_icp_hw_ctx_info *)
 		U64_TO_PTR(ping_ack->user_data);
-	if (!ctx_data) {
-		CAM_ERR(CAM_ICP, "Invalid ctx_data");
+	if (!ctx_info) {
+		CAM_ERR(CAM_ICP, "Invalid ctx_info");
 		return -EINVAL;
+	}
+
+	if (!test_bit(ctx_info->ctx_id, hw_mgr->active_ctx_info.active_ctx_bitmap)) {
+		CAM_WARN(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
+			ctx_info->ctx_id);
+		goto end;
+	}
+
+	ctx_data = ctx_info->ctx_data;
+	if (!ctx_data) {
+		CAM_ERR(CAM_ICP, "Invalid ctx_data, ctx_id: %d", ctx_info->ctx_id);
+		rc = -EINVAL;
+		goto end;
 	}
 
 	if (ctx_data->state == CAM_ICP_CTX_STATE_IN_USE)
 		complete(&ctx_data->wait_complete);
 
-	return 0;
+end:
+	CAM_MEM_FREE(ctx_info);
+	return rc;
 }
 
 static int cam_icp_mgr_process_ipebps_indirect_ack_msg(
@@ -2920,7 +2960,7 @@ static inline int cam_icp_mgr_process_msg_ofe_config_io(
 		mutex_lock(&hw_mgr->ctx_mutex[ctx_id]);
 
 	if (!test_bit(ctx_id, hw_mgr->active_ctx_info.active_ctx_bitmap)) {
-		CAM_DBG(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
+		CAM_WARN(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
 			ctx_id);
 		goto end;
 	}
@@ -2942,7 +2982,6 @@ end:
 	if (ctx_info->need_lock)
 		mutex_unlock(&hw_mgr->ctx_mutex[ctx_id]);
 	CAM_MEM_FREE(ctx_info);
-	ctx_info = NULL;
 	return rc;
 }
 
@@ -3292,14 +3331,14 @@ static int cam_icp_process_msg_pkt_type(
 
 	case HFI_MSG_SYS_PING_ACK:
 		CAM_DBG(CAM_ICP, "[%s] received SYS_PING_ACK", hw_mgr->hw_mgr_name);
-		rc = cam_icp_mgr_process_msg_ping_ack(msg_ptr);
+		rc = cam_icp_mgr_process_msg_ping_ack(hw_mgr, msg_ptr);
 		break;
 
 	case HFI_MSG_IPEBPS_CREATE_HANDLE_ACK:
 	case HFI_MSG_OFE_CREATE_HANDLE_ACK:
 		CAM_DBG(CAM_ICP, "[%s] received IPE/BPS/OFE CREATE_HANDLE_ACK",
 			hw_mgr->hw_mgr_name);
-		rc = cam_icp_mgr_process_msg_create_handle(msg_ptr);
+		rc = cam_icp_mgr_process_msg_create_handle(hw_mgr, msg_ptr);
 		break;
 
 	case HFI_MSG_IPEBPS_ASYNC_COMMAND_INDIRECT_ACK:
@@ -4686,6 +4725,7 @@ static int cam_icp_mgr_abort_handle_wq(
 	struct hfi_cmd_work_data   *task_data = NULL;
 	struct cam_icp_hw_ctx_data *ctx_data;
 	struct hfi_cmd_dev_async   *abort_cmd;
+	struct cam_icp_hw_ctx_info *ctx_info;
 
 	if (!data || !priv) {
 		CAM_ERR(CAM_ICP, "Invalid params %pK %pK", data, priv);
@@ -4693,23 +4733,42 @@ static int cam_icp_mgr_abort_handle_wq(
 	}
 
 	task_data = (struct hfi_cmd_work_data *)data;
-	ctx_data =
-		(struct cam_icp_hw_ctx_data *)task_data->data;
-	hw_mgr = ctx_data->hw_mgr_priv;
+
+	ctx_info = (struct cam_icp_hw_ctx_info *)task_data->data;
+	if (!ctx_info) {
+		CAM_ERR(CAM_ICP, "Invalid ctx_info");
+		return -EINVAL;
+	}
+
+	hw_mgr = ctx_info->hw_mgr;
+	if (!test_bit(ctx_info->ctx_id, hw_mgr->active_ctx_info.active_ctx_bitmap)) {
+		CAM_WARN(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
+			ctx_info->ctx_id);
+		goto free_ctx_info;
+	}
+
+	ctx_data = ctx_info->ctx_data;
+	if (!ctx_data) {
+		CAM_ERR(CAM_ICP, "Invalid ctx_data, ctx_id: %d", ctx_info->ctx_id);
+		rc = -EINVAL;
+		goto free_ctx_info;
+	}
 
 	rc = cam_icp_mgr_populate_abort_cmd(ctx_data, &abort_cmd);
 	if (rc)
-		return rc;
+		goto free_ctx_info;
 
 	rc = hfi_write_cmd(hw_mgr->hfi_handle, abort_cmd);
-	if (rc) {
-		CAM_MEM_FREE(abort_cmd);
-		return rc;
-	}
+	if (rc)
+		goto free_abort_cmd;
+
 	CAM_DBG(CAM_ICP, "%s: fw_handle = 0x%x ctx_data = %pK",
 		ctx_data->ctx_id_string, ctx_data->fw_handle, ctx_data);
 
+free_abort_cmd:
 	CAM_MEM_FREE(abort_cmd);
+free_ctx_info:
+	CAM_MEM_FREE(ctx_info);
 	return rc;
 }
 
@@ -5795,6 +5854,7 @@ static int cam_icp_mgr_send_config_io(struct cam_icp_hw_ctx_data *ctx_data,
 	if (rc) {
 		CAM_ERR_RATE_LIMIT(CAM_ICP, "%s: Failed to enqueue io config task",
 			ctx_data->ctx_id_string);
+		CAM_MEM_FREE(ctx_info);
 		return rc;
 	}
 
@@ -5831,9 +5891,6 @@ static int cam_icp_mgr_send_recfg_io(struct cam_icp_hw_ctx_data *ctx_data,
 	task->process_cb = cam_icp_mgr_process_cmd;
 	rc = cam_req_mgr_workq_enqueue_task(task, hw_mgr,
 		CRM_TASK_PRIORITY_0);
-	if (rc)
-		return rc;
-
 	return rc;
 }
 
@@ -7168,6 +7225,10 @@ static int cam_icp_mgr_delete_sync_obj(struct cam_icp_hw_ctx_data *ctx_data)
 	task->process_cb = cam_icp_mgr_delete_sync;
 	rc = cam_req_mgr_workq_enqueue_task(task, hw_mgr,
 		CRM_TASK_PRIORITY_0);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "Failed at enqueuing task to workq, ctx_id: %d", ctx_info->ctx_id);
+		CAM_MEM_FREE(ctx_info);
+	}
 
 	return rc;
 }
@@ -7261,6 +7322,7 @@ static int cam_icp_mgr_enqueue_abort(
 	struct cam_icp_hw_mgr *hw_mgr = ctx_data->hw_mgr_priv;
 	struct hfi_cmd_work_data *task_data;
 	struct crm_workq_task *task;
+	struct cam_icp_hw_ctx_info *ctx_info;
 
 	task = cam_req_mgr_workq_get_task(hw_mgr->cmd_work);
 	if (!task) {
@@ -7268,13 +7330,28 @@ static int cam_icp_mgr_enqueue_abort(
 		return -ENOMEM;
 	}
 
+	ctx_info = CAM_MEM_ZALLOC(sizeof(struct cam_icp_hw_ctx_info), GFP_KERNEL);
+	if (!ctx_info) {
+		CAM_ERR(CAM_ICP, "Failed in allocating memory for ICP ctx info");
+		return -ENOMEM;
+	}
+
+	ctx_info->ctx_id = ctx_data->ctx_id;
+	ctx_info->ctx_data = ctx_data;
+	ctx_info->hw_mgr = hw_mgr;
+
 	reinit_completion(&ctx_data->wait_complete);
 	task_data = (struct hfi_cmd_work_data *)task->payload;
-	task_data->data = (void *)ctx_data;
+	task_data->data = (void *)ctx_info;
 	task_data->type = ICP_WORKQ_TASK_CMD_TYPE;
 	task->process_cb = cam_icp_mgr_abort_handle_wq;
-	cam_req_mgr_workq_enqueue_task(task, hw_mgr,
+	rc = cam_req_mgr_workq_enqueue_task(task, hw_mgr,
 		CRM_TASK_PRIORITY_0);
+	if (rc) {
+		CAM_ERR(CAM_ICP, "Failed at enqueuing task to workq, ctx_id: %d", ctx_info->ctx_id);
+		CAM_MEM_FREE(ctx_info);
+		return rc;
+	}
 
 	rem_jiffies = CAM_COMMON_WAIT_FOR_COMPLETION_TIMEOUT_ERRMSG(
 		&ctx_data->wait_complete,
@@ -7753,6 +7830,7 @@ static int cam_icp_mgr_create_handle(struct cam_icp_hw_mgr *hw_mgr,
 	struct crm_workq_task *task;
 	int rc = 0;
 	uint32_t handle_type;
+	struct cam_icp_hw_ctx_info *ctx_info;
 
 	if (ctx_data->device_info->hw_dev_type == CAM_ICP_DEV_OFE) {
 		create_handle.pkt_type = HFI_CMD_OFE_CREATE_HANDLE;
@@ -7800,9 +7878,18 @@ static int cam_icp_mgr_create_handle(struct cam_icp_hw_mgr *hw_mgr,
 	if (!task)
 		return -ENOMEM;
 
+	ctx_info = CAM_MEM_ZALLOC(sizeof(struct cam_icp_hw_ctx_info), GFP_KERNEL);
+	if (!ctx_info) {
+		CAM_ERR(CAM_ICP, "Failed in allocating memory for ICP ctx info");
+		return -ENOMEM;
+	}
+
+	ctx_info->ctx_id = ctx_data->ctx_id;
+	ctx_info->ctx_data = ctx_data;
+
 	create_handle.size = sizeof(struct hfi_cmd_create_handle);
 	create_handle.handle_type = handle_type;
-	create_handle.user_data1 = PTR_TO_U64(ctx_data);
+	create_handle.user_data1 = PTR_TO_U64(ctx_info);
 	reinit_completion(&ctx_data->wait_complete);
 	task_data = (struct hfi_cmd_work_data *)task->payload;
 	task_data->data = (void *)&create_handle;
@@ -7811,8 +7898,11 @@ static int cam_icp_mgr_create_handle(struct cam_icp_hw_mgr *hw_mgr,
 	task->process_cb = cam_icp_mgr_process_cmd;
 	rc = cam_req_mgr_workq_enqueue_task(task, hw_mgr,
 		CRM_TASK_PRIORITY_0);
-	if (rc)
+	if (rc) {
+		CAM_ERR(CAM_ICP, "Failed at enqueuing task to workq, ctx_id: %d", ctx_info->ctx_id);
+		CAM_MEM_FREE(ctx_info);
 		return rc;
+	}
 
 	rem_jiffies = CAM_COMMON_WAIT_FOR_COMPLETION_TIMEOUT_ERRMSG(
 			&ctx_data->wait_complete,
@@ -7841,6 +7931,7 @@ static int cam_icp_mgr_send_ping(struct cam_icp_hw_mgr *hw_mgr,
 	int timeout = 5000;
 	struct crm_workq_task *task;
 	int rc = 0;
+	struct cam_icp_hw_ctx_info *ctx_info;
 
 	task = cam_req_mgr_workq_get_task(hw_mgr->cmd_work);
 	if (!task) {
@@ -7849,9 +7940,18 @@ static int cam_icp_mgr_send_ping(struct cam_icp_hw_mgr *hw_mgr,
 		return -ENOMEM;
 	}
 
+	ctx_info = CAM_MEM_ZALLOC(sizeof(struct cam_icp_hw_ctx_info), GFP_KERNEL);
+	if (!ctx_info) {
+		CAM_ERR(CAM_ICP, "Failed in allocating memory for ICP ctx info");
+		return -ENOMEM;
+	}
+
+	ctx_info->ctx_id = ctx_data->ctx_id;
+	ctx_info->ctx_data = ctx_data;
+
 	ping_pkt.size = sizeof(struct hfi_cmd_ping_pkt);
 	ping_pkt.pkt_type = HFI_CMD_SYS_PING;
-	ping_pkt.user_data = PTR_TO_U64(ctx_data);
+	ping_pkt.user_data = PTR_TO_U64(ctx_info);
 	init_completion(&ctx_data->wait_complete);
 	task_data = (struct hfi_cmd_work_data *)task->payload;
 	task_data->data = (void *)&ping_pkt;
@@ -7861,8 +7961,11 @@ static int cam_icp_mgr_send_ping(struct cam_icp_hw_mgr *hw_mgr,
 
 	rc = cam_req_mgr_workq_enqueue_task(task, hw_mgr,
 		CRM_TASK_PRIORITY_0);
-	if (rc)
+	if (rc) {
+		CAM_ERR(CAM_ICP, "Failed at enqueuing task to workq, ctx_id: %d", ctx_info->ctx_id);
+		CAM_MEM_FREE(ctx_info);
 		return rc;
+	}
 
 	rem_jiffies = CAM_COMMON_WAIT_FOR_COMPLETION_TIMEOUT_ERRMSG(
 			&ctx_data->wait_complete,
@@ -8192,7 +8295,7 @@ static int cam_icp_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	if (i != hw_mgr->num_dev_info)
 		cam_icp_device_timer_start(hw_mgr);
 
-	/* Start context timer*/
+	/* Start context timer */
 	cam_icp_ctx_timer_start(ctx_data);
 	hw_mgr->ctxt_cnt++;
 	mutex_unlock(&hw_mgr->hw_mgr_mutex);

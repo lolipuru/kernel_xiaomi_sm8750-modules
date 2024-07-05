@@ -390,11 +390,13 @@ struct cam_icp_hw_device_info {
  * struct cam_icp_hw_ctx_info
  * @need_lock: Indicate whether it's needed to acquire ctx mutex
  * @ctx_id: Index of ctx data in active ctx list
+ * @hw_mgr: HW MGR of the context
  * @ctx_data: Point to the exact ctx data
  */
 struct cam_icp_hw_ctx_info {
 	bool need_lock;
 	uint32_t ctx_id;
+	struct cam_icp_hw_mgr *hw_mgr;
 	struct cam_icp_hw_ctx_data *ctx_data;
 };
 
