@@ -2699,8 +2699,13 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	// Update PDR count, to check for any PDR.
 	fl->spd->prevpdrcount =	fl->spd->pdrcount;
 
+	inbuf.pgid = fl->tgid_frpc;
+	inbuf.namelen = init.namelen;
+	inbuf.pageslen = 0;
+
 	// Remote heap feature is available only for audio static PD
 	if (!fl->cctx->staticpd_status && !is_oispd) {
+		inbuf.pageslen = 1;
 		err = fastrpc_buf_alloc(fl, NULL, init.memlen, REMOTEHEAP_BUF, &buf);
 		if (err)
 			goto err_name;
@@ -2723,10 +2728,6 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 		}
 		fl->cctx->staticpd_status = true;
 	}
-
-	inbuf.pgid = fl->tgid_frpc;
-	inbuf.namelen = init.namelen;
-	inbuf.pageslen = 0;
 
 	args[0].ptr = (u64)(uintptr_t)&inbuf;
 	args[0].length = sizeof(inbuf);
