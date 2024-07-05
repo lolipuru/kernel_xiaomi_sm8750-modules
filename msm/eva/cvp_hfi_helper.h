@@ -124,6 +124,7 @@
 #define HFI_DEBUG_MSG_ERROR					0x00000008
 #define HFI_DEBUG_MSG_FATAL					0x00000010
 #define HFI_DEBUG_MSG_PERF					0x00000020
+#define HFI_DEBUG_MSG_TIME					0x00000080
 
 #define HFI_DEBUG_MODE_QUEUE					0x00000001
 #define HFI_DEBUG_MODE_QDSS					0x00000002
@@ -320,6 +321,8 @@ struct cvp_hfi_buf_type {
 	u32 fence_type;
 	u32 input_handle;
 	u32 output_handle;
+	u32 ndebug_flags;
+	u32 ncrc;
 };
 
 struct cvp_hfi_cmd_session_set_buffers_packet {

@@ -376,7 +376,8 @@ stop_session:
 
 	error_event = (0x0FFF0000 & inst->session_error_code) >> 16;
 	error_state = (0xF0000000 & inst->session_error_code) >> 28;
-	if (!empty) {
+	if (!empty && inst->session_queue.state != QUEUE_STOP) {
+		u64 ktid;
 		if (error_state == SESSION_ERROR && error_event == EVA_SESSION_TIMEOUT) {
 			/*Flush all pending cmds for specific EVA session*/
 			rc = cvp_session_flush_all(inst);
@@ -384,11 +385,14 @@ stop_session:
 				dprintk(CVP_ERR,
 					"%s: cannot flush session %llx (%#x) rc %d\n",
 					__func__, inst, hash32_ptr(inst->session), rc);
+				goto err_timeout;
 			}
 		}
 		/* STOP SESSION to avoid SMMU fault after releasing ARP */
 		ops_tbl = inst->core->dev_ops;
-		rc = call_hfi_op(ops_tbl, session_stop, (void *)inst->session);
+		ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+		ktid &= (FENCE_BIT - 1);
+		rc = call_hfi_op(ops_tbl, session_stop, (void *)inst->session, ktid);
 		if (rc) {
 			dprintk(CVP_WARN, "%s: cannot stop session rc %d\n",
 				__func__, rc);
@@ -423,6 +427,9 @@ exit:
 		call_hfi_op(ops_tbl, pm_qos_update, ops_tbl->hfi_device_data);
 	}
 	return 0;
+err_timeout:
+	cvp_put_inst(tmp);
+	return rc;
 }
 
 int msm_cvp_destroy(struct msm_cvp_inst *inst)
@@ -512,7 +519,7 @@ int msm_cvp_close(void *instance)
 	}
 
 	pr_info(CVP_PID_TAG
-		"to close instance: %pK session_id = %d type %d state %d\n",
+		"to close instance: %pK session_id = %#x type %d state %d\n",
 		current->pid, current->tgid, inst->proc_name, inst, hash32_ptr(inst->session),
 		inst->session_type, inst->state);
 
@@ -529,8 +536,12 @@ int msm_cvp_close(void *instance)
 
 	if (inst->session_type != MSM_CVP_BOOT) {
 		rc = msm_cvp_cleanup_instance(inst);
-		if (rc)
+		if (rc) {
+			dprintk(CVP_ERR,
+				"%s: cleanup instance failed for session %llx (%#x) rc %d\n",
+				__func__, inst, hash32_ptr(inst->session), rc);
 			return -EINVAL;
+		}
 		msm_cvp_session_deinit(inst);
 	}
 
@@ -541,8 +552,8 @@ int msm_cvp_close(void *instance)
 		rc = msm_cvp_deinit_core(inst);
 	}
 
-	msm_cvp_comm_session_clean(inst);
 exit:
+	msm_cvp_comm_session_clean(inst);
 	kref_put(&inst->kref, close_helper);
 	return 0;
 }

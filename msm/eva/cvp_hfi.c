@@ -97,7 +97,6 @@ static int iris_hfi_noc_error_info(void *dev);
 
 static void interrupt_init_iris2(struct iris_hfi_device *device);
 static void setup_dsp_uc_memmap_vpu5(struct iris_hfi_device *device);
-static void clock_config_on_enable_vpu5(struct iris_hfi_device *device);
 static void power_off_iris2(struct iris_hfi_device *device);
 
 static int __set_ubwc_config(struct iris_hfi_device *device);
@@ -148,7 +147,6 @@ static void __dump_noc_regs(struct iris_hfi_device *device);
 static struct cvp_hal_ops hal_ops = {
 	.interrupt_init = interrupt_init_iris2,
 	.setup_dsp_uc_memmap = setup_dsp_uc_memmap_vpu5,
-	.clock_config_on_enable = clock_config_on_enable_vpu5,
 	.power_off_controller = __power_off_controller,
 	.power_off_core = __power_off_core,
 	.power_on_controller = __power_on_controller,
@@ -182,7 +180,6 @@ static void __dump_noc_regs_v1(struct iris_hfi_device *device);
 static struct cvp_hal_ops hal_ops = {
 	.interrupt_init = interrupt_init_iris2,
 	.setup_dsp_uc_memmap = setup_dsp_uc_memmap_vpu5,
-	.clock_config_on_enable = clock_config_on_enable_vpu5,
 	.power_off_controller = __power_off_controller_v1,
 	.power_off_core = __power_off_core_v1,
 	.power_on_controller = __power_on_controller_v1,
@@ -1567,6 +1564,7 @@ err_q_null:
 static int __iface_cmdq_write(struct iris_hfi_device *device, void *pkt)
 {
 	bool needs_interrupt = false;
+	struct cvp_hfi_cmd_session_hdr *cmd_hdr = NULL;
 	int rc = __iface_cmdq_write_relaxed(device, pkt, &needs_interrupt);
 
 #ifdef USE_PRESIL42
@@ -1581,6 +1579,8 @@ static int __iface_cmdq_write(struct iris_hfi_device *device, void *pkt)
 			dprintk(CVP_ERR, "%s power off, don't access reg\n", __func__);
 		__write_register(device, CVP_CPU_CS_H2ASOFTINT, 1);
 	}
+	cmd_hdr = (struct cvp_hfi_cmd_session_hdr *)pkt;
+	msm_cvp_cmd_tracing_from_sw(cmd_hdr, "EVA_KMD_FWD_END");
 	return rc;
 }
 
@@ -2841,6 +2841,35 @@ err_create_pkt:
 	return rc;
 }
 
+static int __send_session_cmd_ktid(struct cvp_hal_session *session,
+				int pkt_type,
+				u64 ktid)
+{
+	struct cvp_hfi_cmd_session_hdr pkt;
+	int rc = 0;
+	struct iris_hfi_device *device = session->device;
+
+	if (!__is_session_valid(device, session, __func__))
+		return -ECONNRESET;
+
+	rc = call_hfi_pkt_op(device, session_cmd_ktid,
+			&pkt, pkt_type, session, ktid);
+	if (rc == -EPERM)
+		return 0;
+
+	if (rc) {
+		dprintk(CVP_ERR, "%s: create pkt failed\n", __func__);
+		goto err_create_pkt;
+	}
+
+	if (__iface_cmdq_write(session->device, &pkt))
+		rc = -ENOTEMPTY;
+
+err_create_pkt:
+	return rc;
+}
+
+
 static int iris_hfi_session_end(void *session)
 {
 	struct cvp_hal_session *sess;
@@ -2901,6 +2930,9 @@ static int iris_hfi_session_set_buffers(void *sess, u32 iova, u32 size)
 	int rc = 0;
 	struct cvp_hal_session *session = sess;
 	struct iris_hfi_device *device;
+	u64 ktid;
+	struct msm_cvp_core *core;
+	struct msm_cvp_inst *inst = NULL;
 
 	if (!session || !session->device || !iova || !size) {
 		dprintk(CVP_ERR, "Invalid Params\n");
@@ -2915,16 +2947,30 @@ static int iris_hfi_session_set_buffers(void *sess, u32 iova, u32 size)
 		goto err_create_pkt;
 	}
 
+	core = cvp_driver->cvp_core;
+	inst = cvp_get_inst_from_id(core, hash32_ptr(session));
+	if (!inst) {
+		dprintk(CVP_ERR, "%s: invalid session\n", __func__);
+		rc = -EINVAL;
+		goto err_create_pkt;
+	}
+
+	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+	ktid &= (FENCE_BIT - 1);
+	pkt.client_data.kdata = ktid;
+
 	rc = call_hfi_pkt_op(device, session_set_buffers,
 			&pkt, session, iova, size);
 	if (rc) {
 		dprintk(CVP_ERR, "set buffers: failed to create packet\n");
-		goto err_create_pkt;
+		goto err_set_buf;
 	}
 
 	if (__iface_cmdq_write(session->device, &pkt))
 		rc = -ENOTEMPTY;
 
+err_set_buf:
+	cvp_put_inst(inst);
 err_create_pkt:
 	mutex_unlock(&device->lock);
 	return rc;
@@ -2936,6 +2982,9 @@ static int iris_hfi_session_release_buffers(void *sess)
 	int rc = 0;
 	struct cvp_hal_session *session = sess;
 	struct iris_hfi_device *device;
+	u64 ktid;
+	struct msm_cvp_core *core;
+	struct msm_cvp_inst *inst = NULL;
 
 	if (!session || !session->device) {
 		dprintk(CVP_ERR, "Invalid Params\n");
@@ -2950,15 +2999,29 @@ static int iris_hfi_session_release_buffers(void *sess)
 		goto err_create_pkt;
 	}
 
+	core = cvp_driver->cvp_core;
+	inst = cvp_get_inst_from_id(core, hash32_ptr(session));
+	if (!inst) {
+		dprintk(CVP_ERR, "%s: invalid session\n", __func__);
+		rc = -EINVAL;
+		goto err_create_pkt;
+	}
+
+	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+	ktid &= (FENCE_BIT - 1);
+	pkt.client_data.kdata = ktid;
+
 	rc = call_hfi_pkt_op(device, session_release_buffers, &pkt, session);
 	if (rc) {
 		dprintk(CVP_ERR, "release buffers: failed to create packet\n");
-		goto err_create_pkt;
+		goto err_release_buf;
 	}
 
 	if (__iface_cmdq_write(session->device, &pkt))
 		rc = -ENOTEMPTY;
 
+err_release_buf:
+	cvp_put_inst(inst);
 err_create_pkt:
 	mutex_unlock(&device->lock);
 	return rc;
@@ -3002,7 +3065,7 @@ err_send_pkt:
 	return rc;
 }
 
-static int iris_hfi_session_flush(void *sess)
+static int iris_hfi_session_flush(void *sess, u64 ktid)
 {
 	struct cvp_hal_session *session = sess;
 	struct iris_hfi_device *device;
@@ -3017,14 +3080,14 @@ static int iris_hfi_session_flush(void *sess)
 
 	mutex_lock(&device->lock);
 
-	rc = __send_session_cmd(session, HFI_CMD_SESSION_CVP_FLUSH);
+	rc = __send_session_cmd_ktid(session, HFI_CMD_SESSION_CVP_FLUSH, ktid);
 
 	mutex_unlock(&device->lock);
 
 	return rc;
 }
 
-static int iris_hfi_session_start(void *sess)
+static int iris_hfi_session_start(void *sess, u64 ktid)
 {
 	struct cvp_hal_session *session = sess;
 	struct iris_hfi_device *device;
@@ -3039,14 +3102,14 @@ static int iris_hfi_session_start(void *sess)
 
 	mutex_lock(&device->lock);
 
-	rc = __send_session_cmd(session, HFI_CMD_SESSION_EVA_START);
+	rc = __send_session_cmd_ktid(session, HFI_CMD_SESSION_EVA_START, ktid);
 
 	mutex_unlock(&device->lock);
 
 	return rc;
 }
 
-static int iris_hfi_session_stop(void *sess)
+static int iris_hfi_session_stop(void *sess, u64 ktid)
 {
 	struct cvp_hal_session *session = sess;
 	struct iris_hfi_device *device;
@@ -3061,7 +3124,7 @@ static int iris_hfi_session_stop(void *sess)
 
 	mutex_lock(&device->lock);
 
-	rc = __send_session_cmd(session, HFI_CMD_SESSION_EVA_STOP);
+	rc = __send_session_cmd_ktid(session, HFI_CMD_SESSION_EVA_STOP, ktid);
 
 	mutex_unlock(&device->lock);
 
@@ -3348,6 +3411,8 @@ static void __flush_debug_queue(struct iris_hfi_device *device, u8 *packet)
 			 */
 			pkt->rg_msg_data[pkt->msg_size-1] = '\0';
 			dprintk(log_level, "%s", &pkt->rg_msg_data[1]);
+			if ((log_level & CVP_FW) && (pkt->msg_type == HFI_DEBUG_MSG_TIME))
+				trace_tracing_eva_frame_from_fw(&pkt->rg_msg_data[1]);
 		}
 	}
 #undef SKIP_INVALID_PKT
@@ -4446,11 +4511,6 @@ static void setup_dsp_uc_memmap_vpu5(struct iris_hfi_device *device)
 		(u32)device->dsp_iface_q_table.align_device_addr);
 	__write_register(device, HFI_DSP_UC_REGION_SIZE,
 		device->dsp_iface_q_table.mem_data.size);
-}
-
-static void clock_config_on_enable_vpu5(struct iris_hfi_device *device)
-{
-		__write_register(device, CVP_WRAPPER_CPU_CLOCK_CONFIG, 0);
 }
 
 static int __set_ubwc_config(struct iris_hfi_device *device)

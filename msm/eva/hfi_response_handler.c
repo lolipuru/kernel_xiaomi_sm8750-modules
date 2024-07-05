@@ -468,7 +468,7 @@ static int hfi_process_session_rel_buf_done(u32 device_id,
 	return 0;
 }
 
-static struct msm_cvp_inst *cvp_get_inst_from_id(struct msm_cvp_core *core,
+struct msm_cvp_inst *cvp_get_inst_from_id(struct msm_cvp_core *core,
 	unsigned int session_id)
 {
 	struct msm_cvp_inst *inst = NULL;
@@ -596,6 +596,8 @@ static int hfi_process_session_cvp_msg(u32 device_id,
 		"%s: Received msg %x cmd_done.status=%d sessionid=%x\n",
 		__func__, pkt->packet_type,
 		hfi_map_err_status(get_msg_errorcode(pkt)), session_id);
+
+	msm_cvp_msg_tracing_from_sw(pkt, "EVA_KMD_REV_BEGIN");
 
 	spin_lock(&sq->lock);
 	if (sq->msg_count >= MAX_NUM_MSGS_PER_SESSION) {

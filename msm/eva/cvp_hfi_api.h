@@ -71,13 +71,14 @@ enum hal_property {
 };
 
 enum hal_ssr_trigger_type {
-	SSR_ERR_FATAL = 1,
+	SSR_ERR_FATAL = 1,   /* FW sends SYS_ERROR event to EVA_KMD */
 	SSR_SW_DIV_BY_ZERO,
-	SSR_HW_WDOG_IRQ,
+	SSR_HW_WDOG_IRQ,     /* FW will go in while loop to miss WDOG timer tapping */
 	SSR_SESSION_ABORT,
-	SSR_SESSION_ERROR,
-	SSR_FW_SMMU_FAULT,
-	SSR_SESSION_TIMEOUT = 7
+	SSR_SESSION_ERROR,   /* No FW involvement, EVA KMD will simulate */
+	SSR_FW_SMMU_FAULT,   /* FW writes 0xFF000000 while programming Xtensa */
+	SSR_CORE_SMMU_FAULT, /* No FW involvement, EVA KMD will simulate */
+	SSR_SESSION_TIMEOUT
 };
 
 enum hal_intra_refresh_mode {
@@ -260,13 +261,13 @@ struct cvp_hfi_ops {
 	int (*core_trigger_ssr)(void *device, enum hal_ssr_trigger_type);
 	int (*session_init)(void *device, void *session_id, void **new_session);
 	int (*session_end)(void *session);
-	int (*session_start)(void *session);
-	int (*session_stop)(void *session);
+	int (*session_start)(void *session, u64 ktid);
+	int (*session_stop)(void *session, u64 ktid);
 	int (*session_abort)(void *session);
 	int (*session_set_buffers)(void *sess, u32 iova, u32 size);
 	int (*session_release_buffers)(void *sess);
 	int (*session_send)(void *sess, struct eva_kmd_hfi_packet *in_pkt);
-	int (*session_flush)(void *sess);
+	int (*session_flush)(void *sess, u64 ktid);
 	int (*scale_clocks)(void *dev, u32 freq);
 	int (*vote_bus)(void *dev, struct bus_info *bus, unsigned long bw);
 	int (*get_fw_info)(void *dev, struct cvp_hal_fw_info *fw_info);
