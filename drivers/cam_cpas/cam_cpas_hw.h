@@ -69,6 +69,9 @@
 #define CAM_CPAS_DUMP_NUM_WORDS_RT_WR_NIUS        2
 #define CAM_CPAS_DUMP_NUM_WORDS_VCD_CURR_LVL      2
 
+/* MAX number of qchannel*/
+#define CAM_CAMNOC_QCHANNEL_MAX      3
+
 /**
  * enum cam_camnoc_domain_type - Enum for different camnoc domains
  * @CAM_CAMNOC_HW_COMBINED: refer to legacy camnoc info that combines RT/NRT HW

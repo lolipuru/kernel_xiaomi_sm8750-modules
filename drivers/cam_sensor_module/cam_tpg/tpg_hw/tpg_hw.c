@@ -15,6 +15,7 @@
 #define MAX_WAITING_QUEUE_DEPTH     32
 #define TIMEOUT_MULTIPLIER_PRESIL   5
 #define TIMEOUT_MULTIPLIER          1
+#define REQUEST_ID_UNSET           -1
 
 static int cam_io_tpg_dump(void __iomem *base_addr,
 	uint32_t start_offset, int size)
@@ -346,7 +347,7 @@ static int tpg_hw_release_vc_slots_locked(struct tpg_hw *hw,
 	return 0;
 }
 
-static int tpg_hw_free_waiting_requests_locked(struct tpg_hw *hw)
+static int tpg_hw_free_waiting_requests_locked(struct tpg_hw *hw, int64_t req_id)
 {
 	struct list_head *pos = NULL, *pos_next = NULL;
 	struct tpg_hw_request *req = NULL;
@@ -357,11 +358,13 @@ static int tpg_hw_free_waiting_requests_locked(struct tpg_hw *hw)
 	}
 
 	/* free up the pending requests*/
-	CAM_DBG(CAM_TPG, "TPG[%d]  freeing all waiting requests",
-			hw->hw_idx);
 	list_for_each_safe(pos, pos_next, &hw->waiting_request_q) {
 		req = list_entry(pos, struct tpg_hw_request, list);
-		CAM_DBG(CAM_TPG, "TPG[%d] freeing request[%lld] ",
+
+		if ((req_id != REQUEST_ID_UNSET) && (req_id < req->request_id))
+			continue;
+
+		CAM_DBG(CAM_TPG, "TPG[%d] freeing waiting_request[%lld] ",
 				hw->hw_idx, req->request_id);
 		list_del(pos);
 		tpg_hw_release_vc_slots_locked(hw, req);
@@ -380,11 +383,10 @@ static int tpg_hw_free_active_requests_locked(struct tpg_hw *hw)
 	}
 
 	/* free up the active requests*/
-	CAM_DBG(CAM_TPG, "TPG[%d]  freeing all active requests",
-			hw->hw_idx);
 	list_for_each_safe(pos, pos_next, &hw->active_request_q) {
 		req = list_entry(pos, struct tpg_hw_request, list);
-		CAM_DBG(CAM_TPG, "TPG[%d] freeing request[%lld] ",
+
+		CAM_DBG(CAM_TPG, "TPG[%d] freeing active_request[%lld] ",
 				hw->hw_idx, req->request_id);
 		list_del(pos);
 		tpg_hw_release_vc_slots_locked(hw, req);
@@ -685,7 +687,16 @@ static int tpg_hw_lookup_queues_and_apply_req_locked(
 		goto end;
 	}
 
+	/* Post FLUSH_TYPE_ALL, we should not service any request lesser than last_flush_req*/
+	if (request_id <= hw->last_flush_req && hw->last_flush_req != REQUEST_ID_UNSET) {
+		CAM_ERR(CAM_TPG, "TPG[%d] Reject Request: %lld, last request flushed: %lld",
+			hw->hw_idx, request_id, hw->last_flush_req);
+			return -EBADR;
+	}
+
 	if (!list_empty(&hw->waiting_request_q)) {
+		/* Resetting the last_flush_req on reception of first valid request post flush*/
+		hw->last_flush_req = REQUEST_ID_UNSET;
 		req = list_first_entry(&hw->waiting_request_q,
 			struct tpg_hw_request, list);
 		if (req->request_id == request_id) {
@@ -841,8 +852,9 @@ int tpg_hw_stop(struct tpg_hw *hw)
 				hw->hw_idx, rc);
 			break;
 		}
-		tpg_hw_free_waiting_requests_locked(hw);
+		tpg_hw_free_waiting_requests_locked(hw, REQUEST_ID_UNSET);
 		tpg_hw_free_active_requests_locked(hw);
+		hw->last_flush_req = REQUEST_ID_UNSET;
 		break;
 	default:
 		CAM_ERR(CAM_TPG, "TPG[%d] Unsupported HW Version",
@@ -879,6 +891,7 @@ int tpg_hw_acquire(struct tpg_hw *hw,
 		rc = -EINVAL;
 		break;
 	}
+	hw->last_flush_req = REQUEST_ID_UNSET;
 	mutex_unlock(&hw->mutex);
 	return rc;
 }
@@ -904,6 +917,7 @@ int tpg_hw_release(struct tpg_hw *hw)
 		rc = -EINVAL;
 		break;
 	}
+	hw->last_flush_req = REQUEST_ID_UNSET;
 	mutex_unlock(&hw->mutex);
 	return rc;
 }
@@ -1247,7 +1261,7 @@ int tpg_hw_reset(struct tpg_hw *hw)
 	/* disable the hw */
 	mutex_lock(&hw->mutex);
 
-	rc = tpg_hw_free_waiting_requests_locked(hw);
+	rc = tpg_hw_free_waiting_requests_locked(hw, REQUEST_ID_UNSET);
 	if (rc)
 		CAM_ERR(CAM_TPG, "TPG[%d] unable to free up the pending requests",
 				hw->hw_idx);
@@ -1264,6 +1278,7 @@ int tpg_hw_reset(struct tpg_hw *hw)
 		}
 		spin_lock_irqsave(&hw->hw_state_lock, flags);
 		hw->state =  TPG_HW_STATE_HW_DISABLED;
+		hw->last_flush_req = REQUEST_ID_UNSET;
 		spin_unlock_irqrestore(&hw->hw_state_lock, flags);
 	}
 
@@ -1452,3 +1467,53 @@ int tpg_hw_add_stream_v3(
 	return rc;
 }
 
+int tpg_hw_flush_requests(
+	struct tpg_hw *hw,
+	uint32_t last_flushed_req,
+	bool is_flush_all)
+{
+	int rc = 0;
+	struct list_head *pos = NULL, *pos_next = NULL;
+	struct tpg_hw_request *req = NULL;
+	bool is_request_flushed = false;
+
+	if (!hw) {
+		CAM_ERR(CAM_TPG, "Invalid tpg_hw param");
+		return -EINVAL;
+	}
+	mutex_lock(&hw->mutex);
+
+	if (is_flush_all) {
+		rc = tpg_hw_free_waiting_requests_locked(hw, last_flushed_req);
+		if (rc)
+			CAM_ERR(CAM_TPG, "TPG[%d] unable to free the pending requests",
+				hw->hw_idx);
+
+		/* Setting the last_flushed_req only in case of FLUSH_TYPE_ALL */
+		hw->last_flush_req = last_flushed_req;
+		CAM_INFO(CAM_TPG, "TPG[%d] Last Req pending to be flushed: %lld",
+			hw->hw_idx, hw->last_flush_req);
+	} else {
+		/* Search for request from waiting request list and delete it*/
+		list_for_each_safe(pos, pos_next, &hw->waiting_request_q) {
+			req = list_entry(pos, struct tpg_hw_request, list);
+			if (req->request_id == last_flushed_req) {
+				list_del(pos);
+				hw->waiting_request_q_depth--;
+				is_request_flushed = true;
+				tpg_hw_release_vc_slots_locked(hw, req);
+				CAM_INFO(CAM_TPG, "TPG[%d] Req[%lld] deleted from wait_queue",
+					hw->hw_idx, req->request_id);
+				break;
+			}
+		}
+		if (!is_request_flushed) {
+			CAM_ERR(CAM_TPG, "TPG[%d] Flush req_id[%lld] not found in waiting queue",
+				hw->hw_idx, last_flushed_req);
+			rc = -EINVAL;
+		}
+	}
+
+	mutex_unlock(&hw->mutex);
+	return rc;
+}

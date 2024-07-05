@@ -730,6 +730,11 @@ int cam_node_shutdown(struct cam_node *node)
 		}
 	}
 
+	if (cam_presil_mode_enabled()) {
+		CAM_INFO(CAM_ICP, "PRESIL-ICP-B2B-HFI-INIT No Shutdown No Deinit No HFIfreeMem");
+		return 0;
+	}
+
 	if (node->hw_mgr_intf.hw_close)
 		node->hw_mgr_intf.hw_close(node->hw_mgr_intf.hw_mgr_priv,
 			NULL);

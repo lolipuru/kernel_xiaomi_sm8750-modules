@@ -3474,6 +3474,11 @@ static void cam_icp_free_fw_mem(struct cam_icp_hw_mgr *hw_mgr)
 	if (hw_mgr->icp_use_pil)
 		return;
 
+	if (cam_presil_mode_enabled()) {
+		CAM_INFO(CAM_ICP, "PRESIL-ICP-B2B-HFI-INIT No Shutdown No Deinit No HFIfreeMem");
+		return;
+	}
+
 	cam_smmu_dealloc_firmware(hw_mgr->iommu_hdl);
 }
 
@@ -3593,6 +3598,11 @@ static int cam_icp_allocate_fw_mem(struct cam_icp_hw_mgr *hw_mgr)
 
 	if (hw_mgr->icp_use_pil)
 		return 0;
+
+	if (cam_presil_mode_enabled()) {
+		CAM_INFO(CAM_ICP, "PRESIL-ICP-B2B-HFI-INIT No Shutdown No Deinit No HFIfreeMem");
+		return 0;
+	}
 
 	rc = cam_smmu_alloc_firmware(hw_mgr->iommu_hdl,
 		&iova, &kvaddr, &len);
@@ -5067,6 +5077,11 @@ static int cam_icp_mgr_hw_close(void *hw_priv, void *hw_close_args)
 	if (!hw_mgr->icp_dev_intf) {
 		CAM_DBG(CAM_ICP, "[%s] ICP device interface is NULL", hw_mgr->hw_mgr_name);
 		return -EINVAL;
+	}
+
+	if (cam_presil_mode_enabled()) {
+		CAM_INFO(CAM_ICP, "PRESIL-ICP-B2B-HFI-INIT No Shutdown No Deinit No HFIfreeMem");
+		return 0;
 	}
 
 	cam_icp_mgr_proc_shutdown(hw_mgr, close_args->use_proxy_boot_up,
