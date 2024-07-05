@@ -3079,7 +3079,7 @@ static int cam_cpas_hw_stop(void *hw_priv, void *stop_args,
 		/* try again incase camnoc is still not idle */
 		if (cpas_core->internal_ops.qchannel_handshake &&
 			retry_camnoc_idle) {
-			rc = cpas_core->internal_ops.qchannel_handshake(cpas_hw, false, false);
+			rc = cpas_core->internal_ops.qchannel_handshake(cpas_hw, false, true);
 			if (rc) {
 				CAM_ERR(CAM_CPAS, "failed in qchannel_handshake rc=%d", rc);
 				/* Do not return error, passthrough */

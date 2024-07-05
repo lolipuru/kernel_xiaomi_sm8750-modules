@@ -21,7 +21,7 @@
 /* Maximum usecs to sleep while polling */
 #define CAM_CPAS_POLL_MAX_USECS 250
 /* Number of times to retry while polling */
-#define CAM_CPAS_POLL_QH_RETRY_CNT 50
+#define CAM_CPAS_POLL_QH_RETRY_CNT 5
 
 /* Number of CPAS hw caps registers */
 #define CAM_CPAS_MAX_CAPS_REGS 2

@@ -1194,19 +1194,20 @@ static int cam_cpastop_poweroff(struct cam_hw_info *cpas_hw)
 }
 
 static int cam_cpastop_qchannel_handshake(struct cam_hw_info *cpas_hw,
-	bool power_on, bool force_on)
+	bool power_on, bool force)
 {
 	struct cam_cpas *cpas_core = (struct cam_cpas *) cpas_hw->core_info;
 	struct cam_hw_soc_info *soc_info = &cpas_hw->soc_info;
 	int32_t reg_indx = cpas_core->regbase_index[CAM_CPAS_REG_CPASTOP];
 	uint32_t mask = 0;
-	uint32_t wait_data, qchannel_status, qdeny;
+	uint32_t wait_data, qchannel_status, qbusy;
 	int rc = 0, ret = 0, i;
 	struct cam_cpas_private_soc *soc_private =
 		(struct cam_cpas_private_soc *) cpas_hw->soc_info.soc_private;
 	struct cam_cpas_hw_errata_wa_list *errata_wa_list;
 	bool icp_clk_enabled = false;
 	struct cam_cpas_camnoc_qchannel *qchannel_info;
+	uint32_t busy_mask;
 
 	if (reg_indx == -1)
 		return -EINVAL;
@@ -1236,7 +1237,7 @@ static int cam_cpastop_qchannel_handshake(struct cam_hw_info *cpas_hw,
 		}
 
 		if (power_on) {
-			if (force_on) {
+			if (force) {
 				cam_io_w_mb(0x1,
 					soc_info->reg_map[reg_indx].mem_base +
 					qchannel_info->qchannel_ctrl);
@@ -1247,40 +1248,49 @@ static int cam_cpastop_qchannel_handshake(struct cam_hw_info *cpas_hw,
 			mask = BIT(0);
 			wait_data = 1;
 		} else {
-
+			if (force) {
+				cam_io_w_mb(0x1,
+					soc_info->reg_map[reg_indx].mem_base +
+					qchannel_info->qchannel_ctrl);
+				CAM_DBG(CAM_CPAS, "Force qchannel on for %s now sleep for 1us",
+						camnoc_info[i]->camnoc_name);
+				usleep_range(1, 2);
+			}
 			/* Clear the quiecience request in QCHANNEL ctrl*/
 			cam_io_w_mb(0, soc_info->reg_map[reg_indx].mem_base +
 				qchannel_info->qchannel_ctrl);
-			/* wait for QACCEPTN and QDENY in QCHANNEL status*/
-			mask = BIT(1) | BIT(0);
+			mask = BIT(0);
 			wait_data = 0;
 		}
 
+		busy_mask = BIT(0);
 		rc = cam_io_poll_value_wmask(
-			soc_info->reg_map[reg_indx].mem_base +
-			qchannel_info->qchannel_status,
-			wait_data, mask, CAM_CPAS_POLL_QH_RETRY_CNT,
-			CAM_CPAS_POLL_MIN_USECS, CAM_CPAS_POLL_MAX_USECS);
+				soc_info->reg_map[reg_indx].mem_base +
+				qchannel_info->qchannel_status,
+				wait_data, mask, CAM_CPAS_POLL_QH_RETRY_CNT,
+				CAM_CPAS_POLL_MIN_USECS, CAM_CPAS_POLL_MAX_USECS);
 		if (rc) {
 			CAM_ERR(CAM_CPAS,
-				"CPAS_%s %s idle sequence failed, qstat 0x%x",
-				power_on ? "START" : "STOP", camnoc_info[i]->camnoc_name,
+			"CPAS_%s %s idle sequence failed, qstat 0x%x",
+			power_on ? "START" : "STOP", camnoc_info[i]->camnoc_name,
 			cam_io_r(soc_info->reg_map[reg_indx].mem_base +
 				qchannel_info->qchannel_status));
 			ret = rc;
 			/* Do not return error, passthrough */
 		}
 
-		/* check if deny bit is set */
+		/* check if accept bit is set */
 		qchannel_status = cam_io_r_mb(soc_info->reg_map[reg_indx].mem_base +
 			qchannel_info->qchannel_status);
 		CAM_DBG(CAM_CPAS,
 			"CPAS_%s %s : qchannel status 0x%x", power_on ? "START" : "STOP",
 			camnoc_info[i]->camnoc_name, qchannel_status);
 
-		qdeny = (qchannel_status & BIT(1));
-		if (!power_on && qdeny)
+		qbusy = (qchannel_status & busy_mask);
+		if (!power_on && qbusy)
 			ret = -EBUSY;
+		else if (power_on && !qbusy)
+			ret = -EAGAIN;
 	}
 
 	if (icp_clk_enabled) {
