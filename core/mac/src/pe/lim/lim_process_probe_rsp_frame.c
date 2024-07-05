@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -212,12 +212,27 @@ static
 void lim_update_mlo_mgr_prb_info(struct mac_context *mac_ctx,
 				 struct pe_session *session_entry,
 				 struct qdf_mac_addr *mac_addr,
-				 tpSirProbeRespBeacon probe_rsp)
+				 tpSirProbeRespBeacon probe_rsp,
+				 uint8_t *probe_rsp_frm,
+				 uint32_t probe_rsp_len,
+				 int8_t rssi,
+				 uint8_t snr,
+				 uint32_t tsf_delta)
 {
+	QDF_STATUS status;
+
 	if (!(session_entry->lim_join_req &&
-	      session_entry->lim_join_req->is_ml_probe_req_sent &&
-	      probe_rsp->mlo_ie.mlo_ie_present))
+	      session_entry->lim_join_req->is_ml_probe_req_sent))
 		return;
+
+	status = lim_add_bcn_probe(session_entry->vdev,
+				   probe_rsp_frm,
+				   probe_rsp_len,
+				   probe_rsp->chan_freq, rssi,
+				   snr,
+				   tsf_delta);
+	if (QDF_IS_STATUS_ERROR(status))
+		pe_err("failed to add assoc link probe rsp %d", status);
 
 	lim_update_mlo_mgr_info(mac_ctx, session_entry->vdev, mac_addr,
 				session_entry->lim_join_req->assoc_link_id,
@@ -228,7 +243,12 @@ static inline
 void lim_update_mlo_mgr_prb_info(struct mac_context *mac_ctx,
 				 struct pe_session *session_entry,
 				 struct qdf_mac_addr *mac_addr,
-				 tpSirProbeRespBeacon probe_rsp)
+				 tpSirProbeRespBeacon probe_rsp,
+				 uint8_t *probe_rsp_frm,
+				 uint32_t probe_rsp_len,
+				 int8_t rssi,
+				 uint8_t snr,
+				 uint32_t tsf_delta)
 {
 }
 #endif
@@ -340,15 +360,20 @@ lim_process_probe_rsp_frame(struct mac_context *mac_ctx, uint8_t *rx_Packet_info
 		goto mem_free;
 	}
 
+	if (!probe_rsp->chan_freq)
+		probe_rsp->chan_freq = WMA_GET_RX_FREQ(rx_Packet_info);
+
 	if (!lim_validate_probe_rsp_mld_addr(session_entry, probe_rsp))
 		goto mem_free;
 
-	qdf_trace_hex_dump(QDF_MODULE_ID_PE, QDF_TRACE_LEVEL_DEBUG, body,
-			   frame_len);
-
 	lim_update_mlo_mgr_prb_info(mac_ctx, session_entry,
 				    (struct qdf_mac_addr *)header->bssId,
-				    probe_rsp);
+				    probe_rsp,
+				    (uint8_t *)header,
+				    WMA_GET_RX_MPDU_LEN(rx_Packet_info),
+				    mac_ctx->lim.bss_rssi,
+				    WMA_GET_RX_SNR(rx_Packet_info),
+				    WMA_GET_RX_TSF_DELTA(rx_Packet_info));
 
 	lim_process_bcn_prb_rsp_t2lm(mac_ctx, session_entry, probe_rsp);
 	lim_gen_link_specific_probe_rsp(mac_ctx, session_entry,
@@ -394,7 +419,10 @@ lim_process_probe_rsp_frame(struct mac_context *mac_ctx, uint8_t *rx_Packet_info
 					     (rx_Packet_info),
 				     session_entry->bcnLen);
 		}
-			/* STA in WT_JOIN_BEACON_STATE */
+		/* STA in WT_JOIN_BEACON_STATE */
+		mgmt_txrx_frame_hex_dump((uint8_t *)header,
+					 WMA_GET_RX_MPDU_LEN(rx_Packet_info),
+					 false);
 		lim_check_and_announce_join_success(mac_ctx, probe_rsp,
 						header,
 						session_entry);

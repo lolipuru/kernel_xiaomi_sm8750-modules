@@ -30,6 +30,7 @@
 #include <wlan_cm_bss_score_param.h>
 #include "cfg_ucfg_api.h"
 #include "wlan_mlo_link_force.h"
+#include <wlan_dlm_public_struct.h>
 
 #define SECONDS_TO_MS(params)       ((params) * 1000)
 #define MINUTES_TO_MS(params)       (SECONDS_TO_MS(params) * 60)
@@ -409,8 +410,15 @@ dlm_prune_old_entries_and_get_action(struct wlan_objmgr_pdev *pdev,
 			  dlm_entry->reject_ap_type);
 
 		if (DLM_IS_AP_DENYLISTED_BY_USERSPACE(dlm_entry) ||
-		    DLM_IS_AP_IN_RSSI_REJECT_LIST(dlm_entry))
-			return CM_DLM_FORCE_REMOVE;
+		    DLM_IS_AP_IN_RSSI_REJECT_LIST(dlm_entry)) {
+			if (dlm_entry->reject_ap_reason == REASON_UNKNOWN ||
+			    dlm_entry->reject_ap_reason == REASON_NUD_FAILURE ||
+			    dlm_entry->reject_ap_reason == REASON_STA_KICKOUT ||
+			    dlm_entry->reject_ap_reason == REASON_ROAM_HO_FAILURE)
+				return CM_DLM_REMOVE;
+			else
+				return CM_DLM_FORCE_REMOVE;
+		}
 
 		return CM_DLM_REMOVE;
 	}
@@ -1906,6 +1914,13 @@ dlm_update_mlo_reject_ap_info(struct wlan_objmgr_pdev *pdev,
 	struct wlan_objmgr_vdev *vdev = NULL;
 	struct qdf_mac_addr mld_addr = {0};
 
+	vdev = wlan_objmgr_get_vdev_by_id_from_pdev(pdev, vdev_id,
+						    WLAN_OBJMGR_ID);
+	if (!vdev) {
+		dlm_err("Unable to get vdev with vdev id %d", vdev_id);
+		return;
+	}
+
 	/*
 	 * Two cases are handled here:
 	 * a.) If Reject list is updated by host then mld address will be
@@ -1918,13 +1933,6 @@ dlm_update_mlo_reject_ap_info(struct wlan_objmgr_pdev *pdev,
 	 *     the time of FW even extraction
 	 */
 	if (qdf_is_macaddr_zero(&ap_info->reject_mlo_ap_info.mld_addr)) {
-		vdev = wlan_objmgr_get_vdev_by_id_from_pdev(pdev, vdev_id,
-							    WLAN_OBJMGR_ID);
-		if (!vdev) {
-			dlm_err("Unable to get first vdev of pdev");
-
-			return;
-		}
 		if (!wlan_vdev_mlme_is_mlo_vdev(vdev)) {
 			dlm_debug("not mlo vdev");
 			wlan_objmgr_vdev_release_ref(vdev, WLAN_OBJMGR_ID);

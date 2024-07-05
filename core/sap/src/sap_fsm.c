@@ -1192,7 +1192,12 @@ sap_validate_chan(struct sap_context *sap_context,
 							sap_context->chan_freq);
 		return QDF_STATUS_SUCCESS;
 	}
-	if (wlan_nan_is_sta_sap_nan_allowed(mac_ctx->psoc) &&
+
+	if (sap_context->vdev)
+		opmode = wlan_vdev_mlme_get_opmode(sap_context->vdev);
+
+	if (opmode == QDF_SAP_MODE &&
+	    wlan_nan_is_sta_sap_nan_allowed(mac_ctx->psoc) &&
 	    policy_mgr_mode_specific_connection_count(mac_ctx->psoc,
 						      PM_NAN_DISC_MODE,
 						      NULL)) {
@@ -1202,8 +1207,6 @@ sap_validate_chan(struct sap_context *sap_context,
 						sap_context->chan_freq);
 		return QDF_STATUS_SUCCESS;
 	}
-	if (sap_context->vdev)
-		opmode = wlan_vdev_mlme_get_opmode(sap_context->vdev);
 
 	if (opmode == QDF_P2P_GO_MODE) {
 	       /*
@@ -1630,6 +1633,8 @@ QDF_STATUS sap_channel_sel(struct sap_context *sap_context)
 			qdf_ret_status = QDF_STATUS_SUCCESS;
 			goto release_vdev_ref;
 		}
+		/* reset skip acs scan */
+		sap_context->acs_cfg->skip_acs_scan = false;
 
 		sap_context->acs_req_timestamp = qdf_get_time_of_the_day_ms();
 

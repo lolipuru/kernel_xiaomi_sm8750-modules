@@ -731,6 +731,9 @@ wlan_mlme_update_aux_dev_caps(
 		struct wlan_mlme_aux_dev_caps wlan_mlme_aux_dev_caps[])
 {
 	struct wlan_mlme_psoc_ext_obj *mlme_obj;
+	struct wlan_mlme_aux_dev_caps *wlan_mlme_aux0_dev_caps;
+	uint32_t supported_modes_bitmap = 0;
+	uint8_t idx = WLAN_MLME_HW_MODE_AUX_EMLSR_SINGLE;
 
 	mlme_obj = mlme_get_psoc_ext_obj(psoc);
 	if (!mlme_obj)
@@ -739,6 +742,13 @@ wlan_mlme_update_aux_dev_caps(
 	qdf_mem_copy(&mlme_obj->cfg.gen.wlan_mlme_aux0_dev_caps[0],
 		     &wlan_mlme_aux_dev_caps[0],
 		     sizeof(mlme_obj->cfg.gen.wlan_mlme_aux0_dev_caps));
+	wlan_mlme_aux0_dev_caps = mlme_obj->cfg.gen.wlan_mlme_aux0_dev_caps;
+	supported_modes_bitmap =
+			wlan_mlme_aux0_dev_caps[idx].supported_modes_bitmap;
+	if (supported_modes_bitmap & (0x1 << WLAN_MLME_AUX_MODE_EMLSR_BIT)) {
+		mlme_debug("set the mlme config for emlsr");
+		wlan_mlme_set_emlsr_mode_enabled(psoc, true);
+	}
 }
 
 bool wlan_mlme_cfg_get_aux_supported_modes(
@@ -4015,6 +4025,24 @@ wlan_mlme_get_emlsr_mode_enabled(struct wlan_objmgr_psoc *psoc, bool *value)
 		return QDF_STATUS_E_FAILURE;
 
 	*value = mlme_obj->cfg.gen.enable_emlsr_mode;
+
+	return QDF_STATUS_SUCCESS;
+}
+
+QDF_STATUS
+wlan_mlme_get_sap_emlsr_mode_enabled(struct wlan_objmgr_psoc *psoc, bool *value)
+{
+	struct wlan_mlme_psoc_ext_obj *mlme_obj;
+	bool emlsr_cap;
+
+	mlme_obj = mlme_get_psoc_ext_obj(psoc);
+	if (!mlme_obj)
+		return QDF_STATUS_E_FAILURE;
+
+	emlsr_cap = wma_get_mlo_sap_emlsr(get_wmi_unified_hdl_from_psoc(psoc));
+	*value = emlsr_cap & mlme_obj->cfg.gen.enable_sap_emlsr_mode;
+	mlme_legacy_debug("emlsr %d from fw cap, ini %d return %d", emlsr_cap,
+			  mlme_obj->cfg.gen.enable_sap_emlsr_mode, *value);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -7722,7 +7750,7 @@ void wlan_mlme_get_feature_info(struct wlan_objmgr_psoc *psoc,
 	wlan_mlme_get_sap_max_peers(psoc, &sap_max_num_clients);
 	mlme_feature_set->sap_max_num_clients = sap_max_num_clients;
 	mlme_feature_set->vendor_req_1_version =
-					WMI_HOST_VENDOR1_REQ1_VERSION_4_00;
+					WMI_HOST_VENDOR1_REQ1_VERSION_4_10;
 	roam_triggers = wlan_mlme_get_roaming_triggers(psoc);
 
 	wlan_mlme_get_bss_load_enabled(psoc, &is_bss_load_enabled);

@@ -2115,6 +2115,7 @@ enum wlan_state_ctrl_str_id {
  * @num_mlo_peers: Total number of MLO peers
  * @more_peer_data: more mlo peer data in peer stats
  * @lpc_info: Local packet capture info
+ * @is_lpc_ps_disabled: Indicate if LPC has disabled power save
  * @combination: interface combination register to wiphy
  * @wlan_hdd_akm_suites: Supported AKM suites for various interfaces
  * @sta_akms: Station mode supported AKMs
@@ -2410,6 +2411,7 @@ struct hdd_context {
 #endif
 #ifdef WLAN_FEATURE_LOCAL_PKT_CAPTURE
 	struct hdd_lpc_info lpc_info;
+	bool is_lpc_ps_disabled;
 #endif
 
 	struct ieee80211_iface_combination *combination;
@@ -2965,15 +2967,18 @@ wlan_hdd_get_link_info_from_objmgr(struct wlan_objmgr_vdev *vdev);
 /**
  * hdd_adapter_disable_all_links() - Reset the links on stop adapter.
  * @adapter: HDD adapter
+ * @clear_macaddr: Clears mac address if set to true
  *
  * Resets the MAC address in each link info and resets the link info
  * mapping in adapter array.
  *
  * Return: void
  */
-void hdd_adapter_disable_all_links(struct hdd_adapter *adapter);
+void
+hdd_adapter_disable_all_links(struct hdd_adapter *adapter, bool clear_macaddr);
 #else
-static inline void hdd_adapter_disable_all_links(struct hdd_adapter *adapter)
+static inline void
+hdd_adapter_disable_all_links(struct hdd_adapter *adapter, bool clear_macaddr)
 {
 }
 #endif
@@ -5568,6 +5573,23 @@ hdd_link_switch_vdev_mac_addr_update(int32_t ieee_old_link_id,
 				     int32_t ieee_new_link_id, uint8_t vdev_id);
 
 /**
+ * hdd_roam_vdev_mac_addr_update() - API to update OSIF/HDD on VDEV
+ * mac addr update due to roaming.
+ * @vdev: vdev pointer
+ * @old_self_mac: Current self link mac of VDEV
+ * @new_self_mac: New self link mac of VDEV
+ *
+ * Check if both @old_self_mac and @new_self_mac are part of adapter
+ * corresponding to @vdev_id. Then take necessary actions to support
+ * MAC update and update DP to change link MAC address to new link's address.
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS hdd_roam_vdev_mac_addr_update(struct wlan_objmgr_vdev *vdev,
+					 struct qdf_mac_addr *old_self_mac,
+					 struct qdf_mac_addr *new_self_mac);
+
+/**
  * hdd_get_link_info_by_ieee_link_id() - Find link info pointer matching with
  * IEEE link ID.
  * @adapter: HDD adapter
@@ -5583,12 +5605,23 @@ hdd_link_switch_vdev_mac_addr_update(int32_t ieee_old_link_id,
 struct wlan_hdd_link_info *
 hdd_get_link_info_by_ieee_link_id(struct hdd_adapter *adapter,
 				  int32_t link_id, bool is_cache);
+
+QDF_STATUS
+hdd_adapter_update_links_on_link_switch(struct wlan_hdd_link_info *cur_link_info,
+					struct wlan_hdd_link_info *new_link_info);
 #else
 static inline struct wlan_hdd_link_info *
 hdd_get_link_info_by_ieee_link_id(struct hdd_adapter *adapter,
 				  int32_t link_id, bool is_cache)
 {
 	return NULL;
+}
+
+static inline QDF_STATUS
+hdd_adapter_update_links_on_link_switch(struct wlan_hdd_link_info *cur_link_info,
+					struct wlan_hdd_link_info *new_link_info)
+{
+	return QDF_STATUS_SUCCESS;
 }
 #endif
 
@@ -5744,6 +5777,31 @@ void wlan_hdd_lpc_handle_concurrency(struct hdd_context *hdd_ctx,
  */
 bool hdd_lpc_is_work_scheduled(struct hdd_context *hdd_ctx);
 
+/**
+ * wlan_hdd_set_lpc_powersave_disabled() - Set if power save disabled for LPC
+ * @hdd_ctx: hdd_ctx
+ * @is_disabled: Is power save disabled
+ *
+ * Return: None
+ */
+static inline void
+wlan_hdd_set_lpc_powersave_disabled(struct hdd_context *hdd_ctx,
+				    bool is_disabled)
+{
+	hdd_ctx->is_lpc_ps_disabled = is_disabled;
+}
+
+/**
+ * wlan_hdd_is_lpc_powersave_disabled() - Check if LPC has disabled power save
+ * @hdd_ctx: hdd_ctx
+ *
+ * Return: true - power save disabled, false - not
+ */
+static inline bool
+wlan_hdd_is_lpc_powersave_disabled(struct hdd_context *hdd_ctx)
+{
+	return hdd_ctx->is_lpc_ps_disabled;
+}
 #else
 static inline void
 wlan_hdd_lpc_handle_concurrency(struct hdd_context *hdd_ctx,
@@ -5752,6 +5810,18 @@ wlan_hdd_lpc_handle_concurrency(struct hdd_context *hdd_ctx,
 
 static inline bool
 hdd_lpc_is_work_scheduled(struct hdd_context *hdd_ctx)
+{
+	return false;
+}
+
+static inline void
+wlan_hdd_set_lpc_powersave_disabled(struct hdd_context *hdd_ctx,
+				    bool is_disabled)
+{
+}
+
+static inline bool
+wlan_hdd_is_lpc_powersave_disabled(struct hdd_context *hdd_ctx)
 {
 	return false;
 }

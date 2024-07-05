@@ -3854,6 +3854,25 @@ int hdd_softap_set_channel_change(struct wlan_hdd_link_info *link_info,
 		return -EBUSY;
 	}
 
+	/*
+	 * Trigger acs followed by csa if csa reason is non dcs and current
+	 * vdev is ll sap.
+	 *
+	 */
+	if (policy_mgr_is_vdev_ll_lt_sap(hdd_ctx->psoc,
+					 wlan_vdev_get_id(sap_ctx->vdev)) &&
+	    sap_ctx->csa_reason != CSA_REASON_DCS &&
+	    sap_ctx->csa_reason != CSA_REASON_USER_INITIATED) {
+		wlan_hdd_set_sap_csa_reason(hdd_ctx->psoc, link_info->vdev_id,
+					    CSA_REASON_LL_LT_SAP_EVENT);
+		hdd_dcs_trigger_csa_for_ll_lt_sap(
+				hdd_ctx->psoc,
+				hdd_ctx,
+				wlan_vdev_get_id(sap_ctx->vdev),
+				LL_SAP_CSA_CONCURENCY);
+		return ret;
+	}
+
 	if (wlan_reg_is_6ghz_chan_freq(target_chan_freq) &&
 	    !wlan_reg_is_6ghz_band_set(hdd_ctx->pdev)) {
 		hdd_err("6 GHz band disabled");
@@ -4952,7 +4971,7 @@ struct hdd_adapter *hdd_wlan_create_ap_dev(struct hdd_context *hdd_ctx,
 		(int)policy_mgr_get_concurrency_mode(hdd_ctx->psoc));
 
 	/* Init the net_device structure */
-	strlcpy(dev->name, (const char *)iface_name, IFNAMSIZ);
+	strscpy(dev->name, (const char *)iface_name, IFNAMSIZ);
 
 	hdd_set_ap_ops(dev);
 
@@ -6896,7 +6915,7 @@ int wlan_hdd_cfg80211_start_bss(struct wlan_hdd_link_info *link_info,
 	enum reg_phymode reg_phy_mode, updated_phy_mode;
 	struct sap_context *sap_ctx;
 	struct wlan_objmgr_vdev *vdev;
-	uint32_t user_config_freq = 0;
+	uint32_t user_config_freq = 0, new_freq;
 	struct hdd_ap_ctx *ap_ctx;
 	enum policy_mgr_con_mode pm_con_mode;
 	struct qdf_mac_addr *link_mac;
@@ -7054,14 +7073,17 @@ int wlan_hdd_cfg80211_start_bss(struct wlan_hdd_link_info *link_info,
 							 config->chan_freq);
 
 	/* Override SAP freq to 2GHz channel 6 if NAN interface is present */
-	if (wlan_nan_is_sta_sap_nan_allowed(hdd_ctx->psoc) &&
+	if (adapter->device_mode == QDF_SAP_MODE &&
+	    wlan_nan_is_sta_sap_nan_allowed(hdd_ctx->psoc) &&
 	    policy_mgr_mode_specific_connection_count(hdd_ctx->psoc,
 						      PM_NAN_DISC_MODE,
 						      NULL)) {
-		config->chan_freq = wlan_nan_sap_override_freq(
-					hdd_ctx->psoc,
-					link_info->vdev_id,
-					config->chan_freq);
+		new_freq = wlan_nan_sap_override_freq(hdd_ctx->psoc,
+						      link_info->vdev_id,
+						      config->chan_freq);
+		hdd_debug("vdev %d, update SAP freq from %d to %d due to NAN",
+			  link_info->vdev_id, config->chan_freq, new_freq);
+		config->chan_freq = new_freq;
 	}
 	if (!config->chan_freq) {
 		hdd_err("vdev %d invalid ch_freq: %d", link_info->vdev_id,
@@ -7708,6 +7730,11 @@ static int __wlan_hdd_cfg80211_stop_ap(struct wiphy *wiphy,
 	 */
 	if (ret)
 		goto exit;
+
+	if (hdd_ctx->is_wiphy_suspended) {
+		hdd_debug("wiphy is suspended");
+		return -EINVAL;
+	}
 
 	if (QDF_GLOBAL_FTM_MODE == hdd_get_conparam()) {
 		hdd_err("Command not allowed in FTM mode");

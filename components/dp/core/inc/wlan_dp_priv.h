@@ -470,8 +470,8 @@ struct fisa_pkt_hist {
  * @num_pkts: number of packets received on this flow
  * @num_pkts_prev: number of packets received on this flow previously
  * @avg_pkts_per_sec: average packets per second received on this flow
- * @last_pkt_rcvd_tstamp: last packet received timestamp on this flow
- * @last_avg_cal_tstamp: last average calculated timestamp for this flow
+ * @last_pkt_rcvd_time: last packet received time on this flow in ns
+ * @last_avg_cal_time: last average calculated time for this flow in ns
  * @elig_for_balance: flow is eligible for flow balance or not
  * @track_flow_stats: flag to indicate if this flow is to be tracked
  * @selected_to_sample: flag to indicate flow has been selected to sample
@@ -535,8 +535,8 @@ struct dp_fisa_rx_sw_ft {
 #ifdef WLAN_DP_FLOW_BALANCE_SUPPORT
 	uint64_t num_pkts_prev;
 	uint32_t avg_pkts_per_sec;
-	qdf_time_t last_pkt_rcvd_tstamp;
-	qdf_time_t last_avg_cal_tstamp;
+	qdf_time_t last_pkt_rcvd_time;
+	qdf_time_t last_avg_cal_time;
 	bool elig_for_balance;
 #endif
 	uint8_t track_flow_stats;
@@ -939,6 +939,7 @@ struct wlan_dp_stc;
  * @dp_stc: STC context
  * @spm_ctx: Servicy policy manager context
  * @gl_flow_recs: Global Tx flow table for all dp_interfaces
+ * @rsrc_mgr_ctx: DP resource manager context reference
  */
 struct wlan_dp_psoc_context {
 	struct wlan_objmgr_psoc *psoc;
@@ -1059,6 +1060,7 @@ struct wlan_dp_psoc_context {
 	struct wlan_dp_spm_context *spm_ctx;
 	struct wlan_dp_spm_flow_info *gl_flow_recs;
 #endif
+	struct wlan_dp_resource_mgr_ctx *rsrc_mgr_ctx;
 };
 
 /**

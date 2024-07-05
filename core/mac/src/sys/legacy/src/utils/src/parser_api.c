@@ -3393,6 +3393,40 @@ sir_convert_assoc_req_frame2_eht_struct(tDot11fAssocRequest *ar,
 #endif
 
 #ifdef WLAN_FEATURE_11BE_MLO
+
+/**
+ * mlo_parse_peer_eml_cap: Parse eml capability info
+ * @p_assoc_req: assoc req buffer pointer
+ * @eml_cap: eml capablility info
+ *
+ * Return: None
+ */
+static void
+mlo_parse_peer_eml_cap(tpSirAssocReq p_assoc_req, uint16_t eml_cap)
+{
+	p_assoc_req->eml_info.emlsr_supp =
+		QDF_GET_BITS(eml_cap,
+			     WLAN_ML_BV_CINFO_EMLCAP_EMLSRSUPPORT_IDX,
+			     WLAN_ML_BV_CINFO_EMLCAP_EMLSRSUPPORT_BITS);
+	p_assoc_req->eml_info.emlsr_pad_delay =
+		QDF_GET_BITS(eml_cap,
+			     WLAN_ML_BV_CINFO_EMLCAP_EMLSR_PADDINGDELAY_IDX,
+			     WLAN_ML_BV_CINFO_EMLCAP_EMLSR_PADDINGDELAY_BITS);
+	p_assoc_req->eml_info.emlsr_trans_delay =
+		QDF_GET_BITS(eml_cap,
+			     WLAN_ML_BV_CINFO_EMLCAP_EMLSRTRANSDELAY_IDX,
+			     WLAN_ML_BV_CINFO_EMLCAP_EMLSRTRANSDELAY_BITS);
+	p_assoc_req->eml_info.trans_timeout =
+		QDF_GET_BITS(eml_cap,
+			     WLAN_ML_BV_CINFO_EMLCAP_TRANSTIMEOUT_IDX,
+			     WLAN_ML_BV_CINFO_EMLCAP_TRANSTIMEOUT_BITS);
+	pe_debug("emlsr support %d padding_delay %d trans_delay %d trans_timeout %d",
+		 p_assoc_req->eml_info.emlsr_supp,
+		 p_assoc_req->eml_info.emlsr_pad_delay,
+		 p_assoc_req->eml_info.emlsr_trans_delay,
+		 p_assoc_req->eml_info.trans_timeout);
+}
+
 static QDF_STATUS
 sir_convert_assoc_req_frame2_mlo_struct(uint8_t *pframe,
 					uint32_t nframe,
@@ -3403,6 +3437,8 @@ sir_convert_assoc_req_frame2_mlo_struct(uint8_t *pframe,
 	qdf_size_t ml_ie_total_len;
 	struct qdf_mac_addr mld_mac_addr;
 	uint32_t status;
+	bool eml_cap_found = false;
+	uint16_t eml_cap;
 
 	if (ar->mlo_ie.present) {
 		status = util_find_mlie(pframe + WLAN_ASSOC_REQ_IES_OFFSET,
@@ -3412,7 +3448,14 @@ sir_convert_assoc_req_frame2_mlo_struct(uint8_t *pframe,
 		if (QDF_IS_STATUS_SUCCESS(status)) {
 			util_get_bvmlie_persta_partner_info(ml_ie,
 							ml_ie_total_len,
-							&p_assoc_req->mlo_info);
+							&p_assoc_req->mlo_info,
+							WLAN_FC0_STYPE_INVALID);
+
+			util_get_bvmlie_eml_cap(ml_ie, ml_ie_total_len,
+						&eml_cap_found, &eml_cap);
+			if (eml_cap_found)
+				mlo_parse_peer_eml_cap(p_assoc_req, eml_cap);
+
 			util_get_bvmlie_mldmacaddr(ml_ie, ml_ie_total_len,
 						   &mld_mac_addr);
 			qdf_mem_copy(p_assoc_req->mld_mac, mld_mac_addr.bytes,
@@ -4015,7 +4058,8 @@ sir_convert_assoc_resp_frame2_mlo_struct(struct mac_context *mac,
 
 	ml_ie_info = &p_assoc_rsp->mlo_ie.mlo_ie;
 	util_get_bvmlie_persta_partner_info(ml_ie, ml_ie_total_len,
-					    &partner_info);
+					    &partner_info,
+					    WLAN_FC0_STYPE_ASSOC_RESP);
 
 	sir_copy_assoc_rsp_partner_info_to_session(session_entry,
 						   &partner_info);
@@ -4531,6 +4575,8 @@ sir_convert_reassoc_req_frame2_mlo_struct(uint8_t *pframe, uint32_t nframe,
 	qdf_size_t ml_ie_total_len;
 	struct qdf_mac_addr mld_mac_addr;
 	uint32_t status = QDF_STATUS_SUCCESS;
+	bool eml_cap_found = false;
+	uint16_t eml_cap;
 
 	if (ar->mlo_ie.present) {
 		status = util_find_mlie(pframe + WLAN_REASSOC_REQ_IES_OFFSET,
@@ -4539,7 +4585,13 @@ sir_convert_reassoc_req_frame2_mlo_struct(uint8_t *pframe, uint32_t nframe,
 		if (QDF_IS_STATUS_SUCCESS(status)) {
 			util_get_bvmlie_persta_partner_info(ml_ie,
 							ml_ie_total_len,
-							&p_assoc_req->mlo_info);
+							&p_assoc_req->mlo_info,
+							WLAN_FC0_STYPE_INVALID);
+
+			util_get_bvmlie_eml_cap(ml_ie, ml_ie_total_len,
+						&eml_cap_found, &eml_cap);
+			if (eml_cap_found)
+				mlo_parse_peer_eml_cap(p_assoc_req, eml_cap);
 
 			util_get_bvmlie_mldmacaddr(ml_ie, ml_ie_total_len,
 						   &mld_mac_addr);
@@ -5542,7 +5594,8 @@ sir_convert_beacon_frame2_mlo_struct(uint8_t *pframe, uint32_t nframe,
 			status = util_get_bvmlie_persta_partner_info(
 								ml_ie,
 								ml_ie_total_len,
-								&partner_info);
+								&partner_info,
+								WLAN_FC0_STYPE_INVALID);
 			if (QDF_IS_STATUS_ERROR(status))
 				return status;
 			bcn_struct->mlo_ie.mlo_ie.num_sta_profile =
@@ -10674,6 +10727,8 @@ QDF_STATUS populate_dot11f_assoc_rsp_mlo_ie(struct mac_context *mac_ctx,
 	struct wlan_objmgr_vdev *wlan_vdev_list[WLAN_UMAC_MLO_MAX_VDEVS];
 	int i = 0;
 	bool emlsr_cap;
+	struct wlan_mlo_eml_cap eml_cap = {0};
+	bool emlsr;
 
 	if (!mac_ctx || !session || !frm)
 		return QDF_STATUS_E_NULL_VALUE;
@@ -10713,21 +10768,28 @@ QDF_STATUS populate_dot11f_assoc_rsp_mlo_ie(struct mac_context *mac_ctx,
 
 	/* Check if HW supports eMLSR mode */
 	emlsr_cap = policy_mgr_is_hw_emlsr_capable(mac_ctx->psoc);
+	/* Check if wmi service bitmap set or not to indicate wlan fw support */
+	wlan_mlme_get_sap_emlsr_mode_enabled(mac_ctx->psoc, &emlsr);
 
-	if (emlsr_cap) {
-		/*
-		 * wlan_mlme_get_eml_params not applicable for sap.
-		 * will be override while new wmi service bit is ready
-		 * to indicate mlo sap support emlsr wlan client.
-		 * Now give the default zero firstly.
-		 */
+	if (emlsr_cap && emlsr) {
 		mlo_ie->eml_capab_present = 1;
 		presence_bitmap |= WLAN_ML_BV_CTRL_PBM_EMLCAP_P;
 		common_info_len += WLAN_ML_BV_CINFO_EMLCAP_SIZE;
 		mlo_ie->eml_capabilities_info.emlmr_support = 0;
-		mlo_ie->eml_capabilities_info.transition_timeout = 0;
+		mlo_ie->eml_capabilities_info.emlsr_support = emlsr;
+
+		/* AP-MLD should advertise emlsr_padding_delay as 0 */
 		mlo_ie->eml_capabilities_info.emlsr_padding_delay = 0;
+		/* AP-MLD should advertise emlsr_transition_delay as 0 */
 		mlo_ie->eml_capabilities_info.emlsr_transition_delay = 0;
+
+		/* trans_timeout shared by MLO STA/SAP */
+		wlan_mlme_get_eml_params(mac_ctx->psoc, &eml_cap);
+		/*
+		 * Indicates the timeout value for EML Operating Mode
+		 * Notification frame exchange
+		 */
+		mlo_ie->eml_capabilities_info.transition_timeout = eml_cap.trans_timeout;
 	}
 
 	mlo_ie->mld_capab_and_op_present = 1;
@@ -11449,6 +11511,8 @@ QDF_STATUS populate_dot11f_bcn_mlo_ie(struct mac_context *mac_ctx,
 	bool sta_pro_present;
 	QDF_STATUS status;
 	bool emlsr_cap;
+	struct wlan_mlo_eml_cap eml_cap = {0};
+	bool emlsr;
 
 	if (!mac_ctx || !session)
 		return QDF_STATUS_E_NULL_VALUE;
@@ -11486,18 +11550,29 @@ QDF_STATUS populate_dot11f_bcn_mlo_ie(struct mac_context *mac_ctx,
 	common_info_length += WLAN_ML_BSSPARAMCHNGCNT_SIZE;
 	/* Check if HW supports eMLSR mode */
 	emlsr_cap = policy_mgr_is_hw_emlsr_capable(mac_ctx->psoc);
+	/* Check if wmi service bitmap set or not to indicate fw support */
+	wlan_mlme_get_sap_emlsr_mode_enabled(mac_ctx->psoc, &emlsr);
 
-
-	if (emlsr_cap) {
-		/* wlan_mlme_get_eml_params not applicable for sap */
+	if (emlsr_cap && emlsr) {
 		mlo_ie->eml_capab_present = 1;
 		presence_bitmap |= WLAN_ML_BV_CTRL_PBM_EMLCAP_P;
 		tmp_offset += 2;
 		common_info_length += WLAN_ML_BV_CINFO_EMLCAP_SIZE;
 		mlo_ie->eml_capabilities_info.emlmr_support = 0;
-		mlo_ie->eml_capabilities_info.transition_timeout = 0;
+		mlo_ie->eml_capabilities_info.emlsr_support = emlsr;
+
+		/* AP-MLD should advertise emlsr_padding_delay as 0 */
 		mlo_ie->eml_capabilities_info.emlsr_padding_delay = 0;
+		/* AP-MLD should advertise emlsr_transition_delay as 0 */
 		mlo_ie->eml_capabilities_info.emlsr_transition_delay = 0;
+
+		/* trans_timeout shared by MLO STA/SAP */
+		wlan_mlme_get_eml_params(mac_ctx->psoc, &eml_cap);
+		/*
+		 * Indicates the timeout value for EML Operating Mode
+		 * Notification frame exchange
+		 */
+		mlo_ie->eml_capabilities_info.transition_timeout = eml_cap.trans_timeout;
 	}
 
 	mlo_ie->mld_capab_and_op_present = 1;

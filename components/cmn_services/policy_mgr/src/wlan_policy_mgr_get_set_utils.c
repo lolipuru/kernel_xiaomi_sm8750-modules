@@ -2454,7 +2454,7 @@ policy_mgr_allow_4th_new_freq(struct wlan_objmgr_psoc *psoc,
 	struct policy_mgr_psoc_priv_obj *pm_ctx;
 	qdf_freq_t ml_sta_link0_freq = 0;
 	qdf_freq_t ml_sta_link1_freq = 0;
-	uint8_t i, j, nan = 0, sap = 0, sta = 0, ndi = 0, p2p;
+	uint8_t i, j, k, nan = 0, sap = 0, sta = 0, ndi = 0, p2p;
 	struct policy_mgr_freq_range *freq_range;
 	bool emlsr_links_with_aux = false;
 	uint8_t mac_id;
@@ -2554,18 +2554,18 @@ policy_mgr_allow_4th_new_freq(struct wlan_objmgr_psoc *psoc,
 				conn[2].freq, conn[2].mode,
 				ch_freq, mode);
 
-			for (i = 0; i < mac_freq_num; i++) {
-				if (mac_mode_list[i] == PM_STA_MODE)
+			for (k = 0; k < mac_freq_num; k++) {
+				if (mac_mode_list[k] == PM_STA_MODE)
 					sta++;
-				else if (mac_mode_list[i] ==
+				else if (mac_mode_list[k] ==
 							PM_P2P_CLIENT_MODE ||
-					 mac_mode_list[i] == PM_P2P_GO_MODE)
+					 mac_mode_list[k] == PM_P2P_GO_MODE)
 					p2p++;
-				else if (mac_mode_list[i] == PM_NAN_DISC_MODE)
+				else if (mac_mode_list[k] == PM_NAN_DISC_MODE)
 					nan++;
-				else if (mac_mode_list[i] == PM_NDI_MODE)
+				else if (mac_mode_list[k] == PM_NDI_MODE)
 					ndi++;
-				else if (mac_mode_list[i] == PM_SAP_MODE)
+				else if (mac_mode_list[k] == PM_SAP_MODE)
 					sap++;
 			}
 		}
@@ -5944,7 +5944,8 @@ bool policy_mgr_max_concurrent_connections_reached(
 	pm_ctx = policy_mgr_get_context(psoc);
 	if (pm_ctx) {
 		for (i = 0; i < QDF_MAX_NO_OF_MODE; i++)
-			j += pm_ctx->no_of_active_sessions[i];
+			if (i != QDF_NAN_DISC_MODE)
+				j += pm_ctx->no_of_active_sessions[i];
 		return j > (pm_ctx->cfg.max_conc_cxns - 1);
 	}
 
@@ -6044,7 +6045,6 @@ static bool policy_mgr_is_concurrency_allowed_4_port(
 		go_cnt += policy_mgr_mode_specific_connection_count(psoc,
 							PM_P2P_CLIENT_MODE,
 							NULL);
-
 	}
 
 	if (sap_cnt || go_cnt || nan_cnt || count_sta) {
@@ -6345,9 +6345,7 @@ policy_mgr_get_legacy_conn_info(struct wlan_objmgr_psoc *psoc,
 		    pm_conc_connection_list[conn_index].mode !=
 							PM_P2P_CLIENT_MODE &&
 		    pm_conc_connection_list[conn_index].mode !=
-							PM_P2P_GO_MODE &&
-		    pm_conc_connection_list[conn_index].mode !=
-							PM_NAN_DISC_MODE) {
+							PM_P2P_GO_MODE) {
 			wlan_objmgr_vdev_release_ref(vdev, WLAN_POLICY_MGR_ID);
 			continue;
 		}
@@ -6373,9 +6371,6 @@ policy_mgr_get_legacy_conn_info(struct wlan_objmgr_psoc *psoc,
 		else if (pm_conc_connection_list[conn_index].mode ==
 							PM_SAP_MODE)
 			has_priority[j] = PRIORITY_SAP;
-		else if (pm_conc_connection_list[conn_index].mode ==
-							PM_NAN_DISC_MODE)
-			has_priority[j] = PRIORITY_OTHER;
 		else
 			has_priority[j] = PRIORITY_OTHER;
 
@@ -7121,6 +7116,7 @@ policy_mgr_link_switch_notifier_cb(struct wlan_objmgr_vdev *vdev,
 			info[MAX_NUMBER_OF_CONC_CONNECTIONS] = { {0} };
 	uint8_t num_del = 0;
 	struct ml_nlink_change_event data;
+	uint16_t dyn_inact_bmap = 0, force_inact_bmap = 0;
 
 	if (notify_reason > MLO_LINK_SWITCH_NOTIFY_REASON_PRE_START_POST_SER)
 		return QDF_STATUS_SUCCESS;
@@ -7152,7 +7148,11 @@ policy_mgr_link_switch_notifier_cb(struct wlan_objmgr_vdev *vdev,
 		psoc, vdev_id, info, &num_del);
 	conc_ext_flags.value =
 	policy_mgr_get_conc_ext_flags(vdev, true);
-	if (!policy_mgr_is_concurrency_allowed(psoc, PM_STA_MODE,
+	ml_nlink_get_dynamic_inactive_links(psoc, vdev, &dyn_inact_bmap,
+					    &force_inact_bmap);
+
+	if (!(dyn_inact_bmap & BIT(new_ieee_link_id)) &&
+	    !policy_mgr_is_concurrency_allowed(psoc, PM_STA_MODE,
 					       new_primary_freq,
 					       HW_MODE_20_MHZ,
 					       conc_ext_flags.value,
@@ -8463,7 +8463,9 @@ policy_mgr_handle_ml_sta_links_on_vdev_up_csa(struct wlan_objmgr_psoc *psoc,
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_POLICY_MGR_ID);
 }
 
-#define SET_LINK_TIMEOUT 6000
+/* Add extra buff if any connection is disconnecting */
+#define SET_LINK_TIMEOUT ((STOP_RESPONSE_TIMER) + 6000)
+
 QDF_STATUS policy_mgr_wait_for_set_link_update(struct wlan_objmgr_psoc *psoc)
 {
 	struct policy_mgr_psoc_priv_obj *pm_ctx;
@@ -13509,7 +13511,7 @@ bool policy_mgr_allow_non_force_link_bitmap(
 						       NULL)) {
 			allow = false;
 			policy_mgr_debug("not allow - standby link 0x%x freq %d active due to conc",
-					 standby_link_bitmap, freq);
+					 standby_link_bitmap, standby_freq);
 			goto restore_conn;
 		}
 	}

@@ -1215,7 +1215,8 @@ int wlan_hdd_pm_qos_notify(struct notifier_block *nb, unsigned long curr_val,
 
 /** cpuidle_governor_latency_req() is not exported by upstream kernel **/
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) && \
-	defined(__ANDROID_COMMON_KERNEL__))
+	defined(__ANDROID_COMMON_KERNEL__) && \
+	!defined(CONFIG_X86))
 bool wlan_hdd_is_cpu_pm_qos_in_progress(struct hdd_context *hdd_ctx)
 {
 	long long curr_val_ns;
@@ -1240,6 +1241,11 @@ bool wlan_hdd_is_cpu_pm_qos_in_progress(struct hdd_context *hdd_ctx)
 		return true;
 	else
 		return false;
+}
+#else
+bool wlan_hdd_is_cpu_pm_qos_in_progress(struct hdd_context *hdd_ctx)
+{
+	return true;
 }
 #endif
 #endif
@@ -3009,6 +3015,11 @@ static int __wlan_hdd_cfg80211_set_power_mgmt(struct wiphy *wiphy,
 
 	if (0 != status)
 		return status;
+
+	if (wlan_hdd_is_lpc_powersave_disabled(hdd_ctx)) {
+		hdd_debug("LPC has disabled power save");
+		return -EINVAL;
+	}
 
 	if (hdd_ctx->driver_status != DRIVER_MODULES_ENABLED) {
 		hdd_debug("Driver Module not enabled return success");

@@ -2283,7 +2283,7 @@ void csr_cm_get_sta_cxn_info(struct mac_context *mac_ctx, uint8_t vdev_id,
 #endif
 #endif
 
-QDF_STATUS csr_roam_call_callback(struct mac_context *mac, uint32_t sessionId,
+QDF_STATUS csr_roam_call_callback(struct mac_context *mac, uint32_t vdev_id,
 				  struct csr_roam_info *roam_info,
 				  eRoamCmdStatus u1, eCsrRoamResult u2)
 {
@@ -2291,21 +2291,21 @@ QDF_STATUS csr_roam_call_callback(struct mac_context *mac, uint32_t sessionId,
 	struct csr_roam_session *pSession;
 	qdf_freq_t chan_freq;
 
-	if (!CSR_IS_SESSION_VALID(mac, sessionId)) {
-		sme_err("Session ID: %d is not valid", sessionId);
+	if (!CSR_IS_SESSION_VALID(mac, vdev_id)) {
+		sme_err("Session ID: %d is not valid", vdev_id);
 		QDF_ASSERT(0);
 		return QDF_STATUS_E_FAILURE;
 	}
-	pSession = CSR_GET_SESSION(mac, sessionId);
+	pSession = CSR_GET_SESSION(mac, vdev_id);
 
 	if (false == pSession->sessionActive) {
 		sme_debug("Session is not Active");
 		return QDF_STATUS_E_FAILURE;
 	}
-	chan_freq = wlan_get_operation_chan_freq_vdev_id(mac->pdev, sessionId);
+	chan_freq = wlan_get_operation_chan_freq_vdev_id(mac->pdev, vdev_id);
 
 	if (mac->session_roam_complete_cb)
-		status = mac->session_roam_complete_cb(mac->psoc, sessionId,
+		status = mac->session_roam_complete_cb(mac->psoc, vdev_id,
 						       roam_info, u1, u2);
 
 	return status;
@@ -5578,11 +5578,6 @@ static void csr_fill_connected_profile(struct mac_context *mac_ctx,
 		goto purge_list;
 
 	wlan_fill_bss_desc_from_scan_entry(mac_ctx, bss_desc, cur_node->entry);
-	pe_debug("Dump scan entry frm:");
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_PE, QDF_TRACE_LEVEL_DEBUG,
-			   cur_node->entry->raw_frame.ptr,
-			   cur_node->entry->raw_frame.len);
-
 	src_cfg.uint_value = bss_desc->mbo_oce_enabled_ap;
 	wlan_cm_roam_cfg_set_value(mac_ctx->psoc, vdev_id, MBO_OCE_ENABLED_AP,
 				   &src_cfg);
@@ -6650,7 +6645,7 @@ QDF_STATUS csr_invoke_neighbor_report_request(
 
 	sme_debug("Sending SIR_HAL_INVOKE_NEIGHBOR_REPORT");
 
-	msg.type = SIR_HAL_INVOKE_NEIGHBOR_REPORT;
+	msg.type = WMA_INVOKE_NEIGHBOR_REPORT;
 	msg.reserved = 0;
 	msg.bodyptr = invoke_params;
 
