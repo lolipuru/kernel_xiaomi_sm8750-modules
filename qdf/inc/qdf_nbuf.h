@@ -257,7 +257,7 @@ typedef __qdf_nbuf_queue_t qdf_nbuf_queue_t;
 #define RADIOTAP_TX_FLAGS_LEN (2 + 1)
 #define RADIOTAP_VHT_FLAGS_LEN (12 + 1)
 #define RADIOTAP_HE_FLAGS_LEN (12 + 1)
-#define RADIOTAP_HE_MU_FLAGS_LEN (8 + 1)
+#define RADIOTAP_HE_MU_FLAGS_LEN (12 + 1)
 #define RADIOTAP_HE_MU_OTHER_FLAGS_LEN (18 + 1)
 #define RADIOTAP_U_SIG_FLAGS_LEN (12 + 3)
 #define RADIOTAP_EHT_FLAGS_LEN (58 + 3)
@@ -604,6 +604,7 @@ struct mon_rx_status {
  * @rs_flags: Flags to indicate AMPDU or AMSDU aggregation
  * @mpdu_cnt_fcs_ok: mpdu count received with fcs ok
  * @mpdu_cnt_fcs_err: mpdu count received with fcs ok bitmap
+ * @is_mpdu_incomplete: Flag to indicate mpdu incomplete
  * @mpdu_fcs_ok_bitmap: mpdu with fcs ok bitmap
  * @mpdu_ok_byte_count: mpdu byte count with fcs ok
  * @mpdu_err_byte_count: mpdu byte count with fcs err
@@ -641,8 +642,8 @@ struct mon_rx_user_status {
 		 frame_control_info_valid : 1,
 		 frame_control : 16,
 		 data_sequence_control_info_valid : 1,
-		 ba_bitmap_sz : 2,
 		 filter_category : 2;
+	uint16_t ba_bitmap_sz;
 	uint16_t tcp_msdu_count;
 	uint16_t udp_msdu_count;
 	uint16_t other_msdu_count;
@@ -673,13 +674,14 @@ struct mon_rx_user_status {
 	uint8_t rs_flags;
 	uint16_t mpdu_cnt_fcs_ok;
 	uint8_t mpdu_cnt_fcs_err;
+	uint8_t is_mpdu_incomplete;
 	uint32_t mpdu_fcs_ok_bitmap[QDF_MON_STATUS_MPDU_FCS_BMAP_NWORDS];
 	uint32_t mpdu_ok_byte_count;
 	uint32_t mpdu_err_byte_count;
 	uint16_t retry_mpdu;
 	uint16_t start_seq;
 	uint16_t ba_control;
-	uint32_t ba_bitmap[8];
+	uint32_t ba_bitmap[32];
 	uint16_t aid;
 	uint8_t enc_type;
 	qdf_nbuf_queue_t mpdu_q;
@@ -2535,7 +2537,37 @@ qdf_nbuf_t
 qdf_nbuf_page_frag_alloc_debug(qdf_device_t osdev, qdf_size_t size, int reserve,
 			       int align, qdf_frag_cache_t *pf_cache,
 			       const char *func, uint32_t line);
+/**
+ * qdf_nbuf_page_pool_alloc() - Allocates nbuf from Kernel page pool
+ * @d: Device handler
+ * @s: Buffer size
+ * @r: Headroom size for the buffer
+ * @a: size of the required alignment
+ * @pp: Page Pool reference
+ * @o: buffer offset within the page
+ *
+ * Return: nbuf
+ */
+#define qdf_nbuf_page_pool_alloc(d, s, r, a, pp, o) \
+	qdf_nbuf_page_pool_alloc_debug(d, s, r, a, pp, o,  __func__, __LINE__)
 
+/**
+ * qdf_nbuf_page_pool_alloc_debug() - Allocates nbuf from Kernel page pool
+ * @osdev: Device handler
+ * @size: Buffer size
+ * @reserve: Headroom size for the buffer
+ * @align: size of the required alignment
+ * @pp: Page Pool reference
+ * @offset: buffer offset within the page
+ * @func: function name
+ * @line: line number
+ *
+ * Return: nbuf
+ */
+qdf_nbuf_t
+qdf_nbuf_page_pool_alloc_debug(qdf_device_t osdev, qdf_size_t size, int reserve,
+			       int align, qdf_page_pool_t pp, uint32_t *offset,
+			       const char *func, uint32_t line);
 /**
  * qdf_nbuf_ssr_register_region() - Register nbuf history with SSR dump
  *
@@ -2728,6 +2760,30 @@ qdf_nbuf_page_frag_alloc_fl(qdf_device_t osdev, qdf_size_t size, int reserve,
 {
 	return __qdf_nbuf_page_frag_alloc(osdev, size, reserve, align, pf_cache,
 					  func, line);
+}
+
+/**
+ * qdf_nbuf_page_pool_alloc() - Allocates nbuf from Kernel page pool
+ * @osdev: Device handler
+ * @size: Buffer size
+ * @reserve: Headroom size for the buffer
+ * @align: size of the required alignment
+ * @pp: Page Pool reference
+ * @offset: buffer offset within the page
+ *
+ * Return: nbuf
+ */
+#define qdf_nbuf_page_pool_alloc(osdev, size, reserve, align, pp, offset) \
+	qdf_nbuf_page_pool_alloc_fl(osdev, size, reserve, align, pp, offset, \
+			  __func__, __LINE__)
+
+static inline qdf_nbuf_t
+qdf_nbuf_page_pool_alloc_fl(qdf_device_t osdev, qdf_size_t size, int reserve,
+			    int align, qdf_page_pool_t pp, uint32_t *offset,
+			    const char *func, uint32_t line)
+{
+	return __qdf_nbuf_page_pool_alloc(osdev, size, reserve, align, pp,
+					  offset, func, line);
 }
 #endif /* NBUF_MEMORY_DEBUG */
 
@@ -4526,6 +4582,20 @@ bool qdf_nbuf_is_ipv6_pkt(qdf_nbuf_t buf)
 {
 	return __qdf_nbuf_data_is_ipv6_pkt(qdf_nbuf_data(buf));
 }
+
+#ifdef BIG_ENDIAN_HOST
+static inline
+uint16_t qdf_nbuf_get_ether_type(qdf_nbuf_t buf)
+{
+	return __qdf_nbuf_get_ethernet_type(qdf_nbuf_data(buf));
+}
+#else
+static inline
+uint16_t qdf_nbuf_get_ether_type(qdf_nbuf_t buf)
+{
+	return QDF_SWAP_U16(__qdf_nbuf_get_ether_type(qdf_nbuf_data(buf)));
+}
+#endif
 
 /**
  * qdf_nbuf_sock_is_ipv6_pkt() - check if it is a ipv6 sock

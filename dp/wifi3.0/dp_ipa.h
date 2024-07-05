@@ -64,7 +64,7 @@
 
 #define IPA_SESSION_ID_SHIFT 1
 #endif /* IPA_WDI3_TX_TWO_PIPES */
-#define MAX_IPA_RX_FREE_DESC 32
+#define MAX_IPA_RX_FREE_DESC 64
 
 /**
  * struct dp_ipa_uc_tx_hdr - full tx header registered to IPA hardware
@@ -121,6 +121,17 @@ struct dp_ipa_uc_rx_hdr {
 #define DP_IPA_HDL_SECOND	1
 #define DP_IPA_HDL_THIRD	2
 #define IPA_DEF_PDEV_ID 0
+
+/* Nbuf CB values used by IPA component, where driver gets the required info
+ * BCMC_OFFSET: rx_msdu_desc_info->da_is_mcbc stored in skb->cb[1] & 0x2
+ * CHIP_ID_OFFSET: rx_msdu_desc_info->dest_chip_id stored in skb->cb[7]
+ * PAMC_ID_OFFSET: rx_msdu_desc_info->dest_chip_pmac_id in skb->cb[8]
+ */
+#define DP_IPA_NBUF_CB_DA_IS_BCMC_OFFSET	1
+#define DP_IPA_NBUF_CB_DEST_CHIP_ID_OFFSET	7
+#define DP_IPA_NBUF_CB_DEST_CHIP_PMAC_ID_OFFSET	8
+#define DP_IPA_NBUF_CB_BCMC_MASK	0x2
+
 /**
  * wlan_ipa_get_hdl() - Get ipa handle from IPA component
  * @psoc: control psoc object
@@ -400,6 +411,13 @@ QDF_STATUS dp_ipa_tx_super_rule_setup(struct cdp_soc_t *soc_hdl,
 QDF_STATUS dp_ipa_tx_opt_dp_ctrl_pkt(struct cdp_soc_t *soc_hdl,
 				     uint8_t vdev_id,
 				     qdf_nbuf_t nbuf);
+/**
+ * dp_ipa_get_opt_dp_ctrl_refill_cap() - refill cap for opt_dp_ctrl
+ * @soc_hdl: handle to the soc
+ *
+ * Return: bool
+ */
+bool dp_ipa_get_opt_dp_ctrl_refill_cap(struct cdp_soc_t *soc_hdl);
 
 int dp_ipa_pcie_link_up(struct cdp_soc_t *soc_hdl);
 void dp_ipa_pcie_link_down(struct cdp_soc_t *soc_hdl);
@@ -495,13 +513,15 @@ QDF_STATUS dp_ipa_handle_rx_buf_smmu_mapping(struct dp_soc *soc,
  * from free desc list for ipa to be used in opt dp ctrl.
  * @soc: core txrx main context
  * @rx_desc: free desc from rx desc pool
+ * @is_ctrl_refill: refill desc from fw
  *
  * Return: QDF_STATUS
  *
  */
 QDF_STATUS
 dp_rx_add_to_ipa_desc_free_list(struct dp_soc *soc,
-				struct dp_rx_desc *rx_desc);
+				struct dp_rx_desc *rx_desc,
+				uint8_t is_ctrl_refill);
 
 /**
  * dp_ipa_tx_pkt_opt_dp_ctrl() - Handle opt_dp_ctrl tx pkt
@@ -514,7 +534,8 @@ void dp_ipa_tx_pkt_opt_dp_ctrl(struct dp_soc *soc, uint8_t vdev_id,
 #else
 static inline QDF_STATUS
 dp_rx_add_to_ipa_desc_free_list(struct dp_soc *soc,
-				struct dp_rx_desc *rx_desc)
+				struct dp_rx_desc *rx_desc,
+				uint8_t is_ctrl_refill)
 {
 	return QDF_STATUS_E_FAILURE;
 }
@@ -820,7 +841,8 @@ dp_ipa_is_ring_ipa_tx(struct dp_soc *soc, uint8_t ring_id)
 
 static inline QDF_STATUS
 dp_rx_add_to_ipa_desc_free_list(struct dp_soc *soc,
-				struct dp_rx_desc *rx_desc)
+				struct dp_rx_desc *rx_desc,
+				uint8_t is_ctrl_refill)
 {
 	return QDF_STATUS_E_FAILURE;
 }

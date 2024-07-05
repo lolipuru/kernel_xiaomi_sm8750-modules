@@ -70,11 +70,23 @@
 #define WLAN_CFG_RX_NEAR_FULL_IRQ_MASK_2 (WLAN_CFG_RX_RING_MASK_4 |	\
 					  WLAN_CFG_RX_RING_MASK_5 |	\
 					  WLAN_CFG_RX_RING_MASK_6)
-
+#ifdef IPA_WDI3_TX_TWO_PIPES
 #define WLAN_CFG_TX_RING_NEAR_FULL_IRQ_MASK (WLAN_CFG_TX_RING_MASK_0 | \
 					     WLAN_CFG_TX_RING_MASK_4 | \
 					     WLAN_CFG_TX_RING_MASK_2)
-
+#else /* !IPA_WDI3_TX_TWO_PIPES */
+#if defined(QCA_WIFI_KIWI_V2) || defined(QCA_WIFI_WCN7750)
+#define WLAN_CFG_TX_RING_NEAR_FULL_IRQ_MASK (WLAN_CFG_TX_RING_MASK_0 | \
+					     WLAN_CFG_TX_RING_MASK_4 | \
+					     WLAN_CFG_TX_RING_MASK_2 | \
+					     WLAN_CFG_TX_RING_MASK_5)
+#else /* !QCA_WIFI_KIWI_V2 */
+#define WLAN_CFG_TX_RING_NEAR_FULL_IRQ_MASK (WLAN_CFG_TX_RING_MASK_0 | \
+					     WLAN_CFG_TX_RING_MASK_4 | \
+					     WLAN_CFG_TX_RING_MASK_2 | \
+					     WLAN_CFG_TX_RING_MASK_6)
+#endif /* QCA_WIFI_KIWI_V2 */
+#endif /* IPA_WDI3_TX_TWO_PIPES*/
 #else
 #define WLAN_CFG_RX_NEAR_FULL_IRQ_MASK_1 (WLAN_CFG_RX_RING_MASK_0 |	\
 					  WLAN_CFG_RX_RING_MASK_1 |	\
@@ -252,6 +264,7 @@ struct wlan_srng_cfg {
  * @rxdma_refill_ring: rxdma refill ring size
  * @rxdma_refill_lt_disable: rxdma refill low threshold disable
  * @rxdma_scan_radio_refill_ring: rxdma scan radio refill ring size
+ * @rxdma_scan_radio_refill_lt_disable: scan radio rxdma refill low threshold disable
  * @rxdma_err_dst_ring: rxdma error destination ring size
  * @per_pkt_trace:
  * @raw_mode_war: enable/disable raw mode war
@@ -380,6 +393,7 @@ struct wlan_srng_cfg {
  * @is_audio_shared_iommu_group: flag to indicate if iommu group is shared with
  *  audio
  * @rxmon_mgmt_linearization: Linearize paged rxmon mgmt frame
+ * @dp_proto_stats: flag to enable/disable Datapath Protocol stats.
  */
 struct wlan_cfg_dp_soc_ctxt {
 	int num_int_ctxts;
@@ -480,6 +494,7 @@ struct wlan_cfg_dp_soc_ctxt {
 	int rxdma_refill_ring;
 	bool rxdma_refill_lt_disable;
 	int rxdma_scan_radio_refill_ring;
+	bool rxdma_scan_radio_refill_lt_disable;
 	int rxdma_err_dst_ring;
 	uint32_t per_pkt_trace;
 	bool raw_mode_war;
@@ -623,6 +638,9 @@ struct wlan_cfg_dp_soc_ctxt {
 	bool is_audio_shared_iommu_group;
 #endif
 	bool rxmon_mgmt_linearization;
+#ifdef QCA_DP_PROTOCOL_STATS
+	bool dp_proto_stats;
+#endif
 };
 
 /**
@@ -1769,14 +1787,14 @@ wlan_cfg_get_dp_soc_rxdma_scan_radio_refill_ring_size(struct wlan_cfg_dp_soc_ctx
 /**
  * wlan_cfg_set_dp_soc_rxdma_scan_radio_refill_ring_size - Set rxdma scan radio
  * refill ring size
- * @ctrl_psoc: PSOC object
- * @cfg: cfg ctx where values will be populated
+ * @cfg: soc configuration context
+ * @ring_size: rxdma scan refill ring size to be set
  *
  * Return: None
  */
 void
-wlan_cfg_set_dp_soc_rxdma_scan_radio_refill_ring_size(struct cdp_ctrl_objmgr_psoc *ctrl_psoc,
-						      struct wlan_cfg_dp_soc_ctxt *cfg);
+wlan_cfg_set_dp_soc_rxdma_scan_radio_refill_ring_size(struct wlan_cfg_dp_soc_ctxt *cfg,
+						      int ring_size);
 
 /**
  * wlan_cfg_get_dp_soc_rx_release_ring_size - Get rx_release_ring size
@@ -1899,7 +1917,7 @@ bool
 wlan_cfg_get_dp_soc_rxdma_refill_lt_disable(struct wlan_cfg_dp_soc_ctxt *cfg);
 
 /**
- * wlan_cfg_set_dp_soc_rxdma_refill_lt_disable - Set RxDMA refill LT stats
+ * wlan_cfg_set_dp_soc_rxdma_refill_lt_disable - Set RxDMA refill LT status
  * @cfg: soc configuration context
  * @rx_refill_lt_disable: Enable/Disable low interrupt threshold
  *
@@ -1908,6 +1926,28 @@ wlan_cfg_get_dp_soc_rxdma_refill_lt_disable(struct wlan_cfg_dp_soc_ctxt *cfg);
 void
 wlan_cfg_set_dp_soc_rxdma_refill_lt_disable(struct wlan_cfg_dp_soc_ctxt *cfg,
 					    bool rx_refill_lt_disable);
+
+/**
+ * wlan_cfg_get_dp_soc_rxdma_scan_radio_refill_lt_disable - Get RxDMA refill
+ * status for scan radio
+ * @cfg: soc configuration context
+ *
+ * Return: true if Low threshold disable else false
+ */
+bool
+wlan_cfg_get_dp_soc_rxdma_scan_radio_refill_lt_disable(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
+ * wlan_cfg_set_dp_soc_rxdma_scan_radio_refill_lt_disable - Set RxDMA refill
+ * status for scan radio
+ * @cfg: soc configuration context
+ * @rx_refill_lt_disable: Enable/Disable low interrupt threshold
+ *
+ * Return: None
+ */
+void
+wlan_cfg_set_dp_soc_rxdma_scan_radio_refill_lt_disable(struct wlan_cfg_dp_soc_ctxt *cfg,
+						       bool rx_refill_lt_disable);
 
 /**
  * wlan_cfg_get_dp_soc_rxdma_err_dst_ring_size - Get rxdma dst ring size
@@ -3046,4 +3086,13 @@ uint8_t wlan_cfg_get_rx_mon_wq_depth(struct wlan_cfg_dp_soc_ctxt *cfg);
  * Return: uint8_t
  */
 bool wlan_cfg_get_rxmon_mgmt_linearization(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
+ * wlan_cfg_get_dp_proto_stats() - Get DP protocol stats
+ *
+ * @cfg: soc configuration context
+ *
+ * Return: bool
+ */
+bool wlan_cfg_get_dp_proto_stats(struct wlan_cfg_dp_soc_ctxt *cfg);
 #endif /*__WLAN_CFG_H*/

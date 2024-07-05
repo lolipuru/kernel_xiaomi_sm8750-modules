@@ -675,6 +675,9 @@ QDF_STATUS
 QDF_STATUS (*send_vdev_set_param_cmd)(wmi_unified_t wmi_handle,
 				struct vdev_set_params *param);
 
+QDF_STATUS (*send_twt_vdev_config_cmd)(wmi_unified_t wmi_handle,
+				       struct twt_vdev_config_params *param);
+
 QDF_STATUS
 (*send_multiple_vdev_param_cmd)(wmi_unified_t wmi_handle,
 				struct set_multiple_pdev_vdev_param *params);
@@ -3258,6 +3261,11 @@ QDF_STATUS (*extract_mlo_link_removal_evt_fixed_param)(
 		struct wmi_unified *wmi_handle,
 		void *buf,
 		struct mlo_link_removal_evt_params *params);
+
+QDF_STATUS (*extract_mlo_3_link_tlt_selection_fixed_param)(
+		struct wmi_unified *wmi_handle,
+		void *buf,
+		struct mlo_tlt_selection_evt_params *params);
 
 QDF_STATUS (*extract_mlo_link_removal_tbtt_update)(
 		struct wmi_unified *wmi_handle,

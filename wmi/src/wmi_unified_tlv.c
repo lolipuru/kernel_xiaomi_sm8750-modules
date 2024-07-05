@@ -71,6 +71,7 @@
 #ifdef FEATURE_SET
 #include "wlan_mlme_public_struct.h"
 #endif
+#include "cdp_txrx_cmn.h"
 
 /*
  * If FW supports WMI_SERVICE_SCAN_CONFIG_PER_CHANNEL,
@@ -473,6 +474,10 @@ static const uint32_t pdev_param_tlv[] = {
 		  PDEV_PARAM_PWR_REDUCTION_IN_QUARTER_DB),
 	PARAM_MAP(pdev_param_scan_mode,
 		  PDEV_PARAM_SCAN_MODE),
+	PARAM_MAP(pdev_param_dstall_consecutive_tx_no_ack_interval,
+		  PDEV_PARAM_DSTALL_CONSECUTIVE_TX_NO_ACK_INTERVAL),
+	PARAM_MAP(pdev_param_dstall_consecutive_tx_no_ack_threshold,
+		  PDEV_PARAM_DSTALL_CONSECUTIVE_TX_NO_ACK_THRESHOLD),
 };
 
 /* Populate vdev_param array whose index is host param, value is target param */
@@ -1200,6 +1205,7 @@ static QDF_STATUS send_vdev_stop_cmd_tlv(wmi_unified_t wmi,
 	wmi_buf_t buf;
 	int32_t len = sizeof(*cmd);
 	uint8_t *buf_ptr;
+	uint32_t vdev_id = params->vdev_id;
 
 	len += vdev_stop_mlo_params_size(params);
 
@@ -1222,7 +1228,7 @@ static QDF_STATUS send_vdev_stop_cmd_tlv(wmi_unified_t wmi,
 		wmi_buf_free(buf);
 		return QDF_STATUS_E_FAILURE;
 	}
-	wmi_debug("vdev id = %d", cmd->vdev_id);
+	wmi_debug("vdev id = %d", vdev_id);
 
 	return 0;
 }
@@ -3279,6 +3285,48 @@ send_dbglog_cmd_tlv(wmi_unified_t wmi_handle,
 		wmi_buf_free(buf);
 
 	return status;
+}
+
+/**
+ * send_twt_vdev_config_cmd_tlv() - WMI twt vdev config parameter function
+ * @wmi_handle: handle to WMI.
+ * @param: pointer to hold twt config parameter
+ *
+ * Return: QDF_STATUS_SUCCESS for success or error code
+ */
+static QDF_STATUS
+send_twt_vdev_config_cmd_tlv(wmi_unified_t wmi_handle,
+			     struct twt_vdev_config_params *param)
+{
+	QDF_STATUS ret;
+	wmi_twt_vdev_config_cmd_fixed_param *cmd;
+	wmi_buf_t buf;
+	uint16_t len = sizeof(*cmd);
+
+	buf = wmi_buf_alloc(wmi_handle, len);
+	if (!buf)
+		return QDF_STATUS_E_NOMEM;
+
+	cmd = (wmi_twt_vdev_config_cmd_fixed_param *)wmi_buf_data(buf);
+	WMITLV_SET_HDR(&cmd->tlv_header,
+		       WMITLV_TAG_STRUC_wmi_twt_vdev_config_cmd_fixed_param,
+		       WMITLV_GET_STRUCT_TLVLEN(
+				       wmi_twt_vdev_config_cmd_fixed_param));
+
+	cmd->pdev_id = wmi_handle->ops->convert_pdev_id_host_to_target(
+			  wmi_handle,
+			  param->pdev_id);
+	cmd->vdev_id = param->vdev_id;
+	cmd->twt_support = param->twt_value;
+	wmi_nofl_debug("Set pdev %d vdev %d to %u",
+		       cmd->pdev_id, cmd->vdev_id, cmd->twt_support);
+	wmi_mtrace(WMI_TWT_VDEV_CONFIG_CMDID, cmd->vdev_id, 0);
+	ret = wmi_unified_cmd_send(wmi_handle, buf, len,
+				   WMI_TWT_VDEV_CONFIG_CMDID);
+	if (QDF_IS_STATUS_ERROR(ret))
+		wmi_buf_free(buf);
+
+	return ret;
 }
 
 /**
@@ -10082,9 +10130,19 @@ void wmi_copy_epm_support(wmi_resource_config *resource_cfg,
 #endif
 
 static
-void wmi_copy_resource_config(wmi_resource_config *resource_cfg,
-				target_resource_config *tgt_res_cfg)
+void wmi_copy_resource_config(wmi_unified_t wmi_handle,
+			      wmi_resource_config *resource_cfg,
+			      target_resource_config *tgt_res_cfg)
 {
+	ol_txrx_soc_handle soc_txrx_handle;
+
+	soc_txrx_handle = (ol_txrx_soc_handle)wlan_psoc_get_dp_handle(
+			wmi_handle->soc->wmi_psoc);
+	if (!soc_txrx_handle) {
+		wmi_err("psoc handle is NULL");
+		return;
+	}
+
 	resource_cfg->num_vdevs = tgt_res_cfg->num_vdevs;
 	resource_cfg->num_peers = tgt_res_cfg->num_peers;
 	resource_cfg->num_offload_peers = tgt_res_cfg->num_offload_peers;
@@ -10225,6 +10283,12 @@ void wmi_copy_resource_config(wmi_resource_config *resource_cfg,
 	if (tgt_res_cfg->pktcapture_support)
 		WMI_RSRC_CFG_FLAG_PACKET_CAPTURE_SUPPORT_SET(
 				resource_cfg->flag1, 1);
+
+	/*
+	 * Enable fw to send TX mgmt ack RSSI to host as part of
+	 * TX_COMPLETION
+	 */
+	WMI_RSRC_CFG_FLAG_TX_ACK_RSSI_SET(resource_cfg->flag1, 1);
 
 	/*
 	 * Control padding using config param/ini of iphdr_pad_config
@@ -10386,6 +10450,11 @@ void wmi_copy_resource_config(wmi_resource_config *resource_cfg,
 			 tgt_res_cfg->fw_ast_indication_disable);
 	}
 
+	if (cdp_get_opt_dp_ctrl_refill_cap(soc_txrx_handle)) {
+		WMI_RSRC_CFG_HOST_SERVICE_FLAG_OPT_DP_CTRL_REPLENISH_REFILL_RX_BUFFER_SUPPORT_SET(
+				resource_cfg->host_service_flags, 1);
+	}
+
 	wmi_copy_latency_flowq_support(resource_cfg, tgt_res_cfg);
 	wmi_copy_full_bw_nol_cfg(resource_cfg, tgt_res_cfg);
 
@@ -10439,6 +10508,8 @@ static WMI_VENDOR1_REQ1_VERSION convert_host_to_target_vendor1_req1_version(
 		return WMI_VENDOR1_REQ1_VERSION_3_40;
 	case WMI_HOST_VENDOR1_REQ1_VERSION_4_00:
 		return WMI_VENDOR1_REQ1_VERSION_4_00;
+	case WMI_HOST_VENDOR1_REQ1_VERSION_4_10:
+		return WMI_VENDOR1_REQ1_VERSION_4_10;
 	default:
 		return WMI_VENDOR1_REQ1_VERSION_3_00;
 	}
@@ -12583,7 +12654,7 @@ static QDF_STATUS init_cmd_send_tlv(wmi_unified_t wmi_handle,
 	WMITLV_SET_HDR(&cmd->tlv_header,
 			WMITLV_TAG_STRUC_wmi_init_cmd_fixed_param,
 			WMITLV_GET_STRUCT_TLVLEN(wmi_init_cmd_fixed_param));
-	wmi_copy_resource_config(resource_cfg, param->res_cfg);
+	wmi_copy_resource_config(wmi_handle, resource_cfg, param->res_cfg);
 	WMITLV_SET_HDR(&resource_cfg->tlv_header,
 			WMITLV_TAG_STRUC_wmi_resource_config,
 			WMITLV_GET_STRUCT_TLVLEN(wmi_resource_config));
@@ -22347,6 +22418,7 @@ struct wmi_ops tlv_ops =  {
 	.send_crash_inject_cmd = send_crash_inject_cmd_tlv,
 	.send_dbglog_cmd = send_dbglog_cmd_tlv,
 	.send_vdev_set_param_cmd = send_vdev_set_param_cmd_tlv,
+	.send_twt_vdev_config_cmd = send_twt_vdev_config_cmd_tlv,
 	.send_vdev_set_mu_snif_cmd = send_vdev_set_mu_snif_cmd_tlv,
 	.send_packet_log_enable_cmd = send_packet_log_enable_cmd_tlv,
 	.send_peer_based_pktlog_cmd = send_peer_based_pktlog_cmd,
@@ -22857,6 +22929,8 @@ static void populate_tlv_events_id_mlo(WMI_EVT_ID *event_ids)
 			WMI_MLO_AP_VDEV_TID_TO_LINK_MAP_EVENTID;
 	event_ids[wmi_mlo_link_removal_eventid] =
 			WMI_MLO_LINK_REMOVAL_EVENTID;
+	event_ids[wmi_mlo_tlt_selection_for_tid_eventid] =
+			WMI_MLO_TLT_SELECTION_FOR_TID_SPRAY_EVENTID;
 	event_ids[wmi_mlo_link_state_info_eventid] =
 			WMI_MLO_VDEV_LINK_INFO_EVENTID;
 	event_ids[wmi_mlo_link_disable_request_eventid] =
@@ -24044,6 +24118,10 @@ static void populate_tlv_service(uint32_t *wmi_service)
 				WMI_SERVICE_SUPPORT_AP_SUSPEND_RESUME;
 	wmi_service[wmi_service_epm] =
 				WMI_SERVICE_EPM;
+#ifdef WLAN_FEATURE_MULTI_LINK_SAP
+	wmi_service[wmi_service_mlo_sap_emlsr_support] =
+				WMI_SERVICE_MLO_SAP_EMLSR_SUPPORT;
+#endif
 }
 
 /**

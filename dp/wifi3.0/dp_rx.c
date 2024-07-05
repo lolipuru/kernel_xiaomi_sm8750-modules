@@ -975,6 +975,10 @@ QDF_STATUS __dp_rx_buffers_replenish(struct dp_soc *dp_soc, uint32_t mac_id,
 	dp_verbose_debug("%pK: requested %d buffers for replenish",
 			 dp_soc, num_req_buffers);
 
+	if (dp_rx_buffers_is_skip_replenish(dp_soc, rx_desc_pool, desc_list,
+					    tail, &num_req_buffers, mac_id))
+		return QDF_STATUS_SUCCESS;
+
 	hal_srng_access_start(dp_soc->hal_soc, rxdma_srng);
 
 	num_entries_avail = hal_srng_src_num_avail(dp_soc->hal_soc,
@@ -992,9 +996,10 @@ QDF_STATUS __dp_rx_buffers_replenish(struct dp_soc *dp_soc, uint32_t mac_id,
 	} else if (num_entries_avail < num_req_buffers) {
 		num_desc_to_free = num_req_buffers - num_entries_avail;
 		num_req_buffers = num_entries_avail;
-	} else if ((*desc_list) &&
+	} else if (((*desc_list) &&
 		   dp_rxdma_srng->num_entries - num_entries_avail <
-		   CRITICAL_BUFFER_THRESHOLD) {
+		   CRITICAL_BUFFER_THRESHOLD) &&
+		   dp_rx_buffers_is_critical_threshold(rx_desc_pool)) {
 		/* set extra buffers to CRITICAL_BUFFER_THRESHOLD only if
 		 * total buff requested after adding extra buffers is less
 		 * than or equal to num entries available, else set it to max
@@ -1136,6 +1141,7 @@ QDF_STATUS __dp_rx_buffers_replenish(struct dp_soc *dp_soc, uint32_t mac_id,
 	 */
 	DP_STATS_INC_PKT(dp_pdev, replenish.pkts, count, 0);
 	DP_STATS_INC(dp_pdev, replenish.free_list, num_req_buffers - count);
+	dp_rx_desc_dec_in_use_count(rx_desc_pool, num_req_buffers, count);
 
 free_descs:
 	DP_STATS_INC(dp_pdev, buf_freelist, num_desc_to_free);
@@ -3501,39 +3507,35 @@ dp_rx_pdev_buffers_alloc(struct dp_pdev *pdev)
 	int mac_for_pdev = pdev->lmac_id;
 	struct dp_soc *soc = pdev->soc;
 	struct dp_srng *dp_rxdma_srng;
-	struct wlan_cfg_dp_soc_ctxt *soc_cfg_ctx;
 	struct rx_desc_pool *rx_desc_pool;
 	uint32_t rxdma_entries;
 	uint32_t target_type = hal_get_target_type(soc->hal_soc);
+	uint32_t num_rx_buffers;
 
-	soc_cfg_ctx = soc->wlan_cfg_ctx;
-	wlan_cfg_set_dp_soc_rxdma_scan_radio_refill_ring_size(soc->ctrl_psoc,
-							      soc_cfg_ctx);
 	dp_rxdma_srng = &soc->rx_refill_buf_ring[mac_for_pdev];
 
 	rxdma_entries = dp_get_num_entries(pdev,
 					   dp_rxdma_srng->num_entries,
 					   QDF_BUFF_TYPE_RX);
-	if (soc->scan_radio_support)
-		rxdma_entries = wlan_cfg_get_dp_soc_rxdma_scan_radio_refill_ring_size(soc_cfg_ctx);
-
 	rx_desc_pool = &soc->rx_desc_buf[mac_for_pdev];
 
 	/* Initialize RX buffer pool which will be
 	 * used during low memory conditions
 	 */
 	dp_rx_buffer_pool_init(soc, mac_for_pdev);
+	num_rx_buffers = dp_rx_get_num_buffers_required(rx_desc_pool,
+							rxdma_entries);
 
 	if (target_type == TARGET_TYPE_QCN9160)
 		return dp_pdev_rx_buffers_attach(soc, mac_for_pdev,
 						 dp_rxdma_srng,
 						 rx_desc_pool,
-						 rxdma_entries - 1);
+						 num_rx_buffers);
 	else
 		return dp_pdev_rx_buffers_attach_simple(soc, mac_for_pdev,
 							dp_rxdma_srng,
 							rx_desc_pool,
-							rxdma_entries - 1);
+							num_rx_buffers);
 }
 
 void
@@ -3771,5 +3773,75 @@ void dp_rx_get_per_ring_pkt_avg(struct cdp_soc_t *cdp_soc,
 		avg_pkt_cnt[i] = rx_ring_stats->avg_pkt_cnt;
 		*total_avg_pkts += rx_ring_stats->avg_pkt_cnt;
 	}
+}
+#endif
+
+#ifdef WLAN_DP_DYNAMIC_RESOURCE_MGMT
+QDF_STATUS
+dp_rx_set_req_buff_descs(struct cdp_soc_t *cdp_soc,
+			 uint64_t req_rx_buff_descs, uint32_t pdev_id)
+{
+	struct dp_soc *soc = (struct dp_soc *)cdp_soc;
+	struct rx_desc_pool *rx_desc_pool;
+
+	rx_desc_pool = &soc->rx_desc_buf[pdev_id];
+	if (!rx_desc_pool) {
+		dp_err("Rx descriptor pool not initialized");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	qdf_atomic_set(&rx_desc_pool->required_count, req_rx_buff_descs);
+	dp_info("Req RX buffer descriptors set to %u", req_rx_buff_descs);
+	return QDF_STATUS_SUCCESS;
+}
+
+QDF_STATUS
+dp_rx_get_num_buff_descs_info(struct cdp_soc_t *cdp_soc,
+			      uint64_t *req_rx_buff_descs,
+			      uint64_t *in_use_rx_buff_descs, uint32_t pdev_id)
+{
+	struct dp_soc *soc = (struct dp_soc *)cdp_soc;
+	struct rx_desc_pool *rx_desc_pool;
+
+	rx_desc_pool = &soc->rx_desc_buf[pdev_id];
+	if (!rx_desc_pool) {
+		dp_err("Rx descriptor pool not initialized pool_id:%u", pdev_id);
+		return QDF_STATUS_E_INVAL;
+	}
+
+	*req_rx_buff_descs = qdf_atomic_read(&rx_desc_pool->required_count);
+	*in_use_rx_buff_descs = qdf_atomic_read(&rx_desc_pool->in_use_count);
+	return QDF_STATUS_SUCCESS;
+}
+
+uint32_t
+dp_rx_buffers_replenish_on_demand(struct cdp_soc_t *cdp_soc,
+				  uint32_t num_buffers, uint32_t pdev_id)
+{
+	struct dp_soc *soc = (struct dp_soc *)cdp_soc;
+	struct rx_desc_pool *rx_desc_pool;
+	union dp_rx_desc_list_elem_t *head = NULL;
+	union dp_rx_desc_list_elem_t *tail = NULL;
+	uint32_t num_alloc_desc;
+
+	rx_desc_pool = &soc->rx_desc_buf[pdev_id];
+	if (!rx_desc_pool) {
+		dp_err("Rx descriptor pool not initialized pool_id:%u", pdev_id);
+		return QDF_STATUS_E_INVAL;
+	}
+
+	num_alloc_desc =  dp_rx_get_free_desc_list(soc, pdev_id, rx_desc_pool,
+						   num_buffers, &head, &tail);
+	if (!num_alloc_desc) {
+		dp_err("Failed to allocate DP rx descriptors");
+		return num_alloc_desc;
+	}
+
+	dp_rx_buffers_replenish_simple(soc, pdev_id,
+				       &soc->rx_refill_buf_ring[pdev_id],
+				       rx_desc_pool, num_alloc_desc,
+				       &head, &tail);
+
+	return num_alloc_desc;
 }
 #endif

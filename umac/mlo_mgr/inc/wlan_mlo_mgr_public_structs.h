@@ -817,6 +817,7 @@ struct mlnawds_config {
  * @ap_link_addr: Associated link BSSID
  * @link_chan_info: Associated link channel info
  * @is_link_active: link state
+ * @link_status_code: wlan status code for link
  */
 struct mlo_link_info {
 	struct qdf_mac_addr link_addr;
@@ -836,6 +837,7 @@ struct mlo_link_info {
 	struct wlan_channel *link_chan_info;
 #endif
 	bool is_link_active;
+	enum wlan_status_code link_status_code;
 };
 
 /**
@@ -891,10 +893,16 @@ struct emlsr_capability {
 /**
  * struct wlan_mlo_sta_assoc_pending_list - MLO sta assoc pending list entry
  * @peer_list: MLO peer list
+ * @is_timer_started: Indicate timer is started to remove peer mld mac from list
+ * @force_remove: To clear all peer mld mac's from the list
+ * @rem_peer_mld_mac: timer trigger parameter
  * @list_lock: lock to access members of structure
  */
 struct wlan_mlo_sta_assoc_pending_list {
 	qdf_list_t peer_list;
+	bool is_timer_started;
+	bool force_remove;
+	qdf_timer_t rem_peer_mld_mac;
 	qdf_spinlock_t list_lock;
 };
 
@@ -1483,6 +1491,8 @@ struct mlo_mlme_ext_ops {
  * @mlo_mgr_osif_update_bss_info: Callback to update each link connection info.
  * @mlo_mgr_osif_update_mac_addr: Callback to notify MAC addr update complete
  *                                from old link id to new link id for the vdev.
+ * @mlo_roam_osif_update_mac_addr: Callback to notify MAC addr update during
+				   roam sync for the vdev.
  * @mlo_mgr_osif_link_switch_notification: Notify OSIF on start of link switch
  */
 struct mlo_osif_ext_ops {
@@ -1494,6 +1504,9 @@ struct mlo_osif_ext_ops {
 	QDF_STATUS (*mlo_mgr_osif_update_mac_addr)(int32_t ieee_old_link_id,
 						   int32_t ieee_new_link_id,
 						   uint8_t vdev_id);
+	QDF_STATUS (*mlo_roam_osif_update_mac_addr)(struct wlan_objmgr_vdev *vdev,
+						    struct qdf_mac_addr *old_self_mac,
+						    struct qdf_mac_addr *new_self_mac);
 
 	QDF_STATUS
 	(*mlo_mgr_osif_link_switch_notification)(struct wlan_objmgr_vdev *vdev,
@@ -1771,16 +1784,19 @@ struct mlo_link_disable_request_evt_params {
 	uint32_t link_id_bitmap;
 };
 
-#define MAX_INDEX_FOR_LINK_PRIORITY_BITMAP 3
+#define MAX_INDEX_FOR_LINK_PRIORITY_BITMAP 5
+#define NUM_TID_PER_AC 2
 /**
  * struct mlo_tlt_selection_evt_params - MLO tlt selection
  * request params
  * @mld_addr: mld address
- * @link_priority: Link priority bitmap
+ * @link_priority: link priority order based on hw chip id
+ * @link_bmap: Link priority bitmap
  */
 struct mlo_tlt_selection_evt_params {
 	struct qdf_mac_addr mld_addr;
-	uint8_t link_priority[MAX_INDEX_FOR_LINK_PRIORITY_BITMAP];
+	uint32_t link_priority[MAX_INDEX_FOR_LINK_PRIORITY_BITMAP];
+	uint32_t link_bmap[NUM_TID_PER_AC];
 };
 
 #define MAX_LINK_SWITCH_TLV 5
@@ -1903,11 +1919,13 @@ struct peer_entry_ptqm_migrate_event_params {
 /**
  * struct wlan_mlo_sta_entry - MLO sta entry
  * @mac_node: QDF list mac_node member
+ * @time: To indicate when the peer mld mac is added to list
  * @peer_mld_addr: MLO peer MAC address
  */
 
 struct wlan_mlo_sta_entry {
 	qdf_list_node_t mac_node;
+	qdf_time_t time;
 	struct qdf_mac_addr peer_mld_addr;
 };
 

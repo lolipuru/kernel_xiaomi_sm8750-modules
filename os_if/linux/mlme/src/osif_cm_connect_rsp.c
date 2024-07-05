@@ -413,7 +413,8 @@ osif_get_partner_info_from_mlie(struct wlan_cm_connect_resp *connect_rsp,
 	osif_debug("ML IE found length %d", (int)ml_ie_len);
 
 	qdf_status = util_get_bvmlie_persta_partner_info(ml_ie, ml_ie_len,
-							 partner_info);
+							 partner_info,
+							 WLAN_FC0_STYPE_INVALID);
 	if (QDF_IS_STATUS_ERROR(qdf_status)) {
 		osif_err("Unable to find per-sta profile in ML IE");
 		return qdf_status;
@@ -1119,7 +1120,7 @@ static void osif_indcate_connect_results(struct wlan_objmgr_vdev *vdev,
 #else /* WLAN_FEATURE_11BE_MLO_ADV_FEATURE */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 213)) && \
-	(LINUX_VERSION_CODE < KERNEL_VERSION(6, 0, 0))
+	(LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 /**
  * osif_update_current_bss() - Wrapper API to call cfg80211_update_current_bss
  * @dev: network device

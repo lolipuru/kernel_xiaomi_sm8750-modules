@@ -272,11 +272,6 @@ QDF_STATUS dp_reset_monitor_mode_unlock(struct cdp_soc_t *soc_hdl,
 #endif
 	}
 
-	for (mac_id = 0; mac_id < num_dst_rings; mac_id++) {
-		mon_mac = dp_get_mon_mac(pdev, mac_id);
-		mon_mac->mvdev = NULL;
-	}
-
 	/*
 	 * Lite monitor mode, smart monitor mode and monitor
 	 * mode uses this APIs to filter reset and mode disable
@@ -305,6 +300,11 @@ QDF_STATUS dp_reset_monitor_mode_unlock(struct cdp_soc_t *soc_hdl,
 	if (status != QDF_STATUS_SUCCESS) {
 		dp_rx_mon_dest_err("%pK: Failed to reset monitor filters",
 				   soc);
+	}
+
+	for (mac_id = 0; mac_id < num_dst_rings; mac_id++) {
+		mon_mac = dp_get_mon_mac(pdev, mac_id);
+		mon_mac->mvdev = NULL;
 	}
 
 	mon_pdev->monitor_configured = false;
@@ -1531,10 +1531,12 @@ QDF_STATUS dp_peer_stats_notify(struct dp_pdev *dp_pdev, struct dp_peer *peer)
 
 	mon_peer_stats = &peer->monitor_peer->stats;
 
-	if (mon_peer_stats->rx.last_snr != mon_peer_stats->rx.snr)
+	if (mon_peer_stats->tx.last_ack_rssi !=
+			mon_peer_stats->tx.prev_ack_rssi)
 		peer_stats_intf.rssi_changed = true;
 
-	if ((mon_peer_stats->rx.snr && peer_stats_intf.rssi_changed) ||
+	if ((mon_peer_stats->tx.last_ack_rssi &&
+	     peer_stats_intf.rssi_changed) ||
 	    (mon_peer_stats->tx.tx_rate &&
 	     mon_peer_stats->tx.tx_rate != mon_peer_stats->tx.last_tx_rate)) {
 		qdf_mem_copy(peer_stats_intf.peer_mac, peer->mac_addr.raw,
@@ -1545,6 +1547,7 @@ QDF_STATUS dp_peer_stats_notify(struct dp_pdev *dp_pdev, struct dp_peer *peer)
 		peer_stats_intf.peer_tx_rate = mon_peer_stats->tx.tx_rate;
 		peer_stats_intf.peer_rssi = mon_peer_stats->rx.snr;
 		peer_stats_intf.ack_rssi = mon_peer_stats->tx.last_ack_rssi;
+		peer_stats_intf.avg_ack_rssi = CDP_SNR_OUT(mon_peer_stats->tx.avg_ack_rssi);
 		dp_peer_get_tx_rx_stats(peer, &peer_stats_intf);
 		peer_stats_intf.per = tgt_peer->stats.tx.last_per;
 		peer_stats_intf.free_buff = INVALID_FREE_BUFF;
@@ -3170,7 +3173,8 @@ dp_ppdu_desc_user_deter_stats_update(struct dp_pdev *pdev,
 	if (qdf_unlikely(!mon_peer))
 		return;
 
-	if (ppdu_desc->txmode_type == TX_MODE_TYPE_UNKNOWN)
+	if (ppdu_desc->txmode_type == TX_MODE_TYPE_UNKNOWN ||
+	    ppdu_desc->txmode >= TX_MODE_UL_MAX)
 		return;
 
 	if (ppdu_desc->txmode_type == TX_MODE_TYPE_UL &&
@@ -3477,6 +3481,9 @@ dp_tx_stats_update(struct dp_pdev *pdev, struct dp_peer *peer,
 	dp_pdev_update_erp_tx_stats(pdev, ppdu);
 
 	dp_peer_stats_notify(pdev, peer);
+
+	if (!(ppdu->is_mcast) && ppdu->ack_rssi_valid)
+		DP_STATS_UPD(mon_peer, tx.prev_ack_rssi, ppdu_desc->ack_rssi);
 
 	ratekbps = mon_peer->stats.tx.tx_rate;
 	DP_STATS_UPD(mon_peer, tx.last_tx_rate, ratekbps);
@@ -7103,6 +7110,7 @@ void dp_mon_feature_ops_deregister(struct dp_soc *soc)
 	mon_ops->rx_enable_mpdu_logging = NULL;
 	mon_ops->rx_enable_fpmo = NULL;
 	mon_ops->mon_neighbour_peers_detach = NULL;
+	mon_ops->rx_config_packet_type_subtype = NULL;
 	mon_ops->mon_vdev_set_monitor_mode_buf_rings = NULL;
 	mon_ops->mon_vdev_set_monitor_mode_rings = NULL;
 #ifdef QCA_ENHANCED_STATS_SUPPORT

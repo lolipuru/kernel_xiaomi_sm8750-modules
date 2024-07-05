@@ -866,6 +866,9 @@ struct dp_mon_ops {
 				       struct htt_rx_ring_tlv_filter *tlv_filter);
 	void (*rx_enable_fpmo)(uint32_t *msg_word,
 			       struct htt_rx_ring_tlv_filter *tlv_filter);
+	void (*rx_config_packet_type_subtype)(uint32_t *msg_word,
+					      struct htt_rx_ring_tlv_filter *tlv_filter,
+					      uint32_t htt_ring_id);
 #ifndef DISABLE_MON_CONFIG
 	void (*mon_register_intr_ops)(struct dp_soc *soc);
 #endif
@@ -1104,6 +1107,16 @@ struct dp_mon_mac {
 	uint32_t mon_last_buf_cookie;
 	qdf_nbuf_queue_t rx_status_q;
 	struct hal_rx_ppdu_info ppdu_info;
+#ifdef WLAN_FEATURE_LOCAL_PKT_CAPTURE
+	/* Maintain MSDU list on PPDU */
+	qdf_nbuf_queue_t msdu_queue;
+	/* Maintain MPDU list of PPDU */
+	qdf_nbuf_queue_t mpdu_queue;
+	/* To  check if 1st MPDU of PPDU */
+	bool first_mpdu;
+	/* LPC lock */
+	qdf_spinlock_t lpc_lock;
+#endif
 };
 
 struct  dp_mon_pdev {
@@ -4212,6 +4225,39 @@ dp_mon_rx_enable_mpdu_logging(struct dp_soc *soc, uint32_t *msg_word,
 	}
 
 	monitor_ops->rx_enable_mpdu_logging(msg_word, tlv_filter);
+}
+
+/**
+ * dp_mon_rx_config_packet_type_subtype() - set packet type subtype
+ * filters
+ * @soc: dp soc handle
+ * @msg_word: msg word
+ * @tlv_filter: rx fing filter config
+ * @htt_ring_id: ring id
+ *
+ * Return: void
+ */
+static inline void
+dp_mon_rx_config_packet_type_subtype(struct dp_soc *soc,
+				     uint32_t *msg_word,
+				     struct htt_rx_ring_tlv_filter *tlv_filter,
+				     uint32_t htt_ring_id)
+{
+	struct dp_mon_soc *mon_soc = soc->monitor_soc;
+	struct dp_mon_ops *monitor_ops;
+
+	if (!mon_soc) {
+		dp_mon_debug("mon soc is NULL");
+		return;
+	}
+
+	monitor_ops = mon_soc->mon_ops;
+	if (!monitor_ops || !monitor_ops->rx_config_packet_type_subtype) {
+		dp_mon_debug("callback not registered");
+		return;
+	}
+
+	monitor_ops->rx_config_packet_type_subtype(msg_word, tlv_filter, htt_ring_id);
 }
 
 /**
