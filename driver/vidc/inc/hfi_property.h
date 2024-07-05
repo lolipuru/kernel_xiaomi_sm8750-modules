@@ -26,6 +26,7 @@ enum hfi_debug_config {
 	HFI_DEBUG_CONFIG_CLRDBGQ = 0x00000001,
 	HFI_DEBUG_CONFIG_WFI     = 0x00000002,
 	HFI_DEBUG_CONFIG_ARM9WD  = 0x00000004,
+	HFI_DEBUG_CONFIG_CRC     = 0x00000008,
 };
 
 #define HFI_PROP_DEBUG_CONFIG                                   0x0300000a

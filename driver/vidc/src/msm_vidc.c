@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/types.h>
@@ -96,16 +96,16 @@ int msm_vidc_poll(struct msm_vidc_inst *inst, struct file *filp,
 
 int msm_vidc_querycap(struct msm_vidc_inst *inst, struct v4l2_capability *cap)
 {
-	strlcpy(cap->driver, MSM_VIDC_DRV_NAME, sizeof(cap->driver));
-	strlcpy(cap->bus_info, MSM_VIDC_BUS_NAME, sizeof(cap->bus_info));
+	strscpy(cap->driver, MSM_VIDC_DRV_NAME, sizeof(cap->driver));
+	strscpy(cap->bus_info, MSM_VIDC_BUS_NAME, sizeof(cap->bus_info));
 	cap->version = MSM_VIDC_VERSION;
 
 	memset(cap->reserved, 0, sizeof(cap->reserved));
 
 	if (is_decode_session(inst))
-		strlcpy(cap->card, "msm_vidc_decoder", sizeof(cap->card));
+		strscpy(cap->card, "msm_vidc_decoder", sizeof(cap->card));
 	else if (is_encode_session(inst))
-		strlcpy(cap->card, "msm_vidc_encoder", sizeof(cap->card));
+		strscpy(cap->card, "msm_vidc_encoder", sizeof(cap->card));
 	else
 		return -EINVAL;
 
@@ -722,7 +722,7 @@ void *msm_vidc_open(struct msm_vidc_core *core, u32 session_type)
 	inst->session_id = hash32_ptr(inst);
 	msm_vidc_update_state(inst, MSM_VIDC_OPEN, __func__);
 	inst->sub_state = MSM_VIDC_SUB_STATE_NONE;
-	strlcpy(inst->sub_state_name, "SUB_STATE_NONE", sizeof(inst->sub_state_name));
+	strscpy(inst->sub_state_name, "SUB_STATE_NONE", sizeof(inst->sub_state_name));
 	inst->active = true;
 	inst->request = false;
 	inst->ipsc_properties_set = false;
@@ -743,6 +743,12 @@ void *msm_vidc_open(struct msm_vidc_core *core, u32 session_type)
 	if (rc) {
 		i_vpr_e(inst, "%s: failed to add session\n", __func__);
 		goto fail_add_session;
+	}
+
+	rc = msm_vidc_set_crc(core);
+	if (rc) {
+		i_vpr_e(inst, "%s: failed to set crc\n", __func__);
+		goto fail_set_crc;
 	}
 
 	rc = msm_vidc_pools_init(inst);
@@ -848,6 +854,7 @@ fail_eventq_init:
 	destroy_workqueue(inst->workq);
 fail_create_workq:
 	msm_vidc_pools_deinit(inst);
+fail_set_crc:
 fail_pools_init:
 	msm_vidc_remove_session(inst);
 	msm_vidc_remove_dangling_session(inst);

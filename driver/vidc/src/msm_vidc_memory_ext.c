@@ -340,12 +340,21 @@ exit:
 	return rc;
 }
 
+static inline bool is_crc_enabled(struct msm_vidc_core *core)
+{
+	return !!(core->hfi_debug_config & HFI_DEBUG_CONFIG_CRC);
+}
+
 static u32 msm_vidc_buffer_region_ext(struct msm_vidc_inst *inst,
 	enum msm_vidc_buffer_type buffer_type)
 {
+	struct msm_vidc_core *core = inst->core;
 	u32 region = MSM_VIDC_NON_SECURE;
 
 	if (!is_secure_session(inst)) {
+		if (is_crc_enabled(core))
+			return MSM_VIDC_NON_SECURE;
+
 		switch (buffer_type) {
 		case MSM_VIDC_BUF_ARP:
 			region = MSM_VIDC_NON_SECURE;

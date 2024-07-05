@@ -42,6 +42,11 @@ extern struct msm_vidc_core *g_core;
 static int __resume(struct msm_vidc_core *core);
 static int __suspend(struct msm_vidc_core *core);
 
+static bool is_sync_session_cmd(u32 cmd)
+{
+	return !!(cmd == HFI_CMD_STOP || cmd == HFI_CMD_CLOSE);
+}
+
 static void __fatal_error(bool fatal)
 {
 	WARN_ON(fatal);
@@ -997,8 +1002,12 @@ static int venus_hfi_session_command_locked(struct msm_vidc_inst *inst,
 	if (rc)
 		return rc;
 
-	if (is_session_error(inst)) {
-		i_vpr_e(inst, "%s: failled. Session error\n", func);
+	/**
+	 * make sure to always allow sync cmd(even if session is in error state),
+	 * that will help to do a proper cleanup at FW side.
+	 */
+	if (!is_sync_session_cmd(pkt_type) && is_session_error(inst)) {
+		i_vpr_e(inst, "%s: failled. Session error. cmd %#x\n", func, pkt_type);
 		return -EINVAL;
 	}
 
@@ -1104,6 +1113,46 @@ int venus_hfi_trigger_ssr(struct msm_vidc_core *core, u32 type,
 	rc = __cmdq_write(core, core->packet);
 	if (rc)
 		goto exit;
+
+exit:
+	if (rc)
+		d_vpr_e("%s(): failed\n", __func__);
+
+	return rc;
+}
+
+int venus_hfi_set_crc(struct msm_vidc_core *core)
+{
+	int rc = 0;
+
+	rc = hfi_create_header(core->packet, core->packet_size,
+			   0 /*session_id*/,
+			   core->header_id++);
+	if (rc)
+		goto exit;
+
+	if (core->debug_enable_crc)
+		core->hfi_debug_config |= HFI_DEBUG_CONFIG_CRC;
+	else
+		core->hfi_debug_config &= ~HFI_DEBUG_CONFIG_CRC;
+
+	/* HFI_DEBUG_CONFIG_CRC */
+	rc = hfi_create_packet(core->packet, core->packet_size,
+			HFI_PROP_DEBUG_CONFIG,
+			HFI_HOST_FLAGS_NONE,
+			HFI_PAYLOAD_U32_ENUM,
+			HFI_PORT_NONE,
+			core->packet_id++,
+			&core->hfi_debug_config,
+			sizeof(u32));
+	if (rc)
+		goto exit;
+
+	rc = __cmdq_write(core, core->packet);
+	if (rc)
+		goto exit;
+
+	return rc;
 
 exit:
 	if (rc)
@@ -1794,6 +1843,12 @@ int venus_hfi_set_ir_period(struct msm_vidc_inst *inst, u32 ir_type,
 	int rc = 0;
 
 	core_lock(core, __func__);
+	if (is_session_error(inst)) {
+		i_vpr_e(inst, "%s: failled. Session error\n", __func__);
+		rc = -EINVAL;
+		goto exit;
+	}
+
 	if (!inst->packet) {
 		i_vpr_e(inst, "%s: invalid session\n", __func__);
 		rc = -EINVAL;
@@ -1835,7 +1890,7 @@ int venus_hfi_set_ir_period(struct msm_vidc_inst *inst, u32 ir_type,
 	if (rc)
 		goto exit;
 
-	rc = __cmdq_write(inst->core, inst->packet);
+	rc = __cmdq_write(core, inst->packet);
 	if (rc) {
 		i_vpr_e(inst, "%s: failed to set inst->capabilities[%d] %s to fw\n",
 			__func__, cap_id, cap_name(cap_id));
