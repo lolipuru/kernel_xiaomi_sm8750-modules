@@ -3,7 +3,7 @@
  * Copyright (C) 2016-2019, STMicroelectronics Limited.
  * Authors: AMG(Analog Mems Group) <marco.cali@st.com>
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -77,7 +77,7 @@ int initTestToDo(void)
 	/*** Initialize Limit File ***/
 	limit_file.size = 0;
 	limit_file.data = NULL;
-	strlcpy(limit_file.name, " ", MAX_LIMIT_FILE_NAME);
+	strscpy(limit_file.name, " ", MAX_LIMIT_FILE_NAME);
 
 #ifndef COMPUTE_INIT_METHOD
 	tests.MutualRawAdjITO = 1;
@@ -7399,7 +7399,7 @@ int getLimitsFile(char *path, LimitFile *file)
 		file->size = 0;
 	}
 
-	strlcpy(file->name, path, MAX_LIMIT_FILE_NAME);
+	strscpy(file->name, path, MAX_LIMIT_FILE_NAME);
 	if (strncmp(path, "NULL", 4) == 0) {
 #ifdef LIMITS_H_FILE
 		logError(0, "%s Loading Limits File from .h!\n", tag);
@@ -7484,7 +7484,7 @@ int freeLimitsFile(LimitFile *file)
 		} else
 			logError(0, "%s Limit File was already freed!\n", tag);
 		file->size = 0;
-		strlcpy(file->name, " ", MAX_LIMIT_FILE_NAME);
+		strscpy(file->name, " ", MAX_LIMIT_FILE_NAME);
 		return OK;
 	} else {
 		logError(1, "%s Passed a NULL argument! ERROR %08X\n", tag,

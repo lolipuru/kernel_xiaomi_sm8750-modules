@@ -3,7 +3,7 @@
  * Copyright (C) 2016-2018, STMicroelectronics Limited.
  * Authors: AMG(Analog Mems Group) <marco.cali@st.com>
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -73,7 +73,7 @@ char *printHex(char *label, u8 *buff, int count, u8 *result)
 	int i, offset;
 
 	offset = strlen(label);
-	strlcpy(result, label, offset+1); /* +1 for terminator char */
+	strscpy(result, label, offset+1); /* +1 for terminator char */
 
 	for (i = 0; i < count; i++) {
 		snprintf(&result[offset], 4, "%02X ", buff[i]);
