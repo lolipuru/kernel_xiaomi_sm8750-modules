@@ -2934,7 +2934,7 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 		goto checkapp_err;
 
 	if (app_id) {
-		pr_debug("App id %d (%s) already exists\n", app_id,
+		pr_info("App id %d (%s) already exists\n", app_id,
 			(char *)(req.app_name));
 		spin_lock_irqsave(&qseecom.registered_app_list_lock, flags);
 		list_for_each_entry(entry,
@@ -2955,7 +2955,7 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 		ret = 0;
 	} else {
 		first_time = true;
-		pr_warn("App (%s) does'nt exist, loading apps for first time\n",
+		pr_info("App (%s) does'nt exist, loading apps for first time\n",
 			(char *)(load_img_req.img_name));
 
 		ret = qseecom_vaddr_map(load_img_req.ifd_data_fd,
@@ -3091,7 +3091,7 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 		spin_unlock_irqrestore(&qseecom.registered_app_list_lock,
 									flags);
 
-		pr_warn("App with id %u (%s) now loaded\n", app_id,
+		pr_info("App with id %u (%s) now loaded\n", app_id,
 		(char *)(load_img_req.img_name));
 	}
 	data->client.app_id = app_id;
@@ -3176,7 +3176,7 @@ static int __qseecom_unload_app(struct qseecom_dev_handle *data,
 	do {
 		switch (resp.result) {
 		case QSEOS_RESULT_SUCCESS:
-			pr_warn("App (%d) is unloaded\n", app_id);
+			pr_info("App (%d) is unloaded\n", app_id);
 			break;
 		case QSEOS_RESULT_INCOMPLETE:
 			ret = __qseecom_process_incomplete_cmd(data, &resp);
@@ -3184,7 +3184,7 @@ static int __qseecom_unload_app(struct qseecom_dev_handle *data,
 				pr_err("unload app %d fail proc incom cmd: %d,%d,%d\n",
 					app_id, ret, resp.result, resp.data);
 			else
-				pr_warn("App (%d) is unloaded\n", app_id);
+				pr_info("App (%d) is unloaded\n", app_id);
 			break;
 		case QSEOS_RESULT_FAILURE:
 			pr_err("app (%d) unload_failed!!\n", app_id);
