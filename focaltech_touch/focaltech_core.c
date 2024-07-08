@@ -3,6 +3,7 @@
  * FocalTech TouchScreen driver.
  *
  * Copyright (c) 2012-2019, FocalTech Systems, Ltd., all rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -38,6 +39,7 @@
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
+#include <linux/pinctrl/consumer.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <linux/of_irq.h>
 #include <linux/soc/qcom/panel_event_notifier.h>
@@ -2534,13 +2536,13 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
 	}
 
 	/* reset, irq gpio info */
-	pdata->reset_gpio = of_get_named_gpio_flags(np, "focaltech,reset-gpio",
-			0, &pdata->reset_gpio_flags);
+	pdata->reset_gpio = of_get_named_gpio(np, "focaltech,reset-gpio",
+			0);
 	if (pdata->reset_gpio < 0)
 		FTS_ERROR("Unable to get reset_gpio");
 
-	pdata->irq_gpio = of_get_named_gpio_flags(np, "focaltech,irq-gpio",
-			0, &pdata->irq_gpio_flags);
+	pdata->irq_gpio = of_get_named_gpio(np, "focaltech,irq-gpio",
+			0);
 	if (pdata->irq_gpio < 0)
 		FTS_ERROR("Unable to get irq_gpio");
 
@@ -3142,7 +3144,7 @@ out:
 	return ret;
 }
 
-static int fts_ts_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int fts_ts_i2c_probe(struct i2c_client *client)
 {
 	int ret = 0;
 	struct fts_ts_data *ts_data = NULL;
