@@ -125,7 +125,7 @@ int btfmcodec_wait_for_bearer_ind(struct btfmcodec_char_device *btfmcodec_dev)
 
 	ret = wait_event_interruptible_timeout(*rsp_wait_q,
 		*status != BTM_WAITING_RSP,
-		msecs_to_jiffies(BTM_MASTER_CONFIG_RSP_TIMEOUT));
+		msecs_to_jiffies(BTM_BEARER_SWITCH_IND_TIMEOUT));
 
 	if (ret == 0) {
 		BTFMCODEC_ERR("failed to recevie BTM_BEARER_SWITCH_IND");

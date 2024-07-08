@@ -12,6 +12,7 @@ def define_pineapple():
             "CONFIG_MSM_BT_POWER",
             "CONFIG_BTFM_SLIM",
             "CONFIG_I2C_RTC6226_QCA",
+            "CONFIG_FMD_ENABLE",
             #"CONFIG_BT_HW_SECURE_DISABLE",
         ]
     )
@@ -33,6 +34,7 @@ def define_sun():
              "CONFIG_BTFM_CODEC",
            #  "CONFIG_BT_HW_SECURE_DISABLE",
              "CONFIG_BTFM_SWR",
+	     "CONFIG_FMD_ENABLE",
         ]
     )
 
