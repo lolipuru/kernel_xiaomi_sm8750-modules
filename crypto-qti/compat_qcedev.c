@@ -10,7 +10,6 @@
 #include <linux/module.h>
 #include <linux/uaccess.h>
 #include "linux/qcedev.h"
-#include "compat_seckernel.h"
 #include <linux/compat.h>
 #include "compat_qcedev.h"
 #include <linux/slab.h>
