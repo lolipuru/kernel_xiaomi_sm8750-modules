@@ -195,7 +195,7 @@ int cam_ope_init_hw(void *device_priv,
 	}
 	ope_hw = core_info->ope_hw_info->ope_hw;
 
-	cpas_vote = kzalloc(sizeof(struct cam_ope_cpas_vote), GFP_KERNEL);
+	cpas_vote = CAM_MEM_ZALLOC(sizeof(struct cam_ope_cpas_vote), GFP_KERNEL);
 	if (!cpas_vote) {
 		CAM_ERR(CAM_ISP, "Out of memory");
 		rc = -ENOMEM;
@@ -253,7 +253,7 @@ enable_soc_resource_failed:
 	else
 		core_info->cpas_start = false;
 free_cpas_vote:
-	cam_free_clear((void *)cpas_vote);
+	CAM_MEM_ZFREE((void *)cpas_vote, sizeof(struct cam_ope_cpas_vote));
 	cpas_vote = NULL;
 end:
 	return rc;
