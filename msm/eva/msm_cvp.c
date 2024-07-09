@@ -842,52 +842,61 @@ static int msm_cvp_secure_sess_check(struct msm_cvp_inst *inst)
 		return -EINVAL;
 
 	if (inst->prop.is_secure) {
-		core = inst->core;
-		mutex_lock(&core->lock);
-		list_for_each_entry(active_inst, &core->instances, list) {
-			if (active_inst->prop.is_secure) {
-				s_state = (0xF0000000 & active_inst->session_error_code) >> 28;
-				dprintk(CVP_SESS, "%s: s_state is %d\n",
-					__func__, s_state);
-				if (s_state == SECURE_SESSION_ERROR) {
-					dprintk(CVP_SESS,
-						"Invalid secure session");
-					continue;
-				}
+		if (inst->prop.type == HFI_SESSION_CV) {
+			dprintk(CVP_WARN,
+				"Secure CV, failing create session");
+			rc = -EINVAL;
+			goto exit;
+		} else {
+			core = inst->core;
+			mutex_lock(&core->lock);
+			list_for_each_entry(active_inst, &core->instances, list) {
+				if (active_inst->prop.is_secure) {
+					s_state = (0xF0000000 &
+						active_inst->session_error_code) >> 28;
+					dprintk(CVP_SESS, "%s: s_state is %d\n",
+						__func__, s_state);
+					if (s_state == SECURE_SESSION_ERROR) {
+						dprintk(CVP_SESS,
+							"Invalid secure session");
+						continue;
+					}
 
-				if (inst->prop.type == active_inst->prop.type) {
-					dprintk(CVP_SESS,
-						"Allow new session create, type %d, secure %d\n",
-						inst->prop.type, inst->prop.is_secure);
-					break;
-				} else if (inst->prop.type == HFI_SESSION_CV &&
+					if (inst->prop.type == active_inst->prop.type) {
+						dprintk(CVP_SESS,
+							"Allow new sess create, type %d\n",
+							inst->prop.type);
+						break;
+					} else if (inst->prop.type == HFI_SESSION_CV &&
 						active_inst->prop.type == HFI_SESSION_DMM) {
-					dprintk(CVP_WARN,
-						"Skip EVA secure sess as active secure CAM sess");
-					rc = -EINVAL;
-					break;
-				} else if (inst->prop.type == HFI_SESSION_DMM
-						&& active_inst->prop.type == HFI_SESSION_CV) {
-					msm_cvp_secure_concurrency_stop(active_inst, s_state);
+						dprintk(CVP_WARN,
+							"Skip EVA secure, active secure CAM sess");
+						rc = -EINVAL;
+						break;
+					} else if (inst->prop.type == HFI_SESSION_DMM &&
+						active_inst->prop.type == HFI_SESSION_CV) {
+						msm_cvp_secure_concurrency_stop(active_inst,
+										s_state);
+					}
 				}
 			}
-		}
-		mutex_unlock(&core->lock);
+			mutex_unlock(&core->lock);
 
-		if (rc == 0) {
-			dprintk(CVP_CORE, "Calling TZ SID begin with secure flag %d",
-				inst->prop.is_secure);
-			if (inst->prop.type == HFI_SESSION_CV) {
-				dprintk(CVP_CORE, "Calling TZ SID for OF");
-				__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_EVA);
-			} else if (inst->prop.type == HFI_SESSION_DMM) {
-				dprintk(CVP_CORE, "Calling TZ SID for DMM ");
-				__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_CAMERA);
+			if (rc == 0) {
+				dprintk(CVP_CORE, "Calling TZ SID begin with secure flag %d",
+					inst->prop.is_secure);
+				if (inst->prop.type == HFI_SESSION_CV) {
+					dprintk(CVP_CORE, "Calling TZ SID for OF");
+					__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_EVA);
+				} else if (inst->prop.type == HFI_SESSION_DMM) {
+					dprintk(CVP_CORE, "Calling TZ SID for DMM ");
+					__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_CAMERA);
+				}
+				dprintk(CVP_CORE, "Calling TZ SID end ");
 			}
-			dprintk(CVP_CORE, "Calling TZ SID end ");
 		}
 	}
-
+exit:
 	return rc;
 }
 
