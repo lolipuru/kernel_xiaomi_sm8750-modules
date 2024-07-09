@@ -86,7 +86,7 @@ bool msm_cvp_check_for_inst_overload(struct msm_cvp_core *core,
 
 	/* Instance count includes current instance as well. */
 
-	if ((*instance_count >= core->resources.max_inst_count) ||
+	if ((*instance_count > core->resources.max_inst_count) ||
 		(secure_instance_count >=
 			core->resources.max_secure_inst_count))
 		overload = true;
