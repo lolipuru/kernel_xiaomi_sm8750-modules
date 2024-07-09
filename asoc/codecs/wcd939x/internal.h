@@ -353,4 +353,8 @@ extern int wcd939x_mbhc_micb_adjust_voltage(struct snd_soc_component *component,
 extern int wcd939x_get_micb_vout_ctl_val(u32 micb_mv);
 extern int wcd939x_micbias_control(struct snd_soc_component *component,
 			int micb_num, int req, bool is_dapm);
+
+extern int wcd939x_slave_register_notify(struct swr_device *pdev,
+			int (*rst_notify)(void *), void *handle);
+
 #endif /* _WCD939X_INTERNAL_H */
