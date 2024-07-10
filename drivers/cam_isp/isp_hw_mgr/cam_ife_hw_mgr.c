@@ -739,6 +739,8 @@ static int cam_ife_mgr_handle_reg_dump(struct cam_ife_hw_mgr_ctx *ctx,
 	int rc = 0, i;
 	struct cam_hw_soc_skip_dump_args skip_dump_args;
 
+	CAM_DBG(CAM_ISP, "Reg dump req_type: %u ctx_idx: %u req:%llu",
+		meta_type, ctx->ctx_index, ctx->applied_req_id);
 
 	if (!ctx->flags.init_done) {
 		CAM_WARN(CAM_ISP, "regdump can't possible as HW not initialized, ctx_idx: %u",
@@ -785,8 +787,9 @@ static int cam_ife_mgr_handle_reg_dump(struct cam_ife_hw_mgr_ctx *ctx,
 		if (rc)
 			return rc;
 
-		CAM_DBG(CAM_ISP, "Reg dump cmd meta data: %u req_type: %u ctx_idx: %u",
-			reg_dump_buf_desc[i].meta_data, meta_type, ctx->ctx_index);
+		CAM_DBG(CAM_ISP, "Reg dump cmd meta data: %u req_type: %u ctx_idx: %u req:%llu",
+			reg_dump_buf_desc[i].meta_data, meta_type, ctx->ctx_index,
+			ctx->applied_req_id);
 		if (reg_dump_buf_desc[i].meta_data == meta_type) {
 			rc = cam_soc_util_reg_dump_to_cmd_buf(ctx,
 				&reg_dump_buf_desc[i],
@@ -5538,19 +5541,6 @@ void cam_ife_cam_cdm_callback(uint32_t handle, void *userdata,
 		complete_all(&ctx->config_done_complete);
 		atomic_set(&ctx->cdm_done, 1);
 		ctx->last_cdm_done_req = req_id;
-		if (g_ife_hw_mgr.debug_cfg.per_req_reg_dump) {
-			if (ctx->cdm_userdata.request_id == req_id) {
-				cam_ife_mgr_handle_reg_dump(ctx,
-					hw_update_data->reg_dump_buf_desc,
-					hw_update_data->num_reg_dump_buf,
-					CAM_ISP_PACKET_META_REG_DUMP_PER_REQUEST,
-					NULL, false);
-			} else {
-				CAM_INFO(CAM_ISP,
-				    "CDM delay, Skip dump req: %llu, cdm_req: %llu ctx_idx: %u",
-				    req_id, ctx->cdm_userdata.request_id, ctx->ctx_index);
-			}
-		}
 		CAM_DBG(CAM_ISP,
 			"CDM hdl=0x%x, udata=%pK, status=%d, cookie=%u ctx_index=%u cdm_req=%llu",
 			 handle, userdata, status, req_id, ctx->ctx_index,
@@ -15315,6 +15305,7 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 	unsigned long rem_jiffies = 0;
 	struct cam_isp_comp_record_query *query_cmd;
 	struct cam_isp_hw_drv_info *drv_info = NULL;
+	struct cam_isp_prepare_hw_update_data *hw_update_data;
 
 	if (!hw_mgr_priv || !cmd_args) {
 		CAM_ERR(CAM_ISP, "Invalid arguments");
@@ -15477,6 +15468,22 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 				"Reg dump on error failed req id: %llu rc: %d ctx_idx: %u",
 				ctx->applied_req_id, rc, ctx->ctx_index);
 			return rc;
+		}
+		break;
+	case CAM_HW_MGR_CMD_REG_DUMP_PER_REQ:
+		hw_update_data = hw_cmd_args->u.hw_update_data;
+		if (g_ife_hw_mgr.debug_cfg.per_req_reg_dump && hw_update_data) {
+			rc = cam_ife_mgr_handle_reg_dump(ctx,
+				hw_update_data->reg_dump_buf_desc,
+				hw_update_data->num_reg_dump_buf,
+				CAM_ISP_PACKET_META_REG_DUMP_PER_REQUEST,
+				NULL, false);
+			if (rc) {
+				CAM_ERR(CAM_ISP,
+					"Reg dump for req#%llu rc: %d ctx_idx: %u",
+					ctx->applied_req_id, rc, ctx->ctx_index);
+				return rc;
+			}
 		}
 		break;
 	case CAM_HW_MGR_CMD_DUMP_ACQ_INFO:

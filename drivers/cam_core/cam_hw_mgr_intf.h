@@ -460,6 +460,7 @@ enum cam_hw_mgr_command {
 	CAM_HW_MGR_CMD_DUMP_PF_INFO,
 	CAM_HW_MGR_CMD_REG_DUMP_ON_FLUSH,
 	CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR,
+	CAM_HW_MGR_CMD_REG_DUMP_PER_REQ,
 	CAM_HW_MGR_CMD_DUMP_ACQ_INFO,
 };
 
@@ -470,14 +471,16 @@ enum cam_hw_mgr_command {
  * @cmd_type               HW command type
  * @internal_args          Arguments for internal command
  * @pf_cmd_args            Arguments for Dump PF info command
+ * @hw_update_data         HW update data for register dump
  *
  */
 struct cam_hw_cmd_args {
 	void                               *ctxt_to_hw_map;
 	uint32_t                            cmd_type;
 	union {
-		void                           *internal_args;
-		struct cam_hw_cmd_pf_args      *pf_cmd_args;
+		void                                  *internal_args;
+		struct cam_hw_cmd_pf_args             *pf_cmd_args;
+		struct cam_isp_prepare_hw_update_data *hw_update_data;
 	} u;
 };
 

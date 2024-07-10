@@ -926,13 +926,15 @@ static int __cam_isp_ctx_notify_error_util(
 
 static int __cam_isp_ctx_trigger_reg_dump(
 	enum cam_hw_mgr_command cmd,
-	struct cam_context     *ctx)
+	struct cam_context     *ctx,
+	struct cam_isp_prepare_hw_update_data *hw_update_data)
 {
 	int rc = 0;
 	struct cam_hw_cmd_args hw_cmd_args;
 
 	hw_cmd_args.ctxt_to_hw_map = ctx->ctxt_to_hw_map;
 	hw_cmd_args.cmd_type = cmd;
+	hw_cmd_args.u.hw_update_data = hw_update_data;
 	rc = ctx->hw_mgr_intf->hw_cmd(ctx->hw_mgr_intf->hw_mgr_priv,
 		&hw_cmd_args);
 	if (rc) {
@@ -3389,11 +3391,23 @@ static int __cam_isp_ctx_offline_epoch_in_activated_state(
 static int __cam_isp_ctx_reg_upd_in_epoch_bubble_state(
 	struct cam_isp_context *ctx_isp, void *evt_data)
 {
-	if (ctx_isp->frame_id == 1)
+	struct cam_context     *ctx = ctx_isp->base;
+	struct cam_ctx_request *req;
+	struct cam_isp_ctx_req *req_isp;
+
+	if (ctx_isp->frame_id == 1) {
 		CAM_DBG(CAM_ISP, "Reg update in Substate[%s] for early PCR",
 			__cam_isp_ctx_substate_val_to_type(
 			ctx_isp->substate_activated));
-	else
+
+		if (!list_empty(&ctx->active_req_list)) {
+			req = list_first_entry(&ctx->active_req_list, struct cam_ctx_request,
+				list);
+			req_isp = (struct cam_isp_ctx_req *)req->req_priv;
+			__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
+				&req_isp->hw_update_data);
+		}
+	} else
 		CAM_WARN_RATE_LIMIT(CAM_ISP,
 			"ctx:%u Unexpected regupdate in activated Substate[%s] for frame_id:%lld",
 			ctx_isp->base->ctx_id,
@@ -3448,6 +3462,9 @@ static int __cam_isp_ctx_reg_upd_in_applied_state(
 	CAM_DBG(CAM_ISP, "next Substate[%s], ctx %u, link: 0x%x",
 		__cam_isp_ctx_substate_val_to_type(
 		ctx_isp->substate_activated), ctx->ctx_id, ctx->link_hdl);
+
+	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
+		&req_isp->hw_update_data);
 
 	__cam_isp_ctx_update_state_monitor_array(ctx_isp,
 		CAM_ISP_STATE_CHANGE_TRIGGER_REG_UPDATE, request_id);
@@ -4417,7 +4434,7 @@ static int __cam_isp_ctx_handle_error(struct cam_isp_context *ctx_isp,
 
 	__cam_isp_ctx_dump_frame_timing_record(ctx_isp);
 	__cam_isp_ctx_print_event_record(ctx_isp);
-	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR, ctx);
+	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR, ctx, NULL);
 
 	__cam_isp_get_notification_evt_params(error_event_data->error_type,
 		&fence_evt_cause, &req_mgr_err_code, &recovery_type);
@@ -4818,6 +4835,9 @@ static int __cam_isp_ctx_fs2_reg_upd_in_applied_state(
 		__cam_isp_ctx_move_req_to_free_list(ctx, req);
 	}
 
+	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
+		&req_isp->hw_update_data);
+
 	/*
 	 * This function only called directly from applied and bubble applied
 	 * state so change substate here.
@@ -4875,7 +4895,7 @@ static void __cam_isp_ctx_notify_aeb_error_for_sec_event(
 		__cam_isp_ctx_pause_crm_timer(ctx);
 
 	/* Trigger reg dump */
-	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR, ctx);
+	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR, ctx, NULL);
 
 	/* Notify CRM on fatal error */
 	__cam_isp_ctx_notify_error_util(CAM_TRIGGER_POINT_SOF, CRM_KMD_ERR_FATAL,
@@ -6295,7 +6315,7 @@ static int __cam_isp_ctx_flush_req_in_top_state(
 			flush_req->req_id, ctx->ctx_id, ctx->link_hdl);
 		ctx->last_flush_req = flush_req->req_id;
 
-		__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_FLUSH, ctx);
+		__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_FLUSH, ctx, NULL);
 
 		stop_args.ctxt_to_hw_map = ctx_isp->hw_ctx;
 		stop_isp.hw_stop_cmd = CAM_ISP_HW_STOP_IMMEDIATELY;
@@ -6658,6 +6678,9 @@ static int __cam_isp_ctx_rdi_only_sof_in_bubble_applied(
 	CAM_DBG(CAM_ISP, "move request %lld to active list(cnt = %d), ctx_idx: %u, link: 0x%x",
 			req->request_id, ctx_isp->active_req_cnt, ctx->ctx_id, ctx->link_hdl);
 
+	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
+		&req_isp->hw_update_data);
+
 	if (!req_isp->bubble_report) {
 		if (req->request_id > ctx_isp->reported_req_id) {
 			request_id = req->request_id;
@@ -6907,6 +6930,9 @@ static int __cam_isp_ctx_rdi_only_reg_upd_in_bubble_applied_state(
 			"move active req %lld to free list(cnt=%d), ctx %u link: 0x%x",
 			req->request_id, ctx_isp->active_req_cnt, ctx->ctx_id, ctx->link_hdl);
 	}
+
+	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
+		&req_isp->hw_update_data);
 
 	__cam_isp_ctx_notify_trigger_util(CAM_TRIGGER_POINT_SOF, ctx_isp);
 
@@ -9421,7 +9447,7 @@ static int __cam_isp_ctx_process_evt(struct cam_context *ctx,
 		rc =  __cam_isp_ctx_link_resume(ctx);
 		break;
 	case CAM_REQ_MGR_LINK_EVT_SOF_FREEZE:
-		rc = __cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR, ctx);
+		rc = __cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR, ctx, NULL);
 		if (rc)
 			CAM_ERR(CAM_ISP, "Reg dump on sof freeze failed ctx:%d rc:%d",
 				ctx->ctx_id, rc);
@@ -9439,7 +9465,7 @@ static int __cam_isp_ctx_process_evt(struct cam_context *ctx,
 
 			if (!internal_recovery_skipped)
 				rc = __cam_isp_ctx_trigger_reg_dump(
-					CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR, ctx);
+					CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR, ctx, NULL);
 		}
 		link_evt_data->try_for_recovery = internal_recovery_skipped;
 	}
