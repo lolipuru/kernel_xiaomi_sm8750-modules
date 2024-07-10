@@ -736,7 +736,7 @@ static int _reset_hw_fence_timeline(struct sde_hw_ctl *hw_ctl)
 }
 
 int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugfs_hw_fence,
-		struct sde_hw_mdp *hw_mdp, bool disable)
+		struct sde_hw_mdp *hw_mdp, bool disable, bool override)
 {
 	struct sde_hw_fence_data *data;
 	u32 ipcc_signal_id;
@@ -756,6 +756,10 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 
 	if (disable) {
 		hw_ctl->ops.hw_fence_ctrl(hw_ctl, false, false, 0, false, false);
+		return -EPERM;
+	}
+	if (override) {
+		hw_ctl->ops.hw_fence_ctrl(hw_ctl, true, true, 1, false, false);
 		return -EPERM;
 	}
 

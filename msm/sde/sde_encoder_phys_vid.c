@@ -359,14 +359,14 @@ static void _sde_encoder_phys_vid_raw_te_setup(
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	if (enable) {
-		if (phys_enc->sde_kms->catalog->hw_fence_rev)
+		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
 			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, true,
 				sde_enc->disp_info.vrr_caps.arp_support);
 		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
 			sde_enc->disp_info.vrr_caps.arp_support)
 			vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
 	} else {
-		if (phys_enc->sde_kms->catalog->hw_fence_rev)
+		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
 			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, false,
 				false);
 		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
@@ -502,7 +502,7 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	}
 
 	if (sde_enc->disp_info.vrr_caps.video_psr_support &&
-			phys_enc->sde_kms->catalog->hw_fence_rev)
+			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
 		avr_params.hw_avr_trigger = true;
 
 	if (info->avr_step_fps && (avr_step_state == AVR_STEP_ENABLE))
@@ -732,7 +732,7 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 	esync_params.prog_fetch_start =
 			(phys_enc->cached_mode.vtotal - phys_enc->prog_fetch_start + 1)
 			% esync_params.avr_step_lines;
-	esync_params.hw_fence_enabled = !!phys_enc->sde_kms->catalog->hw_fence_rev;
+	esync_params.hw_fence_enabled = phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable;
 	esync_params.align_backup = exit_idle;
 
 	phys_enc->hw_intf->ops.prepare_esync(phys_enc->hw_intf, &esync_params);
@@ -1197,10 +1197,10 @@ static void sde_encoder_phys_vid_te_irq(void *arg, int irq_idx)
 	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);
 	SDE_EVT32(DRMID(phys_enc->parent), irq_idx, qsync_mode,
 		sde_enc->disp_info.vrr_caps.arp_support,
-		phys_enc->sde_kms->catalog->hw_fence_rev);
+		phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable);
 
 	if (qsync_mode && sde_enc->disp_info.vrr_caps.arp_support &&
-		!phys_enc->sde_kms->catalog->hw_fence_rev) {
+		!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable) {
 		vid_enc = to_sde_encoder_phys_vid(phys_enc);
 		vid_enc->base.hw_intf->ops.avr_trigger(vid_enc->base.hw_intf);
 	}
@@ -1592,7 +1592,8 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 	 * if hwfencing enabled, try again to wait for up to the extended timeout time in
 	 * increments as long as fence has not been signaled.
 	 */
-	if (ret == -ETIMEDOUT && phys_enc->sde_kms->catalog->hw_fence_rev)
+	if (ret == -ETIMEDOUT && (phys_enc->sde_kms->catalog->hw_fence_rev ||
+			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable))
 		ret = sde_encoder_helper_hw_fence_extended_wait(phys_enc, phys_enc->hw_ctl,
 			&wait_info, INTR_IDX_VSYNC);
 
@@ -1610,7 +1611,8 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 			ret = 0;
 
 		/* if we timeout after the extended wait, reset mixers and do sw override */
-		if (ret && phys_enc->sde_kms->catalog->hw_fence_rev)
+		if (ret && (phys_enc->sde_kms->catalog->hw_fence_rev ||
+			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable))
 			sde_encoder_helper_hw_fence_sw_override(phys_enc, hw_ctl);
 
 		SDE_EVT32(DRMID(phys_enc->parent), new_cnt, flush_register, ret,
@@ -1688,10 +1690,119 @@ static int sde_encoder_phys_vid_wait_for_vblank_no_notify(
 	return _sde_encoder_phys_vid_wait_for_vblank(phys_enc, false);
 }
 
+static void _sde_encoder_phys_vid_arp_ctrl(
+		struct sde_encoder_phys *phys_enc)
+{
+	struct sde_connector_state *c_state;
+	struct sde_encoder_vrr_cfg *vrr_cfg;
+	struct sde_encoder_virt *sde_enc;
+
+	if (!phys_enc || !phys_enc->parent) {
+		SDE_ERROR("invalid encoder parameters\n");
+		return;
+	}
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	if (!sde_enc->disp_info.vrr_caps.arp_support) {
+		SDE_DEBUG("No ARP support\n");
+		return;
+	}
+
+	vrr_cfg = &phys_enc->sde_vrr_cfg;
+	if (phys_enc->connector && phys_enc->connector->state) {
+		c_state = to_sde_connector_state(phys_enc->connector->state);
+		if (!c_state) {
+			SDE_ERROR("invalid connector state\n");
+			return;
+		}
+
+		switch (vrr_cfg->arp_transition_state) {
+		case ARP_MODE3_HW_TE_ON:
+			pr_debug("arp_transition\n");
+			break;
+		case ARM_MODE3_TO_MODE1:
+			//not expected scenario , early ept to take care
+			SDE_ERROR("Not expected transition\n");
+			vrr_cfg->arp_transition_state = ARP_MODE3_HW_TE_ON;
+			sde_connector_update_cmd(phys_enc->connector,
+				BIT(DSI_CMD_SET_ARP_MODE3_HW_TE_ON), 0);
+			break;
+		case ARP_MODE1_ACTIVE:
+			SDE_ERROR("Not expected transition %d\n",
+					vrr_cfg->arp_transition_state);
+			vrr_cfg->arp_transition_state = ARP_MODE3_HW_TE_ON;
+			hrtimer_cancel(&phys_enc->sde_vrr_cfg.freq_step_timer);
+			hrtimer_cancel(&phys_enc->sde_vrr_cfg.arp_transition_timer);
+			break;
+		case ARP_MODE1_IDLE:
+			vrr_cfg->arp_transition_state = ARP_MODE3_HW_TE_ON;
+			sde_connector_update_cmd(phys_enc->connector,
+				BIT(DSI_CMD_SET_ARP_MODE3_HW_TE_ON), 0);
+
+			break;
+		default:
+			SDE_ERROR("unknown wait event %d\n",
+					vrr_cfg->arp_transition_state);
+			return;
+		}
+	}
+}
+
+static void sde_encoder_phys_vid_enact_updated_qsync_state(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_connector_state *c_state;
+	struct sde_encoder_virt *sde_enc;
+	struct sde_ctl_cesta_cfg cfg = {0,};
+	struct sde_cesta_client *cesta_client;
+
+	if (!phys_enc || !phys_enc->parent) {
+		SDE_ERROR("invalid encoder parameters\n");
+		return;
+	}
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	if (phys_enc->connector && phys_enc->connector->state) {
+		c_state = to_sde_connector_state(phys_enc->connector->state);
+		if (!c_state) {
+			SDE_ERROR("invalid connector state\n");
+			return;
+		}
+
+		if (sde_enc && sde_enc->disp_info.vrr_caps.arp_support)
+			_sde_encoder_phys_vid_arp_ctrl(phys_enc);
+
+		if (!msm_is_mode_seamless_vrr(&c_state->msm_mode)
+			&& sde_connector_is_qsync_updated(phys_enc->connector)) {
+
+			cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+			if (cesta_client) {
+				_sde_encoder_phys_vid_setup_panic_ctrl(phys_enc);
+
+				/*
+				 * If the vsync line-count is in the ext-vfp region, cesta
+				 * already voted for idle and there is no entity to bring it back
+				 * to active once the avr_ctrl is disabled.
+				 * Add a cesta flush to get the votes active during disable of avr.
+				 */
+				if (!sde_connector_get_qsync_mode(phys_enc->connector)) {
+					cfg.index = cesta_client->scc_index;
+					cfg.vote_state = SDE_CESTA_BW_CLK_NOCHANGE;
+
+					if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.cesta_flush)
+						phys_enc->hw_ctl->ops.cesta_flush(
+									phys_enc->hw_ctl, &cfg);
+					SDE_EVT32(DRMID(phys_enc->parent), cfg.index);
+				}
+			}
+			_sde_encoder_phys_vid_avr_ctrl(phys_enc);
+		}
+	}
+}
+
 static int sde_encoder_phys_vid_prepare_for_kickoff(
 		struct sde_encoder_phys *phys_enc,
 		struct sde_encoder_kickoff_params *params)
 {
+	struct sde_encoder_virt *sde_enc;
 	struct sde_encoder_phys_vid *vid_enc;
 	struct sde_hw_ctl *ctl;
 	bool recovery_events;
@@ -1704,12 +1815,18 @@ static int sde_encoder_phys_vid_prepare_for_kickoff(
 		return -EINVAL;
 	}
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	ctl = phys_enc->hw_ctl;
 	if (!ctl->ops.wait_reset_status)
 		return 0;
 
 	conn = phys_enc->connector;
+
+	if (sde_enc && sde_enc->disp_info.vrr_caps.video_psr_support &&
+			phys_enc->cont_splash_enabled)
+		sde_encoder_phys_vid_enact_updated_qsync_state(phys_enc);
+
 	recovery_events = sde_encoder_recovery_events_enabled(
 			phys_enc->parent);
 	/*
@@ -2076,122 +2193,29 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 	avr_mode = sde_connector_get_qsync_mode(phys_enc->connector);
 
 	if (avr_mode && vid_enc->base.hw_intf->ops.avr_trigger &&
-			!phys_enc->sde_kms->catalog->hw_fence_rev) {
+			!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable) {
 		vid_enc->base.hw_intf->ops.avr_trigger(vid_enc->base.hw_intf);
 		SDE_EVT32(DRMID(phys_enc->parent),
 				phys_enc->hw_intf->idx - INTF_0,
 				SDE_EVTLOG_FUNC_CASE9);
-	}
-}
-
-static void _sde_encoder_phys_vid_arp_ctrl(
-		struct sde_encoder_phys *phys_enc)
-{
-	struct sde_connector_state *c_state;
-	struct sde_encoder_vrr_cfg *vrr_cfg;
-	struct sde_encoder_virt *sde_enc;
-
-	if (!phys_enc || !phys_enc->parent) {
-		SDE_ERROR("invalid encoder parameters\n");
-		return;
-	}
-	sde_enc = to_sde_encoder_virt(phys_enc->parent);
-	if (!sde_enc->disp_info.vrr_caps.arp_support) {
-		SDE_DEBUG("No ARP support\n");
-		return;
-	}
-
-	vrr_cfg = &phys_enc->sde_vrr_cfg;
-	if (phys_enc->connector && phys_enc->connector->state) {
-		c_state = to_sde_connector_state(phys_enc->connector->state);
-		if (!c_state) {
-			SDE_ERROR("invalid connector state\n");
-			return;
-		}
-
-		switch (vrr_cfg->arp_transition_state) {
-		case ARP_MODE3_HW_TE_ON:
-			pr_debug("arp_transition\n");
-			break;
-		case ARM_MODE3_TO_MODE1:
-			//not expected scenario , early ept to take care
-			SDE_ERROR("Not expected transition\n");
-			vrr_cfg->arp_transition_state = ARP_MODE3_HW_TE_ON;
-			sde_connector_update_cmd(phys_enc->connector,
-				BIT(DSI_CMD_SET_ARP_MODE3_HW_TE_ON), 0);
-			break;
-		case ARP_MODE1_ACTIVE:
-			SDE_ERROR("Not expected transition %d\n",
-					vrr_cfg->arp_transition_state);
-			vrr_cfg->arp_transition_state = ARP_MODE3_HW_TE_ON;
-			hrtimer_cancel(&phys_enc->sde_vrr_cfg.freq_step_timer);
-			hrtimer_cancel(&phys_enc->sde_vrr_cfg.arp_transition_timer);
-			break;
-		case ARP_MODE1_IDLE:
-			vrr_cfg->arp_transition_state = ARP_MODE3_HW_TE_ON;
-			sde_connector_update_cmd(phys_enc->connector,
-				BIT(DSI_CMD_SET_ARP_MODE3_HW_TE_ON), 0);
-
-			break;
-		default:
-			SDE_ERROR("unknown wait event %d\n",
-					vrr_cfg->arp_transition_state);
-			return;
-		}
+		if (sde_enc->disp_info.vrr_caps.video_psr_support)
+			SDE_ERROR("HW fence is disabled. Overriding TE monitor VHM case.\n");
 	}
 }
 
 static void sde_encoder_phys_vid_prepare_for_commit(
 		struct sde_encoder_phys *phys_enc)
 {
-	struct sde_connector_state *c_state;
-	struct sde_encoder_virt *sde_enc;
-	struct sde_ctl_cesta_cfg cfg = {0,};
-	struct sde_cesta_client *cesta_client;
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
-	if (!phys_enc || !phys_enc->parent) {
-		SDE_ERROR("invalid encoder parameters\n");
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde_enc\n");
 		return;
 	}
 
-	sde_enc = to_sde_encoder_virt(phys_enc->parent);
-	if (phys_enc->connector && phys_enc->connector->state) {
-		c_state = to_sde_connector_state(phys_enc->connector->state);
-		if (!c_state) {
-			SDE_ERROR("invalid connector state\n");
-			return;
-		}
-
-		if (sde_enc && sde_enc->disp_info.vrr_caps.arp_support)
-			_sde_encoder_phys_vid_arp_ctrl(phys_enc);
-
-		if (!msm_is_mode_seamless_vrr(&c_state->msm_mode)
-			&& sde_connector_is_qsync_updated(phys_enc->connector)) {
-
-			cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
-			if (cesta_client) {
-				_sde_encoder_phys_vid_setup_panic_ctrl(phys_enc);
-
-				/*
-				 * If the vsync line-count is in the ext-vfp region, cesta
-				 * already voted for idle and there is no entity to bring it back
-				 * to active once the avr_ctrl is disabled.
-				 * Add a cesta flush to get the votes active during disable of avr.
-				 */
-				if (!sde_connector_get_qsync_mode(phys_enc->connector)) {
-					cfg.index = cesta_client->scc_index;
-					cfg.vote_state = SDE_CESTA_BW_CLK_NOCHANGE;
-
-					if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.cesta_flush)
-						phys_enc->hw_ctl->ops.cesta_flush(
-									phys_enc->hw_ctl, &cfg);
-					SDE_EVT32(DRMID(phys_enc->parent), cfg.index);
-				}
-			}
-			_sde_encoder_phys_vid_avr_ctrl(phys_enc);
-		}
-
-	}
+	/* during continuous splash, VHM needs this to happen in prepare for kickoff */
+	if (!(sde_enc->disp_info.vrr_caps.video_psr_support && phys_enc->cont_splash_enabled))
+		sde_encoder_phys_vid_enact_updated_qsync_state(phys_enc);
 }
 
 static void sde_encoder_phys_vid_irq_control(struct sde_encoder_phys *phys_enc,

@@ -1008,6 +1008,7 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 	struct drm_crtc_state *old_crtc_state;
 	struct drm_crtc *crtc;
 	struct sde_connector *c_conn;
+	struct sde_encoder_virt *sde_enc;
 	int i, old_mode, new_mode, old_fps, new_fps;
 	enum panel_event_notifier_tag panel_type;
 
@@ -1040,6 +1041,10 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 				old_conn_state->crtc);
 			pr_debug("change detected for connector:%s (power mode %d->%d, fps %d->%d)\n",
 				c_conn->name, old_mode, new_mode, old_fps, new_fps);
+
+			sde_enc = to_sde_encoder_virt(connector->encoder);
+			if (sde_enc && sde_enc->disp_info.event_notification_disabled)
+				continue;
 
 			/* If suspend resume and fps change are happening
 			 * at the same time, give preference to power mode

@@ -5404,7 +5404,8 @@ int dsi_display_cont_splash_config(void *dsi_display)
 	}
 
 	if (display->panel->esync_caps.esync_support
-	    && display->config.panel_mode == DSI_OP_VIDEO_MODE) {
+	    && display->panel->panel_mode == DSI_OP_VIDEO_MODE) {
+
 		rc = dsi_display_clk_ctrl(display->mdp_clk_handle,
 			DSI_ESYNC_CLK, DSI_CLK_ON);
 		if (rc) {
@@ -6872,6 +6873,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->vrr_caps.arp_support = display->panel->vrr_caps.arp_support;
 	info->poms_align_vsync = display->panel->poms_align_vsync;
 	info->is_te_using_watchdog_timer = is_sim_panel(display);
+	info->event_notification_disabled = display->panel->event_notification_disabled;
 
 	switch (display->panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:

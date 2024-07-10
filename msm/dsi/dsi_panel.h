@@ -274,6 +274,8 @@ struct dsi_panel {
 	struct dsi_esync_capabilities esync_caps;
 	struct msm_vrr_capabilities vrr_caps;
 
+	bool event_notification_disabled;
+
 	char dce_pps_cmd[DSI_CMD_PPS_SIZE];
 	enum dsi_dms_mode dms_mode;
 
