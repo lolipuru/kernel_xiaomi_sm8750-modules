@@ -1215,6 +1215,7 @@ static int dp_display_host_ready(struct dp_display_private *dp)
 	dp->ctrl->abort(dp->ctrl, false);
 
 	dp->aux->init(dp->aux, dp->parser->aux_cfg);
+	rc = dp_display_panel_ready(dp);
 
 	dp_display_state_add(DP_STATE_READY);
 	/* log this as it results from user action of cable connection */
@@ -1386,8 +1387,6 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 		dp_display_state_show("[ready failed]");
 		goto err_state;
 	}
-
-	rc = dp_display_panel_ready(dp);
 
 	dp->link->psm_config(dp->link, &dp->panel->link_info, false);
 	dp->debug->psm_enabled = false;
@@ -2107,6 +2106,10 @@ static void dp_display_disconnect_work(struct work_struct *work)
 			struct dp_display_private, disconnect_work);
 
 	dp_display_handle_disconnect(dp, false);
+
+	if (dp->debug->sim_mode && dp_display_state_is(DP_STATE_ABORTED))
+		dp_display_host_deinit(dp);
+
 	dp->debug->abort(dp->debug);
 }
 
@@ -2122,6 +2125,9 @@ static int dp_display_usb_notifier(struct notifier_block *nb,
 		dp_display_state_add(DP_STATE_ABORTED);
 		dp->ctrl->abort(dp->ctrl, true);
 		dp->aux->abort(dp->aux, true);
+
+		dp->power->park_clocks(dp->power);
+
 		queue_work(dp->wq, &dp->disconnect_work);
 	}
 
@@ -2583,13 +2589,6 @@ static int dp_display_prepare(struct dp_display *dp_display, void *panel)
 	rc = dp_display_host_ready(dp);
 	if (rc) {
 		dp_display_state_show("[ready failed]");
-		goto end;
-	}
-
-	rc = dp_display_panel_ready(dp);
-	if (rc) {
-		dp_display_host_unready(dp);
-		dp_display_host_deinit(dp);
 		goto end;
 	}
 
@@ -3951,13 +3950,6 @@ static int dp_display_edp_detect(struct dp_display *dp_display)
 	rc = dp_display_host_ready(dp);
 	if (rc) {
 		dp_display_state_show("[ready failed]");
-		dp_display_host_deinit(dp);
-		goto end;
-	}
-
-	rc = dp_display_panel_ready(dp);
-	if (rc) {
-		dp_display_host_unready(dp);
 		dp_display_host_deinit(dp);
 		goto end;
 	}

@@ -881,9 +881,6 @@ static int dsi_clk_esync_clk_enable(struct dsi_clk_mngr *mngr, int index)
 	struct dsi_esync_clk *esync_clk = &mngr->esync_clks[index];
 	int rc;
 
-	if (mngr->is_cont_splash_enabled)
-		return 0;
-
 	if (IS_ERR_OR_NULL(esync_clk->clks.clk)) {
 		DSI_WARN("esync clock enable attempt with null clock handle\n");
 		return -EINVAL;

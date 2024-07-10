@@ -2071,6 +2071,7 @@ struct sde_perf_cfg {
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
  * @soccp_ph            if soccp is supported, soccp phandle needed to get rproc to set power vote
+ * @is_vrr_hw_fence_enable        enable hw-fence override configuration
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
  * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
@@ -2206,6 +2207,7 @@ struct sde_mdss_cfg {
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;
 	phandle soccp_ph;
+	bool is_vrr_hw_fence_enable;
 
 	enum sde_ppb_size_option ppb_sz_program;
 	u32 ppb_buf_max_lines;

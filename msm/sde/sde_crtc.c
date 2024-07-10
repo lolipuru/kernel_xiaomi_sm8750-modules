@@ -4273,6 +4273,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	int ret;
 	enum sde_crtc_vm_req vm_req;
 	bool disable_hw_fences = false;
+	bool trigger_sw_override = false;
 
 	SDE_DEBUG("\n");
 
@@ -4284,16 +4285,28 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 
 	SDE_ATRACE_BEGIN("plane_wait_input_fence");
 
+	trigger_sw_override = sde_kms->catalog->is_vrr_hw_fence_enable &&
+		!sde_kms->catalog->hw_fence_rev;
+	if (trigger_sw_override && (!hw_ctl || !hw_ctl->ops.hw_fence_trigger_sw_override ||
+			test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask))) {
+		SDE_ERROR("invalid trigger_sw_override hw_ctl:0x%pK op:0x%pK mask:0x%lx\n", hw_ctl,
+			hw_ctl ? hw_ctl->ops.hw_fence_trigger_sw_override : NULL,
+			*sde_crtc->hwfence_features_mask);
+		return false;
+	}
+
 	/* if this is the last frame on vm transition, disable hw fences */
 	vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc->state), CRTC_PROP_VM_REQ_STATE);
 	if (vm_req == VM_REQ_RELEASE)
 		disable_hw_fences = true;
 
 	/* update ctl hw to wait for ipcc input signal before fetch */
-	if (test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask) &&
-			!sde_fence_update_input_hw_fence_signal(hw_ctl, sde_kms->debugfs_hw_fence,
-			sde_kms->hw_mdp, disable_hw_fences))
-		ipcc_input_signal_wait = true;
+	if (test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
+			trigger_sw_override) {
+		ret = sde_fence_update_input_hw_fence_signal(hw_ctl, sde_kms->debugfs_hw_fence,
+			sde_kms->hw_mdp, disable_hw_fences, trigger_sw_override);
+		ipcc_input_signal_wait = (ret == 0);
+	}
 
 	/* avoid hw-fences in first frame after timing engine enable */
 	input_hw_fences_enable = (ipcc_input_signal_wait && !_is_vid_power_on_frame(crtc));
@@ -4326,8 +4339,11 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 		ipcc_input_signal_wait, num_hw_fences, hw_ctl ? hw_ctl->idx - CTL_0 : -1);
 
 	/* if hw is waiting for ipcc signal and no hw-fences, override signal */
-	if (ipcc_input_signal_wait && !num_hw_fences && hw_ctl->ops.hw_fence_trigger_sw_override &&
-			!test_bit(HW_FENCE_IN_FENCES_NO_OVERRIDE, sde_crtc->hwfence_features_mask))
+	trigger_sw_override |= (ipcc_input_signal_wait && !num_hw_fences &&
+			hw_ctl->ops.hw_fence_trigger_sw_override &&
+			!test_bit(HW_FENCE_IN_FENCES_NO_OVERRIDE, sde_crtc->hwfence_features_mask));
+
+	if (trigger_sw_override)
 		hw_ctl->ops.hw_fence_trigger_sw_override(hw_ctl);
 
 	SDE_ATRACE_END("plane_wait_input_fence");
@@ -5404,6 +5420,9 @@ void sde_crtc_reset_sw_state(struct drm_crtc *crtc)
 	set_bit(SDE_CRTC_DIRTY_DIM_LAYERS, &sde_crtc->revalidate_mask);
 	if (cstate->num_ds_enabled)
 		set_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
+
+	/* wipe out cached CRTC ROI so PU is seen as dirty next update */
+	memset(&cstate->cached_user_roi_list, 0, sizeof(cstate->cached_user_roi_list));
 }
 
 static void sde_crtc_post_ipc(struct drm_crtc *crtc)

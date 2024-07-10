@@ -1217,6 +1217,9 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 
 	c_conn = to_sde_connector(connector);
 
+	if (sde_encoder_in_cont_splash(connector->encoder))
+		return 0;
+
 	if (!c_conn->freq_pattern) {
 		SDE_ERROR("frequency pattern is NULL but update is true\n");
 		return -EINVAL;
@@ -2523,8 +2526,14 @@ static int _sde_connector_lm_preference(struct sde_connector *sde_conn,
 	return ret;
 }
 
-static void _sde_connector_init_hw_fence(struct sde_connector *c_conn, struct sde_kms *sde_kms)
+static void _sde_connector_init_hw_fence(struct sde_connector *c_conn,
+		struct msm_display_info *display_info, struct sde_kms *sde_kms)
 {
+	/* enable hw-fence override if hw-fencing is disabled but vrr is supported */
+	if (display_info->vrr_caps.video_psr_support || display_info->vrr_caps.arp_support ||
+			sde_kms->catalog->hw_fence_rev)
+		sde_kms->catalog->is_vrr_hw_fence_enable = true;
+
 	/* Enable hw-fences for wb retire-fence */
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL && sde_kms->catalog->hw_fence_rev)
 		c_conn->hwfence_wb_retire_fences_enable = true;
@@ -3338,6 +3347,13 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 			}
 		}
 
+		if (c_conn->vrr_caps.video_psr_support)
+			sde_kms_info_add_keyint(info, "has_vhm_support", 1);
+
+		if (c_conn->vrr_caps.vrr_support)
+			sde_kms_info_add_keyint(info, "early_ept_timeout",
+				IDLE_POWERCOLLAPSE_DURATION);
+
 		sde_kms_info_add_keyint(info, "has_cwb_crop", test_bit(SDE_FEATURE_CWB_CROP,
 								       sde_kms->catalog->features));
 		sde_kms_info_add_keyint(info, "has_dedicated_cwb_support",
@@ -3846,7 +3862,7 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	_sde_connector_lm_preference(c_conn, sde_kms,
 			display_info.display_type);
 
-	_sde_connector_init_hw_fence(c_conn, sde_kms);
+	_sde_connector_init_hw_fence(c_conn, &display_info, sde_kms);
 
 	SDE_DEBUG("connector %d attach encoder %d, wb hwfences:%d\n",
 			DRMID(&c_conn->base), DRMID(encoder),
