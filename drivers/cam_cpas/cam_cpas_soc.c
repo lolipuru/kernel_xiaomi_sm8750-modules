@@ -169,6 +169,40 @@ void cam_cpas_dump_full_tree_state(struct cam_hw_info *cpas_hw, const char *iden
 	CAM_INFO(CAM_CPAS, "Dumping cpas tree full state end ============== %s", identifier);
 }
 
+void cam_cpas_dump_cons_axi_vote_info(
+	const struct cam_cpas_client *cpas_client,
+	const char *identifier,
+	struct cam_axi_consolidate_vote *axi_vote)
+{
+	int i;
+
+	if ((cpas_dump & BIT(0)) == 0)
+		return;
+
+	if (!axi_vote || (axi_vote->num_paths >
+		CAM_CPAS_MAX_PATHS_PER_CLIENT)) {
+		CAM_ERR(CAM_PERF, "Invalid num_paths %d",
+			axi_vote ? axi_vote->num_paths : -1);
+		return;
+	}
+
+	for (i = 0; i < axi_vote->num_paths; i++) {
+		CAM_INFO(CAM_PERF,
+		"Client [%s][%d] : [%s], Path=[%d] [%d],[HIGH LOW] camnoc[%llu %llu], mnoc_ab[%llu %llu], mnoc_ib[%llu %llu]",
+		cpas_client->data.identifier, cpas_client->data.cell_index,
+		identifier,
+		axi_vote->axi_path[i].path_data_type,
+		axi_vote->axi_path[i].transac_type,
+		axi_vote->axi_path[i].drv_vote.high.camnoc,
+		axi_vote->axi_path[i].drv_vote.low.camnoc,
+		axi_vote->axi_path[i].drv_vote.high.ab,
+		axi_vote->axi_path[i].drv_vote.low.ab,
+		axi_vote->axi_path[i].drv_vote.high.ib,
+		axi_vote->axi_path[i].drv_vote.low.ib);
+	}
+
+}
+
 void cam_cpas_dump_axi_vote_info(
 	const struct cam_cpas_client *cpas_client,
 	const char *identifier,

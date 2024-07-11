@@ -150,6 +150,36 @@ struct cam_cpas_axi_bw_info {
 };
 
 /**
+ * struct cam_cpas_axi_consolidate_per_path_bw_vote - Internal per path bandwidth vote after
+ *                                                    consolidation. Consolidation is agnostic
+ *                                                    of actual vote that will be done (HLOS or DRV)
+ *
+ * @transac_type:            Transaction type on the path (read/write)
+ * @path_data_type:          Path for which vote is given (video, display, rdi)
+ * @drv_vote:                Consolidated BW values for high and low level vote.
+ *                           Low level also contains VOTE_LEVEL_NONE for backward
+ *                           compatibility.
+ */
+struct cam_cpas_axi_consolidate_per_path_bw_vote {
+	uint32_t                      transac_type;
+	uint32_t                      path_data_type;
+	struct cam_cpas_drv_vote      drv_vote;
+
+};
+
+/**
+ * struct cam_axi_consolidate_vote : Consolidated AXI vote
+ *
+ * @num_paths: Number of paths on which BW vote is to be applied after consolidation
+ * @axi_path: Per path consolidate BW vote info
+ *
+ */
+struct cam_axi_consolidate_vote {
+	uint32_t num_paths;
+	struct cam_cpas_axi_consolidate_per_path_bw_vote axi_path[CAM_CPAS_MAX_PATHS_PER_CLIENT];
+};
+
+/**
  * struct cam_cpas_kobj_map: wrapper structure for base kobject
  *                               and cam cpas private soc info
  * @base_kobj: kernel object for camera sysfs
@@ -224,7 +254,7 @@ struct cam_cpas_reg {
  * @is_drv_dyn: Indicates whether this client is DRV dynamic voting client
  * @ahb_level: Determined/Applied ahb level for the client
  * @axi_level: Determined/Applied axi level for the client
- * @axi_vote: Determined/Applied axi vote for the client
+ * @axi_vote: Determined/Applied consolidate axi vote for the client
  * @axi_port: Client's parent axi port
  * @tree_node: All granular path voting nodes for the client
  *
@@ -237,7 +267,7 @@ struct cam_cpas_client {
 	bool is_drv_dyn;
 	enum cam_vote_level ahb_level;
 	enum cam_vote_level axi_level;
-	struct cam_axi_vote axi_vote;
+	struct cam_axi_consolidate_vote cons_axi_vote;
 	struct cam_cpas_axi_port *axi_port;
 	struct cam_cpas_tree_node *tree_node[CAM_CPAS_PATH_DATA_MAX]
 		[CAM_CPAS_TRANSACTION_MAX];
