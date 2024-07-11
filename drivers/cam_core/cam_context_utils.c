@@ -742,7 +742,7 @@ free_req:
 }
 
 int32_t cam_context_acquire_dev_to_hw(struct cam_context *ctx,
-	struct cam_acquire_dev_cmd *cmd)
+	struct cam_acquire_dev_cmd_unified *cmd)
 {
 	int rc;
 	struct cam_hw_acquire_args param;
@@ -788,6 +788,7 @@ int32_t cam_context_acquire_dev_to_hw(struct cam_context *ctx,
 	param.mini_dump_cb = ctx->mini_dump_cb;
 	param.num_acq = cmd->num_resources;
 	param.acquire_info = cmd->resource_hdl;
+	param.api_version = cmd->struct_version;
 
 	/* Allocate memory for hw and map entries */
 	rc = cam_context_allocate_mem_hw_entries(ctx);

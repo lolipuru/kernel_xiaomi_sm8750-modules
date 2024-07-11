@@ -7865,7 +7865,7 @@ end:
 }
 
 static int __cam_isp_ctx_acquire_dev_in_available(struct cam_context *ctx,
-	struct cam_acquire_dev_cmd *cmd)
+	struct cam_acquire_dev_cmd_unified *cmd)
 {
 	int rc = 0;
 	int i;

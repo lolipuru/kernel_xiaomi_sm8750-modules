@@ -585,6 +585,58 @@ struct cam_cpas_addr_trans_data {
 };
 
 /**
+ * enum cam_device_type - Enum for camera HW device types
+ */
+enum cam_device_type {
+	CAM_CPAS_HW_TYPE_IFE,
+	CAM_CPAS_HW_TYPE_TFE,
+	CAM_CPAS_HW_TYPE_IFE_LITE,
+	CAM_CPAS_HW_TYPE_IPE,
+	CAM_CPAS_HW_TYPE_BPS,
+	CAM_CPAS_HW_TYPE_OFE,
+	CAM_CPAS_HW_TYPE_MAX
+};
+
+#define CAM_CPAS_IS_VALID_CAM_DEV_TYPE(type)                          \
+({                                                                  \
+	((type) >= CAM_CPAS_HW_TYPE_IFE) && ((type) < CAM_CPAS_HW_TYPE_MAX); \
+})
+#define CAM_MAX_OUTPUT_PORTS_PER_DEVICE 65
+
+enum cam_ipe_out_port_type {
+	CAM_CPAS_IPE_OUTPUT_IMAGE_DISPLAY,
+	CAM_CPAS_IPE_OUTPUT_IMAGE_VIDEO,
+	CAM_CPAS_IPE_OUTPUT_IMAGE_FULL_REF,
+	CAM_CPAS_IPE_OUTPUT_IMAGE_DS4_REF,
+	CAM_CPAS_IPE_OUTPUT_IMAGE_DS16_REF,
+	CAM_CPAS_IPE_OUTPUT_IMAGE_DS64_REF,
+	CAM_CPAS_IPE_OUTPUT_IMAGE_FD,
+	CAM_CPAS_IPE_OUTPUT_IMAGE_STATS_IHIST,
+	CAM_CPAS_IPE_OUTPUT_MAX
+};
+
+/**
+ * struct cam_cpas_cp_mapping_config_info : CP CTRL config info
+ *
+ * @device_type: HW device type (IFE, IPE, OFE etc.)
+ * @hw_instance_id_mask: Mask of the Indices of the devices to configure
+ * @protect: Whether to configure the ports as secure or non secure
+ * @phy_id: Index of the PHY that is used for this stream
+ *          Applicable for only real time devices
+ * @num_ports: Number of ports to be configured
+ * @port_ids: IDs of the ports to be configured
+ *
+ */
+struct cam_cpas_cp_mapping_config_info {
+	enum cam_device_type device_type;
+	uint32_t             hw_instance_id_mask;
+	bool                 protect;
+	uint32_t             phy_id;
+	uint32_t             num_ports;
+	uint32_t             port_ids[CAM_MAX_OUTPUT_PORTS_PER_DEVICE];
+};
+
+/**
  * cam_cpas_prepare_subpart_info()
  *
  * @brief: API to update the number of ifes, ife_lites, sfes and custom
@@ -1090,5 +1142,14 @@ int cam_cpas_dump_state_monitor_info(struct cam_req_mgr_dump_info *info);
  * @return true or false
  */
 bool cam_cpas_is_fw_based_sys_caching_supported(void);
+
+/**
+ * cam_cpas_config_cp_mapping_ctrl()
+ *
+ * @config: CP Mapping CTRL config info
+ * @return 0 on success
+ */
+int cam_cpas_config_cp_mapping_ctrl(
+	struct cam_cpas_cp_mapping_config_info *config);
 
 #endif /* _CAM_CPAS_API_H_ */

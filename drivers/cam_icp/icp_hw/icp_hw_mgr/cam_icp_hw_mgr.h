@@ -84,6 +84,9 @@
 
 #define CAM_ICP_MAX_ICP_PROC_PER_DEV 1
 
+/* The value used for invalid port IDs in the kernel */
+#define CAM_ICP_INVALID_IN_OUT_PORT_ID            0xFFFFFFFF;
+
 struct hfi_mini_dump_info;
 
 /**
@@ -409,6 +412,7 @@ struct cam_icp_hw_ctx_info {
  * @fw_handle: Firmware handle
  * @scratch_mem_size: Scratch memory size
  * @icp_dev_acquire_info: Acquire device info
+ * @acquire_dev_api_version: API version of this acquire
  * @ctxt_event_cb: Context callback function
  * @state: context state
  * @role: Role of a context in case of chaining
@@ -426,6 +430,7 @@ struct cam_icp_hw_ctx_info {
  * @evt_inject_params: Event injection data for hw_mgr_ctx
  * @abort_timed_out: Indicates if abort timed out
  * @sys_cache_cfg: sys cache config information
+ * @port_security_map: security status per port in a secure usecase
  */
 struct cam_icp_hw_ctx_data {
 	struct list_head list;
@@ -435,7 +440,8 @@ struct cam_icp_hw_ctx_data {
 	struct mutex ctx_mutex;
 	uint32_t fw_handle;
 	uint32_t scratch_mem_size;
-	struct cam_icp_acquire_dev_info *icp_dev_acquire_info;
+	struct cam_icp_acquire_dev_info_unified *icp_dev_acquire_info;
+	uint32_t acquire_dev_api_version;
 	cam_hw_event_cb_func ctxt_event_cb;
 	uint32_t state;
 	uint32_t role;
@@ -453,6 +459,7 @@ struct cam_icp_hw_ctx_data {
 	struct cam_hw_inject_evt_param evt_inject_params;
 	bool abort_timed_out;
 	struct cam_icp_sys_cache_cfg sys_cache_cfg;
+	bool port_security_map[CAM_MAX_OUTPUT_PORTS_PER_DEVICE];
 };
 
 /**
@@ -526,6 +533,7 @@ struct cam_icp_hw_active_ctx_info {
  *                     using synx
  * @fw_based_sys_caching: to check llcc cache feature is enabled or not
  * @hfi_init_done: hfi initialisation is done
+ * @num_secure_contexts: Number of the existing secure contexts
  */
 struct cam_icp_hw_mgr {
 	struct mutex hw_mgr_mutex;
@@ -579,23 +587,26 @@ struct cam_icp_hw_mgr {
 	bool synx_signaling_en;
 	bool fw_based_sys_caching;
 	bool hfi_init_done;
+	uint32_t num_secure_contexts[CAM_ICP_MAX_NUM_OF_DEV_TYPES];
 };
 
 /**
  * struct cam_icp_mini_dump_acquire_info - ICP mini dump device info
  *
- * @in_res: resource info used for clock and bandwidth calculation
- * @out_res: output resource
+ * @in_res: intput resource info
+ * @out_res: output resource info
  * @num_out_res: number of output resources
  * @dev_type: device type (IPE_RT/IPE_NON_RT/BPS)
  * @secure_mode: camera mode (secure/non secure)
+ * @acquire_dev_api_version: API version of this acquire
  */
 struct cam_icp_mini_dump_acquire_info {
-	struct cam_icp_res_info out_res[ICP_MAX_OUTPUT_SUPPORTED];
-	struct cam_icp_res_info in_res;
+	struct cam_icp_res_info_unified in_res;
+	struct cam_icp_res_info_unified out_res[ICP_MAX_OUTPUT_SUPPORTED];
 	uint16_t                num_out_res;
 	uint8_t                 dev_type;
 	uint8_t                 secure_mode;
+	uint32_t                acquire_dev_api_version;
 };
 
 /**

@@ -381,7 +381,7 @@ int cam_context_handle_message(struct cam_context *ctx,
 }
 
 int cam_context_handle_acquire_dev(struct cam_context *ctx,
-	struct cam_acquire_dev_cmd *cmd)
+	struct cam_acquire_dev_cmd_unified *cmd)
 {
 	int rc;
 	int i;
@@ -402,7 +402,7 @@ int cam_context_handle_acquire_dev(struct cam_context *ctx,
 			ctx, cmd);
 	} else {
 		CAM_ERR(CAM_CORE, "No acquire device in dev %d, state %d",
-			cmd->dev_handle, ctx->state);
+				cmd->dev_handle, ctx->state);
 		rc = -EPROTO;
 	}
 

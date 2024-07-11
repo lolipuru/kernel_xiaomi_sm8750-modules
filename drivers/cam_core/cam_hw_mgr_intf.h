@@ -185,6 +185,7 @@ struct cam_hw_acquire_stream_caps {
  * @total_ports_acq:       Total acquired ports
  * @op_params:             OP Params from hw_mgr to ctx
  * @mini_dump_cb:          Mini dump callback function
+ * @api_version:           Version of the acquire API
  *
  */
 struct cam_hw_acquire_args {
@@ -204,6 +205,7 @@ struct cam_hw_acquire_args {
 	uint32_t                     total_ports_acq;
 	struct cam_hw_acquire_stream_caps op_params;
 	cam_ctx_mini_dump_cb_func    mini_dump_cb;
+	uint32_t                     api_version;
 };
 
 /**
@@ -636,6 +638,73 @@ struct cam_hw_inject_evt_param {
 	} u;
 	bool is_valid;
 };
+
+/**
+ * struct cam_acquire_dev_cmd_unified - Unified payload for acquire devices
+ *
+ * @struct_version:     API version of the acquire command
+ * @session_handle:     Session handle for the acquire command
+ * @dev_handle:         Device handle to be returned
+ * @handle_type:        Resource handle type:
+ *                      1 = user pointer, 2 = mem handle
+ * @num_resources:      Number of the resources to be acquired
+ * @resources_hdl:      Resource handle that refers to the actual
+ *                      resource array. Each item in this
+ *                      array is device specific resource structure
+ *
+ */
+struct cam_acquire_dev_cmd_unified {
+	__u32        struct_version;
+	__s32        session_handle;
+	__s32        dev_handle;
+	__u32        handle_type;
+	__u32        num_resources;
+	__u64        resource_hdl;
+};
+
+/**
+ * struct cam_icp_res_info_unified - ICP output resource info
+ *
+ * @format: format of the resource
+ * @width:  width in pixels
+ * @height: height in lines
+ * @fps:  fps
+ * @port_id: ID of the out resource
+ * @is_secure:  whether the port is secure
+ */
+struct cam_icp_res_info_unified {
+	__u32 format;
+	__u32 width;
+	__u32 height;
+	__u32 fps;
+	__u32 port_id;
+	__u32 is_secure;
+};
+
+/**
+ * struct cam_icp_acquire_dev_info_unified - An ICP device info
+ *
+ * @scratch_mem_size: Output param - size of scratch memory
+ * @dev_type: device type (IPE_RT/IPE_NON_RT/BPS)
+ * @io_config_cmd_size: size of IO config command
+ * @io_config_cmd_handle: IO config command for each acquire
+ * @secure_mode: camera mode (secure/non secure)
+ * @chain_info: chaining info of FW device handles
+ * @in_res: resource info used for clock and bandwidth calculation
+ * @num_out_res: number of output resources
+ * @out_res_flex: output resource
+ */
+struct cam_icp_acquire_dev_info_unified {
+	__u32                   scratch_mem_size;
+	__u32                   dev_type;
+	__u32                   io_config_cmd_size;
+	__s32                   io_config_cmd_handle;
+	__u32                   secure_mode;
+	__s32                   chain_info;
+	struct cam_icp_res_info_unified in_res;
+	__u32                   num_out_res;
+	__DECLARE_FLEX_ARRAY(struct cam_icp_res_info_unified, out_res_flex);
+} __attribute__((__packed__));
 
 /**
  * cam_hw_mgr_intf - HW manager interface

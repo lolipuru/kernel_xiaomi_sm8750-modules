@@ -88,11 +88,11 @@ static int cam_icp_context_mini_dump(void *priv, void *args)
 }
 
 static int __cam_icp_acquire_dev_in_available(struct cam_context *ctx,
-	struct cam_acquire_dev_cmd *cmd)
+	struct cam_acquire_dev_cmd_unified *args)
 {
 	int rc;
 
-	rc = cam_context_acquire_dev_to_hw(ctx, cmd);
+	rc = cam_context_acquire_dev_to_hw(ctx, args);
 	if (!rc) {
 		ctx->state = CAM_CTX_ACQUIRED;
 		trace_cam_context_state(ctx->dev_name, ctx);

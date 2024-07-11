@@ -131,6 +131,67 @@ static const char *cam_icp_dev_type_to_name(uint32_t dev_type)
 	}
 }
 
+static inline enum cam_device_type cam_icp_get_camera_device_type(
+	enum cam_icp_hw_type hw_type)
+{
+	switch (hw_type) {
+	case CAM_ICP_DEV_IPE:
+		return CAM_CPAS_HW_TYPE_IPE;
+	case CAM_ICP_DEV_BPS:
+		return CAM_CPAS_HW_TYPE_BPS;
+	case CAM_ICP_DEV_OFE:
+		return CAM_CPAS_HW_TYPE_OFE;
+	default:
+		CAM_ERR(CAM_ICP, "Invalid hardware type: %u", hw_type);
+	}
+
+	return CAM_CPAS_HW_TYPE_MAX;
+}
+
+static inline int cam_get_cpas_out_port_id(enum cam_icp_hw_type hw_dev_type,
+	uint32_t port_id, enum cam_ipe_out_port_type *cpas_port_id)
+{
+	int rc = 0;
+
+	if (hw_dev_type == CAM_ICP_DEV_IPE) {
+		switch (port_id) {
+		case CAM_ICP_IPE_OUTPUT_IMAGE_DISPLAY:
+			*cpas_port_id = CAM_CPAS_IPE_OUTPUT_IMAGE_DISPLAY;
+			break;
+		case CAM_ICP_IPE_OUTPUT_IMAGE_VIDEO:
+			*cpas_port_id = CAM_CPAS_IPE_OUTPUT_IMAGE_VIDEO;
+			break;
+		case CAM_ICP_IPE_OUTPUT_IMAGE_FULL_REF:
+			*cpas_port_id = CAM_CPAS_IPE_OUTPUT_IMAGE_FULL_REF;
+			break;
+		case CAM_ICP_IPE_OUTPUT_IMAGE_DS4_REF:
+			*cpas_port_id = CAM_CPAS_IPE_OUTPUT_IMAGE_DS4_REF;
+			break;
+		case CAM_ICP_IPE_OUTPUT_IMAGE_DS16_REF:
+			*cpas_port_id = CAM_CPAS_IPE_OUTPUT_IMAGE_DS16_REF;
+			break;
+		case CAM_ICP_IPE_OUTPUT_IMAGE_DS64_REF:
+			*cpas_port_id = CAM_CPAS_IPE_OUTPUT_IMAGE_DS64_REF;
+			break;
+		case CAM_ICP_IPE_OUTPUT_IMAGE_FD:
+			*cpas_port_id = CAM_CPAS_IPE_OUTPUT_IMAGE_FD;
+			break;
+		case CAM_ICP_IPE_OUTPUT_IMAGE_STATS_IHIST:
+			*cpas_port_id = CAM_CPAS_IPE_OUTPUT_IMAGE_STATS_IHIST;
+			break;
+		default:
+			CAM_ERR(CAM_ICP, "Invalid IPE output port ID: %u", port_id);
+			rc = -EINVAL;
+		}
+	} else {
+		CAM_ERR(CAM_ICP, "Dynamic port config is not supported on this device %d"
+			, hw_dev_type);
+		rc = -EINVAL;
+	}
+
+	return rc;
+}
+
 static inline void cam_icp_dump_debug_info(struct cam_icp_hw_mgr *hw_mgr,
 	bool skip_dump)
 {
@@ -4881,6 +4942,73 @@ static int cam_icp_mgr_destroy_handle(
 	return rc;
 }
 
+static int cam_icp_handle_secure_port_config(
+	struct cam_icp_hw_ctx_data *ctx_data, bool protect)
+{
+	struct cam_cpas_cp_mapping_config_info cp_config;
+	int i, j;
+	bool has_non_secure_ports = false;
+	int rc;
+
+	if (ctx_data->acquire_dev_api_version == CAM_ACQUIRE_DEV_STRUCT_VERSION_1) {
+		CAM_DBG(CAM_ICP, "%s: Legacy acquire with all secure ports: %d",
+			ctx_data->ctx_id_string, ctx_data->state);
+		return 0;
+	}
+
+	cp_config.device_type = cam_icp_get_camera_device_type(
+		ctx_data->device_info->hw_dev_type);
+
+	if (!CAM_CPAS_IS_VALID_CAM_DEV_TYPE(cp_config.device_type)) {
+		CAM_ERR(CAM_ICP,
+			"Invalid CPAS camera device type %d", cp_config.device_type);
+		return -EINVAL;
+	}
+
+	/* Configure all instances of an offline device type at once as
+	 * it is not in the control of the software driver, rather with ICP,
+	 * to decide which instance is used in the runtime.
+	 */
+	for (i = 0; i < ctx_data->device_info->hw_dev_cnt; i++) {
+		cp_config.hw_instance_id_mask |= 1 << i;
+	}
+
+	cp_config.protect = protect;
+	for (i = 0, j = 0; i < CAM_MAX_OUTPUT_PORTS_PER_DEVICE; i++) {
+		enum cam_ipe_out_port_type cpas_port_id;
+		if (!ctx_data->port_security_map[i]) {
+			rc = cam_get_cpas_out_port_id(
+				ctx_data->device_info->hw_dev_type, i, &cpas_port_id);
+			if (!rc) {
+				cp_config.port_ids[j] = cpas_port_id;
+				CAM_DBG(CAM_ICP, "%s: Secure usecase on device %d has non-secure port %d",
+					ctx_data->ctx_id_string,
+					ctx_data->device_info->hw_dev_type, i);
+				j++;
+			}
+			else {
+				CAM_ERR(CAM_ICP, "%s: Invalid port for the device type requested - %d",
+					ctx_data->ctx_id_string, ctx_data->state);
+				return rc;
+			}
+			has_non_secure_ports = true;
+		}
+	}
+	cp_config.num_ports = j;
+
+	if (has_non_secure_ports) {
+		rc = cam_cpas_config_cp_mapping_ctrl(&cp_config);
+		if (rc) {
+			CAM_ERR(CAM_ICP,"%s: Unable to configure the output ports for the usecase:%d",
+				ctx_data->ctx_id_string, ctx_data->state);
+			return rc;
+		}
+	}
+
+	return 0;
+}
+
+
 static int cam_icp_mgr_release_ctx(
 	struct cam_icp_hw_mgr *hw_mgr,
 	struct cam_icp_hw_ctx_data *ctx_data)
@@ -4918,6 +5046,15 @@ static int cam_icp_mgr_release_ctx(
 	if (!atomic_read(&hw_mgr->ssr_triggered)) {
 		cam_icp_mgr_abort_handle(ctx_data);
 		cam_icp_mgr_destroy_handle(ctx_data);
+	}
+
+	if (ctx_data->icp_dev_acquire_info->secure_mode
+		== CAM_SECURE_MODE_SECURE) {
+		/* If this is the last secure context for the device, reset the
+		 * port security configuration.
+		 */
+		if (!(--hw_mgr->num_secure_contexts[ctx_data->device_info->hw_dev_type]))
+			cam_icp_handle_secure_port_config(ctx_data, true);
 	}
 
 	cam_icp_mgr_cleanup_ctx(ctx_data);
@@ -5019,6 +5156,7 @@ static unsigned long cam_icp_hw_mgr_mini_dump_cb(void *dst, unsigned long len,
 		memcpy(ctx_md->ctx_id_string, ctx->ctx_id_string,
 			strlen(ctx->ctx_id_string));
 		if (ctx->icp_dev_acquire_info) {
+			ctx_md->acquire.acquire_dev_api_version = ctx->acquire_dev_api_version;
 			ctx_md->acquire.secure_mode =
 				ctx->icp_dev_acquire_info->secure_mode;
 			ctx_md->acquire.dev_type =
@@ -5027,10 +5165,11 @@ static unsigned long cam_icp_hw_mgr_mini_dump_cb(void *dst, unsigned long len,
 				ctx->icp_dev_acquire_info->num_out_res;
 			memcpy(&ctx_md->acquire.in_res,
 				&ctx->icp_dev_acquire_info->in_res,
-				sizeof(struct cam_icp_res_info));
+				sizeof(struct cam_icp_res_info_unified));
 			memcpy(ctx_md->acquire.out_res,
 				ctx->icp_dev_acquire_info->out_res_flex,
-				sizeof(ctx->icp_dev_acquire_info->out_res));
+				(sizeof(struct cam_icp_res_info_unified) *
+				ctx->icp_dev_acquire_info->num_out_res));
 		} else {
 			memset(&ctx_md->acquire, 0,
 				sizeof(struct cam_icp_mini_dump_acquire_info));
@@ -7980,14 +8119,15 @@ static int cam_icp_mgr_send_ping(struct cam_icp_hw_mgr *hw_mgr,
 	return rc;
 }
 
-static int cam_icp_get_acquire_info(struct cam_icp_hw_mgr *hw_mgr,
+static int cam_icp_get_acquire_info_v1(struct cam_icp_hw_mgr *hw_mgr,
 	struct cam_hw_acquire_args *args,
 	struct cam_icp_hw_ctx_data *ctx_data)
 {
 	int i;
-	int acquire_size;
+	int acquire_size, acquire_size_unified;
 	struct cam_icp_acquire_dev_info icp_dev_acquire_info;
-	struct cam_icp_res_info *p_icp_out = NULL;
+	struct cam_icp_acquire_dev_info *acquire_info;
+	struct cam_icp_res_info_unified *p_ctx_icp_out = NULL;
 
 	if (copy_from_user(&icp_dev_acquire_info,
 		(void __user *)args->acquire_info,
@@ -8000,6 +8140,12 @@ static int cam_icp_get_acquire_info(struct cam_icp_hw_mgr *hw_mgr,
 		CAM_ERR(CAM_ICP, "%s: Invalid mode: %d",
 			ctx_data->ctx_id_string, icp_dev_acquire_info.secure_mode);
 		return -EINVAL;
+	}
+
+	if (icp_dev_acquire_info.secure_mode == CAM_SECURE_MODE_SECURE) {
+		/* Initialize the port security map to the default all secure */
+		for (i = 0; i < CAM_MAX_OUTPUT_PORTS_PER_DEVICE; i++)
+			ctx_data->port_security_map[i] = true;
 	}
 
 	if ((icp_dev_acquire_info.num_out_res > ICP_MAX_OUTPUT_SUPPORTED) ||
@@ -8019,17 +8165,67 @@ static int cam_icp_get_acquire_info(struct cam_icp_hw_mgr *hw_mgr,
 	acquire_size = sizeof(struct cam_icp_acquire_dev_info) +
 		((icp_dev_acquire_info.num_out_res - 1) *
 		sizeof(struct cam_icp_res_info));
-	ctx_data->icp_dev_acquire_info = CAM_MEM_ZALLOC(acquire_size, GFP_KERNEL);
-	if (!ctx_data->icp_dev_acquire_info)
+	acquire_info = CAM_MEM_ZALLOC(acquire_size, GFP_KERNEL);
+	if (!acquire_info)
 		return -ENOMEM;
 
-	if (copy_from_user(ctx_data->icp_dev_acquire_info,
+	if (copy_from_user(acquire_info,
 		(void __user *)args->acquire_info, acquire_size)) {
 		CAM_ERR(CAM_ICP, "%s: Failed in acquire: size = %d",
 			ctx_data->ctx_id_string, acquire_size);
-		CAM_MEM_FREE(ctx_data->icp_dev_acquire_info);
-		ctx_data->icp_dev_acquire_info = NULL;
+		CAM_MEM_FREE(acquire_info);
 		return -EFAULT;
+	}
+
+	acquire_size_unified = sizeof(struct cam_icp_acquire_dev_info_unified) +
+		((icp_dev_acquire_info.num_out_res) *
+		sizeof(struct cam_icp_res_info_unified));
+	ctx_data->icp_dev_acquire_info = CAM_MEM_ZALLOC(acquire_size_unified,
+		GFP_KERNEL);
+	if (!ctx_data->icp_dev_acquire_info) {
+		CAM_MEM_FREE(acquire_info);
+		return -ENOMEM;
+	}
+
+	ctx_data->icp_dev_acquire_info->scratch_mem_size =
+		acquire_info->scratch_mem_size;
+	ctx_data->icp_dev_acquire_info->dev_type =
+		acquire_info->dev_type;
+	ctx_data->icp_dev_acquire_info->io_config_cmd_size =
+		acquire_info->io_config_cmd_size;
+	ctx_data->icp_dev_acquire_info->io_config_cmd_handle =
+		acquire_info->io_config_cmd_handle;
+	ctx_data->icp_dev_acquire_info->secure_mode =
+		acquire_info->secure_mode;
+	ctx_data->icp_dev_acquire_info->chain_info =
+		acquire_info->chain_info;
+	ctx_data->icp_dev_acquire_info->in_res.format =
+		acquire_info->in_res.format;
+	ctx_data->icp_dev_acquire_info->in_res.width =
+		acquire_info->in_res.width;
+	ctx_data->icp_dev_acquire_info->in_res.height =
+		acquire_info->in_res.height;
+	ctx_data->icp_dev_acquire_info->in_res.fps =
+		acquire_info->in_res.fps;
+	ctx_data->icp_dev_acquire_info->in_res.port_id =
+		CAM_ICP_INVALID_IN_OUT_PORT_ID;
+	ctx_data->icp_dev_acquire_info->in_res.is_secure = 0;
+	ctx_data->icp_dev_acquire_info->num_out_res =
+		acquire_info->num_out_res;
+
+	p_ctx_icp_out = ctx_data->icp_dev_acquire_info->out_res_flex;
+	for (i = 0; i < icp_dev_acquire_info.num_out_res; i++) {
+		p_ctx_icp_out[i].format =
+			acquire_info->out_res_flex[i].format;
+		p_ctx_icp_out[i].width =
+			acquire_info->out_res_flex[i].width;
+		p_ctx_icp_out[i].height =
+			acquire_info->out_res_flex[i].height;
+		p_ctx_icp_out[i].fps =
+			acquire_info->out_res_flex[i].fps;
+		p_ctx_icp_out[i].port_id =
+			CAM_ICP_INVALID_IN_OUT_PORT_ID;
+		p_ctx_icp_out[i].is_secure = CAM_SECURE_MODE_NON_SECURE;
 	}
 
 	CAM_DBG(CAM_ICP, "%s: %x %x %x %x %x %x",
@@ -8041,14 +8237,216 @@ static int cam_icp_get_acquire_info(struct cam_icp_hw_mgr *hw_mgr,
 		ctx_data->icp_dev_acquire_info->num_out_res,
 		ctx_data->icp_dev_acquire_info->scratch_mem_size);
 
-	p_icp_out = ctx_data->icp_dev_acquire_info->out_res_flex;
 	for (i = 0; i < icp_dev_acquire_info.num_out_res; i++)
 		CAM_DBG(CAM_ICP, "%s: out[i] %x %x %x %x",
 			ctx_data->ctx_id_string,
-			p_icp_out[i].format,
-			p_icp_out[i].width,
-			p_icp_out[i].height,
-			p_icp_out[i].fps);
+			p_ctx_icp_out[i].format,
+			p_ctx_icp_out[i].width,
+			p_ctx_icp_out[i].height,
+			p_ctx_icp_out[i].fps);
+
+	CAM_MEM_FREE(acquire_info);
+	return 0;
+}
+
+static int cam_icp_get_acquire_info_v2(struct cam_icp_hw_mgr *hw_mgr,
+	struct cam_hw_acquire_args *args,
+	struct cam_icp_hw_ctx_data *ctx_data)
+{
+	int i;
+	int acquire_size, acquire_size_unified;
+	struct cam_icp_acquire_dev_info_v2 icp_dev_acquire_info_v2;
+	struct cam_icp_acquire_dev_info_v2 *acquire_info;
+	struct cam_icp_res_info_unified *p_ctx_icp_out = NULL;
+
+	if (copy_from_user(&icp_dev_acquire_info_v2,
+		(void __user *)args->acquire_info,
+		sizeof(struct cam_icp_acquire_dev_info_v2))) {
+		CAM_ERR(CAM_ICP, "%s: Failed in acquire", ctx_data->ctx_id_string);
+		return -EFAULT;
+	}
+
+	if (icp_dev_acquire_info_v2.secure_mode > CAM_SECURE_MODE_SECURE) {
+		CAM_ERR(CAM_ICP, "%s: Invalid mode: %d",
+			ctx_data->ctx_id_string, icp_dev_acquire_info_v2.secure_mode);
+		return -EINVAL;
+	}
+
+	if (icp_dev_acquire_info_v2.secure_mode == CAM_SECURE_MODE_SECURE) {
+		/* Initialize the port security map to the default all secure */
+		for (i = 0; i < CAM_MAX_OUTPUT_PORTS_PER_DEVICE; i++)
+			ctx_data->port_security_map[i] = true;
+	}
+
+	if ((icp_dev_acquire_info_v2.num_out_res > ICP_MAX_OUTPUT_SUPPORTED) ||
+		(icp_dev_acquire_info_v2.num_out_res <= 0)) {
+		CAM_ERR(CAM_ICP, "%s: Invalid num of out resources: %u",
+			ctx_data->ctx_id_string, icp_dev_acquire_info_v2.num_out_res);
+		return -EINVAL;
+	}
+
+	if (icp_dev_acquire_info_v2.dev_type < CAM_ICP_RES_TYPE_BPS ||
+		icp_dev_acquire_info_v2.dev_type > CAM_ICP_RES_TYPE_OFE_SEMI_RT) {
+		CAM_ERR(CAM_ICP, "%s Invalid device type",
+			ctx_data->ctx_id_string);
+		return -EFAULT;
+	}
+
+	acquire_size = sizeof(struct cam_icp_acquire_dev_info_v2) +
+		((icp_dev_acquire_info_v2.num_out_res) *
+		sizeof(struct cam_icp_res_info_v2));
+	acquire_info = CAM_MEM_ZALLOC(acquire_size, GFP_KERNEL);
+	if (!acquire_info)
+		return -ENOMEM;
+
+	if (copy_from_user(acquire_info,
+		(void __user *)args->acquire_info, acquire_size)) {
+		CAM_ERR(CAM_ICP, "%s: Failed in acquire: size = %d",
+			ctx_data->ctx_id_string, acquire_size);
+		CAM_MEM_FREE(acquire_info);
+		return -EFAULT;
+	}
+
+	acquire_size_unified = sizeof(struct cam_icp_acquire_dev_info_unified) +
+		((icp_dev_acquire_info_v2.num_out_res) *
+		sizeof(struct cam_icp_res_info_unified));
+	ctx_data->icp_dev_acquire_info = CAM_MEM_ZALLOC(acquire_size_unified,
+		GFP_KERNEL);
+	if (!ctx_data->icp_dev_acquire_info) {
+		CAM_MEM_FREE(acquire_info);
+		return -ENOMEM;
+	}
+
+	ctx_data->icp_dev_acquire_info->scratch_mem_size =
+		acquire_info->scratch_mem_size;
+	ctx_data->icp_dev_acquire_info->dev_type =
+		acquire_info->dev_type;
+	ctx_data->icp_dev_acquire_info->io_config_cmd_size =
+		acquire_info->io_config_cmd_size;
+	ctx_data->icp_dev_acquire_info->io_config_cmd_handle =
+		acquire_info->io_config_cmd_handle;
+	ctx_data->icp_dev_acquire_info->secure_mode =
+		acquire_info->secure_mode;
+	ctx_data->icp_dev_acquire_info->chain_info =
+		acquire_info->chain_info;
+	ctx_data->icp_dev_acquire_info->in_res.format =
+		acquire_info->in_res.format;
+	ctx_data->icp_dev_acquire_info->in_res.width =
+		acquire_info->in_res.width;
+	ctx_data->icp_dev_acquire_info->in_res.height =
+		acquire_info->in_res.height;
+	ctx_data->icp_dev_acquire_info->in_res.fps =
+		acquire_info->in_res.fps;
+	ctx_data->icp_dev_acquire_info->in_res.port_id =
+		acquire_info->in_res.port_id;
+	ctx_data->icp_dev_acquire_info->in_res.is_secure =
+		acquire_info->in_res.is_secure;
+	ctx_data->icp_dev_acquire_info->num_out_res =
+		acquire_info->num_out_res;
+
+	p_ctx_icp_out = ctx_data->icp_dev_acquire_info->out_res_flex;
+	for (i = 0; i < icp_dev_acquire_info_v2.num_out_res; i++) {
+		p_ctx_icp_out[i].format =
+			acquire_info->out_res_flex[i].format;
+		p_ctx_icp_out[i].width =
+			acquire_info->out_res_flex[i].width;
+		p_ctx_icp_out[i].height =
+			acquire_info->out_res_flex[i].height;
+		p_ctx_icp_out[i].fps =
+			acquire_info->out_res_flex[i].fps;
+		p_ctx_icp_out[i].port_id =
+			acquire_info->out_res_flex[i].port_id;
+		p_ctx_icp_out[i].is_secure =
+			acquire_info->out_res_flex[i].is_secure;
+	}
+
+	if (icp_dev_acquire_info_v2.secure_mode == CAM_SECURE_MODE_SECURE) {
+		for (i = 0; i < icp_dev_acquire_info_v2.num_out_res; i++) {
+			if (p_ctx_icp_out[i].is_secure != CAM_SECURE_MODE_SECURE) {
+				if (p_ctx_icp_out[i].port_id >= CAM_MAX_OUTPUT_PORTS_PER_DEVICE) {
+					CAM_DBG(CAM_ICP, "%s: Invalid out port ID: %d",
+						ctx_data->ctx_id_string, p_ctx_icp_out[i].port_id);
+					CAM_MEM_FREE(acquire_info);
+					CAM_MEM_FREE(ctx_data->icp_dev_acquire_info);
+					return -EINVAL;
+				}
+				ctx_data->port_security_map[p_ctx_icp_out[i].port_id] = false;
+			}
+		}
+	}
+
+	CAM_DBG(CAM_ICP, "%s: %x %x %x %x %x %x",
+		ctx_data->ctx_id_string,
+		ctx_data->icp_dev_acquire_info->in_res.format,
+		ctx_data->icp_dev_acquire_info->in_res.width,
+		ctx_data->icp_dev_acquire_info->in_res.height,
+		ctx_data->icp_dev_acquire_info->in_res.fps,
+		ctx_data->icp_dev_acquire_info->num_out_res,
+		ctx_data->icp_dev_acquire_info->scratch_mem_size);
+
+	for (i = 0; i < icp_dev_acquire_info_v2.num_out_res; i++)
+		CAM_DBG(CAM_ICP, "%s: out[i] %x %x %x %x %d",
+			ctx_data->ctx_id_string,
+			p_ctx_icp_out[i].format,
+			p_ctx_icp_out[i].width,
+			p_ctx_icp_out[i].height,
+			p_ctx_icp_out[i].fps,
+			p_ctx_icp_out[i].is_secure);
+
+	CAM_MEM_FREE(acquire_info);
+	return 0;
+}
+
+static int cam_icp_put_acquire_info_v1(
+	uintptr_t user_acquire_info,
+	struct cam_icp_acquire_dev_info_unified *acquire_info_unified)
+{
+	struct cam_icp_acquire_dev_info acquire_info;
+
+	acquire_info.scratch_mem_size = acquire_info_unified->scratch_mem_size;
+	acquire_info.dev_type = acquire_info_unified->dev_type;
+	acquire_info.io_config_cmd_size = acquire_info_unified->io_config_cmd_size;
+	acquire_info.io_config_cmd_handle = acquire_info_unified->io_config_cmd_handle;
+	acquire_info.secure_mode = acquire_info_unified->secure_mode;
+	acquire_info.chain_info = acquire_info_unified->chain_info;
+	acquire_info.in_res.format = acquire_info_unified->in_res.format;
+	acquire_info.in_res.width = acquire_info_unified->in_res.width;
+	acquire_info.in_res.height = acquire_info_unified->in_res.height;
+	acquire_info.in_res.fps = acquire_info_unified->in_res.fps;
+	acquire_info.num_out_res = acquire_info_unified->num_out_res;
+
+	if (copy_to_user((void __user *)user_acquire_info,
+		&acquire_info,
+		sizeof(struct cam_icp_acquire_dev_info)))
+		return -EINVAL;
+
+	return 0;
+}
+
+static int cam_icp_put_acquire_info_v2(
+	uintptr_t user_acquire_info,
+	struct cam_icp_acquire_dev_info_unified *acquire_info_unified)
+{
+	struct cam_icp_acquire_dev_info_v2 acquire_info;
+
+	acquire_info.scratch_mem_size =  acquire_info_unified->scratch_mem_size;
+	acquire_info.dev_type = acquire_info_unified->dev_type;
+	acquire_info.io_config_cmd_size = acquire_info_unified->io_config_cmd_size;
+	acquire_info.io_config_cmd_handle = acquire_info_unified->io_config_cmd_handle;
+	acquire_info.secure_mode = acquire_info_unified->secure_mode;
+	acquire_info.chain_info = acquire_info_unified->chain_info;
+	acquire_info.in_res.format = acquire_info_unified->in_res.format;
+	acquire_info.in_res.width = acquire_info_unified->in_res.width;
+	acquire_info.in_res.height = acquire_info_unified->in_res.height;
+	acquire_info.in_res.fps = acquire_info_unified->in_res.fps;
+	acquire_info.in_res.port_id = acquire_info_unified->in_res.port_id;
+	acquire_info.in_res.is_secure = acquire_info_unified->in_res.is_secure;
+	acquire_info.num_out_res = acquire_info_unified->num_out_res;
+
+	if (copy_to_user((void __user *)user_acquire_info,
+		&acquire_info,
+		sizeof(struct cam_icp_acquire_dev_info_v2)))
+		return -EINVAL;
 
 	return 0;
 }
@@ -8075,22 +8473,48 @@ static inline enum cam_icp_hw_type cam_icp_get_hw_dev_type(uint32_t dev_type)
 	return CAM_ICP_HW_MAX;
 }
 
+static int cam_icp_validate_secure_port_config(struct cam_icp_hw_mgr *hw_mgr,
+	struct cam_icp_hw_ctx_data *ctx_data)
+{
+	struct cam_icp_hw_ctx_data *cur_ctx_data;
+	int i;
+
+	list_for_each_entry(cur_ctx_data,
+		&hw_mgr->active_ctx_info.active_ctx_list, list) {
+		if (cur_ctx_data->icp_dev_acquire_info->secure_mode
+			== CAM_SECURE_MODE_SECURE) {
+			for (i = 0; i < CAM_MAX_OUTPUT_PORTS_PER_DEVICE; i++) {
+				if (cur_ctx_data->port_security_map[i] !=
+					ctx_data->port_security_map[i]) {
+					CAM_ERR(CAM_ICP,
+						"%s: port security map mismatch %d prev: 0x%x, curr: 0x%x",
+						ctx_data->ctx_id_string, i,
+						cur_ctx_data->port_security_map[i],
+						ctx_data->port_security_map[i]);
+					return -EINVAL;
+				}
+			}
+			/* If it doesn't conflict with one, it shouldn't conflict with others as well */
+			break;
+		}
+	}
+
+	return 0;
+}
+
 static int cam_icp_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 {
+	struct cam_hw_acquire_args *args = acquire_hw_args;
+	struct cam_icp_hw_mgr *hw_mgr = hw_mgr_priv;
 	int rc = 0, bitmap_size = 0, i, ctx_id;
 	dma_addr_t io_buf_addr;
 	size_t io_buf_size;
-	struct cam_icp_hw_mgr *hw_mgr = hw_mgr_priv;
 	struct cam_icp_hw_ctx_data *ctx_data = NULL;
-	struct cam_hw_acquire_args *args = acquire_hw_args;
-	struct cam_icp_acquire_dev_info *icp_dev_acquire_info;
+	struct cam_icp_acquire_dev_info_unified *icp_dev_acquire_info;
 	struct cam_cmd_mem_regions cmd_mem_region;
 	enum cam_icp_hw_type hw_dev_type;
-	struct cam_icp_res_info *icp_ref_res_info;
+	struct cam_icp_res_info_unified *icp_ref_res_info;
 	struct cam_icp_mgr_hw_args hw_args = {0};
-
-	hw_args.hfi_setup = true;
-	hw_args.use_proxy_boot_up = CAM_IS_SECONDARY_VM();
 
 	if ((!hw_mgr_priv) || (!acquire_hw_args)) {
 		CAM_ERR(CAM_ICP, "Invalid params: %pK %pK", hw_mgr_priv,
@@ -8104,23 +8528,34 @@ static int cam_icp_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		return -EINVAL;
 	}
 
-	CAM_DBG(CAM_ICP, "[%s] ENTER", hw_mgr->hw_mgr_name);
+	CAM_DBG(CAM_ICP, "[%s] ENTER Api = %d", hw_mgr->hw_mgr_name, args->api_version);
+
+	hw_args.hfi_setup = true;
+	hw_args.use_proxy_boot_up = CAM_IS_SECONDARY_VM();
+
 	mutex_lock(&hw_mgr->hw_mgr_mutex);
 	rc = cam_icp_mgr_allocate_ctx(hw_mgr, &ctx_data, &ctx_id);
 	if (rc)
 		goto end;
 
 	ctx_data->hw_mgr_priv = hw_mgr_priv;
+	ctx_data->acquire_dev_api_version = args->api_version;
 
 	mutex_lock(&hw_mgr->ctx_mutex[ctx_id]);
-	rc = cam_icp_get_acquire_info(hw_mgr, args, ctx_data);
-	if (rc)
-		goto acquire_info_failed;
+	if (args->api_version == CAM_ACQUIRE_DEV_STRUCT_VERSION_1) {
+		rc = cam_icp_get_acquire_info_v1(hw_mgr, args, ctx_data);
+		if (rc)
+			goto acquire_info_failed;
+	} else {
+		rc = cam_icp_get_acquire_info_v2(hw_mgr, args, ctx_data);
+		if (rc)
+			goto acquire_info_failed;
+	}
 
 	icp_dev_acquire_info = ctx_data->icp_dev_acquire_info;
 	hw_dev_type = cam_icp_get_hw_dev_type(icp_dev_acquire_info->dev_type);
 	if (!CAM_ICP_IS_VALID_HW_DEV_TYPE(hw_dev_type)) {
-		CAM_ERR(CAM_ICP, "[%s] Fail to get hw device type from dev type: %u",
+		CAM_ERR(CAM_ICP, "[%s] Wrong hw device type in acquire: %u",
 			hw_mgr->hw_mgr_name, icp_dev_acquire_info->dev_type);
 		rc = -EINVAL;
 		goto get_io_buf_failed;
@@ -8180,6 +8615,30 @@ static int cam_icp_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		rc = cam_icp_send_ubwc_cfg(hw_mgr);
 		if (rc)
 			goto ubwc_cfg_failed;
+	}
+
+	if (icp_dev_acquire_info->secure_mode == CAM_SECURE_MODE_SECURE) {
+		/* If the device is being acquired in the secure mode, make sure that
+		 * this doesn't conflict with previous secure sessions if any, both
+		 * in terms of acquire API version and the port security configuration.
+		 */
+		CAM_DBG(CAM_ICP, "%s: number of existing secure contexts = %d",
+			hw_mgr->num_secure_contexts[hw_dev_type]);
+		if (hw_mgr->num_secure_contexts[hw_dev_type]) {
+			rc = cam_icp_validate_secure_port_config (hw_mgr, ctx_data);
+			if (rc)
+				goto secure_check_failed;
+		} else {
+			/* Based on the port level security configuration call into TZ
+			* using the CPAS API to configure some ports to non secure, if
+			* required. By default all pixel ports are secure. Need not repeat
+			* this if the previous secure session, if any, already did this.
+			*/
+			rc = cam_icp_handle_secure_port_config(ctx_data, false);
+			if (rc)
+				goto secure_check_failed;
+		}
+		hw_mgr->num_secure_contexts[hw_dev_type]++;
 	}
 
 	rc = cam_icp_mgr_device_resume(hw_mgr, ctx_data);
@@ -8270,12 +8729,20 @@ static int cam_icp_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	ctx_data->ctxt_event_cb = args->event_cb;
 	icp_dev_acquire_info->scratch_mem_size = ctx_data->scratch_mem_size;
 
-	if (copy_to_user((void __user *)args->acquire_info,
-		icp_dev_acquire_info,
-		sizeof(struct cam_icp_acquire_dev_info))) {
-		CAM_ERR_RATE_LIMIT(CAM_ICP,
-			"%s: copy from user failed", ctx_data->ctx_id_string);
-		goto copy_to_user_failed;
+	if (args->api_version == CAM_ACQUIRE_DEV_STRUCT_VERSION_1) {
+		rc = cam_icp_put_acquire_info_v1(args->acquire_info, icp_dev_acquire_info);
+		if (rc) {
+			CAM_ERR_RATE_LIMIT(CAM_ICP,
+				"%s: copy to user failed", ctx_data->ctx_id_string);
+			goto copy_to_user_failed;
+		}
+	} else {
+		rc = cam_icp_put_acquire_info_v2(args->acquire_info, icp_dev_acquire_info);
+		if (rc) {
+			CAM_ERR_RATE_LIMIT(CAM_ICP,
+				"%s: copy to user failed", ctx_data->ctx_id_string);
+			goto copy_to_user_failed;
+		}
 	}
 
 	cam_icp_ctx_clk_info_init(ctx_data);
@@ -8311,7 +8778,7 @@ static int cam_icp_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		ctx_data->icp_dev_acquire_info->in_res.height,
 		ctx_data->icp_dev_acquire_info->in_res.fps);
 
-	icp_ref_res_info = &ctx_data->icp_dev_acquire_info->out_res_flex[0];
+	icp_ref_res_info = ctx_data->icp_dev_acquire_info->out_res_flex;
 	if (ctx_data->icp_dev_acquire_info->num_out_res > 0) {
 		CAM_TRACE(CAM_ICP,
 			"%s: Acquired, out_res[0] : format=%d, widht=%d, height=%d, fps=%d",
@@ -8342,6 +8809,11 @@ create_handle_failed:
 send_ping_failed:
 	cam_icp_mgr_dev_power_collapse(hw_mgr, ctx_data, 0);
 icp_dev_resume_failed:
+	if (icp_dev_acquire_info->secure_mode == CAM_SECURE_MODE_SECURE) {
+		if(!(--hw_mgr->num_secure_contexts[hw_dev_type]))
+			cam_icp_handle_secure_port_config(ctx_data, true);
+	}
+secure_check_failed:
 ubwc_cfg_failed:
 	if (!hw_mgr->ctxt_cnt)
 		cam_icp_mgr_icp_power_collapse(hw_mgr, &hw_args);
@@ -8583,6 +9055,7 @@ static int cam_icp_mgr_get_hw_caps_v2(void *hw_mgr_priv, void *hw_caps_args)
 	struct cam_icp_query_cap_cmd_v2 query_cmd;
 	uint32_t supported_hw_dev, num_supported_device = 0;
 	int i;
+	bool is_ipe_supported = FALSE;
 
 	if ((!hw_mgr_priv) || (!hw_caps_args)) {
 		CAM_ERR(CAM_ICP, "Invalid params: %pK %pK",
@@ -8631,6 +9104,7 @@ static int cam_icp_mgr_get_hw_caps_v2(void *hw_mgr_priv, void *hw_caps_args)
 		switch (dev_info->hw_dev_type) {
 		case CAM_ICP_DEV_IPE:
 			supported_hw_dev = CAM_ICP_DEV_TYPE_IPE;
+			is_ipe_supported = TRUE;
 			break;
 		case CAM_ICP_DEV_BPS:
 			supported_hw_dev = CAM_ICP_DEV_TYPE_BPS;
@@ -8671,7 +9145,12 @@ static int cam_icp_mgr_get_hw_caps_v2(void *hw_mgr_priv, void *hw_caps_args)
 
 	query_cmd.dev_iommu_handle.non_secure = hw_mgr->iommu_hdl;
 	query_cmd.dev_iommu_handle.secure = hw_mgr->iommu_sec_hdl;
-
+	if (is_ipe_supported) {
+		query_cmd.num_valid_params++;
+		query_cmd.valid_param_mask |= (1 << CAM_ICP_QUERY_MAX_ACQUIRE_DEV_VER_SUPPORTED_INDEX);
+		query_cmd.params[CAM_ICP_QUERY_MAX_ACQUIRE_DEV_VER_SUPPORTED_INDEX] =
+			CAM_ACQUIRE_DEV_STRUCT_VERSION_2;
+	}
 	if (copy_to_user(u64_to_user_ptr(query_cap->caps_handle),
 		&query_cmd, sizeof(struct cam_icp_query_cap_cmd_v2))) {
 		CAM_ERR(CAM_ICP, "[%s] copy_to_user failed", hw_mgr->hw_mgr_name);
