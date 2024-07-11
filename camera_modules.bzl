@@ -1,6 +1,7 @@
 load("//build/kernel/kleaf:kernel.bzl", "ddk_module")
 load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 load("//msm-kernel:target_variants.bzl", "get_all_variants")
+load(":project_defconfig.bzl", "get_project_defconfig")
 
 def _define_module(target, variant):
     tv = "{}_{}".format(target, variant)
@@ -9,6 +10,20 @@ def _define_module(target, variant):
         ":camera_banner",
         "//msm-kernel:all_headers",
     ]
+
+    # Generate the defconfig file dynamically
+    native.genrule(
+        name = "{}_defconfig_generated".format(tv),
+        srcs = [
+            # Use the base target/variant defconfig to start
+            # and concatenate and project-specific config
+            #"{}_defconfig".format(tv),
+            get_project_defconfig(target, variant),
+        ],
+        outs = ["{}_defconfig.generated".format(tv)],
+        cmd = "cat $(SRCS) > $@",
+    )
+
     if target == "pineapple":
         deps.extend([
             "//vendor/qcom/opensource/synx-kernel:synx_headers",
@@ -234,7 +249,7 @@ def _define_module(target, variant):
         copts = ["-include", "$(location :camera_banner)"],
         deps = deps,
         kconfig = "Kconfig",
-        defconfig = "{}_defconfig".format(target),
+        defconfig = "{}_defconfig_generated".format(tv),
         kernel_build = "//msm-kernel:{}".format(tv),
     )
 
