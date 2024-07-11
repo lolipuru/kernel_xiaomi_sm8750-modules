@@ -1616,93 +1616,21 @@ static int cam_cpas_util_translate_client_paths(
 	return 0;
 }
 
-static void cam_cpas_axi_util_find_consolidate_path(struct cam_cpas_client *cpas_client,
-	struct cam_cpas_axi_per_path_bw_vote *axi_path, bool *path_found)
-{
-	int i, j;
-	bool cons_entry_found;
-	uint32_t transac_type;
-	uint32_t path_data_type;
-	struct cam_cpas_tree_node *sum_tree_node = NULL;
-	struct cam_cpas_axi_consolidate_per_path_bw_vote *cons_axi_path = NULL;
-	struct cam_axi_consolidate_vote *con_axi_vote = &cpas_client->cons_axi_vote;
-
-	path_data_type = axi_path->path_data_type;
-	transac_type = axi_path->transac_type;
-	for (i = 0; i < CAM_CPAS_PATH_DATA_MAX; i++) {
-		sum_tree_node = cpas_client->tree_node[i][transac_type];
-
-		if (!sum_tree_node)
-			continue;
-
-		if (sum_tree_node->constituent_paths[path_data_type]) {
-			*path_found = true;
-			/*
-			 * Check if corresponding consolidated path
-			 * entry is already added into consolidated list
-			 */
-			cons_entry_found = false;
-			for (j = 0; j < con_axi_vote->num_paths; j++) {
-				if ((con_axi_vote->axi_path[j].path_data_type == i) &&
-				(con_axi_vote->axi_path[j].transac_type == transac_type)) {
-					cons_axi_path = &con_axi_vote->axi_path[j];
-					cons_entry_found = true;
-					if (axi_path->vote_level == CAM_CPAS_VOTE_LEVEL_HIGH) {
-						cons_axi_path->drv_vote.high.camnoc +=
-							axi_path->camnoc_bw;
-						cons_axi_path->drv_vote.high.ab +=
-							axi_path->mnoc_ab_bw;
-						cons_axi_path->drv_vote.high.ib +=
-							axi_path->mnoc_ib_bw;
-					} else {
-						cons_axi_path->drv_vote.low.camnoc +=
-							axi_path->camnoc_bw;
-						cons_axi_path->drv_vote.low.ab +=
-							axi_path->mnoc_ab_bw;
-						cons_axi_path->drv_vote.low.ib +=
-							axi_path->mnoc_ib_bw;
-					}
-
-					break;
-				}
-			}
-
-			/* If not found, add a new entry */
-			if (!cons_entry_found) {
-				cons_axi_path = &con_axi_vote->axi_path[con_axi_vote->num_paths];
-				cons_axi_path->path_data_type = i;
-				cons_axi_path->transac_type = transac_type;
-				if (axi_path->vote_level == CAM_CPAS_VOTE_LEVEL_HIGH) {
-					cons_axi_path->drv_vote.high.camnoc = axi_path->camnoc_bw;
-					cons_axi_path->drv_vote.high.ab = axi_path->mnoc_ab_bw;
-					cons_axi_path->drv_vote.high.ib = axi_path->mnoc_ib_bw;
-				} else {
-					cons_axi_path->drv_vote.low.camnoc = axi_path->camnoc_bw;
-					cons_axi_path->drv_vote.low.ab = axi_path->mnoc_ab_bw;
-					cons_axi_path->drv_vote.low.ib = axi_path->mnoc_ib_bw;
-				}
-
-				con_axi_vote->num_paths++;
-			}
-
-			break;
-		}
-	}
-}
-
 static int cam_cpas_axi_consolidate_path_votes(
 	struct cam_cpas_client *cpas_client,
 	struct cam_axi_vote *axi_vote)
 {
-	int rc = 0, i;
-	bool path_found = false;
+	int rc = 0, i, k, l;
+	struct cam_axi_vote *con_axi_vote = &cpas_client->axi_vote;
+	bool path_found = false, cons_entry_found;
+	struct cam_cpas_tree_node *curr_tree_node = NULL;
+	struct cam_cpas_tree_node *sum_tree_node = NULL;
 	uint32_t transac_type;
 	uint32_t path_data_type;
-	struct cam_cpas_tree_node *curr_tree_node = NULL;
-	struct cam_cpas_axi_consolidate_per_path_bw_vote *cons_axi_path;
-	struct cam_axi_consolidate_vote *con_axi_vote = &cpas_client->cons_axi_vote;
+	struct cam_cpas_axi_per_path_bw_vote *axi_path;
 
-	memset(con_axi_vote, 0x0, sizeof(struct cam_axi_consolidate_vote));
+	con_axi_vote->num_paths = 0;
+
 	for (i = 0; i < axi_vote->num_paths; i++) {
 		path_found = false;
 		path_data_type = axi_vote->axi_path[i].path_data_type;
@@ -1715,29 +1643,60 @@ static int cam_cpas_axi_consolidate_path_votes(
 			return -EINVAL;
 		}
 
-		cons_axi_path = &con_axi_vote->axi_path[con_axi_vote->num_paths];
-		curr_tree_node = cpas_client->tree_node[path_data_type][transac_type];
-		if (curr_tree_node) {
-			cons_axi_path->transac_type = axi_vote->axi_path[i].transac_type;
-			cons_axi_path->path_data_type = axi_vote->axi_path[i].path_data_type;
-			if (axi_vote->axi_path[i].vote_level == CAM_CPAS_VOTE_LEVEL_HIGH) {
-				cons_axi_path->drv_vote.high.camnoc =
-					axi_vote->axi_path[i].camnoc_bw;
-				cons_axi_path->drv_vote.high.ab = axi_vote->axi_path[i].mnoc_ab_bw;
-				cons_axi_path->drv_vote.high.ib = axi_vote->axi_path[i].mnoc_ib_bw;
-			} else {
-				cons_axi_path->drv_vote.low.camnoc =
-					axi_vote->axi_path[i].camnoc_bw;
-				cons_axi_path->drv_vote.low.ab = axi_vote->axi_path[i].mnoc_ab_bw;
-				cons_axi_path->drv_vote.low.ib = axi_vote->axi_path[i].mnoc_ib_bw;
-			}
+		axi_path = &con_axi_vote->axi_path[con_axi_vote->num_paths];
 
+		curr_tree_node =
+			cpas_client->tree_node[path_data_type][transac_type];
+		if (curr_tree_node) {
+			memcpy(axi_path, &axi_vote->axi_path[i],
+				sizeof(struct cam_cpas_axi_per_path_bw_vote));
 			con_axi_vote->num_paths++;
 			continue;
 		}
 
-		cam_cpas_axi_util_find_consolidate_path(cpas_client, &axi_vote->axi_path[i],
-			&path_found);
+		for (k = 0; k < CAM_CPAS_PATH_DATA_MAX; k++) {
+			sum_tree_node = cpas_client->tree_node[k][transac_type];
+
+			if (!sum_tree_node)
+				continue;
+
+			if (sum_tree_node->constituent_paths[path_data_type]) {
+				path_found = true;
+				/*
+				 * Check if corresponding consolidated path
+				 * entry is already added into consolidated list
+				 */
+				cons_entry_found = false;
+				for (l = 0; l < con_axi_vote->num_paths; l++) {
+					if ((con_axi_vote->axi_path[l].path_data_type == k) &&
+					(con_axi_vote->axi_path[l].transac_type == transac_type)) {
+						cons_entry_found = true;
+						con_axi_vote->axi_path[l].camnoc_bw +=
+							axi_vote->axi_path[i].camnoc_bw;
+
+						con_axi_vote->axi_path[l].mnoc_ab_bw +=
+							axi_vote->axi_path[i].mnoc_ab_bw;
+
+						con_axi_vote->axi_path[l].mnoc_ib_bw +=
+							axi_vote->axi_path[i].mnoc_ib_bw;
+						break;
+					}
+				}
+
+				/* If not found, add a new entry */
+				if (!cons_entry_found) {
+					axi_path->path_data_type = k;
+					axi_path->transac_type = transac_type;
+					axi_path->camnoc_bw = axi_vote->axi_path[i].camnoc_bw;
+					axi_path->mnoc_ab_bw = axi_vote->axi_path[i].mnoc_ab_bw;
+					axi_path->mnoc_ib_bw = axi_vote->axi_path[i].mnoc_ib_bw;
+					axi_path->vote_level = axi_vote->axi_path[i].vote_level;
+					con_axi_vote->num_paths++;
+				}
+				break;
+			}
+		}
+
 		if (!path_found) {
 			CAM_ERR(CAM_CPAS,
 				"Client [%s][%d] i=%d num_paths=%d Consolidated path not found for path=%d, transac=%d",
@@ -1868,7 +1827,7 @@ static int cam_cpas_util_apply_client_axi_vote(
 	struct cam_cpas *cpas_core = (struct cam_cpas *) cpas_hw->core_info;
 	struct cam_cpas_private_soc *soc_private =
 		(struct cam_cpas_private_soc *) cpas_hw->soc_info.soc_private;
-	struct cam_axi_consolidate_vote *con_axi_vote = NULL;
+	struct cam_axi_vote *con_axi_vote = NULL;
 	struct cam_cpas_axi_port *mnoc_axi_port = NULL;
 	struct cam_cpas_tree_node *curr_tree_node = NULL;
 	struct cam_cpas_tree_node *par_tree_node = NULL;
@@ -1932,9 +1891,9 @@ static int cam_cpas_util_apply_client_axi_vote(
 		goto unlock_tree;
 	}
 
-	con_axi_vote = &cpas_client->cons_axi_vote;
+	con_axi_vote = &cpas_client->axi_vote;
 
-	cam_cpas_dump_cons_axi_vote_info(cpas_client, "Consolidated Vote", con_axi_vote);
+	cam_cpas_dump_axi_vote_info(cpas_client, "Consolidated Vote", con_axi_vote);
 	cam_cpas_dump_full_tree_state(cpas_hw, "BeforeClientVoteUpdate");
 
 	/* Traverse through node tree and update bw vote values */
@@ -1981,73 +1940,85 @@ static int cam_cpas_util_apply_client_axi_vote(
 			ddr_drv_idx, cesta_drv_idx);
 
 		/* Check and update camnoc bw first */
-		if (cesta_drv_idx > CAM_CPAS_PORT_HLOS_DRV) {
+		if (con_axi_vote->axi_path[i].vote_level == CAM_CPAS_VOTE_LEVEL_HIGH) {
 			if ((apply_type != CAM_CPAS_APPLY_TYPE_STOP) &&
-				(curr_tree_node->bw_info[cesta_drv_idx].drv_vote.high.camnoc
-				== con_axi_vote->axi_path[i].drv_vote.high.camnoc) &&
-				(curr_tree_node->bw_info[cesta_drv_idx].drv_vote.low.camnoc
-				== con_axi_vote->axi_path[i].drv_vote.low.camnoc)) {
+				(curr_tree_node->bw_info[cesta_drv_idx].drv_vote.high.camnoc ==
+				con_axi_vote->axi_path[i].camnoc_bw)) {
 				camnoc_unchanged = true;
 				goto update_l0_mnoc;
 			}
 
 			curr_tree_node->bw_info[cesta_drv_idx].drv_vote.high.camnoc =
-				con_axi_vote->axi_path[i].drv_vote.high.camnoc;
-			curr_tree_node->bw_info[cesta_drv_idx].drv_vote.low.camnoc =
-				con_axi_vote->axi_path[i].drv_vote.low.camnoc;
+				con_axi_vote->axi_path[i].camnoc_bw;
+			curr_tree_node->bw_info[cesta_drv_idx].drv_vote.low.camnoc = 0;
 		} else {
-			if (curr_tree_node->bw_info[cesta_drv_idx].hlos_vote.camnoc ==
-				(con_axi_vote->axi_path[i].drv_vote.high.camnoc +
-				con_axi_vote->axi_path[i].drv_vote.low.camnoc)) {
-				camnoc_unchanged = true;
-				goto update_l0_mnoc;
-			}
+			if (cesta_drv_idx > CAM_CPAS_PORT_HLOS_DRV) {
+				if ((apply_type != CAM_CPAS_APPLY_TYPE_STOP) &&
+					(curr_tree_node->bw_info[cesta_drv_idx].drv_vote.low.camnoc
+					== con_axi_vote->axi_path[i].camnoc_bw)) {
+					camnoc_unchanged = true;
+					goto update_l0_mnoc;
+				}
 
-			curr_tree_node->bw_info[cesta_drv_idx].hlos_vote.camnoc =
-				(con_axi_vote->axi_path[i].drv_vote.high.camnoc +
-				con_axi_vote->axi_path[i].drv_vote.low.camnoc);
+				curr_tree_node->bw_info[cesta_drv_idx].drv_vote.low.camnoc =
+					con_axi_vote->axi_path[i].camnoc_bw;
+				curr_tree_node->bw_info[cesta_drv_idx].drv_vote.high.camnoc = 0;
+			} else {
+				if (curr_tree_node->bw_info[cesta_drv_idx].hlos_vote.camnoc ==
+					con_axi_vote->axi_path[i].camnoc_bw) {
+					camnoc_unchanged = true;
+					goto update_l0_mnoc;
+				}
+
+				curr_tree_node->bw_info[cesta_drv_idx].hlos_vote.camnoc =
+					con_axi_vote->axi_path[i].camnoc_bw;
+			}
 		}
 
 update_l0_mnoc:
 		/* Check and update mnoc ab and ib */
-		if (cesta_drv_idx > CAM_CPAS_PORT_HLOS_DRV) {
+		if (con_axi_vote->axi_path[i].vote_level == CAM_CPAS_VOTE_LEVEL_HIGH) {
 			if ((apply_type != CAM_CPAS_APPLY_TYPE_STOP) && camnoc_unchanged &&
-				(curr_tree_node->bw_info[cesta_drv_idx].drv_vote.high.ab
-				== con_axi_vote->axi_path[i].drv_vote.high.ab) &&
-				(curr_tree_node->bw_info[cesta_drv_idx].drv_vote.low.ab
-				== con_axi_vote->axi_path[i].drv_vote.low.ab) &&
-				(curr_tree_node->bw_info[cesta_drv_idx].drv_vote.high.ib
-				== con_axi_vote->axi_path[i].drv_vote.high.ib) &&
-				(curr_tree_node->bw_info[cesta_drv_idx].drv_vote.low.ib
-				== con_axi_vote->axi_path[i].drv_vote.low.ib)) {
+				(curr_tree_node->bw_info[ddr_drv_idx].drv_vote.high.ab ==
+				con_axi_vote->axi_path[i].mnoc_ab_bw) &&
+				(curr_tree_node->bw_info[ddr_drv_idx].drv_vote.high.ib ==
+				con_axi_vote->axi_path[i].mnoc_ib_bw))
 				continue;
-			}
 
-			curr_tree_node->bw_info[cesta_drv_idx].drv_vote.high.ab =
-				con_axi_vote->axi_path[i].drv_vote.high.ab;
-			curr_tree_node->bw_info[cesta_drv_idx].drv_vote.low.ab =
-				con_axi_vote->axi_path[i].drv_vote.low.ab;
-			curr_tree_node->bw_info[cesta_drv_idx].drv_vote.high.ib =
-				con_axi_vote->axi_path[i].drv_vote.high.ib;
-			curr_tree_node->bw_info[cesta_drv_idx].drv_vote.low.ib =
-				con_axi_vote->axi_path[i].drv_vote.low.ib;
+			curr_tree_node->bw_info[ddr_drv_idx].drv_vote.high.ab =
+				con_axi_vote->axi_path[i].mnoc_ab_bw;
+			curr_tree_node->bw_info[ddr_drv_idx].drv_vote.high.ib =
+				con_axi_vote->axi_path[i].mnoc_ib_bw;
+			curr_tree_node->bw_info[ddr_drv_idx].drv_vote.low.ab = 0;
+			curr_tree_node->bw_info[ddr_drv_idx].drv_vote.low.ib = 0;
 		} else {
-			if (camnoc_unchanged &&
-				(curr_tree_node->bw_info[cesta_drv_idx].hlos_vote.ab ==
-				(con_axi_vote->axi_path[i].drv_vote.high.ab +
-				con_axi_vote->axi_path[i].drv_vote.low.ab)) &&
-				(curr_tree_node->bw_info[cesta_drv_idx].hlos_vote.ib ==
-				(con_axi_vote->axi_path[i].drv_vote.high.ib +
-				con_axi_vote->axi_path[i].drv_vote.low.ib))) {
-				continue;
-			}
+			if (ddr_drv_idx > CAM_CPAS_PORT_HLOS_DRV) {
+				if ((apply_type != CAM_CPAS_APPLY_TYPE_STOP) && camnoc_unchanged &&
+					(curr_tree_node->bw_info[ddr_drv_idx].drv_vote.low.ab ==
+					con_axi_vote->axi_path[i].mnoc_ab_bw) &&
+					(curr_tree_node->bw_info[ddr_drv_idx].drv_vote.low.ib ==
+					con_axi_vote->axi_path[i].mnoc_ib_bw))
+					continue;
 
-			curr_tree_node->bw_info[cesta_drv_idx].hlos_vote.ab =
-				(con_axi_vote->axi_path[i].drv_vote.high.ab +
-				con_axi_vote->axi_path[i].drv_vote.low.ab);
-			curr_tree_node->bw_info[cesta_drv_idx].hlos_vote.ib =
-				(con_axi_vote->axi_path[i].drv_vote.high.ib +
-				con_axi_vote->axi_path[i].drv_vote.low.ib);
+				curr_tree_node->bw_info[ddr_drv_idx].drv_vote.low.ab =
+					con_axi_vote->axi_path[i].mnoc_ab_bw;
+				curr_tree_node->bw_info[ddr_drv_idx].drv_vote.low.ib =
+					con_axi_vote->axi_path[i].mnoc_ib_bw;
+				curr_tree_node->bw_info[ddr_drv_idx].drv_vote.high.ab = 0;
+				curr_tree_node->bw_info[ddr_drv_idx].drv_vote.high.ib = 0;
+			} else {
+				if (camnoc_unchanged &&
+					(curr_tree_node->bw_info[ddr_drv_idx].hlos_vote.ab ==
+					con_axi_vote->axi_path[i].mnoc_ab_bw) &&
+					(curr_tree_node->bw_info[ddr_drv_idx].hlos_vote.ib ==
+					con_axi_vote->axi_path[i].mnoc_ib_bw))
+					continue;
+
+				curr_tree_node->bw_info[ddr_drv_idx].hlos_vote.ab =
+					con_axi_vote->axi_path[i].mnoc_ab_bw;
+				curr_tree_node->bw_info[ddr_drv_idx].hlos_vote.ib =
+					con_axi_vote->axi_path[i].mnoc_ib_bw;
+			}
 		}
 
 		cam_cpas_dump_tree_vote_info(cpas_hw, curr_tree_node, "Level0 after update",

@@ -332,10 +332,6 @@ void cam_cpas_dump_tree_vote_info(struct cam_hw_info *cpas_hw,
 void cam_cpas_dump_full_tree_state(struct cam_hw_info *cpas_hw, const char *identifier);
 
 void cam_cpas_util_debug_parse_data(struct cam_cpas_private_soc *soc_private);
-void cam_cpas_dump_cons_axi_vote_info(
-	const struct cam_cpas_client *cpas_client,
-	const char *identifier,
-	struct cam_axi_consolidate_vote *axi_vote);
 void cam_cpas_dump_axi_vote_info(
 	const struct cam_cpas_client *cpas_client,
 	const char *identifier,
