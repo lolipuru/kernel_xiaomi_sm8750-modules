@@ -9395,6 +9395,7 @@ static int cam_icp_mgr_init_devs(struct device_node *np, struct cam_icp_hw_mgr *
 		struct platform_device *pdev;
 		struct device_node *node;
 		struct cam_hw_intf *iface;
+		struct cam_icp_hw_intf_data *dev_intf_data;
 
 		rc = of_property_read_string_index(np, "compat-hw-name",
 			i, &name);
@@ -9423,7 +9424,15 @@ static int cam_icp_mgr_init_devs(struct device_node *np, struct cam_icp_hw_mgr *
 			goto free_devices;
 		}
 
-		iface = platform_get_drvdata(pdev);
+		dev_intf_data = platform_get_drvdata(pdev);
+		if (!dev_intf_data) {
+			CAM_ERR(CAM_ICP, "[%s] invalid drvdata in ICP related devices",
+				hw_mgr->hw_mgr_name);
+			rc = -EINVAL;
+			goto free_devices;
+		}
+
+		iface = dev_intf_data->hw_intf;
 		if (!iface || !iface->hw_ops.process_cmd) {
 			CAM_ERR(CAM_ICP,
 				"[%s] invalid interface: iface=%pK process_cmd=%pK",
@@ -9447,6 +9456,20 @@ static int cam_icp_mgr_init_devs(struct device_node *np, struct cam_icp_hw_mgr *
 				devices[iface->hw_type][j] = iface;
 				break;
 			}
+		}
+
+		/* Stash all cam_hw_pid that linked to this ICP hw mgr */
+		if (hw_mgr->num_pid + dev_intf_data->num_pid > CAM_ICP_PID_NUM_MAX) {
+			CAM_ERR(CAM_ICP,
+				"Num of PIDs may go beyond the threshold, current num_pid: %d, num_pid in the dev: %d, threshold: %d",
+				hw_mgr->num_pid, dev_intf_data->num_pid, CAM_ICP_PID_NUM_MAX);
+			rc = -EINVAL;
+			goto free_devices;
+		}
+
+		for (j = 0; j < dev_intf_data->num_pid; j++) {
+			hw_mgr->pid[hw_mgr->num_pid] = dev_intf_data->pid[j];
+			hw_mgr->num_pid++;
 		}
 	}
 
@@ -9608,8 +9631,28 @@ static int cam_icp_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 	}
 
 	switch (hw_cmd_args->cmd_type) {
-	case CAM_HW_MGR_CMD_DUMP_PF_INFO:
-		cam_icp_mgr_dump_pf_data(hw_mgr, hw_cmd_args->u.pf_cmd_args);
+	case CAM_HW_MGR_CMD_DUMP_PF_INFO: {
+		struct cam_hw_cmd_pf_args *pf_cmd_args;
+		int                        i;
+
+		pf_cmd_args = hw_cmd_args->u.pf_cmd_args;
+		if (pf_cmd_args->pf_args->check_pid) {
+			for (i = 0; i < hw_mgr->num_pid; i++) {
+				if (pf_cmd_args->pf_args->pf_smmu_info->pid == hw_mgr->pid[i]) {
+					pf_cmd_args->pf_args->pid_found = true;
+					break;
+				}
+			}
+
+			/*
+			 * No dump for pf data if simply checking whether culprit
+			 * hw pid linked to the current icp hw mgr
+			 */
+			break;
+		}
+
+		cam_icp_mgr_dump_pf_data(hw_mgr, pf_cmd_args);
+	}
 		break;
 	default:
 		CAM_ERR(CAM_ICP, "[%s] Invalid cmd", hw_mgr->hw_mgr_name);

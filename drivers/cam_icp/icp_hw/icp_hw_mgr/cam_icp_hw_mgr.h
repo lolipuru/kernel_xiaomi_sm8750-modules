@@ -521,6 +521,8 @@ struct cam_icp_hw_active_ctx_info {
  * @frame_in_process_ctx_id: Contxt id processing frame
  * @hw_cap_mask: device capability mask to indicate which devices type
  *               are available in this hw mgr
+ * @num_pid: Number of cam hw pids linked to this icp hw mgr
+ * @pid: Exact pid values linked to this icp hw mgr
  * @icp_booted: Processor is booted i.e. firmware loaded
  * @icp_resumed: Processor is powered on
  * @icp_pc_flag: Flag to enable/disable power collapse
@@ -577,6 +579,8 @@ struct cam_icp_hw_mgr {
 	atomic_t frame_in_process;
 	int frame_in_process_ctx_id;
 	uint32_t hw_cap_mask;
+	uint32_t num_pid;
+	uint32_t pid[CAM_ICP_PID_NUM_MAX];
 	bool icp_booted;
 	bool icp_resumed;
 	bool icp_pc_flag;

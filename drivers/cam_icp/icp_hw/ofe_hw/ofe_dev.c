@@ -22,6 +22,8 @@
 #include "cam_mem_mgr_api.h"
 #include "cam_req_mgr_dev.h"
 
+static struct cam_icp_hw_intf_data cam_ofe_hw_list[CAM_OFE_HW_NUM_MAX];
+
 static struct cam_ofe_device_hw_info cam_ofe_hw_info = {
 	.hw_idx         = 0x0,
 	.pwr_ctrl       = 0x100,
@@ -96,10 +98,12 @@ static int cam_ofe_component_bind(struct device *dev,
 	const struct of_device_id         *match_dev    = NULL;
 	struct cam_ofe_device_core_info   *core_info    = NULL;
 	struct cam_ofe_device_hw_info     *hw_info      = NULL;
-	int                                rc           = 0;
+	int                                rc           = 0, i;
+	uint32_t                           hw_idx;
 	struct platform_device            *pdev = to_platform_device(dev);
 	struct timespec64                  ts_start, ts_end;
 	long                               microsec = 0;
+	struct cam_ofe_soc_private        *ofe_soc_priv;
 
 	CAM_GET_TIMESTAMP(ts_start);
 	ofe_dev_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
@@ -107,7 +111,8 @@ static int cam_ofe_component_bind(struct device *dev,
 		return -ENOMEM;
 
 	of_property_read_u32(pdev->dev.of_node,
-		"cell-index", &ofe_dev_intf->hw_idx);
+		"cell-index", &hw_idx);
+	ofe_dev_intf->hw_idx = hw_idx;
 
 	ofe_dev = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!ofe_dev) {
@@ -123,7 +128,7 @@ static int cam_ofe_component_bind(struct device *dev,
 	ofe_dev_intf->hw_ops.deinit = cam_ofe_deinit_hw;
 	ofe_dev_intf->hw_ops.process_cmd = cam_ofe_process_cmd;
 	ofe_dev_intf->hw_type = CAM_ICP_DEV_OFE;
-	platform_set_drvdata(pdev, ofe_dev_intf);
+	platform_set_drvdata(pdev, &cam_ofe_hw_list[hw_idx]);
 	ofe_dev->core_info = CAM_MEM_ZALLOC(sizeof(struct cam_ofe_device_core_info), GFP_KERNEL);
 	if (!ofe_dev->core_info) {
 		rc = -ENOMEM;
@@ -145,6 +150,7 @@ static int cam_ofe_component_bind(struct device *dev,
 		CAM_ERR(CAM_ICP, "failed to init_soc");
 		goto free_core_info;
 	}
+
 	CAM_DBG(CAM_ICP, "soc info : %pK", (void *)&ofe_dev->soc_info);
 
 	rc = cam_ofe_register_cpas(&ofe_dev->soc_info,
@@ -153,6 +159,20 @@ static int cam_ofe_component_bind(struct device *dev,
 		goto free_soc_resources;
 
 	ofe_dev->hw_state = CAM_HW_STATE_POWER_DOWN;
+	ofe_soc_priv = ofe_dev->soc_info.soc_private;
+	cam_ofe_hw_list[hw_idx].pid =
+		CAM_MEM_ZALLOC_ARRAY(ofe_soc_priv->num_pid, sizeof(uint32_t), GFP_KERNEL);
+	if (!cam_ofe_hw_list[hw_idx].pid) {
+		CAM_ERR(CAM_ICP, "Failed at allocating memory for ofe hw list");
+		rc = -ENOMEM;
+		goto free_soc_resources;
+	}
+
+	cam_ofe_hw_list[hw_idx].hw_intf = ofe_dev_intf;
+	cam_ofe_hw_list[hw_idx].num_pid = ofe_soc_priv->num_pid;
+	for (i = 0; i < ofe_soc_priv->num_pid; i++)
+		cam_ofe_hw_list[hw_idx].pid[i] = ofe_soc_priv->pid[i];
+
 	mutex_init(&ofe_dev->hw_mutex);
 	spin_lock_init(&ofe_dev->hw_lock);
 	init_completion(&ofe_dev->hw_complete);
@@ -172,31 +192,37 @@ free_dev:
 	CAM_MEM_FREE(ofe_dev);
 free_dev_intf:
 	CAM_MEM_FREE(ofe_dev_intf);
-
 	return rc;
 }
 
 static void cam_ofe_component_unbind(struct device *dev,
 	struct device *master_dev, void *data)
 {
-	struct cam_hw_info            *ofe_dev = NULL;
-	struct cam_hw_intf            *ofe_dev_intf = NULL;
-	struct cam_ofe_device_core_info   *core_info = NULL;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct cam_hw_info              *ofe_dev = NULL;
+	struct cam_hw_intf              *ofe_dev_intf = NULL;
+	struct cam_ofe_device_core_info *core_info = NULL;
+	struct platform_device          *pdev = to_platform_device(dev);
+	struct cam_icp_hw_intf_data     *ofe_intf_data;
 
 	CAM_DBG(CAM_ICP, "Unbinding component: %s", pdev->name);
-	ofe_dev_intf = platform_get_drvdata(pdev);
-
-	if (!ofe_dev_intf) {
+	ofe_intf_data = platform_get_drvdata(pdev);
+	if (!ofe_intf_data) {
 		CAM_ERR(CAM_ICP, "Error No data in pdev");
+		return;
+	}
+
+	ofe_dev_intf = ofe_intf_data->hw_intf;
+	if (!ofe_dev_intf) {
+		CAM_ERR(CAM_ICP, "Error No OFE dev interface");
 		return;
 	}
 
 	ofe_dev = ofe_dev_intf->hw_priv;
 	core_info = (struct cam_ofe_device_core_info *)ofe_dev->core_info;
 	cam_cpas_unregister_client(core_info->cpas_handle);
+	if (ofe_intf_data->pid)
+		CAM_MEM_FREE(ofe_intf_data->pid);
 	cam_ofe_deinit_soc_resources(&ofe_dev->soc_info);
-
 	CAM_MEM_FREE(ofe_dev->core_info);
 	CAM_MEM_FREE(ofe_dev);
 	CAM_MEM_FREE(ofe_dev_intf);

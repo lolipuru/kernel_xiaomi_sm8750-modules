@@ -22,6 +22,8 @@
 #include "cam_mem_mgr_api.h"
 #include "cam_req_mgr_dev.h"
 
+static struct cam_icp_hw_intf_data cam_bps_hw_list[CAM_BPS_HW_NUM_MAX];
+
 static struct cam_bps_device_hw_info cam_bps_hw_info = {
 	.hw_idx = 0,
 	.pwr_ctrl = 0x48,
@@ -105,10 +107,12 @@ static int cam_bps_component_bind(struct device *dev,
 	const struct of_device_id         *match_dev = NULL;
 	struct cam_bps_device_core_info   *core_info = NULL;
 	struct cam_bps_device_hw_info     *hw_info = NULL;
-	int                                rc = 0;
+	int                                rc = 0, i;
+	uint32_t                           hw_idx;
 	struct platform_device            *pdev = to_platform_device(dev);
 	struct timespec64                  ts_start, ts_end;
 	long                               microsec = 0;
+	struct cam_bps_soc_private        *bps_soc_priv;
 
 	CAM_GET_TIMESTAMP(ts_start);
 	bps_dev_intf = CAM_MEM_ZALLOC(sizeof(struct cam_hw_intf), GFP_KERNEL);
@@ -116,12 +120,13 @@ static int cam_bps_component_bind(struct device *dev,
 		return -ENOMEM;
 
 	of_property_read_u32(pdev->dev.of_node,
-		"cell-index", &bps_dev_intf->hw_idx);
+		"cell-index", &hw_idx);
+	bps_dev_intf->hw_idx = hw_idx;
 
 	bps_dev = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!bps_dev) {
-		CAM_MEM_FREE(bps_dev_intf);
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto free_dev_intf;
 	}
 
 	bps_dev->soc_info.pdev = pdev;
@@ -132,26 +137,22 @@ static int cam_bps_component_bind(struct device *dev,
 	bps_dev_intf->hw_ops.deinit = cam_bps_deinit_hw;
 	bps_dev_intf->hw_ops.process_cmd = cam_bps_process_cmd;
 	bps_dev_intf->hw_type = CAM_ICP_DEV_BPS;
-	platform_set_drvdata(pdev, bps_dev_intf);
+	platform_set_drvdata(pdev, &cam_bps_hw_list[hw_idx]);
 	bps_dev->core_info = CAM_MEM_ZALLOC(sizeof(struct cam_bps_device_core_info),
 					GFP_KERNEL);
 	if (!bps_dev->core_info) {
-		CAM_MEM_FREE(bps_dev);
-		CAM_MEM_FREE(bps_dev_intf);
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto free_dev;
 	}
-	core_info = (struct cam_bps_device_core_info *)bps_dev->core_info;
 
-	match_dev = of_match_device(pdev->dev.driver->of_match_table,
-		&pdev->dev);
+	core_info = (struct cam_bps_device_core_info *)bps_dev->core_info;
+	match_dev = of_match_device(pdev->dev.driver->of_match_table, &pdev->dev);
 	if (!match_dev) {
 		CAM_ERR(CAM_ICP, "No bps hardware info");
-		CAM_MEM_FREE(bps_dev->core_info);
-		CAM_MEM_FREE(bps_dev);
-		CAM_MEM_FREE(bps_dev_intf);
 		rc = -EINVAL;
-		return rc;
+		goto free_core_info;
 	}
+
 	hw_info = (struct cam_bps_device_hw_info *)match_dev->data;
 	core_info->bps_hw_info = hw_info;
 
@@ -159,10 +160,7 @@ static int cam_bps_component_bind(struct device *dev,
 		bps_dev);
 	if (rc < 0) {
 		CAM_ERR(CAM_ICP, "failed to init_soc");
-		CAM_MEM_FREE(bps_dev->core_info);
-		CAM_MEM_FREE(bps_dev);
-		CAM_MEM_FREE(bps_dev_intf);
-		return rc;
+		goto free_core_info;
 	}
 
 	bps_dev->soc_info.hw_id = CAM_HW_ID_BPS + bps_dev->soc_info.index;
@@ -172,21 +170,29 @@ static int cam_bps_component_bind(struct device *dev,
 	rc = cam_vmvm_populate_hw_instance_info(&bps_dev->soc_info, NULL, NULL);
 	if (rc) {
 		CAM_ERR(CAM_ICP, " hw instance populate failed: %d", rc);
-		CAM_MEM_FREE(bps_dev->core_info);
-		CAM_MEM_FREE(bps_dev);
-		CAM_MEM_FREE(bps_dev_intf);
-		return rc;
+		goto free_soc_resources;
 	}
 
 	rc = cam_bps_register_cpas(&bps_dev->soc_info,
 			core_info, bps_dev_intf->hw_idx);
-	if (rc < 0) {
-		CAM_MEM_FREE(bps_dev->core_info);
-		CAM_MEM_FREE(bps_dev);
-		CAM_MEM_FREE(bps_dev_intf);
-		return rc;
-	}
+	if (rc < 0)
+		goto free_soc_resources;
+
 	bps_dev->hw_state = CAM_HW_STATE_POWER_DOWN;
+	bps_soc_priv = bps_dev->soc_info.soc_private;
+	cam_bps_hw_list[hw_idx].pid =
+		CAM_MEM_ZALLOC_ARRAY(bps_soc_priv->num_pid, sizeof(uint32_t), GFP_KERNEL);
+	if (!cam_bps_hw_list[hw_idx].pid) {
+		CAM_ERR(CAM_ICP, "Failed at allocating memory for bps hw list");
+		rc = -ENOMEM;
+		goto free_soc_resources;
+	}
+
+	cam_bps_hw_list[hw_idx].hw_intf = bps_dev_intf;
+	cam_bps_hw_list[hw_idx].num_pid = bps_soc_priv->num_pid;
+	for (i = 0; i < bps_soc_priv->num_pid; i++)
+		cam_bps_hw_list[hw_idx].pid[i] = bps_soc_priv->pid[i];
+
 	mutex_init(&bps_dev->hw_mutex);
 	spin_lock_init(&bps_dev->hw_lock);
 	init_completion(&bps_dev->hw_complete);
@@ -197,21 +203,37 @@ static int cam_bps_component_bind(struct device *dev,
 	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
+
+free_soc_resources:
+	cam_bps_deinit_soc_resources(&bps_dev->soc_info);
+free_core_info:
+	CAM_MEM_FREE(bps_dev->core_info);
+free_dev:
+	CAM_MEM_FREE(bps_dev);
+free_dev_intf:
+	CAM_MEM_FREE(bps_dev_intf);
+	return rc;
 }
 
 static void cam_bps_component_unbind(struct device *dev,
 	struct device *master_dev, void *data)
 {
-	struct cam_hw_info            *bps_dev = NULL;
-	struct cam_hw_intf            *bps_dev_intf = NULL;
-	struct cam_bps_device_core_info   *core_info = NULL;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct cam_hw_info              *bps_dev = NULL;
+	struct cam_hw_intf              *bps_dev_intf = NULL;
+	struct cam_bps_device_core_info *core_info = NULL;
+	struct platform_device          *pdev = to_platform_device(dev);
+	struct cam_icp_hw_intf_data     *bps_intf_data;
 
 	CAM_DBG(CAM_ICP, "Unbinding component: %s", pdev->name);
-	bps_dev_intf = platform_get_drvdata(pdev);
-
-	if (!bps_dev_intf) {
+	bps_intf_data = platform_get_drvdata(pdev);
+	if (!bps_intf_data) {
 		CAM_ERR(CAM_ICP, "Error No data in pdev");
+		return;
+	}
+
+	bps_dev_intf = bps_intf_data->hw_intf;
+	if (!bps_dev_intf) {
+		CAM_ERR(CAM_ICP, "Error No BPS dev interface");
 		return;
 	}
 

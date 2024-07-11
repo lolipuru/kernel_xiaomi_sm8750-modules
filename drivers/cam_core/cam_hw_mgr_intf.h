@@ -410,11 +410,16 @@ struct cam_context_pf_info {
  * @pf_context_info:       Page fault info related to faulted context or
  *                         faulted request.
  * @handle_sec_pf:         Indicates if this PF args comes from HW level
+ * @check_pid:             Indicates if simply checking error client by pid without dumping ctx
+ *                         or active requests
+ * @pid_found:             Indicates if client with the same pid is found for the PF issue
  */
 struct cam_hw_dump_pf_args {
 	struct cam_smmu_pf_info    *pf_smmu_info;
 	struct cam_context_pf_info  pf_context_info;
 	bool                        handle_sec_pf;
+	bool                        check_pid;
+	bool                        pid_found;
 };
 
 /**

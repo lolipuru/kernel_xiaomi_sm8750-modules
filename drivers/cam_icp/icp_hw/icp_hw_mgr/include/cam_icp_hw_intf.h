@@ -42,6 +42,13 @@
  */
 #define CAM_ICP_INTER_VM_COMM_TIMEOUT_US 10000
 
+#define CAM_BPS_HW_NUM_MAX 1
+#define CAM_OFE_HW_NUM_MAX 1
+#define CAM_IPE_HW_NUM_MAX 1
+#define CAM_ICP_HW_NUM_MAX 2
+
+#define CAM_ICP_PID_NUM_MAX 10
+
 enum cam_icp_hw_type {
 	CAM_ICP_HW_ICP_V1,
 	CAM_ICP_HW_ICP_V2,
@@ -140,6 +147,21 @@ struct cam_icp_dev_clk_update_cmd {
 struct cam_icp_ubwc_cfg_cmd {
 	uint32_t ubwc_cfg_dev_mask;
 	bool disable_ubwc_comp;
+};
+
+/**
+ * struct cam_icp_hw_intf_data - ICP hw intf data
+ *
+ * @Brief:       ICP hw intf pointer and pid list data
+ *
+ * @icp_hw_intf: ICP hw intf pointer
+ * @num_pid:     Number of pids for given hw
+ * @pid:         ICP hw pid values
+ */
+struct cam_icp_hw_intf_data {
+	struct cam_hw_intf *hw_intf;
+	uint32_t            num_pid;
+	uint32_t           *pid;
 };
 
 #endif
