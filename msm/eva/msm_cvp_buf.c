@@ -1815,7 +1815,7 @@ void msm_cvp_unmap_frame(struct msm_cvp_inst *inst, u64 ktid)
 	mutex_unlock(&inst->frames.lock);
 
 	if (!found)
-		dprintk(CVP_WARN, "%s frame %llu not found!\n", __func__, ktid);
+		dprintk(CVP_CMD, "%s frame %llu not found!\n", __func__, ktid);
 }
 
 /*
