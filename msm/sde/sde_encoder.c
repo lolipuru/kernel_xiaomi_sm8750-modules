@@ -8088,6 +8088,8 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
 		return;
 	}
 
+	if (!sde_enc->cur_master)
+		return;
 	connector = sde_enc->cur_master->connector;
 	if (!connector)
 		return;
