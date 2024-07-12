@@ -4945,7 +4945,7 @@ static int cam_icp_mgr_destroy_handle(
 static int cam_icp_handle_secure_port_config(
 	struct cam_icp_hw_ctx_data *ctx_data, bool protect)
 {
-	struct cam_cpas_cp_mapping_config_info cp_config;
+	struct cam_cpas_cp_mapping_config_info cp_config = {0};
 	int i, j;
 	bool has_non_secure_ports = false;
 	int rc;
@@ -9079,6 +9079,7 @@ static int cam_icp_mgr_get_hw_caps_v2(void *hw_mgr_priv, void *hw_caps_args)
 		goto end;
 	}
 
+	query_cmd.num_valid_params = 0;
 	memset(&query_cmd.dev_info, 0,
 		(CAM_ICP_MAX_NUM_OF_DEV_TYPES * sizeof(struct cam_icp_device_info)));
 
