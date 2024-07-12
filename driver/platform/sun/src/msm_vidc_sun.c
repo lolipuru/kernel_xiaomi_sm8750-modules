@@ -2264,7 +2264,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		msm_vidc_set_u32},
 
 	{OPEN_GOP, ENC, HEVC,
-		{GOP_SIZE},
+		{0},
 		msm_vidc_adjust_open_gop,
 		msm_vidc_set_u32},
 
