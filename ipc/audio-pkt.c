@@ -1,5 +1,5 @@
 /* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -482,8 +482,11 @@ static int audio_pkt_srvc_callback(struct gpr_device *adev,
 		__func__,hdr_size, pkt_size);
 
 	skb = alloc_skb(pkt_size, GFP_ATOMIC);
-	if (!skb)
+	if (!skb) {
+		dev_err(&adev->dev, "%s: alloc_skb failed pkt_size %d\n",
+				__func__, pkt_size);
 		return -ENOMEM;
+	}
 
 	skb_put_data(skb, data, pkt_size);
 
