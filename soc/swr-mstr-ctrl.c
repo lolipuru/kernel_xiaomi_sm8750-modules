@@ -2622,8 +2622,10 @@ handle_irq:
 	swr_master_write(swrm, SWRM_INTERRUPT_CLEAR(swrm->ee_val), 0x0);
 	if (swrm->enable_slave_irq) {
 		/* Enable slave irq here */
+		mutex_lock(&enumeration_lock);
 		swrm_enable_slave_irq(swrm);
 		swrm->enable_slave_irq = false;
+		mutex_unlock(&enumeration_lock);
 	}
 
 	intr_sts = swr_master_read(swrm, SWRM_INTERRUPT_STATUS(swrm->ee_val));
@@ -3811,7 +3813,11 @@ static int swrm_runtime_suspend(struct device *dev)
 			if (swrm->state == SWR_MSTR_SSR)
 				goto chk_lnk_status;
 			mutex_unlock(&swrm->reslock);
+
+			mutex_lock(&enumeration_lock);
 			enable_bank_switch(swrm, 0, SWR_ROW_50, SWR_MIN_COL);
+			mutex_unlock(&enumeration_lock);
+
 			mutex_lock(&swrm->reslock);
 			swrm_clk_pause(swrm);
 			swr_master_write(swrm, SWRM_COMP_CFG, 0x00);
