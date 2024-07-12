@@ -2002,10 +2002,10 @@ static u32 dp_panel_get_supported_bpp(struct dp_panel *dp_panel,
 	}
 
 	if (bpp < min_supported_bpp)
-		DP_ERR("bpp %d is below minimum supported bpp %d\n", bpp,
+		DP_WARN("bpp %d is below minimum supported bpp %d\n", bpp,
 				min_supported_bpp);
 	if (dsc_en && bpp != 24 && bpp != 30 && bpp != 36)
-		DP_ERR("bpp %d is not supported when dsc is enabled\n", bpp);
+		DP_WARN("bpp %d is not supported when dsc is enabled\n", bpp);
 
 	return bpp;
 }
@@ -3024,14 +3024,14 @@ end:
 	return mst_cap;
 }
 
-static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
+static int dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 		const struct drm_display_mode *drm_mode,
 		struct dp_display_mode *dp_mode)
 {
 	const u32 num_components = 3, default_bpp = 24;
 	struct msm_compression_info *comp_info;
 	bool dsc_en = (dp_mode->capabilities & DP_PANEL_CAPS_DSC) ? true : false;
-	int rc;
+	int rc = 0;
 
 	dp_mode->timing.h_active = drm_mode->hdisplay;
 	dp_mode->timing.h_back_porch = drm_mode->htotal - drm_mode->hsync_end;
@@ -3095,25 +3095,33 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 		if (dp_panel_dsc_prepare_basic_params(comp_info,
 					dp_mode, dp_panel)) {
 			DP_DEBUG("prepare DSC basic params failed\n");
-			return;
+			dp_mode->capabilities &= ~DP_PANEL_CAPS_DSC;
+			comp_info->enabled = false;
+			return -EAGAIN;
 		}
 
 		rc = sde_dsc_populate_dsc_config(&comp_info->dsc_info.config, 0);
 		if (rc) {
 			DP_DEBUG("failed populating dsc params \n");
-			return;
+			dp_mode->capabilities &= ~DP_PANEL_CAPS_DSC;
+			comp_info->enabled = false;
+			return -EAGAIN;
 		}
 
 		rc = sde_dsc_populate_dsc_private_params(&comp_info->dsc_info,
 				dp_mode->timing.h_active, dp_mode->timing.widebus_en);
 		if (rc) {
 			DP_DEBUG("failed populating other dsc params\n");
-			return;
+			dp_mode->capabilities &= ~DP_PANEL_CAPS_DSC;
+			comp_info->enabled = false;
+			return -EAGAIN;
 		}
 
 		dp_panel_dsc_pclk_param_calc(dp_panel, comp_info, dp_mode);
 	}
 	dp_mode->fec_overhead_fp = dp_panel->fec_overhead_fp;
+
+	return rc;
 }
 
 static void dp_panel_update_pps(struct dp_panel *dp_panel, char *pps_cmd)
