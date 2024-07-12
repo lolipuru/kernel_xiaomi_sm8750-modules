@@ -142,7 +142,8 @@ static int  _sde_cesta_check_mode2_entry_status(u32 cesta_index)
 	return 0;
 }
 
-void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en)
+void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en_auto_active,
+		enum sde_cesta_ctrl_pwr_req_mode req_mode)
 {
 	struct sde_cesta *cesta;
 
@@ -154,8 +155,10 @@ void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool
 
 	cesta = cesta_list[client->cesta_index];
 
+	SDE_EVT32(client->client_index, client->scc_index, en_auto_active, req_mode);
 	if (cesta->hw_ops.force_auto_active_db_update)
-		cesta->hw_ops.force_auto_active_db_update(cesta, client->client_index, en);
+		cesta->hw_ops.force_auto_active_db_update(cesta, client->client_index,
+				en_auto_active, req_mode);
 }
 
 void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en)
@@ -170,6 +173,7 @@ void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en)
 
 	cesta = cesta_list[client->cesta_index];
 
+	SDE_EVT32(client->client_index, client->scc_index, en);
 	if (cesta->hw_ops.reset_ctrl)
 		cesta->hw_ops.reset_ctrl(cesta, client->client_index, en);
 }
@@ -186,6 +190,7 @@ void sde_cesta_override_ctrl(struct sde_cesta_client *client, u32 force_flags)
 
 	cesta = cesta_list[client->cesta_index];
 
+	SDE_EVT32(client->client_index, client->scc_index, force_flags);
 	if (cesta->hw_ops.override_ctrl_setup)
 		cesta->hw_ops.override_ctrl_setup(cesta, client->client_index, force_flags);
 }
