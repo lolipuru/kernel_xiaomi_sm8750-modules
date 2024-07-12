@@ -31,115 +31,124 @@
 #include <linux/input.h>
 #include "qbt_handler.h"
 
-#define QBT_DEV "qbt"
-#define MAX_FW_EVENTS 128
-#define MT_MAX_FINGERS 10
-#define MINOR_NUM_FD 0
-#define MINOR_NUM_IPC 1
-#define QBT_INPUT_DEV_NAME "qbt_key_input"
-#define QBT_INPUT_DEV_VERSION 0x0100
-#define QBT_TOUCH_FD_VERSION_2 2
-#define QBT_TOUCH_FD_VERSION_3 3
+#define QBT_DEV							     "qbt"
+#define MAX_FW_EVENTS						       128
+#define MT_MAX_FINGERS						        10
+#define MINOR_NUM_FD						         0
+#define MINOR_NUM_IPC						         1
+#define QBT_INPUT_DEV_NAME				   "qbt_key_input"
+#define QBT_INPUT_DEV_VERSION					    0x0100
+#define QBT_TOUCH_FD_VERSION_2					         2
+#define QBT_TOUCH_FD_VERSION_3					         3
 #define DEBUG
-#define FD_GPIO_ACTIVE_LOW 0  // FIXME: Need to get this flag value from devicetree
+#define FD_GPIO_ACTIVE_LOW					         0 //FIXME:Need to get this
+									   //flag value from
+									   // devicetree
+
+#define qbt_debug(fmt, ...)		     pr_debug(fmt, ## __VA_ARGS__)
+#define qbt_info(fmt, ...)		      pr_info(fmt, ## __VA_ARGS__)
+#define qbt_warn(fmt, ...)		      pr_warn(fmt, ## __VA_ARGS__)
+#define qbt_err(fmt, ...)		       pr_err(fmt, ## __VA_ARGS__)
 
 struct finger_detect_gpio {
-	int gpio;
-	int active_low;
-	int irq;
-	struct work_struct work;
-	int last_gpio_state;
-	int event_reported;
-	bool irq_enabled;
+	int							     gpio;
+	int						       active_low;
+	int							      irq;
+	struct work_struct					     work;
+	int						  last_gpio_state;
+	int						   event_reported;
+	bool						      irq_enabled;
 };
 
 struct ipc_event {
-	enum qbt_fw_event ev;
+	enum qbt_fw_event					       ev;
 };
 
 struct fd_event {
-	struct timespec64 timestamp;
-	int X;
-	int Y;
-	int id;
-	int state;
-	bool touch_valid;
+	struct timespec64					timestamp;
+	int								X;
+	int								Y;
+	int							       id;
+	int							    state;
+	bool						      touch_valid;
 };
 
 struct touch_event {
-	int X;
-	int Y;
-	int id;
-	bool updated;
+	int								X;
+	int								Y;
+	int							       id;
+	bool							  updated;
 };
 
 struct finger_detect_touch {
-	struct qbt_touch_config_v3 config;
-	struct work_struct work;
-	struct touch_event current_events[MT_MAX_FINGERS];
-	struct touch_event last_events[MT_MAX_FINGERS];
-	int delta_X[MT_MAX_FINGERS];
-	int delta_Y[MT_MAX_FINGERS];
-	int current_slot;
+	struct qbt_touch_config_v3				   config;
+	struct work_struct					     work;
+	struct touch_event		   current_events[MT_MAX_FINGERS];
+	struct touch_event		      last_events[MT_MAX_FINGERS];
+	int					  delta_X[MT_MAX_FINGERS];
+	int					  delta_Y[MT_MAX_FINGERS];
+	int						     current_slot;
 };
 
 struct fd_userspace_buf {
-	uint32_t num_events;
-	struct fd_event fd_events[MAX_FW_EVENTS];
+	uint32_t					       num_events;
+	struct fd_event				 fd_events[MAX_FW_EVENTS];
 };
 
 struct fw_ipc_info {
-	int gpio;
-	int irq;
-	bool irq_enabled;
-	struct work_struct work;
+	int							     gpio;
+	int							      irq;
+	bool						      irq_enabled;
+	struct work_struct					     work;
 };
 
 struct qbt_drvdata {
-	struct class	*qbt_class;
-	struct cdev	qbt_fd_cdev;
-	struct cdev	qbt_ipc_cdev;
-	struct input_dev	*in_dev;
-	struct device	*dev;
-	char		*qbt_node;
-	atomic_t	fd_available;
-	atomic_t	ipc_available;
-	struct mutex	mutex;
-	struct mutex	fd_events_mutex;
-	struct mutex	ipc_events_mutex;
-	struct fw_ipc_info	fw_ipc;
-	struct finger_detect_gpio fd_gpio;
-	struct finger_detect_touch fd_touch;
-	uint32_t intr2_gpio;
-	uint32_t current_slot_state[MT_MAX_FINGERS];
+	struct class					       *qbt_class;
+	struct cdev					      qbt_fd_cdev;
+	struct cdev					     qbt_ipc_cdev;
+	struct input_dev					  *in_dev;
+	struct device						     *dev;
+	char							*qbt_node;
+	atomic_t					     fd_available;
+	atomic_t					    ipc_available;
+	struct mutex						    mutex;
+	struct mutex					  fd_events_mutex;
+	struct mutex					 ipc_events_mutex;
+	struct fw_ipc_info					   fw_ipc;
+	struct finger_detect_gpio				  fd_gpio;
+	struct finger_detect_touch				 fd_touch;
+	uint32_t					       intr2_gpio;
+	uint32_t		       current_slot_state[MT_MAX_FINGERS];
+	wait_queue_head_t			       read_wait_queue_fd;
+	wait_queue_head_t			      read_wait_queue_ipc;
+	bool						is_wuhb_connected;
+	struct fd_userspace_buf				       scrath_buf;
+	atomic_t					wakelock_acquired;
+
 	DECLARE_KFIFO(fd_events, struct fd_event, MAX_FW_EVENTS);
 	DECLARE_KFIFO(ipc_events, struct ipc_event, MAX_FW_EVENTS);
-	wait_queue_head_t read_wait_queue_fd;
-	wait_queue_head_t read_wait_queue_ipc;
-	bool is_wuhb_connected;
-	struct fd_userspace_buf scrath_buf;
-	atomic_t wakelock_acquired;
 };
 
-static void qbt_fd_report_event(struct qbt_drvdata *drvdata,
-		struct fd_event *event)
+static void qbt_fd_report_event(struct qbt_drvdata *drvdata, struct fd_event *event)
 {
+	qbt_debug("Entry\n");
 	mutex_lock(&drvdata->fd_events_mutex);
 
 	if (!kfifo_put(&drvdata->fd_events, *event)) {
-		pr_err("FD events fifo: error adding item\n");
+		qbt_err("FD events fifo: error adding item\n");
 	} else {
-		pr_debug("FD event %d at slot %d queued at time %lu uS\n",
-				event->state, event->id,
-				(unsigned long)ktime_to_us(ktime_get()));
+		qbt_info("FD event %d at slot %d queued at time %lu uS\n", event->state, event->id,
+							(unsigned long)ktime_to_us(ktime_get()));
 	}
 	mutex_unlock(&drvdata->fd_events_mutex);
 	wake_up_interruptible(&drvdata->read_wait_queue_fd);
+	qbt_debug("Exit\n");
 }
 
-static int qbt_touch_connect(struct input_handler *handler,
-	struct input_dev *dev, const struct input_device_id *id)
+static int qbt_touch_connect(struct input_handler *handler, struct input_dev *dev,
+				const struct input_device_id *id)
 {
+	qbt_debug("Entry\n");
 	struct input_handle *handle;
 	int ret;
 
@@ -153,31 +162,32 @@ static int qbt_touch_connect(struct input_handler *handler,
 
 	ret = input_register_handle(handle);
 	if (ret) {
-		pr_err("Failed to register to input handle: %d\n", ret);
+		qbt_err("Failed to register to input handle: %d\n", ret);
 		kfree(handle);
 		return ret;
 	}
 
 	ret = input_open_device(handle);
 	if (ret) {
-		pr_err("Failed to open to input handle: %d\n", ret);
+		qbt_err("Failed to open to input handle: %d\n", ret);
 		input_unregister_handle(handle);
 		kfree(handle);
 		return ret;
 	}
 
-	pr_info("Connected device: %s\n", dev_name(&dev->dev));
+	qbt_info("Connected device: %s\n", dev_name(&dev->dev));
 
 	return ret;
 }
 
 static void qbt_touch_disconnect(struct input_handle *handle)
 {
-	pr_info("Disconnected device: %s\n", dev_name(&handle->dev->dev));
+	qbt_debug("Disconnected device: %s\n", dev_name(&handle->dev->dev));
 
 	input_close_device(handle);
 	input_unregister_handle(handle);
 	kfree(handle);
+	qbt_debug("Exit\n");
 }
 
 static void qbt_touch_report_event(struct input_handle *handle,
@@ -188,15 +198,19 @@ static void qbt_touch_report_event(struct input_handle *handle,
 	struct touch_event *event = NULL;
 	static bool report_event = true;
 
-	if (type != EV_SYN && type != EV_ABS)
+	if (type != EV_SYN && type != EV_ABS) {
+		qbt_err("Invalid type\n");
 		return;
+	}
 
 	if (fd_touch->current_slot >= MT_MAX_FINGERS) {
-		pr_warn("Touch event current slot: %d received out of bound\n",
-			fd_touch->current_slot);
+		qbt_warn("Touch event current slot: %d received out of bound\n",
+			 fd_touch->current_slot);
 		return;
 	}
 	event = &fd_touch->current_events[fd_touch->current_slot];
+	qbt_debug("type:%u, code:%u, value:%d, currentSlot:%d\n", type, code, value,
+						fd_touch->current_slot);
 
 	switch (code) {
 	case ABS_MT_SLOT:
@@ -226,20 +240,18 @@ static void qbt_touch_report_event(struct input_handle *handle,
 	}
 
 	if (report_event) {
-		if ((!fd_touch->config.touch_fd_enable) &&
-				(!fd_touch->config.intr2_enable &&
-				!drvdata->fd_gpio.irq_enabled)) {
-			pr_debug("Received touch event but not scheduling\n");
-			memcpy(fd_touch->last_events,
-					fd_touch->current_events,
-					MT_MAX_FINGERS * sizeof(
-					struct touch_event));
+		if ((!fd_touch->config.touch_fd_enable) && (!fd_touch->config.intr2_enable &&
+					!drvdata->fd_gpio.irq_enabled)) {
+			qbt_debug("Received touch event but not scheduling\n");
+			memcpy(fd_touch->last_events, fd_touch->current_events,
+						MT_MAX_FINGERS * sizeof(struct touch_event));
 		} else {
-			pr_debug("Received touch event scheduling\n");
+			qbt_debug("Received touch event scheduling\n");
 			pm_stay_awake(drvdata->dev);
 			schedule_work(&drvdata->fd_touch.work);
 		}
 	}
+	qbt_debug("Exit\n");
 }
 
 static const struct input_device_id qbt_touch_ids[] = {
@@ -261,13 +273,14 @@ static struct input_handler qbt_touch_handler = {
 static bool qbt_touch_filter_aoi_region(struct touch_event *event,
 		struct qbt_touch_config_v3 *config)
 {
-	if (event->X < config->left ||
-			event->X > config->right ||
-			event->Y < config->top ||
-			event->Y > config->bottom)
+	if (event->X < config->left || event->X > config->right || event->Y < config->top ||
+			event->Y > config->bottom) {
+		qbt_info("Exit: False\n");
 		return false;
-	else
+	} else {
+		qbt_info("Exit: True\n");
 		return true;
+	}
 }
 
 static bool qbt_touch_filter_by_radius(
@@ -276,28 +289,27 @@ static bool qbt_touch_filter_by_radius(
 		struct touch_event *last_event,
 		int slot)
 {
+	qbt_debug("Entry\n");
 	unsigned int del_X = 0, del_Y = 0;
 	struct qbt_touch_config_v3 *config = &drvdata->fd_touch.config;
 
-	drvdata->fd_touch.delta_X[slot] +=
-			current_event->X - last_event->X;
-	drvdata->fd_touch.delta_Y[slot] +=
-			current_event->Y - last_event->Y;
+	drvdata->fd_touch.delta_X[slot] += current_event->X - last_event->X;
+	drvdata->fd_touch.delta_Y[slot] += current_event->Y - last_event->Y;
 
 	del_X = abs(drvdata->fd_touch.delta_X[slot]);
 	del_Y = abs(drvdata->fd_touch.delta_Y[slot]);
-	if (!config->rad_filter_enable ||
-			del_X > config->rad_x ||
-			del_Y > config->rad_y) {
+	if (!config->rad_filter_enable || del_X > config->rad_x || del_Y > config->rad_y) {
 		drvdata->fd_touch.delta_X[slot] = 0;
 		drvdata->fd_touch.delta_Y[slot] = 0;
 		return true;
-	} else
+	} else {
 		return false;
+	}
 }
 
 static void qbt_touch_work_func(struct work_struct *work)
 {
+	qbt_debug("Entry\n");
 	struct qbt_drvdata *drvdata = NULL;
 	struct qbt_touch_config_v3 *config = NULL;
 	struct finger_detect_touch *fd_touch = NULL;
@@ -308,7 +320,7 @@ static void qbt_touch_work_func(struct work_struct *work)
 	bool intr2_state = false;
 
 	if (!work) {
-		pr_err("NULL pointer passed\n");
+		qbt_err("NULL pointer passed\n");
 		return;
 	}
 
@@ -316,44 +328,41 @@ static void qbt_touch_work_func(struct work_struct *work)
 	fd_touch = &drvdata->fd_touch;
 	config = &fd_touch->config;
 	finger_event.touch_valid = true;
+
 	for (slot = 0; slot < MT_MAX_FINGERS; slot++) {
-		memcpy(&current_event, &fd_touch->current_events[slot],
-				sizeof(current_event));
+		memcpy(&current_event, &fd_touch->current_events[slot], sizeof(current_event));
 		fd_touch->current_events[slot].updated = false;
 
 		if (!current_event.updated)
 			continue;
 
-		memcpy(&last_event, &fd_touch->last_events[slot],
-				sizeof(last_event));
-		memcpy(&fd_touch->last_events[slot], &current_event,
-				sizeof(current_event));
+		memcpy(&last_event, &fd_touch->last_events[slot], sizeof(last_event));
+		memcpy(&fd_touch->last_events[slot], &current_event, sizeof(current_event));
 
-		if (current_event.id < 0)
+		if (current_event.id < 0) {
 			finger_event.state = QBT_EVENT_FINGER_UP;
-		else if (last_event.id < 0)
+		} else if (last_event.id < 0) {
 			finger_event.state = QBT_EVENT_FINGER_DOWN;
-		else if (last_event.id == current_event.id)
+		} else if (last_event.id == current_event.id) {
 			finger_event.state = QBT_EVENT_FINGER_MOVE;
-		else {
-			pr_warn("finger up got missed, reporting finger down\n");
+		} else {
+			qbt_warn("finger up got missed, reporting finger down\n");
 			finger_event.state = QBT_EVENT_FINGER_DOWN;
 		}
 
-		if (!qbt_touch_filter_aoi_region(&current_event, config))
-			if (qbt_touch_filter_aoi_region(&last_event, config) &&
-					last_event.id >= 0)
+		if (!qbt_touch_filter_aoi_region(&current_event, config)) {
+			if (qbt_touch_filter_aoi_region(&last_event, config) && last_event.id >= 0)
 				finger_event.state = QBT_EVENT_FINGER_UP;
 			else
 				continue;
-		else if (!qbt_touch_filter_aoi_region(&last_event, config) &&
+		} else if (!qbt_touch_filter_aoi_region(&last_event, config) &&
 				current_event.id >= 0)
 			finger_event.state = QBT_EVENT_FINGER_DOWN;
 
 		if (finger_event.state == QBT_EVENT_FINGER_MOVE &&
-				!qbt_touch_filter_by_radius(drvdata,
-				&current_event,	&last_event, slot))
+		    !qbt_touch_filter_by_radius(drvdata, &current_event, &last_event, slot)) {
 			continue;
+		}
 
 		finger_event.timestamp = ktime_to_timespec64(ktime_get());
 		finger_event.id = slot;
@@ -368,17 +377,18 @@ static void qbt_touch_work_func(struct work_struct *work)
 					break;
 				}
 			if (config->intr2_enable) {
-				pr_debug("Setting INTR2 GPIO to %d\n", intr2_state);
+				qbt_info("Setting INTR2 GPIO to %d\n", intr2_state);
 				if (gpio_is_valid(drvdata->intr2_gpio))
 					gpio_set_value(drvdata->intr2_gpio, intr2_state);
 				else
-					pr_debug("INTR2 GPIO not available\n");
+					qbt_info("INTR2 GPIO not available\n");
 			}
 		}
 		if (config->touch_fd_enable)
 			qbt_fd_report_event(drvdata, &finger_event);
 	}
 	pm_relax(drvdata->dev);
+	qbt_debug("Exit\n");
 }
 
 /**
@@ -396,7 +406,7 @@ static int qbt_open(struct inode *inode, struct file *file)
 	int minor_no = -1;
 
 	if (!inode || !inode->i_cdev || !file) {
-		pr_err("NULL pointer passed\n");
+		qbt_err("NULL pointer passed\n");
 		return -EINVAL;
 	}
 	minor_no = iminor(inode);
@@ -407,13 +417,13 @@ static int qbt_open(struct inode *inode, struct file *file)
 		drvdata = container_of(inode->i_cdev,
 				struct qbt_drvdata, qbt_ipc_cdev);
 	} else {
-		pr_err("Invalid minor number\n");
+		qbt_err("Invalid minor number\n");
 		return -EINVAL;
 	}
 
 	file->private_data = drvdata;
 
-	pr_debug("entry minor_no=%d fd_available=%d\n",
+	qbt_info("entry minor_no=%d fd_available=%d\n",
 			minor_no, atomic_read(&drvdata->fd_available));
 
 	/* disallowing concurrent opens */
@@ -427,8 +437,7 @@ static int qbt_open(struct inode *inode, struct file *file)
 		rc = -EBUSY;
 	}
 
-	pr_debug("exit : %d  fd_available=%d\n",
-			rc, atomic_read(&drvdata->fd_available));
+	qbt_info("Exit: %d  fd_available=%d\n", rc, atomic_read(&drvdata->fd_available));
 	return rc;
 }
 
@@ -442,31 +451,32 @@ static int qbt_open(struct inode *inode, struct file *file)
  */
 static int qbt_release(struct inode *inode, struct file *file)
 {
+	qbt_debug("Entry\n");
 	struct qbt_drvdata *drvdata;
 	int minor_no = -1;
 
 	if (!file || !file->private_data || !inode) {
-		pr_err("NULL pointer passed\n");
+		qbt_err("NULL pointer passed\n");
 		return -EINVAL;
 	}
 	drvdata = file->private_data;
 	minor_no = iminor(inode);
-	pr_debug("entry minor_no=%d fd_available=%d\n",
+	qbt_info("entry minor_no=%d fd_available=%d\n",
 			minor_no, atomic_read(&drvdata->fd_available));
 	if (minor_no == MINOR_NUM_FD) {
 		atomic_inc(&drvdata->fd_available);
 	} else if (minor_no == MINOR_NUM_IPC) {
 		atomic_inc(&drvdata->ipc_available);
 	} else {
-		pr_err("Invalid minor number\n");
+		qbt_err("Invalid minor number\n");
 		return -EINVAL;
 	}
 	if (atomic_read(&drvdata->wakelock_acquired) != 0) {
-		pr_debug("Releasing wakelock\n");
+		qbt_info("Releasing wakelock\n");
 		pm_relax(drvdata->dev);
 		atomic_set(&drvdata->wakelock_acquired, 0);
 	}
-	pr_debug("exit : fd_available=%d\n", atomic_read(&drvdata->fd_available));
+	qbt_info("Exit: fd_available=%d\n", atomic_read(&drvdata->fd_available));
 	return 0;
 }
 
@@ -479,29 +489,26 @@ static int qbt_release(struct inode *inode, struct file *file)
  *
  * Return: 0 on success. Error code on failure.
  */
-static long qbt_ioctl(
-		struct file *file, unsigned int cmd, unsigned long arg)
+static long qbt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int rc = 0;
 	void __user *priv_arg = (void __user *)arg;
 	struct qbt_drvdata *drvdata;
 
 	if (!file || !file->private_data) {
-		pr_err("NULL pointer passed\n");
+		qbt_err("NULL pointer passed\n");
 		return -EINVAL;
 	}
 
 	drvdata = file->private_data;
 
 	if (IS_ERR(priv_arg)) {
-		dev_err(drvdata->dev, "%s: invalid user space pointer %lu\n",
-			__func__, arg);
+		dev_err(drvdata->dev, "%s: invalid user space pointer %lu\n", __func__, arg);
 		return -EINVAL;
 	}
 
 	mutex_lock(&drvdata->mutex);
-
-	pr_debug("cmd received %d\n", cmd);
+	qbt_debug("cmd received %d\n", cmd);
 
 	switch (cmd) {
 	case QBT_ENABLE_IPC:
@@ -509,7 +516,9 @@ static long qbt_ioctl(
 		if (!drvdata->fw_ipc.irq_enabled) {
 			enable_irq(drvdata->fw_ipc.irq);
 			drvdata->fw_ipc.irq_enabled = true;
-			pr_debug("%s: QBT_ENABLE_IPC\n", __func__);
+			qbt_info("QBT_ENABLE_IPC\n");
+		} else {
+			qbt_err("%s: irq_enabled:%d", __func__, drvdata->fw_ipc.irq_enabled);
 		}
 		break;
 	}
@@ -518,27 +527,35 @@ static long qbt_ioctl(
 		if (drvdata->fw_ipc.irq_enabled) {
 			disable_irq(drvdata->fw_ipc.irq);
 			drvdata->fw_ipc.irq_enabled = false;
-			pr_debug("%s: QBT_DISABLE_IPC\n", __func__);
+			qbt_info("QBT_DISABLE_IPC\n");
+		} else {
+			qbt_err("%s: irq_enabled:%d", __func__, drvdata->fw_ipc.irq_enabled);
 		}
 		break;
 	}
 	case QBT_ENABLE_FD:
 	{
-		if (drvdata->is_wuhb_connected &&
-				!drvdata->fd_gpio.irq_enabled) {
+		if (drvdata->is_wuhb_connected && !drvdata->fd_gpio.irq_enabled) {
 			enable_irq(drvdata->fd_gpio.irq);
 			drvdata->fd_gpio.irq_enabled = true;
-			pr_debug("%s: QBT_ENABLE_FD\n", __func__);
+			qbt_info("QBT_ENABLE_FD\n");
+		} else {
+			qbt_err("%s: is_wuhb_connected:%d, irq_enabled:%d", __func__,
+				drvdata->is_wuhb_connected,
+				drvdata->fd_gpio.irq_enabled);
 		}
 		break;
 	}
 	case QBT_DISABLE_FD:
 	{
-		if (drvdata->is_wuhb_connected &&
-				drvdata->fd_gpio.irq_enabled) {
+		if (drvdata->is_wuhb_connected && drvdata->fd_gpio.irq_enabled) {
 			disable_irq(drvdata->fd_gpio.irq);
 			drvdata->fd_gpio.irq_enabled = false;
-			pr_debug("%s: QBT_DISABLE_FD\n", __func__);
+			qbt_info("QBT_DISABLE_FD\n");
+		} else {
+			qbt_err("%s: is_wuhb_connected:%d, irq_enabled:%d", __func__,
+				drvdata->is_wuhb_connected,
+				drvdata->fd_gpio.irq_enabled);
 		}
 		break;
 	}
@@ -546,17 +563,14 @@ static long qbt_ioctl(
 	{
 		struct qbt_wuhb_connected_status wuhb_connected_status;
 
-		memset(&wuhb_connected_status, 0,
-				sizeof(wuhb_connected_status));
-		wuhb_connected_status.is_wuhb_connected =
-				drvdata->is_wuhb_connected;
-		rc = copy_to_user((void __user *)priv_arg,
-				&wuhb_connected_status,
-				sizeof(wuhb_connected_status));
+		memset(&wuhb_connected_status, 0, sizeof(wuhb_connected_status));
+		wuhb_connected_status.is_wuhb_connected = drvdata->is_wuhb_connected;
+		rc = copy_to_user((void __user *)priv_arg, &wuhb_connected_status,
+							sizeof(wuhb_connected_status));
 
+		qbt_info("is_wuhb_connected:%d", wuhb_connected_status.is_wuhb_connected);
 		if (rc != 0) {
-			pr_err("Failed to copy wuhb connected status: %d\n",
-					rc);
+			qbt_err("Failed to copy wuhb connected status: %d\n", rc);
 			rc = -EFAULT;
 			goto end;
 		}
@@ -567,29 +581,26 @@ static long qbt_ioctl(
 	{
 		struct qbt_key_event key_event;
 
-		if (copy_from_user(&key_event, priv_arg,
-			sizeof(key_event))
-				!= 0) {
+		if (copy_from_user(&key_event, priv_arg, sizeof(key_event)) != 0) {
 			rc = -EFAULT;
-			pr_err("failed copy from user space %d\n", rc);
+			qbt_err("failed copy from user space %d\n", rc);
 			goto end;
 		}
 
-		input_event(drvdata->in_dev, EV_KEY,
-				key_event.key, key_event.value);
+		input_event(drvdata->in_dev, EV_KEY, key_event.key, key_event.value);
 		input_sync(drvdata->in_dev);
 		break;
 	}
 	case QBT_CONFIGURE_TOUCH_FD:
 	{
-		pr_debug("unsupported version\n");
+		qbt_err("unsupported version\n");
 		rc = -EINVAL;
 		break;
 	}
 	case QBT_ACQUIRE_WAKELOCK:
 	{
 		if (atomic_read(&drvdata->wakelock_acquired) == 0) {
-			pr_debug("Acquiring wakelock\n");
+			qbt_info("Acquiring wakelock\n");
 			pm_stay_awake(drvdata->dev);
 		}
 		atomic_inc(&drvdata->wakelock_acquired);
@@ -600,7 +611,7 @@ static long qbt_ioctl(
 		if (atomic_read(&drvdata->wakelock_acquired) == 0)
 			break;
 		if (atomic_dec_and_test(&drvdata->wakelock_acquired)) {
-			pr_debug("Releasing wakelock\n");
+			qbt_info("Releasing wakelock\n");
 			pm_relax(drvdata->dev);
 		}
 		break;
@@ -610,11 +621,10 @@ static long qbt_ioctl(
 		struct qbt_touch_fd_version version;
 
 		version.version = QBT_TOUCH_FD_VERSION_3;
-		rc = copy_to_user((void __user *)priv_arg,
-				&version, sizeof(version));
+		rc = copy_to_user((void __user *)priv_arg, &version, sizeof(version));
 
 		if (rc != 0) {
-			pr_err("Failed to copy touch FD version: %d\n", rc);
+			qbt_err("Failed to copy touch FD version: %d\n", rc);
 			rc = -EFAULT;
 			goto end;
 		}
@@ -624,58 +634,45 @@ static long qbt_ioctl(
 	case QBT_CONFIGURE_TOUCH_FD_V2:
 	case QBT_CONFIGURE_TOUCH_FD_V3:
 	{
-		if (copy_from_user(&drvdata->fd_touch.config.version,
-				priv_arg,
-				sizeof(drvdata->fd_touch.config.version))
-				!= 0) {
+		if (copy_from_user(&drvdata->fd_touch.config.version, priv_arg,
+				sizeof(drvdata->fd_touch.config.version)) != 0) {
 			rc = -EFAULT;
-			pr_err("failed copy from user space %d\n", rc);
+			qbt_err("failed copy from user space %d\n", rc);
 			goto end;
 		}
-		if (drvdata->fd_touch.config.version.version
-				!= QBT_TOUCH_FD_VERSION_2 &&
-				drvdata->fd_touch.config.version.version
-				!= QBT_TOUCH_FD_VERSION_3) {
+		if ((drvdata->fd_touch.config.version.version != QBT_TOUCH_FD_VERSION_2) &&
+			(drvdata->fd_touch.config.version.version != QBT_TOUCH_FD_VERSION_3)) {
 			rc = -EINVAL;
-			pr_err("unsupported version %d\n",
+			qbt_err("unsupported version %d\n",
 					drvdata->fd_touch.config.version.version);
 			goto end;
 		}
-		if (drvdata->fd_touch.config.version.version
-				== QBT_TOUCH_FD_VERSION_2) {
-			if (copy_from_user(&drvdata->fd_touch.config,
-					priv_arg,
-					sizeof(drvdata->fd_touch.config)-sizeof(
-					drvdata->fd_touch.config.intr2_enable)) != 0) {
+		if (drvdata->fd_touch.config.version.version == QBT_TOUCH_FD_VERSION_2) {
+			if (copy_from_user(&drvdata->fd_touch.config, priv_arg,
+					sizeof(drvdata->fd_touch.config) -
+					sizeof(drvdata->fd_touch.config.intr2_enable)) != 0) {
 				rc = -EFAULT;
-				pr_err("failed copy from user space %d\n", rc);
+				qbt_err("failed copy from user space %d\n", rc);
 				goto end;
 			}
 			drvdata->fd_touch.config.intr2_enable =
-				drvdata->fd_touch.config.touch_fd_enable;
+							drvdata->fd_touch.config.touch_fd_enable;
 		} else {
-			if (copy_from_user(&drvdata->fd_touch.config,
-					priv_arg,
-					sizeof(drvdata->fd_touch.config)) != 0) {
+			if (copy_from_user(&drvdata->fd_touch.config, priv_arg,
+						sizeof(drvdata->fd_touch.config)) != 0) {
 				rc = -EFAULT;
-				pr_err("failed copy from user space %d\n", rc);
+				qbt_err("failed copy from user space %d\n", rc);
 				goto end;
 			}
 		}
-		pr_debug("Touch FD enable: %d\n",
-			drvdata->fd_touch.config.touch_fd_enable);
-		pr_debug("left: %d right: %d top: %d bottom: %d\n",
-			drvdata->fd_touch.config.left,
-			drvdata->fd_touch.config.right,
-			drvdata->fd_touch.config.top,
+		qbt_info("Touch FD enable: %d\n", drvdata->fd_touch.config.touch_fd_enable);
+		qbt_info("left: %d right: %d top: %d bottom: %d\n", drvdata->fd_touch.config.left,
+			drvdata->fd_touch.config.right, drvdata->fd_touch.config.top,
 			drvdata->fd_touch.config.bottom);
-		pr_debug("Radius Filter enable: %d\n",
-			drvdata->fd_touch.config.rad_filter_enable);
-		pr_debug("rad_x: %d rad_y: %d\n",
-			drvdata->fd_touch.config.rad_x,
+		qbt_info("Radius Filter enable: %d\n", drvdata->fd_touch.config.rad_filter_enable);
+		qbt_info("rad_x: %d rad_y: %d\n", drvdata->fd_touch.config.rad_x,
 			drvdata->fd_touch.config.rad_y);
-		pr_debug("INTR2 enable: %d\n",
-			drvdata->fd_touch.config.intr2_enable);
+		qbt_info("INTR2 enable: %d\n", drvdata->fd_touch.config.intr2_enable);
 		break;
 	}
 	case QBT_INTR2_TEST:
@@ -684,31 +681,33 @@ static long qbt_ioctl(
 
 		if (copy_from_user(&test, priv_arg, sizeof(test)) != 0) {
 			rc = -EFAULT;
-			pr_err("failed copy from user space %d\n", rc);
+			qbt_err("failed copy from user space %d\n", rc);
 			goto end;
 		}
-		pr_debug("Setting INTR2 GPIO to %d\n", test.state);
+		qbt_info("Setting INTR2 GPIO to %d\n", test.state);
 		if (gpio_is_valid(drvdata->intr2_gpio))
 			gpio_set_value(drvdata->intr2_gpio, test.state);
 		else
-			pr_debug("INTR2 GPIO is not available\n");
+			qbt_info("INTR2 GPIO is not available\n");
 
 		break;
 	}
 	default:
-		pr_err("invalid cmd %d\n", cmd);
+		qbt_err("invalid cmd %d\n", cmd);
 		rc = -ENOIOCTLCMD;
 		goto end;
 	}
 
 end:
 	mutex_unlock(&drvdata->mutex);
+	qbt_debug("Exit\n");
 	return rc;
 }
 
-static int get_events_fifo_len_locked(
-		struct qbt_drvdata *drvdata, int minor_no)
+static int get_events_fifo_len_locked(struct qbt_drvdata *drvdata, int minor_no)
 {
+	qbt_debug("Entry\n");
+
 	int len = 0;
 
 	if (minor_no == MINOR_NUM_FD) {
@@ -721,11 +720,11 @@ static int get_events_fifo_len_locked(
 		mutex_unlock(&drvdata->ipc_events_mutex);
 	}
 
+	qbt_debug("Exit\n");
 	return len;
 }
 
-static ssize_t qbt_read(struct file *filp, char __user *ubuf,
-		size_t cnt, loff_t *ppos)
+static ssize_t qbt_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
 {
 	struct ipc_event fw_event;
 	struct fd_event *fd_evt;
@@ -736,47 +735,44 @@ static ssize_t qbt_read(struct file *filp, char __user *ubuf,
 	int minor_no = -1;
 	int fifo_len = 0;
 	ssize_t num_bytes = 0;
-
-	pr_debug("entry with numBytes = %zd, minor_no = %d\n", cnt, minor_no);
+	qbt_info("entry with numBytes = %zd, minor_no = %d\n", cnt, minor_no);
 
 	if (!filp || !filp->private_data) {
-		pr_err("NULL pointer passed\n");
+		qbt_err("NULL pointer passed\n");
 		return -EINVAL;
 	}
 	drvdata = filp->private_data;
-
 	minor_no = iminor(filp->f_path.dentry->d_inode);
 	scratch_buf = &drvdata->scrath_buf;
 	memset(scratch_buf, 0, sizeof(*scratch_buf));
 
 	if (minor_no == MINOR_NUM_FD) {
 		if (cnt < sizeof(*scratch_buf)) {
-			pr_err("Num bytes to read is too small\n");
+			qbt_err("Num bytes to read is too small\n");
 			return -EINVAL;
 		}
 		read_wait_queue = &drvdata->read_wait_queue_fd;
 	} else if (minor_no == MINOR_NUM_IPC) {
 		if (cnt < sizeof(fw_event.ev)) {
-			pr_err("Num bytes to read is too small\n");
+			qbt_err("Num bytes to read is too small\n");
 			return -EINVAL;
 		}
 		read_wait_queue = &drvdata->read_wait_queue_ipc;
 	} else {
-		pr_err("Invalid minor number\n");
+		qbt_err("Invalid minor number\n");
 		return -EINVAL;
 	}
 
 	fifo_len = get_events_fifo_len_locked(drvdata, minor_no);
 	while (fifo_len == 0) {
 		if (filp->f_flags & O_NONBLOCK) {
-			pr_debug("fw_events fifo: empty, returning\n");
+			qbt_info("fw_events fifo: empty, returning\n");
 			return -EAGAIN;
 		}
-		pr_debug("fw_events fifo: empty, waiting\n");
-		if (wait_event_interruptible(*read_wait_queue,
-				(get_events_fifo_len_locked(
-				drvdata, minor_no) > 0)))
+		if (wait_event_interruptible(*read_wait_queue, (get_events_fifo_len_locked(
+					drvdata, minor_no) > 0))) {
 			return -ERESTARTSYS;
+		}
 		fifo_len = get_events_fifo_len_locked(drvdata, minor_no);
 	}
 
@@ -788,55 +784,51 @@ static ssize_t qbt_read(struct file *filp, char __user *ubuf,
 		for (i = 0; i < scratch_buf->num_events; i++) {
 			fd_evt = &scratch_buf->fd_events[i];
 			if (!kfifo_get(&drvdata->fd_events, fd_evt)) {
-				pr_err("FD event fifo: err popping item\n");
+				qbt_err("FD event fifo: err popping item\n");
 				scratch_buf->num_events = i;
 				break;
 			}
-			pr_debug("Reading event id: %d state: %d\n",
-					fd_evt->id, fd_evt->state);
-			pr_debug("x: %d y: %d timestamp: %lld.%03ld\n",
-					fd_evt->X, fd_evt->Y,
-					fd_evt->timestamp.tv_sec,
-					fd_evt->timestamp.tv_nsec);
+			qbt_info("Reading event id:%d state:%d x:%d y:%d timestamp: %lld.%03ld\n",
+				  fd_evt->id, fd_evt->state, fd_evt->X, fd_evt->Y,
+				  fd_evt->timestamp.tv_sec, fd_evt->timestamp.tv_nsec);
 		}
-		pr_debug("%d FD events read at time %lu uS\n",
-				scratch_buf->num_events,
-				(unsigned long)ktime_to_us(ktime_get()));
-		num_bytes = copy_to_user(ubuf, scratch_buf,
-				sizeof(*scratch_buf));
+		qbt_debug("%d FD events read at time %lu uS\n", scratch_buf->num_events,
+			(unsigned long)ktime_to_us(ktime_get()));
+		num_bytes = copy_to_user(ubuf, scratch_buf, sizeof(*scratch_buf));
 		mutex_unlock(&drvdata->fd_events_mutex);
 	} else if (minor_no == MINOR_NUM_IPC) {
 		mutex_lock(&drvdata->ipc_events_mutex);
 		if (!kfifo_get(&drvdata->ipc_events, &fw_event))
-			pr_err("IPC events fifo: error removing item\n");
-		pr_debug("IPC event %d at minor no %d read at time %lu uS\n",
-				(int)fw_event.ev, minor_no,
-				(unsigned long)ktime_to_us(ktime_get()));
-		num_bytes = copy_to_user(ubuf, &fw_event.ev,
-				sizeof(fw_event.ev));
+			qbt_err("IPC events fifo: error removing item\n");
+
+		qbt_info("IPC event %d at minor no %d read at time %lu uS\n", (int)fw_event.ev,
+			minor_no, (unsigned long)ktime_to_us(ktime_get()));
+		num_bytes = copy_to_user(ubuf, &fw_event.ev, sizeof(fw_event.ev));
 		mutex_unlock(&drvdata->ipc_events_mutex);
 	} else {
-		pr_err("Invalid minor number\n");
+		qbt_err("Invalid minor number\n");
 	}
 	if (num_bytes != 0)
-		pr_warn("Could not copy %ld bytes\n", num_bytes);
+		qbt_warn("Could not copy %ld bytes\n", num_bytes);
+
+	qbt_debug("Exit\n");
 	return num_bytes;
 }
 
-static __poll_t qbt_poll(struct file *filp,
-	struct poll_table_struct *wait)
+static __poll_t qbt_poll(struct file *filp, struct poll_table_struct *wait)
 {
+	qbt_debug("Entry\n");
 	struct qbt_drvdata *drvdata;
 	__poll_t mask = 0;
 	int minor_no = -1;
 
 	if (!filp || !filp->private_data) {
-		pr_err("NULL pointer passed\n");
+		qbt_err("NULL pointer passed\n");
 		return -EINVAL;
 	}
 	drvdata = filp->private_data;
-
 	minor_no = iminor(filp->f_path.dentry->d_inode);
+
 	if (minor_no == MINOR_NUM_FD) {
 		poll_wait(filp, &drvdata->read_wait_queue_fd, wait);
 		if (kfifo_len(&drvdata->fd_events) > 0)
@@ -846,10 +838,11 @@ static __poll_t qbt_poll(struct file *filp,
 		if (kfifo_len(&drvdata->ipc_events) > 0)
 			mask |= (POLLIN | POLLRDNORM);
 	} else {
-		pr_err("Invalid minor number\n");
+		qbt_err("Invalid minor number\n");
 		return -EINVAL;
 	}
 
+	qbt_debug("Exit, mask:%u\n", mask);
 	return mask;
 }
 
@@ -871,14 +864,13 @@ static const struct file_operations qbt_fops = {
  */
 static int qbt_dev_register(struct qbt_drvdata *drvdata)
 {
+	qbt_debug("Entry\n");
 	dev_t dev_no, major_no;
 	int ret = 0;
 	size_t node_size;
 	char *node_name = QBT_DEV;
 	struct device *dev = drvdata->dev;
 	struct device *device;
-
-	pr_debug("entry\n");
 	node_size = strlen(node_name) + 1;
 
 	drvdata->qbt_node = devm_kzalloc(dev, node_size, GFP_KERNEL);
@@ -891,19 +883,22 @@ static int qbt_dev_register(struct qbt_drvdata *drvdata)
 
 	ret = alloc_chrdev_region(&dev_no, 0, 2, drvdata->qbt_node);
 	if (ret) {
-		pr_err("alloc_chrdev_region failed %d\n", ret);
+		qbt_err("%s: alloc_chrdev_region failed %d\n", __func__, ret);
 		goto end;
+	} else {
+		qbt_info("alloc_chrdev_region succeeded");
 	}
 	major_no = MAJOR(dev_no);
 
 	cdev_init(&drvdata->qbt_fd_cdev, &qbt_fops);
 
 	drvdata->qbt_fd_cdev.owner = THIS_MODULE;
-	ret = cdev_add(&drvdata->qbt_fd_cdev,
-			MKDEV(major_no, MINOR_NUM_FD), 1);
+	ret = cdev_add(&drvdata->qbt_fd_cdev, MKDEV(major_no, MINOR_NUM_FD), 1);
 	if (ret) {
-		pr_err("cdev_add failed for fd %d\n", ret);
+		qbt_err("%s: cdev_add failed for fd %d\n", __func__, ret);
 		goto err_cdev_add;
+	} else {
+		qbt_info("cdev_add succeeded");
 	}
 	cdev_init(&drvdata->qbt_ipc_cdev, &qbt_fops);
 
@@ -911,33 +906,39 @@ static int qbt_dev_register(struct qbt_drvdata *drvdata)
 	ret = cdev_add(&drvdata->qbt_ipc_cdev,
 			MKDEV(major_no, MINOR_NUM_IPC), 1);
 	if (ret) {
-		pr_err("cdev_add failed for ipc %d\n", ret);
+		qbt_err("%s: cdev_add failed for ipc %d\n", __func__, ret);
 		goto err_cdev_add;
+	} else {
+		qbt_info("cdev_add succeeded for ipc");
 	}
 
 	drvdata->qbt_class = class_create(drvdata->qbt_node);
 	if (IS_ERR(drvdata->qbt_class)) {
 		ret = PTR_ERR(drvdata->qbt_class);
-		pr_err("class_create failed %d\n", ret);
+		qbt_err("%s: class_create failed %d\n", __func__, ret);
 		goto err_class_create;
+	} else {
+		qbt_info("class_create succeeded");
 	}
 
-	device = device_create(drvdata->qbt_class, NULL,
-			       drvdata->qbt_fd_cdev.dev, drvdata,
-			       "%s_fd", drvdata->qbt_node);
+	device = device_create(drvdata->qbt_class, NULL, drvdata->qbt_fd_cdev.dev,
+				drvdata, "%s_fd", drvdata->qbt_node);
 	if (IS_ERR(device)) {
 		ret = PTR_ERR(device);
-		pr_err("fd device_create failed %d\n", ret);
+		qbt_err("%s: fd device_create failed %d\n", __func__, ret);
 		goto err_dev_create;
+	} else {
+		qbt_info("fd device_create succeeded");
 	}
 
-	device = device_create(drvdata->qbt_class, NULL,
-				drvdata->qbt_ipc_cdev.dev, drvdata,
-				"%s_ipc", drvdata->qbt_node);
+	device = device_create(drvdata->qbt_class, NULL, drvdata->qbt_ipc_cdev.dev,
+				drvdata, "%s_ipc", drvdata->qbt_node);
 	if (IS_ERR(device)) {
 		ret = PTR_ERR(device);
-		pr_err("ipc device_create failed %d\n", ret);
+		qbt_err("ipc device_create failed %d\n", ret);
 		goto err_dev_create;
+	} else {
+		qbt_info("ipc device_create succeeded");
 	}
 
 	return 0;
@@ -951,6 +952,7 @@ err_cdev_add:
 	unregister_chrdev_region(drvdata->qbt_ipc_cdev.dev, 1);
 end:
 
+	qbt_info("Exit, ret:%d\n", ret);
 	return ret;
 }
 
@@ -963,20 +965,18 @@ end:
  */
 static void qbt_dev_unregister(struct qbt_drvdata *drvdata)
 {
-	pr_debug("entry\n");
+	qbt_debug("Entry\n");
 
 	class_destroy(drvdata->qbt_class);
-	pr_debug("qbt_class destroyed\n");
+	qbt_info("qbt_class destroyed\n");
 
 	cdev_del(&drvdata->qbt_fd_cdev);
 	cdev_del(&drvdata->qbt_ipc_cdev);
-	pr_debug("FD and IPC cdev deleted\n");
+	qbt_info("FD and IPC cdev deleted\n");
 
 	unregister_chrdev_region(drvdata->qbt_fd_cdev.dev, 1);
 	unregister_chrdev_region(drvdata->qbt_ipc_cdev.dev, 1);
-	pr_debug("chrdev region unregistered\n");
-
-	pr_debug("exit\n");
+	qbt_info("chrdev region unregistered\n");
 }
 
 /**
@@ -989,6 +989,7 @@ static void qbt_dev_unregister(struct qbt_drvdata *drvdata)
  */
 static int qbt_create_input_device(struct qbt_drvdata *drvdata)
 {
+	qbt_debug("Entry\n");
 	int rc = 0;
 
 	drvdata->in_dev = input_allocate_device();
@@ -1010,32 +1011,27 @@ static int qbt_create_input_device(struct qbt_drvdata *drvdata)
 	drvdata->in_dev->keybit[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH);
 	drvdata->in_dev->keybit[BIT_WORD(BTN_TOOL_FINGER)] = BIT_MASK(BTN_TOOL_FINGER);
 
-	drvdata->in_dev->keybit[BIT_WORD(KEY_HOMEPAGE)] |=
-		BIT_MASK(KEY_HOMEPAGE);
-	drvdata->in_dev->keybit[BIT_WORD(KEY_VOLUMEDOWN)] |=
-		BIT_MASK(KEY_VOLUMEDOWN);
-	drvdata->in_dev->keybit[BIT_WORD(KEY_POWER)] |=
-		BIT_MASK(KEY_POWER);
+	drvdata->in_dev->keybit[BIT_WORD(KEY_HOMEPAGE)] |= BIT_MASK(KEY_HOMEPAGE);
+	drvdata->in_dev->keybit[BIT_WORD(KEY_VOLUMEDOWN)] |= BIT_MASK(KEY_VOLUMEDOWN);
+	drvdata->in_dev->keybit[BIT_WORD(KEY_POWER)] |= BIT_MASK(KEY_POWER);
 
-	input_set_abs_params(drvdata->in_dev, ABS_X,
-			     0,
-			     1000,
-			     0, 0);
-	input_set_abs_params(drvdata->in_dev, ABS_Y,
-			     0,
-			     1000,
-			     0, 0);
+	input_set_abs_params(drvdata->in_dev, ABS_X, 0, 1000, 0, 0);
+	input_set_abs_params(drvdata->in_dev, ABS_Y, 0, 1000, 0, 0);
 
 	rc = input_register_device(drvdata->in_dev);
 	if (rc) {
-		dev_err(drvdata->dev, "%s: input_reg_dev() failed %d\n",
-			__func__, rc);
+		dev_err(drvdata->dev, "%s: input_reg_dev() failed %d\n", __func__, rc);
 		goto end;
+	} else {
+		qbt_info("input device registered successfully\n");
 	}
 
 end:
-	if (rc)
+	if (rc) {
 		input_free_device(drvdata->in_dev);
+		dev_err(drvdata->dev, "%s: input_free_device rc:%d\n", __func__, rc);
+	}
+	qbt_info("Exit, rc:%d\n", rc);
 	return rc;
 }
 
@@ -1049,27 +1045,26 @@ end:
  */
 static void qbt_unregister_input_device(struct qbt_drvdata *drvdata)
 {
+	qbt_info("Entry\n");
 	input_unregister_device(drvdata->in_dev);
+	qbt_debug("Exit\n");
 }
 
 static void qbt_gpio_report_event(struct qbt_drvdata *drvdata, int state)
 {
 	struct fd_event event;
-
 	memset(&event, 0, sizeof(event));
 
+	qbt_info("gpio %d: report state %d current_time %lu uS\n", drvdata->fd_gpio.gpio, state,
+		(unsigned long)ktime_to_us(ktime_get()));
+
 	if (!drvdata->is_wuhb_connected) {
-		pr_err("Skipping as WUHB_INT is disconnected\n");
+		qbt_err("Skipping as WUHB_INT is disconnected\n");
 		return;
 	}
 
-	if (drvdata->fd_gpio.event_reported
-			&& state == drvdata->fd_gpio.last_gpio_state)
+	if (drvdata->fd_gpio.event_reported && state == drvdata->fd_gpio.last_gpio_state)
 		return;
-
-	pr_debug("gpio %d: report state %d current_time %lu uS\n",
-		drvdata->fd_gpio.gpio, state,
-		(unsigned long)ktime_to_us(ktime_get()));
 
 	drvdata->fd_gpio.event_reported = 1;
 	drvdata->fd_gpio.last_gpio_state = state;
@@ -1078,15 +1073,17 @@ static void qbt_gpio_report_event(struct qbt_drvdata *drvdata, int state)
 	event.touch_valid = false;
 	event.timestamp = ktime_to_timespec64(ktime_get());
 	qbt_fd_report_event(drvdata, &event);
+	qbt_debug("Exit\n");
 }
 
 static void qbt_gpio_work_func(struct work_struct *work)
 {
+	qbt_debug("Entry\n");
 	int state;
 	struct qbt_drvdata *drvdata;
 
 	if (!work) {
-		pr_err("NULL pointer passed\n");
+		qbt_err("NULL pointer passed\n");
 		return;
 	}
 
@@ -1098,6 +1095,7 @@ static void qbt_gpio_work_func(struct work_struct *work)
 
 	qbt_gpio_report_event(drvdata, state);
 	pm_relax(drvdata->dev);
+	qbt_debug("Exit\n");
 }
 
 static irqreturn_t qbt_gpio_isr(int irq, void *dev_id)
@@ -1105,32 +1103,32 @@ static irqreturn_t qbt_gpio_isr(int irq, void *dev_id)
 	struct qbt_drvdata *drvdata = dev_id;
 
 	if (!drvdata) {
-		pr_err("NULL pointer passed\n");
+		qbt_err("NULL pointer passed\n");
 		return IRQ_HANDLED;
 	}
 
 	if (irq != drvdata->fd_gpio.irq) {
-		pr_warn("invalid irq %d (expected %d)\n",
-			irq, drvdata->fd_gpio.irq);
+		qbt_warn("invalid irq %d (expected %d)\n", irq, drvdata->fd_gpio.irq);
 		return IRQ_HANDLED;
 	}
 
-	pr_debug("FD event received at time %lu uS\n",
-			(unsigned long)ktime_to_us(ktime_get()));
+	qbt_info("FD event received at time %lu uS\n", (unsigned long)ktime_to_us(ktime_get()));
 
 	pm_stay_awake(drvdata->dev);
 	schedule_work(&drvdata->fd_gpio.work);
 
+	qbt_debug("Exit\n");
 	return IRQ_HANDLED;
 }
 
 static void qbt_irq_report_event(struct work_struct *work)
 {
+	qbt_debug("Entry\n");
 	struct qbt_drvdata *drvdata;
 	struct ipc_event fw_ev_des;
 
 	if (!work) {
-		pr_err("NULL pointer passed\n");
+		qbt_err("NULL pointer passed\n");
 		return;
 	}
 	drvdata = container_of(work, struct qbt_drvdata, fw_ipc.work);
@@ -1138,15 +1136,15 @@ static void qbt_irq_report_event(struct work_struct *work)
 	fw_ev_des.ev = FW_EVENT_IPC;
 	mutex_lock(&drvdata->ipc_events_mutex);
 	if (!kfifo_put(&drvdata->ipc_events, fw_ev_des)) {
-		pr_err("ipc events: fifo full, drop event %d\n",
-				(int) fw_ev_des.ev);
+		qbt_err("ipc events: fifo full, drop event %d\n", (int) fw_ev_des.ev);
 	} else {
-		pr_debug("IPC event %d queued at time %lu uS\n", fw_ev_des.ev,
+		qbt_info("IPC event %d queued at time %lu uS\n", fw_ev_des.ev,
 				(unsigned long)ktime_to_us(ktime_get()));
 	}
 	mutex_unlock(&drvdata->ipc_events_mutex);
 	wake_up_interruptible(&drvdata->read_wait_queue_ipc);
 	pm_relax(drvdata->dev);
+	qbt_debug("Exit\n");
 }
 
 /**
@@ -1162,61 +1160,59 @@ static irqreturn_t qbt_ipc_irq_handler(int irq, void *dev_id)
 	struct qbt_drvdata *drvdata = (struct qbt_drvdata *)dev_id;
 
 	if (!drvdata) {
-		pr_err("NULL pointer passed\n");
+		qbt_err("NULL pointer passed\n");
 		return IRQ_HANDLED;
 	}
 
 	if (irq != drvdata->fw_ipc.irq) {
-		pr_warn("invalid irq %d (expected %d)\n",
+		qbt_warn("invalid irq %d (expected %d)\n",
 			irq, drvdata->fw_ipc.irq);
 		return IRQ_HANDLED;
 	}
 
-	pr_debug("IPC event received at time %lu uS\n",
-			(unsigned long)ktime_to_us(ktime_get()));
+	qbt_info("IPC event received at time %lu uS\n", (unsigned long)ktime_to_us(ktime_get()));
 
 	pm_stay_awake(drvdata->dev);
 	schedule_work(&drvdata->fw_ipc.work);
 
+	qbt_debug("Exit\n");
 	return IRQ_HANDLED;
 }
 
-static int setup_intr2_irq(struct platform_device *pdev,
-		struct qbt_drvdata *drvdata)
+static int setup_intr2_irq(struct platform_device *pdev, struct qbt_drvdata *drvdata)
 {
+	qbt_info("Entry, intr2_gpio:%u\n", drvdata->intr2_gpio);
 	int rc = 0;
 	const char *desc = "qbt_intr2";
 
 	rc = devm_gpio_request_one(&pdev->dev, drvdata->intr2_gpio,
 		GPIOF_OUT_INIT_LOW, desc);
 	if (rc < 0) {
-		pr_err("failed to request intr2 gpio %d, error %d\n",
+		qbt_err("failed to request intr2 gpio %d, error %d\n",
 			drvdata->intr2_gpio, rc);
 		goto end;
 	}
 
 end:
-	pr_debug("rc %d\n", rc);
+	qbt_info("Exit rc %d\n", rc);
 	return rc;
 }
 
-static int setup_fd_gpio_irq(struct platform_device *pdev,
-		struct qbt_drvdata *drvdata)
+static int setup_fd_gpio_irq(struct platform_device *pdev, struct qbt_drvdata *drvdata)
 {
+	qbt_info("Entry, fd_gpio:%d\n", drvdata->fd_gpio.gpio);
 	int rc = 0;
 	int irq;
 	const char *desc = "qbt_finger_detect";
 
 	if (!drvdata->is_wuhb_connected) {
-		pr_err("Skipping as WUHB_INT is disconnected\n");
+		qbt_err("Skipping as WUHB_INT is disconnected\n");
 		goto end;
 	}
 
-	rc = devm_gpio_request_one(&pdev->dev, drvdata->fd_gpio.gpio,
-		GPIOF_IN, desc);
+	rc = devm_gpio_request_one(&pdev->dev, drvdata->fd_gpio.gpio, GPIOF_IN, desc);
 	if (rc < 0) {
-		pr_err("failed to request gpio %d, error %d\n",
-			drvdata->fd_gpio.gpio, rc);
+		qbt_err("failed to request gpio %d, error %d\n", drvdata->fd_gpio.gpio, rc);
 		goto end;
 	}
 
@@ -1224,10 +1220,11 @@ static int setup_fd_gpio_irq(struct platform_device *pdev,
 	irq = gpio_to_irq(drvdata->fd_gpio.gpio);
 	if (irq < 0) {
 		rc = irq;
-		pr_err("unable to get irq number for gpio %d, error %d\n",
+		qbt_err("unable to get irq number for gpio %d, error %d\n",
 			drvdata->fd_gpio.gpio, rc);
 		goto end;
 	}
+	qbt_info("fd_gpio:%d, irq:%d\n", drvdata->fd_gpio.gpio, irq);
 
 
 	drvdata->fd_gpio.irq = irq;
@@ -1238,40 +1235,35 @@ static int setup_fd_gpio_irq(struct platform_device *pdev,
 		desc, drvdata);
 
 	if (rc < 0) {
-		pr_err("unable to claim irq %d; error %d\n",
-			drvdata->fd_gpio.irq, rc);
+		qbt_err("unable to claim irq %d; error %d\n", drvdata->fd_gpio.irq, rc);
 		goto end;
 	}
 
 end:
-	pr_debug("rc %d\n", rc);
+	qbt_info("rc %d\n", rc);
 	return rc;
 }
 
-static int setup_ipc_irq(struct platform_device *pdev,
-	struct qbt_drvdata *drvdata)
+static int setup_ipc_irq(struct platform_device *pdev, struct qbt_drvdata *drvdata)
 {
+	qbt_debug("Entry\n");
 	int rc = 0;
 	const char *desc = "qbt_ipc";
 
 	drvdata->fw_ipc.irq = gpio_to_irq(drvdata->fw_ipc.gpio);
 	INIT_WORK(&drvdata->fw_ipc.work, qbt_irq_report_event);
-	pr_debug("irq %d gpio %d\n",
-			drvdata->fw_ipc.irq, drvdata->fw_ipc.gpio);
+	qbt_info("irq %d gpio %d\n", drvdata->fw_ipc.irq, drvdata->fw_ipc.gpio);
 
 	if (drvdata->fw_ipc.irq < 0) {
 		rc = drvdata->fw_ipc.irq;
-		pr_err("no irq for gpio %d, error=%d\n",
-		  drvdata->fw_ipc.gpio, rc);
+		qbt_err("no irq for gpio %d, error=%d\n", drvdata->fw_ipc.gpio, rc);
 		goto end;
 	}
 
-	rc = devm_gpio_request_one(&pdev->dev, drvdata->fw_ipc.gpio,
-			GPIOF_IN, desc);
+	rc = devm_gpio_request_one(&pdev->dev, drvdata->fw_ipc.gpio, GPIOF_IN, desc);
 
 	if (rc < 0) {
-		pr_err("failed to request gpio %d, error %d\n",
-			drvdata->fw_ipc.gpio, rc);
+		qbt_err("failed to request gpio %d, error %d\n", drvdata->fw_ipc.gpio, rc);
 		goto end;
 	}
 
@@ -1284,13 +1276,12 @@ static int setup_ipc_irq(struct platform_device *pdev,
 		drvdata);
 
 	if (rc < 0) {
-		pr_err("failed to register for ipc irq %d, rc = %d\n",
-			drvdata->fw_ipc.irq, rc);
+		qbt_err("failed to register for ipc irq %d, rc = %d\n", drvdata->fw_ipc.irq, rc);
 		goto end;
 	}
 
 end:
-	pr_debug("rc %d\n", rc);
+	qbt_info("Exit rc %d\n", rc);
 	return rc;
 }
 
@@ -1302,30 +1293,31 @@ end:
  *
  * Return: 0 on success. Error code on failure.
  */
-static int qbt_read_device_tree(struct platform_device *pdev,
-	struct qbt_drvdata *drvdata)
+static int qbt_read_device_tree(struct platform_device *pdev, struct qbt_drvdata *drvdata)
 {
+	qbt_debug("Entry\n");
 	int rc = 0;
 	int gpio;
 
-	drvdata->intr2_gpio = of_get_named_gpio(pdev->dev.of_node,
-			"qcom,intr2-gpio", 0);
+	drvdata->intr2_gpio = of_get_named_gpio(pdev->dev.of_node, "qcom,intr2-gpio", 0);
+	qbt_info("intr2 gpio=%u\n", drvdata->intr2_gpio);
+
 	if (!gpio_is_valid(drvdata->intr2_gpio))
-		pr_err("intr2 gpio not found, gpio=%d\n", drvdata->intr2_gpio);
+		qbt_err("intr2 gpio not found\n");
 
 	/* read IPC gpio */
-	drvdata->fw_ipc.gpio = of_get_named_gpio(pdev->dev.of_node,
-		"qcom,ipc-gpio", 0);
+	drvdata->fw_ipc.gpio = of_get_named_gpio(pdev->dev.of_node, "qcom,ipc-gpio", 0);
+	qbt_info("ipc gpio=%u\n", drvdata->fw_ipc.gpio);
+
 	if (drvdata->fw_ipc.gpio < 0) {
 		rc = drvdata->fw_ipc.gpio;
-		pr_err("ipc gpio not found, error=%d\n", rc);
+		qbt_err("ipc gpio not found, error=%d\n", rc);
 		goto end;
 	}
 
-	gpio = of_get_named_gpio(pdev->dev.of_node,
-				"qcom,finger-detect-gpio", 0);
+	gpio = of_get_named_gpio(pdev->dev.of_node, "qcom,finger-detect-gpio", 0);
 	if (gpio < 0) {
-		pr_err("failed to get gpio descriptor\n");
+		qbt_err("failed to get gpio descriptor\n");
 		drvdata->is_wuhb_connected = 0;
 		goto end;
 	}
@@ -1333,9 +1325,10 @@ static int qbt_read_device_tree(struct platform_device *pdev,
 	drvdata->is_wuhb_connected = 1;
 	drvdata->fd_gpio.gpio = gpio;
 	drvdata->fd_gpio.active_low = FD_GPIO_ACTIVE_LOW;
-	pr_debug("is_wuhb_connected=%d\n", drvdata->is_wuhb_connected);
+	qbt_info("is_wuhb_connected=%d\n", drvdata->is_wuhb_connected);
 
 end:
+	qbt_info("Exit rc %d\n", rc);
 	return rc;
 }
 
@@ -1347,12 +1340,12 @@ end:
  */
 static int qbt_probe(struct platform_device *pdev)
 {
+	qbt_info("Entry\n");
 	struct device *dev = &pdev->dev;
 	struct qbt_drvdata *drvdata;
 	int rc = 0;
 	int slot = 0;
 
-	pr_debug("entry\n");
 	drvdata = devm_kzalloc(dev, sizeof(*drvdata), GFP_KERNEL);
 	if (!drvdata)
 		return -ENOMEM;
@@ -1361,9 +1354,10 @@ static int qbt_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, drvdata);
 
 	rc = qbt_read_device_tree(pdev, drvdata);
-	if (rc < 0)
+	if (rc < 0) {
+		qbt_err("qbt_read_device_tree failed\n");
 		goto end;
-
+	}
 	atomic_set(&drvdata->fd_available, 1);
 	atomic_set(&drvdata->ipc_available, 1);
 	atomic_set(&drvdata->wakelock_acquired, 0);
@@ -1373,11 +1367,15 @@ static int qbt_probe(struct platform_device *pdev)
 	mutex_init(&drvdata->ipc_events_mutex);
 
 	rc = qbt_dev_register(drvdata);
-	if (rc < 0)
+	if (rc < 0) {
+		qbt_err("qbt_dev_register failed\n");
 		goto end;
+	}
 	rc = qbt_create_input_device(drvdata);
-	if (rc < 0)
+	if (rc < 0) {
+		qbt_err("qbt_create_input_device failed\n");
 		goto err_input_device;
+	}
 	INIT_KFIFO(drvdata->fd_events);
 	INIT_KFIFO(drvdata->ipc_events);
 	init_waitqueue_head(&drvdata->read_wait_queue_fd);
@@ -1385,25 +1383,31 @@ static int qbt_probe(struct platform_device *pdev)
 
 	if (gpio_is_valid(drvdata->intr2_gpio)) {
 		rc = setup_intr2_irq(pdev, drvdata);
-		if (rc < 0)
+		if (rc < 0) {
+			qbt_err("setup_intr2_irq failed\n");
 			goto err_irq;
+		}
 	}
 
 	rc = setup_fd_gpio_irq(pdev, drvdata);
-	if (rc < 0)
+	if (rc < 0) {
+		qbt_err("setup_fd_gpio_irq failed\n");
 		goto err_irq;
+	}
 	drvdata->fd_gpio.irq_enabled = false;
 	disable_irq(drvdata->fd_gpio.irq);
 
 	rc = setup_ipc_irq(pdev, drvdata);
-	if (rc < 0)
+	if (rc < 0) {
+		qbt_err("setup_ipc_irq failed\n");
 		goto err_irq;
+	}
 	drvdata->fw_ipc.irq_enabled = false;
 	disable_irq(drvdata->fw_ipc.irq);
 
 	rc = device_init_wakeup(&pdev->dev, 1);
 	if (rc < 0) {
-		pr_err("Failed to configure device as wakeup capable %d\n", rc);
+		qbt_err("Failed to configure device as wakeup capable %d\n", rc);
 		goto err_device_wakeup;
 	}
 
@@ -1415,9 +1419,10 @@ static int qbt_probe(struct platform_device *pdev)
 	}
 	rc = input_register_handler(&qbt_touch_handler);
 	if (rc < 0) {
-		pr_err("Failed to register input handler: %d\n", rc);
+		qbt_err("Failed to register input handler: %d\n", rc);
 		goto err_input_handler;
 	}
+	qbt_info("Succeeded to register input handler, rc %d\n", rc);
 	return rc;
 
 err_input_handler:
@@ -1429,12 +1434,14 @@ err_input_device:
 	qbt_dev_unregister(drvdata);
 end:
 
-	pr_debug("exit\n");
+	qbt_info("Exit rc %d\n", rc);
 	return rc;
 }
 
 static int qbt_remove(struct platform_device *pdev)
 {
+	qbt_info("Entry\n");
+
 	struct qbt_drvdata *drvdata = platform_get_drvdata(pdev);
 
 	mutex_destroy(&drvdata->mutex);
@@ -1453,11 +1460,13 @@ static int qbt_remove(struct platform_device *pdev)
 	device_init_wakeup(&pdev->dev, 0);
 	input_unregister_handler(&qbt_touch_handler);
 
+	qbt_debug("Exit\n");
 	return 0;
 }
 
 static int qbt_suspend(struct platform_device *pdev, pm_message_t state)
 {
+	qbt_info("Entry\n");
 	int rc = 0;
 	struct qbt_drvdata *drvdata = platform_get_drvdata(pdev);
 
@@ -1467,10 +1476,12 @@ static int qbt_suspend(struct platform_device *pdev, pm_message_t state)
 	 * while making a TZ call. Hence the clock check to determine if the
 	 * driver will allow suspend to occur.
 	 */
-	if (!mutex_trylock(&drvdata->mutex))
+	if (!mutex_trylock(&drvdata->mutex)) {
+		qbt_err("%s: Driver currently busy\n", __func__);
 		return -EBUSY;
+	} else {
+		qbt_info("Driver currently available\n");
 
-	else {
 		if (drvdata->is_wuhb_connected)
 			enable_irq_wake(drvdata->fd_gpio.irq);
 
@@ -1479,18 +1490,23 @@ static int qbt_suspend(struct platform_device *pdev, pm_message_t state)
 
 	mutex_unlock(&drvdata->mutex);
 
+	qbt_info("Exit rc %d\n", rc);
 	return rc;
 }
 
 static int qbt_resume(struct platform_device *pdev)
 {
+	qbt_info("Entry\n");
 	struct qbt_drvdata *drvdata = platform_get_drvdata(pdev);
 
-	if (drvdata->is_wuhb_connected)
+	if (drvdata->is_wuhb_connected) {
+		qbt_info("wuhb connected\n");
 		disable_irq_wake(drvdata->fd_gpio.irq);
+	}
 
 	disable_irq_wake(drvdata->fw_ipc.irq);
 
+	qbt_debug("Exit\n");
 	return 0;
 }
 
@@ -1512,15 +1528,20 @@ static struct platform_driver qbt_plat_driver = {
 
 static int __init qbt_handler_init(void)
 {
+	qbt_info("Entry\n");
 	int ret;
 
 	ret = platform_driver_register(&qbt_plat_driver);
+
+	qbt_info("Exit, ret:%d\n", ret);
 	return ret;
 }
 
 static void __exit qbt_handler_exit(void)
 {
+	qbt_info("Entry\n");
 	platform_driver_unregister(&qbt_plat_driver);
+	qbt_debug("Exit\n");
 }
 
 module_init(qbt_handler_init);
