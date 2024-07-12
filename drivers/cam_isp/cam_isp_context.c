@@ -3274,6 +3274,9 @@ static int __cam_isp_ctx_apply_pending_req(
 	cfg.num_hw_update_entries = req_isp->num_cfg;
 	cfg.priv = &req_isp->hw_update_data;
 
+	if (ctx_isp->vfps_aux_context)
+		cfg.init_packet = true;
+
 	/*
 	 * Offline mode may receive the SOF and REG_UPD earlier than
 	 * CDM processing return back, so we set the substate before
@@ -7625,7 +7628,7 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 		__cam_isp_ctx_schedule_apply_req(ctx_isp);
 	else if (ctx_isp->vfps_aux_context &&
 		(req_isp->hw_update_data.packet_opcode_type != CAM_ISP_PACKET_INIT_DEV))
-		__cam_isp_ctx_schedule_apply_req(ctx_isp);
+		__cam_isp_ctx_apply_pending_req(ctx_isp, NULL);
 
 	return rc;
 
