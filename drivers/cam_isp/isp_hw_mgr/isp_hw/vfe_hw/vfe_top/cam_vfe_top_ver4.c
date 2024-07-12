@@ -453,7 +453,7 @@ static void cam_vfe_top_ver4_print_debug_reg_status(
 				"VFE[%u] status %2d : 0x%08x", soc_info->index, i, val);
 		}
 		CAM_INFO(CAM_ISP, "VFE[%u]: %s Debug Status: %s",
-			reg_name, soc_info->index, log_buf);
+			soc_info->index, reg_name, log_buf);
 		len = 0;
 	}
 
