@@ -814,7 +814,8 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 
 	bg_alpha = max_alpha - fg_alpha;
 
-	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA)) {
+	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA) ||
+			sde_plane_is_cac_enabled(pstate)) {
 		bg_alpha = sde_plane_get_property(pstate, PLANE_PROP_BG_ALPHA);
 		/* scale down background alpha */
 		if (test_bit(SDE_MIXER_10_BITS_ALPHA, &lm->cap->features))
@@ -6429,7 +6430,7 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 			SDE_RM_TOPOLOGY_GROUP_QUADPIPE))
 		return 0;
 
-	mode = &crtc->state->adjusted_mode;
+	mode = &crtc_state->adjusted_mode;
 	sde_crtc_get_resolution(crtc, crtc_state, mode, &crtc_width, &crtc_height);
 
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
