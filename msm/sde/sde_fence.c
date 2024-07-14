@@ -475,13 +475,15 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 
 	/* register for wait */
 	ret = synx_import(data->hw_fence_handle, &params);
-	if (ret)
+	if (ret) {
 		SDE_ERROR("failed to register wait fences for ctl_id:%d ret:%d\n", ctl_id, ret);
-
-	/* release reference held by synx_import */
-	ret = synx_release(data->hw_fence_handle, handle);
-	if (ret)
-		SDE_ERROR("failed to release wait fences for ctl_id:%d ret:%d\n", ctl_id, ret);
+	} else {
+		/* release reference held by synx_import */
+		ret = synx_release(data->hw_fence_handle, handle);
+		if (ret)
+			SDE_ERROR("failed to release wait fences for ctl_id:%d ret:%d\n", ctl_id,
+				ret);
+	}
 
 	/* fence-array put will release each individual extra refcount during array release */
 	if (temp_array)
