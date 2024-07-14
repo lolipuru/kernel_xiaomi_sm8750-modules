@@ -58,6 +58,9 @@ int hw_fence_interop_to_synx_status(int hw_fence_status_code)
 	case -EBUSY:
 		synx_status_code = -SYNX_BUSY;
 		break;
+	case -EAGAIN:
+		synx_status_code = -SYNX_EAGAIN;
+		break;
 	default:
 		synx_status_code = hw_fence_status_code;
 		break;
@@ -240,6 +243,15 @@ int hw_fence_interop_share_handle_status(struct synx_import_indv_params *params,
 	bool is_signaled;
 	u32 error;
 
+	ret = hw_fence_check_hw_fence_driver(hw_fence_drv_data);
+	if (ret)
+		return hw_fence_interop_to_synx_status(ret);
+
+	if (!hw_fence_drv_data->fctl_ready) {
+		HWFNC_ERR("fctl in invalid state, cannot perform operation\n");
+		return -SYNX_EAGAIN;
+	}
+
 	if (IS_ERR_OR_NULL(params) || IS_ERR_OR_NULL(params->new_h_synx) ||
 			!(params->flags & SYNX_IMPORT_DMA_FENCE) ||
 			(params->flags & SYNX_IMPORT_SYNX_FENCE) || IS_ERR_OR_NULL(params->fence)) {
@@ -301,6 +313,11 @@ end:
 void *hw_fence_interop_get_fence(u32 h_synx)
 {
 	struct dma_fence *fence;
+	int ret;
+
+	ret = hw_fence_check_hw_fence_driver(hw_fence_drv_data);
+	if (ret)
+		return ERR_PTR(hw_fence_interop_to_synx_status(ret));
 
 	if (!(h_synx & SYNX_HW_FENCE_HANDLE_FLAG)) {
 		HWFNC_ERR("invalid h_synx:%u does not have hw-fence handle bit set:%lu\n",

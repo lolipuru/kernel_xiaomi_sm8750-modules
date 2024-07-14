@@ -322,6 +322,10 @@ static int synx_hwfence_import_fence(void *client, struct synx_import_indv_param
 	u64 handle;
 	int ret, i;
 
+	ret = hw_fence_check_valid_fctl(hw_fence_drv_data, client);
+	if (ret)
+		return hw_fence_interop_to_synx_status(ret);
+
 	fence = (struct dma_fence *)params->fence;
 	array = to_dma_fence_array(fence);
 	if (array) {

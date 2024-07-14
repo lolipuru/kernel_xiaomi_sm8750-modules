@@ -35,11 +35,7 @@ static int _set_power_vote_if_needed(struct hw_fence_driver_data *drv_data,
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	if (drv_data->has_soccp && client_id >= HW_FENCE_CLIENT_ID_VAL0 &&
 			client_id <= HW_FENCE_CLIENT_ID_VAL6) {
-#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
-		ret = rproc_set_state(drv_data->soccp_rproc, state);
-#else
-		ret = -EINVAL;
-#endif
+		ret = hw_fence_utils_set_power_vote(drv_data, state);
 	}
 #endif /* CONFIG_DEBUG_FS */
 
@@ -65,10 +61,9 @@ void *msm_hw_fence_register(enum hw_fence_client_id client_id_ext,
 
 	HWFNC_DBG_H("++ client_id_ext:%d\n", client_id_ext);
 
-	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready) {
-		HWFNC_ERR("hw fence driver not ready\n");
-		return ERR_PTR(-EAGAIN);
-	}
+	ret = hw_fence_check_hw_fence_driver(hw_fence_drv_data);
+	if (ret)
+		return ERR_PTR(ret);
 
 	if (client_id_ext >= HW_FENCE_CLIENT_MAX) {
 		HWFNC_ERR("Invalid client_id_ext:%d\n", client_id_ext);
@@ -218,10 +213,10 @@ int msm_hw_fence_deregister(void *client_handle)
 	u32 client_id;
 	int ret = 0;
 
-	if (IS_ERR_OR_NULL(client_handle)) {
-		HWFNC_ERR("Invalid client handle\n");
-		return -EINVAL;
-	}
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 	client_id = hw_fence_client->client_id_ext;
 
@@ -255,14 +250,13 @@ int msm_hw_fence_create(void *client_handle,
 	struct dma_fence *fence;
 	int ret;
 
-	if (IS_ERR_OR_NULL(client_handle) || !params || !params->handle) {
+	ret = hw_fence_check_valid_fctl(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
+	if (!params || !params->handle) {
 		HWFNC_ERR("Invalid input\n");
 		return -EINVAL;
-	}
-
-	if (!hw_fence_drv_data->fctl_ready) {
-		HWFNC_DBG_H("VM not ready, cannot create fence\n");
-		return -EAGAIN;
 	}
 
 	HWFNC_DBG_H("+\n");
@@ -332,7 +326,11 @@ int msm_hw_fence_destroy(void *client_handle,
 	struct dma_fence_array *array;
 	int ret;
 
-	if (IS_ERR_OR_NULL(client_handle) || !fence) {
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
+	if (!fence) {
 		HWFNC_ERR("Invalid data\n");
 		return -EINVAL;
 	}
@@ -381,10 +379,10 @@ int msm_hw_fence_destroy_with_handle(void *client_handle, u64 handle)
 	struct msm_hw_fence_client *hw_fence_client;
 	int ret;
 
-	if (IS_ERR_OR_NULL(client_handle)) {
-		HWFNC_ERR("Invalid data\n");
-		return -EINVAL;
-	}
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 
 	if (hw_fence_client->client_id >= hw_fence_drv_data->clients_num) {
@@ -417,14 +415,13 @@ int msm_hw_fence_wait_update_v2(void *client_handle,
 	int i, j, destroy_ret, ret = 0;
 	enum hw_fence_client_data_id data_id;
 
-	if (IS_ERR_OR_NULL(client_handle) || !fence_list || !*fence_list) {
+	ret = hw_fence_check_valid_fctl(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
+	if (!fence_list || !*fence_list) {
 		HWFNC_ERR("Invalid data\n");
 		return -EINVAL;
-	}
-
-	if (!hw_fence_drv_data->fctl_ready) {
-		HWFNC_DBG_H("VM not ready, cannot destroy fence\n");
-		return -EAGAIN;
 	}
 
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
@@ -520,17 +517,11 @@ int msm_hw_fence_reset_client(void *client_handle, u32 reset_flags)
 {
 	struct msm_hw_fence_client *hw_fence_client;
 	struct msm_hw_fence *hw_fences_tbl;
-	int i;
+	int i, ret;
 
-	if (IS_ERR_OR_NULL(client_handle)) {
-		HWFNC_ERR("Invalid client handle!\n");
-		return -EINVAL;
-	}
-
-	if (!hw_fence_drv_data->fctl_ready) {
-		HWFNC_DBG_H("VM not ready, cannot reset client\n");
-		return -EAGAIN;
-	}
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
 
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 	hw_fences_tbl = hw_fence_drv_data->hw_fences_tbl;
@@ -549,6 +540,11 @@ EXPORT_SYMBOL_GPL(msm_hw_fence_reset_client);
 int msm_hw_fence_reset_client_by_id(enum hw_fence_client_id client_id_ext, u32 reset_flags)
 {
 	enum hw_fence_client_id client_id;
+	int ret;
+
+	ret = hw_fence_check_hw_fence_driver(hw_fence_drv_data);
+	if (ret)
+		return ret;
 
 	if (client_id_ext >= HW_FENCE_CLIENT_MAX) {
 		HWFNC_ERR("Invalid client_id_ext:%d\n", client_id_ext);
@@ -570,15 +566,15 @@ EXPORT_SYMBOL_GPL(msm_hw_fence_reset_client_by_id);
 int msm_hw_fence_update_txq(void *client_handle, u64 handle, u64 flags, u32 error)
 {
 	struct msm_hw_fence_client *hw_fence_client;
+	int ret;
 
-	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready ||
-			!hw_fence_drv_data->fctl_ready) {
-		HWFNC_ERR("hw fence driver  or vm not ready\n");
-		return -EAGAIN;
-	} else if (IS_ERR_OR_NULL(client_handle) ||
-			(handle >= hw_fence_drv_data->hw_fences_tbl_cnt)) {
-		HWFNC_ERR("Invalid handle:%llu or client handle:%d max:%d\n", handle,
-			IS_ERR_OR_NULL(client_handle), hw_fence_drv_data->hw_fences_tbl_cnt);
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
+	if (handle >= hw_fence_drv_data->hw_fences_tbl_cnt) {
+		HWFNC_ERR("Invalid handle:%llu max:%d\n", handle,
+			hw_fence_drv_data->hw_fences_tbl_cnt);
 		return -EINVAL;
 	}
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
@@ -597,17 +593,19 @@ EXPORT_SYMBOL_GPL(msm_hw_fence_update_txq);
 int msm_hw_fence_update_txq_error(void *client_handle, u64 handle, u32 error, u32 update_flags)
 {
 	struct msm_hw_fence_client *hw_fence_client;
+	int ret;
 
-	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready ||
-			!hw_fence_drv_data->fctl_ready) {
-		HWFNC_ERR("hw fence driver or vm not ready\n");
-		return -EAGAIN;
-	} else if (IS_ERR_OR_NULL(client_handle) ||
-			(handle >= hw_fence_drv_data->hw_fences_tbl_cnt) || !error) {
-		HWFNC_ERR("Invalid client_handle:0x%pK or fence handle:%llu max:%d or error:%d\n",
-			client_handle, handle, hw_fence_drv_data->hw_fences_tbl_cnt, error);
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
+	if ((handle >= hw_fence_drv_data->hw_fences_tbl_cnt) || !error) {
+		HWFNC_ERR("Invalid fence handle:%llu max:%d or error:%d\n",
+			handle, hw_fence_drv_data->hw_fences_tbl_cnt, error);
 		return -EINVAL;
-	} else if (update_flags != MSM_HW_FENCE_UPDATE_ERROR_WITH_MOVE) {
+	}
+
+	if (update_flags != MSM_HW_FENCE_UPDATE_ERROR_WITH_MOVE) {
 		HWFNC_ERR("invalid flags:0x%x expected:0x%lx no support of in-place error update\n",
 			update_flags, MSM_HW_FENCE_UPDATE_ERROR_WITH_MOVE);
 		return -EINVAL;
@@ -628,15 +626,12 @@ int msm_hw_fence_trigger_signal(void *client_handle,
 	u32 signal_id)
 {
 	struct msm_hw_fence_client *hw_fence_client;
+	int ret;
 
-	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready
-			|| !hw_fence_drv_data->fctl_ready) {
-		HWFNC_ERR("hw fence driver or vm not ready\n");
-		return -EAGAIN;
-	} else if (IS_ERR_OR_NULL(client_handle)) {
-		HWFNC_ERR("Invalid client\n");
-		return -EINVAL;
-	}
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 
 	HWFNC_DBG_H("sending ipc for client:%d\n", hw_fence_client->client_id);
@@ -650,13 +645,14 @@ EXPORT_SYMBOL_GPL(msm_hw_fence_trigger_signal);
 int msm_hw_fence_register_error_cb(void *client_handle, msm_hw_fence_error_cb_t cb, void *data)
 {
 	struct msm_hw_fence_client *hw_fence_client;
+	int ret;
 
-	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready) {
-		HWFNC_ERR("hw fence driver not ready\n");
-		return -EAGAIN;
-	} else if (IS_ERR_OR_NULL(client_handle) || IS_ERR_OR_NULL(cb) || IS_ERR_OR_NULL(data)) {
-		HWFNC_ERR("Invalid params client:0x%pK cb_func:0x%pK data:0x%pK\n", client_handle,
-			cb, data);
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
+	if (IS_ERR_OR_NULL(cb) || IS_ERR_OR_NULL(data)) {
+		HWFNC_ERR("Invalid params cb_func:0x%pK data:0x%pK\n", cb, data);
 		return -EINVAL;
 	}
 
@@ -680,13 +676,9 @@ int msm_hw_fence_deregister_error_cb(void *client_handle)
 	struct msm_hw_fence_client *hw_fence_client;
 	int ret = 0;
 
-	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready) {
-		HWFNC_ERR("hw fence driver not ready\n");
-		return -EAGAIN;
-	} else if (IS_ERR_OR_NULL(client_handle)) {
-		HWFNC_ERR("Invalid client: 0x%pK\n", client_handle);
-		return -EINVAL;
-	}
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
 
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 	if (!mutex_trylock(&hw_fence_client->error_cb_lock)) {
@@ -718,15 +710,12 @@ EXPORT_SYMBOL_GPL(msm_hw_fence_deregister_error_cb);
 int msm_hw_fence_dump_debug_data(void *client_handle, u32 dump_flags, u32 dump_clients_mask)
 {
 	struct msm_hw_fence_client *hw_fence_client;
-	int client_id;
+	int client_id, ret;
 
-	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready) {
-		HWFNC_ERR("hw fence driver not ready\n");
-		return -EAGAIN;
-	} else if (IS_ERR_OR_NULL(client_handle)) {
-		HWFNC_ERR("Invalid client handle:%d\n", IS_ERR_OR_NULL(client_handle));
-		return -EINVAL;
-	}
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 
 	if (dump_flags & MSM_HW_FENCE_DBG_DUMP_QUEUES) {
@@ -756,14 +745,13 @@ int msm_hw_fence_dump_fence(void *client_handle, struct dma_fence *fence)
 	struct msm_hw_fence_client *hw_fence_client;
 	struct msm_hw_fence *hw_fence;
 	u64 hash;
+	int ret;
 
-	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready) {
-		HWFNC_ERR("hw fence driver not ready\n");
-		return -EAGAIN;
-	} else if (IS_ERR_OR_NULL(client_handle)) {
-		HWFNC_ERR("Invalid client handle:%d\n", IS_ERR_OR_NULL(client_handle));
-		return -EINVAL;
-	} else if (!test_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags)) {
+	ret = hw_fence_check_valid_client(hw_fence_drv_data, client_handle);
+	if (ret)
+		return ret;
+
+	if (!test_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags)) {
 		HWFNC_ERR("DMA Fence is not a HW Fence ctx:%llu seqno:%llu flags:0x%lx\n",
 			fence->context, fence->seqno, fence->flags);
 		return -EINVAL;
@@ -789,10 +777,11 @@ EXPORT_SYMBOL_GPL(msm_hw_fence_dump_fence);
 /* Function used for simulation purposes only. */
 int msm_hw_fence_driver_doorbell_sim(u64 db_mask)
 {
-	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready) {
-		HWFNC_ERR("hw fence driver not ready\n");
-		return -EAGAIN;
-	}
+	int ret;
+
+	ret = hw_fence_check_hw_fence_driver(hw_fence_drv_data);
+	if (ret)
+		return ret;
 
 	HWFNC_DBG_IRQ("db callback sim-mode flags:0x%llx qtime:%llu\n",
 		db_mask, hw_fence_get_qtime(hw_fence_drv_data));
@@ -889,6 +878,8 @@ err_exit:
 
 static int msm_hw_fence_remove(struct platform_device *pdev)
 {
+	struct hw_fence_soccp *soccp_props;
+
 	HWFNC_DBG_H("+\n");
 
 	if (!pdev) {
@@ -900,6 +891,12 @@ static int msm_hw_fence_remove(struct platform_device *pdev)
 	if (!hw_fence_drv_data) {
 		HWFNC_ERR("null driver data\n");
 		return -EINVAL;
+	}
+	soccp_props = &hw_fence_drv_data->soccp_props;
+	if (soccp_props->ssr_notifier) {
+		if (qcom_unregister_ssr_notifier(soccp_props->ssr_notifier,
+				&soccp_props->ssr_nb))
+			HWFNC_ERR("failed to unregister soccp ssr notifier\n");
 	}
 
 	/* indicate listener thread should stop listening for interrupts from soccp */
