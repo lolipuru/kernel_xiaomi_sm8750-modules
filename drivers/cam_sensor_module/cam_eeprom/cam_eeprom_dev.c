@@ -759,6 +759,12 @@ static int cam_eeprom_i3c_driver_probe(struct i3c_device *client)
 			dev_name(dev));
 		return -EINVAL;
 	}
+	cam_sensor_utils_parse_pm_ctrl_flag(dev->of_node, &(e_ctrl->io_master_info));
+
+	CAM_INFO(CAM_SENSOR,
+		"master: %d (1-CCI, 2-I2C, 3-SPI, 4-I3C) pm_ctrl_client_enable: %d",
+		e_ctrl->io_master_info.master_type,
+		e_ctrl->io_master_info.qup_client->pm_ctrl_client_enable);
 
 	e_ctrl->io_master_info.qup_client->i3c_client = client;
 	e_ctrl->io_master_info.qup_client->i3c_wait_for_hotjoin = false;
