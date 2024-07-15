@@ -10,6 +10,7 @@
 #include <synx_interop.h>
 #include "msm_hw_fence.h"
 #include "hw_fence_drv_priv.h"
+#include "hw_fence_drv_utils.h"
 #include "hw_fence_drv_debug.h"
 #include "hw_fence_drv_interop.h"
 
@@ -322,6 +323,10 @@ static int synx_hwfence_import_fence(void *client, struct synx_import_indv_param
 	u64 handle;
 	int ret, i;
 
+	ret = hw_fence_check_valid_fctl(hw_fence_drv_data, client);
+	if (ret)
+		return hw_fence_interop_to_synx_status(ret);
+
 	fence = (struct dma_fence *)params->fence;
 	array = to_dma_fence_array(fence);
 	if (array) {
@@ -492,6 +497,29 @@ EXPORT_SYMBOL_GPL(synx_hwfence_init_ops);
 int synx_hwfence_enable_resources(enum synx_client_id id, enum synx_resource_type resource,
 	bool enable)
 {
-	return -SYNX_INVALID;
+	int ret;
+
+	if (!hw_fence_driver_enable)
+		return -SYNX_INVALID;
+
+	if (IS_ERR_OR_NULL(hw_fence_drv_data) || !hw_fence_drv_data->resources_ready) {
+		HWFNC_ERR("hw fence driver not ready\n");
+		return -SYNX_INVALID;
+	}
+
+	if (!is_hw_fence_client(id) || !(resource == SYNX_RESOURCE_SOCCP)) {
+		HWFNC_ERR("enabling hw-fence resources for invalid client id:%d res:%d enable:%d\n",
+			id, resource, enable);
+		return -SYNX_INVALID;
+	}
+
+	if (!hw_fence_drv_data->has_soccp)
+		return SYNX_SUCCESS;
+
+	ret = hw_fence_utils_set_power_vote(hw_fence_drv_data, enable);
+	if (ret)
+		HWFNC_ERR("Failed to vote for SOCCP state:%d\n", enable);
+
+	return hw_fence_interop_to_synx_status(ret);
 }
 EXPORT_SYMBOL_GPL(synx_hwfence_enable_resources);
