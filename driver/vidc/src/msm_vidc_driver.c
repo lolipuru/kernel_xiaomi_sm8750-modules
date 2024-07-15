@@ -1472,6 +1472,10 @@ int msm_vidc_get_control(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 		ctrl->val = inst->capabilities[LEVEL].value;
 		i_vpr_h(inst, "%s: level: %d\n", __func__, ctrl->val);
 		break;
+	case HEVC_TIER:
+		ctrl->val = inst->capabilities[HEVC_TIER].value;
+		i_vpr_h(inst, "%s: hevc_tier: %d\n", __func__, ctrl->val);
+		break;
 	default:
 		i_vpr_e(inst, "invalid ctrl %s id %d\n",
 			ctrl->name, ctrl->id);
