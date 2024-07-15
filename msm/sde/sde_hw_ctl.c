@@ -101,7 +101,7 @@
 /**
  * List of SSPP bits in CTL_FLUSH
  */
-static const u32 sspp_tbl[SSPP_MAX] = { SDE_NONE, 0, 1, 2, 18, 11, 12, 24, 25, 13, 14};
+static const u32 sspp_tbl[SSPP_MAX] = { SDE_NONE, 0, 1, 2, 18, 3, 4, 5, 19, 11, 12, 24, 25, 13, 14};
 
 /**
  * List of layer mixer bits in CTL_FLUSH
@@ -148,12 +148,14 @@ static const u32 intf_tbl[INTF_MAX] = {SDE_NONE, 31, 30, 29, 28};
 /**
  * List of SSPP bits in CTL_FETCH_PIPE_ACTIVE
  */
-static const u32 fetch_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT, 16, 17, 18, 19, 0, 1, 2, 3, 4, 5};
+static const u32 fetch_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT,
+		16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5};
 
 /**
  * List of SSPP bits in CTL_PIPE_ACTIVE
  */
-static const u32 pipe_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT, 16, 17, 18, 19, 0, 1, 2, 3, 4, 5};
+static const u32 pipe_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT,
+		16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5};
 
 /**
  * List of LM bits in CTL_LM_ACTIVE

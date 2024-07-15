@@ -162,6 +162,8 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_UCSC_IGC,
 	PLANE_PROP_UCSC_GC,
 	PLANE_PROP_CAC_TYPE,
+	PLANE_PROP_SRC_RECT_EXT,
+	PLANE_PROP_DST_RECT_EXT,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT

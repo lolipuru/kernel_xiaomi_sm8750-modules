@@ -6976,7 +6976,7 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 {
 	u32 h, w, temp;
 	if (!hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
-		DRM_ERROR("HFC plane not set\n");
+		DRM_WARN("HFC plane not set\n");
 		return false;
 	}
 
