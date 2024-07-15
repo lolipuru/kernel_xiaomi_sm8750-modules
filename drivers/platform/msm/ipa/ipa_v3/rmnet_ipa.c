@@ -3956,6 +3956,8 @@ static int ipa3_lcl_mdm_ssr_notifier_cb(struct notifier_block *this,
 			   unsigned long code,
 			   void *data)
 {
+	struct qcom_ssr_notify_data *notify_data;
+
 	if (!ipa3_rmnet_ctx.ipa_rmnet_ssr)
 		return NOTIFY_DONE;
 
@@ -3983,7 +3985,9 @@ static int ipa3_lcl_mdm_ssr_notifier_cb(struct notifier_block *this,
 		/* hold a proxy vote for the modem. */
 		ipa3_proxy_clk_vote(atomic_read(&rmnet_ipa3_ctx->is_ssr));
 		/* send SSR before-shutdown notification to IPACM */
-		ipa3_handle_modem_minidump();
+		notify_data = data;
+		if (notify_data->crashed)
+			ipa3_handle_modem_minidump();
 		ipa3_set_modem_up(false);
 		rmnet_ipa_send_ssr_notification(false);
 		atomic_set(&rmnet_ipa3_ctx->is_ssr, 1);
