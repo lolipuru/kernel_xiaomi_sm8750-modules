@@ -145,7 +145,7 @@ static struct cam_vfe_top_ver4_module_desc tfe980_ipp_mod_desc[] = {
 	},
 };
 
-struct cam_vfe_bayer_ver4_module_desc tfe980_bayer_mod_desc[] = {
+struct cam_vfe_top_ver4_module_desc tfe980_bayer_mod_desc[] = {
 	{
 		.id = 0,
 		.desc = "CLC_DEMUX",

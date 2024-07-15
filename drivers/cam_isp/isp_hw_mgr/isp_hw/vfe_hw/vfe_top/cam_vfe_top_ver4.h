@@ -90,6 +90,12 @@ struct cam_vfe_top_ver4_reg_offset_common {
 		perf_count_reg[CAM_VFE_PERF_CNT_MAX];
 	uint32_t top_debug_cfg;
 	uint32_t bayer_debug_cfg;
+	uint32_t top_debug_err_vec_irq[CAM_VFE_TOP_DEBUG_VEC_ERR_REGS];
+	uint32_t top_debug_err_vec_ts_lb;
+	uint32_t top_debug_err_vec_ts_mb;
+	uint32_t bayer_debug_err_vec_irq[CAM_VFE_TOP_DEBUG_VEC_ERR_REGS];
+	uint32_t bayer_debug_err_vec_ts_lb;
+	uint32_t bayer_debug_err_vec_ts_mb;
 	uint32_t pdaf_input_cfg_0;
 	uint32_t pdaf_input_cfg_1;
 	uint32_t num_top_debug_reg;
@@ -112,11 +118,6 @@ struct cam_vfe_top_common_cfg {
 };
 
 struct cam_vfe_top_ver4_module_desc {
-	uint32_t id;
-	uint8_t *desc;
-};
-
-struct cam_vfe_bayer_ver4_module_desc {
 	uint32_t id;
 	uint8_t *desc;
 };
@@ -181,7 +182,7 @@ struct cam_vfe_top_ver4_hw_info {
 	struct cam_vfe_ver4_path_reg_data              *reg_data;
 	struct cam_vfe_top_ver4_wr_client_desc         *wr_client_desc;
 	struct cam_vfe_top_ver4_module_desc            *ipp_module_desc;
-	struct cam_vfe_bayer_ver4_module_desc          *bayer_module_desc;
+	struct cam_vfe_top_ver4_module_desc            *bayer_module_desc;
 	uint32_t                                        num_reg;
 	struct cam_vfe_top_ver4_debug_reg_info        (*top_debug_reg_info)[][8];
 	struct cam_vfe_top_ver4_debug_reg_info        (*bayer_debug_reg_info)[][8];

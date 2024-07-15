@@ -23,6 +23,7 @@
 #define CAM_SHIFT_TOP_CORE_VER_4_CFG_DSP_EN            8
 #define CAM_VFE_CAMIF_IRQ_SOF_DEBUG_CNT_MAX            2
 #define CAM_VFE_LEN_LOG_BUF                            256
+#define CAM_VFE_QTIMER_DIV_FACTOR                      10000
 
 struct cam_vfe_top_ver4_common_data {
 	struct cam_hw_intf                         *hw_intf;
@@ -332,6 +333,121 @@ static int cam_vfe_top_ver4_set_primary_sof_timer_reg_addr(
 		sof_ts_addr_update_args->curr1_ts_addr;
 
 	return 0;
+}
+
+static uint64_t cam_vfe_top_ver4_get_time_stamp(void __iomem *mem_base,
+	uint32_t timestamp_hi_addr, uint32_t timestamp_lo_addr)
+{
+	uint64_t timestamp_val, time_hi, time_lo;
+
+	time_hi = cam_io_r_mb(mem_base + timestamp_hi_addr);
+	time_lo = cam_io_r_mb(mem_base + timestamp_lo_addr);
+
+	timestamp_val = (time_hi << 32) | time_lo;
+
+	return mul_u64_u32_div(timestamp_val,
+		CAM_VFE_QTIMER_DIV_FACTOR,
+		CAM_VFE_QTIMER_DIV_FACTOR);
+}
+
+static void cam_vfe_top_ver4_read_debug_err_vectors(
+	struct cam_vfe_mux_ver4_data *vfe_priv,
+	enum cam_vfe_top_ver4_debug_reg_type reg_type,
+	uint32_t irq_status)
+{
+	struct cam_vfe_top_ver4_module_desc *module_desc;
+	struct cam_vfe_top_ver4_priv        *top_priv = vfe_priv->top_priv;
+	struct cam_vfe_top_ver4_common_data *common_data = &top_priv->common_data;
+	struct cam_hw_soc_info              *soc_info;
+	void __iomem                        *base;
+	int                                  i, j, k;
+	char                                *hm_type;
+	uint32_t                             temp, debug_cfg;
+	uint32_t                             debug_err_vec_ts_lb, debug_err_vec_ts_mb;
+	uint32_t                            *debug_err_vec_irq;
+	uint32_t                             debug_vec_error_reg[
+		CAM_VFE_TOP_DEBUG_VEC_ERR_REGS] = {0};
+	uint64_t                             timestamp;
+	size_t                               len = 0;
+	uint8_t                              log_buf[CAM_VFE_TOP_LOG_BUF_LEN];
+
+	switch (reg_type) {
+	case VFE_TOP_DEBUG_REG:
+		module_desc = common_data->hw_info->ipp_module_desc;
+		hm_type = "MAIN_PP";
+		debug_err_vec_ts_lb = common_data->common_reg->top_debug_err_vec_ts_lb;
+		debug_err_vec_ts_mb = common_data->common_reg->top_debug_err_vec_ts_mb;
+		debug_err_vec_irq = common_data->common_reg->top_debug_err_vec_irq;
+		break;
+	case VFE_BAYER_DEBUG_REG:
+		module_desc = common_data->hw_info->bayer_module_desc;
+		hm_type = "BAYER";
+		debug_err_vec_ts_lb = common_data->common_reg->bayer_debug_err_vec_ts_lb;
+		debug_err_vec_ts_mb = common_data->common_reg->bayer_debug_err_vec_ts_mb;
+		debug_err_vec_irq = common_data->common_reg->bayer_debug_err_vec_irq;
+		break;
+	default:
+		return;
+	}
+
+	soc_info    =  top_priv->top_common.soc_info;
+	base        =  soc_info->reg_map[VFE_CORE_BASE_IDX].mem_base;
+	/* Read existing debug cfg value so we don't overwite */
+	debug_cfg = cam_io_r_mb(base + common_data->common_reg->top_debug_cfg);
+
+	for (i = 0; i < CAM_VFE_TOP_DEBUG_VEC_FIFO_SIZE ; i++) {
+		cam_io_w_mb((debug_cfg | (i << CAM_VFE_TOP_DEBUG_TIMESTAMP_IRQ_SEL_SHIFT)),
+			base + common_data->common_reg->top_debug_cfg);
+
+		timestamp = cam_vfe_top_ver4_get_time_stamp(base, debug_err_vec_ts_mb,
+			debug_err_vec_ts_lb);
+
+		if (!timestamp) {
+			CAM_DBG(CAM_ISP, "Debug IRQ vectors already read, skip");
+			return;
+		}
+
+		for (j = 0; j < CAM_VFE_TOP_DEBUG_VEC_ERR_REGS; j++) {
+			if (debug_err_vec_irq[j] == 0)
+				break;
+
+			temp = cam_io_r_mb(base + debug_err_vec_irq[j]);
+			temp ^= debug_vec_error_reg[j];
+			debug_vec_error_reg[j] |= temp;
+			k = 0;
+
+			while (temp) {
+				if (temp & 0x1) {
+					CAM_INFO_BUF(CAM_ISP, log_buf, CAM_VFE_TOP_LOG_BUF_LEN,
+						&len, "%s ", module_desc[k + (j * 32)].desc);
+				}
+				temp >>= 1;
+				k++;
+			}
+		}
+		CAM_INFO(CAM_ISP,
+			"%s HM CLC(s) error that occurred in time order %d at timestamp %lld: %s",
+			hm_type, i, timestamp, log_buf);
+		memset(log_buf, 0x0, sizeof(uint8_t) * CAM_VFE_TOP_LOG_BUF_LEN);
+	}
+
+	cam_io_w_mb((debug_cfg | (0x1 << CAM_VFE_TOP_DEBUG_TIMESTAMP_IRQ_CLEAR_SHIFT)),
+		base + common_data->common_reg->top_debug_cfg);
+}
+
+static void cam_vfe_top_ver4_print_error_irq_timestamps(
+	struct cam_vfe_mux_ver4_data *vfe_priv,
+	uint32_t irq_status)
+{
+	int i;
+	struct cam_vfe_top_ver4_priv *top_priv = vfe_priv->top_priv;
+
+	if (!(top_priv->common_data.common_reg->capabilities &
+		CAM_VFE_COMMON_CAP_DEBUG_ERR_VEC))
+		return;
+
+	for (i = 0; i < VFE_DEBUG_REG_MAX; i++)
+		cam_vfe_top_ver4_read_debug_err_vectors(vfe_priv, i, irq_status);
 }
 
 static void cam_vfe_top_ver4_check_module_idle(
@@ -2065,6 +2181,9 @@ static int cam_vfe_handle_irq_bottom_half(void *handler_priv,
 
 
 		cam_vfe_top_ver4_print_top_irq_error(vfe_priv, payload,
+			irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS0]);
+
+		cam_vfe_top_ver4_print_error_irq_timestamps(vfe_priv,
 			irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS0]);
 
 		cam_vfe_top_ver4_print_debug_regs(vfe_priv->top_priv);

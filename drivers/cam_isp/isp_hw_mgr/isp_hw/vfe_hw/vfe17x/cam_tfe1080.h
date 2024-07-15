@@ -11,7 +11,7 @@
 #include "cam_irq_controller.h"
 
 #define CAM_TFE_1080_NUM_TOP_DBG_REG          17
-#define CAM_TFE_1080_NUM_BAYER_DBG_REG        10
+#define CAM_TFE_1080_NUM_BAYER_DBG_REG        11
 #define CAM_TFE_BUS_VER3_1080_MAX_CLIENTS     28
 
 static struct cam_vfe_top_ver4_module_desc tfe1080_ipp_mod_desc[] = {
@@ -57,134 +57,151 @@ static struct cam_vfe_top_ver4_module_desc tfe1080_ipp_mod_desc[] = {
 	},
 	{
 		.id = 10,
-		.desc = "CLC_COLOR_CORRECT",
+		.desc = "CLC_BLS",
 	},
 	{
 		.id = 11,
-		.desc = "CLC_GTM",
+		.desc = "CLC_COLOR_CORRECT",
 	},
 	{
 		.id = 12,
-		.desc = "CLC_GLUT",
+		.desc = "CLC_GTM",
 	},
 	{
 		.id = 13,
-		.desc = "CLC_COLOR_XFORM",
+		.desc = "CLC_GLUT",
 	},
 	{
 		.id = 14,
-		.desc = "CLC_DOWNSCALE_MN_Y",
+		.desc = "CLC_COLOR_XFORM",
 	},
 	{
 		.id  = 15,
-		.desc = "CLC_DOWNSCALE_MN_C",
+		.desc = "CLC_DOWNSCALE_MN_Y",
 	},
 	{
 		.id = 16,
-		.desc = "CLC_CROP_RND_CLAMP_FD_Y",
+		.desc = "CLC_DOWNSCALE_MN_C",
 	},
 	{
 		.id = 17,
-		.desc = "CLC_CROP_RND_CLAMP_FD_C",
+		.desc = "CLC_CROP_RND_CLAMP_FD_Y",
 	},
 	{
 		.id = 18,
-		.desc = "CLC_BDS2_DEMO",
+		.desc = "CLC_CROP_RND_CLAMP_FD_C",
 	},
 	{
 		.id = 19,
-		.desc = "CLC_PUNCH_BDS2",
+		.desc = "CLC_BDS2_DEMO",
 	},
 	{
 		.id = 20,
-		.desc = "CLC_PUNCH_DS4_MUX",
+		.desc = "CLC_PUNCH_BDS2",
 	},
 	{
 		.id = 21,
-		.desc = "CLC_BAYER_DS_4_DS4",
+		.desc = "CLC_PUNCH_DS4_MUX",
 	},
 	{
 		.id = 22,
-		.desc = "CLC_CROP_RND_CLAMP_DS4"
+		.desc = "CLC_BAYER_DS_4_DS4",
 	},
 	{
 		.id = 23,
-		.desc = "CLC_PUNCH_DS16"
+		.desc = "CLC_CROP_RND_CLAMP_DS4",
 	},
 	{
 		.id = 24,
-		.desc = "CLC_BAYER_DS_4_DS16",
+		.desc = "CLC_PUNCH_DS16",
 	},
 	{
 		.id = 25,
-		.desc = "CLC_CROP_RND_CLAMP_DS16",
+		.desc = "CLC_BAYER_DS_4_DS16",
 	},
 	{
 		.id = 26,
-		.desc = "CLC_CROP_RND_CLAMP_DS2",
+		.desc = "CLC_CROP_RND_CLAMP_DS16",
 	},
 	{
 		.id = 27,
-		.desc = "CLC_RCS_DS2",
+		.desc = "CLC_CROP_RND_CLAMP_DS2",
 	},
 	{
 		.id = 28,
-		.desc = "CLC_CROP_RND_CLAMP_FULL_OUT",
+		.desc = "CLC_RCS_DS2",
 	},
 	{
 		.id = 29,
-		.desc = "CLC_COMPDECOMP_BYPASS",
+		.desc = "CLC_CROP_RND_CLAMP_FULL_OUT",
 	},
 	{
 		.id = 30,
-		.desc = "CLC_CROP_RND_CLAMP_BYPASS",
+		.desc = "CLC_COMPDECOMP_BYPASS",
 	},
 	{
 		.id = 31,
+		.desc = "CLC_CROP_RND_CLAMP_BYPASS",
+	},
+	{
+		.id = 32,
 		.desc = "CLC_RCS_FULL_OUT",
+	},
+	/**
+	 * Main_PP status register does not capture CLC_HAF violation,
+	 * but debug_err_vec + timestamp feature does. Since both use
+	 * the same violation ID table, we add it here
+	 */
+	{
+		.id = 33,
+		.desc = "CLC_HAF",
 	},
 };
 
-struct cam_vfe_bayer_ver4_module_desc tfe1080_bayer_mod_desc[] = {
+struct cam_vfe_top_ver4_module_desc tfe1080_bayer_mod_desc[] = {
 	{
 		.id = 0,
 		.desc = "CLC_DEMUX",
 	},
 	{
 		.id = 1,
-		.desc = "CLC_BPC_PDPC_GIC",
+		.desc = "CLC_UNIV_CHANNEL_GAINS",
 	},
 	{
 		.id = 2,
-		.desc = "CLC_PDPC_BPC_1D",
+		.desc = "CLC_QPDR",
 	},
 	{
 		.id = 3,
-		.desc = "CLC_ABF_BINC",
+		.desc = "CLC_BPC_PDPC_GIC",
 	},
 	{
 		.id = 4,
-		.desc = "CLC_CHANNEL_GAINS",
+		.desc = "CLC_PDPC_BPC_1D",
 	},
 	{
 		.id = 5,
-		.desc = "CLC_LSC",
+		.desc = "CLC_ABF_BINC",
 	},
 	{
 		.id = 6,
-		.desc = "CLC_FCG",
+		.desc = "CLC_CHANNEL_GAINS",
 	},
 	{
 		.id = 7,
-		.desc = "CLC_WB_GAIN",
+		.desc = "CLC_LSC",
 	},
 	{
 		.id = 8,
-		.desc = "CLC_COMPDECOMP_BAYER",
+		.desc = "CLC_FCG",
 	},
 	{
 		.id = 9,
-		.desc = "CLC_CROP_RND_CLAMP_PIXEL_RAW_OUT",
+		.desc = "CLC_WB_GAIN",
+	},
+	{
+		.id = 10,
+		.desc = "CLC_COMPDECOMP_BAYER",
 	},
 };
 
@@ -536,6 +553,12 @@ static struct cam_vfe_top_ver4_reg_offset_common tfe1080_top_common_reg = {
 			.perf_count_status = 0x0000E448,
 		},
 	},
+	.top_debug_err_vec_irq    = {0x000004E4, 0x000004E8},
+	.top_debug_err_vec_ts_lb  = 0x000004DC,
+	.top_debug_err_vec_ts_mb  = 0x000004E0,
+	.bayer_debug_err_vec_irq  = {0x0000E4E4, 0x0},
+	.bayer_debug_err_vec_ts_lb = 0x0000E4DC,
+	.bayer_debug_err_vec_ts_mb = 0x0000E4E0,
 	.top_debug_cfg            = 0x00000548,
 	.bayer_debug_cfg          = 0x0000E518,
 	.num_top_debug_reg        = CAM_TFE_1080_NUM_TOP_DBG_REG,
@@ -544,7 +567,8 @@ static struct cam_vfe_top_ver4_reg_offset_common tfe1080_top_common_reg = {
 	.bayer_debug = tfe1080_bayer_debug_reg,
 	.frame_timing_irq_reg_idx = CAM_IFE_IRQ_CAMIF_REG_STATUS0,
 	.capabilities = CAM_VFE_COMMON_CAP_SKIP_CORE_CFG |
-			CAM_VFE_COMMON_CAP_CORE_MUX_CFG,
+			CAM_VFE_COMMON_CAP_CORE_MUX_CFG |
+			CAM_VFE_COMMON_CAP_DEBUG_ERR_VEC,
 };
 
 static struct cam_vfe_ver4_path_reg_data tfe1080_ipp_common_reg_data = {
