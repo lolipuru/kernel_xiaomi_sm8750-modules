@@ -334,14 +334,45 @@ static int cam_vfe_top_ver4_set_primary_sof_timer_reg_addr(
 	return 0;
 }
 
+static void cam_vfe_top_ver4_check_module_idle(
+	struct cam_vfe_top_ver4_debug_reg_info *debug_reg,
+	struct cam_vfe_top_ver4_priv *top_priv,
+	uint32_t *idle_status, bool *is_mc)
+{
+	struct cam_vfe_top_ver4_reg_offset_common *common_reg;
+	struct cam_hw_soc_info                    *soc_info;
+	void __iomem                              *base;
+	uint32_t val, shift;
+
+	if (unlikely(!debug_reg || !top_priv || !idle_status || !is_mc))
+		return;
+
+	if (!debug_reg->debug_idle_reg_addr || !debug_reg->debug_idle_bitmask)
+		return;
+
+	soc_info = top_priv->top_common.soc_info;
+	common_reg = top_priv->common_data.common_reg;
+	base = soc_info->reg_map[VFE_CORE_BASE_IDX].mem_base;
+
+	val = cam_io_r_mb(base + debug_reg->debug_idle_reg_addr);
+
+	shift = ffs(debug_reg->debug_idle_bitmask) - 1;
+
+	*is_mc = !(debug_reg->debug_idle_bitmask && !(debug_reg->debug_idle_bitmask
+		& (debug_reg->debug_idle_bitmask - 1)));
+
+	*idle_status = ((val & debug_reg->debug_idle_bitmask) >> shift);
+}
+
 static void cam_vfe_top_ver4_check_module_status(
 	uint32_t num_reg, uint32_t *reg_val,
+	struct cam_vfe_top_ver4_priv *top_priv,
 	struct cam_vfe_top_ver4_debug_reg_info (*status_list)[][8])
 {
-	bool found = false;
-	uint32_t i, j, val = 0;
+	bool found = false, is_mc;
+	uint32_t i, j, val = 0, idle_status;
 	size_t len = 0;
-	uint8_t log_buf[1024];
+	uint8_t line_buf[CAM_VFE_LEN_LOG_BUF], log_buf[1024];
 
 	if (!status_list)
 		return;
@@ -357,9 +388,15 @@ static void cam_vfe_top_ver4_check_module_status(
 			if (val == 0 || val == 5)
 				continue;
 
-			CAM_INFO_BUF(CAM_ISP, log_buf, 1024, &len, "%s [I:%u V:%u R:%u]",
-				(*status_list)[i][j].clc_name,
-				((val >> 2) & 1), ((val >> 1) & 1), (val & 1));
+			cam_vfe_top_ver4_check_module_idle(&(*status_list)[i][j], top_priv,
+				&idle_status, &is_mc);
+
+			snprintf(line_buf, CAM_VFE_LEN_LOG_BUF,
+				"\n\t%s [I:%u V:%u R:%u] idle: 0x%x, is_mc: %s",
+				(*status_list)[i][j].clc_name, ((val >> 2) & 1),
+				((val >> 1) & 1), (val & 1), idle_status, CAM_BOOL_TO_YESNO(is_mc));
+
+			strlcat(log_buf, line_buf, 1024);
 			found = true;
 		}
 		if (found)
@@ -457,7 +494,8 @@ static void cam_vfe_top_ver4_print_debug_reg_status(
 		len = 0;
 	}
 
-	cam_vfe_top_ver4_check_module_status(num_reg, reg_val, debug_reg_info);
+	cam_vfe_top_ver4_check_module_status(num_reg, reg_val,
+		top_priv, debug_reg_info);
 
 }
 

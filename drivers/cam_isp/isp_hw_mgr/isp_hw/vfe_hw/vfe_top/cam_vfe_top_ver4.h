@@ -14,6 +14,7 @@
 #define CAM_VFE_RDI_VER2_MAX                           4
 #define CAM_VFE_CAMIF_LITE_EVT_MAX                     256
 #define CAM_VFE_TOP_DBG_REG_MAX                        19
+#define CAM_VFE_DEBUG_IDLE_MAX                         6
 
 struct cam_vfe_top_ver4_perf_count_reg_offset {
 	uint32_t perf_count_cfg;
@@ -155,8 +156,9 @@ struct cam_vfe_ver4_path_hw_info {
 struct cam_vfe_top_ver4_debug_reg_info {
 	uint32_t  shift;
 	char     *clc_name;
+	uint32_t debug_idle_reg_addr;
+	uint32_t debug_idle_bitmask;
 };
-
 
 struct cam_vfe_ver4_fcg_module_info {
 	uint32_t max_fcg_ch_ctx;
@@ -236,6 +238,14 @@ int cam_vfe_top_ver4_deinit(struct cam_vfe_top      **vfe_top);
 		VFE_DBG_INFO(20, name6),                                                \
 		VFE_DBG_INFO(24, name7),                                                \
 		VFE_DBG_INFO(28, name8),                                                \
+	}
+
+#define VFE_DBG_INFO_WITH_IDLE(shift_val, name, idle_addr, idle_bitmask)\
+	{                                                                   \
+		.shift = shift_val,                                             \
+		.clc_name = name,                                               \
+		.debug_idle_reg_addr = idle_addr,                               \
+		.debug_idle_bitmask = idle_bitmask                              \
 	}
 
 #endif /* _CAM_VFE_TOP_VER4_H_ */
