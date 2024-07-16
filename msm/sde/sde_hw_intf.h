@@ -390,6 +390,11 @@ struct sde_hw_intf_ops {
 	 */
 	void (*setup_intf_panic_ctrl)(struct sde_hw_intf *intf,
 			struct intf_panic_ctrl_cfg *cfg);
+
+	/**
+	 * Update the vsync_count for interface tear check
+	 */
+	void (*update_tearcheck_vsync_count)(struct sde_hw_intf *intf, u32 val);
 };
 
 struct sde_hw_intf {
