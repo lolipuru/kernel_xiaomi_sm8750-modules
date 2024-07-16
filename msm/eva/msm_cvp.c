@@ -775,6 +775,7 @@ int msm_cvp_session_delete(struct msm_cvp_inst *inst)
 	return 0;
 }
 
+#ifdef CVP_TZ
 static void msm_cvp_secure_concurrency_stop(struct msm_cvp_inst *inst,
 		enum cvp_session_state sess_state)
 {
@@ -830,10 +831,12 @@ static void msm_cvp_secure_concurrency_stop(struct msm_cvp_inst *inst,
 			"Session already stopped\n");
 	}
 }
+#endif
 
 static int msm_cvp_secure_sess_check(struct msm_cvp_inst *inst)
 {
 	int rc = 0;
+#ifdef CVP_TZ
 	struct msm_cvp_core *core = NULL;
 	struct msm_cvp_inst *active_inst = NULL;
 	enum cvp_session_state s_state;
@@ -897,6 +900,7 @@ static int msm_cvp_secure_sess_check(struct msm_cvp_inst *inst)
 		}
 	}
 exit:
+#endif
 	return rc;
 }
 
