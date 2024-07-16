@@ -4737,6 +4737,10 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	/* update pending counts and trigger kickoff ctl flush atomically */
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 
+	if (sde_enc->disp_info.vrr_caps.video_psr_support &&
+			!phys->sde_kms->catalog->hw_fence_rev)
+		ctl->ops.hw_fence_trigger_sw_override(ctl);
+
 	if (sde_enc->cesta_op_group_req && ctl->ops.update_ctl_top_group)
 		ctl->ops.update_ctl_top_group(ctl, true);
 
