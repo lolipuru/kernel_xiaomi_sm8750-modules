@@ -9,6 +9,7 @@
 #include <linux/types.h>
 #include <linux/ioctl.h>
 
+#include <linux/qseecom.h>
 #include <asm-generic/posix_types.h>
 
 /*
