@@ -615,8 +615,6 @@ struct fastrpc_pool_ctx {
 	u32 pd_type;
 	bool secure;
 	bool sharedcb;
-	/* Completion object to let process cleanup before cleaning session */
-	struct completion cleanup;
 	/* Number of context banks in the pool */
 	u32 smmucount;
 	/* Number of applications using the pool */
@@ -691,6 +689,10 @@ struct fastrpc_channel_ctx {
 	u64 jobid;
 	/* Flag to indicate CB pooling is enabled for channel */
 	bool smmucb_pool;
+	/* Number of active ongoing invocations (device ioctl / release) */
+	u32 invoke_cnt;
+	/* Completion object for threads to wait for SSR handling to finish */
+	struct completion ssr_complete;
 };
 
 struct fastrpc_invoke_ctx {
@@ -925,4 +927,7 @@ int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ctx *cctx
 				bool is_secured, const char *domain);
 struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev);
 void fastrpc_notify_users(struct fastrpc_user *user);
+
+/* Function to clean all SMMU mappings associated with a fastrpc user obj */
+void fastrpc_free_user(struct fastrpc_user *fl);
 #endif /* __FASTRPC_SHARED_H__ */

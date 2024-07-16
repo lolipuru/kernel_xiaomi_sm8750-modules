@@ -1074,13 +1074,6 @@ static struct fastrpc_pool_ctx *fastrpc_session_alloc(
 			break;
 		}
 	}
-
-	/*
-	 * In the case of SID pooling reinit cleanup only for first appplication
-	 * using pool.
-	 */
-	if (session && session->usecount == 1)
-		reinit_completion(&cctx->session[i].cleanup);
 	spin_unlock_irqrestore(&cctx->lock, flags);
 
 	return session;
@@ -1094,12 +1087,6 @@ static void fastrpc_session_free(struct fastrpc_channel_ctx *cctx,
 	spin_lock_irqsave(&cctx->lock, flags);
 	if (session->usecount > 0)
 		session->usecount--;
-	/*
-	 * After all apps using the cb have released it, unblock any potentially
-	 * waiting "cb remove" callback.
-	 */
-	if (session->usecount == 0)
-		complete(&session->cleanup);
 	spin_unlock_irqrestore(&cctx->lock, flags);
 }
 
@@ -3175,12 +3162,47 @@ static int fastrpc_release_current_dsp_process(struct fastrpc_user *fl)
 	return fastrpc_internal_invoke(fl, KERNEL_MSG_WITH_NONZERO_PID, &ioctl);
 }
 
+void fastrpc_free_user(struct fastrpc_user *fl)
+{
+	struct fastrpc_map *map = NULL, *m = NULL;
+
+	fastrpc_context_list_free(fl);
+
+	if (fl->init_mem) {
+		fastrpc_buf_free(fl->init_mem, false);
+		fl->init_mem = NULL;
+	}
+
+	mutex_lock(&fl->remote_map_mutex);
+	mutex_lock(&fl->map_mutex);
+	// During process tear down free the map, even if refcount is non-zero
+	list_for_each_entry_safe(map, m, &fl->maps, node)
+		__fastrpc_free_map(map);
+	mutex_unlock(&fl->map_mutex);
+	mutex_unlock(&fl->remote_map_mutex);
+
+	fastrpc_buf_list_free(fl, &fl->mmaps, false);
+
+	if (fl->pers_hdr_buf) {
+		fastrpc_buf_free(fl->pers_hdr_buf, false);
+		fl->pers_hdr_buf = NULL;
+	}
+
+	if (fl->hdr_bufs) {
+		kfree(fl->hdr_bufs);
+		fl->hdr_bufs = NULL;
+	}
+
+	fastrpc_buf_list_free(fl, &fl->cached_bufs, true);
+
+	return;
+}
+
 static int fastrpc_device_release(struct inode *inode, struct file *file)
 {
 	struct fastrpc_user *fl = (struct fastrpc_user *)file->private_data;
 	struct fastrpc_channel_ctx *cctx = fl->cctx;
 	struct fastrpc_driver *frpc_drv, *d;
-	struct fastrpc_map *map, *m;
 	struct fastrpc_buf *buf, *b;
 	int i;
 	unsigned long flags, irq_flags;
@@ -3189,6 +3211,24 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 
 	spin_lock_irqsave(glock, irq_flags);
 	spin_lock_irqsave(&cctx->lock, flags);
+	if (atomic_read(&cctx->teardown)) {
+		spin_unlock_irqrestore(&cctx->lock, flags);
+		spin_unlock_irqrestore(glock, irq_flags);
+		/*
+		 * Wait until SSR cleanup is done to avoid parallel access of
+		 * fastrpc_user object from device release thread and
+		 * SSR handling thread.
+		 */
+		wait_for_completion(&cctx->ssr_complete);
+		spin_lock_irqsave(glock, irq_flags);
+		spin_lock_irqsave(&cctx->lock, flags);
+	} else {
+		/*
+		 * Update invoke count to block the SSR handling thread from cleaning up
+		 * the channel resources, while it is still being used by this thread.
+		 */
+		cctx->invoke_cnt++;
+	}
 	if (fl->device) {
 		fl->device->dev_close = true;
 		fl->device->fl = NULL;
@@ -3249,27 +3289,8 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 		ida_free(&cctx->tgid_frpc_ida, fl->tgid_frpc-(cctx->domain_id*FASTRPC_UNIQUE_ID_CONST));
 
 	fl->is_dma_invoke_pend = false;
-	if (fl->init_mem)
-		fastrpc_buf_free(fl->init_mem, false);
 
-	fastrpc_context_list_free(fl);
-
-	mutex_lock(&fl->remote_map_mutex);
-	mutex_lock(&fl->map_mutex);
-
-	// During process tear down free the map, even if refcount is non-zero
-	list_for_each_entry_safe(map, m, &fl->maps, node)
-		__fastrpc_free_map(map);
-	mutex_unlock(&fl->map_mutex);
-	mutex_unlock(&fl->remote_map_mutex);
-
-	fastrpc_buf_list_free(fl, &fl->mmaps, false);
-
-	if (fl->pers_hdr_buf)
-		fastrpc_buf_free(fl->pers_hdr_buf, false);
-	kfree(fl->hdr_bufs);
-
-	fastrpc_buf_list_free(fl, &fl->cached_bufs, true);
+	fastrpc_free_user(fl);
 
 	/*
 	 * Audio remote-heap buffers won't be freed as part of "fastrpc_user" object
@@ -3306,11 +3327,14 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	mutex_destroy(&fl->signal_create_mutex);
 	mutex_destroy(&fl->remote_map_mutex);
 	mutex_destroy(&fl->map_mutex);
-	spin_lock_irqsave(glock, flags);
+	spin_lock_irqsave(glock, irq_flags);
 	kfree(fl);
+	spin_lock_irqsave(&cctx->lock, flags);
+	cctx->invoke_cnt--;
+	spin_unlock_irqrestore(&cctx->lock, flags);
 	fastrpc_channel_ctx_put(cctx);
 	file->private_data = NULL;
-	spin_unlock_irqrestore(glock, flags);
+	spin_unlock_irqrestore(glock, irq_flags);
 	return 0;
 }
 
@@ -4696,11 +4720,27 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int cmd,
 				 unsigned long arg)
 {
 	struct fastrpc_user *fl = (struct fastrpc_user *)file->private_data;
+	struct fastrpc_channel_ctx *cctx = fl->cctx;
 	char __user *argp = (char __user *)arg;
 	int err;
 	int process_init = 0;
+	unsigned long flags = 0;
 
-	fastrpc_channel_ctx_get(fl->cctx);
+	fastrpc_channel_ctx_get(cctx);
+	spin_lock_irqsave(&cctx->lock, flags);
+	if (atomic_read(&cctx->teardown)) {
+		/* If subsystem already going thru SSR, then fail ioctl immediately */
+		spin_unlock_irqrestore(&cctx->lock, flags);
+		fastrpc_channel_ctx_put(cctx);
+		return -EPIPE;
+	}
+	/*
+	 * Update invoke count to block SSR handling thread from cleaning up
+	 * the channel resources, while it is still being used by this thread.
+	 */
+	cctx->invoke_cnt++;
+	spin_unlock_irqrestore(&cctx->lock, flags);
+	
 	switch (cmd) {
 	case FASTRPC_IOCTL_INVOKE:
 		trace_fastrpc_msg("invoke: begin");
@@ -4756,6 +4796,10 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int cmd,
 
 	if (process_init && !err)
 		err = fastrpc_device_create(fl);
+
+	spin_lock_irqsave(&cctx->lock, flags);
+	cctx->invoke_cnt--;
+	spin_unlock_irqrestore(&cctx->lock, flags);
 	fastrpc_channel_ctx_put(fl->cctx);
 	return err;
 }
@@ -5369,7 +5413,6 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 	if (sess->smmucount == 0) {
 		sess->usecount = 0;
 		sess->pd_type = pd_type;
-		init_completion(&sess->cleanup);
 	}
 	/* Read secure flag for each context bank, even if part of CB pool */
 	sess->secure = of_property_read_bool(dev->of_node,
@@ -5408,7 +5451,6 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 			dup_sess = &cctx->session[cctx->sesscount++];
 			memcpy(dup_sess, sess, sizeof(*dup_sess));
 			mutex_init(&dup_sess->smmucb[DEFAULT_SMMU_IDX].map_mutex);
-			init_completion(&dup_sess->cleanup);
 		}
 	}
 	spin_unlock_irqrestore(&cctx->lock, flags);
@@ -5572,13 +5614,6 @@ static int fastrpc_cb_remove(struct platform_device *pdev)
 			if (ismmucb->sid != smmucb->sid)
 				continue;
 			spin_unlock_irqrestore(&cctx->lock, flags);
-
-			/*
-			 * Remove SMMU CB, only after all users using the CB
-			 * have released it.
-			 */
-			if (sess->usecount > 0)
-				wait_for_completion(&sess->cleanup);
 			mutex_lock(&ismmucb->map_mutex);
 			if (ismmucb->frpc_genpool)
 				fastrpc_genpool_free(ismmucb);
