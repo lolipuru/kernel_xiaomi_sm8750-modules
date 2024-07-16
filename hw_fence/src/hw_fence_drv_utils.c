@@ -25,6 +25,7 @@
 #include <linux/remoteproc/qcom_rproc.h>
 #endif
 #include <linux/remoteproc.h>
+#include <linux/platform_device.h>
 
 #include "hw_fence_drv_priv.h"
 #include "hw_fence_drv_utils.h"
