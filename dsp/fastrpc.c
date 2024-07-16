@@ -1497,7 +1497,7 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 	ctx->rpra = rpra;
 
 	for (oix = 0; oix < ctx->nbufs; ++oix) {
-		int mlen;
+		u64 mlen;
 		u64 offset = 0;
 
 		i = ctx->olaps[oix].raix;
@@ -1558,12 +1558,12 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 			mlen = ctx->olaps[oix].mend - ctx->olaps[oix].mstart;
 
 			if (mlen > LONG_MAX) {
-				dev_err(dev, "Error: invalid payload size 0x%x", mlen);
+				dev_err(dev, "Error: invalid payload size 0x%llx\n", mlen);
 				return -EFAULT;
 			}
 
 			if (mlen > COPY_BUF_WARN_LIMIT)
-				dev_dbg(dev, "user passed non ion buffer size %u, mend 0x%llx mstart 0x%llx, sc 0x%x",
+				dev_dbg(dev, "user passed non ion buffer size 0x%llx, mend 0x%llx mstart 0x%llx, sc 0x%x\n",
 					mlen, ctx->olaps[oix].mend, ctx->olaps[oix].mstart, ctx->sc);
 
 			if (rlen < mlen)
