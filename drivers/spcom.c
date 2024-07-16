@@ -916,7 +916,7 @@ static int modify_dma_buf_addr(struct spcom_channel *ch, void *buf,
 		ret = PTR_ERR(attach);
 		spcom_pr_err("fail to attach dma buf %d\n", ret);
 		dma_buf_put(dma_buf);
-		goto mem_map_table_failed;
+		return ret;
 	}
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,2,0))
