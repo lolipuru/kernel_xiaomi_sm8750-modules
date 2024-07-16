@@ -715,13 +715,21 @@ static int olaps_cmp(const void *a, const void *b)
 	return st == 0 ? ed : st;
 }
 
-static void fastrpc_get_buff_overlaps(struct fastrpc_invoke_ctx *ctx)
+static int fastrpc_get_buff_overlaps(struct fastrpc_invoke_ctx *ctx)
 {
 	u64 max_end = 0;
 	int i;
+	struct device *dev = ctx->fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 
 	for (i = 0; i < ctx->nbufs; ++i) {
 		ctx->olaps[i].start = ctx->args[i].ptr;
+		/* Check the overflow for user buffer */
+		if (ctx->olaps[i].start > (ULLONG_MAX - ctx->args[i].length)) {
+			dev_dbg(dev,
+				"user passed invalid non ion buffer addr 0x%llx, size %llx\n",
+				ctx->args[i].ptr, ctx->args[i].length);
+			return -EFAULT;
+		}
 		ctx->olaps[i].end = ctx->olaps[i].start + ctx->args[i].length;
 		ctx->olaps[i].raix = i;
 	}
@@ -749,6 +757,7 @@ static void fastrpc_get_buff_overlaps(struct fastrpc_invoke_ctx *ctx)
 			max_end = ctx->olaps[i].end;
 		}
 	}
+	return 0;
 }
 
 static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
@@ -802,7 +811,9 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 					ctx->nscalars * sizeof(*ctx->args));
 		}
 		invoke->inv.args = (__u64)ctx->args;
-		fastrpc_get_buff_overlaps(ctx);
+		ret = fastrpc_get_buff_overlaps(ctx);
+		if (ret)
+			goto err_alloc;
 	}
 
 	/* Released in fastrpc_context_put() */
@@ -1398,7 +1409,7 @@ static int fastrpc_get_meta_size(struct fastrpc_invoke_ctx *ctx)
 
 static u64 fastrpc_get_payload_size(struct fastrpc_invoke_ctx *ctx, int metalen)
 {
-	u64 size = 0;
+	u64 size = 0, len;
 	int oix;
 
 	size = ALIGN(metalen, FASTRPC_ALIGN);
@@ -1410,7 +1421,11 @@ static u64 fastrpc_get_payload_size(struct fastrpc_invoke_ctx *ctx, int metalen)
 			if (ctx->olaps[oix].offset == 0)
 				size = ALIGN(size, FASTRPC_ALIGN);
 
-			size += (ctx->olaps[oix].mend - ctx->olaps[oix].mstart);
+			len = (ctx->olaps[oix].mend - ctx->olaps[oix].mstart);
+			/* Check the overflow for payload */
+			if (size > (ULLONG_MAX - len))
+				return 0;
+			size += len;
 		}
 	}
 
@@ -1475,6 +1490,11 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 	inbufs = REMOTE_SCALARS_INBUFS(ctx->sc);
 	metalen = fastrpc_get_meta_size(ctx);
 	pkt_size = fastrpc_get_payload_size(ctx, metalen);
+	if (!pkt_size) {
+		dev_err(dev, "invalid payload size for handle 0x%x, sc 0x%x\n",
+			ctx->handle, ctx->sc);
+		return -EFAULT;
+	}
 
 	PERF(ctx->fl->profile, GET_COUNTER(perf_counter, PERF_MAP),
 	err = fastrpc_create_maps(ctx);
@@ -1521,6 +1541,14 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 			rpra[i].buf.pv = (u64) ctx->args[i].ptr;
 			pages[i].addr = ctx->maps[i]->phys;
 
+			if (len > ctx->maps[i]->size) {
+				err = -EFAULT;
+				dev_err(dev,
+					"Invalid buffer addr 0x%llx len 0x%llx IPA 0x%llx size 0x%llx fd %d\n",
+					ctx->args[i].ptr, len, ctx->maps[i]->phys,
+					ctx->maps[i]->size, ctx->maps[i]->fd);
+				goto bail;
+			}
 			if (!(ctx->maps[i]->attr & FASTRPC_ATTR_NOVA)) {
 				mmap_read_lock(current->mm);
 				vma = find_vma(current->mm, ctx->args[i].ptr);
@@ -1556,11 +1584,6 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 			}
 
 			mlen = ctx->olaps[oix].mend - ctx->olaps[oix].mstart;
-
-			if (mlen > LONG_MAX) {
-				dev_err(dev, "Error: invalid payload size 0x%llx\n", mlen);
-				return -EFAULT;
-			}
 
 			if (mlen > COPY_BUF_WARN_LIMIT)
 				dev_dbg(dev, "user passed non ion buffer size 0x%llx, mend 0x%llx mstart 0x%llx, sc 0x%x\n",
