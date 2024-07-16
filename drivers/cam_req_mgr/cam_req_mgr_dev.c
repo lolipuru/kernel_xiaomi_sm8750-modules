@@ -517,19 +517,19 @@ static long cam_private_ioctl(struct file *file, void *fh,
 		if (k_ioctl->size != sched_req_size)
 			return -EINVAL;
 
-		sched_req = kzalloc(sched_req_size, GFP_KERNEL);
+		sched_req = CAM_MEM_ZALLOC(sched_req_size, GFP_KERNEL);
 		if (!sched_req) {
 			return -ENOMEM;
 		}
 
 		if (copy_from_user(sched_req, u64_to_user_ptr(k_ioctl->handle), sched_req_size)) {
-			kfree(sched_req);
+			CAM_MEM_FREE(sched_req);
 			sched_req = NULL;
 			return -EFAULT;
 		}
 
 		rc = cam_req_mgr_schedule_request_v3(sched_req);
-		kfree(sched_req);
+		CAM_MEM_FREE(sched_req);
 		}
 		break;
 

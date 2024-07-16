@@ -11,6 +11,7 @@
 #include "cam_trace.h"
 
 #include "cam_debug_util.h"
+#include "cam_mem_mgr_api.h"
 
 unsigned long long debug_mdl;
 module_param(debug_mdl, ullong, 0644);
