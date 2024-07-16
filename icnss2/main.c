@@ -4988,9 +4988,28 @@ icnss_get_cpumask_for_wlan_txrx_intr(struct icnss_priv *priv)
 	priv->cpumask_for_tx_comp_intrs = cpumask[1];
 }
 
+static const char *icnss_get_device_name(const struct platform_device_id *device_id)
+{
+	switch (device_id->driver_data)	{
+	case WCN6750_DEVICE_ID:
+		return "MOSELLE";
+
+	case ADRASTEA_DEVICE_ID:
+		return "ADRASTEA";
+
+	case WCN6450_DEVICE_ID:
+		return "EVROS";
+
+	case WCN7750_DEVICE_ID:
+		return "ORNE";
+	}
+	return "UNKNOWN";
+}
+
 static int icnss_probe(struct platform_device *pdev)
 {
 	int ret = 0;
+	const char *device_name;
 	struct device *dev = &pdev->dev;
 	struct icnss_priv *priv;
 	const struct of_device_id *of_id;
@@ -5010,8 +5029,8 @@ static int icnss_probe(struct platform_device *pdev)
 	}
 
 	device_id = of_id->data;
-
-	icnss_pr_dbg("Platform driver probe\n");
+	device_name = icnss_get_device_name(device_id);
+	icnss_pr_dbg("Platform driver probe for %s!\n", device_name);
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
