@@ -176,7 +176,6 @@ struct sde_cesta_sw_client_data {
  * @override_ctrl_setup: configure the SCC override ctrl
  * @reset_ctrl: reset SCC ctrl
  * @force_auto_active_db_update: set auto-active-on-panic and force db-update
- * @get_rscc_pwr_ctrl_status: get sde rscc power control status
  */
 struct sde_cesta_hw_ops {
 	void (*init)(struct sde_cesta *cesta);
@@ -186,7 +185,6 @@ struct sde_cesta_hw_ops {
 	void (*override_ctrl_setup)(struct sde_cesta *cesta, u32 idx, u32 force_flags);
 	void (*reset_ctrl)(struct sde_cesta *cesta, u32 idx, bool en);
 	void (*force_auto_active_db_update)(struct sde_cesta *cesta, u32 idx, bool en);
-	u32 (*get_rscc_pwr_ctrl_status)(struct sde_cesta *cesta);
 };
 
 /**
@@ -198,7 +196,6 @@ struct sde_cesta_hw_ops {
  * @scc_io: scc instances io data mapping
  * @scc_index: stores the SCC index
  * @scc_count: number of SCC instances
- * @rscc_io: sde rscc io data mapping
  * @wrapper_io: wrapper io data mapping
  * @client_list: link list maintaing all the clients
  * @hw_ops: sde ceseta hardware operations
@@ -222,7 +219,6 @@ struct sde_cesta {
 	u32 scc_index[MAX_SCC_BLOCK];
 	u32 scc_count;
 
-	struct dss_io_data rscc_io;
 	struct dss_io_data wrapper_io;
 
 	struct list_head client_list;
