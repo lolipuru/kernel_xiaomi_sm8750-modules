@@ -2015,7 +2015,7 @@ wait:
 	if (fl->poll_mode &&
 		handle > FASTRPC_MAX_STATIC_HANDLE &&
 		fl->cctx->domain_id == CDSP_DOMAIN_ID &&
-		(fl->pd_type == USERPD || fl->pd_type == USER_UNSIGNEDPD_POOL))
+		fl->pd_type == USERPD)
 		ctx->rsp_flags = POLL_MODE;
 
 	fastrpc_wait_for_completion(ctx, &interrupted, kernel);
