@@ -533,6 +533,8 @@ void dsi_ctrl_hw_cmn_set_video_timing(struct dsi_ctrl_hw *ctrl,
 		/* Skip extended VFP blanking lines over DSI lanes */
 		DSI_W32(ctrl, DSI_VIDEO_MODE_CTRL5, v_total);
 		DSI_W32(ctrl, DSI_VIDEO_MODE_CTRL4, 1);
+
+		DSI_W32(ctrl, DSI_COMMAND_MODE_DMA_CTRL_1, BIT(1));
 	}
 }
 
