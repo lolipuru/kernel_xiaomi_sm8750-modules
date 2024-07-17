@@ -1,11 +1,7 @@
 DISPLAY_SELECT := CONFIG_DRM_MSM=m
 
 LOCAL_PATH := $(call my-dir)
-ifeq ($(TARGET_BOARD_PLATFORM), niobe)
-LOCAL_MODULE_DDK_BUILD := false
-else
 LOCAL_MODULE_DDK_BUILD := true
-endif
 include $(CLEAR_VARS)
 
 # This makefile is only for DLKM
