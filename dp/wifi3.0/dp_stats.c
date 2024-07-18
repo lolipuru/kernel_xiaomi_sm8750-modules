@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -5124,11 +5124,11 @@ void dp_print_tsf_tx_delay_hist(struct cdp_hist_stats *hist_stats, uint8_t type)
 	if (type == UL_DELAY) {
 		dp_info(" Delay hist polled by STA_INFO cmd");
 		dp_info("         Pkts_per_delay_bucket%60s | Min | Max | Avg |",
-			"", "");
+			"");
 	} else {
 		dp_info(" Delay jitter hist polled by STA_INFO cmd");
 		dp_info("         Pkts_per_jitter_bucket%60s | Min | Max | Avg |",
-			"", "");
+			"");
 	}
 
 	pos = 0;
