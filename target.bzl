@@ -77,15 +77,18 @@ def define_parrot(t,v):
         modules = [
             "nt36xxx-i2c",
 	    "goodix_ts",
-	    "qts"
+	    "qts",
+	    "focaltech_fts"
         ],
         config_options = [
             "TOUCH_DLKM_ENABLE",
             "CONFIG_ARCH_PARROT",
+	    "CONFIG_ARCH_RAVELIN",
             "CONFIG_MSM_TOUCH",
             "CONFIG_TOUCHSCREEN_NT36XXX_I2C",
-	     "CONFIG_TOUCHSCREEN_GOODIX_BRL",
-	     "CONFIG_QTS_ENABLE"
+	    "CONFIG_TOUCHSCREEN_GOODIX_BRL",
+	    "CONFIG_QTS_ENABLE",
+	    "CONFIG_TOUCH_FOCALTECH"
         ],
 )
 def define_touch_target():
