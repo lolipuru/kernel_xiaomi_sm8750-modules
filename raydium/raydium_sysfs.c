@@ -1160,7 +1160,7 @@ static ssize_t raydium_receive_fw_store(struct device *dev,
 		memcpy((p_u8_firmware_data + u32_index), p_i8_buf, count);
 		u32_index += count;
 	} else
-		LOGD(LOG_ERR, "[touch]other case, count=%d\n", count);
+		LOGD(LOG_ERR, "[touch]other case, count=%zu\n", count);
 
 	return count;
 }
