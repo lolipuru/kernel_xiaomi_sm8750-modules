@@ -47,6 +47,8 @@
 #define ICNSS_ENABLE_M3_SSR 1
 #define WLAN_RF_SLATE 0
 #define WLAN_RF_APACHE 1
+#define ICNSS_RAMDUMP_MAGIC		0x574C414E
+#define ICNSS_RAMDUMP_VERSION		0
 
 extern uint64_t dynamic_feature_mask;
 
@@ -438,6 +440,20 @@ enum icnss_smmu_fault_time {
 enum icnss_db_msg {
 	DB_MSG_INVALID,
 	DB_MSG_SMMU_FAULT,
+};
+
+struct icnss_dump_entry {
+	int type;
+	u32 entry_start;
+	u32 entry_num;
+};
+
+struct cnss_host_dump_meta_info {
+	u32 magic;
+	u32 version;
+	u32 chipset;
+	u32 total_entries;
+	struct icnss_dump_entry entry[CNSS_HOST_DUMP_TYPE_MAX];
 };
 
 struct icnss_priv {
