@@ -1847,39 +1847,48 @@ static void __qseecom_processing_pending_lsnr_unregister(void)
 	int ret = 0;
 
 	mutex_lock(&listener_access_lock);
-	while (!list_empty(&qseecom.unregister_lsnr_pending_list_head)) {
+
+	if (!list_empty(&qseecom.unregister_lsnr_pending_list_head)) {
+
 		pos = qseecom.unregister_lsnr_pending_list_head.next;
-		entry = list_entry(pos,
+
+		do {
+			entry = list_entry(pos,
 				struct qseecom_unregister_pending_list, list);
-		if (entry && entry->data) {
-			pr_debug("process pending unregister %d\n",
-					entry->data->listener.id);
-			/* don't process the entry if qseecom_release is not called*/
-			if (!entry->data->listener.release_called) {
-				list_del(pos);
-				list_add_tail(&entry->list,
-					&qseecom.unregister_lsnr_pending_list_head);
-				break;
-			}
-			ptr_svc = __qseecom_find_svc(
+			if (entry && entry->data) {
+				pr_debug("process pending unregister %d\n",
 						entry->data->listener.id);
-			if (ptr_svc) {
-				ret = __qseecom_unregister_listener(
-						entry->data, ptr_svc);
-				if (ret) {
-					pr_debug("unregister %d pending again\n",
+				/* don't process the entry if qseecom_release is not called*/
+				if (!entry->data->listener.release_called) {
+					pr_err("listener release yet to be called for lstnr :%d\n",
 						entry->data->listener.id);
-					mutex_unlock(&listener_access_lock);
-					return;
+					pos = pos->next;
+					continue;
 				}
-			} else
-				pr_err("invalid listener %d\n",
-					entry->data->listener.id);
-			__qseecom_free_tzbuf(&entry->data->sglistinfo_shm);
-			kfree_sensitive(entry->data);
-		}
-		list_del(pos);
-		kfree_sensitive(entry);
+
+				ptr_svc = __qseecom_find_svc(
+						entry->data->listener.id);
+				pr_debug("Unregistering listener %d\n", entry->data->listener.id);
+				if (ptr_svc) {
+					ret = __qseecom_unregister_listener(
+							entry->data, ptr_svc);
+					if (ret) {
+						pr_debug("unregister %d pending again\n",
+								entry->data->listener.id);
+						mutex_unlock(&listener_access_lock);
+						return;
+					}
+				} else
+					pr_err("invalid listener %d\n",
+							entry->data->listener.id);
+				__qseecom_free_tzbuf(&entry->data->sglistinfo_shm);
+				kfree_sensitive(entry->data);
+			}
+
+			pos = pos->next;
+			list_del(pos->prev);
+			kfree_sensitive(entry);
+		} while (!list_is_head(pos, &qseecom.unregister_lsnr_pending_list_head));
 	}
 	mutex_unlock(&listener_access_lock);
 	wake_up_interruptible(&qseecom.register_lsnr_pending_wq);
