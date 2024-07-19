@@ -4531,9 +4531,12 @@ int cnss_wlan_pm_control(struct device *dev, bool vote)
 	if (!pci_priv)
 		return -ENODEV;
 
-	ret = cnss_pci_disable_pc(pci_priv, vote);
-	if (ret)
-		return ret;
+	if (cnss_pci_get_drv_supported(pci_priv)) {
+
+		ret = cnss_pci_disable_pc(pci_priv, vote);
+		if (ret)
+			return ret;
+	}
 
 	pci_priv->disable_pc = vote;
 	cnss_pr_dbg("%s PCIe power collapse\n", vote ? "disable" : "enable");
