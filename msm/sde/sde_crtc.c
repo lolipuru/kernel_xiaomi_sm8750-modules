@@ -3746,7 +3746,8 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 	struct drm_crtc_state *crtc_state;
 	struct sde_connector_state *c_conn_state;
 	struct sde_crtc *sde_crtc;
-	struct sde_rect roi = {0};
+	struct sde_rect conn_roi = {0};
+	struct sde_rect crtc_roi = {0};
 
 	sde_crtc = to_sde_crtc(crtc);
 	crtc_state = &cstate->base;
@@ -3754,7 +3755,10 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 	c_conn_state = _sde_crtc_get_sde_connector_state(crtc, crtc_state->state);
 
 	if (c_conn_state->rois.num_rects)
-		sde_kms_rect_merge_rectangles(&c_conn_state->rois, &roi);
+		sde_kms_rect_merge_rectangles(&c_conn_state->rois, &conn_roi);
+
+	if (cstate->user_roi_list.num_rects)
+		sde_kms_rect_merge_rectangles(&cstate->user_roi_list, &crtc_roi);
 
 	if (cfg->flags & SDE_DRM_DESTSCALER_SCALE_UPDATE ||
 		cfg->flags & SDE_DRM_DESTSCALER_ENHANCER_UPDATE) {
@@ -3773,31 +3777,36 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 			!cfg->scl3_cfg.src_width[0] ||
 			!cfg->scl3_cfg.dst_width ||
 			(pu_enable && cfg->scl3_cfg.dst_width != hdisplay) ||
-			(pu_enable && roi.h != 0 && cfg->scl3_cfg.dst_height != roi.h) ||
+			(pu_enable && conn_roi.h != 0 && cfg->scl3_cfg.dst_height != conn_roi.h) ||
+			(pu_enable && crtc_roi.h != 0 && cfg->scl3_cfg.src_height[0]
+					!= crtc_roi.h) ||
 			(!pu_enable &&
 			(cfg->scl3_cfg.dst_width != hdisplay ||
 			cfg->scl3_cfg.dst_height != mode->vdisplay))) {
 			SDE_ERROR("crtc%d: ", crtc->base.id);
-			SDE_ERROR("src_w(%d) dst(%dx%d) display(%dx%d)",
+			SDE_ERROR("src_wxh(%dx%d) dst(%dx%d) display(%dx%d)",
 				cfg->scl3_cfg.src_width[0],
+				cfg->scl3_cfg.src_height[0],
 				cfg->scl3_cfg.dst_width,
 				cfg->scl3_cfg.dst_height,
 				hdisplay, mode->vdisplay);
-			SDE_ERROR("num_mixers(%d) flags(%d) ds-%d: roi(%dx%d)\n",
+			SDE_ERROR("num_mixers(%d) flags(%d) ds-%d: conn_roi(%dx%d)\n",
 				sde_crtc->num_mixers, cfg->flags,
-				hw_ds->idx - DS_0, roi.w, roi.h);
-			SDE_ERROR("scale_en = %d, DE_en =%d\n",
+				hw_ds->idx - DS_0, conn_roi.w, conn_roi.h);
+			SDE_ERROR("ds_src(%dx%d) crtc_roi (%dx%d) scale_en = %d, DE_en =%d\n",
+				cfg->lm_width, cfg->lm_height,
+				crtc_roi.w, crtc_roi.h,
 				cfg->scl3_cfg.enable,
 				cfg->scl3_cfg.de.enable);
 
 			SDE_EVT32(DRMID(crtc), cfg->scl3_cfg.enable,
 				cfg->scl3_cfg.de.enable, cfg->flags,
 				max_in_width, max_out_width,
-				cfg->scl3_cfg.src_width[0],
+				cfg->scl3_cfg.src_width[0], cfg->scl3_cfg.src_height[0],
 				cfg->scl3_cfg.dst_width,
 				cfg->scl3_cfg.dst_height, hdisplay,
 				mode->vdisplay, sde_crtc->num_mixers,
-				roi.w, roi.h,
+				conn_roi.w, conn_roi.h,
 				SDE_EVTLOG_ERROR);
 
 			cfg->flags &=
