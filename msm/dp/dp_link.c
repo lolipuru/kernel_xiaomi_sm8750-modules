@@ -818,7 +818,6 @@ static int dp_link_parse_request(struct dp_link_private *link)
 
 	if (!dp_link_is_test_supported(data)) {
 		DP_DEBUG("link 0x%x not supported\n", data);
-		link->request.test_requested = 0;
 		goto end;
 	}
 
@@ -849,8 +848,6 @@ end:
 	 */
 	if (ret) {
 		link->dp_link.test_response = DP_TEST_NAK;
-	} else if (!link->request.test_requested) {
-		link->dp_link.test_response = 0;
 	} else {
 		if (!dp_link_is_test_edid_read(link))
 			link->dp_link.test_response = DP_TEST_ACK;
@@ -1294,9 +1291,6 @@ static int dp_link_process_request(struct dp_link *dp_link)
 	dp_link_reset_data(link);
 
 	dp_link_parse_sink_status_field(link);
-
-	if (!link->request.test_requested)
-		goto exit;
 
 	if (dp_link_is_test_edid_read(link)) {
 		dp_link->sink_request |= DP_TEST_LINK_EDID_READ;
