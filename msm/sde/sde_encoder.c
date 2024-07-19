@@ -6039,10 +6039,6 @@ void _sde_encoder_delay_kickoff_processing(struct sde_encoder_virt *sde_enc)
 	if (!ept)
 		return;
 
-	if (sde_enc->disp_info.vrr_caps.vrr_support &&
-			!sde_kms->catalog->early_EPT_handling)
-		return;
-
 	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);
 	if (qsync_mode || sde_enc->disp_info.vrr_caps.arp_support ||
 			sde_enc->disp_info.vrr_caps.video_psr_support)
