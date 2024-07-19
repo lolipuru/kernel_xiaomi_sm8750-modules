@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -21,6 +21,7 @@ struct dp_ctrl {
 	int (*on)(struct dp_ctrl *dp_ctrl, bool mst_mode, bool fec_en,
 			bool dsc_en, bool shallow);
 	void (*off)(struct dp_ctrl *dp_ctrl);
+	int (*reset)(struct dp_ctrl *dp_ctrl, bool shallow);
 	void (*abort)(struct dp_ctrl *dp_ctrl, bool abort);
 	void (*isr)(struct dp_ctrl *dp_ctrl);
 	bool (*handle_sink_request)(struct dp_ctrl *dp_ctrl);
@@ -33,6 +34,7 @@ struct dp_ctrl {
 			enum dp_stream_id strm,
 			u32 ch_start_slot, u32 ch_tot_slots);
 	void (*set_sim_mode)(struct dp_ctrl *dp_ctrl, bool en);
+	void (*set_lane_rate)(struct dp_ctrl *dp_ctrl, u32 bw_code);
 	int (*setup_misr)(struct dp_ctrl *dp_ctrl);
 	int (*read_misr)(struct dp_ctrl *dp_ctrl, struct dp_misr40_data *data);
 };
