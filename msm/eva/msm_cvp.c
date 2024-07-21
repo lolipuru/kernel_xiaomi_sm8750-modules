@@ -112,7 +112,7 @@ static int cvp_wait_process_message(struct msm_cvp_inst *inst,
 				inst->state != MSM_CVP_CORE_INVALID)
 			print_hfi_queue_info(inst->core->dev_ops);
 		rc = -ETIMEDOUT;
-		handle_session_timeout(inst);
+		handle_session_timeout(inst, true);
 		goto exit;
 	}
 
@@ -213,6 +213,16 @@ static int msm_cvp_session_process_hfi(
 	if (!s)
 		return -ECONNRESET;
 
+	sq = &inst->session_queue;
+	spin_lock(&sq->lock);
+	if (sq->state > QUEUE_STOP) {
+		spin_unlock(&sq->lock);
+		dprintk(CVP_ERR, "Invalid session %pK cannot accept HFI commands\n", inst);
+		rc = -EINVAL;
+		goto exit;
+	}
+	spin_unlock(&sq->lock);
+
 	pkt_hdr = (struct cvp_hfi_cmd_session_hdr *)in_pkt;
 	dprintk(CVP_CMD, "%s: "
 		"pkt_type %08x sess_id %08x trans_id %u ktid %llu\n",
@@ -239,10 +249,8 @@ static int msm_cvp_session_process_hfi(
 
 	if (signal == HAL_NO_RESP) {
 		/* Frame packets are not allowed before session starts*/
-		sq = &inst->session_queue;
 		spin_lock(&sq->lock);
-		if ((sq->state != QUEUE_START && !is_config_pkt) ||
-			(sq->state >= QUEUE_INVALID)) {
+		if (sq->state != QUEUE_START && !is_config_pkt) {
 			/*
 			 * A init packet is allowed in case of
 			 * QUEUE_ACTIVE, QUEUE_START, QUEUE_STOP
@@ -834,52 +842,61 @@ static int msm_cvp_secure_sess_check(struct msm_cvp_inst *inst)
 		return -EINVAL;
 
 	if (inst->prop.is_secure) {
-		core = inst->core;
-		mutex_lock(&core->lock);
-		list_for_each_entry(active_inst, &core->instances, list) {
-			if (active_inst->prop.is_secure) {
-				s_state = (0xF0000000 & active_inst->session_error_code) >> 28;
-				dprintk(CVP_SESS, "%s: s_state is %d\n",
-					__func__, s_state);
-				if (s_state == SECURE_SESSION_ERROR) {
-					dprintk(CVP_SESS,
-						"Invalid secure session");
-					continue;
-				}
+		if (inst->prop.type == HFI_SESSION_CV) {
+			dprintk(CVP_WARN,
+				"Secure CV, failing create session");
+			rc = -EINVAL;
+			goto exit;
+		} else {
+			core = inst->core;
+			mutex_lock(&core->lock);
+			list_for_each_entry(active_inst, &core->instances, list) {
+				if (active_inst->prop.is_secure) {
+					s_state = (0xF0000000 &
+						active_inst->session_error_code) >> 28;
+					dprintk(CVP_SESS, "%s: s_state is %d\n",
+						__func__, s_state);
+					if (s_state == SECURE_SESSION_ERROR) {
+						dprintk(CVP_SESS,
+							"Invalid secure session");
+						continue;
+					}
 
-				if (inst->prop.type == active_inst->prop.type) {
-					dprintk(CVP_SESS,
-						"Allow new session create, type %d, secure %d\n",
-						inst->prop.type, inst->prop.is_secure);
-					break;
-				} else if (inst->prop.type == HFI_SESSION_CV &&
+					if (inst->prop.type == active_inst->prop.type) {
+						dprintk(CVP_SESS,
+							"Allow new sess create, type %d\n",
+							inst->prop.type);
+						break;
+					} else if (inst->prop.type == HFI_SESSION_CV &&
 						active_inst->prop.type == HFI_SESSION_DMM) {
-					dprintk(CVP_WARN,
-						"Skip EVA secure sess as active secure CAM sess");
-					rc = -EINVAL;
-					break;
-				} else if (inst->prop.type == HFI_SESSION_DMM
-						&& active_inst->prop.type == HFI_SESSION_CV) {
-					msm_cvp_secure_concurrency_stop(active_inst, s_state);
+						dprintk(CVP_WARN,
+							"Skip EVA secure, active secure CAM sess");
+						rc = -EINVAL;
+						break;
+					} else if (inst->prop.type == HFI_SESSION_DMM &&
+						active_inst->prop.type == HFI_SESSION_CV) {
+						msm_cvp_secure_concurrency_stop(active_inst,
+										s_state);
+					}
 				}
 			}
-		}
-		mutex_unlock(&core->lock);
+			mutex_unlock(&core->lock);
 
-		if (rc == 0) {
-			dprintk(CVP_CORE, "Calling TZ SID begin with secure flag %d",
-				inst->prop.is_secure);
-			if (inst->prop.type == HFI_SESSION_CV) {
-				dprintk(CVP_CORE, "Calling TZ SID for OF");
-				__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_EVA);
-			} else if (inst->prop.type == HFI_SESSION_DMM) {
-				dprintk(CVP_CORE, "Calling TZ SID for DMM ");
-				__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_CAMERA);
+			if (rc == 0) {
+				dprintk(CVP_CORE, "Calling TZ SID begin with secure flag %d",
+					inst->prop.is_secure);
+				if (inst->prop.type == HFI_SESSION_CV) {
+					dprintk(CVP_CORE, "Calling TZ SID for OF");
+					__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_EVA);
+				} else if (inst->prop.type == HFI_SESSION_DMM) {
+					dprintk(CVP_CORE, "Calling TZ SID for DMM ");
+					__tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SID_CAMERA);
+				}
+				dprintk(CVP_CORE, "Calling TZ SID end ");
 			}
-			dprintk(CVP_CORE, "Calling TZ SID end ");
 		}
 	}
-
+exit:
 	return rc;
 }
 
@@ -909,8 +926,14 @@ int msm_cvp_session_create(struct msm_cvp_inst *inst)
 		return -EINVAL;
 	}
 
-	if (msm_cvp_check_for_inst_overload(inst->core, &rc))
+	if (msm_cvp_check_for_inst_overload(inst->core, &rc)) {
+		dprintk(CVP_ERR, "Instance num reached Max, rejecting session");
+		mutex_lock(&core->lock);
+		list_for_each_entry(inst, &core->instances, list)
+			cvp_print_inst(CVP_ERR, inst);
+		mutex_unlock(&core->lock);
 		return -ENOSPC;
+	}
 
 	rc = msm_cvp_comm_try_state(inst, MSM_CVP_OPEN_DONE);
 	if (rc) {
@@ -1121,27 +1144,18 @@ exit:
 	return rc;
 }
 
-int msm_cvp_session_stop(struct msm_cvp_inst *inst,
-		struct eva_kmd_arg *arg)
+int msm_cvp_session_flush_stop(struct msm_cvp_inst *inst)
 {
 	struct cvp_session_queue *sq;
-	struct eva_kmd_session_control *sc = NULL;
 	struct msm_cvp_inst *s;
 	struct cvp_hfi_ops *ops_tbl;
-	u32 error_event = NO_ERROR;
-	u32 error_state = SESSION_NORMAL;
 	u64 ktid;
 	int rc;
-
-	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_stop");
 
 	if (!inst || !inst->core) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
 		return -EINVAL;
 	}
-
-	if (arg)
-		sc = &arg->data.session_ctrl;
 
 	s = cvp_get_inst_validate(inst->core, inst);
 	if (!s)
@@ -1150,42 +1164,29 @@ int msm_cvp_session_stop(struct msm_cvp_inst *inst,
 	sq = &inst->session_queue;
 
 	spin_lock(&sq->lock);
-	if (sq->msg_count) {
-		dprintk(CVP_ERR, "session stop incorrect: queue not empty%d\n",
-			sq->msg_count);
-		if (sc)
-			sc->ctrl_data[0] = sq->msg_count;
-		spin_unlock(&sq->lock);
-		rc = -EUCLEAN;
-		goto exit;
-	}
+
 	if (sq->state == QUEUE_STOP) {
 		dprintk(CVP_WARN, "Session %llx (%#x) already stopped\n",
 			inst, hash32_ptr(inst->session));
 		spin_unlock(&sq->lock);
-		rc = -EINVAL;
+		rc = 0;
 		goto exit;
 	}
-	sq->state = QUEUE_STOP;
 
-	pr_info_ratelimited(CVP_PID_TAG "Stop session: %pK session_id = %#x\n",
-			current->pid, current->tgid, "sess",
-			inst, hash32_ptr(inst->session));
 	spin_unlock(&sq->lock);
 
 	ops_tbl = inst->core->dev_ops;
 
-	error_event = (0x0FFF0000 & inst->session_error_code) >> 16;
-	error_state = (0xF0000000 & inst->session_error_code) >> 28;
-	if (error_state == SESSION_ERROR && error_event == EVA_SESSION_TIMEOUT) {
-		/*Flush all pending cmds for the error EVA session*/
-		rc = cvp_session_flush_all(inst);
-		if (rc) {
-			dprintk(CVP_ERR,
-				"%s: cannot flush session %llx (%#x) rc %d, sess stop aborted\n",
-				__func__, inst, hash32_ptr(inst->session), rc);
-			goto stop_thread;
-		}
+	/*Flush all pending cmds for the error EVA session*/
+	pr_info_ratelimited(CVP_PID_TAG "flush stop session: %pK session_id = %#x\n",
+		current->pid, current->tgid, "sess",
+		inst, hash32_ptr(inst->session));
+	rc = cvp_session_flush_all(inst);
+	if (rc) {
+		dprintk(CVP_ERR,
+			"%s: cannot flush session %llx (%#x) rc %d\n",
+			__func__, inst, hash32_ptr(inst->session), rc);
+		goto stop_thread;
 	}
 
 	/* Send SESSION_STOP command */
@@ -1207,9 +1208,105 @@ int msm_cvp_session_stop(struct msm_cvp_inst *inst,
 	}
 
 stop_thread:
+	spin_lock(&sq->lock);
+	if (!rc)
+		sq->state = QUEUE_STOP;
+	else
+		sq->state = QUEUE_INVALID;
+	spin_unlock(&sq->lock);
+
 	wake_up_all(&inst->session_queue.wq);
 
 	cvp_fence_thread_stop(inst);
+
+exit:
+	cvp_put_inst(s);
+	return rc;
+}
+
+
+int msm_cvp_session_stop(struct msm_cvp_inst *inst,
+		struct eva_kmd_arg *arg)
+{
+	struct cvp_session_queue *sq;
+	struct eva_kmd_session_control *sc = NULL;
+	struct msm_cvp_inst *s;
+	struct cvp_hfi_ops *ops_tbl;
+	u64 ktid;
+	int rc;
+
+	CVPKERNEL_ATRACE_BEGIN("msm_cvp_session_stop");
+
+	if (!inst || !inst->core) {
+		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
+		return -EINVAL;
+	}
+
+	if (arg)
+		sc = &arg->data.session_ctrl;
+
+	s = cvp_get_inst_validate(inst->core, inst);
+	if (!s)
+		return -ECONNRESET;
+
+	sq = &inst->session_queue;
+
+	spin_lock(&sq->lock);
+	if (sq->state == QUEUE_STOP) {
+		dprintk(CVP_WARN, "Session %llx (%#x) already stopped\n",
+			inst, hash32_ptr(inst->session));
+		spin_unlock(&sq->lock);
+		rc = 0;
+		goto exit;
+	}
+	if (sq->state != QUEUE_INVALID && sq->msg_count) {
+		dprintk(CVP_ERR, "session stop incorrect: queue not empty%d\n",
+			sq->msg_count);
+		if (sc)
+			sc->ctrl_data[0] = sq->msg_count;
+		spin_unlock(&sq->lock);
+		rc = -EUCLEAN;
+		goto exit;
+	}
+
+	pr_info_ratelimited(CVP_PID_TAG "Stop session: %pK session_id = %#x\n",
+			current->pid, current->tgid, "sess",
+			inst, hash32_ptr(inst->session));
+	spin_unlock(&sq->lock);
+
+	ops_tbl = inst->core->dev_ops;
+
+	/* Send SESSION_STOP command */
+	ktid = atomic64_inc_return(&inst->core->kernel_trans_id);
+	ktid &= (FENCE_BIT - 1);
+	rc = call_hfi_op(ops_tbl, session_stop, (void *)inst->session, ktid);
+	if (rc) {
+		dprintk(CVP_WARN, "%s: session stop failed rc %d\n",
+				__func__, rc);
+		goto stop_thread;
+	}
+
+	/* Wait for FW response */
+	rc = wait_for_sess_signal_receipt(inst, HAL_SESSION_STOP_DONE);
+	if (rc) {
+		dprintk(CVP_WARN,
+			"%s: wait for signal failed, rc %d and session_id = %#x, retry flush_stop\n",
+			__func__, rc, hash32_ptr(inst->session));
+		rc = msm_cvp_session_flush_stop(inst);
+		goto exit;
+	}
+stop_thread:
+	spin_lock(&sq->lock);
+	if (!rc)
+		sq->state = QUEUE_STOP;
+	else
+		sq->state = QUEUE_INVALID;
+	spin_unlock(&sq->lock);
+
+	wake_up_all(&inst->session_queue.wq);
+
+	cvp_fence_thread_stop(inst);
+
 exit:
 	cvp_put_inst(s);
 	CVPKERNEL_ATRACE_END("msm_cvp_session_stop");

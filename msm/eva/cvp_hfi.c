@@ -3555,10 +3555,11 @@ int __response_handler(struct iris_hfi_device *device)
 
 	if (device->intr_status & CVP_FATAL_INTR_BMSK) {
 		if (device->intr_status & CVP_WRAPPER_INTR_MASK_CPU_NOC_BMSK)
-			dprintk(CVP_ERR, "Received Xtensa NOC error\n");
-
+			pr_err_ratelimited(CVP_PID_TAG "Received Xtensa NOC error\n",
+				current->pid, current->tgid, "err");
 		if (device->intr_status & CVP_WRAPPER_INTR_MASK_CORE_NOC_BMSK)
-			dprintk(CVP_ERR, "Received CVP core NOC error\n");
+			pr_err_ratelimited(CVP_PID_TAG "Received CVP core NOC error\n",
+				current->pid, current->tgid, "err");
 	}
 
 	/* Bleed the msg queue dry of packets */
@@ -5874,7 +5875,6 @@ static int __check_core_power_on_v1(struct iris_hfi_device *device)
 static int __power_on_controller_v1(struct iris_hfi_device *device)
 {
 	int rc = 0;
-	u32 lpi_status = 0;
 	CVPKERNEL_ATRACE_BEGIN("__power_on_controller_v1");
 
 	rc = __enable_regulator(device, "cvp");
@@ -5932,16 +5932,6 @@ static int __power_on_controller_v1(struct iris_hfi_device *device)
 		goto fail_enable_freerun;
 	}
 
-	/* Section 6.14, Step 88, NOC recovery Sequence */
-	lpi_status = __read_register(device, CVP_WRAPPER_CPU_NOC_LPI_STATUS);
-	if (lpi_status & BIT(0))
-		__write_register(device, CVP_WRAPPER_CPU_NOC_LPI_CONTROL, 0x0);
-	else {
-		dprintk(CVP_WARN, "%s: CPU NOC is not in QACCEPT state (%x)",
-			__func__, lpi_status);
-		dprintk(CVP_WARN, "%s: skipping deassertion of NOC_QREQ", __func__);
-	}
-
 	dprintk(CVP_PWR, "EVA controller powered on\n");
 	return 0;
 
@@ -5962,7 +5952,6 @@ fail_reset_sleep:
 static int __power_on_core_v1(struct iris_hfi_device *device)
 {
 	int rc = 0;
-	u32 lpi_status = 0;
 	CVPKERNEL_ATRACE_BEGIN("__power_on_core_v1");
 
 	rc = __enable_regulator(device, "cvp-core");
@@ -5990,15 +5979,13 @@ static int __power_on_core_v1(struct iris_hfi_device *device)
 		goto fail_enable_freerun;
 	}
 
-	/* Section 6.14, Step 82, NOC recovery Sequence */
-	lpi_status = __read_register(device, CVP_AON_WRAPPER_CVP_NOC_LPI_STATUS);
-	if (lpi_status & BIT(0))
-		__write_register(device, CVP_AON_WRAPPER_CVP_NOC_LPI_CONTROL, 0x0);
-	else {
-		dprintk(CVP_WARN, "%s: CORE NOC is not in QACCEPT state (%x)",
-			__func__, lpi_status);
-		dprintk(CVP_WARN, "%s: skipping deassertion of NOC_QREQ", __func__);
-	}
+	__write_register(device, CVP_NOC_RCGCONTROLLER_HYSTERESIS_LOW, 0xff);
+	__write_register(device, CVP_NOC_RCGCONTROLLER_WAKEUP_LOW, 0x7);
+	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_FORCECLOCKON_LOW, 0x1);
+	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_ENABLE_LOW, 0x1);
+	usleep_range(5, 10);
+	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_FORCECLOCKON_LOW, 0x0);
+	__write_register(device, CVP_AON_WRAPPER_CVP_NOC_ARCG_CONTROL, 0x0);
 
 	dprintk(CVP_PWR, "EVA core powered on\n");
 	CVPKERNEL_ATRACE_END("__power_on_core_v1");

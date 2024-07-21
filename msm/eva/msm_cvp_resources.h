@@ -139,7 +139,7 @@ struct msm_cvp_mem_cdsp {
 	struct device *dev;
 };
 
-#define MAX_SILVER_CORE_NUM 8
+#define MAX_SILVER_CORE_NUM 2
 #define HFI_SESSION_FD 4
 #define HFI_SESSION_DMM 2
 #define HFI_SESSION_CV 1

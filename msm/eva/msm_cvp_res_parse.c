@@ -1040,7 +1040,8 @@ int msm_cvp_smmu_fault_handler(struct iommu_domain *domain,
 		return -EINVAL;
 	}
 
-	dprintk(CVP_ERR, "%s - faulting address: %lx fault cnt %d\n",
+	pr_err_ratelimited(CVP_PID_TAG "%s - faulting address: %lx fault cnt %d\n",
+			current->pid, current->tgid, "err",
 			__func__, iova, core->smmu_fault_count);
 	if (core->smmu_fault_count > 0) {
 		core->smmu_fault_count++;
