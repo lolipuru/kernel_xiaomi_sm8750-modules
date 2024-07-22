@@ -638,6 +638,11 @@ struct dp_rx_nbuf_frag_info {
  * @DP_CFG_EVENT_HIST_TYPE: DP config events history
  * @DP_MON_TX_DESC_POOL_TYPE: DP TX desc pool buffer
  * @DP_MON_RX_DESC_POOL_TYPE: DP RX desc pool buffer
+ * @DP_STC_CONTEXT_TYPE: DP STC context
+ * @DP_STC_SAMPLING_TABLE_TYPE: DP STC sampling table
+ * @DP_STC_RX_FLOW_TABLE_TYPE: DP STC rx flow table
+ * @DP_STC_TX_FLOW_TABLE_TYPE: DP STC tx flow table
+ * @DP_STC_CLASSIFIED_FLOW_TABLE_TYPE: DP STC classified flow table
  */
 enum dp_ctxt_type {
 	DP_PDEV_TYPE,
@@ -655,6 +660,11 @@ enum dp_ctxt_type {
 	DP_CFG_EVENT_HIST_TYPE,
 	DP_MON_TX_DESC_POOL_TYPE,
 	DP_MON_RX_DESC_POOL_TYPE,
+	DP_STC_CONTEXT_TYPE,
+	DP_STC_SAMPLING_TABLE_TYPE,
+	DP_STC_RX_FLOW_TABLE_TYPE,
+	DP_STC_TX_FLOW_TABLE_TYPE,
+	DP_STC_CLASSIFIED_FLOW_TABLE_TYPE,
 };
 
 /**
@@ -1421,11 +1431,17 @@ struct dp_soc_stats {
 		uint32_t invld_tso_params;
 #endif
 #if !defined(WLAN_MAX_PDEVS) || (WLAN_MAX_PDEVS != 1)
-		/* Counters for Release Source Module count per ring */
+		/* Counters for Release Source Module count per ring
+		 * Indices 0-3 indicate the TCL rings
+		 * Index 4 indicates WBM2_SW_PPE_REL_RING_ID */
 		uint32_t rsm_cnt[MAX_TCL_DATA_RINGS][HAL_TX_COMP_RELEASE_SOURCE_MAX];
-		/* Counters for TQM Release Reason count per ring */
+		/* Counters for TQM Release Reason count per ring
+		 * Indices 0-3 indicate the TCL rings
+		 * Index 4 indicates WBM2_SW_PPE_REL_RING_ID */
 		uint32_t tqm_rr_cnt[MAX_TCL_DATA_RINGS][HAL_TX_TQM_RR_MAX];
-		/* Counters for FW Release status count per ring */
+		/* Counters for FW Release status count per ring
+		 * Indices 0-3 indicate the TCL rings
+		 * Index 4 indicates WBM2_SW_PPE_REL_RING_ID */
 		uint32_t fw_rel_status_cnt[MAX_TCL_DATA_RINGS][HTT_TX_FW2WBM_TX_STATUS_MAX];
 #endif
 	} tx;
@@ -4619,6 +4635,7 @@ struct dp_vdev {
 	struct dp_tx_latency_config tx_latency_cfg;
 #endif
 	bool eapol_over_control_port_disable;
+	bool dp_proto_stats;
 };
 
 enum {
@@ -5836,6 +5853,18 @@ void dp_tx_comp_get_prefetched_params_from_hal_desc(
 					void *tx_comp_hal_desc,
 					struct dp_tx_desc_s **r_tx_desc);
 #endif
+/**
+ * dp_tx_update_proto_stats() - Update Tx Protocol Statistics
+ * @vdev: DP vdev handle
+ * @nbuf: Network buffer
+ * @ring_id: Hardware ring ID
+ * @level: Tx update level for stats
+ *
+ * Return: None
+ */
+
+void dp_tx_update_proto_stats(struct dp_vdev *vdev, qdf_nbuf_t nbuf,
+			     uint8_t ring_id, uint8_t level);
 
 /**
  * dp_rx_update_protocol_stats() - Update Rx Protocol Statistics

@@ -1230,7 +1230,7 @@ dp_tx_is_wds_ast_override_en(struct dp_soc *soc,
 			     struct cdp_tx_exception_metadata *tx_exc_metadata)
 {
 	if (soc->features.wds_ext_ast_override_enable &&
-	    tx_exc_metadata && tx_exc_metadata->is_wds_extended)
+	    tx_exc_metadata && tx_exc_metadata->is_wds_extended_mc_bc)
 		return true;
 
 	return false;
@@ -2444,18 +2444,11 @@ int dp_tx_frame_is_drop(struct dp_vdev *vdev, uint8_t *srcmac, uint8_t *dstmac)
 	return 0;
 }
 
-#if defined(WLAN_FEATURE_11BE_MLO) && ((defined(WLAN_MLO_MULTI_CHIP) && \
-	defined(WLAN_MCAST_MLO)) || defined(WLAN_MCAST_MLO_SAP))
-/* MLO peer id for reinject*/
-#define DP_MLO_MCAST_REINJECT_PEER_ID 0x1fff
-/* MLO vdev id inc offset */
-#define DP_MLO_VDEV_ID_OFFSET 0x80
-
 #ifdef QCA_SUPPORT_WDS_EXTENDED
 static inline bool
 dp_tx_wds_ext_check(struct cdp_tx_exception_metadata *tx_exc_metadata)
 {
-	if (tx_exc_metadata && tx_exc_metadata->is_wds_extended)
+	if (tx_exc_metadata && tx_exc_metadata->is_wds_extended_mc_bc)
 		return true;
 
 	return false;
@@ -2467,6 +2460,13 @@ dp_tx_wds_ext_check(struct cdp_tx_exception_metadata *tx_exc_metadata)
 	return false;
 }
 #endif
+
+#if defined(WLAN_FEATURE_11BE_MLO) && ((defined(WLAN_MLO_MULTI_CHIP) && \
+	defined(WLAN_MCAST_MLO)) || defined(WLAN_MCAST_MLO_SAP))
+/* MLO peer id for reinject*/
+#define DP_MLO_MCAST_REINJECT_PEER_ID 0x1fff
+/* MLO vdev id inc offset */
+#define DP_MLO_VDEV_ID_OFFSET 0x80
 
 #if defined(WLAN_MCAST_MLO_SAP)
 static inline void
@@ -4134,12 +4134,18 @@ dp_tx_send_exception(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 		     struct cdp_tx_exception_metadata *tx_exc_metadata)
 {
 	struct dp_soc *soc = cdp_soc_t_to_dp_soc(soc_hdl);
+	struct dp_pdev *pdev;
 	struct dp_tx_msdu_info_s msdu_info;
 	struct dp_vdev *vdev = dp_vdev_get_ref_by_id(soc, vdev_id,
 						     DP_MOD_ID_TX_EXCEPTION);
+	qdf_ether_header_t *eh;
 	uint8_t xmit_type = qdf_nbuf_get_vdev_xmit_type(nbuf);
 
 	if (qdf_unlikely(!vdev))
+		goto fail;
+
+	pdev = vdev->pdev;
+	if (!pdev)
 		goto fail;
 
 	qdf_mem_zero(&msdu_info, sizeof(msdu_info));
@@ -4147,12 +4153,35 @@ dp_tx_send_exception(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	if (!tx_exc_metadata)
 		goto fail;
 
-	msdu_info.tid = tx_exc_metadata->tid;
+	if (qdf_unlikely(dp_tx_wds_ext_check(tx_exc_metadata) &&
+			 pdev->hmmc_tid_override_en)) {
+		eh = (qdf_ether_header_t *)qdf_nbuf_data(nbuf);
+		if (!DP_FRAME_IS_BROADCAST((eh)->ether_dhost))
+			msdu_info.tid = pdev->hmmc_tid;
+	} else {
+		msdu_info.tid = tx_exc_metadata->tid;
+	}
+
 	msdu_info.xmit_type = xmit_type;
 	dp_verbose_debug("skb "QDF_MAC_ADDR_FMT,
 			 QDF_MAC_ADDR_REF(nbuf->data));
 
 	DP_STATS_INC_PKT(vdev, tx_i[xmit_type].rcvd, 1, qdf_nbuf_len(nbuf));
+
+	/*
+	 * Get HW Queue to use for this frame.
+	 * TCL supports upto 4 DMA rings, out of which 3 rings are
+	 * dedicated for data and 1 for command.
+	 * "queue_id" maps to one hardware ring.
+	 *  With each ring, we also associate a unique Tx descriptor pool
+	 *  to minimize lock contention for these resources.
+	 */
+	dp_tx_get_queue(vdev, nbuf, &msdu_info.tx_queue);
+
+	dp_tx_override_flow_pool_id(soc, vdev, &msdu_info);
+
+	dp_tx_update_proto_stats(vdev, nbuf, msdu_info.tx_queue.desc_pool_id,
+				 TX_EXCEPTION);
 
 	if (qdf_unlikely(!dp_check_exc_metadata(tx_exc_metadata))) {
 		dp_tx_err("Invalid parameters in exception path");
@@ -4230,17 +4259,6 @@ dp_tx_send_exception(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 					       tx_exc_metadata->ppdu_cookie);
 	}
 
-	/*
-	 * Get HW Queue to use for this frame.
-	 * TCL supports upto 4 DMA rings, out of which 3 rings are
-	 * dedicated for data and 1 for command.
-	 * "queue_id" maps to one hardware ring.
-	 *  With each ring, we also associate a unique Tx descriptor pool
-	 *  to minimize lock contention for these resources.
-	 */
-	dp_tx_get_queue(vdev, nbuf, &msdu_info.tx_queue);
-
-	dp_tx_override_flow_pool_id(soc, vdev, &msdu_info);
 
 	DP_STATS_INC(vdev,
 		     tx_i[xmit_type].rcvd_per_core[msdu_info.tx_queue.desc_pool_id],
@@ -4488,6 +4506,21 @@ qdf_nbuf_t dp_tx_send(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	vdev = soc->vdev_id_map[vdev_id];
 	if (qdf_unlikely(!vdev))
 		return nbuf;
+	/*
+	 * Get HW Queue to use for this frame.
+	 * TCL supports upto 4 DMA rings, out of which 3 rings are
+	 * dedicated for data and 1 for command.
+	 * "queue_id" maps to one hardware ring.
+	 *  With each ring, we also associate a unique Tx descriptor pool
+	 *  to minimize lock contention for these resources.
+	 */
+	dp_tx_get_queue(vdev, nbuf, &msdu_info.tx_queue);
+
+	dp_tx_override_flow_pool_id(soc, vdev, &msdu_info);
+
+	dp_tx_update_proto_stats(vdev, nbuf, msdu_info.tx_queue.desc_pool_id,
+				 TX_RECV_FROM_STACK);
+
 
 	dp_tx_get_driver_ingress_ts(vdev, &msdu_info, nbuf);
 
@@ -4512,17 +4545,6 @@ qdf_nbuf_t dp_tx_send(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 		nbuf = nbuf_mesh;
 	}
 
-	/*
-	 * Get HW Queue to use for this frame.
-	 * TCL supports upto 4 DMA rings, out of which 3 rings are
-	 * dedicated for data and 1 for command.
-	 * "queue_id" maps to one hardware ring.
-	 *  With each ring, we also associate a unique Tx descriptor pool
-	 *  to minimize lock contention for these resources.
-	 */
-	dp_tx_get_queue(vdev, nbuf, &msdu_info.tx_queue);
-
-	dp_tx_override_flow_pool_id(soc, vdev, &msdu_info);
 
 	DP_STATS_INC(vdev,
 		     tx_i[xmit_type].rcvd_per_core[msdu_info.tx_queue.desc_pool_id],

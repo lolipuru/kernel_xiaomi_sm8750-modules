@@ -4221,10 +4221,7 @@ target_if_psoc_spectral_init(struct wlan_objmgr_psoc *psoc)
 	return psoc_spectral;
 
 fail:
-	if (psoc_spectral)
-		target_if_psoc_spectral_deinit(psoc);
-
-	return psoc_spectral;
+	return NULL;
 }
 
 /**
@@ -4471,7 +4468,7 @@ target_if_is_agile_span_overlap_with_operating_span
 	uint32_t op_end_freq;
 	uint32_t agile_start_freq;
 	uint32_t agile_end_freq;
-	uint32_t cfreq2;
+	int16_t cfreq2;
 
 	if (!spectral) {
 		spectral_err("spectral object is NULL");
@@ -4904,8 +4901,7 @@ _target_if_set_spectral_config(struct target_if_spectral *spectral,
 		sparams->ss_pwr_format = !!param->value;
 		break;
 	case SPECTRAL_PARAM_RPT_MODE:
-		if ((param->value < SPECTRAL_PARAM_RPT_MODE_MIN) ||
-		    (param->value > SPECTRAL_PARAM_RPT_MODE_MAX)) {
+		if (param->value > SPECTRAL_PARAM_RPT_MODE_MAX) {
 			*err = SPECTRAL_SCAN_ERR_PARAM_INVALID_VALUE;
 			return QDF_STATUS_E_FAILURE;
 		}

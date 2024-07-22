@@ -2310,8 +2310,6 @@ hal_rx_mon_phyrx_other_receive_info_tlv(struct hal_soc *hal_soc,
 	void *rx_tlv;
 	struct hal_rx_ppdu_info *ppdu_info  = ppdu_info_hdl;
 
-	hal_rx_proc_phyrx_all_sigb_tlv(hal_soc, rx_tlv_hdr, ppdu_info_hdl);
-
 	tlv_len = HAL_RX_GET_USER_TLV32_LEN(rx_tlv_hdr);
 	rx_tlv = (uint8_t *)rx_tlv_hdr + HAL_RX_TLV64_HDR_SIZE;
 
@@ -2659,7 +2657,8 @@ hal_rx_parse_receive_user_info(struct hal_soc *hal_soc, uint8_t *tlv,
 
 		if (ppdu_info->rx_status.reception_type ==
 		    HAL_RX_TYPE_MU_OFDMA) {
-			ppdu_info->rx_status.he_mu_flags = 1;
+			if (ppdu_info->rx_status.mu_dl_ul != HAL_RX_TYPE_UL)
+				ppdu_info->rx_status.he_mu_flags = 1;
 
 			/* HE-data1 */
 			mon_rx_user_status->he_data1 |=
@@ -3296,6 +3295,7 @@ hal_rx_status_get_tlv_info_generic_be(void *rx_tlv_hdr, void *ppduinfo,
 		case TARGET_TYPE_QCN9000:
 		case TARGET_TYPE_QCN6122:
 		case TARGET_TYPE_QCN6432:
+		case TARGET_TYPE_QCA5424:
 #ifdef QCA_WIFI_QCA6390
 		case TARGET_TYPE_QCA6390:
 #endif
@@ -4050,7 +4050,7 @@ hal_rx_status_get_tlv_info_generic_be(void *rx_tlv_hdr, void *ppduinfo,
 	case WIFIMON_DROP_E:
 		hal_rx_update_ppdu_drop_cnt(rx_tlv, ppdu_info);
 		hal_rx_record_tlv_info(ppdu_info, tlv_tag);
-		ppdu_info->is_drop_tlv = true;
+		ppdu_info->is_drop_ppdu = true;
 		return HAL_TLV_STATUS_MON_DROP;
 	case 0:
 		hal_rx_record_tlv_info(ppdu_info, tlv_tag);

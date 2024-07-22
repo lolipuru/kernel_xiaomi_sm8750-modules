@@ -5021,6 +5021,10 @@ static QDF_STATUS dp_vdev_attach_wifi3(struct cdp_soc_t *cdp_soc,
 	vdev->prev_rx_deliver_tstamp = 0;
 	vdev->skip_sw_tid_classification = DP_TX_HW_DSCP_TID_MAP_VALID;
 	vdev->eapol_over_control_port_disable = 0;
+	vdev->dp_proto_stats = wlan_cfg_get_dp_proto_stats(soc->wlan_cfg_ctx);
+	if (vdev->tx_encap_type == htt_cmn_pkt_type_raw)
+		vdev->dp_proto_stats = 0;
+
 	dp_tx_vdev_traffic_end_indication_attach(vdev);
 
 	dp_vdev_pdev_list_add(soc, pdev, vdev);
@@ -14005,7 +14009,7 @@ static void dp_soc_txrx_ops_attach(struct dp_soc *soc)
 
 #if defined(QCA_WIFI_QCA8074) || defined(QCA_WIFI_QCA6018) || \
 	defined(QCA_WIFI_QCA5018) || defined(QCA_WIFI_QCA9574) || \
-	defined(QCA_WIFI_QCA5332)
+	defined(QCA_WIFI_QCA5332) || defined(QCA_WIFI_QCA5424)
 
 /**
  * dp_soc_attach_wifi3() - Attach txrx SOC

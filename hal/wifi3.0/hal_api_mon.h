@@ -1291,7 +1291,7 @@ struct hal_rx_ppdu_info {
 	uint8_t fcs_err_cnt;
 	/* MPDU FCS passed */
 	bool is_fcs_passed;
-	bool is_drop_tlv;
+	bool is_drop_ppdu;
 	/* first msdu payload for all mpdus in rx monitor status buffer */
 	struct hal_rx_msdu_payload_info ppdu_msdu_info[HAL_RX_MAX_MPDU_H_PER_STATUS_BUFFER];
 	/* evm info */
@@ -1442,8 +1442,7 @@ static inline void
 hal_rx_proc_phyrx_all_sigb_tlv(struct hal_soc *hal_soc, void *rx_tlv_hdr,
 			       struct hal_rx_ppdu_info *ppdu_info)
 {
-	hal_soc->ops->hal_rx_proc_phyrx_all_sigb_tlv(rx_tlv_hdr,
-						     (void *)ppdu_info);
+	//TODO not yet supported. To be called to set rawdata buffer for MU_SNIF
 }
 
 /**
