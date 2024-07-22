@@ -311,8 +311,8 @@ static struct pwr_data vreg_info_peach = {
 	.platform_num_vregs = ARRAY_SIZE(platform_vregs_info_peach),
 };
 
-static struct pwr_data vreg_info_wcn788x = {
-	.compatible = "qcom,wcn788x",
+static struct pwr_data vreg_info_wcn786x = {
+	.compatible = "qcom,wcn786x",
 	.platform_vregs = platform_vregs_info_peach,
 	.platform_num_vregs = ARRAY_SIZE(platform_vregs_info_peach),
 };
@@ -328,7 +328,7 @@ static const struct of_device_id bt_power_match_table[] = {
 	{	.compatible = "qcom,wcn6750-bt", .data = &vreg_info_wcn6750},
 	{	.compatible = "qcom,bt-qca-converged", .data = &vreg_info_converged},
 	{	.compatible = "qcom,peach-bt", .data = &vreg_info_peach},
-	{	.compatible = "qcom,wcn788x", .data = &vreg_info_wcn788x},
+	{	.compatible = "qcom,wcn786x", .data = &vreg_info_wcn786x},
 	{},
 };
 
@@ -1672,7 +1672,7 @@ static int bt_power_probe(struct platform_device *pdev)
 	pwr_data->is_ganges_dt = of_property_read_bool(pdev->dev.of_node,
 							"qcom,peach-bt") ||
 							of_property_read_bool(pdev->dev.of_node,
-							"qcom,wcn788x");
+							"qcom,wcn786x");
 	pr_info("%s: is_ganges_dt = %d\n", __func__, pwr_data->is_ganges_dt);
 
 	pwr_data->workq = alloc_workqueue("workq", WQ_HIGHPRI, WQ_DFL_ACTIVE);
