@@ -109,7 +109,7 @@ struct cam_ctx_request {
  */
 struct cam_ctx_ioctl_ops {
 	int (*acquire_dev)(struct cam_context *ctx,
-			struct cam_acquire_dev_cmd *cmd);
+			struct cam_acquire_dev_cmd_unified *cmd);
 	int (*release_dev)(struct cam_context *ctx,
 			struct cam_release_dev_cmd *cmd);
 	int (*config_dev)(struct cam_context *ctx,
@@ -476,7 +476,7 @@ int cam_context_handle_message(struct cam_context *ctx,
  *
  */
 int cam_context_handle_acquire_dev(struct cam_context *ctx,
-		struct cam_acquire_dev_cmd *cmd);
+		struct cam_acquire_dev_cmd_unified *cmd);
 
 /**
  * cam_context_handle_acquire_hw()

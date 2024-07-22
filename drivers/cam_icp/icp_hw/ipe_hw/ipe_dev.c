@@ -22,6 +22,8 @@
 #include "cam_mem_mgr_api.h"
 #include "cam_req_mgr_dev.h"
 
+static struct cam_icp_hw_intf_data cam_ipe_hw_list[CAM_IPE_HW_NUM_MAX];
+
 static struct cam_ipe_device_hw_info cam_ipe_hw_info[] = {
 	{
 		.hw_idx = 0,
@@ -69,13 +71,14 @@ static int cam_ipe_component_bind(struct device *dev,
 	const struct of_device_id         *match_dev = NULL;
 	struct cam_ipe_device_core_info   *core_info = NULL;
 	struct cam_ipe_device_hw_info     *hw_info = NULL;
-	int                                rc = 0;
+	int                                rc = 0, i;
 	struct cam_cpas_query_cap          query;
 	uint32_t                          *cam_caps, num_cap_mask;
 	uint32_t                           hw_idx;
 	struct platform_device            *pdev = to_platform_device(dev);
 	struct timespec64                  ts_start, ts_end;
 	long                               microsec = 0;
+	struct cam_ipe_soc_private        *ipe_soc_priv;
 
 	CAM_GET_TIMESTAMP(ts_start);
 	of_property_read_u32(pdev->dev.of_node,
@@ -101,8 +104,8 @@ static int cam_ipe_component_bind(struct device *dev,
 	ipe_dev_intf->hw_idx = hw_idx;
 	ipe_dev = CAM_MEM_ZALLOC(sizeof(struct cam_hw_info), GFP_KERNEL);
 	if (!ipe_dev) {
-		CAM_MEM_FREE(ipe_dev_intf);
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto free_dev_intf;
 	}
 
 	ipe_dev->soc_info.pdev = pdev;
@@ -118,38 +121,30 @@ static int cam_ipe_component_bind(struct device *dev,
 		ipe_dev_intf->hw_type,
 		ipe_dev_intf->hw_idx);
 
-	platform_set_drvdata(pdev, ipe_dev_intf);
+	platform_set_drvdata(pdev, &cam_ipe_hw_list[hw_idx]);
 
 	ipe_dev->core_info = CAM_MEM_ZALLOC(sizeof(struct cam_ipe_device_core_info),
 		GFP_KERNEL);
 	if (!ipe_dev->core_info) {
-		CAM_MEM_FREE(ipe_dev);
-		CAM_MEM_FREE(ipe_dev_intf);
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto free_dev;
 	}
-	core_info = (struct cam_ipe_device_core_info *)ipe_dev->core_info;
 
-	match_dev = of_match_device(pdev->dev.driver->of_match_table,
-		&pdev->dev);
+	core_info = (struct cam_ipe_device_core_info *)ipe_dev->core_info;
+	match_dev = of_match_device(pdev->dev.driver->of_match_table, &pdev->dev);
 	if (!match_dev) {
 		CAM_DBG(CAM_ICP, "No ipe hardware info");
-		CAM_MEM_FREE(ipe_dev->core_info);
-		CAM_MEM_FREE(ipe_dev);
-		CAM_MEM_FREE(ipe_dev_intf);
 		rc = -EINVAL;
-		return rc;
+		goto free_core_info;
 	}
+
 	hw_info = (struct cam_ipe_device_hw_info *)match_dev->data;
 	core_info->ipe_hw_info = hw_info;
 
-	rc = cam_ipe_init_soc_resources(&ipe_dev->soc_info, cam_ipe_irq,
-		ipe_dev);
+	rc = cam_ipe_init_soc_resources(&ipe_dev->soc_info, cam_ipe_irq, ipe_dev);
 	if (rc < 0) {
 		CAM_ERR(CAM_ICP, "failed to init_soc");
-		CAM_MEM_FREE(ipe_dev->core_info);
-		CAM_MEM_FREE(ipe_dev);
-		CAM_MEM_FREE(ipe_dev_intf);
-		return rc;
+		goto free_core_info;
 	}
 
 	CAM_DBG(CAM_ICP, "cam_ipe_init_soc_resources : %pK",
@@ -158,23 +153,33 @@ static int cam_ipe_component_bind(struct device *dev,
 	ipe_dev->soc_info.hw_id = CAM_HW_ID_IPE + ipe_dev->soc_info.index;
 	rc = cam_vmvm_populate_hw_instance_info(&ipe_dev->soc_info, NULL, NULL);
 	if (rc) {
-		CAM_ERR(CAM_ICP, " hw instance populate failed: %d", rc);
-		return rc;
+		CAM_ERR(CAM_ICP, "hw instance populate failed: %d", rc);
+		goto free_soc_resources;
 	}
 
 	rc = cam_ipe_register_cpas(&ipe_dev->soc_info,
 		core_info, ipe_dev_intf->hw_idx);
-	if (rc < 0) {
-		CAM_MEM_FREE(ipe_dev->core_info);
-		CAM_MEM_FREE(ipe_dev);
-		CAM_MEM_FREE(ipe_dev_intf);
-		return rc;
-	}
+	if (rc < 0)
+		goto free_soc_resources;
+
 	ipe_dev->hw_state = CAM_HW_STATE_POWER_DOWN;
+	ipe_soc_priv = ipe_dev->soc_info.soc_private;
+	cam_ipe_hw_list[hw_idx].pid =
+		CAM_MEM_ZALLOC_ARRAY(ipe_soc_priv->num_pid, sizeof(uint32_t), GFP_KERNEL);
+	if (!cam_ipe_hw_list[hw_idx].pid) {
+		CAM_ERR(CAM_ICP, "Failed at allocating memory for ipe hw list");
+		rc = -ENOMEM;
+		goto free_soc_resources;
+	}
+
+	cam_ipe_hw_list[hw_idx].hw_intf = ipe_dev_intf;
+	cam_ipe_hw_list[hw_idx].num_pid = ipe_soc_priv->num_pid;
+	for (i = 0; i < ipe_soc_priv->num_pid; i++)
+		cam_ipe_hw_list[hw_idx].pid[i] = ipe_soc_priv->pid[i];
+
 	mutex_init(&ipe_dev->hw_mutex);
 	spin_lock_init(&ipe_dev->hw_lock);
 	init_completion(&ipe_dev->hw_complete);
-
 	CAM_DBG(CAM_ICP, "IPE:%d component bound successfully",
 		ipe_dev_intf->hw_idx);
 	CAM_GET_TIMESTAMP(ts_end);
@@ -182,27 +187,45 @@ static int cam_ipe_component_bind(struct device *dev,
 	cam_record_bind_latency(pdev->name, microsec);
 
 	return rc;
+
+free_soc_resources:
+	cam_ipe_deinit_soc_resources(&ipe_dev->soc_info);
+free_core_info:
+	CAM_MEM_FREE(ipe_dev->core_info);
+free_dev:
+	CAM_MEM_FREE(ipe_dev);
+free_dev_intf:
+	CAM_MEM_FREE(ipe_dev_intf);
+	return rc;
 }
 
 static void cam_ipe_component_unbind(struct device *dev,
 	struct device *master_dev, void *data)
 {
-	struct cam_hw_info            *ipe_dev = NULL;
-	struct cam_hw_intf            *ipe_dev_intf = NULL;
-	struct cam_ipe_device_core_info   *core_info = NULL;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct cam_hw_info              *ipe_dev = NULL;
+	struct cam_hw_intf              *ipe_dev_intf = NULL;
+	struct cam_ipe_device_core_info *core_info = NULL;
+	struct platform_device          *pdev = to_platform_device(dev);
+	struct cam_icp_hw_intf_data     *ipe_intf_data;
 
 	CAM_DBG(CAM_ICP, "Unbinding component: %s", pdev->name);
-	ipe_dev_intf = platform_get_drvdata(pdev);
-
-	if (!ipe_dev_intf) {
+	ipe_intf_data = platform_get_drvdata(pdev);
+	if (!ipe_intf_data) {
 		CAM_ERR(CAM_ICP, "Error No data in pdev");
+		return;
+	}
+
+	ipe_dev_intf = ipe_intf_data->hw_intf;
+	if (!ipe_dev_intf) {
+		CAM_ERR(CAM_ICP, "Error No IPE dev interface");
 		return;
 	}
 
 	ipe_dev = ipe_dev_intf->hw_priv;
 	core_info = (struct cam_ipe_device_core_info *)ipe_dev->core_info;
 	cam_cpas_unregister_client(core_info->cpas_handle);
+	if (ipe_intf_data->pid)
+		CAM_MEM_FREE(ipe_intf_data->pid);
 	cam_ipe_deinit_soc_resources(&ipe_dev->soc_info);
 	CAM_MEM_FREE(ipe_dev->core_info);
 	CAM_MEM_FREE(ipe_dev);

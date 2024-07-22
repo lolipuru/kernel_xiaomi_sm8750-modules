@@ -15,6 +15,10 @@ DLKM_DIR := $(TOP)/device/qcom/common/dlkm
 
 LOCAL_MODULE_DDK_BUILD := true
 
+ifneq ($(TARGET_BOARD_PLATFORM),)
+LOCAL_MODULE_DDK_EXTRA_ARGS := "--//vendor/qcom/opensource/camera-kernel:project_name=$(TARGET_BOARD_PLATFORM)"
+endif
+
 # List of board platforms for which MMRM driver API should be enabled
 MMRM_BOARDS := taro parrot kalama pineapple
 

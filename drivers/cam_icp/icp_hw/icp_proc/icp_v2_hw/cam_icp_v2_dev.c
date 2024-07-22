@@ -19,6 +19,7 @@
 #include "cam_req_mgr_dev.h"
 
 static int max_icp_v2_hw_idx = -1;
+static struct cam_icp_hw_intf_data cam_icp_hw_list[CAM_ICP_HW_NUM_MAX];
 
 struct cam_icp_v2_hw_info cam_icp_v2_hw_info[] = {
 	{
@@ -70,13 +71,21 @@ static int cam_icp_v2_soc_info_init(struct cam_hw_soc_info *soc_info,
 
 static inline void cam_icp_v2_soc_info_deinit(struct cam_hw_soc_info *soc_info)
 {
+	struct cam_icp_soc_info *icp_soc_info = soc_info->soc_private;
+
+	if (icp_soc_info->pid) {
+		CAM_MEM_FREE(icp_soc_info->pid);
+		icp_soc_info->pid = NULL;
+	}
+
 	CAM_MEM_FREE(soc_info->soc_private);
+	soc_info->soc_private = NULL;
 }
 
 static int cam_icp_v2_component_bind(struct device *dev,
 	struct device *mdev, void *data)
 {
-	int rc = 0;
+	int rc = 0, i;
 	struct cam_hw_intf *icp_v2_intf = NULL;
 	struct cam_hw_info *icp_v2_info = NULL;
 	struct cam_icp_v2_core_info *core_info = NULL;
@@ -84,6 +93,7 @@ static int cam_icp_v2_component_bind(struct device *dev,
 	struct platform_device *pdev = to_platform_device(dev);
 	struct timespec64 ts_start, ts_end;
 	long microsec = 0;
+	struct cam_icp_soc_info *icp_soc_info;
 
 	CAM_GET_TIMESTAMP(ts_start);
 	match_dev = of_match_device(
@@ -155,7 +165,21 @@ static int cam_icp_v2_component_bind(struct device *dev,
 	if ((int)(icp_v2_intf->hw_idx) > max_icp_v2_hw_idx)
 		max_icp_v2_hw_idx = icp_v2_intf->hw_idx;
 
-	platform_set_drvdata(pdev, icp_v2_intf);
+	icp_soc_info = icp_v2_info->soc_info.soc_private;
+	cam_icp_hw_list[icp_v2_intf->hw_idx].pid =
+		CAM_MEM_ZALLOC_ARRAY(icp_soc_info->num_pid, sizeof(uint32_t), GFP_KERNEL);
+	if (!cam_icp_hw_list[icp_v2_intf->hw_idx].pid) {
+		CAM_ERR(CAM_ICP, "Failed at allocating memory for icp hw list");
+		rc = -ENOMEM;
+		goto res_deinit;
+	}
+
+	cam_icp_hw_list[icp_v2_intf->hw_idx].hw_intf = icp_v2_intf;
+	cam_icp_hw_list[icp_v2_intf->hw_idx].num_pid = icp_soc_info->num_pid;
+	for (i = 0; i < icp_soc_info->num_pid; i++)
+		cam_icp_hw_list[icp_v2_intf->hw_idx].pid[i] = icp_soc_info->pid[i];
+
+	platform_set_drvdata(pdev, &cam_icp_hw_list[icp_v2_intf->hw_idx]);
 	CAM_GET_TIMESTAMP(ts_end);
 	CAM_GET_TIMESTAMP_DIFF_IN_MICRO(ts_start, ts_end, microsec);
 	cam_record_bind_latency(pdev->name, microsec);
@@ -182,11 +206,17 @@ static void cam_icp_v2_component_unbind(struct device *dev,
 	struct platform_device *pdev = to_platform_device(dev);
 	struct cam_hw_intf *icp_v2_intf = NULL;
 	struct cam_hw_info *icp_v2_info = NULL;
+	struct cam_icp_hw_intf_data *icp_intf_data;
 
-	icp_v2_intf = platform_get_drvdata(pdev);
-
-	if (!icp_v2_intf) {
+	icp_intf_data = platform_get_drvdata(pdev);
+	if (!icp_intf_data) {
 		CAM_ERR(CAM_ICP, "Error No data in pdev");
+		return;
+	}
+
+	icp_v2_intf = icp_intf_data->hw_intf;
+	if (!icp_v2_intf) {
+		CAM_ERR(CAM_ICP, "Error No ICP dev interface");
 		return;
 	}
 
@@ -194,6 +224,8 @@ static void cam_icp_v2_component_unbind(struct device *dev,
 
 	cam_icp_v2_cpas_unregister(icp_v2_intf);
 	cam_icp_soc_resources_deinit(&icp_v2_info->soc_info);
+	if (icp_intf_data->pid)
+		CAM_MEM_FREE(icp_intf_data->pid);
 	cam_icp_v2_soc_info_deinit(&icp_v2_info->soc_info);
 
 	max_icp_v2_hw_idx = -1;

@@ -812,7 +812,7 @@ static int32_t cam_eeprom_parse_write_memory_packet(
 						i2c_info->slave_addr,
 						i2c_info->i2c_freq_mode);
 				} else if (master == I2C_MASTER) {
-					e_ctrl->io_master_info.client->addr =
+					e_ctrl->io_master_info.qup_client->i2c_client->addr =
 						i2c_info->slave_addr;
 					CAM_DBG(CAM_EEPROM,
 						"Slave addr: 0x%x",

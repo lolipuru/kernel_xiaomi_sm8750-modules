@@ -101,7 +101,16 @@ static void cam_icp_dev_iommu_fault_handler(struct cam_smmu_pf_info *pf_smmu_inf
 
 	pf_args.pf_smmu_info = pf_smmu_info;
 
+	/* Checked whether client with SMMU issued pid should be handled by this handler */
+	if (node->ctx_size != 0) {
+		pf_args.check_pid = true;
+		cam_context_dump_pf_info(&(node->ctx_list[0]), &pf_args);
+		if (!pf_args.pid_found)
+			return;
+	}
+
 	for (i = 0; i < node->ctx_size; i++) {
+		pf_args.check_pid = false;
 		cam_context_dump_pf_info(&(node->ctx_list[i]), &pf_args);
 		if (pf_args.pf_context_info.ctx_found)
 			/* found ctx and packet of the faulted address */

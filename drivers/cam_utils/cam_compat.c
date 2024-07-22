@@ -676,13 +676,6 @@ int cam_req_mgr_ordered_list_cmp(void *priv,
 	return cam_subdev_list_cmp(list_entry(head_1, struct cam_subdev, list),
 		list_entry(head_2, struct cam_subdev, list));
 }
-
-void cam_i3c_driver_remove(struct i3c_device *client)
-{
-	CAM_DBG(CAM_SENSOR, "I3C remove invoked for %s",
-		(client ? dev_name(&client->dev) : "none"));
-}
-
 #else
 void cam_smmu_util_iommu_custom(struct device *dev,
 	dma_addr_t discard_start, size_t discard_length)
@@ -700,13 +693,6 @@ int cam_req_mgr_ordered_list_cmp(void *priv,
 {
 	return cam_subdev_list_cmp(list_entry(head_1, struct cam_subdev, list),
 		list_entry(head_2, struct cam_subdev, list));
-}
-
-int cam_i3c_driver_remove(struct i3c_device *client)
-{
-	CAM_DBG(CAM_SENSOR, "I3C remove invoked for %s",
-		(client ? dev_name(&client->dev) : "none"));
-	return 0;
 }
 #endif
 

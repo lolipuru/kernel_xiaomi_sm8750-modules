@@ -403,7 +403,12 @@ static int cam_ois_slaveInfo_pkt_parser(struct cam_ois_ctrl_t *o_ctrl,
 		CAM_DBG(CAM_OIS, "Slave addr: 0x%x Freq Mode: %d",
 			ois_info->slave_addr, ois_info->i2c_freq_mode);
 	} else if (o_ctrl->io_master_info.master_type == I2C_MASTER) {
-		o_ctrl->io_master_info.client->addr = ois_info->slave_addr;
+		if (!o_ctrl->io_master_info.qup_client) {
+			CAM_ERR(CAM_OIS, "io_master_info.qup_client is NULL");
+			return -EINVAL;
+		}
+		o_ctrl->io_master_info.qup_client->i2c_client->addr =
+			ois_info->slave_addr;
 		CAM_DBG(CAM_OIS, "Slave addr: 0x%x", ois_info->slave_addr);
 	} else {
 		CAM_ERR(CAM_OIS, "Invalid Master type : %d",

@@ -781,6 +781,7 @@ int32_t cam_sensor_update_i2c_info(struct cam_cmd_i2c_info *i2c_info,
 {
 	int32_t rc = 0;
 	struct cam_sensor_cci_client   *cci_client = NULL;
+	struct cam_sensor_qup_client   *qup_client = NULL;
 
 	if (s_ctrl->io_master_info.master_type == CCI_MASTER) {
 		cci_client = s_ctrl->io_master_info.cci_client;
@@ -798,7 +799,13 @@ int32_t cam_sensor_update_i2c_info(struct cam_cmd_i2c_info *i2c_info,
 			cci_client->cci_device, cci_client->cci_i2c_master, i2c_info->slave_addr,
 			i2c_info->i2c_freq_mode);
 	} else if (s_ctrl->io_master_info.master_type == I2C_MASTER) {
-		s_ctrl->io_master_info.client->addr = i2c_info->slave_addr;
+		qup_client = s_ctrl->io_master_info.qup_client;
+		if (!qup_client) {
+			CAM_ERR(CAM_SENSOR, "failed: qup_client %pK",
+				qup_client);
+			return -EINVAL;
+		}
+		qup_client->i2c_client->addr = i2c_info->slave_addr;
 		CAM_DBG(CAM_SENSOR, "Slave addr: 0x%x", i2c_info->slave_addr);
 	}
 
@@ -815,6 +822,7 @@ int32_t cam_sensor_update_slave_info(void *probe_info,
 	struct cam_cmd_probe_v2 *sensor_probe_info_v2;
 
 	memset(s_ctrl->sensor_name, 0, CAM_SENSOR_NAME_MAX_SIZE);
+	memset(s_ctrl->io_master_info.sensor_name, 0, CAM_SENSOR_NAME_MAX_SIZE);
 
 	if (probe_ver == CAM_SENSOR_PACKET_OPCODE_SENSOR_PROBE) {
 		sensor_probe_info = (struct cam_cmd_probe *)probe_info;
@@ -855,6 +863,8 @@ int32_t cam_sensor_update_slave_info(void *probe_info,
 
 		s_ctrl->probe_sensor_slave_addr =
 			sensor_probe_info_v2->reserved[0];
+		memcpy(s_ctrl->io_master_info.sensor_name, sensor_probe_info_v2->sensor_name,
+			CAM_SENSOR_NAME_MAX_SIZE-1);
 	}
 
 	CAM_DBG(CAM_SENSOR,
@@ -1185,9 +1195,10 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
 	if (s_ctrl->io_master_info.master_type == I2C_MASTER) {
 		if (s_ctrl->probe_sensor_slave_addr != 0) {
 			CAM_DBG(CAM_SENSOR, "%s read id: 0x%x -> 0x%x", s_ctrl->sensor_name,
-				s_ctrl->io_master_info.client->addr,
+				s_ctrl->io_master_info.qup_client->i2c_client->addr,
 				s_ctrl->probe_sensor_slave_addr);
-			s_ctrl->io_master_info.client->addr = s_ctrl->probe_sensor_slave_addr;
+			s_ctrl->io_master_info.qup_client->i2c_client->addr =
+				s_ctrl->probe_sensor_slave_addr;
 		}
 	} else if (s_ctrl->io_master_info.master_type == CCI_MASTER) {
 		if (s_ctrl->probe_sensor_slave_addr != 0) {
@@ -1893,6 +1904,15 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
 
 	if (s_ctrl->io_master_info.master_type == I3C_MASTER)
 		i3c_probe_completion = cam_sensor_get_i3c_completion(s_ctrl->soc_info.index);
+
+	/* Check before power_up if i3c sensor has the master handle, Which means
+	 * either Camera Daemon had restarted and probe cmd is issued again (or)
+	 * acquire is called from UMD
+	 */
+	if ((s_ctrl->io_master_info.master_type == I3C_MASTER) &&
+		(s_ctrl->io_master_info.qup_client != NULL)) {
+		s_ctrl->io_master_info.qup_client->i3c_wait_for_hotjoin = true;
+	}
 
 	rc = cam_sensor_core_power_up(power_info, soc_info, i3c_probe_completion);
 	if (rc < 0) {

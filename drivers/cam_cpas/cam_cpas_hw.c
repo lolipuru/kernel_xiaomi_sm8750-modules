@@ -3079,7 +3079,7 @@ static int cam_cpas_hw_stop(void *hw_priv, void *stop_args,
 		/* try again incase camnoc is still not idle */
 		if (cpas_core->internal_ops.qchannel_handshake &&
 			retry_camnoc_idle) {
-			rc = cpas_core->internal_ops.qchannel_handshake(cpas_hw, false, false);
+			rc = cpas_core->internal_ops.qchannel_handshake(cpas_hw, false, true);
 			if (rc) {
 				CAM_ERR(CAM_CPAS, "failed in qchannel_handshake rc=%d", rc);
 				/* Do not return error, passthrough */
@@ -3499,7 +3499,7 @@ static void cam_cpas_update_monitor_array(struct cam_hw_info *cpas_hw,
 	entry->cpas_hw = cpas_hw;
 
 	CAM_GET_TIMESTAMP(entry->timestamp);
-	strlcpy(entry->identifier_string, identifier_string,
+	strscpy(entry->identifier_string, identifier_string,
 		sizeof(entry->identifier_string));
 
 	entry->identifier_value = identifier_value;

@@ -59,7 +59,7 @@ static inline void  cam_qup_i2c_txdata_fill(
 	struct camera_io_master *dev_client, unsigned char *txdata,
 	uint16_t length, struct i2c_msg *msgs, int curr_mindx)
 {
-	msgs[curr_mindx].addr =  dev_client->client->addr >> 1;
+	msgs[curr_mindx].addr =  dev_client->qup_client->i2c_client->addr >> 1;
 	msgs[curr_mindx].flags = 0;
 	msgs[curr_mindx].len = length;
 	msgs[curr_mindx].buf = txdata;
@@ -70,7 +70,7 @@ static int32_t cam_qup_i2c_txdata(
 	uint16_t length)
 {
 	int32_t rc = 0;
-	uint16_t saddr = dev_client->client->addr >> 1;
+	uint16_t saddr = dev_client->qup_client->i2c_client->addr >> 1;
 	int i2c_msg_size = 1;
 	struct i2c_msg msg[] = {
 		{
@@ -80,7 +80,8 @@ static int32_t cam_qup_i2c_txdata(
 			.buf = txdata,
 		 },
 	};
-	rc = i2c_transfer(dev_client->client->adapter, msg, i2c_msg_size);
+
+	rc = i2c_transfer(dev_client->qup_client->i2c_client->adapter, msg, i2c_msg_size);
 	if (rc == i2c_msg_size)
 		rc = 0;
 	else {
@@ -282,7 +283,7 @@ static inline int32_t cam_qup_i2c_write_optimized(struct camera_io_master *clien
 	int curr_mindx = 0;
 	int i = 0;
 
-	if (!client || !write_setting)
+	if (!client || !write_setting || !client->qup_client)
 		return -EINVAL;
 
 	reg_setting = write_setting->reg_setting;
@@ -401,7 +402,7 @@ int32_t cam_qup_i2c_write_table(struct camera_io_master *client,
 	unsigned char *buf = NULL;
 	int i2c_msg_size = 0;
 
-	if (!client || !write_setting)
+	if (!client || !write_setting || !client->qup_client)
 		return rc;
 
 	msgs = CAM_MEM_ZALLOC_ARRAY(write_setting->size, sizeof(struct i2c_msg), GFP_KERNEL);
@@ -431,7 +432,7 @@ int32_t cam_qup_i2c_write_table(struct camera_io_master *client,
 		goto deallocate_buffer;
 	}
 
-	rc = i2c_transfer(client->client->adapter, msgs, i2c_msg_size);
+	rc = i2c_transfer(client->qup_client->i2c_client->adapter, msgs, i2c_msg_size);
 	if (write_setting->delay > 20)
 		msleep(write_setting->delay);
 	else if (write_setting->delay)
@@ -463,6 +464,11 @@ static int32_t cam_qup_i2c_write_burst(struct camera_io_master *client,
 	struct cam_sensor_i2c_reg_array *reg_setting;
 	enum camera_sensor_i2c_type addr_type;
 	enum camera_sensor_i2c_type data_type;
+
+	if (!client->qup_client) {
+		CAM_ERR(CAM_SENSOR, "qup_client is NULL");
+		return -EINVAL;
+	}
 
 	buf = kzalloc((write_setting->addr_type +
 			(write_setting->size * write_setting->data_type)),

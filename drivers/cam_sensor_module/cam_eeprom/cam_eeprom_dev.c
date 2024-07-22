@@ -101,7 +101,13 @@ int32_t cam_eeprom_update_i2c_info(struct cam_eeprom_ctrl_t *e_ctrl,
 		cci_client->id_map = 0;
 		cci_client->i2c_freq_mode = i2c_info->i2c_freq_mode;
 	} else if (e_ctrl->io_master_info.master_type == I2C_MASTER) {
-		e_ctrl->io_master_info.client->addr = i2c_info->slave_addr;
+		if (!e_ctrl->io_master_info.qup_client) {
+			CAM_ERR(CAM_EEPROM, "failed: qup_client %pK",
+				e_ctrl->io_master_info.qup_client);
+			return -EINVAL;
+		}
+		e_ctrl->io_master_info.qup_client->i2c_client->addr =
+			i2c_info->slave_addr;
 		CAM_DBG(CAM_EEPROM, "Slave addr: 0x%x", i2c_info->slave_addr);
 	} else if (e_ctrl->io_master_info.master_type == SPI_MASTER) {
 		CAM_ERR(CAM_EEPROM, "Slave addr: 0x%x Freq Mode: %d",
@@ -174,7 +180,7 @@ static int cam_eeprom_init_subdev(struct cam_eeprom_ctrl_t *e_ctrl)
 
 	e_ctrl->v4l2_dev_str.internal_ops = &cam_eeprom_internal_ops;
 	e_ctrl->v4l2_dev_str.ops = &cam_eeprom_subdev_ops;
-	strlcpy(e_ctrl->device_name, CAM_EEPROM_NAME,
+	strscpy(e_ctrl->device_name, CAM_EEPROM_NAME,
 		sizeof(e_ctrl->device_name));
 	e_ctrl->v4l2_dev_str.name = e_ctrl->device_name;
 	e_ctrl->v4l2_dev_str.sd_flags =
@@ -218,9 +224,16 @@ static int cam_eeprom_i2c_component_bind(struct device *dev,
 		goto probe_failure;
 	}
 
+	e_ctrl->io_master_info.qup_client = CAM_MEM_ZALLOC(sizeof(
+		struct cam_sensor_qup_client), GFP_KERNEL);
+	if (!(e_ctrl->io_master_info.qup_client)) {
+		rc = -ENOMEM;
+		goto ectrl_free;
+	}
+
 	soc_private = CAM_MEM_ZALLOC(sizeof(*soc_private), GFP_KERNEL);
 	if (!soc_private)
-		goto ectrl_free;
+		goto ectrl_qup_free;
 
 	e_ctrl->soc_info.soc_private = soc_private;
 
@@ -233,7 +246,7 @@ static int cam_eeprom_i2c_component_bind(struct device *dev,
 	soc_info->dev = &client->dev;
 	soc_info->dev_name = client->name;
 	e_ctrl->io_master_info.master_type = I2C_MASTER;
-	e_ctrl->io_master_info.client = client;
+	e_ctrl->io_master_info.qup_client->i2c_client = client;
 	e_ctrl->eeprom_device_type = MSM_CAMERA_I2C_DEVICE;
 	e_ctrl->cal_data.mapdata = NULL;
 	e_ctrl->cal_data.map = NULL;
@@ -260,7 +273,7 @@ static int cam_eeprom_i2c_component_bind(struct device *dev,
 	cam_sensor_module_add_i2c_device((void *) e_ctrl, CAM_SENSOR_EEPROM);
 
 	if (soc_private->i2c_info.slave_addr != 0)
-		e_ctrl->io_master_info.client->addr =
+		e_ctrl->io_master_info.qup_client->i2c_client->addr =
 			soc_private->i2c_info.slave_addr;
 
 	e_ctrl->bridge_intf.device_hdl = -1;
@@ -276,6 +289,8 @@ static int cam_eeprom_i2c_component_bind(struct device *dev,
 	return rc;
 free_soc:
 	CAM_MEM_FREE(soc_private);
+ectrl_qup_free:
+	CAM_MEM_FREE(e_ctrl->io_master_info.qup_client);
 ectrl_free:
 	CAM_MEM_FREE(e_ctrl);
 probe_failure:
@@ -287,7 +302,6 @@ static void cam_eeprom_i2c_component_unbind(struct device *dev,
 {
 	int                             i;
 	struct i2c_client              *client = NULL;
-	struct v4l2_subdev             *sd = NULL;
 	struct cam_eeprom_ctrl_t       *e_ctrl;
 	struct cam_eeprom_soc_private  *soc_private;
 	struct cam_hw_soc_info         *soc_info;
@@ -299,13 +313,7 @@ static void cam_eeprom_i2c_component_unbind(struct device *dev,
 		return;
 	}
 
-	sd = i2c_get_clientdata(client);
-	if (!sd) {
-		CAM_ERR(CAM_EEPROM, "Subdevice is NULL");
-		return;
-	}
-
-	e_ctrl = (struct cam_eeprom_ctrl_t *)v4l2_get_subdevdata(sd);
+	e_ctrl = (struct cam_eeprom_ctrl_t *)i2c_get_clientdata(client);
 	if (!e_ctrl) {
 		CAM_ERR(CAM_EEPROM, "eeprom device is NULL");
 		return;
@@ -336,6 +344,8 @@ static void cam_eeprom_i2c_component_unbind(struct device *dev,
 	cam_unregister_subdev(&(e_ctrl->v4l2_dev_str));
 	CAM_MEM_FREE(soc_private);
 	v4l2_set_subdevdata(&e_ctrl->v4l2_dev_str.sd, NULL);
+	CAM_MEM_FREE(e_ctrl->io_master_info.qup_client);
+	e_ctrl->io_master_info.qup_client = NULL;
 	CAM_MEM_FREE(e_ctrl);
 }
 
@@ -750,13 +760,97 @@ static int cam_eeprom_i3c_driver_probe(struct i3c_device *client)
 		return -EINVAL;
 	}
 
-	e_ctrl->io_master_info.i3c_client = client;
+	e_ctrl->io_master_info.qup_client->i3c_client = client;
+	e_ctrl->io_master_info.qup_client->i3c_wait_for_hotjoin = false;
 
 	complete_all(&g_i3c_eeprom_data[index].probe_complete);
 
 	CAM_DBG(CAM_EEPROM, "I3C Probe Finished for %s", dev_name(dev));
 	return rc;
 }
+
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static void cam_i3c_driver_remove(struct i3c_device *client)
+{
+	int32_t                        rc = 0;
+	uint32_t                       index;
+	struct cam_eeprom_ctrl_t       *e_ctrl = NULL;
+	struct device                  *dev;
+
+	if (!client) {
+		CAM_ERR(CAM_SENSOR, "I3C Driver Remove: Invalid input args");
+		return;
+	}
+
+	dev = &client->dev;
+
+	CAM_DBG(CAM_SENSOR, "driver remove for I3C Slave %s", dev_name(dev));
+
+	rc = of_property_read_u32(dev->of_node, "cell-index", &index);
+	if (rc) {
+		CAM_ERR(CAM_UTIL, "device %s failed to read cell-index", dev_name(dev));
+		return;
+	}
+
+	if (index >= MAX_CAMERAS) {
+		CAM_ERR(CAM_SENSOR, "Invalid Cell-Index: %u for %s", index, dev_name(dev));
+		return;
+	}
+
+	e_ctrl = g_i3c_eeprom_data[index].e_ctrl;
+	if (!e_ctrl) {
+		CAM_ERR(CAM_EEPROM, "e_ctrl is null. I3C Probe before platfom driver probe for %s",
+			dev_name(dev));
+		return;
+	}
+
+	CAM_DBG(CAM_SENSOR, "I3C remove invoked for %s",
+		(client ? dev_name(&client->dev) : "none"));
+	CAM_MEM_FREE(e_ctrl->io_master_info.qup_client);
+	e_ctrl->io_master_info.qup_client = NULL;
+}
+#else
+static int cam_i3c_driver_remove(struct i3c_device *client)
+{
+	int32_t                        rc = 0;
+	uint32_t                       index;
+	struct cam_eeprom_ctrl_t       *e_ctrl = NULL;
+	struct device                  *dev;
+
+	if (!client) {
+		CAM_ERR(CAM_SENSOR, "I3C Driver Remove: Invalid input args");
+		return -EINVAL;
+	}
+
+	dev = &client->dev;
+
+	CAM_DBG(CAM_SENSOR, "driver remove for I3C Slave %s", dev_name(dev));
+
+	rc = of_property_read_u32(dev->of_node, "cell-index", &index);
+	if (rc) {
+		CAM_ERR(CAM_UTIL, "device %s failed to read cell-index", dev_name(dev));
+		return -EINVAL;
+	}
+
+	if (index >= MAX_CAMERAS) {
+		CAM_ERR(CAM_SENSOR, "Invalid Cell-Index: %u for %s", index, dev_name(dev));
+		return -EINVAL;
+	}
+
+	e_ctrl = g_i3c_eeprom_data[index].e_ctrl;
+	if (!e_ctrl) {
+		CAM_ERR(CAM_EEPROM, "e_ctrl is null. I3C Probe before platfom driver probe for %s",
+			dev_name(dev));
+		return -EINVAL;
+	}
+
+	CAM_DBG(CAM_SENSOR, "I3C remove invoked for %s",
+		(client ? dev_name(&client->dev) : "none"));
+	CAM_MEM_FREE(e_ctrl->io_master_info.qup_client);
+	e_ctrl->io_master_info.qup_client = NULL;
+	return 0;
+}
+#endif
 
 static struct i3c_driver cam_eeprom_i3c_driver = {
 	.id_table = eeprom_i3c_id,

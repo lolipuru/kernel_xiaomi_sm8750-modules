@@ -17,20 +17,31 @@
 #define I3C_MASTER           4
 
 /**
- * @master_type: CCI master type
  * @i2c_client: I2C client information structure
  * @i3c_client: I3C client information structure
+ * @pm_enable: Power Management Enable flag
+ * @i3c_wait_for_hotjoin: Flag to notify I3C master about HOT_JOIN wait
+ */
+struct cam_sensor_qup_client {
+	struct i2c_client *i2c_client;
+	struct i3c_device *i3c_client;
+	bool   pm_ctrl_client_enable;
+	bool   i3c_wait_for_hotjoin;
+};
+
+/**
+ * @master_type: CCI master type
+ * @qup_client: QUP client information structure
  * @cci_client: CCI client information structure
  * @spi_client: SPI client information structure
  * @pm_enable: Power Management Enable flag
  */
 struct camera_io_master {
 	int master_type;
-	struct i2c_client *client;
-	struct i3c_device *i3c_client;
+	struct cam_sensor_qup_client *qup_client;
 	struct cam_sensor_cci_client *cci_client;
 	struct cam_sensor_spi_client *spi_client;
-	bool   pm_ctrl_client_enable;
+	char   sensor_name[CAM_SENSOR_NAME_MAX_SIZE];
 };
 
 /**

@@ -146,11 +146,12 @@ int cam_presil_register_write(void *addr, uint32_t value, uint32_t flags);
  * @offset       :  Offset to start copy
  * @size         :  Size of copy
  * @addr32       :  Iova to start copy at
+ * @hfi_skip     :  Skip logs for HFI actions
  *
  * @return:  Success or Failure
  */
 int cam_presil_send_buffer(uint64_t dma_buf_uint, int mmu_hdl, uint32_t offset,
-	uint32_t size, uint32_t addr32);
+	uint32_t size, uint32_t addr32, uintptr_t cpu_vaddr, bool hfi_skip);
 
 /*
  *  cam_presil_retrieve_buffer()
@@ -163,11 +164,13 @@ int cam_presil_send_buffer(uint64_t dma_buf_uint, int mmu_hdl, uint32_t offset,
  * @offset       :  Offset to start copy
  * @size         :  Size of copy
  * @addr32       :  Iova to start copy at
+ * @hfi_skip	 :  Skip logs for HFI actions
  *
  * @return:  Success or Failure
  */
 int cam_presil_retrieve_buffer(uint64_t dma_buf_uint,
-	int mmu_hdl, uint32_t offset, uint32_t size, uint32_t addr32);
+	int mmu_hdl, uint32_t offset, uint32_t size, uint32_t addr32,
+	uintptr_t cpu_vaddr, bool hfi_skip);
 
 /*
  *  cam_presil_readl_poll_timeout()

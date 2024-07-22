@@ -8029,7 +8029,7 @@ end:
 static int cam_ife_csid_ver2_dump_irq_desc(
 	struct cam_ife_csid_ver2_hw  *csid_hw, void *args)
 {
-	int                                     i, offset = 0;
+	int                                     i, j, offset = 0;
 	struct cam_isp_irq_inject_param         *inject_params = NULL;
 	const struct cam_ife_csid_ver2_reg_info *csid_reg = NULL;
 
@@ -8049,33 +8049,40 @@ static int cam_ife_csid_ver2_dump_irq_desc(
 
 	switch (inject_params->reg_unit) {
 	case CAM_ISP_CSID_TOP_REG:
-		for (i = 0; i < csid_reg->num_top_err_irqs[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0]; i++) {
-			if (!(*csid_reg->top_irq_desc)
-					[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0][i].bitmask)
-				break;
-
+		for (i = CAM_IFE_CSID_TOP_IRQ_STATUS_REG0;
+			i < CAM_IFE_CSID_TOP_IRQ_STATUS_REG_MAX; i++) {
 			offset += scnprintf(inject_params->line_buf + offset,
-				LINE_BUFFER_LEN - offset, "%#12x : %s - %s\n",
-				(*csid_reg->top_irq_desc)
-					[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0][i].bitmask,
-				(*csid_reg->top_irq_desc)
-					[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0][i].err_name,
-				(*csid_reg->top_irq_desc)
-					[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0][i].desc);
+				LINE_BUFFER_LEN - offset,
+				"TOP_IRQ_STATUS_REG[%d]:\n", i);
+
+			for (j = 0; j < csid_reg->num_top_err_irqs[i]; j++) {
+				if (!(*csid_reg->top_irq_desc)[i][j].bitmask)
+					break;
+
+				offset += scnprintf(inject_params->line_buf + offset,
+					LINE_BUFFER_LEN - offset, "%#12x : %s - %s\n",
+					(*csid_reg->top_irq_desc)[i][j].bitmask,
+					(*csid_reg->top_irq_desc)[i][j].err_name,
+					(*csid_reg->top_irq_desc)[i][j].desc);
+			}
 		}
 		break;
 	case CAM_ISP_CSID_RX_REG:
-		for (i = 0; i < csid_reg->num_rx_err_irqs[CAM_IFE_CSID_RX_IRQ_STATUS_REG0]; i++) {
-			if (!(*csid_reg->rx_irq_desc)
-					[CAM_IFE_CSID_RX_IRQ_STATUS_REG0][i].bitmask)
-				break;
-
+		for (i = CAM_IFE_CSID_RX_IRQ_STATUS_REG0;
+			i < CAM_IFE_CSID_RX_IRQ_STATUS_REG_MAX; i++) {
 			offset += scnprintf(inject_params->line_buf + offset,
-				LINE_BUFFER_LEN - offset, "%#12x : %s\n",
-				(*csid_reg->rx_irq_desc)
-					[CAM_IFE_CSID_RX_IRQ_STATUS_REG0][i].bitmask,
-				(*csid_reg->rx_irq_desc)
-					[CAM_IFE_CSID_RX_IRQ_STATUS_REG0][i].desc);
+				LINE_BUFFER_LEN - offset,
+				"RX_IRQ_STATUS_REG[%d]:\n", i);
+
+			for (j = 0; j < csid_reg->num_rx_err_irqs[i]; j++) {
+				if (!(*csid_reg->rx_irq_desc)[i][j].bitmask)
+					break;
+
+				offset += scnprintf(inject_params->line_buf + offset,
+					LINE_BUFFER_LEN - offset, "%#12x : %s\n",
+					(*csid_reg->rx_irq_desc)[i][j].bitmask,
+					(*csid_reg->rx_irq_desc)[i][j].desc);
+			}
 		}
 		break;
 	case CAM_ISP_CSID_PATH_IPP_REG:
@@ -8104,6 +8111,7 @@ static int cam_ife_csid_ver2_dump_irq_desc(
 static int cam_ife_csid_ver2_irq_inject(
 	struct cam_ife_csid_ver2_hw  *csid_hw, void *args)
 {
+	int                                     i, j;
 	uint32_t                                irq_set_addr = 0;
 	struct cam_hw_soc_info                  *soc_info;
 	struct cam_isp_irq_inject_param         *inject_params = NULL;
@@ -8123,13 +8131,29 @@ static int cam_ife_csid_ver2_irq_inject(
 
 	switch (inject_params->reg_unit) {
 	case CAM_ISP_CSID_TOP_REG: {
-		irq_set_addr =
-			csid_reg->cmn_reg->top_irq_set_addr[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0];
+		for (i = CAM_IFE_CSID_TOP_IRQ_STATUS_REG0;
+			i < CAM_IFE_CSID_TOP_IRQ_STATUS_REG_MAX; i++) {
+			for (j = 0; j < csid_reg->num_top_err_irqs[i]; j++) {
+				if ((*csid_reg->top_irq_desc)[i][j].bitmask ==
+					inject_params->irq_mask) {
+					irq_set_addr = csid_reg->cmn_reg->top_irq_set_addr[i];
+					break;
+				}
+			}
+		}
 		break;
 	}
 	case CAM_ISP_CSID_RX_REG: {
-		irq_set_addr =
-			csid_reg->csi2_reg->irq_set_addr[CAM_IFE_CSID_RX_IRQ_STATUS_REG0];
+		for (i = CAM_IFE_CSID_RX_IRQ_STATUS_REG0;
+			i < CAM_IFE_CSID_RX_IRQ_STATUS_REG_MAX; i++) {
+			for (j = 0; j < csid_reg->num_rx_err_irqs[i]; j++) {
+				if ((*csid_reg->rx_irq_desc)[i][j].bitmask ==
+					inject_params->irq_mask) {
+					irq_set_addr = csid_reg->csi2_reg->irq_set_addr[i];
+					break;
+				}
+			}
+		}
 		break;
 	}
 	case CAM_ISP_CSID_PATH_IPP_REG: {
