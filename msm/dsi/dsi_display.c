@@ -3532,6 +3532,7 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 	int i, rc = 0, num_clk = 0;
 	const char *clk_name;
 	const char *pll_byte = "pll_byte", *pll_dsi = "pll_dsi";
+	struct clk *esync_clk_rcg;
 	struct clk *dsi_clk;
 	struct dsi_clk_link_set *pll = &display->clock_info.pll_clks;
 	char *dsi_clock_name;
@@ -3575,6 +3576,21 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 			continue;
 		}
 
+	}
+
+	if (display->panel->esync_caps.esync_support) {
+		esync_clk_rcg = devm_clk_get(&display->pdev->dev, "esync_clk_rcg");
+		if (IS_ERR(esync_clk_rcg)) {
+			rc = PTR_ERR(esync_clk_rcg);
+			DSI_ERR("panel needs esync, but failed to get esync_clk_rcg, rc=%d", rc);
+			goto error;
+		}
+
+		rc = clk_set_parent(esync_clk_rcg, pll->pixel_clk);
+		if (rc) {
+			DSI_ERR("failed to set esync_clk parent, rc=%d", rc);
+			goto error;
+		}
 	}
 
 	return 0;
