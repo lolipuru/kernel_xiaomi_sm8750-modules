@@ -37,12 +37,18 @@
 #define SWR_READ_DATA_REG		(SWR_HAP_ACCESS_BASE + 0x80)
 #define SWR_PLAY_REG			(SWR_HAP_ACCESS_BASE + 0x81)
 #define SWR_VMAX_REG			(SWR_HAP_ACCESS_BASE + 0x82)
+#define SWR_VISENSE_AFE_GAIN_REG	(SWR_HAP_ACCESS_BASE + 0x83)
 #define SWR_PLAY_BIT			BIT(7)
 #define SWR_BRAKE_EN_BIT		BIT(3)
 #define SWR_PLAY_SRC_MASK		GENMASK(2, 0)
 #define SWR_PLAY_SRC_VAL_SWR		4
+#define VISENSE_AFE_GAIN_VALUE		0x14
 
 #define SWR_HAP_REG_MAX			(SWR_HAP_ACCESS_BASE + 0xff)
+
+#define MAX_HAPTICS_VMAX_MV     10000
+#define MAX_CL_HAPTICS_VMAX_MV  9500
+#define VMAX_STEP_MV            50
 
 enum pmic_type {
 	PM8350B = 1,
@@ -316,6 +322,9 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 		if ((swr_hap->clamped_vmax != 0) && (swr_hap->vmax > swr_hap->clamped_vmax))
 			vmax = swr_hap->clamped_vmax;
 
+		if (swr_hap->visense_enable)
+			vmax = MAX_CL_HAPTICS_VMAX_MV / VMAX_STEP_MV;
+
 		rc = regmap_write(swr_hap->regmap, SWR_VMAX_REG, vmax);
 		if (rc) {
 			dev_err_ratelimited(swr_hap->dev, "%s: SWR_VMAX update failed, rc=%d\n",
@@ -349,6 +358,16 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 					swr_hap->swr_slave->dev_num, false);
 			swr_hap_disable_hpwr_vreg(swr_hap);
 			return rc;
+		}
+
+		if (swr_hap->visense_enable) {
+			rc = regmap_write(swr_hap->regmap, SWR_VISENSE_AFE_GAIN_REG,
+								VISENSE_AFE_GAIN_VALUE);
+			if (rc) {
+				dev_err(swr_hap->dev, "%s: 0x%x reg write failed, rc = %d\n",
+						__func__, SWR_VISENSE_AFE_GAIN_REG, rc);
+				rc = 0;
+			}
 		}
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
@@ -564,8 +583,6 @@ static int swr_haptics_parse_port_mapping(struct swr_device *sdev)
 	return 0;
 }
 
-#define MAX_HAPTICS_VMAX_MV		10000
-#define VMAX_STEP_MV			50
 static int hboost_notifier(struct notifier_block *nb, unsigned long event, void *val)
 {
 	struct swr_haptics_dev *swr_hap = container_of(nb, struct swr_haptics_dev, hboost_nb);

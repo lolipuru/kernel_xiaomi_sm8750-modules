@@ -13,6 +13,7 @@
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/input.h>
+#include <soc/qcom/socinfo.h>
 #include <linux/of_device.h>
 #if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
 #include <linux/soc/qcom/wcd939x-i2c.h>
@@ -1634,12 +1635,14 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 		rc = of_property_read_u32(dev->of_node,
 					   "qcom,ext-disp-audio-rx", &val);
 		if (!rc && val) {
-			dev_dbg(dev, "%s(): ext disp audio support present\n",
-				__func__);
-			memcpy(msm_sun_dai_links + total_links,
-			       ext_disp_be_dai_link,
-			       sizeof(ext_disp_be_dai_link));
-			total_links += ARRAY_SIZE(ext_disp_be_dai_link);
+			if (!socinfo_get_part_info(PART_DISPLAY)) {
+				dev_dbg(dev, "%s(): ext disp audio support present\n",
+					__func__);
+				memcpy(msm_sun_dai_links + total_links,
+					ext_disp_be_dai_link,
+						sizeof(ext_disp_be_dai_link));
+				total_links += ARRAY_SIZE(ext_disp_be_dai_link);
+			}
 		}
 
 		rc = of_property_read_u32(dev->of_node, "qcom,wcn-bt", &val);

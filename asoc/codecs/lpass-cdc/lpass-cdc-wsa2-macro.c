@@ -938,6 +938,7 @@ static int lpass_cdc_wsa2_macro_mute_stream(struct snd_soc_dai *dai, int mute, i
 	struct device *wsa2_dev = NULL;
 	struct lpass_cdc_wsa2_macro_priv *wsa2_priv = NULL;
 	uint32_t temp;
+	struct regmap *regmap = NULL;
 
 	bool adie_lb = false;
 
@@ -946,6 +947,7 @@ static int lpass_cdc_wsa2_macro_mute_stream(struct snd_soc_dai *dai, int mute, i
 
 	if (!lpass_cdc_wsa2_macro_get_data(component, &wsa2_dev, &wsa2_priv, __func__))
 		return -EINVAL;
+
 	switch (dai->id) {
 	case LPASS_CDC_WSA2_MACRO_AIF1_PB:
 	case LPASS_CDC_WSA2_MACRO_AIF_MIX1_PB:
@@ -954,6 +956,19 @@ static int lpass_cdc_wsa2_macro_mute_stream(struct snd_soc_dai *dai, int mute, i
 		lpass_cdc_wsa2_macro_enable_vi_decimator(component);
 		break;
 	case LPASS_CDC_WSA2_MACRO_AIF1_PCM_PB:
+		regmap = dev_get_regmap(wsa2_priv->dev->parent, NULL);
+		regmap_update_bits(regmap,
+				LPASS_CDC_WSA2_TX0_SPKR_PROT_PATH_CFG0,
+				0x03, 0x00);
+		regmap_update_bits(regmap,
+				LPASS_CDC_WSA2_TX1_SPKR_PROT_PATH_CFG0,
+				0x03, 0x00);
+		regmap_update_bits(regmap,
+				LPASS_CDC_WSA2_TX2_SPKR_PROT_PATH_CFG0,
+				0x03, 0x00);
+		regmap_update_bits(regmap,
+				LPASS_CDC_WSA2_TX3_SPKR_PROT_PATH_CFG0,
+				0x03, 0x00);
 		lpass_cdc_wsa2_macro_enable_vi_decimator(component);
 		break;
 	default:
