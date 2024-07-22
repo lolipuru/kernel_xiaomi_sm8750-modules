@@ -4215,6 +4215,11 @@ static void __cam_isp_get_notification_evt_params(
 		err_type = CAM_SYNC_ISP_EVENT_CSID_SENSOR_SWITCH_ERROR;
 		recovery_type_temp |= CAM_REQ_MGR_ERROR_TYPE_FULL_RECOVERY;
 	}
+	if (hw_error & CAM_ISP_HW_ERROR_DRV_VOTEUP_LATE) {
+		err_code |= CAM_REQ_MGR_ISP_ERR_OVERFLOW;
+		err_type = CAM_SYNC_ISP_EVENT_OVERFLOW;
+		recovery_type_temp |= CAM_REQ_MGR_ERROR_TYPE_RECOVERY;
+	}
 
 	if (recovery_type_temp == (CAM_REQ_MGR_ERROR_TYPE_FULL_RECOVERY |
 		CAM_REQ_MGR_ERROR_TYPE_RECOVERY))
@@ -9738,9 +9743,10 @@ static int __cam_isp_ctx_handle_irq_in_activated(void *context,
 			__cam_isp_ctx_substate_val_to_type(
 			ctx_isp->substate_activated), evt_id,
 			ctx->ctx_id, ctx->link_hdl);
-		if (isp_ctx_debug.enable_state_monitor_dump)
-			__cam_isp_ctx_dump_state_monitor_array(ctx_isp);
 	}
+
+	if (evt_id == CAM_ISP_HW_EVENT_ERROR)
+		__cam_isp_ctx_dump_state_monitor_array(ctx_isp);
 
 	if ((evt_id == CAM_ISP_HW_EVENT_SOF) ||
 		(evt_id == CAM_ISP_HW_EVENT_EOF) ||

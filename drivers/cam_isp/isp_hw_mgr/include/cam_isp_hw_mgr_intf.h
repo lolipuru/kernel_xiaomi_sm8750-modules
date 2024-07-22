@@ -143,7 +143,8 @@ enum cam_isp_hw_err_type {
 	CAM_ISP_HW_ERROR_CSID_CAMIF_FRAME_DROP        = 0x00020000,
 	CAM_ISP_HW_ERROR_HWPD_VIOLATION               = 0x00040000,
 	CAM_ISP_HW_ERROR_CSID_MISSING_SOT             = 0x00080000,
-	CAM_ISP_HW_ERROR_CSID_ILLEGAL_DT_SWITCH       = 0x00100000
+	CAM_ISP_HW_ERROR_CSID_ILLEGAL_DT_SWITCH       = 0x00100000,
+	CAM_ISP_HW_ERROR_DRV_VOTEUP_LATE              = 0x00200000
 };
 
 /**
@@ -531,6 +532,11 @@ enum cam_isp_ctx_type {
  * @blanking_duration:      Vertical blanking duration for a request, and it is representing
  *                          the blanking durations before the frame for this request.
  * @drv_blanking_threshold: DRV blanking threshold
+ * @timeout_val:            DRV timeout value
+ * @update_drv:             This to tell DRV needs to be updated or not
+ * @drv_en:                 DRV is enabled or not
+ * @is_blob_config_valid:   DV blob is valid or not
+ *
  */
 struct cam_isp_hw_drv_info {
 	uint64_t req_id;
@@ -538,7 +544,24 @@ struct cam_isp_hw_drv_info {
 	uint64_t frame_duration;
 	uint64_t blanking_duration;
 	uint64_t drv_blanking_threshold;
+	uint32_t timeout_val;
+	bool     update_drv;
+	bool     drv_en;
+	bool     is_blob_config_valid;
 };
+
+/**
+ * struct cam_isp_hw_per_req_info - per request info
+ *
+ * @drv_info:               DRV config related information
+ * @mup_en:                 is mup enabled or not
+ *
+ */
+struct cam_isp_hw_per_req_info {
+	struct cam_isp_hw_drv_info drv_info;
+	bool mup_en;
+};
+
 
 /**
  * struct cam_isp_hw_cmd_args - Payload for hw manager command

@@ -341,7 +341,7 @@ static const struct cam_ife_csid_top_irq_desc cam_ife_csid_980_top_irq_desc[][32
 		},
 		{
 			.bitmask  = BIT(3),
-			.err_type = CAM_ISP_HW_ERROR_RECOVERY_OVERFLOW,
+			.err_type = CAM_ISP_HW_ERROR_DRV_VOTEUP_LATE,
 			.err_name = "ERROR_VOTE_UP_LATE",
 			.desc = "DRV: vote_up is generated after SOF",
 			.debug = "Check the vote up timer value",
