@@ -251,8 +251,7 @@ static void cnss_wlfw_host_cap_parse_mlo(struct cnss_plat_data *plat_priv,
 {
 	if (plat_priv->device_id == KIWI_DEVICE_ID ||
 	    plat_priv->device_id == MANGO_DEVICE_ID ||
-	    plat_priv->device_id == PEACH_DEVICE_ID ||
-	    plat_priv->device_id == COLOGNE_DEVICE_ID) {
+	    plat_priv->device_id == PEACH_DEVICE_ID) {
 		req->mlo_capable_valid = 1;
 		req->mlo_capable = 1;
 		req->mlo_chip_id_valid = 1;
@@ -273,6 +272,26 @@ static void cnss_wlfw_host_cap_parse_mlo(struct cnss_plat_data *plat_priv,
 		req->mlo_chip_info[0].hw_link_id[1] = 1;
 		req->mlo_chip_info[0].valid_mlo_link_id[0] = 1;
 		req->mlo_chip_info[0].valid_mlo_link_id[1] = 1;
+
+	} else if (plat_priv->device_id == COLOGNE_DEVICE_ID) {
+		req->mlo_capable_valid = 1;
+		req->mlo_capable = 1;
+		req->mlo_chip_id_valid = 1;
+		req->mlo_chip_id = 0;
+		req->mlo_group_id_valid = 1;
+		req->mlo_group_id = 0;
+		req->max_mlo_peer_valid = 1;
+		/* Max peer number generally won't change for the same device
+		 * but needs to be synced with host driver.
+		 */
+		req->max_mlo_peer = 32;
+		req->mlo_num_chips_valid = 1;
+		req->mlo_num_chips = 1;
+		req->mlo_chip_info_valid = 1;
+		req->mlo_chip_info[0].chip_id = 0;
+		req->mlo_chip_info[0].num_local_links = 1;
+		req->mlo_chip_info[0].hw_link_id[0] = 0;
+		req->mlo_chip_info[0].valid_mlo_link_id[0] = 1;
 	}
 }
 
@@ -574,13 +593,13 @@ int cnss_wlfw_tgt_cap_send_sync(struct cnss_plat_data *plat_priv)
 			resp->fw_version_info.fw_version;
 		fw_build_timestamp = resp->fw_version_info.fw_build_timestamp;
 		fw_build_timestamp[QMI_WLFW_MAX_TIMESTAMP_LEN] = '\0';
-		strlcpy(plat_priv->fw_version_info.fw_build_timestamp,
+		strscpy(plat_priv->fw_version_info.fw_build_timestamp,
 			resp->fw_version_info.fw_build_timestamp,
 			QMI_WLFW_MAX_TIMESTAMP_LEN + 1);
 	}
 	if (resp->fw_build_id_valid) {
 		resp->fw_build_id[QMI_WLFW_MAX_BUILD_ID_LEN] = '\0';
-		strlcpy(plat_priv->fw_build_id, resp->fw_build_id,
+		strscpy(plat_priv->fw_build_id, resp->fw_build_id,
 			QMI_WLFW_MAX_BUILD_ID_LEN + 1);
 	}
 	/* FW will send aop retention volatage for qca6490 */
@@ -1872,7 +1891,7 @@ int cnss_wlfw_wlan_cfg_send_sync(struct cnss_plat_data *plat_priv,
 	}
 
 	req->host_version_valid = 1;
-	strlcpy(req->host_version, host_version,
+	strscpy(req->host_version, host_version,
 		QMI_WLFW_MAX_STR_LEN_V01 + 1);
 
 	req->tgt_cfg_valid = 1;
@@ -3145,22 +3164,22 @@ static void cnss_wlfw_fw_mem_file_save_ind_cb(struct qmi_handle *qmi_wlfw,
 	}
 
 	if (ind_msg->file_name_valid)
-		strlcpy(event_data->file_name, ind_msg->file_name,
+		strscpy(event_data->file_name, ind_msg->file_name,
 			QMI_WLFW_MAX_STR_LEN_V01 + 1);
 	if (ind_msg->source == 1) {
 		if (!ind_msg->file_name_valid)
-			strlcpy(event_data->file_name, "qdss_trace_wcss_etb",
+			strscpy(event_data->file_name, "qdss_trace_wcss_etb",
 				QMI_WLFW_MAX_STR_LEN_V01 + 1);
 		cnss_driver_event_post(plat_priv, CNSS_DRIVER_EVENT_QDSS_TRACE_REQ_DATA,
 				       0, event_data);
 	} else {
 		if (event_data->mem_type == QMI_WLFW_MEM_QDSS_V01) {
 			if (!ind_msg->file_name_valid)
-				strlcpy(event_data->file_name, "qdss_trace_ddr",
+				strscpy(event_data->file_name, "qdss_trace_ddr",
 					QMI_WLFW_MAX_STR_LEN_V01 + 1);
 		} else {
 			if (!ind_msg->file_name_valid)
-				strlcpy(event_data->file_name, "fw_mem_dump",
+				strscpy(event_data->file_name, "fw_mem_dump",
 					QMI_WLFW_MAX_STR_LEN_V01 + 1);
 		}
 

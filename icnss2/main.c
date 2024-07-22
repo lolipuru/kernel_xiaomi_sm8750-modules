@@ -3140,7 +3140,8 @@ int __icnss_register_driver(struct icnss_driver_ops *ops,
 	struct icnss_priv *priv = icnss_get_plat_priv();
 
 	if (!priv || !priv->pdev) {
-		ret = -ENODEV;
+		icnss_pr_vdbg("icnss2 is not ready for register driver\n");
+		ret = -EAGAIN;
 		goto out;
 	}
 
@@ -3458,10 +3459,10 @@ int icnss_get_soc_info(struct device *dev, struct icnss_soc_info *info)
 	info->fw_version = priv->fw_version_info.fw_version;
 	fw_build_timestamp = priv->fw_version_info.fw_build_timestamp;
 	fw_build_timestamp[WLFW_MAX_TIMESTAMP_LEN] = '\0';
-	strlcpy(info->fw_build_timestamp,
+	strscpy(info->fw_build_timestamp,
 		priv->fw_version_info.fw_build_timestamp,
 		WLFW_MAX_TIMESTAMP_LEN + 1);
-	strlcpy(info->fw_build_id, priv->fw_build_id,
+	strscpy(info->fw_build_id, priv->fw_build_id,
 	        ICNSS_WLFW_MAX_BUILD_ID_LEN + 1);
 	info->rd_card_chain_cap = priv->rd_card_chain_cap;
 	info->phy_he_channel_width_cap = priv->phy_he_channel_width_cap;
