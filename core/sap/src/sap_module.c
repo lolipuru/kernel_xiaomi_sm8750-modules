@@ -554,6 +554,12 @@ wlansap_set_scan_acs_channel_params(struct sap_config *config,
 	struct mac_context *mac;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	uint32_t auto_channel_select_weight;
+	bool is_linear_bss_count;
+	bool is_linear_rssi;
+	bool is_rand;
+	bool is_chan_load;
+	int16_t linear_rssi_threshold;
+	bool early_terminate_en;
 
 	if (!config) {
 		sap_err("Invalid config passed ");
@@ -591,6 +597,49 @@ wlansap_set_scan_acs_channel_params(struct sap_config *config,
 	psap_ctx->sec_ch_freq = config->sec_ch_freq;
 	qdf_mem_copy(psap_ctx->self_mac_addr,
 		config->self_macaddr.bytes, QDF_MAC_ADDR_SIZE);
+
+	/* Updating ACS Configuration */
+	status = ucfg_mlme_get_acs_linear_bss_status(mac->psoc,
+						     &is_linear_bss_count);
+
+	if (!QDF_IS_STATUS_SUCCESS(status))
+		sap_err("get_acs_linear_bss_status failed");
+
+	status = ucfg_mlme_get_acs_linear_rssi_status(mac->psoc,
+						      &is_linear_rssi);
+
+	if (!QDF_IS_STATUS_SUCCESS(status))
+		sap_err("get_acs_linear_rssi_status failed");
+
+	status = ucfg_mlme_get_acs_rssi_threshold_score(mac->psoc,
+							&linear_rssi_threshold);
+
+	if (!QDF_IS_STATUS_SUCCESS(status))
+		sap_err("get_acs_rssi_threshold_score failed");
+
+	status = ucfg_mlme_get_acs_same_chan_weight_rand_status(mac->psoc,
+								&is_rand);
+
+	if (!QDF_IS_STATUS_SUCCESS(status))
+		sap_err("get_acs_same_chan_weight_rand_status failed");
+
+	status = ucfg_mlme_get_acs_wifi_non_wifi_load_status(mac->psoc,
+							     &is_chan_load);
+
+	if (!QDF_IS_STATUS_SUCCESS(status))
+		sap_err("get_acs_wifi_non_wifi_load_status failed");
+
+	status = ucfg_mlme_get_acs_early_terminate_status(mac->psoc,
+							  &early_terminate_en);
+	if (!QDF_IS_STATUS_SUCCESS(status))
+		sap_err("get_acs_early_terminate_status failed");
+
+	psap_ctx->acs_cfg->is_linear_bss_count = is_linear_bss_count;
+	psap_ctx->acs_cfg->is_linear_rssi = is_linear_rssi;
+	psap_ctx->acs_cfg->linear_rssi_threshold = linear_rssi_threshold;
+	psap_ctx->acs_cfg->is_same_weight_rand_enabled = is_rand;
+	psap_ctx->acs_cfg->is_wifi_non_wifi_load_score_enabled = is_chan_load;
+	psap_ctx->acs_cfg->is_early_terminate_enabled = early_terminate_en;
 
 	return status;
 }
@@ -4289,19 +4338,6 @@ qdf_freq_t wlansap_dcs_get_freq(struct sap_context *sap_context)
 	return sap_context->dcs_ch_freq;
 }
 
-void wlansap_dump_acs_ch_freq(struct sap_context *sap_context)
-{
-	if (!sap_context) {
-		sap_err("Invalid sap_debug");
-		return;
-	}
-
-	if (sap_context->fsm_state == SAP_STARTED)
-		sap_info("DCS freq %d", sap_context->dcs_ch_freq);
-	else
-		sap_info("ACS freq %d", sap_context->chan_freq);
-}
-
 void wlansap_set_acs_ch_freq(struct sap_context *sap_context,
 			     qdf_freq_t ch_freq)
 {
@@ -4312,23 +4348,13 @@ void wlansap_set_acs_ch_freq(struct sap_context *sap_context,
 
 	if (sap_context->fsm_state == SAP_STARTED) {
 		sap_context->dcs_ch_freq = ch_freq;
-		sap_debug("Configuring DCS freq %d", sap_context->dcs_ch_freq);
+		sap_debug("Selecting DCS freq %d", sap_context->dcs_ch_freq);
 	} else {
 		sap_context->chan_freq = ch_freq;
-		sap_debug("configuring ACS freq %d", sap_context->chan_freq);
+		sap_debug("Selecting ACS freq %d", sap_context->chan_freq);
 	}
 }
 #else
-void wlansap_dump_acs_ch_freq(struct sap_context *sap_context)
-{
-	if (!sap_context) {
-		sap_err("Invalid sap_debug");
-		return;
-	}
-
-	sap_info("ACS dump ch_freq=%d", sap_context->chan_freq);
-}
-
 void wlansap_set_acs_ch_freq(struct sap_context *sap_context,
 			     qdf_freq_t ch_freq)
 {
@@ -4338,7 +4364,7 @@ void wlansap_set_acs_ch_freq(struct sap_context *sap_context,
 	}
 
 	sap_context->chan_freq = ch_freq;
-	sap_debug("Configuring freq %d", sap_context->chan_freq);
+	sap_debug("Selecting ACS freq %d", sap_context->chan_freq);
 }
 #endif
 

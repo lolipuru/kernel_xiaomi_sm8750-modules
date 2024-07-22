@@ -356,7 +356,9 @@ lim_send_probe_req_mgmt_frame(struct mac_context *mac_ctx,
 	    pesession->lim_join_req &&
 	    !qdf_is_macaddr_broadcast((struct qdf_mac_addr *)bssid)) {
 		lim_update_session_eht_capable(mac_ctx, pesession);
-		mlo_ie_len = lim_send_probe_req_frame_mlo(mac_ctx, pesession);
+
+		if (pesession->lim_join_req->bssDescription.is_ml_ap)
+			mlo_ie_len = lim_send_probe_req_frame_mlo(mac_ctx, pesession);
 	}
 
 	populate_dot11f_eht_caps(mac_ctx, pesession, &pr->eht_cap);
@@ -2506,8 +2508,8 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 	uint8_t *eht_cap_ie = NULL, eht_cap_ie_len = 0;
 	bool bss_mfp_capable, frag_ie_present = false;
 	int8_t peer_rssi = 0;
-	bool is_band_2g;
-	uint16_t mlo_ie_len, fils_hlp_ie_len = 0;
+	bool is_band_2g, is_ml_ap;
+	uint16_t mlo_ie_len = 0, fils_hlp_ie_len = 0;
 	uint8_t *fils_hlp_ie = NULL;
 	struct cm_roam_values_copy mdie_cfg = {0};
 
@@ -2748,12 +2750,14 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 		lim_strip_mlo_ie(mac_ctx, add_ie, &add_ie_len);
 	}
 
-	mlo_ie_len = lim_fill_assoc_req_mlo_ie(mac_ctx, pe_session, frm);
+	is_ml_ap = !!pe_session->lim_join_req->bssDescription.is_ml_ap;
+	if (is_ml_ap)
+		mlo_ie_len = lim_fill_assoc_req_mlo_ie(mac_ctx, pe_session, frm);
 
 	/**
 	 * In case of ML connection, if ML IE length is 0 then return failure.
 	 */
-	if (mlo_is_mld_sta(pe_session->vdev) && !mlo_ie_len) {
+	if (is_ml_ap && mlo_is_mld_sta(pe_session->vdev) && !mlo_ie_len) {
 		pe_err("Failed to add ML IE for vdev:%d", pe_session->vdev_id);
 		goto end;
 	}
@@ -7418,7 +7422,6 @@ lim_send_ttlm_action_rsp_frame(uint8_t token,
 {
 	struct mac_context *mac_ctx;
 	struct pe_session *session;
-	struct wlan_mlo_peer_context *ml_peer;
 	uint8_t vdev_id = 0;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	struct wlan_objmgr_vdev *vdev;
@@ -7435,13 +7438,7 @@ lim_send_ttlm_action_rsp_frame(uint8_t token,
 		return QDF_STATUS_E_FAILURE;
 	}
 
-	ml_peer = peer->mlo_peer_ctx;
-	if (!ml_peer) {
-		status = QDF_STATUS_E_FAILURE;
-		goto peer_release;
-	}
-
-	vdev = mlo_get_first_vdev_by_ml_peer(ml_peer);
+	vdev = wlan_peer_get_vdev(peer);
 	if (!vdev) {
 		status = QDF_STATUS_E_FAILURE;
 		goto peer_release;
@@ -7451,7 +7448,7 @@ lim_send_ttlm_action_rsp_frame(uint8_t token,
 	session = pe_find_session_by_vdev_id(mac_ctx, vdev_id);
 	if (!session) {
 		pe_err("session not found for given vdev_id %d", vdev_id);
-		goto vdev_release;
+		goto peer_release;
 	}
 
 	if (lim_send_t2lm_action_rsp_frame(mac_ctx, peer_mac, session, token,
@@ -7462,8 +7459,6 @@ lim_send_ttlm_action_rsp_frame(uint8_t token,
 		wlan_connectivity_t2lm_status_event(vdev);
 	}
 
-vdev_release:
-	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLO_MGR_ID);
 peer_release:
 	wlan_objmgr_peer_release_ref(peer, WLAN_LEGACY_MAC_ID);
 
@@ -7824,11 +7819,23 @@ static QDF_STATUS lim_update_mld_to_link_address(struct mac_context *mac_ctx,
 			     QDF_MAC_ADDR_SIZE);
 		break;
 	case QDF_STA_MODE:
-		if (!wlan_cm_is_vdev_roaming(vdev)) {
+		if (wlan_cm_is_vdev_active(vdev)) {
+			/* Roaming Pre-auth frame */
+			peer_roaming_link_addr =
+				wlan_cm_roaming_get_peer_link_addr(vdev);
+			if (!peer_roaming_link_addr)
+				return QDF_STATUS_E_FAILURE;
+
+			peer_link_addr = *peer_roaming_link_addr;
+			peer_mld_addr = (uint8_t *)
+					wlan_cm_roaming_get_peer_mld_addr(vdev);
+		} else {
+			/* Initial connection frame */
 			status = wlan_vdev_get_bss_peer_mac(vdev,
 							    &peer_link_addr);
 			if (QDF_IS_STATUS_ERROR(status))
 				return status;
+
 			bss_peer = wlan_objmgr_vdev_try_get_bsspeer(
 						vdev, WLAN_MLME_OBJMGR_ID);
 			if (bss_peer) {
@@ -7837,21 +7844,16 @@ static QDF_STATUS lim_update_mld_to_link_address(struct mac_context *mac_ctx,
 				wlan_objmgr_peer_release_ref(
 						bss_peer, WLAN_MLME_OBJMGR_ID);
 			}
-		} else {
-			peer_roaming_link_addr =
-				wlan_cm_roaming_get_peer_link_addr(vdev);
-			if (!peer_roaming_link_addr)
-				return QDF_STATUS_E_FAILURE;
-			peer_link_addr = *peer_roaming_link_addr;
-			peer_mld_addr = (uint8_t *)
-					wlan_cm_roaming_get_peer_mld_addr(vdev);
 		}
+
 		if (!peer_mld_addr)
 			return QDF_STATUS_SUCCESS;
 
-		pe_debug("dest address"QDF_MAC_ADDR_FMT"mld addr"QDF_MAC_ADDR_FMT,
+		pe_debug("vdev:%d DA: " QDF_MAC_ADDR_FMT " mld addr: " QDF_MAC_ADDR_FMT " Link addr: " QDF_MAC_ADDR_FMT,
+			 wlan_vdev_get_id(vdev),
 			 QDF_MAC_ADDR_REF(mac_hdr->da),
-			 QDF_MAC_ADDR_REF(peer_mld_addr));
+			 QDF_MAC_ADDR_REF(peer_mld_addr),
+			 QDF_MAC_ADDR_REF(peer_link_addr.bytes));
 		if (!qdf_mem_cmp(mac_hdr->da, peer_mld_addr, QDF_MAC_ADDR_SIZE))
 			qdf_mem_copy(mac_hdr->da, peer_link_addr.bytes,
 				     QDF_MAC_ADDR_SIZE);

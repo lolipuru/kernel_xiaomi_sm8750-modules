@@ -522,6 +522,12 @@ struct sap_acs_cfg {
 	bool       skip_acs_scan;
 	uint32_t   last_scan_ageout_time;
 	struct master_acs master_acs_cfg;
+	bool	   is_linear_bss_count;
+	bool	   is_linear_rssi;
+	int16_t	   linear_rssi_threshold;
+	bool	   is_same_weight_rand_enabled;
+	bool	   is_wifi_non_wifi_load_score_enabled;
+	bool	   is_early_terminate_enabled;
 };
 
 /*
@@ -1801,16 +1807,6 @@ static inline qdf_freq_t wlansap_dcs_get_freq(struct sap_context *sap_context)
  */
 bool wlansap_filter_vendor_unsafe_ch_freq(
 	struct sap_context *sap_context, struct sap_config *sap_config);
-
-/**
- * wlansap_dump_acs_ch_freq() - print acs channel frequency
- * @sap_context: sap context
- *
- * This function is used to print acs channel frequecny
- *
- * Return: None
- */
-void wlansap_dump_acs_ch_freq(struct sap_context *sap_context);
 
 /**
  * wlansap_set_acs_ch_freq() - set acs channel frequency
