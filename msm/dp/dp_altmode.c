@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -11,6 +12,7 @@
 #include <linux/soc/qcom/altmode-glink.h>
 #include <linux/usb/dwc3-msm.h>
 #include <linux/usb/pd_vdo.h>
+#include <linux/of_platform.h>
 
 #include "dp_altmode.h"
 #include "dp_debug.h"

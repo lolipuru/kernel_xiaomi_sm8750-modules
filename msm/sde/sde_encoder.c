@@ -92,6 +92,8 @@
 /* Worst case time required for trigger the frame after the EPT wait */
 #define EPT_BACKOFF_THRESHOLD	(3 * NSEC_PER_MSEC)
 
+#define MAX_EPT_TIMEOUT_US	(10 * USEC_PER_SEC)
+
 #define IS_ROI_UPDATED(a, b) (a.x1 != b.x1 || a.x2 != b.x2 || \
 			a.y1 != b.y1 || a.y2 != b.y2)
 
@@ -2687,7 +2689,7 @@ static int _sde_encoder_rc_pre_stop(struct drm_encoder *drm_enc,
 
 	mutex_lock(&sde_enc->rc_lock);
 
-	if (is_vid_mode &&
+	if ((!sde_enc->disp_info.vrr_caps.video_psr_support && is_vid_mode) &&
 		  sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE) {
 		sde_encoder_irq_control(drm_enc, true);
 	}
@@ -3333,6 +3335,9 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	if (ret)
 		return;
 
+	if (sde_enc->disp_info.vrr_caps.video_psr_support && sde_encoder_in_cont_splash(drm_enc))
+		sde_connector_set_vrr_params(sde_enc->cur_master->connector);
+
 	if ((sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL) &&
 			((sde_crtc_state->cached_cwb_enc_mask & drm_encoder_mask(drm_enc)))) {
 		SDE_EVT32(DRMID(drm_enc), sde_crtc_state->cwb_enc_mask,
@@ -3902,6 +3907,8 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	struct sde_connector *sde_conn;
 	struct sde_kms *sde_kms;
 	enum sde_intf_mode intf_mode;
+	struct drm_crtc *drm_crtc;
+	struct msm_drm_private *priv;
 	int ret, i = 0;
 
 	if (!drm_enc) {
@@ -3933,6 +3940,9 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		return;
 
 	intf_mode = sde_encoder_get_intf_mode(drm_enc);
+
+	drm_crtc = drm_enc->crtc;
+	priv = drm_crtc->dev->dev_private;
 
 	SDE_EVT32(DRMID(drm_enc));
 
@@ -3985,6 +3995,15 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	}
 
 	/*
+	 * wait for any pending vsync timestamp event to sf
+	 * to ensure vblank irq is disabled.
+	 */
+	if (drm_crtc && sde_enc->vblank_enabled) {
+		drm_crtc_vblank_off(drm_crtc);
+		kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
+	}
+
+	/*
 	 * disable dce after the transfer is complete (for command mode)
 	 * and after physical encoder is disabled, to make sure timing
 	 * engine is already disabled (for video mode).
@@ -4012,7 +4031,9 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 static void _trigger_encoder_hw_fences_override(struct sde_kms *sde_kms, struct sde_hw_ctl *ctl)
 {
 	/* trigger hw-fences override signal */
-	if (sde_kms && sde_kms->catalog->hw_fence_rev && ctl->ops.hw_fence_trigger_sw_override)
+	if (sde_kms && (sde_kms->catalog->hw_fence_rev ||
+			sde_kms->catalog->is_vrr_hw_fence_enable) &&
+			ctl->ops.hw_fence_trigger_sw_override)
 		ctl->ops.hw_fence_trigger_sw_override(ctl);
 }
 
@@ -5175,12 +5196,23 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 	struct sde_ctl_flush_cfg cfg;
 	u32 pf_time_in_us;
 	struct drm_crtc *crtc;
+	struct sde_connector *sde_conn;
 
 	if (!sde_enc || !sde_enc->cur_master)
 		return;
 
 	crtc = sde_enc->crtc;
 	phys_enc = sde_enc->cur_master;
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	if (sde_enc->cur_master && sde_enc->cur_master->connector) {
+		sde_conn = to_sde_connector(sde_enc->cur_master->connector);
+		if (sde_conn->vrr_cmd_state == VRR_CMD_IDLE_ENTRY) {
+			SDE_EVT32(SDE_EVTLOG_ERROR);
+			return;
+		}
+	}
+
 	ctl = phys_enc->hw_ctl;
 	ctl->ops.clear_pending_flush(ctl);
 	_sde_encoder_cesta_update(&sde_enc->base, SDE_PERF_BEGIN_COMMIT);
@@ -5201,7 +5233,7 @@ static void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *s
 	ctl->ops.trigger_flush(ctl);
 	ctl->ops.clear_pending_flush(ctl);
 
-	if (!phys_enc->sde_kms->catalog->hw_fence_rev &&
+	if (!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable &&
 			phys_enc->hw_intf->ops.avr_trigger)
 		phys_enc->hw_intf->ops.avr_trigger(phys_enc->hw_intf);
 
@@ -6065,8 +6097,8 @@ void _sde_encoder_delay_kickoff_processing(struct sde_encoder_virt *sde_enc)
 	}
 
 	timeout_us = DIV_ROUND_UP((ept_ts - current_ts), 1000);
-	/* validate timeout is not beyond the min fps */
-	if (timeout_us > DIV_ROUND_UP(USEC_PER_SEC, min_fps)) {
+	/* validate timeout is not beyond 10 seconds */
+	if (timeout_us > MAX_EPT_TIMEOUT_US) {
 		pr_err_ratelimited(
 		"enc:%d, invalid timeout_us:%llu; ept:%llu, ept_ts:%llu, cur_ts:%llu min_fps:%d, fps:%d, qsync_mode:%d, avr_step_fps:%d\n",
 			DRMID(&sde_enc->base), timeout_us, ept, ept_ts, current_ts,

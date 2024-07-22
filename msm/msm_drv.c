@@ -39,6 +39,7 @@
  */
 
 #include <linux/of_address.h>
+#include <linux/of_platform.h>
 #include <linux/kthread.h>
 #include <uapi/linux/sched/types.h>
 #include <drm/drm_of.h>
@@ -76,6 +77,10 @@
 #define MSM_VERSION_PATCHLEVEL	0
 
 #define LASTCLOSE_TIMEOUT_MS	500
+
+#if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
+#define DRM_UNLOCKED 0
+#endif
 
 #define msm_wait_event_timeout(waitq, cond, timeout_ms, ret)		\
 	do {								\
@@ -550,9 +555,7 @@ static int msm_drm_uninit(struct device *dev)
 
 	msm_mdss_destroy(ddev);
 
-	ddev->dev_private = NULL;
 	destroy_workqueue(priv->wq);
-	kfree(priv);
 
 	drm_dev_put(ddev);
 
@@ -899,7 +902,6 @@ dbg_init_fail:
 power_init_fail:
 priv_alloc_fail:
 	drm_dev_put(ddev);
-	kfree(priv);
 	return ret;
 }
 
@@ -1051,7 +1053,6 @@ mdss_init_fail:
 	sde_dbg_destroy();
 	sde_power_resource_deinit(pdev, &priv->phandle);
 	drm_dev_put(ddev);
-	kfree(priv);
 
 	return ret;
 }
@@ -1111,6 +1112,14 @@ static int msm_open(struct drm_device *dev, struct drm_file *file)
 static void context_close(struct msm_file_private *ctx)
 {
 	kfree(ctx);
+}
+
+static void msm_drm_release(struct drm_device *dev)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+
+	dev->dev_private = NULL;
+	kfree(priv);
 }
 
 static void msm_preclose(struct drm_device *dev, struct drm_file *file)
@@ -1906,6 +1915,7 @@ static struct drm_driver msm_driver = {
 	.open               = msm_open,
 	.postclose          = msm_postclose,
 	.lastclose          = msm_lastclose,
+	.release	    = msm_drm_release,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	.irq_handler        = msm_irq,
 	.irq_preinstall     = msm_irq_preinstall,

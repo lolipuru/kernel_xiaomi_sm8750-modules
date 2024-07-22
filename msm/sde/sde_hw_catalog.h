@@ -56,6 +56,7 @@
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
+#define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
@@ -87,6 +88,7 @@
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
+#define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
 
 #define SDE_HW_BLK_NAME_LEN	16
@@ -856,6 +858,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_10_BITS_COMPONENTS Support for 10 bits components
  * @SDE_FEATURE_UBWC_LOSSY	Support UBWC Lossy
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
+ * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -907,6 +910,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_10_BITS_COMPONENTS,
 	SDE_FEATURE_UBWC_LOSSY,
 	SDE_FEATURE_DS_PU_SUPPORTED,
+	SDE_FEATURE_MIXER_OP_V1,
 	SDE_FEATURE_MAX
 };
 
@@ -1314,6 +1318,9 @@ enum sde_clk_ctrl_type {
 	SDE_CLK_CTRL_VIG2,
 	SDE_CLK_CTRL_VIG3,
 	SDE_CLK_CTRL_VIG4,
+	SDE_CLK_CTRL_VIG5,
+	SDE_CLK_CTRL_VIG6,
+	SDE_CLK_CTRL_VIG7,
 	SDE_CLK_CTRL_DMA0,
 	SDE_CLK_CTRL_DMA1,
 	SDE_CLK_CTRL_DMA2,
@@ -1344,6 +1351,9 @@ static const char *sde_clk_ctrl_type_s[SDE_CLK_CTRL_MAX] = {
 	[SDE_CLK_CTRL_VIG2] = "VIG2",
 	[SDE_CLK_CTRL_VIG3] = "VIG3",
 	[SDE_CLK_CTRL_VIG4] = "VIG4",
+	[SDE_CLK_CTRL_VIG5] = "VIG5",
+	[SDE_CLK_CTRL_VIG6] = "VIG6",
+	[SDE_CLK_CTRL_VIG7] = "VIG7",
 	[SDE_CLK_CTRL_DMA0] = "DMA0",
 	[SDE_CLK_CTRL_DMA1] = "DMA1",
 	[SDE_CLK_CTRL_DMA2] = "DMA2",
@@ -2071,6 +2081,7 @@ struct sde_perf_cfg {
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
  * @soccp_ph            if soccp is supported, soccp phandle needed to get rproc to set power vote
+ * @is_vrr_hw_fence_enable        enable hw-fence override configuration
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
  * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
@@ -2206,6 +2217,7 @@ struct sde_mdss_cfg {
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;
 	phandle soccp_ph;
+	bool is_vrr_hw_fence_enable;
 
 	enum sde_ppb_size_option ppb_sz_program;
 	u32 ppb_buf_max_lines;

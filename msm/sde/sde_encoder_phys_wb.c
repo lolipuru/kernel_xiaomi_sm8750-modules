@@ -1955,14 +1955,19 @@ static void sde_encoder_phys_wb_irq_ctrl(struct sde_encoder_phys *phys, bool ena
 	 * For Dedicated CWB, only one overflow IRQ is used for
 	 * both the PP_CWB blks. Make sure only one IRQ is registered
 	 * when D-CWB is enabled.
+	 * For targets where DCWB and CWB support is not needed,
+	 * reset irq table to avoid registration of unsupported irqs.
 	 */
 	wb_cfg = wb_enc->hw_wb->caps;
 	if (wb_cfg->features & BIT(SDE_WB_HAS_DCWB)) {
 		max_num_of_irqs = 1;
 		irq_table = dcwb_irq_tbl;
-	} else {
+	} else if (wb_cfg->features & BIT(SDE_WB_HAS_CWB)) {
 		max_num_of_irqs = CRTC_DUAL_MIXERS_ONLY;
 		irq_table = cwb_irq_tbl;
+	} else {
+		max_num_of_irqs = 0;
+		irq_table = NULL;
 	}
 
 	if (enable && atomic_inc_return(&phys->wbirq_refcount) == 1) {
@@ -2191,7 +2196,8 @@ static int _sde_encoder_phys_wb_wait_for_ctl_start(struct sde_encoder_phys *phys
 	 * if hwfencing enabled, try again to wait for up to the extended timeout time in
 	 * increments as long as fence has not been signaled.
 	 */
-	if (rc == -ETIMEDOUT && phys_enc->sde_kms->catalog->hw_fence_rev && hw_ctl)
+	if (rc == -ETIMEDOUT && (phys_enc->sde_kms->catalog->hw_fence_rev ||
+			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable) && hw_ctl)
 		rc = sde_encoder_helper_hw_fence_extended_wait(phys_enc, hw_ctl,
 			&wait_info, INTR_IDX_CTL_START);
 
@@ -2199,7 +2205,8 @@ static int _sde_encoder_phys_wb_wait_for_ctl_start(struct sde_encoder_phys *phys
 		atomic_add_unless(&phys_enc->pending_ctl_start_cnt, -1, 0);
 
 		/* if we timeout after the extended wait, reset mixers and do sw override */
-		if (phys_enc->sde_kms->catalog->hw_fence_rev)
+		if (phys_enc->sde_kms->catalog->hw_fence_rev ||
+				phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
 			sde_encoder_helper_hw_fence_sw_override(phys_enc, hw_ctl);
 
 		SDE_ERROR("[enc:%d wb:%d] ctl_start timed out\n",
@@ -2858,7 +2865,7 @@ struct sde_encoder_phys *sde_encoder_phys_wb_init(struct sde_enc_phys_init_param
 		irq->intr_idx = INTR_IDX_PP_CWB_OVFL;
 		irq->cb.func = sde_encoder_phys_cwb_ovflow;
 
-	} else {
+	} else if (wb_cfg && (wb_cfg->features & BIT(SDE_WB_HAS_CWB))) {
 		irq = &phys_enc->irq[INTR_IDX_PP1_OVFL];
 		irq->name = "pp1_overflow";
 		irq->hw_idx = CWB_1;

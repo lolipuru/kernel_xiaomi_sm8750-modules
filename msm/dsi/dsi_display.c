@@ -1984,7 +1984,7 @@ static int dsi_display_debugfs_init(struct dsi_display *display)
 	char secondary_panel_str[] = "_secondary";
 	int i;
 
-	strlcpy(panel_name, display->name, SEC_PANEL_NAME_MAX_LEN);
+	strscpy(panel_name, display->name, SEC_PANEL_NAME_MAX_LEN);
 	if (strcmp(display->display_type, "secondary") == 0)
 		strlcat(panel_name, secondary_panel_str, SEC_PANEL_NAME_MAX_LEN);
 
@@ -2644,7 +2644,7 @@ static int dsi_display_parse_boot_display_selection(void)
 	int i, j;
 
 	for (i = 0; i < MAX_DSI_ACTIVE_DISPLAY; i++) {
-		strlcpy(disp_buf, boot_displays[i].boot_param,
+		strscpy(disp_buf, boot_displays[i].boot_param,
 			MAX_CMDLINE_PARAM_LEN);
 
 		pos = strnstr(disp_buf, ":", strlen(disp_buf));
@@ -5404,7 +5404,8 @@ int dsi_display_cont_splash_config(void *dsi_display)
 	}
 
 	if (display->panel->esync_caps.esync_support
-	    && display->config.panel_mode == DSI_OP_VIDEO_MODE) {
+	    && display->panel->panel_mode == DSI_OP_VIDEO_MODE) {
+
 		rc = dsi_display_clk_ctrl(display->mdp_clk_handle,
 			DSI_ESYNC_CLK, DSI_CLK_ON);
 		if (rc) {
@@ -6872,6 +6873,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->vrr_caps.arp_support = display->panel->vrr_caps.arp_support;
 	info->poms_align_vsync = display->panel->poms_align_vsync;
 	info->is_te_using_watchdog_timer = is_sim_panel(display);
+	info->event_notification_disabled = display->panel->event_notification_disabled;
 
 	switch (display->panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:

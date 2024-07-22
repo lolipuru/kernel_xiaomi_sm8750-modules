@@ -162,6 +162,8 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_UCSC_IGC,
 	PLANE_PROP_UCSC_GC,
 	PLANE_PROP_CAC_TYPE,
+	PLANE_PROP_SRC_RECT_EXT,
+	PLANE_PROP_DST_RECT_EXT,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -1072,6 +1074,8 @@ struct msm_display_info {
 	uint32_t esync_hsync_milli_pulse_width;
 	uint32_t esync_emsync_fps;
 	uint32_t esync_emsync_milli_pulse_width;
+
+	bool event_notification_disabled;
 
 	uint32_t te_source;
 
