@@ -314,7 +314,7 @@ static u8 dp_ctrl_get_active_lanes(struct dp_ctrl_private *ctrl,
 	u8 lane, count = 0;
 
 	for (lane = 0; lane < ctrl->link->link_params.lane_count; lane++) {
-		if (link_status[lane / 2] & (1 << (lane * 4)))
+		if (link_status[lane / 2] & (1 << ((lane % 2) * 4)))
 			count++;
 		else
 			break;
