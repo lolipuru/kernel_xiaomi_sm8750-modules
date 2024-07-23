@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "qti-smmu-proxy-common.h"
@@ -8,6 +8,7 @@
 #include <linux/qti-smmu-proxy-callbacks.h>
 #include <linux/qcom-dma-mapping.h>
 #include <linux/of.h>
+#include <linux/delay.h>
 
 static void *msgq_hdl;
 
@@ -23,6 +24,7 @@ int smmu_proxy_unmap(void *data)
 	int ret;
 	struct smmu_proxy_unmap_req *req;
 	struct smmu_proxy_unmap_resp *resp;
+	int retry_cnt;
 
 	mutex_lock(&sender_mutex);
 	buf = kzalloc(GH_MSGQ_MAX_MSG_SIZE_BYTES, GFP_KERNEL);
@@ -44,6 +46,8 @@ int smmu_proxy_unmap(void *data)
 	req->hdr.msg_type = SMMU_PROXY_UNMAP;
 	req->hdr.msg_size = sizeof(*req);
 
+	//pr_err_ratelimited("%s: hdl:0x%x \n", __func__, req->hdl);
+
 	ret = gh_msgq_send(msgq_hdl, (void *) req, req->hdr.msg_size, 0);
 	if (ret < 0) {
 		pr_err("%s: failed to send message rc: %d\n", __func__, ret);
@@ -54,9 +58,18 @@ int smmu_proxy_unmap(void *data)
 	 * No need to validate size -  gh_msgq_recv() ensures that sizeof(*resp) <
 	 * GH_MSGQ_MAX_MSG_SIZE_BYTES
 	 */
-	ret = gh_msgq_recv(msgq_hdl, buf, sizeof(*resp), &size, 0);
+	retry_cnt = 5;
+	do {
+		ret = gh_msgq_recv(msgq_hdl, buf, sizeof(*resp), &size, 0);
+		if ((ret < 0) && (retry_cnt > 0)) {
+			pr_err("%s: failed to receive message rc: %d, retrying cnt:%d\n", __func__, ret, retry_cnt);
+			mdelay(30);
+		}
+
+	}while(ret && --retry_cnt);
+
 	if (ret < 0) {
-		pr_err_ratelimited("%s: failed to receive message rc: %d\n", __func__, ret);
+		pr_err("%s: failed to receive message rc: %d\n", __func__, ret);
 		goto free_buf;
 	}
 
@@ -88,6 +101,7 @@ int smmu_proxy_map(struct device *client_dev, struct sg_table *proxy_iova,
 	struct mem_buf_lend_kernel_arg arg = {0};
 	struct smmu_proxy_map_req *req;
 	struct smmu_proxy_map_resp *resp;
+	int retry_cnt;
 
 	ret = smmu_proxy_get_csf_version(&csf_version);
 	if (ret) {
@@ -152,15 +166,23 @@ int smmu_proxy_map(struct device *client_dev, struct sg_table *proxy_iova,
 	if (ret < 0) {
 		pr_err("%s: failed to send message rc: %d\n", __func__, ret);
 		goto free_buf;
-	}
-
+	} 
 	/*
 	 * No need to validate size -  gh_msgq_recv() ensures that sizeof(*resp) <
 	 * GH_MSGQ_MAX_MSG_SIZE_BYTES
 	 */
-	ret = gh_msgq_recv(msgq_hdl, buf, sizeof(*resp), &size, 0);
+	retry_cnt = 5;
+	do {
+		ret = gh_msgq_recv(msgq_hdl, buf, sizeof(*resp), &size, 0);
+		if ((ret < 0) && (retry_cnt > 0)) {
+			pr_err("%s: failed to receive message rc: %d, retrying cnt:%d\n", __func__, ret, retry_cnt);
+			mdelay(30);
+		}
+
+	}while(ret && --retry_cnt);
+
 	if (ret < 0) {
-		pr_err_ratelimited("%s: failed to receive message rc: %d\n", __func__, ret);
+		pr_err("%s: failed to receive message rc: %d\n", __func__, ret);
 		goto free_buf;
 	}
 
@@ -172,6 +194,10 @@ int smmu_proxy_map(struct device *client_dev, struct sg_table *proxy_iova,
 				   resp->hdr.ret);
 		goto free_buf;
 	}
+	if (resp->hdr.msg_type == SMMU_PROXY_UNMAP) {
+
+          pr_err("%s: received incorrect msg \n", __func__);
+	}
 
 	ret = mem_buf_dma_buf_set_destructor(dmabuf, smmu_proxy_unmap, dmabuf);
 	if (ret) {
@@ -179,7 +205,7 @@ int smmu_proxy_map(struct device *client_dev, struct sg_table *proxy_iova,
 				   __func__, ret);
 		goto free_buf;
 	}
-
+        pr_err("%s: received IOVA :%llx\n", __func__, resp->iova);
 	sg_dma_address(proxy_iova->sgl) = resp->iova;
 	sg_dma_len(proxy_iova->sgl) = resp->mapping_len;
 	/*
