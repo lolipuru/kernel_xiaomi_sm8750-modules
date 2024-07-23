@@ -16,6 +16,8 @@
 #include <linux/suspend.h>
 #include <linux/version.h>
 #include <linux/sched.h>
+#include <linux/nmi.h>
+#include <linux/stacktrace.h>
 #include "main.h"
 #include "bus.h"
 #include "debug.h"
@@ -5442,6 +5444,61 @@ static void cnss_pci_free_aux_mem(struct cnss_pci_data *pci_priv)
 	aux_mem->size = 0;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0) || \
+	defined(BACKPORTED_EXPORT_SAVE_STACK_TRACE_TSK_ARM)) && \
+	defined(CONFIG_STACKTRACE)
+#define CNSS_PRINT_TRACE_COUNT 32
+#define CNSS_PRINT_TRACE_SPACES 4
+
+#ifdef CONFIG_ARCH_STACKWALK
+void cnss_print_thread_trace(struct task_struct *task)
+{
+	const int spaces = CNSS_PRINT_TRACE_SPACES;
+	unsigned long entries[CNSS_PRINT_TRACE_COUNT] = {0};
+	unsigned int nr_entries = 0;
+	unsigned int max_entries = CNSS_PRINT_TRACE_COUNT;
+	int skip = 0;
+
+	nr_entries = stack_trace_save_tsk(task, entries, max_entries, skip);
+	stack_trace_print(entries, nr_entries, spaces);
+}
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0))
+void cnss_print_thread_trace(struct task_struct *task)
+{
+	const int spaces = CNSS_PRINT_TRACE_SPACES;
+	unsigned long entries[CNSS_PRINT_TRACE_COUNT] = {0};
+	struct stack_trace trace = {
+		.nr_entries = 0,
+		.skip = 0,
+		.entries = &entries[0],
+		.max_entries = CNSS_PRINT_TRACE_COUNT,
+	};
+
+	save_stack_trace_tsk(task, &trace);
+	stack_trace_print(entries, trace.nr_entries, spaces);
+}
+
+void cnss_print_thread_trace(struct task_struct *task)
+{
+	const int spaces = CNSS_PRINT_TRACE_SPACES;
+	unsigned long entries[CNSS_PRINT_TRACE_COUNT] = {0};
+	struct stack_trace trace = {
+		.nr_entries = 0,
+		.skip = 0,
+		.entries = &entries[0],
+		.max_entries = CNSS_PRINT_TRACE_COUNT,
+	};
+
+	save_stack_trace_tsk(task, &trace);
+	print_stack_trace(&trace, spaces);
+}
+#endif
+
+#else
+void cnss_print_thread_trace(struct task_struct *task) { }
+#endif /* KERNEL_VERSION(4, 14, 0) */
+
+
 void cnss_pci_fw_boot_timeout_hdlr(struct cnss_pci_data *pci_priv)
 {
 	struct cnss_plat_data *plat_priv;
@@ -5454,6 +5511,8 @@ void cnss_pci_fw_boot_timeout_hdlr(struct cnss_pci_data *pci_priv)
 	plat_priv = pci_priv->plat_priv;
 	if (!plat_priv)
 		return;
+
+	cnss_print_thread_trace(plat_priv->cnss_event_work_task);
 
 	if (test_bit(CNSS_IN_COLD_BOOT_CAL, &plat_priv->driver_state)) {
 		cnss_pr_dbg("Ignore FW ready timeout for calibration mode\n");
