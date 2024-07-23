@@ -1,7 +1,7 @@
 ﻿// SPDX-License-Identifier: GPL-2.0-only
 /*
 * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
 */
 
 #include <linux/types.h>	/* u32 */
@@ -535,7 +535,7 @@ int create_channel_device_by_type(
 
 	channel_dev = *channel_dev_ptr;
 
-	strlcpy(channel_dev->name, name, MAX_CHANNEL_NAME);
+	strscpy(channel_dev->name, name, MAX_CHANNEL_NAME);
 
 	/* Allocate memory data buffer for the pipe */
 	IPATEST_DBG(":-----Allocate memory data buffer-----\n");
@@ -1266,7 +1266,7 @@ int configure_ipa_endpoint(struct ipa_ep_cfg *ipa_ep_cfg,
 	rt_rule->commit = 1;
 	rt_rule->num_rules = 1;
 	rt_rule->ip = IPA_IP_v4;
-	strlcpy(rt_rule->rt_tbl_name,
+	strscpy(rt_rule->rt_tbl_name,
 			DEFAULT_ROUTING_TABLE_NAME,
 			IPA_RESOURCE_NAME_MAX);
 	rt_rule_entry = &rt_rule->rules[0];
@@ -1290,7 +1290,7 @@ int configure_ipa_endpoint(struct ipa_ep_cfg *ipa_ep_cfg,
 		also increment an internal reference count. */
 	memset(&rt_lookup, 0, sizeof(struct ipa_ioc_get_rt_tbl));
 	rt_lookup.ip = IPA_IP_v4;
-	strlcpy(rt_lookup.name,
+	strscpy(rt_lookup.name,
 			DEFAULT_ROUTING_TABLE_NAME,
 			IPA_RESOURCE_NAME_MAX);
 	if (ipa3_get_rt_tbl(&rt_lookup)) {

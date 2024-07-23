@@ -889,7 +889,7 @@ static struct ipa3_rt_tbl *__ipa_add_rt_tbl(enum ipa_ip_type ip,
 
 		INIT_LIST_HEAD(&entry->head_rt_rule_list);
 		INIT_LIST_HEAD(&entry->link);
-		strlcpy(entry->name, name, IPA_RESOURCE_NAME_MAX);
+		strscpy(entry->name, name, IPA_RESOURCE_NAME_MAX);
 		entry->set = set;
 		entry->cookie = IPA_RT_TBL_COOKIE;
 		entry->in_sys[IPA_RULE_HASHABLE] = !ipa3_ctx->rt_tbl_hash_lcl[ip];

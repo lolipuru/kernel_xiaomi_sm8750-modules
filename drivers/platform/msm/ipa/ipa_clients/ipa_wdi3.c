@@ -416,7 +416,7 @@ int ipa_wdi_reg_intf_per_inst(
 	}
 
 	INIT_LIST_HEAD(&new_intf->link);
-	strlcpy(new_intf->netdev_name, in->netdev_name,
+	strscpy(new_intf->netdev_name, in->netdev_name,
 		sizeof(new_intf->netdev_name));
 	new_intf->hdr_len = in->hdr_info[0].hdr_len;
 	if (ipa3_ctx->ipa_wdi_opt_dpath)
@@ -460,7 +460,7 @@ int ipa_wdi_reg_intf_per_inst(
 		tx_prop[0].dst_pipe = IPA_CLIENT_WLAN1_CONS;
 	tx_prop[0].alt_dst_pipe = in->alt_dst_pipe;
 	tx_prop[0].hdr_l2_type = in->hdr_info[0].hdr_type;
-	strlcpy(tx_prop[0].hdr_name, hdr->hdr[IPA_IP_v4].name,
+	strscpy(tx_prop[0].hdr_name, hdr->hdr[IPA_IP_v4].name,
 		sizeof(tx_prop[0].hdr_name));
 
 	tx_prop[1].ip = IPA_IP_v6;
@@ -476,7 +476,7 @@ int ipa_wdi_reg_intf_per_inst(
 		tx_prop[1].dst_pipe = IPA_CLIENT_WLAN1_CONS;
 	tx_prop[1].alt_dst_pipe = in->alt_dst_pipe;
 	tx_prop[1].hdr_l2_type = in->hdr_info[1].hdr_type;
-	strlcpy(tx_prop[1].hdr_name, hdr->hdr[IPA_IP_v6].name,
+	strscpy(tx_prop[1].hdr_name, hdr->hdr[IPA_IP_v6].name,
 		sizeof(tx_prop[1].hdr_name));
 
 	/* populate rx prop */

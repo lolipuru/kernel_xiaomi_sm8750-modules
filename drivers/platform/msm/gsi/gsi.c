@@ -1409,8 +1409,13 @@ static int __gsi_allocate_msis(void)
 
 	/* Allocate all MSIs */
 	GSIDBG("gsi_ctx->dev = %p, gsi_ctx->msi.num = %d", gsi_ctx->dev, gsi_ctx->msi.num);
+#if (KERNEL_VERSION(6, 8, 0) > LINUX_VERSION_CODE)
 	result = platform_msi_domain_alloc_irqs(gsi_ctx->dev, gsi_ctx->msi.num,
 			__gsi_msi_write_msg);
+#else
+	result = platform_device_msi_init_and_alloc_irqs(gsi_ctx->dev, gsi_ctx->msi.num,
+			__gsi_msi_write_msg);
+#endif
 	if (result) {
 		GSIERR("error allocating platform MSIs - %d\n", result);
 		return -GSI_STATUS_ERROR;
@@ -1453,7 +1458,11 @@ static int __gsi_allocate_msis(void)
 
 err_free_msis:
 	size = sizeof(unsigned long) * BITS_TO_LONGS(gsi_ctx->msi.num);
+#if (KERNEL_VERSION(6, 8, 0) > LINUX_VERSION_CODE)
 	platform_msi_domain_free_irqs(gsi_ctx->dev);
+#else
+	platform_device_msi_free_irqs_all(gsi_ctx->dev);
+#endif
 	memset(gsi_ctx->msi.allocated, 0, size);
 
 	return result;
@@ -1752,7 +1761,11 @@ err_free_msis:
 	if (gsi_ctx->msi.num) {
 		size_t size =
 			sizeof(unsigned long) * BITS_TO_LONGS(gsi_ctx->msi.num);
+#if (KERNEL_VERSION(6, 8, 0) > LINUX_VERSION_CODE)
 		platform_msi_domain_free_irqs(gsi_ctx->dev);
+#else
+		platform_device_msi_free_irqs_all(gsi_ctx->dev);
+#endif
 		memset(gsi_ctx->msi.allocated, 0, size);
 	}
 
@@ -1860,7 +1873,11 @@ int gsi_deregister_device(unsigned long dev_hdl, bool force)
 	__gsi_config_gen_irq(gsi_ctx->per.ee, ~0, 0);
 
 	if (gsi_ctx->msi.num)
+#if (KERNEL_VERSION(6, 8, 0) > LINUX_VERSION_CODE)
 		platform_msi_domain_free_irqs(gsi_ctx->dev);
+#else
+		platform_device_msi_free_irqs_all(gsi_ctx->dev);
+#endif
 
 	devm_free_irq(gsi_ctx->dev, gsi_ctx->per.irq, gsi_ctx);
 	gsihal_destroy();

@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifdef CONFIG_DEBUG_FS
@@ -3460,9 +3460,9 @@ static ssize_t ipa3_perform_loopback(struct file *file, char __user *ubuf,
 	rt_rule->commit = 1;
 	rt_rule->ip = IPA_IP_v4;
 	rt_lookup.ip = rt_rule->ip;
-	strlcpy(rt_rule->rt_tbl_name, "V4_RT_TO_APPS_WAN_CONS",
+	strscpy(rt_rule->rt_tbl_name, "V4_RT_TO_APPS_WAN_CONS",
 		IPA_RESOURCE_NAME_MAX);
-	strlcpy(rt_lookup.name, rt_rule->rt_tbl_name, IPA_RESOURCE_NAME_MAX);
+	strscpy(rt_lookup.name, rt_rule->rt_tbl_name, IPA_RESOURCE_NAME_MAX);
 	rt_rule->num_rules = 1;
 	rt_rule->rules[0].rule.dst = IPA_CLIENT_APPS_WAN_CONS;
 	rt_rule->rules[0].rule.hashable = true;
@@ -3483,9 +3483,9 @@ static ssize_t ipa3_perform_loopback(struct file *file, char __user *ubuf,
 	rt_rule->commit = 1;
 	rt_rule->ip = IPA_IP_v6;
 	rt_lookup.ip = rt_rule->ip;
-	strlcpy(rt_rule->rt_tbl_name, "V6_RT_TO_APPS_WAN_CONS",
+	strscpy(rt_rule->rt_tbl_name, "V6_RT_TO_APPS_WAN_CONS",
 		IPA_RESOURCE_NAME_MAX);
-	strlcpy(rt_lookup.name, rt_rule->rt_tbl_name, IPA_RESOURCE_NAME_MAX);
+	strscpy(rt_lookup.name, rt_rule->rt_tbl_name, IPA_RESOURCE_NAME_MAX);
 	rt_rule->num_rules = 1;
 	rt_rule->rules[0].rule.dst = IPA_CLIENT_APPS_WAN_CONS;
 	rt_rule->rules[0].rule.hashable = true;
