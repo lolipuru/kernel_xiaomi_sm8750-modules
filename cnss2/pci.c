@@ -5210,6 +5210,7 @@ int cnss_pci_load_sku_license(struct cnss_pci_data *pci_priv)
 	if (!sku_license_mem->va && !sku_license_mem->size) {
 		scnprintf(filename, MAX_FIRMWARE_NAME_LEN, "%s", soft_sku_filename);
 
+		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
 		ret = firmware_request_nowarn(&fw_entry, filename,
 					      &pci_priv->pci_dev->dev);
 		if (ret) {
@@ -5267,6 +5268,7 @@ int cnss_pci_load_tme_patch(struct cnss_pci_data *pci_priv)
 	if (!tme_lite_mem->va && !tme_lite_mem->size) {
 		scnprintf(filename, MAX_FIRMWARE_NAME_LEN, "%s", tme_patch_filename);
 
+		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
 		ret = firmware_request_nowarn(&fw_entry, filename,
 					      &pci_priv->pci_dev->dev);
 		if (ret) {
@@ -5352,6 +5354,7 @@ int cnss_pci_load_tme_opt_file(struct cnss_pci_data *pci_priv,
 		cnss_pci_add_fw_prefix_name(pci_priv, filename,
 					    tme_opt_filename);
 
+		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
 		ret = firmware_request_nowarn(&fw_entry, filename,
 					      &pci_priv->pci_dev->dev);
 		if (ret) {
@@ -5440,6 +5443,7 @@ int cnss_pci_load_m3(struct cnss_pci_data *pci_priv)
 		cnss_pci_add_fw_prefix_name(pci_priv, filename,
 					    phy_filename);
 
+		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
 		ret = firmware_request_nowarn(&fw_entry, filename,
 					      &pci_priv->pci_dev->dev);
 		if (ret) {
@@ -5510,6 +5514,7 @@ int cnss_pci_load_aux(struct cnss_pci_data *pci_priv)
 						    DEFAULT_AUX_FILE_NAME);
 		}
 
+		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
 		ret = firmware_request_nowarn(&fw_entry, filename,
 					      &pci_priv->pci_dev->dev);
 		if (ret) {

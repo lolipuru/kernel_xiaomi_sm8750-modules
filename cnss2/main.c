@@ -4077,6 +4077,7 @@ int cnss_request_firmware_direct(struct cnss_plat_data *plat_priv,
 				 const struct firmware **fw_entry,
 				 const char *filename)
 {
+	cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
 	if (IS_ENABLED(CONFIG_CNSS_REQ_FW_DIRECT))
 		return request_firmware_direct(fw_entry, filename,
 					       &plat_priv->plat_dev->dev);
