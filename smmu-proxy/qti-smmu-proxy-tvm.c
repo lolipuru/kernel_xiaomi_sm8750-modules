@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kthread.h>
@@ -675,7 +675,6 @@ static int proxy_fault_handler(struct iommu_domain *domain, struct device *dev,
 			       unsigned long iova, int flags, void *token)
 {
 	dev_err(dev, "Context fault with IOVA %lx and fault flags %d\n", iova, flags);
-	panic("SMMU proxy fault!\n");
 
 	return -EINVAL;
 }

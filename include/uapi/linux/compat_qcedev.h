@@ -9,8 +9,8 @@
 
 #include <linux/types.h>
 #include <linux/ioctl.h>
-
-#include <linux/compat.h>
+#include <linux/qcedev.h>
+#include <asm-generic/posix_types.h>
 
 /**
  * struct compat_buf_info - Buffer information
@@ -21,10 +21,10 @@
  */
 struct compat_buf_info {
 	union {
-		compat_ulong_t	offset;
-		compat_uptr_t	vaddr;
+		__kernel_ulong_t	offset;
+		__u32	vaddr;
 	};
-	compat_ulong_t	len;
+	__kernel_ulong_t	len;
 };
 
 /**
@@ -49,9 +49,9 @@ struct compat_qcedev_vbuf_info {
  *				(allocated by PMEM)
  */
 struct compat_qcedev_pmem_info {
-	compat_int_t		fd_src;
+	__s32		fd_src;
 	struct compat_buf_info	src[QCEDEV_MAX_BUFFERS];
-	compat_int_t		fd_dst;
+	__s32		fd_dst;
 	struct compat_buf_info	dst[QCEDEV_MAX_BUFFERS];
 };
 
@@ -103,19 +103,19 @@ struct compat_qcedev_pmem_info {
  * data array to 0.
  */
 struct compat_qcedev_cipher_op_req {
-	uint8_t					use_pmem;
+	__u8					use_pmem;
 	union {
 		struct compat_qcedev_pmem_info	pmem;
 		struct compat_qcedev_vbuf_info	vbuf;
 	};
-	compat_ulong_t				entries;
-	compat_ulong_t				data_len;
-	uint8_t					in_place_op;
-	uint8_t					enckey[QCEDEV_MAX_KEY_SIZE];
-	compat_ulong_t				encklen;
-	uint8_t					iv[QCEDEV_MAX_IV_SIZE];
-	compat_ulong_t				ivlen;
-	compat_ulong_t				byteoffset;
+	__kernel_ulong_t				entries;
+	__kernel_ulong_t				data_len;
+	__u8							in_place_op;
+	__u8							enckey[QCEDEV_MAX_KEY_SIZE];
+	__kernel_ulong_t				encklen;
+	__u8							iv[QCEDEV_MAX_IV_SIZE];
+	__kernel_ulong_t				ivlen;
+	__kernel_ulong_t				byteoffset;
 	enum qcedev_cipher_alg_enum		alg;
 	enum qcedev_cipher_mode_enum		mode;
 	enum qcedev_oper_enum			op;
@@ -134,12 +134,12 @@ struct compat_qcedev_cipher_op_req {
  */
 struct compat_qcedev_sha_op_req {
 	struct compat_buf_info			data[QCEDEV_MAX_BUFFERS];
-	compat_ulong_t				entries;
-	compat_ulong_t				data_len;
-	uint8_t					digest[QCEDEV_MAX_SHA_DIGEST];
-	compat_ulong_t				diglen;
-	compat_uptr_t				authkey;
-	compat_ulong_t				authklen;
+	__kernel_ulong_t				entries;
+	__kernel_ulong_t				data_len;
+	__u8							digest[QCEDEV_MAX_SHA_DIGEST];
+	__kernel_ulong_t				diglen;
+	__u32							authkey;
+	__kernel_ulong_t				authklen;
 	enum qcedev_sha_alg_enum		alg;
 };
 
@@ -153,11 +153,11 @@ struct compat_qcedev_sha_op_req {
  *                     each fd in fd[].
  */
 struct compat_qcedev_map_buf_req {
-	compat_long_t	fd[QCEDEV_MAX_BUFFERS];
-	compat_ulong_t	num_fds;
-	compat_ulong_t	fd_size[QCEDEV_MAX_BUFFERS];
-	compat_ulong_t	fd_offset[QCEDEV_MAX_BUFFERS];
-	compat_u64      buf_vaddr[QCEDEV_MAX_BUFFERS];
+	__kernel_long_t	fd[QCEDEV_MAX_BUFFERS];
+	__kernel_ulong_t	num_fds;
+	__kernel_ulong_t	fd_size[QCEDEV_MAX_BUFFERS];
+	__kernel_ulong_t	fd_offset[QCEDEV_MAX_BUFFERS];
+	__u64      buf_vaddr[QCEDEV_MAX_BUFFERS];
 };
 
 /**
@@ -166,8 +166,8 @@ struct compat_qcedev_map_buf_req {
  * num_fds (IN):       Number of fds in fd[].
  */
 struct compat_qcedev_unmap_buf_req {
-	compat_long_t	fd[QCEDEV_MAX_BUFFERS];
-	compat_ulong_t	num_fds;
+	__kernel_long_t	fd[QCEDEV_MAX_BUFFERS];
+	__kernel_ulong_t	num_fds;
 };
 
 struct file;
