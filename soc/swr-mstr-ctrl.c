@@ -2365,12 +2365,31 @@ static void swrm_process_change_enum_slave_status(struct swr_mstr_ctrl *swrm)
 	u8 num_enum_devs = 0;
 	u8 enum_devnum[SWR_MAX_DEV_NUM][2];
 	u8 devnum = 0;
+	u8 reset = 0;
+	struct swr_device *swr_dev;
+	struct swr_master *mstr = &swrm->master;
 
 	status = swr_master_read(swrm, SWRM_MCP_SLV_STATUS);
 	if (status == swrm->slave_status) {
 		dev_dbg(swrm->dev,
 				"%s: No change in slave status: 0x%x\n",
 				__func__, status);
+	/* This change is a workaround to enable the slave
+	 * to handle any unexpected error condition.
+	 */
+		if (swrm->master_id == MASTER_ID_TX) {
+			list_for_each_entry(swr_dev, &mstr->devices, dev_list) {
+				reset = swr_reset_device(swr_dev);
+				if (reset != -ENODEV && reset != -EINVAL) {
+					dev_dbg_ratelimited(swrm->dev,
+						"%s Slave Reset Done!!\n", __func__);
+					reset = 0;
+				} else {
+					dev_dbg_ratelimited(swrm->dev,
+						"%s Slave Reset failed!!\n", __func__);
+				}
+			}
+		}
 		return;
 	}
 
