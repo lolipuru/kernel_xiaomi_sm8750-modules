@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021, 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021, 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -514,7 +514,7 @@ int btfm_slim_register_hw_ep(struct btfmslim *btfm_slim)
 
 	/* Copy EP device parameters as intercations will be on the same device */
 	hwep_info->dev = dev;
-	strlcpy(hwep_info->driver_name, BTFMSLIM_DEV_NAME, DEVICE_NAME_MAX_LEN);
+	strscpy(hwep_info->driver_name, BTFMSLIM_DEV_NAME, DEVICE_NAME_MAX_LEN);
 	hwep_info->drv = &btfmslim_hw_driver;
 	hwep_info->dai_drv = btfmslim_dai_driver;
 	hwep_info->num_dai = ARRAY_SIZE(btfmslim_dai_driver);
