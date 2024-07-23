@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -36,7 +36,27 @@ struct wcd939x_slave_priv {
 	struct dentry *debugfs_reg_dump;
 	unsigned int read_data;
 #endif
+	int (*rst_notify)(void *);
+	void *slv_handle;
 };
+
+int wcd939x_slave_register_notify(struct swr_device *pdev, int (*rst_notify)(void *), void *handle)
+{
+	struct wcd939x_slave_priv *wcd939x_slave = swr_get_dev_data(pdev);
+	int ret = 0;
+
+	dev_dbg(&pdev->dev, "%s: called to register\n", __func__);
+	if (wcd939x_slave) {
+		dev_dbg(&pdev->dev,
+			"%s: got wcd slave device info, called to register\n",
+				__func__);
+		wcd939x_slave->slv_handle = handle;
+		wcd939x_slave->rst_notify = rst_notify;
+		ret = 1;
+	}
+	return ret;
+}
+EXPORT_SYMBOL_GPL(wcd939x_slave_register_notify);
 
 #ifdef CONFIG_DEBUG_FS
 static int codec_debug_open(struct inode *inode, struct file *file)
@@ -379,6 +399,20 @@ static int wcd939x_swr_probe(struct swr_device *pdev)
 	return component_add(&pdev->dev, &wcd939x_slave_comp_ops);
 }
 
+
+static int wcd939x_swr_reset(struct swr_device *pdev)
+{
+	struct wcd939x_slave_priv *wcd939x_slave = swr_get_dev_data(pdev);
+
+	dev_dbg(&pdev->dev, "%s called to swr slave reset\n", __func__);
+	if (wcd939x_slave) {
+		if (wcd939x_slave->rst_notify)
+			wcd939x_slave->rst_notify(wcd939x_slave->slv_handle);
+	}
+
+	return 0;
+}
+
 static int wcd939x_swr_remove(struct swr_device *pdev)
 {
 #ifdef CONFIG_DEBUG_FS
@@ -404,6 +438,7 @@ static struct swr_driver wcd939x_slave_driver = {
 	},
 	.probe = wcd939x_swr_probe,
 	.remove = wcd939x_swr_remove,
+	.reset_device = wcd939x_swr_reset,
 	.id_table = wcd939x_swr_id,
 };
 
