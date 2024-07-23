@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SYNX_HW_FENCE_H
@@ -47,6 +47,23 @@ struct synx_session *synx_hwfence_initialize(struct synx_initialization_params *
  */
 int synx_hwfence_recover(enum synx_client_id id);
 
+/**
+ * synx_hwfence_enable_resources - enable any resources needed
+ * for the synx client
+ *
+ * Function should be called with enable=true when
+ * client is using fences and with enable=false when
+ * client is not using fences, e.g. at use-case boundary.
+ *
+ * @param id : Client ID of core for which resources are enabled
+ * @param resource : type of synx resource to enable
+ * @param enable : true if enabling resources, false to disable resources
+ *
+ * @return Status of operation. Negative in case of error. SYNX_SUCCESS otherwise.
+ */
+int synx_hwfence_enable_resources(enum synx_client_id id, enum synx_resource_type resource,
+	bool enable);
+
 #else /* CONFIG_QTI_HW_FENCE */
 static inline int synx_hwfence_init_ops(struct synx_ops *ops)
 {
@@ -60,6 +77,12 @@ static inline struct synx_session *synx_hwfence_initialize(
 }
 
 static inline int synx_hwfence_recover(enum synx_client_id id)
+{
+	return -SYNX_INVALID;
+}
+
+static inline int synx_hwfence_enable_resources(enum synx_client_id id,
+	enum synx_resource_type resource, bool enable)
 {
 	return -SYNX_INVALID;
 }

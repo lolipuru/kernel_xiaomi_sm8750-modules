@@ -167,3 +167,15 @@ int synx_cancel_async_wait(struct synx_session *session,
 	return session->ops->cancel_async_wait(session, params);
 }
 EXPORT_SYMBOL(synx_cancel_async_wait);
+
+int synx_enable_resources(enum synx_client_id id, enum synx_resource_type resource, bool enable)
+{
+	int ret = 0;
+
+	if (is_hw_fence_client(id))
+		ret = synx_hwfence_enable_resources(id, resource, enable);
+	else
+		ret = SYNX_SUCCESS; /* no resources to enable for native synx clients */
+	return ret;
+}
+EXPORT_SYMBOL_GPL(synx_enable_resources);
