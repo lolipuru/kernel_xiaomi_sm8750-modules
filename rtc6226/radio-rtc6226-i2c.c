@@ -8,7 +8,7 @@
  *  Copyright (c) 2012 Hans de Goede <hdegoede@redhat.com>
  *  Copyright (c) 2018 LG Electronics, Inc.
  *  Copyright (c) 2018 Richwave Technology Co.Ltd
- *  Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -212,8 +212,8 @@ int rtc6226_vidioc_querycap(struct file *file, void *priv,
 	struct v4l2_capability *capability)
 {
 	FMDBG("%s enter\n", __func__);
-	strlcpy(capability->driver, DRIVER_NAME, sizeof(capability->driver));
-	strlcpy(capability->card, DRIVER_CARD, sizeof(capability->card));
+	strscpy(capability->driver, DRIVER_NAME, sizeof(capability->driver));
+	strscpy(capability->card, DRIVER_CARD, sizeof(capability->card));
 	capability->device_caps = V4L2_CAP_HW_FREQ_SEEK | V4L2_CAP_READWRITE |
 		V4L2_CAP_TUNER | V4L2_CAP_RADIO | V4L2_CAP_RDS_CAPTURE;
 	capability->capabilities = capability->device_caps |
