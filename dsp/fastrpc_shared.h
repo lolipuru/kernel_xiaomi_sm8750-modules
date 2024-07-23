@@ -389,11 +389,6 @@ struct frpc_transport_session_control {
 static const char *domains[FASTRPC_DEV_MAX] = { "adsp", "mdsp",
 						"sdsp", "cdsp"};
 
-#ifdef CONFIG_DEBUG_FS
-static struct dentry *debugfs_root;
-static struct dentry *debugfs_global_file;
-#endif
-
 struct fastrpc_phy_page {
 	u64 addr;		/* physical address */
 	u64 size;		/* size of contiguous region */
