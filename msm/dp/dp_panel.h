@@ -196,7 +196,7 @@ struct dp_panel {
 	int (*read_sink_status)(struct dp_panel *dp_panel, u8 *sts, u32 size);
 	int (*update_edid)(struct dp_panel *dp_panel, struct edid *edid);
 	bool (*read_mst_cap)(struct dp_panel *dp_panel);
-	void (*convert_to_dp_mode)(struct dp_panel *dp_panel,
+	int (*convert_to_dp_mode)(struct dp_panel *dp_panel,
 		const struct drm_display_mode *drm_mode,
 		struct dp_display_mode *dp_mode);
 	void (*update_pps)(struct dp_panel *dp_panel, char *pps_cmd);
