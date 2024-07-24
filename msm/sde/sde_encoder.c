@@ -6102,7 +6102,7 @@ void _sde_encoder_delay_kickoff_processing(struct sde_encoder_virt *sde_enc)
 
 	next_vsync_time_ns = DIV_ROUND_UP(NSEC_PER_SEC, fps) + phy_enc->last_vsync_timestamp;
 	/* ept time is within last & next vsync expected with current fps */
-	if (!qsync_mode && (ept_ts < next_vsync_time_ns)) {
+	if (!(qsync_mode || avr_step_fps) && (ept_ts < next_vsync_time_ns)) {
 		SDE_EVT32(DRMID(&sde_enc->base), qsync_mode, avr_step_fps, min_fps, fps,
 			ktime_to_us(current_ts), ktime_to_us(ept), ktime_to_us(ept_ts),
 			ktime_to_us(next_vsync_time_ns), is_cmd_mode, SDE_EVTLOG_FUNC_CASE2);
