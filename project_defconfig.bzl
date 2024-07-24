@@ -16,16 +16,17 @@ dependency_config = [
 	"CONFIG_DOMAIN_ID_SECURE_CAMERA=y",
 	"CONFIG_DYNAMIC_FD_PORT_CONFIG=y",
 	"CONFIG_SECURE_CAMERA_25=y",
+	"CONFIG_MSM_MMRM=y",
 ]
 
 project_configs = select({
     # Project-specific configs
     ":no_project": [],
-    ":pineapple": dependency_config + [
-		"CONFIG_MSM_MMRM=y",
-	],
-    ":sun": dependency_config,
-	":canoe": [],
+    ":pineapple": dependency_config,
+    ":sun": dependency_config + [
+       "CONFIG_SPECTRA_SECURE_DYN_PORT_CFG=y",
+    ],
+    ":canoe": [],
 })
 
 """

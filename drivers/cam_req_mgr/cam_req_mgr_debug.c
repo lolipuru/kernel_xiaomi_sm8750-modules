@@ -5,6 +5,7 @@
  */
 
 #include "cam_req_mgr_debug.h"
+#include "cam_mem_mgr_api.h"
 
 #define MAX_SESS_INFO_LINE_BUFF_LEN 256
 #define MAX_RAW_BUFF_LEN  8192
@@ -204,14 +205,14 @@ void cam_req_mgr_debug_bind_latency_cleanup(void)
 	list_for_each_entry_safe(node, tmp, &cam_bind_latency_list, list) {
 		list_del(&node->list);
 		kfree(node->name);
-		kfree(node);
+		CAM_MEM_FREE(node);
 	}
 }
 
 void cam_req_mgr_debug_record_bind_latency(const char *driver_name, unsigned long time_in_usec)
 {
 	struct camera_submodule_bind_time_node  *new_node =
-		kzalloc(sizeof(struct camera_submodule_bind_time_node), GFP_KERNEL);
+		CAM_MEM_ZALLOC(sizeof(struct camera_submodule_bind_time_node), GFP_KERNEL);
 
 	if (!new_node) {
 		CAM_WARN(CAM_REQ, "%s: %u usec: Failed to allocate Bind Time node",
@@ -223,7 +224,7 @@ void cam_req_mgr_debug_record_bind_latency(const char *driver_name, unsigned lon
 	if (!new_node->name) {
 		CAM_WARN(CAM_REQ, "%s: %u usec: Failed to create driver_name",
 			driver_name, time_in_usec);
-		kfree(new_node);
+		CAM_MEM_FREE(new_node);
 		return;
 	}
 	new_node->bind_time_usec = time_in_usec;

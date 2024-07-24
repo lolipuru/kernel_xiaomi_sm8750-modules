@@ -11,7 +11,7 @@
 #include "cam_irq_controller.h"
 
 #define CAM_TFE_1080_NUM_TOP_DBG_REG          17
-#define CAM_TFE_1080_NUM_BAYER_DBG_REG        10
+#define CAM_TFE_1080_NUM_BAYER_DBG_REG        11
 #define CAM_TFE_BUS_VER3_1080_MAX_CLIENTS     28
 
 static struct cam_vfe_top_ver4_module_desc tfe1080_ipp_mod_desc[] = {
@@ -57,134 +57,151 @@ static struct cam_vfe_top_ver4_module_desc tfe1080_ipp_mod_desc[] = {
 	},
 	{
 		.id = 10,
-		.desc = "CLC_COLOR_CORRECT",
+		.desc = "CLC_BLS",
 	},
 	{
 		.id = 11,
-		.desc = "CLC_GTM",
+		.desc = "CLC_COLOR_CORRECT",
 	},
 	{
 		.id = 12,
-		.desc = "CLC_GLUT",
+		.desc = "CLC_GTM",
 	},
 	{
 		.id = 13,
-		.desc = "CLC_COLOR_XFORM",
+		.desc = "CLC_GLUT",
 	},
 	{
 		.id = 14,
-		.desc = "CLC_DOWNSCALE_MN_Y",
+		.desc = "CLC_COLOR_XFORM",
 	},
 	{
 		.id  = 15,
-		.desc = "CLC_DOWNSCALE_MN_C",
+		.desc = "CLC_DOWNSCALE_MN_Y",
 	},
 	{
 		.id = 16,
-		.desc = "CLC_CROP_RND_CLAMP_FD_Y",
+		.desc = "CLC_DOWNSCALE_MN_C",
 	},
 	{
 		.id = 17,
-		.desc = "CLC_CROP_RND_CLAMP_FD_C",
+		.desc = "CLC_CROP_RND_CLAMP_FD_Y",
 	},
 	{
 		.id = 18,
-		.desc = "CLC_BDS2_DEMO",
+		.desc = "CLC_CROP_RND_CLAMP_FD_C",
 	},
 	{
 		.id = 19,
-		.desc = "CLC_PUNCH_BDS2",
+		.desc = "CLC_BDS2_DEMO",
 	},
 	{
 		.id = 20,
-		.desc = "CLC_PUNCH_DS4_MUX",
+		.desc = "CLC_PUNCH_BDS2",
 	},
 	{
 		.id = 21,
-		.desc = "CLC_BAYER_DS_4_DS4",
+		.desc = "CLC_PUNCH_DS4_MUX",
 	},
 	{
 		.id = 22,
-		.desc = "CLC_CROP_RND_CLAMP_DS4"
+		.desc = "CLC_BAYER_DS_4_DS4",
 	},
 	{
 		.id = 23,
-		.desc = "CLC_PUNCH_DS16"
+		.desc = "CLC_CROP_RND_CLAMP_DS4",
 	},
 	{
 		.id = 24,
-		.desc = "CLC_BAYER_DS_4_DS16",
+		.desc = "CLC_PUNCH_DS16",
 	},
 	{
 		.id = 25,
-		.desc = "CLC_CROP_RND_CLAMP_DS16",
+		.desc = "CLC_BAYER_DS_4_DS16",
 	},
 	{
 		.id = 26,
-		.desc = "CLC_CROP_RND_CLAMP_DS2",
+		.desc = "CLC_CROP_RND_CLAMP_DS16",
 	},
 	{
 		.id = 27,
-		.desc = "CLC_RCS_DS2",
+		.desc = "CLC_CROP_RND_CLAMP_DS2",
 	},
 	{
 		.id = 28,
-		.desc = "CLC_CROP_RND_CLAMP_FULL_OUT",
+		.desc = "CLC_RCS_DS2",
 	},
 	{
 		.id = 29,
-		.desc = "CLC_COMPDECOMP_BYPASS",
+		.desc = "CLC_CROP_RND_CLAMP_FULL_OUT",
 	},
 	{
 		.id = 30,
-		.desc = "CLC_CROP_RND_CLAMP_BYPASS",
+		.desc = "CLC_COMPDECOMP_BYPASS",
 	},
 	{
 		.id = 31,
+		.desc = "CLC_CROP_RND_CLAMP_BYPASS",
+	},
+	{
+		.id = 32,
 		.desc = "CLC_RCS_FULL_OUT",
+	},
+	/**
+	 * Main_PP status register does not capture CLC_HAF violation,
+	 * but debug_err_vec + timestamp feature does. Since both use
+	 * the same violation ID table, we add it here
+	 */
+	{
+		.id = 33,
+		.desc = "CLC_HAF",
 	},
 };
 
-struct cam_vfe_bayer_ver4_module_desc tfe1080_bayer_mod_desc[] = {
+struct cam_vfe_top_ver4_module_desc tfe1080_bayer_mod_desc[] = {
 	{
 		.id = 0,
 		.desc = "CLC_DEMUX",
 	},
 	{
 		.id = 1,
-		.desc = "CLC_BPC_PDPC_GIC",
+		.desc = "CLC_UNIV_CHANNEL_GAINS",
 	},
 	{
 		.id = 2,
-		.desc = "CLC_PDPC_BPC_1D",
+		.desc = "CLC_QPDR",
 	},
 	{
 		.id = 3,
-		.desc = "CLC_ABF_BINC",
+		.desc = "CLC_BPC_PDPC_GIC",
 	},
 	{
 		.id = 4,
-		.desc = "CLC_CHANNEL_GAINS",
+		.desc = "CLC_PDPC_BPC_1D",
 	},
 	{
 		.id = 5,
-		.desc = "CLC_LSC",
+		.desc = "CLC_ABF_BINC",
 	},
 	{
 		.id = 6,
-		.desc = "CLC_FCG",
+		.desc = "CLC_CHANNEL_GAINS",
 	},
 	{
 		.id = 7,
-		.desc = "CLC_WB_GAIN",
+		.desc = "CLC_LSC",
 	},
 	{
 		.id = 8,
-		.desc = "CLC_COMPDECOMP_BAYER",
+		.desc = "CLC_FCG",
 	},
 	{
 		.id = 9,
-		.desc = "CLC_CROP_RND_CLAMP_PIXEL_RAW_OUT",
+		.desc = "CLC_WB_GAIN",
+	},
+	{
+		.id = 10,
+		.desc = "CLC_COMPDECOMP_BAYER",
 	},
 };
 
@@ -536,6 +553,12 @@ static struct cam_vfe_top_ver4_reg_offset_common tfe1080_top_common_reg = {
 			.perf_count_status = 0x0000E448,
 		},
 	},
+	.top_debug_err_vec_irq    = {0x000004E4, 0x000004E8},
+	.top_debug_err_vec_ts_lb  = 0x000004DC,
+	.top_debug_err_vec_ts_mb  = 0x000004E0,
+	.bayer_debug_err_vec_irq  = {0x0000E4E4, 0x0},
+	.bayer_debug_err_vec_ts_lb = 0x0000E4DC,
+	.bayer_debug_err_vec_ts_mb = 0x0000E4E0,
 	.top_debug_cfg            = 0x00000548,
 	.bayer_debug_cfg          = 0x0000E518,
 	.num_top_debug_reg        = CAM_TFE_1080_NUM_TOP_DBG_REG,
@@ -544,7 +567,8 @@ static struct cam_vfe_top_ver4_reg_offset_common tfe1080_top_common_reg = {
 	.bayer_debug = tfe1080_bayer_debug_reg,
 	.frame_timing_irq_reg_idx = CAM_IFE_IRQ_CAMIF_REG_STATUS0,
 	.capabilities = CAM_VFE_COMMON_CAP_SKIP_CORE_CFG |
-			CAM_VFE_COMMON_CAP_CORE_MUX_CFG,
+			CAM_VFE_COMMON_CAP_CORE_MUX_CFG |
+			CAM_VFE_COMMON_CAP_DEBUG_ERR_VEC,
 };
 
 static struct cam_vfe_ver4_path_reg_data tfe1080_ipp_common_reg_data = {
@@ -645,86 +669,143 @@ static struct cam_vfe_top_ver4_debug_reg_info tfe1080_top_dbg_reg_info[
 		"test_bus_reserved",
 		"test_bus_reserved"
 	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"STATS_AWB_BG_TINTLESS",
-		"STATS_AWB_BG_AE",
-		"STATS_BHIST_AEC",
-		"STATS_RS",
-		"STATS_BFW_AWB",
-		"STATS_AWB_BG_AWB",
-		"STATS_BHIST_AF",
-		"STATS_AWB_BG_ALSC"
-	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"STATS_BHIST_TMC",
-		"compdecomp_fd",
-		"color_correct",
-		"gtm",
-		"glut",
-		"color_xform",
-		"downscale_mn_y",
-		"downscale_mn_c"
-	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"crop_rnd_clamp_fd_y",
-		"crop_rnd_clamp_fd_c",
-		"bds2_demo",
-		"punch_bds2",
-		"punch_ds4_mux",
-		"bayer_ds_4_ds4",
-		"crop_rnd_clamp_ds4",
-		"punch_ds16"
-	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"bayer_ds_4_ds16",
-		"crop_rnd_clamp_ds16",
-		"crop_rnd_clamp_ds2",
-		"clc_haf",
-		"clc_rcs_ds2",
-		"clc_crop_rnd_clamp_full_out",
-		"clc_compdecomp_bypass",
-		"clc_crop_rnd_clamp_bypass"
-	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"clc_rcs_full_out",
-		"clc_haf",
-		"csid_tfe_ipp",
-		"ppp_repeater",
-		"stats_awb_bg_tintless",
-		"stats_awb_bg_ae",
-		"stats_ae_bhist",
-		"stats_bayer_rs"
-	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"stats_bayer_bfw",
-		"stats_awb_bg_awb",
-		"stats_bhist_af",
-		"full_out",
-		"ds4_out_y",
-		"ds4_out_c",
-		"ds16_out_y",
-		"ds16_out_c"
-	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"ds2_out_y",
-		"ds2_out_c",
-		"raw_out",
-		"fd_out_y",
-		"fd_out_c",
-		"haf_sad_stats",
-		"haf_caf_stats",
-		"haf_parsed"
-	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"haf_pre_processed",
-		"full_out",
-		"ubwc_stats",
-		"ds4_out_y",
-		"ds4_out_c",
-		"ds16_out_y",
-		"ds16_out_c",
-		"ds2_out_y"
-	),
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "STATS_AWB_BG_TINTLESS",
+			0x00000530, (BIT(0) | BIT(1) | BIT(2))),
+		VFE_DBG_INFO_WITH_IDLE(4, "STATS_AWB_BG_AE",
+			0x00000530, (BIT(3) | BIT(4) | BIT(5))),
+		VFE_DBG_INFO_WITH_IDLE(8, "STATS_BHIST_AEC",
+			0x00000530, (BIT(6) | BIT(7) | BIT(8))),
+		VFE_DBG_INFO_WITH_IDLE(12, "STATS_RS",
+			0x00000530, (BIT(9) | BIT(10) | BIT(11))),
+		VFE_DBG_INFO_WITH_IDLE(16, "STATS_BFW_AWB",
+			0x00000530, (BIT(12) | BIT(13) | BIT(14))),
+		VFE_DBG_INFO_WITH_IDLE(20, "STATS_AWB_BG_AWB",
+			0x00000530, (BIT(15) | BIT(16) | BIT(17))),
+		VFE_DBG_INFO_WITH_IDLE(24, "STATS_BHIST_AF",
+			0x00000530, (BIT(18) | BIT(19) | BIT(20))),
+		VFE_DBG_INFO_WITH_IDLE(28, "STATS_AWB_BG_ALSC",
+			0x00000530, (BIT(21) | BIT(22) | BIT(23))),
+	},
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "STATS_BHIST_TMC",
+			0x00000530, (BIT(24) | BIT(25) | BIT(26))),
+		VFE_DBG_INFO_WITH_IDLE(4, "compdecomp_fd",
+			0x00000530, BIT(27)),
+		VFE_DBG_INFO_WITH_IDLE(8, "color_correct",
+			0x00000530, BIT(28)),
+		VFE_DBG_INFO_WITH_IDLE(12, "gtm",
+			0x00000530, BIT(29)),
+		VFE_DBG_INFO_WITH_IDLE(16, "glut",
+			0x00000530, BIT(30)),
+		VFE_DBG_INFO_WITH_IDLE(20, "color_xform",
+			0x00000530, BIT(31)),
+		VFE_DBG_INFO_WITH_IDLE(24, "downscale_mn_y",
+			0x00000534, BIT(0)),
+		VFE_DBG_INFO_WITH_IDLE(28, "downscale_mn_c",
+			0x00000534, BIT(1)),
+	},
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "crop_rnd_clamp_fd_y",
+			0x00000534, BIT(2)),
+		VFE_DBG_INFO_WITH_IDLE(4, "crop_rnd_clamp_fd_c",
+			0x00000534, BIT(3)),
+		VFE_DBG_INFO_WITH_IDLE(8, "bds2_demo",
+			0x00000534, (BIT(4) | BIT(5) | BIT(6))),
+		VFE_DBG_INFO_WITH_IDLE(12, "punch_bds2",
+			0x00000534, (BIT(7) | BIT(8) | BIT(9))),
+		VFE_DBG_INFO_WITH_IDLE(16, "punch_ds4_mux",
+			0x00000534, (BIT(10) | BIT(11) | BIT(12))),
+		VFE_DBG_INFO_WITH_IDLE(20, "bayer_ds_4_ds4",
+			0x00000534, (BIT(13) | BIT(14) | BIT(15))),
+		VFE_DBG_INFO_WITH_IDLE(24, "crop_rnd_clamp_ds4",
+			0x00000534, (BIT(16) | BIT(17) | BIT(18))),
+		VFE_DBG_INFO_WITH_IDLE(28, "punch_ds16",
+			0x00000534, (BIT(19) | BIT(20) | BIT(21))),
+	},
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "bayer_ds_4_ds16",
+			0x00000534, (BIT(22) | BIT(23) | BIT(24))),
+		VFE_DBG_INFO_WITH_IDLE(4, "crop_rnd_clamp_ds16",
+			0x00000534, (BIT(25) | BIT(26) | BIT(27))),
+		VFE_DBG_INFO_WITH_IDLE(8, "crop_rnd_clamp_ds2",
+			0x00000534, (BIT(28) | BIT(29) | BIT(30))),
+		VFE_DBG_INFO_WITH_IDLE(12, "clc_haf",
+			0x00000534, BIT(31)),
+		VFE_DBG_INFO_WITH_IDLE(16, "clc_rcs_ds2",
+			0x00000538, (BIT(0) | BIT(1) | BIT(2))),
+		VFE_DBG_INFO_WITH_IDLE(20, "clc_crop_rnd_clamp_full_out",
+			0x00000538, (BIT(3) | BIT(4) | BIT(5))),
+		VFE_DBG_INFO_WITH_IDLE(24, "clc_compdecomp_bypass",
+			0x00000538, (BIT(6) | BIT(7) | BIT(8))),
+		VFE_DBG_INFO_WITH_IDLE(28, "clc_crop_rnd_clamp_bypass",
+			0x00000538, (BIT(9) | BIT(10) | BIT(11))),
+	},
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "clc_rcs_full_out",
+			0x00000538, (BIT(12) | BIT(13) | BIT(14))),
+		VFE_DBG_INFO_WITH_IDLE(4, "clc_haf",
+			0x00000538, BIT(15)),
+		VFE_DBG_INFO_WITH_IDLE(8, "csid_tfe_ipp",
+			0x00000538, (BIT(16) | BIT(17) | BIT(18))),
+		VFE_DBG_INFO_WITH_IDLE(12, "ppp_repeater",
+			0x00000538, BIT(19)),
+		VFE_DBG_INFO_WITH_IDLE(16, "stats_awb_bg_tintless_throttle",
+			0x00000538, (BIT(20) | BIT(21) | BIT(22))),
+		VFE_DBG_INFO_WITH_IDLE(20, "stats_awb_bg_ae_throttle",
+			0x00000538, (BIT(23) | BIT(24) | BIT(25))),
+		VFE_DBG_INFO_WITH_IDLE(24, "stats_ae_bhist_throttle",
+			0x00000538, (BIT(26) | BIT(27) | BIT(28))),
+		VFE_DBG_INFO_WITH_IDLE(28, "stats_bayer_rs_throttle",
+			0x00000538, (BIT(29) | BIT(30) | BIT(31))),
+	},
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "stats_bayer_bfw_throttle",
+			0x0000053C, (BIT(0) | BIT(1) | BIT(2))),
+		VFE_DBG_INFO_WITH_IDLE(4, "stats_awb_bg_awb_throttle",
+			0x0000053C, (BIT(3) | BIT(4) | BIT(5))),
+		VFE_DBG_INFO_WITH_IDLE(8, "stats_bhist_af_throttle",
+			0x0000053C, (BIT(6) | BIT(7) | BIT(8))),
+		VFE_DBG_INFO_WITH_IDLE(12, "full_out_throttle",
+			0x0000053C, (BIT(9) | BIT(10) | BIT(11))),
+		VFE_DBG_INFO_WITH_IDLE(16, "ds4_out_y_throttle",
+			0x0000053C, (BIT(12) | BIT(13) | BIT(14))),
+		VFE_DBG_INFO_WITH_IDLE(20, "ds4_out_c_throttle",
+			0x0000053C, (BIT(15) | BIT(16) | BIT(17))),
+		VFE_DBG_INFO_WITH_IDLE(24, "ds16_out_y_throttle",
+			0x0000053C, (BIT(18) | BIT(19) | BIT(20))),
+		VFE_DBG_INFO_WITH_IDLE(28, "ds16_out_c_throttle",
+			0x0000053C, (BIT(21) | BIT(22) | BIT(23))),
+	},
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "ds2_out_y_throttle",
+			0x0000053C, (BIT(24) | BIT(25) | BIT(26))),
+		VFE_DBG_INFO_WITH_IDLE(4, "ds2_out_c_throttle",
+			0x0000053C, (BIT(27) | BIT(28) | BIT(29))),
+		VFE_DBG_INFO_WITH_IDLE(8, "raw_out_throttle",
+			0x00000540, (BIT(0) | BIT(1) | BIT(2))),
+		VFE_DBG_INFO_WITH_IDLE(12, "fd_out_y_throttle",
+			0x00000540, (BIT(3) | BIT(4) | BIT(5))),
+		VFE_DBG_INFO_WITH_IDLE(16, "fd_out_c_throttle",
+			0x00000540, (BIT(6) | BIT(7) | BIT(8))),
+		VFE_DBG_INFO_WITH_IDLE(20, "haf_sad_stats_throttle",
+			0x0000053C, BIT(30)),
+		VFE_DBG_INFO_WITH_IDLE(24, "haf_caf_stats_throttle",
+			0x0000053C, BIT(31)),
+		VFE_DBG_INFO_WITH_IDLE(28, "haf_parsed_throttle",
+			0x00000540, BIT(9)),
+	},
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "haf_pre_processed",
+			0x00000540, BIT(10)),
+		VFE_DBG_INFO(4, "full_out"),
+		VFE_DBG_INFO(8, "ubwc_stats"),
+		VFE_DBG_INFO(12, "ds4_out_y"),
+		VFE_DBG_INFO(16, "ds4_out_c"),
+		VFE_DBG_INFO(20, "ds16_out_y"),
+		VFE_DBG_INFO(24, "ds16_out_c"),
+		VFE_DBG_INFO(28, "ds2_out_y"),
+	},
 	VFE_DBG_INFO_ARRAY_4bit(
 		"ubwc_stats",
 		"ds2_out_c",
@@ -735,16 +816,18 @@ static struct cam_vfe_top_ver4_debug_reg_info tfe1080_top_dbg_reg_info[
 		"stats_ae_bhist",
 		"stats_awb_bg_tintless"
 	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"stats_awb_bg_alsc",
-		"stats_throttle_to_bus_awb_bg_awb",
-		"stats_throttle_to_bus_bayer_bfw",
-		"stats_throttle_to_bus_bhist_af",
-		"stats_throttle_to_bus_awb_bg_alsc",
-		"stats_throttle_to_bus_bayer_rs",
-		"stats_throttle_to_bus_bhist_tmc",
-		"stats_throttle_to_bus_sad"
-	),
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "stats_awb_bg_alsc",
+			0x00000540, (BIT(20) | BIT(21) | BIT(22))),
+		VFE_DBG_INFO(4, "stats_throttle_to_bus_awb_bg_awb"),
+		VFE_DBG_INFO(8, "stats_throttle_to_bus_bayer_bfw"),
+		VFE_DBG_INFO(12, "stats_throttle_to_bus_bhist_af"),
+		VFE_DBG_INFO(16, "stats_throttle_to_bus_awb_bg_alsc"),
+		VFE_DBG_INFO(20, "stats_throttle_to_bus_bayer_rs"),
+		VFE_DBG_INFO(24, "stats_throttle_to_bus_bhist_tmc"),
+		VFE_DBG_INFO(28, "stats_throttle_to_bus_sad"),
+
+	},
 	VFE_DBG_INFO_ARRAY_4bit(
 		"tfe_haf_processed_to_bus",
 		"tfe_haf_parsed_to_bus",
@@ -755,16 +838,18 @@ static struct cam_vfe_top_ver4_debug_reg_info tfe1080_top_dbg_reg_info[
 		"rdi3_splitter_to_bus_wr",
 		"rdi4_splitter_to_bus_wr"
 	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"stats_bhist_tmc_to_bus_wr",
-		"clc_bls",
-		"reserved",
-		"reserved",
-		"reserved",
-		"reserved",
-		"reserved",
-		"reserved"
-	),
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "stats_bhist_tmc_throttle",
+			0x00000540, (BIT(23) | BIT(24) | BIT(25))),
+		VFE_DBG_INFO_WITH_IDLE(4, "clc_bls",
+			0x00000544, BIT(1)),
+		VFE_DBG_INFO(8, "reserved"),
+		VFE_DBG_INFO(12, "reserved"),
+		VFE_DBG_INFO(16, "reserved"),
+		VFE_DBG_INFO(20, "reserved"),
+		VFE_DBG_INFO(24, "reserved"),
+		VFE_DBG_INFO(28, "reserved"),
+	},
 	{
 		/* needs to be parsed separately, doesn't conform to I, V, R */
 		VFE_DBG_INFO(32, "non_ccif_0"),
@@ -822,26 +907,38 @@ static struct cam_vfe_top_ver4_debug_reg_info tfe1080_bayer_dbg_reg_info[
 		"test_bus_reserved",
 		"test_bus_reserved"
 	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"clc_demux_w0",
-		"clc_bpc_pdpc_gic_w0",
-		"clc_pdpc_bpc_1d_w0",
-		"clc_abf_binc_w0",
-		"clc_channel_gains_w0",
-		"clc_lsc_w3",
-		"clc_fcg_w2",
-		"clc_wb_gain_w6"
-	),
-	VFE_DBG_INFO_ARRAY_4bit(
-		"clc_compdecomp_bayer_w0",
-		"reserved",
-		"clc_univ_channel_gains",
-		"clc_qpdr",
-		"reserved",
-		"reserved",
-		"reserved",
-		"reserved"
-	),
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "clc_demux_w0",
+			0x0000E510, (BIT(0) | BIT(1) | BIT(2))),
+		VFE_DBG_INFO_WITH_IDLE(4, "clc_bpc_pdpc_gic_w0",
+			0x0000E510, (BIT(3) | BIT(4) | BIT(5))),
+		VFE_DBG_INFO_WITH_IDLE(8, "clc_pdpc_bpc_1d_w0",
+			0x0000E510, (BIT(6) | BIT(7) | BIT(8))),
+		VFE_DBG_INFO_WITH_IDLE(12, "clc_abf_binc_w0",
+			0x0000E510, (BIT(9) | BIT(10) | BIT(11))),
+		VFE_DBG_INFO_WITH_IDLE(16, "clc_channel_gains_w0",
+			0x0000E510, (BIT(12) | BIT(13) | BIT(14))),
+		VFE_DBG_INFO_WITH_IDLE(20, "clc_lsc_w3",
+			0x0000E510, (BIT(15) | BIT(16) | BIT(17))),
+		VFE_DBG_INFO_WITH_IDLE(24, "clc_fcg_w2",
+			0x0000E510, (BIT(18) | BIT(19) | BIT(20))),
+		VFE_DBG_INFO_WITH_IDLE(28, "clc_wb_gain_w6",
+			0x0000E510, (BIT(21) | BIT(22) | BIT(23))),
+	},
+	{
+		VFE_DBG_INFO_WITH_IDLE(0, "clc_compdecomp_bayer_w0",
+			0x0000E510, (BIT(24) | BIT(25) | BIT(26))),
+		VFE_DBG_INFO_WITH_IDLE(4, "reserved",
+			0x0000E510, BIT(27)),
+		VFE_DBG_INFO_WITH_IDLE(8, "clc_univ_channel_gains",
+			0x0000E510, BIT(28)),
+		VFE_DBG_INFO_WITH_IDLE(12, "clc_qpdr",
+			0x0000E510, BIT(29)),
+		VFE_DBG_INFO(16, "reserved"),
+		VFE_DBG_INFO(20, "reserved"),
+		VFE_DBG_INFO(24, "reserved"),
+		VFE_DBG_INFO(28, "reserved"),
+	},
 	VFE_DBG_INFO_ARRAY_4bit(
 		"reserved",
 		"reserved",
@@ -967,6 +1064,7 @@ static struct cam_vfe_top_ver4_hw_info tfe1080_top_hw_info = {
 	.num_pdaf_violation_errors       = ARRAY_SIZE(tfe1080_haf_violation_desc),
 	.pdaf_violation_desc             = tfe1080_haf_violation_desc,
 	.top_debug_reg_info              = &tfe1080_top_dbg_reg_info,
+	.bayer_debug_reg_info            = &tfe1080_bayer_dbg_reg_info,
 	.pdaf_lcr_res_mask               = tfe1080_pdaf_haf_res_mask,
 	.num_pdaf_lcr_res                = ARRAY_SIZE(tfe1080_pdaf_haf_res_mask),
 	.fcg_module_info                 = &tfe1080_fcg_module_info,

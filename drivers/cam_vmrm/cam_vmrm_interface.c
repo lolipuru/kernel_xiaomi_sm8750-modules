@@ -15,6 +15,7 @@
 #include "cam_vmrm_interface.h"
 #include "cam_cpas_api.h"
 #include "cam_req_mgr_dev.h"
+#include "cam_mem_mgr_api.h"
 
 #ifdef CONFIG_SPECTRA_VMRM
 extern struct cam_vmrm_intf_dev *g_vmrm_intf_dev;
@@ -121,7 +122,7 @@ int cam_vmvm_populate_hw_instance_info(struct cam_hw_soc_info *soc_info,
 		return -EINVAL;
 	}
 
-	hw_instance_temp = kzalloc(sizeof(*hw_instance_temp), GFP_KERNEL);
+	hw_instance_temp = CAM_MEM_ZALLOC(sizeof(*hw_instance_temp), GFP_KERNEL);
 	if (!hw_instance_temp) {
 		CAM_ERR(CAM_VMRM, " hw instance allocate memory failed");
 		return -EINVAL;
@@ -364,7 +365,7 @@ int cam_vmrm_send_msg(uint32_t source_vmid, uint32_t des_vmid, uint32_t msg_dst_
 	unsigned long rem_jiffies = 0;
 
 	msg_size = offsetof(struct cam_vmrm_msg, data[data_size]);
-	vm_msg = kzalloc((msg_size), GFP_KERNEL);
+	vm_msg = CAM_MEM_ZALLOC((msg_size), GFP_KERNEL);
 	if (!vm_msg) {
 		CAM_ERR(CAM_VMRM, "msg mem allocate failed");
 		return -ENOMEM;
@@ -407,10 +408,10 @@ int cam_vmrm_send_msg(uint32_t source_vmid, uint32_t des_vmid, uint32_t msg_dst_
 		} else {
 			CAM_ERR(CAM_VMRM, "msg send failed");
 		}
-		kfree(vm_msg);
+		CAM_MEM_FREE(vm_msg);
 		return rc;
 	}
-	kfree(vm_msg);
+	CAM_MEM_FREE(vm_msg);
 
 	CAM_DBG(CAM_VMRM, "msg send succeed");
 

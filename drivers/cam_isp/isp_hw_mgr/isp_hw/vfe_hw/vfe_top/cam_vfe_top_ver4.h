@@ -14,6 +14,7 @@
 #define CAM_VFE_RDI_VER2_MAX                           4
 #define CAM_VFE_CAMIF_LITE_EVT_MAX                     256
 #define CAM_VFE_TOP_DBG_REG_MAX                        19
+#define CAM_VFE_DEBUG_IDLE_MAX                         6
 
 struct cam_vfe_top_ver4_perf_count_reg_offset {
 	uint32_t perf_count_cfg;
@@ -89,6 +90,12 @@ struct cam_vfe_top_ver4_reg_offset_common {
 		perf_count_reg[CAM_VFE_PERF_CNT_MAX];
 	uint32_t top_debug_cfg;
 	uint32_t bayer_debug_cfg;
+	uint32_t top_debug_err_vec_irq[CAM_VFE_TOP_DEBUG_VEC_ERR_REGS];
+	uint32_t top_debug_err_vec_ts_lb;
+	uint32_t top_debug_err_vec_ts_mb;
+	uint32_t bayer_debug_err_vec_irq[CAM_VFE_TOP_DEBUG_VEC_ERR_REGS];
+	uint32_t bayer_debug_err_vec_ts_lb;
+	uint32_t bayer_debug_err_vec_ts_mb;
 	uint32_t pdaf_input_cfg_0;
 	uint32_t pdaf_input_cfg_1;
 	uint32_t num_top_debug_reg;
@@ -111,11 +118,6 @@ struct cam_vfe_top_common_cfg {
 };
 
 struct cam_vfe_top_ver4_module_desc {
-	uint32_t id;
-	uint8_t *desc;
-};
-
-struct cam_vfe_bayer_ver4_module_desc {
 	uint32_t id;
 	uint8_t *desc;
 };
@@ -155,8 +157,9 @@ struct cam_vfe_ver4_path_hw_info {
 struct cam_vfe_top_ver4_debug_reg_info {
 	uint32_t  shift;
 	char     *clc_name;
+	uint32_t debug_idle_reg_addr;
+	uint32_t debug_idle_bitmask;
 };
-
 
 struct cam_vfe_ver4_fcg_module_info {
 	uint32_t max_fcg_ch_ctx;
@@ -179,7 +182,7 @@ struct cam_vfe_top_ver4_hw_info {
 	struct cam_vfe_ver4_path_reg_data              *reg_data;
 	struct cam_vfe_top_ver4_wr_client_desc         *wr_client_desc;
 	struct cam_vfe_top_ver4_module_desc            *ipp_module_desc;
-	struct cam_vfe_bayer_ver4_module_desc          *bayer_module_desc;
+	struct cam_vfe_top_ver4_module_desc            *bayer_module_desc;
 	uint32_t                                        num_reg;
 	struct cam_vfe_top_ver4_debug_reg_info        (*top_debug_reg_info)[][8];
 	struct cam_vfe_top_ver4_debug_reg_info        (*bayer_debug_reg_info)[][8];
@@ -236,6 +239,14 @@ int cam_vfe_top_ver4_deinit(struct cam_vfe_top      **vfe_top);
 		VFE_DBG_INFO(20, name6),                                                \
 		VFE_DBG_INFO(24, name7),                                                \
 		VFE_DBG_INFO(28, name8),                                                \
+	}
+
+#define VFE_DBG_INFO_WITH_IDLE(shift_val, name, idle_addr, idle_bitmask)\
+	{                                                                   \
+		.shift = shift_val,                                             \
+		.clc_name = name,                                               \
+		.debug_idle_reg_addr = idle_addr,                               \
+		.debug_idle_bitmask = idle_bitmask                              \
 	}
 
 #endif /* _CAM_VFE_TOP_VER4_H_ */

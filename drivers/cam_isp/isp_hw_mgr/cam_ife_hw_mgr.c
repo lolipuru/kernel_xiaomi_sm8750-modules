@@ -291,6 +291,9 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 	struct cam_hw_intf                  *hw_intf;
 	struct cam_isp_drv_config           *drv_config;
 	struct cam_ife_csid_drv_config_args  drv_config_args = {0};
+	struct cam_isp_hw_per_req_info      *prev_req_info = NULL;
+	struct cam_isp_hw_per_req_info      *per_req_info = NULL;
+	struct cam_isp_hw_per_req_info      *next_req_info = NULL;
 	struct cam_isp_hw_drv_info          *prev_drv_info = NULL;
 	struct cam_isp_hw_drv_info          *drv_info = NULL;
 	struct cam_isp_hw_drv_info          *next_drv_info = NULL;
@@ -312,10 +315,25 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 	else
 		is_blob_config_valid = prepare_hw_data->drv_config_valid;
 
-	drv_info = &ctx->drv_info[request_id % MAX_DRV_REQUEST_DEPTH];
-	next_drv_info = &ctx->drv_info[(request_id + 1) % MAX_DRV_REQUEST_DEPTH];
+	per_req_info = &ctx->per_req_info[request_id % MAX_DRV_REQUEST_DEPTH];
+	next_req_info = &ctx->per_req_info[(request_id + 1) % MAX_DRV_REQUEST_DEPTH];
 
-	if (!is_blob_config_valid && (request_id != drv_info->req_id)) {
+	if (per_req_info && next_req_info) {
+		CAM_ERR(CAM_ISP, "No valid DRV object, req_id:%llu, ctx:%d",
+			request_id, ctx->ctx_index);
+		return 0;
+	}
+
+	drv_info = &per_req_info->drv_info;
+	next_drv_info = &next_req_info->drv_info;
+
+	drv_info->is_blob_config_valid = is_blob_config_valid;
+	if (is_blob_config_valid) {
+		per_req_info->mup_en = prepare_hw_data->mup_en;
+	}
+
+	if (!is_blob_config_valid &&
+		(drv_info && (request_id != drv_info->req_id))) {
 		CAM_DBG(CAM_ISP, "No valid DRV info, req_id:%llu, ctx:%d",
 			request_id, ctx->ctx_index);
 		return 0;
@@ -340,7 +358,8 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 	} else {
 		/* Get path idle en from previous drv info if current req has no drv blob data */
 		if (request_id) {
-			prev_drv_info = &ctx->drv_info[(request_id - 1) % MAX_DRV_REQUEST_DEPTH];
+			prev_req_info = &ctx->per_req_info[(request_id - 1) % MAX_DRV_REQUEST_DEPTH];
+			prev_drv_info = &prev_req_info->drv_info;
 			if (prev_drv_info->req_id == (request_id - 1)) {
 				drv_info->path_idle_en = prev_drv_info->path_idle_en;
 				drv_info->drv_blanking_threshold =
@@ -465,6 +484,10 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 			next_drv_info->frame_duration, min_blanking_duration,
 			drv_info->blanking_duration, next_drv_info->blanking_duration,
 			drv_en, timeout_val, ctx->ctx_index);
+
+		drv_info->update_drv = update_drv;
+		drv_info->drv_en = drv_en;
+		drv_info->timeout_val = timeout_val;
 	}
 
 	if (!update_drv) {
@@ -1089,6 +1112,44 @@ static inline bool cam_ife_hw_mgr_is_sfe_out_port(uint32_t res_id)
 		is_sfe_out = true;
 
 	return is_sfe_out;
+}
+
+void cam_ife_hw_mgr_drv_info_dump(
+	struct cam_isp_hw_event_info    *evt,
+	void                            *ctx)
+{
+	struct cam_ife_hw_mgr_ctx      *hw_mgr_ctx = ctx;
+	struct cam_isp_hw_per_req_info *per_req_info = NULL;
+	struct timespec64 cur_time_stamp;
+	int i;
+	struct tm ts;
+
+	ktime_get_clocktai_ts64(&cur_time_stamp);
+	time64_to_tm(cur_time_stamp.tv_sec, 0, &ts);
+
+	CAM_INFO(CAM_ISP, "time[%d-%d %d:%d:%d.%lld]: hw_mgr_ctx->applied_req_id = %lld",
+		ts.tm_mon + 1, ts.tm_mday, ts.tm_hour, ts.tm_min,
+		ts.tm_sec, cur_time_stamp.tv_nsec / 1000000,
+		hw_mgr_ctx->applied_req_id);
+
+	for (i = 0; i < MAX_DRV_REQUEST_DEPTH; i++) {
+		per_req_info = &hw_mgr_ctx->per_req_info[i];
+		if (per_req_info) {
+			CAM_INFO(CAM_ISP,
+				"Index[%d] Apply IFE Req[%llu]  frame_dur[%llu] blanking_dur[%llu] drv_timeout[%llu] drv_en[%d], path_idle[0x%x], update_drv[%d], blob_valid[%d] mup_en[%d]",
+				i, per_req_info->drv_info.req_id,
+				per_req_info->drv_info.frame_duration,
+				per_req_info->drv_info.blanking_duration,
+				per_req_info->drv_info.timeout_val,
+				per_req_info->drv_info.drv_en,
+				per_req_info->drv_info.path_idle_en,
+				per_req_info->drv_info.update_drv,
+				per_req_info->drv_info.is_blob_config_valid,
+				per_req_info->mup_en);
+		} else {
+				CAM_ERR(CAM_ISP, "Index = %d per_req_info is null", i);
+		}
+	}
 }
 
 static int cam_ife_hw_mgr_check_and_notify_overflow(
@@ -6027,7 +6088,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	ife_ctx->ctx_index = acquire_args->ctx_id;
 	ife_ctx->scratch_buf_info.ife_scratch_config = NULL;
 	ife_ctx->is_init_drv_cfg_received = false;
-	memset(ife_ctx->drv_info, 0, sizeof(ife_ctx->drv_info));
+	memset(ife_ctx->per_req_info, 0, sizeof(ife_ctx->per_req_info));
 
 	acquire_hw_info = (struct cam_isp_acquire_hw_info *) acquire_args->acquire_info;
 
@@ -15303,8 +15364,9 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 	struct cam_packet          *packet;
 	unsigned long rem_jiffies = 0;
 	struct cam_isp_comp_record_query *query_cmd;
-	struct cam_isp_hw_drv_info *drv_info = NULL;
 	struct cam_isp_prepare_hw_update_data *hw_update_data;
+	struct cam_isp_hw_per_req_info *per_req_info = NULL;
+	struct cam_isp_hw_drv_info *drv_info = NULL;
 
 	if (!hw_mgr_priv || !cmd_args) {
 		CAM_ERR(CAM_ISP, "Invalid arguments");
@@ -15412,8 +15474,9 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 				(struct cam_isp_hw_done_event_data *)(isp_hw_cmd_args->cmd_data));
 			break;
 		case CAM_ISP_HW_MGR_SET_DRV_INFO:
-			drv_info = &ctx->drv_info[
+			per_req_info = &ctx->per_req_info[
 				isp_hw_cmd_args->u.drv_info.req_id % MAX_DRV_REQUEST_DEPTH];
+			drv_info = &per_req_info->drv_info;
 			memset(drv_info, 0, sizeof(struct cam_isp_hw_drv_info));
 			drv_info->req_id = isp_hw_cmd_args->u.drv_info.req_id;
 			drv_info->frame_duration = isp_hw_cmd_args->u.drv_info.frame_duration;
@@ -16091,9 +16154,15 @@ static int cam_ife_hw_mgr_handle_csid_error(
 	if (err_type & (CAM_ISP_HW_ERROR_CSID_OUTPUT_FIFO_OVERFLOW |
 		CAM_ISP_HW_ERROR_RECOVERY_OVERFLOW |
 		CAM_ISP_HW_ERROR_CSID_FRAME_SIZE |
-		CAM_ISP_HW_ERROR_CSID_CAMIF_FRAME_DROP))
+		CAM_ISP_HW_ERROR_CSID_CAMIF_FRAME_DROP|
+		CAM_ISP_HW_ERROR_DRV_VOTEUP_LATE))
 		cam_ife_hw_mgr_check_and_notify_overflow(event_info,
 			ctx, &is_bus_overflow);
+
+	if (err_type & CAM_ISP_HW_ERROR_DRV_VOTEUP_LATE) {
+		cam_ife_hw_mgr_drv_info_dump(event_info,
+			ctx);
+	}
 
 	if (err_type & CAM_ISP_NON_RECOVERABLE_CSID_ERRORS) {
 		recovery_data.error_type = err_type;

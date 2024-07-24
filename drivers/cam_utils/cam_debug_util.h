@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_DEBUG_UTIL_H_
@@ -65,6 +65,7 @@ enum cam_debug_module_id {
 	CAM_SENSOR_UTIL,         /* bit 35 */
 	CAM_SYNX,                /* bit 36 */
 	CAM_VMRM,                /* bit 37 */
+	CAM_IO_DUMP,             /* bit 38 */
 	CAM_DBG_MOD_MAX
 };
 
@@ -126,6 +127,7 @@ static const char *cam_debug_mod_name[CAM_DBG_MOD_MAX] = {
 	[CAM_SENSOR_UTIL] = "CAM-SENSOR-UTIL",
 	[CAM_SYNX]        = "CAM_SYNX",
 	[CAM_VMRM]        = "CAM-VMRM",
+	[CAM_IO_DUMP]     = "CAM-IO-DUMP",
 };
 
 #define ___CAM_DBG_MOD_NAME(module_id)                                      \
@@ -167,6 +169,7 @@ __builtin_choose_expr(((module_id) == CAM_DMA_FENCE), "CAM-DMA-FENCE",      \
 __builtin_choose_expr(((module_id) == CAM_SENSOR_UTIL), "CAM-SENSOR-UTIL",      \
 __builtin_choose_expr(((module_id) == CAM_SYNX), "CAM-SYNX",                \
 __builtin_choose_expr(((module_id) == CAM_VMRM), "CAM-VMRM",                \
+__builtin_choose_expr(((module_id) == CAM_IO_DUMP), "CAM-IO-DUMP",          \
 "CAMERA"))))))))))))))))))))))))))))))))))))))
 
 #define CAM_DBG_MOD_NAME(module_id) \
