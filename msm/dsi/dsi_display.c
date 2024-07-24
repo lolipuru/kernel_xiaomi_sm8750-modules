@@ -685,10 +685,24 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 {
 	struct dsi_display_ctrl *ctrl, *m_ctrl;
 	struct mipi_dsi_msg *msg = &cmd->msg;
+	u32 cmd_dma_fifo_size;
 	u32 flags = 0;
 	int i = 0;
 
 	m_ctrl = &display->ctrl[display->clk_master_idx];
+
+	if (!m_ctrl->ctrl)
+		return;
+
+	/*
+	 * DSI embedded mode cmd dma fifo size
+	 * If tx_len > cmd_dma_fifo_size, then transmit it in non-embedded mode.
+	 */
+	if (m_ctrl->ctrl->version >= DSI_CTRL_VERSION_2_9)
+		cmd_dma_fifo_size = DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES;
+	else
+		cmd_dma_fifo_size = DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES_PRE_2P9;
+
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
 		if (!ctrl->ctrl)
@@ -706,7 +720,7 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 		if (ctrl->ctrl->secure_mode) {
 			flags &= ~DSI_CTRL_CMD_FETCH_MEMORY;
 			flags |= DSI_CTRL_CMD_FIFO_STORE;
-		} else if (msg->tx_len > DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES) {
+		} else if (msg->tx_len > cmd_dma_fifo_size) {
 			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 		}
 
