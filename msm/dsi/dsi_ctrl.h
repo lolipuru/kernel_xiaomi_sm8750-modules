@@ -966,4 +966,14 @@ void dsi_ctrl_toggle_error_interrupt_status(struct dsi_ctrl *dsi_ctrl, bool enab
  * @dsi_ctrl:                 DSI controller handle.
  */
 void dsi_ctrl_transfer_cleanup(struct dsi_ctrl *dsi_ctrl);
+
+/**
+ * dsi_ctrl_set_lp2_load() - Add or remove LP2 load on DSI ctrl supplies.
+ * @ctrl:			DSI controller handle.
+ * @enable:			Boolean to control whether to add or remove
+ * the LP2 load.
+ *
+ * Return: error code.
+ */
+int dsi_ctrl_set_lp2_load(struct dsi_ctrl *dsi_ctrl, bool enable);
 #endif /* _DSI_CTRL_H_ */
