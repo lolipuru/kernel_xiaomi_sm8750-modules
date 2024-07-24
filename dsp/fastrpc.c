@@ -3208,6 +3208,7 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	unsigned long flags, irq_flags;
 	bool locked = false, is_driver_registered = false;
 	spinlock_t *glock = &g_frpc.glock;
+	int err = 0;
 
 	spin_lock_irqsave(glock, irq_flags);
 	spin_lock_irqsave(&cctx->lock, flags);
@@ -3262,7 +3263,12 @@ static int fastrpc_device_release(struct inode *inode, struct file *file)
 	if (fl->spd)
 		atomic_set(&fl->spd->is_attached, 0);
 
-	fastrpc_release_current_dsp_process(fl);
+	err = fastrpc_release_current_dsp_process(fl);
+	if (err == -ETIMEDOUT) {
+		pr_err("%s failed with err %d for process %s fl->tgid %d fl->tgid_frpc %d\n",
+			__func__, err, current->comm, fl->tgid, fl->tgid_frpc);
+		BUG_ON(1);
+	}
 	fl->state = DSP_EXIT_COMPLETE;
 
 	spin_lock_irqsave(&cctx->lock, flags);
