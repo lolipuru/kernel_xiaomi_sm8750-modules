@@ -2019,8 +2019,10 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	 */
 	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT)
 			&& ((cesta_client->vote_state != SDE_CESTA_BW_CLK_DOWNVOTE)
-				|| (sde_enc->mode_switch == SDE_MODE_SWITCH_FPS))) {
-		req_mode = (sde_enc->mode_switch == SDE_MODE_SWITCH_FPS) ?
+				|| (sde_enc->mode_switch == SDE_MODE_SWITCH_FPS)
+				|| sde_enc->multi_te_state)) {
+		req_mode = ((sde_enc->mode_switch == SDE_MODE_SWITCH_FPS)
+			    || sde_enc->multi_te_state) ?
 				SDE_CESTA_CTRL_REQ_IMMEDIATE : SDE_CESTA_CTRL_REQ_PANIC_REGION;
 		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, true, req_mode);
 		sde_enc->cesta_force_auto_active_db_update = true;
@@ -2554,10 +2556,49 @@ void sde_encoder_control_idle_pc(struct drm_encoder *drm_enc, bool enable)
 	SDE_EVT32(sde_enc->idle_pc_enabled);
 }
 
+static void _sde_encoder_update_multi_te_state(struct drm_encoder *drm_enc, bool reset_state)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (!sde_enc->cesta_client || (!sde_enc->multi_te_fps
+				&& (sde_enc->multi_te_state == SDE_MULTI_TE_NONE)))
+		return;
+
+	/*
+	 * Reset the state and return early. Reconfiguration will be handled,
+	 * while called from commit-path.
+	 */
+	if (reset_state) {
+		sde_enc->multi_te_state = SDE_MULTI_TE_NONE;
+		SDE_EVT32(DRMID(drm_enc), sde_enc->multi_te_state,
+				sde_enc->multi_te_fps, SDE_EVTLOG_FUNC_CASE1);
+		return;
+	}
+
+	if (sde_enc->multi_te_fps) {
+		if (sde_enc->multi_te_state == SDE_MULTI_TE_NONE)
+			sde_enc->multi_te_state = SDE_MULTI_TE_ENTER;
+		else if (sde_enc->multi_te_state == SDE_MULTI_TE_ENTER)
+			sde_enc->multi_te_state = SDE_MULTI_TE_SESSION;
+		else
+			return;
+	} else if (sde_enc->multi_te_state == SDE_MULTI_TE_SESSION) {
+		sde_enc->multi_te_state = SDE_MULTI_TE_EXIT;
+	} else {
+		sde_enc->multi_te_state = SDE_MULTI_TE_NONE;
+	}
+
+	SDE_EVT32(DRMID(drm_enc), sde_enc->multi_te_state,
+			sde_enc->multi_te_fps, SDE_EVTLOG_FUNC_CASE2);
+}
+
 void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	bool autorefresh_en;
+
+	/* sde_enc->multi_te_fps needs to be set before this point for multi-te to take effect */
+	_sde_encoder_update_multi_te_state(drm_enc, false);
 
 	/*
 	 * When enabling autorefresh - its requires an override cesta flush.
@@ -3424,6 +3465,9 @@ void sde_encoder_idle_pc_enter(struct drm_encoder *drm_enc)
 
 	if (sde_enc->cur_master && sde_enc->cur_master->ops.idle_pc_cache_display_status)
 		sde_enc->cur_master->ops.idle_pc_cache_display_status(sde_enc->cur_master);
+
+	/* reset the multi-te state if enabled, so it can be reconfigured in the commit-path */
+	_sde_encoder_update_multi_te_state(drm_enc, true);
 }
 
 static int _sde_encoder_input_connect(struct input_handler *handler,
@@ -4037,6 +4081,9 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 			return;
 		}
 	}
+
+	/* reset the multi-te state if enabled, so it can be reconfigured in the commit-path */
+	_sde_encoder_update_multi_te_state(drm_enc, true);
 
 	if (!sde_encoder_in_clone_mode(drm_enc))
 		sde_encoder_virt_reset(drm_enc);
@@ -7028,6 +7075,9 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 
 	debugfs_create_u32("frame_trigger_mode", 0400, sde_enc->debugfs_root,
 			&sde_enc->frame_trigger_mode);
+
+	debugfs_create_u32("multi_te_fps", 0600, sde_enc->debugfs_root,
+			&sde_enc->multi_te_fps);
 
 	debugfs_create_x32("dynamic_irqs_config", 0600, sde_enc->debugfs_root,
 			(u32 *)&sde_enc->dynamic_irqs_config);
