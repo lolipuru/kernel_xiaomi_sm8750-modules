@@ -556,7 +556,8 @@ bool cnss_pci_is_force_one_msi(struct cnss_pci_data *pci_priv)
 }
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)) && \
+    (LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0))
 static int
 cnss_pci_smmu_dev_fault_handler(struct iommu_fault *fault,  void *data)
 {
@@ -587,7 +588,37 @@ void cnss_register_iommu_fault_handler(struct cnss_pci_data *pci_priv)
 					    cnss_pci_smmu_dev_fault_handler,
 					    pci_priv);
 }
+#else
+static int cnss_pci_smmu_fault_handler(struct iommu_domain *domain,
+				       struct device *dev, unsigned long iova,
+				       int flags, void *handler_token)
+{
+	struct cnss_pci_data *pci_priv = handler_token;
 
+	cnss_fatal_err("SMMU fault happened with IOVA 0x%lx\n", iova);
+
+	if (!pci_priv) {
+		cnss_pr_err("pci_priv is NULL\n");
+		return -ENODEV;
+	}
+
+	pci_priv->is_smmu_fault = true;
+	cnss_pci_update_status(pci_priv, CNSS_FW_DOWN);
+	cnss_force_fw_assert(&pci_priv->pci_dev->dev);
+
+	/* IOMMU driver requires -ENOSYS to print debug info. */
+	return -ENOSYS;
+}
+
+static
+void cnss_register_iommu_fault_handler(struct cnss_pci_data *pci_priv)
+{
+	iommu_set_fault_handler(pci_priv->iommu_domain,
+				cnss_pci_smmu_fault_handler, pci_priv);
+}
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
 int cnss_pci_get_iommu_addr(struct cnss_pci_data *pci_priv,
 			    struct device_node *iommu_group_node)
 {
@@ -641,34 +672,6 @@ int cnss_pci_get_iommu_addr(struct cnss_pci_data *pci_priv,
 		0 : -EINVAL;
 }
 #else
-static int cnss_pci_smmu_fault_handler(struct iommu_domain *domain,
-				       struct device *dev, unsigned long iova,
-				       int flags, void *handler_token)
-{
-	struct cnss_pci_data *pci_priv = handler_token;
-
-	cnss_fatal_err("SMMU fault happened with IOVA 0x%lx\n", iova);
-
-	if (!pci_priv) {
-		cnss_pr_err("pci_priv is NULL\n");
-		return -ENODEV;
-	}
-
-	pci_priv->is_smmu_fault = true;
-	cnss_pci_update_status(pci_priv, CNSS_FW_DOWN);
-	cnss_force_fw_assert(&pci_priv->pci_dev->dev);
-
-	/* IOMMU driver requires -ENOSYS to print debug info. */
-	return -ENOSYS;
-}
-
-static
-void cnss_register_iommu_fault_handler(struct cnss_pci_data *pci_priv)
-{
-	iommu_set_fault_handler(pci_priv->iommu_domain,
-				cnss_pci_smmu_fault_handler, pci_priv);
-}
-
 int cnss_pci_get_iommu_addr(struct cnss_pci_data *pci_priv,
 			    struct device_node *iommu_group_node)
 {

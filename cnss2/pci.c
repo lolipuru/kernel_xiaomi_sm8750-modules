@@ -982,7 +982,8 @@ static int cnss_mhi_device_get_sync_atomic(struct cnss_pci_data *pci_priv,
 					  timeout_us, in_panic);
 }
 
-#ifdef CONFIG_CNSS2_SMMU_DB_SUPPORT
+#if defined(CONFIG_CNSS2_SMMU_DB_SUPPORT) && \
+    (LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0))
 static int cnss_mhi_host_notify_db_disable_trace(struct cnss_pci_data *pci_priv)
 {
 	return mhi_host_notify_db_disable_trace(pci_priv->mhi_ctrl);
@@ -1045,7 +1046,8 @@ static int cnss_mhi_device_get_sync_atomic(struct cnss_pci_data *pci_priv,
 	return -EOPNOTSUPP;
 }
 
-#ifdef CONFIG_CNSS2_SMMU_DB_SUPPORT
+#if defined(CONFIG_CNSS2_SMMU_DB_SUPPORT) && \
+    (LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0))
 static int cnss_mhi_host_notify_db_disable_trace(struct cnss_pci_data *pci_priv)
 {
 	return -EOPNOTSUPP;
@@ -1084,7 +1086,8 @@ void cnss_pci_controller_set_base(struct cnss_pci_data *pci_priv)
 	cnss_pr_dbg("Remove MHI satellite configuration\n");
 	return cnss_mhi_controller_set_base(pci_priv, 0);
 }
-#ifdef CONFIG_CNSS2_SMMU_DB_SUPPORT
+#if defined(CONFIG_CNSS2_SMMU_DB_SUPPORT) && \
+    (LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0))
 #define CNSS_MHI_WAKE_TIMEOUT		500000
 
 static void cnss_record_smmu_fault_timestamp(struct cnss_pci_data *pci_priv,
@@ -1138,7 +1141,9 @@ void cnss_register_iommu_fault_handler_irq(struct cnss_pci_data *pci_priv)
 }
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)) && \
+    (LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0))
+static
 void cnss_unregister_iommu_fault_handler(struct cnss_pci_data *pci_priv)
 {
 	iommu_unregister_device_fault_handler(&pci_priv->pci_dev->dev);
