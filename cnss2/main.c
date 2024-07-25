@@ -1815,6 +1815,8 @@ static irqreturn_t cnss_dev_sol_handler(int irq, void *data)
 		cnss_pr_dbg("Ignore Dev SOL during device power off");
 		return IRQ_HANDLED;
 	}
+	if (cnss_get_dev_sol_value(plat_priv) == 1)
+		return IRQ_HANDLED;
 
 	sol_gpio->dev_sol_counter++;
 	cnss_pr_dbg("WLAN device SOL IRQ (%u) is asserted #%u, dev_sol_val: %d\n",
