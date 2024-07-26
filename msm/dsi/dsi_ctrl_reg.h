@@ -148,6 +148,7 @@
 #define DSI_CPHY_MODE_CTRL                         (0x02D8)
 #define DSI_LOGICAL_LANE_SWAP_CTRL                 (0x0310)
 #define DSI_SPLIT_LINK                             (0x0330)
+#define DSI_COMMAND_MODE_DMA_CTRL_1                (0x0390)
 #define DSI_VIDEO_MODE_CTRL4                       (0x04D0)
 #define DSI_VIDEO_MODE_CTRL5                       (0x04D4)
 
