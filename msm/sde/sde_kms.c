@@ -2407,6 +2407,8 @@ static int sde_kms_postinit(struct msm_kms *kms)
 	struct sde_kms *sde_kms = to_sde_kms(kms);
 	struct drm_device *dev;
 	struct drm_crtc *crtc;
+	struct drm_connector *conn;
+	struct drm_connector_list_iter conn_iter;
 	struct msm_drm_private *priv;
 	int i, rc;
 
@@ -2447,6 +2449,11 @@ static int sde_kms_postinit(struct msm_kms *kms)
 
 	drm_for_each_crtc(crtc, dev)
 		sde_crtc_post_init(dev, crtc);
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter)
+		sde_connector_post_init(dev, conn);
+	drm_connector_list_iter_end(&conn_iter);
 
 	return rc;
 }
@@ -5205,21 +5212,10 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto drm_obj_init_err;
 	}
 
-	/**
-	 * Note: If sde_kms->catalog->hw_fence_rev is true but CONFIG_QTI_HW_FENCE is not enabled,
-	 * the hw_fence_rev field will be set to zero when hw-fence initialization process fails
-	 */
-#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
-	if (sde_kms->catalog->hw_fence_rev) {
-		priv->phandle.rproc = rproc_get_by_phandle(sde_kms->catalog->soccp_ph);
-		if (IS_ERR_OR_NULL(priv->phandle.rproc)) {
-			SDE_ERROR("failed to find rproc for phandle:%u, disabling hw-fencing\n",
-				sde_kms->catalog->soccp_ph);
-			sde_kms->catalog->hw_fence_rev = 0;
-			priv->phandle.rproc = NULL;
-		}
+	if (!priv->phandle.hw_fence_enable) {
+		SDE_DEBUG("power vote failed, disabling hw-fencing\n");
+		sde_kms->catalog->hw_fence_rev = 0;
 	}
-#endif /* CONFIG_QTI_HW_FENCE */
 
 	return 0;
 

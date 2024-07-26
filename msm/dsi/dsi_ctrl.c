@@ -4382,6 +4382,27 @@ int dsi_ctrl_wait4dynamic_refresh_done(struct dsi_ctrl *ctrl)
 }
 
 /**
+ * dsi_ctrl_set_lp2_load() - Add or remove LP2 load on DSI ctrl supplies.
+ */
+int dsi_ctrl_set_lp2_load(struct dsi_ctrl *ctrl, bool enable)
+{
+	int rc = 0;
+
+	if (!ctrl) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	rc = dsi_pwr_set_lp2_load(&ctrl->pwr_info.host_pwr, enable);
+	if (rc) {
+		DSI_ERR("failed to set lp2 load rc = %d\n", rc);
+		return rc;
+	}
+
+	return rc;
+}
+
+/**
  * dsi_ctrl_drv_register() - register platform driver for dsi controller
  */
 void dsi_ctrl_drv_register(void)
