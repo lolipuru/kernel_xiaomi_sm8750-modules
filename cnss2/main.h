@@ -655,6 +655,7 @@ struct cnss_plat_data {
 	struct wlchip_serial_id_v01 serial_id;
 	u32 cpumask_for_rx_intrs;
 	u32 cpumask_for_tx_comp_intrs;
+	bool ipa_shared_cb_enable;
 };
 
 #if IS_ENABLED(CONFIG_ARCH_QCOM)
