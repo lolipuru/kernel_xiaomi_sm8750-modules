@@ -788,9 +788,6 @@ static int dsi_ctrl_clocks_init(struct platform_device *pdev,
 	struct dsi_esync_clk_info *esync = &ctrl->clk_info.esync_clk;
 	struct dsi_osc_clk_info *osc = &ctrl->clk_info.osc_clk;
 
-	struct clk *pll_dsi_clk;
-	struct clk *esync_clk_rcg;
-
 	core->mdp_core_clk = devm_clk_get(&pdev->dev, "mdp_core_clk");
 	if (IS_ERR(core->mdp_core_clk)) {
 		core->mdp_core_clk = NULL;
@@ -842,13 +839,6 @@ static int dsi_ctrl_clocks_init(struct platform_device *pdev,
 		DSI_CTRL_DEBUG(ctrl, "can't find esync_clk, rc=%d\n", rc);
 	}
 
-	esync_clk_rcg = devm_clk_get(&pdev->dev, "esync_clk_rcg");
-	if (IS_ERR(esync_clk_rcg)) {
-		rc = PTR_ERR(esync_clk_rcg);
-		esync_clk_rcg = NULL;
-		DSI_CTRL_DEBUG(ctrl, "can't find esync_clk_rcg, rc=%d\n", rc);
-	}
-
 	lp_link->esc_clk = devm_clk_get(&pdev->dev, "esc_clk");
 	if (IS_ERR(lp_link->esc_clk)) {
 		rc = PTR_ERR(lp_link->esc_clk);
@@ -889,21 +879,6 @@ static int dsi_ctrl_clocks_init(struct platform_device *pdev,
 	}
 
 	xo->pixel_clk = xo->byte_clk;
-
-	pll_dsi_clk = devm_clk_get(&pdev->dev, "pll_dsi_clk");
-	if (IS_ERR(pll_dsi_clk)) {
-		rc = PTR_ERR(pll_dsi_clk);
-		pll_dsi_clk = NULL;
-		DSI_CTRL_DEBUG(ctrl, "failed to get pll_dsi_clk, rc=%d\n", rc);
-	}
-
-	if (pll_dsi_clk && esync_clk_rcg) {
-		rc = clk_set_parent(esync_clk_rcg, pll_dsi_clk);
-		if (rc) {
-			DSI_CTRL_ERR(ctrl, "failed to set esync_clk parent, rc=%d\n", rc);
-			goto fail;
-		}
-	}
 
 	return 0;
 fail:
