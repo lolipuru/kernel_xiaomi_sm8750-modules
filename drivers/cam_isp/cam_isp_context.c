@@ -3410,6 +3410,11 @@ static int __cam_isp_ctx_reg_upd_in_epoch_bubble_state(
 			req_isp = (struct cam_isp_ctx_req *)req->req_priv;
 			__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
 				&req_isp->hw_update_data);
+			if (req->request_id)
+				ctx_isp->reported_req_id = req->request_id;
+
+			__cam_isp_ctx_send_sof_timestamp(ctx_isp, req->request_id,
+				CAM_REQ_MGR_SOF_EVENT_SUCCESS);
 		}
 	} else
 		CAM_WARN_RATE_LIMIT(CAM_ISP,
@@ -3469,6 +3474,12 @@ static int __cam_isp_ctx_reg_upd_in_applied_state(
 
 	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
 		&req_isp->hw_update_data);
+
+	if (request_id)
+		ctx_isp->reported_req_id = request_id;
+
+	__cam_isp_ctx_send_sof_timestamp(ctx_isp, request_id,
+		CAM_REQ_MGR_SOF_EVENT_SUCCESS);
 
 	__cam_isp_ctx_update_state_monitor_array(ctx_isp,
 		CAM_ISP_STATE_CHANGE_TRIGGER_REG_UPDATE, request_id);
@@ -3604,8 +3615,10 @@ notify_only:
 		if (request_id != 0)
 			ctx_isp->reported_req_id = request_id;
 
-		__cam_isp_ctx_send_sof_timestamp(ctx_isp, request_id,
-			CAM_REQ_MGR_SOF_EVENT_SUCCESS);
+		if (request_id == 0)
+			__cam_isp_ctx_send_sof_timestamp(ctx_isp, request_id,
+				CAM_REQ_MGR_SOF_EVENT_SUCCESS);
+
 		__cam_isp_ctx_update_state_monitor_array(ctx_isp,
 			CAM_ISP_STATE_CHANGE_TRIGGER_EPOCH,
 			request_id);
@@ -3867,7 +3880,7 @@ static int __cam_isp_ctx_epoch_in_applied(struct cam_isp_context *ctx_isp,
 	if ((request_id != 0) && req_isp->bubble_detected)
 		sof_event_status = CAM_REQ_MGR_SOF_EVENT_ERROR;
 
-	__cam_isp_ctx_send_sof_timestamp(ctx_isp, request_id,
+	__cam_isp_ctx_send_sof_timestamp(ctx_isp, 0,
 		sof_event_status);
 
 	cam_req_mgr_debug_delay_detect();
