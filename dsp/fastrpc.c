@@ -3009,6 +3009,9 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 
 	fastrpc_get_process_gids(&fl->gidlist);
 
+	/* In case of privileged process update attributes */
+	fastrpc_check_privileged_process(fl, &init);
+
 	inbuf.pgid = fl->tgid_frpc;
 	inbuf.namelen = strlen(current->comm) + 1;
 	inbuf.filelen = init.filelen;
@@ -3043,8 +3046,6 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 
 	/* Process spawn should not fail if unable to pack root buffer */
 	fastrpc_pack_root_sharedpage(fl, pages, &inbuf.pageslen);
-
-	fastrpc_check_privileged_process(fl, &init);
 
 	memlen = ALIGN(max(INIT_FILELEN_MAX, (int)init.filelen * 4),
 		       1024 * 1024);
