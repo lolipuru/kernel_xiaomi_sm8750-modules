@@ -84,6 +84,9 @@
 #define UWB_SS	(0x02)
 #define TME_SS	(0x03)
 
+#define SOC_VERSION_1_0 0x01
+#define SOC_VERSION_2_0 0x02
+
 /**
  * enum btpower_vreg_param: Voltage regulator TCS param
  * @BTPOWER_VREG_VOLTAGE: Provides voltage level to be configured in TCS
@@ -339,6 +342,7 @@ static struct class *bt_class;
 static int bt_major;
 static int soc_id;
 static bool probe_finished;
+static struct fmdOperationStruct fmdStruct;
 
 static void bt_power_vote(struct work_struct *work);
 
@@ -1644,29 +1648,44 @@ static int bt_power_probe(struct platform_device *pdev)
 	struct device *devi = &pwr_data->pdev->dev;
 	int rc = 0;
 
-	pwr_data->nvmem_cell = devm_nvmem_cell_get(devi, "fmd_set");
-
-	if (IS_ERR(pwr_data->nvmem_cell)) {
-		rc = PTR_ERR(pwr_data->nvmem_cell);
-		pr_err("%s:Failed to get FMD nvmem-cells %d\n", __func__, rc);
-	}
-
-	pr_info("%s: --- Got FMD nvmem-cells %d\n", __func__, rc);
-
-	if (rc >= 0) {
-		u8 *buf;
-		size_t len;
-
-		dev_info(&pwr_data->pdev->dev, "Got fmd_set nvmem_cell\n");
-		buf = nvmem_cell_read(pwr_data->nvmem_cell, &len);
-		if (IS_ERR(buf)) {
-			dev_err(&pwr_data->pdev->dev, "Failed to read fmd_set: %ld\n",
-				PTR_ERR(buf));
+	pr_info("%s: Get FMD nvmem-cells\n", __func__);
+/* Get fmd_set NVMEM  Cell Handler */
+	pwr_data->nvmem_cell_fmd_set =
+		devm_nvmem_cell_get(devi, "fmd_set");
+	if (IS_ERR(pwr_data->nvmem_cell_fmd_set)) {
+		rc = PTR_ERR(pwr_data->nvmem_cell_fmd_set);
+		pr_err("%s:Failed to get fmd_set nvmem-cells %d\n",
+			__func__, rc);
+		pr_err("%s:Skip, Reading of other 2 Cells have no use\n",
+			__func__);
+		pwr_data->nvmem_cell_fmd_chg_pon =
+			pwr_data->nvmem_cell_fmd_set;
+		pwr_data->nvmem_cell_fmd_cnt2_stop =
+			pwr_data->nvmem_cell_fmd_set;
+	} else {
+		pr_info("%s: Got fmd_set nvmem-cells\n", __func__);
+/* Get fmd_chg_pon NVMEM Cell Handler */
+		pwr_data->nvmem_cell_fmd_chg_pon =
+			devm_nvmem_cell_get(devi, "fmd_chg_pon");
+		if (IS_ERR(pwr_data->nvmem_cell_fmd_chg_pon)) {
+			rc = PTR_ERR(pwr_data->nvmem_cell_fmd_chg_pon);
+			pr_err("%s:Failed to get fmd_chg_pon nvmem-cells %d\n",
+				__func__, rc);
 		} else {
-			dev_info(&pwr_data->pdev->dev, "fmd_set: %u\n", buf[0]);
-			kfree(buf);
+			pr_info("%s: Got fmd_chg_pon nvmem-cells\n", __func__);
+		}
+/* Get fmd_cnt2_stop NVMEM Cell Handler */
+		pwr_data->nvmem_cell_fmd_cnt2_stop =
+			devm_nvmem_cell_get(devi, "fmd_cnt2_stop");
+		if (IS_ERR(pwr_data->nvmem_cell_fmd_cnt2_stop)) {
+			rc = PTR_ERR(pwr_data->nvmem_cell_fmd_cnt2_stop);
+			pr_err("%s:Failed to get fmd_cnt2_stop nvmem-cells %d\n",
+				__func__, rc);
+		} else {
+			pr_info("%s: Got fmd_cnt2_stop nvmem-cells\n", __func__);
 		}
 	}
+	pr_info("%s: FMD nvmem-cells read completed\n", __func__);
 
 	pwr_data->is_ganges_dt = of_property_read_bool(pdev->dev.of_node,
 							"qcom,peach-bt") ||
@@ -2433,84 +2452,208 @@ const char *GetSourceSubsystemString(uint32_t source_subsystem)
 	}
 }
 
-void set_fmd_sdam_bit(unsigned char sdam_bit)
+void fmd_set_sdam_bit(unsigned char arg)
 {
 	int rc = 0;
-
-	rc = nvmem_cell_write(pwr_data->nvmem_cell, &sdam_bit, sizeof(sdam_bit));
-	if (rc < 0) {
-		pr_err("%s: SDAM BIT of FMD Write Failed %d\n", __func__, rc);
-		return;
-	}
-	pr_warn("%s:  SDAM BIT of FMD Write Success %d\n", __func__, rc);
-
 	u8 *buf;
 	size_t len;
+	struct device *devi = &pwr_data->pdev->dev;
 
-	dev_info(&pwr_data->pdev->dev, "Got fmd_set nvmem_cell\n");
-	buf = nvmem_cell_read(pwr_data->nvmem_cell, &len);
-	if (IS_ERR(buf)) {
-		dev_err(&pwr_data->pdev->dev, "Failed to read fmd_set: %ld\n", PTR_ERR(buf));
-	} else {
-		dev_info(&pwr_data->pdev->dev, "fmd_set: %u\n", buf[0]);
-		pr_warn("%s: Read SDAM BIT of FMD  %d\n", __func__, buf[0]);
-		kfree(buf);
+	if (IS_ERR(pwr_data->nvmem_cell_fmd_set)) {
+		pr_err("%s: 'fmd_set' cell is not avilable to configure\n",
+			__func__);
+		return;
 	}
+
+	rc = nvmem_cell_write(pwr_data->nvmem_cell_fmd_set,
+						 &arg,
+						 sizeof(arg));
+	if (rc < 0) {
+		pr_err("%s: Write SDAM BIT for FMD operation Failed %d\n",
+			__func__, rc);
+		return;
+	}
+
+	buf = nvmem_cell_read(pwr_data->nvmem_cell_fmd_set, &len);
+	if (IS_ERR(buf)) {
+		dev_err(devi, "Failed to read fmd_set: %ld\n",
+			PTR_ERR(buf));
+		pr_err("%s: Failed to read SDAM BIT (fmd_set = %d)\n",
+			__func__, buf[0]);
+		kfree(buf);
+		return;
+	}
+
+	if (buf[0] == arg) {
+		dev_info(devi, "Successfully configured the fmd_set\n");
+		pr_info("%s: Successfully configured SDAM BIT (fmd_set: %u)\n",
+			__func__, buf[0]);
+	} else {
+		dev_err(devi, "Failed to configure fmd_set: %ld\n",
+			PTR_ERR(buf));
+		pr_err("%s: Failed to configure SDAM BIT (fmd_set = %u)\n",
+			__func__, buf[0]);
+	}
+	kfree(buf);
 }
 
-int set_fmd_mode(enum FmdOperation operation)
+void fmd_reboot_on_usb_detection(unsigned char arg)
+{
+	int rc = 0;
+	u8 *buf;
+	size_t len;
+	struct device *devi = &pwr_data->pdev->dev;
+
+	if (IS_ERR(pwr_data->nvmem_cell_fmd_chg_pon)) {
+		pr_err("%s: 'fmd_chg_pon' cell is not avilable to configure\n",
+			__func__);
+		return;
+	}
+
+	rc = nvmem_cell_write(pwr_data->nvmem_cell_fmd_chg_pon,
+						&arg,
+						sizeof(arg));
+	if (rc < 0) {
+		pr_err("%s: Write fmd_chg_pon for FMD operation Failed %d\n",
+			__func__, rc);
+		return;
+	}
+
+	buf = nvmem_cell_read(pwr_data->nvmem_cell_fmd_chg_pon, &len);
+	if (IS_ERR(buf)) {
+		dev_err(devi, "Failed to read fmd_chg_pon: %ld\n",
+			PTR_ERR(buf));
+		pr_err("%s: Failed to read fmd_chg_pon = %d\n",
+			__func__, buf[0]);
+		kfree(buf);
+		return;
+	}
+
+	if (buf[0] == arg) {
+		dev_info(devi, "Successfully configured the fmd_chg_pon\n");
+		pr_info("%s: Successfully configured (fmd_chg_pon: %u)\n",
+			__func__, buf[0]);
+	} else {
+		dev_err(devi, "Failed to configure fmd_chg_pon: %ld\n",
+			PTR_ERR(buf));
+		pr_err("%s: Failed to configure fmd_chg_pon = %u\n",
+			__func__, buf[0]);
+	}
+	kfree(buf);
+}
+
+void fmd_write_stop_counter(unsigned char arg)
+{
+	int rc = 0;
+	u8 *buf;
+	size_t len;
+	struct device *devi = &pwr_data->pdev->dev;
+
+	if (IS_ERR(pwr_data->nvmem_cell_fmd_cnt2_stop)) {
+		pr_err("%s: 'fmd_cnt2_stop' cell is not avilable to configure\n",
+			__func__);
+		return;
+	}
+
+	rc = nvmem_cell_write(pwr_data->nvmem_cell_fmd_cnt2_stop,
+						&arg,
+						sizeof(arg));
+	if (rc < 0) {
+		pr_err("%s: Write cnt2_stop for FMD operation Failed %d\n",
+			__func__, rc);
+		return;
+	}
+
+	buf = nvmem_cell_read(pwr_data->nvmem_cell_fmd_cnt2_stop, &len);
+	if (IS_ERR(buf)) {
+		dev_err(devi, "Failed to read fmd_cnt2_stop: %ld\n",
+			PTR_ERR(buf));
+		pr_err("%s: Failed to read fmd_cnt2_stop = %d\n",
+			__func__, buf[0]);
+		kfree(buf);
+		return;
+	}
+
+	if (buf[0] == arg) {
+		dev_info(devi, "Successfully configured the fmd_cnt2_stop\n");
+		pr_info("%s: Successfully configured (fmd_cnt2_stop: %u)\n",
+			__func__, buf[0]);
+	} else {
+		dev_err(devi, "Failed to configure fmd_cnt2_stop: %ld\n",
+			PTR_ERR(buf));
+		pr_err("%s: Failed to configure fmd_cnt2_stop = %u\n",
+			__func__, buf[0]);
+	}
+	kfree(buf);
+}
+
+int perform_fmd_operation(void)
 {
 	int ret = 0;
+	switch ((enum FmdOperation) fmdStruct.fmdOperation) {
+		case UPDATE_SOC_VER: {
+			if (fmdStruct.socFwVer == SOC_VERSION_1_0) {
+				pr_info("%s: UPDATE_SOC_VER :: SOC_VERSION_1_0\n",
+					__func__);
+				pwr_data->is_fmd_mode_enable = true;
+				if (pwr_data->bt_chip_clk) {
+					ret = bt_clk_enable(pwr_data->bt_chip_clk);
+					if (ret < 0) {
+						pr_err("%s: failed to bt_chip_clk\n", __func__);
+						return -EINVAL;
+					}
+				}
+			} else if (fmdStruct.socFwVer == SOC_VERSION_2_0) {
+				pr_info("%s: UPDATE_SOC_VER :: SOC_VERSION_2_0\n",
+					__func__);
+				pwr_data->is_fmd_mode_enable = true;
+#ifdef CONFIG_FMD_ENABLE
+				cnss_utils_fmd_status(true);
+#endif
+				if (vote_wlan_reg_for_fmd() < 0) {
+					pr_err("%s: failed to vote_wlan_reg_for_fmd\n", __func__);
+					return -EINVAL;
+				}
+				if (pwr_data->bt_chip_clk) {
+					ret = bt_clk_enable(pwr_data->bt_chip_clk);
+					if (ret < 0) {
+						pr_err("%s: failed to bt_chip_clk\n", __func__);
+						return -EINVAL;
+					}
+				}
+			} else {
+				pr_err("%s: Invalid SOC VERSION sent = %d\n",
+					__func__, fmdStruct.socFwVer);
+				return -EINVAL;
+			}
+			break;
+		}
+		case ENABLE_FMD: {
+			pr_info("%s: ENABLE_FMD\n", __func__);
 
-	switch (operation) {
-		case ENABLE_SDAM_BIT_FMD: {
-			pr_warn("%s: SET_FMD_MODE_CTRL :: ENABLE_SDAM_BIT_FMD\n",
-				__func__);
-			set_fmd_sdam_bit((unsigned char)POWER_ENABLE);
+			fmd_set_sdam_bit((unsigned char)POWER_ENABLE);
+
+			if (fmdStruct.rebootStatus != -1)
+				fmd_reboot_on_usb_detection((unsigned char)fmdStruct.rebootStatus);
+			else
+				pr_err("%s: Reboot status upon usb detection is not configured\n",
+					__func__);
+
+			if (fmdStruct.fmdCycles != -1)
+				fmd_write_stop_counter((unsigned char)fmdStruct.fmdCycles);
+			else
+				pr_err("%s: Fmd stop_counter is not configured\n", __func__);
+
 			break;
 		}
 		case DISABLE_FMD: {
-			pr_warn("%s: SET_FMD_MODE_CTRL :: DISABLE_FMD\n",
-				__func__);
+			pr_info("%s: DISABLE_FMD\n", __func__);
 			pwr_data->is_fmd_mode_enable = false;
 			break;
 		}
-		case UPDATE_SOC_VERSION_1_0_FOR_FMD: {
-			pr_warn("%s: SET_FMD_MODE_CTRL :: UPDATE_SOC_VERSION_1_0_FOR_FMD\n",
-				__func__);
-			pwr_data->is_fmd_mode_enable = true;
-			if (pwr_data->bt_chip_clk) {
-				ret = bt_clk_enable(pwr_data->bt_chip_clk);
-				if (ret < 0) {
-					pr_err("%s: failed to bt_chip_clk\n", __func__);
-					return -EINVAL;
-				}
-			}
-			break;
-		}
-		case UPDATE_SOC_VERSION_2_0_FOR_FMD: {
-			pr_warn("%s: SET_FMD_MODE_CTRL :: UPDATE_SOC_VERSION_2_0_FOR_FMD\n",
-				__func__);
-			pwr_data->is_fmd_mode_enable = true;
-#ifdef CONFIG_FMD_ENABLE
-			cnss_utils_fmd_status(true);
-#endif
-			if (vote_wlan_reg_for_fmd() < 0) {
-				pr_err("%s: failed to vote_wlan_reg_for_fmd\n", __func__);
-				return -EINVAL;
-			}
-			if (pwr_data->bt_chip_clk) {
-				ret = bt_clk_enable(pwr_data->bt_chip_clk);
-				if (ret < 0) {
-					pr_err("%s: failed to bt_chip_clk\n", __func__);
-					return -EINVAL;
-				}
-			}
-			break;
-		}
 		default: {
-			pr_warn("%s: invalid fmd operation = %d received\n",
-				__func__, operation);
+			pr_err("%s: invalid fmd operation received = %d\n",
+				__func__, fmdStruct.fmdOperation);
 			ret = -EINVAL;
 			break;
 		}
@@ -2518,16 +2661,47 @@ int set_fmd_mode(enum FmdOperation operation)
 	return ret;
 }
 
+#ifdef CONFIG_MSM_BT_OOBS
+int bt_oobs_handler(enum btpower_obs_param clk_cntrl)
+{
+	if (!gpio_is_valid(pwr_data->bt_gpio_dev_wake)) {
+		pr_debug("%s: BT_CMD_OBS_VOTE_CLOCK bt_dev_wake_n(%d) not configured\n",
+			__func__, pwr_data->bt_gpio_dev_wake);
+		return -EIO;
+	}
+
+	switch (clk_cntrl) {
+	case BTPOWER_OBS_CLK_OFF:
+		btpower_uart_transport_locked(pwr_data, false);
+		break;
+	case BTPOWER_OBS_CLK_ON:
+		btpower_uart_transport_locked(pwr_data, true);
+		break;
+	case BTPOWER_OBS_DEV_OFF:
+		gpio_set_value(pwr_data->bt_gpio_dev_wake, 0);
+		break;
+	case BTPOWER_OBS_DEV_ON:
+		gpio_set_value(pwr_data->bt_gpio_dev_wake, 1);
+		break;
+	default:
+		pr_debug("%s: BT_CMD_OBS_VOTE_CLOCK clk_cntrl(%d)\n",
+			__func__, clk_cntrl);
+		return -EINVAL;
+	}
+	pr_debug("%s: BT_CMD_OBS_VOTE_CLOCK clk_cntrl(%d) %s\n",
+		__func__, clk_cntrl,
+		gpio_get_value(pwr_data->bt_gpio_dev_wake) ?
+			"Assert" : "Deassert");
+	return 0;
+}
+#endif
+
 static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
 	int chipset_version = 0;
 	unsigned long panic_reason = 0;
 	unsigned short primary_reason = 0, sec_reason = 0, source_subsystem = 0;
-
-#ifdef CONFIG_MSM_BT_OOBS
-	enum btpower_obs_param clk_cntrl;
-#endif
 
 	if (!pwr_data || !probe_finished) {
 		pr_err("%s: BTPower Probing Pending.Try Again\n", __func__);
@@ -2537,38 +2711,7 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	switch (cmd) {
 #ifdef CONFIG_MSM_BT_OOBS
 	case BT_CMD_OBS_VOTE_CLOCK:
-		if (!gpio_is_valid(pwr_data->bt_gpio_dev_wake)) {
-			pr_debug("%s: BT_CMD_OBS_VOTE_CLOCK bt_dev_wake_n(%d) not configured\n",
-				__func__, pwr_data->bt_gpio_dev_wake);
-			return -EIO;
-		}
-		clk_cntrl = (enum btpower_obs_param)arg;
-		switch (clk_cntrl) {
-		case BTPOWER_OBS_CLK_OFF:
-			btpower_uart_transport_locked(pwr_data, false);
-			ret = 0;
-			break;
-		case BTPOWER_OBS_CLK_ON:
-			btpower_uart_transport_locked(pwr_data, true);
-			ret = 0;
-			break;
-		case BTPOWER_OBS_DEV_OFF:
-			gpio_set_value(pwr_data->bt_gpio_dev_wake, 0);
-			ret = 0;
-			break;
-		case BTPOWER_OBS_DEV_ON:
-			gpio_set_value(pwr_data->bt_gpio_dev_wake, 1);
-			ret = 0;
-			break;
-		default:
-			pr_debug("%s: BT_CMD_OBS_VOTE_CLOCK clk_cntrl(%d)\n",
-				__func__, clk_cntrl);
-			return -EINVAL;
-		}
-		pr_debug("%s: BT_CMD_OBS_VOTE_CLOCK clk_cntrl(%d) %s\n",
-			__func__, clk_cntrl,
-			gpio_get_value(pwr_data->bt_gpio_dev_wake) ?
-				"Assert" : "Deassert");
+		ret = bt_oobs_handler((enum btpower_obs_param)arg);
 		break;
 #endif
 	case BT_CMD_SLIM_TEST:
@@ -2587,8 +2730,13 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		ret = btpower_handle_client_request(cmd, (int)arg);
 		break;
 	}
-	case SET_FMD_MODE_CTRL: {
-		ret = set_fmd_mode((enum FmdOperation)arg);
+	case BT_CMD_FMD_OPERATION: {
+		pr_err("%s: BT_CMD_FMD_OPERATION\n", __func__);
+		if (copy_from_user(&fmdStruct, (char *)arg, sizeof(fmdStruct))) {
+			pr_err("%s: copy to user failed\n", __func__);
+			ret = -EFAULT;
+		}
+		ret = perform_fmd_operation();
 		break;
 	}
 	case BT_CMD_REGISTRATION:
