@@ -302,6 +302,17 @@ int32_t get_client_env_object(struct Object *clientEnvObj)
 	int32_t  ret = OBJECT_ERROR;
 	int retry_count = 0;
 	struct Object rootObj = Object_NULL;
+	bool register_with_credential = true;
+	/* Hardcode self cred buffer in CBOR encoded format.
+	 * CBOR encoded credentials is created using following parameters,
+	 * #define ATTR_UID        1
+	 * #define ATTR_PKG_NAME   3
+	 * #define SYSTEM_UID      1000
+	 * static const uint8_t bufString[] = {"UefiSmcInvoke"};
+	 */
+	uint8_t encodedBuf[] = {0xA2, 0x01, 0x19, 0x03, 0xE8, 0x03, 0x6E, 0x55,
+				0x65, 0x66, 0x69, 0x53, 0x6D, 0x63, 0x49, 0x6E,
+				0x76, 0x6F, 0x6B, 0x65, 0x0};
 
 	/* get rootObj */
 	ret = get_root_obj(&rootObj);
@@ -312,8 +323,18 @@ int32_t get_client_env_object(struct Object *clientEnvObj)
 
 	/* get client env */
 	do {
-		ret = IClientEnv_registerWithCredentials(rootObj,
-			Object_NULL, clientEnvObj);
+		if (register_with_credential) {
+			ret = IClientEnv_registerWithCredentials(rootObj,
+				Object_NULL, clientEnvObj);
+			if (ret == OBJECT_ERROR_INVALID) {
+				register_with_credential = false;
+				ret = IClientEnv_registerLegacy(rootObj, encodedBuf,
+					sizeof(encodedBuf), clientEnvObj);
+			}
+		} else {
+			ret = IClientEnv_registerLegacy(rootObj, encodedBuf,
+				sizeof(encodedBuf), clientEnvObj);
+		}
 		if (ret == OBJECT_ERROR_BUSY) {
 			pr_err("Secure side is busy,will retry after 5 ms, retry_count = %d",retry_count);
 			msleep(SMCINVOKE_INTERFACE_BUSY_WAIT_MS);
