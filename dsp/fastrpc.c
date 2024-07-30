@@ -774,33 +774,27 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 		ctx->maps = kcalloc(ctx->nscalars,
 				    sizeof(*ctx->maps), GFP_KERNEL);
 		if (!ctx->maps) {
-			kfree(ctx);
-			return ERR_PTR(-ENOMEM);
+			ret = -ENOMEM;
+			goto err_alloc;
 		}
 		ctx->olaps = kcalloc(ctx->nscalars,
 				    sizeof(*ctx->olaps), GFP_KERNEL);
 		if (!ctx->olaps) {
-			kfree(ctx->maps);
-			kfree(ctx);
-			return ERR_PTR(-ENOMEM);
+			ret = -ENOMEM;
+			goto err_alloc;
 		}
 		ctx->args = kcalloc(ctx->nscalars,
 				    sizeof(*ctx->args), GFP_KERNEL);
 		if (!ctx->args) {
-			kfree(ctx->olaps);
-			kfree(ctx->maps);
-			kfree(ctx);
-			return ERR_PTR(-ENOMEM);
+			ret = -ENOMEM;
+			goto err_alloc;
 		}
 		if (!kernel) {
 			if (copy_from_user((void *)ctx->args,
 					(void __user *)(uintptr_t)invoke->inv.args,
 					ctx->nscalars * sizeof(*ctx->args))) {
-				kfree(ctx->args);
-				kfree(ctx->olaps);
-				kfree(ctx->maps);
-				kfree(ctx);
-				return ERR_PTR(-EFAULT);
+				ret = -EFAULT;
+				goto err_alloc;
 			}
 		} else {
 			memcpy((void *)ctx->args,
@@ -819,8 +813,10 @@ static struct fastrpc_invoke_ctx *fastrpc_context_alloc(
 	ctx->perf_kernel = (u64 *)(uintptr_t)invoke->perf_kernel;
 	if (ctx->fl->profile) {
 		ctx->perf = kzalloc(sizeof(*(ctx->perf)), GFP_KERNEL);
-		if (!ctx->perf)
-			return ERR_PTR(-ENOMEM);
+		if (!ctx->perf) {
+			ret = -ENOMEM;
+			goto err_perf_alloc;
+		}
 		ctx->perf->tid = ctx->fl->tgid;
 	}
 	ctx->handle = invoke->inv.handle;
@@ -859,7 +855,9 @@ err_idr:
 	spin_lock(&user->lock);
 	list_del(&ctx->node);
 	spin_unlock(&user->lock);
+err_perf_alloc:
 	fastrpc_channel_ctx_put(cctx);
+err_alloc:
 	kfree(ctx->maps);
 	kfree(ctx->olaps);
 	kfree(ctx->args);
