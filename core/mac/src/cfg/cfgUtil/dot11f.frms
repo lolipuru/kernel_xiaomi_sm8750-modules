@@ -3702,6 +3702,18 @@ IE bss_color_change (EID_EXTN_ID_ELEMENT) OUI (0x2A)
     }
 }
 
+IE reg_connect (EID_EXTN_ID_ELEMENT) OUI (0x89)
+{
+    //regulatory connectivity field
+    {
+        indoor_ap_valid: 1;
+        indoor_ap_support: 1;
+        sp_ap_valid: 1;
+        sp_ap_support: 1;
+        reserved: 4;
+    }
+}
+
 /////////////////////////////////////////////////////////////////////////////
 //                                MULTIIEs                                 //
 /////////////////////////////////////////////////////////////////////////////
@@ -4366,6 +4378,7 @@ FRAME AssocRequest                        // 7.2.3.4
     OPTIE  eht_cap;
     OPTIE  mlo_ie;
     OPTIE  t2lm_ie[0..2];
+    OPTIE  reg_connect;
 
     OPTIE  WPAOpaque;
     OPTIE  WMMCaps;
@@ -4472,6 +4485,7 @@ FRAME ReAssocRequest                      // 7.2.3.6
     OPTIE  eht_cap;
     OPTIE  mlo_ie;
     OPTIE  t2lm_ie[0..2];
+    OPTIE  reg_connect;
 
     OPTIE  WPAOpaque;
     OPTIE  WMMCaps;
@@ -4555,6 +4569,7 @@ FRAME ProbeRequest                        // 7.2.3.8
     OPTIE  eht_cap;
     OPTIE  mlo_ie;
 
+    OPTIE  reg_connect;
     OPTIE  WscProbeReq;
     OPTIE  WFATPC;
     OPTIE  P2PProbeReq;
