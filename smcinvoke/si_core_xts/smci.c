@@ -1085,17 +1085,12 @@ static int cbo_dispatch(unsigned int context_id,
 	 */
 
 	errno = set_txn_state(cb_txn, XST_TIMEDOUT) ? cb_txn->errno : -EINVAL;
-	if (!errno) {
-		pr_debug("%s invocation returned with %d (context_id %u).\n",
-			si_object_name(object), errno, context_id);
-
+	pr_debug("%s invocation returned with %d (context_id %u).\n",
+		si_object_name(object), errno, context_id);
+	if (!errno)
 		dispatcher_marshal_out(cb_txn->args, args);
-	} else {
-		pr_err("%s invocation returned with %d (context_id %u).\n",
-			si_object_name(object), errno, context_id);
-
+	else
 		dequeue_and_put_txn(cb_txn);
-	}
 
 	return errno;
 }
