@@ -3650,6 +3650,7 @@ read_notif_status:
 	if (notif) {
 		notif_rsp->status = notif->status;
 		notif_rsp->domain = notif->domain;
+		notif_rsp->session = notif->session;
 	} else {// Go back to wait if ctx is invalid
 		dev_err(dev, "Invalid status notification response\n");
 		goto read_notif_status;
