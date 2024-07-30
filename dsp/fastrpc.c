@@ -1301,7 +1301,7 @@ map_retry:
 	} else if (attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP){
 
 		map->phys = sg_dma_address(map->table->sgl);
-		map->size = len;
+		map->size = sg_dma_len(map->table->sgl);
 		map->va = (void *) (uintptr_t) va;
 	} else {
 		map->phys = sg_dma_address(map->table->sgl);
