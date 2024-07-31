@@ -658,6 +658,7 @@ struct cnss_plat_data {
 	u32 cpumask_for_rx_intrs;
 	u32 cpumask_for_tx_comp_intrs;
 	bool ipa_shared_cb_enable;
+	struct task_struct *cnss_event_work_task;
 };
 
 #if IS_ENABLED(CONFIG_ARCH_QCOM)
