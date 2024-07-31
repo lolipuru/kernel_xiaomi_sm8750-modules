@@ -3396,10 +3396,7 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 				dp_mode->capabilities);
 	}
 
-	rc = dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
-	if (rc == -EAGAIN) {
-		dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
-	}
+	dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
 }
 
 static int dp_display_config_hdr(struct dp_display *dp_display, void *panel,
