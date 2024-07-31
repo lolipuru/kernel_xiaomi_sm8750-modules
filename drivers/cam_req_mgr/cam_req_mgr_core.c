@@ -1832,7 +1832,7 @@ static int __cam_req_mgr_check_sync_req_is_ready(
 		link->link_hdl, sync_link->link_hdl, req_id);
 
 	if ((sync_link->initial_skip) &&
-		(req_id >= sync_req_id)) {
+		(req_id > sync_req_id)) {
 		link->initial_skip = false;
 		CAM_DBG(CAM_CRM,
 			"sync link %x not streamed on",
