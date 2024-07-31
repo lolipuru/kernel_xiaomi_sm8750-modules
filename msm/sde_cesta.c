@@ -21,8 +21,7 @@
 
 #define DATA_BUS_HW_CLIENT_NAME "qcom,sde-data-bus-hw"
 #define DATA_BUS_SW_CLIENT_0_NAME "qcom,sde-data-bus-sw-0"
-
-#define MDP_CLK_LOWSVS_D1	156000000
+#define XO_VOTE_EXIT_FREQ_THRESHOLD 1000
 
 static struct sde_cesta *cesta_list[MAX_CESTA_COUNT] = {NULL, };
 
@@ -401,7 +400,7 @@ static void _sde_cesta_clk_bw_vote(struct sde_cesta_client *client, bool pwr_st_
 		idle_clk_ib = clk_ib;
 	} else {
 		idle_clk_ab = 0;
-		idle_clk_ib = MDP_CLK_LOWSVS_D1;
+		idle_clk_ib = client->base_freq;
 	}
 
 	/* mdp-clk voting */
@@ -776,6 +775,8 @@ struct sde_cesta_client *sde_cesta_create_client(u32 cesta_index, char *client_n
 	client->cesta_index = cesta_index;
 	client->client_index = id;
 	client->scc_index = cesta->scc_index[id];
+	client->base_freq = cesta->xo_freq + XO_VOTE_EXIT_FREQ_THRESHOLD;
+
 	SDE_DEBUG_CESTA("client:%s cesta_index:%d\n", client_name, cesta_index);
 
 	mutex_lock(&cesta->client_lock);
@@ -1126,6 +1127,8 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	int ret, i, index;
 	struct icc_path *path;
 	char name[MAX_CESTA_CLIENT_NAME_LEN];
+	struct clk *xo_clk;
+	struct device *dev = &pdev->dev;
 
 	cesta = devm_kzalloc(&pdev->dev, sizeof(struct sde_cesta), GFP_KERNEL);
 	if (!cesta)
@@ -1256,6 +1259,13 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	mutex_init(&cesta->client_lock);
 
 	cesta_list[index] = cesta;
+
+	xo_clk = devm_clk_get(dev, "xo");
+	if (IS_ERR(xo_clk)) {
+		SDE_ERROR_CESTA("failed to get xo clock");
+		goto fail;
+	}
+	cesta->xo_freq = clk_get_rate(xo_clk);
 
 	sde_cesta_hw_init(cesta);
 	cesta->hw_ops.init(cesta);
