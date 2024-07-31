@@ -1328,12 +1328,18 @@ int cam_sensor_util_request_gpio_table(
 				 */
 				CAM_ERR(CAM_SENSOR_UTIL, "gpio %d:%s request fails",
 					gpio_tbl[i].gpio, gpio_tbl[i].label);
+				goto request_fail;
 			}
 		}
 	} else {
 		cam_res_mgr_gpio_free_arry(soc_info->dev, gpio_tbl, size);
 	}
 
+	return rc;
+
+request_fail:
+	if (gpio_en && (i > 0))
+		cam_res_mgr_gpio_free_arry(soc_info->dev, gpio_tbl, i);
 	return rc;
 }
 
@@ -2104,7 +2110,7 @@ static int cam_config_mclk_reg(struct cam_sensor_power_ctrl_t *ctrl,
 int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 		struct cam_hw_soc_info *soc_info, struct completion *i3c_probe_status)
 {
-	int rc = 0, index = 0, no_gpio = 0, ret = 0, num_vreg, j = 0, i = 0;
+	int rc = 0, index = 0, ret = 0, num_vreg, j = 0, i = 0;
 	int32_t vreg_idx = -1;
 	struct cam_sensor_power_setting *power_setting = NULL;
 	struct msm_camera_gpio_num_info *gpio_num_info = NULL;
@@ -2142,7 +2148,8 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 
 	rc = cam_sensor_util_request_gpio_table(soc_info, 1);
 	if (rc < 0) {
-		no_gpio = rc;
+		CAM_ERR(CAM_SENSOR_UTIL, "request gpio table failed");
+		return -EINVAL;
 	}
 
 	if (ctrl->cam_pinctrl_status) {
@@ -2237,10 +2244,6 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 		case SENSOR_STANDBY:
 		case SENSOR_CUSTOM_GPIO1:
 		case SENSOR_CUSTOM_GPIO2:
-			if (no_gpio) {
-				CAM_ERR(CAM_SENSOR_UTIL, "request gpio failed");
-				goto power_up_failed;
-			}
 			if (!gpio_num_info) {
 				CAM_ERR(CAM_SENSOR_UTIL, "Invalid gpio_num_info");
 				goto power_up_failed;
