@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CNSS_REG_H
@@ -103,7 +103,7 @@
 
 #define PEACH_DEBUG_PBL_LOG_SRAM_START		0x01403640
 #define PEACH_DEBUG_PBL_LOG_SRAM_MAX_SIZE	40
-#define PEACH_DEBUG_SBL_LOG_SRAM_MAX_SIZE	48
+#define PEACH_DEBUG_SBL_LOG_SRAM_MAX_SIZE	0x1000
 #define PEACH_PBL_BOOTSTRAP_STATUS		0x01A10008
 
 #define COLOGNE_DEBUG_PBL_LOG_SRAM_START	0x01403640
