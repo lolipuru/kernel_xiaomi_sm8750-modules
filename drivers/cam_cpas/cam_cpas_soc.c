@@ -510,6 +510,11 @@ static int cam_cpas_parse_mnoc_node(struct cam_cpas *cpas_core,
 			return -EPERM;
 		}
 
+		if (*mnoc_idx >= CAM_CPAS_MAX_AXI_PORTS) {
+			CAM_ERR(CAM_CPAS, "Invalid mnoc index: %d", *mnoc_idx);
+			return -EINVAL;
+		}
+
 		curr_axi_port =  &cpas_core->axi_port[*mnoc_idx];
 		curr_axi_port->axi_port_node = mnoc_node;
 		rc =  of_property_read_string(curr_node_ptr->tree_dev_node, "qcom,axi-port-name",
