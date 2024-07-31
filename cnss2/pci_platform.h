@@ -66,18 +66,6 @@ int _cnss_pci_enumerate(struct cnss_plat_data *plat_priv, u32 rc_num);
 int cnss_pci_assert_perst(struct cnss_pci_data *pci_priv);
 
 /**
- * cnss_pci_fmd_enable() - Update FMD status to PCIe
- * @pci_priv: driver PCI bus context pointer
- *
- * This function shall call corresponding PCIe root complex driver API
- * to update FMD status. The purpose of this API is to handle PERST
- * during execution of FMD recipe.
- *
- * Return: 0 for success, negative value for error
- */
-int cnss_pci_fmd_enable(struct cnss_pci_data *pci_priv);
-
-/**
  * cnss_pci_disable_pc() - Disable PCIe link power collapse from RC driver
  * @pci_priv: driver PCI bus context pointer
  * @vote: value to indicate disable (true) or enable (false)
@@ -180,11 +168,6 @@ int _cnss_pci_enumerate(struct cnss_plat_data *plat_priv, u32 rc_num)
 int cnss_pci_assert_perst(struct cnss_pci_data *pci_priv)
 {
 	return -EOPNOTSUPP;
-}
-
-int cnss_pci_fmd_enable(struct cnss_pci_data *pci_priv)
-{
-	return 0;
 }
 
 int cnss_pci_disable_pc(struct cnss_pci_data *pci_priv, bool vote)

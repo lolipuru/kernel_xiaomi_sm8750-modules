@@ -554,23 +554,6 @@ int cnss_bus_call_driver_modem_status(struct cnss_plat_data *plat_priv,
 	}
 }
 
-int cnss_bus_fmd_status(struct cnss_plat_data *plat_priv,
-			int fmd_status)
-{
-	if (!plat_priv)
-		return -ENODEV;
-
-	switch (plat_priv->bus_type) {
-	case CNSS_BUS_PCI:
-		return cnss_pci_fmd_status(plat_priv->bus_priv,
-					   fmd_status);
-	default:
-		cnss_pr_err("Unsupported bus type: %d\n",
-			    plat_priv->bus_type);
-		return -EINVAL;
-	}
-}
-
 int cnss_bus_update_status(struct cnss_plat_data *plat_priv,
 			   enum cnss_driver_status status)
 {

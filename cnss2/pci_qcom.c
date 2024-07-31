@@ -49,11 +49,6 @@ int cnss_pci_assert_perst(struct cnss_pci_data *pci_priv)
 				   PM_OPTIONS_DEFAULT);
 }
 
-int cnss_pci_fmd_enable(struct cnss_pci_data *pci_priv)
-{
-	return msm_pcie_fmd_enable(pci_priv->pci_dev);
-}
-
 int cnss_pci_disable_pc(struct cnss_pci_data *pci_priv, bool vote)
 {
 	struct pci_dev *pci_dev = pci_priv->pci_dev;
