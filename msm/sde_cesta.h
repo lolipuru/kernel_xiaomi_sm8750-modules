@@ -65,6 +65,7 @@ struct sde_cesta_client_data {
  * @client_index: client index
  * @cesta_index: sde cesta instance
  * @scc_index: sde cesta control index
+ * @base_freq: idle frequency set for mdp-clk hw client
  * @name: client name
  * @enabled: client cesta status
  * @pwr_st_override: cesta override request
@@ -77,6 +78,7 @@ struct sde_cesta_client {
 	u32 client_index;
 	u32 cesta_index;
 	u32 scc_index;
+	u64 base_freq;
 	char name[MAX_CESTA_CLIENT_NAME_LEN];
 	bool enabled;
 	bool pwr_st_override;
@@ -201,6 +203,7 @@ struct sde_cesta_hw_ops {
  * @scc_io: scc instances io data mapping
  * @scc_index: stores the SCC index
  * @scc_count: number of SCC instances
+ * @xo_freq: stores the xo frequency for the target
  * @rscc_io: sde rscc io data mapping
  * @wrapper_io: wrapper io data mapping
  * @client_list: link list maintaing all the clients
@@ -224,6 +227,7 @@ struct sde_cesta {
 	struct dss_io_data scc_io[MAX_SCC_BLOCK];
 	u32 scc_index[MAX_SCC_BLOCK];
 	u32 scc_count;
+	u64 xo_freq;
 
 	struct dss_io_data rscc_io;
 	struct dss_io_data wrapper_io;
