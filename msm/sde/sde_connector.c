@@ -1208,7 +1208,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	struct sde_connector *c_conn;
 	struct msm_freq_step_pattern *freq_pattern;
 	u64 cmd_bit_mask = 0;
-	int rc = 0;
+	int lp_mode, rc = 0;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
@@ -1231,9 +1231,13 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	freq_pattern = c_conn->freq_pattern;
 	if (c_conn->vrr_cmd_state == VRR_CMD_POWER_ON ||
 			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT) {
-		c_conn->freq_pattern_updated = true;
-		c_conn->freq_pattern_type_changed = true;
-		c_conn->vrr_cmd_state = VRR_CMD_STATE_NONE;
+		lp_mode = sde_connector_get_property(connector->state, CONNECTOR_PROP_LP);
+		SDE_EVT32(lp_mode, c_conn->freq_pattern_updated);
+		if (lp_mode != SDE_MODE_DPMS_OFF) {
+			c_conn->freq_pattern_updated = true;
+			c_conn->freq_pattern_type_changed = true;
+			c_conn->vrr_cmd_state = VRR_CMD_STATE_NONE;
+		}
 	}
 
 	if  (c_conn->freq_pattern_updated)
