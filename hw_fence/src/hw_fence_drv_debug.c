@@ -1200,6 +1200,13 @@ static long _process_val_signal(struct hw_fence_driver_data *drv_data,
 		if ((fence && payload.ctxt_id == context && payload.seqno == seqno) ||
 				(mask && ((mask & hash) == (mask & payload.hash)))) {
 			*error = payload.error;
+
+			if (read > 0) {
+				HWFNC_DBG_L("Client:%d has non-empty rxq, set val_signal flag\n",
+					hw_fence_client->client_id);
+				atomic_set(&hw_fence_client->val_signal, 1);
+			}
+
 			return 0;
 		}
 	}
