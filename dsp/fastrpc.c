@@ -1350,7 +1350,7 @@ map_err:
 attach_err:
 	dma_buf_put(map->buf);
 get_err:
-	fastrpc_map_put(map);
+	kfree(map);
 
 	return err;
 }
