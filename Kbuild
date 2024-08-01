@@ -24,6 +24,9 @@ ifeq ($(CONFIG_ARCH_QTI_VM), y)
     endif
 endif
 
+obj-$(CONFIG_QCOM_SMCINVOKE) += si_core_test.o
+si_core_test-objs := si_core_tests/si_core_test.o
+
 obj-$(CONFIG_QSEECOM) += qseecom_dlkm.o
 qseecom_dlkm-objs := qseecom/qseecom.o
 qseecom_dlkm-$(CONFIG_COMPAT) += qseecom/qseecom_32bit_impl.o
