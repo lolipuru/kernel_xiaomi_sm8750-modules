@@ -3037,6 +3037,11 @@ int cam_mem_mgr_send_buffer_to_presil(int32_t mmu_hdl, int32_t buf_handle)
 
 	rc = cam_presil_send_buffer(dmabuf, 0, 0, (uint32_t)io_buf_size,
 			(uint64_t)iova_ptr, cpu_vaddr, false);
+	if (rc)
+		CAM_ERR(CAM_PRESIL, "failed to send buffer: 0x%0x iommu_hdl: 0x%0x",
+			buf_handle, iommu_hdl);
+
+	cam_mem_put_cpu_buf(buf_handle);
 
 	return rc;
 }
@@ -3156,10 +3161,18 @@ int cam_mem_mgr_retrieve_buffer_from_presil(int32_t buf_handle, uint32_t buf_siz
 
 	rc = cam_presil_retrieve_buffer(dmabuf, 0, 0, (uint32_t)buf_size, (uint64_t)io_buf_addr,
 		cpu_vaddr, false);
+	if (rc) {
+		CAM_ERR(CAM_PRESIL, "failed to retrieve buffer: 0x%0x iommu_hdl: 0x%0x",
+			buf_handle, iommu_hdl);
+		goto putbuf;
+	}
 
 	CAM_INFO(CAM_PRESIL,
 		"Retrieved buffer ioaddr 0x%x offset %d size = %d fd = %d dmabuf = %pK",
 		io_buf_addr, 0, buf_size, fd, dmabuf);
+
+putbuf:
+	cam_mem_put_cpu_buf(buf_handle);
 
 	return rc;
 }
