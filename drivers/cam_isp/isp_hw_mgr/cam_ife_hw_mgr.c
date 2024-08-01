@@ -318,12 +318,6 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 	per_req_info = &ctx->per_req_info[request_id % MAX_DRV_REQUEST_DEPTH];
 	next_req_info = &ctx->per_req_info[(request_id + 1) % MAX_DRV_REQUEST_DEPTH];
 
-	if (per_req_info && next_req_info) {
-		CAM_ERR(CAM_ISP, "No valid DRV object, req_id:%llu, ctx:%d",
-			request_id, ctx->ctx_index);
-		return 0;
-	}
-
 	drv_info = &per_req_info->drv_info;
 	next_drv_info = &next_req_info->drv_info;
 
@@ -332,8 +326,7 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 		per_req_info->mup_en = prepare_hw_data->mup_en;
 	}
 
-	if (!is_blob_config_valid &&
-		(drv_info && (request_id != drv_info->req_id))) {
+	if (!is_blob_config_valid && (request_id != drv_info->req_id)) {
 		CAM_DBG(CAM_ISP, "No valid DRV info, req_id:%llu, ctx:%d",
 			request_id, ctx->ctx_index);
 		return 0;
