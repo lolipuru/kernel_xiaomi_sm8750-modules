@@ -2863,6 +2863,8 @@ static void cnss_driver_event_work(struct work_struct *work)
 
 	spin_lock_irqsave(&plat_priv->event_lock, flags);
 
+	plat_priv->cnss_event_work_task = current;
+
 	while (!list_empty(&plat_priv->event_list)) {
 		event = list_first_entry(&plat_priv->event_list,
 					 struct cnss_driver_event, list);
