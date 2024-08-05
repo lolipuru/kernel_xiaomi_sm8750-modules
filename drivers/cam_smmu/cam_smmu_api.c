@@ -2279,7 +2279,7 @@ int cam_smmu_get_region_info(int32_t smmu_hdl,
 			return -ENODEV;
 		}
 
-		nested_reg_info = &cb->shared_info.nested_regions[nested_reg_idx];
+		nested_reg_info = &cb->firmware_info.nested_regions[nested_reg_idx];
 
 		region_info->iova_start = nested_reg_info->region_info.iova_start;
 		region_info->iova_len = nested_reg_info->region_info.iova_len;
