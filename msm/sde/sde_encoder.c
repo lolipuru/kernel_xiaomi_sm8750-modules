@@ -6979,6 +6979,9 @@ static int _sde_encoder_status_show(struct seq_file *s, void *data)
 		case INTF_MODE_WB_LINE:
 			seq_puts(s, "mode: wb line\n");
 			break;
+		case INTF_MODE_NONE:
+			seq_puts(s, "mode: none\n");
+			break;
 		default:
 			seq_puts(s, "mode: ???\n");
 			break;
@@ -7475,8 +7478,19 @@ static int sde_encoder_virt_add_phys_encs(
 		return -EINVAL;
 	}
 
+	if (display_caps & MSM_DISPLAY_LOOPBACK_MODE) {
+		enc = sde_encoder_phys_vid_init(params, true);
+		if (IS_ERR_OR_NULL(enc)) {
+			SDE_ERROR_ENC(sde_enc, "failed to init lb enc %ld\n",
+				PTR_ERR(enc));
+			return !enc ? -EINVAL : PTR_ERR(enc);
+		}
+
+		sde_enc->phys_lb_encs[sde_enc->num_phys_encs] = enc;
+	}
+
 	if (display_caps & MSM_DISPLAY_CAP_VID_MODE) {
-		enc = sde_encoder_phys_vid_init(params);
+		enc = sde_encoder_phys_vid_init(params, false);
 
 		if (IS_ERR_OR_NULL(enc)) {
 			SDE_ERROR_ENC(sde_enc, "failed to init vid enc: %ld\n",
@@ -7501,9 +7515,12 @@ static int sde_encoder_virt_add_phys_encs(
 	if (disp_info->curr_panel_mode == MSM_DISPLAY_VIDEO_MODE)
 		sde_enc->phys_encs[sde_enc->num_phys_encs] =
 			sde_enc->phys_vid_encs[sde_enc->num_phys_encs];
-	else
+	else if (disp_info->curr_panel_mode == MSM_DISPLAY_CMD_MODE)
 		sde_enc->phys_encs[sde_enc->num_phys_encs] =
 			sde_enc->phys_cmd_encs[sde_enc->num_phys_encs];
+	else
+		sde_enc->phys_encs[sde_enc->num_phys_encs] =
+			sde_enc->phys_lb_encs[sde_enc->num_phys_encs];
 
 	++sde_enc->num_phys_encs;
 
@@ -7558,6 +7575,7 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		_sde_encoder_get_qsync_fps_callback,
 	};
 	struct sde_enc_phys_init_params phys_params;
+	bool is_lb_encoder = false;
 
 	if (!sde_enc || !sde_kms) {
 		SDE_ERROR("invalid arg(s), enc %d kms %d\n",
@@ -7565,10 +7583,14 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		return -EINVAL;
 	}
 
+	is_lb_encoder = disp_info->capabilities & MSM_DISPLAY_LOOPBACK_MODE;
 	memset(&phys_params, 0, sizeof(phys_params));
 	phys_params.sde_kms = sde_kms;
 	phys_params.parent = &sde_enc->base;
-	phys_params.parent_ops = parent_ops;
+
+	if (!is_lb_encoder)
+		phys_params.parent_ops = parent_ops;
+
 	phys_params.enc_spinlock = &sde_enc->enc_spinlock;
 	phys_params.vblank_ctl_lock = &sde_enc->vblank_ctl_lock;
 	atomic_set(&sde_enc->vsync_cnt, 0);
@@ -7592,7 +7614,7 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		intf_type = INTF_DP;
 	} else if (disp_info->intf_type == DRM_MODE_CONNECTOR_VIRTUAL) {
 		*drm_enc_mode = DRM_MODE_ENCODER_VIRTUAL;
-		intf_type = INTF_WB;
+		intf_type = is_lb_encoder ? INTF_LB : INTF_WB;
 	} else {
 		SDE_ERROR_ENC(sde_enc, "unsupported display interface type\n");
 		return -EINVAL;
@@ -7605,13 +7627,14 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 
 	SDE_DEBUG("dsi_info->num_of_h_tiles %d\n", disp_info->num_of_h_tiles);
 
-	sde_enc->idle_pc_enabled = test_bit(SDE_FEATURE_IDLE_PC, sde_kms->catalog->features);
-
-	if (test_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_kms->catalog->mdp[0].features))
-		sde_enc->dpu_ctl_op_sync = disp_info->ctl_op_sync;
-
-	sde_enc->input_event_enabled = test_bit(SDE_FEATURE_TOUCH_WAKEUP,
+	if (!is_lb_encoder) {
+		sde_enc->idle_pc_enabled = test_bit(SDE_FEATURE_IDLE_PC,
 						sde_kms->catalog->features);
+		if (test_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_kms->catalog->mdp[0].features))
+			sde_enc->dpu_ctl_op_sync = disp_info->ctl_op_sync;
+		sde_enc->input_event_enabled = test_bit(SDE_FEATURE_TOUCH_WAKEUP,
+						sde_kms->catalog->features);
+	}
 
 	sde_enc->ctl_done_supported = test_bit(SDE_FEATURE_CTL_DONE,
 						sde_kms->catalog->features);
@@ -7658,7 +7681,10 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 			continue;
 		}
 
-		if (intf_type == INTF_WB) {
+		if (intf_type == INTF_LB) {
+			phys_params.intf_idx = INTF_MAX;
+			phys_params.wb_idx = WB_MAX;
+		} else if (intf_type == INTF_WB) {
 			phys_params.intf_idx = INTF_MAX;
 			phys_params.wb_idx = sde_encoder_get_wb(
 					sde_kms->catalog,
@@ -7854,7 +7880,7 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 			intf_index = phys->intf_idx - INTF_0;
 	}
 
-	if (!sde_enc->ops.phys_init) {
+	if (!sde_enc->ops.phys_init && !(disp_info->capabilities & MSM_DISPLAY_LOOPBACK_MODE)) {
 		client_type = (disp_info->display_type == SDE_CONNECTOR_PRIMARY) ?
 				SDE_RSC_PRIMARY_DISP_CLIENT : SDE_RSC_EXTERNAL_DISP_CLIENT;
 		snprintf(name, SDE_NAME_SIZE, "rsc_enc%u", drm_enc->base.id);
@@ -7884,19 +7910,21 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 		sde_enc->frame_trigger_mode = FRAME_DONE_WAIT_POSTED_START;
 
 	mutex_init(&sde_enc->rc_lock);
-	kthread_init_delayed_work(&sde_enc->delayed_off_work,
-			sde_encoder_off_work);
 	sde_enc->vblank_enabled = false;
 	sde_enc->qdss_status = false;
 
-	kthread_init_work(&sde_enc->input_event_work,
+	if (!(disp_info->capabilities & MSM_DISPLAY_LOOPBACK_MODE)) {
+		kthread_init_delayed_work(&sde_enc->delayed_off_work,
+				sde_encoder_off_work);
+		kthread_init_work(&sde_enc->input_event_work,
 			sde_encoder_input_event_work_handler);
 
-	kthread_init_work(&sde_enc->early_wakeup_work,
+		kthread_init_work(&sde_enc->early_wakeup_work,
 			sde_encoder_early_wakeup_work_handler);
 
-	kthread_init_work(&sde_enc->esd_trigger_work,
+		kthread_init_work(&sde_enc->esd_trigger_work,
 			sde_encoder_esd_trigger_work_handler);
+	}
 
 	kthread_init_work(&sde_enc->self_refresh_work,
 			sde_encoder_handle_self_refresh);

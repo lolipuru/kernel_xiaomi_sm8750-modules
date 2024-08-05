@@ -2546,15 +2546,19 @@ void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	*req_scc = sde_connector_is_qsync_updated(phys_enc->connector);
 }
 
-static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops)
+static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops, bool is_lb_enc)
 {
 	ops->is_master = sde_encoder_phys_vid_is_master;
 	ops->mode_set = sde_encoder_phys_vid_mode_set;
-	ops->cont_splash_mode_set = sde_encoder_phys_vid_cont_splash_mode_set;
 	ops->mode_fixup = sde_encoder_phys_vid_mode_fixup;
+	ops->destroy = sde_encoder_phys_vid_destroy;
+
+	if (is_lb_enc)
+		return;
+
+	ops->cont_splash_mode_set = sde_encoder_phys_vid_cont_splash_mode_set;
 	ops->enable = sde_encoder_phys_vid_enable;
 	ops->disable = sde_encoder_phys_vid_disable;
-	ops->destroy = sde_encoder_phys_vid_destroy;
 	ops->get_hw_resources = sde_encoder_phys_vid_get_hw_resources;
 	ops->control_vblank_irq = sde_encoder_phys_vid_control_vblank_irq;
 	ops->control_empulse_irq = sde_encoder_phys_vid_control_empulse_irq;
@@ -2584,7 +2588,7 @@ static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops)
 }
 
 struct sde_encoder_phys *sde_encoder_phys_vid_init(
-		struct sde_enc_phys_init_params *p)
+		struct sde_enc_phys_init_params *p, bool is_lb_display)
 {
 	struct sde_encoder_phys *phys_enc = NULL;
 	struct sde_encoder_phys_vid *vid_enc = NULL;
@@ -2616,12 +2620,12 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 
 	SDE_DEBUG_VIDENC(vid_enc, "\n");
 
-	sde_encoder_phys_vid_init_ops(&phys_enc->ops);
+	sde_encoder_phys_vid_init_ops(&phys_enc->ops, is_lb_display);
 	phys_enc->parent = p->parent;
 	phys_enc->parent_ops = p->parent_ops;
 	phys_enc->sde_kms = p->sde_kms;
 	phys_enc->split_role = p->split_role;
-	phys_enc->intf_mode = INTF_MODE_VIDEO;
+	phys_enc->intf_mode = is_lb_display ? INTF_MODE_NONE : INTF_MODE_VIDEO;
 	phys_enc->enc_spinlock = p->enc_spinlock;
 	phys_enc->vblank_ctl_lock = p->vblank_ctl_lock;
 	phys_enc->comp_type = p->comp_type;
@@ -2633,6 +2637,9 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 		irq->hw_idx = -EINVAL;
 		irq->cb.arg = phys_enc;
 	}
+
+	if (is_lb_display)
+		goto skip_irq_init;
 
 	irq = &phys_enc->irq[INTR_IDX_VSYNC];
 	irq->name = "vsync_irq";
@@ -2668,6 +2675,8 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
 	init_waitqueue_head(&phys_enc->pending_kickoff_wq);
+
+skip_irq_init:
 	phys_enc->enable_state = SDE_ENC_DISABLED;
 	hrtimer_init(&phys_enc->sde_vrr_cfg.freq_step_timer,
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);

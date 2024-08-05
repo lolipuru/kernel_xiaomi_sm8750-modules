@@ -236,7 +236,8 @@ msm_drm-$(CONFIG_DRM_MSM_SDE) += sde/sde_crtc.o \
 				 sde/sde_color_proc_property_helper.o \
 				 sde/sde_color_processing_aiqe.o \
 				 sde/sde_hw_color_proc_aiqe_v1.o \
-				 sde/sde_aiqe_common.o
+				 sde/sde_aiqe_common.o \
+				 sde/sde_loopback.o
 
 msm_drm-$(CONFIG_DRM_SDE_WB) += sde/sde_wb.o \
 				sde/sde_encoder_phys_wb.o

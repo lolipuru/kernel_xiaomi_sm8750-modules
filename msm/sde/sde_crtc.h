@@ -985,6 +985,28 @@ static inline bool sde_crtc_atomic_check_has_modeset(
 	return (crtc_state && drm_atomic_crtc_needs_modeset(crtc_state));
 }
 
+static inline bool sde_crtc_state_in_lb_mode(struct drm_crtc_state *state)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+	struct drm_connector_list_iter conn_iter;
+
+	if (!state || !state->crtc)
+		return false;
+
+	drm_connector_list_iter_begin(state->crtc->dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		if ((state->connector_mask) & drm_connector_mask(conn)) {
+			sde_conn =  to_sde_connector(conn);
+			if (sde_conn->is_lb_conn)
+				return true;
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	return false;
+}
+
 static inline bool sde_crtc_state_in_clone_mode(struct drm_encoder *encoder,
 	struct drm_crtc_state *state)
 {
