@@ -6909,6 +6909,9 @@ static void cam_ife_csid_ver2_maskout_all_irqs(
 	soc_info = &csid_hw->hw_info->soc_info;
 	mem_base = soc_info->reg_map[CAM_IFE_CSID_CLC_MEM_BASE_ID].mem_base;
 
+	if (csid_reg->cmn_reg->capabilities & CAM_IFE_CSID_CAP_TOP_MASK_ALL_IRQS)
+		goto disable_top_irq_status_reg0;
+
 	/* Disable rx */
 	if (!csid_hw->flags.offline_mode)
 		for (i = CAM_IFE_CSID_RX_IRQ_STATUS_REG0; i < csid_reg->num_rx_regs; i++)
@@ -6932,6 +6935,7 @@ static void cam_ife_csid_ver2_maskout_all_irqs(
 			csid_reg->cmn_reg->top_irq_mask_addr[CAM_IFE_CSID_TOP2_IRQ_STATUS_REG1]));
 	}
 
+disable_top_irq_status_reg0:
 	/* Disable top except rst_done */
 	cam_io_w_mb(csid_reg->cmn_reg->top_reset_irq_mask[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0],
 		mem_base + csid_reg->cmn_reg->top_irq_mask_addr[CAM_IFE_CSID_TOP_IRQ_STATUS_REG0]);

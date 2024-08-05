@@ -2000,7 +2000,8 @@ static struct cam_ife_csid_ver2_common_reg_info
 	.capabilities                            = CAM_IFE_CSID_CAP_SPLIT_RUP_AUP |
 							CAM_IFE_CSID_CAP_SKIP_PATH_CFG1 |
 							CAM_IFE_CSID_CAP_SKIP_EPOCH_CFG |
-							CAM_IFE_CSID_CAP_DEBUG_ERR_VEC,
+							CAM_IFE_CSID_CAP_DEBUG_ERR_VEC |
+							CAM_IFE_CSID_CAP_TOP_MASK_ALL_IRQS,
 	.top_top2_irq_mask                       = 0x80000000,
 	.drv_rup_en_val_map = {
 		2, /*RDI0 */
