@@ -2576,13 +2576,19 @@ static void _sde_encoder_update_multi_te_state(struct drm_encoder *drm_enc, bool
 	}
 
 	if (sde_enc->multi_te_fps) {
-		if (sde_enc->multi_te_state == SDE_MULTI_TE_NONE)
+		switch (sde_enc->multi_te_state) {
+		case SDE_MULTI_TE_NONE:
+		case SDE_MULTI_TE_EXIT:
 			sde_enc->multi_te_state = SDE_MULTI_TE_ENTER;
-		else if (sde_enc->multi_te_state == SDE_MULTI_TE_ENTER)
+			break;
+		case SDE_MULTI_TE_ENTER:
 			sde_enc->multi_te_state = SDE_MULTI_TE_SESSION;
-		else
+			break;
+		default:
 			return;
-	} else if (sde_enc->multi_te_state == SDE_MULTI_TE_SESSION) {
+		}
+	} else if ((sde_enc->multi_te_state == SDE_MULTI_TE_SESSION)
+			|| (sde_enc->multi_te_state == SDE_MULTI_TE_ENTER)) {
 		sde_enc->multi_te_state = SDE_MULTI_TE_EXIT;
 	} else {
 		sde_enc->multi_te_state = SDE_MULTI_TE_NONE;
