@@ -14,7 +14,8 @@
 #define CAM_VFE_RDI_VER2_MAX                           4
 #define CAM_VFE_CAMIF_LITE_EVT_MAX                     256
 #define CAM_VFE_TOP_DBG_REG_MAX                        19
-#define CAM_VFE_DEBUG_IDLE_MAX                         6
+#define CAM_VFE_DIAG_SENSOR_STATUS_MAX                 4
+#define CAM_VFE_DIAG_FRAME_COUNT_STATUS_MAX            3
 
 struct cam_vfe_top_ver4_perf_count_reg_offset {
 	uint32_t perf_count_cfg;
@@ -60,11 +61,11 @@ struct cam_vfe_top_ver4_reg_offset_common {
 	uint32_t custom_frame_idx;
 	uint32_t dsp_status;
 	uint32_t diag_config;
-	uint32_t diag_sensor_status_0;
-	uint32_t diag_sensor_status_1;
-	uint32_t diag_frm_cnt_status_0;
-	uint32_t diag_frm_cnt_status_1;
-	uint32_t diag_frm_cnt_status_2;
+	uint32_t diag_config_1;
+	uint32_t diag_sensor_status[
+		CAM_VFE_DIAG_SENSOR_STATUS_MAX];
+	uint32_t diag_frm_cnt_status[
+		CAM_VFE_DIAG_FRAME_COUNT_STATUS_MAX];
 	uint32_t stats_throttle_cfg_0;
 	uint32_t stats_throttle_cfg_1;
 	uint32_t stats_throttle_cfg_2;
@@ -161,6 +162,17 @@ struct cam_vfe_top_ver4_debug_reg_info {
 	uint32_t debug_idle_bitmask;
 };
 
+struct cam_vfe_top_ver4_diag_reg_info {
+	uint32_t  bitmask;
+	char     *name;
+};
+
+struct cam_vfe_top_ver4_diag_reg_fields {
+	uint32_t                                num_fields;
+	struct cam_vfe_top_ver4_diag_reg_info  *field;
+};
+
+
 struct cam_vfe_ver4_fcg_module_info {
 	uint32_t max_fcg_ch_ctx;
 	uint32_t max_fcg_predictions;
@@ -198,6 +210,8 @@ struct cam_vfe_top_ver4_hw_info {
 	struct cam_vfe_top_ver4_pdaf_lcr_res_info       *pdaf_lcr_res_mask;
 	uint32_t                                         num_pdaf_lcr_res;
 	struct cam_vfe_ver4_fcg_module_info             *fcg_module_info;
+	struct cam_vfe_top_ver4_diag_reg_fields         *diag_sensor_info;
+	struct cam_vfe_top_ver4_diag_reg_fields         *diag_frame_info;
 	bool                                             fcg_supported;
 	bool                                             fcg_mc_supported;
 };
@@ -214,6 +228,10 @@ struct cam_vfe_ver4_path_reg_data {
 	uint32_t                                     ipp_violation_mask;
 	uint32_t                                     bayer_violation_mask;
 	uint32_t                                     pdaf_violation_mask;
+	uint32_t                                     diag_violation_mask;
+	uint32_t                                     diag_sensor_sel_mask;
+	uint32_t                                     diag_frm_count_mask_0;
+	uint32_t                                     diag_frm_count_mask_1;
 	bool                                         is_mc_path;
 	uint32_t                                     frm_irq_hw_ctxt_mask[CAM_ISP_MULTI_CTXT_MAX];
 };

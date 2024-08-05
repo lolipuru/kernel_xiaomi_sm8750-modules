@@ -455,11 +455,8 @@ static struct cam_vfe_top_ver4_reg_offset_common tfe980_top_common_reg = {
 	.full_out_throttle_cfg    = 0x00000068,
 	.diag_config              = 0x00000094,
 	.global_reset_cmd         = 0x0000007C,
-	.diag_sensor_status_0     = 0x00000098,
-	.diag_sensor_status_1     = 0x0000009C,
-	.diag_frm_cnt_status_0    = 0x000000A0,
-	.diag_frm_cnt_status_1    = 0x000000A4,
-	.diag_frm_cnt_status_2    = 0x000000A8,
+	.diag_sensor_status       = {0x00000098, 0x0000009C},
+	.diag_frm_cnt_status      = {0x000000A0, 0x000000A4, 0x000000A8},
 	.ipp_violation_status     = 0x00000090,
 	.bayer_violation_status   = 0x0000C024,
 	.pdaf_violation_status    = 0x00009304,
@@ -560,6 +557,9 @@ static struct cam_vfe_ver4_path_reg_data tfe980_ipp_common_reg_data = {
 	.ipp_violation_mask              = 0x4000000,
 	.bayer_violation_mask            = 0x4,
 	.pdaf_violation_mask             = 0x2000000,
+	.diag_violation_mask             = 0x8000000,
+	.diag_sensor_sel_mask            = 0x6,
+	.diag_frm_count_mask_0           = 0xF000,
 	.enable_diagnostic_hw            = 0x1,
 	.top_debug_cfg_en                = 3,
 	.is_mc_path                      = true,
@@ -574,7 +574,9 @@ static struct cam_vfe_ver4_path_reg_data tfe980_ipp_common_reg_data = {
 static struct cam_vfe_ver4_path_reg_data tfe980_pdlib_reg_data = {
 	.sof_irq_mask                    = 0x400,
 	.eof_irq_mask                    = 0x800,
-	.enable_diagnostic_hw            = 0x1,
+	.diag_sensor_sel_mask            = 0x8,
+	.diag_frm_count_mask_0           = 0x40,
+	.enable_diagnostic_hw            = 0x40,
 	.top_debug_cfg_en                = 3,
 };
 
@@ -583,6 +585,8 @@ static struct cam_vfe_ver4_path_reg_data tfe980_vfe_full_rdi_reg_data[5] = {
 		.sof_irq_mask                    = 0x1000,
 		.eof_irq_mask                    = 0x2000,
 		.error_irq_mask                  = 0x0,
+		.diag_sensor_sel_mask            = 0xA,
+		.diag_frm_count_mask_0           = 0x80,
 		.enable_diagnostic_hw            = 0x1,
 		.top_debug_cfg_en                = 3,
 	},
@@ -590,6 +594,8 @@ static struct cam_vfe_ver4_path_reg_data tfe980_vfe_full_rdi_reg_data[5] = {
 		.sof_irq_mask                    = 0x4000,
 		.eof_irq_mask                    = 0x8000,
 		.error_irq_mask                  = 0x0,
+		.diag_sensor_sel_mask            = 0xC,
+		.diag_frm_count_mask_0           = 0x100,
 		.enable_diagnostic_hw            = 0x1,
 		.top_debug_cfg_en                = 3,
 	},
@@ -597,6 +603,8 @@ static struct cam_vfe_ver4_path_reg_data tfe980_vfe_full_rdi_reg_data[5] = {
 		.sof_irq_mask                    = 0x10000,
 		.eof_irq_mask                    = 0x20000,
 		.error_irq_mask                  = 0x0,
+		.diag_sensor_sel_mask            = 0xE,
+		.diag_frm_count_mask_0           = 0x200,
 		.enable_diagnostic_hw            = 0x1,
 		.top_debug_cfg_en                = 3,
 	},
@@ -604,6 +612,8 @@ static struct cam_vfe_ver4_path_reg_data tfe980_vfe_full_rdi_reg_data[5] = {
 		.sof_irq_mask                    = 0x40000,
 		.eof_irq_mask                    = 0x80000,
 		.error_irq_mask                  = 0x0,
+		.diag_sensor_sel_mask            = 0x10,
+		.diag_frm_count_mask_0           = 0x400,
 		.enable_diagnostic_hw            = 0x1,
 		.top_debug_cfg_en                = 3,
 	},
@@ -611,6 +621,8 @@ static struct cam_vfe_ver4_path_reg_data tfe980_vfe_full_rdi_reg_data[5] = {
 		.sof_irq_mask                    = 0x100000,
 		.eof_irq_mask                    = 0x200000,
 		.error_irq_mask                  = 0x0,
+		.diag_sensor_sel_mask            = 0x12,
+		.diag_frm_count_mask_0           = 0x800,
 		.enable_diagnostic_hw            = 0x1,
 		.top_debug_cfg_en                = 3,
 	},
@@ -994,6 +1006,91 @@ static struct cam_vfe_top_ver4_debug_reg_info tfe980_bayer_dbg_reg_info[
 	},
 };
 
+static struct cam_vfe_top_ver4_diag_reg_info tfe980_diag_reg_info[] = {
+	{
+		.bitmask = 0x3FFF,
+		.name    = "SENSOR_HBI",
+	},
+	{
+		.bitmask = 0x4000,
+		.name    = "SENSOR_NEQ_HBI",
+	},
+	{
+		.bitmask = 0x8000,
+		.name    = "SENSOR_HBI_MIN_ERROR",
+	},
+	{
+		.bitmask = 0xFFFFFF,
+		.name    = "SENSOR_VBI",
+	},
+	{
+		.bitmask = 0xFF,
+		.name    = "FRAME_CNT_PPP_PIPE",
+	},
+	{
+		.bitmask = 0xFF00,
+		.name    = "FRAME_CNT_RDI_0_PIPE",
+	},
+	{
+		.bitmask = 0xFF0000,
+		.name    = "FRAME_CNT_RDI_1_PIPE",
+	},
+	{
+		.bitmask = 0xFF000000,
+		.name    = "FRAME_CNT_RDI_2_PIPE",
+	},
+	{
+		.bitmask = 0xFF,
+		.name    = "FRAME_CNT_RDI_3_PIPE",
+	},
+	{
+		.bitmask = 0xFF00,
+		.name    = "FRAME_CNT_RDI_4_PIPE",
+	},
+	{
+		.bitmask = 0xFF,
+		.name    = "FRAME_CNT_IPP_CONTEXT0_PIPE",
+	},
+	{
+		.bitmask = 0xFF00,
+		.name    = "FRAME_CNT_IPP_CONTEXT1_PIPE",
+	},
+	{
+		.bitmask = 0xFF0000,
+		.name    = "FRAME_CNT_IPP_CONTEXT2_PIPE",
+	},
+	{
+		.bitmask = 0xFF000000,
+		.name    = "FRAME_CNT_IPP_ALL_CONTEXT_PIPE",
+	},
+};
+
+static struct cam_vfe_top_ver4_diag_reg_fields tfe980_diag_sensor_field[] = {
+	{
+		.num_fields = 3,
+		.field      = &tfe980_diag_reg_info[0],
+	},
+	{
+		.num_fields = 1,
+		.field      = &tfe980_diag_reg_info[3],
+	},
+};
+
+static struct cam_vfe_top_ver4_diag_reg_fields tfe980_diag_frame_field[] = {
+	{
+		.num_fields = 4,
+		.field      = &tfe980_diag_reg_info[4],
+	},
+	{
+		.num_fields = 2,
+		.field      = &tfe980_diag_reg_info[8],
+	},
+	{
+		.num_fields = 4,
+		.field      = &tfe980_diag_reg_info[10],
+	},
+};
+
 static struct cam_vfe_ver4_fcg_module_info tfe980_fcg_module_info = {
 	.max_fcg_ch_ctx                      = 3,
 	.max_fcg_predictions                 = 3,
@@ -1048,6 +1145,8 @@ static struct cam_vfe_top_ver4_hw_info tfe980_top_hw_info = {
 	.num_pdaf_lcr_res                = ARRAY_SIZE(tfe980_pdaf_haf_res_mask),
 	.fcg_module_info                 = &tfe980_fcg_module_info,
 	.fcg_mc_supported                = true,
+	.diag_sensor_info                = tfe980_diag_sensor_field,
+	.diag_frame_info                 = tfe980_diag_frame_field,
 };
 
 static struct cam_irq_register_set tfe980_bus_irq_reg[2] = {
