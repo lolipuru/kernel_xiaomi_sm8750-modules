@@ -208,13 +208,17 @@ enum sde_sim_qsync_event {
 /*
  * enum sde_mode_switch - enum to indicate the type of mode switch
  * @SDE_MODE_SWITCH_NONE: not a switch frame
- * @SDE_MODE_SWITCH_FPS: FPS switch frame
- * @SDE_MODE_SWITCH_RES: Resolution switch frame
+ * @SDE_MODE_SWITCH_FPS_UP: FPS increase switch frame
+ * @SDE_MODE_SWITCH_FPS_DOWN: FPS decrease switch frame
+ * @SDE_MODE_SWITCH_RES_UP: Resolution up switch frame
+ * @SDE_MODE_SWITCH_RES_DOWN: Resolution down switch frame
  */
 enum sde_mode_switch {
 	SDE_MODE_SWITCH_NONE,
-	SDE_MODE_SWITCH_FPS,
-	SDE_MODE_SWITCH_RES,
+	SDE_MODE_SWITCH_FPS_UP,
+	SDE_MODE_SWITCH_FPS_DOWN,
+	SDE_MODE_SWITCH_RES_UP,
+	SDE_MODE_SWITCH_RES_DOWN,
 };
 
 /*
@@ -325,6 +329,7 @@ enum sde_multi_te_states {
  * @dynamic_irqs_config         bitmask config to enable encoder dynamic irqs
  * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  * @ops:                        Encoder ops from init function
+ * @old_vsyc_count:             Intf tearcheck vsync_count for old mode.
  * @mode_switch:                enum to indicate its a fps/resolution switch frame.
  * @multi_te_state:             enum to indicate the multi-te states.
  * @multi_te_fps:               refresh rate of multi-TE.
@@ -332,8 +337,6 @@ enum sde_multi_te_states {
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
  * @cesta_flush_active:         Boolean indicating cesta override flush_active bit is set
- * @cesta_op_group_req:		Boolean indicating CTL op_group setting is required for the frame.
- *				This is required as a workaround for resolution switch cases.
  * @cesta_force_auto_active_db_update:	Boolean indicating auto-active-on-panic is set in SCC
  *					with force-db-update. This is required as a workaround for
  *					cmd mode when previous frame ctl-done is very close to
@@ -418,13 +421,13 @@ struct sde_encoder_virt {
 
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
+	u32 old_vsync_count;
 	enum sde_mode_switch mode_switch;
 	enum sde_multi_te_states multi_te_state;
 	u32 multi_te_fps;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
 	bool cesta_force_active;
-	bool cesta_op_group_req;
 	bool cesta_force_auto_active_db_update;
 };
 
