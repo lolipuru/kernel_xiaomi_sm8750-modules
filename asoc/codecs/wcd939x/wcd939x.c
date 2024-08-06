@@ -5340,6 +5340,29 @@ static void wcd939x_update_regmap_cache(struct wcd939x_priv *wcd939x)
 	}
 }
 
+static int wcd939x_handle_swrslv_reset(void *handle)
+{
+	struct wcd939x_priv *wcd939x = (struct wcd939x_priv *)handle;
+
+	u32 sts1 = 0, sts2 = 0, sts3 = 0;
+
+	if (!wcd939x) {
+		pr_err("%s: slave device is not available\n", __func__);
+		return -EINVAL;
+	}
+	regmap_read(wcd939x->regmap, WCD939X_INTR_STATUS_0, &sts1);
+	regmap_read(wcd939x->regmap, WCD939X_INTR_STATUS_1, &sts2);
+	regmap_read(wcd939x->regmap, WCD939X_INTR_STATUS_2, &sts3);
+
+	pr_debug("%s: Interrupt status: STATUS_0 0x%X, STATUS_1 0x%X, STATUS_2 0x%X\n",
+		       __func__, sts1, sts2, sts3);
+	regmap_write(wcd939x->regmap, WCD939X_INTR_CLEAR_0, 0);
+	regmap_write(wcd939x->regmap, WCD939X_INTR_CLEAR_1, 0);
+	regmap_write(wcd939x->regmap, WCD939X_INTR_CLEAR_2, 0);
+
+	return 0;
+}
+
 static int wcd939x_bind(struct device *dev)
 {
 	int ret = 0, i = 0;
@@ -5455,6 +5478,12 @@ static int wcd939x_bind(struct device *dev)
 		goto err_irq;
 	}
 	wcd939x->dev_up = true;
+
+	/* Register notifier with wcd939x slave. */
+	if (wcd939x_slave_register_notify(wcd939x->tx_swr_dev,
+		wcd939x_handle_swrslv_reset, wcd939x))
+		dev_dbg(dev, "%s: wcd939x_slave_register_notify register Success!!\n", __func__);
+
 
 	/* Register Micbias regulator */
 	ret = wcd_init_mb_regulator(dev);

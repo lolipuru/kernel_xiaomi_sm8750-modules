@@ -1058,10 +1058,10 @@ static int lpass_cdc_wsa2_macro_mclk_enable(
 				0x01, 0x01);
 			/* Toggle fs_cntr_clr bit*/
 			regmap_update_bits(regmap,
-				LPASS_CDC_WSA_CLK_RST_CTRL_FS_CNT_CONTROL,
+				LPASS_CDC_WSA2_CLK_RST_CTRL_FS_CNT_CONTROL,
 				0x02, 0x02);
 			regmap_update_bits(regmap,
-				LPASS_CDC_WSA_CLK_RST_CTRL_FS_CNT_CONTROL,
+				LPASS_CDC_WSA2_CLK_RST_CTRL_FS_CNT_CONTROL,
 				0x02, 0x0);
 			regmap_update_bits(regmap,
 				LPASS_CDC_WSA2_CLK_RST_CTRL_FS_CNT_CONTROL,
@@ -3837,11 +3837,11 @@ static void lpass_cdc_wsa2_macro_add_child_devices(struct work_struct *work)
 	for_each_available_child_of_node(wsa2_priv->dev->of_node, node) {
 		if (strnstr(node->name, "wsa2_swr_master",
 				strlen("wsa2_swr_master")) != NULL)
-			strlcpy(plat_dev_name, "wsa2_swr_ctrl",
+			strscpy(plat_dev_name, "wsa2_swr_ctrl",
 				(LPASS_CDC_WSA2_MACRO_SWR_STRING_LEN - 1));
 		else if (strnstr(node->name, "msm_cdc_pinctrl",
 				 strlen("msm_cdc_pinctrl")) != NULL)
-			strlcpy(plat_dev_name, node->name,
+			strscpy(plat_dev_name, node->name,
 				(LPASS_CDC_WSA2_MACRO_SWR_STRING_LEN - 1));
 		else
 			continue;

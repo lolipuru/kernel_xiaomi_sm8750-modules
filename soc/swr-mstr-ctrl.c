@@ -2365,12 +2365,31 @@ static void swrm_process_change_enum_slave_status(struct swr_mstr_ctrl *swrm)
 	u8 num_enum_devs = 0;
 	u8 enum_devnum[SWR_MAX_DEV_NUM][2];
 	u8 devnum = 0;
+	u8 reset = 0;
+	struct swr_device *swr_dev;
+	struct swr_master *mstr = &swrm->master;
 
 	status = swr_master_read(swrm, SWRM_MCP_SLV_STATUS);
 	if (status == swrm->slave_status) {
 		dev_dbg(swrm->dev,
 				"%s: No change in slave status: 0x%x\n",
 				__func__, status);
+	/* This change is a workaround to enable the slave
+	 * to handle any unexpected error condition.
+	 */
+		if (swrm->master_id == MASTER_ID_TX) {
+			list_for_each_entry(swr_dev, &mstr->devices, dev_list) {
+				reset = swr_reset_device(swr_dev);
+				if (reset != -ENODEV && reset != -EINVAL) {
+					dev_dbg_ratelimited(swrm->dev,
+						"%s Slave Reset Done!!\n", __func__);
+					reset = 0;
+				} else {
+					dev_dbg_ratelimited(swrm->dev,
+						"%s Slave Reset failed!!\n", __func__);
+				}
+			}
+		}
 		return;
 	}
 
@@ -2622,8 +2641,10 @@ handle_irq:
 	swr_master_write(swrm, SWRM_INTERRUPT_CLEAR(swrm->ee_val), 0x0);
 	if (swrm->enable_slave_irq) {
 		/* Enable slave irq here */
+		mutex_lock(&enumeration_lock);
 		swrm_enable_slave_irq(swrm);
 		swrm->enable_slave_irq = false;
+		mutex_unlock(&enumeration_lock);
 	}
 
 	intr_sts = swr_master_read(swrm, SWRM_INTERRUPT_STATUS(swrm->ee_val));
@@ -3811,7 +3832,11 @@ static int swrm_runtime_suspend(struct device *dev)
 			if (swrm->state == SWR_MSTR_SSR)
 				goto chk_lnk_status;
 			mutex_unlock(&swrm->reslock);
+
+			mutex_lock(&enumeration_lock);
 			enable_bank_switch(swrm, 0, SWR_ROW_50, SWR_MIN_COL);
+			mutex_unlock(&enumeration_lock);
+
 			mutex_lock(&swrm->reslock);
 			swrm_clk_pause(swrm);
 			swr_master_write(swrm, SWRM_COMP_CFG, 0x00);

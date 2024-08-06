@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2016-2017, 2020-2021 The Linux Foundation. All rights reserved.
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -567,7 +567,7 @@ int audio_notifier_register(char *client_name, int domain,
 	}
 	INIT_LIST_HEAD(&client_data->list);
 	client_data->nb = nb;
-	strlcpy(client_data->client_name, client_name,
+	strscpy(client_data->client_name, client_name,
 		sizeof(client_data->client_name));
 	client_data->service = NO_SERVICE;
 	client_data->domain = domain;
