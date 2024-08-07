@@ -182,7 +182,7 @@ static int cvp_cancel_synx_v2(struct msm_cvp_inst *inst, enum cvp_synx_type type
 }
 
 static int cvp_wait_synx(struct synx_session *ssid, u32 *synx, u32 num_synx,
-		u32 *synx_state)
+		u32 *synx_state, struct cvp_fence_command *fc)
 {
 	int i = 0, rc = 0;
 #ifdef USE_PRESIL42
@@ -201,6 +201,8 @@ static int cvp_wait_synx(struct synx_session *ssid, u32 *synx, u32 num_synx,
 				if(*synx_state == SYNX_STATE_SIGNALED_SUCCESS)
 				{
 					dprintk(CVP_SYNX, "%s: SYNX SIGNAl STATE SUCCESS \n", __func__);
+					msm_cvp_cmd_tracing_from_sw(
+							fc->pkt, "EVA_KMD_SYNX_WAIT_SUCCESS");
 					rc=0;
 					i++;
 					continue;
@@ -229,23 +231,24 @@ static int cvp_wait_synx(struct synx_session *ssid, u32 *synx, u32 num_synx,
 }
 
 static int cvp_signal_synx(struct synx_session *ssid, u32 *synx, u32 num_synx,
-		u32 synx_state)
+		u32 synx_state, struct cvp_fence_command *fc)
 {
 	int i = 0, rc = 0;
 	u32 h_synx;
-
 	while (i < num_synx) {
 		h_synx = synx[i];
 		if (h_synx) {
 			rc = synx_signal(ssid, h_synx, synx_state);
 			if (rc) {
 				dprintk(CVP_ERR,
-					"%s: synx_signal %u %d failed\n",
+					"%s: synx signaled %u %d failed\n",
 					current->comm, h_synx, i);
 				synx_state = SYNX_STATE_SIGNALED_CANCEL;
 			}
 			dprintk(CVP_SYNX, "Signaled synx %u state %d\n",
 				h_synx, synx_state);
+			msm_cvp_msg_tracing_from_sw(
+					fc->msg_pkt, "EVA_KMD_SYNX_SIGNAL_SUCCESS");
 		}
 		++i;
 	}
@@ -264,11 +267,11 @@ static int cvp_synx_ops_v2(struct msm_cvp_inst *inst, enum cvp_synx_type type,
 
 	if (type == CVP_INPUT_SYNX) {
 		return cvp_wait_synx(ssid, fc->synx, fc->output_index,
-				synx_state);
+				synx_state, fc);
 	} else if (type == CVP_OUTPUT_SYNX) {
 		return cvp_signal_synx(ssid, &fc->synx[fc->output_index],
 				(fc->num_fences - fc->output_index),
-				*synx_state);
+				*synx_state, fc);
 	} else {
 		dprintk(CVP_ERR, "%s Incorrect SYNX type\n", __func__);
 		return -EINVAL;

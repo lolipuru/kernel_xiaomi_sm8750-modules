@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 //#ifndef _MSM_CVP_SYNX_H_
@@ -42,6 +43,7 @@ struct cvp_fence_command {
 	u32 type;
 	u32 synx[MAX_HFI_FENCE_SIZE];
 	struct cvp_hfi_cmd_session_hdr *pkt;
+	struct cvp_hfi_msg_session_hdr *msg_pkt;
 };
 
 enum cvp_synx_type {
