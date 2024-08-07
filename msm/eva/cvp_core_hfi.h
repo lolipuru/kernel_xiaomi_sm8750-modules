@@ -289,6 +289,7 @@ struct iris_hfi_device {
 	unsigned int skip_pc_count;
 	struct msm_cvp_capability *sys_init_capabilities;
 	struct cvp_hal_ops *hal_ops;
+	bool msm_cvp_hw_wd;
 };
 
 irqreturn_t cvp_hfi_isr(int irq, void *dev);

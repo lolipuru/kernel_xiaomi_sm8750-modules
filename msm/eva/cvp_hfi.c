@@ -2752,16 +2752,31 @@ static int iris_hfi_session_clean(void *session)
 static int iris_debug_hook(void *device)
 {
 	struct iris_hfi_device *dev = device;
-	u32 val;
+	u32 val, mask_val = 0;
 
 	if (!device) {
 		dprintk(CVP_ERR, "%s Invalid device\n", __func__);
 		return -ENODEV;
 	}
-	//__write_register(dev, CVP_WRAPPER_CORE_CLOCK_CONFIG, 0x11);
-	//__write_register(dev, CVP_WRAPPER_TZ_CPU_CLOCK_CONFIG, 0x1);
-	val = __read_register(dev, CVP_WRAPPER_CORE_CLOCK_CONFIG);
-	dprintk(CVP_ERR, "Halt Tensilica and core and axi\n");
+	dprintk(CVP_WARN, "Stop transactions from EVA Core\n");
+	val = __read_register(dev, CVP_VIDEO_B_NOC_A_QOSGEN_MAINCTL_LOW);
+	__write_register(dev, CVP_VIDEO_B_NOC_A_QOSGEN_MAINCTL_LOW, val | BIT(2));
+	val = __read_register(dev, CVP_VIDEO_B_NOC_B_QOSGEN_MAINCTL_LOW);
+	__write_register(dev, CVP_VIDEO_B_NOC_B_QOSGEN_MAINCTL_LOW, val | BIT(2));
+	val = __read_register(dev, CVP_VIDEO_B_NOC_C_QOSGEN_MAINCTL_LOW);
+	__write_register(dev, CVP_VIDEO_B_NOC_C_QOSGEN_MAINCTL_LOW, val | BIT(2));
+
+	/* Masking Xtensa NOC and Core NOC interrupts */
+	mask_val = __read_register(device, CVP_WRAPPER_INTR_MASK);
+	/* Write 0 to unmask CPU and WD interrupts */
+	mask_val |= (CVP_FATAL_INTR_BMSK);
+	__write_register(device, CVP_WRAPPER_INTR_MASK, mask_val);
+	dprintk(CVP_REG, "%s: reg: %x, mask value %x\n",
+		__func__, CVP_WRAPPER_INTR_MASK, mask_val);
+	if (dev->msm_cvp_hw_wd) {
+		dprintk(CVP_WARN, "Halt Tensilica\n");
+		__write_register(dev, CVP_WRAPPER_TZ_CPU_CLOCK_CONFIG, 0x1);
+	}
 	return 0;
 }
 
@@ -3759,6 +3774,10 @@ static void iris_hfi_wd_work_handler(struct work_struct *work)
 		device = core->dev_ops->hfi_device_data;
 	else
 		return;
+	if (msm_cvp_smmu_fault_recovery) {
+		device->msm_cvp_hw_wd = true;
+		dprintk(CVP_WARN, "%s: msm_cvp_hw_wd %d\n", __func__, device->msm_cvp_hw_wd);
+	}
 	if (msm_cvp_hw_wd_recovery) {
 		dprintk(CVP_ERR, "Cleaning up as HW WD recovery is enable %d\n",
 				msm_cvp_hw_wd_recovery);
@@ -4815,12 +4834,22 @@ fail_load_fw:
 
 static void __unload_fw(struct iris_hfi_device *device)
 {
+	struct msm_cvp_core *core = NULL;
+
+	core = cvp_driver->cvp_core;
+	if (!core)
+		return;
 	if (!device->resources.fw.cookie)
 		return;
 
 	cancel_delayed_work(&iris_hfi_pm_work);
 	if (device->state != IRIS_STATE_DEINIT)
 		flush_workqueue(device->iris_pm_workq);
+
+	if (msm_cvp_smmu_fault_recovery) {
+		if (device)
+			call_hfi_op(core->dev_ops, debug_hook, device);
+	}
 
 	unload_cvp_fw_impl(device);
 	__interface_queues_release(device);
@@ -6302,6 +6331,7 @@ static int __set_registers_v1(struct iris_hfi_device *device)
 	struct msm_cvp_platform_data *pdata;
 	struct reg_set *reg_set;
 	int i;
+	u32 val;
 
 	if (!device->res) {
 		dprintk(CVP_ERR,
@@ -6362,6 +6392,12 @@ static int __set_registers_v1(struct iris_hfi_device *device)
 	__write_register(device, CVP_NOC_CORE_ERR_MAINCTL_LOW_OFFS, 0x3);
 	__write_register(device, CVP_NOC_MAIN_SIDEBANDMANAGER_FAULTINEN0_LOW, 0x1);
 
+	if (msm_cvp_smmu_fault_recovery) {
+		device->msm_cvp_hw_wd = false;
+		dprintk(CVP_WARN, "%s: msm_cvp_hw_wd %d\n", __func__, device->msm_cvp_hw_wd);
+		val = __read_register(device, CVP_WRAPPER_TZ_CPU_CLOCK_CONFIG);
+		dprintk(CVP_WARN, "%s:CVP_WRAPPER_TZ_CPU_CLOCK_CONFIG %d\n", __func__, val);
+	}
 	return 0;
 }
 
