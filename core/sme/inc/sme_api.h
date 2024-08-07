@@ -3784,6 +3784,14 @@ void sme_set_ru_242_tone_tx_cfg(mac_handle_t mac_handle, uint8_t cfg_val);
  */
 void sme_check_enable_ru_242_tx(mac_handle_t mac_handle, uint8_t vdev_id);
 
+/**
+ * sme_config_ba_mode_all_vdevs() - sets BA mode for all STA vdev
+ * @mac_handle: Opaque handle to the global MAC context
+ * @val: BA mode
+ *
+ * Return: None
+ */
+void sme_config_ba_mode_all_vdevs(mac_handle_t mac_handle, uint8_t val);
 #else
 static inline void sme_set_he_testbed_def(mac_handle_t mac_handle,
 					  uint8_t vdev_id)
@@ -3806,6 +3814,10 @@ static inline void sme_set_ru_242_tone_tx_cfg(mac_handle_t mac_handle,
 					      uint8_t cfg_val)
 {
 }
+
+static inline
+void sme_config_ba_mode_all_vdevs(mac_handle_t mac_handle, uint8_t val)
+{}
 #endif
 
 /**
@@ -3929,14 +3941,6 @@ int sme_send_vdev_pause_for_bcn_period(mac_handle_t mac_handle,
 				       uint8_t session_id,
 				       uint8_t cfg_val);
 
-/**
- * sme_set_per_link_ba_mode() - sets BA mode for each STA MLD link
- * @mac_handle: Opaque handle to the global MAC context
- * @val: BA mode
- *
- * Return: None
- */
-void sme_set_per_link_ba_mode(mac_handle_t mac_handle, uint8_t val);
 #else
 static inline void sme_set_eht_testbed_def(mac_handle_t mac_handle,
 					   uint8_t vdev_id)
@@ -3988,10 +3992,6 @@ void sme_activate_mlo_links(mac_handle_t mac_handle, uint8_t session_id,
 			    struct qdf_mac_addr active_link_addr[2])
 {
 }
-
-static inline
-void sme_set_per_link_ba_mode(mac_handle_t mac_handle, uint8_t val)
-{}
 #endif
 
 /**
@@ -4568,6 +4568,18 @@ QDF_STATUS sme_set_vdev_sw_retry(uint8_t vdev_id, uint8_t sw_retry_count,
 QDF_STATUS sme_set_roam_config_enable(mac_handle_t mac_handle,
 				      uint8_t vdev_id,
 				      uint8_t roam_control_enable);
+
+/**
+ * sme_set_aggressive_roaming() - Set Aggressive roaming in SME
+ * @mac_handle: Opaque handle to the MAC context
+ * @vdev_id: vdev id
+ * @is_aggressive_roam_mode: True if roaming mode is set to aggressive
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS sme_set_aggressive_roaming(mac_handle_t mac_handle,
+				      uint8_t vdev_id,
+				      bool is_aggressive_roam_mode);
 
 /**
  * sme_send_vendor_btm_params - Send vendor btm params to FW

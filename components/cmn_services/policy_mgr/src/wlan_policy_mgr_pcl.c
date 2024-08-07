@@ -643,7 +643,7 @@ void policy_mgr_update_with_safe_channel_list(struct wlan_objmgr_psoc *psoc,
 	nan_2g_freq =
 		policy_mgr_mode_specific_get_channel(pm_ctx->psoc,
 						     PM_NAN_DISC_MODE);
-	nan_5g_freq = wlan_nan_get_disc_5g_ch_freq(pm_ctx->psoc);
+	nan_5g_freq = wlan_nan_get_5ghz_social_ch_freq(pm_ctx->pdev);
 
 	for (i = 0; i < current_channel_count; i++) {
 		is_unsafe = 0;
@@ -1034,10 +1034,8 @@ policy_mgr_modify_pcl_based_on_indoor(struct wlan_objmgr_psoc *psoc,
 	     policy_mgr_is_special_mode_active_5g(psoc, PM_STA_MODE)))
 		include_indoor_channel = true;
 
-	if (include_indoor_channel) {
-		policy_mgr_debug("Indoor channels allowed. PCL not modified for indoor channels");
+	if (include_indoor_channel)
 		return QDF_STATUS_SUCCESS;
-	}
 
 	for (i = 0; i < *pcl_len_org; i++) {
 		if (wlan_reg_is_freq_indoor_in_secondary_list(pm_ctx->pdev,
@@ -1685,7 +1683,6 @@ static QDF_STATUS policy_mgr_pcl_modification_for_ll_lt_sap(
 	policy_mgr_debug("Modified PCL: 6Ghz %d avoid_list %d skip scc %d",
 			 modified_pcl_6_ghz, avoid_list_modified_pcl,
 			 skip_scc_modified_pcl);
-	policy_mgr_dump_channel_list(*len, pcl_channels, pcl_weight);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -4493,8 +4490,7 @@ policy_mgr_modify_pcl_for_p2p_ndp_concurrency(struct wlan_objmgr_psoc *psoc,
 	if (!sta_freq ||
 	    sta_freq == wlan_nan_get_24ghz_social_ch_freq(pm_ctx->pdev) ||
 	    sta_freq == wlan_nan_get_5ghz_social_ch_freq(pm_ctx->pdev) ||
-	    wlan_reg_is_dfs_for_freq(pm_ctx->pdev, sta_freq) ||
-	    wlan_reg_is_6ghz_chan_freq(sta_freq)) {
+	    wlan_reg_is_dfs_for_freq(pm_ctx->pdev, sta_freq)) {
 		/* Add ch-149 */
 		policy_mgr_append_5g_nan_social_ch(pm_ctx->pdev, pcl,
 					num_pcl, new_pcl, &new_num_pcl,
@@ -4541,8 +4537,8 @@ policy_mgr_modify_pcl_for_p2p_ndp_concurrency(struct wlan_objmgr_psoc *psoc,
 		policy_mger_remove_duplicate_freq_with_weight(new_pcl,
 						&new_num_pcl, sta_freq,
 						WEIGHT_OF_GROUP5_PCL_CHANNELS);
-	} else if (wlan_reg_is_5ghz_ch_freq(sta_freq) &&
-		   sta_freq != wlan_nan_get_5ghz_social_ch_freq(pm_ctx->pdev)) {
+	} else if (wlan_reg_is_5ghz_ch_freq(sta_freq) ||
+		   wlan_reg_is_6ghz_chan_freq(sta_freq)) {
 		/* Add STA channel */
 		policy_mgr_append_sta_freq_to_pcl(pcl, num_pcl, new_pcl,
 						&new_num_pcl, sta_freq,
@@ -5660,4 +5656,33 @@ bool policy_mgr_mon_sbs_mac0_freq(struct wlan_objmgr_psoc *psoc,
 		return true;
 
 	return false;
+}
+
+QDF_STATUS policy_mgr_modify_pcl_for_vlp_channels(struct wlan_objmgr_psoc *psoc,
+						  struct wlan_objmgr_pdev *pdev,
+						  struct weighed_pcl *pcl,
+						  uint32_t num_pcl)
+{	uint32_t i;
+	uint8_t country[REG_ALPHA2_LEN + 1];
+
+	wlan_reg_read_current_country(psoc, country);
+
+	if (!wlan_reg_get_num_rules_of_ap_pwr_type(pdev,
+						   REG_VERY_LOW_POWER_AP)) {
+		policy_mgr_debug("Current country %.2s don't support VLP",
+				 country);
+		return QDF_STATUS_E_INVAL;
+	}
+
+	if (!num_pcl) {
+		policy_mgr_err("invalid number of channel length");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	for (i = 0; i < num_pcl; i++) {
+		if (wlan_reg_is_vlp_depriority_freq(pdev, pcl[i].freq))
+			pcl[i].weight = WEIGHT_OF_GROUP5_PCL_CHANNELS;
+	}
+
+	return QDF_STATUS_SUCCESS;
 }

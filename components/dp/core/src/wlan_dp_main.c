@@ -87,6 +87,7 @@ QDF_STATUS dp_allocate_ctx(void)
 	qdf_list_create(&dp_ctx->intf_list, 0);
 	TAILQ_INIT(&dp_ctx->inactive_dp_link_list);
 	wlan_dp_spm_flow_table_attach(dp_ctx);
+	dp_ctx->monitor_flag = 0;
 
 	dp_attach_ctx(dp_ctx);
 
@@ -1408,6 +1409,8 @@ dp_vdev_obj_create_notification(struct wlan_objmgr_vdev *vdev, void *arg)
 		return status;
 	}
 
+	wlan_dp_resource_mgr_notify_vdev_creation(dp_ctx->rsrc_mgr_ctx, vdev);
+
 	dp_intf->device_mode = wlan_vdev_mlme_get_opmode(vdev);
 
 	if (dp_intf->device_mode == QDF_SAP_MODE ||
@@ -1496,6 +1499,8 @@ dp_vdev_obj_destroy_notification(struct wlan_objmgr_vdev *vdev, void *arg)
 
 	dp_intf = dp_link->dp_intf;
 	dp_ctx = dp_intf->dp_ctx;
+
+	wlan_dp_resource_mgr_notify_vdev_deletion(dp_ctx->rsrc_mgr_ctx, vdev);
 
 	qdf_spin_lock_bh(&dp_intf->dp_link_list_lock);
 	qdf_list_remove_node(&dp_intf->dp_link_list, &dp_link->node);
@@ -2242,7 +2247,6 @@ void wlan_dp_link_cdp_vdev_delete_notification(void *context)
 {
 	struct wlan_dp_link *dp_link = (struct wlan_dp_link *)context;
 	struct wlan_dp_link *tmp_dp_link;
-	struct wlan_dp_intf *dp_intf = NULL;
 	struct wlan_dp_psoc_context *dp_ctx = NULL;
 	uint8_t found = 0;
 
@@ -2253,8 +2257,7 @@ void wlan_dp_link_cdp_vdev_delete_notification(void *context)
 	}
 
 	dp_info("dp_link %pK id %d", dp_link, dp_link->link_id);
-	dp_intf = dp_link->dp_intf;
-	dp_ctx = dp_intf->dp_ctx;
+	dp_ctx = dp_get_context();
 
 	qdf_spin_lock_bh(&dp_ctx->dp_link_del_lock);
 
@@ -2390,7 +2393,8 @@ void *wlan_dp_txrx_soc_attach(struct dp_txrx_soc_attach_params *params,
 	} else if (params->target_type == TARGET_TYPE_KIWI ||
 		   params->target_type == TARGET_TYPE_MANGO ||
 		   params->target_type == TARGET_TYPE_PEACH ||
-		   params->target_type == TARGET_TYPE_WCN7750) {
+		   params->target_type == TARGET_TYPE_WCN7750 ||
+		   params->target_type == TARGET_TYPE_QCC2072) {
 		dp_soc = cdp_soc_attach(BERYLLIUM_DP, hif_context,
 					params->target_psoc,
 					htc_ctx, qdf_ctx,
@@ -2455,6 +2459,7 @@ void wlan_dp_txrx_soc_detach(ol_txrx_soc_handle soc)
 	wlan_dp_check_inactive_dp_links(dp_ctx);
 	cdp_soc_detach(soc);
 	wlan_dp_svc_deinit(dp_ctx);
+	dp_ctx->cdp_soc = NULL;
 }
 
 QDF_STATUS wlan_dp_txrx_attach_target(ol_txrx_soc_handle soc, uint8_t pdev_id)

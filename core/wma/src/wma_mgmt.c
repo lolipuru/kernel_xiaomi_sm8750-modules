@@ -1298,24 +1298,26 @@ wma_populate_peer_mlo_common_info_sap(tp_wma_handle wma,
 	struct wlan_mlo_dev_context *mld_dev;
 	struct wlan_mlo_peer_context *ml_peer = NULL;
 	bool assoc_peer = false;
+	struct wlan_mlo_mld_cap *mld_info;
 
-	wlan_mlme_get_sap_emlsr_mode_enabled(wma->psoc, &emlsr);
-
-	/* if mlo sap not support emlsr client, then skip update */
-	if (!emlsr)
+	mlo_params = &peer->mlo_params;
+	if (!mlo_params) {
+		wma_err("mlo parameter is null");
 		return;
+	}
 
 	obj_peer = wlan_objmgr_get_peer_by_mac(wma->psoc,
 					       peer->peer_mac,
 					       WLAN_LEGACY_WMA_ID);
 	if (!obj_peer)
 		return;
-	/* eml info is from assoc req frame if it is assoc peer */
+	/* eml/mld info is from assoc req frame if it is assoc peer */
 	assoc_peer = wlan_peer_mlme_is_assoc_peer(obj_peer);
 	wlan_objmgr_peer_release_ref(obj_peer, WLAN_LEGACY_WMA_ID);
 
 	if (assoc_peer) {
 		eml_info = &params->eml_info;
+		mld_info = &params->mld_info;
 	} else {
 		ml_peer = wlan_mlo_get_mlpeer_by_peer_mladdr(
 				(struct qdf_mac_addr *)&peer->mlo_params.mld_mac,
@@ -1329,22 +1331,32 @@ wma_populate_peer_mlo_common_info_sap(tp_wma_handle wma,
 		 * add_sta_param if it is not assoc link
 		 */
 		eml_info = &ml_peer->mlpeer_emlcap;
+		mld_info = &ml_peer->mlpeer_mldcap;
 	}
-	mlo_params = &peer->mlo_params;
-	if (!mlo_params || !eml_info) {
-		wma_err("mlo parameter or eml info is null");
+
+	/*
+	 * Set max simultaneous links = 1 for MLSR, 2 for MLMR. The +1
+	 * is added as per the agreement with FW for backward
+	 * compatibility purposes. Our internal structures still
+	 * conform to the values as per spec i.e. 0 = MLSR, 1 = MLMR.
+	 */
+	mlo_params->max_num_simultaneous_links = mld_info->max_simult_link + 1;
+
+	wlan_mlme_get_sap_emlsr_mode_enabled(wma->psoc, &emlsr);
+	if (!emlsr)
 		return;
-	}
+
 	mlo_params->emlsr_support = eml_info->emlsr_supp;
 	mlo_params->emlsr_pad_delay_us = wma_convert_emlsr_pad_delay(eml_info->emlsr_pad_delay);
 	mlo_params->emlsr_trans_delay_us = wma_convert_emlsr_tran_delay(eml_info->emlsr_trans_delay);
 	mlo_params->trans_timeout_us = wma_convert_trans_timeout_us(eml_info->trans_timeout);
-	wma_debug("is assoc %d emlsr supp %d pad delay %d trans delay %d tran timeout %d",
+	wma_debug("is assoc %d emlsr supp %d pad delay %d trans delay %d tran timeout %d link num %d",
 		  assoc_peer,
 		  mlo_params->emlsr_support,
 		  mlo_params->emlsr_pad_delay_us,
 		  mlo_params->emlsr_trans_delay_us,
-		  mlo_params->trans_timeout_us);
+		  mlo_params->trans_timeout_us,
+		  mlo_params->max_num_simultaneous_links);
 }
 
 /**
@@ -1983,15 +1995,28 @@ QDF_STATUS wma_send_peer_assoc(tp_wma_handle wma,
 	/* Till conversion is not done in WMI we need to fill fw phy mode */
 	cmd->peer_phymode = wmi_host_to_fw_phymode(phymode);
 
-	keymgmt = wlan_crypto_get_param(intr->vdev, WLAN_CRYPTO_PARAM_KEY_MGMT);
+	/*
+	 * For STA/P2P CLI mode get the Vdev AKM.
+	 * For SAP mode, since the associating client can choose one
+	 * of the multiple AKM advertised by the SAP, fetch the AKM value
+	 * from the parsed assoc req frame received.
+	 */
+	if (!wma_is_vdev_in_ap_mode(wma, params->smesessionId) ||
+	    !params->sec_info.key_mgmt)
+		keymgmt = wlan_crypto_get_param(intr->vdev,
+						WLAN_CRYPTO_PARAM_KEY_MGMT);
+	else
+		keymgmt = params->sec_info.key_mgmt;
+
 	authmode = wlan_crypto_get_param(intr->vdev,
 					 WLAN_CRYPTO_PARAM_AUTH_MODE);
 	uccipher = wlan_crypto_get_param(intr->vdev,
 					 WLAN_CRYPTO_PARAM_UCAST_CIPHER);
 
-	cmd->akm = cm_crypto_authmode_to_wmi_authmode(authmode,
-						      keymgmt,
+	cmd->akm = cm_crypto_authmode_to_wmi_authmode(authmode, keymgmt,
 						      uccipher);
+	wma_debug("vdev:%d AKM: 0x%x auth_mode:0x%x uc_cipher:0x%x",
+		  params->smesessionId, cmd->akm, authmode, uccipher);
 
 	status = wmi_unified_peer_assoc_send(wma->wmi_handle,
 					 cmd);
@@ -3160,8 +3185,6 @@ static int wma_process_mgmt_tx_completion(tp_wma_handle wma_handle,
 	else
 		mgmt_params.vdev_id = vdev_id;
 
-	vdev_id = mgmt_txrx_get_vdev_id(pdev, desc_id);
-	mgmt_params.vdev_id = vdev_id;
 	mgmt_params.peer_rssi = peer_rssi;
 
 	wma_mgmt_pktdump_tx_handler(wma_handle, buf, mgmt_params.vdev_id,
@@ -3329,7 +3352,7 @@ int wma_mgmt_tx_bundle_completion_handler(void *handle, uint8_t *buf,
 void wma_process_update_opmode(tp_wma_handle wma_handle,
 			       tUpdateVHTOpMode *update_vht_opmode)
 {
-	wmi_host_channel_width ch_width;
+	wmi_host_channel_width ch_width, wmi_opmode_chwidth;
 	uint8_t pdev_id;
 	struct wlan_objmgr_peer *peer;
 	struct wlan_objmgr_psoc *psoc = wma_handle->psoc;
@@ -3362,18 +3385,21 @@ void wma_process_update_opmode(tp_wma_handle wma_handle,
 
 	ch_width = wmi_get_ch_width_from_phy_mode(wma_handle->wmi_handle,
 						  fw_phymode);
-	wma_debug("ch_width: %d, fw phymode: %d peer_phymode: %d, op_mode: %d",
-		  ch_width, fw_phymode, peer_phymode,
-		  update_vht_opmode->opMode);
+	wmi_opmode_chwidth =
+		target_if_phy_ch_width_to_wmi_chan_width(update_vht_opmode->chwidth);
 
-	if (ch_width < update_vht_opmode->opMode) {
+	wma_debug("ch_width: %d, fw phymode: %d peer_phymode: %d, op_mode chwidth: %d, wmi opmode chwidth %d",
+		  ch_width, fw_phymode, peer_phymode,
+		  update_vht_opmode->chwidth, wmi_opmode_chwidth);
+
+	if (ch_width < wmi_opmode_chwidth) {
 		wma_err("Invalid peer bw update %d, self bw %d",
-			update_vht_opmode->opMode, ch_width);
+			update_vht_opmode->chwidth, ch_width);
 		return;
 	}
 
 	wma_set_peer_param(wma_handle, update_vht_opmode->peer_mac,
-			   WMI_HOST_PEER_CHWIDTH, update_vht_opmode->opMode,
+			   WMI_HOST_PEER_CHWIDTH, wmi_opmode_chwidth,
 			   update_vht_opmode->smesessionId);
 
 	wma_set_peer_param(wma_handle, update_vht_opmode->peer_mac,

@@ -14,6 +14,7 @@
 #include <wma.h>
 #include <cdp_txrx_cmn.h>
 #include <cdp_txrx_ctrl.h>
+#include "cfg_ucfg_api.h"
 
 static uint64_t
 wlan_dp_resource_mgr_phymode_to_tput(enum wlan_phymode phymode)
@@ -161,6 +162,9 @@ void wlan_dp_resource_mgr_downscale_resources(void)
 	uint64_t in_use_rx_buff_descs;
 	QDF_STATUS status;
 
+	if (!rsrc_ctx)
+		return;
+
 	dp_rsrc_mgr_debug("Downscale resource called");
 	status = cdp_get_num_buff_descs_info(cdp_soc,
 					     &cur_req_rx_buff_descs,
@@ -172,12 +176,12 @@ void wlan_dp_resource_mgr_downscale_resources(void)
 
 	rsrc_level = rsrc_ctx->cur_resource_level;
 	req_rx_buff_descs = rsrc_ctx->cur_rsrc_map[rsrc_level].num_rx_buffers;
-	dp_rsrc_mgr_debug("rsrc_level:%u cur:%u in_use:%u req:%u", rsrc_level,
+	dp_rsrc_mgr_debug("rsrc_level:%u cur:%u in_use:%u req:%u",
 			  rsrc_level, cur_req_rx_buff_descs,
 			  in_use_rx_buff_descs, req_rx_buff_descs);
 
 	if (cur_req_rx_buff_descs != req_rx_buff_descs) {
-		dp_info("cur_rx_buf:%u req_rx_buf:%u",
+		dp_info("Downscaling cur_rx_buf:%u to req_rx_buf:%u",
 			cur_req_rx_buff_descs, req_rx_buff_descs);
 		status = cdp_set_req_buff_descs(cdp_soc, req_rx_buff_descs, 0);
 		if (QDF_IS_STATUS_ERROR(status))
@@ -199,6 +203,9 @@ void wlan_dp_resource_mgr_upscale_resources(
 	uint32_t num_alloc_buff;
 	QDF_STATUS status;
 
+	if (!rsrc_ctx)
+		return;
+
 	dp_rsrc_mgr_debug("Upscale resource called");
 	status = cdp_get_num_buff_descs_info(cdp_soc,
 					     &cur_req_rx_buff_descs,
@@ -212,8 +219,6 @@ void wlan_dp_resource_mgr_upscale_resources(
 	req_rx_buff_descs = rsrc_ctx->cur_rsrc_map[rsrc_level].num_rx_buffers;
 
 	if (cur_req_rx_buff_descs != req_rx_buff_descs) {
-		dp_info("cur_rx_buf:%u req_rx_buf:%u",
-			cur_req_rx_buff_descs, req_rx_buff_descs);
 
 		cdp_set_req_buff_descs(cdp_soc, req_rx_buff_descs, 0);
 		if (QDF_IS_STATUS_ERROR(status)) {
@@ -224,6 +229,10 @@ void wlan_dp_resource_mgr_upscale_resources(
 		    req_rx_buff_descs > in_use_rx_buff_descs)
 			additional_rx_buffers = (req_rx_buff_descs -
 				in_use_rx_buff_descs);
+
+		dp_info("Upscaling cur_rx_buf:%u req_rx_buf:%u additional:%u",
+			cur_req_rx_buff_descs, req_rx_buff_descs,
+			additional_rx_buffers);
 	}
 
 	dp_rsrc_mgr_debug("cur:%u req:%u in_use:%u additional_req:%u",
@@ -249,6 +258,9 @@ void wlan_dp_resource_mgr_upscale_resources(
 		}
 		additional_rx_buffers -= num_alloc_buff;
 	}
+
+	if (additional_rx_buffers)
+		dp_err("Upscale request deficit:%u", additional_rx_buffers);
 }
 
 static uint32_t
@@ -474,6 +486,10 @@ wlan_dp_resource_mgr_select_resource_level(
 	int i;
 
 	dp_rsrc_mgr_debug("Select resource level called");
+	if (rsrc_ctx->monitor_vdev_vote)
+		total_tput =
+			rsrc_ctx->cur_rsrc_map[RESOURCE_LVL_MAX - 1].max_tput;
+
 	for (i = 0; i < rsrc_ctx->mac_count; i++) {
 		vote_node = rsrc_ctx->max_phymode_nodes[i];
 		if (vote_node)
@@ -498,9 +514,9 @@ wlan_dp_resource_mgr_select_resource_level(
 	else
 		dp_info("Resource level change not required");
 
-	dp_rsrc_mgr_debug("Resource level:%u selected for tput:%u req_tput:%u",
-			  rsrc_ctx->cur_resource_level, rsrc_ctx->cur_max_tput,
-			  total_tput);
+	dp_info("Resource level:%u selected for tput:%u req_tput:%u",
+		rsrc_ctx->cur_resource_level, rsrc_ctx->cur_max_tput,
+		total_tput);
 }
 
 static void
@@ -636,9 +652,9 @@ wlan_dp_resource_mgr_add_vote_node(struct wlan_dp_resource_mgr_ctx *rsrc_ctx,
 	vote_node->mac_id = mac_id;
 	mac_list = &rsrc_ctx->mac_list[mac_id];
 	wlan_dp_resource_mgr_list_insert_vote_node(mac_list, vote_node, opmode);
-	dp_rsrc_mgr_debug("New vote node added to list mac_id:%u len:%u phymode:%u",
-			  vote_node->mac_id, qdf_list_size(mac_list),
-			  vote_node->phymode);
+	dp_info("New vote node added to list mac_id:%u len:%u phymode:%u",
+		vote_node->mac_id, qdf_list_size(mac_list),
+		vote_node->phymode);
 
 	return vote_node;
 }
@@ -658,6 +674,9 @@ wlan_dp_resource_mgr_notify_ndp_channel_info(
 	enum wlan_phymode host_phymode;
 	int i;
 
+	if (!rsrc_ctx)
+		return;
+
 	dp_rsrc_mgr_debug("NDP notify channel info called");
 	for (i = 0; i < num_channels; i++) {
 		host_phymode = wma_fw_to_host_phymode(ch_info->phymode);
@@ -676,11 +695,13 @@ wlan_dp_resource_mgr_notify_ndp_channel_info(
 		ch_info++;
 	}
 
+	qdf_spin_lock_bh(&rsrc_ctx->rsrc_mgr_lock);
 	priv_ctx = dp_get_peer_priv_obj(peer);
 	if (priv_ctx->vote_node) {
 		vote_node = priv_ctx->vote_node;
 		if (vote_node->phymode0 == mac0_phymode &&
 		    vote_node->phymode1 == mac1_phymode) {
+			qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 			dp_info("NDP Max phymode did not change");
 			return;
 		}
@@ -706,6 +727,7 @@ wlan_dp_resource_mgr_notify_ndp_channel_info(
 
 	vote_node = qdf_mem_malloc(sizeof(*vote_node));
 	if (!vote_node) {
+		qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 		dp_err("Failed to allocate memory for resource vote node");
 		return;
 	}
@@ -716,12 +738,13 @@ wlan_dp_resource_mgr_notify_ndp_channel_info(
 	vote_node->tput1 = mac1_tput;
 	wlan_dp_resource_mgr_list_insert_vote_node(&rsrc_ctx->nan_list,
 						   vote_node, opmode);
-	dp_rsrc_mgr_debug("NDP new node phymode0:%u tput0:%u phymode1:%u tput1:%u list_len:%u",
-			  vote_node->phymode0, vote_node->tput0,
-			  vote_node->phymode1, vote_node->tput1,
-			  qdf_list_size(&rsrc_ctx->nan_list));
+	dp_info("NDP new node phymode0:%u tput0:%u phymode1:%u tput1:%u list_len:%u",
+		vote_node->phymode0, vote_node->tput0,
+		vote_node->phymode1, vote_node->tput1,
+		qdf_list_size(&rsrc_ctx->nan_list));
 select_max_phymodes:
 	wlan_dp_resource_mgr_select_max_phymodes(rsrc_ctx);
+	qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 }
 
 static struct wlan_dp_resource_vote_node*
@@ -771,6 +794,7 @@ wlan_dp_resource_mgr_handle_ml_sta_phymode_update(
 	if (wlan_peer_get_peer_type(peer) != WLAN_PEER_AP)
 		return;
 
+	qdf_spin_lock_bh(&rsrc_ctx->rsrc_mgr_lock);
 	/*Vote node is part of list, update existing phymode*/
 	vote_node = wlan_dp_resource_mgr_find_ml_vote_node(mac_n_list, self_mac,
 							   remote_mac);
@@ -779,13 +803,15 @@ wlan_dp_resource_mgr_handle_ml_sta_phymode_update(
 		if (vote_node->vdev_id == WLAN_INVALID_VDEV_ID) {
 			qdf_atomic_inc(&vote_node->ml_vote_info->ref_cnt);
 			vote_node->vdev_id = wlan_vdev_get_id(wlan_peer_get_vdev(peer));
-			dp_rsrc_mgr_debug("Partner link assoc ref_cnt:%u",
-					qdf_atomic_read(&vote_node->ml_vote_info->ref_cnt));
+			dp_info("Partner link assoc ref_cnt:%u",
+				qdf_atomic_read(&vote_node->ml_vote_info->ref_cnt));
 		}
 
 		phymode = wlan_peer_get_phymode(peer);
-		if (vote_node->phymode == phymode)
+		if (vote_node->phymode == phymode) {
+			qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 			return;
+		}
 		vote_node->phymode = phymode;
 		vote_node->tput =
 			wlan_dp_resource_mgr_phymode_to_tput(phymode);
@@ -807,6 +833,7 @@ wlan_dp_resource_mgr_handle_ml_sta_phymode_update(
 	 */
 	link_info = mlo_mgr_get_ap_link(wlan_peer_get_vdev(peer));
 	if (!link_info) {
+		qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 		dp_err("Resource mgr not able to get STA ML link info");
 		return;
 	}
@@ -856,14 +883,16 @@ wlan_dp_resource_mgr_handle_ml_sta_phymode_update(
 		link_info++;
 	}
 
-	dp_rsrc_mgr_debug("ML STA vote nodes added links:%u", link_info_iter);
+	dp_info("ML STA vote nodes added num_links:%u", link_info_iter);
 	if (!ml_vote_info) {
+		qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 		dp_err("Resource mgr ML STA links not added");
 		return;
 	}
 
 select_max_phymodes:
 	wlan_dp_resource_mgr_select_max_phymodes(rsrc_ctx);
+	qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 }
 
 static void
@@ -938,7 +967,7 @@ wlan_dp_resource_mgr_phymode_update(struct wlan_objmgr_peer *peer, void *arg)
 	vdev = wlan_peer_get_vdev(peer);
 	opmode = wlan_vdev_mlme_get_opmode(vdev);
 
-	dp_rsrc_mgr_debug("update phymode called for opmode:%u", opmode);
+	dp_info("update phymode called for opmode:%u", opmode);
 
 	/*NAN peers handled by NDP events*/
 	if (opmode == QDF_NDI_MODE)
@@ -962,10 +991,12 @@ wlan_dp_resource_mgr_phymode_update(struct wlan_objmgr_peer *peer, void *arg)
 		vote_phymode = desc_chan->ch_phymode;
 	}
 
+	qdf_spin_lock_bh(&rsrc_ctx->rsrc_mgr_lock);
 	priv_ctx = dp_get_peer_priv_obj(vote_peer);
 	if (priv_ctx->vote_node) {
 		vote_node = priv_ctx->vote_node;
 		if (vote_node->phymode == vote_phymode) {
+			qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 			dp_info("same phymode update for opmode:%u", opmode);
 			return;
 		}
@@ -985,7 +1016,7 @@ wlan_dp_resource_mgr_phymode_update(struct wlan_objmgr_peer *peer, void *arg)
 			&rsrc_ctx->mac_list[vote_node->mac_id],
 			vote_node, opmode);
 
-		dp_rsrc_mgr_debug("phymode update for existing vote node phymode:%u", vote_node->phymode);
+		dp_info("phymode update for existing vote node phymode:%u", vote_node->phymode);
 		/*
 		 * Check if current resource vote node change increase
 		 * overall system tput requirement.
@@ -994,6 +1025,7 @@ wlan_dp_resource_mgr_phymode_update(struct wlan_objmgr_peer *peer, void *arg)
 								vote_node,
 								prev_tput)) {
 			wlan_dp_resource_mgr_select_resource_level(rsrc_ctx);
+			qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 			return;
 		}
 		goto select_max_phymodes;
@@ -1005,6 +1037,7 @@ wlan_dp_resource_mgr_phymode_update(struct wlan_objmgr_peer *peer, void *arg)
 						   opmode);
 select_max_phymodes:
 	wlan_dp_resource_mgr_select_max_phymodes(rsrc_ctx);
+	qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 }
 
 void
@@ -1017,6 +1050,9 @@ wlan_dp_resource_mgr_vote_node_free(struct wlan_objmgr_peer *peer)
 	struct wlan_objmgr_peer *vote_peer = peer;
 	struct  wlan_objmgr_vdev *vdev;
 	enum QDF_OPMODE opmode;
+
+	if (!rsrc_ctx)
+		return;
 
 	vdev = wlan_peer_get_vdev(peer);
 	opmode = wlan_vdev_mlme_get_opmode(vdev);
@@ -1034,6 +1070,7 @@ wlan_dp_resource_mgr_vote_node_free(struct wlan_objmgr_peer *peer)
 		}
 	}
 
+	qdf_spin_lock_bh(&rsrc_ctx->rsrc_mgr_lock);
 	priv_ctx = dp_get_peer_priv_obj(vote_peer);
 	if (priv_ctx->vote_node) {
 		vote_node = priv_ctx->vote_node;
@@ -1045,15 +1082,17 @@ wlan_dp_resource_mgr_vote_node_free(struct wlan_objmgr_peer *peer)
 				&rsrc_ctx->mac_list[vote_node->mac_id],
 				&vote_node->node);
 
-		dp_rsrc_mgr_debug("vote node freed on vdev_id:%u mac_id:%u list_len:%u",
-				  wlan_vdev_get_id(vdev), vote_node->mac_id,
-				  qdf_list_size(&rsrc_ctx->mac_list[vote_node->mac_id]));
+		dp_info("vote node freed on vdev_id:%u mac_id:%u list_len:%u",
+			wlan_vdev_get_id(vdev), vote_node->mac_id,
+			qdf_list_size(&rsrc_ctx->mac_list[vote_node->mac_id]));
 		qdf_mem_free(vote_node);
 		priv_ctx->vote_node = NULL;
 		wlan_dp_resource_mgr_select_max_phymodes(rsrc_ctx);
 	} else if (opmode == QDF_STA_MODE)
-		return wlan_dp_resource_mgr_handle_ml_sta_remove_phymode(
-								rsrc_ctx, peer);
+		wlan_dp_resource_mgr_handle_ml_sta_remove_phymode(rsrc_ctx,
+								  peer);
+
+	qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 }
 
 void wlan_dp_resource_mgr_notify_vdev_mac_id_migration(
@@ -1068,6 +1107,9 @@ void wlan_dp_resource_mgr_notify_vdev_mac_id_migration(
 	struct wlan_objmgr_peer *peer;
 	bool list_update = false;
 
+	if (!rsrc_ctx)
+		return;
+
 	dp_rsrc_mgr_debug("vdev migration came for opmode:%u", opmode);
 	/*ML-STA connections are mac_n_list no handling required*/
 	if (((opmode == QDF_STA_MODE) &&
@@ -1075,13 +1117,14 @@ void wlan_dp_resource_mgr_notify_vdev_mac_id_migration(
 			(opmode == QDF_NDI_MODE))
 		return;
 
+	qdf_spin_lock_bh(&rsrc_ctx->rsrc_mgr_lock);
 	wlan_objmgr_for_each_vdev_peer(vdev, peer) {
 		wlan_objmgr_peer_get_ref(peer, WLAN_DP_ID);
 		/*If vote node is present then no active connection*/
 		priv_ctx = dp_get_peer_priv_obj(peer);
 		if (priv_ctx->vote_node) {
-			dp_rsrc_mgr_debug("vote_node found for vdev_id:%u migration",
-					  wlan_vdev_get_id(vdev));
+			dp_info("vote_node found for vdev_id:%u migration prev:%u new:%u",
+				wlan_vdev_get_id(vdev), old_mac_id, new_mac_id);
 			vote_node = priv_ctx->vote_node;
 			if (vote_node->mac_id != old_mac_id) {
 				dp_err("old macid is not matching to vote macid old:%u new:%u vote_mac:%u",
@@ -1107,6 +1150,8 @@ void wlan_dp_resource_mgr_notify_vdev_mac_id_migration(
 
 	if (list_update)
 		wlan_dp_resource_mgr_select_max_phymodes(rsrc_ctx);
+
+	qdf_spin_unlock_bh(&rsrc_ctx->rsrc_mgr_lock);
 }
 
 static void
@@ -1132,6 +1177,40 @@ wlan_dp_resource_mgr_list_detach(struct wlan_dp_resource_mgr_ctx *rsrc_ctx)
 }
 
 void
+wlan_dp_resource_mgr_notify_vdev_creation(
+				struct wlan_dp_resource_mgr_ctx *rsrc_ctx,
+				struct wlan_objmgr_vdev *vdev)
+{
+	if (!rsrc_ctx) {
+		dp_info("DP resource mgr context not present");
+		return;
+	}
+
+	if (wlan_vdev_mlme_get_opmode(vdev) != QDF_MONITOR_MODE)
+		return;
+
+	rsrc_ctx->monitor_vdev_vote = true;
+	wlan_dp_resource_mgr_select_resource_level(rsrc_ctx);
+}
+
+void
+wlan_dp_resource_mgr_notify_vdev_deletion(
+				struct wlan_dp_resource_mgr_ctx *rsrc_ctx,
+				struct wlan_objmgr_vdev *vdev)
+{
+	if (!rsrc_ctx) {
+		dp_info("DP resource mgr context not present");
+		return;
+	}
+
+	if (wlan_vdev_mlme_get_opmode(vdev) != QDF_MONITOR_MODE)
+		return;
+
+	rsrc_ctx->monitor_vdev_vote = false;
+	wlan_dp_resource_mgr_select_resource_level(rsrc_ctx);
+}
+
+void
 wlan_dp_resource_mgr_set_req_resources(
 				struct wlan_dp_resource_mgr_ctx *rsrc_ctx)
 {
@@ -1140,7 +1219,7 @@ wlan_dp_resource_mgr_set_req_resources(
 	QDF_STATUS status;
 
 	if (!rsrc_ctx) {
-		dp_err("DP resource mgr context not present");
+		dp_info("DP resource mgr context not present");
 		return;
 	}
 
@@ -1163,6 +1242,11 @@ void wlan_dp_resource_mgr_attach(struct wlan_dp_psoc_context *dp_ctx)
 	cdp_config_param_type val = {0};
 	QDF_STATUS status;
 	int i;
+
+	if (!cfg_get(dp_ctx->psoc, CFG_DP_DYNAMIC_RESOURCE_MGMT_ENABLE)) {
+		dp_info("DP dynamic resourec mgmt cfg disabled");
+		return;
+	}
 
 	rsrc_ctx = qdf_mem_malloc(sizeof(*rsrc_ctx));
 	if (!rsrc_ctx) {
@@ -1215,6 +1299,7 @@ void wlan_dp_resource_mgr_attach(struct wlan_dp_psoc_context *dp_ctx)
 		goto attach_err;
 	}
 
+	qdf_spinlock_create(&rsrc_ctx->rsrc_mgr_lock);
 	wlan_dp_resource_mgr_list_attach(rsrc_ctx);
 
 	rsrc_ctx->mac_count = MAX_MAC_RESOURCES;
@@ -1249,6 +1334,7 @@ void wlan_dp_resource_mgr_detach(struct wlan_dp_psoc_context *dp_ctx)
 		}
 
 		wlan_dp_resource_mgr_list_detach(dp_ctx->rsrc_mgr_ctx);
+		qdf_spinlock_destroy(&dp_ctx->rsrc_mgr_ctx->rsrc_mgr_lock);
 		qdf_mem_free(dp_ctx->rsrc_mgr_ctx);
 		dp_ctx->rsrc_mgr_ctx = NULL;
 	}

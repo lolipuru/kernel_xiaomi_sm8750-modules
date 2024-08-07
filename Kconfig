@@ -900,7 +900,7 @@ config QCOM_VOWIFI_11R
 
 config QDF_NBUF_HISTORY_SIZE
 	int "Enable QDF_NBUF_HISTORY_SIZE"
-	depends on SLUB_DEBUG_ON || CNSS2_DEBUG
+	depends on SLUB_DEBUG || CNSS2_DEBUG
 	default 4096
 
 config QDF_TEST
@@ -989,7 +989,7 @@ config ENABLE_SCHED_HISTORY_SIZE
 
 config SCHED_HISTORY_SIZE
 	int "Enable SCHED_HISTORY_SIZE"
-	depends on SLUB_DEBUG_ON || CNSS2_DEBUG || ENABLE_SCHED_HISTORY_SIZE
+	depends on SLUB_DEBUG || CNSS2_DEBUG || ENABLE_SCHED_HISTORY_SIZE
 	default 256
 
 config SERIALIZE_QUEUE_SETUP
@@ -2153,6 +2153,10 @@ config FEATURE_DIRECT_LINK
 	bool "enable FEATURE_DIRECT_LINK"
 	default n
 
+config DP_FTM_MODE_SKIP_WBM_RING_INIT
+	bool "Skip WBM ring init in FTM mode"
+	default n
+
 config WLAN_FEATURE_EMLSR
 	bool "Enable EMLSR feature"
 	default n
@@ -2175,6 +2179,10 @@ config WCN7750_HEADERS_DEF
 
 config QCA_WIFI_WCN7750
 	bool "Enable QCA_WIFI_WCN7750"
+	default n
+
+config WLAN_DP_DYNAMIC_RESOURCE_MGMT
+	bool "Enable WLAN_DP_DYNAMIC_RESOURCE_MGMT"
 	default n
 
 config IPA_OPT_WIFI_DP_CTRL

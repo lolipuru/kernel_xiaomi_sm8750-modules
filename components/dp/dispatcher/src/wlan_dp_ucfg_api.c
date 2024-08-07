@@ -3244,11 +3244,31 @@ void ucfg_dp_set_mon_conf_flags(struct wlan_objmgr_psoc *psoc, uint32_t flags)
 		return;
 	}
 
+	dp_ctx->monitor_flag = flags;
 	val.cdp_monitor_flag = flags;
 	status = cdp_txrx_set_psoc_param(dp_ctx->cdp_soc,
 					 CDP_MONITOR_FLAG, val);
 	if (QDF_IS_STATUS_ERROR(status))
 		dp_err("Failed to set flag %d status %d", flags, status);
+}
+
+void ucfg_dp_recover_mon_conf_flags(struct wlan_objmgr_psoc *psoc)
+{
+	cdp_config_param_type val;
+	QDF_STATUS status;
+	struct wlan_dp_psoc_context *dp_ctx = dp_get_context();
+
+	if (!dp_ctx) {
+		dp_err("Failed to set flag dp_ctx NULL");
+		return;
+	}
+
+	val.cdp_monitor_flag = dp_ctx->monitor_flag;
+	status = cdp_txrx_set_psoc_param(dp_ctx->cdp_soc,
+					 CDP_MONITOR_FLAG, val);
+	if (QDF_IS_STATUS_ERROR(status))
+		dp_err("Failed to set flag %d status %d",
+		       dp_ctx->monitor_flag, status);
 }
 
 void
@@ -3265,4 +3285,16 @@ ucfg_dp_rx_aggr_dis_req(struct wlan_objmgr_vdev *vdev,
 	}
 
 	wlan_dp_rx_aggr_dis_req(dp_link->dp_intf, id, disable);
+}
+
+bool ucfg_dp_ipa_ctrl_debug_supported(struct wlan_objmgr_psoc *psoc)
+{
+	uint8_t is_ipa_ctrl_debug_supported =
+		cfg_get(psoc, CFG_DP_IPA_DEBUG_ENABLE);
+
+	if (is_ipa_ctrl_debug_supported ==
+		       IPA_DEBUG_OPT_DP_CTRL)
+		return true;
+
+	return false;
 }

@@ -225,6 +225,7 @@
 #include "os_if_telemetry.h"
 #endif
 #include "wlan_p2p_ucfg_api.h"
+#include "wlan_twt_ucfg_ext_api.h"
 
 /*
  * A value of 100 (milliseconds) can be sent to FW.
@@ -326,9 +327,11 @@ static const u32 hdd_cipher_suites[] = {
 	WLAN_CIPHER_SUITE_SMS4,
 #endif
 	WLAN_CIPHER_SUITE_AES_CMAC,
+	WLAN_CIPHER_SUITE_CCMP_256,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
 	WLAN_CIPHER_SUITE_BIP_GMAC_128,
 	WLAN_CIPHER_SUITE_BIP_GMAC_256,
+	WLAN_CIPHER_SUITE_BIP_CMAC_256
 #endif
 };
 
@@ -658,6 +661,7 @@ static const u32 hdd_ap_akm_suites[] = {
 	WLAN_AKM_SUITE_PSK,
 	WLAN_AKM_SUITE_SAE,
 	WLAN_AKM_SUITE_OWE,
+	WLAN_AKM_SUITE_SAE_EXT_KEY,
 };
 #endif
 
@@ -5247,6 +5251,7 @@ __wlan_hdd_cfg80211_get_features(struct wiphy *wiphy,
 	int ret_val;
 	uint8_t max_assoc_cnt = 0;
 	uint8_t max_str_link_count = 0;
+	uint8_t twt_res_type;
 
 	uint8_t feature_flags[(NUM_QCA_WLAN_VENDOR_FEATURES + 7) / 8] = {0};
 	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
@@ -5310,9 +5315,11 @@ __wlan_hdd_cfg80211_get_features(struct wiphy *wiphy,
 
 	hdd_get_twt_requestor(hdd_ctx->psoc, &twt_req);
 	hdd_get_twt_responder(hdd_ctx->psoc, &twt_res);
-	hdd_debug("twt_req:%d twt_res:%d", twt_req, twt_res);
+	ucfg_twt_cfg_get_responder_type(hdd_ctx->psoc, &twt_res_type);
+	hdd_debug("twt_req:%d twt_res:%d for type:%d ", twt_req, twt_res,
+		  twt_res_type);
 
-	if (twt_req || twt_res) {
+	if (twt_req || (twt_res && twt_res_type)) {
 		wlan_hdd_cfg80211_set_feature(feature_flags,
 					      QCA_WLAN_VENDOR_FEATURE_TWT);
 
@@ -5440,8 +5447,18 @@ wlan_hdd_cfg80211_get_features(struct wiphy *wiphy,
 {
 	struct osif_psoc_sync *psoc_sync;
 	int errno;
+	uint8_t i = 0;
 
-	errno = osif_psoc_sync_op_start(wiphy_dev(wiphy), &psoc_sync);
+	for (i = 0; i < 20; i++) {
+		hdd_debug("get_features %d", i);
+		errno = osif_psoc_sync_op_start(wiphy_dev(wiphy), &psoc_sync);
+		if (errno == -EAGAIN) {
+			qdf_sleep(100);
+			continue;
+		} else {
+			break;
+		}
+	}
 	if (errno)
 		return errno;
 
@@ -14463,6 +14480,7 @@ __wlan_hdd_cfg80211_sap_suspend_resume(struct wiphy *wiphy,
 		.subtype = SIR_MAC_MGMT_DEAUTH,
 	};
 	struct qdf_mac_addr *mld_addr;
+	struct hdd_ap_ctx *ap_ctx;
 
 	ret = wlan_hdd_validate_context(hdd_ctx);
 	if (ret)
@@ -14526,6 +14544,12 @@ __wlan_hdd_cfg80211_sap_suspend_resume(struct wiphy *wiphy,
 		hdd_err("Suspend SAP failed");
 		goto reset;
 	}
+	ap_ctx = WLAN_HDD_GET_AP_CTX_PTR(adapter->deflink);
+	if (!ap_ctx) {
+		hdd_err("ap_ctx is null, suspend state not cached for SSR");
+		goto end;
+	}
+	qdf_atomic_set(&ap_ctx->is_ap_suspend, vdev_suspend_resume);
 	goto end;
 reset:
 	qdf_atomic_set(&vdev->is_ap_suspend, !vdev_suspend_resume);
@@ -14972,7 +14996,7 @@ __wlan_hdd_cfg80211_set_wifi_test_config(struct wiphy *wiphy,
 						hdd_ctx->pdev,
 						link_info->vdev_id);
 
-		sme_set_per_link_ba_mode(mac_handle, set_val);
+		sme_config_ba_mode_all_vdevs(mac_handle, set_val);
 
 		if (!cfg_val) {
 			ret_val = wma_cli_set_command(
@@ -15054,7 +15078,7 @@ __wlan_hdd_cfg80211_set_wifi_test_config(struct wiphy *wiphy,
 			/* Configure ADDBA req buffer size to 64 */
 			set_val = HDD_BA_MODE_64;
 
-		sme_set_per_link_ba_mode(mac_handle, set_val);
+		sme_config_ba_mode_all_vdevs(mac_handle, set_val);
 
 		ret_val = wma_cli_set_command(link_info->vdev_id,
 					      GEN_VDEV_PARAM_AMPDU,
@@ -16977,6 +17001,24 @@ wlan_hdd_modify_pcl_for_p2p_ndp_concurrency(struct hdd_context *hdd_ctx,
 							     pcl, num_pcl);
 }
 
+/** wlan_hdd_modify_pcl_for_vlp_channels() - Update weights for the VLP
+ * deprority channels
+ * @hdd_ctx: pointer to hdd context
+ * @pcl: Calculated PCL as per concurrency policies
+ * @num_pcl: Number of entries in @pcl
+ *
+ * Return: QDF_STATUS
+ */
+static QDF_STATUS
+wlan_hdd_modify_pcl_for_vlp_channels(struct hdd_context *hdd_ctx,
+				     struct weighed_pcl *pcl,
+				     uint32_t num_pcl)
+{
+	return policy_mgr_modify_pcl_for_vlp_channels(hdd_ctx->psoc,
+						      hdd_ctx->pdev,
+						      pcl, num_pcl);
+}
+
 #define HDD_MAX_PCL_INFO_LOG 192
 
 /**
@@ -17122,9 +17164,14 @@ static int __wlan_hdd_cfg80211_get_preferred_freq_list(struct wiphy *wiphy,
 
 	/* Modify the PCL as per mode preference */
 	if (ucfg_nan_is_sta_p2p_ndp_supported(hdd_ctx->psoc) &&
+	    ucfg_nan_get_prefer_nan_chan_for_p2p(hdd_ctx->psoc) &&
 	    (intf_mode == PM_P2P_CLIENT_MODE || intf_mode == PM_P2P_GO_MODE))
 		wlan_hdd_modify_pcl_for_p2p_ndp_concurrency(hdd_ctx,
 							    w_pcl, &pcl_len);
+
+	/* Modify the PCL weight for VLP channels */
+	if (intf_mode == PM_P2P_CLIENT_MODE || intf_mode == PM_P2P_GO_MODE)
+		wlan_hdd_modify_pcl_for_vlp_channels(hdd_ctx, w_pcl, pcl_len);
 
 	for (i = 0; i < pcl_len; i++)
 		freq_list[i] = w_pcl[i].freq;
@@ -19587,13 +19634,6 @@ static int wlan_hdd_cfg80211_set_fast_roaming(struct hdd_context *hdd_ctx,
 	bool roaming_enabled;
 	int ret;
 
-	if (sme_roaming_in_progress(hdd_ctx->mac_handle,
-				    adapter->deflink->vdev_id)) {
-		hdd_err_rl("Roaming in progress for vdev %d",
-			   adapter->deflink->vdev_id);
-		return -EAGAIN;
-	}
-
 	/*
 	 * Get current roaming state and decide whether to wait for RSO_STOP
 	 * response or not.
@@ -19633,6 +19673,21 @@ static int wlan_hdd_cfg80211_set_fast_roaming(struct hdd_context *hdd_ctx,
 			return -EBUSY;
 		}
 	}
+
+	return ret;
+}
+
+static int
+wlan_hdd_cfg80211_set_aggressive_roaming(struct hdd_context *hdd_ctx,
+					 struct hdd_adapter *adapter)
+{
+	int ret = 0;
+	QDF_STATUS qdf_status = 0;
+
+	qdf_status = sme_set_aggressive_roaming(hdd_ctx->mac_handle,
+						adapter->deflink->vdev_id,
+						true);
+	ret = qdf_status_to_os_return(qdf_status);
 
 	return ret;
 }
@@ -19693,11 +19748,22 @@ static int __wlan_hdd_cfg80211_set_roam_policy(struct wiphy *wiphy,
 	roam_policy = nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_ROAMING_POLICY]);
 	hdd_debug("ROAM_CONFIG: roam_policy %d", roam_policy);
 
+	if (sme_roaming_in_progress(hdd_ctx->mac_handle,
+				    adapter->deflink->vdev_id)) {
+		hdd_err_rl("Roaming in progress for vdev %d",
+			   adapter->deflink->vdev_id);
+		return -EAGAIN;
+	}
+
 	switch (roam_policy) {
 	case QCA_ROAMING_NOT_ALLOWED:
 	case QCA_ROAMING_ALLOWED_WITHIN_ESS:
 		ret = wlan_hdd_cfg80211_set_fast_roaming(hdd_ctx, adapter,
 							 roam_policy);
+		break;
+	case QCA_ROAMING_MODE_AGGRESSIVE:
+		ret = wlan_hdd_cfg80211_set_aggressive_roaming(hdd_ctx,
+							       adapter);
 		break;
 	default:
 		ret = -EINVAL;
@@ -20590,7 +20656,13 @@ hdd_send_usable_channel(struct hdd_context *hdd_ctx,
 		return -EINVAL;
 	}
 
-	skb_len += NLMSG_HDRLEN;
+	/**
+	 * As each nesting occupies NLMSG_HDRLEN size in the skb, add
+	 * NLMSG_HDRLEN worth space for each nesting.
+	 */
+	skb_len += NLMSG_HDRLEN * (count + 1);
+
+
 	skb = wlan_cfg80211_vendor_cmd_alloc_reply_skb(hdd_ctx->wiphy, skb_len);
 	if (!skb) {
 		hdd_info("wlan_cfg80211_vendor_cmd_alloc_reply_skb failed");

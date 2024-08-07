@@ -7121,6 +7121,16 @@ policy_mgr_link_switch_notifier_cb(struct wlan_objmgr_vdev *vdev,
 	if (notify_reason > MLO_LINK_SWITCH_NOTIFY_REASON_PRE_START_POST_SER)
 		return QDF_STATUS_SUCCESS;
 
+	/*
+	 * CSA on the SAP/GO would have been allowed based on the
+	 * current concurrency combination. Starting a link switch
+	 * during an active CSA, could lead to unexpected behavior.
+	 */
+	if (policy_mgr_is_chan_switch_in_progress(psoc)) {
+		policy_mgr_debug("CSA is in progress for SAP/GO, reject the link switch");
+		return QDF_STATUS_E_INVAL;
+	}
+
 	pm_ctx = policy_mgr_get_context(psoc);
 	if (!pm_ctx) {
 		policy_mgr_err("Invalid Context");
@@ -9215,6 +9225,31 @@ done:
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_POLICY_MGR_ID);
 }
 
+static QDF_STATUS
+policy_mgr_is_link_active_allowed(struct wlan_objmgr_psoc *psoc,
+				  struct mlo_link_info *link_info,
+				  uint8_t num_links)
+{
+	uint16_t ch_freq;
+	struct wlan_channel *chan_info;
+
+	if (num_links > 1 &&
+	    !policy_mgr_is_hw_dbs_capable(psoc)) {
+		chan_info = link_info->link_chan_info;
+		ch_freq = chan_info->ch_freq;
+		if (wlan_reg_freq_to_band((qdf_freq_t)ch_freq) ==
+		    REG_BAND_2G) {
+			policy_mgr_err("vdev:  Invalid link activation for link: %d at freq: %d in  HW mode: %d",
+				       link_info->vdev_id, link_info->link_id,
+				       ch_freq,
+				       POLICY_MGR_HW_MODE_AUX_EMLSR_SINGLE);
+			return QDF_STATUS_E_FAILURE;
+		}
+	}
+
+	return QDF_STATUS_SUCCESS;
+}
+
 QDF_STATUS
 policy_mgr_update_mlo_links_based_on_linkid_nlink(
 					struct wlan_objmgr_psoc *psoc,
@@ -9275,6 +9310,13 @@ policy_mgr_update_mlo_links_based_on_linkid_nlink(
 			if (link_id_list[link] != link_info->link_id)
 				continue;
 			if (config_state_list[link]) {
+				if (policy_mgr_is_link_active_allowed(
+								psoc,
+								link_info,
+								num_links) !=
+				    QDF_STATUS_SUCCESS)
+					goto release_vdev_ref;
+
 				active_link_bitmap |= 1 << link_info->link_id;
 				policy_mgr_debug("link id:%d matched to active",
 						 link_info->link_id);
@@ -13241,8 +13283,8 @@ static qdf_freq_t _policy_mgr_get_ll_sap_freq(struct wlan_objmgr_psoc *psoc,
 		if (!is_ll_sap_present)
 			continue;
 
-		policy_mgr_debug("LL SAP %d present with vdev_id %d and freq %d",
-				 ap_type, vdev_id, freq);
+		policy_mgr_rl_debug("LL SAP %d present with vdev_id %d and freq %d",
+				    ap_type, vdev_id, freq);
 
 		qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
 		return freq;

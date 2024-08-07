@@ -50,30 +50,13 @@
 
 #if defined(WLAN_FEATURE_DP_BUS_BANDWIDTH) && defined(FEATURE_RUNTIME_PM)
 /**
- * enum dp_rtpm_tput_policy_state - states to track runtime_pm tput policy
- * @DP_RTPM_TPUT_POLICY_STATE_INVALID: invalid state
- * @DP_RTPM_TPUT_POLICY_STATE_REQUIRED: state indicating runtime_pm is required
- * @DP_RTPM_TPUT_POLICY_STATE_NOT_REQUIRED: state indicating runtime_pm is NOT
- * required
- */
-enum dp_rtpm_tput_policy_state {
-	DP_RTPM_TPUT_POLICY_STATE_INVALID,
-	DP_RTPM_TPUT_POLICY_STATE_REQUIRED,
-	DP_RTPM_TPUT_POLICY_STATE_NOT_REQUIRED
-};
-
-/**
  * struct dp_rtpm_tput_policy_context - RTPM throughput policy context
- * @curr_state: current state of throughput policy (RTPM require or not)
- * @wake_lock: wakelock for QDF wake_lock acquire/release APIs
  * @rtpm_lock: lock use for QDF rutime PM prevent/allow APIs
  * @high_tput_vote: atomic variable to keep track of voting
  */
 struct dp_rtpm_tput_policy_context {
-	enum dp_rtpm_tput_policy_state curr_state;
-	qdf_wake_lock_t wake_lock;
 	qdf_runtime_lock_t rtpm_lock;
-	qdf_atomic_t high_tput_vote;
+	unsigned long high_tput_vote;
 };
 #endif
 
@@ -940,6 +923,7 @@ struct wlan_dp_stc;
  * @spm_ctx: Servicy policy manager context
  * @gl_flow_recs: Global Tx flow table for all dp_interfaces
  * @rsrc_mgr_ctx: DP resource manager context reference
+ * @monitor_flag: Monitor interface flags configured when add Mon interface
  */
 struct wlan_dp_psoc_context {
 	struct wlan_objmgr_psoc *psoc;
@@ -1061,6 +1045,7 @@ struct wlan_dp_psoc_context {
 	struct wlan_dp_spm_flow_info *gl_flow_recs;
 #endif
 	struct wlan_dp_resource_mgr_ctx *rsrc_mgr_ctx;
+	uint32_t monitor_flag;
 };
 
 /**

@@ -1326,6 +1326,8 @@ validation_done:
 	 */
 
 	if ((sap_context->acs_cfg->acs_mode ||
+	     !target_psoc_get_sap_coex_fixed_chan_cap(
+		 wlan_psoc_get_tgt_if_handle(mac_ctx->psoc)) ||
 	     policy_mgr_restrict_sap_on_unsafe_chan(mac_ctx->psoc)) &&
 	    !policy_mgr_is_sap_freq_allowed(mac_ctx->psoc, opmode,
 					    sap_context->chan_freq)) {
@@ -4785,12 +4787,6 @@ void sap_dfs_cac_timer_callback(void *data)
 		return;
 	}
 
-	if (mac->sap.SapDfsInfo.vdev_id != sap_ctx->vdev_id) {
-		sap_err("vdev mismatch sap_ctx->vdev_id %d mac->sap.SapDfsInfo.vdev_id %d",
-			sap_ctx->vdev_id, mac->sap.SapDfsInfo.vdev_id);
-		return;
-	}
-
 	/*
 	 * SAP may not be in CAC wait state, when the timer runs out.
 	 * if following flag is set, then timer is in initialized state,
@@ -4801,7 +4797,6 @@ void sap_dfs_cac_timer_callback(void *data)
 			qdf_mc_timer_destroy(
 				&mac->sap.SapDfsInfo.sap_dfs_cac_timer);
 		mac->sap.SapDfsInfo.is_dfs_cac_timer_running = false;
-		mac->sap.SapDfsInfo.vdev_id = WLAN_INVALID_VDEV_ID;
 	}
 
 	/*
@@ -4834,15 +4829,8 @@ static int sap_stop_dfs_cac_timer(struct sap_context *sap_ctx)
 		return 0;
 	}
 
-	if (mac->sap.SapDfsInfo.vdev_id != sap_ctx->vdev_id) {
-		sap_err("Invalid vdev Id sap_ctx_vdev_id %d mac_ctx vdev id %d",
-			sap_ctx->vdev_id, mac->sap.SapDfsInfo.vdev_id);
-		return 0;
-	}
-
 	if (sap_ctx->dfs_cac_offload) {
 		mac->sap.SapDfsInfo.is_dfs_cac_timer_running = 0;
-		mac->sap.SapDfsInfo.vdev_id = WLAN_INVALID_VDEV_ID;
 		return 0;
 	}
 
@@ -4854,7 +4842,6 @@ static int sap_stop_dfs_cac_timer(struct sap_context *sap_ctx)
 
 	qdf_mc_timer_stop(&mac->sap.SapDfsInfo.sap_dfs_cac_timer);
 	mac->sap.SapDfsInfo.is_dfs_cac_timer_running = 0;
-	mac->sap.SapDfsInfo.vdev_id = WLAN_INVALID_VDEV_ID;
 	qdf_mc_timer_destroy(&mac->sap.SapDfsInfo.sap_dfs_cac_timer);
 
 	return 0;
@@ -4881,16 +4868,10 @@ static int sap_start_dfs_cac_timer(struct sap_context *sap_ctx)
 		sap_err("Invalid MAC context");
 		return 0;
 	}
-	/* start time only when is_dfs_cac_timer_running is not running */
-	if (mac->sap.SapDfsInfo.is_dfs_cac_timer_running) {
-		sap_err("Invalid state is_dfs_cac_timer_running");
-		return 0;
-	}
 
 	if (sap_ctx->dfs_cac_offload) {
 		sap_debug("cac timer offloaded to firmware");
 		mac->sap.SapDfsInfo.is_dfs_cac_timer_running = true;
-		mac->sap.SapDfsInfo.vdev_id = sap_ctx->vdev_id;
 		return 1;
 	}
 
@@ -4918,13 +4899,11 @@ static int sap_start_dfs_cac_timer(struct sap_context *sap_ctx)
 	}
 
 	mac->sap.SapDfsInfo.is_dfs_cac_timer_running = true;
-	mac->sap.SapDfsInfo.vdev_id = sap_ctx->vdev_id;
 
 	return 0;
 
 destroy_timer:
 	mac->sap.SapDfsInfo.is_dfs_cac_timer_running = false;
-	mac->sap.SapDfsInfo.vdev_id = WLAN_INVALID_VDEV_ID;
 	qdf_mc_timer_destroy(&mac->sap.SapDfsInfo.sap_dfs_cac_timer);
 
 	return 1;

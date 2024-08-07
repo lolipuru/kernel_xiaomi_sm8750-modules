@@ -7701,12 +7701,12 @@ QDF_STATUS sme_notify_ht2040_mode(mac_handle_t mac_handle,
 
 	switch (channel_type) {
 	case eHT_CHAN_HT20:
-		pHtOpMode->opMode = eHT_CHANNEL_WIDTH_20MHZ;
+		pHtOpMode->chwidth = CH_WIDTH_20MHZ;
 		break;
 
 	case eHT_CHAN_HT40MINUS:
 	case eHT_CHAN_HT40PLUS:
-		pHtOpMode->opMode = eHT_CHANNEL_WIDTH_40MHZ;
+		pHtOpMode->chwidth = CH_WIDTH_40MHZ;
 		break;
 
 	default:
@@ -7731,7 +7731,7 @@ QDF_STATUS sme_notify_ht2040_mode(mac_handle_t mac_handle,
 		return QDF_STATUS_E_FAILURE;
 	}
 
-	sme_debug("vdev %d OP mode: %d", sessionId, pHtOpMode->opMode);
+	sme_debug("vdev %d OP mode chwidth: %d", sessionId, pHtOpMode->chwidth);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -15370,6 +15370,31 @@ void sme_reset_he_caps(mac_handle_t mac_handle, uint8_t vdev_id)
 	if (QDF_IS_STATUS_ERROR(status))
 		sme_err("Failed to set scan mode for 6 GHz, %d", status);
 }
+
+void sme_config_ba_mode_all_vdevs(mac_handle_t mac_handle, uint8_t val)
+{
+	struct mac_context *mac = MAC_CONTEXT(mac_handle);
+	enum QDF_OPMODE op_mode;
+	uint8_t vdev_id;
+	int ret_val = 0;
+
+	for (vdev_id = 0; vdev_id < WLAN_MAX_VDEVS; vdev_id++) {
+		op_mode = wlan_get_opmode_from_vdev_id(mac->pdev, vdev_id);
+		if (op_mode == QDF_STA_MODE) {
+			ret_val = wma_cli_set_command(
+						vdev_id,
+						wmi_vdev_param_set_ba_mode,
+						val, VDEV_CMD);
+
+		if (QDF_IS_STATUS_ERROR(ret_val))
+			sme_err("BA mode set failed for vdev: %d, ret %d",
+				vdev_id, ret_val);
+		else
+			sme_debug("vdev: %d ba mode: %d param id %d",
+				  vdev_id, val, wmi_vdev_param_set_ba_mode);
+		}
+	}
+}
 #endif
 
 #ifdef WLAN_FEATURE_11BE
@@ -15520,31 +15545,6 @@ void sme_set_eht_testbed_def(mac_handle_t mac_handle, uint8_t vdev_id)
 	ucfg_mlme_set_bss_color_collision_det_sta(mac_ctx->psoc, false);
 }
 
-void sme_set_per_link_ba_mode(mac_handle_t mac_handle, uint8_t val)
-{
-	struct mac_context *mac = MAC_CONTEXT(mac_handle);
-	enum QDF_OPMODE op_mode;
-	uint8_t vdev_id;
-	int ret_val = 0;
-
-	for (vdev_id = 0; vdev_id < WLAN_MAX_VDEVS; vdev_id++) {
-		op_mode = wlan_get_opmode_from_vdev_id(mac->pdev, vdev_id);
-		if (op_mode == QDF_STA_MODE) {
-			ret_val = wma_cli_set_command(
-						vdev_id,
-						wmi_vdev_param_set_ba_mode,
-						val, VDEV_CMD);
-
-		if (QDF_IS_STATUS_ERROR(ret_val))
-			sme_err("BA mode set failed for vdev: %d, ret %d",
-				vdev_id, ret_val);
-		else
-			sme_debug("vdev: %d ba mode: %d param id %d",
-				  vdev_id, val, wmi_vdev_param_set_ba_mode);
-		}
-	}
-}
-
 static inline
 void sme_set_mcs_15_tx_rx_disable(uint8_t vdev_id)
 {
@@ -15597,7 +15597,7 @@ void sme_reset_eht_caps(mac_handle_t mac_handle, uint8_t vdev_id)
 							       &val);
 	if (QDF_IS_STATUS_SUCCESS(status))
 		ucfg_mlme_set_bss_color_collision_det_sta(mac_ctx->psoc, val);
-	sme_set_per_link_ba_mode(mac_handle, ba_mode_auto);
+	sme_config_ba_mode_all_vdevs(mac_handle, ba_mode_auto);
 	sme_set_mcs_15_tx_rx_disable(vdev_id);
 	wlan_mlme_set_btm_abridge_flag(mac_ctx->psoc, false);
 	wlan_mlme_set_eht_mld_id(mac_ctx->psoc, 0);
@@ -16624,6 +16624,19 @@ QDF_STATUS sme_set_roam_config_enable(mac_handle_t mac_handle,
 	src_config.bool_value = !!roam_control_enable;
 	return wlan_cm_roam_cfg_set_value(mac->psoc, vdev_id,
 					  ROAM_CONFIG_ENABLE,
+					  &src_config);
+}
+
+QDF_STATUS sme_set_aggressive_roaming(mac_handle_t mac_handle, uint8_t vdev_id,
+				      bool is_aggressive_roam_mode)
+{
+	struct mac_context *mac = MAC_CONTEXT(mac_handle);
+	struct cm_roam_values_copy src_config = {};
+
+	src_config.bool_value = is_aggressive_roam_mode;
+
+	return wlan_cm_roam_cfg_set_value(mac->psoc, vdev_id,
+					  IS_ROAM_AGGRESSIVE,
 					  &src_config);
 }
 
