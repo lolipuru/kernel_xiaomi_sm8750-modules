@@ -592,6 +592,8 @@ struct cnss_plat_data {
 	char firmware_name[MAX_FIRMWARE_NAME_LEN];
 	char fw_fallback_name[MAX_FIRMWARE_NAME_LEN];
 #ifndef CONFIG_DISABLE_CNSS_SRAM_DUMP
+	u32 sram_dump_start_addr;
+	u32 sram_dump_size;
 	u8 *sram_dump;
 #endif
 	struct completion rddm_complete;
@@ -655,6 +657,7 @@ struct cnss_plat_data {
 	struct wlchip_serial_id_v01 serial_id;
 	u32 cpumask_for_rx_intrs;
 	u32 cpumask_for_tx_comp_intrs;
+	bool ipa_shared_cb_enable;
 };
 
 #if IS_ENABLED(CONFIG_ARCH_QCOM)

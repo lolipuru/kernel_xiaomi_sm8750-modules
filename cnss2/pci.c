@@ -2054,12 +2054,18 @@ static void cnss_pci_dump_sram(struct cnss_pci_data *pci_priv)
 	struct cnss_plat_data *plat_priv;
 	u32 i, mem_addr;
 	u32 *dump_ptr;
+	int ret;
 
 	plat_priv = pci_priv->plat_priv;
-
-	if (plat_priv->device_id != QCA6490_DEVICE_ID ||
-	    cnss_get_host_build_type() != QMI_HOST_BUILD_TYPE_PRIMARY_V01)
+	cnss_pr_dbg("SRAM dump: start addr 0x%x, size 0x%x\n",
+		    plat_priv->sram_dump_start_addr, plat_priv->sram_dump_size);
+	if (!plat_priv->sram_dump_size)
 		return;
+
+	if (plat_priv->sram_dump)
+		memset(plat_priv->sram_dump, 0x00, plat_priv->sram_dump_size);
+	else
+		plat_priv->sram_dump = vzalloc(plat_priv->sram_dump_size);
 
 	if (!plat_priv->sram_dump) {
 		cnss_pr_err("SRAM dump memory is not allocated\n");
@@ -2071,11 +2077,13 @@ static void cnss_pci_dump_sram(struct cnss_pci_data *pci_priv)
 
 	cnss_pr_dbg("Dumping SRAM at 0x%lx\n", plat_priv->sram_dump);
 
-	for (i = 0; i < SRAM_DUMP_SIZE; i += sizeof(u32)) {
-		mem_addr = SRAM_START + i;
+	for (i = 0; i < plat_priv->sram_dump_size; i += sizeof(u32)) {
+		mem_addr = plat_priv->sram_dump_start_addr + i;
 		dump_ptr = (u32 *)(plat_priv->sram_dump + i);
-		if (cnss_pci_reg_read(pci_priv, mem_addr, dump_ptr)) {
-			cnss_pr_err("SRAM Dump failed at 0x%x\n", mem_addr);
+		ret = cnss_pci_reg_read(pci_priv, mem_addr, dump_ptr);
+		if (ret) {
+			cnss_pr_err("SRAM Dump failed at 0x%x, %d\n",
+				    mem_addr, ret);
 			break;
 		}
 		/* Relinquish CPU after dumping 256KB chunks*/
@@ -3175,6 +3183,19 @@ int cnss_pci_call_driver_modem_status(struct cnss_pci_data *pci_priv,
 	return 0;
 }
 
+int cnss_pci_fmd_status(struct cnss_pci_data *pci_priv,
+			int fmd_status)
+{
+	int ret;
+
+	if (fmd_status) {
+		ret = cnss_pci_fmd_enable(pci_priv);
+		cnss_pr_dbg("Update FMD status to PCI: %d\n",
+			    fmd_status, ret);
+	}
+
+	return 0;
+}
 int cnss_pci_update_status(struct cnss_pci_data *pci_priv,
 			   enum cnss_driver_status status)
 {

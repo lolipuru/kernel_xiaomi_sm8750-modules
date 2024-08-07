@@ -51,6 +51,8 @@ int cnss_bus_register_driver_hdlr(struct cnss_plat_data *plat_priv, void *data);
 int cnss_bus_unregister_driver_hdlr(struct cnss_plat_data *plat_priv);
 int cnss_bus_call_driver_modem_status(struct cnss_plat_data *plat_priv,
 				      int modem_current_status);
+int cnss_bus_fmd_status(struct cnss_plat_data *plat_priv,
+			int fmd_status);
 int cnss_bus_update_status(struct cnss_plat_data *plat_priv,
 			   enum cnss_driver_status status);
 int cnss_bus_update_uevent(struct cnss_plat_data *plat_priv,
