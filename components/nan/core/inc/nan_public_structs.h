@@ -590,7 +590,6 @@ struct nan_msg_hdr {
 	uint16_t reserved[3];
 };
 
-#define NAN_STATUS_SUCCESS 0
 #define NAN_STATUS_UNSUPPORTED_CONCURRENCY_NAN_DISABLED 12
 
 /**
