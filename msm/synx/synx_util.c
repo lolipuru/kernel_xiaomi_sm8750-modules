@@ -756,14 +756,17 @@ u32 __fence_state(struct dma_fence *fence, bool locked)
 	case -SYNX_STATE_SIGNALED_CANCEL:
 		state = SYNX_STATE_SIGNALED_CANCEL;
 		break;
-	case -SYNX_STATE_SIGNALED_EXTERNAL:
-		state = SYNX_STATE_SIGNALED_EXTERNAL;
-		break;
 	case -SYNX_STATE_SIGNALED_ERROR:
 		state = SYNX_STATE_SIGNALED_ERROR;
 		break;
+	case -SYNX_STATE_SIGNALED_SSR:
+		state = SYNX_STATE_SIGNALED_SSR;
+		break;
 	default:
-		state = (u32)(-status);
+		if (status < 0 && status >= -SYNX_STATE_SIGNALED_MAX)
+			state = SYNX_STATE_SIGNALED_EXTERNAL;
+		else
+			state = (u32)(-status);
 	}
 
 	return state;
