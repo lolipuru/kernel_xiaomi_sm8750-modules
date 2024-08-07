@@ -2382,6 +2382,7 @@ void dp_update_vdev_stats_on_peer_unmap(struct dp_vdev *vdev,
 		\
 		for (i = 0; i < CDP_RSSI_CHAIN_LEN; i++) \
 			_tgtobj->tx.rssi_chain[i] = _srcobj->tx.rssi_chain[i]; \
+		_tgtobj->tx.tx_ppdu_duration += _srcobj->tx.tx_ppdu_duration; \
 		_tgtobj->rx.mpdu_cnt_fcs_ok += _srcobj->rx.mpdu_cnt_fcs_ok; \
 		_tgtobj->rx.mpdu_cnt_fcs_err += _srcobj->rx.mpdu_cnt_fcs_err; \
 		_tgtobj->rx.non_ampdu_cnt += _srcobj->rx.non_ampdu_cnt; \
@@ -2396,6 +2397,8 @@ void dp_update_vdev_stats_on_peer_unmap(struct dp_vdev *vdev,
 		_tgtobj->rx.avg_snr = _srcobj->rx.avg_snr; \
 		_tgtobj->rx.rx_snr_measured_time = \
 					_srcobj->rx.rx_snr_measured_time; \
+		_tgtobj->rx.retried_msdu_count += \
+					_srcobj->rx.retried_msdu_count; \
 		_tgtobj->rx.snr = _srcobj->rx.snr; \
 		_tgtobj->rx.last_snr = _srcobj->rx.last_snr; \
 		_tgtobj->rx.nss_info = _srcobj->rx.nss_info; \
@@ -2449,6 +2452,7 @@ void dp_update_vdev_stats_on_peer_unmap(struct dp_vdev *vdev,
 		for (i = 0; i < MAX_BW; i++) { \
 			_tgtobj->rx.bw[i] += _srcobj->rx.bw[i]; \
 		} \
+		_tgtobj->rx.rx_ppdu_duration += _srcobj->rx.rx_ppdu_duration; \
 		DP_UPDATE_11BE_STATS(_tgtobj, _srcobj); \
 	} while (0)
 
@@ -2937,6 +2941,7 @@ void dp_peer_cleanup(struct dp_vdev *vdev, struct dp_peer *peer);
  * @dp_pdev: struct dp_pdev *
  * @rx_desc_pool: Rx desc pool
  * @dp_buf_page_frag_alloc_enable: is frag alloc enable
+ * @mac_id: MAC ID
  *
  * Return: QDF_STATUS
  */
@@ -2945,7 +2950,8 @@ dp_pdev_nbuf_alloc_and_map(struct dp_soc *dp_soc,
 			   struct dp_rx_nbuf_frag_info *nbuf_frag_info_t,
 			   struct dp_pdev *dp_pdev,
 			   struct rx_desc_pool *rx_desc_pool,
-			   bool dp_buf_page_frag_alloc_enable);
+			   bool dp_buf_page_frag_alloc_enable,
+			   uint32_t mac_id);
 
 #ifdef DP_PEER_EXTENDED_API
 /**
@@ -3018,6 +3024,7 @@ QDF_STATUS dp_peer_state_update(struct cdp_soc_t *soc, uint8_t *peer_mac,
  * dp_get_vdevid() - Get virtual interface id which peer registered
  * @soc_hdl: datapath soc handle
  * @peer_mac: peer mac address
+ * @peer_type: peer type
  * @vdev_id: virtual interface id which peer registered
  *
  * Get virtual interface id which peer registered
@@ -3025,7 +3032,7 @@ QDF_STATUS dp_peer_state_update(struct cdp_soc_t *soc, uint8_t *peer_mac,
  * Return: QDF_STATUS_SUCCESS registration success
  */
 QDF_STATUS dp_get_vdevid(struct cdp_soc_t *soc_hdl, uint8_t *peer_mac,
-			 uint8_t *vdev_id);
+			 enum cdp_peer_type peer_type, uint8_t *vdev_id);
 
 struct cdp_vdev *dp_get_vdev_by_peer_addr(struct cdp_pdev *pdev_handle,
 		struct qdf_mac_addr peer_addr);
@@ -3112,7 +3119,7 @@ void dp_set_peer_as_tdls_peer(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 #else
 static inline
 QDF_STATUS dp_get_vdevid(struct cdp_soc_t *soc_hdl, uint8_t *peer_mac,
-			 uint8_t *vdev_id)
+			 enum cdp_peer_type peer_type, uint8_t *vdev_id)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }

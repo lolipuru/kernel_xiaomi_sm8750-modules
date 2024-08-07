@@ -109,6 +109,18 @@
 	HTT_TCL_METADATA_TYPE_VDEV_BASED
 #endif
 
+#ifndef HTT_TX_TCL_METADATA_GLBL_SEQ_VALID_HTT_EXT_ID_M
+#define HTT_TX_TCL_METADATA_GLBL_SEQ_VALID_HTT_EXT_ID_M 0x00008000
+#define HTT_TX_TCL_METADATA_GLBL_SEQ_VALID_HTT_EXT_ID_S 15
+
+#define HTT_TX_TCL_METADATA_GLBL_SEQ_VALID_HTT_EXT_ID_SET(var, val) \
+do { \
+	HTT_CHECK_SET_VAL(HTT_TX_TCL_METADATA_GLBL_SEQ_VALID_HTT_EXT_ID, val); \
+	((var) |= ((val) << HTT_TX_TCL_METADATA_GLBL_SEQ_VALID_HTT_EXT_ID_S)); \
+} while (0)
+
+#endif
+
 QDF_COMPILE_TIME_ASSERT(max_fw2wbm_tx_status_check,
                         MAX_EAPOL_TX_COMP_STATUS == HTT_TX_FW2WBM_TX_STATUS_MAX);
 
@@ -2283,7 +2295,8 @@ qdf_dma_addr_t dp_tx_nbuf_map(struct dp_vdev *vdev,
 			      struct dp_tx_desc_s *tx_desc,
 			      qdf_nbuf_t nbuf)
 {
-	if (qdf_likely(tx_desc->flags & DP_TX_DESC_FLAG_FAST)) {
+	if (qdf_likely(nbuf->is_from_recycler) &&
+	    qdf_likely(nbuf->fast_xmit)) {
 		qdf_nbuf_dma_clean_range((void *)nbuf->data,
 					 (void *)(nbuf->data + nbuf->len));
 		return (qdf_dma_addr_t)qdf_mem_virt_to_phys(nbuf->data);
@@ -2507,6 +2520,11 @@ dp_tx_update_mcast_param(uint16_t peer_id,
 		msdu_info->vdev_id = vdev->vdev_id + DP_MLO_VDEV_ID_OFFSET;
 		HTT_TX_TCL_METADATA_GLBL_SEQ_HOST_INSPECTED_SET(
 							*htt_tcl_metadata, 1);
+
+		if (msdu_info->exception_fw)
+			HTT_TX_TCL_METADATA_GLBL_SEQ_VALID_HTT_EXT_ID_SET(
+					*htt_tcl_metadata, 1);
+
 	} else {
 		msdu_info->vdev_id = vdev->vdev_id;
 	}
@@ -5711,7 +5729,7 @@ dp_tx_update_peer_stats(struct dp_tx_desc_s *tx_desc,
 	if (!pdev)
 		return;
 
-	length = qdf_nbuf_len(tx_desc->nbuf);
+	length = dp_tx_get_pkt_len(tx_desc);
 	/* Update peer level ucast stats */
 	if (qdf_unlikely(txrx_peer->bss_peer &&
 			 vdev->opmode == wlan_op_mode_ap)) {
@@ -6067,7 +6085,8 @@ dp_tx_comp_process_desc(struct dp_soc *soc,
 		qdf_trace_dp_packet(desc->nbuf, QDF_TX,
 				    desc->msdu_ext_desc ?
 				    desc->msdu_ext_desc->tso_desc : NULL,
-				    qdf_ktime_to_us(desc->timestamp));
+				    qdf_ktime_to_us(desc->timestamp),
+				    desc->tx_status);
 
 	if (!(desc->msdu_ext_desc) && !(desc->flags & DP_TX_DESC_FLAG_FAST)) {
 		dp_tx_enh_unmap(soc, desc);
@@ -6711,13 +6730,13 @@ dp_tx_comp_process_desc_list(struct dp_soc *soc,
 	uint16_t peer_id = DP_INVALID_PEER;
 	dp_txrx_ref_handle txrx_ref_handle = NULL;
 	qdf_nbuf_queue_head_t h;
-	uint8_t valid_tx_desc_pool = 0;
 	uint16_t comp_index = 0, ppeds_comp_index = 0;
 	struct dp_tx_desc_pool_s *tx_desc_pool = NULL;
 
 	desc = comp_head;
 
 	dp_tx_nbuf_queue_head_init(&h);
+	tx_desc_pool = dp_get_tx_desc_pool_wrapper(soc);
 
 	while (desc) {
 		next = desc->next;
@@ -6737,11 +6756,6 @@ dp_tx_comp_process_desc_list(struct dp_soc *soc,
 		if (dp_tx_mcast_reinject_handler(soc, desc)) {
 			desc = next;
 			continue;
-		}
-
-		if (!valid_tx_desc_pool) {
-			tx_desc_pool = dp_get_tx_desc_pool(soc, desc->pool_id);
-			valid_tx_desc_pool = 1;
 		}
 
 		if (desc->flags & DP_TX_DESC_FLAG_PPEDS) {
@@ -6982,7 +6996,6 @@ uint32_t dp_tx_comp_handler(struct dp_intr *int_ctx, struct dp_soc *soc,
 	uint32_t num_entries;
 	qdf_nbuf_queue_head_t h;
 	QDF_STATUS status;
-	uint8_t valid_tx_desc_pool = 0;
 	uint16_t comp_index = 0;
 	struct dp_tx_desc_pool_s *tx_desc_pool = NULL;
 
@@ -7021,6 +7034,8 @@ more_data:
 	last_prefetched_hw_desc = dp_srng_dst_prefetch_32_byte_desc(hal_soc,
 							    hal_ring_hdl,
 							    num_avail_for_reap);
+
+	tx_desc_pool = dp_get_tx_desc_pool_wrapper(soc);
 
 	/* Find head descriptor from completion ring */
 	while (qdf_likely(num_avail_for_reap--)) {
@@ -7097,12 +7112,6 @@ more_data:
 
 		dp_tx_comp_reset_stale_entry_detection(soc, ring_id);
 		tx_desc->buffer_src = buffer_src;
-		/* get tx_desc pool from first sw desc */
-		if (!valid_tx_desc_pool) {
-			tx_desc_pool = dp_get_tx_desc_pool(soc,
-							   tx_desc->pool_id);
-			valid_tx_desc_pool = 1;
-		}
 
 		/*
 		 * If the release source is FW, process the HTT status
@@ -8262,7 +8271,10 @@ uint8_t dp_tx_need_multipass_process(struct dp_soc *soc, struct dp_vdev *vdev,
 	 * Do not drop the frame when vlan_id doesn't match.
 	 * Send the frame as it is.
 	 */
-	if (*vlan_id == peer->txrx_peer->vlan_id) {
+
+	txrx_peer = dp_get_txrx_peer(peer);
+
+	if (txrx_peer && *vlan_id == txrx_peer->vlan_id) {
 		dp_peer_unref_delete(peer, DP_MOD_ID_TX_MULTIPASS);
 		return DP_VLAN_TAGGED_UNICAST;
 	}

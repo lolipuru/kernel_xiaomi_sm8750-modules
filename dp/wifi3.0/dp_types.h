@@ -1774,6 +1774,23 @@ struct rx_refill_buff_pool {
 	qdf_nbuf_t *buf_elem;
 };
 
+#ifdef DP_FEATURE_RX_BUFFER_RECYCLE
+#define DP_PAGE_POOL_MAX 4
+
+struct dp_rx_pp_params {
+	qdf_page_pool_t pp;
+	size_t pool_size;
+	size_t pp_size;
+};
+
+struct dp_rx_page_pool {
+	struct dp_rx_pp_params main_pool[DP_PAGE_POOL_MAX];
+	struct dp_rx_pp_params aux_pool;
+	uint8_t active_pp_idx;
+	qdf_spinlock_t pp_lock;
+};
+#endif
+
 #ifdef DP_TX_HW_DESC_HISTORY
 #define DP_TX_HW_DESC_HIST_MAX 6144
 #define DP_TX_HW_DESC_HIST_PER_SLOT_MAX 2048
@@ -3651,6 +3668,10 @@ struct dp_soc {
 	/* monitor interface flags */
 	uint32_t mon_flags;
 	bool scan_radio_support;
+
+#ifdef DP_FEATURE_RX_BUFFER_RECYCLE
+	struct dp_rx_page_pool rx_pp[MAX_RXDESC_POOLS];
+#endif
 };
 
 #define MAX_RX_MAC_RINGS 2
@@ -5044,6 +5065,7 @@ struct dp_peer_per_pkt_tx_stats {
  * @ndpa_cnt: NDP announcement frame count
  * @rssi_chain: rssi chain
  * @wme_ac_type_bytes: Wireless Multimedia bytes Count
+ * @tx_ppdu_duration: Tx PPDU Duration
  */
 struct dp_peer_extd_tx_stats {
 	uint32_t stbc;
@@ -5104,6 +5126,7 @@ struct dp_peer_extd_tx_stats {
 	uint32_t ndpa_cnt;
 	int32_t rssi_chain[CDP_RSSI_CHAIN_LEN];
 	uint64_t wme_ac_type_bytes[WME_AC_MAX];
+	uint64_t tx_ppdu_duration;
 };
 
 /**
@@ -5239,6 +5262,8 @@ struct dp_peer_per_pkt_rx_stats {
  * @bar_cnt: Block ACK Request frame count
  * @ndpa_cnt: NDP announcement frame count
  * @wme_ac_type_bytes: Wireless Multimedia type Bytes Count
+ * @rx_ppdu_duration: Rx PPDU Duration
+ * @retried_msdu_count: rx msdu retries count
  */
 struct dp_peer_extd_rx_stats {
 	struct cdp_pkt_type pkt_type[DOT11_MAX];
@@ -5287,6 +5312,8 @@ struct dp_peer_extd_rx_stats {
 	uint32_t bar_cnt;
 	uint32_t ndpa_cnt;
 	uint64_t wme_ac_type_bytes[WME_AC_MAX];
+	uint64_t rx_ppdu_duration;
+	uint32_t retried_msdu_count;
 };
 
 /**

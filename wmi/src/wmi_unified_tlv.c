@@ -17248,9 +17248,12 @@ static QDF_STATUS extract_reg_chan_list_ext_update_event_tlv(
 	ext_chan_list_event_hdr = param_buf->fixed_param;
 	ext_wmi_chan_priority = param_buf->reg_chan_priority;
 
-	if (ext_wmi_chan_priority)
+	if (ext_wmi_chan_priority) {
 		reg_info->reg_6g_thresh_priority_freq =
 			WMI_GET_BITS(ext_wmi_chan_priority->freq_info, 0, 16);
+		wmi_debug("VLP cut-off frequency %u",
+			  reg_info->reg_6g_thresh_priority_freq);
+	}
 	reg_info->num_2g_reg_rules = ext_chan_list_event_hdr->num_2g_reg_rules;
 	reg_info->num_5g_reg_rules = ext_chan_list_event_hdr->num_5g_reg_rules;
 	reg_info->num_6g_reg_rules_ap[REG_STANDARD_POWER_AP] =
@@ -22385,6 +22388,49 @@ extract_vendor_pdev_event_tlv(wmi_unified_t wmi_handle,
 }
 #endif /* WLAN_VENDOR_EXTN */
 
+/**
+ * send_sta_vdev_report_ap_oper_bw_cmd_tlv() - Send root AP's reported operating BW to STA VDEV
+ * @wmi_handle: wmi handle
+ * @param: pointer to ap oper bw params
+ *
+ * Return: QDF_STATUS_SUCCESS for success or error code
+ */
+static QDF_STATUS
+send_sta_vdev_report_ap_oper_bw_cmd_tlv(wmi_unified_t wmi_handle,
+					struct wmi_sta_vdev_report_ap_oper_bw_params *param)
+{
+	wmi_vdev_report_ap_oper_bw_cmd_fixed_param *cmd;
+	QDF_STATUS ret;
+	int len = sizeof(*cmd);
+	wmi_buf_t wmi_buf;
+
+	/* Allocate the memory */
+	wmi_buf = wmi_buf_alloc(wmi_handle, len);
+
+	if (!wmi_buf)
+		return QDF_STATUS_E_NOMEM;
+
+	cmd = (wmi_vdev_report_ap_oper_bw_cmd_fixed_param *)wmi_buf_data(wmi_buf);
+	WMITLV_SET_HDR(&cmd->tlv_header,
+		       WMITLV_TAG_STRUC_wmi_vdev_report_ap_oper_bw_cmd_fixed_param,
+		       WMITLV_GET_STRUCT_TLVLEN(wmi_vdev_report_ap_oper_bw_cmd_fixed_param));
+
+	cmd->vdev_id = param->vdev_id;
+	cmd->ap_phymode = wmi_host_to_fw_phymode(param->ap_phymode);
+
+	wmi_debug("vdev_id %u ap_phymode %u", cmd->vdev_id, cmd->ap_phymode);
+	wmi_mtrace(WMI_VDEV_REPORT_AP_OPER_BW_CMDID, cmd->vdev_id, cmd->ap_phymode);
+
+	ret = wmi_unified_cmd_send(wmi_handle, wmi_buf,
+				   len, WMI_VDEV_REPORT_AP_OPER_BW_CMDID);
+
+	if (QDF_IS_STATUS_ERROR(ret)) {
+		wmi_err("Failed to send ap operating bandwidth: %d", ret);
+		wmi_buf_free(wmi_buf);
+	}
+	return ret;
+}
+
 struct wmi_ops tlv_ops =  {
 	.send_vdev_create_cmd = send_vdev_create_cmd_tlv,
 	.send_vdev_delete_cmd = send_vdev_delete_cmd_tlv,
@@ -22908,6 +22954,7 @@ struct wmi_ops tlv_ops =  {
 #ifdef WLAN_DP_FEATURE_STC
 	.send_opm_stats_cmd = send_opm_stats_cmd_tlv,
 #endif
+	.send_sta_vdev_report_ap_oper_bw_cmd = send_sta_vdev_report_ap_oper_bw_cmd_tlv,
 };
 
 #ifdef WLAN_FEATURE_11BE_MLO

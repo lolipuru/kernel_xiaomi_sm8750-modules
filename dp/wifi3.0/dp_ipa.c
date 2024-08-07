@@ -42,6 +42,7 @@
 #include "dp_txrx_wds.h"
 #endif
 #include <pld_common.h>
+#include "wlan_dp_ucfg_api.h"
 
 #define IPA_CLK_ENABLE_WAIT_TIME_MS 500
 
@@ -131,6 +132,52 @@ static void dp_ipa_reo_remap_history_add(uint32_t ix0_val, uint32_t ix2_val,
 	record->ix2_reg = ix2_val;
 	record->ix3_reg = ix3_val;
 }
+
+#ifdef DP_FEATURE_RX_BUFFER_RECYCLE
+QDF_STATUS
+dp_ipa_handle_rx_buf_smmu_mapping_addr(struct dp_soc *soc, qdf_dma_addr_t addr,
+				       size_t size, bool create)
+{
+	qdf_mem_info_t mem_map_table = {0};
+	QDF_STATUS ret = QDF_STATUS_SUCCESS;
+	qdf_ipa_wdi_hdl_t hdl;
+
+	if (!wlan_cfg_is_ipa_enabled(soc->wlan_cfg_ctx) ||
+	    !qdf_mem_smmu_s1_enabled(soc->osdev))
+		return QDF_STATUS_SUCCESS;
+
+	if (!(qdf_atomic_read(&soc->ipa_pipes_enabled) &&
+	      qdf_atomic_read(&soc->ipa_map_allowed)) && create)
+		return QDF_STATUS_SUCCESS;
+
+	hdl = wlan_ipa_get_hdl(soc->ctrl_psoc, 0);
+	if (hdl == DP_IPA_HDL_INVALID) {
+		dp_err("IPA handle is invalid");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	qdf_update_mem_map_table(soc->osdev, &mem_map_table, addr, size);
+
+	if (create) {
+		qdf_ipa_wdi_create_smmu_mapping(hdl, 1, &mem_map_table);
+		if (mem_map_table.result)
+			ret = QDF_STATUS_E_FAILURE;
+	} else {
+		qdf_ipa_wdi_release_smmu_mapping(hdl, 1, &mem_map_table);
+		if (!(mem_map_table.result >= mem_map_table.size))
+			ret = QDF_STATUS_E_FAILURE;
+	}
+
+	return ret;
+}
+#else
+QDF_STATUS
+dp_ipa_handle_rx_buf_smmu_mapping_addr(struct dp_soc *soc, qdf_dma_addr_t addr,
+				       size_t size, bool create)
+{
+	return QDF_STATUS_SUCCESS;
+}
+#endif /* DP_FEATURE_RX_BUFFER_RECYCLE */
 
 static QDF_STATUS __dp_ipa_handle_buf_smmu_mapping(struct dp_soc *soc,
 						   qdf_nbuf_t nbuf,
@@ -3956,6 +4003,15 @@ QDF_STATUS dp_ipa_tx_super_rule_setup(struct cdp_soc_t *soc_hdl,
 	return htt_h2t_tx_super_rule_setup(soc->htt_handle, flt_params);
 }
 
+bool dp_ipa_opt_dp_ctrl_debug_enable(struct cdp_soc_t *soc_hdl)
+{
+	struct dp_soc *soc = cdp_soc_t_to_dp_soc(soc_hdl);
+	struct wlan_objmgr_psoc *psoc =
+		(struct wlan_objmgr_psoc *)soc->ctrl_psoc;
+
+	return ucfg_dp_ipa_ctrl_debug_supported(psoc);
+}
+
 void dp_ipa_tx_pkt_opt_dp_ctrl(struct dp_soc *soc, uint8_t vdev_id,
 			       qdf_nbuf_t nbuf)
 {
@@ -3974,7 +4030,7 @@ dp_ipa_rx_buf_alloc_opt_dp_ctrl(struct dp_soc *soc, qdf_nbuf_t nbuf,
 
 	dp_info("opt_dp_ctrl: allocate and map nbuf");
 	ret = dp_pdev_nbuf_alloc_and_map(soc, &nbuf_frag_info, pdev,
-					 rx_desc_pool, false);
+					 rx_desc_pool, false, 0);
 	if (QDF_IS_STATUS_ERROR(ret)) {
 		dp_err("opt_dp_ctrl: nbuf allocation failed");
 		return ret;

@@ -1013,6 +1013,17 @@ QDF_STATUS dp_soc_interrupt_attach(struct cdp_soc_t *txrx_soc)
 #define AVG_MSDUS_PER_FLOW 128
 #define AVG_MSDUS_PER_MPDU 4
 
+#ifdef DP_FTM_MODE_SKIP_WBM_RING_INIT
+bool dp_skip_ftm_mode_wbm_ring_init(struct dp_soc *soc)
+{
+	if (soc->cdp_soc.ol_ops->get_con_mode &&
+	    soc->cdp_soc.ol_ops->get_con_mode() == QDF_GLOBAL_FTM_MODE)
+		return true;
+
+	return false;
+}
+#endif
+
 void dp_hw_link_desc_pool_banks_free(struct dp_soc *soc, uint32_t mac_id)
 {
 	struct qdf_mem_multi_page_t *pages;
@@ -1151,6 +1162,9 @@ void dp_hw_link_desc_ring_free(struct dp_soc *soc)
 	void *vaddr = soc->wbm_idle_link_ring.base_vaddr_unaligned;
 	qdf_dma_addr_t paddr;
 
+	if (dp_skip_ftm_mode_wbm_ring_init(soc))
+		return;
+
 	if (soc->wbm_idle_scatter_buf_base_vaddr[0]) {
 		for (i = 0; i < MAX_IDLE_SCATTER_BUFS; i++) {
 			vaddr = soc->wbm_idle_scatter_buf_base_vaddr[i];
@@ -1184,6 +1198,9 @@ QDF_STATUS dp_hw_link_desc_ring_alloc(struct dp_soc *soc)
 	uint32_t ring_type;
 	uint32_t max_alloc_size = wlan_cfg_max_alloc_size(soc->wlan_cfg_ctx);
 	uint32_t tlds;
+
+	if (dp_skip_ftm_mode_wbm_ring_init(soc))
+		return QDF_STATUS_SUCCESS;
 
 	ring_type = WBM_IDLE_LINK;
 	dp_srng = &soc->wbm_idle_link_ring;
@@ -2832,8 +2849,13 @@ dp_peer_setup_wifi3(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 
 	status = dp_peer_mlo_setup(soc, peer, vdev->vdev_id, setup_info);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		dp_peer_err("peer mlo setup failed");
-		qdf_assert_always(0);
+		dp_peer_alert("peer mlo setup failed for link mac : "
+			      QDF_MAC_ADDR_FMT "MLD Mac : " QDF_MAC_ADDR_FMT,
+			      QDF_MAC_ADDR_REF(peer->mac_addr.raw),
+			      QDF_MAC_ADDR_REF(setup_info->mld_peer_mac));
+		status = QDF_STATUS_E_FAILURE;
+		dp_peer_mlo_setup_err_assert();
+		goto fail;
 	}
 
 	if (vdev_opmode != wlan_op_mode_monitor) {
@@ -3502,6 +3524,7 @@ static void dp_soc_cfg_init(struct dp_soc *soc)
 	case TARGET_TYPE_MANGO:
 	case TARGET_TYPE_PEACH:
 	case TARGET_TYPE_WCN7750:
+	case TARGET_TYPE_QCC2072:
 		soc->ast_override_support = 1;
 		soc->per_tid_basize_max_tid = 8;
 
@@ -4477,6 +4500,7 @@ void dp_soc_cfg_attach(struct dp_soc *soc)
 	case TARGET_TYPE_MANGO:
 	case TARGET_TYPE_PEACH:
 	case TARGET_TYPE_WCN7750:
+	case TARGET_TYPE_QCC2072:
 		soc->wlan_cfg_ctx->rxdma1_enable = 0;
 		break;
 	case TARGET_TYPE_QCA8074:

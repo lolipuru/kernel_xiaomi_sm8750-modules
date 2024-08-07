@@ -1069,26 +1069,12 @@ static inline void dp_tx_get_queue(struct dp_vdev *vdev,
 }
 #endif
 #else
-#ifdef WLAN_TX_PKT_CAPTURE_ENH
-static inline void dp_tx_get_queue(struct dp_vdev *vdev,
-				   qdf_nbuf_t nbuf, struct dp_tx_queue *queue)
-{
-	if (qdf_unlikely(vdev->is_override_rbm_id))
-		queue->ring_id = vdev->rbm_id;
-	else
-		queue->ring_id = qdf_get_cpu();
-
-	queue->desc_pool_id = queue->ring_id;
-}
-#else
 static inline void dp_tx_get_queue(struct dp_vdev *vdev,
 				   qdf_nbuf_t nbuf, struct dp_tx_queue *queue)
 {
 	queue->ring_id = qdf_get_cpu();
 	queue->desc_pool_id = queue->ring_id;
 }
-
-#endif
 #endif
 
 /**
@@ -1749,6 +1735,7 @@ QDF_STATUS dp_get_uplink_delay(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 			       uint32_t *val);
 #endif /* WLAN_FEATURE_TSF_UPLINK_TSF */
 
+#ifdef WLAN_TRACEPOINTS
 /**
  * dp_tx_pkt_tracepoints_enabled() - Get the state of tx pkt tracepoint
  *
@@ -1759,8 +1746,16 @@ bool dp_tx_pkt_tracepoints_enabled(void)
 {
 	return (qdf_trace_dp_tx_comp_tcp_pkt_enabled() ||
 		qdf_trace_dp_tx_comp_udp_pkt_enabled() ||
-		qdf_trace_dp_tx_comp_pkt_enabled());
+		qdf_trace_dp_tx_comp_pkt_enabled())    ||
+		qdf_trace_dp_tx_enqueue_enabled();
 }
+#else
+static inline
+bool dp_tx_pkt_tracepoints_enabled(void)
+{
+	return false;
+}
+#endif
 
 #ifdef QCA_SUPPORT_DP_GLOBAL_CTX
 static inline
@@ -2420,7 +2415,8 @@ dp_tx_nbuf_dev_queue_free(qdf_nbuf_queue_head_t *nbuf_queue_head,
 	qdf_nbuf_t nbuf = NULL;
 
 	nbuf = desc->nbuf;
-	if (qdf_likely(desc->flags & DP_TX_DESC_FLAG_FAST))
+	if (qdf_likely(nbuf->is_from_recycler) &&
+	    qdf_likely(nbuf->fast_xmit))
 		qdf_nbuf_dev_queue_head(nbuf_queue_head, nbuf);
 	else
 		qdf_nbuf_free(nbuf);
@@ -2587,4 +2583,18 @@ void dp_tx_dump_tx_desc(struct dp_tx_desc_s *tx_desc)
 	}
 }
 #endif /* WLAN_SOFTUMAC_SUPPORT */
+
+#ifdef QCA_DP_OPTIMIZED_TX_DESC
+static inline
+struct dp_tx_desc_pool_s *dp_get_tx_desc_pool_wrapper(struct dp_soc *soc)
+{
+	return dp_get_tx_desc_pool(soc, qdf_get_cpu());
+}
+#else
+static inline
+struct dp_tx_desc_pool_s *dp_get_tx_desc_pool_wrapper(struct dp_soc *soc)
+{
+	return NULL;
+}
+#endif /* QCA_DP_OPTIMIZED_TX_DESC */
 #endif

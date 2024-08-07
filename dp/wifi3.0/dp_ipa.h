@@ -20,7 +20,7 @@
 
 #include "wlan_ipa_public_struct.h"
 #if defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2) || \
-    defined(QCA_WIFI_WCN7750)
+    defined(QCA_WIFI_WCN7750) || defined(QCA_WIFI_QCC2072)
 /* Index into soc->tcl_data_ring[] */
 #define IPA_TCL_DATA_RING_IDX	4
 #else
@@ -46,7 +46,7 @@
 
 #ifdef IPA_WDI3_TX_TWO_PIPES
 #if defined(QCA_WIFI_KIWI) || defined(QCA_WIFI_KIWI_V2) || \
-    defined(QCA_WIFI_WCN7750)
+    defined(QCA_WIFI_WCN7750) || defined(QCA_WIFI_QCC2072)
 /* Index into soc->tcl_data_ring[] and soc->tx_comp_ring[] */
 #define IPA_TX_ALT_RING_IDX 3
 #define IPA_TX_ALT_COMP_RING_IDX IPA_TX_ALT_RING_IDX
@@ -506,6 +506,20 @@ QDF_STATUS dp_ipa_handle_rx_buf_smmu_mapping(struct dp_soc *soc,
 					     const char *func,
 					     uint32_t line,
 					     uint8_t caller);
+/**
+ * dp_ipa_handle_rx_buf_smmu_mapping_addr - Map/unmap DMA address into
+ *					    IPA SMMU domain
+ * @soc: DP SOC handle
+ * @addr: DMA address of the buffer to be mapped/unmapped
+ * @size: size of the mapping
+ * @create: Map/unmap
+ *
+ * Return: QDF_STATUS_SUCCESS for successful operation, else failure
+ */
+QDF_STATUS
+dp_ipa_handle_rx_buf_smmu_mapping_addr(struct dp_soc *soc, qdf_dma_addr_t addr,
+				       size_t size, bool create);
+
 #ifdef IPA_OPT_WIFI_DP_CTRL
 
 /**
@@ -531,6 +545,15 @@ dp_rx_add_to_ipa_desc_free_list(struct dp_soc *soc,
  */
 void dp_ipa_tx_pkt_opt_dp_ctrl(struct dp_soc *soc, uint8_t vdev_id,
 			       qdf_nbuf_t nbuf);
+
+/**
+ * dp_ipa_opt_dp_ctrl_debug_enable() - get opt_dp_ctrl debug ini
+ * @soc_hdl: handle to the soc
+ *
+ * Return: true if ini enabled else false
+ *
+ */
+bool dp_ipa_opt_dp_ctrl_debug_enable(struct cdp_soc_t *soc_hdl);
 #else
 static inline QDF_STATUS
 dp_rx_add_to_ipa_desc_free_list(struct dp_soc *soc,
@@ -753,6 +776,23 @@ static inline QDF_STATUS dp_ipa_handle_rx_buf_smmu_mapping(struct dp_soc *soc,
 							   const char *func,
 							   uint32_t line,
 							   uint8_t caller)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+/**
+ * dp_ipa_handle_rx_buf_smmu_mapping_addr - Map/unmap DMA address into
+ *					    IPA SMMU domain
+ * @soc: DP SOC handle
+ * @addr: DMA address of the buffer to be mapped/unmapped
+ * @size: size of the mapping
+ * @create: Map/unmap
+ *
+ * Return: QDF_STATUS_SUCCESS for successful operation, else failure
+ */
+static inline QDF_STATUS
+dp_ipa_handle_rx_buf_smmu_mapping_addr(struct dp_soc *soc, qdf_dma_addr_t addr,
+				       size_t size, bool create)
 {
 	return QDF_STATUS_SUCCESS;
 }

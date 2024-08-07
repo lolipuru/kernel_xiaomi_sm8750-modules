@@ -98,7 +98,8 @@
 					  WLAN_CFG_RX_RING_MASK_6 |	\
 					  WLAN_CFG_RX_RING_MASK_7)
 
-#if defined(QCA_WIFI_KIWI_V2) || defined(QCA_WIFI_WCN7750)
+#if defined(QCA_WIFI_KIWI_V2) || defined(QCA_WIFI_WCN7750) || \
+	defined(QCA_WIFI_QCC2072)
 #define WLAN_CFG_TX_RING_NEAR_FULL_IRQ_MASK (WLAN_CFG_TX_RING_MASK_0 | \
 					     WLAN_CFG_TX_RING_MASK_4 | \
 					     WLAN_CFG_TX_RING_MASK_2 | \
@@ -394,6 +395,8 @@ struct wlan_srng_cfg {
  *  audio
  * @rxmon_mgmt_linearization: Linearize paged rxmon mgmt frame
  * @dp_proto_stats: flag to enable/disable Datapath Protocol stats.
+ * @dp_rx_buffer_recycle_enabled: DP RX buffer recycling using page pool API
+ *				  enabled/disabled
  */
 struct wlan_cfg_dp_soc_ctxt {
 	int num_int_ctxts;
@@ -640,6 +643,10 @@ struct wlan_cfg_dp_soc_ctxt {
 	bool rxmon_mgmt_linearization;
 #ifdef QCA_DP_PROTOCOL_STATS
 	bool dp_proto_stats;
+#endif
+
+#ifdef DP_FEATURE_RX_BUFFER_RECYCLE
+	bool dp_rx_buffer_recycle_enabled;
 #endif
 };
 
@@ -3086,6 +3093,16 @@ uint8_t wlan_cfg_get_rx_mon_wq_depth(struct wlan_cfg_dp_soc_ctxt *cfg);
  * Return: uint8_t
  */
 bool wlan_cfg_get_rxmon_mgmt_linearization(struct wlan_cfg_dp_soc_ctxt *cfg);
+
+/**
+ * wlan_cfg_get_dp_rx_buffer_recycle() - Get DP RX buffer recycling using page
+ *					 pool config
+ *
+ * @cfg: soc configuration context
+ *
+ * Return: bool
+ */
+bool wlan_cfg_get_dp_rx_buffer_recycle(struct wlan_cfg_dp_soc_ctxt *cfg);
 
 /**
  * wlan_cfg_get_dp_proto_stats() - Get DP protocol stats

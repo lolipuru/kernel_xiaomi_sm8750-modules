@@ -59,7 +59,8 @@ static struct wlan_cfg_tcl_wbm_ring_num_map g_tcl_wbm_map_array[MAX_TCL_DATA_RIN
 	{.tcl_ring_num = 0, .wbm_ring_num = 0, .wbm_rbm_id = HAL_BE_WBM_SW0_BM_ID, .for_ipa = 0},
 	{1, 4, HAL_BE_WBM_SW4_BM_ID, 0},
 	{2, 2, HAL_BE_WBM_SW2_BM_ID, 0},
-#if defined(QCA_WIFI_KIWI_V2) || defined(QCA_WIFI_WCN7750)
+#if defined(QCA_WIFI_KIWI_V2) || defined(QCA_WIFI_WCN7750) || \
+	defined(QCA_WIFI_QCC2072)
 	{3, 5, HAL_BE_WBM_SW5_BM_ID, 0},
 	{4, 6, HAL_BE_WBM_SW6_BM_ID, 0}
 #else
@@ -491,8 +492,10 @@ dp_hw_cookie_conversion_attach(struct dp_soc_be *be_soc,
 					num_spt_pages : DP_CC_PPT_MAX_ENTRIES;
 	dp_info("num_spt_pages needed %d", num_spt_pages);
 
-	dp_desc_multi_pages_mem_alloc(soc, ((desc_type == QDF_DP_TX_DESC_TYPE) ?
-		QDF_DP_TX_HW_CC_SPT_PAGE_TYPE : QDF_DP_RX_HW_CC_SPT_PAGE_TYPE),
+	cc_ctx->desc_type = ((desc_type == QDF_DP_TX_DESC_TYPE) ?
+			     QDF_DP_TX_HW_CC_SPT_PAGE_TYPE :
+			     QDF_DP_RX_HW_CC_SPT_PAGE_TYPE);
+	dp_desc_multi_pages_mem_alloc(soc, cc_ctx->desc_type,
 				      &cc_ctx->page_pool, qdf_page_size,
 				      num_spt_pages, 0, false);
 	if (!cc_ctx->page_pool.dma_pages) {
@@ -536,8 +539,7 @@ fail_1:
 	qdf_mem_free(cc_ctx->page_desc_base);
 	cc_ctx->page_desc_base = NULL;
 fail_0:
-	dp_desc_multi_pages_mem_free(soc, (QDF_DP_TX_DESC_TYPE ?
-		QDF_DP_TX_HW_CC_SPT_PAGE_TYPE : QDF_DP_RX_HW_CC_SPT_PAGE_TYPE),
+	dp_desc_multi_pages_mem_free(soc, cc_ctx->desc_type,
 				     &cc_ctx->page_pool, 0, false);
 
 	return QDF_STATUS_E_FAILURE;
@@ -549,8 +551,7 @@ dp_hw_cookie_conversion_detach(struct dp_soc_be *be_soc,
 {
 	struct dp_soc *soc = DP_SOC_BE_GET_SOC(be_soc);
 
-	dp_desc_multi_pages_mem_free(soc, (QDF_DP_TX_DESC_TYPE ?
-		QDF_DP_TX_HW_CC_SPT_PAGE_TYPE : QDF_DP_RX_HW_CC_SPT_PAGE_TYPE),
+	dp_desc_multi_pages_mem_free(soc, cc_ctx->desc_type,
 				     &cc_ctx->page_pool, 0, false);
 	if (cc_ctx->page_desc_base)
 		qdf_spinlock_destroy(&cc_ctx->cc_lock);

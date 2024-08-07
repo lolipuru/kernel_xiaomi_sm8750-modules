@@ -1958,6 +1958,37 @@ static inline bool util_scan_is_null_ssid(struct wlan_ssid *ssid)
 	return false;
 }
 
+#ifdef WLAN_FEATURE_11BE_MLO
+/**
+ * util_scan_get_ml_info(): Dump ml scan info
+ * @scan_params: new received entry
+ * @log_str: Buffer pointer
+ * @str_len: max string length
+ * @len: already filled length in buffer
+ *
+ * Return: length filled in buffer
+ */
+static inline uint32_t
+util_scan_get_ml_info(struct scan_cache_entry *scan_params,
+		      char *log_str, uint32_t str_len, uint32_t len)
+{
+	if (qdf_is_macaddr_zero(&scan_params->ml_info.mld_mac_addr))
+		return 0;
+
+	return qdf_scnprintf(log_str + len, str_len - len,
+		", MLD " QDF_MAC_ADDR_FMT " links %d",
+		QDF_MAC_ADDR_REF(scan_params->ml_info.mld_mac_addr.bytes),
+		scan_params->ml_info.num_links);
+}
+#else
+static inline uint32_t
+util_scan_get_ml_info(struct scan_cache_entry *scan_params,
+		      char *log_str, uint32_t str_len, uint32_t len)
+{
+	return 0;
+}
+#endif
+
 /**
  * util_scan_get_6g_oper_channel() - function to get primary channel
  * from he op IE
@@ -1998,3 +2029,17 @@ util_scan_get_phymode(struct wlan_objmgr_pdev *pdev,
  */
 bool util_is_bssid_non_tx(struct wlan_objmgr_psoc *psoc,
 			  struct qdf_mac_addr *bssid, qdf_freq_t freq);
+
+/**
+ * util_scan_entry_renew_timestamp() - function to renew timestamp of scan entry
+ * @pdev: pdev
+ * @scan_entry: scan entry
+ *
+ * API, function to renew timestamp of scan entry to avoid aging out
+ *
+ * Return: void
+ */
+void
+util_scan_entry_renew_timestamp(struct wlan_objmgr_pdev *pdev,
+				struct scan_cache_entry *scan_entry);
+

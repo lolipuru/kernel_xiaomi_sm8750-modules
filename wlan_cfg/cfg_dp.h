@@ -117,7 +117,7 @@
 #define WLAN_CFG_PER_PDEV_LMAC_RING 0
 #define WLAN_LRO_ENABLE 0
 #if defined(QCA_WIFI_QCA6750) || defined(QCA_WIFI_WCN6450) || \
-    defined(QCA_WIFI_WCN7750)
+    defined(QCA_WIFI_WCN7750) || defined(QCA_WIFI_QCC2072)
 #define WLAN_CFG_MAC_PER_TARGET 1
 #else
 #define WLAN_CFG_MAC_PER_TARGET 2
@@ -355,7 +355,7 @@
 #define WLAN_CFG_RX_RELEASE_RING_SIZE_MIN 8
 #if defined(QCA_WIFI_QCA6390) || defined(QCA_WIFI_QCA6490) || \
     defined(QCA_WIFI_QCA6750) || defined(QCA_WIFI_KIWI) || \
-    defined(QCA_WIFI_WCN7750)
+    defined(QCA_WIFI_WCN7750) || defined(QCA_WIFI_QCC2072)
 #define WLAN_CFG_RX_RELEASE_RING_SIZE_MAX 1024
 #else
 #define WLAN_CFG_RX_RELEASE_RING_SIZE_MAX 32768
@@ -2280,6 +2280,15 @@
 	CFG_INI_BOOL("en_rxmon_mgmt_linearization", false, \
 		     "Enable/Disable RxMON mgmt frame linearization")
 
+#ifdef DP_FEATURE_RX_BUFFER_RECYCLE
+#define CFG_DP_RX_BUFFER_RECYCLE_ENABLE \
+	CFG_INI_BOOL("dp_rx_buffer_recycle", false, \
+		     "Enable/Disable DP RX buffer recycling using page pool API")
+#define CFG_DP_RX_BUFFER_RECYCLE CFG(CFG_DP_RX_BUFFER_RECYCLE_ENABLE)
+#else
+#define CFG_DP_RX_BUFFER_RECYCLE
+#endif
+
 #define CFG_DP \
 		CFG(CFG_DP_HTT_PACKET_TYPE) \
 		CFG(CFG_DP_INT_BATCH_THRESHOLD_OTHER) \
@@ -2440,5 +2449,6 @@
 		CFG_DP_SAWF_MSDUQ_RECLAIM \
 		CFG_DP_SAWF_RECLAIM_TIMER \
 		CFG_DP_SAWF_MSDUQ_TID_SKID \
-		CFG(CFG_DP_RXMON_MGMT_LINEARIZATION)
+		CFG(CFG_DP_RXMON_MGMT_LINEARIZATION) \
+		CFG_DP_RX_BUFFER_RECYCLE
 #endif /* _CFG_DP_H_ */

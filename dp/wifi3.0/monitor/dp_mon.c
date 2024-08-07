@@ -3437,7 +3437,7 @@ dp_tx_stats_update(struct dp_pdev *pdev, struct dp_peer *peer,
 
 	DP_STATS_INCC(mon_peer, tx.stbc, num_msdu, ppdu->stbc);
 	DP_STATS_INCC(mon_peer, tx.ldpc, num_msdu, ppdu->ldpc);
-	if (!(ppdu->is_mcast) && ppdu->ack_rssi_valid) {
+	if (!(ppdu->is_mcast) && ppdu->ack_rssi_valid && (ppdu_desc->ack_rssi < 0x80)) {
 		DP_STATS_UPD(mon_peer, tx.last_ack_rssi, ppdu_desc->ack_rssi);
 
 		if (qdf_unlikely(mon_peer->stats.tx.avg_ack_rssi == CDP_INVALID_SNR)) {
@@ -4808,6 +4808,8 @@ dp_ppdu_desc_user_phy_tx_time_update(struct dp_pdev *pdev,
 				user->nss * user->ru_tones) / nss_ru_width_sum;
 	}
 
+	DP_STATS_INC(mon_peer, tx.tx_ppdu_duration, user->phy_tx_time_us);
+
 	dp_ppdu_desc_user_airtime_consumption_update(peer, user);
 }
 #else
@@ -5705,6 +5707,7 @@ QDF_STATUS dp_mon_soc_cfg_init(struct dp_soc *soc)
 	case TARGET_TYPE_PEACH:
 	case TARGET_TYPE_WCN6450:
 	case TARGET_TYPE_WCN7750:
+	case TARGET_TYPE_QCC2072:
 		/* do nothing */
 		break;
 	case TARGET_TYPE_QCA8074:
@@ -5780,6 +5783,7 @@ static void dp_mon_pdev_per_target_config(struct dp_pdev *pdev)
 		break;
 	case TARGET_TYPE_PEACH:
 	case TARGET_TYPE_WCN7750:
+	case TARGET_TYPE_QCC2072:
 	default:
 		mon_pdev->is_tlv_hdr_64_bit = false;
 		mon_pdev->tlv_hdr_size = HAL_RX_TLV32_HDR_SIZE;
@@ -6137,6 +6141,7 @@ dp_ch_band_lmac_id_mapping_init(struct dp_pdev *pdev)
 	case TARGET_TYPE_QCA6750:
 	case TARGET_TYPE_WCN6450:
 	case TARGET_TYPE_WCN7750:
+	case TARGET_TYPE_QCC2072:
 		pdev->ch_band_lmac_id_mapping[REG_BAND_2G] = DP_MAC0_LMAC_ID;
 		pdev->ch_band_lmac_id_mapping[REG_BAND_5G] = DP_MAC0_LMAC_ID;
 		pdev->ch_band_lmac_id_mapping[REG_BAND_6G] = DP_MAC0_LMAC_ID;
@@ -6393,9 +6398,6 @@ QDF_STATUS dp_mon_vdev_detach(struct dp_vdev *vdev)
 	if (!mon_vdev)
 		return QDF_STATUS_E_FAILURE;
 
-	mac_id = mon_vdev->mac_id;
-	mon_mac = dp_get_mon_mac(pdev, mac_id);
-
 	if (pdev->monitor_pdev->scan_spcl_vap_configured)
 		dp_scan_spcl_vap_stats_detach(mon_vdev);
 
@@ -6404,10 +6406,16 @@ QDF_STATUS dp_mon_vdev_detach(struct dp_vdev *vdev)
 	qdf_mem_free(mon_vdev);
 	vdev->monitor_vdev = NULL;
 	pdev->monitor_pdev->mon_fcs_cap = 0;
-	/* set mvdev to NULL only if detach is called for monitor/special vap
-	 */
-	if (mon_mac->mvdev == vdev)
-		mon_mac->mvdev = NULL;
+
+	/* For ML LPC case both mon mac mvdev points to same vdev */
+	for (mac_id = 0; mac_id < MAX_NUM_LMAC_HW; mac_id++) {
+		mon_mac = dp_get_mon_mac(pdev, mac_id);
+		/* set mvdev to NULL only if detach is called for
+		 * monitor/special vap
+		 */
+		if (mon_mac->mvdev == vdev)
+			mon_mac->mvdev = NULL;
+	}
 
 	if (mon_ops->mon_lite_mon_vdev_delete)
 		mon_ops->mon_lite_mon_vdev_delete(pdev, vdev);
@@ -6726,6 +6734,7 @@ void dp_mon_ops_register(struct dp_soc *soc)
 	case TARGET_TYPE_QCN6122:
 	case TARGET_TYPE_WCN6450:
 	case TARGET_TYPE_WCN7750:
+	case TARGET_TYPE_QCC2072:
 		dp_mon_ops_register_1_0(mon_soc);
 		dp_mon_ops_register_cmn_2_0(mon_soc);
 		dp_mon_ops_register_tx_2_0(mon_soc);
@@ -6794,6 +6803,7 @@ void dp_mon_cdp_ops_register(struct dp_soc *soc)
 	case TARGET_TYPE_QCN6122:
 	case TARGET_TYPE_WCN6450:
 	case TARGET_TYPE_WCN7750:
+	case TARGET_TYPE_QCC2072:
 		dp_mon_cdp_ops_register_1_0(ops);
 #if defined(WLAN_CFR_ENABLE) && defined(WLAN_ENH_CFR_ENABLE)
 		dp_cfr_filter_register_1_0(ops);

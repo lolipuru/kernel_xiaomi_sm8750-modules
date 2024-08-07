@@ -2643,6 +2643,9 @@ void dp_link_desc_ring_replenish(struct dp_soc *soc, uint32_t mac_id,
 	qdf_dma_addr_t link_desc_paddr;
 	uint32_t link_desc_align_mask;
 
+	if (dp_skip_ftm_mode_wbm_ring_init(soc))
+		return;
+
 	link_desc_align_mask = hal_get_link_desc_align(soc->hal_soc) - 1;
 	num_scatter_bufs = soc->num_scatter_bufs;
 
@@ -5849,6 +5852,7 @@ dp_peer_create_wifi3(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	struct dp_pdev *pdev;
 	enum cdp_txrx_ast_entry_type ast_type = CDP_TXRX_AST_TYPE_STATIC;
 	struct dp_vdev *vdev = NULL;
+	qdf_size_t peer_context_size;
 
 	if (!peer_mac_addr)
 		return QDF_STATUS_E_FAILURE;
@@ -5950,7 +5954,10 @@ dp_peer_create_wifi3(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	peer = (struct dp_peer *)qdf_mempool_alloc(soc->osdev,
 		soc->mempool_ol_ath_peer);
 #else
-	peer = (struct dp_peer *)qdf_mem_malloc(sizeof(*peer));
+	peer_context_size =
+		soc->arch_ops.txrx_get_context_size(DP_CONTEXT_TYPE_PEER);
+	if (peer_context_size)
+		peer = (struct dp_peer *)qdf_mem_malloc(peer_context_size);
 #endif
 	wlan_minidump_log(peer,
 			  sizeof(*peer),
@@ -13802,6 +13809,9 @@ static struct cdp_ipa_ops dp_ops_ipa = {
 	.ipa_tx_opt_dp_ctrl_pkt = dp_ipa_tx_opt_dp_ctrl_pkt,
 	.ipa_pcie_link_up = dp_ipa_pcie_link_up,
 	.ipa_pcie_link_down = dp_ipa_pcie_link_down,
+#ifdef IPA_OPT_WIFI_DP_CTRL
+	.ipa_opt_dp_ctrl_debug_enable = dp_ipa_opt_dp_ctrl_debug_enable,
+#endif
 #endif
 #ifdef IPA_WDS_EASYMESH_FEATURE
 	.ipa_ast_create = dp_ipa_ast_create,

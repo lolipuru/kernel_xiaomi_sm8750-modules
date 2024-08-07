@@ -1287,6 +1287,25 @@ void qdf_nbuf_unmap_nbytes_single_debug(qdf_device_t osdev,
 
 qdf_export_symbol(qdf_nbuf_unmap_nbytes_single_debug);
 
+QDF_STATUS qdf_nbuf_track_map_single_debug(qdf_device_t osdev, qdf_nbuf_t buf,
+					   qdf_dma_dir_t dir, const char *func,
+					   uint32_t line)
+{
+	QDF_STATUS status;
+
+	status = qdf_nbuf_track_map(buf, func, line);
+	if (QDF_IS_STATUS_ERROR(status))
+		return status;
+
+	if (!is_initial_mem_debug_disabled)
+		qdf_nbuf_history_add(buf, func, line, QDF_NBUF_MAP);
+	qdf_net_buf_debug_update_map_node(buf, func, line);
+
+	return status;
+}
+
+qdf_export_symbol(qdf_nbuf_track_map_single_debug);
+
 void qdf_nbuf_unmap_nbytes_single_paddr_debug(qdf_device_t osdev,
 					      qdf_nbuf_t buf,
 					      qdf_dma_addr_t phy_addr,
@@ -1909,6 +1928,16 @@ bool __qdf_nbuf_data_is_ipv4_pkt(uint8_t *data)
 		return false;
 }
 qdf_export_symbol(__qdf_nbuf_data_is_ipv4_pkt);
+
+bool __qdf_nbuf_sock_is_valid_fullsock(struct sk_buff *skb)
+{
+	if (skb->sk && sk_fullsock(skb->sk))
+		return true;
+
+	return false;
+}
+
+qdf_export_symbol(__qdf_nbuf_sock_is_valid_fullsock);
 
 /**
  * __qdf_nbuf_sock_is_ipv4_pkt() - check if it is a ipv4 sock

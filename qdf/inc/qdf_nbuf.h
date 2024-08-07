@@ -614,6 +614,7 @@ struct mon_rx_status {
  * @ba_bitmap: 256 bit block ack bitmap
  * @aid: Association ID
  * @enc_type: ecnryption type
+ * @retried_msdu_count: retried msdu count
  * @mpdu_q: user mpdu_queue used for monitor
  */
 struct mon_rx_user_status {
@@ -684,6 +685,7 @@ struct mon_rx_user_status {
 	uint32_t ba_bitmap[32];
 	uint16_t aid;
 	uint8_t enc_type;
+	uint16_t retried_msdu_count;
 	qdf_nbuf_queue_t mpdu_q;
 };
 
@@ -1400,6 +1402,32 @@ void qdf_nbuf_unmap_nbytes_single_paddr_debug(qdf_device_t osdev,
 	qdf_nbuf_unmap_nbytes_single_paddr_debug(osdev, buf, phy_addr, \
 						 dir, nbytes, __func__, \
 						 __LINE__)
+
+/**
+ * qdf_nbuf_track_map_single() - Add NBUF into DMA map tracker
+ * @osdev: Device handler
+ * @buf: NBUF
+ * @dir: DMA direction
+ *
+ * Return: QDF_STATUS
+ */
+#define qdf_nbuf_track_map_single(osdev, buf, dir) \
+	qdf_nbuf_track_map_single_debug(osdev, buf, dir, __func__, __LINE__)
+
+/**
+ * qdf_nbuf_track_map_single_debug() - Add NBUF into DMA map tracker
+ * @osdev: Device handler
+ * @buf: NBUF
+ * @dir: DMA direction
+ * @func: function name
+ * @line: line number
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS qdf_nbuf_track_map_single_debug(qdf_device_t osdev, qdf_nbuf_t buf,
+					   qdf_dma_dir_t dir, const char *func,
+					   uint32_t line);
+
 #else /* NBUF_MAP_UNMAP_DEBUG */
 
 static inline void qdf_nbuf_map_check_for_leaks(void) {}
@@ -1463,6 +1491,12 @@ qdf_nbuf_unmap_nbytes_single_paddr(qdf_device_t osdev, qdf_nbuf_t buf,
 {
 	__qdf_record_nbuf_nbytes(__qdf_nbuf_get_end_offset(buf), dir, false);
 	__qdf_mem_unmap_nbytes_single(osdev, phy_addr, dir, nbytes);
+}
+
+static inline QDF_STATUS
+qdf_nbuf_track_map_single(qdf_device_t osdev, qdf_nbuf_t buf, qdf_dma_dir_t dir)
+{
+	return QDF_STATUS_SUCCESS;
 }
 #endif /* NBUF_MAP_UNMAP_DEBUG */
 
@@ -4074,6 +4108,18 @@ static inline
 bool qdf_nbuf_data_is_ipv4_pkt(uint8_t *data)
 {
 	return __qdf_nbuf_data_is_ipv4_pkt(data);
+}
+
+/**
+ * qdf_nbuf_sock_is_valid_fullsock() - Check if socket is a full socket
+ * @buf: Network buffer
+ *
+ * Return: true if it is a full socket
+ */
+static inline
+bool qdf_nbuf_sock_is_valid_fullsock(qdf_nbuf_t buf)
+{
+	return __qdf_nbuf_sock_is_valid_fullsock(buf);
 }
 
 /**
