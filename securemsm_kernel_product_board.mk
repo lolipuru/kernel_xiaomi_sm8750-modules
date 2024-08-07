@@ -3,6 +3,7 @@
 ENABLE_SECUREMSM_DLKM := true
 ENABLE_SECUREMSM_QTEE_DLKM := true
 ENABLE_QCEDEV_FE := false
+ENABLE_SI_CORE_TEST := false
 
 ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
   ifeq ($(TARGET_KERNEL_DLKM_SECURE_MSM_OVERRIDE), false)
@@ -71,6 +72,10 @@ endif #ENABLE_SMMU_PROXY
 ifeq ($(ENABLE_SMCINVOKE_DLKM), true)
 PRODUCT_PACKAGES += smcinvoke_dlkm.ko
 endif #ENABLE_SMCINVOKE_DLKM
+
+ifeq ($(ENABLE_SI_CORE_TEST), true)
+PRODUCT_PACKAGES += si_core_test.ko
+endif #ENABLE_SI_CORE_TEST
 
 ifeq ($(ENABLE_TZLOG_DLKM), true)
 PRODUCT_PACKAGES += tz_log_dlkm.ko
