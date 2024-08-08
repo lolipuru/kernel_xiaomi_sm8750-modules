@@ -826,9 +826,9 @@ static s64 msm_vidc_adjust_h264_level(struct msm_vidc_inst *inst, u64 frame_size
 		{ V4L2_MPEG_VIDEO_H264_LEVEL_5_0,    589824,  22080,  135000,  110400 },
 		{ V4L2_MPEG_VIDEO_H264_LEVEL_5_1,    983040,  36864,  240000,  184320 },
 		{ V4L2_MPEG_VIDEO_H264_LEVEL_5_2,   2073600,  36864,  240000,  184320 },
-		{ V4L2_MPEG_VIDEO_H264_LEVEL_6_0,   4177920,  39264,  240000,  696320 },
-		{ V4L2_MPEG_VIDEO_H264_LEVEL_6_1,   8355840,  39264,  480000,  696320 },
-		{ V4L2_MPEG_VIDEO_H264_LEVEL_6_2,  16711680,  39264,  800000,  696320 },
+		{ V4L2_MPEG_VIDEO_H264_LEVEL_6_0,   4177920, 139264,  240000,  696320 },
+		{ V4L2_MPEG_VIDEO_H264_LEVEL_6_1,   8355840, 139264,  480000,  696320 },
+		{ V4L2_MPEG_VIDEO_H264_LEVEL_6_2,  16711680, 139264,  800000,  696320 },
 	};
 	s64 level = inst->capabilities[LEVEL].value;
 	int cnt;
@@ -913,9 +913,9 @@ int msm_vidc_adjust_level_tier(void *instance, struct v4l2_ctrl *ctrl)
 	struct v4l2_format *f;
 	struct msm_vidc_core *core = inst->core;
 
-	u64 target_bitrate, frame_size, frame_rate, samples_per_sec;
+	u64 frame_size, frame_rate, samples_per_sec;
 	u64 width, height, num_ref_frames = 0, dpb_size = 0;
-	s64 bitrate, bitrate_boost, adjust_level;
+	s64 bitrate, adjust_level;
 
 	f = &inst->fmts[OUTPUT_PORT];
 	width = f->fmt.pix_mp.width;
@@ -925,15 +925,9 @@ int msm_vidc_adjust_level_tier(void *instance, struct v4l2_ctrl *ctrl)
 	frame_rate = inst->capabilities[FRAME_RATE].value >> 16;
 	samples_per_sec = frame_size * frame_rate;
 
-	if (msm_vidc_get_parent_value(inst, LEVEL, BITRATE_BOOST,
-				      &bitrate_boost, __func__))
-		return -EINVAL;
-
 	if (msm_vidc_get_parent_value(inst, LEVEL, BIT_RATE,
 				      &bitrate, __func__))
 		return -EINVAL;
-
-	target_bitrate = (bitrate * bitrate_boost + 99) / 100;
 
 	adjust_level = inst->capabilities[LEVEL].value;
 
@@ -944,10 +938,10 @@ int msm_vidc_adjust_level_tier(void *instance, struct v4l2_ctrl *ctrl)
 		else
 			dpb_size = frame_size;
 		adjust_level = msm_vidc_adjust_h264_level(inst, frame_size, samples_per_sec,
-							  dpb_size, target_bitrate);
+							  dpb_size, bitrate);
 	} else if (inst->codec == MSM_VIDC_HEVC) {
 		adjust_level = msm_vidc_adjust_h265_level_tier(inst, frame_size, samples_per_sec,
-							       target_bitrate);
+							       bitrate);
 	}
 
 	msm_vidc_update_cap_value(inst, LEVEL, adjust_level, __func__);
