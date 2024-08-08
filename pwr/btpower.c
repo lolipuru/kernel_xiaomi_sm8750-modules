@@ -320,6 +320,12 @@ static struct pwr_data vreg_info_wcn786x = {
 	.platform_num_vregs = ARRAY_SIZE(platform_vregs_info_peach),
 };
 
+static struct pwr_data bt_vreg_info_wcn7750 = {
+	.compatible = "qcom,wcn7750-bt",
+	.bt_vregs = bt_vregs_info_qca6xx0,
+	.bt_num_vregs = ARRAY_SIZE(bt_vregs_info_qca6xx0),
+};
+
 static const struct of_device_id bt_power_match_table[] = {
 	{	.compatible = "qcom,qca6174", .data = &vreg_info_qca6174},
 	{	.compatible = "qcom,wcn3990", .data = &vreg_info_wcn399x},
@@ -332,6 +338,7 @@ static const struct of_device_id bt_power_match_table[] = {
 	{	.compatible = "qcom,bt-qca-converged", .data = &vreg_info_converged},
 	{	.compatible = "qcom,peach-bt", .data = &vreg_info_peach},
 	{	.compatible = "qcom,wcn786x", .data = &vreg_info_wcn786x},
+	{	.compatible = "qcom,wcn7750-bt", .data = &bt_vreg_info_wcn7750},
 	{},
 };
 
