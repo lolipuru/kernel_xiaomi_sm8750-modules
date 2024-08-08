@@ -7,7 +7,6 @@
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
 #include <linux/qseecom_api.h>
-#include <linux/compat.h>
 #include <linux/mman.h>
 #include <linux/module.h>
 #include <linux/device.h>
@@ -25,6 +24,7 @@
 #include <linux/interconnect.h>
 #include <linux/delay.h>
 #include "qseecom_32bit_impl.h"
+#include <linux/compat.h>
 
 
 static int get_qseecom_register_listener_req_32bit(
