@@ -5026,8 +5026,11 @@ long fastrpc_dev_unmap_dma(struct fastrpc_device *dev,
 			mutex_lock(&fl->map_mutex);
 		fastrpc_map_put(map);
 		mutex_unlock(&fl->map_mutex);
+		unlocked = 1;
 	}
 error:
+	if (!unlocked)
+		mutex_unlock(&fl->map_mutex);
 	spin_lock_irqsave(&cctx->lock, irq_flags);
 	if (fl) {
 		if (fl->state >= DSP_EXIT_START && fl->is_dma_invoke_pend) {
