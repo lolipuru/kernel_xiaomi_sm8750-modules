@@ -56,6 +56,7 @@
 #define CAM_IFE_CSID_CAP_SKIP_EPOCH_CFG                   BIT(6)
 #define CAM_IFE_CSID_CAP_MULTI_CTXT                       BIT(7)
 #define CAM_IFE_CSID_CAP_DEBUG_ERR_VEC                    BIT(8)
+#define CAM_IFE_CSID_CAP_TOP_MASK_ALL_IRQS                BIT(9)
 
 /*
  * CSID RX debug vc-dt capture

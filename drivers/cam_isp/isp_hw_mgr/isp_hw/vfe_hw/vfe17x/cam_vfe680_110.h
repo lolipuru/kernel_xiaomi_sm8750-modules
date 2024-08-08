@@ -45,10 +45,8 @@ static struct cam_vfe_top_ver4_reg_offset_common vfe680_110_top_common_reg = {
 	.core_cfg_2               = 0x0000002C,
 	.global_reset_cmd         = 0x00000030,
 	.diag_config              = 0x00000050,
-	.diag_sensor_status_0     = 0x00000054,
-	.diag_sensor_status_1     = 0x00000058,
-	.diag_frm_cnt_status_0    = 0x0000005C,
-	.diag_frm_cnt_status_1    = 0x00000060,
+	.diag_sensor_status       = {0x00000054, 0x00000058},
+	.diag_frm_cnt_status      = {0x0000005C, 0x00000060},
 	.ipp_violation_status     = 0x00000064,
 	.pdaf_violation_status    = 0x00000404,
 	.core_cfg_3               = 0x00000068,
@@ -123,6 +121,8 @@ static struct cam_vfe_top_ver4_hw_info vfe680_110_top_hw_info = {
 	.num_pdaf_violation_errors       = ARRAY_SIZE(vfe680_pdaf_violation_desc),
 	.pdaf_violation_desc             = vfe680_pdaf_violation_desc,
 	.top_debug_reg_info              = &vfe680_dbg_reg_info,
+	.diag_sensor_info                = vfe680_diag_sensor_field,
+	.diag_frame_info                 = vfe680_diag_frame_field,
 };
 
 static struct cam_vfe_hw_info cam_vfe680_110_hw_info = {

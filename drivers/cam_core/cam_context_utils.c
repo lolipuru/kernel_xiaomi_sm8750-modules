@@ -593,7 +593,7 @@ int32_t cam_context_prepare_dev_to_hw(struct cam_context *ctx,
 	if (cam_packet_util_validate_packet(packet, remain_len)) {
 		CAM_ERR(CAM_CTXT, "Invalid packet params");
 		rc = -EINVAL;
-		goto free_req;
+		goto free_packet;
 	}
 
 	if (packet->header.request_id <= ctx->last_flush_req) {
@@ -601,7 +601,7 @@ int32_t cam_context_prepare_dev_to_hw(struct cam_context *ctx,
 			"request %lld has been flushed, reject packet",
 			packet->header.request_id);
 		rc = -EBADR;
-		goto free_req;
+		goto free_packet;
 	}
 
 	if (packet->header.request_id > ctx->last_flush_req)
@@ -633,7 +633,7 @@ int32_t cam_context_prepare_dev_to_hw(struct cam_context *ctx,
 			"[%s][%d] Prepare config packet failed in HW layer",
 			ctx->dev_name, ctx->ctx_id);
 		rc = -EFAULT;
-		goto free_req;
+		goto free_packet;
 	}
 
 	req->num_hw_update_entries = cfg.num_hw_update_entries;
@@ -726,11 +726,10 @@ put_ref:
 			CAM_ERR(CAM_CTXT, "Failed to put ref of fence %d",
 				req->out_map_entries[i].sync_id);
 	}
+free_packet:
+	cam_common_mem_free(packet);
 free_req:
 	cam_smmu_buffer_tracker_putref(&req->buf_tracker);
-
-	if (packet)
-		cam_common_mem_free(packet);
 	req->packet = NULL;
 	req->ctx = NULL;
 

@@ -50,6 +50,7 @@ struct cam_vfe_top_ver4_priv {
 	struct cam_vfe_top_ver4_perf_counter_cfg     perf_counters[CAM_VFE_PERF_CNT_MAX];
 	struct cam_vfe_top_ver4_prim_sof_ts_reg_addr sof_ts_reg_addr;
 	bool                                         enable_ife_frame_irqs;
+	uint64_t                                     diag_config_debug_val_0;
 };
 
 enum cam_vfe_top_ver4_fsm_state {
@@ -720,10 +721,107 @@ static void cam_vfe_top_ver4_print_bayer_violation_info(
 		CAM_ERR(CAM_ISP, "Bayer Violation status 0x%x", val);
 }
 
+static inline bool cam_vfe_is_diag_sensor_select(uint32_t diag_cfg,
+	struct cam_vfe_mux_ver4_data *vfe_priv)
+{
+	uint32_t val;
+
+	val = diag_cfg & (vfe_priv->reg_data->diag_sensor_sel_mask);
+
+	return (vfe_priv->reg_data->is_mc_path) ? (val <= CAM_ISP_MULTI_CTXT_MAX) :
+		(val != 0);
+}
+
+static void cam_vfe_top_ver4_print_diag_sensor_frame_count_info(
+	struct cam_vfe_mux_ver4_data *vfe_priv,
+	struct cam_vfe_top_irq_evt_payload *payload, uint32_t desc_idx,
+	uint32_t res_id, bool is_error)
+{
+	struct cam_vfe_top_ver4_priv           *top_priv;
+	struct cam_hw_soc_info                 *soc_info;
+	struct cam_vfe_top_ver4_common_data    *common_data;
+	struct cam_vfe_top_ver4_diag_reg_info  *field;
+	void __iomem                           *base;
+	uint32_t                                val, shift, diag_cfg0, diag_cfg1 = 0;
+	int                                     i, j;
+	uint8_t                                 log_buf[1024];
+	size_t                                  len = 0;
+
+	top_priv    =  vfe_priv->top_priv;
+	common_data = &top_priv->common_data;
+	soc_info    =  top_priv->top_common.soc_info;
+	base        =  soc_info->reg_map[VFE_CORE_BASE_IDX].mem_base;
+
+	if (is_error) {
+		CAM_ERR(CAM_ISP, "VFE[%u] %s occurred at [%llu: %09llu]",
+			soc_info->index,
+			common_data->hw_info->top_err_desc[desc_idx].err_name,
+			payload->ts.mono_time.tv_sec,
+			payload->ts.mono_time.tv_nsec);
+		CAM_ERR(CAM_ISP, "%s", common_data->hw_info->top_err_desc[desc_idx].desc);
+	}
+
+	if (!(top_priv->diag_config_debug_val_0 & CAMIF_DEBUG_ENABLE_SENSOR_DIAG_STATUS))
+		return;
+
+	diag_cfg0 = cam_io_r_mb(base + common_data->common_reg->diag_config);
+
+	if (common_data->common_reg->diag_config_1)
+		diag_cfg1 = cam_io_r_mb(base + common_data->common_reg->diag_config_1);
+
+	if (!cam_vfe_is_diag_sensor_select(diag_cfg0, vfe_priv))
+		goto print_frame_stats;
+
+	for (i = 0; i < CAM_VFE_DIAG_SENSOR_STATUS_MAX; i++) {
+		if (!common_data->common_reg->diag_sensor_status[i])
+			break;
+
+		val = cam_io_r_mb(base + common_data->common_reg->diag_sensor_status[i]);
+
+		for (j = 0; j < common_data->hw_info->diag_sensor_info[i].num_fields; j++) {
+			field = &common_data->hw_info->diag_sensor_info[i].field[j];
+			shift = ffs(field->bitmask) - 1;
+			CAM_INFO_BUF(CAM_ISP, log_buf, 1024, &len, "%s: 0x%x, ",
+				field->name, ((val & field->bitmask) >> shift));
+		}
+
+		CAM_INFO(CAM_ISP, "VFE[%u] res_id: %d diag_sensor_status_%d: %s",
+			soc_info->index, res_id, i, log_buf);
+
+		len = 0;
+	}
+
+print_frame_stats:
+
+	if (!(diag_cfg0 && vfe_priv->reg_data->diag_frm_count_mask_0) &&
+		(!diag_cfg1 || !(diag_cfg1 & vfe_priv->reg_data->diag_frm_count_mask_1)))
+		return;
+
+	for (i = 0; i < CAM_VFE_DIAG_FRAME_COUNT_STATUS_MAX; i++) {
+		if (!common_data->common_reg->diag_frm_cnt_status[i])
+			break;
+
+		val = cam_io_r_mb(base + common_data->common_reg->diag_frm_cnt_status[i]);
+
+		for (j = 0; j < common_data->hw_info->diag_frame_info[i].num_fields; j++) {
+			field = &common_data->hw_info->diag_frame_info[i].field[j];
+			shift = ffs(field->bitmask) - 1;
+			CAM_INFO_BUF(CAM_ISP, log_buf, 1024, &len, "%s: 0x%x, ",
+				field->name, ((val & field->bitmask) >> shift));
+		}
+
+		CAM_INFO(CAM_ISP, "VFE[%u] res_id: %d diag_frame_count_status_%d: %s",
+			soc_info->index, res_id, i, log_buf);
+
+		len = 0;
+	}
+
+}
+
 static void cam_vfe_top_ver4_print_top_irq_error(
 	struct cam_vfe_mux_ver4_data *vfe_priv,
 	struct cam_vfe_top_irq_evt_payload *payload,
-	uint32_t irq_status)
+	uint32_t irq_status, uint32_t res_id)
 {
 	uint32_t                                    i = 0;
 	struct cam_vfe_top_ver4_priv               *top_priv;
@@ -746,6 +844,12 @@ static void cam_vfe_top_ver4_print_top_irq_error(
 
 			if (irq_status & vfe_priv->reg_data->bayer_violation_mask) {
 				cam_vfe_top_ver4_print_bayer_violation_info(top_priv, payload, i);
+				continue;
+			}
+
+			if (irq_status & vfe_priv->reg_data->diag_violation_mask) {
+				cam_vfe_top_ver4_print_diag_sensor_frame_count_info(vfe_priv,
+					payload, i, res_id, true);
 				continue;
 			}
 
@@ -1284,6 +1388,21 @@ int cam_vfe_top_ver4_start(void *device_priv,
 				hw_info->soc_info.index, (i + 1),
 				top_priv->perf_counters[i].perf_counter_val);
 		}
+
+		if (top_priv->diag_config_debug_val_0 & CAMIF_DEBUG_ENABLE_SENSOR_DIAG_STATUS) {
+			CAM_DBG(CAM_ISP, "Setting diag_cfg register on VFE%u to: 0x%llx",
+				hw_info->soc_info.index, top_priv->diag_config_debug_val_0);
+
+			cam_io_w_mb((uint32_t)top_priv->diag_config_debug_val_0, soc_info->reg_map[
+				VFE_CORE_BASE_IDX].mem_base +
+				top_priv->common_data.common_reg->diag_config);
+
+			if (top_priv->common_data.common_reg->diag_config_1 &&
+				(top_priv->diag_config_debug_val_0 >> 32))
+				cam_io_w_mb((uint32_t)(top_priv->diag_config_debug_val_0 >> 32),
+					soc_info->reg_map[VFE_CORE_BASE_IDX].mem_base +
+					top_priv->common_data.common_reg->diag_config_1);
+		}
 	} else {
 		CAM_ERR(CAM_ISP, "VFE:%u HW not powered up", hw_info->soc_info.index);
 		rc = -EPERM;
@@ -1299,6 +1418,7 @@ int cam_vfe_top_ver4_stop(void *device_priv,
 	struct cam_vfe_top_ver4_priv            *top_priv;
 	struct cam_isp_resource_node            *mux_res;
 	struct cam_hw_soc_info                  *soc_info = NULL;
+	void __iomem                            *base;
 	int i, rc = 0;
 
 	if (!device_priv || !stop_args) {
@@ -1309,6 +1429,7 @@ int cam_vfe_top_ver4_stop(void *device_priv,
 	top_priv = (struct cam_vfe_top_ver4_priv   *)device_priv;
 	soc_info = top_priv->top_common.soc_info;
 	mux_res = (struct cam_isp_resource_node *)stop_args;
+	base    =  soc_info->reg_map[VFE_CORE_BASE_IDX].mem_base;
 
 	if (mux_res->res_id < CAM_ISP_HW_VFE_IN_MAX) {
 		rc = mux_res->stop(mux_res);
@@ -1337,10 +1458,12 @@ int cam_vfe_top_ver4_stop(void *device_priv,
 	for (i = 0; i < top_priv->common_data.common_reg->num_perf_counters; i++) {
 		if (top_priv->perf_counters[i].dump_counter)
 			cam_io_w_mb(0x0,
-				soc_info->reg_map[VFE_CORE_BASE_IDX].mem_base +
+				base +
 				top_priv->common_data.common_reg->perf_count_reg[i].perf_count_cfg);
 		top_priv->perf_counters[i].dump_counter = false;
 	}
+
+	top_priv->diag_config_debug_val_0 = 0;
 
 	if (top_priv->common_data.hw_info->num_pdaf_lcr_res)
 		cam_io_w(1, soc_info->reg_map[VFE_CORE_BASE_IDX].mem_base +
@@ -1772,6 +1895,7 @@ int cam_vfe_top_ver4_process_cmd(void *device_priv, uint32_t cmd_type,
 					debug_cfg->vfe_perf_counter_val[i];
 
 		top_priv->enable_ife_frame_irqs = debug_cfg->enable_ife_frame_irqs;
+		top_priv->diag_config_debug_val_0 = debug_cfg->diag_config;
 	}
 		break;
 	case CAM_ISP_HW_CMD_GET_SET_PRIM_SOF_TS_ADDR: {
@@ -2181,7 +2305,7 @@ static int cam_vfe_handle_irq_bottom_half(void *handler_priv,
 
 
 		cam_vfe_top_ver4_print_top_irq_error(vfe_priv, payload,
-			irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS0]);
+			irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS0], vfe_res->res_id);
 
 		cam_vfe_top_ver4_print_error_irq_timestamps(vfe_priv,
 			irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS0]);
@@ -2191,11 +2315,12 @@ static int cam_vfe_handle_irq_bottom_half(void *handler_priv,
 		ret = CAM_VFE_IRQ_STATUS_ERR;
 	}
 
-	if (vfe_priv->camif_debug & CAMIF_DEBUG_ENABLE_SENSOR_DIAG_STATUS) {
-		CAM_DBG(CAM_ISP, "VFE:%u VFE_DIAG_SENSOR_STATUS: 0x%X",
-			evt_info.hw_idx, vfe_priv->mem_base,
-			cam_io_r(vfe_priv->mem_base +
-			vfe_priv->common_reg->diag_sensor_status_0));
+	if ((vfe_priv->top_priv->diag_config_debug_val_0 &
+		CAMIF_DEBUG_ENABLE_SENSOR_DIAG_STATUS) &&
+		(irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS0] &
+		vfe_priv->reg_data->sof_irq_mask)) {
+		cam_vfe_top_ver4_print_diag_sensor_frame_count_info(vfe_priv,
+			payload, 0, vfe_res->res_id, false);
 	}
 
 	/* Perf counter dump */
@@ -2343,15 +2468,6 @@ skip_core_cfg:
 	rsrc_data->enable_sof_irq_debug = false;
 	rsrc_data->irq_debug_cnt = 0;
 
-	if (rsrc_data->camif_debug &
-		CAMIF_DEBUG_ENABLE_SENSOR_DIAG_STATUS) {
-		val = cam_io_r_mb(rsrc_data->mem_base +
-			rsrc_data->common_reg->diag_config);
-		val |= rsrc_data->reg_data->enable_diagnostic_hw;
-		cam_io_w_mb(val, rsrc_data->mem_base +
-			rsrc_data->common_reg->diag_config);
-	}
-
 	/* Skip subscribing to timing irqs in these scenarios:
 	 * Debug config is not enabled for IFE frame timing IRQs, and
 	 *     1. Resource is dual IFE slave
@@ -2480,14 +2596,6 @@ static int cam_vfe_resource_stop(
 skip_core_decfg:
 	if (vfe_res->res_state == CAM_ISP_RESOURCE_STATE_STREAMING)
 		vfe_res->res_state = CAM_ISP_RESOURCE_STATE_RESERVED;
-
-	val = cam_io_r_mb(vfe_priv->mem_base +
-		vfe_priv->common_reg->diag_config);
-	if (val & vfe_priv->reg_data->enable_diagnostic_hw) {
-		val &= ~vfe_priv->reg_data->enable_diagnostic_hw;
-		cam_io_w_mb(val, vfe_priv->mem_base +
-			vfe_priv->common_reg->diag_config);
-	}
 
 	if (vfe_priv->frame_irq_handle) {
 		cam_irq_controller_unsubscribe_irq(
