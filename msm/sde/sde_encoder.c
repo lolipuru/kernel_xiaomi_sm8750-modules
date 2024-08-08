@@ -1590,7 +1590,7 @@ static void _sde_encoder_update_vsync_source(struct sde_encoder_virt *sde_enc,
 		return;
 	}
 
-	sde_conn = to_sde_connector(sde_enc->cur_master->connector);
+	sde_conn = to_sde_connector(sde_enc->phys_encs[0]->connector);
 
 	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_CMD_MODE) ||
 			disp_info->vrr_caps.arp_support) {
