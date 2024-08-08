@@ -1159,10 +1159,12 @@ static int cam_cpas_apply_smart_qos(
 	struct cam_cpas_tree_node *niu_node;
 	struct cam_camnoc_info *camnoc_info;
 	uint8_t i;
-	int32_t reg_indx;
+	int32_t reg_indx, cam_qos_cnt = 0, ret = 0;
+	uint32_t reg_base_mask;
+	struct qcom_scm_camera_qos scm_buf[QCOM_SCM_CAMERA_MAX_QOS_CNT] = {0};
 
 	if (cpas_core->smart_qos_dump) {
-		CAM_INFO(CAM_PERF, "Printing SmartQos values before update");
+		CAM_INFO(CAM_PERF, "Printing SmartQoS values before update");
 		cam_cpas_print_smart_qos_priority(cpas_hw);
 	}
 
@@ -1170,28 +1172,69 @@ static int cam_cpas_apply_smart_qos(
 	camnoc_info = cpas_core->camnoc_info[cpas_core->camnoc_rt_idx];
 	reg_indx = cpas_core->regbase_index[camnoc_info->reg_base];
 
+	switch (camnoc_info->reg_base) {
+	case CAM_CPAS_REG_CAMNOC:
+		reg_base_mask = (CAM_CAMNOC_HW_COMBINED_MASK << CAM_CAMNOC_HW_TYPE_SHIFT);
+		break;
+	case CAM_CPAS_REG_CAMNOC_RT:
+		reg_base_mask = (CAM_CAMNOC_HW_RT_MASK << CAM_CAMNOC_HW_TYPE_SHIFT);
+		break;
+	case CAM_CPAS_REG_CAMNOC_NRT:
+		reg_base_mask = (CAM_CAMNOC_HW_NRT_MASK << CAM_CAMNOC_HW_TYPE_SHIFT);
+		break;
+	default:
+		CAM_ERR(CAM_CPAS, "Reg base %d is not supported in updating smart QoS",
+			camnoc_info->reg_base);
+		return -EINVAL;
+	}
+
 	for (i = 0; i < soc_private->smart_qos_info->num_rt_wr_nius; i++) {
 		niu_node = soc_private->smart_qos_info->rt_wr_niu_node[i];
 
 		if (niu_node->curr_priority_high != niu_node->applied_priority_high) {
-			cam_io_w_mb(niu_node->curr_priority_high,
-				soc_info->reg_map[reg_indx].mem_base +
-				niu_node->pri_lut_high_offset);
+			if (!soc_private->enable_secure_qos_update) {
+				cam_io_w_mb(niu_node->curr_priority_high,
+					soc_info->reg_map[reg_indx].mem_base +
+					niu_node->pri_lut_high_offset);
+			} else {
+				scm_buf[cam_qos_cnt].offset =
+					niu_node->pri_lut_high_offset | reg_base_mask;
+				scm_buf[cam_qos_cnt].val = niu_node->curr_priority_high;
+				cam_qos_cnt++;
+			}
 
 			niu_node->applied_priority_high = niu_node->curr_priority_high;
 		}
 
 		if (niu_node->curr_priority_low != niu_node->applied_priority_low) {
-			cam_io_w_mb(niu_node->curr_priority_low,
-				soc_info->reg_map[reg_indx].mem_base +
-				niu_node->pri_lut_low_offset);
+			if (!soc_private->enable_secure_qos_update) {
+				cam_io_w_mb(niu_node->curr_priority_low,
+					soc_info->reg_map[reg_indx].mem_base +
+					niu_node->pri_lut_low_offset);
+			} else {
+				scm_buf[cam_qos_cnt].offset =
+					niu_node->pri_lut_low_offset | reg_base_mask;
+				scm_buf[cam_qos_cnt].val = niu_node->curr_priority_low;
+				cam_qos_cnt++;
+			}
 
 			niu_node->applied_priority_low = niu_node->curr_priority_low;
 		}
 	}
 
+	if (soc_private->enable_secure_qos_update && cam_qos_cnt) {
+		CAM_DBG(CAM_PERF, "Updating secure camera smartQoS count: %d", cam_qos_cnt);
+		ret = cam_update_camnoc_qos_settings(CAM_QOS_UPDATE_TYPE_SMART,
+			cam_qos_cnt, scm_buf);
+		if (ret) {
+			CAM_ERR(CAM_PERF, "Secure camera smartQoS update failed: %d", ret);
+			return ret;
+		}
+		CAM_DBG(CAM_PERF, "Updated secure camera smartQoS");
+	}
+
 	if (cpas_core->smart_qos_dump) {
-		CAM_INFO(CAM_PERF, "Printing SmartQos values after update");
+		CAM_INFO(CAM_PERF, "Printing SmartQoS values after update");
 		cam_cpas_print_smart_qos_priority(cpas_hw);
 	}
 
