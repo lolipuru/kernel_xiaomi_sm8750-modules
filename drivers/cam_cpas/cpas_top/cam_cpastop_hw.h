@@ -588,12 +588,14 @@ struct cam_cpas_secure_info {
  * @hw_cap_info: CPAS Hardware capability information
  * @hw_caps_secure_info: CPAS Hardware secure information
  * @num_qchannel: Number of qchannel
+ * @subpart_info: Subpart info
  */
 struct cam_cpas_info {
 	struct cam_cpas_camnoc_qchannel *qchannel_info[CAM_CAMNOC_QCHANNEL_MAX];
 	struct cam_cpas_hw_cap_info hw_caps_info;
 	uint8_t num_qchannel;
 	struct cam_cpas_secure_info *hw_caps_secure_info;
+	struct cam_cpas_subpart_info *subpart_info;
 };
 
 /**

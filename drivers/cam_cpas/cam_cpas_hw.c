@@ -35,24 +35,6 @@ static void cam_cpas_dump_monitor_array(
 	struct cam_hw_info *cpas_hw);
 static int cam_cpas_log_vote(struct cam_hw_info *cpas_hw, bool ddr_only);
 
-static struct cam_cpas_subpart_info g_cam_cpas_camera_subpart_info = {
-	.num_bits = 8,
-	/*
-	 * Below fuse indexing is based on software fuse definition which is in SMEM and provided
-	 * by XBL team.
-	 */
-	.hw_bitmap_mask = {
-		{CAM_CPAS_CAM_FUSE, BIT(0)},
-		{CAM_CPAS_ISP_FUSE, BIT(0)},
-		{CAM_CPAS_ISP_FUSE, BIT(1)},
-		{CAM_CPAS_ISP_FUSE, BIT(2)},
-		{CAM_CPAS_SFE_FUSE, BIT(0)},
-		{CAM_CPAS_SFE_FUSE, BIT(1)},
-		{CAM_CPAS_SFE_FUSE, BIT(2)},
-		{CAM_CPAS_CUSTOM_FUSE, BIT(0)},
-	}
-};
-
 static void cam_cpas_process_drv_bw_overrides(
 	struct cam_cpas_bus_client *bus_client, uint64_t *high_ab, uint64_t *high_ib,
 	uint64_t *low_ab, uint64_t *low_ib, const struct cam_cpas_debug_settings *cpas_settings)
@@ -5316,7 +5298,6 @@ int cam_cpas_hw_probe(struct platform_device *pdev,
 	if (rc)
 		goto disable_soc_res;
 
-	cpas_core->cam_subpart_info = &g_cam_cpas_camera_subpart_info;
 
 	rc = cam_get_subpart_info(&soc_private->part_info, CAM_CPAS_CAMERA_INSTANCES);
 	if (rc) {
