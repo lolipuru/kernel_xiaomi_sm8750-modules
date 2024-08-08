@@ -1456,6 +1456,36 @@ static void dp_ctrl_off(struct dp_ctrl *dp_ctrl)
 	DP_DEBUG("DP off done\n");
 }
 
+static int dp_ctrl_reset(struct dp_ctrl *dp_ctrl, bool shallow)
+{
+	int rc = 0;
+	bool mst_mode;
+	struct dp_ctrl_private *ctrl;
+
+	if (!dp_ctrl) {
+		rc = -EINVAL;
+		goto end;
+	}
+
+	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
+
+	if (!ctrl->power_on) {
+		DP_DEBUG("please power on ctrl before do reset");
+		goto end;
+	}
+
+	mst_mode = ctrl->mst_mode;
+
+	dp_ctrl_off(dp_ctrl);
+
+	rc = dp_ctrl_on(dp_ctrl, mst_mode, ctrl->panel->fec_en,
+		ctrl->panel->dsc_en, shallow);
+
+	DP_DEBUG("ctrl reset done, rc:%d\n", rc);
+end:
+	return rc;
+}
+
 static void dp_ctrl_set_mst_channel_info(struct dp_ctrl *dp_ctrl,
 		enum dp_stream_id strm,
 		u32 start_slot, u32 tot_slots)
@@ -1509,6 +1539,18 @@ void dp_ctrl_set_sim_mode(struct dp_ctrl *dp_ctrl, bool en)
 	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
 	ctrl->sim_mode = en;
 	DP_INFO("sim_mode=%d\n", ctrl->sim_mode);
+}
+
+void dp_ctrl_set_lane_rate(struct dp_ctrl *dp_ctrl, u32 bw_code)
+{
+	struct dp_ctrl_private *ctrl;
+
+	if (!dp_ctrl  || !is_link_rate_valid(bw_code))
+		return;
+
+	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
+	ctrl->link->link_params.bw_code = bw_code;
+	ctrl->panel->link_info.rate = drm_dp_bw_code_to_link_rate(bw_code);
 }
 
 int dp_ctrl_setup_misr(struct dp_ctrl *dp_ctrl)
@@ -1576,6 +1618,7 @@ struct dp_ctrl *dp_ctrl_get(struct dp_ctrl_in *in)
 	dp_ctrl->deinit    = dp_ctrl_host_deinit;
 	dp_ctrl->on        = dp_ctrl_on;
 	dp_ctrl->off       = dp_ctrl_off;
+	dp_ctrl->reset     = dp_ctrl_reset;
 	dp_ctrl->abort     = dp_ctrl_abort;
 	dp_ctrl->isr       = dp_ctrl_isr;
 	dp_ctrl->link_maintenance = dp_ctrl_link_maintenance;
@@ -1587,6 +1630,7 @@ struct dp_ctrl *dp_ctrl_get(struct dp_ctrl_in *in)
 	dp_ctrl->set_sim_mode = dp_ctrl_set_sim_mode;
 	dp_ctrl->setup_misr = dp_ctrl_setup_misr;
 	dp_ctrl->read_misr = dp_ctrl_read_misr;
+	dp_ctrl->set_lane_rate = dp_ctrl_set_lane_rate;
 
 	return dp_ctrl;
 error:

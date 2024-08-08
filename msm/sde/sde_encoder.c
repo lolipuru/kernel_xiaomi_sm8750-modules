@@ -778,6 +778,7 @@ void sde_encoder_destroy(struct drm_encoder *drm_enc)
 			phys->ops.destroy(phys);
 			--sde_enc->num_phys_encs;
 			sde_enc->phys_vid_encs[i] = NULL;
+			sde_enc->phys_encs[i] = NULL;
 		}
 
 		phys = sde_enc->phys_cmd_encs[i];
@@ -785,6 +786,7 @@ void sde_encoder_destroy(struct drm_encoder *drm_enc)
 			phys->ops.destroy(phys);
 			--sde_enc->num_phys_encs;
 			sde_enc->phys_cmd_encs[i] = NULL;
+			sde_enc->phys_encs[i] = NULL;
 		}
 
 		phys = sde_enc->phys_encs[i];
@@ -6035,10 +6037,6 @@ void _sde_encoder_delay_kickoff_processing(struct sde_encoder_virt *sde_enc)
 	drm_conn = sde_enc->cur_master->connector;
 	ept = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_EPT);
 	if (!ept)
-		return;
-
-	if (sde_enc->disp_info.vrr_caps.vrr_support &&
-			!sde_kms->catalog->early_EPT_handling)
 		return;
 
 	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);

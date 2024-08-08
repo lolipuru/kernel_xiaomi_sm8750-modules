@@ -2465,6 +2465,59 @@ end:
 	return rc;
 }
 
+static int dp_display_get_mode_bit_rate(struct dp_display_mode *mode,
+		u32 lane_count, u32 *out_bit_rate)
+{
+	u32 mode_bit_rate = 0;
+
+	if (!mode || !out_bit_rate || (lane_count == 0)) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	mode_bit_rate = mode->timing.pixel_clk_khz * mode->timing.bpp / 8;
+	mode_bit_rate /=  lane_count;
+
+	*out_bit_rate = mode_bit_rate;
+
+	return 0;
+}
+
+static int dp_display_adjust_mode_link_bw(struct dp_display *dp_display,
+		struct dp_display_mode *mode)
+{
+	struct dp_display_private *dp;
+	u32 mode_bit_rate = 0;
+	int rc = 0;
+
+	if (!dp_display) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	if (dp->dp_display.is_edp)
+		return 0;
+
+	rc = dp_display_get_mode_bit_rate(mode, dp->link->link_params.lane_count,
+		&mode_bit_rate);
+	if (rc) {
+		DP_ERR("fail to get mode bit rate\n");
+		goto end;
+	}
+
+	if (mode_bit_rate < drm_dp_bw_code_to_link_rate(DP_LINK_BW_1_62)) {
+		dp->ctrl->set_lane_rate(dp->ctrl, DP_LINK_BW_1_62);
+		rc = dp->ctrl->reset(dp->ctrl, false);
+		if (rc)
+			DP_WARN("dp ctrl reset fails, rc:%d\n", rc);
+	}
+
+end:
+	return rc;
+}
+
 static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 		struct dp_display_mode *mode)
 {
@@ -2502,6 +2555,16 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 		dp->mst.cbs.set_mst_mode_params(&dp->dp_display, mode);
 
 	dp_panel->pinfo = mode->timing;
+
+	/*
+	 * In the current implementation of TU calculator, it is observed that smaller resolutions
+	 * running on lower pixel clock might lead to non-optimal TU values. In these cases where
+	 * pclk will fit in RBR bw, reduce the bw to RBR and re-train the link.
+	 * TO DO: when latest TU calculator is adapted, this implementation need to be re-looked.
+	 */
+	if (!dp->mst.mst_active)
+		dp_display_adjust_mode_link_bw(dp_display, mode);
+
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
@@ -3396,7 +3459,10 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 				dp_mode->capabilities);
 	}
 
-	dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
+	rc = dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
+	if (rc == -EAGAIN) {
+		dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
+	}
 }
 
 static int dp_display_config_hdr(struct dp_display *dp_display, void *panel,
