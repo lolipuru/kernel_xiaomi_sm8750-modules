@@ -4350,7 +4350,12 @@ static void sde_encoder_vblank_callback(struct drm_encoder *drm_enc,
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 	phy_enc->last_vsync_timestamp = ts;
+
+	if (phy_enc->ops.is_master && phy_enc->ops.is_master(phy_enc))
+		atomic_inc(&sde_enc->vsync_cnt);
+	/* update count for debugfs */
 	atomic_inc(&phy_enc->vsync_cnt);
+
 	if (sde_enc->crtc_vblank_cb)
 		sde_enc->crtc_vblank_cb(sde_enc->crtc_vblank_cb_data, ts);
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
@@ -4361,7 +4366,7 @@ static void sde_encoder_vblank_callback(struct drm_encoder *drm_enc,
 	if (phy_enc->sde_kms->debugfs_hw_fence)
 		sde_encoder_hw_fence_status(phy_enc->sde_kms, sde_enc->crtc, phy_enc->hw_ctl);
 
-	SDE_EVT32(DRMID(drm_enc), ktime_to_us(ts), atomic_read(&phy_enc->vsync_cnt));
+	SDE_EVT32(DRMID(drm_enc), ktime_to_us(ts), atomic_read(&sde_enc->vsync_cnt));
 	SDE_ATRACE_END("encoder_vblank_callback");
 }
 
@@ -4682,6 +4687,8 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	struct sde_encoder_virt *sde_enc;
 	int pend_ret_fence_cnt;
 	struct sde_connector *c_conn;
+	bool is_dp;
+	bool is_vid_mode;
 
 	if (!drm_enc || !phys) {
 		SDE_ERROR("invalid argument(s), drm_enc %d, phys_enc %d\n",
@@ -4711,8 +4718,21 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		return;
 	}
 
+	is_dp = phys->hw_intf && phys->hw_intf->cap->type == INTF_DP;
+	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
+
 	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
 		sde_encoder_check_prog_fetch_region(drm_enc);
+
+	/*
+	 * Cesta blocks ctl flush in hardware until cesta vote is processed, but
+	 * intf and periph flushes are not similarly blocked. Poll cesta's handshake
+	 * status until the vote is processed, in case of intf or periph flush
+	 */
+	if (sde_enc->cesta_client && phys->hw_intf && is_vid_mode && (is_dp ||
+			ctl->ops.bitmask_has_bit(ctl, SDE_HW_FLUSH_PERIPH, phys->hw_intf->idx) ||
+			ctl->ops.bitmask_has_bit(ctl, SDE_HW_FLUSH_INTF, phys->hw_intf->idx)))
+		sde_cesta_poll_handshake(sde_enc->cesta_client);
 
 	/* update pending counts and trigger kickoff ctl flush atomically */
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
@@ -4727,8 +4747,7 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 
 	pend_ret_fence_cnt = atomic_read(&phys->pending_retire_fence_cnt);
 
-	if (phys->hw_intf && phys->hw_intf->cap->type == INTF_DP &&
-			ctl->ops.update_bitmask) {
+	if (is_dp && ctl->ops.update_bitmask) {
 		/* perform peripheral flush on every frame update for dp dsc */
 		if (phys->comp_type == MSM_DISPLAY_COMPRESSION_DSC &&
 				phys->comp_ratio && c_conn->ops.update_pps)
@@ -7239,6 +7258,7 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	phys_params.parent_ops = parent_ops;
 	phys_params.enc_spinlock = &sde_enc->enc_spinlock;
 	phys_params.vblank_ctl_lock = &sde_enc->vblank_ctl_lock;
+	atomic_set(&sde_enc->vsync_cnt, 0);
 
 	SDE_DEBUG("\n");
 
@@ -7662,7 +7682,6 @@ enum sde_intf_mode sde_encoder_get_intf_mode(struct drm_encoder *encoder)
 u32 sde_encoder_get_frame_count(struct drm_encoder *encoder)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
-	struct sde_encoder_phys *phys;
 
 	if (!encoder) {
 		SDE_ERROR("invalid encoder\n");
@@ -7670,9 +7689,7 @@ u32 sde_encoder_get_frame_count(struct drm_encoder *encoder)
 	}
 	sde_enc = to_sde_encoder_virt(encoder);
 
-	phys = sde_enc->cur_master;
-
-	return phys ? atomic_read(&phys->vsync_cnt) : 0;
+	return atomic_read(&sde_enc->vsync_cnt);
 }
 
 bool sde_encoder_get_vblank_timestamp(struct drm_encoder *encoder,
@@ -8088,6 +8105,8 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
 		return;
 	}
 
+	if (!sde_enc->cur_master)
+		return;
 	connector = sde_enc->cur_master->connector;
 	if (!connector)
 		return;

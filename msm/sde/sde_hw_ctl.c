@@ -749,6 +749,25 @@ static inline int sde_hw_ctl_update_bitmask_v1(struct sde_hw_ctl *ctx,
 	return 0;
 }
 
+static inline bool sde_hw_ctl_bitmask_has_bit_v1(struct sde_hw_ctl *ctx,
+		enum ctl_hw_flush_type type, u32 blk_idx)
+{
+	const struct ctl_hw_flush_cfg *cfg;
+
+	if (!ctx || !(type < SDE_HW_FLUSH_MAX))
+		return false;
+
+	cfg = &ctl_hw_flush_cfg_tbl_v1[type];
+
+	if ((blk_idx <= SDE_NONE) || (blk_idx >= cfg->blk_max)) {
+		SDE_ERROR("Unsupported hw idx, type:%d, blk_idx:%d, blk_max:%d",
+				type, blk_idx, cfg->blk_max);
+		return false;
+	}
+
+	return ctx->flush.pending_flush_mask & cfg->flush_idx;
+}
+
 static inline void sde_hw_ctl_update_dnsc_blur_bitmask(struct sde_hw_ctl *ctx,
 		u32 blk_idx, bool enable)
 {
@@ -1640,6 +1659,7 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		ops->update_intf_cfg = sde_hw_ctl_update_intf_cfg;
 
 		ops->update_bitmask = sde_hw_ctl_update_bitmask_v1;
+		ops->bitmask_has_bit = sde_hw_ctl_bitmask_has_bit_v1;
 		ops->update_dnsc_blur_bitmask = sde_hw_ctl_update_dnsc_blur_bitmask;
 		ops->get_ctl_intf = sde_hw_ctl_get_intf_v1;
 		ops->update_ctl_top_group = sde_hw_ctl_update_top_group;

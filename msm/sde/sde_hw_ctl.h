@@ -491,6 +491,14 @@ struct sde_hw_ctl_ops {
 			enum ctl_hw_flush_type type, u32 blk_idx, bool enable);
 
 	/**
+	 * bitmask_has_bit: checks whether flush mask has given block set to flush
+	 * @type              : blk type to test
+	 * @blk_idx           : blk idx
+	 */
+	bool (*bitmask_has_bit)(struct sde_hw_ctl *ctx,
+			enum ctl_hw_flush_type type, u32 blk_idx);
+
+	/**
 	 * update_dnsc_blur_bitmask: updates dnsc_blur flush mask
 	 * @type              : blk type to flush
 	 * @blk_idx           : blk idx

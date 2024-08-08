@@ -575,6 +575,30 @@ end:
 	mutex_unlock(&cesta->client_lock);
 }
 
+void sde_cesta_poll_handshake(struct sde_cesta_client *client)
+{
+	struct sde_cesta *cesta;
+	int rc;
+	ktime_t start, end;
+
+	if (!client || (client->cesta_index >= MAX_CESTA_COUNT)) {
+		SDE_ERROR_CESTA("invalid param - client:%d, cesta_index:%d\n",
+					!!client, client ? client->cesta_index : -1);
+		return;
+	}
+	cesta = cesta_list[client->cesta_index];
+
+	if (!cesta->hw_ops.poll_handshake)
+		return;
+
+	start = ktime_get();
+	rc = cesta->hw_ops.poll_handshake(cesta, client->scc_index);
+	end = ktime_get();
+
+	SDE_EVT32(client->client_index, client->scc_index,
+			rc ? SDE_EVTLOG_ERROR : ktime_us_delta(end, start));
+}
+
 void sde_cesta_get_status(struct sde_cesta_client *client, struct sde_cesta_scc_status *status)
 {
 	struct sde_cesta *cesta;
