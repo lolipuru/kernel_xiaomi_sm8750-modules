@@ -339,7 +339,6 @@ static struct class *bt_class;
 static int bt_major;
 static int soc_id;
 static bool probe_finished;
-struct mutex pwr_release;
 
 static void bt_power_vote(struct work_struct *work);
 
@@ -1738,15 +1737,12 @@ static int bt_power_probe(struct platform_device *pdev)
 	return 0;
 
 free_pdata:
-	mutex_lock(&pwr_release);
 	kfree(pwr_data);
-	mutex_unlock(&pwr_release);
 	return ret;
 }
 
 static int bt_power_remove(struct platform_device *pdev)
 {
-	mutex_lock(&pwr_release);
 	dev_dbg(&pdev->dev, "%s\n", __func__);
 	probe_finished = false;
 	btpower_rfkill_remove(pdev);
@@ -1754,7 +1750,6 @@ static int bt_power_remove(struct platform_device *pdev)
 	if (pwr_data->is_ganges_dt)
 		destroy_workqueue(pwr_data->workq);
 	kfree(pwr_data);
-	mutex_unlock(&pwr_release);
 	return 0;
 }
 
@@ -2474,10 +2469,10 @@ int set_fmd_mode(enum FmdOperation operation)
 			set_fmd_sdam_bit((unsigned char)POWER_ENABLE);
 			break;
 		}
-		case DISABLE_SDAM_BIT_FMD: {
-			pr_warn("%s: SET_FMD_MODE_CTRL :: DISABLE_SDAM_BIT_FMD\n",
+		case DISABLE_FMD: {
+			pr_warn("%s: SET_FMD_MODE_CTRL :: DISABLE_FMD\n",
 				__func__);
-			set_fmd_sdam_bit((unsigned char)POWER_DISABLE);
+			pwr_data->is_fmd_mode_enable = false;
 			break;
 		}
 		case UPDATE_SOC_VERSION_1_0_FOR_FMD: {
@@ -2701,64 +2696,6 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	}
 	return ret;
 }
-
-static int bt_power_release(struct inode *inode, struct file *file)
-{
-
-	mutex_lock(&pwr_release);
-
-	if (!pwr_data || !probe_finished) {
-		pr_err("%s: BTPower Probing Pending.Try Again\n", __func__);
-		return -EAGAIN;
-	}
-
-	pwr_data->reftask = get_current();
-
-	pwr_data->reftask = get_current();
-	if (pwr_data->reftask_bt != NULL) {
-		if (pwr_data->reftask->tgid == pwr_data->reftask_bt->tgid) {
-			pr_err("%s called by BT service(PID-%d)\n",
-					__func__, pwr_data->reftask->tgid);
-/*
-			if(get_pwr_state() == BT_ON)
-			{
-				bt_regulators_pwr(POWER_DISABLE);
-				platform_regulators_pwr(POWER_DISABLE);
-				update_pwr_state(IDLE);
-
-			}
-			else if (get_pwr_state() == ALL_CLIENTS_ON)
-			{
-				bt_regulators_pwr(POWER_DISABLE);
-				update_pwr_state(UWB_ON);
-			}
-	*/	}
-
-	}
-	else if (pwr_data->reftask_uwb != NULL)
-	{
-		if (pwr_data->reftask->tgid == pwr_data->reftask_uwb->tgid)
-		{
-			pr_err("%s called by uwb service(PID-%d)\n",
-					__func__, pwr_data->reftask->tgid);
-
-	/*		if(get_pwr_state() == UWB_ON)
-			{
-				uwb_regulators_pwr(POWER_DISABLE);
-				platform_regulators_pwr(POWER_DISABLE);
-				update_pwr_state(IDLE);
-			}
-			else if (get_pwr_state() == ALL_CLIENTS_ON)
-			{
-				uwb_regulators_pwr(POWER_DISABLE);
-				update_pwr_state(BT_ON);
-			}
-		*/ }
-	}
-	mutex_unlock(&pwr_release);
-	return 0;
-}
-
 static struct platform_driver bt_power_driver = {
 	.probe = bt_power_probe,
 	.remove = bt_power_remove,
@@ -2771,7 +2708,6 @@ static struct platform_driver bt_power_driver = {
 static const struct file_operations bt_dev_fops = {
 	.unlocked_ioctl = bt_ioctl,
 	.compat_ioctl = bt_ioctl,
-	.release = bt_power_release,
 };
 
 static int __init btpower_init(void)
@@ -2805,8 +2741,6 @@ static int __init btpower_init(void)
 		pr_err("%s: failed to allocate char dev\n", __func__);
 		goto device_err;
 	}
-
-	mutex_init(&pwr_release);
 	return 0;
 
 device_err:
