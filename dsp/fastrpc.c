@@ -2655,7 +2655,7 @@ static int fastrpc_init_create_static_process(struct fastrpc_user *fl,
 	if ((init.namelen > INIT_FILE_NAMELEN_MAX) || (!init.namelen))
 		return -EINVAL;
 
-	name = memdup_user(u64_to_user_ptr(init.name), init.namelen);
+	name = memdup_user_nul(u64_to_user_ptr(init.name), init.namelen);
 	/* ret -ENOMEM for malloc failure, -EFAULT for copy_from_user failure */
 	if (IS_ERR(name))
 		return PTR_ERR(name);
