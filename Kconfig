@@ -109,11 +109,3 @@ config SPECTRA_SECURE_DYN_PORT_CFG
 		feature that allows the userspace to configure
 		the output port(s) of a device to secure or
 		non-secure based the usecase requirements.
-
-config SPECTRA_SECURE_CAMNOC_REG_UPDATE
-	bool "enable secure camnoc reg update feature"
-	help
-		This config enables secure reg update
-		feature that allows the HLOS to configure
-		camnoc registers through HYP to avoid
-		potential security issues.
