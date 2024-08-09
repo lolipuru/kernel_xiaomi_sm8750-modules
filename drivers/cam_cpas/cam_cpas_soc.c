@@ -1602,6 +1602,11 @@ parse_ahb_table:
 		soc_private->num_vdd_ahb_mapping = count;
 	}
 
+	soc_private->enable_secure_qos_update = of_property_read_bool(of_node,
+			"enable-secure-qos-update");
+	CAM_DBG(CAM_CPAS, "Enable secure qos update: %s",
+		CAM_BOOL_TO_YESNO(soc_private->enable_secure_qos_update));
+
 	soc_private->enable_smart_qos = of_property_read_bool(of_node,
 			"enable-smart-qos");
 
