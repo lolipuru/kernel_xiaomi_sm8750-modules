@@ -8157,6 +8157,7 @@ static int ipa3_post_init(const struct ipa3_plat_drv_res *resource_p,
 		}
 	}
 
+	ipa3_enable_napi_lan_rx();
 	/* setup the AP-IPA pipes */
 	if (ipa3_setup_apps_pipes()) {
 		IPAERR(":failed to setup IPA-Apps pipes\n");
@@ -8254,7 +8255,6 @@ static int ipa3_post_init(const struct ipa3_plat_drv_res *resource_p,
 	mutex_lock(&ipa3_ctx->lock);
 	ipa3_ctx->ipa_initialization_complete = true;
 	mutex_unlock(&ipa3_ctx->lock);
-	ipa3_enable_napi_lan_rx();
 	/* init uc-activation tbl*/
 	ipa3_setup_uc_act_tbl();
 	ipa_trigger_ipa_ready_cbs();
