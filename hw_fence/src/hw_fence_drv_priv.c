@@ -707,7 +707,7 @@ int hw_fence_init(struct hw_fence_driver_data *drv_data)
 
 	ret = hw_fence_utils_parse_dt_props(drv_data);
 	if (ret) {
-		HWFNC_DBG_INFO("failed to set dt properties\n");
+		HWFNC_ERR("failed to set dt properties\n");
 		goto exit;
 	}
 

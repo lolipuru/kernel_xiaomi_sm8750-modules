@@ -835,6 +835,13 @@ int hw_fence_utils_register_soccp_ssr_notifier(struct hw_fence_driver_data *drv_
 	HWFNC_DBG_SSR("registered for soccp ssr notification notifier:0x%pK\n", notifier);
 
 	/* if soccp is already up, do initial bootup here; this first attempt may fail */
+	ret = _set_soccp_rproc(soccp_props, soccp_props->rproc_ph);
+	if (ret) {
+		HWFNC_DBG_INFO("failed getting soccp_rproc:0x%pK ph:%d at probe time ret:%d\n",
+			soccp_props->rproc, soccp_props->rproc_ph, ret);
+		return 0;
+	}
+
 	ret = _send_bootup_ctrl_txq_msg(drv_data, HW_FENCE_PAYLOAD_TYPE_3);
 	if (ret)
 		HWFNC_DBG_INFO("can't send ctrl tx queue msg to inform soccp of mem map\n");
@@ -1523,15 +1530,8 @@ int hw_fence_utils_parse_dt_props(struct hw_fence_driver_data *drv_data)
 	/* check presence of soccp */
 	ret = of_property_read_u32(drv_data->dev->of_node, "soccp_controller",
 		&soccp_props->rproc_ph);
-	if (!ret) {
+	if (!ret && soccp_props->rproc_ph)
 		drv_data->has_soccp = true;
-		soccp_props->rproc = rproc_get_by_phandle(soccp_props->rproc_ph);
-		if (IS_ERR_OR_NULL(soccp_props->rproc)) {
-			HWFNC_DBG_INFO("failed to find rproc for phandle:%u\n",
-				soccp_props->rproc_ph);
-			return -EPROBE_DEFER;
-		}
-	}
 
 	ret = of_property_read_u32(drv_data->dev->of_node, "qcom,hw-fence-table-entries", &val);
 	if (ret || !val) {
