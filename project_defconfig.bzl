@@ -22,12 +22,9 @@ dependency_config = [
 project_configs = select({
     # Project-specific configs
     ":no_project": [],
-    ":pineapple": dependency_config + [
-        "CONFIG_SPECTRA_SECURE_CAMNOC_REG_UPDATE=y",
-    ],
+    ":pineapple": dependency_config,
     ":sun": dependency_config + [
-        "CONFIG_SPECTRA_SECURE_DYN_PORT_CFG=y",
-        "CONFIG_SPECTRA_SECURE_CAMNOC_REG_UPDATE=y",
+       "CONFIG_SPECTRA_SECURE_DYN_PORT_CFG=y",
     ],
     ":canoe": [],
 })

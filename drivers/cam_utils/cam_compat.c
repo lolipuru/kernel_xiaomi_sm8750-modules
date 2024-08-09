@@ -447,28 +447,6 @@ int cam_csiphy_notify_secure_mode(struct csiphy_device *csiphy_dev,
 }
 #endif
 
-#ifdef CONFIG_SPECTRA_SECURE_CAMNOC_REG_UPDATE
-int cam_update_camnoc_qos_settings(uint32_t use_case_id,
-	uint32_t qos_cnt, struct qcom_scm_camera_qos *scm_buf)
-{
-	int rc = 0;
-
-	rc = qcom_scm_camera_update_camnoc_qos(use_case_id, qos_cnt, scm_buf);
-	if (rc)
-		CAM_ERR(CAM_CPAS, "scm call to update QoS failed: %d, use_case_id: %d",
-			rc, use_case_id);
-
-	return rc;
-}
-#else
-int cam_update_camnoc_qos_settings(uint32_t use_case_id,
-	uint32_t qos_cnt, struct qcom_scm_camera_qos *scm_buf)
-{
-	CAM_ERR(CAM_CPAS, "scm call to update QoS is not supported under this kernel");
-	return -EOPNOTSUPP;
-}
-#endif
-
 /* Callback to compare device from match list before adding as component */
 static inline int camera_component_compare_dev(struct device *dev, void *data)
 {
