@@ -691,6 +691,24 @@ void sde_encoder_enable_recovery_event(struct drm_encoder *encoder);
 bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
 
 /**
+ * sde_encoder_in_video_psr - checks if it is in video psr panel
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true if successful
+ */
+static inline bool sde_encoder_in_video_psr(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return false;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc->disp_info.vrr_caps.video_psr_support;
+}
+/**
  * sde_encoder_set_clone_mode - cwb in wb phys enc is enabled.
  * drm_enc:	Pointer to drm encoder structure
  * drm_crtc_state:	Pointer to drm_crtc_state

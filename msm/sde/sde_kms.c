@@ -4286,15 +4286,18 @@ retry:
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		struct drm_crtc_state *crtc_state;
 		uint64_t lp;
+		bool display_mode_active;
 
 		if (!conn->state || !conn->state->crtc ||
 			conn->dpms != DRM_MODE_DPMS_ON ||
 			sde_encoder_in_clone_mode(conn->encoder))
 			continue;
 
+		display_mode_active = sde_encoder_check_curr_mode(conn->encoder,
+			MSM_DISPLAY_VIDEO_MODE) && !sde_encoder_in_video_psr(conn->encoder);
+
 		lp = sde_connector_get_lp(conn);
-		if (lp == SDE_MODE_DPMS_LP1 &&
-			!sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE)) {
+		if (lp == SDE_MODE_DPMS_LP1 && !display_mode_active) {
 			/* transition LP1->LP2 on pm suspend */
 			ret = sde_connector_set_property_for_commit(conn, state,
 					CONNECTOR_PROP_LP, SDE_MODE_DPMS_LP2);
@@ -4306,8 +4309,7 @@ retry:
 			}
 		}
 
-		if (lp != SDE_MODE_DPMS_LP2 ||
-			sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE)) {
+		if (lp != SDE_MODE_DPMS_LP2 || display_mode_active) {
 			/* force CRTC to be inactive */
 			crtc_state = drm_atomic_get_crtc_state(state,
 					conn->state->crtc);
@@ -4319,8 +4321,7 @@ retry:
 				goto unlock;
 			}
 
-			if (lp != SDE_MODE_DPMS_LP1 ||
-				sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE))
+			if (lp != SDE_MODE_DPMS_LP1 || display_mode_active)
 				crtc_state->active = false;
 			++num_crtcs;
 		}
