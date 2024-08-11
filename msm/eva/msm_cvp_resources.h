@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __MSM_CVP_RESOURCES_H__
@@ -176,6 +176,7 @@ struct msm_cvp_platform_resources {
 	uint32_t register_size;
 	uint32_t ipcc_reg_size;
 	uint32_t gcc_reg_size;
+	uint32_t ipcc_reg_base_iova;
 	struct cvp_fw_reg_mappings reg_mappings;
 	uint32_t irq;
 	uint32_t irq_wd;

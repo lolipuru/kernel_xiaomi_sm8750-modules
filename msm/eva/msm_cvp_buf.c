@@ -1660,8 +1660,26 @@ static u32 msm_cvp_map_frame_buf(struct msm_cvp_inst *inst,
 {
 	u32 iova = 0;
 	struct msm_cvp_smem *smem = NULL;
+	struct msm_cvp_core *core;
+	struct cvp_hfi_ops *ops_tbl;
+	struct iris_hfi_device *dev = NULL;
 	u32 nr;
 	u32 type;
+	u32 ipcc_reg_base_iova;
+	u32 ipcc_reg_size;
+
+	core = cvp_driver->cvp_core;
+	if (core) {
+		ops_tbl = core->dev_ops;
+		if (ops_tbl)
+			dev = ops_tbl->hfi_device_data;
+	}
+
+	if (!dev)
+		return -EINVAL;
+
+	ipcc_reg_base_iova = dev->res->ipcc_reg_base_iova;
+	ipcc_reg_size = dev->res->ipcc_reg_size;
 
 	if (!inst || !frame) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
@@ -1701,7 +1719,10 @@ static u32 msm_cvp_map_frame_buf(struct msm_cvp_inst *inst,
 	if (trigger_smmu_fault) {
 		frame_count++;
 		if (frame_count % 200 == 0) {
-			iova -= 0x4000000;
+			iova -= 0x1000000;
+			if ((iova >= ipcc_reg_base_iova) &&
+				(iova <= ipcc_reg_base_iova + ipcc_reg_size))
+				iova += ipcc_reg_size * 2;
 			frame_count = 0;
 			trigger_smmu_fault = false;
 			dprintk(CVP_ERR, "generating fault address %#x", iova);
