@@ -4897,12 +4897,12 @@ static int ipa3_q6_clean_q6_flt_tbls(enum ipa_ip_type ip,
 
 	/* Up to filtering pipes we have filtering tables + 1 for coal close */
 	desc = kcalloc(ipa3_ctx->ep_flt_num + 1, sizeof(struct ipa3_desc),
-		GFP_KERNEL);
+		GFP_ATOMIC);
 	if (!desc)
 		return -ENOMEM;
 
 	cmd_pyld = kcalloc(ipa3_ctx->ep_flt_num + 1,
-		sizeof(struct ipahal_imm_cmd_pyld *), GFP_KERNEL);
+		sizeof(struct ipahal_imm_cmd_pyld *), GFP_ATOMIC);
 	if (!cmd_pyld) {
 		retval = -ENOMEM;
 		goto free_desc;
@@ -5090,13 +5090,13 @@ static int ipa3_q6_clean_q6_rt_tbls(enum ipa_ip_type ip,
 		return -ENOMEM;
 	}
 
-	desc = kcalloc(2, sizeof(struct ipa3_desc), GFP_KERNEL);
+	desc = kcalloc(2, sizeof(struct ipa3_desc), GFP_ATOMIC);
 	if (!desc) {
 		retval = -ENOMEM;
 		goto free_empty_img;
 	}
 
-	cmd_pyld = kcalloc(2, sizeof(struct ipahal_imm_cmd_pyld *), GFP_KERNEL);
+	cmd_pyld = kcalloc(2, sizeof(struct ipahal_imm_cmd_pyld *), GFP_ATOMIC);
 	if (!cmd_pyld) {
 		retval = -ENOMEM;
 		goto free_desc;
@@ -5223,11 +5223,11 @@ static int ipa3_q6_clean_q6_tables(void)
 	if (ipa3_ctx->ipa_fltrt_not_hashable)
 		return retval;
 	/* Flush rules cache */
-	desc = kcalloc(2, sizeof(struct ipa3_desc), GFP_KERNEL);
+	desc = kcalloc(2, sizeof(struct ipa3_desc), GFP_ATOMIC);
 	if (!desc)
 		return -ENOMEM;
 
-	cmd_pyld = kcalloc(2, sizeof(struct ipahal_imm_cmd_pyld *), GFP_KERNEL);
+	cmd_pyld = kcalloc(2, sizeof(struct ipahal_imm_cmd_pyld *), GFP_ATOMIC);
 	if (!cmd_pyld) {
 		retval = -ENOMEM;
 		goto bail_desc;
@@ -5330,7 +5330,7 @@ static int ipa3_q6_set_ex_path_to_apps(void)
 	int i;
 
 	desc = kcalloc(ipa3_ctx->ipa_num_pipes + 1, sizeof(struct ipa3_desc),
-			GFP_KERNEL);
+			GFP_ATOMIC);
 	if (!desc)
 		return -ENOMEM;
 
