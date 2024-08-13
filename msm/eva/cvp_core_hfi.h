@@ -316,13 +316,15 @@ struct msm_cvp_inst *cvp_get_inst_from_id(struct msm_cvp_core *core,
 		u32 pkt_id = 0; \
 		u32 stream_id = 0; \
 		u32 t_id = 0; \
+		u64 ktid = 0; \
 		sess_id = cmd_hdr->session_id; \
 		pkt_id  = cmd_hdr->packet_type; \
 		stream_id = cmd_hdr->stream_idx; \
 		t_id    = cmd_hdr->client_data.transaction_id; \
 		aon_cycles  = get_aon_time(); \
+		ktid = (cmd_hdr->client_data.kdata  & (FENCE_BIT - 1)); \
 		trace_tracing_eva_frame_from_sw(aon_cycles, tag, sess_id, \
-			stream_id, pkt_id, t_id); \
+			stream_id, pkt_id, t_id, ktid); \
 	} \
 })
 
@@ -334,14 +336,16 @@ struct msm_cvp_inst *cvp_get_inst_from_id(struct msm_cvp_core *core,
 		u32 pkt_id = 0; \
 		u32 stream_id = 0; \
 		u32 t_id = 0; \
+		u64 ktid = 0; \
 		unsigned int session_id; \
 		session_id   = msg_hdr->session_id; \
 		pkt_id    = msg_hdr->packet_type; \
 		stream_id = msg_hdr->stream_idx; \
 		t_id      = msg_hdr->client_data.transaction_id; \
 		aon_cycles  = get_aon_time(); \
+		ktid = (msg_hdr->client_data.kdata  & (FENCE_BIT - 1)); \
 		trace_tracing_eva_frame_from_sw(aon_cycles, tag, session_id, \
-			stream_id, pkt_id, t_id); \
+			stream_id, pkt_id, t_id, ktid); \
 	} \
 })
 

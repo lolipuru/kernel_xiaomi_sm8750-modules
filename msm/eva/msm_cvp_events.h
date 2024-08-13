@@ -44,8 +44,8 @@ TRACE_EVENT(tracing_mark_write,
 TRACE_EVENT(tracing_eva_frame_from_sw,
 	TP_PROTO(u64 aon_cycles, const char *name,
 	u32 session_id, u32 stream_id,
-	u32 packet_id, u32 transaction_id),
-	TP_ARGS(aon_cycles, name, session_id, stream_id, packet_id, transaction_id),
+	u32 packet_id, u32 transaction_id, u64 ktid),
+	TP_ARGS(aon_cycles, name, session_id, stream_id, packet_id, transaction_id, ktid),
 	TP_STRUCT__entry(
 		__field(u64, aon_cycles)
 		__string(trace_name, name)
@@ -53,6 +53,7 @@ TRACE_EVENT(tracing_eva_frame_from_sw,
 		__field(u32, stream_id)
 		__field(u32, packet_id)
 		__field(u32, transaction_id)
+		__field(u64, ktid)
 	),
 	TP_fast_assign(
 		__entry->aon_cycles = aon_cycles;
@@ -61,11 +62,12 @@ TRACE_EVENT(tracing_eva_frame_from_sw,
 		__entry->stream_id  = stream_id;
 		__entry->packet_id  = packet_id;
 		__entry->transaction_id = transaction_id;
+		__entry->ktid = ktid;
 	),
-	TP_printk("AON_TIMESTAMP: %llu %s session_id = 0x%08x stream_id = 0x%08x packet_id = 0x%08x transaction_id = 0x%08x",
+	TP_printk("AON_TIMESTAMP: %llu %s session_id = 0x%08x stream_id = 0x%08x packet_id = 0x%08x transaction_id = 0x%08x ktid = %llu",
 		__entry->aon_cycles, __get_str(trace_name),
 		__entry->session_id, __entry->stream_id,
-		__entry->packet_id, __entry->transaction_id)
+		__entry->packet_id, __entry->transaction_id, __entry->ktid)
 )
 
 TRACE_EVENT(tracing_eva_frame_from_fw,

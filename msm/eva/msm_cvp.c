@@ -405,6 +405,7 @@ static int cvp_fence_proc(struct msm_cvp_inst *inst,
 
 exit:
 	CVPKERNEL_ATRACE_BEGIN("cvp_synx_ops CVP_OUTPUT_SYNX");
+	fc->msg_pkt = (struct cvp_hfi_msg_session_hdr *)(&hdr);
 	rc = inst->core->synx_ftbl->cvp_synx_ops(inst, CVP_OUTPUT_SYNX,
 			fc, &synx_state);
 	CVPKERNEL_ATRACE_END("cvp_synx_ops CVP_OUTPUT_SYNX");
