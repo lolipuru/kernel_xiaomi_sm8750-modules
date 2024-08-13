@@ -448,6 +448,8 @@ static int __cam_req_mgr_notify_frame_skip(
 	struct cam_req_mgr_apply            *apply_data = NULL;
 	struct cam_req_mgr_connected_device *dev = NULL;
 	struct cam_req_mgr_tbl_slot         *slot = NULL;
+	bool                                 frame_duration_changing = false;
+	struct cam_req_mgr_link_evt_data     evt_data;
 
 	apply_data = link->req.prev_apply_data;
 
@@ -455,6 +457,29 @@ static int __cam_req_mgr_notify_frame_skip(
 		CAM_ERR(CAM_CRM, "link->max_delay is out of bounds: %d",
 			link->max_delay);
 		return -EINVAL;
+	}
+
+	for (i = 0; i < link->num_devs; i++) {
+		dev = &link->l_dev[i];
+		if ((dev->dev_info.dev_id == CAM_REQ_MGR_DEVICE_SENSOR) &&
+			(dev->ops && dev->ops->process_evt)) {
+			evt_data.req_id = apply_data[dev->pd_tbl->pd].req_id;
+			evt_data.dev_hdl = dev->dev_hdl;
+			evt_data.link_hdl = link->link_hdl;
+			evt_data.evt_type = CAM_REQ_MGR_LINK_EVT_FRAME_DURATION_CHANGING;
+			spin_lock_bh(&link->link_state_spin_lock);
+			evt_data.u.is_recovery = (link->state == CAM_CRM_LINK_STATE_ERR);
+			spin_unlock_bh(&link->link_state_spin_lock);
+			rc = dev->ops->process_evt(&evt_data);
+			if (rc) {
+				CAM_ERR(CAM_CRM,
+					"Failed to send FRAME_SKIP_AVALIABLE on link 0x%x dev 0x%x",
+					link->link_hdl, dev->dev_hdl);
+				return -EINVAL;
+			}
+			frame_duration_changing = evt_data.u.frame_duration_changing;
+			break;
+		}
 	}
 
 	for (i = 0; i < link->num_devs; i++) {
@@ -500,6 +525,7 @@ static int __cam_req_mgr_notify_frame_skip(
 		frame_skip.report_if_bubble = 0;
 		frame_skip.last_applied_max_pd_req =
 			 link->req.prev_apply_data[link->max_delay].req_id;
+		frame_skip.frame_duration_changing = frame_duration_changing;
 
 		CAM_DBG(CAM_REQ,
 			"Notify_frame_skip: link: 0x%x pd %d req_id %lld last_applied %lld",

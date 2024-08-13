@@ -2465,8 +2465,9 @@ int32_t cam_sensor_flush_request(struct cam_req_mgr_flush_request *flush_req)
 
 int cam_sensor_process_evt(struct cam_req_mgr_link_evt_data *evt_data)
 {
-	int                       rc = 0;
-	struct cam_sensor_ctrl_t *s_ctrl = NULL;
+	int                        rc = 0, offset;
+	struct cam_sensor_ctrl_t  *s_ctrl = NULL;
+	struct i2c_settings_array *i2c_set = NULL;
 
 	if (!evt_data)
 		return -EINVAL;
@@ -2534,6 +2535,22 @@ int cam_sensor_process_evt(struct cam_req_mgr_link_evt_data *evt_data)
 				s_ctrl->sensordata->slave_info.sensor_slave_addr,
 				s_ctrl->num_batched_frames);
 		}
+	}
+		break;
+	case CAM_REQ_MGR_LINK_EVT_FRAME_DURATION_CHANGING: {
+		evt_data->u.frame_duration_changing = false;
+		offset = evt_data->req_id % MAX_PER_FRAME_ARRAY;
+		i2c_set = s_ctrl->i2c_data.frame_skip;
+
+		if (i2c_set[offset].is_settings_valid &&
+			(i2c_set[offset].request_id == evt_data->req_id))
+			evt_data->u.frame_duration_changing = true;
+
+		i2c_set = s_ctrl->i2c_data.bubble_update;
+		if (i2c_set[offset].is_settings_valid && evt_data->u.is_recovery &&
+			(evt_data->req_id <= s_ctrl->last_applied_req) &&
+			(i2c_set[offset].request_id == evt_data->req_id))
+			evt_data->u.frame_duration_changing = true;
 	}
 		break;
 	default:
