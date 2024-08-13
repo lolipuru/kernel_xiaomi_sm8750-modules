@@ -27,7 +27,7 @@ define_modules("niobe", "gki")
 
 define_modules("monaco", "consolidate")
 
-define_modules("monaco", "gki")
+define_modules("monaco", "perf")
 
 define_modules("parrot", "consolidate")
 
