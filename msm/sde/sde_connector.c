@@ -3567,7 +3567,7 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 
 		if (c_conn->vrr_caps.vrr_support)
 			sde_kms_info_add_keyint(info, "early_ept_timeout",
-				IDLE_POWERCOLLAPSE_DURATION);
+				IDLE_POWERCOLLAPSE_DURATION * NSEC_PER_MSEC);
 
 		sde_kms_info_add_keyint(info, "has_cwb_crop", test_bit(SDE_FEATURE_CWB_CROP,
 								       sde_kms->catalog->features));
