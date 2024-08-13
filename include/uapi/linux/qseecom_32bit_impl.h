@@ -10,7 +10,6 @@
 #include <linux/ioctl.h>
 
 #include <linux/qseecom.h>
-#include <asm-generic/posix_types.h>
 
 /*
  * struct qseecom_register_listener_req_32bit -
@@ -21,10 +20,10 @@
  * @sb_size - shared buffer size
  */
 struct qseecom_register_listener_req_32bit {
-	__kernel_ulong_t listener_id; /* in */
-	__kernel_long_t ifd_data_fd; /* in */
+	__u32 listener_id; /* in */
+	__s32 ifd_data_fd; /* in */
 	__u32 virt_sb_base; /* in */
-	__kernel_ulong_t sb_size; /* in */
+	__u32 sb_size; /* in */
 };
 
 /*
@@ -47,8 +46,8 @@ struct qseecom_send_cmd_req_32bit {
  * @cmd_buf_offset - command buffer offset
  */
 struct qseecom_ion_fd_info_32bit {
-	__kernel_long_t fd;
-	__kernel_ulong_t cmd_buf_offset;
+	__s32 fd;
+	__u32 cmd_buf_offset;
 };
 /*
  * struct qseecom_send_modfd_cmd_req_32bit - for send command ioctl request
@@ -93,18 +92,18 @@ struct qseecom_send_resp_req_32bit {
  * @img_name - Name of the image.
  */
 struct qseecom_load_img_req_32bit {
-	__kernel_ulong_t mdt_len; /* in */
-	__kernel_ulong_t img_len; /* in */
-	__kernel_long_t  ifd_data_fd; /* in */
+	__u32 mdt_len; /* in */
+	__u32 img_len; /* in */
+	__s32  ifd_data_fd; /* in */
 	char	 img_name[MAX_APP_NAME_SIZE]; /* in */
-	__kernel_ulong_t app_arch; /* in */
+	__u32 app_arch; /* in */
 	__u32 app_id; /* out*/
 };
 
 struct qseecom_set_sb_mem_param_req_32bit {
-	__kernel_long_t ifd_data_fd; /* in */
+	__s32 ifd_data_fd; /* in */
 	__u32 virt_sb_base; /* in */
-	__kernel_ulong_t sb_len; /* in */
+	__u32 sb_len; /* in */
 };
 
 /*
@@ -123,11 +122,11 @@ struct qseecom_qseos_version_req_32bit {
 struct qseecom_qseos_app_load_query_32bit {
 	char app_name[MAX_APP_NAME_SIZE]; /* in */
 	__u32 app_id; /* out */
-	__kernel_ulong_t app_arch;
+	__u32 app_arch;
 };
 
 struct qseecom_send_svc_cmd_req_32bit {
-	__kernel_ulong_t cmd_id;
+	__u32 cmd_id;
 	__u32 cmd_req_buf; /* in */
 	__u32 cmd_req_len; /* in */
 	__u32 resp_buf; /* in/out */
@@ -199,16 +198,16 @@ struct qseecom_send_modfd_listener_resp_32bit {
 
 struct qseecom_qteec_req_32bit {
 	__u32 req_ptr;
-	__kernel_ulong_t req_len;
+	__u32 req_len;
 	__u32 resp_ptr;
-	__kernel_ulong_t resp_len;
+	__u32 resp_len;
 };
 
 struct qseecom_qteec_modfd_req_32bit {
 	__u32 req_ptr;
-	__kernel_ulong_t req_len;
+	__u32 req_len;
 	__u32 resp_ptr;
-	__kernel_ulong_t resp_len;
+	__u32 resp_len;
 	struct qseecom_ion_fd_info_32bit ifd_data[MAX_ION_FD];
 };
 
