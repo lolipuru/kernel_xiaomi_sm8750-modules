@@ -762,6 +762,8 @@ static int cam_ife_mgr_handle_reg_dump(struct cam_ife_hw_mgr_ctx *ctx,
 {
 	int rc = 0, i;
 	struct cam_hw_soc_skip_dump_args skip_dump_args;
+	uintptr_t cpu_addr = 0;
+	size_t    buf_size = 0;
 
 	CAM_DBG(CAM_ISP, "Reg dump req_type: %u ctx_idx: %u req:%llu",
 		meta_type, ctx->ctx_index, ctx->applied_req_id);
@@ -815,22 +817,44 @@ static int cam_ife_mgr_handle_reg_dump(struct cam_ife_hw_mgr_ctx *ctx,
 			reg_dump_buf_desc[i].meta_data, meta_type, ctx->ctx_index,
 			ctx->applied_req_id);
 		if (reg_dump_buf_desc[i].meta_data == meta_type) {
+			if (in_serving_softirq()) {
+				cpu_addr = ctx->reg_dump_cmd_buf_addr_len[i].cpu_addr;
+				buf_size = ctx->reg_dump_cmd_buf_addr_len[i].buf_size;
+			} else {
+				rc = cam_mem_get_cpu_buf(reg_dump_buf_desc[i].mem_handle,
+					&cpu_addr, &buf_size);
+				if (rc) {
+					CAM_ERR(CAM_ISP,
+						"Failed in Get cpu addr, rc=%d, mem_handle =%d",
+						rc, reg_dump_buf_desc[i].mem_handle);
+					return rc;
+				}
+			}
+			if (!cpu_addr || (buf_size == 0)) {
+				CAM_ERR(CAM_ISP, "Invalid cpu_addr=%pK mem_handle=%d",
+					(void *)cpu_addr, reg_dump_buf_desc[i].mem_handle);
+				if (!in_serving_softirq())
+					cam_mem_put_cpu_buf(reg_dump_buf_desc[i].mem_handle);
+			}
 			rc = cam_soc_util_reg_dump_to_cmd_buf(ctx,
 				&reg_dump_buf_desc[i],
 				ctx->applied_req_id,
 				cam_ife_mgr_regspace_data_cb,
 				soc_dump_args,
 				&skip_dump_args,
-				user_triggered_dump);
+				user_triggered_dump, cpu_addr, buf_size);
 			if (rc) {
 				CAM_ERR(CAM_ISP,
 					"Reg dump failed at idx: %d, rc: %d req_id: %llu meta type: %u ctx_idx: %u",
 					i, rc, ctx->applied_req_id, meta_type, ctx->ctx_index);
+				if (!in_serving_softirq())
+					cam_mem_put_cpu_buf(reg_dump_buf_desc[i].mem_handle);
 				return rc;
 			}
+			if (!in_serving_softirq())
+				cam_mem_put_cpu_buf(reg_dump_buf_desc[i].mem_handle);
 		}
 	}
-
 	return rc;
 }
 
@@ -6090,6 +6114,7 @@ static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	ife_ctx->ctx_index = acquire_args->ctx_id;
 	ife_ctx->scratch_buf_info.ife_scratch_config = NULL;
 	ife_ctx->is_init_drv_cfg_received = false;
+	ife_ctx->is_internal_recovery_set = false;
 	memset(ife_ctx->per_req_info, 0, sizeof(ife_ctx->per_req_info));
 
 	acquire_hw_info = (struct cam_isp_acquire_hw_info *) acquire_args->acquire_info;
@@ -7734,7 +7759,6 @@ skip_bw_clk_update:
 		ctx->ctx_index, cfg->num_hw_update_entries, cfg->request_id);
 
 	if (cam_presil_mode_enabled() || cfg->init_packet || hw_update_data->mup_en ||
-		g_ife_hw_mgr.debug_cfg.per_req_reg_dump ||
 		g_ife_hw_mgr.debug_cfg.per_req_wait_cdm ||
 		(ctx->ctx_config & CAM_IFE_CTX_CFG_SW_SYNC_ON))
 		wait_for_cdm = true;
@@ -8234,6 +8258,7 @@ static int cam_ife_mgr_stop_hw(void *hw_mgr_priv, void *stop_hw_args)
 
 
 	cam_ife_hw_mgr_deinit_hw(ctx);
+
 	CAM_DBG(CAM_ISP,
 		"Stop success for ctx id:%u rc :%d", ctx->ctx_index, rc);
 
@@ -8250,6 +8275,11 @@ static int cam_ife_mgr_stop_hw(void *hw_mgr_priv, void *stop_hw_args)
 	mutex_unlock(&g_ife_hw_mgr.ctx_mutex);
 
 end:
+	if (!ctx->is_internal_recovery_set) {
+		for (i = 0; i < ctx->num_reg_dump_buf; i++)
+			cam_mem_put_cpu_buf(ctx->reg_dump_buf_desc[i].mem_handle);
+		ctx->num_reg_dump_buf = 0;
+	}
 	ctx->flags.dump_on_error = false;
 	ctx->flags.dump_on_flush = false;
 	return rc;
@@ -8914,7 +8944,6 @@ static int cam_ife_mgr_release_hw(void *hw_mgr_priv,
 	ctx->cdm_handle = 0;
 	ctx->cdm_hw_idx = -1;
 	ctx->cdm_ops = NULL;
-	ctx->num_reg_dump_buf = 0;
 	ctx->ctx_config = 0;
 	ctx->num_reg_dump_buf = 0;
 	ctx->last_cdm_done_req = 0;
@@ -8942,6 +8971,7 @@ static int cam_ife_mgr_release_hw(void *hw_mgr_priv,
 	ctx->scratch_buf_info.sfe_scratch_config = NULL;
 	ctx->scratch_buf_info.ife_scratch_config = NULL;
 	ctx->try_recovery_cnt = 0;
+	ctx->is_internal_recovery_set = false;
 	ctx->recovery_req_id = 0;
 	ctx->drv_path_idle_en = 0;
 	CAM_MEM_FREE(ctx->vfe_bus_comp_grp);
@@ -14619,6 +14649,19 @@ static int cam_ife_mgr_prepare_hw_update(void *hw_mgr_priv,
 				prepare->reg_dump_buf_desc,
 				sizeof(struct cam_cmd_buf_desc) *
 				prepare->num_reg_dump_buf);
+
+			for (i = 0; i < ctx->num_reg_dump_buf; i++) {
+				rc = cam_mem_get_cpu_buf(ctx->reg_dump_buf_desc[i].mem_handle,
+					&(ctx->reg_dump_cmd_buf_addr_len[i].cpu_addr),
+					&(ctx->reg_dump_cmd_buf_addr_len[i].buf_size));
+
+				if (rc) {
+					CAM_ERR(CAM_ISP,
+						"Failed in Get cpu addr, rc=%d, cpu_addr=%pK", rc,
+						(void *)ctx->reg_dump_cmd_buf_addr_len[i].cpu_addr);
+					return rc;
+				}
+			}
 		}
 
 		/* Per req reg dump */
@@ -16177,6 +16220,7 @@ static int cam_ife_hw_mgr_handle_csid_error(
 		(err_type & CAM_ISP_RECOVERABLE_CSID_ERRORS))) {
 		if (ctx->try_recovery_cnt < MAX_INTERNAL_RECOVERY_ATTEMPTS) {
 			error_event_data.try_internal_recovery = true;
+			ctx->is_internal_recovery_set = true;
 
 			if (!atomic_read(&ctx->overflow_pending))
 				ctx->try_recovery_cnt++;
@@ -16202,8 +16246,10 @@ static int cam_ife_hw_mgr_handle_csid_error(
 	if (rc || !recovery_data.no_of_context)
 		goto end;
 
-	if (!error_event_data.try_internal_recovery)
+	if (!error_event_data.try_internal_recovery) {
 		cam_ife_hw_mgr_do_error_recovery(&recovery_data);
+		ctx->is_internal_recovery_set = false;
+	}
 
 	CAM_DBG(CAM_ISP, "Exit CSID[%u] error %d ctx_idx: %u",
 		event_info->hw_idx, err_type, ctx->ctx_index);
