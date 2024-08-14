@@ -2096,6 +2096,13 @@ static int cam_vfe_handle_sof(struct cam_vfe_mux_ver4_data *vfe_priv,
 			struct cam_vfe_enable_sof_irq_args sof_irq_args;
 
 			vfe_priv->irq_debug_cnt = 0;
+
+			if (evt_info->res_id >= CAM_VFE_TOP_MUX_MAX) {
+				CAM_ERR(CAM_ISP,
+					"VFE:%u inval res_id for mux_rsrc:%d",
+					vfe_priv->hw_intf->hw_idx, evt_info->res_id);
+				return -EINVAL;
+			}
 			sof_irq_args.res =
 				&vfe_priv->top_priv->top_common.mux_rsrc[evt_info->res_id];
 			sof_irq_args.enable_sof_irq_debug = false;
