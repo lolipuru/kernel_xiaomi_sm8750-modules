@@ -241,6 +241,7 @@ struct cam_ife_hw_mgr_ctx_scratch_buf_info {
  * @rdi_pd_context:        Flag to specify the context has
  *                         only rdi and PD resource without PIX port.
  * @dynamic_drv_supported: Indicate if the dynamic drv is supported
+ * @skip_reg_dump_buf_put: Set if put_cpu_buf for reg dump buf is already called
  *
  */
 struct cam_ife_hw_mgr_ctx_flags {
@@ -264,6 +265,7 @@ struct cam_ife_hw_mgr_ctx_flags {
 	bool   sys_cache_usage[CAM_LLCC_LARGE_4 + 1];
 	bool   rdi_pd_context;
 	bool   dynamic_drv_supported;
+	bool   skip_reg_dump_buf_put;
 };
 
 /**
@@ -305,6 +307,20 @@ struct cam_isp_context_comp_record {
 struct cam_isp_comp_record_query {
 	struct cam_isp_context_comp_record        *vfe_bus_comp_grp;
 	struct cam_isp_context_comp_record        *sfe_bus_comp_grp;
+};
+
+/**
+ * struct cam_cmd_buf_desc_addr_len
+ *
+ * brief:                       structure to store cpu addr and size of
+ *                              reg dump descriptors
+ * @cpu_addr:                   cpu addr of buffer
+ * @size:                       size of the buffer
+ */
+
+struct cam_cmd_buf_desc_addr_len {
+	uintptr_t cpu_addr;
+	size_t    buf_size;
 };
 
 /**
@@ -419,6 +435,8 @@ struct cam_ife_hw_mgr_ctx {
 	struct cam_cmd_buf_desc                    reg_dump_buf_desc[
 						CAM_REG_DUMP_MAX_BUF_ENTRIES];
 	uint32_t                                   num_reg_dump_buf;
+	struct cam_cmd_buf_desc_addr_len           reg_dump_cmd_buf_addr_len[
+						CAM_REG_DUMP_MAX_BUF_ENTRIES];
 	uint64_t                                   applied_req_id;
 	enum cam_ife_ctx_master_type               ctx_type;
 	uint32_t                                   ctx_config;

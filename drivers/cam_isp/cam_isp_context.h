@@ -188,7 +188,8 @@ struct cam_isp_ctx_irq_ops {
  * @event_timestamp:           Timestamp for different stage of request
  * @cdm_reset_before_apply:    For bubble re-apply when buf done not coming set
  *                             to True
- *
+ * @is_reg_dump_triggered      check if reg dump is already triggered,in case of
+ *                             skip frame
  */
 struct cam_isp_ctx_req {
 	struct cam_ctx_request               *base;
@@ -208,6 +209,7 @@ struct cam_isp_ctx_req {
 		[CAM_ISP_CTX_EVENT_MAX];
 	bool                                  bubble_detected;
 	bool                                  cdm_reset_before_apply;
+	bool                                  is_reg_dump_triggered;
 };
 
 /**
