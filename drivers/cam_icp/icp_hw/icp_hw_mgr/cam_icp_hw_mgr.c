@@ -3074,10 +3074,10 @@ static int cam_icp_mgr_process_ofe_direct_ack_msg(
 				}
 			}
 		}
-		complete(&ctx_data->wait_complete);
 
 		CAM_DBG(CAM_ICP, "received OFE Abort done msg ctx_state: %u",
 			ctx_data->state);
+		complete(&ctx_data->wait_complete);
 		break;
 	}
 	case HFI_OFE_CMD_OPCODE_DESTROY: {
@@ -3086,12 +3086,10 @@ static int cam_icp_mgr_process_ofe_direct_ack_msg(
 
 		ioconfig_ack = (struct hfi_msg_dev_async_ack *)msg_ptr;
 		ctx_data = U64_TO_PTR(ioconfig_ack->user_data1);
+		CAM_DBG(CAM_ICP, "received OFE destroy done msg: %u", ctx_data->state);
 		if ((ctx_data->state == CAM_ICP_CTX_STATE_RELEASE) ||
 			(ctx_data->state == CAM_ICP_CTX_STATE_IN_USE))
 			complete(&ctx_data->wait_complete);
-
-		CAM_DBG(CAM_ICP, "received OFE destroy done msg: %u",
-			ctx_data->state);
 		break;
 	}
 	default:
