@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -5504,6 +5504,25 @@ static inline void qdf_dmaaddr_to_32s(qdf_dma_addr_t dmaaddr,
 {
 	return __qdf_dmaaddr_to_32s(dmaaddr, lo, hi);
 }
+
+#ifdef WLAN_DP_ENABLE_SW_TSO
+/**
+ * qdf_nbuf_sw_tso_prepare_nbuf_list() - function to divide a jumbo TSO
+ * network buffer into small network buffers.
+ *
+ * @osdev: qdf device handle
+ * @nbuf: Jumbo TSO network buffer
+ * @head_nbuf: nbuf list
+ *
+ * Return: QDF_STATUS
+ */
+static inline QDF_STATUS
+qdf_nbuf_sw_tso_prepare_nbuf_list(qdf_device_t osdev, qdf_nbuf_t nbuf,
+				  qdf_nbuf_t *head_nbuf)
+{
+	return __qdf_nbuf_sw_tso_prepare_nbuf_list(osdev, nbuf, head_nbuf);
+}
+#endif
 
 /**
  * qdf_nbuf_get_tso_info() - function to divide a jumbo TSO
