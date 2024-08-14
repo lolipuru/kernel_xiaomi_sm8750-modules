@@ -2452,6 +2452,8 @@ static void _sde_drm_fb_sec_dir_trans(
 		smmu_state->secure_level = secure_level;
 		smmu_state->transition_type = PRE_COMMIT;
 		*ops |= SDE_KMS_OPS_SECURE_STATE_CHANGE;
+		if (old_valid_fb)
+			*ops |= SDE_KMS_OPS_WAIT_FOR_TX_DONE;
 	}
 }
 
