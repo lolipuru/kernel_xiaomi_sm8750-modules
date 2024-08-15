@@ -1788,7 +1788,7 @@ static struct cam_vfe_bus_ver3_hw_info tfe1080_bus_hw_info = {
 			.bw_limiter_addr          = 0x00001F1C,
 			.comp_group               = CAM_VFE_BUS_VER3_COMP_GRP_2,
 			.ubwc_regs                = NULL,
-			.supported_formats        = BIT_ULL(CAM_FORMAT_PLAIN64),
+			.supported_formats        = BIT_ULL(CAM_FORMAT_PLAIN128),
 		},
 		/* BUS Client 11 STATS_AEC_BHIST */
 		{
@@ -1854,7 +1854,7 @@ static struct cam_vfe_bus_ver3_hw_info tfe1080_bus_hw_info = {
 			.bw_limiter_addr          = 0x0000211C,
 			.comp_group               = CAM_VFE_BUS_VER3_COMP_GRP_2,
 			.ubwc_regs                = NULL,
-			.supported_formats        = BIT_ULL(CAM_FORMAT_PLAIN64),
+			.supported_formats        = BIT_ULL(CAM_FORMAT_PLAIN128),
 		},
 		/* BUS Client 13 STATS_AWB_BG */
 		{
@@ -1887,7 +1887,7 @@ static struct cam_vfe_bus_ver3_hw_info tfe1080_bus_hw_info = {
 			.bw_limiter_addr          = 0x0000221C,
 			.comp_group               = CAM_VFE_BUS_VER3_COMP_GRP_2,
 			.ubwc_regs                = NULL,
-			.supported_formats        = BIT_ULL(CAM_FORMAT_PLAIN64),
+			.supported_formats        = BIT_ULL(CAM_FORMAT_PLAIN128),
 		},
 		/* BUS Client 14 STATS_AWB_BFW */
 		{
@@ -1920,7 +1920,7 @@ static struct cam_vfe_bus_ver3_hw_info tfe1080_bus_hw_info = {
 			.bw_limiter_addr          = 0x0000231C,
 			.comp_group               = CAM_VFE_BUS_VER3_COMP_GRP_2,
 			.ubwc_regs                = NULL,
-			.supported_formats        = BIT_ULL(CAM_FORMAT_PLAIN64),
+			.supported_formats        = BIT_ULL(CAM_FORMAT_PLAIN128),
 		},
 		/* BUS Client 15 STATS_AF_BHIST */
 		{
@@ -1986,7 +1986,7 @@ static struct cam_vfe_bus_ver3_hw_info tfe1080_bus_hw_info = {
 			.bw_limiter_addr          = 0x0000251C,
 			.comp_group               = CAM_VFE_BUS_VER3_COMP_GRP_2,
 			.ubwc_regs                = NULL,
-			.supported_formats        = BIT_ULL(CAM_FORMAT_PLAIN64),
+			.supported_formats        = BIT_ULL(CAM_FORMAT_PLAIN128),
 		},
 		/* BUS Client 17 STATS_FLICKER_BAYERS */
 		{
