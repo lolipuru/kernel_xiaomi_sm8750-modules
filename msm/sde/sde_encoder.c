@@ -3596,6 +3596,17 @@ static int _sde_encoder_input_handler(
 	return rc;
 }
 
+static void _sde_encoder_misr_reconfigure(struct sde_encoder_virt *sde_enc)
+{
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+
+	if (atomic_read(&sde_enc->misr_enable))
+		sde_enc->misr_reconfigure = true;
+}
+
 static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
@@ -3665,6 +3676,12 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 		SDE_ERROR("invalid connector state\n");
 		return;
 	}
+
+	/*
+	 * During IPC or device suspend, misr ctl register is reset.
+	 * Need to reconfigure misr after every IPC resume or device resume.
+	 */
+	_sde_encoder_misr_reconfigure(sde_enc);
 }
 
 static void _sde_encoder_setup_dither(struct sde_encoder_phys *phys)
@@ -3765,13 +3782,6 @@ void sde_encoder_virt_restore(struct drm_encoder *drm_enc)
 
 	_sde_encoder_virt_enable_helper(drm_enc);
 	sde_encoder_control_te(sde_enc, true);
-
-	/*
-	 * During IPC misr ctl register is reset.
-	 * Need to reconfigure misr after every IPC.
-	 */
-	if (atomic_read(&sde_enc->misr_enable))
-		sde_enc->misr_reconfigure = true;
 }
 
 static void sde_encoder_populate_encoder_phys(struct drm_encoder *drm_enc,
