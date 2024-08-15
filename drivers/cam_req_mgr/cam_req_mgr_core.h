@@ -94,6 +94,7 @@ enum crm_workq_task_type {
 	CRM_WORKQ_TASK_NOTIFY_FREEZE,
 	CRM_WORKQ_TASK_SCHED_REQ,
 	CRM_WORKQ_TASK_FLUSH_REQ,
+	CRM_WORKQ_TASK_TRIGGER_SYNCED_RESUME,
 	CRM_WORKQ_TASK_INVALID,
 };
 
@@ -495,6 +496,8 @@ struct cam_req_mgr_connected_device {
  * @try_for_internal_recovery   : If the link stalls try for RT internal recovery
  * @properties_mask             : Indicates if current link enables some special properties
  * @cont_empty_slots            : Continuous empty slots
+ * @resume_sync_dev_mask        : Device mask for all devices seeking sync in resume sequence
+ * @resume_sync_curr_mask       : Current device mask of devices notifying they are ready for resume
  * @last_applied_done_timestamp : Last applied done timestamp value
  */
 struct cam_req_mgr_core_link {
@@ -540,6 +543,8 @@ struct cam_req_mgr_core_link {
 	bool                                 is_sending_req;
 	uint32_t                             properties_mask;
 	uint32_t                             cont_empty_slots;
+	uint32_t                             resume_sync_dev_mask;
+	uint32_t                             resume_sync_curr_mask;
 	uint64_t                             last_applied_done_timestamp;
 };
 
@@ -574,11 +579,14 @@ struct cam_req_mgr_core_session {
  * @session_head : list head holding sessions
  * @crm_lock     : mutex lock to protect session creation & destruction
  * @recovery_on_apply_fail : Recovery on apply failure using debugfs.
+ * @disable_sensor_standby : Disable synced resume feature including
+ *                           sensor standby
  */
 struct cam_req_mgr_core_device {
 	struct list_head             session_head;
 	struct mutex                 crm_lock;
 	bool                         recovery_on_apply_fail;
+	bool                         disable_sensor_standby;
 };
 
 /**

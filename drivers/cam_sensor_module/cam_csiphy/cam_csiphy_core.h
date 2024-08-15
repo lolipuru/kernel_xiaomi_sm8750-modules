@@ -29,6 +29,16 @@ void cam_csiphy_reset(struct csiphy_device *csiphy_dev);
 
 /**
  * @csiphy_dev: CSIPhy device structure
+ * @csiphybase: CSIPhy base addr
+ * @instance  : CSIPhy instance
+ *
+ * This API releases CSIPhy from reset
+ */
+int cam_csiphy_release_from_reset_state(struct csiphy_device *csiphy_dev,
+	void __iomem *csiphybase, int32_t instance);
+
+/**
+ * @csiphy_dev: CSIPhy device structure
  * @arg:    Camera control command argument
  *
  * This API handles the camera control argument reached to CSIPhy

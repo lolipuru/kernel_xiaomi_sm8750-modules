@@ -498,7 +498,7 @@ static inline void cam_csiphy_apply_onthego_reg_values(void __iomem *csiphybase,
 
 }
 
-static inline int cam_csiphy_release_from_reset_state(struct csiphy_device *csiphy_dev,
+int cam_csiphy_release_from_reset_state(struct csiphy_device *csiphy_dev,
 	void __iomem *csiphybase, int32_t instance)
 {
 	int                                                  i;

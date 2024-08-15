@@ -71,6 +71,9 @@
 /* Congestion count threshold */
 #define CAM_ISP_CONTEXT_CONGESTION_CNT_MAX 3
 
+/* Number of init requests expected post flush to issue resume */
+#define CAM_ISP_CONTEXT_NUM_INIT_REQ_RCVD_POST_FLUSH 2
+
 /* forward declaration */
 struct cam_isp_context;
 
@@ -397,6 +400,7 @@ struct cam_isp_fcg_prediction_tracker {
  * @mswitch_default_apply_delay_ref_cnt: Ref cnt for this context to decide when to apply
  *                                       mode switch settings
  * @hw_idx:                    Hardware ID
+ * @num_inits_post_flush:      Number of INITs received post flush
  * @fcg_tracker:               FCG prediction tracker containing number of previously skipped
  *                             frames and indicates which prediction should be used
  * @rdi_only_context:          Get context type information.
@@ -468,6 +472,7 @@ struct cam_isp_context {
 	int32_t                               mswitch_default_apply_delay_max_cnt;
 	atomic_t                              mswitch_default_apply_delay_ref_cnt;
 	uint32_t                              hw_idx;
+	uint32_t                              num_inits_post_flush;
 	struct cam_isp_fcg_prediction_tracker fcg_tracker;
 	bool                                  rdi_only_context;
 	bool                                  offline_context;
@@ -486,6 +491,7 @@ struct cam_isp_context {
 	bool                                  handle_mswitch;
 	bool                                  mode_switch_en;
 	bool                                  sfe_en;
+	bool                                  standby_en;
 };
 
 /**

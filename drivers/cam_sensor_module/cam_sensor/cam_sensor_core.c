@@ -51,6 +51,32 @@ static int cam_sensor_notify_v4l2_error_event(
 	return rc;
 }
 
+static int cam_sensor_notify_msg_req_mgr(
+	enum cam_req_mgr_msg_type msg_type,
+	struct cam_sensor_ctrl_t *s_ctrl)
+{
+	int rc = 0;
+	struct cam_req_mgr_notify_msg msg = {0};
+
+	msg.link_hdl = s_ctrl->bridge_intf.link_hdl;
+	msg.dev_hdl = s_ctrl->bridge_intf.device_hdl;
+	msg.msg_type = msg_type;
+
+	if (s_ctrl->bridge_intf.crm_cb &&
+		s_ctrl->bridge_intf.crm_cb->add_req) {
+		rc = s_ctrl->bridge_intf.crm_cb->notify_msg(&msg);
+		if (rc) {
+			CAM_ERR(CAM_SENSOR,
+				"Notifying req mgr message: %u failed rc: %d", msg_type, rc);
+		}
+	}
+
+	CAM_DBG(CAM_SENSOR,
+		"Successfully notified message : %u to req mgr", msg_type);
+
+	return rc;
+}
+
 static int cam_sensor_update_req_mgr(
 	struct cam_sensor_ctrl_t *s_ctrl,
 	struct cam_packet *csl_packet)
@@ -465,10 +491,10 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 		break;
 	}
 	case CAM_SENSOR_PACKET_OPCODE_SENSOR_UPDATE: {
-		if ((s_ctrl->sensor_state == CAM_SENSOR_INIT) ||
-			(s_ctrl->sensor_state == CAM_SENSOR_ACQUIRE)) {
+		if (s_ctrl->sensor_state < CAM_SENSOR_STANDBY) {
 			CAM_WARN(CAM_SENSOR,
-				"Rxed Update packets without linking");
+				"Rxed Update packets without linking in state: %d",
+				s_ctrl->sensor_state);
 			goto end;
 		}
 
@@ -497,10 +523,10 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 		break;
 	}
 	case CAM_SENSOR_PACKET_OPCODE_SENSOR_FRAME_SKIP_UPDATE: {
-		if ((s_ctrl->sensor_state == CAM_SENSOR_INIT) ||
-			(s_ctrl->sensor_state == CAM_SENSOR_ACQUIRE)) {
+		if (s_ctrl->sensor_state < CAM_SENSOR_STANDBY) {
 			CAM_WARN(CAM_SENSOR,
-				"Rxed Update packets without linking");
+				"Rxed Update packets without linking in state: %d",
+				s_ctrl->sensor_state);
 			goto end;
 		}
 
@@ -513,10 +539,10 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 		break;
 	}
 	case CAM_SENSOR_PACKET_OPCODE_SENSOR_BUBBLE_UPDATE: {
-		if ((s_ctrl->sensor_state == CAM_SENSOR_INIT) ||
-			(s_ctrl->sensor_state == CAM_SENSOR_ACQUIRE)) {
+		if (s_ctrl->sensor_state < CAM_SENSOR_STANDBY) {
 			CAM_WARN(CAM_SENSOR,
-				"Rxed Update packets without linking");
+				"Rxed Update packets without linking in state: %d",
+				s_ctrl->sensor_state);
 			goto end;
 		}
 
@@ -529,10 +555,10 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 		break;
 	}
 	case CAM_SENSOR_PACKET_OPCODE_SENSOR_NOP: {
-		if ((s_ctrl->sensor_state == CAM_SENSOR_INIT) ||
-			(s_ctrl->sensor_state == CAM_SENSOR_ACQUIRE)) {
+		if (s_ctrl->sensor_state < CAM_SENSOR_STANDBY) {
 			CAM_WARN(CAM_SENSOR,
-				"Rxed NOP packets without linking");
+				"Rxed Update packets without linking in state: %d",
+				s_ctrl->sensor_state);
 			goto end;
 		}
 
@@ -1234,7 +1260,8 @@ int cam_sensor_stream_off(struct cam_sensor_ctrl_t *s_ctrl)
 	struct timespec64 ts;
 	uint64_t          ms, sec, min, hrs;
 
-	if (s_ctrl->sensor_state != CAM_SENSOR_START) {
+	if (s_ctrl->sensor_state != CAM_SENSOR_START &&
+		(s_ctrl->sensor_state != CAM_SENSOR_STANDBY)) {
 		rc = -EINVAL;
 		CAM_WARN(CAM_SENSOR,
 			"Not in right state to stop %s state: %d",
@@ -1242,7 +1269,8 @@ int cam_sensor_stream_off(struct cam_sensor_ctrl_t *s_ctrl)
 		goto end;
 	}
 
-	if (s_ctrl->i2c_data.streamoff_settings.is_settings_valid &&
+	if (!s_ctrl->stream_off_on_flush &&
+		s_ctrl->i2c_data.streamoff_settings.is_settings_valid &&
 		(s_ctrl->i2c_data.streamoff_settings.request_id == 0)) {
 		rc = cam_sensor_apply_settings(s_ctrl, 0,
 			CAM_SENSOR_PACKET_OPCODE_SENSOR_STREAMOFF);
@@ -1255,6 +1283,7 @@ int cam_sensor_stream_off(struct cam_sensor_ctrl_t *s_ctrl)
 	cam_sensor_release_per_frame_resource(s_ctrl);
 	s_ctrl->last_flush_req = 0;
 	s_ctrl->sensor_state = CAM_SENSOR_ACQUIRE;
+	s_ctrl->stream_off_on_flush = false;
 	memset(s_ctrl->sensor_res, 0, sizeof(s_ctrl->sensor_res));
 
 	CAM_GET_TIMESTAMP(ts);
@@ -1498,6 +1527,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		s_ctrl->last_applied_req = 0;
 		s_ctrl->num_batched_frames = 0;
 		s_ctrl->last_applied_done_timestamp = 0;
+		s_ctrl->stream_off_on_flush = false;
 		memset(s_ctrl->sensor_res, 0, sizeof(s_ctrl->sensor_res));
 		CAM_INFO(CAM_SENSOR,
 			"CAM_ACQUIRE_DEV Success for %s sensor_id:0x%x,sensor_slave_addr:0x%x",
@@ -1567,6 +1597,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		s_ctrl->streamoff_count = 0;
 		s_ctrl->last_flush_req = 0;
 		s_ctrl->last_applied_done_timestamp = 0;
+		s_ctrl->stream_off_on_flush = false;
 	}
 		break;
 	case CAM_QUERY_CAP: {
@@ -1585,7 +1616,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 	case CAM_START_DEV: {
 		struct cam_req_mgr_timer_notify timer;
 		if ((s_ctrl->sensor_state == CAM_SENSOR_INIT) ||
-			(s_ctrl->sensor_state == CAM_SENSOR_START)) {
+			(s_ctrl->sensor_state == CAM_SENSOR_START) ||
+			s_ctrl->sensor_state == CAM_SENSOR_STANDBY) {
 			rc = -EINVAL;
 			CAM_WARN(CAM_SENSOR,
 			"Not in right state to start %s state: %d",
@@ -1639,7 +1671,9 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 	case CAM_STOP_DEV: {
 		if (s_ctrl->stream_off_after_eof) {
 			s_ctrl->is_stopped_by_user = true;
-			CAM_DBG(CAM_SENSOR, "Ignore stop dev cmd for VFPS feature");
+			CAM_DBG(CAM_SENSOR,
+				"Ignore stop dev cmd, sensor %s already in streamed off state",
+				s_ctrl->sensor_name);
 			goto release_mutex;
 		}
 
@@ -1752,6 +1786,13 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 				goto release_mutex;
 			}
 		}
+
+		if ((s_ctrl->stream_off_on_flush) && (s_ctrl->sensor_state == CAM_SENSOR_CONFIG)) {
+			rc = cam_sensor_notify_msg_req_mgr(
+				CAM_REQ_MGR_MSG_NOTIFY_FOR_SYNCED_RESUME, s_ctrl);
+			if (!rc)
+				s_ctrl->stream_off_on_flush = false;
+		}
 	}
 		break;
 	default:
@@ -1806,6 +1847,7 @@ int cam_sensor_publish_dev_info(struct cam_req_mgr_device_info *info)
 		info->m_delay = CAM_MODESWITCH_DELAY_2;
 	}
 	info->trigger = CAM_TRIGGER_POINT_SOF;
+	info->resume_sync_on = true;
 
 	CAM_DBG(CAM_REQ, "num batched frames %d p_delay is %d",
 		s_ctrl->num_batched_frames, info->p_delay);
@@ -2333,15 +2375,16 @@ int32_t cam_sensor_flush_request(struct cam_req_mgr_flush_request *flush_req)
 		CAM_DBG(CAM_SENSOR, "last reqest to flush is %lld",
 			flush_req->req_id);
 
-		/*
-		 * Sensor can't get EOF event during flush if we do the flush
-		 * before EOF, so we need to stream off the sensor during flush
-		 * for VFPS usecase.
-		 */
-		if (s_ctrl->stream_off_after_eof) {
+		if (s_ctrl->stream_off_after_eof || flush_req->enable_sensor_standby) {
 			cam_sensor_stream_off(s_ctrl);
 			s_ctrl->is_stopped_by_user = false;
+			if (flush_req->enable_sensor_standby) {
+				s_ctrl->sensor_state = CAM_SENSOR_STANDBY;
+				s_ctrl->stream_off_on_flush = true;
+			}
 		}
+
+		s_ctrl->stream_off_on_flush = flush_req->enable_sensor_standby;
 	}
 
 	for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
@@ -2463,6 +2506,35 @@ int cam_sensor_process_evt(struct cam_req_mgr_link_evt_data *evt_data)
 		CAM_DBG(CAM_SENSOR, "sensor %s stream off after eof:%s",
 			s_ctrl->sensor_name,
 			CAM_BOOL_TO_YESNO(s_ctrl->stream_off_after_eof));
+		break;
+	case CAM_REQ_MGR_LINK_EVT_RESUME_HW: {
+		struct timespec64 ts;
+		uint64_t ms, sec, min, hrs;
+
+		if (s_ctrl->i2c_data.streamon_settings.is_settings_valid &&
+			(s_ctrl->i2c_data.streamon_settings.request_id == 0)) {
+			rc = cam_sensor_apply_settings(s_ctrl, 0,
+				CAM_SENSOR_PACKET_OPCODE_SENSOR_STREAMON);
+			if (rc < 0) {
+				CAM_ERR(CAM_SENSOR,
+					"cannot apply streamon settings for %s",
+					s_ctrl->sensor_name);
+				break;
+			}
+			s_ctrl->sensor_state = CAM_SENSOR_START;
+			s_ctrl->stream_off_on_flush = false;
+			CAM_GET_TIMESTAMP(ts);
+			CAM_CONVERT_TIMESTAMP_FORMAT(ts, hrs, min, sec, ms);
+
+			CAM_INFO(CAM_SENSOR,
+				"%llu:%llu:%llu.%llu CAM_START_DEV for %s sensor_id:0x%x,sensor_slave_addr:0x%x num_batched_frames:%d post flush",
+				hrs, min, sec, ms,
+				s_ctrl->sensor_name,
+				s_ctrl->sensordata->slave_info.sensor_id,
+				s_ctrl->sensordata->slave_info.sensor_slave_addr,
+				s_ctrl->num_batched_frames);
+		}
+	}
 		break;
 	default:
 		/* No handling */

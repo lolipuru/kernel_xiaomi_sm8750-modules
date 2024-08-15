@@ -35,6 +35,7 @@
 enum cam_sensor_state_t {
 	CAM_SENSOR_INIT,
 	CAM_SENSOR_ACQUIRE,
+	CAM_SENSOR_STANDBY,
 	CAM_SENSOR_CONFIG,
 	CAM_SENSOR_START,
 };
@@ -115,6 +116,7 @@ struct cam_sensor_dev_res_info {
  * @num_batched_frames: Number batched frames
  * @is_stopped_by_user: Indicate if sensor has been stopped by userland
  * @stream_off_after_eof: Indicates if sensor needs to stream off after eof
+ * @stream_off_on_flush: Streaming off sensor on flush all call
  * @is_res_info_updated: Indicate if resolution info is updated
  * @last_applied_done_timestamp : Last applied done timestamp value
  * @hw_no_ops: To determine whether HW operations need to be disabled
@@ -155,6 +157,7 @@ struct cam_sensor_ctrl_t {
 	uint32_t                       num_batched_frames;
 	bool                           is_stopped_by_user;
 	bool                           stream_off_after_eof;
+	bool                           stream_off_on_flush;
 	bool                           is_res_info_updated;
 	uint64_t                       last_applied_done_timestamp;
 	bool                           hw_no_ops;

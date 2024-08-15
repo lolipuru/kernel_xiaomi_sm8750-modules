@@ -322,12 +322,14 @@ struct cam_ife_csid_hw_halt_args {
  *             halt at frame boundary and wait for frame boundary
  * @node_res :  reource pointer array( ie cid or CSID)
  * @num_res :   number of resources to be stopped
+ * @standby_en: Sensor Standby is enabled
  *
  */
 struct cam_csid_hw_stop_args {
 	enum cam_ife_csid_halt_cmd                stop_cmd;
 	struct cam_isp_resource_node            **node_res;
 	uint32_t                                  num_res;
+	bool                                      standby_en;
 };
 
 /**
@@ -360,6 +362,7 @@ struct cam_csid_hw_start_args {
 enum cam_ife_csid_reset_type {
 	CAM_IFE_CSID_RESET_GLOBAL,
 	CAM_IFE_CSID_RESET_PATH,
+	CAM_IFE_CSID_RESET_GLOBAL_HW_ONLY,
 	CAM_IFE_CSID_RESET_MAX,
 };
 

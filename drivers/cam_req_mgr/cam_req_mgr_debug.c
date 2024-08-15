@@ -174,6 +174,8 @@ int cam_req_mgr_debug_register(struct cam_req_mgr_core_device *core_dev)
 		debugfs_root, core_dev, &bubble_recovery);
 	debugfs_create_bool("recovery_on_apply_fail", 0644,
 		debugfs_root, &core_dev->recovery_on_apply_fail);
+	debugfs_create_bool("disable_sensor_standby", 0644,
+		debugfs_root, &core_dev->disable_sensor_standby);
 	debugfs_create_u32("delay_detect_count", 0644, debugfs_root,
 		&cam_debug_mgr_delay_detect);
 	debugfs_create_file("cam_print_boot_stats", 0644, debugfs_root,

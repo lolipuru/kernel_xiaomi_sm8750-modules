@@ -221,8 +221,9 @@ enum cam_req_mgr_device_id {
  * enum cam_req_mgr_link_evt_type
  * @CAM_REQ_MGR_LINK_EVT_ERR               : error on the link from any of the
  *                                           connected devices
- * @CAM_REQ_MGR_LINK_EVT_PAUSE             : to pause the link
- * @CAM_REQ_MGR_LINK_EVT_RESUME            : resumes the link which was paused
+ * @CAM_REQ_MGR_LINK_EVT_PAUSE             : to pause the link vote down
+ * @CAM_REQ_MGR_LINK_EVT_RESUME            : resumes the link which was paused votes up
+ * @CAM_REQ_MGR_LINK_EVT_RESUME_HW         : seeking synced resume to unpause HW
  * @CAM_REQ_MGR_LINK_EVT_SOF_FREEZE        : request manager has detected an
  *                                           sof freeze
  * @CAM_REQ_MGR_LINK_EVT_STALLED           : Indicate to all connected devices
@@ -239,6 +240,7 @@ enum cam_req_mgr_link_evt_type {
 	CAM_REQ_MGR_LINK_EVT_ERR,
 	CAM_REQ_MGR_LINK_EVT_PAUSE,
 	CAM_REQ_MGR_LINK_EVT_RESUME,
+	CAM_REQ_MGR_LINK_EVT_RESUME_HW,
 	CAM_REQ_MGR_LINK_EVT_SOF_FREEZE,
 	CAM_REQ_MGR_LINK_EVT_STALLED,
 	CAM_REQ_MGR_LINK_EVT_EOF,
@@ -249,13 +251,15 @@ enum cam_req_mgr_link_evt_type {
 
 /**
  * enum cam_req_mgr_msg_type
- * @CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO : sensor frame info message type
- * @CAM_REQ_MGR_MSG_UPDATE_IFE_HW_IDX : notify CRM exact IFE hw idx
- * @CAM_REQ_MGR_MSG_MAX               : invalid msg type
+ * @CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO  : sensor frame info message type
+ * @CAM_REQ_MGR_MSG_UPDATE_DEVICE_INFO : Update device specific info
+ * @CAM_REQ_MGR_MSG_MAX                : invalid msg type
+ * @CAM_REQ_MGR_MSG_CHECK_FOR_RESUME   : Check for synced resume post flush
  */
 enum cam_req_mgr_msg_type {
 	CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO,
-	CAM_REQ_MGR_MSG_UPDATE_IFE_HW_IDX,
+	CAM_REQ_MGR_MSG_UPDATE_DEVICE_INFO,
+	CAM_REQ_MGR_MSG_NOTIFY_FOR_SYNCED_RESUME,
 	CAM_REQ_MGR_MSG_MAX,
 };
 
@@ -389,6 +393,7 @@ struct cam_req_mgr_notify_msg {
  * @m_delay : delay between time modeswitch settings applied and take effect
  * @trigger : Trigger point for the client
  * @trigger_on : This device provides trigger
+ * @resume_sync_on: Device is seeking sync to resume post flush/halt
  */
 struct cam_req_mgr_device_info {
 	int32_t                     dev_hdl;
@@ -398,6 +403,7 @@ struct cam_req_mgr_device_info {
 	enum cam_modeswitch_delay   m_delay;
 	uint32_t                    trigger;
 	bool                        trigger_on;
+	bool                        resume_sync_on;
 };
 
 /**
@@ -453,6 +459,7 @@ struct cam_req_mgr_apply_request {
  * @dev_hdl     : device handle for cross check
  * @type        : cancel request type flush all or a request
  * @req_id      : request id to cancel
+ * @enable_sensor_standby : Enable sensor standby
  *
  */
 struct cam_req_mgr_flush_request {
@@ -460,6 +467,7 @@ struct cam_req_mgr_flush_request {
 	int32_t     dev_hdl;
 	uint32_t    type;
 	uint64_t    req_id;
+	bool        enable_sensor_standby;
 };
 
 /**
