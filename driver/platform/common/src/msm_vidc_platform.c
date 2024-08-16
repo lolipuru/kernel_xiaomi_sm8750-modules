@@ -1548,16 +1548,11 @@ int msm_vidc_adjust_gop_size(void *instance, struct v4l2_ctrl *ctrl)
 	u32 min_gop_size, num_subgops;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[GOP_SIZE].value;
+	enable_opengop = inst->capabilities[OPEN_GOP].value;
 
 	if (msm_vidc_get_parent_value(inst, GOP_SIZE,
 				      ENH_LAYER_COUNT, &enh_layer_count, __func__))
 		return -EINVAL;
-
-	if (inst->codec == MSM_VIDC_HEVC) {
-		if (msm_vidc_get_parent_value(inst, GOP_SIZE,
-			OPEN_GOP, &enable_opengop, __func__))
-			return -EINVAL;
-	}
 
 	if (!enh_layer_count)
 		goto exit;
