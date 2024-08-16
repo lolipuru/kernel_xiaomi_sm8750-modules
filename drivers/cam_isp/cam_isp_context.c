@@ -1211,6 +1211,7 @@ static int __cam_isp_ctx_enqueue_init_request(
 		}
 
 		if (!rc) {
+			/* Copy data to old request for EPCR */
 			memcpy(req_isp_old->fence_map_out,
 				req_isp_new->fence_map_out,
 				sizeof(req_isp_new->fence_map_out[0])*
@@ -1274,6 +1275,32 @@ static int __cam_isp_ctx_enqueue_init_request(
 			/* Copy FCG HW update params */
 			__cam_isp_ctx_copy_fcg_params(hw_update_data,
 				req_isp_old, req_isp_new);
+
+			if (req_isp_new->hw_update_data.bw_clk_config.bw_config_valid) {
+				memcpy(&req_isp_old->hw_update_data.bw_clk_config.bw_config,
+					&req_isp_new->hw_update_data.bw_clk_config.bw_config,
+					sizeof(struct cam_isp_bw_config_internal));
+				memcpy(&req_isp_old->hw_update_data.bw_clk_config.bw_config_v2,
+					&req_isp_new->hw_update_data.bw_clk_config.bw_config_v2,
+					sizeof(struct cam_isp_bw_config_internal_v2));
+				req_isp_old->hw_update_data.bw_clk_config.bw_config_valid = true;
+			}
+
+			if (req_isp_new->hw_update_data.bw_clk_config.ife_clock_config_valid) {
+				memcpy(&req_isp_old->hw_update_data.bw_clk_config.ife_clock_config,
+					&req_isp_new->hw_update_data.bw_clk_config.ife_clock_config,
+					sizeof(struct cam_isp_clock_config_internal));
+				req_isp_old->hw_update_data.bw_clk_config.ife_clock_config_valid =
+					true;
+			}
+
+			if (req_isp_new->hw_update_data.bw_clk_config.sfe_clock_config_valid) {
+				memcpy(&req_isp_old->hw_update_data.bw_clk_config.sfe_clock_config,
+					&req_isp_new->hw_update_data.bw_clk_config.sfe_clock_config,
+					sizeof(struct cam_isp_clock_config_internal));
+				req_isp_old->hw_update_data.bw_clk_config.sfe_clock_config_valid =
+					true;
+			}
 
 			memcpy(&req_isp_old->hw_update_data.isp_drv_config,
 				&req_isp_new->hw_update_data.isp_drv_config,
