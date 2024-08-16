@@ -1563,13 +1563,52 @@ static bool cam_icp_check_bw_update(struct cam_icp_hw_mgr *hw_mgr,
 	return bw_updated;
 }
 
+static int cam_icp_update_clk_util(
+	uint32_t curr_clk_rate,
+	struct cam_icp_hw_mgr *hw_mgr,
+	struct cam_icp_hw_ctx_data *ctx_data)
+{
+	int i;
+	struct cam_icp_dev_clk_update_cmd clk_upd_cmd;
+	struct cam_hw_intf *dev_intf = NULL;
+
+	clk_upd_cmd.curr_clk_rate = curr_clk_rate;
+	clk_upd_cmd.dev_pc_enable = hw_mgr->dev_pc_flag;
+	clk_upd_cmd.clk_level = -1;
+
+	for (i = 0; i < ctx_data->device_info->hw_dev_cnt; i++) {
+		dev_intf = ctx_data->device_info->dev_intf[i];
+		if (!dev_intf) {
+			CAM_ERR(CAM_ICP, "Device intf for %s[%u] is NULL",
+				ctx_data->device_info->dev_name, i);
+			return -EINVAL;
+		}
+		dev_intf->hw_ops.process_cmd(dev_intf->hw_priv, CAM_ICP_DEV_CMD_UPDATE_CLK,
+			&clk_upd_cmd, sizeof(struct cam_icp_dev_clk_update_cmd));
+	}
+
+	/* Scale ICP clock to IPE clk rate or OFE clk rate */
+	if (ctx_data->device_info->hw_dev_type != CAM_ICP_DEV_BPS) {
+		/* update ICP Proc clock */
+		CAM_DBG(CAM_PERF, "%s: Update ICP clk to level [%d]",
+			ctx_data->ctx_id_string, clk_upd_cmd.clk_level);
+		dev_intf = hw_mgr->icp_dev_intf;
+		if (!dev_intf) {
+			CAM_ERR(CAM_ICP, "Device interface is NULL");
+			return -EINVAL;
+		}
+		dev_intf->hw_ops.process_cmd(dev_intf->hw_priv, CAM_ICP_CMD_CLK_UPDATE,
+			&clk_upd_cmd.clk_level, sizeof(clk_upd_cmd.clk_level));
+	}
+
+	return 0;
+}
+
 static int cam_icp_update_clk_rate(struct cam_icp_hw_mgr *hw_mgr,
 	struct cam_icp_hw_ctx_data *ctx_data)
 {
-	uint32_t i, curr_clk_rate;
-	struct cam_hw_intf *dev_intf = NULL;
+	uint32_t curr_clk_rate;
 	struct cam_icp_clk_info *dev_clk_info = NULL;
-	struct cam_icp_dev_clk_update_cmd clk_upd_cmd;
 	char tmp_buff[64];
 
 	dev_clk_info = &ctx_data->device_info->clk_info;
@@ -1588,36 +1627,10 @@ static int cam_icp_update_clk_rate(struct cam_icp_hw_mgr *hw_mgr,
 	CAM_DBG(CAM_PERF, "%s: clk_rate %u",
 		ctx_data->ctx_id_string, curr_clk_rate);
 
-	clk_upd_cmd.curr_clk_rate = curr_clk_rate;
-	clk_upd_cmd.dev_pc_enable = hw_mgr->dev_pc_flag;
-	clk_upd_cmd.clk_level = -1;
+	if (atomic_read(&hw_mgr->abort_in_process))
+		return 0;
 
-	for (i = 0; i < ctx_data->device_info->hw_dev_cnt; i++) {
-		dev_intf = ctx_data->device_info->dev_intf[i];
-		if (!dev_intf) {
-			CAM_ERR(CAM_ICP, "Device intf for %s[%u] is NULL",
-				ctx_data->device_info->dev_name, i);
-			return -EINVAL;
-		}
-		dev_intf->hw_ops.process_cmd(dev_intf->hw_priv, CAM_ICP_DEV_CMD_UPDATE_CLK,
-			&clk_upd_cmd, sizeof(clk_upd_cmd));
-	}
-
-	/* Scale ICP clock to IPE clk rate or OFE clk rate */
-	if (ctx_data->device_info->hw_dev_type != CAM_ICP_DEV_BPS) {
-		/* update ICP Proc clock */
-		CAM_DBG(CAM_PERF, "%s: Update ICP clk to level [%d]",
-			ctx_data->ctx_id_string, clk_upd_cmd.clk_level);
-		dev_intf = hw_mgr->icp_dev_intf;
-		if (!dev_intf) {
-			CAM_ERR(CAM_ICP, "Device interface is NULL");
-			return -EINVAL;
-		}
-		dev_intf->hw_ops.process_cmd(dev_intf->hw_priv, CAM_ICP_CMD_CLK_UPDATE,
-			&clk_upd_cmd.clk_level, sizeof(clk_upd_cmd.clk_level));
-	}
-
-	return 0;
+	return cam_icp_update_clk_util(curr_clk_rate, hw_mgr, ctx_data);
 }
 
 static int cam_icp_update_cpas_vote(struct cam_icp_hw_mgr *hw_mgr,
@@ -7483,6 +7496,7 @@ static int cam_icp_mgr_enqueue_abort(
 	struct hfi_cmd_work_data *task_data;
 	struct crm_workq_task *task;
 	struct cam_icp_hw_ctx_info *ctx_info;
+	struct cam_icp_clk_info *dev_clk_info = NULL;
 
 	task = cam_req_mgr_workq_get_task(hw_mgr->cmd_work);
 	if (!task) {
@@ -7505,12 +7519,19 @@ static int cam_icp_mgr_enqueue_abort(
 	task_data->data = (void *)ctx_info;
 	task_data->type = ICP_WORKQ_TASK_CMD_TYPE;
 	task->process_cb = cam_icp_mgr_abort_handle_wq;
+
+	atomic_inc(&hw_mgr->abort_in_process);
+	cam_icp_update_clk_util(ctx_data->clk_info.clk_rate[CAM_TURBO_VOTE],
+		hw_mgr, ctx_data);
+	CAM_DBG(CAM_ICP, "[%s] voting device to %u rate",
+		hw_mgr->hw_mgr_name, ctx_data->clk_info.clk_rate[CAM_TURBO_VOTE]);
+
 	rc = cam_req_mgr_workq_enqueue_task(task, hw_mgr,
 		CRM_TASK_PRIORITY_0);
 	if (rc) {
 		CAM_ERR(CAM_ICP, "Failed at enqueuing task to workq, ctx_id: %d", ctx_info->ctx_id);
 		CAM_MEM_FREE(ctx_info);
-		return rc;
+		goto end;
 	}
 
 	rem_jiffies = CAM_COMMON_WAIT_FOR_COMPLETION_TIMEOUT_ERRMSG(
@@ -7522,11 +7543,22 @@ static int cam_icp_mgr_enqueue_abort(
 		rc = -ETIMEDOUT;
 		cam_icp_dump_debug_info(hw_mgr, false);
 		ctx_data->abort_timed_out = true;
-		return rc;
+		goto end;
 	}
 
+	rc = 0;
 	CAM_DBG(CAM_ICP, "%s: Abort after flush is success", ctx_data->ctx_id_string);
-	return 0;
+
+end:
+	atomic_dec(&hw_mgr->abort_in_process);
+	if (!atomic_read(&hw_mgr->abort_in_process)) {
+		dev_clk_info = &ctx_data->device_info->clk_info;
+
+		cam_icp_update_clk_util(dev_clk_info->curr_clk, hw_mgr, ctx_data);
+		CAM_DBG(CAM_ICP, "[%s] voting device back to %u rate",
+			hw_mgr->hw_mgr_name, dev_clk_info->curr_clk);
+	}
+	return rc;
 }
 
 static int cam_icp_mgr_hw_dump(void *hw_priv, void *hw_dump_args)
@@ -7961,6 +7993,7 @@ static int cam_icp_mgr_release_hw(void *hw_mgr_priv, void *release_hw_args)
 	if (!hw_mgr->ctxt_cnt) {
 		/* Clear SSR flag on last release */
 		atomic_set(&hw_mgr->ssr_triggered, 0);
+		atomic_set(&hw_mgr->abort_in_process, 0);
 		CAM_DBG(CAM_ICP, "[%s] Last Release", hw_mgr->hw_mgr_name);
 		cam_icp_mgr_icp_power_collapse(hw_mgr, &hw_args);
 		cam_icp_hw_mgr_reset_clk_info(hw_mgr);
@@ -9932,6 +9965,7 @@ int cam_icp_hw_mgr_init(struct device_node *of_node, uint64_t *hw_mgr_hdl,
 	}
 
 	g_icp_hw_mgr[device_idx] = hw_mgr;
+	atomic_set(&hw_mgr->abort_in_process, 0);
 
 	CAM_DBG(CAM_ICP, "Done hw mgr[%u] init: icp name:%s",
 		device_idx, hw_mgr->hw_mgr_name);
