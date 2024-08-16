@@ -107,6 +107,7 @@ enum hfi_hevc_profile_type {
 	HFI_H265_PROFILE_MAIN_STILL_PICTURE    = 1,
 	HFI_H265_PROFILE_MAIN_10               = 2,
 	HFI_H265_PROFILE_MAIN_10_STILL_PICTURE = 3,
+	HFI_H265_PROFILE_MULTIVIEW_MAIN        = 4,
 };
 
 enum hfi_vp9_profile_type {
@@ -615,6 +616,14 @@ enum hfi_fence_direction_type {
 #define HFI_PROP_FENCE_ERROR_DATA_CORRUPT                       0x0300019F
 
 #define HFI_PROP_HDR10_MAX_RGB_INFO                             0x030001A2
+
+enum hfi_view_id {
+	HFI_VIEW_ID_0 = 0,
+	HFI_VIEW_ID_1 = 1,
+	HFI_VIEW_ID_INVALID = 0xFFFFFFFF,
+};
+
+#define HFI_PROP_VIEW_ID                                        0x030001A5
 
 #define HFI_PROP_OPEN_GOP                                       0x030001A6
 
