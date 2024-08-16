@@ -477,11 +477,11 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 			next_drv_info->frame_duration, min_blanking_duration,
 			drv_info->blanking_duration, next_drv_info->blanking_duration,
 			drv_en, timeout_val, ctx->ctx_index);
-
-		drv_info->update_drv = update_drv;
-		drv_info->drv_en = drv_en;
-		drv_info->timeout_val = timeout_val;
 	}
+
+	drv_info->update_drv = update_drv;
+	drv_info->drv_en = drv_en;
+	drv_info->timeout_val = timeout_val;
 
 	if (!update_drv) {
 		CAM_DBG(CAM_ISP, "req_id:%llu no need to update drv, ctx:%d",
@@ -1129,7 +1129,7 @@ void cam_ife_hw_mgr_drv_info_dump(
 		per_req_info = &hw_mgr_ctx->per_req_info[i];
 		if (per_req_info) {
 			CAM_INFO(CAM_ISP,
-				"Index[%d] Apply IFE Req[%llu]  frame_dur[%llu] blanking_dur[%llu] drv_timeout[%llu] drv_en[%d], path_idle[0x%x], update_drv[%d], blob_valid[%d] mup_en[%d]",
+				"Index[%d] Apply IFE Req[%llu]  frame_dur[%llu] blanking_dur[%llu] drv_timeout[%u] drv_en[%d], path_idle[0x%x], update_drv[%d], blob_valid[%d] mup_en[%d]",
 				i, per_req_info->drv_info.req_id,
 				per_req_info->drv_info.frame_duration,
 				per_req_info->drv_info.blanking_duration,

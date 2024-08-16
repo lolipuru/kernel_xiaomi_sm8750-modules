@@ -690,7 +690,7 @@ static void __cam_isp_ctx_dump_state_monitor_array(
 		time64_to_tm(ctx_isp->dbg_monitors.state_monitor[index].evt_time_stamp.tv_sec,
 			0, &ts);
 		CAM_ERR(CAM_ISP,
-			"Idx[%d] time[%d-%d %d:%d:%d.%lld]:Substate[%s] Frame[%lld] Req[%llu] evt[%s]",
+			"Idx[%d] time[%d-%d %d:%d:%d.%lld]:Substate[%s] Frame[%lld] Req[%llu] evt[%s] at time[%llu: %09llu]",
 			index, ts.tm_mon + 1, ts.tm_mday, ts.tm_hour, ts.tm_min, ts.tm_sec,
 			ctx_isp->dbg_monitors.state_monitor[index].evt_time_stamp.tv_nsec / 1000000,
 			__cam_isp_ctx_substate_val_to_type(
@@ -698,7 +698,9 @@ static void __cam_isp_ctx_dump_state_monitor_array(
 			ctx_isp->dbg_monitors.state_monitor[index].frame_id,
 			ctx_isp->dbg_monitors.state_monitor[index].req_id,
 			__cam_isp_hw_evt_val_to_type(
-				ctx_isp->dbg_monitors.state_monitor[index].trigger));
+				ctx_isp->dbg_monitors.state_monitor[index].trigger),
+			ctx_isp->dbg_monitors.state_monitor[index].evt_time_stamp.tv_sec,
+			ctx_isp->dbg_monitors.state_monitor[index].evt_time_stamp.tv_nsec);
 
 		index = (index + 1) % CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES;
 	}
