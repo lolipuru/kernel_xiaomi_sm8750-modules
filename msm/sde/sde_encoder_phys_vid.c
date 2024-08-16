@@ -358,21 +358,14 @@ static void _sde_encoder_phys_vid_raw_te_setup(
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
-	if (enable) {
-		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
-			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, true,
-				sde_enc->disp_info.vrr_caps.arp_support);
-		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
-			sde_enc->disp_info.vrr_caps.arp_support)
-			vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
-	} else {
-		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
-			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, false,
-				false);
-		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
-			sde_enc->disp_info.vrr_caps.arp_support)
-			vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
-	}
+
+	if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
+		phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, true,
+			sde_enc->disp_info.vrr_caps.arp_support);
+	if (vid_enc->base.hw_intf->ops.raw_te_setup &&
+		sde_enc->disp_info.vrr_caps.arp_support)
+		vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
+
 }
 
 /* vid_enc timing_params must be configured before calling this function */
