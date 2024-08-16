@@ -4570,15 +4570,14 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 	cam_soc_util_regspace_data_cb reg_data_cb,
 	struct cam_hw_soc_dump_args *soc_dump_args,
 	struct cam_hw_soc_skip_dump_args *soc_skip_dump_args,
-	bool user_triggered_dump)
+	bool user_triggered_dump, uintptr_t cpu_addr, size_t buf_size)
 {
 	int                               rc = 0, i, j;
-	uintptr_t                         cpu_addr = 0;
 	uintptr_t                         cmd_buf_start = 0;
 	uintptr_t                         cmd_in_data_end = 0;
 	uintptr_t                         cmd_buf_end = 0;
 	uint32_t                          reg_base_type = 0;
-	size_t                            buf_size = 0, remain_len = 0;
+	size_t                            remain_len = 0;
 	struct cam_reg_dump_input_info   *reg_input_info = NULL;
 	struct cam_reg_dump_input_info   *reg_input_info_u = NULL;
 	struct cam_reg_dump_desc         *reg_dump_desc = NULL;
@@ -4602,23 +4601,14 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 		return -EINVAL;
 	}
 
-	rc = cam_mem_get_cpu_buf(cmd_desc->mem_handle, &cpu_addr, &buf_size);
-	if (rc || !cpu_addr || (buf_size == 0)) {
-		CAM_ERR(CAM_UTIL, "Failed in Get cpu addr, rc=%d, cpu_addr=%pK",
-			rc, (void *)cpu_addr);
-		if (rc)
-			return rc;
-		goto put_ref;
-	}
-
-	CAM_DBG(CAM_UTIL, "Get cpu buf success req_id: %llu buf_size: %zu",
+	CAM_DBG(CAM_UTIL, " Get cpu buf success req_id: %llu buf_size: %zu",
 		req_id, buf_size);
+
 	if ((buf_size < sizeof(uint32_t)) ||
 		((size_t)cmd_desc->offset > (buf_size - sizeof(uint32_t)))) {
 		CAM_ERR(CAM_UTIL, "Invalid offset for cmd buf: %zu",
 			(size_t)cmd_desc->offset);
-		rc = -EINVAL;
-		goto put_ref;
+		return -EINVAL;
 	}
 
 	remain_len = buf_size - (size_t)cmd_desc->offset;
@@ -4628,8 +4618,7 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 			"Invalid params for cmd buf len: %zu size: %zu remain_len: %zu",
 			(size_t)cmd_desc->length, (size_t)cmd_desc->length,
 			remain_len);
-		rc = -EINVAL;
-		goto put_ref;
+		return -EINVAL;
 	}
 
 	cmd_buf_start = cpu_addr + (uintptr_t)cmd_desc->offset;
@@ -4640,8 +4629,7 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 		CAM_ERR(CAM_UTIL,
 			"Invalid length or size for cmd buf: [%zu] [%zu]",
 			(size_t)cmd_desc->length, (size_t)cmd_desc->size);
-		rc = -EINVAL;
-		goto put_ref;
+		return -EINVAL;
 	}
 
 	CAM_DBG(CAM_UTIL,
@@ -4652,8 +4640,7 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 	if (!local_num_dump) {
 		CAM_ERR(CAM_UTIL,
 			"Invalid number of dump sets 0, req_id: [%llu]", req_id);
-		rc = -EINVAL;
-		goto put_ref;
+		return -EINVAL;
 	}
 
 	rc = cam_common_mem_kdup((void **)&reg_input_info,
@@ -4663,7 +4650,7 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 
 	if (rc) {
 		CAM_ERR(CAM_UTIL, "Alloc and copy req: %llu input info fail", req_id);
-		goto put_ref;
+		return rc;
 	}
 
 	if (local_num_dump != reg_input_info->num_dump_sets) {
@@ -4864,8 +4851,7 @@ free_desc:
 	cam_common_mem_free(reg_dump_desc);
 end:
 	cam_common_mem_free(reg_input_info);
-put_ref:
-	cam_mem_put_cpu_buf(cmd_desc->mem_handle);
+
 	return rc;
 }
 
