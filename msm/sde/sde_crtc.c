@@ -186,6 +186,38 @@ static inline int sde_crtc_get_num_mixers(struct sde_crtc_state *cstate,
 			sde_crtc->num_mixers;
 }
 
+bool sde_crtc_state_in_lb_mode(struct drm_crtc_state *state)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+	struct drm_connector_list_iter conn_iter;
+	bool in_lb_mode = false;
+
+	if (!state || !state->crtc)
+		return false;
+
+	drm_connector_list_iter_begin(state->crtc->dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		if ((state->connector_mask) & drm_connector_mask(conn)) {
+			sde_conn =  to_sde_connector(conn);
+			if (sde_conn->is_lb_conn) {
+				in_lb_mode = true;
+				break;
+			}
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	return in_lb_mode;
+}
+
+bool sde_crtc_in_lb_transition(struct drm_crtc_state *old_state,
+		struct drm_crtc_state *new_state)
+{
+	return (sde_crtc_state_in_lb_mode(old_state) !=
+			sde_crtc_state_in_lb_mode(new_state));
+}
+
 enum sde_wb_usage_type sde_crtc_get_wb_usage_type(struct drm_crtc *crtc)
 {
 	struct drm_connector *conn;
