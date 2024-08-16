@@ -274,6 +274,11 @@ void _dspp_ai_scaler_install_property(struct drm_crtc *crtc)
 
 	kms = get_kms(crtc);
 	catalog = kms->catalog;
+	if (!catalog->ssip_allowed) {
+		DRM_INFO("ssip_allowed = %d\n", catalog->ssip_allowed);
+		return;
+	}
+
 	version = catalog->dspp[0].sblk->ai_scaler.version;
 	major_version = version >> 16;
 	snprintf(feature_name, ARRAY_SIZE(feature_name), "%s%d",

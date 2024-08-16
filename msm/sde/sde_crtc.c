@@ -7129,11 +7129,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			sde_kms_info_add_keyint(info, "demura_count",
 					catalog->demura_count);
 
-		if (catalog->ai_scaler_count)
+		if ((catalog->ai_scaler_count) && (catalog->ssip_allowed))
 			sde_kms_info_add_keyint(info, "ai_scaler_count",
 					catalog->ai_scaler_count);
 
-		if (catalog->abc_count)
+		if ((catalog->abc_count) && (catalog->ssip_allowed))
 			sde_kms_info_add_keyint(info, "abc_count",
 					catalog->abc_count);
 	}
