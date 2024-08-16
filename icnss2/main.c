@@ -5193,7 +5193,6 @@ static int icnss_smmu_dt_parse(struct icnss_priv *priv)
 			icnss_pr_dbg("SMMU S1 stage enabled\n");
 			priv->smmu_s1_enable = true;
 			if (priv->device_id == WCN6750_DEVICE_ID ||
-			    priv->device_id == WCN7750_DEVICE_ID ||
 			    priv->device_id == WCN6450_DEVICE_ID)
 				iommu_set_fault_handler(priv->iommu_domain,
 						icnss_smmu_fault_handler,
