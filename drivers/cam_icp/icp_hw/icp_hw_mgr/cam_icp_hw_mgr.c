@@ -3273,8 +3273,10 @@ static int cam_icp_mgr_trigger_recovery(struct cam_icp_hw_mgr *hw_mgr)
 
 
 	rc = cam_icp_mgr_restart_icp(hw_mgr);
-	if (!rc)
+	if (!rc) {
 		atomic_set(&hw_mgr->recovery, 0);
+		atomic_set(&hw_mgr->ssr_triggered, 0);
+	}
 
 	CAM_DBG(CAM_ICP, "[%s] recovery success: %s",
 		hw_mgr->hw_mgr_name,
@@ -5858,6 +5860,13 @@ static int cam_icp_mgr_restart_icp(struct cam_icp_hw_mgr *hw_mgr)
 			dump_type = (CAM_ICP_DUMP_STATUS_REGISTERS | CAM_ICP_DUMP_CSR_REGISTERS);
 			hw_mgr->icp_dev_intf->hw_ops.process_cmd(hw_mgr->icp_dev_intf->hw_priv,
 				CAM_ICP_CMD_HW_REG_DUMP, &dump_type, sizeof(dump_type));
+			goto end;
+		}
+
+		rc = cam_icp_mgr_send_memory_region_info(hw_mgr);
+		if (rc) {
+			CAM_ERR(CAM_ICP, "[%s] Failed in sending mem region info, rc %d",
+				hw_mgr->hw_mgr_name, rc);
 			goto end;
 		}
 	}
