@@ -321,6 +321,7 @@ struct sde_encoder_vrr_cfg {
 	struct hrtimer freq_step_timer;
 	struct hrtimer arp_transition_timer;
 	struct hrtimer self_refresh_timer;
+	struct hrtimer backlight_timer;
 };
 
 /**

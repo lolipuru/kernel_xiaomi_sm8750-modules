@@ -5353,6 +5353,19 @@ static void sde_encoder_handle_self_refresh(struct kthread_work *work)
 		sde_connector_trigger_cmd_self_refresh(sde_enc->cur_master->connector);
 }
 
+static void sde_encoder_cmd_backlight_update(struct kthread_work *work)
+{
+	struct sde_encoder_virt *sde_enc = container_of(work,
+				struct sde_encoder_virt, backlight_cmd_work);
+
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+
+	sde_connector_trigger_cmd_backlight_update(sde_enc->cur_master->connector);
+}
+
 static void sde_encoder_input_event_work_handler(struct kthread_work *work)
 {
 	struct sde_encoder_virt *sde_enc = container_of(work,
@@ -5505,6 +5518,72 @@ int sde_encoder_check_collision(struct sde_encoder_phys *phys_enc, u64 present_t
 
 	SDE_EVT32(collision_detected);
 	return collision_detected;
+}
+
+void sde_encoder_handle_next_backlight_update(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_vrr_cfg *vrr_cfg;
+	u64 curr_time, blv_update_ts_in_ns, blv_cmd_heads_up, blv_prevention_trigger;
+	u64 next_frame_inteval_ts_in_ns, prev_frame_inteval_ts_in_ns;
+	u64 frame_inteval_in_ns, nominal_vsync_ns, avr_step_in_ns;
+	struct sde_encoder_phys *phys_enc;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	phys_enc = sde_enc->cur_master;
+	vrr_cfg = &phys_enc->sde_vrr_cfg;
+
+	if (!vrr_cfg->curr_frame_interval_fps || !sde_enc->mode_info.frame_rate
+			|| !sde_enc->mode_info.avr_step_fps) {
+		SDE_ERROR("invalid frame rate [FI:%d fps:%d avr:%d]\n",
+			!vrr_cfg->curr_frame_interval_fps, !sde_enc->mode_info.frame_rate,
+			!sde_enc->mode_info.avr_step_fps);
+	}
+
+	frame_inteval_in_ns = (SEC_TO_NS / vrr_cfg->curr_frame_interval_fps) * 1000;
+	nominal_vsync_ns = SEC_TO_NS / sde_enc->mode_info.frame_rate;
+	avr_step_in_ns = SEC_TO_NS / sde_enc->mode_info.avr_step_fps;
+
+	curr_time = ktime_get();
+	SDE_EVT32(frame_inteval_in_ns, nominal_vsync_ns,
+		avr_step_in_ns, ktime_to_us(curr_time),
+		ktime_to_us(vrr_cfg->last_commit_ept_in_ns));
+
+	prev_frame_inteval_ts_in_ns = vrr_cfg->last_commit_ept_in_ns;
+	blv_cmd_heads_up = avr_step_in_ns + (2 * DEVIATION_NS);
+
+	/*
+	 * Get the frame interval boundary where
+	 * blv transfer needs to be made.
+	 */
+	while (prev_frame_inteval_ts_in_ns + frame_inteval_in_ns < curr_time + blv_cmd_heads_up)
+		prev_frame_inteval_ts_in_ns += frame_inteval_in_ns;
+
+	next_frame_inteval_ts_in_ns = prev_frame_inteval_ts_in_ns + frame_inteval_in_ns;
+	SDE_EVT32(ktime_to_us(prev_frame_inteval_ts_in_ns),
+		ktime_to_us(next_frame_inteval_ts_in_ns));
+
+	/*
+	 * blv_update_ts_in_ns is the time at which
+	 * back light update SR or new image transfer starts
+	 */
+	blv_update_ts_in_ns = prev_frame_inteval_ts_in_ns;
+	while (blv_update_ts_in_ns < (curr_time + blv_cmd_heads_up)) {
+		blv_update_ts_in_ns += nominal_vsync_ns;
+		/* collision with next frame interval case */
+		if ((blv_update_ts_in_ns + nominal_vsync_ns) > next_frame_inteval_ts_in_ns)
+			blv_update_ts_in_ns = next_frame_inteval_ts_in_ns;
+	}
+
+	blv_prevention_trigger = blv_update_ts_in_ns - blv_cmd_heads_up - curr_time;
+	SDE_EVT32(ktime_to_us(blv_update_ts_in_ns), ktime_to_us(blv_prevention_trigger));
+	hrtimer_start(&phys_enc->sde_vrr_cfg.backlight_timer,
+			ns_to_ktime(blv_prevention_trigger), HRTIMER_MODE_REL);
 }
 
 void sde_encoder_early_ept_hint(struct drm_encoder *drm_enc, u64 frame_interval,
@@ -7405,6 +7484,41 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	return ret;
 }
 
+enum hrtimer_restart sde_encoder_phys_backlight_timer_cb(struct hrtimer *timer)
+{
+	struct sde_encoder_vrr_cfg *vrr_cfg;
+	struct sde_encoder_phys *phys_enc;
+	struct msm_drm_thread *event_thread = NULL;
+	struct msm_drm_private *priv = NULL;
+	struct sde_encoder_virt *sde_enc = NULL;
+
+	vrr_cfg = container_of(timer, struct sde_encoder_vrr_cfg, backlight_timer);
+	phys_enc = container_of(vrr_cfg, struct sde_encoder_phys, sde_vrr_cfg);
+	if (!phys_enc || !phys_enc->parent || !phys_enc->parent->dev
+			|| !phys_enc->parent->dev->dev_private) {
+		SDE_ERROR("invalid parameters\n");
+		SDE_EVT32_IRQ(SDE_EVTLOG_FUNC_CASE1);
+		return HRTIMER_NORESTART;
+	}
+
+	SDE_EVT32_IRQ(DRMID(phys_enc->parent));
+	priv = phys_enc->parent->dev->dev_private;
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	if (!sde_enc->crtc || (sde_enc->crtc->index
+			>= ARRAY_SIZE(priv->event_thread))) {
+		pr_err("invalid cached CRTC: %d or crtc index: %d\n",
+			sde_enc->crtc == NULL,
+			sde_enc->crtc ? sde_enc->crtc->index : -EINVAL);
+		return HRTIMER_NORESTART;
+	}
+
+	event_thread = &priv->event_thread[sde_enc->crtc->index];
+
+	kthread_queue_work(&event_thread->worker,
+				   &sde_enc->backlight_cmd_work);
+	return HRTIMER_NORESTART;
+}
+
 enum hrtimer_restart sde_encoder_phys_phys_self_refresh_helper(struct hrtimer *timer)
 {
 	struct sde_encoder_vrr_cfg *vrr_cfg = container_of(timer, struct sde_encoder_vrr_cfg,
@@ -7553,6 +7667,9 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 
 	kthread_init_work(&sde_enc->self_refresh_work,
 			sde_encoder_handle_self_refresh);
+
+	kthread_init_work(&sde_enc->backlight_cmd_work,
+			sde_encoder_cmd_backlight_update);
 
 	memcpy(&sde_enc->disp_info, disp_info, sizeof(*disp_info));
 
