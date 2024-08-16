@@ -3933,6 +3933,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	struct sde_kms *sde_kms = sde_encoder_get_kms(drm_enc);
+	struct sde_crtc_state *sde_crtc_state = to_sde_crtc_state(sde_enc->crtc->state);
 	int i = 0;
 
 	_sde_encoder_control_fal10_veto(drm_enc, false);
@@ -3953,7 +3954,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	 */
 	sde_enc->crtc = NULL;
 	memset(&sde_enc->mode_info, 0, sizeof(sde_enc->mode_info));
-
+	sde_crtc_state->cached_cwb_enc_mask = 0;
 	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
 
 	sde_rm_release(&sde_kms->rm, drm_enc, false);
