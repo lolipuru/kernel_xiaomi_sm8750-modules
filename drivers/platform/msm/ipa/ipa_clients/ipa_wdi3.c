@@ -884,6 +884,7 @@ int ipa_wdi_enable_pipes_per_inst(ipa_wdi_hdl_t hdl)
 		if (ipa3_enable_wdi3_pipes(
 			ipa_ep_idx_tx, ipa_ep_idx_rx, ipa_ep_idx_tx1)) {
 			IPA_WDI_ERR("fail to enable wdi pipes\n");
+			IPA_EVENT_LOG("fail to enable wdi pipes\n");
 			return -EFAULT;
 		}
 	} else {
@@ -1139,7 +1140,7 @@ EXPORT_SYMBOL(ipa_wdi_opt_dpath_register_flt_cb_per_inst);
 
 /**
  * ipa_wdi_opt_dpath_register_flt_cb_per_inst_v2 - Client should call this function to
- * register filter reservation/release  and filter addition/deletion callbacks
+ * register filter reservation/release and filter addition/deletion callbacks
  *
  * additionally this would include callbacks for qdata (comment and code to be updated)
  *
@@ -1204,11 +1205,13 @@ int ipa_wdi_opt_dpath_notify_flt_rsvd_per_inst
 
 	if (hdl < 0 || hdl >= IPA_WDI_INST_MAX) {
 		IPA_WDI_ERR("Invalid Handle %d\n",hdl);
+		IPA_EVENT_LOG("Invalid Handle %d\n", hdl);
 		return -EFAULT;
 	}
 
 	if (!ipa_wdi_ctx_list[hdl]) {
 		IPA_WDI_ERR("wdi ctx is not initialized.\n");
+		IPA_EVENT_LOG("wdi ctx is not initialized.\n");
 		return -EPERM;
 	}
 
@@ -1216,6 +1219,8 @@ int ipa_wdi_opt_dpath_notify_flt_rsvd_per_inst
 		ipa_wdi_ctx_list[hdl]->wdi_version < IPA_WDI_3 &&
 		hdl > 0) {
 		IPA_WDI_ERR("More than one instance not supported for WDI ver = %d\n",
+					ipa_wdi_ctx_list[hdl]->wdi_version);
+		IPA_EVENT_LOG("More than one instance not supported for WDI ver = %d\n",
 					ipa_wdi_ctx_list[hdl]->wdi_version);
 		return -EPERM;
 	}
@@ -1245,11 +1250,13 @@ int ipa_wdi_opt_dpath_notify_flt_rlsd_per_inst
 
 	if (hdl < 0 || hdl >= IPA_WDI_INST_MAX) {
 		IPA_WDI_ERR("Invalid Handle %d\n",hdl);
+		IPA_EVENT_LOG("Invalid Handle %d\n", hdl);
 		return -EFAULT;
 	}
 
 	if (!ipa_wdi_ctx_list[hdl]) {
 		IPA_WDI_ERR("wdi ctx is not initialized.\n");
+		IPA_EVENT_LOG("wdi ctx is not initialized.\n");
 		return -EPERM;
 	}
 
@@ -1290,6 +1297,7 @@ int ipa_wdi_opt_dpath_rsrv_filter_req(
 	if (!atomic_read(&opt_dpath_info[0].is_opt_dp_cb_registered))
 	{
 		IPAERR("filter reserve cb not registered");
+		IPA_EVENT_LOG("filter reserve cb not registered");
 		resp->resp.result = IPA_QMI_RESULT_FAILURE_V01;
 		resp->resp.error = IPA_QMI_ERR_INTERNAL_V01;
 		return -EPERM;
@@ -1304,6 +1312,9 @@ int ipa_wdi_opt_dpath_rsrv_filter_req(
 
 	IPADBG("ep_tx = %d\n", opt_dpath_info[0].ipa_ep_idx_tx);
 	IPADBG("ep_rx = %d\n", opt_dpath_info[0].ipa_ep_idx_rx);
+	IPA_EVENT_LOG("rsrv_filter_req: ep_tx = %d, ep_rx = %d\n",
+		opt_dpath_info[0].ipa_ep_idx_tx,
+		opt_dpath_info[0].ipa_ep_idx_rx);
 
 	set_wlan_ep_req.dest_wlan_endp_id = opt_dpath_info[0].ipa_ep_idx_tx;
 	set_wlan_ep_req.src_wlan_endp_id = opt_dpath_info[0].ipa_ep_idx_rx;
@@ -1315,11 +1326,11 @@ int ipa_wdi_opt_dpath_rsrv_filter_req(
 	ret = ipa_pm_activate_sync(opt_dpath_info[0].ipa_pm_hdl);
 	if (ret) {
 		IPA_WDI_DBG("fail to activate ipa pm\n");
+		IPA_EVENT_LOG("fail to activate ipa pm\n");
 		resp->resp.result = IPA_QMI_RESULT_FAILURE_V01;
 		resp->resp.error = IPA_QMI_ERR_INTERNAL_V01;
 		return -EFAULT;
 	}
-
 
 	ipa3_qmi_send_wdi_opt_dpath_ep_info(&set_wlan_ep_req);
 
@@ -1343,6 +1354,7 @@ int ipa_wdi_opt_dpath_rsrv_filter_req(
 		ret1 = ipa_pm_deferred_deactivate(opt_dpath_info[0].ipa_pm_hdl);
 		if (ret1) {
 			IPA_WDI_DBG("fail to deactivate ipa pm\n");
+			IPA_EVENT_LOG("fail to deactivate ipa pm\n");
 		}
 	}
 
@@ -1378,6 +1390,7 @@ int ipa_wdi_opt_dpath_add_filter_req(
 
 	if (!atomic_read(&opt_dpath_info[0].is_opt_dp_cb_registered)) {
 		IPAERR("filter add cb not registered");
+		IPA_EVENT_LOG("filter add cb not registered");
 		ind->filter_add_status.result = IPA_QMI_RESULT_FAILURE_V01;
 		ind->filter_add_status.error = IPA_QMI_ERR_INTERNAL_V01;
 		ind->filter_idx = req->filter_idx;
@@ -1387,6 +1400,7 @@ int ipa_wdi_opt_dpath_add_filter_req(
 	if (req->ip_type != QMI_IPA_IP_TYPE_V4_V01 &&
 		req->ip_type != QMI_IPA_IP_TYPE_V6_V01) {
 		IPAERR("Invalid IP Type: %d\n", req->ip_type);
+		IPA_EVENT_LOG("Invalid IP Type: %d\n", req->ip_type);
 		ind->filter_add_status.result = IPA_QMI_RESULT_FAILURE_V01;
 		ind->filter_add_status.error = IPA_QMI_ERR_INTERNAL_V01;
 		ind->filter_idx = req->filter_idx;
@@ -1401,6 +1415,9 @@ int ipa_wdi_opt_dpath_add_filter_req(
 		IPADBG("IPv4 saddr:0x%x, daddr:0x%x\n",
 			flt_add_req.flt_info[0].ipv4_addr.ipv4_saddr,
 			flt_add_req.flt_info[0].ipv4_addr.ipv4_daddr);
+		IPA_EVENT_LOG("IPv4 saddr:0x%x, daddr:0x%x\n",
+			flt_add_req.flt_info[0].ipv4_addr.ipv4_saddr,
+			flt_add_req.flt_info[0].ipv4_addr.ipv4_daddr);
 	} else {
 		memcpy(flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr,
 			req->v6_addr.source,
@@ -1409,6 +1426,15 @@ int ipa_wdi_opt_dpath_add_filter_req(
 			req->v6_addr.dest,
 			sizeof(req->v6_addr.dest));
 		IPADBG("IPv6 saddr:0x%x:%x:%x:%x, daddr:0x%x:%x:%x:%x\n",
+			flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[0],
+			flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[1],
+			flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[2],
+			flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[3],
+			flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[0],
+			flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[1],
+			flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[2],
+			flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[3]);
+		IPA_EVENT_LOG("IPv6 saddr:0x%x:%x:%x:%x, daddr:0x%x:%x:%x:%x\n",
 			flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[0],
 			flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[1],
 			flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[2],
@@ -1458,6 +1484,7 @@ int ipa_wdi_opt_dpath_remove_filter_req(
 	if (!atomic_read(&opt_dpath_info[0].is_opt_dp_cb_registered))
 	{
 		IPAERR("filter remove cb not registered");
+		IPA_EVENT_LOG("filter remove cb not registered");
 		ind->filter_removal_status.result = IPA_QMI_RESULT_SUCCESS_V01;
 		ind->filter_removal_status.error = IPA_QMI_ERR_NONE_V01;
 		ind->filter_idx = req->filter_idx;
@@ -1503,12 +1530,14 @@ int ipa_wdi_opt_dpath_remove_all_filter_req(
 	if (!atomic_read(&opt_dpath_info[0].is_opt_dp_cb_registered))
 	{
 		IPAERR("filter release cb not registered");
+		IPA_EVENT_LOG("filter release cb not registered");
 		return -EPERM;
 	}
 
 	if (!atomic_read(&opt_dpath_info[0].rsrv_req))
 	{
 		IPAERR("Reservation request not sent. IGNORE");
+		IPA_EVENT_LOG("Reservation request not sent. IGNORE");
 		return 0;
 	}
 
@@ -1519,7 +1548,8 @@ int ipa_wdi_opt_dpath_remove_all_filter_req(
 			opt_dpath_info[0].priv);
 
 	if (opt_dpath_info[0].ipa_ep_idx_rx <= 0 || opt_dpath_info[0].ipa_ep_idx_tx <= 0) {
-		IPA_WDI_ERR("Either RX ep or TX ep is not configured. \n");
+		IPA_WDI_ERR("Either RX ep or TX ep is not configured.\n");
+		IPA_EVENT_LOG("Either RX ep or TX ep is not configured.\n");
 		return 0;
 	}
 
@@ -1548,11 +1578,13 @@ int ipa_wdi_opt_dpath_wlan_ctrl_pkt_rcvd_req(
 
 	if (!atomic_read(&opt_dpath_info[0].is_ctrl_cb_registered)) {
 		IPAERR("ctrl dpath is not enabled.\n");
+		IPA_EVENT_LOG("ctrl dpath is not enabled.\n");
 		return -EPERM;
 	}
 
 	if (!atomic_read(&opt_dpath_info[0].num_ctrl_pkts) && req->packet_count != 0) {
 		IPAERR("num ctrl pkts previously 0\n");
+		IPA_EVENT_LOG("num ctrl pkts previously 0\n");
 		return -EPERM;
 	}
 
@@ -1562,6 +1594,7 @@ int ipa_wdi_opt_dpath_wlan_ctrl_pkt_rcvd_req(
 		ret = ipa_pm_deferred_deactivate(opt_dpath_info[0].ipa_pm_hdl_ctrl);
 		if (ret)
 			IPA_WDI_DBG("fail to deactivate ipa pm\n");
+			IPA_EVENT_LOG("fail to deactivate ipa pm\n");
 	}
 	mutex_unlock(&ipa_wdi_ctx_list[0]->clk_lock);
 
@@ -1631,11 +1664,23 @@ int ipa_wdi_opt_dpath_add_ctrl_filter_req(
 			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[1],
 			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[2],
 			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[3]);
+		IPA_EVENT_LOG("IPv6 saddr:0x%x:%x:%x:%x, daddr:0x%x:%x:%x:%x\n",
+			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[0],
+			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[1],
+			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[2],
+			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_saddr[3],
+			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[0],
+			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[1],
+			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[2],
+			ctrl_flt_add_req.flt_info[0].ipv6_addr.ipv6_daddr[3]);
 	}
 	ctrl_flt_add_req.flt_info[0].protocol = 17; /* UDP */
 	ctrl_flt_add_req.flt_info[0].sport = req->src_port_num;
 	ctrl_flt_add_req.flt_info[0].dport = req->dest_port_num;
 	IPADBG("Src_port:0x%x, dst_port:0x%x\n",
+		ctrl_flt_add_req.flt_info[0].sport,
+		ctrl_flt_add_req.flt_info[0].dport);
+	IPA_EVENT_LOG("Src_port:0x%x, dst_port:0x%x\n",
 		ctrl_flt_add_req.flt_info[0].sport,
 		ctrl_flt_add_req.flt_info[0].dport);
 	resp =
@@ -1656,6 +1701,7 @@ int ipa_wdi_opt_dpath_add_ctrl_filter_req(
 		}
 		if (i==IPA_WDI_MAX_TX_FILTER) {
 			IPAERR("MAX WDI filters reached\n");
+			IPA_EVENT_LOG("MAX WDI filters reached\n");
 			ind->filter_add_status.result = IPA_QMI_RESULT_FAILURE_V01;
 			ind->filter_add_status.error = IPA_QMI_ERR_INTERNAL_V01;
 			ind->filter_idx = req->filter_idx;
@@ -1734,6 +1780,7 @@ int ipa_wdi_opt_dpath_remove_ctrl_filter_req(
 	if (!atomic_read(&opt_dpath_info[0].is_ctrl_cb_registered) ||
 		(opt_dpath_info[0].ctrl_flt_rem_cb == NULL)) {
 		IPAERR("filter remove cb not registered");
+		IPA_EVENT_LOG("filter remove cb not registered");
 		ind->filter_removal_status.result = IPA_QMI_RESULT_SUCCESS_V01;
 		ind->filter_removal_status.error = IPA_QMI_ERR_NONE_V01;
 		ind->filter_idx = req->filter_idx;
@@ -1773,6 +1820,7 @@ int ipa_wdi_opt_dpath_remove_all_ctrl_filter_req(void)
 	if (!atomic_read(&opt_dpath_info[0].is_ctrl_cb_registered) ||
 		(opt_dpath_info[0].ctrl_flt_rem_cb == NULL)) {
 		IPAERR("ctrl filter remove cb not registered");
+		IPA_EVENT_LOG("ctrl filter remove cb not registered");
 		return -EPERM;
 	}
 
@@ -1810,6 +1858,8 @@ int ipa_wdi_opt_dpath_enable_clk_per_inst(ipa_wdi_hdl_t hdl)
 
 	IPADBG("enabling clk: %d\n",
 		atomic_read(&opt_dpath_info[hdl].num_ctrl_pkts));
+	IPA_EVENT_LOG("enabling clk: %d\n",
+		atomic_read(&opt_dpath_info[hdl].num_ctrl_pkts));
 
 	ret = ipa_pm_activate(opt_dpath_info[hdl].ipa_pm_hdl_ctrl);
 	mutex_unlock(&ipa_wdi_ctx_list[hdl]->clk_lock);
@@ -1831,17 +1881,20 @@ int ipa_wdi_opt_dpath_disable_clk_per_inst(ipa_wdi_hdl_t hdl)
 
 	if (!atomic_read(&opt_dpath_info[hdl].is_ctrl_cb_registered)) {
 		IPAERR("ctrl dpath is not enabled.\n");
+		IPA_EVENT_LOG("ctrl dpath is not enabled.\n");
 		return -EPERM;
 	}
 
 	if (!atomic_read(&opt_dpath_info[hdl].num_ctrl_pkts)) {
 		IPAERR("trying to disable clocks with num ctrl pkts 0\n");
+		IPA_EVENT_LOG("trying to disable clocks with num ctrl pkts 0\n");
 		ipa_assert();
 		return -EPERM;
 	}
 
 	mutex_lock(&ipa_wdi_ctx_list[hdl]->clk_lock);
 	atomic_dec(&opt_dpath_info[hdl].num_ctrl_pkts);
+	IPA_EVENT_LOG("num_ctrl_pkts: %d\n", atomic_read(&opt_dpath_info[hdl].num_ctrl_pkts));
 
 	if (atomic_read(&opt_dpath_info[hdl].num_ctrl_pkts) == 0) {
 		ret = ipa_pm_deferred_deactivate(opt_dpath_info[hdl].ipa_pm_hdl_ctrl);

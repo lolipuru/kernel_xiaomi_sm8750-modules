@@ -73,6 +73,8 @@ def define_modules(target, variant):
             "drivers/platform/msm/ipa/ipa_v3/ipa_nat.c",
             "drivers/platform/msm/ipa/ipa_v3/ipa_odl.c",
             "drivers/platform/msm/ipa/ipa_v3/ipa_odl.h",
+            "drivers/platform/msm/ipa/ipa_v3/ipa_opt_log.c",
+            "drivers/platform/msm/ipa/ipa_v3/ipa_opt_log.h",
             "drivers/platform/msm/ipa/ipa_v3/ipa_pm.c",
             "drivers/platform/msm/ipa/ipa_v3/ipa_pm.h",
             "drivers/platform/msm/ipa/ipa_v3/ipa_qdss.c",
