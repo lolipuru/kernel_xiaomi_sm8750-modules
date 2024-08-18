@@ -267,6 +267,7 @@ struct dsi_panel {
 	bool reset_gpio_always_on;
 	atomic_t esd_recovery_pending;
 
+	bool skip_panel_off;
 	bool panel_initialized;
 	bool te_using_watchdog_timer;
 	struct dsi_qsync_capabilities qsync_caps;
@@ -359,6 +360,16 @@ int dsi_panel_pre_prepare(struct dsi_panel *panel);
 int dsi_panel_set_lp1(struct dsi_panel *panel);
 
 int dsi_panel_set_lp2(struct dsi_panel *panel);
+
+/**
+ * dsi_panel_set_lp2_load() -	Add or remove LP2 load on DSI pannel supplies
+ * @panel:			DSI panel handle.
+ * @enable:			Boolean to control whether to add or remove
+ * the LP2 load.
+ *
+ * Return: error code.
+ */
+int dsi_panel_set_lp2_load(struct dsi_panel *panel, bool enable);
 
 int dsi_panel_set_nolp(struct dsi_panel *panel);
 

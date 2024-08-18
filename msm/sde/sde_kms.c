@@ -2407,6 +2407,8 @@ static int sde_kms_postinit(struct msm_kms *kms)
 	struct sde_kms *sde_kms = to_sde_kms(kms);
 	struct drm_device *dev;
 	struct drm_crtc *crtc;
+	struct drm_connector *conn;
+	struct drm_connector_list_iter conn_iter;
 	struct msm_drm_private *priv;
 	int i, rc;
 
@@ -2447,6 +2449,11 @@ static int sde_kms_postinit(struct msm_kms *kms)
 
 	drm_for_each_crtc(crtc, dev)
 		sde_crtc_post_init(dev, crtc);
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter)
+		sde_connector_post_init(dev, conn);
+	drm_connector_list_iter_end(&conn_iter);
 
 	return rc;
 }
@@ -4279,15 +4286,18 @@ retry:
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		struct drm_crtc_state *crtc_state;
 		uint64_t lp;
+		bool display_mode_active;
 
 		if (!conn->state || !conn->state->crtc ||
 			conn->dpms != DRM_MODE_DPMS_ON ||
 			sde_encoder_in_clone_mode(conn->encoder))
 			continue;
 
+		display_mode_active = sde_encoder_check_curr_mode(conn->encoder,
+			MSM_DISPLAY_VIDEO_MODE) && !sde_encoder_in_video_psr(conn->encoder);
+
 		lp = sde_connector_get_lp(conn);
-		if (lp == SDE_MODE_DPMS_LP1 &&
-			!sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE)) {
+		if (lp == SDE_MODE_DPMS_LP1 && !display_mode_active) {
 			/* transition LP1->LP2 on pm suspend */
 			ret = sde_connector_set_property_for_commit(conn, state,
 					CONNECTOR_PROP_LP, SDE_MODE_DPMS_LP2);
@@ -4299,8 +4309,7 @@ retry:
 			}
 		}
 
-		if (lp != SDE_MODE_DPMS_LP2 ||
-			sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE)) {
+		if (lp != SDE_MODE_DPMS_LP2 || display_mode_active) {
 			/* force CRTC to be inactive */
 			crtc_state = drm_atomic_get_crtc_state(state,
 					conn->state->crtc);
@@ -4312,8 +4321,7 @@ retry:
 				goto unlock;
 			}
 
-			if (lp != SDE_MODE_DPMS_LP1 ||
-				sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE))
+			if (lp != SDE_MODE_DPMS_LP1 || display_mode_active)
 				crtc_state->active = false;
 			++num_crtcs;
 		}
@@ -5205,21 +5213,10 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto drm_obj_init_err;
 	}
 
-	/**
-	 * Note: If sde_kms->catalog->hw_fence_rev is true but CONFIG_QTI_HW_FENCE is not enabled,
-	 * the hw_fence_rev field will be set to zero when hw-fence initialization process fails
-	 */
-#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
-	if (sde_kms->catalog->hw_fence_rev) {
-		priv->phandle.rproc = rproc_get_by_phandle(sde_kms->catalog->soccp_ph);
-		if (IS_ERR_OR_NULL(priv->phandle.rproc)) {
-			SDE_ERROR("failed to find rproc for phandle:%u, disabling hw-fencing\n",
-				sde_kms->catalog->soccp_ph);
-			sde_kms->catalog->hw_fence_rev = 0;
-			priv->phandle.rproc = NULL;
-		}
+	if (!priv->phandle.hw_fence_enable) {
+		SDE_DEBUG("power vote failed, disabling hw-fencing\n");
+		sde_kms->catalog->hw_fence_rev = 0;
 	}
-#endif /* CONFIG_QTI_HW_FENCE */
 
 	return 0;
 

@@ -171,6 +171,7 @@ struct sde_cesta_sw_client_data {
  * sde_cesta_hw_ops - ops for sde cesta
  * @init: initialize sde cesta
  * @ctrl_setup: configure SCC
+ * @poll_handshake: poll for handshake to occur
  * @get_status: get current sde cesta status
  * @get_pwr_event: get all the power states which can used for debugging
  * @override_ctrl_setup: configure the SCC override ctrl
@@ -181,11 +182,13 @@ struct sde_cesta_sw_client_data {
 struct sde_cesta_hw_ops {
 	void (*init)(struct sde_cesta *cesta);
 	void (*ctrl_setup)(struct sde_cesta *cesta, u32 idx, struct sde_cesta_ctrl_cfg *cfg);
+	int (*poll_handshake)(struct sde_cesta *cesta, u32 idx);
 	void (*get_status)(struct sde_cesta *cesta, u32 idx, struct sde_cesta_scc_status *status);
 	u32 (*get_pwr_event)(struct sde_cesta *cesta);
 	void (*override_ctrl_setup)(struct sde_cesta *cesta, u32 idx, u32 force_flags);
 	void (*reset_ctrl)(struct sde_cesta *cesta, u32 idx, bool en);
-	void (*force_auto_active_db_update)(struct sde_cesta *cesta, u32 idx, bool en);
+	void (*force_auto_active_db_update)(struct sde_cesta *cesta, u32 idx, bool en_auto_active,
+			enum sde_cesta_ctrl_pwr_req_mode req_mode);
 	u32 (*get_rscc_pwr_ctrl_status)(struct sde_cesta *cesta);
 };
 
@@ -341,6 +344,12 @@ int sde_cesta_aoss_update(struct sde_cesta_client *client, enum sde_cesta_aoss_c
 void sde_cesta_ctrl_setup(struct sde_cesta_client *client, struct sde_cesta_ctrl_cfg *cfg);
 
 /**
+ * sde_cesta_poll_handshake - poll for SCC to switch to process vote request
+ * @client: pointer to sde cesta client
+ */
+void sde_cesta_poll_handshake(struct sde_cesta_client *client);
+
+/**
  * sde_cesta_get_status - get current status of SCC for a client
  * @client: pointer to sde cesta client
  * @status: pointer containing the SCC client status information
@@ -390,9 +399,11 @@ void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en);
 /**
  * sde_cesta_force_auto_active_db_update - set auto-active-on-panic and force db-update
  * @client: pointer to sde cesta client
- * @en: flag to reset/unset the bits
+ * @en_auto_active: boolean to enable/disable auto_active
+ * @req_mode: power req mode
  */
-void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en);
+void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en_auto_active,
+		enum sde_cesta_ctrl_pwr_req_mode req_mode);
 
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
@@ -445,6 +456,10 @@ static inline void sde_cesta_ctrl_setup(struct sde_cesta_client *client,
 {
 }
 
+static inline void sde_cesta_poll_handshake(struct sde_cesta_client *client)
+{
+}
+
 static inline void sde_cesta_get_status(struct sde_cesta_client *client,
 		struct sde_cesta_scc_status *status)
 {
@@ -478,7 +493,8 @@ static inline void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en
 {
 }
 
-static inline void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en)
+static inline void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client,
+		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode)
 {
 }
 #endif /* CONFIG_DRM_SDE_CESTA */

@@ -2452,6 +2452,8 @@ static void _sde_drm_fb_sec_dir_trans(
 		smmu_state->secure_level = secure_level;
 		smmu_state->transition_type = PRE_COMMIT;
 		*ops |= SDE_KMS_OPS_SECURE_STATE_CHANGE;
+		if (old_valid_fb)
+			*ops |= SDE_KMS_OPS_WAIT_FOR_TX_DONE;
 	}
 }
 
@@ -4968,6 +4970,7 @@ int sde_crtc_reset_hw(struct drm_crtc *crtc, struct drm_crtc_state *old_state,
 	struct sde_hw_ctl *ctl;
 	signed int i, plane_count;
 	int rc;
+	bool force_hard_reset = false;
 
 	if (!crtc || !crtc->dev || !old_state || !crtc->state)
 		return -EINVAL;
@@ -4996,10 +4999,15 @@ int sde_crtc_reset_hw(struct drm_crtc *crtc, struct drm_crtc_state *old_state,
 
 	/*
 	 * Early out if simple ctl reset succeeded or reset is
-	 * being performed after timeout
+	 * being performed after timeout.
+	 * Force hard reset when cesta is enabled to clear the Cesta SCC.
 	 */
-	if (i == sde_crtc->num_ctls || crtc->state == old_state)
-		return 0;
+	if (i == sde_crtc->num_ctls || crtc->state == old_state) {
+		if (sde_crtc->cesta_client)
+			force_hard_reset = true;
+		else
+			return 0;
+	}
 
 	SDE_DEBUG("crtc%d: issuing hard reset\n", DRMID(crtc));
 
@@ -5009,7 +5017,7 @@ int sde_crtc_reset_hw(struct drm_crtc *crtc, struct drm_crtc_state *old_state,
 		if (!ctl || !ctl->ops.hard_reset)
 			continue;
 
-		SDE_EVT32(DRMID(crtc), ctl->idx - CTL_0);
+		SDE_EVT32(DRMID(crtc), ctl->idx - CTL_0, force_hard_reset);
 		ctl->ops.hard_reset(ctl, true);
 
 		/* reset cesta SCC ctrl */
@@ -5017,6 +5025,18 @@ int sde_crtc_reset_hw(struct drm_crtc *crtc, struct drm_crtc_state *old_state,
 			sde_cesta_reset_ctrl(sde_crtc->cesta_client, true);
 			sde_cesta_reset_ctrl(sde_crtc->cesta_client, false);
 		}
+	}
+
+	if (force_hard_reset) {
+		for (i = 0; i < sde_crtc->num_ctls; ++i) {
+			ctl = sde_crtc->mixers[i].hw_ctl;
+			if (!ctl || !ctl->ops.hard_reset)
+				continue;
+
+			ctl->ops.hard_reset(ctl, false);
+		}
+
+		return 0;
 	}
 
 	plane_count = 0;
@@ -7109,11 +7129,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			sde_kms_info_add_keyint(info, "demura_count",
 					catalog->demura_count);
 
-		if (catalog->ai_scaler_count)
+		if ((catalog->ai_scaler_count) && (catalog->ssip_allowed))
 			sde_kms_info_add_keyint(info, "ai_scaler_count",
 					catalog->ai_scaler_count);
 
-		if (catalog->abc_count)
+		if ((catalog->abc_count) && (catalog->ssip_allowed))
 			sde_kms_info_add_keyint(info, "abc_count",
 					catalog->abc_count);
 	}

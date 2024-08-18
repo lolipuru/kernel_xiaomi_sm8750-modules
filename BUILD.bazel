@@ -76,3 +76,6 @@ define_pineapple()
 
 load(":targets/niobe.bzl", "define_niobe")
 define_niobe()
+
+load(":targets/monaco.bzl", "define_monaco")
+define_monaco()

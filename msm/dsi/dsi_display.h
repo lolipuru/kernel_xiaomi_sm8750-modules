@@ -179,6 +179,7 @@ struct dsi_display_ext_bridge {
  * @ulps_enabled:     ulps state.
  * @clamp_enabled:    clamp state.
  * @phy_idle_power_off:   PHY power state.
+ * @twm_enabled:      Boolean to indicate twm enabled.
  * @host:             DRM MIPI DSI Host.
  * @bridge:           Pointer to DRM bridge object.
  * @cmd_engine_refcount:  Reference count enforcing single instance of cmd eng
@@ -255,6 +256,7 @@ struct dsi_display {
 	bool ulps_enabled;
 	bool clamp_enabled;
 	bool phy_idle_power_off;
+	bool twm_enabled;
 	struct drm_gem_object *tx_cmd_buf;
 	u32 cmd_buffer_size;
 	u64 cmd_buffer_iova;
@@ -638,7 +640,18 @@ int dsi_display_set_tpg_state(struct dsi_display *display, bool enable,
 		u32 init_val,
 		enum dsi_ctrl_tpg_pattern pattern);
 
+/**
+ * dsi_display_set_lp2_load() - Add or remove LP2 load on DSI display supplies.
+ * @display:		Handle to display.
+ * @enable:		Boolean to control whether to add or remove
+ * the LP2 load.
+ *
+ * Return: error code.
+ */
+int dsi_display_set_lp2_load(struct dsi_display *display, bool enable);
+
 int dsi_display_clock_gate(struct dsi_display *display, bool enable);
+
 int dsi_dispaly_static_frame(struct dsi_display *display, bool enable);
 
 /**

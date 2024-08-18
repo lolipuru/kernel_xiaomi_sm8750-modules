@@ -358,21 +358,14 @@ static void _sde_encoder_phys_vid_raw_te_setup(
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
-	if (enable) {
-		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
-			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, true,
-				sde_enc->disp_info.vrr_caps.arp_support);
-		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
-			sde_enc->disp_info.vrr_caps.arp_support)
-			vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
-	} else {
-		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
-			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, false,
-				false);
-		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
-			sde_enc->disp_info.vrr_caps.arp_support)
-			vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
-	}
+
+	if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
+		phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, true,
+			sde_enc->disp_info.vrr_caps.arp_support);
+	if (vid_enc->base.hw_intf->ops.raw_te_setup &&
+		sde_enc->disp_info.vrr_caps.arp_support)
+		vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
+
 }
 
 /* vid_enc timing_params must be configured before calling this function */
@@ -1965,6 +1958,8 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 
 void sde_encoder_phys_vid_idle_pc_enter(struct sde_encoder_phys *phys_enc)
 {
+	struct sde_encoder_virt *sde_enc;
+	struct sde_hw_intf_cfg_v1 *intf_cfg;
 	struct drm_connector *drm_conn = phys_enc->connector;
 	int rc;
 
@@ -1975,6 +1970,15 @@ void sde_encoder_phys_vid_idle_pc_enter(struct sde_encoder_phys *phys_enc)
 		return;
 
 	SDE_EVT32(DRMID(phys_enc->parent));
+
+	/*
+	 * Reset the interface count for this display. It will get cleared if we
+	 * power collapse, but in the case that a power collapse doesn't happen,
+	 * this will make sure the interface count doesn't keep growing.
+	 */
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	intf_cfg = &sde_enc->cur_master->intf_cfg_v1;
+	intf_cfg->intf_count = 0;
 
 	phys_enc->hw_intf->ops.enable_infinite_vfp(phys_enc->hw_intf, true);
 
@@ -2489,6 +2493,11 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.self_refresh_timer.function =
 		sde_encoder_phys_phys_self_refresh_helper;
+
+	hrtimer_init(&phys_enc->sde_vrr_cfg.backlight_timer,
+		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	phys_enc->sde_vrr_cfg.backlight_timer.function =
+		sde_encoder_phys_backlight_timer_cb;
 
 	SDE_DEBUG_VIDENC(vid_enc, "created intf idx:%d\n", p->intf_idx);
 

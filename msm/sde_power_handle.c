@@ -20,9 +20,9 @@
 #include <linux/sde_io_util.h>
 #include <linux/sde_rsc.h>
 #include <linux/version.h>
-#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
-#include <linux/remoteproc/qcom_rproc.h>
-#endif
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+#include <synx_api.h>
+#endif /* CONFIG_QTI_HW_FENCE */
 
 #include "sde_power_handle.h"
 #include "sde_trace.h"
@@ -40,6 +40,7 @@ static const char *data_bus_name[SDE_POWER_HANDLE_DBUS_ID_MAX] = {
 	[SDE_POWER_HANDLE_DBUS_ID_MNOC] = "qcom,sde-data-bus",
 	[SDE_POWER_HANDLE_DBUS_ID_LLCC] = "qcom,sde-llcc-bus",
 	[SDE_POWER_HANDLE_DBUS_ID_EBI] = "qcom,sde-ebi-bus",
+	[SDE_POWER_HANDLE_DBUS_ID_DDR_RT] = "qcom,sde-ddr-rt",
 };
 
 const char *sde_power_handle_get_dbus_name(u32 bus_id)
@@ -494,12 +495,10 @@ static int sde_power_bus_parse(struct platform_device *pdev,
 
 	ib_quota_count = of_property_count_u32_elems(pdev->dev.of_node, "qcom,sde-ib-bw-vote");
 	if (ib_quota_count > 0) {
-		if (ib_quota_count != SDE_POWER_HANDLE_DBUS_ID_MAX) {
-			pr_err("wrong size for qcom,sde-ib-bw-vote\n");
-			return -EINVAL;
-		}
+		if (ib_quota_count != SDE_POWER_HANDLE_DBUS_ID_MAX)
+			pr_debug("size mismatch in qcom,sde-ib-bw-vote entry\n");
 
-		for (i = 0; i < SDE_POWER_HANDLE_DBUS_ID_MAX; ++i) {
+		for (i = 0; i < ib_quota_count; ++i) {
 			of_property_read_u32_index(pdev->dev.of_node,
 				"qcom,sde-ib-bw-vote", i, &ib_quota[i]);
 			phandle->ib_quota[i] = ib_quota[i]*1000;
@@ -675,13 +674,39 @@ u64 sde_power_mmrm_get_requested_clk(struct sde_power_handle *phandle,
 	return rate;
 }
 
-static int _set_power_vote(struct rproc *rproc, bool state)
+static int _set_power_vote(bool state)
 {
-#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
-	return rproc_set_state(rproc, state);
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+	return synx_enable_resources(SYNX_CLIENT_HW_FENCE_DPU0_CTL0, SYNX_RESOURCE_SOCCP,
+		state);
 #else
-	return 0;
+	return -EINVAL;
 #endif
+}
+
+static int sde_power_parse_dt_hwfence_soccp(struct platform_device *pdev,
+	struct sde_power_handle *phandle)
+{
+	struct device_node *of_node = NULL;
+	u32 rc, hw_fence_rev, soccp_ph;
+
+	if (!pdev || !phandle) {
+		pr_err("invalid input param pdev:%pK phandle:%pK\n", pdev, phandle);
+		return -EINVAL;
+	}
+
+	of_node = pdev->dev.of_node;
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,hw-fence-sw-version", &hw_fence_rev);
+	if (rc || !hw_fence_rev)
+		return 0; /* hw-fence is disabled */
+
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,sde-soccp-controller", &soccp_ph);
+	if (rc || !soccp_ph)
+		return 0; /* target does not have soccp */
+
+	phandle->hw_fence_enable = true;
+
+	return rc;
 }
 
 int sde_power_resource_init(struct platform_device *pdev,
@@ -746,10 +771,10 @@ int sde_power_resource_init(struct platform_device *pdev,
 		goto bus_err;
 	}
 
-	if (phandle->rproc) {
-		rc = _set_power_vote(phandle->rproc, true);
-		if (rc)
-			pr_err("soccp power vote enable failed rc:%d\n", rc);
+	rc = sde_power_parse_dt_hwfence_soccp(pdev, phandle);
+	if (rc) {
+		pr_debug("soccp power vote parsing failed rc:%d\n", rc);
+		rc = 0;
 	}
 
 	phandle->rsc_client = NULL;
@@ -943,11 +968,14 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 			goto clk_err;
 		}
 
-		if (phandle->rproc) {
-			rc = _set_power_vote(phandle->rproc, enable);
-			if (rc)
-				pr_err("soccp power vote failed, state:%s rc:%d\n",
+		if (phandle->hw_fence_enable) {
+			rc = _set_power_vote(enable);
+			if (rc) {
+				pr_debug("soccp power vote failed, state:%s rc:%d\n",
 						enable ? "enable" : "disable", rc);
+				phandle->hw_fence_enable = false;
+				rc = 0;
+			}
 		}
 
 		sde_power_event_trigger_locked(phandle,
@@ -957,11 +985,13 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 		sde_power_event_trigger_locked(phandle,
 				SDE_POWER_EVENT_PRE_DISABLE);
 
-		if (phandle->rproc) {
-			rc = _set_power_vote(phandle->rproc, enable);
-			if (rc)
-				pr_err("soccp power vote failed, state:%s rc:%d\n",
+		if (phandle->hw_fence_enable) {
+			rc = _set_power_vote(enable);
+			if (rc) {
+				pr_debug("soccp power vote failed, state:%s rc:%d\n",
 						enable ? "enable" : "disable", rc);
+				rc = 0;
+			}
 		}
 
 		SDE_EVT32_VERBOSE(enable, SDE_EVTLOG_FUNC_CASE2);

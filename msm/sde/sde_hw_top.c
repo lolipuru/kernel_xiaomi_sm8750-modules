@@ -407,10 +407,10 @@ void sde_hw_reset_ubwc(struct sde_hw_mdp *mdp, struct sde_mdss_cfg *m)
 			((m->mdp[0].highest_bank_bit & 0x7) << 4) |
 			((m->macrotile_mode & 0x1) << 12);
 
-		if (IS_UBWC_50_SUPPORTED(ubwc_dec_version)) {
+		if (IS_UBWC_50_SUPPORTED(ubwc_enc_version)) {
 			ver = 4;
 			mode = 1;
-		} else if (IS_UBWC_43_SUPPORTED(ubwc_dec_version)) {
+		} else if (IS_UBWC_43_SUPPORTED(ubwc_enc_version)) {
 			ver = 3;
 			mode = 1;
 		} else {

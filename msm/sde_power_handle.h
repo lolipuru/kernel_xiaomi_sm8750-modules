@@ -20,7 +20,6 @@
 
 #include <linux/sde_io_util.h>
 #include <linux/interconnect.h>
-#include <linux/remoteproc.h>
 #include <dt-bindings/interconnect/qcom,icc.h>
 
 /* event will be triggered before power handler disable */
@@ -73,11 +72,13 @@ enum sde_power_handle_data_bus_client {
  * @SDE_POWER_HANDLE_DBUS_ID_MNOC: DPU/MNOC data bus
  * @SDE_POWER_HANDLE_DBUS_ID_LLCC: MNOC/LLCC data bus
  * @SDE_POWER_HANDLE_DBUS_ID_EBI: LLCC/EBI data bus
+ * @SDE_POWER_HANDLE_DBUS_ID_DDR_RT: DDR RT data bus
  */
 enum SDE_POWER_HANDLE_DBUS_ID {
 	SDE_POWER_HANDLE_DBUS_ID_MNOC,
 	SDE_POWER_HANDLE_DBUS_ID_LLCC,
 	SDE_POWER_HANDLE_DBUS_ID_EBI,
+	SDE_POWER_HANDLE_DBUS_ID_DDR_RT,
 	SDE_POWER_HANDLE_DBUS_ID_MAX,
 };
 
@@ -156,7 +157,7 @@ struct sde_power_mmrm_reserve {
  * @rsc_client_init: boolean to control rsc client create
  * @mmrm_enable: boolean to indicate if mmrm is enabled
  * @ib_quota: ib quota of the given bus
- * @rproc: soccp rproc needed to set power vote
+ * @hw_fence_enable: boolean to indicate if hw-fence is enabled
  * @mmrm_reserve: mmrm resource reservation
  * @wakelock_count: wakelock coint to avoid pm suspend
  */
@@ -173,7 +174,7 @@ struct sde_power_handle {
 	bool rsc_client_init;
 	bool mmrm_enable;
 	u64 ib_quota[SDE_POWER_HANDLE_DBUS_ID_MAX];
-	struct rproc *rproc;
+	bool hw_fence_enable;
 
 	struct sde_power_mmrm_reserve mmrm_reserve;
 	atomic_t wakelock_count;

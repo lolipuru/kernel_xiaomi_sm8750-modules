@@ -205,6 +205,32 @@ enum sde_sim_qsync_event {
 	SDE_SIM_QSYNC_EVENT_TE_TRIGGER
 };
 
+/*
+ * enum sde_mode_switch - enum to indicate the type of mode switch
+ * @SDE_MODE_SWITCH_NONE: not a switch frame
+ * @SDE_MODE_SWITCH_FPS: FPS switch frame
+ * @SDE_MODE_SWITCH_RES: Resolution switch frame
+ */
+enum sde_mode_switch {
+	SDE_MODE_SWITCH_NONE,
+	SDE_MODE_SWITCH_FPS,
+	SDE_MODE_SWITCH_RES,
+};
+
+/*
+ * enum sde_multi_te_states - enum to indicate the states of multi-TE
+ * @SDE_MULTI_TE_NONE: multi-te not enabled
+ * @SDE_MULTI_TE_ENTER: frame entering multi-te
+ * @SDE_MULTI_TE_SESSION: frames in multi-te session
+ * @SDE_MULTI_TE_EXIT: frame exiting multi-te
+ */
+enum sde_multi_te_states {
+	SDE_MULTI_TE_NONE,
+	SDE_MULTI_TE_ENTER,
+	SDE_MULTI_TE_SESSION,
+	SDE_MULTI_TE_EXIT,
+};
+
 /* Frame rate value to trigger the watchdog TE in 200 us */
 #define SDE_SIM_QSYNC_IMMEDIATE_FPS 5000
 
@@ -251,6 +277,7 @@ enum sde_sim_qsync_event {
  * @rsc_state_init:		boolean to indicate rsc config init
  * @disp_info:			local copy of msm_display_info struct
  * @misr_enable:		misr enable/disable status
+ * @vsync_cnt:			Vsync count for the virtual encoder
  * @misr_reconfigure:		boolean entry indicates misr reconfigure status
  * @misr_frame_count:		misr frame count before start capturing the data
  * @idle_pc_enabled:		indicate if idle power collapse is enabled
@@ -266,6 +293,7 @@ enum sde_sim_qsync_event {
  * @input_event_work:		worker to handle input device touch events
  * @esd_trigger_work:		worker to handle esd trigger
  * @self_refresh_work:		worker to handle self refresh
+ * @self_refresh_work:		worker to handle smooth dimming in vrr
  * @input_handler:			handler for input device events
  * @topology:                   topology of the display
  * @vblank_enabled:		boolean to track userspace vblank vote
@@ -297,7 +325,9 @@ enum sde_sim_qsync_event {
  * @dynamic_irqs_config         bitmask config to enable encoder dynamic irqs
  * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  * @ops:                        Encoder ops from init function
- * @res_switch:                 Boolean to indicate its a resolution switch frame.
+ * @mode_switch:                enum to indicate its a fps/resolution switch frame.
+ * @multi_te_state:             enum to indicate the multi-te states.
+ * @multi_te_fps:               refresh rate of multi-TE.
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
@@ -346,6 +376,7 @@ struct sde_encoder_virt {
 	bool rsc_state_init;
 	struct msm_display_info disp_info;
 	atomic_t misr_enable;
+	atomic_t vsync_cnt;
 	bool misr_reconfigure;
 	u32 misr_frame_count;
 
@@ -358,6 +389,8 @@ struct sde_encoder_virt {
 	struct kthread_work input_event_work;
 	struct kthread_work esd_trigger_work;
 	struct kthread_work self_refresh_work;
+	struct kthread_work backlight_cmd_work;
+
 	struct input_handler *input_handler;
 	bool vblank_enabled;
 	bool idle_pc_restore;
@@ -385,7 +418,9 @@ struct sde_encoder_virt {
 
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
-	bool res_switch;
+	enum sde_mode_switch mode_switch;
+	enum sde_multi_te_states multi_te_state;
+	u32 multi_te_fps;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
 	bool cesta_force_active;
@@ -659,6 +694,24 @@ void sde_encoder_enable_recovery_event(struct drm_encoder *encoder);
 bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
 
 /**
+ * sde_encoder_in_video_psr - checks if it is in video psr panel
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true if successful
+ */
+static inline bool sde_encoder_in_video_psr(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return false;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc->disp_info.vrr_caps.video_psr_support;
+}
+/**
  * sde_encoder_set_clone_mode - cwb in wb phys enc is enabled.
  * drm_enc:	Pointer to drm encoder structure
  * drm_crtc_state:	Pointer to drm_crtc_state
@@ -930,6 +983,12 @@ void sde_encoder_handle_frequency_stepping(struct sde_encoder_phys *phys_enc, u3
 enum hrtimer_restart sde_encoder_phys_phys_self_refresh_helper(struct hrtimer *timer);
 
 /**
+ * sde_encoder_phys_backlight_timer_cb - Handle incremental backlight requirement
+ * @timer: pointer to backlight timer
+ */
+enum hrtimer_restart sde_encoder_phys_backlight_timer_cb(struct hrtimer *timer);
+
+/**
  * sde_encoder_get_freq_pattern - Get the frequency pattern for
  *                               given frame interval and usecase
  * @drm_enc: pointer to drm encoder
@@ -951,6 +1010,12 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 int sde_encoder_handle_dma_fence_out_of_order(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_handle_next_backlight_update - handle the consecutive BL update
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_handle_next_backlight_update(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_update_periph_flush - update peripheral flush event

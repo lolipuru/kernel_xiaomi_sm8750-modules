@@ -410,6 +410,11 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 {
 	int rc = 0;
 
+	if (panel->skip_panel_off) {
+		DSI_DEBUG("skip panel power off\n");
+		return rc;
+	}
+
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio))
 		gpio_set_value(panel->reset_config.disp_en_gpio, 0);
 
@@ -2548,6 +2553,9 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 
 	panel->event_notification_disabled = utils->read_bool(utils->data,
 			"qcom,event-notification-disabled");
+
+	panel->skip_panel_off = utils->read_bool(utils->data,
+			"qcom,skip-panel-power-off");
 
 	panel->spr_info.enable = false;
 	panel->spr_info.pack_type = MSM_DISPLAY_SPR_TYPE_MAX;
@@ -4915,6 +4923,29 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
 		       panel->name, rc);
+exit:
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+int dsi_panel_set_lp2_load(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+
+	if (!panel) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	if (!panel->panel_initialized)
+		goto exit;
+
+	rc = dsi_pwr_set_lp2_load(&panel->power_info, enable);
+	if (rc)
+		DSI_ERR("[%s] failed to set panel lp2 vreg, rc=%d\n",
+			panel->name, rc);
+
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;

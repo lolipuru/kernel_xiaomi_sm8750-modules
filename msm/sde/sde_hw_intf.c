@@ -594,7 +594,7 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 			&& p->poms_align_vsync)
 		intf_cfg2 |= BIT(16);
 
-	alignment = 0x1; /* COND0 timing engine enable register */
+	alignment = 0x6; /* Default with esync- COND0 HW AVR trigger  */
 	if (align_esync) {
 		if (align_avr)
 			alignment = 0x6; /* COND0 HW AVR trigger */
@@ -626,12 +626,11 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 	SDE_REG_WRITE(c, INTF_FRAME_LINE_COUNT_EN, 0x3);
 	SDE_REG_WRITE(c, INTF_CONFIG, intf_cfg);
 	SDE_REG_WRITE(c, INTF_PANEL_FORMAT, panel_format);
-	SDE_REG_WRITE(c, INTF_CONFIG2, intf_cfg2);
 	SDE_REG_WRITE(c, INTF_DISPLAY_DATA_HCTL, display_data_hctl);
 	SDE_REG_WRITE(c, INTF_ACTIVE_DATA_HCTL, active_data_hctl);
-
 	if (align_esync)
 		SDE_REG_WRITE(c, INTF_TIMING_ENGINE_ALIGN_CTRL, alignment);
+	SDE_REG_WRITE(c, INTF_CONFIG2, intf_cfg2);
 }
 
 static void sde_hw_intf_enable_timing_engine(struct sde_hw_intf *intf, u8 enable)
@@ -1167,6 +1166,29 @@ static int sde_hw_intf_connect_external_te(struct sde_hw_intf *intf,
 	return orig;
 }
 
+static void sde_hw_intf_update_tearcheck_vsync_count(struct sde_hw_intf *intf, u32 val)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+	u32 cfg;
+
+	if (!intf)
+		return;
+
+	c = &intf->hw;
+
+	cfg = SDE_REG_READ(c, INTF_TEAR_SYNC_CONFIG_VSYNC);
+
+	/* disable external TE */
+	cfg &= ~BIT(20);
+	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
+
+	/* update vsync_count and enable back external TE */
+	cfg = (val & 0x7ffff);
+	cfg |= BIT(19) | BIT(20);
+	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
+	wmb(); /* to make sure configs takes effect */
+}
+
 static int sde_hw_intf_get_vsync_info(struct sde_hw_intf *intf,
 		struct sde_hw_pp_vsync_info *info)
 {
@@ -1407,6 +1429,7 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->vsync_sel = sde_hw_intf_vsync_sel;
 		ops->check_and_reset_tearcheck = sde_hw_intf_v1_check_and_reset_tearcheck;
 		ops->override_tear_rd_ptr_val = sde_hw_intf_override_tear_rd_ptr_val;
+		ops->update_tearcheck_vsync_count = sde_hw_intf_update_tearcheck_vsync_count;
 
 		if (cap & BIT(SDE_INTF_PANIC_CTRL))
 			ops->setup_te_panic_wakeup = sde_hw_intf_setup_panic_wakeup;

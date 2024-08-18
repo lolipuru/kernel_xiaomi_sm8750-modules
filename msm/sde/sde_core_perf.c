@@ -205,6 +205,12 @@ static void _sde_core_perf_calc_crtc(struct sde_kms *kms,
 						perf->core_clk_rate);
 	}
 
+	perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_DDR_RT] =
+		mult_frac(perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_EBI],
+			SDE_PERF_MAX_COMPRESSION_FACTOR, 100);
+	perf->max_per_pipe_ib[SDE_POWER_HANDLE_DBUS_ID_DDR_RT] =
+		SDE_POWER_HANDLE_DISABLE_BUS_IB_QUOTA;
+
 	SDE_EVT32(DRMID(crtc), perf->core_clk_rate,
 		GET_H32(perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_MNOC]),
 		GET_L32(perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_MNOC]),
@@ -816,7 +822,8 @@ static void _sde_core_perf_crtc_update_bus(struct sde_kms *kms,
 	bus_ab_quota = min(bus_ab_quota,
 			kms->catalog->perf.max_bw_high*1000ULL);
 
-	if (kms->catalog->perf.num_ddr_channels && kms->catalog->perf.dram_efficiency) {
+	if (kms->catalog->perf.num_ddr_channels && kms->catalog->perf.dram_efficiency &&
+		(bus_id != SDE_POWER_HANDLE_DBUS_ID_DDR_RT)) {
 		bus_ib_quota = div_u64(div_u64(bus_ab_quota,
 			kms->catalog->perf.num_ddr_channels) * 100,
 			kms->catalog->perf.dram_efficiency);

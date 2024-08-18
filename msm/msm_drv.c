@@ -995,11 +995,6 @@ static int msm_drm_component_init(struct device *dev)
 
 	drm_mode_config_reset(ddev);
 
-	ret = drm_dev_register(ddev, 0);
-	if (ret)
-		goto fail;
-	priv->registered = true;
-
 	if (kms && kms->funcs && kms->funcs->cont_splash_config) {
 		ret = kms->funcs->cont_splash_config(kms, NULL);
 		if (ret) {
@@ -1007,6 +1002,11 @@ static int msm_drm_component_init(struct device *dev)
 			goto fail;
 		}
 	}
+
+	ret = drm_dev_register(ddev, 0);
+	if (ret)
+		goto fail;
+	priv->registered = true;
 
 #if IS_ENABLED(CONFIG_DRM_FBDEV_EMULATION)
 	if (fbdev)
