@@ -54,6 +54,52 @@ struct client_data {
 	struct list_head list;
 };
 
+static void _dump_fence_helper(enum hw_fence_drv_prio prio, struct msm_hw_fence *hw_fence,
+	char *parents_dump, u32 index, u32 count)
+{
+	char sublist[HW_FENCE_MAX_PARENTS_SUBLIST_DUMP];
+	u32 parents_cnt;
+	int i, len = 0;
+
+	if (!hw_fence || !parents_dump) {
+		HWFNC_ERR("invalid params hw_fence:0x%pK parents_dump:0x%pK\n", hw_fence,
+			parents_dump);
+		return;
+	}
+
+	memset(parents_dump, 0, sizeof(char) * HW_FENCE_MAX_PARENTS_DUMP);
+	if (hw_fence->parents_cnt) {
+		if (hw_fence->parents_cnt > MSM_HW_FENCE_MAX_JOIN_PARENTS) {
+			HWFNC_ERR("hfence[%u] has invalid parents_cnt:%d greater than max:%d\n",
+				index, hw_fence->parents_cnt, MSM_HW_FENCE_MAX_JOIN_PARENTS);
+			parents_cnt = MSM_HW_FENCE_MAX_JOIN_PARENTS;
+		} else {
+			parents_cnt = hw_fence->parents_cnt;
+		}
+
+		memset(sublist, 0, sizeof(sublist));
+		for (i = 0; i < parents_cnt; i++)
+			len += scnprintf(sublist + len, HW_FENCE_MAX_PARENTS_SUBLIST_DUMP - len,
+				"%llu,", hw_fence->parent_list[i]);
+		scnprintf(parents_dump, HW_FENCE_MAX_PARENTS_DUMP, " p:[%s]", sublist);
+	}
+
+	HWFNC_DBG_DUMP(prio, HFENCE_TBL_MSG,
+		count, index, hw_fence->valid, hw_fence->error, hw_fence->ctx_id, hw_fence->seq_id,
+		hw_fence->wait_client_mask, hw_fence->fence_allocator, hw_fence->flags,
+		hw_fence->pending_child_cnt, parents_dump, hw_fence->fence_create_time,
+		hw_fence->fence_trigger_time, hw_fence->fence_wait_time, hw_fence->refcount,
+		hw_fence->h_synx);
+}
+
+void hw_fence_debug_dump_fence(enum hw_fence_drv_prio prio, struct msm_hw_fence *hw_fence, u64 hash,
+	u32 count)
+{
+	char parents_dump[HW_FENCE_MAX_PARENTS_DUMP];
+
+	return _dump_fence_helper(prio, hw_fence, parents_dump, hash, count);
+}
+
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 static int _get_debugfs_input_client(struct file *file,
 	const char __user *user_buf, size_t count, loff_t *ppos,
@@ -471,52 +517,6 @@ static ssize_t hw_fence_dbg_create_wr(struct file *file,
 	hw_dma_fence->client_handle = client_info->client_handle;
 
 	return count;
-}
-
-static void _dump_fence_helper(enum hw_fence_drv_prio prio, struct msm_hw_fence *hw_fence,
-	char *parents_dump, u32 index, u32 count)
-{
-	char sublist[HW_FENCE_MAX_PARENTS_SUBLIST_DUMP];
-	u32 parents_cnt;
-	int i, len = 0;
-
-	if (!hw_fence || !parents_dump) {
-		HWFNC_ERR("invalid params hw_fence:0x%pK parents_dump:0x%pK\n", hw_fence,
-			parents_dump);
-		return;
-	}
-
-	memset(parents_dump, 0, sizeof(char) * HW_FENCE_MAX_PARENTS_DUMP);
-	if (hw_fence->parents_cnt) {
-		if (hw_fence->parents_cnt > MSM_HW_FENCE_MAX_JOIN_PARENTS) {
-			HWFNC_ERR("hfence[%u] has invalid parents_cnt:%d greater than max:%d\n",
-				index, hw_fence->parents_cnt, MSM_HW_FENCE_MAX_JOIN_PARENTS);
-			parents_cnt = MSM_HW_FENCE_MAX_JOIN_PARENTS;
-		} else {
-			parents_cnt = hw_fence->parents_cnt;
-		}
-
-		memset(sublist, 0, sizeof(sublist));
-		for (i = 0; i < parents_cnt; i++)
-			len += scnprintf(sublist + len, HW_FENCE_MAX_PARENTS_SUBLIST_DUMP - len,
-				"%llu,", hw_fence->parent_list[i]);
-		scnprintf(parents_dump, HW_FENCE_MAX_PARENTS_DUMP, " p:[%s]", sublist);
-	}
-
-	HWFNC_DBG_DUMP(prio, HFENCE_TBL_MSG,
-		count, index, hw_fence->valid, hw_fence->error, hw_fence->ctx_id, hw_fence->seq_id,
-		hw_fence->wait_client_mask, hw_fence->fence_allocator, hw_fence->flags,
-		hw_fence->pending_child_cnt, parents_dump, hw_fence->fence_create_time,
-		hw_fence->fence_trigger_time, hw_fence->fence_wait_time, hw_fence->refcount,
-		hw_fence->h_synx);
-}
-
-void hw_fence_debug_dump_fence(enum hw_fence_drv_prio prio, struct msm_hw_fence *hw_fence, u64 hash,
-	u32 count)
-{
-	char parents_dump[HW_FENCE_MAX_PARENTS_DUMP];
-
-	return _dump_fence_helper(prio, hw_fence, parents_dump, hash, count);
 }
 
 static inline int _dump_fence(struct msm_hw_fence *hw_fence, char *buf, int len, int max_size,
@@ -1200,6 +1200,13 @@ static long _process_val_signal(struct hw_fence_driver_data *drv_data,
 		if ((fence && payload.ctxt_id == context && payload.seqno == seqno) ||
 				(mask && ((mask & hash) == (mask & payload.hash)))) {
 			*error = payload.error;
+
+			if (read > 0) {
+				HWFNC_DBG_L("Client:%d has non-empty rxq, set val_signal flag\n",
+					hw_fence_client->client_id);
+				atomic_set(&hw_fence_client->val_signal, 1);
+			}
+
 			return 0;
 		}
 	}

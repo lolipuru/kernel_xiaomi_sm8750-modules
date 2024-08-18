@@ -684,6 +684,8 @@ int hw_fence_get_flags_error(struct hw_fence_driver_data *drv_data, u64 hash, u6
 	u32 *error);
 int hw_fence_update_hsynx(struct hw_fence_driver_data *drv_data, u64 hash, u32 h_synx,
 	bool wait_for);
+int hw_fence_ssr_cleanup_table(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence *hw_fences_tbl, u32 table_total_entries, u64 in_flight_lock);
 
 /* apis for internally managed dma-fence */
 struct dma_fence *hw_dma_fence_init(struct msm_hw_fence_client *hw_fence_client, u64 context,

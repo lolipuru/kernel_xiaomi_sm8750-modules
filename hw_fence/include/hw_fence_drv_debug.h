@@ -74,6 +74,8 @@ extern u32 msm_hw_fence_debug_level;
 	__builtin_return_address(0), ##__VA_ARGS__)
 
 int hw_fence_debug_debugfs_register(struct hw_fence_driver_data *drv_data);
+void hw_fence_debug_dump_fence(enum hw_fence_drv_prio prio, struct msm_hw_fence *hw_fence, u64 hash,
+	u32 count);
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 
@@ -84,8 +86,6 @@ int hw_fence_debug_wait_val(struct hw_fence_driver_data *drv_data,
 
 void hw_fence_debug_dump_queues(struct hw_fence_driver_data *drv_data, enum hw_fence_drv_prio prio,
 	struct msm_hw_fence_client *hw_fence_client);
-void hw_fence_debug_dump_fence(enum hw_fence_drv_prio prio, struct msm_hw_fence *hw_fence, u64 hash,
-	u32 count);
 void hw_fence_debug_dump_table(enum hw_fence_drv_prio prio, struct hw_fence_driver_data *drv_data);
 void hw_fence_debug_dump_events(enum hw_fence_drv_prio prio, struct hw_fence_driver_data *drv_data);
 

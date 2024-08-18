@@ -845,7 +845,7 @@ error:
 	kfree(hw_fence_drv_data);
 	hw_fence_drv_data = (void *) -EPROBE_DEFER;
 
-	HWFNC_DBG_INFO("error %d\n", rc);
+	HWFNC_ERR_ONCE("error %d\n", rc);
 
 	return rc;
 }
@@ -871,8 +871,7 @@ static int msm_hw_fence_probe(struct platform_device *pdev)
 	return 0;
 
 err_exit:
-	if (rc != -EPROBE_DEFER)
-		HWFNC_ERR_ONCE("error %d\n", rc);
+	HWFNC_ERR_ONCE("error %d\n", rc);
 	return rc;
 }
 

@@ -707,7 +707,7 @@ int hw_fence_init(struct hw_fence_driver_data *drv_data)
 
 	ret = hw_fence_utils_parse_dt_props(drv_data);
 	if (ret) {
-		HWFNC_DBG_INFO("failed to set dt properties\n");
+		HWFNC_ERR("failed to set dt properties\n");
 		goto exit;
 	}
 
@@ -1578,6 +1578,17 @@ int hw_fence_create(struct hw_fence_driver_data *drv_data,
 		HWFNC_ERR("Fail to create fence client:%u ctx:%llu seqno:%llu\n",
 			client_id, context, seqno);
 		ret = -EINVAL;
+	}
+
+	/**
+	 * Note: This addresses any race conditions where clients may have been in progress
+	 * creating hw-fences when soccp crashes
+	 */
+	if (!drv_data->fctl_ready) {
+		HWFNC_ERR("unable to create hw-fence while fctl is not in valid state\n");
+		hw_fence_destroy_refcount(drv_data, *hash, HW_FENCE_FCTL_REFCOUNT);
+		hw_fence_destroy_with_hash(drv_data, hw_fence_client, *hash);
+		return -EAGAIN;
 	}
 
 	if (hw_fence_client->skip_fctl_ref) {
@@ -2574,6 +2585,56 @@ int hw_fence_check_valid_fctl(struct hw_fence_driver_data *drv_data, void *clien
 	if (!drv_data->fctl_ready) {
 		HWFNC_ERR("fctl in invalid state, cannot perform operation\n");
 		return -EAGAIN;
+	}
+
+	return 0;
+}
+
+/* unlock the in-flight hw-fence and any locks taken on client rx queue for handling */
+static void unlock_in_flight_fence(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence *hw_fence, u64 hash, u64 in_flight_lock)
+{
+	u64 wait_client_mask;
+	u32 wait_client_id, lock_idx;
+
+	HWFNC_DBG_SSR("unlock in-flight fence locked as 0x%llx\n", hw_fence->lock);
+	hw_fence_debug_dump_fence(HW_FENCE_SSR, hw_fence, hash, 0);
+	wait_client_mask = hw_fence->wait_client_mask;
+	GLOBAL_ATOMIC_STORE(drv_data, &hw_fence->lock, 0);
+
+	for (wait_client_id = 0; wait_client_id <= drv_data->rxq_clients_num; wait_client_id++) {
+		if (wait_client_mask & BIT(wait_client_id)) {
+			lock_idx = (wait_client_id - 1) * HW_FENCE_LOCK_IDX_OFFSET;
+			if (drv_data->client_lock_tbl[lock_idx] == in_flight_lock) {
+				GLOBAL_ATOMIC_STORE(drv_data,
+					&drv_data->client_lock_tbl[lock_idx], 0);
+				HWFNC_DBG_SSR("unlock client rxq id:%d locked as 0x%llx\n",
+					wait_client_id, in_flight_lock);
+			}
+		}
+	}
+}
+
+int hw_fence_ssr_cleanup_table(struct hw_fence_driver_data *drv_data,
+	struct msm_hw_fence *hw_fences_tbl, u32 table_total_entries, u64 in_flight_lock)
+{
+	struct msm_hw_fence *hw_fence;
+	int i;
+
+	if (!drv_data || !hw_fences_tbl || !in_flight_lock || in_flight_lock == BIT(0)) {
+		HWFNC_ERR("invalid params drv_data:0x%pK table:0x%pK in_flight_lock:0x%llx",
+			drv_data, hw_fences_tbl, in_flight_lock);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < table_total_entries; i++) {
+		hw_fence = _get_hw_fence(table_total_entries, hw_fences_tbl, i);
+
+		if (hw_fence->lock == in_flight_lock) {
+			/* only one fence should be affected by this */
+			unlock_in_flight_fence(drv_data, hw_fence, i, in_flight_lock);
+		}
+		_signal_fence_if_unsignaled(drv_data, hw_fence, i, MSM_HW_FENCE_ERROR_RESET, false);
 	}
 
 	return 0;
