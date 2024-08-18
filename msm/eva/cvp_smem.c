@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-buf.h>
@@ -604,6 +604,8 @@ int msm_cvp_map_ipcc_regs(u32 *iova)
 		dprintk(CVP_WARN, "%s: fail to map IPCC regs\n", __func__);
 		return -EFAULT;
 	}
+	dev->res->ipcc_reg_base_iova = *iova;
+
 	return 0;
 }
 

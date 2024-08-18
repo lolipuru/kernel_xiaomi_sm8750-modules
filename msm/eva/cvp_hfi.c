@@ -6008,14 +6008,6 @@ static int __power_on_core_v1(struct iris_hfi_device *device)
 		goto fail_enable_freerun;
 	}
 
-	__write_register(device, CVP_NOC_RCGCONTROLLER_HYSTERESIS_LOW, 0xff);
-	__write_register(device, CVP_NOC_RCGCONTROLLER_WAKEUP_LOW, 0x7);
-	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_FORCECLOCKON_LOW, 0x1);
-	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_ENABLE_LOW, 0x1);
-	usleep_range(5, 10);
-	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_FORCECLOCKON_LOW, 0x0);
-	__write_register(device, CVP_AON_WRAPPER_CVP_NOC_ARCG_CONTROL, 0x0);
-
 	dprintk(CVP_PWR, "EVA core powered on\n");
 	CVPKERNEL_ATRACE_END("__power_on_core_v1");
 
@@ -6350,6 +6342,14 @@ static int __set_registers_v1(struct iris_hfi_device *device)
 					reg_set->reg_tbl[i].reg,
 					reg_set->reg_tbl[i].value);
 	}
+
+	__write_register(device, CVP_NOC_RCGCONTROLLER_HYSTERESIS_LOW, 0xff);
+	__write_register(device, CVP_NOC_RCGCONTROLLER_WAKEUP_LOW, 0x7);
+	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_FORCECLOCKON_LOW, 0x1);
+	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_ENABLE_LOW, 0x1);
+	usleep_range(5, 10);
+	__write_register(device, CVP_NOC_RCG_VNOC_NOC_CLK_FORCECLOCKON_LOW, 0x0);
+	__write_register(device, CVP_AON_WRAPPER_CVP_NOC_ARCG_CONTROL, 0x0);
 
 	__write_register(device, CVP_CPU_CS_AXI4_QOS,
 				pdata->noc_qos->axi_qos);
