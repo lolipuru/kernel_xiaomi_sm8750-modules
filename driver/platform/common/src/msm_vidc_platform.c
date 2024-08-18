@@ -795,6 +795,9 @@ int msm_vidc_adjust_profile(void *instance, struct v4l2_ctrl *ctrl)
 		/* 8 bit profile for 8 bit color format */
 		if (is_image_session(inst))
 			adjusted_value = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_STILL_PICTURE;
+		else if (inst->capabilities[PROFILE].value ==
+				V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_MULTIVIEW)
+			adjusted_value = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_MULTIVIEW;
 		else
 			adjusted_value = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN;
 	}
@@ -1545,16 +1548,11 @@ int msm_vidc_adjust_gop_size(void *instance, struct v4l2_ctrl *ctrl)
 	u32 min_gop_size, num_subgops;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[GOP_SIZE].value;
+	enable_opengop = inst->capabilities[OPEN_GOP].value;
 
 	if (msm_vidc_get_parent_value(inst, GOP_SIZE,
 				      ENH_LAYER_COUNT, &enh_layer_count, __func__))
 		return -EINVAL;
-
-	if (inst->codec == MSM_VIDC_HEVC) {
-		if (msm_vidc_get_parent_value(inst, GOP_SIZE,
-			OPEN_GOP, &enable_opengop, __func__))
-			return -EINVAL;
-	}
 
 	if (!enh_layer_count)
 		goto exit;
