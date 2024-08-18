@@ -2034,7 +2034,9 @@ void ipa3_install_dl_opt_wdi_dpath_flt_rules(u32 ipa_ep_idx, u32 rt_tbl_idx)
 		return;
 	}
 
-	IPADBG("ipa3_install_dl_opt_wdi_dpath_flt_rules: %d\n", ipa_ep_idx);
+	IPADBG("ipa ep idx: %d\n", ipa_ep_idx);
+	if (ipa3_ctx->ipa_wdi_opt_dpath)
+		IPA_EVENT_LOG("ipa ep idx: %d\n", ipa_ep_idx);
 
 	memset(&rule, 0, sizeof(rule));
 

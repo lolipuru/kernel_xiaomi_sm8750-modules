@@ -2750,14 +2750,15 @@ static struct page *ipa3_rmnet_alloc_page(
 			flag, p_order, &rc, &porder, IPA_ID);
 
 		if (unlikely(!page)) {
-			if (p_order > 0) {
+			if (try_lower && p_order > 0) {
 				p_order = p_order - 1;
 				continue;
 			}
 			break;
 		}
 
-		ipa3_ctx->stats.lower_order++;
+		if (likely(page) && (p_order < *page_order) && try_lower)
+			ipa3_ctx->stats.lower_order++;
 		break;
 	}
 
