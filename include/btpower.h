@@ -31,10 +31,9 @@ enum SubSystem {
 };
 
 enum FmdOperation {
-	ENABLE_SDAM_BIT_FMD = 0,
+	ENABLE_FMD,
 	DISABLE_FMD,
-	UPDATE_SOC_VERSION_1_0_FOR_FMD,
-	UPDATE_SOC_VERSION_2_0_FOR_FMD
+	UPDATE_SOC_VER
 };
 
 enum power_states {
@@ -589,6 +588,13 @@ struct log_index {
 	int crash;
 };
 
+struct fmdOperationStruct {
+	unsigned char fmdOperation;
+	unsigned char socFwVer;
+	short int rebootStatus;
+	short int fmdCycles;
+};
+
 struct vreg_data {
 	struct regulator *reg;  /* voltage regulator handle */
 	const char *name;       /* regulator name */
@@ -685,7 +691,9 @@ struct platform_pwr_data {
 	struct sk_buff_head rxq;
 	struct mutex pwr_mtx;
 	bool is_fmd_mode_enable;
-	struct nvmem_cell *nvmem_cell;
+	struct nvmem_cell *nvmem_cell_fmd_set;
+	struct nvmem_cell *nvmem_cell_fmd_chg_pon;
+	struct nvmem_cell *nvmem_cell_fmd_cnt2_stop;
 	u32 fmd_clk_gpio_id;
 };
 
@@ -694,7 +702,7 @@ int btpower_get_chipset_version(void);
 int btpower_aop_mbox_init(struct platform_pwr_data *pdata);
 int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata);
 
-#define WLAN_SW_CTRL_GPIO       "qcom,wlan-sw-ctrl-gpio"
+#define WLAN_SW_CTRL_GPIO           "qcom,wlan-sw-ctrl-gpio"
 #define BT_CMD_SLIM_TEST            0xbfac
 #define BT_CMD_PWR_CTRL             0xbfad
 #define BT_CMD_CHIPSET_VERS         0xbfae
@@ -709,7 +717,7 @@ int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata);
 #define UWB_CMD_REGISTRATION        0xbfe3
 #define BT_CMD_ACCESS_CTRL          0xbfe4
 #define UWB_CMD_ACCESS_CTRL         0xbfe5
-#define SET_FMD_MODE_CTRL           0xbfb2
+#define BT_CMD_FMD_OPERATION        0xbfb2
 
 #ifdef CONFIG_MSM_BT_OOBS
 #define BT_CMD_OBS_VOTE_CLOCK		0xbfd1
