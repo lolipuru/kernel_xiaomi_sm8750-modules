@@ -745,9 +745,14 @@ static ssize_t hw_fence_dbg_dump_events_rd(struct file *file, char __user *user_
 	}
 	HWFNC_DBG_H("-- dump_events: index:%d qtime:%llu\n", index, hw_fence_get_qtime(drv_data));
 
-	if (len <= 0 || len > user_buf_size) {
+	if (len < 0 || len > user_buf_size) {
 		HWFNC_ERR("len:%d invalid buff size:%zu\n", len, user_buf_size);
 		len = 0;
+	}
+
+	if (len == 0) {
+		HWFNC_DBG_H("not printing anything to output because len:0 buf_size:%zu\n",
+			user_buf_size);
 		goto exit;
 	}
 
@@ -907,9 +912,14 @@ static ssize_t hw_fence_dbg_dump_table_rd(struct file *file, char __user *user_b
 		dump_single_entry(drv_data, buf, &index, max_size) :
 		dump_full_table(drv_data, buf, &index, &cnt, max_size, entry_size);
 
-	if (len <= 0 || len > user_buf_size) {
-		HWFNC_ERR("len:%d invalid buff size:%lu\n", len, user_buf_size);
+	if (len < 0 || len > user_buf_size) {
+		HWFNC_ERR("len:%d invalid buff size:%zu\n", len, user_buf_size);
 		len = 0;
+	}
+
+	if (len == 0) {
+		HWFNC_DBG_H("not printing anything to output because len:0 buf_size:%zu\n",
+			user_buf_size);
 		goto exit;
 	}
 
