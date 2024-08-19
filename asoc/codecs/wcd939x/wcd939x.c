@@ -2131,27 +2131,27 @@ static int wcd939x_tx_swr_ctrl(struct snd_soc_dapm_widget *w,
 	/* power mode is applicable only to analog mics */
 	if (strnstr(w->name, "ADC", sizeof("ADC"))) {
 		/* Get channel rate */
-		rate = wcd939x_get_clk_rate(wcd939x->tx_mode[w->shift - ADC1]);
+		rate = wcd939x_get_clk_rate(wcd939x->tx_mode[w->shift]);
 	}
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
 		/* Check AMIC2 is connected to ADC2 to take an action on BCS */
-		if (w->shift == ADC2 &&
-			(((snd_soc_component_read(component, WCD939X_TX_CH12_MUX) &
-				   0x38) >> 3)  == 0x2)) {
-			if (!wcd939x->bcs_dis) {
-				wcd939x_tx_connect_port(component, MBHC,
-					SWR_CLK_RATE_4P8MHZ, true);
-				set_bit(AMIC2_BCS_ENABLE, &wcd939x->status_mask);
-			}
-		}
 		if (strnstr(w->name, "ADC", sizeof("ADC"))) {
-			set_bit(w->shift - ADC1, &wcd939x->status_mask);
-			wcd939x_tx_connect_port(component, w->shift, rate,
+			if (w->shift == WCD_ADC2 &&
+				(((snd_soc_component_read(component, WCD939X_TX_CH12_MUX) &
+					   0x38) >> 3)  == 0x2)) {
+				if (!wcd939x->bcs_dis) {
+					wcd939x_tx_connect_port(component, MBHC,
+						SWR_CLK_RATE_4P8MHZ, true);
+					set_bit(AMIC2_BCS_ENABLE, &wcd939x->status_mask);
+				}
+			}
+			set_bit(w->shift, &wcd939x->status_mask);
+			wcd939x_tx_connect_port(component, w->shift + ADC1, rate,
 					true);
 		} else {
-			wcd939x_tx_connect_port(component, w->shift,
+			wcd939x_tx_connect_port(component, w->shift + DMIC0,
 					SWR_CLK_RATE_2P4MHZ, true);
 		}
 		break;
@@ -4009,49 +4009,49 @@ static const struct snd_soc_dapm_widget wcd939x_dapm_widgets[] = {
 	SND_SOC_DAPM_MUX("ADC4 MUX", SND_SOC_NOPM, 0, 0,
 				&tx_adc4_mux),
 	/*tx mixers*/
-	SND_SOC_DAPM_MIXER_E("ADC1_MIXER", SND_SOC_NOPM, ADC1, 0,
+	SND_SOC_DAPM_MIXER_E("ADC1_MIXER", SND_SOC_NOPM, WCD_ADC1, 0,
 				adc1_switch, ARRAY_SIZE(adc1_switch),
 				wcd939x_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("ADC2_MIXER", SND_SOC_NOPM, ADC2, 0,
+	SND_SOC_DAPM_MIXER_E("ADC2_MIXER", SND_SOC_NOPM, WCD_ADC2, 0,
 				adc2_switch, ARRAY_SIZE(adc2_switch),
 				wcd939x_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("ADC3_MIXER", SND_SOC_NOPM, ADC3, 0, adc3_switch,
+	SND_SOC_DAPM_MIXER_E("ADC3_MIXER", SND_SOC_NOPM, WCD_ADC3, 0, adc3_switch,
 				ARRAY_SIZE(adc3_switch), wcd939x_tx_swr_ctrl,
 				SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("ADC4_MIXER", SND_SOC_NOPM, ADC4, 0, adc4_switch,
+	SND_SOC_DAPM_MIXER_E("ADC4_MIXER", SND_SOC_NOPM, WCD_ADC4, 0, adc4_switch,
 				ARRAY_SIZE(adc4_switch), wcd939x_tx_swr_ctrl,
 				SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("DMIC1_MIXER", SND_SOC_NOPM, DMIC1,
+	SND_SOC_DAPM_MIXER_E("DMIC1_MIXER", SND_SOC_NOPM, 0,
 				0, dmic1_switch, ARRAY_SIZE(dmic1_switch),
 				wcd939x_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("DMIC2_MIXER", SND_SOC_NOPM, DMIC2,
+	SND_SOC_DAPM_MIXER_E("DMIC2_MIXER", SND_SOC_NOPM, 1,
 				0, dmic2_switch, ARRAY_SIZE(dmic2_switch),
 				wcd939x_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("DMIC3_MIXER", SND_SOC_NOPM, DMIC3,
+	SND_SOC_DAPM_MIXER_E("DMIC3_MIXER", SND_SOC_NOPM, 2,
 				0, dmic3_switch, ARRAY_SIZE(dmic3_switch),
 				wcd939x_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("DMIC4_MIXER", SND_SOC_NOPM, DMIC4,
+	SND_SOC_DAPM_MIXER_E("DMIC4_MIXER", SND_SOC_NOPM, 3,
 				0, dmic4_switch, ARRAY_SIZE(dmic4_switch),
 				wcd939x_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("DMIC5_MIXER", SND_SOC_NOPM, DMIC5,
+	SND_SOC_DAPM_MIXER_E("DMIC5_MIXER", SND_SOC_NOPM, 4,
 				0, dmic5_switch, ARRAY_SIZE(dmic5_switch),
 				wcd939x_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("DMIC6_MIXER", SND_SOC_NOPM, DMIC6,
+	SND_SOC_DAPM_MIXER_E("DMIC6_MIXER", SND_SOC_NOPM, 5,
 				0, dmic6_switch, ARRAY_SIZE(dmic6_switch),
 				wcd939x_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("DMIC7_MIXER", SND_SOC_NOPM, DMIC7,
+	SND_SOC_DAPM_MIXER_E("DMIC7_MIXER", SND_SOC_NOPM, 6,
 				0, dmic7_switch, ARRAY_SIZE(dmic7_switch),
 				wcd939x_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("DMIC8_MIXER", SND_SOC_NOPM, DMIC8,
+	SND_SOC_DAPM_MIXER_E("DMIC8_MIXER", SND_SOC_NOPM, 7,
 				0, dmic8_switch, ARRAY_SIZE(dmic8_switch),
 				wcd939x_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
