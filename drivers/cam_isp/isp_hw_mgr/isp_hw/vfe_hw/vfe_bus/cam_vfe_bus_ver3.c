@@ -571,6 +571,7 @@ static enum cam_vfe_bus_ver3_packer_format
 	case CAM_FORMAT_Y_ONLY:
 		return PACKER_FMT_VER3_PLAIN_8_LSB_MSB_10;
 	case CAM_FORMAT_PLAIN16_10:
+	case CAM_FORMAT_PLAIN16_10_LSB:
 		return PACKER_FMT_VER3_PLAIN_16_10BPP;
 	case CAM_FORMAT_PLAIN16_12:
 		return PACKER_FMT_VER3_PLAIN_16_12BPP;
@@ -839,6 +840,7 @@ static inline bool cam_vfe_bus_ver3_needs_lsb_alignment(uint32_t format)
 	case CAM_FORMAT_PLAIN16_12:
 	case CAM_FORMAT_PLAIN16_14:
 	case CAM_FORMAT_PLAIN32_20:
+	case CAM_FORMAT_PLAIN16_10_LSB:
 		return true;
 	}
 
@@ -953,6 +955,7 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 	case CAM_FORMAT_PLAIN16_12:
 	case CAM_FORMAT_PLAIN16_14:
 	case CAM_FORMAT_PLAIN16_16:
+	case CAM_FORMAT_PLAIN16_10_LSB:
 		if (rsrc_data->use_wm_pack) {
 			rsrc_data->cfg.pack_fmt = cam_vfe_bus_ver3_get_packer_fmt(
 				rsrc_data->cfg.format, rsrc_data->index);
@@ -964,6 +967,8 @@ static int cam_vfe_bus_ver3_config_rdi_wm(
 		} else if (rsrc_data->wm_mode == CAM_VFE_WM_LINE_BASED_MODE)
 			rsrc_data->cfg.width = ALIGNUP(rsrc_data->cfg.width * 2, 16) / 16;
 
+		if (rsrc_data->cfg.format == CAM_FORMAT_PLAIN16_10_LSB)
+			rsrc_data->cfg.pack_fmt |= (1 << rsrc_data->common_data->pack_align_shift);
 		break;
 	case CAM_FORMAT_PLAIN64:
 		rsrc_data->cfg.width = ALIGNUP(rsrc_data->cfg.width * 8, 16) / 16;
@@ -1018,6 +1023,19 @@ static int cam_vfe_bus_ver3_config_ports_with_ubwc(
 	case CAM_FORMAT_Y_ONLY:
 	case CAM_FORMAT_TP10:
 	case CAM_FORMAT_GBR_TP10:
+		switch (plane) {
+		case PLANE_C:
+			rsrc_data->cfg.height /= 2;
+			break;
+		case PLANE_Y:
+			break;
+		default:
+			CAM_ERR(CAM_ISP, "Invalid plane %d", plane);
+			return -EINVAL;
+		}
+		break;
+	case CAM_FORMAT_PLAIN16_10_LSB:
+		rsrc_data->cfg.pack_fmt |= (1 << rsrc_data->common_data->pack_align_shift);
 		switch (plane) {
 		case PLANE_C:
 			rsrc_data->cfg.height /= 2;
@@ -2012,6 +2030,7 @@ static int cam_vfe_bus_ver3_acquire_vfe_out(void *bus_priv, void *acquire_args,
 		case CAM_FORMAT_PLAIN16_14:
 		case CAM_FORMAT_PLAIN16_16:
 		case CAM_FORMAT_BAYER_UBWC_TP10:
+		case CAM_FORMAT_PLAIN16_10_LSB:
 			rsrc_data->num_wm = 1;
 			break;
 		default:
@@ -2111,6 +2130,7 @@ static int cam_vfe_bus_ver3_release_vfe_out(void *bus_priv, void *release_args,
 		case CAM_FORMAT_PLAIN16_14:
 		case CAM_FORMAT_PLAIN16_16:
 		case CAM_FORMAT_BAYER_UBWC_TP10:
+		case CAM_FORMAT_PLAIN16_10_LSB:
 			rsrc_data->num_wm = 2;
 			break;
 		default:
@@ -4503,6 +4523,7 @@ static int cam_vfe_bus_ver3_update_wm_config(
 				case CAM_FORMAT_PLAIN16_12:
 				case CAM_FORMAT_PLAIN16_14:
 				case CAM_FORMAT_PLAIN16_16:
+				case CAM_FORMAT_PLAIN16_10_LSB:
 					packer_fmt |=
 						(1 << wm_data->common_data->pack_align_shift);
 					wm_data->cfg.pack_fmt = packer_fmt;

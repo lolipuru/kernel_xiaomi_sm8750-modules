@@ -132,6 +132,47 @@ static void cam_csiphy_populate_secure_info(
 
 }
 
+static inline int cam_csiphy_drv_ops_util(bool halt,
+	struct csiphy_device *csiphy_dev, struct cam_csiphy_param *param,
+	struct cam_subdev_msg_phy_halt_resume_info *halt_resume_info)
+{
+	int rc = 0, drv_idx = param->conn_csid_idx;
+	unsigned long clk_rate;
+
+	if (!csiphy_dev->soc_info.is_clk_drv_en || !param->use_hw_client_voting ||
+		!param->is_drv_config_en)
+		return rc;
+
+	CAM_DBG(CAM_CSIPHY,
+		"PHY: %d, CSID: %d DRV info : use hw client %d, enable drv config %d, op=%s",
+		csiphy_dev->soc_info.index, param->conn_csid_idx,
+		param->use_hw_client_voting, param->is_drv_config_en,
+		(halt_resume_info->csid_state == CAM_SUBDEV_PHY_CSID_HALT) ? "HALT" : "RESUME");
+
+	if (halt) {
+		clk_rate = csiphy_dev->soc_info.applied_src_clk_rates.hw_client[drv_idx].high;
+		rc = cam_soc_util_set_src_clk_rate(&csiphy_dev->soc_info,
+			CAM_CLK_SW_CLIENT_IDX, clk_rate, 0);
+		if (rc)
+			CAM_ERR(CAM_CSIPHY,
+				"PHY[%d] CSID HALT: csiphy set_rate %ld failed rc: %d",
+				csiphy_dev->soc_info.index, clk_rate, rc);
+	} else {
+		int32_t src_idx = csiphy_dev->soc_info.src_clk_idx;
+		uint32_t lowest_clk_level = csiphy_dev->soc_info.lowest_clk_level;
+
+		clk_rate = csiphy_dev->soc_info.clk_rate[lowest_clk_level][src_idx];
+		rc = cam_soc_util_set_src_clk_rate(&csiphy_dev->soc_info,
+			CAM_CLK_SW_CLIENT_IDX, clk_rate, 0);
+		if (rc)
+			CAM_ERR(CAM_CSIPHY,
+				"PHY[%d] CSID RESUME: csiphy _set_rate %ld failed rc: %d",
+				csiphy_dev->soc_info.index, clk_rate, rc);
+	}
+
+	return rc;
+}
+
 static void cam_csiphy_subdev_handle_message(struct v4l2_subdev *sd,
 	enum cam_subdev_message_type_t message_type, void *data)
 {
@@ -225,12 +266,11 @@ static void cam_csiphy_subdev_handle_message(struct v4l2_subdev *sd,
 		break;
 	}
 	case CAM_SUBDEV_MESSAGE_NOTIFY_HALT_RESUME: {
-		int drv_idx;
 		struct cam_subdev_msg_phy_halt_resume_info *halt_resume_info =
 			(struct cam_subdev_msg_phy_halt_resume_info *) data;
 		int idx;
 		struct cam_csiphy_param *param;
-		unsigned long clk_rate;
+		struct cam_hw_soc_info *soc_info = &csiphy_dev->soc_info;
 
 		idx = cam_csiphy_get_session_index(csiphy_dev, halt_resume_info->lane_cfg);
 		if (idx >= CSIPHY_MAX_INSTANCES_PER_PHY) {
@@ -240,41 +280,21 @@ static void cam_csiphy_subdev_handle_message(struct v4l2_subdev *sd,
 		}
 
 		param = &csiphy_dev->csiphy_info[idx];
-		drv_idx = param->conn_csid_idx;
-
-		if (!csiphy_dev->soc_info.is_clk_drv_en || !param->use_hw_client_voting ||
-			!param->is_drv_config_en)
-			break;
-
-		CAM_DBG(CAM_CSIPHY,
-			"PHY: %d, CSID: %d DRV info : use hw client %d, enable drv config %d, op=%s",
-			csiphy_dev->soc_info.index, param->conn_csid_idx,
-			param->use_hw_client_voting, param->is_drv_config_en,
-			(halt_resume_info->csid_state == CAM_SUBDEV_PHY_CSID_HALT) ? "HALT" :
-			"RESUME");
-
 		if (halt_resume_info->csid_state == CAM_SUBDEV_PHY_CSID_HALT) {
-			clk_rate =
-				csiphy_dev->soc_info.applied_src_clk_rates.hw_client[drv_idx].high;
+			if (halt_resume_info->reset_resume_phy)
+				cam_csiphy_reset(csiphy_dev);
 
-			rc = cam_soc_util_set_src_clk_rate(&csiphy_dev->soc_info,
-				CAM_CLK_SW_CLIENT_IDX, clk_rate, 0);
-			if (rc)
-				CAM_ERR(CAM_CSIPHY,
-					"PHY[%d] CSID HALT: csiphy set_rate %ld failed rc: %d",
-					phy_idx, clk_rate, rc);
+			if (halt_resume_info->do_drv_ops)
+				rc = cam_csiphy_drv_ops_util(true, csiphy_dev, param,
+					halt_resume_info);
 		} else if (halt_resume_info->csid_state == CAM_SUBDEV_PHY_CSID_RESUME) {
-			int32_t src_idx = csiphy_dev->soc_info.src_clk_idx;
-			uint32_t lowest_clk_level = csiphy_dev->soc_info.lowest_clk_level;
+			if (halt_resume_info->reset_resume_phy)
+				rc = cam_csiphy_release_from_reset_state(csiphy_dev,
+					soc_info->reg_map[0].mem_base, idx);
 
-			clk_rate = csiphy_dev->soc_info.clk_rate[lowest_clk_level][src_idx];
-
-			rc = cam_soc_util_set_src_clk_rate(&csiphy_dev->soc_info,
-				CAM_CLK_SW_CLIENT_IDX, clk_rate, 0);
-			if (rc)
-				CAM_ERR(CAM_CSIPHY,
-					"PHY[%d] CSID RESUME: csiphy _set_rate %ld failed rc: %d",
-					phy_idx, clk_rate, rc);
+			if (halt_resume_info->do_drv_ops)
+				rc = cam_csiphy_drv_ops_util(false, csiphy_dev, param,
+					halt_resume_info);
 		} else {
 			CAM_ERR(CAM_CSIPHY,
 				"CSIPHY:%d Failed to handle CSID halt resume csid_state: %d",

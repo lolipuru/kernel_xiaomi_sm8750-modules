@@ -6327,6 +6327,7 @@ static int __cam_isp_ctx_flush_req_in_top_state(
 	struct cam_req_mgr_timer_notify   timer;
 
 	ctx_isp = (struct cam_isp_context *) ctx->ctx_priv;
+	ctx_isp->standby_en = flush_req->enable_sensor_standby;
 
 	/* Reset skipped_list for FCG config */
 	__cam_isp_ctx_reset_fcg_tracker(ctx);
@@ -6352,6 +6353,7 @@ static int __cam_isp_ctx_flush_req_in_top_state(
 		stop_isp.hw_stop_cmd = CAM_ISP_HW_STOP_IMMEDIATELY;
 		stop_isp.stop_only = true;
 		stop_isp.is_internal_stop = false;
+		stop_isp.standby_en = ctx_isp->standby_en;
 		stop_args.args = (void *)&stop_isp;
 		rc = ctx->hw_mgr_intf->hw_stop(ctx->hw_mgr_intf->hw_mgr_priv,
 			&stop_args);
@@ -6408,6 +6410,7 @@ end:
 	ctx_isp->bubble_frame_cnt = 0;
 	ctx_isp->congestion_cnt = 0;
 	ctx_isp->sof_dbg_irq_en = false;
+	ctx_isp->num_inits_post_flush = 0;
 	atomic_set(&ctx_isp->process_bubble, 0);
 	atomic_set(&ctx_isp->rxd_epoch, 0);
 	atomic_set(&ctx_isp->internal_recovery_set, 0);
@@ -7602,17 +7605,30 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 				ctx_isp->resume_hw_in_flushed = true;
 			else
 				ctx_isp->resume_hw_in_flushed = false;
+
+			if (ctx->state == CAM_CTX_FLUSHED)
+				ctx_isp->num_inits_post_flush++;
 		} else {
 			rc = -EINVAL;
 			CAM_ERR(CAM_ISP, "Received INIT pkt in wrong state:%d, ctx:%u, link:0x%x",
 				ctx->state, ctx->ctx_id, ctx->link_hdl);
 		}
 	} else {
-		if ((ctx->state == CAM_CTX_FLUSHED) || (ctx->state < CAM_CTX_READY)) {
+		if (ctx->state < CAM_CTX_READY) {
 			rc = -EINVAL;
 			CAM_ERR(CAM_ISP,
 			    "Received update req %lld in wrong state:%d, ctx_idx: %u, link: 0x%x",
 			    req->request_id, ctx->state, ctx->ctx_id, ctx->link_hdl);
+			goto put_ref;
+		}
+
+		if ((ctx->state == CAM_CTX_FLUSHED) &&
+			(ctx_isp->num_inits_post_flush <
+			CAM_ISP_CONTEXT_NUM_INIT_REQ_RCVD_POST_FLUSH)) {
+			CAM_ERR(CAM_ISP,
+			    "Received update req %lld in wrong state:%d, ctx_idx: %u, link: 0x%x, still waiting on INITs to resume num_inits: %u",
+			    req->request_id, ctx->state, ctx->ctx_id, ctx->link_hdl,
+			    ctx_isp->num_inits_post_flush);
 			goto put_ref;
 		}
 
@@ -8261,74 +8277,73 @@ static void cam_req_mgr_process_workq_apply_req_worker(struct work_struct *w)
 }
 
 static inline void __cam_isp_ctx_convert_hw_id_to_string(
-	struct cam_req_mgr_notify_msg *msg,
-	uint32_t                       hw_idx)
+	char *ife_hw_name, uint32_t hw_idx)
 {
 	int num_hw = 0, len = 0;
 	char tmp_buf[30];
 
 	if (hw_idx & CAM_ISP_IFE0_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"IFE0 ");
 		num_hw++;
 	}
 
 	if (hw_idx & CAM_ISP_IFE1_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"IFE1 ");
 		num_hw++;
 	}
 
 	if (hw_idx & CAM_ISP_IFE2_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"IFE2 ");
 		num_hw++;
 	}
 
 	if (hw_idx & CAM_ISP_IFE0_LITE_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"IFE0_LITE ");
 		num_hw++;
 	}
 
 	if (hw_idx & CAM_ISP_IFE1_LITE_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"IFE1_LITE ");
 		num_hw++;
 	}
 
 	if (hw_idx & CAM_ISP_IFE2_LITE_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"IFE2_LITE ");
 		num_hw++;
 	}
 
 	if (hw_idx & CAM_ISP_IFE3_LITE_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"IFE3_LITE ");
 		num_hw++;
 	}
 
 	if (hw_idx & CAM_ISP_IFE4_LITE_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"IFE4_LITE ");
 		num_hw++;
 	}
 
 	if (hw_idx & CAM_ISP_SFE0_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"SFE0 ");
 		num_hw++;
 	}
 
 	if (hw_idx & CAM_ISP_SFE1_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"SFE1 ");
 		num_hw++;
 	}
 
 	if (hw_idx & CAM_ISP_SFE2_HW) {
-		len += snprintf(msg->u.ife_hw_name + len, sizeof(msg->u.ife_hw_name) - len,
+		len += snprintf(ife_hw_name + len, sizeof(ife_hw_name) - len,
 			"SFE2 ");
 		num_hw++;
 	}
@@ -8339,13 +8354,13 @@ static inline void __cam_isp_ctx_convert_hw_id_to_string(
 	}
 
 	if (num_hw == 2) {
-		snprintf(tmp_buf, sizeof(tmp_buf), "Dual: %s", msg->u.ife_hw_name);
-		len = snprintf(msg->u.ife_hw_name, sizeof(msg->u.ife_hw_name), "%s", tmp_buf);
+		snprintf(tmp_buf, sizeof(tmp_buf), "Dual: %s", ife_hw_name);
+		len = snprintf(ife_hw_name, sizeof(ife_hw_name), "%s", tmp_buf);
 	}
 
 	/* Remove the last space */
-	if ((len > 0) && (len < sizeof(msg->u.ife_hw_name)))
-		msg->u.ife_hw_name[len - 1] = '\0';
+	if ((len > 0) && (len < sizeof(ife_hw_name)))
+		ife_hw_name[len - 1] = '\0';
 }
 
 static int __cam_isp_ctx_acquire_hw_v2(struct cam_context *ctx,
@@ -8525,8 +8540,8 @@ static int __cam_isp_ctx_acquire_hw_v2(struct cam_context *ctx,
 	if (ctx->ctx_crm_intf && ctx->ctx_crm_intf->notify_msg) {
 		msg.link_hdl = ctx->link_hdl;
 		msg.dev_hdl = ctx->dev_hdl;
-		msg.msg_type = CAM_REQ_MGR_MSG_UPDATE_IFE_HW_IDX;
-		__cam_isp_ctx_convert_hw_id_to_string(&msg, ctx_isp->hw_idx);
+		msg.msg_type = CAM_REQ_MGR_MSG_UPDATE_DEVICE_INFO;
+		__cam_isp_ctx_convert_hw_id_to_string(&msg.u.ife_hw_name[0], ctx_isp->hw_idx);
 		rc = ctx->ctx_crm_intf->notify_msg(&msg);
 		if (rc) {
 			CAM_WARN(CAM_ISP, "Failed at updating IFE hw idx to CRM");
@@ -8667,13 +8682,59 @@ static int __cam_isp_ctx_config_dev_in_acquired(struct cam_context *ctx,
 	return rc;
 }
 
+static int __cam_isp_ctx_issue_resume_util(struct cam_context *ctx)
+{
+	int rc;
+	struct cam_start_stop_dev_cmd start_cmd;
+	struct cam_hw_cmd_args hw_cmd_args;
+	struct cam_isp_hw_cmd_args isp_hw_cmd_args;
+	struct cam_isp_context *ctx_isp =
+		(struct cam_isp_context *) ctx->ctx_priv;
+
+	spin_lock_bh(&ctx->lock);
+	if (unlikely(ctx->state != CAM_CTX_FLUSHED)) {
+		spin_unlock_bh(&ctx->lock);
+		CAM_ERR(CAM_ISP,
+			"Cannot perform a resume if not in flushed state ctx: %u link: 0x%x state: %u",
+			ctx->ctx_id, ctx->link_hdl, ctx->state);
+		return -EINVAL;
+	}
+	spin_unlock_bh(&ctx->lock);
+
+	hw_cmd_args.ctxt_to_hw_map = ctx_isp->hw_ctx;
+	hw_cmd_args.cmd_type = CAM_HW_MGR_CMD_INTERNAL;
+	isp_hw_cmd_args.cmd_type = CAM_ISP_HW_MGR_CMD_RESUME_HW;
+	hw_cmd_args.u.internal_args = (void *)&isp_hw_cmd_args;
+	rc = ctx->hw_mgr_intf->hw_cmd(ctx->hw_mgr_intf->hw_mgr_priv,
+		&hw_cmd_args);
+	if (rc) {
+		CAM_ERR(CAM_ISP, "Failed to resume HW rc: %d, ctx_id %u link: 0x%x",
+			rc, ctx->ctx_id, ctx->link_hdl);
+		return rc;
+	}
+
+	start_cmd.dev_handle = ctx->dev_hdl;
+	start_cmd.session_handle = ctx->session_hdl;
+	rc = __cam_isp_ctx_start_dev_in_ready(ctx, &start_cmd);
+	if (rc)
+		CAM_ERR(CAM_ISP,
+			"Failed to re-start HW after flush rc: %d, ctx_id %u link: 0x%x",
+			rc, ctx->ctx_id, ctx->link_hdl);
+		else
+			CAM_INFO(CAM_ISP,
+				"Received init after flush. Re-start HW complete in ctx:%d, link: 0x%x",
+				ctx->ctx_id, ctx->link_hdl);
+
+	CAM_DBG(CAM_ISP, "next state %d sub_state:%d ctx_id %u link: 0x%x", ctx->state,
+		ctx_isp->substate_activated, ctx->ctx_id, ctx->link_hdl);
+
+	return rc;
+}
+
 static int __cam_isp_ctx_config_dev_in_flushed(struct cam_context *ctx,
 	struct cam_config_dev_cmd *cmd)
 {
 	int rc = 0;
-	struct cam_start_stop_dev_cmd start_cmd;
-	struct cam_hw_cmd_args hw_cmd_args;
-	struct cam_isp_hw_cmd_args isp_hw_cmd_args;
 	struct cam_isp_context *ctx_isp =
 		(struct cam_isp_context *) ctx->ctx_priv;
 
@@ -8706,35 +8767,36 @@ static int __cam_isp_ctx_config_dev_in_flushed(struct cam_context *ctx,
 			goto end;
 		else
 			ctx_isp->resume_hw_in_flushed = false;
-	}
-
-	hw_cmd_args.ctxt_to_hw_map = ctx_isp->hw_ctx;
-	hw_cmd_args.cmd_type = CAM_HW_MGR_CMD_INTERNAL;
-	isp_hw_cmd_args.cmd_type = CAM_ISP_HW_MGR_CMD_RESUME_HW;
-	hw_cmd_args.u.internal_args = (void *)&isp_hw_cmd_args;
-	rc = ctx->hw_mgr_intf->hw_cmd(ctx->hw_mgr_intf->hw_mgr_priv,
-		&hw_cmd_args);
-	if (rc) {
-		CAM_ERR(CAM_ISP, "Failed to resume HW rc: %d, ctx_id %u link: 0x%x",
-			rc, ctx->ctx_id, ctx->link_hdl);
+	} else if (ctx_isp->standby_en && (ctx_isp->num_inits_post_flush <
+		CAM_ISP_CONTEXT_NUM_INIT_REQ_RCVD_POST_FLUSH)) {
+		CAM_DBG(CAM_ISP,
+			"Received %u number of INIT packets, expecting %u to resume on ctx: %u link: 0x%x",
+			ctx_isp->num_inits_post_flush,
+			CAM_ISP_CONTEXT_NUM_INIT_REQ_RCVD_POST_FLUSH, ctx->ctx_id, ctx->link_hdl);
 		goto end;
 	}
 
-	start_cmd.dev_handle = cmd->dev_handle;
-	start_cmd.session_handle = cmd->session_handle;
-	rc = __cam_isp_ctx_start_dev_in_ready(ctx, &start_cmd);
-	if (rc)
-		CAM_ERR(CAM_ISP,
-			"Failed to re-start HW after flush rc: %d, ctx_id %u link: 0x%x",
-			rc, ctx->ctx_id, ctx->link_hdl);
-	else
-		CAM_INFO(CAM_ISP,
-			"Received init after flush. Re-start HW complete in ctx:%d, link: 0x%x",
-			ctx->ctx_id, ctx->link_hdl);
+	if (ctx_isp->standby_en) {
+		/* Notify for synced resume */
+		if (ctx->ctx_crm_intf && ctx->ctx_crm_intf->notify_msg) {
+			struct cam_req_mgr_notify_msg msg = {0};
+
+			msg.link_hdl = ctx->link_hdl;
+			msg.dev_hdl = ctx->dev_hdl;
+			msg.msg_type = CAM_REQ_MGR_MSG_NOTIFY_FOR_SYNCED_RESUME;
+			rc = ctx->ctx_crm_intf->notify_msg(&msg);
+			if (rc)
+				CAM_ERR(CAM_ISP,
+					"Failed at notifying for synced resume on ctx: %u link: 0x%x",
+					ctx->ctx_id, ctx->link_hdl);
+
+			return rc;
+		}
+	}
+
+	rc = __cam_isp_ctx_issue_resume_util(ctx);
 
 end:
-	CAM_DBG(CAM_ISP, "next state %d sub_state:%d ctx_id %u link: 0x%x", ctx->state,
-		ctx_isp->substate_activated, ctx->ctx_id, ctx->link_hdl);
 	return rc;
 }
 
@@ -8810,6 +8872,7 @@ static int __cam_isp_ctx_get_dev_info_in_acquired(struct cam_context *ctx,
 	struct cam_req_mgr_device_info *dev_info)
 {
 	int rc = 0;
+	struct cam_isp_context *isp_ctx = (struct cam_isp_context *)ctx->ctx_priv;
 
 	dev_info->dev_hdl = ctx->dev_hdl;
 	strscpy(dev_info->name, CAM_ISP_DEV_NAME, sizeof(dev_info->name));
@@ -8818,6 +8881,8 @@ static int __cam_isp_ctx_get_dev_info_in_acquired(struct cam_context *ctx,
 	dev_info->m_delay = CAM_MODESWITCH_DELAY_1;
 	dev_info->trigger = CAM_TRIGGER_POINT_SOF;
 	dev_info->trigger_on = true;
+	dev_info->resume_sync_on = true;
+	isp_ctx->standby_en = true;
 
 	return rc;
 }
@@ -8842,6 +8907,8 @@ static inline void __cam_isp_context_reset_ctx_params(
 	ctx_isp->sof_dbg_irq_en = false;
 	ctx_isp->last_sof_jiffies = 0;
 	ctx_isp->last_applied_jiffies = 0;
+	ctx_isp->num_inits_post_flush = 0;
+	ctx_isp->standby_en = false;
 }
 
 static int __cam_isp_ctx_start_dev_in_ready(struct cam_context *ctx,
@@ -9476,6 +9543,9 @@ static int __cam_isp_ctx_process_evt(struct cam_context *ctx,
 		break;
 	case CAM_REQ_MGR_LINK_EVT_RESUME:
 		rc =  __cam_isp_ctx_link_resume(ctx);
+		break;
+	case CAM_REQ_MGR_LINK_EVT_RESUME_HW:
+		rc =  __cam_isp_ctx_issue_resume_util(ctx);
 		break;
 	case CAM_REQ_MGR_LINK_EVT_SOF_FREEZE:
 		rc = __cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_ERROR, ctx, NULL);

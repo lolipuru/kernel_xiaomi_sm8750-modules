@@ -68,11 +68,15 @@ struct cam_subdev_msg_phy_drv_info {
  *               PHY instance with which this IFE session is
  *               connected to.
  * @csid_state:  Notification of CSID state
+ * @do_drv_ops:  Only if set perform the drv related ops
+ * @reset_phy:   Reset PHY
  */
 struct cam_subdev_msg_phy_halt_resume_info {
 	uint32_t                       phy_idx;
 	uint32_t                       lane_cfg;
 	enum cam_subdev_phy_csid_state csid_state;
+	bool                           do_drv_ops;
+	bool                           reset_resume_phy;
 };
 
 /**

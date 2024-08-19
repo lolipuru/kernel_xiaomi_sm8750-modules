@@ -100,6 +100,13 @@
 #define CAM_REQ_MGR_SYNC_MODE_SYNC      1
 
 /**
+ * Functional capabilities for flush
+ * "reserved" field in struct cam_req_mgr_flush_info to be set
+ * to enable/disable these functionalities
+ */
+#define CAM_REQ_MGR_ENABLE_SENSOR_STANDBY BIT(0)
+
+/**
  * struct cam_req_mgr_event_data
  * @session_hdl: session handle
  * @link_hdl: link handle

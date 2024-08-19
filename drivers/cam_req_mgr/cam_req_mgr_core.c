@@ -92,6 +92,8 @@ void cam_req_mgr_core_link_reset(struct cam_req_mgr_core_link *link)
 	link->wq_congestion = false;
 	link->try_for_internal_recovery = false;
 	link->is_sending_req = false;
+	link->resume_sync_curr_mask = 0;
+	link->resume_sync_dev_mask = 0;
 	atomic_set(&link->eof_event_cnt, 0);
 	link->cont_empty_slots = 0;
 	__cam_req_mgr_reset_apply_data(link);
@@ -2986,12 +2988,27 @@ static void __cam_req_mgr_unreserve_link(
 
 /* Workqueue context processing section */
 
+static inline bool cam_req_mgr_check_for_functional_flush_caps(
+	uint32_t bit_location,
+	struct cam_req_mgr_flush_info *flush_info)
+{
+	if (!flush_info->reserved)
+		return false;
+
+	if (flush_info->reserved & bit_location)
+		return true;
+
+	return false;
+}
+
 static int __cam_req_mgr_flush_dev_with_max_pd(struct cam_req_mgr_core_link *link,
 	struct cam_req_mgr_flush_info *flush_info, int max_pd)
 {
 	struct cam_req_mgr_connected_device *device;
-	struct cam_req_mgr_flush_request flush_req;
+	struct cam_req_mgr_flush_request flush_req = {0};
 	int i, rc = 0;
+	bool enable_standby = cam_req_mgr_check_for_functional_flush_caps(
+			CAM_REQ_MGR_ENABLE_SENSOR_STANDBY, flush_info);
 
 	for (i = 0; i < link->num_devs; i++) {
 		device = &link->l_dev[i];
@@ -3002,6 +3019,8 @@ static int __cam_req_mgr_flush_dev_with_max_pd(struct cam_req_mgr_core_link *lin
 		flush_req.dev_hdl = device->dev_hdl;
 		flush_req.req_id = flush_info->req_id;
 		flush_req.type = flush_info->flush_type;
+		flush_req.enable_sensor_standby =
+			(!g_crm_core_dev->disable_sensor_standby && enable_standby);
 
 		if (device->ops && device->ops->flush_req)
 			rc = device->ops->flush_req(&flush_req);
@@ -3135,6 +3154,7 @@ int cam_req_mgr_process_flush_req(void *priv, void *data)
 		__cam_req_mgr_reset_apply_data(link);
 		__cam_req_mgr_flush_dev_with_max_pd(link, flush_info, link->max_delay);
 		link->open_req_cnt = 0;
+		link->resume_sync_curr_mask = 0x0;
 		break;
 	case CAM_REQ_MGR_FLUSH_TYPE_CANCEL_REQ:
 		link->last_flush_id = flush_info->req_id;
@@ -3583,6 +3603,36 @@ void __cam_req_mgr_apply_on_bubble(
 	if (rc)
 		CAM_ERR(CAM_CRM,
 			"Failed to apply request on bubbled frame");
+}
+
+
+/**
+ * cam_req_mgr_issue_resume()
+ *
+ * @brief: This runs in workque thread context to issue
+ *         resume cmd to relevant devices
+ * @priv : link information
+ * @data : contains information on the resume message
+ *
+ * @return: 0 on success
+ */
+int cam_req_mgr_issue_resume(void *priv, void *data)
+{
+	int rc = 0;
+	struct cam_req_mgr_core_link *link = NULL;
+
+	if (!data || !priv) {
+		CAM_ERR(CAM_CRM, "input args NULL %pK %pK", data, priv);
+		rc = -EINVAL;
+		goto end;
+	}
+
+	link = (struct cam_req_mgr_core_link *)priv;
+	rc = __cam_req_mgr_send_evt(0, CAM_REQ_MGR_LINK_EVT_RESUME_HW,
+		CRM_KMD_ERR_MAX, link);
+
+end:
+	return rc;
 }
 
 /**
@@ -4404,55 +4454,30 @@ static int cam_req_mgr_cb_notify_msg(
 		return -EINVAL;
 	}
 
-	/* Update IFE hw idx after hw acquire, no further process is needed */
-	if (msg->msg_type == CAM_REQ_MGR_MSG_UPDATE_IFE_HW_IDX) {
-		for (i = 0; i < link->num_devs; i++) {
-			dev = &link->l_dev[i];
-
-			if (dev->dev_hdl != msg->dev_hdl)
-				continue;
-
-			snprintf(dev->dev_info.name, sizeof(dev->dev_info.name), "%s(%s)",
-				"cam-isp", msg->u.ife_hw_name);
-		}
-
-		return 0;
-	}
-
 	CAM_DBG(CAM_REQ, "link_hdl 0x%x request id:%llu msg type:%d",
 		link->link_hdl, msg->req_id, msg->msg_type);
 
-	spin_lock_bh(&link->req.reset_link_spin_lock);
-	in_q = link->req.in_q;
-	if (!in_q) {
-		CAM_ERR(CAM_CRM, "in_q ptr NULL, link_hdl %x", msg->link_hdl);
-		spin_unlock_bh(&link->req.reset_link_spin_lock);
-		return -EINVAL;
-	}
-
-	slot_idx = __cam_req_mgr_find_slot_for_req(
-		in_q, msg->req_id);
-	if (slot_idx == -1) {
-		if (((uint32_t)msg->req_id) <= (link->last_flush_id)) {
-			CAM_INFO(CAM_CRM,
-				"req %lld not found in in_q; it has been flushed [last_flush_req %lld] link 0x%x",
-				msg->req_id, link->last_flush_id, link->link_hdl);
-			rc = -EBADR;
-		} else {
-			CAM_ERR(CAM_CRM,
-				"req %lld not found in in_q on link 0x%x [last_flush_req %lld]",
-				msg->req_id, link->link_hdl, link->last_flush_id);
-			rc = -EINVAL;
-		}
-		spin_unlock_bh(&link->req.reset_link_spin_lock);
-		return rc;
-	}
-
-	slot = &in_q->slot[slot_idx];
-	spin_unlock_bh(&link->req.reset_link_spin_lock);
-
 	switch (msg->msg_type) {
 	case CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO:
+		spin_lock_bh(&link->req.reset_link_spin_lock);
+		in_q = link->req.in_q;
+		if (!in_q) {
+			CAM_ERR(CAM_CRM, "in_q ptr NULL, link_hdl %x", msg->link_hdl);
+			spin_unlock_bh(&link->req.reset_link_spin_lock);
+			return -EINVAL;
+		}
+
+		slot_idx = __cam_req_mgr_find_slot_for_req(
+			in_q, msg->req_id);
+		if (slot_idx == -1) {
+			CAM_ERR(CAM_CRM, "Req: %lld not found on link: 0x%x",
+				msg->req_id, link->link_hdl);
+			spin_unlock_bh(&link->req.reset_link_spin_lock);
+			return -EINVAL;
+		}
+
+		slot = &in_q->slot[slot_idx];
+		spin_unlock_bh(&link->req.reset_link_spin_lock);
 		slot->frame_sync_shift = msg->u.frame_info.frame_sync_shift;
 
 		for (i = 0; i < link->num_devs; i++) {
@@ -4474,6 +4499,52 @@ static int cam_req_mgr_cb_notify_msg(
 						link->link_hdl, dev->dev_hdl);
 			}
 		}
+		break;
+	case CAM_REQ_MGR_MSG_NOTIFY_FOR_SYNCED_RESUME:  {
+		struct crm_task_payload *task_data = NULL;
+		struct crm_workq_task *task = NULL;
+		struct cam_req_mgr_notify_msg *notify_msg;
+
+		for (i = 0; i < link->num_devs; i++) {
+			dev = &link->l_dev[i];
+			if (msg->dev_hdl != dev->dev_hdl)
+				continue;
+
+			link->resume_sync_curr_mask |= BIT(dev->dev_info.dev_id);
+		}
+
+		if (link->resume_sync_curr_mask == link->resume_sync_dev_mask) {
+			task = cam_req_mgr_workq_get_task(link->workq);
+			if (!task) {
+				CAM_ERR(CAM_CRM, "no empty task");
+				rc = -EBUSY;
+				break;
+			}
+
+			link->resume_sync_curr_mask = 0;
+			task_data = (struct crm_task_payload *)task->payload;
+			task_data->type = CRM_WORKQ_TASK_TRIGGER_SYNCED_RESUME;
+			notify_msg = (struct cam_req_mgr_notify_msg *)&task_data->u;
+			notify_msg->req_id = msg->req_id;
+			notify_msg->link_hdl = msg->link_hdl;
+			notify_msg->dev_hdl = msg->dev_hdl;
+			notify_msg->msg_type = msg->msg_type;
+			task->process_cb = &cam_req_mgr_issue_resume;
+			rc = cam_req_mgr_workq_enqueue_task(task, link, CRM_TASK_PRIORITY_0);
+		}
+	}
+		break;
+	case CAM_REQ_MGR_MSG_UPDATE_DEVICE_INFO: {
+		for (i = 0; i < link->num_devs; i++) {
+			dev = &link->l_dev[i];
+			if (dev->dev_hdl != msg->dev_hdl)
+				continue;
+
+			snprintf(dev->dev_info.name, sizeof(dev->dev_info.name), "%s(%s)",
+				"cam-isp", msg->u.ife_hw_name);
+			break;
+		}
+	}
 		break;
 	default:
 		rc = -EINVAL;
@@ -4617,6 +4688,9 @@ static int __cam_req_mgr_setup_link_info(struct cam_req_mgr_core_link *link,
 
 		if (dev->dev_info.trigger_on)
 			num_trigger_devices++;
+
+		if (dev->dev_info.resume_sync_on)
+			link->resume_sync_dev_mask |= BIT(dev->dev_info.dev_id);
 	}
 
 	if (num_trigger_devices > CAM_REQ_MGR_MAX_TRIGGERS) {
@@ -5589,6 +5663,7 @@ int cam_req_mgr_flush_requests(
 	flush->req_id = flush_info->req_id;
 	flush->link_hdl = flush_info->link_hdl;
 	flush->flush_type = flush_info->flush_type;
+	flush->reserved = flush_info->reserved;
 	task->process_cb = &cam_req_mgr_process_flush_req;
 	init_completion(&link->workq_comp);
 	rc = cam_req_mgr_workq_enqueue_task(task, link, CRM_TASK_PRIORITY_0);

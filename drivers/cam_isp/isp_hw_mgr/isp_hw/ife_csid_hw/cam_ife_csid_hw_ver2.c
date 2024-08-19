@@ -89,6 +89,7 @@ static void cam_ife_csid_ver2_reset_csid_params(struct cam_ife_csid_ver2_hw *csi
 	memset(&csid_hw->debug_info, 0, sizeof(struct cam_ife_csid_ver2_debug_info));
 	memset(&csid_hw->counters, 0, sizeof(struct cam_ife_csid_hw_counters));
 	csid_hw->flags.pf_err_detected = false;
+	csid_hw->standby_asserted = false;
 	csid_hw->token = NULL;
 }
 
@@ -3623,6 +3624,13 @@ int cam_ife_csid_ver2_reset(void *hw_priv,
 			CAM_CSID_HALT_IMMEDIATELY);
 		break;
 
+	case CAM_IFE_CSID_RESET_GLOBAL_HW_ONLY:
+		rc = cam_ife_csid_ver2_internal_reset(csid_hw,
+			CAM_IFE_CSID_RESET_CMD_HW_RST,
+			CAM_IFE_CSID_RESET_LOC_COMPLETE,
+			CAM_CSID_HALT_IMMEDIATELY);
+		break;
+
 	default:
 		rc = -EINVAL;
 		break;
@@ -6648,7 +6656,7 @@ int cam_ife_csid_ver2_start(void *hw_priv, void *args,
 	bool                                         delay_rdi0_enable = false;
 	struct cam_subdev_msg_phy_conn_csid_info     conn_csid_info;
 	struct cam_subdev_msg_phy_drv_info           drv_info;
-	struct cam_subdev_msg_phy_halt_resume_info   halt_resume_info;
+	struct cam_subdev_msg_phy_halt_resume_info   halt_resume_info = {0};
 	bool                                         cesta_enabled = false;
 	void __iomem                                *csid_clc_membase = NULL;
 
@@ -6706,14 +6714,17 @@ int cam_ife_csid_ver2_start(void *hw_priv, void *args,
 				csid_hw->hw_intf->hw_idx, rc);
 			goto end;
 		}
+		halt_resume_info.do_drv_ops = true;
+	}
 
+	if (halt_resume_info.do_drv_ops || halt_resume_info.reset_resume_phy) {
 		if (csid_hw->sync_mode != CAM_ISP_HW_SYNC_SLAVE) {
 			halt_resume_info.phy_idx = (csid_hw->rx_cfg.phy_sel - 1);
 			halt_resume_info.lane_cfg = csid_hw->rx_cfg.lane_cfg;
 			halt_resume_info.csid_state = CAM_SUBDEV_PHY_CSID_RESUME;
 			cam_subdev_notify_message(CAM_CSIPHY_DEVICE_TYPE,
 				CAM_SUBDEV_MESSAGE_NOTIFY_HALT_RESUME,
-					(void *)&halt_resume_info);
+				(void *)&halt_resume_info);
 		}
 	}
 
@@ -6886,6 +6897,7 @@ int cam_ife_csid_ver2_start(void *hw_priv, void *args,
 	}
 
 	csid_hw->flags.reset_awaited = false;
+	csid_hw->standby_asserted = false;
 end:
 	mutex_unlock(&csid_hw->hw_info->hw_mutex);
 	return rc;
@@ -6944,15 +6956,17 @@ disable_top_irq_status_reg0:
 int cam_ife_csid_ver2_stop(void *hw_priv,
 	void *stop_args, uint32_t arg_size)
 {
-	struct cam_ife_csid_ver2_hw                 *csid_hw  = NULL;
-	struct cam_isp_resource_node                *res;
-	struct cam_hw_info                          *hw_info;
-	int                                          rc = 0;
-	uint32_t                                     i;
-	struct cam_csid_hw_stop_args                *csid_stop;
-	struct cam_csid_reset_cfg_args               reset = {0};
-	struct cam_subdev_msg_phy_halt_resume_info   halt_resume_info;
-	struct cam_ife_csid_ver2_reg_info           *csid_reg;
+	struct cam_ife_csid_ver2_hw                     *csid_hw  = NULL;
+	struct cam_isp_resource_node                    *res;
+	struct cam_hw_info                              *hw_info;
+	int                                              rc = 0, i;
+	struct cam_csid_hw_stop_args                    *csid_stop;
+	struct cam_csid_reset_cfg_args                   reset = {0};
+	struct cam_subdev_msg_phy_halt_resume_info       halt_resume_info = {0};
+	struct cam_ife_csid_ver2_reg_info               *csid_reg;
+	const struct cam_ife_csid_ver2_csi2_rx_reg_info *csi2_reg;
+	void __iomem                                    *mem_base;
+	struct cam_hw_soc_info                          *soc_info;
 
 	if (!hw_priv || !stop_args ||
 		(arg_size != sizeof(struct cam_csid_hw_stop_args))) {
@@ -6963,6 +6977,9 @@ int cam_ife_csid_ver2_stop(void *hw_priv,
 	hw_info = (struct cam_hw_info *)hw_priv;
 	csid_hw = (struct cam_ife_csid_ver2_hw *)hw_info->core_info;
 	csid_reg = (struct cam_ife_csid_ver2_reg_info *)csid_hw->core_info->csid_reg;
+	csi2_reg = csid_reg->csi2_reg;
+	soc_info = &csid_hw->hw_info->soc_info;
+	mem_base = soc_info->reg_map[CAM_IFE_CSID_CLC_MEM_BASE_ID].mem_base;
 
 	if (csid_hw->hw_info->hw_state == CAM_HW_STATE_POWER_DOWN) {
 		CAM_WARN(CAM_ISP, "CSID:%u already powered down",
@@ -6984,19 +7001,37 @@ int cam_ife_csid_ver2_stop(void *hw_priv,
 
 	cam_ife_csid_ver2_send_cdr_sweep_csi2_rx_vals(csid_hw, csid_reg, 0);
 
-	if (csid_hw->hw_info->soc_info.is_clk_drv_en && csid_hw->is_drv_config_en) {
+	halt_resume_info.do_drv_ops = (csid_hw->hw_info->soc_info.is_clk_drv_en &&
+		csid_hw->is_drv_config_en);
+
+	csid_hw->standby_asserted = csid_stop->standby_en;
+	if (likely(halt_resume_info.do_drv_ops || halt_resume_info.reset_resume_phy)) {
 		halt_resume_info.phy_idx = (csid_hw->rx_cfg.phy_sel - 1);
 		halt_resume_info.lane_cfg = csid_hw->rx_cfg.lane_cfg;
 		halt_resume_info.csid_state = CAM_SUBDEV_PHY_CSID_HALT;
 		cam_subdev_notify_message(CAM_CSIPHY_DEVICE_TYPE,
 			CAM_SUBDEV_MESSAGE_NOTIFY_HALT_RESUME,
-				(void *)&halt_resume_info);
+			(void *)&halt_resume_info);
 	}
 
 	/* Issue a halt & reset to ensure there is no HW activity post the halt block */
 	reset.reset_type = CAM_IFE_CSID_RESET_PATH;
-	cam_ife_csid_ver2_reset(hw_priv, &reset,
+	rc = cam_ife_csid_ver2_reset(hw_priv, &reset,
 		sizeof(struct cam_csid_reset_cfg_args));
+
+	/* Ensure halt is successful prior to clearing phy select */
+	if (csid_hw->standby_asserted && !rc) {
+		/* Reset phy select */
+		cam_io_w_mb(0, mem_base + csi2_reg->cfg0_addr);
+
+		/* Issue a global HW reset to clean decoder state */
+		reset.reset_type = CAM_IFE_CSID_RESET_GLOBAL_HW_ONLY;
+		cam_ife_csid_ver2_reset(hw_priv, &reset,
+			sizeof(struct cam_csid_reset_cfg_args));
+		CAM_DBG(CAM_ISP,
+			"CSID:%u global HW reset issued at stop for standby",
+			csid_hw->hw_intf->hw_idx);
+	}
 
 	atomic_set(&csid_hw->discard_frame_per_path, 0);
 	mutex_lock(&csid_hw->hw_info->hw_mutex);
