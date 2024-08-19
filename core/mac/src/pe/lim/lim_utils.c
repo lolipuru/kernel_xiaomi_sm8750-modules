@@ -3832,7 +3832,6 @@ uint8_t lim_get_cb_mode_for_freq(struct mac_context *mac,
 	return cb_mode;
 }
 
-static
 uint8_t lim_get_sta_cb_mode_for_24ghz(struct mac_context *mac,
 				      uint8_t vdev_id)
 {
@@ -8965,18 +8964,26 @@ void lim_log_eht_op(struct mac_context *mac, tDot11fIEeht_op *eht_ops,
 }
 
 static void
-lim_revise_eht_caps(struct mac_context *mac, tDot11fIEeht_cap *eht_cap)
+lim_revise_eht_caps_per_band(struct mac_context *mac, enum cds_band_type band,
+			     tDot11fIEeht_cap *eht_cap)
 {
 	uint32_t country_max_allowed_bw;
+
+	if (band == CDS_BAND_2GHZ)
+		return;
 
 	country_max_allowed_bw = wlan_reg_get_country_max_allowed_bw(mac->pdev);
 	if (!country_max_allowed_bw) {
 		pe_debug("Failed to get country_max_allowed_bw");
 		return;
+	} else {
+		pe_debug("max_allowed_bw %d", country_max_allowed_bw);
 	}
 
 	if (country_max_allowed_bw < BW_320_MHZ)
 		eht_cap->support_320mhz_6ghz = 0;
+	else if (country_max_allowed_bw == BW_320_MHZ)
+		eht_cap->support_320mhz_6ghz = 1;
 }
 
 void lim_set_eht_caps(struct mac_context *mac,
@@ -8998,7 +9005,7 @@ void lim_set_eht_caps(struct mac_context *mac,
 		is_band_2g = true;
 
 	populate_dot11f_eht_caps_by_band(mac, is_band_2g, &dot11_cap, NULL);
-	lim_revise_eht_caps(mac, &dot11_cap);
+	lim_revise_eht_caps_per_band(mac, band, &dot11_cap);
 	populate_dot11f_he_caps_by_band(mac, is_band_2g, &dot11_he_cap,
 					NULL);
 	lim_log_eht_cap(mac, &dot11_cap);
@@ -10504,33 +10511,32 @@ QDF_STATUS lim_ap_mlme_vdev_rnr_notify(struct pe_session *session)
 		pe_err("session is NULL");
 		return QDF_STATUS_E_INVAL;
 	}
+
 	if (!mlme_is_notify_co_located_ap_update_rnr(session->vdev))
 		return status;
 	mlme_set_notify_co_located_ap_update_rnr(session->vdev, false);
-	// Only 6G SAP need to notify co-located SAP to add RNR
-	if (!wlan_reg_is_6ghz_chan_freq(session->curr_op_freq))
-		return status;
 	pe_debug("vdev id %d non mlo 6G AP notify co-located AP to update RNR",
 		 wlan_vdev_get_id(session->vdev));
 	vdev_num = policy_mgr_get_sap_mode_info(mac_ctx->psoc, freq_list,
 						vdev_id_list);
+
 	for (i = 0; i < vdev_num; i++) {
 		if (vdev_id_list[i] == session->vdev_id)
 			continue;
-		if (wlan_reg_is_6ghz_chan_freq(freq_list[i]))
-			continue;
+
 		co_session = pe_find_session_by_vdev_id(mac_ctx,
 							vdev_id_list[i]);
-		if (!co_session)
+		if (!co_session ||
+		    !wlan_reg_is_6ghz_chan_freq(co_session->curr_op_freq))
 			continue;
 
-		status = sch_set_fixed_beacon_fields(mac_ctx, co_session);
+		status = sch_set_fixed_beacon_fields(mac_ctx, session);
 		if (QDF_IS_STATUS_ERROR(status)) {
 			pe_err("Unable to update 6g co located RNR in beacon");
 			return status;
 		}
 
-		status = lim_send_beacon_ind(mac_ctx, co_session,
+		status = lim_send_beacon_ind(mac_ctx, session,
 					     REASON_RNR_UPDATE);
 		if (QDF_IS_STATUS_ERROR(status)) {
 			pe_err("Unable to send beacon indication");
@@ -11779,6 +11785,10 @@ lim_configure_fd_for_existing_6ghz_sap(struct pe_session *session,
 
 	vdev_num = policy_mgr_get_sap_mode_info(session->mac_ctx->psoc,
 						freq_list, vdev_id_list);
+	if (vdev_num >= MAX_NUMBER_OF_CONC_CONNECTIONS) {
+		pe_err("vdev_num:%u is out of bounds", vdev_num);
+		return;
+	}
 
 	for (i = 0; i < vdev_num; i++) {
 		if (vdev_id_list[i] ==  session->vdev_id)

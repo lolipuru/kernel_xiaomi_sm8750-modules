@@ -76,6 +76,11 @@ policy_mgr_next_action_two_connection_table_type
 		*next_action_two_connection_table;
 policy_mgr_next_action_three_connection_table_type
 		*next_action_three_connection_table;
+#ifdef FEATURE_FOURTH_CONNECTION
+policy_mgr_next_action_four_connection_table_type
+		*next_action_four_connection_table;
+#endif
+
 policy_mgr_next_action_two_connection_table_type
 		*next_action_two_connection_2x2_2g_1x1_5g_table;
 policy_mgr_next_action_three_connection_table_type
@@ -2168,10 +2173,10 @@ policy_mgr_check_and_get_third_connection_pcl_table_index_for_mcc(
 {
 	enum policy_mgr_two_connection_mode index = PM_MAX_TWO_CONNECTION_MODE;
 
-	if (policy_mgr_are_2_freq_on_same_mac(psoc,
-					      pm_conc_connection_list[0].freq,
-					      pm_conc_connection_list[1].freq)
-					     ) {
+	if (policy_mgr_2_freq_always_on_same_mac(
+					psoc,
+					pm_conc_connection_list[0].freq,
+					pm_conc_connection_list[1].freq)) {
 		if ((WLAN_REG_IS_24GHZ_CH_FREQ(
 		    pm_conc_connection_list[0].freq)) &&
 		    (WLAN_REG_IS_24GHZ_CH_FREQ(
@@ -2223,10 +2228,10 @@ policy_mgr_check_and_get_third_connection_pcl_table_index_for_dbs(
 {
 	enum policy_mgr_two_connection_mode index = PM_MAX_TWO_CONNECTION_MODE;
 
-	if (!policy_mgr_are_2_freq_on_same_mac(psoc,
-					       pm_conc_connection_list[0].freq,
-					       pm_conc_connection_list[1].freq)
-					      ) {
+	if (!policy_mgr_2_freq_always_on_same_mac(
+					psoc,
+					pm_conc_connection_list[0].freq,
+					pm_conc_connection_list[1].freq)) {
 		/* SBS */
 		if (!(WLAN_REG_IS_24GHZ_CH_FREQ(
 		    pm_conc_connection_list[0].freq)) &&
@@ -2822,7 +2827,7 @@ policy_mgr_get_third_connection_pcl_table_index_sta_ll_lt_sap(
 	 * LL_LT_SAP can not be in SCC so there will not be any scc index.
 	 * With LL_LT_SAP, MCC is possible only on 5 GHz
 	 */
-	if (policy_mgr_are_2_freq_on_same_mac(
+	if (policy_mgr_2_freq_always_on_same_mac(
 					psoc,
 					pm_conc_connection_list[0].freq,
 					pm_conc_connection_list[1].freq)) {
@@ -2914,7 +2919,7 @@ policy_mgr_get_third_connection_pcl_table_index_go_ll_lt_sap(
 	 * LL_LT_SAP can not be in SCC so there will not be any scc index.
 	 * With LL_LT_SAP, MCC is possible only on 5 GHz
 	 */
-	if (policy_mgr_are_2_freq_on_same_mac(
+	if (policy_mgr_2_freq_always_on_same_mac(
 					psoc,
 					pm_conc_connection_list[0].freq,
 					pm_conc_connection_list[1].freq)) {
@@ -2968,7 +2973,7 @@ policy_mgr_get_third_connection_pcl_table_index_cli_ll_lt_sap(
 	 * LL_LT_SAP can not be in SCC so there will not be any scc index.
 	 * With LL_LT_SAP, MCC is possible only on 5 GHz
 	 */
-	if (policy_mgr_are_2_freq_on_same_mac(
+	if (policy_mgr_2_freq_always_on_same_mac(
 					psoc,
 					pm_conc_connection_list[0].freq,
 					pm_conc_connection_list[1].freq)) {
@@ -3900,6 +3905,20 @@ enum policy_mgr_three_connection_mode
 		     WLAN_REG_IS_5GHZ_CH_FREQ(
 			pm_conc_connection_list[list_sap[0]].freq)) {
 			index = PM_STA_SAP_SCC_5_SAP_24_DBS;
+		} else if (WLAN_REG_IS_24GHZ_CH_FREQ(
+			pm_conc_connection_list[list_sta[0]].freq) &&
+		    WLAN_REG_IS_5GHZ_CH_FREQ(
+			pm_conc_connection_list[list_sap[0]].freq) &&
+		    WLAN_REG_IS_5GHZ_CH_FREQ(
+			pm_conc_connection_list[list_sap[1]].freq)) {
+			index = PM_SAP_SAP_SCC_5_STA_24_DBS;
+		} else if (WLAN_REG_IS_5GHZ_CH_FREQ(
+			pm_conc_connection_list[list_sta[0]].freq) &&
+		    WLAN_REG_IS_5GHZ_CH_FREQ(
+			pm_conc_connection_list[list_sap[0]].freq) &&
+		    WLAN_REG_IS_5GHZ_CH_FREQ(
+			pm_conc_connection_list[list_sap[1]].freq)) {
+			index = PM_SAP_SAP_STA_SCC_5_DBS;
 		} else {
 			index =  PM_MAX_THREE_CONNECTION_MODE;
 		}
@@ -5369,6 +5388,7 @@ bool policy_mgr_is_3rd_conn_on_same_band_allowed(struct wlan_objmgr_psoc *psoc,
 	enum policy_mgr_two_connection_mode third_index = 0;
 	struct policy_mgr_psoc_priv_obj *pm_ctx;
 	bool ret = false;
+	bool force_scc = policy_mgr_is_3vifs_mcc_to_scc_enabled(psoc);
 
 	pm_ctx = policy_mgr_get_context(psoc);
 	if (!pm_ctx) {
@@ -5376,9 +5396,9 @@ bool policy_mgr_is_3rd_conn_on_same_band_allowed(struct wlan_objmgr_psoc *psoc,
 			return false;
 	}
 
-	if (pm_conc_connection_list[0].freq != ch_freq ||
+	if (!force_scc && (pm_conc_connection_list[0].freq != ch_freq ||
 	    pm_conc_connection_list[0].freq !=
-				pm_conc_connection_list[1].freq) {
+				pm_conc_connection_list[1].freq)) {
 		policy_mgr_debug("No MCC support in 3vif in same mac: %d %d %d",
 				 pm_conc_connection_list[0].freq,
 				 pm_conc_connection_list[1].freq,

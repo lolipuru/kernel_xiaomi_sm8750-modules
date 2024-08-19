@@ -1802,6 +1802,7 @@ cm_roam_scan_offload_ap_profile(struct wlan_objmgr_psoc *psoc,
 	struct wlan_mlme_psoc_ext_obj *mlme_obj;
 	uint8_t vdev_id = wlan_vdev_get_id(vdev);
 	struct ap_profile *profile = &params->profile;
+	uint8_t i;
 
 	mlme_obj = mlme_get_psoc_ext_obj(psoc);
 	if (!mlme_obj)
@@ -1839,10 +1840,9 @@ cm_roam_scan_offload_ap_profile(struct wlan_objmgr_psoc *psoc,
 	params->min_rssi_params[MIN_RSSI_2G_TO_5G_ROAM] =
 			mlme_obj->cfg.trig_min_rssi[MIN_RSSI_2G_TO_5G_ROAM];
 
-	params->score_delta_param[IDLE_ROAM_TRIGGER] =
-			mlme_obj->cfg.trig_score_delta[IDLE_ROAM_TRIGGER];
-	params->score_delta_param[BTM_ROAM_TRIGGER] =
-			mlme_obj->cfg.trig_score_delta[BTM_ROAM_TRIGGER];
+	for (i = 0; i < ROAM_TRIGGER_REASON_MAX; i++)
+		params->score_delta_param[i] =
+			mlme_obj->cfg.trig_score_delta[i];
 }
 
 static bool
@@ -6380,6 +6380,9 @@ cm_get_diag_roam_sub_reason(enum roam_trigger_sub_reason sub_reason)
 	case ROAM_TRIGGER_SUB_REASON_INACTIVITY_TIMER_CU:
 		return DIAG_ROAM_SUB_REASON_INACTIVITY_TIMER_CU;
 
+	case ROAM_TRIGGER_SUB_REASON_MLD_EXTRA_PARTIAL_SCAN:
+		return DIAG_ROAM_TRIGGER_SUB_REASON_MLD_EXTRA_PARTIAL_SCAN;
+
 	default:
 		break;
 	}
@@ -7435,9 +7438,11 @@ cm_roam_btm_req_event(struct wmi_neighbor_report_data *neigh_rpt,
 	 * is received only once on the device. Restricting the
 	 * BTM req and BTM candidate event to be logged only for partial scan
 	 */
-	if (trigger_info->present &&
-	    trigger_info->scan_type == ROAM_STATS_SCAN_TYPE_FULL &&
-	    btm_data->disassoc_timer)
+	if ((trigger_info->present &&
+	     trigger_info->scan_type == ROAM_STATS_SCAN_TYPE_FULL &&
+	    btm_data->disassoc_timer) ||
+	    trigger_info->trigger_sub_reason ==
+	    ROAM_TRIGGER_SUB_REASON_MLD_EXTRA_PARTIAL_SCAN)
 		return status;
 
 	if (neigh_rpt->resp_time)
@@ -7543,17 +7548,10 @@ cm_roam_mgmt_frame_event(struct wlan_objmgr_vdev *vdev,
 		for (i = 0; i < scan_data->num_ap; i++) {
 			if (i >= MAX_ROAM_CANDIDATE_AP)
 				break;
-			if (scan_data->ap[i].type == WLAN_ROAM_SCAN_ROAMED_AP) {
-				wlan_diag_event.rssi =
-						(-1) * scan_data->ap[i].rssi;
 
-				qdf_mem_copy(wlan_diag_event.diag_cmn.bssid,
-					     scan_data->ap[i].bssid.bytes,
-					     QDF_MAC_ADDR_SIZE);
-				break;
-			} else if (!memcmp(wlan_diag_event.diag_cmn.bssid,
-					scan_data->ap[i].bssid.bytes,
-					QDF_MAC_ADDR_SIZE)) {
+			if (!qdf_mem_cmp(wlan_diag_event.diag_cmn.bssid,
+					 scan_data->ap[i].bssid.bytes,
+					 QDF_MAC_ADDR_SIZE)) {
 				wlan_diag_event.rssi =
 						(-1) * scan_data->ap[i].rssi;
 				break;

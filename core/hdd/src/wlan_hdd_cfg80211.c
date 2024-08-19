@@ -225,7 +225,7 @@
 #include "os_if_telemetry.h"
 #endif
 #include "wlan_p2p_ucfg_api.h"
-#include "wlan_twt_ucfg_ext_api.h"
+#include "wlan_cfg80211_p2p.h"
 
 /*
  * A value of 100 (milliseconds) can be sent to FW.
@@ -4173,8 +4173,9 @@ static int __wlan_hdd_cfg80211_do_acs(struct wiphy *wiphy,
 
 	if (policy_mgr_is_vdev_ll_lt_sap(hdd_ctx->psoc, link_info->vdev_id)) {
 		is_ll_lt_sap = true;
-		policy_mgr_ll_lt_sap_restart_concurrent_sap(hdd_ctx->psoc,
-							    true);
+		policy_mgr_ll_lt_sap_restart_concurrent_sap(
+							hdd_ctx->psoc,
+							LL_LT_SAP_EVENT_STARTING);
 	}
 
 	if (is_ll_lt_sap || sap_force_11n_for_11ac)
@@ -5251,7 +5252,6 @@ __wlan_hdd_cfg80211_get_features(struct wiphy *wiphy,
 	int ret_val;
 	uint8_t max_assoc_cnt = 0;
 	uint8_t max_str_link_count = 0;
-	uint8_t twt_res_type;
 
 	uint8_t feature_flags[(NUM_QCA_WLAN_VENDOR_FEATURES + 7) / 8] = {0};
 	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
@@ -5315,11 +5315,9 @@ __wlan_hdd_cfg80211_get_features(struct wiphy *wiphy,
 
 	hdd_get_twt_requestor(hdd_ctx->psoc, &twt_req);
 	hdd_get_twt_responder(hdd_ctx->psoc, &twt_res);
-	ucfg_twt_cfg_get_responder_type(hdd_ctx->psoc, &twt_res_type);
-	hdd_debug("twt_req:%d twt_res:%d for type:%d ", twt_req, twt_res,
-		  twt_res_type);
+	hdd_debug("twt_req:%d twt_res:%d", twt_req, twt_res);
 
-	if (twt_req || (twt_res && twt_res_type)) {
+	if (twt_req || twt_res) {
 		wlan_hdd_cfg80211_set_feature(feature_flags,
 					      QCA_WLAN_VENDOR_FEATURE_TWT);
 
@@ -11180,6 +11178,22 @@ static void hdd_set_wlm_host_latency_level(struct hdd_context *hdd_ctx,
 		ucfg_dp_runtime_disable_rx_fisa_aggr(vdev, true);
 	else
 		ucfg_dp_runtime_disable_rx_fisa_aggr(vdev, false);
+
+	if (latency_host_flags & WLM_HOST_TX_DISABLE_SWLM) {
+		if (!adapter->wlm_ll_conn_flag) {
+			cdp_vdev_inform_ll_conn(soc_hdl,
+						adapter->deflink->vdev_id,
+						CDP_VDEV_LL_CONN_ADD);
+			adapter->wlm_ll_conn_flag = 1;
+		}
+	} else {
+		if (adapter->wlm_ll_conn_flag) {
+			cdp_vdev_inform_ll_conn(soc_hdl,
+						adapter->deflink->vdev_id,
+						CDP_VDEV_LL_CONN_DEL);
+			adapter->wlm_ll_conn_flag = 0;
+		}
+	}
 
 	if (adapter->latency_level)
 		ucfg_dp_rx_aggr_dis_req(vdev, CTRL_RX_AGGR_ID_WLM, true);
@@ -22822,6 +22836,8 @@ const struct wiphy_vendor_command hdd_wiphy_vendor_commands[] = {
 
 	FEATURE_P2P_LISTEN_OFFLOAD_VENDOR_COMMANDS
 
+	FEATURE_P2P_SECURE_USD_VENDOR_COMMANDS
+
 	FEATURE_SAP_COND_CHAN_SWITCH_VENDOR_COMMANDS
 	{
 		.info.vendor_id = QCA_NL80211_VENDOR_ID,
@@ -23607,6 +23623,24 @@ static inline void wlan_hdd_set_ext_feature_punct(struct wiphy *wiphy)
 }
 #endif
 
+#ifdef WLAN_EXT_FEATURE_AP_PMKSA_CACHING
+/**
+ * wlan_hdd_set_ap_pmksa_caching_feature_flag() - set feature flag for
+ * AP PMKSA caching to the kernel.
+ * @wiphy: wiphy
+ *
+ * Return: void
+ */
+static void wlan_hdd_set_ap_pmksa_caching_feature_flag(struct wiphy *wiphy)
+{
+	wiphy_ext_feature_set(wiphy, NL80211_EXT_FEATURE_AP_PMKSA_CACHING);
+}
+#else
+static void wlan_hdd_set_ap_pmksa_caching_feature_flag(struct wiphy *wiphy)
+{
+}
+#endif
+
 /*
  * FUNCTION: wlan_hdd_cfg80211_init
  * This function is called by hdd_wlan_startup()
@@ -23743,6 +23777,7 @@ int wlan_hdd_cfg80211_init(struct device *dev,
 	wiphy_ext_feature_set(wiphy, NL80211_EXT_FEATURE_BEACON_RATE_HT);
 	wiphy_ext_feature_set(wiphy, NL80211_EXT_FEATURE_BEACON_RATE_VHT);
 #endif
+	wlan_hdd_set_ap_pmksa_caching_feature_flag(wiphy);
 
 	hdd_add_channel_switch_support(&wiphy->flags);
 	wiphy->max_num_csa_counters = WLAN_HDD_MAX_NUM_CSA_COUNTERS;
@@ -24211,6 +24246,26 @@ static bool wlan_hdd_is_iface_sap_sap(uint8_t idx)
 }
 
 /**
+ * wlan_hdd_is_iface_sap_sap_sta() - This API checks whether SAP + SAP + STA
+ * present in the interface combination
+ * @idx: index for interface combination array
+ *
+ * Return: true if SAP + SAP + STA is present otherwise false
+ */
+static bool wlan_hdd_is_iface_sap_sap_sta(uint8_t idx)
+{
+	if (wlan_hdd_iface_combination[idx].limits[0].types ==
+	    BIT(NL80211_IFTYPE_STATION) &&
+	    wlan_hdd_iface_combination[idx].limits[0].max == 1 &&
+	    wlan_hdd_iface_combination[idx].limits[1].types ==
+	    BIT(NL80211_IFTYPE_AP) &&
+	    wlan_hdd_iface_combination[idx].limits[1].max == 2)
+		return true;
+
+	return false;
+}
+
+/**
  * wlan_hdd_is_iface_p2p_p2p() - This API checks whether P2P + P2P present
  * in the interface combination
  * @idx: index for interface combination array
@@ -24546,7 +24601,7 @@ static void wlan_hdd_update_iface_combination(struct hdd_context *hdd_ctx,
 	struct wlan_objmgr_psoc *psoc = hdd_ctx->psoc;
 	bool no_p2p_concurrency, no_sap_nan_concurrency, no_sta_sap_concurrency;
 	bool no_sta_nan_concurrency, sta_sap_p2p_concurrency, sta_p2p_ndp_conc;
-	bool sap_sta_nan_concurrency;
+	bool sap_sta_nan_concurrency, sap_sap_sta_concurrency;
 	uint8_t num;
 	QDF_STATUS status;
 
@@ -24566,6 +24621,7 @@ static void wlan_hdd_update_iface_combination(struct hdd_context *hdd_ctx,
 	no_sap_nan_concurrency = cfg_get(psoc, CFG_NO_SAP_NAN_CONCURRENCY);
 	no_sta_sap_concurrency = cfg_get(psoc, CFG_NO_STA_SAP_CONCURRENCY);
 	sta_sap_p2p_concurrency = cfg_get(psoc, CFG_STA_SAP_P2P_CONCURRENCY);
+	sap_sap_sta_concurrency = cfg_get(psoc, CFG_SAP_SAP_STA_CONCURRENCY);
 	sap_sta_nan_concurrency = cfg_get(psoc,
 					  CFG_SAP_STA_NDP_CONCURRENCY);
 	sta_p2p_ndp_conc = ucfg_nan_is_sta_p2p_ndp_supported(psoc);
@@ -24586,6 +24642,9 @@ static void wlan_hdd_update_iface_combination(struct hdd_context *hdd_ctx,
 		    wlan_hdd_iface_combination[i].max_interfaces > 2)
 			continue;
 
+		if (!sap_sap_sta_concurrency &&
+		    wlan_hdd_is_iface_sap_sap_sta(i))
+			continue;
 		/*
 		 * remove P2P concurrencies with following exception:
 		 * a) STA-P2P

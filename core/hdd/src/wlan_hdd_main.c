@@ -865,10 +865,11 @@ int hdd_validate_channel_and_bandwidth(struct hdd_adapter *adapter,
 		return -EINVAL;
 	}
 	if (WLAN_REG_IS_24GHZ_CH_FREQ(chan_freq)) {
-		if (chan_bw >= CH_WIDTH_80MHZ) {
+		if (chan_bw != CH_WIDTH_MAX && chan_bw >= CH_WIDTH_80MHZ) {
 			hdd_err("BW %d not possible in 2.4GHz band", chan_bw);
 			return -EINVAL;
 		}
+
 		if ((chan_bw != CH_WIDTH_20MHZ) &&
 		    (chan_freq == wlan_reg_ch_to_freq(CHAN_ENUM_2484)) &&
 		    (chan_bw != CH_WIDTH_MAX) &&
@@ -7989,6 +7990,12 @@ hdd_populate_vdev_create_params(struct wlan_hdd_link_info *link_info,
 			qdf_ether_addr_copy(vdev_params->macaddr,
 					    adapter->mac_addr.bytes);
 	}
+
+	if (qdf_is_macaddr_zero((struct qdf_mac_addr *)vdev_params->macaddr)) {
+		hdd_err_rl("invalid mac addr");
+		return -EINVAL;
+	}
+
 	return 0;
 }
 #elif defined(WLAN_FEATURE_11BE_MLO) && defined(CFG80211_11BE_BASIC)
@@ -8027,6 +8034,11 @@ hdd_populate_vdev_create_params(struct wlan_hdd_link_info *link_info,
 				    adapter->mld_addr.bytes);
 	}
 
+	if (qdf_is_macaddr_zero((struct qdf_mac_addr *)vdev_params->macaddr)) {
+		hdd_err_rl("invalid mac addr");
+		return -EINVAL;
+	}
+
 	vdev_params->size_vdev_priv = sizeof(struct vdev_osif_priv);
 	hdd_exit();
 
@@ -8042,6 +8054,12 @@ hdd_populate_vdev_create_params(struct wlan_hdd_link_info *link_info,
 	vdev_params->opmode = adapter->device_mode;
 	qdf_ether_addr_copy(vdev_params->macaddr, adapter->mac_addr.bytes);
 	vdev_params->size_vdev_priv = sizeof(struct vdev_osif_priv);
+
+	if (qdf_is_macaddr_zero((struct qdf_mac_addr *)vdev_params->macaddr)) {
+		hdd_err_rl("invalid mac addr");
+		return -EINVAL;
+	}
+
 	return 0;
 }
 #endif
@@ -15525,7 +15543,8 @@ hdd_adapter_get_link_mac_addr(struct wlan_hdd_link_info *link_info)
 	adapter = link_info->adapter;
 	if (!hdd_adapter_is_ml_adapter(adapter) ||
 	    qdf_is_macaddr_zero(&link_info->link_addr) ||
-	    !wlan_vdev_mlme_is_mlo_vdev(link_info->vdev))
+	    (link_info->vdev_id != WLAN_INVALID_VDEV_ID &&
+	     !wlan_vdev_mlme_is_mlo_vdev(link_info->vdev)))
 		return &adapter->mac_addr;
 
 	return &link_info->link_addr;

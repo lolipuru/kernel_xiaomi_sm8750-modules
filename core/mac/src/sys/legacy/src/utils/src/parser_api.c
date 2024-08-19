@@ -3123,6 +3123,11 @@ QDF_STATUS sir_convert_probe_frame2_struct(struct mac_context *mac,
 				   pFrame, nFrame);
 		qdf_mem_free(pr);
 		return QDF_STATUS_E_FAILURE;
+	} else if (DOT11F_WARNED(status)) {
+		pe_debug_rl("Warned to parse a Probe Response (0x%08x, %d bytes) ch %d %d",
+			    status, nFrame,
+			    pr->DSParams.curr_channel,
+			    pr->HTInfo.primaryChannel);
 	}
 	/* & "transliterate" from a 'tDot11fProbeResponse' to a 'tSirProbeRespBeacon'... */
 
@@ -8042,10 +8047,17 @@ populate_dot11f_he_caps_by_band(struct mac_context *mac_ctx,
 				tDot11fIEhe_cap *he_cap,
 				struct pe_session *session)
 {
-	if (is_2g)
+	if (is_2g) {
 		qdf_mem_copy(he_cap, &mac_ctx->he_cap_2g, sizeof(*he_cap));
-	else
+		if (session) {
+			he_cap->chan_width_0 =
+			lim_get_sta_cb_mode_for_24ghz(mac_ctx,
+						      session->vdev_id);
+		}
+	}
+	else {
 		qdf_mem_copy(he_cap, &mac_ctx->he_cap_5g, sizeof(*he_cap));
+	}
 
 	if (session)
 		populate_dot11f_twt_he_cap(mac_ctx, session, he_cap);
@@ -9909,6 +9921,8 @@ populate_dot11f_revise_eht_caps(struct pe_session *session,
 		eht_cap->support_320mhz_6ghz = 0;
 		eht_cap->bfee_ss_320mhz = 0;
 	}
+
+	pe_debug("320 MHz support %d", eht_cap->support_320mhz_6ghz);
 
 	if (wlan_epcs_get_config(session->vdev))
 		eht_cap->epcs_pri_access = 1;
@@ -14039,7 +14053,8 @@ static void lim_is_6g_vdev(struct wlan_objmgr_psoc *psoc, void *obj, void *args)
 
 void populate_dot11f_6g_rnr(struct mac_context *mac_ctx,
 			    struct pe_session *session,
-			    tDot11fIEreduced_neighbor_report *dot11f)
+			    tDot11fIEreduced_neighbor_report *dot11f,
+			    uint16_t *num_rnr)
 {
 	struct pe_session *co_session;
 	struct wlan_objmgr_psoc *psoc;
@@ -14080,6 +14095,12 @@ void populate_dot11f_6g_rnr(struct mac_context *mac_ctx,
 		 wlan_vdev_get_id(session->vdev),
 		 wlan_vdev_get_id(co_session->vdev),
 		 dot11f->op_class, dot11f->channel_num);
+
+	pe_debug("AK: tbtt_len %d ",
+		 dot11f->tbtt_info_len);
+
+	*num_rnr = 1;
+
 }
 
 QDF_STATUS populate_dot11f_bcn_prot_extcaps(struct mac_context *mac_ctx,

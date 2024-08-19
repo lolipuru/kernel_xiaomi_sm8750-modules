@@ -995,6 +995,55 @@ policy_mgr_get_third_conn_action_table(
 	}
 }
 
+#ifdef FEATURE_FOURTH_CONNECTION
+/**
+ * policy_mgr_get_fourth_conn_action_table() - get 4th connection action table
+ * @psoc: Pointer to psoc
+ * @band: Operating frequency band
+ * @next_action: Pointer to next action
+ *
+ * Get the action table based on current HW Caps and INI user preference.
+ * This function will be called by policy_mgr_current_connections_update during
+ * DBS action decision.
+ *
+ * return : QDF_STATUS_SUCCESS if got the action table.
+ */
+static QDF_STATUS
+policy_mgr_get_fourth_conn_action_table(
+	struct wlan_objmgr_psoc *psoc,
+	enum policy_mgr_band band,
+	enum policy_mgr_conc_next_action *next_action)
+{
+	enum policy_mgr_three_connection_mode fourth_index = 0;
+	policy_mgr_next_action_four_connection_table_type *fourth_conn_table;
+
+	fourth_index = policy_mgr_get_fourth_connection_pcl_table_index(psoc);
+	if (PM_MAX_THREE_CONNECTION_MODE == fourth_index) {
+		policy_mgr_err(
+		"couldn't find index for 4th connection next action table");
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	fourth_conn_table = next_action_four_connection_table;
+	if (!fourth_conn_table)
+		return QDF_STATUS_E_FAILURE;
+
+	*next_action = (*fourth_conn_table)[fourth_index][band];
+	return QDF_STATUS_SUCCESS;
+}
+#else
+static QDF_STATUS
+policy_mgr_get_fourth_conn_action_table(
+	struct wlan_objmgr_psoc *psoc,
+	enum policy_mgr_band band,
+	enum policy_mgr_conc_next_action *next_action)
+{
+	policy_mgr_err("fourth connection not supported!");
+
+	return QDF_STATUS_E_FAILURE;
+}
+#endif
+
 bool
 policy_mgr_is_conn_lead_to_dbs_sbs(struct wlan_objmgr_psoc *psoc,
 				   uint8_t vdev_id, qdf_freq_t freq)
@@ -1093,6 +1142,11 @@ policy_mgr_get_next_action(struct wlan_objmgr_psoc *psoc,
 		third_conn_table = policy_mgr_get_third_conn_action_table(
 			psoc, session_id, ch_freq, reason);
 		*next_action = (*third_conn_table)[third_index][band];
+		break;
+	case 3:
+		if (policy_mgr_get_fourth_conn_action_table(psoc, band,
+							    next_action))
+			return QDF_STATUS_E_FAILURE;
 		break;
 	default:
 		policy_mgr_err("unexpected num_connections value %d",
@@ -2424,10 +2478,11 @@ void policy_mgr_nan_sap_post_disable_conc_check(struct wlan_objmgr_psoc *psoc)
 	QDF_STATUS status;
 	uint32_t user_config_freq;
 	uint8_t band_mask = 0;
-	uint8_t chn_idx, num_chan;
+	uint8_t chn_idx, num_chan, vdev_id;
 	struct regulatory_channel *channel_list;
 	qdf_freq_t intf_ch_freq = 0;
 	uint8_t mcc_to_scc_switch;
+	struct wlan_objmgr_vdev *vdev;
 
 	pm_ctx = policy_mgr_get_context(psoc);
 	if (!pm_ctx) {
@@ -2447,20 +2502,29 @@ void policy_mgr_nan_sap_post_disable_conc_check(struct wlan_objmgr_psoc *psoc)
 	if (sap_freq == 0)
 		return;
 
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, sap_info->vdev_id,
+						    WLAN_POLICY_MGR_ID);
+	if (!vdev) {
+		policy_mgr_err("Unable to get vdev for vdev_id[%u]",
+			       sap_info->vdev_id);
+		return;
+	}
+
+	vdev_id = wlan_vdev_get_id(vdev);
 	user_config_freq = policy_mgr_get_user_config_sap_freq(
-						psoc, sap_info->vdev_id);
+						psoc, vdev_id);
 	policy_mgr_debug("user_config_freq %d sap_freq %d",
 			 user_config_freq, sap_freq);
 
 	if (user_config_freq == sap_freq &&
 	    policy_mgr_is_safe_channel(psoc, sap_freq))
-		return;
+		goto vdev_release;
 
 	policy_mgr_get_mcc_scc_switch(pm_ctx->psoc, &mcc_to_scc_switch);
 
 	policy_mgr_check_scc_channel(pm_ctx->psoc, &intf_ch_freq,
 				     user_config_freq,
-				     sap_info->vdev_id, mcc_to_scc_switch);
+				     vdev_id, mcc_to_scc_switch);
 
 	if (intf_ch_freq && intf_ch_freq != user_config_freq)
 		user_config_freq = intf_ch_freq;
@@ -2477,12 +2541,12 @@ void policy_mgr_nan_sap_post_disable_conc_check(struct wlan_objmgr_psoc *psoc)
 		sap_freq = policy_mgr_get_nondfs_preferred_channel(
 					psoc, PM_SAP_MODE,
 					false,
-					sap_info->vdev_id);
+					vdev_id);
 		channel_list = qdf_mem_malloc(
 					sizeof(struct regulatory_channel) *
 					       NUM_CHANNELS);
 		if (!channel_list)
-			return;
+			goto vdev_release;
 
 		band_mask |= BIT(wlan_reg_freq_to_band(user_config_freq));
 		num_chan = wlan_reg_get_band_channel_list_for_pwrmode(
@@ -2517,13 +2581,15 @@ void policy_mgr_nan_sap_post_disable_conc_check(struct wlan_objmgr_psoc *psoc)
 
 	if (pm_ctx->hdd_cbacks.wlan_hdd_set_sap_csa_reason)
 		pm_ctx->hdd_cbacks.wlan_hdd_set_sap_csa_reason(
-				psoc, sap_info->vdev_id,
+				psoc, vdev_id,
 				CSA_REASON_CONCURRENT_NAN_EVENT);
 
-	policy_mgr_change_sap_channel_with_csa(psoc, sap_info->vdev_id,
+	policy_mgr_change_sap_channel_with_csa(psoc, vdev_id,
 					       sap_freq,
 					       policy_mgr_get_ch_width(
 					       sap_info->bw), true);
+vdev_release:
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_POLICY_MGR_ID);
 }
 
 QDF_STATUS
