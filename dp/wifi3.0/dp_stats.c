@@ -5904,10 +5904,19 @@ void dp_print_soc_cfg_params(struct dp_soc *soc)
 		       soc_cfg_ctx->htt_packet_type);
 	DP_PRINT_STATS("Max peer_ids: %u ",
 		       soc_cfg_ctx->max_peer_id);
+#ifdef WLAN_SUPPORT_PER_RING_CONFIG
+	for (i = 0; i < WLAN_CFG_NUM_RING; i++)
+		DP_PRINT_STATS("Tx comp ring size[%d]: %u ",
+			       i, soc_cfg_ctx->tx_comp_ring_size[i]);
+	for (i = 0; i < WLAN_CFG_NUM_RING; i++)
+		DP_PRINT_STATS("Tx ring size[%d]: %u ",
+			       i, soc_cfg_ctx->tx_ring_size[i]);
+#else
 	DP_PRINT_STATS("Tx ring size: %u ",
 		       soc_cfg_ctx->tx_ring_size);
 	DP_PRINT_STATS("Tx comp ring size: %u ",
 		       soc_cfg_ctx->tx_comp_ring_size);
+#endif
 	DP_PRINT_STATS("Tx comp ring size nss: %u ",
 		       soc_cfg_ctx->tx_comp_ring_size_nss);
 	DP_PRINT_STATS("Int batch threshold tx: %u ",
@@ -6057,8 +6066,14 @@ void dp_print_soc_cfg_params(struct dp_soc *soc)
 		       soc_cfg_ctx->tcl_cmd_credit_ring);
 	DP_PRINT_STATS("TCL Status ring: %u ",
 		       soc_cfg_ctx->tcl_status_ring);
+#ifdef WLAN_SUPPORT_PER_RING_CONFIG
+	for (i = 0; i < WLAN_CFG_NUM_RING; i++)
+		DP_PRINT_STATS("REO Destination ring[%d]: %u ",
+			       i, soc_cfg_ctx->reo_dst_ring_size[i]);
+#else
 	DP_PRINT_STATS("REO Destination ring: %u ",
 		       soc_cfg_ctx->reo_dst_ring_size);
+#endif
 	DP_PRINT_STATS("REO Reinject ring: %u ",
 		       soc_cfg_ctx->reo_reinject_ring);
 	DP_PRINT_STATS("RX release ring: %u ",
@@ -9909,6 +9924,12 @@ void dp_update_pdev_stats(struct dp_pdev *tgtobj,
 	tgtobj->stats.tx.tx_success.num += srcobj->tx.tx_success.num;
 	tgtobj->stats.tx.tx_success.bytes +=
 		srcobj->tx.tx_success.bytes;
+	tgtobj->stats.tx.tx_ucast_success.num += srcobj->tx.tx_ucast_success.num;
+	tgtobj->stats.tx.tx_ucast_success.bytes +=
+		srcobj->tx.tx_ucast_success.bytes;
+	tgtobj->stats.tx.tx_ucast_total.num += srcobj->tx.tx_ucast_total.num;
+	tgtobj->stats.tx.tx_ucast_total.bytes +=
+		srcobj->tx.tx_ucast_total.bytes;
 	tgtobj->stats.tx.nawds_mcast.num +=
 		srcobj->tx.nawds_mcast.num;
 	tgtobj->stats.tx.nawds_mcast.bytes +=
@@ -9996,6 +10017,8 @@ void dp_update_pdev_stats(struct dp_pdev *tgtobj,
 	tgtobj->stats.rx.mcast_3addr_drop += srcobj->rx.mcast_3addr_drop;
 	tgtobj->stats.rx.to_stack.num += srcobj->rx.to_stack.num;
 	tgtobj->stats.rx.to_stack.bytes += srcobj->rx.to_stack.bytes;
+	tgtobj->stats.rx.rx_total.num += srcobj->rx.rx_total.num;
+	tgtobj->stats.rx.rx_total.bytes += srcobj->rx.rx_total.bytes;
 
 	for (i = 0; i < CDP_MAX_RX_RINGS; i++) {
 		tgtobj->stats.rx.rcvd_reo[i].num +=

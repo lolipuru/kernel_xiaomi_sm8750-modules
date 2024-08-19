@@ -5027,6 +5027,7 @@ static QDF_STATUS dp_vdev_attach_wifi3(struct cdp_soc_t *cdp_soc,
 	vdev->dp_proto_stats = wlan_cfg_get_dp_proto_stats(soc->wlan_cfg_ctx);
 	if (vdev->tx_encap_type == htt_cmn_pkt_type_raw)
 		vdev->dp_proto_stats = 0;
+	vdev->dp_eapol_stats = wlan_cfg_get_dp_eapol_stats(soc->wlan_cfg_ctx);
 
 	dp_tx_vdev_traffic_end_indication_attach(vdev);
 
@@ -9567,11 +9568,13 @@ static QDF_STATUS dp_get_psoc_param(struct cdp_soc_t *cdp_soc,
 			wlan_cfg_get_num_tx_ext_desc(wlan_cfg_ctx);
 		break;
 	case CDP_CFG_TX_RING_SIZE:
-		val->cdp_tx_ring_size = wlan_cfg_tx_ring_size(wlan_cfg_ctx);
+		val->cdp_tx_ring_size = wlan_cfg_tx_ring_size(wlan_cfg_ctx,
+							      DP_RING_NUM_ANY);
 		break;
 	case CDP_CFG_TX_COMPL_RING_SIZE:
 		val->cdp_tx_comp_ring_size =
-			wlan_cfg_tx_comp_ring_size(wlan_cfg_ctx);
+			wlan_cfg_tx_comp_ring_size(wlan_cfg_ctx,
+						   DP_RING_NUM_ANY);
 		break;
 	case CDP_CFG_RX_SW_DESC_NUM:
 		val->cdp_rx_sw_desc_num =
@@ -9579,7 +9582,8 @@ static QDF_STATUS dp_get_psoc_param(struct cdp_soc_t *cdp_soc,
 		break;
 	case CDP_CFG_REO_DST_RING_SIZE:
 		val->cdp_reo_dst_ring_size =
-			wlan_cfg_get_reo_dst_ring_size(wlan_cfg_ctx);
+			wlan_cfg_get_reo_dst_ring_size(wlan_cfg_ctx,
+						       DP_RING_NUM_ANY);
 		break;
 	case CDP_CFG_RXDMA_REFILL_RING_SIZE:
 		val->cdp_rxdma_refill_ring_size =
@@ -13107,6 +13111,7 @@ static struct cdp_sawf_ops dp_ops_sawf = {
 	.txrx_sawf_set_sla_params = dp_sawf_set_sla_params,
 	.txrx_sawf_init_telemtery_params = dp_sawf_init_telemetry_params,
 	.telemetry_get_throughput_stats = dp_sawf_get_tx_stats,
+	.telemetry_get_msduq_tx_stats = dp_sawf_get_msduq_tx_stats,
 	.telemetry_get_mpdu_stats = dp_sawf_get_mpdu_sched_stats,
 	.telemetry_get_drop_stats = dp_sawf_get_drop_stats,
 	.peer_config_ul = dp_sawf_peer_config_ul,

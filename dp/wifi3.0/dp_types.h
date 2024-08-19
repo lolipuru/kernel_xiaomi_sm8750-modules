@@ -89,7 +89,7 @@ struct dp_tx_queue;
 #define WLAN_DP_RESET_MON_BUF_RING_FILTER
 #if defined(QCA_WIFI_WCN7750) || defined(QCA_WIFI_QCA6750) || \
     defined(QCA_WIFI_WCN6450)
-#define MAX_TXDESC_POOLS 3
+#define MAX_TXDESC_POOLS 4
 #else
 #define MAX_TXDESC_POOLS 6
 #endif
@@ -97,6 +97,7 @@ struct dp_tx_queue;
 #define MAX_TXDESC_POOLS 4
 #endif
 #define DP_TXDESC_POOL_ANY 0xffff
+#define DP_RING_NUM_ANY 0xffff
 
 /* Max no of descriptors to handle special frames like EAPOL */
 #define MAX_TX_SPL_DESC 1024
@@ -1788,6 +1789,9 @@ struct dp_rx_page_pool {
 	struct dp_rx_pp_params aux_pool;
 	uint8_t active_pp_idx;
 	qdf_spinlock_t pp_lock;
+	size_t curr_pool_size;
+	size_t base_pool_size;
+	qdf_atomic_t update_in_progress;
 };
 #endif
 
@@ -4657,6 +4661,7 @@ struct dp_vdev {
 #endif
 	bool eapol_over_control_port_disable;
 	bool dp_proto_stats;
+	bool dp_eapol_stats;
 };
 
 enum {
@@ -5264,6 +5269,7 @@ struct dp_peer_per_pkt_rx_stats {
  * @wme_ac_type_bytes: Wireless Multimedia type Bytes Count
  * @rx_ppdu_duration: Rx PPDU Duration
  * @retried_msdu_count: rx msdu retries count
+ * @rx_total: total rx count
  */
 struct dp_peer_extd_rx_stats {
 	struct cdp_pkt_type pkt_type[DOT11_MAX];
@@ -5314,6 +5320,7 @@ struct dp_peer_extd_rx_stats {
 	uint64_t wme_ac_type_bytes[WME_AC_MAX];
 	uint64_t rx_ppdu_duration;
 	uint32_t retried_msdu_count;
+	struct cdp_pkt_info rx_total;
 };
 
 /**
