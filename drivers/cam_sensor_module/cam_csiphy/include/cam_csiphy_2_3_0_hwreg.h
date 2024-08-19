@@ -30,7 +30,8 @@ struct csiphy_reg_t csiphy_lane_en_reg_2_3_0[] = {
 
 struct csiphy_reg_t csiphy_common_reg_2_3_0[] = {
 	{0x1084, 0x00, 0x00, CSIPHY_DEFAULT_PARAMS},
-	{0x108C, 0x0E, 0x01, CSIPHY_DEFAULT_PARAMS},
+	{0x108C, 0x00, 0x01, CSIPHY_2PH_REGS},
+	{0x108C, 0x0E, 0x01, CSIPHY_3PH_REGS},
 	{0x101C, 0x7A, 0x00, CSIPHY_DEFAULT_PARAMS},
 	{0x1018, 0x01, 0x00, CSIPHY_DEFAULT_PARAMS},
 };
