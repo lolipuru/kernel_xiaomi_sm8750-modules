@@ -1551,7 +1551,7 @@ static int icnss_driver_event_fw_init_done(struct icnss_priv *priv, void *data)
 	return ret;
 }
 
-int icnss_alloc_qdss_mem(struct icnss_priv *priv)
+static int icnss_alloc_qdss_mem(struct icnss_priv *priv)
 {
 	struct platform_device *pdev = priv->pdev;
 	struct icnss_fw_mem *qdss_mem = priv->qdss_mem;
@@ -1884,8 +1884,8 @@ static int icnss_fw_crashed(struct icnss_priv *priv,
 	return 0;
 }
 
-int icnss_update_hang_event_data(struct icnss_priv *priv,
-				 struct icnss_uevent_hang_data *hang_data)
+static int icnss_update_hang_event_data(struct icnss_priv *priv,
+					struct icnss_uevent_hang_data *hang_data)
 {
 	if (!priv->hang_event_data_va)
 		return -EINVAL;
@@ -1903,7 +1903,7 @@ int icnss_update_hang_event_data(struct icnss_priv *priv,
 	return 0;
 }
 
-int icnss_send_hang_event_data(struct icnss_priv *priv)
+static int icnss_send_hang_event_data(struct icnss_priv *priv)
 {
 	struct icnss_uevent_hang_data hang_data = {0};
 	int ret = 0xFF;
@@ -2456,12 +2456,14 @@ static int icnss_wpss_notifier_nb(struct notifier_block *nb,
 
 	switch (code) {
 	case QCOM_SSR_BEFORE_SHUTDOWN:
+		priv->notif_crashed = notif->crashed;
 		break;
 	case QCOM_SSR_AFTER_SHUTDOWN:
 		/* Collect ramdump only when there was a crash. */
-		if (notif->crashed) {
+		if (priv->notif_crashed) {
 			icnss_pr_info("Collecting msa0 segment dump\n");
 			icnss_msa0_ramdump(priv);
+			priv->notif_crashed = false;
 		}
 		goto out;
 	default:
@@ -2986,7 +2988,7 @@ fail_alloc_major:
 	return ret;
 }
 
-void *icnss_create_ramdump_device(struct icnss_priv *priv, const char *dev_name)
+static void *icnss_create_ramdump_device(struct icnss_priv *priv, const char *dev_name)
 {
 	int ret = 0;
 	struct icnss_ramdump_info *ramdump_info;
@@ -4013,14 +4015,14 @@ struct iommu_domain *icnss_smmu_get_domain(struct device *dev)
 EXPORT_SYMBOL(icnss_smmu_get_domain);
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
-int icnss_iommu_map(struct iommu_domain *domain,
-				   unsigned long iova, phys_addr_t paddr, size_t size, int prot)
+static int icnss_iommu_map(struct iommu_domain *domain,
+			   unsigned long iova, phys_addr_t paddr, size_t size, int prot)
 {
 		return iommu_map(domain, iova, paddr, size, prot);
 }
 #else
-int icnss_iommu_map(struct iommu_domain *domain,
-				   unsigned long iova, phys_addr_t paddr, size_t size, int prot)
+static int icnss_iommu_map(struct iommu_domain *domain,
+			   unsigned long iova, phys_addr_t paddr, size_t size, int prot)
 {
 		return iommu_map(domain, iova, paddr, size, prot, GFP_KERNEL);
 }
@@ -5387,7 +5389,7 @@ out_reset_drvdata:
 	return ret;
 }
 
-void icnss_destroy_ramdump_device(struct icnss_ramdump_info *ramdump_info)
+static void icnss_destroy_ramdump_device(struct icnss_ramdump_info *ramdump_info)
 {
 
 	if (IS_ERR_OR_NULL(ramdump_info))

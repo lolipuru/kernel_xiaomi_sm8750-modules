@@ -2863,6 +2863,8 @@ static void cnss_driver_event_work(struct work_struct *work)
 
 	spin_lock_irqsave(&plat_priv->event_lock, flags);
 
+	plat_priv->cnss_event_work_task = current;
+
 	while (!list_empty(&plat_priv->event_list)) {
 		event = list_first_entry(&plat_priv->event_list,
 					 struct cnss_driver_event, list);
@@ -3286,8 +3288,8 @@ static void init_elf_identification(struct elf32_hdr *ehdr, unsigned char class)
 	ehdr->e_ident[EI_OSABI] = ELFOSABI_NONE;
 }
 
-int cnss_qcom_elf_dump(struct list_head *segs, struct device *dev,
-		       unsigned char class)
+static int cnss_qcom_elf_dump(struct list_head *segs, struct device *dev,
+			      unsigned char class)
 {
 	struct cnss_qcom_dump_segment *segment;
 	void *phdr, *ehdr;
@@ -4075,6 +4077,7 @@ int cnss_request_firmware_direct(struct cnss_plat_data *plat_priv,
 				 const struct firmware **fw_entry,
 				 const char *filename)
 {
+	cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
 	if (IS_ENABLED(CONFIG_CNSS_REQ_FW_DIRECT))
 		return request_firmware_direct(fw_entry, filename,
 					       &plat_priv->plat_dev->dev);
@@ -4218,7 +4221,7 @@ static int cnss_register_bus_scale(struct cnss_plat_data *plat_priv)
 static void cnss_unregister_bus_scale(struct cnss_plat_data *plat_priv) {}
 #endif /* CONFIG_INTERCONNECT */
 
-void cnss_daemon_connection_update_cb(void *cb_ctx, bool status)
+static void cnss_daemon_connection_update_cb(void *cb_ctx, bool status)
 {
 	struct cnss_plat_data *plat_priv = cb_ctx;
 
@@ -4335,7 +4338,7 @@ static ssize_t time_sync_period_show(struct device *dev,
  *
  * Result: return minimum time sync period present in vote from wlan and sys
  */
-uint32_t cnss_get_min_time_sync_period_by_vote(struct cnss_plat_data *plat_priv)
+static uint32_t cnss_get_min_time_sync_period_by_vote(struct cnss_plat_data *plat_priv)
 {
 	unsigned int i, min_time_sync_period = CNSS_TIME_SYNC_PERIOD_INVALID;
 	unsigned int time_sync_period;
