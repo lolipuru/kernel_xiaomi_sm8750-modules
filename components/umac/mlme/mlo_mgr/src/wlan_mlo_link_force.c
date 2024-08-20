@@ -4697,7 +4697,8 @@ ml_nlink_update_non_force_disallow_bitmap(
 	    evt == ml_nlink_ap_csa_end_evt ||
 	    evt == ml_nlink_connect_pre_start_evt ||
 	    evt == ml_nlink_connect_failed_evt ||
-	    evt == ml_nlink_nan_pre_enable_evt)
+	    evt == ml_nlink_nan_pre_enable_evt ||
+	    evt == ml_nlink_acs_start_evt)
 		link_control_flags |= link_ctrl_f_dont_reschedule_workqueue;
 
 	/* Send "no force update" to clear any MLMR EMLSR restriction
@@ -4785,7 +4786,8 @@ ml_nlink_update_force_command_target(struct wlan_objmgr_psoc *psoc,
 	if (evt == ml_nlink_ap_start_evt ||
 	    evt == ml_nlink_ap_csa_start_evt ||
 	    evt == ml_nlink_nan_pre_enable_evt ||
-	    evt == ml_nlink_connect_pre_start_evt)
+	    evt == ml_nlink_connect_pre_start_evt ||
+	    evt == ml_nlink_acs_start_evt)
 		link_control_flags |= link_ctrl_f_sync_set_link;
 	else
 		link_control_flags |= link_ctrl_f_post_re_evaluate;
@@ -4797,7 +4799,8 @@ ml_nlink_update_force_command_target(struct wlan_objmgr_psoc *psoc,
 	    evt == ml_nlink_ap_csa_end_evt ||
 	    evt == ml_nlink_connect_pre_start_evt ||
 	    evt == ml_nlink_connect_failed_evt ||
-	    evt == ml_nlink_nan_pre_enable_evt)
+	    evt == ml_nlink_nan_pre_enable_evt ||
+	    evt == ml_nlink_acs_start_evt)
 		link_control_flags |= link_ctrl_f_dont_reschedule_workqueue;
 
 	status = ml_nlink_update_no_force_for_all(psoc, vdev,
@@ -5267,6 +5270,8 @@ ml_nlink_emlsr_downgrade_handler(struct wlan_objmgr_psoc *psoc,
 			force_inactive_bitmap = 0;
 	} else if (evt == ml_nlink_ap_start_evt) {
 		disable_request = ML_EMLSR_DOWNGRADE_BY_AP_START;
+	} else if (evt == ml_nlink_acs_start_evt) {
+		disable_request = ML_EMLSR_DOWNGRADE_BY_ACS_START;
 	} else if (evt == ml_nlink_connect_pre_start_evt) {
 		disable_request = ML_EMLSR_DOWNGRADE_BY_STA_START;
 	} else {
@@ -5351,8 +5356,11 @@ ml_nlink_undo_emlsr_downgrade_handler(struct wlan_objmgr_psoc *psoc,
 
 	/* eMLSR link downgrade to single link */
 	if (evt == ml_nlink_ap_started_evt ||
-	    evt == ml_nlink_ap_start_failed_evt) {
+	    evt == ml_nlink_ap_start_failed_evt ||
+	    evt == ml_nlink_ap_stopped_evt) {
 		request = ML_EMLSR_DOWNGRADE_BY_AP_START;
+	} else if (evt == ml_nlink_acs_completed_evt) {
+		request = ML_EMLSR_DOWNGRADE_BY_ACS_START;
 	} else if (evt == ml_nlink_connect_completion_evt ||
 		   evt == ml_nlink_connect_failed_evt) {
 		request = ML_EMLSR_DOWNGRADE_BY_STA_START;
@@ -5949,6 +5957,8 @@ static void ml_nlink_check_stop_start_emlsr_timer(
 	case ml_nlink_nan_pre_enable_evt:
 	case ml_nlink_nan_post_enable_evt:
 	case ml_nlink_nan_post_disable_evt:
+	case ml_nlink_acs_start_evt:
+	case ml_nlink_acs_completed_evt:
 		break;
 	default:
 		return;
@@ -6085,13 +6095,19 @@ ml_nlink_conn_change_notify(struct wlan_objmgr_psoc *psoc,
 			psoc, vdev, evt, data);
 		break;
 	case ml_nlink_ap_started_evt:
-		status = ml_nlink_undo_emlsr_downgrade_handler(
-			psoc, vdev, evt, data);
+		/* Keep eMLSR disabled for ll_lt_sap */
+		if (!policy_mgr_is_vdev_ll_lt_sap(psoc, vdev_id))
+			status = ml_nlink_undo_emlsr_downgrade_handler(
+							psoc, vdev, evt, data);
 		status = ml_nlink_state_change_handler(
 			psoc, vdev, MLO_LINK_FORCE_REASON_DISCONNECT,
 			evt, data);
 		break;
 	case ml_nlink_ap_stopped_evt:
+		/* Enable eMLSR when ll_lt_sap is disabled */
+		if (policy_mgr_is_vdev_ll_lt_sap(psoc, vdev_id))
+			status = ml_nlink_undo_emlsr_downgrade_handler(
+							psoc, vdev, evt, data);
 		status = ml_nlink_state_change_handler(
 			psoc, vdev, MLO_LINK_FORCE_REASON_DISCONNECT,
 			evt, data);
@@ -6151,6 +6167,26 @@ ml_nlink_conn_change_notify(struct wlan_objmgr_psoc *psoc,
 			psoc, vdev, MLO_LINK_FORCE_REASON_DISCONNECT,
 			evt, data);
 		mlo_debug("NAN Post-disable");
+		break;
+	case ml_nlink_acs_start_evt:
+		/*
+		 * Disable eMLSR as eMLSR + LL_LT_SAP can not be supported as
+		 * it will result in 3 port concurrency, so policy manager will
+		 * not return any channels in the PCL if eMLSR STA is already
+		 * present
+		 */
+		if (policy_mgr_is_vdev_ll_lt_sap(psoc, vdev_id))
+			status = ml_nlink_emlsr_downgrade_handler(psoc, vdev,
+								  evt, data);
+		break;
+	case ml_nlink_acs_completed_evt:
+		/*
+		 * re-enable eMLSR, when start_ap will come for LL_LT_SAP,
+		 * emLSR will be disabled to avoid 3-port concurrency
+		 */
+		if (policy_mgr_is_vdev_ll_lt_sap(psoc, vdev_id))
+			status = ml_nlink_undo_emlsr_downgrade_handler(
+							psoc, vdev, evt, data);
 		break;
 	default:
 		break;
