@@ -3004,7 +3004,7 @@ skip_to_init_sensing:
 	return error;
 }
 
-#ifndef FW_UPDATE_ON_PROBE
+#if !defined(FW_UPDATE_ON_PROBE) && !defined(CONFIG_ARCH_QTI_VM)
 /**
   *	Function called by the delayed workthread executed after the probe in
   * order to perform the fw update flow
@@ -4521,7 +4521,7 @@ skip_to_power_gpio_setup:
 skip_to_fw_update:
 #endif
 
-#if defined(FW_UPDATE_ON_PROBE) && defined(FW_H_FILE)
+#ifdef CONFIG_ARCH_QTI_VM
 	logError(1, "%s FW Update and Sensing Initialization:\n", tag);
 	retval = fts_fw_update(info);
 	if (retval) {
@@ -4553,7 +4553,7 @@ skip_to_fw_update:
 		goto ProbeErrorExit_6;
 	}
 
-#ifndef FW_UPDATE_ON_PROBE
+#ifndef CONFIG_ARCH_QTI_VM
 	queue_delayed_work(info->fwu_workqueue, &info->fwu_work,
 			   msecs_to_jiffies(EXP_FN_WORK_DELAY_MS));
 #endif
