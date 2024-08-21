@@ -2767,7 +2767,8 @@ static void _sde_encoder_rc_kickoff_delayed(struct sde_encoder_virt *sde_enc,
 	u32 sw_event, struct sde_crtc *sde_crtc)
 {
 	if (_sde_encoder_is_autorefresh_enabled(sde_enc) ||
-			(sde_crtc && mdnie_art_in_progress(&sde_crtc->aiqe_top_level)))
+			(sde_crtc && mdnie_art_in_progress(&sde_crtc->aiqe_top_level)) ||
+			(sde_crtc && sde_crtc->mdnie_ipc_disabled))
 		_sde_encoder_rc_cancel_delayed(sde_enc, sw_event);
 	else
 		_sde_encoder_rc_restart_delayed(sde_enc, sw_event);

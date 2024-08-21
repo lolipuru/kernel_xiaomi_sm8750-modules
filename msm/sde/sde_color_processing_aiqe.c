@@ -65,6 +65,9 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 				SDE_CP_CRTC_DSPP_MDNIE_ART, 0, U64_MAX, 0);
 			_sde_cp_create_local_blob(crtc, SDE_CP_CRTC_DSPP_MDNIE_ART,
 				sizeof(struct drm_msm_mdnie_art));
+
+			_sde_cp_crtc_install_range_property(crtc, "SDE_DSPP_AIQE_MDNIE_IPC_V1",
+				SDE_CP_CRTC_DSPP_MDNIE_IPC, 0, U32_MAX, 0);
 		}
 		if (catalog->dspp[0].sblk->aiqe.ssrc_supported) {
 			_sde_cp_crtc_install_blob_property(crtc, "SDE_DSPP_AIQE_SSRC_CONFIG_V1",
