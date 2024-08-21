@@ -1481,6 +1481,8 @@ unsigned int cnss_get_timeout(struct cnss_plat_data *plat_priv,
 		return RECOVERY_TIMEOUT;
 	case CNSS_TIMEOUT_DAEMON_CONNECTION:
 		return qmi_timeout + CNSS_DAEMON_CONNECT_TIMEOUT_MS;
+	case CNSS_TIMEOUT_FW_LOAD:
+		return qmi_timeout + WLAN_FW_LOAD_TIMEOUT_MS;
 	default:
 		return qmi_timeout;
 	}
@@ -4096,6 +4098,19 @@ int cnss_minidump_remove_region(struct cnss_plat_data *plat_priv,
 }
 #endif /* CONFIG_QCOM_MINIDUMP */
 
+
+int cnss_request_firmware_update_timer(struct cnss_plat_data *plat_priv,
+				       const struct firmware **fw_entry,
+				       const char *filename)
+{
+	unsigned int timeout = cnss_get_timeout(plat_priv, CNSS_TIMEOUT_FW_LOAD);
+
+	mod_timer(&plat_priv->fw_boot_timer,
+		  jiffies + msecs_to_jiffies(timeout));
+	return firmware_request_nowarn(fw_entry, filename,
+				       &plat_priv->plat_dev->dev);
+}
+
 int cnss_request_firmware_direct(struct cnss_plat_data *plat_priv,
 				 const struct firmware **fw_entry,
 				 const char *filename)
@@ -4105,9 +4120,10 @@ int cnss_request_firmware_direct(struct cnss_plat_data *plat_priv,
 		return request_firmware_direct(fw_entry, filename,
 					       &plat_priv->plat_dev->dev);
 	else
-		return firmware_request_nowarn(fw_entry, filename,
-					       &plat_priv->plat_dev->dev);
+		return cnss_request_firmware_update_timer(plat_priv,
+							  fw_entry, filename);
 }
+
 
 #if IS_ENABLED(CONFIG_INTERCONNECT)
 /**

@@ -5311,8 +5311,8 @@ int cnss_pci_load_sku_license(struct cnss_pci_data *pci_priv)
 		scnprintf(filename, MAX_FIRMWARE_NAME_LEN, "%s", soft_sku_filename);
 
 		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
-		ret = firmware_request_nowarn(&fw_entry, filename,
-					      &pci_priv->pci_dev->dev);
+
+		ret = cnss_request_firmware_update_timer(plat_priv, &fw_entry, filename);
 		if (ret) {
 			cnss_pr_err("Failed to load Soft SKU License: %s, ret: %d\n",
 				    filename, ret);
@@ -5369,8 +5369,9 @@ int cnss_pci_load_tme_patch(struct cnss_pci_data *pci_priv)
 		scnprintf(filename, MAX_FIRMWARE_NAME_LEN, "%s", tme_patch_filename);
 
 		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
-		ret = firmware_request_nowarn(&fw_entry, filename,
-					      &pci_priv->pci_dev->dev);
+
+		ret = cnss_request_firmware_update_timer(plat_priv, &fw_entry, filename);
+
 		if (ret) {
 			cnss_pr_err("Failed to load TME-L patch: %s, ret: %d\n",
 				    filename, ret);
@@ -5455,8 +5456,9 @@ int cnss_pci_load_tme_opt_file(struct cnss_pci_data *pci_priv,
 					    tme_opt_filename);
 
 		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
-		ret = firmware_request_nowarn(&fw_entry, filename,
-					      &pci_priv->pci_dev->dev);
+
+		ret = cnss_request_firmware_update_timer(plat_priv, &fw_entry, filename);
+
 		if (ret) {
 			cnss_pr_err("Failed to load TME-L opt file: %s, ret: %d\n",
 				    filename, ret);
@@ -5544,8 +5546,10 @@ int cnss_pci_load_m3(struct cnss_pci_data *pci_priv)
 					    phy_filename);
 
 		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
-		ret = firmware_request_nowarn(&fw_entry, filename,
-					      &pci_priv->pci_dev->dev);
+
+
+		ret = cnss_request_firmware_update_timer(plat_priv, &fw_entry, filename);
+
 		if (ret) {
 			cnss_pr_err("Failed to load M3 image: %s\n", filename);
 			return ret;
@@ -5615,8 +5619,8 @@ int cnss_pci_load_aux(struct cnss_pci_data *pci_priv)
 		}
 
 		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
-		ret = firmware_request_nowarn(&fw_entry, filename,
-					      &pci_priv->pci_dev->dev);
+
+		ret = cnss_request_firmware_update_timer(plat_priv, &fw_entry, filename);
 		if (ret) {
 			cnss_pr_err("Failed to load AUX image: %s\n", filename);
 			return ret;
