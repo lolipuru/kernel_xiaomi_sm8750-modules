@@ -5010,7 +5010,6 @@ long fastrpc_dev_unmap_dma(struct fastrpc_device *dev,
 	struct fastrpc_map *map = NULL;
 	unsigned long irq_flags = 0;
 	struct fastrpc_channel_ctx * cctx = NULL;
-	int unlocked = 0;
 	spinlock_t *glock = &g_frpc.glock;
 
 	p.unmap = (struct fastrpc_dev_unmap_dma *)invoke_param;
@@ -5036,25 +5035,23 @@ long fastrpc_dev_unmap_dma(struct fastrpc_device *dev,
 
 	mutex_lock(&fl->remote_map_mutex);
 	mutex_lock(&fl->map_mutex);
-	if (!fastrpc_map_lookup(fl, -1, 0, 0, p.unmap->buf,
-				ADSP_MMAP_DMA_BUFFER, &map, false)) {
-		mutex_unlock(&fl->map_mutex);
-		unlocked = 1;
-		/* Un-map DMA buffer on DSP*/
-		err = fastrpc_req_munmap_dsp(fl, map->raddr, map->size);
-		if (err) {
-			pr_err("failed to unmap the buffer on DSP\n");
-			goto error;
-		}
-		if (unlocked)
-			mutex_lock(&fl->map_mutex);
-		fastrpc_map_put(map);
-		mutex_unlock(&fl->map_mutex);
-		unlocked = 1;
+	err = fastrpc_map_lookup(fl, -1, 0, 0, p.unmap->buf,
+				ADSP_MMAP_DMA_BUFFER, &map, false);
+	mutex_unlock(&fl->map_mutex);
+	if (err)
+		goto error;
+	/* Un-map DMA buffer on DSP*/
+	err = fastrpc_req_munmap_dsp(fl, map->raddr, map->size);
+	if (err) {
+		pr_err("Unmap on DSP failed for buf phy:0x%llx, raddr:0x%llx, size:0x%llx\n",
+			map->phys, map->raddr, map->size);
+		goto error;
 	}
+	mutex_lock(&fl->map_mutex);
+	fastrpc_map_put(map);
+	mutex_unlock(&fl->map_mutex);
+
 error:
-	if (!unlocked)
-		mutex_unlock(&fl->map_mutex);
 	spin_lock_irqsave(&cctx->lock, irq_flags);
 	if (fl) {
 		if (fl->state >= DSP_EXIT_START && fl->is_dma_invoke_pend) {
