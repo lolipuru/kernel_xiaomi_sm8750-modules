@@ -565,6 +565,9 @@ struct icnss_priv {
 	bool fw_aux_uc_support;
 	void *get_info_cb_ctx;
 	int (*get_info_cb)(void *ctx, void *event, int event_len);
+	void *get_driver_async_data_ctx;
+	int (*get_driver_async_data_cb)(void *ctx, uint16_t type, void *event,
+					int event_len);
 	atomic_t soc_wake_ref_count;
 	phys_addr_t hang_event_data_pa;
 	void __iomem *hang_event_data_va;
