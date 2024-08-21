@@ -3215,6 +3215,7 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 	struct drm_crtc_state *crtc_state;
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	bool sec_session = false, global_sec_session = false;
+	bool fb_sec_session = false, global_fb_sec_session = false;
 	uint32_t fb_ns = 0, fb_sec = 0, fb_sec_dir = 0;
 	int i;
 
@@ -3236,6 +3237,8 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 				&fb_sec, &fb_sec_dir);
 		if (fb_sec_dir)
 			sec_session = true;
+		if (fb_sec)
+			fb_sec_session = true;
 		cur_crtc = crtc;
 	}
 
@@ -3252,8 +3255,18 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 					&fb_sec, &fb_sec_dir);
 			if (fb_sec_dir)
 				global_sec_session = true;
+			if (fb_sec)
+				global_fb_sec_session = true;
 			global_crtc = crtc;
 		}
+	}
+
+	if ((global_sec_session || sec_session) && (fb_sec_session || global_fb_sec_session)) {
+		SDE_ERROR("crtc%d secure check failed sec_dir:%d, g_sec_dir:%d, sec:%d, g_sec:%d\n",
+			       cur_crtc ? cur_crtc->base.id : -1,
+			       sec_session, global_sec_session, fb_sec_session,
+			       global_fb_sec_session);
+		return -EPERM;
 	}
 
 	if (!global_sec_session && !sec_session)
