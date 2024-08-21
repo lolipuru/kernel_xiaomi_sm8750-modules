@@ -3906,7 +3906,7 @@ static bool sde_kms_check_for_splash(struct msm_kms *kms)
 	}
 
 	sde_kms = to_sde_kms(kms);
-	return sde_kms->splash_data.num_splash_displays;
+	return sde_kms->splash_data.num_splash_displays == 0 ? false : true;
 }
 
 static int sde_kms_get_mixer_count(const struct msm_kms *kms,
