@@ -1274,6 +1274,26 @@ static void sde_encoder_phys_vid_esync_emsync_irq(void *arg, int irq_idx)
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent), irq_idx);
 }
 
+static enum hrtimer_restart sde_encoder_phys_vid_esync_backup_sim(struct hrtimer *timer)
+{
+	struct sde_encoder_phys *phys_enc =
+			container_of(timer, struct sde_encoder_phys, empulse_backup_timer);
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct msm_display_info *info;
+
+	if (!sde_enc)
+		return HRTIMER_NORESTART;
+
+	if (phys_enc->parent_ops.handle_empulse_virt)
+		phys_enc->parent_ops.handle_empulse_virt(phys_enc->parent, phys_enc);
+
+	SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FUNC_EXIT);
+
+	info = &sde_enc->disp_info;
+	hrtimer_forward_now(timer, ns_to_ktime(DIV_ROUND_UP(NSEC_PER_SEC, info->esync_emsync_fps)));
+	return HRTIMER_RESTART;
+}
+
 static void _sde_encoder_phys_vid_setup_irq_hw_idx(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -1454,11 +1474,39 @@ end:
 	return ret;
 }
 
+static void sde_encoder_phys_vid_register_esync_backup_sim(
+		struct sde_encoder_phys *phys_enc, bool enable)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct msm_display_info *info;
+	u64 now_ns;
+	u64 last_ns;
+	u64 period_ns;
+	u64 sleep_duration_ns;
+
+	if (enable) {
+		sde_enc = to_sde_encoder_virt(phys_enc->parent);
+		info = &sde_enc->disp_info;
+
+		now_ns = ktime_to_ns(ktime_get());
+		last_ns = ktime_to_ns(phys_enc->last_vsync_timestamp);
+		period_ns = DIV_ROUND_UP(NSEC_PER_SEC, info->esync_emsync_fps);
+		sleep_duration_ns = (period_ns - ((now_ns - last_ns) % period_ns));
+
+		hrtimer_start(&phys_enc->empulse_backup_timer,
+				ns_to_ktime(sleep_duration_ns), HRTIMER_MODE_REL);
+	} else {
+		hrtimer_cancel(&phys_enc->empulse_backup_timer);
+	}
+}
+
 static int sde_encoder_phys_vid_control_empulse_irq(
 		struct sde_encoder_phys *phys_enc, bool enable)
 {
 	int ret = 0;
 	struct sde_encoder_phys_vid *vid_enc;
+	struct sde_encoder_virt *sde_enc;
+	struct msm_display_info *info;
 	int refcount;
 
 	if (!phys_enc) {
@@ -1469,6 +1517,8 @@ static int sde_encoder_phys_vid_control_empulse_irq(
 	mutex_lock(phys_enc->vblank_ctl_lock);
 	refcount = atomic_read(&phys_enc->empulse_irq_refcount);
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	info = &sde_enc->disp_info;
 
 	/* Slave encoders don't report vblank */
 	if (!sde_encoder_phys_vid_is_master(phys_enc))
@@ -1488,13 +1538,24 @@ static int sde_encoder_phys_vid_control_empulse_irq(
 			atomic_read(&phys_enc->empulse_irq_refcount));
 
 	if (enable && atomic_inc_return(&phys_enc->empulse_irq_refcount) == 1) {
-		ret = sde_encoder_helper_register_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
-		if (ret)
-			atomic_dec(&phys_enc->empulse_irq_refcount);
+		if (sde_enc->rc_state == SDE_ENC_RC_STATE_ON) {
+			ret = sde_encoder_helper_register_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
+			if (ret)
+				atomic_dec(&phys_enc->empulse_irq_refcount);
+
+			phys_enc->empulse_notification_sim = false;
+		} else {
+			sde_encoder_phys_vid_register_esync_backup_sim(phys_enc, true);
+			phys_enc->empulse_notification_sim = true;
+		}
 	} else if (!enable && atomic_dec_return(&phys_enc->empulse_irq_refcount) == 0) {
-		ret = sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
-		if (ret)
-			atomic_inc(&phys_enc->empulse_irq_refcount);
+		if (phys_enc->empulse_notification_sim) {
+			sde_encoder_phys_vid_register_esync_backup_sim(phys_enc, false);
+		} else {
+			ret = sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
+			if (ret)
+				atomic_inc(&phys_enc->empulse_irq_refcount);
+		}
 	}
 
 end:
@@ -2695,6 +2756,11 @@ skip_irq_init:
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.backlight_timer.function =
 		sde_encoder_phys_backlight_timer_cb;
+
+	hrtimer_init(&phys_enc->empulse_backup_timer,
+		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	phys_enc->empulse_backup_timer.function =
+		sde_encoder_phys_vid_esync_backup_sim;
 
 	SDE_DEBUG_VIDENC(vid_enc, "created intf idx:%d\n", p->intf_idx);
 

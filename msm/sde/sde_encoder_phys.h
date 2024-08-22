@@ -390,6 +390,9 @@ struct sde_encoder_vrr_cfg {
  *                              only for writeback encoder and the counter keeps
  *                              increasing for other type of encoders.
  * @pending_kickoff_wq:		Wait queue for blocking until kickoff completes
+ * @empulse_backup_timer: Timer to simulate EM pulse IRQ when idle
+ * @empulse_notification_sim: whether the last enabled EM pulse notification
+ *                            source was the timer, as opposed to the IRQ
  * @empulse_count: Software EM pulse count for the physical encoder
  * @kickoff_timeout_ms:		kickoff timeout in mill seconds
  * @irq:			IRQ tracking structures
@@ -457,6 +460,8 @@ struct sde_encoder_phys {
 	atomic_t pending_retire_fence_cnt;
 	atomic_t pending_ctl_start_cnt;
 	wait_queue_head_t pending_kickoff_wq;
+	struct hrtimer empulse_backup_timer;
+	bool empulse_notification_sim;
 	atomic_t empulse_count;
 	u32 kickoff_timeout_ms;
 	struct sde_encoder_irq irq[INTR_IDX_MAX];
