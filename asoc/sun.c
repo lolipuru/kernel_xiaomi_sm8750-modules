@@ -132,7 +132,7 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 
 static bool msm_usbc_swap_gnd_mic(struct snd_soc_component *component, bool active)
 {
-	bool ret = false;
+	int ret = 0;
 	struct snd_soc_card *card = component->card;
 	struct msm_asoc_mach_data *pdata =
 				snd_soc_card_get_drvdata(card);
@@ -147,8 +147,10 @@ static bool msm_usbc_swap_gnd_mic(struct snd_soc_component *component, bool acti
 	else if (wcd_mbhc_cfg.enable_usbc_analog)
 		ret = wcd_usbss_switch_update(WCD_USBSS_GND_MIC_SWAP_AATC,
 							WCD_USBSS_CABLE_CONNECT);
+	if (ret == 0)
+		return true;
 #endif
-	return ret;
+	return false;
 }
 
 static void msm_parse_upd_configuration(struct platform_device *pdev,
