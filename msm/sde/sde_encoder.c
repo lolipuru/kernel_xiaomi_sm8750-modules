@@ -5540,7 +5540,8 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 		return;
 	}
 
-	drm_crtc_wait_one_vblank(crtc);
+	sde_encoder_phys_inc_pending(phys_enc);
+	sde_encoder_wait_for_event(&sde_enc->base, MSM_ENC_VBLANK);
 
 	pf_time_in_us = phys_enc->pf_time_in_us;
 	if (pf_time_in_us > 2000) {
@@ -5551,7 +5552,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	/* wait for panel vsync */
 	usleep_range(pf_time_in_us, pf_time_in_us + 10);
 
-	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, atomic_read(&phys_enc->pending_kickoff_cnt));
 }
 
 static void sde_encoder_handle_self_refresh(struct kthread_work *work)
