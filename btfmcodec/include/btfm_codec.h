@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __LINUX_BTFM_CODEC_H
@@ -73,10 +73,12 @@ struct btfmcodec_char_device {
 	struct cdev cdev;
 	refcount_t active_clients;
 	struct mutex lock;
+	struct mutex trans_lock;
 	int reuse_minor;
 	char dev_name[DEVICE_NAME_MAX_LEN];
 	struct workqueue_struct *workqueue;
 	struct sk_buff_head rxq;
+	struct sk_buff_head trans_rxq;
 	struct work_struct rx_work;
 	struct work_struct wq_hwep_shutdown;
 	struct work_struct wq_prepare_bearer;

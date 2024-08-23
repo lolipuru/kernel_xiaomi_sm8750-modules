@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "btfm_codec.h"
@@ -88,6 +88,16 @@ btfmcodec_state btfmcodec_get_current_transport(struct
 	return current_state;
 }
 
+btfmcodec_state btfmcodec_get_prev_transport(struct btfmcodec_state_machine *state)
+{
+	btfmcodec_state prev_state;
+
+	mutex_lock(&state->state_machine_lock);
+	prev_state = state->prev_state;
+	mutex_unlock(&state->state_machine_lock);
+	return prev_state;
+}
+
 int btfmcodec_frame_transport_switch_ind_pkt(struct btfmcodec_char_device *btfmcodec_dev,
 					uint8_t active_transport,
 					uint8_t status)
@@ -124,8 +134,15 @@ int btfmcodec_wait_for_bearer_ind(struct btfmcodec_char_device *btfmcodec_dev)
 	uint8_t *status = &btfmcodec_dev->status[BTM_PKT_TYPE_BEARER_SWITCH_IND];
 
 	ret = wait_event_interruptible_timeout(*rsp_wait_q,
-		*status != BTM_WAITING_RSP,
+		(*status != BTM_WAITING_RSP ||
+		skb_queue_empty(&btfmcodec_dev->trans_rxq) != true),
 		msecs_to_jiffies(BTM_BEARER_SWITCH_IND_TIMEOUT));
+
+	if (!skb_queue_empty(&btfmcodec_dev->trans_rxq)) {
+		BTFMCODEC_INFO("%s: new transport is waiting to process", __func__);
+		ret =  -1;
+		return ret;
+	}
 
 	if (ret == 0) {
 		BTFMCODEC_ERR("failed to recevie BTM_BEARER_SWITCH_IND");
@@ -320,7 +337,12 @@ void btfmcodec_wq_prepare_bearer(struct work_struct *work)
 	struct btfmcodec_char_device *btfmcodec_dev = container_of(work,
 						struct btfmcodec_char_device,
 						wq_prepare_bearer);
-	int idx = BTM_PKT_TYPE_PREPARE_REQ;
-	BTFMCODEC_INFO("with new transport:%d", btfmcodec_dev->status[idx]);
-	btfmcodec_prepare_bearer(btfmcodec_dev, btfmcodec_dev->status[idx]);
+	int transport = btfmcodec_dequeue_transport(btfmcodec_dev);
+
+	BTFMCODEC_INFO("%s new transport:%d", __func__, transport);
+
+	if (transport == 0xFF)
+		BTFMCODEC_ERR("invalid transport");
+	else
+		btfmcodec_prepare_bearer(btfmcodec_dev, transport);
 }
