@@ -2105,6 +2105,17 @@ static void dp_display_disconnect_work(struct work_struct *work)
 	struct dp_display_private *dp = container_of(work,
 			struct dp_display_private, disconnect_work);
 
+	/*
+	 * In DP simulation mode, DP link clock's parent is driven
+	 * by usb pll clock, in case usb is disconnected during
+	 * DP simulation. Accessing HW registers driven by DP link clock
+	 * during this would trigger an exception. Hence, put xo clock as
+	 * DP link clock's parent to keep the registers driven by
+	 * link clock still be accessible.
+	 */
+	if (dp->debug->sim_mode && dp_display_state_is(DP_STATE_ABORTED))
+		dp->power->park_clocks(dp->power);
+
 	dp_display_handle_disconnect(dp, false);
 
 	if (dp->debug->sim_mode && dp_display_state_is(DP_STATE_ABORTED))
@@ -2125,8 +2136,6 @@ static int dp_display_usb_notifier(struct notifier_block *nb,
 		dp_display_state_add(DP_STATE_ABORTED);
 		dp->ctrl->abort(dp->ctrl, true);
 		dp->aux->abort(dp->aux, true);
-
-		dp->power->park_clocks(dp->power);
 
 		queue_work(dp->wq, &dp->disconnect_work);
 	}
