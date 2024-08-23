@@ -4058,7 +4058,8 @@ int gsi_is_teth_channel_empty(unsigned long chan_hdl, bool *is_empty)
 	wp = gsihal_read_reg_nk(GSI_EE_n_GSI_CH_k_RE_FETCH_WRITE_PTR,
 			gsi_ctx->per.ee, chan_hdl);
 	if (rp == wp) {
-		GSIDBG_LOW("Teth channel empty\n");
+		GSIDBG("Teth channel empty ch=%lu rp = 0x%x wp = 0x%x\n",
+				chan_hdl, rp, wp);
 		*is_empty = true;
 	} else {
 		GSIDBG("Teth channel not empty ch=%lu rp = 0x%x wp = 0x%x\n",
