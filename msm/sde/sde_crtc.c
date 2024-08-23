@@ -3756,6 +3756,9 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 
 	c_conn_state = _sde_crtc_get_sde_connector_state(crtc, crtc_state->state);
 
+	if (c_conn_state == NULL)
+		return -EINVAL;
+
 	if (c_conn_state->rois.num_rects)
 		sde_kms_rect_merge_rectangles(&c_conn_state->rois, &conn_roi);
 
