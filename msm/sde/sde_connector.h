@@ -636,6 +636,7 @@ struct sde_backlight_vrr_update {
  * @qsync_updated: Qsync settings were updated
  * @ept_fps: ept fps is updated, 0 means ept_fps is disabled
  * @frame_interval: Current frame interval
+ * @apply_vrr: Flag to apply vrr support once FI is set
  * @usecase_idx: Current usecase_idx
  * @freq_pattern: Current frequency pattern to be used
  * @vrr_caps: defines capabilities of vrr
@@ -725,6 +726,7 @@ struct sde_connector {
 	u32 ept_fps;
 
 	u32 frame_interval;
+	u32 apply_vrr;
 	u32 usecase_idx;
 	struct msm_freq_step_pattern *freq_pattern;
 	struct msm_vrr_capabilities vrr_caps;
