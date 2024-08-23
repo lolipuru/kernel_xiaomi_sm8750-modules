@@ -2783,8 +2783,8 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 	}
 	mutex_unlock(&swrm->devlock);
 
-	mutex_lock(&enumeration_lock);
 	pm_runtime_get_sync(swrm->dev);
+	mutex_lock(&enumeration_lock);
 	for (i = 1; i < (num_dev + 1); i++) {
 		id = ((u64)(swr_master_read(swrm,
 			    SWRM_ENUMERATOR_SLAVE_DEV_ID_2(i))) << 32);
@@ -2825,9 +2825,9 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 				"%s: device 0x%llx is not ready\n",
 				__func__, dev_id);
 
+	mutex_unlock(&enumeration_lock);
 	pm_runtime_mark_last_busy(swrm->dev);
 	pm_runtime_put_autosuspend(swrm->dev);
-	mutex_unlock(&enumeration_lock);
 
 	return ret;
 }
@@ -3733,8 +3733,12 @@ static int swrm_runtime_resume(struct device *dev)
 			if (!swrm_check_link_status(swrm, 0x1))
 				dev_dbg(dev, "%s:failed in connecting, ssr?\n",
 					__func__);
+
+			mutex_lock(&enumeration_lock);
 			swrm_cmd_fifo_wr_cmd(swrm, 0x4, 0xF, get_cmd_id(swrm),
 						SWRS_SCP_INT_STATUS_MASK_1);
+			mutex_unlock(&enumeration_lock);
+
 			if (swrm->state == SWR_MSTR_SSR) {
 				mutex_unlock(&swrm->reslock);
 				enable_bank_switch(swrm, 0, SWR_ROW_50, SWR_MIN_COL);
