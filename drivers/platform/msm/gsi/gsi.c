@@ -4053,8 +4053,9 @@ int gsi_is_teth_channel_empty(unsigned long chan_hdl, bool *is_empty)
 		return -GSI_STATUS_INVALID_PARAMS;
 	}
 
-	rp = gsihal_read_reg_nk(GSI_EE_n_GSI_CH_k_RE_FETCH_READ_PTR,
+	rp = gsihal_read_reg_nk(GSI_EE_n_GSI_CH_k_CNTXT_4,
 			gsi_ctx->per.ee, chan_hdl);
+	rp = rp & 0xfffff; /* Only 20bits to be checked. */
 	wp = gsihal_read_reg_nk(GSI_EE_n_GSI_CH_k_RE_FETCH_WRITE_PTR,
 			gsi_ctx->per.ee, chan_hdl);
 	if (rp == wp) {

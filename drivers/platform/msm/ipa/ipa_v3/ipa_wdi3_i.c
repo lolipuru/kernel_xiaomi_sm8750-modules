@@ -1225,6 +1225,9 @@ int ipa3_enable_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 		IPAERR("failed to start gsi rx channel\n");
 		goto fail_start_channel3;
 	}
+
+	ipa3_check_wdi_opt_chn_empty(ipa_ep_idx_rx);
+
 	/* start uC gsi dbg stats monitor */
 	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5 && ipa3_ctx->ipa_hw_type != IPA_HW_v5_2) {
 		ipa3_ctx->gsi_info[IPA_HW_PROTOCOL_WDI3].ch_id_info[0].ch_id
@@ -1353,6 +1356,8 @@ int ipa3_disable_wdi3_pipes(int ipa_ep_idx_tx, int ipa_ep_idx_rx,
 		result = -EFAULT;
 		goto fail;
 	}
+
+	ipa3_check_wdi_opt_chn_empty(ipa_ep_idx_rx);
 
 	/* stop gsi tx channel */
 	result = ipa_stop_gsi_channel(ipa_ep_idx_tx);
