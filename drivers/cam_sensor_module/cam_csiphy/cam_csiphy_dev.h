@@ -365,29 +365,13 @@ struct csiphy_work_queue {
  *
  * @cdr_tolerance       : cdr tolerance
  * @tolerance_op_type   : if tolerance needs to be added/subtracted
- * @cdr_config_ptr      : Ptr to the cmd buffer, in which
- *                        configured CDR values will be
  *                        published
  * @cdr_sweep_enabled   : cdr sweep enabled
  */
 struct cam_csiphy_dev_cdr_sweep_params {
 	uint32_t  cdr_tolerance;
 	uint32_t  tolerance_op_type;
-	uint32_t *cdr_config_ptr;
 	bool      cdr_sweep_enabled;
-};
-
-/**
- * struct cam_csiphy_dev_aux_setting_params
- *
- * @aux_config_ptr      : Ptr to the cmd buffer, in which
- *                        auxiliary settings that are enabled for different
- *                        data rates will be published
- * @aux_mem_update_en   : Set if aux mem buffer provided
- */
-struct cam_csiphy_dev_aux_setting_params {
-	uint32_t *aux_config_ptr;
-	bool      aux_mem_update_en;
 };
 
 /**
@@ -456,7 +440,6 @@ struct csiphy_qmargin_sweep_data {
  * @ops                        : KMD operations
  * @crm_cb                     : Callback API pointers
  * @cdr_params                 : CDR sweep params
- * @aux_params                 : AUX settings buffer params
  * @qmargin_data               : Qmargin params
  * @prgm_cmn_reg_across_csiphy : Flag to decide if com settings need to be programmed for all PHYs
  * @en_common_status_reg_dump  : Debugfs flag to enable common status register dump
@@ -494,7 +477,6 @@ struct csiphy_device {
 	struct cam_req_mgr_kmd_ops               ops;
 	struct cam_req_mgr_crm_cb               *crm_cb;
 	struct cam_csiphy_dev_cdr_sweep_params   cdr_params;
-	struct cam_csiphy_dev_aux_setting_params aux_params;
 	struct csiphy_qmargin_sweep_data         qmargin_data;
 	bool                                     prgm_cmn_reg_across_csiphy;
 	bool                                     en_common_status_reg_dump;
