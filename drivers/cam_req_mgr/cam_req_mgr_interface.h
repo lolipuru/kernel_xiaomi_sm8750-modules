@@ -356,12 +356,15 @@ struct cam_req_mgr_notify_stop {
  *                    : align with userland and kernel frame sync offset.
  * @frame_duration    : The sensor frame duration betwwen previous SOF and current SOF
  * @blanking_duration : The vertical blanking between previous EOF and current SOF
+ * @use_for_wd        : If set frame duration is to be used for WD timer for ePCR
+ *                      scenarios
  *
  */
 struct cam_req_mgr_sensor_frame_info {
 	uint64_t frame_sync_shift;
 	uint64_t frame_duration;
 	uint64_t blanking_duration;
+	bool     use_for_wd;
 };
 
 /**

@@ -274,6 +274,8 @@ static int cam_sensor_handle_frame_info(struct cam_sensor_ctrl_t *s_ctrl,
 	msg.u.frame_info.frame_sync_shift = frame_info->frame_sync_shift;
 	msg.u.frame_info.frame_duration = frame_info->frame_duration;
 	msg.u.frame_info.blanking_duration = frame_info->blanking_duration;
+	if ((s_ctrl->stream_off_on_flush) && (s_ctrl->sensor_state == CAM_SENSOR_STANDBY))
+		msg.u.frame_info.use_for_wd = true;
 
 	rc = s_ctrl->bridge_intf.crm_cb->notify_msg(&msg);
 	if (rc) {
