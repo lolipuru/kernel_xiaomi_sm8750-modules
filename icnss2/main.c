@@ -5367,6 +5367,10 @@ static void icnss_init_control_params(struct icnss_priv *priv)
 
 	if (priv->device_id == WCN7750_DEVICE_ID)
 		icnss_set_feature_list(priv, CNSS_AUX_UC_SUPPORT_V01);
+
+	if (of_property_read_bool(priv->pdev->dev.of_node,
+				"qcom,rc-ep-short-channel"))
+		icnss_set_feature_list(priv, CNSS_RC_EP_ULTRASHORT_CHANNEL_V01);
 }
 
 static void icnss_read_device_configs(struct icnss_priv *priv)
