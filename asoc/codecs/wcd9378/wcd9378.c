@@ -2325,6 +2325,14 @@ int wcd9378_micbias_control(struct snd_soc_component *component,
 
 			if (micb_num == MIC_BIAS_2) {
 				snd_soc_component_update_bits(component,
+						WCD9378_ANA_MICB2_RAMP,
+						WCD9378_ANA_MICB2_RAMP_SHIFT_CTL_MASK,
+						0x0C);
+				snd_soc_component_update_bits(component,
+						WCD9378_ANA_MICB2_RAMP,
+						WCD9378_ANA_MICB2_RAMP_RAMP_ENABLE_MASK,
+						0x00);
+				snd_soc_component_update_bits(component,
 						WCD9378_IT31_MICB,
 						WCD9378_IT31_MICB_IT31_MICB_MASK,
 						micb_usage_val);
@@ -2365,6 +2373,14 @@ int wcd9378_micbias_control(struct snd_soc_component *component,
 						WCD9378_IT31_MICB,
 						WCD9378_IT31_MICB_IT31_MICB_MASK,
 						0x00);
+				snd_soc_component_update_bits(component,
+						WCD9378_ANA_MICB2_RAMP,
+						WCD9378_ANA_MICB2_RAMP_SHIFT_CTL_MASK,
+						0x0C);
+				snd_soc_component_update_bits(component,
+						WCD9378_ANA_MICB2_RAMP,
+						WCD9378_ANA_MICB2_RAMP_RAMP_ENABLE_MASK,
+						0x80);
 				wcd9378->curr_micbias2 = 0;
 			}
 			if (post_off_event && wcd9378->mbhc)
