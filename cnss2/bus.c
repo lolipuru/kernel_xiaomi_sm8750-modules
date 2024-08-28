@@ -54,6 +54,7 @@ enum cnss_dev_bus_type cnss_get_bus_type(struct cnss_plat_data *plat_priv)
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
 	case COLOGNE_DEVICE_ID:
+	case FIG_DEVICE_ID:
 		return CNSS_BUS_PCI;
 	default:
 		cnss_pr_err("Unknown device_id: 0x%lx\n", plat_priv->device_id);

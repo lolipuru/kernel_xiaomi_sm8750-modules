@@ -251,7 +251,8 @@ static void cnss_wlfw_host_cap_parse_mlo(struct cnss_plat_data *plat_priv,
 {
 	if (plat_priv->device_id == KIWI_DEVICE_ID ||
 	    plat_priv->device_id == MANGO_DEVICE_ID ||
-	    plat_priv->device_id == PEACH_DEVICE_ID) {
+	    plat_priv->device_id == PEACH_DEVICE_ID ||
+	    plat_priv->device_id == FIG_DEVICE_ID) {
 		req->mlo_capable_valid = 1;
 		req->mlo_capable = 1;
 		req->mlo_chip_id_valid = 1;
@@ -946,7 +947,8 @@ int cnss_wlfw_soft_sku_dnld_send_sync(struct cnss_plat_data *plat_priv)
 	cnss_pr_dbg("Sending Soft SKU information message, state: 0x%lx\n",
 		    plat_priv->driver_state);
 
-	if (plat_priv->device_id != PEACH_DEVICE_ID)
+	if (plat_priv->device_id != PEACH_DEVICE_ID &&
+	    plat_priv->device_id != FIG_DEVICE_ID)
 		return 0;
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
@@ -1027,7 +1029,8 @@ int cnss_wlfw_tme_patch_dnld_send_sync(struct cnss_plat_data *plat_priv,
 	cnss_pr_dbg("Sending TME patch information message, state: 0x%lx\n",
 		    plat_priv->driver_state);
 
-	if (plat_priv->device_id != PEACH_DEVICE_ID)
+	if (plat_priv->device_id != PEACH_DEVICE_ID &&
+	    plat_priv->device_id != FIG_DEVICE_ID)
 		return 0;
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
@@ -1106,7 +1109,8 @@ int cnss_wlfw_tme_opt_file_dnld_send_sync(struct cnss_plat_data *plat_priv,
 	char *file_name = NULL;
 	int ret = 0;
 
-	if (plat_priv->device_id != PEACH_DEVICE_ID)
+	if (plat_priv->device_id != PEACH_DEVICE_ID &&
+	    plat_priv->device_id != FIG_DEVICE_ID)
 		return 0;
 
 	cnss_pr_dbg("Sending TME opt file information message, state: 0x%lx\n",
@@ -1919,7 +1923,8 @@ int cnss_wlfw_wlan_cfg_send_sync(struct cnss_plat_data *plat_priv,
 	if (plat_priv->device_id != KIWI_DEVICE_ID &&
 	    plat_priv->device_id != MANGO_DEVICE_ID &&
 	    plat_priv->device_id != PEACH_DEVICE_ID &&
-	    plat_priv->device_id != COLOGNE_DEVICE_ID) {
+	    plat_priv->device_id != COLOGNE_DEVICE_ID &&
+	    plat_priv->device_id != FIG_DEVICE_ID) {
 		if (plat_priv->device_id == QCN7605_DEVICE_ID &&
 		    config->num_shadow_reg_cfg) {
 			req->shadow_reg_valid = 1;

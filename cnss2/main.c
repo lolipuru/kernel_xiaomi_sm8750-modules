@@ -1058,6 +1058,7 @@ static bool cnss_is_aux_support_enabled(struct cnss_plat_data *plat_priv)
 	switch (plat_priv->device_id) {
 	case PEACH_DEVICE_ID:
 	case COLOGNE_DEVICE_ID:
+	case FIG_DEVICE_ID:
 		if (!plat_priv->fw_aux_uc_support) {
 			cnss_pr_dbg("FW does not support aux uc capability\n");
 			return false;
@@ -2670,6 +2671,7 @@ static int cnss_cold_boot_cal_start_hdlr(struct cnss_plat_data *plat_priv)
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
 	case COLOGNE_DEVICE_ID:
+	case FIG_DEVICE_ID:
 		break;
 	default:
 		cnss_pr_err("Not supported for device ID 0x%lx\n",
@@ -3950,6 +3952,7 @@ int cnss_register_ramdump(struct cnss_plat_data *plat_priv)
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
 	case COLOGNE_DEVICE_ID:
+	case FIG_DEVICE_ID:
 		ret = cnss_register_ramdump_v2(plat_priv);
 		break;
 	default:
@@ -3974,6 +3977,7 @@ void cnss_unregister_ramdump(struct cnss_plat_data *plat_priv)
 	case MANGO_DEVICE_ID:
 	case PEACH_DEVICE_ID:
 	case COLOGNE_DEVICE_ID:
+	case FIG_DEVICE_ID:
 		cnss_unregister_ramdump_v2(plat_priv);
 		break;
 	default:
@@ -4689,7 +4693,8 @@ static ssize_t tme_opt_file_download_store(struct device *dev,
 		return count;
 	}
 
-	if (plat_priv->device_id == PEACH_DEVICE_ID &&
+	if ((plat_priv->device_id == PEACH_DEVICE_ID ||
+	     plat_priv->device_id == FIG_DEVICE_ID) &&
 	    cnss_bus_runtime_pm_get_sync(plat_priv) < 0)
 		goto runtime_pm_put;
 
@@ -4706,7 +4711,8 @@ static ssize_t tme_opt_file_download_store(struct device *dev,
 	cnss_pr_dbg("Received tme_opt_file_download indication cmd: %s\n", cmd);
 
 runtime_pm_put:
-	if (plat_priv->device_id == PEACH_DEVICE_ID)
+	if (plat_priv->device_id == PEACH_DEVICE_ID ||
+	    plat_priv->device_id == FIG_DEVICE_ID)
 		cnss_bus_runtime_pm_put(plat_priv);
 	return count;
 }
@@ -5047,6 +5053,9 @@ static void cnss_sram_dump_init(struct cnss_plat_data *plat_priv)
 	} else if (plat_priv->device_id == PEACH_DEVICE_ID) {
 		plat_priv->sram_dump_start_addr = SRAM_START;
 		plat_priv->sram_dump_size = PEACH_SRAM_SIZE;
+	} else if (plat_priv->device_id == FIG_DEVICE_ID) {
+		plat_priv->sram_dump_start_addr = SRAM_START;
+		plat_priv->sram_dump_size = FIG_SRAM_SIZE;
 	}
 
 	/* Postpone sram_dump allocation to when it is required.
@@ -5140,7 +5149,8 @@ static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 				  "qcom,rc-ep-short-channel"))
 		cnss_set_feature_list(plat_priv, CNSS_RC_EP_ULTRASHORT_CHANNEL_V01);
 	if (plat_priv->device_id == PEACH_DEVICE_ID ||
-	    plat_priv->device_id == COLOGNE_DEVICE_ID)
+	    plat_priv->device_id == COLOGNE_DEVICE_ID ||
+	    plat_priv->device_id == FIG_DEVICE_ID)
 		cnss_set_feature_list(plat_priv, CNSS_AUX_UC_SUPPORT_V01);
 
 	return 0;
@@ -5249,6 +5259,7 @@ static const struct platform_device_id cnss_platform_id_table[] = {
 	{ .name = "cologne", .driver_data = COLOGNE_DEVICE_ID, },
 	{ .name = "qcaconv", .driver_data = 0, },
 	{ .name = "direct-link", .driver_data = DIRECT_LINK_DEVICE_ID, },
+	{ .name = "fig", .driver_data = FIG_DEVICE_ID, },
 	{ },
 };
 
@@ -5283,7 +5294,9 @@ static const struct of_device_id cnss_of_match_table[] = {
 	{
 		.compatible = "qcom,cnss-direct-link",
 		.data = (void *)&cnss_platform_id_table[9]},
-
+	{
+		.compatible = "qcom,cnss-fig",
+		.data = (void *)&cnss_platform_id_table[10]},
 	{ },
 };
 MODULE_DEVICE_TABLE(of, cnss_of_match_table);
