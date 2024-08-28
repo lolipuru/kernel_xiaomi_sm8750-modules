@@ -64,6 +64,7 @@
 #define CAM_CSIPHY_MAX_CPHY_LANES            3
 #define CAM_CSIPHY_MAX_CPHY_DPHY_COMBO_LN    3
 #define CAM_CSIPHY_MAX_DATARATE_VARIANTS     3
+#define CSIPHY_QMARGIN_CMN_STATUS_REG_COUNT  11
 
 #define DPHY_LANE_0    BIT(0)
 #define CPHY_LANE_0    BIT(1)
@@ -390,6 +391,45 @@ struct cam_csiphy_dev_aux_setting_params {
 };
 
 /**
+ * struct csiphy_qmargin_csid_output
+ *
+ * @csi2_rx_status       : RX status register value of CSID PHY is
+ *                         connected to
+ * @csi2_total_crc_err   : Total CRC errors seen by CSID while
+ *                         streaming
+ * @csi2_total_pkts_rcvd : Total packets received by CSID while
+ *                         streaming
+ * @csi2_err_seen        : If CSID receiver encountered error(s)
+ *                         while streaming
+ * @epd_enabled          : If EPD was enabled for stream
+ */
+struct csiphy_qmargin_csid_output {
+	uint32_t csi2_rx_status;
+	uint32_t csi2_total_crc_err;
+	uint32_t csi2_total_pkts_rcvd;
+	bool csi2_err_seen;
+	bool epd_enabled;
+};
+
+/**
+ * struct csiphy_qmargin_sweep_data
+ *
+ * @qmargin_csid_output         : Set of CSID register values sent over
+ *                                by CSID through cam_subdev_notify_message
+ * @cdr_regs                    : Default CDR values needed by Qmargin
+ * @csiphy_qmargin_output_regs  : Register values needed by Qmargin to
+ *                                determine sweep results
+ * @bw                          : BW at which PHY is streaming at
+ */
+struct csiphy_qmargin_sweep_data {
+	struct csiphy_qmargin_csid_output qmargin_csid_output;
+	struct csiphy_reg_t cdr_regs[CAM_CSIPHY_MAX_CPHY_LANES];
+	unsigned int csiphy_qmargin_output_regs[
+		CSIPHY_QMARGIN_CMN_STATUS_REG_COUNT];
+	uint64_t bw;
+};
+
+/**
  * struct csiphy_device
  * @device_name                : Device name
  * @mutex                      : ioctl operation mutex
@@ -417,6 +457,7 @@ struct cam_csiphy_dev_aux_setting_params {
  * @crm_cb                     : Callback API pointers
  * @cdr_params                 : CDR sweep params
  * @aux_params                 : AUX settings buffer params
+ * @qmargin_data               : Qmargin params
  * @prgm_cmn_reg_across_csiphy : Flag to decide if com settings need to be programmed for all PHYs
  * @en_common_status_reg_dump  : Debugfs flag to enable common status register dump
  * @en_lane_status_reg_dump    : Debugfs flag to enable cphy/dphy lane status dump
@@ -454,6 +495,7 @@ struct csiphy_device {
 	struct cam_req_mgr_crm_cb               *crm_cb;
 	struct cam_csiphy_dev_cdr_sweep_params   cdr_params;
 	struct cam_csiphy_dev_aux_setting_params aux_params;
+	struct csiphy_qmargin_sweep_data         qmargin_data;
 	bool                                     prgm_cmn_reg_across_csiphy;
 	bool                                     en_common_status_reg_dump;
 	bool                                     en_lane_status_reg_dump;
