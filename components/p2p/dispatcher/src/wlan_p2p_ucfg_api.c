@@ -808,11 +808,13 @@ ucfg_p2p_extract_ap_assist_dfs_params(struct wlan_objmgr_vdev *vdev,
 QDF_STATUS ucfg_p2p_get_ap_assist_dfs_params(struct wlan_objmgr_vdev *vdev,
 					     bool *is_dfs_owner,
 					     bool *is_valid_ap_assist,
+					     bool *is_usr_restrict_csa,
 					     struct qdf_mac_addr *ap_bssid,
 					     uint8_t *opclass, uint8_t *chan)
 {
 	return p2p_get_ap_assist_dfs_params(vdev, is_dfs_owner,
-					    is_valid_ap_assist, ap_bssid,
+					    is_valid_ap_assist,
+					    is_usr_restrict_csa, ap_bssid,
 					    opclass, chan);
 }
 
@@ -855,4 +857,10 @@ void ucfg_p2p_psoc_priv_set_sta_vdev_id(struct wlan_objmgr_psoc *psoc,
 uint8_t ucfg_p2p_psoc_priv_get_sta_vdev_id(struct wlan_objmgr_psoc *psoc)
 {
 	return p2p_psoc_priv_get_sta_vdev_id(psoc);
+}
+
+QDF_STATUS
+ucfg_p2p_force_restrict_dfs_go_csa(struct wlan_objmgr_vdev *vdev, bool val)
+{
+	return p2p_force_restrict_dfs_go_csa(vdev, val);
 }
