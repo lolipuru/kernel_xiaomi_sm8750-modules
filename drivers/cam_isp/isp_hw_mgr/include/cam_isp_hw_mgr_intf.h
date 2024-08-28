@@ -597,6 +597,7 @@ struct cam_isp_hw_cmd_args {
 		} sof_ts;
 		struct {
 			int64_t                   last_applied_max_pd_req;
+			bool                      force_disable_drv;
 		} default_cfg_params;
 		struct cam_isp_hw_drv_info    drv_info;
 	} u;

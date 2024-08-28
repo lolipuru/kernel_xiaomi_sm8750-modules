@@ -219,22 +219,23 @@ enum cam_req_mgr_device_id {
 
 /**
  * enum cam_req_mgr_link_evt_type
- * @CAM_REQ_MGR_LINK_EVT_ERR               : error on the link from any of the
- *                                           connected devices
- * @CAM_REQ_MGR_LINK_EVT_PAUSE             : to pause the link vote down
- * @CAM_REQ_MGR_LINK_EVT_RESUME            : resumes the link which was paused votes up
- * @CAM_REQ_MGR_LINK_EVT_RESUME_HW         : seeking synced resume to unpause HW
- * @CAM_REQ_MGR_LINK_EVT_SOF_FREEZE        : request manager has detected an
- *                                           sof freeze
- * @CAM_REQ_MGR_LINK_EVT_STALLED           : Indicate to all connected devices
- *                                           that the pipeline is stalled.
- *                                           Devices can handle accordingly
- * @CAM_REQ_MGR_LINK_EVT_EOF               : Indicate to all connected devices
- *                                           that we get an EOF
- * @CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES : Notify sub devices of the properties
- *                                           updating
- * @CAM_REQ_MGR_LINK_EVT_SENSOR_FRAME_INFO : Notify sub devices of the sensor frame info
- * @CAM_REQ_MGR_LINK_EVT_MAX               : invalid event type
+ * @CAM_REQ_MGR_LINK_EVT_ERR                     : error on the link from any of the
+ *                                                 connected devices
+ * @CAM_REQ_MGR_LINK_EVT_PAUSE                   : to pause the link vote down
+ * @CAM_REQ_MGR_LINK_EVT_RESUME                  : resumes the link which was paused votes up
+ * @CAM_REQ_MGR_LINK_EVT_RESUME_HW               : seeking synced resume to unpause HW
+ * @CAM_REQ_MGR_LINK_EVT_SOF_FREEZE              : request manager has detected an
+ *                                                 sof freeze
+ * @CAM_REQ_MGR_LINK_EVT_STALLED                 : Indicate to all connected devices
+ *                                                 that the pipeline is stalled.
+ *                                                 Devices can handle accordingly
+ * @CAM_REQ_MGR_LINK_EVT_EOF                     : Indicate to all connected devices
+ *                                                 that we get an EOF
+ * @CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES       : Notify sub devices of the properties
+ *                                                 updating
+ * @CAM_REQ_MGR_LINK_EVT_SENSOR_FRAME_INFO       : Notify sub devices of the sensor frame info
+ * @CAM_REQ_MGR_LINK_EVT_FRAME_DURATION_CHANGING : Check if the frame skip packet is avaliable
+ * @CAM_REQ_MGR_LINK_EVT_MAX                     : invalid event type
  */
 enum cam_req_mgr_link_evt_type {
 	CAM_REQ_MGR_LINK_EVT_ERR,
@@ -246,6 +247,7 @@ enum cam_req_mgr_link_evt_type {
 	CAM_REQ_MGR_LINK_EVT_EOF,
 	CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES,
 	CAM_REQ_MGR_LINK_EVT_SENSOR_FRAME_INFO,
+	CAM_REQ_MGR_LINK_EVT_FRAME_DURATION_CHANGING,
 	CAM_REQ_MGR_LINK_EVT_MAX,
 };
 
@@ -439,6 +441,7 @@ struct cam_req_mgr_core_dev_link_setup {
  * @re_apply                    : to skip re_apply for buf_done request
  * @recovery                    : Indicate if it is recovery req
  * @no_further_requests         : No further requests on link notification
+ * @frame_duration_changing     : Indicate if the frame duration is changing in this applying
  */
 struct cam_req_mgr_apply_request {
 	int32_t    link_hdl;
@@ -451,6 +454,7 @@ struct cam_req_mgr_apply_request {
 	bool       re_apply;
 	bool       recovery;
 	bool       no_further_requests;
+	bool       frame_duration_changing;
 };
 
 /**
@@ -472,15 +476,16 @@ struct cam_req_mgr_flush_request {
 
 /**
  * struct cam_req_mgr_event_data
- * @link_hdl          : link handle
- * @req_id            : request id
- * @try_for_recovery  : Link is stalled allow subdevices to recover if
- *                      possible
- * @evt_type          : link event
- * @error             : error code
- * @properties_mask   : properties mask
- * @frame_info        : Frame info structure includes frame duration and
- *                    : vertical blanking
+ * @link_hdl                : link handle
+ * @req_id                  : request id
+ * @try_for_recovery        : Link is stalled allow subdevices to recover if
+ *                            possible
+ * @evt_type                : link event
+ * @error                   : error code
+ * @properties_mask         : properties mask
+ * @frame_info              : Frame info structure includes frame duration and
+ *                          : vertical blanking
+ * @frame_duration_changing : Indicate if the sensor changes frame duration
  */
 struct cam_req_mgr_link_evt_data {
 	int32_t  link_hdl;
@@ -492,6 +497,8 @@ struct cam_req_mgr_link_evt_data {
 		enum cam_req_mgr_device_error error;
 		uint32_t properties_mask;
 		struct cam_req_mgr_sensor_frame_info frame_info;
+		bool frame_duration_changing;
+		bool is_recovery;
 	} u;
 };
 

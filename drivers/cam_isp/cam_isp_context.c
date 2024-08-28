@@ -5768,6 +5768,8 @@ static int __cam_isp_ctx_apply_default_req_settings(
 		hw_cmd_args.cmd_type = CAM_HW_MGR_CMD_INTERNAL;
 		isp_hw_cmd_args.u.default_cfg_params.last_applied_max_pd_req =
 			apply->last_applied_max_pd_req;
+		isp_hw_cmd_args.u.default_cfg_params.force_disable_drv =
+			apply->frame_duration_changing;
 		isp_hw_cmd_args.cmd_type =
 			CAM_ISP_HW_MGR_CMD_PROG_DEFAULT_CFG;
 
