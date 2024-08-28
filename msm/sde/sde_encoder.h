@@ -1008,6 +1008,12 @@ enum hrtimer_restart sde_encoder_phys_phys_self_refresh_helper(struct hrtimer *t
 enum hrtimer_restart sde_encoder_phys_backlight_timer_cb(struct hrtimer *timer);
 
 /**
+ * sde_encoder_phys_cancel_backlight_timer - cancel any scheduled backlight timer
+ * @drm_enc:    Pointer to drm encoder structure
+ */
+void sde_encoder_phys_cancel_backlight_timer(struct drm_encoder *drm_enc);
+
+/**
  * sde_encoder_handle_video_psr_self_refresh - Handle incremental backlight requirement
  * @sde_enc: Pointer to sde encoder
  * @send_still_cmd: True if still cmd needs to be sent along with self refresh
