@@ -13,6 +13,8 @@
 #include "include/cam_csiphy_2_2_0_hwreg.h"
 #include "include/cam_csiphy_2_2_1_hwreg.h"
 #include "include/cam_csiphy_2_3_0_hwreg.h"
+#include "include/cam_csiphy_2_4_0_hwreg.h"
+#include "include/cam_csiphy_2_4_1_hwreg.h"
 #include "cam_mem_mgr_api.h"
 
 /* Clock divide factor for CPHY spec v1.0 */
@@ -354,6 +356,16 @@ int32_t cam_csiphy_parse_dt_info(struct platform_device *pdev,
 	} else if (of_device_is_compatible(soc_info->dev->of_node, "qcom,csiphy-v2.3.0")) {
 		csiphy_dev->ctrl_reg = &ctrl_reg_2_3_0;
 		csiphy_dev->hw_version = CSIPHY_VERSION_V230;
+		csiphy_dev->is_divisor_32_comp = true;
+		csiphy_dev->clk_lane = 0;
+	} else if (of_device_is_compatible(soc_info->dev->of_node, "qcom,csiphy-v2.4.0")) {
+		csiphy_dev->ctrl_reg = &ctrl_reg_2_4_0;
+		csiphy_dev->hw_version = CSIPHY_VERSION_V240;
+		csiphy_dev->is_divisor_32_comp = true;
+		csiphy_dev->clk_lane = 0;
+	} else if (of_device_is_compatible(soc_info->dev->of_node, "qcom,csiphy-v2.4.1")) {
+		csiphy_dev->ctrl_reg = &ctrl_reg_2_4_1;
+		csiphy_dev->hw_version = CSIPHY_VERSION_V241;
 		csiphy_dev->is_divisor_32_comp = true;
 		csiphy_dev->clk_lane = 0;
 	} else {

@@ -38,6 +38,8 @@
 #define CSIPHY_VERSION_V220                       0x220
 #define CSIPHY_VERSION_V221                       0x221
 #define CSIPHY_VERSION_V230                       0x230
+#define CSIPHY_VERSION_V240                       0x240
+#define CSIPHY_VERSION_V241                       0x241
 
 /**
  * @csiphy_dev: CSIPhy device structure
