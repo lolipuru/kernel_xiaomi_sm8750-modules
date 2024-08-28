@@ -315,6 +315,7 @@ enum sde_transition_state {
 
 enum sde_min_sr_state {
 	SDE_MIN_SR_COMPLETE,
+	SDE_MIN_SR_IN_PROGRESS,
 	SDE_MIN_SR_SCHEDULED,
 };
 
