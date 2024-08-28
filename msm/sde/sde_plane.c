@@ -3628,6 +3628,7 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 	struct sde_plane *psde;
 	struct drm_plane_state *state;
 	struct sde_plane_state *pstate;
+	struct sde_kms *sde_kms = NULL;
 
 	psde = to_sde_plane(plane);
 	state = plane->state;
@@ -3679,6 +3680,13 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 
 	if (pstate->dirty & SDE_PLANE_DIRTY_QOS)
 		_sde_plane_set_qos_remap(plane);
+
+	sde_kms = _sde_plane_get_kms(plane);
+	if (sde_plane_get_property(pstate, PLANE_PROP_BLEND_OP) == SDE_DRM_BLEND_OP_SKIP
+		&& sde_kms) {
+		sde_vbif_setup_clk_force_ctrl(sde_kms, psde->pipe_hw->cap->clk_ctrl, true);
+		SDE_EVT32(psde->pipe_hw->cap->clk_ctrl, true);
+	}
 
 	/* clear dirty */
 	pstate->dirty = 0x0;
