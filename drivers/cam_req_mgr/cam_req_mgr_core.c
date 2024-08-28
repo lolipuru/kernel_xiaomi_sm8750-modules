@@ -1133,13 +1133,11 @@ static int __cam_req_mgr_check_for_lower_pd_devices(
  *             devices with lower pipeline delay value. But if there are
  *             continuous max_delay empty slots, we don't need to move to
  *             next slot since the last request is applied to all devices.
- * @no_further_requests: Indicate that there are no more requests on this link
  * @link     : Link handle
  *
  * @return   : 0 for success, negative for failure
  */
 static int __cam_req_mgr_move_to_next_req_slot(
-	bool *no_further_requests,
 	struct cam_req_mgr_core_link *link)
 {
 	int rc = 0;
@@ -1192,7 +1190,6 @@ static int __cam_req_mgr_move_to_next_req_slot(
 				"CHECK here wr %d, rd %d", in_q->wr_idx, idx);
 		else
 			__cam_req_mgr_inc_idx(&in_q->wr_idx, 1, in_q->num_slots);
-		*no_further_requests = true;
 	} else
 		link->cont_empty_slots = 0;
 
@@ -1208,15 +1205,13 @@ static int __cam_req_mgr_move_to_next_req_slot(
  * @link               : pointer to link whose input queue and req tbl are
  *                       traversed through
  * @in_q               : pointer to input request queue
- * @no_further_requests: No further requests on link
  *
  * @return   : 0 for success, negative for failure
  *
  */
 static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 	struct cam_req_mgr_req_queue *in_q, uint32_t trigger,
-	struct cam_req_mgr_connected_device **failed_dev,
-	bool no_further_requests)
+	struct cam_req_mgr_connected_device **failed_dev)
 {
 	int                                  rc = 0, pd, i, j, idx;
 	bool                                 found = false;
@@ -1225,6 +1220,7 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 	struct cam_req_mgr_apply_request     apply_req;
 	struct cam_req_mgr_link_evt_data     evt_data;
 	struct cam_req_mgr_tbl_slot          *slot = NULL;
+	struct cam_req_mgr_slot              *req_slot = NULL;
 	struct cam_req_mgr_apply             *apply_data = NULL;
 	struct cam_req_mgr_state_monitor     state;
 
@@ -1248,6 +1244,7 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 	}
 
 	apply_data = link->req.apply_data;
+	req_slot = &in_q->slot[in_q->rd_idx];
 
 	/*
 	 * This For loop is to address the special operation requested
@@ -1391,7 +1388,8 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 				apply_req.report_if_bubble = 0;
 				apply_req.last_applied_max_pd_req =
 					link->req.prev_apply_data[link->max_delay].req_id;
-				apply_req.no_further_requests = no_further_requests;
+				apply_req.no_further_requests =
+					(req_slot->req_id == -1) ? true : false;
 				if ((dev->ops) && (dev->ops->notify_frame_skip))
 					dev->ops->notify_frame_skip(&apply_req);
 				continue;
@@ -2127,14 +2125,12 @@ static int __cam_req_mgr_check_multi_sync_link_ready(
  * @brief              : processes read index in request queue and traverse through table
  * @link               : pointer to link whose input queue and req tbl are
  *                       traversed through
- * @no_further_requests: No further requests on link
  *
  * @return   : 0 for success, negative for failure
  *
  */
 static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
-	struct cam_req_mgr_trigger_notify *trigger_data,
-	bool no_further_requests)
+	struct cam_req_mgr_trigger_notify *trigger_data)
 {
 	int                                  rc = 0, idx, pd, i;
 	int                                  reset_step = 0;
@@ -2343,7 +2339,7 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 	}
 	mutex_unlock(&session->lock);
 
-	rc = __cam_req_mgr_send_req(link, link->req.in_q, trigger, &dev, no_further_requests);
+	rc = __cam_req_mgr_send_req(link, link->req.in_q, trigger, &dev);
 	if (rc < 0) {
 		/* Apply req failed retry at next sof */
 		slot->status = CRM_SLOT_STATUS_REQ_PENDING;
@@ -3599,7 +3595,7 @@ void __cam_req_mgr_apply_on_bubble(
 		err_info->sof_timestamp_val;
 	trigger_data.trigger = err_info->trigger;
 
-	rc = __cam_req_mgr_process_req(link, &trigger_data, false);
+	rc = __cam_req_mgr_process_req(link, &trigger_data);
 	if (rc)
 		CAM_ERR(CAM_CRM,
 			"Failed to apply request on bubbled frame");
@@ -3854,7 +3850,6 @@ static int cam_req_mgr_process_trigger(void *priv, void *data)
 	int                                  reset_step = 0;
 	int                                  i = 0;
 	struct cam_req_mgr_state_monitor     state;
-	bool                                 no_further_requests = false;
 
 	if (!data || !priv) {
 		CAM_ERR(CAM_CRM, "input args NULL %pK %pK", data, priv);
@@ -3956,7 +3951,7 @@ static int cam_req_mgr_process_trigger(void *priv, void *data)
 		 */
 		CAM_DBG(CAM_CRM, "link[%x] Req[%lld] invalidating slot",
 			link->link_hdl, in_q->slot[in_q->rd_idx].req_id);
-		rc = __cam_req_mgr_move_to_next_req_slot(&no_further_requests, link);
+		rc = __cam_req_mgr_move_to_next_req_slot(link);
 		if (rc) {
 			CAM_DBG(CAM_REQ,
 				"No pending req to apply to lower pd devices");
@@ -3966,7 +3961,7 @@ static int cam_req_mgr_process_trigger(void *priv, void *data)
 		}
 	}
 
-	rc = __cam_req_mgr_process_req(link, trigger_data, no_further_requests);
+	rc = __cam_req_mgr_process_req(link, trigger_data);
 
 release_lock:
 	mutex_unlock(&link->req.lock);
