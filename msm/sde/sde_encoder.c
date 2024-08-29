@@ -79,6 +79,8 @@
 
 #define IDLE_SHORT_TIMEOUT	1
 
+#define IDLE_TIMEOUT_MAX	150
+
 #define EVT_TIME_OUT_SPLIT 2
 
 #define MAX_FREQ_SEQ_SIZE 5
@@ -2627,12 +2629,40 @@ void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
 					SDE_PERF_ENABLE_COMMIT : SDE_PERF_BEGIN_COMMIT);
 }
 
+static unsigned int _sde_encoder_vrr_min_idle_time(struct sde_encoder_virt *sde_enc)
+{
+	unsigned int dpu_min_ms, nominal_vsync_ms, vrr_min_idle_time_ms;
+	struct sde_connector *sde_conn;
+
+	if (!sde_enc || !sde_enc->cur_master || !sde_enc->cur_master->connector) {
+		SDE_ERROR("invalid encoder-connector\n");
+		return 0;
+	}
+
+	sde_conn = to_sde_connector(sde_enc->cur_master->connector);
+
+	if (!sde_conn->freq_pattern || !sde_conn->freq_pattern->needs_ap_refresh)
+		return 0;
+
+	dpu_min_ms = DIV_ROUND_UP(1000000, sde_conn->freq_pattern->freq_stepping_seq[0]);
+	nominal_vsync_ms = DIV_ROUND_UP(1000, sde_enc->mode_info.frame_rate);
+	vrr_min_idle_time_ms = dpu_min_ms + nominal_vsync_ms;
+
+	if (vrr_min_idle_time_ms > IDLE_TIMEOUT_MAX) {
+		vrr_min_idle_time_ms = IDLE_TIMEOUT_MAX;
+		SDE_EVT32(sde_conn->freq_pattern->freq_stepping_seq[0],
+			sde_enc->mode_info.frame_rate, SDE_EVTLOG_ERROR);
+	}
+
+	return vrr_min_idle_time_ms;
+}
+
 static void _sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
 	u32 sw_event)
 {
 	struct drm_encoder *drm_enc = &sde_enc->base;
 	struct msm_drm_private *priv;
-	unsigned int lp, idle_pc_duration;
+	unsigned int lp, idle_pc_duration, vrr_min_idle_time = 0;
 	struct msm_drm_thread *disp_thread;
 
 	/* return early if called from esd thread */
@@ -2651,6 +2681,11 @@ static void _sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
 	else
 		idle_pc_duration = IDLE_POWERCOLLAPSE_DURATION;
 
+	if (sde_enc->disp_info.vrr_caps.video_psr_support) {
+		vrr_min_idle_time = _sde_encoder_vrr_min_idle_time(sde_enc);
+		idle_pc_duration = max(idle_pc_duration, vrr_min_idle_time);
+	}
+
 	priv = drm_enc->dev->dev_private;
 	disp_thread = &priv->disp_thread[sde_enc->crtc->index];
 
@@ -2659,7 +2694,7 @@ static void _sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
 			&sde_enc->delayed_off_work,
 			msecs_to_jiffies(idle_pc_duration));
 	SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
-			idle_pc_duration, SDE_EVTLOG_FUNC_CASE2);
+			idle_pc_duration, vrr_min_idle_time, SDE_EVTLOG_FUNC_CASE2);
 	SDE_DEBUG_ENC(sde_enc, "sw_event:%d, work scheduled\n",
 			sw_event);
 }
