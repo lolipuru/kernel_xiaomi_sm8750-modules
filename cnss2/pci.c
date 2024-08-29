@@ -75,6 +75,8 @@
 #define CNSS_256KB_SIZE			0x40000
 #define DEVICE_RDDM_COOKIE		0xCAFECACE
 
+#define CNSS_RDDM_TIMEOUT_COUNT_MAX 3
+
 static bool cnss_driver_registered;
 
 static DEFINE_SPINLOCK(pci_link_down_lock);
@@ -970,6 +972,9 @@ __cnss_del_rddm_timer(struct cnss_pci_data *pci_priv,
 #if IS_ENABLED(CONFIG_MHI_BUS_MISC)
 static void cnss_mhi_debug_reg_dump(struct cnss_pci_data *pci_priv)
 {
+	if (cnss_pci_check_link_status(pci_priv))
+		return;
+
 	mhi_debug_reg_dump(pci_priv->mhi_ctrl);
 }
 
@@ -1923,6 +1928,7 @@ int cnss_pci_shutdown_cleanup(struct cnss_pci_data *pci_priv)
 		return -ENODEV;
 	}
 
+	atomic_set(&pci_priv->rddm_timeout_cnt, 0);
 	return cnss_del_rddm_timer(pci_priv);
 }
 
@@ -6444,13 +6450,16 @@ static int cnss_pci_assert_host_sol(struct cnss_pci_data *pci_priv)
 			 * already asserted from some other thread and
 			 * no further action required from the caller.
 			 */
-			return 0;
+			goto out;
 		}
 	}
 
 	cnss_pr_dbg("Assert host SOL GPIO to retry RDDM, expecting link down\n");
 	cnss_set_host_sol_value(pci_priv->plat_priv, 1);
 
+out:
+	/* start rddm timer here in case dev SOL is not triggered */
+	cnss_start_rddm_timer(pci_priv);
 	return 0;
 }
 
@@ -7224,12 +7233,25 @@ static void cnss_dev_rddm_timeout_hdlr(struct timer_list *t)
 	struct cnss_pci_data *pci_priv =
 		from_timer(pci_priv, t, dev_rddm_timer);
 	enum mhi_ee_type mhi_ee;
+	int rddm_timeout_cnt;
 
 	if (!pci_priv)
 		return;
 
-	cnss_fatal_err("Timeout waiting for RDDM notification, driver state 0x%lx\n",
-		       pci_priv->plat_priv->driver_state);
+	rddm_timeout_cnt = atomic_inc_return(&pci_priv->rddm_timeout_cnt);
+	cnss_fatal_err("Timeout waiting for RDDM notification, driver state 0x%lx (%d)\n",
+		       pci_priv->plat_priv->driver_state, rddm_timeout_cnt);
+
+	/* To avoid endless rddm timeout */
+	if (rddm_timeout_cnt >= CNSS_RDDM_TIMEOUT_COUNT_MAX) {
+		cnss_pr_err("Trigger TIMEOUT recovery on continuous RDDM timeout\n");
+		cnss_mhi_debug_reg_dump(pci_priv);
+		cnss_pci_bhi_debug_reg_dump(pci_priv);
+		cnss_pci_soc_scratch_reg_dump(pci_priv);
+		cnss_schedule_recovery(&pci_priv->pci_dev->dev,
+				       CNSS_REASON_TIMEOUT);
+		return;
+	}
 
 	if (cnss_pci_check_link_status(pci_priv)) {
 		if (cnss_get_host_sol_value(pci_priv->plat_priv) == 1)
