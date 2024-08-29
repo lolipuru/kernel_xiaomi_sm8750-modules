@@ -336,7 +336,6 @@ enum sde_multi_te_states {
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
- * @cesta_flush_active:         Boolean indicating cesta override flush_active bit is set
  * @cesta_force_auto_active_db_update:	Boolean indicating auto-active-on-panic is set in SCC
  *					with force-db-update. This is required as a workaround for
  *					cmd mode when previous frame ctl-done is very close to
@@ -427,7 +426,6 @@ struct sde_encoder_virt {
 	u32 multi_te_fps;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
-	bool cesta_force_active;
 	bool cesta_force_auto_active_db_update;
 };
 

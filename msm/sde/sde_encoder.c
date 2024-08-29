@@ -4699,8 +4699,8 @@ void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
 	struct drm_connector *drm_conn;
 	bool is_vid = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 	struct intf_status intf_status = {0};
-	u32 u_bound, l_bound, line_count, qsync_mode;
-	const u32 porch_margin = 10;
+	u32 u_bound, l_bound, line_count, qsync_mode, trial = 0;
+	const u32 porch_margin = 20, max_trials = 20;
 
 	if ((disp_info->intf_type != DRM_MODE_CONNECTOR_DSI) || !is_vid || !sde_enc->cesta_client
 			|| !cur_master->hw_intf || !cur_master->hw_intf->ops.get_status
@@ -4718,46 +4718,22 @@ void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
 	l_bound = mode_info->vtotal - cur_master->prog_fetch_start - porch_margin;
 	u_bound = mode_info->vtotal;
 
+	line_count = intf_status.line_count;
+	if ((line_count < l_bound) || (line_count > u_bound))
+		return;
+
 	/*
 	 * ctl flush when line-cnt is in prog-fetch region causes issues with cesta idle-vote
-	 * at ext-vfp. As a workaround, override cesta to stay active during this time and remove
-	 * the override at the end of the commit after panel-vsync, but polling the line-count
-	 * for reset.
+	 * at ext-vfp. As a workaround, delay the flush after the prog-fetch region.
 	 */
-	line_count = intf_status.line_count;
-	if ((line_count >= l_bound) && (line_count < u_bound)) {
-		sde_enc->cesta_force_active = true;
-		sde_cesta_override_ctrl(sde_enc->cesta_client, SDE_CESTA_OVERRIDE_FORCE_ACTIVE);
-		SDE_EVT32(line_count, l_bound, u_bound, mode_info->vtotal,
-				cur_master->prog_fetch_start);
-	}
-}
-
-void sde_encoder_poll_intf_line_count_reset(struct drm_encoder *drm_enc)
-{
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
-	struct sde_encoder_phys *cur_master = sde_enc->cur_master;
-	u32 line_count, max_trials = 10;
-	int i;
-
-	if (!sde_enc->cesta_force_active)
-		return;
-
-	if (!cur_master->hw_intf || !cur_master->hw_intf->ops.get_line_count)
-		return;
-
-	for (i = 0; i < max_trials; i++) {
+	do {
+		usleep_range(20, 25);
 		line_count = cur_master->hw_intf->ops.get_line_count(cur_master->hw_intf);
-		if (line_count < 100)
-			break;
+		trial++;
+	} while ((line_count >= l_bound) && (line_count <= u_bound) && (trial < max_trials));
 
-		usleep_range(50, 55);
-	}
-
-	/* remove force active from cesta configs */
-	sde_cesta_override_ctrl(sde_enc->cesta_client, 0);
-	sde_enc->cesta_force_active = false;
-	SDE_EVT32(i, line_count, (i == max_trials) ? SDE_EVTLOG_ERROR : 0);
+	SDE_EVT32(line_count, l_bound, u_bound, mode_info->vtotal, cur_master->prog_fetch_start,
+			(trial == max_trials) ? SDE_EVTLOG_ERROR : trial);
 }
 
 void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
@@ -4789,7 +4765,6 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 	}
 
 	sde_enc->mode_switch = SDE_MODE_SWITCH_NONE;
-	sde_encoder_poll_intf_line_count_reset(drm_enc);
 	_sde_encoder_cesta_update(drm_enc, SDE_PERF_COMPLETE_COMMIT);
 }
 
@@ -4845,9 +4820,6 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	is_dp = phys->hw_intf && phys->hw_intf->cap->type == INTF_DP;
 	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 
-	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
-		sde_encoder_check_prog_fetch_region(drm_enc);
-
 	/*
 	 * Cesta blocks ctl flush in hardware until cesta vote is processed, but
 	 * intf and periph flushes are not similarly blocked. Poll cesta's handshake
@@ -4857,6 +4829,9 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 			ctl->ops.bitmask_has_bit(ctl, SDE_HW_FLUSH_PERIPH, phys->hw_intf->idx) ||
 			ctl->ops.bitmask_has_bit(ctl, SDE_HW_FLUSH_INTF, phys->hw_intf->idx)))
 		sde_cesta_poll_handshake(sde_enc->cesta_client);
+
+	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
+		sde_encoder_check_prog_fetch_region(drm_enc);
 
 	/* update pending counts and trigger kickoff ctl flush atomically */
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
