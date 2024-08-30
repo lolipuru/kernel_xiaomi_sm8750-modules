@@ -1212,8 +1212,10 @@ static int _validate_dt_entry(struct device_node *np,
 				rc = prop_count[i];
 			break;
 		case PROP_TYPE_BIT_OFFSET_ARRAY:
-			of_get_property(np, sde_prop[i].prop_name, &val);
-			prop_count[i] = val / (MAX_BIT_OFFSET * sizeof(u32));
+			if (of_get_property(np, sde_prop[i].prop_name, &val))
+				prop_count[i] = val / (MAX_BIT_OFFSET * sizeof(u32));
+			else
+				prop_count[i] = 0;
 			break;
 		case PROP_TYPE_NODE:
 			snp = of_get_child_by_name(np,
