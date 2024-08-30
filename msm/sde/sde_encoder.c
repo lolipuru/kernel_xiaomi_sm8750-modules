@@ -3310,10 +3310,12 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 		if (sde_enc->cesta_client && is_cmd_mode
 				&& sde_enc->crtc && !sde_enc->crtc->state->active_changed
 				&& ((sde_enc->mode_switch == SDE_MODE_SWITCH_RES_DOWN)
-					|| (sde_enc->mode_switch == SDE_MODE_SWITCH_FPS_DOWN)))
+					|| (sde_enc->mode_switch == SDE_MODE_SWITCH_FPS_DOWN)
+					|| sde_enc->multi_te_fps))
 			sde_enc->old_vsync_count =
 				sde_encoder_helper_calc_vsync_count(drm_enc, old_adj_mode->vtotal,
-						drm_mode_vrefresh(old_adj_mode));
+						sde_enc->multi_te_fps ? sde_enc->multi_te_fps
+							: drm_mode_vrefresh(old_adj_mode));
 
 		intf_mode = sde_encoder_get_intf_mode(drm_enc);
 		if (msm_is_mode_seamless_dms(msm_mode) ||
@@ -4745,7 +4747,7 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 	u32 vsync_count, vrefresh;
 
 	SDE_EVT32(DRMID(drm_enc), sde_enc->mode_switch, sde_enc->cesta_force_auto_active_db_update,
-			sde_enc->old_vsync_count, SDE_EVTLOG_FUNC_ENTRY);
+			sde_enc->old_vsync_count, sde_enc->multi_te_fps, SDE_EVTLOG_FUNC_ENTRY);
 
 	if (sde_enc->cesta_client && sde_enc->cesta_force_auto_active_db_update) {
 		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, false,
@@ -4756,7 +4758,8 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 	if (sde_enc->old_vsync_count && phys_enc->hw_intf &&
 			phys_enc->hw_intf->ops.update_tearcheck_vsync_count) {
 
-		vrefresh = sde_encoder_get_fps(&sde_enc->base);
+		vrefresh = sde_enc->multi_te_fps ? sde_enc->multi_te_fps
+				: sde_encoder_get_fps(&sde_enc->base);
 		vsync_count = sde_encoder_helper_calc_vsync_count(drm_enc,
 				mode_info->vtotal, vrefresh);
 		phys_enc->hw_intf->ops.update_tearcheck_vsync_count(phys_enc->hw_intf, vsync_count);
