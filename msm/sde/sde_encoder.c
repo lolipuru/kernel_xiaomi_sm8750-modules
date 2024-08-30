@@ -2230,7 +2230,7 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 				 * if ESD check or some other thread is running at the same time.
 				 */
 
-				SDE_ERROR("idle entry failed, power vote still held");
+				SDE_DEBUG("idle entry failed, power vote still held");
 				SDE_EVT32(SDE_EVTLOG_FUNC_CASE8);
 			}
 
