@@ -1702,7 +1702,9 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	}
 	ops->update_bitmask_sspp = sde_hw_ctl_update_bitmask_sspp;
 	ops->update_bitmask_mixer = sde_hw_ctl_update_bitmask_mixer;
-	ops->reg_dma_flush = sde_hw_reg_dma_flush;
+	if  (cap & BIT(SDE_CTL_REG_DMA))
+		ops->reg_dma_flush = sde_hw_reg_dma_flush;
+
 	ops->get_start_state = sde_hw_ctl_get_start_state;
 
 	if (cap & BIT(SDE_CTL_CESTA_FLUSH))
