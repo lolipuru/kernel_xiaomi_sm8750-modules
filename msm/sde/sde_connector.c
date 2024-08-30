@@ -1102,6 +1102,11 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 	frame_interval_ns = sde_connector_get_property(c_conn->base.state,
 			CONNECTOR_PROP_FRAME_INTERVAL);
 
+	if (!c_conn->apply_vrr && frame_interval_ns) {
+		c_conn->apply_vrr = true;
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, c_conn->apply_vrr);
+	}
+
 	if (!frame_interval_ns) {
 		SDE_DEBUG("VRR not supported\n");
 		return;
@@ -1153,7 +1158,7 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 	SDE_EVT32(connector->base.id, frame_interval_ns,
 		frame_interval_ns>>32, usecase_idx_updated,
 		frame_interval_updated, c_conn->freq_pattern_updated,
-		c_conn->freq_pattern_type_changed);
+		c_conn->freq_pattern_type_changed,  c_conn->apply_vrr);
 	SDE_DEBUG("usecase_update:%d FI_updated:%d usecase:%d FI:%d pattern_updated %d %d\n",
 			usecase_idx_updated, frame_interval_updated, usecase_idx,
 			frame_interval, c_conn->freq_pattern_updated,

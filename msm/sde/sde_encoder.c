@@ -2933,6 +2933,11 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 			sde_crtc_frame_pending(sde_enc->crtc), SDE_EVTLOG_ERROR);
 		_sde_encoder_rc_kickoff_delayed(sde_enc, sw_event, sde_crtc);
 		goto end;
+	} else if (sde_enc->disp_info.vrr_caps.vrr_support &&
+			!sde_conn->apply_vrr) {
+		SDE_DEBUG_ENC(sde_enc, "Skip idle entry: apply_vrr set false\n");
+		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state, SDE_EVTLOG_ERROR);
+		goto end;
 	}
 
 	crtc_id = drm_crtc_index(crtc);
