@@ -4093,6 +4093,42 @@ static int fastrpc_dspsignal_cancel_wait(struct fastrpc_user *fl,
 	return 0;
 }
 
+/**
+ * fastrpc_ssr_dspsignal_cancel_wait() -
+ * Function to cancel waiting signals during SSR
+ * @arg1: Fastrpc user file pointer
+ *
+ * dspsignals will be waiting for DSP response
+ * cancel wait for these signals during SSR
+ *
+ * Return: void
+ */
+void fastrpc_ssr_dspsignal_cancel_wait(struct fastrpc_user *fl)
+{
+	unsigned long irq_flags = 0;
+	unsigned int i, j;
+	struct fastrpc_dspsignal *group, *sig;
+
+	spin_lock_irqsave(&fl->dspsignals_lock, irq_flags);
+	for (i = 0; i < (FASTRPC_DSPSIGNAL_NUM_SIGNALS /
+	         FASTRPC_DSPSIGNAL_GROUP_SIZE); i++) {
+		group = fl->signal_groups[i];
+		if (group) {
+			for (j = 0; j < FASTRPC_DSPSIGNAL_GROUP_SIZE;
+			     j++) {
+				sig = &group[j];
+				if (sig && sig->state ==
+				    DSPSIGNAL_STATE_PENDING) {
+					complete_all(&sig->comp);
+					sig->state =
+					    DSPSIGNAL_STATE_CANCELED;
+				}
+			}
+		}
+	}
+	spin_unlock_irqrestore(&fl->dspsignals_lock, irq_flags);
+}
+
 static int fastrpc_invoke_dspsignal(struct fastrpc_user *fl, struct fastrpc_internal_dspsignal *fsig)
 {
 	int err = 0;

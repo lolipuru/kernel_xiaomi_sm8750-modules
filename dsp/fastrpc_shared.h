@@ -929,6 +929,7 @@ int fastrpc_device_register(struct device *dev, struct fastrpc_channel_ctx *cctx
 				bool is_secured, const char *domain);
 struct fastrpc_channel_ctx* get_current_channel_ctx(struct device *dev);
 void fastrpc_notify_users(struct fastrpc_user *user);
+void fastrpc_ssr_dspsignal_cancel_wait(struct fastrpc_user *fl);
 
 /* Function to clean all SMMU mappings associated with a fastrpc user obj */
 void fastrpc_free_user(struct fastrpc_user *fl);
