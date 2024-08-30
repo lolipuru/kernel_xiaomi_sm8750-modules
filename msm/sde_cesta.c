@@ -8,6 +8,7 @@
 #include <linux/clk/qcom.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_runtime.h>
+#include <linux/delay.h>
 #include <soc/qcom/crm.h>
 
 #include "sde_cesta.h"
@@ -817,7 +818,7 @@ int sde_cesta_resource_disable(u32 cesta_index)
 
 	cesta = cesta_list[cesta_index];
 
-	SDE_EVT32(cesta_index, cesta->sw_fs_enabled);
+	SDE_EVT32(cesta_index, cesta->sw_fs_enabled, SDE_EVTLOG_FUNC_ENTRY);
 
 	if (cesta->sw_fs_enabled) {
 		/* remove the AOSS & BW votes placed during enable */
@@ -856,6 +857,12 @@ int sde_cesta_resource_disable(u32 cesta_index)
 		SDE_ERROR_CESTA("mode2 entry failed ret:%d\n", ret);
 		return ret;
 	}
+
+	/*
+	 * Add delay before disabling MMCX to allow HW to complete any pending operations.
+	 * This avoids potential NOC issue.
+	 */
+	usleep_range(500, 510);
 
 	return 0;
 }
