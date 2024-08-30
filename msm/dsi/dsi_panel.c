@@ -5161,6 +5161,8 @@ static int dsi_panel_prepare_cmd(struct dsi_panel *panel,
 		set->cmds[i].last_command = last_command;
 		if (!last_command || (i < (set->count - 1)))
 			set->cmds[i].msg.flags |= MIPI_DSI_MSG_BATCH_COMMAND;
+		else
+			set->cmds[i].msg.flags &= ~(MIPI_DSI_MSG_BATCH_COMMAND);
 	}
 
 	return 0;
