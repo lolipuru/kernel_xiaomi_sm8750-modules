@@ -1867,19 +1867,21 @@ static irqreturn_t cnss_dev_sol_handler(int irq, void *data)
 {
 	struct cnss_plat_data *plat_priv = data;
 	struct cnss_sol_gpio *sol_gpio = &plat_priv->sol_gpio;
+	int sol_gpio_value;
 
+	sol_gpio_value = cnss_get_dev_sol_value(plat_priv);
 	if (test_bit(CNSS_POWER_OFF, &plat_priv->driver_state) ||
-	    test_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state)) {
-		cnss_pr_dbg("Ignore Dev SOL during device power off");
+	    test_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state) ||
+	    sol_gpio_value == 1) {
+		cnss_pr_dbg("Ignore Dev SOL IRQ (%u) with driver state 0x%lx, dev_sol_val: %d\n",
+			    irq, plat_priv->driver_state, sol_gpio_value);
 		return IRQ_HANDLED;
 	}
-	if (cnss_get_dev_sol_value(plat_priv) == 1)
-		return IRQ_HANDLED;
 
 	sol_gpio->dev_sol_counter++;
-	cnss_pr_dbg("WLAN device SOL IRQ (%u) is asserted #%u, dev_sol_val: %d\n",
+	cnss_pr_dbg("Dev SOL IRQ (%u) is asserted #%u with driver state 0x%lx, dev_sol_val: %d\n",
 		    irq, sol_gpio->dev_sol_counter,
-		    cnss_get_dev_sol_value(plat_priv));
+		    plat_priv->driver_state, sol_gpio_value);
 
 	/* Make sure abort current suspend */
 	cnss_pm_stay_awake(plat_priv);
