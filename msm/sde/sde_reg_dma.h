@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -197,6 +197,10 @@ enum sde_reg_dma_setup_ops {
  * @DSPP_IGC: select dspp igc block
  * @LTM0: select LTM0 block
  * @LTM1: select LTM1 block
+ * @VIG4: select vig4 block
+ * @VIG5: select vig5 block
+ * @VIG6: select vig6 block
+ * @VIG7: select vig7 block
  * @MDSS: select mdss block
  */
 enum sde_reg_dma_blk {
@@ -224,6 +228,10 @@ enum sde_reg_dma_blk {
 	DMA5  = BIT(21),
 	LTM2 = BIT(22),
 	LTM3 = BIT(23),
+	VIG4 = BIT(24),
+	VIG5 = BIT(25),
+	VIG6 = BIT(26),
+	VIG7 = BIT(27),
 	MDSS  = BIT(31)
 };
 
