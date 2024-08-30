@@ -3119,12 +3119,11 @@ static int dp_display_validate_link_clock(struct dp_display_private *dp,
 }
 
 static int dp_display_validate_pixel_clock(struct dp_display_mode dp_mode,
-		u32 max_pclk_khz)
+		u32 max_pclk_khz, u32 pclk_factor)
 {
-	u32 pclk_khz = dp_mode.timing.widebus_en ?
-		(dp_mode.timing.pixel_clk_khz >> 1) :
-		dp_mode.timing.pixel_clk_khz;
+	u32 pclk_khz = dp_mode.timing.pixel_clk_khz;
 
+	pclk_khz = pclk_khz / pclk_factor;
 	if (pclk_khz > max_pclk_khz) {
 		DP_DEBUG("clk: %d kHz, max: %d kHz\n", pclk_khz, max_pclk_khz);
 		return -EPERM;
@@ -3265,7 +3264,8 @@ static enum drm_mode_status dp_display_validate_mode(
 	if (rc)
 		goto end;
 
-	rc = dp_display_validate_pixel_clock(dp_mode, dp_display->max_pclk_khz);
+	rc = dp_display_validate_pixel_clock(dp_mode, dp_display->max_pclk_khz,
+			dp_panel->pclk_factor);
 	if (rc)
 		goto end;
 
