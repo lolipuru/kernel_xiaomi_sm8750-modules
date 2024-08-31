@@ -684,23 +684,25 @@ static int cam_soc_util_set_cesta_clk_rate(struct cam_hw_soc_info *soc_info,
 	clk = soc_info->clk[src_clk_idx];
 
 	if (!skip_mmrm_set_rate && soc_info->mmrm_handle) {
-		CAM_DBG(CAM_UTIL, "cesta mmrm hw client: set %s, high-rate %lld low-rate %lld",
-			soc_info->clk_name[src_clk_idx], high_val, low_val);
-
 		if (!cam_is_crmb_supported(soc_info)) {
-				rc = cam_soc_util_set_hw_client_rate_through_mmrm(
-					soc_info->mmrm_handle,
-					low_val, high_val, 1,
-					cesta_client_idx);
-				if (rc) {
-					CAM_ERR(CAM_UTIL,
-						"set_sw_client_rate through mmrm failed on %s clk_id %d low_val %llu high_val %llu client idx=%d",
-						soc_info->clk_name[src_clk_idx],
-						soc_info->clk_id[src_clk_idx],
-						low_val, high_val, cesta_client_idx);
-					return rc;
-				}
-				goto end;
+			CAM_DBG(CAM_UTIL,
+				"cesta mmrm hw client: set %s, high-rate %lld low-rate %lld",
+				soc_info->clk_name[src_clk_idx], high_val, low_val);
+
+			rc = cam_soc_util_set_hw_client_rate_through_mmrm(
+				soc_info->mmrm_handle,
+				low_val, high_val, 1,
+				cesta_client_idx);
+
+			if (rc) {
+				CAM_ERR(CAM_UTIL,
+					"set_hw_client_rate through mmrm failed on %s clk_id %d low_val %llu high_val %llu client idx=%d",
+					soc_info->clk_name[src_clk_idx],
+					soc_info->clk_id[src_clk_idx],
+					low_val, high_val, cesta_client_idx);
+				return rc;
+			}
+			goto end;
 		}
 	}
 
