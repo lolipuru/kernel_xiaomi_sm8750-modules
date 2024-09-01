@@ -2852,7 +2852,7 @@ static int wcd9378_ear_pa_gain_get(struct snd_kcontrol *kcontrol,
 		snd_soc_component_read(component, WCD9378_ANA_EAR_COMPANDER_CTL) &
 				WCD9378_ANA_EAR_COMPANDER_CTL_EAR_GAIN_MASK;
 
-	ucontrol->value.enumerated.item[0] = ear_gain;
+	ucontrol->value.enumerated.item[0] = ear_gain >> 2;
 	dev_dbg(component->dev, "%s: get ear_gain val: 0x%x\n",
 			__func__, ear_gain);
 	return 0;
@@ -2876,6 +2876,7 @@ static int wcd9378_ear_pa_gain_put(struct snd_kcontrol *kcontrol,
 	}
 
 	ear_gain = ucontrol->value.integer.value[0];
+	ear_gain = ear_gain << 2;
 	snd_soc_component_update_bits(component, WCD9378_ANA_EAR_COMPANDER_CTL,
 				WCD9378_ANA_EAR_COMPANDER_CTL_EAR_GAIN_MASK,
 				ear_gain);
