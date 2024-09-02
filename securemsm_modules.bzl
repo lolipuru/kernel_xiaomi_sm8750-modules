@@ -4,7 +4,6 @@ TZLOG_PATH = "tz_log"
 HDCP_PATH = "hdcp"
 QCEDEV_PATH = "crypto-qti"
 QRNG_PATH = "qrng"
-SI_CORE_TEST_PATH = "si_core_tests"
 SMMU_PROXY_PATH = "smmu-proxy"
 QCEDEV_FE_PATH="qcedev_fe"
 
@@ -151,13 +150,6 @@ register_securemsm_module(
     deps = [":qcedev_local_headers",
             "%b_qce50_dlkm"],
 )
-
-register_securemsm_module(
-    name = "si_core_test",
-    path = SI_CORE_TEST_PATH,
-    default_srcs = ["si_core_test.c"],
-)
-
 
 register_securemsm_module(
     name = "qrng_dlkm",
