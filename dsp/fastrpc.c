@@ -3642,14 +3642,16 @@ static int fastrpc_wait_on_notif_queue(
 {
 	int err = 0;
 	unsigned long flags;
-	struct fastrpc_notif_rsp *notif = NULL, *inotif, *n;
+	struct fastrpc_notif_rsp *notif, *inotif, *n;
 	struct device *dev = fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
 
 read_notif_status:
 	err = wait_event_interruptible(fl->proc_state_notif.notif_wait_queue,
 				atomic_read(&fl->proc_state_notif.notif_queue_count));
-	if (err)
+	if (err) {
+		kfree(notif);
 		return err;
+	}
 
 	spin_lock_irqsave(&fl->proc_state_notif.nqlock, flags);
 	list_for_each_entry_safe(inotif, n, &fl->notif_queue, notifn) {
