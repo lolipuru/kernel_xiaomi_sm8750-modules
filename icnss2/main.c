@@ -726,7 +726,8 @@ static int icnss_send_smp2p(struct icnss_priv *priv,
 	value <<= ICNSS_SMEM_SEQ_NO_POS;
 	value |= msg_id;
 
-	icnss_pr_smp2p("Sending SMP2P value: 0x%X\n", value);
+	icnss_pr_smp2p("Sending SMP2P value: 0x%X, Ref count: %d\n", value,
+			atomic_read(&priv->soc_wake_ref_count));
 
 	if (msg_id == ICNSS_SOC_WAKE_REQ || msg_id == ICNSS_SOC_WAKE_REL)
 		reinit_completion(&penv->smp2p_soc_wake_wait);
@@ -744,8 +745,9 @@ static int icnss_send_smp2p(struct icnss_priv *priv,
 			if (!wait_for_completion_timeout(
 					&priv->smp2p_soc_wake_wait,
 					msecs_to_jiffies(SMP2P_SOC_WAKE_TIMEOUT))) {
-				icnss_pr_err("SMP2P Soc Wake timeout msg %d, %s\n", msg_id,
-					     icnss_smp2p_str[smp2p_entry]);
+				icnss_pr_err("SMP2P Soc Wake timeout msg %d, %s, Ref count: %d\n",
+					     msg_id, icnss_smp2p_str[smp2p_entry],
+					     atomic_read(&priv->soc_wake_ref_count));
 				if (!test_bit(ICNSS_FW_DOWN, &priv->state))
 					ICNSS_ASSERT(0);
 			}
@@ -4046,7 +4048,8 @@ int icnss_force_wake_request(struct device *dev)
 		return 0;
 	}
 
-	icnss_pr_soc_wake("Calling SOC Wake request");
+	icnss_pr_soc_wake("Calling SOC Wake request, Ref_count: %d",
+			  atomic_read(&priv->soc_wake_ref_count));
 
 	icnss_soc_wake_event_post(priv, ICNSS_SOC_WAKE_REQUEST_EVENT,
 				  0, NULL);
@@ -4076,7 +4079,8 @@ int icnss_force_wake_release(struct device *dev)
 		return -EINVAL;
 	}
 
-	icnss_pr_soc_wake("Calling SOC Wake response");
+	icnss_pr_soc_wake("Calling SOC Wake response, Ref_count: %d",
+			  atomic_read(&priv->soc_wake_ref_count));
 
 	if (atomic_read(&priv->soc_wake_ref_count) &&
 	    icnss_atomic_dec_if_greater_one(&priv->soc_wake_ref_count)) {
@@ -4100,6 +4104,8 @@ int icnss_is_device_awake(struct device *dev)
 		icnss_pr_err("Platform driver not initialized\n");
 		return -EINVAL;
 	}
+	icnss_pr_smp2p("SOC wake ref_count: %d\n",
+		       atomic_read(&priv->soc_wake_ref_count));
 
 	return atomic_read(&priv->soc_wake_ref_count);
 }
