@@ -1260,9 +1260,7 @@ int ipa_wdi_opt_dpath_notify_flt_rlsd_per_inst
 		return -EPERM;
 	}
 
-	ret = ipa_pm_deferred_deactivate(ipa_wdi_ctx_list[hdl]->ipa_pm_hdl);
-
-	ipa3_check_wdi_opt_chn_empty(opt_dpath_info[hdl].ipa_ep_idx_rx);
+	ret = ipa_pm_deferred_deactivate(ipa_wdi_ctx_list[0]->ipa_pm_hdl);
 
 	memset(&ind, 0, sizeof(ind));
 	ind.filter_removal_all_status.result =
@@ -1594,10 +1592,9 @@ int ipa_wdi_opt_dpath_wlan_ctrl_pkt_rcvd_req(
 	atomic_sub(req->packet_count, &opt_dpath_info[0].num_ctrl_pkts);
 	if (atomic_read(&opt_dpath_info[0].num_ctrl_pkts) == 0) {
 		ret = ipa_pm_deferred_deactivate(opt_dpath_info[0].ipa_pm_hdl_ctrl);
-		if (ret) {
+		if (ret)
 			IPA_WDI_DBG("fail to deactivate ipa pm\n");
 			IPA_EVENT_LOG("fail to deactivate ipa pm\n");
-		}
 	}
 	mutex_unlock(&ipa_wdi_ctx_list[0]->clk_lock);
 

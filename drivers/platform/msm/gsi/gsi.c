@@ -4037,39 +4037,6 @@ int gsi_query_channel_info(unsigned long chan_hdl,
 }
 EXPORT_SYMBOL(gsi_query_channel_info);
 
-int gsi_is_teth_channel_empty(unsigned long chan_hdl, bool *is_empty)
-{
-	uint32_t rp;
-	uint32_t wp;
-
-	if (!gsi_ctx) {
-		pr_err("%s:%d gsi context not allocated\n", __func__, __LINE__);
-		return -GSI_STATUS_NODEV;
-	}
-
-	if (chan_hdl >= gsi_ctx->max_ch || !is_empty) {
-		GSIERR("bad params chan_hdl=%lu is_empty=%pK\n",
-				chan_hdl, is_empty);
-		return -GSI_STATUS_INVALID_PARAMS;
-	}
-
-	rp = gsihal_read_reg_nk(GSI_EE_n_GSI_CH_k_RE_FETCH_READ_PTR,
-			gsi_ctx->per.ee, chan_hdl);
-	wp = gsihal_read_reg_nk(GSI_EE_n_GSI_CH_k_RE_FETCH_WRITE_PTR,
-			gsi_ctx->per.ee, chan_hdl);
-	if (rp == wp) {
-		GSIDBG_LOW("Teth channel empty\n");
-		*is_empty = true;
-	} else {
-		GSIDBG("Teth channel not empty ch=%lu rp = 0x%x wp = 0x%x\n",
-				chan_hdl, rp, wp);
-		*is_empty = false;
-	}
-
-	return GSI_STATUS_SUCCESS;
-}
-EXPORT_SYMBOL_GPL(gsi_is_teth_channel_empty);
-
 int gsi_is_channel_empty(unsigned long chan_hdl, bool *is_empty)
 {
 	struct gsi_chan_ctx *ctx;
