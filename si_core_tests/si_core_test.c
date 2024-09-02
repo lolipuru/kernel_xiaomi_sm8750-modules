@@ -11,7 +11,6 @@
 #include <linux/qtee_shmbridge.h>
 #if IS_ENABLED(CONFIG_QCOM_SI_CORE)
 #include <linux/firmware/qcom/si_object.h>
-#include <linux/firmware.h>
 #include <linux/cdev.h>
 #include <linux/fs.h>
 #include <linux/file.h>
@@ -22,8 +21,6 @@
 static int device_open(struct inode *, struct file *);
 static int device_release(struct inode *, struct file *);
 static long device_ioctl(struct file *, unsigned int, unsigned long);
-static ssize_t device_write(struct file *file, const char __user *buf,
-							size_t count, loff_t *offset);
 
 // Define IOCTL commands
 #define IOCTL_RUN_TEST _IOW(1, 0, int)
@@ -38,7 +35,6 @@ static const struct file_operations fops = {
 	.open = device_open,
 	.release = device_release,
 	.unlocked_ioctl = device_ioctl,
-	.write = device_write
 };
 
 // Device open function
@@ -101,7 +97,7 @@ int client_env_open(struct si_object_invoke_ctx *oic, struct si_object *client_e
 	int ret, result;
 	struct si_arg args[3] = { 0 };
 
-	args[0].b = (struct si_buffer) { {&uid_val}, sizeof(uid_val) };
+	args[0].b = (struct si_buffer) { &uid_val, sizeof(uid_val) };
 	args[0].type = SI_AT_IB;
 	args[1].type = SI_AT_OO;
 	args[2].type = SI_AT_END;
@@ -125,7 +121,7 @@ static int query_heap_info(struct si_object_invoke_ctx *oic, struct si_object *s
 	int ret, result;
 	struct si_arg args[2] = { 0 };
 
-	args[0].b = (struct si_buffer) { {heap_info}, sizeof(*heap_info) };
+	args[0].b = (struct si_buffer) { heap_info, sizeof(*heap_info) };
 	args[0].type = SI_AT_OB;
 	args[1].type = SI_AT_END;
 
@@ -155,7 +151,7 @@ static int load_app(struct si_object *appLoader, void *file, int len,
 	struct si_arg args[3] = { 0 };
 
 	args[0].type = SI_AT_IB;
-	args[0].b = (struct si_buffer) { {buffer}, length };
+	args[0].b = (struct si_buffer) { buffer, length };
 	args[1].type = SI_AT_OO;
 	args[2].type = SI_AT_END;
 
@@ -210,11 +206,11 @@ static int send_command(struct si_object *appObj, struct si_object_invoke_ctx *o
 	uint8_t digest[32] = {0};
 
 	args[0].type = SI_AT_IB;
-	args[0].b = (struct si_buffer) { {stringToHash}, sizeof(stringToHash)-1 };
+	args[0].b = (struct si_buffer) { stringToHash, sizeof(stringToHash)-1 };
 	args[1].type = SI_AT_IB;
-	args[1].b = (struct si_buffer) { {idPtr}, sizeof(hash_sha) };
+	args[1].b = (struct si_buffer) { idPtr, sizeof(hash_sha) };
 	args[2].type = SI_AT_OB;
-	args[2].b = (struct si_buffer) { {digest}, sizeof(digest) };
+	args[2].b = (struct si_buffer) { digest, sizeof(digest) };
 	args[3].type = SI_AT_END;
 
 	// ISMCIExampleApp_computeHash
@@ -310,44 +306,6 @@ struct ioctl_arguments {
 	u64 file;
 	u32 len;
 };
-
-static ssize_t device_write(struct file *file, const char __user *buf, size_t count, loff_t *offset)
-{
-	size_t maxdatalen = 1024*64;
-
-	char *kernel_buffer;
-
-	const struct firmware *fw_entry;
-	char fw_name[300] = "\0";
-
-	kernel_buffer = kmalloc(maxdatalen, GFP_KERNEL);
-
-	const char *appname = "smcinvoke_example_ta64";
-	int rc = 0;
-
-	snprintf(fw_name, sizeof(fw_name), "%s.mbn", appname);
-	rc = firmware_request_nowarn(&fw_entry, fw_name, si_core_dev);
-	if (rc) {
-		pr_err("Load %s failed, ret:%d\n", fw_name, rc);
-		return rc;
-	}
-
-	memcpy(kernel_buffer, fw_entry->data, fw_entry->size);
-
-	pr_info("Running test case 1: Direct Path\n");
-	if (si_core_get_service_test(&oic) != 0)
-		pr_err("SI_CORE_KERNEL_TEST_GET_SERVICE failed.\n");
-	else
-		pr_info("SI_CORE_KERNEL_TEST_GET_SERVICE succeed.\n");
-	pr_info("Running test case 2: Loading TA/Sending command\n");
-
-	if (si_core_kernel_test_load_app(&oic, kernel_buffer, fw_entry->size) != 0)
-		pr_err("SI_CORE_KERNEL_TEST_LOAD_APP failed.\n");
-	else
-		pr_info("SI_CORE_KERNEL_TEST_LOAD_APP succeed.\n");
-
-	return count;
-}
 
 // IOCTL function
 static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
