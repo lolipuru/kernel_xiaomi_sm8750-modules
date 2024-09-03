@@ -2175,11 +2175,6 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 			sde_encoder_cancel_vrr_timers(drm_enc);
 			sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
 
-			if (drm_crtc) {
-				drm_crtc_vblank_off(drm_crtc);
-				kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
-			}
-
 			for (i = 0; i < sde_enc->num_phys_encs; i++) {
 				struct sde_encoder_phys *phys_enc = sde_enc->phys_encs[i];
 
@@ -2208,20 +2203,16 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 		/* disable SDE core clks */
 		pm_runtime_put_sync(drm_enc->dev->dev);
 
-		if (req == REQ_ENTER_IDLE && is_video_mode && info->esync_enabled) {
-			if (!pm_runtime_status_suspended(drm_enc->dev->dev)) {
-				/*
-				 * pm_runtime_status_suspended should only be trusted when protected
-				 * by a lock, which we don't have. This could give false positives
-				 * if ESD check or some other thread is running at the same time.
-				 */
+		if (req == REQ_ENTER_IDLE && is_video_mode && info->esync_enabled &&
+				!pm_runtime_status_suspended(drm_enc->dev->dev)) {
+			/*
+			 * pm_runtime_status_suspended should only be trusted when protected
+			 * by a lock, which we don't have. This could give false positives
+			 * if ESD check or some other thread is running at the same time.
+			 */
 
-				SDE_DEBUG("idle entry failed, power vote still held");
-				SDE_EVT32(SDE_EVTLOG_FUNC_CASE8);
-			}
-
-			if (drm_crtc)
-				drm_crtc_vblank_on(drm_crtc);
+			SDE_DEBUG("idle entry failed, power vote still held\n");
+			SDE_EVT32(SDE_EVTLOG_FUNC_CASE8);
 		}
 	}
 
