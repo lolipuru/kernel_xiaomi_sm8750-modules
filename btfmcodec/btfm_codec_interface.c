@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -326,8 +326,21 @@ static void btfmcodec_dai_shutdown(struct snd_pcm_substream *substream,
 	BTFMCODEC_DBG("dai->name: %s, dai->id: %d, dai->rate: %d", dai->name,
 		dai->id, dai->rate);
 
-	if (btfmcodec_get_current_transport(state) != IDLE &&
-	    btfmcodec_get_current_transport(state) != BT_Connected) {
+	if (btfmcodec_get_current_transport(state) == BTADV_AUDIO_Connecting &&
+	    btfmcodec_get_prev_transport(state) == BT_Connected) {
+		BTFMCODEC_INFO("%s: closing these ports as graph stopped when CIS is active",
+			__func__);
+		btfmcodec_hwep_shutdown(btfmcodec, dai->id, false);
+		btfmcodec_delete_configs(btfmcodec, dai->id);
+		if (!btfmcodec_is_valid_cache_avb(btfmcodec))
+			btfmcodec_set_current_state(state, IDLE);
+		return;
+	}
+
+	if ((btfmcodec_get_current_transport(state) != IDLE &&
+	    btfmcodec_get_current_transport(state) != BT_Connected) ||
+	    (btfmcodec_get_current_transport(state) == BTADV_AUDIO_Connecting &&
+	     btfmcodec_get_prev_transport(state) != BT_Connected)) {
 		BTFMCODEC_WARN("not allowing shutdown as state is:%s",
 			coverttostring(btfmcodec_get_current_transport(state)));
 		/* Delete stored configs */

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __LINUX_BTFM_CODEC_PKT_H
@@ -133,6 +133,8 @@ struct btm_adsp_state_ind {
 	uint32_t action;
 } __attribute__((packed));
 
-int btfmcodec_dev_enqueue_pkt(struct btfmcodec_char_device *, void *, int);
-bool btfmcodec_is_valid_cache_avb(struct btfmcodec_data *);
+int btfmcodec_dev_enqueue_pkt(struct btfmcodec_char_device *btfmcodec_dev, void *buf, int len);
+bool btfmcodec_is_valid_cache_avb(struct btfmcodec_data *btfmcodec);
+int btfmcodec_enqueue_transport(struct btfmcodec_char_device *btfmcodec_dev, uint8_t transport);
+int btfmcodec_dequeue_transport(struct btfmcodec_char_device *btfmcodec_dev);
 #endif /* __LINUX_BTFM_CODEC_PKT_H*/

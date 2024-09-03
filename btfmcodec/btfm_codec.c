@@ -111,6 +111,7 @@ static int btfmcodec_dev_release(struct inode *inode, struct file *file)
 		spin_unlock_irqrestore(&btfmcodec_dev->tx_queue_lock, flags);
 		/* we need to have separte rx lock for below buff */
 		skb_queue_purge(&btfmcodec_dev->rxq);
+		skb_queue_purge(&btfmcodec_dev->trans_rxq);
 	}
 
 	/* Notify waiting clients that client is closed or killed */
@@ -128,6 +129,7 @@ static int btfmcodec_dev_release(struct inode *inode, struct file *file)
 
 	btfmcodec->states.current_state = IDLE;
 	btfmcodec->states.next_state = IDLE;
+
 	return 0;
 }
 
@@ -157,21 +159,13 @@ static void btfmcodec_dev_rxwork(struct work_struct *work)
 			idx = BTM_PKT_TYPE_PREPARE_REQ;
 			BTFMCODEC_DBG("BTM_BTFMCODEC_PREPARE_AUDIO_BEARER_SWITCH_REQ");
 			if (len == BTM_PREPARE_AUDIO_BEARER_SWITCH_REQ_LEN) {
-				/* there are chances where bearer indication is not recevied,
-				 * So inform waiting thread to unblock itself and move to
-				 * previous state.
-				 */
-				if (btfmcodec_dev->status[BTM_PKT_TYPE_BEARER_SWITCH_IND] == BTM_WAITING_RSP) {
-				  BTFMCODEC_DBG("Notifying waiting beare indications");
-				  btfmcodec_dev->status[BTM_PKT_TYPE_BEARER_SWITCH_IND] = BTM_FAIL_RESP_RECV;
-				  wake_up_interruptible(&btfmcodec_dev->rsp_wait_q[BTM_PKT_TYPE_BEARER_SWITCH_IND]);
-				}
-				btfmcodec_dev->status[idx] = skb->data[0];
 				/* Reset bearer switch ind flag */
 				bearer_switch_ind =
 					&btfmcodec_dev->status[BTM_PKT_TYPE_BEARER_SWITCH_IND];
 				*bearer_switch_ind = BTM_WAITING_RSP;
-				queue_work(btfmcodec_dev->workqueue, &btfmcodec_dev->wq_prepare_bearer);
+				btfmcodec_enqueue_transport(btfmcodec_dev, skb->data[0]);
+				queue_work(btfmcodec_dev->workqueue,
+					&btfmcodec_dev->wq_prepare_bearer);
 			} else {
 				BTFMCODEC_ERR("wrong packet format with len:%d", len);
 			}
@@ -373,6 +367,44 @@ int btfmcodec_dev_enqueue_pkt(struct btfmcodec_char_device *btfmcodec_dev, void 
 	spin_unlock_irqrestore(&btfmcodec_dev->tx_queue_lock, flags);
 	BTFMCODEC_DBG("end");
 	return 0;
+}
+
+int btfmcodec_enqueue_transport(struct btfmcodec_char_device *btfmcodec_dev,
+				uint8_t transport)
+{
+	struct sk_buff *skb;
+
+	mutex_lock(&btfmcodec_dev->trans_lock);
+	skb = alloc_skb(1, GFP_ATOMIC);
+	if (!skb) {
+		BTFMCODEC_ERR("failed to allocate memory");
+		mutex_unlock(&btfmcodec_dev->trans_lock);
+		return -ENOMEM;
+	}
+
+	skb_put_data(skb, &transport, 1);
+	skb_queue_tail(&btfmcodec_dev->trans_rxq, skb);
+	mutex_unlock(&btfmcodec_dev->trans_lock);
+	wake_up_interruptible(&btfmcodec_dev->rsp_wait_q[BTM_PKT_TYPE_BEARER_SWITCH_IND]);
+	return 0;
+}
+
+int btfmcodec_dequeue_transport(struct btfmcodec_char_device *btfmcodec_dev)
+{
+	uint8_t transport = 0xFF;
+	struct sk_buff *skb;
+
+	mutex_lock(&btfmcodec_dev->trans_lock);
+	skb = skb_dequeue(&btfmcodec_dev->trans_rxq);
+	if (!skb) {
+		mutex_unlock(&btfmcodec_dev->trans_lock);
+		return transport;
+	}
+	transport = skb->data[0];
+	skb_pull(skb, 1);
+	kfree_skb(skb);
+	mutex_unlock(&btfmcodec_dev->trans_lock);
+	return transport;
 }
 
 /*
@@ -639,6 +671,7 @@ static int __init btfmcodec_init(void)
 	btfmcodec->btfmcodec_dev = btfmcodec_dev;
 	refcount_set(&btfmcodec_dev->active_clients, 1);
 	mutex_init(&btfmcodec_dev->lock);
+	mutex_init(&btfmcodec_dev->trans_lock);
 	strscpy(btfmcodec_dev->dev_name, "btfmcodec_dev", DEVICE_NAME_MAX_LEN);
 	device_initialize(dev);
 	dev->class = dev_class;
@@ -674,6 +707,7 @@ static int __init btfmcodec_init(void)
 		btfmcodec_dev->dev_name, dev_major, btfmcodec_dev->reuse_minor);
 
 	skb_queue_head_init(&btfmcodec_dev->rxq);
+	skb_queue_head_init(&btfmcodec_dev->trans_rxq);
 	mutex_init(&btfmcodec_dev->lock);
 	INIT_WORK(&btfmcodec_dev->rx_work, btfmcodec_dev_rxwork);
 	init_waitqueue_head(&btfmcodec_dev->readq);
