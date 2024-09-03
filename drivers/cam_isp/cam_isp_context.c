@@ -9101,7 +9101,7 @@ static int __cam_isp_ctx_stop_dev_in_activated_unlock(
 	struct cam_isp_ctx_req          *req_isp;
 	struct cam_isp_context          *ctx_isp =
 		(struct cam_isp_context *) ctx->ctx_priv;
-	struct cam_isp_stop_args         stop_isp;
+	struct cam_isp_stop_args         stop_isp = {0};
 
 	/* Mask off all the incoming hardware events */
 	spin_lock_bh(&ctx->lock);
