@@ -324,6 +324,11 @@ struct sde_hw_intf_ops {
 	void (*enable_infinite_vfp)(struct sde_hw_intf *intf, bool enable);
 
 	/**
+	 * Get the HW esync timestamp value
+	 */
+	u64 (*get_esync_timestamp)(struct sde_hw_intf *intf);
+
+	/**
 	 * Enable/disable 64 bit compressed data input to interface block
 	 */
 	void (*enable_compressed_input)(struct sde_hw_intf *intf,
