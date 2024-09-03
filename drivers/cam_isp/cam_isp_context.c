@@ -690,7 +690,7 @@ static void __cam_isp_ctx_dump_state_monitor_array(
 		time64_to_tm(ctx_isp->dbg_monitors.state_monitor[index].evt_time_stamp.tv_sec,
 			0, &ts);
 		CAM_ERR(CAM_ISP,
-			"Idx[%d] time[%d-%d %d:%d:%d.%lld]:Substate[%s] Frame[%lld] Req[%llu] evt[%s]",
+			"Idx[%d] time[%d-%d %d:%d:%d.%lld]:Substate[%s] Frame[%lld] Req[%llu] evt[%s] at time[%llu: %09llu]",
 			index, ts.tm_mon + 1, ts.tm_mday, ts.tm_hour, ts.tm_min, ts.tm_sec,
 			ctx_isp->dbg_monitors.state_monitor[index].evt_time_stamp.tv_nsec / 1000000,
 			__cam_isp_ctx_substate_val_to_type(
@@ -698,7 +698,9 @@ static void __cam_isp_ctx_dump_state_monitor_array(
 			ctx_isp->dbg_monitors.state_monitor[index].frame_id,
 			ctx_isp->dbg_monitors.state_monitor[index].req_id,
 			__cam_isp_hw_evt_val_to_type(
-				ctx_isp->dbg_monitors.state_monitor[index].trigger));
+				ctx_isp->dbg_monitors.state_monitor[index].trigger),
+			ctx_isp->dbg_monitors.state_monitor[index].evt_time_stamp.tv_sec,
+			ctx_isp->dbg_monitors.state_monitor[index].evt_time_stamp.tv_nsec);
 
 		index = (index + 1) % CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES;
 	}
@@ -1209,6 +1211,7 @@ static int __cam_isp_ctx_enqueue_init_request(
 		}
 
 		if (!rc) {
+			/* Copy data to old request for EPCR */
 			memcpy(req_isp_old->fence_map_out,
 				req_isp_new->fence_map_out,
 				sizeof(req_isp_new->fence_map_out[0])*
@@ -1272,6 +1275,32 @@ static int __cam_isp_ctx_enqueue_init_request(
 			/* Copy FCG HW update params */
 			__cam_isp_ctx_copy_fcg_params(hw_update_data,
 				req_isp_old, req_isp_new);
+
+			if (req_isp_new->hw_update_data.bw_clk_config.bw_config_valid) {
+				memcpy(&req_isp_old->hw_update_data.bw_clk_config.bw_config,
+					&req_isp_new->hw_update_data.bw_clk_config.bw_config,
+					sizeof(struct cam_isp_bw_config_internal));
+				memcpy(&req_isp_old->hw_update_data.bw_clk_config.bw_config_v2,
+					&req_isp_new->hw_update_data.bw_clk_config.bw_config_v2,
+					sizeof(struct cam_isp_bw_config_internal_v2));
+				req_isp_old->hw_update_data.bw_clk_config.bw_config_valid = true;
+			}
+
+			if (req_isp_new->hw_update_data.bw_clk_config.ife_clock_config_valid) {
+				memcpy(&req_isp_old->hw_update_data.bw_clk_config.ife_clock_config,
+					&req_isp_new->hw_update_data.bw_clk_config.ife_clock_config,
+					sizeof(struct cam_isp_clock_config_internal));
+				req_isp_old->hw_update_data.bw_clk_config.ife_clock_config_valid =
+					true;
+			}
+
+			if (req_isp_new->hw_update_data.bw_clk_config.sfe_clock_config_valid) {
+				memcpy(&req_isp_old->hw_update_data.bw_clk_config.sfe_clock_config,
+					&req_isp_new->hw_update_data.bw_clk_config.sfe_clock_config,
+					sizeof(struct cam_isp_clock_config_internal));
+				req_isp_old->hw_update_data.bw_clk_config.sfe_clock_config_valid =
+					true;
+			}
 
 			memcpy(&req_isp_old->hw_update_data.isp_drv_config,
 				&req_isp_new->hw_update_data.isp_drv_config,
@@ -5766,6 +5795,8 @@ static int __cam_isp_ctx_apply_default_req_settings(
 		hw_cmd_args.cmd_type = CAM_HW_MGR_CMD_INTERNAL;
 		isp_hw_cmd_args.u.default_cfg_params.last_applied_max_pd_req =
 			apply->last_applied_max_pd_req;
+		isp_hw_cmd_args.u.default_cfg_params.force_disable_drv =
+			apply->frame_duration_changing;
 		isp_hw_cmd_args.cmd_type =
 			CAM_ISP_HW_MGR_CMD_PROG_DEFAULT_CFG;
 

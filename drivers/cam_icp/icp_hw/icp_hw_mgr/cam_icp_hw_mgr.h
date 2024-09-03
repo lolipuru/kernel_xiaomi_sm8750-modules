@@ -519,6 +519,7 @@ struct cam_icp_hw_active_ctx_info {
  *            would be set only if SSR also failed to reload ICP.
  * @frame_in_process: Counter for frames in process
  * @frame_in_process_ctx_id: Contxt id processing frame
+ * @abort_in_process: Abort is in progress
  * @hw_cap_mask: device capability mask to indicate which devices type
  *               are available in this hw mgr
  * @num_pid: Number of cam hw pids linked to this icp hw mgr
@@ -578,6 +579,7 @@ struct cam_icp_hw_mgr {
 	uint64_t icp_svs_clk;
 	atomic_t frame_in_process;
 	int frame_in_process_ctx_id;
+	atomic_t abort_in_process;
 	uint32_t hw_cap_mask;
 	uint32_t num_pid;
 	uint32_t pid[CAM_ICP_PID_NUM_MAX];

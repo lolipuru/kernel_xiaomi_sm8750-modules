@@ -115,7 +115,7 @@ static int cam_ife_hw_mgr_event_handler(
 	void                                *evt_info);
 
 static int cam_ife_mgr_prog_default_settings(int64_t last_applied_max_pd_req,
-	bool is_streamon, struct cam_ife_hw_mgr_ctx *ctx);
+	bool force_disable_drv, bool is_streamon, struct cam_ife_hw_mgr_ctx *ctx);
 
 static int cam_ife_mgr_cmd_get_sof_timestamp(struct cam_ife_hw_mgr_ctx *ife_ctx,
 	uint64_t *time_stamp, uint64_t *boot_time_stamp, uint64_t *prev_time_stamp,
@@ -280,7 +280,8 @@ static int cam_isp_blob_path_exp_order_update(struct cam_ife_hw_mgr_ctx         
 }
 
 static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
-	uint64_t request_id, struct cam_isp_prepare_hw_update_data *prepare_hw_data)
+	uint64_t request_id, bool force_disable_drv,
+	struct cam_isp_prepare_hw_update_data *prepare_hw_data)
 {
 	bool                                 drv_en = false, update_drv = false;
 	bool                                 is_blob_config_valid = false;
@@ -477,10 +478,17 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 			next_drv_info->frame_duration, min_blanking_duration,
 			drv_info->blanking_duration, next_drv_info->blanking_duration,
 			drv_en, timeout_val, ctx->ctx_index);
+	}
 
-		drv_info->update_drv = update_drv;
-		drv_info->drv_en = drv_en;
-		drv_info->timeout_val = timeout_val;
+	drv_info->update_drv = update_drv;
+	drv_info->drv_en = drv_en;
+	drv_info->timeout_val = timeout_val;
+
+	if (force_disable_drv) {
+		update_drv = true;
+		drv_en = false;
+		CAM_DBG(CAM_ISP, "req_id:%llu force to disable drv, ctx:%d",
+			request_id, ctx->ctx_index);
 	}
 
 	if (!update_drv) {
@@ -1153,7 +1161,7 @@ void cam_ife_hw_mgr_drv_info_dump(
 		per_req_info = &hw_mgr_ctx->per_req_info[i];
 		if (per_req_info) {
 			CAM_INFO(CAM_ISP,
-				"Index[%d] Apply IFE Req[%llu]  frame_dur[%llu] blanking_dur[%llu] drv_timeout[%llu] drv_en[%d], path_idle[0x%x], update_drv[%d], blob_valid[%d] mup_en[%d]",
+				"Index[%d] Apply IFE Req[%llu]  frame_dur[%llu] blanking_dur[%llu] drv_timeout[%u] drv_en[%d], path_idle[0x%x], update_drv[%d], blob_valid[%d] mup_en[%d]",
 				i, per_req_info->drv_info.req_id,
 				per_req_info->drv_info.frame_duration,
 				per_req_info->drv_info.blanking_duration,
@@ -7671,7 +7679,7 @@ static int cam_ife_mgr_config_hw(
 
 	if ((ctx->flags.dynamic_drv_supported) ||
 		(hw_update_data->drv_config_valid)) {
-		rc = cam_isp_mgr_drv_config(ctx, cfg->request_id, hw_update_data);
+		rc = cam_isp_mgr_drv_config(ctx, cfg->request_id, false, hw_update_data);
 		if (rc) {
 			CAM_ERR(CAM_ISP, "DRV config failed for req: %llu rc:%d ctx_idx=%u",
 				cfg->request_id,
@@ -8780,7 +8788,7 @@ start_only:
 	}
 
 	if ((ctx->flags.is_sfe_fs) || (ctx->flags.is_sfe_shdr)) {
-		rc = cam_ife_mgr_prog_default_settings(0, true, ctx);
+		rc = cam_ife_mgr_prog_default_settings(0, false, true, ctx);
 		if (rc)
 			goto err;
 
@@ -15229,7 +15237,7 @@ end:
  * to each left RDIs
  */
 static int cam_ife_mgr_prog_default_settings(int64_t last_applied_max_pd_req,
-	bool is_streamon, struct cam_ife_hw_mgr_ctx *ctx)
+	bool force_disable_drv, bool is_streamon, struct cam_ife_hw_mgr_ctx *ctx)
 {
 	int rc = 0;
 
@@ -15258,7 +15266,7 @@ static int cam_ife_mgr_prog_default_settings(int64_t last_applied_max_pd_req,
 		 */
 		if ((ctx->flags.dynamic_drv_supported) &&
 			(last_applied_max_pd_req >= 0))
-			cam_isp_mgr_drv_config(ctx, last_applied_max_pd_req, NULL);
+			cam_isp_mgr_drv_config(ctx, last_applied_max_pd_req, force_disable_drv, NULL);
 
 		rc = cam_isp_config_csid_rup_aup(ctx);
 		if (rc)
@@ -15487,6 +15495,7 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 			skip_rup_aup = *((bool *)isp_hw_cmd_args->cmd_data);
 			rc = cam_ife_mgr_prog_default_settings(
 				isp_hw_cmd_args->u.default_cfg_params.last_applied_max_pd_req,
+				isp_hw_cmd_args->u.default_cfg_params.force_disable_drv,
 				skip_rup_aup, ctx);
 		}
 		break;
