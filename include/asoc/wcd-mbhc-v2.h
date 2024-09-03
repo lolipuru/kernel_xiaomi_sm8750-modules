@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __WCD_MBHC_V2_H__
 #define __WCD_MBHC_V2_H__
@@ -455,7 +455,7 @@ struct wcd_mbhc_intr {
 
 struct wcd_mbhc_register {
 	const char *id;
-	u16 reg;
+	int reg;
 	u8 mask;
 	u8 offset;
 	u8 invert;
