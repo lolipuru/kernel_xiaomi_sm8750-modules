@@ -94,6 +94,7 @@
 #define REASON_ROAM_SET_PRIMARY                     54
 #define REASON_ROAM_LINK_SWITCH_ASSOC_VDEV_CHANGE   55
 #define REASON_VDEV_RESTART_FROM_HOST               56
+#define REASON_AGGRESSIVE_ROAM_ENABLED              57
 
 #define FILS_MAX_KEYNAME_NAI_LENGTH WLAN_CM_FILS_MAX_KEYNAME_NAI_LENGTH
 #define WLAN_FILS_MAX_REALM_LEN WLAN_CM_FILS_MAX_REALM_LEN
@@ -781,6 +782,12 @@ struct rso_config_params {
  * @ROAM_RSSI_DIFF_6GHZ: roam rssi diff for 6 GHz AP
  * @IS_DISABLE_BTM: disable btm roaming
  * @IS_ROAM_AGGRESSIVE : Aggressive Roaming mode
+ * @ROAM_COMMON_AGGRESSIVE_MIN_ROAM_DELTA: Roam min roam delta in aggressive
+ *                                         mode
+ * @ROAM_AGGRESSIVE_SCORE_DELTA: Roam score delta in aggressive mode
+ * @ROAM_AGGRESSIVE_SCAN_STEP_RSSI: Roam scan step rssi in aggressive mode
+ * @ROAM_AGGRESSIVE_NEIGHBOR_LOOKUP_RSSI_THRESHOLD: Roam neighbour lookup
+ *                                                  threshold in aggressive mode
  */
 enum roam_cfg_param {
 	RSSI_CHANGE_THRESHOLD,
@@ -815,6 +822,10 @@ enum roam_cfg_param {
 	ROAM_RSSI_DIFF_6GHZ,
 	IS_DISABLE_BTM,
 	IS_ROAM_AGGRESSIVE,
+	ROAM_COMMON_AGGRESSIVE_MIN_ROAM_DELTA,
+	ROAM_AGGRESSIVE_SCORE_DELTA,
+	ROAM_AGGRESSIVE_SCAN_STEP_RSSI,
+	ROAM_AGGRESSIVE_NEIGHBOR_LOOKUP_RSSI_THRESHOLD,
 };
 
 /**

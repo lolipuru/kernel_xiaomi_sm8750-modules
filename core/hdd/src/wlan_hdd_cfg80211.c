@@ -226,6 +226,7 @@
 #endif
 #include "wlan_p2p_ucfg_api.h"
 #include "wlan_cfg80211_p2p.h"
+#include "wlan_ll_sap_api.h"
 
 /*
  * A value of 100 (milliseconds) can be sent to FW.
@@ -2245,6 +2246,11 @@ int wlan_hdd_sap_cfg_dfs_override(struct hdd_adapter *adapter)
 		return 0;
 
 	link_info = hdd_get_link_info_by_vdev(hdd_ctx, con_vdev_id);
+	if (!link_info) {
+		hdd_err("Invalid vdev");
+		return -EINVAL;
+	}
+
 	con_sap_adapter = link_info->adapter;
 	if (!con_sap_adapter)
 		return 0;
@@ -13773,8 +13779,10 @@ static int hdd_get_mlo_max_band_info(struct wlan_hdd_link_info *link_info,
 		nla_nest_end(skb, mlo_bd);
 		i++;
 
-		if (link_vdev)
+		if (link_vdev) {
 			hdd_objmgr_put_vdev_by_user(link_vdev, WLAN_OSIF_ID);
+			link_vdev = NULL;
+		}
 	}
 	nla_nest_end(skb, mlo_bd_info);
 end:
@@ -19648,6 +19656,13 @@ static int wlan_hdd_cfg80211_set_fast_roaming(struct hdd_context *hdd_ctx,
 	bool roaming_enabled;
 	int ret;
 
+	qdf_status =
+		sme_set_aggressive_roaming(hdd_ctx->mac_handle,
+					   adapter->deflink->vdev_id, false);
+
+	if (QDF_IS_STATUS_ERROR(qdf_status))
+		return qdf_status_to_os_return(qdf_status);
+
 	/*
 	 * Get current roaming state and decide whether to wait for RSO_STOP
 	 * response or not.
@@ -19693,7 +19708,8 @@ static int wlan_hdd_cfg80211_set_fast_roaming(struct hdd_context *hdd_ctx,
 
 static int
 wlan_hdd_cfg80211_set_aggressive_roaming(struct hdd_context *hdd_ctx,
-					 struct hdd_adapter *adapter)
+					 struct hdd_adapter *adapter,
+					 uint32_t is_fast_roam_enabled)
 {
 	int ret = 0;
 	QDF_STATUS qdf_status = 0;
@@ -19701,6 +19717,18 @@ wlan_hdd_cfg80211_set_aggressive_roaming(struct hdd_context *hdd_ctx,
 	qdf_status = sme_set_aggressive_roaming(hdd_ctx->mac_handle,
 						adapter->deflink->vdev_id,
 						true);
+	if (QDF_IS_STATUS_ERROR(qdf_status))
+		return qdf_status_to_os_return(qdf_status);
+
+	/* Update roaming */
+	qdf_status =
+		ucfg_user_space_enable_disable_rso(hdd_ctx->pdev,
+						   adapter->deflink->vdev_id,
+						   is_fast_roam_enabled);
+	if (QDF_IS_STATUS_ERROR(qdf_status))
+		hdd_err("ROAM_CONFIG: sme_config_fast_roaming failed with status=%d",
+				qdf_status);
+
 	ret = qdf_status_to_os_return(qdf_status);
 
 	return ret;
@@ -19777,7 +19805,8 @@ static int __wlan_hdd_cfg80211_set_roam_policy(struct wiphy *wiphy,
 		break;
 	case QCA_ROAMING_MODE_AGGRESSIVE:
 		ret = wlan_hdd_cfg80211_set_aggressive_roaming(hdd_ctx,
-							       adapter);
+							       adapter,
+							       roam_policy);
 		break;
 	default:
 		ret = -EINVAL;
@@ -25177,8 +25206,6 @@ static int __wlan_hdd_cfg80211_change_bss(struct wiphy *wiphy,
 	int link_id = -1;
 	struct wlan_hdd_link_info *link_info;
 
-	hdd_enter();
-
 	if (QDF_GLOBAL_FTM_MODE == hdd_get_conparam()) {
 		hdd_err("Command not allowed in FTM mode");
 		return -EINVAL;
@@ -25194,8 +25221,8 @@ static int __wlan_hdd_cfg80211_change_bss(struct wiphy *wiphy,
 		   TRACE_CODE_HDD_CFG80211_CHANGE_BSS,
 		   link_info->vdev_id, params->ap_isolate);
 
-	hdd_debug("Device_mode %s(%d), ap_isolate = %d",
-		  qdf_opmode_str(adapter->device_mode),
+	hdd_debug("vdev %d mode %s(%d), ap_isolate = %d",
+		  link_info->vdev_id, qdf_opmode_str(adapter->device_mode),
 		  adapter->device_mode, params->ap_isolate);
 
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
@@ -25232,7 +25259,6 @@ static int __wlan_hdd_cfg80211_change_bss(struct wiphy *wiphy,
 					CDP_ENABLE_AP_BRIDGE, vdev_param);
 	}
 
-	hdd_exit();
 	return ret;
 }
 
@@ -26086,14 +26112,14 @@ static int wlan_hdd_add_key_sap(struct wlan_hdd_link_info *link_info,
 
 	if (hostapd_state->bss_state == BSS_START) {
 		errno =
-		wlan_cfg80211_crypto_add_key(vdev,
+		wlan_cfg80211_crypto_add_key(vdev, NULL,
 					     (pairwise ?
 					      WLAN_CRYPTO_KEY_TYPE_UNICAST :
 					      WLAN_CRYPTO_KEY_TYPE_GROUP),
 					     key_index, true);
 		if (!errno)
 			wma_update_set_key(link_info->vdev_id, pairwise,
-					   key_index, cipher);
+					   key_index, NULL, cipher);
 	}
 	hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
 
@@ -26102,7 +26128,8 @@ static int wlan_hdd_add_key_sap(struct wlan_hdd_link_info *link_info,
 
 static int wlan_hdd_add_key_sta(struct wlan_objmgr_pdev *pdev,
 				struct wlan_hdd_link_info *link_info,
-				bool pairwise, u8 key_index, bool *ft_mode)
+				bool pairwise, u8 key_index,
+				const uint8_t *peer_mac, bool *ft_mode)
 {
 	struct wlan_objmgr_vdev *vdev;
 	int errno;
@@ -26121,7 +26148,7 @@ static int wlan_hdd_add_key_sta(struct wlan_objmgr_pdev *pdev,
 	vdev = hdd_objmgr_get_vdev_by_user(link_info, WLAN_OSIF_ID);
 	if (!vdev)
 		return -EINVAL;
-	errno = wlan_cfg80211_crypto_add_key(vdev, (pairwise ?
+	errno = wlan_cfg80211_crypto_add_key(vdev, peer_mac, (pairwise ?
 					     WLAN_CRYPTO_KEY_TYPE_UNICAST :
 					     WLAN_CRYPTO_KEY_TYPE_GROUP),
 					     key_index, true);
@@ -26403,7 +26430,7 @@ static int wlan_hdd_add_key_vdev(mac_handle_t mac_handle,
 	QDF_STATUS status;
 	struct wlan_objmgr_peer *peer;
 	struct hdd_context *hdd_ctx;
-	struct qdf_mac_addr mac_address;
+	struct qdf_mac_addr mac_address = {0};
 	int32_t cipher_cap, ucast_cipher = 0;
 	int errno = 0;
 	enum wlan_crypto_cipher_type cipher;
@@ -26544,8 +26571,10 @@ done:
 		fallthrough;
 	case QDF_STA_MODE:
 	case QDF_P2P_CLIENT_MODE:
-		errno = wlan_hdd_add_key_sta(hdd_ctx->pdev, link_info, pairwise,
-					     key_index, &ft_mode);
+		errno = wlan_hdd_add_key_sta(hdd_ctx->pdev, link_info,
+					     pairwise, key_index,
+					     (const uint8_t *)mac_address.bytes,
+					     &ft_mode);
 		if (ft_mode)
 			return 0;
 		break;
@@ -26554,7 +26583,7 @@ done:
 	}
 	if (!errno && (adapter->device_mode != QDF_SAP_MODE))
 		wma_update_set_key(wlan_vdev_get_id(vdev), pairwise, key_index,
-				   cipher);
+				   (const uint8_t *)mac_address.bytes, cipher);
 
 	hdd_exit();
 	return errno;
@@ -26610,12 +26639,16 @@ QDF_STATUS wlan_hdd_send_key_vdev(struct wlan_objmgr_vdev *vdev,
 			     vdev_id, mac_address.bytes);
 
 	errno = wlan_hdd_add_key_sta(hdd_ctx->pdev, link_info,
-				     pairwise, key_index, &ft_mode);
+				     pairwise, key_index,
+				     (const uint8_t *)mac_address.bytes,
+				     &ft_mode);
 	if (ft_mode)
 		return QDF_STATUS_SUCCESS;
 
 	if (!errno)
-		wma_update_set_key(vdev_id, pairwise, key_index, cipher_type);
+		wma_update_set_key(vdev_id, pairwise, key_index,
+				   (const uint8_t *)mac_address.bytes,
+				   cipher_type);
 	else
 		status = QDF_STATUS_E_FAILURE;
 
@@ -26933,8 +26966,6 @@ static int __wlan_hdd_cfg80211_add_key(struct wiphy *wiphy,
 	struct wlan_objmgr_vdev *vdev;
 	int errno;
 
-	hdd_enter();
-
 	if (QDF_GLOBAL_FTM_MODE == hdd_get_conparam()) {
 		hdd_err("Command not allowed in FTM mode");
 		return -EINVAL;
@@ -26952,7 +26983,8 @@ static int __wlan_hdd_cfg80211_add_key(struct wiphy *wiphy,
 	if (errno)
 		return errno;
 
-	hdd_debug("converged Device_mode %s(%d) index %d, pairwise %d link_id %d",
+	hdd_debug("vdev %d mode %s(%d) index %d, pairwise %d link_id %d",
+		  adapter->deflink->vdev_id,
 		  qdf_opmode_str(adapter->device_mode),
 		  adapter->device_mode, key_index, pairwise, link_id);
 	mac_handle = hdd_ctx->mac_handle;
@@ -27276,7 +27308,8 @@ wlan_hdd_is_key_associated_with_peer(struct wlan_objmgr_vdev *vdev,
 {
 	struct wlan_crypto_key *crypto_key;
 
-	crypto_key = wlan_crypto_get_key(vdev, key_index);
+	crypto_key = wlan_crypto_get_key(vdev, (const uint8_t *)peer_mac->bytes,
+					 key_index);
 	if (!crypto_key) {
 		hdd_err("Crypto KEY is NULL");
 		return false;
@@ -27486,8 +27519,7 @@ static int wlan_hdd_cfg80211_del_key(struct wiphy *wiphy,
 #endif
 static int __wlan_hdd_cfg80211_set_default_key(struct wiphy *wiphy,
 					       struct net_device *ndev,
-					       int link_id,
-					       u8 key_index,
+					       int link_id, u8 key_index,
 					       bool unicast, bool multicast)
 {
 	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(ndev);
@@ -27531,7 +27563,7 @@ static int __wlan_hdd_cfg80211_set_default_key(struct wiphy *wiphy,
 	if (!vdev)
 		return -EINVAL;
 
-	crypto_key = wlan_crypto_get_key(vdev, key_index);
+	crypto_key = wlan_crypto_get_key(vdev, NULL, key_index);
 	if (!crypto_key) {
 		hdd_err("Invalid NULL key info");
 		ret = -EINVAL;
@@ -27548,12 +27580,15 @@ static int __wlan_hdd_cfg80211_set_default_key(struct wiphy *wiphy,
 	    (adapter->device_mode == QDF_P2P_CLIENT_MODE)) {
 		ret =
 		wlan_cfg80211_crypto_add_key(vdev,
+					     (const uint8_t *)crypto_key->macaddr,
 					     (unicast ?
 					      WLAN_CRYPTO_KEY_TYPE_UNICAST :
 					      WLAN_CRYPTO_KEY_TYPE_GROUP),
 					     key_index, true);
-		wma_update_set_key(adapter->deflink->vdev_id, unicast,
-				   key_index, crypto_key->cipher_type);
+		wma_update_set_key(adapter->deflink->vdev_id,
+				   unicast, key_index,
+				   (const uint8_t *)crypto_key->macaddr,
+				   crypto_key->cipher_type);
 	}
 
 	if (adapter->device_mode == QDF_SAP_MODE ||
@@ -28281,7 +28316,8 @@ QDF_STATUS hdd_softap_deauth_current_sta(struct wlan_hdd_link_info *link_info,
 		hdd_softap_set_sta_info_deauth_flag(adapter,
 						    sta_info,
 						    false);
-		hdd_debug("STA removal failed for ::" QDF_MAC_ADDR_FMT,
+		hdd_debug("Vdev %d STA removal failed for " QDF_MAC_ADDR_FMT,
+			  link_info->vdev_id,
 			  QDF_MAC_ADDR_REF(sta_info->sta_mac.bytes));
 		return QDF_STATUS_E_NOENT;
 	}
@@ -28306,15 +28342,12 @@ QDF_STATUS hdd_softap_deauth_all_sta(struct hdd_adapter *adapter,
 	ucfg_mlme_get_sap_bcast_deauth_enabled(hdd_ctx->psoc,
 					       &is_sap_bcast_deauth_enabled);
 
-	hdd_debug("sap_bcast_deauth_enabled %d", is_sap_bcast_deauth_enabled);
-
 	if (is_sap_bcast_deauth_enabled) {
 		struct hdd_station_info bcast_sta_info;
-
 		qdf_set_macaddr_broadcast(&bcast_sta_info.sta_mac);
 
 		hdd_adapter_for_each_active_link_info(adapter, link_info) {
-			hdd_debug("send broadcast deauth on vdev %d",
+			hdd_debug("Vdev %d send broadcast deauth",
 				  link_info->vdev_id);
 			hdd_softap_deauth_current_sta(link_info,
 						      &bcast_sta_info,
@@ -28326,7 +28359,8 @@ QDF_STATUS hdd_softap_deauth_all_sta(struct hdd_adapter *adapter,
 	hdd_for_each_sta_ref_safe(adapter->sta_info_list, sta_info, tmp,
 				  STA_INFO_SOFTAP_DEAUTH_ALL_STA) {
 		if (!sta_info->is_deauth_in_progress) {
-			hdd_debug("Delete STA with MAC:" QDF_MAC_ADDR_FMT,
+			hdd_debug("Vdev %d Delete STA with " QDF_MAC_ADDR_FMT,
+				  adapter->deflink->vdev_id,
 				  QDF_MAC_ADDR_REF(sta_info->sta_mac.bytes));
 
 			if (QDF_IS_ADDR_BROADCAST(sta_info->sta_mac.bytes)) {
@@ -28381,20 +28415,19 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 	uint8_t *mac;
 	struct hdd_station_info *sta_info;
 	struct wlan_hdd_link_info *link_info;
-
-	hdd_enter();
+	uint8_t vdev_id = adapter->deflink->vdev_id;
 
 	if (QDF_GLOBAL_FTM_MODE == hdd_get_conparam()) {
 		hdd_err("Command not allowed in FTM mode");
 		return -EINVAL;
 	}
 
-	if (wlan_hdd_validate_vdev_id(adapter->deflink->vdev_id))
+	if (wlan_hdd_validate_vdev_id(vdev_id))
 		return -EINVAL;
 
 	qdf_mtrace(QDF_MODULE_ID_HDD, QDF_MODULE_ID_HDD,
 		   TRACE_CODE_HDD_CFG80211_DEL_STA,
-		   adapter->deflink->vdev_id, adapter->device_mode);
+		   vdev_id, adapter->device_mode);
 
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	if (!hdd_ctx) {
@@ -28409,6 +28442,13 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 		goto fn_end;
 
 	if (qdf_is_macaddr_broadcast((struct qdf_mac_addr *)mac)) {
+		if (policy_mgr_is_vdev_ll_lt_sap(hdd_ctx->psoc,
+						 adapter->deflink->vdev_id)) {
+			wlan_ll_sap_switch_bearer_on_stop_ap(
+						hdd_ctx->psoc,
+						adapter->deflink->vdev_id);
+		}
+
 		if (!QDF_IS_STATUS_SUCCESS(hdd_softap_deauth_all_sta(adapter,
 								     param)))
 			goto fn_end;
@@ -28420,15 +28460,15 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 						STA_INFO_MATCH_STA_OR_MLD_MAC);
 
 		if (!sta_info) {
-			hdd_debug("Skip DEL STA as this is not used::"
-				  QDF_MAC_ADDR_FMT,
+			hdd_debug("Vdev %d Skip DEL STA as sta not found for "
+				  QDF_MAC_ADDR_FMT, vdev_id,
 				  QDF_MAC_ADDR_REF(mac));
 			return -ENOENT;
 		}
 
 		if (sta_info->is_deauth_in_progress) {
-			hdd_debug("Skip DEL STA as deauth is in progress::"
-				  QDF_MAC_ADDR_FMT,
+			hdd_debug("vdev %d Skip DEL STA as deauth is in progress for STA "
+				  QDF_MAC_ADDR_FMT, vdev_id,
 				  QDF_MAC_ADDR_REF(mac));
 			hdd_put_sta_info_ref(&adapter->sta_info_list, &sta_info,
 					     true,
@@ -28438,8 +28478,8 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 
 		link_info = sta_info->link_info;
 		if (!link_info) {
-			hdd_debug("invalid link info" QDF_MAC_ADDR_FMT,
-				  QDF_MAC_ADDR_REF(mac));
+			hdd_debug("Vdev %d invalid link info" QDF_MAC_ADDR_FMT,
+				  vdev_id, QDF_MAC_ADDR_REF(mac));
 			hdd_put_sta_info_ref(&adapter->sta_info_list, &sta_info,
 					     true,
 					     STA_INFO_CFG80211_DEL_STATION);
@@ -28459,8 +28499,8 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 			}
 		}
 
-		hdd_debug("ucast, Delete STA with MAC:" QDF_MAC_ADDR_FMT,
-			  QDF_MAC_ADDR_REF(mac));
+		hdd_debug("vdev %d, Delete STA " QDF_MAC_ADDR_FMT,
+			  vdev_id, QDF_MAC_ADDR_REF(mac));
 		hdd_softap_deauth_current_sta(link_info, sta_info,
 					      param);
 		hdd_put_sta_info_ref(&adapter->sta_info_list, &sta_info, true,
@@ -28468,7 +28508,6 @@ int __wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
 	}
 
 fn_end:
-	hdd_exit();
 	return 0;
 }
 
@@ -29271,7 +29310,7 @@ __wlan_hdd_cfg80211_update_owe_info(struct wiphy *wiphy,
 {
 	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
-	QDF_STATUS status;
+	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 	int errno;
 	struct sap_context *sap_ctx;
 	struct wlan_hdd_link_info *link_info = NULL;
@@ -30014,6 +30053,28 @@ wlan_hdd_cfg80211_set_ap_channel_width(struct wiphy *wiphy,
 #endif
 
 #ifdef CHANNEL_SWITCH_SUPPORTED
+#if defined(NL80211_EXT_FEATURE_PUNCT_SUPPORT) && \
+			defined(CFG80211_RU_PUNC_CHANDEF)
+static inline uint16_t
+wlan_hdd_cfg80211_get_csa_punct_bitmap(struct cfg80211_csa_settings *csa_params)
+{
+	return csa_params->chandef.punctured;
+}
+#elif defined(NL80211_EXT_FEATURE_PUNCT_SUPPORT) && \
+			defined(CFG80211_RU_PUNCT_NOTIFY)
+static inline uint16_t
+wlan_hdd_cfg80211_get_csa_punct_bitmap(struct cfg80211_csa_settings *csa_params)
+{
+	return csa_params->punct_bitmap;
+}
+#else
+static inline uint16_t
+wlan_hdd_cfg80211_get_csa_punct_bitmap(struct cfg80211_csa_settings *csa_params)
+{
+	return NO_SCHANS_PUNC;
+}
+#endif
+
 /**
  * __wlan_hdd_cfg80211_channel_switch()- function to switch
  * channel in SAP/GO
@@ -30031,12 +30092,12 @@ static int __wlan_hdd_cfg80211_channel_switch(struct wiphy *wiphy,
 {
 	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	struct hdd_context *hdd_ctx;
-	int ret;
+	int ret, link_id;
 	enum phy_ch_width ch_width;
 	bool status;
 	struct hdd_hostapd_state *hostapd_state;
 	struct wlan_hdd_link_info *link_info;
-	int link_id;
+	uint16_t csa_punct_bitmap;
 
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
 	ret = wlan_hdd_validate_context(hdd_ctx);
@@ -30071,16 +30132,19 @@ static int __wlan_hdd_cfg80211_channel_switch(struct wiphy *wiphy,
 				    CSA_REASON_USER_INITIATED);
 
 	ch_width = hdd_map_nl_chan_width(csa_params->chandef.width);
-	hdd_debug("Freq %d width %d ch_width %d",
+	csa_punct_bitmap = wlan_hdd_cfg80211_get_csa_punct_bitmap(csa_params);
+	hdd_debug("Freq %d width %d CCFS1 %d, CCFS2 %d, ch_width %d punct_bitmap 0x%x",
 		  csa_params->chandef.chan->center_freq,
-		  csa_params->chandef.width, ch_width);
+		  csa_params->chandef.width, csa_params->chandef.center_freq1,
+		  csa_params->chandef.center_freq2, ch_width, csa_punct_bitmap);
 	hostapd_state = WLAN_HDD_GET_HOSTAP_STATE_PTR(link_info);
 	qdf_event_reset(&hostapd_state->qdf_event);
 
 	ret =
 	hdd_softap_set_channel_change(link_info,
 				      csa_params->chandef.chan->center_freq,
-				      ch_width, false, true);
+				      csa_params->chandef.center_freq1,
+				      ch_width, csa_punct_bitmap, false, true);
 	if (ret) {
 		hdd_err("CSA failed to %d, ret %d",
 			csa_params->chandef.chan->center_freq, ret);
@@ -30757,7 +30821,8 @@ __wlan_hdd_cfg80211_external_auth(struct wiphy *wiphy,
 	if (ret)
 		return ret;
 
-	hdd_debug("external_auth status: %d peer mac: " QDF_MAC_ADDR_FMT,
+	hdd_debug("vdev %d status: %d for peer " QDF_MAC_ADDR_FMT,
+		  adapter->deflink->vdev_id,
 		  params->status, QDF_MAC_ADDR_REF(params->bssid));
 	mac_handle = hdd_ctx->mac_handle;
 	qdf_mem_copy(peer_mac_addr.bytes, params->bssid, QDF_MAC_ADDR_SIZE);

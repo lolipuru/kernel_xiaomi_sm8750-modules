@@ -188,6 +188,7 @@ static const int beacon_filter_table[] = {
 	WLAN_ELEMID_VHTOP,
 	WLAN_ELEMID_QUIET_CHANNEL,
 	WLAN_ELEMID_TWT,
+	WLAN_ELEMID_VHT_TX_PWR_ENVLP,
 #ifdef WLAN_FEATURE_11AX_BSS_COLOR
 	/*
 	 * EID: 221 vendor IE is being used temporarily by 11AX
@@ -2533,7 +2534,7 @@ void wlan_hdd_ft_set_key_delay(struct wlan_objmgr_vdev *vdev)
 
 	if (ucfg_cm_ft_key_ready_for_install(vdev))
 		errno =
-		wlan_cfg80211_crypto_add_key(vdev,
+		wlan_cfg80211_crypto_add_key(vdev, NULL,
 					     WLAN_CRYPTO_KEY_TYPE_UNICAST,
 					     0, false);
 	if (errno)

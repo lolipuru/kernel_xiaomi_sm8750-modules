@@ -120,7 +120,8 @@ static void lim_process_sae_msg_sta(struct mac_context *mac,
 
 			qdf_mem_zero(session->lim_join_req->rsnIE.rsnIEdata,
 				     WLAN_MAX_IE_LEN + 2);
-			lim_update_connect_rsn_ie(session, rsn_ie_buf, pmksa);
+			lim_update_connect_rsn_ie(mac, session, rsn_ie_buf,
+						  pmksa);
 
 			qdf_mem_free(pmksa);
 			qdf_mem_free(rsn_ie_buf);
@@ -1819,11 +1820,12 @@ static void lim_process_messages(struct mac_context *mac_ctx,
 	case eWNI_SME_REGISTER_MGMT_FRAME_CB:
 	case eWNI_SME_EXT_CHANGE_CHANNEL:
 	case eWNI_SME_SET_ADDBA_ACCEPT:
-	case eWNI_SME_UPDATE_EDCA_PROFILE:
+	case eWNI_SME_UPDATE_EDCA_ACTIVE_PROFILE:
 	case WNI_SME_UPDATE_MU_EDCA_PARAMS:
 	case eWNI_SME_UPDATE_SESSION_EDCA_TXQ_PARAMS:
 	case WNI_SME_CFG_ACTION_FRM_HE_TB_PPDU:
 	case eWNI_SME_VDEV_PAUSE_IND:
+	case WNI_SME_UPDATE_EDCA_PARAMS:
 		/* These messages are from HDD.No need to respond to HDD */
 		lim_process_normal_hdd_msg(mac_ctx, msg, false);
 		break;
@@ -1908,6 +1910,7 @@ static void lim_process_messages(struct mac_context *mac_ctx,
 	case SIR_LIM_AUTH_RETRY_TIMEOUT:
 	case SIR_LIM_AUTH_SAE_TIMEOUT:
 	case SIR_LIM_RRM_STA_STATS_RSP_TIMEOUT:
+	case SIR_LIM_CHANNEL_VACATE_TIMEOUT:
 		/* These timeout messages are handled by MLM sub module */
 		lim_process_mlm_req_messages(mac_ctx, msg);
 		break;

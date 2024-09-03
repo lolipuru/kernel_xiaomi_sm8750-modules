@@ -3058,7 +3058,12 @@ QDF_STATUS sme_process_msg(struct mac_context *mac, struct scheduler_msg *pMsg)
 		qdf_mem_free(pMsg->bodyptr);
 		break;
 	case eWNI_SME_MONITOR_MODE_VDEV_UP:
-		status = sme_process_monitor_mode_vdev_up_evt(pMsg->bodyval);
+		status = sme_process_monitor_mode_vdev_evt(pMsg->bodyval,
+							   true);
+		break;
+	case eWNI_SME_MONITOR_MODE_VDEV_STOP:
+		status = sme_process_monitor_mode_vdev_evt(pMsg->bodyval,
+							   false);
 		break;
 	case eWNI_SME_TWT_ADD_DIALOG_EVENT:
 		sme_process_twt_add_dialog_event(mac, pMsg->bodyptr);
@@ -7762,17 +7767,17 @@ QDF_STATUS sme_set_ht2040_mode(mac_handle_t mac_handle, uint8_t sessionId,
 
 	switch (channel_type) {
 	case eHT_CHAN_HT20:
-		if (!session->cb_mode)
+		if (session->cb_mode == PHY_SINGLE_CHANNEL_CENTERED)
 			return QDF_STATUS_SUCCESS;
 		cb_mode = PHY_SINGLE_CHANNEL_CENTERED;
 		break;
 	case eHT_CHAN_HT40MINUS:
-		if (session->cb_mode)
+		if (session->cb_mode != PHY_SINGLE_CHANNEL_CENTERED)
 			return QDF_STATUS_SUCCESS;
 		cb_mode = PHY_DOUBLE_CHANNEL_HIGH_PRIMARY;
 		break;
 	case eHT_CHAN_HT40PLUS:
-		if (session->cb_mode)
+		if (session->cb_mode != PHY_SINGLE_CHANNEL_CENTERED)
 			return QDF_STATUS_SUCCESS;
 		cb_mode = PHY_DOUBLE_CHANNEL_LOW_PRIMARY;
 		break;
@@ -8125,7 +8130,7 @@ int sme_set_no_ack_policy(mac_handle_t mac_handle, uint8_t session_id,
 	}
 	sme_debug("no ack is set to %d for ac %d", set_val, ac);
 	qdf_mem_zero(&msg, sizeof(msg));
-	msg.type = eWNI_SME_UPDATE_EDCA_PROFILE;
+	msg.type = eWNI_SME_UPDATE_EDCA_ACTIVE_PROFILE;
 	msg.reserved = 0;
 	msg.bodyval = session_id;
 	status = scheduler_post_message(QDF_MODULE_ID_SME,
@@ -8488,12 +8493,11 @@ QDF_STATUS sme_ch_avoid_update_req(mac_handle_t mac_handle)
 						    QDF_MODULE_ID_WMA,
 						    &message);
 		if (QDF_IS_STATUS_ERROR(qdf_status)) {
-			sme_err("Post Ch Avoid Update MSG fail");
+			sme_err("Post WMA_CH_AVOID_UPDATE_REQ fail");
 			qdf_mem_free(cauReq);
 			sme_release_global_lock(&mac->sme);
 			return QDF_STATUS_E_FAILURE;
 		}
-		sme_debug("Posted Ch Avoid Update MSG");
 		sme_release_global_lock(&mac->sme);
 	}
 
@@ -15383,17 +15387,21 @@ void sme_reset_he_caps(mac_handle_t mac_handle, uint8_t vdev_id)
 void sme_config_ba_mode_all_vdevs(mac_handle_t mac_handle, uint8_t val)
 {
 	struct mac_context *mac = MAC_CONTEXT(mac_handle);
-	enum QDF_OPMODE op_mode;
 	uint8_t vdev_id;
 	int ret_val = 0;
+	struct wlan_objmgr_vdev *vdev;
 
 	for (vdev_id = 0; vdev_id < WLAN_MAX_VDEVS; vdev_id++) {
-		op_mode = wlan_get_opmode_from_vdev_id(mac->pdev, vdev_id);
-		if (op_mode == QDF_STA_MODE) {
-			ret_val = wma_cli_set_command(
-						vdev_id,
-						wmi_vdev_param_set_ba_mode,
-						val, VDEV_CMD);
+		vdev = wlan_objmgr_get_vdev_by_id_from_pdev(mac->pdev,
+					vdev_id, WLAN_LEGACY_SME_ID);
+		if (!vdev)
+			continue;
+
+		ret_val = wma_cli_set_command(vdev_id,
+					      wmi_vdev_param_set_ba_mode,
+					      val, VDEV_CMD);
+
+		wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_SME_ID);
 
 		if (QDF_IS_STATUS_ERROR(ret_val))
 			sme_err("BA mode set failed for vdev: %d, ret %d",
@@ -15401,7 +15409,6 @@ void sme_config_ba_mode_all_vdevs(mac_handle_t mac_handle, uint8_t val)
 		else
 			sme_debug("vdev: %d ba mode: %d param id %d",
 				  vdev_id, val, wmi_vdev_param_set_ba_mode);
-		}
 	}
 }
 #endif
@@ -16651,6 +16658,19 @@ QDF_STATUS sme_set_aggressive_roaming(mac_handle_t mac_handle, uint8_t vdev_id,
 					  &src_config);
 }
 
+QDF_STATUS sme_get_aggressive_roaming(mac_handle_t mac_handle, uint8_t vdev_id,
+				      bool *is_aggressive_roam_mode)
+{
+	struct mac_context *mac = MAC_CONTEXT(mac_handle);
+	struct cm_roam_values_copy temp;
+
+	wlan_cm_roam_cfg_get_value(mac->psoc, vdev_id, IS_ROAM_AGGRESSIVE,
+				   &temp);
+	*is_aggressive_roam_mode = temp.bool_value;
+
+	return QDF_STATUS_SUCCESS;
+}
+
 QDF_STATUS sme_get_roam_config_status(mac_handle_t mac_handle,
 				      uint8_t vdev_id,
 				      uint8_t *config_status)
@@ -16741,7 +16761,8 @@ QDF_STATUS sme_get_ani_level(mac_handle_t mac_handle, uint32_t *freqs,
 #ifdef FEATURE_MONITOR_MODE_SUPPORT
 
 QDF_STATUS sme_set_monitor_mode_cb(mac_handle_t mac_handle,
-				   void (*monitor_mode_cb)(uint8_t vdev_id))
+				   void (*monitor_mode_cb)(uint8_t vdev_id,
+							   bool is_up))
 {
 	QDF_STATUS qdf_status;
 	struct mac_context *mac = MAC_CONTEXT(mac_handle);
@@ -16757,7 +16778,7 @@ QDF_STATUS sme_set_monitor_mode_cb(mac_handle_t mac_handle,
 	return qdf_status;
 }
 
-QDF_STATUS sme_process_monitor_mode_vdev_up_evt(uint8_t vdev_id)
+QDF_STATUS sme_process_monitor_mode_vdev_evt(uint8_t vdev_id, bool is_up)
 {
 	mac_handle_t mac_handle;
 	struct mac_context *mac;
@@ -16769,7 +16790,7 @@ QDF_STATUS sme_process_monitor_mode_vdev_up_evt(uint8_t vdev_id)
 	mac = MAC_CONTEXT(mac_handle);
 
 	if (mac->sme.monitor_mode_cb)
-		mac->sme.monitor_mode_cb(vdev_id);
+		mac->sme.monitor_mode_cb(vdev_id, is_up);
 	else {
 		sme_warn_rl("monitor_mode_cb is not registered");
 		return QDF_STATUS_E_FAILURE;

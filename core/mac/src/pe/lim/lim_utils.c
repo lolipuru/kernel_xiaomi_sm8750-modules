@@ -662,6 +662,8 @@ void lim_cleanup_mlm(struct mac_context *mac_ctx)
 		tx_timer_delete(&lim_timer->sae_auth_timer);
 		tx_timer_delete(&lim_timer->rrm_sta_stats_resp_timer);
 
+		tx_timer_delete(&lim_timer->channel_vacate_timer);
+
 		mac_ctx->lim.gLimTimersCreated = 0;
 	}
 } /*** end lim_cleanup_mlm() ***/
@@ -1876,7 +1878,8 @@ __lim_process_channel_switch_timeout(struct pe_session *pe_session)
 	 * Else, just don't bother to switch. Indicate HDD to look for a
 	 * better AP to associate
 	 */
-	if (!lim_is_channel_valid_for_channel_switch(mac, channel_freq)) {
+	if (!lim_is_channel_valid_for_channel_switch(mac, pe_session,
+						     channel_freq)) {
 		/* We need to restore pre-channelSwitch state on the STA */
 		if (lim_restore_pre_channel_switch_state(mac, pe_session) !=
 		    QDF_STATUS_SUCCESS) {
@@ -1993,7 +1996,7 @@ lim_util_count_sta_add(struct mac_context *mac,
 		return;
 
 	/* get here only if this is the first ANI peer in the BSS */
-	sch_edca_profile_update(mac, pe_session);
+	sch_edca_profile_update(mac, pe_session, NULL);
 }
 
 void
@@ -2029,7 +2032,7 @@ lim_util_count_sta_del(struct mac_context *mac,
 		return;
 
 	/* get here only if this is the last ANI peer in the BSS */
-	sch_edca_profile_update(mac, pe_session);
+	sch_edca_profile_update(mac, pe_session, NULL);
 }
 
 /**
@@ -4266,9 +4269,12 @@ lim_get_b_dfrom_rx_packet(struct mac_context *mac, void *body, uint32_t **pRxPac
 } /*** end lim_get_b_dfrom_rx_packet() ***/
 
 bool lim_is_channel_valid_for_channel_switch(struct mac_context *mac,
+					     struct pe_session *session,
 					     uint32_t channel_freq)
 {
 	bool ok = false;
+	TX_TIMER *channel_vacate_timer =
+		&mac->lim.lim_timers.channel_vacate_timer;
 
 	if (policy_mgr_is_chan_ok_for_dnbs(mac->psoc, channel_freq,
 					   &ok)) {
@@ -4281,12 +4287,34 @@ bool lim_is_channel_valid_for_channel_switch(struct mac_context *mac,
 		return false;
 	}
 
-	if (wlan_reg_is_freq_enabled(mac->pdev, channel_freq,
-				     REG_CURRENT_PWR_MODE))
-		return true;
-
 	/* channel does not belong to list of valid channels */
-	return false;
+	if (!wlan_reg_is_freq_enabled(mac->pdev, channel_freq,
+				      REG_CURRENT_PWR_MODE)) {
+		return false;
+	}
+
+	/*
+	 * Do not allow CSA to different DFS channel when the CLI is already
+	 * operating in DFS channel under assisted AP mode and the timer for
+	 * channel vacate is running.
+	 *
+	 * If moving to non-DFS channel, then stop the timer.
+	 */
+	if (session->opmode == QDF_P2P_CLIENT_MODE &&
+	    session->dfs_p2p_info.is_assisted_p2p_group) {
+		if (tx_timer_running(channel_vacate_timer) &&
+		    channel_vacate_timer->sessionId == session->peSessionId) {
+			if (wlan_reg_is_dfs_for_freq(mac->pdev, channel_freq)) {
+				pe_debug("Channel change to DFS for assisted AP P2P group");
+				return false;
+			}
+
+			pe_debug("Stop channel vacate timer");
+			tx_timer_deactivate(channel_vacate_timer);
+		}
+	}
+
+	return true;
 }
 
 /**
@@ -5468,7 +5496,7 @@ static void lim_check_conc_and_send_edca(struct mac_context *mac,
 			lim_send_edca_params(mac,
 					     sap_session->gLimEdcaParamsActive,
 					     sap_session->vdev_id, false);
-			sch_qos_update_broadcast(mac, sap_session);
+			sch_qos_update_broadcast(mac, sap_session, NULL);
 
 	/*
 	 * In case of mcc, where cb can come from scc to mcc switch where we
@@ -10193,6 +10221,12 @@ QDF_STATUS lim_sta_mlme_vdev_restart_send(struct vdev_mlme_obj *vdev_mlme,
 		return QDF_STATUS_E_INVAL;
 	}
 	if (mlme_is_chan_switch_in_progress(vdev_mlme->vdev)) {
+		/* If STA interface is moving to different channel, check if
+		 * need to reevaluate the operation of P2P group in DFS channel.
+		 */
+		if (wlan_vdev_mlme_get_opmode(vdev_mlme->vdev) == QDF_STA_MODE)
+			lim_check_ap_assist_dfs_p2p_group(false);
+
 		switch (session->channelChangeReasonCode) {
 		case LIM_SWITCH_CHANNEL_OPERATION:
 			status = __lim_process_channel_switch_timeout(session);
@@ -10582,8 +10616,11 @@ void lim_apply_puncture(struct mac_context *mac,
 {
 	uint16_t puncture_bitmap;
 
-	puncture_bitmap =
-		*(uint16_t *)session->eht_op.disabled_sub_chan_bitmap;
+	if (mlme_is_chan_switch_in_progress(session->vdev))
+		puncture_bitmap = session->gLimChannelSwitch.puncture_bitmap;
+	else
+		puncture_bitmap =
+			*(uint16_t *)session->eht_op.disabled_sub_chan_bitmap;
 
 	if (puncture_bitmap) {
 		pe_debug("Apply puncture to reg: bitmap 0x%x, freq: %d, bw %d, mhz_freq_seg1: %d",
@@ -10599,7 +10636,6 @@ void lim_apply_puncture(struct mac_context *mac,
 	}
 }
 
-static
 void lim_remove_puncture(struct mac_context *mac,
 			 struct pe_session *session)
 {
@@ -10621,11 +10657,6 @@ void lim_apply_puncture(struct mac_context *mac,
 {
 }
 
-static inline
-void lim_remove_puncture(struct mac_context *mac,
-			 struct pe_session *session)
-{
-}
 #endif
 
 QDF_STATUS lim_ap_mlme_vdev_stop_send(struct vdev_mlme_obj *vdev_mlme,
@@ -10642,7 +10673,8 @@ QDF_STATUS lim_ap_mlme_vdev_stop_send(struct vdev_mlme_obj *vdev_mlme,
 
 	lim_remove_puncture(mac_ctx, session);
 
-	if (!wlan_vdev_mlme_is_mlo_ap(vdev_mlme->vdev)) {
+	if (!LIM_IS_NDI_ROLE(session) &&
+	    !wlan_vdev_mlme_is_mlo_ap(vdev_mlme->vdev)) {
 		mlme_set_notify_co_located_ap_update_rnr(vdev_mlme->vdev, true);
 		lim_ap_mlme_vdev_rnr_notify(session);
 		lim_configure_fd_for_existing_6ghz_sap(session, false);
@@ -11056,6 +11088,8 @@ static void lim_update_ap_puncture(struct pe_session *session,
 		session->eht_op.disabled_sub_chan_bitmap_present = true;
 		pe_debug("vdev %d, puncture %d", session->vdev_id,
 			 ch_params->reg_punc_bitmap);
+	} else if (session->eht_op.disabled_sub_chan_bitmap_present) {
+		session->eht_op.disabled_sub_chan_bitmap_present = false;
 	}
 }
 
@@ -11118,8 +11152,8 @@ QDF_STATUS lim_pre_vdev_start(struct mac_context *mac,
 		if (ch_params.mhz_freq_seg0 ==  session->curr_op_freq - 10)
 			sec_chan_freq = session->curr_op_freq - 20;
 	}
-	if (LIM_IS_AP_ROLE(session) &&
-	    !mlme_is_chan_switch_in_progress(mlme_obj->vdev))
+
+	if (LIM_IS_AP_ROLE(session))
 		lim_apply_puncture(mac, session, ch_params.mhz_freq_seg1);
 
 	if (LIM_IS_STA_ROLE(session))
@@ -11174,6 +11208,9 @@ QDF_STATUS lim_pre_vdev_start(struct mac_context *mac,
 	if (LIM_IS_AP_ROLE(session)) {
 		/* Update he ops for puncture */
 		wlan_reg_set_create_punc_bitmap(&ch_params, false);
+		wlan_reg_set_non_eht_ch_params(&ch_params, true);
+		wlan_reg_set_input_punc_bitmap(&ch_params,
+					       lim_get_punc_chan_bit_map(session));
 		wlan_reg_set_channel_params_for_pwrmode(mac->pdev,
 							session->curr_op_freq,
 							sec_chan_freq,
@@ -11769,6 +11806,23 @@ next:
 	return NULL;
 }
 
+uint8_t lim_convert_phy_chwidth_to_vht_chwidth(enum phy_ch_width ch_width)
+{
+	switch (ch_width) {
+	case CH_WIDTH_80P80MHZ:
+		return WNI_CFG_VHT_CHANNEL_WIDTH_80_PLUS_80MHZ;
+	case CH_WIDTH_320MHZ:
+	case CH_WIDTH_160MHZ:
+		return WNI_CFG_VHT_CHANNEL_WIDTH_160MHZ;
+	case CH_WIDTH_80MHZ:
+		return WNI_CFG_VHT_CHANNEL_WIDTH_80MHZ;
+	case CH_WIDTH_40MHZ:
+	case CH_WIDTH_20MHZ:
+	default:
+		return WNI_CFG_VHT_CHANNEL_WIDTH_20_40MHZ;
+	}
+}
+
 void
 lim_configure_fd_for_existing_6ghz_sap(struct pe_session *session,
 				       bool is_sap_starting)
@@ -12035,8 +12089,13 @@ void lim_cp_stats_cstats_log_assoc_req_evt(struct pe_session *pe_session,
 	stat.cmn.time_tick = qdf_get_log_timestamp();
 
 	stat.freq = pe_session->curr_op_freq;
-	stat.ssid_len = ssid_len;
-	qdf_mem_copy(stat.ssid, ssid, ssid_len);
+
+	if (ssid_len > WLAN_SSID_MAX_LEN)
+		stat.ssid_len = WLAN_SSID_MAX_LEN;
+	else
+		stat.ssid_len = ssid_len;
+
+	qdf_mem_copy(stat.ssid, ssid, stat.ssid_len);
 
 	stat.direction = dir;
 	CSTATS_MAC_COPY(stat.bssid, bssid);
@@ -12310,7 +12369,7 @@ uint16_t lim_get_tpe_ie_length(enum phy_ch_width chan_width,
 			/* Extension Transmit PSD Information */
 			total_ie_len += 1;
 			/* Maximum Transmit PSD power */
-			total_ie_len += MAX_TX_PSD_POWER;
+			total_ie_len += EXT_TX_PSD_POWER;
 		}
 	}
 
@@ -12377,9 +12436,9 @@ QDF_STATUS lim_fill_complete_tpe_ie(enum phy_ch_width chan_width,
 			target += 1;
 			consumed += 1;
 			/* Maximum Transmit Local PSD power */
-			qdf_mem_copy(target, tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_local_psd.max_tx_psd_power, MAX_TX_PSD_POWER);
-			target += MAX_TX_PSD_POWER;
-			consumed += MAX_TX_PSD_POWER;
+			qdf_mem_copy(target, tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_local_psd.max_tx_psd_power, EXT_TX_PSD_POWER);
+			target += EXT_TX_PSD_POWER;
+			consumed += EXT_TX_PSD_POWER;
 			break;
 		case REGULATORY_CLIENT_EIRP:
 			/* Maximum Regulatory EIRP Transmit Power For 320 MHz */
@@ -12396,9 +12455,9 @@ QDF_STATUS lim_fill_complete_tpe_ie(enum phy_ch_width chan_width,
 			consumed += 1;
 			target += 1;
 			/* Maximum Transmit Regulatory PSD power */
-			qdf_mem_copy(target, tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_reg_psd.max_tx_psd_power, MAX_TX_PSD_POWER);
-			target += MAX_TX_PSD_POWER;
-			consumed += MAX_TX_PSD_POWER;
+			qdf_mem_copy(target, tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_reg_psd.max_tx_psd_power, EXT_TX_PSD_POWER);
+			target += EXT_TX_PSD_POWER;
+			consumed += EXT_TX_PSD_POWER;
 			break;
 		}
 end:

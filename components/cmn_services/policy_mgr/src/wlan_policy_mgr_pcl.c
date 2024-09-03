@@ -1178,9 +1178,29 @@ static bool policy_mgr_channel_mcc_with_non_sap(struct wlan_objmgr_psoc *psoc,
 						qdf_freq_t chan_freq)
 {
 	uint32_t i, connection_of_2ghz = 0;
-	qdf_freq_t conc_freq;
+	qdf_freq_t conc_freq, nan_2g_freq;
 	bool is_mcc = false, check_only_dbs = false;
 	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	uint8_t sta_cnt = 0;
+	uint8_t vdev_id_list[MAX_NUMBER_OF_CONC_CONNECTIONS] = {0};
+	qdf_freq_t freq_list[MAX_NUMBER_OF_CONC_CONNECTIONS] = {0};
+
+	nan_2g_freq =
+		policy_mgr_mode_specific_get_channel(psoc, PM_NAN_DISC_MODE);
+
+	sta_cnt =
+		policy_mgr_get_mode_specific_conn_info(
+						psoc, &freq_list[sta_cnt],
+						vdev_id_list,
+						PM_STA_MODE);
+	/* In case of ML STA + NAN concurrency consider NAN social,
+	 * As SCC channel. SAP will move to NAN social channel.
+	 * In case of legacy STA, SAP will move to legacy STA channel.
+	 */
+	for (i = 0; i < sta_cnt; i++)
+		if (policy_mgr_is_ml_vdev_id(psoc, vdev_id_list[i]) &&
+		    wlan_nan_is_disc_active(psoc) && chan_freq == nan_2g_freq)
+			return false;
 
 	pm_ctx = policy_mgr_get_context(psoc);
 	if (!pm_ctx) {
@@ -1208,7 +1228,7 @@ static bool policy_mgr_channel_mcc_with_non_sap(struct wlan_objmgr_psoc *psoc,
 			conc_freq = pm_conc_connection_list[i].freq;
 			if (conc_freq != chan_freq &&
 			    ((check_only_dbs &&
-			      policy_mgr_2_freq_same_mac_in_dbs(pm_ctx,
+			      policy_mgr_2_freq_same_mac_in_dbs(psoc,
 								chan_freq,
 								conc_freq)) ||
 			     policy_mgr_2_freq_always_on_same_mac(psoc,
@@ -4096,6 +4116,16 @@ enum policy_mgr_three_connection_mode
 								  pm_conc_connection_list[list_sap[0]].freq,
 								  pm_conc_connection_list[list_sap[1]].freq,
 								  pm_conc_connection_list[list_sap[2]].freq);
+		if (index == PM_MAX_THREE_CONNECTION_MODE) {
+			if (WLAN_REG_IS_24GHZ_CH_FREQ(pm_conc_connection_list[list_sap[0]].freq) &&
+			    WLAN_REG_IS_24GHZ_CH_FREQ(pm_conc_connection_list[list_sap[1]].freq) &&
+			    WLAN_REG_IS_24GHZ_CH_FREQ(pm_conc_connection_list[list_sap[2]].freq))
+				index = PM_SAP_SAP_SAP_SCC_24_SMM;
+			else if (!WLAN_REG_IS_24GHZ_CH_FREQ(pm_conc_connection_list[list_sap[0]].freq) &&
+				 !WLAN_REG_IS_24GHZ_CH_FREQ(pm_conc_connection_list[list_sap[1]].freq) &&
+				 !WLAN_REG_IS_24GHZ_CH_FREQ(pm_conc_connection_list[list_sap[2]].freq))
+				index = PM_SAP_SAP_SAP_SCC_5_SMM;
+		}
 	}
 
 	policy_mgr_debug(
@@ -4912,6 +4942,9 @@ policy_mgr_get_sap_mandatory_channel(struct wlan_objmgr_psoc *psoc,
 
 	mcc_to_scc_switch =
 		policy_mgr_get_mcc_to_scc_switch_mode(psoc);
+
+	if (wlan_nan_is_disc_active(psoc))
+		return QDF_STATUS_SUCCESS;
 
 	sta_count = policy_mgr_mode_specific_connection_count(psoc, PM_STA_MODE,
 							      NULL);

@@ -828,8 +828,8 @@ def_chan:
 	wlan_hdd_set_sap_csa_reason(hdd_ctx->psoc, ap_adapter->deflink->vdev_id,
 				    CSA_REASON_STA_CONNECT_DFS_TO_NON_DFS);
 
-	ret = hdd_softap_set_channel_change(ap_adapter->deflink, ch_freq,
-					    ch_bw, false, true);
+	ret = hdd_softap_set_channel_change(ap_adapter->deflink, ch_freq, 0,
+					    ch_bw, NO_SCHANS_PUNC, false, true);
 	if (ret) {
 		hdd_err("Set channel with CSA IE failed, can't allow STA");
 		return false;
@@ -1058,7 +1058,7 @@ hdd_cm_connect_failure_post_user_update(struct wlan_objmgr_vdev *vdev,
 	 * netdev queues as it will lead to data stall/NUD failure.
 	 */
 	if (!(rsp->cm_id & CM_ID_LSWITCH_BIT)) {
-		hdd_debug("Disabling queues");
+		hdd_debug("vdev %d Disabling queues", link_info->vdev_id);
 		wlan_hdd_netif_queue_control(adapter,
 					     WLAN_STOP_ALL_NETIF_QUEUE_N_CARRIER,
 					     WLAN_CONTROL_PATH);
