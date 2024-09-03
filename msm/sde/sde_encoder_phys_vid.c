@@ -2182,8 +2182,12 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 		}
 	}
 
-	if (phys_enc->hw_intf->ops.enable_esync && info->esync_enabled)
-		phys_enc->hw_intf->ops.enable_esync(phys_enc->hw_intf, false);
+	if (info->esync_enabled) {
+		if (phys_enc->hw_intf->ops.enable_esync)
+			phys_enc->hw_intf->ops.enable_esync(phys_enc->hw_intf, false);
+		if (phys_enc->hw_intf->ops.enable_backup_esync)
+			phys_enc->hw_intf->ops.enable_backup_esync(phys_enc->hw_intf, false);
+	}
 
 	if (sde_enc && sde_enc->disp_info.vrr_caps.vrr_support) {
 		hrtimer_cancel(&phys_enc->sde_vrr_cfg.freq_step_timer);
