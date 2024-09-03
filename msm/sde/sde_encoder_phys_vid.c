@@ -2091,6 +2091,20 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent)) {
+		if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc)) {
+			if (phys_enc->hw_ctl &&
+					phys_enc->hw_ctl->ops.setup_flush_sync)
+				phys_enc->hw_ctl->ops.setup_flush_sync(
+					phys_enc->hw_ctl, true, false);
+		} else if (sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)) {
+			if (phys_enc->hw_ctl &&
+				phys_enc->hw_ctl->ops.setup_flush_sync)
+				phys_enc->hw_ctl->ops.setup_flush_sync(
+					phys_enc->hw_ctl, false, false);
+		}
+	}
+
 	/* Disconnect the sync mux, when suspend is requested on slave dpu */
 	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
 			sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc) &&
@@ -2241,20 +2255,6 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 		goto exit;
 
 	sde_encoder_phys_vid_timing_engine_disable_wait(phys_enc);
-
-	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent)) {
-		if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc)) {
-			if (phys_enc->hw_ctl &&
-					phys_enc->hw_ctl->ops.setup_flush_sync)
-				phys_enc->hw_ctl->ops.setup_flush_sync(
-					phys_enc->hw_ctl, true, false);
-		} else if (sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)) {
-			if (phys_enc->hw_ctl &&
-				phys_enc->hw_ctl->ops.setup_flush_sync)
-				phys_enc->hw_ctl->ops.setup_flush_sync(
-					phys_enc->hw_ctl, false, false);
-		}
-	}
 
 	if (info->esync_enabled) {
 		if (phys_enc->hw_intf->ops.enable_esync)
