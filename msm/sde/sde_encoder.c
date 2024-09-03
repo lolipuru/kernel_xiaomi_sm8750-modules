@@ -1989,13 +1989,11 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	req_mode = ctrl_cfg.req_mode;
 
 	/*
-	 * Workaround in cmd mode when upvote/no-change vote is requested while previous frame
-	 * ctl-done is too close the wakeup/panic windows.
+	 * Workaround in cmd mode to avoid scc hang when new or no-change vote is requested
+	 * while previous frame ctl-done is too close to the wakeup/panic windows.
 	 * Set auto-active-on-panic and force db update and reset it during complete-commit.
 	 */
-	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT)
-			&& ((cesta_client->vote_state != SDE_CESTA_BW_CLK_DOWNVOTE)
-				|| sde_enc->mode_switch || sde_enc->multi_te_state)) {
+	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT)) {
 		req_mode = (sde_enc->mode_switch || sde_enc->multi_te_state) ?
 				SDE_CESTA_CTRL_REQ_IMMEDIATE : SDE_CESTA_CTRL_REQ_PANIC_REGION;
 		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, true, req_mode);
