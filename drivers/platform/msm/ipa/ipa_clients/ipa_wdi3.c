@@ -80,6 +80,7 @@ struct ipa_wdi_opt_dpath_info {
 	u32 ipa_pm_hdl;
 	u32 ipa_pm_hdl_ctrl;
 	atomic_t num_ctrl_pkts;
+	atomic_t ipa_wdi_enable_state;
 	struct filter_info ctrl_flt[IPA_WDI_MAX_TX_FILTER];
 };
 
@@ -919,6 +920,7 @@ int ipa_wdi_enable_pipes_per_inst(ipa_wdi_hdl_t hdl)
 			IPA_WDI_DBG("fail to deactivate ipa pm\n");
 			return -EFAULT;
 		}
+		atomic_set(&opt_dpath_info[hdl].ipa_wdi_enable_state, 1);
 	}
 
 	return 0;
@@ -1260,7 +1262,9 @@ int ipa_wdi_opt_dpath_notify_flt_rlsd_per_inst
 		return -EPERM;
 	}
 
-	ret = ipa_pm_deferred_deactivate(ipa_wdi_ctx_list[0]->ipa_pm_hdl);
+	ret = ipa_pm_deferred_deactivate(ipa_wdi_ctx_list[hdl]->ipa_pm_hdl);
+
+	ipa3_check_wdi_opt_chn_empty(opt_dpath_info[hdl].ipa_ep_idx_rx);
 
 	memset(&ind, 0, sizeof(ind));
 	ind.filter_removal_all_status.result =
@@ -1592,9 +1596,10 @@ int ipa_wdi_opt_dpath_wlan_ctrl_pkt_rcvd_req(
 	atomic_sub(req->packet_count, &opt_dpath_info[0].num_ctrl_pkts);
 	if (atomic_read(&opt_dpath_info[0].num_ctrl_pkts) == 0) {
 		ret = ipa_pm_deferred_deactivate(opt_dpath_info[0].ipa_pm_hdl_ctrl);
-		if (ret)
+		if (ret) {
 			IPA_WDI_DBG("fail to deactivate ipa pm\n");
 			IPA_EVENT_LOG("fail to deactivate ipa pm\n");
+		}
 	}
 	mutex_unlock(&ipa_wdi_ctx_list[0]->clk_lock);
 
@@ -1853,6 +1858,11 @@ int ipa_wdi_opt_dpath_enable_clk_per_inst(ipa_wdi_hdl_t hdl)
 		return -EPERM;
 	}
 
+	if (!atomic_read(&opt_dpath_info[hdl].ipa_wdi_enable_state)) {
+		IPAERR("wdi pipes is not enabled.\n");
+		return -EPERM;
+	}
+
 	mutex_lock(&ipa_wdi_ctx_list[hdl]->clk_lock);
 	atomic_inc(&opt_dpath_info[hdl].num_ctrl_pkts);
 
@@ -1885,10 +1895,14 @@ int ipa_wdi_opt_dpath_disable_clk_per_inst(ipa_wdi_hdl_t hdl)
 		return -EPERM;
 	}
 
+	if (!atomic_read(&opt_dpath_info[hdl].ipa_wdi_enable_state)) {
+		IPAERR("wdi pipes is not enabled.\n");
+		return -EPERM;
+	}
+
 	if (!atomic_read(&opt_dpath_info[hdl].num_ctrl_pkts)) {
 		IPAERR("trying to disable clocks with num ctrl pkts 0\n");
 		IPA_EVENT_LOG("trying to disable clocks with num ctrl pkts 0\n");
-		ipa_assert();
 		return -EPERM;
 	}
 
@@ -1946,6 +1960,7 @@ int ipa_wdi_cleanup_per_inst(ipa_wdi_hdl_t hdl)
 	}
 	atomic_set(&opt_dpath_info[hdl].is_opt_dp_cb_registered, 0);
 	atomic_set(&opt_dpath_info[hdl].is_ctrl_cb_registered, 0);
+	atomic_set(&opt_dpath_info[hdl].num_ctrl_pkts, 0);
 	mutex_destroy(&ipa_wdi_ctx_list[hdl]->lock);
 	mutex_destroy(&ipa_wdi_ctx_list[hdl]->clk_lock);
 	kfree(ipa_wdi_ctx_list[hdl]);
@@ -2215,6 +2230,7 @@ int ipa_wdi_disable_pipes_per_inst(ipa_wdi_hdl_t hdl)
 			IPA_WDI_ERR("fail to deactivate ipa pm ctrl\n");
 			return -EFAULT;
 		}
+		atomic_set(&opt_dpath_info[hdl].ipa_wdi_enable_state, 0);
 	}
 
 	ret = ipa_pm_deactivate_sync(ipa_wdi_ctx_list[hdl]->ipa_pm_hdl);
