@@ -2894,6 +2894,7 @@ struct dp_arch_ops {
  * @multi_rx_reorder_q_setup_support: multi rx reorder q setup at a time support
  * @fw_support_ml_monitor: FW support ML monitor mode
  * @dp_ipa_opt_dp_ctrl_refill: opt_dp_ctrl refill support
+ * @vdev_tx_nss_support: FW supports vdev Tx NSS report.
  */
 struct dp_soc_features {
 	uint8_t pn_in_reo_dest:1,
@@ -2906,6 +2907,7 @@ struct dp_soc_features {
 #ifdef IPA_OPT_WIFI_DP_CTRL
 	bool dp_ipa_opt_dp_ctrl_refill;
 #endif
+	bool vdev_tx_nss_support;
 };
 
 enum sysfs_printing_mode {
@@ -3678,6 +3680,16 @@ struct dp_soc {
 #endif
 };
 
+/*
+ * cpu id is used as an index to set bits in service_rings_running
+ * in the service srng API. We need to make sure that the size of
+ * service_rings_running variable is big enough
+ */
+#ifndef CONFIG_X86
+QDF_COMPILE_TIME_ASSERT(num_cpu_check,
+	NR_CPUS <= (sizeof(((struct dp_soc *)0)->service_rings_running) * 8));
+#endif
+
 #define MAX_RX_MAC_RINGS 2
 /* Same as NAC_MAX_CLENT */
 #define DP_NAC_MAX_CLIENT  24
@@ -4144,6 +4156,12 @@ struct dp_pdev {
 
 	/* To check if request is already sent for obss stats */
 	bool pending_fw_obss_stats_response;
+
+	/* qdf_event for vdev tx nss stats */
+	qdf_event_t vdev_tx_nss_stats_event;
+
+	/* To check if request is already sent for vdev tx nss stats */
+	bool pending_tx_nss_response;
 
 	/* User configured max number of tx buffers */
 	uint32_t num_tx_allowed;
@@ -4662,6 +4680,8 @@ struct dp_vdev {
 	bool eapol_over_control_port_disable;
 	bool dp_proto_stats;
 	bool dp_eapol_stats;
+	/* Tx NSS stats received from FW */
+	struct cdp_htt_stats_tx_vdev_nss_tlv tx_vdev_nss;
 };
 
 enum {
@@ -5915,4 +5935,9 @@ void dp_rx_update_protocol_stats(hal_soc_handle_t hal_soc,
 				 struct dp_txrx_peer *txrx_peer,
 				 uint8_t link_id, qdf_nbuf_t nbuf,
 				 uint8_t *rx_tlv_hdr, uint8_t level);
+
+void dp_rx_err_update_protocol_stats(struct dp_soc *soc, struct dp_pdev *pdev,
+				     qdf_nbuf_t nbuf,
+				     union hal_wbm_err_info_u *wbm_err,
+				     uint8_t *rx_tlv_hdr);
 #endif /* _DP_TYPES_H_ */

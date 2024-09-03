@@ -5594,6 +5594,7 @@ typedef enum {
 	wmi_pdev_wifi_radar_cal_completion_status_event_id,
 #endif
 	wmi_sched_mode_probe_resp_event_id,
+	wmi_p2p_cli_dfs_ap_bmiss_detected_eventid,
 	wmi_events_max,
 } wmi_conv_event_id;
 
@@ -6332,6 +6333,7 @@ typedef enum {
 		   VDEV_PARAM_DCS),
 	VDEV_PARAM(vdev_param_hwcts2self_ofdma,
 		   VDEV_PARAM_HWCTS2SELF_OFDMA),
+	VDEV_PARAM(vdev_param_twt_unavail_mode, VDEV_PARAM_TWT_UNAVAIL_MODE),
 	vdev_param_max,
 } wmi_conv_vdev_param_id;
 
@@ -6753,6 +6755,7 @@ typedef enum {
 #ifdef WLAN_FEATURE_MULTI_LINK_SAP
 	wmi_service_mlo_sap_emlsr_support,
 #endif
+	wmi_service_ap_assisted_dfs_chan_p2p_session,
 	wmi_services_max,
 } wmi_conv_service_ids;
 #define WMI_SERVICE_UNAVAILABLE 0xFFFF

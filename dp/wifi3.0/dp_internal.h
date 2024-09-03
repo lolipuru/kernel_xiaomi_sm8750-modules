@@ -111,6 +111,9 @@ struct dp_rx_defrag_cipher {
 /* Reserve for HTT Stats OBSS PD support: 6th bit */
 #define DBG_STATS_COOKIE_HTT_OBSS BIT(6)
 
+/*  Reserve for HTT Stats Tx NSS support: 7th bit*/
+#define DBG_STATS_COOKIE_HTT_TX_NSS BIT(7)
+
 /*
  * Bitmap of HTT PPDU TLV types for Default mode
  */
@@ -433,6 +436,14 @@ void dp_monitor_peer_get_stats(struct dp_soc *soc, struct dp_peer *peer,
 {
 }
 
+#ifdef QCA_PEER_EXT_STATS
+static inline
+void dp_monitor_get_peer_tx_stats(struct dp_soc *soc, struct dp_peer *peer,
+				  struct cdp_telemetry_peer_tx_ext_stats *stats)
+{
+}
+#endif
+
 static inline
 void dp_monitor_invalid_peer_update_pdev_stats(struct dp_soc *soc,
 					       struct dp_pdev *pdev)
@@ -579,6 +590,12 @@ static inline void dp_monitor_print_pdev_rx_mon_stats(struct dp_pdev *pdev)
 static inline QDF_STATUS dp_monitor_config_enh_tx_capture(struct dp_pdev *pdev,
 							  uint32_t val,
 							  uint8_t mac_id)
+{
+	return QDF_STATUS_E_INVAL;
+}
+
+static inline QDF_STATUS dp_mon_enh_tx_capt_wrapper(struct dp_pdev *pdev,
+						    cdp_config_param_type val)
 {
 	return QDF_STATUS_E_INVAL;
 }
@@ -5565,6 +5582,35 @@ dp_update_pdev_chan_util_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 QDF_STATUS
 dp_get_pdev_erp_stats(struct cdp_soc_t *soc_hdl, uint8_t pdev_id,
 		      struct cdp_pdev_erp_stats *stats);
+
+#ifdef QCA_PEER_EXT_STATS
+/**
+ * dp_get_peer_tx_ext_stats() - API to get peer tx stats
+ * @soc_hdl: soc handle
+ * @addr: mac addr
+ * @stats: pointer to stats
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+dp_get_peer_tx_ext_stats(struct cdp_soc_t *soc_hdl, uint8_t *addr,
+			 void *stats);
+#else
+/**
+ * dp_get_peer_tx_ext_stats() - API to get peer tx stats
+ * @soc_hdl: soc handle
+ * @addr: mac addr
+ * @stats: pointer to stats
+ *
+ * Return: QDF_STATUS
+ */
+static inline QDF_STATUS
+dp_get_peer_tx_ext_stats(struct cdp_soc_t *soc_hdl, uint8_t *addr,
+			 void *stats);
+{
+	return QDF_STATUS_E_FAILURE;
+}
+#endif
 #endif /* WLAN_CONFIG_TELEMETRY_AGENT */
 
 #ifdef CONNECTIVITY_PKTLOG

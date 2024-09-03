@@ -3975,6 +3975,7 @@ static void dp_pdev_deinit(struct cdp_pdev *txrx_pdev, int force)
 	dp_rx_pdev_buffers_free(pdev);
 	dp_rx_pdev_desc_pool_deinit(pdev);
 	dp_pdev_bkp_stats_detach(pdev);
+	qdf_event_destroy(&pdev->vdev_tx_nss_stats_event);
 	qdf_event_destroy(&pdev->fw_peer_stats_event);
 	qdf_event_destroy(&pdev->fw_stats_event);
 	qdf_event_destroy(&pdev->fw_obss_stats_event);
@@ -8714,9 +8715,7 @@ static QDF_STATUS dp_set_pdev_param(struct cdp_soc_t *cdp_soc, uint8_t pdev_id,
 		return dp_monitor_config_enh_rx_capture(pdev,
 						val.cdp_pdev_param_en_rx_cap);
 	case CDP_CONFIG_ENH_TX_CAPTURE:
-		return dp_monitor_config_enh_tx_capture(pdev,
-						val.cdp_pdev_param_en_tx_cap,
-						0);
+		return dp_mon_enh_tx_capt_wrapper(pdev, val);
 	case CDP_CONFIG_HMMC_TID_OVERRIDE:
 		pdev->hmmc_tid_override_en = val.cdp_pdev_param_hmmc_tid_ovrd;
 		break;
@@ -9495,6 +9494,11 @@ dp_set_psoc_param(struct cdp_soc_t *cdp_soc,
 		}
 		break;
 #endif
+	case CDP_VDEV_TX_NSS_SUPPORT:
+		soc->features.vdev_tx_nss_support = val.cdp_tx_vdev_nss_support;
+		dp_info("FW supports Tx Vdev NSS report: %d",
+			soc->features.vdev_tx_nss_support);
+		break;
 	default:
 		break;
 	}
@@ -9625,6 +9629,10 @@ static QDF_STATUS dp_get_psoc_param(struct cdp_soc_t *cdp_soc,
 		break;
 	case CDP_MONITOR_FLAG:
 		val->cdp_monitor_flag = soc->mon_flags;
+		break;
+	case CDP_VDEV_TX_NSS_SUPPORT:
+		val->cdp_tx_vdev_nss_support =
+					soc->features.vdev_tx_nss_support;
 		break;
 	default:
 		dp_warn("Invalid param: %u", param);
@@ -10484,10 +10492,51 @@ dp_fw_stats_process(struct dp_vdev *vdev,
 }
 
 #ifdef WLAN_FEATURE_UL_JITTER
-#define VENDOR_ATTR_NSS_PKT_NSS_VALUE 0
-#define VENDOR_ATTR_NSS_PKT_TX_PACKET_COUNT 1
-#define VENDOR_ATTR_NSS_PKT_RX_PACKET_COUNT 2
+#define VENDOR_ATTR_NSS_PKT_TX_PACKET_COUNT 0
+#define VENDOR_ATTR_NSS_PKT_RX_PACKET_COUNT 1
 #define SS_COUNT_JITTER 2
+static inline QDF_STATUS
+dp_tx_get_fw_nss_stats(struct dp_soc *soc, uint8_t vdev_id, int **stats_req)
+{
+	QDF_STATUS status;
+	struct cdp_txrx_stats_req req = {0,};
+	struct dp_vdev *vdev;
+	struct dp_pdev *pdev = dp_get_pdev_from_soc_pdev_id_wifi3(soc, 0);
+
+	if (pdev->pending_tx_nss_response)
+		return QDF_STATUS_E_ALREADY;
+
+	vdev = dp_vdev_get_ref_by_id(soc, vdev_id, DP_MOD_ID_CDP);
+	if (!vdev) {
+		dp_err_rl("unable to get vdev for vdev id %d", vdev_id);
+		return QDF_STATUS_E_INVAL;
+	}
+
+	pdev->pending_tx_nss_response = true;
+	req.stats = (enum cdp_stats)HTT_DBG_EXT_STATS_TX_VDEV_NSS;
+	req.param0 = HTT_DBG_EXT_STATS_SET_VDEV_MASK(vdev_id);
+	req.cookie_val = DBG_STATS_COOKIE_HTT_TX_NSS;
+	qdf_event_reset(&pdev->vdev_tx_nss_stats_event);
+	status = dp_h2t_ext_stats_msg_send(pdev, req.stats, req.param0,
+					   req.param1, req.param2,
+					   req.param3, 0, req.cookie_val, 0);
+	if (QDF_IS_STATUS_ERROR(status))
+		goto end;
+
+	status = qdf_wait_single_event(&pdev->vdev_tx_nss_stats_event,
+				       DP_MAX_SLEEP_TIME);
+	if (QDF_IS_STATUS_ERROR(status))
+		goto end;
+
+	for (int i = 0; i < SS_COUNT_JITTER; i++) {
+		stats_req[i][VENDOR_ATTR_NSS_PKT_TX_PACKET_COUNT] =
+			vdev->tx_vdev_nss.tx_nss[i];
+	}
+end:
+	dp_vdev_unref_delete(soc, vdev, DP_MOD_ID_CDP);
+	pdev->pending_tx_nss_response = false;
+	return status;
+}
 /**
  * dp_txrx_nss_request - function to get txrx nss stats
  * @soc_handle: soc handle
@@ -10501,17 +10550,30 @@ QDF_STATUS dp_txrx_nss_request(struct cdp_soc_t *soc_handle,
 			       uint8_t vdev_id,
 			       int **req)
 {
-	struct dp_pdev *pdev = dp_get_pdev_from_soc_pdev_id_wifi3(
-						(struct dp_soc *)soc_handle, 0);
+	QDF_STATUS status;
+	struct dp_soc *soc = cdp_soc_t_to_dp_soc(soc_handle);
+	struct cdp_vdev_stats *vdev_stats = qdf_mem_malloc(sizeof(*vdev_stats));
+
+	if (!vdev_stats)
+		return QDF_STATUS_E_NOMEM;
+
+	status = dp_txrx_get_vdev_stats(soc_handle, vdev_id, vdev_stats, true);
+	if (QDF_IS_STATUS_ERROR(status))
+		goto end;
 
 	for (int i = 0; i < SS_COUNT_JITTER; i++) {
-		req[i][VENDOR_ATTR_NSS_PKT_NSS_VALUE] = i + 1;
 		req[i][VENDOR_ATTR_NSS_PKT_TX_PACKET_COUNT] =
-							  pdev->stats.tx.nss[i];
+							  vdev_stats->tx.nss[i];
 		req[i][VENDOR_ATTR_NSS_PKT_RX_PACKET_COUNT] =
-							  pdev->stats.rx.nss[i];
+							  vdev_stats->rx.nss[i];
 	}
-	return QDF_STATUS_SUCCESS;
+
+	if (soc->features.vdev_tx_nss_support)
+		status = dp_tx_get_fw_nss_stats(soc, vdev_id, req);
+end:
+	qdf_mem_free(vdev_stats);
+
+	return status;
 }
 
 /**
@@ -13034,6 +13096,9 @@ static struct cdp_host_stats_ops dp_ops_host_stats = {
 	.txrx_peer_stats_deter = dp_get_peer_stats_deter,
 	.txrx_update_pdev_chan_util_stats = dp_update_pdev_chan_util_stats,
 	.txrx_pdev_erp_stats = dp_get_pdev_erp_stats,
+#ifdef QCA_PEER_EXT_STATS
+	.txrx_get_peer_tx_ext_stats = dp_get_peer_tx_ext_stats,
+#endif
 #endif
 	.txrx_get_peer_extd_rate_link_stats =
 					dp_get_peer_extd_rate_link_stats,
@@ -15222,6 +15287,7 @@ static QDF_STATUS dp_pdev_init(struct cdp_soc_t *txrx_soc,
 	qdf_event_create(&pdev->fw_peer_stats_event);
 	qdf_event_create(&pdev->fw_stats_event);
 	qdf_event_create(&pdev->fw_obss_stats_event);
+	qdf_event_create(&pdev->vdev_tx_nss_stats_event);
 
 	pdev->num_tx_allowed = wlan_cfg_get_max_tx_desc_pool(
 							soc->wlan_cfg_ctx);
@@ -15245,14 +15311,6 @@ static QDF_STATUS dp_pdev_init(struct cdp_soc_t *txrx_soc,
 		dp_init_err("%pK: dp_monitor_pdev_init failed", soc);
 		goto fail4;
 	}
-	/* WAR: for Allocating TX buffer for IPA ALT TX ring as it has to be
-	 * allocated only when 2 radio are supported under 1 SOC in case.
-	 * for non-split case keeping the same approach using macro as
-	 * they have always single PDEV operation.
-	 */
-	if (1 == pdev->pdev_id)
-		if (dp_ipa_uc_alt_attach(soc, pdev) != QDF_STATUS_SUCCESS)
-			dp_init_err("%pK: dp_ipa_uc_alt_attach failed", soc);
 
 	/* initialize sw rx descriptors */
 	dp_rx_pdev_desc_pool_init(pdev);

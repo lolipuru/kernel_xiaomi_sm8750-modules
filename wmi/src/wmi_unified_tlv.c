@@ -15565,6 +15565,9 @@ extract_service_ready_ext2_tlv(wmi_unified_t wmi_handle, uint8_t *event,
 	param->fw_support_opt_dp_ctrl =
 	   WMI_TARGET_CAP_QDATA_TX_LCE_FILTER_SUPPORT_GET(ev->target_cap_flags);
 
+	param->tx_vdev_nss_support =
+	WMI_TARGET_CAP_MPDU_STATS_PER_TX_NSS_SUPPORT_GET(ev->target_cap_flags);
+
 	extract_svc_rdy_ext2_afc_tlv(ev, param);
 
 	extract_hw_bdf_status(ev);
@@ -23834,6 +23837,8 @@ static void populate_tlv_events_id(WMI_EVT_ID *event_ids)
 	event_ids[wmi_vendor_vdev_event_id] = WMI_VENDOR_VDEV_EVENTID;
 	event_ids[wmi_vendor_pdev_event_id] = WMI_VENDOR_PDEV_EVENTID;
 #endif /* WLAN_VENDOR_EXTN*/
+	event_ids[wmi_p2p_cli_dfs_ap_bmiss_detected_eventid] =
+				WMI_P2P_CLI_DFS_AP_BMISS_DETECTED_EVENTID;
 
 }
 
@@ -24485,6 +24490,8 @@ static void populate_tlv_service(uint32_t *wmi_service)
 	wmi_service[wmi_service_mlo_sap_emlsr_support] =
 				WMI_SERVICE_MLO_SAP_EMLSR_SUPPORT;
 #endif
+	wmi_service[wmi_service_ap_assisted_dfs_chan_p2p_session] =
+				WMI_SERVICE_AP_ASSISTED_DFS_CHAN_P2P_SESSION;
 }
 
 /**
