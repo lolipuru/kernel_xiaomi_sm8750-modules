@@ -1362,6 +1362,8 @@ static char *cnss_driver_event_to_str(enum cnss_driver_event_type type)
 		return "QDSS_TRACE_FREE";
 	case CNSS_DRIVER_EVENT_QDSS_TRACE_REQ_DATA:
 		return "QDSS_TRACE_REQ_DATA";
+	case CNSS_DRIVER_EVENT_RESUME_POST_SOL:
+		return "RESUME_POST_SOL";
 	case CNSS_DRIVER_EVENT_MAX:
 		return "EVENT_MAX";
 	}
@@ -2139,6 +2141,9 @@ void cnss_recovery_handler(struct cnss_plat_data *plat_priv)
 	cnss_bus_dev_shutdown(plat_priv);
 	cnss_bus_dev_ramdump(plat_priv);
 
+	if (test_bit(CNSS_IN_SUSPEND_RESUME, &plat_priv->driver_state))
+		clear_bit(CNSS_IN_SUSPEND_RESUME, &plat_priv->driver_state);
+
 	/* If recovery is triggered before Host driver registration,
 	 * avoid device power up because eventually device will be
 	 * power up as part of driver registration.
@@ -2846,6 +2851,20 @@ static int cnss_qdss_trace_req_data_hdlr(struct cnss_plat_data *plat_priv,
 	return ret;
 }
 
+static int cnss_resume_post_sol_hdlr(struct cnss_plat_data *plat_priv,
+					  void *data)
+{
+	int ret = 0;
+
+	if (!plat_priv)
+		return -ENODEV;
+
+	cnss_bus_recover_link_post_sol(plat_priv);
+
+	kfree(data);
+	return ret;
+}
+
 static void cnss_driver_event_work(struct work_struct *work)
 {
 	struct cnss_plat_data *plat_priv =
@@ -2951,6 +2970,10 @@ static void cnss_driver_event_work(struct work_struct *work)
 		case CNSS_DRIVER_EVENT_QDSS_TRACE_REQ_DATA:
 			ret = cnss_qdss_trace_req_data_hdlr(plat_priv,
 							    event->data);
+			break;
+		case CNSS_DRIVER_EVENT_RESUME_POST_SOL:
+			ret = cnss_resume_post_sol_hdlr(plat_priv,
+							     event->data);
 			break;
 		default:
 			cnss_pr_err("Invalid driver event type: %d",
