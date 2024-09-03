@@ -650,6 +650,12 @@ struct sde_hw_ctl_ops {
 	 * @async_en  : true to enable async, 0 to enable sync mode
 	 */
 	void (*enable_sync_mode)(struct sde_hw_ctl *ctx, bool async_en);
+
+	/**
+	 * get flush sync mode enabled for current commit
+	 * @ctx       : ctl path ctx pointer
+	 */
+	bool (*get_flush_sync_mode)(struct sde_hw_ctl *ctx);
 };
 
 /**

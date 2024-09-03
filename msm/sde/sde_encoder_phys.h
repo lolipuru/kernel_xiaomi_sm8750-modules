@@ -1048,4 +1048,37 @@ void sde_encoder_helper_setup_misr(struct sde_encoder_phys *phys_enc,
 int sde_encoder_helper_collect_misr(struct sde_encoder_phys *phys_enc,
 		bool nonblock, u32 *misr_value);
 
+/**
+ * sde_encoder_helper_get_ctl_flush - helper function to get flush register value
+ * @phys_enc: Pointer to physical encoder structure
+ * @Return: flush register value
+ */
+static inline u32 sde_encoder_helper_get_ctl_flush(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_hw_ctl *hw_ctl;
+
+	hw_ctl = phys_enc->hw_ctl;
+
+	if (!hw_ctl || !hw_ctl->ops.get_flush_register)
+		return 0;
+
+	return hw_ctl->ops.get_flush_register(hw_ctl);
+}
+
+/**
+ * sde_encoder_helper_flush_in_sync_mode - helper function to get flush sync mode
+ * @phys_enc: Pointer to physical encoder structure
+ * @Return: true for sync mode, false for async
+ */
+static inline bool sde_encoder_helper_flush_in_sync_mode(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_hw_ctl *hw_ctl;
+
+	hw_ctl = phys_enc->hw_ctl;
+
+	if (!hw_ctl || !hw_ctl->ops.get_flush_sync_mode)
+		return false;
+
+	return hw_ctl->ops.get_flush_sync_mode(hw_ctl);
+}
 #endif /* __sde_encoder_phys_H__ */

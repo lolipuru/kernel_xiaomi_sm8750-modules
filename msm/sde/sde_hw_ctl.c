@@ -1480,6 +1480,22 @@ static int sde_hw_ctl_update_intf_cfg(struct sde_hw_ctl *ctx,
 	return 0;
 }
 
+static bool sde_hw_ctl_get_flush_sync_mode(struct sde_hw_ctl *ctx)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 enable, mode;
+
+	if (!ctx)
+		return false;
+
+	c = &ctx->hw;
+
+	mode = SDE_REG_READ(c, CTL_FLUSH_SYNC_MODE);
+	enable = (SDE_REG_READ(c, CTL_FLUSH_SYNC)) & BIT(0);
+
+	return (enable && !(mode & BIT(0)));
+}
+
 static void sde_hw_ctl_setup_flush_sync(struct sde_hw_ctl *ctx, bool is_master,
 		bool enable)
 {
@@ -1781,6 +1797,7 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC)) {
 		ops->setup_flush_sync = sde_hw_ctl_setup_flush_sync;
 		ops->enable_sync_mode = sde_hw_ctl_enable_sync_mode;
+		ops->get_flush_sync_mode = sde_hw_ctl_get_flush_sync_mode;
 	}
 }
 

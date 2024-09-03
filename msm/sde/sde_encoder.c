@@ -576,7 +576,9 @@ int sde_encoder_helper_wait_for_irq(struct sde_encoder_phys *phys_enc,
 				irq->irq_idx, true);
 		if (irq_status) {
 			unsigned long flags;
+			u32 flush_register;
 
+			flush_register = sde_encoder_helper_get_ctl_flush(phys_enc);
 			SDE_EVT32(DRMID(phys_enc->parent), intr_idx,
 				irq->hw_idx, irq->irq_idx, phys_enc->hw_pp->idx - PINGPONG_0,
 				atomic_read(wait_info->atomic_cnt), SDE_EVTLOG_FUNC_CASE1);
@@ -584,7 +586,7 @@ int sde_encoder_helper_wait_for_irq(struct sde_encoder_phys *phys_enc,
 			local_irq_save(flags);
 			irq->cb.func(phys_enc, irq->irq_idx);
 			local_irq_restore(flags);
-			ret = 0;
+			ret = flush_register ? -ETIMEDOUT : 0;
 		} else {
 			ret = -ETIMEDOUT;
 			SDE_EVT32(DRMID(phys_enc->parent), intr_idx,
