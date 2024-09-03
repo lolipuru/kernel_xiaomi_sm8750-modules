@@ -778,6 +778,8 @@ void sde_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 		return;
 	}
 
+	SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->aiqe_wrapper.base + 0x4, aiqe_abc->src_sel);
+
 	for (i = 0; i < AIQE_ABC_PARAM_LEN; i++)
 		SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x020 + (i * sizeof(u32)), aiqe_abc->param[i]);
 
