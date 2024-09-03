@@ -7114,8 +7114,8 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 
 	if (test_bit(SDE_MDP_HW_FLUSH_SYNC, &catalog->mdp[0].features)) {
 		msm_property_install_range(&sde_crtc->property_info,
-			"flush_sync_override", 0x0, 0, 1, 0,
-				CRTC_PROP_OVERRIDE_FLUSH_SYNC);
+			"flush_sync_en", 0x0, 0, 1, 0,
+				CRTC_PROP_FLUSH_SYNC_EN);
 	}
 
 	if (catalog->mdp[0].has_dest_scaler)
@@ -7444,8 +7444,8 @@ void sde_crtc_force_async_mode(struct drm_encoder *enc,
 		return;
 
 	drm_prop = msm_property_index_to_drm_property(&sde_crtc->property_info,
-			CRTC_PROP_OVERRIDE_FLUSH_SYNC);
-	sde_crtc_atomic_set_property(enc->crtc, crtc_state, drm_prop, 1);
+			CRTC_PROP_FLUSH_SYNC_EN);
+	sde_crtc_atomic_set_property(enc->crtc, crtc_state, drm_prop, 0);
 	SDE_EVT32(DRMID(enc->crtc), DPUID(enc->crtc->dev));
 }
 

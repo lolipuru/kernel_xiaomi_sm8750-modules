@@ -6354,7 +6354,7 @@ static void sde_encoder_set_flush_sync_mode(struct sde_encoder_virt *sde_enc)
 {
 	struct sde_crtc_state *cstate;
 	struct sde_encoder_phys *cur_master;
-	bool async_flush_en = false, flush_sync_override = false;
+	bool async_flush_en = false;
 
 	cstate = to_sde_crtc_state(sde_enc->crtc->state);
 	cur_master = sde_enc->cur_master;
@@ -6363,10 +6363,10 @@ static void sde_encoder_set_flush_sync_mode(struct sde_encoder_virt *sde_enc)
 		!cur_master->hw_ctl->ops.enable_sync_mode)
 		return;
 
-	flush_sync_override = sde_crtc_get_property(cstate,
-					CRTC_PROP_OVERRIDE_FLUSH_SYNC);
+	async_flush_en = sde_crtc_get_property(cstate,
+					CRTC_PROP_FLUSH_SYNC_EN) ? false : true;
 
-	if (flush_sync_override || sde_enc->crtc->state->active_changed ||
+	if (sde_enc->crtc->state->active_changed ||
 		cur_master->cont_splash_enabled)
 		async_flush_en = true;
 
