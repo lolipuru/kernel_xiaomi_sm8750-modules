@@ -58,6 +58,7 @@ enum pmic_type {
 
 enum {
 	HAP_SSR_RECOVERY = BIT(0),
+	HAP_RUNTIME_EN = BIT(1),
 };
 
 static struct reg_default swr_hap_reg_defaults[] = {
@@ -248,6 +249,22 @@ static int swr_haptics_slave_disable(struct swr_haptics_dev *swr_hap)
 	return 0;
 }
 
+static int swr_haptics_runtime_enable(struct swr_haptics_dev *swr_hap)
+{
+	if (!(swr_hap->flags & HAP_RUNTIME_EN))
+		return 0;
+
+	return swr_haptics_slave_enable(swr_hap);
+}
+
+static int swr_haptics_runtime_disable(struct swr_haptics_dev *swr_hap)
+{
+	if (!(swr_hap->flags & HAP_RUNTIME_EN))
+		return 0;
+
+	return swr_haptics_slave_disable(swr_hap);
+}
+
 struct regmap_config swr_hap_regmap_config = {
 	.reg_bits		= 16,
 	.val_bits		= 8,
@@ -310,6 +327,13 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+		rc = swr_haptics_runtime_enable(swr_hap);
+		if (rc < 0) {
+			dev_err_ratelimited(swr_hap->dev, "%s: enable haptics failed, rc=%d\n",
+					__func__, rc);
+			return rc;
+		}
+
 		/* If SSR ever happened, toggle swr-slave-vdd for HW recovery */
 		if ((swr_hap->flags & HAP_SSR_RECOVERY)
 				&& swr_hap->ssr_recovery) {
@@ -392,6 +416,12 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 		swr_slvdev_datapath_control(swr_hap->swr_slave,
 				swr_hap->swr_slave->dev_num, false);
 		swr_device_wakeup_unvote(swr_hap->swr_slave);
+		rc = swr_haptics_runtime_disable(swr_hap);
+		if (rc < 0) {
+			dev_err_ratelimited(swr_hap->dev, "%s: disable haptics failed, rc=%d\n",
+					__func__, rc);
+			return rc;
+		}
 		break;
 	default:
 		break;
@@ -628,6 +658,8 @@ static int swr_haptics_probe(struct swr_device *sdev)
 	pmic_type = (uintptr_t)of_device_get_match_data(swr_hap->dev);
 	if (pmic_type == PM8350B)
 		swr_hap->flags |= HAP_SSR_RECOVERY;
+	else if (pmic_type == PMIH010X)
+		swr_hap->flags |= HAP_RUNTIME_EN;
 
 	swr_set_dev_data(sdev, swr_hap);
 
