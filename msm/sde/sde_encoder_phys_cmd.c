@@ -1445,6 +1445,29 @@ exit:
 	return;
 }
 
+static u32 _sde_encoder_phys_cmd_get_te_width_lines(struct sde_encoder_phys *phys_enc,
+		u32 vrefresh)
+{
+	struct drm_display_mode *mode = &phys_enc->cached_mode;
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct msm_mode_info *info = &sde_enc->mode_info;
+	u64 line_time_ns;
+	u32 te_width_lines;
+
+	if (!info->te_pulse_width_us)
+		return 0;
+
+	line_time_ns = DIV_ROUND_UP(NSEC_PER_SEC, vrefresh * mode->vdisplay);
+
+	te_width_lines = DIV_ROUND_UP(info->te_pulse_width_us * 1000, line_time_ns);
+	te_width_lines += DIV_ROUND_UP(te_width_lines * info->jitter_numer,
+				info->jitter_denom * 100);
+
+	SDE_EVT32(info->te_pulse_width_us, line_time_ns, mode->vdisplay, vrefresh, te_width_lines);
+
+	return te_width_lines;
+}
+
 static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *phys_enc)
 {
 	struct drm_display_mode *mode = &phys_enc->cached_mode;
@@ -1454,6 +1477,7 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 	struct sde_encoder_phys_cmd *cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
 	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
 	u32 bw_update_time_lines, prefill_lines, vrefresh, vsync_vtotal, vsync_count;
+	u32 te_width_lines = 0;
 
 	if (!phys_enc->hw_intf || !phys_enc->hw_intf->ops.setup_te_panic_wakeup)
 		return;
@@ -1472,12 +1496,20 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 				DIV_ROUND_UP(info->prefill_lines * vrefresh, DEFAULT_FPS)
 					: info->prefill_lines;
 
+	/*
+	 * Take te-pulse-width into panic/wakeup calculation for non-qsync
+	 * case as windows are moved to max.
+	 */
+	if (!qsync_en)
+		te_width_lines = _sde_encoder_phys_cmd_get_te_width_lines(phys_enc, vrefresh);
+
 	cfg.wakeup_window = qsync_en ? cmd_enc->qsync_threshold_lines
 				: DEFAULT_TEARCHECK_SYNC_THRESH_START;
 	cfg.wakeup_start =  mode->vdisplay
 				+ (vsync_vtotal
 					- DIV_ROUND_UP(vsync_vtotal * info->jitter_numer,
-						info->jitter_denom * 100)) - prefill_lines;
+						info->jitter_denom * 100))
+				- prefill_lines - te_width_lines;
 
 	bw_update_time_lines = sde_encoder_helper_get_bw_update_time_lines(sde_enc);
 	cfg.panic_window = bw_update_time_lines + cfg.wakeup_window + 1;
@@ -1487,6 +1519,14 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 	if (!qsync_en || sde_enc->multi_te_fps) {
 		cfg.wakeup_window = 0xffffffff;
 		cfg.panic_window = 0xffffffff;
+
+	/*
+	 * allow panic/wakeup to have same windows to avoid undersirable idle-votes
+	 * during large widows with qsync.
+	 */
+	} else if (qsync_en) {
+		cfg.wakeup_start = cfg.panic_start;
+		cfg.wakeup_window = cfg.panic_window - 1;
 	}
 
 	phys_enc->hw_intf->ops.setup_te_panic_wakeup(phys_enc->hw_intf, &cfg);

@@ -138,6 +138,14 @@ void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
 				struct drm_display_mode *drm_mode);
 
 /**
+ * dsi_conn_check_cmd_defined - check if a command is defined
+ * @display: Pointer to private display structure
+ * @type: Enum value of DSI command
+ * Returns: True if given command is defined
+ */
+bool dsi_conn_check_cmd_defined(void *display, enum dsi_cmd_set_type type);
+
+/**
  * dsi_conn_prepare_commit - program pre commit time features
  * @display: Pointer to private display structure
  * @params: Parameters for pre commit programming

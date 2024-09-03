@@ -144,7 +144,7 @@ static int  _sde_cesta_check_mode2_entry_status(u32 cesta_index)
 }
 
 void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en_auto_active,
-		enum sde_cesta_ctrl_pwr_req_mode req_mode)
+		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep)
 {
 	struct sde_cesta *cesta;
 
@@ -156,10 +156,10 @@ void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool
 
 	cesta = cesta_list[client->cesta_index];
 
-	SDE_EVT32(client->client_index, client->scc_index, en_auto_active, req_mode);
+	SDE_EVT32(client->client_index, client->scc_index, en_auto_active, req_mode, en_hw_sleep);
 	if (cesta->hw_ops.force_auto_active_db_update)
 		cesta->hw_ops.force_auto_active_db_update(cesta, client->client_index,
-				en_auto_active, req_mode);
+				en_auto_active, req_mode, en_hw_sleep);
 }
 
 void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en)

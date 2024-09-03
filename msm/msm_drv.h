@@ -955,6 +955,7 @@ struct msm_display_wd_jitter_config {
  * @avr_step_fps: AVR step fps rate
  * @wd_jitter:         Info for WD jitter.
  * @vpadding:        panel stacking height
+ * @te_pulse_width_ns: pulse width of the TE in microseconds
  */
 struct msm_mode_info {
 	uint32_t frame_rate;
@@ -983,6 +984,7 @@ struct msm_mode_info {
 	u32 avr_step_fps;
 	struct msm_display_wd_jitter_config wd_jitter;
 	u32 vpadding;
+	u32 te_pulse_width_us;
 };
 
 /**

@@ -39,7 +39,7 @@ void _sde_cesta_hw_init(struct sde_cesta *cesta)
 }
 
 void _sde_cesta_hw_force_auto_active_db_update(struct sde_cesta *cesta, u32 idx,
-		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode)
+		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep)
 {
 	u32 ctl_val, override_val;
 
@@ -50,6 +50,11 @@ void _sde_cesta_hw_force_auto_active_db_update(struct sde_cesta *cesta, u32 idx,
 		ctl_val |= BIT(3); /* set auto-active-on-panic */
 	else
 		ctl_val &= ~BIT(3);
+
+	if (en_hw_sleep)
+		ctl_val |= BIT(0); /* set hw sleep enable */
+	else
+		ctl_val &= ~BIT(0);
 
 	/* clear & set the pwr_req mode */
 	ctl_val &= ~(BIT(1) | BIT(2));

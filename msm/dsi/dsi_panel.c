@@ -979,6 +979,12 @@ static int dsi_panel_parse_timing(struct dsi_mode_info *mode,
 		rc = 0;
 	}
 
+	rc = utils->read_u32(utils->data, "qcom,dsi-mode-te-width-us", &mode->te_pulse_width_us);
+	if (rc) {
+		DSI_DEBUG("mode te-width not defined in timing node\n");
+		rc = 0;
+	}
+
 	DSI_DEBUG("panel vert active:%d front_portch:%d back_porch:%d pulse_width:%d\n",
 		mode->v_active, mode->v_front_porch, mode->v_back_porch,
 		mode->v_sync_width);

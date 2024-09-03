@@ -473,6 +473,13 @@ struct sde_connector_ops {
 	 */
 	int (*get_panel_scan_line)(void *display, u16 *scan_line, ktime_t *scan_line_ts);
 
+	/*
+	 * check_cmd_defined -  check if a command is defined
+	 * @display: Pointer to private display structure
+	 * @type: Enum value of DSI command
+	 * Returns: True if given command is defined
+	 */
+	bool (*check_cmd_defined)(void *display, enum dsi_cmd_set_type type);
 };
 
 /**
