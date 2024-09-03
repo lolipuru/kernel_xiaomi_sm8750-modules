@@ -1519,6 +1519,14 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 	if (!qsync_en || sde_enc->multi_te_fps) {
 		cfg.wakeup_window = 0xffffffff;
 		cfg.panic_window = 0xffffffff;
+
+	/*
+	 * allow panic/wakeup to have same windows to avoid undersirable idle-votes
+	 * during large widows with qsync.
+	 */
+	} else if (qsync_en) {
+		cfg.wakeup_start = cfg.panic_start;
+		cfg.wakeup_window = cfg.panic_window - 1;
 	}
 
 	phys_enc->hw_intf->ops.setup_te_panic_wakeup(phys_enc->hw_intf, &cfg);

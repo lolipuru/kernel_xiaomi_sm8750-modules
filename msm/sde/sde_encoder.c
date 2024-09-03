@@ -1964,7 +1964,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
 	enum sde_crtc_vm_req vm_req;
 	bool req_flush = false, req_scc = false, is_cmd = false;
-	u32 req_mode;
+	bool qsync_en = false, qsync_updated = false;
 
 	if (!cesta_client || !sde_enc->crtc || sde_encoder_in_clone_mode(drm_enc))
 		return;
@@ -1974,6 +1974,8 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 		return;
 
 	is_cmd = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE);
+	qsync_en = sde_connector_get_qsync_mode(cur_master->connector);
+	qsync_updated = sde_connector_is_qsync_updated(cur_master->connector);
 
 	sde_core_perf_crtc_update(sde_enc->crtc, commit_state);
 
@@ -1986,7 +1988,6 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 	/* SCC configs */
 	cur_master->ops.cesta_ctrl_cfg(cur_master, &ctrl_cfg, &req_flush, &req_scc);
-	req_mode = ctrl_cfg.req_mode;
 
 	/*
 	 * Workaround in cmd mode to avoid scc hang when new or no-change vote is requested
@@ -1994,9 +1995,16 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	 * Set auto-active-on-panic and force db update and reset it during complete-commit.
 	 */
 	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT)) {
-		req_mode = (sde_enc->mode_switch || sde_enc->multi_te_state) ?
-				SDE_CESTA_CTRL_REQ_IMMEDIATE : SDE_CESTA_CTRL_REQ_PANIC_REGION;
-		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, true, req_mode);
+		if (sde_enc->mode_switch || sde_enc->multi_te_state || qsync_en || qsync_updated) {
+			ctrl_cfg.req_mode = SDE_CESTA_CTRL_REQ_IMMEDIATE;
+			ctrl_cfg.hw_sleep_enable = qsync_updated ? false : true;
+		} else {
+			ctrl_cfg.req_mode = SDE_CESTA_CTRL_REQ_PANIC_REGION;
+			ctrl_cfg.hw_sleep_enable = true;
+		}
+
+		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, true,
+				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable);
 		sde_enc->cesta_force_auto_active_db_update = true;
 	}
 
@@ -2009,6 +2017,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 				CRTC_PROP_VM_REQ_STATE);
 	if ((vm_req == VM_REQ_RELEASE) && !ctrl_cfg.auto_active_on_panic) {
 		ctrl_cfg.auto_active_on_panic = true;
+		ctrl_cfg.hw_sleep_enable = false;
 		req_scc = true;
 		req_flush = true;
 		/* reset the flag, so auto-active setting is left intact during TUI session */
@@ -2044,7 +2053,8 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 	SDE_EVT32(DRMID(drm_enc), commit_state, cfg.index, cfg.vote_state, cfg.flags, req_flush,
 			req_scc, sde_enc->cesta_enable_frame, vm_req, sde_enc->mode_switch,
-			req_mode, sde_enc->cesta_force_auto_active_db_update);
+			ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable,
+			sde_enc->cesta_force_auto_active_db_update);
 }
 
 void sde_encoder_cancel_vrr_timers(struct drm_encoder *encoder)
@@ -4694,7 +4704,7 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 
 	if (sde_enc->cesta_client && sde_enc->cesta_force_auto_active_db_update) {
 		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, false,
-				SDE_CESTA_CTRL_REQ_PANIC_REGION);
+				SDE_CESTA_CTRL_REQ_PANIC_REGION, true);
 		sde_enc->cesta_force_auto_active_db_update = false;
 	}
 
