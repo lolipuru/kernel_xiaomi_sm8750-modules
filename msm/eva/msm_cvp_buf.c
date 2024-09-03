@@ -519,16 +519,8 @@ int msm_cvp_map_buf_wncc(struct msm_cvp_inst *inst,
 	cbuf->ownership = CLIENT;
 	cbuf->index = buf->index;
 
-	/* Added for PreSil/RUMI testing */
-#ifdef USE_PRESIL
-	dprintk(CVP_DBG,
-		"wncc buffer is %x for cam_presil_send_buffer"
-		" with MAP_ADDR_OFFSET %x",
-		(u64)(smem->device_addr) - MAP_ADDR_OFFSET, MAP_ADDR_OFFSET);
-	cam_presil_send_buffer((u64)smem->dma_buf, 0,
-		(u32)cbuf->offset, (u32)cbuf->size,
-		(u64)(smem->device_addr) - MAP_ADDR_OFFSET,
-		(uintptr_t)NULL, false);
+#ifdef USE_PRESIL42
+	presil42_send_wncc_buffer(smem, cbuf);
 #endif
 
 	mutex_lock(&inst->cvpwnccbufs.lock);
