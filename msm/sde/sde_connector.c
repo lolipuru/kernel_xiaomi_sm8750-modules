@@ -1579,6 +1579,7 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
 
+	c_conn->last_vhm_cmd = cmd_bit_mask;
 	SDE_EVT32(connector->base.id, params.cmd_bit_mask >> 32,
 		params.cmd_bit_mask, params.peripheral_flush, rc);
 

@@ -305,6 +305,11 @@ enum sde_transition_state {
 	ARP_MODE1_IDLE,
 };
 
+enum sde_min_sr_state {
+	SDE_MIN_SR_COMPLETE,
+	SDE_MIN_SR_SCHEDULED,
+};
+
 struct sde_encoder_vrr_cfg {
 	bool arp_mode_hw_te;
 	bool arp_mode_sw_timer_mode;
@@ -321,6 +326,7 @@ struct sde_encoder_vrr_cfg {
 	struct hrtimer freq_step_timer;
 	struct hrtimer arp_transition_timer;
 	struct hrtimer self_refresh_timer;
+	u16 min_sr_state;
 	struct hrtimer backlight_timer;
 };
 

@@ -480,7 +480,8 @@ struct sde_connector_ops {
  * @VRR_CMD_STATE_NONE: no-op
  * @VRR_CMD_POWER_ON: handle vrr commands at power on
  * @VRR_CMD_POWER_OFF: handle vrr commands at power off
- * @VRR_CMD_IDLE_ENTRY: handle vrr commands at idle pc enter
+ * @VRR_CMD_IDLE_ENTRY_START: handle vrr commands at idle pc enter
+ * @VRR_CMD_IDLE_ENTRY_COMPLETE: handle vrr commands after idle pc
  * @VRR_CMD_IDLE_EXIT: handle vrr commands at idle pc exit
  * @VRR_CMD_FIRST_SELF_REFRESH: handle vrr commands at first SR
  */
@@ -488,7 +489,8 @@ enum sde_conn_vrr_cmd_state {
 	VRR_CMD_STATE_NONE,
 	VRR_CMD_POWER_ON,
 	VRR_CMD_POWER_OFF,
-	VRR_CMD_IDLE_ENTRY,
+	VRR_CMD_IDLE_ENTRY_START,
+	VRR_CMD_IDLE_ENTRY_COMPLETE,
 	VRR_CMD_IDLE_EXIT,
 	VRR_CMD_FIRST_SELF_REFRESH
 };
@@ -644,6 +646,7 @@ struct sde_backlight_vrr_update {
  * @freq_pattern_type_changed: True if frequency pattern type is updated
  * @vrr_cmd_state: Scenario in which VRR cmd is sent
  * @num_bl_frames: Number of frames needed for incremental dimming
+ * @last_vhm_cmd: Last VHM commands queued to panel
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
  * @hdr_capable: external hdr support present
@@ -734,6 +737,7 @@ struct sde_connector {
 	bool freq_pattern_type_changed;
 	enum sde_conn_vrr_cmd_state vrr_cmd_state;
 	u32 num_bl_frames;
+	u64 last_vhm_cmd;
 
 	bool colorspace_updated;
 
