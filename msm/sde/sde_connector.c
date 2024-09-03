@@ -1502,7 +1502,9 @@ int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector)
 	SDE_EVT32(connector->base.id);
 	SDE_ATRACE_BEGIN("cmd_self_refresh");
 
-	if (c_conn->vrr_caps.video_psr_support)
+	if (c_conn->vrr_caps.video_psr_support &&
+			!(c_conn->ops.check_cmd_defined(c_conn->display,
+			DSI_CMD_SET_TRIGGER_SELF_REFRESH)))
 		sde_encoder_handle_video_psr_self_refresh(sde_enc, false);
 	else
 		rc = sde_connector_update_cmd(connector,
