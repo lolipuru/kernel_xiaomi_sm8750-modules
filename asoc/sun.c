@@ -649,28 +649,52 @@ static struct snd_soc_dai_link msm_wcn_be_dai_links[] = {
 };
 #else
 static struct snd_soc_dai_link msm_wcn_be_dai_links[] = {
-        {
-                .name = LPASS_BE_BTFM_PROXY_RX_0,
-                .stream_name = LPASS_BE_BTFM_PROXY_RX_0,
-                .playback_only = 1,
-                .trigger = {SND_SOC_DPCM_TRIGGER_POST,
-                        SND_SOC_DPCM_TRIGGER_POST},
-                .ops = &msm_common_be_ops,
-                /* dai link has playback support */
-                .ignore_pmdown_time = 1,
-                .ignore_suspend = 1,
-                SND_SOC_DAILINK_REG(btfm_0_rx),
-        },
-        {
-                .name = LPASS_BE_BTFM_PROXY_TX_0,
-                .stream_name = LPASS_BE_BTFM_PROXY_TX_0,
-                .capture_only = 1,
-                .trigger = {SND_SOC_DPCM_TRIGGER_POST,
-                        SND_SOC_DPCM_TRIGGER_POST},
-                .ops = &msm_common_be_ops,
-                .ignore_suspend = 1,
-                SND_SOC_DAILINK_REG(btfm_0_tx),
-        },
+	{
+		.name = LPASS_BE_BTFM_PROXY_RX_0,
+		.stream_name = LPASS_BE_BTFM_PROXY_RX_0,
+		.playback_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ops = &msm_common_be_ops,
+		/* dai link has playback support */
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+		SND_SOC_DAILINK_REG(btfm_0_rx),
+	},
+	{
+		.name = LPASS_BE_BTFM_PROXY_TX_0,
+		.stream_name = LPASS_BE_BTFM_PROXY_TX_0,
+		.capture_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ops = &msm_common_be_ops,
+		.ignore_suspend = 1,
+		SND_SOC_DAILINK_REG(btfm_0_tx),
+	},
+};
+static struct snd_soc_dai_link msm_wcn_be_dai_links_ext[] = {
+	{
+		.name = LPASS_BE_BTFM_PROXY_RX_1,
+		.stream_name = LPASS_BE_BTFM_PROXY_RX_1,
+		.playback_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ops = &msm_common_be_ops,
+		/* dai link has playback support */
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+		SND_SOC_DAILINK_REG(btfm_1_rx),
+	},
+	{
+		.name = LPASS_BE_BTFM_PROXY_TX_1,
+		.stream_name = LPASS_BE_BTFM_PROXY_TX_1,
+		.capture_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ops = &msm_common_be_ops,
+		.ignore_suspend = 1,
+		SND_SOC_DAILINK_REG(btfm_1_tx),
+	},
 };
 #endif
 static struct snd_soc_dai_link ext_disp_be_dai_link[] = {
@@ -1694,6 +1718,16 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev, int w
 			       msm_wcn_be_dai_links,
 			       sizeof(msm_wcn_be_dai_links));
 			total_links += ARRAY_SIZE(msm_wcn_be_dai_links);
+		}
+
+		rc = of_property_read_u32(dev->of_node, "qcom,wcn-bt-ext", &val);
+		if (!rc && val) {
+			dev_dbg(dev, "%s(): WCN BT EXT support present\n",
+				__func__);
+			memcpy(msm_sun_dai_links + total_links,
+			       msm_wcn_be_dai_links_ext,
+			       sizeof(msm_wcn_be_dai_links_ext));
+			total_links += ARRAY_SIZE(msm_wcn_be_dai_links_ext);
 		}
 
 		rc = of_property_read_u32(dev->of_node, "qcom,qmp-mic", &val);
