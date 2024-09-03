@@ -1261,6 +1261,19 @@ static void sde_encoder_phys_vid_underrun_irq(void *arg, int irq_idx)
 			phys_enc);
 }
 
+static void sde_encoder_phys_vid_esync_emsync_irq(void *arg, int irq_idx)
+{
+	struct sde_encoder_phys *phys_enc = arg;
+
+	if (!phys_enc)
+		return;
+
+	if (phys_enc->parent_ops.handle_empulse_virt)
+		phys_enc->parent_ops.handle_empulse_virt(phys_enc->parent, phys_enc);
+
+	SDE_EVT32_IRQ(DRMID(phys_enc->parent), irq_idx);
+}
+
 static void _sde_encoder_phys_vid_setup_irq_hw_idx(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -1285,6 +1298,10 @@ static void _sde_encoder_phys_vid_setup_irq_hw_idx(
 		irq->hw_idx = phys_enc->intf_idx;
 
 	irq = &phys_enc->irq[INTR_IDX_TE_DEASSERT];
+	if (irq->irq_idx < 0)
+		irq->hw_idx = phys_enc->intf_idx;
+
+	irq = &phys_enc->irq[INTR_IDX_ESYNC_EMSYNC];
 	if (irq->irq_idx < 0)
 		irq->hw_idx = phys_enc->intf_idx;
 }
@@ -1436,6 +1453,63 @@ end:
 	mutex_unlock(phys_enc->vblank_ctl_lock);
 	return ret;
 }
+
+static int sde_encoder_phys_vid_control_empulse_irq(
+		struct sde_encoder_phys *phys_enc, bool enable)
+{
+	int ret = 0;
+	struct sde_encoder_phys_vid *vid_enc;
+	int refcount;
+
+	if (!phys_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(phys_enc->vblank_ctl_lock);
+	refcount = atomic_read(&phys_enc->empulse_irq_refcount);
+	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+
+	/* Slave encoders don't report vblank */
+	if (!sde_encoder_phys_vid_is_master(phys_enc))
+		goto end;
+
+	/* protect against negative */
+	if (!enable && refcount <= 0) {
+		ret = -EINVAL;
+		goto end;
+	}
+
+	SDE_DEBUG_VIDENC(vid_enc, "[%pS] enable=%d/%d\n",
+			__builtin_return_address(0),
+			enable, atomic_read(&phys_enc->empulse_irq_refcount));
+
+	SDE_EVT32(DRMID(phys_enc->parent), enable,
+			atomic_read(&phys_enc->empulse_irq_refcount));
+
+	if (enable && atomic_inc_return(&phys_enc->empulse_irq_refcount) == 1) {
+		ret = sde_encoder_helper_register_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
+		if (ret)
+			atomic_dec(&phys_enc->empulse_irq_refcount);
+	} else if (!enable && atomic_dec_return(&phys_enc->empulse_irq_refcount) == 0) {
+		ret = sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
+		if (ret)
+			atomic_inc(&phys_enc->empulse_irq_refcount);
+	}
+
+end:
+	if (ret) {
+		SDE_ERROR_VIDENC(vid_enc,
+				"control empulse irq error %d, enable %d\n",
+				ret, enable);
+		SDE_EVT32(DRMID(phys_enc->parent),
+				phys_enc->hw_intf->idx - INTF_0,
+				enable, refcount, SDE_EVTLOG_ERROR);
+	}
+	mutex_unlock(phys_enc->vblank_ctl_lock);
+	return ret;
+}
+
 
 static bool sde_encoder_phys_vid_wait_dma_trigger(
 		struct sde_encoder_phys *phys_enc)
@@ -2483,6 +2557,7 @@ static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops)
 	ops->destroy = sde_encoder_phys_vid_destroy;
 	ops->get_hw_resources = sde_encoder_phys_vid_get_hw_resources;
 	ops->control_vblank_irq = sde_encoder_phys_vid_control_vblank_irq;
+	ops->control_empulse_irq = sde_encoder_phys_vid_control_empulse_irq;
 	ops->wait_for_commit_done = sde_encoder_phys_vid_wait_for_commit_done;
 	ops->wait_for_vblank = sde_encoder_phys_vid_wait_for_vblank_no_notify;
 	ops->wait_for_tx_complete = sde_encoder_phys_vid_wait_for_vblank;
@@ -2582,6 +2657,12 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 	irq->intr_type = SDE_IRQ_TYPE_INTF_UNDER_RUN;
 	irq->intr_idx = INTR_IDX_UNDERRUN;
 	irq->cb.func = sde_encoder_phys_vid_underrun_irq;
+
+	irq = &phys_enc->irq[INTR_IDX_ESYNC_EMSYNC];
+	irq->name = "esync_irq";
+	irq->intr_type = SDE_IRQ_TYPE_INTF_ESYNC_EMSYNC;
+	irq->intr_idx = INTR_IDX_ESYNC_EMSYNC;
+	irq->cb.func = sde_encoder_phys_vid_esync_emsync_irq;
 
 	atomic_set(&phys_enc->vblank_refcount, 0);
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);

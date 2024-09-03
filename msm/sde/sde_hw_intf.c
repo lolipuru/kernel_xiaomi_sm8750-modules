@@ -359,7 +359,10 @@ static void sde_hw_intf_enable_esync(struct sde_hw_intf *ctx, bool enable)
 
 	SDE_REG_WRITE(c, INTF_ESYNC_EN, val);
 
-	if (!enable) {
+	if (enable) {
+		/* enable EM pulse timestamps */
+		SDE_REG_WRITE(c, INTF_ESYNC_TIMESTAMP_CTRL, BIT(0) | BIT(2));
+	} else {
 		SDE_REG_WRITE(c, INTF_ESYNC_SW_RESET, 1);
 		_sde_hw_intf_wait_for_esync_disable(ctx, false);
 		SDE_REG_WRITE(c, INTF_ESYNC_SW_RESET, 0);
@@ -414,6 +417,20 @@ static int sde_hw_intf_wait_for_esync_src_switch(struct sde_hw_intf *ctx, bool b
 	return readx_poll_timeout(readl_relaxed,
 			c->base_off + c->blk_off + INTF_ESYNC_HYBRID_CTRL,
 			val, val == target, 100, 5000);
+}
+
+static u64 sde_hw_intf_get_esync_timestamp(struct sde_hw_intf *ctx)
+{
+	struct sde_hw_blk_reg_map *c = &ctx->hw;
+	u32 timestamp_lo, timestamp_hi;
+	u64 timestamp_total;
+
+	timestamp_lo = SDE_REG_READ(c, INTF_ESYNC_TIMESTAMP0);
+	timestamp_hi = SDE_REG_READ(c, INTF_ESYNC_TIMESTAMP1);
+
+	timestamp_total = timestamp_hi;
+	timestamp_total = (timestamp_total << 32) | timestamp_lo;
+	return timestamp_total;
 }
 
 static void sde_hw_intf_enable_infinite_vfp(struct sde_hw_intf *ctx, bool enable)
@@ -1461,6 +1478,7 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->enable_backup_esync = sde_hw_intf_enable_backup_esync;
 		ops->wait_for_esync_src_switch = sde_hw_intf_wait_for_esync_src_switch;
 		ops->enable_infinite_vfp = sde_hw_intf_enable_infinite_vfp;
+		ops->get_esync_timestamp = sde_hw_intf_get_esync_timestamp;
 	}
 
 	if (cap & BIT(SDE_INTF_TE)) {
