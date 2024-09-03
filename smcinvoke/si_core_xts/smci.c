@@ -353,11 +353,6 @@ static void marshal_in_req_cleanup(struct si_arg u[], int notify)
 
 	for (i = 0; u[i].type; i++) {
 		switch (u[i].type) {
-		case SI_AT_IB:
-		case SI_AT_OB:
-			kfree(u[i].b.addr);
-
-			break;
 		case SI_AT_IO:
 
 			object = u[i].o;
@@ -380,6 +375,8 @@ static void marshal_in_req_cleanup(struct si_arg u[], int notify)
 			put_si_object(object);
 
 			break;
+		case SI_AT_IB:
+		case SI_AT_OB:
 		case SI_AT_OO:
 		default:
 
@@ -394,27 +391,16 @@ static int marshal_in_req(struct si_arg u[], union smcinvoke_arg args[], u32 cou
 
 	FOR_ARGS(i, counts, BI) {
 		u[i].type = SI_AT_IB;
-		u[i].b.addr = kzalloc(args[i].b.size, GFP_KERNEL);
-		if (!u[i].b.addr)
-			err = -1;
-		else
-			u[i].b.size = args[i].b.size;
-
-		if (!err) {
-			void __user *u_addr = u64_to_user_ptr(args[i].b.addr);
-
-			if (copy_from_user(u[i].b.addr, u_addr, u[i].b.size))
-				err = -1;
-		}
+		u[i].flags = SI_ARG_FLAGS_UADDR;
+		u[i].b.uaddr = u64_to_user_ptr(args[i].b.addr);
+		u[i].b.size = args[i].b.size;
 	}
 
 	FOR_ARGS(i, counts, BO) {
 		u[i].type = SI_AT_OB;
-		u[i].b.addr = kzalloc(args[i].b.size, GFP_KERNEL);
-		if (!u[i].b.addr)
-			err = -1;
-		else
-			u[i].b.size = args[i].b.size;
+		u[i].flags = SI_ARG_FLAGS_UADDR;
+		u[i].b.uaddr = u64_to_user_ptr(args[i].b.addr);
+		u[i].b.size = args[i].b.size;
 	}
 
 	FOR_ARGS(i, counts, OI) {
@@ -457,18 +443,12 @@ static int marshal_out_req(union smcinvoke_arg args[], struct si_arg u[])
 	int i = 0, err = 0;
 
 	while (u[i].type == SI_AT_IB)
-		kfree(u[i++].b.addr);
+		i++;
 
 	while (u[i].type == SI_AT_OB) {
-		if (!err) {
-			void __user *u_addr = u64_to_user_ptr(args[i].b.addr);
+		args[i].b.size = u[i].b.size;
 
-			args[i].b.size = u[i].b.size;
-			if (copy_to_user(u_addr, u[i].b.addr, u[i].b.size))
-				err = -1;
-		}
-
-		kfree(u[i++].b.addr);
+		i++;
 	}
 
 	while (u[i].type == SI_AT_IO) {
@@ -1085,17 +1065,12 @@ static int cbo_dispatch(unsigned int context_id,
 	 */
 
 	errno = set_txn_state(cb_txn, XST_TIMEDOUT) ? cb_txn->errno : -EINVAL;
-	if (!errno) {
-		pr_debug("%s invocation returned with %d (context_id %u).\n",
-			si_object_name(object), errno, context_id);
-
+	pr_debug("%s invocation returned with %d (context_id %u).\n",
+		si_object_name(object), errno, context_id);
+	if (!errno)
 		dispatcher_marshal_out(cb_txn->args, args);
-	} else {
-		pr_err("%s invocation returned with %d (context_id %u).\n",
-			si_object_name(object), errno, context_id);
-
+	else
 		dequeue_and_put_txn(cb_txn);
-	}
 
 	return errno;
 }
@@ -1221,8 +1196,7 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 
 			/* We get here, if the invoke thread goes away, e.g. timed out or killed. */
 			/* In correct implementation we should return to userspace for the callback
-			 * server to cleanup. However, the libMinkDescriptor will kill the thread
-			 * if returns error. We stick to the wrong design :(.
+			 * server to cleanup.
 			 */
 
 			goto wait_on_request;
@@ -1246,18 +1220,21 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 		cb_txn->errno = errno;
 
 		/* Try to notify the invoke thread. */
-		/* If 'set_txn_state' fails, e.g. invoke thread TIMEDOUT
-		 * undo 'marshal_out_cb_req'.
-		 */
+		if (set_txn_state(cb_txn, XST_PROCESSED)) {
 
-		if (set_txn_state(cb_txn, XST_PROCESSED) && !errno) {
-			struct si_arg *u = cb_txn->args;
+			/* If 'set_txn_state' fails, e.g. invoke thread TIMEDOUT
+			 * undo 'marshal_out_cb_req' only on SUCCESS.
+			 */
+			if (!errno) {
+				struct si_arg *u = cb_txn->args;
 
-			/* See comments in 'marshal_out_cb_req'. */
+				/* See comments in 'marshal_out_cb_req'. */
 
-			for (i = 0; u[i].type; i++) {
-				switch (u[i].type) {
-				case SI_AT_OO:
+				for (i = 0; u[i].type; i++) {
+					if (u[i].type != SI_AT_OO)
+						continue;
+
+					/* u[i].type == SI_AT_OO. */
 
 					if (is_cb_object(u[i].o))
 						to_cb_object(u[i].o)->notify_on_release = 0;
@@ -1266,18 +1243,8 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 						put_si_object(u[i].o);
 
 					put_si_object(u[i].o);
-
-					break;
-				case SI_AT_IB:
-				case SI_AT_OB:
-				case SI_AT_IO:
-				default:
-
-					break;
 				}
 			}
-
-			return -EINVAL;
 
 		} else
 			complete(&cb_txn->completion);
@@ -1285,7 +1252,8 @@ static long process_accept_req(struct server_info *si, struct smcinvoke_accept *
 		put_txn(cb_txn);
 
 		if (errno && !accept->result)
-			return errno;
+			goto wait_on_request;
+
 
 		/* SUCCESS submitting the response. */
 	}

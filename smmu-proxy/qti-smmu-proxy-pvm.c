@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "qti-smmu-proxy-common.h"
@@ -8,6 +8,8 @@
 #include <linux/qti-smmu-proxy-callbacks.h>
 #include <linux/qcom-dma-mapping.h>
 #include <linux/of.h>
+#include <linux/delay.h>
+#define DELAY_MS 30
 
 static void *msgq_hdl;
 
@@ -23,6 +25,7 @@ int smmu_proxy_unmap(void *data)
 	int ret;
 	struct smmu_proxy_unmap_req *req;
 	struct smmu_proxy_unmap_resp *resp;
+	int retry_cnt;
 
 	mutex_lock(&sender_mutex);
 	buf = kzalloc(GH_MSGQ_MAX_MSG_SIZE_BYTES, GFP_KERNEL);
@@ -46,7 +49,8 @@ int smmu_proxy_unmap(void *data)
 
 	ret = gh_msgq_send(msgq_hdl, (void *) req, req->hdr.msg_size, 0);
 	if (ret < 0) {
-		pr_err("%s: failed to send message rc: %d\n", __func__, ret);
+		pr_err("%s: failed to send message rc: %d hdl:0x%x\n",
+				__func__, ret, req->hdl);
 		goto free_buf;
 	}
 
@@ -54,17 +58,32 @@ int smmu_proxy_unmap(void *data)
 	 * No need to validate size -  gh_msgq_recv() ensures that sizeof(*resp) <
 	 * GH_MSGQ_MAX_MSG_SIZE_BYTES
 	 */
-	ret = gh_msgq_recv(msgq_hdl, buf, sizeof(*resp), &size, 0);
-	if (ret < 0) {
-		pr_err_ratelimited("%s: failed to receive message rc: %d\n", __func__, ret);
-		goto free_buf;
-	}
+	retry_cnt = 10;
+	do {
+		ret = gh_msgq_recv(msgq_hdl, buf, sizeof(*resp), &size, 0);
+		if (ret >= 0)
+			break;
+
+		if (retry_cnt == 1) {
+			pr_err_ratelimited("%s: failed to receive message rc: %d hdl:0x%x\n",
+					__func__, ret, req->hdl);
+			goto free_buf;
+		}
+		pr_err_ratelimited("%s: failed to receive message rc: %d, retry hdl:0x%x\n",
+				__func__, ret, req->hdl);
+		mdelay(DELAY_MS);
+	} while (--retry_cnt);
 
 	resp = buf;
 	if (resp->hdr.ret) {
 		ret = resp->hdr.ret;
 		pr_err("%s: Unmap call failed on remote VM, rc: %d\n", __func__,
 		       resp->hdr.ret);
+	}
+
+	if (resp->hdr.msg_type != SMMU_PROXY_UNMAP_RESP) {
+		pr_err("%s: received incorrect msg (type: %d) for hdl:0x%x\n", __func__,
+				resp->hdr.msg_type, req->hdl);
 	}
 
 free_buf:
@@ -88,6 +107,8 @@ int smmu_proxy_map(struct device *client_dev, struct sg_table *proxy_iova,
 	struct mem_buf_lend_kernel_arg arg = {0};
 	struct smmu_proxy_map_req *req;
 	struct smmu_proxy_map_resp *resp;
+	int retry_cnt;
+	unsigned long flags;
 
 	ret = smmu_proxy_get_csf_version(&csf_version);
 	if (ret) {
@@ -146,11 +167,12 @@ int smmu_proxy_map(struct device *client_dev, struct sg_table *proxy_iova,
 
 	req->hdr.msg_type = SMMU_PROXY_MAP;
 	req->hdr.msg_size = offsetof(struct smmu_proxy_map_req,
-				acl_desc.acl_entries[n_acl_entries]);
+			acl_desc.acl_entries[n_acl_entries]);
 
 	ret = gh_msgq_send(msgq_hdl, (void *) req, req->hdr.msg_size, 0);
 	if (ret < 0) {
-		pr_err("%s: failed to send message rc: %d\n", __func__, ret);
+		pr_err("%s: failed to send message rc: %d hdl:0x%x\n",
+				__func__, ret, req->hdl);
 		goto free_buf;
 	}
 
@@ -158,20 +180,36 @@ int smmu_proxy_map(struct device *client_dev, struct sg_table *proxy_iova,
 	 * No need to validate size -  gh_msgq_recv() ensures that sizeof(*resp) <
 	 * GH_MSGQ_MAX_MSG_SIZE_BYTES
 	 */
-	ret = gh_msgq_recv(msgq_hdl, buf, sizeof(*resp), &size, 0);
-	if (ret < 0) {
-		pr_err_ratelimited("%s: failed to receive message rc: %d\n", __func__, ret);
-		goto free_buf;
-	}
-
+	retry_cnt = 10;
 	resp = buf;
+	flags = 0;
+	do {
+		ret = gh_msgq_recv(msgq_hdl, buf, sizeof(*resp), &size, flags);
+		if (ret >= 0) {
+			if (resp->hdr.ret) {
+				ret = resp->hdr.ret;
+				pr_err_ratelimited("%s: Map call failed on remote VM, rc: %d\n",
+						__func__, resp->hdr.ret);
+				goto free_buf;
+			}
 
-	if (resp->hdr.ret) {
-		ret = resp->hdr.ret;
-		pr_err_ratelimited("%s: Map call failed on remote VM, rc: %d\n", __func__,
-				   resp->hdr.ret);
-		goto free_buf;
-	}
+			if (resp->hdr.msg_type != SMMU_PROXY_MAP_RESP) {
+				pr_err("%s: received incorrect msg (type: %d) for hdl:0x%x\n",
+						__func__, resp->hdr.msg_type, req->hdl);
+				flags = GH_MSGQ_NONBLOCK;
+			} else
+				break;
+		}
+
+		if (retry_cnt == 1) {
+			pr_err_ratelimited("%s: failed to receive message rc: %d hdl:0x%x\n",
+					__func__, ret, req->hdl);
+			goto free_buf;
+		}
+		pr_err_ratelimited("%s: failed to receive message rc: %d, retry hdl:0x%x\n",
+				__func__, ret, req->hdl);
+		mdelay(DELAY_MS);
+	} while (--retry_cnt);
 
 	ret = mem_buf_dma_buf_set_destructor(dmabuf, smmu_proxy_unmap, dmabuf);
 	if (ret) {
