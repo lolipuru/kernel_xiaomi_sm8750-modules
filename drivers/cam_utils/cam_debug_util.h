@@ -66,6 +66,7 @@ enum cam_debug_module_id {
 	CAM_SYNX,                /* bit 36 */
 	CAM_VMRM,                /* bit 37 */
 	CAM_IO_DUMP,             /* bit 38 */
+	CAM_SENSOR_IO,           /* bit 39 */
 	CAM_DBG_MOD_MAX
 };
 
@@ -128,6 +129,7 @@ static const char *cam_debug_mod_name[CAM_DBG_MOD_MAX] = {
 	[CAM_SYNX]        = "CAM_SYNX",
 	[CAM_VMRM]        = "CAM-VMRM",
 	[CAM_IO_DUMP]     = "CAM-IO-DUMP",
+	[CAM_SENSOR_IO]   = "CAM-SENSOR-IO",
 };
 
 #define ___CAM_DBG_MOD_NAME(module_id)                                      \
@@ -166,10 +168,11 @@ __builtin_choose_expr(((module_id) == CAM_CRE), "CAM-CRE",                  \
 __builtin_choose_expr(((module_id) == CAM_PRESIL_CORE), "CAM-CORE-PRESIL",  \
 __builtin_choose_expr(((module_id) == CAM_TPG), "CAM-TPG",                  \
 __builtin_choose_expr(((module_id) == CAM_DMA_FENCE), "CAM-DMA-FENCE",      \
-__builtin_choose_expr(((module_id) == CAM_SENSOR_UTIL), "CAM-SENSOR-UTIL",      \
+__builtin_choose_expr(((module_id) == CAM_SENSOR_UTIL), "CAM-SENSOR-UTIL",  \
 __builtin_choose_expr(((module_id) == CAM_SYNX), "CAM-SYNX",                \
 __builtin_choose_expr(((module_id) == CAM_VMRM), "CAM-VMRM",                \
 __builtin_choose_expr(((module_id) == CAM_IO_DUMP), "CAM-IO-DUMP",          \
+__builtin_choose_expr(((module_id) == CAM_SENSOR_IO), "CAM-SENSOR-IO",      \
 "CAMERA"))))))))))))))))))))))))))))))))))))))
 
 #define CAM_DBG_MOD_NAME(module_id) \
