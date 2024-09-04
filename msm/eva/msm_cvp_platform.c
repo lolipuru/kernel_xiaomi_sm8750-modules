@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -312,6 +312,57 @@ static struct msm_cvp_common_data sm8750_common_data[] = {
 	}
 };
 
+static struct msm_cvp_common_data sm8735_common_data[] = {
+	{
+		.key = "qcom,pm-qos-latency-us",
+		.value = 50,
+	},
+	{
+		.key = "qcom,sw-power-collapse",
+#ifdef USE_PRESIL
+		.value = 0,
+#else
+		.value = 1,
+#endif
+	},
+	{
+		.key = "qcom,domain-attr-non-fatal-faults",
+		.value = 0,
+	},
+	{
+		.key = "qcom,max-secure-instances",
+		.value = 2,
+	},
+	{
+		.key = "qcom,max-ssr-allowed",
+		.value = 1,
+	},
+	{
+		.key = "qcom,power-collapse-delay",
+		.value = 3000,
+	},
+	{
+		.key = "qcom,hw-resp-timeout",
+#ifdef USE_PRESIL
+		.value = 15000000,
+#else
+		.value = 2000,
+#endif
+	},
+	{
+		.key = "qcom,dsp-resp-timeout",
+		.value = 1000,
+	},
+	{
+		.key = "qcom,debug-timeout",
+		.value = 0,
+	},
+	{
+		.key = "qcom,dsp-enabled",
+		.value = 1,
+	}
+};
+
 /* Default UBWC config for LPDDR5 */
 static struct msm_cvp_ubwc_config_data kona_ubwc_data[] = {
 	UBWC_CONFIG(1, 1, 1, 0, 0, 0, 8, 32, 16, 0, 0),
@@ -397,6 +448,16 @@ static struct msm_cvp_platform_data sm8750_data = {
 	.vm_id = 1,
 };
 
+static struct msm_cvp_platform_data sm8735_data = {
+	.common_data = sm8735_common_data,
+	.common_data_length = ARRAY_SIZE(sm8735_common_data),
+	.sku_version = 0,
+	.vpu_ver = VPU_VERSION_5,
+	.ubwc_config = kona_ubwc_data,	/*Reuse Kona setting*/
+	.noc_qos = &pakala_noc_qos,
+	.vm_id = 1,
+};
+
 static const struct of_device_id msm_cvp_dt_match[] = {
 	{
 		.compatible = "qcom,waipio-cvp",
@@ -417,6 +478,10 @@ static const struct of_device_id msm_cvp_dt_match[] = {
 	{
 		.compatible = "qcom,sun-cvp",
 		.data = &sm8750_data,
+	},
+	{
+		.compatible = "qcom,tuna-cvp",
+		.data = &sm8735_data,
 	},
 
 	{},
