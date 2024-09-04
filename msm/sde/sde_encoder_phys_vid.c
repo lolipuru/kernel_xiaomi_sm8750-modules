@@ -1741,8 +1741,7 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 	 * if hwfencing enabled, try again to wait for up to the extended timeout time in
 	 * increments as long as fence has not been signaled.
 	 */
-	if (ret == -ETIMEDOUT && (phys_enc->sde_kms->catalog->hw_fence_rev ||
-			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable))
+	if (ret == -ETIMEDOUT && phys_enc->sde_kms->catalog->hw_fence_rev)
 		ret = sde_encoder_helper_hw_fence_extended_wait(phys_enc, phys_enc->hw_ctl,
 			&wait_info, INTR_IDX_VSYNC);
 
@@ -1765,8 +1764,7 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 			ret = 0;
 
 		/* if we timeout after the extended wait, reset mixers and do sw override */
-		if (ret && (phys_enc->sde_kms->catalog->hw_fence_rev ||
-			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable))
+		if (ret && phys_enc->sde_kms->catalog->hw_fence_rev)
 			sde_encoder_helper_hw_fence_sw_override(phys_enc, hw_ctl);
 
 		SDE_EVT32(DRMID(phys_enc->parent), new_cnt, flush_register, ret,
