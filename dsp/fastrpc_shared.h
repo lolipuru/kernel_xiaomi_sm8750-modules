@@ -373,6 +373,18 @@ enum fastrpc_response_flags {
 	POLL_MODE = 5,
 };
 
+/* To maintain the dsp map current state */
+enum fastrpc_map_state {
+	/* Default smmu/global mapping */
+	FD_MAP_DEFAULT = 0,
+	/* Initiated DSP mapping */
+	FD_DSP_MAP_IN_PROGRESS,
+	/* Completed DSP mapping */
+	FD_DSP_MAP_COMPLETE,
+	/* Initiated DSP unmapping */
+	FD_DSP_UNMAP_IN_PROGRESS,
+};
+
 struct fastrpc_socket {
 	struct socket *sock;                   // Socket used to communicate with remote domain
 	struct sockaddr_qrtr local_sock_addr;  // Local socket address on kernel side
@@ -572,6 +584,7 @@ struct fastrpc_map {
 	u32 flags;
 	struct kref refcount;
 	int secure;
+	atomic_t state;
 };
 
 struct fastrpc_perf {
