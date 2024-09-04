@@ -4599,12 +4599,6 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 				goto err_assign;
 			}
 		}
-
-		if (copy_to_user((void __user *)argp, &req, sizeof(req))) {
-			err = -EFAULT;
-			goto err_assign;
-		}
-
 		if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
 			spin_lock_irqsave(&fl->cctx->lock, flags);
 			list_add_tail(&buf->node, &fl->cctx->gmaps);
@@ -4614,6 +4608,14 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 			list_add_tail(&buf->node, &fl->mmaps);
 			spin_unlock(&fl->lock);
 		}
+		if (copy_to_user((void __user *)argp, &req, sizeof(req)))
+			/*
+			 * The usercopy failed, but we can't do much about it, as this
+			 * buf is already mapped in the DSP and accessible for the
+			 * current process. Therefore "leak" the buf and rely on the
+			 * process exit path to do any required cleanup.
+			 */
+			return -EFAULT;
 
 	} else {
 		if ((req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) && fl->is_unsigned_pd) {
@@ -4661,34 +4663,31 @@ static int fastrpc_req_mmap(struct fastrpc_user *fl, char __user *argp)
 		/* let the client know the address to use */
 		req.vaddrout = rsp_msg.vaddr;
 
-		if (copy_to_user((void __user *)argp, &req, sizeof(req))) {
-			err = -EFAULT;
-			goto err_assign;
-		}
+		if (copy_to_user((void __user *)argp, &req, sizeof(req)))
+			/*
+			 * The usercopy failed, but we can't do much about it, as this
+			 * map is already mapped in the DSP and accessible for the
+			 * current process. Therefore "leak" the map and rely on the
+			 * process exit path to do any required cleanup.
+			 */
+			return -EFAULT;
+
 	}
 	return 0;
 
 err_assign:
-	if (req.flags != ADSP_MMAP_ADD_PAGES && req.flags != ADSP_MMAP_REMOTE_HEAP_ADDR) {
-		err = fastrpc_req_munmap_dsp(fl, map->raddr, map->size);
-		if (err) {
-			dev_err(dev, "unmmap\tpt fd = %d, 0x%09llx error\n",  map->fd, map->raddr);
-			map = NULL;
+	err = fastrpc_req_munmap_impl(fl, buf);
+	if (err) {
+		if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
+			spin_lock_irqsave(&fl->cctx->lock, flags);
+			list_add_tail(&buf->node, &fl->cctx->gmaps);
+			spin_unlock_irqrestore(&fl->cctx->lock, flags);
+		} else {
+			spin_lock(&fl->lock);
+			list_add_tail(&buf->node, &fl->mmaps);
+			spin_unlock(&fl->lock);
 		}
-	} else {
-		err = fastrpc_req_munmap_impl(fl, buf);
-		if (err) {
-			if (req.flags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
-				spin_lock_irqsave(&fl->cctx->lock, flags);
-				list_add_tail(&buf->node, &fl->cctx->gmaps);
-				spin_unlock_irqrestore(&fl->cctx->lock, flags);
-			} else {
-				spin_lock(&fl->lock);
-				list_add_tail(&buf->node, &fl->mmaps);
-				spin_unlock(&fl->lock);
-			}
-			buf = NULL;
-		}
+		buf = NULL;
 	}
 
 err_invoke:
@@ -4768,7 +4767,6 @@ static int fastrpc_req_mem_unmap(struct fastrpc_user *fl, char __user *argp)
 
 static int fastrpc_req_mem_map(struct fastrpc_user *fl, char __user *argp)
 {
-	struct fastrpc_mem_unmap req_unmap = { 0 };
 	struct fastrpc_mem_map req = {0};
 	struct device *dev = NULL;
 	struct fastrpc_map *map = NULL;
@@ -4806,13 +4804,14 @@ static int fastrpc_req_mem_map(struct fastrpc_user *fl, char __user *argp)
 	/* update the buffer to be able to deallocate the memory on the DSP */
 	map->raddr = req.vaddrout;
 
-	if (copy_to_user((void __user *)argp, &req, sizeof(req))) {
-		/* unmap the memory and release the buffer */
-		req_unmap.vaddr = (uintptr_t)req.vaddrout;
-		req_unmap.length = map->size;
-		fastrpc_req_mem_unmap_impl(fl, &req_unmap);
+	if (copy_to_user((void __user *)argp, &req, sizeof(req)))
+		/*
+		 * The usercopy failed, but we can't do much about it, as this
+		 * map is already mapped in the DSP and accessible for the
+		 * current process. Therefore "leak" the map and rely on the
+		 * process exit path to do any required cleanup.
+		 */
 		return -EFAULT;
-	}
 
 	return 0;
 err_invoke:
