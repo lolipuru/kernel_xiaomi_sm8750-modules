@@ -2127,7 +2127,7 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 
 	num_mixers = _sde_cp_get_num_dspp_mixers(sde_crtc);
 	if (!num_mixers) {
-		DRM_ERROR("no mixers for this crtc\n");
+		DRM_DEBUG_DRIVER("no mixers for this crtc\n");
 		return;
 	}
 
