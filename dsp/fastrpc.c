@@ -476,7 +476,7 @@ static int __fastrpc_buf_alloc(struct fastrpc_user *fl,
 		if (smmucb->dev)
 			__fastrpc_dma_alloc(buf);
 		if (buf->virt) {
-			smmucb->allocatedbytes += SMMU_ALIGN(size);
+			smmucb->allocatedbytes += SMMU_ALIGN(buf->size);
 			buf->phys += ((u64)smmucb->sid << 32);
 		}
 		mutex_unlock(&smmucb->map_mutex);
@@ -1306,7 +1306,7 @@ map_retry:
 			sgl_index)
 			map->size += sg_dma_len(sgl);
 		map->va = (void *) (uintptr_t) va;
-		smmucb->allocatedbytes += SMMU_ALIGN(len);
+		smmucb->allocatedbytes += SMMU_ALIGN(map->size);
 	} else if (attr & FASTRPC_ATTR_NOMAP || mflags == FASTRPC_MAP_FD_NOMAP){
 
 		map->phys = sg_dma_address(map->table->sgl);
@@ -1319,7 +1319,7 @@ map_retry:
 			sgl_index)
 			map->size += sg_dma_len(sgl);
 		map->va = (void *) (uintptr_t) va;
-		smmucb->allocatedbytes += SMMU_ALIGN(len);
+		smmucb->allocatedbytes += SMMU_ALIGN(map->size);
 	}
 
 	trace_fastrpc_dma_map(map->fl->cctx->domain_id, map->fd, map->phys,
@@ -5460,7 +5460,8 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 	struct fastrpc_buf *buf = NULL;
 	struct iommu_domain *domain = NULL;
 	struct gen_pool *gen_pool = NULL;
-	int frpc_gen_addr_pool[2] = {0, 0}, smmu_alloc_range[2] = {0, 0};
+	int frpc_gen_addr_pool[2] = {0, 0};
+	u32 smmu_alloc_range[2] = {0, 0};
 	struct sg_table sgt;
 	struct fastrpc_smmu *smmucb = NULL;
 #ifdef CONFIG_DEBUG_FS
@@ -5531,7 +5532,7 @@ static int fastrpc_cb_probe(struct platform_device *pdev)
 
 	/* Set SMMU context bank, min and max allocation range */
 	if (!of_property_read_u32_array(dev->of_node, "alloc-size-range",
-							smmu_alloc_range, 2)) {
+							smmu_alloc_range, sizeof(smmu_alloc_range))) {
 		smmucb->minallocsize = smmu_alloc_range[0];
 		smmucb->maxallocsize = smmu_alloc_range[1];
 	}
