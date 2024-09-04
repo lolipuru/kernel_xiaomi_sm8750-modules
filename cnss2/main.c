@@ -838,7 +838,12 @@ int cnss_iommu_map(struct iommu_domain *domain,
 int cnss_iommu_map(struct iommu_domain *domain,
 		   unsigned long iova, phys_addr_t paddr, size_t size, int prot)
 {
-	return iommu_map(domain, iova, paddr, size, prot, GFP_KERNEL);
+	gfp_t gfp = GFP_KERNEL;
+
+	if (in_interrupt() || !preemptible() || rcu_preempt_depth())
+		gfp = GFP_ATOMIC;
+
+	return iommu_map(domain, iova, paddr, size, prot, gfp);
 }
 #endif
 
