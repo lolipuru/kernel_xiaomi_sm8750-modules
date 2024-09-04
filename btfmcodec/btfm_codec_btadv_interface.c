@@ -213,7 +213,7 @@ void btfmcodec_configure_hwep(struct btfmcodec_char_device *btfmcodec_dev)
 	if (status != MSG_SUCCESS)
 		return;
 
-	if (ret < 0) {
+	if (ret == 0) {
 		ret = btfmcodec_wait_for_bearer_ind(btfmcodec_dev);
 		if (ret < 0) {
 			/* Move back to BTADV_AUDIO_Connected for failure cases*/
