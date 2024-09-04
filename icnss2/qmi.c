@@ -48,7 +48,16 @@
 
 #define DEFAULT_PHY_UCODE_FILE_NAME	"phy_ucode.elf"
 #define DEFAULT_AUX_FILE_NAME		"aux_ucode.elf"
-#define QDSS_TRACE_CONFIG_FILE		"qdss_trace_config.cfg"
+
+#define MAX_FIRMWARE_NAME_LEN		50
+#define HW_V1_NUMBER			"v1"
+#ifdef CONFIG_ICNSS2_DEBUG
+#define QDSS_FILE_BUILD_STR		"debug_"
+#else
+#define QDSS_FILE_BUILD_STR		"perf_"
+#endif
+
+#define QDSS_TRACE_CONFIG_FILE		"qdss_trace_config"
 
 #define WLAN_BOARD_ID_INDEX		0x100
 #define DEVICE_BAR_SIZE			0x200000
@@ -1368,6 +1377,26 @@ end:
 	return ret;
 }
 
+static void icnss_get_qdss_cfg_filename(struct icnss_priv *priv,
+					char *filename, u32 filename_len,
+					bool fallback_file)
+{
+	char filename_tmp[MAX_FIRMWARE_NAME_LEN];
+	char *build_str = QDSS_FILE_BUILD_STR;
+
+	if (fallback_file)
+		build_str = "";
+
+	if (priv->device_id == WCN7750_DEVICE_ID)
+		snprintf(filename_tmp, filename_len, QDSS_TRACE_CONFIG_FILE
+			"_%s%s.cfg", build_str, HW_V1_NUMBER);
+	else
+		snprintf(filename_tmp, filename_len, QDSS_TRACE_CONFIG_FILE
+			".cfg");
+
+	icnss_add_fw_prefix_name(priv, filename, filename_tmp);
+}
+
 int icnss_wlfw_qdss_dnld_send_sync(struct icnss_priv *priv)
 {
 	struct wlfw_qdss_trace_config_download_req_msg_v01 *req;
@@ -1392,13 +1421,21 @@ int icnss_wlfw_qdss_dnld_send_sync(struct icnss_priv *priv)
 		return -ENOMEM;
 	}
 
-	icnss_add_fw_prefix_name(priv, filename, QDSS_TRACE_CONFIG_FILE);
+	icnss_get_qdss_cfg_filename(priv, filename, sizeof(filename), false);
 	ret = firmware_request_nowarn(&fw_entry, filename,
 				      &priv->pdev->dev);
 	if (ret) {
-		icnss_pr_err("Failed to load QDSS: %s ret:%d\n",
+		icnss_pr_err("Failed to load QDSS: %s ret:%d, try default file\n",
 			     filename, ret);
-		goto err_req_fw;
+		icnss_get_qdss_cfg_filename(priv, filename, sizeof(filename),
+					    true);
+		ret = firmware_request_nowarn(&fw_entry, filename,
+					      &priv->pdev->dev);
+		if (ret) {
+			icnss_pr_err("Failed to load QDSS: %s ret:%d\n",
+				     filename, ret);
+			goto err_req_fw;
+		}
 	}
 
 	temp = fw_entry->data;
