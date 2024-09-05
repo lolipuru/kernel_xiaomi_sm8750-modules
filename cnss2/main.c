@@ -1877,6 +1877,7 @@ static irqreturn_t cnss_dev_sol_handler(int irq, void *data)
 
 	sol_gpio_value = cnss_get_dev_sol_value(plat_priv);
 	if (test_bit(CNSS_POWER_OFF, &plat_priv->driver_state) ||
+	    test_bit(CNSS_IN_REBOOT, &plat_priv->driver_state) ||
 	    test_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state) ||
 	    sol_gpio_value == 1) {
 		cnss_pr_dbg("Ignore Dev SOL IRQ (%u) with driver state 0x%lx, dev_sol_val: %d\n",
