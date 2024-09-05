@@ -2910,7 +2910,8 @@ static inline void __trigger_repl_work(struct ipa3_sys_context *sys)
 	avail = (tail - head) % sys->repl->capacity;
 
 	thrshld = (sys->ep->client == IPA_CLIENT_APPS_WAN_CONS ||
-				sys->ep->client == IPA_CLIENT_APPS_WAN_COAL_CONS) ?
+				sys->ep->client == IPA_CLIENT_APPS_WAN_COAL_CONS) &&
+				(ipa3_ctx->ipa_wan_skb_page) ?
 				atomic_read(&ipa3_ctx->ipa_temp_pool_capacity) / 2 :
 				sys->repl->capacity / 2;
 
