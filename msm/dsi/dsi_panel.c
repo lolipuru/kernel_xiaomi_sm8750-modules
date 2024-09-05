@@ -1451,6 +1451,9 @@ static int dsi_panel_parse_qsync_caps(struct dsi_panel *panel,
 	struct dsi_parser_utils *utils = &panel->utils;
 	const char *name = panel->name;
 
+	qsync_caps->hwfence_sw_override_always =
+		utils->read_bool(utils->data, "qcom,hwfence_sw_override_always");
+
 	qsync_caps->qsync_support = utils->read_bool(utils->data, "qcom,qsync-enable");
 	if (!qsync_caps->qsync_support) {
 		DSI_DEBUG("qsync feature not enabled\n");

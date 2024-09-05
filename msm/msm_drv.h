@@ -1035,6 +1035,8 @@ struct msm_resource_caps_info {
  * @has_qsync_min_fps_list True if dsi-supported-qsync-min-fps-list exits
  * @avr_step_fps        AVR step fps supported
  * @vrr_caps            Capabilities of VRR panel
+ * @hwfence_sw_override_always	whether to trigger fence software override every flush (only
+ *				intended for TVM)
  * @esync_enabled:      esync is supported
  * @esync_milli_skew:   esync skew, in 1/1000ths of a line
  * @esync_hsync_milli_pulse_width: esync's hsync pulse width, in 1/1000ths of a line
@@ -1074,6 +1076,7 @@ struct msm_display_info {
 	bool has_qsync_min_fps_list;
 	uint32_t avr_step_fps;
 	struct msm_vrr_capabilities vrr_caps;
+	bool hwfence_sw_override_always;
 
 	bool esync_enabled;
 	uint32_t esync_milli_skew;

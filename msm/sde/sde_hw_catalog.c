@@ -6021,7 +6021,7 @@ static void _sde_hw_fence_caps(struct sde_mdss_cfg *sde_cfg)
 	struct sde_ctl_cfg *ctl;
 	int i;
 
-	if (!sde_cfg->hw_fence_rev)
+	if (SDE_HW_MAJOR(sde_cfg->hw_rev) < SDE_HW_MAJOR(SDE_HW_VER_900))
 		return;
 
 	set_bit(SDE_FEATURE_HW_FENCE_IPCC, sde_cfg->features);

@@ -4934,15 +4934,15 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	is_dp = phys->hw_intf && phys->hw_intf->cap->type == INTF_DP;
 	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 
-	if (sde_enc->disp_info.vrr_caps.video_psr_support) {
-		if (!phys->sde_kms->catalog->hw_fence_rev)
-			ctl->ops.hw_fence_trigger_sw_override(ctl);
+	if ((sde_enc->disp_info.vrr_caps.video_psr_support &&
+			!phys->sde_kms->catalog->hw_fence_rev) ||
+			sde_enc->disp_info.hwfence_sw_override_always)
+		ctl->ops.hw_fence_trigger_sw_override(ctl);
 
-		/* matching unblock in sde_encoder_phys_vid_handle_post_kickoff */
-		if (phys->esync_pc_exit && !sde_enc->vrr_info.vhm_cmd_in_progress &&
-				c_conn->ops.avoid_cmd_transfer)
-			c_conn->ops.avoid_cmd_transfer(c_conn->display, true);
-	}
+	/* matching unblock in sde_encoder_phys_vid_handle_post_kickoff */
+	if (sde_enc->disp_info.vrr_caps.video_psr_support && phys->esync_pc_exit &&
+			!sde_enc->vrr_info.vhm_cmd_in_progress && c_conn->ops.avoid_cmd_transfer)
+		c_conn->ops.avoid_cmd_transfer(c_conn->display, true);
 
 	/*
 	 * Cesta blocks ctl flush in hardware until cesta vote is processed, but
@@ -5225,6 +5225,7 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	u32 pending_kickoff_cnt;
 	struct msm_drm_private *priv = NULL;
 	struct sde_kms *sde_kms = NULL;
+	struct sde_encoder_phys *phys_enc;
 	struct sde_crtc_misr_info crtc_misr_info = {false, 0};
 	bool is_regdma_blocking = false, is_vid_mode = false;
 	struct sde_crtc *sde_crtc;
@@ -5236,6 +5237,7 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	}
 
 	sde_crtc = to_sde_crtc(sde_enc->crtc);
+	phys_enc = sde_enc->cur_master;
 
 	/* reset input fence status and skip flush for fence error case. */
 	if (sde_crtc && sde_crtc->input_fence_status < 0) {
@@ -6188,6 +6190,7 @@ void sde_encoder_handle_self_refresh_video_psr(struct sde_encoder_phys *phys_enc
 	struct sde_encoder_vrr_cfg *vrr_cfg = &phys_enc->sde_vrr_cfg;
 	u64 dpu_min_trigger, dpu_min_ns, avr_step_in_ns;
 	struct sde_connector *sde_conn;
+	enum sde_crtc_vm_req vm_req;
 
 	if (!new_commit)
 		return;
@@ -6199,6 +6202,11 @@ void sde_encoder_handle_self_refresh_video_psr(struct sde_encoder_phys *phys_enc
 			return;
 		}
 	}
+
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+			CRTC_PROP_VM_REQ_STATE);
+	if (vm_req == VM_REQ_RELEASE)
+		return;
 
 	if (phys_enc->sde_vrr_cfg.min_sr_state == SDE_MIN_SR_IN_PROGRESS) {
 		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
