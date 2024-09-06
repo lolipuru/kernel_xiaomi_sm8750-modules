@@ -511,12 +511,12 @@ struct cam_icp_hw_active_ctx_info {
  * @icp_dbg_lvl : debug level set to FW.
  * @icp_fw_dump_lvl : level set for dumping the FW data
  * @icp_fw_ramdump_lvl : level set for FW ram dumps
- * @ssr_triggered: Sub-system restart triggered, FW reloaded
  *                 and ICP was reinitialized
  * @recovery: Flag to validate if in previous session FW
  *            reported a fatal error or wdt. If set FW is
  *            re-downloaded for new camera session. This
  *            would be set only if SSR also failed to reload ICP.
+ * @load_in_process: To indicate if FW is being loaded (cold boot)
  * @frame_in_process: Counter for frames in process
  * @frame_in_process_ctx_id: Contxt id processing frame
  * @abort_in_process: Abort is in progress
@@ -574,8 +574,8 @@ struct cam_icp_hw_mgr {
 	u64 icp_dbg_lvl;
 	u64 icp_fw_dump_lvl;
 	u32 icp_fw_ramdump_lvl;
-	atomic_t ssr_triggered;
 	atomic_t recovery;
+	atomic_t load_in_process;
 	uint64_t icp_svs_clk;
 	atomic_t frame_in_process;
 	int frame_in_process_ctx_id;
