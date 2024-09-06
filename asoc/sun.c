@@ -2373,6 +2373,15 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 	/* parse upd configuration */
 	msm_parse_upd_configuration(pdev, pdata);
 
+	pdata->wcd_usbss_handle = of_parse_phandle(pdev->dev.of_node,
+						"wcd939x-i2c-handle", 0);
+	if (!pdata->wcd_usbss_handle)
+		dev_dbg(&pdev->dev, "property %s not detected in node %s\n",
+			"wcd939x-i2c-handle", pdev->dev.of_node->full_name);
+
+	if (pdata->wcd_usbss_handle)
+		wcd_mbhc_cfg.swap_gnd_mic = msm_usbc_swap_gnd_mic;
+
 	ret = devm_snd_soc_register_card(&pdev->dev, card);
 	if (ret == -EPROBE_DEFER) {
 		if (codec_reg_done)
@@ -2385,16 +2394,6 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 	}
 	dev_info(&pdev->dev, "%s: Sound card %s registered\n",
 		 __func__, card->name);
-
-	if (wcd_mbhc_cfg.enable_usbc_analog ||
-				wcd_mbhc_cfg.usbss_hsj_connect_enable)
-		wcd_mbhc_cfg.swap_gnd_mic = msm_usbc_swap_gnd_mic;
-
-	pdata->wcd_usbss_handle = of_parse_phandle(pdev->dev.of_node,
-					"wcd939x-i2c-handle", 0);
-	if (!pdata->wcd_usbss_handle)
-		dev_dbg(&pdev->dev, "property %s not detected in node %s\n",
-			"wcd939x-i2c-handle", pdev->dev.of_node->full_name);
 
 	pdata->dmic01_gpio_p = of_parse_phandle(pdev->dev.of_node,
 					      "qcom,cdc-dmic01-gpios",
