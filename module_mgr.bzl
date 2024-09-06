@@ -1,6 +1,5 @@
 load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
-load("//build/kernel/kleaf:kernel.bzl", "ddk_module",
-                                        "ddk_submodule")
+load("//build/kernel/kleaf:kernel.bzl", "ddk_module")
 
 def _create_module_conditional_src_map(conditional_srcs):
     processed_conditional_srcs = {}
@@ -67,8 +66,9 @@ def _define_target_modules(target, variant, registry, modules, product = None, c
         if not srcs:
             continue
 
-        ddk_submodule(
+        ddk_module(
             name = rule_name,
+            kernel_build = "//msm-kernel:{}_{}".format(target, variant),
             srcs = srcs,
             out = "{}.ko".format(module.name),
             deps = deps,
@@ -77,15 +77,9 @@ def _define_target_modules(target, variant, registry, modules, product = None, c
 
         submodule_rules.append(rule_name)
 
-    ddk_module(
-        name = "{}_modules".format(rule_prefix),
-        kernel_build = "//msm-kernel:{}_{}".format(target, variant),
-        deps = submodule_rules
-    )
-
     copy_to_dist_dir(
         name = "{}_modules_dist".format(rule_prefix),
-        data = [":{}_modules".format(rule_prefix)],
+        data = submodule_rules,
         dist_dir = "out/target/product/{}/dlkm/lib/modules/".format(target),
         flat = True,
         wipe_dist_dir = False,
