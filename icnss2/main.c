@@ -5090,7 +5090,7 @@ static void icnss_record_smmu_fault_timestamp(struct icnss_priv *priv,
 	if (id >= SMMU_CB_MAX)
 		return;
 
-	priv->smmu_fault_timestamp[id] = sched_clock();
+	priv->smmu_fault_timestamp[id] = __arch_counter_get_cntvct();
 }
 
 static inline void icnss_pci_set_suspended(struct icnss_priv *priv, int val)
@@ -5121,6 +5121,9 @@ static void icnss_pci_smmu_fault_handler_irq(struct iommu_domain *domain,
 	int ret = 0;
 	struct icnss_uevent_fw_down_data fw_down_data = {0};
 
+	icnss_record_smmu_fault_timestamp(priv, SMMU_CB_DOORBELL_RING);
+	ret = icnss_ring_doorbell(priv, DB_MSG_SMMU_FAULT);
+
 	icnss_record_smmu_fault_timestamp(priv, SMMU_CB_ENTRY);
 	if (test_bit(ICNSS_FW_READY, &priv->state)) {
 		fw_down_data.crashed = true;
@@ -5130,8 +5133,6 @@ static void icnss_pci_smmu_fault_handler_irq(struct iommu_domain *domain,
 					 &fw_down_data);
 	}
 
-	icnss_record_smmu_fault_timestamp(priv, SMMU_CB_DOORBELL_RING);
-	ret = icnss_ring_doorbell(priv, DB_MSG_SMMU_FAULT);
 	if (!ret)
 		icnss_pr_dbg("Sent SNOC trace stop indication");
 	else
