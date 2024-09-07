@@ -31,6 +31,5 @@ def define_sun():
                     "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_MSM_EXT_DISPLAY",
                     "CONFIG_DRM_SDE_CESTA",
-                    "CONFIG_SMMU_PROXY"
                 ],
             )
