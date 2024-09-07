@@ -212,5 +212,9 @@ module_entry(
         "CONFIG_MSM_MMRM" : [
             "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver",
         ],
+        "CONFIG_SMMU_PROXY" : [
+            "//vendor/qcom/opensource/securemsm-kernel:%b_smmu_proxy_dlkm",
+             "//vendor/qcom/opensource/securemsm-kernel:smmu_proxy_headers",
+        ],
       },
 )

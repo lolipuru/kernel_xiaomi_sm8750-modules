@@ -74,6 +74,14 @@
 #define CREATE_TRACE_POINTS
 #include "sde_trace.h"
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+#include <smmu-proxy/include/uapi/linux/qti-smmu-proxy.h>
+#include <smmu-proxy/linux/qti-smmu-proxy.h>
+#endif
+
+#define CSF_2_5_ARCH_VER	2
+#define CSF_2_5_MAX_VER		5
+
 /* defines for secure channel call */
 #define MEM_PROTECT_SD_CTRL_SWITCH 0x18
 #define MDP_DEVICE_ID            0x1A
@@ -456,7 +464,10 @@ scm_error:
 
 static int _sde_kms_detach_sec_cb(struct sde_kms *sde_kms, int vmid)
 {
-	u32 ret;
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	struct csf_version csf_ver = {};
+#endif
+	int ret;
 
 	if (atomic_inc_return(&sde_kms->detach_sec_cb) > 1)
 		return 0;
@@ -474,6 +485,23 @@ static int _sde_kms_detach_sec_cb(struct sde_kms *sde_kms, int vmid)
 		goto scm_error;
 	}
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	ret = smmu_proxy_get_csf_version(&csf_ver);
+	if (ret) {
+		SDE_ERROR("error in getting csf version, ret:%d\n", ret);
+		goto scm_error;
+	}
+
+	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) && (csf_ver.max_ver == CSF_2_5_MAX_VER)) {
+		ret = smmu_proxy_switch_sid(sde_kms->dev->dev, SMMU_PROXY_SWITCH_OP_ACQUIRE_SID);
+		if (ret) {
+			SDE_ERROR("smmu proxy switch sid failed, ret:%d\n", ret);
+			goto scm_error;
+		}
+	}
+
+	SDE_EVT32(vmid, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, ret);
+#endif
 	return 0;
 
 scm_error:
@@ -486,15 +514,35 @@ mmu_error:
 static int _sde_kms_attach_sec_cb(struct sde_kms *sde_kms, u32 vmid,
 		u32 old_vmid)
 {
-	u32 ret;
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	struct csf_version csf_ver = {};
+#endif
+	int ret;
 
 	if (atomic_dec_return(&sde_kms->detach_sec_cb) != 0)
 		return 0;
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	ret = smmu_proxy_get_csf_version(&csf_ver);
+	if (ret) {
+		SDE_ERROR("error in getting csf version, ret:%d\n", ret);
+		goto scm_error;
+	}
+
+	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) && (csf_ver.max_ver == CSF_2_5_MAX_VER)) {
+		ret = smmu_proxy_switch_sid(sde_kms->dev->dev, SMMU_PROXY_SWITCH_OP_RELEASE_SID);
+		if (ret) {
+			SDE_ERROR("smmu proxy switch sid failed, rc:%d\n", ret);
+			goto scm_error;
+		}
+	}
+
+	SDE_EVT32(vmid, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, ret);
+#endif
 	ret = _sde_kms_scm_call(sde_kms, vmid);
 	if (ret) {
-		goto scm_error;
 		SDE_ERROR("scm call failed for vmid:%d\n", vmid);
+		goto scm_error;
 	}
 
 	ret = sde_kms_mmu_attach(sde_kms, true);
