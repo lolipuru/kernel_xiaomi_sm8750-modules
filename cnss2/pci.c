@@ -6477,6 +6477,8 @@ int cnss_pci_recover_link_post_sol(struct cnss_pci_data *pci_priv)
 		cnss_pr_err("Failed to resume PCI link post host sol, err= %d\n",
 			    ret);
 		mutex_unlock(&pci_priv->bus_lock);
+		cnss_schedule_recovery(&pci_priv->pci_dev->dev,
+				       CNSS_REASON_TIMEOUT);
 		return ret;
 	}
 	mutex_unlock(&pci_priv->bus_lock);
