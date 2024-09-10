@@ -115,7 +115,7 @@ static int fill_dynamic_stats(struct msm_vidc_inst *inst,
 	struct msm_vidc_input_cr_data *temp, *next;
 	u32 cf = MSM_VIDC_MAX_UBWC_COMPLEXITY_FACTOR;
 	u32 cr = MSM_VIDC_MIN_UBWC_COMPRESSION_RATIO;
-	u32 input_cr = MSM_VIDC_MIN_UBWC_COMPRESSION_RATIO;
+	u32 input_cr = MSM_VIDC_MAX_UBWC_COMPRESSION_RATIO;
 	u32 frame_size;
 
 	if (inst->power.fw_cr)
@@ -142,6 +142,16 @@ static int fill_dynamic_stats(struct msm_vidc_inst *inst,
 			MSM_VIDC_MAX_UBWC_COMPRESSION_RATIO);
 	input_cr = clamp_t(u32, input_cr, MSM_VIDC_MIN_UBWC_COMPRESSION_RATIO,
 			MSM_VIDC_MAX_UBWC_COMPRESSION_RATIO);
+
+	/*
+	 * CR = MIN means UBWC didn't compress at all,
+	 * which is impossible unless the input yuv is pure while noise,
+	 * so MIN means there is no valid CR info,
+	 * set zero will let the bw calculation function use a predefined CR value instead,
+	 * to avoid overvoting.
+	 */
+	if (input_cr == MSM_VIDC_MIN_UBWC_COMPRESSION_RATIO)
+		input_cr = 0;
 
 	vote_data->compression_ratio = cr;
 	vote_data->complexity_factor = cf;
