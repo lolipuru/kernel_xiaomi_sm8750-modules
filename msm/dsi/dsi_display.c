@@ -7616,6 +7616,25 @@ int dsi_display_get_default_lms(void *dsi_display, u32 *num_lm)
 	return rc;
 }
 
+int dsi_display_avoid_cmd_transfer(void *display, bool avoid_transfer)
+{
+	struct dsi_display *dsi_display = display;
+	struct dsi_panel *panel;
+
+	if (dsi_display == NULL || dsi_display->panel == NULL)
+		return -EINVAL;
+
+	panel = dsi_display->panel;
+	SDE_EVT32(avoid_transfer);
+
+	if (avoid_transfer)
+		mutex_lock(&panel->panel_lock);
+	else
+		mutex_unlock(&panel->panel_lock);
+
+	return 0;
+}
+
 int dsi_display_update_transfer_time(void *display, u32 transfer_time)
 {
 	struct dsi_display *disp = (struct dsi_display *)display;

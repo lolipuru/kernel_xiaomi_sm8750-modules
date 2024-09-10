@@ -480,6 +480,14 @@ struct sde_connector_ops {
 	 * Returns: True if given command is defined
 	 */
 	bool (*check_cmd_defined)(void *display, enum dsi_cmd_set_type type);
+
+	/*
+	 * avoid_cmd_transfer -  avoid DSI command transfer
+	 * @display: Pointer to private display structure
+	 * @avoid_transfer: true to avoid transfer, false to allow transfer
+	 * Returns: error code
+	 */
+	int (*avoid_cmd_transfer)(void *display, bool avoid_transfer);
 };
 
 /**

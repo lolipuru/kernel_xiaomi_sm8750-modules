@@ -4922,6 +4922,15 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	is_dp = phys->hw_intf && phys->hw_intf->cap->type == INTF_DP;
 	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 
+	if (sde_enc->disp_info.vrr_caps.video_psr_support) {
+		if (!phys->sde_kms->catalog->hw_fence_rev)
+			ctl->ops.hw_fence_trigger_sw_override(ctl);
+
+		/* matching unblock in sde_encoder_phys_vid_handle_post_kickoff */
+		if (phys->esync_pc_exit && c_conn->ops.avoid_cmd_transfer)
+			c_conn->ops.avoid_cmd_transfer(c_conn->display, true);
+	}
+
 	/*
 	 * Cesta blocks ctl flush in hardware until cesta vote is processed, but
 	 * intf and periph flushes are not similarly blocked. Poll cesta's handshake
@@ -4948,10 +4957,6 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		sde_enc->intf_master = ctl->ops.get_intf_master(ctl);
 		ctl->ops.set_intf_master(ctl, 0);
 	}
-
-	if (sde_enc->disp_info.vrr_caps.video_psr_support &&
-			!phys->sde_kms->catalog->hw_fence_rev)
-		ctl->ops.hw_fence_trigger_sw_override(ctl);
 
 	if (phys->ops.is_master && phys->ops.is_master(phys) && config_changed) {
 		atomic_inc(&phys->pending_retire_fence_cnt);
