@@ -4475,7 +4475,10 @@ static void cam_ife_csid_ver2_res_master_slave_cfg(struct cam_ife_csid_ver2_hw *
 	uint32_t val;
 	void __iomem                      *mem_base;
 	struct cam_hw_soc_info            *soc_info;
-
+	struct cam_isp_resource_node      *res = &csid_hw->path_res[res_id];
+	struct cam_ife_csid_ver2_path_cfg *path_cfg =
+		(struct cam_ife_csid_ver2_path_cfg *)res->res_priv;
+	struct cam_ife_csid_cid_data      *cid_data = &csid_hw->cid_data[path_cfg->cid];
 
 	if (!cam_ife_csid_hw_ver2_use_master_slave_cfg(csid_hw, res_id))
 		return;
@@ -4488,6 +4491,13 @@ static void cam_ife_csid_ver2_res_master_slave_cfg(struct cam_ife_csid_ver2_hw *
 	switch (res_id) {
 	case CAM_IFE_PIX_PATH_RES_RDI_0:
 		val |= BIT(csid_reg->cmn_reg->shdr_master_rdi0_shift);
+		if (cid_data->vc_dt[0].vc && csid_reg->cmn_reg->rx_mode_id_cfg1_addr) {
+			cam_io_w_mb(cid_data->vc_dt[0].vc, mem_base +
+				csid_reg->cmn_reg->rx_mode_id_cfg1_addr);
+			CAM_DBG(CAM_ISP, "CSID %d res:%s CSI2_RX_MODE_ID_CFG1:0x%x",
+				csid_hw->hw_intf->hw_idx,
+				res->res_name, cid_data->vc_dt[0].vc);
+		}
 		break;
 	case CAM_IFE_PIX_PATH_RES_RDI_1:
 		val |= BIT(csid_reg->cmn_reg->shdr_slave_rdi1_shift);
@@ -4507,7 +4517,7 @@ static void cam_ife_csid_ver2_res_master_slave_cfg(struct cam_ife_csid_ver2_hw *
 	cam_io_w_mb(val, mem_base + csid_reg->cmn_reg->shdr_master_slave_cfg_addr);
 
 	CAM_DBG(CAM_ISP, "CSID %d res:%s master slave cfg 0x%x", csid_hw->hw_intf->hw_idx,
-		csid_hw->path_res[res_id].res_name, val);
+		res->res_name, val);
 }
 
 static int cam_ife_csid_ver2_init_config_rdi_path(
