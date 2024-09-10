@@ -87,6 +87,7 @@
 #define CNSS_CAL_START_PROBE_WAIT_MS	500
 #define CNSS_TIME_SYNC_PERIOD_INVALID	0xFFFFFFFF
 #define CPUMASK_ARRAY_SIZE		2
+#define MAX_SYSFS_USER_COMMAND_SIZE_LENGTH (5)
 
 enum cnss_cal_db_op {
 	CNSS_CAL_DB_UPLOAD,
@@ -4616,20 +4617,25 @@ static ssize_t qdss_conf_download_store(struct device *dev,
 	cnss_pr_dbg("Received QDSS download config command\n");
 	return count;
 }
-
 static ssize_t tme_opt_file_download_store(struct device *dev,
 					struct device_attribute *attr,
 					const char *buf, size_t count)
 {
 	struct cnss_plat_data *plat_priv = dev_get_drvdata(dev);
-	char cmd[5];
+	char cmd[MAX_SYSFS_USER_COMMAND_SIZE_LENGTH];
 
+	if (count > MAX_SYSFS_USER_COMMAND_SIZE_LENGTH) {
+		cnss_pr_err("Cmd length is larger than %zu bytes, count: %zu ",
+			     MAX_SYSFS_USER_COMMAND_SIZE_LENGTH, count);
+
+		return -EINVAL;
+	}
 	if (sscanf(buf, "%s", cmd) != 1)
 		return -EINVAL;
 
 	if (!test_bit(CNSS_FW_READY, &plat_priv->driver_state)) {
 		cnss_pr_err("Firmware is not ready yet\n");
-		return 0;
+		return count;
 	}
 
 	if (plat_priv->device_id == PEACH_DEVICE_ID &&
