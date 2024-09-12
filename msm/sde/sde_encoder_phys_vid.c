@@ -2411,6 +2411,9 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 							DSI_CMD_SET_ESYNC_POST_ON);
 			}
 
+			if (sde_conn->ops.avoid_cmd_transfer)
+				sde_conn->ops.avoid_cmd_transfer(sde_conn->display, true);
+
 			spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 			phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
 			spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
@@ -2418,6 +2421,9 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 			ret = sde_encoder_phys_vid_poll_for_active_region(phys_enc);
 			if (ret)
 				SDE_DEBUG_VIDENC(vid_enc, "poll for active failed ret:%d\n", ret);
+
+			if (sde_conn->ops.avoid_cmd_transfer)
+				sde_conn->ops.avoid_cmd_transfer(sde_conn->display, false);
 			phys_enc->enable_state = SDE_ENC_ENABLED;
 		/* Slave DPU Timing engine mux select from Master DPU */
 		} else if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&

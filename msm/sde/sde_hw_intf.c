@@ -638,11 +638,21 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 			&& p->poms_align_vsync)
 		intf_cfg2 |= BIT(16);
 
-	alignment = 0x6; /* Default with esync- COND0 HW AVR trigger  */
 	if (align_esync) {
+		/*
+		 * Display on-
+		 * COND0 1 = TIMING_ENGINE_EN.EN changes from 0 to 1
+		 * COND1 TE level being high
+		 * COND2 esync_mdp_vsync
+		 */
+		alignment = 0x451;
+
+		/* Idle exit-
+		 * COND0 HW AVR trigger
+		 * COND1 esync_mdp_vsync
+		 */
 		if (align_avr)
-			alignment = 0x6; /* COND0 HW AVR trigger */
-		alignment |= 0x4 << 4; /* COND1 esync_mdp_vsync */
+			alignment = 0x46;
 
 		intf_cfg2 |= BIT(23);
 	}
