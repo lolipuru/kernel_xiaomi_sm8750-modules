@@ -5557,8 +5557,6 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 			SDE_EVT32(SDE_EVTLOG_FUNC_CASE3);
 			return;
 		}
-
-		_sde_encoder_rc_restart_delayed(sde_enc, SDE_ENC_RC_EVENT_KICKOFF);
 		_sde_encoder_avoid_prog_fetch_region(phys_enc, sde_enc);
 	}
 
@@ -5622,16 +5620,27 @@ static void sde_encoder_handle_self_refresh(struct kthread_work *work)
 				struct sde_encoder_virt, self_refresh_work);
 
 	struct sde_kms *sde_kms;
+	struct sde_connector *c_conn;
+
 	if (!sde_enc || !sde_enc->cur_master) {
 		SDE_ERROR("invalid sde encoder\n");
 		return;
 	}
 	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	c_conn = to_sde_connector(sde_enc->cur_master->connector);
 
-	if (sde_enc->disp_info.vrr_caps.video_psr_support)
+	if (!c_conn) {
+		SDE_ERROR("invalid sde connector\n");
+		return;
+	}
+
+	if (sde_enc->disp_info.vrr_caps.video_psr_support) {
+		sde_connector_backlight_lock(c_conn, true);
 		sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
-	else
+		sde_connector_backlight_lock(c_conn, false);
+	} else {
 		sde_connector_trigger_cmd_self_refresh(sde_enc->cur_master->connector);
+	}
 }
 
 static void sde_encoder_cmd_backlight_update(struct kthread_work *work)
@@ -5644,6 +5653,10 @@ static void sde_encoder_cmd_backlight_update(struct kthread_work *work)
 		return;
 	}
 
+	if (kthread_cancel_delayed_work_sync(&sde_enc->delayed_off_work)) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		_sde_encoder_rc_restart_delayed(sde_enc, SDE_ENC_RC_EVENT_KICKOFF);
+	}
 	sde_connector_trigger_cmd_backlight_update(sde_enc->cur_master->connector);
 }
 
@@ -5818,6 +5831,10 @@ void sde_encoder_handle_next_backlight_update(struct drm_encoder *drm_enc)
 
 	phys_enc = sde_enc->cur_master;
 	vrr_cfg = &phys_enc->sde_vrr_cfg;
+	if (kthread_cancel_delayed_work_sync(&sde_enc->delayed_off_work)) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		_sde_encoder_rc_restart_delayed(sde_enc, SDE_ENC_RC_EVENT_KICKOFF);
+	}
 
 	if (!vrr_cfg->curr_frame_interval_fps || !sde_enc->mode_info.frame_rate
 			|| !sde_enc->mode_info.avr_step_fps) {

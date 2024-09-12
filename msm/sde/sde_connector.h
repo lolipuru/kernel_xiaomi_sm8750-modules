@@ -577,6 +577,7 @@ struct sde_misr_sign {
  * @bl_frame_idx : Index value of dimming frame
  * @bl_increment_in_progress : Smooth dimming in progress
  * @prev_bl_time_ns : Time in ns when previous BL was sent
+ * @bl_lock : Backlight operations lock
  */
 struct sde_backlight_vrr_update {
 	int new_brightness;
@@ -586,6 +587,7 @@ struct sde_backlight_vrr_update {
 	u32 bl_frame_idx;
 	bool bl_increment_in_progress;
 	u64 prev_bl_time_ns;
+	struct mutex bl_lock;
 };
 
 /**
@@ -1561,5 +1563,13 @@ struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn);
  */
 int sde_connector_update_cmd(struct drm_connector *connector,
 		u64 cmd_bit_mask, bool peripheral_flush);
+
+static inline void sde_connector_backlight_lock(struct sde_connector *c_conn, bool lock)
+{
+	if (lock)
+		mutex_lock(&c_conn->bl_vrr.bl_lock);
+	else
+		mutex_unlock(&c_conn->bl_vrr.bl_lock);
+}
 
 #endif /* _SDE_CONNECTOR_H_ */
