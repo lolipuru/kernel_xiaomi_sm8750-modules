@@ -350,6 +350,7 @@ static int bt_major;
 static int soc_id;
 static bool probe_finished;
 static struct fmdOperationStruct fmdStruct;
+char *default_crash_reason = "Crash reason not found";
 
 static void bt_power_vote(struct work_struct *work);
 
@@ -2668,6 +2669,31 @@ int perform_fmd_operation(void)
 	return ret;
 }
 
+int bt_kernel_panic(char *arg) {
+	int ret = 0;
+
+	pr_info("%s\n", __func__);
+
+	if (copy_from_user(&CrashInfo, (char *)arg, sizeof(CrashInfo))) {
+		pr_err("%s: failed copy to panic reason from BT-Transport\n",
+			__func__);
+		memset(&CrashInfo, 0, sizeof(CrashInfo));
+		strlcpy(CrashInfo. PrimaryReason,
+			default_crash_reason, strlen(default_crash_reason));
+		strlcpy(CrashInfo. SecondaryReason,
+			default_crash_reason, strlen(default_crash_reason));
+		ret = -EFAULT;
+	}
+
+	pr_err("%s: BT kernel panic Primary reason = %s, Secondary reason = %s\n",
+		__func__, CrashInfo.PrimaryReason, CrashInfo.SecondaryReason);
+
+	panic("%s: BT kernel panic Primary reason = %s, Secondary reason = %s\n",
+		__func__, CrashInfo.PrimaryReason, CrashInfo.SecondaryReason);
+
+	return ret;
+}
+
 #ifdef CONFIG_MSM_BT_OOBS
 int bt_oobs_handler(enum btpower_obs_param clk_cntrl)
 {
@@ -2819,16 +2845,7 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		pr_err("%s: BT_CMD_KERNEL_PANIC\n", __func__);
 
-	        if (copy_from_user(&CrashInfo, (char *)arg, sizeof(CrashInfo))) {
-			pr_err("%s: copy to user failed\n", __func__);
-			ret = -EFAULT;
-		}
-
-		pr_err("%s: BT kernel panic Primary reason = %s, Secondary reason = %s\n",
-			__func__, CrashInfo.PrimaryReason, CrashInfo.SecondaryReason);
-
-		panic("%s: BT kernel panic Primary reason = %s, Secondary reason = %s\n",
-			__func__, CrashInfo.PrimaryReason, CrashInfo.SecondaryReason);
+		ret = bt_kernel_panic((char *)arg);
 
 		break;
 	case UWB_CMD_KERNEL_PANIC:
