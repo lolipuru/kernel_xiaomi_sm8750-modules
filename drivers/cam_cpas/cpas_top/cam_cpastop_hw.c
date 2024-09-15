@@ -1601,6 +1601,7 @@ static int cam_cpastop_init_hw_version(struct cam_hw_info *cpas_hw,
 	}
 
 	cpas_core->cesta_info = cesta_info;
+	cpas_core->cam_subpart_info =  cpas_info->subpart_info;
 
 	rc = cam_cpastop_set_up_camnoc_info(cpas_core, alloc_camnoc_info);
 	if (rc) {

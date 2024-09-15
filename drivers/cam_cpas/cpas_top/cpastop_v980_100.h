@@ -1665,6 +1665,19 @@ static struct cam_cpas_secure_info cam980_cpas100_secure_info = {
 	.secure_access_ctrl_value = 0xFFFFFFFF,
 };
 
+static struct cam_cpas_subpart_info cam980_cpas_camera_subpart_info = {
+	.num_bits = 3,
+	/*
+	 * Below fuse indexing is based on software fuse definition which is in SMEM and provided
+	 * by XBL team.
+	 */
+	.hw_bitmap_mask = {
+		{CAM_CPAS_ISP_FUSE, BIT(0)},
+		{CAM_CPAS_ISP_FUSE, BIT(1)},
+		{CAM_CPAS_ISP_FUSE, BIT(2)},
+	}
+};
+
 static struct cam_cpas_info cam980_cpas100_cpas_info = {
 	.hw_caps_info = {
 		.num_caps_registers = 2,
@@ -1674,6 +1687,7 @@ static struct cam_cpas_info cam980_cpas100_cpas_info = {
 		&cam980_cpas100_qchannel_info_nrt},
 	.num_qchannel = 2,
 	.hw_caps_secure_info = &cam980_cpas100_secure_info,
+	.subpart_info = &cam980_cpas_camera_subpart_info,
 };
 
 #endif /* _CPASTOP_V980_100_H_ */
