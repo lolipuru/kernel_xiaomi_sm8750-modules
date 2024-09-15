@@ -1197,6 +1197,7 @@ void cnss_unregister_iommu_fault_handler(struct cnss_pci_data *pci_priv)
 int cnss_pci_check_link_status(struct cnss_pci_data *pci_priv)
 {
 	u16 device_id;
+	int mismatch_count;
 
 	if (pci_priv->pci_link_state == PCI_LINK_DOWN) {
 		cnss_pr_dbg("%ps: PCIe link is in suspend state\n",
@@ -1211,16 +1212,27 @@ int cnss_pci_check_link_status(struct cnss_pci_data *pci_priv)
 
 	pci_read_config_word(pci_priv->pci_dev, PCI_DEVICE_ID, &device_id);
 	if (device_id != pci_priv->device_id)  {
-		cnss_fatal_err("%ps: PCI device ID mismatch, link possibly down, current read ID: 0x%x, record ID: 0x%x\n",
-			       (void *)_RET_IP_, device_id,
-			       pci_priv->device_id);
+		mismatch_count = atomic_inc_return(&pci_priv->id_mismatch_cnt);
+		cnss_fatal_err("%ps: PCI device ID mismatch(%d), link possibly down, current read ID: 0x%x, record ID: 0x%x\n",
+			       (void *)_RET_IP_, mismatch_count,
+			       device_id, pci_priv->device_id);
+
+		/* Mark pci link down for the 1st mismatch to avoid further
+		 * operations on PCIe link.
+		 * Do nothing but return failure for the following mismatches
+		 * to avoid triggering redundant link down event.
+		 */
+		if (mismatch_count == 1)
+			cnss_pci_link_down(&pci_priv->pci_dev->dev);
+
 		return -EIO;
 	}
 
+	atomic_set(&pci_priv->id_mismatch_cnt, 0);
 	return 0;
 }
 
-static void cnss_pci_select_window(struct cnss_pci_data *pci_priv, u32 offset)
+static int cnss_pci_select_window(struct cnss_pci_data *pci_priv, u32 offset)
 {
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
 
@@ -1263,9 +1275,13 @@ static void cnss_pci_select_window(struct cnss_pci_data *pci_priv, u32 offset)
 		cnss_pr_err("Failed to config window register to 0x%x, current value: 0x%x\n",
 			    window_enable, val);
 		if (!cnss_pci_check_link_status(pci_priv) &&
-		    !test_bit(CNSS_IN_PANIC, &plat_priv->driver_state))
+		    !test_bit(CNSS_IN_PANIC, &plat_priv->driver_state)) {
 			CNSS_ASSERT(0);
+			return -EIO;
+		}
 	}
+
+	return 0;
 }
 
 static int cnss_pci_reg_read(struct cnss_pci_data *pci_priv,
@@ -1273,6 +1289,7 @@ static int cnss_pci_reg_read(struct cnss_pci_data *pci_priv,
 {
 	int ret;
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
+	bool in_panic;
 
 	if (!in_interrupt() && !irqs_disabled()) {
 		ret = cnss_pci_check_link_status(pci_priv);
@@ -1290,19 +1307,21 @@ static int cnss_pci_reg_read(struct cnss_pci_data *pci_priv,
 	 * and interrupts. Further pci_reg_window_lock could be held before
 	 * panic. So only lock during normal operation.
 	 */
-	if (test_bit(CNSS_IN_PANIC, &plat_priv->driver_state)) {
-		cnss_pci_select_window(pci_priv, offset);
-		*val = readl_relaxed(pci_priv->bar + WINDOW_START +
-				     (offset & WINDOW_RANGE_MASK));
-	} else {
+	in_panic = test_bit(CNSS_IN_PANIC, &plat_priv->driver_state);
+	if (!in_panic)
 		spin_lock_bh(&pci_reg_window_lock);
-		cnss_pci_select_window(pci_priv, offset);
-		*val = readl_relaxed(pci_priv->bar + WINDOW_START +
-				     (offset & WINDOW_RANGE_MASK));
-		spin_unlock_bh(&pci_reg_window_lock);
-	}
 
-	return 0;
+	ret = cnss_pci_select_window(pci_priv, offset);
+	if (ret)
+		goto out;
+
+	*val = readl_relaxed(pci_priv->bar + WINDOW_START +
+				     (offset & WINDOW_RANGE_MASK));
+
+out:
+	if (!in_panic)
+		spin_unlock_bh(&pci_reg_window_lock);
+	return ret;
 }
 
 static int cnss_pci_reg_write(struct cnss_pci_data *pci_priv, u32 offset,
@@ -1310,6 +1329,7 @@ static int cnss_pci_reg_write(struct cnss_pci_data *pci_priv, u32 offset,
 {
 	int ret;
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
+	bool in_panic;
 
 	if (!in_interrupt() && !irqs_disabled()) {
 		ret = cnss_pci_check_link_status(pci_priv);
@@ -1324,19 +1344,22 @@ static int cnss_pci_reg_write(struct cnss_pci_data *pci_priv, u32 offset,
 	}
 
 	/* Same constraint as PCI register read in panic */
-	if (test_bit(CNSS_IN_PANIC, &plat_priv->driver_state)) {
-		cnss_pci_select_window(pci_priv, offset);
-		writel_relaxed(val, pci_priv->bar + WINDOW_START +
-			  (offset & WINDOW_RANGE_MASK));
-	} else {
+	in_panic = test_bit(CNSS_IN_PANIC, &plat_priv->driver_state);
+	if (!in_panic)
 		spin_lock_bh(&pci_reg_window_lock);
-		cnss_pci_select_window(pci_priv, offset);
-		writel_relaxed(val, pci_priv->bar + WINDOW_START +
-			  (offset & WINDOW_RANGE_MASK));
-		spin_unlock_bh(&pci_reg_window_lock);
-	}
 
-	return 0;
+	ret = cnss_pci_select_window(pci_priv, offset);
+	if (ret)
+		goto out;
+
+	writel_relaxed(val, pci_priv->bar + WINDOW_START +
+		  (offset & WINDOW_RANGE_MASK));
+
+out:
+	if (!in_panic)
+		spin_unlock_bh(&pci_reg_window_lock);
+
+	return ret;
 }
 
 static int cnss_pci_force_wake_get(struct cnss_pci_data *pci_priv)
@@ -1870,8 +1893,8 @@ int cnss_pci_link_down(struct device *dev)
 				  "cnss-enable-self-recovery"))
 		plat_priv->ctrl_params.quirks |= BIT(LINK_DOWN_SELF_RECOVERY);
 
-	cnss_pr_err("PCI link down is detected by drivers\n");
-
+	cnss_pr_err("PCI link down is detected by drivers, driver state 0x%lx\n",
+		    plat_priv->driver_state);
 	ret = cnss_pci_assert_perst(pci_priv);
 	if (ret)
 		cnss_pci_handle_linkdown(pci_priv);

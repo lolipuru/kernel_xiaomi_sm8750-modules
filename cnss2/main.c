@@ -2343,8 +2343,12 @@ static int cnss_driver_recovery_hdlr(struct cnss_plat_data *plat_priv,
 	}
 
 	if (test_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state)) {
-		cnss_pr_err("Recovery is already in progress\n");
-		CNSS_ASSERT(0);
+		cnss_pr_err("Recovery is already in progress, driver state 0x%lx\n",
+			    plat_priv->driver_state);
+		/* PCIe link down can happen at any time */
+		if (recovery_data->reason != CNSS_REASON_LINK_DOWN)
+			CNSS_ASSERT(0);
+
 		ret = -EINVAL;
 		goto out;
 	}
