@@ -51,6 +51,7 @@
 #define ICNSS_RAMDUMP_MAGIC		0x574C414E
 #define ICNSS_RAMDUMP_VERSION		0
 #define ICNSS_FW_LPASS_SHARED_MEM_SIZE  8
+#define MSI_USERS                       2
 
 extern uint64_t dynamic_feature_mask;
 
@@ -384,6 +385,10 @@ struct icnss_msi_user {
 	char *name;
 	int num_vectors;
 	u32 base_vector;
+};
+
+struct icnss_print_optimize {
+	int msi_log_chk[MSI_USERS];
 };
 
 struct icnss_msi_config {
