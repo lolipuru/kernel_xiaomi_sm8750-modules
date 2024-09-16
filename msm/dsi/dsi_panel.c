@@ -4803,7 +4803,7 @@ void dsi_panel_get_fps_switch_cmd(struct dsi_panel *panel,
 				"qcom,mdss-dsi-dfps-commands");
 
 		if (!fps_np) {
-			DSI_ERR("no display fps nodes defined\n");
+			DSI_DEBUG("no display fps nodes defined\n");
 			goto error;
 		}
 
