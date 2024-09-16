@@ -7510,7 +7510,7 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 	struct cam_packet                *packet = NULL;
 	size_t                            remain_len = 0;
 	struct cam_hw_prepare_update_args cfg = {0};
-	struct cam_req_mgr_add_request    add_req;
+	struct cam_req_mgr_add_request    add_req = {0};
 	struct cam_isp_context           *ctx_isp =
 		(struct cam_isp_context *) ctx->ctx_priv;
 	struct cam_hw_cmd_args           hw_cmd_args;
@@ -7715,6 +7715,7 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 			add_req.link_hdl = ctx->link_hdl;
 			add_req.dev_hdl  = ctx->dev_hdl;
 			add_req.req_id   = req->request_id;
+			add_req.trigger_skip = req_isp->hw_update_data.mup_en;
 			rc = ctx->ctx_crm_intf->add_req(&add_req);
 			if (rc) {
 				if (rc == -EBADR)

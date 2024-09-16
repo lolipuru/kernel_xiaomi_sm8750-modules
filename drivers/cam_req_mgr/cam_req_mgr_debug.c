@@ -180,6 +180,8 @@ int cam_req_mgr_debug_register(struct cam_req_mgr_core_device *core_dev)
 		&cam_debug_mgr_delay_detect);
 	debugfs_create_file("cam_print_boot_stats", 0644, debugfs_root,
 		NULL, &cam_boot_debug_info);
+	debugfs_create_bool("simulate_skip", 0644,
+		debugfs_root, &core_dev->simulate_skip_frame);
 end:
 	return rc;
 }
