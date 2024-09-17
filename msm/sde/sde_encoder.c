@@ -2033,10 +2033,9 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT)) {
 		if (sde_enc->mode_switch || sde_enc->multi_te_state || qsync_en || qsync_updated) {
 			ctrl_cfg.req_mode = SDE_CESTA_CTRL_REQ_IMMEDIATE;
-			ctrl_cfg.hw_sleep_enable = qsync_updated ? false : true;
+			ctrl_cfg.hw_sleep_enable = qsync_updated ? false : ctrl_cfg.hw_sleep_enable;
 		} else {
 			ctrl_cfg.req_mode = SDE_CESTA_CTRL_REQ_PANIC_REGION;
-			ctrl_cfg.hw_sleep_enable = true;
 		}
 
 		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, true,
@@ -4821,13 +4820,18 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 	struct sde_encoder_phys *phys_enc = sde_enc->cur_master;
 	struct msm_mode_info *mode_info = &sde_enc->mode_info;
 	u32 vsync_count, vrefresh;
+	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
+	bool req_flush = false, req_scc = false;
+
 
 	SDE_EVT32(DRMID(drm_enc), sde_enc->mode_switch, sde_enc->cesta_force_auto_active_db_update,
 			sde_enc->old_vsync_count, sde_enc->multi_te_fps, SDE_EVTLOG_FUNC_ENTRY);
 
 	if (sde_enc->cesta_client && sde_enc->cesta_force_auto_active_db_update) {
+		if (phys_enc->ops.cesta_ctrl_cfg)
+			phys_enc->ops.cesta_ctrl_cfg(phys_enc, &ctrl_cfg, &req_flush, &req_scc);
 		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, false,
-				SDE_CESTA_CTRL_REQ_PANIC_REGION, true);
+				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable);
 		sde_enc->cesta_force_auto_active_db_update = false;
 	}
 
