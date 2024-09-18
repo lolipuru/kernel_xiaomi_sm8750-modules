@@ -6248,7 +6248,7 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	display = platform_get_drvdata(pdev);
 	if (!display || !display->panel_node) {
 		DSI_ERR("invalid param, display %pK, display panel node %pK\n",
-				display, display->panel_node);
+				display, display ? display->panel_node : NULL);
 		return -EINVAL;
 	}
 
