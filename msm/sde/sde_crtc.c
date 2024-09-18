@@ -4479,7 +4479,7 @@ static inline bool _is_vid_power_on_frame(struct drm_crtc *crtc)
 	bool is_vid_mode = sde_encoder_check_curr_mode(sde_crtc->mixers[0].encoder,
 		MSM_DISPLAY_VIDEO_MODE);
 
-	return  is_vid_mode && crtc->state->active_changed && crtc->state->active;
+	return  is_vid_mode && sde_crtc_is_power_on_frame(crtc);
 }
 
 /**

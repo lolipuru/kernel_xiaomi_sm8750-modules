@@ -1336,6 +1336,81 @@ struct sde_connector_dyn_hdr_metadata *sde_connector_get_dyn_hdr_meta(
 	return &c_state->dyn_hdr_meta;
 }
 
+static bool sde_connector_power_on_off_frame(struct drm_connector *connector)
+{
+	int lp_mode;
+
+	lp_mode = sde_connector_get_property(connector->state, CONNECTOR_PROP_LP);
+	if (lp_mode == SDE_MODE_DPMS_OFF)
+		return true;
+
+	if (connector->state && connector->state->crtc &&
+			sde_crtc_is_power_on_frame(connector->state->crtc))
+		return true;
+
+	return false;
+}
+
+int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn;
+	struct msm_freq_step_pattern *freq_pattern;
+	u64 cmd_bit_mask = 0;
+	int rc = 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+
+	if (sde_encoder_in_cont_splash(connector->encoder))
+		return 0;
+
+	if (!c_conn->freq_pattern) {
+		SDE_ERROR("frequency pattern is NULL but update is true\n");
+		return -EINVAL;
+	}
+
+	SDE_EVT32(c_conn->vrr_cmd_state, c_conn->freq_pattern_updated,
+		SDE_EVTLOG_FUNC_CASE1);
+	mutex_lock(&c_conn->bl_vrr.bl_lock);
+	freq_pattern = c_conn->freq_pattern;
+
+	if (c_conn->vrr_cmd_state == VRR_CMD_POWER_ON ||
+			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT) {
+		if (!sde_connector_power_on_off_frame(connector)) {
+			c_conn->freq_pattern_updated = true;
+			c_conn->freq_pattern_type_changed = true;
+			c_conn->vrr_cmd_state = VRR_CMD_STATE_NONE;
+		}
+	}
+
+	if  (c_conn->freq_pattern_updated)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_FI_PATTAREN1_CHANGE +
+			freq_pattern->frame_pattern_seq_idx);
+
+	if (c_conn->freq_pattern_type_changed && freq_pattern->needs_ap_refresh)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
+	else if (c_conn->freq_pattern_type_changed && !freq_pattern->needs_ap_refresh)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
+
+	if (cmd_bit_mask)
+		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, rc, cmd_bit_mask>>32, cmd_bit_mask,
+		freq_pattern->frame_pattern_seq_idx, freq_pattern->frame_interval,
+		c_conn->freq_pattern_type_changed, freq_pattern->needs_ap_refresh,
+		c_conn->vrr_cmd_state, c_conn->freq_pattern_updated);
+
+	c_conn->freq_pattern_updated = false;
+	c_conn->freq_pattern_type_changed = false;
+
+	mutex_unlock(&c_conn->bl_vrr.bl_lock);
+	return rc;
+}
+
 int sde_connector_pre_kickoff(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
@@ -1374,6 +1449,13 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		goto end;
 	}
 
+	/* Send VHM commands post BRIGHTNESS updates */
+	if (c_conn->vrr_caps.video_psr_support) {
+		rc = sde_connector_check_update_vhm_cmd(connector);
+		if (rc)
+			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+	}
+
 	if (!c_conn->ops.pre_kickoff)
 		return 0;
 
@@ -1387,67 +1469,6 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
 		display->queue_cmd_waits = false;
 end:
-	return rc;
-}
-
-int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
-{
-	struct sde_connector *c_conn;
-	struct msm_freq_step_pattern *freq_pattern;
-	u64 cmd_bit_mask = 0;
-	int lp_mode, rc = 0;
-
-	if (!connector) {
-		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
-		return -EINVAL;
-	}
-
-	c_conn = to_sde_connector(connector);
-
-	if (sde_encoder_in_cont_splash(connector->encoder))
-		return 0;
-
-	if (!c_conn->freq_pattern) {
-		SDE_ERROR("frequency pattern is NULL but update is true\n");
-		return -EINVAL;
-	}
-
-	SDE_EVT32(c_conn->vrr_cmd_state, c_conn->freq_pattern_updated,
-		SDE_EVTLOG_FUNC_CASE1);
-	mutex_lock(&c_conn->bl_vrr.bl_lock);
-	freq_pattern = c_conn->freq_pattern;
-	if (c_conn->vrr_cmd_state == VRR_CMD_POWER_ON ||
-			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT) {
-		lp_mode = sde_connector_get_property(connector->state, CONNECTOR_PROP_LP);
-		SDE_EVT32(lp_mode, c_conn->freq_pattern_updated);
-		if (lp_mode != SDE_MODE_DPMS_OFF) {
-			c_conn->freq_pattern_updated = true;
-			c_conn->freq_pattern_type_changed = true;
-			c_conn->vrr_cmd_state = VRR_CMD_STATE_NONE;
-		}
-	}
-
-	if  (c_conn->freq_pattern_updated)
-		cmd_bit_mask |= BIT(DSI_CMD_SET_FI_PATTAREN1_CHANGE +
-			freq_pattern->frame_pattern_seq_idx);
-
-	if (c_conn->freq_pattern_type_changed && freq_pattern->needs_ap_refresh)
-		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
-	else if (c_conn->freq_pattern_type_changed && !freq_pattern->needs_ap_refresh)
-		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
-
-	if (cmd_bit_mask)
-		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
-
-	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, rc, cmd_bit_mask>>32, cmd_bit_mask,
-		freq_pattern->frame_pattern_seq_idx, freq_pattern->frame_interval,
-		c_conn->freq_pattern_type_changed, freq_pattern->needs_ap_refresh,
-		c_conn->vrr_cmd_state);
-
-	c_conn->freq_pattern_updated = false;
-	c_conn->freq_pattern_type_changed = false;
-
-	mutex_unlock(&c_conn->bl_vrr.bl_lock);
 	return rc;
 }
 
@@ -1472,11 +1493,6 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 
 	if (!c_conn->ops.prepare_commit)
 		return 0;
-
-	if (c_conn->vrr_caps.video_psr_support) {
-		rc = sde_connector_check_update_vhm_cmd(connector);
-		return rc;
-	}
 
 	memset(&params, 0, sizeof(params));
 
