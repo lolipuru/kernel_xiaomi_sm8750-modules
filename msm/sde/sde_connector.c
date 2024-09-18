@@ -1499,6 +1499,8 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
 	struct msm_display_conn_params params;
+	struct drm_encoder *drm_enc;
+	struct dsi_display *display;
 	int rc;
 
 	if (!connector) {
@@ -1508,6 +1510,7 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 
 	c_conn = to_sde_connector(connector);
 	c_state = to_sde_connector_state(connector->state);
+	drm_enc = c_conn->encoder;
 	if (!c_conn->display) {
 		SDE_ERROR("invalid connector display\n");
 		return -EINVAL;
@@ -1521,6 +1524,20 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	if (c_conn->qsync_updated) {
 		params.qsync_mode = c_conn->qsync_mode;
 		params.qsync_update = true;
+	}
+
+	display = (struct dsi_display *)c_conn->display;
+
+	if (msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
+			c_conn->ops.check_cmd_defined(c_conn->display,
+			DSI_CMD_SET_FPS_SWITCH) &&
+			!c_conn->vrr_caps.video_psr_support) {
+		rc = sde_encoder_update_periph_flush(drm_enc);
+		if (!rc) {
+			params.cmd_bit_mask = BIT(DSI_CMD_SET_FPS_SWITCH);
+			params.peripheral_flush = true;
+		}
+		SDE_EVT32(params.peripheral_flush, params.cmd_bit_mask, rc);
 	}
 
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
