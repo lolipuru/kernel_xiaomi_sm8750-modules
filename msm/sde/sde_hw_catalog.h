@@ -184,6 +184,10 @@
 #define SDE_HW_UBWC_VER(rev) \
 	SDE_HW_VER((((rev) >> 8) & 0xF), (((rev) >> 4) & 0xF), ((rev) & 0xF))
 
+/* SSPP CAC capabilities */
+#define SDE_CAC_V2_CAP_MASK (SDE_CAC_UNPACK | SDE_CAC_FETCH)
+#define SDE_CAC_LOOPBACK_CAP_MASK (SDE_CAC_LOOPBACK_UNPACK | SDE_CAC_LOOPBACK_FETCH)
+
 /**
  * Supported UBWC feature versions
  */
@@ -347,6 +351,7 @@ enum {
  * @SDE_SSPP_UCSC_UNMULT     UCSC alpha unmult color processing block support
  * @SDE_SSPP_UCSC_ALPHA_DITHER UCSC alpha dither color processing block support
  * @SDE_SSPP_CAC_V2          CAC v2 support
+ * @SDE_SSPP_CAC_LOOPBACK    CAC loopback support
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -390,6 +395,7 @@ enum {
 	SDE_SSPP_UCSC_UNMULT,
 	SDE_SSPP_UCSC_ALPHA_DITHER,
 	SDE_SSPP_CAC_V2,
+	SDE_SSPP_CAC_LOOPBACK,
 	SDE_SSPP_MAX
 };
 
@@ -432,6 +438,8 @@ enum {
  * @SDE_MIXER_X_SRC_SEL       Layer mixer supports source selection programming model
  * @SDE_MIXER_10_BITS_ALPHA   Layer mixer supports 10 bits constant alpha
  * @SDE_MIXER_10_BITS_COLOR   Layer mixer supports 10 bits color border and color fill
+ * @SDE_MIXER_CAC_PRIMARY     Layer mixer preferred for primary during two pass CAC
+ * @SDE_MIXER_CAC_LB          Layer mixer preferred for loopback during two pass CAC
  * @SDE_MIXER_MAX             maximum value
  */
 enum {
@@ -448,6 +456,8 @@ enum {
 	SDE_MIXER_X_SRC_SEL,
 	SDE_MIXER_10_BITS_ALPHA,
 	SDE_MIXER_10_BITS_COLOR,
+	SDE_MIXER_CAC_PRIMARY,
+	SDE_MIXER_CAC_LB,
 	SDE_MIXER_MAX
 };
 
@@ -1066,6 +1076,15 @@ enum sde_danger_safe_lut_types {
 };
 
 /**
+ * enum cac_version_types - define possible cac types
+ */
+enum cac_version_types {
+	SDE_CAC_TYPE_V2,
+	SDE_CAC_TYPE_LOOPBACK,
+	SDE_CAC_TYPE_MAX,
+};
+
+/**
  * struct sde_sspp_sub_blks : SSPP sub-blocks
  * @maxlinewidth: max source pipe line width support
  * @scaling_linewidth: max vig source pipe linewidth for scaling usecases
@@ -1193,7 +1212,7 @@ struct sde_sspp_sub_blks {
 	size_t llcc_slice_size;
 	int cac_mode;
 	u32 cac_parent_rec[SSPP_SUBBLK_COUNT_MAX];
-	u32 cac_lm_pref[SSPP_SUBBLK_COUNT_MAX];
+	u32 cac_lm_pref[SDE_CAC_TYPE_MAX][SSPP_SUBBLK_COUNT_MAX];
 };
 
 /**
@@ -1493,6 +1512,7 @@ struct sde_sspp_cfg {
  * @merge_3d:          ID of connected 3d MUX
  * @dummy_mixer:       identifies dcwb mixer is considered dummy
  * @lm_pair_mask:      Bitmask of LMs that can be controlled by same CTL
+ * @parent_mixer_id:   ID of parent mixer, used in dual pass commit
  */
 struct sde_lm_cfg {
 	SDE_HW_BLK_INFO;
@@ -1503,6 +1523,7 @@ struct sde_lm_cfg {
 	u32 merge_3d;
 	bool dummy_mixer;
 	unsigned long lm_pair_mask;
+	u32 parent_mixer_id;
 };
 
 /**

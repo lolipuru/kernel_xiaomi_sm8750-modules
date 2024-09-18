@@ -1586,7 +1586,7 @@ static void sde_hw_sspp_setup_line_insertion(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(c, size_off, cfg->dst_h << 16);
 }
 
-static void sde_hw_sspp_setup_cac(struct sde_hw_pipe *ctx, u32 cac_mode)
+static void sde_hw_sspp_setup_cac(struct sde_hw_pipe *ctx, u32 cac_mode, u32 pp_idx)
 {
 	u32 opmode;
 	u32 idx;
@@ -1599,8 +1599,16 @@ static void sde_hw_sspp_setup_cac(struct sde_hw_pipe *ctx, u32 cac_mode)
 		opmode |= BIT(8);
 	else if (cac_mode == SDE_CAC_FETCH)
 		opmode |= BIT(0) | BIT(8);
-	else
-		opmode &= ~(BIT(0) | BIT(8));
+	else if (cac_mode == SDE_CAC_LOOPBACK_FETCH) {
+		if (SDE_SSPP_VALID_VIG(ctx->idx)) {
+			opmode &= (pp_idx << 24);
+			opmode |= BIT(0) | BIT(8) | BIT(16);
+		} else
+			opmode |= BIT(0) | BIT(8);
+	} else {
+		opmode |= 0xF << 24;
+		opmode &= ~(BIT(0) | BIT(8) | BIT(16));
+	}
 
 	SDE_REG_WRITE(&ctx->hw, SSPP_CAC_CTRL + idx, opmode);
 }
@@ -1674,9 +1682,10 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 	if (sde_hw_sspp_multirect_enabled(c->cap))
 		c->ops.update_multirect = sde_hw_sspp_update_multirect;
 
-	if (test_bit(SDE_SSPP_CAC_V2, &features)) {
-		c->ops.setup_cac_ctrl = sde_hw_sspp_setup_cac;
+	if (test_bit(SDE_SSPP_CAC_V2, &features) ||
+			test_bit(SDE_SSPP_CAC_LOOPBACK, &features)) {
 		c->ops.setup_img_size = sde_hw_sspp_setup_img_size;
+		c->ops.setup_cac_ctrl = sde_hw_sspp_setup_cac;
 	}
 
 	if (test_bit(SDE_SSPP_SCALER_QSEED3, &features) ||
@@ -1692,7 +1701,8 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 			c->ops.setup_scaler = reg_dmav1_setup_vig_qseed3;
 		else
 			c->ops.setup_scaler_cac =
-				test_bit(SDE_SSPP_CAC_V2, &features) ?
+				(test_bit(SDE_SSPP_CAC_V2, &features) ||
+				test_bit(SDE_SSPP_CAC_LOOPBACK, &features)) ?
 				sde_hw_sspp_setup_scaler_cac : NULL;
 	}
 

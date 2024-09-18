@@ -98,8 +98,10 @@ enum sde_sspp_ucsc_igc {
 
 enum {
 	SDE_CAC_NONE = 0,
-	SDE_CAC_UNPACK,
-	SDE_CAC_FETCH
+	SDE_CAC_UNPACK = BIT(0),
+	SDE_CAC_FETCH = BIT(1),
+	SDE_CAC_LOOPBACK_UNPACK = BIT(2),
+	SDE_CAC_LOOPBACK_FETCH = BIT(3),
 };
 
 struct sde_hw_sharp_cfg {
@@ -774,8 +776,9 @@ struct sde_hw_sspp_ops {
 	 * setup_cac_ctrl - set CAC mode for each sspp
 	 * @ctx: Pointer to pipe object
 	 * @cac_mode: cac mode for that particular pipe
+	 * @pp_idx: pp_idx used in cac loopback
 	 */
-	void (*setup_cac_ctrl)(struct sde_hw_pipe *ctx, u32 cac_mode);
+	void (*setup_cac_ctrl)(struct sde_hw_pipe *ctx, u32 cac_mode, u32 pp_idx);
 
 	/**
 	 * setup_scaler_cac - set CAC scaler params for each sspp

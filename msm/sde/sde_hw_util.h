@@ -317,4 +317,10 @@ static inline bool is_qseed3_rev_qseed3lite(struct sde_mdss_cfg *sde_cfg)
 	return ((sde_cfg->qseed_sw_lib_rev == SDE_SSPP_SCALER_QSEED3LITE) ?
 			true : false);
 }
+
+static inline bool is_cac_supported(struct sde_mdss_cfg *sde_cfg)
+{
+	return ((sde_cfg->cac_version == SDE_SSPP_CAC_V2) ||
+		(sde_cfg->cac_version == SDE_SSPP_CAC_LOOPBACK));
+}
 #endif /* _SDE_HW_UTIL_H */

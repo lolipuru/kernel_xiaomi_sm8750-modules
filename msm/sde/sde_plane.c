@@ -93,7 +93,8 @@ static struct sde_kms *_sde_plane_get_kms(struct drm_plane *plane)
 	return to_sde_kms(priv->kms);
 }
 
-static struct sde_hw_ctl *_sde_plane_get_hw_ctl(const struct drm_plane *plane)
+static struct sde_hw_ctl *_sde_plane_get_hw_ctl(const struct drm_plane *plane,
+		struct drm_plane_state *old_state)
 {
 	struct drm_plane_state *pstate = NULL;
 	struct drm_crtc *drm_crtc = NULL;
@@ -114,8 +115,12 @@ static struct sde_hw_ctl *_sde_plane_get_hw_ctl(const struct drm_plane *plane)
 
 	drm_crtc = pstate->crtc;
 	if (!drm_crtc) {
-		DRM_ERROR("Invalid drm_crtc %pK\n", drm_crtc);
-		return NULL;
+		if (old_state && old_state->crtc)
+			drm_crtc = old_state->crtc;
+		if (!drm_crtc) {
+			DRM_ERROR("Invalid drm_crtc %pK\n", drm_crtc);
+			return NULL;
+		}
 	}
 
 	sde_crtc = to_sde_crtc(drm_crtc);
@@ -204,7 +209,14 @@ static inline bool sde_plane_in_cac_fetch_mode(struct sde_plane_state *pstate)
 {
 	int cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
 
-	return (cac_mode == SDE_CAC_FETCH);
+	return ((cac_mode == SDE_CAC_FETCH) ||
+		(cac_mode == SDE_CAC_LOOPBACK_FETCH));
+}
+
+static inline bool sde_plane_has_cac_enabled(struct sde_plane *psde)
+{
+	return ((psde->features & BIT(SDE_SSPP_CAC_V2)) ||
+		(psde->features & BIT(SDE_SSPP_CAC_LOOPBACK)));
 }
 
 void sde_plane_setup_src_split_order(struct drm_plane *plane,
@@ -213,6 +225,7 @@ void sde_plane_setup_src_split_order(struct drm_plane *plane,
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
 	u32 cac_pref_lm;
+	int cac_mode, cac_type;
 
 	if (!plane)
 		return;
@@ -228,7 +241,12 @@ void sde_plane_setup_src_split_order(struct drm_plane *plane,
 		 * lm for each sspp. More details on this can be found
 		 * in Documentation(sde.txt).
 		 */
-		cac_pref_lm = psde->pipe_sblk->cac_lm_pref[rect_mode -
+
+		cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
+		cac_type = (psde->catalog->cac_version == SDE_SSPP_CAC_LOOPBACK)
+			? SDE_CAC_TYPE_LOOPBACK : SDE_CAC_TYPE_V2;
+
+		cac_pref_lm = psde->pipe_sblk->cac_lm_pref[cac_type][rect_mode -
 				SDE_SSPP_RECT_0];
 		enable = ((cac_pref_lm == 0xFF) ? enable :
 				(cac_pref_lm % MAX_MIXERS_PER_LAYOUT));
@@ -1260,7 +1278,7 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 	struct drm_msm_pgc_lut *gc = NULL;
 	size_t memcol_sz = 0, size = 0;
 	struct sde_hw_cp_cfg hw_cfg = {};
-	struct sde_hw_ctl *ctl = _sde_plane_get_hw_ctl(plane);
+	struct sde_hw_ctl *ctl = _sde_plane_get_hw_ctl(plane, NULL);
 	bool fp16_igc, fp16_unmult, ucsc_unmult, ucsc_alpha_dither;
 	int ucsc_gc, ucsc_igc;
 	struct drm_msm_fp16_gc *fp16_gc = NULL;
@@ -1673,7 +1691,7 @@ static int _sde_plane_color_fill(struct sde_plane *psde,
 					&psde->pixel_ext, false);
 		if (psde->pipe_hw->ops.setup_scaler &&
 				(pstate->multirect_index != SDE_SSPP_RECT_1)) {
-			psde->pipe_hw->ctl = _sde_plane_get_hw_ctl(plane);
+			psde->pipe_hw->ctl = _sde_plane_get_hw_ctl(plane, NULL);
 			psde->pipe_hw->ops.setup_scaler(psde->pipe_hw,
 					&psde->pipe_cfg, &psde->pixel_ext,
 					&psde->scaler3_cfg);
@@ -1686,7 +1704,7 @@ static int _sde_plane_color_fill(struct sde_plane *psde,
 				psde->pipe_hw, &psde->scaler3_cfg.cac_cfg);
 
 		if (psde->pipe_hw->ops.setup_cac_ctrl)
-			psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, SDE_CAC_NONE);
+			psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, SDE_CAC_NONE, 0xf);
 	}
 
 	return 0;
@@ -2842,6 +2860,8 @@ static int sde_plane_check_cac_unpack(struct drm_plane *plane,
 	struct sde_plane *psde;
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
+	int ret = 0;
+	u32 cac_mode;
 
 	if (!pstate || !fmt || !plane) {
 		SDE_ERROR("invalid arguments\n");
@@ -2851,13 +2871,18 @@ static int sde_plane_check_cac_unpack(struct drm_plane *plane,
 	psde = to_sde_plane(plane);
 	priv = plane->dev->dev_private;
 	sde_kms = to_sde_kms(priv->kms);
+	cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
 
-	if (sde_format_validate_fmt(&sde_kms->base, fmt,
-			psde->pipe_sblk->cac_format_list)) {
+	if (cac_mode == SDE_CAC_UNPACK)
+		ret = sde_format_validate_fmt(&sde_kms->base, fmt,
+			psde->pipe_sblk->cac_format_list);
+	else if (cac_mode == SDE_CAC_LOOPBACK_UNPACK)
+		ret = sde_format_validate_fmt(&sde_kms->base, fmt,
+			psde->pipe_sblk->format_list);
+	if (ret) {
 		SDE_ERROR_PLANE(psde, "invalid sspp format\n");
 		return -EINVAL;
 	}
-
 	return 0;
 }
 
@@ -2890,8 +2915,8 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
 	const struct sde_format *fmt;
-	u32 cac_mode, pref_lm, rec_id;
-	int ret = 0;
+	u32 cac_mode, pref_lm, rec_id, sblk_cac_mode;
+	int cac_type, ret = 0;
 
 	if (!plane || !state) {
 		SDE_ERROR("invalid arguments\n");
@@ -2901,7 +2926,7 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 	psde = to_sde_plane(plane);
 	pstate = to_sde_plane_state(state);
 
-	if (!(psde->features & BIT(SDE_SSPP_CAC_V2)))
+	if (!sde_plane_has_cac_enabled(psde))
 		return 0;
 
 	cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
@@ -2916,7 +2941,13 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 		return -EINVAL;
 	}
 
-	if (cac_mode != psde->pipe_sblk->cac_mode) {
+	sblk_cac_mode = psde->pipe_sblk->cac_mode;
+	if (psde->features & BIT(SDE_SSPP_CAC_V2))
+		sblk_cac_mode &= SDE_CAC_V2_CAP_MASK;
+	else
+		sblk_cac_mode &= SDE_CAC_LOOPBACK_CAP_MASK;
+
+	if (cac_mode != sblk_cac_mode) {
 		SDE_ERROR_PLANE(psde, "invalid cac mode\n");
 		return -EINVAL;
 	}
@@ -2932,7 +2963,7 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 
 	if (sde_plane_in_cac_fetch_mode(pstate))
 		ret = sde_plane_check_cac_fetch(psde, pstate, fmt);
-	else
+	else if (cac_mode == SDE_CAC_UNPACK || cac_mode == SDE_CAC_LOOPBACK_UNPACK)
 		ret = sde_plane_check_cac_unpack(plane, pstate, fmt);
 
 	if (ret) {
@@ -2940,8 +2971,10 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 		return -EINVAL;
 	}
 
+	cac_type = (psde->catalog->cac_version == SDE_SSPP_CAC_LOOPBACK)
+			? SDE_CAC_TYPE_LOOPBACK : SDE_CAC_TYPE_V2;
 	rec_id = psde->is_virtual ? 1 : 0;
-	pref_lm = psde->pipe_sblk->cac_lm_pref[rec_id];
+	pref_lm = psde->pipe_sblk->cac_lm_pref[cac_type][rec_id];
 	if (pref_lm == 0xFF)
 		pstate->layout = SDE_LAYOUT_NONE;
 	else if (pref_lm >= MAX_MIXERS_PER_LAYOUT)
@@ -3400,6 +3433,33 @@ static void _sde_plane_update_secure_session(struct sde_plane *psde,
 			enable);
 }
 
+static u32 _sde_plane_cac_loopback_update_pp_idx(struct sde_plane *psde,
+	struct sde_plane_state *pstate, u32 cac_mode)
+{
+	struct sde_lm_cfg *mixer;
+	u32 pp_idx = 0xf, pref_lm, parent_lm;
+	int rect_id;
+
+	if (cac_mode == SDE_CAC_LOOPBACK_FETCH && SDE_SSPP_VALID_VIG(psde->pipe)) {
+		rect_id = (psde->is_virtual) ? 1 : 0;
+		pref_lm = psde->pipe_sblk->cac_lm_pref[SDE_CAC_TYPE_LOOPBACK][rect_id];
+
+	/* In two pass CAC, LM used in first pass acts as a parent mixer and
+	 * LM mapping of first to second pass is maintained through parent_mixer_id.
+	 * Parent mixer is used to get the index of pingpong block connected to it,
+	 * and the index is used to program the CAC loopback pingpong block selection.
+	 */
+		mixer = psde->catalog->mixer + pref_lm;
+		parent_lm = mixer->parent_mixer_id;
+
+		mixer = psde->catalog->mixer + parent_lm;
+		pp_idx = mixer->pingpong;
+
+		return (pp_idx - PINGPONG_0);
+	} else
+		return pp_idx;
+}
+
 static void _sde_plane_update_roi_config(struct drm_plane *plane,
 	struct drm_crtc *crtc, struct drm_framebuffer *fb)
 {
@@ -3501,7 +3561,7 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 	 */
 	if (psde->pipe_hw->ops.setup_scaler &&
 			pstate->multirect_index != SDE_SSPP_RECT_1) {
-		psde->pipe_hw->ctl = _sde_plane_get_hw_ctl(plane);
+		psde->pipe_hw->ctl = _sde_plane_get_hw_ctl(plane, NULL);
 		psde->pipe_hw->ops.setup_scaler(psde->pipe_hw,
 				&psde->pipe_cfg, &psde->pixel_ext,
 				&psde->scaler3_cfg);
@@ -3541,6 +3601,7 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 {
 	uint32_t src_flags = 0;
 	u32 cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
+	u32 pp_idx;
 
 	SDE_DEBUG_PLANE(psde, "rotation 0x%X\n", pstate->rotation);
 	if (pstate->rotation & DRM_MODE_REFLECT_X)
@@ -3604,8 +3665,10 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 					pstate->multirect_index, NULL);
 	}
 
-	if (psde->pipe_hw->ops.setup_cac_ctrl)
-		psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, cac_mode);
+	if (psde->pipe_hw->ops.setup_cac_ctrl) {
+		pp_idx = _sde_plane_cac_loopback_update_pp_idx(psde, pstate, cac_mode);
+		psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, cac_mode, pp_idx);
+	}
 }
 
 static void _sde_plane_update_sharpening(struct sde_plane *psde)
@@ -3824,9 +3887,11 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	struct sde_plane *psde;
 	struct drm_plane_state *state;
 	struct sde_plane_state *pstate;
+	struct sde_plane_state *old_pstate;
 	u32 multirect_index = SDE_SSPP_RECT_0;
 	struct sde_cp_crtc_skip_blend_plane skip_blend_plane;
 	u32 blend_type;
+	u32 old_cac_mode;
 
 	if (!plane) {
 		SDE_ERROR("invalid plane\n");
@@ -3842,9 +3907,11 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	psde = to_sde_plane(plane);
 	state = plane->state;
 	pstate = to_sde_plane_state(state);
+	old_pstate = to_sde_plane_state(old_state);
 
 	blend_type = sde_plane_get_property(pstate,
 					PLANE_PROP_BLEND_OP);
+	old_cac_mode = sde_plane_get_property(old_pstate, PLANE_PROP_CAC_TYPE);
 	/* some of the color features are dependent on plane with skip blend.
 	 * if skip blend plane is being disabled, we need to disable color properties.
 	*/
@@ -3869,6 +3936,15 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	if (psde->pipe_hw && psde->pipe_hw->ops.update_multirect)
 		psde->pipe_hw->ops.update_multirect(psde->pipe_hw, false,
 				multirect_index, SDE_SSPP_MULTIRECT_TIME_MX);
+
+	/* On disabling CAC, need to reset CAC control programming to ensure
+	 * proper CAC to non-CAC transition
+	 */
+	if (old_cac_mode != SDE_CAC_NONE) {
+		if (psde->pipe_hw->ops.setup_cac_ctrl)
+			psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, SDE_CAC_NONE, 0xf);
+		sde_plane_ctl_flush(plane, _sde_plane_get_hw_ctl(plane, old_state), true);
+	}
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
@@ -4245,7 +4321,7 @@ static void _sde_plane_setup_capabilities_blob(struct sde_plane *psde,
 
 	format_list = psde->pipe_sblk->cac_format_list;
 
-	if (psde->pipe_sblk->cac_mode == SDE_CAC_UNPACK && format_list) {
+	if ((psde->pipe_sblk->cac_mode & SDE_CAC_UNPACK) && format_list) {
 		sde_kms_info_start(info, "cac_pixel_formats");
 		while (format_list->fourcc_format) {
 			sde_kms_info_append_format(info, format_list->fourcc_format,
@@ -4289,7 +4365,7 @@ static void _sde_plane_setup_capabilities_blob(struct sde_plane *psde,
 		sde_kms_info_add_keyint(info, "sec_ui_allowed", 1);
 	if (psde->features & BIT(SDE_SSPP_BLOCK_SEC_UI))
 		sde_kms_info_add_keyint(info, "block_sec_ui", 1);
-	if (psde->features & BIT(SDE_SSPP_CAC_V2)) {
+	if (sde_plane_has_cac_enabled(psde)) {
 		sde_kms_info_add_keyint(info, "cac_mode", psde->pipe_sblk->cac_mode);
 		if (psde->pipe_sblk->cac_parent_rec[index] != 0xff)
 			sde_kms_info_add_keyint(info, "cac_parent_rec",
@@ -4361,6 +4437,8 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		{SDE_CAC_NONE, "cac_none"},
 		{SDE_CAC_UNPACK, "cac_unpack"},
 		{SDE_CAC_FETCH, "cac_fetch"},
+		{SDE_CAC_LOOPBACK_UNPACK, "cac_loopback_unpack"},
+		{SDE_CAC_LOOPBACK_FETCH, "cac_loopback_fetch"},
 	};
 
 	struct sde_kms_info *info;
@@ -4445,7 +4523,7 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		e_src_config, ARRAY_SIZE(e_src_config), 0,
 		PLANE_PROP_SRC_CONFIG);
 
-	if (psde->features & BIT(SDE_SSPP_CAC_V2)) {
+	if (sde_plane_has_cac_enabled(psde)) {
 		msm_property_install_enum(&psde->property_info, "cac_type", 0x0,
 			0, e_cac_type, ARRAY_SIZE(e_cac_type), 0,
 			PLANE_PROP_CAC_TYPE);
@@ -4709,7 +4787,7 @@ static inline void _sde_plane_set_scaler_v2(struct sde_plane *psde,
 	}
 	pstate->scaler_check_state = SDE_PLANE_SCLCHECK_SCALER_V2_CHECK;
 
-	if (!(psde->features & BIT(SDE_SSPP_CAC_V2)))
+	if (!sde_plane_has_cac_enabled(psde))
 		goto end;
 
 	memset(&cfg->cac_cfg, 0, sizeof(struct sde_hw_cac_cfg));
