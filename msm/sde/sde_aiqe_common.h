@@ -31,7 +31,6 @@ struct aiqe_reg_common {
 	u32 config;
 	u32 height; // panel
 	u32 width; // panel
-	u32 irqs;
 };
 
 void aiqe_init(u32 aiqe_version, struct sde_aiqe_top_level *aiqe_top);

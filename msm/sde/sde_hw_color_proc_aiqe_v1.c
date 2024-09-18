@@ -26,7 +26,7 @@ static void sde_setup_aiqe_common_v1(struct sde_hw_dspp *ctx, void *cfg,
 	SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x4, aiqe_common.merge);
 	SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x14,
 			((aiqe_common.width & 0xFFF) << 16) | (aiqe_common.height & 0xFFF));
-	SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x3EC, aiqe_common.irqs);
+	SDE_REG_WRITE(&ctx->hw, aiqe_base + 0x3EC, 0);
 	SDE_EVT32(aiqe_common.config, aiqe_common.merge,
 			 ((aiqe_common.width & 0xFFF) << 16), (aiqe_common.height & 0xFFF));
 }
@@ -46,7 +46,7 @@ static int _reg_dmav1_aiqe_write_top_level_v1(struct sde_reg_dma_setup_ops_cfg *
 	values[0] = aiqe_common.config;
 	values[1] = aiqe_common.merge;
 	values[2] = ((aiqe_common.width & 0xFFF) << 16) | (aiqe_common.height & 0xFFF);
-	values[3] = aiqe_common.irqs;
+	values[3] = 0;
 	REG_DMA_SETUP_OPS(*dma_cfg, base,
 			&values[0], 2 * sizeof(u32), REG_BLK_WRITE_SINGLE, 0, 0, 0);
 	rc = dma_ops->setup_payload(dma_cfg);
