@@ -1697,9 +1697,9 @@ static int _sde_plane_color_fill(struct sde_plane *psde,
 					&psde->scaler3_cfg);
 		}
 
-		if (psde->pipe_hw->ops.setup_scaler_cac &&
-			sde_plane_in_cac_fetch_mode(pstate) &&
-				!psde->is_virtual)
+		if (psde->pipe_hw->ops.setup_scaler_cac && !psde->is_virtual &&
+			(sde_plane_in_cac_fetch_mode(pstate) ||
+				psde->scaler3_cfg.cac_cfg.fov_mode != 0))
 			psde->pipe_hw->ops.setup_scaler_cac(
 				psde->pipe_hw, &psde->scaler3_cfg.cac_cfg);
 
@@ -3587,8 +3587,9 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 				&pstate->line_insertion_cfg);
 
 	if (psde->pipe_hw->ops.setup_scaler_cac &&
-		sde_plane_in_cac_fetch_mode(pstate) &&
-			!is_sde_plane_virtual(plane))
+			!is_sde_plane_virtual(plane) &&
+		(sde_plane_in_cac_fetch_mode(pstate) ||
+			psde->scaler3_cfg.cac_cfg.fov_mode != 0))
 		psde->pipe_hw->ops.setup_scaler_cac(
 			psde->pipe_hw, &psde->scaler3_cfg.cac_cfg);
 
@@ -4678,6 +4679,10 @@ static void sde_set_cac_cfg(struct sde_plane *psde, struct sde_hw_cac_cfg *cfg,
 	int i;
 
 	cfg->cac_mode = scale_v2->cac_cfg.cac_mode;
+	cfg->fov_mode = scale_v2->cac_cfg.fov_mode;
+
+	if (!cfg->cac_mode && !cfg->fov_mode)
+		return;
 
 	for (i = 0; i < SDE_MAX_PLANES; i++) {
 		cfg->cac_le_phase_init2_x[i] =
@@ -4717,6 +4722,10 @@ static void sde_set_cac_cfg(struct sde_plane *psde, struct sde_hw_cac_cfg *cfg,
 	cfg->cac_le_dst_v_offset = scale_v2->cac_cfg.cac_le_dst_v_offset;
 	cfg->cac_re_dst_v_offset = scale_v2->cac_cfg.cac_re_dst_v_offset;
 	cfg->uv_filter_cfg = scale_v2->uv_filter_cfg;
+	cfg->cac_asym_phase_step_h = scale_v2->cac_cfg.cac_asym_phase_step_h;
+	cfg->cac_asym_phase_step_v = scale_v2->cac_cfg.cac_asym_phase_step_v;
+	cfg->cac_re_phase_step_v = scale_v2->cac_cfg.cac_re_phase_step_v;
+	cfg->cac_re_asym_phase_step_v = scale_v2->cac_cfg.cac_re_asym_phase_step_v;
 
 	SDE_EVT32_VERBOSE(DRMID(&psde->base), cfg->cac_mode);
 	SDE_DEBUG_PLANE(psde, "copied cac scalar properties\n");
@@ -4786,9 +4795,6 @@ static inline void _sde_plane_set_scaler_v2(struct sde_plane *psde,
 		pe->roi_h[i] = scale_v2.pe.num_ext_pxls_tb[i];
 	}
 	pstate->scaler_check_state = SDE_PLANE_SCLCHECK_SCALER_V2_CHECK;
-
-	if (!sde_plane_has_cac_enabled(psde))
-		goto end;
 
 	memset(&cfg->cac_cfg, 0, sizeof(struct sde_hw_cac_cfg));
 
