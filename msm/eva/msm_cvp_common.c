@@ -745,7 +745,7 @@ void msm_cvp_comm_session_clean(struct msm_cvp_inst *inst)
 static void handle_session_close(enum hal_command_response cmd, void *data)
 {
 	struct msm_cvp_cb_cmd_done *response = data;
-	struct msm_cvp_inst *inst;
+	struct msm_cvp_inst *inst, *temp;
 	struct msm_cvp_core *core;
 
 	if (!response) {
@@ -760,7 +760,7 @@ static void handle_session_close(enum hal_command_response cmd, void *data)
 		dprintk(CVP_WARN, "%s: response for an inactive session %#x\n",
 				__func__, response->session_id);
 
-		list_for_each_entry(inst, &core->instances, list)
+		list_for_each_entry_safe(inst, temp, &core->instances, list)
 			cvp_print_inst(CVP_WARN, inst);
 
 		return;
