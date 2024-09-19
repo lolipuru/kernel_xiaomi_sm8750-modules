@@ -6493,6 +6493,11 @@ int cnss_pci_recover_link_post_sol(struct cnss_pci_data *pci_priv)
 	mutex_unlock(&pci_priv->bus_lock);
 
 retry:
+	if (cnss_pci_check_link_status(pci_priv)) {
+		cnss_pr_err("PCI Link is down, skip to recovery\n");
+		goto recovery;
+	}
+
 	/*
 	 * After PCIe link resumes, 20 to 400 ms delay is observerved
 	 * before device moves to RDDM.
@@ -6514,11 +6519,14 @@ retry:
 	cnss_mhi_debug_reg_dump(pci_priv);
 	cnss_pci_bhi_debug_reg_dump(pci_priv);
 	cnss_pci_soc_scratch_reg_dump(pci_priv);
+
+recovery:
 	cnss_schedule_recovery(&pci_priv->pci_dev->dev,
 			       CNSS_REASON_TIMEOUT);
 
 	return 0;
 }
+
 int cnss_pci_recover_link_down(struct cnss_pci_data *pci_priv)
 {
 	int ret;
@@ -6566,6 +6574,11 @@ int cnss_pci_recover_link_down(struct cnss_pci_data *pci_priv)
 	mutex_unlock(&pci_priv->bus_lock);
 
 retry:
+	if (cnss_pci_check_link_status(pci_priv)) {
+		cnss_pr_err("PCI Link is down, skip to recovery\n");
+		goto recovery;
+	}
+
 	/*
 	 * After PCIe link resumes, 20 to 400 ms delay is observerved
 	 * before device moves to RDDM.
@@ -6591,6 +6604,7 @@ retry:
 	if (!cnss_pci_assert_host_sol(pci_priv))
 		return 0;
 
+recovery:
 	cnss_schedule_recovery(&pci_priv->pci_dev->dev,
 			       CNSS_REASON_TIMEOUT);
 	return 0;
