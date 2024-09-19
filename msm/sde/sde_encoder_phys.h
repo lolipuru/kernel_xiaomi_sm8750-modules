@@ -644,10 +644,11 @@ struct sde_encoder_wait_info {
 /**
  * sde_encoder_phys_vid_init - Construct a new video mode physical encoder
  * @p:	Pointer to init params structure
+ * @is_lb_display: true for lb encoder, false otherwise
  * Return: Error code or newly allocated encoder
  */
 struct sde_encoder_phys *sde_encoder_phys_vid_init(
-		struct sde_enc_phys_init_params *p);
+		struct sde_enc_phys_init_params *p, bool is_lb_display);
 
 /**
  * sde_encoder_phys_cmd_init - Construct a new command mode physical encoder

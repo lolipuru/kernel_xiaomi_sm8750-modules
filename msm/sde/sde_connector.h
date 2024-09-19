@@ -665,6 +665,7 @@ struct sde_backlight_vrr_update {
  * @hwfence_wb_retire_fences_enable: enable hw-fences for wb retire-fence
  * @max_mode_width: max width of all available modes
  * @shared: If a connector is sharing resource of its parent
+ * @is_lb_conn: Indicates if this connector is a loopback connector
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -762,6 +763,7 @@ struct sde_connector {
 
 	u32 max_mode_width;
 	bool shared;
+	bool is_lb_conn;
 };
 
 /**

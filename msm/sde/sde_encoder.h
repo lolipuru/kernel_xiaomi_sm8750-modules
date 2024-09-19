@@ -252,6 +252,7 @@ enum sde_multi_te_states {
  * @phys_encs:		Container of physical encoders managed.
  * @phys_vid_encs:	Video physical encoders for panel mode switch.
  * @phys_cmd_encs:	Command physical encoders for panel mode switch.
+ * @phys_lb_encs:	Loopback physical encoders for cac loopback mode
  * @cur_master:		Pointer to the current master in this mode. Optimization
  *			Only valid after enable. Cleared as disable.
  * @hw_pp		Handle to the pingpong blocks used for the display. No.
@@ -354,6 +355,7 @@ struct sde_encoder_virt {
 	struct sde_encoder_phys *phys_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *phys_vid_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *phys_cmd_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
+	struct sde_encoder_phys *phys_lb_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *cur_master;
 	struct sde_hw_pingpong *hw_pp[MAX_CHANNELS_PER_ENC];
 	struct sde_hw_dsc *hw_dsc[MAX_CHANNELS_PER_ENC];
@@ -921,6 +923,22 @@ static inline u32 sde_encoder_get_pclk_factor(struct drm_encoder *drm_enc)
 	return sde_enc->mode_info.pclk_factor;
 }
 
+/*
+ * sde_encoder_is_loopback_display - check if encoder is used in the loopback path
+ * @drm_enc:	Pointer to drm encoder structure
+ * @Return: true for loopback encoder, false otherwise
+ */
+static inline bool sde_encoder_is_loopback_display(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	return sde_enc &&
+		(sde_enc->disp_info.capabilities & MSM_DISPLAY_LOOPBACK_MODE);
+}
 /*
  * sde_encoder_is_line_insertion_supported - get line insertion
  * feature bit value from panel

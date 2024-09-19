@@ -2506,7 +2506,7 @@ void sde_connector_fence_error_ctx_signal(struct drm_connector *conn, int input_
 	ktime_t time_stamp;
 
 	sde_conn = to_sde_connector(conn);
-	if (!sde_conn)
+	if (!sde_conn || sde_conn->is_lb_conn)
 		return;
 
 	ctx = sde_conn->retire_fence;
@@ -2525,6 +2525,9 @@ void sde_connector_prepare_fence(struct drm_connector *connector)
 		return;
 	}
 
+	if (to_sde_connector(connector)->is_lb_conn)
+		return;
+
 	sde_fence_prepare(to_sde_connector(connector)->retire_fence);
 }
 
@@ -2535,6 +2538,9 @@ void sde_connector_complete_commit(struct drm_connector *connector,
 		SDE_ERROR("invalid connector\n");
 		return;
 	}
+
+	if (to_sde_connector(connector)->is_lb_conn)
+		return;
 
 	/* signal connector's retire fence */
 	sde_fence_signal(to_sde_connector(connector)->retire_fence,
@@ -2551,6 +2557,9 @@ void sde_connector_commit_reset(struct drm_connector *connector, ktime_t ts)
 		return;
 	}
 	c_conn = to_sde_connector(connector);
+
+	if (c_conn->is_lb_conn)
+		return;
 
 	/* get hw_ctl for a wb connector */
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
@@ -3840,12 +3849,14 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	msm_property_install_volatile_range(&c_conn->property_info,
 		"hdr_metadata", 0x0, 0, ~0, 0, CONNECTOR_PROP_HDR_METADATA);
 
-	msm_property_install_volatile_range(&c_conn->property_info,
-		"RETIRE_FENCE", 0x0, 0, ~0, 0, CONNECTOR_PROP_RETIRE_FENCE);
+	if (!sde_encoder_is_loopback_display(c_conn->encoder)) {
+		msm_property_install_volatile_range(&c_conn->property_info,
+			"RETIRE_FENCE", 0x0, 0, ~0, 0, CONNECTOR_PROP_RETIRE_FENCE);
 
-	msm_property_install_volatile_range(&c_conn->property_info,
-		"RETIRE_FENCE_OFFSET", 0x0, 0, ~0, 0,
-		 CONN_PROP_RETIRE_FENCE_OFFSET);
+		msm_property_install_volatile_range(&c_conn->property_info,
+			"RETIRE_FENCE_OFFSET", 0x0, 0, ~0, 0,
+			CONN_PROP_RETIRE_FENCE_OFFSET);
+	}
 
 	msm_property_install_range(&c_conn->property_info, "autorefresh",
 			0x0, 0, AUTOREFRESH_MAX_FRAME_CNT, 0,
@@ -3929,10 +3940,12 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			0, 1, e_topology_control,
 			ARRAY_SIZE(e_topology_control), 0,
 			CONNECTOR_PROP_TOPOLOGY_CONTROL);
-	msm_property_install_enum(&c_conn->property_info, "LP",
+	if (!sde_encoder_is_loopback_display(c_conn->encoder)) {
+		msm_property_install_enum(&c_conn->property_info, "LP",
 			0, 0, e_power_mode,
 			ARRAY_SIZE(e_power_mode), 0,
 			CONNECTOR_PROP_LP);
+	}
 
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
 		dsi_display = (struct dsi_display *)(display);
@@ -4129,12 +4142,21 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 			"conn%u",
 			c_conn->base.base.id);
 
-	c_conn->retire_fence = sde_fence_init(c_conn->name,
+	rc = sde_connector_get_info(&c_conn->base, &display_info);
+	if (rc)
+		return ERR_PTR(rc);
+
+	if (sde_encoder_is_loopback_display(encoder))
+		c_conn->is_lb_conn = true;
+
+	if (!c_conn->is_lb_conn) {
+		c_conn->retire_fence = sde_fence_init(c_conn->name,
 			c_conn->base.base.id);
-	if (IS_ERR(c_conn->retire_fence)) {
-		rc = PTR_ERR(c_conn->retire_fence);
-		SDE_ERROR("failed to init fence, %d\n", rc);
-		goto error_cleanup_conn;
+		if (IS_ERR(c_conn->retire_fence)) {
+			rc = PTR_ERR(c_conn->retire_fence);
+			SDE_ERROR("failed to init fence, %d\n", rc);
+			goto error_cleanup_conn;
+		}
 	}
 
 	mutex_init(&c_conn->lock);
@@ -4165,8 +4187,8 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 		}
 	}
 
-	rc = sde_connector_get_info(&c_conn->base, &display_info);
-	if (!rc && (connector_type == DRM_MODE_CONNECTOR_DSI) &&
+
+	if ((connector_type == DRM_MODE_CONNECTOR_DSI) &&
 			(display_info.capabilities & MSM_DISPLAY_CAP_VID_MODE))
 		sde_connector_register_event(&c_conn->base,
 			SDE_CONN_EVENT_VID_FIFO_OVERFLOW,
@@ -4196,14 +4218,16 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	_sde_connector_lm_preference(c_conn, sde_kms,
 			display_info.display_type);
 
-	_sde_connector_init_hw_fence(c_conn, &display_info, sde_kms);
+
+	if (!c_conn->is_lb_conn) {
+		_sde_connector_init_hw_fence(c_conn, &display_info, sde_kms);
+		INIT_DELAYED_WORK(&c_conn->status_work,
+			sde_connector_check_status_work);
+	}
 
 	SDE_DEBUG("connector %d attach encoder %d, wb hwfences:%d\n",
 			DRMID(&c_conn->base), DRMID(encoder),
 			c_conn->hwfence_wb_retire_fences_enable);
-
-	INIT_DELAYED_WORK(&c_conn->status_work,
-			sde_connector_check_status_work);
 
 	return &c_conn->base;
 

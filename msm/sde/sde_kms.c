@@ -57,6 +57,7 @@
 #include "sde_vm.h"
 #include "sde_fence.h"
 #include "sde_cesta.h"
+#include "sde_loopback.h"
 
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <linux/firmware/qcom/qcom_scm.h>
@@ -1788,7 +1789,7 @@ static void sde_kms_prepare_fence(struct msm_kms *kms,
  */
 static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 {
-	int rc = -ENOMEM;
+	int i, rc = -ENOMEM;
 
 	if (!sde_kms) {
 		SDE_ERROR("invalid sde kms\n");
@@ -1844,7 +1845,30 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 
 		sde_kms->dp_stream_count = dp_display_get_num_of_streams(sde_kms->dev);
 	}
+
+	/* cac loopback display */
+	sde_kms->lb_displays = NULL;
+	sde_kms->lb_disp_count =
+		(sde_kms->catalog->cac_version == SDE_SSPP_CAC_LOOPBACK) ?
+			sde_kms->dsi_display_count : 0;
+	if (sde_kms->lb_disp_count) {
+		sde_kms->lb_displays = kcalloc(sde_kms->lb_disp_count,
+				sizeof(void *), GFP_KERNEL);
+		if (!sde_kms->lb_displays) {
+			SDE_ERROR("failed to allocate LB displays\n");
+			goto exit_deinit_lb;
+		}
+
+		for (i = 0; i < sde_kms->lb_disp_count; i++)
+			sde_kms->lb_displays[i] =  sde_kms->dsi_displays[i];
+	}
+
 	return 0;
+
+exit_deinit_lb:
+	kfree(sde_kms->lb_displays);
+	sde_kms->lb_disp_count = 0;
+	sde_kms->lb_displays = NULL;
 
 exit_deinit_dp:
 	kfree(sde_kms->dp_displays);
@@ -1896,6 +1920,13 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		struct msm_drm_private *priv,
 		struct sde_kms *sde_kms)
 {
+	static const struct sde_connector_ops virt_ops = {
+		.set_info_blob = sde_lb_set_info_blob,
+		.detect = sde_lb_detect,
+		.get_modes = sde_lb_connector_get_modes,
+		.get_info = sde_lb_display_get_info,
+		.get_mode_info = sde_lb_get_mode_info,
+	};
 	static const struct sde_connector_ops dsi_ops = {
 		.set_info_blob = dsi_conn_set_info_blob,
 		.detect =     dsi_conn_detect,
@@ -1996,7 +2027,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 	max_encoders = sde_kms->dsi_display_count + sde_kms->wb_display_count +
 				sde_kms->dp_display_count +
-				sde_kms->dp_stream_count;
+				sde_kms->dp_stream_count + sde_kms->lb_disp_count;
 	if (max_encoders > ARRAY_SIZE(priv->encoders)) {
 		max_encoders = ARRAY_SIZE(priv->encoders);
 		SDE_ERROR("capping number of displays to %d", max_encoders);
@@ -2107,6 +2138,32 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 		if (dsi_display_has_dsc_switch_support(display))
 			sde_kms->dsc_switch_support = true;
+	}
+
+	for (i = 0; i < sde_kms->lb_disp_count &&
+		priv->num_encoders < max_encoders; ++i) {
+		display = sde_kms->lb_displays[i];
+		encoder = NULL;
+		memset(&info, 0x0, sizeof(info));
+		rc = sde_lb_display_get_info(NULL, &info, display);
+
+		encoder = sde_encoder_init(dev, &info, NULL);
+		if (IS_ERR_OR_NULL(encoder)) {
+			SDE_ERROR("encoder init failed for loopback %d\n", i);
+			continue;
+		}
+
+		connector = sde_connector_init(dev, encoder, 0, display,
+				&virt_ops, DRM_CONNECTOR_POLL_HPD,
+				DRM_MODE_CONNECTOR_VIRTUAL, false);
+		if (connector) {
+			priv->encoders[priv->num_encoders++] = encoder;
+			priv->connectors[priv->num_connectors++] = connector;
+		} else {
+			SDE_ERROR("lb %d connector init failed\n", i);
+			sde_encoder_destroy(encoder);
+		}
+
 	}
 
 	if (sde_kms->catalog->allowed_dsc_reservation_switch &&
@@ -3906,7 +3963,7 @@ static bool sde_kms_check_for_splash(struct msm_kms *kms)
 	}
 
 	sde_kms = to_sde_kms(kms);
-	return sde_kms->splash_data.num_splash_displays;
+	return sde_kms->splash_data.num_splash_displays == 0 ? false : true;
 }
 
 static int sde_kms_get_mixer_count(const struct msm_kms *kms,
