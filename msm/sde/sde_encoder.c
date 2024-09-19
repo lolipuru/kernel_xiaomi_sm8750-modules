@@ -7784,6 +7784,21 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	return ret;
 }
 
+void sde_encoder_phys_cancel_backlight_timer(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *phys_enc;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc || !sde_enc->cur_master)
+		return;
+	phys_enc = sde_enc->cur_master;
+
+	if (ktime_compare(hrtimer_get_expires(&phys_enc->sde_vrr_cfg.backlight_timer),
+			ktime_get()) > 0)
+		hrtimer_cancel(&phys_enc->sde_vrr_cfg.backlight_timer);
+}
+
 enum hrtimer_restart sde_encoder_phys_backlight_timer_cb(struct hrtimer *timer)
 {
 	struct sde_encoder_vrr_cfg *vrr_cfg;
