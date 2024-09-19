@@ -95,8 +95,8 @@ void _sde_cesta_hw_ctrl_setup(struct sde_cesta *cesta, u32 idx, struct sde_cesta
 	u32 val = 0;
 
 	if (!cfg || !cfg->enable) {
-		_sde_cesta_hw_override_ctrl_setup(cesta, idx, 0);
 		dss_reg_w(&cesta->scc_io[idx], SCC_CTRL, 0xf0, cesta->debug_mode);
+		_sde_cesta_hw_override_ctrl_setup(cesta, idx, SDE_CESTA_OVERRIDE_FORCE_DB_UPDATE);
 		return;
 	}
 

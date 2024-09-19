@@ -2078,8 +2078,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	else
 		cfg.flags |= SDE_CTL_CESTA_CHN_WAIT;
 
-	if ((commit_state == SDE_PERF_ENABLE_COMMIT) || (commit_state == SDE_PERF_DISABLE_COMMIT)
-			|| req_scc)
+	if ((commit_state == SDE_PERF_ENABLE_COMMIT) || req_scc)
 		cfg.flags |= SDE_CTL_CESTA_SCC_FLUSH;
 
 	if ((cfg.vote_state != SDE_CESTA_BW_CLK_NOCHANGE) || req_flush)
