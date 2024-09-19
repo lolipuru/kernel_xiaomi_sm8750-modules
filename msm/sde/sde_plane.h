@@ -108,12 +108,18 @@ struct sde_plane {
  * @SDE_LAYOUT_NONE    : SSPPs to LMs staging layout not enabled
  * @SDE_LAYOUT_LEFT    : SSPPs will be staged on left two LMs
  * @SDE_LAYOUT_RIGHT   : SSPPs will be staged on right two LMs
+ * @SDE_LAYOUT_CAC_PRIMARY_LEFT : SSPPs will be staged on left two LMs
+			in primary path in loopback usecase
+ * @SDE_LAYOUT_CAC_PRIMARY_RIGHT : SSPPs will be staged on right two LMs
+			in primary path in loopback usecase
  * @SDE_LAYOUT_MAX     :
  */
 enum sde_layout {
 	SDE_LAYOUT_NONE = 0,
 	SDE_LAYOUT_LEFT,
 	SDE_LAYOUT_RIGHT,
+	SDE_LAYOUT_CAC_PRIMARY_LEFT,
+	SDE_LAYOUT_CAC_PRIMARY_RIGHT,
 	SDE_LAYOUT_MAX,
 };
 
@@ -173,6 +179,7 @@ enum sde_plane_sclcheck_state {
  * @src_img_rec: source image rect values
  * @src_rect_extn: extension source rect values
  * @dst_rect_extn: extension destination rect values
+ * @pref_lm: preferred lm for each plane in cac loopback usecase
  */
 struct sde_plane_state {
 	struct drm_plane_state base;
@@ -218,6 +225,7 @@ struct sde_plane_state {
 	struct sde_rect src_img_rec;
 	struct sde_rect src_rect_extn;
 	struct sde_rect dst_rect_extn;
+	int pref_lm;
 };
 
 /**

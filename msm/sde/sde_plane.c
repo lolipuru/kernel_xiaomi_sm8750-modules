@@ -2832,9 +2832,10 @@ static int _sde_plane_sspp_atomic_check_helper(struct sde_plane *psde,
 }
 
 static int sde_plane_check_cac_fetch(struct sde_plane *psde,
-	struct sde_plane_state *pstate, const struct sde_format *fmt)
+	struct sde_plane_state *pstate, const struct sde_format *fmt,
+	u32 cac_mode)
 {
-	u32 bg_alpha;
+	u32 bg_alpha, rec_id, pref_lm, cac_type;
 
 	if (!pstate || !fmt) {
 		SDE_ERROR("invalid arguments\n");
@@ -2852,6 +2853,27 @@ static int sde_plane_check_cac_fetch(struct sde_plane *psde,
 		return -EINVAL;
 	}
 
+	cac_type = (psde->catalog->cac_version == SDE_SSPP_CAC_LOOPBACK) ?
+			SDE_CAC_TYPE_LOOPBACK : SDE_CAC_TYPE_V2;
+	rec_id = psde->is_virtual ? 1 : 0;
+	pref_lm = psde->pipe_sblk->cac_lm_pref[cac_type][rec_id];
+
+	if (pref_lm == 0xFF) {
+		pstate->layout = SDE_LAYOUT_NONE;
+		pstate->pref_lm = pref_lm;
+	}
+
+	if (cac_mode == SDE_CAC_FETCH) {
+		if (pref_lm >= MAX_MIXERS_PER_LAYOUT)
+			pstate->layout = SDE_LAYOUT_RIGHT;
+		else
+			pstate->layout = SDE_LAYOUT_LEFT;
+		pstate->pref_lm = 0xFF;
+	} else {
+		pstate->pref_lm = pref_lm;
+		pstate->layout = (pref_lm / MAX_MIXERS_PER_LAYOUT);
+	}
+
 	return 0;
 }
 
@@ -2862,7 +2884,7 @@ static int sde_plane_check_cac_unpack(struct drm_plane *plane,
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	int ret = 0;
-	u32 cac_mode;
+	u32 cac_mode, rec_id, pref_lm, cac_type;
 
 	if (!pstate || !fmt || !plane) {
 		SDE_ERROR("invalid arguments\n");
@@ -2884,6 +2906,20 @@ static int sde_plane_check_cac_unpack(struct drm_plane *plane,
 		SDE_ERROR_PLANE(psde, "invalid sspp format\n");
 		return -EINVAL;
 	}
+
+	cac_type = (psde->catalog->cac_version == SDE_SSPP_CAC_LOOPBACK) ?
+			SDE_CAC_TYPE_LOOPBACK : SDE_CAC_TYPE_V2;
+	rec_id = psde->is_virtual ? 1 : 0;
+	pref_lm = psde->pipe_sblk->cac_lm_pref[cac_type][rec_id];
+
+	if (pref_lm == 0xFF) {
+		pstate->layout = SDE_LAYOUT_NONE;
+		pstate->pref_lm = 0xFF;
+	} else {
+		pstate->pref_lm = pref_lm;
+		pstate->layout = (pref_lm / MAX_MIXERS_PER_LAYOUT);
+	}
+
 	return 0;
 }
 
@@ -2916,8 +2952,8 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
 	const struct sde_format *fmt;
-	u32 cac_mode, pref_lm, rec_id, sblk_cac_mode;
-	int cac_type, ret = 0;
+	u32 cac_mode, sblk_cac_mode;
+	int ret = 0;
 
 	if (!plane || !state) {
 		SDE_ERROR("invalid arguments\n");
@@ -2934,6 +2970,7 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 
 	if (cac_mode == SDE_CAC_NONE) {
 		pstate->layout = SDE_LAYOUT_NONE;
+		pstate->pref_lm = 0xFF;
 		return 0;
 	}
 
@@ -2963,7 +3000,7 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 	}
 
 	if (sde_plane_in_cac_fetch_mode(pstate))
-		ret = sde_plane_check_cac_fetch(psde, pstate, fmt);
+		ret = sde_plane_check_cac_fetch(psde, pstate, fmt, cac_mode);
 	else if (cac_mode == SDE_CAC_UNPACK || cac_mode == SDE_CAC_LOOPBACK_UNPACK)
 		ret = sde_plane_check_cac_unpack(plane, pstate, fmt);
 
@@ -2972,23 +3009,12 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 		return -EINVAL;
 	}
 
-	cac_type = (psde->catalog->cac_version == SDE_SSPP_CAC_LOOPBACK)
-			? SDE_CAC_TYPE_LOOPBACK : SDE_CAC_TYPE_V2;
-	rec_id = psde->is_virtual ? 1 : 0;
-	pref_lm = psde->pipe_sblk->cac_lm_pref[cac_type][rec_id];
-	if (pref_lm == 0xFF)
-		pstate->layout = SDE_LAYOUT_NONE;
-	else if (pref_lm >= MAX_MIXERS_PER_LAYOUT)
-		pstate->layout = SDE_LAYOUT_RIGHT;
-	else
-		pstate->layout = SDE_LAYOUT_LEFT;
-
 	if ((psde->features & BIT(SDE_SSPP_SCALER_QSEED3)) ||
 		(psde->features & BIT(SDE_SSPP_SCALER_QSEED3LITE)))
 		pstate->scaler_check_state = SDE_PLANE_SCLCHECK_SCALER_V2;
 
 	SDE_DEBUG_PLANE(psde, "cac mode = %u, rec_id = %u, layout = %u\n",
-			cac_mode, rec_id, pstate->layout);
+			cac_mode, psde->is_virtual ? 1 : 0, pstate->layout);
 	return ret;
 }
 
