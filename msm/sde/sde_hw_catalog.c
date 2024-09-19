@@ -5909,7 +5909,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
 		sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
 		sde_cfg->mdss_hw_block_size = 0x15C;
-		sde_cfg->cac_version = SDE_SSPP_CAC_V2;
+		sde_cfg->cac_version = SDE_SSPP_CAC_LOOPBACK;
 	} else {
 		SDE_ERROR("unsupported chipset id:%X\n", hw_rev);
 		sde_cfg->perf.min_prefill_lines = 0xffff;

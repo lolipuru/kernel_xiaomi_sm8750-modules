@@ -2549,13 +2549,13 @@ void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops, bool is_lb_enc)
 {
 	ops->is_master = sde_encoder_phys_vid_is_master;
-	ops->mode_set = sde_encoder_phys_vid_mode_set;
 	ops->mode_fixup = sde_encoder_phys_vid_mode_fixup;
 	ops->destroy = sde_encoder_phys_vid_destroy;
 
 	if (is_lb_enc)
 		return;
 
+	ops->mode_set = sde_encoder_phys_vid_mode_set;
 	ops->cont_splash_mode_set = sde_encoder_phys_vid_cont_splash_mode_set;
 	ops->enable = sde_encoder_phys_vid_enable;
 	ops->disable = sde_encoder_phys_vid_disable;

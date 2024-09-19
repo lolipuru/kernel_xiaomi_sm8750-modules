@@ -1244,6 +1244,7 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	const struct sde_pingpong_cfg *pp_cfg;
 	bool ret, is_conn_primary, is_conn_secondary;
 	u32 lm_primary_pref, lm_secondary_pref, cwb_pref, dcwb_pref;
+	u32 cac_lb_pref, cac_primary_pref;
 
 	*dspp = NULL;
 	*ds = NULL;
@@ -1257,6 +1258,8 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 				 SDE_CONNECTOR_PRIMARY) ? true : false;
 	is_conn_secondary = (reqs->hw_res.display_type ==
 				 SDE_CONNECTOR_SECONDARY) ? true : false;
+	cac_lb_pref = test_bit(SDE_MIXER_CAC_LB, &lm_cfg->features);
+	cac_primary_pref = test_bit(SDE_MIXER_CAC_PRIMARY, &lm_cfg->features);
 
 	SDE_DEBUG("check lm %d: dspp %d ds %d pp %d features %ld disp type %d\n",
 		 lm_cfg->id, lm_cfg->dspp, lm_cfg->ds, lm_cfg->pingpong,
@@ -1298,12 +1301,28 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 			SDE_DEBUG("fail: dcwb:%d trying to match lm:%d\n",
 					lm_cfg->id, ffs(conn_lm_mask));
 			return false;
+		} else if (RM_RQ_CAC_PRIMARY(reqs) && !cac_primary_pref) {
+			SDE_DEBUG("cac primary preference is not met,cac_prim_pref: %d lm_id: %d\n",
+				cac_primary_pref, lm_cfg->id);
+			return false;
+		} else if (RM_RQ_CAC_LB(reqs) && !cac_lb_pref) {
+			SDE_DEBUG("cac loopback preference is not met,cac_lb_pref: %d lm_id: %d\n",
+				cac_lb_pref, lm_cfg->id);
+			return false;
 		}
 	} else if (!RM_RQ_CAC_LB(reqs) && ((!is_conn_primary && lm_primary_pref) ||
 			(!is_conn_secondary && lm_secondary_pref))) {
 		SDE_DEBUG(
 			"display preference is not met. display_type: %d lm_features: %lx\n",
 			(int)reqs->hw_res.display_type, lm_cfg->features);
+		return false;
+	} else if (RM_RQ_CAC_PRIMARY(reqs) && !cac_primary_pref) {
+		SDE_DEBUG("cac primary preference is not met,cac_prim_pref: %d lm_id: %d\n",
+			cac_primary_pref, lm_cfg->id);
+		return false;
+	} else if (RM_RQ_CAC_LB(reqs) && !cac_lb_pref) {
+		SDE_DEBUG("cac loopback preference is not met,cac_lb_pref: %d lm_id: %d\n",
+			cac_lb_pref, lm_cfg->id);
 		return false;
 	}
 

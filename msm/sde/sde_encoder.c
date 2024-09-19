@@ -1501,7 +1501,8 @@ static void _sde_encoder_update_ppb_size(struct drm_encoder *drm_enc)
 	}
 
 	/* program only for realtime displays */
-	if (sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL)
+	if (sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL &&
+		!sde_encoder_is_loopback_display(drm_enc))
 		return;
 
 	sde_kms = sde_encoder_get_kms(&sde_enc->base);
@@ -3365,11 +3366,12 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	struct drm_connector *conn;
 	struct drm_crtc_state *crtc_state;
 	struct sde_crtc_state *sde_crtc_state;
-	struct sde_connector_state *c_state;
+	struct sde_connector_state *c_state = NULL;
 	struct msm_display_mode *msm_mode;
 	struct sde_crtc *sde_crtc;
 	int i = 0, ret;
 	int num_lm, num_intf, num_pp_per_intf;
+	bool primary_loopback = false;
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
@@ -3403,6 +3405,8 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 
 	crtc_state = sde_crtc->base.state;
 	sde_crtc_state = to_sde_crtc_state(crtc_state);
+	primary_loopback = sde_crtc_state->in_loopback_transition &&
+				!sde_encoder_is_loopback_display(drm_enc);
 
 	if (!((sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL) &&
 			((sde_crtc_state->cached_cwb_enc_mask & drm_encoder_mask(drm_enc)))))
@@ -3418,8 +3422,11 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 		return;
 	}
 
-	sde_connector_state_get_mode_info(conn->state, &sde_enc->mode_info);
-	sde_encoder_dce_set_bpp(sde_enc->mode_info, sde_enc->crtc);
+	if (!sde_encoder_is_loopback_display(drm_enc)) {
+		sde_connector_state_get_mode_info(conn->state, &sde_enc->mode_info);
+		sde_encoder_dce_set_bpp(sde_enc->mode_info, sde_enc->crtc);
+	}
+
 	c_state = to_sde_connector_state(conn->state);
 	if (!c_state) {
 		SDE_ERROR_ENC(sde_enc, "could not get connector state");
@@ -3431,6 +3438,7 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 
 	/* release resources before seamless mode change */
 	msm_mode = &c_state->msm_mode;
+
 	ret = sde_encoder_virt_modeset_rc(drm_enc, adj_mode, msm_mode, true);
 	if (ret)
 		return;
@@ -3481,12 +3489,29 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 			if (phys->ops.mode_set)
 				phys->ops.mode_set(phys, mode, adj_mode,
 				&sde_crtc->reinit_crtc_mixers);
+
 			if (sde_encoder_is_loopback_display(drm_enc)) {
 				phys->hw_ctl = sde_get_primary_ctl_in_lb(crtc_state);
 				if (!phys->hw_ctl) {
 					SDE_ERROR_ENC(sde_enc, "no valid ctl found\n");
 					return;
 				}
+			}
+			/*
+			 * Cac loopback transitions are seamless commit. So bind pp blk
+			 * to intf here since virt enable won't be called during transition.
+			 */
+			if (primary_loopback) {
+				if (phys->hw_intf->ops.bind_pingpong_blk)
+					phys->hw_intf->ops.bind_pingpong_blk(
+						phys->hw_intf, true,
+						phys->hw_pp->idx);
+				phys->hw_ctl->ops.update_bitmask(phys->hw_ctl,
+						SDE_HW_FLUSH_INTF, phys->hw_intf->idx, 1);
+				if (phys->hw_pp->merge_3d)
+					phys->hw_ctl->ops.update_bitmask(phys->hw_ctl,
+						SDE_HW_FLUSH_MERGE_3D,
+						phys->hw_pp->merge_3d->idx, 1);
 			}
 		}
 	}
@@ -3680,6 +3705,14 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 		return;
 	}
 
+	/*
+	 * LB encoder does not have a separate INTF block and CTL path.
+	 * Skip programming these blocks for LB encoder and set only
+	 * PPB size for loopback pingpong blocks.
+	 */
+	if (sde_encoder_is_loopback_display(drm_enc))
+		goto update_ppb;
+
 	if (sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_DisplayPort &&
 	    sde_enc->cur_master->hw_mdptop &&
 	    sde_enc->cur_master->hw_mdptop->ops.intf_audio_select)
@@ -3735,6 +3768,7 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 	if (sde_enc->disp_info.vrr_caps.arp_support)
 		sde_encoder_control_te(sde_enc, true);
 
+update_ppb:
 	if (!sde_encoder_in_cont_splash(drm_enc))
 		_sde_encoder_update_ppb_size(drm_enc);
 
@@ -4102,7 +4136,8 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	_sde_encoder_input_handler_unregister(drm_enc);
 
 	sde_encoder_cancel_vrr_timers(drm_enc);
-	flush_delayed_work(&sde_conn->status_work);
+	if (!sde_encoder_is_loopback_display(drm_enc))
+		flush_delayed_work(&sde_conn->status_work);
 	/*
 	 * For primary command mode and video mode encoders, execute the
 	 * resource control pre-stop operations before the physical encoders
