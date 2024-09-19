@@ -4730,6 +4730,68 @@ static void _dsi_display_calc_pipe_delay(struct dsi_display *display,
 	delay->pll_delay = ((delay->pll_delay * esc_clk_rate_hz) / 1000000);
 }
 
+static void _dsi_display_calc_pipe_delay_prog_dr(struct dsi_display *display,
+				    struct dsi_dyn_clk_delay *delay,
+				    struct dsi_display_mode *mode, bool cts)
+{
+	/*
+	 * Units:
+	 * _esc              esc clock cycles
+	 * _pix              pixel clock cycles
+	 * _[unit]_comp      [unit] component of the value, does not represent the whole value
+	 */
+
+	struct dsi_ctrl *dsi_ctrl = display->ctrl[display->clk_master_idx].ctrl;
+	const u64 pix_clk_rate = dsi_ctrl->clk_freq.pix_clk_rate;
+	const u64 esc_clk_rate = dsi_ctrl->clk_freq.esc_clk_rate;
+
+	#define TO_ESC_CLK(val) ((val) * esc_clk_rate / pix_clk_rate)
+
+	bool split = false;
+
+	const u32 line_time_pix = dsi_h_total_dce(&mode->timing);
+	const u32 line_time_esc = TO_ESC_CLK(line_time_pix);
+
+	const u32 pipe_delay_esc = line_time_esc;
+	const u32 pipe_delay2_esc = cts ? 20 : 0;
+	const u32 pipe_delay3_esc = cts ? 20 : 0;
+	const u32 pll_reg_flush_delay_esc = 50;
+	const u32 pll_reg_post_flush_delay_esc = 20;
+	const u32 min_pll_lock_time_esc = 480;
+
+	const u32 delay_start_dr_esc_comp = 3;
+	const u32 delay_start_dr_pix_comp = 1;
+	const u32 mdp_stop_deassertion_esc_comp = 1;
+	const u32 mdp_stop_deassertion_pix_comp = 3;
+	const u32 mask_clkln_fsm_delay_esc = cts ? 0 : 1;
+	const u32 delay_end_dr_pix = split ? 18 + 5 : 12 + 5;
+
+	const u32 min_dr_duration_pix_comp = delay_start_dr_pix_comp + delay_end_dr_pix +
+		mdp_stop_deassertion_pix_comp;
+	const u32 min_dr_duration_esc_comp = delay_start_dr_esc_comp + pll_reg_flush_delay_esc +
+		pll_reg_post_flush_delay_esc + min_pll_lock_time_esc +
+		mdp_stop_deassertion_esc_comp + mask_clkln_fsm_delay_esc +
+		pipe_delay_esc + pipe_delay2_esc + pipe_delay3_esc;
+	const u32 min_dr_duration_esc = min_dr_duration_esc_comp +
+		TO_ESC_CLK(min_dr_duration_pix_comp);
+
+	/*
+	 * HPG does it more mathematically sensibly, but fundamentally it just rounds
+	 * min_dr_duration to the nearest integer multiple of line_time
+	 */
+	const u32 pll_delay_esc = min_dr_duration_esc +
+		(line_time_esc - (min_dr_duration_esc % line_time_esc));
+
+	delay->pipe_delay = pipe_delay_esc - 1;
+	delay->pipe_delay2 = cts ? pipe_delay2_esc - 1 : 0;
+	delay->pipe_delay3 = cts ? pipe_delay3_esc - 1 : 0;
+	delay->pll_reg_flush_delay = pll_reg_flush_delay_esc - 1;
+	delay->pll_reg_post_flush_delay = pll_reg_post_flush_delay_esc - 1;
+	delay->pll_delay = pll_delay_esc - 1;
+
+	#undef TO_ESC_CLK
+}
+
 static int _dsi_display_dyn_update_clks(struct dsi_display *display,
 					struct link_clk_freq *bkp_freq)
 {
@@ -4772,9 +4834,11 @@ static int _dsi_display_dyn_update_clks(struct dsi_display *display,
 		ctrl = &display->ctrl[i];
 		if (ctrl == m_ctrl)
 			continue;
-		dsi_phy_dynamic_refresh_trigger(ctrl->phy, false);
+		dsi_phy_dynamic_refresh_trigger(ctrl->phy, false,
+				display->panel->esync_caps.esync_support);
 	}
-	dsi_phy_dynamic_refresh_trigger(m_ctrl->phy, true);
+	dsi_phy_dynamic_refresh_trigger(m_ctrl->phy, true,
+			display->panel->esync_caps.esync_support);
 
 	/*
 	 * Don't wait for dynamic refresh done for dsi ctrl greater than 2.5
@@ -4870,7 +4934,10 @@ static int dsi_display_dynamic_clk_switch_vid(struct dsi_display *display,
 	}
 
 	/* calculate pipe delays */
-	_dsi_display_calc_pipe_delay(display, &delay, mode);
+	if (display->panel->esync_caps.esync_support)
+		_dsi_display_calc_pipe_delay_prog_dr(display, &delay, mode, false);
+	else
+		_dsi_display_calc_pipe_delay(display, &delay, mode);
 
 	/* configure dynamic refresh ctrl registers */
 	display_for_each_ctrl(i, display) {
@@ -5249,7 +5316,9 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 					true);
 			dsi_phy_dynamic_refresh_clear(ctrl->phy);
 
+			/* Avoid setting trigger selection for 2.9 due to hardware limitation */
 			if ((ctrl->ctrl->version >= DSI_CTRL_VERSION_2_5) &&
+					(ctrl->ctrl->version != DSI_CTRL_VERSION_2_9) &&
 					(dyn_clk_caps->maintain_const_fps)) {
 				dsi_phy_dynamic_refresh_trigger_sel(ctrl->phy,
 						true);

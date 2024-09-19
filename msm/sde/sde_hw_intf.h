@@ -160,6 +160,9 @@ struct sde_hw_intf_ops {
 	void (*setup_prg_fetch)(struct sde_hw_intf *intf,
 			const struct intf_prog_fetch *fetch);
 
+	void (*setup_prog_dynref)(struct sde_hw_intf *intf,
+			const u32 prog_dr_start_line);
+
 	void (*setup_rot_start)(struct sde_hw_intf *intf,
 			const struct intf_prog_fetch *fetch);
 

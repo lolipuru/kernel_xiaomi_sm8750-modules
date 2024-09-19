@@ -699,6 +699,7 @@ enum {
  * @SDE_INTF_NUM_AVR_STEP       INTF block has NUM_AVR_STEP support
  * @SDE_INTF_PANIC_CTRL         INTF block has panic in vid mode & panic/wakup control in cmd mode
  * @SDE_INTF_PERIPHERAL_FLUSH   INTF block has peripheral flush support
+ * @SDE_INTF_PROG_DYNREF        INTF block has programmable dynamic refresh support
  * @SDE_INTF_MAX
  */
 enum {
@@ -724,6 +725,7 @@ enum {
 	SDE_INTF_NUM_AVR_STEP,
 	SDE_INTF_PANIC_CTRL,
 	SDE_INTF_PERIPHERAL_FLUSH,
+	SDE_INTF_PROG_DYNREF,
 	SDE_INTF_MAX
 };
 

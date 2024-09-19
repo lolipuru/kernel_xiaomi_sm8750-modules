@@ -115,6 +115,10 @@
 #define DSI_DYN_REFRESH_PLL_UPPER_ADDR         (0x094)
 #define DSI_DYN_REFRESH_PLL_UPPER_ADDR2        (0x098)
 
+#define DSI_DYN_REFRESH_PIPE_DELAY3              (0x160)
+#define DSI_DYN_REFRESH_PLL_REG_FLUSH_DELAY      (0x2DC)
+#define DSI_DYN_REFRESH_PLL_REG_POST_FLUSH_DELAY (0x2E0)
+
 static int dsi_phy_hw_v7_2_is_pll_on(struct dsi_phy_hw *phy)
 {
 	u32 data = 0;
@@ -798,6 +802,13 @@ void dsi_phy_hw_v7_2_dyn_refresh_pipe_delay(struct dsi_phy_hw *phy, struct dsi_d
 
 	DSI_GEN_W32(phy->dyn_pll_base, DSI_DYN_REFRESH_PIPE_DELAY, delay->pipe_delay);
 	DSI_GEN_W32(phy->dyn_pll_base, DSI_DYN_REFRESH_PIPE_DELAY2, delay->pipe_delay2);
+	if (delay->pll_reg_flush_delay) {
+		DSI_GEN_W32(phy->dyn_pll_base, DSI_DYN_REFRESH_PIPE_DELAY3, delay->pipe_delay3);
+		DSI_GEN_W32(phy->dyn_pll_base, DSI_DYN_REFRESH_PLL_REG_FLUSH_DELAY,
+				delay->pll_reg_flush_delay);
+		DSI_GEN_W32(phy->dyn_pll_base, DSI_DYN_REFRESH_PLL_REG_POST_FLUSH_DELAY,
+				delay->pll_reg_post_flush_delay);
+	}
 	DSI_GEN_W32(phy->dyn_pll_base, DSI_DYN_REFRESH_PLL_DELAY, delay->pll_delay);
 }
 
@@ -849,6 +860,12 @@ void dsi_phy_hw_v7_2_dyn_refresh_helper(struct dsi_phy_hw *phy, u32 offset)
 	if (offset & BIT(DYN_REFRESH_SWI_CTRL)) {
 		reg = DSI_GEN_R32(phy->dyn_pll_base, DSI_DYN_REFRESH_CTRL);
 		reg |= BIT(0);
+		DSI_GEN_W32(phy->dyn_pll_base, DSI_DYN_REFRESH_CTRL, reg);
+	}
+
+	if (offset & BIT(DYN_REFRESH_PROG_DR)) {
+		reg = DSI_GEN_R32(phy->dyn_pll_base, DSI_DYN_REFRESH_CTRL);
+		reg |= BIT(24) | BIT(25);
 		DSI_GEN_W32(phy->dyn_pll_base, DSI_DYN_REFRESH_CTRL, reg);
 	}
 

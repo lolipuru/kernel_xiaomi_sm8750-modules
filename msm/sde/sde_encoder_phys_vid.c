@@ -326,6 +326,9 @@ static void programmable_fetch_config(struct sde_encoder_phys *phys_enc,
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 	phys_enc->hw_intf->ops.setup_prg_fetch(phys_enc->hw_intf, &f);
+	if (phys_enc->hw_intf->ops.setup_prog_dynref)
+		phys_enc->hw_intf->ops.setup_prog_dynref(phys_enc->hw_intf,
+				vert_total - vfp_fetch_lines);
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
 	/*

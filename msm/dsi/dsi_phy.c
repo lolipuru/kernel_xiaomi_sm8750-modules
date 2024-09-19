@@ -1372,7 +1372,7 @@ void dsi_phy_dynamic_refresh_trigger_sel(struct msm_dsi_phy *phy,
  * @phy:	DSI PHY handle
  * @is_master:	Boolean to indicate if for master or slave.
  */
-void dsi_phy_dynamic_refresh_trigger(struct msm_dsi_phy *phy, bool is_master)
+void dsi_phy_dynamic_refresh_trigger(struct msm_dsi_phy *phy, bool is_master, bool prog_dr)
 {
 	u32 off;
 
@@ -1384,11 +1384,15 @@ void dsi_phy_dynamic_refresh_trigger(struct msm_dsi_phy *phy, bool is_master)
 	 * program PLL_SWI_INTF_SEL and SW_TRIGGER bit only for
 	 * master and program SYNC_MODE bit only for slave.
 	 */
-	if (is_master)
+	if (is_master) {
 		off = BIT(DYN_REFRESH_INTF_SEL) | BIT(DYN_REFRESH_SWI_CTRL) |
 			BIT(DYN_REFRESH_SW_TRIGGER);
-	else
+
+		if (prog_dr)
+			off |= BIT(DYN_REFRESH_PROG_DR);
+	} else {
 		off = BIT(DYN_REFRESH_SYNC_MODE) | BIT(DYN_REFRESH_SWI_CTRL);
+	}
 
 	if (phy->hw.ops.dyn_refresh_ops.dyn_refresh_helper)
 		phy->hw.ops.dyn_refresh_ops.dyn_refresh_helper(&phy->hw, off);
