@@ -1704,7 +1704,8 @@ static int _sde_plane_color_fill(struct sde_plane *psde,
 				psde->pipe_hw, &psde->scaler3_cfg.cac_cfg);
 
 		if (psde->pipe_hw->ops.setup_cac_ctrl)
-			psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, SDE_CAC_NONE, 0xf);
+			psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, SDE_CAC_NONE,
+				false, 0xf);
 	}
 
 	return 0;
@@ -2982,9 +2983,8 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 	else
 		pstate->layout = SDE_LAYOUT_LEFT;
 
-	if (((psde->features & BIT(SDE_SSPP_SCALER_QSEED3)) ||
-		(psde->features & BIT(SDE_SSPP_SCALER_QSEED3LITE))) &&
-		sde_plane_in_cac_fetch_mode(pstate))
+	if ((psde->features & BIT(SDE_SSPP_SCALER_QSEED3)) ||
+		(psde->features & BIT(SDE_SSPP_SCALER_QSEED3LITE)))
 		pstate->scaler_check_state = SDE_PLANE_SCLCHECK_SCALER_V2;
 
 	SDE_DEBUG_PLANE(psde, "cac mode = %u, rec_id = %u, layout = %u\n",
@@ -3597,11 +3597,22 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 		psde->pipe_hw->ops.setup_img_size(psde->pipe_hw, &pstate->src_img_rec);
 }
 
+static inline bool sde_plane_is_fov_dual_eye(u32 fov_mode)
+{
+	/*
+	 * Fov mode bit in SSPP_CAC_CTRL register is set only
+	 * for dual eye mode.
+	 */
+	return (fov_mode == SDE_SSPP_FOV_MODE_DUAL_EYE_HORZ) ||
+		(fov_mode == SDE_SSPP_FOV_MODE_DUAL_EYE_VERT);
+}
+
 static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	struct sde_plane_state *pstate, const struct sde_format *fmt)
 {
 	uint32_t src_flags = 0;
 	u32 cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
+	bool fov_en = false;
 	u32 pp_idx;
 
 	SDE_DEBUG_PLANE(psde, "rotation 0x%X\n", pstate->rotation);
@@ -3667,8 +3678,9 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	}
 
 	if (psde->pipe_hw->ops.setup_cac_ctrl) {
+		fov_en = sde_plane_is_fov_dual_eye(psde->scaler3_cfg.cac_cfg.fov_mode);
 		pp_idx = _sde_plane_cac_loopback_update_pp_idx(psde, pstate, cac_mode);
-		psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, cac_mode, pp_idx);
+		psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, cac_mode, fov_en, pp_idx);
 	}
 }
 
@@ -3943,7 +3955,8 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	 */
 	if (old_cac_mode != SDE_CAC_NONE) {
 		if (psde->pipe_hw->ops.setup_cac_ctrl)
-			psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, SDE_CAC_NONE, 0xf);
+			psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, SDE_CAC_NONE,
+				false, 0xf);
 		sde_plane_ctl_flush(plane, _sde_plane_get_hw_ctl(plane, old_state), true);
 	}
 }

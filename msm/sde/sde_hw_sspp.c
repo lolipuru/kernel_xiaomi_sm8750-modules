@@ -1586,7 +1586,8 @@ static void sde_hw_sspp_setup_line_insertion(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(c, size_off, cfg->dst_h << 16);
 }
 
-static void sde_hw_sspp_setup_cac(struct sde_hw_pipe *ctx, u32 cac_mode, u32 pp_idx)
+static void sde_hw_sspp_setup_cac(struct sde_hw_pipe *ctx, u32 cac_mode,
+		bool fov_en, u32 pp_idx)
 {
 	u32 opmode;
 	u32 idx;
@@ -1609,6 +1610,11 @@ static void sde_hw_sspp_setup_cac(struct sde_hw_pipe *ctx, u32 cac_mode, u32 pp_
 		opmode |= 0xF << 24;
 		opmode &= ~(BIT(0) | BIT(8) | BIT(16));
 	}
+
+	if (fov_en)
+		opmode |= BIT(12);
+	else
+		opmode &= ~BIT(12);
 
 	SDE_REG_WRITE(&ctx->hw, SSPP_CAC_CTRL + idx, opmode);
 }
