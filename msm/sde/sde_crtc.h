@@ -996,41 +996,6 @@ static inline bool sde_crtc_atomic_check_has_modeset(
 	return (crtc_state && drm_atomic_crtc_needs_modeset(crtc_state));
 }
 
-static inline bool sde_crtc_state_in_lb_mode(struct drm_crtc_state *state)
-{
-	struct drm_connector *conn;
-	struct sde_connector *sde_conn;
-	struct drm_connector_list_iter conn_iter;
-
-	if (!state || !state->crtc)
-		return false;
-
-	drm_connector_list_iter_begin(state->crtc->dev, &conn_iter);
-	drm_for_each_connector_iter(conn, &conn_iter) {
-		if ((state->connector_mask) & drm_connector_mask(conn)) {
-			sde_conn =  to_sde_connector(conn);
-			if (sde_conn->is_lb_conn)
-				return true;
-		}
-	}
-	drm_connector_list_iter_end(&conn_iter);
-
-	return false;
-}
-
-/**
- * sde_crtc_in_lb_transition - Checks if crtc is transitioning from loopback cac
- *				to cac disable or vice-versa
- * @old_state: pointer to old crtc state
- * @new_state: pointer to new crtc state
- */
-static inline bool sde_crtc_in_lb_transition(struct drm_crtc_state *old_state,
-		struct drm_crtc_state *new_state)
-{
-	return (sde_crtc_state_in_lb_mode(old_state) !=
-			sde_crtc_state_in_lb_mode(new_state));
-}
-
 static inline bool sde_crtc_state_in_clone_mode(struct drm_encoder *encoder,
 	struct drm_crtc_state *state)
 {
@@ -1293,4 +1258,19 @@ void sde_crtc_force_async_mode(struct drm_encoder *enc, struct drm_crtc_state *c
  * @crtc_state: Pointer to DRM crtc state object
  */
 struct sde_hw_ctl *sde_get_primary_ctl_in_lb(struct drm_crtc_state *crtc_state);
+
+/**
+ * sde_crtc_state_in_lb_mode - Returns true if crtc state is in loopback mode, false otherwise
+ * @state: pointer to crtc state
+ */
+bool sde_crtc_state_in_lb_mode(struct drm_crtc_state *state);
+
+/**
+ * sde_crtc_in_lb_transition - Checks if crtc is transitioning from loopback cac
+ *				to cac disable or vice-versa
+ * @old_state: pointer to old crtc state
+ * @new_state: pointer to new crtc state
+ */
+bool sde_crtc_in_lb_transition(struct drm_crtc_state *old_state,
+			struct drm_crtc_state *new_state);
 #endif /* _SDE_CRTC_H_ */
