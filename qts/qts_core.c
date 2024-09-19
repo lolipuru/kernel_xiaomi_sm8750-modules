@@ -1318,6 +1318,7 @@ static void qts_trusted_touch_init(struct qts_data *qts_data)
 static bool qts_ts_is_primary(struct kobject *kobj)
 {
 	char *path = NULL;
+	bool is_primary;
 
 	if (!kobj)
 		return true;
@@ -1325,9 +1326,13 @@ static bool qts_ts_is_primary(struct kobject *kobj)
 	path = kobject_get_path(kobj, GFP_KERNEL);
 
 	if (strstr(path, "primary"))
-		return true;
+		is_primary = true;
 	else
-		return false;
+		is_primary = false;
+
+	kfree(path);
+
+	return is_primary;
 }
 
 static void qts_adjust_irq_flags(u32 in_irq_flag, u32 *out_irq_flag,
