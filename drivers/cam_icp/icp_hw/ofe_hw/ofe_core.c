@@ -436,8 +436,9 @@ int cam_ofe_process_cmd(void *device_priv, uint32_t cmd_type,
 			rc = cam_cpas_update_axi_floor_lvl(core_info->cpas_handle,
 				clk_level);
 			if (rc) {
-				CAM_ERR(CAM_PERF, "failed at updating axi vote level clk_level rc: %d",
-					clk_level, rc);
+				CAM_ERR(CAM_PERF,
+					"failed at updating axi vote level clk_level rc: %d",
+					rc);
 				return rc;
 			}
 
