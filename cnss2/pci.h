@@ -172,6 +172,7 @@ struct cnss_pci_data {
 	u32 remap_window;
 	struct completion wake_event_complete;
 	struct timer_list dev_rddm_timer;
+	atomic_t rddm_timeout_cnt;
 	struct timer_list boot_debug_timer;
 	struct delayed_work time_sync_work;
 	u8 disable_pc;

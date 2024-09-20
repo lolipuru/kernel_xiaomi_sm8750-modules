@@ -87,6 +87,7 @@
 #define CNSS_CAL_START_PROBE_WAIT_MS	500
 #define CNSS_TIME_SYNC_PERIOD_INVALID	0xFFFFFFFF
 #define CPUMASK_ARRAY_SIZE		2
+#define MAX_SYSFS_USER_COMMAND_SIZE_LENGTH (5)
 
 enum cnss_cal_db_op {
 	CNSS_CAL_DB_UPLOAD,
@@ -838,7 +839,12 @@ int cnss_iommu_map(struct iommu_domain *domain,
 int cnss_iommu_map(struct iommu_domain *domain,
 		   unsigned long iova, phys_addr_t paddr, size_t size, int prot)
 {
-	return iommu_map(domain, iova, paddr, size, prot, GFP_KERNEL);
+	gfp_t gfp = GFP_KERNEL;
+
+	if (in_interrupt() || !preemptible() || rcu_preempt_depth())
+		gfp = GFP_ATOMIC;
+
+	return iommu_map(domain, iova, paddr, size, prot, gfp);
 }
 #endif
 
@@ -1481,6 +1487,8 @@ unsigned int cnss_get_timeout(struct cnss_plat_data *plat_priv,
 		return RECOVERY_TIMEOUT;
 	case CNSS_TIMEOUT_DAEMON_CONNECTION:
 		return qmi_timeout + CNSS_DAEMON_CONNECT_TIMEOUT_MS;
+	case CNSS_TIMEOUT_FW_LOAD:
+		return qmi_timeout + WLAN_FW_LOAD_TIMEOUT_MS;
 	default:
 		return qmi_timeout;
 	}
@@ -1865,19 +1873,21 @@ static irqreturn_t cnss_dev_sol_handler(int irq, void *data)
 {
 	struct cnss_plat_data *plat_priv = data;
 	struct cnss_sol_gpio *sol_gpio = &plat_priv->sol_gpio;
+	int sol_gpio_value;
 
+	sol_gpio_value = cnss_get_dev_sol_value(plat_priv);
 	if (test_bit(CNSS_POWER_OFF, &plat_priv->driver_state) ||
-	    test_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state)) {
-		cnss_pr_dbg("Ignore Dev SOL during device power off");
+	    test_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state) ||
+	    sol_gpio_value == 1) {
+		cnss_pr_dbg("Ignore Dev SOL IRQ (%u) with driver state 0x%lx, dev_sol_val: %d\n",
+			    irq, plat_priv->driver_state, sol_gpio_value);
 		return IRQ_HANDLED;
 	}
-	if (cnss_get_dev_sol_value(plat_priv) == 1)
-		return IRQ_HANDLED;
 
 	sol_gpio->dev_sol_counter++;
-	cnss_pr_dbg("WLAN device SOL IRQ (%u) is asserted #%u, dev_sol_val: %d\n",
+	cnss_pr_dbg("Dev SOL IRQ (%u) is asserted #%u with driver state 0x%lx, dev_sol_val: %d\n",
 		    irq, sol_gpio->dev_sol_counter,
-		    cnss_get_dev_sol_value(plat_priv));
+		    plat_priv->driver_state, sol_gpio_value);
 
 	/* Make sure abort current suspend */
 	cnss_pm_stay_awake(plat_priv);
@@ -4096,6 +4106,19 @@ int cnss_minidump_remove_region(struct cnss_plat_data *plat_priv,
 }
 #endif /* CONFIG_QCOM_MINIDUMP */
 
+
+int cnss_request_firmware_update_timer(struct cnss_plat_data *plat_priv,
+				       const struct firmware **fw_entry,
+				       const char *filename)
+{
+	unsigned int timeout = cnss_get_timeout(plat_priv, CNSS_TIMEOUT_FW_LOAD);
+
+	mod_timer(&plat_priv->fw_boot_timer,
+		  jiffies + msecs_to_jiffies(timeout));
+	return firmware_request_nowarn(fw_entry, filename,
+				       &plat_priv->plat_dev->dev);
+}
+
 int cnss_request_firmware_direct(struct cnss_plat_data *plat_priv,
 				 const struct firmware **fw_entry,
 				 const char *filename)
@@ -4105,9 +4128,10 @@ int cnss_request_firmware_direct(struct cnss_plat_data *plat_priv,
 		return request_firmware_direct(fw_entry, filename,
 					       &plat_priv->plat_dev->dev);
 	else
-		return firmware_request_nowarn(fw_entry, filename,
-					       &plat_priv->plat_dev->dev);
+		return cnss_request_firmware_update_timer(plat_priv,
+							  fw_entry, filename);
 }
+
 
 #if IS_ENABLED(CONFIG_INTERCONNECT)
 /**
@@ -4593,20 +4617,25 @@ static ssize_t qdss_conf_download_store(struct device *dev,
 	cnss_pr_dbg("Received QDSS download config command\n");
 	return count;
 }
-
 static ssize_t tme_opt_file_download_store(struct device *dev,
 					struct device_attribute *attr,
 					const char *buf, size_t count)
 {
 	struct cnss_plat_data *plat_priv = dev_get_drvdata(dev);
-	char cmd[5];
+	char cmd[MAX_SYSFS_USER_COMMAND_SIZE_LENGTH];
 
+	if (count > MAX_SYSFS_USER_COMMAND_SIZE_LENGTH) {
+		cnss_pr_err("Cmd length is larger than %zu bytes, count: %zu ",
+			     MAX_SYSFS_USER_COMMAND_SIZE_LENGTH, count);
+
+		return -EINVAL;
+	}
 	if (sscanf(buf, "%s", cmd) != 1)
 		return -EINVAL;
 
 	if (!test_bit(CNSS_FW_READY, &plat_priv->driver_state)) {
 		cnss_pr_err("Firmware is not ready yet\n");
-		return 0;
+		return count;
 	}
 
 	if (plat_priv->device_id == PEACH_DEVICE_ID &&
