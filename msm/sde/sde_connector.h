@@ -473,6 +473,13 @@ struct sde_connector_ops {
 	 */
 	int (*get_panel_scan_line)(void *display, u16 *scan_line, ktime_t *scan_line_ts);
 
+	/*
+	 * check_cmd_defined -  check if a command is defined
+	 * @display: Pointer to private display structure
+	 * @type: Enum value of DSI command
+	 * Returns: True if given command is defined
+	 */
+	bool (*check_cmd_defined)(void *display, enum dsi_cmd_set_type type);
 };
 
 /**
@@ -480,7 +487,8 @@ struct sde_connector_ops {
  * @VRR_CMD_STATE_NONE: no-op
  * @VRR_CMD_POWER_ON: handle vrr commands at power on
  * @VRR_CMD_POWER_OFF: handle vrr commands at power off
- * @VRR_CMD_IDLE_ENTRY: handle vrr commands at idle pc enter
+ * @VRR_CMD_IDLE_ENTRY_START: handle vrr commands at idle pc enter
+ * @VRR_CMD_IDLE_ENTRY_COMPLETE: handle vrr commands after idle pc
  * @VRR_CMD_IDLE_EXIT: handle vrr commands at idle pc exit
  * @VRR_CMD_FIRST_SELF_REFRESH: handle vrr commands at first SR
  */
@@ -488,7 +496,8 @@ enum sde_conn_vrr_cmd_state {
 	VRR_CMD_STATE_NONE,
 	VRR_CMD_POWER_ON,
 	VRR_CMD_POWER_OFF,
-	VRR_CMD_IDLE_ENTRY,
+	VRR_CMD_IDLE_ENTRY_START,
+	VRR_CMD_IDLE_ENTRY_COMPLETE,
 	VRR_CMD_IDLE_EXIT,
 	VRR_CMD_FIRST_SELF_REFRESH
 };
@@ -636,6 +645,7 @@ struct sde_backlight_vrr_update {
  * @qsync_updated: Qsync settings were updated
  * @ept_fps: ept fps is updated, 0 means ept_fps is disabled
  * @frame_interval: Current frame interval
+ * @apply_vrr: Flag to apply vrr support once FI is set
  * @usecase_idx: Current usecase_idx
  * @freq_pattern: Current frequency pattern to be used
  * @vrr_caps: defines capabilities of vrr
@@ -643,6 +653,7 @@ struct sde_backlight_vrr_update {
  * @freq_pattern_type_changed: True if frequency pattern type is updated
  * @vrr_cmd_state: Scenario in which VRR cmd is sent
  * @num_bl_frames: Number of frames needed for incremental dimming
+ * @last_vhm_cmd: Last VHM commands queued to panel
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
  * @hdr_capable: external hdr support present
@@ -725,6 +736,7 @@ struct sde_connector {
 	u32 ept_fps;
 
 	u32 frame_interval;
+	u32 apply_vrr;
 	u32 usecase_idx;
 	struct msm_freq_step_pattern *freq_pattern;
 	struct msm_vrr_capabilities vrr_caps;
@@ -732,6 +744,7 @@ struct sde_connector {
 	bool freq_pattern_type_changed;
 	enum sde_conn_vrr_cmd_state vrr_cmd_state;
 	u32 num_bl_frames;
+	u64 last_vhm_cmd;
 
 	bool colorspace_updated;
 

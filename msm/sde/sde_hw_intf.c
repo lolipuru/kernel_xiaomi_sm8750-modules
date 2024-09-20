@@ -69,6 +69,7 @@
 #define INTF_MISR_CTRL                  0x180
 #define INTF_MISR_SIGNATURE             0x184
 
+#define INTF_PROG_FLUSH_SNAPSHOT        0x1B0
 #define INTF_WD_TIMER_0_LTJ_CTL         0x200
 #define INTF_WD_TIMER_0_LTJ_CTL1        0x204
 
@@ -305,6 +306,19 @@ static u32 sde_hw_intf_get_cur_num_avr_step(struct sde_hw_intf *ctx)
 	return SDE_REG_READ(c, MDP_INTF_CURRENT_AVR_STEP);
 }
 
+static void _sde_hw_intf_wait_for_esync_disable(struct sde_hw_intf *ctx, bool backup)
+{
+	struct sde_hw_blk_reg_map *c = &ctx->hw;
+	u32 status_bit = backup ? BIT(4) : BIT(3);
+	void __iomem *addr = c->base_off + c->blk_off + INTF_STATUS;
+	u32 val;
+	int rc;
+
+	rc = readl_relaxed_poll_timeout(addr, val, !(val & status_bit), 100, 10000);
+	if (rc)
+		SDE_EVT32(backup, SDE_EVTLOG_ERROR);
+}
+
 static void sde_hw_intf_prepare_esync(struct sde_hw_intf *ctx, struct intf_esync_params *params)
 {
 	struct sde_hw_blk_reg_map *c = &ctx->hw;
@@ -344,6 +358,15 @@ static void sde_hw_intf_enable_esync(struct sde_hw_intf *ctx, bool enable)
 	u32 val = enable ? 0x1 : 0x0;
 
 	SDE_REG_WRITE(c, INTF_ESYNC_EN, val);
+
+	if (enable) {
+		/* enable EM pulse timestamps */
+		SDE_REG_WRITE(c, INTF_ESYNC_TIMESTAMP_CTRL, BIT(0) | BIT(2));
+	} else {
+		SDE_REG_WRITE(c, INTF_ESYNC_SW_RESET, 1);
+		_sde_hw_intf_wait_for_esync_disable(ctx, false);
+		SDE_REG_WRITE(c, INTF_ESYNC_SW_RESET, 0);
+	}
 }
 
 static void sde_hw_intf_prepare_backup_esync(struct sde_hw_intf *ctx,
@@ -377,6 +400,12 @@ static void sde_hw_intf_enable_backup_esync(struct sde_hw_intf *ctx, bool enable
 	u32 val = enable ? 0x1 : 0x0;
 
 	SDE_REG_WRITE(c, INTF_BKUP_ESYNC_EN, val);
+
+	if (!enable) {
+		SDE_REG_WRITE(c, INTF_BKUP_ESYNC_SW_RESET, 1);
+		_sde_hw_intf_wait_for_esync_disable(ctx, true);
+		SDE_REG_WRITE(c, INTF_BKUP_ESYNC_SW_RESET, 0);
+	}
 }
 
 static int sde_hw_intf_wait_for_esync_src_switch(struct sde_hw_intf *ctx, bool backup)
@@ -388,6 +417,20 @@ static int sde_hw_intf_wait_for_esync_src_switch(struct sde_hw_intf *ctx, bool b
 	return readx_poll_timeout(readl_relaxed,
 			c->base_off + c->blk_off + INTF_ESYNC_HYBRID_CTRL,
 			val, val == target, 100, 5000);
+}
+
+static u64 sde_hw_intf_get_esync_timestamp(struct sde_hw_intf *ctx)
+{
+	struct sde_hw_blk_reg_map *c = &ctx->hw;
+	u32 timestamp_lo, timestamp_hi;
+	u64 timestamp_total;
+
+	timestamp_lo = SDE_REG_READ(c, INTF_ESYNC_TIMESTAMP0);
+	timestamp_hi = SDE_REG_READ(c, INTF_ESYNC_TIMESTAMP1);
+
+	timestamp_total = timestamp_hi;
+	timestamp_total = (timestamp_total << 32) | timestamp_lo;
+	return timestamp_total;
 }
 
 static void sde_hw_intf_enable_infinite_vfp(struct sde_hw_intf *ctx, bool enable)
@@ -1282,6 +1325,26 @@ static void sde_hw_intf_vsync_sel(struct sde_hw_intf *intf,
 	SDE_REG_WRITE(c, INTF_TEAR_MDP_VSYNC_SEL, (vsync_source & 0xf));
 }
 
+static void sde_hw_intf_flush_snapshot_setup(struct sde_hw_intf *intf, u32 value, bool enable)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 intf_cfg;
+
+	if (!intf)
+		return;
+
+	c = &intf->hw;
+	intf_cfg = SDE_REG_READ(c, INTF_CONFIG);
+
+	if (enable)
+		intf_cfg |= BIT(14);
+	else
+		intf_cfg &= BIT(14);
+
+	SDE_REG_WRITE(c, INTF_PROG_FLUSH_SNAPSHOT, value);
+	SDE_REG_WRITE(c, INTF_CONFIG, intf_cfg);
+}
+
 static void sde_hw_intf_enable_compressed_input(struct sde_hw_intf *intf,
 		bool compression_en, bool dsc_4hs_merge)
 {
@@ -1415,6 +1478,7 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->enable_backup_esync = sde_hw_intf_enable_backup_esync;
 		ops->wait_for_esync_src_switch = sde_hw_intf_wait_for_esync_src_switch;
 		ops->enable_infinite_vfp = sde_hw_intf_enable_infinite_vfp;
+		ops->get_esync_timestamp = sde_hw_intf_get_esync_timestamp;
 	}
 
 	if (cap & BIT(SDE_INTF_TE)) {
@@ -1457,6 +1521,9 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 
 	if (cap & BIT(SDE_INTF_WD_LTJ_CTL))
 		ops->get_wd_ltj_status = sde_hw_intf_read_wd_ltj_ctl;
+
+	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
+		ops->setup_flush_snapshot =  sde_hw_intf_flush_snapshot_setup;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,

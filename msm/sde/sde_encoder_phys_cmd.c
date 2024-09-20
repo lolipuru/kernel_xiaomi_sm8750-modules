@@ -1445,35 +1445,49 @@ exit:
 	return;
 }
 
+static u32 _sde_encoder_phys_cmd_get_te_width_lines(struct sde_encoder_phys *phys_enc,
+		u32 vrefresh)
+{
+	struct drm_display_mode *mode = &phys_enc->cached_mode;
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct msm_mode_info *info = &sde_enc->mode_info;
+	u64 line_time_ns;
+	u32 te_width_lines;
+
+	if (!info->te_pulse_width_us)
+		return 0;
+
+	line_time_ns = DIV_ROUND_UP(NSEC_PER_SEC, vrefresh * mode->vdisplay);
+
+	te_width_lines = DIV_ROUND_UP(info->te_pulse_width_us * 1000, line_time_ns);
+	te_width_lines += DIV_ROUND_UP(te_width_lines * info->jitter_numer,
+				info->jitter_denom * 100);
+
+	SDE_EVT32(info->te_pulse_width_us, line_time_ns, mode->vdisplay, vrefresh, te_width_lines);
+
+	return te_width_lines;
+}
+
 static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *phys_enc)
 {
 	struct drm_display_mode *mode = &phys_enc->cached_mode;
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct msm_mode_info *info = &sde_enc->mode_info;
 	struct intf_panic_wakeup_cfg cfg = { 0 };
-	struct msm_drm_private *priv;
-	struct sde_kms *sde_kms;
 	struct sde_encoder_phys_cmd *cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
 	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
-	u32 bw_update_time_lines, prefill_lines, vrefresh, vsync_vtotal, vsync_count, vsync_hz;
+	u32 bw_update_time_lines, prefill_lines, vrefresh, vsync_vtotal, vsync_count;
+	u32 te_width_lines = 0;
 
 	if (!phys_enc->hw_intf || !phys_enc->hw_intf->ops.setup_te_panic_wakeup)
 		return;
 
-	sde_kms = phys_enc->sde_kms;
-	if (!sde_kms || !sde_kms->dev || !sde_kms->dev->dev_private)
-		return;
-
-	priv = sde_kms->dev->dev_private;
-
 	/* update panic/wakeup & vsync_count based on multi_te_fps when its enabled */
 	vrefresh = sde_enc->multi_te_fps ? sde_enc->multi_te_fps : drm_mode_vrefresh(mode);
-	vsync_hz = sde_power_clk_get_rate(&priv->phandle, "vsync_clk");
-	if (!vsync_hz || !mode->vtotal || !vrefresh)
-		return;
 
-	/* should match with the calcualtion done in tearchec_config */
-	vsync_count = vsync_hz / (mode->vtotal * vrefresh);
+	vsync_count = sde_encoder_helper_calc_vsync_count(phys_enc->parent, mode->vtotal, vrefresh);
+	if (!vsync_count)
+		return;
 
 	vsync_vtotal = DIV_ROUND_UP(NSEC_PER_SEC, vrefresh * CX0_PERIOD_NS);
 	vsync_vtotal = DIV_ROUND_UP(vsync_vtotal, vsync_count);
@@ -1482,21 +1496,37 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 				DIV_ROUND_UP(info->prefill_lines * vrefresh, DEFAULT_FPS)
 					: info->prefill_lines;
 
+	/*
+	 * Take te-pulse-width into panic/wakeup calculation for non-qsync
+	 * case as windows are moved to max.
+	 */
+	if (!qsync_en)
+		te_width_lines = _sde_encoder_phys_cmd_get_te_width_lines(phys_enc, vrefresh);
+
 	cfg.wakeup_window = qsync_en ? cmd_enc->qsync_threshold_lines
 				: DEFAULT_TEARCHECK_SYNC_THRESH_START;
 	cfg.wakeup_start =  mode->vdisplay
 				+ (vsync_vtotal
 					- DIV_ROUND_UP(vsync_vtotal * info->jitter_numer,
-						info->jitter_denom * 100)) - prefill_lines;
+						info->jitter_denom * 100))
+				- prefill_lines - te_width_lines;
 
 	bw_update_time_lines = sde_encoder_helper_get_bw_update_time_lines(sde_enc);
 	cfg.panic_window = bw_update_time_lines + cfg.wakeup_window + 1;
 	cfg.panic_start = cfg.wakeup_start - bw_update_time_lines;
 
-	/* extend the panic/wakeup windows to max to support multi-te */
-	if (sde_enc->multi_te_fps) {
+	/* extend the panic/wakeup windows to max when qsync is not enabled or in mult-te case*/
+	if (!qsync_en || sde_enc->multi_te_fps) {
 		cfg.wakeup_window = 0xffffffff;
 		cfg.panic_window = 0xffffffff;
+
+	/*
+	 * allow panic/wakeup to have same windows to avoid undersirable idle-votes
+	 * during large widows with qsync.
+	 */
+	} else if (qsync_en) {
+		cfg.wakeup_start = cfg.panic_start;
+		cfg.wakeup_window = cfg.panic_window - 1;
 	}
 
 	phys_enc->hw_intf->ops.setup_te_panic_wakeup(phys_enc->hw_intf, &cfg);
@@ -1512,17 +1542,14 @@ static void _sde_encoder_update_multi_te_config(struct sde_encoder_phys *phys_en
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct drm_display_mode *mode;
-	struct msm_drm_private *priv;
-	struct sde_kms *sde_kms = phys_enc->sde_kms;
-	u32 vsync_hz, vrefresh, vsync_count;
+	u32 vrefresh, vsync_count;
 
 	if ((override && !sde_enc->multi_te_fps)
 		|| (!override && (sde_enc->multi_te_state != SDE_MULTI_TE_ENTER)
 				&& (sde_enc->multi_te_state != SDE_MULTI_TE_EXIT)))
 		return;
 
-	if (!sde_enc->cesta_client || !sde_encoder_phys_cmd_is_master(phys_enc)
-			|| !sde_kms || !sde_kms->dev || !sde_kms->dev->dev_private)
+	if (!sde_enc->cesta_client || !sde_encoder_phys_cmd_is_master(phys_enc))
 		return;
 
 	_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
@@ -1531,16 +1558,11 @@ static void _sde_encoder_update_multi_te_config(struct sde_encoder_phys *phys_en
 				phys_enc->intf_idx, 1);
 
 	mode = &phys_enc->cached_mode;
-	priv = sde_kms->dev->dev_private;
-	vsync_hz = sde_power_clk_get_rate(&priv->phandle, "vsync_clk");
 	vrefresh = sde_enc->multi_te_fps ? sde_enc->multi_te_fps : drm_mode_vrefresh(mode);
-	if (!vsync_hz || !mode->vtotal || !vrefresh) {
-		SDE_DEBUG("invalid params - vsync_hz %u vtot %u vrefresh %u\n",
-				vsync_hz, mode->vtotal, vrefresh);
-		return;
-	}
 
-	vsync_count = vsync_hz / (mode->vtotal * vrefresh);
+	vsync_count = sde_encoder_helper_calc_vsync_count(phys_enc->parent, mode->vtotal, vrefresh);
+	if (!vsync_count)
+		return;
 
 	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.update_tearcheck_vsync_count)
 		phys_enc->hw_intf->ops.update_tearcheck_vsync_count(phys_enc->hw_intf, vsync_count);
@@ -1615,6 +1637,14 @@ static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_
 
 	tc_cfg.vsync_count = vsync_hz / (mode->vtotal * vrefresh);
 
+	/*
+	 * Use previous mode vsync_count as the new mode vsync_count will be
+	 * updated during complete_commit.
+	 * This is set only for fps/res down mode-swtich cases.
+	 */
+	tc_cfg.vsync_count = sde_enc->old_vsync_count ?
+				sde_enc->old_vsync_count : tc_cfg.vsync_count;
+
 	/* enable external TE after kickoff to avoid premature autorefresh */
 	tc_cfg.hw_vsync_mode = 0;
 
@@ -1655,7 +1685,7 @@ static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_
 		tc_cfg.sync_threshold_start, tc_cfg.sync_threshold_continue);
 
 	SDE_EVT32(phys_enc->hw_pp->idx - PINGPONG_0, phys_enc->hw_intf->idx - INTF_0,
-			vsync_hz, mode->vtotal, vrefresh);
+			vsync_hz, mode->vtotal, vrefresh, sde_enc->old_vsync_count);
 	SDE_EVT32(tc_enable, tc_cfg.start_pos, tc_cfg.rd_ptr_irq, tc_cfg.wr_ptr_irq,
 			tc_cfg.hw_vsync_mode, tc_cfg.vsync_count, tc_cfg.vsync_init_val,
 			tc_cfg.sync_cfg_height, tc_cfg.sync_threshold_start,

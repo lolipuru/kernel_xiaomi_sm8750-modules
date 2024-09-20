@@ -661,6 +661,7 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 	mode_info->qsync_min_fps = dsi_mode->timing.qsync_min_fps;
 	mode_info->avr_step_fps = dsi_mode->timing.avr_step_fps;
 	mode_info->wd_jitter = dsi_mode->priv_info->wd_jitter;
+	mode_info->te_pulse_width_us = dsi_mode->timing.te_pulse_width_us;
 
 	memcpy(&mode_info->topology, &dsi_mode->priv_info->topology,
 			sizeof(struct msm_display_topology));
@@ -1303,6 +1304,26 @@ int dsi_conn_pre_kickoff(struct drm_connector *connector,
 	}
 
 	return dsi_display_pre_kickoff(connector, display, params);
+}
+
+bool dsi_conn_check_cmd_defined(void *display, enum dsi_cmd_set_type type)
+{
+	struct dsi_display *dsi_display = display;
+	struct dsi_panel *panel;
+	u32 count;
+	struct dsi_display_mode *mode;
+
+	if (!dsi_display || !dsi_display->panel)
+		return false;
+
+	panel = dsi_display->panel;
+	if (!panel || !panel->cur_mode)
+		return false;
+
+	mode = panel->cur_mode;
+	count = mode->priv_info->cmd_sets[type].count;
+
+	return count ? true : false;
 }
 
 int dsi_conn_prepare_commit(void *display,

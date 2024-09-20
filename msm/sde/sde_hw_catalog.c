@@ -179,6 +179,7 @@
 
 #define HW_FENCE_DEFAULT_MDP_OFFSET 0x140000
 
+#define DEFAULT_HW_FLUSH_SYNC_VAL 10
 /*************************************************************
  *  DTSI PROPERTY INDEX
  *************************************************************/
@@ -1212,8 +1213,10 @@ static int _validate_dt_entry(struct device_node *np,
 				rc = prop_count[i];
 			break;
 		case PROP_TYPE_BIT_OFFSET_ARRAY:
-			of_get_property(np, sde_prop[i].prop_name, &val);
-			prop_count[i] = val / (MAX_BIT_OFFSET * sizeof(u32));
+			if (of_get_property(np, sde_prop[i].prop_name, &val))
+				prop_count[i] = val / (MAX_BIT_OFFSET * sizeof(u32));
+			else
+				prop_count[i] = 0;
 			break;
 		case PROP_TYPE_NODE:
 			snp = of_get_child_by_name(np,
@@ -2544,6 +2547,9 @@ static int sde_intf_parse_dt(struct device_node *np,
 				!prop_exists[INTF_PREFETCH] ?
 				sde_cfg->perf.min_prefill_lines :
 				PROP_VALUE_ACCESS(prop_value, INTF_PREFETCH, i);
+
+		if (test_bit(SDE_MDP_HW_FLUSH_SYNC, &sde_cfg->mdp[0].features))
+			intf->hw_flush_sync_val = DEFAULT_HW_FLUSH_SYNC_VAL;
 
 		of_property_read_string_index(np,
 				intf_prop[INTF_TYPE].prop_name, i, &type);
@@ -4602,6 +4608,17 @@ end:
 	return rc;
 }
 
+static void _sde_hw_reg_dma_caps(struct sde_mdss_cfg *sde_cfg)
+{
+	struct sde_ctl_cfg *ctl = NULL;
+	int i;
+
+	for (i = 0; i < sde_cfg->ctl_count; i++) {
+		ctl = sde_cfg->ctl + i;
+		set_bit(SDE_CTL_REG_DMA, &ctl->features);
+	}
+}
+
 static int sde_parse_reg_dma_dt(struct device_node *np,
 		struct sde_mdss_cfg *sde_cfg)
 {
@@ -4672,6 +4689,7 @@ static int sde_parse_reg_dma_dt(struct device_node *np,
 						REG_DMA_CLK_CTRL, 0, 1);
 		}
 	}
+	_sde_hw_reg_dma_caps(sde_cfg);
 end:
 	kvfree(prop_value);
 	/* reg dma is optional feature hence return 0 */
@@ -5846,6 +5864,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_MIXER_OP_V1, sde_cfg->features);
 		set_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_cfg->mdp[0].features);
 		set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
+		set_bit(SDE_MDP_HW_FLUSH_SYNC, &sde_cfg->mdp[0].features);
 		sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
 		sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;
 		sde_cfg->perf.min_prefill_lines = 40;

@@ -634,6 +634,28 @@ struct sde_hw_ctl_ops {
 	 * @cfg: Cesta flush config settings
 	 */
 	void (*cesta_flush)(struct sde_hw_ctl *ctx, struct sde_ctl_cesta_cfg *cfg);
+
+	/**
+	 * setup flush sync mode for slave and master cores.
+	 * @ctx       : ctl path ctx pointer
+	 * @is_master : true for master, false for slave)
+	 * @enable    : true to enable flush sync, false otherwise
+	 */
+	void (*setup_flush_sync)(struct sde_hw_ctl *ctx, bool is_master,
+			bool enable);
+
+	/**
+	 * program sync or async mode for master and slave cores
+	 * @ctx       : ctl path ctx pointer
+	 * @async_en  : true to enable async, 0 to enable sync mode
+	 */
+	void (*enable_sync_mode)(struct sde_hw_ctl *ctx, bool async_en);
+
+	/**
+	 * get flush sync mode enabled for current commit
+	 * @ctx       : ctl path ctx pointer
+	 */
+	bool (*get_flush_sync_mode)(struct sde_hw_ctl *ctx);
 };
 
 /**

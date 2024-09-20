@@ -7111,6 +7111,12 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 				SDE_MAX_DIM_LAYERS);
 	}
 
+	if (test_bit(SDE_MDP_HW_FLUSH_SYNC, &catalog->mdp[0].features)) {
+		msm_property_install_range(&sde_crtc->property_info,
+			"flush_sync_en", 0x0, 0, 1, 0,
+				CRTC_PROP_FLUSH_SYNC_EN);
+	}
+
 	if (catalog->mdp[0].has_dest_scaler)
 		sde_crtc_install_dest_scale_properties(sde_crtc, catalog,
 				info);
@@ -7409,6 +7415,37 @@ void sde_crtc_set_qos_dirty(struct drm_crtc *crtc)
 	SDE_EVT32(DRMID(crtc), plane_mask);
 
 	sde_crtc_update_line_time(crtc);
+}
+
+void sde_crtc_force_async_mode(struct drm_encoder *enc,
+		struct drm_crtc_state *crtc_state)
+{
+	struct sde_crtc *sde_crtc;
+	struct drm_property *drm_prop;
+	struct sde_kms *sde_kms;
+
+	if (!enc || !crtc_state || !enc->crtc) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(enc->crtc);
+	sde_kms = _sde_crtc_get_kms(enc->crtc);
+
+	if (!sde_kms || !sde_kms->catalog) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	if (!sde_encoder_has_dpu_ctl_op_sync(enc) ||
+		!test_bit(SDE_MDP_HW_FLUSH_SYNC,
+			&sde_kms->catalog->mdp[0].features))
+		return;
+
+	drm_prop = msm_property_index_to_drm_property(&sde_crtc->property_info,
+			CRTC_PROP_FLUSH_SYNC_EN);
+	sde_crtc_atomic_set_property(enc->crtc, crtc_state, drm_prop, 0);
+	SDE_EVT32(DRMID(enc->crtc), DPUID(enc->crtc->dev));
 }
 
 /**

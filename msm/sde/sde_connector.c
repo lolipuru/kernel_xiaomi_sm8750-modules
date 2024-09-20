@@ -1102,6 +1102,11 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 	frame_interval_ns = sde_connector_get_property(c_conn->base.state,
 			CONNECTOR_PROP_FRAME_INTERVAL);
 
+	if (!c_conn->apply_vrr && frame_interval_ns) {
+		c_conn->apply_vrr = true;
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, c_conn->apply_vrr);
+	}
+
 	if (!frame_interval_ns) {
 		SDE_DEBUG("VRR not supported\n");
 		return;
@@ -1153,7 +1158,7 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 	SDE_EVT32(connector->base.id, frame_interval_ns,
 		frame_interval_ns>>32, usecase_idx_updated,
 		frame_interval_updated, c_conn->freq_pattern_updated,
-		c_conn->freq_pattern_type_changed);
+		c_conn->freq_pattern_type_changed,  c_conn->apply_vrr);
 	SDE_DEBUG("usecase_update:%d FI_updated:%d usecase:%d FI:%d pattern_updated %d %d\n",
 			usecase_idx_updated, frame_interval_updated, usecase_idx,
 			frame_interval, c_conn->freq_pattern_updated,
@@ -1480,18 +1485,31 @@ int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector)
 {
 	int rc = 0;
 	struct sde_connector *c_conn;
+	struct sde_encoder_virt *sde_enc;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
 		return -EINVAL;
 	}
+	c_conn = to_sde_connector(connector);
+	sde_enc = to_sde_encoder_virt(c_conn->encoder);
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid encoder, sde_enc %d\n", sde_enc != NULL);
+		return -EINVAL;
+	}
 
 	SDE_EVT32(connector->base.id);
-	c_conn = to_sde_connector(connector);
 	SDE_ATRACE_BEGIN("cmd_self_refresh");
-	if (!c_conn->vrr_caps.video_psr_support)
+
+	if (c_conn->vrr_caps.video_psr_support &&
+			!(c_conn->ops.check_cmd_defined(c_conn->display,
+			DSI_CMD_SET_TRIGGER_SELF_REFRESH)))
+		sde_encoder_handle_video_psr_self_refresh(sde_enc, false);
+	else
 		rc = sde_connector_update_cmd(connector,
 			BIT(DSI_CMD_SET_TRIGGER_SELF_REFRESH), true);
+
 	SDE_ATRACE_END("cmd_self_refresh");
 
 	return rc;
@@ -1563,6 +1581,7 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
 
+	c_conn->last_vhm_cmd = cmd_bit_mask;
 	SDE_EVT32(connector->base.id, params.cmd_bit_mask >> 32,
 		params.cmd_bit_mask, params.peripheral_flush, rc);
 
@@ -3567,7 +3586,7 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 
 		if (c_conn->vrr_caps.vrr_support)
 			sde_kms_info_add_keyint(info, "early_ept_timeout",
-				IDLE_POWERCOLLAPSE_DURATION);
+				IDLE_POWERCOLLAPSE_DURATION * NSEC_PER_MSEC);
 
 		sde_kms_info_add_keyint(info, "has_cwb_crop", test_bit(SDE_FEATURE_CWB_CROP,
 								       sde_kms->catalog->features));

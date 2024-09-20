@@ -163,6 +163,7 @@
 #define SDE_INTR_DSICMD_2_OUTOF_STATIC BIT(7)
 #define SDE_INTR_PROG_LINE BIT(8)
 #define SDE_INTR_INTF_WD_TIMER_0_DONE BIT(13)
+#define SDE_INTR_ESYNC_EMSYNC BIT(16)
 
 /**
  * AD4 interrupt status bit definitions
@@ -390,6 +391,7 @@ static struct sde_irq_type sde_irq_intf_map[] = {
 
 	{ SDE_IRQ_TYPE_PROG_LINE, -1, SDE_INTR_PROG_LINE, -1},
 	{ SDE_IRQ_TYPE_WD_TIMER_1, -1, SDE_INTR_INTF_WD_TIMER_0_DONE, -1},
+	{ SDE_IRQ_TYPE_INTF_ESYNC_EMSYNC, -1, SDE_INTR_ESYNC_EMSYNC, -1},
 };
 
 static struct sde_irq_type sde_irq_ad4_map[] = {
@@ -1176,4 +1178,3 @@ exit:
 
 	return intr;
 }
-

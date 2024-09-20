@@ -284,6 +284,7 @@ struct sde_intr_irq_offsets {
  * @SDE_MDP_TOP_PPB_SET_SIZE   Indicates if top block supports ppb size setting
  * @SDE_MDP_HW_FENCE_DIR_WRITE Indicates if hw supports hw-fence dir write
  * @SDE_MDP_DUAL_DPU_SYNC  Indicates if Dpu Sync feature is supported
+ * @SDE_MDP_HW_FLUSH_SYNC  Indicates if HW flush sync feature is supported
  * @SDE_MDP_MAX            Maximum value
  */
 enum {
@@ -300,6 +301,7 @@ enum {
 	SDE_MDP_TOP_PPB_SET_SIZE,
 	SDE_MDP_HW_FENCE_DIR_WRITE,
 	SDE_MDP_DUAL_DPU_SYNC,
+	SDE_MDP_HW_FLUSH_SYNC,
 	SDE_MDP_MAX
 };
 
@@ -635,6 +637,7 @@ enum {
  * @SDE_CTL_NO_LAYER_EXT        CTL removal of CTL_LAYER_EXTx registers and addition
  *                              of active bits for pipes and layer mixers
  * @SDE_CTL_CESTA_FLUSH         CTL supports display cesta flush programming
+ * @SDE_CTL_REG_DMA             CTL supports REG_DMA block
  * @SDE_CTL_MAX
  */
 enum {
@@ -649,6 +652,7 @@ enum {
 	SDE_CTL_HW_FENCE_DIR_WRITE,
 	SDE_CTL_NO_LAYER_EXT,
 	SDE_CTL_CESTA_FLUSH,
+	SDE_CTL_REG_DMA,
 	SDE_CTL_MAX
 };
 
@@ -1664,6 +1668,7 @@ struct sde_dnsc_blur_filter_info {
  * @controller_id:     Controller Instance ID in case of multiple of intf type
  * @prog_fetch_lines_worst_case	Worst case latency num lines needed to prefetch
  * @te_irq_offset:     Register offset for INTF TE IRQ block
+ * @hw_flush_sync_val   flush sync value at which snapshot should be captured
  */
 struct sde_intf_cfg  {
 	SDE_HW_BLK_INFO;
@@ -1671,6 +1676,7 @@ struct sde_intf_cfg  {
 	u32 controller_id;
 	u32 prog_fetch_lines_worst_case;
 	u32 te_irq_offset;
+	u32 hw_flush_sync_val;
 };
 
 /**

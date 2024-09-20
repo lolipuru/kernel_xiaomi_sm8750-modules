@@ -1281,6 +1281,7 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	struct drm_crtc_state *cstate;
 	struct sde_vm_ops *vm_ops;
 	int i, rc;
+	bool power_on_commit = true;
 
 	if (!kms)
 		return;
@@ -1300,7 +1301,13 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	}
 
 	if (sde_kms->first_kickoff) {
-		sde_power_scale_reg_bus(&priv->phandle, VOTE_INDEX_HIGH, false);
+		/* find if it's power on commit */
+		for_each_new_crtc_in_state(state, crtc, cstate, i) {
+			if (!crtc->state->active || !crtc->state->active_changed)
+				power_on_commit = false;
+		}
+		sde_power_scale_reg_bus(&priv->phandle,
+				power_on_commit ? VOTE_INDEX_LOW : VOTE_INDEX_HIGH, false);
 		sde_kms->first_kickoff = false;
 	}
 
@@ -1925,6 +1932,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.get_num_lm_from_mode = dsi_conn_get_lm_from_mode,
 		.update_transfer_time = dsi_display_update_transfer_time,
 		.get_panel_scan_line = dsi_display_get_panel_scan_line,
+		.check_cmd_defined = dsi_conn_check_cmd_defined,
 	};
 	static const struct sde_connector_ops wb_ops = {
 		.post_init =    sde_wb_connector_post_init,
@@ -2690,6 +2698,7 @@ static int sde_kms_set_crtc_for_conn(struct drm_device *dev,
 		return ret;
 	}
 
+	sde_crtc_force_async_mode(enc, crtc_state);
 	crtc_state->active = true;
 	crtc_state->enable = true;
 	ret = drm_atomic_set_crtc_for_connector(conn_state, enc->crtc);

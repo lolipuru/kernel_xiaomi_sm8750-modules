@@ -188,7 +188,7 @@ struct sde_cesta_hw_ops {
 	void (*override_ctrl_setup)(struct sde_cesta *cesta, u32 idx, u32 force_flags);
 	void (*reset_ctrl)(struct sde_cesta *cesta, u32 idx, bool en);
 	void (*force_auto_active_db_update)(struct sde_cesta *cesta, u32 idx, bool en_auto_active,
-			enum sde_cesta_ctrl_pwr_req_mode req_mode);
+			enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep);
 	u32 (*get_rscc_pwr_ctrl_status)(struct sde_cesta *cesta);
 };
 
@@ -401,9 +401,10 @@ void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en);
  * @client: pointer to sde cesta client
  * @en_auto_active: boolean to enable/disable auto_active
  * @req_mode: power req mode
+ * @en_hw_sleep: boolean to enable/disable hw_sleep
  */
 void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en_auto_active,
-		enum sde_cesta_ctrl_pwr_req_mode req_mode);
+		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep);
 
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
@@ -494,7 +495,7 @@ static inline void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en
 }
 
 static inline void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client,
-		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode)
+		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep)
 {
 }
 #endif /* CONFIG_DRM_SDE_CESTA */

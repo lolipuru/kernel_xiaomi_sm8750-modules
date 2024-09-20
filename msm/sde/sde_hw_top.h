@@ -246,6 +246,14 @@ struct sde_hw_mdp_ops {
 	 *		INTF_1/INTF_5 are only possible values.
 	 */
 	void (*dpu_sync_intf_mux)(struct sde_hw_mdp *mdp, int intf_idx);
+
+	/**
+	 * flush_sync_intf_mux - selects the intf that decides the snapshot signal
+	 * @mdp:        mdp top context driver
+	 * @intf_idx:   intf(INTF_1/INTF_5) which decides the snapshot signal for
+	 *		flush sync logic
+	 */
+	void (*flush_sync_intf_mux)(struct sde_hw_mdp *mdp, int intf_idx);
 };
 
 struct sde_hw_mdp {

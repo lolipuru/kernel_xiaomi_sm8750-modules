@@ -73,6 +73,8 @@
 #define CTL_OUTPUT_FENCE_DIR_DATA       0x284
 #define CTL_OUTPUT_FENCE_DIR_MASK       0x288
 #define CTL_OUTPUT_FENCE_DIR_ATTR       0x28C
+#define CTL_FLUSH_SYNC                  0xA00
+#define CTL_FLUSH_SYNC_MODE             0xA04
 
 #define CTL_CESTA_FLUSH                 0x300
 #define CTL_CESTA_FLUSH_COMPLETE	0x340
@@ -1478,6 +1480,58 @@ static int sde_hw_ctl_update_intf_cfg(struct sde_hw_ctl *ctx,
 	return 0;
 }
 
+static bool sde_hw_ctl_get_flush_sync_mode(struct sde_hw_ctl *ctx)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 enable, mode;
+
+	if (!ctx)
+		return false;
+
+	c = &ctx->hw;
+
+	mode = SDE_REG_READ(c, CTL_FLUSH_SYNC_MODE);
+	enable = (SDE_REG_READ(c, CTL_FLUSH_SYNC)) & BIT(0);
+
+	return (enable && !(mode & BIT(0)));
+}
+
+static void sde_hw_ctl_setup_flush_sync(struct sde_hw_ctl *ctx, bool is_master,
+		bool enable)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 config = 0;
+
+	if (!ctx)
+		return;
+
+	c = &ctx->hw;
+
+	config |= is_master ? 0 : BIT(1);
+	config |= enable ? (BIT(0) | BIT(2)) : 0;
+
+	SDE_REG_WRITE(c, CTL_FLUSH_SYNC, config);
+}
+
+static void sde_hw_ctl_enable_sync_mode(struct sde_hw_ctl *ctx, bool async_en)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 value = 0;
+
+	if (!ctx)
+		return;
+
+	c = &ctx->hw;
+	value = SDE_REG_READ(c, CTL_FLUSH_SYNC_MODE);
+
+	if (async_en)
+		value |= BIT(0);
+	else
+		value &= ~BIT(0);
+
+	SDE_REG_WRITE(c, CTL_FLUSH_SYNC_MODE, value);
+}
+
 static int sde_hw_ctl_intf_cfg(struct sde_hw_ctl *ctx,
 		struct sde_hw_intf_cfg *cfg)
 {
@@ -1648,7 +1702,7 @@ static void sde_hw_ctl_cesta_flush(struct sde_hw_ctl *ctx, struct sde_ctl_cesta_
 }
 
 static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
-		unsigned long cap)
+		unsigned long cap, unsigned long mdss_cap)
 {
 	if (cap & BIT(SDE_CTL_ACTIVE_CFG)) {
 		ops->update_pending_flush =
@@ -1702,7 +1756,9 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	}
 	ops->update_bitmask_sspp = sde_hw_ctl_update_bitmask_sspp;
 	ops->update_bitmask_mixer = sde_hw_ctl_update_bitmask_mixer;
-	ops->reg_dma_flush = sde_hw_reg_dma_flush;
+	if  (cap & BIT(SDE_CTL_REG_DMA))
+		ops->reg_dma_flush = sde_hw_reg_dma_flush;
+
 	ops->get_start_state = sde_hw_ctl_get_start_state;
 
 	if (cap & BIT(SDE_CTL_CESTA_FLUSH))
@@ -1737,6 +1793,12 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 
 	if (cap & BIT(SDE_CTL_UIDLE))
 		ops->uidle_enable = sde_hw_ctl_uidle_enable;
+
+	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC)) {
+		ops->setup_flush_sync = sde_hw_ctl_setup_flush_sync;
+		ops->enable_sync_mode = sde_hw_ctl_enable_sync_mode;
+		ops->get_flush_sync_mode = sde_hw_ctl_get_flush_sync_mode;
+	}
 }
 
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
@@ -1759,7 +1821,7 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 	}
 
 	c->caps = cfg;
-	_setup_ctl_ops(&c->ops, c->caps->features);
+	_setup_ctl_ops(&c->ops, c->caps->features, m->mdp[0].features);
 	c->idx = idx;
 	c->mixer_count = m->mixer_count;
 	c->mixer_hw_caps = m->mixer;
