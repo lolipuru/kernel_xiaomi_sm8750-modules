@@ -10132,6 +10132,23 @@ void wmi_copy_epm_support(wmi_resource_config *resource_cfg,
 }
 #endif
 
+#ifdef FEATURE_MGMT_RX_OVER_SRNG
+static inline
+void wmi_copy_mgmt_rx_srng_support(wmi_resource_config *resource_cfg,
+				   target_resource_config *tgt_res_cfg)
+{
+	if (tgt_res_cfg->mgmt_rx_srng_support)
+		WMI_RSRC_CFG_FLAGS2_IS_MGMT_SRNG_ENABLED_SET(
+			resource_cfg->flags2, 1);
+}
+#else
+static inline
+void wmi_copy_mgmt_rx_srng_support(wmi_resource_config *resource_cfg,
+				   target_resource_config *tgt_res_cfg)
+{
+}
+#endif
+
 static
 void wmi_copy_resource_config(wmi_unified_t wmi_handle,
 			      wmi_resource_config *resource_cfg,
@@ -10460,6 +10477,7 @@ void wmi_copy_resource_config(wmi_unified_t wmi_handle,
 
 	wmi_copy_latency_flowq_support(resource_cfg, tgt_res_cfg);
 	wmi_copy_full_bw_nol_cfg(resource_cfg, tgt_res_cfg);
+	wmi_copy_mgmt_rx_srng_support(resource_cfg, tgt_res_cfg);
 
 }
 
@@ -20555,6 +20573,8 @@ wlan_roam_fail_reason_code(uint16_t wmi_roam_fail_reason)
 		return ROAM_FAIL_REASON_CURR_AP_STILL_OK;
 	case WMI_ROAM_FAIL_REASON_SCAN_CANCEL:
 		return ROAM_FAIL_REASON_SCAN_CANCEL;
+	case WMI_ROAM_FAIL_REASON_MLD_EXTRA_SCAN_REQUIRED:
+		return ROAM_FAIL_REASON_MLD_EXTRA_SCAN_REQUIRED;
 	default:
 		return ROAM_FAIL_REASON_UNKNOWN;
 	}
@@ -22750,6 +22770,29 @@ send_sta_vdev_report_ap_oper_bw_cmd_tlv(wmi_unified_t wmi_handle,
 	return ret;
 }
 
+#ifdef FEATURE_MGMT_RX_OVER_SRNG
+static QDF_STATUS
+extract_mgmt_srng_reap_event_tlv(wmi_unified_t wmi_handle, uint8_t *evt_buf,
+				 struct mgmt_srng_reap_event_params *params)
+{
+	WMI_MGMT_SRNG_REAP_EVENTID_param_tlvs *param_buf = NULL;
+	wmi_mgmt_srng_reap_event_fixed_param *ev = NULL;
+
+	param_buf = (WMI_MGMT_SRNG_REAP_EVENTID_param_tlvs *)evt_buf;
+	if (!param_buf) {
+		wmi_err("Invalid mgmt rx srng reap event");
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	ev = param_buf->fixed_param;
+
+	params->tail_ptr = ev->tail_pointer;
+	params->timestamp = ev->timestamp_tp_update_ms;
+
+	return QDF_STATUS_SUCCESS;
+}
+#endif
+
 struct wmi_ops tlv_ops =  {
 	.send_vdev_create_cmd = send_vdev_create_cmd_tlv,
 	.send_vdev_delete_cmd = send_vdev_delete_cmd_tlv,
@@ -23266,6 +23309,9 @@ struct wmi_ops tlv_ops =  {
 	.extract_vendor_peer_event = extract_vendor_peer_event_tlv,
 	.extract_vendor_vdev_event = extract_vendor_vdev_event_tlv,
 	.extract_vendor_pdev_event = extract_vendor_pdev_event_tlv,
+#endif
+#ifdef FEATURE_MGMT_RX_OVER_SRNG
+	.extract_mgmt_srng_reap_event = extract_mgmt_srng_reap_event_tlv,
 #endif
 	.send_active_traffic_map_cmd = send_active_traffic_map_cmd_tlv,
 	.send_sap_suspend_cmd = send_ap_suspend_cmd_tlv,
@@ -23839,7 +23885,9 @@ static void populate_tlv_events_id(WMI_EVT_ID *event_ids)
 #endif /* WLAN_VENDOR_EXTN*/
 	event_ids[wmi_p2p_cli_dfs_ap_bmiss_detected_eventid] =
 				WMI_P2P_CLI_DFS_AP_BMISS_DETECTED_EVENTID;
-
+#ifdef FEATURE_MGMT_RX_OVER_SRNG
+	event_ids[wmi_mgmt_srng_reap_eventid] = WMI_MGMT_SRNG_REAP_EVENTID;
+#endif
 }
 
 #ifdef WLAN_FEATURE_LINK_LAYER_STATS
@@ -24492,6 +24540,10 @@ static void populate_tlv_service(uint32_t *wmi_service)
 #endif
 	wmi_service[wmi_service_ap_assisted_dfs_chan_p2p_session] =
 				WMI_SERVICE_AP_ASSISTED_DFS_CHAN_P2P_SESSION;
+#ifdef FEATURE_MGMT_RX_OVER_SRNG
+	wmi_service[wmi_service_mgmt_rx_srng_support] =
+				WMI_SERVICE_MGMT_SRNG_SUPPORT;
+#endif
 }
 
 /**

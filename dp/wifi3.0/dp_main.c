@@ -35,6 +35,9 @@
 #include "dp_tx.h"
 #include "dp_tx_desc.h"
 #include "dp_rx.h"
+#ifdef WLAN_FEATURE_UL_JITTER
+#include "dp_hist.h"
+#endif
 #ifdef DP_RATETABLE_SUPPORT
 #include "dp_ratetable.h"
 #endif
@@ -4518,6 +4521,22 @@ QDF_STATUS dp_soc_target_ppe_rxole_rxdma_cfg(struct dp_soc *soc)
 
 #endif /* WLAN_SUPPORT_PPEDS */
 
+#ifdef FEATURE_MGMT_RX_OVER_SRNG
+QDF_STATUS
+dp_send_htt_mgmt_rx_buf_refil_srng_setup(struct cdp_soc_t *soc_hdl, void *srng)
+{
+	struct dp_soc *soc = cdp_soc_t_to_dp_soc(soc_hdl);
+
+	if (htt_srng_setup(soc->htt_handle, 0, (hal_ring_handle_t)srng,
+			   RXDMA_BUF)) {
+		dp_err("Failed to send HTT msg for mgmt rx srng");
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	return QDF_STATUS_SUCCESS;
+}
+#endif
+
 #ifdef DP_UMAC_HW_RESET_SUPPORT
 static void dp_register_umac_reset_handlers(struct dp_soc *soc)
 {
@@ -5537,6 +5556,30 @@ static QDF_STATUS dp_vdev_detach_wifi3(struct cdp_soc_t *cdp_soc,
 	return QDF_STATUS_SUCCESS;
 }
 
+#if defined(WLAN_MAX_PDEVS) && (WLAN_MAX_PDEVS == 1)
+/**
+ * is_dp_no_unmap_peer_reuse_allow() - check if peer has not received HTT
+ *                                     unmap before, not allow to reuse
+ * @peer: DP peer handle to be checked
+ *
+ * Return: true - allowed, false - not
+ */
+static inline
+bool is_dp_no_unmap_peer_reuse_allow(struct dp_peer *peer)
+{
+	if (peer->peer_id == HTT_INVALID_PEER)
+		return true;
+	else
+		return false;
+}
+#else
+static inline
+bool is_dp_no_unmap_peer_reuse_allow(struct dp_peer *peer)
+{
+	return true;
+}
+#endif
+
 #ifdef WLAN_FEATURE_11BE_MLO
 /**
  * is_dp_peer_can_reuse() - check if the dp_peer match condition to be reused
@@ -5555,6 +5598,7 @@ bool is_dp_peer_can_reuse(struct dp_vdev *vdev,
 {
 	if (peer->bss_peer && (peer->vdev == vdev) &&
 	    (peer->peer_type == peer_type) &&
+	    is_dp_no_unmap_peer_reuse_allow(peer) &&
 	    (qdf_mem_cmp(peer_mac_addr, peer->mac_addr.raw,
 			 QDF_MAC_ADDR_SIZE) == 0))
 		return true;
@@ -5569,6 +5613,7 @@ bool is_dp_peer_can_reuse(struct dp_vdev *vdev,
 			  enum cdp_peer_type peer_type)
 {
 	if (peer->bss_peer && (peer->vdev == vdev) &&
+	    is_dp_no_unmap_peer_reuse_allow(peer) &&
 	    (qdf_mem_cmp(peer_mac_addr, peer->mac_addr.raw,
 			 QDF_MAC_ADDR_SIZE) == 0))
 		return true;
@@ -10607,9 +10652,14 @@ QDF_STATUS dp_get_avg_ul_jitter(struct cdp_soc_t *soc_handle,
 	dp_debug("uplink_jitter %u delay_accum %u pkts_accum %u", *val,
 		 jitter_accum, pkts_accum);
 
+	/* Print UL delay jitter histogram */
+	dp_print_tsf_tx_delay_hist(&vdev->stats.tx.hwtx_jitter_tsf, UL_JITTER);
+
 	/* Reset accumulated values to 0 */
 	qdf_atomic_set(&vdev->ul_jitter_accum, 0);
 	qdf_atomic_set(&vdev->ul_jitter_pkts_accum, 0);
+	qdf_mem_zero(&vdev->stats.tx.hwtx_jitter_tsf,
+		     sizeof(struct cdp_hist_stats));
 
 	dp_vdev_unref_delete(soc, vdev, DP_MOD_ID_CDP);
 
