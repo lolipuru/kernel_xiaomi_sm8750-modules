@@ -75,7 +75,7 @@
 #define CNSS_256KB_SIZE			0x40000
 #define DEVICE_RDDM_COOKIE		0xCAFECACE
 
-#define CNSS_RDDM_TIMEOUT_COUNT_MAX 3
+#define CNSS_RDDM_TIMEOUT_COUNT_MAX 2
 
 static bool cnss_driver_registered;
 
@@ -6939,12 +6939,17 @@ int cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 		cnss_fatal_err("Failed to download RDDM image, err = %d\n",
 			       ret);
 		cnss_pr_dbg("Sending Host Reset Req\n");
-		cnss_mhi_force_reset(pci_priv);
-		clear_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state);
-		cnss_start_rddm_timer(pci_priv);
-		cnss_rddm_trigger_check(pci_priv);
-		cnss_pci_dump_debug_reg(pci_priv);
-		ret =  -EAGAIN;
+		ret = cnss_mhi_force_reset(pci_priv);
+		cnss_pr_dbg("Host Reset Req ret %d\n", ret);
+		if (!ret) {
+			clear_bit(CNSS_DRIVER_RECOVERY,
+				  &plat_priv->driver_state);
+			cnss_start_rddm_timer(pci_priv);
+			cnss_rddm_trigger_check(pci_priv);
+			cnss_pci_dump_debug_reg(pci_priv);
+			ret =  -EAGAIN;
+		}
+
 		goto out;
 	}
 	cnss_rddm_trigger_check(pci_priv);
