@@ -7779,14 +7779,15 @@ long qseecom_ioctl(struct file *file,
 
 	switch (cmd) {
 	case QSEECOM_IOCTL_REGISTER_LISTENER_REQ: {
+		mutex_lock(&listener_access_lock);
 		if (data->type != QSEECOM_GENERIC) {
 			pr_err("reg lstnr req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&listener_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		pr_debug("ioctl register_listener_req()\n");
-		mutex_lock(&listener_access_lock);
 		atomic_inc(&data->ioctl_count);
 		data->type = QSEECOM_LISTENER_SERVICE;
 		ret = qseecom_register_listener(data, argp);
@@ -7798,15 +7799,16 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_UNREGISTER_LISTENER_REQ: {
+		mutex_lock(&listener_access_lock);
 		if ((data->listener.id == 0) ||
 			(data->type != QSEECOM_LISTENER_SERVICE)) {
 			pr_err("unreg lstnr req: invalid handle (%d) lid(%d)\n",
 						data->type, data->listener.id);
+			mutex_unlock(&listener_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		pr_debug("ioctl unregister_listener_req()\n");
-		mutex_lock(&listener_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_unregister_listener(data);
 		atomic_dec(&data->ioctl_count);
@@ -7817,15 +7819,16 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_SEND_CMD_REQ: {
+		/* Only one client allowed here at a time */
+		mutex_lock(&app_access_lock);
 		if ((data->client.app_id == 0) ||
 			(data->type != QSEECOM_CLIENT_APP)) {
 			pr_err("send cmd req: invalid handle (%d) app_id(%d)\n",
 					data->type, data->client.app_id);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
-		/* Only one client allowed here at a time */
-		mutex_lock(&app_access_lock);
 		if (qseecom.support_bus_scaling) {
 			/* register bus bw in case the client doesn't do it */
 			if (!data->mode) {
@@ -7879,15 +7882,16 @@ long qseecom_ioctl(struct file *file,
 	}
 	case QSEECOM_IOCTL_SEND_MODFD_CMD_REQ:
 	case QSEECOM_IOCTL_SEND_MODFD_CMD_64_REQ: {
+		/* Only one client allowed here at a time */
+		mutex_lock(&app_access_lock);
 		if ((data->client.app_id == 0) ||
 			(data->type != QSEECOM_CLIENT_APP)) {
 			pr_err("send mdfd cmd: invalid handle (%d) appid(%d)\n",
 					data->type, data->client.app_id);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
-		/* Only one client allowed here at a time */
-		mutex_lock(&app_access_lock);
 		if (qseecom.support_bus_scaling) {
 			if (!data->mode) {
 				mutex_lock(&qsee_bw_mutex);
@@ -7943,13 +7947,16 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_RECEIVE_REQ: {
+		mutex_lock(&listener_access_lock);
 		if ((data->listener.id == 0) ||
 			(data->type != QSEECOM_LISTENER_SERVICE)) {
 			pr_err("receive req: invalid handle (%d), lid(%d)\n",
 						data->type, data->listener.id);
+			mutex_unlock(&listener_access_lock);
 			ret = -EINVAL;
 			break;
 		}
+		mutex_unlock(&listener_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_receive_req(data);
 		atomic_dec(&data->ioctl_count);
@@ -7959,14 +7966,15 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_SEND_RESP_REQ: {
+		mutex_lock(&listener_access_lock);
 		if ((data->listener.id == 0) ||
 			(data->type != QSEECOM_LISTENER_SERVICE)) {
 			pr_err("send resp req: invalid handle (%d), lid(%d)\n",
 						data->type, data->listener.id);
+			mutex_unlock(&listener_access_lock);
 			ret = -EINVAL;
 			break;
 		}
-		mutex_lock(&listener_access_lock);
 		atomic_inc(&data->ioctl_count);
 		if (!qseecom.qsee_reentrancy_support)
 			ret = qseecom_send_resp();
@@ -7980,16 +7988,17 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_SET_MEM_PARAM_REQ: {
+		mutex_lock(&app_access_lock);
 		if ((data->type != QSEECOM_CLIENT_APP) &&
 			(data->type != QSEECOM_GENERIC) &&
 			(data->type != QSEECOM_SECURE_SERVICE)) {
 			pr_err("set mem param req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		pr_debug("SET_MEM_PARAM: qseecom addr = 0x%pK\n", data);
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_set_client_mem_param(data, argp);
 		atomic_dec(&data->ioctl_count);
@@ -8000,16 +8009,17 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_LOAD_APP_REQ: {
+		mutex_lock(&app_access_lock);
 		if ((data->type != QSEECOM_GENERIC) &&
 			(data->type != QSEECOM_CLIENT_APP)) {
 			pr_err("load app req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		data->type = QSEECOM_CLIENT_APP;
 		pr_debug("LOAD_APP_REQ: qseecom_addr = 0x%pK\n", data);
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_load_app(data, argp);
 		atomic_dec(&data->ioctl_count);
@@ -8020,15 +8030,16 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_UNLOAD_APP_REQ: {
+		mutex_lock(&app_access_lock);
 		if ((data->client.app_id == 0) ||
 			(data->type != QSEECOM_CLIENT_APP)) {
 			pr_err("unload app req:invalid handle(%d) app_id(%d)\n",
 					data->type, data->client.app_id);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		pr_debug("UNLOAD_APP: qseecom_addr = 0x%pK\n", data);
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_unload_app(data, false);
 		atomic_dec(&data->ioctl_count);
@@ -8047,15 +8058,16 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_LOAD_EXTERNAL_ELF_REQ: {
+		mutex_lock(&app_access_lock);
 		if (data->type != QSEECOM_GENERIC) {
 			pr_err("load ext elf req: invalid client handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		data->type = QSEECOM_UNAVAILABLE_CLIENT_APP;
 		data->released = true;
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_load_external_elf(data, argp);
 		atomic_dec(&data->ioctl_count);
@@ -8065,14 +8077,15 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_UNLOAD_EXTERNAL_ELF_REQ: {
+		mutex_lock(&app_access_lock);
 		if (data->type != QSEECOM_UNAVAILABLE_CLIENT_APP) {
 			pr_err("unload ext elf req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		data->released = true;
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_unload_external_elf(data);
 		atomic_dec(&data->ioctl_count);
@@ -8082,15 +8095,16 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_APP_LOADED_QUERY_REQ: {
+		mutex_lock(&app_access_lock);
 		if ((data->type != QSEECOM_GENERIC) &&
 			(data->type != QSEECOM_CLIENT_APP)) {
 			pr_err("app loaded query req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		data->type = QSEECOM_CLIENT_APP;
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		pr_debug("APP_LOAD_QUERY: qseecom_addr = 0x%pK\n", data);
 		ret = qseecom_query_app_loaded(data, argp);
@@ -8099,9 +8113,11 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_SEND_CMD_SERVICE_REQ: {
+		mutex_lock(&app_access_lock);
 		if (data->type != QSEECOM_GENERIC) {
 			pr_err("send cmd svc req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
@@ -8109,9 +8125,9 @@ long qseecom_ioctl(struct file *file,
 		if (qseecom.qsee_version < QSEE_VERSION_03) {
 			pr_err("SEND_CMD_SERVICE_REQ: Invalid qsee ver %u\n",
 				qseecom.qsee_version);
+			mutex_unlock(&app_access_lock);
 			return -EINVAL;
 		}
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_send_service_cmd(data, argp);
 		atomic_dec(&data->ioctl_count);
@@ -8121,19 +8137,21 @@ long qseecom_ioctl(struct file *file,
 	case QSEECOM_IOCTL_CREATE_KEY_REQ: {
 		if (!(qseecom.support_pfe || qseecom.support_fde))
 			pr_err("Features requiring key init not supported\n");
+		mutex_lock(&app_access_lock);
 		if (data->type != QSEECOM_GENERIC) {
 			pr_err("create key req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		if (qseecom.qsee_version < QSEE_VERSION_05) {
 			pr_err("Create Key feature unsupported: qsee ver %u\n",
 				qseecom.qsee_version);
+			mutex_unlock(&app_access_lock);
 			return -EINVAL;
 		}
 		data->released = true;
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_create_key(data, argp);
 		if (ret)
@@ -8146,19 +8164,21 @@ long qseecom_ioctl(struct file *file,
 	case QSEECOM_IOCTL_WIPE_KEY_REQ: {
 		if (!(qseecom.support_pfe || qseecom.support_fde))
 			pr_err("Features requiring key init not supported\n");
+		mutex_lock(&app_access_lock);
 		if (data->type != QSEECOM_GENERIC) {
 			pr_err("wipe key req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		if (qseecom.qsee_version < QSEE_VERSION_05) {
 			pr_err("Wipe Key feature unsupported in qsee ver %u\n",
 				qseecom.qsee_version);
+			mutex_unlock(&app_access_lock);
 			return -EINVAL;
 		}
 		data->released = true;
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_wipe_key(data, argp);
 		if (ret)
@@ -8170,19 +8190,21 @@ long qseecom_ioctl(struct file *file,
 	case QSEECOM_IOCTL_UPDATE_KEY_USER_INFO_REQ: {
 		if (!(qseecom.support_pfe || qseecom.support_fde))
 			pr_err("Features requiring key init not supported\n");
+		mutex_lock(&app_access_lock);
 		if (data->type != QSEECOM_GENERIC) {
 			pr_err("update key req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		if (qseecom.qsee_version < QSEE_VERSION_05) {
 			pr_err("Update Key feature unsupported in qsee ver %u\n",
 				qseecom.qsee_version);
+			mutex_unlock(&app_access_lock);
 			return -EINVAL;
 		}
 		data->released = true;
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_update_key_user_info(data, argp);
 		if (ret)
@@ -8192,14 +8214,15 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_SAVE_PARTITION_HASH_REQ: {
+		mutex_lock(&app_access_lock);
 		if (data->type != QSEECOM_GENERIC) {
 			pr_err("save part hash req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		data->released = true;
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_save_partition_hash(argp);
 		atomic_dec(&data->ioctl_count);
@@ -8207,14 +8230,15 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_IS_ES_ACTIVATED_REQ: {
+		mutex_lock(&app_access_lock);
 		if (data->type != QSEECOM_GENERIC) {
 			pr_err("ES activated req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		data->released = true;
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_is_es_activated(argp);
 		atomic_dec(&data->ioctl_count);
@@ -8222,14 +8246,15 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_MDTP_CIPHER_DIP_REQ: {
+		mutex_lock(&app_access_lock);
 		if (data->type != QSEECOM_GENERIC) {
 			pr_err("MDTP cipher DIP req: invalid handle (%d)\n",
 								data->type);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		data->released = true;
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_mdtp_cipher_dip(argp);
 		atomic_dec(&data->ioctl_count);
@@ -8238,14 +8263,15 @@ long qseecom_ioctl(struct file *file,
 	}
 	case QSEECOM_IOCTL_SEND_MODFD_RESP:
 	case QSEECOM_IOCTL_SEND_MODFD_RESP_64: {
+		mutex_lock(&listener_access_lock);
 		if ((data->listener.id == 0) ||
 			(data->type != QSEECOM_LISTENER_SERVICE)) {
 			pr_err("receive req: invalid handle (%d), lid(%d)\n",
 						data->type, data->listener.id);
+			mutex_unlock(&listener_access_lock);
 			ret = -EINVAL;
 			break;
 		}
-		mutex_lock(&listener_access_lock);
 		atomic_inc(&data->ioctl_count);
 		if (cmd == QSEECOM_IOCTL_SEND_MODFD_RESP)
 			ret = qseecom_send_modfd_resp(data, argp);
@@ -8260,20 +8286,22 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_QTEEC_IOCTL_OPEN_SESSION_REQ: {
+		mutex_lock(&app_access_lock);
 		if ((data->client.app_id == 0) ||
 			(data->type != QSEECOM_CLIENT_APP)) {
 			pr_err("Open session: invalid handle (%d) appid(%d)\n",
 					data->type, data->client.app_id);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		if (qseecom.qsee_version < QSEE_VERSION_40) {
 			pr_err("GP feature unsupported: qsee ver %u\n",
 				qseecom.qsee_version);
+			mutex_unlock(&app_access_lock);
 			return -EINVAL;
 		}
 		/* Only one client allowed here at a time */
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_qteec_open_session(data, argp);
 		atomic_dec(&data->ioctl_count);
@@ -8285,20 +8313,22 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_QTEEC_IOCTL_CLOSE_SESSION_REQ: {
+		mutex_lock(&app_access_lock);
 		if ((data->client.app_id == 0) ||
 			(data->type != QSEECOM_CLIENT_APP)) {
 			pr_err("Close session: invalid handle (%d) appid(%d)\n",
 					data->type, data->client.app_id);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		if (qseecom.qsee_version < QSEE_VERSION_40) {
 			pr_err("GP feature unsupported: qsee ver %u\n",
 				qseecom.qsee_version);
+			mutex_unlock(&app_access_lock);
 			return -EINVAL;
 		}
 		/* Only one client allowed here at a time */
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_qteec_close_session(data, argp);
 		atomic_dec(&data->ioctl_count);
@@ -8309,20 +8339,22 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_QTEEC_IOCTL_INVOKE_MODFD_CMD_REQ: {
+		mutex_lock(&app_access_lock);
 		if ((data->client.app_id == 0) ||
 			(data->type != QSEECOM_CLIENT_APP)) {
 			pr_err("Invoke cmd: invalid handle (%d) appid(%d)\n",
 					data->type, data->client.app_id);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		if (qseecom.qsee_version < QSEE_VERSION_40) {
 			pr_err("GP feature unsupported: qsee ver %u\n",
 				qseecom.qsee_version);
+			mutex_unlock(&app_access_lock);
 			return -EINVAL;
 		}
 		/* Only one client allowed here at a time */
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_qteec_invoke_modfd_cmd(data, argp);
 		atomic_dec(&data->ioctl_count);
@@ -8334,20 +8366,22 @@ long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_QTEEC_IOCTL_REQUEST_CANCELLATION_REQ: {
+		mutex_lock(&app_access_lock);
 		if ((data->client.app_id == 0) ||
 			(data->type != QSEECOM_CLIENT_APP)) {
 			pr_err("Cancel req: invalid handle (%d) appid(%d)\n",
 					data->type, data->client.app_id);
+			mutex_unlock(&app_access_lock);
 			ret = -EINVAL;
 			break;
 		}
 		if (qseecom.qsee_version < QSEE_VERSION_40) {
 			pr_err("GP feature unsupported: qsee ver %u\n",
 				qseecom.qsee_version);
+			mutex_unlock(&app_access_lock);
 			return -EINVAL;
 		}
 		/* Only one client allowed here at a time */
-		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
 		ret = qseecom_qteec_request_cancellation(data, argp);
 		atomic_dec(&data->ioctl_count);

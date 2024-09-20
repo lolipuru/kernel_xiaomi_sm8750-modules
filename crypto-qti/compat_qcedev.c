@@ -18,9 +18,9 @@ static int compat_get_qcedev_pmem_info(
 		struct compat_qcedev_pmem_info __user *pmem32,
 		struct qcedev_pmem_info *pmem)
 {
-	compat_ulong_t offset;
-	compat_int_t fd_src;
-	compat_int_t fd_dst;
+	__u32 offset;
+	__s32 fd_src;
+	__s32 fd_dst;
 	int err, i;
 	uint32_t len;
 
@@ -51,9 +51,9 @@ static int compat_put_qcedev_pmem_info(
 		struct compat_qcedev_pmem_info __user *pmem32,
 		struct qcedev_pmem_info *pmem)
 {
-	compat_ulong_t offset;
-	compat_int_t fd_src;
-	compat_int_t fd_dst;
+	__u32 offset = 0;
+	__s32 fd_src = 0;
+	__s32 fd_dst;
 	int err = 0, i;
 	uint32_t len;
 
@@ -84,7 +84,7 @@ static int compat_get_qcedev_vbuf_info(
 		struct compat_qcedev_vbuf_info __user *vbuf32,
 		struct qcedev_vbuf_info *vbuf)
 {
-	compat_uptr_t vaddr;
+	__u32 vaddr;
 	int err = 0, i;
 	uint32_t len;
 
@@ -108,7 +108,7 @@ static int compat_put_qcedev_vbuf_info(
 		struct compat_qcedev_vbuf_info __user *vbuf32,
 		struct qcedev_vbuf_info *vbuf)
 {
-	compat_uptr_t vaddr;
+	__u32 vaddr = 0;
 	int err = 0, i;
 	uint32_t len = 0;
 
@@ -134,12 +134,12 @@ static int compat_get_qcedev_cipher_op_req(
 {
 	enum qcedev_cipher_mode_enum mode;
 	enum qcedev_cipher_alg_enum alg;
-	compat_ulong_t byteoffset;
+	__u32 byteoffset;
 	enum qcedev_oper_enum op;
-	compat_ulong_t data_len;
-	compat_ulong_t encklen;
-	compat_ulong_t entries;
-	compat_ulong_t ivlen;
+	__u32 data_len;
+	__u32 encklen;
+	__u32 entries;
+	__u32 ivlen;
 	uint8_t in_place_op;
 	int err, i;
 	uint8_t use_pmem;
@@ -194,17 +194,17 @@ static int compat_put_qcedev_cipher_op_req(
 {
 	enum qcedev_cipher_mode_enum mode;
 	enum qcedev_cipher_alg_enum alg;
-	compat_ulong_t byteoffset;
+	__u32 byteoffset;
 	enum qcedev_oper_enum op;
-	compat_ulong_t data_len;
-	compat_ulong_t encklen;
-	compat_ulong_t entries;
-	compat_ulong_t ivlen;
-	uint8_t in_place_op;
+	__u32 data_len;
+	__u32 encklen;
+	__u32 entries;
+	__u32 ivlen;
+	__u8 in_place_op;
 	int err = 0, i;
-	uint8_t use_pmem;
-	uint8_t enckey;
-	uint8_t iv;
+	__u8 use_pmem = 0;
+	__u8 enckey;
+	__u8 iv;
 
 	memcpy(&use_pmem, &data->use_pmem, sizeof(use_pmem));
 	err |= put_user(use_pmem, &data32->use_pmem);
@@ -252,8 +252,12 @@ static int compat_xfer_qcedev_map_buf_req(
 			struct compat_qcedev_map_buf_req __user *data32,
 			struct qcedev_map_buf_req *data, bool to_get)
 {
-	int rc = 0, i, fd = -1;
-	uint32_t fd_size, fd_offset, num_fds, buf_vaddr;
+	int rc = 0, i;
+	__s32 fd = -1;
+	__u32 num_fds;
+	__u32 fd_size = 0;
+	__u32 fd_offset;
+	__u64 buf_vaddr;
 
 	if (to_get) {
 		/* copy from compat struct */
@@ -293,8 +297,9 @@ static int compat_xfer_qcedev_unmap_buf_req(
 			struct compat_qcedev_unmap_buf_req __user *data32,
 			struct qcedev_unmap_buf_req *data, bool to_get)
 {
-	int i, rc = 0, fd = -1;
-	uint32_t num_fds;
+	int i, rc = 0;
+	__s32 fd = -1;
+	__u32 num_fds;
 
 	if (to_get) {
 		/* copy from compat struct */
@@ -322,12 +327,12 @@ static int compat_get_qcedev_sha_op_req(
 		struct qcedev_sha_op_req *data)
 {
 	enum qcedev_sha_alg_enum alg;
-	compat_ulong_t authklen;
-	compat_ulong_t data_len;
-	compat_ulong_t entries;
-	compat_ulong_t diglen;
-	compat_uptr_t authkey;
-	compat_uptr_t vaddr;
+	__u32 authklen;
+	__u32 data_len;
+	__u32 entries;
+	__u32 diglen;
+	__u32 authkey;
+	__u32 vaddr;
 	int err = 0, i;
 	uint8_t digest;
 	uint32_t len;
@@ -366,15 +371,15 @@ static int compat_put_qcedev_sha_op_req(
 		struct qcedev_sha_op_req *data)
 {
 	enum qcedev_sha_alg_enum alg;
-	compat_ulong_t authklen;
-	compat_ulong_t data_len;
-	compat_ulong_t entries;
-	compat_ulong_t diglen;
-	compat_uptr_t authkey;
-	compat_uptr_t vaddr;
+	__u32 authklen;
+	__u32 data_len;
+	__u32 entries;
+	__u32 diglen;
+	__u32 authkey;
+	__u32 vaddr = 0;
 	int err = 0, i;
 	uint8_t digest;
-	uint32_t len;
+	uint32_t len = 0;
 
 	for (i = 0; i < QCEDEV_MAX_BUFFERS; i++) {
 		memcpy(&vaddr, &(data->data[i].vaddr), sizeof(vaddr));
