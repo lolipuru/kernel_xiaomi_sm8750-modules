@@ -541,6 +541,8 @@ typedef enum {
 	NET_DEV_HOLD_GET_ADAPTER_BY_BSSID = 62,
 	NET_DEV_HOLD_ALLOW_NEW_INTF = 63,
 	NET_DEV_HOLD_GET_STA_CONNECTIONS = 64,
+	NET_DEV_HOLD_LOCAL_PKT_CAPTURE = 65,
+	NET_DEV_HOLD_SENT_FRAME_TO_USERSPACE = 66,
 
 	/* Keep it at the end */
 	NET_DEV_HOLD_ID_MAX
@@ -1340,10 +1342,10 @@ struct get_station_client_info {
  * @link_state_cached_timestamp: link state cached timestamp
  * @keep_alive_interval: user configured STA keep alive interval
  * @sta_client_info: To store get station user application port_id's
- * @disconnect_link_id: cache disconnect link_id, for legacy link_id will
- *			be @WLAN_INVALID_LINK_ID
  * @wlm_ll_conn_flag: Indicates if low lateny connection flag set
  *		      based on wlm mode
+ * @discon_link_info: link_info pointer on which post disconnect stats to be
+ *                    fetched
  */
 struct hdd_adapter {
 	uint32_t magic;
@@ -1540,8 +1542,8 @@ struct hdd_adapter {
 #endif
 	uint16_t keep_alive_interval;
 	struct get_station_client_info sta_client_info[GET_STA_MAX_HOST_CLIENT];
-	int32_t disconnect_link_id;
 	bool wlm_ll_conn_flag;
+	struct wlan_hdd_link_info *discon_link_info;
 };
 
 #define WLAN_HDD_GET_STATION_CTX_PTR(link_info) (&(link_info)->session.station)
@@ -2132,6 +2134,7 @@ enum wlan_state_ctrl_str_id {
  * @hlp_processing_work: work to process hlp data pkt for association
  * @get_sta_user_notif: Get station notifier callback to handle port_id on
  *			userspace application close/abort
+ * @usd_adapter: adapter on which USD frames to be forwarded to userspace
  */
 struct hdd_context {
 	struct wlan_objmgr_psoc *psoc;
@@ -2432,6 +2435,9 @@ struct hdd_context {
 	qdf_list_t hdd_hlp_data_list;
 	struct work_struct hlp_processing_work;
 	struct notifier_block get_sta_user_notif;
+#ifdef FEATURE_WLAN_SUPPORT_USD
+	struct hdd_adapter *usd_adapter;
+#endif
 };
 
 /**
@@ -5950,13 +5956,13 @@ bool hdd_allow_new_intf(struct hdd_context *hdd_ctx,
                         enum QDF_OPMODE mode);
 
 /**
- *hdd_set_disconnect_link_id_cb() - set STA disconnected link_id
+ *hdd_set_disconnect_link_info_cb() - set STA disconnected link info
  *@vdev_id: vdev_id
  *
  * Return: None
  */
 void
-hdd_set_disconnect_link_id_cb(uint8_t vdev_id);
+hdd_set_disconnect_link_info_cb(uint8_t vdev_id);
 
 #ifdef WLAN_FEATURE_11BE_MLO_ADV_FEATURE
 /*
@@ -6011,5 +6017,33 @@ static inline void hdd_release_rtnl_lock(void)
 #else
 static inline bool hdd_hold_rtnl_lock(void) { return false; }
 static inline void hdd_release_rtnl_lock(void) { }
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 7, 0)
+static inline void hdd_wiphy_lock(struct wiphy *wiphy, struct wireless_dev *dev_ptr)
+{
+	if (wiphy)
+		wiphy_lock(wiphy);
+	else if (dev_ptr)
+		mutex_lock(&dev_ptr->mtx);
+}
+
+static inline void hdd_wiphy_unlock(struct wiphy *wiphy, struct wireless_dev *dev_ptr)
+{
+	if (wiphy)
+		wiphy_unlock(wiphy);
+	else if (dev_ptr)
+		mutex_unlock(&dev_ptr->mtx);
+}
+#else
+static inline void hdd_wiphy_lock(struct wiphy *wiphy, struct wireless_dev *dev_ptr)
+{
+	wiphy_lock(wiphy);
+}
+
+static inline void hdd_wiphy_unlock(struct wiphy *wiphy, struct wireless_dev *dev_ptr)
+{
+	wiphy_unlock(wiphy);
+}
 #endif
 #endif /* end #if !defined(WLAN_HDD_MAIN_H) */

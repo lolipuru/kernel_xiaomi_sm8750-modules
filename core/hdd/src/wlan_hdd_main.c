@@ -253,6 +253,7 @@
 #include "wlan_crypto_obj_mgr_i.h"
 #include "wlan_p2p_ucfg_api.h"
 #include "wifi_pos_api.h"
+#include "wlan_mgmt_rx_srng_ucfg_api.h"
 
 #ifdef MULTI_CLIENT_LL_SUPPORT
 #define WLAM_WLM_HOST_DRIVER_PORT_ID 0xFFFFFF
@@ -540,6 +541,10 @@ static int wlan_hdd_get_port_status_notify(struct notifier_block *nb,
 					client_info->in_use = false;
 					hdd_adapter_dev_put_debug(adapter,
 								  dbgid);
+					if (next_adapter)
+						hdd_adapter_dev_put_debug(
+								next_adapter,
+								dbgid);
 					return NOTIFY_DONE;
 				}
 			}
@@ -8293,11 +8298,13 @@ static char *net_dev_ref_debug_string_from_id(wlan_net_dev_ref_dbgid dbgid)
 		"NET_DEV_HOLD_COUNTRY_CHANGE_UPDATE_SAP",
 		"NET_DEV_HOLD_CACHE_STATION_STATS_CB",
 		"NET_DEV_HOLD_DISPLAY_TXRX_STATS",
+		"NET_DEV_HOLD_BUS_BW_MGR",
 		"NET_DEV_HOLD_START_PRE_CAC_TRANS",
 		"NET_DEV_HOLD_IS_ANY_STA_CONNECTED",
 		"NET_DEV_HOLD_GET_ADAPTER_BY_BSSID",
 		"NET_DEV_HOLD_ALLOW_NEW_INTF",
 		"NET_DEV_HOLD_GET_STA_CONNECTIONS",
+		"NET_DEV_HOLD_LOCAL_PKT_CAPTURE",
 		"NET_DEV_HOLD_ID_MAX"};
 	int32_t num_dbg_strings = QDF_ARRAY_SIZE(strings);
 
@@ -9708,6 +9715,28 @@ static void __hdd_close_adapter(struct hdd_context *hdd_ctx,
 	ucfg_dp_destroy_intf(hdd_ctx->psoc, &adapter_mac);
 }
 
+#ifdef FEATURE_WLAN_SUPPORT_USD
+/**
+ * hdd_clear_usd_adapter() - set USD adapter to NULL, so that USD frames
+ * can not be forwarded on USD adapter.
+ * @hdd_ctx: pointer to HDD context
+ * @adapter: adapter context
+ *
+ * Returns: void
+ */
+static void hdd_clear_usd_adapter(struct hdd_context *hdd_ctx,
+				  struct hdd_adapter *adapter)
+{
+	if (hdd_ctx->usd_adapter == adapter)
+		hdd_ctx->usd_adapter = NULL;
+}
+#else
+static inline void hdd_clear_usd_adapter(struct hdd_context *hdd_ctx,
+					 struct hdd_adapter *adapter)
+{
+}
+#endif
+
 void hdd_close_adapter(struct hdd_context *hdd_ctx,
 		       struct hdd_adapter *adapter,
 		       bool rtnl_held)
@@ -9719,6 +9748,7 @@ void hdd_close_adapter(struct hdd_context *hdd_ctx,
 	ucfg_dp_bus_bw_compute_timer_stop(hdd_ctx->psoc);
 
 	hdd_check_for_net_dev_ref_leak(adapter);
+	hdd_clear_usd_adapter(hdd_ctx, adapter);
 	hdd_remove_adapter(hdd_ctx, adapter);
 	__hdd_close_adapter(hdd_ctx, adapter, rtnl_held);
 
@@ -12172,6 +12202,7 @@ void hdd_wlan_exit(struct hdd_context *hdd_ctx)
 	hdd_debugfs_ini_config_deinit(hdd_ctx);
 	hdd_debugfs_mws_coex_info_deinit(hdd_ctx);
 	hdd_psoc_idle_timer_stop(hdd_ctx);
+	hdd_regulatory_deinit(hdd_ctx);
 
 	/*
 	 * Powersave Offload Case
@@ -17219,7 +17250,7 @@ static int hdd_features_init(struct hdd_context *hdd_ctx)
 	int ret;
 	mac_handle_t mac_handle;
 	bool b_cts2self, is_imps_enabled;
-	bool rf_test_mode;
+	uint32_t rf_test_mode;
 	bool std_6ghz_conn_policy;
 	uint32_t fw_data_stall_evt;
 	bool relaxed_lpi_conn_policy;
@@ -17306,8 +17337,7 @@ static int hdd_features_init(struct hdd_context *hdd_ctx)
 	wlan_hdd_twt_init(hdd_ctx);
 	wlan_hdd_gpio_wakeup_init(hdd_ctx);
 
-	status = ucfg_mlme_is_rf_test_mode_enabled(hdd_ctx->psoc,
-						   &rf_test_mode);
+	status = ucfg_mlme_get_rf_test_mode(hdd_ctx->psoc, &rf_test_mode);
 	if (!QDF_IS_STATUS_SUCCESS(status)) {
 		hdd_err("Get rf test mode failed");
 		return QDF_STATUS_E_FAILURE;
@@ -18891,7 +18921,7 @@ int hdd_register_cb(struct hdd_context *hdd_ctx)
 	sme_register_pagefault_cb(mac_handle, hdd_pagefault_action_cb);
 
 	sme_register_set_disconnect_cb(mac_handle,
-				       hdd_set_disconnect_link_id_cb);
+				       hdd_set_disconnect_link_info_cb);
 	hdd_exit();
 
 	return ret;
@@ -20487,10 +20517,16 @@ static QDF_STATUS hdd_component_init(void)
 	if (QDF_IS_STATUS_ERROR(status))
 		goto ll_sap_deinit;
 
+	status = ucfg_mgmt_rx_srng_init();
+	if (QDF_IS_STATUS_ERROR(status))
+		goto mlo_mgr_register_osif_deinit;
+
 	hdd_register_cstats_ops();
 
 	return QDF_STATUS_SUCCESS;
 
+mlo_mgr_register_osif_deinit:
+	hdd_mlo_mgr_unregister_osif_ops();
 ll_sap_deinit:
 	ucfg_ll_sap_deinit();
 qmi_deinit:
@@ -20545,6 +20581,7 @@ mlme_global_deinit:
 static void hdd_component_deinit(void)
 {
 	/* deinitialize non-converged components */
+	ucfg_mgmt_rx_srng_deinit();
 	hdd_mlo_mgr_unregister_osif_ops();
 	ucfg_ll_sap_deinit();
 	ucfg_qmi_deinit();
@@ -23090,11 +23127,10 @@ out:
 	return status;
 }
 
-void hdd_set_disconnect_link_id_cb(uint8_t vdev_id)
+void hdd_set_disconnect_link_info_cb(uint8_t vdev_id)
 {
 	struct hdd_adapter *adapter;
 	struct wlan_hdd_link_info *link_info;
-	struct hdd_station_ctx *hdd_sta_ctx;
 	struct hdd_context *hdd_ctx;
 
 	hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
@@ -23113,12 +23149,17 @@ void hdd_set_disconnect_link_id_cb(uint8_t vdev_id)
 	if (adapter->device_mode != QDF_STA_MODE)
 		return;
 
-	hdd_sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(link_info);
-	adapter->disconnect_link_id = hdd_cm_get_ieee_link_id(link_info, true);
-	if (adapter->disconnect_link_id != WLAN_INVALID_LINK_ID) {
-		hdd_debug("disconnect received on link_id %u vdev_id %d",
-			  adapter->disconnect_link_id, vdev_id);
-	}
+	/*
+	 * Disconnect link_info to be update with the disconnect link
+	 * sent successfully OTA. If any case disconnect not sent OTA
+	 * will force update with the active link_info.
+	 */
+	if (adapter->discon_link_info ||
+	    wlan_vdev_mlme_is_mlo_link_vdev(link_info->vdev))
+		return;
+
+	adapter->discon_link_info = link_info;
+	hdd_debug("vdev_id %d", link_info->vdev_id);
 }
 
 #ifdef WLAN_FEATURE_11BE_MLO_ADV_FEATURE

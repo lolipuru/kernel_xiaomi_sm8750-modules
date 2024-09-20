@@ -520,13 +520,21 @@ static QDF_STATUS tdls_process_reset_all_peers(struct wlan_objmgr_vdev *vdev)
 		if (!curr_peer)
 			continue;
 
-		tdls_notice("indicate TDLS teardown "QDF_MAC_ADDR_FMT,
+		tdls_notice("vdev %d indicate TDLS teardown " QDF_MAC_ADDR_FMT,
+			    wlan_vdev_get_id(tdls_vdev->vdev),
 			    QDF_MAC_ADDR_REF(curr_peer->peer_mac.bytes));
 
 		/* Indicate teardown to supplicant */
-		tdls_indicate_teardown(tdls_vdev,
-				       curr_peer,
-				       TDLS_TEARDOWN_PEER_UNSPEC_REASON);
+		status = tdls_indicate_teardown(
+					tdls_vdev, curr_peer,
+					TDLS_TEARDOWN_PEER_UNSPEC_REASON);
+		if (QDF_IS_STATUS_ERROR(status)) {
+			tdls_err("vdev %d teardown indication failed for peer "
+				 QDF_MAC_ADDR_FMT,
+				 wlan_vdev_get_id(tdls_vdev->vdev),
+				 QDF_MAC_ADDR_REF(curr_peer->peer_mac.bytes));
+			continue;
+		}
 
 		tdls_reset_peer(tdls_vdev, curr_peer->peer_mac.bytes);
 
@@ -1388,7 +1396,7 @@ void tdls_send_update_to_fw(struct tdls_vdev_priv_obj *tdls_vdev_obj,
 	struct tdls_config_params *threshold_params;
 	uint32_t tdls_feature_flags;
 	QDF_STATUS status;
-	bool tdls_mlo;
+	enum tdls_feature_mode current_mode = TDLS_SUPPORT_DISABLED;
 
 	tdls_feature_flags = tdls_soc_obj->tdls_configs.tdls_feature_flags;
 	if (!TDLS_IS_ENABLED(tdls_feature_flags)) {
@@ -1396,29 +1404,31 @@ void tdls_send_update_to_fw(struct tdls_vdev_priv_obj *tdls_vdev_obj,
 		return;
 	}
 
-	tdls_mlo = wlan_tdls_is_fw_11be_mlo_capable(tdls_soc_obj->soc);
-
 	/* If AP or caller indicated TDLS Prohibited then disable tdls mode */
 	if (sta_connect_event) {
 		if (tdls_prohibited) {
-			tdls_soc_obj->tdls_current_mode =
-					TDLS_SUPPORT_DISABLED;
+			current_mode = TDLS_SUPPORT_DISABLED;
 		} else {
 			if (!TDLS_IS_IMPLICIT_TRIG_ENABLED(tdls_feature_flags))
-				tdls_soc_obj->tdls_current_mode =
-					TDLS_SUPPORT_EXP_TRIG_ONLY;
+				current_mode = TDLS_SUPPORT_EXP_TRIG_ONLY;
 			else if (TDLS_IS_EXTERNAL_CONTROL_ENABLED(
 				tdls_feature_flags))
-				tdls_soc_obj->tdls_current_mode =
-					TDLS_SUPPORT_EXT_CONTROL;
+				current_mode = TDLS_SUPPORT_EXT_CONTROL;
 			else
-				tdls_soc_obj->tdls_current_mode =
-					TDLS_SUPPORT_IMP_MODE;
+				current_mode = TDLS_SUPPORT_IMP_MODE;
 		}
 	} else {
-		tdls_soc_obj->tdls_current_mode =
-				TDLS_SUPPORT_DISABLED;
+		current_mode = TDLS_SUPPORT_DISABLED;
 	}
+
+	if (!wlan_cm_is_vdev_connected(tdls_vdev_obj->vdev) &&
+	    sta_connect_event && current_mode != TDLS_SUPPORT_DISABLED) {
+		tdls_debug("Vdev:%d is not connected. Don't enable TDLS",
+			   wlan_vdev_get_id(tdls_vdev_obj->vdev));
+		return;
+	}
+
+	tdls_soc_obj->tdls_current_mode = current_mode;
 
 	tdls_info_to_fw = qdf_mem_malloc(sizeof(struct tdls_info));
 	if (!tdls_info_to_fw)
@@ -1527,12 +1537,9 @@ void tdls_process_enable_disable_for_ml_vdev(struct wlan_objmgr_vdev *vdev,
 					     bool is_enable)
 {
 	struct wlan_mlo_dev_context *ml_dev_ctx;
+	struct wlan_objmgr_vdev *vdev_iter;
 	QDF_STATUS status;
 	uint8_t i;
-	struct wlan_objmgr_vdev *vdev_iter;
-
-	if (!wlan_vdev_mlme_is_mlo_vdev(vdev))
-		return;
 
 	ml_dev_ctx = vdev->mlo_dev_ctx;
 	if (!ml_dev_ctx)
@@ -2205,13 +2212,14 @@ QDF_STATUS tdls_scan_callback(struct tdls_soc_priv_obj *tdls_soc)
 
 	if (tdls_is_progress(tdls_vdev, NULL, 0)) {
 		if (tdls_soc->scan_reject_count++ >= TDLS_SCAN_REJECT_MAX) {
-			tdls_notice("Allow this scan req. as already max no of scan's are rejected");
+			tdls_notice_rl("Allow scan during tdls, as scan reject count %d reached threshold",
+					tdls_soc->scan_reject_count);
 			tdls_soc->scan_reject_count = 0;
 			status = QDF_STATUS_SUCCESS;
 
 		} else {
-			tdls_warn("tdls in progress. scan rejected %d",
-				  tdls_soc->scan_reject_count);
+			tdls_warn_rl("tdls in progress. scan rejected %d",
+				     tdls_soc->scan_reject_count);
 			status = QDF_STATUS_E_BUSY;
 		}
 	}
@@ -2222,7 +2230,7 @@ QDF_STATUS tdls_scan_callback(struct tdls_soc_priv_obj *tdls_soc)
 
 	feature = tdls_soc->tdls_configs.tdls_feature_flags;
 	if (TDLS_IS_SCAN_ENABLED(feature)) {
-		tdls_debug("TDLS Scan enabled, keep tdls link and allow scan, connected tdls peers: %d",
+		tdls_debug("TDLS Scan enabled so allow scan, tdls peers cnt %d",
 			   tdls_peer_count);
 		goto disable_tdls;
 	}

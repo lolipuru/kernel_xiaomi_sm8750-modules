@@ -2723,8 +2723,8 @@ end:
 		}
 	}
 
-	if (mac->sme.set_disconnect_link_id_cb)
-		mac->sme.set_disconnect_link_id_cb(session->vdev_id);
+	if (mac->sme.set_disconnect_link_info_cb)
+		mac->sme.set_disconnect_link_info_cb(session->vdev_id);
 
 	lim_tear_down_link_with_ap(mac, session->peSessionId,
 				   reason_code,
@@ -2876,10 +2876,8 @@ lim_gen_link_specific_assoc_rsp(struct mac_context *mac_ctx,
 	num_partner_links = ml_partner_info->num_partner_links;
 	for (idx = 0; idx < num_partner_links; idx++) {
 		link_vdev_id = ml_partner_info->partner_link_info[idx].vdev_id;
-		if (link_vdev_id == WLAN_INVALID_VDEV_ID)
-			continue;
-
-		if (link_vdev_id != session_entry->vdev_id)
+		if (link_vdev_id == WLAN_INVALID_VDEV_ID ||
+		    link_vdev_id != session_entry->vdev_id)
 			continue;
 
 		link_id = ml_partner_info->partner_link_info[idx].link_id;
@@ -2895,9 +2893,12 @@ lim_gen_link_specific_assoc_rsp(struct mac_context *mac_ctx,
 			goto end;
 		}
 
+		mgmt_txrx_frame_hex_dump(link_reassoc_rsp.ptr,
+					 link_reassoc_rsp.len, false);
+
 		lim_process_assoc_rsp_frame(mac_ctx, link_reassoc_rsp.ptr,
-					    link_reassoc_rsp.len - WLAN_MAC_HDR_LEN_3A,
-					    LIM_REASSOC, session_entry);
+					    link_reassoc_rsp.len, LIM_REASSOC,
+					    session_entry);
 	}
 end:
 	qdf_mem_free(link_reassoc_rsp.ptr);
@@ -3260,7 +3261,7 @@ pe_roam_synch_callback(struct mac_context *mac_ctx,
 		}
 	} else {
 		lim_process_assoc_rsp_frame(mac_ctx, reassoc_resp,
-					    roam_sync_ind_ptr->reassoc_resp_length - SIR_MAC_HDR_LEN_3A,
+					    roam_sync_ind_ptr->reassoc_resp_length,
 					    LIM_REASSOC, ft_session_ptr);
 		if (ft_session_ptr->is_unexpected_peer_error) {
 			status = QDF_STATUS_E_FAILURE;
@@ -4704,11 +4705,11 @@ QDF_STATUS lim_gen_link_specific_probe_rsp(struct mac_context *mac_ctx,
 	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 	struct mlo_link_info *link_info = NULL;
 	struct mlo_partner_info *partner_info;
-	uint8_t chan;
-	uint8_t op_class;
-	uint16_t chan_freq, gen_frame_len;
-	uint8_t idx;
-	uint8_t req_link_id;
+	uint8_t chan, op_class, idx, req_link_id;
+	uint16_t gen_frame_len, probe_rsp_ie_len;
+	qdf_freq_t chan_freq;
+	struct wlan_country_ie *cc_ie;
+	uint8_t *cc, *probe_rsp_ie_ptr;
 
 	if (!session_entry)
 		return QDF_STATUS_E_NULL_VALUE;
@@ -4773,6 +4774,17 @@ QDF_STATUS lim_gen_link_specific_probe_rsp(struct mac_context *mac_ctx,
 		qdf_mem_copy(&sta_link_addr, session_entry->self_mac_addr,
 			     QDF_MAC_ADDR_SIZE);
 
+		probe_rsp_ie_ptr = probe_rsp + WLAN_PROBE_RESP_IES_OFFSET;
+		probe_rsp_ie_len = probe_rsp_len - WLAN_PROBE_RESP_IES_OFFSET;
+		cc_ie = (struct wlan_country_ie *)
+				wlan_get_ie_ptr_from_eid(WLAN_ELEMID_COUNTRY,
+							 probe_rsp_ie_ptr,
+							 probe_rsp_ie_len);
+		if (cc_ie && cc_ie->len)
+			cc = cc_ie->cc;
+		else
+			cc = NULL;
+
 		for (idx = 0; idx < partner_info->num_partner_links; idx++) {
 			req_link_id =
 				partner_info->partner_link_info[idx].link_id;
@@ -4825,9 +4837,12 @@ QDF_STATUS lim_gen_link_specific_probe_rsp(struct mac_context *mac_ctx,
 				status = QDF_STATUS_E_FAILURE;
 				goto end;
 			}
+
 			chan_freq =
-				wlan_reg_chan_opclass_to_freq(chan, op_class,
-							      true);
+				wlan_reg_chan_opclass_to_freq_prefer_global(mac_ctx->pdev,
+									    cc,
+									    chan,
+									    op_class);
 
 			status = lim_add_bcn_probe(session_entry->vdev,
 						   link_probe_rsp.ptr,

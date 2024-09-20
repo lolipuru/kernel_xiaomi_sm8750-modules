@@ -51,6 +51,9 @@
 #include "wlan_mlo_mgr_link_switch.h"
 #include "wlan_mlo_mgr_sta.h"
 #include "wlan_vdev_mgr_api.h"
+#include "wmi_unified.h"
+#include "wlan_cm_public_struct.h"
+
 
 #ifdef WLAN_FEATURE_SAE
 #define CM_IS_FW_FT_SAE_SUPPORTED(fw_akm_bitmap) \
@@ -339,6 +342,7 @@ cm_roam_bss_load_config(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
 	params->vdev_id = vdev_id;
 	wlan_mlme_get_bss_load_threshold(psoc, &params->bss_load_threshold);
 	wlan_mlme_get_bss_load_sample_time(psoc, &params->bss_load_sample_time);
+	wlan_mlme_get_bss_load_alpha(psoc, &params->bss_load_alpha);
 	wlan_mlme_get_bss_load_rssi_threshold_6ghz(
 					psoc, &params->rssi_threshold_6ghz);
 	wlan_mlme_get_bss_load_rssi_threshold_5ghz(
@@ -1413,10 +1417,18 @@ static void
 cm_update_mlo_score_params(struct scoring_param *req_score_params,
 			   struct weight_cfg *weight_config)
 {
+	uint32_t weight;
 	req_score_params->eht_caps_weightage =
 		weight_config->eht_caps_weightage;
-	req_score_params->mlo_weightage =
-		weight_config->mlo_weightage;
+
+	req_score_params->mlo_weightage = 0;
+	weight = (weight_config->mlo_weightage >> (8 * MLSR)) & 0xff;
+	req_score_params->mlo_weightage += weight << (8 * WLAN_ROAM_SCORE_MLSR_INDEX);
+	weight = (weight_config->mlo_weightage >> (8 * EMLSR)) & 0xff;
+	req_score_params->mlo_weightage += weight << (8 * WLAN_ROAM_SCORE_EMLSR_INDEX);
+	weight = (weight_config->mlo_weightage >> (8 * MLMR)) & 0xff;
+	req_score_params->mlo_weightage += weight << (8 * WLAN_ROAM_SCORE_MLMR_INDEX);
+	mlme_debug("mlo weightage 0x%x", req_score_params->mlo_weightage);
 }
 #else
 static void
@@ -6818,7 +6830,8 @@ void cm_roam_result_info_event(struct wlan_objmgr_psoc *psoc,
 	    res->fail_reason ==
 		ROAM_FAIL_REASON_NO_CAND_AP_FOUND_AND_FINAL_BMISS_SENT ||
 	    res->fail_reason ==
-		ROAM_FAIL_REASON_NO_AP_FOUND_AND_FINAL_BMISS_SENT)
+		ROAM_FAIL_REASON_NO_AP_FOUND_AND_FINAL_BMISS_SENT ||
+	    res->fail_reason == ROAM_FAIL_REASON_MLD_EXTRA_SCAN_REQUIRED)
 		wlan_diag_event.is_roam_successful = false;
 
 	for (i = 0; i < scan_data->num_ap; i++) {

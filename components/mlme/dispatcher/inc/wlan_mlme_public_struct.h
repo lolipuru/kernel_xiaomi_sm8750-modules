@@ -799,6 +799,7 @@ struct wlan_mlme_cfg_sap {
  * @dfs_beacon_tx_enhanced: enhance dfs beacon tx
  * @dfs_prefer_non_dfs: perefer non dfs channel after radar
  * @dfs_disable_japan_w53: Disable W53 channels
+ * @enable_sap_dfs_puncture: Enable sap dfs puncture
  * @sap_tx_leakage_threshold: sap tx leakage threshold
  * @dfs_pri_multiplier: dfs_pri_multiplier for handle missing pulses
  */
@@ -810,6 +811,7 @@ struct wlan_mlme_dfs_cfg {
 	bool dfs_beacon_tx_enhanced;
 	bool dfs_prefer_non_dfs;
 	bool dfs_disable_japan_w53;
+	bool enable_sap_dfs_puncture;
 	uint32_t sap_tx_leakage_threshold;
 	uint32_t dfs_pri_multiplier;
 };
@@ -1482,7 +1484,7 @@ struct wlan_mlme_aux_dev_caps {
  * @dual_sta_roam_fw_support: Firmware support for dual sta roaming feature
  * @sae_connect_retries: sae connect retry bitmask
  * @wls_6ghz_capable: wifi location service(WLS) is 6ghz capable
- * @enabled_rf_test_mode: Enable/disable the RF test mode config
+ * @enabled_rf_test_mode: RF test mode config
  * @monitor_mode_concurrency: Monitor mode concurrency supported
  * @ocv_support: FW supports OCV or not
  * @wds_mode: wds mode supported
@@ -1544,7 +1546,7 @@ struct wlan_mlme_generic {
 	bool dual_sta_roam_fw_support;
 	uint32_t sae_connect_retries;
 	bool wls_6ghz_capable;
-	bool enabled_rf_test_mode;
+	uint32_t enabled_rf_test_mode;
 	enum monitor_mode_concurrency monitor_mode_concurrency;
 	bool ocv_support;
 	enum wlan_wds_mode wds_mode;
@@ -1943,6 +1945,8 @@ enum roaming_dfs_channel_type {
  * @threshold: Bss load threshold value above which roaming should start
  * @sample_time: Time duration in milliseconds for which the bss load value
  * should be monitored
+ * @bss_load_alpha: Factor for computing average bss load from current channel
+ * utilization
  * @rssi_threshold_6ghz: RSSI threshold of the current connected AP below which
  * roam should be triggered if bss load threshold exceeds the configured value.
  * This value is applicable only when we are connected in 6GHz band.
@@ -1957,6 +1961,7 @@ struct bss_load_trigger {
 	bool enabled;
 	uint32_t threshold;
 	uint32_t sample_time;
+	uint32_t bss_load_alpha;
 	uint32_t rssi_threshold_6ghz;
 	int32_t rssi_threshold_5ghz;
 	int32_t rssi_threshold_24ghz;

@@ -11760,7 +11760,11 @@ int sme_update_he_full_ul_mumimo(mac_handle_t mac_handle, uint8_t session_id,
 		sme_err("No session for id %d", session_id);
 		return -EINVAL;
 	}
+
+	sme_info("UL MU mimo: %d", cfg_val);
 	mac_ctx->mlme_cfg->he_caps.dot11_he_cap.ul_mu = cfg_val;
+	mac_ctx->he_cap_2g.ul_mu = cfg_val;
+	mac_ctx->he_cap_5g.ul_mu = cfg_val;
 
 	csr_update_session_he_cap(mac_ctx, session);
 
@@ -17237,7 +17241,7 @@ sme_validate_txrx_chain_mask(uint32_t id, uint32_t value)
 }
 
 void sme_register_set_disconnect_cb(mac_handle_t mac_handle,
-				    void (*set_disconnect_link_id_cb)
+				    void (*set_disconnect_link_info_cb)
 				    (uint8_t vdev_id))
 {
 	QDF_STATUS status;
@@ -17247,8 +17251,8 @@ void sme_register_set_disconnect_cb(mac_handle_t mac_handle,
 
 	status = sme_acquire_global_lock(&mac->sme);
 	if (QDF_IS_STATUS_SUCCESS(status)) {
-		mac->sme.set_disconnect_link_id_cb =
-					set_disconnect_link_id_cb;
+		mac->sme.set_disconnect_link_info_cb =
+					set_disconnect_link_info_cb;
 		sme_release_global_lock(&mac->sme);
 	}
 
@@ -17264,7 +17268,7 @@ void sme_deregister_disconnect_cb(mac_handle_t mac_handle)
 
 	status = sme_acquire_global_lock(&mac->sme);
 	if (QDF_IS_STATUS_SUCCESS(status)) {
-		mac->sme.set_disconnect_link_id_cb = NULL;
+		mac->sme.set_disconnect_link_info_cb = NULL;
 		sme_release_global_lock(&mac->sme);
 	}
 

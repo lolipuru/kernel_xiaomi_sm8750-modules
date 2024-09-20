@@ -14825,11 +14825,10 @@ static int hdd_test_config_6ghz_security_test_mode(struct hdd_context *hdd_ctx,
 
 {
 	uint8_t cfg_val;
-	bool rf_test_mode = false;
+	uint32_t rf_test_mode = 0;
 	QDF_STATUS status;
 
-	status = ucfg_mlme_is_rf_test_mode_enabled(hdd_ctx->psoc,
-						   &rf_test_mode);
+	status = ucfg_mlme_get_rf_test_mode(hdd_ctx->psoc, &rf_test_mode);
 	if (!QDF_IS_STATUS_SUCCESS(status)) {
 		hdd_err("Get rf test mode failed");
 		return -EINVAL;
@@ -21143,6 +21142,40 @@ static int wlan_hdd_cfg80211_get_usable_channel(struct wiphy *wiphy,
 
 #ifdef WLAN_FEATURE_LOCAL_PKT_CAPTURE
 /**
+ * hdd_lpc_find_num_non_mon_active_adapters() - Find number of non-monitor
+ * active adapters
+ *
+ * This function iterates over the list of adapters and counts any
+ * non-monitor mode adapter which is UP
+ *
+ * Return: number of active adapters
+ */
+static int hdd_lpc_find_num_non_mon_active_adapters(void)
+{
+	struct hdd_context *hdd_ctx;
+	struct hdd_adapter *adapter = NULL;
+	struct hdd_adapter *next_adapter = NULL;
+	int num_active_adapter = 0;
+
+	hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
+	if (!hdd_ctx)
+		return -EINVAL;
+
+	hdd_for_each_adapter_dev_held_safe(hdd_ctx, adapter, next_adapter,
+					   NET_DEV_HOLD_LOCAL_PKT_CAPTURE) {
+		if (hdd_is_interface_up(adapter) &&
+			adapter->device_mode != QDF_MONITOR_MODE) {
+			num_active_adapter++;
+		}
+
+		hdd_adapter_dev_put_debug(adapter,
+					  NET_DEV_HOLD_LOCAL_PKT_CAPTURE);
+	}
+
+	return num_active_adapter;
+}
+
+/**
  * os_if_monitor_mode_configure() - Wifi monitor mode configuration
  * vendor command
  * @adapter: hdd adapter
@@ -21156,13 +21189,26 @@ QDF_STATUS os_if_monitor_mode_configure(struct hdd_adapter *adapter,
 					const void *data, int data_len)
 {
 	struct wlan_objmgr_vdev *vdev;
-	QDF_STATUS status;
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	int num_active_adapter;
 
 	vdev = hdd_objmgr_get_vdev_by_user(adapter->deflink, WLAN_DP_ID);
 	if (!vdev)
 		return QDF_STATUS_E_INVAL;
 
-	status = os_if_dp_set_lpc_configure(vdev, data, data_len);
+	num_active_adapter = hdd_lpc_find_num_non_mon_active_adapters();
+
+	/* Currently Local Packet capture is only supported on STA
+	 * interface and if any 2 port concurrency exists, return failure
+	 */
+	if (num_active_adapter == 1) {
+		status = os_if_dp_set_lpc_configure(vdev, data, data_len);
+	} else {
+		status = QDF_STATUS_E_NOSUPPORT;
+		hdd_debug("lpc: conc: more than 1 interface is UP: %d",
+			  num_active_adapter);
+	}
+
 	hdd_objmgr_put_vdev_by_user(vdev, WLAN_DP_ID);
 	return status;
 }
@@ -24628,8 +24674,8 @@ static void wlan_hdd_update_iface_combination(struct hdd_context *hdd_ctx,
 	uint8_t i, j = 0;
 	bool dbs_one_by_one, dbs_two_by_two;
 	struct wlan_objmgr_psoc *psoc = hdd_ctx->psoc;
-	bool no_p2p_concurrency, no_sap_nan_concurrency, no_sta_sap_concurrency;
-	bool no_sta_nan_concurrency, sta_sap_p2p_concurrency, sta_p2p_ndp_conc;
+	bool no_p2p_concurrency;
+	bool sta_sap_p2p_concurrency, sta_p2p_ndp_conc;
 	bool sap_sta_nan_concurrency, sap_sap_sta_concurrency;
 	uint8_t num;
 	QDF_STATUS status;
@@ -24646,9 +24692,6 @@ static void wlan_hdd_update_iface_combination(struct hdd_context *hdd_ctx,
 	}
 
 	no_p2p_concurrency = cfg_get(psoc, CFG_NO_P2P_CONCURRENCY);
-	no_sta_nan_concurrency = cfg_get(psoc, CFG_NO_STA_NAN_CONCURRENCY);
-	no_sap_nan_concurrency = cfg_get(psoc, CFG_NO_SAP_NAN_CONCURRENCY);
-	no_sta_sap_concurrency = cfg_get(psoc, CFG_NO_STA_SAP_CONCURRENCY);
 	sta_sap_p2p_concurrency = cfg_get(psoc, CFG_STA_SAP_P2P_CONCURRENCY);
 	sap_sap_sta_concurrency = cfg_get(psoc, CFG_SAP_SAP_STA_CONCURRENCY);
 	sap_sta_nan_concurrency = cfg_get(psoc,
@@ -24699,17 +24742,6 @@ static void wlan_hdd_update_iface_combination(struct hdd_context *hdd_ctx,
 			/* remove SAP NAN concurrency */
 			if (wlan_hdd_is_sap_nan_concurrency_present(i))
 				continue;
-		} else {
-			/* remove STA NAN concurrency */
-			if (no_sta_nan_concurrency &&
-			    wlan_hdd_is_sta_nan_concurrency_present(
-					wlan_hdd_iface_combination, i))
-				continue;
-
-			 /* remove SAP NAN concurrency */
-			if (no_sap_nan_concurrency &&
-			    wlan_hdd_is_sap_nan_concurrency_present(i))
-				continue;
 		}
 
 		/*
@@ -24729,11 +24761,6 @@ static void wlan_hdd_update_iface_combination(struct hdd_context *hdd_ctx,
 			j -= wlan_hdd_remove_sta_p2p_conc(hdd_ctx->combination,
 							  j);
 		}
-
-		/* remove STA SAP concurrency */
-		if (no_sta_sap_concurrency &&
-		    wlan_hdd_is_sta_sap_concurrency_present(i))
-			continue;
 
 		hdd_ctx->combination[j] = wlan_hdd_iface_combination[i];
 
@@ -31842,6 +31869,8 @@ static int __wlan_hdd_cfg80211_get_channel(struct wiphy *wiphy,
 
 	hdd_debug("get channel for link id: %d, device mode: %d", link_id,
 		  adapter->device_mode);
+
+	hdd_reg_wait_for_country_change(hdd_ctx);
 
 	switch (adapter->device_mode) {
 	case QDF_SAP_MODE:

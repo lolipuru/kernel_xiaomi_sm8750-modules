@@ -3227,11 +3227,62 @@ lim_disable_bformee_for_iot_ap(struct mac_context *mac_ctx,
 
 	if (wlan_action_oui_search(mac_ctx->psoc,
 				   &vendor_ap_search_attr,
-				   ACTION_OUI_DISABLE_BFORMEE) &&
-	    session->nss == 2 && CH_WIDTH_160MHZ == session->ch_width) {
+				   ACTION_OUI_DISABLE_BFORMEE)) {
 		session->vht_config.su_beam_formee = 0;
 		session->vht_config.mu_beam_formee = 0;
-		pe_debug("IoT ap with BW 160 MHz NSS 2, disable Beamformee");
+		pe_debug("Disable Beamformee for IoT AP");
+	}
+}
+
+#ifdef WLAN_FEATURE_11AX
+static
+void lim_disable_he_dynamic_smps(struct pe_session *session)
+{
+	pe_debug("Disable HE D-SMPS");
+	session->he_config.he_dynamic_smps = 0;
+}
+#else
+static inline
+void lim_disable_he_dynamic_smps(struct pe_session *session)
+{}
+#endif
+
+/**
+ * lim_disable_dsmps_for_iot_ap() - disable dynamic SMPS for IOT AP
+ *@mac_ctx: mac context
+ *@session: pe session
+ *@bss_desc: bss descriptor
+ *
+ * When connecting to specific IOT AP, disable STA HT and HE dynamic SMPS
+ * capabilities.
+ *
+ * Return: None
+ */
+static void
+lim_disable_dsmps_for_iot_ap(struct mac_context *mac_ctx,
+			     struct pe_session *session,
+			     struct bss_description *bss_desc)
+{
+	struct action_oui_search_attr vendor_ap_search_attr = {0};
+	uint16_t ie_len;
+
+	ie_len = wlan_get_ielen_from_bss_description(bss_desc);
+
+	vendor_ap_search_attr.ie_data = (uint8_t *)&bss_desc->ieFields[0];
+	vendor_ap_search_attr.ie_length = ie_len;
+
+	if (wlan_action_oui_search(mac_ctx->psoc,
+				   &vendor_ap_search_attr,
+				   ACTION_OUI_DISABLE_DYNAMIC_SMPS)) {
+		mac_ctx->mlme_cfg->ht_caps.enable_smps = 0;
+		/*
+		 * For HT D-SMPS type,
+		 * 0 - Static, 1 - Dynamic, 2 - Reserved/Invalid, 3 - Disabled
+		 */
+		mac_ctx->mlme_cfg->ht_caps.smps = 3;
+		mac_ctx->mlme_cfg->ht_caps.ht_cap_info.mimo_power_save = 3;
+		lim_disable_he_dynamic_smps(session);
+		pe_debug("Disable HT and HE D-SMPS for this IOT AP");
 	}
 }
 
@@ -3263,6 +3314,7 @@ lim_fill_pe_session(struct mac_context *mac_ctx, struct pe_session *session,
 	struct cm_roam_values_copy temp;
 	uint32_t neighbor_lookup_threshold;
 	uint32_t hi_rssi_scan_rssi_delta;
+	uint32_t rf_test_mode;
 
 	/*
 	 * Update the capability here itself as this is used in
@@ -3510,17 +3562,28 @@ lim_fill_pe_session(struct mac_context *mac_ctx, struct pe_session *session,
 
 	lim_disable_bformee_for_iot_ap(mac_ctx, session, bss_desc);
 
+	lim_disable_dsmps_for_iot_ap(mac_ctx, session, bss_desc);
+
 	mlme_obj->reg_tpc_obj.is_power_constraint_abs =
 						!is_pwr_constraint;
 
 	if (wlan_reg_is_6ghz_chan_freq(bss_desc->chan_freq)) {
 		if (!ie_struct->Country.present)
 			pe_debug("Channel is 6G but country IE not present");
+
+		status = wlan_mlme_get_rf_test_mode(mac_ctx->psoc,
+						    &rf_test_mode);
+		if (QDF_IS_STATUS_ERROR(status)) {
+			pe_err("Get rf test mode failed");
+			status = QDF_STATUS_E_NOSUPPORT;
+			goto send;
+		}
+
 		status = wlan_reg_get_best_6g_power_type(
 				mac_ctx->psoc, mac_ctx->pdev,
 				&power_type_6g,
 				session->ap_defined_power_type_6g,
-				bss_desc->chan_freq);
+				bss_desc->chan_freq, rf_test_mode);
 		if (QDF_IS_STATUS_ERROR(status)) {
 			status = QDF_STATUS_E_NOSUPPORT;
 			goto send;
@@ -5887,29 +5950,6 @@ static uint8_t lim_get_num_tpe_octets(uint8_t max_transmit_power_count)
 	return 1 << (max_transmit_power_count - 1);
 }
 
-static enum reg_6g_ap_type
-lim_get_ap_power_type_for_tpc_calc(struct mac_context *mac,
-				   struct pe_session *session)
-{
-	bool rf_test_mode = false;
-	bool safe_mode_enable = false;
-	enum reg_6g_ap_type ap_power_type_6g;
-
-	ap_power_type_6g = session->best_6g_power_type;
-	wlan_mlme_get_safe_mode_enable(mac->psoc,
-				       &safe_mode_enable);
-	wlan_mlme_is_rf_test_mode_enabled(mac->psoc,
-					  &rf_test_mode);
-	/*
-	 * set LPI power if safe mode is enabled OR RF test
-	 * mode is enabled.
-	 */
-	if (rf_test_mode || safe_mode_enable)
-		ap_power_type_6g = REG_INDOOR_AP;
-
-	return ap_power_type_6g;
-}
-
 void lim_parse_tpe_ie(struct mac_context *mac, struct pe_session *session,
 		      tDot11fIEtransmit_power_env *tpe_ies, uint8_t num_tpe_ies,
 		      tDot11fIEhe_op *he_op, bool *has_tpe_updated)
@@ -6017,8 +6057,7 @@ void lim_parse_tpe_ie(struct mac_context *mac, struct pe_session *session,
 	bw_val = wlan_reg_get_bw_value(session->ch_width);
 
 	if (wlan_reg_is_6ghz_chan_freq(curr_op_freq)) {
-		ap_power_type_6g =
-			lim_get_ap_power_type_for_tpc_calc(mac, session);
+		ap_power_type_6g = session->best_6g_power_type;
 		if (psd_set) {
 			wlan_reg_get_client_power_for_connecting_ap(
 				mac->pdev, ap_power_type_6g,
@@ -6541,8 +6580,7 @@ void lim_calculate_tpc(struct mac_context *mac,
 		is_6ghz_freq = true;
 		/* Power mode calculation for 6 GHz STA*/
 		if (LIM_IS_STA_ROLE(session))
-			ap_power_type_6g =
-			lim_get_ap_power_type_for_tpc_calc(mac, session);
+			ap_power_type_6g = session->best_6g_power_type;
 	}
 
 	if (mlme_obj->reg_tpc_obj.num_pwr_levels) {
@@ -10095,6 +10133,7 @@ static void lim_process_sme_channel_change_request(struct mac_context *mac_ctx,
 						    ch_change_req))) {
 		pe_err("Target channel and mode is same as current channel and mode channel freq %d and mode %d",
 		       session_entry->curr_op_freq, session_entry->ch_width);
+		lim_abort_channel_change(mac_ctx, ch_change_req->vdev_id);
 		return;
 	}
 

@@ -1735,6 +1735,13 @@ endif
 
 $(call add-wlan-objs,pkt_capture,$(PKT_CAPTURE_OBJS))
 
+########## MGMT RX SRNG ##########
+
+MGMT_RX_SRNG_DIR := components/mgmt_rx_srng
+MGMT_RX_SRNG_INC := -I$(WLAN_ROOT)/$(MGMT_RX_SRNG_DIR)/core/inc \
+		    -I$(WLAN_ROOT)/$(MGMT_RX_SRNG_DIR)/dispatcher/inc \
+		    -I$(WLAN_ROOT)/components/target_if/mgmt_rx_srng/inc
+
 ########## FTM TIME SYNC ##########
 
 FTM_TIME_SYNC_DIR := components/ftm_time_sync
@@ -2178,6 +2185,7 @@ DP_OBJS := $(DP_SRC)/dp_main.o \
 		$(DP_SRC)/dp_peer.o \
 		$(DP_SRC)/dp_rx_desc.o \
 		$(DP_SRC)/dp_rx_defrag.o \
+		$(DP_SRC)/dp_hist.o \
 		$(DP_SRC)/dp_stats.o \
 		$(WLAN_COMMON_ROOT)/target_if/dp/src/target_if_dp.o
 
@@ -3391,6 +3399,7 @@ INCS +=		$(HOST_DIAG_LOG_INC)
 INCS +=		$(DISA_INC)
 INCS +=		$(ACTION_OUI_INC)
 INCS +=		$(PKT_CAPTURE_INC)
+INCS +=		$(MGMT_RX_SRNG_INC)
 INCS +=		$(FTM_TIME_SYNC_INC)
 INCS +=		$(WLAN_PRE_CAC_INC)
 
