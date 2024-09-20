@@ -37,7 +37,8 @@ struct synx_hwfence_interops {
 		u32 *signal_status);
 	void *(*get_fence)(u32 h_callee);
 	int (*notify_recover)(enum synx_core_id id);
-	int (*signal_fence)(enum synx_core_id id, u32 h_synx, enum synx_signal_status status);
+	int (*signal_fence)(enum synx_core_id id, bool is_core_ssr, u32 h_synx,
+		enum synx_signal_status status);
 };
 
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)
