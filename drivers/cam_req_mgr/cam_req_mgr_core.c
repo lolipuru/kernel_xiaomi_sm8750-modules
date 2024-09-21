@@ -94,6 +94,7 @@ void cam_req_mgr_core_link_reset(struct cam_req_mgr_core_link *link)
 	link->is_sending_req = false;
 	link->resume_sync_curr_mask = 0;
 	link->resume_sync_dev_mask = 0;
+	link->exp_time_for_resume = 0;
 	atomic_set(&link->eof_event_cnt, 0);
 	link->cont_empty_slots = 0;
 	__cam_req_mgr_reset_apply_data(link);
@@ -1083,8 +1084,24 @@ static void __cam_req_mgr_validate_crm_wd_timer(
 		in_q->rd_idx, idx, current_req_id, current_frame_timeout);
 
 	if ((current_req_id == -1) && (next_req_id == -1)) {
-		CAM_DBG(CAM_CRM,
-			"Skip modifying wd timer, continue with same timeout");
+		/* Check for resume scenario for long exposure */
+		if (link->exp_time_for_resume) {
+			CAM_DBG(CAM_CRM,
+				"Modifying wd timer expiry to %d ms on link: 0x%x",
+				(link->exp_time_for_resume + CAM_REQ_MGR_WATCHDOG_TIMEOUT),
+				link->link_hdl);
+			spin_lock_bh(&link->link_state_spin_lock);
+			if (link->watchdog) {
+				crm_timer_modify(link->watchdog,
+					link->exp_time_for_resume +
+					CAM_REQ_MGR_WATCHDOG_TIMEOUT);
+			}
+			link->exp_time_for_resume = 0;
+			spin_unlock_bh(&link->link_state_spin_lock);
+		} else {
+			CAM_DBG(CAM_CRM,
+				"Skip modifying wd timer, continue with same timeout");
+		}
 		return;
 	}
 
@@ -3177,6 +3194,7 @@ int cam_req_mgr_process_flush_req(void *priv, void *data)
 		__cam_req_mgr_flush_dev_with_max_pd(link, flush_info, link->max_delay);
 		link->open_req_cnt = 0;
 		link->resume_sync_curr_mask = 0x0;
+		link->exp_time_for_resume = 0;
 		break;
 	case CAM_REQ_MGR_FLUSH_TYPE_CANCEL_REQ:
 		link->last_flush_id = flush_info->req_id;
@@ -4481,6 +4499,14 @@ static int cam_req_mgr_cb_notify_msg(
 	switch (msg->msg_type) {
 	case CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO:
 		spin_lock_bh(&link->req.reset_link_spin_lock);
+		/* Long exposure case for resume from standby */
+		if (msg->u.frame_info.use_for_wd) {
+			link->exp_time_for_resume =
+				msg->u.frame_info.frame_duration / CAM_COMMON_NS_PER_MS;
+			spin_unlock_bh(&link->req.reset_link_spin_lock);
+			return 0;
+		}
+
 		in_q = link->req.in_q;
 		if (!in_q) {
 			CAM_ERR(CAM_CRM, "in_q ptr NULL, link_hdl %x", msg->link_hdl);

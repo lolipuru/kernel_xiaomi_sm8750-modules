@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CPASTOP_V780_100_H_
@@ -1217,6 +1217,24 @@ static struct cam_cpas_camnoc_qchannel cam780_cpas100_qchannel_info = {
 	.qchannel_status = 0x60,
 };
 
+static struct cam_cpas_subpart_info cam780_cpas_camera_subpart_info = {
+	.num_bits = 8,
+	/*
+	 * Below fuse indexing is based on software fuse definition which is in SMEM and provided
+	 * by XBL team.
+	 */
+	.hw_bitmap_mask = {
+		{CAM_CPAS_CAM_FUSE, BIT(0)},
+		{CAM_CPAS_ISP_FUSE, BIT(1)},
+		{CAM_CPAS_ISP_FUSE, BIT(2)},
+		{CAM_CPAS_ISP_FUSE, BIT(0)},
+		{CAM_CPAS_SFE_FUSE, BIT(0)},
+		{CAM_CPAS_SFE_FUSE, BIT(1)},
+		{CAM_CPAS_SFE_FUSE, BIT(2)},
+		{CAM_CPAS_CUSTOM_FUSE, BIT(0)},
+	}
+};
+
 static struct cam_cpas_info cam780_cpas100_cpas_info = {
 	.hw_caps_info = {
 		.num_caps_registers = 1,
@@ -1224,6 +1242,7 @@ static struct cam_cpas_info cam780_cpas100_cpas_info = {
 	},
 	.qchannel_info = {&cam780_cpas100_qchannel_info},
 	.num_qchannel = 1,
+	.subpart_info = &cam780_cpas_camera_subpart_info,
 };
 
 #endif /* _CPASTOP_V780_100_H_ */

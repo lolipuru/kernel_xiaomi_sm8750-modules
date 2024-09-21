@@ -3424,7 +3424,6 @@ static int __cam_isp_ctx_reg_upd_in_epoch_bubble_state(
 {
 	struct cam_context     *ctx = ctx_isp->base;
 	struct cam_ctx_request *req;
-	struct cam_isp_ctx_req *req_isp;
 
 	if (ctx_isp->frame_id == 1) {
 		CAM_DBG(CAM_ISP, "Reg update in Substate[%s] for early PCR",
@@ -3434,9 +3433,11 @@ static int __cam_isp_ctx_reg_upd_in_epoch_bubble_state(
 		if (!list_empty(&ctx->active_req_list)) {
 			req = list_first_entry(&ctx->active_req_list, struct cam_ctx_request,
 				list);
-			req_isp = (struct cam_isp_ctx_req *)req->req_priv;
-			__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
-				&req_isp->hw_update_data);
+			if (req->request_id)
+				ctx_isp->reported_req_id = req->request_id;
+
+			__cam_isp_ctx_send_sof_timestamp(ctx_isp, req->request_id,
+				CAM_REQ_MGR_SOF_EVENT_SUCCESS);
 		}
 	} else
 		CAM_WARN_RATE_LIMIT(CAM_ISP,
@@ -3494,8 +3495,11 @@ static int __cam_isp_ctx_reg_upd_in_applied_state(
 		__cam_isp_ctx_substate_val_to_type(
 		ctx_isp->substate_activated), ctx->ctx_id, ctx->link_hdl);
 
-	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
-		&req_isp->hw_update_data);
+	if (request_id)
+		ctx_isp->reported_req_id = request_id;
+
+	__cam_isp_ctx_send_sof_timestamp(ctx_isp, request_id,
+		CAM_REQ_MGR_SOF_EVENT_SUCCESS);
 
 	__cam_isp_ctx_update_state_monitor_array(ctx_isp,
 		CAM_ISP_STATE_CHANGE_TRIGGER_REG_UPDATE, request_id);
@@ -3631,8 +3635,10 @@ notify_only:
 		if (request_id != 0)
 			ctx_isp->reported_req_id = request_id;
 
-		__cam_isp_ctx_send_sof_timestamp(ctx_isp, request_id,
-			CAM_REQ_MGR_SOF_EVENT_SUCCESS);
+		if (request_id == 0)
+			__cam_isp_ctx_send_sof_timestamp(ctx_isp, request_id,
+				CAM_REQ_MGR_SOF_EVENT_SUCCESS);
+
 		__cam_isp_ctx_update_state_monitor_array(ctx_isp,
 			CAM_ISP_STATE_CHANGE_TRIGGER_EPOCH,
 			request_id);
@@ -3894,7 +3900,7 @@ static int __cam_isp_ctx_epoch_in_applied(struct cam_isp_context *ctx_isp,
 	if ((request_id != 0) && req_isp->bubble_detected)
 		sof_event_status = CAM_REQ_MGR_SOF_EVENT_ERROR;
 
-	__cam_isp_ctx_send_sof_timestamp(ctx_isp, request_id,
+	__cam_isp_ctx_send_sof_timestamp(ctx_isp, 0,
 		sof_event_status);
 
 	cam_req_mgr_debug_delay_detect();
@@ -4871,9 +4877,6 @@ static int __cam_isp_ctx_fs2_reg_upd_in_applied_state(
 		__cam_isp_ctx_move_req_to_free_list(ctx, req);
 	}
 
-	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
-		&req_isp->hw_update_data);
-
 	/*
 	 * This function only called directly from applied and bubble applied
 	 * state so change substate here.
@@ -5484,6 +5487,10 @@ static int __cam_isp_ctx_apply_req_in_activated_state(
 	spin_lock_bh(&ctx->lock);
 	req = list_first_entry(&ctx->pending_req_list, struct cam_ctx_request,
 		list);
+
+	if (!list_empty(&ctx->active_req_list))
+		active_req = list_first_entry(&ctx->active_req_list,
+			struct cam_ctx_request, list);
 	spin_unlock_bh(&ctx->lock);
 
 	/*
@@ -5505,6 +5512,9 @@ static int __cam_isp_ctx_apply_req_in_activated_state(
 		ctx->ctx_id, ctx->link_hdl);
 	req_isp = (struct cam_isp_ctx_req *) req->req_priv;
 
+	if (active_req)
+		active_req_isp = (struct cam_isp_ctx_req *) active_req->req_priv;
+
 	if (ctx_isp->active_req_cnt >=  2) {
 		CAM_WARN_RATE_LIMIT(CAM_ISP,
 			"Reject apply request (id %lld) due to congestion(cnt = %d) ctx %u, link: 0x%x",
@@ -5512,25 +5522,19 @@ static int __cam_isp_ctx_apply_req_in_activated_state(
 			ctx_isp->active_req_cnt,
 			ctx->ctx_id, ctx->link_hdl);
 
-		spin_lock_bh(&ctx->lock);
-		if (!list_empty(&ctx->active_req_list))
-			active_req = list_first_entry(&ctx->active_req_list,
-				struct cam_ctx_request, list);
-		else
-			CAM_ERR_RATE_LIMIT(CAM_ISP,
-				"WARNING: should not happen (cnt = %d) but active_list empty, ctx %u, link: 0x%x",
-				ctx_isp->active_req_cnt, ctx->ctx_id, ctx->link_hdl);
-		spin_unlock_bh(&ctx->lock);
-
-		if (active_req) {
-			active_req_isp =
-				(struct cam_isp_ctx_req *) active_req->req_priv;
+		if (active_req)
 			__cam_isp_ctx_handle_buf_done_fail_log(ctx_isp,
 				active_req->request_id, active_req_isp);
-		}
 
 		rc = -EFAULT;
 		goto end;
+	}
+
+
+	if (active_req) {
+		__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
+			&active_req_isp->hw_update_data);
+		active_req_isp->is_reg_dump_triggered = true;
 	}
 
 	/* Reset congestion counter */
@@ -5751,11 +5755,29 @@ static int __cam_isp_ctx_apply_default_req_settings(
 	bool skip_rup_aup = false;
 	struct cam_ctx_request *req = NULL;
 	struct cam_isp_ctx_req *req_isp = NULL;
+	struct cam_ctx_request *active_req = NULL;
 	struct cam_isp_context *isp_ctx =
 		(struct cam_isp_context *) ctx->ctx_priv;
+	struct cam_isp_ctx_req *active_req_isp = NULL;
 	struct cam_hw_cmd_args hw_cmd_args;
 	struct cam_isp_hw_cmd_args isp_hw_cmd_args;
 	struct cam_hw_config_args cfg = {0};
+
+	spin_lock_bh(&ctx->lock);
+	if (!list_empty(&ctx->active_req_list))
+		active_req = list_first_entry(&ctx->active_req_list,
+				struct cam_ctx_request, list);
+	spin_unlock_bh(&ctx->lock);
+
+	if (active_req) {
+		active_req_isp =
+				(struct cam_isp_ctx_req *) active_req->req_priv;
+		if (!active_req_isp->is_reg_dump_triggered) {
+			__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
+				&active_req_isp->hw_update_data);
+			active_req_isp->is_reg_dump_triggered = true;
+		}
+	}
 
 	if (isp_ctx->mode_switch_en && isp_ctx->handle_mswitch) {
 		if ((apply->last_applied_max_pd_req > 0) &&
@@ -6743,9 +6765,6 @@ static int __cam_isp_ctx_rdi_only_sof_in_bubble_applied(
 	CAM_DBG(CAM_ISP, "move request %lld to active list(cnt = %d), ctx_idx: %u, link: 0x%x",
 			req->request_id, ctx_isp->active_req_cnt, ctx->ctx_id, ctx->link_hdl);
 
-	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
-		&req_isp->hw_update_data);
-
 	if (!req_isp->bubble_report) {
 		if (req->request_id > ctx_isp->reported_req_id) {
 			request_id = req->request_id;
@@ -6995,9 +7014,6 @@ static int __cam_isp_ctx_rdi_only_reg_upd_in_bubble_applied_state(
 			"move active req %lld to free list(cnt=%d), ctx %u link: 0x%x",
 			req->request_id, ctx_isp->active_req_cnt, ctx->ctx_id, ctx->link_hdl);
 	}
-
-	__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
-		&req_isp->hw_update_data);
 
 	__cam_isp_ctx_notify_trigger_util(CAM_TRIGGER_POINT_SOF, ctx_isp);
 
@@ -7591,6 +7607,7 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 	req_isp->bubble_detected = false;
 	req_isp->cdm_reset_before_apply = false;
 	req_isp->hw_update_data.packet = packet;
+	req_isp->is_reg_dump_triggered = false;
 	req->pf_data.req = req;
 	req->packet = packet;
 
@@ -9088,7 +9105,7 @@ static int __cam_isp_ctx_stop_dev_in_activated_unlock(
 	struct cam_isp_ctx_req          *req_isp;
 	struct cam_isp_context          *ctx_isp =
 		(struct cam_isp_context *) ctx->ctx_priv;
-	struct cam_isp_stop_args         stop_isp;
+	struct cam_isp_stop_args         stop_isp = {0};
 
 	/* Mask off all the incoming hardware events */
 	spin_lock_bh(&ctx->lock);

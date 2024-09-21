@@ -611,6 +611,8 @@ const char *cam_ife_csid_reset_type_to_string(enum cam_ife_csid_reset_type reset
 	switch (reset_type) {
 	case CAM_IFE_CSID_RESET_GLOBAL: return "global";
 	case CAM_IFE_CSID_RESET_PATH: return "path";
+	case CAM_IFE_CSID_RESET_GLOBAL_HW_ONLY: return "global_hw";
+	case CAM_IFE_CSID_RESET_GLOBAL_IRQ_CNTRL: return "global_irq_rst";
 	default: return "invalid";
 	}
 }

@@ -499,6 +499,7 @@ struct cam_req_mgr_connected_device {
  * @resume_sync_dev_mask        : Device mask for all devices seeking sync in resume sequence
  * @resume_sync_curr_mask       : Current device mask of devices notifying they are ready for resume
  * @last_applied_done_timestamp : Last applied done timestamp value
+ * @exp_time_for_resume         : Exposure time in ms, to be used for WD timer post resume
  */
 struct cam_req_mgr_core_link {
 	int32_t                              link_hdl;
@@ -546,6 +547,7 @@ struct cam_req_mgr_core_link {
 	uint32_t                             resume_sync_dev_mask;
 	uint32_t                             resume_sync_curr_mask;
 	uint64_t                             last_applied_done_timestamp;
+	uint32_t                             exp_time_for_resume;
 };
 
 /**
