@@ -308,20 +308,6 @@ struct cam_isp_comp_record_query {
 };
 
 /**
- * struct cam_cmd_buf_desc_addr_len
- *
- * brief:                       structure to store cpu addr and size of
- *                              reg dump descriptors
- * @cpu_addr:                   cpu addr of buffer
- * @size:                       size of the buffer
- */
-
-struct cam_cmd_buf_desc_addr_len {
-	uintptr_t cpu_addr;
-	size_t    buf_size;
-};
-
-/**
  * struct cam_ife_hw_mgr_ctx - IFE HW manager Context object
  *
  * @list:                   used by the ctx list.
@@ -390,7 +376,6 @@ struct cam_cmd_buf_desc_addr_len {
  * @pri_rdi_out_res:         Primary RDI res for RDI only cases
  * @drv_info:                Array to include the per request drv info
  * @is_init_drv_cfg_received: Indicate if init drv config has received
- * @is_internal_recovery_set: checks if internal recovery is in progress
  */
 struct cam_ife_hw_mgr_ctx {
 	struct list_head                           list;
@@ -434,8 +419,6 @@ struct cam_ife_hw_mgr_ctx {
 	struct cam_cmd_buf_desc                    reg_dump_buf_desc[
 						CAM_REG_DUMP_MAX_BUF_ENTRIES];
 	uint32_t                                   num_reg_dump_buf;
-	struct cam_cmd_buf_desc_addr_len           reg_dump_cmd_buf_addr_len[
-						CAM_REG_DUMP_MAX_BUF_ENTRIES];
 	uint64_t                                   applied_req_id;
 	enum cam_ife_ctx_master_type               ctx_type;
 	uint32_t                                   ctx_config;
@@ -462,7 +445,6 @@ struct cam_ife_hw_mgr_ctx {
 	uint32_t                                   pri_rdi_out_res;
 	struct cam_isp_hw_per_req_info             per_req_info[MAX_DRV_REQUEST_DEPTH];
 	bool                                       is_init_drv_cfg_received;
-	bool                                       is_internal_recovery_set;
 };
 
 /**
