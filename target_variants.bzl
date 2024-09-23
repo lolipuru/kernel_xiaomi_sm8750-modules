@@ -7,6 +7,7 @@ targets = [
     "parrot",
     "sun",
     "vienna",
+    "seraph",
 ]
 
 la_variants = [
