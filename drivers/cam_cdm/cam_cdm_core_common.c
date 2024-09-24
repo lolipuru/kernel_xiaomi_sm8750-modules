@@ -357,12 +357,11 @@ static int cam_cdm_stream_handle_init(void *hw_priv, bool init)
 int cam_cdm_stream_ops_internal(void *hw_priv,
 	void *start_args, bool operation)
 {
-	struct cam_hw_info *cdm_hw = hw_priv;
-	struct cam_cdm *core = NULL;
-	int rc = -EPERM;
-	int client_idx;
+	struct cam_hw_info    *cdm_hw = hw_priv;
+	struct cam_cdm        *core;
+	int                    rc = -EPERM, client_idx;
 	struct cam_cdm_client *client;
-	uint32_t *handle = start_args;
+	uint32_t              *handle = start_args;
 
 	if (!hw_priv)
 		return -EINVAL;
@@ -555,7 +554,7 @@ int cam_cdm_process_cmd(void *hw_priv,
 	uint32_t cmd, void *cmd_args, uint32_t arg_size)
 {
 	struct cam_hw_info *cdm_hw = hw_priv;
-	struct cam_cdm *core = NULL;
+	struct cam_cdm *core;
 	int rc = -EINVAL;
 
 	if ((!hw_priv) || (!cmd_args) ||
@@ -715,7 +714,9 @@ int cam_cdm_process_cmd(void *hw_priv,
 				break;
 			}
 		} else {
+			mutex_lock(&cdm_hw->hw_mutex);
 			data->cdm_version = core->version;
+			mutex_unlock(&cdm_hw->hw_mutex);
 		}
 
 		cam_cdm_get_client_refcount(client);
