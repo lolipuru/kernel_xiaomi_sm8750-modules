@@ -6545,7 +6545,7 @@ void cvp_clock_reg_print(struct iris_hfi_device *dev)
 {
 	u32 reg;
 
-	dprintk(CVP_ERR, "%s Clock Controller Debug Prints:\n");
+	dprintk(CVP_ERR, "%s Clock Controller Debug Prints:\n", __func__);
 
 	reg = __read_register(dev, CVP_CC_MVS0C_GDSCR);
 	dprintk(CVP_ERR, "CVP_CC_MVS0C_GDSCR: %x\n", reg);
