@@ -1189,6 +1189,12 @@ int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector);
 int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector);
 
 /**
+ * sde_connector_trigger_cmd_backlight_sr - send backlight self refresh command
+ * @connector: pointer to drm connector
+ */
+int sde_connector_trigger_cmd_backlight_sr(struct drm_connector *connector);
+
+/**
  * sde_connector_complete_qsync_commit - callback signalling completion
  *			of qsync, if modified for the current commit
  * @conn   - Pointer to drm connector object

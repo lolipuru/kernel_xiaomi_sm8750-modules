@@ -156,6 +156,12 @@ struct sde_sim_arp_panel_mode {
 	u32 mode;
 };
 
+enum sde_enc_periph_cmd_state {
+	SDE_NO_CMD_SCHEDULED,
+	SDE_CMD_SCHEDULED,
+	SDE_CMD_DONE
+};
+
 /**
  * sde_encoder_vrr_info - variable refresh info
  * @frame_interval:     Frame interval configuration
@@ -178,7 +184,7 @@ struct sde_encoder_vrr_info {
 	u32 debugfs_arp_te_in_ms;
 	u32 *debugfs_freq_array;
 	struct msm_debugfs_freq_pattern *debugfs_freq_pattern;
-	bool vhm_cmd_in_progress;
+	u32 vhm_cmd_in_progress;
 };
 
 /*
@@ -298,7 +304,8 @@ enum sde_multi_te_states {
  * @input_event_work:		worker to handle input device touch events
  * @esd_trigger_work:		worker to handle esd trigger
  * @self_refresh_work:		worker to handle self refresh
- * @self_refresh_work:		worker to handle smooth dimming in vrr
+ * @backlight_cmd_work:		worker to handle smooth dimming in vrr
+ * @backlight_sr_work:		worker to handle backlight self refresh
  * @input_handler:			handler for input device events
  * @topology:                   topology of the display
  * @vblank_enabled:		boolean to track userspace vblank vote
@@ -395,6 +402,7 @@ struct sde_encoder_virt {
 	struct kthread_work esd_trigger_work;
 	struct kthread_work self_refresh_work;
 	struct kthread_work backlight_cmd_work;
+	struct kthread_delayed_work backlight_sr_work;
 
 	struct input_handler *input_handler;
 	bool vblank_enabled;
@@ -1069,6 +1077,13 @@ void sde_encoder_begin_commit(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 void sde_encoder_complete_commit(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_post_commit_bl_sr_work - handles work to be done post commit
+ *                                      related to backlight self refresh
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_post_commit_bl_sr_work(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_get_cesta_client - return the SDE CESTA client

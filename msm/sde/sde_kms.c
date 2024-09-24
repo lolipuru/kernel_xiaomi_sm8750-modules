@@ -1671,6 +1671,8 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 			pr_err("Connector Post kickoff failed rc=%d\n",
 					 rc);
 		}
+		if (connector->encoder && sde_encoder_in_video_psr(connector->encoder))
+			sde_encoder_post_commit_bl_sr_work(connector->encoder);
 	}
 
 	vm_ops = sde_vm_get_ops(sde_kms);

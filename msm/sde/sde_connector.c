@@ -179,6 +179,7 @@ static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
 	struct sde_kms *sde_kms;
 	struct drm_encoder *drm_enc;
 	struct drm_connector *connector;
+	struct sde_encoder_virt *sde_enc;
 	int rc = 0;
 
 	if (!c_conn) {
@@ -193,6 +194,20 @@ static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
 	if (!sde_kms) {
 		SDE_ERROR("invalid kms\n");
 		return -EINVAL;
+	}
+
+	connector = &c_conn->base;
+	if (connector->state && connector->state->best_encoder)
+		drm_enc = connector->state->best_encoder;
+	else
+		drm_enc = connector->encoder;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	/* If VRR command in progress, update in next interval */
+	if (sde_enc && (sde_enc->vrr_info.vhm_cmd_in_progress == SDE_CMD_SCHEDULED)) {
+		sde_encoder_handle_next_backlight_update(drm_enc);
+		SDE_EVT32(sde_enc->vrr_info.vhm_cmd_in_progress);
+		return 0;
 	}
 
 	c_conn->bl_vrr.bl_frame_idx++;
@@ -229,12 +244,6 @@ static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
 		SDE_ERROR("Backlight set notify failed\n");
 		return rc;
 	}
-
-	connector = &c_conn->base;
-	if (connector->state && connector->state->best_encoder)
-		drm_enc = connector->state->best_encoder;
-	else
-		drm_enc = connector->encoder;
 
 	if (c_conn->bl_vrr.bl_frame_idx >= c_conn->num_bl_frames) {
 		c_conn->bl_vrr.bl_frame_idx = 0;
@@ -1368,7 +1377,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	sde_enc = to_sde_encoder_virt(c_conn->encoder);
 
 	if (sde_enc)
-		sde_enc->vrr_info.vhm_cmd_in_progress = false;
+		sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
 
 	if (sde_encoder_in_cont_splash(connector->encoder))
 		return 0;
@@ -1404,7 +1413,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	if (cmd_bit_mask) {
 		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
 		if (sde_enc)
-			sde_enc->vrr_info.vhm_cmd_in_progress = true;
+			sde_enc->vrr_info.vhm_cmd_in_progress = SDE_CMD_SCHEDULED;
 	}
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, rc, cmd_bit_mask>>32, cmd_bit_mask,
@@ -1571,6 +1580,25 @@ int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector)
 		goto end;
 	}
 
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, DRMID(&c_conn->base));
+
+end:
+	mutex_unlock(&c_conn->bl_vrr.bl_lock);
+	return rc;
+}
+
+int sde_connector_trigger_cmd_backlight_sr(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn = NULL;
+	int rc = 0;
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	if (!connector) {
+		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
+		return -EINVAL;
+	}
+	c_conn = to_sde_connector(connector);
+
 	/* trigger self refresh if no frame scheduled */
 	if (connector && connector->state && connector->state->crtc &&
 			sde_crtc_no_frame_in_progress(connector->state->crtc)) {
@@ -1580,8 +1608,6 @@ int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector)
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, DRMID(&c_conn->base));
 
-end:
-	mutex_unlock(&c_conn->bl_vrr.bl_lock);
 	return rc;
 }
 
