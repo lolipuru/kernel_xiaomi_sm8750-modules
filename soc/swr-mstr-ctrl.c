@@ -530,6 +530,17 @@ exit:
 	return ret;
 }
 
+static bool swrm_first_after_clk_enabled(struct swr_mstr_ctrl *swrm)
+{
+	bool ret = false;
+
+	mutex_lock(&swrm->clklock);
+	ret = (swrm->clk_ref_count == 1) ? true:false;
+	mutex_unlock(&swrm->clklock);
+
+	return ret;
+}
+
 static int swrm_clk_request(struct swr_mstr_ctrl *swrm, bool enable)
 {
 	int ret = 0;
@@ -3724,20 +3735,22 @@ static int swrm_runtime_resume(struct device *dev)
 					goto exit;
 				}
 			}
-			swr_master_write(swrm, SWRM_COMP_SW_RESET, 0x01);
-			swr_master_write(swrm, SWRM_COMP_SW_RESET, 0x01);
-			swr_master_write(swrm, SWRM_MCP_BUS_CTRL, 0x01);
-			swrm_master_init(swrm);
-			/* wait for hw enumeration to complete */
-			usleep_range(100, 105);
-			if (!swrm_check_link_status(swrm, 0x1))
-				dev_dbg(dev, "%s:failed in connecting, ssr?\n",
+
+			if (swrm_first_after_clk_enabled(swrm)) {
+				swr_master_write(swrm, SWRM_COMP_SW_RESET, 0x01);
+				swr_master_write(swrm, SWRM_COMP_SW_RESET, 0x01);
+				swr_master_write(swrm, SWRM_MCP_BUS_CTRL, 0x01);
+				swrm_master_init(swrm);
+
+				/* wait for hw enumeration to complete */
+				usleep_range(100, 105);
+				if (!swrm_check_link_status(swrm, 0x1))
+					dev_dbg(dev, "%s:failed in connecting, ssr?\n",
 					__func__);
 
-			mutex_lock(&enumeration_lock);
-			swrm_cmd_fifo_wr_cmd(swrm, 0x4, 0xF, get_cmd_id(swrm),
+				swrm_cmd_fifo_wr_cmd(swrm, 0x4, 0xF, get_cmd_id(swrm),
 						SWRS_SCP_INT_STATUS_MASK_1);
-			mutex_unlock(&enumeration_lock);
+			}
 
 			if (swrm->state == SWR_MSTR_SSR) {
 				mutex_unlock(&swrm->reslock);
@@ -3837,9 +3850,8 @@ static int swrm_runtime_suspend(struct device *dev)
 				goto chk_lnk_status;
 			mutex_unlock(&swrm->reslock);
 
-			mutex_lock(&enumeration_lock);
-			enable_bank_switch(swrm, 0, SWR_ROW_50, SWR_MIN_COL);
-			mutex_unlock(&enumeration_lock);
+			if (swrm->master_id != MASTER_ID_BT)
+				enable_bank_switch(swrm, 0, SWR_ROW_50, SWR_MIN_COL);
 
 			mutex_lock(&swrm->reslock);
 			swrm_clk_pause(swrm);
