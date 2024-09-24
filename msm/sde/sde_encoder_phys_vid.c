@@ -2446,7 +2446,8 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 			SDE_DEBUG_VIDENC(vid_enc, "poll for active failed ret:%d\n", ret);
 
 		/* unblock sending commands, matching lock in */
-		if (sde_conn->ops.avoid_cmd_transfer)
+		if (!sde_enc->vrr_info.vhm_cmd_in_progress &&
+				sde_conn->ops.avoid_cmd_transfer)
 			sde_conn->ops.avoid_cmd_transfer(sde_conn->display, false);
 
 		phys_enc->esync_pc_exit = false;

@@ -1355,6 +1355,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
 	struct msm_freq_step_pattern *freq_pattern;
+	struct sde_encoder_virt *sde_enc;
 	u64 cmd_bit_mask = 0;
 	int rc = 0;
 
@@ -1364,6 +1365,10 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	}
 
 	c_conn = to_sde_connector(connector);
+	sde_enc = to_sde_encoder_virt(c_conn->encoder);
+
+	if (sde_enc)
+		sde_enc->vrr_info.vhm_cmd_in_progress = false;
 
 	if (sde_encoder_in_cont_splash(connector->encoder))
 		return 0;
@@ -1396,8 +1401,11 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	else if (c_conn->freq_pattern_type_changed && !freq_pattern->needs_ap_refresh)
 		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
 
-	if (cmd_bit_mask)
+	if (cmd_bit_mask) {
 		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
+		if (sde_enc)
+			sde_enc->vrr_info.vhm_cmd_in_progress = true;
+	}
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, rc, cmd_bit_mask>>32, cmd_bit_mask,
 		freq_pattern->frame_pattern_seq_idx, freq_pattern->frame_interval,

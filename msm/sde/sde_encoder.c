@@ -4927,7 +4927,8 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 			ctl->ops.hw_fence_trigger_sw_override(ctl);
 
 		/* matching unblock in sde_encoder_phys_vid_handle_post_kickoff */
-		if (phys->esync_pc_exit && c_conn->ops.avoid_cmd_transfer)
+		if (phys->esync_pc_exit && !sde_enc->vrr_info.vhm_cmd_in_progress &&
+				c_conn->ops.avoid_cmd_transfer)
 			c_conn->ops.avoid_cmd_transfer(c_conn->display, true);
 	}
 

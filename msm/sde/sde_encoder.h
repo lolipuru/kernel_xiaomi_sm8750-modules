@@ -167,6 +167,7 @@ struct sde_sim_arp_panel_mode {
  * @debugfs_arp_te_in_ms:   ARP simulator TE value in ms
  * @debugfs_freq_array:    Freqency stepping array provided for simulation
  * @debugfs_freq_pattern:  Frequency pattern provided for simulation
+ * @vhm_cmd_in_progress:   Whether a VHM related command is currently enqueued
  */
 struct sde_encoder_vrr_info {
 	u32 frame_interval;
@@ -177,6 +178,7 @@ struct sde_encoder_vrr_info {
 	u32 debugfs_arp_te_in_ms;
 	u32 *debugfs_freq_array;
 	struct msm_debugfs_freq_pattern *debugfs_freq_pattern;
+	bool vhm_cmd_in_progress;
 };
 
 /*
