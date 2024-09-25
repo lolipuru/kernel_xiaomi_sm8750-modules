@@ -245,6 +245,9 @@ static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
 		return rc;
 	}
 
+	c_conn->bl_vrr.curr_brightness = updated_brightness;
+	c_conn->bl_vrr.curr_bl_lvl = updated_bl_lvl;
+
 	if (c_conn->bl_vrr.bl_frame_idx >= c_conn->num_bl_frames) {
 		c_conn->bl_vrr.bl_frame_idx = 0;
 		c_conn->bl_vrr.bl_increment_in_progress = false;
@@ -308,8 +311,10 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 			c_conn->last_panel_power_mode);
 		goto skip_incremental_update;
 	} else if (sde_connector_is_cont_bl_updates(c_conn)) {
-		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
-		goto skip_incremental_update;
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, c_conn->bl_vrr.curr_brightness,
+			c_conn->bl_vrr.curr_bl_lvl);
+		c_conn->bl_vrr.prev_brightness = c_conn->bl_vrr.curr_brightness;
+		c_conn->bl_vrr.prev_bl_lvl = c_conn->bl_vrr.curr_bl_lvl;
 	}
 
 	c_conn->bl_vrr.new_brightness = brightness;
