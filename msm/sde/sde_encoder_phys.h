@@ -84,6 +84,20 @@ enum sde_enc_irqs {
 	SDE_ENC_IRQ_MAX
 };
 
+/**
+ * quad_pipe_cwb_roi - Region of interest for cwb in quadpipe topology
+ * CWB_ROI_DISABLED: cwb roi is disabled
+ * CWB_LEFT_ROI:     cwb roi is set to left
+ * CWB_CENTER_ROI:   cwb roi is set to center
+ * CWB_RIGHT_ROI:    cwb roi is set to right
+ */
+enum quad_pipe_cwb_roi {
+	CWB_ROI_DISABLED,
+	CWB_LEFT_ROI,
+	CWB_CENTER_ROI,
+	CWB_RIGHT_ROI,
+};
+
 struct sde_encoder_phys;
 
 /**
@@ -401,6 +415,7 @@ struct sde_encoder_vrr_cfg {
  * @has_intf_te:		Interface TE configuration support
  * @cont_splash_enabled:	Variable to store continuous splash settings.
  * @in_clone_mode		Indicates if encoder is in clone mode ref@CWB
+ * @quad_cwb_roi		Indicates ROI's for cwb in quad pipe
  * @vfp_cached:			cached vertical front porch to be used for
  *				programming ROT and MDP fetch start
  * @pf_time_in_us:		Programmable fetch time in micro-seconds
@@ -470,6 +485,7 @@ struct sde_encoder_phys {
 	bool has_intf_te;
 	bool cont_splash_enabled;
 	bool in_clone_mode;
+	enum quad_pipe_cwb_roi quad_cwb_roi;
 	int vfp_cached;
 	u32 pf_time_in_us;
 	bool sde_hw_fence_error_status;

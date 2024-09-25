@@ -443,7 +443,8 @@ static void _sde_encoder_phys_wb_setup_roi(struct sde_encoder_phys *phys_enc,
 			} else {
 				hw_wb->ops.setup_crop(hw_wb, wb_cfg, false);
 			}
-		} else if ((wb_cfg->roi.w != out_width) || (wb_cfg->roi.h != out_height)) {
+		} else if (((wb_cfg->roi.w != out_width) || (wb_cfg->roi.h != out_height))
+				&& !phys_enc->quad_cwb_roi) {
 			hw_wb->ops.setup_crop(hw_wb, wb_cfg, true);
 		} else {
 			hw_wb->ops.setup_crop(hw_wb, wb_cfg, false);
@@ -642,6 +643,10 @@ static void _sde_encoder_phys_wb_setup_cwb_source(struct sde_encoder_phys *phys_
 	if (enable) {
 		need_merge = !(_sde_encoder_is_single_lm_partial_update(wb_enc));
 		num_mixers = need_merge ? crtc->num_mixers : CRTC_SINGLE_MIXER_ONLY;
+		if (phys_enc->quad_cwb_roi) {
+			need_merge = true;
+			num_mixers = CRTC_DUAL_MIXERS_ONLY;
+		}
 	} else {
 		need_merge = (crtc->num_mixers > CRTC_SINGLE_MIXER_ONLY) ? true : false;
 		num_mixers = crtc->num_mixers;
@@ -766,7 +771,9 @@ static void _sde_encoder_phys_wb_setup_ctl(struct sde_encoder_phys *phys_enc,
 	hw_cdm = phys_enc->hw_cdm;
 	hw_dnsc_blur = phys_enc->hw_dnsc_blur;
 	ctl = phys_enc->hw_ctl;
-	need_merge = !(_sde_encoder_is_single_lm_partial_update(wb_enc));
+
+	need_merge = phys_enc->quad_cwb_roi ? true :
+			!(_sde_encoder_is_single_lm_partial_update(wb_enc));
 
 	if (test_bit(SDE_CTL_ACTIVE_CFG, &ctl->caps->features) &&
 			(phys_enc->hw_ctl && phys_enc->hw_ctl->ops.setup_intf_cfg_v1)) {
@@ -1056,6 +1063,13 @@ static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
 	if ((wb_roi.w > out_width) || (wb_roi.h > out_height)) {
 		SDE_ERROR("invalid wb roi[%dx%d] out[%dx%d]\n",
 				wb_roi.w, wb_roi.h, out_width, out_height);
+		return -EINVAL;
+	}
+
+	if (num_lm == 4 && !((wb_roi.w == out_width/2) && (wb_roi.x == out_width / 2 ||
+			wb_roi.x == out_width / 4 || wb_roi.x == 0))) {
+		SDE_ERROR("invalid cwb roi for quad pipe[%d %d] out[%d]", wb_roi.x,
+			wb_roi.w, out_width);
 		return -EINVAL;
 	}
 
@@ -1484,6 +1498,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 	enum sde_dcwb dcwb_idx = 0;
 	size_t dither_sz = 0;
 	void *dither_cfg = NULL;
+	enum sde_cwb src_pp_cwb_idx = 0;
 
 	/* In CWB mode, program actual source master sde_hw_ctl from crtc */
 	crtc = to_sde_crtc(wb_enc->crtc);
@@ -1499,6 +1514,10 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 	if (enable) {
 		need_merge = !(_sde_encoder_is_single_lm_partial_update(wb_enc));
 		num_mixers = need_merge ? crtc->num_mixers : CRTC_SINGLE_MIXER_ONLY;
+		if (phys_enc->quad_cwb_roi) {
+			need_merge = true;
+			num_mixers = CRTC_DUAL_MIXERS_ONLY;
+		}
 	} else {
 		need_merge = (crtc->num_mixers > CRTC_SINGLE_MIXER_ONLY) ? true : false;
 		num_mixers = crtc->num_mixers;
@@ -1526,6 +1545,27 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 
 	for (i = 0; i < num_mixers; i++) {
 		src_pp_idx = (enum sde_cwb) (src_pp_idx + i);
+		/* Mapping between hw_pp and src_pp for quad pipe CWB ROI
+		 *+---------+---------+---------+-----+
+		 *| HW pp   | src_pp_idx | ROI        |
+		 *+---------+---------+---------+-----+
+		 *| 0,1     | 1, 2       | Left ROI   |
+		 *| 2,1     | 3, 2       | Centre ROI |
+		 *| 2,3     | 3, 4       | Right ROI  |
+		 *+---------+---------+---------+-----+
+		 */
+		if (phys_enc->quad_cwb_roi) {
+			switch (phys_enc->quad_cwb_roi) {
+			case CWB_RIGHT_ROI:
+				src_pp_cwb_idx = src_pp_idx + 2;
+				break;
+			case CWB_CENTER_ROI:
+				src_pp_cwb_idx = src_pp_idx % 2 + 2;
+				break;
+			default:
+				src_pp_cwb_idx = src_pp_idx;
+			}
+		}
 
 		if (test_bit(SDE_WB_DCWB_CTRL, &hw_wb->caps->features)) {
 			dcwb_idx = (enum sde_dcwb) ((hw_pp->idx - (PINGPONG_CWB_0 - 1)) + i);
@@ -1534,7 +1574,10 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 				hw_wb->ops.program_cwb_dither_ctrl(hw_wb,
 					dcwb_idx, dither_cfg, dither_sz, enable);
 			}
-			if (hw_wb->ops.program_dcwb_ctrl)
+			if (hw_wb->ops.program_dcwb_ctrl && phys_enc->quad_cwb_roi)
+				hw_wb->ops.program_dcwb_ctrl(hw_wb, dcwb_idx,
+					src_pp_cwb_idx, cwb_capture_mode, enable);
+			else
 				hw_wb->ops.program_dcwb_ctrl(hw_wb, dcwb_idx,
 					src_pp_idx, cwb_capture_mode, enable);
 			if (hw_ctl->ops.update_bitmask)
@@ -1601,7 +1644,8 @@ static void _sde_encoder_phys_wb_update_cwb_flush(struct sde_encoder_phys *phys_
 	src_pp_idx = (enum sde_cwb)crtc->mixers[0].hw_lm->idx;
 	cwb_idx = (enum sde_cwb)hw_pp->idx;
 	dspp_out = (cwb_capture_mode == CAPTURE_DSPP_OUT);
-	need_merge = !(_sde_encoder_is_single_lm_partial_update(wb_enc));
+	need_merge = phys_enc->quad_cwb_roi ? true :
+			!(_sde_encoder_is_single_lm_partial_update(wb_enc));
 
 	if (test_bit(SDE_WB_DCWB_CTRL, &hw_wb->caps->features)) {
 		dcwb_idx = hw_pp->dcwb_idx;
@@ -1784,7 +1828,7 @@ static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 	struct drm_crtc_state *crtc_state = wb_enc->crtc->state;
 	struct drm_framebuffer *fb;
 	struct sde_rect *wb_roi = &wb_enc->wb_roi;
-	u32 out_width = 0, out_height = 0;
+	u32 out_width = 0, out_height = 0, num_lm;
 
 	SDE_DEBUG("[enc:%d wb:%d] mode_set:\"%s\",%d,%d]\n", DRMID(phys_enc->parent),
 			WBID(wb_enc), mode.name, mode.hdisplay, mode.vdisplay);
@@ -1809,6 +1853,8 @@ static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 		return;
 	}
 
+	num_lm = sde_crtc_get_num_datapath(crtc_state->crtc, conn_state->connector, crtc_state);
+
 	SDE_DEBUG("[fb_id:%u][fb:%u,%u]\n", fb->base.id, fb->width, fb->height);
 
 	_sde_enc_phys_wb_get_out_resolution(crtc_state, conn_state, &out_width, &out_height);
@@ -1817,6 +1863,17 @@ static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 		wb_roi->y = 0;
 		wb_roi->w = out_width;
 		wb_roi->h = out_height;
+	}
+
+	phys_enc->quad_cwb_roi = CWB_ROI_DISABLED;
+
+	if (num_lm == 4) {
+		if (wb_roi->x == out_width / 2 && wb_roi->w == out_width / 2)
+			phys_enc->quad_cwb_roi = CWB_RIGHT_ROI;
+		else if (wb_roi->x == out_width / 4 && wb_roi->w == out_width / 2)
+			phys_enc->quad_cwb_roi = CWB_CENTER_ROI;
+		else if (wb_roi->x == 0 && wb_roi->w == out_width / 2)
+			phys_enc->quad_cwb_roi = CWB_LEFT_ROI;
 	}
 
 	wb_enc->wb_fmt = sde_get_sde_format_ext(fb->format->format,
