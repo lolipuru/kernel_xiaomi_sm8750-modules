@@ -501,16 +501,14 @@ static long cam_private_ioctl(struct file *file, void *fh,
 		struct cam_req_mgr_sched_request_v3 crm_sched_req;
 		int sched_req_size;
 
-		if (k_ioctl->size < 0)
-			return -EINVAL;
-
 		if (copy_from_user(&crm_sched_req,
 			u64_to_user_ptr(k_ioctl->handle),
 			sizeof(struct cam_req_mgr_sched_request_v3))) {
 			return -EFAULT;
 		}
 
-		if (crm_sched_req.num_links > MAXIMUM_LINKS_PER_SESSION)
+		if ((crm_sched_req.num_links > MAXIMUM_LINKS_PER_SESSION) ||
+			(crm_sched_req.num_links < 0))
 			return -EINVAL;
 
 		sched_req_size = sizeof(struct cam_req_mgr_sched_request_v3) +
