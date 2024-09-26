@@ -710,7 +710,7 @@ static int cam_ois_fw_download(struct cam_ois_ctrl_t *o_ctrl)
 	const char                        *fw_name_coeff = NULL;
 	char                               name_prog[32] = {0};
 	char                               name_coeff[32] = {0};
-	struct device                     *dev = &(o_ctrl->pdev->dev);
+	struct device                     *dev;
 	struct cam_sensor_i2c_reg_setting  i2c_reg_setting;
 	void                              *vaddr = NULL;
 
@@ -718,6 +718,8 @@ static int cam_ois_fw_download(struct cam_ois_ctrl_t *o_ctrl)
 		CAM_ERR(CAM_OIS, "Invalid Args");
 		return -EINVAL;
 	}
+
+	dev = &(o_ctrl->pdev->dev);
 
 	snprintf(name_coeff, 32, "%s.coeff", o_ctrl->ois_name);
 
@@ -908,7 +910,7 @@ static int cam_ois_fw_download_v2(struct cam_ois_ctrl_t *o_ctrl)
 	uint16_t                            len_per_write = 0;
 	uint8_t                            *ptr = NULL;
 	const struct firmware              *fw = NULL;
-	struct device                      *dev = &(o_ctrl->pdev->dev);
+	struct device                      *dev;
 	uint8_t                             count = 0;
 	uint8_t                             cont_wr_flag = 0;
 
@@ -953,6 +955,7 @@ static int cam_ois_fw_download_v2(struct cam_ois_ctrl_t *o_ctrl)
 			count, fw_size, fw_param->fw_data_type, len_per_write);
 
 		/* Load FW */
+		dev = &(o_ctrl->pdev->dev);
 		rc = request_firmware(&fw, fw_param->fw_name, dev);
 		if (rc) {
 			CAM_ERR(CAM_OIS, "Failed to locate %s", fw_param->fw_name);
@@ -1354,37 +1357,30 @@ static int cam_ois_pkt_parse(struct cam_ois_ctrl_t *o_ctrl, void *arg)
 		o_ctrl->cam_ois_state = CAM_OIS_CONFIG;
 
 		rc = delete_request(&o_ctrl->i2c_fwinit_data);
-		if (rc < 0) {
+		if (rc < 0)
 			CAM_WARN(CAM_OIS,
 				"Fail deleting fwinit data: rc: %d", rc);
-			rc = 0;
-		}
 
 		for (i = 0; i < MAX_OIS_FW_COUNT; i++) {
 			if (o_ctrl->i2c_fw_init_data[i].is_settings_valid == 1) {
 				rc = delete_request(&o_ctrl->i2c_fw_init_data[i]);
-				if (rc < 0) {
+				if (rc < 0)
 					CAM_WARN(CAM_OIS,
 						"Fail deleting i2c_fw_init_data: rc: %d", rc);
-					rc = 0;
-				}
 			}
 			if (o_ctrl->i2c_fw_finalize_data[i].is_settings_valid == 1) {
 				rc = delete_request(&o_ctrl->i2c_fw_finalize_data[i]);
-				if (rc < 0) {
+				if (rc < 0)
 					CAM_WARN(CAM_OIS,
 						"Fail deleting i2c_fw_finalize_data: rc: %d", rc);
-					rc = 0;
-				}
 			}
 		}
 
 		rc = delete_request(&o_ctrl->i2c_init_data);
-		if (rc < 0) {
+		if (rc < 0)
 			CAM_WARN(CAM_OIS,
 				"Fail deleting Init data: rc: %d", rc);
-			rc = 0;
-		}
+
 		rc = delete_request(&o_ctrl->i2c_calib_data);
 		if (rc < 0) {
 			CAM_WARN(CAM_OIS,
@@ -1609,29 +1605,23 @@ void cam_ois_shutdown(struct cam_ois_ctrl_t *o_ctrl)
 	for (i = 0; i < MAX_OIS_FW_COUNT; i++) {
 		if (o_ctrl->i2c_fw_init_data[i].is_settings_valid == 1) {
 			rc = delete_request(&o_ctrl->i2c_fw_init_data[i]);
-			if (rc < 0) {
+			if (rc < 0)
 				CAM_WARN(CAM_OIS,
 					"Fail deleting i2c_fw_init_data: rc: %d", rc);
-				rc = 0;
-			}
 		}
 		if (o_ctrl->i2c_fw_finalize_data[i].is_settings_valid == 1) {
 			rc = delete_request(&o_ctrl->i2c_fw_finalize_data[i]);
-			if (rc < 0) {
+			if (rc < 0)
 				CAM_WARN(CAM_OIS,
 					"Fail deleting i2c_fw_finalize_data: rc: %d", rc);
-				rc = 0;
-			}
 		}
 	}
 
 	if (o_ctrl->i2c_fw_version_data.is_settings_valid == 1) {
 		rc = delete_request(&o_ctrl->i2c_fw_version_data);
-		if (rc < 0) {
+		if (rc < 0)
 			CAM_WARN(CAM_OIS,
 				"Fail deleting i2c_fw_version_data: rc: %d", rc);
-			rc = 0;
-		}
 	}
 
 	if (o_ctrl->i2c_mode_data.is_settings_valid == 1)

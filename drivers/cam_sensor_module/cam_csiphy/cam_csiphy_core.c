@@ -343,9 +343,7 @@ int32_t cam_csiphy_get_instance_offset(struct csiphy_device *csiphy_dev, int32_t
 {
 	int32_t i = 0;
 
-	if ((csiphy_dev->acquire_count >
-		csiphy_dev->session_max_device_support) ||
-		(csiphy_dev->acquire_count < 0)) {
+	if (csiphy_dev->acquire_count > csiphy_dev->session_max_device_support) {
 		CAM_ERR(CAM_CSIPHY,
 			"Invalid acquire count: %d, Max supported device for session: %u",
 			csiphy_dev->acquire_count,
@@ -1845,10 +1843,9 @@ int32_t cam_csiphy_config_dev(struct csiphy_device *csiphy_dev,
 
 void cam_csiphy_shutdown(struct csiphy_device *csiphy_dev)
 {
-	struct cam_hw_soc_info *soc_info;
+	struct cam_hw_soc_info  *soc_info;
 	struct cam_csiphy_param *param;
-	int32_t i = 0;
-	int rc = 0;
+	int                      i, rc;
 
 	if (csiphy_dev->csiphy_state == CAM_CSIPHY_INIT)
 		return;
@@ -1897,15 +1894,14 @@ void cam_csiphy_shutdown(struct csiphy_device *csiphy_dev)
 			cam_csiphy_reset_phyconfig_param(csiphy_dev, i);
 		}
 
+		mutex_lock(&active_csiphy_cnt_mutex);
 		if ((csiphy_dev->prgm_cmn_reg_across_csiphy) &&
 			(active_csiphy_hw_cnt > 0)) {
-			mutex_lock(&active_csiphy_cnt_mutex);
 			active_csiphy_hw_cnt--;
-			mutex_unlock(&active_csiphy_cnt_mutex);
-
 			cam_csiphy_program_common_registers(csiphy_dev, true,
 				CAM_CSIPHY_PRGM_ALL);
 		}
+		mutex_unlock(&active_csiphy_cnt_mutex);
 
 		cam_csiphy_reset(csiphy_dev);
 		cam_soc_util_disable_platform_resource(soc_info, CAM_CLK_SW_CLIENT_IDX, true, true);
@@ -1917,11 +1913,14 @@ void cam_csiphy_shutdown(struct csiphy_device *csiphy_dev)
 
 	if (csiphy_dev->csiphy_state == CAM_CSIPHY_ACQUIRE) {
 		for (i = 0; i < csiphy_dev->acquire_count; i++) {
-			if (csiphy_dev->csiphy_info[i].hdl_data.device_hdl
-				!= -1)
-				cam_destroy_device_hdl(
-				csiphy_dev->csiphy_info[i]
-				.hdl_data.device_hdl);
+			if (csiphy_dev->csiphy_info[i].hdl_data.device_hdl != -1) {
+				rc = cam_destroy_device_hdl(
+					csiphy_dev->csiphy_info[i].hdl_data.device_hdl);
+				if (rc)
+					CAM_ERR(CAM_CSIPHY,
+						"Failed at destroying the device hdl: 0x%x",
+						csiphy_dev->csiphy_info[i].hdl_data.device_hdl);
+			}
 			csiphy_dev->csiphy_info[i].hdl_data.device_hdl = -1;
 			csiphy_dev->csiphy_info[i].hdl_data.session_hdl = -1;
 		}
@@ -2034,9 +2033,11 @@ static int __csiphy_cpas_configure_for_main_or_aon(
 		}
 	}
 
-	cam_cpas_reg_read(cpas_handle, CAM_CPAS_REGBASE_CPASTOP,
+	rc = cam_cpas_reg_read(cpas_handle, CAM_CPAS_REGBASE_CPASTOP,
 		aon_sel_params->aon_cam_sel_offset[g_phy_data[phy_idx].aon_cam_id],
 		true, &aon_config);
+	if (rc)
+		CAM_WARN(CAM_CSIPHY, "CPAS AON sel register read failed");
 
 	if (get_access && !g_phy_data[phy_idx].is_configured_for_main) {
 		aon_config &= ~(aon_sel_params->cam_sel_mask |
