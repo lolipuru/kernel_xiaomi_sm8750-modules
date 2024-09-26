@@ -1032,6 +1032,12 @@ cnss_mhi_controller_set_bw_scale_cb(struct cnss_pci_data *pci_priv,
 
 static int cnss_mhi_force_reset(struct cnss_pci_data *pci_priv)
 {
+	int ret;
+
+	ret = cnss_pci_check_link_status(pci_priv);
+	if (ret)
+		return ret;
+
 	return mhi_force_reset(pci_priv->mhi_ctrl);
 }
 
