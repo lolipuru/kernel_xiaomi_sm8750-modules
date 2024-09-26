@@ -80,6 +80,8 @@
 #define IDLE_SHORT_TIMEOUT	1
 
 #define IDLE_TIMEOUT_MAX	150
+/* DPU min fps 60 in ms + nominal vsync 120 in ms + 1*/
+#define IDLE_TIMEOUT_MIN_VRR	26
 
 #define EVT_TIME_OUT_SPLIT 2
 
@@ -2667,6 +2669,10 @@ static unsigned int _sde_encoder_vrr_min_idle_time(struct sde_encoder_virt *sde_
 		vrr_min_idle_time_ms = IDLE_TIMEOUT_MAX;
 		SDE_EVT32(sde_conn->freq_pattern->freq_stepping_seq[0],
 			sde_enc->mode_info.frame_rate, SDE_EVTLOG_ERROR);
+	} else if (vrr_min_idle_time_ms < IDLE_TIMEOUT_MIN_VRR) {
+		vrr_min_idle_time_ms = IDLE_TIMEOUT_MIN_VRR;
+		SDE_EVT32(vrr_min_idle_time_ms, sde_conn->freq_pattern->freq_stepping_seq[0],
+			sde_enc->mode_info.frame_rate, SDE_EVTLOG_ERROR);
 	}
 
 	return vrr_min_idle_time_ms;
@@ -2698,7 +2704,7 @@ static void _sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
 
 	if (sde_enc->disp_info.vrr_caps.video_psr_support) {
 		vrr_min_idle_time = _sde_encoder_vrr_min_idle_time(sde_enc);
-		idle_pc_duration = max(idle_pc_duration, vrr_min_idle_time);
+		idle_pc_duration = vrr_min_idle_time;
 	}
 
 	priv = drm_enc->dev->dev_private;
