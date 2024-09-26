@@ -4737,12 +4737,23 @@ static ssize_t wlan_en_delay_store(struct device *dev,
 	return count;
 }
 
+static ssize_t wcn_name_show(struct device *dev,
+			     struct device_attribute *attr,
+			     char *buf)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+	u32 buf_size = PAGE_SIZE;
+
+	return scnprintf(buf, buf_size, "%s\n", priv->wcn_hw_version);
+}
+
 static DEVICE_ATTR_WO(qdss_tr_start);
 static DEVICE_ATTR_WO(qdss_tr_stop);
 static DEVICE_ATTR_WO(qdss_conf_download);
 static DEVICE_ATTR_WO(hw_trc_override);
 static DEVICE_ATTR_WO(wpss_boot);
 static DEVICE_ATTR_WO(wlan_en_delay);
+static DEVICE_ATTR_RO(wcn_name);
 
 static struct attribute *icnss_attrs[] = {
 	&dev_attr_qdss_tr_start.attr,
@@ -4751,6 +4762,7 @@ static struct attribute *icnss_attrs[] = {
 	&dev_attr_hw_trc_override.attr,
 	&dev_attr_wpss_boot.attr,
 	&dev_attr_wlan_en_delay.attr,
+	&dev_attr_wcn_name.attr,
 	NULL,
 };
 
