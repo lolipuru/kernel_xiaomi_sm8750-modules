@@ -6453,6 +6453,8 @@ static int cnss_pci_assert_host_sol(struct cnss_pci_data *pci_priv)
 			goto out;
 		}
 	}
+	if (cnss_get_dev_sol_value(pci_priv->plat_priv) == 0)
+		return -EAGAIN;
 
 	cnss_pr_dbg("Assert host SOL GPIO to retry RDDM, expecting link down\n");
 	cnss_set_host_sol_value(pci_priv->plat_priv, 1);
