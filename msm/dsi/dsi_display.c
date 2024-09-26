@@ -684,12 +684,14 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 		struct dsi_cmd_desc *cmd)
 {
 	struct dsi_display_ctrl *ctrl, *m_ctrl;
+	struct dsi_mode_info *mode_info;
 	struct mipi_dsi_msg *msg = &cmd->msg;
 	u32 cmd_dma_fifo_size;
 	u32 flags = 0;
 	int i = 0;
 
 	m_ctrl = &display->ctrl[display->clk_master_idx];
+	mode_info = &display->config.video_timing;
 
 	if (!m_ctrl->ctrl)
 		return;
@@ -720,9 +722,14 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 		if (ctrl->ctrl->secure_mode) {
 			flags &= ~DSI_CTRL_CMD_FETCH_MEMORY;
 			flags |= DSI_CTRL_CMD_FIFO_STORE;
-		} else if (msg->tx_len > cmd_dma_fifo_size) {
+		} else if (msg->tx_len + DSI_LONG_PACKET_HEADER_LENGTH > cmd_dma_fifo_size) {
 			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 		}
+
+		if (mode_info->esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
+			flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
+		else
+			flags &= ~DSI_CTRL_CMD_MULTI_DMA_BURST;
 
 		/* Set flags needed for broadcast. Read commands are always unicast */
 		if (!(msg->flags & MIPI_DSI_MSG_UNICAST_COMMAND) && (display->ctrl_count > 1))

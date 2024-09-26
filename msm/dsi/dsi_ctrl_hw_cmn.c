@@ -533,8 +533,6 @@ void dsi_ctrl_hw_cmn_set_video_timing(struct dsi_ctrl_hw *ctrl,
 		/* Skip extended VFP blanking lines over DSI lanes */
 		DSI_W32(ctrl, DSI_VIDEO_MODE_CTRL5, v_total+1);
 		DSI_W32(ctrl, DSI_VIDEO_MODE_CTRL4, 1);
-
-		DSI_W32(ctrl, DSI_COMMAND_MODE_DMA_CTRL_1, BIT(1));
 	}
 }
 
@@ -891,6 +889,13 @@ void dsi_ctrl_hw_cmn_kickoff_command(struct dsi_ctrl_hw *ctrl_hw,
 	reg &= ~BIT(29);/* WC_SEL to 0 */
 	DSI_W32(ctrl_hw, DSI_COMMAND_MODE_DMA_CTRL, reg);
 
+	reg = DSI_R32(ctrl_hw, DSI_COMMAND_MODE_DMA_CTRL_1);
+	if (flags & DSI_CTRL_CMD_MULTI_DMA_BURST)
+		reg |= BIT(1);
+	else
+		reg &= ~BIT(1);
+	DSI_W32(ctrl_hw, DSI_COMMAND_MODE_DMA_CTRL_1, reg);
+
 	reg = DSI_R32(ctrl_hw, DSI_DMA_FIFO_CTRL);
 	reg |= BIT(20);/* Disable write watermark*/
 	reg |= BIT(16);/* Disable read watermark */
@@ -972,6 +977,13 @@ void dsi_ctrl_hw_cmn_kickoff_fifo_command(struct dsi_ctrl_hw *ctrl,
 	reg |= BIT(28);
 
 	DSI_W32(ctrl, DSI_COMMAND_MODE_DMA_CTRL, reg);
+
+	reg = DSI_R32(ctrl, DSI_COMMAND_MODE_DMA_CTRL_1);
+	if (flags & DSI_CTRL_CMD_MULTI_DMA_BURST)
+		reg |= BIT(1);
+	else
+		reg &= ~BIT(1);
+	DSI_W32(ctrl, DSI_COMMAND_MODE_DMA_CTRL_1, reg);
 
 	DSI_W32(ctrl, DSI_DMA_CMD_LENGTH, (cmd->size & 0xFFFFFFFF));
 	/* Finish writes before command trigger */
