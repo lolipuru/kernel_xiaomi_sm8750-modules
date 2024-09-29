@@ -656,6 +656,19 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 */
 	bool (*get_flush_sync_mode)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * Set ctl_path INTF master
+	 * @ctx          : ctl path ctx pointer
+	 * @intf_master  : Master Interface idx
+	 */
+	int (*set_intf_master)(struct sde_hw_ctl *ctx, u32 intf_master);
+
+	/**
+	 * Get ctl_path INTF master
+	 * @ctx   : ctl path ctx pointer
+	 */
+	int (*get_intf_master)(struct sde_hw_ctl *ctx);
 };
 
 /**

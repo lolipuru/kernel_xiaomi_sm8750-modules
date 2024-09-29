@@ -64,6 +64,7 @@ struct intf_tear_status {
 };
 
 struct intf_panic_wakeup_cfg {
+	bool enable;
 	u32 panic_start;
 	u32 panic_window;
 	u32 wakeup_start;

@@ -2041,14 +2041,17 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	 * Set auto-active-on-panic and force db update and reset it during complete-commit.
 	 */
 	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT)) {
-		if (sde_enc->mode_switch || sde_enc->multi_te_state || qsync_en || qsync_updated) {
+		if (sde_enc->mode_switch || (sde_enc->multi_te_state == SDE_MULTI_TE_ENTER)
+				|| (sde_enc->multi_te_state == SDE_MULTI_TE_EXIT)
+				|| qsync_updated) {
 			ctrl_cfg.req_mode = SDE_CESTA_CTRL_REQ_IMMEDIATE;
-			ctrl_cfg.hw_sleep_enable = qsync_updated ? false : ctrl_cfg.hw_sleep_enable;
-		} else {
-			ctrl_cfg.req_mode = SDE_CESTA_CTRL_REQ_PANIC_REGION;
+			ctrl_cfg.hw_sleep_enable = false;
+			sde_enc->cesta_reset_intf_master = true;
 		}
+		ctrl_cfg.auto_active_on_panic = true;
 
-		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, true,
+		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client,
+				ctrl_cfg.auto_active_on_panic,
 				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable);
 		sde_enc->cesta_force_auto_active_db_update = true;
 	}
@@ -2060,14 +2063,14 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	 */
 	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
 				CRTC_PROP_VM_REQ_STATE);
-	if ((vm_req == VM_REQ_RELEASE) && !ctrl_cfg.auto_active_on_panic) {
+	if (vm_req == VM_REQ_RELEASE) {
 		ctrl_cfg.auto_active_on_panic = true;
 		ctrl_cfg.hw_sleep_enable = false;
 		req_scc = true;
 		req_flush = true;
 		/* reset the flag, so auto-active setting is left intact during TUI session */
 		sde_enc->cesta_force_auto_active_db_update = false;
-	} else if ((vm_req == VM_REQ_ACQUIRE) && !ctrl_cfg.auto_active_on_panic) {
+	} else if (vm_req == VM_REQ_ACQUIRE) {
 		req_scc = true;
 		req_flush = true;
 	}
@@ -2098,7 +2101,8 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	SDE_EVT32(DRMID(drm_enc), commit_state, cfg.index, cfg.vote_state, cfg.flags, req_flush,
 			req_scc, sde_enc->cesta_enable_frame, vm_req, sde_enc->mode_switch,
 			ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable,
-			sde_enc->cesta_force_auto_active_db_update);
+			sde_enc->cesta_force_auto_active_db_update,
+			sde_enc->cesta_reset_intf_master);
 }
 
 void sde_encoder_cancel_vrr_timers(struct drm_encoder *encoder)
@@ -3344,33 +3348,17 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 			}
 		}
 
+		sde_enc->mode_switch = SDE_MODE_SWITCH_NONE;
 		if (old_adj_mode) {
 			if (old_adj_mode->vdisplay > adj_mode->vdisplay)
-				sde_enc->mode_switch = SDE_MODE_SWITCH_RES_DOWN;
+				sde_enc->mode_switch |= SDE_MODE_SWITCH_RES_DOWN;
 			else if (old_adj_mode->vdisplay < adj_mode->vdisplay)
-				sde_enc->mode_switch = SDE_MODE_SWITCH_RES_UP;
+				sde_enc->mode_switch |= SDE_MODE_SWITCH_RES_UP;
 			else if (drm_mode_vrefresh(old_adj_mode) > drm_mode_vrefresh(adj_mode))
-				sde_enc->mode_switch = SDE_MODE_SWITCH_FPS_DOWN;
+				sde_enc->mode_switch |= SDE_MODE_SWITCH_FPS_DOWN;
 			else if (drm_mode_vrefresh(old_adj_mode) < drm_mode_vrefresh(adj_mode))
-				sde_enc->mode_switch = SDE_MODE_SWITCH_FPS_UP;
-			else
-				sde_enc->mode_switch = SDE_MODE_SWITCH_NONE;
+				sde_enc->mode_switch |= SDE_MODE_SWITCH_FPS_UP;
 		}
-
-		/*
-		 * Delay the tearcheck vsync_count update for resolution & fps down cases to
-		 * after the switch frame start during the complete_commit.
-		 */
-		sde_enc->old_vsync_count = 0;
-		if (sde_enc->cesta_client && is_cmd_mode
-				&& sde_enc->crtc && !sde_enc->crtc->state->active_changed
-				&& ((sde_enc->mode_switch == SDE_MODE_SWITCH_RES_DOWN)
-					|| (sde_enc->mode_switch == SDE_MODE_SWITCH_FPS_DOWN)
-					|| sde_enc->multi_te_fps))
-			sde_enc->old_vsync_count =
-				sde_encoder_helper_calc_vsync_count(drm_enc, old_adj_mode->vtotal,
-						sde_enc->multi_te_fps ? sde_enc->multi_te_fps
-							: drm_mode_vrefresh(old_adj_mode));
 
 		intf_mode = sde_encoder_get_intf_mode(drm_enc);
 		if (msm_is_mode_seamless_dms(msm_mode) ||
@@ -4850,34 +4838,29 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	struct sde_encoder_phys *phys_enc = sde_enc->cur_master;
-	struct msm_mode_info *mode_info = &sde_enc->mode_info;
-	u32 vsync_count, vrefresh;
 	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
 	bool req_flush = false, req_scc = false;
 
 
 	SDE_EVT32(DRMID(drm_enc), sde_enc->mode_switch, sde_enc->cesta_force_auto_active_db_update,
-			sde_enc->old_vsync_count, sde_enc->multi_te_fps, SDE_EVTLOG_FUNC_ENTRY);
+			sde_enc->cesta_reset_intf_master, sde_enc->intf_master,
+			SDE_EVTLOG_FUNC_ENTRY);
 
-	if (sde_enc->cesta_client && sde_enc->cesta_force_auto_active_db_update) {
-		if (phys_enc->ops.cesta_ctrl_cfg)
+	if (sde_enc->cesta_client) {
+		if (sde_enc->cesta_reset_intf_master
+				&& phys_enc->hw_ctl && phys_enc->hw_ctl->ops.set_intf_master) {
+			phys_enc->hw_ctl->ops.set_intf_master(phys_enc->hw_ctl,
+					sde_enc->intf_master);
+			sde_enc->cesta_reset_intf_master = false;
+		}
+
+		if (sde_enc->cesta_force_auto_active_db_update && phys_enc->ops.cesta_ctrl_cfg) {
 			phys_enc->ops.cesta_ctrl_cfg(phys_enc, &ctrl_cfg, &req_flush, &req_scc);
-		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, false,
-				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable);
-		sde_enc->cesta_force_auto_active_db_update = false;
-	}
-
-	if (sde_enc->old_vsync_count && phys_enc->hw_intf &&
-			phys_enc->hw_intf->ops.update_tearcheck_vsync_count) {
-
-		vrefresh = sde_enc->multi_te_fps ? sde_enc->multi_te_fps
-				: sde_encoder_get_fps(&sde_enc->base);
-		vsync_count = sde_encoder_helper_calc_vsync_count(drm_enc,
-				mode_info->vtotal, vrefresh);
-		phys_enc->hw_intf->ops.update_tearcheck_vsync_count(phys_enc->hw_intf, vsync_count);
-		SDE_EVT32(DRMID(drm_enc), sde_enc->old_vsync_count, vsync_count, mode_info->vtotal,
-				vrefresh, SDE_EVTLOG_FUNC_CASE1);
-		sde_enc->old_vsync_count = 0;
+			sde_cesta_force_auto_active_db_update(sde_enc->cesta_client,
+					ctrl_cfg.auto_active_on_panic, ctrl_cfg.req_mode,
+					ctrl_cfg.hw_sleep_enable);
+			sde_enc->cesta_force_auto_active_db_update = false;
+		}
 	}
 
 	sde_enc->mode_switch = SDE_MODE_SWITCH_NONE;
@@ -4952,6 +4935,17 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	/* update pending counts and trigger kickoff ctl flush atomically */
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 
+	/*
+	 * reset CTL intf master as a workaround for keeping the wakeup windows active
+	 * during resolution switch / fps switch cases with Cesta enabled. Revert back
+	 * to original value after start of the frame during complete_commit.
+	 */
+	if (sde_enc->cesta_reset_intf_master
+			&& ctl->ops.set_intf_master && ctl->ops.get_intf_master) {
+		sde_enc->intf_master = ctl->ops.get_intf_master(ctl);
+		ctl->ops.set_intf_master(ctl, 0);
+	}
+
 	if (sde_enc->disp_info.vrr_caps.video_psr_support &&
 			!phys->sde_kms->catalog->hw_fence_rev)
 		ctl->ops.hw_fence_trigger_sw_override(ctl);
@@ -4990,14 +4984,14 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		struct sde_ctl_flush_cfg pending_flush = {0,};
 
 		ctl->ops.get_pending_flush(ctl, &pending_flush);
-		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0,
-				ctl->idx - CTL_0,
-				pending_flush.pending_flush_mask,
-				pend_ret_fence_cnt, DPUID(drm_enc->dev));
+		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0, ctl->idx - CTL_0,
+				pending_flush.pending_flush_mask, pend_ret_fence_cnt,
+				sde_enc->cesta_reset_intf_master, sde_enc->intf_master,
+				DPUID(drm_enc->dev), SDE_EVTLOG_FUNC_CASE1);
 	} else {
-		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0,
-				ctl->idx - CTL_0,
-				pend_ret_fence_cnt, DPUID(drm_enc->dev));
+		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0, ctl->idx - CTL_0,
+				pend_ret_fence_cnt, sde_enc->cesta_reset_intf_master,
+				sde_enc->intf_master, DPUID(drm_enc->dev), SDE_EVTLOG_FUNC_CASE2);
 	}
 }
 

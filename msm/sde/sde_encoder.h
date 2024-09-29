@@ -67,6 +67,20 @@
 #define DEVIATION_NS 500000
 #define EPT_TIMEOUT_NS 44000000
 
+/*
+ * flags to indicate the type of mode switch
+ * @SDE_MODE_SWITCH_NONE: not a switch frame
+ * @SDE_MODE_SWITCH_FPS_UP: FPS increase switch frame
+ * @SDE_MODE_SWITCH_FPS_DOWN: FPS decrease switch frame
+ * @SDE_MODE_SWITCH_RES_UP: Resolution up switch frame
+ * @SDE_MODE_SWITCH_RES_DOWN: Resolution down switch frame
+ */
+#define SDE_MODE_SWITCH_NONE		0
+#define SDE_MODE_SWITCH_FPS_UP		BIT(0)
+#define SDE_MODE_SWITCH_FPS_DOWN	BIT(1)
+#define SDE_MODE_SWITCH_RES_UP		BIT(2)
+#define SDE_MODE_SWITCH_RES_DOWN	BIT(3)
+
 /**
  * Encoder functions and data types
  * @intfs:	Interfaces this encoder is using, INTF_MODE_NONE if unused
@@ -206,22 +220,6 @@ enum sde_sim_qsync_event {
 };
 
 /*
- * enum sde_mode_switch - enum to indicate the type of mode switch
- * @SDE_MODE_SWITCH_NONE: not a switch frame
- * @SDE_MODE_SWITCH_FPS_UP: FPS increase switch frame
- * @SDE_MODE_SWITCH_FPS_DOWN: FPS decrease switch frame
- * @SDE_MODE_SWITCH_RES_UP: Resolution up switch frame
- * @SDE_MODE_SWITCH_RES_DOWN: Resolution down switch frame
- */
-enum sde_mode_switch {
-	SDE_MODE_SWITCH_NONE,
-	SDE_MODE_SWITCH_FPS_UP,
-	SDE_MODE_SWITCH_FPS_DOWN,
-	SDE_MODE_SWITCH_RES_UP,
-	SDE_MODE_SWITCH_RES_DOWN,
-};
-
-/*
  * enum sde_multi_te_states - enum to indicate the states of multi-TE
  * @SDE_MULTI_TE_NONE: multi-te not enabled
  * @SDE_MULTI_TE_ENTER: frame entering multi-te
@@ -331,7 +329,7 @@ enum sde_multi_te_states {
  * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  * @ops:                        Encoder ops from init function
  * @old_vsyc_count:             Intf tearcheck vsync_count for old mode.
- * @mode_switch:                enum to indicate its a fps/resolution switch frame.
+ * @mode_switch:                flag to indicate its a fps/resolution switch frame.
  * @multi_te_state:             enum to indicate the multi-te states.
  * @multi_te_fps:               refresh rate of multi-TE.
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
@@ -341,6 +339,7 @@ enum sde_multi_te_states {
  *					with force-db-update. This is required as a workaround for
  *					cmd mode when previous frame ctl-done is very close to
  *					wakeup/panic windows.
+ * @intf_master:		Interface Idx for the master interface
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -422,13 +421,14 @@ struct sde_encoder_virt {
 
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
-	u32 old_vsync_count;
-	enum sde_mode_switch mode_switch;
+	u32 mode_switch;
 	enum sde_multi_te_states multi_te_state;
 	u32 multi_te_fps;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
 	bool cesta_force_auto_active_db_update;
+	bool cesta_reset_intf_master;
+	u32 intf_master;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)

@@ -1421,7 +1421,10 @@ static void sde_hw_intf_setup_panic_wakeup(struct sde_hw_intf *intf,
 	SDE_REG_WRITE(c, INTF_TEAR_WAKEUP_WINDOW, cfg->wakeup_window);
 
 	val = SDE_REG_READ(c, INTF_TEAR_TEAR_CHECK_EN);
-	val |= BIT(4) | BIT(5);
+	if (cfg->enable)
+		val |= BIT(4) | BIT(5);
+	else
+		val &= ~(BIT(4) | BIT(5));
 	SDE_REG_WRITE(c, INTF_TEAR_TEAR_CHECK_EN, val);
 }
 
