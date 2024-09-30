@@ -1809,6 +1809,7 @@ static struct cam_ife_csid_ver2_common_reg_info
 	.debug_sensor_hbi_irq_vcdt_addr          = 0x0180,
 	.debug_violation_addr                    = 0x03D4,
 	.debug_cfg_addr                          = 0x03E0,
+	.rx_mode_id_cfg1_addr                    = 0x0470,
 
 	/*configurations */
 	.major_version                           = 6,
