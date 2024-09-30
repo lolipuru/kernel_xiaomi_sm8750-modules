@@ -1223,9 +1223,12 @@ static void sde_hw_sspp_setup_sys_cache(struct sde_hw_pipe *ctx,
 	if (cfg->flags & SYS_CACHE_EN_FLAG)
 		val = (val & ~BIT(15)) | ((cfg->rd_en & 0x1) << 15);
 
-	if (cfg->flags & SYS_CACHE_SCID)
-		val = (val & ~0x1F00) | ((cfg->rd_scid & 0x1f) << 8);
-
+	if (cfg->flags & SYS_CACHE_SCID) {
+		if (SDE_HW_MAJOR(ctx->catalog->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+			val = (val & ~0x3F00) | ((cfg->rd_scid & 0x3f) << 8);
+		else
+			val = (val & ~0x1F00) | ((cfg->rd_scid & 0x1f) << 8);
+	}
 	if (cfg->flags & SYS_CACHE_OP_MODE)
 		val = (val & ~0xC0000) | ((cfg->op_mode & 0x3) << 18);
 
