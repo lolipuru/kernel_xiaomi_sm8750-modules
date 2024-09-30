@@ -2001,6 +2001,30 @@ struct sde_rsc_client *sde_encoder_get_rsc_client(struct drm_encoder *drm_enc)
 	return sde_enc->rsc_client;
 }
 
+static void _sde_encoder_cesta_update_self_refresh(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	struct sde_encoder_phys *cur_master = sde_enc->phys_encs[0];
+	struct sde_cesta_client *cesta_client = sde_enc->cesta_client;
+	struct sde_hw_ctl *ctl = NULL;
+	struct sde_ctl_cesta_cfg cfg = {0,};
+
+	if (!cesta_client || !sde_enc->crtc)
+		return;
+
+	if (!cur_master || !cur_master->hw_ctl)
+		return;
+
+	ctl = cur_master->hw_ctl;
+	if (!ctl->ops.cesta_flush)
+		return;
+
+	cfg.index = cesta_client->scc_index;
+	cfg.flags |= SDE_CTL_CESTA_CHN_WAIT;
+	ctl->ops.cesta_flush(ctl, &cfg);
+	SDE_EVT32(DRMID(drm_enc));
+}
+
 static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 			enum sde_perf_commit_state commit_state)
 {
@@ -5619,7 +5643,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 
 	ctl = phys_enc->hw_ctl;
 	ctl->ops.clear_pending_flush(ctl);
-	_sde_encoder_cesta_update(&sde_enc->base, SDE_PERF_BEGIN_COMMIT);
+	_sde_encoder_cesta_update_self_refresh(&sde_enc->base);
 
 	if (send_still_cmd) {
 		sde_connector_update_cmd(phys_enc->connector,
