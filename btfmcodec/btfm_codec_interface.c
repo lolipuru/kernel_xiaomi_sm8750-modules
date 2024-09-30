@@ -682,9 +682,7 @@ static int btfmcodec_dai_prepare(struct snd_pcm_substream *substream,
 	    btfmcodec_get_current_transport(state) != BT_Connected) {
 		BTFMCODEC_WARN("cached required info as state is:%s",
 			coverttostring(btfmcodec_get_current_transport(state)));
-		if (direction == 0) {
-		  ret = btfmcodec_notify_usecase_start(btfmcodec, BTADV);
-		}
+		ret = btfmcodec_notify_usecase_start(btfmcodec, BTADV);
 	} else {
 		ret = btfmcodec_hwep_prepare(btfmcodec, sampling_rate, direction, id, false);
 /*		if (ret >= 0) {
