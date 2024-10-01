@@ -2735,6 +2735,7 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	int chipset_version = 0;
 	unsigned long panic_reason = 0;
 	unsigned short primary_reason = 0, sec_reason = 0, source_subsystem = 0;
+	int current_ssr_state = SUB_STATE_IDLE;
 
 	if (!pwr_data || !probe_finished) {
 		pr_err("%s: BTPower Probing Pending.Try Again\n", __func__);
@@ -2863,6 +2864,17 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			sec_reason, GetUwbSecondaryCrashReason(sec_reason),
 			source_subsystem, GetSourceSubsystemString(source_subsystem));
 		break;
+	case UWB_GET_SSR_STATE:
+		current_ssr_state = get_sub_state();
+		pr_err("%s: UWB_GET_SSR_STATE current_ssr_state:%d\n", __func__,
+			current_ssr_state);
+		if (copy_to_user((void __user *)arg, &current_ssr_state,
+			sizeof(current_ssr_state))) {
+			pr_err("%s: copy to user failed\n", __func__);
+			ret = -EFAULT;
+		}
+		break;
+
 	default:
 		return -ENOIOCTLCMD;
 	}
