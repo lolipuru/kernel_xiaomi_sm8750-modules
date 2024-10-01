@@ -1094,6 +1094,8 @@ static int cnss_fw_mem_ready_hdlr(struct cnss_plat_data *plat_priv)
 
 	cnss_wlfw_qdss_dnld_send_sync(plat_priv);
 
+	clear_bit(CNSS_POWERING_ON, &plat_priv->driver_state);
+
 	return 0;
 out:
 	return ret;
@@ -1877,6 +1879,7 @@ static irqreturn_t cnss_dev_sol_handler(int irq, void *data)
 
 	sol_gpio_value = cnss_get_dev_sol_value(plat_priv);
 	if (test_bit(CNSS_POWER_OFF, &plat_priv->driver_state) ||
+	    test_bit(CNSS_POWERING_ON, &plat_priv->driver_state) ||
 	    test_bit(CNSS_IN_REBOOT, &plat_priv->driver_state) ||
 	    test_bit(CNSS_SHUTDOWN_DEVICE, &plat_priv->driver_state) ||
 	    sol_gpio_value == 1) {

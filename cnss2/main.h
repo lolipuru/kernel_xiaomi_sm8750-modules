@@ -367,6 +367,7 @@ enum cnss_driver_state {
 	CNSS_DMS_DEL_SERVER,
 	CNSS_POWER_OFF,
 	CNSS_SHUTDOWN_DEVICE,
+	CNSS_POWERING_ON,
 };
 
 struct cnss_recovery_data {

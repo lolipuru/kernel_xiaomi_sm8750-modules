@@ -1168,6 +1168,7 @@ int cnss_power_on_device(struct cnss_plat_data *plat_priv, bool reset)
 		return -EINVAL;
 	}
 
+	set_bit(CNSS_POWERING_ON, &plat_priv->driver_state);
 	ret = cnss_vreg_on_type(plat_priv, CNSS_VREG_PRIM);
 	if (ret) {
 		cnss_pr_err("Failed to turn on vreg, err = %d\n", ret);
@@ -1219,6 +1220,7 @@ clk_off:
 vreg_off:
 	cnss_vreg_off_type(plat_priv, CNSS_VREG_PRIM);
 out:
+	clear_bit(CNSS_POWERING_ON, &plat_priv->driver_state);
 	return ret;
 }
 
