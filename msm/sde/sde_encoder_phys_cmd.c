@@ -1461,10 +1461,10 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 
 	vrefresh = drm_mode_vrefresh(mode);
 
-	/* disable panic/wakeup when multi-te is enabled */
-	if (sde_enc->multi_te_fps) {
+	/* disable panic/wakeup when multi-te is enabled or hw-sleep disabled */
+	if (sde_enc->multi_te_fps || sde_enc->disp_info.disable_cesta_hw_sleep) {
 		SDE_DEBUG_CMDENC(cmd_enc, "avoid panic/wakeup window configuration\n");
-		SDE_EVT32(sde_enc->multi_te_fps);
+		SDE_EVT32(sde_enc->multi_te_fps, sde_enc->disp_info.disable_cesta_hw_sleep);
 
 		memset(&cfg, 0, sizeof(struct intf_panic_wakeup_cfg));
 		goto end;
@@ -2675,16 +2675,18 @@ void sde_encoder_phys_cmd_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
 	bool autorefresh_en = _sde_encoder_phys_cmd_get_autorefresh_property(phys_enc);
+	bool disable_hw_sleep = sde_enc->disp_info.disable_cesta_hw_sleep;
 
 	cfg->enable = true;
 	cfg->avr_enable = false;
 	cfg->intf = phys_enc->intf_idx - INTF_0;
 	cfg->auto_active_on_panic = autorefresh_en;
-	cfg->req_mode = (qsync_en || sde_enc->multi_te_fps) ?
+	cfg->req_mode = (qsync_en || sde_enc->multi_te_fps || disable_hw_sleep) ?
 				SDE_CESTA_CTRL_REQ_IMMEDIATE : SDE_CESTA_CTRL_REQ_PANIC_REGION;
 	cfg->hw_sleep_enable = !(autorefresh_en
 					|| phys_enc->sde_kms->splash_data.num_splash_displays
-					|| sde_enc->multi_te_fps);
+					|| sde_enc->multi_te_fps
+					|| disable_hw_sleep);
 
 	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)
 			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))

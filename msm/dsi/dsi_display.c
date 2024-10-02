@@ -6966,6 +6966,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->poms_align_vsync = display->panel->poms_align_vsync;
 	info->is_te_using_watchdog_timer = is_sim_panel(display);
 	info->event_notification_disabled = display->panel->event_notification_disabled;
+	info->disable_cesta_hw_sleep = display->panel->disable_cesta_hw_sleep;
 
 	switch (display->panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:

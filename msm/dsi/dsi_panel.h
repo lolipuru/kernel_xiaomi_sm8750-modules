@@ -270,6 +270,7 @@ struct dsi_panel {
 	bool skip_panel_off;
 	bool panel_initialized;
 	bool te_using_watchdog_timer;
+	bool disable_cesta_hw_sleep;
 	struct dsi_qsync_capabilities qsync_caps;
 	struct dsi_avr_capabilities avr_caps;
 	struct dsi_esync_capabilities esync_caps;

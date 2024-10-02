@@ -2008,7 +2008,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	struct sde_hw_ctl *ctl = NULL;
 	struct sde_ctl_cesta_cfg cfg = {0,};
 	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
-	enum sde_crtc_vm_req vm_req;
+	enum sde_crtc_vm_req vm_req = VM_REQ_NONE;
 	bool req_flush = false, req_scc = false, is_cmd = false;
 	bool qsync_en = false, qsync_updated = false;
 
@@ -2040,7 +2040,8 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	 * while previous frame ctl-done is too close to the wakeup/panic windows.
 	 * Set auto-active-on-panic and force db update and reset it during complete-commit.
 	 */
-	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT)) {
+	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT)
+			&& !sde_enc->disp_info.disable_cesta_hw_sleep) {
 		if (sde_enc->mode_switch || (sde_enc->multi_te_state == SDE_MULTI_TE_ENTER)
 				|| (sde_enc->multi_te_state == SDE_MULTI_TE_EXIT)
 				|| qsync_updated) {
@@ -2056,23 +2057,25 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 		sde_enc->cesta_force_auto_active_db_update = true;
 	}
 
-	/*
-	 * Move to auto active on panic setting while releasing the VM & update
-	 * cesta ctrl/cesta flush. Update cesta_ctrl/cesta flush on acquing the VM
-	 * to set the older state.
-	 */
-	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+	if (!sde_enc->disp_info.disable_cesta_hw_sleep) {
+		/*
+		 * Move to auto active on panic setting while releasing the VM & update
+		 * cesta ctrl/cesta flush. Update cesta_ctrl/cesta flush on acquing the VM
+		 * to set the older state.
+		 */
+		vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
 				CRTC_PROP_VM_REQ_STATE);
-	if (vm_req == VM_REQ_RELEASE) {
-		ctrl_cfg.auto_active_on_panic = true;
-		ctrl_cfg.hw_sleep_enable = false;
-		req_scc = true;
-		req_flush = true;
-		/* reset the flag, so auto-active setting is left intact during TUI session */
-		sde_enc->cesta_force_auto_active_db_update = false;
-	} else if (vm_req == VM_REQ_ACQUIRE) {
-		req_scc = true;
-		req_flush = true;
+		if (vm_req == VM_REQ_RELEASE) {
+			ctrl_cfg.auto_active_on_panic = true;
+			ctrl_cfg.hw_sleep_enable = false;
+			req_scc = true;
+			req_flush = true;
+			/* reset flag, so auto-active setting is left intact during TUI session */
+			sde_enc->cesta_force_auto_active_db_update = false;
+		} else if (vm_req == VM_REQ_ACQUIRE) {
+			req_scc = true;
+			req_flush = true;
+		}
 	}
 
 	if (commit_state == SDE_PERF_DISABLE_COMMIT) {
