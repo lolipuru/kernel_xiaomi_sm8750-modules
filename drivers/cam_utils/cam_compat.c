@@ -326,7 +326,7 @@ void cam_free_clear(const void * ptr)
 
 #ifdef CONFIG_DOMAIN_ID_SECURE_CAMERA
 int cam_csiphy_notify_secure_mode(struct csiphy_device *csiphy_dev,
-	bool protect, int32_t offset, bool is_shutdown)
+	bool protect, int32_t offset, bool __maybe_unused is_shutdown)
 {
 	int rc = 0;
 	struct Object client_env, sc_object;
@@ -338,7 +338,9 @@ int cam_csiphy_notify_secure_mode(struct csiphy_device *csiphy_dev,
 		return -EINVAL;
 	}
 
+#if !IS_ENABLED(CONFIG_QCOM_SI_CORE)
 	if (!is_shutdown) {
+#endif
 		rc = get_client_env_object(&client_env);
 		if (rc) {
 			CAM_ERR(CAM_CSIPHY, "Failed getting mink env object, rc: %d", rc);
@@ -376,6 +378,7 @@ int cam_csiphy_notify_secure_mode(struct csiphy_device *csiphy_dev,
 			CAM_ERR(CAM_CSIPHY, "Failed releasing mink env object, rc: %d", rc);
 			return rc;
 		}
+#if !IS_ENABLED(CONFIG_QCOM_SI_CORE)
 	} else {
 		/* This is a temporary work around until the SMC Invoke driver is
 		 * refactored to avoid the dependency on FDs, which was causing issues
@@ -387,6 +390,7 @@ int cam_csiphy_notify_secure_mode(struct csiphy_device *csiphy_dev,
 			return rc;
 		}
 	}
+#endif
 
 	return 0;
 }
