@@ -2345,7 +2345,7 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 	struct sde_rm_hw_iter iter_lm, iter_dsc;
 	struct sde_kms *sde_kms;
 	struct sde_hw_mixer *mixer;
-	size_t pipes_per_lm;
+	size_t pipes_per_lm, pipe_count;
 
 	if (!rm || !ctl || !splash_display) {
 		SDE_ERROR("invalid input parameters\n");
@@ -2369,13 +2369,13 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 				pipes_per_lm = ctl->ops.get_staged_sspp(ctl, iter_lm.blk->id,
 					&splash_display->pipe_info);
 
-			if (mixer->ops.get_staged_sspp)
-				pipes_per_lm = mixer->ops.get_staged_sspp(mixer, iter_lm.blk->id,
-						&splash_display->pipe_info);
-
-			if (ctl->ops.get_active_lms)
+			if (mixer->ops.get_staged_sspp && ctl->ops.get_active_lms) {
 				pipes_per_lm =
 					BIT(iter_lm.blk->id - LM_0) & ctl->ops.get_active_lms(ctl);
+				if (pipes_per_lm)
+					pipe_count = mixer->ops.get_staged_sspp(mixer,
+						iter_lm.blk->id, &splash_display->pipe_info);
+			}
 
 			if (pipes_per_lm || splash_display->pipe_info.bordercolor) {
 				splash_display->lm_ids[splash_display->lm_cnt++] = iter_lm.blk->id;
