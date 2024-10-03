@@ -5092,7 +5092,8 @@ static int icnss_smmu_fault_handler(struct iommu_domain *domain,
 	return -ENOSYS;
 }
 
-#ifdef CONFIG_CNSS2_SMMU_DB_SUPPORT
+#if defined(CONFIG_CNSS2_SMMU_DB_SUPPORT) && \
+    (LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0))
 #define PCIE_LOCAL_REG_APPS_TO_Q6	0x3224
 #define PCIE_LOCAL_REG_WCSS_IE_IRQ	0x3228
 
@@ -5163,7 +5164,26 @@ void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
 				dev, icnss_pci_smmu_fault_handler_irq,
 				priv);
 }
+#else
+void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
+{
+	qcom_iommu_set_fault_handler_irq(priv->iommu_domain,
+					 icnss_pci_smmu_fault_handler_irq,
+					 priv);
+}
+#endif
+#else
+void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
+{
+}
 
+static inline void icnss_pci_set_suspended(struct icnss_priv *priv, int val)
+{
+}
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)) && \
+    (LINUX_VERSION_CODE < KERNEL_VERSION(6, 9, 0))
 void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
 {
 	struct platform_device *pdev = priv->pdev;
@@ -5172,30 +5192,7 @@ void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
 	iommu_unregister_device_fault_handler(dev);
 }
 #else
-void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
-{
-	qcom_iommu_set_fault_handler_irq(priv->iommu_domain,
-					 icnss_pci_smmu_fault_handler_irq,
-					 priv);
-}
-
-static inline
 void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
-{
-}
-#endif
-#else
-static inline
-void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
-{
-}
-
-static inline
-void icnss_unregister_iommu_fault_handler(struct icnss_priv *priv)
-{
-}
-
-static inline void icnss_pci_set_suspended(struct icnss_priv *priv, int val)
 {
 }
 #endif
