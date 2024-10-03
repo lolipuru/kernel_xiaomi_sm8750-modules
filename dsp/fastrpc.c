@@ -3023,7 +3023,7 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	if (!fl->untrusted_process && fl->is_unsigned_pd)
 		init.attrs |= FASTRPC_MODE_SYSTEM_UNSIGNED_PD;
 
-	if (init.filelen > INIT_FILELEN_MAX)
+	if ((init.filelen > INIT_FILELEN_MAX) || (init.filefd <= 0))
 		return -EINVAL;
 
 	/*
