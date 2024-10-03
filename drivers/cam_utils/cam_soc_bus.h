@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_SOC_BUS_H_
@@ -13,7 +13,7 @@
 #include "cam_debug_util.h"
 #include "cam_cpas.h"
 
-#define CAM_SOC_BUS_MAX_NUM_USECASES 8
+#define CAM_SOC_BUS_MAX_NUM_USECASES 9
 
 enum cam_soc_bus_path_data {
 	CAM_SOC_BUS_PATH_DATA_HLOS,
