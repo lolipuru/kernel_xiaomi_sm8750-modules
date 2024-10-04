@@ -3639,8 +3639,10 @@ void wlan_cm_calculate_bss_score(struct wlan_objmgr_pdev *pdev,
 					return;
 				force_connect_candidate->entry =
 					util_scan_copy_cache_entry(scan_entry->entry);
-				if (!force_connect_candidate->entry)
+				if (!force_connect_candidate->entry) {
+					qdf_mem_free(force_connect_candidate);
 					return;
+				}
 			} else if (cm_is_better_bss(
 				   scan_entry->entry,
 				   force_connect_candidate->entry)) {
@@ -3648,8 +3650,11 @@ void wlan_cm_calculate_bss_score(struct wlan_objmgr_pdev *pdev,
 					force_connect_candidate->entry);
 				force_connect_candidate->entry =
 				  util_scan_copy_cache_entry(scan_entry->entry);
-				if (!force_connect_candidate->entry)
+				if (!force_connect_candidate->entry) {
+					qdf_mem_free(force_connect_candidate);
 					return;
+				}
+
 			}
 		}
 
@@ -3757,6 +3762,7 @@ void cm_update_dlm_mlo_score(struct wlan_objmgr_pdev *pdev,
 				return;
 			}
 			*dlm_entry_updated = true;
+			util_scan_free_cache_entry(scan_entry->entry);
 		}
 		cur_node = next_node;
 		next_node = NULL;
