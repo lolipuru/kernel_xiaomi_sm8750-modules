@@ -2579,11 +2579,12 @@ static int fastrpc_debugfs_show(struct seq_file *s_file, void *data)
 		seq_printf(s_file,"%s %9s %d\n", "pd_type", ":", fl->pd_type);
 		seq_printf(s_file,"%s %9s %d\n",  "profile", ":", fl->profile);
 
-		if(fl->cctx) {
-			seq_printf(s_file,"\n=============== Channel Context ===============\n");
-			ctx = fl->cctx;
-			print_ctx_info(s_file, ctx);
-		}
+                if(!fl->cctx)
+                   return 0;
+
+                seq_printf(s_file,"\n=============== Channel Context ===============\n");
+		ctx = fl->cctx;
+		print_ctx_info(s_file, ctx);
 		if(fl->sctx) {
 			seq_printf(s_file,"\n=============== Session Context ===============\n");
 			sctx = fl->sctx;
