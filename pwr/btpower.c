@@ -84,8 +84,10 @@
 #define UWB_SS	(0x02)
 #define TME_SS	(0x03)
 
-#define SOC_VERSION_1_0 0x01
-#define SOC_VERSION_2_0 0x02
+#define INVALID_SOC                 0x00
+#define PEACH_SOC_VERSION_1_0       0x01
+#define PEACH_SOC_VERSION_2_0       0x02
+#define OTHER_FMD_SUPPORTED_BT_SOC  0x03
 
 /**
  * enum btpower_vreg_param: Voltage regulator TCS param
@@ -1134,10 +1136,8 @@ gpio_failed:
 regulator_failed:
 		for (i = 0; i < platform_num_vregs; i++) {
 			platform_vregs = &pwr_data->platform_vregs[i];
-		pr_err("%s: FMD MODE regulator %s\n",
-					__func__, platform_vregs->name);
 			if (get_fmd_mode() && platform_vregs->fmd_mode_set) {
-				pr_err("%s: FMD Mode Set: Skipping regulator %s\n",
+				pr_err("%s: FMD MODE: Skip %s regulator vote-off for FMD\n",
 					__func__, platform_vregs->name);
 				continue;
 			}
@@ -2600,39 +2600,41 @@ int perform_fmd_operation(void)
 	int ret = 0;
 	switch ((enum FmdOperation) fmdStruct.fmdOperation) {
 		case UPDATE_SOC_VER: {
-			if (fmdStruct.socFwVer == SOC_VERSION_1_0) {
-				pr_info("%s: UPDATE_SOC_VER :: SOC_VERSION_1_0\n",
+			if ((fmdStruct.socFwVer == INVALID_SOC) ||
+				(fmdStruct.socFwVer > OTHER_FMD_SUPPORTED_BT_SOC)) {
+				pr_err("%s: Invalid SOC VERSION sent = %d\n",
+					__func__, fmdStruct.socFwVer);
+				return -EINVAL;
+			}
+			pwr_data->is_fmd_mode_enable = true;
+			if (fmdStruct.socFwVer == PEACH_SOC_VERSION_1_0) {
+				pr_info("%s: UPDATE_SOC_VER :: PEACH_SOC_VER_1_0\n",
 					__func__);
-				pwr_data->is_fmd_mode_enable = true;
-				if (pwr_data->bt_chip_clk) {
-					ret = bt_clk_enable(pwr_data->bt_chip_clk);
-					if (ret < 0) {
-						pr_err("%s: failed to bt_chip_clk\n", __func__);
-						return -EINVAL;
-					}
-				}
-			} else if (fmdStruct.socFwVer == SOC_VERSION_2_0) {
-				pr_info("%s: UPDATE_SOC_VER :: SOC_VERSION_2_0\n",
+			} else if (fmdStruct.socFwVer == PEACH_SOC_VERSION_2_0) {
+				pr_info("%s: UPDATE_SOC_VER :: PEACH_SOC_VERSION_2_0\n",
 					__func__);
-				pwr_data->is_fmd_mode_enable = true;
 #ifdef CONFIG_FMD_ENABLE
 				cnss_utils_fmd_status(true);
 #endif
 				if (vote_wlan_reg_for_fmd() < 0) {
-					pr_err("%s: failed to vote_wlan_reg_for_fmd\n", __func__);
+					pr_err("%s: failed to vote wlan_reg\n", __func__);
 					return -EINVAL;
 				}
-				if (pwr_data->bt_chip_clk) {
-					ret = bt_clk_enable(pwr_data->bt_chip_clk);
-					if (ret < 0) {
-						pr_err("%s: failed to bt_chip_clk\n", __func__);
-						return -EINVAL;
-					}
-				}
 			} else {
-				pr_err("%s: Invalid SOC VERSION sent = %d\n",
-					__func__, fmdStruct.socFwVer);
-				return -EINVAL;
+				pr_info("%s: UPDATE_SOC_VER :: OTHER_FMD_SUPPORT_BT_SOC\n",
+					__func__);
+				if (vote_wlan_reg_for_fmd() < 0) {
+					pr_err("%s: failed to vote wlan_reg\n", __func__);
+					return -EINVAL;
+				}
+			}
+
+			if (pwr_data->bt_chip_clk) {
+				ret = bt_clk_enable(pwr_data->bt_chip_clk);
+				if (ret < 0) {
+					pr_err("%s: failed to bt_chip_clk\n", __func__);
+					return -EINVAL;
+				}
 			}
 			break;
 		}
