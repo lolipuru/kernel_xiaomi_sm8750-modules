@@ -346,19 +346,18 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 			return rc;
 		}
 
-		swr_slvdev_datapath_control(swr_hap->swr_slave,
-				swr_hap->swr_slave->dev_num, true);
 		/* trigger SWR play */
 		val = SWR_PLAY_BIT | SWR_PLAY_SRC_VAL_SWR;
 		rc = regmap_write(swr_hap->regmap, SWR_PLAY_REG, val);
 		if (rc) {
 			dev_err_ratelimited(swr_hap->dev, "%s: Enable SWR_PLAY failed, rc=%d\n",
-					__func__, rc);
-			swr_slvdev_datapath_control(swr_hap->swr_slave,
-					swr_hap->swr_slave->dev_num, false);
+						__func__, rc);
 			swr_hap_disable_hpwr_vreg(swr_hap);
 			return rc;
 		}
+
+		swr_slvdev_datapath_control(swr_hap->swr_slave,
+				swr_hap->swr_slave->dev_num, true);
 
 		if (swr_hap->visense_enable) {
 			rc = regmap_write(swr_hap->regmap, SWR_VISENSE_AFE_GAIN_REG,
