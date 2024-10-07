@@ -23967,6 +23967,10 @@ static void populate_tlv_events_id(WMI_EVT_ID *event_ids)
 #ifdef FEATURE_MGMT_RX_OVER_SRNG
 	event_ids[wmi_mgmt_srng_reap_eventid] = WMI_MGMT_SRNG_REAP_EVENTID;
 #endif
+#ifdef FEATURE_WLAN_ZERO_POWER_SCAN
+	event_ids[wmi_scan_cache_result_eventid] =
+					WMI_SCAN_CACHE_RESULT_EVENTID;
+#endif
 }
 
 #ifdef WLAN_FEATURE_LINK_LAYER_STATS
@@ -24628,6 +24632,10 @@ static void populate_tlv_service(uint32_t *wmi_service)
 #endif
 	wmi_service[wmi_service_use_sta_vdev_for_p2p_device] =
 				WMI_SERVICE_USE_STA_VDEV_FOR_P2P_DEVICE;
+#ifdef FEATURE_WLAN_ZERO_POWER_SCAN
+	wmi_service[wmi_service_scan_cache_report_support] =
+			WMI_SERVICE_SCAN_CACHE_REPORT_SUPPORT;
+#endif
 }
 
 /**
