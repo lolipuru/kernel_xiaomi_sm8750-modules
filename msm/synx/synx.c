@@ -2310,10 +2310,9 @@ static int synx_handle_import_arr(
 {
 	int rc = -SYNX_INVALID;
 	u32 idx = 0;
-	struct synx_client *client;
 	struct synx_import_arr_info arr_info;
 	struct synx_import_info *arr;
-	struct synx_import_indv_params params = {0};
+	struct synx_import_params params = {0};
 
 	if (k_ioctl->size != sizeof(arr_info))
 		return -SYNX_INVALID;
@@ -2328,12 +2327,6 @@ static int synx_handle_import_arr(
 	if (IS_ERR_OR_NULL(arr))
 		return -ENOMEM;
 
-	client = synx_get_client(session);
-	if (IS_ERR_OR_NULL(client)) {
-		rc = PTR_ERR(client);
-		goto clean;
-	}
-
 	if (copy_from_user(arr,
 			u64_to_user_ptr(arr_info.list),
 			sizeof(*arr) * arr_info.num_objs)) {
@@ -2342,20 +2335,21 @@ static int synx_handle_import_arr(
 	}
 
 	while (idx < arr_info.num_objs) {
-		params.new_h_synx = &arr[idx].new_synx_obj;
-		params.flags = arr[idx].flags;
+		params.type = SYNX_IMPORT_INDV_PARAMS;
+		params.indv.new_h_synx = &arr[idx].new_synx_obj;
+		params.indv.flags = arr[idx].flags;
 
 		if (arr[idx].flags & SYNX_IMPORT_DMA_FENCE)
-			params.fence =
+			params.indv.fence =
 				sync_file_get_fence(arr[idx].desc.id[0]);
 		else if (arr[idx].flags & SYNX_IMPORT_SYNX_FENCE)
-			params.fence = &arr[idx].synx_obj;
+			params.indv.fence = &arr[idx].synx_obj;
 
-		rc = synx_native_import_indv(client, &params);
+		rc = synx_import(session, &params);
 
 		// Fence needs to be put irresepctive of import status
 		if (arr[idx].flags & SYNX_IMPORT_DMA_FENCE)
-			dma_fence_put(params.fence);
+			dma_fence_put(params.indv.fence);
 
 		if (rc != SYNX_SUCCESS)
 			break;
@@ -2365,7 +2359,7 @@ static int synx_handle_import_arr(
 	/* release allocated handles in case of failure */
 	if (rc != SYNX_SUCCESS) {
 		while (idx > 0)
-			synx_native_release_core(client,
+			synx_release(session,
 				arr[--idx].new_synx_obj);
 	} else {
 		if (copy_to_user(u64_to_user_ptr(arr_info.list),
@@ -2377,8 +2371,6 @@ static int synx_handle_import_arr(
 	}
 
 fail:
-	synx_put_client(client);
-clean:
 	kfree(arr);
 	return rc;
 }
