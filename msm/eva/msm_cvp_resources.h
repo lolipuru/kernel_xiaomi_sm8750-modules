@@ -215,6 +215,7 @@ struct msm_cvp_platform_resources {
 	uint32_t vpu_ver;
 	uint32_t fw_cycles;
 	struct msm_cvp_ubwc_config_data *ubwc_config;
+	uint32_t rcg_vnoc_clk_en_low;
 };
 
 static inline bool is_iommu_present(struct msm_cvp_platform_resources *res)

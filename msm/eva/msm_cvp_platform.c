@@ -309,7 +309,11 @@ static struct msm_cvp_common_data sm8750_common_data[] = {
 	{
 		.key = "qcom,dsp-enabled",
 		.value = 1,
-	}
+	},
+	{
+		.key = "qcom,rcg_vnoc_clk_en_low",
+		.value = 0x0,
+	},
 };
 
 static struct msm_cvp_common_data sm8735_common_data[] = {
@@ -360,7 +364,11 @@ static struct msm_cvp_common_data sm8735_common_data[] = {
 	{
 		.key = "qcom,dsp-enabled",
 		.value = 1,
-	}
+	},
+	{
+		.key = "qcom,rcg_vnoc_clk_en_low",
+		.value = 0x8,
+	},
 };
 
 /* Default UBWC config for LPDDR5 */
