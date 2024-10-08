@@ -36,6 +36,7 @@
 #define  CF_MIN_3DB_150HZ		0x2
 
 #define LPASS_CDC_TX_MACRO_DMIC_SAMPLE_RATE_UNDEFINED 0
+#define LPASS_CDC_TX_MACRO_MCLK_FREQ 9600000
 #define LPASS_CDC_TX_MACRO_TX_PATH_OFFSET \
 	(LPASS_CDC_TX1_TX_PATH_CTL - LPASS_CDC_TX0_TX_PATH_CTL)
 #define LPASS_CDC_TX_MACRO_SWR_MIC_MUX_SEL_MASK 0xF
@@ -140,7 +141,7 @@ struct lpass_cdc_tx_macro_priv {
 	struct tx_dec_unmute_work tx_dec_unmute_work;
 	struct hpf_work tx_hpf_work[NUM_DECIMATORS];
 	struct tx_mute_work tx_mute_dwork[NUM_DECIMATORS];
-	u16 dmic_clk_div[MIC_PAIR_MAX];
+	u16 dmic_clk_div;
 	u32 version;
 	unsigned long active_ch_mask[LPASS_CDC_TX_MACRO_MAX_DAIS];
 	unsigned long active_ch_cnt[LPASS_CDC_TX_MACRO_MAX_DAIS];
@@ -1004,7 +1005,6 @@ static int lpass_cdc_tx_macro_enable_dec(struct snd_soc_dapm_widget *w,
 	int unmute_delay = LPASS_CDC_TX_MACRO_DMIC_UNMUTE_DELAY_MS;
 	struct device *tx_dev = NULL;
 	struct lpass_cdc_tx_macro_priv *tx_priv = NULL;
-	u32 mic_pair = 0;
 
 	if (!lpass_cdc_tx_macro_get_data(component, &tx_dev, &tx_priv, __func__))
 		return -EINVAL;
@@ -1050,21 +1050,17 @@ static int lpass_cdc_tx_macro_enable_dec(struct snd_soc_dapm_widget *w,
 		/* if SWR DMIC is used, set SWR_MICn clk div */
 		if (tx_priv->swr_dmic_enable) {
 			swr_micn = snd_soc_component_read(component, adc_mux0_reg) & 0xf;
-			if (swr_micn > 0 && swr_micn <= 4) {
+			if (swr_micn > 0 && swr_micn <= 4)
 				dmic_clk_reg = LPASS_CDC_TX_TOP_CSR_SWR_MIC0_CTL;
-				mic_pair = MIC_PAIR01;
-			} else if (swr_micn > 4 && swr_micn <= 7) {
+			else if (swr_micn > 4 && swr_micn <= 7)
 				dmic_clk_reg = LPASS_CDC_TX_TOP_CSR_SWR_MIC1_CTL;
-				mic_pair = MIC_PAIR23;
-			} else if (swr_micn > 7 && swr_micn <= 11) {
+			else if (swr_micn > 7 && swr_micn <= 11)
 				dmic_clk_reg = LPASS_CDC_TX_TOP_CSR_SWR_MIC2_CTL;
-				mic_pair = MIC_PAIR45;
-			}
 
 			if (dmic_clk_reg)
 				snd_soc_component_update_bits(component,
 						dmic_clk_reg,
-						0x0E, tx_priv->dmic_clk_div[mic_pair] << 0x1);
+						0x0E, tx_priv->dmic_clk_div << 0x1);
 					/* TODO: Add all DIV support */
 		}
 		snd_soc_component_update_bits(component,
@@ -2037,7 +2033,7 @@ static const struct snd_kcontrol_new lpass_cdc_tx_macro_snd_controls[] = {
 		     lpass_cdc_tx_macro_get_dec_gain_bypass, lpass_cdc_tx_macro_put_dec_gain_bypass),
 };
 
-static int lpass_cdc_tx_macro_clk_div_get(struct snd_soc_component *component, u32 mic_pair)
+static int lpass_cdc_tx_macro_clk_div_get(struct snd_soc_component *component)
 {
 	struct device *tx_dev = NULL;
 	struct lpass_cdc_tx_macro_priv *tx_priv = NULL;
@@ -2045,44 +2041,57 @@ static int lpass_cdc_tx_macro_clk_div_get(struct snd_soc_component *component, u
 	if (!lpass_cdc_tx_macro_get_data(component, &tx_dev, &tx_priv, __func__))
 		return -EINVAL;
 
-	if (mic_pair >= MIC_PAIR_MAX)
-		return -EINVAL;
-
-	return (int)tx_priv->dmic_clk_div[mic_pair];
+	return (int)tx_priv->dmic_clk_div;
 }
 
-static void lpass_cdc_tx_macro_update_clk_div_factor(u32 div_factor,
-				      struct lpass_cdc_tx_macro_priv *tx_priv,
-				      u32 mic_pair)
+static int lpass_cdc_tx_macro_validate_dmic_sample_rate(u32 dmic_sample_rate,
+				      struct lpass_cdc_tx_macro_priv *tx_priv)
 {
+	u32 div_factor = LPASS_CDC_TX_MACRO_CLK_DIV_2;
+	u32 mclk_rate = LPASS_CDC_TX_MACRO_MCLK_FREQ;
 
-	dev_dbg(tx_priv->dev, "%s: div_factor = %u, mic_pair %d\n",
-		__func__, div_factor, mic_pair);
+	if (dmic_sample_rate == LPASS_CDC_TX_MACRO_DMIC_SAMPLE_RATE_UNDEFINED ||
+	    mclk_rate % dmic_sample_rate != 0)
+		goto undefined_rate;
+
+	div_factor = mclk_rate / dmic_sample_rate;
 
 	switch (div_factor) {
 	case 2:
-		tx_priv->dmic_clk_div[mic_pair] = LPASS_CDC_TX_MACRO_CLK_DIV_2;
+		tx_priv->dmic_clk_div = LPASS_CDC_TX_MACRO_CLK_DIV_2;
 		break;
 	case 3:
-		tx_priv->dmic_clk_div[mic_pair] = LPASS_CDC_TX_MACRO_CLK_DIV_3;
+		tx_priv->dmic_clk_div = LPASS_CDC_TX_MACRO_CLK_DIV_3;
 		break;
 	case 4:
-		tx_priv->dmic_clk_div[mic_pair] = LPASS_CDC_TX_MACRO_CLK_DIV_4;
+		tx_priv->dmic_clk_div = LPASS_CDC_TX_MACRO_CLK_DIV_4;
 		break;
 	case 6:
-		tx_priv->dmic_clk_div[mic_pair] = LPASS_CDC_TX_MACRO_CLK_DIV_6;
+		tx_priv->dmic_clk_div = LPASS_CDC_TX_MACRO_CLK_DIV_6;
 		break;
 	case 8:
-		tx_priv->dmic_clk_div[mic_pair] = LPASS_CDC_TX_MACRO_CLK_DIV_8;
+		tx_priv->dmic_clk_div = LPASS_CDC_TX_MACRO_CLK_DIV_8;
 		break;
 	case 16:
-		tx_priv->dmic_clk_div[mic_pair] = LPASS_CDC_TX_MACRO_CLK_DIV_16;
+		tx_priv->dmic_clk_div = LPASS_CDC_TX_MACRO_CLK_DIV_16;
 		break;
 	default:
 		/* Any other DIV factor is invalid */
-		dev_err(tx_priv->dev, "%s: Invalid div factor %d, for mic_pair %d\n",
-			 __func__, div_factor, mic_pair);
+		goto undefined_rate;
 	}
+
+	/* Valid dmic DIV factors */
+	dev_dbg(tx_priv->dev, "%s: DMIC_DIV = %u, mclk_rate = %u\n",
+		__func__, div_factor, mclk_rate);
+
+	return dmic_sample_rate;
+
+undefined_rate:
+	dev_dbg(tx_priv->dev, "%s: Invalid rate %d, for mclk %d\n",
+		 __func__, dmic_sample_rate, mclk_rate);
+	dmic_sample_rate = LPASS_CDC_TX_MACRO_DMIC_SAMPLE_RATE_UNDEFINED;
+
+	return dmic_sample_rate;
 }
 
 static const struct lpass_cdc_tx_macro_reg_mask_val
@@ -2206,11 +2215,10 @@ static int lpass_cdc_tx_macro_probe(struct platform_device *pdev)
 {
 	struct macro_ops ops = {0};
 	struct lpass_cdc_tx_macro_priv *tx_priv = NULL;
-	u32 tx_base_addr = 0, prop_size, *temp;
+	u32 tx_base_addr = 0, sample_rate = 0;
 	char __iomem *tx_io_base = NULL;
-	int ret = 0, i;
-
-	const char *dmic_clk_div_factor = "qcom,tx-dmic-clk-div-factor";
+	int ret = 0;
+	const char *dmic_sample_rate = "qcom,tx-dmic-sample-rate";
 
 	if (!lpass_cdc_is_va_macro_registered(&pdev->dev)) {
 		dev_err(&pdev->dev,
@@ -2244,24 +2252,17 @@ static int lpass_cdc_tx_macro_probe(struct platform_device *pdev)
 	tx_priv->swr_dmic_enable = false;
 	tx_priv->swr_dmic_gain_disable = false;
 	tx_priv->wlock_holders = 0;
-
-	for (i = 0; i < MIC_PAIR_MAX; i++)
-		tx_priv->dmic_clk_div[i] = LPASS_CDC_TX_MACRO_CLK_DIV_2;
-
-	if (!of_find_property(pdev->dev.of_node, dmic_clk_div_factor, &prop_size)) {
+	ret = of_property_read_u32(pdev->dev.of_node, dmic_sample_rate,
+				   &sample_rate);
+	if (ret) {
 		dev_err(&pdev->dev,
-			"%s: could not find div_clk_factor entry in dt\n",
+			"%s: could not find sample_rate entry in dt\n",
 			__func__);
+		tx_priv->dmic_clk_div = LPASS_CDC_TX_MACRO_CLK_DIV_2;
 	} else {
-		temp = devm_kzalloc(&pdev->dev, prop_size, GFP_KERNEL);
-		if (!temp)
-			return -ENOMEM;
-		if (!of_property_read_u32_array(pdev->dev.of_node,
-					dmic_clk_div_factor, temp, prop_size/sizeof(u32)))
-			for (i = 0; i < (prop_size/sizeof(u32)); i++)
-				lpass_cdc_tx_macro_update_clk_div_factor(
-						temp[i], tx_priv, i);
-
+		if (lpass_cdc_tx_macro_validate_dmic_sample_rate(
+		sample_rate, tx_priv) == LPASS_CDC_TX_MACRO_DMIC_SAMPLE_RATE_UNDEFINED)
+			return -EINVAL;
 	}
 
 	mutex_init(&tx_priv->mclk_lock);
