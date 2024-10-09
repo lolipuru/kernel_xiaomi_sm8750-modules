@@ -9,7 +9,7 @@ _default_module_enablement_list = [
     "wlan_firmware_service"
 ]
 
-_cnss2_enabled_target = ["niobe", "pineapple", "sun", "x1e80100", "volcano", "canoe"]
+_cnss2_enabled_target = ["niobe", "pineapple", "sun", "x1e80100", "volcano", "canoe", "sdxkova"]
 _icnss2_enabled_target = ["blair", "pineapple", "monaco", "pitti", "volcano", "parrot", "sun"]
 
 def _get_module_list(target, variant):
@@ -42,10 +42,26 @@ def _define_platform_config_rule(module, target, variant):
         cmd = "cat $(SRCS) > $@",
     )
     native.genrule(
+        name = "{}/{}_defconfig_generate_perf-defconfig".format(module, tv),
+        outs = ["{}/{}_defconfig.generated_perf-defconfig".format(module, tv)],
+        srcs = [
+            "{}/{}_gki_defconfig".format(module, target),
+        ],
+        cmd = "cat $(SRCS) > $@",
+    )
+    native.genrule(
         name = "{}/{}_defconfig_generate_gki".format(module, tv),
         outs = ["{}/{}_defconfig.generated_gki".format(module, tv)],
         srcs = [
             "{}/{}_gki_defconfig".format(module, target),
+        ],
+        cmd = "cat $(SRCS) > $@",
+    )
+    native.genrule(
+        name = "{}/{}_defconfig_generate_debug-defconfig".format(module, tv),
+        outs = ["{}/{}_defconfig.generated_debug-defconfig".format(module, tv)],
+        srcs = [
+            "{}/{}_consolidate_defconfig".format(module, target),
         ],
         cmd = "cat $(SRCS) > $@",
     )
@@ -86,7 +102,7 @@ def _define_modules_for_target_variant(target, variant):
             ":wlan-platform-headers",
         ]
 
-        if target != "x1e80100":
+        if target != "x1e80100" and target != "sdxkova":
             deps = deps + [
                 "//vendor/qcom/opensource/securemsm-kernel:{}_smcinvoke_dlkm".format(tv),
             ]
@@ -205,6 +221,11 @@ def _define_modules_for_target_variant(target, variant):
     ]
     if target == "sun" or target == "canoe":
         cnss_utils_dep_list = cnss_utils_dep_list + ["//vendor/qcom/opensource/data-kernel/drivers/smem-mailbox:{}_smem_mailbox".format(tv),]
+    if target == "sdxkova":
+        tgt = "target-aarch64_cortex-a53_musl"
+        board = "sdx85"
+        pkg_ver = "1.0"
+        cnss_utils_dep_list = cnss_utils_dep_list + ["//build_dir/{}/linux-{}/smem-mailbox-{}:{}_smem_mailbox".format(tgt, board, pkg_ver, tv),]
     _define_platform_config_rule(module, target, variant)
     defconfig = ":{}/{}_defconfig_generate_{}".format(module, tv, variant)
     ddk_module(
