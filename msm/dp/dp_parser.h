@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -237,6 +237,7 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @dsc_feature_enable: DSC feature enable status
  * @fec_feature_enable: FEC feature enable status
  * @dsc_continuous_pps: PPS sent every frame by HW
+ * @fifo_error_enable : fifo error enable status
  * @has_widebus: widebus (2PPC) feature eanble status
   *@mst_fixed_port: mst port_num reserved for fixed topology
  * @qos_cpu_mask: CPU mask for QOS
@@ -272,6 +273,7 @@ struct dp_parser {
 	bool dsc_feature_enable;
 	bool fec_feature_enable;
 	bool dsc_continuous_pps;
+	bool fifo_error_enable;
 	bool has_widebus;
 	bool has_4ppc_enabled;
 	bool gpio_aux_switch;
