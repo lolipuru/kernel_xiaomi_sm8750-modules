@@ -2572,7 +2572,7 @@ skip_to_power_gpio_setup:
 		mutex_init(&core_data->tui_transition_lock);
 		goodix_ts_fill_qts_vendor_data(&qts_vendor_data, core_data);
 
-		ret = qts_client_register(qts_vendor_data);
+		ret = qts_client_register(&qts_vendor_data);
 		if (ret) {
 			pr_err("qts client register failed, rc %d\n", ret);
 			goto err_out;
