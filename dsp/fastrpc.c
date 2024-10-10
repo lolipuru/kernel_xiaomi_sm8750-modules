@@ -1478,6 +1478,68 @@ static struct fastrpc_phy_page *fastrpc_phy_page_start(struct fastrpc_invoke_buf
 	return (struct fastrpc_phy_page *)(&buf[len]);
 }
 
+/*
+ * Validate the user provided buffer against the map buffer and
+ * retrieve the offset if the buffer is valid.
+ * @arg1: invoke context
+ * @arg2: current index passed during ctx map iteration
+ * @arg3: output argument pointer to get the offset
+ *
+ * Return: returns 0 on success, error code on failure.
+ */
+static int fastrpc_get_buffer_offset(struct fastrpc_invoke_ctx *ctx, int index,
+				u64 *offset)
+{
+	u64 addr = (u64)ctx->args[index].ptr & PAGE_MASK, vm_start = 0, vm_end = 0;
+	struct vm_area_struct *vma;
+	struct file *vma_file = NULL;
+	int err = 0;
+
+	if (!(ctx->maps[index]->attr & FASTRPC_ATTR_NOVA)) {
+		mmap_read_lock(current->mm);
+		vma = find_vma(current->mm, ctx->args[index].ptr);
+		if (vma) {
+			vm_start = vma->vm_start;
+			vm_end = vma->vm_end;
+			vma_file = vma->vm_file;
+		}
+		mmap_read_unlock(current->mm);
+		/*
+		 * Error out if:
+		 * 1. The DMA buffer file does not match the VMA file
+		 *    retrieved from the user provided buffer va
+		 * 2. The user provided buffer’s address does not fall
+		 *    within the VMA address range
+		 * 3. The length of the user provided buffer does not
+		 *    fall within the VMA address range
+		 */
+		if ((ctx->maps[index]->buf->file != vma_file) ||
+			(addr < vm_start || addr + ctx->args[index].length > vm_end ||
+			(addr - vm_start) + ctx->args[index].length >
+				ctx->maps[index]->size)) {
+			err = -EFAULT;
+			goto bail;
+		}
+		*offset = addr - vm_start;
+	} else {
+		/* validate user passed buffer length with map buffer size */
+		if (ctx->args[index].length > ctx->maps[index]->size) {
+			err = -EFAULT;
+			goto bail;
+		}
+	}
+
+	return 0;
+
+bail:
+	dev_err(ctx->fl->cctx->dev,
+			"Invalid buffer fd %d addr 0x%llx len 0x%llx vm start 0x%llx vm end 0x%llx IPA 0x%llx size 0x%llx, err %d\n",
+			ctx->maps[index]->fd, ctx->args[index].ptr,
+			ctx->args[index].length, vm_start, vm_end,
+			ctx->maps[index]->phys, ctx->maps[index]->size, err);
+	return err;
+}
+
 static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 {
 	struct device *dev = ctx->fl->sctx->smmucb[DEFAULT_SMMU_IDX].dev;
@@ -1539,46 +1601,18 @@ static int fastrpc_get_args(u32 kernel, struct fastrpc_invoke_ctx *ctx)
 			continue;
 
 		if (ctx->maps[i]) {
-			struct vm_area_struct *vma = NULL;
-			u64 addr = (u64)ctx->args[i].ptr & PAGE_MASK, vm_start = 0,
-			vm_end = 0;
 
 			PERF(ctx->fl->profile, GET_COUNTER(perf_counter, PERF_MAP),
 
 			rpra[i].buf.pv = (u64) ctx->args[i].ptr;
 			pages[i].addr = ctx->maps[i]->phys;
 
-			if (len > ctx->maps[i]->size) {
-				err = -EFAULT;
-				dev_err(dev,
-					"Invalid buffer addr 0x%llx len 0x%llx IPA 0x%llx size 0x%llx fd %d\n",
-					ctx->args[i].ptr, len, ctx->maps[i]->phys,
-					ctx->maps[i]->size, ctx->maps[i]->fd);
+			err = fastrpc_get_buffer_offset(ctx, i, &offset);
+			if (err)
 				goto bail;
-			}
-			if (!(ctx->maps[i]->attr & FASTRPC_ATTR_NOVA)) {
-				mmap_read_lock(current->mm);
-				vma = find_vma(current->mm, ctx->args[i].ptr);
-				if (vma) {
-					vm_start = vma->vm_start;
-					vm_end = vma->vm_end;
-				}
-				mmap_read_unlock(current->mm);
-				if (addr < vm_start || addr + len > vm_end ||
-					(addr - vm_start) + len > ctx->maps[i]->size) {
-					err = -EFAULT;
-					dev_err(dev,
-						"Invalid buffer addr 0x%llx len 0x%llx vm start 0x%llx vm end 0x%llx IPA 0x%llx size 0x%llx\n",
-						ctx->args[i].ptr, len, vm_start, vm_end,
-						ctx->maps[i]->phys, ctx->maps[i]->size);
-					goto bail;
-				}
-				else
-					offset = addr - vm_start;
-				pages[i].addr += offset;
-			}
 
-			pg_start = addr >> PAGE_SHIFT;
+			pages[i].addr += offset;
+			pg_start = (ctx->args[i].ptr & PAGE_MASK) >> PAGE_SHIFT;
 			pg_end = ((ctx->args[i].ptr + len - 1) & PAGE_MASK) >>
 				  PAGE_SHIFT;
 			pages[i].size = (pg_end - pg_start + 1) * PAGE_SIZE;
