@@ -347,6 +347,15 @@ int dsi_display_clk_mngr_get_clk_rate(void *handle, u32 idx,
 int dsi_clk_set_link_frequencies(void *client, struct link_clk_freq freq,
 					u32 index);
 
+/**
+ * dsi_clk_set_esync_frequency() - set frequency for esync clk
+ * @client:     DSI clock client pointer.
+ * @freq:       Value of esync clock frequency.
+ * @index:      Index of the DSI controller.
+ *
+ * return: error code in case of failure or 0 for success.
+ */
+int dsi_clk_set_esync_frequency(void *client, u64 freq, u32 index);
 
 /**
  * dsi_clk_set_pixel_clk_rate() - set frequency for pixel_clk

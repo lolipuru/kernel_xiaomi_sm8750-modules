@@ -24,6 +24,7 @@ struct dsi_link_clks {
 
 struct dsi_esync_clk {
 	struct dsi_esync_clk_info clks;
+	u64 freq;
 };
 
 struct dsi_osc_clk {
@@ -120,6 +121,37 @@ int dsi_clk_set_link_frequencies(void *client, struct link_clk_freq freq,
 
 	memcpy(&mngr->link_clks[clk_mngr_index].freq, &freq,
 		sizeof(struct link_clk_freq));
+
+	return rc;
+}
+
+/**
+ * dsi_clk_set_esync_frequency() - set frequency for esync clk
+ * @client:     DSI clock client pointer.
+ * @freq:       Value of esync clock frequency.
+ * @index:      Index of the DSI controller.
+ *
+ * return: error code in case of failure or 0 for success.
+ */
+int dsi_clk_set_esync_frequency(void *client, u64 freq, u32 index)
+{
+	int rc = 0, clk_mngr_index = 0;
+	struct dsi_clk_client_info *c = client;
+	struct dsi_clk_mngr *mngr;
+
+	if (!client) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	mngr = c->mngr;
+	rc = _get_clk_mngr_index(mngr, index, &clk_mngr_index);
+	if (rc) {
+		DSI_ERR("failed to map control index %d\n", index);
+		return -EINVAL;
+	}
+
+	mngr->esync_clks[clk_mngr_index].freq = freq;
 
 	return rc;
 }
@@ -884,6 +916,15 @@ static int dsi_clk_esync_clk_enable(struct dsi_clk_mngr *mngr, int index)
 	if (IS_ERR_OR_NULL(esync_clk->clks.clk)) {
 		DSI_WARN("esync clock enable attempt with null clock handle\n");
 		return -EINVAL;
+	}
+
+	if (!mngr->is_cont_splash_enabled) {
+		rc = clk_set_rate(esync_clk->clks.clk, esync_clk->freq);
+		if (rc) {
+			DSI_ERR("failed to set rate for esync clk, freq = %llu, rc = %d\n",
+				esync_clk->freq, rc);
+			return rc;
+		}
 	}
 
 	rc = clk_prepare_enable(esync_clk->clks.clk);

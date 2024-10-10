@@ -221,6 +221,7 @@ struct dsi_ctrl_interrupts {
  * @panel_id_cb:         Callback for reporting panel id.
  * @clk_info:            Clock information.
  * @clk_freq:            DSi Link clock frequency information.
+ * @esync_clk_freq:	 Esync clock frequency information in Hz.
  * @pwr_info:            Power information.
  * cesta_client:         Cesta client pointer for the display
  * @host_config:         Current host configuration.
@@ -295,6 +296,7 @@ struct dsi_ctrl {
 	/* Clock and power states */
 	struct dsi_ctrl_clk_info clk_info;
 	struct link_clk_freq clk_freq;
+	u64 esync_clk_freq;
 	struct dsi_ctrl_power_info pwr_info;
 	struct sde_cesta_client *cesta_client;
 
