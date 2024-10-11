@@ -9,7 +9,6 @@
 #include "msm_vidc_inst.h"
 #include "msm_vidc_core.h"
 #include "msm_vidc_debug.h"
-#include "perf_static_model.h"
 #include "msm_vidc_power.h"
 
 static u64 __calculate_decoder(struct vidc_bus_vote_data *d);
@@ -303,7 +302,7 @@ static u64 msm_vidc_calc_freq_iris3_new(struct msm_vidc_inst *inst, u32 data_siz
 	ret = msm_vidc_init_codec_input_freq(inst, data_size, &codec_input);
 	if (ret)
 		return freq;
-	ret = msm_vidc_calculate_frequency(codec_input, &codec_output);
+	ret = msm_vidc_calculate_frequency_iris3(codec_input, &codec_output);
 	if (ret)
 		return freq;
 	freq = codec_output.hw_min_freq * 1000000; /* Convert to Hz */
@@ -340,7 +339,7 @@ static int msm_vidc_calc_bw_iris3_new(struct msm_vidc_inst *inst,
 	ret = msm_vidc_init_codec_input_bus(inst, vidc_data, &codec_input);
 	if (ret)
 		return ret;
-	ret = msm_vidc_calculate_bandwidth(codec_input, &codec_output);
+	ret = msm_vidc_calculate_bandwidth_iris3(codec_input, &codec_output);
 	if (ret)
 		return ret;
 
