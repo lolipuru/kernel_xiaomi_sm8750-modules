@@ -1772,7 +1772,8 @@ static int _sde_sspp_setup_vigs(struct device_node *np,
 		}
 
 		if (IS_SDE_INLINE_ROT_REV_200(sde_cfg->true_inline_rot_rev) ||
-				IS_SDE_INLINE_ROT_REV_201(sde_cfg->true_inline_rot_rev)) {
+				IS_SDE_INLINE_ROT_REV_201(sde_cfg->true_inline_rot_rev) ||
+				IS_SDE_INLINE_ROT_REV_202(sde_cfg->true_inline_rot_rev)) {
 			set_bit(SDE_SSPP_PREDOWNSCALE, &sspp->features);
 			sblk->in_rot_maxdwnscale_rt_num =
 				MAX_DOWNSCALE_RATIO_INROT_PD_RT_NUMERATOR;
@@ -5297,6 +5298,11 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 		in_rot_list_size = ARRAY_SIZE(true_inline_rot_v201_fmts);
 		inline_restricted_fmt_tbl = true_inline_rot_v201_restricted_fmts;
 		in_rot_restricted_list_size = ARRAY_SIZE(true_inline_rot_v201_restricted_fmts);
+	} else if (IS_SDE_INLINE_ROT_REV_202(sde_cfg->true_inline_rot_rev)) {
+		inline_fmt_tbl = true_inline_rot_v202_fmts;
+		in_rot_list_size = ARRAY_SIZE(true_inline_rot_v202_fmts);
+		inline_restricted_fmt_tbl = true_inline_rot_v202_restricted_fmts;
+		in_rot_restricted_list_size = ARRAY_SIZE(true_inline_rot_v202_restricted_fmts);
 	}
 
 	if (in_rot_list_size) {
@@ -5871,7 +5877,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->qos_target_time_ns = 11160;
 		sde_cfg->ts_prefill_rev = 2;
 		sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
-		sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+		sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_2;
 		sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_4;
 		sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
 		sde_cfg->mdss_hw_block_size = 0x15c;
