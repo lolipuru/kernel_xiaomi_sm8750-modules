@@ -619,7 +619,7 @@ int btfmcodec_hwep_prepare(struct btfmcodec_data *btfmcodec, uint32_t sampling_r
 }
 
 static int btfmcodec_notify_usecase_start(struct btfmcodec_data *btfmcodec,
-					  uint8_t transport)
+					  uint8_t transport, uint8_t stream_id)
 {
 	struct btfmcodec_char_device *btfmcodec_dev = btfmcodec->btfmcodec_dev;
 	struct btm_usecase_start_ind ind;
@@ -632,6 +632,7 @@ static int btfmcodec_notify_usecase_start(struct btfmcodec_data *btfmcodec,
 	ind.opcode = BTM_BTFMCODEC_USECASE_START_REQ;
 	ind.len = BTM_USECASE_START_IND_LEN;
 	ind.transport = transport;
+	ind.stream_id = stream_id;
 	ret = btfmcodec_dev_enqueue_pkt(btfmcodec_dev, &ind, (ind.len + BTM_HEADER_LEN));
 
 	if (ret < 0)
@@ -682,7 +683,7 @@ static int btfmcodec_dai_prepare(struct snd_pcm_substream *substream,
 	    btfmcodec_get_current_transport(state) != BT_Connected) {
 		BTFMCODEC_WARN("cached required info as state is:%s",
 			coverttostring(btfmcodec_get_current_transport(state)));
-		ret = btfmcodec_notify_usecase_start(btfmcodec, BTADV);
+		ret = btfmcodec_notify_usecase_start(btfmcodec, BTADV, (uint8_t)id);
 	} else {
 		ret = btfmcodec_hwep_prepare(btfmcodec, sampling_rate, direction, id, false);
 /*		if (ret >= 0) {
