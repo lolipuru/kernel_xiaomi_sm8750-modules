@@ -204,6 +204,11 @@ static int btfm_swr_dai_prepare(void *dai, uint32_t sampling_rate, uint32_t dire
 	bt_soc_enable_status = 0;
 	BTFMSWR_INFO("dai->id: %d, dai->rate: %d direction: %d", id, sampling_rate, direction);
 
+	if (btfmswr == NULL || btfmswr->p_dai_port == NULL) {
+		BTFMSWR_INFO("port open might have called without hw_init\n");
+		return -EINVAL;
+	}
+
 	btfm_get_sampling_rate(&sampling_rate);
 	btfmswr->sample_rate = sampling_rate;
 
