@@ -308,7 +308,11 @@ static struct msm_cvp_common_data sm8750_common_data[] = {
 	},
 	{
 		.key = "qcom,dsp-enabled",
+#ifdef CVP_DSP_ENABLED
 		.value = 1,
+#else
+		.value = 0,
+#endif
 	},
 	{
 		.key = "qcom,rcg_vnoc_clk_en_low",
@@ -363,7 +367,11 @@ static struct msm_cvp_common_data sm8735_common_data[] = {
 	},
 	{
 		.key = "qcom,dsp-enabled",
+#ifdef CVP_DSP_ENABLED
 		.value = 1,
+#else
+		.value = 0,
+#endif
 	},
 	{
 		.key = "qcom,rcg_vnoc_clk_en_low",
