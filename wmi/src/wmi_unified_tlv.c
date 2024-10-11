@@ -24756,6 +24756,7 @@ static void populate_tlv_service(uint32_t *wmi_service)
 	wmi_service[wmi_service_scan_cache_report_support] =
 			WMI_SERVICE_SCAN_CACHE_REPORT_SUPPORT;
 #endif
+	wmi_service[wmi_service_mrsno_support] = WMI_SERVICE_MULTI_RSNO_SUPPORT;
 }
 
 /**

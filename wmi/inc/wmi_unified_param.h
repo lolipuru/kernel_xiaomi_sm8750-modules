@@ -6775,6 +6775,8 @@ typedef enum {
 #ifdef FEATURE_WLAN_ZERO_POWER_SCAN
 	wmi_service_scan_cache_report_support,
 #endif
+	wmi_service_mrsno_support,
+
 	wmi_services_max,
 } wmi_conv_service_ids;
 #define WMI_SERVICE_UNAVAILABLE 0xFFFF
