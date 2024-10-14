@@ -723,14 +723,15 @@ void msm_cvp_comm_session_clean(struct msm_cvp_inst *inst)
 		dprintk(CVP_ERR, "%s invalid params\n", __func__);
 		return;
 	}
+	mutex_lock(&inst->lock);
 	if (!inst->session) {
 		dprintk(CVP_SESS, "%s: inst %pK session already cleaned\n",
 			__func__, inst);
+		mutex_unlock(&inst->lock);
 		return;
 	}
 
 	ops_tbl = inst->core->dev_ops;
-	mutex_lock(&inst->lock);
 	dprintk(CVP_SESS, "%s: inst %pK\n", __func__, inst);
 	rc = call_hfi_op(ops_tbl, session_clean,
 			(void *)inst->session);

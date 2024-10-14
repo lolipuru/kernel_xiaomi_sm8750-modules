@@ -2116,12 +2116,13 @@ wait_dsp:
 		switch (me->pending_dsp2cpu_cmd.type) {
 		case DSP2CPU_POWERON:
 		{
+			mutex_lock(&me->tx_lock);
 			if (me->state == DSP_READY) {
 				cmd.ret = 0;
+				mutex_unlock(&me->tx_lock);
 				break;
 			}
 
-			mutex_lock(&me->tx_lock);
 			old_state = me->state;
 			me->state = DSP_READY;
 			rc = call_hfi_op(ops_tbl, resume, ops_tbl->hfi_device_data);
