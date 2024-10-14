@@ -5913,7 +5913,11 @@ static void icnss_unregister_power_supply_notifier(struct icnss_priv *priv)
 	}
 }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
 static int icnss_remove(struct platform_device *pdev)
+#else
+static void icnss_remove(struct platform_device *pdev)
+#endif
 {
 	struct icnss_priv *priv = dev_get_drvdata(&pdev->dev);
 
@@ -5987,7 +5991,9 @@ static int icnss_remove(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, NULL);
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
 	return 0;
+#endif
 }
 
 void icnss_recovery_timeout_hdlr(struct timer_list *t)
