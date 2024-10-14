@@ -37,6 +37,7 @@
 #include "cpastop_v780_100.h"
 #include "cpastop_v640_200.h"
 #include "cpastop_v880_100.h"
+#include "cpastop_v975_100.h"
 #include "cpastop_v980_100.h"
 #include "cpastop_v1080_100.h"
 #include "cam_req_mgr_workq.h"
@@ -194,6 +195,15 @@ static const uint32_t cam_cpas_hw_version_map
 		0,
 		0,
 	},
+	/* for camera_975 */
+	{
+		CAM_CPAS_TITAN_975_V100,
+		0,
+		0,
+		0,
+		0,
+		0,
+	},
 	/* for camera_980 */
 	{
 		CAM_CPAS_TITAN_980_V100,
@@ -289,6 +299,9 @@ static int cam_cpas_translate_camera_cpas_version_id(
 		break;
 	case CAM_CPAS_CAMERA_VERSION_880:
 		*cam_version_id = CAM_CPAS_CAMERA_VERSION_ID_880;
+		break;
+	case CAM_CPAS_CAMERA_VERSION_975:
+		*cam_version_id = CAM_CPAS_CAMERA_VERSION_ID_975;
 		break;
 	case CAM_CPAS_CAMERA_VERSION_980:
 		*cam_version_id = CAM_CPAS_CAMERA_VERSION_ID_980;
@@ -1579,6 +1592,12 @@ static int cam_cpastop_init_hw_version(struct cam_hw_info *cpas_hw,
 		alloc_camnoc_info[CAM_CAMNOC_HW_COMBINED] = &cam880_cpas100_camnoc_info;
 		cpas_info = &cam880_cpas100_cpas_info;
 		cesta_info = &cam_v880_cesta_info;
+		break;
+	case CAM_CPAS_TITAN_975_V100:
+		alloc_camnoc_info[CAM_CAMNOC_HW_RT] = &cam975_cpas100_camnoc_info_rt;
+		alloc_camnoc_info[CAM_CAMNOC_HW_NRT] = &cam975_cpas100_camnoc_info_nrt;
+		cpas_info = &cam975_cpas100_cpas_info;
+		cesta_info = &cam_v975_cesta_info;
 		break;
 	case CAM_CPAS_TITAN_980_V100:
 		alloc_camnoc_info[CAM_CAMNOC_HW_RT] = &cam980_cpas100_camnoc_info_rt;
