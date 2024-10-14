@@ -63,7 +63,8 @@ struct btm_ctrl_pkt {
 
 #define BTM_BTFMCODEC_USECASE_START_REQ			0x58000008
 #define BTM_BTFMCODEC_USECASE_START_RSP			0x58000009
-#define BTM_USECASE_START_IND_LEN                       1
+#define BTM_USECASE_START_IND_LEN                       2
+#define BTM_USECASE_START_RSP_LEN                       1
 
 enum rx_status {
 	/* Waiting for response */
@@ -119,6 +120,7 @@ struct btm_usecase_start_ind {
 	btm_opcode opcode;
 	uint32_t len;
 	uint8_t transport;
+	uint8_t stream_id;
 } __packed;
 
 struct btm_master_shutdown_req {

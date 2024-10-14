@@ -249,7 +249,7 @@ static void btfmcodec_dev_rxwork(struct work_struct *work)
 			break;
 		case BTM_BTFMCODEC_USECASE_START_RSP:
 			idx = BTM_PKT_TYPE_USECASE_START_RSP;
-			if (len == BTM_USECASE_START_IND_LEN) {
+			if (len == BTM_USECASE_START_RSP_LEN) {
 				status = skb->data[0];
 				if (status == MSG_SUCCESS)
 					btfmcodec_dev->status[idx] = BTM_RSP_RECV;
