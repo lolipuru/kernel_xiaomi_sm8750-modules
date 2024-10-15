@@ -3267,7 +3267,11 @@ exit_destroy_wkthread:
 	return rc;
 }
 
+#if KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE
 static int smcinvoke_remove(struct platform_device *pdev)
+#else
+static void smcinvoke_remove(struct platform_device *pdev)
+#endif
 {
 	int count = 1;
 
@@ -3276,7 +3280,9 @@ static int smcinvoke_remove(struct platform_device *pdev)
 	device_destroy(driver_class, smcinvoke_device_no);
 	class_destroy(driver_class);
 	unregister_chrdev_region(smcinvoke_device_no, count);
+#if KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE
 	return 0;
+#endif
 }
 
 static int __maybe_unused smcinvoke_suspend(struct platform_device *pdev,
