@@ -1267,6 +1267,7 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 	} while (0)
 
 #define HFI_MAX_COL_FRAME 6
+#define HFI_MAX_COL_FRAME_MVHEVC 10
 #define HFI_VENUS_VENC_TRE_WB_BUFF_SIZE (65 << 4) // bytes
 #define HFI_VENUS_VENC_DB_LINE_BUFF_PER_MB 512
 #define HFI_VENUS_VPPSG_MAX_REGISTERS 2048
@@ -1511,7 +1512,7 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 #define SIZE_SPS_PPS_SLICE_HDR (2048 + 4096)
 
 #define SIZE_FRAME_RC_BUF_SIZE(_size, standard, frame_height_coded, \
-			num_vpp_pipes_enc) \
+			num_vpp_pipes_enc, profile) \
 	do { \
 		_size = (standard == HFI_CODEC_ENCODE_HEVC) ? (256 + 16 * \
 			(14 + ((((frame_height_coded) >> 5) + 7) >> 3))) : \
@@ -1521,8 +1522,14 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 			_size = HFI_ALIGN(_size, VENUS_DMA_ALIGNMENT) * \
 					num_vpp_pipes_enc;\
 		} \
-		_size = HFI_ALIGN(_size, BUFFER_ALIGNMENT_512_BYTES) * \
+		if ((standard == HFI_CODEC_ENCODE_HEVC) && \
+			(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN)) { \
+			_size = HFI_ALIGN(_size, BUFFER_ALIGNMENT_512_BYTES) * \
+				HFI_MAX_COL_FRAME_MVHEVC; \
+		} else { \
+			_size = HFI_ALIGN(_size, BUFFER_ALIGNMENT_512_BYTES) * \
 				HFI_MAX_COL_FRAME; \
+		} \
 	} while (0)
 
 #define ENC_BITCNT_BUF_SIZE(num_lcu_in_frame) HFI_ALIGN((256 + \
@@ -1628,7 +1635,7 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 	} while (0)
 
 #define HFI_BUFFER_COMV_ENC(_size, frame_width, frame_height, lcu_size, \
-			num_recon, standard) \
+			num_recon, standard, profile) \
 	do { \
 		HFI_U32 size_colloc_mv = 0, size_colloc_rc = 0; \
 		HFI_U32 mb_width = ((frame_width) + 15) >> 4; \
@@ -1645,22 +1652,24 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 		size_colloc_mv = HFI_ALIGN(size_colloc_mv, \
 		VENUS_DMA_ALIGNMENT) * num_recon; \
 		size_colloc_rc = (((mb_width + 7) >> 3) * 16 * 2 * mb_height); \
-		size_colloc_rc = HFI_ALIGN(size_colloc_rc, \
-		VENUS_DMA_ALIGNMENT) * HFI_MAX_COL_FRAME; \
+		if ((standard == HFI_CODEC_ENCODE_HEVC) && \
+			(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN)) { \
+			size_colloc_rc = HFI_ALIGN(size_colloc_rc, \
+				VENUS_DMA_ALIGNMENT) * HFI_MAX_COL_FRAME_MVHEVC; \
+		} else { \
+			size_colloc_rc = HFI_ALIGN(size_colloc_rc, \
+				VENUS_DMA_ALIGNMENT) * HFI_MAX_COL_FRAME; \
+		} \
 		_size = size_colloc_mv + size_colloc_rc; \
 	} while (0)
 
-#define HFI_BUFFER_COMV_H264E(_size, frame_width, frame_height, num_recon) \
-	do { \
-		HFI_BUFFER_COMV_ENC(_size, frame_width, frame_height, 16, \
-			num_recon, HFI_CODEC_ENCODE_AVC); \
-	} while (0)
+#define HFI_BUFFER_COMV_H264E(_size, frame_width, frame_height, num_recon, profile) \
+	HFI_BUFFER_COMV_ENC(_size, frame_width, frame_height, 16, \
+		num_recon, HFI_CODEC_ENCODE_AVC, profile)
 
-#define HFI_BUFFER_COMV_H265E(_size, frame_width, frame_height, num_recon) \
-	do { \
-		HFI_BUFFER_COMV_ENC(_size, frame_width, frame_height, 32,\
-			num_recon, HFI_CODEC_ENCODE_HEVC); \
-	} while (0)
+#define HFI_BUFFER_COMV_H265E(_size, frame_width, frame_height, num_recon, profile) \
+	HFI_BUFFER_COMV_ENC(_size, frame_width, frame_height, 32,\
+		num_recon, HFI_CODEC_ENCODE_HEVC, profile)
 
 #define HFI_BUFFER_NON_COMV_ENC(_size, frame_width, frame_height, \
 			num_vpp_pipes_enc, lcu_size, standard, profile) \
@@ -1677,7 +1686,7 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 		num_lcumb = (frame_height_coded / lcu_size) * \
 		((frame_width_coded + lcu_size * 8) / lcu_size); \
 		SIZE_FRAME_RC_BUF_SIZE(frame_rc_buf_size, standard, \
-		frame_height_coded, num_vpp_pipes_enc); \
+		frame_height_coded, num_vpp_pipes_enc, profile); \
 		_size = SIZE_ENC_SLICE_INFO_BUF(num_lcu_in_frame) + \
 			   SIZE_SLICE_CMD_BUFFER + \
 			   SIZE_SPS_PPS_SLICE_HDR + \
