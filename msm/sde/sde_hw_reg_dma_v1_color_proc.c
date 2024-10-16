@@ -7029,7 +7029,8 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 	w = 2 * (w / 32);
 	w = w / (hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1);
 
-	if (h != hw_cfg->skip_planes[SB_PLANE_REAL].plane_h ||
+	if (h != (hw_cfg->skip_planes[SB_PLANE_REAL].plane_h + hw_cfg->overfetch_lines_on_top +
+			hw_cfg->overfetch_lines_on_bottom) ||
 			w != hw_cfg->skip_planes[SB_PLANE_REAL].plane_w) {
 		DRM_ERROR("invalid hfc cfg exp h %d exp w %d act h %d act w %d\n",
 			h, w, hw_cfg->skip_planes[SB_PLANE_REAL].plane_h,
