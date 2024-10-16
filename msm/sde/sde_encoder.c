@@ -7989,8 +7989,8 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 		}
 	}
 
-	if (disp_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE &&
-		sde_enc->input_event_enabled) {
+	if ((disp_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE ||
+			disp_info->vrr_caps.video_psr_support) && sde_enc->input_event_enabled) {
 		ret = _sde_encoder_input_handler(sde_enc);
 		if (ret)
 			SDE_ERROR(
