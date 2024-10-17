@@ -2266,6 +2266,10 @@ int cam_soc_util_clk_enable_default(struct cam_hw_soc_info *soc_info,
 {
 	int                          i, rc = 0;
 	enum cam_vote_level          apply_level;
+	uint32_t clk_level_override_high = 0;
+	unsigned long clk_rate_high = 0;
+	int32_t src_clk_idx;
+	int32_t temp_apply_level;
 
 	if (debug_bypass_drivers & CAM_BYPASS_CLKS) {
 		CAM_WARN(CAM_UTIL, "Bypass clk enable default");
@@ -2277,6 +2281,29 @@ int cam_soc_util_clk_enable_default(struct cam_hw_soc_info *soc_info,
 		CAM_ERR(CAM_UTIL, "Invalid number of clock %d",
 			soc_info->num_clk);
 		return -EINVAL;
+	}
+
+	src_clk_idx = soc_info->src_clk_idx;
+	clk_level_override_high = soc_info->clk_level_override_high;
+
+	if ((soc_info->src_clk_idx >= 0) && (soc_info->src_clk_idx < CAM_SOC_MAX_CLK) &&
+		clk_level_override_high) {
+		clk_rate_high = soc_info->clk_rate[clk_level_override_high][src_clk_idx];
+
+		CAM_DBG(CAM_UTIL, "src_clk_idx: %d, override_high: %d, clk_rate_high: %lld",
+			src_clk_idx, clk_level_override_high, clk_rate_high);
+
+		rc = cam_soc_util_get_clk_level(soc_info, clk_rate_high, src_clk_idx,
+			&temp_apply_level);
+		if (rc || (temp_apply_level < 0) || (temp_apply_level >= CAM_MAX_VOTE)) {
+			CAM_ERR(CAM_UTIL,
+				"set %s, rate %lld dev_name = %s apply level = %d",
+				soc_info->clk_name[src_clk_idx], clk_rate_high,
+				soc_info->dev_name, temp_apply_level);
+		}
+
+		if (temp_apply_level > clk_level)
+			clk_level = temp_apply_level;
 	}
 
 	rc = cam_soc_util_get_clk_level_to_apply(soc_info, clk_level,
