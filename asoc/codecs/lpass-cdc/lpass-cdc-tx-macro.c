@@ -1042,9 +1042,6 @@ static int lpass_cdc_tx_macro_enable_dec(struct snd_soc_dapm_widget *w,
 		snd_soc_component_update_bits(component,
 			dec_cfg_reg, 0x06, tx_priv->dec_mode[decimator] <<
 			LPASS_CDC_TX_MACRO_ADC_MODE_CFG0_SHIFT);
-		/* Enable TX PGA Mute */
-		snd_soc_component_update_bits(component,
-			tx_vol_ctl_reg, 0x10, 0x10);
 		break;
 	case SND_SOC_DAPM_POST_PMU:
 		/* if SWR DMIC is used, set SWR_MICn clk div */
@@ -1232,6 +1229,7 @@ static int lpass_cdc_tx_macro_hw_params(struct snd_pcm_substream *substream,
 	int tx_fs_rate = -EINVAL;
 	struct snd_soc_component *component = dai->component;
 	u32 decimator = 0;
+	u16 tx_vol_ctl_reg = 0;
 	u32 sample_rate = 0;
 	u16 tx_fs_reg = 0;
 	struct device *tx_dev = NULL;
@@ -1277,10 +1275,15 @@ static int lpass_cdc_tx_macro_hw_params(struct snd_pcm_substream *substream,
 		if (decimator >= 0) {
 			tx_fs_reg = LPASS_CDC_TX0_TX_PATH_CTL +
 				    LPASS_CDC_TX_MACRO_TX_PATH_OFFSET * decimator;
+			tx_vol_ctl_reg = LPASS_CDC_TX0_TX_PATH_CTL +
+						LPASS_CDC_TX_MACRO_TX_PATH_OFFSET * decimator;
 			dev_dbg(component->dev, "%s: set DEC%u rate to %u\n",
 				__func__, decimator, sample_rate);
 			snd_soc_component_update_bits(component, tx_fs_reg,
 						0x0F, tx_fs_rate);
+			/* Enable TX PGA Mute */
+			snd_soc_component_update_bits(component,
+				tx_vol_ctl_reg, 0x10, 0x10);
 		} else {
 			dev_err_ratelimited(component->dev,
 				"%s: ERROR: Invalid decimator: %d\n",
