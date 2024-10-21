@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef LPASS_CDC_H
@@ -65,6 +65,15 @@ enum {
 
 };
 
+enum {
+
+	MIC_PAIR01 = 0,
+	MIC_PAIR23 = 1,
+	MIC_PAIR45 = 2,
+	MIC_PAIR67 = 3,
+	MIC_PAIR_MAX = 4,
+};
+
 struct macro_ops {
 	int (*init)(struct snd_soc_component *component);
 	int (*exit)(struct snd_soc_component *component);
@@ -77,7 +86,7 @@ struct macro_ops {
 	int (*reg_wake_irq)(struct snd_soc_component *component, u32 data);
 	int (*set_port_map)(struct snd_soc_component *component, u32 uc,
 			    u32 size, void *data);
-	int (*clk_div_get)(struct snd_soc_component *component);
+	int (*clk_div_get)(struct snd_soc_component *component, u32 mic_pair);
 	int (*reg_evt_listener)(struct snd_soc_component *component, bool en);
 	int (*clk_enable)(struct snd_soc_component *c, bool en);
 	char __iomem *io_base;
