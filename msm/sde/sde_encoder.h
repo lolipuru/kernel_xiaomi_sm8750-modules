@@ -1127,4 +1127,11 @@ static inline int sde_encoder_register_misr_event(struct drm_encoder *drm_enc, b
 
 	return 0;
 }
+
+/**
+ * sde_encoder_copr_allow_notify - check if copr notify is allowed
+ * @drm_enc: pointer to drm encoder
+ * @Return: true if copr notify is allowed
+ */
+bool sde_encoder_copr_allow_notify(struct drm_encoder *drm_enc);
 #endif /* __SDE_ENCODER_H__ */

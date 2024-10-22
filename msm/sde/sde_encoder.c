@@ -2250,6 +2250,7 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 			if (sde_conn)
 				sde_conn->vrr_cmd_state = VRR_CMD_IDLE_ENTRY_START;
 
+			sde_crtc_copr_status_event_notify(drm_crtc);
 			sde_encoder_cancel_vrr_timers(drm_enc);
 			sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
 
@@ -2295,6 +2296,26 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 	}
 
 	return 0;
+}
+
+bool sde_encoder_copr_allow_notify(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc =  NULL;
+	struct sde_encoder_phys *phys_enc = NULL;
+	struct intf_status intf_status = {0};
+
+	if (!sde_encoder_in_video_psr(drm_enc))
+		return true;
+
+	sde_enc =  to_sde_encoder_virt(drm_enc);
+	phys_enc = sde_enc->cur_master;
+	if (phys_enc->hw_intf->ops.get_status)
+		phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &intf_status);
+
+	if (intf_status.frame_count > 1)
+		return true;
+
+	return false;
 }
 
 static void sde_encoder_misr_configure(struct drm_encoder *drm_enc,
