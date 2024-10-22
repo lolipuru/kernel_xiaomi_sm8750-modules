@@ -289,4 +289,5 @@ def _define_modules_for_target_variant(target, variant):
 def define_modules():
     for (t, v) in get_all_variants():
         print("v=", v)
-        _define_modules_for_target_variant(t, v)
+        if t in _cnss2_enabled_target or t in _icnss2_enabled_target:
+            _define_modules_for_target_variant(t, v)
