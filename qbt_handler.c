@@ -30,7 +30,7 @@
 #include <linux/poll.h>
 #include <linux/input.h>
 #include "qbt_handler.h"
-
+#include <linux/version.h>
 #define QBT_DEV							     "qbt"
 #define MAX_FW_EVENTS						       128
 #define MT_MAX_FINGERS						        10
@@ -1438,6 +1438,32 @@ end:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void qbt_remove(struct platform_device *pdev)
+{
+	qbt_info("Entry\n");
+
+	struct qbt_drvdata *drvdata = platform_get_drvdata(pdev);
+
+	mutex_destroy(&drvdata->mutex);
+	mutex_destroy(&drvdata->fd_events_mutex);
+	mutex_destroy(&drvdata->ipc_events_mutex);
+
+	device_destroy(drvdata->qbt_class, drvdata->qbt_fd_cdev.dev);
+	device_destroy(drvdata->qbt_class, drvdata->qbt_ipc_cdev.dev);
+
+	class_destroy(drvdata->qbt_class);
+	cdev_del(&drvdata->qbt_fd_cdev);
+	cdev_del(&drvdata->qbt_ipc_cdev);
+	unregister_chrdev_region(drvdata->qbt_fd_cdev.dev, 1);
+	unregister_chrdev_region(drvdata->qbt_ipc_cdev.dev, 1);
+
+	device_init_wakeup(&pdev->dev, 0);
+	input_unregister_handler(&qbt_touch_handler);
+
+	qbt_debug("Exit\n");
+}
+#else
 static int qbt_remove(struct platform_device *pdev)
 {
 	qbt_info("Entry\n");
@@ -1463,6 +1489,7 @@ static int qbt_remove(struct platform_device *pdev)
 	qbt_debug("Exit\n");
 	return 0;
 }
+#endif
 
 static int qbt_suspend(struct platform_device *pdev, pm_message_t state)
 {
