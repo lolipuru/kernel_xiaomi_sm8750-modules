@@ -12,6 +12,7 @@
 #include <linux/msi.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <linux/vmalloc.h>
 #include <linux/pm_runtime.h>
 #include <linux/suspend.h>
 #include <linux/version.h>
