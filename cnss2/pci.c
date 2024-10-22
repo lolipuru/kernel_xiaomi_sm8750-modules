@@ -2806,12 +2806,22 @@ cnss_get_plat_priv_by_driver_ops(struct cnss_wlan_driver *driver_ops)
 static int cnss_pci_store_qrtr_node_id(struct cnss_pci_data *pci_priv)
 {
 	int ret = 0;
-	u32 scratch = QCA6390_PCIE_SOC_PCIE_REG_PCIE_SCRATCH_2_SOC_PCIE_REG;
+	u32 scratch = PCIE_SCRATCH_2_SOC_PCIE_REG;
 	struct cnss_plat_data *plat_priv;
 
 	if (!pci_priv) {
 		cnss_pr_err("pci_priv is NULL\n");
 		return -ENODEV;
+	}
+
+	switch (pci_priv->device_id) {
+	case QCA6390_DEVICE_ID:
+	case QCA6490_DEVICE_ID:
+		break;
+	default:
+		cnss_pr_dbg("device 0x%x not supported qrtr set, nothing to do\n",
+			    pci_priv->device_id);
+		return ret;
 	}
 
 	plat_priv = pci_priv->plat_priv;
@@ -2829,8 +2839,7 @@ static int cnss_pci_store_qrtr_node_id(struct cnss_pci_data *pci_priv)
 	 * exchange. According to qrtr spec, every node should
 	 * have unique qrtr node id
 	 */
-	if (plat_priv->device_id == QCA6390_DEVICE_ID &&
-	    plat_priv->qrtr_node_id) {
+	if (plat_priv->qrtr_node_id) {
 		u32 val;
 
 		cnss_pr_dbg("write 0x%x to SCRATCH REG\n",
