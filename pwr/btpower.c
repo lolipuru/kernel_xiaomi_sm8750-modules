@@ -84,8 +84,10 @@
 #define UWB_SS	(0x02)
 #define TME_SS	(0x03)
 
-#define SOC_VERSION_1_0 0x01
-#define SOC_VERSION_2_0 0x02
+#define INVALID_SOC                 0x00
+#define PEACH_SOC_VERSION_1_0       0x01
+#define PEACH_SOC_VERSION_2_0       0x02
+#define OTHER_FMD_SUPPORTED_BT_SOC  0x03
 
 /**
  * enum btpower_vreg_param: Voltage regulator TCS param
@@ -350,6 +352,7 @@ static int bt_major;
 static int soc_id;
 static bool probe_finished;
 static struct fmdOperationStruct fmdStruct;
+char *default_crash_reason = "Crash reason not found";
 
 static void bt_power_vote(struct work_struct *work);
 
@@ -1133,10 +1136,8 @@ gpio_failed:
 regulator_failed:
 		for (i = 0; i < platform_num_vregs; i++) {
 			platform_vregs = &pwr_data->platform_vregs[i];
-		pr_err("%s: FMD MODE regulator %s\n",
-					__func__, platform_vregs->name);
 			if (get_fmd_mode() && platform_vregs->fmd_mode_set) {
-				pr_err("%s: FMD Mode Set: Skipping regulator %s\n",
+				pr_err("%s: FMD MODE: Skip %s regulator vote-off for FMD\n",
 					__func__, platform_vregs->name);
 				continue;
 			}
@@ -2599,39 +2600,41 @@ int perform_fmd_operation(void)
 	int ret = 0;
 	switch ((enum FmdOperation) fmdStruct.fmdOperation) {
 		case UPDATE_SOC_VER: {
-			if (fmdStruct.socFwVer == SOC_VERSION_1_0) {
-				pr_info("%s: UPDATE_SOC_VER :: SOC_VERSION_1_0\n",
+			if ((fmdStruct.socFwVer == INVALID_SOC) ||
+				(fmdStruct.socFwVer > OTHER_FMD_SUPPORTED_BT_SOC)) {
+				pr_err("%s: Invalid SOC VERSION sent = %d\n",
+					__func__, fmdStruct.socFwVer);
+				return -EINVAL;
+			}
+			pwr_data->is_fmd_mode_enable = true;
+			if (fmdStruct.socFwVer == PEACH_SOC_VERSION_1_0) {
+				pr_info("%s: UPDATE_SOC_VER :: PEACH_SOC_VER_1_0\n",
 					__func__);
-				pwr_data->is_fmd_mode_enable = true;
-				if (pwr_data->bt_chip_clk) {
-					ret = bt_clk_enable(pwr_data->bt_chip_clk);
-					if (ret < 0) {
-						pr_err("%s: failed to bt_chip_clk\n", __func__);
-						return -EINVAL;
-					}
-				}
-			} else if (fmdStruct.socFwVer == SOC_VERSION_2_0) {
-				pr_info("%s: UPDATE_SOC_VER :: SOC_VERSION_2_0\n",
+			} else if (fmdStruct.socFwVer == PEACH_SOC_VERSION_2_0) {
+				pr_info("%s: UPDATE_SOC_VER :: PEACH_SOC_VERSION_2_0\n",
 					__func__);
-				pwr_data->is_fmd_mode_enable = true;
 #ifdef CONFIG_FMD_ENABLE
 				cnss_utils_fmd_status(true);
 #endif
 				if (vote_wlan_reg_for_fmd() < 0) {
-					pr_err("%s: failed to vote_wlan_reg_for_fmd\n", __func__);
+					pr_err("%s: failed to vote wlan_reg\n", __func__);
 					return -EINVAL;
 				}
-				if (pwr_data->bt_chip_clk) {
-					ret = bt_clk_enable(pwr_data->bt_chip_clk);
-					if (ret < 0) {
-						pr_err("%s: failed to bt_chip_clk\n", __func__);
-						return -EINVAL;
-					}
-				}
 			} else {
-				pr_err("%s: Invalid SOC VERSION sent = %d\n",
-					__func__, fmdStruct.socFwVer);
-				return -EINVAL;
+				pr_info("%s: UPDATE_SOC_VER :: OTHER_FMD_SUPPORT_BT_SOC\n",
+					__func__);
+				if (vote_wlan_reg_for_fmd() < 0) {
+					pr_err("%s: failed to vote wlan_reg\n", __func__);
+					return -EINVAL;
+				}
+			}
+
+			if (pwr_data->bt_chip_clk) {
+				ret = bt_clk_enable(pwr_data->bt_chip_clk);
+				if (ret < 0) {
+					pr_err("%s: failed to bt_chip_clk\n", __func__);
+					return -EINVAL;
+				}
 			}
 			break;
 		}
@@ -2665,6 +2668,31 @@ int perform_fmd_operation(void)
 			break;
 		}
 	}
+	return ret;
+}
+
+int bt_kernel_panic(char *arg) {
+	int ret = 0;
+
+	pr_info("%s\n", __func__);
+
+	if (copy_from_user(&CrashInfo, (char *)arg, sizeof(CrashInfo))) {
+		pr_err("%s: failed copy to panic reason from BT-Transport\n",
+			__func__);
+		memset(&CrashInfo, 0, sizeof(CrashInfo));
+		strlcpy(CrashInfo. PrimaryReason,
+			default_crash_reason, strlen(default_crash_reason));
+		strlcpy(CrashInfo. SecondaryReason,
+			default_crash_reason, strlen(default_crash_reason));
+		ret = -EFAULT;
+	}
+
+	pr_err("%s: BT kernel panic Primary reason = %s, Secondary reason = %s\n",
+		__func__, CrashInfo.PrimaryReason, CrashInfo.SecondaryReason);
+
+	panic("%s: BT kernel panic Primary reason = %s, Secondary reason = %s\n",
+		__func__, CrashInfo.PrimaryReason, CrashInfo.SecondaryReason);
+
 	return ret;
 }
 
@@ -2709,6 +2737,7 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	int chipset_version = 0;
 	unsigned long panic_reason = 0;
 	unsigned short primary_reason = 0, sec_reason = 0, source_subsystem = 0;
+	int current_ssr_state = SUB_STATE_IDLE;
 
 	if (!pwr_data || !probe_finished) {
 		pr_err("%s: BTPower Probing Pending.Try Again\n", __func__);
@@ -2819,16 +2848,7 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		pr_err("%s: BT_CMD_KERNEL_PANIC\n", __func__);
 
-	        if (copy_from_user(&CrashInfo, (char *)arg, sizeof(CrashInfo))) {
-			pr_err("%s: copy to user failed\n", __func__);
-			ret = -EFAULT;
-		}
-
-		pr_err("%s: BT kernel panic Primary reason = %s, Secondary reason = %s\n",
-			__func__, CrashInfo.PrimaryReason, CrashInfo.SecondaryReason);
-
-		panic("%s: BT kernel panic Primary reason = %s, Secondary reason = %s\n",
-			__func__, CrashInfo.PrimaryReason, CrashInfo.SecondaryReason);
+		ret = bt_kernel_panic((char *)arg);
 
 		break;
 	case UWB_CMD_KERNEL_PANIC:
@@ -2846,6 +2866,17 @@ static long bt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			sec_reason, GetUwbSecondaryCrashReason(sec_reason),
 			source_subsystem, GetSourceSubsystemString(source_subsystem));
 		break;
+	case UWB_GET_SSR_STATE:
+		current_ssr_state = get_sub_state();
+		pr_err("%s: UWB_GET_SSR_STATE current_ssr_state:%d\n", __func__,
+			current_ssr_state);
+		if (copy_to_user((void __user *)arg, &current_ssr_state,
+			sizeof(current_ssr_state))) {
+			pr_err("%s: copy to user failed\n", __func__);
+			ret = -EFAULT;
+		}
+		break;
+
 	default:
 		return -ENOIOCTLCMD;
 	}

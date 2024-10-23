@@ -717,6 +717,7 @@ int bt_aop_pdc_reconfig(struct platform_pwr_data *pdata);
 #define UWB_CMD_REGISTRATION        0xbfe3
 #define BT_CMD_ACCESS_CTRL          0xbfe4
 #define UWB_CMD_ACCESS_CTRL         0xbfe5
+#define UWB_GET_SSR_STATE           0xbfe6
 #define BT_CMD_FMD_OPERATION        0xbfb2
 
 #ifdef CONFIG_MSM_BT_OOBS
