@@ -3167,7 +3167,7 @@ ucfg_mlme_set_11d_enabled(struct wlan_objmgr_psoc *psoc, bool value)
 }
 
 /**
- * ucfg_mlme_get_rf_test_mode() - Get rf test mode
+ * ucfg_mlme_is_rf_test_mode_enabled() - Get rf test mode flag
  * @psoc: pointer to psoc object
  * @value: Value that needs to be set from the caller
  *
@@ -3176,13 +3176,13 @@ ucfg_mlme_set_11d_enabled(struct wlan_objmgr_psoc *psoc, bool value)
  * Return: QDF Status
  */
 static inline QDF_STATUS
-ucfg_mlme_get_rf_test_mode(struct wlan_objmgr_psoc *psoc, uint32_t *value)
+ucfg_mlme_is_rf_test_mode_enabled(struct wlan_objmgr_psoc *psoc, bool *value)
 {
-	return wlan_mlme_get_rf_test_mode(psoc, value);
+	return wlan_mlme_is_rf_test_mode_enabled(psoc, value);
 }
 
 /**
- * ucfg_mlme_set_rf_test_mode() - Set rf test mode
+ * ucfg_mlme_set_rf_test_mode_enabled() - Set rf test mode flag
  * @psoc: pointer to psoc object
  * @value: Value that needs to be set from the caller
  *
@@ -3191,9 +3191,25 @@ ucfg_mlme_get_rf_test_mode(struct wlan_objmgr_psoc *psoc, uint32_t *value)
  * Return: QDF Status
  */
 static inline QDF_STATUS
-ucfg_mlme_set_rf_test_mode(struct wlan_objmgr_psoc *psoc, uint32_t value)
+ucfg_mlme_set_rf_test_mode_enabled(struct wlan_objmgr_psoc *psoc, bool value)
 {
-	return wlan_mlme_set_rf_test_mode(psoc, value);
+	return wlan_mlme_set_rf_test_mode_enabled(psoc, value);
+}
+
+/**
+ * ucfg_mlme_set_rf_mode_force_pwr_type() - Set RF test mode force power type
+ * @psoc: pointer to psoc object
+ * @value: Value that needs to be set from the caller
+ *
+ * Inline UCFG API to be used by HDD/OSIF callers
+ *
+ * Return: QDF Status
+ */
+static inline QDF_STATUS
+ucfg_mlme_set_rf_mode_force_pwr_type(struct wlan_objmgr_psoc *psoc,
+				     int8_t value)
+{
+	return wlan_mlme_set_rf_mode_force_pwr_type(psoc, value);
 }
 
 /**
@@ -5617,4 +5633,44 @@ uint16_t ucfg_mlme_get_keepalive_period(struct wlan_objmgr_vdev *vdev)
 	return wlan_mlme_get_keepalive_period(vdev);
 }
 
+/*
+ * ucfg_mlme_get_dfs_discard_mode() - Get the dfs discard mode
+ * @psoc: pointer to psoc object
+ * @val:  bit mask of mode for which DFS channel need to discard
+ *
+ * Return: QDF Status
+ */
+QDF_STATUS
+ucfg_mlme_get_dfs_discard_mode(struct wlan_objmgr_psoc *psoc,
+			       uint8_t *val);
+
+/**
+ * ucfg_mlme_set_p2p_device_mac_addr - set p2p device interface mac
+ * address to stat vdev mlme object
+ * @vdev: pointer to vdev
+ * @mac_addr: p2p device mac addr
+ *
+ * Return QDF_STATUS
+ */
+static inline QDF_STATUS
+ucfg_mlme_set_p2p_device_mac_addr(struct wlan_objmgr_vdev *vdev,
+				  struct qdf_mac_addr *mac_addr)
+{
+	return wlan_mlme_set_p2p_device_mac_addr(vdev, mac_addr);
+}
+
+/**
+ * ucfg_mlme_get_p2p_device_mac_addr - get p2p device interface mac
+ * address from sta vdev mlme object
+ * @vdev: pointer to vdev
+ * @mac_addr: p2p device mac addr
+ *
+ * Return QDF_STATUS
+ */
+static inline QDF_STATUS
+ucfg_mlme_get_p2p_device_mac_addr(struct wlan_objmgr_vdev *vdev,
+				  struct qdf_mac_addr *mac_addr)
+{
+	return wlan_mlme_get_p2p_device_mac_addr(vdev, mac_addr);
+}
 #endif /* _WLAN_MLME_UCFG_API_H_ */

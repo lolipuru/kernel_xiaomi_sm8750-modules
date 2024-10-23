@@ -225,6 +225,14 @@ lim_process_ext_channel_switch_action_frame(struct mac_context *mac_ctx,
 	wlan_reg_chan_opclass_to_freq(ext_channel_switch_frame->ext_chan_switch_ann_action.new_channel,
 				      ext_channel_switch_frame->ext_chan_switch_ann_action.op_class,
 				      false);
+
+	if (!target_freq) {
+		pe_err_rl("Invalid op_class %d",
+			  ext_channel_switch_frame->ext_chan_switch_ann_action.op_class);
+		qdf_mem_free(ext_channel_switch_frame);
+		return;
+	}
+
 	/* Free ext_channel_switch_frame here as its no longer needed */
 	qdf_mem_free(ext_channel_switch_frame);
 
@@ -1425,6 +1433,14 @@ lim_check_oci_match(struct mac_context *mac, struct pe_session *pe_session,
 	 * Primary channel      : 1 byte
 	 * Freq_seg_1_ch_num    : 1 byte
 	 */
+
+	if (oci_ie[SIR_MAC_IE_LEN_OFFSET] <
+	    MIN_OCI_IE_LEN - sizeof(struct ie_header)) {
+		pe_err("OCI len %d is incorrect",
+		       oci_ie[SIR_MAC_IE_LEN_OFFSET]);
+		return false;
+	}
+
 	status = dot11f_unpack_ie_oci(mac,
 				      (uint8_t *)&oci_ie[OCI_IE_OP_CLS_OFFSET],
 				      oci_ie[SIR_MAC_IE_LEN_OFFSET] -

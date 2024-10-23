@@ -230,14 +230,19 @@ void p2p_status_update(struct p2p_soc_priv_obj *p2p_soc_obj,
  * @is_random_seq_num_enabled:      Flag to generate random sequence numbers
  * @indoor_channel_support:         support to allow GO in indoor channels
  * @go_ignore_non_p2p_probe_req:    P2P GO ignore non-P2P probe req
+ * @sta_vdev_for_p2p_device:        Use sta vdev for p2p device operation
+ * @sta_vdev_for_p2p_device_upon_vdev_exhaust: Use sta vdev for p2p device
+ * operation when maximum vdev creation reaches to limit
  */
 struct p2p_param {
 	uint32_t go_keepalive_period;
 	uint32_t go_link_monitor_period;
-	bool p2p_device_addr_admin;
-	bool is_random_seq_num_enabled;
-	bool indoor_channel_support;
-	bool go_ignore_non_p2p_probe_req;
+	uint32_t p2p_device_addr_admin:1;
+	uint32_t is_random_seq_num_enabled:1;
+	uint32_t indoor_channel_support:1;
+	uint32_t go_ignore_non_p2p_probe_req:1;
+	uint32_t sta_vdev_for_p2p_device:1;
+	uint32_t sta_vdev_for_p2p_device_upon_vdev_exhaust:1;
 };
 
 /**
@@ -260,6 +265,8 @@ struct p2p_param {
  * @connection_status:Global P2P connection status
  * @mcc_quota_ev_os_if_cb:  callback to OS IF to indicate mcc quota event
  * @mgmt_frm_registration_update: mgmt frame registration update
+ * @sta_vdev_for_p2p_dev_operations: Use sta vdev for p2p device operations
+ * @sta_vdev_id: store sta vdev_id to use it for p2p device operation.
  */
 struct p2p_soc_priv_obj {
 	struct wlan_objmgr_psoc *soc;
@@ -282,6 +289,8 @@ struct p2p_soc_priv_obj {
 	mcc_quota_event_callback mcc_quota_ev_os_if_cb;
 #endif
 	uint32_t mgmt_frm_registration_update;
+	bool sta_vdev_for_p2p_dev_operations;
+	uint32_t sta_vdev_id;
 };
 
 /**
@@ -728,6 +737,14 @@ const uint8_t *p2p_parse_assoc_ie_for_device_info(const uint8_t *assoc_ie,
  */
 QDF_STATUS p2p_send_usd_params(struct wlan_objmgr_psoc *psoc,
 			       struct p2p_usd_attr_params *param);
+/**
+ * p2p_is_fw_support_usd() - wrapper API for API
+ * tgt_p2p_is_fw_support_usd()
+ * @psoc: pointer to PSOC object
+ *
+ * Return: true if USD is supported by FW else false
+ */
+bool p2p_is_fw_support_usd(struct wlan_objmgr_psoc *psoc);
 #endif /* FEATURE_WLAN_SUPPORT_USD */
 
 /**
@@ -827,4 +844,76 @@ p2p_check_ap_assist_dfs_group_go_with_csa(struct wlan_objmgr_vdev *vdev);
  * Return: QDF_STATUS
  */
 QDF_STATUS p2p_validate_ap_assist_dfs_group(struct wlan_objmgr_vdev *vdev);
+
+/**
+ * p2p_get_sta_vdev_for_p2p_dev_cap() - Check fw and host capability
+ * @psoc: pointer to psoc
+ *
+ * This API checks if STA vdev for P2P device operation is supported by both
+ * host and firmware.
+ *
+ * Return: True/False
+ */
+bool p2p_get_sta_vdev_for_p2p_dev_cap(struct wlan_objmgr_psoc *psoc);
+
+/**
+ * p2p_get_sta_vdev_for_p2p_dev_upon_vdev_exhaust_cap()
+ * @psoc: pointer to psoc
+ *
+ * This api will check if STA vdev for P2P device operation is supported or
+ * not. If it's supported then host will use STA vdev for P2P device operation
+ * whenever the new interface tries to comes up but there is no more vdev
+ * available to create.
+ * In this case, host will try to accommodate the new interface by destroying
+ * the p2p device vdev if it's present and it will redirect the p2p device
+ * operation on STA vdev itself.
+ *
+ * Return: True/False
+ */
+bool p2p_get_sta_vdev_for_p2p_dev_upon_vdev_exhaust_cap(
+					struct wlan_objmgr_psoc *psoc);
+
+/**
+ * p2p_set_sta_vdev_for_p2p_dev_operations() - Allow current p2p device to
+ *						    use sta vdev
+ * @psoc: pointer to psoc
+ * @val: value
+ *
+ * This is called with value true when firmware and the host INI params support
+ * the feature "use STA vdev for P2P" and STA vdev is available
+ *
+ * Return: None
+ */
+void p2p_set_sta_vdev_for_p2p_dev_operations(struct wlan_objmgr_psoc *psoc,
+					     bool val);
+
+/**
+ * p2p_is_sta_vdev_usage_allowed_for_p2p_dev() - Check whether sta vdev
+ *					can be used for current P2P device
+ * @psoc: pointer to psoc
+ *
+ * Return: True/False
+ */
+bool p2p_is_sta_vdev_usage_allowed_for_p2p_dev(struct wlan_objmgr_psoc *psoc);
+
+/**
+ * p2p_psoc_priv_set_sta_vdev_id() - Cache STA vdev id
+ * @psoc: pointer to psoc
+ * @vdev_id: vdev id to set
+ *
+ * Cache STA vdev_id in psoc p2p priv object.
+ *
+ * Return: None
+ */
+void p2p_psoc_priv_set_sta_vdev_id(struct wlan_objmgr_psoc *psoc,
+				   uint8_t vdev_id);
+
+/**
+ * p2p_psoc_priv_get_sta_vdev_id() - Get cached STA vdev id
+ * @psoc: pointer to psoc
+ *
+ * Return: uint8_t
+ */
+uint8_t p2p_psoc_priv_get_sta_vdev_id(struct wlan_objmgr_psoc *psoc);
+
 #endif /* _WLAN_P2P_MAIN_H_ */

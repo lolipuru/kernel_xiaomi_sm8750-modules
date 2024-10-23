@@ -2517,6 +2517,12 @@ int wlan_hdd_cfg80211_start_acs(struct wlan_hdd_link_info *link_info)
 		sap_config->chan_freq = AUTO_CHANNEL_SELECT;
 	ucfg_policy_mgr_get_mcc_scc_switch(hdd_ctx->psoc,
 					   &mcc_to_scc_switch);
+
+	if (qdf_atomic_read(&ap_ctx->acs_in_progress)) {
+		hdd_info("ACS is already in progress vdev %d",
+			 wlan_vdev_get_id(sap_ctx->vdev));
+		return 0;
+	}
 	/*
 	 * No DFS SCC is allowed in Auto use case. Hence not
 	 * calling DFS override
@@ -2595,7 +2601,7 @@ int wlan_hdd_cfg80211_start_acs(struct wlan_hdd_link_info *link_info)
 					  sap_config);
 
 	/*
-         * If ACS scan is skipped then ACS request would be completed by now,
+	 * If ACS scan is skipped then ACS request would be completed by now,
 	 * so reset acs in progress flag
 	 */
 	if (sap_config->acs_cfg.skip_acs_scan ||
@@ -4212,7 +4218,6 @@ static int __wlan_hdd_cfg80211_do_acs(struct wiphy *wiphy,
 			link_info->vdev_id);
 		return -EINVAL;
 	} else {
-		qdf_atomic_set(&ap_ctx->acs_in_progress, 1);
 		qdf_event_reset(&link_info->acs_complete_event);
 	}
 
@@ -4386,6 +4391,7 @@ static int __wlan_hdd_cfg80211_do_acs(struct wiphy *wiphy,
 						     adapter->device_mode,
 						     adapter->deflink->vdev_id);
 
+	ucfg_policy_mgr_acs_start(hdd_ctx->psoc, link_info->vdev_id);
 	/* consult policy manager to get PCL */
 	qdf_status = policy_mgr_get_pcl(hdd_ctx->psoc, pm_mode,
 					sap_config->acs_cfg.pcl_chan_freq,
@@ -4394,6 +4400,8 @@ static int __wlan_hdd_cfg80211_do_acs(struct wiphy *wiphy,
 					pcl_channels_weight_list,
 					NUM_CHANNELS,
 					link_info->vdev_id);
+
+	ucfg_policy_mgr_acs_completed(hdd_ctx->psoc, link_info->vdev_id);
 
 	sap_config->acs_cfg.band = hw_mode;
 
@@ -5229,6 +5237,32 @@ static inline void wlan_hdd_set_ll_lt_sap_feature(struct wlan_objmgr_psoc *psoc,
 				      QCA_WLAN_VENDOR_FEATURE_ENHANCED_AUDIO_EXPERIENCE_OVER_WLAN);
 }
 
+#ifdef FEATURE_WLAN_SUPPORT_USD
+/**
+ * wlan_hdd_set_usd_feature() - Set USD related features based on FW capability
+ * @psoc: pointer to PSOC object
+ * @feature_flags: pointer to the byte array of features.
+ *
+ * Return: None
+ **/
+static inline void wlan_hdd_set_usd_feature(struct wlan_objmgr_psoc *psoc,
+					    uint8_t *feature_flags)
+{
+	if (!ucfg_p2p_is_fw_support_usd(psoc)) {
+		hdd_debug("USD feature is not supported by FW");
+		return;
+	}
+
+	wlan_hdd_cfg80211_set_feature(feature_flags,
+				      QCA_WLAN_VENDOR_FEATURE_NAN_USD_OFFLOAD);
+}
+#else
+static inline void wlan_hdd_set_usd_feature(struct wlan_objmgr_psoc *psoc,
+					    uint8_t *feature_flags)
+{
+}
+#endif
+
 #define MAX_CONCURRENT_CHAN_ON_24G    2
 #define MAX_CONCURRENT_CHAN_ON_5G     2
 
@@ -5352,6 +5386,7 @@ __wlan_hdd_cfg80211_get_features(struct wiphy *wiphy,
 				QCA_WLAN_VENDOR_FEATURE_AP_ALLOWED_FREQ_LIST);
 	wlan_wifi_pos_cfg80211_set_features(hdd_ctx->psoc, feature_flags);
 	wlan_hdd_set_ll_lt_sap_feature(hdd_ctx->psoc, feature_flags);
+	wlan_hdd_set_usd_feature(hdd_ctx->psoc, feature_flags);
 
 	skb = wlan_cfg80211_vendor_cmd_alloc_reply_skb(wiphy,
 						       sizeof(feature_flags) +
@@ -12611,7 +12646,7 @@ hdd_test_config_emlsr_action_mode(struct hdd_adapter *adapter,
 	uint8_t i, num_links = 0;
 	uint16_t vdev_count = 0;
 	struct wlan_objmgr_vdev *wlan_vdev_list[WLAN_UMAC_MLO_MAX_VDEVS];
-	struct qdf_mac_addr active_link_addr[2];
+	struct qdf_mac_addr active_link_addr[WLAN_MLO_MAX_VDEVS];
 
 	mlo_sta_get_vdev_list(adapter->deflink->vdev, &vdev_count,
 			      wlan_vdev_list);
@@ -13026,9 +13061,9 @@ static int hdd_set_link_force_active(struct wlan_hdd_link_info *link_info,
 {
 	struct hdd_context *hdd_ctx = NULL;
 	struct nlattr *curr_attr;
-	struct qdf_mac_addr active_link_addr[2];
+	struct qdf_mac_addr active_link_addr[WLAN_MLO_MAX_VDEVS];
 	struct qdf_mac_addr *mac_addr_ptr;
-	uint32_t num_links = 0;
+	uint32_t num_links = 0, i = 0;
 	int32_t len;
 	struct hdd_adapter *adapter = link_info->adapter;
 
@@ -13038,6 +13073,12 @@ static int hdd_set_link_force_active(struct wlan_hdd_link_info *link_info,
 
 	if (attr && adapter->device_mode == QDF_STA_MODE) {
 		nla_for_each_nested(curr_attr, &attr[0], len) {
+			if (++i > WLAN_MLO_MAX_VDEVS) {
+				hdd_err("No. of force active links %d exceeds allowed links",
+					i);
+				return -EINVAL;
+			}
+
 			mac_addr_ptr = &active_link_addr[num_links];
 			qdf_mem_copy(mac_addr_ptr, nla_data(curr_attr),
 				     ETH_ALEN);
@@ -14825,10 +14866,11 @@ static int hdd_test_config_6ghz_security_test_mode(struct hdd_context *hdd_ctx,
 
 {
 	uint8_t cfg_val;
-	uint32_t rf_test_mode = 0;
+	bool rf_test_mode = false;
 	QDF_STATUS status;
 
-	status = ucfg_mlme_get_rf_test_mode(hdd_ctx->psoc, &rf_test_mode);
+	status = ucfg_mlme_is_rf_test_mode_enabled(hdd_ctx->psoc,
+						   &rf_test_mode);
 	if (!QDF_IS_STATUS_SUCCESS(status)) {
 		hdd_err("Get rf test mode failed");
 		return -EINVAL;
@@ -19796,6 +19838,15 @@ static int __wlan_hdd_cfg80211_set_roam_policy(struct wiphy *wiphy,
 		return -EAGAIN;
 	}
 
+	if (roam_policy == ucfg_get_roam_policy(hdd_ctx->psoc,
+						adapter->deflink->vdev_id)) {
+		hdd_debug("New roam policy is already in use");
+		return ret;
+	}
+
+	ucfg_set_roam_policy(hdd_ctx->psoc, adapter->deflink->vdev_id,
+			     roam_policy);
+
 	switch (roam_policy) {
 	case QCA_ROAMING_NOT_ALLOWED:
 	case QCA_ROAMING_ALLOWED_WITHIN_ESS:
@@ -20557,8 +20608,7 @@ get_usable_channel_policy[QCA_WLAN_VENDOR_ATTR_USABLE_CHANNELS_MAX + 1] = {
 	},
 };
 
-#ifdef WLAN_FEATURE_GET_USABLE_CHAN_LIST
-static enum nl80211_chan_width
+enum nl80211_chan_width
 hdd_convert_phy_bw_to_nl_bw(enum phy_ch_width bw)
 {
 	switch (bw) {
@@ -20591,6 +20641,7 @@ hdd_convert_phy_bw_to_nl_bw(enum phy_ch_width bw)
 	return NL80211_CHAN_WIDTH_20;
 }
 
+#ifdef WLAN_FEATURE_GET_USABLE_CHAN_LIST
 /**
  * hdd_fill_usable_channels_data() - Fill the data requested by userspace
  * @skb: SK buffer
@@ -22184,6 +22235,23 @@ static uint8_t wlan_hdd_rate_value_to_rate_index(uint8_t rate_type,
 				return 2;
 			else if (rate_value == RATE_11)
 				return 3;
+			else if (rate_value == RATE_6)
+				return 18;
+			else if (rate_value == RATE_9)
+				return 19;
+			else if (rate_value == RATE_12)
+				return 20;
+			else if (rate_value == RATE_18)
+				return 21;
+			else if (rate_value == RATE_24)
+				return 22;
+			else if (rate_value == RATE_36)
+				return 23;
+			else if (rate_value == RATE_48)
+				return 24;
+			else if (rate_value == RATE_54)
+				return 25;
+
 		} else if (band_index == NL80211_BAND_5GHZ ||
 			   band_index == NL80211_BAND_6GHZ) {
 			if (rate_value == RATE_6)
@@ -22205,6 +22273,8 @@ static uint8_t wlan_hdd_rate_value_to_rate_index(uint8_t rate_type,
 		}
 	} else if (rate_type == RATE_TYPE_MCS) {
 		if (band_index == NL80211_BAND_2GHZ) {
+			if (rate_value > RATE_MCS13)
+				return INVALID_RATE;
 			return rate_value + NUM_LEGACY_RATES_2G;
 		} else if (band_index == NL80211_BAND_5GHZ ||
 			   band_index == NL80211_BAND_6GHZ) {
@@ -22299,7 +22369,8 @@ static int __wlan_hdd_cfg80211_tpc_backoff(struct wiphy *wiphy,
 			max_chain_itr =
 				WMI_PDEV_SET_CUSTOM_TX_PWR_MAX_2G_CHAIN_NUM;
 			max_mcs_itr =
-				WMI_PDEV_SET_CUSTOM_TX_PWR_MAX_2G_RATE_NUM;
+				WMI_PDEV_SET_CUSTOM_TX_PWR_MAX_2G_RATE_NUM +
+				WMI_PDEV_SET_CUSTOM_TX_PWR_MAX_2G_RATE_NUM_EXT;
 		}
 		/* 5G/6G Band */
 		else {
@@ -25305,11 +25376,15 @@ static int hdd_change_adapter_mode(struct hdd_adapter *adapter,
 
 	hdd_enter();
 
-	hdd_stop_adapter(hdd_ctx, adapter);
-	hdd_deinit_adapter(hdd_ctx, adapter, true);
-	adapter->device_mode = new_mode;
+	if (adapter->device_mode != QDF_P2P_DEVICE_MODE ||
+	    !ucfg_p2p_is_sta_vdev_usage_allowed_for_p2p_dev(
+						hdd_ctx->psoc)) {
+		hdd_stop_adapter(hdd_ctx, adapter);
+		hdd_deinit_adapter(hdd_ctx, adapter, true);
+	}
 	memset(&adapter->deflink->session, 0,
 	       sizeof(adapter->deflink->session));
+	adapter->device_mode = new_mode;
 	hdd_set_station_ops(netdev);
 
 	hdd_exit();
@@ -26558,6 +26633,11 @@ done:
 	if (wlan_hdd_mlo_defer_set_keys(adapter, vdev, &mac_address))
 		return 0;
 
+	if (((wlan_vdev_mlme_get_opmode(vdev) == QDF_STA_MODE) ||
+	     (wlan_vdev_mlme_get_opmode(vdev) == QDF_P2P_CLIENT_MODE)) &&
+	    !pairwise && mlo_is_set_key_defered(vdev, link_id))
+		return 0;
+
 	cipher_cap = wlan_crypto_get_param(vdev, WLAN_CRYPTO_PARAM_CIPHER_CAP);
 	if (errno)
 		return errno;
@@ -26863,7 +26943,7 @@ static int wlan_add_key_standby_link(struct hdd_adapter *adapter,
 	mlo_link_info = mlo_mgr_get_ap_link_by_link_id(vdev->mlo_dev_ctx,
 						       link_id);
 	if (!mlo_link_info)
-		return QDF_STATUS_E_FAILURE;
+		return -EINVAL;
 
 	errno = wlan_cfg80211_store_link_key(
 			hdd_ctx->psoc, key_index,

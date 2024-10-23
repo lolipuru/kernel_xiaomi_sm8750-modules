@@ -239,6 +239,7 @@ static inline void lim_set_chan_switch_puncture(struct pe_session *session,
 	if (!session)
 		return;
 
+	pe_debug("0x%x", punct_bitmap);
 	session->gLimChannelSwitch.puncture_bitmap = punct_bitmap;
 }
 #else
@@ -1101,7 +1102,6 @@ QDF_STATUS lim_send_ies_per_band(struct mac_context *mac_ctx,
 
 /**
  * lim_update_connect_rsn_ie() - Update the connection RSN IE
- * @mac_ctx: MAC context
  * @session: PE session
  * @rsn_ie_buf: RSN IE buffer
  * @pmksa: PMKSA entry for the connecting AP
@@ -1109,8 +1109,7 @@ QDF_STATUS lim_send_ies_per_band(struct mac_context *mac_ctx,
  * Return: None
  */
 void
-lim_update_connect_rsn_ie(struct mac_context *mac_ctx,
-			  struct pe_session *session, uint8_t *rsn_ie_buf,
+lim_update_connect_rsn_ie(struct pe_session *session, uint8_t *rsn_ie_buf,
 			  struct wlan_crypto_pmksa *pmksa);
 
 /**
@@ -1853,6 +1852,22 @@ lim_update_he_6ghz_band_caps(struct mac_context *mac,
 {
 }
 #endif
+
+/**
+ * lim_reorder_vendor_ies() - Aggregate all vendor specific IEs to the end
+ * of the buffer.
+ * @mac_ctx: MAC context
+ * @frame_ies: Buffer pointer which contain IEs
+ * @ie_buf_size: Size of buffer pointed by @frame_ies.
+ *
+ * Extract all the vendor specific IEs in the buffer pointed by @frame_ies and
+ * move thoes IEs to the end of the buffer. The final length is still be same
+ * as the API will only reorder the IEs and will not change any contents.
+ *
+ * Return: void.
+ */
+void lim_reorder_vendor_ies(struct mac_context *mac_ctx,
+			    uint8_t *frame_ies, uint16_t ie_buf_size);
 
 #ifdef WLAN_FEATURE_11BE
 static inline bool lim_is_session_eht_capable(struct pe_session *session)
@@ -3819,4 +3834,18 @@ QDF_STATUS lim_fill_complete_tpe_ie(enum phy_ch_width ch_width,
 				    uint16_t tpe_ie_len,
 				    tDot11fIEtransmit_power_env *tpe_ptr,
 				    uint16_t num_tpe, uint8_t *target);
+
+/**
+ * lim_set_session_channel_params() : set session channel params
+ * @mac: pointer to MAC
+ * @session: pointer to session
+ *
+ * check and update channel params of pe session by regulatory
+ *
+ * Return: QDF_STATUS
+ */
+
+QDF_STATUS lim_set_session_channel_params(struct mac_context *mac,
+					  struct pe_session *session);
+
 #endif /* __LIM_UTILS_H */

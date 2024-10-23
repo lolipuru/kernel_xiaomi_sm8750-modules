@@ -757,6 +757,7 @@ static void wma_cp_stats_set_rate_flag(tp_wma_handle wma, uint8_t vdev_id)
 	status = wma_get_vdev_rate_flag(iface->vdev, &rate_flag);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		wma_err("vdev not found for id: %d", vdev_id);
+		wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_WMA_ID);
 		return;
 	}
 	ucfg_mc_cp_stats_set_rate_flags(vdev, rate_flag);
@@ -1181,6 +1182,8 @@ QDF_STATUS wma_set_mcc_channel_time_latency(tp_wma_handle wma,
  * @adapter_1_chan_number: adapter 1 channel number
  * @adapter_1_quota: adapter 1 quota
  * @adapter_2_chan_number: adapter 2 channel number
+ * @band_1: Band bitmap for @adapter_1_chan_number
+ * @band_2: Band bitmap for @adapter_2_chan_number
  *
  * Currently used to set time quota for 2 MCC vdevs/adapters using (operating
  * channel, quota) for each mode . The info is provided run time using
@@ -1193,12 +1196,12 @@ QDF_STATUS wma_set_mcc_channel_time_latency(tp_wma_handle wma,
  */
 QDF_STATUS wma_set_mcc_channel_time_quota(tp_wma_handle wma,
 		uint32_t adapter_1_chan_number,	uint32_t adapter_1_quota,
-		uint32_t adapter_2_chan_number)
+		uint32_t adapter_2_chan_number, uint8_t band_1, uint8_t band_2)
 {
 	bool mcc_adapt_sch = false;
 	struct mac_context *mac = NULL;
-	uint32_t chan1_freq = cds_chan_to_freq(adapter_1_chan_number);
-	uint32_t chan2_freq = cds_chan_to_freq(adapter_2_chan_number);
+	uint32_t chan1_freq;
+	uint32_t chan2_freq;
 
 	if (!wma) {
 		wma_err("NULL wma ptr. Exiting");
@@ -1217,6 +1220,13 @@ QDF_STATUS wma_set_mcc_channel_time_quota(tp_wma_handle wma,
 		QDF_ASSERT(0);
 		return QDF_STATUS_E_FAILURE;
 	}
+
+	chan1_freq = wlan_reg_chan_band_to_freq(wma->pdev,
+						adapter_1_chan_number,
+						band_1);
+	chan2_freq = wlan_reg_chan_band_to_freq(wma->pdev,
+						adapter_2_chan_number,
+						band_2);
 
 	/* Confirm MCC adaptive scheduler feature is disabled */
 	if (policy_mgr_get_dynamic_mcc_adaptive_sch(mac->psoc,

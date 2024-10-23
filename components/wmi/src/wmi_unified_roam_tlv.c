@@ -1606,7 +1606,6 @@ static QDF_STATUS send_set_roam_trigger_cmd_tlv(wmi_unified_t wmi_handle,
 	wmi_configure_roam_trigger_parameters
 		trigger_parameters[WMI_ROAM_TRIGGER_EXT_REASON_MAX];
 
-
 	for (i = 0; i < WMI_ROAM_TRIGGER_EXT_REASON_MAX; i++)
 		wmi_fill_default_roam_trigger_parameters(&trigger_parameters[i],
 							 i);
@@ -1653,32 +1652,27 @@ static QDF_STATUS send_set_roam_trigger_cmd_tlv(wmi_unified_t wmi_handle,
 				roam_trigger_parameters->enable = 0;
 		}
 
-		wmi_fill_min_rssi_params(roam_trigger_parameters,
+		wmi_fill_min_rssi_params(&trigger_parameters[WMI_ROAM_TRIGGER_REASON_NONE],
 					 triggers,
 					 DEAUTH_MIN_RSSI);
-		roam_trigger_parameters++;
-
-		wmi_fill_min_rssi_params(roam_trigger_parameters,
+		wmi_fill_min_rssi_params(&trigger_parameters[WMI_ROAM_TRIGGER_REASON_NONE],
 					 triggers,
 					 BMISS_MIN_RSSI);
-		roam_trigger_parameters++;
-
-		wmi_fill_min_rssi_params(roam_trigger_parameters,
+		wmi_fill_min_rssi_params(&trigger_parameters[WMI_ROAM_TRIGGER_REASON_NONE],
 					 triggers,
 					 MIN_RSSI_2G_TO_5G_ROAM);
-		roam_trigger_parameters++;
 	}
 
 	if (trigger_reason_bitmask &
 	    BIT(WMI_ROAM_TRIGGER_REASON_PMK_TIMEOUT))
-		trigger_parameters[WMI_ROAM_TRIGGER_REASON_WTC_BTM].enable = 1;
+		trigger_parameters[WMI_ROAM_TRIGGER_REASON_PMK_TIMEOUT].enable = 1;
 	else
-		trigger_parameters[WMI_ROAM_TRIGGER_REASON_WTC_BTM].enable = 0;
+		trigger_parameters[WMI_ROAM_TRIGGER_REASON_PMK_TIMEOUT].enable = 0;
 
 	if (BIT(ROAM_TRIGGER_REASON_PER) & roam_scan_scheme_bitmap) {
-		trigger_parameters[WMI_ROAM_TRIGGER_REASON_WTC_BTM].scan_mode =
+		trigger_parameters[ROAM_TRIGGER_REASON_PER].scan_mode =
 			ROAM_TRIGGER_SCAN_MODE_PARTIAL;
-		trigger_parameters[WMI_ROAM_TRIGGER_REASON_WTC_BTM].enable = 1;
+		trigger_parameters[ROAM_TRIGGER_REASON_PER].enable = 1;
 	}
 
 	if (BIT(ROAM_TRIGGER_REASON_BTC) & roam_scan_scheme_bitmap) {
@@ -3087,6 +3081,7 @@ extract_roam_stats_event_tlv(wmi_unified_t wmi_handle, uint8_t *evt_buf,
 	uint8_t num_tlv = 0, num_chan = 0, num_ap = 0, num_rpt = 0;
 	uint8_t num_trigger_reason = 0;
 	uint32_t rem_len;
+	uint16_t max_len;
 	QDF_STATUS status;
 
 	param_buf = (WMI_ROAM_STATS_EVENTID_param_tlvs *)evt_buf;
@@ -3119,7 +3114,12 @@ extract_roam_stats_event_tlv(wmi_unified_t wmi_handle, uint8_t *evt_buf,
 	else
 		num_trigger_reason = 0;
 
-	rem_len = WMI_SVC_MSG_MAX_SIZE - sizeof(*fixed_param);
+	max_len = wmi_get_max_msg_len(wmi_handle);
+
+	if (max_len < WMI_SVC_MSG_MAX_SIZE)
+		max_len = WMI_SVC_MSG_MAX_SIZE;
+
+	rem_len = max_len - sizeof(*fixed_param);
 	if (rem_len < num_trigger_reason * sizeof(wmi_roam_trigger_reason)) {
 		wmi_err_rl("Invalid roam trigger data");
 		return QDF_STATUS_E_INVAL;

@@ -1136,7 +1136,6 @@ populate_dot11f_ht_caps(struct mac_context *mac,
 	ht_cap_info = &mac->mlme_cfg->ht_caps.ht_cap_info;
 	vht_cap_info = &mac->mlme_cfg->vht_caps.vht_cap_info;
 
-	pDot11f->mimoPowerSave = ht_cap_info->mimo_power_save;
 	pDot11f->greenField = ht_cap_info->green_field;
 	pDot11f->delayedBA = ht_cap_info->delayed_ba;
 	pDot11f->maximalAMSDUsize = ht_cap_info->maximal_amsdu_size;
@@ -1154,6 +1153,7 @@ populate_dot11f_ht_caps(struct mac_context *mac,
 		pDot11f->rxSTBC = ht_cap_info->rx_stbc;
 		pDot11f->shortGI20MHz = ht_cap_info->short_gi_20_mhz;
 		pDot11f->shortGI40MHz = ht_cap_info->short_gi_40_mhz;
+		pDot11f->mimoPowerSave = ht_cap_info->mimo_power_save;
 	} else {
 		cb_mode = lim_get_cb_mode_for_freq(mac, pe_session,
 						   pe_session->curr_op_freq);
@@ -1182,6 +1182,7 @@ populate_dot11f_ht_caps(struct mac_context *mac,
 		pDot11f->rxSTBC = pe_session->ht_config.rx_stbc;
 		pDot11f->shortGI20MHz = pe_session->ht_config.short_gi_20_mhz;
 		pDot11f->shortGI40MHz = pe_session->ht_config.short_gi_40_mhz;
+		pDot11f->mimoPowerSave = pe_session->ht_config.mimo_power_save;
 	}
 
 	/* Ensure that shortGI40MHz is Disabled if supportedChannelWidthSet is
@@ -1234,7 +1235,8 @@ populate_dot11f_ht_caps(struct mac_context *mac,
 	if (pe_session &&
 	    LIM_IS_STA_ROLE(pe_session) &&
 	    (mac->mlme_cfg->ht_caps.enable_smps) &&
-	    (!pe_session->supported_nss_1x1)) {
+	    (!pe_session->supported_nss_1x1) &&
+	    (pe_session->ht_config.mimo_power_save != SMPS_MODE_DISABLED)) {
 		pe_debug("Add SM power save IE: %d",
 			 mac->mlme_cfg->ht_caps.smps);
 		pDot11f->mimoPowerSave = mac->mlme_cfg->ht_caps.smps;
@@ -10366,6 +10368,17 @@ void lim_ieee80211_pack_ehtop(uint8_t *ie, tDot11fIEeht_op dot11f_eht_op,
 	ehtoplen = ehtop->elem_len + WLAN_IE_HDR_LEN;
 }
 
+#ifdef WLAN_FEATURE_11BE
+static void populate_dot11f_eht_op_puncture(struct pe_session *session,
+					    tDot11fIEeht_op *eht_op)
+{
+	eht_op->disabled_sub_chan_bitmap_present =
+			session->puncture_bitmap ? 1 : 0;
+	*(uint16_t *)eht_op->disabled_sub_chan_bitmap =
+				session->puncture_bitmap;
+}
+#endif
+
 QDF_STATUS populate_dot11f_eht_operation(struct mac_context *mac_ctx,
 					 struct pe_session *session,
 					 tDot11fIEeht_op *eht_op)
@@ -10400,6 +10413,12 @@ QDF_STATUS populate_dot11f_eht_operation(struct mac_context *mac_ctx,
 		eht_op->channel_width = WLAN_EHT_CHWIDTH_20;
 		eht_op->ccfs0 = session->ch_center_freq_seg0;
 		eht_op->ccfs1 = 0;
+	}
+
+	if (oper_ch_width == CH_WIDTH_320MHZ ||
+	    oper_ch_width == CH_WIDTH_160MHZ ||
+	    oper_ch_width == CH_WIDTH_80MHZ) {
+		populate_dot11f_eht_op_puncture(session, eht_op);
 	}
 
 	lim_log_eht_op(mac_ctx, eht_op, session);
@@ -10440,6 +10459,10 @@ QDF_STATUS populate_dot11f_bw_ind_element(struct mac_context *mac_ctx,
 	}
 	bw_ind->ccfs0 = ch_switch->ch_center_freq_seg0;
 	bw_ind->ccfs1 = ch_switch->ch_center_freq_seg1;
+
+	pe_nofl_debug("bw_ind:");
+	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_PE, QDF_TRACE_LEVEL_DEBUG,
+			   bw_ind, sizeof(tDot11fIEbw_ind_element));
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -13864,6 +13887,12 @@ QDF_STATUS populate_dot11f_assoc_req_mlo_ie(struct mac_context *mac_ctx,
 		}
 		chan_freq = wlan_reg_chan_opclass_to_freq_auto(chan, op_class,
 							       false);
+
+		if (!chan_freq) {
+			pe_debug_rl("Invalid op_class %d", op_class);
+			continue;
+		}
+
 		is_2g = WLAN_REG_IS_24GHZ_CH_FREQ(chan_freq);
 		if (is_2g) {
 			wlan_populate_basic_rates(&b_rates, false, true);

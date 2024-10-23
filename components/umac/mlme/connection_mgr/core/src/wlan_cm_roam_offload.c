@@ -791,6 +791,32 @@ cm_roam_is_vendor_handoff_control_enable(struct wlan_objmgr_psoc *psoc)
 	return false;
 }
 
+void cm_roam_reset_vendor_handoff_req(struct wlan_objmgr_psoc *psoc,
+				      uint8_t vdev_id)
+{
+	struct mlme_legacy_priv *mlme_priv;
+	struct wlan_objmgr_vdev *vdev;
+
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, vdev_id,
+						    WLAN_MLME_CM_ID);
+	if (!vdev) {
+		mlme_err("get vdev failed");
+		return;
+	}
+
+	mlme_priv = wlan_vdev_mlme_get_ext_hdl(vdev);
+	if (!mlme_priv) {
+		mlme_debug("unable to set mlme_priv is NULL");
+		goto error;
+	}
+
+	mlme_debug("vdev: %d Reset vendor handoff req", vdev_id);
+	mlme_priv->cm_roam.vendor_handoff_param.req_in_progress = false;
+	mlme_priv->cm_roam.vendor_handoff_param.vendor_handoff_context = NULL;
+error:
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_MLME_CM_ID);
+}
+
 QDF_STATUS
 cm_roam_send_vendor_handoff_param_req(struct wlan_objmgr_psoc *psoc,
 				      uint8_t vdev_id,
@@ -829,6 +855,7 @@ cm_roam_send_vendor_handoff_param_req(struct wlan_objmgr_psoc *psoc,
 	req = qdf_mem_malloc(sizeof(*req));
 	if (!req) {
 		status = QDF_STATUS_E_NOMEM;
+		cm_roam_reset_vendor_handoff_req(psoc, vdev_id);
 		goto error;
 	}
 
@@ -5764,6 +5791,8 @@ void cm_roam_restore_default_config(struct wlan_objmgr_pdev *pdev,
 	}
 
 	cm_roam_control_restore_default_config(pdev, vdev_id);
+	mlme_set_roam_policy(psoc, vdev_id, WLAN_ROAMING_NOT_ALLOWED);
+
 
 	/* Reset to non-aggressive mode */
 	src_config.bool_value = 0;
@@ -7604,6 +7633,8 @@ cm_roam_mgmt_frame_event(struct wlan_objmgr_vdev *vdev,
 	wlan_diag_event.sn = frame_data->seq_num;
 	wlan_diag_event.auth_algo = frame_data->auth_algo;
 	wlan_diag_event.rssi = frame_data->rssi;
+	wlan_diag_event.tx_fail_reason =
+		wlan_get_qdf_to_diag_txrx_status(frame_data->tx_status);
 	wlan_diag_event.tx_status =
 				wlan_get_diag_tx_status(frame_data->tx_status);
 	wlan_diag_event.status = frame_data->status_code;

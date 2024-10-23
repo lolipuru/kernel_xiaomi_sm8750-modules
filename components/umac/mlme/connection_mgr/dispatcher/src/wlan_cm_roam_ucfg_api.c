@@ -72,6 +72,10 @@ ucfg_user_space_enable_disable_rso(struct wlan_objmgr_pdev *pdev,
 	}
 	wlan_mlme_set_usr_disabled_roaming(psoc, !is_fast_roam_enabled);
 
+	if (is_fast_roam_enabled)
+		status = cm_roam_send_disable_config(psoc, vdev_id,
+						     !is_fast_roam_enabled);
+
 	/*
 	 * Supplicant_disabled_roaming flag is only effective for current
 	 * connection, it will be cleared during new connection.
@@ -106,6 +110,18 @@ ucfg_user_space_enable_disable_rso(struct wlan_objmgr_pdev *pdev,
 				      NULL, false);
 
 	return status;
+}
+
+void ucfg_set_roam_policy(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id,
+			  enum wlan_roam_policy roam_policy)
+{
+	return mlme_set_roam_policy(psoc, vdev_id, roam_policy);
+}
+
+enum wlan_roam_policy
+ucfg_get_roam_policy(struct wlan_objmgr_psoc *psoc, uint8_t vdev_id)
+{
+	return mlme_get_roam_policy(psoc, vdev_id);
 }
 
 void
@@ -525,6 +541,12 @@ ucfg_cm_roam_send_vendor_handoff_param_req(struct wlan_objmgr_psoc *psoc,
 {
 	return cm_roam_send_vendor_handoff_param_req(psoc, vdev_id, param_id,
 						     vendor_handoff_context);
+}
+
+void ucfg_cm_roam_reset_vendor_handoff_req(struct wlan_objmgr_psoc *psoc,
+					   uint8_t vdev_id)
+{
+	return cm_roam_reset_vendor_handoff_req(psoc, vdev_id);
 }
 
 bool

@@ -3227,7 +3227,7 @@ QDF_STATUS hdd_get_txrx_nss(struct hdd_adapter *adapter,
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	int **nss_stats, **aggr_nss_stats;
 	struct nlattr *nss_nest, *nss;
-	int nestid;
+	int nestid, i;
 	struct hdd_context *hdd_ctx;
 	bool log_enabled = false;
 	struct wlan_hdd_link_info *link_info;
@@ -3245,7 +3245,7 @@ QDF_STATUS hdd_get_txrx_nss(struct hdd_adapter *adapter,
 		return QDF_STATUS_E_NOMEM;
 	}
 
-	for (int i = 0; i < SS_COUNT_JITTER; i++) {
+	for (i = 0; i < SS_COUNT_JITTER; i++) {
 		nss_stats[i] = qdf_mem_malloc(TX_RX_NSS_VENDOR_SIZE *
 					      sizeof(int));
 		if (!nss_stats[i]) {
@@ -3278,7 +3278,7 @@ QDF_STATUS hdd_get_txrx_nss(struct hdd_adapter *adapter,
 			status = QDF_STATUS_E_FAILURE;
 			goto free_mem;
 		}
-		for (int i = 0; i < SS_COUNT_JITTER; i++) {
+		for (i = 0; i < SS_COUNT_JITTER; i++) {
 			aggr_nss_stats[i][TX_NSS_CNT_IDX] +=
 				nss_stats[i][TX_NSS_CNT_IDX];
 			aggr_nss_stats[i][RX_NSS_CNT_IDX] +=
@@ -3295,7 +3295,7 @@ QDF_STATUS hdd_get_txrx_nss(struct hdd_adapter *adapter,
 		goto free_mem;
 	}
 
-	for (int i = 0; i < SS_COUNT_JITTER; i++) {
+	for (i = 0; i < SS_COUNT_JITTER; i++) {
 		nss = nla_nest_start(skb, i + 1);
 		if (!nss) {
 			hdd_err("nla_nest_start failed");
@@ -3322,7 +3322,7 @@ QDF_STATUS hdd_get_txrx_nss(struct hdd_adapter *adapter,
 	nla_nest_end(skb, nss_nest);
 
 free_mem:
-	for (int i = 0; i < SS_COUNT_JITTER; i++) {
+	for (i = 0; i < SS_COUNT_JITTER; i++) {
 		if (!nss_stats[i])
 			break;
 
@@ -3345,7 +3345,7 @@ QDF_STATUS hdd_add_uplink_jitter(struct hdd_adapter *adapter,
 {
 	void *soc = cds_get_context(QDF_MODULE_ID_SOC);
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
-	uint32_t *ul_jitter;
+	uint32_t ul_jitter;
 	struct hdd_context *hdd_ctx;
 	bool log_enabled = false;
 
@@ -3354,30 +3354,25 @@ QDF_STATUS hdd_add_uplink_jitter(struct hdd_adapter *adapter,
 	if (log_enabled)
 		hdd_info("Received hdd_add_uplink_jitter");
 
-	ul_jitter = qdf_mem_malloc(sizeof(uint32_t));
 	if (hdd_tsf_auto_report_enabled(adapter)) {
 		status = cdp_get_uplink_jitter(soc, adapter->deflink->vdev_id,
-					       ul_jitter);
+					       &ul_jitter);
 		if (QDF_IS_STATUS_ERROR(status)) {
 			hdd_err("Error getting jitter");
 			ul_jitter = 0;
 		}
 
 		if (log_enabled)
-			hdd_info("jitter %d", *ul_jitter);
+			hdd_info("jitter %d", ul_jitter);
 		if (nla_put_u32(skb,
 				QCA_WLAN_VENDOR_ATTR_GET_STA_INFO_UPLINK_DELAY_JITTER,
-				*ul_jitter)) {
+				ul_jitter)) {
 			status = QDF_STATUS_E_FAILURE;
-			goto free_mem;
 		}
 	} else {
 		if (log_enabled)
 			hdd_err("jitter request with tsf_auto_report_disabled");
 	}
-
-free_mem:
-	qdf_mem_free(ul_jitter);
 
 	return status;
 }

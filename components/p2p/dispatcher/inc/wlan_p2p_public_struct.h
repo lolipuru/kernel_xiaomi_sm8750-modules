@@ -45,6 +45,11 @@
 #define P2P2_OUI                 "\x50\x6f\x9a\x28"
 #define P2P2_OUI_SIZE            4
 
+/* Indicate if scan type is p2p or not */
+#define BIT_P2P_SCAN_IN_STA_VDEV 0
+
+#define P2P_SCAN_IN_STA_VDEV_FLAG BIT(BIT_P2P_SCAN_IN_STA_VDEV)
+
 /**
  * struct p2p_ps_params - P2P powersave related params
  * @opp_ps: opportunistic power save
@@ -102,13 +107,19 @@ enum p2p_roc_event {
  * @cookie:      Cookie which is given to supplicant for this roc req
  * @chan_freq:   Chan frequency for which this RoC has been requested
  * @duration:    Duration for the RoC
-  */
+ * @opmode:      Interface type of RoC
+ * @flag:        Indicate scan type. BIT[0] indicate whether
+ *               scan type is for p2p or not when sta vdev gets
+ *               use during p2p device mode operation
+ */
 struct p2p_event {
 	uint32_t vdev_id;
 	enum p2p_roc_event roc_event;
 	uint64_t cookie;
 	qdf_freq_t chan_freq;
 	uint32_t duration;
+	enum QDF_OPMODE opmode;
+	uint32_t flag;
 };
 
 /**
@@ -136,6 +147,7 @@ struct p2p_rx_mgmt_frame {
  * @buf_len:        Frame length
  * @status:         TX status
  * @buf:            Buffer address
+ * @opmode:         interface type on which tx mgmt frame came
  */
 struct p2p_tx_cnf {
 	uint32_t vdev_id;
@@ -143,6 +155,7 @@ struct p2p_tx_cnf {
 	uint32_t buf_len;
 	uint32_t status;
 	uint8_t *buf;
+	enum QDF_OPMODE opmode;
 };
 
 /**
@@ -155,6 +168,10 @@ struct p2p_tx_cnf {
  * @dont_wait_for_ack:   Wait for ack or not
  * @off_chan:            Off channel tx or not
  * @buf:                 TX buffer
+ * @opmode:              Interface type on which mgmt tx came
+ * @flag:        Indicate scan type. BIT[0] indicate whether
+ *               scan type is for p2p or not when sta vdev gets
+ *               use during p2p device mode operation
  */
 struct p2p_mgmt_tx {
 	uint32_t vdev_id;
@@ -165,6 +182,8 @@ struct p2p_mgmt_tx {
 	uint32_t dont_wait_for_ack;
 	uint32_t off_chan;
 	const uint8_t *buf;
+	enum QDF_OPMODE opmode;
+	uint32_t flag;
 };
 
 /**

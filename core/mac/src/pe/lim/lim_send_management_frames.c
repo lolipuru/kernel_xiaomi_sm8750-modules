@@ -1020,6 +1020,11 @@ lim_send_probe_rsp_mgmt_frame(struct mac_context *mac_ctx,
 	    pe_session->opmode == QDF_P2P_GO_MODE)
 		tx_flag |= HAL_USE_BD_RATE2_FOR_MANAGEMENT_FRAME;
 
+	/* Don't add new IEs after this */
+	lim_reorder_vendor_ies(mac_ctx,
+			       frame + WLAN_MAC_HDR_LEN_3A + WLAN_PROBE_RESP_IES_OFFSET,
+			       bytes - WLAN_MAC_HDR_LEN_3A - WLAN_PROBE_RESP_IES_OFFSET);
+
 	/* Queue Probe Response frame in high priority WQ */
 	qdf_status = wma_tx_frame(mac_ctx, packet,
 				  (uint16_t)bytes,
@@ -1436,8 +1441,11 @@ void lim_send_channel_usage_resp_action_frame(struct mac_context *mac_ctx,
 		freq = wlan_reg_chan_opclass_to_freq(req->channel_usage.channel_entry[idx + 1],
 						     req->channel_usage.channel_entry[idx],
 						     true);
-		if (!freq)
+		if (!freq) {
+			pe_debug_rl("Invalid op_class %d",
+				    req->channel_usage.channel_entry[idx]);
 			continue;
+		}
 
 		for (iter = 0; iter < pcl.pcl_len; iter++) {
 			if (freq == pcl.pcl_list[iter]) {
@@ -1991,6 +1999,26 @@ end:
 	qdf_nbuf_free(buf);
 null_buf:
 	return QDF_STATUS_E_FAILURE;
+}
+
+void lim_reorder_vendor_ies(struct mac_context *mac_ctx, uint8_t *frame_ies,
+			    uint16_t ie_buf_size)
+{
+	uint16_t orig_iter_len, trim_vsie_size = ie_buf_size;
+	uint8_t extracted_vsie_buf[WLAN_MAX_IE_LEN + MIN_IE_LEN];
+
+	do {
+		orig_iter_len = trim_vsie_size;
+		lim_strip_ie(mac_ctx, frame_ies, &trim_vsie_size,
+			     WLAN_ELEMID_VENDOR, ONE_BYTE, NULL, 0,
+			     extracted_vsie_buf, WLAN_MAX_IE_LEN);
+
+		if (orig_iter_len - trim_vsie_size) {
+			qdf_mem_copy(frame_ies + trim_vsie_size,
+				     extracted_vsie_buf,
+				     orig_iter_len - trim_vsie_size);
+		}
+	} while (orig_iter_len - trim_vsie_size);
 }
 
 #ifdef WLAN_FEATURE_11BE
@@ -2767,6 +2795,12 @@ static void wlan_send_tx_complete_event(struct mac_context *mac, qdf_nbuf_t buf,
 		else
 			qdf_tx_complete = QDF_TX_RX_STATUS_NO_ACK;
 
+		if (params->peer_rssi)
+			rssi = params->peer_rssi;
+		else
+			wlan_get_rssi_by_bssid(mac->pdev, &mac_hdr->i_addr3[0],
+					       &rssi);
+
 		if (tag == WLAN_AUTH_REQ) {
 			uint16_t algo = 0, type = 0, seq = 0, status = 0;
 
@@ -2780,13 +2814,6 @@ static void wlan_send_tx_complete_event(struct mac_context *mac, qdf_nbuf_t buf,
 
 			if (algo == eSIR_AUTH_TYPE_SAE)
 				type = seq;
-
-			if (params->peer_rssi)
-				rssi = params->peer_rssi;
-			else
-				wlan_get_rssi_by_bssid(mac->pdev,
-						       &mac_hdr->i_addr3[0],
-						       &rssi);
 
 			wlan_connectivity_mgmt_event(
 					mac->psoc,

@@ -1207,16 +1207,22 @@ static int32_t wma_set_priv_cfg(tp_wma_handle wma_handle,
 			(privcmd->param_value & 0x0000FF00) >> 8;
 		uint8_t adapter_1_quota =
 			(privcmd->param_value & 0x00FF0000) >> 16;
+		uint8_t band_chan_1 =
+			(privcmd->param_value & BAND_MASK_FIRST_FREQ) >> 24;
+		uint8_t band_chan_2 =
+			(privcmd->param_value & BAND_MASK_SECOND_FREQ) >> 26;
 		int ret = -1;
 
-		wma_debug("Parsed input: Channel #1:%d, Channel #2:%d, quota 1:%dms",
+		wma_debug("Parsed input: Channel #1:%d, Channel #2:%d, quota 1:%dms band_1 0x%x band_2 0x%x",
 			  adapter_1_chan_number,
-			  adapter_2_chan_number, adapter_1_quota);
+			  adapter_2_chan_number, adapter_1_quota, band_chan_1,
+			  band_chan_2);
 
 		ret = wma_set_mcc_channel_time_quota(wma_handle,
 						     adapter_1_chan_number,
 						     adapter_1_quota,
-						     adapter_2_chan_number);
+						     adapter_2_chan_number,
+						     band_chan_1, band_chan_2);
 	}
 		break;
 	default:
@@ -9510,8 +9516,11 @@ static QDF_STATUS wma_mc_process_msg(struct scheduler_msg *msg)
 		break;
 #endif /* FEATURE_WLAN_AUTO_SHUTDOWN */
 	case WMA_DHCP_START_IND:
+		wma_process_dhcp_ind(wma_handle, (tAniDHCPInd *)msg->bodyptr);
+		qdf_mem_free(msg->bodyptr);
+		break;
 	case WMA_DHCP_STOP_IND:
-		wma_process_dhcp_ind(wma_handle, (tAniDHCPInd *) msg->bodyptr);
+		wma_process_dhcp_ind(wma_handle, (tAniDHCPInd *)msg->bodyptr);
 		qdf_mem_free(msg->bodyptr);
 		break;
 	case WMA_INIT_THERMAL_INFO_CMD:
@@ -9924,6 +9933,16 @@ static QDF_STATUS wma_mc_process_msg(struct scheduler_msg *msg)
 				(struct edca_pifs_vparam *)msg->bodyptr);
 		qdf_mem_free(msg->bodyptr);
 		break;
+#ifdef FEATURE_WLAN_APF
+	case WMA_ENABLE_ACTIVE_APF_MODE_IND:
+		wma_enable_active_apf_mode(wma_handle, (tAniDHCPInd *)msg->bodyptr);
+		qdf_mem_free(msg->bodyptr);
+		break;
+	case WMA_DISABLE_ACTIVE_APF_MODE_IND:
+		wma_disable_active_apf_mode(wma_handle, (tAniDHCPInd *)msg->bodyptr);
+		qdf_mem_free(msg->bodyptr);
+		break;
+#endif
 	default:
 		wma_debug("Unhandled WMA message of type %d", msg->type);
 		if (msg->bodyptr)

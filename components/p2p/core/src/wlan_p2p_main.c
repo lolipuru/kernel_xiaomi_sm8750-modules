@@ -562,6 +562,16 @@ static QDF_STATUS p2p_object_init_params(
 			cfg_get(psoc, CFG_P2P_GO_ON_5GHZ_INDOOR_CHANNEL);
 	p2p_soc_obj->param.go_ignore_non_p2p_probe_req =
 			cfg_get(psoc, CFG_GO_IGNORE_NON_P2P_PROBE_REQ);
+	p2p_soc_obj->param.sta_vdev_for_p2p_device =
+			cfg_get(psoc, CFG_USE_STA_VDEV_FOR_P2P_DEVICE);
+	if (p2p_soc_obj->param.sta_vdev_for_p2p_device)
+		p2p_soc_obj->param.sta_vdev_for_p2p_device_upon_vdev_exhaust =
+						false;
+	else
+		p2p_soc_obj->param.sta_vdev_for_p2p_device_upon_vdev_exhaust =
+			cfg_get(psoc,
+				STA_VDEV_FOR_P2P_DEVICE_UPON_VDEV_EXHAUST);
+
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -758,6 +768,7 @@ QDF_STATUS p2p_psoc_object_open(struct wlan_objmgr_psoc *soc)
 
 	qdf_runtime_lock_init(&p2p_soc_obj->roc_runtime_lock);
 	p2p_soc_obj->cur_roc_vdev_id = P2P_INVALID_VDEV_ID;
+	p2p_soc_obj->sta_vdev_id = P2P_INVALID_VDEV_ID;
 	qdf_idr_create(&p2p_soc_obj->p2p_idr);
 
 	p2p_debug("p2p psoc object open successful");
@@ -1984,6 +1995,11 @@ QDF_STATUS p2p_send_usd_params(struct wlan_objmgr_psoc *psoc,
 {
 	return tgt_p2p_send_usd_params(psoc, param);
 }
+
+bool p2p_is_fw_support_usd(struct wlan_objmgr_psoc *psoc)
+{
+	return tgt_p2p_is_fw_support_usd(psoc);
+}
 #endif /* FEATURE_WLAN_SUPPORT_USD */
 
 bool p2p_fw_support_ap_assist_dfs_group(struct wlan_objmgr_psoc *psoc)
@@ -2197,4 +2213,93 @@ update_lim:
 									  !conc_scc_sta_present);
 
 	return status;
+}
+
+/**
+ * p2p_is_sta_vdev_for_p2p_device_supp_by_fw() - Check whether firmware
+ * supports to use sta vdev for p2p device mode
+ * @psoc: pointer to psoc
+ *
+ * Return: True/False
+ */
+static
+bool p2p_is_sta_vdev_for_p2p_device_supp_by_fw(struct wlan_objmgr_psoc *psoc)
+{
+	return wlan_psoc_nif_fw_ext2_cap_get(psoc,
+					WLAN_SOC_USE_STA_VDEV_FOR_P2P_DEVICE);
+}
+
+bool p2p_get_sta_vdev_for_p2p_dev_cap(struct wlan_objmgr_psoc *psoc)
+{
+	return (p2p_is_sta_vdev_for_p2p_device_supp_by_fw(psoc) &&
+		cfg_p2p_get_sta_vdev_for_p2p_dev_cap(psoc));
+}
+
+bool p2p_get_sta_vdev_for_p2p_dev_upon_vdev_exhaust_cap(
+					struct wlan_objmgr_psoc *psoc)
+{
+	return (p2p_is_sta_vdev_for_p2p_device_supp_by_fw(psoc) &&
+		cfg_p2p_get_sta_vdev_for_p2p_dev_upon_vdev_exhaust_cap(psoc));
+}
+
+void
+p2p_set_sta_vdev_for_p2p_dev_operations(struct wlan_objmgr_psoc *psoc, bool val)
+{
+	struct p2p_soc_priv_obj *p2p_soc_obj;
+
+	p2p_soc_obj = wlan_objmgr_psoc_get_comp_private_obj(psoc,
+							    WLAN_UMAC_COMP_P2P);
+
+	if (!p2p_soc_obj) {
+		p2p_err("p2p soc context is NULL");
+		return;
+	}
+
+	p2p_debug("sta_vdev_for_p2p_dev_operations :%d", val);
+	p2p_soc_obj->sta_vdev_for_p2p_dev_operations = val;
+}
+
+bool
+p2p_is_sta_vdev_usage_allowed_for_p2p_dev(struct wlan_objmgr_psoc *psoc)
+{
+	struct p2p_soc_priv_obj *p2p_soc_obj;
+
+	p2p_soc_obj = wlan_objmgr_psoc_get_comp_private_obj(psoc,
+							    WLAN_UMAC_COMP_P2P);
+
+	if (!p2p_soc_obj) {
+		p2p_err("p2p soc context is NULL");
+		return false;
+	}
+
+	return p2p_soc_obj->sta_vdev_for_p2p_dev_operations;
+}
+
+void p2p_psoc_priv_set_sta_vdev_id(struct wlan_objmgr_psoc *psoc,
+				   uint8_t vdev_id)
+{
+	struct p2p_soc_priv_obj *p2p_soc_obj;
+
+	p2p_soc_obj = wlan_objmgr_psoc_get_comp_private_obj(psoc,
+							    WLAN_UMAC_COMP_P2P);
+	if (!p2p_soc_obj) {
+		p2p_err("p2p soc context is NULL");
+		return;
+	}
+
+	p2p_soc_obj->sta_vdev_id = vdev_id;
+}
+
+uint8_t p2p_psoc_priv_get_sta_vdev_id(struct wlan_objmgr_psoc *psoc)
+{
+	struct p2p_soc_priv_obj *p2p_soc_obj;
+
+	p2p_soc_obj = wlan_objmgr_psoc_get_comp_private_obj(psoc,
+							    WLAN_UMAC_COMP_P2P);
+	if (!p2p_soc_obj) {
+		p2p_err("p2p soc context is NULL");
+		return WLAN_INVALID_VDEV_ID;
+	}
+
+	return p2p_soc_obj->sta_vdev_id;
 }

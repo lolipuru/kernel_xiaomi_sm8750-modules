@@ -2301,7 +2301,9 @@ static void hdd_chan_change_started_notify(struct wlan_hdd_link_info *link_info,
 		link_id = wlan_vdev_get_link_id(vdev);
 
 	ucfg_mlme_get_sap_chn_switch_bcn_count(psoc, &ch_switch_count);
-	input_punc_bitmap = wlan_reg_get_input_punc_bitmap(ch_params);
+	input_punc_bitmap = wlan_reg_get_reg_punc_bitmap(ch_params);
+	if (!input_punc_bitmap)
+		input_punc_bitmap = wlan_reg_get_input_punc_bitmap(ch_params);
 
 	hdd_debug("channel switch started notify: link_id %d, vdev_id %d chan:%d width:%d freq1:%d freq2:%d punct 0x%x ch_switch_count %d",
 		  link_id, vdev_id, chandef.chan->center_freq, chandef.width,
@@ -2498,9 +2500,9 @@ QDF_STATUS hdd_hostapd_sap_event_cb(struct sap_context *sap_ctx,
 			sap_event->sapevt.sapStartBssCompleteEvent.ch_width;
 
 		hdd_nofl_info("AP %s vid %d freq %d BW %d",
-			      link_info->vdev_id,
 			      sap_event->sapevt.sapStartBssCompleteEvent.status ?
 			      "failed" : "started",
+			      link_info->vdev_id,
 			      ap_ctx->operating_chan_freq,
 			      sap_config->ch_params.ch_width);
 
@@ -3394,12 +3396,12 @@ QDF_STATUS hdd_hostapd_sap_event_cb(struct sap_context *sap_ctx,
 		sap_event->sapevt.sap_ch_selected.vht_seg1_center_ch_freq;
 		ap_ctx->sap_config.acs_cfg.ch_width =
 			sap_event->sapevt.sap_ch_selected.ch_width;
-		hdd_nofl_info("Vdev %d ACS Completed freq %d BW %d flag %x ACS in progress %d",
+		hdd_nofl_info("Vdev %d ACS Completed freq %d BW %d flag 0x%lx ACS in progress %d",
 			      link_info->vdev_id,
 			      ap_ctx->sap_config.acs_cfg.pri_ch_freq,
 			      ap_ctx->sap_config.acs_cfg.ch_width,
 			      link_info->link_flags,
-			      ap_ctx->acs_in_progress);
+			      qdf_atomic_read(&ap_ctx->acs_in_progress));
 
 		if (qdf_atomic_read(&ap_ctx->acs_in_progress) &&
 		    test_bit(SOFTAP_BSS_STARTED, &link_info->link_flags)) {

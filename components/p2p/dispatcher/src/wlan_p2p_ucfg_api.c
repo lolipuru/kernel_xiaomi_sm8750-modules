@@ -113,7 +113,9 @@ QDF_STATUS ucfg_p2p_psoc_stop(struct wlan_objmgr_psoc *soc)
 }
 
 QDF_STATUS ucfg_p2p_roc_req(struct wlan_objmgr_psoc *soc,
-	struct p2p_roc_req *roc_req, uint64_t *cookie)
+			    struct p2p_roc_req *roc_req,
+			    uint64_t *cookie,
+			    enum QDF_OPMODE opmode)
 {
 	struct scheduler_msg msg = {0};
 	struct p2p_soc_priv_obj *p2p_soc_obj;
@@ -157,6 +159,7 @@ QDF_STATUS ucfg_p2p_roc_req(struct wlan_objmgr_psoc *soc,
 	roc_ctx->roc_state = ROC_STATE_IDLE;
 	roc_ctx->roc_type = USER_REQUESTED;
 	roc_ctx->id = id;
+	roc_ctx->opmode = opmode;
 	msg.type = P2P_ROC_REQ;
 	msg.bodyptr = roc_ctx;
 	msg.callback = p2p_process_cmd;
@@ -343,6 +346,7 @@ QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
 	tx_action->no_cck = mgmt_frm->no_cck;
 	tx_action->no_ack = mgmt_frm->dont_wait_for_ack;
 	tx_action->off_chan = mgmt_frm->off_chan;
+	tx_action->opmode = mgmt_frm->opmode;
 	tx_action->buf = qdf_mem_malloc(tx_action->buf_len);
 	if (!(tx_action->buf)) {
 		qdf_mem_free(tx_action);
@@ -354,10 +358,11 @@ QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
 
 	p2p_rand_mac_tx(pdev, tx_action);
 
-	p2p_debug("soc:%pK, vdev_id:%d, freq:%d, wait:%d, buf_len:%d, cck:%d, no ack:%d, off chan:%d cookie = 0x%llx",
+	p2p_debug("soc:%pK, vdev_id:%d, freq:%d, wait:%d, buf_len:%d, cck:%d, no ack:%d, off chan:%d cookie = 0x%llx opmode:%d",
 		  soc, mgmt_frm->vdev_id, mgmt_frm->chan_freq,
 		  mgmt_frm->wait, mgmt_frm->len, mgmt_frm->no_cck,
-		  mgmt_frm->dont_wait_for_ack, mgmt_frm->off_chan, *cookie);
+		  mgmt_frm->dont_wait_for_ack, mgmt_frm->off_chan, *cookie,
+		  tx_action->opmode);
 
 	msg.type = P2P_MGMT_TX;
 	msg.bodyptr = tx_action;
@@ -743,6 +748,11 @@ QDF_STATUS ucfg_p2p_send_usd_params(struct wlan_objmgr_psoc *psoc,
 {
 	return p2p_send_usd_params(psoc, param);
 }
+
+bool ucfg_p2p_is_fw_support_usd(struct wlan_objmgr_psoc *psoc)
+{
+	return p2p_is_fw_support_usd(psoc);
+}
 #endif /* FEATURE_WLAN_SUPPORT_USD */
 
 bool ucfg_p2p_fw_support_ap_assist_dfs_group(struct wlan_objmgr_psoc *psoc)
@@ -777,4 +787,40 @@ QDF_STATUS ucfg_p2p_get_ap_assist_dfs_params(struct wlan_objmgr_vdev *vdev,
 QDF_STATUS ucfg_p2p_check_ap_assist_dfs_group_go(struct wlan_objmgr_vdev *vdev)
 {
 	return p2p_check_ap_assist_dfs_group_go(vdev);
+}
+
+bool
+ucfg_is_sta_vdev_for_p2p_device_supported(struct wlan_objmgr_psoc *psoc)
+{
+	return p2p_get_sta_vdev_for_p2p_dev_cap(psoc);
+}
+
+bool ucfg_p2p_get_sta_vdev_for_p2p_dev_upon_vdev_exhaust_cap(
+					struct wlan_objmgr_psoc *psoc)
+{
+	return p2p_get_sta_vdev_for_p2p_dev_upon_vdev_exhaust_cap(psoc);
+}
+
+void ucfg_p2p_set_sta_vdev_for_p2p_dev_operations(
+					struct wlan_objmgr_psoc *psoc,
+					bool val)
+{
+	p2p_set_sta_vdev_for_p2p_dev_operations(psoc, val);
+}
+
+bool
+ucfg_p2p_is_sta_vdev_usage_allowed_for_p2p_dev(struct wlan_objmgr_psoc *psoc)
+{
+	return p2p_is_sta_vdev_usage_allowed_for_p2p_dev(psoc);
+}
+
+void ucfg_p2p_psoc_priv_set_sta_vdev_id(struct wlan_objmgr_psoc *psoc,
+					uint8_t vdev_id)
+{
+	p2p_psoc_priv_set_sta_vdev_id(psoc, vdev_id);
+}
+
+uint8_t ucfg_p2p_psoc_priv_get_sta_vdev_id(struct wlan_objmgr_psoc *psoc)
+{
+	return p2p_psoc_priv_get_sta_vdev_id(psoc);
 }

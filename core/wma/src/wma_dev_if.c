@@ -1169,13 +1169,10 @@ static void wma_dcs_clear_vdev_starting(struct mac_context *mac_ctx,
 static void wma_send_dcs_cmd(struct wlan_objmgr_psoc *psoc,
 			     uint32_t mac_id, uint8_t vdev_id)
 {
-	/* Send DCS command only for low latency sap*/
-	if (policy_mgr_is_vdev_ll_sap(psoc, vdev_id)) {
-		if (target_if_vdev_level_dcs_is_supported(psoc))
-			ucfg_wlan_dcs_cmd_for_vdev(psoc, mac_id, vdev_id);
-		else
-			ucfg_wlan_dcs_cmd(psoc, mac_id, true);
-	}
+	if (target_if_vdev_level_dcs_is_supported(psoc))
+		ucfg_wlan_dcs_cmd_for_vdev(psoc, mac_id, vdev_id);
+	else
+		ucfg_wlan_dcs_cmd(psoc, mac_id, true);
 }
 #else
 static void wma_send_dcs_cmd(struct wlan_objmgr_psoc *psoc,
@@ -1279,6 +1276,44 @@ static QDF_STATUS wma_get_ratemask_type(enum wlan_mlme_ratemask_type type,
 	return QDF_STATUS_SUCCESS;
 }
 
+/**
+ * wma_set_and_update_mac_id() - set and update mac_id for vdev_id
+ * @wma: WMA context
+ * @mac_ctx: mac context
+ * @vdev_mlme: vdev mlme obj
+ * @rsp: vdev start response
+ * @dp_soc: data patch soc handle
+ * mac_id: mac id
+ *
+ * Return: None
+ */
+static void
+wma_set_and_update_mac_id(tp_wma_handle wma, struct mac_context *mac_ctx,
+			  struct vdev_mlme_obj *vdev_mlme,
+			  struct vdev_start_response *rsp,
+			  void *dp_soc, uint32_t mac_id)
+{
+	if (mac_id >= MAX_MAC) {
+		wma_err("Invalid mac_id %d", mac_id);
+		QDF_ASSERT(0);
+		return;
+	}
+
+	wlan_mlme_set_vdev_mac_id(wma->pdev, rsp->vdev_id, mac_id);
+
+	if (wlan_vdev_mlme_is_mlo_ap(vdev_mlme->vdev) ||
+	    wma->interfaces[rsp->vdev_id].type ==
+	    WMI_VDEV_TYPE_MONITOR)
+		cdp_update_mac_id(dp_soc, rsp->vdev_id, mac_id);
+
+	if (wma_is_vdev_in_ap_mode(wma, rsp->vdev_id)) {
+		wma_dcs_clear_vdev_starting(mac_ctx, rsp->vdev_id);
+		wma_dcs_wlan_interference_mitigation_enable(mac_ctx,
+							    mac_id,
+							    rsp);
+	}
+}
+
 QDF_STATUS wma_vdev_start_resp_handler(struct vdev_mlme_obj *vdev_mlme,
 				       struct vdev_start_response *rsp)
 {
@@ -1349,7 +1384,7 @@ QDF_STATUS wma_vdev_start_resp_handler(struct vdev_mlme_obj *vdev_mlme,
 		} else {
 			mac_id = rsp->mac_id;
 		}
-		wlan_mlme_set_vdev_mac_id(wma->pdev, rsp->vdev_id, mac_id);
+
 		wma_debug("vdev:%d tx ss=%d rx ss=%d chain mask=%d mac=%d",
 			  rsp->vdev_id, rsp->cfgd_tx_streams,
 			  rsp->cfgd_rx_streams, rsp->chain_mask, mac_id);
@@ -1359,22 +1394,8 @@ QDF_STATUS wma_vdev_start_resp_handler(struct vdev_mlme_obj *vdev_mlme,
 			     iface->vdev->vdev_mlme.des_chan,
 			     sizeof(struct wlan_channel));
 
-		if (wlan_vdev_mlme_is_mlo_ap(vdev_mlme->vdev) ||
-		    wma->interfaces[rsp->vdev_id].type ==
-		    WMI_VDEV_TYPE_MONITOR)
-			cdp_update_mac_id(dp_soc, rsp->vdev_id, mac_id);
-	}
-
-	if (wma_is_vdev_in_ap_mode(wma, rsp->vdev_id)) {
-		if (mac_id < MAX_MAC) {
-			wma_dcs_clear_vdev_starting(mac_ctx, rsp->vdev_id);
-			wma_dcs_wlan_interference_mitigation_enable(mac_ctx,
-								    mac_id,
-								    rsp);
-		} else {
-			wma_err("Invalid mac_id: %u", mac_id);
-			return QDF_STATUS_E_INVAL;
-		}
+		wma_set_and_update_mac_id(wma, mac_ctx, vdev_mlme, rsp, dp_soc,
+					  mac_id);
 	}
 
 #ifdef FEATURE_AP_MCC_CH_AVOIDANCE
@@ -2481,56 +2502,6 @@ static int wma_remove_bss_peer(tp_wma_handle wma, uint32_t vdev_id,
 	return ret_value;
 }
 
-#ifdef FEATURE_WLAN_APF
-/*
- * get_fw_active_apf_mode() - convert HDD APF mode to FW configurable APF
- * mode
- * @mode: APF mode maintained in HDD
- *
- * Return: FW configurable BP mode
- */
-static enum wmi_host_active_apf_mode
-get_fw_active_apf_mode(enum active_apf_mode mode)
-{
-	switch (mode) {
-	case ACTIVE_APF_DISABLED:
-		return WMI_HOST_ACTIVE_APF_DISABLED;
-	case ACTIVE_APF_ENABLED:
-		return WMI_HOST_ACTIVE_APF_ENABLED;
-	case ACTIVE_APF_ADAPTIVE:
-		return WMI_HOST_ACTIVE_APF_ADAPTIVE;
-	default:
-		wma_err("Invalid Active APF Mode %d; Using 'disabled'", mode);
-		return WMI_HOST_ACTIVE_APF_DISABLED;
-	}
-}
-
-/**
- * wma_config_active_apf_mode() - Config active APF mode in FW
- * @wma: the WMA handle
- * @vdev_id: the Id of the vdev for which the configuration should be applied
- *
- * Return: QDF status
- */
-static QDF_STATUS wma_config_active_apf_mode(t_wma_handle *wma, uint8_t vdev_id)
-{
-	enum wmi_host_active_apf_mode uc_mode, mcbc_mode;
-
-	uc_mode = get_fw_active_apf_mode(wma->active_uc_apf_mode);
-	mcbc_mode = get_fw_active_apf_mode(wma->active_mc_bc_apf_mode);
-
-	wma_debug("Configuring Active APF Mode UC:%d MC/BC:%d for vdev %u",
-		 uc_mode, mcbc_mode, vdev_id);
-
-	return wmi_unified_set_active_apf_mode_cmd(wma->wmi_handle, vdev_id,
-						   uc_mode, mcbc_mode);
-}
-#else /* FEATURE_WLAN_APF */
-static QDF_STATUS wma_config_active_apf_mode(t_wma_handle *wma, uint8_t vdev_id)
-{
-	return QDF_STATUS_SUCCESS;
-}
-#endif /* FEATURE_WLAN_APF */
 
 #ifdef FEATURE_AP_MCC_CH_AVOIDANCE
 /**
@@ -3238,14 +3209,6 @@ QDF_STATUS wma_post_vdev_create_setup(struct wlan_objmgr_vdev *vdev)
 		}
 	} else {
 		wma_err("Failed to get value for WNI_CFG_ENABLE_MCC_ADAPTIVE_SCHED, leaving unchanged");
-	}
-
-	if (vdev_mlme->mgmt.generic.type == WMI_VDEV_TYPE_STA &&
-	    ucfg_pmo_is_apf_enabled(wma_handle->psoc)) {
-		ret = wma_config_active_apf_mode(wma_handle,
-						 vdev_id);
-		if (QDF_IS_STATUS_ERROR(ret))
-			wma_err("Failed to configure active APF mode");
 	}
 
 	if (vdev_mlme->mgmt.generic.type == WMI_VDEV_TYPE_STA &&
@@ -4071,6 +4034,48 @@ timer_destroy:
 }
 
 /**
+ * wma_adjust_req_timeout() - enlarge sap peer assoc conf timeout
+ * @wma: wma handle
+ * @vdev_id: vdev id
+ * @msg_type: message type
+ * @type: request type
+ * @timeout: original timeout value
+ *
+ * Enlarge sap peer assoc conf timeout if concurrent STA is processing
+ * roam sync.
+ *
+ * Return: adjusted timeout value
+ */
+static uint32_t
+wma_adjust_req_timeout(tp_wma_handle wma,
+		       uint8_t vdev_id,
+		       uint32_t msg_type,
+		       uint8_t type,
+		       uint32_t timeout)
+{
+	enum QDF_OPMODE op_mode;
+	struct wlan_objmgr_vdev *roam_vdev;
+
+	op_mode = wlan_get_opmode_from_vdev_id(wma->pdev, vdev_id);
+	if (op_mode == QDF_SAP_MODE &&
+	    msg_type == WMA_ADD_STA_REQ &&
+	    type == WMA_PEER_ASSOC_CNF_START) {
+		roam_vdev =
+		wlan_objmgr_pdev_get_roam_vdev(wma->pdev,
+					       WLAN_LEGACY_WMA_ID);
+		if (roam_vdev) {
+			wma_debug("Roam active adjust peer assoc conf timeout to %d ms from %d ms",
+				  timeout + FW_ROAM_SYNC_TIMEOUT, timeout);
+			timeout += FW_ROAM_SYNC_TIMEOUT;
+			wlan_objmgr_vdev_release_ref(roam_vdev,
+						     WLAN_LEGACY_WMA_ID);
+		}
+	}
+
+	return timeout;
+}
+
+/**
  * wma_fill_hold_req() - fill wma request
  * @wma: wma handle
  * @vdev_id: vdev id
@@ -4095,7 +4100,8 @@ struct wma_target_req *wma_fill_hold_req(tp_wma_handle wma,
 	if (!req)
 		return NULL;
 
-	wma_debug("vdev_id %d msg %d type %d", vdev_id, msg_type, type);
+	wma_debug("vdev_id %d msg %d type %d timeout %d", vdev_id, msg_type, type,
+		  timeout);
 	qdf_spin_lock_bh(&wma->wma_hold_req_q_lock);
 	req->vdev_id = vdev_id;
 	req->msg_type = msg_type;
@@ -4113,6 +4119,8 @@ struct wma_target_req *wma_fill_hold_req(tp_wma_handle wma,
 		return NULL;
 	}
 	qdf_spin_unlock_bh(&wma->wma_hold_req_q_lock);
+	timeout = wma_adjust_req_timeout(wma, vdev_id, msg_type, type,
+					 timeout);
 	qdf_mc_timer_init(&req->event_timeout, QDF_TIMER_TYPE_SW,
 			  wma_hold_req_timer, req);
 	qdf_mc_timer_start(&req->event_timeout, timeout);

@@ -762,6 +762,52 @@ QDF_STATUS sme_neighbor_report_request(mac_handle_t mac_handle,
 		tpRrmNeighborReq pRrmNeighborReq,
 		tpRrmNeighborRspCallbackInfo callbackInfo);
 
+#ifdef FEATURE_WLAN_APF
+
+/*
+ * sme_enable_active_apf_mode_ind() -
+ * API to signal the FW about active APF enablement.
+ *
+ * mac_handle: Opaque handle to the global MAC context.
+ * device_mode - mode(AP,SAP etc) of the device.
+ * macAddr - MAC address of the adapter.
+ * sessionId - session ID.
+ * Return QDF_STATUS  SUCCESS.
+ * FAILURE or RESOURCES  The API finished and failed.
+ */
+
+QDF_STATUS sme_enable_active_apf_mode_ind(mac_handle_t mac_handle,
+					  uint8_t device_mode,
+					  uint8_t *macAddr, uint8_t sessionId);
+
+/*
+ * sme_disable_active_apf_mode_ind() -
+ * API to signal the FW about active APF disablement.
+ *
+ * mac_handle: Opaque handle to the global MAC context.
+ * device_mode - mode(AP,SAP etc) of the device.
+ * macAddr - MAC address of the adapter.
+ * sessionId - session ID.
+ * Return QDF_STATUS  SUCCESS.
+ * FAILURE or RESOURCES  The API finished and failed.
+ */
+QDF_STATUS sme_disable_active_apf_mode_ind(mac_handle_t mac_handle,
+					   uint8_t device_mode,
+					   uint8_t *macAddr, uint8_t sessionId);
+#else
+QDF_STATUS sme_enable_active_apf_mode_ind(mac_handle_t mac_handle,
+					  uint8_t device_mode,
+					  uint8_t *macAddr, uint8_t sessionId)
+{
+}
+
+QDF_STATUS sme_disable_active_apf_mode_ind(mac_handle_t mac_handle,
+					   uint8_t device_mode,
+					   uint8_t *macAddr, uint8_t sessionId)
+{
+}
+#endif
+
 /**
  * sme_register_pagefault_cb() - Register cb to handle host action on pagefault
  * @mac_handle: Opaque handle to the global MAC context.
@@ -3909,13 +3955,14 @@ void sme_set_mlo_assoc_link_band(mac_handle_t mac_handle, uint8_t vdev_id,
  * @mac_handle: Opaque handle to the global MAC context
  * @session_id: session id
  * @num_links: number of links to be forced active
- * @active_link_addr: link mac address of (up to 2) links to be forced active
+ * @active_link_addr: link mac address of (up to WLAN_MLO_MAX_VDEVS) links to be
+ * forced active
  *
  * Return: void
  */
 void sme_activate_mlo_links(mac_handle_t mac_handle, uint8_t session_id,
 			    uint8_t num_links,
-			    struct qdf_mac_addr active_link_addr[2]);
+			    struct qdf_mac_addr active_link_addr[WLAN_MLO_MAX_VDEVS]);
 
 /**
  * sme_update_eht_caps() - Update the session EHT caps
