@@ -5761,6 +5761,15 @@ static void sde_encoder_handle_self_refresh(struct kthread_work *work)
 		return;
 	}
 
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde kms\n");
+		return;
+	}
+
+	sde_vm_lock(sde_kms);
+	if (!sde_vm_owns_hw(sde_kms))
+		goto end;
+
 	if (sde_enc->disp_info.vrr_caps.video_psr_support) {
 		sde_connector_backlight_lock(c_conn, true);
 		sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
@@ -5768,36 +5777,63 @@ static void sde_encoder_handle_self_refresh(struct kthread_work *work)
 	} else {
 		sde_connector_trigger_cmd_self_refresh(sde_enc->cur_master->connector);
 	}
+
+end:
+	sde_vm_unlock(sde_kms);
 }
 
 static void sde_encoder_cmd_backlight_update(struct kthread_work *work)
 {
 	struct sde_encoder_virt *sde_enc = container_of(work,
 				struct sde_encoder_virt, backlight_cmd_work);
+	struct sde_kms *sde_kms;
 
 	if (!sde_enc || !sde_enc->cur_master) {
 		SDE_ERROR("invalid sde encoder\n");
 		return;
 	}
 
-	if (kthread_cancel_delayed_work_sync(&sde_enc->delayed_off_work)) {
-		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
-		_sde_encoder_rc_restart_delayed(sde_enc, SDE_ENC_RC_EVENT_KICKOFF);
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde kms\n");
+		return;
 	}
+
+	sde_vm_lock(sde_kms);
+	if (!sde_vm_owns_hw(sde_kms))
+		goto end;
+
 	sde_connector_trigger_cmd_backlight_update(sde_enc->cur_master->connector);
+
+end:
+	sde_vm_unlock(sde_kms);
 }
 
 static void sde_encoder_cmd_backlight_sr_work_handler(struct kthread_work *work)
 {
 	struct sde_encoder_virt *sde_enc = container_of(work,
 				struct sde_encoder_virt, backlight_sr_work.work);
+	struct sde_kms *sde_kms;
 
 	if (!sde_enc || !sde_enc->cur_master) {
 		SDE_ERROR("invalid sde encoder\n");
 		return;
 	}
 
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde kms\n");
+		return;
+	}
+
+	sde_vm_lock(sde_kms);
+	if (!sde_vm_owns_hw(sde_kms))
+		goto end;
+
 	sde_connector_trigger_cmd_backlight_sr(sde_enc->cur_master->connector);
+
+end:
+	sde_vm_unlock(sde_kms);
 }
 
 static void sde_encoder_input_event_work_handler(struct kthread_work *work)
