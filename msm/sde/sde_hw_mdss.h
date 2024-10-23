@@ -354,6 +354,7 @@ enum sde_intf_type {
 
 	/* virtual interfaces */
 	INTF_WB = 0x100,
+	INTF_LB = 0x101,
 };
 
 enum sde_intf_mode {

@@ -315,6 +315,7 @@ enum sde_transition_state {
 
 enum sde_min_sr_state {
 	SDE_MIN_SR_COMPLETE,
+	SDE_MIN_SR_IN_PROGRESS,
 	SDE_MIN_SR_SCHEDULED,
 };
 
@@ -389,6 +390,9 @@ struct sde_encoder_vrr_cfg {
  *                              only for writeback encoder and the counter keeps
  *                              increasing for other type of encoders.
  * @pending_kickoff_wq:		Wait queue for blocking until kickoff completes
+ * @empulse_backup_timer: Timer to simulate EM pulse IRQ when idle
+ * @empulse_notification_sim: whether the last enabled EM pulse notification
+ *                            source was the timer, as opposed to the IRQ
  * @empulse_count: Software EM pulse count for the physical encoder
  * @kickoff_timeout_ms:		kickoff timeout in mill seconds
  * @irq:			IRQ tracking structures
@@ -456,6 +460,8 @@ struct sde_encoder_phys {
 	atomic_t pending_retire_fence_cnt;
 	atomic_t pending_ctl_start_cnt;
 	wait_queue_head_t pending_kickoff_wq;
+	struct hrtimer empulse_backup_timer;
+	bool empulse_notification_sim;
 	atomic_t empulse_count;
 	u32 kickoff_timeout_ms;
 	struct sde_encoder_irq irq[INTR_IDX_MAX];
@@ -643,10 +649,11 @@ struct sde_encoder_wait_info {
 /**
  * sde_encoder_phys_vid_init - Construct a new video mode physical encoder
  * @p:	Pointer to init params structure
+ * @is_lb_display: true for lb encoder, false otherwise
  * Return: Error code or newly allocated encoder
  */
 struct sde_encoder_phys *sde_encoder_phys_vid_init(
-		struct sde_enc_phys_init_params *p);
+		struct sde_enc_phys_init_params *p, bool is_lb_display);
 
 /**
  * sde_encoder_phys_cmd_init - Construct a new command mode physical encoder

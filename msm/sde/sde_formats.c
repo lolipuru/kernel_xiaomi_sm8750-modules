@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1237,9 +1237,14 @@ int sde_format_check_modified_format(
 			bos_total_size += bos[i]->size;
 	}
 
-	if (bos_total_size < layout.total_size) {
-		DRM_ERROR("buffers total size too small %u expected %u\n",
-				bos_total_size, layout.total_size);
+	/*
+	 * In dual pass CAC, second pass CAC fetch pipes get data from CAC splitter
+	 * instead of FB, hence this check needs to be bypassed.
+	 */
+	if (bos_total_size < layout.total_size &&
+			!SDE_FORMAT_IS_CAC_FETCH(fmt)) {
+		DRM_ERROR("buffers total size too small %u expected %u cac_fmt:%d\n",
+				bos_total_size, layout.total_size, SDE_FORMAT_IS_CAC_FETCH(fmt));
 		return -EINVAL;
 	}
 

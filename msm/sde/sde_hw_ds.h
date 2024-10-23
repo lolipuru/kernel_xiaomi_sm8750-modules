@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -11,9 +12,6 @@
 #include "sde_hw_catalog.h"
 
 struct sde_hw_ds;
-
-/* Destination Scaler DUAL mode overfetch pixel count */
-#define SDE_DS_OVERFETCH_SIZE 5
 
 /* Destination scaler DUAL mode operation bit */
 #define SDE_DS_OP_MODE_DUAL BIT(16)

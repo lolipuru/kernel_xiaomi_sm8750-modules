@@ -1274,6 +1274,26 @@ static void sde_encoder_phys_vid_esync_emsync_irq(void *arg, int irq_idx)
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent), irq_idx);
 }
 
+static enum hrtimer_restart sde_encoder_phys_vid_esync_backup_sim(struct hrtimer *timer)
+{
+	struct sde_encoder_phys *phys_enc =
+			container_of(timer, struct sde_encoder_phys, empulse_backup_timer);
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct msm_display_info *info;
+
+	if (!sde_enc)
+		return HRTIMER_NORESTART;
+
+	if (phys_enc->parent_ops.handle_empulse_virt)
+		phys_enc->parent_ops.handle_empulse_virt(phys_enc->parent, phys_enc);
+
+	SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FUNC_EXIT);
+
+	info = &sde_enc->disp_info;
+	hrtimer_forward_now(timer, ns_to_ktime(DIV_ROUND_UP(NSEC_PER_SEC, info->esync_emsync_fps)));
+	return HRTIMER_RESTART;
+}
+
 static void _sde_encoder_phys_vid_setup_irq_hw_idx(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -1454,11 +1474,39 @@ end:
 	return ret;
 }
 
+static void sde_encoder_phys_vid_register_esync_backup_sim(
+		struct sde_encoder_phys *phys_enc, bool enable)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct msm_display_info *info;
+	u64 now_ns;
+	u64 last_ns;
+	u64 period_ns;
+	u64 sleep_duration_ns;
+
+	if (enable) {
+		sde_enc = to_sde_encoder_virt(phys_enc->parent);
+		info = &sde_enc->disp_info;
+
+		now_ns = ktime_to_ns(ktime_get());
+		last_ns = ktime_to_ns(phys_enc->last_vsync_timestamp);
+		period_ns = DIV_ROUND_UP(NSEC_PER_SEC, info->esync_emsync_fps);
+		sleep_duration_ns = (period_ns - ((now_ns - last_ns) % period_ns));
+
+		hrtimer_start(&phys_enc->empulse_backup_timer,
+				ns_to_ktime(sleep_duration_ns), HRTIMER_MODE_REL);
+	} else {
+		hrtimer_cancel(&phys_enc->empulse_backup_timer);
+	}
+}
+
 static int sde_encoder_phys_vid_control_empulse_irq(
 		struct sde_encoder_phys *phys_enc, bool enable)
 {
 	int ret = 0;
 	struct sde_encoder_phys_vid *vid_enc;
+	struct sde_encoder_virt *sde_enc;
+	struct msm_display_info *info;
 	int refcount;
 
 	if (!phys_enc) {
@@ -1469,6 +1517,8 @@ static int sde_encoder_phys_vid_control_empulse_irq(
 	mutex_lock(phys_enc->vblank_ctl_lock);
 	refcount = atomic_read(&phys_enc->empulse_irq_refcount);
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	info = &sde_enc->disp_info;
 
 	/* Slave encoders don't report vblank */
 	if (!sde_encoder_phys_vid_is_master(phys_enc))
@@ -1488,13 +1538,24 @@ static int sde_encoder_phys_vid_control_empulse_irq(
 			atomic_read(&phys_enc->empulse_irq_refcount));
 
 	if (enable && atomic_inc_return(&phys_enc->empulse_irq_refcount) == 1) {
-		ret = sde_encoder_helper_register_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
-		if (ret)
-			atomic_dec(&phys_enc->empulse_irq_refcount);
+		if (sde_enc->rc_state == SDE_ENC_RC_STATE_ON) {
+			ret = sde_encoder_helper_register_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
+			if (ret)
+				atomic_dec(&phys_enc->empulse_irq_refcount);
+
+			phys_enc->empulse_notification_sim = false;
+		} else {
+			sde_encoder_phys_vid_register_esync_backup_sim(phys_enc, true);
+			phys_enc->empulse_notification_sim = true;
+		}
 	} else if (!enable && atomic_dec_return(&phys_enc->empulse_irq_refcount) == 0) {
-		ret = sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
-		if (ret)
-			atomic_inc(&phys_enc->empulse_irq_refcount);
+		if (phys_enc->empulse_notification_sim) {
+			sde_encoder_phys_vid_register_esync_backup_sim(phys_enc, false);
+		} else {
+			ret = sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
+			if (ret)
+				atomic_inc(&phys_enc->empulse_irq_refcount);
+		}
 	}
 
 end:
@@ -1741,8 +1802,7 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 	 * if hwfencing enabled, try again to wait for up to the extended timeout time in
 	 * increments as long as fence has not been signaled.
 	 */
-	if (ret == -ETIMEDOUT && (phys_enc->sde_kms->catalog->hw_fence_rev ||
-			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable))
+	if (ret == -ETIMEDOUT && phys_enc->sde_kms->catalog->hw_fence_rev)
 		ret = sde_encoder_helper_hw_fence_extended_wait(phys_enc, phys_enc->hw_ctl,
 			&wait_info, INTR_IDX_VSYNC);
 
@@ -1765,8 +1825,7 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 			ret = 0;
 
 		/* if we timeout after the extended wait, reset mixers and do sw override */
-		if (ret && (phys_enc->sde_kms->catalog->hw_fence_rev ||
-			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable))
+		if (ret && phys_enc->sde_kms->catalog->hw_fence_rev)
 			sde_encoder_helper_hw_fence_sw_override(phys_enc, hw_ctl);
 
 		SDE_EVT32(DRMID(phys_enc->parent), new_cnt, flush_register, ret,
@@ -2091,6 +2150,20 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent)) {
+		if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc)) {
+			if (phys_enc->hw_ctl &&
+					phys_enc->hw_ctl->ops.setup_flush_sync)
+				phys_enc->hw_ctl->ops.setup_flush_sync(
+					phys_enc->hw_ctl, true, false);
+		} else if (sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)) {
+			if (phys_enc->hw_ctl &&
+				phys_enc->hw_ctl->ops.setup_flush_sync)
+				phys_enc->hw_ctl->ops.setup_flush_sync(
+					phys_enc->hw_ctl, false, false);
+		}
+	}
+
 	/* Disconnect the sync mux, when suspend is requested on slave dpu */
 	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
 			sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc) &&
@@ -2241,20 +2314,6 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 		goto exit;
 
 	sde_encoder_phys_vid_timing_engine_disable_wait(phys_enc);
-
-	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent)) {
-		if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc)) {
-			if (phys_enc->hw_ctl &&
-					phys_enc->hw_ctl->ops.setup_flush_sync)
-				phys_enc->hw_ctl->ops.setup_flush_sync(
-					phys_enc->hw_ctl, true, false);
-		} else if (sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)) {
-			if (phys_enc->hw_ctl &&
-				phys_enc->hw_ctl->ops.setup_flush_sync)
-				phys_enc->hw_ctl->ops.setup_flush_sync(
-					phys_enc->hw_ctl, false, false);
-		}
-	}
 
 	if (info->esync_enabled) {
 		if (phys_enc->hw_intf->ops.enable_esync)
@@ -2546,15 +2605,19 @@ void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	*req_scc = sde_connector_is_qsync_updated(phys_enc->connector);
 }
 
-static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops)
+static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops, bool is_lb_enc)
 {
 	ops->is_master = sde_encoder_phys_vid_is_master;
+	ops->mode_fixup = sde_encoder_phys_vid_mode_fixup;
+	ops->destroy = sde_encoder_phys_vid_destroy;
+
+	if (is_lb_enc)
+		return;
+
 	ops->mode_set = sde_encoder_phys_vid_mode_set;
 	ops->cont_splash_mode_set = sde_encoder_phys_vid_cont_splash_mode_set;
-	ops->mode_fixup = sde_encoder_phys_vid_mode_fixup;
 	ops->enable = sde_encoder_phys_vid_enable;
 	ops->disable = sde_encoder_phys_vid_disable;
-	ops->destroy = sde_encoder_phys_vid_destroy;
 	ops->get_hw_resources = sde_encoder_phys_vid_get_hw_resources;
 	ops->control_vblank_irq = sde_encoder_phys_vid_control_vblank_irq;
 	ops->control_empulse_irq = sde_encoder_phys_vid_control_empulse_irq;
@@ -2584,7 +2647,7 @@ static void sde_encoder_phys_vid_init_ops(struct sde_encoder_phys_ops *ops)
 }
 
 struct sde_encoder_phys *sde_encoder_phys_vid_init(
-		struct sde_enc_phys_init_params *p)
+		struct sde_enc_phys_init_params *p, bool is_lb_display)
 {
 	struct sde_encoder_phys *phys_enc = NULL;
 	struct sde_encoder_phys_vid *vid_enc = NULL;
@@ -2616,12 +2679,12 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 
 	SDE_DEBUG_VIDENC(vid_enc, "\n");
 
-	sde_encoder_phys_vid_init_ops(&phys_enc->ops);
+	sde_encoder_phys_vid_init_ops(&phys_enc->ops, is_lb_display);
 	phys_enc->parent = p->parent;
 	phys_enc->parent_ops = p->parent_ops;
 	phys_enc->sde_kms = p->sde_kms;
 	phys_enc->split_role = p->split_role;
-	phys_enc->intf_mode = INTF_MODE_VIDEO;
+	phys_enc->intf_mode = is_lb_display ? INTF_MODE_NONE : INTF_MODE_VIDEO;
 	phys_enc->enc_spinlock = p->enc_spinlock;
 	phys_enc->vblank_ctl_lock = p->vblank_ctl_lock;
 	phys_enc->comp_type = p->comp_type;
@@ -2633,6 +2696,9 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 		irq->hw_idx = -EINVAL;
 		irq->cb.arg = phys_enc;
 	}
+
+	if (is_lb_display)
+		goto skip_irq_init;
 
 	irq = &phys_enc->irq[INTR_IDX_VSYNC];
 	irq->name = "vsync_irq";
@@ -2668,6 +2734,8 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
 	init_waitqueue_head(&phys_enc->pending_kickoff_wq);
+
+skip_irq_init:
 	phys_enc->enable_state = SDE_ENC_DISABLED;
 	hrtimer_init(&phys_enc->sde_vrr_cfg.freq_step_timer,
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
@@ -2686,6 +2754,11 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.backlight_timer.function =
 		sde_encoder_phys_backlight_timer_cb;
+
+	hrtimer_init(&phys_enc->empulse_backup_timer,
+		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	phys_enc->empulse_backup_timer.function =
+		sde_encoder_phys_vid_esync_backup_sim;
 
 	SDE_DEBUG_VIDENC(vid_enc, "created intf idx:%d\n", p->intf_idx);
 

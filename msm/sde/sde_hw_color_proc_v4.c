@@ -847,7 +847,7 @@ int sde_spr_check_udc_cfg(struct sde_hw_dspp *ctx, void *cfg)
 		}
 
 		j = 0;
-		limit = (w >> 1) + 1;
+		limit = (w >> 1);
 		for (j = 0; j < lines; j++) {
 			uint32_t o1 = spr_payload->cfg2[cfg_1_start + (j*2)];
 			uint32_t o2 = spr_payload->cfg2[cfg_1_start + (j*2) + 1];
@@ -857,8 +857,8 @@ int sde_spr_check_udc_cfg(struct sde_hw_dspp *ctx, void *cfg)
 				DRM_ERROR("Invalid CFG2 - C%u L%u, o1 exceeds limits",
 						i, j);
 				return -EINVAL;
-			} else if (o2 > limit) {
-				DRM_ERROR("Invalid CFG2 - C%u L%u, o2 exceeds limits",
+			} else if (o2 < limit) {
+				DRM_ERROR("Invalid CFG2 - C%u L%u, o2 should exceeds limits",
 						i, j);
 				return -EINVAL;
 			}

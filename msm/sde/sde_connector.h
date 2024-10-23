@@ -575,7 +575,7 @@ struct sde_misr_sign {
  * @new_bl_lvl : New backlight level value
  * @prev_bl_lvl : Previous backlight level value
  * @bl_frame_idx : Index value of dimming frame
- * @bl_update_in_progress : Smooth dimming in progress
+ * @bl_increment_in_progress : Smooth dimming in progress
  * @prev_bl_time_ns : Time in ns when previous BL was sent
  */
 struct sde_backlight_vrr_update {
@@ -584,7 +584,7 @@ struct sde_backlight_vrr_update {
 	u32 new_bl_lvl;
 	u32 prev_bl_lvl;
 	u32 bl_frame_idx;
-	bool bl_update_in_progress;
+	bool bl_increment_in_progress;
 	u64 prev_bl_time_ns;
 };
 
@@ -665,6 +665,7 @@ struct sde_backlight_vrr_update {
  * @hwfence_wb_retire_fences_enable: enable hw-fences for wb retire-fence
  * @max_mode_width: max width of all available modes
  * @shared: If a connector is sharing resource of its parent
+ * @is_lb_conn: Indicates if this connector is a loopback connector
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -762,6 +763,7 @@ struct sde_connector {
 
 	u32 max_mode_width;
 	bool shared;
+	bool is_lb_conn;
 };
 
 /**

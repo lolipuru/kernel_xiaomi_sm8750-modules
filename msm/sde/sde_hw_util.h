@@ -77,6 +77,7 @@ struct sde_hw_scaler3_de_cfg {
 /**
  * struct sde_hw_cac_cfg : QSEEDv3 CAC configuration
  * @cac_mode:              cac mode for current configuration
+ * @fov_mode:              Fovea mode for current configuration
  * @uv_filter_cfg:         uv plane filter configuration in CAC mode
  * @cac_le_phase_init2_x:  LE horizontal initial phase2
  * @cac_le_phase_init2_y:  LE vertical initial phase2
@@ -91,6 +92,10 @@ struct sde_hw_scaler3_de_cfg {
  * @cac_le_dst_h_offset:   LE destination horizontal offset
  * @cac_le_dst_v_offset:   LE destination vertical offset
  * @cac_re_dst_v_offset:   RE destination vertical offset
+ * @cac_asym_phase_step_h: Horizontal phase step for fov mode after center region
+ * @cac_asym_phase_step_v: Vertical phase step for fov mode after cener region
+ * @cac_re_phase_step_v:   Right eye vertical phase step for fov mode in beginning region
+ * @cac_re_asym_phase_step_v: Right eye vertical phase step for fov mode in ending region
  * @cac_phase_inc_first_x: horizontal inc_first control
  * @cac_phase_inc_first_y: vertical inc_first control
  * @cac_le_inc_skip_x:     LE horizontal inc_skip control
@@ -100,6 +105,7 @@ struct sde_hw_scaler3_de_cfg {
  */
 struct sde_hw_cac_cfg {
 	u32 cac_mode;
+	u32 fov_mode;
 	u32 uv_filter_cfg;
 
 	u32 cac_le_phase_init2_x[SDE_MAX_PLANES];
@@ -118,6 +124,10 @@ struct sde_hw_cac_cfg {
 	u32 cac_le_dst_h_offset;
 	u32 cac_le_dst_v_offset;
 	u32 cac_re_dst_v_offset;
+	u32 cac_asym_phase_step_h;
+	u32 cac_asym_phase_step_v;
+	u32 cac_re_phase_step_v;
+	u32 cac_re_asym_phase_step_v;
 
 	u16 cac_phase_inc_first_x[SDE_MAX_PLANES];
 	u16 cac_phase_inc_first_y[SDE_MAX_PLANES];
@@ -316,5 +326,11 @@ static inline bool is_qseed3_rev_qseed3lite(struct sde_mdss_cfg *sde_cfg)
 {
 	return ((sde_cfg->qseed_sw_lib_rev == SDE_SSPP_SCALER_QSEED3LITE) ?
 			true : false);
+}
+
+static inline bool is_cac_supported(struct sde_mdss_cfg *sde_cfg)
+{
+	return ((sde_cfg->cac_version == SDE_SSPP_CAC_V2) ||
+		(sde_cfg->cac_version == SDE_SSPP_CAC_LOOPBACK));
 }
 #endif /* _SDE_HW_UTIL_H */

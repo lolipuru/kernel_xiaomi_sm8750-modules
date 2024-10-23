@@ -52,6 +52,8 @@ static const struct drm_prop_enum_list e_topology_name[] = {
 	{SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC,	"sde_quadpipe_3dmerge_dsc"},
 	{SDE_RM_TOPOLOGY_QUADPIPE_DSCMERGE,	"sde_quadpipe_dscmerge"},
 	{SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE,	"sde_quadpipe_dsc4hsmerge"},
+	{SDE_RM_TOPOLOGY_DUALPIPE_LOOPBACK,     "sde_dualpipe_loopback"},
+	{SDE_RM_TOPOLOGY_QUADPIPE_LOOPBACK,     "sde_quadpipe_loopback"},
 };
 static const struct drm_prop_enum_list e_topology_control[] = {
 	{SDE_RM_TOPCTL_RESERVE_LOCK,	"reserve_lock"},
@@ -182,7 +184,7 @@ static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
 	if (!c_conn) {
 		pr_err("invalid params\n");
 		return -EINVAL;
-	} else if (!c_conn->bl_vrr.bl_update_in_progress) {
+	} else if (!c_conn->bl_vrr.bl_increment_in_progress) {
 		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
 		return 0;
 	}
@@ -236,11 +238,11 @@ static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
 
 	if (c_conn->bl_vrr.bl_frame_idx >= c_conn->num_bl_frames) {
 		c_conn->bl_vrr.bl_frame_idx = 0;
-		c_conn->bl_vrr.bl_update_in_progress = false;
+		c_conn->bl_vrr.bl_increment_in_progress = false;
 		c_conn->bl_vrr.prev_brightness = new_brightness;
 		c_conn->bl_vrr.prev_bl_lvl = new_bl_lvl;
 		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
-	} else {
+	} else if (c_conn->bl_vrr.bl_increment_in_progress) {
 		sde_encoder_handle_next_backlight_update(drm_enc);
 	}
 
@@ -283,34 +285,40 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 	struct drm_encoder *drm_enc;
 	struct drm_connector *connector;
 
-	/* first frame after suspend/init */
-	if (c_conn->bl_vrr.prev_brightness == 0) {
-		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
-		goto skip_incremental_update;
-	} else if (sde_connector_is_cont_bl_updates(c_conn)) {
-		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
-		goto skip_incremental_update;
-	}
-	c_conn->bl_vrr.new_brightness = brightness;
-	c_conn->bl_vrr.new_bl_lvl = bl_lvl;
-	c_conn->bl_vrr.bl_update_in_progress = true;
-	c_conn->bl_vrr.bl_frame_idx = 0;
-	SDE_EVT32(bl_lvl, brightness);
-
 	connector = &c_conn->base;
 	if (connector->state && connector->state->best_encoder)
 		drm_enc = connector->state->best_encoder;
 	else
 		drm_enc = connector->encoder;
+
+	/* first frame after suspend/init */
+	if (c_conn->bl_vrr.prev_brightness == 0 ||
+			c_conn->last_panel_power_mode == SDE_MODE_DPMS_OFF) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, c_conn->bl_vrr.prev_brightness,
+			c_conn->last_panel_power_mode);
+		goto skip_incremental_update;
+	} else if (sde_connector_is_cont_bl_updates(c_conn)) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
+		goto skip_incremental_update;
+	}
+
+	c_conn->bl_vrr.new_brightness = brightness;
+	c_conn->bl_vrr.new_bl_lvl = bl_lvl;
+	c_conn->bl_vrr.bl_increment_in_progress = true;
+	c_conn->bl_vrr.bl_frame_idx = 0;
+	SDE_EVT32(bl_lvl, brightness);
+
 	sde_encoder_handle_next_backlight_update(drm_enc);
 
 	return rc;
 
 skip_incremental_update:
+	sde_encoder_phys_cancel_backlight_timer(drm_enc);
+	c_conn->bl_vrr.bl_increment_in_progress = false;
+
 	rc = sde_backlight_set_notify(c_conn, brightness, bl_lvl);
 	if (!rc) {
 		c_conn->bl_vrr.bl_frame_idx = 0;
-		c_conn->bl_vrr.bl_update_in_progress = false;
 		c_conn->bl_vrr.prev_brightness = brightness;
 		c_conn->bl_vrr.prev_bl_lvl = bl_lvl;
 		SDE_EVT32(brightness, bl_lvl);
@@ -2506,7 +2514,7 @@ void sde_connector_fence_error_ctx_signal(struct drm_connector *conn, int input_
 	ktime_t time_stamp;
 
 	sde_conn = to_sde_connector(conn);
-	if (!sde_conn)
+	if (!sde_conn || sde_conn->is_lb_conn)
 		return;
 
 	ctx = sde_conn->retire_fence;
@@ -2525,6 +2533,9 @@ void sde_connector_prepare_fence(struct drm_connector *connector)
 		return;
 	}
 
+	if (to_sde_connector(connector)->is_lb_conn)
+		return;
+
 	sde_fence_prepare(to_sde_connector(connector)->retire_fence);
 }
 
@@ -2535,6 +2546,9 @@ void sde_connector_complete_commit(struct drm_connector *connector,
 		SDE_ERROR("invalid connector\n");
 		return;
 	}
+
+	if (to_sde_connector(connector)->is_lb_conn)
+		return;
 
 	/* signal connector's retire fence */
 	sde_fence_signal(to_sde_connector(connector)->retire_fence,
@@ -2551,6 +2565,9 @@ void sde_connector_commit_reset(struct drm_connector *connector, ktime_t ts)
 		return;
 	}
 	c_conn = to_sde_connector(connector);
+
+	if (c_conn->is_lb_conn)
+		return;
 
 	/* get hw_ctl for a wb connector */
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
@@ -3840,12 +3857,14 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	msm_property_install_volatile_range(&c_conn->property_info,
 		"hdr_metadata", 0x0, 0, ~0, 0, CONNECTOR_PROP_HDR_METADATA);
 
-	msm_property_install_volatile_range(&c_conn->property_info,
-		"RETIRE_FENCE", 0x0, 0, ~0, 0, CONNECTOR_PROP_RETIRE_FENCE);
+	if (!sde_encoder_is_loopback_display(c_conn->encoder)) {
+		msm_property_install_volatile_range(&c_conn->property_info,
+			"RETIRE_FENCE", 0x0, 0, ~0, 0, CONNECTOR_PROP_RETIRE_FENCE);
 
-	msm_property_install_volatile_range(&c_conn->property_info,
-		"RETIRE_FENCE_OFFSET", 0x0, 0, ~0, 0,
-		 CONN_PROP_RETIRE_FENCE_OFFSET);
+		msm_property_install_volatile_range(&c_conn->property_info,
+			"RETIRE_FENCE_OFFSET", 0x0, 0, ~0, 0,
+			CONN_PROP_RETIRE_FENCE_OFFSET);
+	}
 
 	msm_property_install_range(&c_conn->property_info, "autorefresh",
 			0x0, 0, AUTOREFRESH_MAX_FRAME_CNT, 0,
@@ -3929,10 +3948,12 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			0, 1, e_topology_control,
 			ARRAY_SIZE(e_topology_control), 0,
 			CONNECTOR_PROP_TOPOLOGY_CONTROL);
-	msm_property_install_enum(&c_conn->property_info, "LP",
+	if (!sde_encoder_is_loopback_display(c_conn->encoder)) {
+		msm_property_install_enum(&c_conn->property_info, "LP",
 			0, 0, e_power_mode,
 			ARRAY_SIZE(e_power_mode), 0,
 			CONNECTOR_PROP_LP);
+	}
 
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
 		dsi_display = (struct dsi_display *)(display);
@@ -4129,12 +4150,21 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 			"conn%u",
 			c_conn->base.base.id);
 
-	c_conn->retire_fence = sde_fence_init(c_conn->name,
+	rc = sde_connector_get_info(&c_conn->base, &display_info);
+	if (rc)
+		return ERR_PTR(rc);
+
+	if (sde_encoder_is_loopback_display(encoder))
+		c_conn->is_lb_conn = true;
+
+	if (!c_conn->is_lb_conn) {
+		c_conn->retire_fence = sde_fence_init(c_conn->name,
 			c_conn->base.base.id);
-	if (IS_ERR(c_conn->retire_fence)) {
-		rc = PTR_ERR(c_conn->retire_fence);
-		SDE_ERROR("failed to init fence, %d\n", rc);
-		goto error_cleanup_conn;
+		if (IS_ERR(c_conn->retire_fence)) {
+			rc = PTR_ERR(c_conn->retire_fence);
+			SDE_ERROR("failed to init fence, %d\n", rc);
+			goto error_cleanup_conn;
+		}
 	}
 
 	mutex_init(&c_conn->lock);
@@ -4165,8 +4195,8 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 		}
 	}
 
-	rc = sde_connector_get_info(&c_conn->base, &display_info);
-	if (!rc && (connector_type == DRM_MODE_CONNECTOR_DSI) &&
+
+	if ((connector_type == DRM_MODE_CONNECTOR_DSI) &&
 			(display_info.capabilities & MSM_DISPLAY_CAP_VID_MODE))
 		sde_connector_register_event(&c_conn->base,
 			SDE_CONN_EVENT_VID_FIFO_OVERFLOW,
@@ -4196,14 +4226,16 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	_sde_connector_lm_preference(c_conn, sde_kms,
 			display_info.display_type);
 
-	_sde_connector_init_hw_fence(c_conn, &display_info, sde_kms);
+
+	if (!c_conn->is_lb_conn) {
+		_sde_connector_init_hw_fence(c_conn, &display_info, sde_kms);
+		INIT_DELAYED_WORK(&c_conn->status_work,
+			sde_connector_check_status_work);
+	}
 
 	SDE_DEBUG("connector %d attach encoder %d, wb hwfences:%d\n",
 			DRMID(&c_conn->base), DRMID(encoder),
 			c_conn->hwfence_wb_retire_fences_enable);
-
-	INIT_DELAYED_WORK(&c_conn->status_work,
-			sde_connector_check_status_work);
 
 	return &c_conn->base;
 

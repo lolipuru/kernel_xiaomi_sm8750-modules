@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
  */
 
@@ -519,6 +519,7 @@ static int _dce_dsc_setup(struct sde_encoder_virt *sde_enc,
 {
 	struct drm_connector *drm_conn;
 	enum sde_rm_topology_name topology;
+	struct sde_crtc_state *cstate;
 
 	if (!sde_enc || !params || !sde_enc->phys_encs[0] ||
 			!sde_enc->phys_encs[0]->connector)
@@ -534,8 +535,10 @@ static int _dce_dsc_setup(struct sde_encoder_virt *sde_enc,
 
 	SDE_DEBUG_DCE(sde_enc, "topology:%d\n", topology);
 
+	cstate = to_sde_crtc_state(sde_enc->crtc->state);
 	if (sde_kms_rect_is_equal(&sde_enc->cur_conn_roi,
-			&sde_enc->prv_conn_roi))
+			&sde_enc->prv_conn_roi) &&
+			!cstate->in_loopback_transition)
 		return 0;
 
 	SDE_EVT32(DRMID(&sde_enc->base), topology,

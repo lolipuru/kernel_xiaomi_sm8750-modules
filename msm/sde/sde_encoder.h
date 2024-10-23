@@ -252,6 +252,7 @@ enum sde_multi_te_states {
  * @phys_encs:		Container of physical encoders managed.
  * @phys_vid_encs:	Video physical encoders for panel mode switch.
  * @phys_cmd_encs:	Command physical encoders for panel mode switch.
+ * @phys_lb_encs:	Loopback physical encoders for cac loopback mode
  * @cur_master:		Pointer to the current master in this mode. Optimization
  *			Only valid after enable. Cleared as disable.
  * @hw_pp		Handle to the pingpong blocks used for the display. No.
@@ -336,7 +337,6 @@ enum sde_multi_te_states {
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
- * @cesta_flush_active:         Boolean indicating cesta override flush_active bit is set
  * @cesta_force_auto_active_db_update:	Boolean indicating auto-active-on-panic is set in SCC
  *					with force-db-update. This is required as a workaround for
  *					cmd mode when previous frame ctl-done is very close to
@@ -355,6 +355,7 @@ struct sde_encoder_virt {
 	struct sde_encoder_phys *phys_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *phys_vid_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *phys_cmd_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
+	struct sde_encoder_phys *phys_lb_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *cur_master;
 	struct sde_hw_pingpong *hw_pp[MAX_CHANNELS_PER_ENC];
 	struct sde_hw_dsc *hw_dsc[MAX_CHANNELS_PER_ENC];
@@ -427,7 +428,6 @@ struct sde_encoder_virt {
 	u32 multi_te_fps;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
-	bool cesta_force_active;
 	bool cesta_force_auto_active_db_update;
 };
 
@@ -924,6 +924,22 @@ static inline u32 sde_encoder_get_pclk_factor(struct drm_encoder *drm_enc)
 }
 
 /*
+ * sde_encoder_is_loopback_display - check if encoder is used in the loopback path
+ * @drm_enc:	Pointer to drm encoder structure
+ * @Return: true for loopback encoder, false otherwise
+ */
+static inline bool sde_encoder_is_loopback_display(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	return sde_enc &&
+		(sde_enc->disp_info.capabilities & MSM_DISPLAY_LOOPBACK_MODE);
+}
+/*
  * sde_encoder_is_line_insertion_supported - get line insertion
  * feature bit value from panel
  * @drm_enc:    Pointer to drm encoder structure
@@ -990,6 +1006,12 @@ enum hrtimer_restart sde_encoder_phys_phys_self_refresh_helper(struct hrtimer *t
  * @timer: pointer to backlight timer
  */
 enum hrtimer_restart sde_encoder_phys_backlight_timer_cb(struct hrtimer *timer);
+
+/**
+ * sde_encoder_phys_cancel_backlight_timer - cancel any scheduled backlight timer
+ * @drm_enc:    Pointer to drm encoder structure
+ */
+void sde_encoder_phys_cancel_backlight_timer(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_handle_video_psr_self_refresh - Handle incremental backlight requirement

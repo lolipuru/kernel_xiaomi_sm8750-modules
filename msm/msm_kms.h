@@ -145,6 +145,7 @@ struct msm_kms_funcs {
 	int (*get_dsc_count)(const struct msm_kms *kms,
 			u32 hdisplay, u32 *num_dsc);
 	bool (*in_trusted_vm)(const struct msm_kms *kms);
+	bool (*in_loopback_mode)(struct drm_crtc_state *crtc_state);
 };
 
 struct msm_kms {

@@ -377,6 +377,7 @@ static const char *msm_spr_pack_type_mode_str[MSM_DISPLAY_SPR_PACK_TYPE_MODE_MAX
  * @MSM_DISPLAY_ESD_ENABLED:            ESD feature enabled
  * @MSM_DISPLAY_CAP_MST_MODE:           Display with MST support
  * @MSM_DISPLAY_SPLIT_LINK:             Split Link enabled
+ * @MSM_DISPLAY_LOOPBACK_MODE:          Display in loopback mode
  */
 enum msm_display_caps {
 	MSM_DISPLAY_CAP_VID_MODE	= BIT(0),
@@ -386,6 +387,7 @@ enum msm_display_caps {
 	MSM_DISPLAY_ESD_ENABLED		= BIT(4),
 	MSM_DISPLAY_CAP_MST_MODE	= BIT(5),
 	MSM_DISPLAY_SPLIT_LINK		= BIT(6),
+	MSM_DISPLAY_LOOPBACK_MODE	= BIT(7),
 };
 
 /**

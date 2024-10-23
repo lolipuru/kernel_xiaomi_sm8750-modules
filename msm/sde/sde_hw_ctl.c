@@ -246,17 +246,17 @@ struct ctl_sspp_stage_reg_map {
 /* list of ctl_sspp_stage_reg_map for all the sppp */
 static const struct ctl_sspp_stage_reg_map
 sspp_reg_cfg_tbl[SSPP_MAX][CTL_SSPP_MAX_RECTS] = {
-	/* SSPP_NONE */{ {0, 0, 0, 0}, {0, 0, 0, 0} },
-	/* SSPP_VIG0 */{ {0, 0, 3, BIT(0)}, {3, 0, 4, 0} },
-	/* SSPP_VIG1 */{ {0, 3, 3, BIT(2)}, {3, 4, 4, 0} },
-	/* SSPP_VIG2 */{ {0, 6, 3, BIT(4)}, {3, 8, 4, 0} },
-	/* SSPP_VIG3 */{ {0, 26, 3, BIT(6)}, {3, 12, 4, 0} },
-	/* SSPP_DMA0 */{ {0, 18, 3, BIT(16)}, {2, 8, 4, 0} },
-	/* SSPP_DMA1 */{ {0, 21, 3, BIT(18)}, {2, 12, 4, 0} },
-	/* SSPP_DMA2 */{ {2, 0, 4, 0}, {2, 16, 4, 0} },
-	/* SSPP_DMA3 */{ {2, 4, 4, 0}, {2, 20, 4, 0} },
-	/* SSPP_DMA4 */{ {4, 0, 4, 0}, {4, 8, 4, 0} },
-	/* SSPP_DMA5 */{ {4, 4, 4, 0}, {4, 12, 4, 0} },
+	[SSPP_NONE] = { {0, 0, 0, 0}, {0, 0, 0, 0} },
+	[SSPP_VIG0] = { {0, 0, 3, BIT(0)}, {3, 0, 4, 0} },
+	[SSPP_VIG1] = { {0, 3, 3, BIT(2)}, {3, 4, 4, 0} },
+	[SSPP_VIG2] = { {0, 6, 3, BIT(4)}, {3, 8, 4, 0} },
+	[SSPP_VIG3] = { {0, 26, 3, BIT(6)}, {3, 12, 4, 0} },
+	[SSPP_DMA0] = { {0, 18, 3, BIT(16)}, {2, 8, 4, 0} },
+	[SSPP_DMA1] = { {0, 21, 3, BIT(18)}, {2, 12, 4, 0} },
+	[SSPP_DMA2] = { {2, 0, 4, 0}, {2, 16, 4, 0} },
+	[SSPP_DMA3] = { {2, 4, 4, 0}, {2, 20, 4, 0} },
+	[SSPP_DMA4] = { {4, 0, 4, 0}, {4, 8, 4, 0} },
+	[SSPP_DMA5] = { {4, 4, 4, 0}, {4, 12, 4, 0} },
 };
 
 /**

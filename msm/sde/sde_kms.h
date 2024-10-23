@@ -298,6 +298,8 @@ struct sde_kms {
 	int dp_display_count;
 	void **dp_displays;
 	int dp_stream_count;
+	void **lb_displays;
+	int lb_disp_count;
 	bool dsc_switch_support;
 
 	bool has_danger_ctrl;
