@@ -2146,17 +2146,20 @@ void msm_cvp_populate_dsp_buf_info(struct cvp_internal_buf *buf,
 		dprintk(CVP_ERR, "dsp trace is NULL\n");
 		return;
 	}
-	for (int session_idx = 0; session_idx < EVA_TRACE_MAX_SESSION_NUM; session_idx++) {
-		if (dsp_debug_trace->sessions[session_idx].session_id == session_id) {
-			u32 buf_cnt = dsp_debug_trace->sessions[session_idx].buf_cnt;
+	for (int idx = 0; idx < EVA_TRACE_MAX_SESSION_NUM; idx++) {
+		if (dsp_debug_trace->sessions[idx].session_id == session_id) {
+			u32 buf_cnt = dsp_debug_trace->sessions[idx].buf_cnt;
 
-			for (int buf_idx = 0; buf_idx < buf_cnt; buf_idx++) {
-				trace_buf = &dsp_debug_trace->sessions[session_idx].buf[buf_idx];
-				if (buf->smem->device_addr == trace_buf->iova) {
-					buf->smem->buf_idx = trace_buf->buf_idx;
-					buf->smem->pkt_type = trace_buf->pkt_type;
-					buf->smem->fd = trace_buf->fd;
-					return;
+			if (buf_cnt < EVA_TRACE_MAX_BUF_NUM) {
+				for (int buf_idx = 0; buf_idx < buf_cnt; buf_idx++) {
+					trace_buf =
+						&dsp_debug_trace->sessions[idx].buf[buf_idx];
+					if (buf->smem->device_addr == trace_buf->iova) {
+						buf->smem->buf_idx = trace_buf->buf_idx;
+						buf->smem->pkt_type = trace_buf->pkt_type;
+						buf->smem->fd = trace_buf->fd;
+						return;
+					}
 				}
 			}
 		}
