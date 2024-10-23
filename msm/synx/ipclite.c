@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
@@ -918,6 +918,12 @@ static int32_t ipcmem_init(struct ipclite_mem *ipcmem, struct device_node *pn)
 	return 0;
 }
 
+static void ipclite_device_release(struct device *dev)
+{
+	IPCLITE_OS_LOG(IPCLITE_INFO, "Releasing ipclite device\n");
+	kfree(dev);
+}
+
 static int ipclite_channel_irq_init(struct device *parent, struct device_node *node,
 								struct ipclite_channel *channel)
 {
@@ -934,6 +940,7 @@ static int ipclite_channel_irq_init(struct device *parent, struct device_node *n
 
 	dev->parent = parent;
 	dev->of_node = node;
+	dev->release = ipclite_device_release;
 	dev_set_name(dev, "%s:%pOFn", dev_name(parent->parent), node);
 	IPCLITE_OS_LOG(IPCLITE_DBG, "Registering %s device\n", dev_name(parent->parent));
 	ret = device_register(dev);
@@ -960,6 +967,8 @@ static int ipclite_channel_irq_init(struct device *parent, struct device_node *n
 		ret = PTR_ERR(irq_info->mbox_chan);
 		if (ret != -EPROBE_DEFER)
 			IPCLITE_OS_LOG(IPCLITE_ERR, "failed to acquire IPC channel\n");
+		else
+			IPCLITE_OS_LOG(IPCLITE_WARN, "IPCC Probe Deferred\n");
 		goto err_dev;
 	}
 
@@ -981,7 +990,6 @@ static int ipclite_channel_irq_init(struct device *parent, struct device_node *n
 
 err_dev:
 	device_unregister(dev);
-	kfree(dev);
 	return ret;
 }
 
@@ -1005,11 +1013,6 @@ static struct ipcmem_partition_header *get_ipcmem_partition_hdr(struct ipclite_m
 		return NULL;
 }
 
-static void ipclite_channel_release(struct device *dev)
-{
-	IPCLITE_OS_LOG(IPCLITE_INFO, "Releasing ipclite channel\n");
-	kfree(dev);
-}
 
 /* Sets up following fields of IPCLite channel structure:
  *	remote_pid,tx_fifo, rx_fifo
@@ -1032,7 +1035,7 @@ static int ipclite_channel_init(struct device *parent,
 
 	dev->parent = parent;
 	dev->of_node = node;
-	dev->release = ipclite_channel_release;
+	dev->release = ipclite_device_release;
 	dev_set_name(dev, "%s:%pOFn", dev_name(parent->parent), node);
 	IPCLITE_OS_LOG(IPCLITE_DBG, "Registering %s device\n", dev_name(parent->parent));
 	ret = device_register(dev);
@@ -1142,17 +1145,7 @@ static int ipclite_channel_init(struct device *parent,
 err_put_dev:
 	ipclite->channel[remote_pid].status = INACTIVE;
 	device_unregister(dev);
-	kfree(dev);
 	return ret;
-}
-
-static void probe_subsystem(struct device *dev, struct device_node *np)
-{
-	int ret = 0;
-
-	ret = ipclite_channel_init(dev, np);
-	if (ret)
-		IPCLITE_OS_LOG(IPCLITE_ERR, "IPCLite Channel init failed\n");
 }
 
 /* IPCLite Debug related functions start */
@@ -1405,8 +1398,7 @@ static int ipclite_init_v0(struct platform_device *pdev)
 	ipclite = kzalloc(sizeof(*ipclite), GFP_KERNEL);
 	if (!ipclite) {
 		IPCLITE_OS_LOG(IPCLITE_ERR, "IPCLite Memory Allocation Failed\n");
-		ret = -ENOMEM;
-		goto error;
+		return -ENOMEM;
 	}
 
 	ipclite->dev = &pdev->dev;
@@ -1417,7 +1409,7 @@ static int ipclite_init_v0(struct platform_device *pdev)
 		if (hwlock_id != -EPROBE_DEFER)
 			dev_err(&pdev->dev, "failed to retrieve hwlock\n");
 		ret = hwlock_id;
-		goto release;
+		goto free_ipclite;
 	}
 	IPCLITE_OS_LOG(IPCLITE_DBG, "Hwlock id retrieved, hwlock_id=%d\n", hwlock_id);
 
@@ -1426,7 +1418,7 @@ static int ipclite_init_v0(struct platform_device *pdev)
 	if (!ipclite->hwlock) {
 		IPCLITE_OS_LOG(IPCLITE_ERR, "Failed to assign hwlock_id\n");
 		ret = -ENXIO;
-		goto release;
+		goto free_ipclite;
 	}
 	IPCLITE_OS_LOG(IPCLITE_DBG, "Hwlock id assigned successfully, hwlock=%p\n",
 									ipclite->hwlock);
@@ -1450,8 +1442,11 @@ static int ipclite_init_v0(struct platform_device *pdev)
 	}
 
 	/* Setup Channel for each Remote Subsystem */
-	for_each_available_child_of_node(pn, cn)
-		probe_subsystem(&pdev->dev, cn);
+	for_each_available_child_of_node(pn, cn) {
+		ret = ipclite_channel_init(&pdev->dev, cn);
+		if (ret == -EPROBE_DEFER)
+			goto release;
+	}
 
 	/* Broadcast init_done signal to all subsystems once mbox channels are set up */
 	if (ipclite->channel[IPCMEM_APPS].status == ACTIVE) {
@@ -1499,9 +1494,10 @@ mem_release:
 	 * braodcast)
 	 */
 release:
+	hwspin_lock_free(ipclite->hwlock);
+free_ipclite:
 	kfree(ipclite);
 	ipclite = NULL;
-error:
 	return ret;
 }
 
