@@ -402,7 +402,10 @@ int handle_system_error(struct msm_vidc_core *core,
 		}
 	}
 
-	msm_vidc_core_deinit(core, true);
+	core_lock(core, __func__);
+	msm_vidc_change_core_state(core, MSM_VIDC_CORE_ERROR, __func__);
+	msm_vidc_core_deinit_locked(core, true);
+	core_unlock(core, __func__);
 
 	return 0;
 }
