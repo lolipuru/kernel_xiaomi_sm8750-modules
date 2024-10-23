@@ -5561,6 +5561,8 @@ static int __cam_isp_ctx_apply_req_in_activated_state(
 	cfg.reapply_type = req_isp->reapply_type;
 	cfg.cdm_reset_before_apply = req_isp->cdm_reset_before_apply;
 
+	req_isp->hw_update_data.force_disable_drv = apply->frame_duration_changing;
+
 	if ((ctx_isp->evt_inject_params.is_valid) &&
 		(req->request_id == ctx_isp->evt_inject_params.req_id)) {
 		rc = cam_isp_context_apply_evt_injection(ctx_isp->base);

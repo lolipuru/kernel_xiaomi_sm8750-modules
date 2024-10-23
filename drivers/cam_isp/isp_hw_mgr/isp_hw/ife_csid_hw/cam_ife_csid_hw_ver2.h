@@ -560,6 +560,7 @@ struct cam_ife_csid_ver2_common_reg_info {
 	uint32_t debug_err_vec_cfg;
 	uint32_t debug_err_vec_ts_lb;
 	uint32_t debug_err_vec_ts_mb;
+	uint32_t rx_mode_id_cfg1_addr;
 
 	/*Shift Bit Configurations*/
 	uint32_t rst_done_shift_val;

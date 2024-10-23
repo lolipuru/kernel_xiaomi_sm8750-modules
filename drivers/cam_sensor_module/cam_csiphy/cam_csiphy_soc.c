@@ -107,9 +107,9 @@ int32_t cam_csiphy_common_status_reg_dump(struct csiphy_device *csiphy_dev,
 		return -EINVAL;
 	}
 
-	if (unlikely(size || !buffer)) {
+	if (unlikely(!size || !buffer)) {
 		CAM_ERR(CAM_CSIPHY, "Common status read buffer is NULL: %s, reg reads: %d",
-			CAM_BOOL_TO_YESNO(buffer), size);
+			CAM_BOOL_TO_YESNO(!buffer), size);
 		return -EINVAL;
 	}
 

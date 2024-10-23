@@ -7680,7 +7680,8 @@ static int cam_ife_mgr_config_hw(
 
 	if ((ctx->flags.dynamic_drv_supported) ||
 		(hw_update_data->drv_config_valid)) {
-		rc = cam_isp_mgr_drv_config(ctx, cfg->request_id, false, hw_update_data);
+		rc = cam_isp_mgr_drv_config(ctx, cfg->request_id,
+			hw_update_data->force_disable_drv, hw_update_data);
 		if (rc) {
 			CAM_ERR(CAM_ISP, "DRV config failed for req: %llu rc:%d ctx_idx=%u",
 				cfg->request_id,

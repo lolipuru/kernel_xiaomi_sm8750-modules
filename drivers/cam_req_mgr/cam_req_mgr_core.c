@@ -529,9 +529,10 @@ static int __cam_req_mgr_notify_frame_skip(
 		frame_skip.frame_duration_changing = frame_duration_changing;
 
 		CAM_DBG(CAM_REQ,
-			"Notify_frame_skip: link: 0x%x pd %d req_id %lld last_applied %lld",
+			"Notify_frame_skip: link: 0x%x pd %d req_id %lld last_applied %lld frame_duration_changing:%d",
 			link->link_hdl, pd, apply_data[pd].req_id,
-			link->req.prev_apply_data[link->max_delay].req_id);
+			link->req.prev_apply_data[link->max_delay].req_id,
+			frame_duration_changing);
 		if ((dev->ops) && (dev->ops->notify_frame_skip))
 			dev->ops->notify_frame_skip(&frame_skip);
 	}
@@ -1265,7 +1266,9 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 	struct cam_req_mgr_tbl_slot          *slot = NULL;
 	struct cam_req_mgr_slot              *req_slot = NULL;
 	struct cam_req_mgr_apply             *apply_data = NULL;
+	struct cam_req_mgr_apply             *prev_apply_data = NULL;
 	struct cam_req_mgr_state_monitor     state;
+	bool                                 frame_duration_changing = false;
 
 	apply_req.link_hdl = link->link_hdl;
 	apply_req.report_if_bubble = 0;
@@ -1286,8 +1289,34 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 		return -EINVAL;
 	}
 
-	apply_data = link->req.apply_data;
 	req_slot = &in_q->slot[in_q->rd_idx];
+	apply_data = link->req.apply_data;
+	prev_apply_data = link->req.prev_apply_data;
+
+	for (i = 0; i < link->num_devs; i++) {
+		dev = &link->l_dev[i];
+		pd = dev->pd_tbl->pd;
+		if ((dev->dev_info.dev_id == CAM_REQ_MGR_DEVICE_SENSOR) &&
+			(dev->ops && dev->ops->process_evt) &&
+			(apply_data[pd].skip_idx || (apply_data[pd].req_id < 0))) {
+			evt_data.req_id = prev_apply_data[pd].req_id;
+			evt_data.dev_hdl = dev->dev_hdl;
+			evt_data.link_hdl = link->link_hdl;
+			evt_data.evt_type = CAM_REQ_MGR_LINK_EVT_FRAME_DURATION_CHANGING;
+			spin_lock_bh(&link->link_state_spin_lock);
+			evt_data.u.is_recovery = (link->state == CAM_CRM_LINK_STATE_ERR);
+			spin_unlock_bh(&link->link_state_spin_lock);
+			rc = dev->ops->process_evt(&evt_data);
+			if (rc) {
+				CAM_ERR(CAM_CRM,
+					"Failed to send FRAME_SKIP_AVALIABLE on link 0x%x dev 0x%x",
+					link->link_hdl, dev->dev_hdl);
+				return -EINVAL;
+			}
+			frame_duration_changing = evt_data.u.frame_duration_changing;
+			break;
+		}
+	}
 
 	/*
 	 * This For loop is to address the special operation requested
@@ -1420,10 +1449,12 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 			if (apply_data[pd].skip_idx ||
 				(apply_data[pd].req_id < 0)) {
 				CAM_DBG(CAM_CRM,
-					"dev %s skip %d req_id %lld",
+					"dev %s skip %d req_id %lld prev_apply_req:%lld frame_duration_changing:%d",
 					dev->dev_info.name,
 					apply_data[pd].skip_idx,
-					apply_data[pd].req_id);
+					apply_data[pd].req_id,
+					link->req.prev_apply_data[pd].req_id,
+					frame_duration_changing);
 				apply_req.dev_hdl = dev->dev_hdl;
 				apply_req.request_id =
 					link->req.prev_apply_data[pd].req_id;
@@ -1433,6 +1464,7 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 					link->req.prev_apply_data[link->max_delay].req_id;
 				apply_req.no_further_requests =
 					(req_slot->req_id == -1) ? true : false;
+				apply_req.frame_duration_changing = frame_duration_changing;
 				if ((dev->ops) && (dev->ops->notify_frame_skip))
 					dev->ops->notify_frame_skip(&apply_req);
 				continue;
@@ -1485,14 +1517,16 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 
 			apply_req.trigger_point = trigger;
 			apply_req.last_applied_done_timestamp = 0;
+			apply_req.frame_duration_changing = frame_duration_changing;
 			if ((dev->dev_info.dev_id == CAM_REQ_MGR_DEVICE_IFE) &&
 				(in_q->slot[idx].mismatched_frame_mode == CRM_NOTIFY_MISMATCHED_FRMAE))
 				apply_req.last_applied_done_timestamp = link->last_applied_done_timestamp;
 
 			CAM_DBG(CAM_REQ,
-				"SEND: link_hdl %x dev %s pd %d req_id %lld",
+				"SEND: link_hdl %x dev %s pd %d req_id %lld frame_duration_changing %d",
 				link->link_hdl, dev->dev_info.name,
-				pd, apply_req.request_id);
+				pd, apply_req.request_id,
+				frame_duration_changing);
 			if (dev->ops && dev->ops->apply_req) {
 				rc = dev->ops->apply_req(&apply_req);
 				if (rc < 0) {
