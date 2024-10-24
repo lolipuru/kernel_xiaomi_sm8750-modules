@@ -129,6 +129,8 @@ struct cam_vfe_bus_ver3_wm_cfg_data {
 	uint32_t             offset;
 	uint32_t             h_init;
 	uint32_t             en_cfg;
+	uint32_t             image_offset;
+	uint32_t             meta_offset;
 	bool                 updated;
 };
 
@@ -1232,6 +1234,8 @@ static int cam_vfe_bus_ver3_acquire_wm(
 	rsrc_data->is_dual = out_acq_args->is_dual;
 	/* Set WM offset value to default */
 	rsrc_data->cfg.offset  = 0;
+	rsrc_data->cfg.meta_offset  = 0;
+	rsrc_data->cfg.image_offset  = 0;
 	CAM_DBG(CAM_ISP,
 		"VFE:%u WM:%d width %d height %d, supported_format: 0x%llx, pack_fmt: %d use_wm_pack:%s",
 		wm_res->hw_intf->hw_idx, rsrc_data->index,
@@ -1294,6 +1298,8 @@ static int cam_vfe_bus_ver3_release_wm(void   *bus_priv,
 		wm_res->res_priv;
 
 	rsrc_data->cfg.offset = 0;
+	rsrc_data->cfg.meta_offset = 0;
+	rsrc_data->cfg.image_offset  = 0;
 	rsrc_data->cfg.width = 0;
 	rsrc_data->cfg.height = 0;
 	rsrc_data->cfg.stride = 0;
@@ -2413,7 +2419,6 @@ static int cam_vfe_bus_ver3_out_done_top_half_util(uint32_t evt_id,
 	struct cam_vfe_bus_ver3_wm_resource_data   *wm_rsrc_data = NULL;
 	struct cam_vfe_bus_ver3_comp_grp_data      *comp_rsrc_data =
 		out_rsrc_data->comp_grp->res_priv;
-
 
 	cam_isp_hw_get_timestamp(&evt_payload->ts);
 
@@ -3741,8 +3746,9 @@ static int cam_vfe_bus_ver3_update_wm(void *priv, void *cmd_args, uint32_t arg_s
 
 		CAM_ISP_ADD_REG_VAL_PAIR(reg_val_pair, MAX_REG_VAL_PAIR_SIZE, j,
 			wm_data->hw_regs->image_cfg_0, val);
-		CAM_DBG(CAM_ISP, "VFE:%u WM:%d image height and width 0x%X",
-			bus_priv->common_data.core_index, wm_data->index, reg_val_pair[j-1]);
+		CAM_DBG(CAM_ISP, "VFE:%u WM:%d image height and width 0x%X wid:%d ht:%d",
+			bus_priv->common_data.core_index, wm_data->index, reg_val_pair[j-1],
+			cfg->width, cfg->height);
 
 		/* For initial configuration program all bus registers */
 		if (update_buf->use_scratch_cfg) {
@@ -3824,10 +3830,11 @@ static int cam_vfe_bus_ver3_update_wm(void *priv, void *cmd_args, uint32_t arg_s
 			cam_vfe_bus_ver3_update_ubwc_meta_addr(
 				reg_val_pair, &j,
 				wm_data->hw_regs->ubwc_regs,
-				update_buf->wm_update->image_buf[i]);
-			CAM_DBG(CAM_ISP, "VFE:%u WM:%d ubwc meta addr 0x%llx",
+				update_buf->wm_update->image_buf[i] + cfg->meta_offset);
+			CAM_DBG(CAM_ISP, "VFE:%u WM:%d ubwc meta_addr:0x%llx meta_off:0x%x",
 				bus_priv->common_data.core_index, wm_data->index,
-				update_buf->wm_update->image_buf[i]);
+				update_buf->wm_update->image_buf[i] + cfg->meta_offset,
+				cfg->meta_offset);
 		}
 
 		frame_inc = stride * slice_h;
@@ -3838,7 +3845,7 @@ static int cam_vfe_bus_ver3_update_wm(void *priv, void *cmd_args, uint32_t arg_s
 			if (!update_buf->use_scratch_cfg) {
 				frame_inc += io_cfg->planes[i].meta_size;
 				CAM_DBG(CAM_ISP,
-					"VFE:%u WM:%d frm %d: ht: %d stride %d meta: %d",
+					"VFE:%u WM:%d frm %d: slice_ht: %d stride %d meta: %d",
 					bus_priv->common_data.core_index, wm_data->index,
 					frame_inc, io_cfg->planes[i].slice_height,
 					io_cfg->planes[i].plane_stride,
@@ -3855,16 +3862,19 @@ static int cam_vfe_bus_ver3_update_wm(void *priv, void *cmd_args, uint32_t arg_s
 		}
 
 		if ((wm_data->en_ubwc) && (!update_buf->use_scratch_cfg))
-			image_buf_offset = io_cfg->planes[i].meta_size;
+			image_buf_offset = io_cfg->planes[i].meta_size + cfg->image_offset;
 		else if ((wm_data->wm_mode == CAM_VFE_WM_FRAME_BASED_MODE) ||
 			(wm_data->wm_mode == CAM_VFE_WM_INDEX_BASED_MODE))
 			image_buf_offset = wm_data->cfg.offset;
 		else
-			image_buf_offset = 0;
+			image_buf_offset = cfg->image_offset;
 
 		/* WM Image address */
 		iova = update_buf->wm_update->image_buf[i] +
 			image_buf_offset;
+
+		CAM_DBG(CAM_ISP, "VFE:%u WM:%d img_addr:0x%lx img_off:0x%x",
+			bus_priv->common_data.core_index, wm_data->index, iova, image_buf_offset);
 
 		if (cam_smmu_is_expanded_memory()) {
 			iova_addr = CAM_36BIT_INTF_GET_IOVA_BASE(iova);
@@ -4401,6 +4411,7 @@ static int cam_vfe_bus_ver3_update_wm_config_v2(
 			return -EINVAL;
 		}
 
+		cfg->h_init = wm_config->h_init;
 		cfg->width  = wm_config->width;
 		if (wm_config->wm_mode != wm_data->wm_mode) {
 			wm_data->wm_mode = wm_config->wm_mode;
@@ -4415,10 +4426,17 @@ static int cam_vfe_bus_ver3_update_wm_config_v2(
 			cfg->en_cfg = ((wm_config->wm_mode << common_reg->wm_mode_shift) |
 				(wm_config->virtual_frame_en << common_reg->virtual_frm_en_shift));
 
-		if (i == PLANE_C)
+		if (i == PLANE_C) {
 			cfg->height = wm_config->height / 2;
-		else
+			cfg->image_offset = wm_config->offset_in_bytes / 2;
+			if (wm_config->param_mask & CAM_IFE_WM_BUF_ALLIGN_EN)
+				cfg->meta_offset = wm_config->offset / 2;
+		} else {
 			cfg->height = wm_config->height;
+			cfg->image_offset = wm_config->offset_in_bytes;
+			if (wm_config->param_mask & CAM_IFE_WM_BUF_ALLIGN_EN)
+				cfg->meta_offset = wm_config->offset;
+		}
 
 		/*
 		 * For RAW10/RAW12/RAW14 sensor mode seamless switch case,
@@ -4436,12 +4454,16 @@ static int cam_vfe_bus_ver3_update_wm_config_v2(
 			cam_vfe_bus_ver3_config_rdi_wm(wm_data);
 
 		CAM_DBG(CAM_ISP,
-			"VFE:%u WM:%d %s update_mode:%s update_fmt:%s en_cfg:0x%X height:%d width:%d stride:%d pack_fmt:%d ctxt_mask %u",
+			"VFE:%u WM:%d %s up_mode:%s up_fmt:%s en_cfg:0x%X ht:%d width:%d stride:%d",
 			vfe_out_data->common_data->core_index, wm_data->index,
 			vfe_out_data->wm_res[i].res_name, CAM_BOOL_TO_YESNO(update_wm_mode),
 			CAM_BOOL_TO_YESNO(wm_data->update_wm_format), cfg->en_cfg, cfg->height,
-			cfg->width, wm_data->cfg.stride, wm_data->cfg.pack_fmt,
-			wm_config->context_id_mask);
+			cfg->width, wm_data->cfg.stride);
+		CAM_DBG(CAM_ISP,
+			"VFE:%u WM:%d pack_fmt:%d ctx_mask:%u meta_of:0x%X h_init:0x%x img_of:0x%x",
+			vfe_out_data->common_data->core_index, wm_data->index,
+			wm_data->cfg.pack_fmt, wm_config->context_id_mask, cfg->meta_offset,
+			cfg->h_init, cfg->image_offset);
 	}
 
 	return 0;

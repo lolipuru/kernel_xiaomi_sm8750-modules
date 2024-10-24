@@ -253,6 +253,11 @@
  */
 #define CAM_IFE_WM_RCS_EN                    BIT(1)
 
+/*
+ * to indicate if per port buffer alignment is enabled.
+ */
+#define CAM_IFE_WM_BUF_ALLIGN_EN             BIT(0)
+
 
 /*
  * Indicates exposure orders within a frame time
