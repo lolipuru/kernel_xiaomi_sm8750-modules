@@ -2167,8 +2167,9 @@ wlan_ipa_uc_disable_pipes(struct wlan_ipa_priv *ipa_ctx, bool force_disable)
 			cdp_ipa_set_smmu_mapped(ipa_ctx->dp_soc, 0);
 			ipa_info("opt_dp: IPA smmu pool unmap");
 			cdp_ipa_rx_buf_smmu_pool_mapping(ipa_ctx->dp_soc,
-							 IPA_DEF_PDEV_ID, false,
-							  __func__, __LINE__);
+							 IPA_DEF_PDEV_ID,
+							 false, false,
+							 __func__, __LINE__);
 		}
 
 		ipa_ctx->opt_dp_active = false;
@@ -5008,6 +5009,7 @@ void wlan_ipa_opt_dp_deinit(struct wlan_ipa_priv *ipa_ctx)
 		cdp_ipa_set_smmu_mapped(ipa_ctx->dp_soc, 0);
 		cdp_ipa_rx_buf_smmu_pool_mapping(ipa_ctx->dp_soc,
 						 IPA_DEF_PDEV_ID,
+						 true,
 						 false, __func__, __LINE__);
 	}
 }
@@ -5634,15 +5636,15 @@ static void wlan_ipa_uc_op_cb(struct op_msg_type *op_msg,
 		ipa_info("opt_dp: IPA smmu pool map");
 		qdf_mutex_acquire(&ipa_ctx->ipa_lock);
 		cdp_ipa_rx_buf_smmu_pool_mapping(ipa_ctx->dp_soc,
-						 IPA_DEF_PDEV_ID, true,
-						 __func__, __LINE__);
+						 IPA_DEF_PDEV_ID, false,
+						 true, __func__, __LINE__);
 		qdf_mutex_release(&ipa_ctx->ipa_lock);
 	} else if (msg->op_code == WLAN_IPA_SMMU_UNMAP) {
 		ipa_info("opt_dp: IPA smmu pool unmap");
 		qdf_mutex_acquire(&ipa_ctx->ipa_lock);
 		cdp_ipa_rx_buf_smmu_pool_mapping(ipa_ctx->dp_soc,
 						 IPA_DEF_PDEV_ID, false,
-						 __func__, __LINE__);
+						 false, __func__, __LINE__);
 		qdf_mutex_release(&ipa_ctx->ipa_lock);
 	} else if (wlan_ipa_uc_op_metering(ipa_ctx, op_msg)) {
 		ipa_err("Invalid message: op_code=%d, reason=%d",
@@ -7043,18 +7045,21 @@ int wlan_ipa_wdi_opt_dpath_ctrl_flt_rem_cb_wrapper(
 			   void *ipa_ctx,
 			   struct ipa_wdi_opt_dpath_flt_rem_cb_params *in)
 {
-	struct wlan_ipa_priv *ipa_obj = (struct wlan_ipa_priv *)ipa_ctx;
+	struct qdf_op_sync *op_sync;
+	int code;
 
-	if (ipa_obj->opt_dp_ctrl_ssr ||
-	    ipa_obj->opt_dp_ctrl_wlan_shutdown) {
-		ipa_debug("opt_dp_ctrl, flt del requested while ssr or shutdown");
+	if (qdf_op_protect(&op_sync)) {
+		ipa_debug("opt_dp_ctrl: driver operation inprogress!");
 		return WLAN_IPA_WDI_OPT_DPATH_RESP_SUCCESS;
 	}
 
-	ipa_debug("opt_dp_ctrl, flt del requested from ipa");
-	return wlan_ipa_wdi_opt_dpath_ctrl_flt_rem_cb(
+	code = wlan_ipa_wdi_opt_dpath_ctrl_flt_rem_cb(
 						ipa_ctx, in,
 						WLAN_IPA_CTRL_FLT_DEL_SRC_IPA);
+	ipa_debug("opt_dp_ctrl: flt del requested from ipa, return code - %d",
+		  code);
+	qdf_op_unprotect(op_sync);
+	return code;
 }
 
 int wlan_ipa_wdi_opt_dpath_ctrl_flt_rem_cb(

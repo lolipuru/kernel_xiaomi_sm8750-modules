@@ -2450,6 +2450,8 @@ void dp_soc_deinit(void *txrx_soc)
 
 	dp_monitor_soc_deinit(soc);
 
+	dp_peer_unmap_track_deinit(soc);
+
 	/* free peer tables & AST tables allocated during peer_map_attach */
 	if (soc->peer_map_attach_success) {
 		dp_peer_find_detach(soc);
@@ -3867,6 +3869,7 @@ void *dp_soc_init(struct dp_soc *soc, HTC_HANDLE htc_handle,
 	qdf_spinlock_create(&soc->ast_lock);
 	dp_peer_mec_spinlock_create(soc);
 	dp_soc_sawf_init(soc);
+	dp_peer_unmap_track_init(soc);
 
 	qdf_spinlock_create(&soc->reo_desc_freelist_lock);
 	qdf_list_create(&soc->reo_desc_freelist, REO_DESC_FREELIST_SIZE);

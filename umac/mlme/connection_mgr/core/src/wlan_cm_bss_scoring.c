@@ -1522,13 +1522,13 @@ bool wlan_cm_is_eht_allowed_for_current_security(struct wlan_objmgr_psoc *psoc,
 						 struct scan_cache_entry *entry,
 						 bool is_mlo_connect)
 {
-	uint32_t rf_test_mode = false;
+	bool rf_test_mode = false;
 	QDF_STATUS status;
 	struct security_info *neg_sec_info;
 	uint32_t oem_eht_cfg = 0x0;
 	bool mlie_present;
 
-	status = wlan_mlme_get_rf_test_mode(psoc, &rf_test_mode);
+	status = wlan_mlme_is_rf_test_mode_enabled(psoc, &rf_test_mode);
 	if (!QDF_IS_STATUS_SUCCESS(status)) {
 		mlme_err("Get rf test mode failed");
 		return false;
@@ -2841,6 +2841,7 @@ static int cm_calculate_bss_score(struct wlan_objmgr_psoc *psoc,
 	 * Consider OCE WAN score score only if
 	 * congestion_pct is greater than CONGESTION_THRSHOLD_FOR_BAND_OCE_SCORE
 	 */
+	congestion_pct = cm_get_congestion_pct(entry);
 	if (congestion_pct < CM_CONGESTION_THRSHOLD_FOR_BAND_OCE_SCORE) {
 		oce_wan_score = cm_calculate_oce_wan_score(entry, score_config);
 		score += oce_wan_score;
@@ -3465,21 +3466,6 @@ static void cm_validate_partner_links(struct wlan_objmgr_psoc *psoc,
 			continue;
 		}
 
-		if (partner_info->link_id == entry->ml_info.self_link_id) {
-			mlme_err(QDF_MAC_ADDR_FMT " dup link id %d",
-				 QDF_MAC_ADDR_REF(partner_info->link_addr.bytes),
-				 partner_info->link_id);
-			partner_info->is_valid_link = false;
-		}
-
-		if (qdf_is_macaddr_equal(&partner_info->link_addr,
-					 &entry->bssid)) {
-			mlme_err(QDF_MAC_ADDR_FMT " link id %d dup mac",
-				 QDF_MAC_ADDR_REF(partner_info->link_addr.bytes),
-				 partner_info->link_id);
-			partner_info->is_valid_link = false;
-		}
-
 		/*
 		 * If partner link is not found in the current candidate list
 		 * don't treat it as failure, it can be removed post ML
@@ -3759,6 +3745,17 @@ void cm_update_dlm_mlo_score(struct wlan_objmgr_pdev *pdev,
 				return;
 			}
 			qdf_list_insert_back(scan_list, &scan_entry->node);
+			*dlm_entry_updated = true;
+		} else if(denylist_action == CM_DLM_REMOVE ||
+			  denylist_action == CM_DLM_FORCE_REMOVE){
+			/* Remove node from list as it is added to DLM list */
+			status = qdf_list_remove_node(scan_list, cur_node);
+			if (QDF_IS_STATUS_ERROR(status)) {
+				mlme_err("failed to remove node for BSS "QDF_MAC_ADDR_FMT" from scan list",
+					 QDF_MAC_ADDR_REF(
+					 scan_entry->entry->bssid.bytes));
+				return;
+			}
 			*dlm_entry_updated = true;
 		}
 		cur_node = next_node;
