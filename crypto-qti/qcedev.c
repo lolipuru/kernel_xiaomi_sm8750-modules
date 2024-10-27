@@ -557,6 +557,8 @@ void qcedev_offload_cipher_req_cb(void *cookie, unsigned char *icv,
 	if (!areq || !areq->cookie)
 		return;
 	handle = (struct qcedev_handle *) areq->cookie;
+	if (!handle || !handle->cntl)
+		return;
 	podev = handle->cntl;
 	if (!podev)
 		return;
