@@ -3431,7 +3431,7 @@ int cnss_pci_fmd_status(struct cnss_pci_data *pci_priv,
 
 	if (fmd_status) {
 		ret = cnss_pci_fmd_enable(pci_priv);
-		cnss_pr_dbg("Update FMD status to PCI: %d\n",
+		cnss_pr_dbg("Update FMD status to PCI: %d ret: %d\n",
 			    fmd_status, ret);
 	}
 
