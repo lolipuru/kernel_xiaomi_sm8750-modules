@@ -7105,6 +7105,7 @@ void dsi_display_adjust_mode_timing(struct dsi_display *display,
 	u64 new_htotal, new_vtotal, htotal, vtotal, old_htotal, div;
 	struct dsi_dyn_clk_caps *dyn_clk_caps;
 	u32 bits_per_symbol = 16, num_of_symbols = 7; /* For Cphy */
+	int i = 0;
 
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 
@@ -7114,6 +7115,7 @@ void dsi_display_adjust_mode_timing(struct dsi_display *display,
 
 	if (!dyn_clk_caps->maintain_const_fps)
 		return;
+
 	/*
 	 * When there is a dynamic clock switch, there is small change
 	 * in FPS. To compensate for this difference in FPS, hfp or vfp
@@ -7155,6 +7157,22 @@ void dsi_display_adjust_mode_timing(struct dsi_display *display,
 				dsi_mode->timing.v_back_porch -
 				dsi_mode->timing.v_sync_width -
 				dsi_mode->timing.v_active;
+		break;
+
+	case DSI_DYN_CLK_TYPE_ADJUST_HFP:
+		for (i = 0; i < dsi_mode->priv_info->bit_clk_list.count; i++)
+			if (dsi_mode->timing.clk_rate_hz ==
+					dsi_mode->priv_info->bit_clk_list.rates[i])
+				dsi_mode->timing.h_front_porch =
+					dsi_mode->priv_info->bit_clk_list.front_porches[i];
+		break;
+
+	case DSI_DYN_CLK_TYPE_ADJUST_VFP:
+		for (i = 0; i < dsi_mode->priv_info->bit_clk_list.count; i++)
+			if (dsi_mode->timing.clk_rate_hz ==
+					dsi_mode->priv_info->bit_clk_list.rates[i])
+				dsi_mode->timing.v_front_porch =
+					dsi_mode->priv_info->bit_clk_list.front_porches[i];
 		break;
 
 	default:
@@ -7267,6 +7285,9 @@ static int dsi_display_mode_dyn_clk_cpy(struct dsi_display *display,
 	memcpy(bit_clk_list->rates, src->priv_info->bit_clk_list.rates,
 			count*sizeof(u32));
 
+	memcpy(bit_clk_list->front_porches, src->priv_info->bit_clk_list.front_porches,
+			count*sizeof(u32));
+
 	bit_clk_list->pixel_clks_khz =
 			kcalloc(count, sizeof(u32), GFP_KERNEL);
 	if (!bit_clk_list->pixel_clks_khz) {
@@ -7318,9 +7339,11 @@ int dsi_display_restore_bit_clk(struct dsi_display *display, struct dsi_display_
 		if (!display->dyn_bit_clk_pending && display->dyn_bit_clk) {
 			switch (display->panel->dyn_clk_caps.type) {
 			case DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_HFP:
+			case DSI_DYN_CLK_TYPE_ADJUST_HFP:
 				mode->timing.h_front_porch = front_porch;
 				break;
 			case DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_VFP:
+			case DSI_DYN_CLK_TYPE_ADJUST_VFP:
 				mode->timing.v_front_porch = front_porch;
 				break;
 			default:

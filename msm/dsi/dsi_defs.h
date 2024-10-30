@@ -234,12 +234,18 @@ enum dsi_dfps_type {
  *						change in hfp
  * @DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_VFP:	Constant FPS supported with
  *						change in vfp
+ * @DSI_DYN_CLK_TYPE_ADJUST_HFP:		Variable FPS supported with
+ *						change in hfp
+ * @DSI_DYN_CLK_TYPE_ADJUST_VFP:		Variable FPS supported with
+ *						change in vfp
  * @DSI_DYN_CLK_TYPE_MAX:
  */
 enum dsi_dyn_clk_feature_type {
 	DSI_DYN_CLK_TYPE_LEGACY = 0,
 	DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_HFP,
 	DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_VFP,
+	DSI_DYN_CLK_TYPE_ADJUST_HFP,
+	DSI_DYN_CLK_TYPE_ADJUST_VFP,
 	DSI_DYN_CLK_TYPE_MAX
 };
 
