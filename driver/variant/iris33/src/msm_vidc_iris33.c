@@ -170,25 +170,22 @@ static int __interrupt_init_iris33(struct msm_vidc_core *core)
 static int __get_device_region_info(struct msm_vidc_core *core,
 	u32 *min_dev_addr, u32 *dev_reg_size)
 {
-	struct device_region_set *dev_set;
 	u32 min_addr, max_addr, count = 0;
 	int rc = 0;
 
-	dev_set = &core->device_region_set;
-
-	if (!dev_set->count) {
+	if (!core->device_region_tbl_count) {
 		d_vpr_h("%s: device region not available\n", __func__);
 		return 0;
 	}
 
 	min_addr = 0xFFFFFFFF;
 	max_addr = 0x0;
-	for (count = 0; count < dev_set->count; count++) {
-		if (dev_set->device_region_tbl[count].dev_addr > max_addr)
-			max_addr = dev_set->device_region_tbl[count].dev_addr +
-				dev_set->device_region_tbl[count].size;
-		if (dev_set->device_region_tbl[count].dev_addr < min_addr)
-			min_addr = dev_set->device_region_tbl[count].dev_addr;
+	for (count = 0; count < core->device_region_tbl_count; count++) {
+		if (core->device_region_tbl[count].dev_addr > max_addr)
+			max_addr = core->device_region_tbl[count].dev_addr +
+				core->device_region_tbl[count].size;
+		if (core->device_region_tbl[count].dev_addr < min_addr)
+			min_addr = core->device_region_tbl[count].dev_addr;
 	}
 	if (min_addr == 0xFFFFFFFF || max_addr == 0x0) {
 		d_vpr_e("%s: invalid device region\n", __func__);
