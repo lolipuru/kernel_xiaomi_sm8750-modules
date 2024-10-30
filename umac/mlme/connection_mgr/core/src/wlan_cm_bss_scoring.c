@@ -3442,7 +3442,18 @@ next:
 	}
 }
 
-static void cm_eliminate_common_candidate(qdf_list_t *candidate_list)
+/**
+ *cm_eliminate_invalid_candidate() - To Eliminate invalid candidates
+ *@psoc: objmgr psoc
+ *@candidate_list: candidate list
+ *
+ * This API removes candidates which are having more than allowed
+ * partner links and invokes API to remove duplicate entries.
+ *
+ * Return: NA
+ */
+static void cm_eliminate_invalid_candidate(struct wlan_objmgr_psoc *psoc,
+					   qdf_list_t *candidate_list)
 {
 	struct scan_cache_node *scan_entry = NULL;
 	qdf_list_node_t *cur_node = NULL, *next_node = NULL;
@@ -3463,9 +3474,16 @@ static void cm_eliminate_common_candidate(qdf_list_t *candidate_list)
 		scan_entry = qdf_container_of(cur_node,
 					      struct scan_cache_node, node);
 
+		if (scan_entry->entry->ml_info.num_links >=
+		    wlan_mlme_get_sta_mlo_conn_max_num(psoc)) {
+			qdf_list_remove_node(candidate_list, cur_node);
+			util_scan_free_cache_entry(scan_entry->entry);
+			qdf_mem_free(scan_entry);
+			goto next;
+		}
+
 		cm_find_and_remove_dup_candidate(scan_entry,
 						 next_node, candidate_list);
-
 		/*
 		 * Find next again as next entry might have deleted.
 		 * If reach end of list, next_node won't be updated, may still
@@ -3477,7 +3495,7 @@ static void cm_eliminate_common_candidate(qdf_list_t *candidate_list)
 					    &next_node);
 		if (QDF_IS_STATUS_ERROR(status))
 			break;
-
+next:
 		cur_node = next_node;
 		next_node = NULL;
 		size--;
@@ -3544,7 +3562,8 @@ cm_mlo_generate_candidate_list(struct wlan_objmgr_pdev *pdev,
 {
 }
 
-static void cm_eliminate_common_candidate(qdf_list_t *candidate_list)
+static void cm_eliminate_invalid_candidate(struct wlan_objmgr_psoc *psoc,
+					   qdf_list_t *candidate_list)
 {
 }
 
@@ -3554,6 +3573,7 @@ cm_validate_partner_links(struct wlan_objmgr_psoc *psoc,
 			  qdf_list_t *scan_list)
 {
 }
+
 #endif
 
 static void cm_dec_score_for_mcc(struct wlan_objmgr_psoc *psoc,
@@ -3789,7 +3809,7 @@ void wlan_cm_calculate_bss_score(struct wlan_objmgr_pdev *pdev,
 		qdf_mem_free(force_connect_candidate);
 	}
 
-	cm_eliminate_common_candidate(scan_list);
+	cm_eliminate_invalid_candidate(psoc, scan_list);
 
 	cm_print_candidate_list(scan_list);
 }
