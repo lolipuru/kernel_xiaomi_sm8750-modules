@@ -1231,7 +1231,7 @@ static int wcd9378_tx_sequencer_enable(struct snd_soc_dapm_widget *w,
 		}
 
 		rate = wcd9378_get_clk_rate(wcd9378->tx_mode[w->shift - ADC1]);
-		if (w->shift == ADC2 && !((snd_soc_component_read(component,
+		if (w->shift == ADC2 && ((snd_soc_component_read(component,
 				WCD9378_TX_NEW_TX_CH12_MUX) &
 				WCD9378_TX_NEW_TX_CH12_MUX_CH2_SEL_MASK) == 0x10)) {
 			if (!wcd9378->bcs_dis) {
