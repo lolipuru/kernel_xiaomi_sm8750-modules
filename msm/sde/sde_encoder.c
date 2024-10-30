@@ -2065,6 +2065,10 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 			&& (cesta_client->vote_state != SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE))
 		return;
 
+	/* when reserving a SCC, enable clk gating and do a force-db update */
+	if (sde_enc->cesta_enable_frame)
+		sde_cesta_force_db_update(sde_enc->cesta_client, false, 0, false, true);
+
 	/* SCC configs */
 	cur_master->ops.cesta_ctrl_cfg(cur_master, &ctrl_cfg, &req_flush, &req_scc);
 
@@ -2085,10 +2089,10 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 		}
 		ctrl_cfg.auto_active_on_panic = true;
 
-		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client,
+		sde_cesta_force_db_update(sde_enc->cesta_client,
 				ctrl_cfg.auto_active_on_panic,
-				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable);
-		sde_enc->cesta_force_auto_active_db_update = true;
+				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable, true);
+		sde_enc->cesta_scc_override = true;
 	}
 
 	if (!sde_enc->disp_info.disable_cesta_hw_sleep) {
@@ -2105,7 +2109,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 			req_scc = true;
 			req_flush = true;
 			/* reset flag, so auto-active setting is left intact during TUI session */
-			sde_enc->cesta_force_auto_active_db_update = false;
+			sde_enc->cesta_scc_override = false;
 		} else if (vm_req == VM_REQ_ACQUIRE) {
 			req_scc = true;
 			req_flush = true;
@@ -2137,8 +2141,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 	SDE_EVT32(DRMID(drm_enc), commit_state, cfg.index, cfg.vote_state, cfg.flags, req_flush,
 			req_scc, sde_enc->cesta_enable_frame, vm_req, sde_enc->mode_switch,
-			ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable,
-			sde_enc->cesta_force_auto_active_db_update,
+			ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable, sde_enc->cesta_scc_override,
 			sde_enc->cesta_reset_intf_master);
 }
 
@@ -4921,7 +4924,7 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 	bool req_flush = false, req_scc = false;
 
 
-	SDE_EVT32(DRMID(drm_enc), sde_enc->mode_switch, sde_enc->cesta_force_auto_active_db_update,
+	SDE_EVT32(DRMID(drm_enc), sde_enc->mode_switch, sde_enc->cesta_scc_override,
 			sde_enc->cesta_reset_intf_master, sde_enc->intf_master,
 			SDE_EVTLOG_FUNC_ENTRY);
 
@@ -4933,12 +4936,12 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 			sde_enc->cesta_reset_intf_master = false;
 		}
 
-		if (sde_enc->cesta_force_auto_active_db_update && phys_enc->ops.cesta_ctrl_cfg) {
+		if (sde_enc->cesta_scc_override && phys_enc->ops.cesta_ctrl_cfg) {
 			phys_enc->ops.cesta_ctrl_cfg(phys_enc, &ctrl_cfg, &req_flush, &req_scc);
-			sde_cesta_force_auto_active_db_update(sde_enc->cesta_client,
+			sde_cesta_force_db_update(sde_enc->cesta_client,
 					ctrl_cfg.auto_active_on_panic, ctrl_cfg.req_mode,
-					ctrl_cfg.hw_sleep_enable);
-			sde_enc->cesta_force_auto_active_db_update = false;
+					ctrl_cfg.hw_sleep_enable, true);
+			sde_enc->cesta_scc_override = false;
 		}
 	}
 

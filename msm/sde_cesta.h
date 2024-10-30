@@ -176,7 +176,7 @@ struct sde_cesta_sw_client_data {
  * @get_pwr_event: get all the power states which can used for debugging
  * @override_ctrl_setup: configure the SCC override ctrl
  * @reset_ctrl: reset SCC ctrl
- * @force_auto_active_db_update: set auto-active-on-panic and force db-update
+ * @force_db_update: change SCC ctrl setting and force db-update
  * @get_rscc_pwr_ctrl_status: get sde rscc power control status
  */
 struct sde_cesta_hw_ops {
@@ -187,8 +187,9 @@ struct sde_cesta_hw_ops {
 	u32 (*get_pwr_event)(struct sde_cesta *cesta);
 	void (*override_ctrl_setup)(struct sde_cesta *cesta, u32 idx, u32 force_flags);
 	void (*reset_ctrl)(struct sde_cesta *cesta, u32 idx, bool en);
-	void (*force_auto_active_db_update)(struct sde_cesta *cesta, u32 idx, bool en_auto_active,
-			enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep);
+	void (*force_db_update)(struct sde_cesta *cesta, u32 idx, bool en_auto_active,
+			enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep,
+			bool en_clk_gate);
 	u32 (*get_rscc_pwr_ctrl_status)(struct sde_cesta *cesta);
 };
 
@@ -397,14 +398,15 @@ void sde_cesta_override_ctrl(struct sde_cesta_client *client, u32 force_flags);
 void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en);
 
 /**
- * sde_cesta_force_auto_active_db_update - set auto-active-on-panic and force db-update
+ * sde_cesta_force_db_update - update SCC settings and do a force-db update
  * @client: pointer to sde cesta client
  * @en_auto_active: boolean to enable/disable auto_active
  * @req_mode: power req mode
  * @en_hw_sleep: boolean to enable/disable hw_sleep
+ * @en_clk_gate: boolean to enable/disable clk_gate
  */
-void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en_auto_active,
-		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep);
+void sde_cesta_force_db_update(struct sde_cesta_client *client, bool en_auto_active,
+		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep, bool en_clk_gate);
 
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
@@ -494,8 +496,9 @@ static inline void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en
 {
 }
 
-static inline void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client,
-		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep)
+static inline void sde_cesta_force_db_update(struct sde_cesta_client *client,
+		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep,
+		bool en_clk_gate)
 {
 }
 #endif /* CONFIG_DRM_SDE_CESTA */

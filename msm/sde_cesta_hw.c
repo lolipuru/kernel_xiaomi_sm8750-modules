@@ -38,8 +38,9 @@ void _sde_cesta_hw_init(struct sde_cesta *cesta)
 	}
 }
 
-void _sde_cesta_hw_force_auto_active_db_update(struct sde_cesta *cesta, u32 idx,
-		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep)
+void _sde_cesta_hw_force_db_update(struct sde_cesta *cesta, u32 idx,
+		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep,
+		bool en_clk_gate)
 {
 	u32 ctl_val, override_val;
 
@@ -55,6 +56,11 @@ void _sde_cesta_hw_force_auto_active_db_update(struct sde_cesta *cesta, u32 idx,
 		ctl_val |= BIT(0); /* set hw sleep enable */
 	else
 		ctl_val &= ~BIT(0);
+
+	if (en_clk_gate)
+		ctl_val |= BIT(8); /* set clk gate enable */
+	else
+		ctl_val &= ~BIT(8);
 
 	/* clear & set the pwr_req mode */
 	ctl_val &= ~(BIT(1) | BIT(2));
@@ -171,6 +177,6 @@ void sde_cesta_hw_init(struct sde_cesta *cesta)
 	cesta->hw_ops.get_pwr_event = _sde_cesta_hw_get_pwr_event;
 	cesta->hw_ops.override_ctrl_setup = _sde_cesta_hw_override_ctrl_setup;
 	cesta->hw_ops.reset_ctrl = _sde_cesta_hw_reset;
-	cesta->hw_ops.force_auto_active_db_update = _sde_cesta_hw_force_auto_active_db_update;
+	cesta->hw_ops.force_db_update = _sde_cesta_hw_force_db_update;
 	cesta->hw_ops.get_rscc_pwr_ctrl_status = _sde_get_rscc_pwr_ctrl_status;
 }
