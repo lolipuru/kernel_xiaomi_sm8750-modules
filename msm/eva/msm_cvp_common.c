@@ -1323,38 +1323,42 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 	ops_tbl = core->dev_ops;
 
 	if (core->ssr_type == SSR_SESSION_ABORT) {
-		struct msm_cvp_inst *inst = NULL, *s;
+		struct msm_cvp_inst *inst = NULL, *s, *inst_temp;
 
 		dprintk(CVP_ERR, "Session abort triggered\n");
-		list_for_each_entry(inst, &core->instances, list) {
+		mutex_lock(&core->lock);
+		list_for_each_entry_safe(inst, inst_temp, &core->instances, list) {
 			dprintk(CVP_WARN,
 				"Session to abort: inst %#x ref %x\n",
 				inst, kref_read(&inst->kref));
+			if (inst != NULL) {
+				s = cvp_get_inst_validate(inst->core, inst);
+				if (!s) {
+					dprintk(CVP_WARN, "%s: Session is not a valid session\n",
+						__func__);
+					continue;
+				}
+				print_hfi_queue_info(ops_tbl);
+				cvp_put_inst(s);
+			} else {
+				dprintk(CVP_WARN, "No active CVP session to abort\n");
+			}
 			break;
 		}
-
-		if (inst != NULL) {
-			s = cvp_get_inst_validate(inst->core, inst);
-			if (!s)
-				return;
-			print_hfi_queue_info(ops_tbl);
-			cvp_put_inst(s);
-		} else {
-			dprintk(CVP_WARN, "No active CVP session to abort\n");
-		}
-
+		mutex_unlock(&core->lock);
 		return;
 	}
 	if (core->ssr_type == SSR_SESSION_ERROR) {
 		struct msm_cvp_cb_cmd_done response = { 1 };
-		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL;
+		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL, *inst_t;
 
-		list_for_each_entry(inst, &core->instances, list) {
+		mutex_lock(&core->lock);
+		list_for_each_entry_safe(inst, inst_t, &core->instances, list) {
 			if (inst != NULL) {
 				inst_temp = cvp_get_inst_validate(inst->core, inst);
 				if (!inst_temp) {
 					dprintk(CVP_WARN, "%s: Session is not a valid session\n",
-					__func__);
+						__func__);
 					continue;
 				}
 				dprintk(CVP_INFO, "Session to be taken for session error 0x%x\n",
@@ -1363,6 +1367,8 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 				}
 				break;
 		}
+		mutex_unlock(&core->lock);
+
 		if (!response.session_id) {
 			dprintk(CVP_ERR, "No active session\n");
 			return;
@@ -1375,14 +1381,15 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 		return;
 	}
 	if (core->ssr_type == SSR_SESSION_TIMEOUT) {
-		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL;
+		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL, *inst_t;
 
-		list_for_each_entry(inst, &core->instances, list) {
+		mutex_lock(&core->lock);
+		list_for_each_entry_safe(inst, inst_t,  &core->instances, list) {
 			if (inst != NULL) {
 				inst_temp = cvp_get_inst_validate(inst->core, inst);
 				if (!inst_temp) {
 					dprintk(CVP_WARN, "%s: Session is not a valid session\n",
-					__func__);
+						__func__);
 					continue;
 				}
 				dprintk(CVP_INFO, "Session to be taken for session timeout 0x%x\n",
@@ -1390,6 +1397,7 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 				}
 				break;
 		}
+		mutex_unlock(&core->lock);
 		dprintk(CVP_ERR, "Session timeout triggered\n");
 		handle_session_timeout(inst, true);
 		return;
