@@ -132,13 +132,6 @@
 #define DMA_FENCE_HASH_TABLE_BIT (12) /* size of table = (1 << 12) = 4096 */
 #define DMA_FENCE_HASH_TABLE_SIZE (1 << DMA_FENCE_HASH_TABLE_BIT)
 
-enum hw_fence_lookup_ops {
-	HW_FENCE_LOOKUP_OP_CREATE = 0x1,
-	HW_FENCE_LOOKUP_OP_DESTROY,
-	HW_FENCE_LOOKUP_OP_CREATE_JOIN,
-	HW_FENCE_LOOKUP_OP_FIND_FENCE
-};
-
 /**
  * enum hw_fence_client_data_id - Enum with the clients having client_data, an optional
  *                                parameter passed from the waiting client and returned
