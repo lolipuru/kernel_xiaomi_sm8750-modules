@@ -144,6 +144,7 @@
 #define SDE_INLINE_ROT_VERSION_1_0_0	0x100
 #define SDE_INLINE_ROT_VERSION_2_0_0	0x200
 #define SDE_INLINE_ROT_VERSION_2_0_1	0x201
+#define SDE_INLINE_ROT_VERSION_2_0_2	0x202
 
 #define IS_SDE_INLINE_ROT_REV_100(rev) \
 	((rev) == SDE_INLINE_ROT_VERSION_1_0_0)
@@ -151,6 +152,8 @@
 	((rev) == SDE_INLINE_ROT_VERSION_2_0_0)
 #define IS_SDE_INLINE_ROT_REV_201(rev) \
 	((rev) == SDE_INLINE_ROT_VERSION_2_0_1)
+#define IS_SDE_INLINE_ROT_REV_202(rev) \
+	((rev) == SDE_INLINE_ROT_VERSION_2_0_2)
 
 /**
  * Downscale Blur supported versions
