@@ -291,6 +291,7 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 	else
 		drm_enc = connector->encoder;
 
+	mutex_lock(&c_conn->bl_vrr.bl_lock);
 	/* first frame after suspend/init */
 	if (c_conn->bl_vrr.prev_brightness == 0 ||
 			c_conn->last_panel_power_mode == SDE_MODE_DPMS_OFF) {
@@ -310,6 +311,7 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 
 	sde_encoder_handle_next_backlight_update(drm_enc);
 
+	mutex_unlock(&c_conn->bl_vrr.bl_lock);
 	return rc;
 
 skip_incremental_update:
@@ -323,6 +325,7 @@ skip_incremental_update:
 		c_conn->bl_vrr.prev_bl_lvl = bl_lvl;
 		SDE_EVT32(brightness, bl_lvl);
 	}
+	mutex_unlock(&c_conn->bl_vrr.bl_lock);
 	return rc;
 }
 
@@ -1411,7 +1414,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 
 	SDE_EVT32(c_conn->vrr_cmd_state, c_conn->freq_pattern_updated,
 		SDE_EVTLOG_FUNC_CASE1);
-
+	mutex_lock(&c_conn->bl_vrr.bl_lock);
 	freq_pattern = c_conn->freq_pattern;
 	if (c_conn->vrr_cmd_state == VRR_CMD_POWER_ON ||
 			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT) {
@@ -1444,6 +1447,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	c_conn->freq_pattern_updated = false;
 	c_conn->freq_pattern_type_changed = false;
 
+	mutex_unlock(&c_conn->bl_vrr.bl_lock);
 	return rc;
 }
 
@@ -1512,12 +1516,13 @@ int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector)
 
 	if (c_conn->vrr_caps.video_psr_support &&
 			!(c_conn->ops.check_cmd_defined(c_conn->display,
-			DSI_CMD_SET_TRIGGER_SELF_REFRESH)))
-		sde_encoder_handle_video_psr_self_refresh(sde_enc, false);
-	else
+			DSI_CMD_SET_TRIGGER_SELF_REFRESH))) {
+		if (sde_enc->rc_state != SDE_ENC_RC_STATE_IDLE)
+			sde_encoder_handle_video_psr_self_refresh(sde_enc, false);
+	} else {
 		rc = sde_connector_update_cmd(connector,
 			BIT(DSI_CMD_SET_TRIGGER_SELF_REFRESH), true);
-
+	}
 	SDE_ATRACE_END("cmd_self_refresh");
 
 	return rc;
@@ -1534,12 +1539,12 @@ int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector)
 		return -EINVAL;
 	}
 	c_conn = to_sde_connector(connector);
-
+	mutex_lock(&c_conn->bl_vrr.bl_lock);
 	/* apply the incremental backlight */
 	rc = sde_connector_apply_incremental_bl(c_conn);
 	if (rc) {
 		SDE_ERROR("Incremental backlight apply failed\n");
-		return rc;
+		goto end;
 	}
 
 	/* trigger self refresh if no frame scheduled */
@@ -1550,6 +1555,9 @@ int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector)
 	}
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, DRMID(&c_conn->base));
+
+end:
+	mutex_unlock(&c_conn->bl_vrr.bl_lock);
 	return rc;
 }
 
@@ -4168,6 +4176,7 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	}
 
 	mutex_init(&c_conn->lock);
+	mutex_init(&c_conn->bl_vrr.bl_lock);
 
 	rc = drm_connector_attach_encoder(&c_conn->base, encoder);
 	if (rc) {
