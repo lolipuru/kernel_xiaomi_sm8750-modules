@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 
@@ -20,8 +20,11 @@ struct soc_port_mapping slave_port[] = {
 	.port_info[2].dai_id = BTAUDIO_RX,
 	.port_info[2].port = 1,
 
-	.port_info[3].dai_id = BTAUDIO_A2DP_SINK_TX,
+	.port_info[3].dai_id = BTAUDIO_TX2,
 	.port_info[3].port = 4,
+
+	.port_info[4].dai_id = BTAUDIO_RX2,
+	.port_info[4].port = 2,
 	},
 
 	// Ganges
@@ -37,8 +40,11 @@ struct soc_port_mapping slave_port[] = {
 	.port_info[2].dai_id = BTAUDIO_RX,
 	.port_info[2].port = 1,
 
-	.port_info[3].dai_id = BTAUDIO_A2DP_SINK_TX,
+	.port_info[3].dai_id = BTAUDIO_TX2,
 	.port_info[3].port = 5,
+
+	.port_info[4].dai_id = BTAUDIO_RX2,
+	.port_info[4].port = 2,
 	},
 };
 
