@@ -2648,6 +2648,10 @@ static void wlfw_qdss_trace_req_mem_ind_cb(struct qmi_handle *qmi,
 		return;
 	}
 
+	if (priv->device_id == WCN6450_DEVICE_ID ||
+	    priv->device_id == WCN7750_DEVICE_ID)
+		icnss_free_qdss_mem(priv);
+
 	if (priv->qdss_mem_seg_len) {
 		icnss_pr_err("Ignore double allocation for QDSS trace, current len %u\n",
 			     priv->qdss_mem_seg_len);

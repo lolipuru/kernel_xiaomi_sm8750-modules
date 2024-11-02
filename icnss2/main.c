@@ -1854,10 +1854,6 @@ static int icnss_alloc_qdss_mem(struct icnss_priv *priv)
 	struct icnss_fw_mem *qdss_mem = priv->qdss_mem;
 	int i, j;
 
-	if (priv->device_id == WCN6450_DEVICE_ID ||
-	    priv->device_id == WCN7750_DEVICE_ID)
-		icnss_free_qdss_mem(priv);
-
 	for (i = 0; i < priv->qdss_mem_seg_len; i++) {
 		if (!qdss_mem[i].va && qdss_mem[i].size) {
 			qdss_mem[i].va =
