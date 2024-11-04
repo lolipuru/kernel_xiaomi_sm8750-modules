@@ -5811,6 +5811,9 @@ static int __cam_isp_ctx_apply_default_req_settings(
 				goto end;
 			}
 			skip_rup_aup = true;
+
+			/* IQ applied for this request, on next trigger skip IQ cfg */
+			req_isp->reapply_type = CAM_CONFIG_REAPPLY_IO;
 		}
 	}
 
