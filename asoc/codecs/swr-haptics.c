@@ -797,7 +797,7 @@ static int swr_haptics_probe(struct swr_device *sdev)
 		}
 	}
 
-	return 0;
+	return swr_haptics_runtime_disable(swr_hap);
 error:
 	swr_haptics_slave_disable(swr_hap);
 	swr_remove_device(sdev);
