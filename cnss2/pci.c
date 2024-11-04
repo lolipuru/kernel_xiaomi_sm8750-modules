@@ -2756,9 +2756,7 @@ static int cnss_pci_store_qrtr_node_id(struct cnss_pci_data *pci_priv)
 /**
  * All the user share the same vector and msi data
  * For MHI user, we need pass IRQ array information to MHI component
- * MHI_IRQ_NUMBER is defined to specify this MHI IRQ array size
  */
-#define MHI_IRQ_NUMBER 3
 static struct cnss_msi_config msi_config_one_msi = {
 	.total_vectors = 1,
 	.total_users = 4,
@@ -2808,11 +2806,6 @@ static bool cnss_pci_is_one_msi(struct cnss_pci_data *pci_priv)
 	       (pci_priv->msi_config->total_vectors == 1);
 }
 
-static int cnss_pci_get_one_msi_mhi_irq_array_size(struct cnss_pci_data *pci_priv)
-{
-	return MHI_IRQ_NUMBER;
-}
-
 static bool cnss_pci_is_force_one_msi(struct cnss_pci_data *pci_priv)
 {
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
@@ -2834,11 +2827,6 @@ static bool cnss_pci_fallback_one_msi(struct cnss_pci_data *pci_priv,
 static bool cnss_pci_is_one_msi(struct cnss_pci_data *pci_priv)
 {
 	return false;
-}
-
-static int cnss_pci_get_one_msi_mhi_irq_array_size(struct cnss_pci_data *pci_priv)
-{
-	return 0;
 }
 
 static bool cnss_pci_is_force_one_msi(struct cnss_pci_data *pci_priv)
@@ -7429,7 +7417,6 @@ static int cnss_pci_get_mhi_msi(struct cnss_pci_data *pci_priv)
 	u32 user_base_data, base_vector;
 	int *irq;
 	unsigned int msi_data;
-	bool is_one_msi = false;
 
 	ret = cnss_get_user_msi_assignment(&pci_priv->pci_dev->dev,
 					   MHI_MSI_NAME, &num_vectors,
@@ -7437,10 +7424,6 @@ static int cnss_pci_get_mhi_msi(struct cnss_pci_data *pci_priv)
 	if (ret)
 		return ret;
 
-	if (cnss_pci_is_one_msi(pci_priv)) {
-		is_one_msi = true;
-		num_vectors = cnss_pci_get_one_msi_mhi_irq_array_size(pci_priv);
-	}
 	cnss_pr_dbg("Number of assigned MSI for MHI is %d, base vector is %d\n",
 		    num_vectors, base_vector);
 
@@ -7449,9 +7432,7 @@ static int cnss_pci_get_mhi_msi(struct cnss_pci_data *pci_priv)
 		return -ENOMEM;
 
 	for (i = 0; i < num_vectors; i++) {
-		msi_data = base_vector;
-		if (!is_one_msi)
-			msi_data += i;
+		msi_data = base_vector + i;
 		irq[i] = cnss_get_msi_irq(&pci_priv->pci_dev->dev, msi_data);
 	}
 
@@ -7611,6 +7592,42 @@ static bool cnss_is_tme_supported(struct cnss_pci_data *pci_priv)
 	}
 }
 
+#ifdef CONFIG_ONE_MSI_VECTOR
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0))
+static void cnss_pci_set_mhi_event_config_for_one_msi(void)
+{
+	uint32_t i;
+	uint32_t num_events = ARRAY_SIZE(cnss_mhi_events);
+
+	/* In one MSI mode, all rings share the same vector 0, so the msivec field
+	 * in mhi_event_ctxt should be set to 0, and msivec actually references
+	 * the value of the irq field in the cnss_mhi_events array, so set the irq
+	 * field in array cnss_mhi_events to 0.
+	 */
+	for (i = 0; i < num_events; i++)
+		cnss_mhi_events[i].irq = 0;
+}
+#else
+static void cnss_pci_set_mhi_event_config_for_one_msi(void)
+{
+	/* The irq field value of cnss_mhi_events array should be set to 0, but when
+	 * the kernel version is older than 5.12, cnss_mhi_events is defined as const
+	 * type and irq field cannot be overwritten with the correct value. since the
+	 * kernel older than 5.12 is becoming outdated, this issue on the old kernel
+	 * will not be fixed for now.
+	 */
+	cnss_pr_err("Known issue: The irq field value of cnss_mhi_events should "
+		    "be an incorrect value in one msi mode, this may result in "
+		    "the host not being able to get interrupt. All rings should "
+		    "share the same vector 0 in one msi mode.");
+}
+#endif
+#else
+static void cnss_pci_set_mhi_event_config_for_one_msi(void)
+{
+}
+#endif
+
 static int cnss_pci_register_mhi(struct cnss_pci_data *pci_priv)
 {
 	int ret = 0;
@@ -7655,8 +7672,10 @@ static int cnss_pci_register_mhi(struct cnss_pci_data *pci_priv)
 		goto free_mhi_ctrl;
 	}
 
-	if (cnss_pci_is_one_msi(pci_priv))
+	if (cnss_pci_is_one_msi(pci_priv)) {
 		mhi_ctrl->irq_flags = IRQF_SHARED | IRQF_NOBALANCING;
+		cnss_pci_set_mhi_event_config_for_one_msi();
+	}
 
 	if (pci_priv->smmu_s1_enable) {
 		mhi_ctrl->iova_start = pci_priv->smmu_iova_start;
