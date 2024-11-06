@@ -11,6 +11,7 @@
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
+#include <linux/remoteproc/qcom_rproc.h>
 #include <linux/slab.h>
 #include <soc/soundwire.h>
 #include <sound/soc.h>
@@ -58,6 +59,8 @@ enum pmic_type {
 
 enum {
 	HAP_SSR_RECOVERY = BIT(0),
+	HAP_RUNTIME_EN = BIT(1),
+	HAP_ENUM_AFTER_SSR = BIT(2),
 };
 
 static struct reg_default swr_hap_reg_defaults[] = {
@@ -104,6 +107,8 @@ struct swr_haptics_dev {
 	struct regulator		*slave_vdd;
 	struct regulator		*hpwr_vreg;
 	struct notifier_block		hboost_nb;
+	struct notifier_block		ssr_nb;
+	void				*ssr_handle;
 	u32				hpwr_voltage_mv;
 	bool				slave_enabled;
 	bool				hpwr_vreg_enabled;
@@ -248,6 +253,22 @@ static int swr_haptics_slave_disable(struct swr_haptics_dev *swr_hap)
 	return 0;
 }
 
+static int swr_haptics_runtime_enable(struct swr_haptics_dev *swr_hap)
+{
+	if (!(swr_hap->flags & HAP_RUNTIME_EN))
+		return 0;
+
+	return swr_haptics_slave_enable(swr_hap);
+}
+
+static int swr_haptics_runtime_disable(struct swr_haptics_dev *swr_hap)
+{
+	if (!(swr_hap->flags & HAP_RUNTIME_EN))
+		return 0;
+
+	return swr_haptics_slave_disable(swr_hap);
+}
+
 struct regmap_config swr_hap_regmap_config = {
 	.reg_bits		= 16,
 	.val_bits		= 8,
@@ -310,6 +331,13 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+		rc = swr_haptics_runtime_enable(swr_hap);
+		if (rc < 0) {
+			dev_err_ratelimited(swr_hap->dev, "%s: enable haptics failed, rc=%d\n",
+					__func__, rc);
+			return rc;
+		}
+
 		/* If SSR ever happened, toggle swr-slave-vdd for HW recovery */
 		if ((swr_hap->flags & HAP_SSR_RECOVERY)
 				&& swr_hap->ssr_recovery) {
@@ -392,6 +420,12 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 		swr_slvdev_datapath_control(swr_hap->swr_slave,
 				swr_hap->swr_slave->dev_num, false);
 		swr_device_wakeup_unvote(swr_hap->swr_slave);
+		rc = swr_haptics_runtime_disable(swr_hap);
+		if (rc < 0) {
+			dev_err_ratelimited(swr_hap->dev, "%s: disable haptics failed, rc=%d\n",
+					__func__, rc);
+			return rc;
+		}
 		break;
 	default:
 		break;
@@ -607,14 +641,66 @@ static int hboost_notifier(struct notifier_block *nb, unsigned long event, void 
 	return 0;
 }
 
+static int swr_haptics_slave_enumeration(struct swr_haptics_dev *swr_hap)
+{
+	struct swr_device *sdev = swr_hap->swr_slave;
+	int retry = 30, rc;
+	u8 devnum;
+
+	/*
+	 * SWR slave enumeration is observed around ~500ms after ADSP SSR is
+	 * triggered, hence update the delay to (30 * 20ms). Also add a short
+	 * preceding delay to avoid the long delay if the enumeration is
+	 * completed shortly.
+	 */
+	usleep_range(500, 510);
+	do {
+		rc = swr_get_logical_dev_num(sdev, sdev->addr, &devnum);
+		if (rc < 0)
+			msleep(20);
+	} while (rc && --retry);
+
+	if (rc) {
+		dev_err(swr_hap->dev, "%s: failed to get devnum for swr-haptics, rc=%d\n",
+				__func__, rc);
+		return -EPROBE_DEFER;
+	}
+
+	sdev->dev_num = devnum;
+	return 0;
+}
+
+static int lpass_ssr_notifier(struct notifier_block *nb, unsigned long event, void *val)
+{
+	struct swr_haptics_dev *swr_hap = container_of(nb, struct swr_haptics_dev, ssr_nb);
+	int rc = NOTIFY_DONE;
+
+	switch (event) {
+	case QCOM_SSR_AFTER_POWERUP:
+		rc = swr_haptics_slave_enumeration(swr_hap);
+		if (rc) {
+			dev_err(swr_hap->dev, "%s: SWR haptics slave enumeration failued after SSR, rc=%d\n",
+					__func__, rc);
+			return rc;
+		}
+
+		rc = regmap_write(swr_hap->regmap, SWR_PLAY_REG, SWR_PLAY_SRC_VAL_SWR);
+		if (rc)
+			dev_err(swr_hap->dev, "%s: Disable SWR_PLAY failed, rc=%d\n",
+				__func__, rc);
+		break;
+	default:
+		break;
+	}
+
+	return rc;
+}
 static int swr_haptics_probe(struct swr_device *sdev)
 {
 	struct swr_haptics_dev *swr_hap;
 	struct device_node *node = sdev->dev.of_node;
 	int rc;
-	u8 devnum;
 	u32 pmic_type;
-	int retry = 5;
 
 	swr_hap = devm_kzalloc(&sdev->dev,
 			sizeof(struct swr_haptics_dev), GFP_KERNEL);
@@ -628,6 +714,8 @@ static int swr_haptics_probe(struct swr_device *sdev)
 	pmic_type = (uintptr_t)of_device_get_match_data(swr_hap->dev);
 	if (pmic_type == PM8350B)
 		swr_hap->flags |= HAP_SSR_RECOVERY;
+	else if (pmic_type == PMIH010X)
+		swr_hap->flags |= HAP_RUNTIME_EN | HAP_ENUM_AFTER_SSR;
 
 	swr_set_dev_data(sdev, swr_hap);
 
@@ -673,26 +761,17 @@ static int swr_haptics_probe(struct swr_device *sdev)
 				__func__, rc);
 		goto clean;
 	}
-	do {
-		/* Add delay for soundwire enumeration */
-		usleep_range(500, 510);
-		rc = swr_get_logical_dev_num(sdev, sdev->addr, &devnum);
-	} while (rc && --retry);
 
-	if (rc) {
-		dev_err(swr_hap->dev, "%s: failed to get devnum for swr-haptics, rc=%d\n",
-				__func__, rc);
-		rc = -EPROBE_DEFER;
-		goto dev_err;
-	}
+	rc = swr_haptics_slave_enumeration(swr_hap);
+	if (rc < 0)
+		goto error;
 
-	sdev->dev_num = devnum;
 	swr_hap->regmap = devm_regmap_init_swr(sdev, &swr_hap_regmap_config);
 	if (IS_ERR(swr_hap->regmap)) {
 		rc = PTR_ERR(swr_hap->regmap);
 		dev_err(swr_hap->dev, "%s: init regmap failed, rc=%d\n",
 				__func__, rc);
-		goto dev_err;
+		goto error;
 	}
 
 	rc = snd_soc_register_component(&sdev->dev,
@@ -700,13 +779,25 @@ static int swr_haptics_probe(struct swr_device *sdev)
 	if (rc) {
 		dev_err(swr_hap->dev, "%s: register swr_haptics component failed, rc=%d\n",
 				__func__, rc);
-		goto dev_err;
+		goto error;
 	}
 
 	swr_hap->hboost_nb.notifier_call = hboost_notifier;
 	register_hboost_event_notifier(&swr_hap->hboost_nb);
+	if (swr_hap->flags & HAP_ENUM_AFTER_SSR) {
+		swr_hap->ssr_nb.notifier_call = lpass_ssr_notifier;
+		swr_hap->ssr_handle =
+			qcom_register_ssr_notifier("lpass", &swr_hap->ssr_nb);
+		if (IS_ERR(swr_hap->ssr_handle)) {
+			rc = PTR_ERR(swr_hap->ssr_handle);
+			dev_err(swr_hap->dev, "%s: register SSR notifier failed, rc:%d\n", __func__,
+					rc);
+			goto error;
+		}
+	}
+
 	return 0;
-dev_err:
+error:
 	swr_haptics_slave_disable(swr_hap);
 	swr_remove_device(sdev);
 clean:
@@ -725,6 +816,9 @@ static int swr_haptics_remove(struct swr_device *sdev)
 		rc = -ENODEV;
 		goto clean;
 	}
+
+	if (swr_hap->flags & HAP_ENUM_AFTER_SSR)
+		qcom_unregister_ssr_notifier(swr_hap->ssr_handle, &swr_hap->ssr_nb);
 
 	unregister_hboost_event_notifier(&swr_hap->hboost_nb);
 	rc = swr_haptics_slave_disable(swr_hap);
