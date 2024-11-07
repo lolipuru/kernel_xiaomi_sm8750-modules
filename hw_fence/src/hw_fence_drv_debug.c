@@ -406,7 +406,7 @@ static ssize_t hw_fence_dbg_tx_and_signal_clients_wr(struct file *file,
 		client_info_src->seqno_cnt++;
 
 		/* Create hw fence for src client */
-		ret = hw_fence_create(drv_data, hw_fence_client, context, seqno, &hash);
+		ret = hw_fence_create(drv_data, hw_fence_client, context, context, seqno, &hash);
 		if (ret) {
 			HWFNC_ERR("Error creating HW fence\n");
 			goto exit;
@@ -574,7 +574,7 @@ static int dump_single_entry(struct hw_fence_driver_data *drv_data, char *buf, u
 	context = drv_data->debugfs_data.context_rd;
 	seqno = drv_data->debugfs_data.seqno_rd;
 
-	hw_fence = msm_hw_fence_find(drv_data, NULL, context, seqno, &hash);
+	hw_fence = msm_hw_fence_find(drv_data, NULL, context, context, seqno, &hash);
 	if (!hw_fence) {
 		HWFNC_ERR("no valid hfence found for context:%llu seqno:%llu hash:%llu",
 				context, seqno, hash);

@@ -291,7 +291,7 @@ int msm_hw_fence_create(void *client_handle,
 	}
 
 	/* Create the HW Fence, i.e. add entry in the Global Table for this Fence */
-	ret = hw_fence_create(hw_fence_drv_data, hw_fence_client, fence->context,
+	ret = hw_fence_create(hw_fence_drv_data, hw_fence_client, (u64)fence, fence->context,
 		fence->seqno, params->handle);
 	if (ret) {
 		HWFNC_ERR("Error creating HW fence\n");
@@ -358,7 +358,7 @@ int msm_hw_fence_destroy(void *client_handle,
 	}
 
 	/* Destroy the HW Fence, i.e. remove entry in the Global Table for the Fence */
-	ret = hw_fence_destroy(hw_fence_drv_data, hw_fence_client,
+	ret = hw_fence_destroy(hw_fence_drv_data, hw_fence_client, (u64)fence,
 		fence->context, fence->seqno);
 	if (ret) {
 		HWFNC_ERR("Error destroying the HW fence\n");
@@ -758,7 +758,7 @@ int msm_hw_fence_dump_fence(void *client_handle, struct dma_fence *fence)
 	}
 	hw_fence_client = (struct msm_hw_fence_client *)client_handle;
 
-	hw_fence = msm_hw_fence_find(hw_fence_drv_data, hw_fence_client, fence->context,
+	hw_fence = msm_hw_fence_find(hw_fence_drv_data, hw_fence_client, (u64)fence, fence->context,
 		fence->seqno, &hash);
 	if (!hw_fence) {
 		HWFNC_ERR("failed to find hw-fence client_id:%d fence:0x%pK ctx:%llu seqno:%llu\n",
@@ -908,6 +908,7 @@ static int msm_hw_fence_remove(struct platform_device *pdev)
 	/* free memory allocations as part of hw_fence_drv_data */
 	kfree(hw_fence_drv_data->ipc_clients_table);
 	kfree(hw_fence_drv_data->hw_fence_client_queue_size);
+	kfree(hw_fence_drv_data->hlos_key_tbl);
 	if (hw_fence_drv_data->cpu_addr_cookie)
 		dma_free_attrs(hw_fence_drv_data->dev, hw_fence_drv_data->size,
 			hw_fence_drv_data->cpu_addr_cookie, hw_fence_drv_data->res.start,

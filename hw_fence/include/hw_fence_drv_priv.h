@@ -381,6 +381,7 @@ struct hw_fence_soccp {
  * @clients_num: number of supported hw fence clients (configured based on device-tree)
  * @hw_fences_tbl: pointer to the hw-fences table
  * @hw_fences_tbl_cnt: number of elements in the hw-fence table
+ * @hlos_key_tbl: pointer to table of keys tracked by hlos only, same size as the hw-fences table
  * @events: start address of hw fence debug events
  * @total_events: total number of hw fence debug events supported
  * @client_lock_tbl: pointer to the per-client locks table
@@ -447,6 +448,7 @@ struct hw_fence_driver_data {
 
 	/* HW Fences Table VA */
 	struct msm_hw_fence *hw_fences_tbl;
+	u64 *hlos_key_tbl;
 	u32 hw_fences_tbl_cnt;
 
 	/* events */
@@ -632,11 +634,11 @@ void hw_fence_cleanup_client(struct hw_fence_driver_data *drv_data,
 void hw_fence_utils_reset_queues(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client);
 int hw_fence_create(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client,
+	struct msm_hw_fence_client *hw_fence_client, u64 hlos_key,
 	u64 context, u64 seqno, u64 *hash);
 int hw_fence_add_callback(struct hw_fence_driver_data *drv_data, struct dma_fence *fence, u64 hash);
 int hw_fence_destroy(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client,
+	struct msm_hw_fence_client *hw_fence_client, u64 hlos_key,
 	u64 context, u64 seqno);
 int hw_fence_destroy_with_hash(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, u64 hash);
@@ -668,7 +670,7 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 	struct dma_fence *fence, struct msm_hw_fence_client *hw_fence_client, u64 context,
 	u64 seqno, u64 *hash, u64 client_data);
 struct msm_hw_fence *msm_hw_fence_find(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client,
+	struct msm_hw_fence_client *hw_fence_client, u64 hlos_key,
 	u64 context, u64 seqno, u64 *hash);
 struct msm_hw_fence *hw_fence_find_with_dma_fence(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence, u64 *hash,

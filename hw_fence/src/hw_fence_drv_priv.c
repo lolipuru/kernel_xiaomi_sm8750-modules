@@ -661,6 +661,10 @@ static int init_hw_fences_table(struct hw_fence_driver_data *drv_data)
 	drv_data->hw_fences_tbl_cnt = drv_data->hw_fences_mem_desc.size /
 		sizeof(struct msm_hw_fence);
 
+	drv_data->hlos_key_tbl = kcalloc(drv_data->hw_fences_tbl_cnt, sizeof(u64), GFP_KERNEL);
+	if (!drv_data->hlos_key_tbl)
+		return -ENOMEM;
+
 	HWFNC_DBG_INIT("hw_fences_table:0x%pK cnt:%u\n", drv_data->hw_fences_tbl,
 		drv_data->hw_fences_tbl_cnt);
 
@@ -1048,9 +1052,11 @@ static int _hw_fence_iterator_next(struct hw_fence_driver_data *drv_data,
 	return _hw_fence_lookup_next(drv_data, hw_fence, hash, curr_step, 1, m_size);
 }
 
-static bool _hw_fence_match(struct msm_hw_fence *hw_fence, u64 context, u64 seqno)
+static bool _hw_fence_match(struct hw_fence_driver_data *drv_data, struct msm_hw_fence *hw_fence,
+	u64 hash, u64 context, u64 seqno, u64 hlos_key)
 {
-	return ((hw_fence->ctx_id == context && hw_fence->seq_id == seqno) ? true : false);
+	return (hw_fence->ctx_id == context) && (hw_fence->seq_id == seqno)
+		&& (drv_data->hlos_key_tbl[hash] == hlos_key);
 }
 
 /* clears everything but the 'valid' field */
@@ -1097,6 +1103,13 @@ static int  _unreserve_hw_fence(struct hw_fence_driver_data *drv_data,
 
 		/* unreserve this HW fence */
 		hw_fence->valid = 0;
+
+		/**
+		 * Note: If last hwfence refcount is removed from fctl then this entry will not be
+		 * cleared. This is okay because the entry will be set to a new value at the time
+		 * of next fence creation.
+		 */
+		drv_data->hlos_key_tbl[hash] = 0;
 	}
 
 	HWFNC_DBG_LUT("Removed ref on fence alloc:%d ctx:%llu seq:%llu refcount:0x%x hash:%u\n",
@@ -1145,7 +1158,7 @@ int hw_fence_destroy_refcount(struct hw_fence_driver_data *drv_data, u64 hash, u
 /* This function must be called with the hw fence lock */
 static int _reserve_hw_fence(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence *hw_fence, u32 client_id, u64 context,
-	u64 seqno, u32 hash, u32 pending_child_cnt)
+	u64 seqno, u32 hash, u32 pending_child_cnt, u64 hlos_key)
 {
 	_cleanup_hw_fence(hw_fence);
 
@@ -1160,6 +1173,8 @@ static int _reserve_hw_fence(struct hw_fence_driver_data *drv_data,
 	hw_fence->refcount = HW_FENCE_FCTL_REFCOUNT + 1;
 
 	hw_fence->pending_child_cnt = pending_child_cnt;
+
+	drv_data->hlos_key_tbl[hash] = hlos_key;
 
 	HWFNC_DBG_LUT("Reserved fence client:%d ctx:%llu seq:%llu pending_child:%u hash:%u\n",
 		client_id, context, seqno, pending_child_cnt, hash);
@@ -1188,7 +1203,7 @@ static int _fence_found(struct hw_fence_driver_data *drv_data, struct msm_hw_fen
 }
 
 struct msm_hw_fence *_hw_fence_lookup_and_create_range(struct hw_fence_driver_data *drv_data,
-	u32 client_id, u64 context, u64 seqno, u32 pending_child_cnt, u64 *hash,
+	u32 client_id, u64 hlos_key, u64 context, u64 seqno, u32 pending_child_cnt, u64 *hash,
 	u32 start_step, u32 end_step, u64 flags)
 {
 	struct msm_hw_fence *hw_fence;
@@ -1207,7 +1222,7 @@ struct msm_hw_fence *_hw_fence_lookup_and_create_range(struct hw_fence_driver_da
 		if (!hw_fence->valid) {
 			/* Process the hw fence found by the algorithm */
 			ret = _reserve_hw_fence(drv_data, hw_fence, client_id, context, seqno,
-					*hash, pending_child_cnt);
+					*hash, pending_child_cnt, hlos_key);
 
 			/* update memory table with processing */
 			wmb();
@@ -1216,7 +1231,7 @@ struct msm_hw_fence *_hw_fence_lookup_and_create_range(struct hw_fence_driver_da
 				client_id, context, seqno, *hash, step);
 
 			hw_fence_found = true;
-		} else if (_hw_fence_match(hw_fence, context, seqno)) {
+		} else if (_hw_fence_match(drv_data, hw_fence, *hash, context, seqno, hlos_key)) {
 			hw_fence_found = true;
 			if (flags & MSM_HW_FENCE_FLAG_CREATE_SIGNALED)
 				ret = _fence_found(drv_data, hw_fence, *hash);
@@ -1229,7 +1244,8 @@ struct msm_hw_fence *_hw_fence_lookup_and_create_range(struct hw_fence_driver_da
 	}
 
 	if (ret == -EALREADY) {
-		HWFNC_ERR("can't create hfence w/ same ctx:%llu seq:%llu\n", context, seqno);
+		HWFNC_ERR("can't create hfence w/ same ctx:%llu seq:%llu hlos_key:0x%pK\n",
+			context, seqno, (context == hlos_key) ? NULL : (void *)hlos_key);
 		return NULL;
 	}
 
@@ -1244,14 +1260,14 @@ struct msm_hw_fence *_hw_fence_lookup_and_create_range(struct hw_fence_driver_da
 }
 
 struct msm_hw_fence *_hw_fence_lookup_and_create(struct hw_fence_driver_data *drv_data,
-	u32 client_id, u64 context, u64 seqno, u32 pending_child_cnt, u64 *hash)
+	u32 client_id, u64 hlos_key, u64 context, u64 seqno, u32 pending_child_cnt, u64 *hash)
 {
-	return _hw_fence_lookup_and_create_range(drv_data, client_id, context, seqno,
+	return _hw_fence_lookup_and_create_range(drv_data, client_id, hlos_key, context, seqno,
 		pending_child_cnt, hash, 0, drv_data->hw_fences_tbl_cnt, 0);
 }
 
 struct msm_hw_fence *_hw_fence_lookup_and_process_range(struct hw_fence_driver_data *drv_data,
-	u64 context, u64 seqno, u64 *hash, u32 start_step, u32 end_step,
+	u64 hlos_key, u64 context, u64 seqno, u64 *hash, u32 start_step, u32 end_step,
 	int (*process_fn)(struct hw_fence_driver_data *drv_data, struct msm_hw_fence *hfence,
 		u32 hash))
 {
@@ -1268,7 +1284,7 @@ struct msm_hw_fence *_hw_fence_lookup_and_process_range(struct hw_fence_driver_d
 
 	for_each_hw_fence(drv_data, &hw_fence, hash, context, seqno, start_step, end_step, step,
 			hw_fence_found) {
-		if (_hw_fence_match(hw_fence, context, seqno)) {
+		if (_hw_fence_match(drv_data, hw_fence, *hash, context, seqno, hlos_key)) {
 			/* Process the hw fence found by the algorithm */
 			ret = process_fn(drv_data, hw_fence, *hash);
 			HWFNC_DBG_L("ctx:%llu seqno:%llu hash:%llu step:%u\n", context, seqno,
@@ -1288,10 +1304,11 @@ struct msm_hw_fence *_hw_fence_lookup_and_process_range(struct hw_fence_driver_d
 }
 
 struct msm_hw_fence *_hw_fence_lookup_and_process(struct hw_fence_driver_data *drv_data,
-	u64 context, u64 seqno, u64 *hash, int (*process_fn)(struct hw_fence_driver_data *drv_data,
-		struct msm_hw_fence *hfence, u32 hash))
+	u64 hlos_key, u64 context, u64 seqno, u64 *hash,
+	int (*process_fn)(struct hw_fence_driver_data *drv_data, struct msm_hw_fence *hfence,
+		u32 hash))
 {
-	return _hw_fence_lookup_and_process_range(drv_data, context, seqno, hash, 0,
+	return _hw_fence_lookup_and_process_range(drv_data, hlos_key, context, seqno, hash, 0,
 		drv_data->hw_fences_tbl_cnt, process_fn);
 }
 
@@ -1397,7 +1414,7 @@ struct dma_fence *hw_fence_internal_dma_fence_create(struct hw_fence_driver_data
 		return ERR_PTR(-EINVAL);
 	}
 
-	ret = hw_fence_create(drv_data, hw_fence_client, context, seqno, hash);
+	ret = hw_fence_create(drv_data, hw_fence_client, (u64)fence, context, seqno, hash);
 	if (ret) {
 		HWFNC_ERR("failed to back internal dma-fence client:%d ctx:%llu seq:%llu\n",
 			hw_fence_client->client_id, context, seqno);
@@ -1522,14 +1539,14 @@ static int hw_fence_dma_fence_table_del(struct hw_fence_driver_data *drv_data, u
 }
 
 int hw_fence_create(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client,
-	u64 context, u64 seqno, u64 *hash)
+	struct msm_hw_fence_client *hw_fence_client, u64 hlos_key, u64 context,
+	u64 seqno, u64 *hash)
 {
 	u32 client_id = hw_fence_client->client_id;
 	int ret = 0;
 
 	/* allocate hw fence in table */
-	if (!_hw_fence_lookup_and_create(drv_data, client_id, context, seqno, 0, hash)) {
+	if (!_hw_fence_lookup_and_create(drv_data, client_id, hlos_key, context, seqno, 0, hash)) {
 		HWFNC_ERR("Fail to create fence client:%u ctx:%llu seqno:%llu\n",
 			client_id, context, seqno);
 		ret = -EINVAL;
@@ -1557,15 +1574,15 @@ int hw_fence_create(struct hw_fence_driver_data *drv_data,
 }
 
 int hw_fence_destroy(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client,
-	u64 context, u64 seqno)
+	struct msm_hw_fence_client *hw_fence_client, u64 hlos_key, u64 context, u64 seqno)
 {
 	u32 client_id = hw_fence_client->client_id;
 	int ret = 0;
 	u64 hash;
 
 	/* decrement refcount on hw-fence */
-	if (!_hw_fence_lookup_and_process(drv_data, context, seqno, &hash, &_unreserve_hw_fence)) {
+	if (!_hw_fence_lookup_and_process(drv_data, hlos_key, context, seqno, &hash,
+			&_unreserve_hw_fence)) {
 		HWFNC_ERR("Fail removing ref on fence client:%u ctx:%llu seqno:%llu\n",
 			client_id, context, seqno);
 		ret = -EINVAL;
@@ -1672,7 +1689,7 @@ static struct msm_hw_fence *_hw_fence_process_join_fence(struct hw_fence_driver_
 
 	if (create) {
 		/* allocate the fence */
-		join_fence = _hw_fence_lookup_and_create(drv_data, client_id, context,
+		join_fence = _hw_fence_lookup_and_create(drv_data, client_id, (u64)array, context,
 			seqno, pending_child_cnt, hash);
 		if (!join_fence)
 			HWFNC_ERR("Fail to create join fence client:%u ctx:%llu seqno:%llu\n",
@@ -1686,14 +1703,15 @@ static struct msm_hw_fence *_hw_fence_process_join_fence(struct hw_fence_driver_
 }
 
 struct msm_hw_fence *msm_hw_fence_find(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client,
-	u64 context, u64 seqno, u64 *hash)
+	struct msm_hw_fence_client *hw_fence_client, u64 hlos_key, u64 context,
+	u64 seqno, u64 *hash)
 {
 	struct msm_hw_fence *hw_fence;
 	u32 client_id = hw_fence_client ? hw_fence_client->client_id : ~0;
 
 	/* find the hw fence */
-	hw_fence = _hw_fence_lookup_and_process(drv_data, context, seqno, hash, &_fence_found);
+	hw_fence = _hw_fence_lookup_and_process(drv_data, hlos_key, context, seqno, hash,
+		&_fence_found);
 	if (!hw_fence)
 		HWFNC_ERR("Fail to find hw fence client:%u ctx:%llu seqno:%llu\n",
 			client_id, context, seqno);
@@ -2022,7 +2040,8 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 		hw_fence = hw_fence_find_with_dma_fence(drv_data, hw_fence_client, fence, hash,
 			&is_signaled, true);
 	else
-		hw_fence = msm_hw_fence_find(drv_data, hw_fence_client, context, seqno, hash);
+		hw_fence = msm_hw_fence_find(drv_data, hw_fence_client, context, context, seqno,
+			hash);
 	if (!hw_fence) {
 		HWFNC_ERR("Cannot find fence!\n");
 		return -EINVAL;
@@ -2198,7 +2217,7 @@ struct msm_hw_fence *_create_signaled_hw_fence(struct hw_fence_driver_data *drv_
 	struct msm_hw_fence *hw_fence;
 
 	/* create new hw-fence for signaled dma-fence */
-	hw_fence = _hw_fence_lookup_and_create_range(drv_data, client_id,
+	hw_fence = _hw_fence_lookup_and_create_range(drv_data, client_id, (u64)fence,
 		fence->context, fence->seqno, 0, hash, 0, drv_data->hw_fences_tbl_cnt,
 		MSM_HW_FENCE_FLAG_CREATE_SIGNALED);
 	if (hw_fence) {
@@ -2230,7 +2249,7 @@ struct msm_hw_fence *hw_fence_find_with_dma_fence(struct hw_fence_driver_data *d
 	for (step = 0; step < drv_data->hw_fences_tbl_cnt; step += HW_FENCE_FIND_THRESHOLD) {
 		end_step = (step + HW_FENCE_FIND_THRESHOLD > drv_data->hw_fences_tbl_cnt) ?
 			drv_data->hw_fences_tbl_cnt : step + HW_FENCE_FIND_THRESHOLD;
-		hw_fence = _hw_fence_lookup_and_process_range(drv_data, fence->context,
+		hw_fence = _hw_fence_lookup_and_process_range(drv_data, (u64)fence, fence->context,
 			fence->seqno, hash, step, end_step, _fence_found);
 		if (hw_fence) {
 			/* successfully found backing hw-fence*/

@@ -190,7 +190,7 @@ int hw_fence_interop_create_fence_from_import(struct synx_import_indv_params *pa
 	/* only synx clients can signal synx fences; no one can signal sw dma-fence from fw */
 	dummy_client.client_id = is_synx ? HW_FENCE_SYNX_FENCE_CLIENT_ID :
 		HW_FENCE_NATIVE_FENCE_CLIENT_ID;
-	ret = hw_fence_create(hw_fence_drv_data, &dummy_client, fence->context,
+	ret = hw_fence_create(hw_fence_drv_data, &dummy_client, (u64)fence, fence->context,
 		fence->seqno, &handle);
 	if (ret) {
 		HWFNC_ERR("failed create fence client:%d ctx:%llu seq:%llu is_synx:%s ret:%d\n",
