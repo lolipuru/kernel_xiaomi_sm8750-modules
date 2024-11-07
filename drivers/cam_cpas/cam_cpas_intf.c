@@ -1797,7 +1797,15 @@ int cam_cpas_subdev_cmd(struct cam_cpas_intf *cpas_intf,
 		break;
 	}
 	case CAM_QUERY_CAP_GENERIC_BLOB: {
-		void *blob_data = CAM_MEM_ZALLOC(cmd->size, GFP_KERNEL);
+		void *blob_data = NULL;
+
+		if (!cmd->size) {
+			CAM_ERR(CAM_CPAS, "Invalid cmd size from user, size=%d", cmd->size);
+			rc = -EINVAL;
+			break;
+		}
+
+		blob_data = CAM_MEM_ZALLOC(cmd->size, GFP_KERNEL);
 
 		if (blob_data) {
 			rc = copy_from_user(blob_data, u64_to_user_ptr(cmd->handle),
