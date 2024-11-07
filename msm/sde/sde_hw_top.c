@@ -123,6 +123,8 @@
 #define HW_FENCE_INPUT_FENCE_ID_MASK_ALL 0xFFFFFFFF
 #define HW_FENCE_INPUT_FENCE_ID_MASK_SIGNAL 0xFFFF
 
+#define DEMURA_SW_FUSE_OFFSET 0x7C
+
 static int ppb_offset_map[PINGPONG_MAX] = {1, 0, 3, 2, 5, 4, 7, 7, 6, 6, -1, -1};
 
 static void sde_hw_setup_split_pipe(struct sde_hw_mdp *mdp,
@@ -1053,3 +1055,34 @@ void sde_hw_mdp_destroy(struct sde_hw_mdp *mdp)
 	kfree(mdp);
 }
 
+struct sde_hw_sw_fuse *sde_hw_sw_fuse_init(void __iomem *addr,
+	u32 sw_fuse_len, const struct sde_mdss_cfg *m)
+{
+	struct sde_hw_sw_fuse *c;
+
+	c = kzalloc(sizeof(*c), GFP_KERNEL);
+	if (!c)
+		return ERR_PTR(-ENOMEM);
+
+	c->hw.base_off = addr;
+	c->hw.blk_off = 0;
+	c->hw.length = sw_fuse_len;
+	c->hw.hw_rev = m->hw_rev;
+
+	return c;
+}
+
+void sde_hw_sw_fuse_destroy(struct sde_hw_sw_fuse *sw_fuse)
+{
+	kfree(sw_fuse);
+}
+
+u32 sde_hw_get_demura_sw_fuse_value(struct sde_hw_sw_fuse *sw_fuse)
+{
+	u32 demura_sw_fuse = 0;
+
+	if (sw_fuse)
+		demura_sw_fuse = SDE_REG_READ(&sw_fuse->hw, DEMURA_SW_FUSE_OFFSET);
+
+	return demura_sw_fuse;
+}

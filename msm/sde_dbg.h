@@ -43,6 +43,7 @@
 #define SDE_DBG_LUTDMA		BIT(3)
 #define SDE_DBG_VBIF_RT		BIT(4)
 #define SDE_DBG_DSI		BIT(5)
+#define SDE_DBG_SWFUSE		BIT(6)
 
 /* flags to enable the HW block debugbus dumping */
 #define SDE_DBG_SDE_DBGBUS	BIT(12)
