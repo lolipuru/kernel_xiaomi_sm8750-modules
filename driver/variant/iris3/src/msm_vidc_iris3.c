@@ -473,7 +473,7 @@ static int __power_off_iris3(struct msm_vidc_core *core)
 		d_vpr_e("%s: failed to unvote buses\n", __func__);
 
 	if (!call_venus_op(core, watchdog, core, core->intr_status))
-		disable_irq_nosync(core->resource->irq);
+		disable_irq_nosync(core->irq);
 
 	msm_vidc_change_core_sub_state(core, CORE_SUBSTATE_POWER_ENABLE, 0, __func__);
 
@@ -569,7 +569,7 @@ static int __power_on_iris3(struct msm_vidc_core *core)
 	if (rc)
 		goto fail_power_on_substate;
 
-	freq_tbl = core->resource->freq_set.freq_tbl;
+	freq_tbl = core->freq_tbl;
 	freq = core->power.clk_freq ? core->power.clk_freq :
 				      freq_tbl[0].freq;
 
@@ -586,7 +586,7 @@ static int __power_on_iris3(struct msm_vidc_core *core)
 
 	__interrupt_init_iris3(core);
 	core->intr_status = 0;
-	enable_irq(core->resource->irq);
+	enable_irq(core->irq);
 
 	return rc;
 
