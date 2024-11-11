@@ -4466,6 +4466,8 @@ policy_mgr_get_pref_force_scc_freq(struct wlan_objmgr_psoc *psoc,
 	qdf_freq_t pcl_freq;
 	bool same_mac, sbs_ml_sta_present = false, dbs_ml_sta_present = false;
 	qdf_freq_t ll_lt_sap_freq;
+	uint8_t cc_mode;
+	bool is_dbs;
 
 	pm_ctx = policy_mgr_get_context(psoc);
 	if (!pm_ctx) {
@@ -4498,6 +4500,8 @@ policy_mgr_get_pref_force_scc_freq(struct wlan_objmgr_psoc *psoc,
 		allow_2ghz_only = true;
 
 	ll_lt_sap_freq = policy_mgr_get_ll_sap_freq(psoc);
+	policy_mgr_get_mcc_scc_switch(psoc, &cc_mode);
+	is_dbs = policy_mgr_is_hw_dbs_capable(psoc);
 
 	/*
 	 * The preferred force SCC channel is SAP original channel,
@@ -4514,6 +4518,23 @@ policy_mgr_get_pref_force_scc_freq(struct wlan_objmgr_psoc *psoc,
 		if (!allow_6ghz && WLAN_REG_IS_6GHZ_CHAN_FREQ(pcl_freq))
 			continue;
 		if (allow_2ghz_only && !WLAN_REG_IS_24GHZ_CH_FREQ(pcl_freq))
+			continue;
+
+		/**
+		 * Skip indoor/DFS channels for non-DBS chip, if STA+SAP
+		 * indoor/DFS SCC INI are disabled.
+		 */
+		if (!is_dbs &&
+		    cc_mode == QDF_MCC_TO_SCC_WITH_PREFERRED_BAND &&
+		    ((wlan_reg_is_dfs_for_freq(pm_ctx->pdev, pcl_freq) &&
+		      !policy_mgr_is_sap_allowed_on_dfs_freq(pm_ctx->pdev,
+							     vdev_id,
+							     pcl_freq)) ||
+		     (wlan_reg_is_freq_indoor(pm_ctx->pdev, pcl_freq) &&
+		      !policy_mgr_is_sap_go_interface_allowed_on_indoor(
+							pm_ctx->pdev,
+							vdev_id,
+							pcl_freq))))
 			continue;
 
 		/* Skip LL LT SAP freq and for SAP skip same mac freq */
@@ -4794,12 +4815,17 @@ void policy_mgr_check_scc_channel(struct wlan_objmgr_psoc *psoc,
 		return;
 	}
 
-	/* Always do force SCC on non-DBS platforms */
-	if (!policy_mgr_is_hw_dbs_capable(psoc))
-		return;
-
 	sta_count = policy_mgr_mode_specific_connection_count(psoc, PM_STA_MODE,
 							      NULL);
+	if (!policy_mgr_is_hw_dbs_capable(psoc)) {
+		/**
+		 * If cc_mode is not QDF_MCC_TO_SCC_WITH_PREFERRED_BAND
+		 * then do SCC else fetch new freq
+		 */
+		if (cc_mode != QDF_MCC_TO_SCC_WITH_PREFERRED_BAND)
+			return;
+	}
+
 	if (pm_ctx->hdd_cbacks.wlan_get_sap_acs_band) {
 		status = pm_ctx->hdd_cbacks.wlan_get_sap_acs_band(psoc,
 								  vdev_id,
