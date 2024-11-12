@@ -1318,6 +1318,17 @@ static int regdump_read(struct regmap *map, int baseReg, int endReg,
 	/* Disable reading/writing from regmap-cache */
 	regcache_cache_bypass(map, true);
 	for (; i >= 0 && i <= endReg; i += REGDUMP_PRINT_STRIDE) {
+		/*
+		 * Check not to overwrite the buffer, by ensuring we have
+		 * space for writing the register data
+		 *
+		 * this is scalable if we use proc or any other fs interface
+		 * as count would take the buf_size passed from userspace
+		 */
+		if ((pos + regdump_wr_len) >= count) {
+			pr_debug("%s: Buffer full: stopping at register 0x%x\n", __func__, i);
+			break;
+		}
 
 		scnprintf(buf+pos, count-pos, "%.*x: ", reg_len, i);
 		pos += reg_len + 2;
@@ -1329,16 +1340,6 @@ static int regdump_read(struct regmap *map, int baseReg, int endReg,
 
 		pos +=  reg_val_len;
 		buf[pos++] = '\n';
-
-		/*
-		 * Check not to overwrite the buffer, by ensuring we have
-		 * space for writing next register data
-		 *
-		 * this is scalable if we use proc or any other fs interface
-		 * as count would take the buf_size passed from userspace
-		 */
-		if ((pos + regdump_wr_len) >= count)
-			break;
 	}
 	/* Enable reading/writing from regmap-cache */
 	regcache_cache_bypass(map, false);
