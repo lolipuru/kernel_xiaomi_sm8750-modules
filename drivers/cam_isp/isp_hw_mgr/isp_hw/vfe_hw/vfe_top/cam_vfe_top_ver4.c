@@ -833,22 +833,26 @@ static void cam_vfe_top_ver4_print_top_irq_error(
 
 	for (i = 0; i < common_data->hw_info->num_top_errors; i++) {
 		if (common_data->hw_info->top_err_desc[i].bitmask & irq_status) {
-			if (irq_status & vfe_priv->reg_data->ipp_violation_mask) {
+			if (common_data->hw_info->top_err_desc[i].bitmask &
+					vfe_priv->reg_data->ipp_violation_mask) {
 				cam_vfe_top_ver4_print_ipp_violation_info(top_priv, payload, i);
 				continue;
 			}
 
-			if (irq_status & vfe_priv->reg_data->pdaf_violation_mask) {
+			if (common_data->hw_info->top_err_desc[i].bitmask &
+					vfe_priv->reg_data->pdaf_violation_mask) {
 				cam_vfe_top_ver4_print_pdaf_violation_info(vfe_priv, payload, i);
 				continue;
 			}
 
-			if (irq_status & vfe_priv->reg_data->bayer_violation_mask) {
+			if (common_data->hw_info->top_err_desc[i].bitmask &
+					vfe_priv->reg_data->bayer_violation_mask) {
 				cam_vfe_top_ver4_print_bayer_violation_info(top_priv, payload, i);
 				continue;
 			}
 
-			if (irq_status & vfe_priv->reg_data->diag_violation_mask) {
+			if (common_data->hw_info->top_err_desc[i].bitmask &
+					vfe_priv->reg_data->diag_violation_mask) {
 				cam_vfe_top_ver4_print_diag_sensor_frame_count_info(vfe_priv,
 					payload, i, res_id, true);
 				continue;
