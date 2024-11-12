@@ -48,7 +48,7 @@
 #define SWR_HAP_REG_MAX			(SWR_HAP_ACCESS_BASE + 0xff)
 
 #define MAX_HAPTICS_VMAX_MV     10000
-#define MAX_CL_HAPTICS_VMAX_MV  9500
+#define MAX_CL_HAPTICS_VMAX_MV  8500
 #define VMAX_STEP_MV            50
 
 enum pmic_type {
