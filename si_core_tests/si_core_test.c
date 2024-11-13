@@ -272,6 +272,7 @@ int si_core_kernel_test_load_app(struct si_object_invoke_ctx *oic, void *file, i
 
 	ret = get_client_env(oic, &client_env);
 	if (ret) {
+		kfree(file);
 		pr_err("get_client_env failed (%d).\n", ret);
 		return ret;
 	}
@@ -279,6 +280,7 @@ int si_core_kernel_test_load_app(struct si_object_invoke_ctx *oic, void *file, i
 	/* CAppLoader_UID is 3. */
 	ret = client_env_open(oic, client_env, 3, &appLoader);
 	if (ret) {
+		kfree(file);
 		pr_err("client_env_open failed (%d).\n", ret);
 		goto out_client;
 	}
@@ -320,8 +322,6 @@ static ssize_t device_write(struct file *file, const char __user *buf, size_t co
 	const struct firmware *fw_entry;
 	char fw_name[300] = "\0";
 
-	kernel_buffer = kmalloc(maxdatalen, GFP_KERNEL);
-
 	const char *appname = "smcinvoke_example_ta64";
 	int rc = 0;
 
@@ -332,14 +332,15 @@ static ssize_t device_write(struct file *file, const char __user *buf, size_t co
 		return rc;
 	}
 
-	memcpy(kernel_buffer, fw_entry->data, fw_entry->size);
-
 	pr_info("Running test case 1: Direct Path\n");
 	if (si_core_get_service_test(&oic) != 0)
 		pr_err("SI_CORE_KERNEL_TEST_GET_SERVICE failed.\n");
 	else
 		pr_info("SI_CORE_KERNEL_TEST_GET_SERVICE succeed.\n");
 	pr_info("Running test case 2: Loading TA/Sending command\n");
+
+	kernel_buffer = kmalloc(maxdatalen, GFP_KERNEL);
+	memcpy(kernel_buffer, fw_entry->data, fw_entry->size);
 
 	if (si_core_kernel_test_load_app(&oic, kernel_buffer, fw_entry->size) != 0)
 		pr_err("SI_CORE_KERNEL_TEST_LOAD_APP failed.\n");
@@ -381,6 +382,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			kernel_buffer = kmalloc(msg.len, GFP_KERNEL);
 			user_addr = u64_to_user_ptr(msg.file);
 			if (copy_from_user(kernel_buffer, user_addr, msg.len)) {
+				kfree(kernel_buffer);
 				pr_err("copy_from_user failed\n");
 				break;
 			}
