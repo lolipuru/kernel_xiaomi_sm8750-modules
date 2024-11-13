@@ -3442,13 +3442,15 @@ static int __cam_isp_ctx_reg_upd_in_epoch_bubble_state(
 			__cam_isp_ctx_send_sof_timestamp(ctx_isp, req->request_id,
 				CAM_REQ_MGR_SOF_EVENT_SUCCESS);
 		}
-	} else
+	} else {
+		atomic_set(&ctx_isp->unserved_rup, 1);
 		CAM_WARN_RATE_LIMIT(CAM_ISP,
 			"ctx:%u Unexpected regupdate in activated Substate[%s] for frame_id:%lld",
 			ctx_isp->base->ctx_id,
 			__cam_isp_ctx_substate_val_to_type(
 			ctx_isp->substate_activated),
 			ctx_isp->frame_id);
+	}
 	return 0;
 }
 
