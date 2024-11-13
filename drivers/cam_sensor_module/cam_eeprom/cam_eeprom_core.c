@@ -1290,7 +1290,9 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 				CAM_WARN(CAM_EEPROM, "failed to get calibration data rc %d", rc);
 
 			vfree(e_ctrl->cal_data.mapdata);
+			e_ctrl->cal_data.mapdata = NULL;
 			vfree(e_ctrl->cal_data.map);
+			e_ctrl->cal_data.map = NULL;
 			e_ctrl->cal_data.num_data = 0;
 			e_ctrl->cal_data.num_map = 0;
 			CAM_DBG(CAM_EEPROM,
@@ -1343,7 +1345,9 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 		rc = cam_eeprom_power_down(e_ctrl);
 		e_ctrl->cam_eeprom_state = CAM_EEPROM_ACQUIRE;
 		vfree(e_ctrl->cal_data.mapdata);
+		e_ctrl->cal_data.mapdata = NULL;
 		vfree(e_ctrl->cal_data.map);
+		e_ctrl->cal_data.map = NULL;
 		CAM_MEM_FREE(power_info->power_setting);
 		CAM_MEM_FREE(power_info->power_down_setting);
 		power_info->power_setting = NULL;
@@ -1419,12 +1423,14 @@ power_down:
 	cam_eeprom_power_down(e_ctrl);
 memdata_free:
 	vfree(e_ctrl->cal_data.mapdata);
+	e_ctrl->cal_data.mapdata = NULL;
 error:
 	CAM_MEM_FREE(power_info->power_setting);
 	CAM_MEM_FREE(power_info->power_down_setting);
 	power_info->power_setting = NULL;
 	power_info->power_down_setting = NULL;
 	vfree(e_ctrl->cal_data.map);
+	e_ctrl->cal_data.map = NULL;
 	e_ctrl->cal_data.num_data = 0;
 	e_ctrl->cal_data.num_map = 0;
 	e_ctrl->cam_eeprom_state = CAM_EEPROM_ACQUIRE;

@@ -446,11 +446,25 @@ static int cam_tpg_validate_cmd_descriptor(
 	}
 
 	cmd_buf = (uint32_t *)generic_ptr;
+	if (len_of_buff < sizeof(struct tpg_command_header_t)) {
+		CAM_ERR(CAM_TPG, "Got invalid command descriptor of invalid cmd buffer size");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	if ((ssize_t)cmd_desc->offset >= (len_of_buff - sizeof(struct tpg_command_header_t))) {
+		CAM_ERR(CAM_TPG,
+			"Invalid tpg cmd header size: %zu, cmd offset: %u, len of buf: %zu",
+			sizeof(struct tpg_command_header_t), cmd_desc->offset, len_of_buff);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	cmd_buf += cmd_desc->offset / 4;
 	cmd_header = (struct tpg_command_header_t *)cmd_buf;
 
-	if (len_of_buff < sizeof(struct tpg_command_header_t)) {
-		CAM_ERR(CAM_TPG, "Got invalid command descriptor of invalid cmd buffer size");
+	if ((ssize_t)cmd_desc->offset > (len_of_buff - cmd_header->size)) {
+		CAM_ERR(CAM_TPG, "cmd header offset mismatch");
 		rc = -EINVAL;
 		goto end;
 	}
@@ -507,6 +521,8 @@ static int cam_tpg_validate_cmd_descriptor(
 		break;
 	}
 	case TPG_CMD_TYPE_SETTINGS_CONFIG: {
+		struct tpg_settings_config_t *settings;
+
 		if (cmd_header->size != sizeof(struct tpg_settings_config_t)) {
 			CAM_ERR(CAM_TPG, "Got invalid settings config command recv: %d exp: %d",
 					cmd_header->size,
@@ -514,6 +530,20 @@ static int cam_tpg_validate_cmd_descriptor(
 			rc = -EINVAL;
 			goto end;
 		}
+
+		settings = (struct tpg_settings_config_t *)cmd_header;
+		if ((cmd_desc->offset + settings->settings_array_offset) >
+			(len_of_buff -
+			settings->settings_array_size * sizeof(struct tpg_reg_settings))) {
+			CAM_ERR(CAM_TPG,
+				"Got invalid setting config, cmd offset: %u, setting array offset: %u, num reg settings: %u, size of reg setting: %zu, len of buf: %zu",
+				cmd_desc->offset, settings->settings_array_offset,
+				settings->settings_array_size, sizeof(struct tpg_reg_settings),
+				len_of_buff);
+			rc = -EINVAL;
+			goto end;
+		}
+
 		CAM_INFO(CAM_TPG, "Got settings config command");
 		*cmd_type = TPG_CMD_TYPE_SETTINGS_CONFIG;
 		break;
@@ -523,10 +553,6 @@ static int cam_tpg_validate_cmd_descriptor(
 		rc = -EINVAL;
 		CAM_ERR(CAM_TPG, "invalid config command");
 		goto end;
-	}
-	if ((ssize_t)cmd_desc->offset > (len_of_buff - cmd_header->size)) {
-		CAM_ERR(CAM_TPG, "cmd header offset mismatch");
-		rc = -EINVAL;
 	}
 
 	*cmd_addr = (uintptr_t)cmd_header;
