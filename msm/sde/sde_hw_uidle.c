@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  *
  */
@@ -216,12 +216,18 @@ void sde_hw_uidle_setup_ctl(struct sde_hw_uidle *uidle,
 	SDE_REG_WRITE(c, UIDLE_FAL10_VETO_OVERRIDE, fal10_veto_regval);
 }
 
-static void sde_hw_uilde_active_override(struct sde_hw_uidle *uidle,
+static void sde_hw_uidle_active_override(struct sde_hw_uidle *uidle,
 		bool enable)
 {
 	struct sde_hw_blk_reg_map *c = &uidle->hw;
 	u32 reg_val = 0;
 
+	/*
+	 * In cesta enabled case, even if uidle is disabled,
+	 * driver needs to override qactive signal before triggering
+	 * votes for mode 2 entry to ensure the vbif_halt_req
+	 * is acknowledged.
+	 */
 	if (enable)
 		reg_val = BIT(0) | BIT(31);
 
@@ -242,8 +248,16 @@ static void sde_hw_uidle_fal10_override(struct sde_hw_uidle *uidle,
 }
 
 static inline void _setup_uidle_ops(struct sde_hw_uidle_ops *ops,
-		unsigned long cap)
+		const struct sde_uidle_cfg *cfg)
 {
+	unsigned long cap = cfg->features;
+
+	if (!cfg->uidle_rev) {
+		/* required for mode2 */
+		ops->active_override_enable = sde_hw_uidle_active_override;
+		return;
+	}
+
 	ops->set_uidle_ctl = sde_hw_uidle_setup_ctl;
 	ops->setup_wd_timer = sde_hw_uidle_setup_wd_timer;
 	ops->uidle_setup_cntr = sde_hw_uidle_setup_cntr;
@@ -254,7 +268,7 @@ static inline void _setup_uidle_ops(struct sde_hw_uidle_ops *ops,
 		ops->uidle_get_status_ext1 = sde_hw_uidle_get_status_ext1;
 
 	if (cap & BIT(SDE_UIDLE_QACTIVE_OVERRIDE))
-		ops->active_override_enable = sde_hw_uilde_active_override;
+		ops->active_override_enable = sde_hw_uidle_active_override;
 	ops->uidle_fal10_override = sde_hw_uidle_fal10_override;
 }
 
@@ -280,7 +294,7 @@ struct sde_hw_uidle *sde_hw_uidle_init(enum sde_uidle idx,
 	 */
 	c->idx = idx;
 	c->cap = cfg;
-	_setup_uidle_ops(&c->ops, c->cap->features);
+	_setup_uidle_ops(&c->ops, c->cap);
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "uidle", c->hw.blk_off,
 		c->hw.blk_off + c->hw.length, 0);
