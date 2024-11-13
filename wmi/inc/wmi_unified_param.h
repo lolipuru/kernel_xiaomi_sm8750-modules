@@ -6778,6 +6778,7 @@ typedef enum {
 	wmi_service_scan_cache_report_support,
 #endif
 	wmi_service_mrsno_support,
+	wmi_service_twt_p2p_go_concurrency_support,
 
 	wmi_services_max,
 } wmi_conv_service_ids;
