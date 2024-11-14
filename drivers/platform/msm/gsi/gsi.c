@@ -61,6 +61,9 @@
 /* FOR_SEQ_HIGH channel scratch: (((8 * (pipe_id * ctx_size + offset_lines)) + 4) / 4) */
 #define GSI_GSI_SHRAM_n_EP_FOR_SEQ_HIGH_N_GET(ep_id) (((8 * (ep_id * 10 + 9)) + 4) / 4)
 
+#define IPA_GSI_OFFSET_WORDS_SCRATCH_FOR_SEQ_HIGH_5_5 19
+#define IPA_NUM_BYTES_PER_CHNL_SHRAM_5_5 20
+
 #ifndef CONFIG_DEBUG_FS
 void gsi_debugfs_init(void)
 {
@@ -5744,6 +5747,17 @@ uint64_t gsi_read_chan_ring_re_fetch_wp(int chan_id, int ee)
 	return wp;
 }
 EXPORT_SYMBOL(gsi_read_chan_ring_re_fetch_wp);
+
+uint32_t gsi_get_outstanding_buffers(int ep_idx)
+{
+	uint32_t outstanding_buffers = 0;
+
+	outstanding_buffers = gsihal_read_reg_n(GSI_GSI_SHRAM_n,
+		((ep_idx * IPA_NUM_BYTES_PER_CHNL_SHRAM_5_5)
+		+ IPA_GSI_OFFSET_WORDS_SCRATCH_FOR_SEQ_HIGH_5_5));
+	return outstanding_buffers;
+}
+EXPORT_SYMBOL_GPL(gsi_get_outstanding_buffers);
 
 enum gsi_chan_prot gsi_get_chan_prot_type(int chan_hdl)
 {
