@@ -554,6 +554,7 @@ struct cnss_plat_data {
 	struct workqueue_struct *event_wq;
 	struct work_struct recovery_work;
 	struct delayed_work wlan_reg_driver_work;
+	struct work_struct cnss_dms_del_work;
 	struct qmi_handle qmi_wlfw;
 	struct qmi_handle qmi_dms;
 	struct wlfw_rf_chip_info chip_info;
