@@ -1060,6 +1060,10 @@ static int32_t cam_eeprom_init_pkt_parser(struct cam_eeprom_ctrl_t *e_ctrl,
 				processed_cmd_buf_in_bytes +=
 					cmd_length_in_bytes;
 				cmd_buf += cmd_length_in_bytes/sizeof(uint32_t);
+				if (rc) {
+					CAM_ERR(CAM_EEPROM, "Parse memory map failed");
+					goto end;
+				}
 				break;
 			default:
 				CAM_ERR(CAM_EEPROM, "Invalid cmd_type 0x%x",
