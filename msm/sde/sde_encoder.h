@@ -227,20 +227,6 @@ enum sde_sim_qsync_event {
 	SDE_SIM_QSYNC_EVENT_TE_TRIGGER
 };
 
-/*
- * enum sde_multi_te_states - enum to indicate the states of multi-TE
- * @SDE_MULTI_TE_NONE: multi-te not enabled
- * @SDE_MULTI_TE_ENTER: frame entering multi-te
- * @SDE_MULTI_TE_SESSION: frames in multi-te session
- * @SDE_MULTI_TE_EXIT: frame exiting multi-te
- */
-enum sde_multi_te_states {
-	SDE_MULTI_TE_NONE,
-	SDE_MULTI_TE_ENTER,
-	SDE_MULTI_TE_SESSION,
-	SDE_MULTI_TE_EXIT,
-};
-
 /* Frame rate value to trigger the watchdog TE in 200 us */
 #define SDE_SIM_QSYNC_IMMEDIATE_FPS 5000
 
@@ -339,13 +325,10 @@ enum sde_multi_te_states {
  * @ops:                        Encoder ops from init function
  * @old_vsyc_count:             Intf tearcheck vsync_count for old mode.
  * @mode_switch:                flag to indicate its a fps/resolution switch frame.
- * @multi_te_state:             enum to indicate the multi-te states.
- * @multi_te_fps:               refresh rate of multi-TE.
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
  * @cesta_scc_override:	        Boolean indicating SCC CTRL settings have been overridden.
- * @intf_master:		Interface Idx for the master interface
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -429,13 +412,9 @@ struct sde_encoder_virt {
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
 	u32 mode_switch;
-	enum sde_multi_te_states multi_te_state;
-	u32 multi_te_fps;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
 	bool cesta_scc_override;
-	bool cesta_reset_intf_master;
-	u32 intf_master;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)

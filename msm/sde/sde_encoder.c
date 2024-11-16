@@ -2043,7 +2043,6 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
 	enum sde_crtc_vm_req vm_req = VM_REQ_NONE;
 	bool req_flush = false, req_scc = false, is_cmd = false;
-	bool qsync_en = false, qsync_updated = false;
 
 	if (!cesta_client || !sde_enc->crtc || sde_encoder_in_clone_mode(drm_enc))
 		return;
@@ -2053,8 +2052,6 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 		return;
 
 	is_cmd = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE);
-	qsync_en = sde_connector_get_qsync_mode(cur_master->connector);
-	qsync_updated = sde_connector_is_qsync_updated(cur_master->connector);
 
 	sde_core_perf_crtc_update(sde_enc->crtc, commit_state);
 
@@ -2065,29 +2062,24 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 			&& (cesta_client->vote_state != SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE))
 		return;
 
-	/* when reserving a SCC, enable clk gating and do a force-db update */
-	if (sde_enc->cesta_enable_frame)
-		sde_cesta_force_db_update(sde_enc->cesta_client, false, 0, false, true);
-
 	/* SCC configs */
 	cur_master->ops.cesta_ctrl_cfg(cur_master, &ctrl_cfg, &req_flush, &req_scc);
 
-	/*
-	 * Workaround in cmd mode to avoid scc hang when new or no-change vote is requested
-	 * while previous frame ctl-done is too close to the wakeup/panic windows.
-	 * Set auto-active-on-panic and force db update and reset it during complete-commit.
-	 */
-	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT ||
-			commit_state == SDE_PERF_ENABLE_COMMIT)
-			&& !sde_enc->disp_info.disable_cesta_hw_sleep) {
-		if (sde_enc->mode_switch || (sde_enc->multi_te_state == SDE_MULTI_TE_ENTER)
-				|| (sde_enc->multi_te_state == SDE_MULTI_TE_EXIT)
-				|| qsync_updated) {
-			ctrl_cfg.req_mode = SDE_CESTA_CTRL_REQ_IMMEDIATE;
+	/* when reserving a SCC, enable clk gating and do a force-db update */
+	if (sde_enc->cesta_enable_frame) {
+		sde_cesta_force_db_update(sde_enc->cesta_client, false, 0, false, true);
+		sde_enc->cesta_scc_override = true;
+		if (is_cmd)
 			ctrl_cfg.hw_sleep_enable = false;
-			sde_enc->cesta_reset_intf_master = true;
-		}
-		ctrl_cfg.auto_active_on_panic = true;
+	}
+
+	/*
+	 * Workaround in cmd mode to disable hw-sleep at the start of every frame,
+	 * to avoid unexpected idle vote with panic/wakeup windows removed.
+	 */
+	if (is_cmd && commit_state == SDE_PERF_BEGIN_COMMIT
+			&& !sde_enc->disp_info.disable_cesta_hw_sleep) {
+		ctrl_cfg.hw_sleep_enable = false;
 
 		sde_cesta_force_db_update(sde_enc->cesta_client,
 				ctrl_cfg.auto_active_on_panic,
@@ -2096,15 +2088,10 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	}
 
 	if (!sde_enc->disp_info.disable_cesta_hw_sleep) {
-		/*
-		 * Move to auto active on panic setting while releasing the VM & update
-		 * cesta ctrl/cesta flush. Update cesta_ctrl/cesta flush on acquing the VM
-		 * to set the older state.
-		 */
+		/* Keep hw-sleep disabled before entering TUI session */
 		vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
 				CRTC_PROP_VM_REQ_STATE);
 		if (vm_req == VM_REQ_RELEASE) {
-			ctrl_cfg.auto_active_on_panic = true;
 			ctrl_cfg.hw_sleep_enable = false;
 			req_scc = true;
 			req_flush = true;
@@ -2141,8 +2128,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 	SDE_EVT32(DRMID(drm_enc), commit_state, cfg.index, cfg.vote_state, cfg.flags, req_flush,
 			req_scc, sde_enc->cesta_enable_frame, vm_req, sde_enc->mode_switch,
-			ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable, sde_enc->cesta_scc_override,
-			sde_enc->cesta_reset_intf_master);
+			ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable, sde_enc->cesta_scc_override);
 }
 
 void sde_encoder_cancel_vrr_timers(struct drm_encoder *encoder)
@@ -2642,55 +2628,10 @@ void sde_encoder_control_idle_pc(struct drm_encoder *drm_enc, bool enable)
 	SDE_EVT32(sde_enc->idle_pc_enabled);
 }
 
-static void _sde_encoder_update_multi_te_state(struct drm_encoder *drm_enc, bool reset_state)
-{
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
-
-	if (!sde_enc->cesta_client || (!sde_enc->multi_te_fps
-				&& (sde_enc->multi_te_state == SDE_MULTI_TE_NONE)))
-		return;
-
-	/*
-	 * Reset the state and return early. Reconfiguration will be handled,
-	 * while called from commit-path.
-	 */
-	if (reset_state) {
-		sde_enc->multi_te_state = SDE_MULTI_TE_NONE;
-		SDE_EVT32(DRMID(drm_enc), sde_enc->multi_te_state,
-				sde_enc->multi_te_fps, SDE_EVTLOG_FUNC_CASE1);
-		return;
-	}
-
-	if (sde_enc->multi_te_fps) {
-		switch (sde_enc->multi_te_state) {
-		case SDE_MULTI_TE_NONE:
-		case SDE_MULTI_TE_EXIT:
-			sde_enc->multi_te_state = SDE_MULTI_TE_ENTER;
-			break;
-		case SDE_MULTI_TE_ENTER:
-			sde_enc->multi_te_state = SDE_MULTI_TE_SESSION;
-			break;
-		default:
-			return;
-		}
-	} else if ((sde_enc->multi_te_state == SDE_MULTI_TE_SESSION)
-			|| (sde_enc->multi_te_state == SDE_MULTI_TE_ENTER)) {
-		sde_enc->multi_te_state = SDE_MULTI_TE_EXIT;
-	} else {
-		sde_enc->multi_te_state = SDE_MULTI_TE_NONE;
-	}
-
-	SDE_EVT32(DRMID(drm_enc), sde_enc->multi_te_state,
-			sde_enc->multi_te_fps, SDE_EVTLOG_FUNC_CASE2);
-}
-
 void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	bool autorefresh_en;
-
-	/* sde_enc->multi_te_fps needs to be set before this point for multi-te to take effect */
-	_sde_encoder_update_multi_te_state(drm_enc, false);
 
 	/*
 	 * When enabling autorefresh - its requires an override cesta flush.
@@ -3650,9 +3591,6 @@ void sde_encoder_idle_pc_enter(struct drm_encoder *drm_enc)
 
 	if (sde_enc->cur_master && sde_enc->cur_master->ops.idle_pc_cache_display_status)
 		sde_enc->cur_master->ops.idle_pc_cache_display_status(sde_enc->cur_master);
-
-	/* reset the multi-te state if enabled, so it can be reconfigured in the commit-path */
-	_sde_encoder_update_multi_te_state(drm_enc, true);
 }
 
 static int _sde_encoder_input_connect(struct input_handler *handler,
@@ -4322,9 +4260,6 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		}
 	}
 
-	/* reset the multi-te state if enabled, so it can be reconfigured in the commit-path */
-	_sde_encoder_update_multi_te_state(drm_enc, true);
-
 	if (!sde_encoder_in_clone_mode(drm_enc))
 		sde_encoder_virt_reset(drm_enc);
 }
@@ -4924,25 +4859,13 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 	bool req_flush = false, req_scc = false;
 
 
-	SDE_EVT32(DRMID(drm_enc), sde_enc->mode_switch, sde_enc->cesta_scc_override,
-			sde_enc->cesta_reset_intf_master, sde_enc->intf_master,
-			SDE_EVTLOG_FUNC_ENTRY);
+	SDE_EVT32(DRMID(drm_enc), sde_enc->cesta_scc_override, SDE_EVTLOG_FUNC_ENTRY);
 
-	if (sde_enc->cesta_client) {
-		if (sde_enc->cesta_reset_intf_master
-				&& phys_enc->hw_ctl && phys_enc->hw_ctl->ops.set_intf_master) {
-			phys_enc->hw_ctl->ops.set_intf_master(phys_enc->hw_ctl,
-					sde_enc->intf_master);
-			sde_enc->cesta_reset_intf_master = false;
-		}
-
-		if (sde_enc->cesta_scc_override && phys_enc->ops.cesta_ctrl_cfg) {
-			phys_enc->ops.cesta_ctrl_cfg(phys_enc, &ctrl_cfg, &req_flush, &req_scc);
-			sde_cesta_force_db_update(sde_enc->cesta_client,
-					ctrl_cfg.auto_active_on_panic, ctrl_cfg.req_mode,
-					ctrl_cfg.hw_sleep_enable, true);
-			sde_enc->cesta_scc_override = false;
-		}
+	if (sde_enc->cesta_client && sde_enc->cesta_scc_override && phys_enc->ops.cesta_ctrl_cfg) {
+		phys_enc->ops.cesta_ctrl_cfg(phys_enc, &ctrl_cfg, &req_flush, &req_scc);
+		sde_cesta_force_db_update(sde_enc->cesta_client, ctrl_cfg.auto_active_on_panic,
+				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable, true);
+		sde_enc->cesta_scc_override = false;
 	}
 
 	sde_enc->mode_switch = SDE_MODE_SWITCH_NONE;
@@ -5027,17 +4950,6 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	/* update pending counts and trigger kickoff ctl flush atomically */
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 
-	/*
-	 * reset CTL intf master as a workaround for keeping the wakeup windows active
-	 * during resolution switch / fps switch cases with Cesta enabled. Revert back
-	 * to original value after start of the frame during complete_commit.
-	 */
-	if (sde_enc->cesta_reset_intf_master
-			&& ctl->ops.set_intf_master && ctl->ops.get_intf_master) {
-		sde_enc->intf_master = ctl->ops.get_intf_master(ctl);
-		ctl->ops.set_intf_master(ctl, 0);
-	}
-
 	if (phys->ops.is_master && phys->ops.is_master(phys) && config_changed) {
 		atomic_inc(&phys->pending_retire_fence_cnt);
 		atomic_inc(&phys->pending_ctl_start_cnt);
@@ -5074,12 +4986,10 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		ctl->ops.get_pending_flush(ctl, &pending_flush);
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0, ctl->idx - CTL_0,
 				pending_flush.pending_flush_mask, pend_ret_fence_cnt,
-				sde_enc->cesta_reset_intf_master, sde_enc->intf_master,
 				DPUID(drm_enc->dev), SDE_EVTLOG_FUNC_CASE1);
 	} else {
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0, ctl->idx - CTL_0,
-				pend_ret_fence_cnt, sde_enc->cesta_reset_intf_master,
-				sde_enc->intf_master, DPUID(drm_enc->dev), SDE_EVTLOG_FUNC_CASE2);
+				pend_ret_fence_cnt, DPUID(drm_enc->dev), SDE_EVTLOG_FUNC_CASE2);
 	}
 }
 
@@ -7651,9 +7561,6 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 
 	debugfs_create_u32("frame_trigger_mode", 0400, sde_enc->debugfs_root,
 			&sde_enc->frame_trigger_mode);
-
-	debugfs_create_u32("multi_te_fps", 0600, sde_enc->debugfs_root,
-			&sde_enc->multi_te_fps);
 
 	debugfs_create_x32("dynamic_irqs_config", 0600, sde_enc->debugfs_root,
 			(u32 *)&sde_enc->dynamic_irqs_config);
