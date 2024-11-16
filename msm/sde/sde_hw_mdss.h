@@ -282,6 +282,11 @@ enum sde_ctl {
 	CTL_MAX
 };
 
+enum sde_ctl_hyp {
+	CTL_HYP_0 = 1,
+	CTL_HYP_MAX
+};
+
 enum sde_cdm {
 	CDM_0 = 1,
 	CDM_1,

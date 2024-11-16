@@ -636,6 +636,20 @@ struct sde_hw_ctl_ops {
 	void (*cesta_flush)(struct sde_hw_ctl *ctx, struct sde_ctl_cesta_cfg *cfg);
 
 	/**
+	 * Reserve cesta for this ctl path
+	 * @ctx: ctl path ctx pointer
+	 * @scc_index: scc index
+	 */
+	void (*cesta_scc_reserve)(struct sde_hw_ctl *ctx, u32 scc_index);
+
+	/**
+	 * Reset Reservation cesta for all the CTL paths in VM
+	 * @ctx: ctl path ctx pointer
+	 * @ctl_count: ctl data path count
+	 */
+	void (*reset_cesta_reserve)(struct sde_hw_ctl *ctx, u32 ctl_count);
+
+	/**
 	 * setup flush sync mode for slave and master cores.
 	 * @ctx       : ctl path ctx pointer
 	 * @is_master : true for master, false for slave)
@@ -675,6 +689,7 @@ struct sde_hw_ctl_ops {
  * struct sde_hw_ctl : CTL PATH driver object
  * @base: hardware block base structure
  * @hw: block register map object
+ * @ctl_hyp_hw: ctl hyp block register map object
  * @idx: control path index
  * @caps: control path capabilities
  * @mixer_count: number of mixers
@@ -686,6 +701,7 @@ struct sde_hw_ctl_ops {
 struct sde_hw_ctl {
 	struct sde_hw_blk_reg_map hw;
 
+	struct sde_hw_blk_reg_map ctl_hyp_hw;
 	/* ctl path */
 	int idx;
 	const struct sde_ctl_cfg *caps;
@@ -719,11 +735,12 @@ static inline struct sde_hw_ctl *to_sde_hw_ctl(struct sde_hw_blk_reg_map *hw)
  * @addr: mapped register io address of MDP
  * @m :   pointer to mdss catalog data
  * @dpu_idx: dpu index
+ * @hw_ctl_0: pointer to ctl0 hw block
  */
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
-		u32 dpu_idx);
+		u32 dpu_idx, struct sde_hw_ctl **hw_ctl_0);
 
 /**
  * sde_hw_ctl_destroy(): Destroys ctl driver context

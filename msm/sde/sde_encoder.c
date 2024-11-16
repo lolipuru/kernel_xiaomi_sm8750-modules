@@ -2069,6 +2069,10 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	if (sde_enc->cesta_enable_frame) {
 		sde_cesta_force_db_update(sde_enc->cesta_client, false, 0, false, true);
 		sde_enc->cesta_scc_override = true;
+
+		if (ctl->ops.cesta_scc_reserve)
+			ctl->ops.cesta_scc_reserve(ctl, cesta_client->scc_index);
+
 		if (is_cmd)
 			ctrl_cfg.hw_sleep_enable = false;
 	}

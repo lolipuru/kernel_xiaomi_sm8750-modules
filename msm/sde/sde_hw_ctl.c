@@ -78,6 +78,7 @@
 
 #define CTL_CESTA_FLUSH                 0x300
 #define CTL_CESTA_FLUSH_COMPLETE	0x340
+#define HYP_CTL_CESTA_RESERVE		0x144
 
 #define CTL_MIXER_BORDER_OUT            BIT(24)
 #define CTL_FLUSH_MASK_ROT              BIT(27)
@@ -313,7 +314,8 @@ static const struct ctl_hw_flush_cfg
 static struct sde_ctl_cfg *_ctl_offset(enum sde_ctl ctl,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
-		struct sde_hw_blk_reg_map *b)
+		struct sde_hw_blk_reg_map *b,
+		struct sde_hw_blk_reg_map *ctl_hyp_b)
 {
 	int i;
 
@@ -324,6 +326,14 @@ static struct sde_ctl_cfg *_ctl_offset(enum sde_ctl ctl,
 			b->length = m->ctl[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_CTL;
+
+			if (m->ctl_hyp.base) {
+				ctl_hyp_b->base_off = addr;
+				ctl_hyp_b->blk_off = m->ctl_hyp.base;
+				ctl_hyp_b->length = m->ctl_hyp.len;
+				ctl_hyp_b->hw_rev = m->hw_rev;
+				ctl_hyp_b->log_mask = SDE_DBG_MASK_CTL;
+			}
 			return &m->ctl[i];
 		}
 	}
@@ -1729,6 +1739,37 @@ static void sde_hw_ctl_cesta_flush(struct sde_hw_ctl *ctx, struct sde_ctl_cesta_
 	}
 }
 
+static void sde_hw_hyp_ctl_reset_cesta_reserve(struct sde_hw_ctl *ctx, u32 ctl_count)
+{
+	struct sde_hw_blk_reg_map *c;
+	int i = 0;
+
+	if (!ctx) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	c = &ctx->ctl_hyp_hw;
+
+	for (i = 0; i < ctl_count; i++)
+		SDE_REG_WRITE(c, HYP_CTL_CESTA_RESERVE + (i * 0x80), 0x0);
+
+}
+
+static void sde_hw_hyp_ctl_cesta_reserve(struct sde_hw_ctl *ctx, u32 scc_index)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 ctl_idx = 0;
+
+	if (!ctx)
+		return;
+
+	c = &ctx->ctl_hyp_hw;
+	ctl_idx = ctx->idx - CTL_0;
+
+	SDE_REG_WRITE(c, HYP_CTL_CESTA_RESERVE + (ctl_idx * 0x80), (BIT(scc_index) & 0xff));
+}
+
 static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		unsigned long cap, unsigned long mdss_cap)
 {
@@ -1824,6 +1865,11 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	if (cap & BIT(SDE_CTL_UIDLE))
 		ops->uidle_enable = sde_hw_ctl_uidle_enable;
 
+	if (cap & BIT(SDE_CTL_HYP_CTL_RESERVE)) {
+		ops->cesta_scc_reserve = sde_hw_hyp_ctl_cesta_reserve;
+		ops->reset_cesta_reserve = sde_hw_hyp_ctl_reset_cesta_reserve;
+	}
+
 	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC)) {
 		ops->setup_flush_sync = sde_hw_ctl_setup_flush_sync;
 		ops->enable_sync_mode = sde_hw_ctl_enable_sync_mode;
@@ -1834,7 +1880,7 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
-		u32 dpu_idx)
+		u32 dpu_idx, struct sde_hw_ctl **hw_ctl_0)
 {
 	struct sde_hw_ctl *c;
 	struct sde_ctl_cfg *cfg;
@@ -1843,7 +1889,7 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _ctl_offset(idx, m, addr, &c->hw);
+	cfg = _ctl_offset(idx, m, addr, &c->hw, &c->ctl_hyp_hw);
 	if (IS_ERR_OR_NULL(cfg)) {
 		kfree(c);
 		pr_err("failed to create sde_hw_ctl %d\n", idx);
@@ -1859,6 +1905,13 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);
+
+	if (c->idx == CTL_0 && c->ctl_hyp_hw.blk_off) {
+		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, m->ctl_hyp.name,
+			c->ctl_hyp_hw.blk_off, c->ctl_hyp_hw.blk_off + c->ctl_hyp_hw.length,
+			c->ctl_hyp_hw.xin_id);
+		*hw_ctl_0 = c;
+	}
 
 	return &c->hw;
 }
