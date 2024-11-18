@@ -45,6 +45,7 @@ struct btm_ctrl_pkt {
 #define BTM_BTFMCODEC_TRANSPORT_SWITCH_FAILED_IND               0x58000002
 #define BTM_BTFMCODEC_ADSP_STATE_IND                            0x58000003
 #define BTM_BTFMCODEC_CTRL_LOG_LVL_IND                          0x58000004
+#define BTM_BTFMCODEC_PORT_STATE_IND                            0x58000005
 
 #define BTM_MASTER_CONFIG_REQ_LEN			13
 #define BTM_MASTER_CONFIG_RSP_TIMEOUT			5000
@@ -60,6 +61,7 @@ struct btm_ctrl_pkt {
 #define BTM_LOG_LVL_IND_LEN                             1
 #define BTM_ADSP_STATE_IND_LEN				4
 #define BTM_CODEC_CONFIG_DMA_REQ_LEN			11
+#define BTM_PORT_STATE_IND_LEN				1
 
 #define BTM_BTFMCODEC_USECASE_START_REQ			0x58000008
 #define BTM_BTFMCODEC_USECASE_START_RSP			0x58000009
@@ -101,7 +103,7 @@ struct btm_master_config_req {
 	uint8_t num_channels;
 	uint8_t channel_num;
 	uint8_t codec_id;
-}__attribute__((packed));
+} __packed;
 
 struct btm_dma_config_req {
 	btm_opcode opcode;
@@ -127,13 +129,19 @@ struct btm_master_shutdown_req {
 	btm_opcode opcode;
 	uint32_t len;
 	uint8_t stream_id;
-}__attribute__((packed));
+} __packed;
 
 struct btm_adsp_state_ind {
 	btm_opcode opcode;
 	uint32_t len;
 	uint32_t action;
-} __attribute__((packed));
+} __packed;
+
+struct btm_port_state_ind {
+	btm_opcode opcode;
+	uint32_t len;
+	uint8_t port_state;
+} __packed;
 
 int btfmcodec_dev_enqueue_pkt(struct btfmcodec_char_device *btfmcodec_dev, void *buf, int len);
 bool btfmcodec_is_valid_cache_avb(struct btfmcodec_data *btfmcodec);
