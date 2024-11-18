@@ -265,7 +265,10 @@ enum v4l2_mpeg_vidc_av1_tier {
 	(V4L2_CID_MPEG_VIDC_BASE + 0x4E)
 
 #define V4L2_CID_MPEG_VIDC_METADATA_VIEW_ID_INFO                              \
-	(V4L2_CID_MPEG_VIDC_BASE + 0x4F)
+	(V4L2_CID_MPEG_VIDC_BASE + 0x64)
+
+#define V4L2_CID_MPEG_VIDC_METADATA_THREE_DIMENSIONAL_REF_DISP_INFO           \
+	(V4L2_CID_MPEG_VIDC_BASE + 0x66)
 
 int msm_vidc_adjust_ir_period(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_dec_frame_rate(void *instance, struct v4l2_ctrl *ctrl);
