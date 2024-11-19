@@ -183,20 +183,22 @@ end:
 	return rc;
 }
 
-static unsigned int cam_req_mgr_poll(struct file *f,
+static __poll_t cam_req_mgr_poll(struct file *f,
 	struct poll_table_struct *pll_table)
 {
-	int rc = 0;
+	__poll_t        masks = 0;
 	struct v4l2_fh *eventq = f->private_data;
 
-	if (!eventq)
-		return -EINVAL;
+	if (!eventq) {
+		CAM_ERR(CAM_CRM, "v4l2_fh_poll with unexpected input eventq");
+		return masks;
+	}
 
 	poll_wait(f, &eventq->wait, pll_table);
 	if (v4l2_event_pending(eventq))
-		rc = POLLPRI;
+		masks |= POLLPRI;
 
-	return rc;
+	return masks;
 }
 
 static int cam_req_mgr_close(struct file *filep)
@@ -206,13 +208,13 @@ static int cam_req_mgr_close(struct file *filep)
 	struct v4l2_fh *vfh = filep->private_data;
 	struct v4l2_subdev_fh *subdev_fh = to_v4l2_subdev_fh(vfh);
 
-	CAM_WARN(CAM_CRM,
-		"release invoked associated userspace process has died, open_cnt: %d",
-		g_dev.open_cnt);
-
 	cam_req_mgr_rwsem_write_op(CAM_SUBDEV_LOCK);
 
 	mutex_lock(&g_dev.cam_lock);
+
+	CAM_WARN(CAM_CRM,
+		"release invoked associated userspace process has died, open_cnt: %d",
+		g_dev.open_cnt);
 
 	if (g_dev.open_cnt <= 0) {
 		mutex_unlock(&g_dev.cam_lock);
