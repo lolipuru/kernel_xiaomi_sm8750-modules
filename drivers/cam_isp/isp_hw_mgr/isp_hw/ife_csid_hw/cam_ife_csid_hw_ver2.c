@@ -7936,11 +7936,12 @@ static int cam_ife_csid_ver2_dump_crop_reg(
 	csid_hw = (struct cam_ife_csid_ver2_hw *)hw_info->core_info;
 
 	spin_lock(&csid_hw->lock_state);
-	if (csid_hw->hw_info->hw_state != CAM_HW_STATE_POWER_UP ||
-		*path_id >= CAM_IFE_PIX_PATH_RES_MAX || *path_id < 0) {
+	if ((csid_hw->hw_info->hw_state != CAM_HW_STATE_POWER_UP) ||
+		(*path_id >= CAM_IFE_PIX_PATH_RES_MAX)) {
 		CAM_ERR(CAM_ISP, "CSID[%u] Invalid dev state :%d or path_id :%u",
 			csid_hw->hw_intf->hw_idx,
-			csid_hw->hw_info->hw_state);
+			csid_hw->hw_info->hw_state,
+			*path_id);
 		spin_unlock(&csid_hw->lock_state);
 		return -EINVAL;
 	}

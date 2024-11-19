@@ -7248,9 +7248,6 @@ static int __cam_isp_ctx_flush_dev_in_top_state(struct cam_context *ctx,
 			ctx->state, ctx->ctx_id, ctx->link_hdl);
 		return -EINVAL;
 	}
-
-	if (cmd->flush_type == CAM_FLUSH_TYPE_ALL)
-		cam_req_mgr_workq_flush(ctx_isp->workq);
 }
 
 static inline void __cam_isp_ctx_free_fcg_config(

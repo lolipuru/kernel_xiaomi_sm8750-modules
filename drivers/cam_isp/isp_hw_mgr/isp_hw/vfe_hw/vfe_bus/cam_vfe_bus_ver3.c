@@ -2975,9 +2975,6 @@ static int cam_vfe_bus_ver3_user_dump(
 
 	for (i = 0; i < bus_priv->num_out; i++) {
 		rsrc_node = &bus_priv->vfe_out[i];
-		if (!rsrc_node)
-			continue;
-
 		if (rsrc_node->res_state < CAM_ISP_RESOURCE_STATE_RESERVED) {
 			CAM_DBG(CAM_ISP,
 				"VFE:%u BUS VER3: path inactive res ID: %d, continuing",

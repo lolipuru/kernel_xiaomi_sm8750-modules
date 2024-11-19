@@ -364,7 +364,7 @@ static int cam_vfe_bus_acquire_rm(
 
 	/* No need to allocate for BUS VER2. VFE OUT to RM is fixed. */
 	rm_idx = cam_vfe_bus_get_rm_idx(vfe_bus_rd_res_id, plane);
-	if (rm_idx < 0 || rm_idx >= ver1_bus_rd_priv->num_client) {
+	if (rm_idx >= ver1_bus_rd_priv->num_client) {
 		CAM_ERR(CAM_ISP, "Unsupported VFE RM:%d plane:%d",
 			vfe_bus_rd_res_id, plane);
 		return -EINVAL;

@@ -6099,24 +6099,23 @@ static void cam_ife_mgr_populate_hw_ctxt_map(struct cam_ife_hw_mgr_ctx          
 /* entry function: acquire_hw */
 static int cam_ife_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 {
-	struct cam_ife_hw_mgr *ife_hw_mgr            = hw_mgr_priv;
-	struct cam_hw_acquire_args *acquire_args     = acquire_hw_args;
-	int rc                                       = -1;
-	int i, j;
+	struct cam_ife_hw_mgr               *ife_hw_mgr = hw_mgr_priv;
+	struct cam_hw_acquire_args          *acquire_args = acquire_hw_args;
+	int                                  rc, i, j;
 	struct cam_ife_hw_mgr_ctx           *ife_ctx;
 	struct cam_isp_in_port_generic_info *in_port = NULL;
-	struct cam_cdm_acquire_data        cdm_acquire;
-	uint32_t                           total_pix_port = 0;
-	uint32_t                           total_rdi_port = 0;
-	uint32_t                           total_pd_port = 0;
-	uint32_t                           total_lite_port = 0;
-	uint32_t                           total_ports = 0;
-	uint32_t                           total_sfe_ports = 0;
-	struct cam_isp_acquire_hw_info    *acquire_hw_info = NULL;
-	uint32_t                           input_size = 0;
-	uint32_t                           acquired_rdi_res = 0;
-	uint32_t                           input_format_checker = 0;
-	uint32_t                           max_height = 0;
+	struct cam_cdm_acquire_data          cdm_acquire;
+	uint32_t                             total_pix_port = 0;
+	uint32_t                             total_rdi_port = 0;
+	uint32_t                             total_pd_port = 0;
+	uint32_t                             total_lite_port = 0;
+	uint32_t                             total_ports = 0;
+	uint32_t                             total_sfe_ports = 0;
+	struct cam_isp_acquire_hw_info      *acquire_hw_info;
+	uint32_t                             input_size = 0;
+	uint32_t                             acquired_rdi_res = 0;
+	uint32_t                             input_format_checker = 0;
+	uint32_t                             max_height = 0;
 
 	CAM_DBG(CAM_ISP, "Enter...");
 
@@ -12048,7 +12047,8 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 
 		clock_config = (struct cam_isp_clock_config *)blob_data;
 
-		if (clock_config->num_rdi > CAM_IFE_RDI_NUM_MAX) {
+		if ((clock_config->num_rdi > CAM_IFE_RDI_NUM_MAX) ||
+			(clock_config->num_rdi == 0)) {
 			CAM_ERR(CAM_ISP, "Invalid num_rdi %u in clock config, ctx_idx: %u",
 				clock_config->num_rdi, ife_mgr_ctx->ctx_index);
 			return -EINVAL;
@@ -14228,7 +14228,7 @@ static int cam_ife_hw_mgr_add_fcg_update(
 	uint32_t                                 fcg_kmd_size, num_ent, i;
 	struct cam_isp_hw_mgr_res               *hw_mgr_res;
 	struct cam_isp_resource_node            *res;
-	struct cam_isp_hw_fcg_cmd                fcg_cmd;
+	struct cam_isp_hw_fcg_cmd                fcg_cmd = {0};
 	int                                      rc;
 
 	list_for_each_entry(hw_mgr_res, res_list_isp_src, list) {
