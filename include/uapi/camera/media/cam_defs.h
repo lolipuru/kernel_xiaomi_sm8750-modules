@@ -34,6 +34,7 @@
 #define CAM_CUSTOM_DEV_CONFIG               (CAM_COMMON_OPCODE_BASE_v2 + 0x6)
 #define CAM_QUERY_CAP_GENERIC_BLOB          (CAM_COMMON_OPCODE_BASE_v2 + 0x7)
 #define CAM_ACQUIRE_DEV_V2                  (CAM_COMMON_OPCODE_BASE_v2 + 0x8)
+#define CAM_QUERY_HW_DEV_INFO               (CAM_COMMON_OPCODE_BASE_v2 + 0x9)
 
 #define CAM_EXT_OPCODE_BASE                     0x200
 #define CAM_CONFIG_DEV_EXTERNAL                 (CAM_EXT_OPCODE_BASE + 0x1)
