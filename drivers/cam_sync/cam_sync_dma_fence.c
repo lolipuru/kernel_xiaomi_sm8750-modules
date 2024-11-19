@@ -372,9 +372,9 @@ struct dma_fence *cam_dma_fence_get_fence_from_fd(
 int cam_dma_fence_register_cb(int32_t *sync_obj, int32_t *dma_fence_idx,
 	cam_sync_callback_for_dma_fence sync_cb)
 {
-	int rc = 0, dma_fence_row_idx;
-	struct cam_dma_fence_row *row = NULL;
-	struct dma_fence *dma_fence = NULL;
+	int                       rc = 0, dma_fence_row_idx;
+	struct cam_dma_fence_row *row;
+	struct dma_fence         *dma_fence;
 
 	if (!sync_obj || !dma_fence_idx || !sync_cb) {
 		CAM_ERR(CAM_DMA_FENCE,
@@ -678,9 +678,9 @@ void __cam_dma_fence_save_previous_monitor_data(int dma_row_idx)
 
 static int __cam_dma_fence_release(int32_t dma_row_idx)
 {
-	struct dma_fence *dma_fence = NULL;
-	struct cam_dma_fence_row *row = NULL;
-	int rc;
+	struct dma_fence         *dma_fence;
+	struct cam_dma_fence_row *row;
+	int                       rc;
 
 	spin_lock_bh(&g_cam_dma_fence_dev->row_spinlocks[dma_row_idx]);
 	row = &g_cam_dma_fence_dev->rows[dma_row_idx];
