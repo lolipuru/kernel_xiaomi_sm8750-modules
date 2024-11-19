@@ -78,8 +78,7 @@ static void cam_ife_csid_ver2_print_debug_reg_status(
 	struct cam_isp_resource_node    *res);
 
 static int cam_ife_csid_ver2_print_hbi_vbi(
-	struct cam_ife_csid_ver2_hw  *csid_hw,
-	struct cam_isp_resource_node *res);
+	struct cam_ife_csid_ver2_hw  *csid_hw);
 
 
 static void cam_ife_csid_ver2_reset_csid_params(struct cam_ife_csid_ver2_hw *csid_hw)
@@ -2958,7 +2957,7 @@ void cam_ife_csid_ver2_print_format_measure_info(
 		actual_frame &
 		csid_reg->cmn_reg->format_measure_width_mask_val);
 
-	cam_ife_csid_ver2_print_hbi_vbi(csid_hw, res);
+	cam_ife_csid_ver2_print_hbi_vbi(csid_hw);
 
 	/* AUX settings update to phy for pix and line count errors */
 	data_idx = (int)(csid_hw->rx_cfg.phy_sel - csid_reg->cmn_reg->phy_sel_base_idx);
@@ -7634,26 +7633,20 @@ static int cam_ife_csid_ver2_get_time_stamp(
 }
 
 static int cam_ife_csid_ver2_print_hbi_vbi(
-	struct cam_ife_csid_ver2_hw  *csid_hw,
-	struct cam_isp_resource_node *res)
+	struct cam_ife_csid_ver2_hw  *csid_hw)
 {
-	struct cam_hw_soc_info              *soc_info;
+	int i;
+	struct cam_isp_resource_node *res;
+	struct cam_hw_soc_info *soc_info;
 	const struct cam_ife_csid_ver2_path_reg_info *path_reg = NULL;
 	struct cam_ife_csid_ver2_reg_info *csid_reg;
+	const struct cam_ife_csid_ver2_common_reg_info *cmn_reg = NULL;
 	uint32_t  hbi, vbi;
 
 	csid_reg = (struct cam_ife_csid_ver2_reg_info *)
 			csid_hw->core_info->csid_reg;
+	cmn_reg = csid_reg->cmn_reg;
 	soc_info = &csid_hw->hw_info->soc_info;
-
-	if (res->res_type != CAM_ISP_RESOURCE_PIX_PATH ||
-		res->res_id >= CAM_IFE_PIX_PATH_RES_MAX) {
-		CAM_DBG(CAM_ISP,
-			"CSID[%u] Invalid res_type:%d res [id: %d name: %s]",
-			csid_hw->hw_intf->hw_idx, res->res_type,
-			res->res_id, res->res_name);
-		return -EINVAL;
-	}
 
 	if (csid_hw->hw_info->hw_state != CAM_HW_STATE_POWER_UP) {
 		CAM_ERR(CAM_ISP, "CSID[%u] Invalid dev state :%d",
@@ -7662,21 +7655,27 @@ static int cam_ife_csid_ver2_print_hbi_vbi(
 		return -EINVAL;
 	}
 
-	path_reg = csid_reg->path_reg[res->res_id];
-	if (!path_reg) {
-		CAM_ERR(CAM_ISP, "CSID:%u invalid res %d",
-			csid_hw->hw_intf->hw_idx, res->res_id);
-		return -EINVAL;
+	for (i = CAM_IFE_PIX_PATH_RES_RDI_0; i < CAM_IFE_PIX_PATH_RES_MAX; i++) {
+		res = &csid_hw->path_res[i];
+		if (res->res_state != CAM_ISP_RESOURCE_STATE_STREAMING)
+			continue;
+
+		path_reg = csid_reg->path_reg[res->res_id];
+		if (!path_reg) {
+			CAM_ERR(CAM_ISP, "CSID:%u invalid res %d",
+				csid_hw->hw_intf->hw_idx, res->res_id);
+			return -EINVAL;
+		}
+		hbi = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+			path_reg->format_measure1_addr);
+		vbi = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+			path_reg->format_measure2_addr);
+		CAM_INFO_RATE_LIMIT(CAM_ISP,
+			"CSID[%u] Resource[id:%d, name:%s, min_hbi: %d max_hbi: %d cycles, vbi: %d cycles]",
+			csid_hw->hw_intf->hw_idx, res->res_id, res->res_name,
+			(hbi & cmn_reg->format_measure_min_hbi_mask),
+			(hbi >> cmn_reg->format_measure_max_hbi_shift), vbi);
 	}
-
-	hbi = cam_io_r_mb(soc_info->reg_map[0].mem_base +
-		path_reg->format_measure1_addr);
-	vbi = cam_io_r_mb(soc_info->reg_map[0].mem_base +
-		path_reg->format_measure2_addr);
-
-	CAM_INFO_RATE_LIMIT(CAM_ISP,
-		"CSID[%u] Resource[id:%d, name:%s, hbi: %d cycles, vbi: %d cycles]",
-		csid_hw->hw_intf->hw_idx, res->res_id, res->res_name, hbi, vbi);
 
 	return 0;
 }
@@ -8545,7 +8544,6 @@ static int cam_ife_csid_ver2_process_cmd(void *hw_priv,
 	int rc = 0;
 	struct cam_ife_csid_ver2_hw          *csid_hw;
 	struct cam_hw_info                   *hw_info;
-	struct cam_isp_resource_node         *res = NULL;
 
 	if (!hw_priv || !cmd_args) {
 		CAM_ERR(CAM_ISP, "CSID: Invalid arguments");
@@ -8560,11 +8558,8 @@ static int cam_ife_csid_ver2_process_cmd(void *hw_priv,
 		rc = cam_ife_csid_ver2_get_time_stamp(csid_hw, cmd_args);
 
 		if (csid_hw->debug_info.debug_val &
-				CAM_IFE_CSID_DEBUG_ENABLE_HBI_VBI_INFO) {
-			res = ((struct cam_csid_get_time_stamp_args *)
-				cmd_args)->node_res;
-			cam_ife_csid_ver2_print_hbi_vbi(csid_hw, res);
-		}
+			CAM_IFE_CSID_DEBUG_ENABLE_HBI_VBI_INFO)
+			cam_ife_csid_ver2_print_hbi_vbi(csid_hw);
 
 		/* Reset CRC error count during SOF */
 		csid_hw->counters.crc_error_irq_count = 0;

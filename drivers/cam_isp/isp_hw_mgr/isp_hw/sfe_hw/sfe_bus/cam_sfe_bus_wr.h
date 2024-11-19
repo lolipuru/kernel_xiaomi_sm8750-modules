@@ -8,6 +8,7 @@
 #ifndef _CAM_SFE_BUS_WR_H_
 #define _CAM_SFE_BUS_WR_H_
 
+#include "cam_sfe_hw_intf.h"
 #include "cam_sfe_bus.h"
 
 #define CAM_SFE_BUS_WR_MAX_CLIENTS        17
@@ -102,6 +103,11 @@ struct cam_sfe_bus_wr_constraint_error_info {
 	uint32_t img_width_unalign_shift;
 };
 
+struct cam_sfe_bus_wr_perf_cnt_hw_info {
+	uint32_t perf_cnt_cfg;
+	uint32_t perf_cnt_val;
+};
+
 /*
  * struct cam_sfe_bus_reg_offset_common:
  *
@@ -122,6 +128,9 @@ struct cam_sfe_bus_reg_offset_common {
 	uint32_t top_irq_mask_0;
 	uint32_t qos_eos_cfg;
 	struct cam_irq_controller_reg_info irq_reg_info;
+	uint32_t num_perf_counters;
+	uint32_t perf_cnt_status;
+	struct cam_sfe_bus_wr_perf_cnt_hw_info perf_cnt_reg[CAM_SFE_PERF_CNT_MAX];
 };
 
 /*

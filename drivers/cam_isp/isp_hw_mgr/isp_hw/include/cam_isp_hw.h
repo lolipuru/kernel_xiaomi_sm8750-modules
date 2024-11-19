@@ -273,6 +273,7 @@ enum cam_isp_hw_cmd_type {
 	CAM_ISP_HW_CMD_WM_CONFIG_UPDATE_V2,
 	CAM_ISP_HW_CMD_DYNAMIC_CLOCK_UPDATE,
 	CAM_ISP_HW_CMD_EXP_INFO_UPDATE,
+	CAM_ISP_HW_CMD_READ_RST_PERF_CNTRS,
 	CAM_ISP_HW_CMD_MAX,
 };
 
@@ -649,12 +650,14 @@ struct cam_isp_hw_regiter_dump_data {
  * @max_fcg_predictions:    Maximum number of predictions in FCG config provided by hw header
  * @max_dt_supported:       Maximum number of DTs CSID can decode
  * @fcg_supported:          Indicate whether FCG config is supported by the hw
+ * @num_wr_perf_counters:   Number of perf counters for write
  * @support_consumed_addr:  Indicate whether HW has last consumed addr reg
  *
  */
 struct cam_isp_hw_cap {
 	uint32_t                             max_out_res_type;
 	uint32_t                             num_perf_counters;
+	uint32_t                             num_wr_perf_counters;
 	uint32_t                             max_fcg_ch_ctx;
 	uint32_t                             max_fcg_predictions;
 	uint32_t                             max_dt_supported;
