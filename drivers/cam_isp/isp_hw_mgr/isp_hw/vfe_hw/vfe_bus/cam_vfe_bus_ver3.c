@@ -4444,6 +4444,11 @@ static int cam_vfe_bus_ver3_update_wm_config_v2(
 			cfg->en_cfg = ((wm_config->wm_mode << common_reg->wm_mode_shift) |
 				(wm_config->virtual_frame_en << common_reg->virtual_frm_en_shift));
 
+		/*
+		 * Offset in cam_isp_vfe_wm_config_v2 blob is mapped to meta_offset
+		 * for buffer alignment feature. Decision is based on param_mask BIT(0).
+		 */
+		cfg->meta_offset = 0;
 		if (i == PLANE_C) {
 			cfg->height = wm_config->height / 2;
 			cfg->image_offset = wm_config->offset_in_bytes / 2;
