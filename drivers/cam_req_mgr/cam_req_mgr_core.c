@@ -3309,21 +3309,6 @@ int cam_req_mgr_process_sched_req(void *priv, void *data)
 		(sched_req->param_mask & CAM_CRM_MISMATCHED_FRAME_MODE_MASK))
 		slot->mismatched_frame_mode = sched_req->params[0];
 
-	if (sched_req->additional_timeout < 0) {
-		CAM_WARN(CAM_CRM,
-			"Requested timeout is invalid [%dms]",
-			sched_req->additional_timeout);
-		slot->additional_timeout = 0;
-	} else if (sched_req->additional_timeout >
-		CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX) {
-		CAM_WARN(CAM_CRM,
-			"Requested timeout [%dms] max supported timeout [%dms] resetting to max",
-			sched_req->additional_timeout,
-			CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX);
-		slot->additional_timeout = CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX;
-	} else
-		slot->additional_timeout = sched_req->additional_timeout;
-
 	for (i = 0; i < sched_req->num_links; i++) {
 		if (link->link_hdl != sched_req->link_hdls[i]) {
 			slot->sync_link_hdls[sync_idx] = sched_req->link_hdls[i];
@@ -4529,6 +4514,7 @@ static int cam_req_mgr_cb_notify_msg(
 	struct cam_req_mgr_req_queue        *in_q = NULL;
 	struct cam_req_mgr_connected_device *dev = NULL;
 	struct cam_req_mgr_link_evt_data     evt_data;
+	uint64_t                             frame_duration_ms;
 
 	if (!msg) {
 		CAM_ERR(CAM_CRM, "msg is NULL");
@@ -4546,11 +4532,13 @@ static int cam_req_mgr_cb_notify_msg(
 
 	switch (msg->msg_type) {
 	case CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO:
+
+		frame_duration_ms = msg->u.frame_info.frame_duration / CAM_COMMON_NS_PER_MS;
+
 		spin_lock_bh(&link->req.reset_link_spin_lock);
 		/* Long exposure case for resume from standby */
 		if (msg->u.frame_info.use_for_wd) {
-			link->exp_time_for_resume =
-				msg->u.frame_info.frame_duration / CAM_COMMON_NS_PER_MS;
+			link->exp_time_for_resume = frame_duration_ms;
 			spin_unlock_bh(&link->req.reset_link_spin_lock);
 			return 0;
 		}
@@ -4574,6 +4562,19 @@ static int cam_req_mgr_cb_notify_msg(
 		slot = &in_q->slot[slot_idx];
 		spin_unlock_bh(&link->req.reset_link_spin_lock);
 		slot->frame_sync_shift = msg->u.frame_info.frame_sync_shift;
+		if (frame_duration_ms > CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX) {
+			CAM_WARN(CAM_CRM,
+				"Requested timeout [%dms] max supported timeout [%dms] resetting to max",
+				frame_duration_ms, CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX);
+			slot->additional_timeout = CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX;
+		} else if (frame_duration_ms > CAM_REQ_MGR_WATCHDOG_TIMEOUT) {
+			slot->additional_timeout = frame_duration_ms;
+		} else {
+			slot->additional_timeout = 0;
+		}
+
+		CAM_DBG(CAM_CRM,
+			"Requested timeout [%dms] req: %lld", frame_duration_ms, msg->req_id);
 
 		for (i = 0; i < link->num_devs; i++) {
 			dev = &link->l_dev[i];
