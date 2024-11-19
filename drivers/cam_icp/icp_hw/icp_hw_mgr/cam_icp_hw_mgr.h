@@ -79,7 +79,7 @@
 
 #define CAM_ICP_IS_VALID_HW_DEV_TYPE(type)                          \
 ({                                                                  \
-	((type) >= CAM_ICP_HW_ICP_V1) && ((type) < CAM_ICP_HW_MAX); \
+	((type) < CAM_ICP_HW_MAX);                                  \
 })
 
 #define CAM_ICP_MAX_ICP_PROC_PER_DEV 1

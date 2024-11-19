@@ -3048,7 +3048,7 @@ static inline int cam_icp_mgr_process_msg_ofe_config_io(
 		goto end;
 	}
 
-	CAM_DBG(CAM_ICP, "received OFE config io response",
+	CAM_DBG(CAM_ICP, "%s: received OFE config io response",
 		ctx_data->ctx_id_string);
 	complete(&ctx_data->wait_complete);
 
@@ -5130,13 +5130,13 @@ static unsigned long cam_icp_hw_mgr_mini_dump_cb(void *dst, unsigned long len,
 	hw_mgr_idx = *((uint32_t *)priv_data);
 	if (hw_mgr_idx >= CAM_ICP_SUBDEV_MAX) {
 		CAM_ERR(CAM_ICP, "Invalid index to hw mgr: %u", hw_mgr_idx);
-		return -EINVAL;
+		return 0;
 	}
 
 	hw_mgr = g_icp_hw_mgr[hw_mgr_idx];
 	if (!hw_mgr) {
 		CAM_ERR(CAM_ICP, "Uninitialized hw mgr for subdev: %u", hw_mgr_idx);
-		return -EINVAL;
+		return 0;
 	}
 
 	md = (struct cam_icp_hw_mini_dump_info *)dst;
@@ -5586,7 +5586,7 @@ static int cam_icp_mgr_send_memory_region_info(
 		region_info->num_valid_regions++;
 
 		CAM_DBG(CAM_ICP,
-			"LLCC mem regions iova[0x%x:0x%x] len[0x%x:0x%x]",
+			"LLCC mem regions llcc_reg[0x%x:0x%x]",
 			hw_mgr->hfi_mem.llcc_reg.iova, hw_mgr->hfi_mem.llcc_reg.len);
 	}
 
@@ -6119,13 +6119,13 @@ static int cam_icp_mgr_config_hw(void *hw_mgr_priv, void *config_hw_args)
 	}
 
 	if (cam_presil_mode_enabled()) {
-		CAM_DBG(CAM_PRESIL, "%s: presil: locking frame_in_process %d req id %u",
+		CAM_DBG(CAM_PRESIL, "%s: presil: locking frame_in_process %d req id %llu",
 			ctx_data->ctx_id_string, atomic_read(&hw_mgr->frame_in_process),
 			config_args->request_id);
 		down_write(&frame_in_process_sem);
 		atomic_set(&hw_mgr->frame_in_process, 1);
 		hw_mgr->frame_in_process_ctx_id = ctx_data->ctx_id;
-		CAM_DBG(CAM_PRESIL, "%s: presil: locked frame_in_process req id %u ctx_id %d",
+		CAM_DBG(CAM_PRESIL, "%s: presil: locked frame_in_process req id %llu ctx_id %d",
 			ctx_data->ctx_id_string, config_args->request_id,
 			hw_mgr->frame_in_process_ctx_id);
 		msleep(100);
