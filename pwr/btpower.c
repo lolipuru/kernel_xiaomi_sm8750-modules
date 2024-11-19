@@ -2680,9 +2680,9 @@ int bt_kernel_panic(char *arg) {
 		pr_err("%s: failed copy to panic reason from BT-Transport\n",
 			__func__);
 		memset(&CrashInfo, 0, sizeof(CrashInfo));
-		strlcpy(CrashInfo. PrimaryReason,
+		strscpy(CrashInfo. PrimaryReason,
 			default_crash_reason, strlen(default_crash_reason));
-		strlcpy(CrashInfo. SecondaryReason,
+		strscpy(CrashInfo. SecondaryReason,
 			default_crash_reason, strlen(default_crash_reason));
 		ret = -EFAULT;
 	}
