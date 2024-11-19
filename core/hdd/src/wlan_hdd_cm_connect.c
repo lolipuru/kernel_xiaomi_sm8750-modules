@@ -58,6 +58,8 @@
 #include "wlan_psoc_mlme_ucfg_api.h"
 #include "wlan_action_oui_ucfg_api.h"
 
+#define MAX_ROAM_COUNT_VALUE (999)
+
 bool hdd_cm_is_vdev_associated(struct wlan_hdd_link_info *link_info)
 {
 	struct wlan_objmgr_vdev *vdev;
@@ -854,6 +856,11 @@ def_chan:
 	return true;
 }
 
+static inline void hdd_clear_disconnect_receive(struct hdd_adapter *adapter)
+{
+	adapter->discon_link_info = NULL;
+}
+
 int wlan_hdd_cm_connect(struct wiphy *wiphy,
 			struct net_device *ndev,
 			struct cfg80211_connect_params *req)
@@ -963,6 +970,8 @@ int wlan_hdd_cm_connect(struct wiphy *wiphy,
 	}
 
 	hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_CM_ID);
+	hdd_clear_disconnect_receive(adapter);
+
 	return status;
 }
 
@@ -1123,6 +1132,22 @@ static void hdd_cm_update_prev_ap_ie(struct hdd_station_ctx *hdd_sta_ctx,
 	}
 }
 
+static void hdd_cm_update_roam_count(struct hdd_station_ctx *sta_ctx)
+{
+	if (!sta_ctx) {
+		hdd_err("Invalid sta_ctx. Unable to update roam count");
+		return;
+	}
+
+	sta_ctx->conn_info.roam_count++;
+
+	/* Reset the roam count value after reaching 999 */
+	if (sta_ctx->conn_info.roam_count > MAX_ROAM_COUNT_VALUE) {
+		hdd_debug_rl("Resetting the roam_count value to 0");
+		sta_ctx->conn_info.roam_count = 0;
+	}
+}
+
 static void hdd_cm_save_bss_info(struct wlan_hdd_link_info *link_info,
 				 struct wlan_cm_connect_resp *rsp)
 {
@@ -1175,7 +1200,7 @@ static void hdd_cm_save_bss_info(struct wlan_hdd_link_info *link_info,
 		hdd_sta_ctx->conn_info.conn_flag.ht_present = false;
 	}
 	if (rsp->is_reassoc)
-		hdd_sta_ctx->conn_info.roam_count++;
+		hdd_cm_update_roam_count(hdd_sta_ctx);
 
 	if (assoc_resp->HTInfo.present) {
 		hdd_sta_ctx->conn_info.conn_flag.ht_op_present = true;
@@ -1854,11 +1879,6 @@ hdd_cm_connect_success_pre_user_update(struct wlan_objmgr_vdev *vdev,
 	if (is_roam)
 		ucfg_dp_nud_indicate_roam(vdev);
 	 /* hdd_objmgr_set_peer_mlme_auth_state */
-}
-
-static inline void hdd_clear_disconnect_receive(struct hdd_adapter *adapter)
-{
-	adapter->discon_link_info = NULL;
 }
 
 static void

@@ -761,13 +761,18 @@ populate_disallow_modes(struct wlan_objmgr_psoc *psoc,
 		return QDF_STATUS_E_INVAL;
 	}
 
-	if (initial_connected)
-		goto no_legacy_intf;
 
 	legacy_num = policy_mgr_get_legacy_conn_info(
 					psoc, legacy_vdev_lst,
 					legacy_freq_lst, mode_lst,
 					QDF_ARRAY_SIZE(legacy_vdev_lst));
+
+	if (initial_connected) {
+		if (!policy_mgr_is_hw_dbs_capable(psoc) && legacy_num)
+			disallow_mode_bitmap = EMLSR_5GL_5GH;
+
+		goto no_legacy_intf;
+	}
 
 	/* Make sure NAN 5H freq is filled, so that it shall disallow MLMR and
 	 * eMLSR if needed
@@ -809,8 +814,7 @@ populate_disallow_modes(struct wlan_objmgr_psoc *psoc,
 	}
 
 	if (!policy_mgr_is_hw_dbs_capable(psoc)) {
-		disallow_mode_bitmap = EMLSR_5GL_5GH | EMLSR_5GH_5GH |
-				       EMLSR_5GL_5GL;
+		disallow_mode_bitmap = EMLSR_5GL_5GH;
 		goto no_legacy_intf;
 	}
 
@@ -2789,6 +2793,93 @@ ml_nlink_handle_mcc_links(struct wlan_objmgr_psoc *psoc,
 		ml_nlink_dump_force_state(force_cmd, "");
 }
 
+static void
+ml_nlink_handle_comm_intf_non_dbs(struct wlan_objmgr_psoc *psoc,
+				  struct wlan_objmgr_vdev *vdev,
+				  struct ml_link_force_state *force_cmd,
+				  uint8_t legacy_vdev_id,
+				  qdf_freq_t legacy_freq,
+				  enum policy_mgr_con_mode pm_mode)
+{
+	struct wlan_objmgr_vdev *link_vdev;
+	uint32_t force_inactive_link_bitmap = 0;
+	uint32_t scc_link_bitmap = 0;
+	uint8_t ml_num_link = 0;
+	uint32_t ml_link_bitmap = 0;
+	uint8_t ml_vdev_lst[WLAN_MAX_ML_BSS_LINKS];
+	qdf_freq_t ml_freq_lst[WLAN_MAX_ML_BSS_LINKS];
+	uint8_t ml_linkid_lst[WLAN_MAX_ML_BSS_LINKS];
+	struct ml_link_info ml_link_info[WLAN_MAX_ML_BSS_LINKS];
+	uint8_t i;
+	bool force_link_required = false;
+
+	ml_nlink_get_link_info(psoc, vdev, NLINK_EXCLUDE_REMOVED_LINK,
+			       QDF_ARRAY_SIZE(ml_linkid_lst),
+			       ml_link_info, ml_freq_lst, ml_vdev_lst,
+			       ml_linkid_lst, &ml_num_link,
+			       &ml_link_bitmap);
+	if (ml_num_link < 2)
+		return;
+
+	switch (pm_mode) {
+	case PM_P2P_CLIENT_MODE:
+	case PM_P2P_GO_MODE:
+	case PM_STA_MODE:
+		goto force_inactive_num;
+	case PM_SAP_MODE:
+		force_link_required = true;
+		break;
+	default:
+		/* unexpected legacy connection mode */
+		mlo_debug("unexpected legacy intf mode %d",
+			  pm_mode);
+		return;
+	}
+
+	for (i = 0; i < ml_num_link; i++) {
+		if (ml_freq_lst[i] == legacy_freq)
+			scc_link_bitmap = 1 << ml_linkid_lst[i];
+		else
+			force_inactive_link_bitmap |= 1 << ml_linkid_lst[i];
+	}
+
+	/*
+	 * Enable only the assoc link if no active link is left
+	 */
+	if (!(ml_link_bitmap & ~force_inactive_link_bitmap)) {
+		force_inactive_link_bitmap = 0;
+
+		for (i = 0; i < ml_num_link; i++) {
+			link_vdev = wlan_objmgr_get_vdev_by_id_from_psoc(
+							psoc, ml_vdev_lst[i],
+							WLAN_MLO_MGR_ID);
+			if (!link_vdev) {
+				force_inactive_link_bitmap |=
+						1 << ml_linkid_lst[i];
+				continue;
+			}
+
+			if (!wlan_vdev_mlme_is_mlo_link_vdev(link_vdev)) {
+				wlan_objmgr_vdev_release_ref(link_vdev,
+							     WLAN_MLO_MGR_ID);
+				continue;
+			}
+
+			wlan_objmgr_vdev_release_ref(link_vdev,
+						     WLAN_MLO_MGR_ID);
+			force_inactive_link_bitmap |= 1 << ml_linkid_lst[i];
+		}
+	}
+
+	if (force_inactive_link_bitmap)
+		force_cmd->force_inactive_bitmap = force_inactive_link_bitmap;
+
+	return;
+
+force_inactive_num:
+	ml_nlink_handle_mcc_links(psoc, vdev, force_cmd);
+}
+
 /**
  * ml_nlink_handle_legacy_sta_intf() - Check force inactive needed
  * with legacy STA
@@ -2975,7 +3066,6 @@ ml_nlink_handle_legacy_sap_intf(struct wlan_objmgr_psoc *psoc,
 	/*
 	 * Force inctive 2GHz link if SAP + ML-sta is causing MCC
 	 */
-
 	for (i = 0; i < ml_num_link; i++) {
 		/*
 		 * check if NAN is present and causing mcc with SAP
@@ -3791,9 +3881,14 @@ ml_nlink_handle_legacy_intf_emlsr(struct wlan_objmgr_psoc *psoc,
 		case PM_P2P_GO_MODE:
 		case PM_STA_MODE:
 		case PM_SAP_MODE:
-			ml_nlink_handle_comm_intf_emlsr(
-				psoc, vdev, force_cmd, vdev_lst[0],
-				freq_lst[0], mode_lst[0]);
+			if (policy_mgr_is_hw_dbs_capable(psoc))
+				ml_nlink_handle_comm_intf_emlsr(
+					psoc, vdev, force_cmd, vdev_lst[0],
+					freq_lst[0], mode_lst[0]);
+			else
+				ml_nlink_handle_comm_intf_non_dbs(
+					psoc, vdev, force_cmd, vdev_lst[0],
+					freq_lst[0], mode_lst[0]);
 			break;
 		default:
 			/* unexpected legacy connection mode */
@@ -3804,6 +3899,9 @@ ml_nlink_handle_legacy_intf_emlsr(struct wlan_objmgr_psoc *psoc,
 		ml_nlink_dump_force_state(force_cmd, "");
 		return;
 	}
+
+	if (!policy_mgr_is_hw_dbs_capable(psoc))
+		return;
 
 	/* handle 3 port case with 2 ml sta links.
 	 */
@@ -3832,6 +3930,41 @@ ml_nlink_handle_legacy_intf_emlsr(struct wlan_objmgr_psoc *psoc,
 }
 
 /**
+ * mlo_is_valid_nan_p2p_concurrency() - Check if NAN+P2P concurrency is valid
+ * @psoc: PSOC object information
+ * @mode_lst: Legacy active modes present in policy mgr
+ * @vdev_lst: vdev_lst corresponds to @mode_lst
+ * @num_legacy_vdev: Number of legacy vdevs present in policy mgr
+ *
+ * This API is to decide whether any ML-STA links to be made inactive inorder
+ * to allow the concurrency.
+ * NAN+P2P+ML-STA can be supported on a mac even if these lead to 3-ch MCC.
+ * So, don't make any link inactive when NAN + non-LL P2P is present
+ *
+ * Return: True when ML-STA+NAN+P2P is a valid concurrency
+ */
+static bool
+mlo_is_valid_nan_p2p_concurrency(struct wlan_objmgr_psoc *psoc,
+				 enum policy_mgr_con_mode *mode_lst,
+				 uint8_t *vdev_lst,
+				 uint8_t num_legacy_vdev)
+{
+	uint8_t i;
+
+	if (!wlan_nan_is_sta_p2p_ndp_supported(psoc) ||
+	    !wlan_nan_is_disc_active(psoc))
+		return false;
+
+	for (i = 0; i < num_legacy_vdev; i++)
+		if ((mode_lst[i] == PM_P2P_GO_MODE ||
+		     mode_lst[i] == PM_P2P_CLIENT_MODE) &&
+		    !policy_mgr_is_vdev_high_tput_or_low_latency(psoc,
+								 vdev_lst[i]))
+			return true;
+	return false;
+}
+
+/**
  * ml_nlink_handle_legacy_intf() - Check force inactive needed
  * with legacy interface
  * @psoc: PSOC object information
@@ -3855,6 +3988,11 @@ ml_nlink_handle_legacy_intf(struct wlan_objmgr_psoc *psoc,
 					psoc, vdev_lst,
 					freq_lst, mode_lst,
 					QDF_ARRAY_SIZE(vdev_lst));
+
+	if (mlo_is_valid_nan_p2p_concurrency(psoc, mode_lst, vdev_lst,
+					     num_legacy_vdev))
+		return;
+
 	if (wlan_nan_is_disc_active(psoc)) {
 		if (num_legacy_vdev < MAX_LEGACY_CONCURRENCT_MODES &&
 		    wlan_nan_get_5ghz_social_ch_freq(pdev)) {
@@ -4535,7 +4673,6 @@ ml_nlink_update_no_force_for_all(struct wlan_objmgr_psoc *psoc,
 		    status == QDF_STATUS_E_PENDING)
 			status = policy_mgr_wait_for_set_link_update(psoc);
 	}
-
 end:
 	return status;
 }
@@ -5129,8 +5266,13 @@ static QDF_STATUS ml_nlink_state_change(struct wlan_objmgr_psoc *psoc,
 			status = ml_nlink_state_change_emlsr_no_conc(
 					psoc, reason, evt, data);
 	} else {
-		status = ml_nlink_state_change_mlmr(psoc, reason,
-						    evt, data);
+		if (policy_mgr_is_hw_dbs_capable(psoc)) {
+			status = ml_nlink_state_change_mlmr(psoc, reason,
+							    evt, data);
+		} else {
+			status = ml_nlink_state_change_emlsr(
+					psoc, reason, evt, data);
+		}
 	}
 
 	return status;

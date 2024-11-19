@@ -2109,6 +2109,10 @@ static const struct nl80211_vendor_cmd_info wlan_hdd_cfg80211_vendor_events[] = 
 		.vendor_id = QCA_NL80211_VENDOR_ID,
 		.subcmd = QCA_NL80211_VENDOR_SUBCMD_ASYNC_GET_STATION,
 	},
+	[QCA_NL80211_VENDOR_SUBCMD_IDLE_SHUTDOWN_INDEX] = {
+		.vendor_id = QCA_NL80211_VENDOR_ID,
+		.subcmd = QCA_NL80211_VENDOR_SUBCMD_IDLE_SHUTDOWN,
+	},
 };
 
 /**
@@ -22983,6 +22987,7 @@ const struct wiphy_vendor_command hdd_wiphy_vendor_commands[] = {
 	FEATURE_P2P_LISTEN_OFFLOAD_VENDOR_COMMANDS
 
 	FEATURE_P2P_SECURE_USD_VENDOR_COMMANDS
+	FEATURE_P2P_SET_MODE_VENDOR_COMMANDS
 
 	FEATURE_SAP_COND_CHAN_SWITCH_VENDOR_COMMANDS
 	{
@@ -33302,6 +33307,9 @@ static void __wlan_hdd_cfg80211_update_mgmt_frame_registrations(
 		hdd_err("HDD context is null");
 		return;
 	}
+
+	hdd_debug("Mode: %d, set mgmt regis update value 0x%x",
+		  adapter->device_mode, upd->interface_stypes);
 
 	if (adapter->device_mode == QDF_P2P_DEVICE_MODE)
 		ucfg_p2p_set_mgmt_frm_registration_update(

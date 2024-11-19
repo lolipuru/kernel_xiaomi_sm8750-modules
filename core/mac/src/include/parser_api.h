@@ -833,6 +833,7 @@ populate_dot_11_f_ext_chann_switch_ann(struct mac_context *mac_ptr,
 
 void
 populate_dot11f_tx_power_env(struct mac_context *mac,
+			     struct pe_session *session,
 			     tDot11fIEtransmit_power_env *pDot11f,
 			     enum phy_ch_width ch_width, uint32_t chan_freq,
 			     uint16_t *num_tpe, bool is_ch_switch);
@@ -1683,6 +1684,7 @@ void lim_ieee80211_pack_ehtcap(uint8_t *ie, tDot11fIEeht_cap dot11f_eht_cap,
  * @dot11f_eht_cap: output pointer to dot11f EHT capabilities IE structure
  * @dot11f_he_cap: dot11f HE capabilities IE structure
  * @freq: frequency
+ * @is_eht_cap_from_sta: Is the IE received from non-AP STA device.
  *
  * This API is used to strip and decode EHT caps IE which is of variable in
  * length depending on the HE capabilities IE content.
@@ -1692,7 +1694,8 @@ void lim_ieee80211_pack_ehtcap(uint8_t *ie, tDot11fIEeht_cap dot11f_eht_cap,
 QDF_STATUS lim_strip_and_decode_eht_cap(uint8_t *ie, uint16_t ie_len,
 					tDot11fIEeht_cap *dot11f_eht_cap,
 					tDot11fIEhe_cap dot11f_he_cap,
-					uint16_t freq);
+					uint16_t freq,
+					bool is_eht_cap_from_sta);
 
 /**
  * lim_ieee80211_pack_ehtop() - Pack EHT Operations IE
@@ -1791,7 +1794,8 @@ static inline
 QDF_STATUS lim_strip_and_decode_eht_cap(uint8_t *ie, uint16_t ie_len,
 					tDot11fIEeht_cap *dot11f_eht_cap,
 					tDot11fIEhe_cap dot11f_he_cap,
-					uint16_t freq)
+					uint16_t freq,
+					bool is_eht_cap_from_sta)
 {
 	return QDF_STATUS_SUCCESS;
 }

@@ -155,6 +155,11 @@ const uint8_t *wlan_p2p_parse_assoc_ie_for_device_info(const uint8_t *assoc_ie,
 	return p2p_parse_assoc_ie_for_device_info(assoc_ie, assoc_ie_len);
 }
 
+bool wlan_p2p_is_vdev_wfd_r2_mode(struct wlan_objmgr_vdev *vdev)
+{
+	return p2p_is_vdev_wfd_r2_mode(vdev);
+}
+
 QDF_STATUS
 wlan_p2p_extract_ap_assist_dfs_params(struct wlan_objmgr_vdev *vdev,
 				      const uint8_t *ie, uint16_t ie_len,
@@ -203,4 +208,20 @@ void wlan_p2p_psoc_priv_set_sta_vdev_id(struct wlan_objmgr_psoc *psoc,
 uint8_t wlan_p2p_psoc_priv_get_sta_vdev_id(struct wlan_objmgr_psoc *psoc)
 {
 	return p2p_psoc_priv_get_sta_vdev_id(psoc);
+}
+
+QDF_STATUS
+wlan_p2p_del_random_mac(struct wlan_objmgr_psoc *soc, uint32_t vdev_id,
+			uint64_t rnd_cookie)
+{
+	return p2p_del_random_mac(soc, vdev_id, rnd_cookie);
+}
+
+QDF_STATUS
+wlan_p2p_set_rand_mac_for_p2p_dev(struct wlan_objmgr_psoc *soc,
+				  uint32_t vdev_id, uint32_t freq,
+				  uint64_t rnd_cookie, uint32_t duration)
+{
+	return p2p_set_rand_mac_for_p2p_dev(soc, vdev_id, freq, rnd_cookie,
+					    duration);
 }

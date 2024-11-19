@@ -6080,6 +6080,15 @@ static void lim_update_ap_he_op(struct pe_session *session,
 						ch_params->ch_width;
 	}
 }
+
+void lim_print_he_channel_widths(tDot11fIEhe_cap *he_cap)
+{
+	pe_debug("HE width 0:%d 1:%d 2:%d 3:%d 4:%d 5:%d 6:%d",
+		 he_cap->chan_width_0, he_cap->chan_width_1,
+		 he_cap->chan_width_2, he_cap->chan_width_3,
+		 he_cap->chan_width_4, he_cap->chan_width_5,
+		 he_cap->chan_width_6);
+}
 #else
 static inline void
 lim_update_ext_cap_he_params(struct mac_context *mac_ctx,
@@ -7535,6 +7544,7 @@ void lim_copy_join_req_he_cap(struct pe_session *session)
 		session->he_config.chan_width_4 = 0;
 		session->he_config.chan_width_6 = 0;
 	}
+	lim_print_he_channel_widths(&session->he_config);
 }
 
 void lim_log_he_cap(struct mac_context *mac, tDot11fIEhe_cap *he_cap)
@@ -7833,6 +7843,7 @@ void lim_set_he_caps(struct mac_context *mac, uint8_t *ie_start,
 		he_cap->ops_supp = dot11_cap.ops_supp;
 		he_cap->ndp_feedback_supp = dot11_cap.ndp_feedback_supp;
 		he_cap->amsdu_in_ampdu = dot11_cap.amsdu_in_ampdu;
+		he_cap->he_dynamic_smps = dot11_cap.he_dynamic_smps;
 
 		if (!mac->roam.configParam.channelBondingMode5GHz) {
 			/*
@@ -11340,8 +11351,6 @@ uint8_t lim_convert_phy_width_to_vht_width(enum phy_ch_width ch_width)
 		return WNI_CFG_VHT_CHANNEL_WIDTH_160MHZ;
 	if (ch_width == CH_WIDTH_80MHZ)
 		return WNI_CFG_VHT_CHANNEL_WIDTH_80MHZ;
-	if (ch_width == CH_WIDTH_40MHZ || ch_width == CH_WIDTH_20MHZ)
-		return WNI_CFG_VHT_CHANNEL_WIDTH_20_40MHZ;
 
 	return WNI_CFG_VHT_CHANNEL_WIDTH_20_40MHZ;
 }
@@ -11934,7 +11943,7 @@ void lim_update_disconnect_vdev_id(struct mac_context *mac,  uint8_t vdev_id)
 
 	if (session->vdev) {
 		if (mac->sme.set_disconnect_link_info_cb)
-			mac->sme.set_disconnect_link_info_cb(vdev_id);
+			mac->sme.set_disconnect_link_info_cb(vdev_id, true);
 		pe_debug("disconnect received on vdev id %d", vdev_id);
 	}
 }
@@ -12345,20 +12354,26 @@ uint16_t lim_get_tpe_ie_length(enum phy_ch_width chan_width,
 		total_ie_len += 1;
 		total_ie_len += tpe_ie[idx].num_tx_power;
 
-		if (!(chan_width == CH_WIDTH_320MHZ &&
-		      tpe_ie[idx].max_tx_pwr_interpret))
-			continue;
-
-		if (tpe_ie[idx].max_tx_pwr_interpret == LOCAL_EIRP ||
-		    tpe_ie[idx].max_tx_pwr_interpret == REGULATORY_CLIENT_EIRP) {
+		switch (tpe_ie[idx].max_tx_pwr_interpret) {
+		case LOCAL_EIRP:
+		case REGULATORY_CLIENT_EIRP:
 			/* Maximum Transmit Power For 320 MHz */
-			total_ie_len += 1;
-		} else if (tpe_ie[idx].max_tx_pwr_interpret == LOCAL_EIRP_PSD ||
-			   tpe_ie[idx].max_tx_pwr_interpret == REGULATORY_CLIENT_EIRP_PSD) {
+			if (tpe_ie[idx].ext_max_tx_power.ext_max_tx_power_local_eirp.max_tx_power_for_320)
+				total_ie_len += 1;
+			break;
+		case LOCAL_EIRP_PSD:
+		case REGULATORY_CLIENT_EIRP_PSD:
+			if (!tpe_ie[idx].ext_max_tx_power.ext_max_tx_power_reg_psd.ext_count)
+				break;
+
 			/* Extension Transmit PSD Information */
 			total_ie_len += 1;
 			/* Maximum Transmit PSD power */
-			total_ie_len += EXT_TX_PSD_POWER;
+			total_ie_len +=
+				tpe_ie[idx].ext_max_tx_power.ext_max_tx_power_reg_psd.ext_count;
+			break;
+		default:
+			break;
 		}
 	}
 
@@ -12405,12 +12420,11 @@ QDF_STATUS lim_fill_complete_tpe_ie(enum phy_ch_width chan_width,
 		consumed += tpe_ptr[idx].num_tx_power;
 		target += tpe_ptr[idx].num_tx_power;
 
-		if (!(chan_width == CH_WIDTH_320MHZ &&
-		      tpe_ptr[idx].max_tx_pwr_interpret))
-			goto end;
-
 		switch (tpe_ptr[idx].max_tx_pwr_interpret) {
 		case LOCAL_EIRP:
+			if (!tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_local_eirp.max_tx_power_for_320)
+				break;
+
 			/* Maximum Local EIRP Transmit Power For 320 MHz */
 			*target = tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_local_eirp.max_tx_power_for_320;
 			target += 1;
@@ -12420,16 +12434,24 @@ QDF_STATUS lim_fill_complete_tpe_ie(enum phy_ch_width chan_width,
 			local_psd = 0U;
 			local_psd |= (tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_local_psd.ext_count << 0);
 			local_psd |= (tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_local_psd.reserved << 4);
+
+			if (!local_psd)
+				break;
+
 			/* Extension Transmit Local PSD Information */
 			*target = local_psd;
 			target += 1;
 			consumed += 1;
 			/* Maximum Transmit Local PSD power */
-			qdf_mem_copy(target, tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_local_psd.max_tx_psd_power, EXT_TX_PSD_POWER);
-			target += EXT_TX_PSD_POWER;
-			consumed += EXT_TX_PSD_POWER;
+			qdf_mem_copy(target, tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_local_psd.max_tx_psd_power,
+				     QDF_GET_BITS(local_psd, 0, 4));
+			target += QDF_GET_BITS(local_psd, 0, 4);
+			consumed += QDF_GET_BITS(local_psd, 0, 4);
 			break;
 		case REGULATORY_CLIENT_EIRP:
+			if (!tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_reg_eirp.max_tx_power_for_320)
+				break;
+
 			/* Maximum Regulatory EIRP Transmit Power For 320 MHz */
 			*target = tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_reg_eirp.max_tx_power_for_320;
 			target += 1;
@@ -12439,17 +12461,22 @@ QDF_STATUS lim_fill_complete_tpe_ie(enum phy_ch_width chan_width,
 			reg_psd = 0U;
 			reg_psd |= (tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_reg_psd.ext_count << 0);
 			reg_psd |= (tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_reg_psd.reserved << 4);
+
+			if (!reg_psd)
+				break;
+
 			/* Extension Transmit Regulatory PSD Information */
 			*target = reg_psd;
 			consumed += 1;
 			target += 1;
 			/* Maximum Transmit Regulatory PSD power */
-			qdf_mem_copy(target, tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_reg_psd.max_tx_psd_power, EXT_TX_PSD_POWER);
-			target += EXT_TX_PSD_POWER;
-			consumed += EXT_TX_PSD_POWER;
+			qdf_mem_copy(target, tpe_ptr[idx].ext_max_tx_power.ext_max_tx_power_reg_psd.max_tx_psd_power,
+				     QDF_GET_BITS(reg_psd, 0, 4));
+			target += QDF_GET_BITS(reg_psd, 0, 4);
+			consumed += QDF_GET_BITS(reg_psd, 0, 4);
 			break;
 		}
-end:
+
 		if (ie_len && consumed >= 2) {
 			total_consumed += consumed;
 			/* -2 for element id and length */

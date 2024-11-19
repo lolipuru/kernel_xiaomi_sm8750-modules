@@ -3508,6 +3508,50 @@ policy_mgr_get_connection_count_with_mlo(struct wlan_objmgr_psoc *psoc)
 	return count;
 }
 
+uint32_t
+policy_mgr_mode_specific_connection_count_with_mlo(
+					struct wlan_objmgr_psoc *psoc,
+					enum policy_mgr_con_mode input_mode)
+{
+	uint32_t conn_index, count = 0;
+	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	enum policy_mgr_con_mode mode;
+	bool is_mlo = false, count_mlo = false;
+
+	pm_ctx = policy_mgr_get_context(psoc);
+	if (!pm_ctx) {
+		policy_mgr_err("Invalid Context");
+		return count;
+	}
+
+	qdf_mutex_acquire(&pm_ctx->qdf_conc_list_lock);
+	for (conn_index = 0; conn_index < MAX_NUMBER_OF_CONC_CONNECTIONS;
+	     conn_index++) {
+		if (!pm_conc_connection_list[conn_index].in_use)
+			continue;
+
+		mode = pm_conc_connection_list[conn_index].mode;
+		if (input_mode != mode)
+			continue;
+
+		is_mlo = policy_mgr_is_ml_vdev_id(
+				psoc,
+				pm_conc_connection_list[conn_index].vdev_id);
+
+		if (is_mlo) {
+			if (!count_mlo) {
+				count_mlo = true;
+				count++;
+			}
+		} else {
+			count++;
+		}
+	}
+	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
+
+	return count;
+}
+
 uint32_t policy_mgr_mode_specific_vdev_id(struct wlan_objmgr_psoc *psoc,
 					  enum policy_mgr_con_mode mode)
 {
@@ -4167,8 +4211,7 @@ policy_mgr_validate_conn_info(struct wlan_objmgr_psoc *psoc)
 				if (pm_conc_connection_list[j].in_use &&
 				    pm_conc_connection_list[i].vdev_id ==
 				    pm_conc_connection_list[j].vdev_id) {
-					policy_mgr_debug(
-					"dup entry %d",
+					policy_mgr_err("dup entry %d",
 					pm_conc_connection_list[i].vdev_id);
 					panic = true;
 				}
@@ -4188,9 +4231,6 @@ policy_mgr_validate_conn_info(struct wlan_objmgr_psoc *psoc)
 		panic = true;
 	}
 	qdf_mutex_release(&pm_ctx->qdf_conc_list_lock);
-
-	if (panic)
-		policy_mgr_debug_alert();
 
 	return panic;
 }
@@ -4403,8 +4443,13 @@ void policy_mgr_move_vdev_from_disabled_to_connection_tbl(
 	}
 
 	if (!policy_mgr_is_ml_vdev_id(psoc, vdev_id)) {
-		policy_mgr_err("vdev %d is not ML", vdev_id);
-		return;
+		if (!wlan_cm_is_roam_sync_in_progress(psoc, vdev_id)) {
+			policy_mgr_err("vdev %d is not ML", vdev_id);
+			return;
+		} else {
+			policy_mgr_debug("vdev %d is not ML in roam sync",
+					 vdev_id);
+		}
 	}
 
 	status = policy_mgr_delete_from_disabled_links(pm_ctx, vdev_id);
@@ -4943,6 +4988,13 @@ policy_mgr_handle_vdev_active_inactive_resp(
 	uint32_t assoc_bitmap = 0;
 	uint16_t dynamic_inactive_bitmap = 0;
 	uint16_t forced_inactive_bitmap = 0;
+	uint16_t inactive_linkid_bitmap = 0;
+
+	inactive_linkid_bitmap = resp->inactive_linkid_bitmap;
+	if (!policy_mgr_is_hw_dbs_capable(psoc) &&
+	    (req->param.force_mode == MLO_LINK_FORCE_MODE_NO_FORCE ||
+	     req->param.force_mode == MLO_LINK_FORCE_MODE_ACTIVE_INACTIVE))
+		inactive_linkid_bitmap = resp->curr_inactive_linkid_bitmap;
 
 	/* convert link id to vdev id and update vdev status based
 	 * on both inactive and active bitmap.
@@ -4955,22 +5007,24 @@ policy_mgr_handle_vdev_active_inactive_resp(
 	ml_nlink_get_dynamic_inactive_links(psoc, vdev,
 					    &dynamic_inactive_bitmap,
 					    &forced_inactive_bitmap);
-	resp->inactive_linkid_bitmap |= dynamic_inactive_bitmap;
+	inactive_linkid_bitmap |= dynamic_inactive_bitmap;
 	ml_nlink_convert_linkid_bitmap_to_vdev_bitmap(
-		psoc, vdev, resp->inactive_linkid_bitmap,
+		psoc, vdev, inactive_linkid_bitmap,
 		&assoc_bitmap,
 		&resp->inactive_sz, resp->inactive,
 		&vdev_id_num, vdev_ids);
 
 	ml_nlink_convert_linkid_bitmap_to_vdev_bitmap(
 		psoc, vdev,
-		(~resp->inactive_linkid_bitmap) & assoc_bitmap,
+		(~inactive_linkid_bitmap) & assoc_bitmap,
 		NULL,
 		&resp->active_sz, resp->active,
 		&vdev_id_num, vdev_ids);
+
 	for (i = 0; i < resp->inactive_sz; i++)
 		policy_mgr_enable_disable_link_from_vdev_bitmask(
 				psoc, 0, resp->inactive[i], i * 32);
+
 	for (i = 0; i < resp->active_sz; i++)
 		policy_mgr_enable_disable_link_from_vdev_bitmask(
 				psoc, resp->active[i], 0, i * 32);
@@ -9381,6 +9435,7 @@ policy_mgr_is_link_active_allowed(struct wlan_objmgr_psoc *psoc,
 	uint16_t ch_freq, iter;
 	struct wlan_channel *chan_info;
 	struct mlo_link_info *link_info;
+	unsigned long act_link_bitmap = active_link_bitmap;
 
 	link_info = &vdev->mlo_dev_ctx->link_ctx->links_info[0];
 	for (iter = 0; iter < WLAN_MAX_ML_BSS_LINKS; iter++) {
@@ -9398,7 +9453,7 @@ policy_mgr_is_link_active_allowed(struct wlan_objmgr_psoc *psoc,
 		ch_freq = chan_info->ch_freq;
 
 		if (qdf_test_bit(link_info->link_id,
-		    (unsigned long *)&active_link_bitmap) &&
+		    &act_link_bitmap) &&
 		    (wlan_reg_freq_to_band((qdf_freq_t)ch_freq) ==
 		     REG_BAND_2G)) {
 			policy_mgr_err("vdev: %d Invalid link activation for link: %d at freq: %d",

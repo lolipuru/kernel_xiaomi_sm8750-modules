@@ -726,7 +726,8 @@ void lim_fill_dfs_p2p_group_params(struct pe_session *pe_session)
 	dfs_p2p_info = &pe_session->dfs_p2p_info;
 	qdf_mem_zero(dfs_p2p_info, sizeof(*dfs_p2p_info));
 	if (!wlan_reg_is_dfs_for_freq(wlan_vdev_get_pdev(pe_session->vdev),
-				      pe_session->curr_op_freq)) {
+				      pe_session->curr_op_freq) ||
+	    !wlan_p2p_is_vdev_wfd_r2_mode(pe_session->vdev)) {
 		return;
 	}
 
@@ -2487,12 +2488,14 @@ lim_roam_fill_bss_descr(struct mac_context *mac,
 	bss_desc_ptr->beaconInterval = parsed_frm_ptr->beaconInterval;
 	bss_desc_ptr->timeStamp[0]   = parsed_frm_ptr->timeStamp[0];
 	bss_desc_ptr->timeStamp[1]   = parsed_frm_ptr->timeStamp[1];
-	qdf_mem_copy(&bss_desc_ptr->capabilityInfo,
-	&bcn_proberesp_ptr[SIR_MAC_HDR_LEN_3A + SIR_MAC_B_PR_CAPAB_OFFSET], 2);
-
+	bss_desc_ptr->capabilityInfo =
+			lim_get_u16((uint8_t *)&parsed_frm_ptr->capabilityInfo);
 	qdf_mem_copy((uint8_t *) &bss_desc_ptr->bssId,
 		     (uint8_t *)&bssid.bytes,
 		     sizeof(tSirMacAddr));
+	pe_debug("Non-tx bss desc: privacy bit: %d, bssid " QDF_MAC_ADDR_FMT,
+		 SIR_MAC_GET_PRIVACY(bss_desc_ptr->capabilityInfo),
+		 QDF_MAC_ADDR_REF(bss_desc_ptr->bssId));
 
 	if (parsed_frm_ptr->mdiePresent) {
 		bss_desc_ptr->mdiePresent = parsed_frm_ptr->mdiePresent;
@@ -2724,7 +2727,7 @@ end:
 	}
 
 	if (mac->sme.set_disconnect_link_info_cb)
-		mac->sme.set_disconnect_link_info_cb(session->vdev_id);
+		mac->sme.set_disconnect_link_info_cb(session->vdev_id, true);
 
 	lim_tear_down_link_with_ap(mac, session->peSessionId,
 				   reason_code,
@@ -3077,6 +3080,7 @@ pe_roam_synch_callback(struct mac_context *mac_ctx,
 	struct qdf_mac_addr bssid;
 	uint8_t *oui_ie_ptr;
 	uint16_t oui_ie_len;
+	bool tpe_change = false;
 
 	if (!roam_sync_ind_ptr) {
 		pe_err("LFR3:roam_sync_ind_ptr is NULL");
@@ -3197,7 +3201,7 @@ pe_roam_synch_callback(struct mac_context *mac_ctx,
 	/* Next routine may update nss based on dot11Mode */
 
 	lim_ft_prepare_add_bss_req(mac_ctx, ft_session_ptr, bss_desc);
-	lim_set_tpc_power(mac_ctx, ft_session_ptr, bss_desc);
+	lim_process_tpe_ie_from_beacon(mac_ctx, ft_session_ptr, bss_desc, &tpe_change);
 
 	if (session_ptr->is11Rconnection)
 		lim_fill_fils_ft(session_ptr, ft_session_ptr);
@@ -3859,7 +3863,7 @@ lim_cm_fill_link_session(struct mac_context *mac_ctx,
 	}
 
 	status = lim_fill_pe_session(mac_ctx, pe_session, bss_desc,
-				     sync_ind->phy_mode);
+				     sync_ind->phy_mode, NULL);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		pe_err("Failed to fill pe session vdev id %d",
 		       pe_session->vdev_id);

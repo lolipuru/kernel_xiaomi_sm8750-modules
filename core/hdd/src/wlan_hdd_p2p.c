@@ -304,7 +304,7 @@ __wlan_hdd_cfg80211_cancel_remain_on_channel(struct wiphy *wiphy,
 	hdd_debug("Cancel RoC req: vdev:%d adapter_device_mode:%d vdev_device_mode:%d",
 		  wlan_vdev_get_id(vdev), adapter->device_mode,
 		  wlan_vdev_mlme_get_opmode(vdev));
-	status = wlan_cfg80211_cancel_roc(vdev, cookie);
+	status = wlan_cfg80211_cancel_roc(vdev, cookie, adapter->device_mode);
 	hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_P2P_ID);
 
 	hdd_debug("cancel remain on channel, status:%d", status);
@@ -570,7 +570,8 @@ static int __wlan_hdd_cfg80211_mgmt_tx_cancel_wait(struct wiphy *wiphy,
 	hdd_debug("cancel mgmt tx, vdev:%d adapter_device_mode:%d vdev_device_mode:%d opmode:%d",
 		  wlan_vdev_get_id(vdev), adapter->device_mode,
 		  wlan_vdev_mlme_get_opmode(vdev), opmode);
-	status = wlan_cfg80211_mgmt_tx_cancel(vdev, cookie);
+	status = wlan_cfg80211_mgmt_tx_cancel(vdev, cookie,
+					      adapter->device_mode);
 	hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_P2P_ID);
 
 	hdd_debug("cancel mgmt tx, status:%d", status);
@@ -2039,6 +2040,55 @@ int wlan_hdd_cfg80211_p2p_send_usd_cmd(struct wiphy *wiphy,
 	errno = __wlan_hdd_cfg80211_p2p_send_usd_cmd(wiphy, wdev, data,
 						     data_len);
 
+	osif_vdev_sync_op_stop(vdev_sync);
+
+	return errno;
+}
+
+/**
+ * __wlan_hdd_cfg80211_p2p_parse_wfd_params - This function parse P2P mode
+ * params
+ * @wiphy: pointer to wiphy structure
+ * @wdev: pointer to wireless device
+ * @data: pointer to data
+ * @data_len: data length
+ *
+ * Return: 0 on success, negative errno if error
+ */
+static int __wlan_hdd_cfg80211_p2p_parse_wfd_params(struct wiphy *wiphy,
+						    struct wireless_dev *wdev,
+						    const void *data,
+						    int data_len)
+{
+	int ret;
+	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(wdev->netdev);
+
+	if (hdd_get_conparam() == QDF_GLOBAL_FTM_MODE ||
+	    hdd_get_conparam() == QDF_GLOBAL_MONITOR_MODE) {
+		hdd_err_rl("Command not allowed in FTM/Monitor mode");
+		return -EPERM;
+	}
+
+	ret = wlan_hdd_validate_context(adapter->hdd_ctx);
+	if (ret)
+		return ret;
+
+	return osif_p2p_parse_wfd_params(adapter, data, data_len);
+}
+
+int wlan_hdd_cfg80211_p2p_parse_wfd_params(struct wiphy *wiphy,
+					   struct wireless_dev *wdev,
+					   const void *data, int data_len)
+{
+	struct osif_vdev_sync *vdev_sync;
+	int errno;
+
+	errno = osif_vdev_sync_op_start(wdev->netdev, &vdev_sync);
+	if (errno)
+		return errno;
+
+	errno = __wlan_hdd_cfg80211_p2p_parse_wfd_params(wiphy, wdev, data,
+							 data_len);
 	osif_vdev_sync_op_stop(vdev_sync);
 
 	return errno;

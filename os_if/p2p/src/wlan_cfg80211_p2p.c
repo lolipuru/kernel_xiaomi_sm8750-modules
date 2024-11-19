@@ -37,6 +37,7 @@
 #include "wlan_mlo_mgr_sta.h"
 #include "wlan_mlme_api.h"
 #include "osif_vdev_mgr_util.h"
+#include "wlan_hdd_main.h"
 
 #define MAX_NO_OF_2_4_CHANNELS 14
 #define MAX_OFFCHAN_TIME_FOR_DNBS 150
@@ -95,9 +96,15 @@ p2p_usd_attr_policy[QCA_WLAN_VENDOR_ATTR_USD_MAX + 1] = {
 		.type = NLA_U8,
 	},
 };
+
+const struct nla_policy
+p2p_wfdr2_attr_policy[QCA_WLAN_VENDOR_ATTR_SET_P2P_MODE_MAX + 1] = {
+	[QCA_WLAN_VENDOR_ATTR_SET_P2P_MODE_CONFIG] = {.type = NLA_U8,},
+};
 #endif /* FEATURE_WLAN_SUPPORT_USD */
 
 #define DST_MAC_ADDRESS_OFFSET 4
+#define MGMT_FRAME_MATCH_LEN 6
 
 /**
  * wlan_p2p_rx_callback() - Callback for rx mgmt frame
@@ -117,9 +124,10 @@ static void wlan_p2p_rx_callback(void *user_data,
 	struct wireless_dev *wdev;
 	enum QDF_OPMODE opmode;
 	uint32_t mgmt_frm_registration_update = 0;
-	struct wireless_dev p2p_wdev = {0};
 	uint8_t *dst_macaddr = NULL;
 	struct qdf_mac_addr p2p_mac_addr = {0};
+	uint8_t match[MGMT_FRAME_MATCH_LEN] = {0}, hdr_len;
+	bool ret = false;
 
 	psoc = user_data;
 	if (!psoc) {
@@ -156,8 +164,7 @@ static void wlan_p2p_rx_callback(void *user_data,
 	    (QDF_IS_ADDR_BROADCAST(dst_macaddr) ||
 	     qdf_mem_cmp(dst_macaddr, p2p_mac_addr.bytes,
 			QDF_MAC_ADDR_SIZE) == 0)) {
-		osif_vdev_mgr_get_p2p_wdev(&p2p_wdev);
-		wdev = &p2p_wdev;
+		wdev = osif_vdev_mgr_get_p2p_wdev();
 	} else {
 		assoc_vdev = vdev;
 		opmode = wlan_vdev_mlme_get_opmode(assoc_vdev);
@@ -183,21 +190,29 @@ static void wlan_p2p_rx_callback(void *user_data,
 		osif_err("wdev is null");
 		goto fail;
 	}
-	osif_debug("Indicate frame over nl80211, idx:%d and interface %s",
-		   wdev->netdev->ifindex, wdev->netdev->name);
+
+	hdr_len = ieee80211_hdrlen(rx_frame->buf[0]);
+	qdf_mem_copy(match, rx_frame->buf + hdr_len,
+		     QDF_MIN(MGMT_FRAME_MATCH_LEN,
+			     rx_frame->frame_len - hdr_len));
+	osif_debug("Indicate frame over nl80211, idx:%d and interface %s FC: 0x%x match: %02x%02x%02x%02x%02x%02x",
+		   wdev->netdev->ifindex, wdev->netdev->name, rx_frame->buf[0],
+		   match[0], match[1], match[2], match[3], match[4], match[5]);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
-	cfg80211_rx_mgmt(wdev, rx_frame->rx_freq, rx_frame->rx_rssi * 100,
-			 rx_frame->buf, rx_frame->frame_len,
-			 NL80211_RXMGMT_FLAG_ANSWERED);
+	ret = cfg80211_rx_mgmt(wdev, rx_frame->rx_freq, rx_frame->rx_rssi * 100,
+			       rx_frame->buf, rx_frame->frame_len,
+			       NL80211_RXMGMT_FLAG_ANSWERED);
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 12, 0))
-	cfg80211_rx_mgmt(wdev, rx_frame->rx_freq, rx_frame->rx_rssi * 100,
-			 rx_frame->buf, rx_frame->frame_len,
-			 NL80211_RXMGMT_FLAG_ANSWERED, GFP_ATOMIC);
+	ret = cfg80211_rx_mgmt(wdev, rx_frame->rx_freq, rx_frame->rx_rssi * 100,
+			       rx_frame->buf, rx_frame->frame_len,
+			       NL80211_RXMGMT_FLAG_ANSWERED, GFP_ATOMIC);
 #else
-	cfg80211_rx_mgmt(wdev, rx_frame->rx_freq, rx_frame->rx_rssi * 100,
-			 rx_frame->buf, rx_frame->frame_len, GFP_ATOMIC);
+	ret = cfg80211_rx_mgmt(wdev, rx_frame->rx_freq, rx_frame->rx_rssi * 100,
+			       rx_frame->buf, rx_frame->frame_len, GFP_ATOMIC);
 #endif /* LINUX_VERSION_CODE */
+	osif_debug("indicated frame to userspace: %s",
+		   ret ? "Success" : "Fail");
 fail:
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_P2P_ID);
 }
@@ -221,7 +236,6 @@ static void wlan_p2p_action_tx_cnf_callback(void *user_data,
 	struct vdev_osif_priv *osif_priv;
 	struct wireless_dev *wdev;
 	bool is_success;
-	struct wireless_dev p2p_wdev = {0};
 	uint8_t *src_macaddr;
 	struct qdf_mac_addr p2p_mac_addr = {0};
 
@@ -246,8 +260,7 @@ static void wlan_p2p_action_tx_cnf_callback(void *user_data,
 	    src_macaddr &&
 	    (qdf_mem_cmp(src_macaddr, p2p_mac_addr.bytes,
 			 QDF_MAC_ADDR_SIZE) == 0)) {
-		osif_vdev_mgr_get_p2p_wdev(&p2p_wdev);
-		wdev = &p2p_wdev;
+		wdev = osif_vdev_mgr_get_p2p_wdev();
 	} else {
 		osif_priv = wlan_vdev_get_ospriv(vdev);
 		if (!osif_priv) {
@@ -377,7 +390,6 @@ static void wlan_p2p_event_callback(void *user_data,
 	struct vdev_osif_priv *osif_priv;
 	struct wireless_dev *wdev;
 	struct wlan_objmgr_pdev *pdev;
-	struct wireless_dev p2p_wdev = {0};
 	uint8_t flag;
 
 	osif_debug("user data:%pK, vdev id:%d, event type:%d opmode:%d",
@@ -404,8 +416,7 @@ static void wlan_p2p_event_callback(void *user_data,
 	flag = (p2p_event->flag & P2P_SCAN_IN_STA_VDEV_FLAG);
 	if (p2p_event->opmode == QDF_P2P_DEVICE_MODE && flag &&
 	    ucfg_p2p_is_sta_vdev_usage_allowed_for_p2p_dev(psoc)) {
-		osif_vdev_mgr_get_p2p_wdev(&p2p_wdev);
-		wdev = &p2p_wdev;
+		wdev = osif_vdev_mgr_get_p2p_wdev();
 	} else {
 		osif_priv = wlan_vdev_get_ospriv(vdev);
 		if (!osif_priv) {
@@ -531,8 +542,8 @@ int wlan_cfg80211_roc(struct wlan_objmgr_vdev *vdev,
 		ucfg_p2p_roc_req(psoc, &roc_req, cookie, opmode));
 }
 
-int wlan_cfg80211_cancel_roc(struct wlan_objmgr_vdev *vdev,
-		uint64_t cookie)
+int wlan_cfg80211_cancel_roc(struct wlan_objmgr_vdev *vdev, uint64_t cookie,
+			     enum QDF_OPMODE opmode)
 {
 	struct wlan_objmgr_psoc *psoc;
 
@@ -548,7 +559,7 @@ int wlan_cfg80211_cancel_roc(struct wlan_objmgr_vdev *vdev,
 	}
 
 	return qdf_status_to_os_return(
-		ucfg_p2p_roc_cancel_req(psoc, cookie));
+		ucfg_p2p_roc_cancel_req(psoc, vdev, cookie, opmode));
 }
 
 int wlan_cfg80211_mgmt_tx(struct wlan_objmgr_vdev *vdev,
@@ -616,7 +627,7 @@ int wlan_cfg80211_mgmt_tx(struct wlan_objmgr_vdev *vdev,
 }
 
 int wlan_cfg80211_mgmt_tx_cancel(struct wlan_objmgr_vdev *vdev,
-	uint64_t cookie)
+				 uint64_t cookie, enum QDF_OPMODE opmode)
 {
 	struct wlan_objmgr_psoc *psoc;
 
@@ -632,7 +643,7 @@ int wlan_cfg80211_mgmt_tx_cancel(struct wlan_objmgr_vdev *vdev,
 	}
 
 	return qdf_status_to_os_return(
-		ucfg_p2p_mgmt_tx_cancel(psoc, vdev, cookie));
+		ucfg_p2p_mgmt_tx_cancel(psoc, vdev, cookie, opmode));
 }
 
 #ifdef FEATURE_WLAN_SUPPORT_USD
@@ -922,6 +933,67 @@ mem_free:
 		qdf_mem_free(usd_param->frame.data);
 
 	qdf_mem_free(usd_param);
+
+	return ret;
+}
+
+/**
+ * osif_p2p_mode_convert_qca_enum_to_p2p_enum() - This API converts
+ * QCA_P2P_MODE_WFD_XX to P2P_MODE_WFD_XX
+ *
+ * @qca_type: QCA WLAN vendor attribute WFD mode type
+ * @p2p_type: pointer to P2P mode type
+ *
+ * Return: 0 in case of success else error value
+ */
+static int
+osif_p2p_mode_convert_qca_enum_to_p2p_enum(enum qca_wlan_vendor_p2p_mode qca_type,
+					   enum p2p_mode_type *p2p_type)
+{
+	switch (qca_type) {
+	case QCA_P2P_MODE_WFD_R1:
+		*p2p_type = P2P_MODE_WFD_R1;
+		break;
+	case QCA_P2P_MODE_WFD_R2:
+		*p2p_type = P2P_MODE_WFD_R2;
+		break;
+	case QCA_P2P_MODE_WFD_PCC:
+		*p2p_type = P2P_MODE_WFD_PCC;
+		break;
+	default:
+		osif_debug("invalid p2p mode type %d", qca_type);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int osif_p2p_parse_wfd_params(struct hdd_adapter *adapter, const void *data,
+			      int data_len)
+{
+	struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_SET_P2P_MODE_MAX + 1];
+	enum qca_wlan_vendor_p2p_mode qca_enum;
+	enum p2p_mode_type p2p_enum;
+	int ret = 0;
+
+	/* Parse and fetch USD params*/
+	if (wlan_cfg80211_nla_parse(tb, QCA_WLAN_VENDOR_ATTR_SET_P2P_MODE_MAX,
+				    data, data_len, p2p_wfdr2_attr_policy)) {
+		osif_debug("Invalid P2P vendor command attributes");
+		return -EINVAL;
+	}
+
+	if (!tb[QCA_WLAN_VENDOR_ATTR_SET_P2P_MODE_CONFIG]) {
+		osif_debug("P2P USD OP type parse failed");
+		return -EINVAL;
+	}
+
+	qca_enum = nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_SET_P2P_MODE_CONFIG]);
+	osif_debug("p2p_mode %d", qca_enum);
+
+	ret = osif_p2p_mode_convert_qca_enum_to_p2p_enum(qca_enum, &p2p_enum);
+	if (!ret)
+		adapter->wfd_mode = p2p_enum;
 
 	return ret;
 }

@@ -32,6 +32,7 @@
 #include "../../core/src/wlan_p2p_roc.h"
 #include "../../core/src/wlan_p2p_off_chan_tx.h"
 #include "target_if.h"
+#include "wlan_mlme_api.h"
 
 static inline struct wlan_lmac_if_p2p_tx_ops *
 ucfg_p2p_psoc_get_tx_ops(struct wlan_objmgr_psoc *psoc)
@@ -149,6 +150,16 @@ QDF_STATUS ucfg_p2p_roc_req(struct wlan_objmgr_psoc *soc,
 		p2p_err("failed to alloc idr, status %d", status);
 		return status;
 	}
+	if (opmode == QDF_P2P_DEVICE_MODE &&
+	    p2p_is_sta_vdev_usage_allowed_for_p2p_dev(soc)) {
+		status = wlan_p2p_set_rand_mac_for_p2p_dev(soc,
+							   roc_req->vdev_id,
+							   roc_req->chan_freq,
+							   id,
+							   roc_req->duration);
+		if (QDF_IS_STATUS_ERROR(status))
+			goto done;
+	}
 
 	*cookie = (uint64_t)id;
 	roc_ctx->p2p_soc_obj = p2p_soc_obj;
@@ -167,6 +178,7 @@ QDF_STATUS ucfg_p2p_roc_req(struct wlan_objmgr_psoc *soc,
 					QDF_MODULE_ID_P2P,
 					QDF_MODULE_ID_OS_IF,
 					&msg);
+done:
 	if (QDF_IS_STATUS_ERROR(status)) {
 		qdf_mem_free(roc_ctx);
 		qdf_idr_remove(&p2p_soc_obj->p2p_idr, id);
@@ -178,7 +190,9 @@ QDF_STATUS ucfg_p2p_roc_req(struct wlan_objmgr_psoc *soc,
 }
 
 QDF_STATUS ucfg_p2p_roc_cancel_req(struct wlan_objmgr_psoc *soc,
-	uint64_t cookie)
+				   struct wlan_objmgr_vdev *vdev,
+				   uint64_t cookie,
+				   enum QDF_OPMODE opmode)
 {
 	struct scheduler_msg msg = {0};
 	struct p2p_soc_priv_obj *p2p_soc_obj;
@@ -206,6 +220,13 @@ QDF_STATUS ucfg_p2p_roc_cancel_req(struct wlan_objmgr_psoc *soc,
 		p2p_debug("invalid id for cookie 0x%llx", cookie);
 		return QDF_STATUS_E_INVAL;
 	}
+
+	/* Filter gets cleaned up as part of P2P-GO off */
+	if (opmode == QDF_P2P_DEVICE_MODE &&
+
+	    p2p_is_sta_vdev_usage_allowed_for_p2p_dev(soc) &&
+	    !policy_mgr_mode_specific_get_channel(soc, PM_P2P_GO_MODE))
+		p2p_del_random_mac(soc, wlan_vdev_get_id(vdev), cookie);
 
 	cancel_roc = qdf_mem_malloc(sizeof(*cancel_roc));
 	if (!cancel_roc)
@@ -384,7 +405,9 @@ QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
 }
 
 QDF_STATUS ucfg_p2p_mgmt_tx_cancel(struct wlan_objmgr_psoc *soc,
-	struct wlan_objmgr_vdev *vdev, uint64_t cookie)
+				   struct wlan_objmgr_vdev *vdev,
+				   uint64_t cookie,
+				   enum QDF_OPMODE opmode)
 {
 	struct scheduler_msg msg = {0};
 	struct p2p_soc_priv_obj *p2p_soc_obj;
@@ -412,7 +435,11 @@ QDF_STATUS ucfg_p2p_mgmt_tx_cancel(struct wlan_objmgr_psoc *soc,
 		p2p_debug("invalid id for cookie 0x%llx", cookie);
 		return QDF_STATUS_E_INVAL;
 	}
-	p2p_del_random_mac(soc, wlan_vdev_get_id(vdev), cookie);
+	/* Filter gets cleaned up as part of P2P-GO off */
+	if (opmode == QDF_P2P_DEVICE_MODE &&
+	    ucfg_p2p_is_sta_vdev_usage_allowed_for_p2p_dev(soc) &&
+	    !policy_mgr_mode_specific_get_channel(soc, PM_P2P_GO_MODE))
+		p2p_del_random_mac(soc, wlan_vdev_get_id(vdev), cookie);
 
 	cancel_tx = qdf_mem_malloc(sizeof(*cancel_tx));
 	if (!cancel_tx)
@@ -754,6 +781,11 @@ bool ucfg_p2p_is_fw_support_usd(struct wlan_objmgr_psoc *psoc)
 	return p2p_is_fw_support_usd(psoc);
 }
 #endif /* FEATURE_WLAN_SUPPORT_USD */
+
+bool ucfg_p2p_is_vdev_wfd_r2_mode(struct wlan_objmgr_vdev *vdev)
+{
+	return p2p_is_vdev_wfd_r2_mode(vdev);
+}
 
 bool ucfg_p2p_fw_support_ap_assist_dfs_group(struct wlan_objmgr_psoc *psoc)
 {

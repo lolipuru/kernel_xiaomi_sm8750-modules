@@ -1303,7 +1303,7 @@ static void mlme_init_mgmt_hw_tx_retry_count_cfg(
 static void mlme_init_emlsr_mode(struct wlan_objmgr_psoc *psoc,
 				 struct wlan_mlme_generic *gen)
 {
-	gen->enable_emlsr_mode = cfg_default(CFG_EMLSR_MODE_ENABLE);
+	gen->enable_emlsr_mode = cfg_get(psoc, CFG_ENABLE_EMLSR_MODE);
 	gen->enable_sap_emlsr_mode = cfg_get(psoc, CFG_SAP_EMLSR_MODE_ENABLE);
 }
 
@@ -1963,6 +1963,9 @@ static void mlme_init_dfs_cfg(struct wlan_objmgr_psoc *psoc,
 		cfg_get(psoc, CFG_DFS_RADAR_PRI_MULTIPLIER);
 	dfs_cfg->enable_sap_dfs_puncture =
 		cfg_get(psoc, CFG_ENABLE_SAP_DFS_PUNCTURE);
+	dfs_cfg->dfs_discard_mode =
+		cfg_get(psoc, CFG_DISCARD_DFS_CHANNEL_FOR_MODE);
+
 }
 
 static void mlme_init_feature_flag_in_cfg(
@@ -6051,3 +6054,49 @@ mlme_get_p2p_device_mac_addr(struct wlan_objmgr_vdev *vdev,
 
 	return QDF_STATUS_SUCCESS;
 }
+
+QDF_STATUS
+mlme_set_p2p_device_seq_num(struct wlan_objmgr_vdev *vdev, uint16_t seq_num)
+{
+	struct vdev_mlme_obj *vdev_mlme;
+
+	vdev_mlme = wlan_vdev_mlme_get_cmpt_obj(vdev);
+	if (!vdev_mlme)
+		return QDF_STATUS_E_FAILURE;
+
+	vdev_mlme->p2p_dev_data.seq_num = seq_num;
+
+	return QDF_STATUS_SUCCESS;
+}
+
+uint16_t mlme_get_p2p_device_seq_num(struct wlan_objmgr_vdev *vdev)
+{
+	struct vdev_mlme_obj *vdev_mlme;
+
+	vdev_mlme = wlan_vdev_mlme_get_cmpt_obj(vdev);
+	if (!vdev_mlme)
+		return 0;
+
+	return vdev_mlme->p2p_dev_data.seq_num;
+}
+
+#ifdef FEATURE_WLAN_SUPPORT_USD
+uint8_t wlan_get_wfd_mode_from_vdev_id(struct wlan_objmgr_psoc *psoc,
+				       uint8_t vdev_id)
+{
+	struct wlan_objmgr_vdev *vdev;
+	uint8_t wfd_mode = P2P_MODE_WFD_INVALID;
+
+	if (!psoc)
+		return wfd_mode;
+
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, vdev_id, WLAN_P2P_ID);
+	if (!vdev)
+		return wfd_mode;
+
+	wfd_mode = wlan_vdev_mlme_get_wfd_mode(vdev);
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_P2P_ID);
+
+	return wfd_mode;
+}
+#endif

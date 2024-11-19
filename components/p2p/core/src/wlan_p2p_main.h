@@ -51,7 +51,9 @@
 #define p2p_debug_rl(params...) \
 	QDF_TRACE_DEBUG_RL(QDF_MODULE_ID_P2P, params)
 #define p2p_info_rl(params...) \
-		QDF_TRACE_INFO_RL(QDF_MODULE_ID_P2P, params)
+	QDF_TRACE_INFO_RL(QDF_MODULE_ID_P2P, params)
+#define p2p_err_rl(params...) \
+	QDF_TRACE_ERROR_RL(QDF_MODULE_ID_P2P, params)
 
 #define p2p_alert(params ...) \
 	QDF_TRACE_FATAL(QDF_MODULE_ID_P2P, params)
@@ -745,6 +747,20 @@ QDF_STATUS p2p_send_usd_params(struct wlan_objmgr_psoc *psoc,
  * Return: true if USD is supported by FW else false
  */
 bool p2p_is_fw_support_usd(struct wlan_objmgr_psoc *psoc);
+
+/**
+ * p2p_is_vdev_wfd_r2_mode() - Returns true if current mode of VDEV operation
+ * is WFD-R2.
+ * @vdev: VDEV object manager.
+ *
+ * Return: bool
+ */
+bool p2p_is_vdev_wfd_r2_mode(struct wlan_objmgr_vdev *vdev);
+#else
+static inline bool p2p_is_vdev_wfd_r2_mode(struct wlan_objmgr_vdev *vdev)
+{
+	return false;
+}
 #endif /* FEATURE_WLAN_SUPPORT_USD */
 
 /**
@@ -915,5 +931,21 @@ void p2p_psoc_priv_set_sta_vdev_id(struct wlan_objmgr_psoc *psoc,
  * Return: uint8_t
  */
 uint8_t p2p_psoc_priv_get_sta_vdev_id(struct wlan_objmgr_psoc *psoc);
+
+/**
+ * p2p_set_rand_mac_for_p2p_dev() - set P2P device mac addr to rx filters
+ * @soc: pointer to psoc
+ * @vdev_id: vdev id to fetch p2p_vdev_priv_obj
+ * @freq: frequency on which the filtering(allow) is expected
+ * @rnd_cookie: cookie value
+ * @duration: duration of the filter validity. p2p_mac_clear_timeout() is called
+ *            and filter would be removed upon timeout, if not removed already
+ *
+ * Return: None
+ */
+QDF_STATUS
+p2p_set_rand_mac_for_p2p_dev(struct wlan_objmgr_psoc *soc,
+			     uint32_t vdev_id, uint32_t freq,
+			     uint64_t rnd_cookie, uint32_t duration);
 
 #endif /* _WLAN_P2P_MAIN_H_ */

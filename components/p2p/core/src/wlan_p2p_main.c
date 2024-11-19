@@ -1966,8 +1966,6 @@ p2p_set_mgmt_frm_registration_update(struct wlan_objmgr_psoc *psoc,
 
 	p2p_soc_obj->mgmt_frm_registration_update =
 				mgmt_frm_registration_update;
-	p2p_debug("set mgmt regis update value %u",
-		  p2p_soc_obj->mgmt_frm_registration_update);
 }
 
 uint32_t
@@ -2000,6 +1998,19 @@ bool p2p_is_fw_support_usd(struct wlan_objmgr_psoc *psoc)
 {
 	return tgt_p2p_is_fw_support_usd(psoc);
 }
+
+bool p2p_is_vdev_wfd_r2_mode(struct wlan_objmgr_vdev *vdev)
+{
+	uint8_t wfd_mode;
+
+	wfd_mode = wlan_get_wfd_mode_from_vdev_id(wlan_vdev_get_psoc(vdev),
+						  wlan_vdev_get_id(vdev));
+	if (wfd_mode != P2P_MODE_WFD_R2 &&
+	    wfd_mode != P2P_MODE_WFD_PCC)
+		return false;
+
+	return true;
+}
 #endif /* FEATURE_WLAN_SUPPORT_USD */
 
 bool p2p_fw_support_ap_assist_dfs_group(struct wlan_objmgr_psoc *psoc)
@@ -2021,6 +2032,9 @@ bool p2p_fw_support_ap_assist_dfs_group(struct wlan_objmgr_psoc *psoc)
 
 QDF_STATUS p2p_validate_ap_assist_dfs_group(struct wlan_objmgr_vdev *vdev)
 {
+	if (!p2p_is_vdev_wfd_r2_mode(vdev))
+		return QDF_STATUS_SUCCESS;
+
 	switch (wlan_vdev_mlme_get_opmode(vdev)) {
 	case QDF_P2P_GO_MODE:
 		return p2p_check_ap_assist_dfs_group_go_with_csa(vdev);
@@ -2302,4 +2316,32 @@ uint8_t p2p_psoc_priv_get_sta_vdev_id(struct wlan_objmgr_psoc *psoc)
 	}
 
 	return p2p_soc_obj->sta_vdev_id;
+}
+
+QDF_STATUS
+p2p_set_rand_mac_for_p2p_dev(struct wlan_objmgr_psoc *soc,
+			     uint32_t vdev_id, uint32_t freq,
+			     uint64_t rnd_cookie, uint32_t duration)
+{
+	struct wlan_objmgr_vdev *vdev;
+	struct qdf_mac_addr mac_addr = {0};
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(soc,
+			    p2p_psoc_priv_get_sta_vdev_id(soc), WLAN_P2P_ID);
+	if (!vdev) {
+		p2p_err("Invalid vdev");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	wlan_mlme_get_p2p_device_mac_addr(vdev, &mac_addr);
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_P2P_ID);
+
+	status = p2p_request_random_mac(soc, vdev_id, mac_addr.bytes,
+					freq, rnd_cookie, duration);
+	if (QDF_IS_STATUS_ERROR(status))
+		p2p_err("vdev %d failed to set rand mac" QDF_MAC_ADDR_FMT " status: %d",
+			vdev_id, QDF_MAC_ADDR_REF(mac_addr.bytes), status);
+
+	return status;
 }

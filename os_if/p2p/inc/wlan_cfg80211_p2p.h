@@ -29,6 +29,7 @@
 struct wlan_objmgr_psoc;
 struct wlan_objmgr_vdev;
 struct ieee80211_channel;
+struct hdd_adapter;
 
 /**
  * p2p_psoc_enable() - psoc API to enable p2p component
@@ -72,13 +73,14 @@ int wlan_cfg80211_roc(struct wlan_objmgr_vdev *vdev,
  * on channel request
  * @vdev: Pointer to vdev object
  * @cookie: Find out the roc request by cookie
+ * @opmode: OPMODE for which the current roc_cancel is issued
  *
  * API to trigger cancel remain on channel request.
  *
  * Return: 0 for success, non zero for failure
  */
-int wlan_cfg80211_cancel_roc(struct wlan_objmgr_vdev *vdev,
-	uint64_t cookie);
+int wlan_cfg80211_cancel_roc(struct wlan_objmgr_vdev *vdev, uint64_t cookie,
+			     enum QDF_OPMODE opmode);
 
 /**
  * wlan_cfg80211_mgmt_tx() - API to process cfg80211 mgmt tx request
@@ -109,13 +111,14 @@ int wlan_cfg80211_mgmt_tx(struct wlan_objmgr_vdev *vdev,
  * wait mgmt tx
  * @vdev: Pointer to vdev object
  * @cookie: Find out the mgmt tx request by cookie
+ * @opmode: OPMODE for which the current mgmt_tx_cancel is issued
  *
  * API to trigger cancel mgmt frame tx request.
  *
  * Return: 0 for success, non zero for failure
  */
 int wlan_cfg80211_mgmt_tx_cancel(struct wlan_objmgr_vdev *vdev,
-		uint64_t cookie);
+				 uint64_t cookie, enum QDF_OPMODE opmode);
 
 #ifdef FEATURE_WLAN_SUPPORT_USD
 /**
@@ -160,6 +163,18 @@ p2p_usd_attr_policy[QCA_WLAN_VENDOR_ATTR_USD_MAX + 1];
 	vendor_command_policy(p2p_usd_attr_policy,		\
 			      QCA_WLAN_VENDOR_ATTR_USD_MAX)	\
 },
+
+/**
+ * osif_p2p_parse_wfd_params - This function parse P2P mode params
+ * @adapter: pointer to adapter object
+ * @data: pointer to data
+ * @data_len: data length
+ *
+ * Return: 0 on success, negative errno if error
+ */
+int osif_p2p_parse_wfd_params(struct hdd_adapter *adapter, const void *data,
+			      int data_len);
+
 #else
 #define FEATURE_P2P_SECURE_USD_VENDOR_COMMANDS
 #endif /* FEATURE_WLAN_SUPPORT_USD */

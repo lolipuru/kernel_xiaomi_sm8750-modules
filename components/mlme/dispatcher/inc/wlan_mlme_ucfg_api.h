@@ -5643,7 +5643,6 @@ uint16_t ucfg_mlme_get_keepalive_period(struct wlan_objmgr_vdev *vdev)
 QDF_STATUS
 ucfg_mlme_get_dfs_discard_mode(struct wlan_objmgr_psoc *psoc,
 			       uint8_t *val);
-
 /**
  * ucfg_mlme_set_p2p_device_mac_addr - set p2p device interface mac
  * address to stat vdev mlme object

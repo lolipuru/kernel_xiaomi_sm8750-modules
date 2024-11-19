@@ -213,14 +213,18 @@ QDF_STATUS ucfg_p2p_roc_req(struct wlan_objmgr_psoc *soc,
 /**
  * ucfg_p2p_roc_cancel_req() - Cancel roc request
  * @soc: soc context
+ * @vdev: pointer to vdev object
  * @cookie: Find out the roc request by cookie
+ * @opmode: OPMODE for which the current roc_cancel is issued
  *
  * This function delivers cancel roc request to P2P component.
  *
  * Return: QDF_STATUS_SUCCESS - in case of success
  */
 QDF_STATUS ucfg_p2p_roc_cancel_req(struct wlan_objmgr_psoc *soc,
-	uint64_t cookie);
+				   struct wlan_objmgr_vdev *vdev,
+				   uint64_t cookie,
+				   enum QDF_OPMODE opmode);
 
 /**
  * ucfg_p2p_cleanup_roc_by_vdev() - Cleanup roc request by vdev
@@ -283,6 +287,7 @@ QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
  * @soc: soc context
  * @vdev: vdev object
  * @cookie: Find out the mgmt tx request by cookie
+ * @opmode: OPMODE for which the current mgmt_tx_cancel is issued
  *
  * This function delivers cancel mgmt frame tx request request to P2P
  * component.
@@ -290,7 +295,9 @@ QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
  * Return: QDF_STATUS_SUCCESS - in case of success
  */
 QDF_STATUS ucfg_p2p_mgmt_tx_cancel(struct wlan_objmgr_psoc *soc,
-	struct wlan_objmgr_vdev *vdev, uint64_t cookie);
+				   struct wlan_objmgr_vdev *vdev,
+				   uint64_t cookie,
+				   enum QDF_OPMODE opmode);
 
 /**
  * ucfg_p2p_set_ps() - P2P set power save
@@ -558,6 +565,17 @@ QDF_STATUS ucfg_p2p_send_usd_params(struct wlan_objmgr_psoc *psoc,
  */
 bool ucfg_p2p_is_fw_support_usd(struct wlan_objmgr_psoc *psoc);
 #endif /* FEATURE_WLAN_SUPPORT_USD */
+
+/**
+ * ucfg_p2p_is_vdev_wfd_r2_mode() - Wrapper API to get VDEV WFD mode of
+ * operation
+ * @vdev: VDEV object manager
+ *
+ * Returns %true if current mode support WFD-R2 else %false
+ *
+ * Return: bool
+ */
+bool ucfg_p2p_is_vdev_wfd_r2_mode(struct wlan_objmgr_vdev *vdev);
 
 /**
  * ucfg_p2p_fw_support_ap_assist_dfs_group() - Wrapper API to get the FW

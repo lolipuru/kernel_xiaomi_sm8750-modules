@@ -410,15 +410,6 @@ static void hdd_hostapd_channel_allow_suspend(struct hdd_adapter *adapter,
 	struct hdd_hostapd_state *hostapd_state =
 		WLAN_HDD_GET_HOSTAP_STATE_PTR(adapter->deflink);
 	struct sap_context *sap_ctx;
-	bool is_dfs;
-
-	hdd_debug("bss_state: %d, chan_freq: %d, dfs_ref_cnt: %d",
-		  hostapd_state->bss_state, chan_freq,
-		  atomic_read(&hdd_ctx->sap_dfs_ref_cnt));
-
-	/* Return if BSS is already stopped */
-	if (hostapd_state->bss_state == BSS_STOP)
-		return;
 
 	sap_ctx = WLAN_HDD_GET_SAP_CTX_PTR(adapter->deflink);
 	if (!sap_ctx) {
@@ -426,10 +417,17 @@ static void hdd_hostapd_channel_allow_suspend(struct hdd_adapter *adapter,
 		return;
 	}
 
-	is_dfs = wlan_mlme_check_chan_param_has_dfs(hdd_ctx->pdev,
-						    ch_params,
-						    chan_freq);
-	if (!is_dfs)
+	hdd_debug("bss_state: %d, chan_freq: %d, dfs_ref_cnt: %d, is_dfs_wakelock_held %d",
+		  hostapd_state->bss_state, chan_freq,
+		  atomic_read(&hdd_ctx->sap_dfs_ref_cnt),
+		  sap_ctx->is_dfs_wakelock_held);
+
+	/* Return if BSS is already stopped */
+	if (hostapd_state->bss_state == BSS_STOP)
+		return;
+
+	hdd_debug("is_dfs_wakelock_held: %d", sap_ctx->is_dfs_wakelock_held);
+	if (!sap_ctx->is_dfs_wakelock_held)
 		return;
 
 	/* Release wakelock when no more DFS channels are used */
@@ -440,6 +438,8 @@ static void hdd_hostapd_channel_allow_suspend(struct hdd_adapter *adapter,
 		qdf_runtime_pm_allow_suspend(&hdd_ctx->runtime_context.dfs);
 
 	}
+
+	sap_ctx->is_dfs_wakelock_held = false;
 }
 
 /**
@@ -462,19 +462,21 @@ static void hdd_hostapd_channel_prevent_suspend(struct hdd_adapter *adapter,
 	struct sap_context *sap_ctx;
 	bool is_dfs;
 
-	hdd_debug("bss_state: %d, chan_freq: %d, dfs_ref_cnt: %d",
-		  hostapd_state->bss_state, chan_freq,
-		  atomic_read(&hdd_ctx->sap_dfs_ref_cnt));
-	/* Return if BSS is already started && wakelock is acquired */
-	if ((hostapd_state->bss_state == BSS_START) &&
-		(atomic_read(&hdd_ctx->sap_dfs_ref_cnt) >= 1))
-		return;
-
 	sap_ctx = WLAN_HDD_GET_SAP_CTX_PTR(adapter->deflink);
 	if (!sap_ctx) {
 		hdd_err("sap ctx null");
 		return;
 	}
+
+	hdd_debug("bss_state: %d, chan_freq: %d, dfs_ref_cnt: %d, is_dfs_wakelock_held: %d",
+		  hostapd_state->bss_state, chan_freq,
+		  atomic_read(&hdd_ctx->sap_dfs_ref_cnt),
+		  sap_ctx->is_dfs_wakelock_held);
+
+	/* Return if BSS is already started && wakelock is acquired */
+	if (hostapd_state->bss_state == BSS_START &&
+	    (atomic_read(&hdd_ctx->sap_dfs_ref_cnt) >= 1))
+		return;
 
 	is_dfs = wlan_mlme_check_chan_param_has_dfs(hdd_ctx->pdev,
 						    &sap_ctx->ch_params,
@@ -489,6 +491,8 @@ static void hdd_hostapd_channel_prevent_suspend(struct hdd_adapter *adapter,
 		qdf_wake_lock_acquire(&hdd_ctx->sap_dfs_wakelock,
 				      WIFI_POWER_EVENT_WAKELOCK_DFS);
 	}
+
+	sap_ctx->is_dfs_wakelock_held = true;
 }
 
 /**
@@ -2623,7 +2627,7 @@ QDF_STATUS hdd_hostapd_sap_event_cb(struct sap_context *sap_ctx,
 #endif
 		hdd_hostapd_channel_prevent_suspend(adapter,
 			ap_ctx->operating_chan_freq,
-			&sap_config->ch_params);
+			&ap_ctx->sap_context->ch_params);
 
 		hostapd_state->bss_state = BSS_START;
 		vdev = hdd_objmgr_get_vdev_by_user(link_info, WLAN_DP_ID);
@@ -8990,6 +8994,10 @@ static int __wlan_hdd_cfg80211_start_ap(struct wiphy *wiphy,
 		}
 	}
 
+	vdev = hdd_objmgr_get_vdev_by_user(link_info, WLAN_OSIF_ID);
+	if (!vdev)
+		return -EINVAL;
+
 	if (adapter->device_mode == QDF_P2P_GO_MODE) {
 		struct hdd_adapter  *p2p_adapter;
 		struct wlan_hdd_link_info *p2p_link_info;
@@ -9001,13 +9009,16 @@ static int __wlan_hdd_cfg80211_start_ap(struct wiphy *wiphy,
 			wlan_hdd_cleanup_remain_on_channel_ctx(p2p_link_info);
 		}
 
-		if (wlan_reg_is_dfs_for_freq(hdd_ctx->pdev, freq)) {
+		if (wlan_reg_is_dfs_for_freq(hdd_ctx->pdev, freq) &&
+		    ucfg_p2p_is_vdev_wfd_r2_mode(vdev)) {
 			status = hdd_check_ap_assist_dfs_group_start_req(link_info,
 									 params->beacon.tail,
 									 params->beacon.tail_len,
 									 freq);
-			if (QDF_IS_STATUS_ERROR(status))
+			if (QDF_IS_STATUS_ERROR(status)) {
+				hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
 				return -EINVAL;
+			}
 		}
 	}
 
@@ -9018,8 +9029,10 @@ static int __wlan_hdd_cfg80211_start_ap(struct wiphy *wiphy,
 		enum nl80211_channel_type channel_type;
 
 		old = ap_ctx->beacon;
-		if (old)
+		if (old) {
+			hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
 			return -EALREADY;
+		}
 
 		if (policy_mgr_is_vdev_ll_lt_sap(hdd_ctx->psoc,
 						 link_info->vdev_id)) {
@@ -9037,6 +9050,7 @@ static int __wlan_hdd_cfg80211_start_ap(struct wiphy *wiphy,
 
 		if (status != 0) {
 			hdd_err("Error!!! Allocating the new beacon");
+			hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
 			return -EINVAL;
 		}
 		ap_ctx->beacon = new;
@@ -9094,11 +9108,9 @@ static int __wlan_hdd_cfg80211_start_ap(struct wiphy *wiphy,
 						adapter->device_mode);
 		if (status != 0) {
 			hdd_err("Error Start bss Failed");
+			hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
 			goto err_start_bss;
 		}
-		vdev = hdd_objmgr_get_vdev_by_user(link_info, WLAN_OSIF_ID);
-		if (!vdev)
-			return -EINVAL;
 
 		if (wlan_vdev_mlme_is_mlo_vdev(vdev))
 			link_id = wlan_vdev_get_link_id(vdev);
@@ -9134,6 +9146,8 @@ static int __wlan_hdd_cfg80211_start_ap(struct wiphy *wiphy,
 							  sta_inactivity_timer);
 			qdf_mem_free(sta_inactivity_timer);
 		}
+	} else {
+		hdd_objmgr_put_vdev_by_user(vdev, WLAN_OSIF_ID);
 	}
 
 	goto success;

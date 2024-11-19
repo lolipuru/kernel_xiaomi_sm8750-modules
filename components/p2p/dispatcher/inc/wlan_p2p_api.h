@@ -122,6 +122,17 @@ const uint8_t *wlan_p2p_parse_assoc_ie_for_device_info(const uint8_t *assoc_ie,
 						       uint32_t assoc_ie_len);
 
 /**
+ * wlan_p2p_is_vdev_wfd_r2_mode() - Wrapper API to get VDEV WFD mode of
+ * operation
+ * @vdev: VDEV object manager
+ *
+ * Returns %true if current mode support WFD-R2 else %false
+ *
+ * Return: bool
+ */
+bool wlan_p2p_is_vdev_wfd_r2_mode(struct wlan_objmgr_vdev *vdev);
+
+/**
  * wlan_p2p_extract_ap_assist_dfs_params() - Wrapper API to check for P2P2 IE
  * @vdev: VDEV object manager pointer
  * @ie: Pointer to IE buffer
@@ -205,4 +216,36 @@ void wlan_p2p_psoc_priv_set_sta_vdev_id(struct wlan_objmgr_psoc *psoc,
  * Return: uint8_t
  */
 uint8_t wlan_p2p_psoc_priv_get_sta_vdev_id(struct wlan_objmgr_psoc *psoc);
+
+/**
+ * wlan_p2p_set_rand_mac_for_p2p_dev() - set P2P device mac addr to rx filters
+ * @soc: pointer to psoc
+ * @vdev_id: vdev id to fetch p2p_vdev_priv_obj
+ * @freq: frequency on which the filtering(allow) is expected
+ * @rnd_cookie: cookie value
+ * @duration: duration of the filter validity. p2p_mac_clear_timeout() is called
+ *            and filter would be removed upon timeout, if not removed already
+ *
+ * Return: None
+ */
+QDF_STATUS
+wlan_p2p_set_rand_mac_for_p2p_dev(struct wlan_objmgr_psoc *soc,
+				  uint32_t vdev_id, uint32_t freq,
+				  uint64_t rnd_cookie, uint32_t duration);
+
+/**
+ * wlan_p2p_del_random_mac() - del mac filter from given vdev rand mac list
+ * @soc: soc object
+ * @vdev_id: vdev id
+ * @rnd_cookie: random mac mgmt tx cookie
+ *
+ * This function will del the mac addr filter from vdev random mac addr list.
+ * If there is no reference to mac addr, it will set a clear timer to flush it
+ * in target finally.
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+wlan_p2p_del_random_mac(struct wlan_objmgr_psoc *soc, uint32_t vdev_id,
+			uint64_t rnd_cookie);
 #endif
