@@ -1655,7 +1655,7 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 				CAM_ERR(CAM_SENSOR,
 					"%s Enable CRM SOF freeze timer failed rc: %d",
 					s_ctrl->sensor_name, rc);
-				return rc;
+				goto release_mutex;
 			}
 		}
 

@@ -13,10 +13,10 @@
 static int cam_cci_init_master(struct cci_device *cci_dev,
 	enum cci_i2c_master_t master)
 {
-	int i = 0, rc = 0;
-	void __iomem *base = NULL;
-	struct cam_hw_soc_info *soc_info = NULL;
-	uint32_t max_queue_0_size = 0, max_queue_1_size = 0;
+	int                     i, rc;
+	void __iomem           *base;
+	struct cam_hw_soc_info *soc_info;
+	uint32_t                max_queue_0_size, max_queue_1_size;
 
 	soc_info = &cci_dev->soc_info;
 	base = soc_info->reg_map[0].mem_base;

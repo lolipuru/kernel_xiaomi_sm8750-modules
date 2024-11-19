@@ -1659,12 +1659,11 @@ int cam_get_dt_power_setting_data(struct device_node *of_node,
 		return -EINVAL;
 
 	count = of_property_count_strings(of_node, "qcom,cam-power-seq-type");
-	power_info->power_setting_size = count;
-
-	CAM_DBG(CAM_SENSOR_UTIL, "qcom,cam-power-seq-type count %d", count);
-
 	if (count <= 0)
 		return 0;
+
+	CAM_DBG(CAM_SENSOR_UTIL, "qcom,cam-power-seq-type count %d", count);
+	power_info->power_setting_size = count;
 
 	ps = CAM_MEM_ZALLOC_ARRAY(count, sizeof(*ps), GFP_KERNEL);
 	if (!ps)
