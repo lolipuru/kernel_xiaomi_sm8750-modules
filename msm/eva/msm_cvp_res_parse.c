@@ -853,6 +853,9 @@ int cvp_read_platform_resources_from_drv_data(
 	res->non_fatal_pagefaults = find_key_value(platform_data,
 			"qcom,domain-attr-non-fatal-faults");
 
+	res->rcg_vnoc_clk_en_low = find_key_value(platform_data,
+			"qcom,rcg_vnoc_clk_en_low");
+
 	res->vpu_ver = platform_data->vpu_ver;
 	res->ubwc_config = platform_data->ubwc_config;
 	res->fatal_ssr = false;
