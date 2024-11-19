@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2019, 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_SENSOR_DEV_H_
@@ -117,6 +117,7 @@ struct cam_sensor_dev_res_info {
  * @is_stopped_by_user: Indicate if sensor has been stopped by userland
  * @stream_off_after_eof: Indicates if sensor needs to stream off after eof
  * @stream_off_on_flush: Streaming off sensor on flush all call
+ * @is_stream_off_pkt_updated: Updated stream off packet has been received
  * @is_res_info_updated: Indicate if resolution info is updated
  * @last_applied_done_timestamp : Last applied done timestamp value
  * @hw_no_ops: To determine whether HW operations need to be disabled
@@ -158,6 +159,7 @@ struct cam_sensor_ctrl_t {
 	bool                           is_stopped_by_user;
 	bool                           stream_off_after_eof;
 	bool                           stream_off_on_flush;
+	bool                           is_stream_off_pkt_updated;
 	bool                           is_res_info_updated;
 	uint64_t                       last_applied_done_timestamp;
 	bool                           hw_no_ops;
