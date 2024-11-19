@@ -970,13 +970,14 @@ static int cam_ife_csid_ver2_mc_top_half(
 
 	th_payload->is_comp_irq = true;
 	rc = cam_ife_csid_ver2_path_top_half(evt_id, th_payload);
-	evt_payload = (struct cam_ife_csid_ver2_evt_payload *)th_payload->evt_payload_priv;
-	evt_payload->is_mc = true;
 
 	if (rc) {
 		CAM_ERR(CAM_ISP, "Multi context top half fail");
 		return rc;
 	}
+
+	evt_payload = (struct cam_ife_csid_ver2_evt_payload *)th_payload->evt_payload_priv;
+	evt_payload->is_mc = true;
 
 	return 0;
 }
