@@ -808,7 +808,7 @@ static int cam_jpeg_mgr_process_hw_update_entries(void *priv, void *data)
 	if (!hw_mgr->devices[dev_type][0]->hw_ops.init) {
 		CAM_ERR(CAM_JPEG, "hw op init null ");
 		rc = -EFAULT;
-		goto end;
+		goto end_unusedev;
 	}
 	rc = hw_mgr->devices[dev_type][0]->hw_ops.init(
 		hw_mgr->devices[dev_type][0]->hw_priv,
@@ -816,7 +816,7 @@ static int cam_jpeg_mgr_process_hw_update_entries(void *priv, void *data)
 		sizeof(struct cam_jpeg_hw_ctx_data));
 	if (rc) {
 		CAM_ERR(CAM_JPEG, "Failed to Init %d HW", dev_type);
-		goto end;
+		goto end_unusedev;
 	}
 
 	if (ctx_data->evt_inject_params.is_valid &&
