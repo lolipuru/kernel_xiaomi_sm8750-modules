@@ -834,6 +834,11 @@ int wlfw_cap_send_sync_msg(struct icnss_priv *priv)
 		priv->fw_aux_uc_support =
 			!!(resp->fw_caps & QMI_WLFW_AUX_UC_SUPPORT_V01);
 		icnss_pr_dbg("FW supports aux uc support capability");
+		priv->fw_direct_link_support =
+			!!(resp->fw_caps & QMI_WLFW_DIRECT_LINK_SUPPORT_V01);
+		icnss_pr_dbg("FW %s direct link",
+			     (priv->fw_direct_link_support) ?
+			     "supports" : "does not support");
 	}
 
 	if (resp->serial_id_valid) {
@@ -3489,6 +3494,7 @@ int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 	int ret = 0;
 	u64 iova_start = 0, iova_size = 0,
 	    iova_ipa_start = 0, iova_ipa_size = 0, feature_list = 0;
+	void *vaddr;
 
 	icnss_pr_dbg("Sending host capability message, state: 0x%lx\n",
 		    priv->state);
@@ -3526,6 +3532,18 @@ int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 			    req->ddr_range[0].start, req->ddr_range[0].size);
 		icnss_pr_dbg("Sending msa starting 0x%llx with size 0x%llx\n",
 			    req->ddr_range[1].start, req->ddr_range[1].size);
+
+		vaddr = dma_alloc_coherent(&priv->pdev->dev,
+					   ICNSS_FW_LPASS_SHARED_MEM_SIZE,
+					   &priv->fw_lpass_shared_mem_pa,
+					   GFP_KERNEL);
+		if (vaddr) {
+			req->ddr_range[2].start = priv->fw_lpass_shared_mem_pa;
+			req->ddr_range[2].size = ICNSS_FW_LPASS_SHARED_MEM_SIZE;
+			icnss_pr_dbg("Sending FW-LPASS shared mem starting 0x%llx with size 0x%llx\n",
+				     req->ddr_range[2].start,
+				     req->ddr_range[2].size);
+		}
 	}
 
 	req->host_build_type_valid = 1;

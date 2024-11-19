@@ -42,6 +42,7 @@ static struct cnss_vreg_cfg cnss_vreg_list[] = {
 	{"vdd-wlan-rfa3", 1900000, 1900000, 450000, 0, 0},
 	{"alt-sleep-clk", 0, 0, 0, 0, 0},
 	{"vdd-wlan-en", 0, 0, 0, 10, 0},
+	{"vdd-wlan-cx", 892000, 1000000, 0, 0, 0},
 };
 
 static struct cnss_clk_cfg cnss_clk_list[] = {

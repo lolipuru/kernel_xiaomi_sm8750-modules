@@ -75,7 +75,6 @@
 #define CNSS_MHI_M2_TIMEOUT_DEFAULT	25
 #define CNSS_QMI_TIMEOUT_DEFAULT	10000
 #endif
-#define CNSS_REQ_FW_TIMEOUT_DEFAULT	20000
 #define CNSS_BDF_TYPE_DEFAULT		CNSS_BDF_ELF
 #define CNSS_TIME_SYNC_PERIOD_DEFAULT	900000
 #define CNSS_MIN_TIME_SYNC_PERIOD	2000
@@ -5041,18 +5040,6 @@ void cnss_fmd_status_update_cb(void *cb_ctx, bool status)
 	}
 }
 
-static void cnss_req_firmware_timeout_handler(struct timer_list *t)
-{
-	struct cnss_plat_data *plat_priv =
-		from_timer(plat_priv, t, req_firmware_dbg_timer);
-
-	cnss_pr_err("request_firmware times out after %d ms, state: 0x%lx\n",
-		    plat_priv->ctrl_params.req_fw_timeout,
-		    plat_priv->driver_state);
-
-	CNSS_ASSERT(0);
-}
-
 static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 {
 	int ret;
@@ -5060,9 +5047,6 @@ static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 	ret = cnss_init_sol_gpio(plat_priv);
 	if (ret)
 		return ret;
-
-	timer_setup(&plat_priv->req_firmware_dbg_timer,
-		    cnss_req_firmware_timeout_handler, 0);
 
 	timer_setup(&plat_priv->fw_boot_timer,
 		    cnss_bus_fw_boot_timeout_hdlr, 0);
@@ -5167,7 +5151,6 @@ static void cnss_init_control_params(struct cnss_plat_data *plat_priv)
 	plat_priv->ctrl_params.mhi_timeout = CNSS_MHI_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.mhi_m2_timeout = CNSS_MHI_M2_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.qmi_timeout = CNSS_QMI_TIMEOUT_DEFAULT;
-	plat_priv->ctrl_params.req_fw_timeout = CNSS_REQ_FW_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.bdf_type = CNSS_BDF_TYPE_DEFAULT;
 	plat_priv->ctrl_params.time_sync_period = CNSS_TIME_SYNC_PERIOD_DEFAULT;
 	cnss_init_time_sync_period_default(plat_priv);
@@ -5823,7 +5806,11 @@ out:
 	return ret;
 }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
 static int cnss_remove(struct platform_device *plat_dev)
+#else
+static void cnss_remove(struct platform_device *plat_dev)
+#endif
 {
 	struct cnss_plat_data *plat_priv = platform_get_drvdata(plat_dev);
 
@@ -5847,7 +5834,9 @@ static int cnss_remove(struct platform_device *plat_dev)
 	platform_set_drvdata(plat_dev, NULL);
 	cnss_clear_plat_priv(plat_priv);
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
 	return 0;
+#endif
 }
 
 static struct platform_driver cnss_platform_driver = {
