@@ -283,14 +283,15 @@ skip_power_off:
 
 static int __release_subcaches(struct msm_vidc_core *core)
 {
-	int rc = 0;
 	struct subcache_info *sinfo;
 	struct hfi_buffer buf;
+	u32 cnt = 0;
+	int rc = 0;
 
 	if (msm_vidc_syscache_disable || !is_sys_cache_present(core))
 		return 0;
 
-	if (!core->resource->subcache_set.set_to_fw) {
+	if (!core->is_subcache_set_to_fw) {
 		d_vpr_h("Subcaches not set to Venus\n");
 		return 0;
 	}
@@ -304,7 +305,8 @@ static int __release_subcaches(struct msm_vidc_core *core)
 	buf.type = HFI_BUFFER_SUBCACHE;
 	buf.flags = HFI_BUF_HOST_FLAG_RELEASE;
 
-	venus_hfi_for_each_subcache_reverse(core, sinfo) {
+	for (cnt = core->subcache_tbl_count; cnt > 0; --cnt) {
+		sinfo = &core->subcache_tbl[cnt-1];
 		if (!sinfo->isactive)
 			continue;
 
@@ -329,7 +331,8 @@ static int __release_subcaches(struct msm_vidc_core *core)
 	if (rc)
 		return rc;
 
-	venus_hfi_for_each_subcache_reverse(core, sinfo) {
+	for (cnt = core->subcache_tbl_count; cnt > 0; --cnt) {
+		sinfo = &core->subcache_tbl[cnt-1];
 		if (!sinfo->isactive)
 			continue;
 
@@ -337,23 +340,24 @@ static int __release_subcaches(struct msm_vidc_core *core)
 			__func__, sinfo->subcache->slice_id,
 			sinfo->subcache->slice_size);
 	}
-	core->resource->subcache_set.set_to_fw = false;
+	core->is_subcache_set_to_fw = false;
 
 	return 0;
 }
 
 static int __set_subcaches(struct msm_vidc_core *core)
 {
-	int rc = 0;
 	struct subcache_info *sinfo;
 	struct hfi_buffer buf;
+	u32 cnt = 0;
+	int rc = 0;
 
 	if (msm_vidc_syscache_disable ||
 		!is_sys_cache_present(core)) {
 		return 0;
 	}
 
-	if (core->resource->subcache_set.set_to_fw) {
+	if (core->is_subcache_set_to_fw) {
 		d_vpr_h("Subcaches already set to Venus\n");
 		return 0;
 	}
@@ -367,7 +371,8 @@ static int __set_subcaches(struct msm_vidc_core *core)
 	buf.type = HFI_BUFFER_SUBCACHE;
 	buf.flags = HFI_BUF_HOST_FLAG_NONE;
 
-	venus_hfi_for_each_subcache(core, sinfo) {
+	for (cnt = 0; cnt < core->subcache_tbl_count; ++cnt) {
+		sinfo = &core->subcache_tbl[cnt];
 		if (!sinfo->isactive)
 			continue;
 		buf.index = sinfo->subcache->slice_id;
@@ -391,14 +396,15 @@ static int __set_subcaches(struct msm_vidc_core *core)
 	if (rc)
 		goto err_fail_set_subacaches;
 
-	venus_hfi_for_each_subcache(core, sinfo) {
+	for (cnt = 0; cnt < core->subcache_tbl_count; ++cnt) {
+		sinfo = &core->subcache_tbl[cnt];
 		if (!sinfo->isactive)
 			continue;
 		d_vpr_h("%s: set Subcache id %d size %lu done\n",
 			__func__, sinfo->subcache->slice_id,
 			sinfo->subcache->slice_size);
 	}
-	core->resource->subcache_set.set_to_fw = true;
+	core->is_subcache_set_to_fw = true;
 
 	return 0;
 
@@ -598,7 +604,7 @@ fail_power:
 
 void __unload_fw(struct msm_vidc_core *core)
 {
-	if (!core->resource->fw_cookie)
+	if (!core->fw_cookie)
 		return;
 
 	cancel_delayed_work(&core->pm_work);
@@ -1907,13 +1913,15 @@ struct device_region_info *venus_hfi_get_device_region_info(
 	struct msm_vidc_core *core, enum msm_vidc_device_region region)
 {
 	struct device_region_info *dev_reg = NULL, *match = NULL;
+	u32 cnt;
 
 	if (!region || region >= MSM_VIDC_DEVICE_REGION_MAX) {
 		d_vpr_e("%s: invalid region %#x\n", __func__, region);
 		return NULL;
 	}
 
-	venus_hfi_for_each_device_region(core, dev_reg) {
+	for (cnt = 0; cnt < core->device_region_tbl_count; ++cnt) {
+		dev_reg = &core->device_region_tbl[cnt];
 		if (dev_reg->region == region) {
 			match = dev_reg;
 			break;

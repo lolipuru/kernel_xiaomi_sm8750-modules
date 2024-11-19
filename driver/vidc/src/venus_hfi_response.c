@@ -71,7 +71,7 @@ static void print_sfr_message(struct msm_vidc_core *core)
 				vsfr->buf_size, core->sfr.mem_size);
 			return;
 		}
-		vsfr_size = vsfr->buf_size - sizeof(u32);
+		vsfr_size = core->sfr.mem_size - sizeof(u32);
 		p = memchr(vsfr->rg_data, '\0', vsfr_size);
 		/* SFR isn't guaranteed to be NULL terminated */
 		if (p == NULL)
@@ -402,7 +402,10 @@ int handle_system_error(struct msm_vidc_core *core,
 		}
 	}
 
-	msm_vidc_core_deinit(core, true);
+	core_lock(core, __func__);
+	msm_vidc_change_core_state(core, MSM_VIDC_CORE_ERROR, __func__);
+	msm_vidc_core_deinit_locked(core, true);
+	core_unlock(core, __func__);
 
 	return 0;
 }

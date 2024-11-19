@@ -1518,7 +1518,7 @@ int msm_venc_s_param(struct msm_vidc_inst *inst,
 {
 	int rc = 0;
 	struct v4l2_fract *timeperframe = NULL;
-	u32 input_rate_q16, max_rate_q16;
+	u32 input_rate_q16, max_rate_q16, min_rate_q16;
 	u32 input_rate, default_rate;
 	bool is_frame_rate = false;
 
@@ -1526,6 +1526,7 @@ int msm_venc_s_param(struct msm_vidc_inst *inst,
 		/* operating rate */
 		timeperframe = &s_parm->parm.output.timeperframe;
 		max_rate_q16 = inst->capabilities[OPERATING_RATE].max;
+		min_rate_q16 = inst->capabilities[OPERATING_RATE].min;
 		default_rate = inst->capabilities[OPERATING_RATE].value >> 16;
 		s_parm->parm.output.capability = V4L2_CAP_TIMEPERFRAME;
 	} else {
@@ -1533,6 +1534,7 @@ int msm_venc_s_param(struct msm_vidc_inst *inst,
 		timeperframe = &s_parm->parm.capture.timeperframe;
 		is_frame_rate = true;
 		max_rate_q16 = inst->capabilities[FRAME_RATE].max;
+		min_rate_q16 = inst->capabilities[FRAME_RATE].min;
 		default_rate = inst->capabilities[FRAME_RATE].value >> 16;
 		s_parm->parm.capture.capability = V4L2_CAP_TIMEPERFRAME;
 	}
@@ -1552,7 +1554,13 @@ int msm_venc_s_param(struct msm_vidc_inst *inst,
 		i_vpr_h(inst, "%s: type %s, %s value %u limited to %u\n",
 			__func__, v4l2_type_name(s_parm->type),
 			is_frame_rate ? "frame rate" : "operating rate",
-			input_rate_q16, max_rate_q16);
+			input_rate << 16, max_rate_q16);
+	} else if (input_rate < (min_rate_q16 >> 16)) {
+		input_rate_q16 = min_rate_q16;
+		i_vpr_h(inst, "%s: type %s, %s value %u limited to %u\n",
+			__func__, v4l2_type_name(s_parm->type),
+			is_frame_rate ? "frame rate" : "operating rate",
+			input_rate << 16, min_rate_q16);
 	} else {
 		input_rate_q16 = input_rate << 16;
 		input_rate_q16 |=

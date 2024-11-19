@@ -206,25 +206,22 @@ static int __clear_interrupt_iris35(struct msm_vidc_core *core)
 static int __get_device_region_info(struct msm_vidc_core *core,
 	u32 *min_dev_addr, u32 *dev_reg_size)
 {
-	struct device_region_set *dev_set;
 	u32 min_addr, max_addr, count = 0;
 	int rc = 0;
 
-	dev_set = &core->resource->device_region_set;
-
-	if (!dev_set->count) {
+	if (!core->device_region_tbl_count) {
 		d_vpr_h("%s: device region not available\n", __func__);
 		return 0;
 	}
 
 	min_addr = 0xFFFFFFFF;
 	max_addr = 0x0;
-	for (count = 0; count < dev_set->count; count++) {
-		if (dev_set->device_region_tbl[count].dev_addr > max_addr)
-			max_addr = dev_set->device_region_tbl[count].dev_addr +
-				dev_set->device_region_tbl[count].size;
-		if (dev_set->device_region_tbl[count].dev_addr < min_addr)
-			min_addr = dev_set->device_region_tbl[count].dev_addr;
+	for (count = 0; count < core->device_region_tbl_count; count++) {
+		if (core->device_region_tbl[count].dev_addr > max_addr)
+			max_addr = core->device_region_tbl[count].dev_addr +
+						core->device_region_tbl[count].size;
+		if (core->device_region_tbl[count].dev_addr < min_addr)
+			min_addr = core->device_region_tbl[count].dev_addr;
 	}
 	if (min_addr == 0xFFFFFFFF || max_addr == 0x0) {
 		d_vpr_e("%s: invalid device region\n", __func__);
@@ -695,7 +692,7 @@ static int __power_off_iris35(struct msm_vidc_core *core)
 		d_vpr_e("%s: failed to unvote buses\n", __func__);
 
 	if (!call_venus_op(core, watchdog, core, core->intr_status))
-		disable_irq_nosync(core->resource->irq);
+		disable_irq_nosync(core->irq);
 
 	msm_vidc_change_core_sub_state(core, CORE_SUBSTATE_POWER_ENABLE, 0, __func__);
 
@@ -812,7 +809,7 @@ static int __power_on_iris35(struct msm_vidc_core *core)
 		goto fail_power_on_hardware;
 	}
 
-	freq_tbl = core->resource->freq_set.freq_tbl;
+	freq_tbl = core->freq_tbl;
 	freq = core->power.clk_freq ? core->power.clk_freq :
 				      freq_tbl[0].freq;
 
@@ -826,7 +823,7 @@ static int __power_on_iris35(struct msm_vidc_core *core)
 
 	__interrupt_init_iris35(core);
 	core->intr_status = 0;
-	enable_irq(core->resource->irq);
+	enable_irq(core->irq);
 
 	return rc;
 

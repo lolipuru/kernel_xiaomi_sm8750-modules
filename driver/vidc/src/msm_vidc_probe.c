@@ -68,15 +68,7 @@ static inline bool is_video_context_bank_device(struct device *dev)
 
 static int msm_vidc_init_resources(struct msm_vidc_core *core)
 {
-	struct msm_vidc_resource *res = NULL;
 	int rc = 0;
-
-	res = devm_kzalloc(&core->pdev->dev, sizeof(*res), GFP_KERNEL);
-	if (!res) {
-		d_vpr_e("%s: failed to alloc memory for resource\n", __func__);
-		return -ENOMEM;
-	}
-	core->resource = res;
 
 	rc = call_res_op(core, init, core);
 	if (rc) {
