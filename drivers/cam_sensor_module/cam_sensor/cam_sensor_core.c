@@ -16,6 +16,7 @@
 
 #define CAM_SENSOR_PIPELINE_DELAY_MASK        0xFF
 #define CAM_SENSOR_MODESWITCH_DELAY_SHIFT     8
+#define CAM_SENSOR_MAX_PER_REQ_SETTINGS       4
 
 extern struct completion *cam_sensor_get_i3c_completion(uint32_t index);
 
@@ -2061,9 +2062,10 @@ powerdown_failure:
 int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 	int64_t req_id, enum cam_sensor_packet_opcodes opcode)
 {
-	int rc = 0, offset, i;
+	int rc = 0, offset, i, j;
 	uint64_t top = 0, del_req_id = 0;
 	struct i2c_settings_array *i2c_set = NULL;
+	struct i2c_settings_array *i2c_set_per_req[CAM_SENSOR_MAX_PER_REQ_SETTINGS];
 	struct i2c_settings_list *i2c_list;
 	ktime_t current_time;
 	struct timespec64 current_ts;
@@ -2118,6 +2120,11 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 		}
 	} else if (req_id > 0) {
 		offset = req_id % MAX_PER_FRAME_ARRAY;
+
+		i2c_set_per_req[0] = s_ctrl->i2c_data.per_frame;
+		i2c_set_per_req[1] = s_ctrl->i2c_data.frame_skip;
+		i2c_set_per_req[2] = s_ctrl->i2c_data.bubble_update;
+		i2c_set_per_req[3] = s_ctrl->i2c_data.deferred_frame_update;
 
 		if (opcode == CAM_SENSOR_PACKET_OPCODE_SENSOR_FRAME_SKIP_UPDATE)
 			i2c_set = s_ctrl->i2c_data.frame_skip;
@@ -2198,45 +2205,21 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 		CAM_DBG(CAM_SENSOR, "top: %llu, del_req_id:%llu",
 			top, del_req_id);
 
-		for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
-			if ((del_req_id >
-				 i2c_set[i].request_id) && (
-				 i2c_set[i].is_settings_valid
-					== 1)) {
-				i2c_set[i].request_id = 0;
-				rc = delete_request(
-					&(i2c_set[i]));
-				if (rc < 0)
-					CAM_ERR(CAM_SENSOR,
-						"Delete request Fail:%lld rc:%d",
-						del_req_id, rc);
-			}
-		}
-
-		/*
-		 * If the op code is bubble update, then we also need to delete
-		 * req for per frame update, vice versa.
-		 */
-		if (opcode == CAM_SENSOR_PACKET_OPCODE_SENSOR_BUBBLE_UPDATE)
-			i2c_set = s_ctrl->i2c_data.per_frame;
-		else if (opcode == CAM_SENSOR_PACKET_OPCODE_SENSOR_UPDATE)
-			i2c_set = s_ctrl->i2c_data.bubble_update;
-		else
-			i2c_set = NULL;
-
-		if (i2c_set) {
-			for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
+		/* Delete all the per request settings */
+		for (i = 0; i < CAM_SENSOR_MAX_PER_REQ_SETTINGS; i++) {
+			i2c_set = i2c_set_per_req[i];
+			for (j = 0; j < MAX_PER_FRAME_ARRAY; j++) {
 				if ((del_req_id >
-					 i2c_set[i].request_id) && (
-					 i2c_set[i].is_settings_valid
+					i2c_set[j].request_id) && (
+					i2c_set[j].is_settings_valid
 						== 1)) {
-					i2c_set[i].request_id = 0;
+					i2c_set[j].request_id = 0;
 					rc = delete_request(
-						&(i2c_set[i]));
+						&(i2c_set[j]));
 					if (rc < 0)
 						CAM_ERR(CAM_SENSOR,
-							"Delete request Fail:%lld rc:%d",
-							del_req_id, rc);
+							"Delete request Fail:%lld rc:%d i:%d j:%d",
+							del_req_id, rc, i, j);
 				}
 			}
 		}
