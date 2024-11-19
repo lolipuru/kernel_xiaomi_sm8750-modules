@@ -14,6 +14,7 @@
 #include "sde_edid_parser.h"
 #include "sde_connector.h"
 #include "msm_drv.h"
+#include "dp_panel_tu.h"
 
 #define DP_RECEIVER_DSC_CAP_SIZE    15
 #define DP_RECEIVER_FEC_STATUS_SIZE 3
@@ -207,21 +208,6 @@ struct dp_panel {
 	void (*set_lttpr_mode)(struct dp_panel *dp_panel, bool is_transparent);
 };
 
-struct dp_tu_calc_input {
-	u64 lclk;        /* 162, 270, 540 and 810 */
-	u64 pclk_khz;    /* in KHz */
-	u64 hactive;     /* active h-width */
-	u64 hporch;      /* bp + fp + pulse */
-	int nlanes;      /* no.of.lanes */
-	int bpp;         /* bits */
-	int pixel_enc;   /* 444, 420, 422 */
-	int dsc_en;     /* dsc on/off */
-	int async_en;   /* async mode */
-	int fec_en;     /* fec */
-	int compress_ratio; /* 2:1 = 200, 3:1 = 300, 3.75:1 = 375 */
-	int num_of_dsc_slices; /* number of slices per line */
-};
-
 struct dp_vc_tu_mapping_table {
 	u32 vic;
 	u8 lanes;
@@ -265,6 +251,5 @@ static inline bool is_lane_count_valid(u32 lane_count)
 
 struct dp_panel *dp_panel_get(struct dp_panel_in *in);
 void dp_panel_put(struct dp_panel *dp_panel);
-void dp_panel_calc_tu_test(struct dp_tu_calc_input *in,
-		struct dp_vc_tu_mapping_table *tu_table);
+void dp_panel_get_dto_params(u32 pclk_factor, struct dp_dsc_dto_params *dsc_params);
 #endif /* _DP_PANEL_H_ */
