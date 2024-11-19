@@ -1633,7 +1633,7 @@ static int cam_cpas_util_translate_client_paths(
 			*path_data_type %= CAM_CPAS_MAX_GRAN_PATHS_PER_CLIENT;
 
 		if (*path_data_type >= CAM_CPAS_PATH_DATA_MAX) {
-			CAM_ERR(CAM_CPAS, "index Invalid: %d", path_data_type);
+			CAM_ERR(CAM_CPAS, "index Invalid: %d", *path_data_type);
 			return -EINVAL;
 		}
 	}
@@ -2783,7 +2783,7 @@ static int cam_cpas_hw_start(void *hw_priv, void *start_args,
 	if (!ahb_vote || !cmd_hw_start->axi_vote)
 		return -EINVAL;
 
-	if (!ahb_vote->vote.level) {
+	if (ahb_vote->vote.level == CAM_SUSPEND_VOTE) {
 		CAM_ERR(CAM_CPAS, "Invalid vote ahb[%d]",
 			ahb_vote->vote.level);
 		return -EINVAL;
@@ -3771,7 +3771,11 @@ static void cam_cpas_dump_monitor_array(
 					"BW [%s] : HLOS ab=%lld, ib=%lld, DRV high_ab=%lld, high_ib=%lld, low_ab=%lld, low_ib=%lld",
 					entry->axi_info[j].axi_port_name,
 					entry->axi_info[j].applied_bw.hlos_vote.ab,
-					entry->axi_info[j].applied_bw.hlos_vote.ib);
+					entry->axi_info[j].applied_bw.hlos_vote.ib,
+					entry->axi_info[j].applied_bw.drv_vote.high.ab,
+					entry->axi_info[j].applied_bw.drv_vote.high.ib,
+					entry->axi_info[j].applied_bw.drv_vote.low.ab,
+					entry->axi_info[j].applied_bw.drv_vote.low.ib);
 		}
 
 		if (cpas_core->regbase_index[CAM_CPAS_REG_RPMH] != -1) {
@@ -4387,12 +4391,11 @@ static bool cam_cpas_is_configuration_allowed(
 	if ((cache_info->ref_cnt > 0) &&
 		(cache_info->mode != sys_cache_info->mode) &&
 		(cache_info->op_type != sys_cache_info->op_type)) {
-		CAM_ERR(CAM_CPAS, "can't be configured in middle of usage ref_cnt = %d",
-			cache_info->ref_cnt);
-		CAM_ERR(CAM_CPAS, "old param: scid %d  mode: %d op_type: %d new param: scid %d mode: %d op_type: %d",
-			sys_cache_info->type, sys_cache_info->mode,
+		CAM_ERR(CAM_CPAS,
+			"Can not be configured in middle of usage, ref_cnt = %d old param: scid %d  mode: %d op_type: %d new param: scid %d mode: %d op_type: %d",
+			cache_info->ref_cnt, sys_cache_info->type, sys_cache_info->mode,
 			sys_cache_info->op_type, cache_info->type,
-			cache_info->ref_cnt, cache_info->mode, cache_info->op_type);
+			cache_info->mode, cache_info->op_type);
 		allow = false;
 	} else if (((cache_info->ref_cnt > 0) &&
 			(cache_info->mode == sys_cache_info->mode) &&

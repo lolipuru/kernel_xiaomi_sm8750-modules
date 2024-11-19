@@ -2205,8 +2205,8 @@ update_bw:
 
 		rc = cam_soc_bus_client_update_bw(bus_client, ab, ib, CAM_SOC_BUS_PATH_DATA_HLOS);
 		if (rc)
-			CAM_ERR(CAM_CPAS, "bus client %s ab %llu ib %llu update bw failed %d ",
-				name, ab, ib);
+			CAM_ERR(CAM_CPAS, "bus client %s ab %llu ib %llu update bw failed %d",
+				name, ab, ib, rc);
 		break;
 
 	default:
