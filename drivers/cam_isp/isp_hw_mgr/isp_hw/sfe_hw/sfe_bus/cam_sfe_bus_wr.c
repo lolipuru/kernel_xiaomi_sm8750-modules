@@ -93,7 +93,7 @@ struct cam_sfe_bus_wr_common_data {
 
 	uint32_t                                    sys_cache_default_cfg;
 	uint32_t                                    sfe_debug_cfg;
-	uint32_t                                    perf_cnt_cfg[4];
+	uint32_t                                    perf_cnt_cfg[CAM_SFE_PERF_CNT_MAX];
 	struct cam_sfe_bus_cache_dbg_cfg            cache_dbg_cfg;
 	struct cam_hw_soc_info                     *soc_info;
 	uint32_t                                    cntr;
@@ -917,7 +917,7 @@ static int cam_sfe_bus_start_wm(struct cam_isp_resource_node *wm_res)
 				common_data->common_reg->perf_cnt_reg[j].perf_cnt_cfg);
 			common_data->perf_cnt_en = true;
 			CAM_DBG(CAM_ISP, "SFE:%u perf_cnt_%d:0x%x",
-				rsrc_data->common_data->core_index, rsrc_data->index,
+				rsrc_data->common_data->core_index,
 				j, common_data->perf_cnt_cfg[j]);
 		}
 	}
@@ -3394,7 +3394,7 @@ static int cam_sfe_bus_read_rst_perf_cntrs(
 	int i;
 	bool print = false;
 	uint32_t val, status;
-	size_t len;
+	size_t len = 0;
 	uint8_t log_buf[256];
 	struct cam_sfe_bus_wr_common_data *common_data = &bus_priv->common_data;
 
