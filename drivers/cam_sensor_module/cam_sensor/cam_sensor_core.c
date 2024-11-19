@@ -2488,7 +2488,7 @@ int cam_sensor_process_evt(struct cam_req_mgr_link_evt_data *evt_data)
 
 	switch (evt_data->evt_type) {
 	case CAM_REQ_MGR_LINK_EVT_EOF:
-		if (s_ctrl->stream_off_after_eof) {
+		if (s_ctrl->stream_off_after_eof && !s_ctrl->stream_off_on_flush) {
 			rc = cam_sensor_stream_off(s_ctrl);
 			if (rc) {
 				CAM_ERR(CAM_SENSOR, "Failed to stream off %s",
