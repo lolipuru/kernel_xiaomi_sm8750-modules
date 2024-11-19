@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019, 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_vfe_top_common.h"
@@ -545,16 +545,10 @@ int cam_vfe_top_bw_control(struct cam_vfe_soc_private *soc_private,
 		}
 	}
 
-	if (hw_info->hw_state != CAM_HW_STATE_POWER_UP) {
-		CAM_ERR_RATE_LIMIT(CAM_PERF,
-			"VFE:%d Not ready to set BW yet :%d",
-			res->hw_intf->hw_idx,
-			hw_info->hw_state);
-	} else {
-		rc = cam_vfe_top_apply_bw_start_stop(top_common);
-	}
+	if (hw_info->hw_state != CAM_HW_STATE_POWER_UP)
+		return rc;
 
-	return rc;
+	return cam_vfe_top_apply_bw_start_stop(top_common);
 }
 
 int cam_vfe_top_apply_clk_bw_update(struct cam_vfe_top_priv_common *top_common,
