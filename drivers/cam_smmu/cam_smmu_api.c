@@ -737,7 +737,7 @@ static void cam_smmu_dump_cb_info(int idx)
 	}
 
 	if (cb_info->io_support) {
-		for (j = 0; j < cb_info->shared_info.num_regions; j++) {
+		for (j = 0; j < cb_info->io_info.num_regions; j++) {
 			nested_reg_info = &cb_info->io_info.nested_regions[j];
 			io_reg_len += nested_reg_info->region_info.iova_len;
 		}
@@ -2385,7 +2385,7 @@ int cam_smmu_reserve_buf_region(enum cam_smmu_region_id region,
 	struct cam_smmu_subregion_info *subregion_info = NULL;
 	bool *is_buf_allocated;
 	bool region_supported;
-	size_t size = 0;
+	ssize_t size = 0;
 	int idx, rc = 0, multi_client_device_idx, prot, nested_reg_idx;
 
 	idx = GET_SMMU_TABLE_IDX(smmu_hdl);
@@ -2501,7 +2501,7 @@ int cam_smmu_reserve_buf_region(enum cam_smmu_region_id region,
 		buf_info->table->sgl,
 		buf_info->table->orig_nents,
 		prot);
-	if (region_info->iova_len < size) {
+	if ((size < 0) || (region_info->iova_len < size)) {
 		CAM_ERR(CAM_SMMU,
 			"IOMMU mapping failed for size=%zu available iova_len=%zu",
 			size, region_info->iova_len);
@@ -2684,7 +2684,7 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 	struct dma_buf_attachment *attach = NULL;
 	struct sg_table *table = NULL;
 	struct iommu_domain *domain;
-	size_t size = 0;
+	ssize_t size;
 	unsigned long iova = 0;
 	int rc = 0, prot = 0;
 	struct timespec64 ts1, ts2;
@@ -2747,9 +2747,8 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 		if (iommu_cb_set.force_cache_allocs)
 			prot |= IOMMU_CACHE;
 
-		size = cam_iommu_map_sg(domain, iova, table->sgl, table->orig_nents,
-				prot);
-		if (size < 0) {
+		size = cam_iommu_map_sg(domain, iova, table->sgl, table->orig_nents, prot);
+		if ((size < 0) || (size < *len_ptr)) {
 			CAM_ERR(CAM_SMMU, "IOMMU mapping failed");
 			rc = cam_smmu_free_iova(iova,
 				size, multi_client_device_idx,
