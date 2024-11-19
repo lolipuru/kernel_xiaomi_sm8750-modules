@@ -558,7 +558,7 @@ static int __cam_req_mgr_send_evt(
 {
 	int i, rc = 0;
 	struct cam_req_mgr_link_evt_data     evt_data = {0};
-	struct cam_req_mgr_connected_device *device = NULL;
+	struct cam_req_mgr_connected_device *device;
 
 	CAM_DBG(CAM_CRM,
 		"Notify event type: %d to all connected devices on link: 0x%x",
@@ -570,8 +570,6 @@ static int __cam_req_mgr_send_evt(
 
 	for (i = 0; i < link->num_devs; i++) {
 		device = &link->l_dev[i];
-		if (!device)
-			continue;
 
 		evt_data.dev_hdl = device->dev_hdl;
 		evt_data.link_hdl = link->link_hdl;
@@ -5449,7 +5447,8 @@ int cam_req_mgr_schedule_request_v2(
 
 	if (sched_req->sync_mode == CAM_REQ_MGR_SYNC_MODE_SYNC) {
 		if ((sched_req->num_links <= 0) ||
-			(sched_req->num_links > MAXIMUM_LINKS_PER_SESSION)) {
+			(sched_req->num_links >
+			min(MAXIMUM_LINKS_PER_SESSION, MAX_LINKS_PER_SESSION))) {
 			CAM_ERR(CAM_CRM, "link:0x%x req:%lld invalid num_links:%d",
 				link->link_hdl, sched_req->req_id, sched_req->num_links);
 			rc = -EINVAL;

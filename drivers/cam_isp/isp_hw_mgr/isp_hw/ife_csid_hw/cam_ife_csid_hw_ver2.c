@@ -1813,7 +1813,7 @@ static void cam_ife_csid_ver2_read_debug_err_vectors(
 	int i, j, k;
 	uint64_t timestamp;
 	uint32_t temp, debug_vec_error_reg[CAM_IFE_CSID_DEBUG_VEC_ERR_REGS] = {0};
-	uint8_t log_buf[CAM_IFE_CSID_LOG_BUF_LEN];
+	uint8_t log_buf[CAM_IFE_CSID_LOG_BUF_LEN] = {0};
 	size_t len = 0;
 	struct cam_ife_csid_ver2_reg_info  *csid_reg;
 	struct cam_hw_soc_info             *soc_info;
@@ -2472,7 +2472,7 @@ void cam_ife_csid_ver2_print_illegal_programming_irq_status(
 		vc[CAM_IFE_CSID_MAX_VALID_VC_NUM], dt[CAM_IFE_CSID_MULTI_VC_DT_GRP_MAX];
 	int i;
 	size_t len = 0;
-	uint8_t log_buf[100];
+	uint8_t log_buf[100] = {0};
 
 	csid_reg = csid_hw->core_info->csid_reg;
 	path_cfg = (struct cam_ife_csid_ver2_path_cfg *)res->res_priv;
@@ -3872,12 +3872,12 @@ static int cam_ife_csid_hw_ver2_prepare_config_path_data(
 	struct cam_csid_hw_reserve_resource_args  *reserve,
 	uint32_t cid)
 {
-	int rc = 0, i = 0;
+	int rc, i;
 	const struct cam_ife_csid_ver2_reg_info *csid_reg =
 		(struct cam_ife_csid_ver2_reg_info *)csid_hw->core_info->csid_reg;
 	struct cam_ife_csid_cid_data *cid_data = &csid_hw->cid_data[cid];
 	struct cam_isp_resource_node *res = &csid_hw->path_res[reserve->res_id];
-	const struct cam_ife_csid_ver2_path_reg_info  *path_reg = NULL;
+	const struct cam_ife_csid_ver2_path_reg_info  *path_reg;
 
 	for(i = 0; i < reserve->in_port->num_valid_vc_dt; i++)
 		path_cfg->in_format[i] = reserve->in_port->format[i];
@@ -4015,7 +4015,7 @@ static int cam_ife_csid_hw_ver2_prepare_config_path_data(
 		rc = -EINVAL;
 		CAM_ERR(CAM_ISP, "CSID[%u] Invalid Res id %u",
 			csid_hw->hw_intf->hw_idx, reserve->res_id);
-		break;
+		goto end;
 	}
 
 	rc = cam_ife_csid_ver2_decode_format_validate(csid_hw, res);
