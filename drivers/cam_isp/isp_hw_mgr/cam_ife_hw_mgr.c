@@ -12120,6 +12120,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 		if (bw_config_u->num_rdi != bw_config->num_rdi) {
 			CAM_ERR(CAM_ISP, "num_rdi changed,userspace:%d, kernel:%d", bw_config_u->num_rdi,
 				bw_config->num_rdi);
+			cam_common_mem_free(bw_config);
 			return -EINVAL;
 		}
 
@@ -12132,6 +12133,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 					"Max size exceeded in bw config num_rdi:%u size per port:%lu ctx_idx: %u",
 					bw_config->num_rdi,
 					sizeof(struct cam_isp_bw_vote), ife_mgr_ctx->ctx_index);
+				cam_common_mem_free(bw_config);
 				return -EINVAL;
 			}
 		}
@@ -12144,6 +12146,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 				blob_size, sizeof(struct cam_isp_bw_config) +
 				(bw_config->num_rdi - 1) *
 				sizeof(struct cam_isp_bw_vote), ife_mgr_ctx->ctx_index);
+			cam_common_mem_free(bw_config);
 			return -EINVAL;
 		}
 
@@ -12151,6 +12154,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 			(bw_config->usage_type >= CAM_ISP_HW_USAGE_TYPE_MAX)) {
 			CAM_ERR(CAM_ISP, "Invalid inputs usage type %d, ctx_idx: %u",
 				bw_config->usage_type, ife_mgr_ctx->ctx_index);
+			cam_common_mem_free(bw_config);
 			return -EINVAL;
 		}
 
@@ -12161,6 +12165,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 			sizeof(prepare_hw_data->bw_clk_config.bw_config));
 		ife_mgr_ctx->bw_config_version = CAM_ISP_BW_CONFIG_V1;
 		prepare_hw_data->bw_clk_config.bw_config_valid = true;
+		cam_common_mem_free(bw_config);
 	}
 		break;
 	case CAM_ISP_GENERIC_BLOB_TYPE_BW_CONFIG_V2: {
@@ -12197,6 +12202,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 		if (bw_config_u->num_paths != bw_config->num_paths) {
 			CAM_ERR(CAM_ISP, "num_paths changed,userspace:%d, kernel:%d", bw_config_u->num_paths,
 					bw_config->num_paths);
+			cam_common_mem_free(bw_config);
 			return -EINVAL;
 		}
 
@@ -12211,6 +12217,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 					bw_config->num_paths - 1,
 					sizeof(
 					struct cam_axi_per_path_bw_vote), ife_mgr_ctx->ctx_index);
+				cam_common_mem_free(bw_config);
 				return -EINVAL;
 			}
 		}
@@ -12224,6 +12231,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 				blob_size, bw_config->num_paths,
 				sizeof(struct cam_isp_bw_config_v2),
 				sizeof(struct cam_axi_per_path_bw_vote), ife_mgr_ctx->ctx_index);
+			cam_common_mem_free(bw_config);
 			return -EINVAL;
 		}
 
@@ -12231,6 +12239,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 			(bw_config->usage_type >= CAM_ISP_HW_USAGE_TYPE_MAX)) {
 			CAM_ERR(CAM_ISP, "Invalid inputs usage type %d ctx_idx: %u",
 				bw_config->usage_type, ife_mgr_ctx->ctx_index);
+			cam_common_mem_free(bw_config);
 			return -EINVAL;
 		}
 
@@ -12252,6 +12261,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 
 		ife_mgr_ctx->bw_config_version = CAM_ISP_BW_CONFIG_V2;
 		prepare_hw_data->bw_clk_config.bw_config_valid = true;
+		cam_common_mem_free(bw_config);
 	}
 		break;
 	case CAM_ISP_GENERIC_BLOB_TYPE_BW_CONFIG_V3: {
@@ -12288,6 +12298,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 		if (bw_config_u->num_paths != bw_config->num_paths) {
 			CAM_ERR(CAM_ISP, "num_paths changed,userspace:%d, kernel:%d", bw_config_u->num_paths,
 					bw_config->num_paths);
+			cam_common_mem_free(bw_config);
 			return -EINVAL;
 		}
 
@@ -12301,6 +12312,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 					bw_config->num_paths - 1,
 					sizeof(struct cam_axi_per_path_bw_vote_v2),
 					ife_mgr_ctx->ctx_index);
+				cam_common_mem_free(bw_config);
 				return -EINVAL;
 			}
 		}
@@ -12314,6 +12326,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 				blob_size, bw_config->num_paths,
 				sizeof(struct cam_isp_bw_config_v3),
 				sizeof(struct cam_axi_per_path_bw_vote_v2), ife_mgr_ctx->ctx_index);
+			cam_common_mem_free(bw_config);
 			return -EINVAL;
 		}
 
@@ -12321,6 +12334,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 			(bw_config->usage_type >= CAM_ISP_HW_USAGE_TYPE_MAX)) {
 			CAM_ERR(CAM_ISP, "Invalid inputs usage type %d, ctx_idx: %u",
 				bw_config->usage_type, ife_mgr_ctx->ctx_index);
+			cam_common_mem_free(bw_config);
 			return -EINVAL;
 		}
 
@@ -12342,6 +12356,7 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 
 		ife_mgr_ctx->bw_config_version = CAM_ISP_BW_CONFIG_V3;
 		prepare_hw_data->bw_clk_config.bw_config_valid = true;
+		cam_common_mem_free(bw_config);
 	}
 		break;
 
