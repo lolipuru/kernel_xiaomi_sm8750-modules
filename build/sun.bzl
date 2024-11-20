@@ -40,6 +40,8 @@ def define_sun():
             "wcd938x_slave_dlkm",
             "wcd939x_dlkm",
             "wcd939x_slave_dlkm",
+            "wcd9378_dlkm",
+            "wcd9378_slave_dlkm",
             "lpass_bt_swr_dlkm",
 			"qmp_dlkm"
         ],

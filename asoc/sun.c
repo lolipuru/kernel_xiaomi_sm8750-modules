@@ -34,9 +34,11 @@
 #include "asoc/msm-cdc-pinctrl.h"
 #include "asoc/wcd-mbhc-v2.h"
 #include "codecs/wcd939x/wcd939x-mbhc.h"
+#include "codecs/wcd9378/wcd9378-mbhc.h"
 #include "codecs/wsa884x/wsa884x.h"
 #include "codecs/wsa883x/wsa883x.h"
 #include "codecs/wcd939x/wcd939x.h"
+#include "codecs/wcd9378/wcd9378.h"
 #include "codecs/lpass-cdc/lpass-cdc.h"
 #include <bindings/audio-codec-port-types.h>
 #include "codecs/lpass-cdc/lpass-cdc-wsa-macro.h"
@@ -64,6 +66,12 @@
 #define STEREO_SPEAKER  2
 #define QUAD_SPEAKER    4
 
+enum {
+	WCD937X_DEV_INDEX,
+	WCD939X_DEV_INDEX,
+	WCD9378_DEV_INDEX,
+};
+
 struct msm_asoc_mach_data {
 	struct snd_info_entry *codec_root;
 	struct msm_common_pdata *common_pdata;
@@ -83,6 +91,7 @@ struct msm_asoc_mach_data {
 	int backend_used;
 	struct prm_earpa_hw_intf_config upd_config;
 	bool dedicated_wsa2; /* used to define how wsa2 slave devices are used */
+	int wcd_used;
 };
 
 static bool is_initial_boot;
@@ -197,6 +206,7 @@ static void msm_set_upd_config(struct snd_soc_pcm_runtime *rtd)
 	u8  dev_num = 0;
 	struct snd_soc_component *component = NULL;
 	struct msm_asoc_mach_data *pdata = NULL;
+	char wcd_name[20];
 
 	if (!rtd) {
 		pr_err_ratelimited("%s: rtd is NULL\n", __func__);
@@ -229,7 +239,11 @@ static void msm_set_upd_config(struct snd_soc_pcm_runtime *rtd)
 			return;
 		}
 	} else {
-		component = snd_soc_rtdcom_lookup(rtd, WCD939X_DRV_NAME);
+		if (pdata->wcd_used == WCD9378_DEV_INDEX)
+			strscpy(wcd_name, WCD9378_DRV_NAME, sizeof(WCD9378_DRV_NAME));
+		else
+			strscpy(wcd_name, WCD939X_DRV_NAME, sizeof(WCD939X_DRV_NAME));
+		component = snd_soc_rtdcom_lookup(rtd, wcd_name);
 		if (!component) {
 			pr_err("%s component is NULL\n", __func__);
 			return;
@@ -242,7 +256,11 @@ static void msm_set_upd_config(struct snd_soc_pcm_runtime *rtd)
 		else
 			pdata->get_dev_num = wsa884x_codec_get_dev_num;
 	} else {
-		pdata->get_dev_num = wcd939x_codec_get_dev_num;
+		if (pdata->wcd_used == WCD9378_DEV_INDEX) {
+			pdata->get_dev_num = wcd9378_codec_get_dev_num;
+		} else {
+			pdata->get_dev_num = wcd939x_codec_get_dev_num;
+		}
 	}
 
 	if (!pdata->get_dev_num) {
@@ -1500,6 +1518,7 @@ static int msm_snd_card_late_probe(struct snd_soc_card *card)
 	struct msm_asoc_mach_data *pdata;
 	int ret = 0;
 	void *mbhc_calibration;
+	char wcd_name[20];
 
 	pdata = snd_soc_card_get_drvdata(card);
 	if (!pdata)
@@ -1516,7 +1535,11 @@ static int msm_snd_card_late_probe(struct snd_soc_card *card)
 		return -EINVAL;
 	}
 
-	component = snd_soc_rtdcom_lookup(rtd, WCD939X_DRV_NAME);
+	if (pdata->wcd_used == WCD9378_DEV_INDEX)
+		strscpy(wcd_name, WCD9378_DRV_NAME, sizeof(WCD9378_DRV_NAME));
+	else
+		strscpy(wcd_name, WCD939X_DRV_NAME, sizeof(WCD939X_DRV_NAME));
+	component = snd_soc_rtdcom_lookup(rtd, wcd_name);
 	if (!component) {
 		pr_err("%s component is NULL\n", __func__);
 		return -EINVAL;
@@ -1533,7 +1556,16 @@ static int msm_snd_card_late_probe(struct snd_soc_card *card)
 		wcd_mbhc_cfg.usbss_hsj_connect_enable = true;
 #endif
 
-	ret = wcd939x_mbhc_hs_detect(component, &wcd_mbhc_cfg);
+	switch (pdata->wcd_used) {
+	case WCD9378_DEV_INDEX:
+		ret = wcd9378_mbhc_hs_detect(component, &wcd_mbhc_cfg);
+		break;
+	case WCD939X_DEV_INDEX:
+		ret = wcd939x_mbhc_hs_detect(component, &wcd_mbhc_cfg);
+		break;
+	default:
+		return -EINVAL;
+	}
 	if (ret) {
 		dev_err(component->dev, "%s: mbhc hs detect failed, err:%d\n",
 			__func__, ret);
@@ -2099,12 +2131,21 @@ static int msm_rx_tx_codec_init(struct snd_soc_pcm_runtime *rtd)
 	if (!component) {
 		pr_err("%s could not find component for %s\n",
 			__func__, WCD939X_DRV_NAME);
-		return -EINVAL;
+		component = snd_soc_rtdcom_lookup(rtd, WCD9378_DRV_NAME);
+		if (!component) {
+			pr_err("%s component is NULL\n", __func__);
+			return -EINVAL;
+		}
+		pdata->wcd_used = WCD9378_DEV_INDEX;
+	} else {
+		pdata->wcd_used = WCD939X_DEV_INDEX;
 	}
 	dapm = snd_soc_component_get_dapm(component);
 	card = component->card->snd_card;
 
 	snd_soc_dapm_ignore_suspend(dapm, "EAR");
+	if (pdata->wcd_used != WCD939X_DEV_INDEX)
+		snd_soc_dapm_ignore_suspend(dapm, "AUX");
 	snd_soc_dapm_ignore_suspend(dapm, "HPHL");
 	snd_soc_dapm_ignore_suspend(dapm, "HPHR");
 	snd_soc_dapm_ignore_suspend(dapm, "AMIC1");
@@ -2124,10 +2165,13 @@ static int msm_rx_tx_codec_init(struct snd_soc_pcm_runtime *rtd)
 		}
 		pdata->codec_root = entry;
 	}
-	wcd939x_info_create_codec_entry(pdata->codec_root, component);
-
-	codec_variant = wcd939x_get_codec_variant(component);
-	dev_dbg(component->dev, "%s: variant %d\n", __func__, codec_variant);
+	if (pdata->wcd_used == WCD9378_DEV_INDEX) {
+		wcd9378_info_create_codec_entry(pdata->codec_root, component);
+	} else {
+		wcd939x_info_create_codec_entry(pdata->codec_root, component);
+		codec_variant = wcd939x_get_codec_variant(component);
+		dev_dbg(component->dev, "%s: variant %d\n", __func__, codec_variant);
+	}
 	if (codec_variant == WCD9395)
 		ret = lpass_cdc_rx_set_fir_capability(lpass_cdc_component, true);
 	else
