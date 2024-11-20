@@ -1477,12 +1477,10 @@ static void cam_hw_cdm_iommu_fault_handler(struct cam_smmu_pf_info *pf_info)
 			(void *)pf_info->iova);
 
 		/* Check if the PID and MID are valid, if not handle the pf */
-		if ((pvt_data->pid >= 0) && (pvt_data->mid >= 0)) {
-			if (((pf_info->pid == pvt_data->pid) && (pf_info->mid == pvt_data->mid)))
-				goto handle_cdm_pf;
-			else
-				return;
-		}
+		if (((pf_info->pid == pvt_data->pid) && (pf_info->mid == pvt_data->mid)))
+			goto handle_cdm_pf;
+		else
+			return;
 
 handle_cdm_pf:
 
