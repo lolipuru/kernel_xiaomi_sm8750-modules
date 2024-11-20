@@ -85,6 +85,8 @@ struct dp_tx_queue;
 #define MAX_MON_LINK_DESC_BANKS 2
 #define DP_VDEV_ALL CDP_VDEV_ALL
 
+#define DP_INVALID_VDEV_ID 0xFF
+
 #if defined(WLAN_MAX_PDEVS) && (WLAN_MAX_PDEVS == 1)
 #define WLAN_DP_RESET_MON_BUF_RING_FILTER
 #if defined(QCA_WIFI_QCA6750) || defined(QCA_WIFI_WCN6450)
@@ -1778,6 +1780,7 @@ struct rx_refill_buff_pool {
 #define DP_PAGE_POOL_MAX 4
 
 struct dp_rx_pp_params {
+	qdf_list_node_t node;
 	qdf_page_pool_t pp;
 	size_t pool_size;
 	size_t pp_size;
@@ -1791,6 +1794,8 @@ struct dp_rx_page_pool {
 	size_t curr_pool_size;
 	size_t base_pool_size;
 	qdf_atomic_t update_in_progress;
+	qdf_timer_t pool_inactivity_timer;
+	qdf_list_t inactive_list;
 };
 #endif
 
@@ -3446,13 +3451,15 @@ struct dp_soc {
 #endif
 	qdf_atomic_t ipa_pipes_enabled;
 	bool ipa_first_tx_db_access;
-	qdf_spinlock_t rx_buf_map_lock;
-	uint8_t reo_ctx_lock_required[MAX_REO_DEST_RINGS];
-
 	struct dp_ipa_resources ipa_resource;
 	ipa_uc_op_cb_type ipa_uc_op_cb;
 	void *usr_ctxt;
 #endif /* IPA_OFFLOAD */
+
+#if defined(IPA_OFFLOAD) || defined(FEATURE_DIRECT_LINK)
+	qdf_spinlock_t rx_buf_map_lock;
+	uint8_t reo_ctx_lock_required[MAX_REO_DEST_RINGS];
+#endif
 
 	/* Second ring used to replenish rx buffers */
 	struct dp_srng rx_refill_buf_ring2;
@@ -4347,6 +4354,7 @@ struct dp_vdev_stats {
 
 /* VDEV structure for data path state */
 struct dp_vdev {
+	struct cdp_vdev cdp_vdev;
 	/* OS device abstraction */
 	qdf_device_t osdev;
 
@@ -4501,7 +4509,7 @@ struct dp_vdev {
 	ol_txrx_classify_critical_pkt_fp tx_classify_critical_pkt_cb;
 
 	/* delete notifier to DP component */
-	ol_txrx_vdev_delete_cb vdev_del_notify;
+	ol_txrx_vdev_del_notify_cb vdev_del_notify;
 
 	/* deferred vdev deletion state */
 	struct {
