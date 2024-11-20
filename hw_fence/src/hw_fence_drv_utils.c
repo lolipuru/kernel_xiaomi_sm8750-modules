@@ -411,7 +411,7 @@ static int _process_ctrl_rx_queue(struct hw_fence_driver_data *drv_data)
 			&drv_data->ctrl_queues[HW_FENCE_RX_QUEUE - 1], &payload);
 		if (read < 0) {
 			HWFNC_DBG_Q("unable to read ctrl rxq\n");
-			return read;
+			return 0;
 		}
 		switch (payload.type) {
 		case HW_FENCE_PAYLOAD_TYPE_2:
