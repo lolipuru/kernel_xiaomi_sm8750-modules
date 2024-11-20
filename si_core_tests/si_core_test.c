@@ -28,6 +28,8 @@ static ssize_t device_write(struct file *file, const char __user *buf,
 // Define IOCTL commands
 #define IOCTL_RUN_TEST _IOW(1, 0, int)
 
+#define SI_CORE_TEST_TIMED
+
 static struct class *driver_class;
 static dev_t si_core_device_no;
 static struct cdev si_core_cdev;
@@ -40,6 +42,24 @@ static const struct file_operations fops = {
 	.unlocked_ioctl = device_ioctl,
 	.write = device_write
 };
+
+#ifdef SI_CORE_TEST_TIMED
+#define si_object_do_invoke_timed(oic, o, op, args, result, msg) ({             \
+    int ret;                                                                    \
+    ktime_t start_time, end_time, diff;                                         \
+    start_time = ktime_get();                                                   \
+    ret = si_object_do_invoke((oic), (o), (op), (args), (result));              \
+    end_time = ktime_get();                                                     \
+    if (!ret) {                                                                 \
+        diff = ktime_to_ns(ktime_sub(end_time, start_time));                    \
+        pr_info("%s took(ns): %llu", msg, diff);                                \
+    }                                                                           \
+    ret;                                                                        \
+})
+#else
+#define si_object_do_invoke_timed(oic, o, op, args, result, msg) \
+     si_object_do_invoke((oic), (o), (op), (args), (result))
+#endif
 
 // Device open function
 static int device_open(struct inode *inode, struct file *file)
@@ -83,7 +103,8 @@ int get_client_env(struct si_object_invoke_ctx *oic, struct si_object **client_e
 	args[2].type = SI_AT_END;
 
 	/* IClientEnv_OP_registerWithCredentials  is 5. */
-	ret = si_object_do_invoke(oic, ROOT_SI_OBJECT, 5, args, &result);
+	ret = si_object_do_invoke_timed(oic, ROOT_SI_OBJECT, 5, args, &result,
+				"IClientEnv_OP_registerWithCredentials");
 	if (ret || result) {
 		pr_err("failed with result %d(ret = %d).\n", result, ret);
 		return -EINVAL;
@@ -107,7 +128,8 @@ int client_env_open(struct si_object_invoke_ctx *oic, struct si_object *client_e
 	args[2].type = SI_AT_END;
 
 	/* IClientEnv_OP_open is 0. */
-	ret = si_object_do_invoke(oic, client_env, 0, args, &result);
+	ret = si_object_do_invoke_timed(oic, client_env, 0, args, &result,
+				"IClientEnv_OP_open");
 	if (ret || result) {
 		pr_err("failed with result %d(ret = %d).\n", result, ret);
 		return -EINVAL;
@@ -130,7 +152,8 @@ static int query_heap_info(struct si_object_invoke_ctx *oic, struct si_object *s
 	args[1].type = SI_AT_END;
 
 	/* IDiagnostics_OP_queryHeapInfo is 0. */
-	ret = si_object_do_invoke(oic, service, 0, args, &result);
+	ret = si_object_do_invoke_timed(oic, service, 0, args, &result,
+				"IDiagnostics_OP_queryHeapInfo");
 	if (ret || result) {
 		pr_err("failed with result %d(ret = %d).\n", result, ret);
 		return -EINVAL;
@@ -160,7 +183,8 @@ static int load_app(struct si_object *appLoader, void *file, int len,
 	args[2].type = SI_AT_END;
 
 	/* IAppLoader_OP_loadFromBuffer is 0. */
-	ret = si_object_do_invoke(oic, appLoader, 0, args, &result);
+	ret = si_object_do_invoke_timed(oic, appLoader, 0, args, &result,
+				"IAppLoader_OP_loadFromBuffer");
 	if (ret || result) {
 		pr_err("failed IAppLoader_OP_loadFromBuffer with result %d(ret = %d).\n",
 				result, ret);
@@ -175,7 +199,8 @@ static int load_app(struct si_object *appLoader, void *file, int len,
 	app_ctr_args[1].type = SI_AT_END;
 
 	/* IAppController_OP_getAppObject is 2. */
-	ret = si_object_do_invoke(oic, *appController, 2, app_ctr_args, &result);
+	ret = si_object_do_invoke_timed(oic, *appController, 2, app_ctr_args, &result,
+				"IAppController_OP_getAppObject");
 	if (ret || result) {
 		put_si_object(*appController);
 		pr_err("failed appController with result %d(ret = %d).\n", result, ret);
@@ -218,7 +243,8 @@ static int send_command(struct si_object *appObj, struct si_object_invoke_ctx *o
 	args[3].type = SI_AT_END;
 
 	// ISMCIExampleApp_computeHash
-	ret = si_object_do_invoke(oic, appObj, 1, args, &result);
+	ret = si_object_do_invoke_timed(oic, appObj, 1, args, &result,
+				"ISMCIExampleApp_computeHash");
 	if (ret || result) {
 		pr_err("failed ISMCIExampleApp_computeHash with result %d(ret = %d).\n",
 				result, ret);
