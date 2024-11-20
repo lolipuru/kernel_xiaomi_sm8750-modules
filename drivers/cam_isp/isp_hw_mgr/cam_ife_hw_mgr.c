@@ -9606,6 +9606,15 @@ static int cam_isp_scratch_buf_update_util(
 		return rc;
 	}
 
+	if (buffer_info->offset >= size) {
+		CAM_ERR(CAM_ISP,
+			"Invalid scratch buffer offset:%u size:%u mmu_hdl:%u hdl:%d res_type:0x%x",
+			buffer_info->offset, size, mmu_hdl, buffer_info->mem_handle,
+			buffer_info->resource_type);
+		rc = -EINVAL;
+		return rc;
+	}
+
 	port_info->res_id = buffer_info->resource_type;
 	port_info->io_addr = io_addr + buffer_info->offset;
 	port_info->width = buffer_info->width;
@@ -12025,7 +12034,9 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 		break;
 	case CAM_ISP_GENERIC_BLOB_TYPE_BW_CONFIG: {
 		struct cam_isp_bw_config    *bw_config;
+		struct cam_isp_bw_config    *bw_config_u;
 		struct cam_isp_prepare_hw_update_data   *prepare_hw_data;
+		size_t bw_config_size;
 
 		CAM_WARN_RATE_LIMIT_CUSTOM(CAM_PERF, 300, 1,
 			"Deprecated Blob TYPE_BW_CONFIG");
@@ -12035,11 +12046,25 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 			return -EINVAL;
 		}
 
-		bw_config = (struct cam_isp_bw_config *)blob_data;
+		bw_config_u = (struct cam_isp_bw_config *)blob_data;
 
-		if (bw_config->num_rdi > CAM_IFE_RDI_NUM_MAX) {
+		if (bw_config_u->num_rdi > CAM_IFE_RDI_NUM_MAX || !bw_config_u->num_rdi) {
 			CAM_ERR(CAM_ISP, "Invalid num_rdi %u in bw config, ctx_idx: %u",
-				bw_config->num_rdi, ife_mgr_ctx->ctx_index);
+				bw_config_u->num_rdi, ife_mgr_ctx->ctx_index);
+			return -EINVAL;
+		}
+
+		bw_config_size = sizeof(struct cam_isp_bw_config) + ((bw_config_u->num_rdi-1)*
+					sizeof(struct cam_isp_bw_vote));
+
+		rc = cam_common_mem_kdup((void **)&bw_config, bw_config_u, bw_config_size);
+		if (rc) {
+			CAM_ERR(CAM_ISP, "Alloc and copy request bw_config failed");
+			return rc;
+		}
+		if (bw_config_u->num_rdi != bw_config->num_rdi) {
+			CAM_ERR(CAM_ISP, "num_rdi changed,userspace:%d, kernel:%d", bw_config_u->num_rdi,
+				bw_config->num_rdi);
 			return -EINVAL;
 		}
 
@@ -12085,8 +12110,10 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 		break;
 	case CAM_ISP_GENERIC_BLOB_TYPE_BW_CONFIG_V2: {
 		struct cam_isp_bw_config_v2    *bw_config;
+		struct cam_isp_bw_config_v2    *bw_config_u;
 		struct cam_isp_prepare_hw_update_data   *prepare_hw_data;
 		struct cam_cpas_axi_per_path_bw_vote *path_vote;
+		size_t bw_config_size;
 
 		if (blob_size < sizeof(struct cam_isp_bw_config_v2)) {
 			CAM_ERR(CAM_ISP, "Invalid blob size %u ctx_idx: %u", blob_size,
@@ -12094,12 +12121,27 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 			return -EINVAL;
 		}
 
-		bw_config = (struct cam_isp_bw_config_v2 *)blob_data;
+		bw_config_u = (struct cam_isp_bw_config_v2 *)blob_data;
 
-		if (bw_config->num_paths > CAM_ISP_MAX_PER_PATH_VOTES ||
-			!bw_config->num_paths) {
+		if (bw_config_u->num_paths > CAM_ISP_MAX_PER_PATH_VOTES ||
+			!bw_config_u->num_paths) {
 			CAM_ERR(CAM_ISP, "Invalid num paths %d ctx_idx: %u",
-				bw_config->num_paths, ife_mgr_ctx->ctx_index);
+				bw_config_u->num_paths, ife_mgr_ctx->ctx_index);
+			return -EINVAL;
+		}
+
+		bw_config_size = sizeof(struct cam_isp_bw_config_v2) + ((bw_config_u->num_paths-1)*
+					sizeof(struct cam_axi_per_path_bw_vote));
+
+		rc = cam_common_mem_kdup((void **)&bw_config, bw_config_u, bw_config_size);
+		if (rc) {
+			CAM_ERR(CAM_ISP, "Alloc and copy request bw_config failed");
+			return rc;
+		}
+
+		if (bw_config_u->num_paths != bw_config->num_paths) {
+			CAM_ERR(CAM_ISP, "num_paths changed,userspace:%d, kernel:%d", bw_config_u->num_paths,
+					bw_config->num_paths);
 			return -EINVAL;
 		}
 
@@ -12159,8 +12201,10 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 		break;
 	case CAM_ISP_GENERIC_BLOB_TYPE_BW_CONFIG_V3: {
 		struct cam_isp_bw_config_v3    *bw_config;
+		struct cam_isp_bw_config_v3    *bw_config_u;
 		struct cam_isp_prepare_hw_update_data   *prepare_hw_data;
 		struct cam_cpas_axi_per_path_bw_vote *path_vote;
+		size_t bw_config_size;
 
 		if (blob_size < sizeof(struct cam_isp_bw_config_v3)) {
 			CAM_ERR(CAM_ISP, "Invalid blob size %u ctx_idx: %u", blob_size,
@@ -12168,11 +12212,27 @@ static int cam_isp_packet_generic_blob_handler(void *user_data,
 			return -EINVAL;
 		}
 
-		bw_config = (struct cam_isp_bw_config_v3 *)blob_data;
+		bw_config_u = (struct cam_isp_bw_config_v3 *)blob_data;
 
-		if (bw_config->num_paths > CAM_ISP_MAX_PER_PATH_VOTES || !bw_config->num_paths) {
+		if (bw_config_u->num_paths > CAM_ISP_MAX_PER_PATH_VOTES ||
+			!bw_config_u->num_paths) {
 			CAM_ERR(CAM_ISP, "Invalid num paths %d, ctx_idx: %u",
-				bw_config->num_paths, ife_mgr_ctx->ctx_index);
+				bw_config_u->num_paths, ife_mgr_ctx->ctx_index);
+			return -EINVAL;
+		}
+
+		bw_config_size = sizeof(struct cam_isp_bw_config_v3) + ((bw_config_u->num_paths-1) *
+					 sizeof(struct cam_axi_per_path_bw_vote_v2));
+
+		rc = cam_common_mem_kdup((void **)&bw_config, bw_config_u, bw_config_size);
+		if (rc) {
+			CAM_ERR(CAM_ISP, "Alloc and copy request bw_config failed");
+			return rc;
+		}
+
+		if (bw_config_u->num_paths != bw_config->num_paths) {
+			CAM_ERR(CAM_ISP, "num_paths changed,userspace:%d, kernel:%d", bw_config_u->num_paths,
+					bw_config->num_paths);
 			return -EINVAL;
 		}
 
@@ -12900,6 +12960,7 @@ static int cam_ife_mgr_util_insert_frame_header(
 	uint32_t frame_header_iova, padded_bytes = 0;
 	size_t len;
 	struct cam_ife_hw_mgr *hw_mgr = &g_ife_hw_mgr;
+	struct cam_smmu_buffer_tracker  *buf_track_entry;
 
 	mmu_hdl = cam_mem_is_secure_buf(
 			kmd_buf->handle) ?
@@ -12913,6 +12974,17 @@ static int cam_ife_mgr_util_insert_frame_header(
 			"Failed to get io addr for handle = %d for mmu_hdl = %u",
 			kmd_buf->handle, mmu_hdl);
 		return rc;
+	}
+
+	if (kmd_buf->offset >= len) {
+		CAM_ERR(CAM_ISP, "Invalid kmd buffer offset %u", kmd_buf->offset);
+		if (buf_tracker) {
+			buf_track_entry = list_first_entry_or_null(buf_tracker,
+				struct cam_smmu_buffer_tracker, list);
+			cam_smmu_buffer_tracker_buffer_putref(buf_track_entry);
+		}
+
+		return -EINVAL;
 	}
 
 	/* CDM buffer is within 32-bit address space */
