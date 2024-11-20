@@ -179,6 +179,7 @@ static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
 	struct sde_kms *sde_kms;
 	struct drm_encoder *drm_enc;
 	struct drm_connector *connector;
+	struct sde_encoder_virt *sde_enc;
 	int rc = 0;
 
 	if (!c_conn) {
@@ -193,6 +194,20 @@ static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
 	if (!sde_kms) {
 		SDE_ERROR("invalid kms\n");
 		return -EINVAL;
+	}
+
+	connector = &c_conn->base;
+	if (connector->state && connector->state->best_encoder)
+		drm_enc = connector->state->best_encoder;
+	else
+		drm_enc = connector->encoder;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	/* If VRR command in progress, update in next interval */
+	if (sde_enc && (sde_enc->vrr_info.vhm_cmd_in_progress == SDE_CMD_SCHEDULED)) {
+		sde_encoder_handle_next_backlight_update(drm_enc);
+		SDE_EVT32(sde_enc->vrr_info.vhm_cmd_in_progress);
+		return 0;
 	}
 
 	c_conn->bl_vrr.bl_frame_idx++;
@@ -230,11 +245,8 @@ static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
 		return rc;
 	}
 
-	connector = &c_conn->base;
-	if (connector->state && connector->state->best_encoder)
-		drm_enc = connector->state->best_encoder;
-	else
-		drm_enc = connector->encoder;
+	c_conn->bl_vrr.curr_brightness = updated_brightness;
+	c_conn->bl_vrr.curr_bl_lvl = updated_bl_lvl;
 
 	if (c_conn->bl_vrr.bl_frame_idx >= c_conn->num_bl_frames) {
 		c_conn->bl_vrr.bl_frame_idx = 0;
@@ -291,6 +303,7 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 	else
 		drm_enc = connector->encoder;
 
+	mutex_lock(&c_conn->bl_vrr.bl_lock);
 	/* first frame after suspend/init */
 	if (c_conn->bl_vrr.prev_brightness == 0 ||
 			c_conn->last_panel_power_mode == SDE_MODE_DPMS_OFF) {
@@ -298,8 +311,10 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 			c_conn->last_panel_power_mode);
 		goto skip_incremental_update;
 	} else if (sde_connector_is_cont_bl_updates(c_conn)) {
-		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
-		goto skip_incremental_update;
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, c_conn->bl_vrr.curr_brightness,
+			c_conn->bl_vrr.curr_bl_lvl);
+		c_conn->bl_vrr.prev_brightness = c_conn->bl_vrr.curr_brightness;
+		c_conn->bl_vrr.prev_bl_lvl = c_conn->bl_vrr.curr_bl_lvl;
 	}
 
 	c_conn->bl_vrr.new_brightness = brightness;
@@ -310,6 +325,7 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 
 	sde_encoder_handle_next_backlight_update(drm_enc);
 
+	mutex_unlock(&c_conn->bl_vrr.bl_lock);
 	return rc;
 
 skip_incremental_update:
@@ -323,6 +339,7 @@ skip_incremental_update:
 		c_conn->bl_vrr.prev_bl_lvl = bl_lvl;
 		SDE_EVT32(brightness, bl_lvl);
 	}
+	mutex_unlock(&c_conn->bl_vrr.bl_lock);
 	return rc;
 }
 
@@ -1333,6 +1350,89 @@ struct sde_connector_dyn_hdr_metadata *sde_connector_get_dyn_hdr_meta(
 	return &c_state->dyn_hdr_meta;
 }
 
+static bool sde_connector_power_on_off_frame(struct drm_connector *connector)
+{
+	int lp_mode;
+
+	lp_mode = sde_connector_get_property(connector->state, CONNECTOR_PROP_LP);
+	if (lp_mode == SDE_MODE_DPMS_OFF)
+		return true;
+
+	if (connector->state && connector->state->crtc &&
+			sde_crtc_is_power_on_frame(connector->state->crtc))
+		return true;
+
+	return false;
+}
+
+int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn;
+	struct msm_freq_step_pattern *freq_pattern;
+	struct sde_encoder_virt *sde_enc;
+	u64 cmd_bit_mask = 0;
+	int rc = 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+	sde_enc = to_sde_encoder_virt(c_conn->encoder);
+
+	if (sde_enc)
+		sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
+
+	if (sde_encoder_in_cont_splash(connector->encoder))
+		return 0;
+
+	if (!c_conn->freq_pattern) {
+		SDE_ERROR("frequency pattern is NULL but update is true\n");
+		return -EINVAL;
+	}
+
+	SDE_EVT32(c_conn->vrr_cmd_state, c_conn->freq_pattern_updated,
+		SDE_EVTLOG_FUNC_CASE1);
+	mutex_lock(&c_conn->bl_vrr.bl_lock);
+	freq_pattern = c_conn->freq_pattern;
+
+	if (c_conn->vrr_cmd_state == VRR_CMD_POWER_ON ||
+			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT) {
+		if (!sde_connector_power_on_off_frame(connector)) {
+			c_conn->freq_pattern_updated = true;
+			c_conn->freq_pattern_type_changed = true;
+			c_conn->vrr_cmd_state = VRR_CMD_STATE_NONE;
+		}
+	}
+
+	if  (c_conn->freq_pattern_updated)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_FI_PATTAREN1_CHANGE +
+			freq_pattern->frame_pattern_seq_idx);
+
+	if (c_conn->freq_pattern_type_changed && freq_pattern->needs_ap_refresh)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
+	else if (c_conn->freq_pattern_type_changed && !freq_pattern->needs_ap_refresh)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
+
+	if (cmd_bit_mask) {
+		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
+		if (sde_enc)
+			sde_enc->vrr_info.vhm_cmd_in_progress = SDE_CMD_SCHEDULED;
+	}
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, rc, cmd_bit_mask>>32, cmd_bit_mask,
+		freq_pattern->frame_pattern_seq_idx, freq_pattern->frame_interval,
+		c_conn->freq_pattern_type_changed, freq_pattern->needs_ap_refresh,
+		c_conn->vrr_cmd_state, c_conn->freq_pattern_updated);
+
+	c_conn->freq_pattern_updated = false;
+	c_conn->freq_pattern_type_changed = false;
+
+	mutex_unlock(&c_conn->bl_vrr.bl_lock);
+	return rc;
+}
+
 int sde_connector_pre_kickoff(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
@@ -1371,6 +1471,13 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		goto end;
 	}
 
+	/* Send VHM commands post BRIGHTNESS updates */
+	if (c_conn->vrr_caps.video_psr_support) {
+		rc = sde_connector_check_update_vhm_cmd(connector);
+		if (rc)
+			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+	}
+
 	if (!c_conn->ops.pre_kickoff)
 		return 0;
 
@@ -1384,66 +1491,6 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
 		display->queue_cmd_waits = false;
 end:
-	return rc;
-}
-
-int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
-{
-	struct sde_connector *c_conn;
-	struct msm_freq_step_pattern *freq_pattern;
-	u64 cmd_bit_mask = 0;
-	int lp_mode, rc = 0;
-
-	if (!connector) {
-		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
-		return -EINVAL;
-	}
-
-	c_conn = to_sde_connector(connector);
-
-	if (sde_encoder_in_cont_splash(connector->encoder))
-		return 0;
-
-	if (!c_conn->freq_pattern) {
-		SDE_ERROR("frequency pattern is NULL but update is true\n");
-		return -EINVAL;
-	}
-
-	SDE_EVT32(c_conn->vrr_cmd_state, c_conn->freq_pattern_updated,
-		SDE_EVTLOG_FUNC_CASE1);
-
-	freq_pattern = c_conn->freq_pattern;
-	if (c_conn->vrr_cmd_state == VRR_CMD_POWER_ON ||
-			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT) {
-		lp_mode = sde_connector_get_property(connector->state, CONNECTOR_PROP_LP);
-		SDE_EVT32(lp_mode, c_conn->freq_pattern_updated);
-		if (lp_mode != SDE_MODE_DPMS_OFF) {
-			c_conn->freq_pattern_updated = true;
-			c_conn->freq_pattern_type_changed = true;
-			c_conn->vrr_cmd_state = VRR_CMD_STATE_NONE;
-		}
-	}
-
-	if  (c_conn->freq_pattern_updated)
-		cmd_bit_mask |= BIT(DSI_CMD_SET_FI_PATTAREN1_CHANGE +
-			freq_pattern->frame_pattern_seq_idx);
-
-	if (c_conn->freq_pattern_type_changed && freq_pattern->needs_ap_refresh)
-		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
-	else if (c_conn->freq_pattern_type_changed && !freq_pattern->needs_ap_refresh)
-		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
-
-	if (cmd_bit_mask)
-		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
-
-	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, rc, cmd_bit_mask>>32, cmd_bit_mask,
-		freq_pattern->frame_pattern_seq_idx, freq_pattern->frame_interval,
-		c_conn->freq_pattern_type_changed, freq_pattern->needs_ap_refresh,
-		c_conn->vrr_cmd_state);
-
-	c_conn->freq_pattern_updated = false;
-	c_conn->freq_pattern_type_changed = false;
-
 	return rc;
 }
 
@@ -1468,11 +1515,6 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 
 	if (!c_conn->ops.prepare_commit)
 		return 0;
-
-	if (c_conn->vrr_caps.video_psr_support) {
-		rc = sde_connector_check_update_vhm_cmd(connector);
-		return rc;
-	}
 
 	memset(&params, 0, sizeof(params));
 
@@ -1512,12 +1554,13 @@ int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector)
 
 	if (c_conn->vrr_caps.video_psr_support &&
 			!(c_conn->ops.check_cmd_defined(c_conn->display,
-			DSI_CMD_SET_TRIGGER_SELF_REFRESH)))
-		sde_encoder_handle_video_psr_self_refresh(sde_enc, false);
-	else
+			DSI_CMD_SET_TRIGGER_SELF_REFRESH))) {
+		if (sde_enc->rc_state != SDE_ENC_RC_STATE_IDLE)
+			sde_encoder_handle_video_psr_self_refresh(sde_enc, false);
+	} else {
 		rc = sde_connector_update_cmd(connector,
 			BIT(DSI_CMD_SET_TRIGGER_SELF_REFRESH), true);
-
+	}
 	SDE_ATRACE_END("cmd_self_refresh");
 
 	return rc;
@@ -1534,13 +1577,32 @@ int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector)
 		return -EINVAL;
 	}
 	c_conn = to_sde_connector(connector);
-
+	mutex_lock(&c_conn->bl_vrr.bl_lock);
 	/* apply the incremental backlight */
 	rc = sde_connector_apply_incremental_bl(c_conn);
 	if (rc) {
 		SDE_ERROR("Incremental backlight apply failed\n");
-		return rc;
+		goto end;
 	}
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, DRMID(&c_conn->base));
+
+end:
+	mutex_unlock(&c_conn->bl_vrr.bl_lock);
+	return rc;
+}
+
+int sde_connector_trigger_cmd_backlight_sr(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn = NULL;
+	int rc = 0;
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	if (!connector) {
+		SDE_ERROR("invalid argument, conn %d\n", connector != NULL);
+		return -EINVAL;
+	}
+	c_conn = to_sde_connector(connector);
 
 	/* trigger self refresh if no frame scheduled */
 	if (connector && connector->state && connector->state->crtc &&
@@ -1550,6 +1612,7 @@ int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector)
 	}
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, DRMID(&c_conn->base));
+
 	return rc;
 }
 
@@ -4168,6 +4231,7 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	}
 
 	mutex_init(&c_conn->lock);
+	mutex_init(&c_conn->bl_vrr.bl_lock);
 
 	rc = drm_connector_attach_encoder(&c_conn->base, encoder);
 	if (rc) {

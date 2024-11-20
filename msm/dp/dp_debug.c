@@ -2406,6 +2406,15 @@ static int dp_debug_init_configs(struct dp_debug_private *debug,
 
 }
 
+static int dp_debug_init_fifo_error(struct dp_debug_private *debug,
+		struct dentry *dir)
+{
+	int rc = 0;
+
+	debugfs_create_bool("fifo_error_enable", 0644, dir, &debug->parser->fifo_error_enable);
+	return rc;
+}
+
 static int dp_debug_init(struct dp_debug *dp_debug)
 {
 	int rc = 0;
@@ -2477,6 +2486,10 @@ static int dp_debug_init(struct dp_debug *dp_debug)
 		goto error_remove_dir;
 
 	rc = dp_debug_init_configs(debug, dir);
+	if (rc)
+		goto error_remove_dir;
+
+	rc = dp_debug_init_fifo_error(debug, dir);
 	if (rc)
 		goto error_remove_dir;
 

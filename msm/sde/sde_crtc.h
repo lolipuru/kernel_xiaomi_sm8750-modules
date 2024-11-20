@@ -1273,4 +1273,18 @@ bool sde_crtc_state_in_lb_mode(struct drm_crtc_state *state);
  */
 bool sde_crtc_in_lb_transition(struct drm_crtc_state *old_state,
 			struct drm_crtc_state *new_state);
+
+/**
+ * sde_crtc_is_power_on_frame - checks whether the current commit is a power on commit
+ * @crtc: pointer to crtc
+ */
+static inline bool sde_crtc_is_power_on_frame(struct drm_crtc *crtc)
+{
+	if (!crtc || !crtc->state)
+		return false;
+
+	SDE_EVT32(crtc->state->active_changed, crtc->state->active);
+	return crtc->state->active_changed && crtc->state->active;
+}
+
 #endif /* _SDE_CRTC_H_ */

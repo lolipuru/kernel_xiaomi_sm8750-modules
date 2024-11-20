@@ -326,6 +326,9 @@ static void programmable_fetch_config(struct sde_encoder_phys *phys_enc,
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 	phys_enc->hw_intf->ops.setup_prg_fetch(phys_enc->hw_intf, &f);
+	if (phys_enc->hw_intf->ops.setup_prog_dynref)
+		phys_enc->hw_intf->ops.setup_prog_dynref(phys_enc->hw_intf,
+				vert_total - vfp_fetch_lines);
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
 	/*
@@ -2195,6 +2198,7 @@ void sde_encoder_phys_vid_idle_pc_enter(struct sde_encoder_phys *phys_enc)
 	struct sde_encoder_virt *sde_enc;
 	struct sde_hw_intf_cfg_v1 *intf_cfg;
 	struct drm_connector *drm_conn = phys_enc->connector;
+	struct sde_connector *c_conn;
 	int rc;
 
 	if (WARN_ON(!phys_enc->hw_intf->ops.enable_timing
@@ -2211,12 +2215,19 @@ void sde_encoder_phys_vid_idle_pc_enter(struct sde_encoder_phys *phys_enc)
 	 * this will make sure the interface count doesn't keep growing.
 	 */
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	c_conn = to_sde_connector(drm_conn);
 	intf_cfg = &sde_enc->cur_master->intf_cfg_v1;
 	intf_cfg->intf_count = 0;
 
 	phys_enc->hw_intf->ops.enable_infinite_vfp(phys_enc->hw_intf, true);
 
+	if (drm_conn && c_conn->ops.avoid_cmd_transfer)
+		c_conn->ops.avoid_cmd_transfer(c_conn->display, true);
+
 	sde_encoder_phys_vid_timing_engine_disable_wait(phys_enc);
+
+	if (drm_conn && c_conn->ops.avoid_cmd_transfer)
+		c_conn->ops.avoid_cmd_transfer(c_conn->display, false);
 
 	sde_connector_osc_clk_ctrl(drm_conn, true);
 
@@ -2403,6 +2414,9 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 							DSI_CMD_SET_ESYNC_POST_ON);
 			}
 
+			if (sde_conn->ops.avoid_cmd_transfer)
+				sde_conn->ops.avoid_cmd_transfer(sde_conn->display, true);
+
 			spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 			phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
 			spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
@@ -2410,6 +2424,9 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 			ret = sde_encoder_phys_vid_poll_for_active_region(phys_enc);
 			if (ret)
 				SDE_DEBUG_VIDENC(vid_enc, "poll for active failed ret:%d\n", ret);
+
+			if (sde_conn->ops.avoid_cmd_transfer)
+				sde_conn->ops.avoid_cmd_transfer(sde_conn->display, false);
 			phys_enc->enable_state = SDE_ENC_ENABLED;
 		/* Slave DPU Timing engine mux select from Master DPU */
 		} else if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
@@ -2430,6 +2447,11 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 		ret = sde_encoder_phys_vid_poll_for_active_region(phys_enc);
 		if (ret)
 			SDE_DEBUG_VIDENC(vid_enc, "poll for active failed ret:%d\n", ret);
+
+		/* unblock sending commands, matching lock in */
+		if (!sde_enc->vrr_info.vhm_cmd_in_progress &&
+				sde_conn->ops.avoid_cmd_transfer)
+			sde_conn->ops.avoid_cmd_transfer(sde_conn->display, false);
 
 		phys_enc->esync_pc_exit = false;
 	}

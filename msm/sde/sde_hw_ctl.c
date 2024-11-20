@@ -861,6 +861,34 @@ static u32 sde_hw_ctl_get_active_fetch_pipes(struct sde_hw_ctl *ctx)
 	return fetch_active;
 }
 
+static int sde_hw_ctl_set_intf_master(struct sde_hw_ctl *ctx, u32 intf_master)
+{
+	struct sde_hw_blk_reg_map *c;
+
+	if (!ctx)
+		return -EINVAL;
+
+	c = &ctx->hw;
+
+	intf_master = BIT(intf_master - INTF_0);
+
+	SDE_REG_WRITE(c, CTL_INTF_MASTER, intf_master);
+
+	return 0;
+}
+
+static int sde_hw_ctl_get_intf_master(struct sde_hw_ctl *ctx)
+{
+	struct sde_hw_blk_reg_map *c;
+
+	if (!ctx)
+		return -EINVAL;
+
+	c = &ctx->hw;
+
+	return SDE_REG_READ(c, CTL_INTF_MASTER);
+}
+
 static void sde_hw_ctl_set_active_pipes(struct sde_hw_ctl *ctx, unsigned long *active_pipes)
 {
 	int i;
@@ -1723,6 +1751,8 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		ops->read_active_status = sde_hw_ctl_read_active_status;
 		ops->set_active_fetch_pipes = sde_hw_ctl_set_active_fetch_pipes;
 		ops->get_active_fetch_pipes = sde_hw_ctl_get_active_fetch_pipes;
+		ops->set_intf_master = sde_hw_ctl_set_intf_master;
+		ops->get_intf_master = sde_hw_ctl_get_intf_master;
 	} else {
 		ops->update_pending_flush = sde_hw_ctl_update_pending_flush;
 		ops->trigger_flush = sde_hw_ctl_trigger_flush;

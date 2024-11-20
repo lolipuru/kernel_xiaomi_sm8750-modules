@@ -67,6 +67,20 @@
 #define DEVIATION_NS 500000
 #define EPT_TIMEOUT_NS 44000000
 
+/*
+ * flags to indicate the type of mode switch
+ * @SDE_MODE_SWITCH_NONE: not a switch frame
+ * @SDE_MODE_SWITCH_FPS_UP: FPS increase switch frame
+ * @SDE_MODE_SWITCH_FPS_DOWN: FPS decrease switch frame
+ * @SDE_MODE_SWITCH_RES_UP: Resolution up switch frame
+ * @SDE_MODE_SWITCH_RES_DOWN: Resolution down switch frame
+ */
+#define SDE_MODE_SWITCH_NONE		0
+#define SDE_MODE_SWITCH_FPS_UP		BIT(0)
+#define SDE_MODE_SWITCH_FPS_DOWN	BIT(1)
+#define SDE_MODE_SWITCH_RES_UP		BIT(2)
+#define SDE_MODE_SWITCH_RES_DOWN	BIT(3)
+
 /**
  * Encoder functions and data types
  * @intfs:	Interfaces this encoder is using, INTF_MODE_NONE if unused
@@ -142,6 +156,12 @@ struct sde_sim_arp_panel_mode {
 	u32 mode;
 };
 
+enum sde_enc_periph_cmd_state {
+	SDE_NO_CMD_SCHEDULED,
+	SDE_CMD_SCHEDULED,
+	SDE_CMD_DONE
+};
+
 /**
  * sde_encoder_vrr_info - variable refresh info
  * @frame_interval:     Frame interval configuration
@@ -153,6 +173,7 @@ struct sde_sim_arp_panel_mode {
  * @debugfs_arp_te_in_ms:   ARP simulator TE value in ms
  * @debugfs_freq_array:    Freqency stepping array provided for simulation
  * @debugfs_freq_pattern:  Frequency pattern provided for simulation
+ * @vhm_cmd_in_progress:   Whether a VHM related command is currently enqueued
  */
 struct sde_encoder_vrr_info {
 	u32 frame_interval;
@@ -163,6 +184,7 @@ struct sde_encoder_vrr_info {
 	u32 debugfs_arp_te_in_ms;
 	u32 *debugfs_freq_array;
 	struct msm_debugfs_freq_pattern *debugfs_freq_pattern;
+	u32 vhm_cmd_in_progress;
 };
 
 /*
@@ -203,22 +225,6 @@ enum sde_sim_qsync_frame {
 enum sde_sim_qsync_event {
 	SDE_SIM_QSYNC_EVENT_FRAME_DETECTED,
 	SDE_SIM_QSYNC_EVENT_TE_TRIGGER
-};
-
-/*
- * enum sde_mode_switch - enum to indicate the type of mode switch
- * @SDE_MODE_SWITCH_NONE: not a switch frame
- * @SDE_MODE_SWITCH_FPS_UP: FPS increase switch frame
- * @SDE_MODE_SWITCH_FPS_DOWN: FPS decrease switch frame
- * @SDE_MODE_SWITCH_RES_UP: Resolution up switch frame
- * @SDE_MODE_SWITCH_RES_DOWN: Resolution down switch frame
- */
-enum sde_mode_switch {
-	SDE_MODE_SWITCH_NONE,
-	SDE_MODE_SWITCH_FPS_UP,
-	SDE_MODE_SWITCH_FPS_DOWN,
-	SDE_MODE_SWITCH_RES_UP,
-	SDE_MODE_SWITCH_RES_DOWN,
 };
 
 /*
@@ -298,7 +304,8 @@ enum sde_multi_te_states {
  * @input_event_work:		worker to handle input device touch events
  * @esd_trigger_work:		worker to handle esd trigger
  * @self_refresh_work:		worker to handle self refresh
- * @self_refresh_work:		worker to handle smooth dimming in vrr
+ * @backlight_cmd_work:		worker to handle smooth dimming in vrr
+ * @backlight_sr_work:		worker to handle backlight self refresh
  * @input_handler:			handler for input device events
  * @topology:                   topology of the display
  * @vblank_enabled:		boolean to track userspace vblank vote
@@ -331,7 +338,7 @@ enum sde_multi_te_states {
  * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  * @ops:                        Encoder ops from init function
  * @old_vsyc_count:             Intf tearcheck vsync_count for old mode.
- * @mode_switch:                enum to indicate its a fps/resolution switch frame.
+ * @mode_switch:                flag to indicate its a fps/resolution switch frame.
  * @multi_te_state:             enum to indicate the multi-te states.
  * @multi_te_fps:               refresh rate of multi-TE.
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
@@ -341,6 +348,7 @@ enum sde_multi_te_states {
  *					with force-db-update. This is required as a workaround for
  *					cmd mode when previous frame ctl-done is very close to
  *					wakeup/panic windows.
+ * @intf_master:		Interface Idx for the master interface
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -394,6 +402,7 @@ struct sde_encoder_virt {
 	struct kthread_work esd_trigger_work;
 	struct kthread_work self_refresh_work;
 	struct kthread_work backlight_cmd_work;
+	struct kthread_delayed_work backlight_sr_work;
 
 	struct input_handler *input_handler;
 	bool vblank_enabled;
@@ -422,13 +431,14 @@ struct sde_encoder_virt {
 
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
-	u32 old_vsync_count;
-	enum sde_mode_switch mode_switch;
+	u32 mode_switch;
 	enum sde_multi_te_states multi_te_state;
 	u32 multi_te_fps;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
 	bool cesta_force_auto_active_db_update;
+	bool cesta_reset_intf_master;
+	u32 intf_master;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -1067,6 +1077,13 @@ void sde_encoder_begin_commit(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 void sde_encoder_complete_commit(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_post_commit_bl_sr_work - handles work to be done post commit
+ *                                      related to backlight self refresh
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_post_commit_bl_sr_work(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_get_cesta_client - return the SDE CESTA client

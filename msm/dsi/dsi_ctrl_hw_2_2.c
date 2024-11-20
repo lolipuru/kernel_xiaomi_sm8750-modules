@@ -158,6 +158,13 @@ void dsi_ctrl_hw_kickoff_non_embedded_mode(struct dsi_ctrl_hw *ctrl,
 	reg |= (((cmd->datatype) & 0x03f) << 16);/* data type */
 	DSI_W32(ctrl, DSI_COMMAND_MODE_DMA_CTRL, reg);
 
+	reg = DSI_R32(ctrl, DSI_COMMAND_MODE_DMA_CTRL_1);
+	if (flags & DSI_CTRL_CMD_MULTI_DMA_BURST)
+		reg |= BIT(1);
+	else
+		reg &= ~BIT(1);
+	DSI_W32(ctrl, DSI_COMMAND_MODE_DMA_CTRL_1, reg);
+
 	/* Enable WRITE_WATERMARK_DISABLE and READ_WATERMARK_DISABLE bits */
 	reg = DSI_R32(ctrl, DSI_DMA_FIFO_CTRL);
 	reg |= BIT(20);

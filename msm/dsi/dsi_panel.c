@@ -1451,6 +1451,9 @@ static int dsi_panel_parse_qsync_caps(struct dsi_panel *panel,
 	struct dsi_parser_utils *utils = &panel->utils;
 	const char *name = panel->name;
 
+	qsync_caps->hwfence_sw_override_always =
+		utils->read_bool(utils->data, "qcom,hwfence_sw_override_always");
+
 	qsync_caps->qsync_support = utils->read_bool(utils->data, "qcom,qsync-enable");
 	if (!qsync_caps->qsync_support) {
 		DSI_DEBUG("qsync feature not enabled\n");
@@ -4099,6 +4102,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 				"qcom,mdss-dsi-panel-physical-type", NULL);
 	if (panel_physical_type && !strcmp(panel_physical_type, "oled"))
 		panel->panel_type = DSI_DISPLAY_PANEL_TYPE_OLED;
+
+	panel->disable_cesta_hw_sleep = utils->read_bool(utils->data,
+				"qcom,mdss-disable-cesta-hw-sleep");
+
 	rc = dsi_panel_parse_host_config(panel);
 	if (rc) {
 		DSI_ERR("failed to parse host configuration, rc=%d\n",

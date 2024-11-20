@@ -1591,6 +1591,10 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 	memcpy(hw_cfg.skip_planes, sde_crtc->skip_blend_planes, sizeof(hw_cfg.skip_planes));
 
 	hw_cfg.num_ds_enabled = sde_crtc_state->num_ds_enabled;
+	hw_cfg.overfetch_lines_on_top = sde_crtc_state->user_roi_list.spr_roi[0].y1 -
+				sde_crtc_state->user_roi_list.roi[0].y1;
+	hw_cfg.overfetch_lines_on_bottom = sde_crtc_state->user_roi_list.roi[0].y2 -
+				sde_crtc_state->user_roi_list.spr_roi[0].y2;
 
 	SDE_EVT32(prop_node->feature, hw_cfg.panel_width, hw_cfg.panel_height);
 
@@ -1997,7 +2001,6 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 				&cached_rect);
 		if (sde_kms_rect_is_equal(&user_rect, &cached_rect)) {
 			DRM_DEBUG_DRIVER("no change in list of ROIs\n");
-			return 0;
 		}
 	}
 
@@ -2100,6 +2103,8 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 	bool need_flush = false;
 	struct sde_crtc_state *cstate;
 	bool disable_pending_cp = false;
+	struct sde_kms *kms = NULL;
+	u32 demura_sw_fuse = 0;
 
 	if (!crtc || !crtc->dev) {
 		DRM_ERROR("invalid crtc %pK dev %pK\n", crtc,
@@ -2125,6 +2130,18 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 		return;
 	}
 
+	kms = get_kms(crtc);
+	if (!kms) {
+		DRM_DEBUG_DRIVER("!kms = %d\n", !kms);
+	} else {
+		if (sde_in_trusted_vm(kms)) {
+			demura_sw_fuse = SW_FUSE_ENABLE;
+		} else if (kms->hw_sw_fuse) {
+			demura_sw_fuse = sde_hw_get_demura_sw_fuse_value(kms->hw_sw_fuse);
+			DRM_DEBUG_DRIVER("demura_sw_fuse value: 0x%x\n", demura_sw_fuse);
+		}
+	}
+
 	_sde_cp_flush_properties(crtc);
 	_sde_cp_check_mdnie_art_done(crtc);
 	mutex_lock(&sde_crtc->crtc_cp_lock);
@@ -2142,13 +2159,20 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 
 	list_for_each_entry_safe(prop_node, n, &sde_crtc->cp_dirty_list,
 			cp_dirty_list) {
-		_sde_cp_crtc_commit_feature(prop_node, sde_crtc);
-		_sde_cp_dspp_flush_helper(sde_crtc, prop_node->feature);
-		if (prop_node->is_dspp_feature &&
-				!prop_node->lm_flush_override)
-			set_dspp_flush = true;
-		else
-			set_lm_flush = true;
+		if ((prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_INIT ||
+			prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT ||
+			prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2) &&
+			demura_sw_fuse != SW_FUSE_ENABLE) {
+			DRM_DEBUG_DRIVER("demura_sw_fuse is not enabled: 0x%x\n", demura_sw_fuse);
+		} else {
+			_sde_cp_crtc_commit_feature(prop_node, sde_crtc);
+			_sde_cp_dspp_flush_helper(sde_crtc, prop_node->feature);
+			if (prop_node->is_dspp_feature &&
+					!prop_node->lm_flush_override)
+				set_dspp_flush = true;
+			else
+				set_lm_flush = true;
+		}
 	}
 
 	rc = _sde_cp_crtc_update_pu_features(crtc, &need_flush);

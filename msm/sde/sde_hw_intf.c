@@ -111,6 +111,7 @@
 #define INTF_TEAR_LINE_COUNT            0x2B0
 #define INTF_TEAR_AUTOREFRESH_CONFIG    0x2B4
 #define INTF_TEAR_TEAR_DETECT_CTRL      0x2B8
+#define INTF_TEAR_AUTOREFRESH_STATUS    0x2C0
 #define INTF_TEAR_PROG_FETCH_START      0x2C4
 #define INTF_TEAR_DSI_DMA_SCHD_CTRL0    0x2C8
 #define INTF_TEAR_DSI_DMA_SCHD_CTRL1    0x2CC
@@ -131,6 +132,7 @@
 #define INTF_ESYNC_SKEW_CTL             0x414
 #define INTF_ESYNC_EMSYNC_CTL           0x418
 #define INTF_ESYNC_PROG_INIT            0x41C
+#define INTF_PROG_DR_START              0x420
 #define INTF_BKUP_ESYNC_EN              0x470
 #define INTF_BKUP_ESYNC_CTRL            0x474
 #define INTF_BKUP_ESYNC_VSYNC_CTL      0x47C
@@ -637,17 +639,30 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 			&& p->poms_align_vsync)
 		intf_cfg2 |= BIT(16);
 
-	alignment = 0x6; /* Default with esync- COND0 HW AVR trigger  */
 	if (align_esync) {
+		/*
+		 * Display on-
+		 * COND0 1 = TIMING_ENGINE_EN.EN changes from 0 to 1
+		 * COND1 TE level being high
+		 * COND2 esync_mdp_vsync
+		 */
+		alignment = 0x451;
+
+		/* Idle exit-
+		 * COND0 HW AVR trigger
+		 * COND1 esync_mdp_vsync
+		 */
 		if (align_avr)
-			alignment = 0x6; /* COND0 HW AVR trigger */
-		alignment |= 0x4 << 4; /* COND1 esync_mdp_vsync */
+			alignment = 0x46;
 
 		intf_cfg2 |= BIT(23);
 	}
 
 	if (!dp_intf && ctx->cap->features & BIT(SDE_INTF_PERIPHERAL_FLUSH))
 		intf_cfg2 |= BIT(24);
+
+	if (ctx->cap->features & BIT(SDE_INTF_PROG_DYNREF))
+		intf_cfg2 |= BIT(28);
 
 	if (ctx->cfg.split_link_en)
 		SDE_REG_WRITE(c, INTF_REG_SPLIT_LINK, 0x3);
@@ -731,6 +746,13 @@ static void sde_hw_intf_setup_prg_fetch(
 	}
 
 	SDE_REG_WRITE(c, INTF_CONFIG, fetch_enable);
+}
+
+static void sde_hw_intf_setup_prog_dynref(struct sde_hw_intf *intf, u32 prog_dr_start_line)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+
+	SDE_REG_WRITE(c, INTF_PROG_DR_START, prog_dr_start_line);
 }
 
 static void sde_hw_intf_configure_wd_timer_jitter(struct sde_hw_intf *intf,
@@ -1106,6 +1128,17 @@ static int sde_hw_intf_get_autorefresh_config(struct sde_hw_intf *intf,
 	return 0;
 }
 
+static u32 sde_hw_intf_get_autorefresh_status(struct sde_hw_intf *intf)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 val;
+
+	c = &intf->hw;
+	val = SDE_REG_READ(c, INTF_TEAR_AUTOREFRESH_STATUS);
+
+	return val;
+}
+
 static int sde_hw_intf_poll_timeout_wr_ptr(struct sde_hw_intf *intf,
 		u32 timeout_us)
 {
@@ -1409,7 +1442,10 @@ static void sde_hw_intf_setup_panic_wakeup(struct sde_hw_intf *intf,
 	SDE_REG_WRITE(c, INTF_TEAR_WAKEUP_WINDOW, cfg->wakeup_window);
 
 	val = SDE_REG_READ(c, INTF_TEAR_TEAR_CHECK_EN);
-	val |= BIT(4) | BIT(5);
+	if (cfg->enable)
+		val |= BIT(4) | BIT(5);
+	else
+		val &= ~(BIT(4) | BIT(5));
 	SDE_REG_WRITE(c, INTF_TEAR_TEAR_CHECK_EN, val);
 }
 
@@ -1489,6 +1525,8 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->get_vsync_info = sde_hw_intf_get_vsync_info;
 		ops->setup_autorefresh = sde_hw_intf_setup_autorefresh_config;
 		ops->get_autorefresh = sde_hw_intf_get_autorefresh_config;
+		ops->get_autorefresh_status =
+			sde_hw_intf_get_autorefresh_status;
 		ops->poll_timeout_wr_ptr = sde_hw_intf_poll_timeout_wr_ptr;
 		ops->vsync_sel = sde_hw_intf_vsync_sel;
 		ops->check_and_reset_tearcheck = sde_hw_intf_v1_check_and_reset_tearcheck;
@@ -1524,6 +1562,9 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 
 	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
 		ops->setup_flush_snapshot =  sde_hw_intf_flush_snapshot_setup;
+
+	if (cap & BIT(SDE_INTF_PROG_DYNREF))
+		ops->setup_prog_dynref = sde_hw_intf_setup_prog_dynref;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,

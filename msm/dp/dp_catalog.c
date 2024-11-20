@@ -41,13 +41,24 @@
 
 #define DP_INTR_MASK2		(DP_INTERRUPT_STATUS2 << 2)
 
+/**
+ * FIFO errors should be enabled in development environment
+ * to capture issues during internal testing.
+ * In production environment, driver should ignore the errors
+ * and let the black screen persist and end user should replug
+ * to recover from this.
+ */
 
-#define DP_INTERRUPT_STATUS3 \
+#define DP_INTERRUPT_STATUS3_DEV \
 	(DP_INTR_SST_ML_FIFO_OVERFLOW | DP_INTR_MST0_ML_FIFO_OVERFLOW | \
 	DP_INTR_MST1_ML_FIFO_OVERFLOW | DP_INTR_DP1_FRAME_END | DP_INTR_SDP0_COLLISION | \
 	DP_INTR_SDP1_COLLISION)
 
-#define DP_INTR_MASK3		(DP_INTERRUPT_STATUS3 << 2)
+#define DP_INTERRUPT_STATUS3_PROD \
+	(DP_INTR_DP1_FRAME_END | DP_INTR_SDP0_COLLISION | DP_INTR_SDP1_COLLISION)
+
+#define DP_INTR_MASK3_DEV	(DP_INTERRUPT_STATUS3_DEV << 2)
+#define DP_INTR_MASK3_PROD	(DP_INTERRUPT_STATUS3_PROD << 2)
 
 #define DP_INTERRUPT_STATUS5 \
 	(DP_INTR_MST_DP0_VCPF_SENT | DP_INTR_MST_DP1_VCPF_SENT)
@@ -1799,6 +1810,8 @@ end:
 static void dp_catalog_ctrl_enable_irq(struct dp_catalog_ctrl *ctrl,
 						bool enable)
 {
+	u32 DP_INTR_MASK3 = DP_INTR_MASK3_PROD;
+	u32 DP_INTERRUPT_STATUS3 = DP_INTERRUPT_STATUS3_PROD;
 	struct dp_catalog_private *catalog;
 	struct dp_io_data *io_data;
 
@@ -1809,6 +1822,11 @@ static void dp_catalog_ctrl_enable_irq(struct dp_catalog_ctrl *ctrl,
 
 	catalog = dp_catalog_get_priv(ctrl);
 	io_data = catalog->io.dp_ahb;
+
+	if (catalog->parser->fifo_error_enable) {
+		DP_INTR_MASK3 = DP_INTR_MASK3_DEV;
+		DP_INTERRUPT_STATUS3 = DP_INTERRUPT_STATUS3_DEV;
+	}
 
 	if (enable) {
 		dp_write(DP_INTR_STATUS, DP_INTR_MASK1);
@@ -1838,7 +1856,8 @@ static void dp_catalog_ctrl_enable_irq(struct dp_catalog_ctrl *ctrl,
 
 static void dp_catalog_ctrl_get_interrupt(struct dp_catalog_ctrl *ctrl)
 {
-	u32 ack = 0;
+	u32 ack = 0, DP_INTR_MASK3 = DP_INTR_MASK3_PROD;
+	u32 DP_INTERRUPT_STATUS3 = DP_INTERRUPT_STATUS3_PROD;
 	struct dp_catalog_private *catalog;
 	struct dp_io_data *io_data;
 
@@ -1849,6 +1868,11 @@ static void dp_catalog_ctrl_get_interrupt(struct dp_catalog_ctrl *ctrl)
 
 	catalog = dp_catalog_get_priv(ctrl);
 	io_data = catalog->io.dp_ahb;
+
+	if (catalog->parser->fifo_error_enable) {
+		DP_INTR_MASK3 = DP_INTR_MASK3_DEV;
+		DP_INTERRUPT_STATUS3 = DP_INTERRUPT_STATUS3_DEV;
+	}
 
 	ctrl->isr = dp_read(DP_INTR_STATUS2);
 	ctrl->isr &= ~DP_INTR_MASK2;

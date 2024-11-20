@@ -1719,6 +1719,8 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 			pr_err("Connector Post kickoff failed rc=%d\n",
 					 rc);
 		}
+		if (connector->encoder && sde_encoder_in_video_psr(connector->encoder))
+			sde_encoder_post_commit_bl_sr_work(connector->encoder);
 	}
 
 	vm_ops = sde_vm_get_ops(sde_kms);
@@ -2019,6 +2021,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.update_transfer_time = dsi_display_update_transfer_time,
 		.get_panel_scan_line = dsi_display_get_panel_scan_line,
 		.check_cmd_defined = dsi_conn_check_cmd_defined,
+		.avoid_cmd_transfer = dsi_display_avoid_cmd_transfer,
 	};
 	static const struct sde_connector_ops wb_ops = {
 		.post_init =    sde_wb_connector_post_init,
@@ -2645,6 +2648,11 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 	if (sde_kms->sid)
 		msm_iounmap(pdev, sde_kms->sid);
 	sde_kms->sid = NULL;
+
+	if (sde_kms->sw_fuse)
+		msm_iounmap(pdev, sde_kms->sw_fuse);
+	sde_hw_sw_fuse_destroy(sde_kms->sw_fuse);
+	sde_kms->sw_fuse = NULL;
 
 	if (sde_kms->reg_dma)
 		msm_iounmap(pdev, sde_kms->reg_dma);
@@ -5150,6 +5158,21 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 			SDE_ERROR("dbg base register sid failed: %d\n", rc);
 	}
 
+	sde_kms->sw_fuse = msm_ioremap(platformdev, "swfuse_phys",
+					"swfuse_phys");
+	if (IS_ERR(sde_kms->sw_fuse)) {
+		sde_kms->sw_fuse = NULL;
+		SDE_DEBUG("sw_fuse is not defined");
+	} else {
+		sde_kms->sw_fuse_len = msm_iomap_size(platformdev,
+							"swfuse_phys");
+		rc =  sde_dbg_reg_register_base("sw_fuse", sde_kms->sw_fuse,
+				sde_kms->sw_fuse_len,
+				msm_get_phys_addr(platformdev, "swfuse_phys"),
+				SDE_DBG_SWFUSE);
+		if (rc)
+			SDE_ERROR("dbg base register sw_fuse failed: %d\n", rc);
+	}
 error:
 	return rc;
 }
@@ -5330,6 +5353,17 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto perf_err;
 	}
 
+	if (sde_kms->sw_fuse) {
+		sde_kms->hw_sw_fuse = sde_hw_sw_fuse_init(sde_kms->sw_fuse,
+				sde_kms->sw_fuse_len, sde_kms->catalog);
+		if (IS_ERR(sde_kms->hw_sw_fuse)) {
+			SDE_ERROR("failed to init sw_fuse %ld\n",
+					PTR_ERR(sde_kms->hw_sw_fuse));
+			sde_kms->hw_sw_fuse = NULL;
+		}
+	} else {
+		sde_kms->hw_sw_fuse = NULL;
+	}
 	/*
 	 * set the disable_immediate flag when driver supports the precise vsync
 	 * timestamp as the DRM hooks for vblank timestamp/counters would be set

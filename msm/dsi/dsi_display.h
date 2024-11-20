@@ -867,6 +867,15 @@ bool dsi_display_mode_match(const struct dsi_display_mode *mode1,
 int dsi_display_update_transfer_time(void *display, u32 transfer_time);
 
 /**
+ * dsi_display_avoid_cmd_transfer() - Avoid DSI command transfer
+ * @display:     handle to display
+ * @avoid_transfer: true to avoid transfer, false to allow transfer
+ *
+ * Return: error code
+ */
+int dsi_display_avoid_cmd_transfer(void *display, bool avoid_transfer);
+
+/**
  * dsi_display_get_panel_scan_line() - get panel scan line
  * @display:     handle to display
  * @scan_line:   scan line buffer value

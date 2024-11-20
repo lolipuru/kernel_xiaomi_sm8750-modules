@@ -799,6 +799,9 @@ enum dsi_error_status {
 struct dsi_dyn_clk_delay {
 	u32 pipe_delay;
 	u32 pipe_delay2;
+	u32 pipe_delay3;
+	u32 pll_reg_flush_delay;
+	u32 pll_reg_post_flush_delay;
 	u32 pll_delay;
 };
 
@@ -808,6 +811,7 @@ enum dsi_dyn_clk_control_bits {
 	DYN_REFRESH_SYNC_MODE,
 	DYN_REFRESH_SW_TRIGGER,
 	DYN_REFRESH_SWI_CTRL,
+	DYN_REFRESH_PROG_DR,
 };
 
 /* convert dsi pixel format into bits per pixel */
