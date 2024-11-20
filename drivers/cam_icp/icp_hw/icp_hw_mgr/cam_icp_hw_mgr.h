@@ -393,12 +393,14 @@ struct cam_icp_hw_device_info {
  * struct cam_icp_hw_ctx_info
  * @need_lock: Indicate whether it's needed to acquire ctx mutex
  * @ctx_id: Index of ctx data in active ctx list
+ * @ctx_acquired_timestamp: ctx acquired timestamp
  * @hw_mgr: HW MGR of the context
  * @ctx_data: Point to the exact ctx data
  */
 struct cam_icp_hw_ctx_info {
 	bool need_lock;
 	uint32_t ctx_id;
+	uint64_t ctx_acquired_timestamp;
 	struct cam_icp_hw_mgr *hw_mgr;
 	struct cam_icp_hw_ctx_data *ctx_data;
 };
@@ -480,6 +482,7 @@ struct cam_icp_hw_active_ctx_info {
  *            for the hw mgr
  * @num_dev_info: number of device info for available device for the hw mgr
  * @dev_info_idx: map hw dev type to index for device info array indexing
+ * @ctx_acquired_timestamp: ctx acquired timestamp array
  * @icp_dev_intf: ICP device interface
  * @ctx_mutex: Mutex for all possbile ctx data
  * @active_ctx_info: Active context info
@@ -544,6 +547,7 @@ struct cam_icp_hw_mgr {
 	struct cam_icp_hw_device_info *dev_info;
 	uint32_t num_dev_info;
 	int8_t dev_info_idx[CAM_ICP_HW_MAX];
+	uint64_t ctx_acquired_timestamp[CAM_ICP_CTX_MAX];
 	struct cam_hw_intf *icp_dev_intf;
 	struct mutex *ctx_mutex;
 	struct cam_icp_hw_active_ctx_info active_ctx_info;
