@@ -75,6 +75,7 @@
 #define WMM_OUI_TYPE_SIZE  5
 
 #define RSN_OUI_SIZE 4
+#define SIGN_BIT 7
 /* ////////////////////////////////////////////////////////////////////// */
 #ifdef WLAN_FEATURE_FILS_SK_SAP
 static void fils_convert_assoc_req_frame2_struct(tDot11fAssocRequest *ar,
@@ -2104,12 +2105,26 @@ populate_dot11f_measurement_report2(struct mac_context *mac,
 } /* End PopulatedDot11fMeasurementReport2. */
 #endif
 
+static
+int8_t populate_decimal_min_power(uint8_t power)
+{
+	int is_power_negative;
+
+	is_power_negative = (power & (1 << SIGN_BIT)) != 0;
+
+	if (is_power_negative)
+		return power | ~((1 << SIGN_BIT) - 1);
+	else
+		return power;
+}
+
 void
 populate_dot11f_power_caps(struct mac_context *mac,
 			   tDot11fIEPowerCaps *pCaps,
 			   uint8_t nAssocType, struct pe_session *pe_session)
 {
 	struct vdev_mlme_obj *mlme_obj;
+	int8_t min_power;
 
 	pCaps->minTxPower = pe_session->min_11h_pwr;
 	pCaps->maxTxPower = pe_session->maxTxPower;
@@ -2119,9 +2134,10 @@ populate_dot11f_power_caps(struct mac_context *mac,
 	if (mlme_obj && mlme_obj->mgmt.generic.tx_pwrlimit)
 		pCaps->maxTxPower = mlme_obj->mgmt.generic.tx_pwrlimit;
 
+	min_power = populate_decimal_min_power(mlme_obj->mgmt.generic.minpower);
+
 	if (mlme_obj && mlme_obj->mgmt.generic.minpower)
-		pCaps->minTxPower = QDF_MIN(pCaps->minTxPower,
-					    mlme_obj->mgmt.generic.minpower);
+		pCaps->minTxPower = QDF_MIN(pCaps->minTxPower, min_power);
 
 	pCaps->present = 1;
 } /* End populate_dot11f_power_caps. */
