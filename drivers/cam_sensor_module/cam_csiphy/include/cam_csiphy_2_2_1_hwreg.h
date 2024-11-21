@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_CSIPHY_2_2_1_HWREG_H_
@@ -18,6 +18,7 @@ struct cam_csiphy_aon_sel_params_t aon_cam_select_params_2_2_1 = {
 struct cam_cphy_dphy_status_reg_params_t status_regs_2_2_1 = {
 	.csiphy_3ph_status0_offset = 0x0340,
 	.csiphy_2ph_status0_offset = 0x00C0,
+	.refgen_status_offset = 0x10FC,
 	.cphy_lane_status = {0x0358, 0x0758, 0x0B58},
 	.csiphy_3ph_status_size = 24,
 	.csiphy_2ph_status_size = 20,
