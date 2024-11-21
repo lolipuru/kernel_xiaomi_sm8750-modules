@@ -13,6 +13,7 @@
 #include "dp_ctrl.h"
 #include "dp_debug.h"
 #include "sde_dbg.h"
+#include "dp_panel_tu.h"
 
 #define DP_MST_DEBUG(fmt, ...) DP_DEBUG(fmt, ##__VA_ARGS__)
 
@@ -1103,105 +1104,13 @@ static void dp_ctrl_send_phy_test_pattern(struct dp_ctrl_private *ctrl)
 			dp_link_get_phy_test_pattern(pattern_requested));
 }
 
-static void dp_ctrl_mst_calculate_rg(struct dp_ctrl_private *ctrl,
-		struct dp_panel *panel, u32 *p_x_int, u32 *p_y_frac_enum)
-{
-	u64 min_slot_cnt, max_slot_cnt;
-	u64 raw_target_sc, target_sc_fixp;
-	u64 ts_denom, ts_enum, ts_int;
-	u64 pclk = panel->pinfo.pixel_clk_khz;
-	u64 lclk = 0;
-	u64 lanes = ctrl->link->link_params.lane_count;
-	u64 bpp = panel->pinfo.bpp;
-	u64 pbn = panel->pinfo.pbn_no_overhead; // before dsc/fec overhead
-	u64 numerator, denominator, temp, temp1, temp2;
-	u32 x_int = 0, y_frac_enum = 0;
-	u64 target_strm_sym, ts_int_fixp, ts_frac_fixp, y_frac_enum_fixp;
-
-	lclk = drm_dp_bw_code_to_link_rate(ctrl->link->link_params.bw_code);
-	if (panel->pinfo.comp_info.enabled)
-		bpp = panel->pinfo.comp_info.tgt_bpp;
-
-	/* min_slot_cnt */
-	numerator = pclk * bpp * 64 * 1000;
-	denominator = lclk * lanes * 8 * 1000;
-	min_slot_cnt = drm_fixp_from_fraction(numerator, denominator);
-
-	/* max_slot_cnt */
-	numerator = pbn * 54 * 1000;
-	denominator = lclk * lanes;
-	max_slot_cnt = drm_fixp_from_fraction(numerator, denominator);
-
-	/* raw_target_sc */
-	numerator = max_slot_cnt + min_slot_cnt;
-	denominator = drm_fixp_from_fraction(2, 1);
-	raw_target_sc = drm_fixp_div(numerator, denominator);
-
-	DP_DEBUG("raw_target_sc before overhead:0x%llx\n", raw_target_sc);
-	DP_DEBUG("dsc_overhead_fp:0x%llx\n", panel->pinfo.dsc_overhead_fp);
-
-	/* apply fec and dsc overhead factor */
-	if (panel->pinfo.dsc_overhead_fp)
-		raw_target_sc = drm_fixp_mul(raw_target_sc,
-					panel->pinfo.dsc_overhead_fp);
-
-	if (panel->fec_overhead_fp)
-		raw_target_sc = drm_fixp_mul(raw_target_sc,
-					panel->fec_overhead_fp);
-
-	DP_DEBUG("raw_target_sc after overhead:0x%llx\n", raw_target_sc);
-
-	/* target_sc */
-	temp = drm_fixp_from_fraction(256 * lanes, 1);
-	numerator = drm_fixp_mul(raw_target_sc, temp);
-	denominator = drm_fixp_from_fraction(256 * lanes, 1);
-	target_sc_fixp = drm_fixp_div(numerator, denominator);
-
-	ts_enum = 256 * lanes;
-	ts_denom = drm_fixp_from_fraction(256 * lanes, 1);
-	ts_int = drm_fixp2int(target_sc_fixp);
-
-	temp = drm_fixp2int_ceil(raw_target_sc);
-	if (temp != ts_int) {
-		temp = drm_fixp_from_fraction(ts_int, 1);
-		temp1 = raw_target_sc - temp;
-		temp2 = drm_fixp_mul(temp1, ts_denom);
-		ts_enum = drm_fixp2int(temp2);
-	}
-
-	/* target_strm_sym */
-	ts_int_fixp = drm_fixp_from_fraction(ts_int, 1);
-	ts_frac_fixp = drm_fixp_from_fraction(ts_enum, drm_fixp2int(ts_denom));
-	temp = ts_int_fixp + ts_frac_fixp;
-	temp1 = drm_fixp_from_fraction(lanes, 1);
-	target_strm_sym = drm_fixp_mul(temp, temp1);
-
-	/* x_int */
-	x_int = drm_fixp2int(target_strm_sym);
-
-	/* y_enum_frac */
-	temp = drm_fixp_from_fraction(x_int, 1);
-	temp1 = target_strm_sym - temp;
-	temp2 = drm_fixp_from_fraction(256, 1);
-	y_frac_enum_fixp = drm_fixp_mul(temp1, temp2);
-
-	temp1 = drm_fixp2int(y_frac_enum_fixp);
-	temp2 = drm_fixp2int_ceil(y_frac_enum_fixp);
-
-	y_frac_enum = (u32)((temp1 == temp2) ? temp1 : temp1 + 1);
-
-	panel->mst_target_sc = raw_target_sc;
-	*p_x_int = x_int;
-	*p_y_frac_enum = y_frac_enum;
-
-	DP_DEBUG("x_int: %d, y_frac_enum: %d\n", x_int, y_frac_enum);
-}
-
 static void dp_ctrl_mst_stream_setup(struct dp_ctrl_private *ctrl,
 		struct dp_panel *panel)
 {
-	u32 x_int, y_frac_enum, lanes, bw_code;
+	u32 x_int, y_frac_enum;
 	int i;
+	struct dp_tu_mst_rg_in mst_rg_calc_in;
+	struct dp_tu_mst_rg_out mst_rg_calc_out;
 
 	if (!ctrl->mst_mode)
 		return;
@@ -1215,10 +1124,21 @@ static void dp_ctrl_mst_stream_setup(struct dp_ctrl_private *ctrl,
 				ctrl->mst_ch_info.slot_info[i].tot_slots);
 	}
 
-	lanes = ctrl->link->link_params.lane_count;
-	bw_code = ctrl->link->link_params.bw_code;
+	mst_rg_calc_in.lclk_khz = drm_dp_bw_code_to_link_rate(ctrl->link->link_params.bw_code);
+	mst_rg_calc_in.pclk_khz = panel->pinfo.pixel_clk_khz;
+	mst_rg_calc_in.nlanes = ctrl->link->link_params.lane_count;
+	mst_rg_calc_in.src_bpp = panel->pinfo.bpp;
+	mst_rg_calc_in.tgt_bpp = panel->pinfo.comp_info.tgt_bpp;
+	mst_rg_calc_in.fec_en = panel->fec_overhead_fp ? 1 : 0;
+	mst_rg_calc_in.dsc_en = panel->pinfo.comp_info.enabled ? 1 : 0;
+	mst_rg_calc_in.fec_overhead_fp = panel->fec_overhead_fp;
+	mst_rg_calc_in.dsc_overhead_fp = panel->pinfo.dsc_overhead_fp;
+	mst_rg_calc_in.pbn = panel->pbn;
 
-	dp_ctrl_mst_calculate_rg(ctrl, panel, &x_int, &y_frac_enum);
+	dp_tu_mst_rg_calc(&mst_rg_calc_in, &mst_rg_calc_out);
+
+	x_int = mst_rg_calc_out.x_int;
+	y_frac_enum = mst_rg_calc_out.y_frac_enum;
 
 	ctrl->catalog->update_rg(ctrl->catalog, panel->stream_id,
 			x_int, y_frac_enum);
@@ -1228,7 +1148,8 @@ static void dp_ctrl_mst_stream_setup(struct dp_ctrl_private *ctrl,
 			panel->channel_start_slot, panel->channel_total_slots);
 
 	DP_MST_DEBUG("mst lane_cnt:%d, bw:%d, x_int:%d, y_frac:%d\n",
-			lanes, bw_code, x_int, y_frac_enum);
+			ctrl->link->link_params.lane_count,
+			ctrl->link->link_params.bw_code, x_int, y_frac_enum);
 }
 
 static void dp_ctrl_dsc_setup(struct dp_ctrl_private *ctrl, struct dp_panel *panel)

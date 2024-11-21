@@ -1001,3 +1001,96 @@ u32 dp_tu_dhdr_pkt_limit(struct dp_tu_dhdr_info *input)
 	DP_DEBUG("packet limit per line = %d\n", calc_pkt_limit);
 	return calc_pkt_limit;
 }
+
+void dp_tu_mst_rg_calc(struct dp_tu_mst_rg_in *in, struct dp_tu_mst_rg_out *out)
+{
+	u64 min_slot_cnt, max_slot_cnt;
+	u64 raw_target_sc, target_sc_fixp;
+	u64 ts_denom, ts_enum, ts_int;
+	u64 pclk = in->pclk_khz;
+	u64 lclk = in->lclk_khz;
+	u64 lanes = in->nlanes;
+	u64 bpp = in->src_bpp;
+	u64 pbn = in->pbn;
+	u64 numerator, denominator, temp, temp1, temp2;
+	u32 x_int = 0, y_frac_enum = 0;
+	u64 target_strm_sym, ts_int_fixp, ts_frac_fixp, y_frac_enum_fixp;
+
+	if (in->dsc_en)
+		bpp = in->tgt_bpp;
+
+	/* min_slot_cnt */
+	numerator = pclk * bpp * 64 * 1000;
+	denominator = lclk * lanes * 8 * 1000;
+	min_slot_cnt = drm_fixp_from_fraction(numerator, denominator);
+
+	/* max_slot_cnt */
+	numerator = pbn * 54 * 1000;
+	denominator = lclk * lanes;
+	max_slot_cnt = drm_fixp_from_fraction(numerator, denominator);
+
+	/* raw_target_sc */
+	numerator = max_slot_cnt + min_slot_cnt;
+	denominator = drm_fixp_from_fraction(2, 1);
+	raw_target_sc = drm_fixp_div(numerator, denominator);
+
+	DP_DEBUG("raw_target_sc before overhead:0x%llx\n", raw_target_sc);
+	DP_DEBUG("dsc_overhead_fp:0x%llx\n", in->dsc_overhead_fp);
+
+	/* apply fec and dsc overhead factor */
+	if (in->fec_en)
+		raw_target_sc = drm_fixp_mul(raw_target_sc, in->fec_overhead_fp);
+
+	if (in->dsc_en)
+		raw_target_sc = drm_fixp_mul(raw_target_sc, in->dsc_overhead_fp);
+
+	DP_DEBUG("raw_target_sc after overhead:0x%llx\n", raw_target_sc);
+
+	/* target_sc */
+	temp = drm_fixp_from_fraction(256 * lanes, 1);
+	numerator = drm_fixp_mul(raw_target_sc, temp);
+	denominator = drm_fixp_from_fraction(256 * lanes, 1);
+	target_sc_fixp = drm_fixp_div(numerator, denominator);
+
+	ts_enum = 256 * lanes;
+	ts_denom = drm_fixp_from_fraction(256 * lanes, 1);
+	ts_int = drm_fixp2int(target_sc_fixp);
+
+	temp = drm_fixp2int_ceil(raw_target_sc);
+	if (temp != ts_int) {
+		temp = drm_fixp_from_fraction(ts_int, 1);
+		temp1 = raw_target_sc - temp;
+		temp2 = drm_fixp_mul(temp1, ts_denom);
+		ts_enum = drm_fixp2int(temp2);
+	}
+
+	/* target_strm_sym */
+	ts_int_fixp = drm_fixp_from_fraction(ts_int, 1);
+	ts_frac_fixp = drm_fixp_from_fraction(ts_enum, drm_fixp2int(ts_denom));
+	temp = ts_int_fixp + ts_frac_fixp;
+	temp1 = drm_fixp_from_fraction(lanes, 1);
+	target_strm_sym = drm_fixp_mul(temp, temp1);
+
+	/* x_int */
+	x_int = drm_fixp2int(target_strm_sym);
+
+	/* y_enum_frac */
+	temp = drm_fixp_from_fraction(x_int, 1);
+	temp1 = target_strm_sym - temp;
+	temp2 = drm_fixp_from_fraction(256, 1);
+	y_frac_enum_fixp = drm_fixp_mul(temp1, temp2);
+
+	temp1 = drm_fixp2int(y_frac_enum_fixp);
+	temp2 = drm_fixp2int_ceil(y_frac_enum_fixp);
+
+	y_frac_enum = (u32)((temp1 == temp2) ? temp1 : temp1 + 1);
+
+	out->min_sc = min_slot_cnt;
+	out->max_sc = max_slot_cnt;
+	out->mst_target_sc = raw_target_sc;
+	out->ts_int = ts_int;
+	out->x_int = x_int;
+	out->y_frac_enum = y_frac_enum;
+
+	DP_DEBUG("x_int: %d, y_frac_enum: %d\n", x_int, y_frac_enum);
+}

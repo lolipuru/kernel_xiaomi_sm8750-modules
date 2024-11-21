@@ -53,6 +53,28 @@ struct dp_tu_dhdr_info {
 	bool fec_en;
 };
 
+struct dp_tu_mst_rg_in {
+	u64 lclk_khz;
+	u64 pclk_khz;
+	u32 nlanes;
+	u32 src_bpp;
+	u32 tgt_bpp;
+	bool fec_en;
+	bool dsc_en;
+	s64 fec_overhead_fp;
+	s64 dsc_overhead_fp;
+	u32 pbn;
+};
+
+struct dp_tu_mst_rg_out {
+	u32 min_sc;
+	u32 max_sc;
+	u32 mst_target_sc;
+	u32 ts_int;
+	u32 x_int;
+	u32 y_frac_enum;
+};
+
 struct dp_dsc_dto_params {
 	u32 tgt_bpp;
 	u32 src_bpp;
@@ -63,5 +85,6 @@ struct dp_dsc_dto_params {
 void dp_tu_calculate(struct dp_tu_calc_input *in, struct dp_tu_calc_output *tu_table);
 u32 dp_tu_dsc_get_num_extra_pclk(u32 pclk_factor, struct dp_tu_compression_info *input);
 u32 dp_tu_dhdr_pkt_limit(struct dp_tu_dhdr_info *input);
+void dp_tu_mst_rg_calc(struct dp_tu_mst_rg_in *in, struct dp_tu_mst_rg_out *out);
 
 #endif
