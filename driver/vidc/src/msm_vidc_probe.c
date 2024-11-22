@@ -49,7 +49,8 @@ static inline bool is_video_device(struct device *dev)
 		of_device_is_compatible(dev->of_node, "qcom,volcano-vidc") ||
 		of_device_is_compatible(dev->of_node, "qcom,sm8750-vidc") ||
 		of_device_is_compatible(dev->of_node, "qcom,sm8750-vidc-v2") ||
-		of_device_is_compatible(dev->of_node, "qcom,tuna-vidc"));
+		of_device_is_compatible(dev->of_node, "qcom,tuna-vidc") ||
+		of_device_is_compatible(dev->of_node, "qcom,kera-vidc"));
 }
 
 static inline bool is_video_context_bank_device_node(struct device_node *of_node)
@@ -123,6 +124,7 @@ static const struct of_device_id msm_vidc_dt_match[] = {
 	{.compatible = "qcom,cliffs-vidc"},
 	{.compatible = "qcom,volcano-vidc"},
 	{.compatible = "qcom,tuna-vidc"},
+	{.compatible = "qcom,kera-vidc"},
 	{.compatible = "qcom,vidc,cb-ns-pxl"},
 	{.compatible = "qcom,vidc,cb-ns"},
 	{.compatible = "qcom,vidc,cb-sec-non-pxl"},
