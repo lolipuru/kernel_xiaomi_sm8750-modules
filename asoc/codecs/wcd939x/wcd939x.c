@@ -63,6 +63,7 @@
 #define WCD_USBSS_READ false
 #define WCD_USBSS_DP_EN 0x1E
 #define WCD_USBSS_DN_EN 0x21
+#define WCD_USBSS_FSM_OVERRIDE 0x63
 #define P_THRESH_SEL_MASK 0x0E
 #define P_THRESH_SEL_SHIFT 0x01
 #define VTH_4P0 0x04
@@ -4810,7 +4811,12 @@ static struct snd_soc_component_driver soc_codec_dev_wcd939x = {
 static void wcd_usbss_set_ovp_threshold(u32 threshold)
 {
 	uint32_t ovp_regs[2][2] = {{WCD_USBSS_DP_EN, 0x00}, {WCD_USBSS_DN_EN, 0x00}};
+	uint32_t fsm_4p0_regs[][2] = { {WCD_USBSS_FSM_OVERRIDE, 0x77} };
+	uint32_t fsm_4p2_regs[][2] = { {WCD_USBSS_FSM_OVERRIDE, 0x7f} };
 
+	if (threshold == VTH_4P0)
+		wcd_usbss_register_update(fsm_4p0_regs, WCD_USBSS_WRITE,
+					ARRAY_SIZE(fsm_4p0_regs));
 	/* Get current register values */
 	wcd_usbss_register_update(ovp_regs, WCD_USBSS_READ, ARRAY_SIZE(ovp_regs));
 	/* Overwrite OVP tresholds */
@@ -4820,6 +4826,9 @@ static void wcd_usbss_set_ovp_threshold(u32 threshold)
 	ovp_regs[1][1] |= (threshold << P_THRESH_SEL_SHIFT);
 	/* Write updated register values */
 	wcd_usbss_register_update(ovp_regs, WCD_USBSS_WRITE, ARRAY_SIZE(ovp_regs));
+	if (threshold == VTH_4P2)
+		wcd_usbss_register_update(fsm_4p2_regs, WCD_USBSS_WRITE,
+					ARRAY_SIZE(fsm_4p2_regs));
 }
 #endif
 
