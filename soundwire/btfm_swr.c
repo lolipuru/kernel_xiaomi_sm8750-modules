@@ -38,13 +38,14 @@ int btfm_get_bt_soc_index(int chipset_ver)
 	switch (chipset_ver) {
 	case QCA_GANGES_SOC_ID_0100:
 	case QCA_GANGES_SOC_ID_0200:
+	case QCA_ORNE_SOC_ID_0100:
 		return GANGES;
 	case QCA_EVROS_SOC_ID_0100:
 	case QCA_EVROS_SOC_ID_0200:
 		return EVROS;
 	default:
-		BTFMSWR_ERR("no BT SOC id defined, returning EVROS");
-		return EVROS;
+		BTFMSWR_ERR("no BT SOC id defined, returning GANGES");
+		return GANGES;
 	}
 }
 
