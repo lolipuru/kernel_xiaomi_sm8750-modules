@@ -4317,10 +4317,10 @@ static const struct bw_table tuna_bw_table[] = {
 	{ "venus-llcc",  1000, 15000000 },
 };
 
-/* name, hw_trigger */
-static const struct regulator_table tuna_regulator_table[] = {
-	{ "iris-ctl", 0 },
-	{ "vcodec",   1 },
+/* name */
+static const struct pd_table tuna_pd_table[] = {
+	{ "iris-ctl" },
+	{ "vcodec"   },
 };
 
 /* name, clock id, scaling */
@@ -4514,8 +4514,8 @@ static const struct msm_vidc_platform_data tuna_data_v0 = {
 	/* resources dependent on other module */
 	.bw_tbl = tuna_bw_table,
 	.bw_tbl_size = ARRAY_SIZE(tuna_bw_table),
-	.regulator_tbl = tuna_regulator_table,
-	.regulator_tbl_size = ARRAY_SIZE(tuna_regulator_table),
+	.pd_tbl = tuna_pd_table,
+	.pd_tbl_size = ARRAY_SIZE(tuna_pd_table),
 	.clk_tbl = tuna_clk_table,
 	.clk_tbl_size = ARRAY_SIZE(tuna_clk_table),
 	.clk_rst_tbl = tuna_clk_reset_table,
@@ -4591,8 +4591,8 @@ static const struct msm_vidc_platform_data tuna_data_v1 = {
 	/* resources dependent on other module */
 	.bw_tbl = tuna_bw_table,
 	.bw_tbl_size = ARRAY_SIZE(tuna_bw_table),
-	.regulator_tbl = tuna_regulator_table,
-	.regulator_tbl_size = ARRAY_SIZE(tuna_regulator_table),
+	.pd_tbl = tuna_pd_table,
+	.pd_tbl_size = ARRAY_SIZE(tuna_pd_table),
 	.clk_tbl = tuna_clk_table,
 	.clk_tbl_size = ARRAY_SIZE(tuna_clk_table),
 	.clk_rst_tbl = tuna_clk_reset_table,
