@@ -1231,7 +1231,7 @@ static int wcd9378_tx_sequencer_enable(struct snd_soc_dapm_widget *w,
 		}
 
 		rate = wcd9378_get_clk_rate(wcd9378->tx_mode[w->shift - ADC1]);
-		if (w->shift == ADC2 && !((snd_soc_component_read(component,
+		if (w->shift == ADC2 && ((snd_soc_component_read(component,
 				WCD9378_TX_NEW_TX_CH12_MUX) &
 				WCD9378_TX_NEW_TX_CH12_MUX_CH2_SEL_MASK) == 0x10)) {
 			if (!wcd9378->bcs_dis) {
@@ -2325,6 +2325,14 @@ int wcd9378_micbias_control(struct snd_soc_component *component,
 
 			if (micb_num == MIC_BIAS_2) {
 				snd_soc_component_update_bits(component,
+						WCD9378_ANA_MICB2_RAMP,
+						WCD9378_ANA_MICB2_RAMP_SHIFT_CTL_MASK,
+						0x0C);
+				snd_soc_component_update_bits(component,
+						WCD9378_ANA_MICB2_RAMP,
+						WCD9378_ANA_MICB2_RAMP_RAMP_ENABLE_MASK,
+						0x00);
+				snd_soc_component_update_bits(component,
 						WCD9378_IT31_MICB,
 						WCD9378_IT31_MICB_IT31_MICB_MASK,
 						micb_usage_val);
@@ -2365,6 +2373,14 @@ int wcd9378_micbias_control(struct snd_soc_component *component,
 						WCD9378_IT31_MICB,
 						WCD9378_IT31_MICB_IT31_MICB_MASK,
 						0x00);
+				snd_soc_component_update_bits(component,
+						WCD9378_ANA_MICB2_RAMP,
+						WCD9378_ANA_MICB2_RAMP_SHIFT_CTL_MASK,
+						0x0C);
+				snd_soc_component_update_bits(component,
+						WCD9378_ANA_MICB2_RAMP,
+						WCD9378_ANA_MICB2_RAMP_RAMP_ENABLE_MASK,
+						0x80);
 				wcd9378->curr_micbias2 = 0;
 			}
 			if (post_off_event && wcd9378->mbhc)
@@ -2852,7 +2868,7 @@ static int wcd9378_ear_pa_gain_get(struct snd_kcontrol *kcontrol,
 		snd_soc_component_read(component, WCD9378_ANA_EAR_COMPANDER_CTL) &
 				WCD9378_ANA_EAR_COMPANDER_CTL_EAR_GAIN_MASK;
 
-	ucontrol->value.enumerated.item[0] = ear_gain;
+	ucontrol->value.enumerated.item[0] = ear_gain >> 2;
 	dev_dbg(component->dev, "%s: get ear_gain val: 0x%x\n",
 			__func__, ear_gain);
 	return 0;
@@ -2876,6 +2892,7 @@ static int wcd9378_ear_pa_gain_put(struct snd_kcontrol *kcontrol,
 	}
 
 	ear_gain = ucontrol->value.integer.value[0];
+	ear_gain = ear_gain << 2;
 	snd_soc_component_update_bits(component, WCD9378_ANA_EAR_COMPANDER_CTL,
 				WCD9378_ANA_EAR_COMPANDER_CTL_EAR_GAIN_MASK,
 				ear_gain);
