@@ -533,13 +533,16 @@ int cam_packet_util_process_generic_blob(uint32_t length, uint32_t *blob_ptr,
 	uint32_t  blob_type, blob_size, blob_block_size, len_read;
 
 	len_read = 0;
-	while (len_read < length) {
+	while (len_read + sizeof(uint32_t) < length) {
 		blob_type =
 			((*blob_ptr) & CAM_GENERIC_BLOB_CMDBUFFER_TYPE_MASK) >>
 			CAM_GENERIC_BLOB_CMDBUFFER_TYPE_SHIFT;
 		blob_size =
 			((*blob_ptr) & CAM_GENERIC_BLOB_CMDBUFFER_SIZE_MASK) >>
 			CAM_GENERIC_BLOB_CMDBUFFER_SIZE_SHIFT;
+
+		if (!blob_size)
+			goto end;
 
 		blob_block_size = sizeof(uint32_t) +
 			(((blob_size + sizeof(uint32_t) - 1) /
