@@ -4855,6 +4855,13 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 			blob = prop_node->blob_ptr;
 			if (blob) {
 				art = blob->data;
+				if (sde_crtc->mdnie_ipc_disabled == false) {
+					/* disable ART in params */
+					art->param = 0;
+					/* set frame count as 1 to trigger ART done event */
+					sde_crtc->mdnie_art_frame_count = 1;
+					return;
+				}
 				aiqe_register_client(feature, &sde_crtc->aiqe_top_level);
 				get_mdnie_art_frame_count(&sde_crtc->mdnie_art_frame_count,
 							art->param);
