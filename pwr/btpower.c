@@ -949,16 +949,19 @@ static int bt_regulators_pwr(int pwr_state)
 				pr_err("%s: secure hw mode on, not allowed to access gpio",
 					__func__);
 			}else {
-				bt_configure_gpios(POWER_DISABLE);
+				if (!get_fmd_mode())
+					bt_configure_gpios(POWER_DISABLE);
 			}
 		}
 gpio_fail:
-		if (pwr_data->bt_gpio_sys_rst > 0)
-			gpio_free(pwr_data->bt_gpio_sys_rst);
-		if (pwr_data->bt_gpio_debug  >  0)
-			gpio_free(pwr_data->bt_gpio_debug);
-		if (pwr_data->bt_chip_clk)
-			bt_clk_disable(pwr_data->bt_chip_clk);
+		if (!get_fmd_mode()) {
+			if (pwr_data->bt_gpio_sys_rst > 0)
+				gpio_free(pwr_data->bt_gpio_sys_rst);
+			if (pwr_data->bt_gpio_debug  >  0)
+				gpio_free(pwr_data->bt_gpio_debug);
+			if (pwr_data->bt_chip_clk)
+				bt_clk_disable(pwr_data->bt_chip_clk);
+		}
 regulator_fail:
 		for (i = 0; i < bt_num_vregs; i++) {
 			bt_vregs = &pwr_data->bt_vregs[i];
@@ -1655,7 +1658,6 @@ static int bt_power_probe(struct platform_device *pdev)
 
 	struct device *devi = &pwr_data->pdev->dev;
 	int rc = 0;
-
 	pr_info("%s: Get FMD nvmem-cells\n", __func__);
 /* Get fmd_set NVMEM  Cell Handler */
 	pwr_data->nvmem_cell_fmd_set =
@@ -2623,10 +2625,6 @@ int perform_fmd_operation(void)
 			} else {
 				pr_info("%s: UPDATE_SOC_VER :: OTHER_FMD_SUPPORT_BT_SOC\n",
 					__func__);
-				if (vote_wlan_reg_for_fmd() < 0) {
-					pr_err("%s: failed to vote wlan_reg\n", __func__);
-					return -EINVAL;
-				}
 			}
 
 			if (pwr_data->bt_chip_clk) {
