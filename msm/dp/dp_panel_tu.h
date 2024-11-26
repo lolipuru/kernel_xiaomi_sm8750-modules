@@ -23,6 +23,8 @@ struct dp_tu_calc_input {
 	int fec_en;            /* fec */
 	int compress_ratio;    /* 2:1 = 200, 3:1 = 300, 3.75:1 = 375 */
 	int num_of_dsc_slices; /* number of slices per line */
+	s64 comp_bpp;          /* compressed bpp = uncomp_bpp / compression_ratio */
+	int ppc_div_factor;    /* pass in ppc mode 2/4 */
 };
 
 struct dp_tu_calc_output {
@@ -40,6 +42,7 @@ struct dp_tu_compression_info {
 	u32 tgt_bpp;
 	u16 pic_width;
 	int pclk_per_line;
+	int ppc_div_factor;
 };
 
 struct dp_tu_dhdr_info {
@@ -56,21 +59,26 @@ struct dp_tu_dhdr_info {
 struct dp_tu_mst_rg_in {
 	u64 lclk_khz;
 	u64 pclk_khz;
-	u32 nlanes;
-	u32 src_bpp;
-	u32 tgt_bpp;
+	u8 nlanes;
+	u8 src_bpp;
+	u8 tgt_bpp;
 	bool fec_en;
 	bool dsc_en;
 	s64 fec_overhead_fp;
 	s64 dsc_overhead_fp;
-	u32 pbn;
+	u64 pbn;
+	/*
+	 * margin_ovrd: SW control for handling margin
+	 * Only enabled when running 4k60fps displays on 2x MST stream
+	 */
+	bool margin_ovrd;
 };
 
 struct dp_tu_mst_rg_out {
-	u32 min_sc;
-	u32 max_sc;
-	u32 mst_target_sc;
-	u32 ts_int;
+	u64 min_sc_fp;
+	u64 max_sc_fp;
+	u64 target_sc_fp;
+	u64 ts_int;
 	u32 x_int;
 	u32 y_frac_enum;
 };
