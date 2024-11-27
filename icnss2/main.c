@@ -4563,6 +4563,25 @@ struct iommu_domain *icnss_smmu_get_domain(struct device *dev)
 }
 EXPORT_SYMBOL(icnss_smmu_get_domain);
 
+/**
+ * icnss_get_wifi_kobject -return wifi kobject
+ * Return: Null, to maintain driver comnpatibilty
+ */
+struct kobject *icnss_get_wifi_kobj(struct device *dev)
+{
+	struct icnss_priv *priv = icnss_get_plat_priv();
+
+	if (!priv) {
+		icnss_pr_err("Platform priv is NULL\n");
+		return NULL;
+	}
+
+	icnss_pr_dbg("Successfully returned wifi kobj\n");
+
+	return priv->wifi_kobj;
+}
+EXPORT_SYMBOL(icnss_get_wifi_kobj);
+
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
 static int icnss_iommu_map(struct iommu_domain *domain,
 			   unsigned long iova, phys_addr_t paddr, size_t size, int prot)
