@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2015, 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1372,12 +1372,13 @@ cm_update_scan_mlme_on_disconnect(struct wlan_objmgr_vdev *vdev,
  * @pdev: Object manager pdev
  * @filter: Scan filter params
  * @list: List of candidates to be scored
+ * @allow_scan: Is scan allowed
  *
  * Return: void
  */
-void cm_calculate_scores(struct cnx_mgr *cm_ctx,
-			 struct wlan_objmgr_pdev *pdev,
-			 struct scan_filter *filter, qdf_list_t *list);
+void cm_calculate_scores(struct cnx_mgr *cm_ctx, struct wlan_objmgr_pdev *pdev,
+			 struct scan_filter *filter, qdf_list_t *list,
+			 bool allow_scan);
 
 /**
  * cm_req_lock_acquire() - Acquire connection manager request lock
