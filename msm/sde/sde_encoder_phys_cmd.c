@@ -1450,19 +1450,23 @@ exit:
 static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_cmd *cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct sde_hw_tear_check tc_cfg = { 0 };
 	struct drm_display_mode *mode;
 	bool tc_enable = true;
-	u32 vsync_hz, threshold, cfg_height, start_pos;
+	u32 vsync_hz, threshold, cfg_height, start_pos, qsync_mode;
+	bool panel_dead = false;
 	int vrefresh;
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 
-	if (!phys_enc || !phys_enc->hw_pp || !phys_enc->hw_intf) {
+	if (!phys_enc || !phys_enc->hw_pp || !phys_enc->hw_intf || !phys_enc->connector) {
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
 	mode = &phys_enc->cached_mode;
+	qsync_mode = sde_connector_get_qsync_mode(phys_enc->connector);
+	panel_dead = sde_connector_panel_dead(phys_enc->connector);
 
 	SDE_DEBUG_CMDENC(cmd_enc, "pp %d, intf %d\n",
 			phys_enc->hw_pp->idx - PINGPONG_0,
@@ -1565,6 +1569,11 @@ static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_
 		phys_enc->hw_pp->ops.enable_tearcheck(phys_enc->hw_pp,
 				tc_enable);
 	}
+
+	if (qsync_mode && cmd_enc->base.hw_intf->ops.enable_te_level_trigger &&
+			!sde_enc->disp_info.is_te_using_watchdog_timer)
+		cmd_enc->base.hw_intf->ops.enable_te_level_trigger(cmd_enc->base.hw_intf,
+			qsync_mode && !panel_dead);
 }
 
 static void _sde_encoder_phys_cmd_pingpong_config(
