@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2015, 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1507,7 +1507,8 @@ static QDF_STATUS cm_remove_mbssid_links_without_scan_entry(
 
 			partner_info = &scan_entry->ml_info.link_info[i];
 			partner_entry = cm_get_entry(candidate_list,
-						     &partner_info->link_addr);
+						     &partner_info->link_addr,
+						     mld_addr);
 
 			if (!partner_entry ||
 			    !qdf_is_macaddr_equal(mld_addr,
