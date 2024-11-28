@@ -4373,7 +4373,8 @@ void lim_update_tdls_2g_bw(struct pe_session *session)
  * Return: QDF_STATUS_SUCCESS on success, error code otherwise
  */
 QDF_STATUS lim_delete_tdls_peers(struct mac_context *mac_ctx,
-				 struct pe_session *session_entry)
+				 struct pe_session *session_entry,
+				 enum wlan_tdls_peer_delete_reason reason)
 {
 
 	if (!session_entry) {
@@ -4398,6 +4399,13 @@ QDF_STATUS lim_delete_tdls_peers(struct mac_context *mac_ctx,
 		return QDF_STATUS_SUCCESS;
 
 	/*
+	 * For link switch on non-dbs target avoid sending TDLS disable to
+	 * firmware
+	 */
+	if (reason == TDLS_PEER_DEL_REASON_LINK_STATE_SWITCH)
+		return QDF_STATUS_SUCCESS;
+
+	/*
 	 * In case of CSA, Only peers in lim and TDLS component
 	 * needs to be removed and set state disable command
 	 * should not be sent to fw as there is no way to enable
@@ -4413,7 +4421,8 @@ QDF_STATUS lim_delete_tdls_peers(struct mac_context *mac_ctx,
 	return QDF_STATUS_SUCCESS;
 }
 
-QDF_STATUS lim_delete_all_tdls_peers(struct wlan_objmgr_vdev *vdev)
+QDF_STATUS lim_delete_all_tdls_peers(struct wlan_objmgr_vdev *vdev,
+				     enum wlan_tdls_peer_delete_reason reason)
 {
 	struct mac_context *mac = cds_get_context(QDF_MODULE_ID_PE);
 	struct pe_session *session;
@@ -4428,7 +4437,7 @@ QDF_STATUS lim_delete_all_tdls_peers(struct wlan_objmgr_vdev *vdev)
 		return QDF_STATUS_E_FAILURE;
 	}
 
-	return lim_delete_tdls_peers(mac, session);
+	return lim_delete_tdls_peers(mac, session, reason);
 }
 
 QDF_STATUS
