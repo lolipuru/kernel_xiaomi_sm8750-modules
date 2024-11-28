@@ -3595,6 +3595,11 @@ static void fts_resume_work(struct work_struct *work)
 
 	info = container_of(work, struct fts_ts_info, resume_work);
 
+	if (info->resume_bit) {
+		pr_info("Already in awake state\n");
+		return;
+	}
+
 	info->resume_bit = 1;
 
 	fts_enable_reg(info, true);
@@ -3619,6 +3624,11 @@ static void fts_suspend_work(struct work_struct *work)
 	struct fts_ts_info *info;
 
 	info = container_of(work, struct fts_ts_info, suspend_work);
+
+	if (!info->resume_bit) {
+		pr_info("Already in suspend state\n");
+		return;
+	}
 
 	info->resume_bit = 0;
 
