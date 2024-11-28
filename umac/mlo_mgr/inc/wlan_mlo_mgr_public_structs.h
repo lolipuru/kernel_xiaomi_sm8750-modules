@@ -1517,7 +1517,8 @@ struct mlo_mlme_ext_ops {
 				const struct cfg80211_connect_params *req,
 				struct mlo_partner_info *partner_info);
 #endif
-	QDF_STATUS (*mlo_mlme_ext_teardown_tdls)(struct wlan_objmgr_psoc *psoc);
+	QDF_STATUS (*mlo_mlme_ext_teardown_tdls)(struct wlan_objmgr_psoc *psoc,
+						 uint8_t vdev_id);
 };
 
 /*
