@@ -7305,7 +7305,7 @@ static ssize_t _sde_encoder_arp_freq_steps_write(struct file *file,
 		const char __user *user_buf, size_t count, loff_t *ppos)
 {
 	struct sde_encoder_virt *sde_enc;
-	u32 freq_patterrn_arr32[MAX_FREQ_SEQ_SIZE];
+	static u32 freq_patterrn_arr32[MAX_FREQ_SEQ_SIZE];
 	char buf[MISR_BUFF_SIZE + 1];
 	size_t buff_copy = 0;
 	int rc = 0;
@@ -7427,6 +7427,10 @@ static ssize_t _sde_encoder_arp_freq_steps_read(struct file *file,
 		return -EINVAL;
 
 	sde_enc = file->private_data;
+
+	if (!sde_enc->vrr_info.debugfs_freq_array)
+		return -EINVAL;
+
 	len = scnprintf(buf, sizeof(buf),
 				"%u %u %u %u %u\n",
 				sde_enc->vrr_info.debugfs_freq_array[0],
