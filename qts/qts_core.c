@@ -314,8 +314,12 @@ static void qts_trusted_touch_intr_gpio_toggle(struct qts_data *qts_data,
 	void __iomem *base;
 	u32 val;
 
-	if (qts_data->bus_type != QTS_BUS_TYPE_I2C)
-		return;
+	/*
+	 * Currently reset/irq gpios address is hardcoded in SVM. But reset/irq gpios
+	 * can be different based on target. This leads to NOC issues.
+	 * TODO: Add support to parse reset/irq gpio address from dtsi
+	 */
+	return;
 
 	base = ioremap(TOUCH_INTR_GPIO_BASE, TOUCH_INTR_GPIO_SIZE);
 	if (!base) {
