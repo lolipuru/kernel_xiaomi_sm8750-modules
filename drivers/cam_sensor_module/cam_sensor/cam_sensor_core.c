@@ -354,7 +354,6 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 	uint32_t cmd_buf_type, idx;
 	struct cam_config_dev_cmd config;
 	struct i2c_data_settings *i2c_data = NULL;
-	size_t packet_size = 0;
 
 	ioctl_ctrl = (struct cam_control *)arg;
 
@@ -391,26 +390,10 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 	remain_len -= (size_t)config.offset;
 	csl_packet_u = (struct cam_packet *)(generic_ptr +
 		(uint32_t)config.offset);
-	packet_size = csl_packet_u->header.size;
-	if (packet_size <= remain_len) {
-		rc = cam_common_mem_kdup((void **)&csl_packet,
-			csl_packet_u, packet_size);
-		if (rc) {
-			CAM_ERR(CAM_SENSOR, "Alloc and copy request: %lld packet fail",
-				csl_packet_u->header.request_id);
-			goto put_ref;
-		}
-	} else {
-		CAM_ERR(CAM_SENSOR, "Invalid packet header size %u",
-			packet_size);
+	rc = cam_packet_util_copy_pkt_to_kmd(csl_packet_u, &csl_packet, remain_len);
+	if (rc) {
+		CAM_ERR(CAM_SENSOR, "Copying packet to KMD failed");
 		goto put_ref;
-	}
-
-	if (cam_packet_util_validate_packet(csl_packet,
-		remain_len)) {
-		CAM_ERR(CAM_SENSOR, "Invalid packet params");
-		rc = -EINVAL;
-		goto end;
 	}
 
 	if ((csl_packet->header.op_code & 0xFFFFFF) !=
@@ -1018,7 +1001,6 @@ int32_t cam_handle_mem_ptr(uint64_t handle, uint32_t cmd,
 	uintptr_t packet = 0;
 	size_t    remain_len = 0;
 	uint32_t  probe_ver = 0;
-	size_t    packet_size = 0;
 
 	rc = cam_mem_get_cpu_buf(handle,
 		&packet, &len);
@@ -1034,26 +1016,10 @@ int32_t cam_handle_mem_ptr(uint64_t handle, uint32_t cmd,
 		goto put_ref;
 	}
 
-	packet_size = pkt_u->header.size;
-	if (packet_size <= len) {
-		rc = cam_common_mem_kdup((void **)&pkt, pkt_u,
-			packet_size);
-		if (rc) {
-			CAM_ERR(CAM_SENSOR, "Alloc and copy local pkt fail");
-			goto put_ref;
-		}
-	} else {
-		CAM_ERR(CAM_SENSOR, "Invalid packet header size %u",
-			packet_size);
-		rc = -EINVAL;
+	rc = cam_packet_util_copy_pkt_to_kmd(pkt_u, &pkt, len);
+	if (rc) {
+		CAM_ERR(CAM_SENSOR, "Copying packet to KMD failed");
 		goto put_ref;
-	}
-
-	if (cam_packet_util_validate_packet(pkt,
-		len)) {
-		CAM_ERR(CAM_SENSOR, "Invalid packet params");
-		rc = -EINVAL;
-		goto end;
 	}
 
 	if ((len < sizeof(struct cam_packet)) ||
