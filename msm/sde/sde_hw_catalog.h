@@ -105,6 +105,7 @@
 #define MAX_IMG_WIDTH 0x3fff
 #define MAX_IMG_HEIGHT 0x3fff
 
+#define CRTC_SINGLE_MIXER_ONLY	1
 #define CRTC_DUAL_MIXERS_ONLY	2
 #define MAX_MIXERS_PER_CRTC	8
 #define MAX_MIXERS_PER_LAYOUT	2
@@ -130,7 +131,7 @@
 #define SDE_CTL_CFG_VERSION_1_0_0       0x100
 #define MAX_INTF_PER_CTL_V1                 2
 #define MAX_DSC_PER_CTL_V1                  4
-#define MAX_CWB_PER_CTL_V1                  2
+#define MAX_CWB_PER_CTL_V1                  4
 #define MAX_MERGE_3D_PER_CTL_V1             2
 #define MAX_WB_PER_CTL_V1                   1
 #define MAX_CDM_PER_CTL_V1                  1
