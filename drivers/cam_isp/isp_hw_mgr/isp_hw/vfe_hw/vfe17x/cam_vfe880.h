@@ -2172,6 +2172,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"RDI_0",
 			},
+			.pid_mask      = 0x700,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_RDI1,
@@ -2188,6 +2189,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"RDI_1",
 			},
+			.pid_mask      = 0x700,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_RDI2,
@@ -2204,6 +2206,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"RDI_2",
 			},
+			.pid_mask      = 0x700,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_FULL,
@@ -2222,6 +2225,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 				"FULL_Y",
 				"FULL_C",
 			},
+			.pid_mask      = 0x70000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_DS4,
@@ -2238,6 +2242,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"DS_4",
 			},
+			.pid_mask      = 0x7000000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_DS16,
@@ -2254,6 +2259,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"DS_16",
 			},
+			.pid_mask      = 0x7000000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_RAW_DUMP,
@@ -2270,6 +2276,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"PIXEL_RAW",
 			},
+			.pid_mask      = 0x700,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_FD,
@@ -2288,6 +2295,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 				"FD_Y",
 				"FD_C",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_2PD,
@@ -2303,6 +2311,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"PDAF_0_2PD",
 			},
+			.pid_mask      = 0x7000000,
 		},
 		{
 			.vfe_out_type  =
@@ -2319,6 +2328,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"STATS_TL_BG",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_STATS_CAF,
@@ -2334,6 +2344,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"STATS_BF",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_STATS_AWB_BG,
@@ -2349,6 +2360,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"STATS_AWB_BGB",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_STATS_BHIST,
@@ -2364,6 +2376,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"STATS_BHIST",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_STATS_BAYER_RS,
@@ -2379,6 +2392,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"STATS_RS",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_STATS_IHIST,
@@ -2394,6 +2408,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"STATS_IHIST",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_FULL_DISP,
@@ -2412,6 +2427,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 				"FULL_DISP_Y",
 				"FULL_DISP_C",
 			},
+			.pid_mask      = 0x70000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_DS4_DISP,
@@ -2428,6 +2444,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"DISP_DS_4",
 			},
+			.pid_mask      = 0x7000000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_DS16_DISP,
@@ -2444,6 +2461,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"DISP_DS_16",
 			},
+			.pid_mask      = 0x7000000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_PREPROCESS_2PD,
@@ -2460,6 +2478,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"PDAF_1_PREPROCESS_2PD",
 			},
+			.pid_mask      = 0x7000000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_AWB_BFW,
@@ -2475,6 +2494,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"AWB_BFW",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_PDAF_PARSED,
@@ -2491,6 +2511,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"PDAF_2_PARSED_DATA",
 			},
+			.pid_mask      = 0x7000000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_STATS_AEC_BE,
@@ -2506,6 +2527,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"AEC_BE",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  = CAM_VFE_BUS_VER3_VFE_OUT_LTM_STATS,
@@ -2522,6 +2544,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"LTM",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  =
@@ -2538,6 +2561,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"GTM_BHIST",
 			},
+			.pid_mask      = 0x700000,
 		},
 		{
 			.vfe_out_type  =
@@ -2554,6 +2578,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe880_bus_hw_info = {
 			.name          = {
 				"STATS_ALSC",
 			},
+			.pid_mask      = 0x700000,
 		},
 	},
 
