@@ -196,24 +196,6 @@ static const uint32_t cam_cpas_hw_version_map
 		0,
 		0,
 	},
-	/* for camera_975 */
-	{
-		CAM_CPAS_TITAN_975_V100,
-		0,
-		0,
-		0,
-		0,
-		0,
-	},
-	/* for camera_970 */
-	{
-		CAM_CPAS_TITAN_970_V110,
-		0,
-		0,
-		0,
-		0,
-		0,
-	},
 	/* for camera_980 */
 	{
 		CAM_CPAS_TITAN_980_V100,
@@ -226,6 +208,24 @@ static const uint32_t cam_cpas_hw_version_map
 	/* for camera_1080 */
 	{
 		CAM_CPAS_TITAN_1080_V100,
+		0,
+		0,
+		0,
+		0,
+		0,
+	},
+	/* for camera_975 */
+	{
+		CAM_CPAS_TITAN_975_V100,
+		0,
+		0,
+		0,
+		0,
+		0,
+	},
+	/* for camera_970 */
+	{
+		CAM_CPAS_TITAN_970_V110,
 		0,
 		0,
 		0,
