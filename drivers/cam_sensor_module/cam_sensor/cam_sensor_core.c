@@ -2577,7 +2577,7 @@ static void cam_sensor_dump_request_info(struct cam_sensor_ctrl_t  *s_ctrl,
 	struct i2c_settings_array *i2c_set;
 	struct i2c_settings_list  *i2c_list;
 
-	CAM_INFO(CAM_SENSOR, "Sensor:%s dump req info for req:%llu",
+	CAM_INFO(CAM_SENSOR, "\tSensor:%s dump req info for req:%llu",
 		s_ctrl->sensor_name, req_id);
 
 	offset = req_id % MAX_PER_FRAME_ARRAY;
@@ -2661,7 +2661,7 @@ int cam_sensor_dump_request(struct cam_req_mgr_dump_info *dump)
 	}
 
 	CAM_INFO(CAM_SENSOR,
-		"Sensor:[%s-%d] dump req_info, last applied sensor req:%llu error_req:%d",
+		"Sensor:[%s-%d] dump req_info, last applied sensor req:%llu error_req:%llu",
 		s_ctrl->sensor_name, s_ctrl->soc_info.index,
 		s_ctrl->last_applied_req, dump->req_id);
 
@@ -2675,9 +2675,11 @@ int cam_sensor_dump_request(struct cam_req_mgr_dump_info *dump)
 		s_ctrl->sensor_res[idx].caps, s_ctrl->sensor_res[idx].fps);
 
 	req_id = s_ctrl->last_applied_req;
+	mutex_lock(&(s_ctrl->cam_sensor_mutex));
 	for (i = 0; (req_id > 0) && (i <= (s_ctrl->pipeline_delay + 1));
 		req_id--, i++)
 		cam_sensor_dump_request_info(s_ctrl, req_id);
+	mutex_unlock(&(s_ctrl->cam_sensor_mutex));
 
 	return 0;
 }
