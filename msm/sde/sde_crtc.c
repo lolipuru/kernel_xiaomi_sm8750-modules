@@ -4874,6 +4874,13 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			if (sde_encoder_in_clone_mode(encoder))
 				continue;
 
+			/* For cmd mode, with cesta immediate mode enablement, update perf votes
+			 * during crtc commit kickoff. This will delay the new vote request and
+			 * allows intra frame idle entry.
+			 */
+			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_CMD_MODE))
+				continue;
+
 			sde_encoder_begin_commit(encoder);
 		}
 	} else {
@@ -5464,6 +5471,20 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) && !is_vid)
 		sde_fence_update_hw_fences_txq(sde_crtc->output_fence, false, 0,
 			sde_kms->debugfs_hw_fence);
+
+	if (sde_crtc->cesta_client) {
+		encoder = NULL;
+		drm_for_each_encoder_mask(encoder, dev, crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			/* early return for video mode, as votes are updated*/
+			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE))
+				continue;
+
+			sde_encoder_begin_commit(encoder);
+		}
+	}
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		if (encoder->crtc != crtc)

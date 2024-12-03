@@ -2032,6 +2032,70 @@ static void _sde_encoder_cesta_update_self_refresh(struct drm_encoder *drm_enc)
 	SDE_EVT32(DRMID(drm_enc));
 }
 
+static void sde_encoder_cesta_update_on_ept(struct drm_encoder *drm_enc,
+			enum sde_perf_commit_state commit_state)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	struct sde_encoder_phys *cur_master = sde_enc->phys_encs[0];
+	struct drm_connector *drm_conn;
+	u64 timeout_us = 0, timeout_ns = 0, timeout_ns_left = 0, ept;
+	ktime_t current_ts, ept_ts, start, end;
+	char atrace_buf[64];
+	bool is_cmd = false, needs_modeset = false;
+	u32 loop_count = 0, i, range_in_us = 0;
+
+	if (!cur_master || !cur_master->connector)
+		return;
+
+	is_cmd = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE);
+	drm_conn = cur_master->connector;
+	if (sde_enc->crtc)
+		needs_modeset = msm_atomic_needs_modeset(sde_enc->crtc->state, drm_conn->state);
+
+	if (commit_state != SDE_PERF_BEGIN_COMMIT || !is_cmd || needs_modeset)
+		return;
+
+	ept = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_EPT);
+	current_ts = ktime_get_ns();
+	ept_ts = ept - (3 *  NSEC_PER_MSEC);
+
+	if (ktime_compare(ept_ts, current_ts) > 0) {
+		timeout_ns = ktime_sub(ept_ts, current_ts);
+		timeout_us = DIV_ROUND_UP(timeout_ns, NSEC_PER_USEC);
+		loop_count = DIV_ROUND_UP(timeout_us, USEC_PER_MSEC);
+		timeout_ns_left = timeout_ns;
+		range_in_us = 1000;
+		snprintf(atrace_buf, sizeof(atrace_buf), "schedule_timeout_%llu", ept);
+
+		for (i = 0; i < loop_count; i++) {
+
+			start = ktime_get_ns();
+			SDE_ATRACE_BEGIN(atrace_buf);
+			usleep_range(range_in_us - 100, range_in_us);
+			SDE_ATRACE_END(atrace_buf);
+			end = ktime_get_ns();
+
+			SDE_EVT32(i, range_in_us, ktime_to_us(timeout_ns),
+				ktime_to_us(timeout_ns_left), ktime_to_us(ktime_sub(end, start)));
+			if (ktime_compare(timeout_ns_left, ktime_sub(end, start)) > 0) {
+				timeout_ns_left = ktime_sub(timeout_ns_left,
+								ktime_sub(end, start));
+				if (ktime_sub(1000 * NSEC_PER_USEC, timeout_ns_left) > 0)
+					range_in_us = DIV_ROUND_UP(timeout_ns_left, 1000);
+				if (range_in_us < 100)
+					break;
+			} else
+				break;
+		}
+	}
+
+	SDE_DEBUG("enc:%d, ept elapsed; ept:%llu, ept_ts:%llu, current_ts:%llu timeout:%llu\n",
+		DRMID(&sde_enc->base), ept, ept_ts, current_ts, timeout_us);
+	SDE_EVT32(DRMID(&sde_enc->base), ktime_to_us(current_ts), loop_count, range_in_us,
+		ktime_to_us(ept_ts), ktime_to_us(timeout_ns), ktime_to_us(ept),
+		ktime_to_us(timeout_ns_left));
+}
+
 static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 			enum sde_perf_commit_state commit_state)
 {
@@ -2056,6 +2120,8 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	sde_core_perf_crtc_update(sde_enc->crtc, commit_state);
 
 	ctl = cur_master->hw_ctl;
+
+	sde_encoder_cesta_update_on_ept(drm_enc, commit_state);
 
 	if ((commit_state == SDE_PERF_COMPLETE_COMMIT)
 			&& (cesta_client->vote_state != SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE)
