@@ -1352,6 +1352,7 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 		struct msm_cvp_cb_cmd_done response = { 1 };
 		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL, *inst_t;
 
+		dprintk(CVP_ERR, "Session error triggered\n");
 		mutex_lock(&core->lock);
 		list_for_each_entry_safe(inst, inst_t, &core->instances, list) {
 			if (inst != NULL) {
@@ -1376,13 +1377,13 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 		response.device_id = 0x00FF;
 		response.status = CVP_ERR_HW_FATAL;
 		response.size = sizeof(struct msm_cvp_cb_cmd_done);
-		dprintk(CVP_ERR, "Session error triggered\n");
 		handle_session_error(HAL_SESSION_ERROR, (void *)(&response));
 		return;
 	}
 	if (core->ssr_type == SSR_SESSION_TIMEOUT) {
 		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL, *inst_t;
 
+		dprintk(CVP_ERR, "Session timeout triggered\n");
 		mutex_lock(&core->lock);
 		list_for_each_entry_safe(inst, inst_t,  &core->instances, list) {
 			if (inst != NULL) {
@@ -1397,9 +1398,8 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 				}
 				break;
 		}
-		mutex_unlock(&core->lock);
-		dprintk(CVP_ERR, "Session timeout triggered\n");
 		handle_session_timeout(inst, true);
+		mutex_unlock(&core->lock);
 		return;
 	}
 	if (core->ssr_type == SSR_CORE_SMMU_FAULT) {
