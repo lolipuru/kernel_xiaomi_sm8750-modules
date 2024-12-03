@@ -678,6 +678,10 @@ skip_video_xo_reset:
 	if (rc)
 		return rc;
 
+	rc = call_res_op(core, gdsc_sw_ctrl, core);
+	if (rc)
+		return rc;
+
 	rc = call_res_op(core, clk_enable, core, "video_cc_mvs0_clk");
 	if (rc)
 		return rc;
