@@ -6001,7 +6001,9 @@ void fastrpc_register_wakeup_source(struct device *dev,
 static void fastrpc_notify_user_ctx(struct fastrpc_invoke_ctx *ctx, int retval,
 		u32 rsp_flags, u32 early_wake_time)
 {
-	if (ctx->cctx && !atomic_read(&ctx->cctx->teardown))
+        if(!ctx->cctx)
+           return;
+	if (!atomic_read(&ctx->cctx->teardown))
 		fastrpc_pm_awake(ctx->fl, ctx->cctx->secure);
 	ctx->retval = retval;
 	ctx->rsp_flags = (enum fastrpc_response_flags)rsp_flags;
