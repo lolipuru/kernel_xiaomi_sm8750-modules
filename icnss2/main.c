@@ -4467,28 +4467,29 @@ static int icnss_get_audio_iommu_domain(struct icnss_priv *priv)
 bool icnss_get_audio_shared_iommu_group_cap(struct device *dev)
 {
 	struct icnss_priv *priv = dev_get_drvdata(dev);
-	struct device_node *audio_ion_node;
+	struct device_node *direct_link_node;
 	struct device_node *icnss_iommu_group_node;
-	struct device_node *audio_iommu_group_node;
+	struct device_node *direct_link_iommu_group_node;
 
 	if (!priv)
 		return false;
 
-	audio_ion_node = of_find_compatible_node(NULL, NULL,
-						 "qcom,msm-audio-ion");
-	if (!audio_ion_node) {
-		icnss_pr_err("Unable to get Audio ion node");
+	direct_link_node = of_find_compatible_node(NULL, NULL,
+						 "qcom,icnss-direct-link");
+	if (!direct_link_node) {
+		icnss_pr_err("Unable to get direct link node");
 		return false;
 	}
 
-	audio_iommu_group_node = of_parse_phandle(audio_ion_node,
-						  "qcom,iommu-group", 0);
-	of_node_put(audio_ion_node);
-	if (!audio_iommu_group_node) {
-		icnss_pr_err("Unable to get audio iommu group phandle");
+	direct_link_iommu_group_node = of_parse_phandle(direct_link_node,
+							"qcom,iommu-group", 0);
+	of_node_put(direct_link_node);
+
+	if (!direct_link_iommu_group_node) {
+		icnss_pr_err("Unable to get direct link iommu group phandle");
 		return false;
 	}
-	of_node_put(audio_iommu_group_node);
+	of_node_put(direct_link_iommu_group_node);
 
 	icnss_iommu_group_node = of_parse_phandle(dev->of_node,
 						 "qcom,iommu-group", 0);
@@ -4498,17 +4499,47 @@ bool icnss_get_audio_shared_iommu_group_cap(struct device *dev)
 	}
 	of_node_put(icnss_iommu_group_node);
 
-	if (icnss_iommu_group_node == audio_iommu_group_node) {
+	if (icnss_iommu_group_node == direct_link_iommu_group_node) {
 		priv->is_audio_shared_iommu_group = true;
-		icnss_pr_info("CNSS and Audio share IOMMU group");
+		icnss_pr_info("CNSS and direct link share IOMMU group");
 	} else {
-		icnss_pr_info("CNSS and Audio do not share IOMMU group");
+		icnss_pr_info("CNSS and direct link do not share IOMMU group");
 	}
 
 	return priv->is_audio_shared_iommu_group;
 }
 EXPORT_SYMBOL(icnss_get_audio_shared_iommu_group_cap);
 
+int icnss_get_direct_link_sid(struct device *dev, uint16_t *sid)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+	struct device_node *direct_link_node;
+	struct of_phandle_args iommu_spec = { .args_count = 1 };
+
+	if (!priv)
+		return false;
+
+	direct_link_node = of_find_compatible_node(NULL, NULL,
+						   "qcom,icnss-direct-link");
+	if (!direct_link_node) {
+		icnss_pr_err("Unable to get direct link node");
+		return -ENODEV;
+	}
+
+	if (of_parse_phandle_with_args(direct_link_node, "iommus", "#iommu-cells",
+				       0, &iommu_spec)) {
+		of_node_put(direct_link_node);
+		icnss_pr_err("Unable to parse iommus property");
+		return -ENODEV;
+	}
+	of_node_put(direct_link_node);
+
+	of_node_put(iommu_spec.np);
+	*sid = (iommu_spec.args[0] & 0x1f);
+	icnss_pr_info("Direct link SID value:%u", *sid);
+	return 0;
+}
+EXPORT_SYMBOL(icnss_get_direct_link_sid);
 
 /**
  * icnss_get_fw_cap - Check whether FW supports specific capability or not
@@ -5653,6 +5684,7 @@ static const struct platform_device_id icnss_platform_id_table[] = {
 	{ .name = "adrastea", .driver_data = ADRASTEA_DEVICE_ID, },
 	{ .name = "wcn6450", .driver_data = WCN6450_DEVICE_ID, },
 	{ .name = "wcn7750", .driver_data = WCN7750_DEVICE_ID, },
+	{ .name = "direct-link", .driver_data = DIRECT_LINK_DEVICE_ID, },
 	{ },
 };
 
@@ -5669,6 +5701,10 @@ static const struct of_device_id icnss_dt_match[] = {
 	{
 		.compatible = "qcom,wcn7750",
 		.data = (void *)&icnss_platform_id_table[3]},
+	{
+		.compatible = "qcom,icnss-direct-link",
+		.data = (void *)&icnss_platform_id_table[4]},
+
 	{ },
 };
 
@@ -5867,11 +5903,6 @@ static int icnss_probe(struct platform_device *pdev)
 	const struct platform_device_id *device_id;
 	static bool prealloc_initialized;
 
-	if (dev_get_drvdata(dev)) {
-		icnss_pr_err("Driver is already initialized\n");
-		return -EEXIST;
-	}
-
 	of_id = of_match_device(icnss_dt_match, &pdev->dev);
 	if (!of_id || !of_id->data) {
 		icnss_pr_err("Failed to find of match device!\n");
@@ -5880,6 +5911,16 @@ static int icnss_probe(struct platform_device *pdev)
 	}
 
 	device_id = of_id->data;
+	if (device_id->driver_data == DIRECT_LINK_DEVICE_ID) {
+		icnss_pr_info("cnss direct link device probed!\n");
+		return 0;
+	}
+
+	if (dev_get_drvdata(dev)) {
+		icnss_pr_err("Driver is already initialized\n");
+		return -EEXIST;
+	}
+
 	device_name = icnss_get_device_name(device_id);
 	icnss_pr_dbg("Platform driver probe for %s!\n", device_name);
 
@@ -6065,6 +6106,22 @@ static void icnss_remove(struct platform_device *pdev)
 #endif
 {
 	struct icnss_priv *priv = dev_get_drvdata(&pdev->dev);
+	const struct of_device_id *of_id;
+	const struct platform_device_id *device_id;
+	int ret = 0;
+
+	of_id = of_match_device(icnss_dt_match, &pdev->dev);
+	if (!of_id || !of_id->data) {
+		icnss_pr_err("Failed to find of match device!\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	device_id = of_id->data;
+	if (device_id->driver_data == DIRECT_LINK_DEVICE_ID) {
+		icnss_pr_info("cnss direct link device removed!\n");
+		goto out;
+	}
 
 	icnss_pr_info("Removing driver: state: 0x%lx\n", priv->state);
 
@@ -6136,8 +6193,9 @@ static void icnss_remove(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, NULL);
 
+out:
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
-	return 0;
+	return ret;
 #endif
 }
 
