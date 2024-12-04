@@ -2243,6 +2243,54 @@ int ipa_wdi_disable_pipes_per_inst(ipa_wdi_hdl_t hdl)
 }
 EXPORT_SYMBOL(ipa_wdi_disable_pipes_per_inst);
 
+int ipa_wdi_get_outstanding_buffers(ipa_wdi_hdl_t hdl,
+	struct ipa_wdi_outstanding_buffs *out)
+{
+	int ipa_ep_idx_tx = 0, ipa_ep_idx_rx = 0;
+
+	if (out == NULL) {
+		IPA_WDI_ERR("invalid params out=%pK\n", out);
+		return -EINVAL;
+	}
+
+	if (hdl < 0 || hdl >= IPA_WDI_INST_MAX) {
+		IPA_WDI_ERR("Invalid Handle %d\n", hdl);
+		return -EFAULT;
+	}
+
+	if (!ipa_wdi_ctx_list[hdl]) {
+		IPA_WDI_ERR("wdi ctx is not initialized.\n");
+		return -EPERM;
+	}
+
+	if (ipa_wdi_ctx_list[hdl]->wdi_version >= IPA_WDI_1 &&
+		ipa_wdi_ctx_list[hdl]->wdi_version < IPA_WDI_3 &&
+		hdl > 0) {
+		IPA_WDI_ERR("More than one instance not supported for WDI ver = %d\n",
+					ipa_wdi_ctx_list[hdl]->wdi_version);
+		return -EPERM;
+	}
+
+	if (ipa_wdi_ctx_list[hdl]->wdi_version >= IPA_WDI_3) {
+		if (IPA_CLIENT_IS_WLAN0_INSTANCE(ipa_wdi_ctx_list[hdl]->inst_id)) {
+			ipa_ep_idx_rx = ipa_get_ep_mapping(IPA_CLIENT_WLAN2_PROD);
+			ipa_ep_idx_tx = ipa_get_ep_mapping(IPA_CLIENT_WLAN2_CONS);
+		} else {
+			ipa_ep_idx_rx = ipa_get_ep_mapping(IPA_CLIENT_WLAN3_PROD);
+			ipa_ep_idx_tx = ipa_get_ep_mapping(IPA_CLIENT_WLAN4_CONS);
+		}
+	} else {
+		ipa_ep_idx_rx = ipa_get_ep_mapping(IPA_CLIENT_WLAN1_PROD);
+		ipa_ep_idx_tx = ipa_get_ep_mapping(IPA_CLIENT_WLAN1_CONS);
+	}
+
+	if (ipa_ep_idx_tx < 0 || ipa_ep_idx_rx < 0)
+		return -EFAULT;
+
+	return ipa3_get_outstanding_buffers_wdi3(ipa_ep_idx_rx, ipa_ep_idx_tx, out);
+}
+EXPORT_SYMBOL_GPL(ipa_wdi_get_outstanding_buffers);
+
 int ipa_wdi_init(struct ipa_wdi_init_in_params *in,
 	struct ipa_wdi_init_out_params *out)
 {

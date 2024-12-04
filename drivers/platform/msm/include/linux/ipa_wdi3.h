@@ -368,6 +368,17 @@ struct ipa_wdi_capabilities_out_params {
 	u8 num_of_instances;
 };
 
+/**
+ * struct ipa_wdi_outstanding_buffs - information provided to WLAN driver
+ *
+ * @no_tx_outstanding_buffs: no of outstanding buffer at IPA in TX direction
+ * @no_rx_outstanding_buffs: no of outstanding buffer at IPA in RX direction
+ */
+struct ipa_wdi_outstanding_buffs {
+	u32 no_tx_outstanding_buffs;
+	u32 no_rx_outstanding_buffs;
+};
+
 #if IS_ENABLED(CONFIG_IPA3)
 
 /**
@@ -837,6 +848,19 @@ int ipa_wdi_bw_monitor(struct ipa_wdi_bw_info *info);
  */
 int ipa_wdi_sw_stats(struct ipa_wdi_tx_info *info);
 
+/**
+ * ipa_wdi_get_outstanding_buffers() - to get the outstanding buffers at IPA
+ * @out: to pass outstanding buffers count at IPA to WLAN
+ * @hdl: hdl to wdi client
+ *
+ * Returns:	0 on success, negative on failure
+ *
+ * @note Cannot be called from atomic context
+ *
+ */
+int ipa_wdi_get_outstanding_buffers(ipa_wdi_hdl_t hdl,
+	struct ipa_wdi_outstanding_buffs *out);
+
 #else /* IS_ENABLED(CONFIG_IPA3) */
 
 /**
@@ -1117,6 +1141,12 @@ static int ipa_wdi_opt_dpath_enable_clk_per_inst(ipa_wdi_hdl_t hdl)
 }
 
 static int ipa_wdi_opt_dpath_disable_clk_per_inst(ipa_wdi_hdl_t hdl)
+{
+	return -EPERM;
+}
+
+static inline int ipa_wdi_get_outstanding_buffers(ipa_wdi_hdl_t hdl,
+	struct ipa_wdi_outstanding_buffs *out)
 {
 	return -EPERM;
 }

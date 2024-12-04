@@ -2601,4 +2601,6 @@ int gsi_get_peripheral_ee(void);
 
 uint32_t gsi_get_chan_stop_stm(int chan_id, int ee);
 
+uint32_t gsi_get_outstanding_buffers(int ep_idx);
+
 #endif

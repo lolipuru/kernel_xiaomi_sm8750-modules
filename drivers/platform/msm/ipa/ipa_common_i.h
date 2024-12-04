@@ -650,6 +650,9 @@ int ipa_smmu_store_sgt(struct sg_table **out_ch_ptr,
 		struct sg_table *in_sgt_ptr);
 int ipa_smmu_free_sgt(struct sg_table **out_sgt_ptr);
 
+int ipa3_get_outstanding_buffers_wdi3(int ipa_ep_idx_rx,
+	int ipa_ep_idx_tx, struct ipa_wdi_outstanding_buffs *out);
+
 #ifdef CONFIG_IPA_UT
 int ipa_ut_module_init(void);
 void ipa_ut_module_exit(void);
