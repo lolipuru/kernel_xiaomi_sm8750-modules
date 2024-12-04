@@ -3228,6 +3228,11 @@ static int wcd939x_tx_mode_put(struct snd_kcontrol *kcontrol,
 		return ret;
 
 	mode_val = ucontrol->value.enumerated.item[0];
+	if (wcd939x->tx_mode[path] == ADC_MODE_HIFI && mode_val != ADC_MODE_INVALID) {
+		dev_dbg(component->dev, "%s: mode: %d not set, tx mode: %d retained for HDR\n",
+					__func__, mode_val, wcd939x->tx_mode[path]);
+		return 0;
+	}
 
 	dev_dbg(component->dev, "%s: mode: %d\n", __func__, mode_val);
 
