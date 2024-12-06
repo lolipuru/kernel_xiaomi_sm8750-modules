@@ -3002,8 +3002,6 @@ skip_to_init_sensing:
 	if (error == 0)
 		info->ready = true;
 
-	queue_work(info->event_wq, &info->resume_work);
-
 	return error;
 }
 
