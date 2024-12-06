@@ -553,6 +553,8 @@ int32_t cam_context_prepare_dev_to_hw(struct cam_context *ctx,
 	if (req->packet) {
 		CAM_WARN(CAM_CTXT, "[%s][%d] Missing free request local packet",
 			ctx->dev_name, ctx->ctx_id);
+		/* Remove buffer ref counts if any */
+		cam_smmu_buffer_tracker_putref(&req->buf_tracker);
 		cam_common_mem_free(req->packet);
 		req->packet = NULL;
 	}
