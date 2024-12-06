@@ -108,9 +108,11 @@ struct swr_haptics_dev {
 	struct regulator		*hpwr_vreg;
 	struct notifier_block		hboost_nb;
 	struct notifier_block		ssr_nb;
+	struct mutex			play_lock;
 	void				*ssr_handle;
 	u32				hpwr_voltage_mv;
 	bool				slave_enabled;
+	bool				in_play;
 	bool				hpwr_vreg_enabled;
 	bool				ssr_recovery;
 	u8				vmax;
@@ -374,6 +376,7 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 			return rc;
 		}
 
+		mutex_lock(&swr_hap->play_lock);
 		/* trigger SWR play */
 		val = SWR_PLAY_BIT | SWR_PLAY_SRC_VAL_SWR;
 		rc = regmap_write(swr_hap->regmap, SWR_PLAY_REG, val);
@@ -381,9 +384,12 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 			dev_err_ratelimited(swr_hap->dev, "%s: Enable SWR_PLAY failed, rc=%d\n",
 						__func__, rc);
 			swr_hap_disable_hpwr_vreg(swr_hap);
+			mutex_unlock(&swr_hap->play_lock);
 			return rc;
 		}
 
+		swr_hap->in_play = true;
+		mutex_unlock(&swr_hap->play_lock);
 		swr_slvdev_datapath_control(swr_hap->swr_slave,
 				swr_hap->swr_slave->dev_num, true);
 
@@ -399,14 +405,18 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		/* stop SWR play */
+		mutex_lock(&swr_hap->play_lock);
 		val = SWR_PLAY_SRC_VAL_SWR;
 		rc = regmap_write(swr_hap->regmap, SWR_PLAY_REG, val);
 		if (rc) {
 			dev_err_ratelimited(swr_hap->dev, "%s: Enable SWR_PLAY failed, rc=%d\n",
 					__func__, rc);
+			mutex_unlock(&swr_hap->play_lock);
 			return rc;
 		}
 
+		swr_hap->in_play = false;
+		mutex_unlock(&swr_hap->play_lock);
 		rc = swr_hap_disable_hpwr_vreg(swr_hap);
 		if (rc < 0) {
 			dev_err_ratelimited(swr_hap->dev, "%s: Disable hpwr_vreg failed, rc=%d\n",
@@ -675,13 +685,19 @@ static int lpass_ssr_notifier(struct notifier_block *nb, unsigned long event, vo
 	struct swr_haptics_dev *swr_hap = container_of(nb, struct swr_haptics_dev, ssr_nb);
 	int rc = NOTIFY_DONE;
 
+	mutex_lock(&swr_hap->play_lock);
+	if (!swr_hap->in_play) {
+		dev_dbg(swr_hap->dev, "ignore SSR events if not in play\n");
+		goto unlock;
+	}
+
 	switch (event) {
 	case QCOM_SSR_AFTER_POWERUP:
 		rc = swr_haptics_slave_enumeration(swr_hap);
 		if (rc) {
 			dev_err(swr_hap->dev, "%s: SWR haptics slave enumeration failued after SSR, rc=%d\n",
 					__func__, rc);
-			return rc;
+			goto unlock;
 		}
 
 		rc = regmap_write(swr_hap->regmap, SWR_PLAY_REG, SWR_PLAY_SRC_VAL_SWR);
@@ -693,6 +709,8 @@ static int lpass_ssr_notifier(struct notifier_block *nb, unsigned long event, vo
 		break;
 	}
 
+unlock:
+	mutex_unlock(&swr_hap->play_lock);
 	return rc;
 }
 static int swr_haptics_probe(struct swr_device *sdev)
@@ -719,6 +737,7 @@ static int swr_haptics_probe(struct swr_device *sdev)
 
 	swr_set_dev_data(sdev, swr_hap);
 
+	mutex_init(&swr_hap->play_lock);
 	rc = swr_haptics_parse_port_mapping(sdev);
 	if (rc < 0) {
 		dev_err(swr_hap->dev, "%s: failed to parse swr port mapping, rc=%d\n",
@@ -801,6 +820,7 @@ error:
 	swr_haptics_slave_disable(swr_hap);
 	swr_remove_device(sdev);
 clean:
+	mutex_destroy(&swr_hap->play_lock);
 	swr_set_dev_data(sdev, NULL);
 	return rc;
 }
@@ -829,6 +849,7 @@ static int swr_haptics_remove(struct swr_device *sdev)
 	}
 clean:
 	snd_soc_unregister_component(&sdev->dev);
+	mutex_destroy(&swr_hap->play_lock);
 	swr_set_dev_data(sdev, NULL);
 	return rc;
 }
