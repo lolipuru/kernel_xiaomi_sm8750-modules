@@ -134,6 +134,7 @@ struct cam_vfe_bus_ver3_wm_cfg_data {
 	uint32_t             image_offset;
 	uint32_t             meta_offset;
 	bool                 updated;
+	bool                 rcs_en;
 };
 
 struct cam_vfe_bus_ver3_wm_ubwc_cfg_data {
@@ -1270,8 +1271,10 @@ static int cam_vfe_bus_ver3_acquire_wm(
 
 	*comp_grp_id = rsrc_data->hw_regs->comp_group;
 
-	if (out_acq_args->out_port_info->rcs_en)
+	if (out_acq_args->out_port_info->rcs_en) {
 		rsrc_data->cfg.en_cfg |= rsrc_data->hw_regs->rcs_en_mask;
+		rsrc_data->cfg.rcs_en = true;
+	}
 
 	/* Acquire ownership */
 	rc = cam_vmrm_soc_acquire_resources(CAM_HW_ID_IFE0 + rsrc_data->common_data->core_index);
@@ -1308,6 +1311,7 @@ static int cam_vfe_bus_ver3_release_wm(void   *bus_priv,
 	rsrc_data->cfg.stride = 0;
 	rsrc_data->cfg.format = 0;
 	rsrc_data->cfg.pack_fmt = 0;
+	rsrc_data->cfg.rcs_en = false;
 	rsrc_data->burst_len = 0;
 	rsrc_data->irq_subsample_period = 0;
 	rsrc_data->irq_subsample_pattern = 0;
@@ -3931,6 +3935,8 @@ static int cam_vfe_bus_ver3_update_wm(void *priv, void *cmd_args, uint32_t arg_s
 			bus_priv->common_data.core_index, wm_data->index, reg_val_pair[j-1],
 			CAM_BOOL_TO_YESNO(cam_smmu_is_expanded_memory));
 
+		cfg->en_cfg |= cfg->rcs_en ? wm_data->hw_regs->rcs_en_mask : 0;
+
 		/* enable the WM */
 		CAM_ISP_ADD_REG_VAL_PAIR(reg_val_pair, MAX_REG_VAL_PAIR_SIZE, j,
 			wm_data->hw_regs->cfg, cfg->en_cfg);
@@ -4463,6 +4469,9 @@ static int cam_vfe_bus_ver3_update_wm_config_v2(
 			if (wm_config->param_mask & CAM_IFE_WM_BUF_ALLIGN_EN)
 				cfg->meta_offset = wm_config->offset;
 		}
+
+		/* Per req configuring port/wm as lossy/loseless */
+		cfg->rcs_en = (wm_config->param_mask & CAM_IFE_WM_RCS_EN);
 
 		/*
 		 * For RAW10/RAW12/RAW14 sensor mode seamless switch case,
