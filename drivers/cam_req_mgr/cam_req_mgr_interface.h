@@ -331,6 +331,7 @@ struct cam_req_mgr_error_notify {
  *                         by not sending request to devices. ex: IFE and Flash
  * @trigger_eof          : to identify that one of the device at this slot needs
  *                         to be apply at EOF
+ * @trigger_skip         : Trigger skip frame if set
  */
 struct cam_req_mgr_add_request {
 	int32_t  link_hdl;
@@ -339,6 +340,7 @@ struct cam_req_mgr_add_request {
 	uint32_t skip_at_sof;
 	uint32_t skip_at_eof;
 	bool     trigger_eof;
+	bool     trigger_skip;
 };
 
 /**

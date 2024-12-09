@@ -1022,6 +1022,7 @@ static void __cam_req_mgr_reset_req_slot(struct cam_req_mgr_core_link *link,
 	slot->sync_mode = CAM_REQ_MGR_SYNC_MODE_NO_SYNC;
 	slot->status = CRM_SLOT_STATUS_NO_REQ;
 	slot->num_sync_links = 0;
+	slot->skip_set = false;
 	slot->frame_sync_shift = 0;
 	for (i = 0; i < MAXIMUM_LINKS_PER_SESSION - 1; i++)
 		slot->sync_link_hdls[i] = 0;
@@ -1610,6 +1611,7 @@ static int __cam_req_mgr_check_link_is_ready(struct cam_req_mgr_core_link *link,
 	struct cam_req_mgr_traverse    traverse_data;
 	struct cam_req_mgr_req_queue  *in_q;
 	struct cam_req_mgr_apply      *apply_data;
+	struct cam_req_mgr_slot       *link_slot = NULL;
 
 	in_q = link->req.in_q;
 
@@ -1644,14 +1646,12 @@ static int __cam_req_mgr_check_link_is_ready(struct cam_req_mgr_core_link *link,
 		link->initial_skip = false;
 	}
 
+	link_slot = &link->req.in_q->slot[idx];
 	/*
 	 *  Traverse through all pd tables, if result is success,
 	 *  apply the settings
 	 */
 	rc = __cam_req_mgr_traverse(&traverse_data);
-	CAM_DBG(CAM_CRM,
-		"SOF: idx %d result %x pd_mask %x rc %d",
-		idx, traverse_data.result, link->pd_mask, rc);
 
 	if (!rc && traverse_data.result == link->pd_mask) {
 		CAM_DBG(CAM_CRM,
@@ -1660,6 +1660,13 @@ static int __cam_req_mgr_check_link_is_ready(struct cam_req_mgr_core_link *link,
 			apply_data[2].req_id,
 			apply_data[1].req_id,
 			apply_data[0].req_id);
+		if (unlikely((g_crm_core_dev->simulate_skip_frame) && (link_slot->skip_set))) {
+			rc = -EAGAIN;
+			CAM_WARN(CAM_CRM, "Simulate Skip on link: 0x%x req_id= %lld :%lld :%lld",
+				link->link_hdl, apply_data[2].req_id,
+				apply_data[1].req_id, apply_data[0].req_id);
+			link_slot->skip_set = false;
+		}
 	} else {
 		rc = -EAGAIN;
 		__cam_req_mgr_find_dev_name(link,
@@ -3448,14 +3455,14 @@ end:
 int cam_req_mgr_process_add_req(void *priv, void *data)
 {
 	int                                  rc = 0, i = 0;
-	int                                  idx;
+	int                                  idx, next_idx = 0;
 	struct cam_req_mgr_add_request      *add_req = NULL;
 	struct cam_req_mgr_core_link        *link = NULL;
 	struct cam_req_mgr_connected_device *device = NULL;
 	struct cam_req_mgr_req_tbl          *tbl = NULL;
 	struct cam_req_mgr_tbl_slot         *slot = NULL;
 	struct crm_task_payload             *task_data = NULL;
-	struct cam_req_mgr_slot             *link_slot = NULL;
+	struct cam_req_mgr_slot             *link_slot = NULL, *next_slot = NULL;
 	struct cam_req_mgr_state_monitor     state;
 
 	if (!data || !priv) {
@@ -3504,6 +3511,15 @@ int cam_req_mgr_process_add_req(void *priv, void *data)
 
 	link_slot = &link->req.in_q->slot[idx];
 	slot = &tbl->slot[idx];
+	if (add_req->trigger_skip) {
+		next_idx = __cam_req_mgr_find_slot_for_req(link->req.in_q, (add_req->req_id + 1));
+		if (next_idx >= 0) {
+			next_slot = &link->req.in_q->slot[next_idx];
+			CAM_WARN(CAM_CRM, "Skip requested on req: %u skipping for req: %u idx: %u",
+				add_req->req_id, (add_req->req_id + 1), next_idx);
+			next_slot->skip_set = true;
+		}
+	}
 
 	if ((add_req->skip_at_sof & 0xFF) > slot->inject_delay_at_sof) {
 		slot->inject_delay_at_sof = (add_req->skip_at_sof & 0xFF);
@@ -4117,6 +4133,7 @@ static int cam_req_mgr_cb_add_req(struct cam_req_mgr_add_request *add_req)
 	dev_req->trigger_eof = add_req->trigger_eof;
 	dev_req->skip_at_sof = add_req->skip_at_sof;
 	dev_req->skip_at_eof = add_req->skip_at_eof;
+	dev_req->trigger_skip = add_req->trigger_skip;
 	if (dev_req->trigger_eof) {
 		atomic_inc(&link->eof_event_cnt);
 		CAM_DBG(CAM_REQ, "Req_id: %llu, eof_event_cnt: %d, link 0x%x",
