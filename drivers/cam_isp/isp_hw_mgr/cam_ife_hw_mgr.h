@@ -467,6 +467,7 @@ struct cam_ife_hw_mgr_ctx {
 	uint32_t                                   acq_hw_ctxt_src_dst_map[CAM_ISP_MULTI_CTXT_MAX];
 	uint32_t                                   pri_rdi_out_res;
 	struct cam_isp_hw_per_req_info             per_req_info[MAX_DRV_REQUEST_DEPTH];
+	uint8_t                                    wr_per_req_index;
 	bool                                       is_init_drv_cfg_received;
 };
 
