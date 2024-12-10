@@ -5511,8 +5511,8 @@ int cnss_pci_load_tme_opt_file(struct cnss_pci_data *pci_priv,
 
 		cnss_pr_dbg("Invoke firmware_request_nowarn for %s\n", filename);
 
-		ret = cnss_request_firmware_update_timer(plat_priv, &fw_entry, filename);
-
+		ret = firmware_request_nowarn(&fw_entry, filename,
+					      &pci_priv->pci_dev->dev);
 		if (ret) {
 			cnss_pr_err("Failed to load TME-L opt file: %s, ret: %d\n",
 				    filename, ret);
