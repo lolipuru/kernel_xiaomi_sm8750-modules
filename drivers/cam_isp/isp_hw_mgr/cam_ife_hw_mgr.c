@@ -839,6 +839,7 @@ static int cam_ife_mgr_handle_reg_dump(struct cam_ife_hw_mgr_ctx *ctx,
 	struct cam_hw_soc_skip_dump_args skip_dump_args;
 	uintptr_t cpu_addr = 0;
 	size_t    buf_size = 0;
+	uint8_t total_ctx_acquired = 0;
 
 	CAM_DBG(CAM_ISP, "Reg dump req_type: %u ctx_idx: %u req:%llu",
 		meta_type, ctx->ctx_index, ctx->applied_req_id);
@@ -873,8 +874,13 @@ static int cam_ife_mgr_handle_reg_dump(struct cam_ife_hw_mgr_ctx *ctx,
 			"Reg dump values might be from more than one request, ctx_idx: %u",
 			ctx->ctx_index);
 
-	if ((meta_type != CAM_ISP_PACKET_META_REG_DUMP_ON_ERROR) &&
-			g_ife_hw_mgr.isp_caps.skip_regdump_data.skip_regdump) {
+	for (i = 0; i < CAM_ISP_MULTI_CTXT_MAX; i++) {
+		if (ctx->acq_hw_ctxt_src_dst_map[i])
+			total_ctx_acquired++;
+	}
+
+	if (g_ife_hw_mgr.isp_caps.skip_regdump_data.skip_regdump &&
+			(total_ctx_acquired != 1)) {
 		skip_dump_args.skip_regdump =
 			g_ife_hw_mgr.isp_caps.skip_regdump_data.skip_regdump;
 		skip_dump_args.start_offset =
