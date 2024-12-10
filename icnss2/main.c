@@ -6193,7 +6193,7 @@ static void icnss_remove(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, NULL);
 
-out:
+out: ;
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
 	return ret;
 #endif
