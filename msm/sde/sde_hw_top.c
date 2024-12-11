@@ -123,8 +123,6 @@
 #define HW_FENCE_INPUT_FENCE_ID_MASK_ALL 0xFFFFFFFF
 #define HW_FENCE_INPUT_FENCE_ID_MASK_SIGNAL 0xFFFF
 
-#define DEMURA_SW_FUSE_OFFSET 0x7C
-
 static int ppb_offset_map[PINGPONG_MAX] = {1, 0, 3, 2, 5, 4, 7, 7, 6, 6, -1, -1};
 
 static void sde_hw_setup_split_pipe(struct sde_hw_mdp *mdp,
@@ -1069,6 +1067,15 @@ struct sde_hw_sw_fuse *sde_hw_sw_fuse_init(void __iomem *addr,
 	c->hw.length = sw_fuse_len;
 	c->hw.hw_rev = m->hw_rev;
 
+	if (IS_TUNA_TARGET(c->hw.hw_rev) || IS_KERA_TARGET(c->hw.hw_rev))
+		c->demura_sw_fuse_offset = 0x88;
+	else if (IS_SUN_TARGET(c->hw.hw_rev))
+		c->demura_sw_fuse_offset = 0x7c;
+	else if (IS_CANOE_TARGET(c->hw.hw_rev))
+		c->demura_sw_fuse_offset = 0x84;
+	else
+		c->demura_sw_fuse_offset = 0;
+
 	return c;
 }
 
@@ -1081,8 +1088,8 @@ u32 sde_hw_get_demura_sw_fuse_value(struct sde_hw_sw_fuse *sw_fuse)
 {
 	u32 demura_sw_fuse = 0;
 
-	if (sw_fuse)
-		demura_sw_fuse = SDE_REG_READ(&sw_fuse->hw, DEMURA_SW_FUSE_OFFSET);
+	if (sw_fuse && sw_fuse->demura_sw_fuse_offset)
+		demura_sw_fuse = SDE_REG_READ(&sw_fuse->hw, sw_fuse->demura_sw_fuse_offset);
 
 	return demura_sw_fuse;
 }
