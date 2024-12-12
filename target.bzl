@@ -1,6 +1,6 @@
 load(":touch_modules.bzl", "touch_driver_modules")
 load(":touch_modules_build.bzl", "define_target_variant_modules")
-load("//soc-repo:target_variants.bzl", "la_target_variants", "le_target_variants")
+load(":target_variants.bzl", "get_all_la_variants", "get_all_le_variants")
 
 def define_sun(t,v):
     define_target_variant_modules(
@@ -146,7 +146,7 @@ def define_monaco(t,v):
 )
 
 def define_touch_target():
-    for (t, v) in la_target_variants() + le_target_variants():
+    for (t, v) in get_all_la_variants() + get_all_le_variants():
         if t == "blair":
             define_blair(t, v)
         elif t == "pineapple":
