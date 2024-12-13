@@ -4356,7 +4356,7 @@ static const struct reg_preset_table kera_reg_preset_table[] = {
 	{ 0x10830, 0x33332222, 0xFFFFFFFF},
 	{ 0x10834, 0x44444444, 0xFFFFFFFF},
 	{ 0x10838, 0x1022,     0xFFFFFFFF},
-	{ 0xA0140, 0x99,       0xFFFFFFFF},
+	{ 0xA013C, 0x99,       0xFFFFFFFF},
 };
 
 /* name, phys_addr, size, device_addr, device region type */
