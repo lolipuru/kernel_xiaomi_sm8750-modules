@@ -5902,6 +5902,8 @@ static void cnss_remove(struct platform_device *plat_dev)
 out:
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
 	return ret;
+#else
+	return;
 #endif
 }
 

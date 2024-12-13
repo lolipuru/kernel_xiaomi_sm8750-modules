@@ -6196,6 +6196,8 @@ static void icnss_remove(struct platform_device *pdev)
 out: ;
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
 	return ret;
+#else
+	return;
 #endif
 }
 
