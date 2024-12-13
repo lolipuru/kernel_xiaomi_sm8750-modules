@@ -38,6 +38,14 @@ ddk_headers(
 )
 
 ddk_headers(
+    name = "kera_headers",
+    hdrs = glob([
+      "driver/platform/kera/inc/*.h",
+    ]),
+    includes = ["driver/platform/kera/inc"]
+)
+
+ddk_headers(
     name = "iris33_headers",
     hdrs = glob([
       "driver/variant/iris33/inc/*.h",
@@ -65,7 +73,7 @@ ddk_headers(
 
 ddk_headers(
     name = "video_driver_headers",
-    hdrs = [":uapi_headers", "pineapple_headers", "sun_headers", "tuna_headers", "iris33_headers", "iris35_headers", "vidc_headers"]
+    hdrs = [":uapi_headers", "pineapple_headers", "sun_headers", "tuna_headers", "kera_headers", "iris33_headers", "iris35_headers", "vidc_headers"]
 )
 
 load(":target.bzl", "define_target_modules")
