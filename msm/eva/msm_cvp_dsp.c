@@ -53,6 +53,7 @@ static int __fastrpc_driver_invoke(struct fastrpc_device *dev,
 
 static int cvp_dsp_send_cmd(struct cvp_dsp_cmd_msg *cmd, uint32_t len)
 {
+#ifdef CVP_DSP_ENABLED
 	int rc = 0;
 	struct cvp_dsp_apps *me = &gfa_cv;
 
@@ -75,6 +76,9 @@ static int cvp_dsp_send_cmd(struct cvp_dsp_cmd_msg *cmd, uint32_t len)
 
 exit:
 	return rc;
+#else
+	return -ENODEV;
+#endif /* End of CVP_DSP_ENABLED */
 }
 
 static int cvp_dsp_send_cmd_sync(struct cvp_dsp_cmd_msg *cmd,
@@ -699,6 +703,22 @@ static struct rpmsg_driver cvp_dsp_rpmsg_client = {
 		.name = "qcom,msm_cvp_dsp_rpmsg",
 	},
 };
+
+static int cvp_register_rpmsg_driver(struct rpmsg_driver *rpmsg_driver)
+{
+#ifdef CVP_DSP_ENABLED
+	return register_rpmsg_driver(rpmsg_driver);
+#else
+	return -ENODEV;
+#endif /* End of CVP_DSP_ENABLED */
+}
+
+static void cvp_unregister_rpmsg_driver(struct rpmsg_driver *rpmsg_driver)
+{
+#ifdef CVP_DSP_ENABLED
+	return unregister_rpmsg_driver(rpmsg_driver);
+#endif /* End of CVP_DSP_ENABLED */
+}
 
 static void cvp_dsp_set_queue_hdr_defaults(struct cvp_hfi_queue_header *q_hdr)
 {
@@ -2116,12 +2136,13 @@ wait_dsp:
 		switch (me->pending_dsp2cpu_cmd.type) {
 		case DSP2CPU_POWERON:
 		{
+			mutex_lock(&me->tx_lock);
 			if (me->state == DSP_READY) {
 				cmd.ret = 0;
+				mutex_unlock(&me->tx_lock);
 				break;
 			}
 
-			mutex_lock(&me->tx_lock);
 			old_state = me->state;
 			me->state = DSP_READY;
 			rc = call_hfi_op(ops_tbl, resume, ops_tbl->hfi_device_data);
@@ -2255,7 +2276,7 @@ int cvp_dsp_device_init(void)
 		name[11]++;
 	}
 
-	rc = register_rpmsg_driver(&cvp_dsp_rpmsg_client);
+	rc = cvp_register_rpmsg_driver(&cvp_dsp_rpmsg_client);
 	if (rc) {
 		dprintk(CVP_ERR,
 			"%s : register_rpmsg_driver failed rc = %d\n",
@@ -2299,5 +2320,5 @@ void cvp_dsp_device_exit(void)
 	mutex_destroy(&me->tx_lock);
 	mutex_destroy(&me->rx_lock);
 	mutex_destroy(&me->driver_name_lock);
-	unregister_rpmsg_driver(&cvp_dsp_rpmsg_client);
+	cvp_unregister_rpmsg_driver(&cvp_dsp_rpmsg_client);
 }

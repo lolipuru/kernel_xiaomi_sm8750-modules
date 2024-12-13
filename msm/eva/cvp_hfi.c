@@ -1322,6 +1322,16 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 		dprintk(CVP_ERR, "Failed to enabled inter-frame PC\n");
 
 	ctrl_init_val = BIT(0);
+	/*
+	 * Add BIT(1) to disable DSP and BIT(3) to disable SYNX
+	 */
+#ifndef CVP_DSP_ENABLED
+	ctrl_init_val |= BIT(1);
+#endif
+#ifndef CVP_SYNX_ENABLED
+	ctrl_init_val |= BIT(3);
+#endif
+
 	/* RUMI: CVP_CTRL_INIT in MPTest has bit 0 and 3 set */
 	__write_register(device, CVP_CTRL_INIT, ctrl_init_val);
 	while (!(ctrl_status & CVP_CTRL_INIT_STATUS__M) && count < max_tries) {
@@ -1359,10 +1369,6 @@ static inline int __boot_firmware(struct iris_hfi_device *device)
 
 	CVPKERNEL_ATRACE_END("__boot_firmware");
 
-#ifdef USE_PRESIL
-	/*Disable HW Synx if RUMI Support for Synx unavailable*/
-	__write_register(device, CVP_CPU_CS_SCIACMD, 0x8);
-#endif
 	return rc;
 }
 
@@ -1719,6 +1725,7 @@ static void __interface_dsp_queues_release(struct iris_hfi_device *device)
 
 static int __interface_dsp_queues_init(struct iris_hfi_device *dev)
 {
+#ifdef CVP_DSP_ENABLED
 	int rc = 0;
 	u32 i;
 	struct cvp_iface_q_info *iface_q;
@@ -1794,6 +1801,9 @@ fail_dma_map:
 	dma_free_coherent(dev->res->mem_cdsp.dev, q_size, kvaddr, dma_handle);
 fail_dma_alloc:
 	return -ENOMEM;
+#else
+	return 0; // DSP is not enabled
+#endif
 }
 
 static void __interface_queues_release(struct iris_hfi_device *device)
@@ -4525,6 +4535,7 @@ static void interrupt_init_iris2(struct iris_hfi_device *device)
 static void setup_dsp_uc_memmap_vpu5(struct iris_hfi_device *device)
 {
 	/* initialize DSP QTBL & UCREGION with CPU queues */
+#ifdef CVP_DSP_ENABLED
 #ifdef USE_PRESIL42
 	presil42_setup_dsp_uc_memmap_vpu5(device);
 	return;
@@ -4535,6 +4546,7 @@ static void setup_dsp_uc_memmap_vpu5(struct iris_hfi_device *device)
 		(u32)device->dsp_iface_q_table.align_device_addr);
 	__write_register(device, HFI_DSP_UC_REGION_SIZE,
 		device->dsp_iface_q_table.mem_data.size);
+#endif
 }
 
 static int __set_ubwc_config(struct iris_hfi_device *device)

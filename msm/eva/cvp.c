@@ -596,8 +596,14 @@ static void __exit msm_cvp_exit(void)
 module_init(msm_cvp_init);
 module_exit(msm_cvp_exit);
 
+#ifdef CVP_MMRM_ENABLED
 MODULE_SOFTDEP("pre: msm-mmrm");
+#endif
+#ifdef CVP_SYNX_ENABLED
 MODULE_SOFTDEP("pre: synx-driver");
+#endif
+#ifdef CVP_FASTRPC_ENABLED
 MODULE_SOFTDEP("pre: frpc-adsprpc");
+#endif
 MODULE_LICENSE("GPL v2");
 MODULE_IMPORT_NS(DMA_BUF);
