@@ -15,6 +15,7 @@
 #include <linux/input.h>
 #include <soc/qcom/socinfo.h>
 #include <linux/of_device.h>
+#include <linux/soc/qcom/fsa4480-i2c.h>
 #if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
 #include <linux/soc/qcom/wcd939x-i2c.h>
 #endif
@@ -82,6 +83,7 @@ struct msm_asoc_mach_data {
 	struct device_node *dmic67_gpio_p; /* used by pinctrl API */
 	struct pinctrl *usbc_en2_gpio_p; /* used by pinctrl API */
 	bool is_afe_config_done;
+	struct device_node *fsa_handle;
 	struct device_node *wcd_usbss_handle;
 	struct clk *lpass_audio_hw_vote;
 	int core_audio_vote_count;
@@ -146,20 +148,25 @@ static bool msm_usbc_swap_gnd_mic(struct snd_soc_component *component, bool acti
 	struct msm_asoc_mach_data *pdata =
 				snd_soc_card_get_drvdata(card);
 
-	if (!pdata->wcd_usbss_handle)
+	if (!pdata->wcd_usbss_handle && !pdata->fsa_handle)
 		return false;
 
+	if (pdata->fsa_handle) {
+		ret = fsa4480_switch_event(pdata->fsa_handle, FSA_MIC_GND_SWAP);
+	} else {
 #if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
-	if (wcd_mbhc_cfg.usbss_hsj_connect_enable)
-		ret = wcd_usbss_switch_update(WCD_USBSS_GND_MIC_SWAP_HSJ,
+		if (wcd_mbhc_cfg.usbss_hsj_connect_enable)
+			ret = wcd_usbss_switch_update(WCD_USBSS_GND_MIC_SWAP_HSJ,
 							WCD_USBSS_CABLE_CONNECT);
-	else if (wcd_mbhc_cfg.enable_usbc_analog)
-		ret = wcd_usbss_switch_update(WCD_USBSS_GND_MIC_SWAP_AATC,
+		else if (wcd_mbhc_cfg.enable_usbc_analog)
+			ret = wcd_usbss_switch_update(WCD_USBSS_GND_MIC_SWAP_AATC,
 							WCD_USBSS_CABLE_CONNECT);
+	}
+#endif
 	if (ret == 0)
 		return true;
-#endif
-	return false;
+	else
+		return false;
 }
 
 static void msm_parse_upd_configuration(struct platform_device *pdev,
@@ -2416,6 +2423,14 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 
 	/* parse upd configuration */
 	msm_parse_upd_configuration(pdev, pdata);
+
+
+
+	pdata->fsa_handle = of_parse_phandle(pdev->dev.of_node,
+						"fsa4480-i2c-handle", 0);
+	if (!pdata->fsa_handle)
+		dev_dbg(&pdev->dev, "property %s not detected in node %s\n",
+			"fsa4480-i2c-handle", pdev->dev.of_node->full_name);
 
 	pdata->wcd_usbss_handle = of_parse_phandle(pdev->dev.of_node,
 						"wcd939x-i2c-handle", 0);

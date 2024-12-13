@@ -332,7 +332,7 @@ static int msm_audio_ion_unmap_kernel(struct dma_buf *dma_buf, struct msm_audio_
 		dev_err(cb_dev,
 			"%s: cannot find allocation for dma_buf %pK",
 			__func__, dma_buf);
-		rc = -EINVAL;
+		rc = -ENOENT;
 		goto err;
 	}
 
@@ -419,13 +419,13 @@ void msm_audio_update_fd_list(struct msm_audio_fd_data *msm_audio_fd_data)
 	mutex_unlock(&(msm_audio_ion_fd_list.list_mutex));
 }
 
-void msm_audio_delete_fd_entry(void *handle)
+void msm_audio_delete_fd_entry(void *handle, int handle_fd)
 {
 	struct msm_audio_fd_data *msm_audio_fd_data = NULL;
 	struct list_head *ptr, *next;
 
-	if (!handle) {
-		pr_err("%s Invalid handle\n", __func__);
+	if (!handle || !handle_fd) {
+		pr_err("%s Invalid handle or fd\n", __func__);
 		return;
 	}
 
@@ -434,9 +434,10 @@ void msm_audio_delete_fd_entry(void *handle)
 			&msm_audio_ion_fd_list.fd_list) {
 		msm_audio_fd_data = list_entry(ptr, struct msm_audio_fd_data,
 					list);
-		if (msm_audio_fd_data->handle == handle) {
-			pr_debug("%s deleting handle %pK entry from list\n",
-				__func__, handle);
+		if (msm_audio_fd_data->handle == handle
+				&& msm_audio_fd_data->fd == handle_fd) {
+			pr_debug("%s deleting handle %pK with fd = %d entry from list\n",
+				__func__, handle, handle_fd);
 			list_del(&(msm_audio_fd_data->list));
 			kfree(msm_audio_fd_data);
 			break;
@@ -754,9 +755,13 @@ static long msm_audio_ion_ioctl(struct file *file, unsigned int ioctl_num,
 		ret = msm_audio_ion_free(mem_handle, ion_data);
 		if (ret < 0) {
 			pr_err("%s Ion free failed %d\n", __func__, ret);
+			if (ret == -ENOENT) {
+				msm_audio_delete_fd_entry(mem_handle, (int)ioctl_param);
+				return 0;
+			}
 			return ret;
 		}
-		msm_audio_delete_fd_entry(mem_handle);
+		msm_audio_delete_fd_entry(mem_handle, (int)ioctl_param);
 		break;
 	case IOCTL_MAP_HYP_ASSIGN:
 	    ret = msm_audio_get_phy_addr((int)ioctl_param, &paddr, &pa_len);

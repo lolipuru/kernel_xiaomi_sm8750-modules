@@ -469,14 +469,14 @@ void lpass_cdc_unregister_res_clk(struct device *dev)
 EXPORT_SYMBOL(lpass_cdc_unregister_res_clk);
 
 static u8 lpass_cdc_dmic_clk_div_get(struct snd_soc_component *component,
-				   u32 mode)
+				   u32 mode, u32 mic_pair)
 {
 	struct lpass_cdc_priv* priv = snd_soc_component_get_drvdata(component);
 	int macro = (mode ? VA_MACRO : TX_MACRO);
 	int ret = 0;
 
 	if (priv->macro_params[macro].clk_div_get) {
-		ret = priv->macro_params[macro].clk_div_get(component);
+		ret = priv->macro_params[macro].clk_div_get(component, mic_pair);
 		if (ret >= 0)
 			return ret;
 	}
@@ -494,6 +494,7 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 	u8 *dmic_clk_div = NULL;
 	u8 freq_change_mask = 0;
 	u8 clk_div = 0;
+	u32 mic_pair = 0;
 
 	dev_dbg(component->dev, "%s: enable: %d, tx_mode:%d, dmic: %d\n",
 		__func__, enable, tx_mode, dmic);
@@ -505,6 +506,7 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 		dmic_clk_div = &(priv->dmic_0_1_clk_div);
 		dmic_clk_reg = LPASS_CDC_VA_TOP_CSR_DMIC0_CTL;
 		freq_change_mask = 0x01;
+		mic_pair = MIC_PAIR01;
 		break;
 	case 2:
 	case 3:
@@ -512,6 +514,7 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 		dmic_clk_div = &(priv->dmic_2_3_clk_div);
 		dmic_clk_reg = LPASS_CDC_VA_TOP_CSR_DMIC1_CTL;
 		freq_change_mask = 0x02;
+		mic_pair = MIC_PAIR23;
 		break;
 	case 4:
 	case 5:
@@ -519,6 +522,7 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 		dmic_clk_div = &(priv->dmic_4_5_clk_div);
 		dmic_clk_reg = LPASS_CDC_VA_TOP_CSR_DMIC2_CTL;
 		freq_change_mask = 0x04;
+		mic_pair = MIC_PAIR45;
 		break;
 	case 6:
 	case 7:
@@ -526,16 +530,17 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 		dmic_clk_div = &(priv->dmic_6_7_clk_div);
 		dmic_clk_reg = LPASS_CDC_VA_TOP_CSR_DMIC3_CTL;
 		freq_change_mask = 0x08;
+		mic_pair = MIC_PAIR67;
 		break;
 	default:
 		dev_err_ratelimited(component->dev, "%s: Invalid DMIC Selection\n",
 			__func__);
 		return -EINVAL;
 	}
-	dev_dbg(component->dev, "%s: DMIC%d dmic_clk_cnt %d\n",
-			__func__, dmic, *dmic_clk_cnt);
+	dev_dbg(component->dev, "%s: DMIC%d dmic_clk_cnt %d mic_pair %d\n",
+			__func__, dmic, *dmic_clk_cnt, mic_pair);
 	if (enable) {
-		clk_div = lpass_cdc_dmic_clk_div_get(component, tx_mode);
+		clk_div = lpass_cdc_dmic_clk_div_get(component, tx_mode, mic_pair);
 		(*dmic_clk_cnt)++;
 		if (*dmic_clk_cnt == 1) {
 			snd_soc_component_update_bits(component,
@@ -569,9 +574,9 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 			snd_soc_component_update_bits(component, dmic_clk_reg,
 							0x0E, clk_div << 0x1);
 		} else {
-			clk_div = lpass_cdc_dmic_clk_div_get(component, tx_mode);
+			clk_div = lpass_cdc_dmic_clk_div_get(component, tx_mode, mic_pair);
 			if (*dmic_clk_div > clk_div) {
-				clk_div = lpass_cdc_dmic_clk_div_get(component, !tx_mode);
+				clk_div = lpass_cdc_dmic_clk_div_get(component, !tx_mode, mic_pair);
 				snd_soc_component_update_bits(component,
 							LPASS_CDC_VA_TOP_CSR_DMIC_CFG,
 							freq_change_mask, freq_change_mask);
@@ -1318,6 +1323,17 @@ static int regdump_read(struct regmap *map, int baseReg, int endReg,
 	/* Disable reading/writing from regmap-cache */
 	regcache_cache_bypass(map, true);
 	for (; i >= 0 && i <= endReg; i += REGDUMP_PRINT_STRIDE) {
+		/*
+		 * Check not to overwrite the buffer, by ensuring we have
+		 * space for writing the register data
+		 *
+		 * this is scalable if we use proc or any other fs interface
+		 * as count would take the buf_size passed from userspace
+		 */
+		if ((pos + regdump_wr_len) >= count) {
+			pr_debug("%s: Buffer full: stopping at register 0x%x\n", __func__, i);
+			break;
+		}
 
 		scnprintf(buf+pos, count-pos, "%.*x: ", reg_len, i);
 		pos += reg_len + 2;
@@ -1329,16 +1345,6 @@ static int regdump_read(struct regmap *map, int baseReg, int endReg,
 
 		pos +=  reg_val_len;
 		buf[pos++] = '\n';
-
-		/*
-		 * Check not to overwrite the buffer, by ensuring we have
-		 * space for writing next register data
-		 *
-		 * this is scalable if we use proc or any other fs interface
-		 * as count would take the buf_size passed from userspace
-		 */
-		if ((pos + regdump_wr_len) >= count)
-			break;
 	}
 	/* Enable reading/writing from regmap-cache */
 	regcache_cache_bypass(map, false);

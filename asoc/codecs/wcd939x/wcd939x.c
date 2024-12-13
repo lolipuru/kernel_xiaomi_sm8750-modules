@@ -992,13 +992,17 @@ static int wcd939x_config_compander(struct snd_soc_component *component,
 	if (!wcd939x->hph_pcm_enabled)
 		return 0;
 
-	dev_dbg(component->dev, "%s compander_index = %d\n", __func__, compander_indx);
+	dev_dbg(component->dev, "%s compander_enabled[%d]: %d\n", __func__,
+			compander_indx, wcd939x->compander_enabled[compander_indx]);
 
 	if (!wcd939x->compander_enabled[compander_indx]) {
-		if (SND_SOC_DAPM_EVENT_ON(event))
-			gain_source_sel = 0x01;
-		else
-			gain_source_sel = 0x00;
+		gain_source_sel = 0x01;
+
+		/* gain setting to mixer control value (typically 0db) */
+		snd_soc_component_update_bits(component, WCD939X_PA_GAIN_CTL_L, 0x1F,
+				(snd_soc_component_read(component, WCD939X_PA_GAIN_CTL_L) & 0x1F));
+		snd_soc_component_update_bits(component, WCD939X_PA_GAIN_CTL_R, 0x1F,
+				(snd_soc_component_read(component, WCD939X_PA_GAIN_CTL_R) & 0x1F));
 
 		if (compander_indx == WCD939X_HPHL) {
 			snd_soc_component_update_bits(component,
@@ -1009,6 +1013,16 @@ static int wcd939x_config_compander(struct snd_soc_component *component,
 		}
 		wcd939x_config_2Vpk_mode(component, wcd939x, SET_HPH_GAIN_2VPK);
 		return 0;
+	}
+
+	if (wcd939x->compander_enabled[compander_indx]) {
+		if (compander_indx == WCD939X_HPHL) {
+			snd_soc_component_update_bits(component,
+				REG_FIELD_VALUE(L_EN, GAIN_SOURCE_SEL, 0)); /* AUTO */
+		} else if (compander_indx == WCD939X_HPHR) {
+			snd_soc_component_update_bits(component,
+				REG_FIELD_VALUE(R_EN, GAIN_SOURCE_SEL, 0));
+		}
 	}
 
 	if (compander_indx == WCD939X_HPHL)
@@ -1041,16 +1055,23 @@ static int wcd939x_config_compander(struct snd_soc_component *component,
 				WCD939X_CDC_COMP_CTL_0, comp_en_mask_val, comp_en_mask_val);
 
 	} else if (SND_SOC_DAPM_EVENT_OFF(event)) {
-			snd_soc_component_update_bits(component,
-				WCD939X_CDC_COMP_CTL_0, comp_en_mask_val, 0x00);
-			snd_soc_component_update_bits(component,
-				comp_ctl0_reg , 0x01, 0x00);
-			if (compander_indx == WCD939X_HPHL)
-				snd_soc_component_update_bits(component,
-						REG_FIELD_VALUE(L_EN, GAIN_SOURCE_SEL, 0x0));
-			if (compander_indx == WCD939X_HPHR)
-				snd_soc_component_update_bits(component,
-						REG_FIELD_VALUE(R_EN, GAIN_SOURCE_SEL, 0x0));
+		/* disable both companders whichever(L/R) power down comes first */
+		snd_soc_component_update_bits(component,
+				WCD939X_CDC_COMP_CTL_0, 0x03, 0x00);
+
+		/* gain setting to 0db */
+		snd_soc_component_update_bits(component, WCD939X_PA_GAIN_CTL_L,
+				0x1F, 0x04);
+		snd_soc_component_update_bits(component, WCD939X_PA_GAIN_CTL_R,
+				0x1F, 0x04);
+
+		/* set gain source selection to REGISTER */
+		snd_soc_component_update_bits(component,
+				REG_FIELD_VALUE(L_EN, GAIN_SOURCE_SEL, 0x1)); /* REGISTER */
+		snd_soc_component_update_bits(component,
+				REG_FIELD_VALUE(R_EN, GAIN_SOURCE_SEL, 0x1)); /* REGISTER */
+
+		snd_soc_component_update_bits(component, comp_ctl0_reg, 0x03, 0x02);
 	}
 
 	return 0;
