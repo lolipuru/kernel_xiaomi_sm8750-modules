@@ -381,6 +381,7 @@ enum sde_crtc_hw_fence_flags {
  * @framedone_event_notify_enabled: flag to indicate if framedone notify is enabled or not
  * @mdnie_art_event_notify_enabled: flag to indicate if art done notify is enabled or not
  * @copr_status_event_notify_enabled: flag to indicate if copr status notify is enabled or not
+ * @mdnie_ipc_disabled: flag to indicate if mdnie ipc is disabled or not
  * @aiqe_top_level: aiqe top level mutex and mask
  * @ai_scaler_res: struct stores ai scaler enable flag and resolution
  * @skip_blend_planes: array holding skip blend plane list
@@ -502,6 +503,7 @@ struct sde_crtc {
 	bool framedone_event_notify_enabled;
 	bool mdnie_art_event_notify_enabled;
 	bool copr_status_event_notify_enabled;
+	bool mdnie_ipc_disabled;
 
 	struct sde_aiqe_top_level aiqe_top_level;
 	struct sde_io_res ai_scaler_res;

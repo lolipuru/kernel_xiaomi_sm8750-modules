@@ -1236,6 +1236,7 @@ static void dp_ctrl_dsc_setup(struct dp_ctrl_private *ctrl, struct dp_panel *pan
 	int rlen;
 	u32 dsc_enable;
 	struct dp_panel_info *pinfo = &panel->pinfo;
+	u8 dsc_status = 0;
 
 	if (!ctrl->fec_mode)
 		return;
@@ -1248,6 +1249,14 @@ static void dp_ctrl_dsc_setup(struct dp_ctrl_private *ctrl, struct dp_panel *pan
 
 	if (ctrl->mst_mode && (panel->stream_id == DP_STREAM_1) && !dsc_enable)
 		return;
+
+	if (dsc_enable && ctrl->mst_mode && (ctrl->stream_count > 1)) {
+		drm_dp_dpcd_readb(ctrl->aux->drm_aux, DP_DSC_ENABLE, &dsc_status);
+
+		// Avoid writing DP_DSC_ENABLE if it is already enabled.
+		if (dsc_status & DP_DECOMPRESSION_EN)
+			return;
+	}
 
 	rlen = drm_dp_dpcd_writeb(ctrl->aux->drm_aux, DP_DSC_ENABLE,
 			dsc_enable);

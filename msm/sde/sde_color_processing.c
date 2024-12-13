@@ -1724,6 +1724,7 @@ static const int dspp_feature_to_sub_blk_tbl[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = SDE_DSPP_DEMURA,
 	[SDE_CP_CRTC_DSPP_MDNIE] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_MDNIE_ART] = SDE_DSPP_AIQE,
+	[SDE_CP_CRTC_DSPP_MDNIE_IPC] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_COPR] = SDE_DSPP_AIQE,
@@ -4822,6 +4823,13 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 		break;
 	case SDE_CP_CRTC_DSPP_MDNIE_ART:
 		feature = FEATURE_MDNIE_ART;
+		break;
+	case SDE_CP_CRTC_DSPP_MDNIE_IPC:
+		if (prop_val)
+			sde_crtc->mdnie_ipc_disabled = true;
+		else
+			sde_crtc->mdnie_ipc_disabled = false;
+		SDE_EVT32(prop_node->feature, sde_crtc->mdnie_ipc_disabled);
 		break;
 	case SDE_CP_CRTC_DSPP_COPR:
 		feature = FEATURE_COPR;

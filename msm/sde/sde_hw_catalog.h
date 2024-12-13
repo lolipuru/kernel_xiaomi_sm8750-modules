@@ -60,6 +60,7 @@
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
 #define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
+#define SDE_HW_VER_C40	SDE_HW_VER(12, 4, 0) /* kera */
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
@@ -95,6 +96,7 @@
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
 #define IS_TUNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C30)
+#define IS_KERA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C40)
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 
 #define SDE_HW_BLK_NAME_LEN	16
@@ -105,6 +107,7 @@
 #define MAX_IMG_WIDTH 0x3fff
 #define MAX_IMG_HEIGHT 0x3fff
 
+#define CRTC_SINGLE_MIXER_ONLY	1
 #define CRTC_DUAL_MIXERS_ONLY	2
 #define MAX_MIXERS_PER_CRTC	8
 #define MAX_MIXERS_PER_LAYOUT	2
@@ -130,7 +133,7 @@
 #define SDE_CTL_CFG_VERSION_1_0_0       0x100
 #define MAX_INTF_PER_CTL_V1                 2
 #define MAX_DSC_PER_CTL_V1                  4
-#define MAX_CWB_PER_CTL_V1                  2
+#define MAX_CWB_PER_CTL_V1                  4
 #define MAX_MERGE_3D_PER_CTL_V1             2
 #define MAX_WB_PER_CTL_V1                   1
 #define MAX_CDM_PER_CTL_V1                  1

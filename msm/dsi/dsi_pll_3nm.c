@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -1657,9 +1657,9 @@ int dsi_pll_3nm_configure(void *pll, bool commit)
 	dsi_pll_init_val(rsc);
 
 	rc = dsi_pll_3nm_set_byteclk_div(rsc, commit);
+	rc = dsi_pll_3nm_set_pclk_div(rsc, commit);
 
 	if (commit) {
-		rc = dsi_pll_3nm_set_pclk_div(rsc, commit);
 		rc = dsi_pll_3nm_vco_set_rate(rsc);
 	} else {
 		rc = dsi_pll_3nm_dynamic_clk_vco_set_rate(rsc);
