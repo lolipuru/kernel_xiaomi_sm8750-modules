@@ -2123,6 +2123,7 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 				}
 			}
 		}
+		ktime_get_clocktai_ts64(&i2c_set->applied_timestamp);
 	} else if (req_id > 0) {
 		offset = req_id % MAX_PER_FRAME_ARRAY;
 
@@ -2179,6 +2180,7 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 			current_ts.tv_nsec/NSEC_PER_USEC, s_ctrl->last_applied_done_timestamp);
 
 		s_ctrl->last_applied_req = req_id;
+		ktime_get_clocktai_ts64(&i2c_set[offset].applied_timestamp);
 		CAM_DBG(CAM_REQ,
 			"Sensor[%d] updating last_applied [req id: %lld last_applied: %lld] with opcode:%d",
 			s_ctrl->soc_info.index, req_id, s_ctrl->last_applied_req, opcode);
@@ -2186,9 +2188,9 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 		/* Change the logic dynamically */
 		for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
 			if ((req_id >=
-				i2c_set[i].request_id) &&
+				i2c_set[i].request_id + s_ctrl->pipeline_delay) &&
 				(top <
-				i2c_set[i].request_id) &&
+				i2c_set[i].request_id + s_ctrl->pipeline_delay) &&
 				(i2c_set[i].is_settings_valid
 					== 1)) {
 				del_req_id = top;
@@ -2196,12 +2198,12 @@ int cam_sensor_apply_settings(struct cam_sensor_ctrl_t *s_ctrl,
 			}
 		}
 
-		if (top < req_id) {
+		if ((top < req_id) & (req_id > s_ctrl->pipeline_delay)) {
 			if ((((top % MAX_PER_FRAME_ARRAY) - (req_id %
 				MAX_PER_FRAME_ARRAY)) >= BATCH_SIZE_MAX) ||
 				(((top % MAX_PER_FRAME_ARRAY) - (req_id %
 				MAX_PER_FRAME_ARRAY)) <= -BATCH_SIZE_MAX))
-				del_req_id = req_id;
+				del_req_id = req_id  - s_ctrl->pipeline_delay - 1;
 		}
 
 		if (!del_req_id)
@@ -2552,4 +2554,118 @@ int cam_sensor_process_evt(struct cam_req_mgr_link_evt_data *evt_data)
 	mutex_unlock(&(s_ctrl->cam_sensor_mutex));
 
 	return rc;
+}
+
+static void cam_sensor_dump_request_info(struct cam_sensor_ctrl_t  *s_ctrl,
+	uint64_t req_id)
+{
+	int                        i, j, offset;
+	size_t                     len = 0;
+	char                       log_info[1024];
+	struct i2c_settings_array *i2c_set;
+	struct i2c_settings_list  *i2c_list;
+
+	CAM_INFO(CAM_SENSOR, "Sensor:%s dump req info for req:%llu",
+		s_ctrl->sensor_name, req_id);
+
+	offset = req_id % MAX_PER_FRAME_ARRAY;
+
+	i2c_set = s_ctrl->i2c_data.per_frame;
+	if (i2c_set[offset].is_settings_valid &&
+		(i2c_set[offset].request_id == req_id)) {
+		i = 0;
+		list_for_each_entry(i2c_list,
+			&(i2c_set[offset].list_head), list) {
+			i++;
+			CAM_INFO(CAM_SENSOR,
+				"\tSensor:%s per_frame_setting list:%d setting size:%d req:%llu at time[%llu: %09llu]",
+				s_ctrl->sensor_name, i,
+				i2c_list->i2c_settings.size, req_id,
+				i2c_set[offset].applied_timestamp.tv_sec,
+				i2c_set[offset].applied_timestamp.tv_nsec);
+			for (j = 0; j < i2c_list->i2c_settings.size; j++) {
+				/* Check if the log buf has remaining space for new log */
+				if (1024 - len < 50) {
+					len = 0;
+					CAM_INFO(CAM_SENSOR, "\tSensor:%s req:%llu %s",
+						s_ctrl->sensor_name, req_id, log_info);
+				}
+				CAM_INFO_BUF(CAM_SENSOR, log_info, 1024, &len,
+					"%04d: 0x%04x=0x%04x",
+					j, i2c_list->i2c_settings.reg_setting[j].reg_addr,
+					i2c_list->i2c_settings.reg_setting[j].reg_data);
+			}
+			len = 0;
+			CAM_INFO(CAM_SENSOR, "\tSensor:%s req:%llu %s",
+				s_ctrl->sensor_name, req_id, log_info);
+		}
+	} else {
+		CAM_INFO(CAM_SENSOR,
+			"\tsensor:%s per_frame_setting is_settings_valid:%d request_id:%llu",
+			s_ctrl->sensor_name, i2c_set[offset].is_settings_valid,
+			i2c_set[offset].request_id);
+	}
+
+	i2c_set = s_ctrl->i2c_data.frame_skip;
+	if (i2c_set[offset].is_settings_valid &&
+		(i2c_set[offset].request_id == req_id)) {
+		i = 0;
+		list_for_each_entry(i2c_list,
+			&(i2c_set[offset].list_head), list) {
+			i++;
+			CAM_INFO(CAM_SENSOR,
+				"\tsensor:%s frame_skip_setting list:%d setting size:%d req:%llu at time[%llu: %09llu]",
+				s_ctrl->sensor_name, i,
+				i2c_list->i2c_settings.size, req_id,
+				i2c_set[offset].applied_timestamp.tv_sec,
+				i2c_set[offset].applied_timestamp.tv_nsec);
+			for (j = 0; j < i2c_list->i2c_settings.size; j++)
+				CAM_INFO(CAM_SENSOR,
+						"\tsensor:%s [%04d/%04d] req:%lld reg addr:0x%04x reg data:0x%04x",
+						s_ctrl->sensor_name, j,
+						i2c_list->i2c_settings.size, req_id,
+						i2c_list->i2c_settings.reg_setting[j].reg_addr,
+						i2c_list->i2c_settings.reg_setting[j].reg_data);
+		}
+	} else {
+		CAM_INFO(CAM_SENSOR,
+			"\tsensor:%s frame_skip_setting is_settings_valid:%d request_id:%llu",
+			s_ctrl->sensor_name, i2c_set[offset].is_settings_valid,
+			i2c_set[offset].request_id);
+	}
+}
+
+int cam_sensor_dump_request(struct cam_req_mgr_dump_info *dump)
+{
+	int                       i, idx;
+	uint64_t                  req_id;
+	struct cam_sensor_ctrl_t *s_ctrl = NULL;
+
+	s_ctrl = (struct cam_sensor_ctrl_t *)
+		cam_get_device_priv(dump->dev_hdl);
+	if (!s_ctrl) {
+		CAM_ERR(CAM_SENSOR, "Device data is NULL");
+		return -EINVAL;
+	}
+
+	CAM_INFO(CAM_SENSOR,
+		"Sensor:[%s-%d] dump req_info, last applied sensor req:%llu error_req:%d",
+		s_ctrl->sensor_name, s_ctrl->soc_info.index,
+		s_ctrl->last_applied_req, dump->req_id);
+
+	idx = s_ctrl->last_updated_req % MAX_PER_FRAME_ARRAY;
+	CAM_INFO(CAM_SENSOR,
+		"Sensor[%s-%d] Feature: 0x%x updated for request id: %lu, res index: %u, width: %d, height: %d, capability: %s, fps: %u",
+		s_ctrl->sensor_name, s_ctrl->soc_info.index,
+		s_ctrl->sensor_res[idx].feature_mask,
+		s_ctrl->sensor_res[idx].request_id, s_ctrl->sensor_res[idx].res_index,
+		s_ctrl->sensor_res[idx].width, s_ctrl->sensor_res[idx].height,
+		s_ctrl->sensor_res[idx].caps, s_ctrl->sensor_res[idx].fps);
+
+	req_id = s_ctrl->last_applied_req;
+	for (i = 0; (req_id > 0) && (i <= (s_ctrl->pipeline_delay + 1));
+		req_id--, i++)
+		cam_sensor_dump_request_info(s_ctrl, req_id);
+
+	return 0;
 }
