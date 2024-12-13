@@ -334,15 +334,29 @@ static int _reg_dmav1_rc_program_enable_bits(
 	if (r2_enable)
 		val |= BIT(4);
 
-	/*corner case for partial update in R2 region*/
-	if (!r1_enable && r2_enable)
-		ystart = rc_roi->y;
+	/*ROI should include complete top region when top region is enabled*/
+	if (r1_enable &&
+		(rc_roi->y || ((rc_roi->y + rc_roi->h) < rc_mask_cfg->cfg_param_01))) {
+		SDE_EVT32(0x1111, RC_IDX(hw_dspp), r1_enable, rc_roi->y, rc_roi->h,
+				rc_mask_cfg->cfg_param_01);
+		return -EINVAL;
+	}
+
+	/*ROI should include complete bottom region when bottom region is enabled*/
+	if (r2_enable &&
+		(((rc_roi->y + rc_roi->h) != mask_h) || (rc_roi->y > rc_mask_cfg->cfg_param_02))) {
+		SDE_EVT32(0x2222, RC_IDX(hw_dspp), r2_enable, rc_roi->y, rc_roi->h, mask_h,
+				rc_mask_cfg->cfg_param_02);
+		return -EINVAL;
+	}
+
+	ystart = rc_roi->y;
 
 	SDE_DEBUG("idx:%d w:%lld h:%lld flags:%llx, R1:%d, R2:%d, PU R1:%d, PU R2:%d, Y_START:%d\n",
-		RC_IDX(hw_dspp), mask_w, mask_h, flags, r1_valid, r2_valid, pu_in_r1,
-		pu_in_r2, ystart);
+			RC_IDX(hw_dspp), mask_w, mask_h, flags, r1_valid, r2_valid, pu_in_r1,
+			pu_in_r2, ystart);
 	SDE_EVT32(RC_IDX(hw_dspp), mask_w, mask_h, flags, r1_valid, r2_valid, pu_in_r1, pu_in_r2,
-		ystart);
+			ystart);
 
 	val |= param_c;
 	rc = _reg_dmav1_rc_write(hw_dspp, SDE_HW_RC_REG1, val, dma_ops, feature);
