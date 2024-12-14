@@ -2659,7 +2659,7 @@ static void lpass_cdc_rx_macro_idle_detect_control(struct snd_soc_component *com
 	if (!rx_priv->idle_det_cfg.hph_idle_detect_en)
 		return;
 
-	if (!rx_priv->is_pcm_enabled)
+	if (rx_priv->is_pcm_enabled)
 		return;
 
 	if (interp == INTERP_HPHL) {
