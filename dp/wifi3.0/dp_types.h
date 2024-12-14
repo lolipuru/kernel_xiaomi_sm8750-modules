@@ -1346,6 +1346,7 @@ struct reo_cmd_event_history {
  * @invalid_peer_unmap: Peer unmap with invalid peer id
  * @ml_peer_map: MLD peer map count
  * @ml_peer_unmap: MLD peer unmap count
+ * @peer_unmap_add: unmap old peer manuallly and replace with new peer
  */
 struct htt_t2h_msg_stats {
 	uint32_t peer_map;
@@ -1353,6 +1354,7 @@ struct htt_t2h_msg_stats {
 	uint32_t invalid_peer_unmap;
 	uint32_t ml_peer_map;
 	uint32_t ml_peer_unmap;
+	uint32_t peer_unmap_add;
 };
 
 #ifdef WLAN_DP_LOAD_BALANCE_SUPPORT
@@ -2482,6 +2484,7 @@ enum dp_context_type {
  * @tx_hw_enqueue: enqueue TX data to HW
  * @tx_comp_get_params_from_hal_desc: get software tx descriptor and release
  * 				      source from HAL desc for wbm release ring
+ * @tx_comp_ring_desc_mark_invalid: Mark tx comp ring descriptors as invalid
  * @dp_tx_mlo_mcast_send: Tx send handler for MLO multicast enhance
  * @dp_tx_process_htt_completion:
  * @dp_rx_process:
@@ -2623,7 +2626,8 @@ struct dp_arch_ops {
 	QDF_STATUS (*tx_comp_get_params_from_hal_desc)(
 				struct dp_soc *soc, void *tx_comp_hal_desc,
 				struct dp_tx_desc_s **desc);
-
+	void (*tx_comp_ring_desc_mark_invalid)(struct dp_soc *soc,
+					       struct dp_srng *srng);
 	qdf_nbuf_t (*dp_tx_mlo_mcast_send)(struct dp_soc *soc,
 					   struct dp_vdev *vdev,
 					   qdf_nbuf_t nbuf,
@@ -2899,6 +2903,7 @@ struct dp_arch_ops {
  * @fw_support_ml_monitor: FW support ML monitor mode
  * @dp_ipa_opt_dp_ctrl_refill: opt_dp_ctrl refill support
  * @vdev_tx_nss_support: FW supports vdev Tx NSS report.
+ * @dyn_resource_mgr_support: Dynamic RX buffer allocation support
  */
 struct dp_soc_features {
 	uint8_t pn_in_reo_dest:1,
@@ -2912,6 +2917,7 @@ struct dp_soc_features {
 	bool dp_ipa_opt_dp_ctrl_refill;
 #endif
 	bool vdev_tx_nss_support;
+	bool dyn_resource_mgr_support;
 };
 
 enum sysfs_printing_mode {

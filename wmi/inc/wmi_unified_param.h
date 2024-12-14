@@ -5598,6 +5598,10 @@ typedef enum {
 #ifdef FEATURE_MGMT_RX_OVER_SRNG
 	wmi_mgmt_srng_reap_eventid,
 #endif
+#ifdef FEATURE_WLAN_ZERO_POWER_SCAN
+	wmi_scan_cache_result_eventid,
+#endif
+
 	wmi_events_max,
 } wmi_conv_event_id;
 
@@ -6339,6 +6343,8 @@ typedef enum {
 	VDEV_PARAM(vdev_param_hwcts2self_ofdma,
 		   VDEV_PARAM_HWCTS2SELF_OFDMA),
 	VDEV_PARAM(vdev_param_twt_unavail_mode, VDEV_PARAM_TWT_UNAVAIL_MODE),
+	VDEV_PARAM(vdev_param_connect_ext_features,
+		   VDEV_PARAM_CONNECT_EXT_FEATURES),
 	vdev_param_max,
 } wmi_conv_vdev_param_id;
 
@@ -6768,6 +6774,12 @@ typedef enum {
 	wmi_service_usd_support,
 #endif
 	wmi_service_use_sta_vdev_for_p2p_device,
+#ifdef FEATURE_WLAN_ZERO_POWER_SCAN
+	wmi_service_scan_cache_report_support,
+#endif
+	wmi_service_mrsno_support,
+	wmi_service_twt_p2p_go_concurrency_support,
+
 	wmi_services_max,
 } wmi_conv_service_ids;
 #define WMI_SERVICE_UNAVAILABLE 0xFFFF

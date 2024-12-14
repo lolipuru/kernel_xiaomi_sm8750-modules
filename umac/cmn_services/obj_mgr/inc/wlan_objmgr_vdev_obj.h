@@ -366,6 +366,7 @@ struct wlan_channel {
  * WLAN_VDEV_FEXT2_MLO feature flag in vdev MLME
  * @mlo_sap_sync_disable: flag to disable mlo sap vdev sync
  * @wfd_mode: WFD mode
+ * @rsno_gen_supported: RSNO generation supported for connection
  */
 struct wlan_objmgr_vdev_mlme {
 	enum QDF_OPMODE vdev_opmode;
@@ -402,6 +403,7 @@ struct wlan_objmgr_vdev_mlme {
 #ifdef FEATURE_WLAN_SUPPORT_USD
 	uint32_t wfd_mode;
 #endif
+	uint8_t rsno_gen_supported;
 };
 
 /**
@@ -893,6 +895,37 @@ wlan_vdev_mlme_get_mlo_sap_sync_disable(struct wlan_objmgr_vdev *vdev)
 	return false;
 }
 #endif
+
+/**
+ * wlan_vdev_set_rsno_gen_supported() - set RSNO generation supported for
+ * connection
+ * @vdev: VDEV object
+ * @val: RSNO generation
+ *
+ * API to set RSNO generation supported for connection
+ *
+ * Return: void
+ */
+static inline void
+wlan_vdev_set_rsno_gen_supported(struct wlan_objmgr_vdev *vdev, uint8_t val)
+{
+	vdev->vdev_mlme.rsno_gen_supported = val;
+}
+
+/**
+ * wlan_vdev_get_rsno_gen_supported() - get RSNO generation supported for
+ * connection
+ * @vdev: VDEV object
+ *
+ * API to get RSNO generation supported for connection
+ *
+ * Return: RSNO generation supported for connection
+ */
+static inline uint8_t
+wlan_vdev_get_rsno_gen_supported(struct wlan_objmgr_vdev *vdev)
+{
+	return vdev->vdev_mlme.rsno_gen_supported;
+}
 
 /**
  * wlan_vdev_mlme_set_macaddr() - set vdev macaddr

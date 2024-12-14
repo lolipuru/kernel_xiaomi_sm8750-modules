@@ -2360,6 +2360,9 @@ QDF_STATUS dp_srng_alloc(struct dp_soc *soc, struct dp_srng *srng,
 	if (!srng->base_vaddr_aligned)
 		return QDF_STATUS_E_NOMEM;
 
+	/* memset the srng ring to zero */
+	qdf_mem_zero(srng->base_vaddr_unaligned, srng->alloc_size);
+
 	return QDF_STATUS_SUCCESS;
 }
 
@@ -9771,6 +9774,12 @@ dp_set_psoc_param(struct cdp_soc_t *cdp_soc,
 		dp_info("FW supports Tx Vdev NSS report: %d",
 			soc->features.vdev_tx_nss_support);
 		break;
+	case CDP_DYN_RESOURCE_MGR_SUPPORT:
+		soc->features.dyn_resource_mgr_support =
+			val.cdp_dyn_resource_mgr_support;
+		dp_info("Dynamic resource manager support: %u",
+			soc->features.dyn_resource_mgr_support);
+		break;
 	default:
 		break;
 	}
@@ -14160,6 +14169,9 @@ static struct cdp_ipa_ops dp_ops_ipa = {
 	.ipa_pcie_link_down = dp_ipa_pcie_link_down,
 #ifdef IPA_OPT_WIFI_DP_CTRL
 	.ipa_opt_dp_ctrl_debug_enable = dp_ipa_opt_dp_ctrl_debug_enable,
+#endif
+#ifdef IPA_WDI3_PENDING_BUFF_REPORT
+	.ipa_is_completion_pending = dp_ipa_is_completion_pending,
 #endif
 #endif
 #ifdef IPA_WDS_EASYMESH_FEATURE
