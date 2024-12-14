@@ -640,6 +640,7 @@ struct icnss_priv {
 	bool is_audio_shared_iommu_group;
 	phys_addr_t fw_lpass_shared_mem_pa;
 	struct iommu_domain *audio_iommu_domain;
+	struct kobject *wifi_kobj;
 };
 
 struct icnss_reg_info {

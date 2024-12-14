@@ -1422,6 +1422,242 @@ static void icnss_host_ramdump_dev_release(struct device *dev)
 	kfree(dev);
 }
 
+const char *icnss_get_wlan_str(enum cnss_host_dump_type type)
+{
+	switch (type) {
+	case CNSS_HOST_WLAN_LOGS:
+		return "wlan_logs";
+	case CNSS_HOST_HTC_CREDIT:
+		return "htc_credit";
+	case CNSS_HOST_WMI_TX_CMP:
+		return "wmi_tx_cmp";
+	case CNSS_HOST_WMI_COMMAND_LOG:
+		return "wmi_command_log";
+	case CNSS_HOST_WMI_EVENT_LOG:
+		return "wmi_event_log";
+	case CNSS_HOST_WMI_RX_EVENT:
+		return "wmi_rx_event";
+	case CNSS_HOST_HAL_SOC:
+		return "hal_soc";
+	case CNSS_HOST_GWLAN_LOGGING:
+		return "gwlan_logging";
+	case CNSS_HOST_WMI_DEBUG_LOG_INFO:
+		return "wmi_debug_log_info";
+	case CNSS_HOST_HTC_CREDIT_IDX:
+		return "htc_credit_history_idx";
+	case CNSS_HOST_HTC_CREDIT_LEN:
+		return "htc_credit_history_length";
+	case CNSS_HOST_WMI_TX_CMP_IDX:
+		return "wmi_tx_cmp_idx";
+	case CNSS_HOST_WMI_COMMAND_LOG_IDX:
+		return "wmi_command_log_idx";
+	case CNSS_HOST_WMI_EVENT_LOG_IDX:
+		return "wmi_event_log_idx";
+	case CNSS_HOST_WMI_RX_EVENT_IDX:
+		return "wmi_rx_event_idx";
+	case CNSS_HOST_HIF_CE_DESC_HISTORY_BUFF:
+		return "hif_ce_desc_history_buff";
+	case CNSS_HOST_HANG_EVENT_DATA:
+		return "hang_event_data";
+	case CNSS_HOST_CE_DESC_HIST:
+		return "hif_ce_desc_hist";
+	case CNSS_HOST_CE_COUNT_MAX:
+		return "hif_ce_count_max";
+	case CNSS_HOST_CE_HISTORY_MAX:
+		return "hif_ce_history_max";
+	case CNSS_HOST_ONLY_FOR_CRIT_CE:
+		return "hif_ce_only_for_crit";
+	case CNSS_HOST_HIF_EVENT_HISTORY:
+		return "hif_event_history";
+	case CNSS_HOST_HIF_EVENT_HIST_MAX:
+		return "hif_event_hist_max";
+	case CNSS_HOST_DP_WBM_DESC_REL:
+		return "wbm_desc_rel_ring";
+	case CNSS_HOST_DP_WBM_DESC_REL_HANDLE:
+		return "wbm_desc_rel_ring_handle";
+	case CNSS_HOST_DP_TCL_CMD:
+		return "tcl_cmd_ring";
+	case CNSS_HOST_DP_TCL_CMD_HANDLE:
+		return "tcl_cmd_ring_handle";
+	case CNSS_HOST_DP_TCL_STATUS:
+		return "tcl_status_ring";
+	case CNSS_HOST_DP_TCL_STATUS_HANDLE:
+		return "tcl_status_ring_handle";
+	case CNSS_HOST_DP_REO_REINJ:
+		return "reo_reinject_ring";
+	case CNSS_HOST_DP_REO_REINJ_HANDLE:
+		return "reo_reinject_ring_handle";
+	case CNSS_HOST_DP_RX_REL:
+		return "rx_rel_ring";
+	case CNSS_HOST_DP_RX_REL_HANDLE:
+		return "rx_rel_ring_handle";
+	case CNSS_HOST_DP_REO_EXP:
+		return "reo_exception_ring";
+	case CNSS_HOST_DP_REO_EXP_HANDLE:
+		return "reo_exception_ring_handle";
+	case CNSS_HOST_DP_REO_CMD:
+		return "reo_cmd_ring";
+	case CNSS_HOST_DP_REO_CMD_HANDLE:
+		return "reo_cmd_ring_handle";
+	case CNSS_HOST_DP_REO_STATUS:
+		return "reo_status_ring";
+	case CNSS_HOST_DP_REO_STATUS_HANDLE:
+		return "reo_status_ring_handle";
+	case CNSS_HOST_DP_TCL_DATA_0:
+		return "tcl_data_ring_0";
+	case CNSS_HOST_DP_TCL_DATA_0_HANDLE:
+		return "tcl_data_ring_0_handle";
+	case CNSS_HOST_DP_TX_COMP_0:
+		return "tx_comp_ring_0";
+	case CNSS_HOST_DP_TX_COMP_0_HANDLE:
+		return "tx_comp_ring_0_handle";
+	case CNSS_HOST_DP_TCL_DATA_1:
+		return "tcl_data_ring_1";
+	case CNSS_HOST_DP_TCL_DATA_1_HANDLE:
+		return "tcl_data_ring_1_handle";
+	case CNSS_HOST_DP_TX_COMP_1:
+		return "tx_comp_ring_1";
+	case CNSS_HOST_DP_TX_COMP_1_HANDLE:
+		return "tx_comp_ring_1_handle";
+	case CNSS_HOST_DP_TCL_DATA_2:
+		return "tcl_data_ring_2";
+	case CNSS_HOST_DP_TCL_DATA_2_HANDLE:
+		return "tcl_data_ring_2_handle";
+	case CNSS_HOST_DP_TX_COMP_2:
+		return "tx_comp_ring_2";
+	case CNSS_HOST_DP_TX_COMP_2_HANDLE:
+		return "tx_comp_ring_2_handle";
+	case CNSS_HOST_DP_REO_DST_0:
+		return "reo_dest_ring_0";
+	case CNSS_HOST_DP_REO_DST_0_HANDLE:
+		return "reo_dest_ring_0_handle";
+	case CNSS_HOST_DP_REO_DST_1:
+		return "reo_dest_ring_1";
+	case CNSS_HOST_DP_REO_DST_1_HANDLE:
+		return "reo_dest_ring_1_handle";
+	case CNSS_HOST_DP_REO_DST_2:
+		return "reo_dest_ring_2";
+	case CNSS_HOST_DP_REO_DST_2_HANDLE:
+		return "reo_dest_ring_2_handle";
+	case CNSS_HOST_DP_REO_DST_3:
+		return "reo_dest_ring_3";
+	case CNSS_HOST_DP_REO_DST_3_HANDLE:
+		return "reo_dest_ring_3_handle";
+	case CNSS_HOST_DP_REO_DST_4:
+		return "reo_dest_ring_4";
+	case CNSS_HOST_DP_REO_DST_4_HANDLE:
+		return "reo_dest_ring_4_handle";
+	case CNSS_HOST_DP_REO_DST_5:
+		return "reo_dest_ring_5";
+	case CNSS_HOST_DP_REO_DST_5_HANDLE:
+		return "reo_dest_ring_5_handle";
+	case CNSS_HOST_DP_REO_DST_6:
+		return "reo_dest_ring_6";
+	case CNSS_HOST_DP_REO_DST_6_HANDLE:
+		return "reo_dest_ring_6_handle";
+	case CNSS_HOST_DP_REO_DST_7:
+		return "reo_dest_ring_7";
+	case CNSS_HOST_DP_REO_DST_7_HANDLE:
+		return "reo_dest_ring_7_handle";
+	case CNSS_HOST_DP_PDEV_0:
+		return "dp_pdev_0";
+	case CNSS_HOST_DP_WLAN_CFG_CTX:
+		return "wlan_cfg_ctx";
+	case CNSS_HOST_DP_SOC:
+		return "dp_soc";
+	case CNSS_HOST_HAL_RX_FST:
+		return "hal_rx_fst";
+	case CNSS_HOST_DP_FISA:
+		return "dp_fisa";
+	case CNSS_HOST_DP_FISA_HW_FSE_TABLE:
+		return "dp_fisa_hw_fse_table";
+	case CNSS_HOST_DP_FISA_SW_FSE_TABLE:
+		return "dp_fisa_sw_fse_table";
+	case CNSS_HOST_HIF:
+		return "hif";
+	case CNSS_HOST_QDF_NBUF_HIST:
+		return "qdf_nbuf_history";
+	case CNSS_HOST_TCL_WBM_MAP:
+		return "tcl_wbm_map_array";
+	case CNSS_HOST_RX_MAC_BUF_RING_0:
+		return "rx_mac_buf_ring_0";
+	case CNSS_HOST_RX_MAC_BUF_RING_0_HANDLE:
+		return "rx_mac_buf_ring_0_handle";
+	case CNSS_HOST_RX_MAC_BUF_RING_1:
+		return "rx_mac_buf_ring_1";
+	case CNSS_HOST_RX_MAC_BUF_RING_1_HANDLE:
+		return "rx_mac_buf_ring_1_handle";
+	case CNSS_HOST_RX_REFILL_0:
+		return "rx_refill_buf_ring_0";
+	case CNSS_HOST_RX_REFILL_0_HANDLE:
+		return "rx_refill_buf_ring_0_handle";
+	case CNSS_HOST_CE_0:
+		return "ce_0";
+	case CNSS_HOST_CE_0_SRC_RING:
+		return "ce_0_src_ring";
+	case CNSS_HOST_CE_0_SRC_RING_CTX:
+		return "ce_0_src_ring_ctx";
+	case CNSS_HOST_CE_1:
+		return "ce_1";
+	case CNSS_HOST_CE_1_STATUS_RING:
+		return "ce_1_status_ring";
+	case CNSS_HOST_CE_1_STATUS_RING_CTX:
+		return "ce_1_status_ring_ctx";
+	case CNSS_HOST_CE_1_DEST_RING:
+		return "ce_1_dest_ring";
+	case CNSS_HOST_CE_1_DEST_RING_CTX:
+		return "ce_1_dest_ring_ctx";
+	case CNSS_HOST_CE_2:
+		return "ce_2";
+	case CNSS_HOST_CE_2_STATUS_RING:
+		return "ce_2_status_ring";
+	case CNSS_HOST_CE_2_STATUS_RING_CTX:
+		return "ce_2_status_ring_ctx";
+	case CNSS_HOST_CE_2_DEST_RING:
+		return "ce_2_dest_ring";
+	case CNSS_HOST_CE_2_DEST_RING_CTX:
+		return "ce_2_dest_ring_ctx";
+	case CNSS_HOST_CE_3:
+		return "ce_3";
+	case CNSS_HOST_CE_3_SRC_RING:
+		return "ce_3_src_ring";
+	case CNSS_HOST_CE_3_SRC_RING_CTX:
+		return "ce_3_src_ring_ctx";
+	case CNSS_HOST_CE_4:
+		return "ce_4";
+	case CNSS_HOST_CE_4_SRC_RING:
+		return "ce_4_src_ring";
+	case CNSS_HOST_CE_4_SRC_RING_CTX:
+		return "ce_4_src_ring_ctx";
+	case CNSS_HOST_CE_5:
+		return "ce_5";
+	case CNSS_HOST_CE_6:
+		return "ce_6";
+	case CNSS_HOST_CE_7:
+		return "ce_7";
+	case CNSS_HOST_CE_7_STATUS_RING:
+		return "ce_7_status_ring";
+	case CNSS_HOST_CE_7_STATUS_RING_CTX:
+		return "ce_7_status_ring_ctx";
+	case CNSS_HOST_CE_7_DEST_RING:
+		return "ce_7_dest_ring";
+	case CNSS_HOST_CE_7_DEST_RING_CTX:
+		return "ce_7_dest_ring_ctx";
+	case CNSS_HOST_CE_8:
+		return "ce_8";
+	case CNSS_HOST_DP_TCL_DATA_3:
+		return "tcl_data_ring_3";
+	case CNSS_HOST_DP_TCL_DATA_3_HANDLE:
+		return "tcl_data_ring_3_handle";
+	case CNSS_HOST_DP_TX_COMP_3:
+		return "tx_comp_ring_3";
+	case CNSS_HOST_DP_TX_COMP_3_HANDLE:
+		return "tx_comp_ring_3_handle";
+	default:
+		return "unknown";
+    }
+}
+
 int icnss_do_host_ramdump(struct icnss_priv *priv,
 			  struct cnss_ssr_driver_dump_entry *ssr_entry,
 			  size_t num_entries_loaded)
@@ -1429,127 +1665,11 @@ int icnss_do_host_ramdump(struct icnss_priv *priv,
 	struct qcom_dump_segment *seg;
 	struct cnss_host_dump_meta_info meta_info = {0};
 	struct list_head head;
-	int dev_ret = 0;
+	int dev_ret = -1;
 	struct device *new_device;
-	static const char * const wlan_str[] = {
-		[CNSS_HOST_WLAN_LOGS] = "wlan_logs",
-		[CNSS_HOST_HTC_CREDIT] = "htc_credit",
-		[CNSS_HOST_WMI_TX_CMP] = "wmi_tx_cmp",
-		[CNSS_HOST_WMI_COMMAND_LOG] = "wmi_command_log",
-		[CNSS_HOST_WMI_EVENT_LOG] = "wmi_event_log",
-		[CNSS_HOST_WMI_RX_EVENT] = "wmi_rx_event",
-		[CNSS_HOST_HAL_SOC] = "hal_soc",
-		[CNSS_HOST_GWLAN_LOGGING] = "gwlan_logging",
-		[CNSS_HOST_WMI_DEBUG_LOG_INFO] = "wmi_debug_log_info",
-		[CNSS_HOST_HTC_CREDIT_IDX] = "htc_credit_history_idx",
-		[CNSS_HOST_HTC_CREDIT_LEN] = "htc_credit_history_length",
-		[CNSS_HOST_WMI_TX_CMP_IDX] = "wmi_tx_cmp_idx",
-		[CNSS_HOST_WMI_COMMAND_LOG_IDX] = "wmi_command_log_idx",
-		[CNSS_HOST_WMI_EVENT_LOG_IDX] = "wmi_event_log_idx",
-		[CNSS_HOST_WMI_RX_EVENT_IDX] = "wmi_rx_event_idx",
-		[CNSS_HOST_HIF_CE_DESC_HISTORY_BUFF] = "hif_ce_desc_history_buff",
-		[CNSS_HOST_HANG_EVENT_DATA] = "hang_event_data",
-		[CNSS_HOST_CE_DESC_HIST] = "hif_ce_desc_hist",
-		[CNSS_HOST_CE_COUNT_MAX] = "hif_ce_count_max",
-		[CNSS_HOST_CE_HISTORY_MAX] = "hif_ce_history_max",
-		[CNSS_HOST_ONLY_FOR_CRIT_CE] = "hif_ce_only_for_crit",
-		[CNSS_HOST_HIF_EVENT_HISTORY] = "hif_event_history",
-		[CNSS_HOST_HIF_EVENT_HIST_MAX] = "hif_event_hist_max",
-		[CNSS_HOST_DP_WBM_DESC_REL] = "wbm_desc_rel_ring",
-		[CNSS_HOST_DP_WBM_DESC_REL_HANDLE] = "wbm_desc_rel_ring_handle",
-		[CNSS_HOST_DP_TCL_CMD] = "tcl_cmd_ring",
-		[CNSS_HOST_DP_TCL_CMD_HANDLE] = "tcl_cmd_ring_handle",
-		[CNSS_HOST_DP_TCL_STATUS] = "tcl_status_ring",
-		[CNSS_HOST_DP_TCL_STATUS_HANDLE] = "tcl_status_ring_handle",
-		[CNSS_HOST_DP_REO_REINJ] = "reo_reinject_ring",
-		[CNSS_HOST_DP_REO_REINJ_HANDLE] = "reo_reinject_ring_handle",
-		[CNSS_HOST_DP_RX_REL] = "rx_rel_ring",
-		[CNSS_HOST_DP_RX_REL_HANDLE] = "rx_rel_ring_handle",
-		[CNSS_HOST_DP_REO_EXP] = "reo_exception_ring",
-		[CNSS_HOST_DP_REO_EXP_HANDLE] = "reo_exception_ring_handle",
-		[CNSS_HOST_DP_REO_CMD] = "reo_cmd_ring",
-		[CNSS_HOST_DP_REO_CMD_HANDLE] = "reo_cmd_ring_handle",
-		[CNSS_HOST_DP_REO_STATUS] = "reo_status_ring",
-		[CNSS_HOST_DP_REO_STATUS_HANDLE] = "reo_status_ring_handle",
-		[CNSS_HOST_DP_TCL_DATA_0] = "tcl_data_ring_0",
-		[CNSS_HOST_DP_TCL_DATA_0_HANDLE] = "tcl_data_ring_0_handle",
-		[CNSS_HOST_DP_TX_COMP_0] = "tx_comp_ring_0",
-		[CNSS_HOST_DP_TX_COMP_0_HANDLE] = "tx_comp_ring_0_handle",
-		[CNSS_HOST_DP_TCL_DATA_1] = "tcl_data_ring_1",
-		[CNSS_HOST_DP_TCL_DATA_1_HANDLE] = "tcl_data_ring_1_handle",
-		[CNSS_HOST_DP_TX_COMP_1] = "tx_comp_ring_1",
-		[CNSS_HOST_DP_TX_COMP_1_HANDLE] = "tx_comp_ring_1_handle",
-		[CNSS_HOST_DP_TCL_DATA_2] = "tcl_data_ring_2",
-		[CNSS_HOST_DP_TCL_DATA_2_HANDLE] = "tcl_data_ring_2_handle",
-		[CNSS_HOST_DP_TX_COMP_2] = "tx_comp_ring_2",
-		[CNSS_HOST_DP_TX_COMP_2_HANDLE] = "tx_comp_ring_2_handle",
-		[CNSS_HOST_DP_REO_DST_0] = "reo_dest_ring_0",
-		[CNSS_HOST_DP_REO_DST_0_HANDLE] = "reo_dest_ring_0_handle",
-		[CNSS_HOST_DP_REO_DST_1] = "reo_dest_ring_1",
-		[CNSS_HOST_DP_REO_DST_1_HANDLE] = "reo_dest_ring_1_handle",
-		[CNSS_HOST_DP_REO_DST_2] = "reo_dest_ring_2",
-		[CNSS_HOST_DP_REO_DST_2_HANDLE] = "reo_dest_ring_2_handle",
-		[CNSS_HOST_DP_REO_DST_3] = "reo_dest_ring_3",
-		[CNSS_HOST_DP_REO_DST_3_HANDLE] = "reo_dest_ring_3_handle",
-		[CNSS_HOST_DP_REO_DST_4] = "reo_dest_ring_4",
-		[CNSS_HOST_DP_REO_DST_4_HANDLE] = "reo_dest_ring_4_handle",
-		[CNSS_HOST_DP_REO_DST_5] = "reo_dest_ring_5",
-		[CNSS_HOST_DP_REO_DST_5_HANDLE] = "reo_dest_ring_5_handle",
-		[CNSS_HOST_DP_REO_DST_6] = "reo_dest_ring_6",
-		[CNSS_HOST_DP_REO_DST_6_HANDLE] = "reo_dest_ring_6_handle",
-		[CNSS_HOST_DP_REO_DST_7] = "reo_dest_ring_7",
-		[CNSS_HOST_DP_REO_DST_7_HANDLE] = "reo_dest_ring_7_handle",
-		[CNSS_HOST_DP_PDEV_0] = "dp_pdev_0",
-		[CNSS_HOST_DP_WLAN_CFG_CTX] = "wlan_cfg_ctx",
-		[CNSS_HOST_DP_SOC] = "dp_soc",
-		[CNSS_HOST_HAL_RX_FST] = "hal_rx_fst",
-		[CNSS_HOST_DP_FISA] = "dp_fisa",
-		[CNSS_HOST_DP_FISA_HW_FSE_TABLE] = "dp_fisa_hw_fse_table",
-		[CNSS_HOST_DP_FISA_SW_FSE_TABLE] = "dp_fisa_sw_fse_table",
-		[CNSS_HOST_HIF] = "hif",
-		[CNSS_HOST_QDF_NBUF_HIST] = "qdf_nbuf_history",
-		[CNSS_HOST_TCL_WBM_MAP] = "tcl_wbm_map_array",
-		[CNSS_HOST_RX_MAC_BUF_RING_0] = "rx_mac_buf_ring_0",
-		[CNSS_HOST_RX_MAC_BUF_RING_0_HANDLE] = "rx_mac_buf_ring_0_handle",
-		[CNSS_HOST_RX_MAC_BUF_RING_1] = "rx_mac_buf_ring_1",
-		[CNSS_HOST_RX_MAC_BUF_RING_1_HANDLE] = "rx_mac_buf_ring_1_handle",
-		[CNSS_HOST_RX_REFILL_0] = "rx_refill_buf_ring_0",
-		[CNSS_HOST_RX_REFILL_0_HANDLE] = "rx_refill_buf_ring_0_handle",
-		[CNSS_HOST_CE_0] = "ce_0",
-		[CNSS_HOST_CE_0_SRC_RING] = "ce_0_src_ring",
-		[CNSS_HOST_CE_0_SRC_RING_CTX] = "ce_0_src_ring_ctx",
-		[CNSS_HOST_CE_1] = "ce_1",
-		[CNSS_HOST_CE_1_STATUS_RING] = "ce_1_status_ring",
-		[CNSS_HOST_CE_1_STATUS_RING_CTX] = "ce_1_status_ring_ctx",
-		[CNSS_HOST_CE_1_DEST_RING] = "ce_1_dest_ring",
-		[CNSS_HOST_CE_1_DEST_RING_CTX] = "ce_1_dest_ring_ctx",
-		[CNSS_HOST_CE_2] = "ce_2",
-		[CNSS_HOST_CE_2_STATUS_RING] = "ce_2_status_ring",
-		[CNSS_HOST_CE_2_STATUS_RING_CTX] = "ce_2_status_ring_ctx",
-		[CNSS_HOST_CE_2_DEST_RING] = "ce_2_dest_ring",
-		[CNSS_HOST_CE_2_DEST_RING_CTX] = "ce_2_dest_ring_ctx",
-		[CNSS_HOST_CE_3] = "ce_3",
-		[CNSS_HOST_CE_3_SRC_RING] = "ce_3_src_ring",
-		[CNSS_HOST_CE_3_SRC_RING_CTX] = "ce_3_src_ring_ctx",
-		[CNSS_HOST_CE_4] = "ce_4",
-		[CNSS_HOST_CE_4_SRC_RING] = "ce_4_src_ring",
-		[CNSS_HOST_CE_4_SRC_RING_CTX] = "ce_4_src_ring_ctx",
-		[CNSS_HOST_CE_5] = "ce_5",
-		[CNSS_HOST_CE_6] = "ce_6",
-		[CNSS_HOST_CE_7] = "ce_7",
-		[CNSS_HOST_CE_7_STATUS_RING] = "ce_7_status_ring",
-		[CNSS_HOST_CE_7_STATUS_RING_CTX] = "ce_7_status_ring_ctx",
-		[CNSS_HOST_CE_7_DEST_RING] = "ce_7_dest_ring",
-		[CNSS_HOST_CE_7_DEST_RING_CTX] = "ce_7_dest_ring_ctx",
-		[CNSS_HOST_CE_8] = "ce_8",
-		[CNSS_HOST_DP_TCL_DATA_3] = "tcl_data_ring_3",
-		[CNSS_HOST_DP_TCL_DATA_3_HANDLE] = "tcl_data_ring_3_handle",
-		[CNSS_HOST_DP_TX_COMP_3] = "tx_comp_ring_3",
-		[CNSS_HOST_DP_TX_COMP_3_HANDLE] = "tx_comp_ring_3_handle"
-	};
 	int i;
 	int ret = 0;
-	enum cnss_host_dump_type j;
+	enum cnss_host_dump_type dump_type_id;
 
 	if (!dump_enabled()) {
 		icnss_pr_info("Dump collection is not enabled\n");
@@ -1575,12 +1695,13 @@ int icnss_do_host_ramdump(struct icnss_priv *priv,
 	INIT_LIST_HEAD(&head);
 	for (i = 0; i < num_entries_loaded; i++) {
 		/* If region name registered by driver is not present in
-		 * wlan_str. type for that entry will not be set, but entry will
+		 * icnss_get_wlan_str. type for that entry will not be set, but entry will
 		 * be added. Which will result in entry type being 0. Currently
 		 * entry type 0 is for wlan_logs, which will result in parsing
 		 * issue for wlan_logs as parsing is done based upon type field.
 		 * So initialize type with -1(Invalid) to avoid such issues.
 		 */
+
 		meta_info.entry[i].type = -1;
 		seg = kcalloc(1, sizeof(*seg), GFP_KERNEL);
 		if (!seg) {
@@ -1592,9 +1713,10 @@ int icnss_do_host_ramdump(struct icnss_priv *priv,
 		seg->da = (dma_addr_t)ssr_entry[i].buffer_pointer;
 		seg->size = ssr_entry[i].buffer_size;
 
-		for (j = 0; j < CNSS_HOST_DUMP_TYPE_MAX; j++) {
-			if (strcmp(ssr_entry[i].region_name, wlan_str[j]) == 0)
-				meta_info.entry[i].type = j;
+		for (dump_type_id = 0; dump_type_id < CNSS_HOST_DUMP_TYPE_MAX;
+			 dump_type_id++) {
+			if (strcmp(ssr_entry[i].region_name, icnss_get_wlan_str(dump_type_id)) == 0)
+				meta_info.entry[i].type = dump_type_id;
 		}
 		meta_info.entry[i].entry_start = i + 1;
 		meta_info.entry[i].entry_num++;
@@ -1858,10 +1980,6 @@ static int icnss_alloc_qdss_mem(struct icnss_priv *priv)
 	struct platform_device *pdev = priv->pdev;
 	struct icnss_fw_mem *qdss_mem = priv->qdss_mem;
 	int i, j;
-
-	if (priv->device_id == WCN6450_DEVICE_ID ||
-	    priv->device_id == WCN7750_DEVICE_ID)
-		icnss_free_qdss_mem(priv);
 
 	for (i = 0; i < priv->qdss_mem_seg_len; i++) {
 		if (!qdss_mem[i].va && qdss_mem[i].size) {
@@ -4444,6 +4562,25 @@ struct iommu_domain *icnss_smmu_get_domain(struct device *dev)
 	return priv->iommu_domain;
 }
 EXPORT_SYMBOL(icnss_smmu_get_domain);
+
+/**
+ * icnss_get_wifi_kobject -return wifi kobject
+ * Return: Null, to maintain driver comnpatibilty
+ */
+struct kobject *icnss_get_wifi_kobj(struct device *dev)
+{
+	struct icnss_priv *priv = icnss_get_plat_priv();
+
+	if (!priv) {
+		icnss_pr_err("Platform priv is NULL\n");
+		return NULL;
+	}
+
+	icnss_pr_dbg("Successfully returned wifi kobj\n");
+
+	return priv->wifi_kobj;
+}
+EXPORT_SYMBOL(icnss_get_wifi_kobj);
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 2, 0))
 static int icnss_iommu_map(struct iommu_domain *domain,

@@ -269,4 +269,5 @@ extern int icnss_register_driver_async_data_cb(struct device *dev, void *cb_ctx,
 					       int (*cb)(void *ctx,
 					       uint16_t type, void *event,
 					       int event_len));
+extern struct kobject *icnss_get_wifi_kobj(struct device *dev);
 #endif /* _ICNSS_WLAN_H_ */
