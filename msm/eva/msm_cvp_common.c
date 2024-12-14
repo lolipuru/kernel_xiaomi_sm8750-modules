@@ -1396,9 +1396,9 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 				dprintk(CVP_INFO, "Session to be taken for session timeout 0x%x\n",
 					inst);
 				}
+				handle_session_timeout(inst, true);
 				break;
 		}
-		handle_session_timeout(inst, true);
 		mutex_unlock(&core->lock);
 		return;
 	}
