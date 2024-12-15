@@ -176,7 +176,7 @@ static const struct v4l2_subdev_internal_ops cam_isp_subdev_internal_ops = {
 static int cam_isp_dev_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
 {
-	int                            rc = -1;
+	int                            rc;
 	int                            i;
 	struct cam_hw_mgr_intf         hw_mgr_intf;
 	struct cam_node               *node;
@@ -188,8 +188,12 @@ static int cam_isp_dev_component_bind(struct device *dev,
 	long                           microsec = 0;
 
 	CAM_GET_TIMESTAMP(ts_start);
-	of_property_read_string_index(pdev->dev.of_node, "arch-compat", 0,
+	rc = of_property_read_string_index(pdev->dev.of_node, "arch-compat", 0,
 		(const char **)&compat_str);
+	if (rc) {
+		CAM_ERR(CAM_ISP, "Error: failed to read arch-compat");
+		goto err;
+	}
 
 	g_isp_dev.sd.internal_ops = &cam_isp_subdev_internal_ops;
 	g_isp_dev.sd.close_seq_prior = CAM_SD_CLOSE_HIGH_PRIORITY;
@@ -314,21 +318,23 @@ err:
 static void cam_isp_dev_component_unbind(struct device *dev,
 	struct device *master_dev, void *data)
 {
-	int rc = 0;
-	int i;
+	int rc, i;
 	const char *compat_str = NULL;
 	struct platform_device *pdev = to_platform_device(dev);
 
-	of_property_read_string_index(pdev->dev.of_node, "arch-compat", 0,
+	rc = of_property_read_string_index(pdev->dev.of_node, "arch-compat", 0,
 		(const char **)&compat_str);
+	if (rc) {
+		CAM_ERR(CAM_ISP, "Failed at reading arch-compat");
+		return;
+	}
 
 	cam_isp_hw_mgr_deinit(compat_str);
 	/* clean up resources */
 	for (i = 0; i < g_isp_dev.max_context; i++) {
 		rc = cam_isp_context_deinit(&g_isp_dev.ctx_isp[i]);
 		if (rc)
-			CAM_ERR(CAM_ISP, "ISP context %d deinit failed",
-				 i);
+			CAM_ERR(CAM_ISP, "ISP context %d deinit failed", i);
 	}
 
 	CAM_MEM_FREE(g_isp_dev.ctx);

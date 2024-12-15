@@ -404,7 +404,7 @@ static int cam_icp_context_validate_event_notify_injection(struct cam_context *c
 			CAM_ERR(CAM_ICP,
 				"[%s] ctx[%u]: Invalid error type: %u for error event injection err code: %u req id: %llu dev hdl: %d",
 				ctx->dev_name, ctx->ctx_id, err_evt_params->err_type,
-				err_evt_params->err_code, ctx->dev_hdl);
+				err_evt_params->err_code, req_id, ctx->dev_hdl);
 			return -EINVAL;
 		}
 

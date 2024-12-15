@@ -10,6 +10,7 @@
 
 #include "cam_irq_controller.h"
 #include "cam_vfe_bus.h"
+#include "cam_vfe_hw_intf.h"
 
 #define CAM_VFE_BUS_VER3_MAX_SUB_GRPS        6
 #define CAM_VFE_BUS_VER3_MAX_MID_PER_PORT    4
@@ -128,6 +129,11 @@ struct cam_vfe_constraint_error_info {
 	char     *error_description;
 };
 
+struct cam_vfe_bus_perf_cnt_hw_info {
+	uint32_t perf_cnt_cfg;
+	uint32_t perf_cnt_val;
+};
+
 /*
  * struct cam_vfe_bus_ver3_reg_offset_common:
  *
@@ -159,6 +165,9 @@ struct cam_vfe_bus_ver3_reg_offset_common {
 	uint32_t virtual_frm_en_shift;
 	uint32_t top_irq_mask_0;
 	struct cam_irq_controller_reg_info irq_reg_info;
+	uint32_t num_perf_counters;
+	uint32_t perf_cnt_status;
+	struct cam_vfe_bus_perf_cnt_hw_info perf_cnt_reg[CAM_VFE_PERF_CNT_MAX];
 };
 
 /*
@@ -240,9 +249,11 @@ struct cam_vfe_bus_ver3_vfe_out_hw_info {
 	uint32_t                            mc_grp_shift;
 	uint32_t                            early_done_mask;
 	uint8_t                            *name[PLANE_MAX];
+	uint64_t                            pid_mask;
 	bool                                mc_based;
-	bool                               cntxt_cfg_except;
+	bool                                cntxt_cfg_except;
 };
+
 
 /*
  * struct cam_vfe_bus_ver3_hw_info:

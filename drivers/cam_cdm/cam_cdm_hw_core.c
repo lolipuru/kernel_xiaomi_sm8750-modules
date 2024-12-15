@@ -1477,12 +1477,10 @@ static void cam_hw_cdm_iommu_fault_handler(struct cam_smmu_pf_info *pf_info)
 			(void *)pf_info->iova);
 
 		/* Check if the PID and MID are valid, if not handle the pf */
-		if ((pvt_data->pid >= 0) && (pvt_data->mid >= 0)) {
-			if (((pf_info->pid == pvt_data->pid) && (pf_info->mid == pvt_data->mid)))
-				goto handle_cdm_pf;
-			else
-				return;
-		}
+		if (((pf_info->pid == pvt_data->pid) && (pf_info->mid == pvt_data->mid)))
+			goto handle_cdm_pf;
+		else
+			return;
 
 handle_cdm_pf:
 
@@ -1960,14 +1958,12 @@ int cam_hw_cdm_get_cdm_config(struct cam_hw_info *cdm_hw)
 
 		rc = of_property_read_u32(soc_info->pdev->dev.of_node,
 			"override-cdm-family", &override_family);
-		if (rc) {
+		if (rc)
 			CAM_INFO(CAM_CDM,
 				"no cdm family override,using current hw family 0x%x",
 				core->hw_family_version);
-			rc = 0;
-		} else {
+		else
 			core->hw_family_version = override_family;
-		}
 
 		rc = of_property_read_u32(soc_info->pdev->dev.of_node,
 			"override-cdm-version", &override_version);

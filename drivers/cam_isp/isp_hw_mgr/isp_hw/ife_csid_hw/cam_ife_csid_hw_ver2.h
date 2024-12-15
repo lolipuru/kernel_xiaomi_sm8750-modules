@@ -683,6 +683,8 @@ struct cam_ife_csid_ver2_common_reg_info {
 	uint32_t format_measure_height_shift_val;
 	uint32_t format_measure_width_mask_val;
 	uint32_t format_measure_width_shift_val;
+	uint32_t format_measure_max_hbi_shift;
+	uint32_t format_measure_min_hbi_mask;
 	uint32_t measure_en_hbi_vbi_cnt_mask;
 	uint32_t measure_pixel_line_en_mask;
 	uint32_t ipp_irq_mask_all;

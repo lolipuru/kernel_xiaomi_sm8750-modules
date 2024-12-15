@@ -161,7 +161,7 @@ int cam_iommu_map(struct iommu_domain *domain,
 	size_t firmware_start, phys_addr_t fw_hdl, size_t firmware_len,
 	int prot);
 
-size_t cam_iommu_map_sg(struct iommu_domain *domain,
+ssize_t cam_iommu_map_sg(struct iommu_domain *domain,
 	dma_addr_t iova_start, struct scatterlist *sgl, uint64_t orig_nents,
 	int prot);
 

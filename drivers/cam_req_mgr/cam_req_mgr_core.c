@@ -558,7 +558,7 @@ static int __cam_req_mgr_send_evt(
 {
 	int i, rc = 0;
 	struct cam_req_mgr_link_evt_data     evt_data = {0};
-	struct cam_req_mgr_connected_device *device = NULL;
+	struct cam_req_mgr_connected_device *device;
 
 	CAM_DBG(CAM_CRM,
 		"Notify event type: %d to all connected devices on link: 0x%x",
@@ -570,8 +570,6 @@ static int __cam_req_mgr_send_evt(
 
 	for (i = 0; i < link->num_devs; i++) {
 		device = &link->l_dev[i];
-		if (!device)
-			continue;
 
 		evt_data.dev_hdl = device->dev_hdl;
 		evt_data.link_hdl = link->link_hdl;
@@ -997,13 +995,17 @@ static void __cam_req_mgr_reset_req_slot(struct cam_req_mgr_core_link *link,
 	struct cam_req_mgr_req_tbl   *tbl = link->req.l_tbl;
 	struct cam_req_mgr_req_queue *in_q = link->req.in_q;
 
+	if (idx < 0) {
+		CAM_ERR(CAM_CRM, "Wrong array idx is sent, idx: %d", idx);
+		return;
+	}
+
 	slot = &in_q->slot[idx];
 	CAM_DBG(CAM_CRM, "RESET: idx: %d: slot->status %d", idx, slot->status);
 
 	/* Check if CSL has already pushed new request*/
-	if (slot->status == CRM_SLOT_STATUS_REQ_ADDED ||
-		in_q->last_applied_idx == idx ||
-		idx < 0)
+	if ((slot->status == CRM_SLOT_STATUS_REQ_ADDED) ||
+		(in_q->last_applied_idx == idx))
 		return;
 
 	if ((slot->req_id > 0) && slot->num_sync_links)
@@ -1278,10 +1280,12 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 			apply_req.re_apply = true;
 	}
 
+	spin_lock_bh(&link->link_state_spin_lock);
 	if (link->state == CAM_CRM_LINK_STATE_ERR)
 		apply_req.recovery = true;
 	else
 		apply_req.recovery = false;
+	spin_unlock_bh(&link->link_state_spin_lock);
 
 	if (link->max_delay < 0 || link->max_delay >= CAM_PIPELINE_DELAY_MAX) {
 		CAM_ERR(CAM_CRM, "link->max_delay is out of bounds: %d",
@@ -2131,12 +2135,15 @@ static int __cam_req_mgr_check_multi_sync_link_ready(
 				}
 			}
 
-			if (sync_link[i]->state ==
-				CAM_CRM_LINK_STATE_IDLE) {
+			spin_lock_bh(&sync_link[i]->link_state_spin_lock);
+			if (sync_link[i]->state == CAM_CRM_LINK_STATE_IDLE) {
+				spin_unlock_bh(&sync_link[i]->link_state_spin_lock);
 				CAM_ERR(CAM_CRM, "sync link hdl %x is idle",
 					sync_link[i]->link_hdl);
 				return -EINVAL;
 			}
+			spin_unlock_bh(&sync_link[i]->link_state_spin_lock);
+
 			if (link->max_delay == sync_link[i]->max_delay) {
 				rc = __cam_req_mgr_check_sync_req_is_ready(
 						link, sync_link[i],
@@ -3302,21 +3309,6 @@ int cam_req_mgr_process_sched_req(void *priv, void *data)
 		(sched_req->param_mask & CAM_CRM_MISMATCHED_FRAME_MODE_MASK))
 		slot->mismatched_frame_mode = sched_req->params[0];
 
-	if (sched_req->additional_timeout < 0) {
-		CAM_WARN(CAM_CRM,
-			"Requested timeout is invalid [%dms]",
-			sched_req->additional_timeout);
-		slot->additional_timeout = 0;
-	} else if (sched_req->additional_timeout >
-		CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX) {
-		CAM_WARN(CAM_CRM,
-			"Requested timeout [%dms] max supported timeout [%dms] resetting to max",
-			sched_req->additional_timeout,
-			CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX);
-		slot->additional_timeout = CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX;
-	} else
-		slot->additional_timeout = sched_req->additional_timeout;
-
 	for (i = 0; i < sched_req->num_links; i++) {
 		if (link->link_hdl != sched_req->link_hdls[i]) {
 			slot->sync_link_hdls[sync_idx] = sched_req->link_hdls[i];
@@ -3815,12 +3807,19 @@ int cam_req_mgr_process_error(void *priv, void *data)
 				 * take a long time. if don't pause watch dog here, SOF freeze
 				 * may be triggered. After recovery, need to restart watch dog.
 				 */
+				spin_lock_bh(&link->link_state_spin_lock);
 				crm_timer_reset(link->watchdog);
 				link->watchdog->pause_timer = true;
+				spin_unlock_bh(&link->link_state_spin_lock);
+
 				__cam_req_mgr_send_evt(err_info->req_id,
 					CAM_REQ_MGR_LINK_EVT_STALLED, CRM_KMD_ERR_FATAL, link);
+
+				spin_lock_bh(&link->link_state_spin_lock);
 				crm_timer_reset(link->watchdog);
 				link->watchdog->pause_timer = false;
+				spin_unlock_bh(&link->link_state_spin_lock);
+
 				in_q->slot[idx].internal_recovered = true;
 				link->try_for_internal_recovery = false;
 			}
@@ -4515,6 +4514,7 @@ static int cam_req_mgr_cb_notify_msg(
 	struct cam_req_mgr_req_queue        *in_q = NULL;
 	struct cam_req_mgr_connected_device *dev = NULL;
 	struct cam_req_mgr_link_evt_data     evt_data;
+	uint64_t                             frame_duration_ms;
 
 	if (!msg) {
 		CAM_ERR(CAM_CRM, "msg is NULL");
@@ -4532,11 +4532,13 @@ static int cam_req_mgr_cb_notify_msg(
 
 	switch (msg->msg_type) {
 	case CAM_REQ_MGR_MSG_SENSOR_FRAME_INFO:
+
+		frame_duration_ms = msg->u.frame_info.frame_duration / CAM_COMMON_NS_PER_MS;
+
 		spin_lock_bh(&link->req.reset_link_spin_lock);
 		/* Long exposure case for resume from standby */
 		if (msg->u.frame_info.use_for_wd) {
-			link->exp_time_for_resume =
-				msg->u.frame_info.frame_duration / CAM_COMMON_NS_PER_MS;
+			link->exp_time_for_resume = frame_duration_ms;
 			spin_unlock_bh(&link->req.reset_link_spin_lock);
 			return 0;
 		}
@@ -4560,6 +4562,19 @@ static int cam_req_mgr_cb_notify_msg(
 		slot = &in_q->slot[slot_idx];
 		spin_unlock_bh(&link->req.reset_link_spin_lock);
 		slot->frame_sync_shift = msg->u.frame_info.frame_sync_shift;
+		if (frame_duration_ms > CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX) {
+			CAM_WARN(CAM_CRM,
+				"Requested timeout [%dms] max supported timeout [%dms] resetting to max",
+				frame_duration_ms, CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX);
+			slot->additional_timeout = CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX;
+		} else if (frame_duration_ms > CAM_REQ_MGR_WATCHDOG_TIMEOUT) {
+			slot->additional_timeout = frame_duration_ms;
+		} else {
+			slot->additional_timeout = 0;
+		}
+
+		CAM_DBG(CAM_CRM,
+			"Requested timeout [%dms] req: %lld", frame_duration_ms, msg->req_id);
 
 		for (i = 0; i < link->num_devs; i++) {
 			dev = &link->l_dev[i];
@@ -5433,7 +5448,8 @@ int cam_req_mgr_schedule_request_v2(
 
 	if (sched_req->sync_mode == CAM_REQ_MGR_SYNC_MODE_SYNC) {
 		if ((sched_req->num_links <= 0) ||
-			(sched_req->num_links > MAXIMUM_LINKS_PER_SESSION)) {
+			(sched_req->num_links >
+			min(MAXIMUM_LINKS_PER_SESSION, MAX_LINKS_PER_SESSION))) {
 			CAM_ERR(CAM_CRM, "link:0x%x req:%lld invalid num_links:%d",
 				link->link_hdl, sched_req->req_id, sched_req->num_links);
 			rc = -EINVAL;
@@ -5690,11 +5706,12 @@ int cam_req_mgr_flush_requests(
 	struct cam_req_mgr_flush_info *flush_info)
 {
 	int                               rc = 0;
-	struct crm_workq_task            *task = NULL;
-	struct cam_req_mgr_core_link     *link = NULL;
+	struct crm_workq_task            *task;
+	struct cam_req_mgr_core_link     *link;
 	struct cam_req_mgr_flush_info    *flush;
 	struct crm_task_payload          *task_data;
-	struct cam_req_mgr_core_session  *session = NULL;
+	struct cam_req_mgr_core_session  *session;
+	unsigned long                     rem_jiffies;
 
 	if (!flush_info) {
 		CAM_ERR(CAM_CRM, "flush req is NULL");
@@ -5719,7 +5736,7 @@ int cam_req_mgr_flush_requests(
 	}
 	if (session->num_links <= 0) {
 		CAM_WARN(CAM_CRM, "No active links in session %x",
-		flush_info->session_hdl);
+			flush_info->session_hdl);
 		goto end;
 	}
 
@@ -5754,13 +5771,15 @@ int cam_req_mgr_flush_requests(
 	}
 
 	/* Blocking call */
-	rc = cam_common_wait_for_completion_timeout(
+	rem_jiffies = cam_common_wait_for_completion_timeout(
 		&link->workq_comp,
 		msecs_to_jiffies(CAM_REQ_MGR_SCHED_REQ_TIMEOUT));
-	if (!rc)
+	if (!rem_jiffies) {
 		CAM_WARN(CAM_CRM, "Flush call timeout for session_hdl %u link_hdl %u type: %d",
 			flush_info->link_hdl, flush_info->session_hdl,
 			flush_info->flush_type);
+		rc = -ETIMEDOUT;
+	}
 end:
 	mutex_unlock(&g_crm_core_dev->crm_lock);
 	return rc;

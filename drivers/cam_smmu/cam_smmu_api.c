@@ -263,6 +263,7 @@ struct cam_dma_buff_info {
 	size_t phys_len;
 	bool is_internal;
 	struct timespec64 ts;
+	int multi_client_device_idx;
 };
 
 struct cam_sec_buff_info {
@@ -361,13 +362,13 @@ static int cam_smmu_free_scratch_va(struct scratch_mapping *mapping,
 static struct cam_dma_buff_info *cam_smmu_find_mapping_by_virt_address(int idx,
 	dma_addr_t virt_addr);
 
-static int cam_smmu_map_buffer_and_add_to_list(int idx, int ion_fd,
+static int cam_smmu_map_buffer_and_add_to_list(int handle, int ion_fd,
 	bool dis_delayed_unmap, enum dma_data_direction dma_dir,
 	dma_addr_t *paddr_ptr, size_t *len_ptr,
 	enum cam_smmu_region_id region_id, bool is_internal, struct dma_buf *dmabuf,
 	struct kref **ref_count);
 
-static int cam_smmu_map_kernel_buffer_and_add_to_list(int idx,
+static int cam_smmu_map_kernel_buffer_and_add_to_list(int handle,
 	struct dma_buf *buf, enum dma_data_direction dma_dir,
 	dma_addr_t *paddr_ptr, size_t *len_ptr,
 	enum cam_smmu_region_id region_id);
@@ -736,7 +737,7 @@ static void cam_smmu_dump_cb_info(int idx)
 	}
 
 	if (cb_info->io_support) {
-		for (j = 0; j < cb_info->shared_info.num_regions; j++) {
+		for (j = 0; j < cb_info->io_info.num_regions; j++) {
 			nested_reg_info = &cb_info->io_info.nested_regions[j];
 			io_reg_len += nested_reg_info->region_info.iova_len;
 		}
@@ -1580,11 +1581,11 @@ static int cam_smmu_detach_device(int idx)
 	return rc;
 }
 
-static int cam_smmu_alloc_iova(size_t size,
+static int cam_smmu_alloc_iova(size_t size, int multi_client_device_idx,
 	int32_t smmu_hdl, unsigned long *iova)
 {
 	int rc = 0, shared_mem_pool_idx = 0;
-	int idx, multi_client_device_idx;
+	int idx;
 	unsigned long vaddr = 0;
 
 	if (!iova || !size || (smmu_hdl == HANDLE_INIT)) {
@@ -1596,8 +1597,6 @@ static int cam_smmu_alloc_iova(size_t size,
 		size, smmu_hdl);
 
 	idx = GET_SMMU_TABLE_IDX(smmu_hdl);
-	multi_client_device_idx = GET_SMMU_MULTI_CLIENT_IDX(smmu_hdl);
-
 	if (idx < 0 || idx >= iommu_cb_set.cb_num) {
 		CAM_ERR(CAM_SMMU,
 			"Error: handle or index invalid. idx = %d hdl = %x",
@@ -1639,9 +1638,9 @@ get_addr_end:
 }
 
 static int cam_smmu_free_iova(unsigned long iova, size_t size,
-	int32_t smmu_hdl)
+	int multi_client_device_idx, int32_t smmu_hdl)
 {
-	int rc = 0, idx, multi_client_device_idx;
+	int rc = 0, idx;
 	int shared_mem_pool_idx = 0;
 
 	if (!size || (smmu_hdl == HANDLE_INIT)) {
@@ -1650,7 +1649,6 @@ static int cam_smmu_free_iova(unsigned long iova, size_t size,
 	}
 
 	idx = GET_SMMU_TABLE_IDX(smmu_hdl);
-	multi_client_device_idx = GET_SMMU_MULTI_CLIENT_IDX(smmu_hdl);
 	if (idx < 0 || idx >= iommu_cb_set.cb_num) {
 		CAM_ERR(CAM_SMMU,
 			"Error: handle or index invalid. idx = %d hdl = %x",
@@ -2387,7 +2385,7 @@ int cam_smmu_reserve_buf_region(enum cam_smmu_region_id region,
 	struct cam_smmu_subregion_info *subregion_info = NULL;
 	bool *is_buf_allocated;
 	bool region_supported;
-	size_t size = 0;
+	ssize_t size = 0;
 	int idx, rc = 0, multi_client_device_idx, prot, nested_reg_idx;
 
 	idx = GET_SMMU_TABLE_IDX(smmu_hdl);
@@ -2503,7 +2501,7 @@ int cam_smmu_reserve_buf_region(enum cam_smmu_region_id region,
 		buf_info->table->sgl,
 		buf_info->table->orig_nents,
 		prot);
-	if (region_info->iova_len < size) {
+	if ((size < 0) || (region_info->iova_len < size)) {
 		CAM_ERR(CAM_SMMU,
 			"IOMMU mapping failed for size=%zu available iova_len=%zu",
 			size, region_info->iova_len);
@@ -2679,19 +2677,18 @@ void cam_smmu_buffer_tracker_putref(struct list_head *track_list)
 EXPORT_SYMBOL(cam_smmu_buffer_tracker_putref);
 
 static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
-	int idx, enum dma_data_direction dma_dir, dma_addr_t *paddr_ptr,
-	size_t *len_ptr, enum cam_smmu_region_id region_id,
+	int idx, int multi_client_device_idx, enum dma_data_direction dma_dir,
+	dma_addr_t *paddr_ptr, size_t *len_ptr, enum cam_smmu_region_id region_id,
 	bool dis_delayed_unmap, struct cam_dma_buff_info **mapping_info)
 {
 	struct dma_buf_attachment *attach = NULL;
 	struct sg_table *table = NULL;
 	struct iommu_domain *domain;
-	size_t size = 0;
+	ssize_t size;
 	unsigned long iova = 0;
-	int rc = 0;
+	int rc = 0, prot = 0;
 	struct timespec64 ts1, ts2;
 	long microsec = 0;
-	int prot = 0;
 
 	if (IS_ERR_OR_NULL(buf)) {
 		rc = PTR_ERR(buf);
@@ -2736,7 +2733,8 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 			goto err_unmap_sg;
 		}
 
-		rc = cam_smmu_alloc_iova(*len_ptr, iommu_cb_set.cb_info[idx].handle, &iova);
+		rc = cam_smmu_alloc_iova(*len_ptr, multi_client_device_idx,
+			iommu_cb_set.cb_info[idx].handle, &iova);
 		if (rc < 0) {
 			CAM_ERR(CAM_SMMU,
 				"IOVA alloc failed for shared memory, size=%zu, idx=%d, handle=%d",
@@ -2749,12 +2747,12 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 		if (iommu_cb_set.force_cache_allocs)
 			prot |= IOMMU_CACHE;
 
-		size = cam_iommu_map_sg(domain, iova, table->sgl, table->orig_nents,
-				prot);
-		if (size < 0) {
+		size = cam_iommu_map_sg(domain, iova, table->sgl, table->orig_nents, prot);
+		if ((size < 0) || (size < *len_ptr)) {
 			CAM_ERR(CAM_SMMU, "IOMMU mapping failed");
 			rc = cam_smmu_free_iova(iova,
-				size, iommu_cb_set.cb_info[idx].handle);
+				size, multi_client_device_idx,
+				iommu_cb_set.cb_info[idx].handle);
 			if (rc)
 				CAM_ERR(CAM_SMMU, "IOVA free failed");
 			rc = -ENOMEM;
@@ -2822,6 +2820,7 @@ static int cam_smmu_map_buffer_validate(struct dma_buf *buf,
 	(*mapping_info)->dir = dma_dir;
 	(*mapping_info)->map_count = 1;
 	(*mapping_info)->region_id = region_id;
+	(*mapping_info)->multi_client_device_idx = multi_client_device_idx;
 
 	if (!*paddr_ptr || !*len_ptr) {
 		CAM_ERR(CAM_SMMU, "Error: Space Allocation failed");
@@ -2846,6 +2845,7 @@ err_alloc:
 	if (region_id == CAM_SMMU_REGION_SHARED) {
 		cam_smmu_free_iova(iova,
 			size,
+			multi_client_device_idx,
 			iommu_cb_set.cb_info[idx].handle);
 
 		iommu_unmap(iommu_cb_set.cb_info[idx].domain,
@@ -2861,16 +2861,18 @@ err_out:
 }
 
 
-static int cam_smmu_map_buffer_and_add_to_list(int idx, int ion_fd,
+static int cam_smmu_map_buffer_and_add_to_list(int handle, int ion_fd,
 	bool dis_delayed_unmap, enum dma_data_direction dma_dir,
 	dma_addr_t *paddr_ptr, size_t *len_ptr,
 	enum cam_smmu_region_id region_id, bool is_internal, struct dma_buf *buf,
 	struct kref **ref_count)
 {
-	int rc = -1;
+	int rc = -1, idx = GET_SMMU_TABLE_IDX(handle);
+	int multi_client_device_idx = GET_SMMU_MULTI_CLIENT_IDX(handle);
 	struct cam_dma_buff_info *mapping_info = NULL;
 
-	rc = cam_smmu_map_buffer_validate(buf, idx, dma_dir, paddr_ptr, len_ptr,
+	rc = cam_smmu_map_buffer_validate(buf, idx, multi_client_device_idx,
+		dma_dir, paddr_ptr, len_ptr,
 		region_id, dis_delayed_unmap, &mapping_info);
 	if (rc) {
 		CAM_ERR(CAM_SMMU, "buffer validation failure");
@@ -2895,15 +2897,17 @@ static int cam_smmu_map_buffer_and_add_to_list(int idx, int ion_fd,
 	return 0;
 }
 
-static int cam_smmu_map_kernel_buffer_and_add_to_list(int idx,
+static int cam_smmu_map_kernel_buffer_and_add_to_list(int handle,
 	struct dma_buf *buf, enum dma_data_direction dma_dir,
 	dma_addr_t *paddr_ptr, size_t *len_ptr,
 	enum cam_smmu_region_id region_id)
 {
-	int rc = -1;
+	int rc = -1, idx = GET_SMMU_TABLE_IDX(handle);
+	int multi_client_device_idx = GET_SMMU_MULTI_CLIENT_IDX(handle);
 	struct cam_dma_buff_info *mapping_info = NULL;
 
-	rc = cam_smmu_map_buffer_validate(buf, idx, dma_dir, paddr_ptr, len_ptr,
+	rc = cam_smmu_map_buffer_validate(buf, idx, multi_client_device_idx,
+		dma_dir, paddr_ptr, len_ptr,
 		region_id, false, &mapping_info);
 
 	if (rc) {
@@ -2982,8 +2986,8 @@ static int cam_smmu_unmap_buf_and_remove_from_list(
 
 		rc = cam_smmu_free_iova(mapping_info->paddr,
 			mapping_info->len,
+			mapping_info->multi_client_device_idx,
 			iommu_cb_set.cb_info[idx].handle);
-
 		if (rc)
 			CAM_ERR(CAM_SMMU, "IOVA free failed");
 
@@ -3963,7 +3967,7 @@ int cam_smmu_map_user_iova(int handle, int ion_fd, struct dma_buf *dmabuf,
 
 		if (ts)
 			CAM_CONVERT_TIMESTAMP_FORMAT((*ts), hrs, min, sec, ms);
-		CAM_ERR(CAM_SMMU,
+		CAM_DBG(CAM_SMMU,
 			"fd=%d already in list [%llu:%llu:%lu:%llu] cb=%s idx=%d handle=%d len=%llu,give same addr back",
 			ion_fd, hrs, min, sec, ms,
 			iommu_cb_set.cb_info[idx].name[0],
@@ -3972,7 +3976,7 @@ int cam_smmu_map_user_iova(int handle, int ion_fd, struct dma_buf *dmabuf,
 		goto get_addr_end;
 	}
 
-	rc = cam_smmu_map_buffer_and_add_to_list(idx, ion_fd,
+	rc = cam_smmu_map_buffer_and_add_to_list(handle, ion_fd,
 		dis_delayed_unmap, dma_dir, paddr_ptr, len_ptr,
 		region_id, is_internal, dmabuf, ref_count);
 	if (rc < 0) {
@@ -4038,7 +4042,7 @@ int cam_smmu_map_kernel_iova(int handle, struct dma_buf *buf,
 		goto get_addr_end;
 	}
 
-	rc = cam_smmu_map_kernel_buffer_and_add_to_list(idx, buf, dma_dir,
+	rc = cam_smmu_map_kernel_buffer_and_add_to_list(handle, buf, dma_dir,
 			paddr_ptr, len_ptr, region_id);
 	if (rc < 0)
 		CAM_ERR(CAM_SMMU, "mapping or add list fail");

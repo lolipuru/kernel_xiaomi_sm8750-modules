@@ -749,11 +749,11 @@ int tpg_hw_start(struct tpg_hw *hw)
 	if (!hw || !hw->hw_info || !hw->hw_info->ops)
 		return -EINVAL;
 
+	mutex_lock(&hw->mutex);
 	reg_settings = hw->register_settings;
 	config = &hw->settings_config;
 	settings_count = config->active_count;
 
-	mutex_lock(&hw->mutex);
 	switch (hw->hw_info->version) {
 	case TPG_HW_VERSION_1_0:
 	case TPG_HW_VERSION_1_1:
@@ -1311,8 +1311,7 @@ struct tpg_hw_request *tpg_hw_create_request(
 	uint64_t request_id)
 {
 	struct tpg_hw_request *req = NULL;
-	uint32_t num_vc_channels = hw->hw_info->max_vc_channels;
-	uint32_t i = 0;
+	uint32_t num_vc_channels, i;
 
 	if (!hw) {
 		CAM_ERR(CAM_TPG, "Invalid params");
@@ -1320,15 +1319,15 @@ struct tpg_hw_request *tpg_hw_create_request(
 	}
 
 	/* Allocate request */
-	req = CAM_MEM_ZALLOC(sizeof(struct tpg_hw_request),
-			GFP_KERNEL);
+	req = CAM_MEM_ZALLOC(sizeof(struct tpg_hw_request), GFP_KERNEL);
 	if (!req) {
-		CAM_ERR(CAM_TPG, "TPG[%d] request allocation failed",
-				hw->hw_idx);
+		CAM_ERR(CAM_TPG, "TPG[%d] request allocation failed", hw->hw_idx);
 		return NULL;
 	}
+
 	req->request_id = request_id;
 	/* Allocate Vc slots in request */
+	num_vc_channels = hw->hw_info->max_vc_channels;
 	req->vc_slots = CAM_MEM_ZALLOC_ARRAY(num_vc_channels, sizeof(struct tpg_vc_slot_info),
 			GFP_KERNEL);
 

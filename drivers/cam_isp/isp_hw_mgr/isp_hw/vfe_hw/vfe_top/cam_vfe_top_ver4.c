@@ -1984,17 +1984,20 @@ static int cam_vfe_handle_irq_top_half(uint32_t evt_id,
 	vfe_res = th_payload->handler_priv;
 	vfe_priv = vfe_res->res_priv;
 
-	CAM_DBG(CAM_ISP,
-		"VFE:%u IRQ status_0: 0x%X status_1: 0x%X",
-		vfe_res->hw_intf->hw_idx, th_payload->evt_status_arr[0],
-		th_payload->evt_status_arr[1]);
+	for (i = 0; i < th_payload->num_registers; i++)
+		CAM_DBG(CAM_ISP,
+			"VFE:%u IRQ status_%u: 0x%X",
+			vfe_res->hw_intf->hw_idx, i,
+			th_payload->evt_status_arr[i]);
 
 	rc  = cam_vfe_get_evt_payload(vfe_priv, &evt_payload);
 	if (rc) {
-		CAM_INFO_RATE_LIMIT(CAM_ISP,
-		"VFE:%u IRQ status_0: 0x%X status_1: 0x%X",
-		vfe_res->hw_intf->hw_idx, th_payload->evt_status_arr[0],
-		th_payload->evt_status_arr[1]);
+		for (i = 0; i < th_payload->num_registers; i++)
+			CAM_INFO_RATE_LIMIT(CAM_ISP,
+				"VFE:%u IRQ status_%u: 0x%X",
+				vfe_res->hw_intf->hw_idx, i,
+				th_payload->evt_status_arr[i]);
+
 		return rc;
 	}
 

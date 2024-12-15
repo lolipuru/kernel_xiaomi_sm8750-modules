@@ -1421,6 +1421,8 @@ static struct cam_ife_csid_ver2_common_reg_info
 	.frame_id_dec_supported                  = 1,
 	.measure_en_hbi_vbi_cnt_mask             = 0xc,
 	.measure_pixel_line_en_mask              = 0x3,
+	.format_measure_max_hbi_shift            = 16,
+	.format_measure_min_hbi_mask             = 0xFFF,
 	.crop_pix_start_mask                     = 0x3fff,
 	.crop_pix_end_mask                       = 0xffff,
 	.crop_line_start_mask                    = 0x3fff,

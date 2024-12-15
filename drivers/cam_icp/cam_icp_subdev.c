@@ -37,7 +37,7 @@
 
 #define CAM_ICP_IS_DEV_IDX_INVALID(dev_idx)                   \
 ({                                                            \
-	((dev_idx) < 0) || ((dev_idx) >= CAM_ICP_SUBDEV_MAX); \
+	((dev_idx) >= CAM_ICP_SUBDEV_MAX);                    \
 })
 
 struct cam_icp_subdev {

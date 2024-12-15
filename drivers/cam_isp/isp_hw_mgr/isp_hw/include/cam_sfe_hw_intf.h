@@ -12,7 +12,7 @@
 #include "cam_cpas_api.h"
 
 #define SFE_CORE_BASE_IDX           0
-#define CAM_SFE_PERF_CNT_MAX        2
+#define CAM_SFE_PERF_CNT_MAX        8
 
 enum cam_sfe_core_id {
 	CAM_SFE_CORE_0,
@@ -66,6 +66,7 @@ struct cam_sfe_generic_debug_config {
 	uint32_t  sfe_sensor_sel;
 	uint32_t  num_counters;
 	uint32_t  sfe_perf_counter_val[CAM_SFE_PERF_CNT_MAX];
+	uint32_t  sfe_bus_wr_perf_counter_val[CAM_SFE_PERF_CNT_MAX];
 };
 
 /*

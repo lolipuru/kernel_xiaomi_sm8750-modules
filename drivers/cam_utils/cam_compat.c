@@ -941,11 +941,11 @@ int cam_iommu_map(struct iommu_domain *domain,
 #endif
 
 #if KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE
-size_t cam_iommu_map_sg(struct iommu_domain *domain,
+ssize_t cam_iommu_map_sg(struct iommu_domain *domain,
 	dma_addr_t iova_start, struct scatterlist *sgl,
 	uint64_t orig_nents, int prot)
 {
-	size_t size = 0;
+	ssize_t size = 0;
 
 	size = iommu_map_sg(domain,
 			iova_start,
@@ -954,11 +954,11 @@ size_t cam_iommu_map_sg(struct iommu_domain *domain,
 	return size;
 }
 #else
-size_t cam_iommu_map_sg(struct iommu_domain *domain,
+ssize_t cam_iommu_map_sg(struct iommu_domain *domain,
 	dma_addr_t iova_start, struct scatterlist *sgl,
 	uint64_t orig_nents, int prot)
 {
-	size_t size = 0;
+	ssize_t size = 0;
 
 	size = iommu_map_sg(domain, iova_start,
 			sgl, orig_nents,

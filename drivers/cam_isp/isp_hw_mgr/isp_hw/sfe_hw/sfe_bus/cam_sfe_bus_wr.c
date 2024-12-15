@@ -17,7 +17,6 @@
 #include "cam_sfe_hw_intf.h"
 #include "cam_irq_controller.h"
 #include "cam_tasklet_util.h"
-#include "cam_sfe_bus.h"
 #include "cam_sfe_bus_wr.h"
 #include "cam_sfe_core.h"
 #include "cam_sfe_soc.h"
@@ -94,8 +93,11 @@ struct cam_sfe_bus_wr_common_data {
 
 	uint32_t                                    sys_cache_default_cfg;
 	uint32_t                                    sfe_debug_cfg;
+	uint32_t                                    perf_cnt_cfg[CAM_SFE_PERF_CNT_MAX];
 	struct cam_sfe_bus_cache_dbg_cfg            cache_dbg_cfg;
 	struct cam_hw_soc_info                     *soc_info;
+	uint32_t                                    cntr;
+	bool                                        perf_cnt_en;
 };
 
 struct cam_sfe_wr_scratch_buf_info {
@@ -850,6 +852,7 @@ static int cam_sfe_bus_release_wm(void   *bus_priv,
 
 static int cam_sfe_bus_start_wm(struct cam_isp_resource_node *wm_res)
 {
+	int j;
 	const uint32_t image_cfg_height_shift_val = 16;
 	const uint32_t enable_debug_status_1 = 11 << 8;
 	struct cam_sfe_bus_wr_wm_resource_data   *rsrc_data =
@@ -893,7 +896,7 @@ static int cam_sfe_bus_start_wm(struct cam_isp_resource_node *wm_res)
 		rsrc_data->hw_regs->debug_status_cfg);
 
 	CAM_DBG(CAM_SFE,
-		"Start SFE:%d WM:%d %s offset:0x%X en_cfg:0x%X width:%d height:%d",
+		"Start SFE:%u WM:%d %s offset:0x%X en_cfg:0x%X width:%d height:%d",
 		rsrc_data->common_data->core_index, rsrc_data->index,
 		wm_res->res_name, (uint32_t) rsrc_data->hw_regs->cfg,
 		rsrc_data->en_cfg, rsrc_data->width, rsrc_data->height);
@@ -902,7 +905,22 @@ static int cam_sfe_bus_start_wm(struct cam_isp_resource_node *wm_res)
 		rsrc_data->stride);
 
 	wm_res->res_state = CAM_ISP_RESOURCE_STATE_STREAMING;
+	common_data->cntr = 0;
 
+	if (!common_data->perf_cnt_en) {
+		for (j = 0; j < CAM_SFE_PERF_CNT_MAX; j++) {
+			if (!common_data->perf_cnt_cfg[j])
+				continue;
+
+			cam_io_w_mb(common_data->perf_cnt_cfg[j],
+				common_data->mem_base +
+				common_data->common_reg->perf_cnt_reg[j].perf_cnt_cfg);
+			common_data->perf_cnt_en = true;
+			CAM_DBG(CAM_ISP, "SFE:%u perf_cnt_%d:0x%x",
+				rsrc_data->common_data->core_index,
+				j, common_data->perf_cnt_cfg[j]);
+		}
+	}
 	return 0;
 }
 
@@ -922,6 +940,7 @@ static int cam_sfe_bus_stop_wm(struct cam_isp_resource_node *wm_res)
 	wm_res->res_state = CAM_ISP_RESOURCE_STATE_RESERVED;
 	rsrc_data->init_cfg_done = false;
 	rsrc_data->hfr_cfg_done = false;
+	common_data->perf_cnt_en = false;
 
 	return 0;
 }
@@ -3346,6 +3365,7 @@ static int cam_sfe_bus_wr_cache_config(
 static int cam_sfe_bus_wr_set_debug_cfg(
 	void *priv, void *cmd_args)
 {
+	int i;
 	struct cam_sfe_bus_wr_priv *bus_priv =
 		(struct cam_sfe_bus_wr_priv  *) priv;
 	struct cam_sfe_debug_cfg_params *debug_cfg;
@@ -3359,6 +3379,49 @@ static int cam_sfe_bus_wr_set_debug_cfg(
 	else
 		bus_priv->common_data.sfe_debug_cfg =
 			debug_cfg->u.dbg_cfg.sfe_debug_cfg;
+
+	for (i = 0; i < CAM_SFE_PERF_CNT_MAX; i++) {
+		bus_priv->common_data.perf_cnt_cfg[i] =
+			debug_cfg->u.dbg_cfg.sfe_bus_wr_perf_counter_val[i];
+	}
+
+	return 0;
+}
+
+static int cam_sfe_bus_read_rst_perf_cntrs(
+	struct cam_sfe_bus_wr_priv *bus_priv)
+{
+	int i;
+	bool print = false;
+	uint32_t val, status;
+	size_t len = 0;
+	uint8_t log_buf[256];
+	struct cam_sfe_bus_wr_common_data *common_data = &bus_priv->common_data;
+
+	if (!common_data->perf_cnt_en)
+		return 0;
+
+	common_data->cntr++;
+	for (i = 0; i < CAM_SFE_PERF_CNT_MAX; i++) {
+		status = cam_io_r_mb(common_data->mem_base +
+			common_data->common_reg->perf_cnt_status);
+		if (!(status & BIT(i)))
+			continue;
+
+		val = cam_io_r_mb(common_data->mem_base +
+			common_data->common_reg->perf_cnt_reg[i].perf_cnt_val);
+
+		cam_io_w_mb(common_data->perf_cnt_cfg[i],
+			common_data->mem_base +
+			common_data->common_reg->perf_cnt_reg[i].perf_cnt_cfg);
+		print = true;
+		CAM_INFO_BUF(CAM_SFE, log_buf, 256, &len, "cnt%d: 0x%x ", i, val);
+	}
+
+	if (print)
+		CAM_INFO(CAM_ISP,
+			"SFE%u Frame: %u Perf counters c%s",
+			common_data->core_index, common_data->cntr, log_buf);
 
 	return 0;
 }
@@ -3467,6 +3530,8 @@ static int cam_sfe_bus_wr_process_cmd(
 		bus_priv = (struct cam_sfe_bus_wr_priv  *) priv;
 		sfe_bus_cap = (struct cam_isp_hw_cap *) cmd_args;
 		sfe_bus_cap->max_out_res_type = bus_priv->max_out_res;
+		sfe_bus_cap->num_wr_perf_counters =
+			bus_priv->common_data.common_reg->num_perf_counters;
 		rc = 0;
 		break;
 	}
@@ -3493,6 +3558,11 @@ static int cam_sfe_bus_wr_process_cmd(
 		break;
 	case CAM_ISP_HW_CMD_DUMP_IRQ_DESCRIPTION:
 		rc = cam_sfe_bus_wr_dump_irq_desc(priv, cmd_args, arg_size);
+		break;
+	case CAM_ISP_HW_CMD_READ_RST_PERF_CNTRS: {
+		bus_priv = (struct cam_sfe_bus_wr_priv  *) priv;
+		rc = cam_sfe_bus_read_rst_perf_cntrs(bus_priv);
+	}
 		break;
 	default:
 		CAM_ERR_RATE_LIMIT(CAM_SFE, "Invalid HW command type:%d",

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/types.h>
@@ -1165,7 +1165,7 @@ static uint32_t cam_cdm_util_dump_reg_cont_cmd_v2(
 	struct cam_cdm_cmd_buf_dump_info *dump_info)
 {
 	int                             i;
-	long                            ret;
+	uint32_t                        ret;
 	uint8_t                        *dst;
 	size_t                          remain_len;
 	uint32_t                       *temp_ptr = cmd_buf_addr;
@@ -1216,7 +1216,7 @@ static uint32_t cam_cdm_util_dump_reg_random_cmd_v2(
 	struct cam_cdm_cmd_buf_dump_info *dump_info)
 {
 	int                             i;
-	long                            ret;
+	uint32_t                        ret;
 	uint8_t                        *dst;
 	uint32_t                       *temp_ptr = cmd_buf_addr;
 	uint32_t                       *addr, *start;

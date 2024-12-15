@@ -1648,7 +1648,7 @@ static int cam_context_user_dump(struct cam_context *ctx,
 		cam_mem_put_cpu_buf(dump_args->buf_handle);
 		return -ENOSPC;
 	}
-	addr = addr + sizeof(struct cam_context_stream_dump);
+	addr = (uint64_t *)((uint8_t *)addr + sizeof(struct cam_context_stream_dump));
 	hdr->size = hdr->word_size * (addr - start);
 	dump_args->offset += hdr->size +
 		sizeof(struct cam_context_dump_header);
@@ -1686,7 +1686,8 @@ static int cam_context_user_dump(struct cam_context *ctx,
 						ctx->dev_name);
 					goto cleanup;
 				}
-				addr = addr + sizeof(struct cam_context_each_req_info);
+				addr = (uint64_t *)((uint8_t *)addr +
+					sizeof(struct cam_context_each_req_info));
 				hdr->size = hdr->word_size * (addr - start);
 				dump_args->offset += hdr->size +
 					sizeof(struct cam_context_dump_header);
@@ -1727,7 +1728,8 @@ static int cam_context_user_dump(struct cam_context *ctx,
 						ctx->dev_name);
 					goto cleanup;
 				}
-				addr = addr + sizeof(struct cam_context_each_req_info);
+				addr = (uint64_t *)((uint8_t *)addr +
+					sizeof(struct cam_context_each_req_info));
 				hdr->size = hdr->word_size * (addr - start);
 				dump_args->offset += hdr->size +
 					sizeof(struct cam_context_dump_header);
@@ -1768,7 +1770,8 @@ static int cam_context_user_dump(struct cam_context *ctx,
 						ctx->dev_name);
 					goto cleanup;
 				}
-				addr = addr + sizeof(struct cam_context_each_req_info);
+				addr = (uint64_t *)((uint8_t *)addr +
+					sizeof(struct cam_context_each_req_info));
 				hdr->size = hdr->word_size * (addr - start);
 				dump_args->offset += hdr->size +
 					sizeof(struct cam_context_dump_header);

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_HFI_REG_H_
@@ -74,7 +74,7 @@
 
 #define HFI_GET_CLIENT_HANDLE(idx) (idx)
 #define HFI_GET_INDEX(client_handle) (client_handle)
-#define IS_VALID_HFI_INDEX(idx) (((idx) >= 0) && ((idx) < HFI_NUM_MAX))
+#define IS_VALID_HFI_INDEX(idx) ((idx) < HFI_NUM_MAX)
 
 /**
  * @INVALID: Invalid state

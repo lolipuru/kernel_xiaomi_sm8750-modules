@@ -298,7 +298,7 @@ void cam_cci_dump_registers(struct cci_device *cci_dev,
 }
 EXPORT_SYMBOL(cam_cci_dump_registers);
 
-static uint32_t cam_cci_wait(struct cci_device *cci_dev,
+static int cam_cci_wait(struct cci_device *cci_dev,
 	enum cci_i2c_master_t master,
 	enum cci_i2c_queue_t queue)
 {
@@ -2379,7 +2379,7 @@ static int32_t cam_cci_i2c_set_sync_prms(struct v4l2_subdev *sd,
 static int32_t cam_cci_release(struct v4l2_subdev *sd,
 	enum cci_i2c_master_t master)
 {
-	uint8_t rc = 0;
+	int                rc;
 	struct cci_device *cci_dev;
 
 	cci_dev = v4l2_get_subdevdata(sd);

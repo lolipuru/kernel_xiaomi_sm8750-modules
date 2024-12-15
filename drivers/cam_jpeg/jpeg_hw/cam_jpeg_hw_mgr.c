@@ -808,7 +808,7 @@ static int cam_jpeg_mgr_process_hw_update_entries(void *priv, void *data)
 	if (!hw_mgr->devices[dev_type][0]->hw_ops.init) {
 		CAM_ERR(CAM_JPEG, "hw op init null ");
 		rc = -EFAULT;
-		goto end;
+		goto end_unusedev;
 	}
 	rc = hw_mgr->devices[dev_type][0]->hw_ops.init(
 		hw_mgr->devices[dev_type][0]->hw_priv,
@@ -816,7 +816,7 @@ static int cam_jpeg_mgr_process_hw_update_entries(void *priv, void *data)
 		sizeof(struct cam_jpeg_hw_ctx_data));
 	if (rc) {
 		CAM_ERR(CAM_JPEG, "Failed to Init %d HW", dev_type);
-		goto end;
+		goto end_unusedev;
 	}
 
 	if (ctx_data->evt_inject_params.is_valid &&
@@ -1946,10 +1946,10 @@ hw_dump:
 			&jpeg_dump_args, sizeof(jpeg_dump_args));
 	}
 
-	mutex_unlock(&hw_mgr->hw_mgr_mutex);
 	CAM_DBG(CAM_JPEG, "Offset before %u after %u",
 		dump_args->offset, jpeg_dump_args.offset);
 	dump_args->offset = jpeg_dump_args.offset;
+	mutex_unlock(&hw_mgr->hw_mgr_mutex);
 	cam_mem_put_cpu_buf(dump_args->buf_handle);
 	return rc;
 }

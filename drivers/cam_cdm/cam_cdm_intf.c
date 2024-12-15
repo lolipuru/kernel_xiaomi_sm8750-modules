@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -133,6 +133,7 @@ int cam_cdm_get_iommu_handle(char *identifier,
 	}
 	CAM_DBG(CAM_CDM, "Looking for Iommu handle of %s", identifier);
 
+	mutex_lock(&cam_cdm_mgr_lock);
 	for (i = 0; i < cdm_mgr.cdm_count; i++) {
 		mutex_lock(&cdm_mgr.nodes[i].lock);
 		if (!cdm_mgr.nodes[i].data) {
@@ -158,6 +159,7 @@ int cam_cdm_get_iommu_handle(char *identifier,
 		if (rc == 0)
 			break;
 	}
+	mutex_unlock(&cam_cdm_mgr_lock);
 	put_cdm_mgr_refcount();
 
 	return rc;

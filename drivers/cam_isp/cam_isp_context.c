@@ -1988,6 +1988,9 @@ static int __cam_isp_ctx_handle_buf_done_for_req_list(
 		ctx_isp->last_bufdone_err_apply_req_id = 0;
 	}
 
+	/* Reset it in case a previous rup affect new frame */
+	atomic_set(&ctx_isp->unserved_rup, 0);
+
 	if (atomic_read(&ctx_isp->internal_recovery_set) && !ctx_isp->active_req_cnt)
 		__cam_isp_context_try_internal_recovery(ctx_isp);
 
@@ -3756,8 +3759,13 @@ static int __cam_isp_ctx_reg_upd_in_sof(struct cam_isp_context *ctx_isp,
 		else
 			CAM_ERR(CAM_ISP,
 				"receive rup in unexpected state, ctx_idx: %u, link: 0x%x",
-				 ctx->ctx_id, ctx->link_hdl);
+				ctx->ctx_id, ctx->link_hdl);
+	} else {
+		atomic_set(&ctx_isp->unserved_rup, 1);
+		CAM_WARN(CAM_ISP, "Received a unserved rup ctx:%u link: 0x%x",
+			ctx->ctx_id, ctx->link_hdl);
 	}
+
 	if (req != NULL) {
 		__cam_isp_ctx_update_state_monitor_array(ctx_isp,
 			CAM_ISP_STATE_CHANGE_TRIGGER_REG_UPDATE,
@@ -3778,6 +3786,7 @@ static int __cam_isp_ctx_epoch_in_applied(struct cam_isp_context *ctx_isp,
 	struct cam_context                 *ctx = ctx_isp->base;
 	struct cam_isp_hw_epoch_event_data *epoch_done_event_data =
 		(struct cam_isp_hw_epoch_event_data *)evt_data;
+	struct cam_isp_ctx_irq_ops         *irq_ops;
 
 	if (!evt_data) {
 		CAM_ERR(CAM_ISP, "invalid event data");
@@ -3785,9 +3794,26 @@ static int __cam_isp_ctx_epoch_in_applied(struct cam_isp_context *ctx_isp,
 	}
 
 	if (ctx_isp->bubble_recover_dis && !ctx_isp->sfe_en) {
-		CAM_INFO(CAM_ISP, "Bubble Recovery Disabled");
-		__cam_isp_ctx_send_sof_timestamp(ctx_isp, 0,
-			CAM_REQ_MGR_SOF_EVENT_SUCCESS);
+		if (atomic_read(&ctx_isp->unserved_rup)) {
+			CAM_INFO(CAM_ISP, "Processed a unserved rup, ctx:%u link: 0x%x",
+				ctx->ctx_id, ctx->link_hdl);
+			__cam_isp_ctx_reg_upd_in_applied_state(ctx_isp, NULL);
+			irq_ops = &ctx_isp->substate_machine_irq[ctx_isp->substate_activated];
+			if (irq_ops->irq_ops[CAM_ISP_HW_EVENT_EPOCH])
+				irq_ops->irq_ops[CAM_ISP_HW_EVENT_EPOCH](ctx_isp, evt_data);
+			else
+				CAM_DBG(CAM_ISP,
+					"No handle function for Substate[%s], evt id %d, ctx:%u link: 0x%x",
+					__cam_isp_ctx_substate_val_to_type(
+					ctx_isp->substate_activated),
+					CAM_ISP_HW_EVENT_EPOCH,
+					ctx->ctx_id, ctx->link_hdl);
+			atomic_set(&ctx_isp->unserved_rup, 0);
+		} else {
+			CAM_INFO(CAM_ISP, "Bubble Recovery Disabled");
+			__cam_isp_ctx_send_sof_timestamp(ctx_isp, 0,
+				CAM_REQ_MGR_SOF_EVENT_SUCCESS);
+		}
 		return 0;
 	}
 
@@ -7222,9 +7248,6 @@ static int __cam_isp_ctx_flush_dev_in_top_state(struct cam_context *ctx,
 			ctx->state, ctx->ctx_id, ctx->link_hdl);
 		return -EINVAL;
 	}
-
-	if (cmd->flush_type == CAM_FLUSH_TYPE_ALL)
-		cam_req_mgr_workq_flush(ctx_isp->workq);
 }
 
 static inline void __cam_isp_ctx_free_fcg_config(
@@ -9426,6 +9449,7 @@ static int __cam_isp_ctx_reset_and_recover(
 
 	/* Block all events till HW is resumed */
 	ctx_isp->substate_activated = CAM_ISP_CTX_ACTIVATED_HALT;
+	atomic_set(&ctx_isp->unserved_rup, 0);
 
 	req = list_first_entry(&ctx->pending_req_list,
 		struct cam_ctx_request, list);
