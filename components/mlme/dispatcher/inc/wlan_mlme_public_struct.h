@@ -2136,6 +2136,7 @@ struct fw_scan_channels {
  * for Hotspot 2.0
  * @roam_aggre_scan_step_rssi: Roam scan step RSSI in aggressive mode
  * @roam_aggre_threshold: Roam threshold in aggressive mode
+ * @mrsno_support: FW support for Multi RSNO feature
  */
 struct wlan_mlme_lfr_cfg {
 	bool mawc_roam_enabled;
@@ -2267,6 +2268,7 @@ struct wlan_mlme_lfr_cfg {
 	bool hs20_btm_offload_disable;
 	uint32_t roam_aggre_scan_step_rssi;
 	uint8_t roam_aggre_threshold;
+	bool mrsno_support;
 };
 
 /**
@@ -3144,6 +3146,7 @@ enum ll_ap_type {
  * @weight_copy: copy of the original weight
  * @valid: Is this a valid center frequency for regulatory domain
  * @weight_calc_done: Weight calculation done for this channel
+ * @num_bonded_pairs: number of valid bonded pairs
  */
 struct sap_ch_info {
 	uint32_t chan_freq;
@@ -3153,6 +3156,7 @@ struct sap_ch_info {
 	uint32_t weight_copy;
 	bool valid;
 	bool weight_calc_done;
+	uint8_t num_bonded_pairs;
 };
 
 /**

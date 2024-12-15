@@ -3342,20 +3342,23 @@ static void sap_validate_chanmode_and_chwidth(struct mac_context *mac_ctx,
 	     sap_ctx->phyMode == eCSR_DOT11_MODE_11g ||
 	     sap_ctx->phyMode == eCSR_DOT11_MODE_11b)) {
 		sap_ctx->ch_params.ch_width = CH_WIDTH_20MHZ;
-		wlan_reg_set_channel_params_for_pwrmode(mac_ctx->pdev,
-					       sap_ctx->chan_freq,
-					       sap_ctx->ch_params.sec_ch_offset,
-					       &sap_ctx->ch_params,
-					       REG_CURRENT_PWR_MODE);
 	} else if (sap_ctx->ch_params.ch_width > CH_WIDTH_40MHZ &&
 		   sap_ctx->phyMode == eCSR_DOT11_MODE_11n) {
 		sap_ctx->ch_params.ch_width = CH_WIDTH_40MHZ;
-		wlan_reg_set_channel_params_for_pwrmode(mac_ctx->pdev,
-					       sap_ctx->chan_freq,
-					       sap_ctx->ch_params.sec_ch_offset,
-					       &sap_ctx->ch_params,
-					       REG_CURRENT_PWR_MODE);
+	} else if (sap_ctx->ch_params.ch_width > CH_WIDTH_80P80MHZ &&
+		   (sap_ctx->phyMode == eCSR_DOT11_MODE_11ac ||
+		    sap_ctx->phyMode == eCSR_DOT11_MODE_11ac_ONLY ||
+		    sap_ctx->phyMode == eCSR_DOT11_MODE_11ax ||
+		    sap_ctx->phyMode == eCSR_DOT11_MODE_11ax_ONLY)) {
+		sap_ctx->ch_params.ch_width = CH_WIDTH_160MHZ;
 	}
+
+	if (orig_ch_width != sap_ctx->ch_params.ch_width)
+		wlan_reg_set_channel_params_for_pwrmode(mac_ctx->pdev,
+						       sap_ctx->chan_freq,
+						       sap_ctx->ch_params.sec_ch_offset,
+						       &sap_ctx->ch_params,
+						       REG_CURRENT_PWR_MODE);
 
 	if (orig_ch_width != sap_ctx->ch_params.ch_width ||
 	    orig_phymode != sap_ctx->phyMode)
@@ -3983,7 +3986,8 @@ static QDF_STATUS sap_fsm_state_starting(struct sap_context *sap_ctx,
 			wlan_p2p_get_ap_assist_dfs_params(sap_ctx->vdev,
 							  &is_dfs_owner,
 							  &is_valid_ap_assist,
-							  NULL, NULL, NULL);
+							  NULL, NULL,
+							  NULL, NULL);
 			if (!is_dfs_owner && is_valid_ap_assist)
 				is_dfs = false;
 		}

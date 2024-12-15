@@ -2049,7 +2049,8 @@ lim_get_self_dot11_mode(struct mac_context *mac_ctx, enum QDF_OPMODE opmode,
 static bool
 lim_get_bss_11be_mode_allowed(struct mac_context *mac_ctx,
 			      struct bss_description *bss_desc,
-			      tDot11fBeaconIEs *ie_struct)
+			      tDot11fBeaconIEs *ie_struct,
+			      uint8_t vdev_id)
 {
 	struct scan_cache_entry *scan_entry;
 	bool is_eht_allowed;
@@ -2057,9 +2058,11 @@ lim_get_bss_11be_mode_allowed(struct mac_context *mac_ctx,
 	if (!ie_struct->eht_cap.present)
 		return false;
 
-	scan_entry = wlan_scan_get_entry_by_bssid(mac_ctx->pdev,
-						  (struct qdf_mac_addr *)
-						  bss_desc->bssId);
+	scan_entry =
+		wlan_scan_entry_by_bssid_and_security(mac_ctx->pdev,
+						      (struct qdf_mac_addr *)
+						       bss_desc->bssId,
+						       vdev_id);
 
 	/*
 	 * If AP advertises multiple AKMs(WPA2 PSK + WPA3), allow connection
@@ -2086,7 +2089,7 @@ lim_get_bss_11be_mode_allowed(struct mac_context *mac_ctx,
 static enum mlme_dot11_mode
 lim_get_bss_dot11_mode(struct mac_context *mac_ctx,
 		       struct bss_description *bss_desc,
-		       tDot11fBeaconIEs *ie_struct)
+		       tDot11fBeaconIEs *ie_struct, uint8_t vdev_id)
 {
 	enum mlme_dot11_mode bss_dot11_mode;
 
@@ -2117,7 +2120,8 @@ lim_get_bss_dot11_mode(struct mac_context *mac_ctx,
 		bss_dot11_mode = MLME_DOT11_MODE_11AX;
 
 	if (ie_struct->eht_cap.present &&
-	    lim_get_bss_11be_mode_allowed(mac_ctx, bss_desc, ie_struct))
+	    lim_get_bss_11be_mode_allowed(mac_ctx, bss_desc, ie_struct,
+					  vdev_id))
 		bss_dot11_mode = MLME_DOT11_MODE_11BE;
 
 	return bss_dot11_mode;
@@ -2800,7 +2804,8 @@ lim_fill_dot11_mode(struct mac_context *mac_ctx, struct pe_session *session,
 						 session->vdev_id,
 						 self_dot11_mode);
 
-	bss_dot11_mode = lim_get_bss_dot11_mode(mac_ctx, bss_desc, ie_struct);
+	bss_dot11_mode = lim_get_bss_dot11_mode(mac_ctx, bss_desc, ie_struct,
+						session->vdev_id);
 
 	status = lim_get_intersected_dot11_mode_sta_ap(mac_ctx, self_dot11_mode,
 						       bss_dot11_mode,
@@ -4252,6 +4257,7 @@ lim_strip_rsnx_ie(struct mac_context *mac_ctx,
 	uint8_t *rsnxe = NULL, *new_rsnxe = NULL;
 	uint8_t *ap_rsnxe = NULL;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	uint8_t rsn_gen;
 
 	akm = wlan_crypto_get_param(session->vdev, WLAN_CRYPTO_PARAM_KEY_MGMT);
 	if (akm == -1 ||
@@ -4283,11 +4289,9 @@ lim_strip_rsnx_ie(struct mac_context *mac_ctx,
 		return status;
 	}
 
-	ap_rsnxe = util_scan_entry_rsnxe(req->entry);
-	if (!ap_rsnxe)
-		ap_rsnxe_len = 0;
-	else
-		ap_rsnxe_len = ap_rsnxe[SIR_MAC_IE_LEN_OFFSET];
+	rsn_gen = req->entry->neg_sec_info.rsn_gen_selected;
+	ap_rsnxe = util_scan_entry_rsnxe_by_gen(req->entry, rsn_gen);
+	ap_rsnxe_len = util_get_rsnxe_len_by_gen(req->entry, rsn_gen);
 
 	/*
 	 * Do not modify userspace RSNXE if either:
@@ -4403,7 +4407,7 @@ lim_fill_rsn_ie(struct mac_context *mac_ctx, struct pe_session *session,
 	struct wlan_crypto_pmksa pmksa, *pmksa_peer;
 	struct bss_description *bss_desc;
 
-	rsn_ie = qdf_mem_malloc(DOT11F_IE_RSN_MAX_LEN + 2);
+	rsn_ie = qdf_mem_malloc(WLAN_MAX_IE_LEN + 2);
 	if (!rsn_ie)
 		return QDF_STATUS_E_NOMEM;
 
@@ -4808,6 +4812,19 @@ lim_fill_session_params(struct mac_context *mac_ctx,
 				      NULL, 0,
 				      mlme_priv->connect_info.ext_cap_ie,
 				      DOT11F_IE_EXTCAP_MAX_LEN);
+
+		/*
+		 * rsno_gen_used is used to append RSN selection IE in the
+		 * assoc request, therefore set the rsn gen only if the
+		 * DUT and AP supports MRSNO.
+		 */
+		if (wlan_vdev_get_rsno_gen_supported(session->vdev) &&
+		    (util_scan_entry_wifi6_rsno(req->entry) ||
+		     util_scan_entry_wifi7_rsno(req->entry)))
+			session->rsno_gen_used = req->rsno_gen_used;
+		else
+			session->rsno_gen_used = 0;
+
 		qdf_mem_free(add_ie);
 
 		if (QDF_IS_STATUS_ERROR(status)) {
@@ -5366,7 +5383,8 @@ static void lim_handle_reassoc_req(struct cm_vdev_join_req *req)
 	lim_strip_rsnx_ie(mac_ctx, session_entry, req);
 
 	if (lim_is_rsn_profile(session_entry) &&
-	    !util_scan_entry_rsnxe(req->entry)) {
+	    !util_scan_entry_rsnxe_by_gen(req->entry,
+				req->entry->neg_sec_info.rsn_gen_selected)) {
 		pe_debug("Bss bcn has no RSNXE, strip if has");
 		status = lim_strip_ie(mac_ctx, req->assoc_ie.ptr,
 				      (uint16_t *)&req->assoc_ie.len,
@@ -5679,7 +5697,8 @@ lim_fill_preauth_req_dot11_mode(struct mac_context *mac_ctx,
 		   lim_intersect_user_dot11_mode(mac_ctx, QDF_STA_MODE,
 						 vdev_id, self_dot11_mode);
 
-	bss_dot11_mode = lim_get_bss_dot11_mode(mac_ctx, bss_desc, ie_struct);
+	bss_dot11_mode = lim_get_bss_dot11_mode(mac_ctx, bss_desc, ie_struct,
+						vdev_id);
 
 	status = lim_get_intersected_dot11_mode_sta_ap(mac_ctx, self_dot11_mode,
 						       bss_dot11_mode,
@@ -5847,9 +5866,12 @@ lim_get_eirp_320_power_from_tpe_ie(tDot11fIEtransmit_power_env *tpe)
 	if (tpe->max_tx_pwr_interpret == LOCAL_EIRP)
 		eirp_power_320_Mhz =
 			tpe->ext_max_tx_power.ext_max_tx_power_local_eirp.max_tx_power_for_320;
-	else
+	else if (tpe->max_tx_pwr_interpret == REGULATORY_CLIENT_EIRP)
 		eirp_power_320_Mhz =
 			tpe->ext_max_tx_power.ext_max_tx_power_reg_eirp.max_tx_power_for_320;
+	else if (tpe->max_tx_pwr_interpret == ADDITIONAL_REGULATORY_CLIENT_EIRP)
+		eirp_power_320_Mhz =
+			tpe->ext_max_tx_power.ext_max_tx_power_addn_reg_eirp.max_tx_power_for_320;
 
 	return eirp_power_320_Mhz;
 }
@@ -5896,9 +5918,12 @@ lim_update_ext_tpe_power(struct mac_context *mac, struct pe_session *session,
 		if (tpe->max_tx_pwr_interpret == LOCAL_EIRP_PSD)
 			ext_psd_count =
 			tpe->ext_max_tx_power.ext_max_tx_power_local_psd.ext_count;
-		else
+		else if (tpe->max_tx_pwr_interpret == REGULATORY_CLIENT_EIRP_PSD)
 			ext_psd_count =
 			tpe->ext_max_tx_power.ext_max_tx_power_reg_psd.ext_count;
+		else
+			ext_psd_count =
+			tpe->ext_max_tx_power.ext_max_tx_power_addn_reg_psd.ext_count;
 
 		if (existing_pwr_count >= MAX_NUM_PWR_LEVEL) {
 			pe_debug("already updated %d psd powers",
@@ -5934,9 +5959,12 @@ lim_update_ext_tpe_power(struct mac_context *mac, struct pe_session *session,
 			if (tpe->max_tx_pwr_interpret == LOCAL_EIRP_PSD)
 				psd_pwr =
 					tpe->ext_max_tx_power.ext_max_tx_power_local_psd.max_tx_psd_power[j];
-			else
+			else if (tpe->max_tx_pwr_interpret == REGULATORY_CLIENT_EIRP_PSD)
 				psd_pwr =
 					tpe->ext_max_tx_power.ext_max_tx_power_reg_psd.max_tx_psd_power[j];
+			else
+				psd_pwr =
+					tpe->ext_max_tx_power.ext_max_tx_power_addn_reg_psd.max_tx_psd_power[j];
 
 			/* Don't add punctured power in tpe power array */
 			if (psd_pwr == PUNCTURED_CHAN_POWER) {
@@ -6160,8 +6188,9 @@ void lim_parse_tpe_ie(struct mac_context *mac, struct pe_session *session,
 		}
 
 		expect_num = lim_get_num_pwr_levels(false, session->ch_width);
-		single_tpe.max_tx_pwr_count =
-			QDF_MIN(single_tpe.max_tx_pwr_count, expect_num - 1);
+		if (expect_num > 0)
+			single_tpe.max_tx_pwr_count =
+				QDF_MIN(single_tpe.max_tx_pwr_count, expect_num - 1);
 
 		vdev_mlme->reg_tpc_obj.is_psd_power = false;
 		vdev_mlme->reg_tpc_obj.eirp_power = 0;

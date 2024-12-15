@@ -434,6 +434,11 @@ static bool sap_chan_sel_init(struct mac_context *mac,
 	uint32_t len = 0;
 	uint8_t num_freq = 0;
 	uint8_t *info;
+	enum QDF_OPMODE mode;
+
+	mode = wlan_get_opmode_from_vdev_id(mac->pdev, sap_ctx->vdev_id);
+	if (mode == QDF_MAX_NO_OF_MODE)
+		return false;
 
 	ch_info_params->num_ch =
 		mac->scan.base_channels.numChannels;
@@ -523,7 +528,7 @@ static bool sap_chan_sel_init(struct mac_context *mac,
 		}
 
 		if (!policy_mgr_is_sap_freq_allowed(mac->psoc,
-			wlan_vdev_mlme_get_opmode(sap_ctx->vdev), *ch_list)) {
+						    mode, *ch_list)) {
 			if (sap_acs_is_puncture_applicable(sap_ctx->acs_cfg)) {
 				ch_support_puncture = true;
 				len += qdf_scnprintf(
@@ -1977,7 +1982,11 @@ sap_sort_chl_weight_80_mhz(struct mac_context *mac_ctx,
 	uint32_t len = 0;
 	uint8_t *info;
 	bool is_acs_channel;
-	enum QDF_OPMODE mode = wlan_vdev_mlme_get_opmode(sap_ctx->vdev);
+	enum QDF_OPMODE mode;
+
+	mode = wlan_get_opmode_from_vdev_id(mac_ctx->pdev, sap_ctx->vdev_id);
+	if (mode == QDF_MAX_NO_OF_MODE)
+		return QDF_STATUS_E_EXISTS;
 
 	chan_info = ch_info_params->ch_info;
 
@@ -2147,7 +2156,11 @@ sap_sort_chl_weight_160_mhz(struct mac_context *mac_ctx,
 	uint32_t len = 0;
 	uint8_t *info;
 	bool is_acs_channel;
-	enum QDF_OPMODE mode = wlan_vdev_mlme_get_opmode(sap_ctx->vdev);
+	enum QDF_OPMODE mode;
+
+	mode = wlan_get_opmode_from_vdev_id(mac_ctx->pdev, sap_ctx->vdev_id);
+	if (mode == QDF_MAX_NO_OF_MODE)
+		return QDF_STATUS_E_EXISTS;
 
 	chan_info = ch_info_params->ch_info;
 	info = qdf_mem_malloc(SAP_MAX_CHANNEL_INFO_LOG);
@@ -2352,12 +2365,32 @@ sap_sort_chl_weight_320_mhz(struct mac_context *mac_ctx,
 	uint32_t len = 0;
 	uint8_t *info;
 	bool is_acs_channel;
-	enum QDF_OPMODE mode = wlan_vdev_mlme_get_opmode(sap_ctx->vdev);
+	enum QDF_OPMODE mode;
+	uint32_t ap_power_type_6g = 0;
+	uint8_t num_bonded_pairs = 0;
+	const struct bonded_channel_freq *bonded_ch_ptr[2] = {NULL, NULL};
+	enum supported_6g_pwr_types supported_ap_pwr_type;
+
+	mode = wlan_get_opmode_from_vdev_id(mac_ctx->pdev, sap_ctx->vdev_id);
+	if (mode == QDF_MAX_NO_OF_MODE)
+		return QDF_STATUS_E_EXISTS;
 
 	chan_info = ch_info_params->ch_info;
 	info = qdf_mem_malloc(SAP_MAX_CHANNEL_INFO_LOG);
 	if (!info)
 		return QDF_STATUS_E_NOMEM;
+
+	wlan_reg_get_cur_6g_ap_pwr_type(mac_ctx->pdev, &ap_power_type_6g);
+	supported_ap_pwr_type =
+		wlan_reg_conv_6g_ap_type_to_supported_6g_pwr_types(ap_power_type_6g);
+
+	for (j = 0; j < ch_info_params->num_ch; j++) {
+		num_bonded_pairs = wlan_reg_get_320_bonded_chan_array(
+							mac_ctx->pdev,
+							chan_info[j].chan_freq,
+							0, bonded_ch_ptr);
+		chan_info[j].num_bonded_pairs = num_bonded_pairs;
+	}
 
 	for (j = 0; j < ch_info_params->num_ch; j++) {
 		if (chan_info[j].weight_calc_done)
@@ -2370,14 +2403,14 @@ sap_sort_chl_weight_320_mhz(struct mac_context *mac_ctx,
 		wlan_reg_set_channel_params_for_pwrmode(mac_ctx->pdev,
 							chan_info[j].chan_freq,
 							0, &acs_ch_params,
-							REG_CURRENT_PWR_MODE);
+							supported_ap_pwr_type);
 
 		is_acs_channel = wlansap_is_channel_present_in_acs_list(
 					chan_info[j].chan_freq,
 					sap_ctx->acs_cfg->freq_list,
 					sap_ctx->acs_cfg->ch_list_count);
 
-		/* Check if the freq supports 320 Mhz */
+		/* Check if the freq supports 320 MHz */
 		if (acs_ch_params.ch_width != CH_WIDTH_320MHZ ||
 		    !is_acs_channel) {
 			chan_info[j].weight = SAP_ACS_WEIGHT_MAX * 16;
@@ -2385,14 +2418,14 @@ sap_sort_chl_weight_320_mhz(struct mac_context *mac_ctx,
 			continue;
 		}
 
-		/* no other freq left for 320 Mhz operation in spectrum */
+		/* no other freq left for 320 MHz operation in spectrum */
 		if (j + 15 > ch_info_params->num_ch) {
 			chan_info[j].weight = SAP_ACS_WEIGHT_MAX * 16;
 			chan_info[j].weight_calc_done = true;
 			continue;
 		}
 
-		/* Check whether all frequencies are present for 160 Mhz */
+		/* Check whether all frequencies are present for 320 MHz */
 
 		if (!(((chan_info[j].chan_freq + 20) ==
 			chan_info[j + 1].chan_freq) &&
@@ -2426,7 +2459,7 @@ sap_sort_chl_weight_320_mhz(struct mac_context *mac_ctx,
 				 chan_info[j + 15].chan_freq))) {
 			/*
 			 * some channels does not exist in pSectInfo array,
-			 * skip this channel and those in the same ETH320 width
+			 * skip this channel and those in the same EHT320 width
 			 */
 			chan_info[j].weight = SAP_ACS_WEIGHT_MAX * 16;
 			chan_info[j].weight_calc_done = true;
@@ -2552,8 +2585,18 @@ sap_sort_chl_weight_320_mhz(struct mac_context *mac_ctx,
 				min_ch_weight = chan_info[j + i].weight;
 				minIdx = i;
 			}
-			chan_info[j + i].weight = SAP_ACS_WEIGHT_MAX * 16;
-			chan_info[j + i].weight_calc_done = true;
+
+			if (chan_info[j + i].num_bonded_pairs) {
+				chan_info[j + i].weight_calc_done = false;
+				chan_info[j + i].num_bonded_pairs -= 1;
+			}
+
+			if (chan_info[j + i].num_bonded_pairs == 0) {
+				chan_info[j + i].weight =
+						SAP_ACS_WEIGHT_MAX * 16;
+				chan_info[j + i].weight_calc_done = true;
+			}
+
 			if (chan_info[j + i].valid)
 				has_valid = true;
 
@@ -2576,12 +2619,12 @@ sap_sort_chl_weight_320_mhz(struct mac_context *mac_ctx,
 					     valid_chans);
 		}
 		if (len >= SAP_MAX_CHANNEL_INFO_LOG - SAP_40_PLUS_BW_SCORE_LEN) {
-			sap_nofl_debug("ACS 320 Mhz freq score: %s", info);
+			sap_nofl_debug("ACS 320 MHz freq score: %s", info);
 			len = 0;
 		}
 	}
 	if (len)
-		sap_nofl_debug("ACS 320 Mhz freq score: %s", info);
+		sap_nofl_debug("ACS 320 MHz freq score: %s", info);
 	qdf_mem_free(info);
 
 	if (!valid_chans) {
@@ -2848,13 +2891,17 @@ sap_sort_chl_weight_40_mhz(struct mac_context *mac_ctx,
 	uint32_t len = 0;
 	uint8_t *info;
 	bool is_acs_channel;
-	enum QDF_OPMODE mode = wlan_vdev_mlme_get_opmode(sap_ctx->vdev);
+	enum QDF_OPMODE mode;
+
+	mode = wlan_get_opmode_from_vdev_id(mac_ctx->pdev, sap_ctx->vdev_id);
+	if (mode == QDF_MAX_NO_OF_MODE)
+		return QDF_STATUS_E_EXISTS;
 
 	chan_info = ch_info_params->ch_info;
-
 	info = qdf_mem_malloc(SAP_MAX_CHANNEL_INFO_LOG);
 	if (!info)
 		return QDF_STATUS_E_NOMEM;
+
 	for (j = 0; j < ch_info_params->num_ch; j++) {
 
 		if (WLAN_REG_IS_24GHZ_CH_FREQ(chan_info[j].chan_freq))

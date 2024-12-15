@@ -75,6 +75,7 @@
 #define WMM_OUI_TYPE_SIZE  5
 
 #define RSN_OUI_SIZE 4
+#define SIGN_BIT 7
 /* ////////////////////////////////////////////////////////////////////// */
 #ifdef WLAN_FEATURE_FILS_SK_SAP
 static void fils_convert_assoc_req_frame2_struct(tDot11fAssocRequest *ar,
@@ -2104,12 +2105,26 @@ populate_dot11f_measurement_report2(struct mac_context *mac,
 } /* End PopulatedDot11fMeasurementReport2. */
 #endif
 
+static
+int8_t populate_decimal_min_power(uint8_t power)
+{
+	int is_power_negative;
+
+	is_power_negative = (power & (1 << SIGN_BIT)) != 0;
+
+	if (is_power_negative)
+		return power | ~((1 << SIGN_BIT) - 1);
+	else
+		return power;
+}
+
 void
 populate_dot11f_power_caps(struct mac_context *mac,
 			   tDot11fIEPowerCaps *pCaps,
 			   uint8_t nAssocType, struct pe_session *pe_session)
 {
 	struct vdev_mlme_obj *mlme_obj;
+	int8_t min_power;
 
 	pCaps->minTxPower = pe_session->min_11h_pwr;
 	pCaps->maxTxPower = pe_session->maxTxPower;
@@ -2119,9 +2134,10 @@ populate_dot11f_power_caps(struct mac_context *mac,
 	if (mlme_obj && mlme_obj->mgmt.generic.tx_pwrlimit)
 		pCaps->maxTxPower = mlme_obj->mgmt.generic.tx_pwrlimit;
 
+	min_power = populate_decimal_min_power(mlme_obj->mgmt.generic.minpower);
+
 	if (mlme_obj && mlme_obj->mgmt.generic.minpower)
-		pCaps->minTxPower = QDF_MIN(pCaps->minTxPower,
-					    mlme_obj->mgmt.generic.minpower);
+		pCaps->minTxPower = QDF_MIN(pCaps->minTxPower, min_power);
 
 	pCaps->present = 1;
 } /* End populate_dot11f_power_caps. */
@@ -4247,30 +4263,14 @@ static QDF_STATUS
 sir_copy_assoc_rsp_partner_info_to_session(struct pe_session *session_entry,
 					   struct mlo_partner_info *partner_info)
 {
-	uint16_t i, partner_idx = 0, j, link_id;
-	struct mlo_link_info *link_info;
 	struct mlo_partner_info *ml_partner_info =
 			&session_entry->ml_partner_info;
 
-	link_info = mlo_mgr_get_ap_link(session_entry->vdev);
-	if (!link_info)
-		return QDF_STATUS_E_FAILURE;
-
 	/* Clear the Partner info already filled from the join request */
 	qdf_mem_zero(ml_partner_info, sizeof(*ml_partner_info));
-	for (i = 1; i < WLAN_MAX_ML_BSS_LINKS; i++) {
-		link_id = link_info[i].link_id;
-		for (j = 0; j < partner_info->num_partner_links; j++) {
-			if (partner_info->partner_link_info[j].link_id !=
-			    link_id)
-				continue;
-
-			ml_partner_info->partner_link_info[partner_idx++] =
-					partner_info->partner_link_info[j];
-			break;
-		}
-	}
-	ml_partner_info->num_partner_links = partner_idx;
+	if (partner_info->num_partner_links)
+		qdf_mem_copy(ml_partner_info, partner_info,
+			     sizeof(*partner_info));
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -4309,16 +4309,15 @@ sir_convert_assoc_resp_frame2_mlo_struct(struct mac_context *mac,
 					    &partner_info,
 					    WLAN_FC0_STYPE_ASSOC_RESP);
 
-	sir_copy_assoc_rsp_partner_info_to_session(session_entry,
-						   &partner_info);
-
-	if (!wlan_cm_is_roam_sync_in_progress(mac->psoc,
+	if (session_entry->ml_partner_info.num_partner_links &&
+	    !wlan_cm_is_roam_sync_in_progress(mac->psoc,
 					      session_entry->vdev_id)) {
-		session_entry->ml_partner_info.num_partner_links =
-		QDF_MIN(
-		session_entry->ml_partner_info.num_partner_links,
-		session_entry->lim_join_req->partner_info.num_partner_links);
+		mlo_mgr_validate_connection_partner_links(session_entry->vdev,
+							  &partner_info);
+		sir_copy_assoc_rsp_partner_info_to_session(session_entry,
+							   &partner_info);
 	}
+
 	util_get_bvmlie_mldmacaddr(ml_ie, ml_ie_total_len,
 				   &mld_mac_addr);
 	qdf_mem_copy(ml_ie_info->mld_mac_addr,
@@ -10637,7 +10636,8 @@ QDF_STATUS lim_ieee80211_unpack_tpe(const uint8_t *tpe_ie,
 
 	/* Get number of tx power included in IE based on interpret value */
 	if (dot11f_tpe->max_tx_pwr_interpret == 0 ||
-	    dot11f_tpe->max_tx_pwr_interpret == 2) {
+	    dot11f_tpe->max_tx_pwr_interpret == 2 ||
+	    dot11f_tpe->max_tx_pwr_interpret == 4) {
 		dot11f_tpe->num_tx_power = dot11f_tpe->max_tx_pwr_count + 1;
 	} else {
 		if (!dot11f_tpe->max_tx_pwr_count) {
@@ -10697,6 +10697,27 @@ QDF_STATUS lim_ieee80211_unpack_tpe(const uint8_t *tpe_ie,
 		}
 		ext_psd_count = dot11f_tpe->ext_max_tx_power.ext_max_tx_power_reg_psd.ext_count;
 		qdf_mem_copy(dot11f_tpe->ext_max_tx_power.ext_max_tx_power_reg_psd.max_tx_psd_power,
+			     buf, ext_psd_count);
+
+		buf += ext_psd_count;
+		ie_len -= ext_psd_count;
+		break;
+	case 4:
+		dot11f_tpe->ext_max_tx_power.ext_max_tx_power_addn_reg_eirp.max_tx_power_for_320 = *buf;
+		dot11f_tpe->num_tx_power++;
+		buf += 1;
+		ie_len -= 1;
+		break;
+	case 5:
+		tmp = *buf;
+		buf += 1;
+		ie_len -= 1;
+		dot11f_tpe->ext_max_tx_power.ext_max_tx_power_addn_reg_psd.ext_count = tmp >> 0 & 0xf;
+		if (unlikely(ie_len < (tmp >> 0 & 0xf)))
+			return QDF_STATUS_E_BADMSG;
+
+		ext_psd_count = dot11f_tpe->ext_max_tx_power.ext_max_tx_power_addn_reg_psd.ext_count;
+		qdf_mem_copy(dot11f_tpe->ext_max_tx_power.ext_max_tx_power_addn_reg_psd.max_tx_psd_power,
 			     buf, ext_psd_count);
 
 		buf += ext_psd_count;
@@ -13698,6 +13719,19 @@ QDF_STATUS populate_dot11f_auth_mlo_ie(struct mac_context *mac_ctx,
 	return QDF_STATUS_SUCCESS;
 }
 
+static inline void
+populate_dot11f_use_reporting_bss_ext_cap(tDot11fIEExtCap *reporting_ext_cap,
+					  tDot11fIEExtCap *reported_ext_cap)
+{
+	struct s_ext_cap *reporting_caps, *reported_caps;
+
+	reporting_caps = (struct s_ext_cap *)&reporting_ext_cap->bytes[0];
+	reported_caps = (struct s_ext_cap *)&reported_ext_cap->bytes[0];
+
+	if (reported_caps->scs != reporting_caps->scs)
+		reported_caps->scs = reporting_caps->scs;
+}
+
 QDF_STATUS populate_dot11f_assoc_req_mlo_ie(struct mac_context *mac_ctx,
 					    struct pe_session *pe_session,
 					    tDot11fAssocRequest *frm)
@@ -14098,6 +14132,9 @@ QDF_STATUS populate_dot11f_assoc_req_mlo_ie(struct mac_context *mac_ctx,
 		populate_dot11f_ext_cap(mac_ctx, true, &ext_cap, NULL);
 		populate_dot11f_btm_extended_caps(mac_ctx, pe_session,
 						  &ext_cap);
+		populate_dot11f_use_reporting_bss_ext_cap(&frm->ExtCap,
+							  &ext_cap);
+
 		if ((ext_cap.present && frm->ExtCap.present &&
 		     qdf_mem_cmp(&ext_cap, &frm->ExtCap, sizeof(ext_cap))) ||
 		     (ext_cap.present && !frm->ExtCap.present)) {
@@ -14106,7 +14143,7 @@ QDF_STATUS populate_dot11f_assoc_req_mlo_ie(struct mac_context *mac_ctx,
 					       len_remaining, &len_consumed);
 			p_sta_prof += len_consumed;
 			len_remaining -= len_consumed;
-		} else if (ext_cap.present && !frm->ExtCap.present) {
+		} else if (!ext_cap.present && frm->ExtCap.present) {
 			non_inher_ie_lists[non_inher_len++] = DOT11F_EID_EXTCAP;
 		}
 
@@ -14567,16 +14604,13 @@ void populate_dot11f_6g_rnr(struct mac_context *mac_ctx,
 	}
 	populate_dot11f_rnr_tbtt_info(mac_ctx, session, co_session, dot11f,
 				      CURRENT_RNR_TBTT_INFO_LEN);
-	pe_debug("vdev id %d populate RNR IE with 6G vdev id %d op class %d chan num %d",
+	pe_debug("vdev id %d populate RNR IE with 6G vdev id %d op class %d chan num %d tbtt_len %d",
 		 wlan_vdev_get_id(session->vdev),
 		 wlan_vdev_get_id(co_session->vdev),
-		 dot11f->op_class, dot11f->channel_num);
-
-	pe_debug("AK: tbtt_len %d ",
+		 dot11f->op_class, dot11f->channel_num,
 		 dot11f->tbtt_info_len);
 
 	*num_rnr = 1;
-
 }
 
 QDF_STATUS populate_dot11f_bcn_prot_extcaps(struct mac_context *mac_ctx,

@@ -150,8 +150,8 @@ const struct nla_policy
 						.type = NLA_S32},
 };
 
-static bool wlan_hdd_is_tdls_allowed(struct hdd_context *hdd_ctx,
-				     struct wlan_objmgr_vdev *vdev)
+bool wlan_hdd_is_tdls_allowed(struct hdd_context *hdd_ctx,
+			      struct wlan_objmgr_vdev *vdev)
 {
 	bool tdls_support;
 	struct wlan_hdd_link_info *link_info;
@@ -162,8 +162,9 @@ static bool wlan_hdd_is_tdls_allowed(struct hdd_context *hdd_ctx,
 		return false;
 	}
 
-	if (!wlan_cm_is_vdev_connected(vdev)) {
-		hdd_debug("Failed due to Not associated");
+	if (wlan_vdev_is_up(vdev) != QDF_STATUS_SUCCESS) {
+		hdd_debug("vdev %d Failed due to Not associated",
+			  wlan_vdev_get_id(vdev));
 		return false;
 	}
 

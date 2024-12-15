@@ -3921,18 +3921,14 @@ QDF_STATUS sme_enable_active_apf_mode_ind(mac_handle_t mac_handle,
 	struct mac_context *mac = MAC_CONTEXT(mac_handle);
 	struct scheduler_msg message = {0};
 	tAniDHCPInd *pMsg;
-	struct csr_roam_session *pSession;
 
 	status = sme_acquire_global_lock(&mac->sme);
 	if (status == QDF_STATUS_SUCCESS) {
-		pSession = CSR_GET_SESSION(mac, sessionId);
-
-		if (!pSession) {
-			sme_err("Session: %d not found", sessionId);
+		if (!CSR_IS_SESSION_VALID(mac, sessionId)) {
+			sme_err("invalid vdev %d", sessionId);
 			sme_release_global_lock(&mac->sme);
-			return QDF_STATUS_E_FAILURE;
+			return QDF_STATUS_E_INVAL;
 		}
-		pSession->dhcp_done = false;
 
 		pMsg = qdf_mem_malloc(sizeof(tAniDHCPInd));
 		if (!pMsg) {
@@ -3975,18 +3971,14 @@ QDF_STATUS sme_disable_active_apf_mode_ind(mac_handle_t mac_handle,
 	struct mac_context *mac = MAC_CONTEXT(mac_handle);
 	struct scheduler_msg message = {0};
 	tAniDHCPInd *pMsg;
-	struct csr_roam_session *pSession;
 
 	status = sme_acquire_global_lock(&mac->sme);
 	if (status == QDF_STATUS_SUCCESS) {
-		pSession = CSR_GET_SESSION(mac, sessionId);
-
-		if (!pSession) {
-			sme_err("Session: %d not found", sessionId);
+		if (!CSR_IS_SESSION_VALID(mac, sessionId)) {
+			sme_err("invalid vdev %d", sessionId);
 			sme_release_global_lock(&mac->sme);
-			return QDF_STATUS_E_FAILURE;
+			return QDF_STATUS_E_INVAL;
 		}
-		pSession->dhcp_done = false;
 
 		pMsg = qdf_mem_malloc(sizeof(tAniDHCPInd));
 		if (!pMsg) {
@@ -15883,7 +15875,7 @@ void sme_update_eht_cap_mcs(mac_handle_t mac_handle, uint8_t vdev_id,
 
 void sme_activate_mlo_links(mac_handle_t mac_handle, uint8_t session_id,
 			    uint8_t num_links,
-			    struct qdf_mac_addr active_link_addr[WLAN_MLO_MAX_VDEVS])
+			    struct qdf_mac_addr *active_link_addr)
 {
 	struct mac_context *mac_ctx = MAC_CONTEXT(mac_handle);
 	struct csr_roam_session *session;

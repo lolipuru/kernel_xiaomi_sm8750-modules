@@ -133,7 +133,7 @@ static void if_mgr_disable_roaming_on_vdev(struct wlan_objmgr_pdev *pdev,
 
 	if (curr_vdev_id == vdev_id ||
 	    wlan_vdev_mlme_get_opmode(vdev) != QDF_STA_MODE ||
-	    wlan_cm_is_vdev_roam_sync_inprogress(vdev) ||
+	    wlan_cm_is_vdev_roaming(vdev) ||
 	    vdev->vdev_mlme.mlme_state != WLAN_VDEV_S_UP)
 		return;
 
@@ -1063,7 +1063,7 @@ QDF_STATUS if_mgr_validate_candidate(struct wlan_objmgr_vdev *vdev,
 						      true, chan_freq, true);
 		wlan_p2p_get_ap_assist_dfs_params(vdev, &is_dfs_owner,
 						  &is_valid_ap_assist,
-						  NULL, NULL, NULL);
+						  NULL, NULL, NULL, NULL);
 		if (is_dfs_owner)
 			goto end;
 

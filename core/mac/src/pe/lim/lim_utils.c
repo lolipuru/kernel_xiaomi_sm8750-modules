@@ -11121,6 +11121,11 @@ QDF_STATUS lim_set_session_channel_params(struct mac_context *mac,
 	band = wlan_reg_freq_to_band(session->curr_op_freq);
 	band_mask = 1 << band;
 
+	if (session->ch_width == CH_WIDTH_80P80MHZ) {
+		session->ch_width = CH_WIDTH_80MHZ;
+		session->ch_center_freq_seg1 = 0;
+	}
+
 	ch_params.ch_width = session->ch_width;
 	ch_params.mhz_freq_seg0 =
 		wlan_reg_chan_band_to_freq(mac->pdev,
@@ -12363,12 +12368,14 @@ uint16_t lim_get_tpe_ie_length(enum phy_ch_width chan_width,
 		switch (tpe_ie[idx].max_tx_pwr_interpret) {
 		case LOCAL_EIRP:
 		case REGULATORY_CLIENT_EIRP:
+		case ADDITIONAL_REGULATORY_CLIENT_EIRP:
 			/* Maximum Transmit Power For 320 MHz */
 			if (tpe_ie[idx].ext_max_tx_power.ext_max_tx_power_local_eirp.max_tx_power_for_320)
 				total_ie_len += 1;
 			break;
 		case LOCAL_EIRP_PSD:
 		case REGULATORY_CLIENT_EIRP_PSD:
+		case ADDITIONAL_REGULATORY_CLIENT_EIRP_PSD:
 			if (!tpe_ie[idx].ext_max_tx_power.ext_max_tx_power_reg_psd.ext_count)
 				break;
 
