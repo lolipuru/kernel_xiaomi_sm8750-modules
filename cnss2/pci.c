@@ -3769,6 +3769,11 @@ static int cnss_qca6290_powerup(struct cnss_pci_data *pci_priv)
 	int retry = 0, bt_en_gpio = plat_priv->pinctrl_info.bt_en_gpio;
 	int sw_ctrl_gpio = plat_priv->pinctrl_info.sw_ctrl_gpio;
 
+	if (!pci_priv->mhi_ctrl) {
+		cnss_pr_err("mhi not initiated, exit\n", ret);
+		goto out;
+	}
+
 	if (plat_priv->ramdump_info_v2.dump_data_valid) {
 		cnss_pci_clear_dump_info(pci_priv);
 		cnss_pci_power_off_mhi(pci_priv);
