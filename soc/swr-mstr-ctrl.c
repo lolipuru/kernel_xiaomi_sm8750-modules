@@ -1531,10 +1531,6 @@ static void swrm_get_device_frame_shape(struct swr_mstr_ctrl *swrm,
 	} else if (swrm->master_id == MASTER_ID_BT) {
 		port_req->sinterval =
 				((swrm->bus_clk * 2) / port_req->ch_rate) - 1;
-		if (mport->dir == 0)
-			port_req->offset1 = 0;
-		else
-			port_req->offset1 = 0x14;
 		port_req->offset2 = 0x00;
 		port_req->hstart = 1;
 		port_req->hstop = 0xF;
@@ -3362,8 +3358,8 @@ static int swrm_probe(struct platform_device *pdev)
 
 		if (swrm->master_id == MASTER_ID_TX || swrm->master_id == MASTER_ID_BT) {
 			swrm->mport_cfg[i].sinterval = 0xFFFF;
-			if (swrm->master_id == MASTER_ID_BT && i > 3)
-				swrm->mport_cfg[i].offset1 = 0x14;
+			if (swrm->master_id == MASTER_ID_BT)
+				swrm->mport_cfg[i].offset1 = i * 0x14;
 			else
 				swrm->mport_cfg[i].offset1 = 0x00;
 			swrm->mport_cfg[i].offset2 = 0x00;
