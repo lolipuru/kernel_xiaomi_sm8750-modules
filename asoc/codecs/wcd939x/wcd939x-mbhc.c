@@ -77,6 +77,7 @@
 #define ZDET_ACC_LMT_MOHMS 100000
 #define R_CONN_PAR_LOAD_POS_MOHMS 7895
 #define LINEARIZER_DEFAULT_TAP 0xE8
+#define LINEARIZER_GND_DEFAULT_TAP 0x00
 #define GND_EXT_FET_MAX_MOHMS 2000
 
 struct zdet_dnl_entry {
@@ -1302,7 +1303,7 @@ static ssize_t usbcss_sysfs_store(struct kobject *kobj, struct kobj_attribute *a
 	if (update_linearizer) {
 		get_linearizer_taps(pdata, &aud_tap);
 #if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
-		wcd_usbss_set_linearizer_sw_tap(aud_tap, LINEARIZER_DEFAULT_TAP);
+		wcd_usbss_set_linearizer_sw_tap(aud_tap, LINEARIZER_GND_DEFAULT_TAP);
 #endif
 		dev_err(wcd939x->dev, "%s: Updated linearizer thru sysfs\n",
 			__func__);
@@ -1830,7 +1831,7 @@ default_vals:
 zdet_complete:
 	/* Configure linearizer */
 #if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
-	wcd_usbss_set_linearizer_sw_tap(aud_tap, LINEARIZER_DEFAULT_TAP);
+	wcd_usbss_set_linearizer_sw_tap(aud_tap, LINEARIZER_GND_DEFAULT_TAP);
 #endif
 	/* Print linearizer values */
 	dev_dbg(component->dev, "%s: Linearizer aud_tap is 0x%x\n",
