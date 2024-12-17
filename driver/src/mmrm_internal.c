@@ -90,6 +90,29 @@ static struct mmrm_throttle_clients_data common_pt_throttle_clients_data_sun[] =
 	},
 };
 
+static struct mmrm_throttle_clients_data common_pt_throttle_clients_data_tuna[] = {
+	{
+		.domain = MMRM_CLIENT_DOMAIN_DISPLAY,
+		.id = 0x42,
+	},
+	{
+		.domain = MMRM_CLIENT_DOMAIN_VIDEO,
+		.id = 0x03,
+	},
+	{
+		.domain = MMRM_CLIENT_DOMAIN_CAMERA,
+		.id = 0x45,
+	},
+	{
+		.domain = MMRM_CLIENT_DOMAIN_CVP,
+		.id = 0x03,
+	},
+	{
+		.domain = MMRM_CLIENT_DOMAIN_CAMERA,
+		.id = 0x4F,
+	},
+};
+
 static struct mmrm_platform_data commom_pt_platform_data = {
 	.common_data = common_pt_data,
 	.common_data_length = ARRAY_SIZE(common_pt_data),
@@ -111,6 +134,13 @@ static struct mmrm_platform_data commom_pt_platform_data_sun = {
 	.throttle_clk_clients_data_length = ARRAY_SIZE(common_pt_throttle_clients_data_sun),
 };
 
+static struct mmrm_platform_data commom_pt_platform_data_tuna = {
+	.common_data = common_pt_data,
+	.common_data_length = ARRAY_SIZE(common_pt_data),
+	.throttle_clk_clients_data = common_pt_throttle_clients_data_tuna,
+	.throttle_clk_clients_data_length = ARRAY_SIZE(common_pt_throttle_clients_data_tuna),
+};
+
 static const struct of_device_id mmrm_dt_match[] = {
 	{
 		.compatible = "qcom,waipio-mmrm",
@@ -127,6 +157,10 @@ static const struct of_device_id mmrm_dt_match[] = {
 	{
 		.compatible = "qcom,sun-mmrm",
 		.data = &commom_pt_platform_data_sun,
+	},
+	{
+		.compatible = "qcom,tuna-mmrm",
+		.data = &commom_pt_platform_data_tuna,
 	},
 	{},
 };
