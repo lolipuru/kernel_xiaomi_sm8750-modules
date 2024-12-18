@@ -52,7 +52,7 @@ bool msm_cvp_dcvs_disable = !true;
 int msm_cvp_minidump_enable = !1;
 int cvp_kernel_fence_enabled = 2;
 int msm_cvp_hw_wd_recovery = 1;
-int msm_cvp_smmu_fault_recovery = !1;
+int msm_cvp_smmu_fault_recovery = 1;
 
 #define MAX_DBG_BUF_SIZE 4096
 
