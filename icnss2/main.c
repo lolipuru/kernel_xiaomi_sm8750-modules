@@ -6228,6 +6228,11 @@ static int icnss_pm_suspend(struct device *dev)
 	struct icnss_priv *priv = dev_get_drvdata(dev);
 	int ret = 0;
 
+	if (!priv) {
+		icnss_pr_err("icnss priv is NULL\n");
+		return -ENOMEM;
+	}
+
 	if (priv->magic != ICNSS_MAGIC) {
 		icnss_pr_err("Invalid drvdata for pm suspend: dev %pK, data %pK, magic 0x%x\n",
 			     dev, priv, priv->magic);
@@ -6268,6 +6273,11 @@ static int icnss_pm_resume(struct device *dev)
 	struct icnss_priv *priv = dev_get_drvdata(dev);
 	int ret = 0;
 
+	if (!priv) {
+		icnss_pr_err("icnss priv is NULL\n");
+		return -ENOMEM;
+	}
+
 	if (priv->magic != ICNSS_MAGIC) {
 		icnss_pr_err("Invalid drvdata for pm resume: dev %pK, data %pK, magic 0x%x\n",
 			     dev, priv, priv->magic);
@@ -6298,6 +6308,11 @@ static int icnss_pm_suspend_noirq(struct device *dev)
 	struct icnss_priv *priv = dev_get_drvdata(dev);
 	int ret = 0;
 
+	if (!priv) {
+		icnss_pr_err("icnss priv is NULL\n");
+		return -ENOMEM;
+	}
+
 	if (priv->magic != ICNSS_MAGIC) {
 		icnss_pr_err("Invalid drvdata for pm suspend_noirq: dev %pK, data %pK, magic 0x%x\n",
 			     dev, priv, priv->magic);
@@ -6327,6 +6342,11 @@ static int icnss_pm_resume_noirq(struct device *dev)
 	struct icnss_priv *priv = dev_get_drvdata(dev);
 	int ret = 0;
 
+	if (!priv) {
+		icnss_pr_err("icnss priv is NULL\n");
+		return -ENOMEM;
+	}
+
 	if (priv->magic != ICNSS_MAGIC) {
 		icnss_pr_err("Invalid drvdata for pm resume_noirq: dev %pK, data %pK, magic 0x%x\n",
 			     dev, priv, priv->magic);
@@ -6355,6 +6375,11 @@ static int icnss_pm_runtime_suspend(struct device *dev)
 {
 	struct icnss_priv *priv = dev_get_drvdata(dev);
 	int ret = 0;
+
+	if (!priv) {
+		icnss_pr_err("icnss priv is NULL\n");
+		return -ENOMEM;
+	}
 
 	if (priv->device_id == ADRASTEA_DEVICE_ID) {
 		icnss_pr_err("Ignore runtime suspend:\n");
@@ -6391,6 +6416,11 @@ static int icnss_pm_runtime_resume(struct device *dev)
 	struct icnss_priv *priv = dev_get_drvdata(dev);
 	int ret = 0;
 
+	if (!priv) {
+		icnss_pr_err("icnss priv is NULL\n");
+		return -ENOMEM;
+	}
+
 	if (priv->device_id == ADRASTEA_DEVICE_ID) {
 		icnss_pr_err("Ignore runtime resume\n");
 		goto out;
@@ -6417,6 +6447,11 @@ out:
 static int icnss_pm_runtime_idle(struct device *dev)
 {
 	struct icnss_priv *priv = dev_get_drvdata(dev);
+
+	if (!priv) {
+		icnss_pr_err("icnss priv is NULL\n");
+		return -ENOMEM;
+	}
 
 	if (priv->device_id == ADRASTEA_DEVICE_ID) {
 		icnss_pr_err("Ignore runtime idle\n");
