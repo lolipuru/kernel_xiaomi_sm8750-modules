@@ -50,7 +50,7 @@
  * This is temporary, and we can use the 1500 value once the
  * core irqs are enabled.
  */
-#define MAX_OFFLOAD_CRYPTO_WAIT_TIME 30
+#define MAX_OFFLOAD_CRYPTO_WAIT_TIME 50
 
 #define MAX_REQUEST_TIME 5000
 
