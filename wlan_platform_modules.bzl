@@ -1,6 +1,6 @@
 load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 load("//build/kernel/kleaf:kernel.bzl", "ddk_module")
-load("//msm-kernel:target_variants.bzl", "get_all_variants")
+load("//soc-repo:target_variants.bzl", "all_target_variants")
 
 _default_module_enablement_list = [
     "cnss_nl",
@@ -88,7 +88,6 @@ def _define_modules_for_target_variant(target, variant):
     if target in _icnss2_enabled_target:
         icnss2_enabled = 1
 
-    print("tv=", tv)
     if cnss2_enabled:
         module = "cnss2"
         _define_platform_config_rule(module, target, variant)
@@ -98,14 +97,31 @@ def _define_modules_for_target_variant(target, variant):
             ":{}_cnss_prealloc".format(tv),
             ":{}_wlan_firmware_service".format(tv),
             ":{}_cnss_plat_ipc_qmi_svc".format(tv),
-            "//msm-kernel:all_headers",
+            "//soc-repo:all_headers",
+            "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
             ":wlan-platform-headers",
         ]
 
         if target != "x1e80100" and target != "sdxkova":
             deps = deps + [
                 "//vendor/qcom/opensource/securemsm-kernel:{}_smcinvoke_dlkm".format(tv),
+                "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/qcom_ramdump".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/socinfo".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/pdr_interface".format(tv),
+                "//soc-repo:{}/drivers/remoteproc/rproc_qcom_common".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/memory_dump_v2".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/smem".format(tv),
+                "//soc-repo:{}/drivers/bus/mhi/host/mhi".format(tv),
+                "//soc-repo:{}/drivers/pinctrl/qcom/pinctrl-msm".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/cmd-db".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/qcom_aoss".format(tv),
+                "//soc-repo:{}/drivers/pci/controller/pci-msm-drv".format(tv),
             ]
+            if target == "sun":
+              deps = deps + [
+		  "//soc-repo:{}/drivers/soc/qcom/minidump".format(tv),
+              ]
 
         ddk_module(
             name = "{}_cnss2".format(tv),
@@ -137,7 +153,7 @@ def _define_modules_for_target_variant(target, variant):
                 },
             },
             out = "cnss2.ko",
-            kernel_build = "//msm-kernel:{}".format(tv),
+            kernel_build = "//soc-repo:{}_base_kernel".format(tv),
             deps = deps
         )
 
@@ -167,12 +183,19 @@ def _define_modules_for_target_variant(target, variant):
                 },
             },
             out = "icnss2.ko",
-            kernel_build = "//msm-kernel:{}".format(tv),
+            kernel_build = "//soc-repo:{}_base_kernel".format(tv),
             deps = [
                 ":{}_cnss_utils".format(tv),
                 ":{}_cnss_prealloc".format(tv),
                 ":{}_wlan_firmware_service".format(tv),
-                "//msm-kernel:all_headers",
+                "//soc-repo:all_headers",
+                "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/qcom_ramdump".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/socinfo".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/pdr_interface".format(tv),
+                "//soc-repo:{}/drivers/remoteproc/rproc_qcom_common".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/qcom_aoss".format(tv),
                 ":wlan-platform-headers",
             ],
         )
@@ -187,9 +210,9 @@ def _define_modules_for_target_variant(target, variant):
         kconfig = "cnss_genl/Kconfig",
         defconfig = defconfig,
         out = "cnss_nl.ko",
-        kernel_build = "//msm-kernel:{}".format(tv),
+        kernel_build = "//soc-repo:{}_base_kernel".format(tv),
         deps = [
-            "//msm-kernel:all_headers",
+            "//soc-repo:all_headers",
             ":wlan-platform-headers",
         ],
     )
@@ -207,16 +230,16 @@ def _define_modules_for_target_variant(target, variant):
         kconfig = "cnss_prealloc/Kconfig",
         defconfig = defconfig,
         out = "cnss_prealloc.ko",
-        kernel_build = "//msm-kernel:{}".format(tv),
+        kernel_build = "//soc-repo:{}_base_kernel".format(tv),
         deps = [
-            "//msm-kernel:all_headers",
+            "//soc-repo:all_headers",
             ":wlan-platform-headers",
         ],
     )
 
     module = "cnss_utils"
     cnss_utils_dep_list = [
-        "//msm-kernel:all_headers",
+        "//soc-repo:all_headers",
         ":wlan-platform-headers",
     ]
     if target == "sun" or target == "canoe":
@@ -237,7 +260,7 @@ def _define_modules_for_target_variant(target, variant):
         kconfig = "cnss_utils/Kconfig",
         defconfig = defconfig,
         out = "cnss_utils.ko",
-        kernel_build = "//msm-kernel:{}".format(tv),
+        kernel_build = "//soc-repo:{}_base_kernel".format(tv),
         deps = cnss_utils_dep_list,
     )
 
@@ -254,8 +277,10 @@ def _define_modules_for_target_variant(target, variant):
         kconfig = "cnss_utils/Kconfig",
         defconfig = defconfig,
         out = "wlan_firmware_service.ko",
-        kernel_build = "//msm-kernel:{}".format(tv),
-        deps = ["//msm-kernel:all_headers"],
+        kernel_build = "//soc-repo:{}_base_kernel".format(tv),
+        deps = ["//soc-repo:all_headers",
+                "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+               ],
     )
 
     module = "cnss_utils"
@@ -271,8 +296,11 @@ def _define_modules_for_target_variant(target, variant):
             kconfig = "cnss_utils/Kconfig",
             defconfig = defconfig,
             out = "cnss_plat_ipc_qmi_svc.ko",
-            kernel_build = "//msm-kernel:{}".format(tv),
-            deps = ["//msm-kernel:all_headers"],
+            kernel_build = "//soc-repo:{}_base_kernel".format(tv),
+            deps = ["//soc-repo:all_headers",
+                    "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+                    "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
+                   ],
         )
     tv = "{}_{}".format(target, variant)
     copy_to_dist_dir(
