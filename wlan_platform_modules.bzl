@@ -6,7 +6,7 @@ _default_module_enablement_list = [
     "cnss_nl",
     "cnss_prealloc",
     "cnss_utils",
-    "wlan_firmware_service"
+    "wlan_firmware_service",
 ]
 
 _cnss2_enabled_target = ["niobe", "pineapple", "sun", "x1e80100", "volcano", "canoe", "sdxkova"]
@@ -119,9 +119,9 @@ def _define_modules_for_target_variant(target, variant):
                 "//soc-repo:{}/drivers/pci/controller/pci-msm-drv".format(tv),
             ]
             if target == "sun":
-              deps = deps + [
-		  "//soc-repo:{}/drivers/soc/qcom/minidump".format(tv),
-              ]
+                deps = deps + [
+                    "//soc-repo:{}/drivers/soc/qcom/minidump".format(tv),
+                ]
 
         ddk_module(
             name = "{}_cnss2".format(tv),
@@ -139,12 +139,12 @@ def _define_modules_for_target_variant(target, variant):
             includes = ["cnss", "cnss_utils"],
             kconfig = "cnss2/Kconfig",
             defconfig = defconfig,
-            conditional_srcs =  {
+            conditional_srcs = {
                 "CONFIG_CNSS2_QMI": {
                     True: [
                         "cnss2/qmi.c",
                         "cnss2/coexistence_service_v01.c",
-                    ]
+                    ],
                 },
                 "CONFIG_PCI_MSM": {
                     True: [
@@ -154,7 +154,7 @@ def _define_modules_for_target_variant(target, variant):
             },
             out = "cnss2.ko",
             kernel_build = "//soc-repo:{}_base_kernel".format(tv),
-            deps = deps
+            deps = deps,
         )
 
     if icnss2_enabled:
@@ -255,7 +255,7 @@ def _define_modules_for_target_variant(target, variant):
         name = "{}_cnss_utils".format(tv),
         srcs = native.glob([
             "cnss_utils/cnss_utils.c",
-            "cnss_utils/*.h"
+            "cnss_utils/*.h",
         ]),
         kconfig = "cnss_utils/Kconfig",
         defconfig = defconfig,
@@ -272,15 +272,16 @@ def _define_modules_for_target_variant(target, variant):
             "cnss_utils/wlan_firmware_service_v01.c",
             "cnss_utils/device_management_service_v01.c",
             "cnss_utils/ip_multimedia_subsystem_private_service_v01.c",
-            "cnss_utils/*.h"
+            "cnss_utils/*.h",
         ]),
         kconfig = "cnss_utils/Kconfig",
         defconfig = defconfig,
         out = "wlan_firmware_service.ko",
         kernel_build = "//soc-repo:{}_base_kernel".format(tv),
-        deps = ["//soc-repo:all_headers",
-                "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
-               ],
+        deps = [
+            "//soc-repo:all_headers",
+            "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+        ],
     )
 
     module = "cnss_utils"
@@ -291,16 +292,17 @@ def _define_modules_for_target_variant(target, variant):
             srcs = native.glob([
                 "cnss_utils/cnss_plat_ipc_qmi.c",
                 "cnss_utils/cnss_plat_ipc_service_v01.c",
-                "cnss_utils/*.h"
+                "cnss_utils/*.h",
             ]),
             kconfig = "cnss_utils/Kconfig",
             defconfig = defconfig,
             out = "cnss_plat_ipc_qmi_svc.ko",
             kernel_build = "//soc-repo:{}_base_kernel".format(tv),
-            deps = ["//soc-repo:all_headers",
-                    "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
-                    "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
-                   ],
+            deps = [
+                "//soc-repo:all_headers",
+                "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+                "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
+            ],
         )
     tv = "{}_{}".format(target, variant)
     copy_to_dist_dir(
@@ -311,7 +313,7 @@ def _define_modules_for_target_variant(target, variant):
         wipe_dist_dir = False,
         allow_duplicate_filenames = False,
         mode_overrides = {"**/*": "644"},
-        log = "info"
+        log = "info",
     )
 
 def define_modules():
