@@ -195,6 +195,7 @@ enum icnss_driver_state {
 	ICNSS_SLATE_UP,
 	ICNSS_SLATE_READY,
 	ICNSS_LOW_POWER,
+	ICNSS_SOC_WAKE_DONE,
 };
 
 struct ce_irq_list {

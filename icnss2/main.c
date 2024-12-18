@@ -730,8 +730,10 @@ static int icnss_send_smp2p(struct icnss_priv *priv,
 	icnss_pr_smp2p("Sending SMP2P value: 0x%X, Ref count: %d\n", value,
 			atomic_read(&priv->soc_wake_ref_count));
 
-	if (msg_id == ICNSS_SOC_WAKE_REQ || msg_id == ICNSS_SOC_WAKE_REL)
+	if (msg_id == ICNSS_SOC_WAKE_REQ || msg_id == ICNSS_SOC_WAKE_REL) {
+		clear_bit(ICNSS_SOC_WAKE_DONE, &priv->state);
 		reinit_completion(&penv->smp2p_soc_wake_wait);
+	}
 
 	ret = qcom_smem_state_update_bits(
 			priv->smp2p_info[smp2p_entry].smem_state,
@@ -752,6 +754,18 @@ static int icnss_send_smp2p(struct icnss_priv *priv,
 				if (!test_bit(ICNSS_FW_DOWN, &priv->state))
 					ICNSS_ASSERT(0);
 			}
+
+		/* If fw crash happens and boots up before soc wake timeout, we
+		 * do fake completion to avoid assert from fw crash handler and
+		 * return timeout error based on ICNSS_SOC_WAKE_DONE state
+		 */
+			if (!test_bit(ICNSS_SOC_WAKE_DONE, &priv->state)) {
+				icnss_pr_err("SMP2P Soc Wake timeout msg %d, %s, Ref count: %d, state: 0x%lx\n",
+					     msg_id, icnss_smp2p_str[smp2p_entry],
+					     atomic_read(&priv->soc_wake_ref_count), priv->state);
+				ret = -ETIMEDOUT;
+			}
+
 		}
 	}
 
@@ -793,6 +807,8 @@ static irqreturn_t fw_crash_indication_handler(int irq, void *ctx)
 
 		set_bit(ICNSS_FW_DOWN, &priv->state);
 		icnss_ignore_fw_timeout(true);
+		clear_bit(ICNSS_SOC_WAKE_DONE, &priv->state);
+		complete(&priv->smp2p_soc_wake_wait);
 
 		if (test_bit(ICNSS_FW_READY, &priv->state)) {
 			clear_bit(ICNSS_FW_READY, &priv->state);
@@ -918,8 +934,10 @@ static irqreturn_t fw_soc_wake_ack_handler(int irq, void *ctx)
 {
 	struct icnss_priv *priv = ctx;
 
-	if (priv)
+	if (priv) {
+		set_bit(ICNSS_SOC_WAKE_DONE, &priv->state);
 		complete(&priv->smp2p_soc_wake_wait);
+	}
 
 	return IRQ_HANDLED;
 }
