@@ -1,6 +1,6 @@
 load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 load("//build/kernel/kleaf:kernel.bzl", "ddk_module")
-load("//soc-repo:target_variants.bzl", "all_target_variants")
+load(":target_variants.bzl", "get_all_variants")
 
 _default_module_enablement_list = [
     "cnss_nl",
@@ -77,6 +77,11 @@ def _define_platform_config_rule(module, target, variant):
 def _define_modules_for_target_variant(target, variant):
     tv = "{}_{}".format(target, variant)
 
+    kernel_build = select({
+        "//build/kernel/kleaf:socrepo_true": "//soc-repo:{}_base_kernel".format(tv),
+        "//build/kernel/kleaf:socrepo_false": "//msm-kernel:{}".format(tv),
+    })
+
     cnss2_enabled = 0
     plat_ipc_qmi_svc_enabled = 0
     icnss2_enabled = 0
@@ -96,33 +101,48 @@ def _define_modules_for_target_variant(target, variant):
             ":{}_cnss_utils".format(tv),
             ":{}_cnss_prealloc".format(tv),
             ":{}_wlan_firmware_service".format(tv),
-            ":{}_cnss_plat_ipc_qmi_svc".format(tv),
-            "//soc-repo:all_headers",
-            "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
             ":wlan-platform-headers",
         ]
+        if plat_ipc_qmi_svc_enabled:
+            deps += [
+                ":{}_cnss_plat_ipc_qmi_svc".format(tv),
+            ]
+        deps += select({
+               "//build/kernel/kleaf:socrepo_true": [
+                  "//soc-repo:all_headers",
+                  "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+               ],
+               "//build/kernel/kleaf:socrepo_false": [
+                  "//msm-kernel:all_headers",
+               ],
+        })
 
         if target != "x1e80100" and target != "sdxkova":
-            deps = deps + [
-                "//vendor/qcom/opensource/securemsm-kernel:{}_smcinvoke_dlkm".format(tv),
-                "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/qcom_ramdump".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/socinfo".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/pdr_interface".format(tv),
-                "//soc-repo:{}/drivers/remoteproc/rproc_qcom_common".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/memory_dump_v2".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/smem".format(tv),
-                "//soc-repo:{}/drivers/bus/mhi/host/mhi".format(tv),
-                "//soc-repo:{}/drivers/pinctrl/qcom/pinctrl-msm".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/cmd-db".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/qcom_aoss".format(tv),
-                "//soc-repo:{}/drivers/pci/controller/pci-msm-drv".format(tv),
-            ]
+            deps += select({
+                  "//build/kernel/kleaf:socrepo_true": [
+                    "//vendor/qcom/opensource/securemsm-kernel:{}_smcinvoke_dlkm".format(tv),
+                    "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
+                    "//soc-repo:{}/drivers/soc/qcom/qcom_ramdump".format(tv),
+                    "//soc-repo:{}/drivers/soc/qcom/socinfo".format(tv),
+                    "//soc-repo:{}/drivers/soc/qcom/pdr_interface".format(tv),
+                    "//soc-repo:{}/drivers/remoteproc/rproc_qcom_common".format(tv),
+                    "//soc-repo:{}/drivers/soc/qcom/memory_dump_v2".format(tv),
+                    "//soc-repo:{}/drivers/soc/qcom/smem".format(tv),
+                    "//soc-repo:{}/drivers/bus/mhi/host/mhi".format(tv),
+                    "//soc-repo:{}/drivers/pinctrl/qcom/pinctrl-msm".format(tv),
+                    "//soc-repo:{}/drivers/soc/qcom/cmd-db".format(tv),
+                    "//soc-repo:{}/drivers/soc/qcom/qcom_aoss".format(tv),
+                    "//soc-repo:{}/drivers/pci/controller/pci-msm-drv".format(tv),
+                ],
+                    "//build/kernel/kleaf:socrepo_false": [],
+            })
             if target == "sun":
-                deps = deps + [
-                    "//soc-repo:{}/drivers/soc/qcom/minidump".format(tv),
-                ]
-
+              deps += select({
+                  "//build/kernel/kleaf:socrepo_true": [
+                        "//soc-repo:{}/drivers/soc/qcom/minidump".format(tv),
+                ],
+                    "//build/kernel/kleaf:socrepo_false": [],
+              })
         ddk_module(
             name = "{}_cnss2".format(tv),
             srcs = native.glob([
@@ -153,7 +173,7 @@ def _define_modules_for_target_variant(target, variant):
                 },
             },
             out = "cnss2.ko",
-            kernel_build = "//soc-repo:{}_base_kernel".format(tv),
+            kernel_build = kernel_build,
             deps = deps,
         )
 
@@ -161,6 +181,21 @@ def _define_modules_for_target_variant(target, variant):
         module = "icnss2"
         _define_platform_config_rule(module, target, variant)
         defconfig = ":{}/{}_defconfig_generate_{}".format(module, tv, variant)
+        deps = select({
+               "//build/kernel/kleaf:socrepo_true": [
+                "//soc-repo:all_headers",
+                "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/qcom_ramdump".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/socinfo".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/pdr_interface".format(tv),
+                "//soc-repo:{}/drivers/remoteproc/rproc_qcom_common".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+                "//soc-repo:{}/drivers/soc/qcom/qcom_aoss".format(tv),
+               ],
+               "//build/kernel/kleaf:socrepo_false": [
+                  "//msm-kernel:all_headers",
+               ],
+        })
         ddk_module(
             name = "{}_icnss2".format(tv),
             srcs = native.glob([
@@ -183,25 +218,23 @@ def _define_modules_for_target_variant(target, variant):
                 },
             },
             out = "icnss2.ko",
-            kernel_build = "//soc-repo:{}_base_kernel".format(tv),
-            deps = [
+            kernel_build = kernel_build,
+            deps = deps + [
                 ":{}_cnss_utils".format(tv),
                 ":{}_cnss_prealloc".format(tv),
                 ":{}_wlan_firmware_service".format(tv),
-                "//soc-repo:all_headers",
-                "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/qcom_ramdump".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/socinfo".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/pdr_interface".format(tv),
-                "//soc-repo:{}/drivers/remoteproc/rproc_qcom_common".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
-                "//soc-repo:{}/drivers/soc/qcom/qcom_aoss".format(tv),
                 ":wlan-platform-headers",
             ],
         )
     module = "cnss_genl"
     _define_platform_config_rule(module, target, variant)
     defconfig = ":{}/{}_defconfig_generate_{}".format(module, tv, variant)
+
+    deps = select({
+        "//build/kernel/kleaf:socrepo_true": ["//soc-repo:all_headers"],
+        "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
+    })
+
     ddk_module(
         name = "{}_cnss_nl".format(tv),
         srcs = [
@@ -210,9 +243,8 @@ def _define_modules_for_target_variant(target, variant):
         kconfig = "cnss_genl/Kconfig",
         defconfig = defconfig,
         out = "cnss_nl.ko",
-        kernel_build = "//soc-repo:{}_base_kernel".format(tv),
-        deps = [
-            "//soc-repo:all_headers",
+        kernel_build = kernel_build,
+        deps = deps + [
             ":wlan-platform-headers",
         ],
     )
@@ -230,18 +262,22 @@ def _define_modules_for_target_variant(target, variant):
         kconfig = "cnss_prealloc/Kconfig",
         defconfig = defconfig,
         out = "cnss_prealloc.ko",
-        kernel_build = "//soc-repo:{}_base_kernel".format(tv),
-        deps = [
-            "//soc-repo:all_headers",
+        kernel_build = kernel_build,
+        deps = deps + [
             ":wlan-platform-headers",
         ],
     )
 
     module = "cnss_utils"
     cnss_utils_dep_list = [
-        "//soc-repo:all_headers",
         ":wlan-platform-headers",
     ]
+
+    cnss_utils_dep_list += select({
+        "//build/kernel/kleaf:socrepo_true": ["//soc-repo:all_headers"],
+        "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
+    })
+
     if target == "sun" or target == "canoe":
         cnss_utils_dep_list = cnss_utils_dep_list + ["//vendor/qcom/opensource/data-kernel/drivers/smem-mailbox:{}_smem_mailbox".format(tv),]
     if target == "sdxkova":
@@ -260,12 +296,21 @@ def _define_modules_for_target_variant(target, variant):
         kconfig = "cnss_utils/Kconfig",
         defconfig = defconfig,
         out = "cnss_utils.ko",
-        kernel_build = "//soc-repo:{}_base_kernel".format(tv),
+        kernel_build = kernel_build,
         deps = cnss_utils_dep_list,
     )
 
     module = "cnss_utils"
     defconfig = ":{}/{}_defconfig_generate_{}".format(module, tv, variant)
+
+    deps = select({
+        "//build/kernel/kleaf:socrepo_true": [
+            "//soc-repo:all_headers",
+            "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+        ],
+        "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
+    })
+
     ddk_module(
         name = "{}_wlan_firmware_service".format(tv),
         srcs = native.glob([
@@ -277,33 +322,36 @@ def _define_modules_for_target_variant(target, variant):
         kconfig = "cnss_utils/Kconfig",
         defconfig = defconfig,
         out = "wlan_firmware_service.ko",
-        kernel_build = "//soc-repo:{}_base_kernel".format(tv),
-        deps = [
-            "//soc-repo:all_headers",
-            "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
-        ],
+        kernel_build = kernel_build,
+        deps = deps,
     )
 
     module = "cnss_utils"
     defconfig = ":{}/{}_defconfig_generate_{}".format(module, tv, variant)
+
     if plat_ipc_qmi_svc_enabled:
-        ddk_module(
-            name = "{}_cnss_plat_ipc_qmi_svc".format(tv),
-            srcs = native.glob([
-                "cnss_utils/cnss_plat_ipc_qmi.c",
-                "cnss_utils/cnss_plat_ipc_service_v01.c",
-                "cnss_utils/*.h",
-            ]),
-            kconfig = "cnss_utils/Kconfig",
-            defconfig = defconfig,
-            out = "cnss_plat_ipc_qmi_svc.ko",
-            kernel_build = "//soc-repo:{}_base_kernel".format(tv),
-            deps = [
-                "//soc-repo:all_headers",
-                "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
-                "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
-            ],
-        )
+      deps = select({
+          "//build/kernel/kleaf:socrepo_true": [
+              "//soc-repo:all_headers",
+              "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+              "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(tv),
+          ],
+          "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
+      })
+
+      ddk_module(
+          name = "{}_cnss_plat_ipc_qmi_svc".format(tv),
+          srcs = native.glob([
+              "cnss_utils/cnss_plat_ipc_qmi.c",
+              "cnss_utils/cnss_plat_ipc_service_v01.c",
+              "cnss_utils/*.h",
+          ]),
+          kconfig = "cnss_utils/Kconfig",
+          defconfig = defconfig,
+          out = "cnss_plat_ipc_qmi_svc.ko",
+          kernel_build = kernel_build,
+          deps = deps,
+      )
     tv = "{}_{}".format(target, variant)
     copy_to_dist_dir(
         name = "{}_modules_dist".format(tv),
