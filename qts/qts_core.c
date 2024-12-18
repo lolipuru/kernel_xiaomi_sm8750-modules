@@ -330,12 +330,12 @@ static void qts_trusted_touch_intr_gpio_toggle(struct qts_data *qts_data,
 	if (enable) {
 		val |= BIT(0);
 		writel_relaxed(val, base + TOUCH_INTR_GPIO_OFFSET);
-		/* wait until toggle to finish*/
+		/* wait until toggle to finish */
 		wmb();
 	} else {
 		val &= ~BIT(0);
 		writel_relaxed(val, base + TOUCH_INTR_GPIO_OFFSET);
-		/* wait until toggle to finish*/
+		/* wait until toggle to finish */
 		wmb();
 	}
 	iounmap(base);
@@ -1823,6 +1823,7 @@ int qts_client_register(struct qts_vendor_data *qts_vendor_data)
 	qts_data->vendor_ops = qts_vendor_data->qts_vendor_ops;
 	qts_data->schedule_suspend = qts_vendor_data->schedule_suspend;
 	qts_data->schedule_resume = qts_vendor_data->schedule_resume;
+	qts_data->suspended = true;
 
 	qts_adjust_irq_flags(qts_vendor_data->irq_gpio_flags,
 		&qts_data->irq_gpio_flags, &qts_data->irq_accept_flags);
