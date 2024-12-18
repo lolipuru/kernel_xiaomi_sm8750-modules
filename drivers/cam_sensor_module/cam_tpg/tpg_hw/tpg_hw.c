@@ -329,6 +329,7 @@ static int tpg_hw_free_waiting_requests_locked(struct tpg_hw *hw, int64_t req_id
 		CAM_DBG(CAM_TPG, "TPG[%d] freeing waiting_request[%lld] ",
 				hw->hw_idx, req->request_id);
 		list_del(pos);
+		hw->waiting_request_q_depth--;
 		tpg_hw_release_vc_slots_locked(hw, req);
 	}
 	return 0;
@@ -351,6 +352,7 @@ static int tpg_hw_free_active_requests_locked(struct tpg_hw *hw)
 		CAM_DBG(CAM_TPG, "TPG[%d] freeing active_request[%lld] ",
 				hw->hw_idx, req->request_id);
 		list_del(pos);
+		hw->active_request_q_depth--;
 		tpg_hw_release_vc_slots_locked(hw, req);
 	}
 	return 0;
