@@ -344,7 +344,6 @@ static const struct of_device_id bt_power_match_table[] = {
 	{},
 };
 
-static int btpower_enable_ipa_vreg(struct platform_pwr_data *pdata);
 static struct platform_pwr_data *pwr_data;
 static bool previous;
 static struct class *bt_class;
@@ -354,6 +353,8 @@ static bool probe_finished;
 static struct fmdOperationStruct fmdStruct;
 char *default_crash_reason = "Crash reason not found";
 
+static int btpower_enable_ipa_vreg(struct platform_pwr_data *pdata);
+static inline int btpower_get_retenion_mode_state(void);
 static void bt_power_vote(struct work_struct *work);
 
 static struct {
@@ -890,6 +891,34 @@ static int bt_configure_gpios(int on)
 	return rc;
 }
 
+static int handle_pwr_disable_req(int core, int reg_num, int retenion_state, int fmd_state)
+{
+	struct vreg_data *vregs;
+	int rc;
+
+	for (int i = 0; i < reg_num; i++) {
+		if (core == BT_CORE)
+			vregs = &pwr_data->bt_vregs[i];
+		else if (core == UWB_CORE)
+			vregs = &pwr_data->uwb_vregs[i];
+		else if (core == PLATFORM_CORE)
+			vregs = &pwr_data->platform_vregs[i];
+
+		if (fmd_state && vregs->fmd_mode_set) {
+			if (retenion_state != RETENTION_IDLE) {
+				vreg_disable_retention(vregs);
+				pr_err("%s: Brought %s reg out-of retention for FMD\n",
+					__func__, vregs->name);
+			}
+			pr_err("%s: Keeping %s reg on power-on state for FMD\n",
+				__func__, vregs->name);
+		} else {
+			rc = vreg_disable(vregs);
+		}
+	}
+	return rc;
+}
+
 static int bt_regulators_pwr(int pwr_state)
 {
 	int i, log_indx, bt_num_vregs, rc = 0;
@@ -960,15 +989,10 @@ gpio_fail:
 		if (pwr_data->bt_chip_clk)
 			bt_clk_disable(pwr_data->bt_chip_clk);
 regulator_fail:
-		for (i = 0; i < bt_num_vregs; i++) {
-			bt_vregs = &pwr_data->bt_vregs[i];
-			if (get_fmd_mode() && bt_vregs->fmd_mode_set) {
-				pr_err("%s: FMD Mode Set: Skipping regulator %s\n",
-					__func__, bt_vregs->name);
-				continue;
-			}
-			rc = vreg_disable(bt_vregs);
-		}
+		rc = handle_pwr_disable_req(BT_CORE,
+			bt_num_vregs,
+			btpower_get_retenion_mode_state(),
+			get_fmd_mode());
 	} else if (pwr_state == POWER_RETENTION) {
 		/* Retention mode */
 		for (i = 0; i < bt_num_vregs; i++) {
@@ -1134,15 +1158,10 @@ gpio_failed:
 				gpio_free(pwr_data->bt_gpio_debug);
 		}
 regulator_failed:
-		for (i = 0; i < platform_num_vregs; i++) {
-			platform_vregs = &pwr_data->platform_vregs[i];
-			if (get_fmd_mode() && platform_vregs->fmd_mode_set) {
-				pr_err("%s: FMD MODE: Skip %s regulator vote-off for FMD\n",
-					__func__, platform_vregs->name);
-				continue;
-			}
-			rc = vreg_disable(platform_vregs);
-		}
+		rc = handle_pwr_disable_req(PLATFORM_CORE,
+			platform_num_vregs,
+			btpower_get_retenion_mode_state(),
+			get_fmd_mode());
 		break;
 	case POWER_RETENTION:
 		for (i = 0; i < platform_num_vregs; i++) {
