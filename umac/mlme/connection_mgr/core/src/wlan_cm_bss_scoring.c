@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -4259,6 +4259,20 @@ static void cm_init_nss_weight_per_index(struct wlan_objmgr_psoc *psoc,
 }
 #endif
 
+#ifdef WLAN_FEATURE_11BE_MLO
+static inline void
+cm_fill_num_nontx_to_scan_from_top(struct scoring_cfg *score_cfg)
+{
+	score_cfg->scan_nontx_search_thresh =
+			cfg_default(CFG_NUM_NONTX_TO_SCAN_FROM_TOP);
+}
+#else
+static inline void
+cm_fill_num_nontx_to_scan_from_top(struct scoring_cfg *score_cfg)
+{
+}
+#endif
+
 void wlan_cm_init_score_config(struct wlan_objmgr_psoc *psoc,
 			       struct scoring_cfg *score_cfg)
 {
@@ -4421,4 +4435,5 @@ void wlan_cm_init_score_config(struct wlan_objmgr_psoc *psoc,
 	cm_init_bw_weight_per_index(psoc, score_cfg);
 	cm_init_nss_weight_per_index(psoc, score_cfg);
 	score_cfg->security_weight_per_index = CM_SECURITY_INDEX_WEIGHTAGE;
+	cm_fill_num_nontx_to_scan_from_top(score_cfg);
 }
