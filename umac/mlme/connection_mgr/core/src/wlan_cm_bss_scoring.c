@@ -3378,10 +3378,10 @@ static void cm_mlo_generate_candidate_list(struct wlan_objmgr_pdev *pdev,
 		num_link = scan_entry->entry->ml_info.num_links;
 
 		/*
-		 * Skip IOT check and Add SLO candidate if num link is >
-		 * max allowed, so that STA try lower number of links.
+		 * Do IOT check and check whether SLO candidate allowed
+		 * when num mlo link is < max allowed.
 		 */
-		if (scan_entry->entry->ml_info.num_links >=
+		if (scan_entry->entry->ml_info.num_links <
 		    wlan_mlme_get_sta_mlo_conn_max_num(psoc))
 			is_slo_candidate_allowed =
 				cm_is_slo_candidate_allowed(psoc,
