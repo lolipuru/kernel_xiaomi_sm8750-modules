@@ -2200,6 +2200,8 @@ static int wcd9378_sa_sequencer_enable(struct snd_soc_dapm_widget *w,
 {
 	struct snd_soc_component *component =
 					snd_soc_dapm_to_component(w->dapm);
+	struct wcd9378_priv *wcd9378 =
+				snd_soc_component_get_drvdata(component);
 
 	dev_dbg(component->dev, "%s wname: %s event: %d\n", __func__,
 		w->name, event);
@@ -2215,6 +2217,11 @@ static int wcd9378_sa_sequencer_enable(struct snd_soc_dapm_widget *w,
 		/*FU23 UNMUTE*/
 		snd_soc_component_update_bits(component, WCD9378_FU23_MUTE,
 				WCD9378_FU23_MUTE_FU23_MUTE_MASK, 0x00);
+		if (wcd9378->sys_usage == SYS_USAGE_10) {
+			regmap_write(wcd9378->regmap, WCD9378_FU42_MUTE_CH1, 0x00);
+			regmap_write(wcd9378->regmap, WCD9378_FU42_MUTE_CH2, 0x00);
+		}
+
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		/*FU23 MUTE*/
