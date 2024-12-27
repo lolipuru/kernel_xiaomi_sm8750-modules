@@ -247,6 +247,12 @@ struct icnss_clk_info {
 	u32 enabled;
 };
 
+struct icnss_pinctrl_info {
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *sw_ctrl;
+	int sw_ctrl_gpio;
+};
+
 struct icnss_fw_mem {
 	size_t size;
 	void *va;
@@ -471,6 +477,7 @@ struct icnss_priv {
 	struct ce_irq_list ce_irq_list[ICNSS_MAX_IRQ_REGISTRATIONS];
 	struct list_head vreg_list;
 	struct list_head clk_list;
+	struct icnss_pinctrl_info pinctrl_info;
 	struct icnss_cpr_info cpr_info;
 	unsigned long device_id;
 	struct icnss_msi_config *msi_config;

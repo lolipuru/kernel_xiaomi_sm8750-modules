@@ -5289,6 +5289,12 @@ static int icnss_resource_parse(struct icnss_priv *priv)
 		goto put_vreg;
 	}
 
+	ret = icnss_get_pinctrl(priv);
+	if (ret) {
+		icnss_pr_err("Failed to get pinctrl, err = %d\n", ret);
+		goto put_clk;
+	}
+
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,psf-supported")) {
 		ret = icnss_get_psf_info(priv);
 		if (ret < 0)

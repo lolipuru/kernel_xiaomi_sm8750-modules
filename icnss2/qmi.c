@@ -3623,10 +3623,10 @@ int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 		req->gpio_info[TARGET_SOL_GPIO_V01] = 0xFFFF;
 	}
 
-	ret = of_property_read_u32(priv->pdev->dev.of_node, "wlan-sw-ctrl-gpio",
+	ret = of_property_read_u32(priv->pdev->dev.of_node, "sw-ctrl-gpio",
 				   &gpio);
 	if (!ret) {
-		icnss_pr_dbg("WLAN_SW_CTRL_GPIO modified through DT: %d\n", gpio);
+		icnss_pr_dbg("SW_CTRL_GPIO modified through DT: %d\n", gpio);
 		req->gpio_info_valid = 1;
 		req->gpio_info[WLAN_SW_CTRL_GPIO_V01] = gpio;
 	} else {

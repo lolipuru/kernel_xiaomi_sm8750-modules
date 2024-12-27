@@ -8,6 +8,7 @@
 #define __ICNSS_POWER_H__
 
 int icnss_hw_power_on(struct icnss_priv *priv);
+int icnss_get_pinctrl(struct icnss_priv *priv);
 int icnss_hw_power_off(struct icnss_priv *priv);
 int icnss_power_on_chain1_reg(struct icnss_priv *priv);
 int icnss_get_clk(struct icnss_priv *priv);
