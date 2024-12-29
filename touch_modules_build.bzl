@@ -1,4 +1,4 @@
-load("//build/kernel/kleaf:kernel.bzl", "ddk_module", "kernel_module_group")
+load("//build/kernel/kleaf:kernel.bzl", "ddk_module", "ddk_submodule", "kernel_module_group")
 load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 
 def _register_module_to_map(module_map, name, path, config_option, srcs, deps):
@@ -43,19 +43,25 @@ def touch_module_entry(hdrs = []):
 
 def define_target_variant_modules(target, variant, registry, modules, config_options = []):
     kernel_build = "{}_{}".format(target, variant)
-    kernel_build_label = "//soc-repo:{}_base_kernel".format(kernel_build)
+    kernel_build_label = select({
+        "//build/kernel/kleaf:socrepo_true": "//soc-repo:{}_base_kernel".format(kernel_build),
+        "//build/kernel/kleaf:socrepo_false": "//msm-kernel:{}".format(kernel_build),
+    })
     modules = [registry.get(module_name) for module_name in modules]
     options = _get_kernel_build_options(modules, config_options)
     build_print = lambda message: print("{}: {}".format(kernel_build, message))
     formatter = lambda s: s.replace("%b", kernel_build).replace("%t", target)
-    deps = [
-        "//soc-repo:all_headers",
-        "//soc-repo:{}/drivers/pinctrl/qcom/pinctrl-msm".format(kernel_build),
-        "//soc-repo:{}/drivers/soc/qcom/panel_event_notifier".format(kernel_build),
-        "//soc-repo:{}/drivers/virt/gunyah/gh_mem_notifier".format(kernel_build),
-        "//soc-repo:{}/drivers/virt/gunyah/gh_irq_lend".format(kernel_build),
-        "//soc-repo:{}/drivers/virt/gunyah/gh_rm_drv".format(kernel_build),
-    ] + registry.hdrs
+    deps = select({
+        "//build/kernel/kleaf:socrepo_true": [
+            "//soc-repo:all_headers",
+            "//soc-repo:{}/drivers/pinctrl/qcom/pinctrl-msm".format(kernel_build),
+            "//soc-repo:{}/drivers/soc/qcom/panel_event_notifier".format(kernel_build),
+            "//soc-repo:{}/drivers/virt/gunyah/gh_mem_notifier".format(kernel_build),
+            "//soc-repo:{}/drivers/virt/gunyah/gh_irq_lend".format(kernel_build),
+            "//soc-repo:{}/drivers/virt/gunyah/gh_rm_drv".format(kernel_build),
+        ],
+        "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
+    })
     all_module_rules = []
 
     for module in modules:
@@ -75,16 +81,16 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
             srcs = module_srcs,
             out = "{}.ko".format(module.name),
             kernel_build = kernel_build_label,
-            deps = deps + module_dep,
+            deps = deps + module_dep + registry.hdrs,
             local_defines = options.keys(),
         )
+
         all_module_rules.append(rule_name)
 
     kernel_module_group(
         name = "{}_touch_modules".format(kernel_build),
         srcs = all_module_rules,
     )
-
     copy_to_dist_dir(
         name = "{}_touch_drivers_dist".format(kernel_build),
         data = [":{}_touch_modules".format(kernel_build)],
