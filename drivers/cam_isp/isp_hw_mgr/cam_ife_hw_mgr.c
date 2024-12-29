@@ -345,6 +345,13 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 
 	ife_hw_mgr = ctx->hw_mgr;
 
+	if (!g_ife_hw_mgr.cam_ddr_drv_support || g_ife_hw_mgr.debug_cfg.disable_isp_drv) {
+		CAM_DBG(CAM_ISP, "Skipping DRV config. drv_support: %d, drv_disable %d",
+			g_ife_hw_mgr.cam_ddr_drv_support,
+			g_ife_hw_mgr.debug_cfg.disable_isp_drv);
+		return rc;
+	}
+
 	/*
 	 * The main logic in this function is checking if per request drv info is valid,
 	 * if it is valid then we do the decision logic based on per request drv info.
@@ -463,9 +470,6 @@ static int cam_isp_mgr_drv_config(struct cam_ife_hw_mgr_ctx         *ctx,
 		"DRV per frame info: req:%llu is_valid:%s frame duration:%llu ns, vertical blanking duration:%llu ns, ctx:%d",
 		request_id, CAM_BOOL_TO_YESNO(drv_info->req_id == request_id),
 		drv_info->frame_duration, drv_info->blanking_duration, ctx->ctx_index);
-
-	if (!g_ife_hw_mgr.cam_ddr_drv_support || g_ife_hw_mgr.debug_cfg.disable_isp_drv)
-		return rc;
 
 	if (is_blob_config_valid &&
 		(prepare_hw_data->packet_opcode_type == CAM_ISP_PACKET_INIT_DEV)) {
