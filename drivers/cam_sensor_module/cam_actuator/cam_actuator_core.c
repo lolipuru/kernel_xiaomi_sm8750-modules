@@ -458,7 +458,6 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 	struct cam_cmd_buf_desc   *cmd_desc = NULL;
 	struct cam_actuator_soc_private *soc_private = NULL;
 	struct cam_sensor_power_ctrl_t  *power_info = NULL;
-	size_t                           packet_size = 0;
 
 	if (!a_ctrl || !arg) {
 		CAM_ERR(CAM_ACTUATOR, "Invalid Args");
@@ -497,26 +496,9 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 	remain_len -= (size_t)config.offset;
 	csl_packet_u = (struct cam_packet *)
 		(generic_pkt_ptr + (uint32_t)config.offset);
-	packet_size = csl_packet_u->header.size;
-	if (packet_size <= remain_len) {
-		rc = cam_common_mem_kdup((void **)&csl_packet,
-			csl_packet_u, packet_size);
-		if (rc) {
-			CAM_ERR(CAM_ACTUATOR, "Alloc and copy request: %lld packet fail",
-				csl_packet_u->header.request_id);
-			goto put_buf;
-		}
-	} else {
-		CAM_ERR(CAM_ACTUATOR, "Invalid packet header size %u",
-			packet_size);
-		rc = -EINVAL;
-		goto put_buf;
-	}
-
-	if (cam_packet_util_validate_packet(csl_packet,
-		remain_len)) {
-		CAM_ERR(CAM_ACTUATOR, "Invalid packet params");
-		rc = -EINVAL;
+	rc = cam_packet_util_copy_pkt_to_kmd(csl_packet_u, &csl_packet, remain_len);
+	if (rc) {
+		CAM_ERR(CAM_ACTUATOR, "Copying packet to KMD failed");
 		goto end;
 	}
 

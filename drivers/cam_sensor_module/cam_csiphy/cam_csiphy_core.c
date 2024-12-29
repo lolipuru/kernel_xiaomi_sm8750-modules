@@ -1354,8 +1354,6 @@ int32_t cam_cmd_buf_parser(struct csiphy_device *csiphy_dev,
 	struct cam_cmd_buf_desc *cmd_desc = NULL;
 	size_t                   len, remain_len;
 	uint32_t                 cmd_buf_type;
-	size_t                   packet_size = 0;
-
 
 	if (!cfg_dev || !csiphy_dev) {
 		CAM_ERR(CAM_CSIPHY, "Invalid Args");
@@ -1383,27 +1381,11 @@ int32_t cam_cmd_buf_parser(struct csiphy_device *csiphy_dev,
 	remain_len -= (size_t)cfg_dev->offset;
 	csl_packet_u = (struct cam_packet *)
 		(generic_pkt_ptr + (uint32_t)cfg_dev->offset);
-	packet_size = csl_packet_u->header.size;
-	if (packet_size <= remain_len) {
-		rc = cam_common_mem_kdup((void **)&csl_packet,
-			csl_packet_u, packet_size);
-		if (rc) {
-			CAM_ERR(CAM_CSIPHY, "Alloc and copy request: %lld packet fail",
-				csl_packet_u->header.request_id);
-			goto put_buf;
-		}
-	} else {
-		CAM_ERR(CAM_CSIPHY, "Invalid packet header size %u",
-			packet_size);
-		rc = -EINVAL;
-		goto put_buf;
-	}
 
-	if (cam_packet_util_validate_packet(csl_packet,
-		remain_len)) {
-		CAM_ERR(CAM_CSIPHY, "Invalid packet params");
-		rc = -EINVAL;
-		goto end;
+	rc = cam_packet_util_copy_pkt_to_kmd(csl_packet_u, &csl_packet, remain_len);
+	if (rc) {
+		CAM_ERR(CAM_CSIPHY, "Copying packet to KMD failed");
+		goto put_buf;
 	}
 
 	if (csl_packet->num_cmd_buf)

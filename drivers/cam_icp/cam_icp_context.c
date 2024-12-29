@@ -183,7 +183,7 @@ static int __cam_icp_config_dev_in_ready(struct cam_context *ctx,
 	uintptr_t packet_addr;
 	struct cam_packet *packet;
 	struct cam_packet *packet_u;
-	size_t remain_len = 0, packet_size;
+	size_t remain_len = 0;
 
 	rc = cam_mem_get_cpu_buf((int32_t) cmd->packet_handle,
 		&packet_addr, &len);
@@ -207,28 +207,10 @@ static int __cam_icp_config_dev_in_ready(struct cam_context *ctx,
 	remain_len -= (size_t)cmd->offset;
 	packet_u = (struct cam_packet *) ((uint8_t *)packet_addr +
 		(uint32_t)cmd->offset);
-	packet_size = packet_u->header.size;
-	if (packet_size <= remain_len) {
-		rc = cam_common_mem_kdup((void **)&packet,
-			packet_u, packet_size);
-		if (rc) {
-			CAM_ERR(CAM_ICP, "Alloc and copy request: %llu packet fail",
-				packet_u->header.request_id);
-			goto put_cpu_buf;
-		}
-	} else {
-		CAM_ERR(CAM_ICP, "Invalid packet header size %u",
-			packet_size);
-		rc = -EINVAL;
-		goto put_cpu_buf;
-	}
-
-	rc = cam_packet_util_validate_packet(packet, remain_len);
+	rc = cam_packet_util_copy_pkt_to_kmd(packet_u, &packet, remain_len);
 	if (rc) {
-		CAM_ERR(CAM_CTXT, "[%s] ctx[%u]: Invalid packet params, remain length: %zu",
-			ctx->dev_name, ctx->ctx_id,
-			remain_len);
-		goto free_kdup;
+		CAM_ERR(CAM_ICP, "copying packet to kmd failed");
+		goto put_cpu_buf;
 	}
 
 	if (((packet->header.op_code & 0xff) ==
@@ -245,7 +227,6 @@ static int __cam_icp_config_dev_in_ready(struct cam_context *ctx,
 		CAM_ERR(CAM_ICP, "[%s] ctx[%u]:Failed to prepare device",
 			ctx->dev_name, ctx->ctx_id);
 
-free_kdup:
 	cam_common_mem_free(packet);
 put_cpu_buf:
 	cam_mem_put_cpu_buf((int32_t) cmd->packet_handle);
