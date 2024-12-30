@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -2773,7 +2773,7 @@ bool wlan_get_mlo_link_agnostic_flag(struct wlan_objmgr_vdev *vdev,
 
 	if (wlan_vdev_mlme_get_opmode(vdev) == QDF_STA_MODE) {
 		if (!wlan_mlo_mgr_is_link_switch_in_progress(vdev) &&
-		    !mlo_is_mld_connected(vdev))
+		    !mlo_is_mld_vdevs_active(vdev))
 			return mlo_link_agnostic;
 
 		bss_peer = wlan_objmgr_vdev_try_get_bsspeer(vdev,
