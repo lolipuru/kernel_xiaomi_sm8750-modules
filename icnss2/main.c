@@ -5687,7 +5687,6 @@ static const struct platform_device_id icnss_platform_id_table[] = {
 	{ .name = "adrastea", .driver_data = ADRASTEA_DEVICE_ID, },
 	{ .name = "wcn6450", .driver_data = WCN6450_DEVICE_ID, },
 	{ .name = "wcn7750", .driver_data = WCN7750_DEVICE_ID, },
-	{ .name = "direct-link", .driver_data = DIRECT_LINK_DEVICE_ID, },
 	{ },
 };
 
@@ -5704,14 +5703,25 @@ static const struct of_device_id icnss_dt_match[] = {
 	{
 		.compatible = "qcom,wcn7750",
 		.data = (void *)&icnss_platform_id_table[3]},
-	{
-		.compatible = "qcom,icnss-direct-link",
-		.data = (void *)&icnss_platform_id_table[4]},
-
 	{ },
 };
 
 MODULE_DEVICE_TABLE(of, icnss_dt_match);
+
+static const struct platform_device_id icnss_direct_link_platform_id_table[] = {
+	{ .name = "direct-link", .driver_data = DIRECT_LINK_DEVICE_ID, },
+	{ },
+};
+
+static const struct of_device_id icnss_direct_link_dt_match[] = {
+	{
+		.compatible = "qcom,icnss-direct-link",
+		.data = (void *)&icnss_direct_link_platform_id_table[0]},
+
+	{ },
+};
+
+MODULE_DEVICE_TABLE(of, icnss_direct_link_dt_match);
 
 static void icnss_init_control_params(struct icnss_priv *priv)
 {
@@ -5896,6 +5906,24 @@ static const char *icnss_get_device_name(const struct platform_device_id *device
 	return "UNKNOWN";
 }
 
+static int icnss_direct_link_probe(struct platform_device *pdev)
+{
+	icnss_pr_info("icnss direct link device probed!\n");
+	return 0;
+}
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
+static int icnss_direct_link_remove(struct platform_device *pdev)
+#else
+static void icnss_direct_link_remove(struct platform_device *pdev)
+#endif
+{
+	icnss_pr_info("icnss direct link device removed!\n");
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
+	return 0;
+#endif
+}
+
 static int icnss_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -5914,11 +5942,6 @@ static int icnss_probe(struct platform_device *pdev)
 	}
 
 	device_id = of_id->data;
-	if (device_id->driver_data == DIRECT_LINK_DEVICE_ID) {
-		icnss_pr_info("cnss direct link device probed!\n");
-		return 0;
-	}
-
 	if (dev_get_drvdata(dev)) {
 		icnss_pr_err("Driver is already initialized\n");
 		return -EEXIST;
@@ -6109,22 +6132,6 @@ static void icnss_remove(struct platform_device *pdev)
 #endif
 {
 	struct icnss_priv *priv = dev_get_drvdata(&pdev->dev);
-	const struct of_device_id *of_id;
-	const struct platform_device_id *device_id;
-	int ret = 0;
-
-	of_id = of_match_device(icnss_dt_match, &pdev->dev);
-	if (!of_id || !of_id->data) {
-		icnss_pr_err("Failed to find of match device!\n");
-		ret = -ENODEV;
-		goto out;
-	}
-
-	device_id = of_id->data;
-	if (device_id->driver_data == DIRECT_LINK_DEVICE_ID) {
-		icnss_pr_info("cnss direct link device removed!\n");
-		goto out;
-	}
 
 	icnss_pr_info("Removing driver: state: 0x%lx\n", priv->state);
 
@@ -6196,11 +6203,8 @@ static void icnss_remove(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, NULL);
 
-out: ;
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0))
-	return ret;
-#else
-	return;
+	return 0;
 #endif
 }
 
@@ -6489,6 +6493,15 @@ static struct platform_driver icnss_driver = {
 	},
 };
 
+static struct platform_driver icnss_direct_link_driver = {
+	.probe  = icnss_direct_link_probe,
+	.remove = icnss_direct_link_remove,
+	.driver = {
+		.name = "icnss2_direct_link",
+		.of_match_table = icnss_direct_link_dt_match,
+	},
+};
+
 /**
  * icnss_has_valid_dt_node() - Check if valid device tree node present
  *
@@ -6510,18 +6523,45 @@ static bool icnss_has_valid_dt_node(void)
 	return false;
 }
 
+static bool icnss_direct_link_has_valid_dt_node(void)
+{
+	struct device_node *dn = NULL;
+
+	for_each_matching_node(dn, icnss_direct_link_dt_match) {
+		if (of_device_is_available(dn))
+			return true;
+	}
+
+	icnss_pr_dbg("No valid icnss2 direct link dtsi entry\n");
+	return false;
+}
+
 static int __init icnss_initialize(void)
 {
+	int ret;
+
 	if (!icnss_has_valid_dt_node())
 		return -ENODEV;
 
 	icnss_debug_init();
-	return platform_driver_register(&icnss_driver);
+
+	ret = platform_driver_register(&icnss_driver);
+	if (!ret && icnss_direct_link_has_valid_dt_node()) {
+		ret = platform_driver_register(&icnss_direct_link_driver);
+		icnss_pr_info("Direct link driver register status:%d", ret);
+		if (ret) {
+			platform_driver_unregister(&icnss_driver);
+			icnss_debug_deinit();
+		}
+	}
+
+	return ret;
 }
 
 static void __exit icnss_exit(void)
 {
 	platform_driver_unregister(&icnss_driver);
+	platform_driver_unregister(&icnss_direct_link_driver);
 	icnss_debug_deinit();
 }
 
