@@ -1576,7 +1576,7 @@ static int cam_context_stream_dump_validation(struct cam_context *ctx,
 static int cam_context_user_dump(struct cam_context *ctx,
 	struct cam_hw_dump_args *dump_args)
 {
-	int                              rc, i;
+	int                              rc = 0, i;
 	struct cam_ctx_request          *req = NULL, *req_temp;
 	struct cam_context_dump_header  *hdr;
 	uint8_t                         *dst;
@@ -1636,6 +1636,7 @@ static int cam_context_user_dump(struct cam_context *ctx,
 	dump_args->offset += hdr->size +
 		sizeof(struct cam_context_dump_header);
 
+	spin_lock(&ctx->lock);
 	/* Dump waiting requests */
 	if (!list_empty(&ctx->wait_req_list)) {
 		list_for_each_entry_safe(req, req_temp, &ctx->wait_req_list, list) {
@@ -1645,8 +1646,8 @@ static int cam_context_user_dump(struct cam_context *ctx,
 					CAM_WARN(CAM_CTXT,
 						"No sufficient space in dump buffer for headers, remain buf size: %d, header size: %d",
 						remain_len, sizeof(struct cam_context_dump_header));
-					cam_mem_put_cpu_buf(dump_args->buf_handle);
-					return -ENOSPC;
+					rc = -ENOSPC;
+					goto cleanup;
 				}
 
 				dst = (uint8_t *)cpu_addr + dump_args->offset;
@@ -1687,8 +1688,8 @@ static int cam_context_user_dump(struct cam_context *ctx,
 					CAM_WARN(CAM_CTXT,
 						"No sufficient space in dump buffer for headers, remain buf size: %d, header size: %d",
 						remain_len, sizeof(struct cam_context_dump_header));
-					cam_mem_put_cpu_buf(dump_args->buf_handle);
-					return -ENOSPC;
+					rc = -ENOSPC;
+					goto cleanup;
 				}
 
 				dst = (uint8_t *)cpu_addr + dump_args->offset;
@@ -1729,8 +1730,8 @@ static int cam_context_user_dump(struct cam_context *ctx,
 					CAM_WARN(CAM_CTXT,
 						"No sufficient space in dump buffer for headers, remain buf size: %d, header size: %d",
 						remain_len, sizeof(struct cam_context_dump_header));
-					cam_mem_put_cpu_buf(dump_args->buf_handle);
-					return -ENOSPC;
+					rc = -ENOSPC;
+					goto cleanup;
 				}
 
 				dst = (uint8_t *)cpu_addr + dump_args->offset;
@@ -1762,8 +1763,9 @@ static int cam_context_user_dump(struct cam_context *ctx,
 		}
 	}
 cleanup:
+	spin_unlock(&ctx->lock);
 	cam_mem_put_cpu_buf(dump_args->buf_handle);
-	return 0;
+	return rc;
 }
 
 int32_t cam_context_dump_dev_to_hw(struct cam_context *ctx,
