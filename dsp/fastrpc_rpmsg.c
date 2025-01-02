@@ -190,14 +190,12 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 	return 0;
 
 fdev_error:
-	kfree(data);
-
-populate_error:
 	if (data->fdevice)
 		misc_deregister(&data->fdevice->miscdev);
 	if (data->secure_fdevice)
 		misc_deregister(&data->secure_fdevice->miscdev);
-
+populate_error:
+	kfree(data);
 	return err;
 }
 
