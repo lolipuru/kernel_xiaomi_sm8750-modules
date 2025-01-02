@@ -195,6 +195,8 @@ fdev_error:
 	if (data->secure_fdevice)
 		misc_deregister(&data->secure_fdevice->miscdev);
 populate_error:
+	kfree(data->gidlist.gids);
+	data->gidlist.gids = NULL;
 	kfree(data);
 	return err;
 }
