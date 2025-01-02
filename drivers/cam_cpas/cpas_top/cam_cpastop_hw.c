@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -1497,6 +1497,26 @@ static int cam_cpastop_set_tpg_mux_sel(struct cam_hw_info *cpas_hw,
 	return 0;
 }
 
+static int cam_cpastop_handle_reset_res_control(struct cam_hw_info *cpas_hw)
+{
+	struct cam_hw_soc_info *soc_info = &cpas_hw->soc_info;
+	int rc = 0;
+
+	switch (soc_info->hw_version) {
+	case CAM_CPAS_TITAN_970_V110:
+		rc = cam_soc_util_reset_control(soc_info);
+		if (rc) {
+			CAM_ERR(CAM_UTIL, "resource control assert/de-assert failed");
+			return rc;
+		}
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
 static int cam_cpastop_init_hw_version(struct cam_hw_info *cpas_hw,
 	struct cam_cpas_hw_caps *hw_caps)
 {
@@ -1714,6 +1734,7 @@ int cam_cpastop_get_internal_ops(struct cam_cpas_internal_ops *internal_ops)
 		cam_cpastop_print_poweron_settings;
 	internal_ops->qchannel_handshake = cam_cpastop_qchannel_handshake;
 	internal_ops->set_tpg_mux_sel = cam_cpastop_set_tpg_mux_sel;
+	internal_ops->handle_reset_res_control = cam_cpastop_handle_reset_res_control;
 
 	return 0;
 }
