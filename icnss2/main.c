@@ -1882,7 +1882,8 @@ out:
 }
 
 
-static int icnss_driver_event_fw_ready_ind(struct icnss_priv *priv, void *data)
+static int icnss_driver_event_fw_ready_ind(struct icnss_priv *priv, void *data,
+					   bool cold_boot)
 {
 	int ret = 0;
 
@@ -1898,8 +1899,14 @@ static int icnss_driver_event_fw_ready_ind(struct icnss_priv *priv, void *data)
 		icnss_free_qdss_mem(priv);
 
 	icnss_pr_info("WLAN FW is ready: 0x%lx\n", priv->state);
-
-	icnss_hw_power_off(priv);
+	/* In case of SSR, FW will not do deinit hence do not perform regulator power off.
+	 * If we turn off 1.8 AON power rail which is supplying power, it will result into pci
+	 * enumeration failure. So, avoid doing power off in this case.
+	 */
+	if (!(priv->device_id == WCN7750_DEVICE_ID))
+		icnss_hw_power_off(priv);
+	else if (cold_boot)
+		icnss_hw_power_off(priv);
 
 	if (!priv->pdev) {
 		icnss_pr_err("Device is not ready\n");
@@ -1946,7 +1953,7 @@ static int icnss_driver_event_fw_init_done(struct icnss_priv *priv, void *data)
 		ret = wlfw_wlan_mode_send_sync_msg(priv,
 			(enum wlfw_driver_mode_enum_v01)ICNSS_CALIBRATION);
 	} else {
-		icnss_driver_event_fw_ready_ind(priv, NULL);
+		icnss_driver_event_fw_ready_ind(priv, NULL, false);
 	}
 
 	return ret;
@@ -2589,7 +2596,7 @@ static void icnss_driver_event_work(struct work_struct *work)
 			break;
 		case ICNSS_DRIVER_EVENT_FW_READY_IND:
 			ret = icnss_driver_event_fw_ready_ind(priv,
-								 event->data);
+								 event->data, true);
 			break;
 		case ICNSS_DRIVER_EVENT_REGISTER_DRIVER:
 			ret = icnss_driver_event_register_driver(priv,
