@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -2095,6 +2095,88 @@ error:
 	return rc;
 }
 
+int cam_soc_util_get_reset_resource(struct cam_hw_soc_info *soc_info)
+{
+	struct device_node *of_node = NULL;
+	int count;
+	int i, j, rc = 0;
+
+	if (!soc_info || !soc_info->dev) {
+		CAM_ERR(CAM_UTIL, "Invalid params");
+		return -EINVAL;
+	}
+
+	of_node = soc_info->dev->of_node;
+
+	count = of_property_count_strings(of_node, "reset-names");
+
+	CAM_DBG(CAM_UTIL, "E: dev_name = %s count = %d",
+		soc_info->dev_name, count);
+	if (count > CAM_SOC_MAX_RESET) {
+		CAM_ERR(CAM_UTIL, "invalid count of reset, count=%d", count);
+		rc = -EINVAL;
+		return rc;
+	}
+	if (count <= 0) {
+		CAM_DBG(CAM_UTIL, "No reset found");
+		count = 0;
+		soc_info->num_reset = count;
+		return 0;
+	}
+	soc_info->num_reset = count;
+
+	for (i = 0; i < count; i++) {
+		rc = of_property_read_string_index(of_node, "reset-names",
+				i, &(soc_info->reset_name[i]));
+		CAM_DBG(CAM_UTIL, "reset-names[%d] = %s",
+			i, soc_info->reset_name[i]);
+		if (rc) {
+			CAM_ERR(CAM_UTIL,
+				"i= %d count= %d reading reset-names failed",
+				i, count);
+			return rc;
+		}
+
+		soc_info->resets[i] = devm_reset_control_get(soc_info->dev,
+				soc_info->reset_name[i]);
+		if (IS_ERR(soc_info->resets[i])) {
+			rc = PTR_ERR(soc_info->resets[i]);
+			CAM_ERR(CAM_UTIL,
+				"i= %d count= %d reset= %s control get failed: %d",
+				i, count, soc_info->reset_name[i], rc);
+			goto err;
+		}
+	}
+
+	return 0;
+
+err:
+	for (j = i-1; j >= 0; j--) {
+		reset_control_put(soc_info->resets[i]);
+		soc_info->resets[i] = NULL;
+	}
+	soc_info->num_reset = 0;
+
+	return rc;
+}
+
+int cam_soc_util_put_reset_resource(struct cam_hw_soc_info *soc_info)
+{
+	int i;
+
+	if (soc_info->num_reset <= 0) {
+		CAM_ERR(CAM_UTIL, "Invalid params reset %d");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < soc_info->num_reset; i++) {
+		reset_control_put(soc_info->resets[i]);
+		soc_info->resets[i] = NULL;
+	}
+
+	return 0;
+}
+
 int cam_soc_util_clk_enable(struct cam_hw_soc_info *soc_info, int cesta_client_idx,
 	bool optional_clk, int32_t clk_idx, int32_t apply_level)
 {
@@ -3493,6 +3575,49 @@ static void cam_soc_util_regulator_disable_default(
 	}
 }
 
+int cam_soc_util_reset_control(
+	struct cam_hw_soc_info *soc_info)
+{
+	int rc = 0;
+	uint32_t num_reset = soc_info->num_reset;
+
+	if (num_reset <= 0)
+		return 0;
+
+	if (num_reset > CAM_SOC_MAX_RESET) {
+		CAM_ERR(CAM_UTIL,
+			"%s has invalid reset resource number %d",
+			soc_info->dev_name, num_reset);
+		return -EINVAL;
+	}
+
+	/* pscbc reset */
+	reset_control_assert(soc_info->resets[0]);
+	reset_control_assert(soc_info->resets[1]);
+	reset_control_assert(soc_info->resets[2]);
+	reset_control_assert(soc_info->resets[3]);
+	usleep_range(1, 2);
+	reset_control_deassert(soc_info->resets[0]);
+	reset_control_deassert(soc_info->resets[1]);
+
+	/* sw mode sleep stg mode. STG done for SF */
+	reset_control_assert(soc_info->resets[4]);
+	reset_control_assert(soc_info->resets[5]);
+	usleep_range(1, 2);
+	reset_control_deassert(soc_info->resets[1]);
+	reset_control_deassert(soc_info->resets[5]);
+	reset_control_deassert(soc_info->resets[4]);
+
+	/* sw mode sleep stg mode. STG done for HF */
+	reset_control_assert(soc_info->resets[6]);
+	reset_control_assert(soc_info->resets[7]);
+	usleep_range(1, 2);
+	reset_control_deassert(soc_info->resets[0]);
+	reset_control_deassert(soc_info->resets[7]);
+	reset_control_deassert(soc_info->resets[6]);
+	return rc;
+}
+
 static int cam_soc_util_regulator_enable_default(
 	struct cam_hw_soc_info *soc_info)
 {
@@ -4005,6 +4130,12 @@ int cam_soc_util_enable_platform_resource(struct cam_hw_soc_info *soc_info,
 		if (rc) {
 			CAM_ERR(CAM_UTIL, "Regulators enable failed");
 			return rc;
+		}
+
+		rc = cam_soc_util_reset_control(soc_info);
+		if (rc) {
+			CAM_ERR(CAM_UTIL, "resource control assert/de-assert failed");
+			goto disable_regulator;
 		}
 
 		if (enable_clocks) {

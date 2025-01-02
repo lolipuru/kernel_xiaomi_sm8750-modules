@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_CPAS_HW_H_
@@ -204,6 +204,7 @@ struct cam_cpas_kobj_map {
  * @qchannel_handshake: Function pointer for hw core specific qchannel
  *                      handshake settings
  * @set_tpg_mux_sel: Set tpg mux select on CPAS TOP register
+ * @handle_reset_res_control: handle reset resource control
  *
  */
 struct cam_cpas_internal_ops {
@@ -221,6 +222,7 @@ struct cam_cpas_internal_ops {
 	int (*print_poweron_settings)(struct cam_hw_info *cpas_hw);
 	int (*qchannel_handshake)(struct cam_hw_info *cpas_hw, bool power_on, bool force_on);
 	int (*set_tpg_mux_sel)(struct cam_hw_info *cpas_hw, uint32_t tpg_num);
+	int (*handle_reset_res_control)(struct cam_hw_info *cpas_hw);
 };
 
 /**
