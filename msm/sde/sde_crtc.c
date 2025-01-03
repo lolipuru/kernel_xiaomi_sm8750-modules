@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -2117,10 +2117,17 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 				(cac_mode == SDE_CAC_LOOPBACK_FETCH))
 			layout_idx = cur_sde_pstate->layout;
 
+		if (layout_idx >= MAX_LAYOUTS_PER_CRTC) {
+			SDE_ERROR("layout_idx: %d is more than max layouts per crtc",
+				layout_idx);
+			continue;
+		}
+
 		stage_cfg = &sde_crtc->stage_cfg[layout_idx];
 		stage = cur_sde_pstate->stage;
 
-		if (cur_sde_pstate->pipe_order_flags & SDE_SSPP_RIGHT) {
+		if ((cur_sde_pstate->pipe_order_flags & SDE_SSPP_RIGHT) &&
+								stage < SDE_STAGE_MAX) {
 			for (j = 0; j < PIPES_PER_STAGE; j++) {
 				if ((stage_cfg->stage[stage][j] == sde_plane_pipe(plane))
 						&& (stage_cfg->multirect_index[stage][j]
