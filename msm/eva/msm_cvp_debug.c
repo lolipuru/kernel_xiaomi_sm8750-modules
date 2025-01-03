@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -53,7 +53,7 @@ int msm_cvp_minidump_enable = !1;
 int cvp_kernel_fence_enabled = 2;
 int msm_cvp_hw_wd_recovery = 1;
 int msm_cvp_smmu_fault_recovery = 1;
-int msm_cvp_crash = !1;
+int msm_cvp_session_error_recovery = 1;
 
 #define MAX_DBG_BUF_SIZE 4096
 
@@ -475,7 +475,7 @@ struct dentry *msm_cvp_debugfs_init_core(struct msm_cvp_core *core,
 	debugfs_create_u32("smmu_fault_recovery", 0644, dir,
 		&msm_cvp_smmu_fault_recovery);
 	debugfs_create_u32("trigger_crash", 0644, dir,
-		&msm_cvp_crash);
+		&msm_cvp_session_error_recovery);
 failed_create_dir:
 	return dir;
 }
