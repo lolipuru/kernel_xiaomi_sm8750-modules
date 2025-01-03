@@ -5342,10 +5342,8 @@ QDF_STATUS mlme_get_peer_phymode(struct wlan_objmgr_psoc *psoc, uint8_t *mac,
 	struct wlan_objmgr_peer *peer;
 
 	peer = wlan_objmgr_get_peer_by_mac(psoc, mac, WLAN_MLME_NB_ID);
-	if (!peer) {
-		mlme_legacy_err("peer object is null");
+	if (!peer)
 		return QDF_STATUS_E_NULL_VALUE;
-	}
 
 	*peer_phymode = wlan_peer_get_phymode(peer);
 	wlan_objmgr_peer_release_ref(peer, WLAN_MLME_NB_ID);
