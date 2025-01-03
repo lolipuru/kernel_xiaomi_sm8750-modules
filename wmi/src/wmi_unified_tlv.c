@@ -15515,8 +15515,7 @@ extract_hw_bdf_status(wmi_service_ready_ext2_event_fixed_param *ev)
 	hw_bdf_s = ev->hw_bd_status;
 	switch (hw_bdf_s) {
 	case WMI_BDF_VERSION_CHECK_DISABLED:
-		wmi_info("BDF VER is %d, FW and BDF ver check skipped",
-			 hw_bdf_s);
+		wmi_info("FW and BDF ver check skipped");
 		break;
 	case WMI_BDF_VERSION_CHECK_GOOD:
 		wmi_info("BDF VER is %d, FW and BDF ver check good",
