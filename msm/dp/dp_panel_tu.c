@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
 #include "dp_panel_tu.h"
 #include <drm/drm_fixed.h>
 #include "dp_debug.h"
+
+#define DP_TU_FP_EDGE 0x40000
 
 struct tu_algo_data {
 	s64 lclk_fp;
@@ -267,7 +269,7 @@ static void _tu_valid_boundary_calc(struct tu_algo_data *tu)
 	temp1_fp = drm_fixp_mul(temp2_fp, temp1_fp);
 	temp1 = fixp2int_ceil(temp1_fp);
 
-	if ((unsigned int) temp1_fp < 0x40000)
+	if ((unsigned int) temp1_fp < DP_TU_FP_EDGE)
 		temp1 = drm_fixp2int(temp1_fp);
 
 	temp = tu->i_upper_boundary_count * tu->nlanes;
@@ -279,7 +281,7 @@ static void _tu_valid_boundary_calc(struct tu_algo_data *tu)
 	temp2_fp = drm_fixp_mul(temp1_fp, temp2_fp);
 	temp2 = fixp2int_ceil(temp2_fp);
 
-	if ((unsigned int) temp2_fp < 0x40000)
+	if ((unsigned int) temp2_fp < DP_TU_FP_EDGE)
 		temp2 = drm_fixp2int(temp2_fp);
 
 	tu->extra_required_bytes_new_tmp = temp1 + temp2;
@@ -294,7 +296,7 @@ static void _tu_valid_boundary_calc(struct tu_algo_data *tu)
 	temp1_fp = drm_fixp_div(temp2_fp, tu->pclk_fp);
 	temp = fixp2int_ceil(temp1_fp);
 
-	if ((unsigned int) temp1_fp < 0x40000)
+	if ((unsigned int) temp1_fp < DP_TU_FP_EDGE)
 		temp = drm_fixp2int(temp1_fp);
 
 	tu->extra_pclk_cycles_in_link_clk_tmp = temp;
@@ -440,7 +442,7 @@ static void _dp_calc_extra_bytes(struct tu_algo_data *tu)
 
 	temp2_fp = fixp_subtract(temp1_fp, temp2_fp);
 
-	if ((unsigned int) temp2_fp <= 0x40000) {
+	if ((unsigned int) temp2_fp <= DP_TU_FP_EDGE) {
 		tu->extra_bytes = 0;
 		DP_DEBUG("extra_bytes set to 0\n");
 	} else {
@@ -1104,7 +1106,7 @@ void dp_tu_mst_rg_calc(struct dp_tu_mst_rg_in *in, struct dp_tu_mst_rg_out *out)
 
 	/* Y_FRAC_ENUM */
 	temp_fp = drm_fixp_from_fraction(x_int, 1);
-	temp_fp = target_strm_sym_fp - temp_fp;
+	temp_fp = fixp_subtract(target_strm_sym_fp, temp_fp);
 	y_frac_enum_fp = drm_fixp_from_fraction(256, 1);
 	y_frac_enum_fp = drm_fixp_mul(temp_fp, y_frac_enum_fp);
 	y_frac_enum = drm_fixp2int(y_frac_enum_fp);
