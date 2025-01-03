@@ -348,6 +348,7 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 	struct cam_cmd_buf_desc *cmd_desc = NULL;
 	struct cam_buf_io_cfg *io_cfg = NULL;
 	struct i2c_settings_array *i2c_reg_settings = NULL;
+	struct i2c_settings_array *i2c_set_per_req[CAM_SENSOR_MAX_PER_REQ_SETTINGS];
 	size_t len_of_buff = 0;
 	size_t remain_len = 0;
 	int64_t prev_updated_req;
@@ -492,20 +493,27 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 			csl_packet->header.request_id % MAX_PER_FRAME_ARRAY,
 			csl_packet->header.request_id);
 		if (i2c_reg_settings->is_settings_valid == 1) {
-			CAM_ERR(CAM_SENSOR,
-				"Already some pkt in offset req : %lld",
-				csl_packet->header.request_id);
-			/*
-			 * Update req mgr even in case of failure.
-			 * This will help not to wait indefinitely
-			 * and freeze. If this log is triggered then
-			 * fix it.
-			 */
-			rc = cam_sensor_update_req_mgr(s_ctrl, csl_packet);
-			if (rc)
-				CAM_ERR(CAM_SENSOR,
-					"Failed in adding request to req_mgr");
-			goto end;
+			//Need to clean the previous i2c settings here
+			i2c_set_per_req[0] = &i2c_data->per_frame[csl_packet->header.request_id %
+				MAX_PER_FRAME_ARRAY];
+			i2c_set_per_req[1] = &i2c_data->deferred_frame_update[csl_packet->header.request_id %
+				MAX_PER_FRAME_ARRAY];
+			i2c_set_per_req[2] = &i2c_data->frame_skip[csl_packet->header.request_id %
+				MAX_PER_FRAME_ARRAY];
+			i2c_set_per_req[3] = &i2c_data->bubble_update[csl_packet->header.request_id %
+				MAX_PER_FRAME_ARRAY];
+
+			for (i = 0; i < CAM_SENSOR_MAX_PER_REQ_SETTINGS; i++) {
+				CAM_DBG(CAM_SENSOR, "setting list idx:%d, request_id:%lld, is_settings_valid:%d",
+					i, i2c_set_per_req[i]->request_id, i2c_set_per_req[i]->is_settings_valid);
+				if ((i2c_set_per_req[i]->request_id) &&
+					(i2c_set_per_req[i]->is_settings_valid == 1)) {
+						i2c_set_per_req[i]->request_id = 0;
+						rc = delete_request(i2c_set_per_req[i]);
+						if (rc < 0)
+							CAM_ERR(CAM_SENSOR, "Delete request Failed during parse pkt rc:%d", rc);
+				}
+			}
 		}
 		break;
 	}
