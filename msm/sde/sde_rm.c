@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -3103,7 +3103,7 @@ int sde_rm_ext_blk_create_reserve(struct sde_rm *rm,
 				  struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
 				  struct sde_hw_blk_reg_map *pp_shd_hw)
 {
-	struct sde_rm_hw_blk *blk;
+	struct sde_rm_hw_blk *blk = NULL;
 	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 
@@ -3160,7 +3160,7 @@ int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm,
 				     struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
 				     struct sde_hw_mixer *sde_hw_lm)
 {
-	struct sde_rm_hw_blk *blk;
+	struct sde_rm_hw_blk *blk = NULL;
 	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 
@@ -3217,7 +3217,7 @@ int sde_rm_ext_blk_create_reserve_ctl(struct sde_rm *rm,
 				      struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
 				      struct sde_hw_ctl *sde_hw_ctl)
 {
-	struct sde_rm_hw_blk *blk;
+	struct sde_rm_hw_blk *blk = NULL;
 	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 
