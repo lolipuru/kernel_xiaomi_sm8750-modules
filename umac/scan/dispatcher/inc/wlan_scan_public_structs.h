@@ -465,12 +465,12 @@ struct rnr_bss_info {
 /**
  * struct neighbor_ap_info_field - Neighbor information field
  * @tbtt_header: TBTT information header
- * @operting_class: operating class
+ * @operating_class: operating class
  * @channel_number: channel number
  */
 struct neighbor_ap_info_field {
 	struct tbtt_information_header tbtt_header;
-	uint8_t operting_class;
+	uint8_t operating_class;
 	uint8_t channel_number;
 };
 
@@ -599,6 +599,8 @@ enum number_of_partner_link {
  * @is_hidden_ssid: is AP having hidden ssid.
  * @security_type: security supported
  * @seq_num: sequence number
+ * @is_non_tx_mbssid_gen: is locally generated non tx mbssid scan entry
+ * @reserved: reserved
  * @phy_mode: Phy mode of the AP
  * @avg_rssi: Average RSSI of the AP
  * @rssi_raw: The rssi of the last beacon/probe received
@@ -646,6 +648,8 @@ struct scan_cache_entry {
 	bool is_hidden_ssid;
 	uint8_t security_type;
 	uint16_t seq_num;
+	uint8_t is_non_tx_mbssid_gen:1,
+		reserved:7;
 	enum wlan_phymode phy_mode;
 	int32_t avg_rssi;
 	int8_t rssi_raw;
@@ -1779,10 +1783,12 @@ struct meta_rnr_channel {
  * struct channel_list_db - Database for channel information
  * @channel: channel meta information
  * @scan_count: scan count since the db was updated
+ * @rnr_db_lock: mutex lock
  */
 struct channel_list_db {
 	struct meta_rnr_channel channel[NUM_6GHZ_CHANNELS];
 	uint8_t scan_count;
+	qdf_mutex_t rnr_db_lock;
 };
 
 /**

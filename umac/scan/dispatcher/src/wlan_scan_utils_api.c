@@ -1124,7 +1124,7 @@ util_scan_update_rnr(struct rnr_bss_info *rnr,
 		fallthrough;
 	case TBTT_NEIGHBOR_AP_SHORTSSID:
 		rnr->channel_number = ap_info->channel_number;
-		rnr->operating_class = ap_info->operting_class;
+		rnr->operating_class = ap_info->operating_class;
 		qdf_mem_copy(&rnr->short_ssid, &data[1], SHORT_SSID_LEN);
 		break;
 
@@ -1136,7 +1136,7 @@ util_scan_update_rnr(struct rnr_bss_info *rnr,
 		fallthrough;
 	case TBTT_NEIGHBOR_AP_BSSID:
 		rnr->channel_number = ap_info->channel_number;
-		rnr->operating_class = ap_info->operting_class;
+		rnr->operating_class = ap_info->operating_class;
 		qdf_mem_copy(&rnr->bssid, &data[1], QDF_MAC_ADDR_SIZE);
 		break;
 
@@ -1151,7 +1151,7 @@ util_scan_update_rnr(struct rnr_bss_info *rnr,
 		fallthrough;
 	case TBTT_NEIGHBOR_AP_BSSSID_S_SSID:
 		rnr->channel_number = ap_info->channel_number;
-		rnr->operating_class = ap_info->operting_class;
+		rnr->operating_class = ap_info->operating_class;
 		qdf_mem_copy(&rnr->bssid, &data[1], QDF_MAC_ADDR_SIZE);
 		qdf_mem_copy(&rnr->short_ssid, &data[7], SHORT_SSID_LEN);
 		break;
@@ -1184,7 +1184,7 @@ util_scan_parse_rnr_ie(struct scan_cache_entry *scan_entry,
 		fieldtype = neighbor_ap_info->tbtt_header.tbbt_info_fieldtype;
 		scm_debug("chan %d, opclass %d tbtt_cnt %d, tbtt_len %d, fieldtype %d",
 			  neighbor_ap_info->channel_number,
-			  neighbor_ap_info->operting_class,
+			  neighbor_ap_info->operating_class,
 			  tbtt_count, tbtt_length, fieldtype);
 		data += sizeof(struct neighbor_ap_info_field);
 
@@ -2721,6 +2721,11 @@ util_scan_gen_scan_entry(struct wlan_objmgr_pdev *pdev,
 	qdf_mem_copy(&scan_entry->mbssid_info, mbssid_info,
 		     sizeof(scan_entry->mbssid_info));
 
+	/*Locally generated entry*/
+	if (!qdf_is_macaddr_zero(
+		(struct qdf_mac_addr *)&mbssid_info->non_trans_bssid))
+		scan_entry->is_non_tx_mbssid_gen = 1;
+
 	scan_entry->phy_mode = util_scan_get_phymode(pdev, scan_entry);
 	scan_entry->non_intersected_phymode = scan_entry->phy_mode;
 
@@ -3020,7 +3025,7 @@ static int util_handle_rnr_ie_for_mbssid(const uint8_t *rnr,
 		tbtt_type = neighbor_ap_info->tbtt_header.tbbt_info_fieldtype;
 		scm_debug("channel number %d, op class %d, bssid_index %d",
 			  neighbor_ap_info->channel_number,
-			  neighbor_ap_info->operting_class, bssid_index);
+			  neighbor_ap_info->operating_class, bssid_index);
 		scm_debug("tbtt_count %d, tbtt_length %d, tbtt_type %d",
 			  tbtt_count, tbtt_len, tbtt_type);
 
@@ -4282,6 +4287,7 @@ bool util_is_bssid_non_tx(struct wlan_objmgr_psoc *psoc,
 	if (!rnr_channel_db)
 		return false;
 
+	qdf_mutex_acquire(&rnr_channel_db->rnr_db_lock);
 	for (i = 0; i < QDF_ARRAY_SIZE(rnr_channel_db->channel); i++) {
 		channel = &rnr_channel_db->channel[i];
 		if (channel->chan_freq != freq)
@@ -4307,6 +4313,7 @@ bool util_is_bssid_non_tx(struct wlan_objmgr_psoc *psoc,
 			cur_node = next_node;
 		}
 	}
+	qdf_mutex_release(&rnr_channel_db->rnr_db_lock);
 
 	return ret;
 }
