@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1134,7 +1134,7 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 	struct sde_hw_ctl *hw_ctl;
 	struct intf_status intf_status = {0};
 	struct sde_cesta_scc_status scc_status = {0, };
-	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+	struct sde_cesta_client *cesta_client;
 	unsigned long lock_flags;
 	u32 flush_register = ~0;
 	u32 reset_status = 0;
@@ -1143,9 +1143,10 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 	int pend_ret_fence_cnt = 0;
 	u32 fence_ready = -1;
 
-	if (!phys_enc)
+	if (!phys_enc || !phys_enc->parent)
 		return;
 
+	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 	hw_ctl = phys_enc->hw_ctl;
 	if (!hw_ctl)
 		return;
