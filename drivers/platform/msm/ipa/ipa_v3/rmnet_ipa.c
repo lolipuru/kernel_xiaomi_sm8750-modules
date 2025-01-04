@@ -1337,8 +1337,10 @@ static int __ipa_wwan_open(struct net_device *dev)
 		reinit_completion(&wwan_ptr->resource_granted_completion);
 	wwan_ptr->device_status = WWAN_DEVICE_ACTIVE;
 
-	if (ipa3_rmnet_res.ipa_napi_enable)
+	if (ipa3_rmnet_res.ipa_napi_enable) {
 		napi_enable(&(wwan_ptr->napi));
+		ipa3_ctx->rmnet_napi_enable = true;
+	}
 	return 0;
 }
 
@@ -3701,6 +3703,7 @@ static int ipa3_wwan_probe(struct platform_device *pdev)
 		egress_pipe_status[j].status = 0;
 	}
 
+	ipa3_ctx->rmnet_napi_enable = false;
 	IPAWANERR("rmnet_ipa completed initialization\n");
 	return 0;
 config_err:

@@ -1587,3 +1587,19 @@ bool ipa3_check_wdi_opt_chn_empty(int ipa_ep_idx_rx)
 	return false;
 }
 EXPORT_SYMBOL_GPL(ipa3_check_wdi_opt_chn_empty);
+
+int ipa3_get_outstanding_buffers_wdi3(int ipa_ep_idx_rx,
+	int ipa_ep_idx_tx, struct ipa_wdi_outstanding_buffs *out)
+{
+	if (out == NULL) {
+		IPADBG("invalid params out\n");
+		return -EINVAL;
+	}
+
+	IPA_ACTIVE_CLIENTS_INC_SIMPLE();
+	out->no_tx_outstanding_buffs = gsi_get_outstanding_buffers(ipa_ep_idx_tx);
+	out->no_rx_outstanding_buffs = gsi_get_outstanding_buffers(ipa_ep_idx_rx);
+	IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
+	return 0;
+}
+EXPORT_SYMBOL_GPL(ipa3_get_outstanding_buffers_wdi3);

@@ -2287,9 +2287,11 @@ static int ipa3_teardown_pipe(u32 clnt_hdl)
 		do {
 			usleep_range(95, 105);
 		} while (atomic_read(&ep->sys->curr_polling_state));
-
-		napi_disable(ep->sys->napi_obj);
-		netif_napi_del(ep->sys->napi_obj);
+		if (ipa3_ctx->rmnet_napi_enable) {
+			napi_disable(ep->sys->napi_obj);
+			netif_napi_del(ep->sys->napi_obj);
+			ipa3_ctx->rmnet_napi_enable = false;
+		}
 	}
 
 	result = ipa3_reset_gsi_channel(clnt_hdl);
