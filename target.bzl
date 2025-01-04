@@ -1,6 +1,6 @@
 load(":touch_modules.bzl", "touch_driver_modules")
 load(":touch_modules_build.bzl", "define_target_variant_modules")
-load("//msm-kernel:target_variants.bzl", "get_all_la_variants", "get_all_le_variants")
+load(":target_variants.bzl", "get_all_la_variants", "get_all_le_variants")
 
 def define_sun(t,v):
     define_target_variant_modules(
@@ -17,6 +17,30 @@ def define_sun(t,v):
         config_options = [
             "TOUCH_DLKM_ENABLE",
             "CONFIG_ARCH_SUN",
+            "CONFIG_MSM_TOUCH",
+            "CONFIG_TOUCHSCREEN_GOODIX_BRL",
+            "CONFIG_TOUCHSCREEN_ATMEL_MXT",
+            "CONFIG_TOUCHSCREEN_ST",
+            "CONFIG_QTS_ENABLE",
+            "CONFIG_TOUCHSCREEN_DUMMY"
+        ],
+)
+
+def define_canoe(t,v):
+    define_target_variant_modules(
+        target = t,
+        variant = v,
+        registry = touch_driver_modules,
+        modules = [
+            "atmel_mxt_ts",
+            "dummy_ts",
+            "goodix_ts",
+            "st_fts",
+            "qts"
+        ],
+        config_options = [
+            "TOUCH_DLKM_ENABLE",
+            "CONFIG_ARCH_CANOE",
             "CONFIG_MSM_TOUCH",
             "CONFIG_TOUCHSCREEN_GOODIX_BRL",
             "CONFIG_TOUCHSCREEN_ATMEL_MXT",
@@ -78,7 +102,8 @@ def define_parrot(t,v):
             "nt36xxx-i2c",
 	    "goodix_ts",
 	    "qts",
-	    "focaltech_fts"
+	    "focaltech_fts",
+	    "st_fts"
         ],
         config_options = [
             "TOUCH_DLKM_ENABLE",
@@ -88,7 +113,8 @@ def define_parrot(t,v):
             "CONFIG_TOUCHSCREEN_NT36XXX_I2C",
 	    "CONFIG_TOUCHSCREEN_GOODIX_BRL",
 	    "CONFIG_QTS_ENABLE",
-	    "CONFIG_TOUCH_FOCALTECH"
+	    "CONFIG_TOUCH_FOCALTECH",
+	    "CONFIG_TOUCHSCREEN_ST"
         ],
 )
 
@@ -129,5 +155,7 @@ def define_touch_target():
             define_parrot(t, v)
         elif t == "monaco":
             define_monaco(t, v)
+        elif t == "canoe":
+            define_canoe(t, v)
         else:
             define_sun(t, v)
