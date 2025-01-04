@@ -285,6 +285,7 @@ void mlo_mgr_reset_ap_link_info(struct wlan_objmgr_vdev *vdev)
 		qdf_mem_zero(link_info->link_chan_info,
 			     sizeof(*link_info->link_chan_info));
 		link_info->link_id = WLAN_INVALID_LINK_ID;
+		link_info->bpcc = 0;
 		link_info->link_status_flags = 0;
 		link_info++;
 	}
@@ -367,6 +368,7 @@ mlo_mgr_update_link_vdev_id(struct wlan_objmgr_vdev *vdev, uint8_t accepted_link
 		vdev_id = accepted_link_info->vdev_id;
 		accepted_link_info->vdev_id = rejected_link_info->vdev_id;
 		rejected_link_info->vdev_id = vdev_id;
+		rejected_link_info->link_id = WLAN_INVALID_LINK_ID;
 	}
 
 	mlo_debug("Updated accepted vdev id %d rejected vdev id %d ",
@@ -1707,13 +1709,16 @@ mlo_mgr_update_policy_mgr_disabled_links_info(struct wlan_objmgr_psoc *psoc,
 
 #define IS_LINK_SET(link_bitmap, link_id) ((link_bitmap) & (BIT(link_id)))
 
+#define WLAN_MLO_SINGLE_LINK 1
 static void mlo_mgr_update_link_state(struct wlan_objmgr_psoc *psoc,
 				      struct wlan_mlo_dev_context *mld_ctx,
 				      uint32_t active_link_bitmap)
 {
-	uint8_t i;
+	uint8_t i, vdev_id, num_links = 0;
 	struct mlo_link_info *link_info;
+	struct mlo_mgr_context *mlo_ctx = wlan_objmgr_get_mlo_ctx();
 
+	num_links = mlo_get_sta_num_links(mld_ctx);
 	for (i = 0; i < WLAN_MAX_ML_BSS_LINKS; i++) {
 		link_info = &mld_ctx->link_ctx->links_info[i];
 
@@ -1726,10 +1731,22 @@ static void mlo_mgr_update_link_state(struct wlan_objmgr_psoc *psoc,
 		else
 			link_info->is_link_active = false;
 
-		mlo_mgr_update_policy_mgr_disabled_links_info(psoc,
-						link_info->vdev_id,
-						link_info->link_id,
-						link_info->is_link_active);
+		vdev_id = link_info->vdev_id;
+		/*
+		 * Teardown TDLS for non-DBS target when number of
+		 * connected links is > 1, so that it can be formed again on
+		 * active link.
+		 */
+		if (num_links > WLAN_MLO_SINGLE_LINK &&
+		    !link_info->is_link_active &&
+		    mlo_ctx->mlme_ops &&
+		    mlo_ctx->mlme_ops->mlo_mlme_ext_teardown_tdls)
+			mlo_ctx->mlme_ops->mlo_mlme_ext_teardown_tdls(psoc,
+								      vdev_id);
+
+		mlo_mgr_update_policy_mgr_disabled_links_info(
+				psoc, vdev_id, link_info->link_id,
+				link_info->is_link_active);
 	}
 }
 
@@ -1739,7 +1756,6 @@ mlo_mgr_link_state_switch_info_handler(struct wlan_objmgr_psoc *psoc,
 {
 	uint8_t i;
 	struct wlan_mlo_dev_context *mld_ctx = NULL;
-	struct mlo_mgr_context *mlo_ctx = wlan_objmgr_get_mlo_ctx();
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 
 	wlan_mlo_get_mlpeer_by_peer_mladdr(
@@ -1760,14 +1776,6 @@ mlo_mgr_link_state_switch_info_handler(struct wlan_objmgr_psoc *psoc,
 				info->link_switch_param[i].active_link_bitmap);
 	}
 
-	/*
-	 * Teardown TDLS for non-DBS target so that it can be bring up on
-	 * active link.
-	 */
-	if (mlo_ctx && mlo_ctx->mlme_ops &&
-	    mlo_ctx->mlme_ops->mlo_mlme_ext_teardown_tdls)
-		status = mlo_ctx->mlme_ops->mlo_mlme_ext_teardown_tdls(psoc);
-
 	return status;
 }
 
@@ -1781,6 +1789,12 @@ QDF_STATUS mlo_mgr_link_switch_complete(struct wlan_objmgr_vdev *vdev)
 
 	/* Not checking NULL value as reference is already taken for vdev */
 	psoc = wlan_vdev_get_psoc(vdev);
+
+	if (!vdev->mlo_dev_ctx) {
+		mlo_err("mlo_dev_ctx for vdev is null vedv_id %d",
+			wlan_vdev_get_id(vdev));
+		return QDF_STATUS_E_INVAL;
+	}
 
 	link_ctx = vdev->mlo_dev_ctx->link_ctx;
 	req = &link_ctx->last_req;

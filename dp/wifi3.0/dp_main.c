@@ -5950,6 +5950,7 @@ dp_peer_create_wifi3(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 		}
 		dp_peer_add_ast(soc, peer, peer_mac_addr, ast_type, 0);
 
+		dp_peer_unmap_track_cookie_init(soc, peer);
 		peer->valid = 1;
 		peer->is_tdls_peer = false;
 		dp_local_peer_id_alloc(pdev, peer);
@@ -6108,6 +6109,7 @@ dp_peer_create_wifi3(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 		goto fail;
 	}
 
+	dp_peer_unmap_track_cookie_init(soc, peer);
 	peer->valid = 1;
 	dp_local_peer_id_alloc(pdev, peer);
 	DP_STATS_INIT(peer);
@@ -6813,6 +6815,7 @@ void dp_peer_unmap_track_update(struct dp_soc *soc,
 
 	elem->peer = peer;
 	elem->peer_id = peer->peer_id;
+	elem->unmap_track_cookie = peer->unmap_track_cookie;
 	elem->track_start_time = qdf_get_log_timestamp();
 
 	qdf_spin_lock_bh(&soc->peer_unmap_track_lock);
@@ -6865,11 +6868,15 @@ static void dp_peer_unmap_track_timer(void *arg)
 	peer = dp_peer_get_ref_by_id(soc, elem->peer_id,
 				     DP_MOD_ID_MISC);
 	/*
-	 * peer NULL, peer id unmapped but not reused,
-	 * peer not NULL and != elem->peer, new dp_peer has
-	 * used same peer ID.
+	 * If peer NULL, peer unmapped and same peer id not reused.
+	 * If peer is not NULL,
+	 * peer != elem->peer, peer unmapped and new different dp_peer
+	 * reuse same peer_id.
+	 * peer == elem->peer, but cookie ID mismatch, peer unmaped and
+	 * same address peer re-created and mapped with same peer ID.
 	 */
-	if (!peer || (peer != elem->peer)) {
+	if (!peer || (peer != elem->peer) ||
+	    (peer->unmap_track_cookie != elem->unmap_track_cookie))  {
 		qdf_mem_free(elem);
 		if (peer)
 			dp_peer_unref_delete(peer, DP_MOD_ID_MISC);
@@ -8064,6 +8071,8 @@ void dp_get_peer_per_pkt_stats(struct dp_peer *peer,
 				break;
 			per_pkt_stats = &txrx_peer->stats[i].per_pkt_stats;
 			DP_UPDATE_PER_PKT_STATS(peer_stats, per_pkt_stats);
+			dp_info("MLO get stats from peer %d link_id %d",
+				txrx_peer->peer_id, i);
 		}
 		dp_release_link_peers_ref(&link_peers_info,
 					  DP_MOD_ID_GENERIC_STATS);
@@ -8071,6 +8080,8 @@ void dp_get_peer_per_pkt_stats(struct dp_peer *peer,
 		index = dp_get_peer_link_id(peer);
 		per_pkt_stats = &txrx_peer->stats[index].per_pkt_stats;
 		DP_UPDATE_PER_PKT_STATS(peer_stats, per_pkt_stats);
+		dp_info("get stats from peer %d link_id %d",
+			txrx_peer->peer_id, index);
 		qdf_mem_copy(&peer_stats->mac_addr,
 			     &peer->mac_addr.raw[0],
 			     QDF_MAC_ADDR_SIZE);
