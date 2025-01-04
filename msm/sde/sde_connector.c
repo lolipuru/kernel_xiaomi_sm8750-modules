@@ -1130,7 +1130,12 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 	else
 		drm_enc = connector->encoder;
 
-	frame_interval_ns = sde_connector_get_property(c_conn->base.state,
+	if (c_conn->vrr_caps.video_mrr_support &&
+			msm_is_mode_seamless_vrr(&c_state->msm_mode))
+		frame_interval_ns =
+			NSEC_PER_SEC/drm_mode_vrefresh(c_state->msm_mode.base);
+	else
+		frame_interval_ns = sde_connector_get_property(c_conn->base.state,
 			CONNECTOR_PROP_FRAME_INTERVAL);
 
 	if (!c_conn->apply_vrr && frame_interval_ns) {
@@ -3951,7 +3956,8 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 
 	c_conn->vrr_caps = display_info->vrr_caps;
 
-	if (c_conn->vrr_caps.vrr_support) {
+	if (c_conn->vrr_caps.vrr_support &&
+			!c_conn->vrr_caps.video_mrr_support) {
 		msm_property_install_range(&c_conn->property_info, "frame_interval", 0x0,
 			0, U64_MAX, 0, CONNECTOR_PROP_FRAME_INTERVAL);
 
