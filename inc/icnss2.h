@@ -217,6 +217,7 @@ extern int icnss_smmu_map(struct device *dev, phys_addr_t paddr,
 extern int icnss_smmu_unmap(struct device *dev,
 			    uint32_t iova_addr, size_t size);
 extern bool icnss_get_audio_shared_iommu_group_cap(struct device *dev);
+extern int icnss_get_direct_link_sid(struct device *dev, uint16_t *sid);
 extern bool icnss_get_fw_direct_link_cap(struct device *dev);
 extern bool icnss_audio_is_direct_link_supported(struct device *dev);
 extern int icnss_audio_smmu_map(struct device *dev, phys_addr_t paddr,
