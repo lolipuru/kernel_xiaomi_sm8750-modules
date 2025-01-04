@@ -14,6 +14,7 @@
 static struct snd_soc_dai_driver *btfmcodec_dai_info;
 uint32_t bits_per_second;
 uint8_t num_channels;
+static int btfmcodec_port_state_notify(uint8_t port_state);
 
 static int btfm_codec_get_mixer_control(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
@@ -325,6 +326,14 @@ static void btfmcodec_dai_shutdown(struct snd_pcm_substream *substream,
 
 	BTFMCODEC_DBG("dai->name: %s, dai->id: %d, dai->rate: %d", dai->name,
 		dai->id, dai->rate);
+
+	if ((btfmcodec_get_current_transport(state) == BTADV_AUDIO_Connecting &&
+		btfmcodec_get_prev_transport(state) == BT_Connected) ||
+		((btfmcodec_get_current_transport(state) == BT_Connecting &&
+		btfmcodec_get_prev_transport(state) == BTADV_AUDIO_Connected))) {
+		BTFMCODEC_INFO("%s: Informing port closure to upper layers",  __func__);
+		btfmcodec_port_state_notify(IDLE);
+	}
 
 	if (btfmcodec_get_current_transport(state) == BTADV_AUDIO_Connecting &&
 	    btfmcodec_get_prev_transport(state) == BT_Connected) {
@@ -848,6 +857,23 @@ static int btfmcodec_adsp_ssr_notify(struct notifier_block *nb,
 		BTFMCODEC_WARN("unhandled action id %lu", action);
 		break;
 	}
+	return 0;
+}
+
+static int btfmcodec_port_state_notify(uint8_t port_state)
+{
+	struct btm_port_state_ind state_ind;
+	struct btfmcodec_data *btfmcodec;
+	struct btfmcodec_char_device *btfmcodec_dev;
+
+	BTFMCODEC_WARN("%s: port state = %d", __func__, port_state);
+	btfmcodec = btfm_get_btfmcodec();
+	btfmcodec_dev = btfmcodec->btfmcodec_dev;
+	state_ind.opcode = BTM_BTFMCODEC_PORT_STATE_IND;
+	state_ind.len  = BTM_PORT_STATE_IND_LEN;
+	state_ind.port_state = (uint8_t)port_state;
+	btfmcodec_dev_enqueue_pkt(btfmcodec_dev, &state_ind,
+			(state_ind.len + BTM_HEADER_LEN));
 	return 0;
 }
 

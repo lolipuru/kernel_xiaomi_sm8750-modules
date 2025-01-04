@@ -137,8 +137,11 @@ static void btfm_swr_dai_shutdown(void *dai, int id)
 	case BTAUDIO_RX:
 		port_type = BT_AUDIO_RX1;
 		break;
-	case BTAUDIO_A2DP_SINK_TX:
+	case BTAUDIO_TX2:
 		port_type = BT_AUDIO_TX2;
+		break;
+	case BTAUDIO_RX2:
+		port_type = BT_AUDIO_RX2;
 		break;
 	case BTFM_NUM_CODEC_DAIS:
 	default:
@@ -222,8 +225,11 @@ static int btfm_swr_dai_prepare(void *dai, uint32_t sampling_rate, uint32_t dire
 	case BTAUDIO_RX:
 		port_type = BT_AUDIO_RX1;
 		break;
-	case BTAUDIO_A2DP_SINK_TX:
+	case BTAUDIO_TX2:
 		port_type = BT_AUDIO_TX2;
+		break;
+	case BTAUDIO_RX2:
+		port_type = BT_AUDIO_RX2;
 		break;
 	case BTFM_NUM_CODEC_DAIS:
 	default:
@@ -271,11 +277,12 @@ static int btfm_swr_dai_get_channel_map(void *dai,
 	switch (id) {
 	case FMAUDIO_TX:
 	case BTAUDIO_TX:
-	case BTAUDIO_A2DP_SINK_TX:
+	case BTAUDIO_TX2:
 		*tx_num = btfmswr->num_channels;
 		*tx_slot = btfmswr->num_channels == 2 ? TWO_CHANNEL_MASK : ONE_CHANNEL_MASK;
 		break;
 	case BTAUDIO_RX:
+	case BTAUDIO_RX2:
 		*rx_num = btfmswr->num_channels;
 		*rx_slot = btfmswr->num_channels == 2 ? TWO_CHANNEL_MASK : ONE_CHANNEL_MASK;
 		break;
@@ -374,13 +381,14 @@ static struct hwep_dai_driver btfmswr_dai_driver[] = {
 		},
 		.dai_ops = &btfmswr_hw_dai_ops,
 	},
-	{	/* Bluetooth A2DP sink: bt -> lpass */
-		.dai_name = "btfm_a2dp_sink_swr_tx",
-		.id = BTAUDIO_A2DP_SINK_TX,
+	{	/* Bluetooth A2DP sink, HFP client: bt -> lpass */
+		.dai_name = "btaudio_tx2",
+		.id = BTAUDIO_TX2,
 		.capture = {
-			.stream_name = "A2DP sink TX Capture",
+			.stream_name = "BT Audio SWR Tx2 Capture",
 			/* 8/16/44.1/48/88.2/96/192 Khz */
 			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000
+				| SNDRV_PCM_RATE_8000_192000
 				| SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000
 				| SNDRV_PCM_RATE_88200 | SNDRV_PCM_RATE_96000
 				| SNDRV_PCM_RATE_192000,
@@ -391,7 +399,26 @@ static struct hwep_dai_driver btfmswr_dai_driver[] = {
 			.channels_max = 1,
 		},
 		.dai_ops = &btfmswr_hw_dai_ops,
-	}
+	},
+	{	/* Bluetooth audio downlink2: lpass -> bt */
+		.dai_name = "btaudio_rx2",
+		.id = BTAUDIO_RX2,
+		.playback = {
+			.stream_name = "BT Audio SWR Rx2 Playback",
+			/* 8/16/44.1/48/88.2/96 Khz */
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000
+				| SNDRV_PCM_RATE_8000_192000
+				| SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000
+				| SNDRV_PCM_RATE_88200 | SNDRV_PCM_RATE_96000
+				| SNDRV_PCM_RATE_192000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE, /* 16 bits */
+			.rate_max = 192000,
+			.rate_min = 8000,
+			.channels_min = 1,
+			.channels_max = 1,
+		},
+		.dai_ops = &btfmswr_hw_dai_ops,
+	},
 };
 
 static struct hwep_comp_drv btfmswr_hw_driver = {
