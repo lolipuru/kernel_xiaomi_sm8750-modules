@@ -1460,6 +1460,9 @@ static int dsi_panel_parse_qsync_caps(struct dsi_panel *panel,
 		goto error;
 	}
 
+	panel->vrr_caps.video_mrr_support =
+		utils->read_bool(utils->data, "qcom,video-mrr-enable");
+
 	/**
 	 * "mdss-dsi-qsync-min-refresh-rate" is defined in cmd mode and
 	 *  video mode when there is only one qsync min fps present.
@@ -1732,7 +1735,8 @@ static int dsi_panel_parse_vrr_caps(struct dsi_panel *panel,
 	}
 
 	if ((panel->vrr_caps.arp_support || panel->vrr_caps.video_psr_support) &&
-			panel->dfps_caps.dfps_support) {
+			panel->dfps_caps.dfps_support &&
+			!panel->vrr_caps.video_mrr_support) {
 		DSI_ERR("disabling dfps as it can't be supported with ARP/Video PSR\n");
 		panel->dfps_caps.dfps_support = false;
 	}
@@ -2237,6 +2241,9 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-freq-step-pattern3-command",
 	"qcom,mdss-dsi-freq-step-pattern4-command",
 	"qcom,mdss-dsi-freq-step-pattern5-command",
+	"qcom,mdss-dsi-freq-step-pattern6-command",
+	"qcom,mdss-dsi-freq-step-pattern7-command",
+	"qcom,mdss-dsi-freq-step-pattern8-command",
 	"qcom,mdss-dsi-sticky_still_en-command",
 	"qcom,mdss-dsi-sticky_still_disable-command",
 	"qcom,mdss-dsi-sticky_on_fly-command",
@@ -2278,6 +2285,9 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-freq-step-pattern3-command-state",
 	"qcom,mdss-dsi-freq-step-pattern4-command-state",
 	"qcom,mdss-dsi-freq-step-pattern5-command-state",
+	"qcom,mdss-dsi-freq-step-pattern6-command-state",
+	"qcom,mdss-dsi-freq-step-pattern7-command-state",
+	"qcom,mdss-dsi-freq-step-pattern8-command-state",
 	"qcom,mdss-dsi-sticky_still_en-command-state",
 	"qcom,mdss-dsi-sticky_still_disable-command-state",
 	"qcom,mdss-dsi-sticky_on_fly-command-state",

@@ -7072,6 +7072,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->esync_emsync_milli_pulse_width = display->panel->esync_caps.emsync_milli_pulse_width;
 	info->vrr_caps.vrr_support = display->panel->vrr_caps.vrr_support;
 	info->vrr_caps.video_psr_support = display->panel->vrr_caps.video_psr_support;
+	info->vrr_caps.video_mrr_support = display->panel->vrr_caps.video_mrr_support;
 	info->vrr_caps.arp_support = display->panel->vrr_caps.arp_support;
 	info->poms_align_vsync = display->panel->poms_align_vsync;
 	info->is_te_using_watchdog_timer = is_sim_panel(display);

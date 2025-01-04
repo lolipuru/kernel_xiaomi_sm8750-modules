@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -281,10 +281,13 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_ARP_MODE1_HW_TE_OFF:       ARP panel HW TE mode is turned off.
  *                                         SW to drive any frequnecy stepping
  * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern1
- * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern2
- * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern3
- * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern4
- * @DSI_CMD_SET_FI_PATTAREN1_CHANGE:       Command to change to frequency pattern5
+ * @DSI_CMD_SET_FI_PATTAREN2_CHANGE:       Command to change to frequency pattern2
+ * @DSI_CMD_SET_FI_PATTAREN3_CHANGE:       Command to change to frequency pattern3
+ * @DSI_CMD_SET_FI_PATTAREN4_CHANGE:       Command to change to frequency pattern4
+ * @DSI_CMD_SET_FI_PATTAREN5_CHANGE:       Command to change to frequency pattern5
+ * @DSI_CMD_SET_FI_PATTAREN6_CHANGE:       Command to change to frequency pattern6
+ * @DSI_CMD_SET_FI_PATTAREN7_CHANGE:       Command to change to frequency pattern7
+ * @DSI_CMD_SET_FI_PATTAREN8_CHANGE:       Command to change to frequency pattern8
  * @DSI_CMD_SET_STICKY_STILL_EN            This would enable still indication(copy frame to GRAM)
  *                                         for all the frames until disable.
  * @DSI_CMD_SET_STICKY_STILL_DISABLE       Still indiaction disable command
@@ -327,6 +330,9 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_FI_PATTAREN3_CHANGE,
 	DSI_CMD_SET_FI_PATTAREN4_CHANGE,
 	DSI_CMD_SET_FI_PATTAREN5_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN6_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN7_CHANGE,
+	DSI_CMD_SET_FI_PATTAREN8_CHANGE,
 	DSI_CMD_SET_STICKY_STILL_EN,
 	DSI_CMD_SET_STICKY_STILL_DISABLE,
 	DSI_CMD_SET_STICKY_ON_FLY,
