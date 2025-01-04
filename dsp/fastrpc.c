@@ -2668,7 +2668,7 @@ static int fastrpc_create_session_debugfs(struct fastrpc_user *fl)
 
 	memcpy(cur_comm, current->comm, TASK_COMM_LEN);
 	cur_comm[TASK_COMM_LEN-1] = '\0';
-	if (debugfs_root != NULL) {
+	if (debugfs_root != NULL && fl != NULL) {
 		domain_id = fl->cctx->domain_id;
 		if (!(fl->debugfs_file_create)) {
 			size = strlen(cur_comm) + strlen("_")
@@ -3183,7 +3183,6 @@ static int fastrpc_init_create_process(struct fastrpc_user *fl,
 	}
 
 #ifdef CONFIG_DEBUG_FS
-	if (fl != NULL)
 		fastrpc_create_session_debugfs(fl);
 #endif
 	/* remove buffer on success as no longer required */
@@ -3670,7 +3669,6 @@ static int fastrpc_init_attach(struct fastrpc_user *fl, int pd)
 		return err;
 
 #ifdef CONFIG_DEBUG_FS
-	if (fl != NULL)
 		fastrpc_create_session_debugfs(fl);
 #endif
 	return 0;
@@ -6001,7 +5999,9 @@ void fastrpc_register_wakeup_source(struct device *dev,
 static void fastrpc_notify_user_ctx(struct fastrpc_invoke_ctx *ctx, int retval,
 		u32 rsp_flags, u32 early_wake_time)
 {
-	if (ctx->cctx && !atomic_read(&ctx->cctx->teardown))
+        if(!ctx->cctx)
+           return;
+	if (!atomic_read(&ctx->cctx->teardown))
 		fastrpc_pm_awake(ctx->fl, ctx->cctx->secure);
 	ctx->retval = retval;
 	ctx->rsp_flags = (enum fastrpc_response_flags)rsp_flags;
