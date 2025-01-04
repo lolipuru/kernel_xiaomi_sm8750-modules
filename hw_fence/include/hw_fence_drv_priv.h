@@ -132,13 +132,6 @@
 #define DMA_FENCE_HASH_TABLE_BIT (12) /* size of table = (1 << 12) = 4096 */
 #define DMA_FENCE_HASH_TABLE_SIZE (1 << DMA_FENCE_HASH_TABLE_BIT)
 
-enum hw_fence_lookup_ops {
-	HW_FENCE_LOOKUP_OP_CREATE = 0x1,
-	HW_FENCE_LOOKUP_OP_DESTROY,
-	HW_FENCE_LOOKUP_OP_CREATE_JOIN,
-	HW_FENCE_LOOKUP_OP_FIND_FENCE
-};
-
 /**
  * enum hw_fence_client_data_id - Enum with the clients having client_data, an optional
  *                                parameter passed from the waiting client and returned
@@ -388,6 +381,7 @@ struct hw_fence_soccp {
  * @clients_num: number of supported hw fence clients (configured based on device-tree)
  * @hw_fences_tbl: pointer to the hw-fences table
  * @hw_fences_tbl_cnt: number of elements in the hw-fence table
+ * @hlos_key_tbl: pointer to table of keys tracked by hlos only, same size as the hw-fences table
  * @events: start address of hw fence debug events
  * @total_events: total number of hw fence debug events supported
  * @client_lock_tbl: pointer to the per-client locks table
@@ -454,6 +448,7 @@ struct hw_fence_driver_data {
 
 	/* HW Fences Table VA */
 	struct msm_hw_fence *hw_fences_tbl;
+	u64 *hlos_key_tbl;
 	u32 hw_fences_tbl_cnt;
 
 	/* events */
@@ -639,11 +634,11 @@ void hw_fence_cleanup_client(struct hw_fence_driver_data *drv_data,
 void hw_fence_utils_reset_queues(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client);
 int hw_fence_create(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client,
+	struct msm_hw_fence_client *hw_fence_client, u64 hlos_key,
 	u64 context, u64 seqno, u64 *hash);
 int hw_fence_add_callback(struct hw_fence_driver_data *drv_data, struct dma_fence *fence, u64 hash);
 int hw_fence_destroy(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client,
+	struct msm_hw_fence_client *hw_fence_client, u64 hlos_key,
 	u64 context, u64 seqno);
 int hw_fence_destroy_with_hash(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, u64 hash);
@@ -675,7 +670,7 @@ int hw_fence_register_wait_client(struct hw_fence_driver_data *drv_data,
 	struct dma_fence *fence, struct msm_hw_fence_client *hw_fence_client, u64 context,
 	u64 seqno, u64 *hash, u64 client_data);
 struct msm_hw_fence *msm_hw_fence_find(struct hw_fence_driver_data *drv_data,
-	struct msm_hw_fence_client *hw_fence_client,
+	struct msm_hw_fence_client *hw_fence_client, u64 hlos_key,
 	u64 context, u64 seqno, u64 *hash);
 struct msm_hw_fence *hw_fence_find_with_dma_fence(struct hw_fence_driver_data *drv_data,
 	struct msm_hw_fence_client *hw_fence_client, struct dma_fence *fence, u64 *hash,

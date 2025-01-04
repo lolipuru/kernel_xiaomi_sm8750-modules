@@ -406,7 +406,7 @@ static ssize_t hw_fence_dbg_tx_and_signal_clients_wr(struct file *file,
 		client_info_src->seqno_cnt++;
 
 		/* Create hw fence for src client */
-		ret = hw_fence_create(drv_data, hw_fence_client, context, seqno, &hash);
+		ret = hw_fence_create(drv_data, hw_fence_client, context, context, seqno, &hash);
 		if (ret) {
 			HWFNC_ERR("Error creating HW fence\n");
 			goto exit;
@@ -574,7 +574,7 @@ static int dump_single_entry(struct hw_fence_driver_data *drv_data, char *buf, u
 	context = drv_data->debugfs_data.context_rd;
 	seqno = drv_data->debugfs_data.seqno_rd;
 
-	hw_fence = msm_hw_fence_find(drv_data, NULL, context, seqno, &hash);
+	hw_fence = msm_hw_fence_find(drv_data, NULL, context, context, seqno, &hash);
 	if (!hw_fence) {
 		HWFNC_ERR("no valid hfence found for context:%llu seqno:%llu hash:%llu",
 				context, seqno, hash);
@@ -1345,7 +1345,8 @@ static long _process_val_signal(struct hw_fence_driver_data *drv_data,
 
 	context = fence ? fence->context : 0;
 	seqno = fence ? fence->seqno : 0;
-
+	HWFNC_DBG_L("Client_id:%u attempting to process signalled fence:%llu\n",
+		hw_fence_client->client_id, hash);
 	while (read) {
 		read = hw_fence_read_queue(drv_data, hw_fence_client, &payload, queue_type);
 		if (read < 0) {
@@ -1353,8 +1354,8 @@ static long _process_val_signal(struct hw_fence_driver_data *drv_data,
 				hw_fence_client->client_id);
 			break;
 		}
-		HWFNC_DBG_L("rxq read: hash:%llu, flags:%llu, error:%u\n",
-			payload.hash, payload.flags, payload.error);
+		HWFNC_DBG_L("Client_id: %u rxq read: hash:%llu, flags:%llu, error:%u\n",
+			hw_fence_client->client_id, payload.hash, payload.flags, payload.error);
 		if ((fence && payload.ctxt_id == context && payload.seqno == seqno) ||
 				(mask && ((mask & hash) == (mask & payload.hash)))) {
 			*error = payload.error;
@@ -1369,9 +1370,10 @@ static long _process_val_signal(struct hw_fence_driver_data *drv_data,
 		}
 	}
 
-	HWFNC_ERR("fence received did not match the fence expected\n");
-	HWFNC_ERR("received: hash:%llu ctx:%llu seq:%llu expected: hash:%llu ctx:%llu seq:%llu\n",
-		payload.hash, payload.ctxt_id, payload.seqno, hash, context, seqno);
+	HWFNC_ERR("fence received: hash:%llu ctx:%llu seq:%llu did not match expected fence\n",
+		payload.hash, payload.ctxt_id, payload.seqno);
+	HWFNC_ERR("Client_id:%u fence expected: hash:%llu ctx:%llu seq:%llu\n",
+		hw_fence_client->client_id, hash, context, seqno);
 
 	return -EINVAL;
 }
@@ -1389,6 +1391,8 @@ int hw_fence_debug_wait_val(struct hw_fence_driver_data *drv_data,
 	}
 
 	exp_ktime = ktime_add_ms(ktime_get(), timeout_ms);
+	HWFNC_DBG_L("Client_id:%u attempting to wait on fence:%llu\n",
+		hw_fence_client->client_id, hash);
 	while (ret) {
 		do {
 			ret = wait_event_timeout(hw_fence_client->wait_queue,
@@ -1399,7 +1403,8 @@ int hw_fence_debug_wait_val(struct hw_fence_driver_data *drv_data,
 			ktime_compare_safe(exp_ktime, cur_ktime) > 0);
 
 		if (!ret) {
-			HWFNC_ERR("timed out waiting for the client signal %llu\n", timeout_ms);
+			HWFNC_ERR("Client_id: %u timed out waiting for the client signal %llu\n",
+				 hw_fence_client->client_id, timeout_ms);
 			/* Decrement the refcount that hw_sync_get_fence increments */
 			dma_fence_put(fence);
 			return -ETIMEDOUT;
