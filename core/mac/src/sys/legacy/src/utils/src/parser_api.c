@@ -597,6 +597,9 @@ populate_dot11f_tx_power_env(struct mac_context *mac,
 		}
 	}
 
+	if (punct_bitmap)
+		wlan_reg_set_input_punc_bitmap(&chan_params, punct_bitmap);
+
 	chan_params.ch_width = chan_width;
 	wlan_reg_set_channel_params_for_pwrmode(mac->pdev, chan_freq,
 						chan_freq, &chan_params,
@@ -608,7 +611,6 @@ populate_dot11f_tx_power_env(struct mac_context *mac,
 		psd_start_freq = chan_params.mhz_freq_seg0 - bw_val / 2 + 10;
 
 	if (punct_bitmap) {
-		wlan_reg_set_input_punc_bitmap(&chan_params, punct_bitmap);
 		wlan_reg_set_non_eht_ch_params(&chan_params, true);
 		wlan_reg_set_channel_params_for_pwrmode(mac->pdev, chan_freq,
 							chan_freq, &chan_params,
@@ -4309,7 +4311,8 @@ sir_convert_assoc_resp_frame2_mlo_struct(struct mac_context *mac,
 					    &partner_info,
 					    WLAN_FC0_STYPE_ASSOC_RESP);
 
-	if (session_entry->ml_partner_info.num_partner_links &&
+	if (!wlan_vdev_mlme_is_mlo_link_vdev(session_entry->vdev) &&
+	    session_entry->ml_partner_info.num_partner_links &&
 	    !wlan_cm_is_roam_sync_in_progress(mac->psoc,
 					      session_entry->vdev_id)) {
 		mlo_mgr_validate_connection_partner_links(session_entry->vdev,
@@ -14147,7 +14150,10 @@ QDF_STATUS populate_dot11f_assoc_req_mlo_ie(struct mac_context *mac_ctx,
 			non_inher_ie_lists[non_inher_len++] = DOT11F_EID_EXTCAP;
 		}
 
-		if (!WLAN_REG_IS_6GHZ_CHAN_FREQ(chan_freq))
+		/* Fill VHT for 5 GHz or 2 GHz with b24ghz_band enabled */
+		if ((is_2g &&
+		     mac_ctx->mlme_cfg->vht_caps.vht_cap_info.b24ghz_band) ||
+		    WLAN_REG_IS_5GHZ_CH_FREQ(chan_freq))
 			populate_dot11f_vht_caps(mac_ctx, NULL, &vht_caps);
 		if ((vht_caps.present && frm->VHTCaps.present &&
 		     qdf_mem_cmp(&vht_caps, &frm->VHTCaps, sizeof(vht_caps))) ||

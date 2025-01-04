@@ -188,6 +188,7 @@ void lim_update_assoc_sta_datas(struct mac_context *mac_ctx,
 					lim_get_vht_ch_width(vht_caps,
 							     vht_oper,
 							     &assoc_rsp->HTInfo,
+							     &assoc_rsp->HTCaps,
 							     &assoc_rsp->oper_mode_ntf);
 				sta_ds->vhtSupportedChannelWidthSet =
 					lim_convert_phy_width_to_vht_width(vht_ch_width);
@@ -242,6 +243,29 @@ void lim_update_assoc_sta_datas(struct mac_context *mac_ctx,
 	/* Could not get prop rateset from CFG. Log error. */
 	sta_ds->qosMode = 0;
 	sta_ds->lleEnabled = 0;
+
+	if (wlan_vdev_mlme_is_mlo_link_switch_in_progress(session_entry->vdev)) {
+		QDF_STATUS status;
+		tSirProbeRespBeacon *probe_rsp;
+		uint8_t *prb_frame_ptr =
+				session_entry->beacon + WLAN_MAC_HDR_LEN_3A;
+		uint32_t prb_frame_len =
+				session_entry->bcnLen - WLAN_MAC_HDR_LEN_3A;
+
+		probe_rsp = qdf_mem_malloc(sizeof(tSirProbeRespBeacon));
+		if (probe_rsp) {
+			status = sir_convert_probe_frame2_struct(mac_ctx,
+								 prb_frame_ptr,
+								 prb_frame_len,
+								 probe_rsp);
+			if (QDF_IS_STATUS_SUCCESS(status))
+				qdf_mem_copy(&assoc_rsp->edca,
+					     &probe_rsp->edcaParams,
+					     sizeof(assoc_rsp->edca));
+
+			qdf_mem_free(probe_rsp);
+		}
+	}
 
 	/* update TSID to UP mapping */
 	if (qos_mode) {

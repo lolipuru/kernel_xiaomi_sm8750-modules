@@ -3913,7 +3913,8 @@ void lim_update_sta_run_time_ht_switch_chnl_params(struct mac_context *mac,
 
 		/* Before restarting vdev, delete the tdls peers */
 		lim_update_tdls_set_state_for_fw(pe_session, false);
-		lim_delete_tdls_peers(mac, pe_session);
+		lim_delete_tdls_peers(mac, pe_session,
+				      TDLS_PEER_DEL_REASON_NONE);
 
 		lim_ht_switch_chnl_req(pe_session);
 	}
@@ -4538,10 +4539,8 @@ void lim_process_add_sta_rsp(struct mac_context *mac_ctx,
 	session->csaOffloadEnable = add_sta_params->csaOffloadEnable;
 	if (LIM_IS_NDI_ROLE(session))
 		lim_ndp_add_sta_rsp(mac_ctx, session, msg->bodyptr);
-#ifdef FEATURE_WLAN_TDLS
 	else if (add_sta_params->staType == STA_ENTRY_TDLS_PEER)
 		lim_process_tdls_add_sta_rsp(mac_ctx, msg->bodyptr, session);
-#endif
 	else
 		lim_process_mlm_add_sta_rsp(mac_ctx, msg, session);
 
@@ -11137,6 +11136,15 @@ QDF_STATUS lim_set_session_channel_params(struct mac_context *mac,
 			wlan_reg_chan_band_to_freq(mac->pdev,
 						   session->ch_center_freq_seg1,
 						   band_mask);
+	/* ch_params.mhz_freq_seg1 would be 0 only if the
+	 * session->ch_center_freq_seg1 is invalid/disabled. Downgrade the bw
+	 * to 160 MHz as 320 MHz can't be a valid bw for such channel.
+	 */
+	if (!ch_params.mhz_freq_seg1 &&
+	    ch_params.ch_width == CH_WIDTH_320MHZ) {
+		pe_debug("Downgrade ch_width to 160MHz");
+		ch_params.ch_width = CH_WIDTH_160MHZ;
+	}
 
 	if (band == (REG_BAND_2G) && (ch_params.ch_width == CH_WIDTH_40MHZ)) {
 		if (ch_params.mhz_freq_seg0 ==  session->curr_op_freq + 10)
@@ -11440,6 +11448,7 @@ lim_get_omn_channel_width(tDot11fIEOperatingMode *omn_ie)
 enum phy_ch_width lim_get_vht_ch_width(tDot11fIEVHTCaps *vht_cap,
 				       tDot11fIEVHTOperation *vht_op,
 				       tDot11fIEHTInfo *ht_info,
+				       tDot11fIEHTCaps *ht_cap,
 				       tDot11fIEOperatingMode *omn_ie)
 {
 	uint8_t ccfs0, ccfs1, offset;
@@ -11456,7 +11465,8 @@ enum phy_ch_width lim_get_vht_ch_width(tDot11fIEVHTCaps *vht_cap,
 	switch (vht_op->chanWidth) {
 	case WNI_CFG_VHT_CHANNEL_WIDTH_20_40MHZ:
 		if (ht_info && ht_info->present &&
-		    ht_info->recommendedTxWidthSet)
+		    ht_info->recommendedTxWidthSet && ht_cap && ht_cap->present
+		    && ht_cap->supportedChannelWidthSet)
 			vht_ch_width = CH_WIDTH_40MHZ;
 		else
 			vht_ch_width = CH_WIDTH_20MHZ;
