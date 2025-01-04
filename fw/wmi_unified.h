@@ -721,6 +721,8 @@ typedef enum {
      */
     WMI_VDEV_REPORT_AP_OPER_BW_CMDID,
 
+    WMI_VDEV_VBSS_CONFIG_CMDID,
+
 
     /* peer specific commands */
 
@@ -1982,6 +1984,7 @@ typedef enum {
     WMI_VDEV_SCHED_MODE_PROBE_RESP_EVENTID,
     /** Connect response */
     WMI_VDEV_OOB_CONNECTION_RESP_EVENTID,
+    WMI_VDEV_VBSS_CONFIG_EVENTID,
 
     /* peer specific events */
     /** FW reauet to kick out the station for reasons like inactivity,lack of response ..etc */
@@ -17033,6 +17036,8 @@ typedef struct {
 #define WMI_MLO_FLAGS_SET_LINK_DEL_CANCEL(mlo_flags, value) WMI_SET_BITS(mlo_flags, 16, 1, value)
 #define WMI_MLO_FLAGS_GET_START_AS_ACTIVE(mlo_flags)        WMI_GET_BITS(mlo_flags, 17, 1)
 #define WMI_MLO_FLAGS_SET_START_AS_ACTIVE(mlo_flags, value) WMI_SET_BITS(mlo_flags, 17, 1, value)
+#define WMI_MLO_FLAGS_GET_IEEE_LINK_ID_VALID(mlo_flags)     WMI_GET_BITS(mlo_flags, 18, 1)
+#define WMI_MLO_FLAGS_SET_IEEE_LINK_ID_VALID(mlo_flags, value) WMI_SET_BITS(mlo_flags, 18, 1, value)
 
 /* this structure used for passing MLO flags */
 typedef struct {
@@ -17062,7 +17067,8 @@ typedef struct {
                      mlo_link_add_cancel:1, /* rollback of previous dynamic link addition */
                      mlo_link_del_cancel:1, /* rollback of previous dynamic link deletion */
                      start_as_active:1, /* indicate link should be started in active status */
-                     unused: 14;
+                     mlo_ieee_link_id_valid:1, /* indicate if the ieee_link_id in wmi_vdev_start_mlo_params is valid */
+                     unused: 13;
         };
         A_UINT32 mlo_flags;
     };
@@ -17108,7 +17114,13 @@ typedef enum {
 /* this TLV structure used for pass mlo parameters on vdev start*/
 typedef struct {
     A_UINT32 tlv_header; /** TLV tag and len; */
-    wmi_mlo_flags mlo_flags; /*only mlo enable and assoc link flag need by vdev start*/
+    wmi_mlo_flags mlo_flags; /* only mlo enable, assoc link and mlo_ieee_link_id_valid flag need by vdev start */
+    /** ieee_link_id:
+     * link id in 802.11 frame.
+     * This field will be invalid and ignored unless mlo_flags has
+     * mlo_ieee_link_id_valid bit set.
+     */
+    A_UINT32 ieee_link_id;
 } wmi_vdev_start_mlo_params;
 
 /* this TLV structure used for passing mlo parameters on vdev stop */
@@ -17228,7 +17240,15 @@ typedef enum {
  * Bridge VDEV/PEER will be required to seamlessly transmit
  * to diagonal links in 4 chip MLO.
  */
-#define WMI_UNIFIED_VDEV_SUBTYPE_BRIDGE  0x8
+#define WMI_UNIFIED_VDEV_SUBTYPE_BRIDGE     0x8
+
+/* Subtype to indicate that the VDEV is in VBSS mode.
+ * VBSS Vdev could be active or passive state.
+ * VBSS ACTIVE  : Peer directly connected to the vdev.
+ * VBSS PASSIVE : Peer connected to another VBSS node in the network
+ */
+#define WMI_UNIFIED_VDEV_SUBTYPE_VBSS       0x9
+
 
 /** values for vdev_start_request flags */
 /** Indicates that AP VDEV uses hidden ssid. only valid for
@@ -17986,6 +18006,14 @@ enum WMI_VDEV_UP_FLAGS {
      * EMA - Enhanced Multiple BSS Advertisemet.
      */
     WMI_VDEV_UP_FLAG_EMA_MBSSID_AP = 0x00000001,
+    /** VBSS_ACTIVE
+     * Valid only for VBSS subtype vaps.
+     */
+    WMI_VDEV_UP_FLAG_VBSS_ACTIVE   = 0x00000002,
+    /** VBSS_PASSIVE
+     * Valid only for VBSS subtype vaps.
+     */
+    WMI_VDEV_UP_FLAG_VBSS_PASSIVE  = 0x00000004,
 };
 
 typedef struct {
@@ -37432,7 +37460,33 @@ typedef struct {
      * the bits within the bitmap
      */
     A_UINT32 twt_capability_bitmap;
+
+    /* min_max_wake_dur_us
+     * min wake dur - refer to min TWT SP duration
+     * max wake dur - refer to max TWT SP duration
+     */
+    A_UINT32 min_max_wake_dur_us;
+
+    /* min_max_wake_intvl_us
+     * min wake intvl - refer to min TWT SI interval
+     * max wake intvl - refer to max TWT SI interval
+     */
+    A_UINT32 min_max_wake_intvl_us;
 } wmi_twt_caps_params;
+
+/* 0 - 15 bits for MAX WAKE DUR , 16 - 31 bits for MIN WAKE DUR */
+#define TWT_CAPS_SET_MAX_WAKE_DUR(var, val)   WMI_SET_BITS(var, 0, 16, val)
+#define TWT_CAPS_SET_MIN_WAKE_DUR(var, val)   WMI_SET_BITS(var, 16, 16, val)
+
+#define TWT_CAPS_GET_MAX_WAKE_DUR(var)   WMI_GET_BITS(var, 0, 16)
+#define TWT_CAPS_GET_MIN_WAKE_DUR(var)   WMI_GET_BITS(var, 16, 16)
+
+/* 0 - 15 bits for MAX WAKE INTVL , 16 - 31 bits for MIN WAKE INTVL */
+#define TWT_CAPS_SET_MAX_WAKE_INTVL(var, val) WMI_SET_BITS(var, 0, 16, val)
+#define TWT_CAPS_SET_MIN_WAKE_INTVL(var, val) WMI_SET_BITS(var, 16, 16, val)
+
+#define TWT_CAPS_GET_MAX_WAKE_INTVL(var) WMI_GET_BITS(var, 0, 16)
+#define TWT_CAPS_GET_MIN_WAKE_INTVL(var) WMI_GET_BITS(var, 16, 16)
 
 /*
  * This TLV used for Scan Radio RDP
@@ -38601,6 +38655,7 @@ static INLINE A_UINT8 *wmi_id_to_name(A_UINT32 wmi_command)
         WMI_RETURN_STRING(WMI_MLO_LINK_RECONFIG_CMDID);
         WMI_RETURN_STRING(WMI_MLO_LINK_RECONFIG_COMPLETE_CMDID);
         WMI_RETURN_STRING(WMI_SAWF_EZMESH_HOP_COUNT_CMDID);
+        WMI_RETURN_STRING(WMI_VDEV_VBSS_CONFIG_CMDID);
     }
 
     return (A_UINT8 *) "Invalid WMI cmd";
@@ -49894,6 +49949,95 @@ typedef struct {
         };
     };
 } WMI_RSSI_ACCURACY_IMPROVEMENT_CAPABILITIES;
+
+typedef struct {
+    A_UINT32 tlv_header; /** TLV tag and len; tag equals WMITLV_TAG_STRUC_wmi_vdev_vbss_config_cmd_fixed_param */
+    /** unique id identifying the VDEV, generated by the caller */
+    A_UINT32 vdev_id;
+    /** VBSS PEER MAC address */
+    wmi_mac_addr peer_mac_addr;
+    union {
+        A_UINT32 action__word32;
+        struct {
+            /**  3:0  -> Action (4 bits)
+             *  31:4  -> reserved (28 bits)
+             */
+            A_UINT32
+                action: 4, /* refer to wmi_vbss_action */
+                reserved: 28;
+        };
+    };
+    /*
+     * The below TLVs follow this TLV in the WMI_VDEV_VBSS_CONFIG_CMDID msg:
+     *   - wmi_vdev_vbss_peer_sn_info[];
+     *   - wmi_vdev_vbss_peer_pn_info[];
+     */
+} wmi_vdev_vbss_config_cmd_fixed_param;
+
+typedef struct {
+    A_UINT32 tlv_header; /* TLV tag and len; tag equals WMITLV_TAG_STRUC_wmi_vdev_vbss_peer_pn_info */
+    union {
+        A_UINT32 pn_ctxt_id__word32;
+        struct {
+            /**  3:0 unicast/mcast/beacon
+             *  31:4 reserved
+             */
+            A_UINT32
+                pn_ctxt_id: 4,
+                reserved: 28;
+        };
+    };
+    A_UINT8 pn[16];
+} wmi_vdev_vbss_peer_pn_info;
+
+typedef struct {
+    A_UINT32 tlv_header; /* TLV tag and len; tag equals WMITLV_TAG_STRUC_wmi_vdev_vbss_peer_sn_info */
+    union {
+        A_UINT32 tid_num__ssn__word32;
+        struct {
+            /**  15:0  tid number
+             *  31:16  start sequence number
+             */
+            A_UINT32
+                tid_num: 16,
+                ssn: 16;
+        };
+    };
+    /* The below TLVs follow this TLV in the WMI_VDEV_VBSS_CONFIG_EVENTID msg:
+     *   - A_UINT32 scan_freq_list[];
+     *   - wmi_vdev_vbss_config_event_fixed_param[];
+     */
+} wmi_vdev_vbss_peer_sn_info;
+
+typedef enum {
+    WMI_VBSS_GET_PEER_CONTEXT = 0x1,
+    WMI_VBSS_SET_PEER_CONTEXT = 0x2,
+} wmi_vbss_action;
+
+#define WMI_VDEV_VBSS_GET_ACTION(action) WMI_GET_BITS(action, 0, 4)
+#define WMI_VDEV_VBSS_SET_ACTION(action, value) WMI_SET_BITS(action, 0, 4, value)
+
+#define WMI_VDEV_VBSS_PN_INFO_GET_PN_CTXT_ID(pn_ctxt_id) WMI_GET_BITS(pn_ctxt_id, 0, 4)
+#define WMI_VDEV_VBSS_PN_INFO_SET_PN_CTXT_ID(pn_ctxt_id, value) WMI_SET_BITS(pn_ctxt_id, 0, 4, value)
+
+#define WMI_VDEV_VBSS_SN_INFO_GET_tid_num(tid_num_ssn) WMI_GET_BITS(tid_num_ssn, 0, 16)
+#define WMI_VDEV_VBSS_SN_INFO_SET_tid_num(action, value) WMI_SET_BITS(tid_num_ssn, 0, 16, value)
+
+#define WMI_VDEV_VBSS_SN_INFO_GET_SSN(tid_num_ssn) WMI_GET_BITS(tid_num_ssn, 16, 16)
+#define WMI_VDEV_VBSS_SN_INFO_SET_SSN(action, value) WMI_SET_BITS(tid_num_ssn, 16, 16, value)
+
+
+typedef struct {
+    A_UINT32 tlv_header; /** TLV tag and len; tag equals WMITLV_TAG_STRUC_wmi_vdev_vbss_config_event_fixed_param */
+    /** unique id identifying the VDEV, generated by the caller */
+    A_UINT32 vdev_id;
+    /** PEER MAC address */
+    wmi_mac_addr peer_mac_addr;
+   /* The below TLVs follow this TLV in the WMI_VDEV_VBSS_CONFIG_EVENTID msg:
+     *   - wmi_vdev_vbss_peer_sn_info[];
+     *   - wmi_vdev_vbss_peer_pn_info[];
+     */
+} wmi_vdev_vbss_config_event_fixed_param;
 
 
 
