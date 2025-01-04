@@ -3442,13 +3442,15 @@ static int __cam_isp_ctx_reg_upd_in_epoch_bubble_state(
 			__cam_isp_ctx_send_sof_timestamp(ctx_isp, req->request_id,
 				CAM_REQ_MGR_SOF_EVENT_SUCCESS);
 		}
-	} else
+	} else {
+		atomic_set(&ctx_isp->unserved_rup, 1);
 		CAM_WARN_RATE_LIMIT(CAM_ISP,
 			"ctx:%u Unexpected regupdate in activated Substate[%s] for frame_id:%lld",
 			ctx_isp->base->ctx_id,
 			__cam_isp_ctx_substate_val_to_type(
 			ctx_isp->substate_activated),
 			ctx_isp->frame_id);
+	}
 	return 0;
 }
 
@@ -7510,7 +7512,7 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 	struct cam_packet                *packet = NULL;
 	size_t                            remain_len = 0;
 	struct cam_hw_prepare_update_args cfg = {0};
-	struct cam_req_mgr_add_request    add_req;
+	struct cam_req_mgr_add_request    add_req = {0};
 	struct cam_isp_context           *ctx_isp =
 		(struct cam_isp_context *) ctx->ctx_priv;
 	struct cam_hw_cmd_args           hw_cmd_args;
@@ -7715,6 +7717,7 @@ static int __cam_isp_ctx_config_dev_in_top_state(
 			add_req.link_hdl = ctx->link_hdl;
 			add_req.dev_hdl  = ctx->dev_hdl;
 			add_req.req_id   = req->request_id;
+			add_req.trigger_skip = req_isp->hw_update_data.mup_en;
 			rc = ctx->ctx_crm_intf->add_req(&add_req);
 			if (rc) {
 				if (rc == -EBADR)

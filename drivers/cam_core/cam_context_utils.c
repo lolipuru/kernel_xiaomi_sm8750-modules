@@ -451,7 +451,6 @@ int32_t cam_context_config_dev_to_hw(
 	uintptr_t packet_addr;
 	struct cam_packet *packet_u;
 	struct cam_packet *packet = NULL;
-	size_t packet_size = 0;
 	size_t remain_len = 0;
 
 	if (!ctx || !cmd) {
@@ -485,26 +484,11 @@ int32_t cam_context_config_dev_to_hw(
 	packet_u = (struct cam_packet *) ((uint8_t *)packet_addr +
 		(uint32_t)cmd->offset);
 	remain_len = len - (uint32_t)cmd->offset;
-	packet_size = packet_u->header.size;
-	if (packet_size <= remain_len) {
-		rc = cam_common_mem_kdup((void **)&packet,
-			packet_u, packet_size);
-		if (rc) {
-			CAM_ERR(CAM_CTXT, "Alloc and copy request %lld packet fail",
-				packet_u->header.request_id);
-			goto put_ref;
-		}
-	} else {
-		CAM_ERR(CAM_CTXT, "Invalid packet header size %u",
-			packet_size);
-		rc = -EINVAL;
-		goto put_ref;
-	}
 
-	if (cam_packet_util_validate_packet(packet, remain_len)) {
-		CAM_ERR(CAM_CTXT, "Invalid packet params");
-		rc = -EINVAL;
-		goto free_kdup;
+	rc = cam_packet_util_copy_pkt_to_kmd(packet_u, &packet, remain_len);
+	if (rc) {
+		CAM_ERR(CAM_CTXT, "Copying packet to KMD failed");
+		goto put_ref;
 	}
 
 	cfg.packet = packet;
@@ -521,7 +505,6 @@ int32_t cam_context_config_dev_to_hw(
 		rc = -EFAULT;
 	}
 
-free_kdup:
 	cam_common_mem_free(packet);
 	packet = NULL;
 put_ref:
@@ -1839,7 +1822,7 @@ size_t cam_context_parse_config_cmd(struct cam_context *ctx, struct cam_config_d
 	uintptr_t packet_addr;
 	int rc = 0;
 	struct cam_packet *packet_u;
-	size_t packet_size = 0, packet_len = 0;
+	size_t packet_len = 0;
 
 	if (!ctx || !cmd || !packet) {
 		CAM_ERR(CAM_CTXT, "invalid args");
@@ -1871,20 +1854,10 @@ size_t cam_context_parse_config_cmd(struct cam_context *ctx, struct cam_config_d
 		goto put_cpu_buf;
 	}
 
-	packet_size = packet_u->header.size;
 	packet_len = len - (size_t)cmd->offset;
-	if (packet_size <= packet_len) {
-		rc = cam_common_mem_kdup((void **)packet,
-			packet_u, packet_size);
-		if (rc) {
-			CAM_ERR(CAM_ISP, "Alloc and copy request %lld packet fail",
-				packet_u->header.request_id);
-			goto put_cpu_buf;
-		}
-	} else {
-		CAM_ERR(CAM_ISP, "Invalid packet header size %u",
-			packet_size);
-		rc = -EINVAL;
+	rc = cam_packet_util_copy_pkt_to_kmd(packet_u, packet, packet_len);
+	if (rc) {
+		CAM_ERR(CAM_CTXT, "Copying packet to KMD failed");
 		goto put_cpu_buf;
 	}
 

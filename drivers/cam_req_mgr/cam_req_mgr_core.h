@@ -19,7 +19,7 @@
 
 #define CAM_REQ_MGR_WATCHDOG_TIMEOUT          1000
 #define CAM_REQ_MGR_WATCHDOG_TIMEOUT_DEFAULT  5000
-#define CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX      50000
+#define CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX      60000
 #define CAM_REQ_MGR_SCHED_REQ_TIMEOUT         1000
 #define CAM_REQ_MGR_SIMULATE_SCHED_REQ        30
 #define CAM_REQ_MGR_DEFAULT_HDL_VAL           0
@@ -335,9 +335,10 @@ struct cam_req_mgr_req_tbl {
  * @bubble_times          : times of bubbles the req happended
  * @frame_sync_shift      : frame sync shift value, frame sync may not do SOF sync,
  *                          so we need to know the shift value in KMD, the unit is ns.
- * @internal_recovered    : indicate if internal recover is already done for request
  * @mismatched_frame_mode : Mismatched frame mode to notify or drop setting mismatched frame
  * of this slot
+ * @internal_recovered    : indicate if internal recover is already done for request
+ * @skip_set              : Simulate a frame skip on this slot
  */
 struct cam_req_mgr_slot {
 	int32_t               idx;
@@ -352,8 +353,9 @@ struct cam_req_mgr_slot {
 	int32_t               sync_link_hdls[MAXIMUM_LINKS_PER_SESSION - 1];
 	uint32_t              bubble_times;
 	uint64_t              frame_sync_shift;
-	bool                  internal_recovered;
 	int32_t               mismatched_frame_mode;
+	bool                  internal_recovered;
+	bool                  skip_set;
 };
 
 /**
@@ -582,13 +584,15 @@ struct cam_req_mgr_core_session {
  * @crm_lock     : mutex lock to protect session creation & destruction
  * @recovery_on_apply_fail : Recovery on apply failure using debugfs.
  * @disable_sensor_standby : Disable synced resume feature including
- *                           sensor standby
+ *                           sensor standby8
+ * @simulate_skip_frame    : Simulate a skip if set
  */
 struct cam_req_mgr_core_device {
 	struct list_head             session_head;
 	struct mutex                 crm_lock;
 	bool                         recovery_on_apply_fail;
 	bool                         disable_sensor_standby;
+	bool                         simulate_skip_frame;
 };
 
 /**

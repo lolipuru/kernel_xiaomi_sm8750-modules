@@ -650,7 +650,6 @@ static int cam_tpg_packet_parse(
 	size_t len_of_buff = 0, remain_len = 0;
 	struct cam_packet *csl_packet_u = NULL;
 	struct cam_packet *csl_packet = NULL;
-	size_t packet_size;
 
 	rc = cam_mem_get_cpu_buf(config->packet_handle,
 		&generic_ptr, &len_of_buff);
@@ -672,27 +671,10 @@ static int cam_tpg_packet_parse(
 	remain_len -= (size_t)config->offset;
 	csl_packet_u = (struct cam_packet *)(generic_ptr +
 		(uint32_t)config->offset);
-	packet_size = csl_packet_u->header.size;
-	if (packet_size <= remain_len) {
-		rc = cam_common_mem_kdup((void **)&csl_packet,
-			csl_packet_u, packet_size);
-		if (rc) {
-			CAM_ERR(CAM_TPG, "Alloc and copy request: %lld packet fail",
-				csl_packet_u->header.request_id);
-			goto end;
-		}
-	} else {
-		CAM_ERR(CAM_TPG, "Invalid packet header size %u",
-			packet_size);
-		rc = -EINVAL;
+	rc = cam_packet_util_copy_pkt_to_kmd(csl_packet_u, &csl_packet, remain_len);
+	if (rc) {
+		CAM_ERR(CAM_TPG, "Copying packet to KMD failed");
 		goto end;
-	}
-
-	if (cam_packet_util_validate_packet(csl_packet,
-		remain_len)) {
-		CAM_ERR(CAM_TPG, "Invalid packet params");
-		rc = -EINVAL;
-		goto free_kdup;
 	}
 
 	CAM_DBG(CAM_TPG, "TPG[%d] "
