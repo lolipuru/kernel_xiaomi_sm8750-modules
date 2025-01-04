@@ -900,7 +900,7 @@ static void dequeue_and_put_txn(struct cb_txn *cb_txn)
 static int wait_for_pending_txn(struct server_info *si, struct cb_txn **cb_txn)
 {
 	int ret = 0;
-	struct cb_txn *t;
+	struct cb_txn *t = NULL;
 
 	DEFINE_WAIT_FUNC(wait, woken_wake_function);
 
