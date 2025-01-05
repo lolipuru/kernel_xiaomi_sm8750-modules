@@ -618,9 +618,9 @@ static int wcd9378_parse_port_mapping(struct device *dev,
 		port_num = dt_array[NUM_SWRS_DT_PARAMS * i];
 
 		if (port_num >= MAX_PORT || ch_iter >= MAX_CH_PER_PORT) {
-                        dev_err(dev, "%s: Invalid port or channel number\n", __func__);
-                        goto err_pdata_fail;
-                }
+			dev_err(dev, "%s: Invalid port or channel number\n", __func__);
+			goto err_pdata_fail;
+		}
 
 		slave_port_type = dt_array[NUM_SWRS_DT_PARAMS * i + 1];
 		ch_mask = dt_array[NUM_SWRS_DT_PARAMS * i + 2];
