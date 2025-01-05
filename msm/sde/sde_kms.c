@@ -5319,7 +5319,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		}
 	}
 
-	if (sde_kms->catalog->uidle_cfg.uidle_rev) {
+	if (sde_kms->catalog->uidle_cfg.base) {
 		sde_kms->hw_uidle = sde_hw_uidle_init(UIDLE, sde_kms->mmio,
 			sde_kms->mmio_len, sde_kms->catalog);
 		if (IS_ERR_OR_NULL(sde_kms->hw_uidle)) {

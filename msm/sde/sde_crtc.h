@@ -1289,4 +1289,9 @@ static inline bool sde_crtc_is_power_on_frame(struct drm_crtc *crtc)
 	return crtc->state->active_changed && crtc->state->active;
 }
 
+/**
+ * sde_crtc_copr_status_event_notify - notify copr status to userspace
+ * @crtc: Pointer to drm_crtc.
+ */
+void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc);
 #endif /* _SDE_CRTC_H_ */

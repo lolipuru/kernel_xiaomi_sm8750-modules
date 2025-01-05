@@ -2250,6 +2250,7 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 			if (sde_conn)
 				sde_conn->vrr_cmd_state = VRR_CMD_IDLE_ENTRY_START;
 
+			sde_crtc_copr_status_event_notify(drm_crtc);
 			sde_encoder_cancel_vrr_timers(drm_enc);
 			sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
 
@@ -2295,6 +2296,26 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 	}
 
 	return 0;
+}
+
+bool sde_encoder_copr_allow_notify(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc =  NULL;
+	struct sde_encoder_phys *phys_enc = NULL;
+	struct intf_status intf_status = {0};
+
+	if (!sde_encoder_in_video_psr(drm_enc))
+		return true;
+
+	sde_enc =  to_sde_encoder_virt(drm_enc);
+	phys_enc = sde_enc->cur_master;
+	if (phys_enc->hw_intf->ops.get_status)
+		phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &intf_status);
+
+	if (intf_status.frame_count > 1)
+		return true;
+
+	return false;
 }
 
 static void sde_encoder_misr_configure(struct drm_encoder *drm_enc,
@@ -3903,7 +3924,11 @@ static void _sde_encoder_setup_dither(struct sde_encoder_phys *phys)
 
 	/* disable dither for 10 bpp or 10bpc dsc config or 30bpp without dsc */
 	if (bpp == 10 || bpc == 10 || sde_enc->mode_info.bpp == 30) {
-		phys->hw_pp->ops.setup_dither(phys->hw_pp, NULL, 0);
+		num_lm = sde_rm_topology_get_num_lm(&sde_kms->rm, topology);
+		for (i = 0; i < num_lm; i++) {
+			hw_pp = sde_enc->hw_pp[i];
+			phys->hw_pp->ops.setup_dither(hw_pp, NULL, 0);
+		}
 		return;
 	}
 
@@ -7305,7 +7330,7 @@ static ssize_t _sde_encoder_arp_freq_steps_write(struct file *file,
 		const char __user *user_buf, size_t count, loff_t *ppos)
 {
 	struct sde_encoder_virt *sde_enc;
-	u32 freq_patterrn_arr32[MAX_FREQ_SEQ_SIZE];
+	static u32 freq_patterrn_arr32[MAX_FREQ_SEQ_SIZE];
 	char buf[MISR_BUFF_SIZE + 1];
 	size_t buff_copy = 0;
 	int rc = 0;
@@ -7427,6 +7452,10 @@ static ssize_t _sde_encoder_arp_freq_steps_read(struct file *file,
 		return -EINVAL;
 
 	sde_enc = file->private_data;
+
+	if (!sde_enc->vrr_info.debugfs_freq_array)
+		return -EINVAL;
+
 	len = scnprintf(buf, sizeof(buf),
 				"%u %u %u %u %u\n",
 				sde_enc->vrr_info.debugfs_freq_array[0],

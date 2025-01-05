@@ -3903,9 +3903,6 @@ static int sde_uidle_parse_dt(struct device_node *np,
 		return -EINVAL;
 	}
 
-	if (!sde_cfg->uidle_cfg.uidle_rev)
-		return 0;
-
 	prop_value = kvcalloc(UIDLE_PROP_MAX,
 		sizeof(struct sde_prop_value), GFP_KERNEL);
 	if (!prop_value)

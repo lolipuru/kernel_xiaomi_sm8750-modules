@@ -294,6 +294,8 @@ struct sde_hw_sid {
 struct sde_hw_sw_fuse {
 	/* sw fuse base */
 	struct sde_hw_blk_reg_map hw;
+	/* demura sw fuse offset */
+	u32 demura_sw_fuse_offset;
 };
 
 /**

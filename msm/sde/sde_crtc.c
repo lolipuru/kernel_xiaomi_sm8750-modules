@@ -3537,6 +3537,9 @@ void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc)
 
 	sde_crtc = to_sde_crtc(crtc);
 
+	if (!sde_crtc->copr_status_event_notify_enabled)
+		return;
+
 	rc = sde_dspp_copr_read_status(sde_crtc->mixers[0].hw_dspp, &copr_status);
 	if (rc) {
 		SDE_ERROR("failed to collect COPR STATUS rc: %d\n", rc);
@@ -3555,6 +3558,7 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_connector *sde_conn;
+	struct drm_encoder *encoder;
 	u32 frame_done = 1;
 
 	sde_crtc = to_sde_crtc(crtc);
@@ -3568,8 +3572,12 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 	if (sde_crtc->framedone_event_notify_enabled)
 		sde_crtc_event_notify(crtc, DRM_EVENT_FRAME_DONE, &frame_done, sizeof(u32));
 
-	if (sde_crtc->copr_status_event_notify_enabled)
-		sde_crtc_copr_status_event_notify(crtc);
+	drm_for_each_encoder(encoder, crtc->dev) {
+		if (encoder->crtc == crtc) {
+			if (sde_encoder_copr_allow_notify(encoder))
+				sde_crtc_copr_status_event_notify(crtc);
+		}
+	}
 }
 
 static void sde_crtc_frame_event_work(struct kthread_work *work)
