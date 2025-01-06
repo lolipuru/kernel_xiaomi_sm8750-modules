@@ -1383,16 +1383,13 @@ end:
 }
 
 static void icnss_get_qdss_cfg_filename(struct icnss_priv *priv,
-					char *filename, u32 filename_len,
-					bool fallback_file)
+					char *filename, u32 filename_len)
 {
 	char filename_tmp[MAX_FIRMWARE_NAME_LEN];
 	char *build_str = QDSS_FILE_BUILD_STR;
 
-	if (fallback_file)
-		build_str = "";
-
-	if (priv->device_id == WCN7750_DEVICE_ID)
+	if (priv->device_id == WCN7750_DEVICE_ID ||
+	    priv->device_id == WCN6450_DEVICE_ID)
 		snprintf(filename_tmp, filename_len, QDSS_TRACE_CONFIG_FILE
 			"_%s%s.cfg", build_str, HW_V1_NUMBER);
 	else
@@ -1426,21 +1423,15 @@ int icnss_wlfw_qdss_dnld_send_sync(struct icnss_priv *priv)
 		return -ENOMEM;
 	}
 
-	icnss_get_qdss_cfg_filename(priv, filename, sizeof(filename), false);
+	icnss_get_qdss_cfg_filename(priv, filename, sizeof(filename));
+
 	ret = firmware_request_nowarn(&fw_entry, filename,
 				      &priv->pdev->dev);
+
 	if (ret) {
-		icnss_pr_err("Failed to load QDSS: %s ret:%d, try default file\n",
+		icnss_pr_err("Failed to load QDSS: %s ret:%d\n",
 			     filename, ret);
-		icnss_get_qdss_cfg_filename(priv, filename, sizeof(filename),
-					    true);
-		ret = firmware_request_nowarn(&fw_entry, filename,
-					      &priv->pdev->dev);
-		if (ret) {
-			icnss_pr_err("Failed to load QDSS: %s ret:%d\n",
-				     filename, ret);
-			goto err_req_fw;
-		}
+		goto err_req_fw;
 	}
 
 	temp = fw_entry->data;
