@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -5789,29 +5789,11 @@ static int __cam_isp_ctx_apply_default_req_settings(
 	bool skip_rup_aup = false;
 	struct cam_ctx_request *req = NULL;
 	struct cam_isp_ctx_req *req_isp = NULL;
-	struct cam_ctx_request *active_req = NULL;
 	struct cam_isp_context *isp_ctx =
 		(struct cam_isp_context *) ctx->ctx_priv;
-	struct cam_isp_ctx_req *active_req_isp = NULL;
 	struct cam_hw_cmd_args hw_cmd_args;
 	struct cam_isp_hw_cmd_args isp_hw_cmd_args;
 	struct cam_hw_config_args cfg = {0};
-
-	spin_lock_bh(&ctx->lock);
-	if (!list_empty(&ctx->active_req_list))
-		active_req = list_first_entry(&ctx->active_req_list,
-				struct cam_ctx_request, list);
-	spin_unlock_bh(&ctx->lock);
-
-	if (active_req) {
-		active_req_isp =
-				(struct cam_isp_ctx_req *) active_req->req_priv;
-		if (!active_req_isp->is_reg_dump_triggered) {
-			__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
-				&active_req_isp->hw_update_data);
-			active_req_isp->is_reg_dump_triggered = true;
-		}
-	}
 
 	if (isp_ctx->mode_switch_en && isp_ctx->handle_mswitch) {
 		if ((apply->last_applied_max_pd_req > 0) &&
@@ -5875,6 +5857,32 @@ static int __cam_isp_ctx_apply_default_req_settings(
 
 end:
 	return rc;
+}
+
+static void __cam_isp_ctx_handle_reg_dump(struct cam_context *ctx)
+{
+	struct cam_ctx_request *active_req = NULL;
+	struct cam_isp_ctx_req *active_req_isp = NULL;
+
+	spin_lock_bh(&ctx->lock);
+	if (!list_empty(&ctx->active_req_list))
+		active_req = list_first_entry(&ctx->active_req_list, struct cam_ctx_request, list);
+	spin_unlock_bh(&ctx->lock);
+
+	if (active_req) {
+		active_req_isp = (struct cam_isp_ctx_req *) active_req->req_priv;
+
+		CAM_DBG(CAM_ISP, "Handling reg dump for active req %llu, ctx %d",
+				active_req->request_id, ctx->ctx_id);
+		if (!active_req_isp->is_reg_dump_triggered) {
+			__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_PER_REQ, ctx,
+				&active_req_isp->hw_update_data);
+			active_req_isp->is_reg_dump_triggered = true;
+		}
+	} else {
+		CAM_DBG(CAM_ISP, "No active req, hence not doing reg_dump for ctx id %d",
+			ctx->ctx_id);
+	}
 }
 
 static void *cam_isp_ctx_user_dump_req_list(
@@ -9779,6 +9787,12 @@ static int __cam_isp_ctx_apply_default_settings(
 	CAM_DBG(CAM_ISP,
 		"Apply default settings, number of previous continuous skipped frames: %d, ctx_id: %d",
 		fcg_tracker->num_skipped, ctx->ctx_id);
+
+	/*
+	 * Attempt register dump in case of skip frame
+	 * and when per request reg dump is enabled.
+	 */
+	__cam_isp_ctx_handle_reg_dump(ctx);
 
 	/*
 	 * Call notify frame skip for static offline cases or
