@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_VIDC_INTERNAL_H_
@@ -62,6 +62,9 @@ struct msm_vidc_inst;
 #endif
 #ifndef V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_MULTIVIEW
 #define V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_MULTIVIEW    (4)
+#endif
+#ifndef V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_MULTIVIEW
+#define V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_MULTIVIEW    (5)
 #endif
 
 enum msm_vidc_blur_types {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "msm_vidc_internal.h"
@@ -26,8 +26,9 @@ static bool is_priv_ctrl(u32 id)
 	switch (id) {
 	/*
 	 * TODO: V4L2_CID_MPEG_VIDEO_HEVC_PROFILE is std ctrl. But
-	 * V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_STILL_PICTURE and
-	 * V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_MULTIVIEW support is not
+	 * V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_STILL_PICTURE,
+	 * V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_MULTIVIEW and
+	 * V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_MULTIVIEW support is not
 	 * available yet. Hence, make this as private ctrl for time being
 	 */
 	case V4L2_CID_MPEG_VIDEO_HEVC_PROFILE:
@@ -54,6 +55,7 @@ static const char *const mpeg_video_hevc_profile[] = {
 	"Main 10",
 	"Main 10 Still Picture",
 	"Main Multi View",
+	"Main 10 Multi View",
 	NULL,
 };
 
