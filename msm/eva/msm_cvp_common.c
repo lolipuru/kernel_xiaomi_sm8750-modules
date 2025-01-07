@@ -580,7 +580,7 @@ void handle_session_error(enum hal_command_response cmd, void *data)
 		wake_up_all(&inst->event_handler.wq);
 	}
 
-	BUG_ON(msm_cvp_crash);
+	BUG_ON(!msm_cvp_session_error_recovery);
 	cvp_put_inst(inst);
 }
 
@@ -613,7 +613,7 @@ void handle_session_timeout(struct msm_cvp_inst *inst, bool stop_required)
 		&inst->event_handler.lock, flags);
 	wake_up_all(&inst->event_handler.wq);
 
-	BUG_ON(msm_cvp_crash);
+	BUG_ON(!msm_cvp_session_error_recovery);
 	if (stop_required)
 		msm_cvp_session_flush_stop(inst);
 }
