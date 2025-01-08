@@ -1145,6 +1145,13 @@ static void cnss_pci_smmu_fault_handler_irq(struct iommu_domain *domain,
 	int ret = 0;
 
 	cnss_record_smmu_fault_timestamp(pci_priv, SMMU_CB_ENTRY);
+
+	if (pci_priv->pci_link_state == PCI_LINK_DOWN ||
+	    pci_priv->pci_link_down_ind) {
+		cnss_pr_err("Received smmu fault when link is down\n");
+		return;
+	}
+
 	ret = cnss_mhi_device_get_sync_atomic(pci_priv,
 					      CNSS_MHI_WAKE_TIMEOUT, true);
 	if (ret < 0) {
