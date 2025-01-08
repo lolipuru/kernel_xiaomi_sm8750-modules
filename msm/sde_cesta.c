@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[sde_cesta:%s:%d]: " fmt, __func__, __LINE__
@@ -144,7 +144,8 @@ static int  _sde_cesta_check_mode2_entry_status(u32 cesta_index)
 }
 
 void sde_cesta_force_db_update(struct sde_cesta_client *client, bool en_auto_active,
-		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep, bool en_clk_gate)
+		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep, bool en_clk_gate,
+		bool cmd_mode)
 {
 	struct sde_cesta *cesta;
 
@@ -157,10 +158,14 @@ void sde_cesta_force_db_update(struct sde_cesta_client *client, bool en_auto_act
 	cesta = cesta_list[client->cesta_index];
 
 	SDE_EVT32(client->client_index, client->scc_index, en_auto_active, req_mode, en_hw_sleep,
-			en_clk_gate);
+			en_clk_gate, cesta->mdp_clk_gate_disable_cnt, cmd_mode);
+
+	mutex_lock(&cesta->client_lock);
+
 	if (cesta->hw_ops.force_db_update)
 		cesta->hw_ops.force_db_update(cesta, client->client_index,
-				en_auto_active, req_mode, en_hw_sleep, en_clk_gate);
+				en_auto_active, req_mode, en_hw_sleep, en_clk_gate, cmd_mode);
+	mutex_unlock(&cesta->client_lock);
 }
 
 void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en)
@@ -1043,6 +1048,9 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 	sde_dbg_reg_register_base("sde_rsc_wrapper", cesta->wrapper_io.base,
 			cesta->wrapper_io.len, msm_get_phys_addr(pdev, "wrapper"), SDE_DBG_RSC);
 
+	sde_dbg_reg_register_base("disp_cc", cesta->disp_cc_io.base,
+			cesta->disp_cc_io.len, msm_get_phys_addr(pdev, "disp_cc"), SDE_DBG_RSC);
+
 	for (i = 0; i < cesta->scc_count; i++) {
 		char blk_name[32];
 
@@ -1160,6 +1168,12 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	ret = msm_dss_ioremap_byname(pdev, &cesta->wrapper_io, "wrapper");
 	if (ret) {
 		SDE_ERROR_CESTA("wrapper io data mapping failed, ret:%d\n", ret);
+		goto fail;
+	}
+
+	ret = msm_dss_ioremap_byname(pdev, &cesta->disp_cc_io, "disp_cc");
+	if (ret) {
+		SDE_ERROR_CESTA("dispcc io data mapping failed, ret:%d\n", ret);
 		goto fail;
 	}
 

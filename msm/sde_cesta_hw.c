@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[sde_cesta_hw:%s:%d]: " fmt, __func__, __LINE__
@@ -10,7 +10,6 @@
 #include <linux/iopoll.h>
 
 #include "sde_cesta.h"
-#include "sde_dbg.h"
 
 #define RSCC_SEQ_PWR_CTRL_STATUS	0x2d0
 
@@ -26,6 +25,7 @@
 #define SCC_HW_STATE_READBACK		0x10
 #define SCC_DEBUG_FLUSH_MISSED		0x20
 #define DEBUG_FLUSH_MISSED_CLEAR	0x24
+#define DISP_CC_MISC_CMD		0x0
 
 void _sde_cesta_hw_init(struct sde_cesta *cesta)
 {
@@ -38,9 +38,33 @@ void _sde_cesta_hw_init(struct sde_cesta *cesta)
 	}
 }
 
+static void _sde_cesta_update_clk_gate_en(struct sde_cesta *cesta, bool en_mdp_clk_gate)
+{
+	u32 misc_cmd_r, misc_cmd_w;
+
+	misc_cmd_r = dss_reg_r(&cesta->disp_cc_io, DISP_CC_MISC_CMD, cesta->debug_mode);
+
+	if (en_mdp_clk_gate)
+		cesta->mdp_clk_gate_disable_cnt--;
+	else if (!en_mdp_clk_gate)
+		cesta->mdp_clk_gate_disable_cnt++;
+
+	misc_cmd_w = misc_cmd_r;
+
+	if (cesta->mdp_clk_gate_disable_cnt == 1)
+		misc_cmd_w = misc_cmd_r & ~BIT(4);
+	else if (cesta->mdp_clk_gate_disable_cnt == 0)
+		misc_cmd_w = misc_cmd_r | BIT(4);
+
+	if (misc_cmd_r != misc_cmd_w) {
+		dss_reg_w(&cesta->disp_cc_io, DISP_CC_MISC_CMD,	misc_cmd_w, cesta->debug_mode);
+		wmb(); /* finish setting this */
+	}
+}
+
 void _sde_cesta_hw_force_db_update(struct sde_cesta *cesta, u32 idx,
 		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep,
-		bool en_clk_gate)
+		bool en_mdp_clk_gate, bool cmd_mode)
 {
 	u32 ctl_val, override_val;
 
@@ -57,16 +81,17 @@ void _sde_cesta_hw_force_db_update(struct sde_cesta *cesta, u32 idx,
 	else
 		ctl_val &= ~BIT(0);
 
-	if (en_clk_gate)
-		ctl_val |= BIT(8); /* set clk gate enable */
-	else
-		ctl_val &= ~BIT(8);
+	if (cmd_mode)
+		ctl_val |= BIT(8); /* always set clk gate enable in scc_ctrl during flush*/
 
 	/* clear & set the pwr_req mode */
 	ctl_val &= ~(BIT(1) | BIT(2));
 	ctl_val |= (req_mode << 1);
 
 	override_val |= BIT(0); /* set override force-db-update */
+
+	if (cmd_mode)
+		_sde_cesta_update_clk_gate_en(cesta, en_mdp_clk_gate);
 
 	dss_reg_w(&cesta->scc_io[idx], SCC_CTRL, ctl_val, cesta->debug_mode);
 	dss_reg_w(&cesta->scc_io[idx], SCC_OVERRIDE_CTRL, override_val, cesta->debug_mode);
