@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -5693,15 +5693,15 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 					phys_enc->hw_intf->idx, true);
 	}
 
-	SDE_EVT32(DRMID(phys_enc->parent), cfg.pending_flush_mask,
-		sde_conn->vrr_cmd_state, sde_conn->last_vhm_cmd);
-
 	_trigger_encoder_hw_fences_override(phys_enc->sde_kms, phys_enc->hw_ctl);
 	ctl->ops.get_pending_flush(ctl, &cfg);
 	ctl->flush.pending_flush_mask |= BIT(17);
 	sde_cesta_poll_handshake(sde_enc->cesta_client);
 	ctl->ops.trigger_flush(ctl);
 	ctl->ops.clear_pending_flush(ctl);
+
+	SDE_EVT32(DRMID(phys_enc->parent), cfg.pending_flush_mask,
+		sde_conn->vrr_cmd_state, sde_conn->last_vhm_cmd);
 
 	if (!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable &&
 			phys_enc->hw_intf->ops.avr_trigger)
