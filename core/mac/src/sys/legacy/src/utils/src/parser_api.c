@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1717,17 +1717,27 @@ populate_dot11f_vht_operation(struct mac_context *mac,
 	band = wlan_reg_freq_to_band(pe_session->curr_op_freq);
 	band_mask = 1 << band;
 
-	ch_params.ch_width = pe_session->ch_width;
-	ch_params.mhz_freq_seg0 =
-		wlan_reg_chan_band_to_freq(mac->pdev,
-					   pe_session->ch_center_freq_seg0,
-					   band_mask);
-
-	if (pe_session->ch_center_freq_seg1)
+	if (pe_session->opmode == QDF_SAP_MODE &&
+	    lim_is_session_eht_capable(pe_session) &&
+	    pe_session->he_punc_chan_info.present) {
+		ch_params.mhz_freq_seg0 =
+				pe_session->he_punc_chan_info.center_freq_seg0;
 		ch_params.mhz_freq_seg1 =
-			wlan_reg_chan_band_to_freq(mac->pdev,
-						   pe_session->ch_center_freq_seg1,
-						   band_mask);
+				pe_session->he_punc_chan_info.center_freq_seg1;
+		ch_params.ch_width = pe_session->he_punc_chan_info.chan_width;
+	} else {
+		ch_params.ch_width = pe_session->ch_width;
+		ch_params.mhz_freq_seg0 = wlan_reg_chan_band_to_freq(
+						mac->pdev,
+						pe_session->ch_center_freq_seg0,
+						band_mask);
+		if (pe_session->ch_center_freq_seg1)
+			ch_params.mhz_freq_seg1 =
+					wlan_reg_chan_band_to_freq(
+						mac->pdev,
+						pe_session->ch_center_freq_seg1,
+						band_mask);
+	}
 
 	if (band == (REG_BAND_2G) && ch_params.ch_width == CH_WIDTH_40MHZ) {
 		if (ch_params.mhz_freq_seg0 ==  pe_session->curr_op_freq + 10)
@@ -1743,12 +1753,12 @@ populate_dot11f_vht_operation(struct mac_context *mac,
 
 	pDot11f->present = 1;
 
-	if (pe_session->ch_width > CH_WIDTH_40MHZ) {
+	if (ch_params.ch_width > CH_WIDTH_40MHZ) {
 		pDot11f->chanWidth = 1;
 		pDot11f->chan_center_freq_seg0 =
 			ch_params.center_freq_seg0;
-		if (pe_session->ch_width == CH_WIDTH_80P80MHZ ||
-				pe_session->ch_width == CH_WIDTH_160MHZ)
+		if (ch_params.ch_width == CH_WIDTH_80P80MHZ ||
+		    ch_params.ch_width == CH_WIDTH_160MHZ)
 			pDot11f->chan_center_freq_seg1 =
 				ch_params.center_freq_seg1;
 		else
