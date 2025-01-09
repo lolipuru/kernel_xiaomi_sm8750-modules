@@ -2,6 +2,7 @@ targets = [
     # keep sorted
     "canoe",
     "gen3auto",
+    "pineapple",
     "sun",
     "vienna",
 ]
@@ -9,6 +10,7 @@ targets = [
 la_variants = [
     # keep sorted
     "consolidate",
+    "gki",
     "perf",
 ]
 
