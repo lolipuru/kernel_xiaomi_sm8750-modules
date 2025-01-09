@@ -194,6 +194,9 @@ static int cnss_stats_show_state(struct seq_file *s,
 		case CNSS_POWERING_ON:
 			seq_puts(s, "POWERING ON");
 			continue;
+		case CNSS_SEC_DOWNLOAD:
+			seq_puts(s, "DOWNLOAD SEC_IN_BOOTUP");
+			continue;
 		}
 
 		seq_printf(s, "UNKNOWN-%d", i);

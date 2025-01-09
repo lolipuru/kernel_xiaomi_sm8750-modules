@@ -1089,6 +1089,12 @@ static int cnss_fw_mem_ready_hdlr(struct cnss_plat_data *plat_priv)
 	cnss_wlfw_tme_patch_dnld_send_sync(plat_priv,
 					   WLFW_TME_LITE_PATCH_FILE_V01);
 
+	if (test_bit(CNSS_SEC_DOWNLOAD, &plat_priv->driver_state)) {
+		cnss_bus_load_tme_opt_file(plat_priv, WLFW_TME_LITE_OEM_FUSE_FILE_V01);
+		cnss_wlfw_tme_opt_file_dnld_send_sync(plat_priv, WLFW_TME_LITE_OEM_FUSE_FILE_V01);
+
+		clear_bit(CNSS_SEC_DOWNLOAD, &plat_priv->driver_state);
+	}
 	ret = cnss_bus_load_sku_license(plat_priv);
 	if (!ret)
 		cnss_wlfw_soft_sku_dnld_send_sync(plat_priv);
@@ -4688,8 +4694,7 @@ static ssize_t tme_opt_file_download_store(struct device *dev,
 		goto runtime_pm_put;
 
 	if (strcmp(cmd, "sec") == 0) {
-		cnss_bus_load_tme_opt_file(plat_priv, WLFW_TME_LITE_OEM_FUSE_FILE_V01);
-		cnss_wlfw_tme_opt_file_dnld_send_sync(plat_priv, WLFW_TME_LITE_OEM_FUSE_FILE_V01);
+		set_bit(CNSS_SEC_DOWNLOAD, &plat_priv->driver_state);
 	} else if (strcmp(cmd, "rpr") == 0) {
 		cnss_bus_load_tme_opt_file(plat_priv, WLFW_TME_LITE_RPR_FILE_V01);
 		cnss_wlfw_tme_opt_file_dnld_send_sync(plat_priv, WLFW_TME_LITE_RPR_FILE_V01);
