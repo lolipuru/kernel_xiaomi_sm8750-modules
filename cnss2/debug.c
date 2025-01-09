@@ -197,6 +197,9 @@ static int cnss_stats_show_state(struct seq_file *s,
 		case CNSS_SEC_DOWNLOAD:
 			seq_puts(s, "DOWNLOAD SEC_IN_BOOTUP");
 			continue;
+		case CNSS_SOL_REGISTERED:
+			seq_puts(s, "SOL GPIO REGISTERED");
+			continue;
 		}
 
 		seq_printf(s, "UNKNOWN-%d", i);

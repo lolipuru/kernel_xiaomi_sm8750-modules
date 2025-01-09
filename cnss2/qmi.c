@@ -3532,6 +3532,14 @@ int cnss_wlfw_server_arrive(struct cnss_plat_data *plat_priv, void *data)
 		return -EINVAL;
 	}
 
+	if (!test_bit(CNSS_SOL_REGISTERED, &plat_priv->driver_state)) {
+		ret = cnss_init_sol_gpio(plat_priv);
+		if (ret)
+			cnss_pr_err("Unable to register sol GPIO %d\n", ret);
+		else
+			set_bit(CNSS_SOL_REGISTERED, &plat_priv->driver_state);
+	}
+
 	cnss_ignore_qmi_failure(false);
 
 	ret = cnss_wlfw_connect_to_server(plat_priv, data);
