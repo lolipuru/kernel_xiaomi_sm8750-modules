@@ -6742,6 +6742,8 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	struct drm_plane_state *plane_state;
 	struct sde_plane_state *pstate;
 	struct drm_display_mode *mode;
+	struct sde_crtc *sde_crtc;
+	struct sde_connector_state *c_conn_state;
 	int layout_split, lb_layout_split;
 	u32 crtc_width, crtc_height;
 	enum sde_layout layout;
@@ -6754,9 +6756,13 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
-	if (!sde_rm_topology_is_group(&kms->rm, crtc_state,
-			SDE_RM_TOPOLOGY_GROUP_QUADPIPE))
+	sde_crtc = to_sde_crtc(crtc);
+	c_conn_state = _sde_crtc_get_sde_connector_state(crtc, crtc_state->state);
+	if ((c_conn_state && !sde_rm_topology_is_group(&kms->rm, crtc_state,
+		SDE_RM_TOPOLOGY_GROUP_QUADPIPE)) ||
+		(!c_conn_state && sde_crtc->num_mixers != 4)) {
 		return 0;
+	}
 
 	mode = &crtc_state->adjusted_mode;
 	sde_crtc_get_resolution(crtc, crtc_state, mode, &crtc_width, &crtc_height);
