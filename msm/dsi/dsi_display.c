@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -7395,6 +7395,11 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		/* Setup widebus support */
 		display_mode.priv_info->widebus_support = ctrl->ctrl->hw.widebus_support;
 
+		if (display->cmdline_timing == display_mode.mode_idx) {
+			topology_override = display->cmdline_topology;
+			is_preferred = true;
+		}
+
 		rc = dsi_panel_get_mode(display->panel, mode_idx,
 						&display_mode,
 						topology_override);
@@ -7405,11 +7410,6 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			display_mode.priv_info = NULL;
 			rc = -EINVAL;
 			return rc;
-		}
-
-		if (display->cmdline_timing == display_mode.mode_idx) {
-			topology_override = display->cmdline_topology;
-			is_preferred = true;
 		}
 
 		support_cmd_mode = display_mode.panel_mode_caps & DSI_OP_CMD_MODE;

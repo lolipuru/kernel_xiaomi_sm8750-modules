@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -3546,6 +3546,7 @@ static int dsi_panel_parse_topology(
 		goto parse_fail;
 	}
 
+parse_done:
 	if (!(priv_info->dsc_enabled || priv_info->vdc_enabled) !=
 			!topology[top_sel].num_enc) {
 		DSI_ERR("topology and compression info mismatch dsc:%d vdc:%d num_enc:%d\n",
@@ -3564,7 +3565,6 @@ static int dsi_panel_parse_topology(
 		topology[top_sel].num_enc,
 		topology[top_sel].num_intf);
 
-parse_done:
 	memcpy(&priv_info->topology, &topology[top_sel],
 		sizeof(struct msm_display_topology));
 parse_fail:
