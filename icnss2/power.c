@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/clk.h>
 #include <linux/delay.h>
@@ -24,6 +24,7 @@ static struct icnss_vreg_cfg icnss_wcn6750_vreg_list[] = {
 	{"vdd-1.8-xo", 1872000, 1872000, 0, 0, 0, false, true},
 	{"vdd-1.3-rfa", 1256000, 1352000, 0, 0, 0, false, true},
 	{"vdd-ipa-2p2", 2200000, 2200000, 0, 0, 0, false, true},
+	{"vdd-1.8-io", 1800000, 1800000, 0, 0, 0, false, true},
 };
 
 static struct icnss_vreg_cfg icnss_wcn7750_vreg_list[] = {
