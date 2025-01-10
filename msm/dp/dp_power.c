@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -708,10 +708,12 @@ static int dp_power_park_clocks(struct dp_power *dp_power)
 		goto error;
 	}
 
-	rc = dp_power_park_module(power, DP_STREAM1_PM);
-	if (rc) {
-		DP_ERR("failed to park stream 1. err=%d\n", rc);
-		goto error;
+	if (power->parser->has_mst) {
+		rc = dp_power_park_module(power, DP_STREAM1_PM);
+		if (rc) {
+			DP_ERR("failed to park stream 1. err=%d\n", rc);
+			goto error;
+		}
 	}
 
 	rc = dp_power_park_module(power, DP_LINK_PM);
