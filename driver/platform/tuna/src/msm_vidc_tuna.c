@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <dt-bindings/clock/qcom,gcc-tuna.h>
@@ -289,7 +289,7 @@ static struct msm_platform_core_capability core_data_tuna_v0[] = {
 	{MAX_NUM_720P_SESSIONS, 16},
 	{MAX_NUM_1080P_SESSIONS, 16},
 	{MAX_NUM_4K_SESSIONS, 4},
-	{MAX_NUM_8K_SESSIONS, 1},
+	{MAX_NUM_8K_SESSIONS, 2},
 	{MAX_SECURE_SESSION_COUNT, 3},
 	{MAX_RT_MBPF, 129600}, /* ((7680*4320)/256)) */
 	{MAX_MBPF, 139264}, /* (4 * ((4096*2176)/256)) */
