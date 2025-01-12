@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2009-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1001,6 +1001,22 @@ static void _sde_dbg_vbif_clear_test_point(void __iomem *mem_base, u32 wr_addr)
 	wmb(); /* update test point clear */
 }
 
+static u32 _sde_dbg_sde_read_test_point_ver_c00(void __iomem *mem_base, u32 wr_addr, u32 rd_addr,
+			u32 block_id, u32 test_id)
+{
+	if (test_id > EXT_TEST_GROUP_SEL_EN)
+		writel_relaxed(TEST_EXT_MASK(block_id, test_id), mem_base + wr_addr);
+	else
+		writel_relaxed(TEST_MASK(block_id, test_id), mem_base + wr_addr);
+
+	/* keep DSPP test point enabled */
+	if (wr_addr != DBGBUS_DSPP_VER_C00)
+		writel_relaxed(DSPP_DEBUGBUS_CTRL_EN, mem_base + DBGBUS_DSPP_VER_C00);
+	wmb(); /* make sure test bits were written */
+
+	return readl_relaxed(mem_base + rd_addr);
+}
+
 static u32 _sde_dbg_sde_read_test_point(void __iomem *mem_base, u32 wr_addr, u32 rd_addr,
 			u32 block_id, u32 test_id)
 {
@@ -1015,6 +1031,13 @@ static u32 _sde_dbg_sde_read_test_point(void __iomem *mem_base, u32 wr_addr, u32
 	wmb(); /* make sure test bits were written */
 
 	return readl_relaxed(mem_base + rd_addr);
+}
+
+static void _sde_dbg_sde_clear_test_point_ver_c00(void __iomem *mem_base, u32 wr_addr)
+{
+	writel_relaxed(0x0, mem_base + wr_addr);
+	if (wr_addr != DBGBUS_DSPP_VER_C00)
+		writel_relaxed(0x0, mem_base + DBGBUS_DSPP_VER_C00);
 }
 
 static void _sde_dbg_sde_clear_test_point(void __iomem *mem_base, u32 wr_addr)
@@ -1129,6 +1152,11 @@ static void _sde_dbg_dump_bus_entry(struct sde_dbg_sde_debug_bus *bus,
 					SDE_DBG_LOG_ENTRY(0, wr_addr, block_id,
 							test_id, status, true);
 
+				if (entry->analyzer) {
+					entry->analyzer(wr_addr, i, j, status);
+					continue;
+				}
+
 				if (dump_addr && (in_mem || in_dump)
 						&& (!sde_dbg_base.coredump_reading)) {
 					*dump_addr++ = wr_addr;
@@ -1144,9 +1172,6 @@ static void _sde_dbg_dump_bus_entry(struct sde_dbg_sde_debug_bus *bus,
 						*(dump_addr + 2), *(dump_addr + 3));
 					dump_addr += 4;
 				}
-
-				if (entry->analyzer)
-					entry->analyzer(entry->wr_addr, i, j, status);
 			}
 		}
 		/* Disable debug bus once we are done */
@@ -2754,16 +2779,18 @@ void sde_dbg_init_dbg_buses(u32 hw_rev)
 		dbg->dbgbus_sde.cmn.entries_size = ARRAY_SIZE(dbg_bus_sde_ver_c00);
 		dbg->dbgbus_sde.limited_entries = dbg_bus_sde_limited_ver_c00;
 		dbg->dbgbus_sde.cmn.limited_entries_size = ARRAY_SIZE(dbg_bus_sde_limited_ver_c00);
+		dbg->dbgbus_sde.clear_tp = _sde_dbg_sde_clear_test_point_ver_c00;
+		dbg->dbgbus_sde.read_tp = _sde_dbg_sde_read_test_point_ver_c00;
 	} else {
 		dbg->dbgbus_sde.entries = dbg_bus_sde;
 		dbg->dbgbus_sde.cmn.entries_size = ARRAY_SIZE(dbg_bus_sde);
 		dbg->dbgbus_sde.limited_entries = dbg_bus_sde_limited;
 		dbg->dbgbus_sde.cmn.limited_entries_size = ARRAY_SIZE(dbg_bus_sde_limited);
+		dbg->dbgbus_sde.clear_tp = _sde_dbg_sde_clear_test_point;
+		dbg->dbgbus_sde.read_tp = _sde_dbg_sde_read_test_point;
 	}
 	dbg->dbgbus_sde.cmn.name = DBGBUS_NAME_SDE;
 	dbg->dbgbus_sde.cmn.blk_id = SDE_DBG_SDE_DBGBUS;
-	dbg->dbgbus_sde.read_tp = _sde_dbg_sde_read_test_point;
-	dbg->dbgbus_sde.clear_tp = _sde_dbg_sde_clear_test_point;
 
 	dbg->dbgbus_vbif_rt.entries = vbif_dbg_bus;
 	dbg->dbgbus_vbif_rt.cmn.entries_size = ARRAY_SIZE(vbif_dbg_bus);
