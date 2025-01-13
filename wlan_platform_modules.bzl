@@ -190,6 +190,7 @@ def _define_modules_for_target_variant(target, variant):
                 "//soc-repo:{}/drivers/soc/qcom/pdr_interface".format(tv),
                 "//soc-repo:{}/drivers/remoteproc/rproc_qcom_common".format(tv),
                 "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+                "//soc-repo:{}/drivers/pinctrl/qcom/pinctrl-msm".format(tv),
                 "//soc-repo:{}/drivers/soc/qcom/qcom_aoss".format(tv),
                ],
                "//build/kernel/kleaf:socrepo_false": [
