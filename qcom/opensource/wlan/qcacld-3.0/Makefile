@@ -28,6 +28,10 @@ else
 KBUILD_OPTIONS += MODNAME?=wlan
 endif
 
+KBUILD_EXTRA := \
+    WLAN_PROFILE=sun_gki_peach-v2 \
+    MODNAME=qca_cld3_peach_v2
+
 #By default build for CLD
 WLAN_SELECT := CONFIG_QCA_CLD_WLAN=m
 KBUILD_OPTIONS += CONFIG_QCA_WIFI_ISOC=0
