@@ -542,7 +542,7 @@ static const struct mhi_controller_config cnss_mhi_config_no_diag = {
 #endif
 	.timeout_ms = 10000,
 	.use_bounce_buf = false,
-	.buf_len = 0x8000,
+	.buf_len = CONFIG_MHI_BUF_LEN,
 	.num_channels = ARRAY_SIZE(cnss_mhi_channels_no_diag),
 	.ch_cfg = cnss_mhi_channels_no_diag,
 	.num_events = ARRAY_SIZE(cnss_mhi_events),
@@ -558,7 +558,7 @@ static const struct mhi_controller_config cnss_mhi_config_default = {
 #endif
 	.timeout_ms = 10000,
 	.use_bounce_buf = false,
-	.buf_len = 0x8000,
+	.buf_len = CONFIG_MHI_BUF_LEN,
 	.num_channels = ARRAY_SIZE(cnss_mhi_channels),
 	.ch_cfg = cnss_mhi_channels,
 	.num_events = ARRAY_SIZE(cnss_mhi_events),
@@ -570,7 +570,7 @@ static const struct mhi_controller_config cnss_mhi_config_genoa = {
 	.max_channels = 32,
 	.timeout_ms = 10000,
 	.use_bounce_buf = false,
-	.buf_len = 0x8000,
+	.buf_len = CONFIG_MHI_BUF_LEN,
 	.num_channels = ARRAY_SIZE(cnss_mhi_channels_genoa),
 	.ch_cfg = cnss_mhi_channels_genoa,
 	.num_events = ARRAY_SIZE(cnss_mhi_events) -
@@ -586,7 +586,7 @@ static const struct mhi_controller_config cnss_mhi_config_no_satellite = {
 	.max_channels = 32,
 	.timeout_ms = 10000,
 	.use_bounce_buf = false,
-	.buf_len = 0x8000,
+	.buf_len = CONFIG_MHI_BUF_LEN,
 	.num_channels = ARRAY_SIZE(cnss_mhi_channels) -
 			CNSS_MHI_SATELLITE_CH_CFG_COUNT,
 	.ch_cfg = cnss_mhi_channels,
