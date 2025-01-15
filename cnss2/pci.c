@@ -2148,6 +2148,7 @@ static void cnss_pci_dump_bl_sram_mem(struct cnss_pci_data *pci_priv)
 	u32 pbl_log_sram_start;
 	u32 pbl_stage, sbl_log_start, sbl_log_size;
 	u32 pbl_wlan_boot_cfg, pbl_bootstrap_status;
+	u32 spare_reg3, spare_reg2;
 	u32 pbl_bootstrap_status_reg = PBL_BOOTSTRAP_STATUS;
 	u32 sbl_log_def_start = SRAM_START;
 	u32 sbl_log_def_end = SRAM_END;
@@ -2214,6 +2215,13 @@ static void cnss_pci_dump_bl_sram_mem(struct cnss_pci_data *pci_priv)
 		    pbl_stage, sbl_log_start, sbl_log_size);
 	cnss_pr_dbg("PBL_WLAN_BOOT_CFG: 0x%08x PBL_BOOTSTRAP_STATUS: 0x%08x\n",
 		    pbl_wlan_boot_cfg, pbl_bootstrap_status);
+
+	if (pci_priv->device_id == FIG_DEVICE_ID) {
+		cnss_pci_reg_read(pci_priv, TCSR_SPARE_REG2, &spare_reg2);
+		cnss_pci_reg_read(pci_priv, TCSR_SPARE_REG3, &spare_reg3);
+		cnss_pr_dbg("TCSR_SPARE_REG2: 0x%08x TCSR_SPARE_REG3: 0x%08x\n",
+			    spare_reg2, spare_reg3);
+	}
 
 	ee = mhi_get_exec_env(pci_priv->mhi_ctrl);
 	if (CNSS_MHI_IN_MISSION_MODE(ee)) {
