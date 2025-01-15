@@ -2972,10 +2972,15 @@ static void cm_update_driver_assoc_ies(struct wlan_objmgr_psoc *psoc,
 		      RSNO_OUI_SIZE, NULL, 0);
 
 	rrm_cap_ie_data = wlan_cm_get_rrm_cap_ie_data();
-	/* Re-Assoc IE TLV parameters */
-	rso_mode_cfg->assoc_ie_length = rso_cfg->assoc_ie.len;
-	qdf_mem_copy(rso_mode_cfg->assoc_ie, rso_cfg->assoc_ie.ptr,
-		     rso_mode_cfg->assoc_ie_length);
+
+	if (rso_cfg->assoc_ie.ptr) {
+		/* Re-Assoc IE TLV parameters */
+		rso_mode_cfg->assoc_ie_length = rso_cfg->assoc_ie.len;
+		qdf_mem_copy(rso_mode_cfg->assoc_ie, rso_cfg->assoc_ie.ptr,
+			     rso_mode_cfg->assoc_ie_length);
+	} else {
+		rso_mode_cfg->assoc_ie_length = 0;
+	}
 
 	max_tx_pwr_cap = wlan_get_cfg_max_tx_power(psoc, pdev,
 					wlan_get_operation_chan_freq(vdev));
