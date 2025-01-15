@@ -5792,7 +5792,9 @@ static void icnss_init_control_params(struct icnss_priv *priv)
 				  "wpss-support-enable"))
 		priv->wpss_supported = true;
 
-	if (priv->device_id == WCN6750_DEVICE_ID) {
+	if (priv->device_id == WCN6750_DEVICE_ID ||
+	    priv->device_id == WCN7750_DEVICE_ID ||
+	    priv->device_id == WCN6450_DEVICE_ID) {
 		ret = of_property_read_string(priv->pdev->dev.of_node,
 					      "wcn-hw-version",
 					      &hw_version);
