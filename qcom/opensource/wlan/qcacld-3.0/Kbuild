@@ -46,6 +46,13 @@ else ifneq ($(LINUX_BUILD_TOP),)
 endif
 endif
 
+WLAN_PLATFORM_ROOT := $(WLAN_ROOT)/../platform
+include \
+	$(WLAN_PLATFORM_ROOT)/cnss2/sun_gki_defconfig \
+	$(WLAN_PLATFORM_ROOT)/cnss_genl/sun_gki_defconfig \
+	$(WLAN_PLATFORM_ROOT)/cnss_prealloc/sun_gki_defconfig \
+	$(WLAN_PLATFORM_ROOT)/cnss_utils/sun_gki_defconfig \
+
 include $(WLAN_ROOT)/configs/$(CONFIG_QCA_CLD_WLAN_PROFILE)_defconfig
 
 # add configurations in WLAN_CFG_OVERRIDE
