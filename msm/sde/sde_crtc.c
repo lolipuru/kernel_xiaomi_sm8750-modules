@@ -4745,6 +4745,11 @@ static void _sde_crtc_setup_lm_bounds(struct drm_crtc *crtc, struct drm_crtc_sta
 		mixer_id = mixer->hw_lm->idx - LM_0;
 
 		if (cstate->is_loopback_mode) {
+			if (mixer_id >= MAX_MIXERS_PER_CRTC) {
+				SDE_ERROR("mixer_id: %d is greater than max mixers per crtc",
+						mixer_id);
+				continue;
+			}
 			lb_mixer_width = cstate->cac_mixer_roi[mixer_id].src_w;
 			lb_mixer_height = cstate->cac_mixer_roi[mixer_id].src_h;
 			mixer_prev_x = (i > 0) ? cstate->lm_bounds[i - 1].x : 0;
