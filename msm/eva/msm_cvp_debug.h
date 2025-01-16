@@ -76,6 +76,7 @@ extern int msm_cvp_minidump_enable;
 extern int cvp_kernel_fence_enabled;
 extern int msm_cvp_hw_wd_recovery;
 extern int msm_cvp_smmu_fault_recovery;
+extern int msm_cvp_crash;
 
 #define dprintk(__level, __fmt, arg...)	\
 	do { \

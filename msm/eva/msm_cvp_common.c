@@ -365,8 +365,8 @@ int wait_for_sess_signal_receipt(struct msm_cvp_inst *inst,
 		msecs_to_jiffies(
 			inst->core->resources.msm_cvp_hw_rsp_timeout));
 	if (!rc) {
-		dprintk(CVP_WARN, "Wait interrupted or timed out: %d\n",
-				SESSION_MSG_INDEX(cmd));
+		dprintk(CVP_WARN, "Wait interrupted or timed out: %d session_id = %#x\n",
+				SESSION_MSG_INDEX(cmd), hash32_ptr(inst->session));
 		if (inst->state != MSM_CVP_CORE_INVALID)
 			print_hfi_queue_info(ops_tbl);
 		if (cmd != HAL_SESSION_STOP_DONE &&
@@ -580,6 +580,7 @@ void handle_session_error(enum hal_command_response cmd, void *data)
 		wake_up_all(&inst->event_handler.wq);
 	}
 
+	BUG_ON(msm_cvp_crash);
 	cvp_put_inst(inst);
 }
 
@@ -612,6 +613,7 @@ void handle_session_timeout(struct msm_cvp_inst *inst, bool stop_required)
 		&inst->event_handler.lock, flags);
 	wake_up_all(&inst->event_handler.wq);
 
+	BUG_ON(msm_cvp_crash);
 	if (stop_required)
 		msm_cvp_session_flush_stop(inst);
 }
@@ -1352,6 +1354,7 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 		struct msm_cvp_cb_cmd_done response = { 1 };
 		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL, *inst_t;
 
+		dprintk(CVP_ERR, "Session error triggered\n");
 		mutex_lock(&core->lock);
 		list_for_each_entry_safe(inst, inst_t, &core->instances, list) {
 			if (inst != NULL) {
@@ -1376,13 +1379,13 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 		response.device_id = 0x00FF;
 		response.status = CVP_ERR_HW_FATAL;
 		response.size = sizeof(struct msm_cvp_cb_cmd_done);
-		dprintk(CVP_ERR, "Session error triggered\n");
 		handle_session_error(HAL_SESSION_ERROR, (void *)(&response));
 		return;
 	}
 	if (core->ssr_type == SSR_SESSION_TIMEOUT) {
 		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL, *inst_t;
 
+		dprintk(CVP_ERR, "Session timeout triggered\n");
 		mutex_lock(&core->lock);
 		list_for_each_entry_safe(inst, inst_t,  &core->instances, list) {
 			if (inst != NULL) {
@@ -1395,11 +1398,10 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 				dprintk(CVP_INFO, "Session to be taken for session timeout 0x%x\n",
 					inst);
 				}
+				handle_session_timeout(inst, true);
 				break;
 		}
 		mutex_unlock(&core->lock);
-		dprintk(CVP_ERR, "Session timeout triggered\n");
-		handle_session_timeout(inst, true);
 		return;
 	}
 	if (core->ssr_type == SSR_CORE_SMMU_FAULT) {

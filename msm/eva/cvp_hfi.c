@@ -110,6 +110,7 @@ static int __reset_control_assert_name(struct iris_hfi_device *device, const cha
 static int __reset_control_deassert_name(struct iris_hfi_device *device, const char *name);
 static int __reset_control_acquire(struct iris_hfi_device *device, const char *name);
 static int __reset_control_release(struct iris_hfi_device *device, const char *name);
+static void __deinit_resources(struct iris_hfi_device *device);
 
 static int cvp_iommu_map(struct iommu_domain* domain, unsigned long iova, phys_addr_t paddr, size_t size, int prot)
 {
@@ -2464,7 +2465,7 @@ static int iris_hfi_core_init(void *device)
 	if (rc) {
 		dprintk(CVP_ERR, "failed to init queues\n");
 		rc = -ENOMEM;
-		goto err_core_init;
+		goto err_init_queues;
 	}
 	cvp_register_va_md_region();
 
@@ -2562,7 +2563,10 @@ pm_qos_bail:
 	dprintk(CVP_CORE, "Core inited successfully\n");
 
 	return 0;
-
+err_init_queues:
+	__interface_queues_release(dev);
+	power_off_iris2(dev);
+	__deinit_resources(dev);
 err_core_init:
 	__set_state(dev, IRIS_STATE_DEINIT);
 	__unload_fw(dev);

@@ -27,7 +27,7 @@
 #include "cvp_hfi_helper.h"
 
 #define MAX_SUPPORTED_INSTANCES 16
-#define MAX_CV_INSTANCES 8
+#define MAX_CV_INSTANCES 12
 #define MAX_DMM_INSTANCES 8
 #define MAX_DEBUGFS_NAME 50
 #define MAX_DSP_INIT_ATTEMPTS 16

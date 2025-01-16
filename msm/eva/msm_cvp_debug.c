@@ -52,7 +52,8 @@ bool msm_cvp_dcvs_disable = !true;
 int msm_cvp_minidump_enable = !1;
 int cvp_kernel_fence_enabled = 2;
 int msm_cvp_hw_wd_recovery = 1;
-int msm_cvp_smmu_fault_recovery = !1;
+int msm_cvp_smmu_fault_recovery = 1;
+int msm_cvp_crash = !1;
 
 #define MAX_DBG_BUF_SIZE 4096
 
@@ -473,6 +474,8 @@ struct dentry *msm_cvp_debugfs_init_core(struct msm_cvp_core *core,
 		&msm_cvp_hw_wd_recovery);
 	debugfs_create_u32("smmu_fault_recovery", 0644, dir,
 		&msm_cvp_smmu_fault_recovery);
+	debugfs_create_u32("trigger_crash", 0644, dir,
+		&msm_cvp_crash);
 failed_create_dir:
 	return dir;
 }
