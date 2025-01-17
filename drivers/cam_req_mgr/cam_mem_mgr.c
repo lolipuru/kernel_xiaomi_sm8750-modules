@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -2010,6 +2010,7 @@ static int cam_mem_mgr_cleanup_table(void)
 			CAM_DBG(CAM_MEM,
 			"Active buffer at idx=%d, possible leak needs unmapping",
 			i);
+			spin_unlock(&tbl.bufq[i].idx_lock);
 			cam_mem_mgr_unmap_active_buf(i);
 		}
 
@@ -2044,7 +2045,6 @@ static int cam_mem_mgr_cleanup_table(void)
 		cam_mem_mgr_reset_presil_params(i);
 		kref_init(&tbl.bufq[i].krefcount);
 		kref_init(&tbl.bufq[i].urefcount);
-		spin_unlock(&tbl.bufq[i].idx_lock);
 		mutex_unlock(&tbl.bufq[i].q_lock);
 		mutex_destroy(&tbl.bufq[i].q_lock);
 	}
