@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_SOC_UTIL_H_
@@ -20,6 +20,7 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/debugfs.h>
 #include <linux/of_fdt.h>
+#include <linux/reset.h>
 
 #include "cam_io_util.h"
 #include "cam_debug_util.h"
@@ -67,6 +68,9 @@
 
 /* vmrm resource irq bit map offset */
 #define CAM_VMRM_RESOURCE_IRQ_BIT_MAP_OFFSET 1
+
+/* maximum number of device clock */
+#define CAM_SOC_MAX_RESET             8
 
 /* DDR device types */
 #define DDR_TYPE_LPDDR4        6
@@ -364,6 +368,11 @@ struct cam_hw_soc_info {
 	uint32_t                        num_vmrm_resource_ids;
 	uint32_t                        vmrm_resource_ids[CAM_VMRM_MAX_RESOURCE_IDS];
 #endif
+
+	uint32_t                        num_reset;
+	const char                     *reset_name[CAM_SOC_MAX_RESET];
+	struct reset_control           *resets[CAM_SOC_MAX_RESET];
+
 };
 
 /**
@@ -613,6 +622,29 @@ int cam_soc_util_get_option_clk_by_name(struct cam_hw_soc_info *soc_info,
  */
 int cam_soc_util_put_optional_clk(struct cam_hw_soc_info *soc_info,
 	int32_t clk_idx);
+
+/**
+ * cam_soc_util_get_reset_resource()
+ *
+ * @brief:              Get reference to get reset resource
+ *
+ * @soc_info:           Device soc information
+ *
+ * @return:             0: Success
+ *                      Negative: Failure
+ */
+int cam_soc_util_get_reset_resource(struct cam_hw_soc_info *soc_info);
+
+/**
+ * cam_soc_util_put_reset_resource()
+ *
+ * @brief:              Put reset resource
+ *
+ * @soc_info:           Device soc information
+ *
+ * @return:             Success or failure
+ */
+int cam_soc_util_put_reset_resource(struct cam_hw_soc_info *soc_info);
 
 /**
  * cam_soc_util_clk_enable()
@@ -1029,5 +1061,16 @@ inline void cam_soc_util_set_bypass_drivers(
  * @return:    Success or failure
  */
 int cam_soc_util_create_debugfs(void);
+
+/**
+ * cam_soc_util_reset_control()
+ *
+ * @brief:     Assert/Deassert reset resource
+ *
+ * @soc_info:  Device soc struct to be populated
+ *
+ * @return:    Success or failure
+ */
+int cam_soc_util_reset_control(struct cam_hw_soc_info *soc_info);
 
 #endif /* _CAM_SOC_UTIL_H_ */

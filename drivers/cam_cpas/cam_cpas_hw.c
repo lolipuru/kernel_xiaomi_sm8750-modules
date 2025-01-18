@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/device.h>
@@ -2886,6 +2886,14 @@ static int cam_cpas_hw_start(void *hw_priv, void *start_args,
 			atomic_set(&cpas_core->soc_access_count, 0);
 			CAM_ERR(CAM_CPAS, "enable_resorce failed, rc=%d", rc);
 			goto remove_ahb_vote;
+		}
+
+		if (cpas_core->internal_ops.handle_reset_res_control) {
+			rc = cpas_core->internal_ops.handle_reset_res_control(cpas_hw);
+			if (rc) {
+				CAM_WARN(CAM_CPAS, "failed in reset resource control rc=%d", rc);
+				/* Do not return error, passthrough */
+			}
 		}
 
 		if (cpas_core->internal_ops.qchannel_handshake) {
