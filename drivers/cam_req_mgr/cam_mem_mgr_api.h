@@ -161,6 +161,14 @@ int cam_mem_get_cpu_buf(int32_t buf_handle, uintptr_t *vaddr_ptr,
  */
 void cam_mem_put_cpu_buf(int32_t buf_handle);
 
+/**
+ * @brief: decrements kref reference for a buf handle
+ *
+ * @buf_handle: Handle for the buffer
+ *
+ */
+void cam_mem_put_kref(int32_t buf_handle);
+
 static inline bool cam_mem_is_secure_buf(int32_t buf_handle)
 {
 	return CAM_MEM_MGR_IS_SECURE_HDL(buf_handle);
