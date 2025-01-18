@@ -598,20 +598,25 @@ static int swr_haptics_parse_port_mapping(struct swr_device *sdev)
 			swr_hap->port.num_ch, swr_hap->port.port_type);
 
 	if (vi_sense_supported) {
+		if (of_find_property(sdev->dev.of_node, "qcom,rx_swr_vi_ch_map", NULL)) {
+			rc = of_property_read_u32_array(sdev->dev.of_node, "qcom,rx_swr_vi_ch_map",
+						port_cfg, NUM_SWR_PORT_DT_PARAMS);
+			if (rc < 0) {
+				dev_err(swr_hap->dev, "%s: Get qcom,rx_swr_vi_ch_map failed, rc=%d\n",
+						__func__, rc);
+				return -EINVAL;
+			}
 
-		rc = of_property_read_u32_array(sdev->dev.of_node, "qcom,rx_swr_vi_ch_map",
-				port_cfg, NUM_SWR_PORT_DT_PARAMS);
-		if (rc < 0) {
-			dev_err(swr_hap->dev, "%s: Get qcom,rx_swr_vi_ch_map failed, rc=%d\n",
-					__func__, rc);
-			return -EINVAL;
+			swr_hap->vi_port.port_id = (u8) port_cfg[PORT_ID_DT_IDX];
+			swr_hap->vi_port.num_ch = (u8) port_cfg[NUM_CH_DT_IDX];
+			swr_hap->vi_port.ch_mask = (u8) port_cfg[CH_MASK_DT_IDX];
+			swr_hap->vi_port.ch_rate =  port_cfg[CH_RATE_DT_IDX];
+			swr_hap->vi_port.port_type = (u8) port_cfg[PORT_TYPE_DT_IDX];
+		} else {
+			dev_err(swr_hap->dev, "%s: qcom,rx_swr_vi_ch_map not supported\n",
+						__func__);
 		}
 
-		swr_hap->vi_port.port_id = (u8) port_cfg[PORT_ID_DT_IDX];
-		swr_hap->vi_port.num_ch = (u8) port_cfg[NUM_CH_DT_IDX];
-		swr_hap->vi_port.ch_mask = (u8) port_cfg[CH_MASK_DT_IDX];
-		swr_hap->vi_port.ch_rate =  port_cfg[CH_RATE_DT_IDX];
-		swr_hap->vi_port.port_type = (u8) port_cfg[PORT_TYPE_DT_IDX];
 	}
 	return 0;
 }
