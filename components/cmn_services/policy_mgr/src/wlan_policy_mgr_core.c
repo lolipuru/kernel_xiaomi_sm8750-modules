@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -4521,7 +4521,6 @@ policy_mgr_get_pref_force_scc_freq(struct wlan_objmgr_psoc *psoc,
 	qdf_freq_t pcl_freq;
 	bool same_mac, sbs_ml_sta_present = false, dbs_ml_sta_present = false;
 	qdf_freq_t ll_lt_sap_freq;
-	uint8_t cc_mode;
 	bool is_dbs, ml_sta_present;
 
 	pm_ctx = policy_mgr_get_context(psoc);
@@ -4558,7 +4557,6 @@ policy_mgr_get_pref_force_scc_freq(struct wlan_objmgr_psoc *psoc,
 		allow_2ghz_only = true;
 
 	ll_lt_sap_freq = policy_mgr_get_ll_sap_freq(psoc);
-	policy_mgr_get_mcc_scc_switch(psoc, &cc_mode);
 	is_dbs = policy_mgr_is_hw_dbs_capable(psoc);
 
 	/*
