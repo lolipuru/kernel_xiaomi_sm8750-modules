@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -301,7 +301,7 @@ int btfm_swr_dai_get_configs(void *dai, void *config, uint8_t id)
 	struct btfmswr *btfmswr = dev_get_drvdata(hwep_info->dev);
 	struct hwep_dma_configurations *hwep_config;
 
-	BTFMSWR_DBG("");
+	BTFMSWR_INFO("DAI id %u", id);
 	hwep_config = (struct hwep_dma_configurations *)config;
 
 	hwep_config->stream_id = id;
@@ -313,7 +313,14 @@ int btfm_swr_dai_get_configs(void *dai, void *config, uint8_t id)
 	hwep_config->active_channel_mask = (btfmswr->num_channels == 2 ?
 					   TWO_CHANNEL_MASK : ONE_CHANNEL_MASK);
 	hwep_config->lpaif = LPAIF_AUD;
-	hwep_config->inf_index = 1;
+
+	if (id == BTAUDIO_RX2 || id == BTAUDIO_TX2) {
+		BTFMSWR_INFO("using interface index 2 for DAI id %u", id);
+		hwep_config->inf_index = 2;
+	} else {
+		BTFMSWR_INFO("using interface index 1 for DAI id %u", id);
+		hwep_config->inf_index = 1;
+	}
 	return 1;
 }
 
