@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -2131,8 +2131,10 @@ static int gsi_cleanup_xfer_user_data(unsigned long chan_hdl,
 			rp_idx = gsi_find_idx_from_addr(&ctx->ring,
 				ctx->ring.rp_local);
 			WARN_ON(!ctx->user_data[rp_idx].valid);
-			cleanup_cb(ctx->props.chan_user_data,
-				ctx->user_data[rp_idx].p);
+			if (ctx->user_data[rp_idx].valid) {
+				cleanup_cb(ctx->props.chan_user_data,
+					ctx->user_data[rp_idx].p);
+			}
 			gsi_incr_ring_rp(&ctx->ring);
 		}
 	}
