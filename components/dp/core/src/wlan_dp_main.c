@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -238,7 +238,7 @@ QDF_STATUS dp_get_hlp_peer_state(struct wlan_dp_intf *dp_intf,
 	if (hlp_node && hlp_node->is_processing)
 		return QDF_STATUS_SUCCESS;
 
-	dp_debug_rl("Failed to get peer state");
+	dp_err_rl("Failed to get peer state");
 	return QDF_STATUS_E_FAILURE;
 }
 
