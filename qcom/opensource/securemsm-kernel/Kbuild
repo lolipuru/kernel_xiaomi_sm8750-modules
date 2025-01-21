@@ -35,6 +35,12 @@ include $(SSG_MODULE_ROOT)/config/sec-kernel_defconfig_smcinvoke.conf
 LINUXINCLUDE += -include $(SSG_MODULE_ROOT)/config/sec-kernel_defconfig_smcinvoke.h
 
 obj-$(CONFIG_QCOM_SMCINVOKE) += smcinvoke_dlkm.o
+
+ifneq (, $(filter y, $(CONFIG_ARCH_SUN)))
+    include $(SSG_MODULE_ROOT)/config/sec-kernel_defconfig_si_core.conf
+    LINUXINCLUDE += -include $(SSG_MODULE_ROOT)/config/sec-kernel_defconfig_si_core.h
+endif
+
 ifneq ($(CONFIG_QCOM_SI_CORE), y)
     smcinvoke_dlkm-objs := smcinvoke/compat/smcinvoke_kernel.o
     smcinvoke_dlkm-objs += smcinvoke/compat/smcinvoke.o
