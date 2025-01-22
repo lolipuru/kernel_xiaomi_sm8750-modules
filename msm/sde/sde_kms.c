@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -2649,9 +2649,12 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		msm_iounmap(pdev, sde_kms->sid);
 	sde_kms->sid = NULL;
 
+	if (sde_kms->hw_sw_fuse)
+		sde_hw_sw_fuse_destroy(sde_kms->hw_sw_fuse);
+	sde_kms->hw_sw_fuse = NULL;
+
 	if (sde_kms->sw_fuse)
 		msm_iounmap(pdev, sde_kms->sw_fuse);
-	sde_hw_sw_fuse_destroy(sde_kms->sw_fuse);
 	sde_kms->sw_fuse = NULL;
 
 	if (sde_kms->reg_dma)
