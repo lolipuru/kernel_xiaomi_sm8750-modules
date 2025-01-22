@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/module.h>
 #include <linux/rpmsg.h>
@@ -1600,7 +1600,8 @@ void __dsp_cvp_sess_delete(struct cvp_dsp_cmd_msg *cmd)
 	}
 
 	/* unregister fastrpc driver */
-	eva_fastrpc_driver_unregister(dsp2cpu_cmd->pid, false);
+	if (frpc_node)
+		eva_fastrpc_driver_unregister(dsp2cpu_cmd->pid, false);
 
 	if (task)
 		put_task_struct(task);
@@ -1910,14 +1911,12 @@ void __dsp_cvp_mem_free(struct cvp_dsp_cmd_msg *cmd)
 
 	frpc_node = cvp_get_fastrpc_node_with_handle(dsp2cpu_cmd->pid);
 	if (!frpc_node) {
-		dprintk(CVP_ERR,
-			"%s Failed to find fastrpc node 0x%x, but allow memfree\n",
-			__func__, dsp2cpu_cmd->pid);
-		// cmd->ret = -1;
-		// return;
-	} else {
-		frpc_device = frpc_node->cvp_fastrpc_device;
+		dprintk(CVP_ERR, "%s Failed to find fastrpc node 0x%x\n",
+				__func__, dsp2cpu_cmd->pid);
+		cmd->ret = -1;
+		return;
 	}
+	frpc_device = frpc_node->cvp_fastrpc_device;
 
 	buf_list = &inst->cvpdspbufs;
 	mutex_lock(&buf_list->lock);
@@ -1939,12 +1938,10 @@ void __dsp_cvp_mem_free(struct cvp_dsp_cmd_msg *cmd)
 			dprintk(CVP_DSP, "fd in list 0x%x, fd from dsp 0x%x\n",
 				buf->fd, dsp2cpu_cmd->sbuf.fd);
 
-			if (frpc_node) {
-				rc = eva_fastrpc_dev_unmap_dma(frpc_device, buf);
-				if (rc) {
-					cmd->ret = -1;
-					goto fail_fastrpc_dev_unmap_dma;
-				}
+			rc = eva_fastrpc_dev_unmap_dma(frpc_device, buf);
+			if (rc) {
+				cmd->ret = -1;
+				goto fail_fastrpc_dev_unmap_dma;
 			}
 
 			rc = cvp_release_dsp_buffers(inst, buf);
@@ -1966,8 +1963,7 @@ void __dsp_cvp_mem_free(struct cvp_dsp_cmd_msg *cmd)
 fail_release_buf:
 fail_fastrpc_dev_unmap_dma:
 	mutex_unlock(&buf_list->lock);
-	if (frpc_node)
-		cvp_put_fastrpc_node(frpc_node);
+	cvp_put_fastrpc_node(frpc_node);
 }
 
 void __dsp_cvp_sess_start(struct cvp_dsp_cmd_msg *cmd)
