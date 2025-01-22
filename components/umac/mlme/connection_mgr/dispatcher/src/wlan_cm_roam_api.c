@@ -230,6 +230,8 @@ char *cm_roam_get_requestor_string(enum wlan_cm_rso_control_requestor requestor)
 		return "NDP connection";
 	case RSO_SET_PCL:
 		return "Set PCL";
+	case RSO_SET_LINK:
+		return "Set Link";
 	}
 }
 
