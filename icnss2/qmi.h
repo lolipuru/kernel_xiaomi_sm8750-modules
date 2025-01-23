@@ -83,7 +83,7 @@ static inline int wlfw_rejuvenate_ack_send_sync_msg(struct icnss_priv *priv)
 	return 0;
 }
 static inline void icnss_ignore_fw_timeout(bool ignore) {}
-static int wlfw_send_modem_shutdown_msg(struct icnss_priv *priv)
+static int wlfw_send_fw_shutdown_msg(struct icnss_priv *priv)
 {
 	return 0;
 }
@@ -280,7 +280,7 @@ int wlfw_dynamic_feature_mask_send_sync_msg(struct icnss_priv *priv,
 int icnss_clear_server(struct icnss_priv *priv);
 int wlfw_rejuvenate_ack_send_sync_msg(struct icnss_priv *priv);
 void icnss_ignore_fw_timeout(bool ignore);
-int wlfw_send_modem_shutdown_msg(struct icnss_priv *priv);
+int wlfw_send_fw_shutdown_msg(struct icnss_priv *priv);
 int wlfw_ini_send_sync_msg(struct icnss_priv *priv, uint8_t fw_log_mode);
 int wlfw_athdiag_read_send_sync_msg(struct icnss_priv *priv,
 					   uint32_t offset, uint32_t mem_type,

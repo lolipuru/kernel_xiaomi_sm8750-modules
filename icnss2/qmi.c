@@ -1780,7 +1780,7 @@ out:
 	return ret;
 }
 
-int wlfw_send_modem_shutdown_msg(struct icnss_priv *priv)
+int wlfw_send_fw_shutdown_msg(struct icnss_priv *priv)
 {
 	int ret;
 	struct wlfw_shutdown_req_msg_v01 *req;
@@ -1793,7 +1793,7 @@ int wlfw_send_modem_shutdown_msg(struct icnss_priv *priv)
 	if (test_bit(ICNSS_FW_DOWN, &priv->state))
 		return -EINVAL;
 
-	icnss_pr_dbg("Sending modem shutdown request, state: 0x%lx\n",
+	icnss_pr_dbg("Sending FW shutdown request, state: 0x%lx\n",
 		     priv->state);
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
@@ -1834,7 +1834,7 @@ int wlfw_send_modem_shutdown_msg(struct icnss_priv *priv)
 			     ret);
 		goto out;
 	} else if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
-		icnss_pr_err("QMI modem shutdown request rejected result:%d error:%d\n",
+		icnss_pr_err("QMI FW shutdown request rejected result:%d error:%d\n",
 			     resp->resp.result, resp->resp.error);
 		ret = -resp->resp.result;
 		goto out;
