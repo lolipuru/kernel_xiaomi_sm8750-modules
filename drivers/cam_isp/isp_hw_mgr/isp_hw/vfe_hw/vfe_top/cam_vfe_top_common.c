@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019, 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_vfe_top_common.h"
@@ -562,6 +562,7 @@ int cam_vfe_top_apply_clk_bw_update(struct cam_vfe_top_priv_common *top_common,
 	uint64_t                              total_bw_new_vote = 0;
 	uint64_t                              request_id;
 	int rc = 0;
+	bool drv_config_changed = false;
 
 	if (arg_size != sizeof(struct cam_isp_apply_clk_bw_args)) {
 		CAM_ERR(CAM_ISP, "Invalid arg size: %u", arg_size);
@@ -613,17 +614,26 @@ int cam_vfe_top_apply_clk_bw_update(struct cam_vfe_top_priv_common *top_common,
 		goto end;
 	}
 
+	if (top_common->prev_drv_config_en != clk_bw_args->is_drv_config_en) {
+		drv_config_changed = true;
+		top_common->prev_drv_config_en = clk_bw_args->is_drv_config_en;
+	}
+
 	CAM_DBG(CAM_PERF,
-		"VFE:%d APPLY CLK/BW req_id:%ld clk_state:%s bw_state:%s is_drv_config_en:%s",
+		"VFE:%d APPLY CLK/BW req_id:%ld clk:%s bw:%s drv_conf_en:%s drv_conf_changed:%d",
 		hw_intf->hw_idx, request_id,
 		cam_vfe_top_clk_bw_state_to_string(top_common->clk_state),
 		cam_vfe_top_clk_bw_state_to_string(top_common->bw_state),
-		CAM_BOOL_TO_YESNO(clk_bw_args->is_drv_config_en));
+		CAM_BOOL_TO_YESNO(clk_bw_args->is_drv_config_en), drv_config_changed);
 
 	/* Determine BW and clock voting sequence according to state */
 	if ((top_common->clk_state == CAM_CLK_BW_STATE_UNCHANGED) &&
 		(top_common->bw_state == CAM_CLK_BW_STATE_UNCHANGED)) {
-		goto end;
+		if (!drv_config_changed)
+			goto end;
+
+		rc = cam_vfe_top_set_hw_clk_rate(top_common, final_clk_rate, false,
+			request_id, clk_bw_args->is_drv_config_en);
 	} else if (top_common->clk_state == CAM_CLK_BW_STATE_UNCHANGED) {
 		rc = cam_vfe_top_set_axi_bw_vote(top_common, to_be_applied_axi_vote,
 			total_bw_new_vote, false, request_id);
@@ -708,7 +718,7 @@ int cam_vfe_top_apply_clk_bw_update(struct cam_vfe_top_priv_common *top_common,
 		goto end;
 	}
 
-	if (top_common->clk_state != CAM_CLK_BW_STATE_UNCHANGED)
+	if (top_common->clk_state != CAM_CLK_BW_STATE_UNCHANGED || drv_config_changed)
 		clk_bw_args->clock_updated = true;
 
 end:
@@ -744,6 +754,7 @@ int cam_vfe_top_apply_clock_start_stop(struct cam_vfe_top_priv_common *top_commo
 end:
 	top_common->clk_state = CAM_CLK_BW_STATE_INIT;
 	top_common->skip_data_rst_on_stop = false;
+	top_common->prev_drv_config_en = false;
 	return rc;
 }
 
