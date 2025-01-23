@@ -195,6 +195,7 @@ enum icnss_driver_state {
 	ICNSS_SLATE_READY,
 	ICNSS_LOW_POWER,
 	ICNSS_SOC_WAKE_DONE,
+	ICNSS_REBOOT_REGISTERED,
 };
 
 struct ce_irq_list {
@@ -544,6 +545,7 @@ struct icnss_priv {
 	struct notifier_block wpss_early_ssr_nb;
 	void *slate_notify_handler;
 	struct notifier_block slate_ssr_nb;
+	struct notifier_block reboot_nb;
 	uint32_t diag_reg_read_addr;
 	uint32_t diag_reg_read_mem_type;
 	uint32_t diag_reg_read_len;

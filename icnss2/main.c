@@ -35,6 +35,7 @@
 #include <linux/soc/qcom/qmi.h>
 #include <linux/sysfs.h>
 #include <linux/thermal.h>
+#include <linux/reboot.h>
 #include <soc/qcom/memory_dump.h>
 #include <soc/qcom/secure_buffer.h>
 #include <soc/qcom/socinfo.h>
@@ -2872,7 +2873,7 @@ static int icnss_msa0_ramdump(struct icnss_priv *priv)
 	return ret;
 }
 
-static void icnss_update_state_send_modem_shutdown(struct icnss_priv *priv,
+static void icnss_update_shutdown_state_to_fw(struct icnss_priv *priv,
 							void *data)
 {
 	struct qcom_ssr_notify_data *notif = data;
@@ -2885,11 +2886,13 @@ static void icnss_update_state_send_modem_shutdown(struct icnss_priv *priv,
 				!test_bit(ICNSS_SHUTDOWN_DONE, &priv->state) &&
 				!test_bit(ICNSS_BLOCK_SHUTDOWN, &priv->state) &&
 				!atomic_read(&priv->is_idle_shutdown)) {
-				clear_bit(ICNSS_FW_READY, &priv->state);
+
 				icnss_driver_event_post(priv,
 					  ICNSS_DRIVER_EVENT_UNREGISTER_DRIVER,
 					  ICNSS_EVENT_SYNC_UNINTERRUPTIBLE,
 					  NULL);
+
+				clear_bit(ICNSS_FW_READY, &priv->state);
 			}
 		}
 
@@ -2897,12 +2900,12 @@ static void icnss_update_state_send_modem_shutdown(struct icnss_priv *priv,
 			if (!wait_for_completion_timeout(
 					&priv->unblock_shutdown,
 					msecs_to_jiffies(PROBE_TIMEOUT)))
-				icnss_pr_err("modem block shutdown timeout\n");
+				icnss_pr_err("FW block shutdown timeout\n");
 		}
 
-		ret = wlfw_send_modem_shutdown_msg(priv);
+		ret = wlfw_send_fw_shutdown_msg(priv);
 		if (ret < 0)
-			icnss_pr_err("Fail to send modem shutdown Indication %d\n",
+			icnss_pr_err("Fail to send FW shutdown Indication %d\n",
 				     ret);
 	}
 }
@@ -2937,6 +2940,20 @@ static int icnss_wpss_early_notifier_nb(struct notifier_block *nb,
 		set_bit(ICNSS_FW_DOWN, &priv->state);
 		icnss_ignore_fw_timeout(true);
 	}
+
+	return NOTIFY_DONE;
+}
+
+static int icnss_reboot_notifier(struct notifier_block *nb,
+				 unsigned long action, void *data)
+{
+	struct icnss_priv *priv = container_of(nb, struct icnss_priv,
+					       reboot_nb);
+
+	icnss_pr_dbg("Received Reboot indication");
+
+	atomic_set(&priv->is_shutdown, true);
+	icnss_wpss_unload(priv);
 
 	return NOTIFY_DONE;
 }
@@ -2979,8 +2996,9 @@ static int icnss_wpss_notifier_nb(struct notifier_block *nb,
 	icnss_pr_info("WPSS went down, state: 0x%lx, crashed: %d\n",
 		      priv->state, notif->crashed);
 
-	if (priv->device_id == ADRASTEA_DEVICE_ID)
-		icnss_update_state_send_modem_shutdown(priv, data);
+	if (priv->device_id == ADRASTEA_DEVICE_ID ||
+	    priv->device_id == WCN7750_DEVICE_ID)
+		icnss_update_shutdown_state_to_fw(priv, data);
 
 	set_bit(ICNSS_FW_DOWN, &priv->state);
 	icnss_ignore_fw_timeout(true);
@@ -3065,7 +3083,7 @@ static int icnss_modem_notifier_nb(struct notifier_block *nb,
 		priv->root_pd_shutdown = true;
 	}
 
-	icnss_update_state_send_modem_shutdown(priv, data);
+	icnss_update_shutdown_state_to_fw(priv, data);
 
 	if (test_bit(ICNSS_PDR_REGISTERED, &priv->state)) {
 		set_bit(ICNSS_FW_DOWN, &priv->state);
@@ -3154,6 +3172,22 @@ static int icnss_wpss_ssr_register_notifier(struct icnss_priv *priv)
 	set_bit(ICNSS_SSR_REGISTERED, &priv->state);
 
 	atomic_set(&priv->is_idle_shutdown, false);
+
+	return ret;
+}
+
+static int icnss_reboot_register_notifier(struct icnss_priv *priv)
+{
+	int ret = 0;
+
+	priv->reboot_nb.notifier_call = icnss_reboot_notifier;
+
+	ret = register_reboot_notifier(&priv->reboot_nb);
+	if (ret)
+		icnss_pr_err("Failed to register Reboot notifier, err = %d\n",
+			     ret);
+	else
+		set_bit(ICNSS_REBOOT_REGISTERED, &priv->state);
 
 	return ret;
 }
@@ -3353,6 +3387,16 @@ static int icnss_modem_ssr_unregister_notifier(struct icnss_priv *priv)
 	qcom_unregister_ssr_notifier(priv->modem_notify_handler,
 				     &priv->modem_ssr_nb);
 	priv->modem_notify_handler = NULL;
+
+	return 0;
+}
+
+static int icnss_reboot_unregister_notifier(struct icnss_priv *priv)
+{
+	if (!test_and_clear_bit(ICNSS_REBOOT_REGISTERED, &priv->state))
+		return 0;
+
+	unregister_reboot_notifier(&priv->reboot_nb);
 
 	return 0;
 }
@@ -6179,6 +6223,10 @@ static int icnss_probe(struct platform_device *pdev)
 		register_rproc_restart_level_notifier();
 	}
 
+	if (priv->device_id == WCN7750_DEVICE_ID) {
+		icnss_reboot_register_notifier(priv);
+	}
+
 	if (priv->wpss_supported) {
 		ret = icnss_dms_init(priv);
 		if (ret)
@@ -6289,6 +6337,10 @@ static void icnss_remove(struct platform_device *pdev)
 	} else {
 		icnss_modem_ssr_unregister_notifier(priv);
 		icnss_pdr_unregister_notifier(priv);
+	}
+
+	if (priv->device_id == WCN7750_DEVICE_ID) {
+		icnss_reboot_unregister_notifier(priv);
 	}
 
 	if (priv->device_id == WCN6750_DEVICE_ID ||
