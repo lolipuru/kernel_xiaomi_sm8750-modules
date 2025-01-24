@@ -2,7 +2,7 @@ TOUCH_DLKM_ENABLE := true
 ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
         ifeq ($(TARGET_KERNEL_DLKM_TOUCH_OVERRIDE), false)
                 TOUCH_DLKM_ENABLE := false
-                ifneq ($(filter $(TARGET_BOARD_PLATFORM), monaco vienna),$(TARGET_BOARD_PLATFORM))
+                ifneq ($(filter $(TARGET_BOARD_PLATFORM), monaco vienna lahaina),$(TARGET_BOARD_PLATFORM))
                         BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/dummy_ts.ko
                 endif
         endif
