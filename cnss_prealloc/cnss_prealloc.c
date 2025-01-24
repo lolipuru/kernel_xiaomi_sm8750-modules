@@ -21,6 +21,25 @@
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("CNSS prealloc driver");
 
+#ifdef CONFIG_CNSS2_DEBUG
+#define CNSS_ASSERT(_condition) do {					\
+		if (!(_condition)) {					\
+			pr_err("ASSERT at line %d\n",			\
+			       __LINE__);				\
+			BUG();						\
+		}							\
+	} while (0)
+#else
+#define CNSS_ASSERT(_condition) do {					\
+		if (!(_condition)) {					\
+			pr_err("ASSERT at line %d\n",			\
+			       __LINE__);				\
+			WARN_ON(1);					\
+		}							\
+	} while (0)
+#endif
+
+
 /* cnss preallocation scheme is a memory pool that always tries to keep a
  * list of free memory for use in emergencies. It is implemented on kernel
  * features: memorypool and kmem cache.
@@ -262,7 +281,8 @@ void wcnss_check_pool_lists(void)
 				pr_err("%p not freed in %s pool at index %zu\n",
 					pool[ptr_idx], cnss_pools[i].name,
 					ptr_idx);
-				WARN_ON(1);
+				CNSS_ASSERT(0);
+
 			}
 		}
 	}
