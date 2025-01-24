@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_TFE1080_H_
@@ -374,21 +374,6 @@ static struct cam_vfe_top_ver4_pdaf_violation_desc tfe1080_haf_violation_desc[] 
 	{
 		.bitmask = BIT(5),
 		.desc = "CAF constraint violation",
-	},
-};
-
-static struct cam_vfe_top_ver4_pdaf_lcr_res_info tfe1080_pdaf_haf_res_mask[] = {
-	{
-		.res_id = CAM_ISP_HW_VFE_IN_RDI0,
-		.val = 0,
-	},
-	{
-		.res_id = CAM_ISP_HW_VFE_IN_RDI1,
-		.val = 1,
-	},
-	{
-		.res_id = CAM_ISP_HW_VFE_IN_RDI2,
-		.val = 2,
 	},
 };
 
@@ -1186,8 +1171,6 @@ static struct cam_vfe_top_ver4_hw_info tfe1080_top_hw_info = {
 	.pdaf_violation_desc             = tfe1080_haf_violation_desc,
 	.top_debug_reg_info              = &tfe1080_top_dbg_reg_info,
 	.bayer_debug_reg_info            = &tfe1080_bayer_dbg_reg_info,
-	.pdaf_lcr_res_mask               = tfe1080_pdaf_haf_res_mask,
-	.num_pdaf_lcr_res                = ARRAY_SIZE(tfe1080_pdaf_haf_res_mask),
 	.fcg_module_info                 = &tfe1080_fcg_module_info,
 	.fcg_mc_supported                = true,
 	.diag_sensor_info                = tfe1080_diag_sensor_field,

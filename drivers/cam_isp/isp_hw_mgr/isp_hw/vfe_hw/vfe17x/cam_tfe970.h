@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_TFE970_H_
@@ -341,17 +341,6 @@ static struct cam_vfe_top_ver4_pdaf_violation_desc tfe970_haf_violation_desc[] =
 	{
 		.bitmask = BIT(6),
 		.desc = "RDI-PD protocol violation",
-	},
-};
-
-static struct cam_vfe_top_ver4_pdaf_lcr_res_info tfe970_pdaf_haf_res_mask[] = {
-	{
-		.res_id = CAM_ISP_HW_VFE_IN_RDI0,
-		.val = 0,
-	},
-	{
-		.res_id = CAM_ISP_HW_VFE_IN_RDI1,
-		.val = 1,
 	},
 };
 
@@ -726,8 +715,6 @@ static struct cam_vfe_top_ver4_hw_info tfe970_top_hw_info = {
 	.pdaf_violation_desc             = tfe970_haf_violation_desc,
 	.top_debug_reg_info              = &tfe980_top_dbg_reg_info,
 	.bayer_debug_reg_info            = &tfe980_bayer_dbg_reg_info,
-	.pdaf_lcr_res_mask               = tfe970_pdaf_haf_res_mask,
-	.num_pdaf_lcr_res                = ARRAY_SIZE(tfe970_pdaf_haf_res_mask),
 	.fcg_module_info                 = &tfe970_fcg_module_info,
 	.fcg_mc_supported                = true,
 	.diag_sensor_info                = tfe970_diag_sensor_field,
