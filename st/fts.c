@@ -24,7 +24,7 @@
  *
  * THIS SOFTWARE IS SPECIFICALLY DESIGNED FOR EXCLUSIVE USE WITH ST PARTS.
  *
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*!
@@ -4634,6 +4634,7 @@ ProbeErrorExit_4:
 	wakeup_source_unregister(info->wakesrc);
 #ifndef CONFIG_ARCH_QTI_VM
 	fts_enable_reg(info, false);
+	fts_gpio_setup(info->board->reset_gpio, false, 0, 0);
 #endif
 
 ProbeErrorExit_2:
