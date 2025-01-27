@@ -29,6 +29,7 @@ KBUILD_OPTIONS += MODNAME?=wlan
 endif
 
 KBUILD_EXTRA := \
+    CONFIG_IPA_OUT_OF_TREE=y \
     WLAN_PROFILE=sun_gki_peach-v2 \
     MODNAME=qca_cld3_peach_v2
 
