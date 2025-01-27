@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_VIDC_DRIVER_H_
@@ -534,6 +534,8 @@ struct msm_vidc_buffer *get_meta_buffer(struct msm_vidc_inst *inst,
 struct msm_vidc_inst *get_inst_ref_locked(struct msm_vidc_inst *inst);
 struct msm_vidc_inst *get_inst_ref(struct msm_vidc_core *core,
 				   struct msm_vidc_inst *instance);
+struct msm_vidc_inst *get_inst(struct msm_vidc_core *core,
+		u32 session_id);
 void put_inst(struct msm_vidc_inst *inst);
 bool msm_vidc_allow_metadata_delivery(struct msm_vidc_inst *inst,
 				      u32 cap_id, u32 port);

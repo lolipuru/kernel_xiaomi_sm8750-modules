@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/iommu.h>
@@ -617,7 +617,7 @@ void __unload_fw(struct msm_vidc_core *core)
 	d_vpr_h("%s unloaded video firmware\n", __func__);
 }
 
-static inline struct msm_vidc_inst *get_inst(
+static inline struct msm_vidc_inst *find_instance(
 	struct msm_vidc_inst *const *const instances, const s32 count, u32 session_id)
 {
 	struct msm_vidc_inst *inst = NULL;
@@ -657,15 +657,27 @@ static int __process_msg_q(struct msm_vidc_core *core,
 		if (!hdr->session_id) {
 			rc = handle_system_response(core, hdr);
 		} else {
-			inst = get_inst(instances, num_instances, hdr->session_id);
+			bool local_inst = false;
+
+			inst = find_instance(instances, num_instances, hdr->session_id);
 			if (!inst) {
-				d_vpr_e("%s: Invalid inst - %#x\n", __func__, hdr->session_id);
-				rc = -EINVAL;
-				goto error;
+				d_vpr_l("%s: inst not found in cache - %#x\n",
+					__func__, hdr->session_id);
+				inst = get_inst(core, hdr->session_id);
+				if (!inst) {
+					d_vpr_e("%s: Invalid inst - %#x\n",
+						__func__, hdr->session_id);
+					rc = -EINVAL;
+					goto error;
+				}
+				local_inst = true;
 			}
 			inst_lock(inst, __func__);
 			rc = handle_session_response(inst, hdr);
 			inst_unlock(inst, __func__);
+
+			if (local_inst)
+				put_inst(inst);
 		}
 error:
 		if (rc)
