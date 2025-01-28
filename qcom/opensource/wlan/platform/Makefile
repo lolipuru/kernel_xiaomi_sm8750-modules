@@ -36,6 +36,7 @@ KBUILD_OPTIONS += CONFIG_WCNSS_MEM_PRE_ALLOC=m
 KBUILD_OPTIONS += CONFIG_CNSS_UTILS=m
 KBUILD_OPTIONS += CONFIG_CNSS2_SSR_DRIVER_DUMP=y
 endif
+KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS=$(M)/../../data-kernel/drivers/smem-mailbox/Module.symvers
 endif
 
 all: modules

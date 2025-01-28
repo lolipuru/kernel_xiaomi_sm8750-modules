@@ -6,7 +6,8 @@ ccflags-y += -Wmissing-prototypes
 ifeq ($(CONFIG_CNSS_OUT_OF_TREE),y)
 ccflags-y += -I$(WLAN_PLATFORM_ROOT)/inc
 endif
-ccflags-$(CONFIG_FEATURE_SMEM_MAILBOX) += -DCONFIG_FEATURE_SMEM_MAILBOX
+ccflags-$(CONFIG_FEATURE_SMEM_MAILBOX) += -DCONFIG_FEATURE_SMEM_MAILBOX \
+	-I$(WLAN_PLATFORM_ROOT)/../../data-kernel/drivers/smem-mailbox/include
 
 obj-$(CONFIG_CNSS_UTILS) += cnss_utils.o
 
