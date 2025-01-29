@@ -2704,6 +2704,10 @@ static void wlfw_qdss_trace_save_ind_cb(struct qmi_handle *qmi,
 	if (!event_data)
 		return;
 
+	event_data->mem_type = ind_msg->mem_seg[0].type;
+	event_data->total_size = ind_msg->total_size;
+	event_data->mem_seg_len = ind_msg->mem_seg_len;
+
 	if (ind_msg->mem_seg_valid) {
 		if (ind_msg->mem_seg_len > QDSS_TRACE_SEG_LEN_MAX) {
 			icnss_pr_err("Invalid seg len %u\n",
@@ -2712,17 +2716,18 @@ static void wlfw_qdss_trace_save_ind_cb(struct qmi_handle *qmi,
 		}
 		icnss_pr_dbg("QDSS_trace_save seg len %u\n",
 			     ind_msg->mem_seg_len);
-		event_data->mem_seg_len = ind_msg->mem_seg_len;
 		for (i = 0; i < ind_msg->mem_seg_len; i++) {
 			event_data->mem_seg[i].addr = ind_msg->mem_seg[i].addr;
 			event_data->mem_seg[i].size = ind_msg->mem_seg[i].size;
+			if (event_data->mem_type != ind_msg->mem_seg[i].type) {
+				icnss_pr_err("FW Mem file save ind cannot have multiple mem types\n");
+				goto free_event_data;
+			}
 			icnss_pr_dbg("seg-%d: addr 0x%llx size 0x%x\n",
 				     i, ind_msg->mem_seg[i].addr,
 				     ind_msg->mem_seg[i].size);
 		}
 	}
-
-	event_data->total_size = ind_msg->total_size;
 
 	if (ind_msg->file_name_valid)
 		strscpy(event_data->file_name, ind_msg->file_name,
