@@ -283,6 +283,7 @@ int wlfw_device_info_send_msg(struct icnss_priv *priv)
 	struct wlfw_device_info_req_msg_v01 *req;
 	struct wlfw_device_info_resp_msg_v01 *resp;
 	struct qmi_txn txn;
+	int i = 0;
 
 	if (!priv)
 		return -ENODEV;
@@ -364,6 +365,19 @@ int wlfw_device_info_send_msg(struct icnss_priv *priv)
 
 	if (!priv->mhi_state_info_pa)
 		icnss_pr_err("Fail to get MHI info address\n");
+
+	if (resp->shared_mem_valid) {
+		for (i = 0; i < resp->shared_mem_len; i++) {
+			priv->shared_mem[i].pa_addr = resp->shared_mem[i].pa_addr;
+			priv->shared_mem[i].mem_client_id = resp->shared_mem[i].mem_client_id;
+			priv->shared_mem[i].size = resp->shared_mem[i].size;
+
+			icnss_pr_dbg(
+				"wlan fw shared mem info: pa_addr:0x%llx, mem_client_id:%d, size:%d",
+				priv->shared_mem[i].pa_addr, priv->shared_mem[i].mem_client_id,
+				priv->shared_mem[i].size);
+		}
+	}
 
 	kfree(resp);
 	kfree(req);
@@ -3489,7 +3503,6 @@ int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 	int ret = 0;
 	u64 iova_start = 0, iova_size = 0,
 	    iova_ipa_start = 0, iova_ipa_size = 0, feature_list = 0;
-	void *vaddr;
 
 	icnss_pr_dbg("Sending host capability message, state: 0x%lx\n",
 		    priv->state);
@@ -3527,18 +3540,6 @@ int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 			    req->ddr_range[0].start, req->ddr_range[0].size);
 		icnss_pr_dbg("Sending msa starting 0x%llx with size 0x%llx\n",
 			    req->ddr_range[1].start, req->ddr_range[1].size);
-
-		vaddr = dma_alloc_coherent(&priv->pdev->dev,
-					   ICNSS_FW_LPASS_SHARED_MEM_SIZE,
-					   &priv->fw_lpass_shared_mem_pa,
-					   GFP_KERNEL);
-		if (vaddr) {
-			req->ddr_range[2].start = priv->fw_lpass_shared_mem_pa;
-			req->ddr_range[2].size = ICNSS_FW_LPASS_SHARED_MEM_SIZE;
-			icnss_pr_dbg("Sending FW-LPASS shared mem starting 0x%llx with size 0x%llx\n",
-				     req->ddr_range[2].start,
-				     req->ddr_range[2].size);
-		}
 	}
 
 	req->host_build_type_valid = 1;

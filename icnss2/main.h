@@ -50,7 +50,6 @@
 #define WLAN_RF_APACHE 1
 #define ICNSS_RAMDUMP_MAGIC		0x574C414E
 #define ICNSS_RAMDUMP_VERSION		0
-#define ICNSS_FW_LPASS_SHARED_MEM_SIZE  8
 #define MSI_USERS                       2
 
 extern uint64_t dynamic_feature_mask;
@@ -646,9 +645,12 @@ struct icnss_priv {
 	u32 cpumask_for_tx_comp_intrs;
 	bool fw_direct_link_support;
 	bool is_audio_shared_iommu_group;
-	phys_addr_t fw_lpass_shared_mem_pa;
+	phys_addr_t fw_lpass_shared_mem;
+	size_t fw_lpass_shared_mem_size;
 	struct iommu_domain *audio_iommu_domain;
 	struct kobject *wifi_kobj;
+	struct wlfw_shared_mem_client_info_v01
+		shared_mem[QMI_WLFW_SHARED_MAX_CLIENT_SUPPORT_V01];
 };
 
 struct icnss_reg_info {

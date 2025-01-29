@@ -1261,6 +1261,22 @@ static int icnss_driver_event_server_arrive(struct icnss_priv *priv,
 			goto  device_info_failure;
 		}
 
+		if (priv->shared_mem[WLFW_SHARED_MEM_CLIENT_XPAN_V01].size)
+			priv->fw_lpass_shared_mem_size = priv->shared_mem[WLFW_SHARED_MEM_CLIENT_XPAN_V01].size;
+
+		if (priv->shared_mem[WLFW_SHARED_MEM_CLIENT_XPAN_V01].pa_addr) {
+			priv->fw_lpass_shared_mem = dma_map_resource(&priv->pdev->dev, (phys_addr_t)priv->shared_mem[WLFW_SHARED_MEM_CLIENT_XPAN_V01].pa_addr,
+								     priv->fw_lpass_shared_mem_size,
+								     DMA_BIDIRECTIONAL, 0);
+
+			if (dma_mapping_error(&priv->pdev->dev, priv->fw_lpass_shared_mem)) {
+				icnss_pr_err("DMA map failed for lpass shared mem address:0x%llx\n",
+						priv->shared_mem[WLFW_SHARED_MEM_CLIENT_XPAN_V01].pa_addr);
+
+				goto device_info_failure;
+			}
+		}
+
 		priv->mem_base_va = devm_ioremap(&priv->pdev->dev,
 						 priv->mem_base_pa,
 						 priv->mem_base_size);
@@ -4727,11 +4743,11 @@ int icnss_get_fw_lpass_shared_mem(struct device *dev, dma_addr_t *iova,
 {
 	struct icnss_priv *priv = dev_get_drvdata(dev);
 
-	if (!priv || !priv->fw_lpass_shared_mem_pa)
+	if (!priv || !priv->fw_lpass_shared_mem)
 		return -EINVAL;
 
-	*iova = priv->fw_lpass_shared_mem_pa;
-	*size = ICNSS_FW_LPASS_SHARED_MEM_SIZE;
+	*iova = priv->fw_lpass_shared_mem;
+	*size = priv->fw_lpass_shared_mem_size;
 
 	return 0;
 }
