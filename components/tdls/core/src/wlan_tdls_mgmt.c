@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -877,7 +877,12 @@ QDF_STATUS tdls_set_link_mode(struct tdls_action_frame_request *req)
 						psoc, req->vdev,
 						ml_sta_vdev_lst,
 						&num_ml_sta);
-		if (QDF_IS_STATUS_SUCCESS(status)) {
+		/*
+		 * For non-dbs single mac hardware TDLS is enabled only on the
+		 * active link. So not required to validate if links are in MCC
+		 */
+		if (policy_mgr_is_hw_dbs_capable(psoc) &&
+		    QDF_IS_STATUS_SUCCESS(status)) {
 			tdls_err("ML STA Links in MCC, so don't send the TDLS frames");
 			return QDF_STATUS_E_FAILURE;
 		}
