@@ -1326,10 +1326,14 @@ end:
 static inline void __cam_isp_ctx_move_req_to_free_list(
 	struct cam_context *ctx, struct cam_ctx_request *req)
 {
+	struct cam_isp_ctx_req *req_isp = (struct cam_isp_ctx_req *) req->req_priv;
+	struct cam_kmd_buf_info *kmd_cmd_buff_info = &(req_isp->hw_update_data.kmd_cmd_buff_info);
+
 	CAM_DBG(CAM_ISP,
 		"Free req id: %lld, packet: 0x%x, ctx_idx: %u, link: 0x%x",
 		req->request_id, req->packet, ctx->ctx_id, ctx->link_hdl);
 	if (req->packet) {
+		cam_mem_put_kref(kmd_cmd_buff_info->handle);
 		cam_common_mem_free(req->packet);
 		req->packet = NULL;
 	}
