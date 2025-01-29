@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -6807,6 +6807,9 @@ void dp_peer_unmap_track_update(struct dp_soc *soc,
 	if (peer->peer_id == HTT_INVALID_PEER)
 		return;
 
+	if (qdf_is_recovering() || qdf_is_fw_down())
+		return;
+
 	elem = qdf_mem_malloc(sizeof(*elem));
 	if (!elem) {
 		dp_peer_info("failed to allocate memory for unmap tracking");
@@ -6886,7 +6889,16 @@ static void dp_peer_unmap_track_timer(void *arg)
 		       "id %d, delete timestamp 0x%llx",
 		       peer, QDF_MAC_ADDR_REF(peer->mac_addr.raw),
 		       peer->peer_id, elem->track_start_time);
-		qdf_assert_always(0);
+
+		/* It's expected if FW is down */
+		if (qdf_is_recovering() || qdf_is_fw_down()) {
+			dp_err("bypass assert as FW is down");
+			qdf_mem_free(elem);
+			if (peer)
+				dp_peer_unref_delete(peer, DP_MOD_ID_MISC);
+		} else {
+			qdf_assert_always(0);
+		}
 	}
 
 	cur_ts = qdf_get_log_timestamp();
