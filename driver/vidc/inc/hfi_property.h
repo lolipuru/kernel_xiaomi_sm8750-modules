@@ -624,6 +624,8 @@ enum hfi_view_id {
 	HFI_VIEW_ID_INVALID = 0xFFFFFFFF,
 };
 
+#define HFI_PROP_PAIRED_YUV                                     0x030001AA
+
 #define HFI_PROP_VIEW_ID                                        0x030001A5
 
 #define HFI_PROP_OPEN_GOP                                       0x030001A6

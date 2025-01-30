@@ -267,6 +267,9 @@ enum v4l2_mpeg_vidc_av1_tier {
 #define V4L2_CID_MPEG_VIDC_METADATA_VIEW_ID                                   \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x64)
 
+#define V4L2_CID_MPEG_VIDC_METADATA_VIEW_PAIR                                 \
+	(V4L2_CID_MPEG_VIDC_BASE + 0x65)
+
 #define V4L2_CID_MPEG_VIDC_METADATA_THREE_DIMENSIONAL_REF_DISP_INFO           \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x66)
 
