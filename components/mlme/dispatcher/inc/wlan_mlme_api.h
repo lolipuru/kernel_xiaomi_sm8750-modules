@@ -5330,4 +5330,12 @@ wlan_mlme_get_p2p_device_mac_addr(struct wlan_objmgr_vdev *vdev,
  */
 QDF_STATUS
 wlan_mlme_clear_peer_private_object_data(struct wlan_objmgr_peer *peer);
+
+/*
+ * wlan_mlme_get_beacon_interval() - Get beacon interval of connected bss
+ * @vdev: pointer to vdev
+ *
+ * Return: beacon interval
+ */
+uint32_t wlan_mlme_get_beacon_interval(struct wlan_objmgr_vdev *vdev);
 #endif /* _WLAN_MLME_API_H_ */
