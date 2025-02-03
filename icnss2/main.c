@@ -1816,7 +1816,7 @@ void icnss_collect_host_dump_info(struct icnss_priv *priv)
 		}
 
 		for (x = 0; x < num_entries_loaded; x++) {
-			icnss_pr_info("Idx:%d, ptr: %p, name: %s, size: %zu\n",
+			icnss_pr_vdbg("Idx:%d, ptr: %p, name: %s, size: %zu\n",
 				      x, ssr_entry[x].buffer_pointer,
 				      ssr_entry[x].region_name,
 				      ssr_entry[x].buffer_size);
