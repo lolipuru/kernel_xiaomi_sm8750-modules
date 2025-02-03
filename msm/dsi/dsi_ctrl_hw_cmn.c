@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -451,7 +451,7 @@ static void dsi_ctrl_hw_cmn_get_vid_dce_params(struct dsi_mode_info *mode,
  * Set up the video timing parameters for the DSI video mode operation.
  */
 void dsi_ctrl_hw_cmn_set_video_timing(struct dsi_ctrl_hw *ctrl,
-				     struct dsi_mode_info *mode)
+				     struct dsi_host_config *host_config)
 {
 	u32 reg = 0;
 	u32 hs_start = 0;
@@ -459,6 +459,7 @@ void dsi_ctrl_hw_cmn_set_video_timing(struct dsi_ctrl_hw *ctrl,
 	u32 bytes_per_pkt = 0, pkt_per_line = 0, eol_byte_num = 0;
 	u32 vs_start = 0, vs_end = 0;
 	u32 vpos_start = 0, vpos_end, active_v_start, active_v_end, v_total;
+	struct dsi_mode_info *mode = &host_config->video_timing;
 
 	if (dsi_compression_enabled(mode)) {
 		dsi_ctrl_hw_cmn_get_vid_dce_params(mode,
@@ -529,7 +530,7 @@ void dsi_ctrl_hw_cmn_set_video_timing(struct dsi_ctrl_hw *ctrl,
 	DSI_CTRL_HW_DBG(ctrl, "ctrl video parameters updated\n");
 	SDE_EVT32(v_total, h_total);
 
-	if (mode->esync_enabled) {
+	if (host_config->esync_enabled) {
 		/* Skip extended VFP blanking lines over DSI lanes */
 		DSI_W32(ctrl, DSI_VIDEO_MODE_CTRL5, v_total+1);
 		DSI_W32(ctrl, DSI_VIDEO_MODE_CTRL4, 1);
