@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_platform.h>
@@ -574,9 +574,10 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 			snd_soc_component_update_bits(component, dmic_clk_reg,
 							0x0E, clk_div << 0x1);
 		} else {
-			clk_div = lpass_cdc_dmic_clk_div_get(component, tx_mode, mic_pair);
-			if (*dmic_clk_div > clk_div) {
-				clk_div = lpass_cdc_dmic_clk_div_get(component, !tx_mode, mic_pair);
+			clk_div = lpass_cdc_dmic_clk_div_get(component, !tx_mode, mic_pair);
+
+			if (*dmic_clk_div != clk_div) {
+			/* Reset the div factor corresponding to the enabled Macro/path. */
 				snd_soc_component_update_bits(component,
 							LPASS_CDC_VA_TOP_CSR_DMIC_CFG,
 							freq_change_mask, freq_change_mask);
@@ -585,8 +586,6 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 				snd_soc_component_update_bits(component,
 							LPASS_CDC_VA_TOP_CSR_DMIC_CFG,
 							freq_change_mask, 0x00);
-			} else {
-				clk_div = *dmic_clk_div;
 			}
 		}
 		*dmic_clk_div = clk_div;
