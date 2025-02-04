@@ -3739,12 +3739,20 @@ int icnss_thermal_cdev_register(struct device *dev, unsigned long max_state,
 	icnss_tcdev->max_thermal_state = max_state;
 
 	snprintf(cdev_node_name, THERMAL_NAME_LENGTH,
-		 "qcom,icnss_cdev%d", tcdev_id);
+		 "icnss_cdev%d", tcdev_id);
 
 	dev_node = of_find_node_by_name(NULL, cdev_node_name);
+
 	if (!dev_node) {
-		icnss_pr_err("Failed to get cooling device node\n");
-		return -EINVAL;
+		snprintf(cdev_node_name, THERMAL_NAME_LENGTH,
+			 "qcom,icnss_cdev%d", tcdev_id);
+
+		dev_node = of_find_node_by_name(NULL, cdev_node_name);
+
+		if (!dev_node) {
+			icnss_pr_err("Failed to get cooling device node\n");
+			return -EINVAL;
+		}
 	}
 
 	icnss_pr_dbg("tcdev node->name=%s\n", dev_node->name);
