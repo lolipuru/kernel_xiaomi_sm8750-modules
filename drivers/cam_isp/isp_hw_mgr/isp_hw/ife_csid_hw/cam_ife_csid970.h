@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_IFE_CSID_970_H_
@@ -44,6 +44,7 @@ static struct cam_ife_csid_ver2_common_reg_info
 	.debug_sensor_hbi_irq_vcdt_addr          = 0x0180,
 	.debug_violation_addr                    = 0x03D4,
 	.debug_cfg_addr                          = 0x03E0,
+	.rx_mode_id_cfg1_addr                    = 0x0470,
 
 	/*configurations */
 	.major_version                           = 6,
@@ -115,6 +116,8 @@ static struct cam_ife_csid_ver2_common_reg_info
 	.format_measure_height_shift_val         = 0x10,
 	.format_measure_width_mask_val           = 0xFFFF,
 	.format_measure_width_shift_val          = 0x0,
+	.format_measure_max_hbi_shift            = 16,
+	.format_measure_min_hbi_mask             = 0xFFF,
 	.top_buf_done_irq_mask                   = 0x8,
 	.decode_format_payload_only              = 0xF,
 	.timestamp_enabled_in_cfg0               = true,
