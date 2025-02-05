@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/uaccess.h>
@@ -3163,8 +3163,9 @@ static int cam_ope_packet_generic_blob_handler(void *user_data,
 		}
 
 		soc_req_v2 = (struct ope_clk_bw_request_v2 *)blob_data;
-		if (soc_req_v2->num_paths > CAM_OPE_MAX_PER_PATH_VOTES) {
-			CAM_ERR(CAM_OPE, "Invalid num paths: %d",
+		if (soc_req_v2->num_paths > CAM_OPE_MAX_PER_PATH_VOTES ||
+				soc_req_v2->num_paths == 0) {
+			CAM_ERR(CAM_OPE, "Invalid num paths: %u",
 				soc_req_v2->num_paths);
 			return -EINVAL;
 		}
