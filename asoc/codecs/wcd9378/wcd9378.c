@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -428,6 +428,10 @@ static int wcd9378_init_reg(struct snd_soc_component *component)
 	/*HPH_DN_T0: 0.007*/
 	snd_soc_component_update_bits(component, WCD9378_HPH_DN_T0,
 			WCD9378_HPH_DN_T0_HPH_DN_T0_MASK, 0x06);
+
+	/*DISABLE TWAIT*/
+	snd_soc_component_update_bits(component, WCD9378_CP_CP_DTOP_CTRL_9,
+			WCD9378_CP_CP_DTOP_CTRL_9_DISABLE_TWAIT_MASK, 0x08);
 
 	/*SM0 MB SEL:MB1*/
 	snd_soc_component_update_bits(component, WCD9378_SM0_MB_SEL,
