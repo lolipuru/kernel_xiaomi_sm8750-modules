@@ -2008,8 +2008,8 @@ static int cam_mem_mgr_cleanup_table(void)
 			continue;
 		} else {
 			CAM_DBG(CAM_MEM,
-			"Active buffer at idx=%d, possible leak needs unmapping",
-			i);
+			"Buffer active at idx=%d fd=0x%x handle:0x%x kref:%d name: %s",
+			i, tbl.bufq[i].fd, tbl.bufq[i].buf_handle, tbl.bufq[i].krefcount, tbl.bufq[i].buf_name);
 			_SPIN_UNLOCK_PROCESS_TO_BH(&tbl.bufq[i].idx_lock);
 			cam_mem_mgr_unmap_active_buf(i);
 		}
