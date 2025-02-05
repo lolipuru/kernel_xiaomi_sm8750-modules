@@ -3964,7 +3964,7 @@ out:
 }
 
 /* IMS Service */
-int ims_subscribe_for_indication_send_async(struct icnss_priv *priv)
+static int ims_subscribe_for_indication_send_async(struct icnss_priv *priv)
 {
 	int ret;
 	struct ims_private_service_subscribe_for_indications_req_msg_v01 *req;
