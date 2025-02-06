@@ -235,6 +235,8 @@ struct cnss_mem_segment {
 	phys_addr_t pa;
 };
 
+
+extern int cnss_pci_assert_host_sol_dev(struct device *dev);
 extern int cnss_wlan_register_driver(struct cnss_wlan_driver *driver);
 extern void cnss_wlan_unregister_driver(struct cnss_wlan_driver *driver);
 extern void cnss_device_crashed(struct device *dev);
