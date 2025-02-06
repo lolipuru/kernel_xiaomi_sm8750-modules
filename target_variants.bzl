@@ -3,6 +3,7 @@ targets = [
     "canoe",
     "gen3auto",
     "pineapple",
+    "parrot",
     "sun",
     "vienna",
 ]
