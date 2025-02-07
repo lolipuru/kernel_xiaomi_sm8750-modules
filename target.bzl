@@ -202,5 +202,7 @@ def define_touch_target():
             define_canoevm(t, v)
         elif t == "canoe-oemvm":
             define_canoevm(t, v)
-        else:
+        elif t == "sun":
             define_sun(t, v)
+        else:
+            pass
