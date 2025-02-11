@@ -12,7 +12,7 @@ def define_sun(t,v):
             "dummy_ts",
             "goodix_ts",
             "st_fts",
-            "focaltech_fts".
+            "focaltech_fts",
             "qts"
         ],
         config_options = [
