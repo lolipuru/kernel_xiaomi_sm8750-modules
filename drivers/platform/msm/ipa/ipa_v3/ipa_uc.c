@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "ipa_i.h"
@@ -1736,6 +1736,11 @@ int ipa3_uc_quota_monitor(uint64_t quota)
 	struct ipa_mem_buffer cmd;
 	struct IpaQuotaMonitoring_t *quota_info;
 
+	if (!ipa3_ctx->fnr_info.valid) {
+		IPAERR("fnr_info not valid!\n");
+		return -EINVAL;
+	}
+
 	cmd.size = sizeof(*quota_info);
 	cmd.base = dma_alloc_coherent(ipa3_ctx->uc_pdev, cmd.size,
 		&cmd.phys_base, GFP_KERNEL);
@@ -1803,6 +1808,11 @@ int ipa_uc_bw_monitor(struct ipa_wdi_bw_info *info)
 
 	if (!info)
 		return -EINVAL;
+
+	if (!ipa3_ctx->fnr_info.valid) {
+		IPAERR("fnr_info not valid!\n");
+		return -EINVAL;
+	}
 
 	/* check max entry */
 	if (info->num > BW_MONITORING_MAX_THRESHOLD) {
