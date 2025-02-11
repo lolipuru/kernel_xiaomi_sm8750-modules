@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __V4l2_VIDC_EXTENSIONS_H__
@@ -21,6 +21,10 @@
 #ifndef V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_MULTIVIEW
 #define V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_MULTIVIEW    (4)
 #endif
+#ifndef V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_MULTIVIEW
+#define V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_MULTIVIEW    (5)
+#endif
+
 
 /* vendor controls start */
 #ifdef V4L2_CTRL_CLASS_CODEC

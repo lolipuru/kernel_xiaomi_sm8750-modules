@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2022, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __HFI_BUFFER_IRIS3_5__
@@ -1301,12 +1301,14 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 		if (ltr_count) \
 			num_ref = num_ref + ltr_count; \
 		if (codec_standard == HFI_CODEC_ENCODE_HEVC && \
-			profile == HFI_H265_PROFILE_MULTIVIEW_MAIN) \
+			(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN || \
+			profile == HFI_H265_PROFILE_MULTIVIEW_MAIN_10)) \
 			num_ref = 3; \
 		if (_total_hb_layers > 1) { \
 			num_ref = _total_hb_layers; \
 			if (codec_standard == HFI_CODEC_ENCODE_HEVC && \
-				profile == HFI_H265_PROFILE_MULTIVIEW_MAIN) \
+				(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN || \
+				profile == HFI_H265_PROFILE_MULTIVIEW_MAIN_10)) \
 				num_ref = num_ref * 2; \
 		} \
 		num_recon = num_ref + 1; \
@@ -1523,7 +1525,8 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 					num_vpp_pipes_enc;\
 		} \
 		if ((standard == HFI_CODEC_ENCODE_HEVC) && \
-			(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN)) { \
+			(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN || \
+			profile == HFI_H265_PROFILE_MULTIVIEW_MAIN_10)) { \
 			_size = HFI_ALIGN(_size, BUFFER_ALIGNMENT_512_BYTES) * \
 				HFI_MAX_COL_FRAME_MVHEVC; \
 		} else { \
@@ -1653,7 +1656,8 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 		VENUS_DMA_ALIGNMENT) * num_recon; \
 		size_colloc_rc = (((mb_width + 7) >> 3) * 16 * 2 * mb_height); \
 		if ((standard == HFI_CODEC_ENCODE_HEVC) && \
-			(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN)) { \
+			(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN || \
+			profile == HFI_H265_PROFILE_MULTIVIEW_MAIN_10)) { \
 			size_colloc_rc = HFI_ALIGN(size_colloc_rc, \
 				VENUS_DMA_ALIGNMENT) * HFI_MAX_COL_FRAME_MVHEVC; \
 		} else { \
@@ -1819,7 +1823,8 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 		if (TotalHBLayers >= 2) { \
 			numInput = (1 << (TotalHBLayers - 1)) + 2;        \
 			if (codec_standard == HFI_CODEC_ENCODE_HEVC && \
-				profile == HFI_H265_PROFILE_MULTIVIEW_MAIN) \
+				(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN || \
+				profile == HFI_H265_PROFILE_MULTIVIEW_MAIN_10)) \
 				numInput = (((1 << (TotalHBLayers - 1)) * 2) - 1) + 2; \
 		}                                                         \
 	} while (0)
