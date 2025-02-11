@@ -130,6 +130,12 @@ static int cvp_iommu_map(struct iommu_domain* domain, unsigned long iova, phys_a
 	return rc;
 }
 
+enum enter_noc_lpi_caller {
+	IRIS_POWER_ON = 1,
+	POWER_OFF_CORE,
+	POWER_OFF_CNTRL,
+};
+
 
 #ifdef CONFIG_EVA_PINEAPPLE
 
@@ -916,7 +922,7 @@ static void __set_threshold_registers(struct iris_hfi_device *device)
 }
 
 #ifdef CONFIG_EVA_SUN
-static void __enter_cpu_noc_lpi(struct iris_hfi_device *device)
+static void __enter_cpu_noc_lpi(struct iris_hfi_device *device, enum enter_noc_lpi_caller caller)
 {
 	u32 lpi_status, count = 0, max_count = 2000;
 
@@ -956,18 +962,18 @@ static void __enter_cpu_noc_lpi(struct iris_hfi_device *device)
 		pc_ready = __read_register(device, CVP_CTRL_STATUS);
 
 		dprintk(CVP_WARN,
-			"%s, CPU NOC not in qaccept status %x %x %x\n",
-			__func__, lpi_status, wfi_status, pc_ready);
+			"%s - %d, CPU NOC not in qaccept status %x %x %x\n",
+			__func__, caller, lpi_status, wfi_status, pc_ready);
 
 		/* Added for debug info purpose, not part of HPG */
 		call_iris_op(device, print_sbm_regs, device);
 	} else
 		dprintk(CVP_WARN,
-			"%s, CPU Noc is in LPI: lpi_status %x (count %d)\n",
-			__func__, lpi_status, count);
+			"%s - %d, CPU Noc is in LPI: lpi_status %x (count %d)\n",
+			__func__, caller, lpi_status, count);
 }
 
-static void __enter_core_noc_lpi(struct iris_hfi_device *device)
+static void __enter_core_noc_lpi(struct iris_hfi_device *device, enum enter_noc_lpi_caller caller)
 {
 	u32 lpi_status, count = 0, max_count = 2000, val = 0;
 
@@ -1006,18 +1012,18 @@ static void __enter_core_noc_lpi(struct iris_hfi_device *device)
 	__write_register(device, CVP_AON_WRAPPER_CVP_NOC_LPI_CONTROL, 0x0);
 	if (count == max_count) {
 		dprintk(CVP_WARN,
-			"%s, CORE NOC not in qaccept status %x\n",
-			__func__, lpi_status);
+			"%s - %d, CORE NOC not in qaccept status %x\n",
+			__func__, caller, lpi_status);
 
 		/* Added for debug info purpose, not part of HPG */
 		call_iris_op(device, print_sbm_regs, device);
 	} else
 		dprintk(CVP_WARN,
-		"%s, CORE Noc is in LPI: lpi_status %x (count %d)\n",
-		__func__, lpi_status, count);
+		"%s - %d, CORE Noc is in LPI: lpi_status %x (count %d)\n",
+		__func__, caller, lpi_status, count);
 }
 
-static void __enter_video_ctl_noc_lpi(struct iris_hfi_device *device)
+static void __enter_video_ctl_noc_lpi(struct iris_hfi_device *device, enum enter_noc_lpi_caller caller)
 {
 	u32 lpi_status, count = 0, max_count = 2000;
 
@@ -1049,15 +1055,15 @@ static void __enter_video_ctl_noc_lpi(struct iris_hfi_device *device)
 	__write_register(device, CVP_AON_WRAPPER_CVP_VIDEO_CTL_NOC_LPI_CONTROL, 0x0);
 	if (count == max_count) {
 		dprintk(CVP_WARN,
-			"%s, CVP_VIDEO_CTL NOC not in qaccept status %x %x %x\n",
-			__func__, lpi_status);
+			"%s - %d, CVP_VIDEO_CTL NOC not in qaccept status %x\n",
+			__func__, caller, lpi_status);
 
 		/* Added for debug info purpose, not part of HPG */
 		call_iris_op(device, print_sbm_regs, device);
 	} else
 		dprintk(CVP_WARN,
-		"%s, CVP_VIDEO_CTL Noc is in LPI: lpi_status %x (count %d)\n",
-		__func__, lpi_status, count);
+		"%s - %d, CVP_VIDEO_CTL Noc is in LPI: lpi_status %x (count %d)\n",
+		__func__, caller, lpi_status, count);
 }
 #endif
 
@@ -2159,6 +2165,10 @@ static int __sys_set_debug(struct iris_hfi_device *device, u32 debug)
 
 	pkt = kzalloc(sizeof(struct cvp_hfi_cmd_sys_set_property_packet) + sizeof(u32) +
 		sizeof(struct cvp_hfi_debug_config), GFP_KERNEL);
+	if (!pkt) {
+		dprintk(CVP_ERR, "Failed to allocate memory for sys set property packet\n");
+		return -ENOMEM;
+	}
 
 	rc = call_hfi_pkt_op(device, sys_debug_config, pkt, debug);
 	if (rc) {
@@ -4641,13 +4651,13 @@ static int __iris_power_on(struct iris_hfi_device *device)
 	}
 
 	/* New addition to put CPU/Tensilica NOC to low power Section 6.14 (Steps 15-17)*/
-	__enter_cpu_noc_lpi(device);
+	__enter_cpu_noc_lpi(device, IRIS_POWER_ON);
 
 	/* New addition to put CVP_VIDEO_CTL NOC to low power Section 6.14 (Steps 19-21)*/
-	__enter_video_ctl_noc_lpi(device);
+	__enter_video_ctl_noc_lpi(device, IRIS_POWER_ON);
 
 	/* New addition to put CORE NOC to low power Section 6.14 (Steps 4-6)*/
-	__enter_core_noc_lpi(device);
+	__enter_core_noc_lpi(device, IRIS_POWER_ON);
 
 	/*
 	 * Re-program all of the registers that get reset as a result of
@@ -4880,11 +4890,6 @@ static void __unload_fw(struct iris_hfi_device *device)
 	cancel_delayed_work(&iris_hfi_pm_work);
 	if (device->state != IRIS_STATE_DEINIT)
 		flush_workqueue(device->iris_pm_workq);
-
-	if (msm_cvp_smmu_fault_recovery) {
-		if (device)
-			call_hfi_op(core->dev_ops, debug_hook, device);
-	}
 
 	unload_cvp_fw_impl(device);
 	__interface_queues_release(device);
@@ -6122,7 +6127,7 @@ static int __power_off_core_v1(struct iris_hfi_device *device)
 	}
 
 	/* New addition to put CORE NOC to low power Section 6.14 (Steps 4-6)*/
-	__enter_core_noc_lpi(device);
+	__enter_core_noc_lpi(device, POWER_OFF_CORE);
 
 	/* HPG 3.4.4 step 5 */
 	/* Reset both sides of 2 ahb2ahb_bridges (TZ and non-TZ) */
@@ -6148,10 +6153,10 @@ static int __power_off_controller_v1(struct iris_hfi_device *device)
 	__write_register(device, CVP_CPU_CS_X2RPMh, 0x3);
 
 	/* New addition to put CPU/Tensilica NOC to low power Section 6.14 (Steps 15-17)*/
-	__enter_cpu_noc_lpi(device);
+	__enter_cpu_noc_lpi(device, POWER_OFF_CNTRL);
 
 	/* New addition to put CVP_VIDEO_CTL NOC to low power Section 6.14 (Steps 19-21)*/
-	__enter_video_ctl_noc_lpi(device);
+	__enter_video_ctl_noc_lpi(device, POWER_OFF_CNTRL);
 
 	/* HPG 3.7 step 11 */
 	__write_register(device, CVP_WRAPPER_DEBUG_BRIDGE_LPI_CONTROL, 0x0);
