@@ -1335,10 +1335,15 @@ dp_tx_handle_local_pkt_capture(struct dp_pdev *pdev, qdf_nbuf_t nbuf)
 	uint8_t mac_id = 0;
 	struct dp_mon_vdev *mon_vdev;
 	struct dp_mon_mac *mon_mac = dp_get_mon_mac(pdev, mac_id);
-	struct dp_vdev *mvdev = mon_mac->mvdev;
+	struct dp_vdev *mvdev;
 
-	if (!mvdev) {
-		dp_mon_err("Monitor vdev is NULL !!");
+	mvdev =	dp_vdev_get_ref_by_id(pdev->soc, mon_mac->vdev_id,
+				      DP_MOD_ID_TX_PPDU_STATS);
+	if (!mvdev || mon_mac->mvdev != mvdev) {
+		dp_mon_err("Monitor vdev is NULL or invalid!!");
+		if (mvdev)
+			dp_vdev_unref_delete(pdev->soc, mvdev,
+					     DP_MOD_ID_TX_PPDU_STATS);
 		return 1;
 	}
 
@@ -1349,6 +1354,7 @@ dp_tx_handle_local_pkt_capture(struct dp_pdev *pdev, qdf_nbuf_t nbuf)
 		mon_vdev->osif_rx_mon(mvdev->osif_vdev, nbuf, NULL);
 	}
 
+	dp_vdev_unref_delete(pdev->soc, mvdev, DP_MOD_ID_TX_PPDU_STATS);
 	return 0;
 }
 #else

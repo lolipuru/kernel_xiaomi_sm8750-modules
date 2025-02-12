@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -600,6 +600,7 @@ enum number_of_partner_link {
  * @security_type: security supported
  * @seq_num: sequence number
  * @is_non_tx_mbssid_gen: is locally generated non tx mbssid scan entry
+ * @is_gen_entry: is locally generated scan entry
  * @reserved: reserved
  * @phy_mode: Phy mode of the AP
  * @avg_rssi: Average RSSI of the AP
@@ -649,7 +650,8 @@ struct scan_cache_entry {
 	uint8_t security_type;
 	uint16_t seq_num;
 	uint8_t is_non_tx_mbssid_gen:1,
-		reserved:7;
+		is_gen_entry:1,
+		reserved:6;
 	enum wlan_phymode phy_mode;
 	int32_t avg_rssi;
 	int8_t rssi_raw;
@@ -756,6 +758,9 @@ enum dot11_mode_filter {
  * @ignore_6ghz_channel: ignore 6Ghz channels
  * @match_mld_addr: Flag to match mld addr of scan entry
  * @match_link_id: Flag to match self IEEE link id of scan entry
+ * @flush_all_except_conn_entry: FLag to flush all the scan entry except entry
+ *                               which are connected
+ * @reserved: Reserved
  * @age_threshold: If set return entry which are newer than the age_threshold
  * @num_of_bssid: number of bssid passed
  * @num_of_ssid: number of ssid
@@ -786,14 +791,16 @@ enum dot11_mode_filter {
  * @mrsno_gen: MRSNO generation supported
  */
 struct scan_filter {
-	uint8_t enable_adaptive_11r:1,
+	uint16_t enable_adaptive_11r:1,
 		rrm_measurement_filter:1,
 		ignore_pmf_cap:1,
 		ignore_auth_enc_type:1,
 		ignore_nol_chan:1,
 		ignore_6ghz_channel:1,
 		match_mld_addr:1,
-		match_link_id:1;
+		match_link_id:1,
+		flush_all_except_conn_entry:1,
+		reserved:7;
 	qdf_time_t age_threshold;
 	uint8_t num_of_bssid;
 	uint8_t num_of_ssid;
