@@ -580,7 +580,7 @@ void handle_session_error(enum hal_command_response cmd, void *data)
 		wake_up_all(&inst->event_handler.wq);
 	}
 
-	BUG_ON(msm_cvp_crash);
+	BUG_ON(!msm_cvp_session_error_recovery);
 	cvp_put_inst(inst);
 }
 
@@ -613,7 +613,7 @@ void handle_session_timeout(struct msm_cvp_inst *inst, bool stop_required)
 		&inst->event_handler.lock, flags);
 	wake_up_all(&inst->event_handler.wq);
 
-	BUG_ON(msm_cvp_crash);
+	BUG_ON(!msm_cvp_session_error_recovery);
 	if (stop_required)
 		msm_cvp_session_flush_stop(inst);
 }
@@ -1352,23 +1352,17 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 	}
 	if (core->ssr_type == SSR_SESSION_ERROR) {
 		struct msm_cvp_cb_cmd_done response = { 1 };
-		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL, *inst_t;
+		struct msm_cvp_inst *inst = NULL, *inst_t;
 
 		dprintk(CVP_ERR, "Session error triggered\n");
 		mutex_lock(&core->lock);
 		list_for_each_entry_safe(inst, inst_t, &core->instances, list) {
 			if (inst != NULL) {
-				inst_temp = cvp_get_inst_validate(inst->core, inst);
-				if (!inst_temp) {
-					dprintk(CVP_WARN, "%s: Session is not a valid session\n",
-						__func__);
-					continue;
-				}
 				dprintk(CVP_INFO, "Session to be taken for session error 0x%x\n",
 					inst);
 				response.session_id = inst;
-				}
 				break;
+			}
 		}
 		mutex_unlock(&core->lock);
 
@@ -1383,23 +1377,17 @@ void msm_cvp_ssr_handler(struct work_struct *work)
 		return;
 	}
 	if (core->ssr_type == SSR_SESSION_TIMEOUT) {
-		struct msm_cvp_inst *inst = NULL, *inst_temp = NULL, *inst_t;
+		struct msm_cvp_inst *inst = NULL, *inst_t;
 
 		dprintk(CVP_ERR, "Session timeout triggered\n");
 		mutex_lock(&core->lock);
 		list_for_each_entry_safe(inst, inst_t,  &core->instances, list) {
 			if (inst != NULL) {
-				inst_temp = cvp_get_inst_validate(inst->core, inst);
-				if (!inst_temp) {
-					dprintk(CVP_WARN, "%s: Session is not a valid session\n",
-						__func__);
-					continue;
-				}
 				dprintk(CVP_INFO, "Session to be taken for session timeout 0x%x\n",
 					inst);
-				}
-				handle_session_timeout(inst, true);
+				handle_session_timeout(inst, false);
 				break;
+				}
 		}
 		mutex_unlock(&core->lock);
 		return;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/bitops.h>
@@ -619,7 +619,7 @@ static int hfi_process_session_cvp_msg(u32 device_id,
 	if (get_msg_errorcode(pkt) == HFI_ERR_SESSION_HW_HANG_DETECTED) {
 		dprintk(CVP_ERR, "%s: Hardware Hang Observed:\n", __func__);
 		cvp_clock_reg_print(dev);
-		BUG_ON(msm_cvp_crash);
+		BUG_ON(!msm_cvp_session_error_recovery);
 	}
 
 	wake_up_all(&sq->wq);
