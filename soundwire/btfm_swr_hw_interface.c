@@ -449,7 +449,7 @@ int btfm_swr_register_hw_ep(struct btfmswr *btfm_swr)
 	hwep_info->drv = &btfmswr_hw_driver;
 	hwep_info->dai_drv = btfmswr_dai_driver;
 	hwep_info->num_dai = ARRAY_SIZE(btfmswr_dai_driver);
-	hwep_info->num_dai = 4;
+	BTFMSWR_INFO("num_dai is: %lu", ARRAY_SIZE(btfmswr_dai_driver));
 	hwep_info->num_mixer_ctrl = ARRAY_SIZE(status_controls);
 	hwep_info->mixer_ctrl = status_controls;
 	/* Register to hardware endpoint */
