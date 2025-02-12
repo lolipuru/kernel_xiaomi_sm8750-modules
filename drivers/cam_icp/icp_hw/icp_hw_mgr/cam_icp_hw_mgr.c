@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/uaccess.h>
@@ -8733,7 +8733,7 @@ static int cam_icp_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 		 * in terms of acquire API version and the port security configuration.
 		 */
 		CAM_DBG(CAM_ICP, "%s: number of existing secure contexts = %d",
-			hw_mgr->num_secure_contexts[hw_dev_type]);
+			ctx_data->ctx_id_string, hw_mgr->num_secure_contexts[hw_dev_type]);
 		if (hw_mgr->num_secure_contexts[hw_dev_type]) {
 			rc = cam_icp_validate_secure_port_config (hw_mgr, ctx_data);
 			if (rc)
