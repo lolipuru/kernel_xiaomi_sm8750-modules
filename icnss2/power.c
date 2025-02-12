@@ -6,7 +6,9 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/of.h>
+#include <linux/of_gpio.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/pinctrl/qcom-pinctrl.h>
 #include <linux/regulator/consumer.h>
 #include <soc/qcom/cmd-db.h>
 #include "main.h"
@@ -77,6 +79,8 @@ static struct icnss_clk_cfg icnss_adrestea_clk_list[] = {
 #define ICNSS_CHAIN1_REGULATOR                          "vdd-3.3-ch1"
 #define MAX_PROP_SIZE					32
 
+#define SW_CTRL_GPIO			"sw-ctrl-gpio"
+#define PIN_CTRL			"pin-ctrl-support"
 #define BT_CXMX_VOLTAGE_MV		950
 #define ICNSS_MBOX_MSG_MAX_LEN 64
 #define ICNSS_MBOX_TIMEOUT_MS 1000
@@ -648,6 +652,82 @@ static int icnss_clk_off(struct list_head *clk_list)
 	}
 
 	return 0;
+}
+
+int icnss_get_pinctrl(struct icnss_priv *priv)
+{
+	int ret = 0;
+	struct device *dev;
+	struct icnss_pinctrl_info *pinctrl_info;
+	u32 gpio_id, i;
+	int gpio_id_n;
+
+	dev = &priv->pdev->dev;
+	pinctrl_info = &priv->pinctrl_info;
+
+	if (of_property_read_bool(dev->of_node, PIN_CTRL)) {
+		of_property_read_u32(dev->of_node, SW_CTRL_GPIO, &gpio_id);
+		pinctrl_info->sw_ctrl_gpio = gpio_id;
+		icnss_pr_dbg("Switch control GPIO: %d\n",
+			     pinctrl_info->sw_ctrl_gpio);
+
+		pinctrl_info->pinctrl = devm_pinctrl_get(dev);
+		if (IS_ERR_OR_NULL(pinctrl_info->pinctrl)) {
+			ret = PTR_ERR(pinctrl_info->pinctrl);
+			icnss_pr_err("Failed to get pinctrl, err = %d\n", ret);
+			goto out;
+		}
+
+		pinctrl_info->sw_ctrl =
+			pinctrl_lookup_state(pinctrl_info->pinctrl,
+					     "sw_ctrl");
+		if (IS_ERR_OR_NULL(pinctrl_info->sw_ctrl)) {
+			ret = PTR_ERR(pinctrl_info->sw_ctrl);
+			icnss_pr_dbg("Failed to get sw_ctrl state, err = %d\n",
+				     ret);
+		} else {
+			ret = pinctrl_select_state(pinctrl_info->pinctrl,
+						   pinctrl_info->sw_ctrl);
+			if (ret)
+				icnss_pr_err("Failed to select sw_ctrl state, err = %d\n",
+					     ret);
+		}
+	} else {
+		pinctrl_info->sw_ctrl_gpio = -EINVAL;
+	}
+
+	/* Find out and configure all those GPIOs which need to be setup
+	 * for interrupt wakeup capable
+	 */
+	gpio_id_n = of_property_count_u32_elems(dev->of_node, "mpm_wake_set_gpios");
+	if (gpio_id_n > 0) {
+		icnss_pr_dbg("Num of GPIOs to be setup for interrupt wakeup capable: %d\n",
+			     gpio_id_n);
+		for (i = 0; i < gpio_id_n; i++) {
+			ret = of_property_read_u32_index(dev->of_node,
+							 "mpm_wake_set_gpios",
+							 i, &gpio_id);
+			if (ret) {
+				icnss_pr_err("Failed to read gpio_id at index: %d\n", i);
+				continue;
+			}
+
+			ret = msm_gpio_mpm_wake_set(gpio_id, 1);
+			if (ret < 0) {
+				icnss_pr_err("Failed to setup gpio_id: %d as interrupt wakeup capable, ret: %d\n",
+					     gpio_id, ret);
+			} else {
+				icnss_pr_dbg("gpio_id: %d successfully setup for interrupt wakeup capable\n",
+					     gpio_id);
+			}
+		}
+	} else {
+		icnss_pr_dbg("No GPIOs to be setup for interrupt wakeup capable\n");
+	}
+
+	return 0;
+out:
+	return ret;
 }
 
 int icnss_hw_power_on(struct icnss_priv *priv)

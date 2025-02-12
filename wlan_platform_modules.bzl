@@ -136,13 +136,12 @@ def _define_modules_for_target_variant(target, variant):
                 ],
                     "//build/kernel/kleaf:socrepo_false": [],
             })
-            if target == "sun":
-              deps += select({
+            deps += select({
                   "//build/kernel/kleaf:socrepo_true": [
-                        "//soc-repo:{}/drivers/soc/qcom/minidump".format(tv),
+                    "//soc-repo:{}/drivers/soc/qcom/minidump".format(tv),
                 ],
                     "//build/kernel/kleaf:socrepo_false": [],
-              })
+            })
         ddk_module(
             name = "{}_cnss2".format(tv),
             srcs = native.glob([
@@ -190,6 +189,7 @@ def _define_modules_for_target_variant(target, variant):
                 "//soc-repo:{}/drivers/soc/qcom/pdr_interface".format(tv),
                 "//soc-repo:{}/drivers/remoteproc/rproc_qcom_common".format(tv),
                 "//soc-repo:{}/drivers/soc/qcom/qmi_helpers".format(tv),
+                "//soc-repo:{}/drivers/pinctrl/qcom/pinctrl-msm".format(tv),
                 "//soc-repo:{}/drivers/soc/qcom/qcom_aoss".format(tv),
                ],
                "//build/kernel/kleaf:socrepo_false": [

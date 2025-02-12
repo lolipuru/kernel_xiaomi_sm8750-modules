@@ -1261,6 +1261,22 @@ static int icnss_driver_event_server_arrive(struct icnss_priv *priv,
 			goto  device_info_failure;
 		}
 
+		if (priv->shared_mem[WLFW_SHARED_MEM_CLIENT_XPAN_V01].size)
+			priv->fw_lpass_shared_mem_size = priv->shared_mem[WLFW_SHARED_MEM_CLIENT_XPAN_V01].size;
+
+		if (priv->shared_mem[WLFW_SHARED_MEM_CLIENT_XPAN_V01].pa_addr) {
+			priv->fw_lpass_shared_mem = dma_map_resource(&priv->pdev->dev, (phys_addr_t)priv->shared_mem[WLFW_SHARED_MEM_CLIENT_XPAN_V01].pa_addr,
+								     priv->fw_lpass_shared_mem_size,
+								     DMA_BIDIRECTIONAL, 0);
+
+			if (dma_mapping_error(&priv->pdev->dev, priv->fw_lpass_shared_mem)) {
+				icnss_pr_err("DMA map failed for lpass shared mem address:0x%llx\n",
+						priv->shared_mem[WLFW_SHARED_MEM_CLIENT_XPAN_V01].pa_addr);
+
+				goto device_info_failure;
+			}
+		}
+
 		priv->mem_base_va = devm_ioremap(&priv->pdev->dev,
 						 priv->mem_base_pa,
 						 priv->mem_base_size);
@@ -1800,7 +1816,7 @@ void icnss_collect_host_dump_info(struct icnss_priv *priv)
 		}
 
 		for (x = 0; x < num_entries_loaded; x++) {
-			icnss_pr_info("Idx:%d, ptr: %p, name: %s, size: %zu\n",
+			icnss_pr_vdbg("Idx:%d, ptr: %p, name: %s, size: %zu\n",
 				      x, ssr_entry[x].buffer_pointer,
 				      ssr_entry[x].region_name,
 				      ssr_entry[x].buffer_size);
@@ -4727,11 +4743,11 @@ int icnss_get_fw_lpass_shared_mem(struct device *dev, dma_addr_t *iova,
 {
 	struct icnss_priv *priv = dev_get_drvdata(dev);
 
-	if (!priv || !priv->fw_lpass_shared_mem_pa)
+	if (!priv || !priv->fw_lpass_shared_mem)
 		return -EINVAL;
 
-	*iova = priv->fw_lpass_shared_mem_pa;
-	*size = ICNSS_FW_LPASS_SHARED_MEM_SIZE;
+	*iova = priv->fw_lpass_shared_mem;
+	*size = priv->fw_lpass_shared_mem_size;
 
 	return 0;
 }
@@ -5289,6 +5305,12 @@ static int icnss_resource_parse(struct icnss_priv *priv)
 		goto put_vreg;
 	}
 
+	ret = icnss_get_pinctrl(priv);
+	if (ret) {
+		icnss_pr_err("Failed to get pinctrl, err = %d\n", ret);
+		goto put_clk;
+	}
+
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,psf-supported")) {
 		ret = icnss_get_psf_info(priv);
 		if (ret < 0)
@@ -5786,7 +5808,9 @@ static void icnss_init_control_params(struct icnss_priv *priv)
 				  "wpss-support-enable"))
 		priv->wpss_supported = true;
 
-	if (priv->device_id == WCN6750_DEVICE_ID) {
+	if (priv->device_id == WCN6750_DEVICE_ID ||
+	    priv->device_id == WCN7750_DEVICE_ID ||
+	    priv->device_id == WCN6450_DEVICE_ID) {
 		ret = of_property_read_string(priv->pdev->dev.of_node,
 					      "wcn-hw-version",
 					      &hw_version);
