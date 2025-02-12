@@ -2407,6 +2407,9 @@ typedef enum {
     /* WMI event to send scan cached results */
     WMI_SCAN_CACHE_RESULT_EVENTID,
 
+    /** WMI event for FW diagnostic data sent to host */
+    WMI_OPT_DP_DIAG_EVENTID,
+
 
     /* GPIO Event */
     WMI_GPIO_INPUT_EVENTID = WMI_EVT_GRP_START_ID(WMI_GRP_GPIO),
@@ -5466,6 +5469,12 @@ typedef struct {
         WMI_GET_BITS(host_service_flags, 17, 1)
 #define WMI_RSRC_CFG_HOST_SERVICE_FLAG_OPT_DP_CTRL_REPLENISH_REFILL_RX_BUFFER_SUPPORT_SET(host_service_flags, val) \
         WMI_SET_BITS(host_service_flags, 17, 1, val)
+
+/* This bit is used to inform FW VBSS is enabled */
+#define WMI_RSRC_CFG_HOST_SERVICE_FLAG_VBSS_ENABLED_GET(host_service_flags) \
+        WMI_GET_BITS(host_service_flags, 18, 1)
+#define WMI_RSRC_CFG_HOST_SERVICE_FLAG_VBSS_ENABLED_SET(host_service_flags, val) \
+        WMI_SET_BITS(host_service_flags, 18, 1, val)
 
 #define WMI_RSRC_CFG_CARRIER_CFG_CHARTER_ENABLE_GET(carrier_config) \
     WMI_GET_BITS(carrier_config, 0, 1)
@@ -47694,6 +47703,8 @@ typedef struct {
     A_UINT32 mode;
     /* max num of user to decode */
     A_UINT32 max_num_user;
+    /* UL MU sniffer enable */
+    A_UINT32 ul_snif_enable;
 /**
  * TLV (tag length value) parameters follow setting MU sniffer command
  * structure. The TLV's are:
@@ -49651,15 +49662,17 @@ typedef struct {
 #define WMI_PEER_ACTIVE_TRAFFIC_TYPE_BACKGROUND_S 2
 /* bits 3-15 are reserved for new non-interactive traffic types */
 
-#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_GAMING_M       0x00010000
-#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_GAMING_S       16
-#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_VOIP_M         0x00020000
-#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_VOIP_S         17
-#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_VIDEO_CONF_M   0x00040000
-#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_VIDEO_CONF_S   18
-#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_WEB_BROWSING_M 0x00080000
-#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_WEB_BROWSING_S 19
-/* bits 20-31 are reserved for new interactive traffic types */
+#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_GAMING_M                    0x00010000
+#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_GAMING_S                    16
+#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_VOIP_M                      0x00020000
+#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_VOIP_S                      17
+#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_VIDEO_CONF_M                0x00040000
+#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_VIDEO_CONF_S                18
+#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_WEB_BROWSING_M              0x00080000
+#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_WEB_BROWSING_S              19
+#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_APERIODIC_BURST_TRAFFIC_1_M 0x00100000
+#define WMI_PEER_ACTIVE_TRAFFIC_TYPE_APERIODIC_BURST_TRAFFIC_1_S 20
+/* bits 21-31 are reserved for new interactive traffic types */
 
 typedef struct {
     A_UINT32 tlv_header; /** TLV tag and len; tag equals WMITLV_TAG_STRUC_wmi_peer_active_traffic_map_cmd_fixed_param */
