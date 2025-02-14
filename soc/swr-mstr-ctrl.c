@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/irq.h>
@@ -1901,6 +1901,7 @@ static void swrm_initialize_clk_base_scale(struct swr_mstr_ctrl *swrm, u8 dev_nu
 		return;
 
 	cls_id = swr_master_read(swrm, SWRM_ENUMERATOR_SLAVE_DEV_ID_2(dev_num));
+
 	if (cls_id & 0xFF00) {
 
 		active_bank = get_active_bank_num(swrm);
@@ -2367,6 +2368,26 @@ static int swrm_check_slave_change_status(struct swr_mstr_ctrl *swrm,
 	return ret;
 }
 
+static u64 swrm_read_scp_registers(struct swr_mstr_ctrl *swrm, u8 dev_num, const char *func)
+{
+
+	u32 temp, i;
+	u64 dev_id = 0;
+
+	if (swrm->master_id != MASTER_ID_WSA2)
+		return 0;
+
+	for (i = 0; i < 6; i++) {
+		swrm_cmd_fifo_rd_cmd(swrm, &temp, dev_num,
+				get_cmd_id(swrm), (SWRS_SCP_DEVICE_ID_0 + i), 1);
+		dev_id |= ((u64)(temp & 0xFF)) << (i * 0x8);
+		dev_dbg(swrm->dev, "%s: SWRS_SCP_DEVICE_ID_%d val = 0x%x\n", func, i, temp);
+	}
+
+	dev_dbg(swrm->dev, "%s: Dev ID from slv %d scp registers 0x%llx\n", func, dev_num, dev_id);
+	return dev_id;
+}
+
 static void swrm_process_change_enum_slave_status(struct swr_mstr_ctrl *swrm)
 {
 	u32 status, chg_sts, i;
@@ -2800,21 +2821,26 @@ static int swrm_get_logical_dev_num(struct swr_master *mstr, u64 dev_id,
 					SWRM_ENUMERATOR_SLAVE_DEV_ID_1(i));
 
 		dev_dbg(swrm->dev, "%s: dev (num, address) (%d, 0x%llx)\n", __func__, i, id);
+
 		/*
 		 * As pm_runtime_get_sync() brings all slaves out of reset
 		 * update logical device number for all slaves.
 		 */
 		list_for_each_entry(swr_dev, &mstr->devices, dev_list) {
-			if (swr_dev->addr == (id & SWR_DEV_ID_MASK)) {
+			if (swr_dev->addr == (id & SWR_DEV_ID_MASK) ||
+			    swrm_read_scp_registers(swrm, i, __func__) == swr_dev->addr) {
+
 				u32 status = swrm_get_device_status(swrm, i);
 
 				if ((status == 0x01) || (status == 0x02)) {
 					swr_dev->dev_num = i;
-					if ((id & SWR_DEV_ID_MASK) == dev_id) {
+					if ((id & SWR_DEV_ID_MASK) == dev_id ||
+					     swrm_read_scp_registers(swrm, i, __func__) == dev_id) {
+
 						*dev_num = i;
 						sdev = swr_dev;
 						ret = 0;
-						dev_info(swrm->dev,
+						dev_dbg(swrm->dev,
 							"%s: devnum %d assigned for dev %llx\n",
 							__func__, i,
 							swr_dev->addr);
