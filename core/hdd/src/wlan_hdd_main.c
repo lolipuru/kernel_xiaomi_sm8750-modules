@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -3121,6 +3121,18 @@ int hdd_update_tgt_cfg(hdd_handle_t hdd_handle, struct wma_tgt_cfg *cfg)
 	sme_update_bfer_caps_as_per_nss_chains(hdd_ctx->mac_handle, cfg);
 
 	hdd_update_tgt_vht_cap(hdd_ctx, &cfg->vht_cap);
+
+	ucfg_mlme_cfg_get_vht_tx_bfee_ant_supp(hdd_ctx->psoc, &value);
+	if ((value > MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF) &&
+	    !cfg->tx_bfee_8ss_enabled) {
+		value = MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF;
+		status = ucfg_mlme_cfg_set_vht_tx_bfee_ant_supp(hdd_ctx->psoc,
+								value);
+		if (QDF_IS_STATUS_ERROR(status))
+			hdd_err("set tx_bfee_ant_supp failed");
+	}
+	hdd_debug("txBFCsnValue %d 8ss %d", value, cfg->tx_bfee_8ss_enabled);
+
 	if (cfg->services.en_11ax  &&
 	    (hdd_ctx->config->dot11Mode == eHDD_DOT11_MODE_AUTO ||
 	     hdd_ctx->config->dot11Mode == eHDD_DOT11_MODE_11ax ||
@@ -3197,28 +3209,13 @@ int hdd_update_tgt_cfg(hdd_handle_t hdd_handle, struct wma_tgt_cfg *cfg)
 
 	hdd_ctx->rcpi_enabled = cfg->rcpi_enabled;
 
-	status = ucfg_mlme_cfg_get_vht_tx_bfee_ant_supp(hdd_ctx->psoc,
-							&value);
-	if (QDF_IS_STATUS_ERROR(status))
-		hdd_err("set tx_bfee_ant_supp failed");
-
 	status = ucfg_mlme_set_restricted_80p80_bw_supp(hdd_ctx->psoc,
 							cfg->restricted_80p80_bw_supp);
 	if (QDF_IS_STATUS_ERROR(status))
 		hdd_err("Failed to set MLME restircted 80p80 BW support");
 
-	if ((value > MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF) &&
-	    !cfg->tx_bfee_8ss_enabled) {
-		status = ucfg_mlme_cfg_set_vht_tx_bfee_ant_supp(hdd_ctx->psoc,
-				MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF);
-		if (QDF_IS_STATUS_ERROR(status))
-			hdd_err("set tx_bfee_ant_supp failed");
-	}
-
 	hdd_update_tid_to_link_supported(hdd_ctx, &cfg->services);
 	mac_handle = hdd_ctx->mac_handle;
-
-	hdd_debug("txBFCsnValue %d", value);
 
 	/*
 	 * Update txBFCsnValue and NumSoundingDim values to vhtcap in wiphy
@@ -17875,8 +17872,10 @@ static void hdd_v2_flow_pool_unmap(int vdev_id)
 		return;
 	}
 
-	if (wlan_vdev_mlme_is_mlo_link_switch_in_progress(vdev)) {
-		hdd_info("Link switch ongoing do not invoke flow pool unmap");
+	if (wlan_vdev_mlme_is_mlo_link_switch_in_progress(vdev) ||
+	    policy_mgr_is_set_link_in_progress(wlan_vdev_get_psoc(vdev))) {
+		hdd_info("vdev:%d Link switch/set_link is ongoing do not invoke flow pool unmap",
+			 vdev_id);
 		goto release_ref;
 	}
 
@@ -19988,7 +19987,7 @@ void wlan_hdd_start_sap(struct wlan_hdd_link_info *link_info, bool reinit)
 	if (hostapd_state->bss_state == BSS_START) {
 		policy_mgr_incr_active_session(hdd_ctx->psoc,
 					ap_adapter->device_mode,
-					link_info->vdev_id);
+					link_info->vdev_id, true);
 		hdd_green_ap_start_state_mc(hdd_ctx, ap_adapter->device_mode,
 					    true);
 	}
@@ -22875,7 +22874,7 @@ void hdd_restart_sap(struct wlan_hdd_link_info *link_info)
 		if (hapd_state->bss_state == BSS_START) {
 			policy_mgr_incr_active_session(hdd_ctx->psoc,
 						ap_adapter->device_mode,
-						link_info->vdev_id);
+						link_info->vdev_id, true);
 			hdd_green_ap_start_state_mc(hdd_ctx,
 						    ap_adapter->device_mode,
 						    true);

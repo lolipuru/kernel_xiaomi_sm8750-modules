@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -4126,8 +4126,8 @@ lim_match_link_info(uint8_t req_link_id,
 
 QDF_STATUS
 lim_add_bcn_probe(struct wlan_objmgr_pdev *pdev, uint8_t *bcn_probe,
-		  uint32_t len, qdf_freq_t freq, int32_t rssi,
-		  uint8_t snr, uint32_t tsf_delta)
+		  uint32_t len, bool is_gen_entry, qdf_freq_t freq,
+		  int32_t rssi, uint8_t snr, uint32_t tsf_delta)
 {
 	qdf_nbuf_t buf;
 	uint8_t *data, i;
@@ -4171,7 +4171,8 @@ lim_add_bcn_probe(struct wlan_objmgr_pdev *pdev, uint8_t *bcn_probe,
 	pe_debug("MLO: add prb rsp to scan db");
 	/* buf will be freed by scan module in error or success case */
 	status = wlan_scan_process_bcn_probe_rx_sync(wlan_pdev_get_psoc(pdev),
-						     buf, &rx_param, frm_type);
+						     buf, &rx_param, frm_type,
+						     is_gen_entry);
 
 	return status;
 }
@@ -4547,29 +4548,60 @@ static void lim_gen_link_specific_rnr_ie(struct mac_context *mac_ctx,
 					 struct element_info link_probe_rsp)
 {
 	uint8_t *new_rnr_ie = NULL;
+	uint8_t *pos, *ie = NULL;
+	uint32_t ie_len;
+	uint8_t *temp_rnr_ie = NULL;
 
-	new_rnr_ie = lim_find_ie(WLAN_ELEMID_REDUCED_NEIGHBOR_REPORT,
-				 link_probe_rsp.ptr +
-				 sizeof(struct wlan_frame_hdr) +
-				 WLAN_PROBE_RESP_IES_OFFSET,
-				 link_probe_rsp.len -
-				 sizeof(struct wlan_frame_hdr) -
-				 WLAN_PROBE_RESP_IES_OFFSET);
-	if (!new_rnr_ie) {
-		pe_debug("RNR IE not present in gen link frame");
-		return;
+	ie = link_probe_rsp.ptr + sizeof(struct wlan_frame_hdr) +
+	      WLAN_PROBE_RESP_IES_OFFSET;
+	ie_len = link_probe_rsp.len - sizeof(struct wlan_frame_hdr) -
+		 WLAN_PROBE_RESP_IES_OFFSET;
+
+	pos = ie;
+	while (pos < (ie + ie_len)) {
+		new_rnr_ie = lim_find_ie(WLAN_ELEMID_REDUCED_NEIGHBOR_REPORT,
+					 pos, ie_len - (pos - ie));
+		if (!new_rnr_ie) {
+			pe_debug("RNR IE not present in gen link frame");
+			return;
+		}
+
+		if (!new_rnr_ie[TAG_LEN_POS]) {
+			pos = new_rnr_ie + MIN_IE_LEN;
+			continue;
+		}
+
+		temp_rnr_ie = qdf_mem_malloc(new_rnr_ie[TAG_LEN_POS] +
+					     MIN_IE_LEN);
+		if (!temp_rnr_ie) {
+			pos = new_rnr_ie + new_rnr_ie[TAG_LEN_POS] + MIN_IE_LEN;
+			continue;
+		}
+
+		qdf_mem_copy(temp_rnr_ie, new_rnr_ie,
+			     new_rnr_ie[TAG_LEN_POS] + MIN_IE_LEN);
+
+		pe_debug("Generated RNR IE received:");
+		QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_PE, QDF_TRACE_LEVEL_DEBUG,
+				   new_rnr_ie, new_rnr_ie[TAG_LEN_POS] +
+				   MIN_IE_LEN);
+
+		lim_derive_link_specific_rnr_ie(mac_ctx, session_entry,
+						link_info, new_rnr_ie);
+
+		if (qdf_mem_cmp(temp_rnr_ie, new_rnr_ie,
+				new_rnr_ie[TAG_LEN_POS] + MIN_IE_LEN)) {
+			pe_debug("Updated RNR IE: ");
+			QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_PE,
+					   QDF_TRACE_LEVEL_DEBUG,
+					   new_rnr_ie,
+					   new_rnr_ie[TAG_LEN_POS] +
+					   MIN_IE_LEN);
+		}
+
+		qdf_mem_free(temp_rnr_ie);
+		pos = new_rnr_ie + new_rnr_ie[TAG_LEN_POS] + MIN_IE_LEN;
 	}
-
-	pe_debug("Generated RNR IE received:");
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_PE, QDF_TRACE_LEVEL_DEBUG, new_rnr_ie,
-			   new_rnr_ie[1] + MIN_IE_LEN);
-
-	lim_derive_link_specific_rnr_ie(mac_ctx, session_entry, link_info,
-					new_rnr_ie);
-
-	pe_debug("Updated RNR IE: ");
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_PE, QDF_TRACE_LEVEL_DEBUG, new_rnr_ie,
-			   new_rnr_ie[1] + MIN_IE_LEN);
 }
 
 static inline void fill_crypto_filter_params(struct scan_filter *filter,
@@ -4909,7 +4941,8 @@ QDF_STATUS lim_gen_link_specific_probe_rsp(struct mac_context *mac_ctx,
 			status = lim_add_bcn_probe(mac_ctx->pdev,
 						   link_probe_rsp.ptr,
 						   link_probe_rsp.len,
-						   chan_freq, rssi, 0, 0);
+						   true, chan_freq, rssi, 0,
+						   0);
 			if (QDF_IS_STATUS_ERROR(status)) {
 				pe_err("failed to add bcn probe %d", status);
 				lim_clear_ml_partner_info(session_entry, idx);
@@ -5054,7 +5087,8 @@ QDF_STATUS lim_process_cu_for_probe_rsp(struct mac_context *mac_ctx,
 		}
 
 		lim_add_bcn_probe(mac_ctx->pdev, link_probe_rsp.ptr,
-				  link_probe_rsp.len, chan_freq, rssi, snr, 0);
+				  link_probe_rsp.len,
+				  false, chan_freq, rssi, snr, 0);
 
 		partner_vdev = mlo_get_vdev_by_link_id(vdev, link_id,
 						       WLAN_LEGACY_MAC_ID);

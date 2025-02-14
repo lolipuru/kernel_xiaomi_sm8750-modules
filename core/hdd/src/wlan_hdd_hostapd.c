@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -7820,7 +7820,7 @@ int wlan_hdd_cfg80211_start_bss(struct wlan_hdd_link_info *link_info,
 	if (hostapd_state->bss_state == BSS_START) {
 		policy_mgr_incr_active_session(hdd_ctx->psoc,
 					adapter->device_mode,
-					link_info->vdev_id);
+					link_info->vdev_id, true);
 
 		hdd_green_ap_start_state_mc(hdd_ctx, adapter->device_mode,
 					    true);
@@ -8559,9 +8559,21 @@ void wlan_hdd_configure_twt_responder(struct hdd_context *hdd_ctx,
 {
 	bool twt_res_svc_cap, enable_twt, twt_res_cfg;
 	uint32_t reason;
+	enum QDF_OPMODE mode;
 
 	enable_twt = ucfg_twt_cfg_is_twt_enabled(hdd_ctx->psoc);
 	ucfg_twt_get_responder(hdd_ctx->psoc, &twt_res_svc_cap);
+
+	/* This is a temporary fix to disable twt_responder for sap
+	 * interface. Later the changes will come to enable/disable
+	 * twt_responder by sending WMI CMDin vdev level
+	 */
+	mode = wlan_get_opmode_from_vdev_id(hdd_ctx->pdev, vdev_id);
+	if (!policy_mgr_is_hw_dbs_capable(hdd_ctx->psoc) &&
+	    mode == QDF_SAP_MODE &&
+	    !policy_mgr_is_vdev_ll_lt_sap(hdd_ctx->psoc, vdev_id))
+		ucfg_twt_cfg_set_responder(hdd_ctx->psoc, false);
+
 	ucfg_twt_cfg_get_responder(hdd_ctx->psoc, &twt_res_cfg);
 	if (!twt_res_cfg && !twt_responder) {
 		hdd_debug("TWT responder already disable, skip");
@@ -8570,9 +8582,11 @@ void wlan_hdd_configure_twt_responder(struct hdd_context *hdd_ctx,
 	ucfg_twt_cfg_set_responder(hdd_ctx->psoc,
 				   QDF_MIN(twt_res_svc_cap,
 					   (enable_twt &&
-					    twt_responder)));
+					    twt_responder &&
+					    twt_res_cfg)));
+
 	hdd_debug("cfg80211 TWT responder:%d", twt_responder);
-	if (enable_twt && twt_responder) {
+	if (enable_twt && twt_responder && twt_res_cfg) {
 		hdd_send_twt_responder_enable_cmd(hdd_ctx, vdev_id);
 	} else {
 		reason = HOST_TWT_DISABLE_REASON_NONE;

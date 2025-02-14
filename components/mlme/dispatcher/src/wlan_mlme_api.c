@@ -1230,6 +1230,22 @@ QDF_STATUS mlme_update_tgt_he_caps_in_cfg(struct wlan_objmgr_psoc *psoc,
 			mlme_obj->cfg.he_caps.dot11_he_cap.bfee_sts_gt_80 =
 						he_cap->bfee_sts_gt_80;
 
+		if ((mlme_obj->cfg.he_caps.dot11_he_cap.bfee_sts_lt_80 >
+		     MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF) &&
+		     !wma_cfg->tx_bfee_8ss_enabled) {
+			mlme_obj->cfg.he_caps.dot11_he_cap.bfee_sts_lt_80 =
+				QDF_MIN(mlme_obj->cfg.he_caps.dot11_he_cap.
+				bfee_sts_lt_80,
+				MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF);
+		}
+		if ((mlme_obj->cfg.he_caps.dot11_he_cap.bfee_sts_gt_80 >
+		     MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF) &&
+		     !wma_cfg->tx_bfee_8ss_enabled) {
+			mlme_obj->cfg.he_caps.dot11_he_cap.bfee_sts_gt_80 =
+				QDF_MIN(mlme_obj->cfg.he_caps.dot11_he_cap.
+				bfee_sts_gt_80,
+				MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF);
+		}
 	} else {
 		mlme_obj->cfg.he_caps.dot11_he_cap.su_beamformee = 0;
 		mlme_obj->cfg.he_caps.dot11_he_cap.bfee_sts_lt_80 = 0;
@@ -1446,6 +1462,28 @@ QDF_STATUS mlme_update_tgt_eht_caps_in_cfg(struct wlan_objmgr_psoc *psoc,
 		if (cfg_in_range(CFG_EHT_BFEE_SS_320MHZ,
 				 eht_cap->bfee_ss_320mhz))
 			mlme_eht_cap->bfee_ss_320mhz = eht_cap->bfee_ss_320mhz;
+
+		if ((mlme_eht_cap->bfee_ss_le_80mhz >
+		     MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF) &&
+		     !wma_cfg->tx_bfee_8ss_enabled) {
+			mlme_eht_cap->bfee_ss_le_80mhz =
+			   QDF_MIN(mlme_eht_cap->bfee_ss_le_80mhz,
+				MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF);
+		}
+		if ((mlme_eht_cap->bfee_ss_160mhz >
+		     MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF) &&
+		     !wma_cfg->tx_bfee_8ss_enabled) {
+			mlme_eht_cap->bfee_ss_160mhz =
+			   QDF_MIN(mlme_eht_cap->bfee_ss_160mhz,
+				MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF);
+		}
+		if ((mlme_eht_cap->bfee_ss_320mhz >
+		     MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF) &&
+		     !wma_cfg->tx_bfee_8ss_enabled) {
+			mlme_eht_cap->bfee_ss_320mhz =
+			   QDF_MIN(mlme_eht_cap->bfee_ss_320mhz,
+				MLME_VHT_CSN_BEAMFORMEE_ANT_SUPPORTED_FW_DEF);
+		}
 
 	} else {
 		mlme_eht_cap->su_beamformee = 0;
@@ -5342,10 +5380,8 @@ QDF_STATUS mlme_get_peer_phymode(struct wlan_objmgr_psoc *psoc, uint8_t *mac,
 	struct wlan_objmgr_peer *peer;
 
 	peer = wlan_objmgr_get_peer_by_mac(psoc, mac, WLAN_MLME_NB_ID);
-	if (!peer) {
-		mlme_legacy_err("peer object is null");
+	if (!peer)
 		return QDF_STATUS_E_NULL_VALUE;
-	}
 
 	*peer_phymode = wlan_peer_get_phymode(peer);
 	wlan_objmgr_peer_release_ref(peer, WLAN_MLME_NB_ID);
@@ -8887,4 +8923,10 @@ wlan_mlme_get_p2p_device_mac_addr(struct wlan_objmgr_vdev *vdev,
 				  struct qdf_mac_addr *mac_addr)
 {
 	return mlme_get_p2p_device_mac_addr(vdev, mac_addr);
+}
+
+QDF_STATUS
+wlan_mlme_clear_peer_private_object_data(struct wlan_objmgr_peer *peer)
+{
+	return mlme_clear_peer_private_object_data(peer);
 }

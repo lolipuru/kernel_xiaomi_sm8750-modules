@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1717,17 +1717,27 @@ populate_dot11f_vht_operation(struct mac_context *mac,
 	band = wlan_reg_freq_to_band(pe_session->curr_op_freq);
 	band_mask = 1 << band;
 
-	ch_params.ch_width = pe_session->ch_width;
-	ch_params.mhz_freq_seg0 =
-		wlan_reg_chan_band_to_freq(mac->pdev,
-					   pe_session->ch_center_freq_seg0,
-					   band_mask);
-
-	if (pe_session->ch_center_freq_seg1)
+	if (pe_session->opmode == QDF_SAP_MODE &&
+	    lim_is_session_eht_capable(pe_session) &&
+	    pe_session->he_punc_chan_info.present) {
+		ch_params.mhz_freq_seg0 =
+				pe_session->he_punc_chan_info.center_freq_seg0;
 		ch_params.mhz_freq_seg1 =
-			wlan_reg_chan_band_to_freq(mac->pdev,
-						   pe_session->ch_center_freq_seg1,
-						   band_mask);
+				pe_session->he_punc_chan_info.center_freq_seg1;
+		ch_params.ch_width = pe_session->he_punc_chan_info.chan_width;
+	} else {
+		ch_params.ch_width = pe_session->ch_width;
+		ch_params.mhz_freq_seg0 = wlan_reg_chan_band_to_freq(
+						mac->pdev,
+						pe_session->ch_center_freq_seg0,
+						band_mask);
+		if (pe_session->ch_center_freq_seg1)
+			ch_params.mhz_freq_seg1 =
+					wlan_reg_chan_band_to_freq(
+						mac->pdev,
+						pe_session->ch_center_freq_seg1,
+						band_mask);
+	}
 
 	if (band == (REG_BAND_2G) && ch_params.ch_width == CH_WIDTH_40MHZ) {
 		if (ch_params.mhz_freq_seg0 ==  pe_session->curr_op_freq + 10)
@@ -1743,12 +1753,12 @@ populate_dot11f_vht_operation(struct mac_context *mac,
 
 	pDot11f->present = 1;
 
-	if (pe_session->ch_width > CH_WIDTH_40MHZ) {
+	if (ch_params.ch_width > CH_WIDTH_40MHZ) {
 		pDot11f->chanWidth = 1;
 		pDot11f->chan_center_freq_seg0 =
 			ch_params.center_freq_seg0;
-		if (pe_session->ch_width == CH_WIDTH_80P80MHZ ||
-				pe_session->ch_width == CH_WIDTH_160MHZ)
+		if (ch_params.ch_width == CH_WIDTH_80P80MHZ ||
+		    ch_params.ch_width == CH_WIDTH_160MHZ)
 			pDot11f->chan_center_freq_seg1 =
 				ch_params.center_freq_seg1;
 		else
@@ -13601,6 +13611,43 @@ compute_len:
 	return QDF_STATUS_SUCCESS;
 }
 
+#ifdef CONFIG_BAND_6GHZ
+#define CHAN_ENUM_6GHZ MIN_6GHZ_CHANNEL + 1
+#else
+#define CHAN_ENUM_6GHZ MAX_5GHZ_CHANNEL
+#endif
+
+QDF_STATUS
+populate_dot11f_reg_connectivity(struct mac_context *mac_ctx,
+				 tDot11fIEreg_connect *dot11f)
+{
+	dot11f->present = 1;
+
+	if (QDF_IS_STATUS_SUCCESS(wlan_reg_check_if_6g_pwr_type_supp_for_chan(
+				  mac_ctx->pdev, REG_VERY_LOW_POWER_AP,
+				  CHAN_ENUM_6GHZ)) ||
+	    QDF_IS_STATUS_SUCCESS(wlan_reg_check_if_6g_pwr_type_supp_for_chan(
+				  mac_ctx->pdev, REG_INDOOR_AP,
+				  CHAN_ENUM_6GHZ))) {
+		pe_debug("Indoor AP connectivity is valid");
+		dot11f->indoor_ap_valid = 1;
+		dot11f->indoor_ap_support = 1;
+	}
+
+	if (QDF_IS_STATUS_SUCCESS(wlan_reg_check_if_6g_pwr_type_supp_for_chan(
+				  mac_ctx->pdev, REG_VERY_LOW_POWER_AP,
+				  CHAN_ENUM_6GHZ)) ||
+	    QDF_IS_STATUS_SUCCESS(wlan_reg_check_if_6g_pwr_type_supp_for_chan(
+				  mac_ctx->pdev, REG_STANDARD_POWER_AP,
+				  CHAN_ENUM_6GHZ))) {
+		pe_debug("SP AP connectivity is valid");
+		dot11f->sp_ap_valid = 1;
+		dot11f->sp_ap_support = 1;
+	}
+
+	return QDF_STATUS_SUCCESS;
+}
+
 #ifdef WLAN_FEATURE_11BE_MLO
 /**
  * populate_dot11f_mlo_partner_sta_cap() - populate mlo sta partner capability
@@ -14153,8 +14200,14 @@ QDF_STATUS populate_dot11f_assoc_req_mlo_ie(struct mac_context *mac_ctx,
 		/* Fill VHT for 5 GHz or 2 GHz with b24ghz_band enabled */
 		if ((is_2g &&
 		     mac_ctx->mlme_cfg->vht_caps.vht_cap_info.b24ghz_band) ||
-		    WLAN_REG_IS_5GHZ_CH_FREQ(chan_freq))
+		    WLAN_REG_IS_5GHZ_CH_FREQ(chan_freq)) {
 			populate_dot11f_vht_caps(mac_ctx, NULL, &vht_caps);
+			if (is_2g) {
+				vht_caps.supportedChannelWidthSet = 0;
+				vht_caps.shortGI80MHz = 0;
+				vht_caps.shortGI160and80plus80MHz = 0;
+			}
+		}
 		if ((vht_caps.present && frm->VHTCaps.present &&
 		     qdf_mem_cmp(&vht_caps, &frm->VHTCaps, sizeof(vht_caps))) ||
 		     (vht_caps.present && !frm->VHTCaps.present)) {

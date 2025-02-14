@@ -1814,11 +1814,20 @@ cm_connect_complete_ind(struct wlan_objmgr_vdev *vdev,
 								false) ||
 		    (!policy_mgr_is_hw_dbs_capable(psoc) &&
 		     wlan_vdev_mlme_is_mlo_vdev(vdev) &&
-		     wlan_vdev_mlme_is_mlo_link_vdev(vdev)))
+		     wlan_vdev_mlme_is_mlo_link_vdev(vdev))) {
+			/*
+			 * Update flow pool map for both the vdevs during
+			 * initial connection
+			 */
+			policy_mgr_update_flow_pool_map(psoc, vdev);
+
 			policy_mgr_move_vdev_from_connection_to_disabled_tbl(
 								psoc, vdev_id);
-		else
-			policy_mgr_incr_active_session(psoc, op_mode, vdev_id);
+
+		} else {
+			policy_mgr_incr_active_session(psoc, op_mode, vdev_id,
+						       true);
+		}
 
 		ml_nlink_conn_change_notify(
 			psoc, vdev_id,
