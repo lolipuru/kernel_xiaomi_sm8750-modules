@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __WCD_MBHC_V2_H__
 #define __WCD_MBHC_V2_H__
@@ -532,6 +532,7 @@ struct wcd_mbhc_cb {
 	void (*mbhc_moisture_detect_en)(struct wcd_mbhc *mbhc, bool enable);
 	void (*surge_reset_routine)(struct wcd_mbhc *mbhc);
 	void (*zdet_leakage_resistance)(struct wcd_mbhc *mbhc, bool enable);
+	void (*mbhc_button_debounce_set)(struct snd_soc_component *component);
 };
 
 struct wcd_mbhc_fn {

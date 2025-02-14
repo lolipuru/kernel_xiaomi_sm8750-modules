@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/module.h>
 #include <linux/init.h>
@@ -827,6 +827,12 @@ static void wcd9378_mbhc_bcs_enable(struct wcd_mbhc *mbhc,
 		wcd9378_disable_bcs_before_slow_insert(mbhc->component, true);
 }
 
+static void wcd9378_mbhc_debounce_time_set(struct snd_soc_component *component)
+{
+	snd_soc_component_update_bits(component,
+		WCD9378_MBHC_NEW_CTL_1, 0x0F, 0x0D);
+}
+
 static const struct wcd_mbhc_cb mbhc_cb = {
 	.request_irq = wcd9378_mbhc_request_irq,
 	.irq_control = wcd9378_mbhc_irq_control,
@@ -853,6 +859,7 @@ static const struct wcd_mbhc_cb mbhc_cb = {
 	.mbhc_moisture_polling_ctrl = wcd9378_mbhc_moisture_polling_ctrl,
 	.mbhc_moisture_detect_en = wcd9378_mbhc_moisture_detect_en,
 	.bcs_enable = wcd9378_mbhc_bcs_enable,
+	.mbhc_button_debounce_set = wcd9378_mbhc_debounce_time_set,
 };
 
 static int wcd9378_get_hph_type(struct snd_kcontrol *kcontrol,
