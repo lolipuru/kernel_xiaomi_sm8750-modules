@@ -1133,6 +1133,7 @@ static int msm_cvp_proc_oob_wncc(struct msm_cvp_inst* inst,
 	struct wncc_oob_buf wob;
 	struct eva_kmd_wncc_metadata* wncc_metadata[EVA_KMD_WNCC_MAX_LAYERS];
 	struct cvp_buf_type *wncc_metadata_bufs;
+	struct dma_buf *dmabuf;
 	unsigned int i, j;
 	bool empty = false;
 	u32 buf_id, buf_idx, buf_offset, iova;
@@ -1219,6 +1220,25 @@ static int msm_cvp_proc_oob_wncc(struct msm_cvp_inst* inst,
 
 		wncc_metadata_bufs = (struct cvp_buf_type *)
 			&in_pkt->pkt_data[wncc_oob->metadata_bufs_offset];
+
+		dmabuf = dma_buf_get(wncc_metadata_bufs[i].fd);
+		if (IS_ERR(dmabuf)) {
+			rc = PTR_ERR(dmabuf);
+			dprintk(CVP_ERR,
+				"%s: dma_buf_get() failed for wncc_metadata_bufs[%d], rc %d",
+				__func__, i, rc);
+			break;
+		}
+		if (dmabuf->size < wncc_metadata_bufs[i].size) {
+			dprintk(CVP_ERR,
+				"%s: wncc_metadata_bufs[%d] size %d is more than dma buf size %d",
+				__func__, i, wncc_metadata_bufs[i].size, dmabuf->size);
+			dma_buf_put(dmabuf);
+			rc = -EINVAL;
+			break;
+		}
+		dma_buf_put(dmabuf);
+
 		if ((wncc_metadata_bufs[i].debug_flags & 0x00000001) != 0) {
 			wncc_metadata_bufs[i].crc =
 				eva_calculate_crc((unsigned int *)wncc_metadata[i],
