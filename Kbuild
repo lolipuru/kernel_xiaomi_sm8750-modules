@@ -1,6 +1,11 @@
 
 KDIR := $(TOP)/kernel_platform/common
 
+ifeq ($(CONFIG_ARCH_VIENNA), y)
+	include $(TOUCH_ROOT)/config/gki_viennatouch.conf
+	LINUX_INC += -include $(TOUCH_ROOT)/config/gki_viennatouchconf.h
+endif
+
 ifeq ($(CONFIG_ARCH_WAIPIO), y)
 	include $(TOUCH_ROOT)/config/gki_waipiotouch.conf
 	LINUX_INC += -include $(TOUCH_ROOT)/config/gki_waipiotouchconf.h

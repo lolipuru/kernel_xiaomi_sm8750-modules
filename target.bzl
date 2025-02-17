@@ -2,6 +2,22 @@ load(":touch_modules.bzl", "touch_driver_modules")
 load(":touch_modules_build.bzl", "define_target_variant_modules")
 load(":target_variants.bzl", "get_all_variants")
 
+def define_vienna(t,v):
+    define_target_variant_modules(
+        target = t,
+        variant = v,
+        registry = touch_driver_modules,
+        modules = [
+            "raydium_ts",
+        ],
+        config_options = [
+            "TOUCH_DLKM_ENABLE",
+            "CONFIG_ARCH_VIENNA",
+            "CONFIG_MSM_TOUCH",
+            "CONFIG_TOUCHSCREEN_RM_TS",
+        ],
+)
+
 def define_sun(t,v):
     define_target_variant_modules(
         target = t,
@@ -204,5 +220,7 @@ def define_touch_target():
             define_canoevm(t, v)
         elif t == "sun":
             define_sun(t, v)
+        elif t == "vienna":
+            define_vienna(t, v)
         else:
             pass
