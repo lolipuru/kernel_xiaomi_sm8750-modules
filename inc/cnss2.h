@@ -215,6 +215,7 @@ enum cnss_recovery_reason {
 	CNSS_REASON_RDDM,
 	CNSS_REASON_TIMEOUT,
 	CNSS_REASON_FW_ASSERTION_FAIL,
+	CNSS_REASON_FATAL_ERROR,
 };
 
 enum cnss_fw_caps {
