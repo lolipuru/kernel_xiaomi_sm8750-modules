@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -350,10 +350,10 @@ static void btfmcodec_dai_shutdown(struct snd_pcm_substream *substream,
 	    btfmcodec_get_current_transport(state) != BT_Connected) ||
 	    (btfmcodec_get_current_transport(state) == BTADV_AUDIO_Connecting &&
 	     btfmcodec_get_prev_transport(state) != BT_Connected)) {
-		BTFMCODEC_WARN("not allowing shutdown as state is:%s",
-			coverttostring(btfmcodec_get_current_transport(state)));
-		/* Delete stored configs */
-		btfmcodec_delete_configs(btfmcodec, dai->id);
+		BTFMCODEC_WARN("Allowing cache retention in current state:%s, prev state: %s",
+			coverttostring(btfmcodec_get_current_transport(state)),
+			coverttostring(btfmcodec_get_prev_transport(state)));
+		return;
 	} else {
 		/* first master shutdown has to done */
 		btfmcodec_hwep_shutdown(btfmcodec, dai->id, false);
