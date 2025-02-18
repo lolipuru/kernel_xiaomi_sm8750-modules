@@ -3995,7 +3995,6 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 	const char *name;
 	struct device_node *np = dev->of_node;
 
-#ifndef CONFIG_ARCH_QTI_VM
 	bdata->irq_gpio = of_get_named_gpio(np, "st,irq-gpio", 0);
 
 	logError(0, "%s irq_gpio = %d\n", tag, bdata->irq_gpio);
@@ -4005,7 +4004,6 @@ static int parse_dt(struct device *dev, struct fts_hw_platform_data *bdata)
 		logError(0, "%s reset_gpio =%d\n", tag, bdata->reset_gpio);
 	} else
 		bdata->reset_gpio = GPIO_NOT_DEFINED;
-#endif
 
 	retval = of_property_read_u32(np, "st,irq-flags", &bdata->irq_flags);
 	if (retval) {
@@ -4293,6 +4291,8 @@ static void st_ts_fill_qts_vendor_data(struct qts_vendor_data *qts_vendor_data,
 	qts_vendor_data->schedule_suspend = false;
 	qts_vendor_data->schedule_resume = false;
 	qts_vendor_data->irq_gpio_flags = info->board->irq_flags;
+	qts_vendor_data->irq_gpio = info->board->irq_gpio;
+	qts_vendor_data->reset_gpio = info->board->reset_gpio;
 	qts_vendor_data->qts_vendor_ops.suspend = st_ts_suspend_helper;
 	qts_vendor_data->qts_vendor_ops.resume = st_ts_resume_helper;
 	qts_vendor_data->qts_vendor_ops.enable_touch_irq = st_ts_enable_touch_irq;
