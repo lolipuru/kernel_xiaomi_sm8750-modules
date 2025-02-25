@@ -525,7 +525,7 @@ static int fastrpc_buf_alloc(struct fastrpc_user *fl,
 			return ret;
 	}
 
-	return 0;
+	return ret;
 }
 
 /**
