@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/math64.h>
@@ -63,6 +63,7 @@
 #define DSIPHY_CMN_LANE_STATUS0                                   0x148
 #define DSIPHY_CMN_LANE_STATUS1                                   0x14C
 #define DSIPHY_CMN_GLBL_DIGTOP_SPARE10                            0x1AC
+#define DSIPHY_CMN_CTRL_5                                         0x1B0
 #define DSIPHY_CMN_SL_DSI_LANE_CTRL1                              0x1B4
 
 /* n = 0..3 for data lanes and n = 4 for clock lane */
@@ -239,6 +240,8 @@ static void dsi_phy_hw_cphy_enable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *c
 {
 	struct dsi_phy_per_lane_cfgs *timing = &cfg->timing;
 	u32 data;
+	u32 phy_step_version;
+
 	/* For C-PHY, no low power settings for lower clk rate */
 	u32 glbl_str_swi_cal_sel_ctrl = 0;
 	u32 glbl_hstx_str_ctrl_0 = 0;
@@ -276,6 +279,13 @@ static void dsi_phy_hw_cphy_enable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *c
 	DSI_W32(phy, DSIPHY_CMN_CTRL_0, 0x7f);
 
 	DSI_W32(phy, DSIPHY_CMN_LANE_CTRL0, 0x17);
+
+	phy_step_version = DSI_R32(phy, DSIPHY_CMN_REVISION_ID3);
+	phy_step_version <<= 8;
+	phy_step_version |= DSI_R32(phy, DSIPHY_CMN_REVISION_ID2);
+
+	if (phy_step_version >= 4 && cfg->pll_source == DSI_PLL_SOURCE_NATIVE)
+		DSI_W32(phy, DSIPHY_CMN_CTRL_5, 0x07);
 
 	switch (cfg->pll_source) {
 	case DSI_PLL_SOURCE_STANDALONE:
@@ -325,6 +335,7 @@ static void dsi_phy_hw_dphy_enable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *c
 	u32 glbl_rescode_bot_ctrl = 0;
 	bool split_link_enabled;
 	u32 lanes_per_sublink;
+	u32 phy_step_version;
 
 	/* Alter PHY configurations if data rate less than 1.5GHZ*/
 	if (cfg->bit_clk_rate_hz <= 1500000000)
@@ -394,6 +405,13 @@ static void dsi_phy_hw_dphy_enable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *c
 
 	/* Select full-rate mode */
 	DSI_W32(phy, DSIPHY_CMN_CTRL_2, 0x40);
+
+	phy_step_version = DSI_R32(phy, DSIPHY_CMN_REVISION_ID3);
+	phy_step_version <<= 8;
+	phy_step_version |= DSI_R32(phy, DSIPHY_CMN_REVISION_ID2);
+
+	if (phy_step_version >= 4 && cfg->pll_source == DSI_PLL_SOURCE_NATIVE)
+		DSI_W32(phy, DSIPHY_CMN_CTRL_5, 0x07);
 
 	switch (cfg->pll_source) {
 	case DSI_PLL_SOURCE_STANDALONE:

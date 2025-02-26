@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -530,16 +530,18 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 	struct sde_hw_pp_vsync_info info[MAX_CHANNELS_PER_ENC] = {{0}};
 	struct sde_encoder_phys_cmd_te_timestamp *te_timestamp;
 	struct sde_cesta_scc_status scc_status = {0, };
-	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+	struct sde_cesta_client *cesta_client;
 	unsigned long lock_flags;
 	u32 fence_ready = 0;
 
-	if (!phys_enc || !phys_enc->hw_pp || !phys_enc->hw_intf || !phys_enc->hw_ctl)
+	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_pp || !phys_enc->hw_intf
+		|| !phys_enc->hw_ctl)
 		return;
 
 	SDE_ATRACE_BEGIN("rd_ptr_irq");
 	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
 	ctl = phys_enc->hw_ctl;
+	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 
 	if (ctl->ops.get_scheduler_status)
 		scheduler_status = ctl->ops.get_scheduler_status(ctl);

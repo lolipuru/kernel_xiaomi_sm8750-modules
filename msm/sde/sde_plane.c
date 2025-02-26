@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -3980,7 +3980,7 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	 * proper CAC to non-CAC transition
 	 */
 	if (old_cac_mode != SDE_CAC_NONE) {
-		if (psde->pipe_hw->ops.setup_cac_ctrl)
+		if (psde->pipe_hw && psde->pipe_hw->ops.setup_cac_ctrl)
 			psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, SDE_CAC_NONE,
 				false, 0xf);
 		sde_plane_ctl_flush(plane, _sde_plane_get_hw_ctl(plane, old_state), true);
@@ -5691,7 +5691,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 		psde->pipe_hw = sde_hw_sspp_init(pipe, kms->mmio, kms->catalog, psde->is_virtual,
 				&clk_client, kms->dev->primary->index);
 
-	if (IS_ERR(psde->pipe_hw)) {
+	if (IS_ERR_OR_NULL(psde->pipe_hw)) {
 		SDE_ERROR("[%u]SSPP init failed\n", pipe);
 		ret = PTR_ERR(psde->pipe_hw);
 		goto clean_plane;
