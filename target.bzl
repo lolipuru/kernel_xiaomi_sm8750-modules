@@ -171,6 +171,24 @@ def define_parrot(t,v):
         ],
 )
 
+def define_lahaina(t,v):
+    define_target_variant_modules(
+        target = t,
+        variant = v,
+        registry = touch_driver_modules,
+        modules = [
+            "nt36xxx-i2c",
+	    "focaltech_fts"
+        ],
+        config_options = [
+            "TOUCH_DLKM_ENABLE",
+            "CONFIG_ARCH_LAHAINA",
+            "CONFIG_MSM_TOUCH",
+            "CONFIG_TOUCHSCREEN_NT36XXX_I2C",
+	    "CONFIG_TOUCH_FOCALTECH",
+        ],
+)
+
 def define_monaco(t,v):
     define_target_variant_modules(
         target = t,
@@ -206,6 +224,8 @@ def define_touch_target():
             define_pineapple(t, v)
         elif t == "parrot":
             define_parrot(t, v)
+        elif t == "lahaina":
+            define_lahaina(t, v)
         elif t == "monaco":
             define_monaco(t, v)
         elif t == "sun-tuivm":

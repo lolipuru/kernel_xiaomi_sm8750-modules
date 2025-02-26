@@ -71,6 +71,11 @@ ifeq ($(CONFIG_ARCH_RAVELIN), y)
 	LINUX_INC += -include $(TOUCH_ROOT)/config/gki_ravelintouchconf.h
 endif
 
+ifeq ($(CONFIG_ARCH_LAHAINA), y)
+	include $(TOUCH_ROOT)/config/gki_lahainatouch.conf
+	LINUX_INC += -include $(TOUCH_ROOT)/config/gki_lahainatouchconf.h
+endif
+
 LINUX_INC +=	-Iinclude/linux \
 		-Iinclude/linux/drm \
 		-Iinclude/linux/gunyah \
