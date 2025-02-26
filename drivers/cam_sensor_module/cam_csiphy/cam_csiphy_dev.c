@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_csiphy_dev.h"
@@ -200,7 +200,6 @@ static void cam_csiphy_subdev_handle_message(struct v4l2_subdev *sd,
 	switch (message_type) {
 	case CAM_SUBDEV_MESSAGE_REG_DUMP: {
 		cam_csiphy_trigger_reg_dump(csiphy_dev);
-		cam_soc_util_print_clk_freq(&csiphy_dev->soc_info);
 
 		break;
 	}
