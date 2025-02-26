@@ -3,7 +3,7 @@
  * QTI Secure Execution Environment Communicator (QSEECOM) driver
  *
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "QSEECOM: %s: " fmt, __func__
@@ -3351,6 +3351,14 @@ static int qseecom_prepare_unload_app(struct qseecom_dev_handle *data)
 
 	if (!memcmp(data->client.app_name, "keymaste", strlen("keymaste"))) {
 		pr_debug("Do not add keymaster app from tz to unload list\n");
+		/* release the associated dma-buf */
+		if (data->client.dmabuf) {
+			qseecom_vaddr_unmap(data->client.sb_virt, data->client.sgt,
+				data->client.attach, data->client.dmabuf);
+			MAKE_NULL(data->client.sgt,
+				data->client.attach, data->client.dmabuf);
+		}
+		data->released = true;
 		return 0;
 	}
 
