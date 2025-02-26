@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -137,7 +137,7 @@ struct lpass_cdc_tx_macro_priv {
 	struct mutex mclk_lock;
 	struct mutex wlock;
 	struct snd_soc_component *component;
-	struct tx_dec_unmute_work tx_dec_unmute_work;
+	struct tx_dec_unmute_work tx_dec_unmute_work[LPASS_CDC_TX_MACRO_MAX_DAIS];
 	struct hpf_work tx_hpf_work[NUM_DECIMATORS];
 	struct tx_mute_work tx_mute_dwork[NUM_DECIMATORS];
 	u16 dmic_clk_div[MIC_PAIR_MAX];
@@ -1363,9 +1363,9 @@ static int lpass_cdc_tx_mute_stream(struct snd_soc_dai *dai, int mute, int strea
 		/*
 		 * Schedule dwork after 10MS to unmute the dec to unblock the main thread
 		 */
-		tx_priv->tx_dec_unmute_work.dai_id = dai->id;
+		tx_priv->tx_dec_unmute_work[dai->id].dai_id = dai->id;
 		queue_delayed_work(system_freezable_wq,
-			&tx_priv->tx_dec_unmute_work.dwork,
+			&tx_priv->tx_dec_unmute_work[dai->id].dwork,
 			msecs_to_jiffies(LPASS_CDC_TX_MACRO_DEC_UNMUTE_DELAY_MS));
 	}
 	return 0;
@@ -2100,7 +2100,7 @@ static int lpass_cdc_tx_macro_init(struct snd_soc_component *component)
 {
 	struct snd_soc_dapm_context *dapm =
 			snd_soc_component_get_dapm(component);
-	int ret = 0, i = 0;
+	int ret = 0, i = 0, dai_idx;
 	struct device *tx_dev = NULL;
 	struct lpass_cdc_tx_macro_priv *tx_priv = NULL;
 
@@ -2168,9 +2168,11 @@ static int lpass_cdc_tx_macro_init(struct snd_soc_component *component)
 			  lpass_cdc_tx_macro_mute_update_callback);
 	}
 
-	tx_priv->tx_dec_unmute_work.tx_priv = tx_priv;
-	INIT_DELAYED_WORK(&tx_priv->tx_dec_unmute_work.dwork,
-		mute_stream_dec_unmute);
+	for (dai_idx = 0; dai_idx < LPASS_CDC_TX_MACRO_MAX_DAIS; ++dai_idx) {
+		tx_priv->tx_dec_unmute_work[dai_idx].tx_priv = tx_priv;
+		INIT_DELAYED_WORK(&tx_priv->tx_dec_unmute_work[dai_idx].dwork,
+				mute_stream_dec_unmute);
+	}
 	tx_priv->component = component;
 
 	for (i = 0; i < ARRAY_SIZE(lpass_cdc_tx_macro_reg_init); i++)
@@ -2298,14 +2300,16 @@ err_reg_macro:
 static int lpass_cdc_tx_macro_remove(struct platform_device *pdev)
 {
 	struct lpass_cdc_tx_macro_priv *tx_priv = NULL;
+	int dai_idx;
 
 	tx_priv = platform_get_drvdata(pdev);
 
 	if (!tx_priv)
 		return -EINVAL;
 
-	cancel_delayed_work_sync(
-		&tx_priv->tx_dec_unmute_work.dwork);
+	for (dai_idx = 0; dai_idx < LPASS_CDC_TX_MACRO_MAX_DAIS; ++dai_idx)
+		cancel_delayed_work_sync(
+				&tx_priv->tx_dec_unmute_work[dai_idx].dwork);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	mutex_destroy(&tx_priv->mclk_lock);
