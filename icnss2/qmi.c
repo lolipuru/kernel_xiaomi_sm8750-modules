@@ -862,14 +862,18 @@ int wlfw_cap_send_sync_msg(struct icnss_priv *priv)
 			     resp->serial_id.serial_id_lsb);
 	}
 
+	if (resp->fw_caps_valid)
+		priv->fw_caps = resp->fw_caps;
+
 	icnss_pr_dbg("Capability, chip_id: 0x%x, chip_family: 0x%x, board_id: 0x%x, soc_id: 0x%x",
 		     priv->chip_info.chip_id, priv->chip_info.chip_family,
 		     priv->board_id, priv->soc_id);
 
-	icnss_pr_dbg("fw_version: 0x%x, fw_build_timestamp: %s, fw_build_id: %s",
+	icnss_pr_dbg("fw_version: 0x%x, fw_build_timestamp: %s,\
+		     fw_build_id: %s, fw_caps: 0x%llx",
 		     priv->fw_version_info.fw_version,
 		     priv->fw_version_info.fw_build_timestamp,
-		     priv->fw_build_id);
+		     priv->fw_build_id, priv->fw_caps);
 
 	icnss_pr_dbg("RD card chain cap: %d, PHY HE channel width cap: %d, PHY QAM cap: %d",
 		     priv->rd_card_chain_cap, priv->phy_he_channel_width_cap,
@@ -3433,6 +3437,21 @@ int icnss_send_wlan_enable_to_fw(struct icnss_priv *priv,
 		       * req->shadow_reg_v3_len);
 	}
 
+	if (priv->device_id == WCN6450_DEVICE_ID &&
+	    priv->fw_caps & QMI_WLFW_CE_CMN_CFG_SUPPORT_V01) {
+		req->ce_cmn_reg_valid = 1;
+
+		if (config->num_ce_cmn_reg_config >
+					QMI_WLFW_MAX_NUM_CE_CMN_REG_V01)
+			req->ce_cmn_reg_len = QMI_WLFW_MAX_NUM_CE_CMN_REG_V01;
+		else
+			req->ce_cmn_reg_len = config->num_ce_cmn_reg_config;
+
+		memcpy(req->ce_cmn_reg, config->ce_cmn_reg_cfg,
+		       sizeof(struct wlfw_ce_cmn_register_config_v01)
+		       * req->ce_cmn_reg_len);
+	}
+
 	ret = wlfw_wlan_cfg_send_sync_msg(priv, req);
 
 	kfree(req);
@@ -3945,7 +3964,7 @@ out:
 }
 
 /* IMS Service */
-int ims_subscribe_for_indication_send_async(struct icnss_priv *priv)
+static int ims_subscribe_for_indication_send_async(struct icnss_priv *priv)
 {
 	int ret;
 	struct ims_private_service_subscribe_for_indications_req_msg_v01 *req;

@@ -651,6 +651,7 @@ struct icnss_priv {
 	struct kobject *wifi_kobj;
 	struct wlfw_shared_mem_client_info_v01
 		shared_mem[QMI_WLFW_SHARED_MAX_CLIENT_SUPPORT_V01];
+	u64 fw_caps;
 };
 
 struct icnss_reg_info {

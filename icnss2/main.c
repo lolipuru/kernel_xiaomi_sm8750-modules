@@ -204,6 +204,37 @@ static void icnss_pm_relax(struct icnss_priv *priv)
 	priv->stats.pm_relax++;
 }
 
+/**
+ * icnss_get_fw_cap - Check whether FW supports specific capability or not
+ * @dev: Device
+ * @fw_cap: FW Capability which needs to be checked
+ *
+ * Return: TRUE if supported, FALSE on failure or if not supported
+ */
+bool icnss_get_fw_cap(struct device *dev, enum icnss_fw_caps fw_cap)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+	bool is_supported = false;
+
+	if (!priv || !priv->fw_caps)
+		return is_supported;
+
+	switch (fw_cap) {
+	case ICNSS_FW_CAP_CE_CMN_CFG_SUPPORT:
+		is_supported = !!(priv->fw_caps &
+				  QMI_WLFW_CE_CMN_CFG_SUPPORT_V01);
+		break;
+	default:
+		icnss_pr_err("Invalid FW Capability: 0x%x\n", fw_cap);
+	}
+
+	icnss_pr_dbg("FW Capability 0x%x is %s\n", fw_cap,
+		     is_supported ? "supported" : "not supported");
+
+	return is_supported;
+}
+EXPORT_SYMBOL(icnss_get_fw_cap);
+
 char *icnss_driver_event_to_str(enum icnss_driver_event_type type)
 {
 	switch (type) {
@@ -3708,12 +3739,20 @@ int icnss_thermal_cdev_register(struct device *dev, unsigned long max_state,
 	icnss_tcdev->max_thermal_state = max_state;
 
 	snprintf(cdev_node_name, THERMAL_NAME_LENGTH,
-		 "qcom,icnss_cdev%d", tcdev_id);
+		 "icnss_cdev%d", tcdev_id);
 
 	dev_node = of_find_node_by_name(NULL, cdev_node_name);
+
 	if (!dev_node) {
-		icnss_pr_err("Failed to get cooling device node\n");
-		return -EINVAL;
+		snprintf(cdev_node_name, THERMAL_NAME_LENGTH,
+			 "qcom,icnss_cdev%d", tcdev_id);
+
+		dev_node = of_find_node_by_name(NULL, cdev_node_name);
+
+		if (!dev_node) {
+			icnss_pr_err("Failed to get cooling device node\n");
+			return -EINVAL;
+		}
 	}
 
 	icnss_pr_dbg("tcdev node->name=%s\n", dev_node->name);
@@ -5589,7 +5628,7 @@ static void icnss_pci_smmu_fault_handler_irq(struct iommu_domain *domain,
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0))
-void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
+static void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
 {
 	struct platform_device *pdev = priv->pdev;
 	struct device *dev = &pdev->dev;
@@ -5599,7 +5638,7 @@ void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
 				priv);
 }
 #else
-void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
+static void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
 {
 	qcom_iommu_set_fault_handler_irq(priv->iommu_domain,
 					 icnss_pci_smmu_fault_handler_irq,
@@ -5607,7 +5646,7 @@ void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
 }
 #endif
 #else
-void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
+static void icnss_register_iommu_fault_handler_irq(struct icnss_priv *priv)
 {
 }
 
