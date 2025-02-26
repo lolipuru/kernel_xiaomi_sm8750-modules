@@ -1635,7 +1635,7 @@ static int cnss_update_supported_link_info(struct cnss_pci_data *pci_priv)
 	return ret;
 }
 
-static int cnss_pci_get_link_status(struct cnss_pci_data *pci_priv)
+int cnss_pci_get_link_status(struct cnss_pci_data *pci_priv)
 {
 	u16 link_status;
 	int ret;
