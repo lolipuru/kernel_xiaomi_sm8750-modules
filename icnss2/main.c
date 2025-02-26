@@ -164,11 +164,12 @@ static ssize_t icnss_sysfs_store(struct kobject *kobj,
 	if (!priv)
 		return count;
 
-	icnss_pr_dbg("Received shutdown indication");
+	icnss_pr_info("Received shutdown indication");
 
 	atomic_set(&priv->is_shutdown, true);
-	if ((priv->wpss_supported || priv->rproc_fw_download) &&
-	    priv->device_id == ADRASTEA_DEVICE_ID)
+	if (((priv->wpss_supported || priv->rproc_fw_download) &&
+	      priv->device_id == ADRASTEA_DEVICE_ID) ||
+	      priv->device_id == WCN7750_DEVICE_ID)
 		icnss_wpss_unload(priv);
 	return count;
 }
@@ -2933,7 +2934,7 @@ static int icnss_wpss_early_notifier_nb(struct notifier_block *nb,
 	struct icnss_priv *priv = container_of(nb, struct icnss_priv,
 					       wpss_early_ssr_nb);
 
-	icnss_pr_vdbg("WPSS-EARLY-Notify: event %s(%lu)\n",
+	icnss_pr_info("WPSS-EARLY-Notify: event %s(%lu)\n",
 		      icnss_qcom_ssr_notify_state_to_str(code), code);
 
 	if (code == QCOM_SSR_BEFORE_SHUTDOWN) {
@@ -2950,7 +2951,10 @@ static int icnss_reboot_notifier(struct notifier_block *nb,
 	struct icnss_priv *priv = container_of(nb, struct icnss_priv,
 					       reboot_nb);
 
-	icnss_pr_dbg("Received Reboot indication");
+	if (atomic_read(&priv->is_shutdown))
+		return NOTIFY_DONE;
+
+	icnss_pr_info("Received Reboot indication");
 
 	atomic_set(&priv->is_shutdown, true);
 	icnss_wpss_unload(priv);
@@ -2968,7 +2972,7 @@ static int icnss_wpss_notifier_nb(struct notifier_block *nb,
 					       wpss_ssr_nb);
 	struct icnss_uevent_fw_down_data fw_down_data = {0};
 
-	icnss_pr_vdbg("WPSS-Notify: event %s(%lu)\n",
+	icnss_pr_info("WPSS-Notify: event %s(%lu)\n",
 		      icnss_qcom_ssr_notify_state_to_str(code), code);
 
 	switch (code) {
@@ -3030,7 +3034,7 @@ static int icnss_wpss_notifier_nb(struct notifier_block *nb,
 		mod_timer(&priv->recovery_timer,
 			  jiffies + msecs_to_jiffies(ICNSS_RECOVERY_TIMEOUT));
 out:
-	icnss_pr_vdbg("Exit %s,state: 0x%lx\n", __func__, priv->state);
+	icnss_pr_info("Exit %s,state: 0x%lx\n", __func__, priv->state);
 	return NOTIFY_OK;
 }
 
@@ -3970,7 +3974,7 @@ int icnss_unregister_driver(struct icnss_driver_ops *ops)
 		goto out;
 	}
 
-	icnss_pr_dbg("Unregistering driver, state: 0x%lx\n", priv->state);
+	icnss_pr_info("Unregistering driver, state: 0x%lx\n", priv->state);
 
 	if (!priv->ops) {
 		icnss_pr_err("Driver not registered\n");
