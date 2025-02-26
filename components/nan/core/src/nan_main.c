@@ -107,10 +107,14 @@ void nan_update_pasn_peer_count(struct wlan_objmgr_vdev *vdev,
 		return;
 	}
 
-	if (is_increment)
+	if (is_increment) {
 		nan_vdev_obj->num_pasn_peers++;
-	else if (nan_vdev_obj->num_pasn_peers)
+	} else if (!nan_vdev_obj->num_pasn_peers) {
+		nan_err("No PASN peers present");
+		return;
+	} else if (nan_vdev_obj->num_pasn_peers) {
 		nan_vdev_obj->num_pasn_peers--;
+	}
 
 	nan_debug("Pasn peer count:%d", nan_vdev_obj->num_pasn_peers);
 }
@@ -2556,7 +2560,7 @@ QDF_STATUS nan_handle_delete_all_pasn_peers(struct wlan_objmgr_psoc *psoc,
 	nan_vdev_obj->num_pasn_peers = 0;
 
 	if (psoc_nan_obj->cb_obj.ucfg_nan_request_process_cb) {
-		cookie = (uint8_t *)psoc_nan_obj->nan_pairing_create_ctx;
+		cookie = (uint8_t *)psoc_nan_obj->nan_delete_all_peer_ctx;
 		psoc_nan_obj->cb_obj.ucfg_nan_request_process_cb(cookie);
 	}
 
