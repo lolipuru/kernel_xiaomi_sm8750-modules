@@ -1606,6 +1606,9 @@ int cnss_aop_pdc_reconfig(struct cnss_plat_data *plat_priv)
 	u32 i;
 	int ret = 0;
 
+	cnss_pr_dbg("PDC init table length: %d\n",
+		    plat_priv->pdc_init_table_len);
+
 	if (plat_priv->pdc_init_table_len <= 0 || !plat_priv->pdc_init_table)
 		return 0;
 
