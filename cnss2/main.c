@@ -2094,6 +2094,12 @@ static irqreturn_t cnss_dev_sol_handler(int irq, void *data)
 	struct cnss_sol_gpio *sol_gpio = &plat_priv->sol_gpio;
 	int sol_gpio_value;
 
+	if (plat_priv->device_id == FIG_DEVICE_ID) {
+		cnss_pr_info("Dev sol received for fig\n");
+		//CNSS_ASSERT(0);
+		return IRQ_HANDLED;
+	}
+
 	sol_gpio_value = cnss_get_dev_sol_value(plat_priv);
 	if (test_bit(CNSS_POWER_OFF, &plat_priv->driver_state) ||
 	    test_bit(CNSS_POWERING_ON, &plat_priv->driver_state) ||
@@ -2200,6 +2206,12 @@ static int cnss_init_host_sol_gpio(struct cnss_plat_data *plat_priv)
 	struct cnss_sol_gpio *sol_gpio = &plat_priv->sol_gpio;
 	int ret = 0;
 
+	if (plat_priv->device_id == FIG_DEVICE_ID) {
+		cnss_pr_info("Reject normal host sol for: 0x%lx\n",
+			     plat_priv->device_id);
+		return 0;
+	}
+
 	sol_gpio->host_sol_gpio = of_get_named_gpio(dev->of_node,
 						    "wlan-host-sol-gpio", 0);
 	if (sol_gpio->host_sol_gpio < 0)
@@ -2251,6 +2263,592 @@ deinit_dev_sol:
 	cnss_deinit_dev_sol_gpio(plat_priv);
 out:
 	return ret;
+}
+
+#if IS_ENABLED(CONFIG_CNSS2_DIRECT_CX)
+int cnss_set_direct_cx_host_sol_value(struct cnss_plat_data *plat_priv,
+				      int value)
+{
+	if (plat_priv->direct_cx_host_sol_gpio < 0)
+		return -EINVAL;
+
+	if (value)
+		cnss_pr_dbg("Assert Direct CX Host SOL GPIO\n");
+	gpio_set_value(plat_priv->direct_cx_host_sol_gpio, value);
+
+	return 0;
+}
+
+int cnss_get_direct_cx_host_sol_value(struct cnss_plat_data *plat_priv)
+{
+	if (plat_priv->direct_cx_host_sol_gpio < 0)
+		return -EINVAL;
+
+	return gpio_get_value(plat_priv->direct_cx_host_sol_gpio);
+}
+
+int cnss_init_direct_cx_host_sol_gpio(struct cnss_plat_data *plat_priv)
+{
+	struct device *dev = &plat_priv->plat_dev->dev;
+	int ret = 0;
+
+	plat_priv->direct_cx_host_sol_gpio =
+			of_get_named_gpio(dev->of_node,
+					  "cnss-direct-cx-host-sol-init-gpio",
+					  0);
+	if (plat_priv->direct_cx_host_sol_gpio < 0)
+		goto out;
+
+	cnss_pr_dbg("Get Direct CX Host SOL GPIO (%d) from device node\n",
+		    plat_priv->direct_cx_host_sol_gpio);
+
+	ret = gpio_request(plat_priv->direct_cx_host_sol_gpio,
+			   "cnss_direct_cx_host_sol_init_gpio");
+	if (ret) {
+		cnss_pr_err("Failed to request Direct CX Host SOL GPIO: %d\n",
+			    ret);
+		goto out;
+	}
+
+	gpio_direction_output(plat_priv->direct_cx_host_sol_gpio, 0);
+
+	return 0;
+
+out:
+	return ret;
+}
+
+static void cnss_deinit_direct_cx_host_sol_gpio(struct cnss_plat_data *plat_priv)
+{
+	if (plat_priv->direct_cx_host_sol_gpio < 0)
+		return;
+
+	gpio_free(plat_priv->direct_cx_host_sol_gpio);
+}
+#else
+int cnss_set_direct_cx_host_sol_value(struct cnss_plat_data *plat_priv, int value)
+{
+	return 0;
+}
+
+int cnss_get_direct_cx_host_sol_value(struct cnss_plat_data *plat_priv)
+{
+	return -EINVAL;
+}
+
+int cnss_init_direct_cx_host_sol_gpio(struct cnss_plat_data *plat_priv)
+{
+	return 0;
+}
+
+static void cnss_deinit_direct_cx_host_sol_gpio(struct cnss_plat_data *plat_priv)
+{
+}
+#endif
+
+#if IS_ENABLED(CONFIG_CNSS2_DIRECT_CX_SDAM)
+static int cnss_set_cx_mode_sdam(struct cnss_plat_data *plat_priv,
+				 enum cx_modes arg)
+{
+	int rc = 0;
+	u8 mode = (u8)arg;
+
+	cnss_pr_info("Entering cnss_set_cx_mode_sdam\n");
+
+	if (!plat_priv) {
+		cnss_pr_info("plat_priv is null\n");
+		return -EINVAL;
+	}
+
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_data_pin_mode_en)) {
+		cnss_pr_err("wlan_data_pin_mode_en cell is not available\n");
+		return -ENOENT;
+	}
+
+	rc = nvmem_cell_write(plat_priv->nvmem_cell_wlan_data_pin_mode_en,
+			      &mode, sizeof(mode));
+	if (rc < 0) {
+		cnss_pr_err("Write to wlan_data_pin_mode_en cell failed: %d",
+			    rc);
+		return rc;
+	}
+
+	cnss_pr_info("Successfully wrote val %d into wlan_data_pin_mode_en\n",
+		     mode);
+
+	return 0;
+}
+
+static int cnss_get_cxpc_sdam(struct cnss_plat_data *plat_priv)
+{
+	struct device *dev = &plat_priv->plat_dev->dev;
+	size_t len;
+	u8 *buf;
+	u8 ret = 0;
+
+	cnss_pr_info("Entering cnss_get_cxpc_sdam\n");
+
+	if (!plat_priv) {
+		cnss_pr_info("plat_priv is null\n");
+		return -EINVAL;
+	}
+
+	if (!dev) {
+		cnss_pr_info("dev is null\n");
+		return -ENODEV;
+	}
+
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_cx_ret_off_sel)) {
+		cnss_pr_err("wlan_cx_ret_off_sel is not available\n");
+		return -ENOENT;
+	}
+
+	buf = nvmem_cell_read(plat_priv->nvmem_cell_wlan_cx_ret_off_sel, &len);
+	if (IS_ERR(buf)) {
+		dev_err(dev, "Failed to read wlan_cx_ret_off_sel: %ld\n",
+			PTR_ERR(buf));
+		cnss_pr_err("Failed to read wlan_cx_ret_off_sel: %d\n",
+			    PTR_ERR(buf));
+		return PTR_ERR(buf);
+	}
+
+	ret = *buf;
+
+	cnss_pr_info("Successfully read val %d from wlan_cx_ret_off_sel\n",
+		     ret);
+
+	kfree(buf);
+
+	return ret;
+}
+
+static int cnss_set_cxpc_sdam(struct cnss_plat_data *plat_priv,
+			      enum cxpc_status arg)
+{
+	int rc = 0;
+	u8 mode = (u8)arg;
+
+	cnss_pr_info("Entering cnss_set_cxpc_sdam\n");
+
+	if (!plat_priv) {
+		cnss_pr_info("plat_priv is null\n");
+		return -EINVAL;
+	}
+
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_cx_ret_off_sel)) {
+		cnss_pr_err("wlan_cx_ret_off_sel is not available\n");
+		return -ENOENT;
+	}
+
+	rc = nvmem_cell_write(plat_priv->nvmem_cell_wlan_cx_ret_off_sel,
+			      &mode, sizeof(mode));
+	if (rc < 0) {
+		cnss_pr_err("Write to wlan_cx_ret_off_sel cell failed: %d",
+			    rc);
+		return rc;
+	}
+
+	cnss_pr_info("Successfully wrote val %d into wlan_cx_ret_off_sel\n",
+		     mode);
+
+	return 0;
+}
+
+static int cnss_set_cx_voltage_corner_sdam(struct cnss_plat_data *plat_priv,
+					   enum cx_voltage_corners vc,
+					   u16 arg)
+{
+	int rc = 0;
+	struct nvmem_cell *nvmem_cell;
+
+	cnss_pr_info("Entering cnss_set_cx_voltage_corner_sdam\n");
+
+	if (!plat_priv) {
+		cnss_pr_info("plat_priv is null\n");
+		return -EINVAL;
+	}
+
+	switch (vc) {
+	case CX_RET_V:
+		nvmem_cell = plat_priv->nvmem_cell_wlan_cx_ret_mv;
+		break;
+	case CX_SVS:
+		nvmem_cell = plat_priv->nvmem_cell_wlan_cx_svs_mv;
+		break;
+	case CX_SVSL1:
+		nvmem_cell = plat_priv->nvmem_cell_wlan_cx_svs_l1_mv;
+		break;
+	case CX_NOM:
+		nvmem_cell = plat_priv->nvmem_cell_wlan_cx_nom_mv;
+		break;
+	default:
+		cnss_pr_err("Invalid voltage corner: %d\n", vc);
+		break;
+	}
+
+	if (IS_ERR(nvmem_cell)) {
+		cnss_pr_err("%d voltage corner cell is not available\n", vc);
+		return -EINVAL;
+	}
+
+	rc = nvmem_cell_write(nvmem_cell, &arg, sizeof(arg));
+	if (rc < 0) {
+		cnss_pr_err("Write to %d voltage corner cell failed: %d", vc,
+			    rc);
+		return rc;
+	}
+
+	cnss_pr_info("Successfully wrote val %d into %d voltage corner$s\n",
+		     arg, vc);
+
+	return 0;
+}
+
+u8 *cnss_read_debug_register(struct cnss_plat_data *plat_priv)
+{
+	u8 *buf;
+	size_t len;
+	struct device *dev = &plat_priv->plat_dev->dev;
+	u8 ret = 0;
+
+	cnss_pr_info("Entering cnss_read_debug_register\n");
+
+	if (!plat_priv) {
+		cnss_pr_info("plat_priv is null\n");
+		return NULL;
+	}
+
+	if (!dev) {
+		cnss_pr_info("dev is null\n");
+		return NULL;
+	}
+
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_seq_debug)) {
+		cnss_pr_err("wlan_seq_debug cell is not available\n");
+		return NULL;
+	}
+
+	buf = nvmem_cell_read(plat_priv->nvmem_cell_wlan_seq_debug, &len);
+	if (IS_ERR(buf)) {
+		dev_err(dev, "Failed to read wlan_seq_debug: %ld\n",
+			PTR_ERR(buf));
+		cnss_pr_err("Failed to read wlan_seq_debug: %d\n", buf[0]);
+		return NULL;
+	}
+
+	ret = *buf;
+
+	cnss_pr_info("Successfully read val %d from wlan_seq_debug\n",
+		     ret);
+
+	return buf;
+}
+
+static void cnss_enable_direct_cx_pmic_pbs(struct cnss_plat_data *plat_priv)
+{
+	cnss_pr_info("Entering cnss_enable_direct_cx_pmic_pbs\n");
+	if (!of_property_read_bool(plat_priv->plat_dev->dev.of_node,
+				   "fig-direct-cx")) {
+		cnss_pr_info("Enabling Direct CX feature\n");
+	}
+}
+
+static int cnss_get_nvmem_cells(struct cnss_plat_data *plat_priv)
+{
+	struct device *dev = &plat_priv->plat_dev->dev;
+	int rc = 0;
+
+	cnss_pr_info("Starting Direct CX nvmem-cells get\n");
+	plat_priv->nvmem_cell_wlan_data_pin_mode_en =
+		devm_nvmem_cell_get(dev, "wlan_data_pin_mode_en");
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_data_pin_mode_en)) {
+		rc = PTR_ERR(plat_priv->nvmem_cell_wlan_data_pin_mode_en);
+		cnss_pr_err("Failed to get wlan_data_pin_mode_en nvmem cells: %d\n",
+			    rc);
+		goto out;
+	}
+	plat_priv->nvmem_cell_wlan_cx_ret_off_sel =
+		devm_nvmem_cell_get(dev, "wlan_cx_ret_off_sel");
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_cx_ret_off_sel)) {
+		rc = PTR_ERR(plat_priv->nvmem_cell_wlan_cx_ret_off_sel);
+		cnss_pr_err("Failed to get wlan_cx_ret_off_sel nvmem cells: %d\n",
+			    rc);
+		goto out;
+	}
+	plat_priv->nvmem_cell_wlan_cx_ret_mv =
+		devm_nvmem_cell_get(dev, "wlan_cx_ret_mv");
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_cx_ret_mv)) {
+		rc = PTR_ERR(plat_priv->nvmem_cell_wlan_cx_ret_mv);
+		cnss_pr_err("Failed to get wlan_cx_ret_mv nvmem cells: %d\n",
+			    rc);
+		goto out;
+	}
+	plat_priv->nvmem_cell_wlan_cx_svs_mv =
+		devm_nvmem_cell_get(dev, "wlan_cx_svs_mv");
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_cx_svs_mv)) {
+		rc = PTR_ERR(plat_priv->nvmem_cell_wlan_cx_svs_mv);
+		cnss_pr_err("Failed to get wlan_cx_svs_mv nvmem cells: %d\n",
+			    rc);
+		goto out;
+	}
+	plat_priv->nvmem_cell_wlan_cx_svs_l1_mv =
+		devm_nvmem_cell_get(dev, "wlan_cx_svs_l1_mv");
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_cx_svs_l1_mv)) {
+		rc = PTR_ERR(plat_priv->nvmem_cell_wlan_cx_svs_l1_mv);
+		cnss_pr_err("Failed to get wlan_cx_svs_l1_mv nvmem cells: %d\n",
+			    rc);
+		goto out;
+	}
+	plat_priv->nvmem_cell_wlan_cx_nom_mv =
+		devm_nvmem_cell_get(dev, "wlan_cx_nom_mv");
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_cx_nom_mv)) {
+		rc = PTR_ERR(plat_priv->nvmem_cell_wlan_cx_nom_mv);
+		cnss_pr_err("Failed to get wlan_cx_nom_mv nvmem cells: %d\n",
+			    rc);
+		goto out;
+	}
+	plat_priv->nvmem_cell_wlan_seq_debug =
+		devm_nvmem_cell_get(dev, "wlan_seq_debug");
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_seq_debug)) {
+		rc = PTR_ERR(plat_priv->nvmem_cell_wlan_seq_debug);
+		cnss_pr_err("Failed to get wlan_seq_debug nvmem cells: %d\n",
+			    rc);
+		goto out;
+	}
+	plat_priv->nvmem_cell_wlan_seq_count =
+		devm_nvmem_cell_get(dev, "wlan_seq_count");
+	if (IS_ERR(plat_priv->nvmem_cell_wlan_seq_count)) {
+		rc = PTR_ERR(plat_priv->nvmem_cell_wlan_seq_count);
+		cnss_pr_err("Failed to get wlan_seq_count nvmem cells: %d\n",
+			    rc);
+		goto out;
+	}
+
+	cnss_pr_info("Direct CX nvmem-cells get completed\n");
+
+	return 0;
+out:
+
+	return -ENOENT;
+}
+
+#else
+static int cnss_set_cx_mode_sdam(struct cnss_plat_data *plat_priv,
+				 enum cx_modes arg)
+{
+	return 0;
+}
+
+static int cnss_get_cxpc_sdam(struct cnss_plat_data *plat_priv)
+{
+	return 0;
+}
+
+static int cnss_set_cxpc_sdam(struct cnss_plat_data *plat_priv,
+			      enum cxpc_status arg)
+{
+	return 0;
+}
+
+static int cnss_set_cx_voltage_corner_sdam(struct cnss_plat_data *plat_priv,
+					   enum cx_voltage_corners vc,
+					   u16 arg)
+{
+	return 0;
+}
+
+u8 *cnss_read_debug_register(struct cnss_plat_data *plat_priv)
+{
+	cnss_pr_info("Entering negative cnss_read_debug_register function\n");
+	return NULL;
+}
+
+static void cnss_enable_direct_cx_pmic_pbs(struct cnss_plat_data *plat_priv)
+{
+}
+
+static int cnss_get_nvmem_cells(struct cnss_plat_data *plat_priv)
+{
+	return 0;
+}
+#endif
+
+int cnss_set_cx_mode(struct cnss_plat_data *plat_priv, enum cx_modes arg)
+{
+	u32 cx_mode_dt;
+	int ret;
+
+	cnss_pr_info("Entering cnss_set_cx_mode\n");
+
+	if (!plat_priv) {
+		cnss_pr_err("plat priv is null\n");
+		return -ENODEV;
+	}
+
+	ret  = of_property_read_u32(plat_priv->plat_dev->dev.of_node,
+				    "cx-mode", &cx_mode_dt);
+	if (ret) {
+		cnss_pr_err("could not find cx mode\n");
+		return -EINVAL;
+	}
+
+	if (cx_mode_dt == CX_DATA_PIN_PMIC)
+		return cnss_set_cx_mode_sdam(plat_priv, arg);
+	else if (cx_mode_dt == CX_DATA_PIN_PDC) {
+		//TODO: Add Hawi implementation
+		return -ENOSYS;
+	}
+
+	return 0;
+}
+
+int cnss_get_cxpc(struct cnss_plat_data *plat_priv)
+{
+	u32 cx_mode_dt;
+	int ret;
+
+	cnss_pr_info("Entering cnss_get_cxpc\n");
+
+	if (!plat_priv) {
+		cnss_pr_err("plat priv is null\n");
+		return -ENODEV;
+	}
+
+	ret  = of_property_read_u32(plat_priv->plat_dev->dev.of_node,
+				    "cx-mode", &cx_mode_dt);
+	if (ret) {
+		cnss_pr_err("could not find cx mode\n");
+		return -EINVAL;
+	}
+
+	if (cx_mode_dt == CX_DATA_PIN_PMIC)
+		return cnss_get_cxpc_sdam(plat_priv);
+	else if (cx_mode_dt == CX_DATA_PIN_PDC) {
+		//TODO: Add Hawi implementation
+		return -ENOSYS;
+	}
+
+	return 0;
+}
+
+int cnss_set_cxpc_power_off(struct cnss_plat_data *plat_priv,
+			    enum cxpc_status arg)
+{
+	u32 cx_mode_dt;
+	int ret;
+
+	cnss_pr_info("Entering cnss_set_cxpc_power_off\n");
+
+	if (!plat_priv) {
+		cnss_pr_err("plat priv is null\n");
+		return -ENODEV;
+	}
+
+	ret  = of_property_read_u32(plat_priv->plat_dev->dev.of_node,
+				    "cx-mode", &cx_mode_dt);
+	if (ret) {
+		cnss_pr_err("could not find cx mode\n");
+		return -EINVAL;
+	}
+
+	if (cx_mode_dt == CX_DATA_PIN_PMIC)
+		return cnss_set_cxpc_sdam(plat_priv, arg);
+	else if (cx_mode_dt == CX_DATA_PIN_PDC) {
+		//TODO: Add Hawi implementation
+		return -ENOSYS;
+	}
+
+	return 0;
+}
+
+int cnss_set_cxpc(struct device *dev, enum cxpc_status arg)
+{
+	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
+	u32 cx_mode_dt;
+	int ret;
+
+	cnss_pr_info("Entering cnss_set_cxpc\n");
+
+	if (!plat_priv) {
+		cnss_pr_err("plat priv is null\n");
+		return -ENODEV;
+	}
+
+	ret  = of_property_read_u32(plat_priv->plat_dev->dev.of_node,
+				    "cx-mode", &cx_mode_dt);
+	if (ret) {
+		cnss_pr_err("could not find cx mode\n");
+		return -EINVAL;
+	}
+
+	if (cx_mode_dt == CX_DATA_PIN_PMIC)
+		return cnss_set_cxpc_sdam(plat_priv, arg);
+	else if (cx_mode_dt == CX_DATA_PIN_PDC) {
+		//TODO: Add Hawi implementation
+		return -ENOSYS;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(cnss_set_cxpc);
+
+int cnss_set_cx_voltage_corner(struct cnss_plat_data *plat_priv,
+			       enum cx_voltage_corners vc, u16 arg)
+{
+	u32 cx_mode_dt;
+	int ret;
+
+	cnss_pr_info("Entering cnss_set_cx_voltage_corner\n");
+
+	if (!plat_priv) {
+		cnss_pr_info("plat_priv is null\n");
+		return -EINVAL;
+	}
+
+	ret  = of_property_read_u32(plat_priv->plat_dev->dev.of_node,
+				    "cx-mode", &cx_mode_dt);
+	if (ret) {
+		cnss_pr_err("could not find cx mode\n");
+		return -EINVAL;
+	}
+
+	if (cx_mode_dt == CX_DATA_PIN_PMIC)
+		return cnss_set_cx_voltage_corner_sdam(plat_priv, vc, arg);
+	else if (cx_mode_dt == CX_DATA_PIN_PDC) {
+		//TODO: Add Hawi implementation
+		return -ENOSYS;
+	}
+
+	return 0;
+}
+
+u8 *cnss_debug_direct_cx(struct cnss_plat_data *plat_priv)
+{
+	u32 cx_mode_dt;
+	int ret;
+
+	cnss_pr_info("Entering cnss_debug_direct_cx\n");
+
+	if (!plat_priv) {
+		cnss_pr_info("plat_priv is null\n");
+		return NULL;
+	}
+
+	ret  = of_property_read_u32(plat_priv->plat_dev->dev.of_node,
+				    "cx-mode", &cx_mode_dt);
+	if (ret) {
+		cnss_pr_err("could not find cx mode\n");
+		return NULL;
+	}
+
+	if (cx_mode_dt == CX_DATA_PIN_PMIC)
+		return cnss_read_debug_register(plat_priv);
+	else if (cx_mode_dt == CX_DATA_PIN_PDC) {
+		//TODO: Add Hawi implementation
+		return NULL;
+	}
+
+	return NULL;
 }
 
 static void cnss_deinit_sol_gpio(struct cnss_plat_data *plat_priv)
@@ -5822,6 +6420,7 @@ static void cnss_misc_deinit(struct cnss_plat_data *plat_priv)
 	unregister_reboot_notifier(&plat_priv->reboot_nb);
 	del_timer(&plat_priv->fw_boot_timer);
 	wakeup_source_unregister(plat_priv->recovery_ws);
+	cnss_deinit_direct_cx_host_sol_gpio(plat_priv);
 	cnss_deinit_sol_gpio(plat_priv);
 	cnss_sram_dump_deinit(plat_priv);
 	kfree(plat_priv->on_chip_pmic_board_ids);
@@ -6447,6 +7046,8 @@ static int cnss_probe(struct platform_device *plat_dev)
 	INIT_LIST_HEAD(&plat_priv->vreg_list);
 	INIT_LIST_HEAD(&plat_priv->clk_list);
 
+	cnss_enable_direct_cx_pmic_pbs(plat_priv);
+	cnss_get_nvmem_cells(plat_priv);
 	cnss_get_pm_domain_info(plat_priv);
 	cnss_get_wlaon_pwr_ctrl_info(plat_priv);
 	cnss_power_misc_params_init(plat_priv);
@@ -6506,6 +7107,7 @@ static int cnss_probe(struct platform_device *plat_dev)
 	 * device power on and bus init.
 	 */
 	if (!test_bit(CNSS_WLAN_HW_DISABLED, &plat_priv->driver_state)) {
+		//turns on regulators
 		ret = cnss_wlan_device_init(plat_priv);
 		if (ret)
 			goto deinit_misc;

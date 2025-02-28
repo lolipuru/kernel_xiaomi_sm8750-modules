@@ -203,3 +203,15 @@ config CNSS_ETM_TRACE
 	depends on CNSS2
 	help
 	  This option is to enable CNSS2 platform driver etm trace support.
+
+config CNSS2_DIRECT_CX
+	bool "CNSS2 Platform Driver Direct CX Support"
+	depends on CNSS2
+	help
+	  This option is to enable CNSS2 platform driver direct cx support.
+
+config CNSS2_DIRECT_CX_SDAM
+	bool "CNSS2 Platform Driver Direct CX SDAM Support"
+	depends on CNSS2
+	help
+	  This option is to enable CNSS2 platform driver usage of PMIC SDAM.

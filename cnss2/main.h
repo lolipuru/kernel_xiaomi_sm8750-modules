@@ -50,6 +50,7 @@
 #if IS_ENABLED(CONFIG_PCIE_QCOM_ECAM)
 #include <linux/pm_domain.h>
 #endif
+#include <linux/nvmem-consumer.h>
 
 #define MAX_NO_OF_MAC_ADDR		4
 #define QMI_WLFW_MAX_TIMESTAMP_LEN	32
@@ -92,6 +93,20 @@
 #define TME_RPR_FILE_NAME		"peach_rpr.bin"
 #define TME_DPR_FILE_NAME		"peach_dpr.bin"
 #define CGN_TME_OEM_FUSE_FILE_NAME	"cologne_sec.dat"
+
+enum cx_modes {
+	CX_LEGACY = 0,
+	CX_DATA_PIN,
+	CX_DATA_PIN_PDC,
+	CX_DATA_PIN_PMIC,
+};
+
+enum cx_voltage_corners {
+	CX_RET_V = 0,
+	CX_SVS,
+	CX_SVSL1,
+	CX_NOM,
+};
 
 enum cnss_dt_type {
 	CNSS_DTT_LEGACY = 0,
@@ -734,6 +749,18 @@ struct cnss_plat_data {
 	struct notifier_block pm_notifier;
 	struct cnss_xo_trim_config xo_trim_conf;
 	struct cnss_xdump_helper xdump_helper;
+	bool direct_cx_data_pin_mode;
+	int direct_cx_host_sol_gpio;
+#if IS_ENABLED(CONFIG_CNSS2_DIRECT_CX_SDAM)
+	struct nvmem_cell *nvmem_cell_wlan_data_pin_mode_en;
+	struct nvmem_cell *nvmem_cell_wlan_cx_ret_off_sel;
+	struct nvmem_cell *nvmem_cell_wlan_cx_ret_mv;
+	struct nvmem_cell *nvmem_cell_wlan_cx_svs_mv;
+	struct nvmem_cell *nvmem_cell_wlan_cx_svs_l1_mv;
+	struct nvmem_cell *nvmem_cell_wlan_cx_nom_mv;
+	struct nvmem_cell *nvmem_cell_wlan_seq_debug;
+	struct nvmem_cell *nvmem_cell_wlan_seq_count;
+#endif
 };
 
 #if IS_ENABLED(CONFIG_ARCH_QCOM)
@@ -796,6 +823,10 @@ int cnss_init_dev_sol_irq(struct cnss_plat_data *plat_priv);
 int cnss_deinit_dev_sol_irq(struct cnss_plat_data *plat_priv);
 int cnss_set_host_sol_value(struct cnss_plat_data *plat_priv, int value);
 int cnss_get_host_sol_value(struct cnss_plat_data *plat_priv);
+int cnss_set_direct_cx_host_sol_value(struct cnss_plat_data *plat_priv,
+				      int value);
+int cnss_get_direct_cx_host_sol_value(struct cnss_plat_data *plat_priv);
+int cnss_init_direct_cx_host_sol_gpio(struct cnss_plat_data *plat_priv);
 int cnss_register_subsys(struct cnss_plat_data *plat_priv);
 void cnss_unregister_subsys(struct cnss_plat_data *plat_priv);
 int cnss_register_ramdump(struct cnss_plat_data *plat_priv);
@@ -827,6 +858,8 @@ int cnss_aop_send_msg(struct cnss_plat_data *plat_priv, char *msg);
 void cnss_power_misc_params_init(struct cnss_plat_data *plat_priv);
 int cnss_aop_ol_cpr_cfg_setup(struct cnss_plat_data *plat_priv,
 			      struct wlfw_pmu_cfg_v01 *fw_pmu_cfg);
+int cnss_ol_cpr_cfg_ext_setup(struct cnss_plat_data *plat_priv,
+			      struct wlfw_pmu_cfg_ext_v01 *fw_pmu_cfg_ext);
 int cnss_request_firmware_update_timer(struct cnss_plat_data *plat_priv,
 				       const struct firmware **fw_entry,
 				       const char *filename);
@@ -861,4 +894,12 @@ void cnss_xdump_wl_over_bt_complete(struct cnss_plat_data *plat_priv,
 				    s32 result);
 int cnss_xdump_update_wl_cap(struct cnss_plat_data *plat_priv,
 			     u8 wl_over_bt, u8 bt_over_wl);
+
+int cnss_set_cx_mode(struct cnss_plat_data *plat_priv, enum cx_modes arg);
+int cnss_set_cxpc_power_off(struct cnss_plat_data *plat_priv,
+			    enum cxpc_status arg);
+int cnss_get_cxpc(struct cnss_plat_data *plat_priv);
+int cnss_set_cx_voltage_corner(struct cnss_plat_data *plat_priv,
+			       enum cx_voltage_corners vc, u16 arg);
+u8 *cnss_debug_direct_cx(struct cnss_plat_data *plat_priv);
 #endif /* _CNSS_MAIN_H */
