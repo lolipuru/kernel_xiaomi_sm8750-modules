@@ -317,7 +317,7 @@ void btfmcodec_prepare_bearer(struct btfmcodec_char_device *btfmcodec_dev,
 			if (ret < 0)
 				return;
 
-			if (btfmcodec_is_valid_cache_avb(btfmcodec)) {
+			if (current_state != IDLE && btfmcodec_is_valid_cache_avb(btfmcodec)) {
 				BTFMCODEC_INFO("Initiating BT port close...");
 				btfmcodec_initiate_hwep_shutdown(btfmcodec_dev);
 			}
