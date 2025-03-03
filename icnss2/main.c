@@ -2961,6 +2961,8 @@ static int icnss_wpss_early_notifier_nb(struct notifier_block *nb,
 	if (code == QCOM_SSR_BEFORE_SHUTDOWN) {
 		set_bit(ICNSS_FW_DOWN, &priv->state);
 		icnss_ignore_fw_timeout(true);
+		clear_bit(ICNSS_SOC_WAKE_DONE, &priv->state);
+		complete(&priv->smp2p_soc_wake_wait);
 	}
 
 	return NOTIFY_DONE;
