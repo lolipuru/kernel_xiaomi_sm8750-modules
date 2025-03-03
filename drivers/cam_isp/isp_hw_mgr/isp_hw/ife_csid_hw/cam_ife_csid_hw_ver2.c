@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/iopoll.h>
@@ -1920,6 +1920,8 @@ static int cam_ife_csid_ver2_handle_event_err(
 
 	evt.in_core_idx =
 		cam_ife_csid_ver2_input_core_to_hw_idx(csid_hw->top_cfg.input_core_type);
+
+	cam_ife_csid_ver2_print_hbi_vbi(csid_hw);
 
 	cam_ife_csid_ver2_print_camif_timestamps(csid_hw);
 
@@ -7671,7 +7673,7 @@ static int cam_ife_csid_ver2_print_hbi_vbi(
 			path_reg->format_measure1_addr);
 		vbi = cam_io_r_mb(soc_info->reg_map[0].mem_base +
 			path_reg->format_measure2_addr);
-		CAM_INFO_RATE_LIMIT(CAM_ISP,
+		CAM_INFO(CAM_ISP,
 			"CSID[%u] Resource[id:%d, name:%s, min_hbi: %d max_hbi: %d cycles, vbi: %d cycles]",
 			csid_hw->hw_intf->hw_idx, res->res_id, res->res_name,
 			(hbi & cmn_reg->format_measure_min_hbi_mask),
