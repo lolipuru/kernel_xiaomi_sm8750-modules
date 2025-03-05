@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "smcinvoke_kernel: %s: " fmt, __func__
@@ -124,7 +124,7 @@ static int32_t do_invoke(void *context, uint32_t op,
 		goto out_failed;
 	}
 
-	pr_info("%s object invocation with %lu arguments (%04x) and op %d.\n",
+	pr_info("%s object invocation with %zu arguments (%04x) and op %d.\n",
 		si_object_name(object), OBJECT_COUNTS_TOTAL(counts), counts, op);
 
 	/* + INITIATE an invocation. */

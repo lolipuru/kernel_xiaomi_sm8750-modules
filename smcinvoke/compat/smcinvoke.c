@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "smcinvoke: %s: " fmt, __func__
@@ -2485,7 +2485,7 @@ static void add_mem_obj_info_to_async_side_channel_locked(void *buf, size_t buf_
 
 	msg->count = index;
 
-	pr_debug("Added %lu memory objects to the side channel, total size = %zu\n", index, used);
+	pr_debug("Added %zu memory objects to the side channel, total size = %zu\n", index, used);
 
 	return;
 }
