@@ -2693,6 +2693,7 @@ static int fastrpc_create_session_debugfs(struct fastrpc_user *fl)
 		if (!(fl->debugfs_file_create)) {
 			size = strlen(cur_comm) + strlen("_")
 				+ COUNT_OF(current->pid) + strlen("_")
+				+ COUNT_OF(fl->tgid_frpc) + strlen("_")
 				+ COUNT_OF(FASTRPC_DEV_MAX)
 				+ 1;
 
