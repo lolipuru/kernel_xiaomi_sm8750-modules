@@ -1790,6 +1790,20 @@ void cam_tfe_cam_cdm_callback(uint32_t handle, void *userdata,
 			rc = cam_packet_util_get_cmd_mem_addr(
 				ctx->last_submit_bl_cmd.cmd[i].mem_handle,
 				&buf_addr, &len);
+			if (rc) {
+				CAM_ERR_RATE_LIMIT(CAM_ISP, "Failed to get mem_hdl:0x%x, rc=%d",
+					ctx->last_submit_bl_cmd.cmd[i].mem_handle, rc);
+				return rc;
+			}
+			if (((size_t)ctx->last_submit_bl_cmd.cmd[i].offset >= len) ||
+				((size_t)ctx->last_submit_bl_cmd.cmd[i].input_len) >
+				(len - (size_t)ctx->last_submit_bl_cmd.cmd[i].offset)) {
+				CAM_ERR(CAM_UTIL, "invalid mem len:%u cmd_inplen:%u off:%u",
+					len, ctx->last_submit_bl_cmd.cmd[i].input_len,
+					ctx->last_submit_bl_cmd.cmd[i].offset);
+				cam_mem_put_cpu_buf(ctx->last_submit_bl_cmd.cmd[i].mem_handle);
+				return -EINVAL;
+			}
 
 			buf_start = (uint32_t *)((uint8_t *) buf_addr +
 				ctx->last_submit_bl_cmd.cmd[i].offset);
@@ -2883,6 +2897,16 @@ static int cam_tfe_mgr_config_hw(void *hw_mgr_priv,
 				continue;
 			}
 
+			if (((size_t)cdm_cmd->cmd_flex[i - skip].offset >= len) ||
+				((len - (size_t)cdm_cmd->cmd_flex[i - skip].offset) <
+				(size_t)cdm_cmd->cmd_flex[i - skip].len)) {
+				CAM_ERR(CAM_UTIL, "invalid mem len:%u cmd_inplen:%u off:%u",
+					len, cdm_cmd->cmd_flex[i - skip].len,
+					cdm_cmd->cmd_flex[i - skip].offset);
+				cam_mem_put_cpu_buf(cdm_cmd->cmd_flex[i - skip].bl_addr.mem_handle);
+				return -EINVAL;
+			}
+
 			buf_start = (uint32_t *)((uint8_t *) buf_addr +
 				cdm_cmd->cmd_flex[i - skip].offset);
 			buf_end = (uint32_t *)((uint8_t *) buf_start +
@@ -2893,6 +2917,7 @@ static int cam_tfe_mgr_config_hw(void *hw_mgr_priv,
 					"first cmd in cmd_buf is not change_base, cmd_type: %u ctx id: %u request id: %llu",
 					cmd_type, ctx->ctx_index, cfg->request_id);
 				cam_cdm_util_dump_cmd_buf(buf_start, buf_end);
+				cam_mem_put_cpu_buf(cdm_cmd->cmd_flex[i - skip].bl_addr.mem_handle);
 				return -EINVAL;
 			}
 
@@ -2901,8 +2926,10 @@ static int cam_tfe_mgr_config_hw(void *hw_mgr_priv,
 					"found invalid cmd in cmd_buf, ctx id: %u request id: %llu",
 					ctx->ctx_index, cfg->request_id);
 				cam_cdm_util_dump_cmd_buf(buf_start, buf_end);
+				cam_mem_put_cpu_buf(cdm_cmd->cmd_flex[i - skip].bl_addr.mem_handle);
 				return -EINVAL;
 			}
+			cam_mem_put_cpu_buf(cdm_cmd->cmd_flex[i - skip].bl_addr.mem_handle);
 		}
 	}
 

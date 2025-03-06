@@ -7927,6 +7927,17 @@ skip_bw_clk_update:
 					continue;
 				}
 
+				if (((size_t)cdm_cmd->cmd_flex[i - skip].offset >= len) ||
+					((size_t)cdm_cmd->cmd_flex[i - skip].len) >
+					(len - (size_t)cdm_cmd->cmd_flex[i - skip].offset)) {
+					CAM_ERR(CAM_UTIL, "invalid mem len:%u cmd_inplen:%u off:%u",
+						len, cdm_cmd->cmd_flex[i - skip].len,
+						cdm_cmd->cmd_flex[i - skip].offset);
+					cam_mem_put_cpu_buf(
+						cdm_cmd->cmd_flex[i - skip].bl_addr.mem_handle);
+					return -EINVAL;
+				}
+
 				buf_start = (uint32_t *)((uint8_t *) buf_addr +
 					cdm_cmd->cmd_flex[i - skip].offset);
 				buf_end = (uint32_t *)((uint8_t *) buf_start +
@@ -7937,6 +7948,8 @@ skip_bw_clk_update:
 						"first cmd in cmd_buf is not change_base, cmd_type: %u ctx id: %u request id: %llu",
 						cmd_type, ctx->ctx_index, cfg->request_id);
 					cam_cdm_util_dump_cmd_buf(buf_start, buf_end);
+					cam_mem_put_cpu_buf(
+						cdm_cmd->cmd_flex[i - skip].bl_addr.mem_handle);
 					return -EINVAL;
 				}
 
@@ -7945,8 +7958,11 @@ skip_bw_clk_update:
 						"found invalid cmd in cmd_buf, ctx id: %u request id: %llu",
 						ctx->ctx_index, cfg->request_id);
 					cam_cdm_util_dump_cmd_buf(buf_start, buf_end);
+					cam_mem_put_cpu_buf(
+						cdm_cmd->cmd_flex[i - skip].bl_addr.mem_handle);
 					return -EINVAL;
 				}
+				cam_mem_put_cpu_buf(cdm_cmd->cmd_flex[i - skip].bl_addr.mem_handle);
 			}
 		}
 		cdm_cmd->cmd_arrary_count = cfg->num_hw_update_entries - skip;
