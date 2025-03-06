@@ -194,22 +194,30 @@ struct msm_cvp_inst *cvp_get_inst_validate(struct msm_cvp_core *core,
 {
 	int rc = 0;
 	struct cvp_hfi_ops *ops_tbl;
-	struct msm_cvp_inst *s;
+	struct msm_cvp_inst *inst;
+	void *sessObj = NULL;
 
-	s = cvp_get_inst(core, session_id);
-	if (!s) {
-		dprintk(CVP_WARN, "%s session doesn't exit\n", __func__);
+	inst = cvp_get_inst(core, session_id);
+	if (!inst) {
+		dprintk(CVP_WARN, "%s Inst doesn't exit\n", __func__);
 		return NULL;
 	}
 
-	ops_tbl = s->core->dev_ops;
-	rc = call_hfi_op(ops_tbl, validate_session, s->session, __func__);
-	if (rc) {
-		cvp_put_inst(s);
-		s = NULL;
+	sessObj = get_sessObj_from_idr(inst);
+	if (!sessObj || sessObj != inst->session) {
+		dprintk(CVP_ERR,
+			"Either sessionObj is null or not matching with inst->session\n");
+		return NULL;
 	}
 
-	return s;
+	ops_tbl = inst->core->dev_ops;
+	rc = call_hfi_op(ops_tbl, validate_session, sessObj, __func__);
+	if (rc) {
+		cvp_put_inst(inst);
+		inst = NULL;
+	}
+
+	return inst;
 }
 
 static void handle_session_set_buf_done(enum hal_command_response cmd,
@@ -366,7 +374,7 @@ int wait_for_sess_signal_receipt(struct msm_cvp_inst *inst,
 			inst->core->resources.msm_cvp_hw_rsp_timeout));
 	if (!rc) {
 		dprintk(CVP_WARN, "Wait interrupted or timed out: %d session_id = %#x\n",
-				SESSION_MSG_INDEX(cmd), hash32_ptr(inst->session));
+				SESSION_MSG_INDEX(cmd), inst->sess_id);
 		if (inst->state != MSM_CVP_CORE_INVALID)
 			print_hfi_queue_info(ops_tbl);
 		if (cmd != HAL_SESSION_STOP_DONE &&
@@ -433,10 +441,10 @@ static void handle_session_init_done(enum hal_command_response cmd, void *data)
 	if (response->status)
 		dprintk(CVP_ERR,
 			"Session %#x init err response from FW : 0x%x\n",
-			hash32_ptr(inst->session), response->status);
+			inst->sess_id, response->status);
 	else
 		dprintk(CVP_SESS, "%s: cvp session %#x\n", __func__,
-			hash32_ptr(inst->session));
+			inst->sess_id);
 
 	inst->hfi_error_code = response->status;
 	signal_session_msg_receipt(cmd, inst);
@@ -552,7 +560,7 @@ void handle_session_error(enum hal_command_response cmd, void *data)
 
 	ops_tbl = inst->core->dev_ops;
 	dprintk(CVP_ERR, "Sess error 0x%x received for inst %pK sess %x\n",
-		response->status, inst, hash32_ptr(inst->session));
+		response->status, inst, inst->sess_id);
 
 	sq = &inst->session_queue;
 	spin_lock(&sq->lock);
@@ -592,7 +600,7 @@ void handle_session_timeout(struct msm_cvp_inst *inst, bool stop_required)
 	enum cvp_session_errorcode s_ecode;
 
 	dprintk(CVP_ERR,
-		"timeout occurred for inst %pK sess %x\n", inst, hash32_ptr(inst->session));
+		"timeout occurred for inst %pK sess %x\n", inst, inst->sess_id);
 
 	sq = &inst->session_queue;
 	spin_lock(&sq->lock);
@@ -863,7 +871,7 @@ static int msm_comm_session_abort(struct msm_cvp_inst *inst)
 	abort_completion = SESSION_MSG_INDEX(HAL_SESSION_ABORT_DONE);
 
 	dprintk(CVP_WARN, "%s: inst %pK session %x\n", __func__,
-		inst, hash32_ptr(inst->session));
+		inst, inst->sess_id);
 	rc = call_hfi_op(ops_tbl, session_abort, (void *)inst->session);
 	if (rc) {
 		dprintk(CVP_ERR,
@@ -876,7 +884,7 @@ static int msm_comm_session_abort(struct msm_cvp_inst *inst)
 				inst->core->resources.msm_cvp_hw_rsp_timeout));
 	if (!rc) {
 		dprintk(CVP_ERR, "%s: inst %pK session %x abort timed out\n",
-				__func__, inst, hash32_ptr(inst->session));
+				__func__, inst, inst->sess_id);
 		print_hfi_queue_info(ops_tbl);
 		msm_cvp_comm_generate_sys_error(inst);
 		rc = -EBUSY;
@@ -1201,7 +1209,7 @@ int msm_cvp_comm_try_state(struct msm_cvp_inst *inst, int state)
 	flipped_state = get_flipped_state(inst->state, state);
 	dprintk(CVP_SESS,
 		"inst: %pK (%#x) cur_state %s dest_state %s flipped_state = %s\n",
-		inst, hash32_ptr(inst->session), state_names[inst->state],
+		inst, inst->sess_id, state_names[inst->state],
 		state_names[state], state_names[flipped_state]);
 
 	switch (flipped_state) {
@@ -1461,7 +1469,7 @@ int msm_cvp_comm_kill_session(struct msm_cvp_inst *inst)
 		return 0;
 	}
 	dprintk(CVP_WARN, "%s: inst %pK, session %x state %d\n", __func__,
-		inst, hash32_ptr(inst->session), inst->state);
+		inst, inst->sess_id, inst->state);
 	/*
 	 * We're internally forcibly killing the session, if fw is aware of
 	 * the session send session_abort to firmware to clean up and release
@@ -1581,7 +1589,7 @@ int cvp_print_inst(u32 tag, struct msm_cvp_inst *inst)
 
 	dprintk(tag,
 		"%s inst stype %d %pK id = %#x ptype %#x prio %#x secure %#x kmask %#x",
-		inst->proc_name, inst->session_type, inst, hash32_ptr(inst->session),
+		inst->proc_name, inst->session_type, inst, inst->sess_id,
 		inst->prop.type, inst->prop.priority, inst->prop.is_secure,
 		inst->prop.kernel_mask);
 	dprintk(tag,
