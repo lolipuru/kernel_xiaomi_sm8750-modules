@@ -8960,3 +8960,18 @@ wlan_mlme_clear_peer_private_object_data(struct wlan_objmgr_peer *peer)
 {
 	return mlme_clear_peer_private_object_data(peer);
 }
+
+uint32_t
+wlan_mlme_get_beacon_interval(struct wlan_objmgr_vdev *vdev)
+{
+	uint32_t bcn_interval;
+	struct vdev_mlme_obj *vdev_mlme;
+
+	vdev_mlme = wlan_objmgr_vdev_get_comp_private_obj(vdev,
+							  WLAN_UMAC_COMP_MLME);
+
+	wlan_util_vdev_mlme_get_param(vdev_mlme,
+				      WLAN_MLME_CFG_BEACON_INTERVAL,
+				      &bcn_interval);
+	return bcn_interval;
+}

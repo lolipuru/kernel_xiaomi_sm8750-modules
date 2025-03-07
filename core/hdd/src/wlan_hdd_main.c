@@ -2846,7 +2846,6 @@ static uint32_t hdd_update_band_cap_from_dot11mode(
 	return band_capability;
 }
 
-#ifdef FEATURE_WPSS_THERMAL_MITIGATION
 static inline
 void hdd_update_multi_client_thermal_support(struct hdd_context *hdd_ctx)
 {
@@ -2860,12 +2859,6 @@ void hdd_update_multi_client_thermal_support(struct hdd_context *hdd_ctx)
 		wmi_service_enabled(wmi_handle,
 				    wmi_service_thermal_multi_client_support);
 }
-#else
-static inline
-void hdd_update_multi_client_thermal_support(struct hdd_context *hdd_ctx)
-{
-}
-#endif
 
 #ifdef WLAN_FEATURE_LOCAL_PKT_CAPTURE
 static void hdd_lpc_enable_powersave(struct hdd_context *hdd_ctx)
@@ -5488,6 +5481,14 @@ int hdd_wlan_start_modules(struct hdd_context *hdd_ctx, bool reinit)
 			hdd_send_thermal_mitigation_val(hdd_ctx, thermal_state,
 							THERMAL_MONITOR_WPSS);
 	}
+
+	if (!pld_get_thermal_state(hdd_ctx->parent_dev, &thermal_state,
+				   THERMAL_MONITOR_DDR_BWM)) {
+		if (thermal_state > QCA_WLAN_VENDOR_THERMAL_LEVEL_NONE)
+			hdd_send_ddr_bw_mitigation_level(hdd_ctx, thermal_state,
+						THERMAL_MONITOR_DDR_BWM);
+	}
+
 	hdd_register_get_port_status_notifier(hdd_ctx);
 
 	hdd_exit();
@@ -14543,7 +14544,7 @@ QDF_STATUS hdd_unsafe_channel_restart_sap(struct hdd_context *hdd_ctx)
 			 * no need to move SAP.
 			 */
 			if ((policy_mgr_is_sta_sap_scc(hdd_ctx->psoc,
-						       ap_chan_freq) &&
+						       ap_chan_freq, false) &&
 			     scc_on_lte_coex) ||
 			    policy_mgr_nan_sap_scc_on_unsafe_ch_chk(hdd_ctx->psoc,
 								    ap_chan_freq))
