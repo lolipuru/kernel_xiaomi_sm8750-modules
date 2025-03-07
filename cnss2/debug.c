@@ -952,6 +952,31 @@ static ssize_t cnss_dynamic_feature_write(struct file *fp,
 	return count;
 }
 
+static ssize_t host_sol_write(struct file *fp,
+					  const char __user *user_buf,
+					  size_t count, loff_t *off)
+{
+	struct cnss_plat_data *plat_priv =
+		((struct seq_file *)fp->private_data)->private;
+	int ret = count;
+	u64 val;
+	struct cnss_pci_data *pci_priv = plat_priv->bus_priv;
+	struct device *dev = &pci_priv->pci_dev->dev;
+	ret = kstrtou64_from_user(user_buf, count, 0, &val);
+	if (ret)
+		return ret;
+
+	mutex_lock(&pci_priv->bus_lock);
+	if (!cnss_pci_assert_host_sol_dev(dev)) {
+		mutex_unlock(&pci_priv->bus_lock);
+		return count;
+	}
+	mutex_unlock(&pci_priv->bus_lock);
+	if (ret < 0)
+		return ret;
+
+	return count;
+}
 static int cnss_dynamic_feature_show(struct seq_file *s, void *data)
 {
 	struct cnss_plat_data *cnss_priv = s->private;
@@ -1009,6 +1034,29 @@ static const struct file_operations cnss_smmu_fault_timestamp_fops = {
 	.llseek = seq_lseek,
 };
 
+static int host_sol_show(struct seq_file *s, void *data)
+{
+	return 0;
+}
+
+static int host_sol_open(struct inode *inode,
+				     struct file *file)
+{
+	return single_open(file, host_sol_show,
+			   inode->i_private);
+}
+
+
+static const struct file_operations host_sol_fops = {
+	.read = seq_read,
+	.release = single_release,
+	.write = host_sol_write,
+	.open = host_sol_open,
+	.owner = THIS_MODULE,
+	.llseek = seq_lseek,
+};
+
+
 #ifdef CONFIG_DEBUG_FS
 #ifdef CONFIG_CNSS2_DEBUG
 static int cnss_create_debug_only_node(struct cnss_plat_data *plat_priv)
@@ -1029,6 +1077,9 @@ static int cnss_create_debug_only_node(struct cnss_plat_data *plat_priv)
 			    &cnss_dynamic_feature_fops);
 	debugfs_create_file("cnss_smmu_fault_timestamp", 0600, root_dentry,
 			    plat_priv, &cnss_smmu_fault_timestamp_fops);
+	debugfs_create_file("host_sol", 0600, root_dentry,
+			    plat_priv, &host_sol_fops);
+
 
 	return 0;
 }

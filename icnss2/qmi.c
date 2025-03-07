@@ -3582,7 +3582,7 @@ int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 	}
 
 	/* ddr_type = 7(LPDDR4) and 8(LPDDR5) */
-	ddr_type = of_fdt_get_ddrtype();
+	ddr_type = priv->ddr_type;
 	if (ddr_type > 0) {
 		icnss_pr_dbg("DDR Type: %d\n", ddr_type);
 		req->ddr_type_valid = 1;

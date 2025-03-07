@@ -54,6 +54,7 @@
 #include <uapi/linux/slatecom_interface.h>
 #endif
 #include <linux/qcom-iommu-util.h>
+#include <soc/qcom/of_common.h>
 #include "main.h"
 #include "qmi.h"
 #include "debug.h"
@@ -463,9 +464,11 @@ EXPORT_SYMBOL(icnss_is_fw_ready);
 static int icnss_register_bus_scale(struct icnss_priv *plat_priv)
 {
 	int ret = -EINVAL;
-	u32 idx, i, j, cfg_arr_size, *cfg_arr = NULL;
+	u32 idx, i, j, cfg_arr_size, *cfg_arr = NULL, ddr = 0;
 	struct icnss_bus_bw_info *bus_bw_info, *tmp;
 	struct device *dev = &plat_priv->pdev->dev;
+	struct device_node *child;
+	struct device_node *ddr_node = plat_priv->pdev->dev.of_node;
 
 	INIT_LIST_HEAD(&plat_priv->icc.list_head);
 	ret = of_property_read_u32(dev->of_node,
@@ -491,7 +494,25 @@ static int icnss_register_bus_scale(struct icnss_priv *plat_priv)
 		goto cleanup;
 	}
 
-	ret = of_property_read_u32_array(plat_priv->pdev->dev.of_node,
+	for_each_available_child_of_node(plat_priv->pdev->dev.of_node,
+					 child) {
+		if (strcmp(child->name, "ddr_cfg"))
+			continue;
+
+		ret = of_property_read_u32(child, "ddr_type", &ddr);
+		if (!ret) {
+			/* ddr_type = 7(LPDDR4) and 8(LPDDR5) */
+			if (ddr == plat_priv->ddr_type) {
+				ddr_node = child;
+				icnss_pr_info("child node set for DDR type %d", ddr);
+			}
+		} else {
+			icnss_pr_err("DDR type: %d is not found in dt\n", plat_priv->ddr_type);
+			goto cleanup;
+		}
+	}
+
+	ret = of_property_read_u32_array(ddr_node,
 					 "qcom,bus-bw-cfg", cfg_arr,
 					 cfg_arr_size);
 	if (ret) {
@@ -500,8 +521,8 @@ static int icnss_register_bus_scale(struct icnss_priv *plat_priv)
 	}
 
 	icnss_pr_dbg("ICC Path_Count: %d BW_CFG_Count: %d\n",
-		     plat_priv->icc.path_count,
-		     plat_priv->icc.bus_bw_cfg_count);
+		      plat_priv->icc.path_count,
+		      plat_priv->icc.bus_bw_cfg_count);
 
 	for (idx = 0; idx < plat_priv->icc.path_count; idx++) {
 		bus_bw_info = devm_kzalloc(dev, sizeof(*bus_bw_info),
@@ -524,7 +545,7 @@ static int icnss_register_bus_scale(struct icnss_priv *plat_priv)
 			ret = PTR_ERR(bus_bw_info->icc_path);
 			if (ret != -EPROBE_DEFER) {
 				icnss_pr_err("Failed to get Interconnect path for %s. Err: %d\n",
-					     bus_bw_info->icc_name, ret);
+					      bus_bw_info->icc_name, ret);
 				goto out;
 			}
 		}
@@ -538,7 +559,7 @@ static int icnss_register_bus_scale(struct icnss_priv *plat_priv)
 			goto out;
 		}
 		icnss_pr_dbg("ICC Vote CFG for path: %s\n",
-			     bus_bw_info->icc_name);
+			      bus_bw_info->icc_name);
 		for (i = 0, j = (idx * plat_priv->icc.bus_bw_cfg_count *
 		     ICNSS_ICC_VOTE_MAX);
 		     i < plat_priv->icc.bus_bw_cfg_count;
@@ -546,8 +567,8 @@ static int icnss_register_bus_scale(struct icnss_priv *plat_priv)
 			bus_bw_info->cfg_table[i].avg_bw = cfg_arr[j];
 			bus_bw_info->cfg_table[i].peak_bw = cfg_arr[j + 1];
 			icnss_pr_dbg("ICC Vote BW: %d avg: %d peak: %d\n",
-				     i, bus_bw_info->cfg_table[i].avg_bw,
-				     bus_bw_info->cfg_table[i].peak_bw);
+				      i, bus_bw_info->cfg_table[i].avg_bw,
+				      bus_bw_info->cfg_table[i].peak_bw);
 		}
 		list_add_tail(&bus_bw_info->list,
 			      &plat_priv->icc.list_head);
@@ -6134,6 +6155,8 @@ static int icnss_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&priv->clk_list);
 	icnss_allow_recursive_recovery(dev);
 	icnss_get_cpumask_for_wlan_txrx_intr(priv);
+
+	priv->ddr_type = of_fdt_get_ddrtype();
 
 	if (!prealloc_initialized) {
 		icnss_initialize_mem_pool(priv->device_id);
