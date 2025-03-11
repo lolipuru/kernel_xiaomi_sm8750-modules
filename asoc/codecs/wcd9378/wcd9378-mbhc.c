@@ -833,6 +833,21 @@ static void wcd9378_mbhc_debounce_time_set(struct snd_soc_component *component)
 		WCD9378_MBHC_NEW_CTL_1, 0x0F, 0x0D);
 }
 
+static int wcd9378_mbhc_force_micbias_disable(struct snd_soc_component *component,
+						int micb_num)
+{
+	struct wcd9378_priv *wcd9378 =
+			snd_soc_component_get_drvdata(component);
+
+	if (wcd9378->micb_ref[micb_num - 1] > 1)
+		wcd9378->micb_ref[micb_num - 1] = 1;
+
+	if (wcd9378->pullup_ref[micb_num - 1] > 0)
+		wcd9378->pullup_ref[micb_num - 1] = 0;
+
+	return wcd9378_micbias_control(component, micb_num, MICB_DISABLE, false);
+}
+
 static const struct wcd_mbhc_cb mbhc_cb = {
 	.request_irq = wcd9378_mbhc_request_irq,
 	.irq_control = wcd9378_mbhc_irq_control,
@@ -860,6 +875,7 @@ static const struct wcd_mbhc_cb mbhc_cb = {
 	.mbhc_moisture_detect_en = wcd9378_mbhc_moisture_detect_en,
 	.bcs_enable = wcd9378_mbhc_bcs_enable,
 	.mbhc_button_debounce_set = wcd9378_mbhc_debounce_time_set,
+	.mbhc_force_micbias_disable = wcd9378_mbhc_force_micbias_disable,
 };
 
 static int wcd9378_get_hph_type(struct snd_kcontrol *kcontrol,
