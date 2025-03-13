@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -4966,10 +4966,13 @@ static int __cam_req_mgr_unlink(
 	spin_unlock_bh(&link->link_state_spin_lock);
 
 	if (!link->is_shutdown) {
+		/* Hold the request lock prior to disconnecting link */
+		mutex_lock(&link->req.lock);
 		rc = __cam_req_mgr_disconnect_link(link);
 		if (rc)
 			CAM_ERR(CAM_CORE,
 				"Unlink for all devices was not successful");
+		mutex_unlock(&link->req.lock);
 	}
 
 	mutex_lock(&link->lock);
