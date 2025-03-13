@@ -4584,10 +4584,8 @@ static int cam_req_mgr_cb_notify_msg(
 				"Requested timeout [%dms] max supported timeout [%dms] resetting to max",
 				frame_duration_ms, CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX);
 			slot->additional_timeout = CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX;
-		} else if (frame_duration_ms > CAM_REQ_MGR_WATCHDOG_TIMEOUT) {
-			slot->additional_timeout = frame_duration_ms;
 		} else {
-			slot->additional_timeout = 0;
+			slot->additional_timeout = frame_duration_ms;
 		}
 
 		CAM_DBG(CAM_CRM,
