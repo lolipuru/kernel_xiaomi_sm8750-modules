@@ -2025,6 +2025,13 @@ static int cam_ope_mgr_process_cmd_io_buf_req(struct cam_ope_hw_mgr *hw_mgr,
 
 	for (i = 0; i < in_frame_process->batch_size; i++) {
 		in_frame_set = &in_frame_process->frame_set[i];
+
+		if (in_frame_set->num_io_bufs > OPE_MAX_IO_BUFS) {
+			CAM_ERR(CAM_OPE, "Wrong number of io buffers: %u",
+				in_frame_set->num_io_bufs);
+			return -EINVAL;
+		}
+
 		for (j = 0; j < in_frame_set->num_io_bufs; j++) {
 			in_io_buf = &in_frame_set->io_buf[j];
 			for (k = 0; k < in_io_buf->num_planes; k++) {
@@ -2043,13 +2050,14 @@ static int cam_ope_mgr_process_cmd_io_buf_req(struct cam_ope_hw_mgr *hw_mgr,
 
 	for (i = 0; i < ope_request->num_batch; i++) {
 		in_frame_set = &in_frame_process->frame_set[i];
-		ope_request->num_io_bufs[i] = in_frame_set->num_io_bufs;
+
 		if (in_frame_set->num_io_bufs > OPE_MAX_IO_BUFS) {
-			CAM_ERR(CAM_OPE, "Wrong number of io buffers: %d",
+			CAM_ERR(CAM_OPE, "Wrong number of io buffers: %u",
 				in_frame_set->num_io_bufs);
 			return -EINVAL;
 		}
 
+		ope_request->num_io_bufs[i] = in_frame_set->num_io_bufs;
 		for (j = 0; j < in_frame_set->num_io_bufs; j++) {
 			in_io_buf = &in_frame_set->io_buf[j];
 			ope_request->io_buf[i][j] =
@@ -3196,8 +3204,9 @@ static int cam_ope_packet_generic_blob_handler(void *user_data,
 		}
 
 		soc_req_v2 = (struct ope_clk_bw_request_v2 *)blob_data;
-		if (soc_req_v2->num_paths > CAM_OPE_MAX_PER_PATH_VOTES) {
-			CAM_ERR(CAM_OPE, "Invalid num paths: %d",
+		if (soc_req_v2->num_paths > CAM_OPE_MAX_PER_PATH_VOTES ||
+				soc_req_v2->num_paths == 0) {
+			CAM_ERR(CAM_OPE, "Invalid num paths: %u",
 				soc_req_v2->num_paths);
 			return -EINVAL;
 		}
