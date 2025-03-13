@@ -2220,6 +2220,7 @@ static void cnss_pci_dump_bl_sram_mem(struct cnss_pci_data *pci_priv)
 		pbl_log_sram_start = COLOGNE_DEBUG_PBL_LOG_SRAM_START;
 		pbl_log_max_size = COLOGNE_DEBUG_PBL_LOG_SRAM_MAX_SIZE;
 		sbl_log_max_size = COLOGNE_DEBUG_SBL_LOG_SRAM_MAX_SIZE;
+		sbl_log_def_end = COLOGNE_SRAM_END;
 		break;
 	case FIG_DEVICE_ID:
 		if (cnss_pci_fetch_pbl_base_size(pci_priv, &pbl_log_sram_start,

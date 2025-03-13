@@ -5075,6 +5075,9 @@ static void cnss_sram_dump_init(struct cnss_plat_data *plat_priv)
 	} else if (plat_priv->device_id == PEACH_DEVICE_ID) {
 		plat_priv->sram_dump_start_addr = SRAM_START;
 		plat_priv->sram_dump_size = PEACH_SRAM_SIZE;
+	} else if (plat_priv->device_id == COLOGNE_DEVICE_ID) {
+		plat_priv->sram_dump_start_addr = SRAM_START;
+		plat_priv->sram_dump_size = COLOGNE_SRAM_SIZE;
 	} else if (plat_priv->device_id == FIG_DEVICE_ID) {
 		plat_priv->sram_dump_start_addr = SRAM_START;
 		plat_priv->sram_dump_size = FIG_SRAM_SIZE;
