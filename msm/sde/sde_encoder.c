@@ -2134,7 +2134,8 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 	if ((commit_state == SDE_PERF_COMPLETE_COMMIT)
 			&& (cesta_client->vote_state != SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE)
-			&& (cesta_client->vote_state != SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE))
+			&& (cesta_client->vote_state != SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE)
+			&& (cesta_client->vote_state != SDE_CESTA_BW_CLK_DOWNVOTE))
 		return;
 
 	/* SCC configs */

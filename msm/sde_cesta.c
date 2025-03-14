@@ -441,6 +441,50 @@ static void _sde_cesta_clk_bw_vote(struct sde_cesta_client *client, bool pwr_st_
 			idle_bw_ab, idle_bw_ib);
 }
 
+static void sde_cesta_clk_bw_update_helper(struct sde_cesta_client *client,
+		struct sde_cesta_params *params, struct sde_cesta_client_data *client_data)
+{
+	if (!client || !params || (client->cesta_index >= MAX_CESTA_COUNT)) {
+		SDE_ERROR_CESTA("invalid values - client:%d, param:%d, cesta_index:%d\n",
+					!!client, !!params, client ? client->cesta_index : -1);
+		return;
+	}
+
+	if ((client->vote_state == SDE_CESTA_BW_CLK_UPVOTE) ||
+		(client->vote_state == SDE_CESTA_BW_CLK_DOWNVOTE && !params->enable)) {
+		_sde_cesta_clk_bw_vote(client, client->pwr_st_override,
+				params->data.core_clk_rate_ab, params->data.core_clk_rate_ib,
+				params->data.bw_ab, params->data.bw_ib);
+
+	} else if (params->post_commit &&
+			((client->vote_state == SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE)
+				|| (client->vote_state == SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE)
+				|| (client->vote_state == SDE_CESTA_BW_CLK_DOWNVOTE))) {
+		client->pwr_st_override = true;
+		_sde_cesta_clk_bw_vote(client, client->pwr_st_override,
+				client_data->core_clk_rate_ab, client_data->core_clk_rate_ib,
+				client_data->bw_ab, client_data->bw_ib);
+
+	} else if (client->vote_state == SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE) {
+		/*
+		 * pre-commit: vote for new clk upvote & old BW vote
+		 * post-commit: vote for same clk upvote & new BW downvote with override pwr state
+		 */
+		_sde_cesta_clk_bw_vote(client, client->pwr_st_override,
+				params->data.core_clk_rate_ab, params->data.core_clk_rate_ib,
+				client_data->bw_ab, client_data->bw_ib);
+
+	} else if (client->vote_state == SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE) {
+		 /*
+		  * pre-commit: vote for new BW upvote & old clk vote
+		  * post-commit: vote for same BW upvote & new clk downvote with override pwr state
+		  */
+		_sde_cesta_clk_bw_vote(client, client->pwr_st_override,
+				client_data->core_clk_rate_ab, client_data->core_clk_rate_ib,
+				params->data.bw_ab, params->data.bw_ib);
+	}
+}
+
 void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_params *params)
 {
 	struct sde_cesta *cesta;
@@ -471,7 +515,8 @@ void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_p
 	 */
 	if (params->post_commit) {
 		if ((client->vote_state == SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE)
-				|| (client->vote_state == SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE))
+				|| (client->vote_state == SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE)
+				|| (client->vote_state == SDE_CESTA_BW_CLK_DOWNVOTE))
 			goto skip_calc;
 		else
 			goto end;
@@ -536,38 +581,7 @@ skip_calc:
 	client->pwr_st_override = params->pwr_st_override;
 	client->enabled = params->enable;
 
-	if ((client->vote_state == SDE_CESTA_BW_CLK_UPVOTE)
-			|| (client->vote_state == SDE_CESTA_BW_CLK_DOWNVOTE)) {
-		_sde_cesta_clk_bw_vote(client, client->pwr_st_override,
-				params->data.core_clk_rate_ab, params->data.core_clk_rate_ib,
-				params->data.bw_ab, params->data.bw_ib);
-
-	} else if (params->post_commit &&
-			((client->vote_state == SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE)
-				|| (client->vote_state == SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE))) {
-		client->pwr_st_override = true;
-		_sde_cesta_clk_bw_vote(client, client->pwr_st_override,
-				client_data->core_clk_rate_ab, client_data->core_clk_rate_ib,
-				client_data->bw_ab, client_data->bw_ib);
-
-	} else if (client->vote_state == SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE) {
-		/*
-		 * pre-commit: vote for new clk upvote & old BW vote
-		 * post-commit: vote for same clk upvote & new BW downvote with override pwr state
-		 */
-		_sde_cesta_clk_bw_vote(client, client->pwr_st_override,
-				params->data.core_clk_rate_ab, params->data.core_clk_rate_ib,
-				client_data->bw_ab, client_data->bw_ib);
-
-	} else if (client->vote_state == SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE) {
-		 /*
-		  * pre-commit: vote for new BW upvote & old clk vote
-		  * post-commit: vote for same BW upvote & new clk downvote with override pwr state
-		  */
-		_sde_cesta_clk_bw_vote(client, client->pwr_st_override,
-				client_data->core_clk_rate_ab, client_data->core_clk_rate_ib,
-				params->data.bw_ab, params->data.bw_ib);
-	}
+	sde_cesta_clk_bw_update_helper(client, params, client_data);
 
 	/* update the client vote values */
 	memcpy(client_data, &params->data, sizeof(struct sde_cesta_client_data));
