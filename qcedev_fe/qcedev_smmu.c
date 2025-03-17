@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-mapping.h>
@@ -254,8 +254,10 @@ int qcedev_check_and_map_buffer(void *handle,
 		}
 		binfo->ion_buf.buf_ion_fd = fd;
 		buf = dma_buf_get(fd);
-		if (IS_ERR_OR_NULL(buf))
-			return -EINVAL;
+		if (IS_ERR_OR_NULL(buf)) {
+			rc = -EINVAL;
+			goto error;
+		}
 		rc = msm_gpce_ion_smmu_map(buf, binfo, drv_handles);
 		if (rc) {
 			pr_err("%s: err: failed to map fd (%d) error = %d\n",
