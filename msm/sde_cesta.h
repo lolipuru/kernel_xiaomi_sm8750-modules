@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SDE_CESTA_H__
@@ -178,7 +178,7 @@ struct sde_cesta_sw_client_data {
  * @get_pwr_event: get all the power states which can used for debugging
  * @override_ctrl_setup: configure the SCC override ctrl
  * @reset_ctrl: reset SCC ctrl
- * @force_auto_active_db_update: set auto-active-on-panic and force db-update
+ * @force_db_update: change SCC ctrl setting and force db-update
  * @get_rscc_pwr_ctrl_status: get sde rscc power control status
  */
 struct sde_cesta_hw_ops {
@@ -189,8 +189,9 @@ struct sde_cesta_hw_ops {
 	u32 (*get_pwr_event)(struct sde_cesta *cesta);
 	void (*override_ctrl_setup)(struct sde_cesta *cesta, u32 idx, u32 force_flags);
 	void (*reset_ctrl)(struct sde_cesta *cesta, u32 idx, bool en);
-	void (*force_auto_active_db_update)(struct sde_cesta *cesta, u32 idx, bool en_auto_active,
-			enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep);
+	void (*force_db_update)(struct sde_cesta *cesta, u32 idx, bool en_auto_active,
+			enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep,
+			bool en_clk_gate, bool cmd_mode);
 	u32 (*get_rscc_pwr_ctrl_status)(struct sde_cesta *cesta);
 };
 
@@ -206,6 +207,7 @@ struct sde_cesta_hw_ops {
  * @xo_freq: stores the xo frequency for the target
  * @rscc_io: sde rscc io data mapping
  * @wrapper_io: wrapper io data mapping
+ * @disp_cc_io: dispcc io data mapping
  * @client_list: link list maintaing all the clients
  * @hw_ops: sde ceseta hardware operations
  * @sw_fs_enabled: track MDSS GDSC sw vote during probe
@@ -217,6 +219,7 @@ struct sde_cesta_hw_ops {
  * @perf_cfg: object to store all the performance params set by sde_kms during bootup
  * @debug_mode: enables the logging for each register read/write
  * @debugfs_root: pointer to cesta debugfs root
+ * @mdp_clk_gate_disable_cnt: counter to track mdp clk gate requests
  */
 struct sde_cesta {
 	struct device *dev;
@@ -231,6 +234,7 @@ struct sde_cesta {
 
 	struct dss_io_data rscc_io;
 	struct dss_io_data wrapper_io;
+	struct dss_io_data disp_cc_io;
 
 	struct list_head client_list;
 	struct mutex client_lock;
@@ -248,6 +252,7 @@ struct sde_cesta {
 	struct sde_cesta_perf_cfg perf_cfg;
 	u32 debug_mode;
 	struct dentry *debugfs_root;
+	u32 mdp_clk_gate_disable_cnt;
 };
 
 /**
@@ -401,14 +406,17 @@ void sde_cesta_override_ctrl(struct sde_cesta_client *client, u32 force_flags);
 void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en);
 
 /**
- * sde_cesta_force_auto_active_db_update - set auto-active-on-panic and force db-update
+ * sde_cesta_force_db_update - update SCC settings and do a force-db update
  * @client: pointer to sde cesta client
  * @en_auto_active: boolean to enable/disable auto_active
  * @req_mode: power req mode
  * @en_hw_sleep: boolean to enable/disable hw_sleep
+ * @en_clk_gate: boolean to enable/disable clk_gate
+ * @cmd_mode: true for cmd mode display
  */
-void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en_auto_active,
-		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep);
+void sde_cesta_force_db_update(struct sde_cesta_client *client, bool en_auto_active,
+		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep, bool en_clk_gate,
+		bool cmd_mode);
 
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
@@ -498,8 +506,9 @@ static inline void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en
 {
 }
 
-static inline void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client,
-		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep)
+static inline void sde_cesta_force_db_update(struct sde_cesta_client *client,
+		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep,
+		bool en_clk_gate, bool cmd_mode)
 {
 }
 #endif /* CONFIG_DRM_SDE_CESTA */

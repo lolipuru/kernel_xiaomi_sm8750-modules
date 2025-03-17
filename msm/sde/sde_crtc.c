@@ -4177,28 +4177,31 @@ static int _sde_crtc_check_dest_scaler_data(struct drm_crtc *crtc,
 	cstate = to_sde_crtc_state(state);
 	kms = _sde_crtc_get_kms(crtc);
 	mode = &state->adjusted_mode;
+
+	mutex_lock(&sde_crtc->crtc_lock);
+
 	num_mixers = sde_crtc_get_num_mixers(cstate, sde_crtc);
 
 	SDE_DEBUG("crtc%d\n", crtc->base.id);
-
 	if (!test_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty)) {
 		SDE_DEBUG("dest scaler property not set, skip validation\n");
-		return 0;
+		goto end;
 	}
 
 	if (!kms || !kms->catalog) {
 		SDE_ERROR("crtc%d: invalid parameters\n", crtc->base.id);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto end;
 	}
 
 	if (!kms->catalog->mdp[0].has_dest_scaler) {
 		SDE_DEBUG("dest scaler feature not supported\n");
-		return 0;
+		goto end;
 	}
 
 	if (!num_mixers) {
 		SDE_DEBUG("mixers not allocated\n");
-		return 0;
+		goto end;
 	}
 
 	ret = _sde_validate_hw_resources(sde_crtc, cstate);
@@ -4242,10 +4245,12 @@ static int _sde_crtc_check_dest_scaler_data(struct drm_crtc *crtc,
 
 disable:
 	_sde_crtc_check_dest_scaler_data_disable(crtc, cstate, num_ds_enable);
-	return 0;
+	goto end;
 
 err:
 	clear_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
+end:
+	mutex_unlock(&sde_crtc->crtc_lock);
 	return ret;
 }
 
@@ -4676,12 +4681,12 @@ static void _sde_crtc_setup_mixers(struct drm_crtc *crtc)
 	struct drm_encoder *enc;
 	struct sde_crtc_state *cstate;
 
+	mutex_lock(&sde_crtc->crtc_lock);
 	sde_crtc->num_ctls = 0;
 	sde_crtc->num_mixers = 0;
 	sde_crtc->mixers_swapped = false;
 	memset(sde_crtc->mixers, 0, sizeof(sde_crtc->mixers));
 
-	mutex_lock(&sde_crtc->crtc_lock);
 	/* Check for mixers on all encoders attached to this crtc */
 	list_for_each_entry(enc, &crtc->dev->mode_config.encoder_list, head) {
 		if (enc->crtc != crtc)
@@ -4872,6 +4877,13 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		encoder = NULL;
 		drm_for_each_encoder_mask(encoder, dev, crtc->state->encoder_mask) {
 			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			/* For cmd mode, with cesta immediate mode enablement, update perf votes
+			 * during crtc commit kickoff. This will delay the new vote request and
+			 * allows intra frame idle entry.
+			 */
+			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_CMD_MODE))
 				continue;
 
 			sde_encoder_begin_commit(encoder);
@@ -5464,6 +5476,20 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) && !is_vid)
 		sde_fence_update_hw_fences_txq(sde_crtc->output_fence, false, 0,
 			sde_kms->debugfs_hw_fence);
+
+	if (sde_crtc->cesta_client) {
+		encoder = NULL;
+		drm_for_each_encoder_mask(encoder, dev, crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			/* early return for video mode, as votes are updated*/
+			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE))
+				continue;
+
+			sde_encoder_begin_commit(encoder);
+		}
+	}
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		if (encoder->crtc != crtc)
