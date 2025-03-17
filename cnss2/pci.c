@@ -3468,12 +3468,16 @@ int cnss_pci_call_driver_modem_status(struct cnss_pci_data *pci_priv,
 				      int modem_current_status)
 {
 	struct cnss_wlan_driver *driver_ops;
+	struct cnss_plat_data *plat_priv;
 
 	if (!pci_priv)
 		return -ENODEV;
 
+	plat_priv = pci_priv->plat_priv;
+
 	driver_ops = pci_priv->driver_ops;
-	if (!driver_ops || !driver_ops->modem_status)
+	if (test_bit(CNSS_DRIVER_UNLOADING, &plat_priv->driver_state) ||
+	    !driver_ops || !driver_ops->modem_status)
 		return -EINVAL;
 
 	driver_ops->modem_status(pci_priv->pci_dev, modem_current_status);
@@ -3498,12 +3502,16 @@ int cnss_pci_update_status(struct cnss_pci_data *pci_priv,
 			   enum cnss_driver_status status)
 {
 	struct cnss_wlan_driver *driver_ops;
+	struct cnss_plat_data *plat_priv;
 
 	if (!pci_priv)
 		return -ENODEV;
 
+	plat_priv = pci_priv->plat_priv;
+
 	driver_ops = pci_priv->driver_ops;
-	if (!driver_ops || !driver_ops->update_status)
+	if (test_bit(CNSS_DRIVER_UNLOADING, &plat_priv->driver_state) ||
+	    !driver_ops || !driver_ops->update_status)
 		return -EINVAL;
 
 	cnss_pr_dbg("Update driver status: %d\n", status);
