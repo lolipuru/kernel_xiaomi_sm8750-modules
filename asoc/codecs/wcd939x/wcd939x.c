@@ -1565,7 +1565,8 @@ static int wcd939x_codec_enable_hphr_pa(struct snd_soc_dapm_widget *w,
 					REG_FIELD_VALUE(PDM_WD_CTL1, PDM_WD_EN, 0x00));
 #if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
 		if (wcd939x->mbhc->wcd_mbhc.mbhc_cfg->enable_usbc_analog &&
-			!(snd_soc_component_read(component, WCD939X_HPH) & 0XC0))
+			(!(snd_soc_component_read(component, WCD939X_HPH) & 0XC0)) &&
+			wcd939x->adc_count == 0)
 			wcd_usbss_audio_config(NULL, WCD_USBSS_CONFIG_TYPE_POWER_MODE, 1);
 #endif
 		wcd_cls_h_fsm(component, &wcd939x->clsh_info,
@@ -1720,7 +1721,8 @@ static int wcd939x_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
 					REG_FIELD_VALUE(PDM_WD_CTL0, PDM_WD_EN, 0x00));
 #if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
 		if (wcd939x->mbhc->wcd_mbhc.mbhc_cfg->enable_usbc_analog &&
-			!(snd_soc_component_read(component, WCD939X_HPH) & 0XC0))
+			(!(snd_soc_component_read(component, WCD939X_HPH) & 0XC0)) &&
+			wcd939x->adc_count == 0)
 			wcd_usbss_audio_config(NULL, WCD_USBSS_CONFIG_TYPE_POWER_MODE, 1);
 #endif
 		wcd_cls_h_fsm(component, &wcd939x->clsh_info,
@@ -2438,6 +2440,12 @@ static int wcd939x_enable_req(struct snd_soc_dapm_widget *w,
 				REG_FIELD_VALUE(CDC_DIG_CLK_CTL, TXD0_CLK_EN, 0x01));
 			break;
 		case 1:
+#if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
+		/* update USBSS power mode for AATC */
+		if (wcd939x->mbhc->wcd_mbhc.mbhc_cfg->enable_usbc_analog)
+			wcd_usbss_audio_config(NULL, WCD_USBSS_CONFIG_TYPE_POWER_MODE,
+				4);
+#endif
 			snd_soc_component_update_bits(component,
 				WCD939X_CDC_TX_ANA_MODE_0_1, 0xF0,
 				mode << 4);
@@ -2497,6 +2505,12 @@ static int wcd939x_enable_req(struct snd_soc_dapm_widget *w,
 					REG_FIELD_VALUE(CDC_ANA_CLK_CTL, ANA_TX_DIV2_CLK_EN, 0x00));
 			snd_soc_component_update_bits(component,
 					REG_FIELD_VALUE(CDC_ANA_CLK_CTL, ANA_TX_CLK_EN, 0x00));
+#if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
+			if (wcd939x->mbhc->wcd_mbhc.mbhc_cfg->enable_usbc_analog &&
+				(!(snd_soc_component_read(component, WCD939X_HPH) & 0XC0)) &&
+				wcd939x->adc_count == 0)
+				wcd_usbss_audio_config(NULL, WCD_USBSS_CONFIG_TYPE_POWER_MODE, 1);
+#endif
 		}
 		break;
 	};
