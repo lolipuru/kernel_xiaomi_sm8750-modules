@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <asm/memory.h>
@@ -606,7 +606,7 @@ static int __read_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 {
 	struct cvp_hfi_queue_header *queue;
 	struct cvp_hfi_msg_session_hdr *msg_pkt;
-	u32 packet_size_in_words, new_read_idx;
+	u32 packet_size_in_words, new_read_idx, packet_size_in_bytes;
 	u32 *read_ptr;
 	u32 receive_request = 0;
 	u32 read_idx, write_idx;
@@ -679,6 +679,7 @@ static int __read_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 	}
 
 	packet_size_in_words = (*read_ptr) >> 2;
+	packet_size_in_bytes = *read_ptr;
 	if (!packet_size_in_words) {
 		spin_unlock(&qinfo->hfi_lock);
 		dprintk(CVP_ERR, "Zero packet size\n");
@@ -705,7 +706,7 @@ static int __read_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 		 * the packet from a shared queue, there is a possibility to get the
 		 * packet->size data corrupted of shared queue by mallicious FW.
 		 */
-		*((u32 *) packet) = packet_size_in_words << 2;
+		*((u32 *) packet) = packet_size_in_bytes;
 	} else {
 		dprintk(CVP_WARN,
 			"BAD packet received, read_idx: %#x, pkt_size: %d\n",
@@ -922,7 +923,8 @@ static void __set_threshold_registers(struct iris_hfi_device *device)
 }
 
 #ifdef CONFIG_EVA_SUN
-static void __enter_cpu_noc_lpi(struct iris_hfi_device *device, enum enter_noc_lpi_caller caller)
+static void __enter_cpu_noc_lpi(struct iris_hfi_device *device,
+				enum enter_noc_lpi_caller caller)
 {
 	u32 lpi_status, count = 0, max_count = 2000;
 
@@ -973,7 +975,8 @@ static void __enter_cpu_noc_lpi(struct iris_hfi_device *device, enum enter_noc_l
 			__func__, caller, lpi_status, count);
 }
 
-static void __enter_core_noc_lpi(struct iris_hfi_device *device, enum enter_noc_lpi_caller caller)
+static void __enter_core_noc_lpi(struct iris_hfi_device *device,
+				enum enter_noc_lpi_caller caller)
 {
 	u32 lpi_status, count = 0, max_count = 2000, val = 0;
 
@@ -1023,7 +1026,8 @@ static void __enter_core_noc_lpi(struct iris_hfi_device *device, enum enter_noc_
 		__func__, caller, lpi_status, count);
 }
 
-static void __enter_video_ctl_noc_lpi(struct iris_hfi_device *device, enum enter_noc_lpi_caller caller)
+static void __enter_video_ctl_noc_lpi(struct iris_hfi_device *device,
+					enum enter_noc_lpi_caller caller)
 {
 	u32 lpi_status, count = 0, max_count = 2000;
 
@@ -3378,17 +3382,19 @@ skip_power_off:
 static void __process_sys_error(struct iris_hfi_device *device)
 {
 	struct cvp_hfi_sfr_struct *vsfr = NULL;
+	u32 sfr_buf_size = 0;
 
 	vsfr = (struct cvp_hfi_sfr_struct *)device->sfr.align_virtual_addr;
-	if (vsfr) {
-		void *p = memchr(vsfr->rg_data, '\0', vsfr->bufSize);
+	sfr_buf_size = vsfr->bufSize;
+	if (vsfr && sfr_buf_size < ALIGNED_SFR_SIZE) {
+		void *p = memchr(vsfr->rg_data, '\0', sfr_buf_size);
 		/*
 		 * SFR isn't guaranteed to be NULL terminated
 		 * since SYS_ERROR indicates that Iris is in the
 		 * process of crashing.
 		 */
 		if (p == NULL)
-			vsfr->rg_data[vsfr->bufSize - 1] = '\0';
+			vsfr->rg_data[sfr_buf_size - 1] = '\0';
 
 		dprintk(CVP_ERR, "SFR Message from FW: %s\n",
 				vsfr->rg_data);
