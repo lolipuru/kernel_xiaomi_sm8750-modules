@@ -127,7 +127,7 @@
 #define QMI_WLFW_MAX_PLATFORM_NAME_LEN_V01 64
 #define QMI_WLFW_MAX_HOST_DDR_RANGE_SIZE_V01 3
 #define QMI_WLFW_MAX_MLO_CHIP_V01 3
-#define QMI_WLFW_TOTAL_GPIO_CONFIG_V01 10
+#define QMI_WLFW_TOTAL_GPIO_CONFIG_V01 15
 #define QMI_WLFW_MAX_NUM_SHADOW_REG_V01 24
 #define QMI_WLFW_MAX_BUILD_ID_LEN_V01 128
 #define QMI_WLFW_MAX_DEV_MEM_NUM_V01 4
@@ -142,6 +142,7 @@
 #define QMI_WLFW_CNSS_DAEMON_CLIENT_ID_V01 0x444d4f4e
 #define QMI_WLFW_MAX_NUM_CE_CMN_REG_V01 100
 #define QMI_WLFW_PMU_PARAMS_MAX_V01 16
+#define QMI_INVALID_GPIO_NUM_V01 0xffff
 #define QMI_WLFW_MAX_NUM_MEM_SEG_V01 52
 #define QMI_WLFW_MAX_WFC_CALL_STATUS_DATA_SIZE_V01 256
 #define QMI_WLFW_MAX_DATA_SIZE_V01 6144
@@ -436,6 +437,19 @@ enum wlfw_gpio_bias_type_v01 {
 	WLFW_GPIO_PULL_UP_V01 = 2,
 	WLFW_GPIO_KEEPER_V01 = 3,
 	WLFW_GPIO_BIAS_TYPE_MAX_VAL_V01 = INT_MAX,
+};
+
+enum wlfw_gpio_drive_strength_v01 {
+	WLFW_GPIO_DRIVE_STRENGTH_MIN_VAL_V01 = INT_MIN,
+	WLFW_GPIO_2MA_V01 = 0,
+	WLFW_GPIO_4MA_V01 = 1,
+	WLFW_GPIO_6MA_V01 = 2,
+	WLFW_GPIO_8MA_V01 = 3,
+	WLFW_GPIO_10MA_V01 = 4,
+	WLFW_GPIO_12MA_V01 = 5,
+	WLFW_GPIO_14MA_V01 = 6,
+	WLFW_GPIO_16MA_V01 = 7,
+	WLFW_GPIO_DRIVE_STRENGTH_MAX_VAL_V01 = INT_MAX,
 };
 
 enum wlfw_gpio_output_value_type_v01 {
@@ -1151,7 +1165,7 @@ struct wlfw_host_cap_req_msg_v01 {
 	u32 gpio_config_len;
 	struct wlfw_gpio_config_v01 gpio_config[QMI_WLFW_TOTAL_GPIO_CONFIG_V01];
 };
-#define WLFW_HOST_CAP_REQ_MSG_V01_MAX_MSG_LEN 845
+#define WLFW_HOST_CAP_REQ_MSG_V01_MAX_MSG_LEN 975
 extern struct qmi_elem_info wlfw_host_cap_req_msg_v01_ei[];
 
 struct wlfw_host_cap_resp_msg_v01 {
