@@ -3067,14 +3067,25 @@ static int cam_icp_mgr_process_ofe_direct_ack_msg(
 	uint32_t *msg_ptr)
 {
 	int rc = 0;
+	uint32_t ctx_id;
+
+	struct hfi_msg_dev_async_ack *ioconfig_ack = NULL;
+	struct cam_icp_hw_ctx_data *ctx_data = NULL;
+
+	ioconfig_ack = (struct hfi_msg_dev_async_ack *)msg_ptr;
+
+	ctx_id = (uint32_t)ioconfig_ack->user_data2;
+	if (!test_bit(ctx_id, hw_mgr->active_ctx_info.active_ctx_bitmap)) {
+		CAM_WARN(CAM_ICP, "ctx data is released before accessing it, ctx_id: %u",
+			ctx_id);
+		rc = -EFAULT;
+		goto end;
+	}
+
+	ctx_data = U64_TO_PTR(ioconfig_ack->user_data1);
 
 	switch (msg_ptr[ICP_PACKET_OPCODE]) {
 	case HFI_OFE_CMD_OPCODE_ABORT: {
-		struct hfi_msg_dev_async_ack *ioconfig_ack = NULL;
-		struct cam_icp_hw_ctx_data *ctx_data = NULL;
-
-		ioconfig_ack = (struct hfi_msg_dev_async_ack *)msg_ptr;
-		ctx_data = U64_TO_PTR(ioconfig_ack->user_data1);
 		if (cam_presil_mode_enabled()) {
 			if (atomic_read(&hw_mgr->frame_in_process)) {
 				if (hw_mgr->frame_in_process_ctx_id == ctx_data->ctx_id) {
@@ -3097,11 +3108,6 @@ static int cam_icp_mgr_process_ofe_direct_ack_msg(
 		break;
 	}
 	case HFI_OFE_CMD_OPCODE_DESTROY: {
-		struct hfi_msg_dev_async_ack *ioconfig_ack = NULL;
-		struct cam_icp_hw_ctx_data *ctx_data = NULL;
-
-		ioconfig_ack = (struct hfi_msg_dev_async_ack *)msg_ptr;
-		ctx_data = U64_TO_PTR(ioconfig_ack->user_data1);
 		CAM_DBG(CAM_ICP, "received OFE destroy done msg: %u", ctx_data->state);
 		if ((ctx_data->state == CAM_ICP_CTX_STATE_RELEASE) ||
 			(ctx_data->state == CAM_ICP_CTX_STATE_IN_USE))
@@ -3114,6 +3120,7 @@ static int cam_icp_mgr_process_ofe_direct_ack_msg(
 		return -EINVAL;
 	}
 
+end:
 	return rc;
 }
 
@@ -4794,7 +4801,7 @@ static int cam_icp_mgr_populate_abort_cmd(struct cam_icp_hw_ctx_data *ctx_data,
 	abort_cmd->num_fw_handles = 1;
 	abort_cmd->fw_handles_flex[0] = ctx_data->fw_handle;
 	abort_cmd->user_data1 = PTR_TO_U64(ctx_data);
-	abort_cmd->user_data2 = (uint64_t)0x0;
+	abort_cmd->user_data2 = (uint64_t)ctx_data->ctx_id;
 
 	*abort_cmd_ptr = abort_cmd;
 
@@ -4947,7 +4954,7 @@ static int cam_icp_mgr_destroy_handle(
 	destroy_cmd->num_fw_handles = 1;
 	destroy_cmd->fw_handles_flex[0] = ctx_data->fw_handle;
 	destroy_cmd->user_data1 = PTR_TO_U64(ctx_data);
-	destroy_cmd->user_data2 = (uint64_t)0x0;
+	destroy_cmd->user_data2 = (uint64_t)ctx_data->ctx_id;
 
 	reinit_completion(&ctx_data->wait_complete);
 
