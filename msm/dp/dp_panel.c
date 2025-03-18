@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -218,6 +218,7 @@ static void dp_panel_calc_tu_parameters(struct dp_panel *dp_panel,
 	in.async_en = 0;
 	in.fec_en = dp_panel->fec_en;
 	in.num_of_dsc_slices = pinfo->comp_info.dsc_info.slice_per_pkt;
+	in.ppc_div_factor = dp_panel->pclk_factor;
 
 	if (pinfo->comp_info.enabled)
 		in.compress_ratio = mult_frac(100, pinfo->comp_info.src_bpp,
@@ -581,6 +582,18 @@ static int dp_panel_dsc_prepare_basic_params(
 
 	tput = &peak_throughput_mode_0_tbl[ppr_max_index];
 	peak_throughput = tput->peak_throughput;
+
+	/*
+	 * Special case for 8k60 handling:
+	 * As per spec, for the case 1360 < ppr <= 3200, the slice count of 8 is selected
+	 * assuming a peak throughput support of:
+	 *   340 MP/s for ppr < 2700 and
+	 *   400 MP/s for ppr > 2700.
+	 * But if an 8k60 sink can support a peak throughput of 550 MP/s to allow a 4 slice
+	 * configuration. So in this special case, the driver will choose 4 slices instead of 8.
+	 */
+	if ((rec->num_slices == 8) && (ppr <= (peak_throughput * 4)))
+		comp_info->dsc_info.slice_per_pkt = 4;
 
 	max_slice_width = dp_panel->dsc_dpcd[12] * 320;
 	slice_width = (dp_mode->timing.h_active /
