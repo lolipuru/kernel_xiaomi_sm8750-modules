@@ -795,12 +795,12 @@ static int _sde_plane_get_aspace(
 	switch (mode) {
 	case SDE_DRM_FB_NON_SEC:
 		*aspace = kms->aspace[MSM_SMMU_DOMAIN_UNSECURE];
-		if (!aspace)
+		if (!*aspace)
 			return -EINVAL;
 		break;
 	case SDE_DRM_FB_SEC:
 		*aspace = kms->aspace[MSM_SMMU_DOMAIN_SECURE];
-		if (!aspace)
+		if (!*aspace)
 			return -EINVAL;
 		break;
 	case SDE_DRM_FB_NON_SEC_DIR_TRANS:
