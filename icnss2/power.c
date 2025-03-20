@@ -79,7 +79,7 @@ static struct icnss_clk_cfg icnss_adrestea_clk_list[] = {
 #define ICNSS_CHAIN1_REGULATOR                          "vdd-3.3-ch1"
 #define MAX_PROP_SIZE					32
 
-#define SW_CTRL_GPIO			"sw-ctrl-gpio"
+#define SW_CTRL_GPIO			"pin_sw-ctrl-gpio"
 #define PIN_CTRL			"pin-ctrl-support"
 #define BT_CXMX_VOLTAGE_MV		950
 #define ICNSS_MBOX_MSG_MAX_LEN 64
@@ -666,7 +666,7 @@ int icnss_get_pinctrl(struct icnss_priv *priv)
 	pinctrl_info = &priv->pinctrl_info;
 
 	if (of_property_read_bool(dev->of_node, PIN_CTRL)) {
-		of_property_read_u32(dev->of_node, SW_CTRL_GPIO, &gpio_id);
+		gpio_id = of_get_named_gpio(dev->of_node, SW_CTRL_GPIO, 0);
 		pinctrl_info->sw_ctrl_gpio = gpio_id;
 		icnss_pr_dbg("Switch control GPIO: %d\n",
 			     pinctrl_info->sw_ctrl_gpio);
