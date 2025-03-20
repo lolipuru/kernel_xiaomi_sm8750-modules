@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -14,6 +14,7 @@
 #include "sde_vm.h"
 #include "sde_vm_common.h"
 #include "sde_vm_msgq.h"
+#include "sde_crtc.h"
 
 #define to_vm_primary(vm) ((struct sde_vm_primary *)vm)
 
@@ -33,6 +34,11 @@ static bool _sde_vm_owns_hw(struct sde_kms *sde_kms)
 void sde_vm_irq_release_notification_handler(void *req,
 		unsigned long notif_type, enum gh_irq_label label)
 {
+	if (req)
+		_sde_crtc_vm_reclaim_notify(((struct sde_vm *)req)->crtc);
+	else
+		SDE_DEBUG("unable to send reclaim notification to userspace: null sde_vm pointer");
+
 	SDE_INFO("irq release notification for label: %d\n", label);
 }
 

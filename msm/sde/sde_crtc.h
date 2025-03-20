@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1229,6 +1229,12 @@ struct drm_encoder *sde_crtc_get_src_encoder_of_clone(struct drm_crtc *crtc);
  * _sde_crtc_vm_release_notify- send event to usermode on vm release
  */
 void _sde_crtc_vm_release_notify(struct drm_crtc *crtc);
+
+/*
+ * _sde_crtc_vm_reclaim_notify- notify usermode in Primary VM to trigger commit for reclaimimg
+ *	resources released by trusted VM
+ */
+void _sde_crtc_vm_reclaim_notify(struct drm_crtc *crtc);
 
 /**
  * sde_crtc_calc_vpadding_param - calculate vpadding parameters

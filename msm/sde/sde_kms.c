@@ -1654,6 +1654,8 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 
 	/* release HW */
 	if (vm_ops->vm_release) {
+		if (sde_kms->vm)
+			sde_kms->vm->crtc = crtc;
 		rc = vm_ops->vm_release(sde_kms);
 		if (rc)
 			SDE_ERROR("sde vm assign failed, rc=%d\n", rc);

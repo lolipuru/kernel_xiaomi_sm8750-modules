@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1041,6 +1041,7 @@ struct sde_drm_dnsc_blur_cfg {
 #define DRM_EVENT_FRAME_DONE 0X8000011
 #define DRM_EVENT_MDNIE_ART 0X80000012
 #define DRM_EVENT_COPR 0X80000013
+#define DRM_EVENT_VM_RECLAIM 0X80000014
 
 #ifndef DRM_MODE_FLAG_VID_MODE_PANEL
 #define DRM_MODE_FLAG_VID_MODE_PANEL        0x01
