@@ -80,7 +80,10 @@ static struct icnss_clk_cfg icnss_adrestea_clk_list[] = {
 #define MAX_PROP_SIZE					32
 
 #define SW_CTRL_GPIO			"pin_sw-ctrl-gpio"
+#define WLAN_EN_GPIO			"pin_wlan-en-gpio"
 #define PIN_CTRL			"pin-ctrl-support"
+#define WLAN_EN_ACTIVE			"wlan_en_active"
+#define WLAN_EN_SLEEP			"wlan_en_sleep"
 #define BT_CXMX_VOLTAGE_MV		950
 #define ICNSS_MBOX_MSG_MAX_LEN 64
 #define ICNSS_MBOX_TIMEOUT_MS 1000
@@ -692,8 +695,30 @@ int icnss_get_pinctrl(struct icnss_priv *priv)
 				icnss_pr_err("Failed to select sw_ctrl state, err = %d\n",
 					     ret);
 		}
+
+		pinctrl_info->wlan_en_gpio = of_get_named_gpio(dev->of_node,
+							       WLAN_EN_GPIO, 0);
+		icnss_pr_dbg("WLAN_EN GPIO: %d\n", pinctrl_info->wlan_en_gpio);
+
+		pinctrl_info->wlan_en_active =
+			pinctrl_lookup_state(pinctrl_info->pinctrl, WLAN_EN_ACTIVE);
+
+		if (IS_ERR_OR_NULL(pinctrl_info->wlan_en_active)) {
+			ret = PTR_ERR(pinctrl_info->wlan_en_active);
+			icnss_pr_err("Failed to get wlan_en active state, err = %d\n", ret);
+		}
+
+		pinctrl_info->wlan_en_sleep =
+			pinctrl_lookup_state(pinctrl_info->pinctrl, WLAN_EN_SLEEP);
+
+		if (IS_ERR_OR_NULL(pinctrl_info->wlan_en_sleep)) {
+			ret = PTR_ERR(pinctrl_info->wlan_en_sleep);
+			icnss_pr_err("Failed to get wlan_en sleep state, err = %d\n",
+				     ret);
+		}
 	} else {
 		pinctrl_info->sw_ctrl_gpio = -EINVAL;
+		pinctrl_info->wlan_en_gpio = -EINVAL;
 	}
 
 	/* Find out and configure all those GPIOs which need to be setup
@@ -724,6 +749,53 @@ int icnss_get_pinctrl(struct icnss_priv *priv)
 	} else {
 		icnss_pr_dbg("No GPIOs to be setup for interrupt wakeup capable\n");
 	}
+
+	return 0;
+out:
+	return ret;
+}
+
+int icnss_select_pinctrl_state(struct icnss_priv *plat_priv, bool state)
+{
+	int ret = 0;
+	struct icnss_pinctrl_info *pinctrl_info;
+
+	if (!plat_priv) {
+		icnss_pr_err("plat_priv is NULL!\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	pinctrl_info = &plat_priv->pinctrl_info;
+
+	if (state) {
+		if (!IS_ERR_OR_NULL(pinctrl_info->wlan_en_active)) {
+			ret = pinctrl_select_state(pinctrl_info->pinctrl,
+						   pinctrl_info->wlan_en_active);
+			if (ret) {
+				icnss_pr_err("Failed to select wlan_en active state, err = %d\n",
+					     ret);
+				goto out;
+			}
+		} else {
+			goto out;
+		}
+	} else {
+		if (!IS_ERR_OR_NULL(pinctrl_info->wlan_en_sleep)) {
+			ret = pinctrl_select_state(pinctrl_info->pinctrl,
+						   pinctrl_info->wlan_en_sleep);
+			if (ret) {
+				icnss_pr_err("Failed to select wlan_en sleep state, err = %d\n",
+					     ret);
+				goto out;
+			}
+		} else {
+			goto out;
+		}
+	}
+
+	icnss_pr_info("WLAN_EN Value: %d\n", gpio_get_value(pinctrl_info->wlan_en_gpio));
+	icnss_pr_info("%s WLAN_EN GPIO successfully\n", state ? "Assert" : "De-assert");
 
 	return 0;
 out:

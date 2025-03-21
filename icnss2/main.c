@@ -31,6 +31,7 @@
 #include <linux/etherdevice.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
+#include <linux/of_gpio.h>
 #include <linux/pm_runtime.h>
 #include <linux/soc/qcom/qmi.h>
 #include <linux/sysfs.h>
@@ -2963,10 +2964,23 @@ static void icnss_update_shutdown_state_to_fw(struct icnss_priv *priv,
 				!test_bit(ICNSS_BLOCK_SHUTDOWN, &priv->state) &&
 				!atomic_read(&priv->is_idle_shutdown)) {
 
+				icnss_pr_info("WLAN_EN Value: %d\n",
+					      gpio_get_value(priv->pinctrl_info.wlan_en_gpio));
+
 				icnss_driver_event_post(priv,
 					  ICNSS_DRIVER_EVENT_UNREGISTER_DRIVER,
 					  ICNSS_EVENT_SYNC_UNINTERRUPTIBLE,
 					  NULL);
+
+				if (gpio_get_value(priv->pinctrl_info.wlan_en_gpio)) {
+					ret = icnss_select_pinctrl_state(priv, false);
+					if (ret)
+						icnss_pr_err("Failed to select pinctrl state, err = %d\n",
+							     ret);
+				}
+
+				icnss_pr_info("WLAN_EN Value: %d\n",
+					      gpio_get_value(priv->pinctrl_info.wlan_en_gpio));
 
 				clear_bit(ICNSS_FW_READY, &priv->state);
 			}
