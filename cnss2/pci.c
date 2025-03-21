@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/completion.h>
@@ -24,6 +24,7 @@
 #include "pci.h"
 #include "pci_platform.h"
 #include "reg.h"
+#include "genl.h"
 
 #define PCI_LINK_UP			1
 #define PCI_LINK_DOWN			0
@@ -965,7 +966,8 @@ __cnss_del_rddm_timer(struct cnss_pci_data *pci_priv,
 	int ret;
 
 	ret = del_timer(&pci_priv->dev_rddm_timer);
-	cnss_pr_dbg("%s RDDM timer deleted", ret ? "Active" : "Inactive");
+	cnss_pr_dbg("Delete RDDM timer @%s(%d), ret %d\n",
+		    func, line, ret);
 	return ret;
 }
 
@@ -973,6 +975,17 @@ __cnss_del_rddm_timer(struct cnss_pci_data *pci_priv,
 	__cnss_start_rddm_timer(_pci_priv, __func__, __LINE__)
 #define cnss_del_rddm_timer(_pci_priv) \
 	__cnss_del_rddm_timer(_pci_priv, __func__, __LINE__)
+
+/**
+ * cnss_pci_start_xdump_timer - Start timer for collecting BT dump over WLAN
+ * @pci_priv: cnss pci data
+ *
+ * Return: None
+ */
+void cnss_pci_start_xdump_timer(struct cnss_pci_data *pci_priv)
+{
+	return cnss_start_rddm_timer(pci_priv);
+}
 
 #if IS_ENABLED(CONFIG_MHI_BUS_MISC)
 static void cnss_mhi_debug_reg_dump(struct cnss_pci_data *pci_priv)
@@ -1926,7 +1939,8 @@ int cnss_pci_link_down(struct device *dev)
 
 	if (pci_priv->drv_connected_last &&
 	    of_property_read_bool(plat_priv->plat_dev->dev.of_node,
-				  "cnss-enable-self-recovery"))
+				  "cnss-enable-self-recovery") &&
+	    !plat_priv->xdump_helper.wl_over_bt_enabled)
 		plat_priv->ctrl_params.quirks |= BIT(LINK_DOWN_SELF_RECOVERY);
 
 	cnss_pr_err("PCI link down is detected by drivers, driver state 0x%lx\n",
@@ -4013,7 +4027,8 @@ static int cnss_qca6290_shutdown(struct cnss_pci_data *pci_priv)
 	     test_bit(CNSS_DRIVER_UNLOADING, &plat_priv->driver_state) ||
 	     test_bit(CNSS_DRIVER_IDLE_RESTART, &plat_priv->driver_state) ||
 	     test_bit(CNSS_DRIVER_IDLE_SHUTDOWN, &plat_priv->driver_state) ||
-	     test_bit(CNSS_IN_COLD_BOOT_CAL, &plat_priv->driver_state)) &&
+	     test_bit(CNSS_IN_COLD_BOOT_CAL, &plat_priv->driver_state) ||
+	     plat_priv->xdump_helper.dumping_bt_over_wl) &&
 	    test_bit(CNSS_DEV_ERR_NOTIFY, &plat_priv->driver_state)) {
 		cnss_del_rddm_timer(pci_priv);
 		ret = cnss_pci_collect_dump_info(pci_priv, false);
@@ -7373,6 +7388,11 @@ int cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 skip_dump:
 	complete(&plat_priv->rddm_complete);
 out:
+	if (!in_panic && plat_priv->xdump_helper.dumping_bt_over_wl) {
+		plat_priv->xdump_helper.dumping_bt_over_wl = 0;
+		cnss_genl_send_xdump_bt_over_wl_resp(ret);
+	}
+
 	return ret;
 }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "cnss_genl: " fmt
@@ -45,47 +45,69 @@ static int cnss_genl_process_msg(struct sk_buff *skb, struct genl_info *info)
 
 /**
  * cnss_genl_xdump_bt_arrival_hdl - Handler for XDUMP_SUBCMD_BT_ARRIVAL
+ * @plat_priv: pointer to cnss platform data
  * @attrs: Parsed attributes array for XDUMP
  *
  * Return: None
  */
-static void cnss_genl_xdump_bt_arrival_hdl(struct nlattr **attrs)
+static void cnss_genl_xdump_bt_arrival_hdl(struct cnss_plat_data *plat_priv,
+					   struct nlattr **attrs)
 {
-	u32 wl_over_bt, bt_over_wl;
+	struct cnss_xdump_cap *bt_cap;
 
-	wl_over_bt =
+	bt_cap = kzalloc(sizeof(*bt_cap), GFP_KERNEL);
+	if (!bt_cap) {
+		cnss_genl_send_xdump_wlan_arrival(0, 0, 0, 0);
+		return;
+	}
+
+	bt_cap->indicated = true;
+	bt_cap->wl_over_bt =
 		nla_get_flag(attrs[CNSS_GENL_ATTR_XDUMP_WL_OVER_BT_SUPPORT]);
-	bt_over_wl =
+	bt_cap->bt_over_wl =
 		nla_get_flag(attrs[CNSS_GENL_ATTR_XDUMP_BT_OVER_WL_SUPPORT]);
 	cnss_pr_info("Received XDUMP_SUBCMD_BT_ARRIVAL: wl_over_bt: %d, bt_over_wl %d\n",
-		     wl_over_bt, bt_over_wl);
+		     bt_cap->wl_over_bt, bt_cap->bt_over_wl);
+
+	cnss_driver_event_post(plat_priv,
+			       CNSS_DRIVER_EVENT_XDUMP_BT_ARRIVAL,
+			       0, bt_cap);
 }
 
 /**
  * cnss_genl_xdump_bt_over_wl_req_hdl - Handler for XDUMP_SUBCMD_BT_OVER_WL_REQ
+ * @plat_priv: pointer to cnss platform data
  * @attrs: Parsed attributes array for XDUMP
  *
  * Return: None
  */
-static void cnss_genl_xdump_bt_over_wl_req_hdl(struct nlattr **attrs)
+static void cnss_genl_xdump_bt_over_wl_req_hdl(struct cnss_plat_data *plat_priv,
+					       struct nlattr **attrs)
 {
 	cnss_pr_info("Received XDUMP_SUBCMD_BT_OVER_WL_REQ\n");
+	cnss_driver_event_post(plat_priv,
+			       CNSS_DRIVER_EVENT_XDUMP_BT_OVER_WL_REQ,
+			       0, NULL);
 }
 
 /**
  * cnss_genl_xdump_wl_over_bt_resp_hdl - Handler for
  * XDUMP_SUBCMD_WL_OVER_BT_RESP
+ * @plat_priv: pointer to cnss platform data
  * @attrs: Parsed attributes array for XDUMP
  *
  * Return: None
  */
-static void cnss_genl_xdump_wl_over_bt_resp_hdl(struct nlattr **attrs)
+static void
+cnss_genl_xdump_wl_over_bt_resp_hdl(struct cnss_plat_data *plat_priv,
+				    struct nlattr **attrs)
 {
 	s32 result;
 
 	result = nla_get_s32(attrs[CNSS_GENL_ATTR_XDUMP_RESULT]);
 	cnss_pr_info("Received XDUMP_SUBCMD_WL_OVER_BT_RESP: result %d\n",
 		     result);
+	cnss_xdump_wl_over_bt_complete(plat_priv, result);
 }
 
 /**
@@ -115,13 +137,13 @@ static int cnss_genl_process_xdump(struct sk_buff *skb, struct genl_info *info)
 	subcmd = nla_get_u8(attrs[CNSS_GENL_ATTR_XDUMP_SUBCMD]);
 	switch (subcmd) {
 	case CNSS_GENL_XDUMP_SUBCMD_BT_ARRIVAL:
-		cnss_genl_xdump_bt_arrival_hdl(attrs);
+		cnss_genl_xdump_bt_arrival_hdl(plat_priv, attrs);
 		break;
 	case CNSS_GENL_XDUMP_SUBCMD_BT_OVER_WL_REQ:
-		cnss_genl_xdump_bt_over_wl_req_hdl(attrs);
+		cnss_genl_xdump_bt_over_wl_req_hdl(plat_priv, attrs);
 		break;
 	case CNSS_GENL_XDUMP_SUBCMD_WL_OVER_BT_RESP:
-		cnss_genl_xdump_wl_over_bt_resp_hdl(attrs);
+		cnss_genl_xdump_wl_over_bt_resp_hdl(plat_priv, attrs);
 		break;
 	default:
 		cnss_pr_err("Unrecognized subcmd: %d\n", subcmd);

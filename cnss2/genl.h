@@ -42,7 +42,7 @@ enum cnss_genl_msg_attrs {
  * @CNSS_GENL_ATTR_XDUMP_RESULT: s32, result of XDUMP
  *  Uses values from linux error numbers
  *
- * @CNSS_GENL_ATTR_XDUMP_WL_SRAM_ADDR: u32, start address of SRAM to be dumped
+ * @CNSS_GENL_ATTR_XDUMP_WL_SRAM_ADDR: u32, Offset from WLAN SRAM start address
  *
  * @CNSS_GENL_ATTR_XDUMP_WL_SRAM_SIZE: u32, size of SRAM to be dumped
  *
@@ -51,6 +51,10 @@ enum cnss_genl_msg_attrs {
  *
  * @CNSS_GENL_ATTR_XDUMP_BT_OVER_WL_SUPPORT: flag
  *  Indicate supportance of dumping BT over WLAN
+ *
+ * !!Important!!
+ * This enumeration is defined both in cnss and in userspace.
+ * If you need to modify it, ensure that changes are made in all places.
  */
 enum cnss_genl_xdump_attrs {
 	CNSS_GENL_ATTR_XDUMP_UNSPEC,
@@ -91,6 +95,10 @@ enum cnss_genl_xdump_attrs {
  * @CNSS_GENL_XDUMP_SUBCMD_WL_OVER_BT_RESP:  Response for dumping WLAN over BT
  *  The mandatory attribute used with this sub command:
  *  CNSS_GENL_ATTR_XDUMP_RESULT
+ *
+ * !!Important!!
+ * This enumeration is defined both in cnss and in userspace.
+ * If you need to modify it, ensure that changes are made in all places.
  */
 enum cnss_genl_xdump_subcmds {
 	CNSS_GENL_XDUMP_SUBCMD_UNSPEC,
@@ -114,6 +122,10 @@ enum cnss_genl_xdump_subcmds {
  *
  * @CNSS_GENL_CMD_XDUMP: Command for WLAN/BT cross-module dump
  *  The attributes used with this command are in the enum cnss_genl_xdump_attrs.
+ *
+ * !!Important!!
+ * This enumeration is defined both in cnss and in userspace.
+ * If you need to modify it, ensure that changes are made in all places.
  */
 enum cnss_genl_cmds {
 	CNSS_GENL_CMD_UNSPEC,
@@ -135,7 +147,7 @@ int cnss_genl_send_msg(void *buff, u8 type,
  * provided params
  * @wlan_dump_over_bt: Indicates if collecting WLAN dump over BT is supported
  * @bt_dump_over_wlan: Indicates if collecting BT dump over WLAN is supported
- * @sram_start: Start address of SRAM to be dumpped
+ * @sram_start: Offset from WLAN SRAM start address
  * @sram_size: Size of SRAM to be dumpped
  *
  * Return: 0 on success, errno otherwise
