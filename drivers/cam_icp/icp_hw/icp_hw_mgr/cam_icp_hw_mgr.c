@@ -9766,10 +9766,12 @@ static int cam_icp_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 		int                        i;
 
 		pf_cmd_args = hw_cmd_args->u.pf_cmd_args;
+		pf_cmd_args->pf_args->pf_pid_found_status = CAM_PF_PID_FOUND_FAILURE;
 		if (pf_cmd_args->pf_args->check_pid) {
 			for (i = 0; i < hw_mgr->num_pid; i++) {
 				if (pf_cmd_args->pf_args->pf_smmu_info->pid == hw_mgr->pid[i]) {
-					pf_cmd_args->pf_args->pid_found = true;
+					pf_cmd_args->pf_args->pf_pid_found_status
+							= CAM_PF_PID_FOUND_SUCCESS;
 					break;
 				}
 			}
