@@ -3328,6 +3328,15 @@ int cam_soc_util_regulator_disable(struct regulator *rgltr,
 		return -EINVAL;
 	}
 
+	rc = cam_wrapper_regulator_is_enabled(rgltr, rgltr_name);
+	if (rc < 0) {
+		CAM_ERR(CAM_UTIL, "%s regulator_is_enabled failed", rgltr_name);
+		return rc;
+	} else if (rc == 0) {
+		CAM_DBG(CAM_UTIL, "%s regulator already disabled", rgltr_name);
+		return rc;
+	}
+
 	rc = cam_wrapper_regulator_disable(rgltr, rgltr_name);
 	if (rc) {
 		CAM_ERR(CAM_UTIL, "%s regulator disable failed", rgltr_name);
