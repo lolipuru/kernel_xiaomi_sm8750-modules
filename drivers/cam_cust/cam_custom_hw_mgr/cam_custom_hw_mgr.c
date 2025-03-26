@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -1258,13 +1258,21 @@ static int cam_custom_mgr_prepare_hw_update(void *hw_mgr_priv,
 		prepare->packet->cmd_buf_offset);
 	rc = cam_packet_util_get_cmd_mem_addr(
 			cmd_desc->mem_handle, &ptr, &len);
-	if (rc == -EINVAL) {
-		CAM_ERR(CAM_CUSTOM, "Failed to get CPU addr handle 0x%x",
-			cmd_desc->mem_handle);
-		return -EINVAL;
+	if (rc) {
+		CAM_ERR(CAM_CUSTOM, "Failed to get CPU addr handle 0x%x rc=%d",
+			cmd_desc->mem_handle, rc);
+		return rc;
 	}
 
 	if (!rc) {
+		if (((size_t)cmd_desc->offset >= len) ||
+			((size_t)cmd_desc->size > (len - (size_t)cmd_desc->offset))) {
+			CAM_ERR(CAM_UTIL, "invalid mem len:%zd cmd desc size:%u off:%u hdl:0x%x",
+				len, cmd_desc->size, cmd_desc->offset, cmd_desc->mem_handle);
+			cam_mem_put_cpu_buf(cmd_desc->mem_handle);
+			return -EINVAL;
+		}
+
 		ptr += (cmd_desc->offset / 4);
 		custom_buf_type1 =
 			(struct cam_custom_cmd_buf_type_1 *)ptr;
