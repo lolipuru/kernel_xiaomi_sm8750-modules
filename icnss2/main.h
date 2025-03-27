@@ -473,6 +473,26 @@ struct cnss_host_dump_meta_info {
 	struct icnss_dump_entry entry[CNSS_HOST_DUMP_TYPE_MAX];
 };
 
+enum icnss_wlfw_gpio_config_type {
+	WLFW_GPIO_NUM_V01,
+	WLFW_GPIO_NAME_V01,
+	WLFW_PMIC_INDEX_V01,
+	WLFW_GPIO_TYPE_V01,
+	WLFW_OUTPUT_VALUE_V01,
+	WLFW_FUNC_V01,
+	WLFW_DIRECTION_V01,
+	WLFW_DRIVE_V01,
+	WLFW_BIAS_V01,
+	WLFW_IS_CLK_V01,
+	WLFW_IS_WAKE_V01,
+	WLFW_INTRPT_TRIGGER_TYPE_V01,
+	WLFW_PRIORITY_V01,
+	WLFW_GPIO_BITRESERVED_V01,
+	WLFW_GPIO_ARRAY_VALID_V01,
+	WLFW_GPIO_OWNER_V01,
+	WLFW_GPIO_PARAMS_MAX_V01,
+};
+
 static const char * const icnss_gpio_output_str[] = {
 	[WLFW_GPIO_LOW_VALUE_V01] = "low",
 	[WLFW_GPIO_HIGH_VALUE_V01] = "high",
