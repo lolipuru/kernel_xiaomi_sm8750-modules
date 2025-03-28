@@ -5818,6 +5818,15 @@ static int cnss_probe(struct platform_device *plat_dev)
 	if (ret)
 		goto reset_ctx;
 
+	/* FMD WAR for Ganges, disable BT_EN GPIO */
+	if (plat_priv && plat_priv->device_id == PEACH_DEVICE_ID) {
+		int bt_en_gpio = plat_priv->pinctrl_info.bt_en_gpio;
+		if (bt_en_gpio > 0) {
+			cnss_pr_err("Disabling BT_EN");
+			gpio_direction_output(bt_en_gpio, 0);
+		}
+	}
+
 	ret = cnss_register_esoc(plat_priv);
 	if (ret)
 		goto free_res;
