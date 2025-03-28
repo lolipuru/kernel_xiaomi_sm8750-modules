@@ -20,6 +20,7 @@
 #include <asoc/msm-cdc-supply.h>
 #include <bindings/audio-codec-port-types.h>
 #include <linux/qti-regmap-debugfs.h>
+#include <linux/irqdesc.h>
 
 #include "wcd9378-reg-masks.h"
 #include "wcd9378.h"
@@ -1522,6 +1523,18 @@ struct wcd9378_mbhc *wcd9378_soc_get_mbhc(struct snd_soc_component *component)
 }
 EXPORT_SYMBOL_GPL(wcd9378_soc_get_mbhc);
 
+static bool wcd9378_check_irq_status(struct wcd_irq_info *irq_info, int irq)
+{
+	struct irq_desc *desc =
+		irq_to_desc(regmap_irq_get_virq(irq_info->irq_chip, irq));
+
+	/*If the value of depth is 0, means the irq has been enabled*/
+	if (desc->depth == 0)
+		return true;
+
+	return false;
+}
+
 static int wcd9378_codec_hphl_dac_event(struct snd_soc_dapm_widget *w,
 					struct snd_kcontrol *kcontrol,
 					int event)
@@ -1666,8 +1679,11 @@ static int wcd9378_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
 			wcd9378->update_wcd_event(wcd9378->handle,
 						SLV_BOLERO_EVT_RX_MUTE,
 						(WCD_RX1 << 0x10));
-		wcd_enable_irq(&wcd9378->irq_info,
-					WCD9378_IRQ_HPHL_PDM_WD_INT);
+
+		if (!wcd9378_check_irq_status(&wcd9378->irq_info,
+						WCD9378_IRQ_HPHL_PDM_WD_INT))
+			wcd_enable_irq(&wcd9378->irq_info,
+						WCD9378_IRQ_HPHL_PDM_WD_INT);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		wcd9378_sys_usage_auto_udpate(component, RX0_RX1_HPH_EN, false);
@@ -1719,8 +1735,11 @@ static int wcd9378_codec_enable_hphr_pa(struct snd_soc_dapm_widget *w,
 			wcd9378->update_wcd_event(wcd9378->handle,
 						SLV_BOLERO_EVT_RX_MUTE,
 						(WCD_RX2 << 0x10));
-		wcd_enable_irq(&wcd9378->irq_info,
-					WCD9378_IRQ_HPHR_PDM_WD_INT);
+
+		if (!wcd9378_check_irq_status(&wcd9378->irq_info,
+						WCD9378_IRQ_HPHR_PDM_WD_INT))
+			wcd_enable_irq(&wcd9378->irq_info,
+						WCD9378_IRQ_HPHR_PDM_WD_INT);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		wcd9378_sys_usage_auto_udpate(component, RX0_RX1_HPH_EN, false);
@@ -1772,15 +1791,22 @@ static int wcd9378_codec_enable_aux_pa(struct snd_soc_dapm_widget *w,
 				wcd9378->update_wcd_event(wcd9378->handle,
 							SLV_BOLERO_EVT_RX_MUTE,
 							(WCD_RX2 << 0x10));
-			wcd_enable_irq(&wcd9378->irq_info,
+
+			if (!wcd9378_check_irq_status(&wcd9378->irq_info,
+						WCD9378_IRQ_HPHR_PDM_WD_INT))
+				wcd_enable_irq(&wcd9378->irq_info,
 						WCD9378_IRQ_HPHR_PDM_WD_INT);
+
 			set_bit(WCD_AUX_EN, &wcd9378->status_mask);
 		} else {
 			if (wcd9378->update_wcd_event)
 				wcd9378->update_wcd_event(wcd9378->handle,
 							SLV_BOLERO_EVT_RX_MUTE,
 							(WCD_RX3 << 0x10));
-			wcd_enable_irq(&wcd9378->irq_info,
+
+			if (!wcd9378_check_irq_status(&wcd9378->irq_info,
+						WCD9378_IRQ_AUX_PDM_WD_INT))
+				wcd_enable_irq(&wcd9378->irq_info,
 						WCD9378_IRQ_AUX_PDM_WD_INT);
 		}
 
@@ -1842,16 +1868,23 @@ static int wcd9378_codec_enable_ear_pa(struct snd_soc_dapm_widget *w,
 				wcd9378->update_wcd_event(wcd9378->handle,
 						SLV_BOLERO_EVT_RX_MUTE,
 						(WCD_RX1 << 0x10));
-			wcd_enable_irq(&wcd9378->irq_info,
-					WCD9378_IRQ_HPHL_PDM_WD_INT);
+
+			if (!wcd9378_check_irq_status(&wcd9378->irq_info,
+						WCD9378_IRQ_HPHL_PDM_WD_INT))
+				wcd_enable_irq(&wcd9378->irq_info,
+						WCD9378_IRQ_HPHL_PDM_WD_INT);
+
 			set_bit(WCD_EAR_EN, &wcd9378->status_mask);
 		} else {
 			if (wcd9378->update_wcd_event)
 				wcd9378->update_wcd_event(wcd9378->handle,
 						SLV_BOLERO_EVT_RX_MUTE,
 						(WCD_RX3 << 0x10));
-			wcd_enable_irq(&wcd9378->irq_info,
-					WCD9378_IRQ_AUX_PDM_WD_INT);
+
+			if (!wcd9378_check_irq_status(&wcd9378->irq_info,
+						WCD9378_IRQ_AUX_PDM_WD_INT))
+				wcd_enable_irq(&wcd9378->irq_info,
+						WCD9378_IRQ_AUX_PDM_WD_INT);
 		}
 
 		ret = wcd9378_pde_act_ps_check(component,
