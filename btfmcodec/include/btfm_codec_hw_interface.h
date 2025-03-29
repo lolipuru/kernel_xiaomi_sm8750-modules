@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __LINUX_BTFM_CODEC_HW_INTERFACE_H
@@ -29,6 +29,7 @@ struct hwep_configurations {
 	uint8_t codectype;
 	uint32_t direction;
 	uint8_t num_channels;
+	uint8_t is_port_opened;
 	struct list_head dai_list;
 };
 

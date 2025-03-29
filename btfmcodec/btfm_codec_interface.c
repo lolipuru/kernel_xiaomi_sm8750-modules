@@ -286,6 +286,7 @@ void btfmcodec_wq_hwep_shutdown(struct work_struct *work)
 	list_for_each_entry_safe(hwep_configs, tmp, head, dai_list) {
 		BTFMCODEC_INFO("shuting down dai id:%d", hwep_configs->stream_id);
 		ret = btfmcodec_hwep_shutdown(btfmcodec, hwep_configs->stream_id, true);
+		hwep_configs->is_port_opened = 0;
 		if (ret < 0) {
 			BTFMCODEC_ERR("failed to shutdown master with id %d", hwep_configs->stream_id);
 			break;
@@ -623,6 +624,13 @@ int btfmcodec_hwep_prepare(struct btfmcodec_data *btfmcodec, uint32_t sampling_r
 				BTFMCODEC_ERR("failed to configure Codec DMA %d", ret);
 				if (seamless == false)
 					btfmcodec_set_current_state(state, IDLE);
+				else {
+					if (dai_drv && dai_drv->dai_ops &&
+						dai_drv->dai_ops->hwep_shutdown) {
+						dai_drv->dai_ops->hwep_shutdown((void *)hwep_info,
+										id);
+					}
+				}
 			} else {
 				if (seamless == false)
 					btfmcodec_set_current_state(state, BT_Connected);
@@ -813,16 +821,31 @@ void btfmcodec_wq_hwep_configure(struct work_struct *work)
 		if (ret >= 0)
 			ret = btfmcodec_hwep_prepare(btfmcodec, sample_rate, direction, id, true);
 		if (ret < 0) {
+			hwep_configs->is_port_opened = 1;
 			BTFMCODEC_ERR("failed to configure hwep %d", hwep_configs->stream_id);
 			break;
+		} else {
+			hwep_configs->is_port_opened = 1;
 		}
 	}
 
-	if (ret < 0)
+	if (ret < 0) {
+		list_for_each_entry_safe(hwep_configs, tmp, head, dai_list) {
+			if (hwep_configs->is_port_opened) {
+				BTFMCODEC_INFO("shuting down dai id:%d", hwep_configs->stream_id);
+				ret = btfmcodec_hwep_shutdown(btfmcodec, hwep_configs->stream_id,
+								true);
+				hwep_configs->is_port_opened = 0;
+				if (ret < 0) {
+					BTFMCODEC_ERR("failed to shutdown master with id %d",
+							hwep_configs->stream_id);
+				}
+			}
+		}
 		btfmcodec_dev->status[idx] = BTM_FAIL_RESP_RECV;
-	else
+	} else  {
 		btfmcodec_dev->status[idx] = BTM_RSP_RECV;
-
+	}
 	wake_up_interruptible(&btfmcodec_dev->rsp_wait_q[idx]);
 }
 static struct snd_soc_dai_ops btfmcodec_dai_ops = {
