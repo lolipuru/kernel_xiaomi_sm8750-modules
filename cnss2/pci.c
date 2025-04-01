@@ -7111,6 +7111,7 @@ int cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 	if (ret) {
 		cnss_fatal_err("Failed to download RDDM image, err = %d\n",
 			       ret);
+		cnss_mhi_debug_reg_dump(pci_priv);
 		cnss_pr_dbg("Sending Host Reset Req\n");
 		ret = cnss_mhi_force_reset(pci_priv);
 		cnss_pr_dbg("Host Reset Req ret %d\n", ret);
