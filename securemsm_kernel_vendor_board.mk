@@ -44,7 +44,9 @@ endif #TARGET_USES_GY
 ifeq ($(ENABLE_HYP),true)
   ifeq ($(TARGET_BOARD_PLATFORM),gen4)
     ifneq ($(TARGET_USES_GY), true)
-      ENABLE_QCEDEV_FE := true
+      ifneq ($(filter $(PLATFORM_VERSION), 16 Baklava),$(PLATFORM_VERSION))
+        ENABLE_QCEDEV_FE := true
+      endif
     endif #TARGET_USES_GY
   endif #TARGET_BOARD_PLATFORM
 endif #ENABLE_HYP
