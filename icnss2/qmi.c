@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "icnss2_qmi: " fmt
@@ -3512,14 +3512,63 @@ static void icnss_wlfw_host_cap_parse_mlo(struct icnss_priv *priv,
 	}
 }
 
+static void icnss_populate_gpio_config(struct icnss_priv *priv,
+				       struct wlfw_host_cap_req_msg_v01 *req,
+				       int gpio_info_type, u32 *cfg_arr)
+{
+	/*parse GPIO config*/
+	if (cfg_arr[WLFW_GPIO_ARRAY_VALID_V01]) {
+		req->gpio_config[gpio_info_type].gpio_num = cfg_arr[WLFW_GPIO_NUM_V01];
+		req->gpio_config[gpio_info_type].gpio_name = cfg_arr[WLFW_GPIO_NAME_V01];
+		req->gpio_config[gpio_info_type].pmic_index = cfg_arr[WLFW_PMIC_INDEX_V01];
+		req->gpio_config[gpio_info_type].gpio_type = cfg_arr[WLFW_GPIO_TYPE_V01];
+		req->gpio_config[gpio_info_type].output_value = cfg_arr[WLFW_OUTPUT_VALUE_V01];
+		req->gpio_config[gpio_info_type].func = cfg_arr[WLFW_FUNC_V01];
+		req->gpio_config[gpio_info_type].direction = cfg_arr[WLFW_DIRECTION_V01];
+		req->gpio_config[gpio_info_type].drive_strength = cfg_arr[WLFW_DRIVE_V01];
+		req->gpio_config[gpio_info_type].bias = cfg_arr[WLFW_BIAS_V01];
+		req->gpio_config[gpio_info_type].is_clk = cfg_arr[WLFW_IS_CLK_V01];
+		req->gpio_config[gpio_info_type].is_wake = cfg_arr[WLFW_IS_WAKE_V01];
+		req->gpio_config[gpio_info_type].intrpt_trigger_type = cfg_arr[WLFW_INTRPT_TRIGGER_TYPE_V01];
+		req->gpio_config[gpio_info_type].priority = cfg_arr[WLFW_PRIORITY_V01];
+		req->gpio_config[gpio_info_type].gpio_bitreserved = cfg_arr[WLFW_GPIO_BITRESERVED_V01];
+		icnss_pr_dbg("GPIO_NUM: %d, GPIO_NAME: %s, PMIC_INDEX: %d, GPIO_TYPE: %s\n",
+			     req->gpio_config[gpio_info_type].gpio_num,
+			     icnss_gpio_name_str[req->gpio_config[gpio_info_type].gpio_name],
+			     req->gpio_config[gpio_info_type].pmic_index,
+			     icnss_gpio_type_str[req->gpio_config[gpio_info_type].gpio_type]);
+		icnss_pr_dbg("OUTPUT_VALUE: %s, FUNC_SELECT: %d, GPIO_DIRECTION: %s, DRIVE_STRENGTH: %d\n",
+			     icnss_gpio_output_str[req->gpio_config[gpio_info_type].output_value],
+			     req->gpio_config[gpio_info_type].func,
+			     icnss_gpio_direction_str[req->gpio_config[gpio_info_type].direction],
+			     req->gpio_config[gpio_info_type].drive_strength);
+		icnss_pr_dbg("BIAS_TYPE: %s, IS_CLK: %d, IS_WAKE: %d, INTRPT_TRIGGER_TYPE: %s\n",
+			     icnss_gpio_bias_str[req->gpio_config[gpio_info_type].bias],
+			     req->gpio_config[gpio_info_type].is_clk,
+			     req->gpio_config[gpio_info_type].is_wake,
+			     icnss_gpio_intr_trigger_str[req->gpio_config[gpio_info_type].intrpt_trigger_type]);
+		icnss_pr_dbg("PRIORITY: %d, GPIO_BITRESERVED: %d, GPIO_ARRAY_VALID: %d, GPIO_OWNER: %d\n",
+			     req->gpio_config[gpio_info_type].priority,
+			     req->gpio_config[gpio_info_type].gpio_bitreserved,
+			     priv->gpio_config_arr[gpio_info_type][WLFW_GPIO_ARRAY_VALID_V01],
+			     priv->gpio_config_arr[gpio_info_type][WLFW_GPIO_OWNER_V01]);
+	} else {
+		if (cfg_arr[WLFW_GPIO_NUM_V01]) {
+			req->gpio_info[gpio_info_type] = cfg_arr[WLFW_GPIO_NUM_V01];
+			icnss_pr_dbg("GPIO_NUM: %d", req->gpio_info[gpio_info_type]);
+		} else {
+			req->gpio_info[gpio_info_type] = 0xFFFF;
+		}
+	}
+}
+
 int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 {
 	struct wlfw_host_cap_req_msg_v01 *req;
 	struct wlfw_host_cap_resp_msg_v01 *resp;
 	struct qmi_txn txn;
 	int ddr_type;
-	u32 gpio;
-	int ret = 0;
+	int ret = 0, i = 0;
 	u64 iova_start = 0, iova_size = 0,
 	    iova_ipa_start = 0, iova_ipa_size = 0, feature_list = 0;
 
@@ -3589,56 +3638,18 @@ int wlfw_host_cap_send_sync(struct icnss_priv *priv)
 		req->ddr_type = ddr_type;
 	}
 
-	ret = of_property_read_u32(priv->pdev->dev.of_node, "wlan-en-gpio",
-				   &gpio);
-	if (!ret) {
-		icnss_pr_dbg("WLAN_EN_GPIO modified through DT: %d\n", gpio);
-		req->gpio_info_valid = 1;
-		req->gpio_info[WLAN_EN_GPIO_V01] = gpio;
-	} else {
-		req->gpio_info[WLAN_EN_GPIO_V01] = 0xFFFF;
+	for (i = 0; i < GPIO_TYPE_MAX_V01; i++) {
+		if (priv->gpio_config_arr[i][WLFW_GPIO_ARRAY_VALID_V01]) {
+			if (priv->gpio_config_arr[i][WLFW_GPIO_OWNER_V01])
+				icnss_populate_gpio_config(priv, req, i, priv->gpio_config_arr[i]);
+		} else {
+			icnss_populate_gpio_config(priv, req, i, priv->gpio_config_arr[i]);
+		}
 	}
 
-	ret = of_property_read_u32(priv->pdev->dev.of_node, "bt-en-gpio",
-				   &gpio);
-	if (!ret) {
-		icnss_pr_dbg("BT_EN_GPIO modified through DT: %d\n", gpio);
-		req->gpio_info_valid = 1;
-		req->gpio_info[BT_EN_GPIO_V01] = gpio;
-	} else {
-		req->gpio_info[BT_EN_GPIO_V01] = 0xFFFF;
-	}
-
-	ret = of_property_read_u32(priv->pdev->dev.of_node, "host-sol-gpio",
-				   &gpio);
-	if (!ret) {
-		icnss_pr_dbg("HOST_SOL_GPIO modified through DT: %d\n", gpio);
-		req->gpio_info_valid = 1;
-		req->gpio_info[HOST_SOL_GPIO_V01] = gpio;
-	} else {
-		req->gpio_info[HOST_SOL_GPIO_V01] = 0xFFFF;
-	}
-
-	ret = of_property_read_u32(priv->pdev->dev.of_node, "dev-sol-gpio",
-				   &gpio);
-	if (!ret) {
-		icnss_pr_dbg("DEV_SOL_GPIO modified through DT: %d\n", gpio);
-		req->gpio_info_valid = 1;
-		req->gpio_info[TARGET_SOL_GPIO_V01] = gpio;
-	} else {
-		req->gpio_info[TARGET_SOL_GPIO_V01] = 0xFFFF;
-	}
-
-	ret = of_property_read_u32(priv->pdev->dev.of_node, "sw-ctrl-gpio",
-				   &gpio);
-	if (!ret) {
-		icnss_pr_dbg("SW_CTRL_GPIO modified through DT: %d\n", gpio);
-		req->gpio_info_valid = 1;
-		req->gpio_info[WLAN_SW_CTRL_GPIO_V01] = gpio;
-	} else {
-		req->gpio_info[WLAN_SW_CTRL_GPIO_V01] = 0xFFFF;
-	}
-
+	req->gpio_config_valid = 1;
+	req->gpio_config_len = GPIO_TYPE_MAX_V01;
+	req->gpio_info_valid = 1;
 	req->gpio_info_len = GPIO_TYPE_MAX_V01;
 
 	ret = qmi_txn_init(&priv->qmi, &txn,

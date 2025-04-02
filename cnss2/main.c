@@ -2271,6 +2271,8 @@ static const char *cnss_recovery_reason_to_str(enum cnss_recovery_reason reason)
 		return "TIMEOUT";
 	case CNSS_REASON_FW_ASSERTION_FAIL:
 		return "FW_ASSERTION_FAIL";
+	case CNSS_REASON_FATAL_ERROR:
+		return "FATAL_ERROR";
 	}
 
 	return "UNKNOWN";
@@ -2325,6 +2327,9 @@ static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 		 */
 		if (ret == -EAGAIN)
 			return 0;
+		break;
+	case CNSS_REASON_FATAL_ERROR:
+		cnss_bus_soc_reset_cause_reg_dump(plat_priv);
 		break;
 	case CNSS_REASON_DEFAULT:
 	case CNSS_REASON_TIMEOUT:

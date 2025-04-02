@@ -1091,6 +1091,60 @@ qmi_send:
 	return ret;
 }
 
+static int icnss_read_dtsi_config(struct device *dev, const char *property,
+				  u32 *dest, int size)
+{
+	int ret = 0;
+
+	ret = of_property_read_u32_array(dev->of_node, property, dest, size);
+
+	//If property does not have mentioned no. of elements (i.e., size of list)
+	if (ret == -EOVERFLOW)
+		ret = of_property_read_u32_array(dev->of_node, property, dest, 1);
+
+	return ret;
+}
+
+static void icnss_parse_gpio_config(struct icnss_priv *priv)
+{
+	int i = 0, ret = 0;
+	u32 arr[WLFW_GPIO_PARAMS_MAX_V01] = {0};
+	const char *gpio_config_names[] = {"wlan-en-gpio", "bt-en-gpio",
+					    "host-sol-gpio", "dev-sol-gpio",
+					    "sw-ctrl-gpio", "reset-b-gpio"};
+
+	for (i = 0; i < GPIO_TYPE_MAX_V01; i++) {
+		ret = icnss_read_dtsi_config(&priv->pdev->dev, gpio_config_names[i],
+					     arr, WLFW_GPIO_PARAMS_MAX_V01);
+
+		if (!ret) {
+			memcpy(priv->gpio_config_arr[i], arr, sizeof(arr));
+
+			icnss_pr_dbg("Parse %s config property through DT\n", gpio_config_names[i]);
+			icnss_pr_dbg("GPIO_NUM: %d, GPIO_NAME: %s, PMIC_INDEX: %d, GPIO_TYPE: %s\n",
+				     priv->gpio_config_arr[i][WLFW_GPIO_NUM_V01],
+				     icnss_gpio_name_str[priv->gpio_config_arr[i][WLFW_GPIO_NAME_V01]],
+				     priv->gpio_config_arr[i][WLFW_PMIC_INDEX_V01],
+				     icnss_gpio_type_str[priv->gpio_config_arr[i][WLFW_GPIO_TYPE_V01]]);
+			icnss_pr_dbg("OUTPUT_VALUE: %s, FUNC_SELECT: %d, GPIO_DIRECTION: %s, DRIVE_STRENGTH: %d\n",
+				     icnss_gpio_output_str[priv->gpio_config_arr[i][WLFW_OUTPUT_VALUE_V01]],
+				     priv->gpio_config_arr[i][WLFW_FUNC_V01],
+				     icnss_gpio_direction_str[priv->gpio_config_arr[i][WLFW_DIRECTION_V01]],
+				     priv->gpio_config_arr[i][WLFW_DRIVE_V01]);
+			icnss_pr_dbg("BIAS_TYPE: %s, IS_CLK: %d, IS_WAKE: %d, INTRPT_TRIGGER_TYPE: %s\n",
+				     icnss_gpio_bias_str[priv->gpio_config_arr[i][WLFW_BIAS_V01]],
+				     priv->gpio_config_arr[i][WLFW_IS_CLK_V01],
+				     priv->gpio_config_arr[i][WLFW_IS_WAKE_V01],
+				     icnss_gpio_intr_trigger_str[priv->gpio_config_arr[i][WLFW_INTRPT_TRIGGER_TYPE_V01]]);
+			icnss_pr_dbg("PRIORITY: %d, GPIO_BITRESERVED: %d, GPIO_ARRAY_VALID: %d, GPIO_OWNER: %d\n",
+				     priv->gpio_config_arr[i][WLFW_PRIORITY_V01],
+				     priv->gpio_config_arr[i][WLFW_GPIO_BITRESERVED_V01],
+				     priv->gpio_config_arr[i][WLFW_GPIO_ARRAY_VALID_V01],
+				     priv->gpio_config_arr[i][WLFW_GPIO_OWNER_V01]);
+		}
+	}
+}
+
 static void icnss_get_smp2p_info(struct icnss_priv *priv,
 				 enum smp2p_out_entry smp2p_entry)
 {
@@ -2961,6 +3015,8 @@ static int icnss_wpss_early_notifier_nb(struct notifier_block *nb,
 	if (code == QCOM_SSR_BEFORE_SHUTDOWN) {
 		set_bit(ICNSS_FW_DOWN, &priv->state);
 		icnss_ignore_fw_timeout(true);
+		clear_bit(ICNSS_SOC_WAKE_DONE, &priv->state);
+		complete(&priv->smp2p_soc_wake_wait);
 	}
 
 	return NOTIFY_DONE;
@@ -5437,6 +5493,10 @@ static int icnss_resource_parse(struct icnss_priv *priv)
 			goto out;
 		priv->psf_supported = true;
 	}
+
+	if (priv->device_id == WCN6450_DEVICE_ID ||
+	    priv->device_id == WCN7750_DEVICE_ID)
+		icnss_parse_gpio_config(priv);
 
 	if (priv->device_id == ADRASTEA_DEVICE_ID) {
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
