@@ -7463,6 +7463,21 @@ static int cnss_mhi_pm_runtime_get(struct mhi_controller *mhi_ctrl)
 	return cnss_pci_pm_runtime_get(pci_priv, RTPM_ID_MHI);
 }
 
+static int cnss_mhi_pm_runtime_get_sync(struct mhi_controller *mhi_ctrl)
+{
+	struct cnss_pci_data *pci_priv = dev_get_drvdata(mhi_ctrl->cntrl_dev);
+
+	return cnss_pci_pm_runtime_get_sync(pci_priv, RTPM_ID_MHI);
+}
+
+static int cnss_mhi_pm_runtime_put_autosuspend(struct mhi_controller *mhi_ctrl)
+{
+	struct cnss_pci_data *pci_priv = dev_get_drvdata(mhi_ctrl->cntrl_dev);
+
+	cnss_pci_pm_runtime_mark_last_busy(pci_priv);
+	return cnss_pci_pm_runtime_put_autosuspend(pci_priv, RTPM_ID_MHI);
+}
+
 static void cnss_mhi_pm_runtime_put_noidle(struct mhi_controller *mhi_ctrl)
 {
 	struct cnss_pci_data *pci_priv = dev_get_drvdata(mhi_ctrl->cntrl_dev);
@@ -8048,6 +8063,8 @@ static int cnss_pci_register_mhi(struct cnss_pci_data *pci_priv)
 
 	mhi_ctrl->status_cb = cnss_mhi_notify_status;
 	mhi_ctrl->runtime_get = cnss_mhi_pm_runtime_get;
+	mhi_ctrl->runtime_get_sync = cnss_mhi_pm_runtime_get_sync;
+	mhi_ctrl->runtime_put_autosuspend = cnss_mhi_pm_runtime_put_autosuspend;
 	mhi_ctrl->runtime_put = cnss_mhi_pm_runtime_put_noidle;
 	mhi_ctrl->read_reg = cnss_mhi_read_reg;
 	mhi_ctrl->write_reg = cnss_mhi_write_reg;
