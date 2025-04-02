@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -4584,10 +4584,8 @@ static int cam_req_mgr_cb_notify_msg(
 				"Requested timeout [%dms] max supported timeout [%dms] resetting to max",
 				frame_duration_ms, CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX);
 			slot->additional_timeout = CAM_REQ_MGR_WATCHDOG_TIMEOUT_MAX;
-		} else if (frame_duration_ms > CAM_REQ_MGR_WATCHDOG_TIMEOUT) {
-			slot->additional_timeout = frame_duration_ms;
 		} else {
-			slot->additional_timeout = 0;
+			slot->additional_timeout = frame_duration_ms;
 		}
 
 		CAM_DBG(CAM_CRM,
@@ -4966,10 +4964,13 @@ static int __cam_req_mgr_unlink(
 	spin_unlock_bh(&link->link_state_spin_lock);
 
 	if (!link->is_shutdown) {
+		/* Hold the request lock prior to disconnecting link */
+		mutex_lock(&link->req.lock);
 		rc = __cam_req_mgr_disconnect_link(link);
 		if (rc)
 			CAM_ERR(CAM_CORE,
 				"Unlink for all devices was not successful");
+		mutex_unlock(&link->req.lock);
 	}
 
 	mutex_lock(&link->lock);

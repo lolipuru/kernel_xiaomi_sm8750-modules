@@ -60,6 +60,9 @@ static int __cam_isp_ctx_check_deferred_buf_done(
 
 static int __cam_isp_ctx_print_event_record(struct cam_isp_context *ctx_isp);
 
+static int __cam_isp_ctx_flush_req(struct cam_context *ctx,
+	struct list_head *req_list, struct cam_req_mgr_flush_request *flush_req);
+
 static const char *__cam_isp_evt_val_to_type(
 	uint32_t evt_id)
 {
@@ -6282,11 +6285,66 @@ static int __cam_isp_ctx_flush_req_in_flushed_state(
 	struct cam_context               *ctx,
 	struct cam_req_mgr_flush_request *flush_req)
 {
-	CAM_INFO(CAM_ISP, "Flush (type %d) in flushed state req id %lld ctx_id:%u link: 0x%x",
-		flush_req->type, flush_req->req_id, ctx->ctx_id, ctx->link_hdl);
+	struct cam_isp_context           *ctx_isp;
+
 	if (flush_req->req_id > ctx->last_flush_req)
 		ctx->last_flush_req = flush_req->req_id;
 
+
+	ctx_isp = (struct cam_isp_context *) ctx->ctx_priv;
+	ctx_isp->standby_en = flush_req->enable_sensor_standby;
+
+	if (flush_req->type == CAM_REQ_MGR_FLUSH_TYPE_ALL) {
+		if (ctx->state <= CAM_CTX_READY) {
+			ctx->state = CAM_CTX_ACQUIRED;
+			goto end;
+		}
+
+		spin_lock_bh(&ctx->lock);
+		ctx->state = CAM_CTX_FLUSHED;
+		ctx_isp->substate_activated = CAM_ISP_CTX_ACTIVATED_HALT;
+		spin_unlock_bh(&ctx->lock);
+
+		CAM_INFO(CAM_ISP, "Last request id to flush is %lld, ctx_id:%u link: 0x%x",
+			flush_req->req_id, ctx->ctx_id, ctx->link_hdl);
+		ctx->last_flush_req = flush_req->req_id;
+
+		__cam_isp_ctx_trigger_reg_dump(CAM_HW_MGR_CMD_REG_DUMP_ON_FLUSH, ctx, NULL);
+
+		/*
+		 * Just clear the lists in case there is a flush just after the
+		 * init packet without sending the actual packets.
+		 * Reaching here in flush state means hw reset has been done in the
+		 * last flush call. In such cases, we need to clear the list else
+		 * it may result in stale entried for upcoming configure requests and
+		 * corrupt the packets.
+		 */
+		spin_lock_bh(&ctx->lock);
+		if (!list_empty(&ctx->wait_req_list))
+			__cam_isp_ctx_flush_req(ctx, &ctx->wait_req_list,
+				flush_req);
+
+		if (!list_empty(&ctx->active_req_list))
+			__cam_isp_ctx_flush_req(ctx, &ctx->active_req_list,
+				flush_req);
+
+		ctx_isp->active_req_cnt = 0;
+
+		if (!list_empty(&ctx->pending_req_list))
+			__cam_isp_ctx_flush_req(ctx, &ctx->pending_req_list, flush_req);
+
+		ctx_isp->init_received = false;
+		spin_unlock_bh(&ctx->lock);
+	}
+
+end:
+	ctx_isp->bubble_frame_cnt = 0;
+	ctx_isp->congestion_cnt = 0;
+	ctx_isp->sof_dbg_irq_en = false;
+	ctx_isp->num_inits_post_flush = 0;
+	atomic_set(&ctx_isp->process_bubble, 0);
+	atomic_set(&ctx_isp->rxd_epoch, 0);
+	atomic_set(&ctx_isp->internal_recovery_set, 0);
 	return 0;
 }
 

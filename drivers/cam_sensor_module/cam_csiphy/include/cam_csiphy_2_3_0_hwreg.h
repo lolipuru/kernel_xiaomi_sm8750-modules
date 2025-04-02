@@ -37,13 +37,13 @@ struct csiphy_reg_t csiphy_common_reg_2_3_0[] = {
 };
 
 struct csiphy_reg_t csiphy_reset_enter_reg_2_3_0[] = {
-	{0x1000, 0x01, 0x01, CSIPHY_DEFAULT_PARAMS},
+	{0x1000, 0x01, 0x14, CSIPHY_DEFAULT_PARAMS},
 };
 
 struct csiphy_reg_t csiphy_reset_exit_reg_2_3_0[] = {
-	{0x1000, 0x02, 0x00, CSIPHY_2PH_REGS},
-	{0x1000, 0x00, 0x00, CSIPHY_2PH_COMBO_REGS},
-	{0x1000, 0x0E, 0xBE8, CSIPHY_3PH_REGS},
+	{0x1000, 0x02, 0x0A, CSIPHY_2PH_REGS},
+	{0x1000, 0x00, 0x0A, CSIPHY_2PH_COMBO_REGS},
+	{0x1000, 0x0E, 0x0A, CSIPHY_3PH_REGS},
 };
 
 struct csiphy_reg_t csiphy_irq_reg_2_3_0[] = {

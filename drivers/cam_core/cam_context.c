@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -224,15 +224,13 @@ int cam_context_handle_crm_flush_req(struct cam_context *ctx,
 	}
 
 	mutex_lock(&ctx->ctx_mutex);
-	if (ctx->state != CAM_CTX_FLUSHED) {
-		if (ctx->state_machine[ctx->state].crm_ops.flush_req) {
-			rc = ctx->state_machine[ctx->state].crm_ops.flush_req(ctx,
-				flush);
-		} else {
-			CAM_INFO(CAM_CORE, "No crm flush req in dev %d, state %d, name %s",
-				ctx->dev_hdl, ctx->state, ctx->dev_name);
-			rc = -EPROTO;
-		}
+	if (ctx->state_machine[ctx->state].crm_ops.flush_req) {
+		rc = ctx->state_machine[ctx->state].crm_ops.flush_req(ctx,
+			flush);
+	} else {
+		CAM_INFO(CAM_CORE, "No crm flush req in dev %d, state %d, name %s",
+			ctx->dev_hdl, ctx->state, ctx->dev_name);
+		rc = -EPROTO;
 	}
 	mutex_unlock(&ctx->ctx_mutex);
 
