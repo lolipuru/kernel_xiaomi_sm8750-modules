@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -1728,6 +1728,8 @@ static int bt_power_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	pwr_data->pdev = pdev;
+	pwr_data->reftask_bt = NULL;
+	pwr_data->reftask_uwb = NULL;
 
 	struct device *devi = &pwr_data->pdev->dev;
 	int rc = 0;
@@ -2044,10 +2046,21 @@ int power_enable (enum SubSystem SubSystemType)
 void send_signal_to_subsystem(int SubSystemType, int state)
 {
 	pwr_data->wrkq_signal_state = state;
-	if (SubSystemType == BLUETOOTH)
+	if (SubSystemType == BLUETOOTH) {
+		if (!pwr_data->reftask_bt) {
+			pr_err("%s: BT client is not register to send signal\n",
+				__func__);
+			return;
+		}
 		queue_work(pwr_data->workq, &pwr_data->bt_wq);
-	else
+	} else {
+		if (!pwr_data->reftask_uwb) {
+			pr_err("%s: UWB client is not register to send signal\n",
+				__func__);
+			return;
+		}
 		queue_work(pwr_data->workq, &pwr_data->uwb_wq);
+	}
 }
 
 int power_disable (enum SubSystem SubSystemType)
@@ -2144,25 +2157,13 @@ static int client_state_notified(int SubSystemType)
 
 	if (SubSystemType == BLUETOOTH) {
 		update_sub_state(SSR_ON_BT);
-		if (get_pwr_state() == ALL_CLIENTS_ON) {
-			if (!pwr_data->reftask_uwb) {
-				pr_err("%s: UWB PID is not register to send signal\n",
-					__func__);
-				return -1;
-			}
+		if (get_pwr_state() == ALL_CLIENTS_ON)
 			send_signal_to_subsystem(UWB, SSR_ON_BT);
-		}
 	} else {
 		update_sub_state(SSR_ON_UWB);
-		if (get_pwr_state() == ALL_CLIENTS_ON) {
-			if (!pwr_data->reftask_bt) {
-				pr_err("%s: BT PID is not register to send signal\n",
-					__func__);
-				return -1;
-			}
+		if (get_pwr_state() == ALL_CLIENTS_ON)
 			send_signal_to_subsystem(BLUETOOTH,
 				(SIGIO_NOTIFICATION_SIGNAL|SIGIO_SSR_ON_UWB));
-		}
 	}
 	return 0;
 }

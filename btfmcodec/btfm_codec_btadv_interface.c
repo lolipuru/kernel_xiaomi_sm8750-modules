@@ -305,7 +305,11 @@ void btfmcodec_prepare_bearer(struct btfmcodec_char_device *btfmcodec_dev,
 			ret = btfmcodec_wait_for_bearer_ind(btfmcodec_dev);
 			if (ret < 0) {
 				BTFMCODEC_ERR("moving back to previous state");
-				btfmcodec_revert_current_state(state);
+				if (btfmcodec_get_current_transport(state) == IDLE) {
+					BTFMCODEC_INFO("state moved to IDLE");
+				} else if (current_state == btfmcodec_get_prev_transport(state)) {
+					btfmcodec_revert_current_state(state);
+				}
 				if (ret == -MSG_INTERNAL_TIMEOUT) {
 					btfmcodec_frame_transport_switch_ind_pkt(
 							btfmcodec_dev, BTADV,
@@ -317,7 +321,7 @@ void btfmcodec_prepare_bearer(struct btfmcodec_char_device *btfmcodec_dev,
 			if (ret < 0)
 				return;
 
-			if (btfmcodec_is_valid_cache_avb(btfmcodec)) {
+			if (current_state != IDLE && btfmcodec_is_valid_cache_avb(btfmcodec)) {
 				BTFMCODEC_INFO("Initiating BT port close...");
 				btfmcodec_initiate_hwep_shutdown(btfmcodec_dev);
 			}

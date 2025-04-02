@@ -327,6 +327,11 @@ static void btfmcodec_dai_shutdown(struct snd_pcm_substream *substream,
 	BTFMCODEC_DBG("dai->name: %s, dai->id: %d, dai->rate: %d", dai->name,
 		dai->id, dai->rate);
 
+	if (btfmcodec_get_current_transport(state) == IDLE) {
+		BTFMCODEC_INFO("%s not allowing shutdown as state is IDLE", __func__);   
+		return;
+	}
+
 	if ((btfmcodec_get_current_transport(state) == BTADV_AUDIO_Connecting &&
 		btfmcodec_get_prev_transport(state) == BT_Connected) ||
 		((btfmcodec_get_current_transport(state) == BT_Connecting &&
