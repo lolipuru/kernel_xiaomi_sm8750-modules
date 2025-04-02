@@ -160,6 +160,7 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 				dp/dp_catalog_v500.o \
 				dp/dp_aux.o \
 				dp/dp_panel.o \
+				dp/dp_panel_tu.o \
 				dp/dp_link.o \
 				dp/dp_ctrl.o \
 				dp/dp_audio.o \

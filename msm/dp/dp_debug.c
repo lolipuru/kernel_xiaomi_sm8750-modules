@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -962,8 +962,10 @@ static ssize_t dp_debug_mst_sideband_mode_write(struct file *file,
 
 	/* Leave room for termination char */
 	len = min_t(size_t, count, SZ_8 - 1);
-	if (copy_from_user(buf, user_buff, len))
+	if (copy_from_user(buf, user_buff, len)) {
+		mutex_unlock(&debug->lock);
 		return -EFAULT;
+	}
 
 	buf[len] = '\0';
 

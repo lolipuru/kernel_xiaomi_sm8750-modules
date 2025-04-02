@@ -119,6 +119,7 @@ struct dsi_phy_per_lane_cfgs {
  * @is_phy_timing_present:	Boolean whether phy timings are defined.
  * @regulators:       Regulator settings for lanes.
  * @pll_source:       PLL source.
+ * @data_lanes:       Bitmask of enum dsi_data_lanes.
  * @lane_map:         DSI logical to PHY lane mapping.
  * @force_clk_lane_hs:Boolean whether to force clock lane in HS mode.
  * @phy_type:         Phy-type (Dphy/Cphy).
@@ -137,6 +138,7 @@ struct dsi_phy_cfg {
 	enum dsi_phy_type phy_type;
 	unsigned long bit_clk_rate_hz;
 	struct dsi_split_link_config split_link;
+	u32 data_lanes;
 };
 
 struct dsi_phy_hw;

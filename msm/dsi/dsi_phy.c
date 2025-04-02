@@ -816,7 +816,7 @@ static inline int dsi_phy_get_data_lanes_count(struct msm_dsi_phy *phy)
 	int num_of_lanes = 0;
 	enum dsi_data_lanes dlanes;
 
-	dlanes = phy->data_lanes;
+	dlanes = phy->cfg.data_lanes;
 
 	/**
 	  * For split link use case effective data lines need to be used
@@ -1041,8 +1041,8 @@ int dsi_phy_enable(struct msm_dsi_phy *phy,
 
 	memcpy(&phy->mode, &config->video_timing, sizeof(phy->mode));
 	memcpy(&phy->cfg.lane_map, &config->lane_map, sizeof(config->lane_map));
-	phy->data_lanes = config->common_config.data_lanes;
 	phy->dst_format = config->common_config.dst_format;
+	phy->cfg.data_lanes = config->common_config.data_lanes;
 	phy->cfg.pll_source = pll_source;
 	phy->cfg.bit_clk_rate_hz = config->bit_clk_rate_hz;
 

@@ -32,6 +32,7 @@ module_entry(
             "msm/dp/dp_catalog_v500.c",
             "msm/dp/dp_aux.c",
             "msm/dp/dp_panel.c",
+            "msm/dp/dp_panel_tu.c",
             "msm/dp/dp_link.c",
             "msm/dp/dp_ctrl.c",
             "msm/dp/dp_audio.c",
