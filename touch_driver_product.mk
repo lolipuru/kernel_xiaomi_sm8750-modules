@@ -9,7 +9,9 @@ ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
 endif
 
 ifeq ($(TOUCH_DLKM_ENABLE),  true)
-        ifeq ($(TARGET_BOARD_PLATFORM), monaco)
+        ifeq ($(TARGET_BOARD_PLATFORM), vienna)
+                PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/raydium_ts.ko
+        else ifeq ($(TARGET_BOARD_PLATFORM), monaco)
                 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/pt_ts.ko \
                         $(KERNEL_MODULES_OUT)/pt_i2c.ko \
                         $(KERNEL_MODULES_OUT)/pt_device_access.ko \
