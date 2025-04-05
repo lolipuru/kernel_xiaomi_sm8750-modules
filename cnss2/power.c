@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -1225,6 +1225,63 @@ out:
 	return ret;
 }
 
+static int cnss_aop_update_mode(struct cnss_plat_data *plat_priv)
+{
+	struct device *dev = &plat_priv->plat_dev->dev;
+	u32 i;
+	int ret = 0;
+
+	cnss_pr_dbg("Reading PDC Mode Vote table\n");
+
+	/* common DT Entries */
+	plat_priv->pdc_mode_vote_table_len =
+				of_property_count_strings(dev->of_node,
+							  "qcom,pdc_mode_vote_table");
+	if (plat_priv->pdc_mode_vote_table_len > 0) {
+		plat_priv->pdc_mode_vote_table =
+			kcalloc(plat_priv->pdc_mode_vote_table_len,
+				sizeof(char *), GFP_KERNEL);
+		if (plat_priv->pdc_mode_vote_table) {
+			ret = of_property_read_string_array(dev->of_node,
+							    "qcom,pdc_mode_vote_table",
+							    plat_priv->pdc_mode_vote_table,
+							    plat_priv->pdc_mode_vote_table_len);
+			if (ret < 0)
+				cnss_pr_err("Failed to get PDC Mode Vote Table\n");
+		} else {
+			cnss_pr_err("Failed to alloc PDC Mode Vote Table mem\n");
+		}
+	} else {
+		cnss_pr_dbg("PDC Mode Vote Table not configured\n");
+	}
+
+	cnss_pr_dbg("Updating PDC mode votes \n");
+
+	for (i = 0; i < plat_priv->pdc_mode_vote_table_len; i++) {
+		char buf[CNSS_MBOX_MSG_MAX_LEN] = {0x00};
+
+		if (strlen(plat_priv->pdc_mode_vote_table[i]) >
+		    CNSS_MBOX_MSG_MAX_LEN) {
+			cnss_pr_err("msg too long: %s\n",
+				    plat_priv->pdc_mode_vote_table[i]);
+			continue;
+		}
+
+		snprintf(buf, CNSS_MBOX_MSG_MAX_LEN,
+			 plat_priv->pdc_mode_vote_table[i]);
+
+		ret = cnss_aop_send_msg(plat_priv, buf);
+		if (ret < 0) {
+			cnss_pr_err("Failed to send QMP message for line %d\n", i);
+			break;
+		}
+	}
+
+	cnss_pr_dbg("Successfully updated L3K to bypass mode\n");
+
+	return ret;
+}
+
 void cnss_power_off_device(struct cnss_plat_data *plat_priv)
 {
 	if (!plat_priv->powered_on) {
@@ -1233,6 +1290,10 @@ void cnss_power_off_device(struct cnss_plat_data *plat_priv)
 	}
 
 	set_bit(CNSS_POWER_OFF, &plat_priv->driver_state);
+	cnss_pr_dbg("Device_id: 0x%lx\n", plat_priv->device_id);
+	if (plat_priv->device_id == PEACH_DEVICE_ID ||
+	    plat_priv->device_id == KIWI_DEVICE_ID)
+		cnss_aop_update_mode(plat_priv);
 	cnss_bus_shutdown_cleanup(plat_priv);
 	cnss_disable_dev_sol_irq(plat_priv);
 	cnss_select_pinctrl_state(plat_priv, false);
