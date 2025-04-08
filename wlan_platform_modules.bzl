@@ -9,7 +9,7 @@ _default_module_enablement_list = [
     "wlan_firmware_service",
 ]
 
-_cnss2_enabled_target = ["seraph", "niobe", "pineapple", "sun", "x1e80100", "volcano", "canoe", "sdxkova", "autogvm"]
+_cnss2_enabled_target = ["seraph", "niobe", "pineapple", "sun", "x1e80100", "volcano", "canoe", "sdxkova", "autogvm", "autoghgvm"]
 _icnss2_enabled_target = ["blair", "pineapple", "monaco", "pitti", "volcano", "parrot", "sun", "canoe"]
 
 def _get_module_list(target, variant):
@@ -168,6 +168,11 @@ def _define_modules_for_target_variant(target, variant):
                 "CONFIG_PCI_MSM": {
                     True: [
                         "cnss2/pci_qcom.c",
+                    ],
+                },
+                "CONFIG_PCIE_QCOM_ECAM": {
+                    True: [
+                        "cnss2/pci_qcom_ecam.c",
                     ],
                 },
             },
