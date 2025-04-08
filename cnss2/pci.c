@@ -3233,6 +3233,7 @@ static int cnss_pci_update_timestamp(struct cnss_pci_data *pci_priv)
 	}
 
 	offset = host_time_us - device_time_us;
+	plat_priv->pcie_time_sync_offset = offset;
 	cnss_pr_dbg("Host time = %llu us, device time = %llu us, offset = %llu us\n",
 		    host_time_us, device_time_us, offset);
 
@@ -4561,6 +4562,9 @@ static int cnss_pci_suspend(struct device *dev)
 	}
 
 	cnss_pci_set_monitor_wake_intr(pci_priv, false);
+
+	cnss_pr_info("WoW Entry. pcie_time_sync_offset = %llu",
+		     plat_priv->pcie_time_sync_offset);
 
 	return 0;
 
