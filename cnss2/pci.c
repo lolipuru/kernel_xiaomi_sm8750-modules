@@ -1566,6 +1566,7 @@ out:
 	return ret;
 }
 
+#ifndef CONFIG_NOT_SET_PCI_DSTATE
 static int cnss_set_pci_config_space(struct cnss_pci_data *pci_priv, bool save)
 {
 	struct pci_dev *pci_dev = pci_priv->pci_dev;
@@ -1598,6 +1599,12 @@ static int cnss_set_pci_config_space(struct cnss_pci_data *pci_priv, bool save)
 
 	return 0;
 }
+#else
+static int cnss_set_pci_config_space(struct cnss_pci_data *pci_priv, bool save)
+{
+	return 0;
+}
+#endif
 
 static int cnss_update_supported_link_info(struct cnss_pci_data *pci_priv)
 {
@@ -4416,6 +4423,29 @@ static int cnss_pci_resume_driver(struct cnss_pci_data *pci_priv)
 	return ret;
 }
 
+#ifndef CONFIG_NOT_SET_PCI_DSTATE
+static void
+cnss_pci_set_power_state(struct pci_dev *pci_dev, pci_power_t state)
+{
+	int ret = 0;
+
+	if (!pci_dev) {
+		cnss_pr_err("pci dev is NULL\n");
+		return;
+	}
+
+	ret = pci_set_power_state(pci_dev, state);
+	if (ret)
+		cnss_pr_err("Failed to set power state %s, err = %d\n",
+			    pci_power_name(state), ret);
+}
+#else
+static void
+cnss_pci_set_power_state(struct pci_dev *pci_dev, pci_power_t state)
+{
+}
+#endif
+
 int cnss_pci_suspend_bus(struct cnss_pci_data *pci_priv)
 {
 	struct pci_dev *pci_dev = pci_priv->pci_dev;
@@ -4435,10 +4465,7 @@ int cnss_pci_suspend_bus(struct cnss_pci_data *pci_priv)
 	pci_clear_master(pci_dev);
 	cnss_set_pci_config_space(pci_priv, SAVE_PCI_CONFIG_SPACE);
 	pci_disable_device(pci_dev);
-
-	ret = pci_set_power_state(pci_dev, PCI_D3hot);
-	if (ret)
-		cnss_pr_err("Failed to set D3Hot, err = %d\n", ret);
+	cnss_pci_set_power_state(pci_dev, PCI_D3hot);
 
 skip_disable_pci:
 	if (cnss_set_pci_link(pci_priv, PCI_LINK_DOWN)) {
