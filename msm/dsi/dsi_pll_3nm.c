@@ -724,6 +724,7 @@ static unsigned long dsi_pll_vco_recalc_rate(struct dsi_pll_resource *pll)
 
 	vco_rate = div_u64(pll_freq, pll_post_div);
 
+	pll->vco_rate = vco_rate;
 	return vco_rate;
 }
 
@@ -764,6 +765,7 @@ static unsigned long dsi_pll_byteclk_recalc_rate(struct clk_hw *hw, unsigned lon
 	else
 		byte_rate = div_u64(byte_rate, 7);
 
+	pll->byteclk_rate = byte_rate;
 	return byte_rate;
 }
 
@@ -811,6 +813,7 @@ static unsigned long dsi_pll_pclk_recalc_rate(struct clk_hw *hw, unsigned long p
 	pclk_div = dsi_pll_get_pclk_div(pll);
 	pclk_rate = div_u64(pclk_rate, pclk_div);
 
+	pll->pclk_rate = pclk_rate;
 	return pclk_rate;
 }
 
