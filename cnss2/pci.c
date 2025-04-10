@@ -5587,6 +5587,12 @@ int cnss_pci_load_tme_opt_file(struct cnss_pci_data *pci_priv,
 			tme_lite_mem = &plat_priv->tme_opt_file_mem[2];
 		}
 		break;
+	case COLOGNE_DEVICE_ID:
+		if (file == WLFW_TME_LITE_OEM_FUSE_FILE_V01) {
+			tme_opt_filename = CGN_TME_OEM_FUSE_FILE_NAME;
+			tme_lite_mem = &plat_priv->tme_opt_file_mem[0];
+		}
+		break;
 	case QCA6174_DEVICE_ID:
 	case QCA6290_DEVICE_ID:
 	case QCA6390_DEVICE_ID:

@@ -1110,7 +1110,8 @@ int cnss_wlfw_tme_opt_file_dnld_send_sync(struct cnss_plat_data *plat_priv,
 	int ret = 0;
 
 	if (plat_priv->device_id != PEACH_DEVICE_ID &&
-	    plat_priv->device_id != FIG_DEVICE_ID)
+	    plat_priv->device_id != FIG_DEVICE_ID &&
+	    plat_priv->device_id != COLOGNE_DEVICE_ID)
 		return 0;
 
 	cnss_pr_dbg("Sending TME opt file information message, state: 0x%lx\n",
@@ -1128,7 +1129,10 @@ int cnss_wlfw_tme_opt_file_dnld_send_sync(struct cnss_plat_data *plat_priv,
 
 	if (file == WLFW_TME_LITE_OEM_FUSE_FILE_V01) {
 		tme_opt_file_mem = &plat_priv->tme_opt_file_mem[0];
-		file_name = TME_OEM_FUSE_FILE_NAME;
+		if (plat_priv->device_id == COLOGNE_DEVICE_ID)
+			file_name = CGN_TME_OEM_FUSE_FILE_NAME;
+		else
+			file_name = TME_OEM_FUSE_FILE_NAME;
 	} else if (file == WLFW_TME_LITE_RPR_FILE_V01) {
 		tme_opt_file_mem = &plat_priv->tme_opt_file_mem[1];
 		file_name = TME_RPR_FILE_NAME;

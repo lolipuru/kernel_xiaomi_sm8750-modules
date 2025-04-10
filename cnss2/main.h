@@ -87,6 +87,7 @@
 #define TME_OEM_FUSE_FILE_NAME		"peach_sec.dat"
 #define TME_RPR_FILE_NAME		"peach_rpr.bin"
 #define TME_DPR_FILE_NAME		"peach_dpr.bin"
+#define CGN_TME_OEM_FUSE_FILE_NAME	"cologne_sec.dat"
 
 enum cnss_dt_type {
 	CNSS_DTT_LEGACY = 0,

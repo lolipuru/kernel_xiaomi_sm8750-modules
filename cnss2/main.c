@@ -4716,7 +4716,8 @@ static ssize_t tme_opt_file_download_store(struct device *dev,
 	}
 
 	if ((plat_priv->device_id == PEACH_DEVICE_ID ||
-	     plat_priv->device_id == FIG_DEVICE_ID) &&
+	     plat_priv->device_id == FIG_DEVICE_ID ||
+	     plat_priv->device_id == COLOGNE_DEVICE_ID) &&
 	    cnss_bus_runtime_pm_get_sync(plat_priv) < 0)
 		goto runtime_pm_put;
 
@@ -4734,7 +4735,8 @@ static ssize_t tme_opt_file_download_store(struct device *dev,
 
 runtime_pm_put:
 	if (plat_priv->device_id == PEACH_DEVICE_ID ||
-	    plat_priv->device_id == FIG_DEVICE_ID)
+	    plat_priv->device_id == FIG_DEVICE_ID ||
+	    plat_priv->device_id == COLOGNE_DEVICE_ID)
 		cnss_bus_runtime_pm_put(plat_priv);
 	return count;
 }
