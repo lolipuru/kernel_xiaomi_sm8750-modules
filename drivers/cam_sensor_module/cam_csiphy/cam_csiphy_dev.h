@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_CSIPHY_DEV_H_
@@ -39,7 +39,7 @@
 #define MAX_DATA_RATE_REGS          30
 
 #define CAMX_CSIPHY_DEV_NAME        "cam-csiphy-driver"
-#define CAM_CSIPHY_RX_CLK_SRC       "cphy_rx_src_clk"
+#define CAM_CSIPHY_RX_CLK_SRC       "cphy_rx_clk_src"
 #define CAM_CSIPHY_TIMER_CLK_SRC    "phytimer_clk_src"
 
 #define CSIPHY_DEFAULT_PARAMS            BIT(0)
@@ -436,6 +436,7 @@ struct csiphy_qmargin_sweep_data {
  * @csiphy_info                : Sensor specific csiphy info
  * @soc_info                   : SOC information
  * @current_data_rate          : Data rate in mbps
+ * @curr_clk_vote_level        : Currently applied clock vote level
  * @csiphy_cpas_cp_reg_mask    : Secure csiphy lane mask
  * @ops                        : KMD operations
  * @crm_cb                     : Callback API pointers
@@ -472,6 +473,7 @@ struct csiphy_device {
 					CSIPHY_MAX_INSTANCES_PER_PHY];
 	struct cam_hw_soc_info                   soc_info;
 	uint64_t                                 current_data_rate;
+	enum cam_vote_level                      curr_clk_vote_level;
 	uint64_t                                 csiphy_cpas_cp_reg_mask[
 					CSIPHY_MAX_INSTANCES_PER_PHY];
 	struct cam_req_mgr_kmd_ops               ops;
