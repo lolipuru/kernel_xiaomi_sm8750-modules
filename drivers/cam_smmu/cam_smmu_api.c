@@ -2656,6 +2656,8 @@ void cam_smmu_buffer_tracker_putref(struct list_head *track_list)
 		return;
 
 	list_for_each_entry_safe(buffer_tracker, temp, track_list, list) {
+		if (!buffer_tracker || !buffer_tracker->ref_count)
+			continue;
 		if (refcount_dec_and_test(&buffer_tracker->ref_count->refcount))
 			CAM_ERR(CAM_SMMU,
 				"[SMMU_BT] Unexpected - buffer reference [fd: 0x%x ino: 0x%x cb: %s] zeroed prior to unmap invocation",
