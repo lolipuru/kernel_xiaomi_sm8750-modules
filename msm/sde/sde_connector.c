@@ -3661,7 +3661,8 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 		}
 
 		sde_kms_info_add_keyint(info, "qsync_min_fps", mode_info.qsync_min_fps);
-		sde_kms_info_add_keyint(info, "avr_step_fps", mode_info.avr_step_fps);
+		if (!c_conn->vrr_caps.video_mrr_support)
+			sde_kms_info_add_keyint(info, "avr_step_fps", mode_info.avr_step_fps);
 
 		if (mode_info.freq_step_list) {
 			freq_step_list = mode_info.freq_step_list;
