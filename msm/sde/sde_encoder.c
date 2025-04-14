@@ -1644,7 +1644,8 @@ static void _sde_encoder_update_vsync_source(struct sde_encoder_virt *sde_enc,
 	sde_conn = to_sde_connector(sde_enc->phys_encs[0]->connector);
 
 	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_CMD_MODE) ||
-			disp_info->vrr_caps.arp_support) {
+			disp_info->vrr_caps.arp_support ||
+			disp_info->vrr_caps.video_psr_support) {
 
 		if (disp_info->is_te_using_watchdog_timer || sde_conn->panel_dead)
 			vsync_source = SDE_VSYNC_SOURCE_WD_TIMER_4 + sde_enc->te_source;
