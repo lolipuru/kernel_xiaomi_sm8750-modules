@@ -56,6 +56,7 @@ ifeq ($(TOUCH_DLKM_ENABLE),  true)
 			$(KERNEL_MODULES_OUT)/focaltech_fts.ko
         else ifeq ($(TARGET_BOARD_PLATFORM), lahaina)
                 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/nt36xxx-i2c.ko \
+                        $(KERNEL_MODULES_OUT)/qts.ko \
 			$(KERNEL_MODULES_OUT)/focaltech_fts.ko
         else
                 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/nt36xxx-i2c.ko \
