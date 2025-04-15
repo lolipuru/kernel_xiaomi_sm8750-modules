@@ -787,6 +787,7 @@ struct dp_tx_ext_desc_pool_s {
  * @comp:
  * @tcl_cmd_vaddr: VADDR of the TCL descriptor, valid for soft-umac arch
  * @tcl_cmd_paddr: PADDR of the TCL descriptor, valid for soft-umac arch
+ * @orig_nbuf: Reference of the network layer nbuf
  */
 struct dp_tx_desc_s {
 	struct dp_tx_desc_s *next;
@@ -817,6 +818,9 @@ struct dp_tx_desc_s {
 #ifdef WLAN_SOFTUMAC_SUPPORT
 	void *tcl_cmd_vaddr;
 	qdf_dma_addr_t tcl_cmd_paddr;
+#endif
+#ifdef DP_FEATURE_TX_PAGE_POOL
+	qdf_nbuf_t orig_nbuf;
 #endif
 };
 #else /* QCA_DP_OPTIMIZED_TX_DESC */
@@ -851,6 +855,9 @@ struct dp_tx_desc_s {
 #ifdef WLAN_SOFTUMAC_SUPPORT
 	void *tcl_cmd_vaddr;
 	qdf_dma_addr_t tcl_cmd_paddr;
+#endif
+#ifdef DP_FEATURE_TX_PAGE_POOL
+	qdf_nbuf_t orig_nbuf;
 #endif
 };
 #endif /* QCA_DP_OPTIMIZED_TX_DESC */
