@@ -262,4 +262,12 @@ void sde_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
  */
 int sde_validate_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg);
 
+/**
+ * sde_demura_read_plane_status_v3 - api to read demura v3 plane fetch setup.
+ * @ctx: pointer to dspp object.
+ * @status: Currently present plane. Reported as a demura_fetch_planes value.
+ */
+void sde_demura_read_plane_status_v3(struct sde_hw_dspp *ctx, u32 *status);
+
+
 #endif /* _SDE_HW_COLOR_PROC_V4_H_ */

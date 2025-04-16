@@ -443,7 +443,7 @@ static void dspp_demura(struct sde_hw_dspp *c)
 		if (!ret) {
 			c->ops.setup_demura_cfg = reg_dmav1_setup_demurav3;
 			c->ops.setup_demura_backlight_cfg = sde_demura_backlight_cfg;
-			c->ops.demura_read_plane_status = sde_demura_read_plane_status;
+			c->ops.demura_read_plane_status = sde_demura_read_plane_status_v3;
 			c->ops.setup_demura_pu_config = sde_demura_pu_cfg;
 			c->ops.setup_demura_cfg0_param2 = reg_dmav1_setup_demura_cfg0_param2;
 		} else {
