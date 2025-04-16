@@ -964,7 +964,7 @@ static void __enter_cpu_noc_lpi(struct iris_hfi_device *device,
 		pc_ready = __read_register(device, CVP_CTRL_STATUS);
 
 		dprintk(CVP_WARN,
-			"%s - %d, CPU NOC not in qaccept status %x %x %x\n",
+			"%s - %d, CPU Noc is not in LPI: %x %x %x\n",
 			__func__, caller, lpi_status, wfi_status, pc_ready);
 
 		/* Added for debug info purpose, not part of HPG */
@@ -1015,7 +1015,7 @@ static void __enter_core_noc_lpi(struct iris_hfi_device *device,
 	__write_register(device, CVP_AON_WRAPPER_CVP_NOC_LPI_CONTROL, 0x0);
 	if (count == max_count) {
 		dprintk(CVP_WARN,
-			"%s - %d, CORE NOC not in qaccept status %x\n",
+			"%s - %d, CORE Noc is not in LPI: lpi_status %x\n",
 			__func__, caller, lpi_status);
 
 		/* Added for debug info purpose, not part of HPG */
@@ -1059,7 +1059,7 @@ static void __enter_video_ctl_noc_lpi(struct iris_hfi_device *device,
 	__write_register(device, CVP_AON_WRAPPER_CVP_VIDEO_CTL_NOC_LPI_CONTROL, 0x0);
 	if (count == max_count) {
 		dprintk(CVP_WARN,
-			"%s - %d, CVP_VIDEO_CTL NOC not in qaccept status %x\n",
+			"%s - %d, CVP_VIDEO_CTL Noc is not in LPI: lpi_status %x\n",
 			__func__, caller, lpi_status);
 
 		/* Added for debug info purpose, not part of HPG */
@@ -5425,7 +5425,7 @@ static int __power_off_controller(struct iris_hfi_device *device)
 		pc_ready = __read_register(device, CVP_CTRL_STATUS);
 
 		dprintk(CVP_WARN,
-			"CPU NOC not in qaccept status %x %x %x %x\n",
+			"CPU Noc is not in LPI: %x %x %x %x\n",
 			reg_status, lpi_status, wfi_status, pc_ready);
 
 		call_iris_op(device, print_sbm_regs, device);
@@ -5629,7 +5629,7 @@ static int __power_off_core(struct iris_hfi_device *device)
 		pc_ready = __read_register(device, CVP_CTRL_STATUS);
 
 		dprintk(CVP_WARN,
-			"Core NOC not in qaccept status %x %x %x %x\n",
+			"CORE Noc is not in LPI: %x %x %x %x\n",
 			reg_status, lpi_status, wfi_status, pc_ready);
 
 		warn_flag = 1;
