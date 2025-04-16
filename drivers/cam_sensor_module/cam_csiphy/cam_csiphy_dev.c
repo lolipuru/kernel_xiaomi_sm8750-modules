@@ -28,6 +28,24 @@ static inline void cam_csiphy_trigger_reg_dump(struct csiphy_device *csiphy_dev)
 	}
 }
 
+static void cam_csiphy_clk_dump(struct csiphy_device *csiphy_dev)
+{
+	int i = 0;
+	struct cam_hw_soc_info *soc_info;
+
+	soc_info = &csiphy_dev->soc_info;
+
+	if (csiphy_dev->curr_clk_vote_level >= CAM_MAX_VOTE)
+		return;
+
+	for (i = 0; i < soc_info->num_clk; i++) {
+		CAM_INFO(CAM_CSIPHY, "PHY[%d] Clock Name=%s Clock Rate=%d",
+			soc_info->index,
+			soc_info->clk_name[i],
+			soc_info->clk_rate[csiphy_dev->curr_clk_vote_level][i]);
+	}
+}
+
 static int cam_csiphy_format_secure_phy_lane_info(
 	struct csiphy_device *csiphy_dev, int offset, uint64_t *mask)
 {
@@ -200,11 +218,13 @@ static void cam_csiphy_subdev_handle_message(struct v4l2_subdev *sd,
 	switch (message_type) {
 	case CAM_SUBDEV_MESSAGE_REG_DUMP: {
 		cam_csiphy_trigger_reg_dump(csiphy_dev);
+		cam_csiphy_clk_dump(csiphy_dev);
 
 		break;
 	}
 	case CAM_SUBDEV_MESSAGE_APPLY_CSIPHY_AUX: {
 		cam_csiphy_trigger_reg_dump(csiphy_dev);
+		cam_csiphy_clk_dump(csiphy_dev);
 
 		if (!csiphy_dev->skip_aux_settings) {
 			cam_csiphy_update_auxiliary_mask(csiphy_dev);
@@ -514,6 +534,7 @@ static int cam_csiphy_component_bind(struct device *dev,
 	new_csiphy_dev->soc_info.dev_name = pdev->name;
 	new_csiphy_dev->ref_count = 0;
 	new_csiphy_dev->current_data_rate = 0;
+	new_csiphy_dev->curr_clk_vote_level = 0;
 
 	rc = cam_csiphy_parse_dt_info(pdev, new_csiphy_dev);
 	if (rc < 0) {

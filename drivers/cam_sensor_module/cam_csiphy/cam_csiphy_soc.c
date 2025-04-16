@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_csiphy_soc.h"
@@ -179,14 +179,13 @@ enum cam_vote_level get_clk_voting_dynamic(
 			continue;
 
 		if (soc_info->clk_rate[cam_vote_level]
-			[csiphy_dev->rx_clk_src_idx] > phy_data_rate) {
+				[csiphy_dev->rx_clk_src_idx] > phy_data_rate) {
 			CAM_DBG(CAM_CSIPHY,
 				"Found match PHY:%d clk_name:%s data_rate:%llu clk_rate:%d level:%d",
 				soc_info->index,
 				soc_info->clk_name[csiphy_dev->rx_clk_src_idx],
 				phy_data_rate,
-				soc_info->clk_rate[cam_vote_level]
-				[csiphy_dev->rx_clk_src_idx],
+				soc_info->clk_rate[cam_vote_level][csiphy_dev->rx_clk_src_idx],
 				cam_vote_level);
 			return cam_vote_level;
 		}
@@ -219,6 +218,7 @@ int32_t cam_csiphy_enable_hw(struct csiphy_device *csiphy_dev, int32_t index)
 			soc_info->clk_name[i],
 			soc_info->clk_rate[vote_level][i]);
 	}
+	csiphy_dev->curr_clk_vote_level = vote_level;
 
 	rc = cam_soc_util_enable_platform_resource(soc_info,
 		(soc_info->is_clk_drv_en && param->use_hw_client_voting) ?
@@ -302,7 +302,6 @@ int32_t cam_csiphy_parse_dt_info(struct platform_device *pdev,
 	struct csiphy_device *csiphy_dev)
 {
 	int32_t   rc = 0, i = 0;
-	uint32_t  clk_cnt = 0;
 	uint32_t   is_regulator_enable_sync;
 	struct cam_hw_soc_info   *soc_info;
 	void *irq_data[CAM_SOC_MAX_IRQ_LINES_PER_DEV] = {0};
@@ -390,9 +389,9 @@ int32_t cam_csiphy_parse_dt_info(struct platform_device *pdev,
 			csiphy_dev->timer_clk_src_idx = i;
 		}
 
-		CAM_DBG(CAM_CSIPHY, "clk_rate[%d] = %d", clk_cnt,
-			soc_info->clk_rate[0][clk_cnt]);
-		clk_cnt++;
+		CAM_DBG(CAM_CSIPHY, "PHY:%d clk_rate[0][%d] = %d",
+			soc_info->index, i,
+			soc_info->clk_rate[0][i]);
 	}
 
 	for (i = 0; i < soc_info->irq_count; i++)

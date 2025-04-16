@@ -509,8 +509,13 @@ static int cam_jpeg_mgr_bottom_half_irq(void *priv, void *data)
 				if (!list_empty(&cam_ctx->active_req_list)) {
 					req = list_first_entry(&cam_ctx->active_req_list,
 						struct cam_ctx_request, list);
+					cam_smmu_buffer_tracker_putref(&req->buf_tracker);
 					list_del_init(&req->list);
 					list_add_tail(&req->list, &cam_ctx->free_req_list);
+					if (req->packet) {
+						cam_common_mem_free(req->packet);
+						req->packet = NULL;
+					}
 				}
 				spin_unlock(&cam_ctx->lock);
 

@@ -210,8 +210,12 @@ int cam_context_buf_done_from_hw(struct cam_context *ctx,
 			ctx->dev_name, ctx->ctx_id);
 		list_del_init(&req->list);
 		cam_smmu_buffer_tracker_putref(&req->buf_tracker);
-		list_add_tail(&req->list, &ctx->free_req_list);
+		if (req->packet) {
+			cam_common_mem_free(req->packet);
+			req->packet = NULL;
+		}
 		req->ctx = NULL;
+		list_add_tail(&req->list, &ctx->free_req_list);
 		spin_unlock(&ctx->lock);
 		return -EIO;
 	}
