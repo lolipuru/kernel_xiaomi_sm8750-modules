@@ -4435,9 +4435,14 @@ cnss_pci_set_power_state(struct pci_dev *pci_dev, pci_power_t state)
 	}
 
 	ret = pci_set_power_state(pci_dev, state);
-	if (ret)
-		cnss_pr_err("Failed to set power state %s, err = %d\n",
-			    pci_power_name(state), ret);
+	if (ret) {
+		/* corresponding states and values:
+		 * PCI_D0=0, PCI_D1=1, PCI_D2=2, PCI_D3hot=3, PCI_D3cold=4
+		 * PCI_UNKNOWN=5, PCI_POWER_ERROR=-1
+		 */
+		cnss_pr_err("Failed to set power state %d, err = %d\n",
+			    state, ret);
+	}
 }
 #else
 static void
