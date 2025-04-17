@@ -3248,6 +3248,26 @@ static void cnss_destroy_ramdump_device(struct cnss_plat_data *plat_priv,
 }
 #endif
 
+#if IS_ENABLED(CONFIG_CNSS2_DISABLE_SSR_RAMDUMP)
+static bool cnss_dump_enabled(void)
+{
+	return false;
+}
+#else
+#if IS_ENABLED(CONFIG_QCOM_RAMDUMP)
+static bool cnss_dump_enabled(void)
+{
+	return dump_enabled();
+}
+#else
+/* Saving dump to file system is always needed in this case. */
+static bool cnss_dump_enabled(void)
+{
+	return true;
+}
+#endif /* IS_ENABLED(CONFIG_QCOM_RAMDUMP) */
+#endif /* IS_ENABLED(CONFIG_CNSS2_DISABLE_SSR_RAMDUMP) */
+
 #if IS_ENABLED(CONFIG_QCOM_RAMDUMP)
 int cnss_do_ramdump(struct cnss_plat_data *plat_priv)
 {
@@ -3255,6 +3275,10 @@ int cnss_do_ramdump(struct cnss_plat_data *plat_priv)
 	struct qcom_dump_segment segment;
 	struct list_head head;
 
+	if (!cnss_dump_enabled()) {
+		cnss_pr_info("Dump collection is not enabled\n");
+		return 0;
+	}
 	INIT_LIST_HEAD(&head);
 	memset(&segment, 0, sizeof(segment));
 	segment.va = ramdump_info->ramdump_va;
@@ -3307,7 +3331,6 @@ do {									\
  */
 #define qcom_dump_segment cnss_qcom_dump_segment
 #define qcom_elf_dump cnss_qcom_elf_dump
-#define dump_enabled cnss_dump_enabled
 
 struct cnss_qcom_dump_segment {
 	struct list_head node;
@@ -3448,12 +3471,6 @@ static int cnss_qcom_elf_dump(struct list_head *segs, struct device *dev,
 
 	return cnss_qcom_devcd_dump(dev, data, data_size, GFP_KERNEL);
 }
-
-/* Saving dump to file system is always needed in this case. */
-static bool cnss_dump_enabled(void)
-{
-	return true;
-}
 #endif /* CONFIG_QCOM_RAMDUMP */
 
 int cnss_do_elf_ramdump(struct cnss_plat_data *plat_priv)
@@ -3466,7 +3483,7 @@ int cnss_do_elf_ramdump(struct cnss_plat_data *plat_priv)
 	struct list_head head;
 	int i, ret = 0;
 
-	if (!dump_enabled()) {
+	if (!cnss_dump_enabled()) {
 		cnss_pr_info("Dump collection is not enabled\n");
 		return ret;
 	}
@@ -3667,7 +3684,7 @@ int cnss_do_host_ramdump(struct cnss_plat_data *plat_priv,
 	int ret = 0;
 	enum cnss_host_dump_type j;
 
-	if (!dump_enabled()) {
+	if (!cnss_dump_enabled()) {
 		cnss_pr_info("Dump collection is not enabled\n");
 		return ret;
 	}
@@ -5058,6 +5075,9 @@ static void cnss_sram_dump_init(struct cnss_plat_data *plat_priv)
 	} else if (plat_priv->device_id == PEACH_DEVICE_ID) {
 		plat_priv->sram_dump_start_addr = SRAM_START;
 		plat_priv->sram_dump_size = PEACH_SRAM_SIZE;
+	} else if (plat_priv->device_id == COLOGNE_DEVICE_ID) {
+		plat_priv->sram_dump_start_addr = SRAM_START;
+		plat_priv->sram_dump_size = COLOGNE_SRAM_SIZE;
 	} else if (plat_priv->device_id == FIG_DEVICE_ID) {
 		plat_priv->sram_dump_start_addr = SRAM_START;
 		plat_priv->sram_dump_size = FIG_SRAM_SIZE;
@@ -5797,6 +5817,15 @@ static int cnss_probe(struct platform_device *plat_dev)
 	ret = cnss_get_resources(plat_priv);
 	if (ret)
 		goto reset_ctx;
+
+	/* FMD WAR for Ganges, disable BT_EN GPIO */
+	if (plat_priv && plat_priv->device_id == PEACH_DEVICE_ID) {
+		int bt_en_gpio = plat_priv->pinctrl_info.bt_en_gpio;
+		if (bt_en_gpio > 0) {
+			cnss_pr_err("Disabling BT_EN");
+			gpio_direction_output(bt_en_gpio, 0);
+		}
+	}
 
 	ret = cnss_register_esoc(plat_priv);
 	if (ret)

@@ -122,6 +122,7 @@ int cnss_pci_get_msi_assignment(struct cnss_pci_data *pci_priv);
 int cnss_pci_get_iommu_addr(struct cnss_pci_data *pci_priv, struct device_node *of_node);
 int cnss_pci_init_smmu(struct cnss_pci_data *pci_priv);
 void cnss_pci_update_drv_supported(struct cnss_pci_data *pci_priv);
+int cnss_pci_get_link_status(struct cnss_pci_data *pci_priv);
 
 /**
  * _cnss_pci_get_reg_dump() - Dump PCIe RC registers for debug
@@ -232,6 +233,10 @@ void cnss_pci_update_drv_supported(struct cnss_pci_data *pci_priv)
 	pci_priv->drv_supported = false;
 }
 
+int cnss_pci_get_link_status(struct cnss_pci_data *pci_priv)
+{
+	return 0;
+}
 #endif /* CONFIG_PCI_MSM */
 
 static inline bool cnss_pci_get_drv_supported(struct cnss_pci_data *pci_priv)

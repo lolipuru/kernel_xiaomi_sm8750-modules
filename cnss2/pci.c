@@ -1635,7 +1635,7 @@ static int cnss_update_supported_link_info(struct cnss_pci_data *pci_priv)
 	return ret;
 }
 
-static int cnss_pci_get_link_status(struct cnss_pci_data *pci_priv)
+int cnss_pci_get_link_status(struct cnss_pci_data *pci_priv)
 {
 	u16 link_status;
 	int ret;
@@ -2220,6 +2220,7 @@ static void cnss_pci_dump_bl_sram_mem(struct cnss_pci_data *pci_priv)
 		pbl_log_sram_start = COLOGNE_DEBUG_PBL_LOG_SRAM_START;
 		pbl_log_max_size = COLOGNE_DEBUG_PBL_LOG_SRAM_MAX_SIZE;
 		sbl_log_max_size = COLOGNE_DEBUG_SBL_LOG_SRAM_MAX_SIZE;
+		sbl_log_def_end = COLOGNE_SRAM_END;
 		break;
 	case FIG_DEVICE_ID:
 		if (cnss_pci_fetch_pbl_base_size(pci_priv, &pbl_log_sram_start,
@@ -6553,8 +6554,8 @@ static void cnss_pci_dump_debug_reg(struct cnss_pci_data *pci_priv)
 	cnss_pci_dump_ce_reg(pci_priv, CNSS_CE_09);
 	cnss_pci_dump_ce_reg(pci_priv, CNSS_CE_10);
 }
-static int cnss_pci_assert_host_sol(struct cnss_pci_data *pci_priv,
-				    bool check_dev_sol)
+
+static int cnss_pci_assert_host_sol(struct cnss_pci_data *pci_priv)
 {
 	int ret;
 
@@ -6574,7 +6575,7 @@ static int cnss_pci_assert_host_sol(struct cnss_pci_data *pci_priv,
 			goto out;
 		}
 	}
-	if (cnss_get_dev_sol_value(pci_priv->plat_priv) == 0 && check_dev_sol)
+	if (cnss_get_dev_sol_value(pci_priv->plat_priv) == 0)
 		return -EAGAIN;
 
 	cnss_pr_dbg("Assert host SOL GPIO to retry RDDM, expecting link down\n");
@@ -6585,15 +6586,6 @@ out:
 	cnss_start_rddm_timer(pci_priv);
 	return 0;
 }
-
-int cnss_pci_assert_host_sol_dev(struct device *dev)
-{
-	struct pci_dev *pci_dev = to_pci_dev(dev);
-	struct cnss_pci_data *pci_priv = cnss_get_pci_priv(pci_dev);
-
-	return cnss_pci_assert_host_sol(pci_priv, false);
-}
-
 
 static void cnss_pci_mhi_reg_dump(struct cnss_pci_data *pci_priv)
 {
@@ -6697,7 +6689,7 @@ int cnss_pci_recover_link_down(struct cnss_pci_data *pci_priv)
 	if (ret) {
 		cnss_pr_err("Failed to resume PCI link, err = %d\n", ret);
 		cnss_del_rddm_timer(pci_priv);
-		if (!cnss_pci_assert_host_sol(pci_priv, true)) {
+		if (!cnss_pci_assert_host_sol(pci_priv)) {
 			mutex_unlock(&pci_priv->bus_lock);
 			return 0;
 		}
@@ -6705,6 +6697,13 @@ int cnss_pci_recover_link_down(struct cnss_pci_data *pci_priv)
 		return ret;
 	}
 	mutex_unlock(&pci_priv->bus_lock);
+
+	/*
+	 * If link down happen with pcie enumeration done but wlan driver
+	 * un-initialized, MHI is not yet started, RDDM could be skipped.
+	 */
+	if (!test_bit(CNSS_MHI_INIT, &pci_priv->mhi_state))
+		return -EINVAL;
 
 retry:
 	if (cnss_pci_check_link_status(pci_priv)) {
@@ -6734,7 +6733,7 @@ retry:
 	cnss_pci_bhi_debug_reg_dump(pci_priv);
 	cnss_pci_soc_scratch_reg_dump(pci_priv);
 
-	if (!cnss_pci_assert_host_sol(pci_priv, true))
+	if (!cnss_pci_assert_host_sol(pci_priv))
 		return 0;
 
 recovery:
@@ -6797,7 +6796,7 @@ int cnss_pci_force_fw_assert_hdlr(struct cnss_pci_data *pci_priv)
 			return 0;
 		}
 		cnss_fatal_err("Failed to trigger RDDM, err = %d\n", ret);
-		if (!cnss_pci_assert_host_sol(pci_priv, true)) {
+		if (!cnss_pci_assert_host_sol(pci_priv)) {
 			cnss_pci_pm_runtime_mark_last_busy(pci_priv);
 			cnss_pci_pm_runtime_put_autosuspend(pci_priv, RTPM_ID_CNSS);
 			return 0;
@@ -7024,6 +7023,12 @@ int cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 
 	if (test_bit(CNSS_MHI_RDDM_DONE, &pci_priv->mhi_state)) {
 		cnss_pr_dbg("RAM dump is already collected, skip\n");
+		goto out;
+	}
+
+	if (!test_bit(CNSS_MHI_INIT, &pci_priv->mhi_state)) {
+		cnss_pr_dbg("MHI is not initialized, skip\n");
+		ret = -EINVAL;
 		goto out;
 	}
 
@@ -7431,7 +7436,7 @@ static void cnss_dev_rddm_timeout_hdlr(struct timer_list *t)
 		cnss_pci_bhi_debug_reg_dump(pci_priv);
 		cnss_pci_soc_scratch_reg_dump(pci_priv);
 
-		if (!cnss_pci_assert_host_sol(pci_priv, true))
+		if (!cnss_pci_assert_host_sol(pci_priv))
 			return;
 
 		cnss_pr_err("Trigger TIMEOUT recovery\n");

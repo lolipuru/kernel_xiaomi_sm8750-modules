@@ -250,6 +250,9 @@ struct icnss_clk_info {
 struct icnss_pinctrl_info {
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *sw_ctrl;
+	struct pinctrl_state *wlan_en_active;
+	struct pinctrl_state *wlan_en_sleep;
+	int wlan_en_gpio;
 	int sw_ctrl_gpio;
 };
 
