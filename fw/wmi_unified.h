@@ -1703,6 +1703,8 @@ typedef enum {
     WMI_MLO_LINK_RECONFIG_CMDID,
     /** WMI cmd to notify fw completion of link reconfig */
     WMI_MLO_LINK_RECONFIG_COMPLETE_CMDID,
+    /** WMI cmd to notify fw completion of negotiated TID to LINK map  */
+    WMI_MLO_LINK_TTLM_COMPLETE_CMDID,
 
     /** WMI commands specific to Service Aware WiFi (SAWF) */
     /** configure or reconfigure the parameters for a service class */
@@ -2589,6 +2591,9 @@ typedef enum {
     WMI_MLO_VDEV_LINK_INFO_EVENTID,
     /** request host to do T2LM neg to the un-disabled link */
     WMI_MLO_LINK_DISABLE_REQUEST_EVENTID,
+        /* alias */
+        WMI_MLO_LINK_TTLM_REQUEST_EVENTID =
+            WMI_MLO_LINK_DISABLE_REQUEST_EVENTID,
     /** request host to switch to new link for specified vdev */
     WMI_MLO_LINK_SWITCH_REQUEST_EVENTID,
     /** Response event for WMI_MLO_PRIMARY_LINK_PEER_MIGRATION_CMDID */
@@ -12586,8 +12591,20 @@ typedef struct {
      *
      * b'31-b'29 unused / reserved
      * b'28      indicate the version of rate-code (1 = RATECODE_V1)
-     * b'27-b'11 unused / reserved
-     * b'10-b'8  indicate the preamble (0 OFDM, 1 CCK, 2 HT, 3 VHT)
+     * b'27      unused / reserved
+     * b'26-b'19 indicate TX power (int8), with 0.25 dBm units
+     * b'15-b'14 indicate punctured mode as follows:
+     *                     0: NO_PUNCTURE
+     *                     1: PUNCTURED_20MHZ
+     *                     2: PUNCTURED_40MHZ
+     *                     3: PUNCTURED_80MHZ
+     *                     4: PUNCTURED_120MHZ
+     * b'15-b'14 indicate the guard interval:
+     *           0: 800us, 1: 400us, 2: 1600us, 3: 3200us
+     * b'13-b'11 indicate the bandwidth:
+     *           0: 20MHz, 1: 40MHz, 2: 80MHz, 3: 160MHz, 4: 320MHz
+     * b'10-b'8  indicate the preamble:
+     *           0: OFDM, 1: CCK, 2: HT, 3: VHT, 4: HE, 5: EHT
      * b'7-b'5   indicate the NSS (0 - 1x1, 1 - 2x2, 2 - 3x3, 3 - 4x4)
      * b'4-b'0   indicate the rate, which is indicated as follows:
      *          OFDM :     0: OFDM 48 Mbps
@@ -12610,6 +12627,9 @@ typedef struct {
      *                     0..7: MCS0..MCS7 (HT)
      *                     0..9: MCS0..MCS9 (11AC VHT)
      *                     0..11: MCS0..MCS11 (11AX VHT)
+     *         HE/EHT (pream == 4/5)
+     *                     0..13: MCS0..MCS13 (11AX EHT)
+     *                     14..15: MCS14..MCS15 (EHT)
      */
     /** rate-code of the last transmission */
     A_UINT32 last_tx_rate_code;
@@ -13485,6 +13505,7 @@ typedef enum {
     WMI_CTRL_PATH_STATS_CAL_TYPE_PADROOP                 = 0x17,
     WMI_CTRL_PATH_STATS_CAL_TYPE_SELFCALTPC              = 0x18,
     WMI_CTRL_PATH_STATS_CAL_TYPE_RXSPUR                  = 0x19,
+    WMI_CTRL_PATH_STATS_CAL_TYPE_PDADC                   = 0x1a,
 
     /* add new cal types above this line */
     WMI_CTRL_PATH_STATS_CAL_TYPE_INVALID                 = 0xFF
@@ -13584,6 +13605,7 @@ static INLINE A_UINT8 *wmi_ctrl_path_cal_type_id_to_name(A_UINT32 cal_type_id)
         WMI_RETURN_STRING(WMI_CTRL_PATH_STATS_CAL_TYPE_PADROOP);
         WMI_RETURN_STRING(WMI_CTRL_PATH_STATS_CAL_TYPE_SELFCALTPC);
         WMI_RETURN_STRING(WMI_CTRL_PATH_STATS_CAL_TYPE_RXSPUR);
+        WMI_RETURN_STRING(WMI_CTRL_PATH_STATS_CAL_TYPE_PDADC);
     }
 
     return (A_UINT8 *) "WMI_CTRL_PATH_STATS_CAL_TYPE_UNKNOWN";
@@ -17955,6 +17977,10 @@ typedef enum {
 #define WMI_HECAP_MAC_HTVHTTRIGRX_GET_D2(he_cap2) (0)
 #define WMI_HECAP_MAC_HTVHTTRIGRX_SET_D2(he_cap2, value) {;}
 
+#define WMI_GET_HW_RATECODE_VERSION(_rcode)         (((_rcode) >> 28) & 0x1)
+#define WMI_SET_HW_RATECODE_VERSION_V1(_rcode)      (((1) << 28) | (_rcode))
+#define WMI_GET_HW_RATECODE_GI_V1(_rcode)      (((_rcode) >> 14) & 0x3)
+#define WMI_GET_HW_RATECODE_BW_V1(_rcode)      (((_rcode) >> 11) & 0x7)
 #define WMI_GET_HW_RATECODE_PREAM_V1(_rcode)     (((_rcode) >> 8) & 0x7)
 #define WMI_GET_HW_RATECODE_NSS_V1(_rcode)       (((_rcode) >> 5) & 0x7)
 #define WMI_GET_HW_RATECODE_RATE_V1(_rcode)      (((_rcode) >> 0) & 0x1F)
@@ -22674,6 +22700,15 @@ typedef struct {
     A_UINT32 roam_scan_period_after_inactivity; /* units = milliseconds */
     /** roam full scan period value */
     A_UINT32 roam_full_scan_period; /* units = milliseconds */
+    /** roam_periodic_scan_interval:
+     * Timer value to periodically trigger the roaming process at
+     * set intervals during low RSSI roaming trigger.
+     * Low rssi trigger (Partial/full) -->
+     *                  10s (partial) -->
+     *                  20s (partial) -->
+     *                  30s (partial) and so on.
+     */
+    A_UINT32 roam_periodic_scan_interval; /* units = seconds */
 } wmi_roam_scan_period_fixed_param;
 
 /**
@@ -23741,7 +23776,7 @@ typedef struct {
      * This is filled only for MLO and deleted_ieee_link_id_bmap = 0
      * means no link was deleted.
      */
-    A_UINT32 deleted_link_bmap;
+    A_UINT32 deleted_ieee_link_id_bmap;
 } wmi_roam_partner_link_param;
 
 /* roam_reason: bits 0-3 */
@@ -38804,6 +38839,7 @@ static INLINE A_UINT8 *wmi_id_to_name(A_UINT32 wmi_command)
         WMI_RETURN_STRING(WMI_SAWF_EZMESH_HOP_COUNT_CMDID);
         WMI_RETURN_STRING(WMI_VDEV_VBSS_CONFIG_CMDID);
         WMI_RETURN_STRING(WMI_NDP_SET_LATENCY_TPUT_CMDID);
+        WMI_RETURN_STRING(WMI_MLO_LINK_TTLM_COMPLETE_CMDID);
     }
 
     return (A_UINT8 *) "Invalid WMI cmd";
@@ -41852,6 +41888,8 @@ typedef enum {
     WMI_ROAM_FAIL_REASON_CURR_AP_STILL_OK, /* Roam scan not happen due to current network condition is fine */
     WMI_ROAM_FAIL_REASON_SCAN_CANCEL,      /* Roam scan canceled */
     WMI_ROAM_FAIL_REASON_MLD_EXTRA_SCAN_REQUIRED, /* Roaming is not triggered for current roam scan as extra scan is required to scan all MLD links */
+    WMI_ROAM_FAIL_REASON_TTLM_REQUIRED, /* Roaming is not triggered as TTLM is required */
+    WMI_ROAM_FAIL_REASON_LINKRECONFIG_REQUIRED, /* Roaming is not triggered as linkreconfig is required */
 
     WMI_ROAM_FAIL_REASON_UNKNOWN = 255,
 } WMI_ROAM_FAIL_REASON_ID;
@@ -47133,10 +47171,29 @@ typedef struct {
     /* MLD address of AP */
     wmi_mac_addr mld_addr;
     /* any non-zero values of status indicate link reconfig failure. */
-    A_UINT32  status;
-    /* valid only when status is non-zero. fw will do reassociation if link reconfig failure */
-    A_UINT32  reassoc_if_failure;
+    A_UINT32 status;
+    /* reassoc_if_failure:
+     * Valid only when status is non-zero.
+     * FW will do reassociation if link reconfig failure.
+     */
+    A_UINT32 reassoc_if_failure;
 } wmi_mlo_link_reconfig_complete_fixed_param;
+
+typedef struct {
+    /** TLV tag and len; tag equals WMITLV_TAG_STRUC_wmi_mlo_link_ttlm_complete_fixed_param */
+    A_UINT32 tlv_header;
+    /* unique id identifying the VDEV, generated by the caller */
+    A_UINT32 vdev_id;
+    /* MLD address of AP */
+    wmi_mac_addr mld_addr;
+    /* any non-zero values of status indicate link TTLM failure. */
+    A_UINT32 status;
+    /* reassoc_if_failure:
+     * Valid only when status is non-zero.
+     * FW will do reassociation if link reconfig failure.
+     */
+    A_UINT32 reassoc_if_failure;
+} wmi_mlo_link_ttlm_complete_fixed_param;
 
 #define WMI_TID_TO_LINK_MAP_TID_NUM_GET(_var)               WMI_GET_BITS(_var, 0, 5)
 #define WMI_TID_TO_LINK_MAP_TID_NUM_SET(_var, _val)         WMI_SET_BITS(_var, 0, 5, _val)
