@@ -2607,12 +2607,14 @@ void __qdf_dmaaddr_to_32s(qdf_dma_addr_t dmaaddr,
  * @osdev: qdf device handle
  * @skb: Jumbo TSO network buffer
  * @head_skb: skb list
+ * @tx_pp: TX page pool reference
  *
  * Return: QDF_STATUS
  */
 QDF_STATUS __qdf_nbuf_sw_tso_prepare_nbuf_list(qdf_device_t osdev,
 					       struct sk_buff *skb,
-					       struct sk_buff **head_skb);
+					       struct sk_buff **head_skb,
+					       qdf_page_pool_t tx_pp);
 #endif
 
 /**
