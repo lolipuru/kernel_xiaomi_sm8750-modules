@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -101,12 +101,24 @@ static void cam_icp_dev_iommu_fault_handler(struct cam_smmu_pf_info *pf_smmu_inf
 
 	pf_args.pf_smmu_info = pf_smmu_info;
 
-	/* Checked whether client with SMMU issued pid should be handled by this handler */
-	if (node->ctx_size != 0) {
+	for (i = 0; i < node->ctx_size; i++) {
+		CAM_DBG(CAM_ICP, "Node name %s ctx_idx %d", node->name, i);
 		pf_args.check_pid = true;
-		cam_context_dump_pf_info(&(node->ctx_list[0]), &pf_args);
-		if (!pf_args.pid_found)
+		cam_context_dump_pf_info(&(node->ctx_list[i]), &pf_args);
+		if (pf_args.pf_pid_found_status == CAM_PF_PID_FOUND_PENDING) {
+			continue;
+		} else if (pf_args.pf_pid_found_status == CAM_PF_PID_FOUND_FAILURE) {
+			CAM_INFO(CAM_ICP, "pid %d was not found for %s",
+				pf_args.pf_smmu_info->pid, node->name);
 			return;
+		} else
+			break;
+	}
+
+	if (i == node->ctx_size) {
+		CAM_INFO(CAM_ICP, "All contexts are inactive. PID %d was not found for %s",
+			pf_args.pf_smmu_info->pid, node->name);
+		return;
 	}
 
 	for (i = 0; i < node->ctx_size; i++) {
