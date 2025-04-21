@@ -2759,6 +2759,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 		SDE_CP_CRTC_DSPP_DEMURA_INIT,
 		SDE_CP_CRTC_DSPP_RC_MASK,
 		SDE_CP_CRTC_DSPP_LTM_HIST_CTL,
+		SDE_CP_CRTC_DSPP_AIQE_ABC,
 	};
 	for (n = 0; n < ARRAY_SIZE(features); n++) {
 		if (features[n] > ARRAY_SIZE(set_crtc_feature_wrappers)) {
@@ -5209,6 +5210,7 @@ void _sde_cp_mark_active_dirty_internal(struct sde_crtc *crtc)
 	enum sde_cp_crtc_features features[] = {
 		SDE_CP_CRTC_DSPP_DEMURA_INIT,
 		SDE_CP_CRTC_DSPP_LTM_HIST_CTL,
+		SDE_CP_CRTC_DSPP_AIQE_ABC,
 	};
 	mutex_lock(&crtc->crtc_cp_lock);
 	for (i = 0; i < ARRAY_SIZE(features); i++) {
