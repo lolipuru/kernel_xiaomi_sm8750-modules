@@ -1944,11 +1944,8 @@ int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
 		buf = (struct cvp_buf_type *)&in_pkt->pkt_data[offset];
 		offset += sizeof(*buf) >> 2;
 
-		if (buf->fd < 0 || !buf->size) {
-			dprintk(CVP_ERR, "%s: fd = %d, Size = %d, in_buf_num = %d\n",
-				__func__, buf->fd, buf->size, buf_num);
+		if (buf->fd < 0 || !buf->size)
 			continue;
-		}
 
 		ret = msm_cvp_map_user_persist_buf(inst, buf,
 				cmd_hdr->packet_type, i, &iova);
