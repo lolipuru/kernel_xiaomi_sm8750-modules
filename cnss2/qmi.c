@@ -532,6 +532,7 @@ int cnss_wlfw_tgt_cap_send_sync(struct cnss_plat_data *plat_priv)
 	struct qmi_txn txn;
 	char *fw_build_timestamp;
 	int ret = 0, i;
+	u8 bt_over_wl, wl_over_bt;
 
 	cnss_pr_dbg("Sending target capability message, state: 0x%lx\n",
 		    plat_priv->driver_state);
@@ -633,8 +634,14 @@ int cnss_wlfw_tgt_cap_send_sync(struct cnss_plat_data *plat_priv)
 			!!(resp->fw_caps & QMI_WLFW_HOST_PCIE_GEN_SWITCH_V01);
 		plat_priv->fw_aux_uc_support =
 			!!(resp->fw_caps & QMI_WLFW_AUX_UC_SUPPORT_V01);
-		cnss_pr_dbg("FW aux uc support capability: %d\n",
-			    plat_priv->fw_aux_uc_support);
+		wl_over_bt = !!(resp->fw_caps &
+				QMI_WLFW_WLAN_DUMP_OVER_BT_SUPPORT_V01);
+		bt_over_wl = !!(resp->fw_caps &
+				QMI_WLFW_BT_DUMP_OVER_WLAN_SUPPORT_V01);
+		cnss_pr_dbg("FW aux uc support capability: %d, wl_over_bt %d, bt_over_wl %d\n",
+			    plat_priv->fw_aux_uc_support,
+			    wl_over_bt, bt_over_wl);
+
 		plat_priv->fw_caps = resp->fw_caps;
 	}
 
@@ -1784,6 +1791,92 @@ int wlfw_qdss_trace_stop(struct cnss_plat_data *plat_priv, unsigned long long op
 {
 	return wlfw_send_qdss_trace_mode_req(plat_priv, QMI_WLFW_QDSS_TRACE_OFF_V01,
 					     option);
+}
+
+/**
+ * cnss_wlfw_misc_req_send_sync() - Send QMI_WLFW_MISC_REQ with provided type
+ * @plat_priv: CNSS platform data
+ * @type: subtype for QMI_WLFW_MISC_REQ
+ *
+ * Return: 0 for success, negative values otherwise
+ */
+static int cnss_wlfw_misc_req_send_sync(struct cnss_plat_data *plat_priv,
+					enum wlfw_misc_req_enum_v01 type)
+{
+	int ret = 0;
+	struct wlfw_misc_req_msg_v01 *req;
+	struct wlfw_misc_resp_msg_v01 *resp;
+	struct qmi_txn txn;
+
+	if (type <= WLFW_MISC_REQ_ENUM_MIN_VAL_V01 ||
+	    type >= WLFW_MISC_REQ_ENUM_MAX_VAL_V01) {
+		cnss_pr_err("Invalid type[%d] for MISC_REQ\n", type);
+		return -EINVAL;
+	}
+
+	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	if (!req) {
+		cnss_pr_err("Failed to allocate req for MISC_REQ[%d]\n", type);
+		return -ENOMEM;
+	}
+
+	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
+	if (!resp) {
+		cnss_pr_err("Failed to allocate resp for MISC_REQ[%d]\n", type);
+		kfree(req);
+		return -ENOMEM;
+	}
+
+	ret = qmi_txn_init(&plat_priv->qmi_wlfw, &txn,
+			   wlfw_misc_resp_msg_v01_ei, resp);
+
+	if (ret < 0) {
+		cnss_pr_err("Fail to init txn for MISC_REQ[%d]: %d\n",
+			    type, ret);
+		goto end;
+	}
+
+	req->type = type;
+	ret = qmi_send_request(&plat_priv->qmi_wlfw, NULL, &txn,
+			       QMI_WLFW_MISC_REQ_V01,
+			       WLFW_MISC_REQ_MSG_V01_MAX_MSG_LEN,
+			       wlfw_misc_req_msg_v01_ei, req);
+	if (ret < 0) {
+		qmi_txn_cancel(&txn);
+		cnss_pr_err("Fail to send MISC_REQ[%d]: %d\n", type, ret);
+		goto end;
+	}
+
+	ret = qmi_txn_wait(&txn, plat_priv->ctrl_params.qmi_timeout);
+	if (ret < 0) {
+		cnss_pr_err("Failed to wait for resp of MISC_REQ[%d]: %d\n",
+			    type, ret);
+		goto end;
+	} else if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
+		cnss_pr_err("MISC_REQ[%d] failed, result:%d error:%d\n",
+			    type, resp->resp.result, resp->resp.error);
+		ret = -resp->resp.result;
+		goto end;
+	} else {
+		cnss_pr_dbg("Sent MISC_REQ[%d] successfully\n", type);
+		ret = 0;
+	}
+
+end:
+	kfree(req);
+	kfree(resp);
+	return ret;
+}
+
+/**
+ * cnss_wlfw_req_bt_dump_send_sync() - Send QMI request for dumping BT over WLAN
+ * @plat_priv: CNSS platform data
+ *
+ * Return: 0 for success, negative values otherwise
+ */
+int cnss_wlfw_req_bt_dump_send_sync(struct cnss_plat_data *plat_priv)
+{
+	return cnss_wlfw_misc_req_send_sync(plat_priv, WLFW_REQ_BT_DUMP_V01);
 }
 
 int cnss_wlfw_wlan_mode_send_sync(struct cnss_plat_data *plat_priv,
