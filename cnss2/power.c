@@ -1246,13 +1246,19 @@ static int cnss_aop_update_mode(struct cnss_plat_data *plat_priv)
 							    "qcom,pdc_mode_vote_table",
 							    plat_priv->pdc_mode_vote_table,
 							    plat_priv->pdc_mode_vote_table_len);
-			if (ret < 0)
+			if (ret < 0) {
 				cnss_pr_err("Failed to get PDC Mode Vote Table\n");
+				goto out;
+			}
 		} else {
 			cnss_pr_err("Failed to alloc PDC Mode Vote Table mem\n");
+			ret = -1;
+			goto out;
 		}
 	} else {
 		cnss_pr_dbg("PDC Mode Vote Table not configured\n");
+		ret = -1;
+		goto out;
 	}
 
 	cnss_pr_dbg("Updating PDC mode votes \n");
@@ -1277,8 +1283,9 @@ static int cnss_aop_update_mode(struct cnss_plat_data *plat_priv)
 		}
 	}
 
-	cnss_pr_dbg("Successfully updated L3K to bypass mode\n");
+	cnss_pr_dbg("Successfully updated regulator modes\n");
 
+out:
 	return ret;
 }
 
