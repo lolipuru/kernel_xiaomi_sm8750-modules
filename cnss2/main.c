@@ -160,17 +160,20 @@ struct cnss_plat_data *cnss_get_plat_priv(struct platform_device
 	return NULL;
 }
 
-struct cnss_plat_data *cnss_get_first_plat_priv(struct platform_device
-						 *plat_dev)
+/**
+ * cnss_get_first_plat_priv - Get the first valid pointer to cnss_plat_data
+ *
+ * Return: Pointer to the first valid cnss_plat_data on success, NULL otherwise
+ */
+struct cnss_plat_data *cnss_get_first_plat_priv(void)
 {
 	int i;
 
-	if (!plat_dev) {
-		for (i = 0; i < plat_env_count; i++) {
-			if (plat_env[i])
-				return plat_env[i];
-		}
+	for (i = 0; i < plat_env_count; i++) {
+		if (plat_env[i])
+			return plat_env[i];
 	}
+
 	return NULL;
 }
 
@@ -261,6 +264,11 @@ static void cnss_set_plat_priv(struct platform_device *plat_dev,
 }
 
 struct cnss_plat_data *cnss_get_plat_priv(struct platform_device *plat_dev)
+{
+	return plat_env;
+}
+
+struct cnss_plat_data *cnss_get_first_plat_priv(void)
 {
 	return plat_env;
 }
@@ -5450,11 +5458,7 @@ int cnss_wlan_hw_enable(void)
 	struct cnss_plat_data *plat_priv;
 	int ret = 0;
 
-	if (cnss_is_dual_wlan_enabled())
-		plat_priv = cnss_get_first_plat_priv(NULL);
-	else
-		plat_priv = cnss_get_plat_priv(NULL);
-
+	plat_priv = cnss_get_first_plat_priv();
 	if (!plat_priv)
 		return -ENODEV;
 
