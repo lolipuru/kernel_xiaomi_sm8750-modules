@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -597,6 +597,14 @@ wlan_dcs_wlan_interference_process(struct wlan_objmgr_psoc *psoc,
 
 	if (QDF_IS_STATUS_ERROR(status))
 		goto end;
+
+	if (cycle_count_delta < rxclr_delta) {
+		if (unlikely(dcs_host_params.dcs_debug >= DCS_DEBUG_CRITICAL))
+			dcs_debug("cycle count %d is less than rxclr_delta %d, need to investigate!!",
+				  cycle_count_delta, rxclr_delta);
+
+		goto copy_stats;
+	}
 
 
 	if (unlikely(dcs_host_params.dcs_debug >= DCS_DEBUG_VERBOSE))
