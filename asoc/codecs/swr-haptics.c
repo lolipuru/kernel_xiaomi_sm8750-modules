@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/device.h>
@@ -119,6 +119,7 @@ struct swr_haptics_dev {
 	u8				clamped_vmax;
 	u8				flags;
 	u8				visense_enable;
+	bool				is_ssr;
 };
 
 
@@ -407,19 +408,23 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 		swr_device_wakeup_unvote(swr_hap->swr_slave);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
-		swr_device_wakeup_vote(swr_hap->swr_slave);
 		/* stop SWR play */
 		mutex_lock(&swr_hap->play_lock);
-		val = SWR_PLAY_SRC_VAL_SWR;
-		rc = regmap_write(swr_hap->regmap, SWR_PLAY_REG, val);
-		if (rc) {
-			dev_err_ratelimited(swr_hap->dev, "%s: Enable SWR_PLAY failed, rc=%d\n",
+		if (!swr_hap->is_ssr) {
+			swr_device_wakeup_vote(swr_hap->swr_slave);
+			val = SWR_PLAY_SRC_VAL_SWR;
+			rc = regmap_write(swr_hap->regmap, SWR_PLAY_REG, val);
+			if (rc) {
+				dev_err_ratelimited(swr_hap->dev, "%s: Enable SWR_PLAY failed, rc=%d\n",
 					__func__, rc);
+				swr_device_wakeup_unvote(swr_hap->swr_slave);
+				mutex_unlock(&swr_hap->play_lock);
+				return rc;
+			}
 			swr_device_wakeup_unvote(swr_hap->swr_slave);
-			mutex_unlock(&swr_hap->play_lock);
-			return rc;
+		} else {
+			dev_dbg(swr_hap->dev, "%s skip stopping swr_play during SSR\n", __func__);
 		}
-
 		swr_hap->in_play = false;
 		mutex_unlock(&swr_hap->play_lock);
 		rc = swr_hap_disable_hpwr_vreg(swr_hap);
@@ -433,9 +438,12 @@ static int hap_enable_swr_dac_port(struct snd_soc_dapm_widget *w,
 	case SND_SOC_DAPM_POST_PMD:
 		swr_disconnect_port(swr_hap->swr_slave, port_id, num_port,
 				ch_mask, port_type);
-		swr_slvdev_datapath_control(swr_hap->swr_slave,
+		if (!swr_hap->is_ssr) {
+			swr_device_wakeup_vote(swr_hap->swr_slave);
+			swr_slvdev_datapath_control(swr_hap->swr_slave,
 				swr_hap->swr_slave->dev_num, false);
-		swr_device_wakeup_unvote(swr_hap->swr_slave);
+			swr_device_wakeup_unvote(swr_hap->swr_slave);
+		}
 		rc = swr_haptics_runtime_disable(swr_hap);
 		if (rc < 0) {
 			dev_err_ratelimited(swr_hap->dev, "%s: disable haptics failed, rc=%d\n",
@@ -697,13 +705,21 @@ static int lpass_ssr_notifier(struct notifier_block *nb, unsigned long event, vo
 	int rc = NOTIFY_DONE;
 
 	mutex_lock(&swr_hap->play_lock);
-	if (!swr_hap->in_play) {
-		dev_dbg(swr_hap->dev, "ignore SSR events if not in play\n");
-		goto unlock;
-	}
+
+	dev_dbg(swr_hap->dev, "%s: ssr event %lu\n", __func__, event);
 
 	switch (event) {
+	case QCOM_SSR_BEFORE_SHUTDOWN:
+		dev_dbg(swr_hap->dev, "%s: ssr down is_srr set to true\n", __func__);
+		swr_hap->is_ssr = true;
+		break;
 	case QCOM_SSR_AFTER_POWERUP:
+		swr_hap->is_ssr = false;
+		if (!swr_hap->in_play) {
+			dev_dbg(swr_hap->dev, "ignore SSR events if not in play\n");
+			goto unlock;
+		}
+
 		rc = swr_haptics_slave_enumeration(swr_hap);
 		if (rc) {
 			dev_err(swr_hap->dev, "%s: SWR haptics slave enumeration failued after SSR, rc=%d\n",
