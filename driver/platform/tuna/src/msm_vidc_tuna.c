@@ -1552,8 +1552,8 @@ static struct msm_platform_inst_capability instance_cap_data_tuna_v0[] = {
 		HFI_PROP_8X8_TRANSFORM,
 		CAP_FLAG_OUTPUT_PORT},
 
-	{CHROMA_QP_INDEX_OFFSET, ENC, HEVC,
-		MIN_CHROMA_QP_OFFSET, MAX_CHROMA_QP_OFFSET,
+	{CHROMA_QP_INDEX_OFFSET, ENC, H264 | HEVC,
+		MIN_CHROMA_QP_OFFSET, MAX_CHROMA_QP_OFFSET_MASK,
 		1, MAX_CHROMA_QP_OFFSET,
 		V4L2_CID_MPEG_VIDEO_H264_CHROMA_QP_INDEX_OFFSET,
 		HFI_PROP_CHROMA_QP_OFFSET,
@@ -2403,7 +2403,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_tuna
 		msm_vidc_set_u32},
 
 	{PROFILE, ENC, H264,
-		{ENTROPY_MODE, TRANSFORM_8X8},
+		{ENTROPY_MODE, TRANSFORM_8X8, CHROMA_QP_INDEX_OFFSET},
 		NULL,
 		msm_vidc_set_u32_enum},
 
@@ -2472,7 +2472,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_tuna
 		msm_vidc_adjust_transform_8x8,
 		msm_vidc_set_u32},
 
-	{CHROMA_QP_INDEX_OFFSET, ENC, HEVC,
+	{CHROMA_QP_INDEX_OFFSET, ENC, H264 | HEVC,
 		{0},
 		msm_vidc_adjust_chroma_qp_index_offset,
 		msm_vidc_set_chroma_qp_index_offset},
@@ -3815,8 +3815,8 @@ static struct msm_platform_inst_capability instance_cap_data_tuna_v1[] = {
 		HFI_PROP_8X8_TRANSFORM,
 		CAP_FLAG_OUTPUT_PORT},
 
-	{CHROMA_QP_INDEX_OFFSET, ENC, HEVC,
-		MIN_CHROMA_QP_OFFSET, MAX_CHROMA_QP_OFFSET,
+	{CHROMA_QP_INDEX_OFFSET, ENC, H264 | HEVC,
+		MIN_CHROMA_QP_OFFSET, MAX_CHROMA_QP_OFFSET_MASK,
 		1, MAX_CHROMA_QP_OFFSET,
 		V4L2_CID_MPEG_VIDEO_H264_CHROMA_QP_INDEX_OFFSET,
 		HFI_PROP_CHROMA_QP_OFFSET,
