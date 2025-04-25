@@ -152,6 +152,7 @@ struct lpass_cdc_va_macro_priv {
 	unsigned long active_ch_mask[LPASS_CDC_VA_MACRO_MAX_DAIS];
 	unsigned long active_ch_cnt[LPASS_CDC_VA_MACRO_MAX_DAIS];
 	u16 dmic_clk_div[MIC_PAIR_MAX];
+	u16 dmic_override_clk_div[MIC_PAIR_MAX];
 	u16 va_mclk_users;
 	int swr_clk_users;
 	bool reset_swr;
@@ -243,7 +244,7 @@ static int lpass_cdc_va_macro_clk_div_get(struct snd_soc_component *component, u
 
 	if (va_priv->clk_div_switch &&
 	    (va_priv->dmic_clk_div[mic_pair] == LPASS_CDC_VA_MACRO_CLK_DIV_16))
-		return LPASS_CDC_VA_MACRO_CLK_DIV_4;
+		return va_priv->dmic_override_clk_div[mic_pair];
 
 	return (int)va_priv->dmic_clk_div[mic_pair];
 }
@@ -1941,38 +1942,40 @@ static const struct snd_kcontrol_new lpass_cdc_va_macro_snd_controls[] = {
 
 static void lpass_cdc_va_macro_update_clk_div_factor(u32 div_factor,
 				      struct lpass_cdc_va_macro_priv *va_priv,
-				      u32 mic_pair)
+				      u32 mic_pair, bool is_override)
 {
+	u16 *clk_div =
+		is_override ? va_priv->dmic_override_clk_div : va_priv->dmic_clk_div;
 
-	dev_dbg(va_priv->dev, "%s: div_factor = %u, mic_pair %d\n",
-		__func__, div_factor, mic_pair);
+	dev_dbg(va_priv->dev, "%s: div_factor = %u, mic_pair %d, is_override %d\n",
+		__func__, div_factor, mic_pair, is_override);
 
 	if (mic_pair >= MIC_PAIR_MAX)
 		return;
 
 	switch (div_factor) {
 	case 2:
-		va_priv->dmic_clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_2;
+		clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_2;
 		break;
 	case 3:
-		va_priv->dmic_clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_3;
+		clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_3;
 		break;
 	case 4:
-		va_priv->dmic_clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_4;
+		clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_4;
 		break;
 	case 6:
-		va_priv->dmic_clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_6;
+		clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_6;
 		break;
 	case 8:
-		va_priv->dmic_clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_8;
+		clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_8;
 		break;
 	case 16:
-		va_priv->dmic_clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_16;
+		clk_div[mic_pair] = LPASS_CDC_VA_MACRO_CLK_DIV_16;
 		break;
 	default:
 		/* Any other DIV factor is invalid */
-		dev_err(va_priv->dev, "%s: Invalid div_factor %d mic_pair %d\n",
-		 __func__, div_factor, mic_pair);
+		dev_err(va_priv->dev, "%s: Invalid div_factor %d mic_pair %d, is_override %d\n",
+		 __func__, div_factor, mic_pair, is_override);
 	}
 
 }
@@ -2266,6 +2269,7 @@ static int lpass_cdc_va_macro_probe(struct platform_device *pdev)
 	const char *micb_current_str = "qcom,va-vdd-micb-current";
 	int ret = 0, i;
 	const char *dmic_clk_div_factor = "qcom,va-dmic-clk-div-factor";
+	const char *dmic_override_clk_div_factor = "qcom,va-dmic-override-clk-div-factor";
 	u32 default_clk_id = 0, use_clk_id = 0;
 	struct clk *lpass_audio_hw_vote = NULL;
 	u32 is_used_va_swr_gpio = 0;
@@ -2285,12 +2289,14 @@ static int lpass_cdc_va_macro_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	for (i = 0; i < MIC_PAIR_MAX; i++)
+	for (i = 0; i < MIC_PAIR_MAX; i++) {
 		va_priv->dmic_clk_div[i] = LPASS_CDC_VA_MACRO_CLK_DIV_2;
+		va_priv->dmic_override_clk_div[i] = LPASS_CDC_VA_MACRO_CLK_DIV_4;
+	}
 
 	if (!of_find_property(pdev->dev.of_node, dmic_clk_div_factor, &prop_size)) {
 		dev_err(&pdev->dev,
-			"%s: could not find div_clk_factor entry in dt\n",
+			"%s: could not find clk_div_factor entry in dt\n",
 			__func__);
 	} else {
 		temp = devm_kzalloc(&pdev->dev, prop_size, GFP_KERNEL);
@@ -2301,7 +2307,23 @@ static int lpass_cdc_va_macro_probe(struct platform_device *pdev)
 			/* Limit the loop iteration to array size MIC_PAIR_MAX. */
 			for (i = 0; i < MIC_PAIR_MAX; i++)
 				lpass_cdc_va_macro_update_clk_div_factor(
-							temp[i], va_priv, i);
+							temp[i], va_priv, i, false);
+	}
+
+	if (!of_find_property(pdev->dev.of_node, dmic_override_clk_div_factor, &prop_size)) {
+		dev_err(&pdev->dev,
+			"%s: could not find override_clk_div_factor entry in dt\n",
+			__func__);
+	} else {
+		temp = devm_kzalloc(&pdev->dev, prop_size, GFP_KERNEL);
+		if (!temp)
+			return -ENOMEM;
+		if (!of_property_read_u32_array(pdev->dev.of_node,
+				dmic_override_clk_div_factor, temp, prop_size/sizeof(u32)))
+			/* Limit the loop iteration to array size MIC_PAIR_MAX. */
+			for (i = 0; i < MIC_PAIR_MAX; i++)
+				lpass_cdc_va_macro_update_clk_div_factor(
+							temp[i], va_priv, i, true);
 	}
 
 
