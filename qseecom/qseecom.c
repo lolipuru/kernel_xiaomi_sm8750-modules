@@ -405,7 +405,7 @@ struct qseecom_control {
 	wait_queue_head_t register_lsnr_pending_wq;
 	struct task_struct *unregister_lsnr_kthread_task;
 	wait_queue_head_t unregister_lsnr_kthread_wq;
-	atomic_t unregister_lsnr_kthread_state;
+	atomic_t unregister_lsnr_kthread_work_pending;
 
 	struct list_head  unload_app_pending_list_head;
 	struct task_struct *unload_app_kthread_task;
@@ -1735,8 +1735,8 @@ static int qseecom_register_listener(struct qseecom_dev_handle *data,
 				list_empty(
 				&qseecom.unregister_lsnr_pending_list_head));
 			if (ret) {
-				pr_err("interrupted register_pending_wq %d\n",
-						rcvd_lstnr.listener_id);
+				pr_err("interrupted register_pending_wq %d, ret: %d\n",
+						rcvd_lstnr.listener_id, ret);
 				mutex_lock(&listener_access_lock);
 				return -ERESTARTSYS;
 			}
@@ -1898,7 +1898,7 @@ static void __qseecom_processing_pending_lsnr_unregister(void)
 						entry->data->listener.id);
 				/* don't process the entry if qseecom_release is not called*/
 				if (!entry->data->listener.release_called) {
-					pr_err("listener release yet to be called for lstnr :%d\n",
+					pr_debug("listener release yet to be called for lstnr :%d\n",
 						entry->data->listener.id);
 					pos = pos->next;
 					continue;
@@ -1934,24 +1934,25 @@ static void __qseecom_processing_pending_lsnr_unregister(void)
 
 static void __wakeup_unregister_listener_kthread(void)
 {
-	atomic_set(&qseecom.unregister_lsnr_kthread_state,
-				LSNR_UNREG_KT_WAKEUP);
+	atomic_inc(&qseecom.unregister_lsnr_kthread_work_pending);
 	wake_up_interruptible(&qseecom.unregister_lsnr_kthread_wq);
 }
 
 static int __qseecom_unregister_listener_kthread_func(void *data)
 {
 	while (!kthread_should_stop()) {
-		wait_event_interruptible(
-			qseecom.unregister_lsnr_kthread_wq,
-			atomic_read(&qseecom.unregister_lsnr_kthread_state)
-				== LSNR_UNREG_KT_WAKEUP);
-		pr_debug("kthread to unregister listener is called %d\n",
-			atomic_read(&qseecom.unregister_lsnr_kthread_state));
-		__qseecom_processing_pending_lsnr_unregister();
-		atomic_set(&qseecom.unregister_lsnr_kthread_state,
-				LSNR_UNREG_KT_SLEEP);
+		wait_event_interruptible(qseecom.unregister_lsnr_kthread_wq,
+			atomic_read(&qseecom.unregister_lsnr_kthread_work_pending) > 0 ||
+			kthread_should_stop());
+
+		/* Process all pending work */
+		while (atomic_dec_if_positive(&qseecom.unregister_lsnr_kthread_work_pending) >= 0) {
+			pr_debug("kthread to unregister listener is processing work, pending: %d\n",
+				 atomic_read(&qseecom.unregister_lsnr_kthread_work_pending));
+			__qseecom_processing_pending_lsnr_unregister();
+		}
 	}
+
 	pr_warn("kthread to unregister listener stopped\n");
 	return 0;
 }
@@ -9765,8 +9766,7 @@ static int qseecom_create_kthreads(void)
 		pr_err("fail to create kthread to unreg lsnr, rc = %x\n", rc);
 		return rc;
 	}
-	atomic_set(&qseecom.unregister_lsnr_kthread_state,
-					LSNR_UNREG_KT_SLEEP);
+	atomic_set(&qseecom.unregister_lsnr_kthread_work_pending, 0);
 
 	/*create a kthread to process pending ta unloading task */
 	qseecom.unload_app_kthread_task = kthread_run(
