@@ -491,6 +491,8 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 	u8  dmic_clk_en = 0x01;
 	u16 dmic_clk_reg = 0;
 	s32 *dmic_clk_cnt = NULL;
+	s32 *dmic_tx_clk_cnt = NULL;
+	s32 *dmic_va_clk_cnt = NULL;
 	u8 *dmic_clk_div = NULL;
 	u8 freq_change_mask = 0;
 	u8 clk_div = 0;
@@ -502,7 +504,9 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 	switch (dmic) {
 	case 0:
 	case 1:
-		dmic_clk_cnt = &(priv->dmic_0_1_clk_cnt);
+		dmic_va_clk_cnt = &(priv->dmic_0_1_va_clk_cnt);
+		dmic_tx_clk_cnt = &(priv->dmic_0_1_tx_clk_cnt);
+
 		dmic_clk_div = &(priv->dmic_0_1_clk_div);
 		dmic_clk_reg = LPASS_CDC_VA_TOP_CSR_DMIC0_CTL;
 		freq_change_mask = 0x01;
@@ -510,7 +514,9 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 		break;
 	case 2:
 	case 3:
-		dmic_clk_cnt = &(priv->dmic_2_3_clk_cnt);
+		dmic_va_clk_cnt = &(priv->dmic_2_3_va_clk_cnt);
+		dmic_tx_clk_cnt = &(priv->dmic_2_3_tx_clk_cnt);
+
 		dmic_clk_div = &(priv->dmic_2_3_clk_div);
 		dmic_clk_reg = LPASS_CDC_VA_TOP_CSR_DMIC1_CTL;
 		freq_change_mask = 0x02;
@@ -518,7 +524,9 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 		break;
 	case 4:
 	case 5:
-		dmic_clk_cnt = &(priv->dmic_4_5_clk_cnt);
+		dmic_va_clk_cnt = &(priv->dmic_4_5_va_clk_cnt);
+		dmic_tx_clk_cnt = &(priv->dmic_4_5_tx_clk_cnt);
+
 		dmic_clk_div = &(priv->dmic_4_5_clk_div);
 		dmic_clk_reg = LPASS_CDC_VA_TOP_CSR_DMIC2_CTL;
 		freq_change_mask = 0x04;
@@ -526,7 +534,9 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 		break;
 	case 6:
 	case 7:
-		dmic_clk_cnt = &(priv->dmic_6_7_clk_cnt);
+		dmic_va_clk_cnt = &(priv->dmic_6_7_va_clk_cnt);
+		dmic_tx_clk_cnt = &(priv->dmic_6_7_tx_clk_cnt);
+
 		dmic_clk_div = &(priv->dmic_6_7_clk_div);
 		dmic_clk_reg = LPASS_CDC_VA_TOP_CSR_DMIC3_CTL;
 		freq_change_mask = 0x08;
@@ -537,12 +547,15 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 			__func__);
 		return -EINVAL;
 	}
+
+	dmic_clk_cnt = (tx_mode) ? dmic_va_clk_cnt : dmic_tx_clk_cnt;
+
 	dev_dbg(component->dev, "%s: DMIC%d dmic_clk_cnt %d mic_pair %d\n",
 			__func__, dmic, *dmic_clk_cnt, mic_pair);
 	if (enable) {
 		clk_div = lpass_cdc_dmic_clk_div_get(component, tx_mode, mic_pair);
 		(*dmic_clk_cnt)++;
-		if (*dmic_clk_cnt == 1) {
+		if ((*dmic_va_clk_cnt + *dmic_tx_clk_cnt)  == 1) {
 			snd_soc_component_update_bits(component,
 					LPASS_CDC_VA_TOP_CSR_DMIC_CFG,
 					0x80, 0x00);
@@ -567,13 +580,13 @@ int lpass_cdc_dmic_clk_enable(struct snd_soc_component *component,
 		*dmic_clk_div = clk_div;
 	} else {
 		(*dmic_clk_cnt)--;
-		if (*dmic_clk_cnt  == 0) {
+		if ((*dmic_va_clk_cnt + *dmic_tx_clk_cnt)  == 0) {
 			snd_soc_component_update_bits(component, dmic_clk_reg,
 					dmic_clk_en, 0);
 			clk_div = 0;
 			snd_soc_component_update_bits(component, dmic_clk_reg,
 							0x0E, clk_div << 0x1);
-		} else {
+		} else if (*dmic_clk_cnt == 0) {
 			clk_div = lpass_cdc_dmic_clk_div_get(component, !tx_mode, mic_pair);
 
 			if (*dmic_clk_div != clk_div) {
