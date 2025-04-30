@@ -4665,7 +4665,6 @@ int msm_vidc_kera_check_ddr_type(struct msm_vidc_platform_data *platform_data,
 	    (ddr_type == DDR_TYPE_LPDDR4 ||
 	     ddr_type == DDR_TYPE_LPDDR4X)) {
 		platform_data->ubwc_config->highest_bank_bit = hbb_override_val;
-		platform_data->sku_version = SKU_VERSION_1;
 	}
 
 	d_vpr_h("DDR Type 0x%x hbb 0x%x\n",
