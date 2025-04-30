@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include "adreno.h"
@@ -2365,8 +2365,7 @@ int adreno_hwsched_ctxt_unregister_wait_completion(
 	start = gpudev->read_alwayson(adreno_dev);
 	mutex_unlock(&device->mutex);
 
-	ret = wait_for_completion_timeout(&ack->complete,
-		msecs_to_jiffies(msecs_to_jiffies(30 * 1000)));
+	ret = wait_for_completion_timeout(&ack->complete, msecs_to_jiffies(30 * 1000));
 
 	mutex_lock(&device->mutex);
 	if (ret)
