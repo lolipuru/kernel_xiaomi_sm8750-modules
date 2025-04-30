@@ -677,6 +677,8 @@ struct cnss_plat_data {
 	bool is_fw_managed_pwr;
 	struct device **pd_devs;
 	int pd_count;
+	bool pm_suspend_in_progress;
+	struct notifier_block pm_notifier;
 };
 
 #if IS_ENABLED(CONFIG_ARCH_QCOM)
@@ -797,4 +799,6 @@ int cnss_fw_managed_power_gpio(struct cnss_plat_data *plat_priv,
 			       bool enabled);
 int cnss_fw_managed_domain_attach(struct cnss_plat_data *plat_priv);
 void cnss_fw_managed_domain_detach(struct cnss_plat_data *plat_priv);
+void cnss_pm_notifier_init(struct cnss_plat_data *plat_priv);
+void cnss_pm_notifier_deinit(struct cnss_plat_data *plat_priv);
 #endif /* _CNSS_MAIN_H */

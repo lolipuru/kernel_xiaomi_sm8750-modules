@@ -5843,6 +5843,7 @@ static int cnss_probe(struct platform_device *plat_dev)
 	cnss_aop_interface_init(plat_priv);
 	cnss_init_control_params(plat_priv);
 	cnss_get_cpumask_for_wlan_txrx_intr(plat_priv);
+	cnss_pm_notifier_init(plat_priv);
 
 	ret = cnss_get_resources(plat_priv);
 	if (ret)
@@ -5927,6 +5928,7 @@ unreg_esoc:
 free_res:
 	cnss_put_resources(plat_priv);
 reset_ctx:
+	cnss_pm_notifier_deinit(plat_priv);
 	cnss_aop_interface_deinit(plat_priv);
 	platform_set_drvdata(plat_dev, NULL);
 reset_plat_dev:
@@ -5961,6 +5963,7 @@ static void cnss_remove(struct platform_device *plat_dev)
 
 	plat_priv->audio_iommu_domain = NULL;
 	cnss_genl_exit();
+	cnss_pm_notifier_deinit(plat_priv);
 	cnss_unregister_ims_service(plat_priv);
 	cnss_unregister_coex_service(plat_priv);
 	cnss_bus_deinit(plat_priv);
