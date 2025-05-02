@@ -64,6 +64,29 @@ int __strict_check(struct msm_vidc_core *core, const char *function)
 	return fatal ? -EINVAL : 0;
 }
 
+static bool __is_valid_instance(struct msm_vidc_core *core,
+		struct msm_vidc_inst *inst, const char *func)
+{
+	bool valid = false;
+	struct msm_vidc_inst *temp;
+	int rc = 0;
+
+	rc = __strict_check(core, func);
+	if (rc)
+		return false;
+
+	list_for_each_entry(temp, &core->instances, list) {
+		if (temp == inst) {
+			valid = true;
+			break;
+		}
+	}
+	if (!valid)
+		i_vpr_e(inst, "%s: invalid inst\n", func);
+
+	return valid;
+}
+
 static void __schedule_power_collapse_work(struct msm_vidc_core *core)
 {
 	if (!core->capabilities[SW_PC].value) {
@@ -1024,7 +1047,9 @@ static int venus_hfi_session_command_locked(struct msm_vidc_inst *inst,
 	 * make sure to always allow sync cmd(even if session is in error state),
 	 * that will help to do a proper cleanup at FW side.
 	 */
-	if (!is_sync_session_cmd(pkt_type) && is_session_error(inst)) {
+	if (!(is_sync_session_cmd(pkt_type) &&
+		__is_valid_instance(core, inst, __func__)) &&
+		is_session_error(inst)) {
 		i_vpr_e(inst, "%s: failled. Session error. cmd %#x\n", func, pkt_type);
 		return -EINVAL;
 	}
