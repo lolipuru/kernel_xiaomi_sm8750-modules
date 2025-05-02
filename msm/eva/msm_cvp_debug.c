@@ -474,7 +474,7 @@ struct dentry *msm_cvp_debugfs_init_core(struct msm_cvp_core *core,
 		&msm_cvp_hw_wd_recovery);
 	debugfs_create_u32("smmu_fault_recovery", 0644, dir,
 		&msm_cvp_smmu_fault_recovery);
-	debugfs_create_u32("trigger_crash", 0644, dir,
+	debugfs_create_u32("session_error_recovery", 0644, dir,
 		&msm_cvp_session_error_recovery);
 failed_create_dir:
 	return dir;
