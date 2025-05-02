@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -42,12 +42,11 @@ static int cam_icp_context_dump_active_request(void *data, void *args)
 		if (rc)
 			CAM_ERR(CAM_ICP, "[%s] Failed to check PID info",
 				ctx->dev_name);
-		if (!pf_args->pid_found) {
+		if (pf_args->pf_pid_found_status == CAM_PF_PID_FOUND_FAILURE)
 			CAM_INFO(CAM_ICP,
 				"[%s] Client with the issue PID is not detected, stop dumping or notifying to the userspace, wait for the next handler to check",
 				ctx->dev_name);
-			return 0;
-		}
+		return 0;
 	}
 
 	CAM_INFO(CAM_ICP, "[%s] iommu fault for icp ctx %d state %d",
