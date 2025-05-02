@@ -48,7 +48,7 @@
 #define KIWI_PATH_PREFIX		"kiwi/"
 #define MANGO_PATH_PREFIX		"mango/"
 #define PEACH_PATH_PREFIX		"peach/"
-#define COLOGNE_PATH_PREFIX		"cologne/"
+#define COLOGNE_PATH_PREFIX		"wcn7760/"
 #define FIG_PATH_PREFIX		"fig/"
 #define DEFAULT_PHY_M3_FILE_NAME	"m3.bin"
 #define DEFAULT_AUX_FILE_NAME		"aux_ucode.elf"
@@ -3233,6 +3233,7 @@ static int cnss_pci_update_timestamp(struct cnss_pci_data *pci_priv)
 	}
 
 	offset = host_time_us - device_time_us;
+	plat_priv->pcie_time_sync_offset = offset;
 	cnss_pr_dbg("Host time = %llu us, device time = %llu us, offset = %llu us\n",
 		    host_time_us, device_time_us, offset);
 
@@ -4561,6 +4562,9 @@ static int cnss_pci_suspend(struct device *dev)
 	}
 
 	cnss_pci_set_monitor_wake_intr(pci_priv, false);
+
+	cnss_pr_info("WoW Entry. pcie_time_sync_offset = %llu",
+		     plat_priv->pcie_time_sync_offset);
 
 	return 0;
 

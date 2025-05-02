@@ -107,11 +107,12 @@ static struct cnss_pool cnss_pools_wcn6750[] = {
 };
 
 static struct cnss_pool cnss_pools_wcn7750[] = {
-	{8 * 1024, 2, "cnss-pool-8k", NULL, NULL},
-	{16 * 1024, 8, "cnss-pool-16k", NULL, NULL},
-	{32 * 1024, 11, "cnss-pool-32k", NULL, NULL},
-	{64 * 1024, 15, "cnss-pool-64k", NULL, NULL},
-	{128 * 1024, 4, "cnss-pool-128k", NULL, NULL},
+	{8 * 1024, 16, "cnss-pool-8k", NULL, NULL},
+	{16 * 1024, 16, "cnss-pool-16k", NULL, NULL},
+	{32 * 1024, 22, "cnss-pool-32k", NULL, NULL},
+	{64 * 1024, 38, "cnss-pool-64k", NULL, NULL},
+	{128 * 1024, 10, "cnss-pool-128k", NULL, NULL},
+	{256 * 1024, 2, "cnss-pool-256k", NULL, NULL},
 };
 
 struct cnss_pool *cnss_pools;

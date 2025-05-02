@@ -84,7 +84,7 @@ static struct icnss_clk_cfg icnss_adrestea_clk_list[] = {
 #define PIN_CTRL			"pin-ctrl-support"
 #define WLAN_EN_ACTIVE			"wlan_en_active"
 #define WLAN_EN_SLEEP			"wlan_en_sleep"
-#define BT_CXMX_VOLTAGE_MV		950
+#define BT_CXMX_VOLTAGE_MV		900
 #define ICNSS_MBOX_MSG_MAX_LEN 64
 #define ICNSS_MBOX_TIMEOUT_MS 1000
 
