@@ -198,3 +198,8 @@ config MHI_BUF_LEN
 	depends on CNSS2
 	help
 	  If configured, CNSS platform driver set mhi buffer size with external value.
+config CNSS_ETM_TRACE
+	bool "CNSS2 Platform Driver ETM Trace Support"
+	depends on CNSS2
+	help
+	  This option is to enable CNSS2 platform driver etm trace support.

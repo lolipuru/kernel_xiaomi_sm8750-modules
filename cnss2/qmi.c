@@ -34,7 +34,9 @@
  * file name. Download "qdss_trace_config_debug_v<n>.cfg" for debug build
  * and "qdss_trace_config_perf_v<n>.cfg" for perf build.
  */
-#ifdef CONFIG_CNSS2_DEBUG
+#ifdef CONFIG_CNSS_ETM_TRACE
+#define QDSS_FILE_BUILD_STR		"etm_"
+#elif defined(CONFIG_CNSS2_DEBUG)
 #define QDSS_FILE_BUILD_STR		"debug_"
 #else
 #define QDSS_FILE_BUILD_STR		"perf_"
