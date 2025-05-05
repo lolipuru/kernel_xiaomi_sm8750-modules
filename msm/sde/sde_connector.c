@@ -1490,6 +1490,15 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
 	}
 
+	if (msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
+			c_conn->ops.check_cmd_defined(c_conn->display,
+			DSI_CMD_SET_FPS_SWITCH) &&
+			!c_conn->vrr_caps.video_psr_support) {
+		rc = sde_connector_update_cmd(connector, BIT(DSI_CMD_SET_FPS_SWITCH), true);
+		if (rc)
+			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+	}
+
 	if (!c_conn->ops.pre_kickoff)
 		return 0;
 
@@ -1540,15 +1549,6 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	}
 
 	display = (struct dsi_display *)c_conn->display;
-
-	if (msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
-			c_conn->ops.check_cmd_defined(c_conn->display,
-			DSI_CMD_SET_FPS_SWITCH) &&
-			!c_conn->vrr_caps.video_psr_support) {
-		rc = sde_connector_update_cmd(connector, BIT(DSI_CMD_SET_FPS_SWITCH), true);
-		if (rc)
-			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
-	}
 
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
 
