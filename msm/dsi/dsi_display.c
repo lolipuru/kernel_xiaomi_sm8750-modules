@@ -8911,19 +8911,19 @@ exit:
 	return rc;
 }
 
-static int dsi_display_send_pre_commit_cmd(struct dsi_display *display,
-	struct msm_display_conn_params *params)
+int dsi_display_process_dcs_cmd_bitmask(void *display, struct msm_display_conn_params *params)
 {
 	u32 idx;
 	int rc = 0;
 	bool last_command = false;
+	struct dsi_display *dsi_display = display;
 
-	if (!params || !display) {
+	if (!params || !dsi_display) {
 		DSI_ERR("Invalid params\n");
 		return -EINVAL;
 	}
 
-	mutex_lock(&display->display_lock);
+	mutex_lock(&dsi_display->display_lock);
 
 	for (idx = 0; idx < sizeof(params->cmd_bit_mask) * 8; idx++) {
 		if (params->cmd_bit_mask & BIT(idx)) {
@@ -8932,7 +8932,7 @@ static int dsi_display_send_pre_commit_cmd(struct dsi_display *display,
 
 			SDE_EVT32(idx, last_command, params->cmd_bit_mask>>32,
 				params->cmd_bit_mask, fls64(params->cmd_bit_mask));
-			rc = dsi_panel_send_cmd(display->panel, params, idx, last_command);
+			rc = dsi_panel_send_cmd(dsi_display->panel, params, idx, last_command);
 			if (rc) {
 				DSI_ERR("fail cmd idx:%d rc:%d\n", idx, rc);
 				goto exit;
@@ -8940,7 +8940,7 @@ static int dsi_display_send_pre_commit_cmd(struct dsi_display *display,
 		}
 	}
 exit:
-	mutex_unlock(&display->display_lock);
+	mutex_unlock(&dsi_display->display_lock);
 	return rc;
 }
 
@@ -9205,9 +9205,6 @@ int dsi_display_pre_commit(void *display,
 		pr_err("Invalid params\n");
 		return -EINVAL;
 	}
-
-	if (params->cmd_bit_mask)
-		dsi_display_send_pre_commit_cmd(display, params);
 
 	if (!params->cmd_bit_mask && params->qsync_update) {
 		enable = (params->qsync_mode > 0) ? true : false;

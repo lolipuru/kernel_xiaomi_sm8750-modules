@@ -787,6 +787,16 @@ int dsi_display_pre_kickoff(struct drm_connector *connector,
 int dsi_display_pre_commit(void *display,
 		struct msm_display_conn_params *params);
 
+/*
+ * dsi_display_process_dcs_cmd_bitmask - process a bit mask to send multiple
+ *                                       DCS command sets in a batch
+ * @display: Pointer to private display structure
+ * @params: Parameters for DCS command bit mask and peripheral flush
+ * Returns: Zero on success
+ */
+int dsi_display_process_dcs_cmd_bitmask(void *display,
+		struct msm_display_conn_params *params);
+
 /**
  * dsi_display_get_dst_format() - get dst_format from DSI display
  * @connector:        Pointer to drm connector structure
