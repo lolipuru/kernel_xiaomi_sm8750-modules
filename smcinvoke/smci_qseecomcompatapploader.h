@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only
  *
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SMCI_QSEECOMCOMPATAPPLOADER_H
@@ -74,10 +74,11 @@ smci_qseecomcompatapploader_loadfrombuffer(struct smci_object self,
 
 static inline int32_t
 smci_qseecomcompatapploader_lookupta(struct smci_object self, const void *app_name_ptr,
-			size_t app_name_len, struct smci_object *app_compat_ptr)
+			size_t app_name_len, struct smci_object *app_compat_ptr,
+			uint32_t *appArchType_ptr)
 {
 	return IQSEEComCompatAppLoader_lookupTA(self, app_name_ptr,
-			app_name_len, app_compat_ptr);
+			app_name_len, app_compat_ptr, appArchType_ptr);
 }
 
 #endif /* __SMCI_QSEECOMCOMPATAPPLOADER_H */
