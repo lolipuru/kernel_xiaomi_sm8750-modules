@@ -1500,9 +1500,10 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 
 	rc = c_conn->ops.pre_kickoff(connector, c_conn->display, &params);
 
+end:
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
 		display->queue_cmd_waits = false;
-end:
+
 	return rc;
 }
 
