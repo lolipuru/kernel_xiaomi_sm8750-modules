@@ -6218,10 +6218,19 @@ static int cnss_pci_enable_msi(struct cnss_pci_data *pci_priv)
 		goto out;
 	}
 
-	num_vectors = pci_alloc_irq_vectors(pci_dev,
-					    msi_config->total_vectors,
-					    msi_config->total_vectors,
-					    PCI_IRQ_MSI);
+	switch (pci_priv->device_id) {
+	case COLOGNE_DEVICE_ID:
+		num_vectors = pci_alloc_irq_vectors(pci_dev,
+						    msi_config->total_vectors,
+						    msi_config->total_vectors,
+						    PCI_IRQ_MSI | PCI_IRQ_MSIX);
+		break;
+	default:
+		num_vectors = pci_alloc_irq_vectors(pci_dev,
+						    msi_config->total_vectors,
+						    msi_config->total_vectors,
+						    PCI_IRQ_MSI);
+	}
 	if ((num_vectors != msi_config->total_vectors) &&
 	    !cnss_pci_fallback_one_msi(pci_priv, &num_vectors)) {
 		cnss_pr_err("Failed to get enough MSI vectors (%d), available vectors = %d",
