@@ -79,6 +79,19 @@ static int btfmcodec_dev_open(struct inode *inode, struct file *file)
 	/* for now have btfmcodec and later we can think of having it btfmcodec_dev */
 	file->private_data = btfmcodec;
 	refcount_inc(&btfmcodec_dev->active_clients);
+
+	BTFMCODEC_INFO("current_state %s prev_state %s",
+			coverttostring(btfmcodec->states.current_state),
+			coverttostring(btfmcodec->states.prev_state));
+	/* Reset state if they are BTADV_AUDIO_CONNECTED or BTADV_AUDIO_CONNECTED
+	 * as these states should be moved to IDLE in previous iteration.
+	 */
+	if (btfmcodec->states.current_state == BTADV_AUDIO_Connected ||
+	    btfmcodec->states.current_state == BTADV_AUDIO_Connecting) {
+		btfmcodec->states.current_state = IDLE;
+	}
+
+	btfmcodec->states.prev_state = IDLE;
 	return 0;
 }
 
