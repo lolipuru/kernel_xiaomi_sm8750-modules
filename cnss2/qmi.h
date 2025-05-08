@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 
@@ -99,6 +99,8 @@ int cnss_wlfw_send_host_wfc_call_status(struct cnss_plat_data *plat_priv,
 					struct cnss_wfc_cfg cfg);
 void cnss_cancel_dms_work(struct cnss_plat_data *plat_priv);
 int cnss_wlfw_req_bt_dump_send_sync(struct cnss_plat_data *plat_priv);
+int cnss_wlfw_xo_trim_result_send_sync(struct cnss_plat_data *plat_priv,
+				       int result);
 #else
 #define QMI_WLFW_TIMEOUT_MS		10000
 
@@ -347,6 +349,12 @@ int cnss_wlfw_send_host_wfc_call_status(struct cnss_plat_data *plat_priv,
 }
 
 int cnss_wlfw_req_bt_dump_send_sync(struct cnss_plat_data *plat_priv)
+{
+	return 0;
+}
+
+int cnss_wlfw_xo_trim_result_send_sync(struct cnss_plat_data *plat_priv,
+				       int result)
 {
 	return 0;
 }

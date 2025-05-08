@@ -338,6 +338,7 @@ enum cnss_driver_event_type {
 	CNSS_DRIVER_EVENT_QDSS_TRACE_FREE,
 	CNSS_DRIVER_EVENT_QDSS_TRACE_REQ_DATA,
 	CNSS_DRIVER_EVENT_RESUME_POST_SOL,
+	CNSS_DRIVER_EVENT_XO_TRIM_IND,
 	CNSS_DRIVER_EVENT_MAX,
 };
 
@@ -519,6 +520,18 @@ struct cnss_thermal_cdev {
 	struct thermal_cooling_device *tcdev;
 };
 
+/**
+ * struct cnss_xo_trim_config - Configuration for crystal oscillator (XO) trim
+ * @xo_calib_reg: register for XO calibration
+ * @wcal_pbs: regulator to trigger PBS sequence
+ * @trim_val: trim value for XO
+ */
+struct cnss_xo_trim_config {
+	struct nvmem_cell *xo_calib_reg;
+	struct regulator *wcal_pbs;
+	u8 trim_val;
+};
+
 struct cnss_plat_data {
 	struct platform_device *plat_dev;
 	void *bus_priv;
@@ -679,6 +692,7 @@ struct cnss_plat_data {
 	int pd_count;
 	bool pm_suspend_in_progress;
 	struct notifier_block pm_notifier;
+	struct cnss_xo_trim_config xo_trim_conf;
 };
 
 #if IS_ENABLED(CONFIG_ARCH_QCOM)
