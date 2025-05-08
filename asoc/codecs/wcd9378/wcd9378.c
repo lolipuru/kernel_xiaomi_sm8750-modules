@@ -138,6 +138,8 @@ enum {
 	WCD_ADC3_MODE,
 	WCD_AUX_EN,
 	WCD_EAR_EN,
+	HPHL_PORT_EN,
+	HPHR_PORT_EN,
 };
 
 enum {
@@ -1562,8 +1564,11 @@ static int wcd9378_codec_hphl_dac_event(struct snd_soc_dapm_widget *w,
 		/*OPAMP_CHOP_CLK DISABLE*/
 		snd_soc_component_update_bits(component, WCD9378_HPH_RDAC_CLK_CTL1,
 			WCD9378_HPH_RDAC_CLK_CTL1_OPAMP_CHOP_CLK_EN_MASK, 0x00);
-		wcd9378_rx_connect_port(component, HPH_L, true);
 
+		if (!test_bit(HPHL_PORT_EN, &wcd9378->status_mask)) {
+			wcd9378_rx_connect_port(component, HPH_L, true);
+			set_bit(HPHL_PORT_EN, &wcd9378->status_mask);
+		}
 		if (wcd9378->comp1_enable) {
 			snd_soc_component_update_bits(component, WCD9378_CDC_COMP_CTL_0,
 				WCD9378_CDC_COMP_CTL_0_HPHL_COMP_EN_MASK, 0x02);
@@ -1582,7 +1587,11 @@ static int wcd9378_codec_hphl_dac_event(struct snd_soc_dapm_widget *w,
 			/*HPHL DISABLE*/
 			snd_soc_component_update_bits(component, WCD9378_CDC_HPH_GAIN_CTL,
 				WCD9378_CDC_HPH_GAIN_CTL_HPHL_RX_EN_MASK, 0x00);
-			wcd9378_rx_connect_port(component, HPH_L, false);
+
+			if (test_bit(HPHL_PORT_EN, &wcd9378->status_mask)) {
+				wcd9378_rx_connect_port(component, HPH_L, false);
+				clear_bit(HPHL_PORT_EN, &wcd9378->status_mask);
+			}
 		}
 
 		if (wcd9378->comp1_enable)
@@ -1624,7 +1633,10 @@ static int wcd9378_codec_hphr_dac_event(struct snd_soc_dapm_widget *w,
 		snd_soc_component_update_bits(component, WCD9378_HPH_RDAC_CLK_CTL1,
 			WCD9378_HPH_RDAC_CLK_CTL1_OPAMP_CHOP_CLK_EN_MASK, 0x00);
 
-		wcd9378_rx_connect_port(component, HPH_R, true);
+		if (!test_bit(HPHR_PORT_EN, &wcd9378->status_mask)) {
+			wcd9378_rx_connect_port(component, HPH_R, true);
+			set_bit(HPHR_PORT_EN, &wcd9378->status_mask);
+		}
 
 		if (wcd9378->comp2_enable) {
 			snd_soc_component_update_bits(component, WCD9378_CDC_COMP_CTL_0,
@@ -1644,7 +1656,11 @@ static int wcd9378_codec_hphr_dac_event(struct snd_soc_dapm_widget *w,
 			/*HPHR DISABLE*/
 			snd_soc_component_update_bits(component, WCD9378_CDC_HPH_GAIN_CTL,
 				WCD9378_CDC_HPH_GAIN_CTL_HPHR_RX_EN_MASK, 0x00);
-			wcd9378_rx_connect_port(component, HPH_R, false);
+
+			if (test_bit(HPHR_PORT_EN, &wcd9378->status_mask)) {
+				wcd9378_rx_connect_port(component, HPH_R, false);
+				clear_bit(HPHR_PORT_EN, &wcd9378->status_mask);
+			}
 		}
 		if (wcd9378->comp2_enable)
 			wcd9378_rx_connect_port(component, COMP_R, false);
@@ -2116,7 +2132,11 @@ static int wcd9378_codec_ear_dac_event(struct snd_soc_dapm_widget *w,
 					WCD9378_CDC_COMP_CTL_0_EAR_COMP_EN_MASK, 0x04);
 				wcd9378_rx_connect_port(component, COMP_L, true);
 			}
-			wcd9378_rx_connect_port(component, HPH_L, true);
+
+			if (!test_bit(HPHL_PORT_EN, &wcd9378->status_mask)) {
+				wcd9378_rx_connect_port(component, HPH_L, true);
+				set_bit(HPHL_PORT_EN, &wcd9378->status_mask);
+			}
 		} else {
 			wcd9378_sys_usage_auto_udpate(component, RX2_EAR_EN, true);
 			/*FORCE CLASS_AB EN*/
@@ -2142,7 +2162,11 @@ static int wcd9378_codec_ear_dac_event(struct snd_soc_dapm_widget *w,
 				/*RX0 DISABLE*/
 				snd_soc_component_update_bits(component, WCD9378_CDC_HPH_GAIN_CTL,
 					WCD9378_CDC_HPH_GAIN_CTL_HPHL_RX_EN_MASK, 0x00);
-				wcd9378_rx_connect_port(component, HPH_L, false);
+
+				if (test_bit(HPHL_PORT_EN, &wcd9378->status_mask)) {
+					wcd9378_rx_connect_port(component, HPH_L, false);
+					clear_bit(HPHL_PORT_EN, &wcd9378->status_mask);
+				}
 
 				if (wcd9378->comp1_enable) {
 					snd_soc_component_update_bits(component,
@@ -2190,7 +2214,11 @@ static int wcd9378_codec_aux_dac_event(struct snd_soc_dapm_widget *w,
 					WCD9378_CDC_HPH_GAIN_CTL_HPHR_RX_EN_MASK, 0x08);
 
 			wcd9378_sys_usage_auto_udpate(component, RX1_AUX_EN, true);
-			wcd9378_rx_connect_port(component, HPH_R, true);
+
+			if (!test_bit(HPHR_PORT_EN, &wcd9378->status_mask)) {
+				wcd9378_rx_connect_port(component, HPH_R, true);
+				set_bit(HPHR_PORT_EN, &wcd9378->status_mask);
+			}
 		} else {
 			wcd9378_sys_usage_auto_udpate(component, RX2_AUX_EN, true);
 
@@ -2207,9 +2235,12 @@ static int wcd9378_codec_aux_dac_event(struct snd_soc_dapm_widget *w,
 				WCD9378_AUX_AUXPA_AUX_PA_SHORT_PROT_EN_MASK, 0x00);
 
 		if (test_bit(WCD_AUX_EN, &wcd9378->status_mask)) {
-			if (!test_bit(RX0_RX1_HPH_EN, &wcd9378->sys_usage_status))
-				wcd9378_rx_connect_port(component, HPH_R, false);
-
+			if (!test_bit(RX0_RX1_HPH_EN, &wcd9378->sys_usage_status)) {
+				if (test_bit(HPHR_PORT_EN, &wcd9378->status_mask)) {
+					wcd9378_rx_connect_port(component, HPH_R, false);
+					clear_bit(HPHR_PORT_EN, &wcd9378->status_mask);
+				}
+			}
 			clear_bit(WCD_AUX_EN, &wcd9378->status_mask);
 		} else {
 			wcd9378_rx_connect_port(component, LO, false);
