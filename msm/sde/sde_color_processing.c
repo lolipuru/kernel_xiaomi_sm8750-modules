@@ -4830,7 +4830,6 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 			sde_crtc->mdnie_ipc_disabled = true;
 		else
 			sde_crtc->mdnie_ipc_disabled = false;
-		SDE_EVT32(prop_node->feature, sde_crtc->mdnie_ipc_disabled);
 		break;
 	case SDE_CP_CRTC_DSPP_COPR:
 		feature = FEATURE_COPR;
@@ -4849,6 +4848,7 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 	if (feature == AIQE_FEATURE_MAX)
 		return;
 
+	SDE_EVT32(prop_node->feature, sde_crtc->mdnie_ipc_disabled);
 	if (feature == FEATURE_MDNIE_ART) {
 		if (prop_val) {
 			struct drm_msm_mdnie_art *art = NULL;
