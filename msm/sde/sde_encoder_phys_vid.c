@@ -290,6 +290,7 @@ static void programmable_fetch_config(struct sde_encoder_phys *phys_enc,
 	u32 horiz_total = 0;
 	u32 vert_total = 0;
 	u32 vfp_fetch_start_vsync_counter = 0;
+	u32 prog_dr_start_line = 0;
 	unsigned long lock_flags;
 	struct sde_mdss_cfg *m;
 
@@ -324,11 +325,17 @@ static void programmable_fetch_config(struct sde_encoder_phys *phys_enc,
 		"vfp_fetch_lines %u vfp_fetch_start_vsync_counter %u\n",
 		vfp_fetch_lines, vfp_fetch_start_vsync_counter);
 
+	/*
+	 * Align PROG_FETCH_START and PROG_DR_START value to the same line
+	 * based on HW recommendation.
+	 */
+	prog_dr_start_line = vfp_fetch_start_vsync_counter/horiz_total;
+
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 	phys_enc->hw_intf->ops.setup_prg_fetch(phys_enc->hw_intf, &f);
 	if (phys_enc->hw_intf->ops.setup_prog_dynref)
 		phys_enc->hw_intf->ops.setup_prog_dynref(phys_enc->hw_intf,
-				vert_total - vfp_fetch_lines);
+				prog_dr_start_line);
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
 	/*
