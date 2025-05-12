@@ -886,7 +886,7 @@ static void sde_encoder_phys_vid_setup_vsync_source(struct sde_encoder_phys *phy
 		sde_encoder_helper_vsync_config(phys_enc, vsync_source);
 	}
 
-	if (phys_enc->has_intf_te && phys_enc->hw_intf->ops.vsync_sel)
+	if (phys_enc->hw_intf->ops.vsync_sel)
 		phys_enc->hw_intf->ops.vsync_sel(phys_enc->hw_intf,
 				vsync_source);
 }
