@@ -749,7 +749,7 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 		}
 
-		if (mode_info->esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
+		if (display->config.esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
 			flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
 		else
 			flags &= ~DSI_CTRL_CMD_MULTI_DMA_BURST;
@@ -4687,7 +4687,7 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 			goto error;
 		}
 
-		if (display->config.video_timing.esync_enabled) {
+		if (display->config.esync_enabled) {
 			ctrl->esync_clk_freq = pclk_rate;
 			rc = dsi_clk_set_esync_frequency(display->dsi_clk_handle,
 					ctrl->esync_clk_freq, ctrl->cell_index);
@@ -9386,7 +9386,7 @@ int dsi_display_post_enable(struct dsi_display *display)
 
 	/* remove the clk vote for CMD mode panels */
 	if (display->config.panel_mode == DSI_OP_CMD_MODE ||
-			display->config.video_timing.esync_enabled)
+			display->config.esync_enabled)
 		dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 
@@ -9417,7 +9417,7 @@ int dsi_display_pre_disable(struct dsi_display *display)
 
 	/* enable the clk vote for CMD mode panels */
 	if (display->config.panel_mode == DSI_OP_CMD_MODE ||
-			display->config.video_timing.esync_enabled)
+			display->config.esync_enabled)
 		dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 	if (display->poms_pending) {

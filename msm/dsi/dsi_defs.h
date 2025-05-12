@@ -462,7 +462,6 @@ struct dsi_panel_cmd_set {
  * @roi_caps:         Panel ROI capabilities.
  * @qsync_min_fps:    Qsync min fps rate
  * @avr_step_fps:     AVR step fps rate
- * @esync_enabled:    esync enabled
  * @esync_emsync_fps: esync EM pulse rate
  * @te_pulse_width_us:         Pulse width of TE in microseconds
  */
@@ -493,7 +492,6 @@ struct dsi_mode_info {
 	struct msm_roi_caps roi_caps;
 	u32 qsync_min_fps;
 	u32 avr_step_fps;
-	bool esync_enabled;
 	u32 esync_emsync_fps;
 	u32 te_pulse_width_us;
 };
@@ -655,6 +653,7 @@ struct dsi_host_config {
 	u64 esc_clk_rate_hz;
 	u64 bit_clk_rate_hz;
 	u64 bit_clk_rate_hz_override;
+	bool esync_enabled;
 	struct dsi_mode_info video_timing;
 	struct dsi_lane_map lane_map;
 };

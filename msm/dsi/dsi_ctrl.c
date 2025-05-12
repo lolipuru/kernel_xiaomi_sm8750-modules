@@ -507,12 +507,12 @@ static int dsi_ctrl_check_state(struct dsi_ctrl *dsi_ctrl,
 	int rc = 0;
 	struct dsi_ctrl_state_info *state = &dsi_ctrl->current_state;
 	bool esync_enabled = false;
-	struct dsi_mode_info *host_mode;
+	struct dsi_host_config *host_config;
 
-	host_mode = &dsi_ctrl->host_config.video_timing;
+	host_config = &dsi_ctrl->host_config;
 
-	if (host_mode)
-		esync_enabled = host_mode->esync_enabled;
+	if (host_config)
+		esync_enabled = host_config->esync_enabled;
 	SDE_EVT32(esync_enabled, dsi_ctrl->cell_index, op, op_state);
 
 	switch (op) {
@@ -1154,7 +1154,7 @@ static int dsi_ctrl_update_link_freqs(struct dsi_ctrl *dsi_ctrl,
 		goto error;
 	}
 
-	if (config->video_timing.esync_enabled) {
+	if (config->esync_enabled) {
 		dsi_ctrl->esync_clk_freq = pclk_rate;
 		rc = dsi_clk_set_esync_frequency(clk_handle, dsi_ctrl->esync_clk_freq,
 						dsi_ctrl->cell_index);
@@ -1173,12 +1173,12 @@ static int dsi_ctrl_aoss_update(struct dsi_ctrl *dsi_ctrl, bool enable)
 	int rc;
 	u32 cp_level;
 	bool esync_enabled = false;
-	struct dsi_mode_info *host_mode;
+	struct dsi_host_config *host_config;
 
-	host_mode = &dsi_ctrl->host_config.video_timing;
+	host_config = &dsi_ctrl->host_config;
 
-	if (host_mode)
-		esync_enabled = host_mode->esync_enabled;
+	if (host_config)
+		esync_enabled = host_config->esync_enabled;
 
 	if (enable) {
 		rc = pm_runtime_resume_and_get(dsi_ctrl->drm_dev->dev);
@@ -2605,7 +2605,7 @@ int dsi_ctrl_async_timing_update(struct dsi_ctrl *dsi_ctrl,
 	host_mode = &dsi_ctrl->host_config.video_timing;
 	memcpy(host_mode, timing, sizeof(*host_mode));
 	dsi_ctrl->hw.ops.set_timing_db(&dsi_ctrl->hw, true);
-	dsi_ctrl->hw.ops.set_video_timing(&dsi_ctrl->hw, host_mode);
+	dsi_ctrl->hw.ops.set_video_timing(&dsi_ctrl->hw, &dsi_ctrl->host_config);
 
 exit:
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
@@ -2692,7 +2692,7 @@ int dsi_ctrl_timing_setup(struct dsi_ctrl *dsi_ctrl)
 					&dsi_ctrl->host_config.common_config,
 					&dsi_ctrl->host_config.u.video_engine);
 		dsi_ctrl->hw.ops.set_video_timing(&dsi_ctrl->hw,
-					  &dsi_ctrl->host_config.video_timing);
+					  &dsi_ctrl->host_config);
 		dsi_ctrl->hw.ops.video_engine_en(&dsi_ctrl->hw, true);
 	}
 
@@ -3258,7 +3258,7 @@ int dsi_ctrl_host_init(struct dsi_ctrl *dsi_ctrl, bool skip_op)
 					&dsi_ctrl->host_config.common_config,
 					&dsi_ctrl->host_config.u.video_engine);
 			dsi_ctrl->hw.ops.set_video_timing(&dsi_ctrl->hw,
-					  &dsi_ctrl->host_config.video_timing);
+					  &dsi_ctrl->host_config);
 		}
 	}
 
