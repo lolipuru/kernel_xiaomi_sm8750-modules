@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -47,6 +47,7 @@
 #define REG_DMA_LTM_UPDATE_REQ_MASK 0xFFFFFFFE
 
 #define REG_DMA_SPR_CONFIG_MASK ~0xFDFFFFFF
+#define REG_DMA_SPR_PARTIAL_CROP_BOT_MASK 0xDFFFFFFF
 
 #define GAMUT_LUT_MEM_SIZE ((sizeof(struct drm_msm_3d_gamut)) + \
 		REG_DMA_HEADERS_BUFFER_SZ)
@@ -6417,6 +6418,41 @@ cleanup:
 	kvfree(reg);
 }
 
+int reg_dmav1_setup_spr_pu_config(struct sde_hw_dspp *ctx,
+	struct msm_roi_list *roi_list,
+	struct sde_hw_reg_dma_ops *dma_ops, struct sde_reg_dma_buffer *buffer)
+{
+	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
+	uint32_t reg_off, base_off;
+	uint32_t reg = 0;
+	int rc = 0;
+
+	base_off = ctx->hw.blk_off + ctx->cap->sblk->spr.base;
+
+	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, SPR_PU_CFG, buffer);
+	REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("spr pu write decode select failed ret %d\n", rc);
+		return rc;
+	}
+
+	if (roi_list && roi_list->spr_roi[0].y2 != roi_list->roi[0].y2)
+		reg = BIT(29);
+
+	reg_off = base_off + 0x04;
+	REG_DMA_SETUP_OPS(dma_write_cfg, reg_off, &reg,
+		sizeof(uint32_t), REG_SINGLE_MODIFY, 0, 0, REG_DMA_SPR_PARTIAL_CROP_BOT_MASK);
+
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("write pu config failed ret %d\n", rc);
+		return rc;
+	}
+
+	return rc;
+}
+
 int reg_dmav1_setup_spr_pu_common(struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg,
 		struct msm_roi_list *roi_list,
 		struct sde_hw_reg_dma_ops *dma_ops, struct sde_reg_dma_buffer *buffer)
@@ -6529,8 +6565,11 @@ void reg_dmav1_setup_spr_pu_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 	if (hw_cfg->payload && hw_cfg->len == sizeof(struct sde_drm_roi_v1))
 		roi_list = hw_cfg->payload;
 
-
 	rc = reg_dmav1_setup_spr_pu_common(ctx, cfg, roi_list, dma_ops, buffer);
+	if (rc)
+		return;
+
+	rc = reg_dmav1_setup_spr_pu_config(ctx, roi_list, dma_ops, buffer);
 	if (rc)
 		return;
 

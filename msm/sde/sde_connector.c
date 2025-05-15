@@ -1788,10 +1788,11 @@ int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable, bool id
 		return -EINVAL;
 	}
 
-	if (c_conn->ops.clk_ctrl)
-		rc = c_conn->ops.clk_ctrl(display, DSI_CORE_CLK | DSI_LINK_CLK, state);
+	/* Update idle PC status before clock control */
 	if (c_conn->ops.idle_pc_ctrl)
 		c_conn->ops.idle_pc_ctrl(display, idle_pc);
+	if (c_conn->ops.clk_ctrl)
+		rc = c_conn->ops.clk_ctrl(display, DSI_CORE_CLK | DSI_LINK_CLK, state);
 
 	return rc;
 }

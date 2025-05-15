@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <drm/msm_drm_aiqe.h>
@@ -687,12 +687,13 @@ static bool valid_abc_main_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
 	tempw = aiqe_abc->param[1] & ((1 << 12) - 1);
 
 	if (w != tempw || h != temph) {
-		DRM_ERROR("invalid plane param h %d w %d exp h %d exp w %d\n", temph,
+		DRM_ERROR("invalid plane param h %d w %d exp h %d exp w %d\n", tempw,
 		temph, h, w);
 		return false;
 	}
 
-	w = (w * 3) / 4;
+	// width (width/div factor) should be multiple of 4 as the fetch happen in words
+	w = ((w + 1) * 3) / 4;
 	if (h != hw_cfg->skip_planes[SB_PLANE_REAL].plane_h ||
 		w != hw_cfg->skip_planes[SB_PLANE_REAL].plane_w) {
 		DRM_ERROR("real plane invalid plane h %d w %d exp h %d exp w %d\n",
