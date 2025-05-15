@@ -3359,6 +3359,7 @@ static int qseecom_prepare_unload_app(struct qseecom_dev_handle *data)
 				data->client.attach, data->client.dmabuf);
 		}
 		data->released = true;
+		__qseecom_free_tzbuf(&data->sglistinfo_shm);
 		return 0;
 	}
 
