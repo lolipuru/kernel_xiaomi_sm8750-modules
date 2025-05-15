@@ -335,7 +335,7 @@ cnss_get_pld_bus_ops_name(struct cnss_plat_data *plat_priv)
 
 void cnss_get_sleep_clk_supported(struct cnss_plat_data *plat_priv)
 {
-	plat_priv->sleep_clk = of_property_read_bool(plat_priv->dev_node,
+	plat_priv->sleep_clk = of_property_read_bool(plat_priv->plat_dev->dev.of_node,
 						     "qcom,sleep-clk-support");
 	cnss_pr_dbg("qcom,sleep-clk-support is %d\n",
 		    plat_priv->sleep_clk);
