@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -1464,9 +1464,10 @@ static void synx_client_cleanup(struct work_struct *dispatch)
 	 * un-released from this session and remove them.
 	 */
 	hash_for_each_safe(client->handle_map, i, tmp, curr, node) {
-		dprintk(SYNX_WARN,
-			"[sess :%llu] un-released handle %u\n",
-			client->id, curr->key);
+		if (__ratelimit(&synx_ratelimit_state))
+			dprintk(SYNX_WARN,
+				"[sess :%llu] un-released handle %u\n",
+				client->id, curr->key);
 		j = kref_read(&curr->refcount);
 		/* release pending reference */
 		while (j--)
