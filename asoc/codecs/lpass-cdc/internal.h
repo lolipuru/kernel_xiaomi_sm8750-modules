@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _LPASS_CDC_INTERNAL_H
@@ -91,10 +91,14 @@ struct lpass_cdc_priv {
 	struct blocking_notifier_head notifier;
 	struct device *clk_dev;
 	rsc_clk_cb_t rsc_clk_cb;
-	s32 dmic_0_1_clk_cnt;
-	s32 dmic_2_3_clk_cnt;
-	s32 dmic_4_5_clk_cnt;
-	s32 dmic_6_7_clk_cnt;
+	s32 dmic_0_1_tx_clk_cnt;
+	s32 dmic_2_3_tx_clk_cnt;
+	s32 dmic_4_5_tx_clk_cnt;
+	s32 dmic_6_7_tx_clk_cnt;
+	s32 dmic_0_1_va_clk_cnt;
+	s32 dmic_2_3_va_clk_cnt;
+	s32 dmic_4_5_va_clk_cnt;
+	s32 dmic_6_7_va_clk_cnt;
 	u8 dmic_0_1_clk_div;
 	u8 dmic_2_3_clk_div;
 	u8 dmic_4_5_clk_div;

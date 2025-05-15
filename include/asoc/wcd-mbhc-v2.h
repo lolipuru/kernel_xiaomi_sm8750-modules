@@ -533,6 +533,8 @@ struct wcd_mbhc_cb {
 	void (*surge_reset_routine)(struct wcd_mbhc *mbhc);
 	void (*zdet_leakage_resistance)(struct wcd_mbhc *mbhc, bool enable);
 	void (*mbhc_button_debounce_set)(struct snd_soc_component *component);
+	int (*mbhc_force_micbias_disable)(struct snd_soc_component *component,
+				int micb_num);
 };
 
 struct wcd_mbhc_fn {
