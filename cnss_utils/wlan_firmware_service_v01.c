@@ -7530,6 +7530,45 @@ struct qmi_elem_info wlfw_dump_ddr_region_ind_msg_v01_ei[] = {
 };
 EXPORT_SYMBOL(wlfw_dump_ddr_region_ind_msg_v01_ei);
 
+struct qmi_elem_info wlfw_misc_req_msg_v01_ei[] = {
+	{
+		.data_type      = QMI_SIGNED_4_BYTE_ENUM,
+		.elem_len       = 1,
+		.elem_size      = sizeof(enum wlfw_misc_req_enum_v01),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x01,
+		.offset         = offsetof(struct
+					   wlfw_misc_req_msg_v01,
+					   type),
+	},
+	{
+		.data_type      = QMI_EOTI,
+		.array_type       = NO_ARRAY,
+		.tlv_type       = QMI_COMMON_TLV_TYPE,
+	},
+};
+EXPORT_SYMBOL(wlfw_misc_req_msg_v01_ei);
+
+struct qmi_elem_info wlfw_misc_resp_msg_v01_ei[] = {
+	{
+		.data_type      = QMI_STRUCT,
+		.elem_len       = 1,
+		.elem_size      = sizeof(struct qmi_response_type_v01),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x02,
+		.offset         = offsetof(struct
+					   wlfw_misc_resp_msg_v01,
+					   resp),
+		.ei_array      = qmi_response_type_v01_ei,
+	},
+	{
+		.data_type      = QMI_EOTI,
+		.array_type       = NO_ARRAY,
+		.tlv_type       = QMI_COMMON_TLV_TYPE,
+	},
+};
+EXPORT_SYMBOL(wlfw_misc_resp_msg_v01_ei);
+
 /**
  * wlfw_is_valid_dt_node_found - Check if valid device tree node present
  *

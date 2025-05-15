@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CNSS_MAIN_H
@@ -87,6 +87,7 @@
 #define TME_OEM_FUSE_FILE_NAME		"peach_sec.dat"
 #define TME_RPR_FILE_NAME		"peach_rpr.bin"
 #define TME_DPR_FILE_NAME		"peach_dpr.bin"
+#define CGN_TME_OEM_FUSE_FILE_NAME	"cologne_sec.dat"
 
 enum cnss_dt_type {
 	CNSS_DTT_LEGACY = 0,
@@ -639,6 +640,8 @@ struct cnss_plat_data {
 	const char *vreg_ol_cpr, *vreg_ipa;
 	const char **pdc_init_table, **vreg_pdc_map, **pmu_vreg_map;
 	int pdc_init_table_len, vreg_pdc_map_len, pmu_vreg_map_len;
+	const char **pdc_mode_vote_table;
+	int pdc_mode_vote_table_len;
 	bool adsp_pc_enabled;
 	u64 feature_list;
 	u32 dt_type;
@@ -691,7 +694,7 @@ static inline u64 cnss_get_host_timestamp(struct cnss_plat_data *plat_priv)
 int cnss_wlan_hw_disable_check(struct cnss_plat_data *plat_priv);
 int cnss_wlan_hw_enable(void);
 struct cnss_plat_data *cnss_get_plat_priv(struct platform_device *plat_dev);
-struct cnss_plat_data *cnss_get_first_plat_priv(struct platform_device *plat_dev);
+struct cnss_plat_data *cnss_get_first_plat_priv(void);
 void cnss_pm_stay_awake(struct cnss_plat_data *plat_priv);
 void cnss_pm_relax(struct cnss_plat_data *plat_priv);
 struct cnss_plat_data *cnss_get_plat_priv_by_rc_num(int rc_num);
