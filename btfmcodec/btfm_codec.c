@@ -68,8 +68,6 @@ static int btfmcodec_dev_open(struct inode *inode, struct file *file)
 	struct btfmcodec_data *btfmcodec = (struct btfmcodec_data *)btfmcodec_dev->btfmcodec;
 	unsigned int active_clients = refcount_read(&btfmcodec_dev->active_clients);
 
-	btfmcodec->states.current_state = IDLE; /* Just a temp*/
-	btfmcodec->states.next_state = IDLE;
 	BTFMCODEC_INFO("for %s by %s:%d active_clients[%d]\n",
 		       btfmcodec_dev->dev_name, current->comm,
 		       task_pid_nr(current), refcount_read(&btfmcodec_dev->active_clients));
@@ -127,9 +125,6 @@ static int btfmcodec_dev_release(struct inode *inode, struct file *file)
 		cancel_work_sync(&btfmcodec_dev->wq_hwep_configure);
 	if (btfmcodec_dev->wq_prepare_bearer.func)
 		cancel_work_sync(&btfmcodec_dev->wq_prepare_bearer);
-
-	btfmcodec->states.current_state = IDLE;
-	btfmcodec->states.next_state = IDLE;
 
 	return 0;
 }
