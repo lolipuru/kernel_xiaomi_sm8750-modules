@@ -4191,7 +4191,8 @@ static void cnss_wlan_reg_driver_work(struct work_struct *work)
 
 		del_timer(&plat_priv->fw_boot_timer);
 		if (test_bit(CNSS_IN_COLD_BOOT_CAL, &plat_priv->driver_state) &&
-		    !test_bit(CNSS_IN_REBOOT, &plat_priv->driver_state)) {
+		    !test_bit(CNSS_IN_REBOOT, &plat_priv->driver_state) &&
+		    !test_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state)) {
 			cnss_pr_err("Timeout waiting for calibration to complete\n");
 			CNSS_ASSERT(0);
 		}
