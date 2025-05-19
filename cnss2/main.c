@@ -5868,17 +5868,17 @@ static int cnss_probe(struct platform_device *plat_dev)
 	if (ret)
 		goto unreg_esoc;
 
-	ret = cnss_create_sysfs(plat_priv);
+	ret = cnss_event_work_init(plat_priv);
 	if (ret)
 		goto unreg_bus_scale;
 
-	ret = cnss_event_work_init(plat_priv);
+	ret = cnss_create_sysfs(plat_priv);
 	if (ret)
-		goto remove_sysfs;
+		goto deinit_event_work;
 
 	ret = cnss_dms_init(plat_priv);
 	if (ret)
-		goto deinit_event_work;
+		goto remove_sysfs;
 
 	ret = cnss_debugfs_create(plat_priv);
 	if (ret)
@@ -5919,10 +5919,10 @@ destroy_debugfs:
 deinit_dms:
 	cnss_cancel_dms_work(plat_priv);
 	cnss_dms_deinit(plat_priv);
-deinit_event_work:
-	cnss_event_work_deinit(plat_priv);
 remove_sysfs:
 	cnss_remove_sysfs(plat_priv);
+deinit_event_work:
+	cnss_event_work_deinit(plat_priv);
 unreg_bus_scale:
 	cnss_unregister_bus_scale(plat_priv);
 unreg_esoc:
