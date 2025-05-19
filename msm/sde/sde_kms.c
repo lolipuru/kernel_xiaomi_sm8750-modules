@@ -1517,6 +1517,26 @@ static void sde_kms_cancel_delayed_work(struct drm_crtc *crtc)
 	}
 }
 
+static void sde_kms_vm_force_disable_idle_pc(struct sde_kms *sde_kms, enum sde_crtc_vm_req vm_req)
+{
+	struct drm_device *dev;
+	struct drm_encoder *enc;
+	bool enable;
+
+	if (!sde_kms || vm_req == VM_REQ_NONE)
+		return;
+
+	dev = sde_kms->dev;
+	enable = (vm_req == VM_REQ_RELEASE) ? false : true;
+
+	drm_for_each_encoder(enc, dev) {
+		if (!sde_encoder_is_dsi_display(enc))
+			continue;
+
+		sde_encoder_control_idle_pc(enc, enable);
+	}
+}
+
 int sde_kms_vm_pre_release(struct sde_kms *sde_kms,
 	struct drm_atomic_state *state, bool is_primary)
 {
@@ -1623,6 +1643,9 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+
+	sde_kms_vm_force_disable_idle_pc(sde_kms, vm_req);
+
 	if (vm_req != VM_REQ_RELEASE)
 		return 0;
 
