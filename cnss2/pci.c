@@ -13,7 +13,6 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/vmalloc.h>
-#include <linux/pm_runtime.h>
 #include <linux/suspend.h>
 #include <linux/version.h>
 #include <linux/sched.h>
@@ -8037,7 +8036,51 @@ static void cnss_pci_config_regs(struct cnss_pci_data *pci_priv)
 	}
 }
 
-#if !IS_ENABLED(CONFIG_ARCH_QCOM)
+#if IS_ENABLED(CONFIG_ARCH_QCOM)
+/**
+ * cnss_pci_of_reserved_mem_device_init() - Assign reserved memory region
+ *                                          to given PCI device
+ * @pci_priv: driver PCI bus context pointer
+ *
+ * This function shall call corresponding of_reserved_mem_device* API to
+ * assign reserved memory region to PCI device based on where the memory is
+ * defined and attached to (platform device of_node or PCI device of_node)
+ * in device tree.
+ *
+ * Return: 0 for success, negative value for error
+ */
+static int cnss_pci_of_reserved_mem_device_init(struct cnss_pci_data *pci_priv)
+{
+	struct device *dev_pci = &pci_priv->pci_dev->dev;
+	int ret;
+
+	/* Use of_reserved_mem_device_init_by_idx() if reserved memory is
+	 * attached to platform device of_node.
+	 */
+	ret = of_reserved_mem_device_init(dev_pci);
+	if (ret) {
+		if (ret == -EINVAL)
+			cnss_pr_vdbg("Ignore, no specific reserved-memory assigned\n");
+		else
+			cnss_pr_err("Failed to init reserved mem device, err = %d\n",
+				    ret);
+	}
+	if (dev_pci->cma_area)
+		cnss_pr_dbg("CMA area is %s\n",
+			    cma_get_name(dev_pci->cma_area));
+
+	return ret;
+}
+
+static int cnss_pci_wake_gpio_init(struct cnss_pci_data *pci_priv)
+{
+	return 0;
+}
+
+static void cnss_pci_wake_gpio_deinit(struct cnss_pci_data *pci_priv)
+{
+}
+#else
 static int cnss_pci_of_reserved_mem_device_init(struct cnss_pci_data *pci_priv)
 {
 	return 0;
@@ -8511,7 +8554,8 @@ static int cnss_pci_probe(struct pci_dev *pci_dev,
 		goto out;
 	if (cnss_is_dual_wlan_enabled() && !plat_priv->enumerate_done)
 		goto probe_done;
-	cnss_pci_suspend_pwroff(pci_dev);
+	if (!plat_priv->is_fw_managed_pwr)
+		cnss_pci_suspend_pwroff(pci_dev);
 
 probe_done:
 	set_bit(CNSS_PCI_PROBE_DONE, &plat_priv->driver_state);
@@ -8695,7 +8739,7 @@ int cnss_pci_init(struct cnss_plat_data *plat_priv)
 				    ret);
 			goto out;
 		}
-		if (!plat_priv->bus_priv) {
+		if (cnss_pci_is_sync_probe() && !plat_priv->bus_priv) {
 			cnss_pr_err("Failed to probe PCI driver\n");
 			ret = -ENODEV;
 			goto unreg_pci;

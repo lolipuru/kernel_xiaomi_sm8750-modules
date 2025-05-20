@@ -1764,6 +1764,11 @@ static int cnss_get_resources(struct cnss_plat_data *plat_priv)
 {
 	int ret = 0;
 
+	if (plat_priv->is_fw_managed_pwr) {
+		ret = cnss_fw_managed_domain_attach(plat_priv);
+		goto out;
+	}
+
 	ret = cnss_get_vreg_type(plat_priv, CNSS_VREG_PRIM);
 	if (ret < 0) {
 		cnss_pr_err("Failed to get vreg, err = %d\n", ret);
@@ -1794,6 +1799,16 @@ out:
 
 static void cnss_put_resources(struct cnss_plat_data *plat_priv)
 {
+	if (plat_priv->is_fw_managed_pwr) {
+		if (plat_priv->powered_on) {
+			cnss_fw_managed_power_gpio(plat_priv,
+						   false);
+			cnss_fw_managed_power_regulator(plat_priv,
+							false);
+		}
+		cnss_fw_managed_domain_detach(plat_priv);
+		return;
+	}
 	cnss_put_clk(plat_priv);
 	cnss_put_vreg_type(plat_priv, CNSS_VREG_PRIM);
 }
@@ -5448,6 +5463,13 @@ cnss_dt_type(struct cnss_plat_data *plat_priv)
 	return CNSS_DTT_LEGACY;
 }
 
+static inline bool
+cnss_resource_is_fw_managed(struct cnss_plat_data *plat_priv)
+{
+	return of_property_read_bool(plat_priv->plat_dev->dev.of_node,
+				     "firmware-managed-resources");
+}
+
 static int cnss_wlan_device_init(struct cnss_plat_data *plat_priv)
 {
 	int ret = 0;
@@ -5806,6 +5828,8 @@ static int cnss_probe(struct platform_device *plat_dev)
 
 	plat_priv->use_fw_path_with_prefix =
 		cnss_use_fw_path_with_prefix(plat_priv);
+
+	plat_priv->is_fw_managed_pwr = cnss_resource_is_fw_managed(plat_priv);
 
 	ret = cnss_get_dev_cfg_node(plat_priv);
 	if (ret) {
