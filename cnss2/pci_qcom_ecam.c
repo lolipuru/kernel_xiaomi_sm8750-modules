@@ -3,6 +3,7 @@
 
 #include "pci_platform.h"
 #include "debug.h"
+#include <linux/pm.h>
 
 static struct cnss_msi_config msi_config = {
 	.total_vectors = 32,
@@ -61,7 +62,64 @@ int cnss_wlan_adsp_pc_enable(struct cnss_pci_data *pci_priv, bool control)
 
 int cnss_set_pci_link(struct cnss_pci_data *pci_priv, bool link_up)
 {
-	return 0;
+	int ret = 0;
+	struct device *dev, *host_bridge_dev;
+	struct pci_dev *root_port;
+
+	if (!pci_priv) {
+		cnss_pr_err("pci_priv is null\n");
+		return -EINVAL;
+	}
+
+	root_port = pcie_find_root_port(pci_priv->pci_dev);
+	if (!root_port) {
+		cnss_pr_err("PCIe root port is null\n");
+		return -EINVAL;
+	}
+
+	host_bridge_dev = root_port->dev.parent;
+	if (!host_bridge_dev) {
+		cnss_pr_err("host_bridge_dev is null\n");
+		return -EINVAL;
+	}
+
+	dev = host_bridge_dev->parent;
+	if (!dev) {
+		cnss_pr_err("PCIe platform device is null\n");
+		return -EINVAL;
+	}
+
+	cnss_pr_info("%s PCI link, \n", link_up ? "Resuming" : "Suspending");
+
+	cnss_pr_info("PCIe PM: usage_count:%d, runtime_status:%d\n",
+		     atomic_read(&dev->power.usage_count),
+		     dev->power.runtime_status);
+
+	if (link_up) {
+		ret = pm_runtime_get_sync(dev);
+		cnss_pr_info("PCIe resume: ret:%d, usage_count:%d, runtime_status:%d\n",
+			     ret, atomic_read(&dev->power.usage_count),
+			     dev->power.runtime_status);
+
+		if (ret ||
+		    dev->power.runtime_status != RPM_ACTIVE) {
+			cnss_pr_info("Faile to resume PCIe link\n");
+			return ret;
+		}
+	} else {
+		ret = pm_runtime_put_sync(dev);
+		cnss_pr_info("PCIe suspend: ret:%d, usage_count:%d, runtime_status:%d\n",
+			     ret, atomic_read(&dev->power.usage_count),
+			     dev->power.runtime_status);
+
+		if (ret ||
+		    dev->power.runtime_status != RPM_SUSPENDED) {
+			cnss_pr_info("Faile to suspend PCIe link\n");
+			return ret;
+		}
+	}
+
+	return ret;
 }
 
 int cnss_pci_prevent_l1(struct device *dev)
