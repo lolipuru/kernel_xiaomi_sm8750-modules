@@ -1114,6 +1114,45 @@ void kgsl_register_shmem_callback(void)
 	register_trace_android_rvh_shmem_get_folio(kgsl_shmem_fill_page, NULL);
 }
 
+static int kgsl_alloc_secure(int *page_size, struct page **pages,
+		u32 *align, struct device *dev)
+{
+	int order = get_order(*page_size);
+	gfp_t gfp_mask = kgsl_gfp_mask(order);
+	struct page *page = NULL;
+	int j, pcount = 0;
+	size_t size = 0;
+
+	page = alloc_pages(gfp_mask, order);
+	if (!page) {
+		/* Retry with lower order pages */
+		if (order > 0) {
+			size = PAGE_SIZE << --order;
+			goto eagain;
+		} else
+			return -ENOMEM;
+	}
+
+	kgsl_zero_page(page, order, dev);
+
+	for (j = 0; j < (*page_size >> PAGE_SHIFT); j++) {
+		pages[pcount] = nth_page(page, j);
+		pcount++;
+	}
+
+	return pcount;
+
+eagain:
+	*page_size = kgsl_get_page_size(size, ilog2(size));
+	*align = ilog2(*page_size);
+	return -EAGAIN;
+}
+
+static void kgsl_free_secure(struct page *p)
+{
+	__free_pages(p, compound_order(p));
+}
+
 static int kgsl_alloc_page(struct kgsl_memdesc *memdesc, int *page_size,
 			struct page **pages, unsigned int pages_len,
 			unsigned int *align, unsigned int page_off)
@@ -1126,6 +1165,9 @@ static int kgsl_alloc_page(struct kgsl_memdesc *memdesc, int *page_size,
 
 	if (fatal_signal_pending(current))
 		return -EINTR;
+
+	if (!memdesc->shmem_filp)
+		return kgsl_alloc_secure(page_size, pages, align, memdesc->dev);
 
 	page = shmem_read_mapping_page_gfp(memdesc->shmem_filp->f_mapping, page_off,
 			kgsl_gfp_mask(0));
@@ -1149,6 +1191,15 @@ static int kgsl_memdesc_file_setup(struct kgsl_memdesc *memdesc)
 {
 	int ret;
 
+	/*
+	 * SHMEM pages are allocated in 4K chunks, which introduces higher
+	 * allocation latency. Since secure memory is non-reclaimable,
+	 * allocating it via SHMEM is inefficient. Use system memory directly
+	 * to reduce allocation latency for secure buffers.
+	 */
+	if (kgsl_memdesc_is_secured(memdesc))
+		return 0;
+
 	memdesc->shmem_filp = shmem_file_setup("kgsl-3d0", memdesc->size,
 			VM_NORESERVE);
 	if (IS_ERR(memdesc->shmem_filp)) {
@@ -1164,27 +1215,30 @@ static int kgsl_memdesc_file_setup(struct kgsl_memdesc *memdesc)
 	return 0;
 }
 
-static void kgsl_free_page(struct page *p)
+static void kgsl_free_page(struct kgsl_memdesc *memdesc, struct page *p)
 {
+	if (!memdesc->shmem_filp)
+		return kgsl_free_secure(p);
+
 	put_page(p);
 }
 
 static void kgsl_memdesc_pagelist_cleanup(struct kgsl_memdesc *memdesc)
 {
+	if (!memdesc->shmem_filp)
+		return;
+
 	while (!list_empty(&memdesc->shmem_page_list)) {
 		struct page *page = list_first_entry(&memdesc->shmem_page_list, struct page, lru);
 
 		list_del(&page->lru);
-		kgsl_free_page(page);
+		kgsl_free_page(memdesc, page);
 	}
 }
 
 static void _kgsl_free_pages(struct kgsl_memdesc *memdesc)
 {
 	int i;
-
-	WARN(!list_empty(&memdesc->shmem_page_list),
-	     "KGSL shmem page list is not empty\n");
 
 	for (i = 0; i < memdesc->page_count; i++)
 		if (memdesc->pages[i])
@@ -1194,6 +1248,12 @@ static void _kgsl_free_pages(struct kgsl_memdesc *memdesc)
 	kvfree(memdesc->pages);
 
 	memdesc->pages = NULL;
+
+	if (!memdesc->shmem_filp)
+		return;
+
+	WARN(!list_empty(&memdesc->shmem_page_list),
+	     "KGSL shmem page list is not empty\n");
 
 	SHMEM_I(memdesc->shmem_filp->f_mapping->host)->android_vendor_data1 = 0;
 	fput(memdesc->shmem_filp);
@@ -1227,7 +1287,7 @@ static void kgsl_memdesc_pagelist_cleanup(struct kgsl_memdesc *memdesc)
 {
 }
 
-static void kgsl_free_page(struct page *p)
+static void kgsl_free_page(struct kgsl_memdesc *memdesc, struct page *p)
 {
 	kgsl_pool_free_page(p);
 }
@@ -1351,7 +1411,7 @@ static int _kgsl_alloc_pages(struct kgsl_memdesc *memdesc,
 			for (i = 0; i < count; ) {
 				int n = 1 << kgsl_get_page_order(local[i]);
 
-				kgsl_free_page(local[i]);
+				kgsl_free_page(memdesc, local[i]);
 				i += n;
 			}
 			kvfree(local);
@@ -1470,7 +1530,7 @@ static void kgsl_free_pages_from_sgt(struct kgsl_memdesc *memdesc)
 		while (j < (sg->length/PAGE_SIZE)) {
 			count = 1 << compound_order(p);
 			next = nth_page(p, count);
-			kgsl_free_page(p);
+			kgsl_free_page(memdesc, p);
 
 			p = next;
 			j += count;
