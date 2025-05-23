@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _CAM_IFE_HW_MGR_H_
@@ -84,6 +84,7 @@ enum cam_ife_ctx_master_type {
  * @sfe_perf_counter_val:      sfe perf counter values
  * @csid_domain_id_value:      Value of domain id to set on CSID
  * @csid_out_of_sync_simul:    Controls out of sync simulation
+ * @force_acq_csid:            Acquire specific csid
  * @enable_req_dump:           Enable request dump on HW errors
  * @per_req_reg_dump:          Enable per request reg dump
  * @disable_ubwc_comp:         Disable UBWC compression
@@ -116,6 +117,7 @@ struct cam_ife_hw_mgr_debug {
 	uint32_t       csid_out_of_sync_simul;
 	uint32_t      *ife_bus_wr_perf_counter_val;
 	uint32_t      *sfe_bus_wr_perf_counter_val;
+	uint32_t       force_acq_csid;
 	bool           enable_req_dump;
 	bool           per_req_reg_dump;
 	bool           disable_ubwc_comp;
