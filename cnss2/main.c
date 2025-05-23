@@ -6149,9 +6149,20 @@ out:
 #endif
 }
 
+static void cnss_shutdown(struct platform_device *plat_dev)
+{
+	struct cnss_plat_data *plat_priv = platform_get_drvdata(plat_dev);
+
+	if (plat_priv->is_fw_managed_pwr) {
+		cnss_pr_info("wlan cnss do shutdown\n");
+		cnss_power_off_device(plat_priv);
+	}
+}
+
 static struct platform_driver cnss_platform_driver = {
 	.probe  = cnss_probe,
 	.remove = cnss_remove,
+	.shutdown = cnss_shutdown,
 	.driver = {
 		.name = "cnss2",
 		.of_match_table = cnss_of_match_table,
