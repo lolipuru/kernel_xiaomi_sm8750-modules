@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -194,6 +194,13 @@ static int cnss_wlfw_ind_register_send_sync(struct cnss_plat_data *plat_priv)
 	req->wfc_call_twt_config_enable = 1;
 	req->async_data_enable_valid = 1;
 	req->async_data_enable = 1;
+
+	/* Enable only when XO trim related resources are valid */
+	if (!IS_ERR_OR_NULL(plat_priv->xo_trim_conf.xo_calib_reg) &&
+	    !IS_ERR_OR_NULL(plat_priv->xo_trim_conf.wcal_pbs)) {
+		req->xo_trim_enable_valid = 1;
+		req->xo_trim_enable = 1;
+	}
 
 	ret = qmi_txn_init(&plat_priv->qmi_wlfw, &txn,
 			   wlfw_ind_register_resp_msg_v01_ei, resp);
@@ -3359,6 +3366,34 @@ static void cnss_wlfw_driver_async_data_ind_cb(struct qmi_handle *qmi_wlfw,
 			(void *)ind_msg->data, ind_msg->data_len);
 }
 
+static void cnss_wlfw_xo_trim_ind_cb(struct qmi_handle *qmi_wlfw,
+				     struct sockaddr_qrtr *sq,
+				     struct qmi_txn *txn,
+				     const void *data)
+{
+	struct cnss_plat_data *plat_priv =
+		container_of(qmi_wlfw, struct cnss_plat_data, qmi_wlfw);
+	const struct wlfw_xo_trim_ind_msg_v01 *ind_msg = data;
+	u8 *trim_value;
+
+	if (!txn) {
+		cnss_pr_err("Spurious XO_TRIM indication\n");
+		return;
+	}
+
+	cnss_pr_dbg("Received XO_TRIM with trim val: %d\n", ind_msg->trim_val);
+	trim_value = kzalloc(sizeof(*trim_value), GFP_KERNEL);
+	if (!trim_value) {
+		cnss_pr_err("Failed to allocate memory\n");
+		goto out;
+	}
+
+	*trim_value = ind_msg->trim_val;
+
+out:
+	cnss_driver_event_post(plat_priv, CNSS_DRIVER_EVENT_XO_TRIM_IND,
+			       0, trim_value);
+}
 
 static int cnss_ims_wfc_call_twt_cfg_send_sync
 	(struct cnss_plat_data *plat_priv,
@@ -3578,6 +3613,14 @@ static struct qmi_msg_handler qmi_wlfw_msg_handlers[] = {
 		.decoded_size =
 		sizeof(struct wlfw_driver_async_data_ind_msg_v01),
 		.fn = cnss_wlfw_driver_async_data_ind_cb
+	},
+	{
+		.type = QMI_INDICATION,
+		.msg_id = QMI_WLFW_XO_TRIM_IND_V01,
+		.ei = wlfw_xo_trim_ind_msg_v01_ei,
+		.decoded_size =
+		sizeof(struct wlfw_xo_trim_ind_msg_v01),
+		.fn = cnss_wlfw_xo_trim_ind_cb
 	},
 	{}
 };
@@ -4092,6 +4135,23 @@ out:
 	kfree(resp);
 	kfree(req);
 	return ret;
+}
+
+/**
+ * cnss_wlfw_xo_trim_result_send_sync - Notify the XO trim result to target.
+ * @plat_priv: Pointer to platform driver context.
+ * @result: XO trim result.
+ *
+ * Return: 0 on success, errno othrewise
+ */
+int cnss_wlfw_xo_trim_result_send_sync(struct cnss_plat_data *plat_priv,
+				       int result)
+{
+	enum wlfw_misc_req_enum_v01 type = (result ?
+					    WLFW_REQ_XO_TRIM_FAIL_V01 :
+					    WLFW_REQ_XO_TRIM_SUCCESS_V01);
+
+	return cnss_wlfw_misc_req_send_sync(plat_priv, type);
 }
 
 int cnss_send_subsys_restart_level_msg(struct cnss_plat_data *plat_priv)
