@@ -609,8 +609,6 @@ int btfmcodec_hwep_prepare(struct btfmcodec_data *btfmcodec, uint32_t sampling_r
 			ret = btfmcodec_configure_master(btfmcodec, (uint8_t)id);
 			if (ret < 0) {
 				BTFMCODEC_ERR("failed to configure master error %d", ret);
-				if (seamless == false)
-					btfmcodec_set_current_state(state, IDLE);
 			} else {
 				if (seamless == false)
 					btfmcodec_set_current_state(state, BT_Connected);
@@ -622,14 +620,9 @@ int btfmcodec_hwep_prepare(struct btfmcodec_data *btfmcodec, uint32_t sampling_r
 			ret  = btfmcodec_configure_dma(btfmcodec, (uint8_t)id);
 			if (ret < 0) {
 				BTFMCODEC_ERR("failed to configure Codec DMA %d", ret);
-				if (seamless == false)
-					btfmcodec_set_current_state(state, IDLE);
-				else {
-					if (dai_drv && dai_drv->dai_ops &&
-						dai_drv->dai_ops->hwep_shutdown) {
-						dai_drv->dai_ops->hwep_shutdown((void *)hwep_info,
-										id);
-					}
+				if (dai_drv && dai_drv->dai_ops &&
+				     dai_drv->dai_ops->hwep_shutdown) {
+					dai_drv->dai_ops->hwep_shutdown((void *)hwep_info, id);
 				}
 			} else {
 				if (seamless == false)
