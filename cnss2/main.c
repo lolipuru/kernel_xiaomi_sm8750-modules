@@ -2499,6 +2499,9 @@ self_recovery:
 	cnss_pr_dbg("Going for self recovery\n");
 	cnss_bus_dev_shutdown(plat_priv);
 
+	if (test_bit(CNSS_IN_SUSPEND_RESUME, &plat_priv->driver_state))
+		clear_bit(CNSS_IN_SUSPEND_RESUME, &plat_priv->driver_state);
+
 	if (test_bit(LINK_DOWN_SELF_RECOVERY, &plat_priv->ctrl_params.quirks))
 		clear_bit(LINK_DOWN_SELF_RECOVERY,
 			  &plat_priv->ctrl_params.quirks);
