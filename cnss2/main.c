@@ -6110,6 +6110,11 @@ static void cnss_remove(struct platform_device *plat_dev)
 	const struct platform_device_id *device_id;
 	int ret = 0;
 
+	if (!plat_priv) {
+		cnss_pr_err("plat priv is null\n");
+		goto out;
+	}
+
 	of_id = of_match_device(cnss_of_match_table, &plat_dev->dev);
 	if (!of_id || !of_id->data) {
 		cnss_pr_err("cnss remove failed to find of match device!\n");
@@ -6155,6 +6160,11 @@ out:
 static void cnss_shutdown(struct platform_device *plat_dev)
 {
 	struct cnss_plat_data *plat_priv = platform_get_drvdata(plat_dev);
+
+	if (!plat_priv) {
+		cnss_pr_err("plat priv is null\n");
+		return;
+	}
 
 	if (plat_priv->is_fw_managed_pwr) {
 		cnss_pr_info("wlan cnss do shutdown\n");
