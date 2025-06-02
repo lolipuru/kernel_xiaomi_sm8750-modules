@@ -32,6 +32,21 @@ def _get_module_list(target, variant):
     return [":{}_{}".format(tv, mod) for mod in ret]
 
 def _define_platform_config_rule(module, target, variant):
+    if target == "canoe" and variant == "consolidate" and module == "cnss2":
+        etm = select({
+            "//build/kernel/kleaf:etm_true": [
+            "cnss2/canoe_etm_peach-v2",
+            "cnss2/canoe_consolidate_defconfig",
+            ],
+            "//build/kernel/kleaf:etm_false": [
+            "{}/{}_consolidate_defconfig".format(module, target),
+            ],
+        })
+    else:
+        etm = [
+            "{}/{}_consolidate_defconfig".format(module, target),
+        ]
+
     tv = "{}_{}".format(target, variant)
     native.genrule(
         name = "{}/{}_defconfig_generate_perf".format(module, tv),
@@ -68,9 +83,7 @@ def _define_platform_config_rule(module, target, variant):
     native.genrule(
         name = "{}/{}_defconfig_generate_consolidate".format(module, tv),
         outs = ["{}/{}_defconfig.generated_consolidate".format(module, tv)],
-        srcs = [
-            "{}/{}_consolidate_defconfig".format(module, target),
-        ],
+        srcs = etm,
         cmd = "cat $(SRCS) > $@",
     )
 
