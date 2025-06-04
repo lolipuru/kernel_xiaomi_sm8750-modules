@@ -305,6 +305,30 @@ static void cnss_wlfw_host_cap_parse_mlo(struct cnss_plat_data *plat_priv,
 	}
 }
 
+#ifdef CONFIG_KASAN_GENERIC
+#define KSN_STR_LEN 6
+static void cnss_update_build_info(struct wlfw_host_cap_req_msg_v01 *req)
+{
+	char str[] = " + KSN";
+	size_t cur_len = strlen(req->platform_name);
+	size_t new_len = KSN_STR_LEN + 1;
+
+	if (cur_len + new_len >= QMI_WLFW_MAX_PLATFORM_NAME_LEN_V01) {
+		cnss_pr_err("Failed to update build info. new_len: %zu",
+			    new_len);
+		return;
+	}
+
+	strlcat(req->platform_name, str, QMI_WLFW_MAX_PLATFORM_NAME_LEN_V01);
+	cnss_pr_dbg("Build Info: %s (%zu)\n",
+		    req->platform_name, strlen(req->platform_name));
+
+}
+#else
+static void cnss_update_build_info(struct wlfw_host_cap_req_msg_v01 *req)
+{}
+#endif
+
 static int cnss_wlfw_host_cap_send_sync(struct cnss_plat_data *plat_priv)
 {
 	struct wlfw_host_cap_req_msg_v01 *req;
@@ -392,8 +416,10 @@ static int cnss_wlfw_host_cap_send_sync(struct cnss_plat_data *plat_priv)
 	}
 
 	if (cnss_get_platform_name(plat_priv, req->platform_name,
-				   QMI_WLFW_MAX_PLATFORM_NAME_LEN_V01))
+				   QMI_WLFW_MAX_PLATFORM_NAME_LEN_V01)) {
 		req->platform_name_valid = 1;
+		cnss_update_build_info(req);
+	}
 
 	ret = qmi_txn_init(&plat_priv->qmi_wlfw, &txn,
 			   wlfw_host_cap_resp_msg_v01_ei, resp);
