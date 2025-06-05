@@ -2528,7 +2528,7 @@ static void cam_sensor_dump_request_info(struct cam_sensor_ctrl_t  *s_ctrl,
 {
 	int                        i, j, offset;
 	size_t                     len = 0;
-	char                       log_info[1024];
+	char                       log_info[512];
 	struct i2c_settings_array *i2c_set;
 	struct i2c_settings_list  *i2c_list;
 
@@ -2551,13 +2551,18 @@ static void cam_sensor_dump_request_info(struct cam_sensor_ctrl_t  *s_ctrl,
 				i2c_set[offset].applied_timestamp.tv_sec,
 				i2c_set[offset].applied_timestamp.tv_nsec);
 			for (j = 0; j < i2c_list->i2c_settings.size; j++) {
+				int log_info_len = snprintf(NULL, 0, "%04d: 0x%04x=0x%04x",
+						j, i2c_list->i2c_settings.reg_setting[j].reg_addr,
+						i2c_list->i2c_settings.reg_setting[j].reg_data);
+
 				/* Check if the log buf has remaining space for new log */
-				if (1024 - len < 50) {
+				if (512 - len < (log_info_len + 50)) {
 					len = 0;
-					CAM_INFO(CAM_SENSOR, "\tSensor:%s req:%llu %s",
+					CAM_INFO(CAM_SENSOR, "\t Sensor:%s req:%llu %s",
 						s_ctrl->sensor_name, req_id, log_info);
 				}
-				CAM_INFO_BUF(CAM_SENSOR, log_info, 1024, &len,
+
+				CAM_INFO_BUF(CAM_SENSOR, log_info, 512, &len,
 					"%04d: 0x%04x=0x%04x",
 					j, i2c_list->i2c_settings.reg_setting[j].reg_addr,
 					i2c_list->i2c_settings.reg_setting[j].reg_data);

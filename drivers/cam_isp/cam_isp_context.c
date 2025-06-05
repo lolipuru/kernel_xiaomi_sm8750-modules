@@ -3353,6 +3353,7 @@ static int __cam_isp_ctx_apply_pending_req(
 
 		spin_unlock_bh(&ctx->lock);
 	} else {
+		atomic_set(&ctx_isp->last_applied_default, 0);
 		atomic_set(&ctx_isp->apply_in_progress, 0);
 		CAM_DBG(CAM_ISP, "New substate state %d, applied req %lld, ctx: %u, link: 0x%x",
 			CAM_ISP_CTX_ACTIVATED_APPLIED,
@@ -3454,13 +3455,22 @@ static int __cam_isp_ctx_reg_upd_in_epoch_bubble_state(
 				CAM_REQ_MGR_SOF_EVENT_SUCCESS);
 		}
 	} else {
-		atomic_set(&ctx_isp->unserved_rup, 1);
+		if (!atomic_read(&ctx_isp->last_applied_default))
+			atomic_set(&ctx_isp->unserved_rup, 1);
 		CAM_WARN_RATE_LIMIT(CAM_ISP,
 			"ctx:%u Unexpected regupdate in activated Substate[%s] for frame_id:%lld",
+			"last_applied_default:%d, unserved_rup:%d",
 			ctx_isp->base->ctx_id,
 			__cam_isp_ctx_substate_val_to_type(
 			ctx_isp->substate_activated),
-			ctx_isp->frame_id);
+			ctx_isp->frame_id,
+			atomic_read(&ctx_isp->last_applied_default),
+			atomic_read(&ctx_isp->unserved_rup));
+
+		atomic_set(&ctx_isp->last_applied_default, 0);
+
+		__cam_isp_ctx_send_sof_timestamp(ctx_isp, 0,
+			CAM_REQ_MGR_SOF_EVENT_SUCCESS);
 	}
 	return 0;
 }
@@ -3774,9 +3784,15 @@ static int __cam_isp_ctx_reg_upd_in_sof(struct cam_isp_context *ctx_isp,
 				"receive rup in unexpected state, ctx_idx: %u, link: 0x%x",
 				ctx->ctx_id, ctx->link_hdl);
 	} else {
-		atomic_set(&ctx_isp->unserved_rup, 1);
-		CAM_WARN(CAM_ISP, "Received a unserved rup ctx:%u link: 0x%x",
-			ctx->ctx_id, ctx->link_hdl);
+		if (!atomic_read(&ctx_isp->last_applied_default))
+			atomic_set(&ctx_isp->unserved_rup, 1);
+		CAM_WARN(CAM_ISP,
+			"Received a unserved rup ctx:%u link: 0x%x, last_applied_default:%d, unserved_rup:%d",
+			ctx->ctx_id,
+			ctx->link_hdl,
+			atomic_read(&ctx_isp->last_applied_default),
+			atomic_read(&ctx_isp->unserved_rup));
+		atomic_set(&ctx_isp->last_applied_default, 0);
 	}
 
 	if (req != NULL) {
@@ -5636,6 +5652,7 @@ static int __cam_isp_ctx_apply_req_in_activated_state(
 	rc = ctx->hw_mgr_intf->hw_config(ctx->hw_mgr_intf->hw_mgr_priv, &cfg);
 	if (!rc) {
 		spin_lock_bh(&ctx->lock);
+		atomic_set(&ctx_isp->last_applied_default, 0);
 		ctx_isp->substate_activated = next_state;
 		ctx_isp->last_applied_req_id = apply->request_id;
 		ctx_isp->last_applied_jiffies = jiffies;
@@ -9886,6 +9903,7 @@ static int __cam_isp_ctx_apply_default_settings(
 			CAM_WARN_RATE_LIMIT(CAM_ISP,
 				"Apply default failed in active substate %d rc %d ctx: %u link: 0x%x",
 				ctx_isp->substate_activated, rc, ctx->ctx_id, ctx->link_hdl);
+		atomic_set(&ctx_isp->last_applied_default, 1);
 	}
 
 	return rc;
