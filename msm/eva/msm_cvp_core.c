@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/dma-direction.h>
@@ -448,7 +448,7 @@ int msm_cvp_destroy(struct msm_cvp_inst *inst)
 
 	pr_info(CVP_PID_TAG
 		"closed cvp instance: %pK session_id = %d type %d %d\n",
-		current->pid, current->tgid, inst->proc_name, inst, hash32_ptr(inst->session),
+		current->pid, current->tgid, inst->proc_name, inst, inst->sess_id,
 		inst->session_type, core->smem_leak_count);
 	inst->session = (void *)0xdeadbeef;
 	if (atomic_read(&inst->smem_count) > 0) {
@@ -491,7 +491,7 @@ int msm_cvp_close(void *instance)
 
 	pr_info(CVP_PID_TAG
 		"to close instance: %pK session_id = %#x type %d state %d\n",
-		current->pid, current->tgid, inst->proc_name, inst, hash32_ptr(inst->session),
+		current->pid, current->tgid, inst->proc_name, inst, inst->sess_id,
 		inst->session_type, inst->state);
 
 	if (inst->session == 0) {
@@ -510,7 +510,7 @@ int msm_cvp_close(void *instance)
 		if (rc) {
 			dprintk(CVP_ERR,
 				"%s: cleanup instance failed for session %llx (%#x) rc %d\n",
-				__func__, inst, hash32_ptr(inst->session), rc);
+				__func__, inst, inst->sess_id, rc);
 			return -EINVAL;
 		}
 		msm_cvp_session_deinit(inst);
