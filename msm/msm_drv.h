@@ -885,11 +885,13 @@ struct msm_freq_step_list {
  * struct msm_vrr_capabilities - VRR capabilities
  * @vrr_support: True for any VRR supported panel
  * @video_psr_support: True if it is Video hybrid mode panel
+ * @video_mrr_support: True if it is Video MRR feature for VHM panel
  * @arp_support:    True if it is ARP panel
  */
 struct msm_vrr_capabilities {
 	bool vrr_support;
 	bool video_psr_support;
+	bool video_mrr_support;
 	bool arp_support;
 };
 

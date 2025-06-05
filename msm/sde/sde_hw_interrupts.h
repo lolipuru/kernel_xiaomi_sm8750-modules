@@ -63,6 +63,7 @@
  * @SDE_IRQ_TYPE_PROG_LINE:		Programmable Line interrupt for WB
  * @SDE_IRQ_TYPE_RESERVED:		Reserved for expansion
  * @SDE_IRQ_TYPE_INTF_ESYNC_EMSYNC:		INTF ESYNC EMSYNC
+ * @SDE_IRQ_TYPE_INTF_ESYNC_VSYNC:		INTF ESYNC VSYNC
  */
 enum sde_intr_type {
 	SDE_IRQ_TYPE_WB_ROT_COMP,
@@ -105,6 +106,7 @@ enum sde_intr_type {
 	SDE_IRQ_TYPE_WB_PROG_LINE,
 	SDE_IRQ_TYPE_RESERVED,
 	SDE_IRQ_TYPE_INTF_ESYNC_EMSYNC,
+	SDE_IRQ_TYPE_INTF_ESYNC_VSYNC,
 };
 
 struct sde_hw_intr;

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DSI_CATALOG_H_
@@ -200,7 +200,7 @@ void dsi_ctrl_hw_cmn_video_engine_setup(struct dsi_ctrl_hw *ctrl,
 void dsi_ctrl_hw_cmn_setup_avr(struct dsi_ctrl_hw *ctrl, bool enable);
 
 void dsi_ctrl_hw_cmn_set_video_timing(struct dsi_ctrl_hw *ctrl,
-			 struct dsi_mode_info *mode);
+			 struct dsi_host_config *host_config);
 void dsi_ctrl_hw_cmn_set_timing_db(struct dsi_ctrl_hw *ctrl,
 				     bool enable);
 void dsi_ctrl_hw_cmn_cmd_engine_setup(struct dsi_ctrl_hw *ctrl,

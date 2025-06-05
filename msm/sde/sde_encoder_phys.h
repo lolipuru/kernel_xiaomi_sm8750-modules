@@ -34,6 +34,8 @@
 #define MAX_KICKOFF_TIMEOUT_MS                  100000
 
 #define MAX_TE_PROFILE_COUNT		5
+#define IDLE_FPS            1
+#define HZ_240              240
 /**
  * enum sde_enc_split_role - Role this physical encoder will play in a
  *	split-panel configuration, where one panel is master, and others slaves.
@@ -148,6 +150,7 @@ struct sde_encoder_virt_ops {
  *				resources that this phys_enc is using.
  *				Expect no overlap between phys_encs.
  * @control_vblank_irq		Register/Deregister for VBLANK IRQ
+ * @control_esync_vsync_irq	Register/Deregister for esync vsync IRQ
  * @control_empulse_irq:	Register/Deregister for EM pulse IRQ
  * @wait_for_commit_done:	Wait for hardware to have flushed the
  *				current pending frames to hardware
@@ -210,6 +213,7 @@ struct sde_encoder_phys_ops {
 			struct sde_encoder_hw_resources *hw_res,
 			struct drm_connector_state *conn_state);
 	int (*control_vblank_irq)(struct sde_encoder_phys *enc, bool enable);
+	int (*control_esync_vsync_irq)(struct sde_encoder_phys *enc, bool enable);
 	int (*control_empulse_irq)(struct sde_encoder_phys *enc, bool enable);
 	int (*wait_for_commit_done)(struct sde_encoder_phys *phys_enc);
 	int (*wait_for_tx_complete)(struct sde_encoder_phys *phys_enc);
@@ -257,6 +261,7 @@ struct sde_encoder_phys_ops {
  * @INTR_IDX_UNDERRUN: Underrun interrupt for video and cmd mode panel
  * @INTR_IDX_WD_TIMER: Watchdog interrupt
  * @INTR_IDX_ESYNC_EMSYNC:   Esync interrupt for video mode panel.
+ * @INTR_IDX_ESYNC_VSYNC:   Esync Vsync interrupt for video hybrid mode panel.
  * @INTR_IDX_CTL_START:Control start interrupt to indicate the frame start
  * @INTR_IDX_CTL_DONE: Control done interrupt indicating the control path being idle
  * @INTR_IDX_RDPTR:    Readpointer done interrupt for cmd mode panel
@@ -282,6 +287,7 @@ enum sde_intr_idx {
 	INTR_IDX_UNDERRUN,
 	INTR_IDX_WD_TIMER,
 	INTR_IDX_ESYNC_EMSYNC,
+	INTR_IDX_ESYNC_VSYNC,
 	INTR_IDX_CTL_START,
 	INTR_IDX_CTL_DONE,
 	INTR_IDX_RDPTR,

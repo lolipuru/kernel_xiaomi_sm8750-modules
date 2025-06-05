@@ -1644,7 +1644,8 @@ static void _sde_encoder_update_vsync_source(struct sde_encoder_virt *sde_enc,
 	sde_conn = to_sde_connector(sde_enc->phys_encs[0]->connector);
 
 	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_CMD_MODE) ||
-			disp_info->vrr_caps.arp_support) {
+			disp_info->vrr_caps.arp_support ||
+			disp_info->vrr_caps.video_psr_support) {
 
 		if (disp_info->is_te_using_watchdog_timer || sde_conn->panel_dead)
 			vsync_source = SDE_VSYNC_SOURCE_WD_TIMER_4 + sde_enc->te_source;
@@ -4728,7 +4729,10 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 			continue;
 
 		if (sde_enc->disp_info.vrr_caps.vrr_support) {
-			if (phys->ops.control_empulse_irq)
+			if (sde_enc->disp_info.vrr_caps.video_mrr_support &&
+					phys->ops.control_esync_vsync_irq)
+				phys->ops.control_esync_vsync_irq(phys, enable);
+			else if (phys->ops.control_empulse_irq)
 				phys->ops.control_empulse_irq(phys, enable);
 		} else {
 			if (phys->ops.control_vblank_irq)
@@ -6279,7 +6283,8 @@ void sde_encoder_handle_self_refresh_video_psr(struct sde_encoder_phys *phys_enc
 	}
 	phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_SCHEDULED;
 	dpu_min_ns = (SEC_TO_NS/vrr_cfg->curr_freq_pattern->freq_stepping_seq[0])*1000;
-	avr_step_in_ns = SEC_TO_NS/sde_enc->mode_info.avr_step_fps;
+	/* Wake up the PSR thread 4.1ms before the vsync */
+	avr_step_in_ns = SEC_TO_NS/HZ_240;
 	dpu_min_trigger = dpu_min_ns - avr_step_in_ns + DEVIATION_NS;
 	SDE_EVT32(dpu_min_trigger>>32, dpu_min_trigger);
 
@@ -6935,6 +6940,25 @@ void sde_encoder_get_transfer_time(struct drm_encoder *drm_enc,
 	*transfer_time_us = info->mdp_transfer_time_us;
 }
 
+static u32 sde_encoder_get_idle_fps(struct sde_encoder_virt *sde_enc)
+{
+	struct msm_freq_step_pattern *curr_freq_pattern;
+	struct sde_encoder_phys *phys_enc;
+	u32 fps;
+
+	if (!sde_enc->disp_info.vrr_caps.video_psr_support)
+		return sde_enc->mode_info.frame_rate;
+
+	phys_enc = sde_enc->cur_master;
+	if (!phys_enc || !phys_enc->sde_vrr_cfg.curr_freq_pattern)
+		return IDLE_FPS;
+
+	curr_freq_pattern = phys_enc->sde_vrr_cfg.curr_freq_pattern;
+	fps = curr_freq_pattern->freq_stepping_seq[curr_freq_pattern->length - 1] / 1000;
+
+	return fps;
+}
+
 u32 sde_encoder_helper_get_kickoff_timeout_ms(struct drm_encoder *drm_enc)
 {
 	struct drm_encoder *src_enc = drm_enc;
@@ -6961,7 +6985,7 @@ u32 sde_encoder_helper_get_kickoff_timeout_ms(struct drm_encoder *drm_enc)
 		return MAX_KICKOFF_TIMEOUT_MS;
 
 	sde_enc = to_sde_encoder_virt(src_enc);
-	fps = sde_enc->mode_info.frame_rate;
+	fps = sde_encoder_get_idle_fps(sde_enc);
 
 	if (!fps || fps >= DEFAULT_TIMEOUT_FPS_THRESHOLD)
 		return DEFAULT_KICKOFF_TIMEOUT_MS;
