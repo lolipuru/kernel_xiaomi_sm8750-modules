@@ -447,7 +447,6 @@ static int32_t cam_sensor_pkt_parse(struct cam_sensor_ctrl_t *s_ctrl,
 		if (s_ctrl->streamoff_count > 0) {
 			delete_request(&i2c_data->streamoff_settings);
 			s_ctrl->streamoff_count = 0;
-			s_ctrl->is_stream_off_pkt_updated = true;
 		}
 
 		s_ctrl->streamoff_count = s_ctrl->streamoff_count + 1;
@@ -1247,8 +1246,7 @@ int cam_sensor_stream_off(struct cam_sensor_ctrl_t *s_ctrl)
 		goto end;
 	}
 
-	if ((!s_ctrl->stream_off_on_flush ||
-		s_ctrl->is_stream_off_pkt_updated) &&
+	if (!s_ctrl->stream_off_on_flush &&
 		s_ctrl->i2c_data.streamoff_settings.is_settings_valid &&
 		(s_ctrl->i2c_data.streamoff_settings.request_id == 0)) {
 		rc = cam_sensor_apply_settings(s_ctrl, 0,
@@ -1263,7 +1261,6 @@ int cam_sensor_stream_off(struct cam_sensor_ctrl_t *s_ctrl)
 	s_ctrl->last_flush_req = 0;
 	s_ctrl->sensor_state = CAM_SENSOR_ACQUIRE;
 	s_ctrl->stream_off_on_flush = false;
-	s_ctrl->is_stream_off_pkt_updated = false;
 	memset(s_ctrl->sensor_res, 0, sizeof(s_ctrl->sensor_res));
 
 	CAM_GET_TIMESTAMP(ts);
@@ -1509,7 +1506,6 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		s_ctrl->num_batched_frames = 0;
 		s_ctrl->last_applied_done_timestamp = 0;
 		s_ctrl->stream_off_on_flush = false;
-		s_ctrl->is_stream_off_pkt_updated = false;
 		memset(s_ctrl->sensor_res, 0, sizeof(s_ctrl->sensor_res));
 		CAM_INFO(CAM_SENSOR,
 			"CAM_ACQUIRE_DEV Success for %s sensor_id:0x%x,sensor_slave_addr:0x%x",
@@ -1580,7 +1576,6 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		s_ctrl->last_flush_req = 0;
 		s_ctrl->last_applied_done_timestamp = 0;
 		s_ctrl->stream_off_on_flush = false;
-		s_ctrl->is_stream_off_pkt_updated = false;
 	}
 		break;
 	case CAM_QUERY_CAP: {
