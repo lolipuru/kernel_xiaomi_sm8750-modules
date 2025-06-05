@@ -24782,6 +24782,8 @@ typedef enum wake_reason_e {
     WOW_REASON_C2C_DETECT_EVENT,
     /* wake up the host in case of TDLS packet reception */
     WOW_REASON_TDLS_PACKET_RX,
+    /* wake up the host when USD is enabled */
+    WOW_REASON_USD,
 
 
     /* add new WOW_REASON_ defs before this line */
@@ -42800,6 +42802,18 @@ typedef enum {
      */
     WMI_ROAM_PARAM_ROAM_LATENCY_OPTIMIZATION_BITMAP = 11,
 
+    /*
+     * Roam param to add RSSI penalty for non-6GHz Candidate AP
+     * during Roam Scan in case current connected AP is 6GHz and
+     * cand AP is non-6GHz.
+     * This RSSI penalty value (in dB units) for non-6GHz candidate AP
+     * will be configured via ini roam_rssi_delta_from_6ghz_to_non_6ghz.
+     * This configured RSSI penalty value will only be applicable for non-6GHz
+     * Candidate AP when the STA is connected to 6GHz Band AP and will
+     * not impact if STA is connected to non-6GHz Band AP
+     */
+    WMI_ROAM_PARAM_ROAM_RSSI_PENALTY_FOR_NON_6GHZ_CAND_AP = 12,
+
 
     /*=== END ROAM_PARAM_PROTOTYPE SECTION ===*/
 } WMI_ROAM_PARAM;
@@ -50212,6 +50226,8 @@ typedef struct {
      * CHAIN INDEX where WMI is sent to HOST to start inferencing
      */
     A_UINT32 tx_chain_idx;
+    /* req_id: to distinguish pdev_power_boost event instances */
+    A_UINT32 req_id;
 } wmi_pdev_power_boost_event_fixed_param;
 
 typedef enum {
@@ -50264,6 +50280,8 @@ typedef struct {
      * training, in units of 1/4 (0.25dBm) steps.
      */
     A_INT32 tx_mask_margin;
+    /* req_id: to distinguish pdev_power_boost cmd instances */
+    A_UINT32 req_id;
 } wmi_pdev_power_boost_cmd_fixed_param;
 
 typedef struct {
