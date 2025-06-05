@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/file.h>
@@ -61,6 +61,7 @@ static int load_app(struct qseecom_compat_context *cxt, const char *app_name)
 	char dist_name[MAX_FW_APP_SIZE] = {0};
 	size_t dist_name_len = 0;
 	struct qtee_shm shm = {0};
+	uint32_t arch_type = 0;
 
 	if (strnlen(app_name, MAX_FW_APP_SIZE) == MAX_FW_APP_SIZE) {
 		pr_err("The app_name (%s) with length %zu is not valid\n",
@@ -69,7 +70,7 @@ static int load_app(struct qseecom_compat_context *cxt, const char *app_name)
 	}
 
 	ret = IQSEEComCompatAppLoader_lookupTA(cxt->app_loader,
-		app_name, strlen(app_name), &cxt->app_controller);
+		app_name, strlen(app_name), &cxt->app_controller, &arch_type);
 	if (!ret) {
 		pr_info("app %s exists\n", app_name);
 		return ret;
