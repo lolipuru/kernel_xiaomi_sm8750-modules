@@ -191,3 +191,10 @@ config CNSS2_FMD_FEATURE_ENABLE
 	depends on CNSS2
 	help
 	  This enables the fmd functionality on cnss2 driver
+
+config MHI_BUF_LEN
+	int "Mhi buffer size"
+	default "32768"
+	depends on CNSS2
+	help
+	  If configured, CNSS platform driver set mhi buffer size with external value.
