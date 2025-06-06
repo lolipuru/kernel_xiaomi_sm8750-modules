@@ -254,6 +254,7 @@ static ssize_t cnss_dev_boot_debug_write(struct file *fp,
 	char *sptr, *token;
 	const char *delim = " ";
 	int ret = 0;
+	struct cnss_xdump_cap *xdump_bt_cap;
 
 	if (!plat_priv)
 		return -ENODEV;
@@ -301,6 +302,19 @@ static ssize_t cnss_dev_boot_debug_write(struct file *fp,
 		cnss_wlan_hw_disable_check(plat_priv);
 	} else if (sysfs_streq(cmd, "dev_enable")) {
 		cnss_wlan_hw_enable();
+	} else if (sysfs_streq(cmd, "xdump_bt_over_wl")) {
+		xdump_bt_cap = kzalloc(sizeof(*xdump_bt_cap), GFP_KERNEL);
+		if (!xdump_bt_cap)
+			return -ENOMEM;
+
+		xdump_bt_cap->wl_over_bt = 1;
+		xdump_bt_cap->bt_over_wl = 1;
+		cnss_driver_event_post(plat_priv,
+				       CNSS_DRIVER_EVENT_XDUMP_BT_ARRIVAL,
+				       0, xdump_bt_cap);
+		cnss_driver_event_post(plat_priv,
+				       CNSS_DRIVER_EVENT_XDUMP_BT_OVER_WL_REQ,
+				       0, NULL);
 	} else {
 		pci_priv = plat_priv->bus_priv;
 		if (!pci_priv)
@@ -346,6 +360,7 @@ static int cnss_dev_boot_debug_show(struct seq_file *s, void *data)
 	seq_puts(s, "shutdown: full power off sequence to shutdown device\n");
 	seq_puts(s, "assert: trigger firmware assert\n");
 	seq_puts(s, "set_cbc_done: Set cold boot calibration done status\n");
+	seq_puts(s, "xdump_bt_over_wl: request to collect BT dump over WLAN\n");
 	seq_puts(s, "\npdc_update usage:");
 	seq_puts(s, "1. echo pdc_update {class: wlan_pdc ss: <pdc_ss>, res: <vreg>.<mode>, <seq>: <val>} > <debugfs_path>/cnss/dev_boot\n");
 	seq_puts(s, "2. echo pdc_update {class: wlan_pdc ss: <pdc_ss>, res: pdc, enable: <val>} > <debugfs_path>/cnss/dev_boot\n");
