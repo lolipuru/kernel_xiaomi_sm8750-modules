@@ -393,6 +393,19 @@ static void _sde_enc_phys_wb_get_out_resolution(struct drm_crtc_state *crtc_stat
 		swap(*out_width, *out_height);
 }
 
+static void _sde_encoder_phys_wb_get_pu_roi(struct sde_crtc_state *cstate,
+	struct sde_connector_state *c_conn_state, u32 ds_tap_pt,
+	struct sde_rect *pu_roi)
+{
+	if (!cstate || !c_conn_state || !pu_roi)
+		return;
+
+	if (ds_tap_pt == CAPTURE_MIXER_OUT)
+		sde_kms_rect_merge_rectangles(&cstate->user_roi_list, pu_roi);
+	else
+		sde_kms_rect_merge_rectangles(&c_conn_state->rois, pu_roi);
+}
+
 static void _sde_encoder_phys_wb_setup_cdp(struct sde_encoder_phys *phys_enc,
 		struct sde_hw_wb_cfg *wb_cfg)
 {
@@ -424,28 +437,38 @@ static void _sde_encoder_phys_wb_setup_roi(struct sde_encoder_phys *phys_enc,
 	struct drm_crtc_state *crtc_state = wb_enc->crtc->state;
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
 	struct sde_rect pu_roi = {0,};
+	struct sde_connector_state *c_conn_state;
+	u32 ds_tap_pt = sde_crtc_get_property(cstate, CRTC_PROP_CAPTURE_OUTPUT);
+	bool crop_enabled = false;
 
 	if (!hw_wb->ops.setup_roi)
 		return;
 
 	if (hw_wb->ops.setup_crop && phys_enc->in_clone_mode) {
+	c_conn_state = to_sde_connector_state(phys_enc->connector->state);
+
 		wb_cfg->crop.x = wb_cfg->roi.x;
 		wb_cfg->crop.y = wb_cfg->roi.y;
 
-		if (cstate->user_roi_list.num_rects) {
-			sde_kms_rect_merge_rectangles(&cstate->user_roi_list, &pu_roi);
+		if (cstate->user_roi_list.num_rects || c_conn_state->rois.num_rects) {
+			_sde_encoder_phys_wb_get_pu_roi(cstate, c_conn_state, ds_tap_pt, &pu_roi);
 
 			if ((wb_cfg->roi.w != pu_roi.w) || (wb_cfg->roi.h != pu_roi.h)) {
 				/* offset cropping region to PU region */
 				wb_cfg->crop.x = wb_cfg->crop.x - pu_roi.x;
 				wb_cfg->crop.y = wb_cfg->crop.y - pu_roi.y;
 				hw_wb->ops.setup_crop(hw_wb, wb_cfg, true);
+				crop_enabled = true;
 			} else {
 				hw_wb->ops.setup_crop(hw_wb, wb_cfg, false);
 			}
+			/* Align ROI to top left corner, when PU is enabled */
+			wb_cfg->roi.x = 0;
+			wb_cfg->roi.y = 0;
 		} else if (((wb_cfg->roi.w != out_width) || (wb_cfg->roi.h != out_height))
 				&& !phys_enc->quad_cwb_roi) {
 			hw_wb->ops.setup_crop(hw_wb, wb_cfg, true);
+			crop_enabled = true;
 		} else {
 			hw_wb->ops.setup_crop(hw_wb, wb_cfg, false);
 		}
@@ -457,7 +480,9 @@ static void _sde_encoder_phys_wb_setup_roi(struct sde_encoder_phys *phys_enc,
 		}
 
 		SDE_EVT32(DRMID(phys_enc->parent), WBID(wb_enc), wb_cfg->crop.x, wb_cfg->crop.y,
-				pu_roi.x, pu_roi.y, pu_roi.w, pu_roi.h);
+				pu_roi.x, pu_roi.y, pu_roi.w, pu_roi.h,
+				wb_cfg->roi.x, wb_cfg->roi.y, wb_cfg->roi.w, wb_cfg->roi.h,
+				crop_enabled, ds_tap_pt);
 	}
 
 	hw_wb->ops.setup_roi(hw_wb, wb_cfg);
@@ -993,10 +1018,14 @@ static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
 {
 	struct drm_framebuffer *fb;
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
+	struct sde_connector_state *c_conn_state;
 	struct sde_rect wb_roi = {0,}, pu_roi = {0,};
-	u32  out_width = 0, out_height = 0;
+	u32  out_width = 0, out_height = 0, ds_tap_pt;
 	const struct sde_format *fmt;
 	int num_lm, prog_line, ret = 0;
+
+	ds_tap_pt = sde_crtc_get_property(cstate, CRTC_PROP_CAPTURE_OUTPUT);
+	c_conn_state = to_sde_connector_state(conn_state);
 
 	fb = sde_wb_connector_state_get_output_fb(conn_state);
 	if (!fb) {
@@ -1094,11 +1123,21 @@ static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
 	}
 
 	/* validate wb roi against pu rect */
-	if (cstate->user_roi_list.num_rects) {
-		sde_kms_rect_merge_rectangles(&cstate->user_roi_list, &pu_roi);
+	if (cstate->user_roi_list.num_rects || c_conn_state->rois.num_rects) {
+		_sde_encoder_phys_wb_get_pu_roi(cstate, c_conn_state, ds_tap_pt, &pu_roi);
+
 		if (wb_roi.w > pu_roi.w || wb_roi.h > pu_roi.h) {
 			SDE_ERROR("invalid wb roi with pu [%dx%d vs %dx%d]\n",
 					wb_roi.w, wb_roi.h, pu_roi.w, pu_roi.h);
+			return -EINVAL;
+		}
+
+		if (wb_roi.y < pu_roi.y || wb_roi.x < pu_roi.x ||
+			wb_roi.y + wb_roi.h > pu_roi.y + pu_roi.h ||
+			wb_roi.x + wb_roi.w > pu_roi.x + pu_roi.w) {
+			SDE_ERROR("invalid wb roi with pu [%dx%dx%dx%d vs %dx%dx%dx%d]\n",
+					wb_roi.x, wb_roi.y, wb_roi.w, wb_roi.h,
+					pu_roi.x, pu_roi.y, pu_roi.w, pu_roi.h);
 			return -EINVAL;
 		}
 	}

@@ -3929,7 +3929,7 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 			scaler_v2.enable, scaler_v2.dir_en, scaler_v2.de.enable,
 			scaler_v2.src_width[0], scaler_v2.src_height[0],
 			scaler_v2.dst_width, scaler_v2.dst_height);
-		SDE_EVT32_VERBOSE(DRMID(&sde_crtc->base),
+		SDE_EVT32(DRMID(&sde_crtc->base),
 			scaler_v2.enable, scaler_v2.dir_en, scaler_v2.de.enable,
 			scaler_v2.src_width[0], scaler_v2.src_height[0],
 			scaler_v2.dst_width, scaler_v2.dst_height);
@@ -3938,7 +3938,7 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 			i, ds_cfg_usr->index, ds_cfg_usr->flags,
 			ds_cfg_usr->lm_width, ds_cfg_usr->lm_height,
 			ds_cfg_usr->merge_mode);
-		SDE_EVT32_VERBOSE(DRMID(&sde_crtc->base), i, ds_cfg_usr->index,
+		SDE_EVT32(DRMID(&sde_crtc->base), i, ds_cfg_usr->index,
 			ds_cfg_usr->flags, ds_cfg_usr->lm_width,
 			ds_cfg_usr->lm_height, ds_cfg_usr->merge_mode);
 	}
