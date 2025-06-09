@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <asm/memory.h>
@@ -1755,6 +1755,8 @@ static int __interface_dsp_queues_init(struct iris_hfi_device *dev)
 	dma_addr_t dma_handle;
 	dma_addr_t iova;
 	struct context_bank_info *cb;
+	int count = 0;
+	const int max_retries = 10;
 
 	q_size = ALIGN(QUEUE_SIZE, SZ_1M);
 	mem_data = &dev->dsp_iface_q_table.mem_data;
@@ -1764,9 +1766,21 @@ static int __interface_dsp_queues_init(struct iris_hfi_device *dev)
 		cvp_dsp_init_hfi_queue_hdr(dev);
 		return 0;
 	}
-	/* Allocate dsp queues from CDSP device memory */
-	kvaddr = dma_alloc_coherent(dev->res->mem_cdsp.dev, q_size,
+
+	while (count < max_retries) {
+		/* Allocate dsp queues from CDSP device memory */
+		kvaddr = dma_alloc_coherent(dev->res->mem_cdsp.dev, q_size,
 				&dma_handle, GFP_KERNEL);
+		if (IS_ERR_OR_NULL(kvaddr)) {
+			dprintk(CVP_ERR, "%s: failed dma allocation, retry %d\n",
+					__func__, count);
+			usleep_range(100000, 105000);
+			count++;
+		} else {
+			dprintk(CVP_INFO, "%s: DMA Allocation success\n", __func__);
+			break;
+		}
+	}
 	if (IS_ERR_OR_NULL(kvaddr)) {
 		dprintk(CVP_ERR, "%s: failed dma allocation\n", __func__);
 		goto fail_dma_alloc;
