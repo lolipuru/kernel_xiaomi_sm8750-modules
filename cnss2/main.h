@@ -339,6 +339,8 @@ enum cnss_driver_event_type {
 	CNSS_DRIVER_EVENT_QDSS_TRACE_REQ_DATA,
 	CNSS_DRIVER_EVENT_RESUME_POST_SOL,
 	CNSS_DRIVER_EVENT_XO_TRIM_IND,
+	CNSS_DRIVER_EVENT_XDUMP_BT_ARRIVAL,
+	CNSS_DRIVER_EVENT_XDUMP_BT_OVER_WL_REQ,
 	CNSS_DRIVER_EVENT_MAX,
 };
 
@@ -532,6 +534,44 @@ struct cnss_xo_trim_config {
 	u8 trim_val;
 };
 
+/*
+ * struct cnss_xdump_cap - Capabilities for WLAN/BT cross-module dump
+ * @indicated: Indicates whether the capabilities has been reported
+ * @wl_over_bt: Supports collecting WLAN dump over BT UART
+ * @bt_over_wl: Supports collecting BT dump over WLAN PCIe
+ */
+struct cnss_xdump_cap {
+	u8 indicated : 1;
+	u8 wl_over_bt : 1;
+	u8 bt_over_wl : 1;
+};
+
+/**
+ * struct cnss_xdump_helper - Configurations for WLAN/BT cross-module dump
+ * @user_cap: user configured capability
+ * @wl_cap: WLAN capability
+ * @bt_cap: BT capability
+ * @wl_over_bt_enabled: Indicates whether collecting BT dump over WLAN
+ * is enabled
+ * @bt_over_wlan_enabled: Indicates whether collecting WLAN dump over BT
+ * is enabled
+ * @dumping_wl_over_bt: Indicates whether collecting BT dump over WLAN
+ * is in progress
+ * @dumping_bt_over_wl: Indicates whether collecting WLAN dump over BT
+ * is in progress
+ * @wl_over_bt_complete: completion for collecting WLAN dump over BT
+ */
+struct cnss_xdump_helper {
+	struct cnss_xdump_cap user_cap;
+	struct cnss_xdump_cap wl_cap;
+	struct cnss_xdump_cap bt_cap;
+	u8 wl_over_bt_enabled;
+	u8 bt_over_wlan_enabled;
+	u8 dumping_wl_over_bt;
+	u8 dumping_bt_over_wl;
+	struct completion wl_over_bt_complete;
+};
+
 struct cnss_plat_data {
 	struct platform_device *plat_dev;
 	void *bus_priv;
@@ -693,6 +733,7 @@ struct cnss_plat_data {
 	bool pm_suspend_in_progress;
 	struct notifier_block pm_notifier;
 	struct cnss_xo_trim_config xo_trim_conf;
+	struct cnss_xdump_helper xdump_helper;
 };
 
 #if IS_ENABLED(CONFIG_ARCH_QCOM)
@@ -815,4 +856,9 @@ int cnss_fw_managed_domain_attach(struct cnss_plat_data *plat_priv);
 void cnss_fw_managed_domain_detach(struct cnss_plat_data *plat_priv);
 void cnss_pm_notifier_init(struct cnss_plat_data *plat_priv);
 void cnss_pm_notifier_deinit(struct cnss_plat_data *plat_priv);
+int cnss_xdump_wl_over_bt_req(struct cnss_plat_data *plat_priv);
+void cnss_xdump_wl_over_bt_complete(struct cnss_plat_data *plat_priv,
+				    s32 result);
+int cnss_xdump_update_wl_cap(struct cnss_plat_data *plat_priv,
+			     u8 wl_over_bt, u8 bt_over_wl);
 #endif /* _CNSS_MAIN_H */

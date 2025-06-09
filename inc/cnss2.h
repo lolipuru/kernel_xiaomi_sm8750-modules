@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _NET_CNSS2_H
@@ -223,6 +223,8 @@ enum cnss_fw_caps {
 	CNSS_FW_CAP_DIRECT_LINK_SUPPORT,
 	CNSS_FW_CAP_AUX_UC_SUPPORT,
 	CNSS_FW_CAP_CALDB_SEG_DDR_SUPPORT,
+	CNSS_FW_CAP_WLAN_DUMP_OVER_BT_SUPPORT,
+	CNSS_FW_CAP_BT_DUMP_OVER_WLAN_SUPPORT,
 };
 
 enum cnss_remote_mem_type {

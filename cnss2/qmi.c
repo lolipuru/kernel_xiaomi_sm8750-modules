@@ -647,10 +647,10 @@ int cnss_wlfw_tgt_cap_send_sync(struct cnss_plat_data *plat_priv)
 				QMI_WLFW_WLAN_DUMP_OVER_BT_SUPPORT_V01);
 		bt_over_wl = !!(resp->fw_caps &
 				QMI_WLFW_BT_DUMP_OVER_WLAN_SUPPORT_V01);
-		cnss_pr_dbg("FW aux uc support capability: %d, wl_over_bt %d, bt_over_wl %d\n",
-			    plat_priv->fw_aux_uc_support,
-			    wl_over_bt, bt_over_wl);
+		cnss_pr_dbg("FW aux uc support capability: %d\n",
+			    plat_priv->fw_aux_uc_support);
 
+		cnss_xdump_update_wl_cap(plat_priv, wl_over_bt, bt_over_wl);
 		plat_priv->fw_caps = resp->fw_caps;
 	}
 

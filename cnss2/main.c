@@ -89,6 +89,7 @@
 #define CNSS_TIME_SYNC_PERIOD_INVALID	0xFFFFFFFF
 #define CPUMASK_ARRAY_SIZE		2
 #define MAX_SYSFS_USER_COMMAND_SIZE_LENGTH (5)
+#define XDUMP_TIMEOUT_MS	20000
 
 enum cnss_cal_db_op {
 	CNSS_CAL_DB_UPLOAD,
@@ -99,6 +100,16 @@ enum cnss_cal_db_op {
 enum cnss_recovery_type {
 	CNSS_WLAN_RECOVERY = 0x1,
 	CNSS_PCSS_RECOVERY = 0x2,
+};
+
+/**
+ * enum cnss_user_config_types - Types of cnss user_config
+ * @CNSS_USER_CONFIG_XDUMP_WL_OVER_BT: Collect WLAN dump over BT UART
+ * @CNSS_USER_CONFIG_XDUMP_BT_OVER_WL: Collect BT dump over WLAN PCIe
+ */
+enum cnss_user_config_types {
+	CNSS_USER_CONFIG_XDUMP_WL_OVER_BT,
+	CNSS_USER_CONFIG_XDUMP_BT_OVER_WL,
 };
 
 #ifdef CONFIG_CNSS_SUPPORT_DUAL_DEV
@@ -715,6 +726,14 @@ bool cnss_get_fw_cap(struct device *dev, enum cnss_fw_caps fw_cap)
 	case CNSS_FW_CAP_CALDB_SEG_DDR_SUPPORT:
 		is_supported = !!(plat_priv->fw_caps &
 				  QMI_WLFW_CALDB_SEG_DDR_SUPPORT_V01);
+		break;
+	case CNSS_FW_CAP_WLAN_DUMP_OVER_BT_SUPPORT:
+		is_supported = !!(plat_priv->fw_caps &
+				  QMI_WLFW_WLAN_DUMP_OVER_BT_SUPPORT_V01);
+		break;
+	case CNSS_FW_CAP_BT_DUMP_OVER_WLAN_SUPPORT:
+		is_supported = !!(plat_priv->fw_caps &
+				  QMI_WLFW_BT_DUMP_OVER_WLAN_SUPPORT_V01);
 		break;
 	default:
 		cnss_pr_err("Invalid FW Capability: 0x%x\n", fw_cap);
@@ -1453,6 +1472,10 @@ static char *cnss_driver_event_to_str(enum cnss_driver_event_type type)
 		return "RESUME_POST_SOL";
 	case CNSS_DRIVER_EVENT_XO_TRIM_IND:
 		return "XO_TRIM_IND";
+	case CNSS_DRIVER_EVENT_XDUMP_BT_ARRIVAL:
+		return "XDUMP_BT_ARRIVAL";
+	case CNSS_DRIVER_EVENT_XDUMP_BT_OVER_WL_REQ:
+		return "XDUMP_BT_OVER_WL_REQ";
 	case CNSS_DRIVER_EVENT_MAX:
 		return "EVENT_MAX";
 	}
@@ -2236,6 +2259,92 @@ static void cnss_deinit_sol_gpio(struct cnss_plat_data *plat_priv)
 	cnss_deinit_dev_sol_gpio(plat_priv);
 }
 
+/**
+ * cnss_xdump_wl_over_bt_req - Request to collect WLAN dump over BT
+ * @plat_priv: cnss platform data
+ *
+ * This function checks the current status and send netlink message to
+ * BT to request collecting WLAN dump over BT UART, and wait for the
+ * response(with timeout XDUMP_TIMEOUT_MS).
+ *
+ * Return: 0 on success, errno otherwise
+ */
+int cnss_xdump_wl_over_bt_req(struct cnss_plat_data *plat_priv)
+{
+	int ret;
+	struct cnss_xdump_helper *xdump_helper = &plat_priv->xdump_helper;
+
+	if (!xdump_helper->wl_over_bt_enabled) {
+		cnss_pr_info("XDUMP: wl_over_bt NOT enabled, bt_cap(%d: %d) wl_cap(%d: %d) user_config(%d: %d)\n",
+			     plat_priv->xdump_helper.bt_cap.indicated,
+			     plat_priv->xdump_helper.bt_cap.wl_over_bt,
+			     plat_priv->xdump_helper.wl_cap.indicated,
+			     plat_priv->xdump_helper.wl_cap.wl_over_bt,
+			     plat_priv->xdump_helper.user_cap.indicated,
+			     plat_priv->xdump_helper.user_cap.wl_over_bt);
+		return -EOPNOTSUPP;
+	}
+
+	if (test_bit(CNSS_IN_REBOOT, &plat_priv->driver_state) ||
+	    test_bit(CNSS_IN_PANIC, &plat_priv->driver_state)) {
+		cnss_pr_info("Skip in reboot/panic\n");
+		return -EBUSY;
+	}
+
+	if (!test_bit(CNSS_FW_READY, &plat_priv->driver_state)) {
+		/* SRAM not valid before FW_READY phase */
+		cnss_pr_info("FW not ready\n");
+		return -ENODEV;
+	}
+
+	if (xdump_helper->dumping_bt_over_wl) {
+		cnss_pr_info("Collect BT dump over WLAN is in progress\n");
+		return -EINVAL;
+	}
+
+	if (xdump_helper->dumping_wl_over_bt) {
+		cnss_pr_info("Collect WLAN dump over BT is in progress\n");
+		return -EALREADY;
+	}
+
+	reinit_completion(&xdump_helper->wl_over_bt_complete);
+	xdump_helper->dumping_wl_over_bt = 1;
+
+	ret = cnss_genl_send_xdump_wl_over_bt_req();
+	if (ret)
+		goto out;
+
+	ret = wait_for_completion_timeout(&xdump_helper->wl_over_bt_complete,
+					  msecs_to_jiffies(XDUMP_TIMEOUT_MS));
+	if (!ret)
+		cnss_pr_err("Timeout waiting for xdump complete\n");
+
+out:
+	xdump_helper->dumping_wl_over_bt = 0;
+	return ret;
+}
+
+/**
+ * cnss_xdump_wl_over_bt_complete - Complete the completion for collecting
+ * WLAN dump over BT
+ * @plat_priv: cnss platform data
+ * @result: result of the operation for collecting WLAN dump over BT
+ *
+ * Return: None
+ */
+void cnss_xdump_wl_over_bt_complete(struct cnss_plat_data *plat_priv,
+				    s32 result)
+{
+	if (!plat_priv->xdump_helper.dumping_wl_over_bt) {
+		cnss_pr_info("Collect WLAN dump over BT is NOT in progress\n");
+		return;
+	}
+
+	cnss_pr_info("Collect WLAN dump over BT completed with result %d\n",
+		     result);
+	complete(&plat_priv->xdump_helper.wl_over_bt_complete);
+}
+
 #if IS_ENABLED(CONFIG_MSM_SUBSYSTEM_RESTART)
 static int cnss_subsys_powerup(const struct subsys_desc *subsys_desc)
 {
@@ -2434,6 +2543,7 @@ static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 			    enum cnss_recovery_reason reason)
 {
 	int ret;
+	bool collect_wl_dump_over_bt = false;
 
 	plat_priv->recovery_count++;
 
@@ -2471,6 +2581,10 @@ static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 				  &plat_priv->driver_state);
 			return 0;
 		}
+
+		/* Link recovery fail */
+		cnss_pr_err("Link recovery fail\n");
+		collect_wl_dump_over_bt = true;
 		break;
 	case CNSS_REASON_RDDM:
 		ret = cnss_bus_collect_dump_info(plat_priv, false);
@@ -2479,18 +2593,29 @@ static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 		 */
 		if (ret == -EAGAIN)
 			return 0;
+
+		/* RDDM fail */
+		if (ret)
+			collect_wl_dump_over_bt = true;
+
 		break;
 	case CNSS_REASON_FATAL_ERROR:
 		cnss_bus_soc_reset_cause_reg_dump(plat_priv);
 		break;
 	case CNSS_REASON_DEFAULT:
+		break;
 	case CNSS_REASON_TIMEOUT:
+		collect_wl_dump_over_bt = true;
 		break;
 	default:
 		cnss_pr_err("Unsupported recovery reason: %s(%d)\n",
 			    cnss_recovery_reason_to_str(reason), reason);
 		break;
 	}
+
+	if (collect_wl_dump_over_bt)
+		cnss_xdump_wl_over_bt_req(plat_priv);
+
 	cnss_bus_device_crashed(plat_priv);
 
 	return 0;
@@ -3115,6 +3240,233 @@ out:
 	return cnss_wlfw_xo_trim_result_send_sync(plat_priv, ret);
 }
 
+/*
+ * cnss_xdump_update_config - Update XDUMP configuration
+ * @plat_priv: cnss platform data
+ *
+ * This function updates bt_over_wlan_enabled and wl_over_bt_enabled
+ * according to current user_config and WLAN/BT capabilities.
+ *
+ * Return: None
+ */
+static void
+cnss_xdump_update_config(struct cnss_plat_data *plat_priv)
+{
+	struct cnss_xdump_helper *xdump_helper = &plat_priv->xdump_helper;
+	struct cnss_xdump_cap *user_cap = &xdump_helper->user_cap;
+	struct cnss_xdump_cap *wl_cap = &xdump_helper->wl_cap;
+	struct cnss_xdump_cap *bt_cap = &xdump_helper->bt_cap;
+
+	xdump_helper->wl_over_bt_enabled =
+		(user_cap->wl_over_bt &&
+		 bt_cap->indicated && bt_cap->wl_over_bt &&
+		 wl_cap->indicated && wl_cap->wl_over_bt) ? 1 : 0;
+	xdump_helper->bt_over_wlan_enabled =
+		(user_cap->bt_over_wl &&
+		 bt_cap->indicated && bt_cap->bt_over_wl &&
+		 wl_cap->indicated && wl_cap->bt_over_wl) ? 1 : 0;
+	cnss_pr_info("XDUMP(%d - %d): wl_cap(%d: %d - %d) bt_cap(%d: %d - %d) user_cap(%d: %d - %d)\n",
+		     xdump_helper->wl_over_bt_enabled,
+		     xdump_helper->bt_over_wlan_enabled,
+		     wl_cap->indicated, wl_cap->bt_over_wl, wl_cap->wl_over_bt,
+		     bt_cap->indicated, bt_cap->bt_over_wl, bt_cap->wl_over_bt,
+		     user_cap->indicated, user_cap->wl_over_bt,
+		     user_cap->bt_over_wl);
+}
+
+/**
+ * cnss_xdump_update_user_cap - Updates XDUMP configuration when user sets it
+ * WLAN capability from target
+ * @plat_priv: cnss platform data
+ * @wl_over_bt: Indicates whether collecting WLAN dump over BT is enabled
+ * @bt_over_wl: Indicates whether collecting BT dump over WLAN is enabled
+ *
+ * Return: None
+ */
+static void cnss_xdump_update_user_cap(struct cnss_plat_data *plat_priv,
+				       u8 wl_over_bt, u8 bt_over_wl)
+{
+	struct cnss_xdump_cap *user_cap = &plat_priv->xdump_helper.user_cap;
+	bool changed;
+
+	user_cap->indicated = 1;
+	changed = (user_cap->wl_over_bt != wl_over_bt ||
+		   user_cap->bt_over_wl != bt_over_wl);
+
+	if (!changed)
+		return;
+
+	user_cap->wl_over_bt = wl_over_bt;
+	user_cap->bt_over_wl = bt_over_wl;
+	cnss_xdump_update_config(plat_priv);
+}
+
+/**
+ * cnss_xdump_update_wl_cap - Updates XDUMP configuration upon receiving
+ * WLAN capability from target
+ * @plat_priv: cnss platform data
+ * @wl_over_bt: Indicates whether collecting WLAN dump over BT is enabled
+ * @bt_over_wl: Indicates whether collecting BT dump over WLAN is enabled
+ *
+ * This function updates XDUMP configuration upon receiving WLAN cap from
+ * target, and sends WLAN_ARRIVAL to BT if neccesarry.
+ *
+ * Return: 0 on success, errno otherwise
+ */
+int cnss_xdump_update_wl_cap(struct cnss_plat_data *plat_priv,
+			     u8 wl_over_bt, u8 bt_over_wl)
+{
+	struct cnss_xdump_cap *wl_cap = &plat_priv->xdump_helper.wl_cap;
+	u32 sram_size = plat_priv->sram_dump_size;
+	bool send_arrival;
+
+	/* Send WLAN_ARRIVAL only if it hasn't been sent before or
+	 * if the capability has changed.
+	 */
+	send_arrival = (!wl_cap->indicated ||
+			wl_cap->wl_over_bt != wl_over_bt ||
+			wl_cap->bt_over_wl != bt_over_wl);
+
+	if (!send_arrival)
+		return 0;
+
+	wl_cap->indicated = 1;
+	wl_cap->wl_over_bt = wl_over_bt;
+	wl_cap->bt_over_wl = bt_over_wl;
+	cnss_xdump_update_config(plat_priv);
+
+	return cnss_genl_send_xdump_wlan_arrival(wl_cap->wl_over_bt,
+						 wl_cap->bt_over_wl,
+						 0, sram_size);
+}
+
+/**
+ * cnss_xdump_update_bt_cap - Updates XDUMP configuration upon receiving
+ * BT capability
+ * @plat_priv: cnss platform data
+ * @wl_over_bt: Indicates whether collecting WLAN dump over BT is enabled
+ * @bt_over_wl: Indicates whether collecting BT dump over WLAN is enabled
+ *
+ * This function updates XDUMP configuration upon receiving BT capability
+ * and sends back WLAN_ARRIVAL to BT.
+ *
+ * Return: 0 on success, errno otherwise
+ */
+static int cnss_xdump_update_bt_cap(struct cnss_plat_data *plat_priv,
+				    u8 wl_over_bt, u8 bt_over_wl)
+{
+	struct cnss_xdump_cap *wl_cap = &plat_priv->xdump_helper.wl_cap;
+	struct cnss_xdump_cap *bt_cap = &plat_priv->xdump_helper.bt_cap;
+
+	bt_cap->indicated = 1;
+	bt_cap->wl_over_bt = wl_over_bt;
+	bt_cap->bt_over_wl = bt_over_wl;
+	cnss_xdump_update_config(plat_priv);
+
+	return cnss_genl_send_xdump_wlan_arrival(wl_cap->wl_over_bt,
+						 wl_cap->bt_over_wl,
+						 0, plat_priv->sram_dump_size);
+}
+
+/**
+ * cnss_xdump_bt_arrival_hdlr - Handler for BT_ARRIVAL message
+ * @plat_priv: cnss platform data
+ * @data: pointer to data which holding BT capability
+ *
+ * Return: 0 on success, errno otherwise
+ */
+static int
+cnss_xdump_bt_arrival_hdlr(struct cnss_plat_data *plat_priv, void *data)
+{
+	struct cnss_xdump_cap *bt_cap = data;
+	u8 wl_over_bt, bt_over_wl;
+
+	if (!plat_priv) {
+		kfree(data);
+		return -ENODEV;
+	}
+
+	wl_over_bt = bt_cap->wl_over_bt;
+	bt_over_wl = bt_cap->bt_over_wl;
+	kfree(data);
+
+	return cnss_xdump_update_bt_cap(plat_priv, wl_over_bt, bt_over_wl);
+}
+
+/**
+ * cnss_xdump_bt_over_wl_req_hdlr - Handler for request to collect BT dump
+ * over WLAN PCIe
+ * @plat_priv: cnss platform data
+ * @data: pointer to data which holding the parameters
+ *
+ * This function sends a request to target to trigger the dump collection
+ * and starts a timer to handle possible request timeout.
+ *
+ * Return: 0 on success, errno otherwise
+ */
+static int
+cnss_xdump_bt_over_wl_req_hdlr(struct cnss_plat_data *plat_priv, void *data)
+{
+	int ret;
+
+	if (!plat_priv) {
+		ret = -ENODEV;
+		goto ignore;
+	}
+
+	if (!plat_priv->xdump_helper.bt_over_wlan_enabled) {
+		cnss_pr_info("XDUMP: bt_over_wlan NOT enabled, bt_cap(%d: %d) wl_cap(%d: %d) user_config(%d: %d)\n",
+			     plat_priv->xdump_helper.bt_cap.indicated,
+			     plat_priv->xdump_helper.bt_cap.bt_over_wl,
+			     plat_priv->xdump_helper.wl_cap.indicated,
+			     plat_priv->xdump_helper.wl_cap.bt_over_wl,
+			     plat_priv->xdump_helper.user_cap.indicated,
+			     plat_priv->xdump_helper.user_cap.bt_over_wl);
+		ret = -EOPNOTSUPP;
+		goto ignore;
+	}
+
+	if (plat_priv->xdump_helper.dumping_wl_over_bt) {
+		cnss_pr_err("Collect WLAN dump over BT is in progress\n");
+		return -EINVAL;
+	}
+
+	if (plat_priv->xdump_helper.dumping_bt_over_wl) {
+		cnss_pr_err("Collect BT dump over WLAN is in progress\n");
+		ret = -EALREADY;
+		goto ignore;
+	}
+
+	if (!test_bit(CNSS_FW_READY, &plat_priv->driver_state)) {
+		cnss_pr_err("FW not ready\n");
+		ret = -EACCES;
+		goto ignore;
+	}
+
+	if (test_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state) ||
+	    test_bit(CNSS_DEV_ERR_NOTIFY, &plat_priv->driver_state) ||
+	    test_bit(CNSS_DRIVER_UNLOADING, &plat_priv->driver_state) ||
+	    test_bit(CNSS_DRIVER_IDLE_SHUTDOWN, &plat_priv->driver_state)) {
+		cnss_pr_dbg("Ignore BT dump request\n");
+		ret = -EBUSY;
+		goto ignore;
+	}
+
+	/* Invoke send_bt_dump_resp() when RDDM completed or failed */
+	plat_priv->xdump_helper.dumping_bt_over_wl = 1;
+	ret = cnss_wlfw_req_bt_dump_send_sync(plat_priv);
+	if (ret) {
+		plat_priv->xdump_helper.dumping_bt_over_wl = 0;
+		goto ignore;
+	}
+
+	cnss_bus_start_xdump_timer(plat_priv);
+	return 0;
+
+ignore:
+	return cnss_genl_send_xdump_bt_over_wl_resp(ret);
+}
+
 static void cnss_driver_event_work(struct work_struct *work)
 {
 	struct cnss_plat_data *plat_priv =
@@ -3227,6 +3579,14 @@ static void cnss_driver_event_work(struct work_struct *work)
 			break;
 		case CNSS_DRIVER_EVENT_XO_TRIM_IND:
 			ret = cnss_xo_trim_ind_hdlr(plat_priv, event->data);
+			break;
+		case CNSS_DRIVER_EVENT_XDUMP_BT_ARRIVAL:
+			ret = cnss_xdump_bt_arrival_hdlr(plat_priv,
+							 event->data);
+			break;
+		case CNSS_DRIVER_EVENT_XDUMP_BT_OVER_WL_REQ:
+			ret = cnss_xdump_bt_over_wl_req_hdlr(plat_priv,
+							     event->data);
 			break;
 		default:
 			cnss_pr_err("Invalid driver event type: %d",
@@ -4804,6 +5164,7 @@ static ssize_t shutdown_store(struct device *dev,
 		del_timer(&plat_priv->fw_boot_timer);
 		complete_all(&plat_priv->power_up_complete);
 		complete_all(&plat_priv->cal_complete);
+		complete_all(&plat_priv->xdump_helper.wl_over_bt_complete);
 		cnss_pr_dbg("Shutdown notification handled\n");
 	}
 
@@ -4956,6 +5317,72 @@ static ssize_t charger_mode_store(struct device *dev,
 	return count;
 }
 
+static ssize_t user_config_store(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	struct cnss_plat_data *plat_priv = dev_get_drvdata(dev);
+	unsigned long config = 0;
+	u8 wl_over_bt, bt_over_wl;
+
+	if (!plat_priv)
+		return -ENODEV;
+
+	if (kstrtoul(buf, 10, &config))
+		return -EINVAL;
+
+	cnss_pr_dbg("Received User Config: %lu\n", config);
+	wl_over_bt = test_bit(CNSS_USER_CONFIG_XDUMP_WL_OVER_BT, &config);
+	bt_over_wl = test_bit(CNSS_USER_CONFIG_XDUMP_BT_OVER_WL, &config);
+	cnss_xdump_update_user_cap(plat_priv, wl_over_bt, bt_over_wl);
+	return count;
+}
+
+static ssize_t user_config_show(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	struct cnss_plat_data *plat_priv = dev_get_drvdata(dev);
+	u32 buf_size = PAGE_SIZE;
+	u32 curr_len = 0;
+	u32 buf_written = 0;
+
+	if (!plat_priv)
+		return -ENODEV;
+
+	buf_written = scnprintf(buf, buf_size,
+				"Usage: echo [config_bitmap(in decimal format)] > /sys/kernel/cnss/user_config\n"
+				"BIT0 -- XDUMP: Collect WLAN dump over BT\n"
+				"BIT1 -- XDUMP: Collect BT dump over WLAN\n"
+				"---------------------------------\n");
+	curr_len += buf_written;
+
+	buf_written = scnprintf(buf + curr_len, buf_size - curr_len,
+				"XDUMP: User specified: %s\n",
+				plat_priv->xdump_helper.user_cap.indicated ?
+				"Yes" : "No");
+	curr_len += buf_written;
+
+	buf_written = scnprintf(buf + curr_len, buf_size - curr_len,
+				"XDUMP: Collect WLAN dump over BT: %s\n",
+				plat_priv->xdump_helper.user_cap.wl_over_bt ?
+				"Enabled" : "Disabled");
+	curr_len += buf_written;
+
+	buf_written = scnprintf(buf + curr_len, buf_size - curr_len,
+				"XDUMP: Collect BT dump over WLAN: %s\n",
+				plat_priv->xdump_helper.user_cap.bt_over_wl ?
+				"Enabled" : "Disabled");
+	curr_len += buf_written;
+
+	/*
+	 * Now size of curr_len is not over page size for sure,
+	 * later if new item or none-fixed size item added, need
+	 * add check to make sure curr_len is not over page size.
+	 */
+	return curr_len;
+}
+
 static DEVICE_ATTR_WO(fs_ready);
 static DEVICE_ATTR_WO(shutdown);
 static DEVICE_ATTR_RW(recovery);
@@ -4967,6 +5394,7 @@ static DEVICE_ATTR_RW(tme_opt_file_download);
 static DEVICE_ATTR_WO(hw_trace_override);
 static DEVICE_ATTR_WO(charger_mode);
 static DEVICE_ATTR_RW(time_sync_period);
+static DEVICE_ATTR_RW(user_config);
 
 static struct attribute *cnss_attrs[] = {
 	&dev_attr_fs_ready.attr,
@@ -4980,6 +5408,7 @@ static struct attribute *cnss_attrs[] = {
 	&dev_attr_hw_trace_override.attr,
 	&dev_attr_charger_mode.attr,
 	&dev_attr_time_sync_period.attr,
+	&dev_attr_user_config.attr,
 	NULL,
 };
 
@@ -5134,6 +5563,7 @@ static int cnss_reboot_notifier(struct notifier_block *nb,
 	del_timer(&plat_priv->fw_boot_timer);
 	complete_all(&plat_priv->power_up_complete);
 	complete_all(&plat_priv->cal_complete);
+	complete_all(&plat_priv->xdump_helper.wl_over_bt_complete);
 	cnss_pr_dbg("Reboot is in progress with action %d\n", action);
 
 	return NOTIFY_DONE;
@@ -5916,6 +6346,25 @@ cnss_get_cpumask_for_wlan_txrx_intr(struct cnss_plat_data *plat_priv)
 	plat_priv->cpumask_for_tx_comp_intrs = cpumask[1];
 }
 
+/**
+ * cnss_xdump_init - Init XDUMP related configurations
+ * @plat_priv: cnss platform data
+ *
+ * Return: None
+ */
+static void cnss_xdump_init(struct cnss_plat_data *plat_priv)
+{
+	/* Set both features as supported, and postpone the real check
+	 * when BT_DUMP_REQ received.
+	 * When BT_DUMP_REQ received -
+	 *	1. If fw_cap not received, failed the request; else
+	 *	2. Check the fw_cap to decide whether process the req;
+	 */
+	plat_priv->xdump_helper.wl_cap.bt_over_wl = 1;
+	plat_priv->xdump_helper.wl_cap.wl_over_bt = 1;
+	init_completion(&plat_priv->xdump_helper.wl_over_bt_complete);
+}
+
 static int cnss_probe(struct platform_device *plat_dev)
 {
 	int ret = 0;
@@ -5961,6 +6410,7 @@ static int cnss_probe(struct platform_device *plat_dev)
 	cnss_pr_dbg("Probing platform driver from dt type: %d\n",
 		    plat_priv->dt_type);
 
+	cnss_xdump_init(plat_priv);
 	plat_priv->use_fw_path_with_prefix =
 		cnss_use_fw_path_with_prefix(plat_priv);
 

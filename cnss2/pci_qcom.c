@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved. */
 
 #include "pci_platform.h"
 #include "debug.h"
@@ -215,7 +215,9 @@ static void cnss_pci_event_cb(struct msm_pcie_notify *notify)
 			return;
 		}
 
-		plat_priv->ctrl_params.quirks |= BIT(LINK_DOWN_SELF_RECOVERY);
+		if (!plat_priv->xdump_helper.wl_over_bt_enabled)
+			plat_priv->ctrl_params.quirks |=
+				BIT(LINK_DOWN_SELF_RECOVERY);
 
 		ret = msm_pcie_pm_control(MSM_PCIE_HANDLE_LINKDOWN,
 					  pci_dev->bus->number, pci_dev, NULL,
