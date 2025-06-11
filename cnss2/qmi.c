@@ -3882,6 +3882,8 @@ int cnss_qmi_get_dms_mac(struct cnss_plat_data *plat_priv)
 	plat_priv->dms.mac_valid = true;
 	memcpy(plat_priv->dms.mac, resp.mac_address, QMI_WLFW_MAC_ADDR_SIZE_V01);
 	cnss_pr_info("Received DMS MAC: [%pM]\n", plat_priv->dms.mac);
+
+	return 0;
 out:
 	return ret;
 }
