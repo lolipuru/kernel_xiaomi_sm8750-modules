@@ -3268,8 +3268,8 @@ cnss_xdump_update_config(struct cnss_plat_data *plat_priv)
 	cnss_pr_info("XDUMP(%d - %d): wl_cap(%d: %d - %d) bt_cap(%d: %d - %d) user_cap(%d: %d - %d)\n",
 		     xdump_helper->wl_over_bt_enabled,
 		     xdump_helper->bt_over_wlan_enabled,
-		     wl_cap->indicated, wl_cap->bt_over_wl, wl_cap->wl_over_bt,
-		     bt_cap->indicated, bt_cap->bt_over_wl, bt_cap->wl_over_bt,
+		     wl_cap->indicated, wl_cap->wl_over_bt, wl_cap->bt_over_wl,
+		     bt_cap->indicated, bt_cap->wl_over_bt, bt_cap->bt_over_wl,
 		     user_cap->indicated, user_cap->wl_over_bt,
 		     user_cap->bt_over_wl);
 }
