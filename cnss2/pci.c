@@ -1814,6 +1814,13 @@ int cnss_resume_pci_link(struct cnss_pci_data *pci_priv)
 	if (!pci_priv)
 		return -ENODEV;
 
+	if (pci_priv->plat_priv &&
+	    test_bit(PREVENT_PCI_LINK_RESUME,
+		     &pci_priv->plat_priv->ctrl_params.quirks)) {
+		cnss_pr_info("%ps: prevent link resume\n", (void *)_RET_IP_);
+		return -EPERM;
+	}
+
 	if (pci_priv->pci_link_state == PCI_LINK_UP) {
 		cnss_pr_info("PCI link is already resumed\n");
 		goto out;
@@ -2008,6 +2015,8 @@ int cnss_pci_shutdown_cleanup(struct cnss_pci_data *pci_priv)
 		return -ENODEV;
 	}
 
+	clear_bit(PREVENT_PCI_LINK_RESUME,
+		  &pci_priv->plat_priv->ctrl_params.quirks);
 	atomic_set(&pci_priv->rddm_timeout_cnt, 0);
 	return cnss_del_rddm_timer(pci_priv);
 }

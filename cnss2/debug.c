@@ -892,6 +892,9 @@ static int cnss_show_quirks_state(struct seq_file *s,
 		case FORCE_ONE_MSI:
 			seq_puts(s, "FORCE_ONE_MSI");
 			continue;
+		case PREVENT_PCI_LINK_RESUME:
+			seq_puts(s, "PREVENT_PCI_LINK_RESUME");
+			continue;
 		default:
 			continue;
 		}
