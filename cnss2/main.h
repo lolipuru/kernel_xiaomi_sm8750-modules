@@ -581,6 +581,7 @@ struct cnss_plat_data {
 	struct list_head clk_list;
 	struct cnss_pinctrl_info pinctrl_info;
 	struct cnss_sol_gpio sol_gpio;
+	int wlan_tsf_gpio;
 #if IS_ENABLED(CONFIG_MSM_SUBSYSTEM_RESTART)
 	struct cnss_subsys_info subsys_info;
 #endif
@@ -808,6 +809,7 @@ int cnss_do_host_ramdump(struct cnss_plat_data *plat_priv,
 			 size_t num_entries_loaded);
 void cnss_set_pin_connect_status(struct cnss_plat_data *plat_priv);
 int cnss_get_cpr_info(struct cnss_plat_data *plat_priv);
+void cnss_get_wlan_tsf_gpio_info(struct cnss_plat_data *plat_priv);
 int cnss_update_cpr_info(struct cnss_plat_data *plat_priv);
 int cnss_va_to_pa(struct device *dev, size_t size, void *va, dma_addr_t dma,
 		  phys_addr_t *pa, unsigned long attrs);
