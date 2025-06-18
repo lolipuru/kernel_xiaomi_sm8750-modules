@@ -6,6 +6,7 @@
 
 #include <linux/module.h>
 #include <linux/soc/qcom/qmi.h>
+#include <linux/vmalloc.h>
 
 #include "bus.h"
 #include "debug.h"
@@ -1482,7 +1483,7 @@ int cnss_wlfw_qdss_data_send_sync(struct cnss_plat_data *plat_priv, char *file_n
 		return -ENOMEM;
 	}
 
-	p_qdss_trace_data = kzalloc(total_size, GFP_KERNEL);
+	p_qdss_trace_data = vzalloc(total_size);
 	if (!p_qdss_trace_data) {
 		cnss_pr_err("%s: failed to allocate qdss trace data: %zu\n",
 			    __func__, total_size);
@@ -1584,7 +1585,7 @@ int cnss_wlfw_qdss_data_send_sync(struct cnss_plat_data *plat_priv, char *file_n
 	}
 
 fail:
-	kfree(p_qdss_trace_data);
+	vfree(p_qdss_trace_data);
 
 end:
 	kfree(req);
