@@ -1001,6 +1001,14 @@ void sde_encoder_helper_split_config(
 	}
 }
 
+bool sde_encoder_is_self_refresh_completed(struct sde_encoder_virt *sde_enc)
+{
+	if (!sde_enc || !sde_enc->cur_master)
+		return false;
+
+	return sde_enc->cur_master->sde_vrr_cfg.min_sr_state == SDE_MIN_SR_COMPLETE;
+}
+
 bool sde_encoder_in_clone_mode(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc;

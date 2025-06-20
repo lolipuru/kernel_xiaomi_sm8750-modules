@@ -1409,7 +1409,8 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	freq_pattern = c_conn->freq_pattern;
 
 	if (c_conn->vrr_cmd_state == VRR_CMD_POWER_ON ||
-			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT) {
+			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT ||
+			sde_encoder_is_self_refresh_completed(sde_enc)) {
 		if (!sde_connector_power_on_off_frame(connector)) {
 			c_conn->freq_pattern_updated = true;
 			c_conn->freq_pattern_type_changed = true;
