@@ -2,7 +2,8 @@ include \
 	$(WLAN_PLATFORM_ROOT)/cnss2/sun_gki_defconfig \
 	$(WLAN_PLATFORM_ROOT)/cnss_genl/sun_gki_defconfig \
 	$(WLAN_PLATFORM_ROOT)/cnss_prealloc/sun_gki_defconfig \
-	$(WLAN_PLATFORM_ROOT)/cnss_utils/sun_gki_defconfig
+	$(WLAN_PLATFORM_ROOT)/cnss_utils/sun_gki_defconfig \
+	$(WLAN_PLATFORM_ROOT)/icnss2/sun_gki_defconfig
 
 
 ifeq ($(CONFIG_CNSS_OUT_OF_TREE),y)
