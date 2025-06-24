@@ -3009,11 +3009,16 @@ int cnss_pci_start_mhi(struct cnss_pci_data *pci_priv)
 		return ret;
 
 	timeout = pci_priv->mhi_ctrl->timeout_ms;
-	/* For non-perf builds the timeout is 10 (default) * 6 seconds */
-	if (cnss_get_host_build_type() == QMI_HOST_BUILD_TYPE_PRIMARY_V01)
-		pci_priv->mhi_ctrl->timeout_ms *= 6;
-	else /* For perf builds the timeout is 10 (default) * 3 seconds */
-		pci_priv->mhi_ctrl->timeout_ms *= 3;
+
+	/* During MHI startup, request_firmware() will be called, which has a
+	 * default timeout value of 60 seconds.
+	 * Temporarily extend the timeout value for MHI operations to
+	 * [10 (default) * 6] to match this duration and ensure proper
+	 * operation.
+	 * This timeout value will be restored after the startup is complete
+	 * or fails.
+	 */
+	pci_priv->mhi_ctrl->timeout_ms *= 6;
 
 retry:
 	ret = cnss_pci_store_qrtr_node_id(pci_priv);
