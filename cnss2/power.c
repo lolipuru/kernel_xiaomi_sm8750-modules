@@ -70,6 +70,7 @@ static struct cnss_clk_cfg cnss_clk_list[] = {
 #define XO_CLK_GPIO			"qcom,xo-clk-gpio"
 #define SW_CTRL_GPIO			"qcom,sw-ctrl-gpio"
 #define WLAN_SW_CTRL_GPIO		"qcom,wlan-sw-ctrl-gpio"
+#define TSF_SYNC_GPIO			"qcom,wlan-tsf-gpio"
 #define WLAN_EN_ACTIVE			"wlan_en_active"
 #define WLAN_EN_SLEEP			"wlan_en_sleep"
 #define WLAN_VREGS_PROP			"wlan_vregs"
@@ -1716,6 +1717,33 @@ int cnss_get_cpr_info(struct cnss_plat_data *plat_priv)
 out:
 	return ret;
 }
+
+void cnss_get_wlan_tsf_gpio_info(struct cnss_plat_data *plat_priv)
+{
+	struct device *dev = &plat_priv->plat_dev->dev;
+
+	if (of_find_property(dev->of_node, TSF_SYNC_GPIO, NULL)) {
+		plat_priv->wlan_tsf_gpio = of_get_named_gpio(dev->of_node,
+							     TSF_SYNC_GPIO, 0);
+		cnss_pr_dbg("WLAN TSF GPIO: %d\n", plat_priv->wlan_tsf_gpio);
+		return;
+	}
+
+	plat_priv->wlan_tsf_gpio = -EINVAL;
+}
+
+int cnss_get_wlan_tsf_gpio(struct device *device)
+{
+	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(device);
+
+	if (!plat_priv) {
+		cnss_pr_err("plat_priv is NULL!\n");
+		return -EINVAL;
+	}
+
+	return plat_priv->wlan_tsf_gpio;
+}
+EXPORT_SYMBOL(cnss_get_wlan_tsf_gpio);
 
 #if IS_ENABLED(CONFIG_MSM_QMP)
 /**
