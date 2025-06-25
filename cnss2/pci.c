@@ -25,6 +25,7 @@
 #include "pci_platform.h"
 #include "reg.h"
 #include "genl.h"
+#include "cnss2.h"
 
 #define PCI_LINK_UP			1
 #define PCI_LINK_DOWN			0
@@ -4805,6 +4806,16 @@ static int cnss_pci_resume(struct device *dev)
 	if (!cnss_is_device_powered_on(pci_priv->plat_priv))
 		goto out;
 
+	if (plat_priv->device_id == FIG_DEVICE_ID ||
+	    of_property_read_bool(plat_priv->plat_dev->dev.of_node,
+				  "fig-direct-cx")) {
+		ret = cnss_set_cxpc(dev, CX_RET);
+		if (ret < 0) {
+			cnss_pr_err("failed to set cx to CX_RET\n");
+			//CNSS_ASSERT(0);
+		}
+	}
+
 	if (!pci_priv->disable_pc) {
 		mutex_lock(&pci_priv->bus_lock);
 		ret = cnss_pci_resume_bus(pci_priv);
@@ -4945,8 +4956,13 @@ static int cnss_pci_runtime_resume(struct device *dev)
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 	struct cnss_pci_data *pci_priv = cnss_get_pci_priv(pci_dev);
 	struct cnss_wlan_driver *driver_ops;
+	struct cnss_plat_data *plat_priv;
 
 	if (!pci_priv)
+		return -EAGAIN;
+
+	plat_priv = pci_priv->plat_priv;
+	if (!plat_priv)
 		return -EAGAIN;
 
 	if (!cnss_is_device_powered_on(pci_priv->plat_priv))
@@ -4958,6 +4974,16 @@ static int cnss_pci_runtime_resume(struct device *dev)
 	}
 
 	cnss_pr_vdbg("Runtime resume start\n");
+
+	if (plat_priv->device_id == FIG_DEVICE_ID ||
+	    of_property_read_bool(plat_priv->plat_dev->dev.of_node,
+				  "fig-direct-cx")) {
+		ret = cnss_set_cxpc(dev, CX_RET);
+		if (ret < 0) {
+			cnss_pr_err("failed to set cx to CX_RET\n");
+			//CNSS_ASSERT(0);
+		}
+	}
 
 	driver_ops = pci_priv->driver_ops;
 	if (driver_ops && driver_ops->runtime_ops &&
@@ -4973,7 +4999,6 @@ static int cnss_pci_runtime_resume(struct device *dev)
 	} else {
 		ret = cnss_auto_resume(dev);
 	}
-
 	cnss_pr_vdbg("Runtime resume status: %d\n", ret);
 
 	return ret;

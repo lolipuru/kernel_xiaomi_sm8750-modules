@@ -16,6 +16,11 @@
 #define CNSS_MAX_DEV_MEM_NUM		4
 #define CNSS_CHIP_VER_ANY		0
 
+enum cxpc_status {
+	CX_RET = 0,
+	CX_OFF,
+};
+
 enum cnss_bus_width_type {
 	CNSS_BUS_WIDTH_NONE,
 	CNSS_BUS_WIDTH_IDLE,
@@ -352,4 +357,6 @@ extern void cnss_get_cpumask_for_wlan_rx_interrupts(struct device *dev,
 						    unsigned int *cpumask);
 extern void cnss_get_cpumask_for_wlan_tx_comp_interrupts(struct device *dev,
 							 unsigned int *cpumask);
+extern int cnss_set_cxpc(struct device *dev, enum cxpc_status arg);
+
 #endif /* _NET_CNSS2_H */
