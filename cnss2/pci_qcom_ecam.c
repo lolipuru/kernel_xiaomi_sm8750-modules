@@ -96,6 +96,7 @@ int cnss_set_pci_link(struct cnss_pci_data *pci_priv, bool link_up)
 		     dev->power.runtime_status);
 
 	if (link_up) {
+		dev->power.ignore_children = false;
 		ret = pm_runtime_get_sync(dev);
 		cnss_pr_info("PCIe resume: ret:%d, usage_count:%d, runtime_status:%d\n",
 			     ret, atomic_read(&dev->power.usage_count),
@@ -107,6 +108,7 @@ int cnss_set_pci_link(struct cnss_pci_data *pci_priv, bool link_up)
 			return ret;
 		}
 	} else {
+		dev->power.ignore_children = true;
 		ret = pm_runtime_put_sync(dev);
 		cnss_pr_info("PCIe suspend: ret:%d, usage_count:%d, runtime_status:%d\n",
 			     ret, atomic_read(&dev->power.usage_count),
@@ -114,6 +116,7 @@ int cnss_set_pci_link(struct cnss_pci_data *pci_priv, bool link_up)
 
 		if (ret ||
 		    dev->power.runtime_status != RPM_SUSPENDED) {
+			dev->power.ignore_children = false;
 			cnss_pr_info("Faile to suspend PCIe link\n");
 			return ret;
 		}
