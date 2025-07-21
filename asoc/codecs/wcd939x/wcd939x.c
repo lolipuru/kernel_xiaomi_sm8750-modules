@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/module.h>
@@ -270,7 +270,8 @@ static int wcd939x_hph_xtalk_put(struct snd_kcontrol *kcontrol,
 
 	int value = ucontrol->value.integer.value[0];
 
-	if (value < WCD939X_HPH_MAX && value >= 0)
+	if (value < WCD939X_HPH_MAX && value >= 0 && xtalk < WCD939X_HPH_MAX &&
+			xtalk >= 0)
 		wcd939x->xtalk_enabled[xtalk] = value;
 	else {
 		dev_err(component->dev, "%s: Invalid xtalk value = %d\n", __func__, value);
@@ -293,6 +294,11 @@ static int wcd939x_hph_xtalk_get(struct snd_kcontrol *kcontrol,
 
 	int xtalk = ((struct soc_mixer_control *)
 			kcontrol->private_value)->shift;
+
+	if (xtalk >= WCD939X_HPH_MAX || xtalk < 0) {
+		dev_err(component->dev, "%s: Invalid xtalk value = %d\n", __func__, xtalk);
+		return -EINVAL;
+	}
 
 	ucontrol->value.integer.value[0] = wcd939x->xtalk_enabled[xtalk];
 
