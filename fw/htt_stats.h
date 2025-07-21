@@ -837,6 +837,14 @@ enum htt_dbg_ext_stats_type {
      */
     HTT_DBG_EXT_STATS_PAPRD_PB = 75,
 
+    /** HTT_DBG_EXT_STATS_HDS_PROF
+     * PARAMS:
+     *   - No Params
+     * RESP MSG:
+     *   - htt_stats_hds_prof_stats_tlv
+     */
+    HTT_DBG_EXT_STATS_HDS_PROF = 76,
+
 
     /* keep this last */
     HTT_DBG_NUM_EXT_STATS = 256,
@@ -1012,6 +1020,10 @@ typedef enum {
 #define HTT_PDEV_STATS_PPDU_DUR_HIST_BINS 16
 #define HTT_PDEV_STATS_PPDU_DUR_HIST_EXT_BINS 6
 #define HTT_PDEV_STATS_PPDU_DUR_HIST_INTERVAL_US 250
+/* Max seq ctrl can be active in txq at a given instant */
+#define HTT_PDEV_STATS_MAX_SEQ_CTRL_HIST 4
+/* For BE max active seq_ctrl that can be in HWQ */
+#define HTT_PDEV_STATS_MAX_ACTIVE_SEQ_IN_HWQ_HIST 2
 
 typedef enum {
     HTT_STATS_TX_PDEV_NO_DATA_UNDERRUN = 0,
@@ -1062,7 +1074,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     /** Num PPDUs queued to HW */
     A_UINT32 hw_queued;
     /** Num PPDUs reaped from HW */
@@ -1244,6 +1262,33 @@ typedef struct {
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_tx_pdev_cmn_tlv htt_tx_pdev_stats_cmn_tlv;
 
+typedef struct {
+    htt_tlv_hdr_t tlv_hdr;
+    union {
+        A_UINT32 pdev_id__word;
+        struct {
+            A_UINT32
+                pdev_id: 8,
+                reserved: 24;
+        };
+    };
+    A_UINT32 pending_seq_on_sched_post_hist[HTT_PDEV_STATS_MAX_SEQ_CTRL_HIST];
+} htt_stats_tx_pdev_pending_seq_cnt_on_sched_post_hist_tlv;
+
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_ON_SCHED_POST_HIST_PDEV_ID_M 0x000000ff
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_ON_SCHED_POST_HIST_PDEV_ID_S 0
+
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_ON_SCHED_POST_HIST_PDEV_ID_GET(_var) \
+    (((_var) & HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_ON_SCHED_POST_HIST_PDEV_ID_M) >> \
+     HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_ON_SCHED_POST_HIST_PDEV_ID_S)
+
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_ON_SCHED_POST_HIST_PDEV_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_ON_SCHED_POST_HIST_PDEV_ID, _val); \
+        ((_var) |= ((_val) << HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_ON_SCHED_POST_HIST_PDEV_ID_S)); \
+    } while (0)
+
+
 #define HTT_TX_PDEV_STATS_URRN_TLV_SZ(_num_elems) (sizeof(A_UINT32) * (_num_elems))
 /* NOTE: Variable length TLV, use length spec to infer array size */
 typedef struct {
@@ -1265,6 +1310,13 @@ typedef struct {
 } htt_stats_tx_pdev_flush_tlv;
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_tx_pdev_flush_tlv htt_tx_pdev_stats_flush_tlv_v;
+
+#define HTT_TX_PDEV_MDSB_MAX_NUM_USERS 8
+typedef struct {
+    htt_tlv_hdr_t tlv_hdr;
+    A_UINT32 pdev_id;
+    A_UINT32 mdsb_num_users_histogram[HTT_TX_PDEV_MDSB_MAX_NUM_USERS];
+} htt_stats_tx_pdev_mdsb_num_users_histogram_tlv;
 
 #define HTT_TX_PDEV_STATS_MLO_ABORT_TLV_SZ(_num_elems) (sizeof(A_UINT32) * (_num_elems))
 /* NOTE: Variable length TLV, use length spec to infer array size */
@@ -1470,6 +1522,7 @@ typedef htt_stats_pdev_ctrl_path_tx_stats_tlv htt_pdev_ctrl_path_tx_stats_tlv_v;
  *      - HTT_STATS_TX_PDEV_TRIED_MPDU_CNT_HIST_TAG
  *      - HTT_STATS_PDEV_CTRL_PATH_TX_STATS_TAG
  *      - HTT_STATS_MU_PPDU_DIST_TAG
+ *      - HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_ON_SCHED_POST_HIST_TAG
  */
 /* NOTE:
  * This structure is for documentation, and cannot be safely used directly.
@@ -1487,6 +1540,8 @@ typedef struct _htt_tx_pdev_stats {
     htt_stats_tx_pdev_tried_mpdu_cnt_hist_tlv   tried_mpdu_cnt_hist_tlv;
     htt_stats_pdev_ctrl_path_tx_stats_tlv       ctrl_path_tx_tlv;
     htt_stats_mu_ppdu_dist_tlv                  mu_ppdu_dist_tlv;
+    htt_stats_tx_pdev_pending_seq_cnt_on_sched_post_hist_tlv
+        pending_seq_cnt_on_sched_post_hist_tlv;
 } htt_tx_pdev_stats_t;
 #endif /* ATH_TARGET */
 
@@ -1530,10 +1585,17 @@ typedef htt_stats_hw_wd_timeout_tlv htt_hw_stats_wd_timeout_tlv;
 typedef struct {
     htt_tlv_hdr_t tlv_hdr;
 
-    /* BIT [ 7 :  0]   :- mac_id
+    /**
+     * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     A_UINT32 tx_abort;
     A_UINT32 tx_abort_fail_count;
     A_UINT32 rx_abort;
@@ -1600,10 +1662,17 @@ typedef htt_stats_hw_pdev_errs_tlv htt_hw_stats_pdev_errs_tlv;
 typedef struct {
     htt_tlv_hdr_t tlv_hdr;
 
-    /* BIT [ 7 :  0]   :- mac_id
+    /**
+     * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     A_UINT32 last_unpause_ppdu_id;
     A_UINT32 hwsch_unpause_wait_tqm_write;
     A_UINT32 hwsch_dummy_tlv_skipped;
@@ -1736,7 +1805,15 @@ typedef struct _htt_msdu_flow_stats_tlv {
      * BIT [20 : 20]   :- drop_rule
      * BIT [31 : 21]   :- reserved
      */
-    A_UINT32 tx_flow_no__tid_num__drop_rule;
+    union {
+        struct {
+            A_UINT32 tx_flow_number : 16;
+            A_UINT32 tid_num : 4;
+            A_UINT32 drop_rule : 1;
+            A_UINT32 reserved : 11;
+        };
+        A_UINT32 tx_flow_no__tid_num__drop_rule;
+    };
     A_UINT32 last_cycle_enqueue_count;
     A_UINT32 last_cycle_dequeue_count;
     A_UINT32 last_cycle_drop_count;
@@ -1813,13 +1890,26 @@ typedef struct _htt_tx_tid_stats_tlv {
      * BIT [15 :  0]   :- sw_peer_id
      * BIT [31 : 16]   :- tid_num
      */
-    A_UINT32 sw_peer_id__tid_num;
+    union {
+        struct {
+            A_UINT32 sw_peer_id : 16;
+            A_UINT32 tid_num : 16;
+        };
+        A_UINT32 sw_peer_id__tid_num;
+    };
     /**
      * BIT [ 7 :  0]   :- num_sched_pending
      * BIT [15 :  8]   :- num_ppdu_in_hwq
      * BIT [31 : 16]   :- reserved
      */
-    A_UINT32 num_sched_pending__num_ppdu_in_hwq;
+    union {
+        struct {
+            A_UINT32 num_sched_pending : 8;
+            A_UINT32 num_ppdu_in_hwq : 8;
+            A_UINT32 reserved : 16;
+        };
+        A_UINT32 num_sched_pending__num_ppdu_in_hwq;
+    };
     A_UINT32 tid_flags;
     /** per tid # of hw_queued ppdu */
     A_UINT32 hw_queued;
@@ -1849,13 +1939,26 @@ typedef struct _htt_tx_tid_stats_v1_tlv {
      * BIT [15 :  0]   :- sw_peer_id
      * BIT [31 : 16]   :- tid_num
      */
-    A_UINT32 sw_peer_id__tid_num;
+    union {
+        struct {
+            A_UINT32 sw_peer_id : 16;
+            A_UINT32 tid_num : 16;
+        };
+        A_UINT32 sw_peer_id__tid_num;
+    };
     /**
      * BIT [ 7 :  0]   :- num_sched_pending
      * BIT [15 :  8]   :- num_ppdu_in_hwq
      * BIT [31 : 16]   :- reserved
      */
-    A_UINT32 num_sched_pending__num_ppdu_in_hwq;
+    union {
+        struct {
+            A_UINT32 num_sched_pending : 8;
+            A_UINT32 num_ppdu_in_hwq : 8;
+            A_UINT32 reserved : 16;
+        };
+        A_UINT32 num_sched_pending__num_ppdu_in_hwq;
+    };
     A_UINT32 tid_flags;
     /** Max qdepth in bytes reached by this tid */
     A_UINT32 max_qdepth_bytes;
@@ -1940,7 +2043,13 @@ typedef struct _htt_rx_tid_stats_tlv {
      * BIT [15 : 0] : sw_peer_id
      * BIT [31 : 16] : tid_num
      */
-    A_UINT32 sw_peer_id__tid_num;
+    union {
+        struct {
+            A_UINT32 sw_peer_id : 16;
+            A_UINT32 tid_num : 16;
+        };
+        A_UINT32 sw_peer_id__tid_num;
+    };
     /** Stored as little endian */
     A_UINT8 tid_name[MAX_HTT_TID_NAME];
     /**
@@ -2282,6 +2391,9 @@ typedef struct _htt_tx_peer_rate_stats_tlv {
     A_UINT32 tx_bw_320mhz;
     /* MCS 14,15 */
     A_UINT32 tx_mcs_ext_2[HTT_TX_PEER_STATS_NUM_EXTRA2_MCS_COUNTERS];
+    A_UINT32 peer_tx_ppdu_cnt;
+    A_UINT32 peer_tx_mpdu_try_cnt;
+    A_UINT32 peer_tx_mpdu_success_cnt;
 } htt_stats_peer_tx_rate_stats_tlv;
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_peer_tx_rate_stats_tlv htt_tx_peer_rate_stats_tlv;
@@ -2366,6 +2478,8 @@ typedef struct _htt_rx_peer_rate_stats_tlv {
     A_UINT32 rx_bw_320mhz;
     /* MCS 14,15 */
     A_UINT32 rx_mcs_ext_2[HTT_RX_PEER_STATS_NUM_EXTRA2_MCS_COUNTERS];
+    A_UINT32 tot_rx_ppdu_bytes;
+    A_UINT32 rx_mpdu_try_cnt;
 } htt_stats_peer_rx_rate_stats_tlv;
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_peer_rx_rate_stats_tlv htt_rx_peer_rate_stats_tlv;
@@ -2852,6 +2966,58 @@ typedef struct {
 typedef htt_stats_tx_hwq_txop_used_cnt_hist_tlv
     htt_tx_hwq_txop_used_cnt_hist_tlv_v;
 
+typedef struct {
+    htt_tlv_hdr_t tlv_hdr;
+    union {
+        A_UINT32 pdev_id__word;
+        struct {
+            A_UINT32
+                pdev_id: 8,
+                reserved: 24;
+        };
+    };
+    A_UINT32 active_seq_in_hwq_hist[HTT_PDEV_STATS_MAX_ACTIVE_SEQ_IN_HWQ_HIST];
+} htt_stats_tx_pdev_pending_seq_cnt_in_hwq_hist_tlv;
+
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_HWQ_HIST_PDEV_ID_M 0x000000ff
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_HWQ_HIST_PDEV_ID_S 0
+
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_HWQ_HIST_PDEV_ID_GET(_var) \
+    (((_var) & HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_HWQ_HIST_PDEV_ID_M) >> \
+     HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_HWQ_HIST_PDEV_ID_S)
+
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_HWQ_HIST_PDEV_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_HWQ_HIST_PDEV_ID, _val); \
+        ((_var) |= ((_val) << HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_HWQ_HIST_PDEV_ID_S)); \
+    } while (0)
+
+typedef struct {
+    htt_tlv_hdr_t tlv_hdr;
+    union {
+        A_UINT32 pdev_id__word;
+        struct {
+            A_UINT32
+                pdev_id: 8,
+                reserved: 24;
+        };
+    };
+    A_UINT32 active_seq_in_txq_hist[HTT_PDEV_STATS_MAX_SEQ_CTRL_HIST];
+} htt_stats_tx_pdev_pending_seq_cnt_in_txq_hist_tlv;
+
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_TXQ_HIST_PDEV_ID_M 0x000000ff
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_TXQ_HIST_PDEV_ID_S 0
+
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_TXQ_HIST_PDEV_ID_GET(_var) \
+    (((_var) & HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_TXQ_HIST_PDEV_ID_M) >> \
+     HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_TXQ_HIST_PDEV_ID_S)
+
+#define HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_TXQ_HIST_PDEV_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_TXQ_HIST_PDEV_ID, _val); \
+        ((_var) |= ((_val) << HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_TXQ_HIST_PDEV_ID_S)); \
+    } while (0)
+
 /* STATS_TYPE : HTT_DBG_EXT_STATS_PDEV_TX_HWQ
  * TLV_TAGS:
  *    - HTT_STATS_STRING_TAG
@@ -2862,6 +3028,8 @@ typedef htt_stats_tx_hwq_txop_used_cnt_hist_tlv
  *    - HTT_STATS_TX_HWQ_FES_STATUS_TAG
  *    - HTT_STATS_TX_HWQ_TRIED_MPDU_CNT_HIST_TAG
  *    - HTT_STATS_TX_HWQ_TXOP_USED_CNT_HIST_TAG
+ *    - HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_HWQ_HIST_TAG
+ *    - HTT_STATS_TX_PDEV_PENDING_SEQ_CNT_IN_TXQ_HIST_TAG
  */
 /* NOTE:
  * This structure is for documentation, and cannot be safely used directly.
@@ -2882,6 +3050,10 @@ typedef struct _htt_tx_hwq_stats {
     htt_stats_tx_hwq_fes_status_tlv          fes_stats_tlv;
     htt_stats_tx_hwq_tried_mpdu_cnt_hist_tlv tried_mpdu_tlv;
     htt_stats_tx_hwq_txop_used_cnt_hist_tlv  txop_used_tlv;
+    htt_stats_tx_pdev_pending_seq_cnt_in_hwq_hist_tlv
+        active_pending_seq_cnt_in_hwq_hist_tlv;
+    htt_stats_tx_pdev_pending_seq_cnt_in_txq_hist_tlv
+        active_pending_seq_cnt_in_txq_hist_tlv;
 } htt_tx_hwq_stats_t;
 #endif /* ATH_TARGET */
 
@@ -2971,14 +3143,34 @@ typedef enum {
 
 #define HTT_MAX_NUM_SBT_INTR 4
 
+typedef enum {
+    HTT_RU_ALLOC_MODE_PF,
+    HTT_RU_ALLOC_MODE_QOS,
+    HTT_RU_ALLOC_MODE_STATIC,
+    HTT_RU_ALLOC_MODE_EQUAL,
+    HTT_RU_ALLOC_MODE_SIMPLIFIED,
+
+    /* Reserving additional modes for future use */
+    HTT_RU_ALLOC_MODE_RESERVED_1,
+    HTT_RU_ALLOC_MODE_RESERVED_2,
+
+    HTT_RU_ALLOC_NUM_MODES
+} HTT_RU_ALLOC_MODE;
+
 typedef struct {
     htt_tlv_hdr_t tlv_hdr;
 
-    /*
+    /**
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     /** BAR sent out for SU transmission */
     A_UINT32 su_bar;
     /** SW generated RTS frame sent */
@@ -3036,6 +3228,7 @@ typedef struct {
      * (Smart basic triggers are only used with intervals <= 40 ms.)
      */
     A_UINT32 smart_basic_trig_sch_histogram[HTT_MAX_NUM_SBT_INTR];
+    A_UINT32 ru_alloc_mode_cnt[HTT_RU_ALLOC_NUM_MODES];
 } htt_stats_tx_selfgen_cmn_stats_tlv;
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_tx_selfgen_cmn_stats_tlv htt_tx_selfgen_cmn_stats_tlv;
@@ -4276,8 +4469,8 @@ typedef struct {
 /* NOTE: Variable length TLV, use length spec to infer array size */
 typedef struct {
     htt_tlv_hdr_t tlv_hdr;
-    /** Scheduler command posted per tx_mode */
-    A_UINT32 sched_cmd_posted[1/* length = num tx modes */];
+    /** Scheduler command posted per tx_mode (length = num tx modes) */
+    HTT_STATS_VAR_LEN_ARRAY1(A_UINT32, sched_cmd_posted);
 } htt_stats_sched_txq_cmd_posted_tlv;
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_sched_txq_cmd_posted_tlv htt_sched_txq_cmd_posted_tlv_v;
@@ -4287,8 +4480,8 @@ typedef htt_stats_sched_txq_cmd_posted_tlv htt_sched_txq_cmd_posted_tlv_v;
 /* NOTE: Variable length TLV, use length spec to infer array size */
 typedef struct {
     htt_tlv_hdr_t tlv_hdr;
-    /** Scheduler command reaped per tx_mode */
-    A_UINT32 sched_cmd_reaped[1/* length = num tx modes */];
+    /** Scheduler command reaped per tx_mode (length = num tx modes) */
+    HTT_STATS_VAR_LEN_ARRAY1(A_UINT32, sched_cmd_reaped);
 } htt_stats_sched_txq_cmd_reaped_tlv;
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_sched_txq_cmd_reaped_tlv htt_sched_txq_cmd_reaped_tlv_v;
@@ -4407,11 +4600,49 @@ typedef struct {
      * These supercycle trigger counts are not automatically reset, but
      * are reset upon request.
      */
-    A_UINT32 supercycle_triggers[1/*HTT_SCHED_SUPERCYCLE_TRIGGER_MAX*/];
+    HTT_STATS_VAR_LEN_ARRAY1(A_UINT32, supercycle_triggers);
 } htt_stats_sched_txq_supercycle_trigger_tlv;
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_sched_txq_supercycle_trigger_tlv
     htt_sched_txq_supercycle_triggers_tlv_v;
+
+typedef struct {
+    htt_tlv_hdr_t tlv_hdr;
+    union {
+        A_UINT32 pdev_id__word;
+        struct {
+            A_UINT32
+                pdev_id: 8,
+                reserved: 24;
+        };
+    };
+    A_UINT32 ist_txop_end_indicated_cnt;
+    A_UINT32 ist_txop_end_notify_at_cmd_status_end;
+    A_UINT32 ist_txop_end_notify_at_isr_end;
+    A_UINT32 sched_cmd_post_skip_on_seq_unavail;
+    A_UINT32 ist_txop_end_skip_on_seq_unavail;
+    A_UINT32 ist_txop_end_skip_on_mpdu_ownership;
+    A_UINT32 skip_early_schedule_due_to_per;
+    A_UINT32 sched_cmd_posted_at_hw_txop_end;
+    A_UINT32 sched_cmd_missed_at_hw_txop_end;
+    A_UINT32 sched_cmd_posted_at_sched_cmd_compl;
+    A_UINT32 sched_cmd_missed_at_sched_cmd_compl;
+    A_UINT32 num_QoS_sched_runs;
+} htt_stats_sched_txq_early_compl_tlv;
+
+#define HTT_STATS_SCHED_TXQ_EARLY_COMPL_PDEV_ID_M 0x000000ff
+#define HTT_STATS_SCHED_TXQ_EARLY_COMPL_PDEV_ID_S 0
+
+#define HTT_STATS_SCHED_TXQ_EARLY_COMPL_PDEV_ID_GET(_var) \
+    (((_var) & HTT_STATS_SCHED_TXQ_EARLY_COMPL_PDEV_ID_M) >> \
+     HTT_STATS_SCHED_TXQ_EARLY_COMPL_PDEV_ID_S)
+
+#define HTT_STATS_SCHED_TXQ_EARLY_COMPL_PDEV_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_SCHED_TXQ_EARLY_COMPL_PDEV_ID, _val); \
+        ((_var) |= ((_val) << HTT_STATS_SCHED_TXQ_EARLY_COMPL_PDEV_ID_S)); \
+    } while (0)
+
 
 #define HTT_TX_PDEV_STATS_SCHED_PER_TXQ_MAC_ID_M 0x000000ff
 #define HTT_TX_PDEV_STATS_SCHED_PER_TXQ_MAC_ID_S 0
@@ -4532,7 +4763,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     /** Current timestamp */
     A_UINT32 current_timestamp;
 } htt_stats_tx_sched_cmn_tlv;
@@ -4546,22 +4783,27 @@ typedef struct {
  *     - HTT_STATS_SCHED_TXQ_SCHED_ORDER_SU_TAG
  *     - HTT_STATS_SCHED_TXQ_SCHED_INELIGIBILITY_TAG
  *     - HTT_STATS_SCHED_TXQ_SUPERCYCLE_TRIGGER_TAG
+ *     - HTT_STATS_SCHED_TXQ_EARLY_COMPL_TAG
  */
 /* NOTE:
  * This structure is for documentation, and cannot be safely used directly.
  * Instead, use the constituent TLV structures to fill/parse.
  */
+#ifdef ATH_TARGET
 typedef struct {
     htt_stats_tx_sched_cmn_tlv cmn_tlv;
     struct {
-        htt_stats_tx_pdev_scheduler_txq_stats_tlv     txq_tlv;
-        htt_stats_sched_txq_cmd_posted_tlv      cmd_posted_tlv;
-        htt_stats_sched_txq_cmd_reaped_tlv      cmd_reaped_tlv;
+        htt_stats_tx_pdev_scheduler_txq_stats_tlv   txq_tlv;
+        htt_stats_sched_txq_cmd_posted_tlv          cmd_posted_tlv;
+        htt_stats_sched_txq_cmd_reaped_tlv          cmd_reaped_tlv;
         htt_stats_sched_txq_sched_order_su_tlv      sched_order_su_tlv;
         htt_stats_sched_txq_sched_ineligibility_tlv sched_ineligibility_tlv;
-        htt_stats_sched_txq_supercycle_trigger_tlv  htt_sched_txq_sched_ineligibility_tlv_esched_supercycle_trigger_tlv;
+        htt_stats_sched_txq_supercycle_trigger_tlv
+            htt_sched_txq_sched_ineligibility_tlv_esched_supercycle_trigger_tlv;
+        htt_stats_sched_txq_early_compl_tlv         early_compl_tlv;
     } txq[1];
 } htt_stats_tx_sched_t;
+#endif
 
 /* == TQM STATS == */
 
@@ -4677,7 +4919,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     A_UINT32 max_cmdq_id;
     A_UINT32 list_mpdu_cnt_hist_intvl;
 
@@ -4793,7 +5041,14 @@ typedef struct {
      * BIT [15 :  8]   :- cmdq_id
      * BIT [31 : 16]   :- reserved
      */
-    A_UINT32 mac_id__cmdq_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id : 8;
+            A_UINT32 cmdq_id : 8;
+            A_UINT32 reserved : 16;
+        };
+        A_UINT32 mac_id__cmdq_id__word;
+    };
     A_UINT32 sync_cmd;
     A_UINT32 write_cmd;
     A_UINT32 gen_mpdu_cmd;
@@ -5029,7 +5284,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
 
     /* Global Stats */
     A_UINT32 tcl2fw_entry_count;
@@ -5237,23 +5498,47 @@ typedef struct {
      * BIT [15 :  0]   :- num_elems
      * BIT [31 : 16]   :- prefetch_tail_idx
      */
-    A_UINT32 num_elems__prefetch_tail_idx;
+    union {
+        struct {
+            A_UINT32 num_elems : 16;
+            A_UINT32 prefetch_tail_idx : 16;
+        };
+        A_UINT32 num_elems__prefetch_tail_idx;
+    };
     /**
      * BIT [15 :  0]   :- head_idx
      * BIT [31 : 16]   :- tail_idx
      */
-    A_UINT32 head_idx__tail_idx;
+    union {
+        struct {
+            A_UINT32 head_idx : 16;
+            A_UINT32 tail_idx : 16;
+        };
+        A_UINT32 head_idx__tail_idx;
+    };
     /**
      * BIT [15 :  0]   :- shadow_head_idx
      * BIT [31 : 16]   :- shadow_tail_idx
      */
-    A_UINT32 shadow_head_idx__shadow_tail_idx;
+    union {
+        struct {
+            A_UINT32 shadow_head_idx : 16;
+            A_UINT32 shadow_tail_idx : 16;
+        };
+        A_UINT32 shadow_head_idx__shadow_tail_idx;
+    };
     A_UINT32 num_tail_incr;
     /**
      * BIT [15 :  0]   :- lwm_thresh
      * BIT [31 : 16]   :- hwm_thresh
      */
-    A_UINT32 lwm_thresh__hwm_thresh;
+    union {
+        struct {
+            A_UINT32 lwm_thresh : 16;
+            A_UINT32 hwm_thresh : 16;
+        };
+        A_UINT32 lwm_thresh__hwm_thresh;
+    };
     A_UINT32 overrun_hit_count;
     A_UINT32 underrun_hit_count;
     A_UINT32 prod_blockwait_count;
@@ -5284,7 +5569,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     A_UINT32 num_records;
 } htt_stats_ring_if_cmn_tlv;
 /* preserve old name alias for new name consistent with the tag name */
@@ -5364,7 +5655,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     /**
      * Indicates the total number of 128 byte buffers in the CMEM
      * that are available for buffer sharing
@@ -5578,7 +5875,16 @@ typedef struct {
      * BIT [24 : 24]   :- EP 0 -consumer, 1 - producer
      * BIT [31 : 25]   :- reserved
      */
-    A_UINT32 mac_id__ring_id__arena__ep;
+    union {
+        struct {
+            A_UINT32 mac_id : 8;
+            A_UINT32 ring_id : 8;
+            A_UINT32 arena : 8;
+            A_UINT32 ep : 1;
+            A_UINT32 reserved : 7;
+        };
+        A_UINT32 mac_id__ring_id__arena__ep;
+    };
     /** DWORD aligned base memory address of the ring */
     A_UINT32 base_addr_lsb;
     A_UINT32 base_addr_msb;
@@ -5592,25 +5898,49 @@ typedef struct {
      * BIT [15 :  0]   :- num_avail_words
      * BIT [31 : 16]   :- num_valid_words
      */
-    A_UINT32 num_avail_words__num_valid_words;
+    union {
+        struct {
+            A_UINT32 num_avail_words : 16;
+            A_UINT32 num_valid_words : 16;
+        };
+        A_UINT32 num_avail_words__num_valid_words;
+    };
 
     /** Index of head and tail
      * BIT [15 :  0]   :- head_ptr
      * BIT [31 : 16]   :- tail_ptr
      */
-    A_UINT32 head_ptr__tail_ptr;
+    union {
+        struct {
+            A_UINT32 head_ptr : 16;
+            A_UINT32 tail_ptr : 16;
+        };
+        A_UINT32 head_ptr__tail_ptr;
+    };
 
     /** Empty or full counter of rings
      * BIT [15 :  0]   :- consumer_empty
      * BIT [31 : 16]   :- producer_full
      */
-    A_UINT32 consumer_empty__producer_full;
+    union {
+        struct {
+            A_UINT32 consumer_empty : 16;
+            A_UINT32 producer_full : 16;
+        };
+        A_UINT32 consumer_empty__producer_full;
+    };
 
     /** Prefetch status of consumer ring
      * BIT [15 :  0]   :- prefetch_count
      * BIT [31 : 16]   :- internal_tail_ptr
      */
-    A_UINT32 prefetch_count__internal_tail_ptr;
+    union {
+        struct {
+            A_UINT32 prefetch_count : 16;
+            A_UINT32 internal_tail_ptr : 16;
+        };
+        A_UINT32 prefetch_count__internal_tail_ptr;
+    };
 } htt_stats_sring_stats_tlv;
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_sring_stats_tlv htt_sring_stats_tlv;
@@ -5743,7 +6073,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     /** Number of tx ldpc packets */
     A_UINT32 tx_ldpc;
     /** Number of tx rts packets */
@@ -5958,7 +6294,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
 
     /** 11BE EHT DL MU OFDMA LDPC count */
     A_UINT32 be_ofdma_tx_ldpc;
@@ -6123,7 +6465,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     A_UINT32 nsts;
 
     /** Number of rx ldpc packets */
@@ -6388,7 +6736,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
 
     A_UINT32 rx_11ax_ul_ofdma;
 
@@ -6462,7 +6816,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
 
     A_UINT32 rx_11be_ul_ofdma;
 
@@ -6615,12 +6975,18 @@ typedef struct {
     htt_tlv_hdr_t tlv_hdr;
 
     /**
-     * BIT [7:0]  :- mac_id
-     * BIT [31:8] :- reserved
+     * BIT [ 7 :  0]   :- mac_id
+     * BIT [31 :  8]   :- reserved
      *
      * Refer to HTT_STATS_CMN_MAC_ID_GET/SET macros.
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
 
     /** Number of times UL MUMIMO RX packets received */
     A_UINT32 rx_11ax_ul_mumimo;
@@ -6674,12 +7040,18 @@ typedef struct {
     htt_tlv_hdr_t tlv_hdr;
 
     /**
-     * BIT [7:0]  :- mac_id
-     * BIT [31:8] :- reserved
+     * BIT [ 7 :  0]   :- mac_id
+     * BIT [31 :  8]   :- reserved
      *
      * Refer to HTT_STATS_CMN_MAC_ID_GET/SET macros.
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
 
     /** Number of times UL MUMIMO RX packets received */
     A_UINT32 rx_11be_ul_mumimo;
@@ -6932,7 +7304,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     /** Num PPDU status processed from HW */
     A_UINT32 ppdu_recvd;
     /** Num MPDU across PPDUs with FCS ok */
@@ -7063,7 +7441,13 @@ typedef struct {
      * BIT [ 7 :  0]   :- mac_id
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     /** Num of phy err */
     A_UINT32 total_phy_err_cnt;
     /** Counts of different types of phy errs
@@ -10597,6 +10981,73 @@ typedef struct {
     A_UINT32 power_boost_gain[HTT_TX_PDEV_STATS_NUM_BE_BW_COUNTERS][HTT_TX_PDEV_STATS_NUM_BE_MCS_COUNTERS];
 } htt_stats_phy_paprd_pb_tlv;
 
+
+#define HTT_STATS_HDS_PROF_STATS_CIRCULAR_BUF_LEN 10
+
+typedef struct {
+    htt_tlv_hdr_t tlv_hdr;
+    struct {
+        union {
+            A_UINT32 channel_info;
+            struct {
+                A_UINT32 bandwidth_mhz:16,
+                         band_center_freq1:16; /* MHz units */
+            };
+        };
+
+        union {
+            A_UINT32 channel_config;
+            struct {
+                A_UINT32 phyMode:8,     /* phyMode - WLAN_PHY_MODE enum type */
+                         txChainmask:8,
+                         rxChainmask:8,
+                         swProfile:8;
+            };
+        };
+
+        A_UINT32 channelSwitchTime;
+        A_UINT32 calModuleTime;
+        A_UINT32 iniModuleTime;
+        A_UINT32 tpcModuleTime;
+        A_UINT32 miscModuleTime;
+        A_UINT32 ctlModuleTime;
+        A_UINT32 reserved;
+    } channelChange_stats[HTT_STATS_HDS_PROF_STATS_CIRCULAR_BUF_LEN];
+
+    A_UINT32 idx; /* shows how many channel changes have occurred */
+} htt_stats_hds_prof_stats_tlv;
+
+#define HTT_STATS_HDS_PROF_BANDWIDTH_MHZ_GET(word) \
+    ((word) & 0x0000ffff)
+#define HTT_STATS_HDS_PROF_BANDWIDTH_MHZ_SET(word, value) \
+    ((word) |= ((value) & 0x0000ffff))
+
+#define HTT_STATS_HDS_PROF_BAND_CENTER_FREQ1_GET(word) \
+    (((word) & 0xffff0000) >> 16)
+#define HTT_STATS_HDS_PROF_BAND_CENTER_FREQ1_SET(word, value) \
+    ((word) |= (((value) << 16) & 0xffff0000))
+
+#define HTT_STATS_HDS_PROF_PHY_MODE_GET(word) \
+    (((word) & 0x000000ff) >> 0)
+#define HTT_STATS_HDS_PROF_PHY_MODE_SET(word, value) \
+    ((word) |= (((value) << 0) & 0x000000ff))
+
+#define HTT_STATS_HDS_PROF_TX_CHAINMASK_GET(word) \
+    (((word) & 0x0000ff00) >> 8)
+#define HTT_STATS_HDS_PROF_TX_CHAINMASK_SET(word, value) \
+    ((word) |= (((value) << 8) & 0x0000ff00))
+
+#define HTT_STATS_HDS_PROF_RX_CHAINMASK_GET(word) \
+    (((word) & 0x00ff0000) >> 16)
+#define HTT_STATS_HDS_PROF_RX_CHAINMASK_SET(word, value) \
+    ((word) |= (((value) << 16) & 0x00ff0000))
+
+#define HTT_STATS_HDS_PROF_SW_PROFILE_GET(word) \
+    (((word) & 0xff000000) >> 24)
+#define HTT_STATS_HDS_PROF_SW_PROFILE_SET(word, value) \
+    ((word) |= (((value) << 24) & 0xff000000))
+
+
 typedef struct {
     union {
         A_UINT32 word32;
@@ -11001,6 +11452,26 @@ typedef struct {
 #define HTT_ML_PEER_EXT_DETAILS_MLD_AST_INDEX_M                 0x0FFFF000
 #define HTT_ML_PEER_EXT_DETAILS_MLD_AST_INDEX_S                 12
 
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID0_TQM_LINK_ID_M         0x00000007
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID0_TQM_LINK_ID_S         0
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID1_TQM_LINK_ID_M         0x00000038
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID1_TQM_LINK_ID_S         3
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID2_TQM_LINK_ID_M         0x000001C0
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID2_TQM_LINK_ID_S         6
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID3_TQM_LINK_ID_M         0x00000E00
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID3_TQM_LINK_ID_S         9
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID4_TQM_LINK_ID_M         0x00007000
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID4_TQM_LINK_ID_S         12
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID5_TQM_LINK_ID_M         0x00038000
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID5_TQM_LINK_ID_S         15
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID6_TQM_LINK_ID_M         0x001C0000
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID6_TQM_LINK_ID_S         18
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID7_TQM_LINK_ID_M         0x00E00000
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID7_TQM_LINK_ID_S         21
+#define HTT_STATS_ML_PEER_EXT_DETAILS_MLO_MGMT_TID_TQM_LINK_ID_M 0x07000000
+#define HTT_STATS_ML_PEER_EXT_DETAILS_MLO_MGMT_TID_TQM_LINK_ID_S 24
+
+
 #define HTT_ML_PEER_EXT_DETAILS_PEER_ASSOC_IPC_RECVD_GET(_var) \
     (((_var) & HTT_ML_PEER_EXT_DETAILS_PEER_ASSOC_IPC_RECVD_M) >> \
      HTT_ML_PEER_EXT_DETAILS_PEER_ASSOC_IPC_RECVD_S)
@@ -11043,6 +11514,97 @@ typedef struct {
         ((_var) |= ((_val) << HTT_ML_PEER_EXT_DETAILS_MLD_AST_INDEX_S)); \
     } while (0)
 
+
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID0_TQM_LINK_ID_GET(_var) \
+    (((_var) & HTT_STATS_ML_PEER_EXT_DETAILS_TID0_TQM_LINK_ID_M) >> \
+     HTT_STATS_ML_PEER_EXT_DETAILS_TID0_TQM_LINK_ID_S)
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID0_TQM_LINK_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_PEER_EXT_DETAILS_TID0_TQM_LINK_ID, _val); \
+        ((_var) &= ~(HTT_STATS_ML_PEER_EXT_DETAILS_TID0_TQM_LINK_ID_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_PEER_EXT_DETAILS_TID0_TQM_LINK_ID_S)); \
+    } while (0)
+
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID1_TQM_LINK_ID_GET(_var) \
+    (((_var) & HTT_STATS_ML_PEER_EXT_DETAILS_TID1_TQM_LINK_ID_M) >> \
+     HTT_STATS_ML_PEER_EXT_DETAILS_TID1_TQM_LINK_ID_S)
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID1_TQM_LINK_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_PEER_EXT_DETAILS_TID1_TQM_LINK_ID, _val); \
+        ((_var) &= ~(HTT_STATS_ML_PEER_EXT_DETAILS_TID1_TQM_LINK_ID_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_PEER_EXT_DETAILS_TID1_TQM_LINK_ID_S)); \
+    } while (0)
+
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID2_TQM_LINK_ID_GET(_var) \
+    (((_var) & HTT_STATS_ML_PEER_EXT_DETAILS_TID2_TQM_LINK_ID_M) >> \
+     HTT_STATS_ML_PEER_EXT_DETAILS_TID2_TQM_LINK_ID_S)
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID2_TQM_LINK_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_PEER_EXT_DETAILS_TID2_TQM_LINK_ID, _val); \
+        ((_var) &= ~(HTT_STATS_ML_PEER_EXT_DETAILS_TID2_TQM_LINK_ID_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_PEER_EXT_DETAILS_TID2_TQM_LINK_ID_S)); \
+    } while (0)
+
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID3_TQM_LINK_ID_GET(_var) \
+    (((_var) & HTT_STATS_ML_PEER_EXT_DETAILS_TID3_TQM_LINK_ID_M) >> \
+     HTT_STATS_ML_PEER_EXT_DETAILS_TID3_TQM_LINK_ID_S)
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID3_TQM_LINK_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_PEER_EXT_DETAILS_TID3_TQM_LINK_ID, _val); \
+        ((_var) &= ~(HTT_STATS_ML_PEER_EXT_DETAILS_TID3_TQM_LINK_ID_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_PEER_EXT_DETAILS_TID3_TQM_LINK_ID_S)); \
+    } while (0)
+
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID4_TQM_LINK_ID_GET(_var) \
+    (((_var) & HTT_STATS_ML_PEER_EXT_DETAILS_TID4_TQM_LINK_ID_M) >> \
+     HTT_STATS_ML_PEER_EXT_DETAILS_TID4_TQM_LINK_ID_S)
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID4_TQM_LINK_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_PEER_EXT_DETAILS_TID4_TQM_LINK_ID, _val); \
+        ((_var) &= ~(HTT_STATS_ML_PEER_EXT_DETAILS_TID4_TQM_LINK_ID_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_PEER_EXT_DETAILS_TID4_TQM_LINK_ID_S)); \
+    } while (0)
+
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID5_TQM_LINK_ID_GET(_var) \
+    (((_var) & HTT_STATS_ML_PEER_EXT_DETAILS_TID5_TQM_LINK_ID_M) >> \
+     HTT_STATS_ML_PEER_EXT_DETAILS_TID5_TQM_LINK_ID_S)
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID5_TQM_LINK_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_PEER_EXT_DETAILS_TID5_TQM_LINK_ID, _val); \
+        ((_var) &= ~(HTT_STATS_ML_PEER_EXT_DETAILS_TID5_TQM_LINK_ID_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_PEER_EXT_DETAILS_TID5_TQM_LINK_ID_S)); \
+    } while (0)
+
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID6_TQM_LINK_ID_GET(_var) \
+    (((_var) & HTT_STATS_ML_PEER_EXT_DETAILS_TID6_TQM_LINK_ID_M) >> \
+     HTT_STATS_ML_PEER_EXT_DETAILS_TID6_TQM_LINK_ID_S)
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID6_TQM_LINK_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_PEER_EXT_DETAILS_TID6_TQM_LINK_ID, _val); \
+        ((_var) &= ~(HTT_STATS_ML_PEER_EXT_DETAILS_TID6_TQM_LINK_ID_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_PEER_EXT_DETAILS_TID6_TQM_LINK_ID_S)); \
+    } while (0)
+
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID7_TQM_LINK_ID_GET(_var) \
+    (((_var) & HTT_STATS_ML_PEER_EXT_DETAILS_TID7_TQM_LINK_ID_M) >> \
+     HTT_STATS_ML_PEER_EXT_DETAILS_TID7_TQM_LINK_ID_S)
+#define HTT_STATS_ML_PEER_EXT_DETAILS_TID7_TQM_LINK_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_PEER_EXT_DETAILS_TID7_TQM_LINK_ID, _val); \
+        ((_var) &= ~(HTT_STATS_ML_PEER_EXT_DETAILS_TID7_TQM_LINK_ID_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_PEER_EXT_DETAILS_TID7_TQM_LINK_ID_S)); \
+    } while (0)
+
+#define HTT_STATS_ML_PEER_EXT_DETAILS_MLO_MGMT_TID_TQM_LINK_ID_GET(_var) \
+    (((_var) & HTT_STATS_ML_PEER_EXT_DETAILS_MLO_MGMT_TID_TQM_LINK_ID_M) >> \
+     HTT_STATS_ML_PEER_EXT_DETAILS_MLO_MGMT_TID_TQM_LINK_ID_S)
+#define HTT_STATS_ML_PEER_EXT_DETAILS_MLO_MGMT_TID_TQM_LINK_ID_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_PEER_EXT_DETAILS_MLO_MGMT_TID_TQM_LINK_ID, _val); \
+        ((_var) &= ~(HTT_STATS_ML_PEER_EXT_DETAILS_MLO_MGMT_TID_TQM_LINK_ID_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_PEER_EXT_DETAILS_MLO_MGMT_TID_TQM_LINK_ID_S)); \
+    } while (0)
+
 typedef struct {
     htt_tlv_hdr_t tlv_hdr;
     union {
@@ -11053,6 +11615,51 @@ typedef struct {
                      reserved                : 4;
         };
         A_UINT32 msg_dword_1;
+    };
+    union {
+        struct {
+            A_UINT32 tid0_tqm_link0_id    : 3,
+                     tid1_tqm_link0_id    : 3,
+                     tid2_tqm_link0_id    : 3,
+                     tid3_tqm_link0_id    : 3,
+                     tid4_tqm_link0_id    : 3,
+                     tid5_tqm_link0_id    : 3,
+                     tid6_tqm_link0_id    : 3,
+                     tid7_tqm_link0_id    : 3,
+                     mlo_mgmt_tid_tqm_link0_id : 3,
+                     reserved_tqm_link0   : 5;
+        };
+        A_UINT32 msg_dword_tqm_link0;
+    };
+    union {
+        struct {
+            A_UINT32 tid0_tqm_link1_id    : 3,
+                     tid1_tqm_link1_id    : 3,
+                     tid2_tqm_link1_id    : 3,
+                     tid3_tqm_link1_id    : 3,
+                     tid4_tqm_link1_id    : 3,
+                     tid5_tqm_link1_id    : 3,
+                     tid6_tqm_link1_id    : 3,
+                     tid7_tqm_link1_id    : 3,
+                     mlo_mgmt_tid_tqm_link1_id : 3,
+                     reserved_tqm_link1   : 5;
+        };
+        A_UINT32 msg_dword_tqm_link1;
+    };
+    union {
+        struct {
+            A_UINT32 tid0_tqm_link2_id    : 3,
+                     tid1_tqm_link2_id    : 3,
+                     tid2_tqm_link2_id    : 3,
+                     tid3_tqm_link2_id    : 3,
+                     tid4_tqm_link2_id    : 3,
+                     tid5_tqm_link2_id    : 3,
+                     tid6_tqm_link2_id    : 3,
+                     tid7_tqm_link2_id    : 3,
+                     mlo_mgmt_tid_tqm_link2_id : 3,
+                     reserved_tqm_link2   : 5;
+        };
+        A_UINT32 msg_dword_tqm_link2;
     };
 } htt_stats_ml_peer_ext_details_tlv;
 /* preserve old name alias for new name consistent with the tag name */
@@ -11080,11 +11687,16 @@ typedef htt_stats_ml_peer_ext_details_tlv htt_ml_peer_ext_details_tlv;
 #define HTT_ML_LINK_INFO_ANCHOR_LINK_S          21
 #define HTT_ML_LINK_INFO_INITIALIZED_M          0x00400000
 #define HTT_ML_LINK_INFO_INITIALIZED_S          22
+#define HTT_STATS_ML_LINK_INFO_BRIDGE_PEER_M    0x00800000
+#define HTT_STATS_ML_LINK_INFO_BRIDGE_PEER_S    23
 
 #define HTT_ML_LINK_INFO_SW_PEER_ID_M           0x0000ffff
 #define HTT_ML_LINK_INFO_SW_PEER_ID_S           0
 #define HTT_ML_LINK_INFO_VDEV_ID_M              0x00ff0000
 #define HTT_ML_LINK_INFO_VDEV_ID_S              16
+#define HTT_STATS_ML_LINK_INFO_PS_STATE_M       0x01000000
+#define HTT_STATS_ML_LINK_INFO_PS_STATE_S       24
+
 
 #define HTT_ML_LINK_INFO_VALID_GET(_var) \
     (((_var) & HTT_ML_LINK_INFO_VALID_M) >> \
@@ -11240,6 +11852,18 @@ typedef htt_stats_ml_peer_ext_details_tlv htt_ml_peer_ext_details_tlv;
         ((_var) |= ((_val) << HTT_ML_LINK_INFO_INITIALIZED_S)); \
     } while (0)
 
+
+#define HTT_STATS_ML_LINK_INFO_BRIDGE_PEER_GET(_var) \
+    (((_var) & HTT_STATS_ML_LINK_INFO_BRIDGE_PEER_M) >> \
+     HTT_STATS_ML_LINK_INFO_BRIDGE_PEER_S)
+#define HTT_STATS_ML_LINK_INFO_BRIDGE_PEER_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_LINK_INFO_BRIDGE_PEER, _val); \
+        ((_var) &= ~(HTT_STATS_ML_LINK_INFO_BRIDGE_PEER_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_LINK_INFO_BRIDGE_PEER_S)); \
+    } while (0)
+
+
 #define HTT_ML_LINK_INFO_SW_PEER_ID_GET(_var) \
     (((_var) & HTT_ML_LINK_INFO_SW_PEER_ID_M) >> \
      HTT_ML_LINK_INFO_SW_PEER_ID_S)
@@ -11268,6 +11892,17 @@ typedef htt_stats_ml_peer_ext_details_tlv htt_ml_peer_ext_details_tlv;
         ((_var) |= ((_val) << HTT_ML_LINK_INFO_VDEV_ID_S)); \
     } while (0)
 
+#define HTT_STATS_ML_LINK_INFO_PS_STATE_GET(_var) \
+    (((_var) & HTT_STATS_ML_LINK_INFO_PS_STATE_M) >> \
+     HTT_STATS_ML_LINK_INFO_PS_STATE_S)
+#define HTT_STATS_ML_LINK_INFO_PS_STATE_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_LINK_INFO_PS_STATE, _val); \
+        ((_var) &= ~(HTT_STATS_ML_LINK_INFO_PS_STATE_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_LINK_INFO_PS_STATE_S)); \
+    } while (0)
+
+
 typedef struct {
     htt_tlv_hdr_t tlv_hdr;
     union {
@@ -11283,7 +11918,8 @@ typedef struct {
                      master_link     : 1,
                      anchor_link     : 1,
                      initialized     : 1,
-                     reserved        : 9;
+                     bridge_peer     : 1,
+                     reserved        : 8;
         };
         A_UINT32 msg_dword_1;
     };
@@ -11292,7 +11928,8 @@ typedef struct {
         struct {
             A_UINT32 sw_peer_id      : 16,
                      vdev_id         : 8,
-                     reserved1       : 8;
+                     ps              : 1,
+                     reserved1       : 7;
         };
         A_UINT32 msg_dword_2;
     };
@@ -11330,6 +11967,8 @@ typedef htt_stats_ml_link_info_details_tlv htt_ml_link_info_tlv;
 
 #define HTT_ML_PEER_DETAILS_PARTICIPATING_CHIPS_BITMAP_M    0x000000ff
 #define HTT_ML_PEER_DETAILS_PARTICIPATING_CHIPS_BITMAP_S    0
+#define HTT_STATS_ML_PEER_DETAILS_STATUS_REQUIRED_M         0x0000ff00
+#define HTT_STATS_ML_PEER_DETAILS_STATUS_REQUIRED_S         8
 
 #define HTT_ML_PEER_DETAILS_NUM_LINKS_GET(_var) \
     (((_var) & HTT_ML_PEER_DETAILS_NUM_LINKS_M) >> \
@@ -11515,6 +12154,17 @@ typedef htt_stats_ml_link_info_details_tlv htt_ml_link_info_tlv;
         ((_var) |= ((_val) << HTT_ML_PEER_DETAILS_PARTICIPATING_CHIPS_BITMAP_S)); \
     } while (0)
 
+#define HTT_STATS_ML_PEER_DETAILS_STATUS_REQUIRED_GET(_var) \
+    (((_var) & HTT_STATS_ML_PEER_DETAILS_STATUS_REQUIRED_M) >> \
+     HTT_STATS_ML_PEER_DETAILS_STATUS_REQUIRED_S)
+#define HTT_STATS_ML_PEER_DETAILS_STATUS_REQUIRED_SET(_var, _val) \
+    do { \
+        HTT_CHECK_SET_VAL(HTT_STATS_ML_PEER_DETAILS_STATUS_REQUIRED, _val); \
+        ((_var) &= ~(HTT_STATS_ML_PEER_DETAILS_STATUS_REQUIRED_M)); \
+        ((_var) |= ((_val) << HTT_STATS_ML_PEER_DETAILS_STATUS_REQUIRED_S)); \
+    } while (0)
+
+
 typedef struct {
     htt_tlv_hdr_t tlv_hdr;
     htt_mac_addr  remote_mld_mac_addr;
@@ -11547,8 +12197,19 @@ typedef struct {
 
     union {
         struct {
-            A_UINT32  participating_chips_bitmap : 8,
-                     reserved1                  : 24;
+            A_UINT32 participating_chips_bitmap : 8,
+                     /* status_required:
+                      * Bitmap of status-required flags for each chip.
+                      * Bit 0 is always the chip with the primary link.
+                      * The remaining bits are for the other chips,
+                      * in increasing order of chip ID, wrapping around
+                      * to cover the chips whose IDs are smaller than the
+                      * primary link's chip.
+                      * Thus, bit 1 is for the chip whose ID is next after
+                      * the primary link's chip ID, etc.
+                      */
+                     status_required            : 8,
+                     reserved1                  : 16;
         };
         A_UINT32 msg_dword_2;
     };
@@ -11839,6 +12500,16 @@ typedef struct {
      * only for UL BSR TX mode.
      */
     A_UINT32 running_ul_scheduler_for_bsrp_cnt[HTT_NUM_AC_WMM];
+    /**
+     * Number of instances where we populated TX mode and candidate lists
+     * only for DL, due to skipping UL voluntarily.
+     */
+    A_UINT32 running_dl_scheduler_due_to_skip_ul[HTT_NUM_AC_WMM];
+    /**
+     * Number of instances where we populated TX mode and candidate lists
+     * only for UL, due to skipping DL voluntarily.
+     */
+    A_UINT32 running_ul_scheduler_due_to_skip_dl[HTT_NUM_AC_WMM];
 } htt_stats_pdev_sched_algo_ofdma_stats_tlv;
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_pdev_sched_algo_ofdma_stats_tlv
@@ -11854,7 +12525,13 @@ typedef struct {
      *                    read/write this bitfield.
      * BIT [31 :  8]   :- reserved
      */
-    A_UINT32 mac_id__word;
+    union {
+        struct {
+            A_UINT32 mac_id:    8,
+                     reserved: 24;
+        };
+        A_UINT32 mac_id__word;
+    };
     A_UINT32 basic_trigger_across_bss;
     A_UINT32 basic_trigger_within_bss;
     A_UINT32 bsr_trigger_across_bss;
@@ -12017,17 +12694,37 @@ typedef struct {
      * BIT [ 15 :  8]  :- pri20_index
      * BIT [ 31 : 16]  :- pri20_freq in Mhz
      */
-    A_UINT32 mac_id__pri20_idx__freq;
+    union {
+        struct {
+            A_UINT32 mac_id : 8;
+            A_UINT32 pri20_idx : 8;
+            A_UINT32 pri20_freq_mhz : 16;
+        };
+        A_UINT32 mac_id__pri20_idx__freq;
+    };
 
     /* BIT [ 15 :  0]  :- centre_freq1
      * BIT [ 31 : 16]  :- centre_freq2
      */
-    A_UINT32 centre_freq1__freq2;
+    union {
+        struct {
+            A_UINT32 centre_freq1 : 16;
+            A_UINT32 centre_freq2 : 16;
+        };
+        A_UINT32 centre_freq1__freq2;
+    };
 
     /* BIT [ 7 :  0]  :- channel_phy_mode
      * BIT [ 23 : 8]  :- static_pattern
      */
-    A_UINT32 phy_mode__static_pattern;
+    union {
+        struct {
+            A_UINT32 phy_mode : 8;
+            A_UINT32 static_pattern : 16;
+            A_UINT32 reserved : 8;
+        };
+        A_UINT32 phy_mode__static_pattern;
+    };
 } htt_stats_pdev_bw_mgr_stats_tlv;
 /* preserve old name alias for new name consistent with the tag name */
 typedef htt_stats_pdev_bw_mgr_stats_tlv htt_pdev_bw_mgr_stats_tlv;
