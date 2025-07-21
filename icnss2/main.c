@@ -150,11 +150,16 @@ static struct icnss_priv *icnss_get_plat_priv(void)
 
 static inline void icnss_wpss_unload(struct icnss_priv *priv)
 {
-	if (priv && priv->rproc) {
+	if (!priv)
+		return;
+
+	mutex_lock(&priv->wpss_lock);
+	if (priv->rproc) {
 		rproc_shutdown(priv->rproc);
 		rproc_put(priv->rproc);
 		priv->rproc = NULL;
 	}
+	mutex_unlock(&priv->wpss_lock);
 }
 
 static ssize_t icnss_sysfs_store(struct kobject *kobj,
@@ -2557,7 +2562,8 @@ static int icnss_driver_event_early_crash_ind(struct icnss_priv *priv,
 	}
 
 	priv->early_crash_ind = true;
-	icnss_fw_crashed(priv, NULL);
+	if (!test_bit(ICNSS_PD_RESTART, &priv->state))
+		icnss_fw_crashed(priv, NULL);
 
 out:
 	kfree(data);
@@ -6262,6 +6268,7 @@ static int icnss_probe(struct platform_device *pdev)
 	spin_lock_init(&priv->soc_wake_msg_lock);
 	mutex_init(&priv->dev_lock);
 	mutex_init(&priv->tcdev_lock);
+	mutex_init(&priv->wpss_lock);
 
 	priv->event_wq = alloc_workqueue("icnss_driver_event", WQ_UNBOUND, 1);
 	if (!priv->event_wq) {

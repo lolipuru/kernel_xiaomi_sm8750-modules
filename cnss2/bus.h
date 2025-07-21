@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CNSS_BUS_H
@@ -82,4 +82,5 @@ int cnss_bus_get_msi_assignment(struct cnss_plat_data *plat_priv,
 				int *num_vectors,
 				u32 *user_base_data,
 				u32 *base_vector);
+void cnss_bus_start_xdump_timer(struct cnss_plat_data *plat_priv);
 #endif /* _CNSS_BUS_H */

@@ -470,6 +470,14 @@ enum wlfw_misc_req_enum_v01 {
 	WLFW_MISC_REQ_ENUM_MAX_VAL_V01 = INT_MAX,
 };
 
+enum wlfw_target_attachment_v01 {
+	WLFW_TARGET_ATTACHMENT_MIN_VAL_V01 = INT_MIN,
+	WLFW_THIRD_PARTY_V01 = 0,
+	WLFW_PDC_V01 = 1,
+	WLFW_PMIC_V01 = 2,
+	WLFW_TARGET_ATTACHMENT_MAX_VAL_V01 = INT_MAX,
+};
+
 #define QMI_WLFW_CE_ATTR_FLAGS_V01 ((u32)0x00)
 #define QMI_WLFW_CE_ATTR_NO_SNOOP_V01 ((u32)0x01)
 #define QMI_WLFW_CE_ATTR_BYTE_SWAP_DATA_V01 ((u32)0x02)
@@ -613,9 +621,28 @@ struct wlfw_pmu_param_v01 {
 	u32 sleep_volt;
 };
 
+struct wlfw_pmu_param_ext_v01 {
+	u8 pin_name[QMI_WLFW_PMU_PIN_NAME_MAX_LEN_V01];
+	u8 wake_volt_valid;
+	u32 wake_volt;
+	u8 sleep_volt_valid;
+	u32 sleep_volt;
+	u8 svs_v_valid;
+	u32 svs_v;
+	u8 lsvs_valid;
+	u32 lsvs;
+	u8 svsL1_valid;
+	u32 svsL1_v;
+};
+
 struct wlfw_pmu_cfg_v01 {
 	u32 pmu_param_len;
 	struct wlfw_pmu_param_v01 pmu_param[QMI_WLFW_PMU_PARAMS_MAX_V01];
+};
+
+struct wlfw_pmu_cfg_ext_v01 {
+	u32 pmu_param_ext_len;
+	struct wlfw_pmu_param_ext_v01 pmu_param_ext[QMI_WLFW_PMU_PARAMS_MAX_V01];
 };
 
 struct wlfw_shadow_reg_v3_cfg_s_v01 {
@@ -868,8 +895,12 @@ struct wlfw_cap_resp_msg_v01 {
 	enum wlfw_phy_qam_cap_v01 phy_qam_cap;
 	u8 serial_id_valid;
 	struct wlchip_serial_id_v01 serial_id;
+	u8 direct_cx_data_pin_mode_valid;
+	u8 direct_cx_data_pin_mode;
+	u8 ol_cpr_cfg_ext_valid;
+	struct wlfw_pmu_cfg_ext_v01 ol_cpr_cfg_ext;
 };
-#define WLFW_CAP_RESP_MSG_V01_MAX_MSG_LEN 1171
+#define WLFW_CAP_RESP_MSG_V01_MAX_MSG_LEN 2091
 extern struct qmi_elem_info wlfw_cap_resp_msg_v01_ei[];
 
 struct wlfw_bdf_download_req_msg_v01 {
@@ -1157,8 +1188,10 @@ struct wlfw_host_cap_req_msg_v01 {
 	u8 gpio_config_valid;
 	u32 gpio_config_len;
 	struct wlfw_gpio_config_v01 gpio_config[QMI_WLFW_TOTAL_GPIO_CONFIG_V01];
+	u8 target_attachment_valid;
+	enum wlfw_target_attachment_v01 target_attachment;
 };
-#define WLFW_HOST_CAP_REQ_MSG_V01_MAX_MSG_LEN 975
+#define WLFW_HOST_CAP_REQ_MSG_V01_MAX_MSG_LEN 982
 extern struct qmi_elem_info wlfw_host_cap_req_msg_v01_ei[];
 
 struct wlfw_host_cap_resp_msg_v01 {

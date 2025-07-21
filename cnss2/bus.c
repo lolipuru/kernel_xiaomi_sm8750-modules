@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "bus.h"
@@ -838,6 +838,26 @@ void cnss_bus_disable_mhi_satellite_cfg(struct cnss_plat_data *plat_priv)
 	switch (plat_priv->bus_type) {
 	case CNSS_BUS_PCI:
 		cnss_pci_controller_set_base(plat_priv->bus_priv);
+		break;
+	default:
+		cnss_pr_dbg("Unsupported bus type: %d\n", plat_priv->bus_type);
+	}
+}
+
+/**
+ * cnss_bus_start_xdump_timer - Start timer for collecting BT dump over WLAN
+ * @plat_priv: cnss platform data
+ *
+ * Return: None
+ */
+void cnss_bus_start_xdump_timer(struct cnss_plat_data *plat_priv)
+{
+	if (!plat_priv)
+		return;
+
+	switch (plat_priv->bus_type) {
+	case CNSS_BUS_PCI:
+		cnss_pci_start_xdump_timer(plat_priv->bus_priv);
 		break;
 	default:
 		cnss_pr_dbg("Unsupported bus type: %d\n", plat_priv->bus_type);
