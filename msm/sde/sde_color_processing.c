@@ -2759,6 +2759,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 		SDE_CP_CRTC_DSPP_DEMURA_INIT,
 		SDE_CP_CRTC_DSPP_RC_MASK,
 		SDE_CP_CRTC_DSPP_LTM_HIST_CTL,
+		SDE_CP_CRTC_DSPP_AIQE_ABC,
 	};
 	for (n = 0; n < ARRAY_SIZE(features); n++) {
 		if (features[n] > ARRAY_SIZE(set_crtc_feature_wrappers)) {
@@ -4829,7 +4830,6 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 			sde_crtc->mdnie_ipc_disabled = true;
 		else
 			sde_crtc->mdnie_ipc_disabled = false;
-		SDE_EVT32(prop_node->feature, sde_crtc->mdnie_ipc_disabled);
 		break;
 	case SDE_CP_CRTC_DSPP_COPR:
 		feature = FEATURE_COPR;
@@ -4848,6 +4848,7 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 	if (feature == AIQE_FEATURE_MAX)
 		return;
 
+	SDE_EVT32(prop_node->feature, sde_crtc->mdnie_ipc_disabled);
 	if (feature == FEATURE_MDNIE_ART) {
 		if (prop_val) {
 			struct drm_msm_mdnie_art *art = NULL;
@@ -5209,6 +5210,7 @@ void _sde_cp_mark_active_dirty_internal(struct sde_crtc *crtc)
 	enum sde_cp_crtc_features features[] = {
 		SDE_CP_CRTC_DSPP_DEMURA_INIT,
 		SDE_CP_CRTC_DSPP_LTM_HIST_CTL,
+		SDE_CP_CRTC_DSPP_AIQE_ABC,
 	};
 	mutex_lock(&crtc->crtc_cp_lock);
 	for (i = 0; i < ARRAY_SIZE(features); i++) {

@@ -126,6 +126,7 @@ void get_mdnie_art_frame_count(u32 *mdnie_art_frame_count, u32 art_param)
 	art_slope = (art_param & 0xF0000) >> 16;
 	*mdnie_art_frame_count = 1 << art_slope;
 	++(*mdnie_art_frame_count);
+	SDE_EVT32(*mdnie_art_frame_count);
 }
 
 void aiqe_deinit(struct sde_aiqe_top_level *aiqe_top)
