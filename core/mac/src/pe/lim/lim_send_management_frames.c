@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -366,7 +366,8 @@ lim_send_probe_req_mgmt_frame(struct mac_context *mac_ctx,
 	populate_dot11f_eht_caps(mac_ctx, pesession, &pr->eht_cap);
 
 	/* Populate Non-AP STA Regulatory connectivity element */
-	populate_dot11f_reg_connectivity(mac_ctx, &pr->reg_connect);
+	if (IS_DOT11_MODE_HE(dot11mode))
+		populate_dot11f_reg_connectivity(mac_ctx, &pr->reg_connect);
 
 	if (addn_ielen && additional_ie) {
 		qdf_mem_zero((uint8_t *)&extracted_ext_cap,
@@ -3045,8 +3046,7 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 	uint32_t aes_block_size_len = 0;
 	enum rateid min_rid = RATEID_DEFAULT;
 	uint8_t *mbo_ie = NULL, *adaptive_11r_ie = NULL, *vendor_ies = NULL;
-	uint8_t mbo_ie_len = 0, adaptive_11r_ie_len = 0, rsnx_ie_len = 0;
-	uint8_t mscs_ext_ie_len = 0;
+	uint8_t mbo_ie_len = 0, adaptive_11r_ie_len = 0;
 	uint8_t *eht_cap_ie = NULL, eht_cap_ie_len = 0;
 	bool bss_mfp_capable, frag_ie_present = false;
 	int8_t peer_rssi = 0;
@@ -3294,7 +3294,8 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 	}
 
 	/* Populate Non-AP STA Regulatory connectivity element */
-	populate_dot11f_reg_connectivity(mac_ctx, &frm->reg_connect);
+	if (IS_DOT11_MODE_HE(pe_session->dot11mode))
+		populate_dot11f_reg_connectivity(mac_ctx, &frm->reg_connect);
 
 	if (pe_session->is11Rconnection) {
 		struct bss_description *bssdescr;
@@ -3452,8 +3453,14 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 			pe_err("Failed to strip Vendor IEs");
 			goto end;
 		}
-		rsnx_ie_len = rsnx_ie[1] + 2;
+		/*fill rsnx opaque*/
+		frm->RSNXEOpaque.present = 1;
+		frm->RSNXEOpaque.num_data = rsnx_ie[1];
+		qdf_mem_copy(frm->RSNXEOpaque.data, rsnx_ie + 2, /* EID, len */
+			     rsnx_ie[1]);
+
 	}
+
 	/* MSCS ext ie */
 	if (add_ie_len &&
 	    wlan_get_ext_ie_ptr_from_ext_id(MSCS_OUI_TYPE, MSCS_OUI_SIZE,
@@ -3470,7 +3477,11 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 			pe_err("Failed to strip MSCS ext IE");
 			goto end;
 		}
-		mscs_ext_ie_len = mscs_ext_ie[1] + 2;
+		/*fill mscs opaque*/
+		frm->MSCSEXTOpaque.present = 1;
+		frm->MSCSEXTOpaque.num_data = mscs_ext_ie[1];
+		qdf_mem_copy(frm->MSCSEXTOpaque.data, mscs_ext_ie + 2,
+			     mscs_ext_ie[1]);
 	}
 
 	/*
@@ -3628,8 +3639,8 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 	}
 
 	bytes = payload + sizeof(tSirMacMgmtHdr) + aes_block_size_len +
-		rsnx_ie_len + mbo_ie_len + adaptive_11r_ie_len +
-		mscs_ext_ie_len + vendor_ie_len + mlo_ie_len + fils_hlp_ie_len +
+		mbo_ie_len + adaptive_11r_ie_len +
+		vendor_ie_len + mlo_ie_len + fils_hlp_ie_len +
 		eht_cap_ie_len + rsn_sel_ie_len;
 
 	qdf_status = cds_packet_alloc((uint16_t) bytes, (void **)&frame,
@@ -3676,39 +3687,39 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 		payload = payload + fils_hlp_ie_len;
 	}
 
+	if (mlo_ie_len) {
+		qdf_status = lim_fill_complete_mlo_ie(
+				pe_session, mlo_ie_len,
+				frame + sizeof(tSirMacMgmtHdr) + payload);
+		if (QDF_IS_STATUS_ERROR(qdf_status)) {
+			pe_debug("assemble ml ie error");
+			mlo_ie_len = 0;
+		}
+		payload = payload + mlo_ie_len;
+	}
+
 	if (eht_cap_ie_len) {
 		qdf_mem_copy(frame + sizeof(tSirMacMgmtHdr) + payload,
 			     eht_cap_ie, eht_cap_ie_len);
 		payload += eht_cap_ie_len;
 	}
 
-	if (rsnx_ie && rsnx_ie_len) {
-		qdf_mem_copy(frame + sizeof(tSirMacMgmtHdr) + payload,
-			     rsnx_ie, rsnx_ie_len);
-		payload = payload + rsnx_ie_len;
-	}
-
-	if (mscs_ext_ie && mscs_ext_ie_len) {
-		qdf_mem_copy(frame + sizeof(tSirMacMgmtHdr) + payload,
-			     mscs_ext_ie, mscs_ext_ie_len);
-		payload = payload + mscs_ext_ie_len;
-	}
-
+	/* Need to put all the vendor specific IE to the nd of frame*/
 	if (rsn_sel_ie_len) {
 		qdf_mem_copy(frame + sizeof(tSirMacMgmtHdr) + payload,
 			     rsn_sel_ie, rsn_sel_ie_len);
 		payload = payload + rsn_sel_ie_len;
 	}
 
-	/* Copy the vendor IEs to the end of the frame */
-	qdf_mem_copy(frame + sizeof(tSirMacMgmtHdr) + payload,
-		     vendor_ies, vendor_ie_len);
-	payload = payload + vendor_ie_len;
-
 	/* Copy the MBO IE to the end of the frame */
 	qdf_mem_copy(frame + sizeof(tSirMacMgmtHdr) + payload,
 		     mbo_ie, mbo_ie_len);
 	payload = payload + mbo_ie_len;
+
+	/* Copy the vendor IEs to the end of the frame */
+	qdf_mem_copy(frame + sizeof(tSirMacMgmtHdr) + payload,
+		     vendor_ies, vendor_ie_len);
+	payload = payload + vendor_ie_len;
 
 	/*
 	 * Copy the Vendor specific Adaptive 11r IE to end of the
@@ -3718,15 +3729,12 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 		     adaptive_11r_ie, adaptive_11r_ie_len);
 	payload = payload + adaptive_11r_ie_len;
 
-	if (mlo_ie_len) {
-		qdf_status = lim_fill_complete_mlo_ie(pe_session, mlo_ie_len,
-				      frame + sizeof(tSirMacMgmtHdr) + payload);
-		if (QDF_IS_STATUS_ERROR(qdf_status)) {
-			pe_debug("assemble ml ie error");
-			mlo_ie_len = 0;
-		}
-		payload = payload + mlo_ie_len;
-	}
+	/* Avoid adding any IE after vendor specific IE's */
+
+	lim_reorder_vendor_ies(mac_ctx,
+			       frame + sizeof(tSirMacMgmtHdr) +
+			       WLAN_ASSOC_REQ_IES_OFFSET,
+			       payload - WLAN_ASSOC_REQ_IES_OFFSET);
 
 	if (pe_session->assoc_req) {
 		qdf_mem_free(pe_session->assoc_req);
@@ -3767,12 +3775,16 @@ lim_send_assoc_req_mgmt_frame(struct mac_context *mac_ctx,
 	MTRACE(qdf_trace(QDF_MODULE_ID_PE, TRACE_CODE_TX_MGMT,
 			 pe_session->peSessionId, mac_hdr->fc.subType));
 
-	pe_debug("extr_ext_flag %d mbo ie len %d is open auth %d stripped vendor len %d he with tkip %d ht %d vht %d opmode %d vendor vht %d he %d eht %d",
-		 extr_ext_flag, mbo_ie_len, is_open_auth, current_len,
-		 pe_session->he_with_wep_tkip,
-		 frm->HTCaps.present, frm->VHTCaps.present,
-		 frm->OperatingMode.present, frm->vendor_vht_ie.present,
-		 frm->he_cap.present, frm->eht_cap.present);
+	pe_debug("Assoc Req IEs: dot11mode %d, extcap %d, open %d, IE len:: mbo %d vendor %d, rsn_sel %d, ft11r %d, mlo %d, eht %d, fils %d",
+		 pe_session->dot11mode, extr_ext_flag,
+		 is_open_auth, mbo_ie_len,
+		 vendor_ie_len,
+		 rsn_sel_ie_len,
+		 adaptive_11r_ie_len,
+		 mlo_ie_len,
+		 eht_cap_ie_len,
+		 fils_hlp_ie_len);
+
 	pe_nofl_info("Assoc req TX: vdev %d to "QDF_MAC_ADDR_FMT" seq num %d",
 		     pe_session->vdev_id, QDF_MAC_ADDR_REF(pe_session->bssId),
 		     mac_ctx->mgmtSeqNum);

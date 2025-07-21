@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -3763,13 +3763,36 @@ lim_limit_bw_for_iot_ap(struct mac_context *mac_ctx,
 	}
 }
 
+static void
+lim_sta_update_max_channel_width(struct pe_session *pe_session,
+				 tpSirAssocRsp pAssocRsp,
+				 struct bss_params *pAddBssParams)
+{
+	enum phy_ch_width max_ch_width;
+
+	if (lim_is_eht_connection_op_info_present(pe_session, pAssocRsp)) {
+		max_ch_width = CH_WIDTH_320MHZ;
+	} else if ((pe_session->vhtCapability && pAssocRsp->VHTCaps.present) ||
+		 (lim_is_session_he_capable(pe_session) &&
+		  pAssocRsp->he_cap.present)) {
+		max_ch_width = CH_WIDTH_160MHZ;
+	} else {
+		max_ch_width = CH_WIDTH_40MHZ;
+	}
+
+	if (pAddBssParams->ch_width > max_ch_width) {
+		pAddBssParams->ch_width = max_ch_width;
+		pAddBssParams->staContext.ch_width = max_ch_width;
+	}
+}
+
 QDF_STATUS lim_sta_send_add_bss(struct mac_context *mac, tpSirAssocRsp pAssocRsp,
 				   tpSchBeaconStruct pBeaconStruct,
 				   struct bss_description *bssDescription,
 				   uint8_t updateEntry, struct pe_session *pe_session)
 {
 	struct bss_params *pAddBssParams = NULL;
-	uint32_t retCode;
+	QDF_STATUS retCode;
 	tpDphHashNode sta = NULL;
 	bool chan_width_support = false;
 	bool is_vht_cap_in_vendor_ie = false;
@@ -3827,16 +3850,20 @@ QDF_STATUS lim_sta_send_add_bss(struct mac_context *mac, tpSirAssocRsp pAssocRsp
 		 * width has been taken into account for calculating
 		 * pe_session->ch_width
 		 */
-		if ((chan_width_support &&
-		     ((pAssocRsp->HTCaps.supportedChannelWidthSet) ||
-		      (pBeaconStruct->HTCaps.present &&
-		       pBeaconStruct->HTCaps.supportedChannelWidthSet))) ||
-		    lim_is_eht_connection_op_info_present(pe_session,
-							  pAssocRsp)) {
+		if (lim_is_eht_connection_op_info_present(pe_session,
+							  pAssocRsp) ||
+		    (chan_width_support &&
+		    pAssocRsp->VHTCaps.present)) {
 			pAddBssParams->ch_width =
 					pe_session->ch_width;
 			pAddBssParams->staContext.ch_width =
-						pe_session->ch_width;
+					pe_session->ch_width;
+		} else if ((chan_width_support &&
+		     ((pAssocRsp->HTCaps.supportedChannelWidthSet) ||
+		      (pBeaconStruct->HTCaps.present &&
+		       pBeaconStruct->HTCaps.supportedChannelWidthSet)))) {
+			pAddBssParams->ch_width = CH_WIDTH_40MHZ;
+			pAddBssParams->staContext.ch_width = CH_WIDTH_40MHZ;
 		} else {
 			pAddBssParams->ch_width = CH_WIDTH_20MHZ;
 			pAddBssParams->staContext.ch_width = CH_WIDTH_20MHZ;
@@ -4209,6 +4236,10 @@ QDF_STATUS lim_sta_send_add_bss(struct mac_context *mac, tpSirAssocRsp pAssocRsp
 		pAddBssParams->ch_width = CH_WIDTH_10MHZ;
 		pAddBssParams->staContext.ch_width = CH_WIDTH_10MHZ;
 	}
+
+	/* check and update max channel width supported */
+	lim_sta_update_max_channel_width(pe_session, pAssocRsp, pAddBssParams);
+
 	lim_set_sta_ctx_twt(&pAddBssParams->staContext, pe_session);
 
 	if (lim_is_fils_connection(pe_session))
@@ -4232,10 +4263,10 @@ QDF_STATUS lim_sta_send_add_bss(struct mac_context *mac, tpSirAssocRsp pAssocRsp
 		SET_LIM_PROCESS_DEFD_MESGS(mac, true);
 		pe_err("wma_send_peer_assoc_req failed=%X",
 		       retCode);
+	} else {
+		lim_limit_bw_for_iot_ap(mac, pe_session, bssDescription);
 	}
 	qdf_mem_free(pAddBssParams);
-
-	lim_limit_bw_for_iot_ap(mac, pe_session, bssDescription);
 
 returnFailure:
 	/* Clean-up will be done by the caller... */
